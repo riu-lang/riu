@@ -1,0 +1,8 @@
+.idea/
+/*build*/
+/gen/
+/*.exe
+/*.obj
+/*.lib
+/*.ll
+/third_party/

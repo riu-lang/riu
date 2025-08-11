@@ -1,0 +1,158 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "yux",
+  "scopeName": "source.yux",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#keywords" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#operators" },
+    { "include": "#punctuation" },
+    { "include": "#identifiers" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.yux",
+          "match": "(?<=^|\\G)\\s*/.*$"
+        },
+        {
+          "name": "comment.line.end.yux",
+          "match": "\\s;.*$"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.yux",
+          "match": "\\b(if|elif|else)\\b"
+        },
+        {
+          "name": "keyword.other.yux",
+          "match": "\\b(fn|ret)\\b"
+        },
+        {
+          "name": "constant.language.yux",
+          "match": "\\b(true|false|null)\\b"
+        },
+        {
+          "name": "storage.type.yux",
+          "match": "\\b(var|val|cval)\\b"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.yux",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.yux",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.yux",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.yux",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.other.yux",
+          "match": "r\".*?\""
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.yux",
+          "match": "[-+]?(?:\\d[\\d_]*\\.[\\d_]+(?:[eE][-+]?[\\d_]+)?[fF](?:32|64)?|\\d[\\d_]*\\.[\\d_]+[eE][-+]?[\\d_]+[fF]?(?:32|64)?)"
+        },
+        {
+          "name": "constant.numeric.hex.yux",
+          "match": "[-+]?0[xX][\\da-fA-F_]+[iu]?(?:8|16|32|64)?"
+        },
+        {
+          "name": "constant.numeric.octal.yux",
+          "match": "[-+]?0[oO][0-7_]+[iu]?(?:8|16|32|64)?"
+        },
+        {
+          "name": "constant.numeric.binary.yux",
+          "match": "[-+]?0[bB][01_]+[iu]?(?:8|16|32|64)?"
+        },
+        {
+          "name": "constant.numeric.integer.yux",
+          "match": "[-+]?\\d[\\d_]*[iu]?(?:8|16|32|64)?"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arithmetic.yux",
+          "match": "[+\\-*/%]"
+        },
+        {
+          "name": "keyword.operator.assignment.yux",
+          "match": "="
+        },
+        {
+          "name": "keyword.operator.arrow.yux",
+          "match": "->"
+        },
+        {
+          "name": "keyword.operator.other.yux",
+          "match": "[!?]"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.section.block.yux",
+          "match": "[{}]"
+        },
+        {
+          "name": "punctuation.section.parens.yux",
+          "match": "[()]"
+        },
+        {
+          "name": "punctuation.section.brackets.yux",
+          "match": "[\\[\\]]"
+        },
+        {
+          "name": "punctuation.separator.comma.yux",
+          "match": ","
+        },
+        {
+          "name": "punctuation.accessor.dot.yux",
+          "match": "\\."
+        }
+      ]
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "name": "entity.name.function.yux",
+          "match": "\\b([a-zA-Z_\\p{L}][a-zA-Z0-9_\\p{L}]*)\\b(?=\\s*\\()"
+        },
+        {
+          "name": "variable.other.yux",
+          "match": "\\b[a-zA-Z_\\p{L}][a-zA-Z0-9_\\p{L}]*\\b"
+        }
+      ]
+    }
+  }
+}

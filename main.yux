@@ -1,0 +1,22 @@
+/ 注释，顶行/，可加空格缩进
+
+fn p(a i32) {
+  println(a + 1)
+}
+
+fn aa() {
+  var x = 10
+  println(x)
+  x = 20
+  println(x)
+  x = x + 5
+  println(x)
+}
+
+fn main() {
+  / 打印
+  val a = 1.5 + 2.to_f64()
+  println(a)
+  aa()
+  p(123)
+}

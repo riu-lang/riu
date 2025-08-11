@@ -1,0 +1,67 @@
+// Copyright (c) 2026. Yin-Jinlong@github
+
+//
+// Created by yjl_1 on 2026/3/29.
+//
+
+#ifndef YUX_LANG_FN_NODE_H
+#define YUX_LANG_FN_NODE_H
+
+#include "node.h"
+
+#include <utility>
+
+class FnHeaderNode;
+class StatementNode;
+class LiteralNode;
+class ExprNode;
+
+class FnParamNode : public Node {
+protected:
+    Token _name;
+    Token _type;
+
+public:
+    explicit FnParamNode(const p<Node>& parent, Token name, Token type) :
+        Node(parent), _name(name), _type(type) {
+    }
+
+    [[nodiscard]] Token name() const;
+    [[nodiscard]] Token type() const;
+};
+
+class FnHeaderNode : public Node, public Named, public Typed {
+protected:
+    vector<p<FnParamNode>> _params;
+    Token _retType;
+
+public:
+    FnHeaderNode(const p<Node>& parent, Token name, Token retType) :
+        Node(parent), Named(name), _retType(retType) {
+    }
+
+    void addParam(p<FnParamNode> param);
+
+    [[nodiscard]] Token name() const override;
+    [[nodiscard]] Token retType() const;
+    [[nodiscard]] vector<p<FnParamNode>> params() const;
+    [[nodiscard]] string getType() const override;
+};
+
+class FnNode : public ScopeNode, public Typed {
+    p<FnHeaderNode> _header;
+    vector<p<StatementNode>> _body;
+
+public:
+    explicit FnNode(const p<Node>& parent, p<FnHeaderNode> header);
+
+    void addStatement(p<StatementNode> stmt);
+
+    [[nodiscard]] const vector<p<StatementNode>>& body() const;
+    [[nodiscard]] const p<FnHeaderNode>& header() const;
+
+    [[nodiscard]] string getType() const override;
+    [[nodiscard]] string getLocation() const override;
+};
+
+#endif //YUX_LANG_FN_NODE_H
