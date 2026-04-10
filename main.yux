@@ -1,7 +1,8 @@
 / 注释，顶行/，可加空格缩进
 
 fn p(a i32) {
-  println(a + 1)
+  val arr [i32 * 1] = [1]
+  println(a + arr[0])
 }
 
 fn aa() {

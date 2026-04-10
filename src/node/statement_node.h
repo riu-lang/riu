@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "expr_node.h"
+#include "type_node.h"
 
 
 class StatementNode : public Node {
@@ -52,16 +53,16 @@ class StatementDeclareAssignNode : public StatementExprNode {
 protected:
     DeclareType _declareType;
     Token _name;
-    Token _type;
+    p<TypeNode> _type;
 
 public:
-    explicit StatementDeclareAssignNode(const p<Node>& parent, DeclareType declType, Token name, Token type, p<ExprNode> expr) :
+    explicit StatementDeclareAssignNode(const p<Node>& parent, DeclareType declType, Token name, p<TypeNode> type, p<ExprNode> expr) :
         StatementExprNode(parent, std::move(expr)), _declareType(declType), _name(name), _type(type) {
     }
 
     [[nodiscard]] DeclareType declareType() const;
     [[nodiscard]] Token name() const;
-    [[nodiscard]] Token varType() const;
+    [[nodiscard]] p<TypeNode> varType() const;
 };
 
 class StatementAssignNode : public StatementExprNode {

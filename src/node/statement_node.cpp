@@ -22,7 +22,7 @@ Token StatementDeclareAssignNode::name() const {
     return _name;
 }
 
-Token StatementDeclareAssignNode::varType() const {
+p<TypeNode> StatementDeclareAssignNode::varType() const {
     return _type;
 }
 

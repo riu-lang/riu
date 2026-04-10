@@ -19,8 +19,8 @@
 
 struct CastInfo {
     llvm::Value* value;
-    string srcType;
-    string dstType;
+    TypeInfo srcType;
+    TypeInfo dstType;
 };
 
 class Compiler {
@@ -37,14 +37,14 @@ class Compiler {
     llvm::Function* _currentFn = nullptr;
     p<FnNode> _currentFnNode;
 
-    llvm::Type* getLLVMType(const string& name);
+    llvm::Type* getLLVMType(const TypeInfo& type);
     llvm::FunctionType* getLLVMFunctionType(p<FnHeaderNode> header);
 
     llvm::Function* getFunction(p<FnHeaderNode> header);
     llvm::Value* compileExpr(p<ExprNode> node);
-    llvm::Value* createCast(llvm::Value* val, const string& srcType, const string& dstType);
+    llvm::Value* createCast(llvm::Value* val, const TypeInfo& srcType, const TypeInfo& dstType);
     void compileStatementBlock(p<StatementBlockNode> block);
-    llvm::Value* compileStatementBlockWithResult(p<StatementBlockNode> block, llvm::BasicBlock* continueBlock, llvm::PHINode* phi, const string& resultType);
+    llvm::Value* compileStatementBlockWithResult(p<StatementBlockNode> block, llvm::BasicBlock* continueBlock, llvm::PHINode* phi, const TypeInfo& resultType);
 
 public:
     Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, p<FileNode> file);

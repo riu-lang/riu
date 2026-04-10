@@ -30,31 +30,31 @@ public:
 
 class LiteralIntNode : public LiteralNumberNode {
 protected:
-    string _type;
+    TypeInfo _type;
 
 public:
     explicit LiteralIntNode(Token value);
-    [[nodiscard]] string getType() const override;
+    [[nodiscard]] TypeInfo getType() const override;
 };
 
 class LiteralFloatNode : public LiteralNumberNode {
 protected:
-    string _type;
+    TypeInfo _type;
 public:
     explicit LiteralFloatNode(const Token& value);
-    [[nodiscard]] string getType() const override;
+    [[nodiscard]] TypeInfo getType() const override;
 };
 
 class LiteralBoolNode : public LiteralNode {
 public:
     explicit LiteralBoolNode(Token value);
-    [[nodiscard]] string getType() const override;
+    [[nodiscard]] TypeInfo getType() const override;
 };
 
 class LiteralObjNode : public LiteralNode {
 public:
     explicit LiteralObjNode(const p<Node>& parent,const Token& value);
-    [[nodiscard]] string getType() const override;
+    [[nodiscard]] TypeInfo getType() const override;
    [[nodiscard]] string getLocation() const override;
 };
 

@@ -10,7 +10,7 @@ Token FnParamNode::name() const {
     return _name;
 }
 
-Token FnParamNode::type() const {
+p<TypeNode> FnParamNode::type() const {
     return _type;
 }
 
@@ -22,7 +22,7 @@ Token FnHeaderNode::name() const {
     return _name;
 }
 
-Token FnHeaderNode::retType() const {
+p<TypeNode> FnHeaderNode::retType() const {
     return _retType;
 }
 
@@ -30,9 +30,11 @@ vector<p<FnParamNode>> FnHeaderNode::params() const {
     return _params;
 }
 
-string FnHeaderNode::getType() const {
-    string res = "fn()";
-    return res;
+TypeInfo FnHeaderNode::getType() const {
+    if (_retType) {
+        return _retType->getType();
+    }
+    return TypeInfo();
 }
 
 FnNode::FnNode(const p<Node>& parent, p<FnHeaderNode> header) :
@@ -48,7 +50,7 @@ const vector<p<StatementNode>>& FnNode::body() const { return _body; }
 
 const p<FnHeaderNode>& FnNode::header() const { return _header; }
 
-string FnNode::getType() const {
+TypeInfo FnNode::getType() const {
     return _header->getType();
 }
 

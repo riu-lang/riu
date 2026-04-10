@@ -5,6 +5,7 @@
 #include "node/statement_node.h"
 #include "node/literal_node.h"
 #include <algorithm>
+#include "types.h"
 
 ASTBuilder::ASTBuilder(llvm::LLVMContext& ctx) :
     context(ctx), irBuilder(ctx) {
@@ -21,26 +22,38 @@ p<FileNode> ASTBuilder::build(yux::yuxParser::ProgramContext* ctx) {
 }
 
 std::any ASTBuilder::visitComment(yux::yuxParser::CommentContext* ctx) {
+    DEBUG_LOG("  Visit: Comment");
     return nullptr;
 }
 
 std::any ASTBuilder::visitCodeLineEnd(yux::yuxParser::CodeLineEndContext* ctx) {
+    DEBUG_LOG("  Visit: CodeLineEnd");
     return nullptr;
 }
 
 std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
+    DEBUG_LOG("Visit: Program");
     auto file = create<FileNode>();
 
     auto funs = ctx->fn();
+    DEBUG_LOG_VAL("  Functions count", funs.size());
     for (auto fn : funs) {
         auto header = fn->fnHeader();
         auto fnName = header->name->getText();
 
-        vector<string> paramTypes;
+        vector<TypeInfo> paramTypes;
         for (auto param : header->params) {
-            paramTypes.push_back(param->type->getText());
+            if (param->type()) {
+                auto typeNode = any_cast_p<TypeNode>(visit(param->type()));
+                paramTypes.push_back(typeNode->getType());
+            }
         }
-        string retType = header->retType ? header->retType->getText() : "";
+        TypeInfo retType;
+        if (header->retType) {
+            auto typeNode = any_cast_p<TypeNode>(visit(header->retType));
+            retType = typeNode->getType();
+        }
+        DEBUG_LOG_VAL("  Register function", fnName);
         file->registerSymbol(fnName, {SymbolKind::Function, fnName, retType});
         file->registerFnSymbol(fnName, {fnName, paramTypes, retType});
     }
@@ -50,6 +63,7 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
     visitChildren(ctx);
     _scopeStack.pop_back();
     stack.pop_back();
+    DEBUG_LOG("Finished: Program");
     return file;
 }
 
@@ -60,20 +74,26 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
     fn->setParentScope(file);
     file->addFunction(fn);
 
+    DEBUG_LOG_VAL("Visit: Function", header->name()->getText());
+
     stack.emplace_back(fn);
     _scopeStack.push_back(fn);
 
     for (auto param : header->params()) {
+        TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();
         fn->registerSymbol(
-            param->name()->getText(), {SymbolKind::Variable, param->name()->getText(), param->type()->getText()});
+            param->name()->getText(), {SymbolKind::Variable, param->name()->getText(), paramType});
+        DEBUG_LOG_VAL("  Param", param->name()->getText() << " : " << paramType.name);
     }
 
     if (ctx->fnBody()->fnExprkBody()) {
+        DEBUG_LOG("  Body: Expression");
         auto exprBody = ctx->fnBody()->fnExprkBody();
         auto expr = any_cast_p<ExprNode>(visit(exprBody->expr()));
         auto retStmt = create<StatementRetNode>(fn, expr);
         fn->addStatement(retStmt);
     } else if (ctx->fnBody()->fnBlockBody()) {
+        DEBUG_LOG("  Body: Block");
         auto blockBody = ctx->fnBody()->fnBlockBody();
         auto stmtBlockNode = any_cast_p<StatementBlockNode>(visit(blockBody->statementBlock()));
 
@@ -82,6 +102,7 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
         }
 
         if (stmtBlockNode->hasResult()) {
+            DEBUG_LOG("  Block has result, adding return");
             auto retStmt = create<StatementRetNode>(fn, stmtBlockNode->resultExpr());
             fn->addStatement(retStmt);
         }
@@ -89,13 +110,21 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
 
     _scopeStack.pop_back();
     stack.pop_back();
+    DEBUG_LOG_VAL("Finished: Function", header->name()->getText());
     return fn;
 }
 
 std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
+    DEBUG_LOG_VAL("  Visit: FunctionHeader", ctx->name->getText());
     auto file = any_cast_p<FileNode>(stack.back());
 
-    auto header = create<FnHeaderNode>(file, ctx->name, ctx->retType);
+    p<TypeNode> retType = nullptr;
+    if (ctx->retType) {
+        retType = any_cast_p<TypeNode>(visit(ctx->retType));
+        DEBUG_LOG_VAL("    Return type", retType->getType().name);
+    }
+
+    auto header = create<FnHeaderNode>(file, ctx->name, retType);
 
     stack.emplace_back(header);
 
@@ -111,7 +140,9 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
 
 std::any ASTBuilder::visitFnParam(yux::yuxParser::FnParamContext* ctx) {
     p<Node> parent = any_cast_p<FnHeaderNode>(stack.back());
-    return p<FnParamNode>(create<FnParamNode>(parent, ctx->name, ctx->type));
+    auto type = any_cast_p<TypeNode>(visit(ctx->type()));
+    DEBUG_LOG_VAL("    Param", ctx->name->getText() << " : " << type->getType().name);
+    return p<FnParamNode>(create<FnParamNode>(parent, ctx->name, type));
 }
 
 std::any ASTBuilder::visitStatementDeclareAssign(yux::yuxParser::StatementDeclareAssignContext* ctx) {
@@ -129,14 +160,19 @@ std::any ASTBuilder::visitStatementDeclareAssign(yux::yuxParser::StatementDeclar
     }
 
     auto name = ctx->name;
-    auto type = ctx->type;
+    p<TypeNode> type = nullptr;
+    if (ctx->type()) {
+        type = any_cast_p<TypeNode>(visit(ctx->type()));
+    }
 
-    string varType;
+    TypeInfo varType;
     if (type) {
-        varType = type->getText();
+        varType = type->getType();
     } else {
         varType = expr->getType();
     }
+
+    DEBUG_LOG_VAL("  Statement: Declare", name->getText() << " : " << varType.name << " (" << declKey << ")");
 
     if (scope) {
         scope->registerSymbol(
@@ -149,6 +185,7 @@ std::any ASTBuilder::visitStatementDeclareAssign(yux::yuxParser::StatementDeclar
 std::any ASTBuilder::visitStatementAssign(yux::yuxParser::StatementAssignContext* ctx) {
     auto scope = currentScope();
     auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
+    DEBUG_LOG_VAL("  Statement: Assign", ctx->obj->getText());
     return p<StatementNode>(create<StatementAssignNode>(scope, ctx->obj, expr));
 }
 
@@ -156,16 +193,19 @@ std::any ASTBuilder::visitStatementExpr(yux::yuxParser::StatementExprContext* ct
     auto scope = currentScope();
     auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
     bool hasSemicolon = ctx->SymbolSemicolon() != nullptr;
+    DEBUG_LOG_VAL("  Statement: Expression", (hasSemicolon ? "with semicolon" : "without semicolon"));
     return p<StatementNode>(create<StatementExprNode>(scope, expr, hasSemicolon));
 }
 
 std::any ASTBuilder::visitStatementRet(yux::yuxParser::StatementRetContext* ctx) {
     auto scope = currentScope();
     auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
+    DEBUG_LOG("  Statement: Return");
     return p<StatementNode>(create<StatementRetNode>(scope, expr));
 }
 
 std::any ASTBuilder::visitStatementBlock(yux::yuxParser::StatementBlockContext* ctx) {
+    DEBUG_LOG("  Visit: StatementBlock");
     auto parentScope = currentScope();
     vector<p<StatementNode>> statements;
     for (auto stmtCtx : ctx->statement()) {
@@ -183,16 +223,19 @@ std::any ASTBuilder::visitStatementBlock(yux::yuxParser::StatementBlockContext* 
                 resultExpr = exprStmt->expr();
                 hasResult = true;
                 statements.pop_back();
+                DEBUG_LOG("    Block has result expression");
             }
         }
     }
 
+    DEBUG_LOG_VAL("    Statements count", statements.size());
     auto block = create<StatementBlockNode>(parentScope, statements, resultExpr, hasResult);
     block->setParentScope(parentScope);
     return p<StatementBlockNode>(block);
 }
 
 std::any ASTBuilder::visitExprParen(yux::yuxParser::ExprParenContext* ctx) {
+    DEBUG_LOG("    Expr: Paren");
     auto scope = currentScope();
     auto inner = any_cast_p<ExprNode>(visit(ctx->expr()));
     return p<ExprNode>(create<ExprParenNode>(scope, inner));
@@ -203,6 +246,7 @@ std::any ASTBuilder::visitExprCall(yux::yuxParser::ExprCallContext* ctx) {
     auto callee = any_cast_p<ExprNode>(visit(ctx->left));
 
     auto call = create<ExprCallNode>(scope, callee);
+    DEBUG_LOG_VAL("    Expr: Call", "args count: " << ctx->args.size());
     for (auto arg : ctx->args) {
         call->addArg(any_cast_p<ExprNode>(visit(arg)));
     }
@@ -217,6 +261,7 @@ std::any ASTBuilder::visitExprAddSub(yux::yuxParser::ExprAddSubContext* ctx) {
     auto opText = ctx->op->getText();
     auto op = (opText == "+") ? ExprAddSubNode::Op::Add : ExprAddSubNode::Op::Sub;
 
+    DEBUG_LOG_VAL("    Expr: AddSub", opText);
     return p<ExprNode>(create<ExprAddSubNode>(scope, op, left, right));
 }
 
@@ -235,10 +280,12 @@ std::any ASTBuilder::visitExprMulDivMod(yux::yuxParser::ExprMulDivModContext* ct
         op = ExprMulDivModNode::Op::Mod;
     }
 
+    DEBUG_LOG_VAL("    Expr: MulDivMod", opText);
     return p<ExprNode>(create<ExprMulDivModNode>(scope, op, left, right));
 }
 
 std::any ASTBuilder::visitExprLiteral(yux::yuxParser::ExprLiteralContext* ctx) {
+    DEBUG_LOG("    Expr: Literal");
     auto scope = currentScope();
     auto literal = any_cast_p<LiteralNode>(visit(ctx->literal()));
     return p<ExprNode>(create<ExprLiteralNode>(scope, literal));
@@ -247,6 +294,7 @@ std::any ASTBuilder::visitExprLiteral(yux::yuxParser::ExprLiteralContext* ctx) {
 std::any ASTBuilder::visitExprDot(yux::yuxParser::ExprDotContext* ctx) {
     auto scope = currentScope();
     auto base = any_cast_p<ExprNode>(visit(ctx->left));
+    DEBUG_LOG_VAL("    Expr: Dot", ctx->member.back()->getText());
     return p<ExprNode>(create<ExprDotNode>(scope, base, ctx->member.back()));
 }
 
@@ -271,37 +319,45 @@ std::any ASTBuilder::visitExprCompare(yux::yuxParser::ExprCompareContext* ctx) {
         op = ExprCompareNode::Op::Ge;
     }
 
+    DEBUG_LOG_VAL("    Expr: Compare", opText);
     return p<ExprNode>(create<ExprCompareNode>(scope, op, left, right));
 }
 
 std::any ASTBuilder::visitLiteralNumber(yux::yuxParser::LiteralNumberContext* ctx) {
+    DEBUG_LOG("      Literal: Number");
     return p<LiteralNode>(any_cast_p<LiteralNode>(visit(ctx->num)));
 }
 
 std::any ASTBuilder::visitLiteralBool(yux::yuxParser::LiteralBoolContext* ctx) {
     auto token = ctx->True() ? ctx->True()->getSymbol() : ctx->False()->getSymbol();
+    DEBUG_LOG_VAL("      Literal: Bool", (ctx->True() ? "true" : "false"));
     return p<LiteralNode>(create<LiteralBoolNode>(token));
 }
 
 std::any ASTBuilder::visitLiteralObj(yux::yuxParser::LiteralObjContext* ctx) {
     auto scope = currentScope();
+    DEBUG_LOG_VAL("      Literal: Object", ctx->name->getText());
     return p<LiteralNode>(create<LiteralObjNode>(scope, ctx->name));
 }
 
 std::any ASTBuilder::visitNumInt(yux::yuxParser::NumIntContext* ctx) {
+    DEBUG_LOG_VAL("        Num: Int", ctx->INT()->getSymbol()->getText());
     return p<LiteralNode>(create<LiteralIntNode>(ctx->INT()->getSymbol()));
 }
 
 std::any ASTBuilder::visitNumFloat(yux::yuxParser::NumFloatContext* ctx) {
+    DEBUG_LOG_VAL("        Num: Float", ctx->FLOAT()->getSymbol()->getText());
     return p<LiteralNode>(create<LiteralFloatNode>(ctx->FLOAT()->getSymbol()));
 }
 
 std::any ASTBuilder::visitExprIfElse(yux::yuxParser::ExprIfElseContext* ctx) {
+    DEBUG_LOG("    Expr: IfElse");
     auto scope = currentScope();
     auto condition = any_cast_p<ExprNode>(visit(ctx->condition));
     auto thenBlock = any_cast_p<StatementBlockNode>(visit(ctx->statementBlock()));
 
     vector<p<ExprElIfNode>> elifs;
+    DEBUG_LOG_VAL("      Elif count", ctx->elifs.size());
     for (auto elifCtx : ctx->elifs) {
         auto elif = any_cast_p<ExprElIfNode>(visit(elifCtx));
         elifs.push_back(elif);
@@ -309,6 +365,7 @@ std::any ASTBuilder::visitExprIfElse(yux::yuxParser::ExprIfElseContext* ctx) {
 
     p<StatementBlockNode> elseBlock = nullptr;
     if (ctx->exprElse()) {
+        DEBUG_LOG("      Has else block");
         elseBlock = any_cast_p<StatementBlockNode>(visit(ctx->exprElse()));
     }
 
@@ -316,6 +373,7 @@ std::any ASTBuilder::visitExprIfElse(yux::yuxParser::ExprIfElseContext* ctx) {
 }
 
 std::any ASTBuilder::visitExprElIf(yux::yuxParser::ExprElIfContext* ctx) {
+    DEBUG_LOG("      Visit: Elif");
     auto scope = currentScope();
     auto condition = any_cast_p<ExprNode>(visit(ctx->condition));
     auto block = any_cast_p<StatementBlockNode>(visit(ctx->statementBlock()));
@@ -323,5 +381,53 @@ std::any ASTBuilder::visitExprElIf(yux::yuxParser::ExprElIfContext* ctx) {
 }
 
 std::any ASTBuilder::visitExprElse(yux::yuxParser::ExprElseContext* ctx) {
+    DEBUG_LOG("      Visit: Else");
     return visit(ctx->statementBlock());
+}
+
+std::any ASTBuilder::visitExprGet(yux::yuxParser::ExprGetContext* ctx) {
+    DEBUG_LOG("visitExprGet called");
+    auto scope = currentScope();
+    auto exprs = ctx->expr();
+    auto arrayExpr = any_cast_p<ExprNode>(visit(exprs[0]));
+    
+    vector<p<ExprNode>> indices;
+    for (size_t i = 1; i < exprs.size(); ++i) {
+        indices.push_back(any_cast_p<ExprNode>(visit(exprs[i])));
+    }
+    
+    return p<ExprNode>(create<ExprGetNode>(scope, arrayExpr, indices));
+}
+
+std::any ASTBuilder::visitExprArray(yux::yuxParser::ExprArrayContext* ctx) {
+    DEBUG_LOG_VAL("    Expr: Array", "elements: " << ctx->velues.size());
+    auto scope = currentScope();
+    vector<p<ExprNode>> elements;
+    
+    for (auto elemCtx : ctx->velues) {
+        elements.push_back(any_cast_p<ExprNode>(visit(elemCtx)));
+    }
+    
+    return p<ExprNode>(create<ExprArrayNode>(scope, elements));
+}
+
+std::any ASTBuilder::visitType(yux::yuxParser::TypeContext* ctx) {
+    if (ctx->typeNormal()) {
+        return visit(ctx->typeNormal());
+    }
+    return visit(ctx->typeArray());
+}
+
+std::any ASTBuilder::visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) {
+    p<Node> parent = currentScope();
+    DEBUG_LOG_VAL("    Type: Normal", ctx->ID()->getSymbol()->getText());
+    return p<TypeNode>(create<TypeNormalNode>(parent, ctx->ID()->getSymbol()));
+}
+
+std::any ASTBuilder::visitTypeArray(yux::yuxParser::TypeArrayContext* ctx) {
+    p<Node> parent = currentScope();
+    auto elementType = any_cast_p<TypeNode>(visit(ctx->type()));
+    auto count = ctx->INT()->getSymbol();
+    DEBUG_LOG_VAL("    Type: Array", "[" << count->getText() << "]");
+    return p<TypeNode>(create<TypeArrayNode>(parent, elementType, count));
 }

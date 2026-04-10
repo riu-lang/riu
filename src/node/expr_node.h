@@ -36,7 +36,7 @@ public:
     [[nodiscard]] const p<ExprNode>& getCalleeExpr() const;
     [[nodiscard]] const std::vector<p<ExprNode>>& getArgs() const;
 
-    [[nodiscard]] string getType() const override;
+    [[nodiscard]] TypeInfo getType() const override;
 };
 
 class ExprLiteralNode : public ExprNode {
@@ -50,7 +50,7 @@ public:
     }
 
     [[nodiscard]] const p<LiteralNode>& literal() const;
-    [[nodiscard]] string getType() const override;
+    [[nodiscard]] TypeInfo getType() const override;
 };
 
 class ExprAddSubNode : public ExprNode {
@@ -72,7 +72,7 @@ public:
     [[nodiscard]] Op op() const;
     [[nodiscard]] const p<ExprNode>& left() const;
     [[nodiscard]] const p<ExprNode>& right() const;
-    [[nodiscard]] string getType() const override;
+    [[nodiscard]] TypeInfo getType() const override;
 };
 
 class ExprMulDivModNode : public ExprNode {
@@ -94,7 +94,7 @@ public:
     [[nodiscard]] Op op() const;
     [[nodiscard]] const p<ExprNode>& left() const;
     [[nodiscard]] const p<ExprNode>& right() const;
-    [[nodiscard]] string getType() const override;
+    [[nodiscard]] TypeInfo getType() const override;
 };
 
 class ExprParenNode : public ExprNode {
@@ -107,7 +107,7 @@ public:
     }
 
     [[nodiscard]] const p<ExprNode>& expr() const;
-    [[nodiscard]] string getType() const override;
+    [[nodiscard]] TypeInfo getType() const override;
 };
 
 class ExprDotNode : public ExprNode {
@@ -123,7 +123,7 @@ public:
 
     [[nodiscard]] const p<ExprNode>& baseExpr() const;
     [[nodiscard]] string member() const;
-    [[nodiscard]] string getType() const override;
+    [[nodiscard]] TypeInfo getType() const override;
 };
 
 class ExprCompareNode : public ExprNode {
@@ -145,7 +145,7 @@ public:
     [[nodiscard]] Op op() const;
     [[nodiscard]] const p<ExprNode>& left() const;
     [[nodiscard]] const p<ExprNode>& right() const;
-    [[nodiscard]] string getType() const override;
+    [[nodiscard]] TypeInfo getType() const override;
 };
 
 class StatementBlockNode : public ScopeNode {
@@ -196,7 +196,36 @@ public:
     [[nodiscard]] const p<StatementBlockNode>& thenBlock() const;
     [[nodiscard]] const vector<p<ExprElIfNode>>& elifs() const;
     [[nodiscard]] const p<StatementBlockNode>& elseBlock() const;
-    [[nodiscard]] string getType() const override;
+    [[nodiscard]] TypeInfo getType() const override;
+};
+
+class ExprGetNode : public ExprNode {
+    p<ExprNode> _arrayExpr;
+    vector<p<ExprNode>> _indices;
+
+public:
+    ExprGetNode(const p<Node>& parent, p<ExprNode> arrayExpr, vector<p<ExprNode>> indices) :
+        ExprNode(parent),
+        _arrayExpr(arrayExpr),
+        _indices(std::move(indices)) {
+    }
+
+    [[nodiscard]] const p<ExprNode>& arrayExpr() const;
+    [[nodiscard]] const vector<p<ExprNode>>& indices() const;
+    [[nodiscard]] TypeInfo getType() const override;
+};
+
+class ExprArrayNode : public ExprNode {
+    vector<p<ExprNode>> _elements;
+
+public:
+    ExprArrayNode(const p<Node>& parent, vector<p<ExprNode>> elements) :
+        ExprNode(parent),
+        _elements(std::move(elements)) {
+    }
+
+    [[nodiscard]] const vector<p<ExprNode>>& elements() const;
+    [[nodiscard]] TypeInfo getType() const override;
 };
 
 #endif //YUX_LANG_EXPR_NODE_H

@@ -163,6 +163,7 @@ int wmain(int argc, wchar_t* argv[]) {
 #ifdef _DEBUG
     app.add_flag("-d,--debug", debug, "Output compilation IR debug information");
 #endif
+    std::cout << "Working at: " << std::filesystem::absolute(std::filesystem::current_path()).string() << std::endl;
 
     std::string inputFile;
     app.add_option("input", inputFile, "Input .yux file")

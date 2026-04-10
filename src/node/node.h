@@ -18,18 +18,18 @@ enum class SymbolKind : u8 {
 struct SymbolInfo {
     SymbolKind kind;
     string name;
-    string type;
+    TypeInfo type;
     bool writeable = false;
     
     SymbolInfo() = default;
-    SymbolInfo(SymbolKind k, string n, string t = "", bool w = false)
+    SymbolInfo(SymbolKind k, string n, TypeInfo t = TypeInfo(), bool w = false)
         : kind(k), name(std::move(n)), type(std::move(t)), writeable(w) {}
 };
 
 struct FnSymbolInfo {
     string name;
-    vector<string> params;
-    string retType;
+    vector<TypeInfo> params;
+    TypeInfo retType;
 };
 
 class ScopeNode;
@@ -39,7 +39,7 @@ protected:
     p<Node> _parent;
 
 public:
-    static string getCName(const string& name, const vector<string>& paramsType);
+    static string getCName(const string& name, const vector<TypeInfo>& paramsType);
 
     explicit Node(const p<Node>& parent) : _parent(parent) {
     }
@@ -70,7 +70,7 @@ public:
 class Typed {
 public:
     virtual ~Typed() = default;
-    [[nodiscard]] virtual string getType() const = 0;
+    [[nodiscard]] virtual TypeInfo getType() const = 0;
 };
 
 

@@ -6,10 +6,10 @@
 
 #include "node.h"
 
-string Node::getCName(const string& name, const vector<string>& paramsType)  {
+string Node::getCName(const string& name, const vector<TypeInfo>& paramsType)  {
     string res = "yux_" + name;
     for (auto& p : paramsType) {
-        res += "_" + p;
+        res += "_" + p.name;
     }
     return res;
 }

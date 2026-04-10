@@ -8,6 +8,7 @@
 #define YUX_LANG_FN_NODE_H
 
 #include "node.h"
+#include "type_node.h"
 
 #include <utility>
 
@@ -19,33 +20,33 @@ class ExprNode;
 class FnParamNode : public Node {
 protected:
     Token _name;
-    Token _type;
+    p<TypeNode> _type;
 
 public:
-    explicit FnParamNode(const p<Node>& parent, Token name, Token type) :
+    explicit FnParamNode(const p<Node>& parent, Token name, p<TypeNode> type) :
         Node(parent), _name(name), _type(type) {
     }
 
     [[nodiscard]] Token name() const;
-    [[nodiscard]] Token type() const;
+    [[nodiscard]] p<TypeNode> type() const;
 };
 
 class FnHeaderNode : public Node, public Named, public Typed {
 protected:
     vector<p<FnParamNode>> _params;
-    Token _retType;
+    p<TypeNode> _retType;
 
 public:
-    FnHeaderNode(const p<Node>& parent, Token name, Token retType) :
+    FnHeaderNode(const p<Node>& parent, Token name, p<TypeNode> retType) :
         Node(parent), Named(name), _retType(retType) {
     }
 
     void addParam(p<FnParamNode> param);
 
     [[nodiscard]] Token name() const override;
-    [[nodiscard]] Token retType() const;
+    [[nodiscard]] p<TypeNode> retType() const;
     [[nodiscard]] vector<p<FnParamNode>> params() const;
-    [[nodiscard]] string getType() const override;
+    [[nodiscard]] TypeInfo getType() const override;
 };
 
 class FnNode : public ScopeNode, public Typed {
@@ -60,7 +61,7 @@ public:
     [[nodiscard]] const vector<p<StatementNode>>& body() const;
     [[nodiscard]] const p<FnHeaderNode>& header() const;
 
-    [[nodiscard]] string getType() const override;
+    [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] string getLocation() const override;
 };
 

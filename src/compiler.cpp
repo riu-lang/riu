@@ -9,31 +9,29 @@
 #include "node/expr_node.h"
 #include "node/literal_node.h"
 #include "types.h"
-#include <iostream>
-
-#ifdef _DEBUG
-#define DEBUG_LOG(msg) if(debug) { std::cerr << "[DEBUG] " << msg << std::endl; }
-#define DEBUG_LOG_VAL(msg, val) if(debug) { std::cerr << "[DEBUG] " << msg << ": " << val << std::endl; }
-#else
-#define DEBUG_LOG(msg)
-#define DEBUG_LOG_VAL(msg, val)
-#endif
 #include <utility>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 
-llvm::Type* Compiler::getLLVMType(const string& name) {
-    return _typeMap[name];
+llvm::Type* Compiler::getLLVMType(const TypeInfo& type) {
+    if (type.isArray()) {
+        if (type.elementType) {
+            auto elementLLVMType = getLLVMType(*type.elementType);
+            return llvm::ArrayType::get(elementLLVMType, type.arraySize);
+        }
+    }
+    return _typeMap[type.name];
 }
 
 llvm::FunctionType* Compiler::getLLVMFunctionType(p<FnHeaderNode> header) {
     vector<llvm::Type*> paramTypes;
     for (auto param : header->params()) {
-        paramTypes.push_back(getLLVMType(param->type()->getText()));
+        TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();
+        paramTypes.push_back(getLLVMType(paramType));
     }
     auto retType = header->retType();
-    string retTypeName = retType ? retType->getText() : "";
-    return llvm::FunctionType::get(getLLVMType(retTypeName), paramTypes, false);
+    TypeInfo retTypeInfo = retType ? retType->getType() : TypeInfo();
+    return llvm::FunctionType::get(getLLVMType(retTypeInfo), paramTypes, false);
 }
 
 Compiler::Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, p<FileNode> file) :
@@ -87,13 +85,15 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
 
     for (auto& arg : func->args()) {
         auto paramName = node->header()->params()[arg.getArgNo()]->name()->getText();
-        auto paramType = node->header()->params()[arg.getArgNo()]->type()->getText();
+        TypeInfo paramType = node->header()->params()[arg.getArgNo()]->type() 
+            ? node->header()->params()[arg.getArgNo()]->type()->getType() 
+            : TypeInfo();
         auto llvmType = getLLVMType(paramType);
         auto alloca = _builder.CreateAlloca(llvmType, nullptr, paramName);
         _builder.CreateStore(&arg, alloca);
         _localVarPtrs[paramName] = alloca;
 
-        DEBUG_LOG_VAL("  Param", paramName << " : " << paramType);
+        DEBUG_LOG_VAL("  Param", paramName << " : " << paramType.name);
     }
 
     for (auto s : node->body()) {
@@ -126,14 +126,14 @@ void Compiler::compileStatement(p<StatementNode> node) {
         auto exprType = expr->getType();
         auto varName = declareNode->name()->getText();
 
-        string varType;
+        TypeInfo varType;
         if (declareNode->varType()) {
-            varType = declareNode->varType()->getText();
+            varType = declareNode->varType()->getType();
         } else {
             varType = exprType;
         }
 
-        DEBUG_LOG_VAL("  Statement: Declare", varName << " : " << varType);
+        DEBUG_LOG_VAL("  Statement: Declare", varName << " : " << varType.name);
 
         auto llvmType = getLLVMType(varType);
         auto alloca = _builder.CreateAlloca(llvmType, nullptr, varName);
@@ -154,7 +154,7 @@ void Compiler::compileStatement(p<StatementNode> node) {
             throw YuxError("Cannot assign to immutable variable: {}", varName);
         }
 
-        DEBUG_LOG_VAL("  Statement: Assign", varName << " : " << sym->type);
+        DEBUG_LOG_VAL("  Statement: Assign", varName << " : " << sym->type.name);
 
         auto exprType = expr->getType();
         auto valToStore = createCast(exprVal, exprType, sym->type);
@@ -166,22 +166,22 @@ void Compiler::compileStatement(p<StatementNode> node) {
     }
 }
 
-llvm::Value* Compiler::createCast(llvm::Value* val, const string& srcType, const string& dstType) {
+llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& srcType, const TypeInfo& dstType) {
     if (srcType == dstType) {
-        DEBUG_LOG_VAL("    Cast: no-op", srcType);
+        DEBUG_LOG_VAL("    Cast: no-op", srcType.name);
         return val;
     }
 
-    DEBUG_LOG_VAL("    Cast", srcType << " -> " << dstType);
+    DEBUG_LOG_VAL("    Cast", srcType.name << " -> " << dstType.name);
 
     auto dstLLVMType = getLLVMType(dstType);
-    bool srcIsFloat = srcType.starts_with('f');
-    bool dstIsFloat = dstType.starts_with('f');
-    bool srcIsUnsigned = srcType.starts_with('u');
-    bool dstIsUnsigned = dstType.starts_with('u');
+    bool srcIsFloat = srcType.startsWith('f');
+    bool dstIsFloat = dstType.startsWith('f');
+    bool srcIsUnsigned = srcType.startsWith('u');
+    bool dstIsUnsigned = dstType.startsWith('u');
 
     if (srcIsFloat && dstIsFloat) {
-        if (srcType == "f64" && dstType == "f32") {
+        if (srcType.name == "f64" && dstType.name == "f32") {
             DEBUG_LOG("      FPTrunc (f64 -> f32)");
             return _builder.CreateFPTrunc(val, dstLLVMType);
         } else {
@@ -240,7 +240,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
                 }
             }
             i64 numVal = stoll(numStr);
-            DEBUG_LOG_VAL("    Expr: IntLiteral", text << " : " << type);
+            DEBUG_LOG_VAL("    Expr: IntLiteral", text << " : " << type.name);
             return llvm::ConstantInt::get(getLLVMType(type), numVal, true);
         }
         else if (auto floatLiteral = dynamic_cast<LiteralFloatNode*>(literal)) {
@@ -253,19 +253,19 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
                 }
             }
             f64 numVal = stod(numStr);
-            DEBUG_LOG_VAL("    Expr: FloatLiteral", text << " : " << type);
+            DEBUG_LOG_VAL("    Expr: FloatLiteral", text << " : " << type.name);
             return llvm::ConstantFP::get(getLLVMType(type), numVal);
         }
         else if (auto boolLiteral = dynamic_cast<LiteralBoolNode*>(literal)) {
             bool boolVal = (text == "true");
-            DEBUG_LOG_VAL("    Expr: BoolLiteral", text << " : " << type);
+            DEBUG_LOG_VAL("    Expr: BoolLiteral", text << " : " << type.name);
             return llvm::ConstantInt::get(getLLVMType(type), boolVal ? 1 : 0, false);
         }
         else if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literal)) {
             auto varName = text;
             auto sym = _currentFnNode->lookupSymbol(varName);
             if (sym && _localVarPtrs.contains(varName)) {
-                DEBUG_LOG_VAL("    Expr: VariableLoad", varName << " : " << sym->type);
+                DEBUG_LOG_VAL("    Expr: VariableLoad", varName << " : " << sym->type.name);
                 return _builder.CreateLoad(getLLVMType(sym->type), _localVarPtrs[varName]);
             }
             throw YuxError("Undefined variable: {}", varName);
@@ -275,10 +275,10 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         auto left = compileExpr(addSubNode->left());
         auto right = compileExpr(addSubNode->right());
         auto type = addSubNode->getType();
-        bool isFloat = type.starts_with('f');
+        bool isFloat = type.startsWith('f');
 
         string opStr = (addSubNode->op() == ExprAddSubNode::Op::Add) ? "+" : "-";
-        DEBUG_LOG_VAL("    Expr: AddSub", opStr << " : " << type);
+        DEBUG_LOG_VAL("    Expr: AddSub", opStr << " : " << type.name);
 
         if (addSubNode->op() == ExprAddSubNode::Op::Add) {
             if (isFloat) {
@@ -296,8 +296,8 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         auto left = compileExpr(mulDivModNode->left());
         auto right = compileExpr(mulDivModNode->right());
         auto type = mulDivModNode->getType();
-        bool isFloat = type.starts_with('f');
-        bool isUnsigned = type.starts_with('u');
+        bool isFloat = type.startsWith('f');
+        bool isUnsigned = type.startsWith('u');
 
         string opStr;
         switch (mulDivModNode->op()) {
@@ -305,7 +305,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
             case ExprMulDivModNode::Op::Div: opStr = "/"; break;
             case ExprMulDivModNode::Op::Mod: opStr = "%"; break;
         }
-        DEBUG_LOG_VAL("    Expr: MulDivMod", opStr << " : " << type);
+        DEBUG_LOG_VAL("    Expr: MulDivMod", opStr << " : " << type.name);
 
         switch (mulDivModNode->op()) {
             case ExprMulDivModNode::Op::Mul:
@@ -338,7 +338,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
     else if (auto callNode = dynamic_cast<ExprCallNode*>(node)) {
         auto calleeExpr = callNode->getCalleeExpr();
         vector<llvm::Value*> args;
-        vector<string> argTypes;
+        vector<TypeInfo> argTypes;
         for (auto& arg : callNode->getArgs()) {
             args.push_back(compileExpr(arg));
             argTypes.push_back(arg->getType());
@@ -353,7 +353,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
                 DEBUG_LOG_VAL("    Expr: CastCall (to_)", dstType);
                 auto baseVal = compileExpr(baseExpr);
                 auto srcType = baseExpr->getType();
-                return createCast(baseVal, srcType, dstType);
+                return createCast(baseVal, srcType, TypeInfo(dstType));
             }
 
             if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
@@ -436,7 +436,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
             auto srcType = baseExpr->getType();
 
             string castFnName = "__cast_" + to_string(_castCounter++);
-            _castFunctions[castFnName] = {baseVal, srcType, dstType};
+            _castFunctions[castFnName] = {baseVal, srcType, TypeInfo(dstType)};
 
             return llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
         }
@@ -460,11 +460,11 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         auto rightType = compareNode->right()->getType();
 
         if (leftType != rightType) {
-            throw YuxError("Type mismatch in comparison: left is {}, right is {}", leftType, rightType);
+            throw YuxError("Type mismatch in comparison: left is {}, right is {}", leftType.name, rightType.name);
         }
 
-        bool isFloat = leftType.starts_with('f');
-        bool isUnsigned = leftType.starts_with('u');
+        bool isFloat = leftType.startsWith('f');
+        bool isUnsigned = leftType.startsWith('u');
 
         string opStr;
         switch (compareNode->op()) {
@@ -475,7 +475,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
             case ExprCompareNode::Op::Gt: opStr = ">"; break;
             case ExprCompareNode::Op::Ge: opStr = ">="; break;
         }
-        DEBUG_LOG_VAL("    Expr: Compare", opStr << " : " << leftType);
+        DEBUG_LOG_VAL("    Expr: Compare", opStr << " : " << leftType.name);
 
         switch (compareNode->op()) {
             case ExprCompareNode::Op::Eq:
@@ -588,6 +588,78 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         }
         return nullptr;
     }
+    else if (auto getNode = dynamic_cast<ExprGetNode*>(node)) {
+        auto arrayExpr = getNode->arrayExpr();
+        auto arrayType = arrayExpr->getType();
+        
+        if (!arrayType.isArray()) {
+            throw YuxError("Cannot index non-array type: {}", arrayType.name);
+        }
+        
+        auto& indices = getNode->indices();
+        if (indices.empty()) {
+            throw YuxError("Array access requires at least one index");
+        }
+        
+        DEBUG_LOG_VAL("    Expr: ArrayGet", arrayType.name);
+        
+        llvm::Value* currentPtr = nullptr;
+        TypeInfo currentType = arrayType;
+        
+        if (auto literalNode = dynamic_cast<ExprLiteralNode*>(arrayExpr)) {
+            if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literalNode->literal())) {
+                auto varName = objLiteral->getValue()->getText();
+                auto it = _localVarPtrs.find(varName);
+                if (it == _localVarPtrs.end()) {
+                    throw YuxError("Array variable not found: {}", varName);
+                }
+                currentPtr = it->second;
+            }
+        }
+        
+        if (!currentPtr) {
+            throw YuxError("Array access requires a variable");
+        }
+        
+        for (auto& indexExpr : indices) {
+            auto indexVal = compileExpr(indexExpr);
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            llvm::Value* gepIndices[] = {zero, indexVal};
+            
+            auto llvmArrayType = getLLVMType(currentType);
+            currentPtr = _builder.CreateGEP(llvmArrayType, currentPtr, gepIndices, "array.element");
+            
+            if (currentType.elementType) {
+                currentType = *currentType.elementType;
+            }
+        }
+        
+        return _builder.CreateLoad(getLLVMType(currentType), currentPtr, "array.load");
+    }
+    else if (auto arrayNode = dynamic_cast<ExprArrayNode*>(node)) {
+        auto& elements = arrayNode->elements();
+        if (elements.empty()) {
+            throw YuxError("Empty array literal not supported");
+        }
+        
+        auto arrayType = arrayNode->getType();
+        auto llvmArrayType = getLLVMType(arrayType);
+        
+        DEBUG_LOG_VAL("    Expr: ArrayLiteral", arrayType.name);
+        
+        auto alloca = _builder.CreateAlloca(llvmArrayType, nullptr, "array.literal");
+        
+        for (size_t i = 0; i < elements.size(); ++i) {
+            auto elemVal = compileExpr(elements[i]);
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto index = llvm::ConstantInt::get(_builder.getInt32Ty(), i);
+            llvm::Value* indices[] = {zero, index};
+            auto elemPtr = _builder.CreateGEP(llvmArrayType, alloca, indices, "array.elem.ptr");
+            _builder.CreateStore(elemVal, elemPtr);
+        }
+        
+        return _builder.CreateLoad(llvmArrayType, alloca, "array.load");
+    }
 
     throw YuxError("Unsupported expression type");
 }
@@ -601,7 +673,7 @@ void Compiler::compileStatementBlock(p<StatementBlockNode> block) {
     }
 }
 
-llvm::Value* Compiler::compileStatementBlockWithResult(p<StatementBlockNode> block, llvm::BasicBlock* continueBlock, llvm::PHINode* phi, const string& resultType) {
+llvm::Value* Compiler::compileStatementBlockWithResult(p<StatementBlockNode> block, llvm::BasicBlock* continueBlock, llvm::PHINode* phi, const TypeInfo& resultType) {
     for (auto& stmt : block->statements()) {
         compileStatement(stmt);
     }

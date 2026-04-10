@@ -29,12 +29,12 @@ LiteralIntNode::LiteralIntNode(Token value) : LiteralNumberNode(std::move(value)
     // language=RegExp
     static const std::regex type_regex(R"([ui](\d+)$)");
     if (std::smatch match; std::regex_search(v, match, type_regex)) {
-        _type = match.str();
+        _type = TypeInfo(match.str());
     } else
-        _type = "i32";
+        _type = TypeInfo("i32");
 }
 
-string LiteralIntNode::getType() const {
+TypeInfo LiteralIntNode::getType() const {
     return _type;
 }
 
@@ -43,27 +43,27 @@ LiteralFloatNode::LiteralFloatNode(const Token& value) : LiteralNumberNode(value
     // language=RegExp
     static const std::regex type_regex(R"(f(\d+)$)");
     if (std::smatch match; std::regex_search(v, match, type_regex)) {
-        _type = match.str();
+        _type = TypeInfo(match.str());
     } else
-        _type = "f64";
+        _type = TypeInfo("f64");
 }
 
-string LiteralFloatNode::getType() const {
+TypeInfo LiteralFloatNode::getType() const {
     return _type;
 }
 
 LiteralBoolNode::LiteralBoolNode(Token value) : LiteralNode(std::move(value)) {
 }
 
-string LiteralBoolNode::getType() const {
-    return "bool";
+TypeInfo LiteralBoolNode::getType() const {
+    return TypeInfo("bool");
 }
 
 LiteralObjNode::LiteralObjNode(const p<Node>& parent, const Token& value) : LiteralNode(value) {
     _parent = parent;
 }
 
-string LiteralObjNode::getType() const {
+TypeInfo LiteralObjNode::getType() const {
     auto name = _value->getText();
     auto scope = findNearestScope();
     if (scope) {

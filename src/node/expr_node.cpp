@@ -11,20 +11,20 @@ const p<ExprNode>& ExprCallNode::getCalleeExpr() const { return _calleeExpr; }
 
 const std::vector<p<ExprNode>>& ExprCallNode::getArgs() const { return _args; }
 
-std::string ExprCallNode::getType() const {
+TypeInfo ExprCallNode::getType() const {
     auto type = _calleeExpr->getType();
 
-    if (type.starts_with("fn() ")) {
-        return type.substr(5);
+    if (type.name.starts_with("fn() ")) {
+        return TypeInfo(type.name.substr(5));
     }
     
     auto scope = findNearestScope();
     if (scope) {
-        auto sym = scope->lookupSymbol(type);
+        auto sym = scope->lookupSymbol(type.name);
         if (sym && sym->kind != SymbolKind::Function) {
             throw YuxError("Type {} is not a Function", sym->name);
         }
-        auto fn = scope->lookupFnSymbol(type);
+        auto fn = scope->lookupFnSymbol(type.name);
         if (fn) {
             return fn->retType;
         }
@@ -37,7 +37,7 @@ const p<LiteralNode>& ExprLiteralNode::literal() const {
     return _literal;
 }
 
-string ExprLiteralNode::getType() const {
+TypeInfo ExprLiteralNode::getType() const {
     return _literal->getType();
 }
 
@@ -53,11 +53,15 @@ const p<ExprNode>& ExprAddSubNode::right() const {
     return _right;
 }
 
-string ExprAddSubNode::getType() const {
+TypeInfo ExprAddSubNode::getType() const {
+    std::cerr << "[DEBUG] ExprAddSubNode::getType called" << std::endl;
     auto leftType = _left->getType();
+    std::cerr << "[DEBUG]   leftType: " << leftType.name << std::endl;
+    std::cerr << "[DEBUG]   _right type: " << typeid(*_right).name() << std::endl;
     auto rightType = _right->getType();
+    std::cerr << "[DEBUG]   rightType: " << rightType.name << std::endl;
     if (leftType != rightType) {
-        throw YuxError("Type mismatch in +-/ operation: left is {}, right is {}", leftType, rightType);
+        throw YuxError("Type mismatch in +-/ operation: left is {}, right is {}", leftType.name, rightType.name);
     }
     return leftType;
 }
@@ -74,11 +78,11 @@ const p<ExprNode>& ExprMulDivModNode::right() const {
     return _right;
 }
 
-string ExprMulDivModNode::getType() const {
+TypeInfo ExprMulDivModNode::getType() const {
     auto leftType = _left->getType();
     auto rightType = _right->getType();
     if (leftType != rightType) {
-        throw YuxError("Type mismatch in */% operation: left is {}, right is {}", leftType, rightType);
+        throw YuxError("Type mismatch in */% operation: left is {}, right is {}", leftType.name, rightType.name);
     }
     return leftType;
 }
@@ -87,7 +91,7 @@ const p<ExprNode>& ExprParenNode::expr() const {
     return _inner;
 }
 
-string ExprParenNode::getType() const {
+TypeInfo ExprParenNode::getType() const {
     return _inner->getType();
 }
 
@@ -99,11 +103,11 @@ string ExprDotNode::member() const {
     return _member->getText();
 }
 
-string ExprDotNode::getType() const {
+TypeInfo ExprDotNode::getType() const {
     auto member = _member->getText();
     if (member.starts_with("to_")) {
         string dstType = member.substr(3);
-        return "fn() " + dstType;
+        return TypeInfo("fn() " + dstType);
     }
     return _baseExpr->getType();
 }
@@ -120,13 +124,13 @@ const p<ExprNode>& ExprCompareNode::right() const {
     return _right;
 }
 
-string ExprCompareNode::getType() const {
+TypeInfo ExprCompareNode::getType() const {
     auto leftType = _left->getType();
     auto rightType = _right->getType();
     if (leftType != rightType) {
-        throw YuxError("Type mismatch in comparison: left is {}, right is {}", leftType, rightType);
+        throw YuxError("Type mismatch in comparison: left is {}, right is {}", leftType.name, rightType.name);
     }
-    return "bool";
+    return TypeInfo("bool");
 }
 
 StatementBlockNode::StatementBlockNode(const p<Node>& parent, vector<p<StatementNode>> statements, p<ExprNode> resultExpr, bool hasResult) :
@@ -172,30 +176,76 @@ const p<StatementBlockNode>& ExprIfElseNode::elseBlock() const {
     return _elseBlock;
 }
 
-string ExprIfElseNode::getType() const {
+TypeInfo ExprIfElseNode::getType() const {
     if (!_thenBlock->hasResult()) {
-        return "";
+        return TypeInfo();
     }
-    string resultType = _thenBlock->resultExpr()->getType();
+    TypeInfo resultType = _thenBlock->resultExpr()->getType();
     
     for (auto& elif : _elifs) {
         if (!elif->block()->hasResult()) {
-            return "";
+            return TypeInfo();
         }
         auto elifType = elif->block()->resultExpr()->getType();
         if (elifType != resultType) {
-            throw YuxError("Type mismatch in if-elif branches: {} vs {}", resultType, elifType);
+            throw YuxError("Type mismatch in if-elif branches: {} vs {}", resultType.name, elifType.name);
         }
     }
     
     if (_elseBlock && _elseBlock->hasResult()) {
         auto elseType = _elseBlock->resultExpr()->getType();
         if (elseType != resultType) {
-            throw YuxError("Type mismatch in if-else branches: {} vs {}", resultType, elseType);
+            throw YuxError("Type mismatch in if-else branches: {} vs {}", resultType.name, elseType.name);
         }
     } else if (!_elseBlock || !_elseBlock->hasResult()) {
-        return "";
+        return TypeInfo();
     }
     
     return resultType;
+}
+
+const p<ExprNode>& ExprGetNode::arrayExpr() const {
+    return _arrayExpr;
+}
+
+const vector<p<ExprNode>>& ExprGetNode::indices() const {
+    return _indices;
+}
+
+TypeInfo ExprGetNode::getType() const {
+    std::cerr << "[DEBUG] ExprGetNode::getType called" << std::endl;
+    auto arrayType = _arrayExpr->getType();
+    std::cerr << "[DEBUG] ExprGetNode::getType - arrayType: " << arrayType.name 
+              << ", isArray: " << arrayType.isArray() 
+              << ", elementType: " << (arrayType.elementType ? arrayType.elementType->name : "null") << std::endl;
+    if (!arrayType.isArray()) {
+        throw YuxError("Cannot index non-array type: {}", arrayType.name);
+    }
+    
+    if (!arrayType.elementType) {
+        throw YuxError("Invalid array type: missing element type");
+    }
+    
+    return *arrayType.elementType;
+}
+
+const vector<p<ExprNode>>& ExprArrayNode::elements() const {
+    return _elements;
+}
+
+TypeInfo ExprArrayNode::getType() const {
+    if (_elements.empty()) {
+        throw YuxError("Cannot infer type of empty array");
+    }
+    
+    TypeInfo elementType = _elements[0]->getType();
+    for (size_t i = 1; i < _elements.size(); ++i) {
+        auto elemType = _elements[i]->getType();
+        if (elemType != elementType) {
+            throw YuxError("Array elements must have the same type: {} vs {}", elementType.name, elemType.name);
+        }
+    }
+    
+    auto elemShared = make_shared<TypeInfo>(elementType);
+    return TypeInfo(elemShared, _elements.size());
 }

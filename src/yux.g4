@@ -30,6 +30,15 @@ numInt: INT;
 // 浮点数
 numFloat: FLOAT;
 
+type: typeNormal | typeArray;
+
+typeNormal: ID;
+
+//typeNullbale: type SymbolQuest;
+
+// [ type * count ]
+typeArray: GetStart type Space SymbolMul Space INT GetEnd;
+
 ///////////
 // 函数
 ///////////
@@ -41,10 +50,10 @@ fn: fnHeader Space fnBody;
 // fn name() type 返回 type
 fnHeader: Fn Space name=ID ParStart
     (params+=fnParam (SymbolComma Space params+=fnParam)* )?
-    ParEnd (Space retType=ID)?
+    ParEnd (Space retType=type)?
     ;
 
-fnParam: name=ID Space type=ID;
+fnParam: name=ID Space type;
 
 fnBody: fnExprkBody | fnBlockBody;
 
@@ -61,6 +70,12 @@ fnBlockBody: statementBlock;
 expr:
     // ( e )
       ParStart expr ParEnd # exprParen
+    // e[a, b, c] 实际应为成员函数get的快捷调用
+    | expr
+        GetStart
+            args+=expr
+            (SymbolComma Space args+=expr)*
+        GetEnd # exprGet
     // if e {
     // ...
     // } elif e {
@@ -72,6 +87,10 @@ expr:
           statementBlock
           (elifs+=exprElIf)*
              exprElse? # exprIfElse
+    // a.b ...
+    | left=expr SymbolDot member+=ID # exprDot
+    // [e1, e2]
+    | GetStart (velues+=expr (SymbolComma Space velues+=expr)* )? GetEnd # exprArray
     // e() e(e) e(e,e)
     | left=expr ParStart
         ( args+=expr
@@ -80,11 +99,9 @@ expr:
       ParEnd # exprCall
     // 判断
     | left=expr Space op=(SymbolEqEq|SymbolMt|SymbolMtEq|SymbolLt|SymbolLtEq) Space right=expr # exprCompare
-    // a.b ...
-    | left=expr SymbolDot member+=ID # exprDot
-    | left=expr Space op=(SymbolAdd|SymbolSub) Space right=expr # exprAddSub
      // e * e e / e
     | left=expr Space op=(SymbolMul|SymbolDiv|SymbolMod) Space right=expr # exprMulDivMod
+    | left=expr Space op=(SymbolAdd|SymbolSub) Space right=expr # exprAddSub
     | literal # exprLiteral;
 
 // elif {
@@ -104,7 +121,7 @@ exprElse : Space Else Space statementBlock;
 statement:
     // var name = expr
     // var name type = expr
-     DeclKey Space name=ID Space (type=ID Space)? SymbolEq Space expr codeLineEnd #statementDeclareAssign
+     DeclKey Space name=ID Space (type Space)? SymbolEq Space expr codeLineEnd #statementDeclareAssign
     // obj = expr
     | obj=ID Space SymbolEq Space expr codeLineEnd #statementAssign
     // 尾随;表示空类型（void）
