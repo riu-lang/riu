@@ -18,18 +18,30 @@ enum class SymbolKind : u8 {
 struct SymbolInfo {
     SymbolKind kind;
     string name;
+    string moduleName;
     TypeInfo type;
     bool writeable = false;
     
     SymbolInfo() = default;
     SymbolInfo(SymbolKind k, string n, TypeInfo t = TypeInfo(), bool w = false)
         : kind(k), name(std::move(n)), type(std::move(t)), writeable(w) {}
+    
+    string getFullName() const {
+        if (moduleName.empty()) return name;
+        return moduleName + "_" + name;
+    }
 };
 
 struct FnSymbolInfo {
     string name;
+    string moduleName;
     vector<TypeInfo> params;
     TypeInfo retType;
+    
+    string getFullName() const {
+        if (moduleName.empty()) return name;
+        return moduleName + "_" + name;
+    }
 };
 
 class ScopeNode;

@@ -18,6 +18,7 @@
 class ASTBuilder : public yux::yuxBaseVisitor {
     llvm::LLVMContext& context;
     llvm::IRBuilder<> irBuilder;
+    string _moduleName;
 
     vector<std::any> stack;
     vector<p<Node>> _nodes;
@@ -36,7 +37,7 @@ class ASTBuilder : public yux::yuxBaseVisitor {
     }
 
 public:
-    explicit ASTBuilder(llvm::LLVMContext& ctx);
+    explicit ASTBuilder(llvm::LLVMContext& ctx, string moduleName = "");
     ~ASTBuilder() override;
 
     p<FileNode> build(yux::yuxParser::ProgramContext* ctx);

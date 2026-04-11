@@ -31,6 +31,7 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& type) {
 
 llvm::StructType* Compiler::getOrCreateStructType(p<StructDeclNode> structDecl) {
     string name = structDecl->name()->getText();
+    string mangledName = _file->getMangledName(name);
     
     auto it = _structTypes.find(name);
     if (it != _structTypes.end()) {
@@ -42,10 +43,10 @@ llvm::StructType* Compiler::getOrCreateStructType(p<StructDeclNode> structDecl) 
         fieldTypes.push_back(getLLVMType(field->getType()));
     }
     
-    auto structType = llvm::StructType::create(_context, fieldTypes, name);
+    auto structType = llvm::StructType::create(_context, fieldTypes, mangledName);
     _structTypes[name] = structType;
     
-    DEBUG_LOG_VAL("Created struct type", name);
+    DEBUG_LOG_VAL("Created struct type", mangledName);
     return structType;
 }
 
@@ -80,6 +81,8 @@ llvm::Function* Compiler::getFunction(p<FnHeaderNode> header) {
     auto name = header->name()->getText();
     if (name == "main") {
         name = "yux_main";
+    } else {
+        name = _file->getMangledName(name);
     }
     
     auto fnType = getLLVMFunctionType(header);
@@ -91,7 +94,8 @@ llvm::Function* Compiler::getFunction(p<FnHeaderNode> header) {
 }
 
 llvm::Function* Compiler::getMethodFunction(const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes) {
-    string mangledName = structName + "_" + methodName;
+    string mangledStructName = _file->getMangledName(structName);
+    string mangledName = mangledStructName + "_" + methodName;
     
     auto func = _module->getFunction(mangledName);
     if (func) {
@@ -533,7 +537,8 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
                     methodArgs.push_back(arg);
                 }
                 
-                string mangledName = baseType.name + "_" + member;
+                string mangledStructName = _file->getMangledName(baseType.name);
+                string mangledName = mangledStructName + "_" + member;
                 auto fn = _module->getFunction(mangledName);
                 if (!fn) {
                     vector<llvm::Type*> paramTypes;
@@ -597,7 +602,8 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
                             ctorArgs.push_back(arg);
                         }
                         
-                        string mangledName = fnName + "_" + fnName;
+                        string mangledStructName = _file->getMangledName(fnName);
+                        string mangledName = mangledStructName + "_" + fnName;
                         auto fn = _module->getFunction(mangledName);
                         if (!fn) {
                             vector<llvm::Type*> paramTypes;
@@ -623,7 +629,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
                     } else if (fnName == "main") {
                         cName = "yux_main";
                     } else {
-                        cName = fnName;
+                        cName = _file->getMangledName(fnName);
                     }
                     
                     DEBUG_LOG_VAL("    Expr: FunctionCall", fnName << " -> " << cName);

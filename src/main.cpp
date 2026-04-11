@@ -132,13 +132,22 @@ IRResult compileIR(string inputFile) {
         exit(1);
     }
 
-    std::cout << "Compile IR... " << std::endl;
+    std::string moduleName = llvm::sys::path::stem(inputFile).str();
+    auto parentPath = llvm::sys::path::parent_path(inputFile);
+    if (!parentPath.empty()) {
+        auto parentName = llvm::sys::path::filename(parentPath).str();
+        if (parentName != "." && parentName != "..") {
+            moduleName = parentName + "." + moduleName;
+        }
+    }
+    
+    std::cout << "Compile IR... (module: " << moduleName << ")" << std::endl;
     auto context = make_unique<llvm::LLVMContext>();
-    auto module = make_unique<llvm::Module>("main", *context);
+    auto module = make_unique<llvm::Module>(moduleName, *context);
 
     llvm::IRBuilder<> builder(*context);
 
-    ASTBuilder astBuilder(*context);
+    ASTBuilder astBuilder(*context, moduleName);
 
     try {
         auto ast = astBuilder.build(program);

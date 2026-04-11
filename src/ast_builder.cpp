@@ -7,8 +7,8 @@
 #include <algorithm>
 #include "types.h"
 
-ASTBuilder::ASTBuilder(llvm::LLVMContext& ctx) :
-    context(ctx), irBuilder(ctx) {
+ASTBuilder::ASTBuilder(llvm::LLVMContext& ctx, string moduleName) :
+    context(ctx), irBuilder(ctx), _moduleName(std::move(moduleName)) {
 }
 
 ASTBuilder::~ASTBuilder() {
@@ -33,7 +33,7 @@ std::any ASTBuilder::visitCodeLineEnd(yux::yuxParser::CodeLineEndContext* ctx) {
 
 std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
     DEBUG_LOG("Visit: Program");
-    auto file = create<FileNode>();
+    auto file = create<FileNode>(_moduleName);
 
     stack.emplace_back(file);
     _scopeStack.push_back(file);
@@ -57,8 +57,12 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
             retType = typeNode->getType();
         }
         DEBUG_LOG_VAL("  Register function", fnName);
-        file->registerSymbol(fnName, {SymbolKind::Function, fnName, retType});
-        file->registerFnSymbol(fnName, {fnName, paramTypes, retType});
+        SymbolInfo fnSym(SymbolKind::Function, fnName, retType);
+        fnSym.moduleName = _moduleName;
+        file->registerSymbol(fnName, fnSym);
+        
+        FnSymbolInfo fnFnSym{fnName, _moduleName, paramTypes, retType};
+        file->registerFnSymbol(fnName, fnFnSym);
     }
 
     auto structDecls = ctx->structDecl();
@@ -69,7 +73,9 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         
         for (auto field : decl->fields()) {
             string methodKey = decl->name()->getText() + "." + field->name()->getText();
-            file->registerSymbol(methodKey, {SymbolKind::Variable, field->name()->getText(), field->getType()});
+            SymbolInfo fieldSym(SymbolKind::Variable, field->name()->getText(), field->getType());
+            fieldSym.moduleName = _moduleName;
+            file->registerSymbol(methodKey, fieldSym);
         }
     }
 
@@ -98,8 +104,12 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
             }
             
             DEBUG_LOG_VAL("  Register method", fullName);
-            file->registerSymbol(fullName, {SymbolKind::Function, methodName, retType});
-            file->registerFnSymbol(fullName, {fullName, paramTypes, retType});
+            SymbolInfo methodSym(SymbolKind::Function, methodName, retType);
+            methodSym.moduleName = _moduleName;
+            file->registerSymbol(fullName, methodSym);
+            
+            FnSymbolInfo methodFnSym{fullName, _moduleName, paramTypes, retType};
+            file->registerFnSymbol(fullName, methodFnSym);
         }
     }
 
