@@ -16,8 +16,20 @@ fn aa() {
 
 fn main() {
   / 打印
-  val a = 1.5 + 2.to_f64()
+  val n N = N(1.5)
+  val a = n.n + 2.to_f64()
   println(a)
   aa()
   p(123)
+}
+
+struct N {
+  n f64
+}
+
+N {
+  / 构造函数，同结构体名
+  fn N(n f64) {
+    self.n = n
+  }
 }

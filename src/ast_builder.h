@@ -48,6 +48,10 @@ public:
     std::any visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) override;
     std::any visitFnParam(yux::yuxParser::FnParamContext* ctx) override;
 
+    std::any visitStructDecl(yux::yuxParser::StructDeclContext* ctx) override;
+    std::any visitStructImpl(yux::yuxParser::StructImplContext* ctx) override;
+    std::any visitFiledDecl(yux::yuxParser::FiledDeclContext* ctx) override;
+
     std::any visitStatementDeclareAssign(yux::yuxParser::StatementDeclareAssignContext* ctx) override;
     std::any visitStatementAssign(yux::yuxParser::StatementAssignContext* ctx) override;
     std::any visitStatementExpr(yux::yuxParser::StatementExprContext* ctx) override;

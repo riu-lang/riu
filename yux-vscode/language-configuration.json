@@ -22,7 +22,30 @@
     ["'", "'"]
   ],
   "indentationRules": {
-    "increaseIndentPattern": "\\{\\s*$",
+    "increaseIndentPattern": "\\{\\s*(;.*)?$",
     "decreaseIndentPattern": "^\\s*\\}"
-  }
+  },
+  "folding": {
+    "markers": {
+      "start": "^\\s*\\{",
+      "end": "^\\s*\\}"
+    }
+  },
+  "onEnterRules": [
+    {
+      "beforeText": "^\\s*\\{\\s*(;.*)?$",
+      "afterText": "^\\s*\\}",
+      "action": {
+        "indent": "indentOutdent",
+        "appendText": "\t"
+      }
+    },
+    {
+      "beforeText": "\\{\\s*$",
+      "action": {
+        "indent": "indent"
+      }
+    }
+  ],
+  "wordPattern": "[a-zA-Z_\\p{L}][a-zA-Z0-9_\\p{L}]*"
 }

@@ -20,7 +20,33 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& type) {
             return llvm::ArrayType::get(elementLLVMType, type.arraySize);
         }
     }
+    
+    auto it = _structTypes.find(type.name);
+    if (it != _structTypes.end()) {
+        return it->second;
+    }
+    
     return _typeMap[type.name];
+}
+
+llvm::StructType* Compiler::getOrCreateStructType(p<StructDeclNode> structDecl) {
+    string name = structDecl->name()->getText();
+    
+    auto it = _structTypes.find(name);
+    if (it != _structTypes.end()) {
+        return it->second;
+    }
+    
+    vector<llvm::Type*> fieldTypes;
+    for (auto field : structDecl->fields()) {
+        fieldTypes.push_back(getLLVMType(field->getType()));
+    }
+    
+    auto structType = llvm::StructType::create(_context, fieldTypes, name);
+    _structTypes[name] = structType;
+    
+    DEBUG_LOG_VAL("Created struct type", name);
+    return structType;
 }
 
 llvm::FunctionType* Compiler::getLLVMFunctionType(p<FnHeaderNode> header) {
@@ -64,11 +90,55 @@ llvm::Function* Compiler::getFunction(p<FnHeaderNode> header) {
     return func;
 }
 
+llvm::Function* Compiler::getMethodFunction(const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes) {
+    string mangledName = structName + "_" + methodName;
+    
+    auto func = _module->getFunction(mangledName);
+    if (func) {
+        return func;
+    }
+    
+    vector<llvm::Type*> llvmParamTypes;
+    llvmParamTypes.push_back(llvm::PointerType::get(getLLVMType(TypeInfo(structName)), 0));
+    
+    for (auto& paramType : paramTypes) {
+        llvmParamTypes.push_back(getLLVMType(paramType));
+    }
+    
+    auto fnType = llvm::FunctionType::get(_builder.getVoidTy(), llvmParamTypes, false);
+    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
+}
+
 void Compiler::compile(p<FileNode> file) {
+    compileStructDecls();
+    compileStructImpls();
+    
     auto functions = file->getFunctions();
     for (auto fn : functions) {
         auto func = getFunction(fn->header());
         compileFn(fn, func);
+    }
+}
+
+void Compiler::compileStructDecls() {
+    for (auto structDecl : _file->getStructDecls()) {
+        getOrCreateStructType(structDecl);
+    }
+}
+
+void Compiler::compileStructImpls() {
+    for (auto structImpl : _file->getStructImpls()) {
+        string structName = structImpl->structName();
+        for (auto method : structImpl->methods()) {
+            vector<TypeInfo> paramTypes;
+            for (auto param : method->header()->params()) {
+                if (param->type()) {
+                    paramTypes.push_back(param->type()->getType());
+                }
+            }
+            auto func = getMethodFunction(structName, method->header()->name()->getText(), paramTypes);
+            compileMethod(method, func, structName);
+        }
     }
 }
 
@@ -107,6 +177,52 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
     DEBUG_LOG_VAL("Finished compiling function", node->header()->name()->getText());
 }
 
+void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string& structName) {
+    _currentFn = func;
+    _currentFnNode = node;
+    _localVarPtrs.clear();
+
+    DEBUG_LOG_VAL("Compiling method", structName << "." << node->header()->name()->getText());
+
+    llvm::BasicBlock* entry = llvm::BasicBlock::Create(_context, "entry", func);
+    _builder.SetInsertPoint(entry);
+    DEBUG_LOG("Created entry basic block");
+
+    auto args = func->args();
+    auto argIt = args.begin();
+    
+    if (argIt != args.end()) {
+        string selfName = "self";
+        _localVarPtrs[selfName] = &(*argIt);
+        DEBUG_LOG_VAL("  Param (self)", selfName << " : " << structName << "*");
+        ++argIt;
+    }
+
+    for (auto& param : node->header()->params()) {
+        if (argIt == args.end()) break;
+        
+        auto paramName = param->name()->getText();
+        TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();
+        auto llvmType = getLLVMType(paramType);
+        auto alloca = _builder.CreateAlloca(llvmType, nullptr, paramName);
+        _builder.CreateStore(&(*argIt), alloca);
+        _localVarPtrs[paramName] = alloca;
+
+        DEBUG_LOG_VAL("  Param", paramName << " : " << paramType.name);
+        ++argIt;
+    }
+
+    for (auto s : node->body()) {
+        compileStatement(s);
+    }
+
+    if (func->getReturnType()->isVoidTy()) {
+        _builder.CreateRetVoid();
+        DEBUG_LOG("  Added implicit void return");
+    }
+    DEBUG_LOG_VAL("Finished compiling method", structName << "." << node->header()->name()->getText());
+}
+
 void Compiler::compileStatement(p<StatementNode> node) {
     if (auto retNode = dynamic_cast<StatementRetNode*>(node)) {
         DEBUG_LOG("  Statement: Return");
@@ -141,24 +257,70 @@ void Compiler::compileStatement(p<StatementNode> node) {
         _localVarPtrs[varName] = alloca;
     }
     else if (auto assignNode = dynamic_cast<StatementAssignNode*>(node)) {
-        auto varName = assignNode->name()->getText();
+        auto objName = assignNode->obj()->getText();
         auto expr = assignNode->expr();
         auto exprVal = compileExpr(expr);
+        auto& subs = assignNode->subs();
+        
+        if (subs.empty()) {
+            auto sym = _currentFnNode->lookupSymbol(objName);
+            if (!sym) {
+                throw YuxError("Undefined variable: {}", objName);
+            }
 
-        auto sym = _currentFnNode->lookupSymbol(varName);
-        if (!sym) {
-            throw YuxError("Undefined variable: {}", varName);
+            if (!sym->writeable) {
+                throw YuxError("Cannot assign to immutable variable: {}", objName);
+            }
+
+            DEBUG_LOG_VAL("  Statement: Assign", objName << " : " << sym->type.name);
+
+            auto exprType = expr->getType();
+            auto valToStore = createCast(exprVal, exprType, sym->type);
+            _builder.CreateStore(valToStore, _localVarPtrs[objName]);
+        } else {
+            auto sym = _currentFnNode->lookupSymbol(objName);
+            if (!sym) {
+                throw YuxError("Undefined variable: {}", objName);
+            }
+            
+            auto structDecl = _file->getStructDecl(sym->type.name);
+            if (!structDecl) {
+                throw YuxError("Cannot access member on non-struct type: {}", sym->type.name);
+            }
+            
+            DEBUG_LOG_VAL("  Statement: MemberAssign", objName << "." << subs[0]->getText());
+            
+            auto it = _localVarPtrs.find(objName);
+            if (it == _localVarPtrs.end()) {
+                throw YuxError("Variable not found: {}", objName);
+            }
+            
+            llvm::Value* structPtr = it->second;
+            auto structType = getLLVMType(sym->type);
+            
+            for (size_t i = 0; i < subs.size(); ++i) {
+                auto memberName = subs[i]->getText();
+                int fieldIndex = structDecl->fieldIndex(memberName);
+                if (fieldIndex < 0) {
+                    throw YuxError("Struct {} has no field: {}", sym->type.name, memberName);
+                }
+                
+                auto field = structDecl->fields()[fieldIndex];
+                
+                if (i == subs.size() - 1) {
+                    auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+                    auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIndex);
+                    llvm::Value* indices[] = {zero, idx};
+                    
+                    auto fieldPtr = _builder.CreateGEP(structType, structPtr, indices, "struct.field");
+                    auto exprType = expr->getType();
+                    auto valToStore = createCast(exprVal, exprType, field->getType());
+                    _builder.CreateStore(valToStore, fieldPtr);
+                } else {
+                    throw YuxError("Nested member access not yet supported");
+                }
+            }
         }
-
-        if (!sym->writeable) {
-            throw YuxError("Cannot assign to immutable variable: {}", varName);
-        }
-
-        DEBUG_LOG_VAL("  Statement: Assign", varName << " : " << sym->type.name);
-
-        auto exprType = expr->getType();
-        auto valToStore = createCast(exprVal, exprType, sym->type);
-        _builder.CreateStore(valToStore, _localVarPtrs[varName]);
     }
     else if (auto exprNode = dynamic_cast<StatementExprNode*>(node)) {
         DEBUG_LOG("  Statement: Expression");
@@ -356,6 +518,36 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
                 return createCast(baseVal, srcType, TypeInfo(dstType));
             }
 
+            auto baseType = baseExpr->getType();
+            string methodFullName = baseType.name + "." + member;
+            auto methodSymbol = _file->lookupFnSymbol(methodFullName);
+            
+            if (methodSymbol) {
+                DEBUG_LOG_VAL("    Expr: MethodCall", methodFullName);
+                
+                auto baseVal = compileExpr(baseExpr);
+                
+                vector<llvm::Value*> methodArgs;
+                methodArgs.push_back(baseVal);
+                for (auto& arg : args) {
+                    methodArgs.push_back(arg);
+                }
+                
+                string mangledName = baseType.name + "_" + member;
+                auto fn = _module->getFunction(mangledName);
+                if (!fn) {
+                    vector<llvm::Type*> paramTypes;
+                    paramTypes.push_back(getLLVMType(baseType));
+                    for (auto& t : argTypes) {
+                        paramTypes.push_back(getLLVMType(t));
+                    }
+                    auto retType = methodSymbol->retType.empty() ? _builder.getVoidTy() : getLLVMType(methodSymbol->retType);
+                    auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
+                    fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
+                }
+                return _builder.CreateCall(fn, methodArgs);
+            }
+
             if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
                 if (auto objLiteral = dynamic_cast<LiteralObjNode*>(baseLiteral->literal())) {
                     auto objName = objLiteral->getValue()->getText();
@@ -386,6 +578,41 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
                     DEBUG_LOG_VAL("    Expr: CastFunction", fnName);
                     auto& castInfo = _castFunctions[fnName];
                     return createCast(castInfo.value, castInfo.srcType, castInfo.dstType);
+                }
+
+                auto structDecl = _file->getStructDecl(fnName);
+                if (structDecl) {
+                    string ctorFullName = fnName + "." + fnName;
+                    auto ctorSymbol = _file->lookupFnSymbol(ctorFullName);
+                    
+                    if (ctorSymbol) {
+                        DEBUG_LOG_VAL("    Expr: ConstructorCall", fnName);
+                        
+                        auto structType = getLLVMType(TypeInfo(fnName));
+                        auto alloca = _builder.CreateAlloca(structType, nullptr, fnName + "_tmp");
+                        
+                        vector<llvm::Value*> ctorArgs;
+                        ctorArgs.push_back(alloca);
+                        for (auto& arg : args) {
+                            ctorArgs.push_back(arg);
+                        }
+                        
+                        string mangledName = fnName + "_" + fnName;
+                        auto fn = _module->getFunction(mangledName);
+                        if (!fn) {
+                            vector<llvm::Type*> paramTypes;
+                            paramTypes.push_back(llvm::PointerType::get(structType, 0));
+                            for (auto& t : argTypes) {
+                                paramTypes.push_back(getLLVMType(t));
+                            }
+                            auto retType = _builder.getVoidTy();
+                            auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
+                            fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
+                        }
+                        _builder.CreateCall(fn, ctorArgs);
+                        
+                        return _builder.CreateLoad(structType, alloca);
+                    }
                 }
 
                 auto fnSymbol = _file->lookupFnSymbol(fnName);
@@ -439,6 +666,41 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
             _castFunctions[castFnName] = {baseVal, srcType, TypeInfo(dstType)};
 
             return llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        }
+
+        auto baseType = baseExpr->getType();
+        auto structDecl = _file->getStructDecl(baseType.name);
+        
+        if (structDecl) {
+            int fieldIndex = structDecl->fieldIndex(member);
+            if (fieldIndex >= 0) {
+                DEBUG_LOG_VAL("    Expr: StructFieldAccess", baseType.name << "." << member);
+                
+                llvm::Value* structPtr = nullptr;
+                if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
+                    if (auto objLiteral = dynamic_cast<LiteralObjNode*>(baseLiteral->literal())) {
+                        auto varName = objLiteral->getValue()->getText();
+                        auto it = _localVarPtrs.find(varName);
+                        if (it != _localVarPtrs.end()) {
+                            structPtr = it->second;
+                        }
+                    }
+                }
+                
+                if (!structPtr) {
+                    throw YuxError("Cannot access field on non-variable struct");
+                }
+                
+                auto structType = getLLVMType(baseType);
+                auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+                auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIndex);
+                llvm::Value* indices[] = {zero, idx};
+                
+                auto fieldPtr = _builder.CreateGEP(structType, structPtr, indices, "struct.field");
+                auto fieldType = structDecl->fields()[fieldIndex]->getType();
+                
+                return _builder.CreateLoad(getLLVMType(fieldType), fieldPtr, "field.load");
+            }
         }
 
         if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {

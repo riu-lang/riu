@@ -6,6 +6,7 @@
 
 #include "expr_node.h"
 #include "fn_node.h"
+#include "file_node.h"
 
 const p<ExprNode>& ExprCallNode::getCalleeExpr() const { return _calleeExpr; }
 
@@ -21,6 +22,13 @@ TypeInfo ExprCallNode::getType() const {
     auto scope = findNearestScope();
     if (scope) {
         auto sym = scope->lookupSymbol(type.name);
+        if (sym && sym->kind == SymbolKind::Struct) {
+            string ctorFullName = type.name + "." + type.name;
+            auto fn = scope->lookupFnSymbol(ctorFullName);
+            if (fn) {
+                return TypeInfo(type.name);
+            }
+        }
         if (sym && sym->kind != SymbolKind::Function) {
             throw YuxError("Type {} is not a Function", sym->name);
         }
@@ -109,6 +117,26 @@ TypeInfo ExprDotNode::getType() const {
         string dstType = member.substr(3);
         return TypeInfo("fn() " + dstType);
     }
+    
+    auto baseType = _baseExpr->getType();
+    auto scope = findNearestScope();
+    if (scope) {
+        auto file = dynamic_cast<FileNode*>(scope);
+        while (!file && scope) {
+            scope = scope->parentScope();
+            file = dynamic_cast<FileNode*>(scope);
+        }
+        if (file) {
+            auto structDecl = file->getStructDecl(baseType.name);
+            if (structDecl) {
+                auto field = structDecl->field(member);
+                if (field) {
+                    return field->getType();
+                }
+            }
+        }
+    }
+    
     return _baseExpr->getType();
 }
 

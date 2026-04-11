@@ -9,17 +9,26 @@
 
 #include "fn_node.h"
 #include "node.h"
+#include "struct_node.h"
 
 class FileNode : public ScopeNode {
     vector<p<FnNode>> _functions;
+    vector<p<StructDeclNode>> _structDecls;
+    vector<p<StructImplNode>> _structImpls;
     set<string> _innerFnNames;
 
 public:
     FileNode();
     
     void addFunction(const p<FnNode>& function);
+    void addStructDecl(const p<StructDeclNode>& structDecl);
+    void addStructImpl(const p<StructImplNode>& structImpl);
 
     const vector<p<FnNode>>& getFunctions() const;
+    const vector<p<StructDeclNode>>& getStructDecls() const { return _structDecls; }
+    const vector<p<StructImplNode>>& getStructImpls() const { return _structImpls; }
+    
+    StructDeclNode* getStructDecl(const string& name) const;
     
     bool isInnerFn(const string& name) const { return _innerFnNames.contains(name); }
 };

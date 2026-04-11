@@ -32,6 +32,24 @@ void FileNode::addFunction(const p<FnNode>& function) {
     _functions.push_back(function);
 }
 
+void FileNode::addStructDecl(const p<StructDeclNode>& structDecl) {
+    _structDecls.push_back(structDecl);
+    registerSymbol(structDecl->name()->getText(), {SymbolKind::Struct, structDecl->name()->getText(), TypeInfo(structDecl->name()->getText())});
+}
+
+void FileNode::addStructImpl(const p<StructImplNode>& structImpl) {
+    _structImpls.push_back(structImpl);
+}
+
 const vector<p<FnNode>>& FileNode::getFunctions() const {
     return _functions;
+}
+
+StructDeclNode* FileNode::getStructDecl(const string& name) const {
+    for (auto& decl : _structDecls) {
+        if (decl->name()->getText() == name) {
+            return decl;
+        }
+    }
+    return nullptr;
 }

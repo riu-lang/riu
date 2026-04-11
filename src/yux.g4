@@ -4,8 +4,14 @@ options {
     language=Cpp;
 }
 
-program
-   : (fn|comment|codeLineEnd)* EOF;
+program:
+   (
+    fn
+   | structDecl
+   | structImpl
+   | comment
+   | codeLineEnd
+   )* EOF;
 
 comment
     : LineComment
@@ -62,6 +68,30 @@ fnExprkBody: LineEnd?
     ;
 
 fnBlockBody: statementBlock;
+
+///////////
+// 结构体
+///////////
+
+structDecl: Struct Space name=ID Space BlockStart
+   (
+      (Space* filedDecl codeLineEnd?)
+     | comment
+     | codeLineEnd
+   )*
+   BlockEnd
+   ;
+
+structImpl: name=ID Space BlockStart
+    (
+      ( Space* fn)
+     | comment
+     | codeLineEnd
+    )*
+    BlockEnd
+    ;
+
+filedDecl: name=ID Space type;
 
 ///////////
 // 表达式
@@ -122,8 +152,8 @@ statement:
     // var name = expr
     // var name type = expr
      DeclKey Space name=ID Space (type Space)? SymbolEq Space expr codeLineEnd #statementDeclareAssign
-    // obj = expr
-    | obj=ID Space SymbolEq Space expr codeLineEnd #statementAssign
+    // obj.member = expr
+    | obj=ID (SymbolDot subs+=ID)* Space SymbolEq Space expr codeLineEnd #statementAssign
     // 尾随;表示空类型（void）
     | expr SymbolSemicolon? codeLineEnd # statementExpr
     // ret value
@@ -157,6 +187,7 @@ Fn : 'fn';
 If : 'if';
 Null : 'null';
 Ret : 'ret';
+Struct : 'struct';
 True : 'true';
 DeclKey: 'va'[rl] | 'cval';
 

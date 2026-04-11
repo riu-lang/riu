@@ -25,7 +25,3 @@ Token StatementDeclareAssignNode::name() const {
 p<TypeNode> StatementDeclareAssignNode::varType() const {
     return _type;
 }
-
-Token StatementAssignNode::name() const {
-    return _name;
-}

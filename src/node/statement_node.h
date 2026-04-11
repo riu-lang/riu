@@ -67,14 +67,18 @@ public:
 
 class StatementAssignNode : public StatementExprNode {
 protected:
-    Token _name;
+    Token _obj;
+    vector<Token> _subs;
 
 public:
-    explicit StatementAssignNode(const p<Node>& parent, Token name, p<ExprNode> expr) :
-        StatementExprNode(parent, std::move(expr)), _name(name) {
+    explicit StatementAssignNode(const p<Node>& parent, Token obj, vector<Token> subs, p<ExprNode> expr) :
+        StatementExprNode(parent, std::move(expr)),
+        _obj(obj),
+        _subs(std::move(subs)) {
     }
 
-    [[nodiscard]] Token name() const;
+    [[nodiscard]] Token obj() const { return _obj; }
+    [[nodiscard]] const vector<Token>& subs() const { return _subs; }
 };
 
 #endif //YUX_LANG_STATEMENT_NODE_H

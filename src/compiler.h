@@ -16,6 +16,7 @@
 #include "node/fn_node.h"
 #include "node/statement_node.h"
 #include "node/expr_node.h"
+#include "node/struct_node.h"
 
 struct CastInfo {
     llvm::Value* value;
@@ -30,6 +31,7 @@ class Compiler {
     p<FileNode> _file;
 
     map<string, llvm::Type*> _typeMap;
+    map<string, llvm::StructType*> _structTypes;
     map<string, llvm::Value*> _localVarPtrs;
     map<string, CastInfo> _castFunctions;
     int _castCounter = 0;
@@ -39,8 +41,10 @@ class Compiler {
 
     llvm::Type* getLLVMType(const TypeInfo& type);
     llvm::FunctionType* getLLVMFunctionType(p<FnHeaderNode> header);
+    llvm::StructType* getOrCreateStructType(p<StructDeclNode> structDecl);
 
     llvm::Function* getFunction(p<FnHeaderNode> header);
+    llvm::Function* getMethodFunction(const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes);
     llvm::Value* compileExpr(p<ExprNode> node);
     llvm::Value* createCast(llvm::Value* val, const TypeInfo& srcType, const TypeInfo& dstType);
     void compileStatementBlock(p<StatementBlockNode> block);
@@ -50,7 +54,10 @@ public:
     Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, p<FileNode> file);
 
     void compile(p<FileNode> file);
+    void compileStructDecls();
+    void compileStructImpls();
     void compileFn(p<FnNode> node, llvm::Function* func);
+    void compileMethod(p<FnNode> node, llvm::Function* func, const string& structName);
     void compileStatement(p<StatementNode> node);
 };
 
