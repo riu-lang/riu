@@ -152,12 +152,16 @@ statement:
     // var name = expr
     // var name type = expr
      DeclKey Space name=ID Space (type Space)? SymbolEq Space expr codeLineEnd #statementDeclareAssign
+    // 循环
+    | Loop Space statementBlock # statementLoop
     // obj.member = expr
     | obj=ID (SymbolDot subs+=ID)* Space SymbolEq Space expr codeLineEnd #statementAssign
     // 尾随;表示空类型（void）
     | expr SymbolSemicolon? codeLineEnd # statementExpr
     // ret value
     | Ret expr codeLineEnd # statementRet
+    // break; 不返回任何值
+    | Break SymbolSemicolon # statementBreak
     ;
 
 statementBlock:
@@ -180,16 +184,18 @@ LineEnd : '\r'? '\n' | '\n' | EOF;
 EmptyLine : {getCharPositionInLine()==0}? [ \t]*  LineEnd -> channel(HIDDEN);
 //WhiteSpace : ~[\P{White_Space} \t\r\n]+ -> channel(HIDDEN);
 
+Break : 'break';
+DeclKey: 'va'[rl] | 'cval';
 Elif : 'elif';
 Else : 'else';
 False : 'false';
 Fn : 'fn';
 If : 'if';
+Loop: 'loop';
 Null : 'null';
 Ret : 'ret';
 Struct : 'struct';
 True : 'true';
-DeclKey: 'va'[rl] | 'cval';
 
 SymbolAdd: '+';
 SymbolArrow: '->';

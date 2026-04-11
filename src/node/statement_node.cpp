@@ -5,6 +5,7 @@
 //
 
 #include "statement_node.h"
+#include "expr_node.h"
 
 const p<ExprNode>& StatementExprNode::expr() const {
     return _expr;
@@ -24,4 +25,13 @@ Token StatementDeclareAssignNode::name() const {
 
 p<TypeNode> StatementDeclareAssignNode::varType() const {
     return _type;
+}
+
+StatementLoopNode::StatementLoopNode(const p<Node>& parent, p<StatementBlockNode> block) :
+    StatementNode(parent),
+    _block(std::move(block)) {
+}
+
+const p<StatementBlockNode>& StatementLoopNode::block() const {
+    return _block;
 }

@@ -348,6 +348,19 @@ std::any ASTBuilder::visitStatementRet(yux::yuxParser::StatementRetContext* ctx)
     return p<StatementNode>(create<StatementRetNode>(scope, expr));
 }
 
+std::any ASTBuilder::visitStatementLoop(yux::yuxParser::StatementLoopContext* ctx) {
+    auto scope = currentScope();
+    auto block = any_cast_p<StatementBlockNode>(visit(ctx->statementBlock()));
+    DEBUG_LOG("  Statement: Loop");
+    return p<StatementNode>(create<StatementLoopNode>(scope, block));
+}
+
+std::any ASTBuilder::visitStatementBreak(yux::yuxParser::StatementBreakContext* ctx) {
+    auto scope = currentScope();
+    DEBUG_LOG("  Statement: Break");
+    return p<StatementNode>(create<StatementBreakNode>(scope));
+}
+
 std::any ASTBuilder::visitStatementBlock(yux::yuxParser::StatementBlockContext* ctx) {
     DEBUG_LOG("  Visit: StatementBlock");
     auto parentScope = currentScope();

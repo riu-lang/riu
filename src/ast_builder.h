@@ -58,6 +58,8 @@ public:
     std::any visitStatementExpr(yux::yuxParser::StatementExprContext* ctx) override;
     std::any visitStatementRet(yux::yuxParser::StatementRetContext* ctx) override;
     std::any visitStatementBlock(yux::yuxParser::StatementBlockContext* ctx) override;
+    std::any visitStatementLoop(yux::yuxParser::StatementLoopContext* ctx) override;
+    std::any visitStatementBreak(yux::yuxParser::StatementBreakContext* ctx) override;
 
     std::any visitExprParen(yux::yuxParser::ExprParenContext* ctx) override;
     std::any visitExprCall(yux::yuxParser::ExprCallContext* ctx) override;

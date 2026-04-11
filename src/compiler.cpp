@@ -330,6 +330,57 @@ void Compiler::compileStatement(p<StatementNode> node) {
         DEBUG_LOG("  Statement: Expression");
         compileExpr(exprNode->expr());
     }
+    else if (auto loopNode = dynamic_cast<StatementLoopNode*>(node)) {
+        DEBUG_LOG("  Statement: Loop");
+        
+        llvm::Function* func = _builder.GetInsertBlock()->getParent();
+        
+        llvm::BasicBlock* condBB = llvm::BasicBlock::Create(_context, "loop.cond");
+        llvm::BasicBlock* bodyBB = llvm::BasicBlock::Create(_context, "loop.body");
+        llvm::BasicBlock* exitBB = llvm::BasicBlock::Create(_context, "loop.exit");
+        
+        _builder.CreateBr(condBB);
+        
+        func->insert(func->end(), condBB);
+        _builder.SetInsertPoint(condBB);
+        _builder.CreateBr(bodyBB);
+        
+        func->insert(func->end(), bodyBB);
+        _builder.SetInsertPoint(bodyBB);
+        
+        _loopExitBlocks.push_back(exitBB);
+        
+        for (auto& stmt : loopNode->block()->statements()) {
+            compileStatement(stmt);
+        }
+        
+        if (loopNode->block()->hasResult()) {
+            compileExpr(loopNode->block()->resultExpr());
+        }
+        
+        _loopExitBlocks.pop_back();
+        
+        if (!_builder.GetInsertBlock()->getTerminator()) {
+            _builder.CreateBr(condBB);
+        }
+        
+        func->insert(func->end(), exitBB);
+        _builder.SetInsertPoint(exitBB);
+    }
+    else if (auto breakNode = dynamic_cast<StatementBreakNode*>(node)) {
+        DEBUG_LOG("  Statement: Break");
+        
+        if (_loopExitBlocks.empty()) {
+            throw YuxError("break statement not within a loop");
+        }
+        
+        llvm::BasicBlock* exitBB = _loopExitBlocks.back();
+        _builder.CreateBr(exitBB);
+        
+        llvm::Function* func = _builder.GetInsertBlock()->getParent();
+        llvm::BasicBlock* unreachableBB = llvm::BasicBlock::Create(_context, "unreachable", func);
+        _builder.SetInsertPoint(unreachableBB);
+    }
 }
 
 llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& srcType, const TypeInfo& dstType) {
@@ -944,6 +995,10 @@ void Compiler::compileStatementBlock(p<StatementBlockNode> block) {
 llvm::Value* Compiler::compileStatementBlockWithResult(p<StatementBlockNode> block, llvm::BasicBlock* continueBlock, llvm::PHINode* phi, const TypeInfo& resultType) {
     for (auto& stmt : block->statements()) {
         compileStatement(stmt);
+    }
+    
+    if (_builder.GetInsertBlock()->getTerminator()) {
+        return nullptr;
     }
     
     if (block->hasResult()) {

@@ -39,6 +39,8 @@ class Compiler {
     llvm::Function* _currentFn = nullptr;
     p<FnNode> _currentFnNode;
 
+    vector<llvm::BasicBlock*> _loopExitBlocks;
+
     llvm::Type* getLLVMType(const TypeInfo& type);
     llvm::FunctionType* getLLVMFunctionType(p<FnHeaderNode> header);
     llvm::StructType* getOrCreateStructType(p<StructDeclNode> structDecl);

@@ -81,4 +81,21 @@ public:
     [[nodiscard]] const vector<Token>& subs() const { return _subs; }
 };
 
+class StatementBlockNode;
+
+class StatementLoopNode : public StatementNode {
+protected:
+    p<StatementBlockNode> _block;
+
+public:
+    explicit StatementLoopNode(const p<Node>& parent, p<StatementBlockNode> block);
+
+    [[nodiscard]] const p<StatementBlockNode>& block() const;
+};
+
+class StatementBreakNode : public StatementNode {
+public:
+    explicit StatementBreakNode(const p<Node>& parent) : StatementNode(parent) {}
+};
+
 #endif //YUX_LANG_STATEMENT_NODE_H
