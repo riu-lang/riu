@@ -5,6 +5,7 @@
 //
 
 #include "literal_node.h"
+#include "file_node.h"
 
 #include <utility>
 #include <regex>
@@ -69,9 +70,17 @@ TypeInfo LiteralObjNode::getType() const {
     if (scope) {
         auto sym = scope->lookupSymbol(name);
         if (sym) {
+            if (sym->kind == SymbolKind::Function) {
+                return TypeInfo("fn() " + sym->type.name);
+            }
             return sym->type;
         }
     }
+    
+    if (name == "_stdout_write") {
+        return TypeInfo("fn() ");
+    }
+    
     throw YuxError("Symbol {} not found", name);
 }
 

@@ -11,6 +11,7 @@
 #include "literal_node.h"
 
 class StatementNode;
+class TypeNode;
 
 class ExprNode : public Node, public Typed {
 public:
@@ -225,6 +226,22 @@ public:
     }
 
     [[nodiscard]] const vector<p<ExprNode>>& elements() const;
+    [[nodiscard]] TypeInfo getType() const override;
+};
+
+class ExprArrayInitNode : public ExprNode {
+    p<LiteralNode> _value;
+    p<TypeNode> _explicitType;
+
+public:
+    ExprArrayInitNode(const p<Node>& parent, p<LiteralNode> value, p<TypeNode> explicitType) :
+        ExprNode(parent),
+        _value(value),
+        _explicitType(explicitType) {
+    }
+
+    [[nodiscard]] const p<LiteralNode>& value() const;
+    [[nodiscard]] const p<TypeNode>& explicitType() const;
     [[nodiscard]] TypeInfo getType() const override;
 };
 

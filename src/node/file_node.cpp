@@ -6,6 +6,10 @@
 
 #include "file_node.h"
 
+static bool isPrivateName(const string& name) {
+    return !name.empty() && name[0] == '_';
+}
+
 FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::move(moduleName)) {
     const initializer_list<string> TYPES = {"bool", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64"};
     for (auto t : TYPES) {
@@ -16,16 +20,10 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
             string fullName = t + "." + fnName;
             registerSymbol(fullName, {SymbolKind::Function, fnName, TypeInfo(f)});
             registerFnSymbol(fullName, {fnName, "", {}, TypeInfo(f)});
-            _innerFnNames.insert(fullName);
         }
     }
     
-    registerSymbol("print", {SymbolKind::Function, "print", TypeInfo()});
-    registerSymbol("println", {SymbolKind::Function, "println", TypeInfo()});
-    registerFnSymbol("print", {"print", "", {}, TypeInfo()});
-    registerFnSymbol("println", {"println", "", {}, TypeInfo()});
-    _innerFnNames.insert("print");
-    _innerFnNames.insert("println");
+    registerSymbol("Ref", {SymbolKind::Struct, "Ref", TypeInfo("Ref")});
 }
 
 void FileNode::addFunction(const p<FnNode>& function) {
@@ -55,8 +53,25 @@ StructDeclNode* FileNode::getStructDecl(const string& name) const {
 }
 
 string FileNode::getMangledName(const string& symbolName) const {
+    if (_moduleName == "sdk") {
+        return symbolName;
+    }
+    if (isPrivateName(symbolName)) {
+        return _moduleName + "_" + symbolName;
+    }
     if (_moduleName.empty()) {
         return symbolName;
     }
     return _moduleName + "_" + symbolName;
+}
+
+string FileNode::getMangledName(const string& symbolName, const vector<TypeInfo>& paramTypes) const {
+    string baseName = getMangledName(symbolName);
+    if (paramTypes.empty()) {
+        return baseName;
+    }
+    if (_moduleName == "sdk") {
+        return Node::getCName(symbolName, paramTypes);
+    }
+    return Node::getCName(symbolName, paramTypes);
 }

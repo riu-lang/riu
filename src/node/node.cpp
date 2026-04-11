@@ -7,10 +7,14 @@
 #include "node.h"
 
 string Node::getCName(const string& name, const vector<TypeInfo>& paramsType)  {
-    string res = "yux_" + name;
-    for (auto& p : paramsType) {
-        res += "_" + p.name;
+    string res = "fn_" + name + "(";
+    for (size_t i = 0; i < paramsType.size(); ++i) {
+        res += paramsType[i].name;
+        if (i < paramsType.size() - 1) {
+            res += ",";
+        }
     }
+    res += ")";
     return res;
 }
 
@@ -27,7 +31,7 @@ void ScopeNode::registerSymbol(const string& name, SymbolInfo info) {
 }
 
 void ScopeNode::registerFnSymbol(const string& name, FnSymbolInfo info) {
-    _fnSymbols[name] = std::move(info);
+    _fnSymbols[name].push_back(std::move(info));
 }
 
 void ScopeNode::setParentScope(const p<ScopeNode>& scope) {
@@ -47,11 +51,35 @@ SymbolInfo* ScopeNode::lookupSymbol(const string& name) {
 
 FnSymbolInfo* ScopeNode::lookupFnSymbol(const string& name) {
     auto it = _fnSymbols.find(name);
-    if (it != _fnSymbols.end()) {
-        return &it->second;
+    if (it != _fnSymbols.end() && !it->second.empty()) {
+        return &it->second[0];
     }
     if (_parentScope) {
         return _parentScope->lookupFnSymbol(name);
+    }
+    return nullptr;
+}
+
+FnSymbolInfo* ScopeNode::lookupFnSymbolWithParams(const string& name, const vector<TypeInfo>& paramTypes) {
+    auto it = _fnSymbols.find(name);
+    if (it != _fnSymbols.end()) {
+        for (auto& fnInfo : it->second) {
+            if (fnInfo.params.size() == paramTypes.size()) {
+                bool match = true;
+                for (size_t i = 0; i < paramTypes.size(); ++i) {
+                    if (fnInfo.params[i] != paramTypes[i]) {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match) {
+                    return &fnInfo;
+                }
+            }
+        }
+    }
+    if (_parentScope) {
+        return _parentScope->lookupFnSymbolWithParams(name, paramTypes);
     }
     return nullptr;
 }
@@ -78,7 +106,7 @@ bool ScopeNode::hasFnSymbol(const string& name) const {
 
 const map<string, SymbolInfo>& ScopeNode::localSymbols() const { return _symbols; }
 
-const map<string, FnSymbolInfo>& ScopeNode::localFnSymbols() const { return _fnSymbols; }
+const map<string, vector<FnSymbolInfo>>& ScopeNode::localFnSymbols() const { return _fnSymbols; }
 
 p<ScopeNode> ScopeNode::parentScope() const { return _parentScope; }
 

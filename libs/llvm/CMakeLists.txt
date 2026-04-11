@@ -21,6 +21,7 @@ add_subdirectory("${LIBS_DIR}/llvm/llvm" ${LIBS_BIN_DIR}/llvm)
 list(APPEND LLVM_INCLUDE_DIR
         "${LLVM_ROOT}/include"
         "${LLD_ROOT}/include"
+        "${LIBS_BIN_DIR}/llvm/include"
         )
 
 set(LLVM_INCLUDE_DIR ${LLVM_INCLUDE_DIR} PARENT_SCOPE)

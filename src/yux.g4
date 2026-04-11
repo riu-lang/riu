@@ -117,6 +117,8 @@ expr:
           statementBlock
           (elifs+=exprElIf)*
              exprElse? # exprIfElse
+    // [0 ...] [1u8 ... u8] 填充数组
+    | GetStart value=literal Space SymbolDotDotDot (Space type)?  GetEnd # exprArrayInit
     // a.b ...
     | left=expr SymbolDot member+=ID # exprDot
     // [e1, e2]
@@ -152,6 +154,11 @@ statement:
     // var name = expr
     // var name type = expr
      DeclKey Space name=ID Space (type Space)? SymbolEq Space expr codeLineEnd #statementDeclareAssign
+    // e[a, b, c] = e 实际应为成员函数set的快捷调用
+    | obj=expr GetStart
+          args+=expr
+          (SymbolComma Space args+=expr)*
+        GetEnd Space SymbolEq Space value=expr # statementSet
     // 循环
     | Loop Space statementBlock # statementLoop
     // obj.member = expr
@@ -159,7 +166,7 @@ statement:
     // 尾随;表示空类型（void）
     | expr SymbolSemicolon? codeLineEnd # statementExpr
     // ret value
-    | Ret expr codeLineEnd # statementRet
+    | Ret Space expr codeLineEnd # statementRet
     // break; 不返回任何值
     | Break SymbolSemicolon # statementBreak
     ;
@@ -202,6 +209,8 @@ SymbolArrow: '->';
 SymbolComma: ',';
 SymbolDiv: '/';
 SymbolDot: '.';
+SymbolDotDot: '..';
+SymbolDotDotDot: '...';
 SymbolEq: '=';
 SymbolEqEq: '==';
 SymbolExcl: '!';

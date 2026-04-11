@@ -89,7 +89,7 @@ public:
 class ScopeNode : public Node {
 protected:
     map<string, SymbolInfo> _symbols;
-    map<string, FnSymbolInfo> _fnSymbols;
+    map<string, vector<FnSymbolInfo>> _fnSymbols;
     p<ScopeNode> _parentScope = nullptr;
 
 public:
@@ -104,13 +104,15 @@ public:
     SymbolInfo* lookupSymbol(const string& name);
 
     FnSymbolInfo* lookupFnSymbol(const string& name);
+    
+    FnSymbolInfo* lookupFnSymbolWithParams(const string& name, const vector<TypeInfo>& paramTypes);
 
     [[nodiscard]] bool hasSymbol(const string& name) const;
 
     [[nodiscard]] bool hasFnSymbol(const string& name) const;
 
     [[nodiscard]] const map<string, SymbolInfo>& localSymbols() const;
-    [[nodiscard]] const map<string, FnSymbolInfo>& localFnSymbols() const;
+    [[nodiscard]] const map<string, vector<FnSymbolInfo>>& localFnSymbols() const;
     [[nodiscard]] p<ScopeNode> parentScope() const;
 };
 

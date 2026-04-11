@@ -18,7 +18,7 @@
       "patterns": [
         {
           "name": "comment.line.yux",
-          "match": "^\\s*/.*$"
+          "match": "^\\s*/[^\\r\\n]*"
         },
         {
           "name": "comment.line.end.yux",
@@ -31,6 +31,10 @@
         {
           "name": "keyword.control.conditional.yux",
           "match": "\\b(if|elif|else)\\b"
+        },
+        {
+          "name": "keyword.control.loop.yux",
+          "match": "\\b(loop|break)\\b"
         },
         {
           "name": "keyword.control.flow.yux",
@@ -131,6 +135,10 @@
           "match": "->"
         },
         {
+          "name": "keyword.operator.range.yux",
+          "match": "\\.\\.\\.|\\.\\."
+        },
+        {
           "name": "keyword.operator.other.yux",
           "match": "[!?]"
         }
@@ -179,7 +187,7 @@
     "functions": {
       "patterns": [
         {
-          "name": "entity.name.function.declaration.yux",
+          "name": "meta.function.declaration.yux",
           "match": "\\bfn\\s+([a-zA-Z_\\p{L}][a-zA-Z0-9_\\p{L}]*)\\b",
           "captures": {
             "1": { "name": "entity.name.function.yux" }

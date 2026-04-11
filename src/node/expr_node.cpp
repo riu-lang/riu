@@ -14,11 +14,36 @@ const std::vector<p<ExprNode>>& ExprCallNode::getArgs() const { return _args; }
 
 TypeInfo ExprCallNode::getType() const {
     auto type = _calleeExpr->getType();
+    
+    DEBUG_LOG_VAL("ExprCallNode::getType - type.name", type.name);
+    DEBUG_LOG_VAL("ExprCallNode::getType - starts_with('fn() ')", type.name.starts_with("fn() "));
+    DEBUG_LOG_VAL("ExprCallNode::getType - calleeExpr type", typeid(*_calleeExpr).name());
+
+    if (type.name == "fn_overload") {
+        if (auto literalNode = dynamic_cast<ExprLiteralNode*>(_calleeExpr)) {
+            if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literalNode->literal())) {
+                auto fnName = objLiteral->getValue()->getText();
+                auto scope = findNearestScope();
+                if (scope) {
+                    vector<TypeInfo> argTypes;
+                    for (auto& arg : _args) {
+                        argTypes.push_back(arg->getType());
+                    }
+                    auto fn = scope->lookupFnSymbolWithParams(fnName, argTypes);
+                    if (fn) {
+                        return fn->retType;
+                    }
+                }
+            }
+        }
+        return TypeInfo();
+    }
 
     if (type.name.starts_with("fn() ")) {
+        DEBUG_LOG_VAL("ExprCallNode::getType - returning", type.name.substr(5));
         return TypeInfo(type.name.substr(5));
     }
-    
+
     auto scope = findNearestScope();
     if (scope) {
         auto sym = scope->lookupSymbol(type.name);
@@ -32,12 +57,18 @@ TypeInfo ExprCallNode::getType() const {
         if (sym && sym->kind != SymbolKind::Function) {
             throw YuxError("Type {} is not a Function", sym->name);
         }
-        auto fn = scope->lookupFnSymbol(type.name);
+        
+        vector<TypeInfo> argTypes;
+        for (auto& arg : _args) {
+            argTypes.push_back(arg->getType());
+        }
+        
+        auto fn = scope->lookupFnSymbolWithParams(type.name, argTypes);
         if (fn) {
             return fn->retType;
         }
     }
-    
+
     return type;
 }
 
@@ -62,12 +93,8 @@ const p<ExprNode>& ExprAddSubNode::right() const {
 }
 
 TypeInfo ExprAddSubNode::getType() const {
-    std::cerr << "[DEBUG] ExprAddSubNode::getType called" << std::endl;
     auto leftType = _left->getType();
-    std::cerr << "[DEBUG]   leftType: " << leftType.name << std::endl;
-    std::cerr << "[DEBUG]   _right type: " << typeid(*_right).name() << std::endl;
     auto rightType = _right->getType();
-    std::cerr << "[DEBUG]   rightType: " << rightType.name << std::endl;
     if (leftType != rightType) {
         throw YuxError("Type mismatch in +-/ operation: left is {}, right is {}", leftType.name, rightType.name);
     }
@@ -113,11 +140,14 @@ string ExprDotNode::member() const {
 
 TypeInfo ExprDotNode::getType() const {
     auto member = _member->getText();
+    DEBUG_LOG_VAL("ExprDotNode::getType - member", member);
+    DEBUG_LOG_VAL("ExprDotNode::getType - starts_with('to_')", member.starts_with("to_"));
     if (member.starts_with("to_")) {
         string dstType = member.substr(3);
+        DEBUG_LOG_VAL("ExprDotNode::getType - returning fn()", dstType);
         return TypeInfo("fn() " + dstType);
     }
-    
+
     auto baseType = _baseExpr->getType();
     auto scope = findNearestScope();
     if (scope) {
@@ -136,7 +166,7 @@ TypeInfo ExprDotNode::getType() const {
             }
         }
     }
-    
+
     return _baseExpr->getType();
 }
 
@@ -209,7 +239,7 @@ TypeInfo ExprIfElseNode::getType() const {
         return TypeInfo();
     }
     TypeInfo resultType = _thenBlock->resultExpr()->getType();
-    
+
     for (auto& elif : _elifs) {
         if (!elif->block()->hasResult()) {
             return TypeInfo();
@@ -219,7 +249,7 @@ TypeInfo ExprIfElseNode::getType() const {
             throw YuxError("Type mismatch in if-elif branches: {} vs {}", resultType.name, elifType.name);
         }
     }
-    
+
     if (_elseBlock && _elseBlock->hasResult()) {
         auto elseType = _elseBlock->resultExpr()->getType();
         if (elseType != resultType) {
@@ -228,7 +258,7 @@ TypeInfo ExprIfElseNode::getType() const {
     } else if (!_elseBlock || !_elseBlock->hasResult()) {
         return TypeInfo();
     }
-    
+
     return resultType;
 }
 
@@ -241,19 +271,15 @@ const vector<p<ExprNode>>& ExprGetNode::indices() const {
 }
 
 TypeInfo ExprGetNode::getType() const {
-    std::cerr << "[DEBUG] ExprGetNode::getType called" << std::endl;
     auto arrayType = _arrayExpr->getType();
-    std::cerr << "[DEBUG] ExprGetNode::getType - arrayType: " << arrayType.name 
-              << ", isArray: " << arrayType.isArray() 
-              << ", elementType: " << (arrayType.elementType ? arrayType.elementType->name : "null") << std::endl;
     if (!arrayType.isArray()) {
         throw YuxError("Cannot index non-array type: {}", arrayType.name);
     }
-    
+
     if (!arrayType.elementType) {
         throw YuxError("Invalid array type: missing element type");
     }
-    
+
     return *arrayType.elementType;
 }
 
@@ -265,7 +291,7 @@ TypeInfo ExprArrayNode::getType() const {
     if (_elements.empty()) {
         throw YuxError("Cannot infer type of empty array");
     }
-    
+
     TypeInfo elementType = _elements[0]->getType();
     for (size_t i = 1; i < _elements.size(); ++i) {
         auto elemType = _elements[i]->getType();
@@ -273,7 +299,27 @@ TypeInfo ExprArrayNode::getType() const {
             throw YuxError("Array elements must have the same type: {} vs {}", elementType.name, elemType.name);
         }
     }
-    
+
     auto elemShared = make_shared<TypeInfo>(elementType);
     return TypeInfo(elemShared, _elements.size());
+}
+
+const p<LiteralNode>& ExprArrayInitNode::value() const {
+    return _value;
+}
+
+const p<TypeNode>& ExprArrayInitNode::explicitType() const {
+    return _explicitType;
+}
+
+TypeInfo ExprArrayInitNode::getType() const {
+    TypeInfo elementType;
+    if (_explicitType) {
+        elementType = _explicitType->getType();
+    } else {
+        elementType = _value->getType();
+    }
+    
+    auto elemShared = make_shared<TypeInfo>(elementType);
+    return TypeInfo(elemShared, 0);
 }

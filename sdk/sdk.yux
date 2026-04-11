@@ -1,0 +1,170 @@
+/ yux SDK - 自举运行时
+/ 内部函数以_开头，外部不可见
+
+/ 内部函数：向stdout写入[u8]定长数组
+/ _stdout_write(buf [u8 * N], off i64, len i64)
+/ 此函数由编译器内置实现
+
+/ 内部：数字转字符串（返回长度，结果在buf中）
+
+fn print(n i64) {
+  var buf [u8 * 21] = [0u8 ...]
+  var is_neg = n < 0i64
+  var v i64 = n
+  if is_neg {
+    v = 0i64 - n
+  }
+  var i i64 = 0i64
+  loop {
+    if v == 0i64 {
+      break;
+    }
+    var digit i64 = v % 10i64
+    buf[20i64 - i] = 48u8 + digit.to_u8()
+    v = v / 10i64
+    i = i + 1i64
+  }
+  if i == 0i64 {
+    buf[20i64] = 48u8
+    i = 1i64
+  }
+  var start i64 = 21i64 - i
+  if is_neg {
+    start = start - 1i64
+    buf[start] = 45u8
+    i = i + 1i64
+  }
+  _stdout_write(buf, start, i)
+}
+
+/ 打印函数 - 整数类型
+fn print(n i8) {
+  print(n.to_i64())
+}
+
+fn print(n i16) {
+  print(n.to_i64())
+}
+
+fn print(n i32) {
+  print(n.to_i64())
+}
+
+/ 打印函数 - 无符号整数类型
+fn print(n u8) {
+  print(n.to_u64())
+}
+
+fn print(n u16) {
+  print(n.to_u64())
+}
+
+fn print(n u32) {
+  print(n.to_u64())
+}
+
+fn print(n u64) {
+  var buf [u8 * 21] = [0u8 ...]
+  var v u64 = n
+  var i i64 = 0i64
+  loop {
+    if v == 0u64 {
+      break;
+    }
+    var digit u64 = v % 10u64
+    buf[20i64 - i] = 48u8 + digit.to_u8()
+    v = v / 10u64
+    i = i + 1i64
+  }
+  if i == 0i64 {
+    buf[20i64] = 48u8
+    i = 1i64
+  }
+  _stdout_write(buf, 21i64 - i, i)
+}
+
+/ 打印函数 - 浮点数
+fn print(n f64) {
+  var is_neg = n < 0.0f64
+  var v f64 = n
+  if is_neg {
+    v = 0.0f64 - n
+  }
+  if is_neg {
+    _stdout_write([45u8], 0i64, 1i64)
+  }
+  print(v.to_i64())
+  _stdout_write([46u8], 0i64, 1i64)
+  var frac f64 = v - v.to_i64().to_f64()
+  var i i64 = 0i64
+  loop {
+    if i == 6i64 {
+      break;
+    }
+    frac = frac * 10.0f64
+    var digit i64 = frac.to_i64()
+    _stdout_write([48u8 + digit.to_u8()], 0i64, 1i64)
+    frac = frac - digit.to_f64()
+    i = i + 1i64
+  }
+}
+
+/ 打印函数 - 布尔值
+fn print(b bool) {
+  if b {
+    _stdout_write([116u8, 114u8, 117u8, 101u8], 0i64, 4i64)
+  } else {
+    _stdout_write([102u8, 97u8, 108u8, 115u8, 101u8], 0i64, 5i64)
+  }
+}
+
+/ println函数 - 所有类型统一实现
+fn println(n i8) {
+  print(n)
+  _stdout_write([10u8], 0i64, 1i64)
+}
+
+fn println(n i16) {
+  print(n)
+  _stdout_write([10u8], 0i64, 1i64)
+}
+
+fn println(n i32) {
+  print(n)
+  _stdout_write([10u8], 0i64, 1i64)
+}
+
+fn println(n i64) {
+  print(n)
+  _stdout_write([10u8], 0i64, 1i64)
+}
+
+fn println(n u8) {
+  print(n)
+  _stdout_write([10u8], 0i64, 1i64)
+}
+
+fn println(n u16) {
+  print(n)
+  _stdout_write([10u8], 0i64, 1i64)
+}
+
+fn println(n u32) {
+  print(n)
+  _stdout_write([10u8], 0i64, 1i64)
+}
+
+fn println(n u64) {
+  print(n)
+  _stdout_write([10u8], 0i64, 1i64)
+}
+
+fn println(n f64) {
+  print(n)
+  _stdout_write([10u8], 0i64, 1i64)
+}
+
+fn println(b bool) {
+  print(b)
+  _stdout_write([10u8], 0i64, 1i64)
+}

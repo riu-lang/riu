@@ -98,4 +98,22 @@ public:
     explicit StatementBreakNode(const p<Node>& parent) : StatementNode(parent) {}
 };
 
+class StatementSetNode : public StatementNode {
+    p<ExprNode> _arrayExpr;
+    vector<p<ExprNode>> _indices;
+    p<ExprNode> _valueExpr;
+
+public:
+    StatementSetNode(const p<Node>& parent, p<ExprNode> arrayExpr, vector<p<ExprNode>> indices, p<ExprNode> valueExpr) :
+        StatementNode(parent),
+        _arrayExpr(arrayExpr),
+        _indices(std::move(indices)),
+        _valueExpr(valueExpr) {
+    }
+
+    [[nodiscard]] const p<ExprNode>& arrayExpr() const;
+    [[nodiscard]] const vector<p<ExprNode>>& indices() const;
+    [[nodiscard]] const p<ExprNode>& valueExpr() const;
+};
+
 #endif //YUX_LANG_STATEMENT_NODE_H

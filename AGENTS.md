@@ -97,11 +97,12 @@ yaml2macho-core
 源文件全部使用`\n`换行
 
 ```
-src/yux.g4   语法文件
-src/main.cpp 程序入口
-gen/         g4生成代码
-rt/          运行静态库，用于编译后链接
-third_party/ 外部依赖
+include/types.h  基本类型定义
+sdk/             自举rt
+src/yux.g4       语法文件
+src/main.cpp     程序入口
+gen/             g4生成代码
+third_party/     外部依赖
 ```
 
 ## 源码依赖（third_party目录）
@@ -118,7 +119,6 @@ third_party/ 外部依赖
 
 目标：
 - `yux`
-- `yux_rt`
 
 - `ninja` 构建`yux`目标 推荐使用；无法构建全部目标，**不指定目标会构建失败**
 - 目录`cmake-build-debug` 配置会自动重新加载。 只能执行构建命令，不要改动配置，如需操作，告诉用户（用户会重新配置）
@@ -145,10 +145,70 @@ OPTIONS:
   -d,     --debug             Output compilation IR debug information
 ```
 
-编译成功后在工作目录输出`文件名.exe`，返回`0`。
+编译成功后在工作目录输出到`build`目录，返回`0`。
 编译成功才会有IR。
--d进入编译IR后始终会有信息，信息大多为入参出参。
+-d始终会有信息，信息大多为入参出参。
 
 ## 测试
 
 [main.yux](main.yux)
+
+## 示例
+
+**空格规则**：关键字后必须有空格，二元运算符两边必须有空格，`()` `[]` 内部无空格，`,` 后有空格。
+
+**不存在隐式转换，所有类型必须显式转换。**
+
+详情见[语法](语法.md)
+
+```yux
+/ add 注释为顶行/，其它位置用为除号
+fn add(a i32, b i32) i32 = a + b
+
+/ sub
+fn sub(a i32, b i32) i32 {
+  ret a + b ; 也可以直接 a + b 类似rust，空格+; 为尾随注释
+}
+
+/ 入口，空返回
+fn main() {
+  var a i32 = add(1, 2)
+  var b i32 = sub(a, 1)
+  println(a + b)
+  val arr [i32 * 2] = [0, 2] ; 默认i32类型
+  arr[0] = b - 1
+  println(arr[0] < arr[1])
+
+  / if 是表达式，也可单独用
+  val c = if a > b {
+    1
+  } else {
+    0
+  }
+  / 表达式尾随;表示空返回，类似rust
+  println(c)
+
+  / 循环
+  loop {
+    if b <= 0 {
+      break; ; break强制尾随;表示空返回
+    }
+    println(b)
+    b = b - 1
+  }
+}
+
+struct Abc {
+  a i32
+  b u8
+}
+
+/ 实现结构体
+Abc {
+  / 构造函数，同结构体名
+  fn Abc(a i32, b i32){
+    self.a = a
+    self.b = b.to_u8()
+  }
+}
+```

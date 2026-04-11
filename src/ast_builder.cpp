@@ -7,8 +7,8 @@
 #include <algorithm>
 #include "types.h"
 
-ASTBuilder::ASTBuilder(llvm::LLVMContext& ctx, string moduleName) :
-    context(ctx), irBuilder(ctx), _moduleName(std::move(moduleName)) {
+ASTBuilder::ASTBuilder(llvm::LLVMContext& ctx, Yux& yux, bool isSdk) :
+    context(ctx), irBuilder(ctx), _yux(yux), _isSdk(isSdk) {
 }
 
 ASTBuilder::~ASTBuilder() {
@@ -33,7 +33,14 @@ std::any ASTBuilder::visitCodeLineEnd(yux::yuxParser::CodeLineEndContext* ctx) {
 
 std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
     DEBUG_LOG("Visit: Program");
-    auto file = create<FileNode>(_moduleName);
+    p<FileNode> file;
+    if (_isSdk) {
+        file = _yux.createSdkFile();
+    } else {
+        file = _yux.createFile("");
+    }
+    
+    auto moduleName = file->moduleName();
 
     stack.emplace_back(file);
     _scopeStack.push_back(file);
@@ -58,10 +65,10 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         }
         DEBUG_LOG_VAL("  Register function", fnName);
         SymbolInfo fnSym(SymbolKind::Function, fnName, retType);
-        fnSym.moduleName = _moduleName;
+        fnSym.moduleName = moduleName;
         file->registerSymbol(fnName, fnSym);
-        
-        FnSymbolInfo fnFnSym{fnName, _moduleName, paramTypes, retType};
+
+        FnSymbolInfo fnFnSym{fnName, moduleName, paramTypes, retType};
         file->registerFnSymbol(fnName, fnFnSym);
     }
 
@@ -70,11 +77,11 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
     for (auto structDecl : structDecls) {
         auto decl = any_cast_p<StructDeclNode>(visit(structDecl));
         file->addStructDecl(decl);
-        
+
         for (auto field : decl->fields()) {
             string methodKey = decl->name()->getText() + "." + field->name()->getText();
             SymbolInfo fieldSym(SymbolKind::Variable, field->name()->getText(), field->getType());
-            fieldSym.moduleName = _moduleName;
+            fieldSym.moduleName = moduleName;
             file->registerSymbol(methodKey, fieldSym);
         }
     }
@@ -84,12 +91,12 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
     for (auto structImpl : structImpls) {
         auto impl = any_cast_p<StructImplNode>(visit(structImpl));
         file->addStructImpl(impl);
-        
+
         string structName = impl->structName();
         for (auto method : impl->methods()) {
             string methodName = method->header()->name()->getText();
             string fullName = structName + "." + methodName;
-            
+
             vector<TypeInfo> paramTypes;
             paramTypes.push_back(TypeInfo(structName));
             for (auto param : method->header()->params()) {
@@ -97,18 +104,18 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
                     paramTypes.push_back(param->type()->getType());
                 }
             }
-            
+
             TypeInfo retType;
             if (method->header()->retType()) {
                 retType = method->header()->retType()->getType();
             }
-            
+
             DEBUG_LOG_VAL("  Register method", fullName);
             SymbolInfo methodSym(SymbolKind::Function, methodName, retType);
-            methodSym.moduleName = _moduleName;
+            methodSym.moduleName = moduleName;
             file->registerSymbol(fullName, methodSym);
-            
-            FnSymbolInfo methodFnSym{fullName, _moduleName, paramTypes, retType};
+
+            FnSymbolInfo methodFnSym{fullName, moduleName, paramTypes, retType};
             file->registerFnSymbol(fullName, methodFnSym);
         }
     }
@@ -204,49 +211,49 @@ std::any ASTBuilder::visitFnParam(yux::yuxParser::FnParamContext* ctx) {
 std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
     auto file = any_cast_p<FileNode>(stack.back());
     auto structDecl = create<StructDeclNode>(file, ctx->name);
-    
+
     DEBUG_LOG_VAL("Visit: StructDecl", ctx->name->getText());
-    
+
     stack.emplace_back(structDecl);
     _scopeStack.push_back(structDecl);
-    
+
     for (auto fieldCtx : ctx->filedDecl()) {
         auto field = any_cast_p<StructFieldNode>(visit(fieldCtx));
         structDecl->addField(field);
     }
-    
+
     _scopeStack.pop_back();
     stack.pop_back();
-    
+
     return p<StructDeclNode>(structDecl);
 }
 
 std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
     auto file = any_cast_p<FileNode>(stack.back());
     auto structImpl = create<StructImplNode>(file, ctx->name);
-    
+
     DEBUG_LOG_VAL("Visit: StructImpl", ctx->name->getText());
-    
+
     stack.emplace_back(structImpl);
     _scopeStack.push_back(structImpl);
-    
+
     string structName = ctx->name->getText();
-    
+
     for (auto fnCtx : ctx->fn()) {
         auto header = any_cast_p<FnHeaderNode>(visitFnHeader(fnCtx->fnHeader()));
         auto fn = create<FnNode>(structImpl, header);
         fn->setParentScope(file);
-        
+
         stack.emplace_back(fn);
         _scopeStack.push_back(fn);
-        
+
         fn->registerSymbol("self", {SymbolKind::Variable, "self", TypeInfo(structName)});
-        
+
         for (auto param : header->params()) {
             TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();
             fn->registerSymbol(param->name()->getText(), {SymbolKind::Variable, param->name()->getText(), paramType});
         }
-        
+
         if (fnCtx->fnBody()->fnExprkBody()) {
             auto exprBody = fnCtx->fnBody()->fnExprkBody();
             auto expr = any_cast_p<ExprNode>(visit(exprBody->expr()));
@@ -255,26 +262,26 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
         } else if (fnCtx->fnBody()->fnBlockBody()) {
             auto blockBody = fnCtx->fnBody()->fnBlockBody();
             auto stmtBlockNode = any_cast_p<StatementBlockNode>(visit(blockBody->statementBlock()));
-            
+
             for (auto stmt : stmtBlockNode->statements()) {
                 fn->addStatement(stmt);
             }
-            
+
             if (stmtBlockNode->hasResult()) {
                 auto retStmt = create<StatementRetNode>(fn, stmtBlockNode->resultExpr());
                 fn->addStatement(retStmt);
             }
         }
-        
+
         _scopeStack.pop_back();
         stack.pop_back();
-        
+
         structImpl->addMethod(fn);
     }
-    
+
     _scopeStack.pop_back();
     stack.pop_back();
-    
+
     return p<StructImplNode>(structImpl);
 }
 
@@ -361,6 +368,22 @@ std::any ASTBuilder::visitStatementBreak(yux::yuxParser::StatementBreakContext* 
     return p<StatementNode>(create<StatementBreakNode>(scope));
 }
 
+std::any ASTBuilder::visitStatementSet(yux::yuxParser::StatementSetContext* ctx) {
+    DEBUG_LOG("  Statement: ArraySet");
+    auto scope = currentScope();
+
+    auto arrayExpr = any_cast_p<ExprNode>(visit(ctx->obj));
+
+    vector<p<ExprNode>> indices;
+    for (auto arg : ctx->args) {
+        indices.push_back(any_cast_p<ExprNode>(visit(arg)));
+    }
+
+    auto valueExpr = any_cast_p<ExprNode>(visit(ctx->value));
+
+    return p<StatementNode>(create<StatementSetNode>(scope, arrayExpr, indices, valueExpr));
+}
+
 std::any ASTBuilder::visitStatementBlock(yux::yuxParser::StatementBlockContext* ctx) {
     DEBUG_LOG("  Visit: StatementBlock");
     auto parentScope = currentScope();
@@ -400,7 +423,9 @@ std::any ASTBuilder::visitExprParen(yux::yuxParser::ExprParenContext* ctx) {
 
 std::any ASTBuilder::visitExprCall(yux::yuxParser::ExprCallContext* ctx) {
     auto scope = currentScope();
+    DEBUG_LOG_VAL("    Expr: Call - ctx->left type", typeid(*ctx->left).name());
     auto callee = any_cast_p<ExprNode>(visit(ctx->left));
+    DEBUG_LOG_VAL("    Expr: Call - callee type", typeid(*callee).name());
 
     auto call = create<ExprCallNode>(scope, callee);
     DEBUG_LOG_VAL("    Expr: Call", "args count: " << ctx->args.size());
@@ -449,10 +474,17 @@ std::any ASTBuilder::visitExprLiteral(yux::yuxParser::ExprLiteralContext* ctx) {
 }
 
 std::any ASTBuilder::visitExprDot(yux::yuxParser::ExprDotContext* ctx) {
+    DEBUG_LOG("    Expr: Dot - visitExprDot called");
     auto scope = currentScope();
     auto base = any_cast_p<ExprNode>(visit(ctx->left));
+    DEBUG_LOG_VAL("    Expr: Dot - member count", ctx->member.size());
+    for (size_t i = 0; i < ctx->member.size(); ++i) {
+        DEBUG_LOG_VAL("    Expr: Dot - member[" + to_string(i) + "]", ctx->member[i]->getText());
+    }
     DEBUG_LOG_VAL("    Expr: Dot", ctx->member.back()->getText());
-    return p<ExprNode>(create<ExprDotNode>(scope, base, ctx->member.back()));
+    auto result = p<ExprNode>(create<ExprDotNode>(scope, base, ctx->member.back()));
+    DEBUG_LOG_VAL("    Expr: Dot - result type", typeid(*result).name());
+    return result;
 }
 
 std::any ASTBuilder::visitExprCompare(yux::yuxParser::ExprCompareContext* ctx) {
@@ -547,12 +579,12 @@ std::any ASTBuilder::visitExprGet(yux::yuxParser::ExprGetContext* ctx) {
     auto scope = currentScope();
     auto exprs = ctx->expr();
     auto arrayExpr = any_cast_p<ExprNode>(visit(exprs[0]));
-    
+
     vector<p<ExprNode>> indices;
     for (size_t i = 1; i < exprs.size(); ++i) {
         indices.push_back(any_cast_p<ExprNode>(visit(exprs[i])));
     }
-    
+
     return p<ExprNode>(create<ExprGetNode>(scope, arrayExpr, indices));
 }
 
@@ -560,12 +592,27 @@ std::any ASTBuilder::visitExprArray(yux::yuxParser::ExprArrayContext* ctx) {
     DEBUG_LOG_VAL("    Expr: Array", "elements: " << ctx->velues.size());
     auto scope = currentScope();
     vector<p<ExprNode>> elements;
-    
+
     for (auto elemCtx : ctx->velues) {
         elements.push_back(any_cast_p<ExprNode>(visit(elemCtx)));
     }
-    
+
     return p<ExprNode>(create<ExprArrayNode>(scope, elements));
+}
+
+std::any ASTBuilder::visitExprArrayInit(yux::yuxParser::ExprArrayInitContext* ctx) {
+    DEBUG_LOG("    Expr: ArrayInit");
+    auto scope = currentScope();
+
+    auto literalCtx = ctx->literal();
+    auto literal = any_cast_p<LiteralNode>(visit(literalCtx));
+
+    p<TypeNode> explicitType = nullptr;
+    if (ctx->type()) {
+        explicitType = any_cast_p<TypeNode>(visit(ctx->type()));
+    }
+
+    return p<ExprNode>(create<ExprArrayInitNode>(scope, literal, explicitType));
 }
 
 std::any ASTBuilder::visitType(yux::yuxParser::TypeContext* ctx) {

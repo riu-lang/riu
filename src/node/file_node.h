@@ -15,7 +15,6 @@ class FileNode : public ScopeNode {
     vector<p<FnNode>> _functions;
     vector<p<StructDeclNode>> _structDecls;
     vector<p<StructImplNode>> _structImpls;
-    set<string> _innerFnNames;
     string _moduleName;
 
 public:
@@ -31,12 +30,11 @@ public:
     
     StructDeclNode* getStructDecl(const string& name) const;
     
-    bool isInnerFn(const string& name) const { return _innerFnNames.contains(name); }
-    
     void setModuleName(const string& name) { _moduleName = name; }
     const string& moduleName() const { return _moduleName; }
     
     string getMangledName(const string& symbolName) const;
+    string getMangledName(const string& symbolName, const vector<TypeInfo>& paramTypes) const;
 };
 
 #endif //YUX_LANG_FILE_NODE_H

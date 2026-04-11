@@ -9,7 +9,6 @@ endif()
 
 add_compile_options(-Wno-language-extension-token)
 
-add_subdirectory(rt)
 add_subdirectory(tests)
 add_subdirectory(libs)
 

@@ -2,7 +2,6 @@
 /*build*/
 /gen/
 /*.exe
-/*.obj
-/*.lib
-/*.ll
 /third_party/
+.cache/
+/compile_commands.json

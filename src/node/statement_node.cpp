@@ -35,3 +35,15 @@ StatementLoopNode::StatementLoopNode(const p<Node>& parent, p<StatementBlockNode
 const p<StatementBlockNode>& StatementLoopNode::block() const {
     return _block;
 }
+
+const p<ExprNode>& StatementSetNode::arrayExpr() const {
+    return _arrayExpr;
+}
+
+const vector<p<ExprNode>>& StatementSetNode::indices() const {
+    return _indices;
+}
+
+const p<ExprNode>& StatementSetNode::valueExpr() const {
+    return _valueExpr;
+}

@@ -26,6 +26,7 @@
 
 #include "ast_builder.h"
 #include "utf8.h"
+#include "yux.h"
 
 #include "CLI11.hpp"
 
@@ -51,6 +52,13 @@ bool debug = false;
 
 #endif
 
+string getBuildDir() {
+    return "build";
+}
+
+void ensureBuildDir() {
+    std::filesystem::create_directories(getBuildDir());
+}
 
 bool compileIRToObj(llvm::Module* module, const std::string& outputPath) {
     llvm::InitializeAllTargetInfos();
@@ -107,7 +115,6 @@ bool compileIRToObj(llvm::Module* module, const std::string& outputPath) {
 }
 
 std::string wstr2str(const std::wstring& wstr) {
-    // TODO 跨平台
     std::u16string u16((char16_t*)wstr.c_str());
     auto u8 = utf8::utf16tou8(u16);
     return {u8.begin(), u8.end()};
@@ -118,7 +125,7 @@ struct IRResult {
     unique_ptr<llvm::Module> module;
 };
 
-IRResult compileIR(string inputFile) {
+IRResult compileIR(string inputFile, Yux& yux, bool isSdk = false) {
     antlr4::ANTLRFileStream file;
     file.loadFromFile(inputFile);
     yuxLexer lexer(&file);
@@ -141,23 +148,41 @@ IRResult compileIR(string inputFile) {
         }
     }
     
+    if (isSdk) {
+        moduleName = "sdk";
+    }
+    
     std::cout << "Compile IR... (module: " << moduleName << ")" << std::endl;
     auto context = make_unique<llvm::LLVMContext>();
     auto module = make_unique<llvm::Module>(moduleName, *context);
 
     llvm::IRBuilder<> builder(*context);
 
-    ASTBuilder astBuilder(*context, moduleName);
+    ASTBuilder astBuilder(*context, yux, isSdk);
 
     try {
         auto ast = astBuilder.build(program);
-        Compiler compiler(*context, builder, module.get(), ast);
+        Compiler compiler(*context, builder, module.get(), ast, isSdk);
         compiler.compile(ast);
     } catch (runtime_error& e) {
         std::cerr << e.what() << std::endl;
         exit(1);
     }
     return {(std::move(context)), std::move(module)};
+}
+
+string findSdkPath() {
+    if (std::filesystem::exists("sdk/sdk.yux")) {
+        return "sdk/sdk.yux";
+    }
+    char exePath[MAX_PATH];
+    GetModuleFileNameA(nullptr, exePath, MAX_PATH);
+    auto exeDir = llvm::sys::path::parent_path(exePath).str();
+    string sdkPath = exeDir + "/sdk/sdk.yux";
+    if (std::filesystem::exists(sdkPath)) {
+        return sdkPath;
+    }
+    return "";
 }
 
 int wmain(int argc, wchar_t* argv[]) {
@@ -185,53 +210,85 @@ int wmain(int argc, wchar_t* argv[]) {
         return 1;
     }
 
-    std::string baseName = llvm::sys::path::stem(inputFile).str();
-    std::string objName = baseName + ".obj";
+    ensureBuildDir();
+    string buildDir = getBuildDir();
 
-    auto irr = compileIR(inputFile);
+    Yux yux;
+    
+    string sdkPath = findSdkPath();
+    string sdkObjPath;
+    
+    if (!sdkPath.empty()) {
+        std::cout << "Compiling SDK: " << sdkPath << std::endl;
+        auto sdkIrr = compileIR(sdkPath, yux, true);
+        auto sdkModule = sdkIrr.module.get();
+        
+        sdkObjPath = buildDir + "/sdk.obj";
+        
+        if (emitIr) {
+            string sdkIrPath = buildDir + "/sdk.ll";
+            std::error_code ec;
+            llvm::raw_fd_ostream irFile(sdkIrPath, ec);
+            if (!ec) {
+                sdkModule->print(irFile, nullptr);
+                irFile.flush();
+                std::cout << "Write SDK IR: " << sdkIrPath << std::endl;
+            }
+        }
+        
+        if (!compileIRToObj(sdkModule, sdkObjPath)) {
+            std::cerr << "Failed to compile SDK to object file" << std::endl;
+            return 1;
+        }
+        std::cout << "Write SDK obj: " << sdkObjPath << std::endl;
+    }
+
+    std::string baseName = llvm::sys::path::stem(inputFile).str();
+    std::string objPath = buildDir + "/" + baseName + ".obj";
+
+    auto irr = compileIR(inputFile, yux, false);
     auto module = irr.module.get();
 
     if (emitIr) {
-        std::string irName = baseName + ".ll";
+        std::string irPath = buildDir + "/" + baseName + ".ll";
         std::error_code ec;
-        llvm::raw_fd_ostream irFile(irName, ec);
+        llvm::raw_fd_ostream irFile(irPath, ec);
         if (ec) {
             std::cerr << "Error opening IR file: " << ec.message() << std::endl;
         } else {
             module->print(irFile, nullptr);
             irFile.flush();
-            std::cout << "Write IR ok: " << irName << std::endl;
+            std::cout << "Write IR ok: " << irPath << std::endl;
         }
     }
 
-    if (!compileIRToObj(module, objName)) {
+    if (!compileIRToObj(module, objPath)) {
         std::cerr << "Failed to compile IR to object file" << std::endl;
-        delete module;
         return 1;
     }
 
-    std::cout << "Write obj: " << objName << std::endl;
+    std::cout << "Write obj: " << objPath << std::endl;
 
-    char exePath[MAX_PATH];
-    GetModuleFileNameA(nullptr, exePath, MAX_PATH);
-    std::string libExePath = "/LIBPATH:" + llvm::sys::path::parent_path(exePath).str();
-    auto exeOut = "/out:" + baseName + ".exe";
+    std::string exePath = buildDir + "/" + baseName + ".exe";
+    auto exeOut = "/out:" + exePath;
 
-    std::vector args = {
+    std::vector<const char*> args = {
         "lld-link",
-        objName.c_str(),
+        objPath.c_str(),
         exeOut.c_str(),
         "/subsystem:console",
-        "/entry:mainStartup",
-        "/LIBPATH:.",
-        libExePath.c_str(),
-        "yux_rt.lib",
+        "/entry:yux_main",
         "kernel32.lib"
     };
+    
+    if (!sdkObjPath.empty()) {
+        args.insert(args.begin() + 2, sdkObjPath.c_str());
+    }
+
     std::string stdoutStr, stderrStr;
     llvm::raw_string_ostream stdoutOS(stdoutStr), stderrOS(stderrStr);
 
-    std::cout << "Link obj: " << baseName + ".exe" << std::endl;
+    std::cout << "Link obj: " << exePath << std::endl;
     lld::DriverDef driverDef = {lld::WinLink, &lld::coff::link};
     lld::Result result = lldMain(args, stdoutOS, stderrOS, llvm::ArrayRef{driverDef});
 

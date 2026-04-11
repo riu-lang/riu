@@ -1,16 +1,12 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 
-//
-// Created by yjl_1 on 2026/3/29.
-//
-
 #ifndef YUX_LANG_AST_BUILDER_H
 #define YUX_LANG_AST_BUILDER_H
 
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 
-#include "node/file_node.h"
+#include "yux.h"
 #include "node/fn_node.h"
 #include "yux/yuxBaseVisitor.h"
 #include "yux/yuxVisitor.h"
@@ -18,7 +14,8 @@
 class ASTBuilder : public yux::yuxBaseVisitor {
     llvm::LLVMContext& context;
     llvm::IRBuilder<> irBuilder;
-    string _moduleName;
+    Yux& _yux;
+    bool _isSdk = false;
 
     vector<std::any> stack;
     vector<p<Node>> _nodes;
@@ -37,7 +34,7 @@ class ASTBuilder : public yux::yuxBaseVisitor {
     }
 
 public:
-    explicit ASTBuilder(llvm::LLVMContext& ctx, string moduleName = "");
+    explicit ASTBuilder(llvm::LLVMContext& ctx, Yux& yux, bool isSdk = false);
     ~ASTBuilder() override;
 
     p<FileNode> build(yux::yuxParser::ProgramContext* ctx);
@@ -60,6 +57,7 @@ public:
     std::any visitStatementBlock(yux::yuxParser::StatementBlockContext* ctx) override;
     std::any visitStatementLoop(yux::yuxParser::StatementLoopContext* ctx) override;
     std::any visitStatementBreak(yux::yuxParser::StatementBreakContext* ctx) override;
+    std::any visitStatementSet(yux::yuxParser::StatementSetContext* ctx) override;
 
     std::any visitExprParen(yux::yuxParser::ExprParenContext* ctx) override;
     std::any visitExprCall(yux::yuxParser::ExprCallContext* ctx) override;
@@ -73,6 +71,7 @@ public:
     std::any visitExprElse(yux::yuxParser::ExprElseContext* ctx) override;
     std::any visitExprGet(yux::yuxParser::ExprGetContext* ctx) override;
     std::any visitExprArray(yux::yuxParser::ExprArrayContext* ctx) override;
+    std::any visitExprArrayInit(yux::yuxParser::ExprArrayInitContext* ctx) override;
 
     std::any visitType(yux::yuxParser::TypeContext* ctx) override;
     std::any visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) override;

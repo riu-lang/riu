@@ -29,6 +29,7 @@ class Compiler {
     llvm::IRBuilder<>& _builder;
     llvm::Module* _module;
     p<FileNode> _file;
+    bool _isSdk = false;
 
     map<string, llvm::Type*> _typeMap;
     map<string, llvm::StructType*> _structTypes;
@@ -45,15 +46,20 @@ class Compiler {
     llvm::FunctionType* getLLVMFunctionType(p<FnHeaderNode> header);
     llvm::StructType* getOrCreateStructType(p<StructDeclNode> structDecl);
 
+    void emitStdoutWrite();
+    void emitRuntimeHelpers();
+    llvm::Function* getStdoutWriteFn();
+
     llvm::Function* getFunction(p<FnHeaderNode> header);
     llvm::Function* getMethodFunction(const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes);
     llvm::Value* compileExpr(p<ExprNode> node);
+    llvm::Value* compileArrayInitExpr(p<ExprArrayInitNode> node, const TypeInfo& targetType);
     llvm::Value* createCast(llvm::Value* val, const TypeInfo& srcType, const TypeInfo& dstType);
     void compileStatementBlock(p<StatementBlockNode> block);
     llvm::Value* compileStatementBlockWithResult(p<StatementBlockNode> block, llvm::BasicBlock* continueBlock, llvm::PHINode* phi, const TypeInfo& resultType);
 
 public:
-    Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, p<FileNode> file);
+    Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, p<FileNode> file, bool isSdk = false);
 
     void compile(p<FileNode> file);
     void compileStructDecls();
