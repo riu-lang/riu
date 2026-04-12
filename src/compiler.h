@@ -69,6 +69,7 @@ class Compiler {
     llvm::Value* compileLiteralExpr(p<ExprLiteralNode> node);
     llvm::Value* compileAddSubExpr(p<ExprAddSubNode> node);
     llvm::Value* compileMulDivModExpr(p<ExprMulDivModNode> node);
+    llvm::Value* compileBinOpExpr(p<ExprBinOpNode> node);
     llvm::Value* compileParenExpr(p<ExprParenNode> node);
     llvm::Value* compileCallExpr(p<ExprCallNode> node);
     llvm::Value* compileDotExpr(p<ExprDotNode> node);

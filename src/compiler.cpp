@@ -924,6 +924,30 @@ llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
     throw YuxError("Unsupported mul/div/mod operation");
 }
 
+llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
+    auto left = compileExpr(node->left());
+    auto right = compileExpr(node->right());
+    auto type = node->getType();
+
+    string opStr;
+    switch (node->op()) {
+        case ExprBinOpNode::Op::And: opStr = "&"; break;
+        case ExprBinOpNode::Op::Or: opStr = "|"; break;
+        case ExprBinOpNode::Op::Xor: opStr = "^"; break;
+    }
+    DEBUG_LOG_VAL("    Expr: BinOp", opStr << " : " << type.name);
+
+    switch (node->op()) {
+        case ExprBinOpNode::Op::And:
+            return _builder.CreateAnd(left, right);
+        case ExprBinOpNode::Op::Or:
+            return _builder.CreateOr(left, right);
+        case ExprBinOpNode::Op::Xor:
+            return _builder.CreateXor(left, right);
+    }
+    throw YuxError("Unsupported binary operation");
+}
+
 llvm::Value* Compiler::compileParenExpr(p<ExprParenNode> node) {
     DEBUG_LOG("    Expr: Paren");
     return compileExpr(node->expr());
@@ -1547,6 +1571,9 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
     }
     else if (auto mulDivModNode = dynamic_cast<ExprMulDivModNode*>(node)) {
         return compileMulDivModExpr(mulDivModNode);
+    }
+    else if (auto binOpNode = dynamic_cast<ExprBinOpNode*>(node)) {
+        return compileBinOpExpr(binOpNode);
     }
     else if (auto parenNode = dynamic_cast<ExprParenNode*>(node)) {
         return compileParenExpr(parenNode);

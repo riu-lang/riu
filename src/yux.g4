@@ -132,6 +132,8 @@ expr:
           (SymbolComma Space args+=expr)*
         )?
       ParEnd # exprCall
+    // e & e | e ^ e
+    | left=expr Space op=(SymbolAnd|SymbolOr|SymbolXor) Space right=expr # exprBinOp
      // e * e e / e
     | left=expr Space op=(SymbolMul|SymbolDiv|SymbolMod) Space right=expr # exprMulDivMod
     | left=expr Space op=(SymbolAdd|SymbolSub) Space right=expr # exprAddSub
@@ -225,11 +227,14 @@ SymbolMod: '%';
 SymbolMt: '>';
 SymbolMtEq: '>=';
 SymbolMul: '*';
+SymbolOr: '|';
 SymbolQuest: '?';
 SymbolQuote2: '"';
 SymbolQuote: ['];
+SymbolRev: '~';
 SymbolSemicolon: ';';
 SymbolSub: '-';
+SymbolXor: '^';
 
 ParStart: '(';
 ParEnd: ')';

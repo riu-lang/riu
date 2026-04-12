@@ -98,6 +98,28 @@ public:
     [[nodiscard]] TypeInfo getType() const override;
 };
 
+class ExprBinOpNode : public ExprNode {
+public:
+    enum class Op { And, Or, Xor };
+
+protected:
+    Op _op;
+    p<ExprNode> _left;
+    p<ExprNode> _right;
+
+public:
+    ExprBinOpNode(const p<Node>& parent, Op op, p<ExprNode> left, p<ExprNode> right) :
+        ExprNode(parent),
+        _op(op), _left(left),
+        _right(right) {
+    }
+
+    [[nodiscard]] Op op() const;
+    [[nodiscard]] const p<ExprNode>& left() const;
+    [[nodiscard]] const p<ExprNode>& right() const;
+    [[nodiscard]] TypeInfo getType() const override;
+};
+
 class ExprParenNode : public ExprNode {
     p<ExprNode> _inner;
 

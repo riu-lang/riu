@@ -152,12 +152,12 @@
           "match": "[+\\-*/%]"
         },
         {
-          "name": "keyword.operator.assignment.yux",
-          "match": "="
+          "name": "keyword.operator.bitwise.yux",
+          "match": "[&|^]"
         },
         {
-          "name": "keyword.operator.reference.yux",
-          "match": "&"
+          "name": "keyword.operator.assignment.yux",
+          "match": "="
         },
         {
           "name": "keyword.operator.arrow.yux",

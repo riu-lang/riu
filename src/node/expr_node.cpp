@@ -122,6 +122,27 @@ TypeInfo ExprMulDivModNode::getType() const {
     return leftType;
 }
 
+ExprBinOpNode::Op ExprBinOpNode::op() const {
+    return _op;
+}
+
+const p<ExprNode>& ExprBinOpNode::left() const {
+    return _left;
+}
+
+const p<ExprNode>& ExprBinOpNode::right() const {
+    return _right;
+}
+
+TypeInfo ExprBinOpNode::getType() const {
+    auto leftType = _left->getType();
+    auto rightType = _right->getType();
+    if (leftType != rightType) {
+        throw YuxError("Type mismatch in &|^ operation: left is {}, right is {}", leftType.name, rightType.name);
+    }
+    return leftType;
+}
+
 const p<ExprNode>& ExprParenNode::expr() const {
     return _inner;
 }

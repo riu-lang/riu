@@ -466,6 +466,25 @@ std::any ASTBuilder::visitExprMulDivMod(yux::yuxParser::ExprMulDivModContext* ct
     return p<ExprNode>(create<ExprMulDivModNode>(scope, op, left, right));
 }
 
+std::any ASTBuilder::visitExprBinOp(yux::yuxParser::ExprBinOpContext* ctx) {
+    auto scope = currentScope();
+    auto left = any_cast_p<ExprNode>(visit(ctx->left));
+    auto right = any_cast_p<ExprNode>(visit(ctx->right));
+
+    auto opText = ctx->op->getText();
+    ExprBinOpNode::Op op;
+    if (opText == "&") {
+        op = ExprBinOpNode::Op::And;
+    } else if (opText == "|") {
+        op = ExprBinOpNode::Op::Or;
+    } else {
+        op = ExprBinOpNode::Op::Xor;
+    }
+
+    DEBUG_LOG_VAL("    Expr: BinOp", opText);
+    return p<ExprNode>(create<ExprBinOpNode>(scope, op, left, right));
+}
+
 std::any ASTBuilder::visitExprLiteral(yux::yuxParser::ExprLiteralContext* ctx) {
     DEBUG_LOG("    Expr: Literal");
     auto scope = currentScope();
