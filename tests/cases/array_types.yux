@@ -1,0 +1,11 @@
+fn main() {
+  val arr [i32 * 5] = [1, 2, 3, 4, 5]
+  println(arr[0])
+  println(arr[4])
+  val bytes [u8 * 4] = [97u8, 98u8, 99u8, 100u8]
+  println(bytes[0])
+  println(bytes[3])
+  val bools [bool * 3] = [true, false, true]
+  println(bools[0])
+  println(bools[1])
+}

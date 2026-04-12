@@ -323,6 +323,7 @@ void Compiler::compileStructImpls() {
 void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
     _currentFn = func;
     _currentFnNode = node;
+    _currentStructName.clear();
     _localVarPtrs.clear();
 
     DEBUG_LOG_VAL("Compiling function", node->header()->name()->getText());
@@ -367,6 +368,7 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
 void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string& structName) {
     _currentFn = func;
     _currentFnNode = node;
+    _currentStructName = structName;
     _localVarPtrs.clear();
 
     DEBUG_LOG_VAL("Compiling method", structName << "." << node->header()->name()->getText());
@@ -535,6 +537,9 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             }
             
             auto field = structDecl->fields()[fieldIndex];
+            if (field->isPrivate() && _currentStructName != actualType.name) {
+                throw YuxError("Cannot access private field '{}' of struct '{}'", memberName, actualType.name);
+            }
             
             if (i == subs.size() - 1) {
                 auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
@@ -974,6 +979,10 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
     if (methodSymbol) {
         DEBUG_LOG_VAL("    Expr: MethodCall", methodFullName);
 
+        if (methodSymbol->isPrivate && _currentStructName != baseType.name) {
+            throw YuxError("Cannot call private method '{}' of struct '{}'", member, baseType.name);
+        }
+
         auto baseVal = compileExpr(baseExpr);
 
         vector<llvm::Value*> methodArgs;
@@ -1030,6 +1039,9 @@ llvm::Value* Compiler::compileFunctionCall(p<ExprCallNode> callNode, const strin
 
     auto structDecl = _file->getStructDecl(fnName);
     if (structDecl) {
+        if (structDecl->isPrivate()) {
+            throw YuxError("Cannot use private struct '{}' in constructor", fnName);
+        }
         auto result = compileConstructorCall(fnName, args, argTypes);
         if (result) {
             return result;
@@ -1043,6 +1055,9 @@ llvm::Value* Compiler::compileFunctionCall(p<ExprCallNode> callNode, const strin
     }
     
     if (fnSymbol) {
+        if (fnSymbol->isPrivate && !fnSymbol->moduleName.empty() && fnSymbol->moduleName != _file->moduleName()) {
+            throw YuxError("Cannot call private function '{}'", fnName);
+        }
         return compileKnownFunctionCall(callNode, fnName, args, argTypes, fnSymbol);
     }
 
@@ -1219,6 +1234,11 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
         if (fieldIndex >= 0) {
             DEBUG_LOG_VAL("    Expr: StructFieldAccess", actualType.name << "." << member);
 
+            auto field = structDecl->fields()[fieldIndex];
+            if (field->isPrivate() && _currentStructName != actualType.name) {
+                throw YuxError("Cannot access private field '{}' of struct '{}'", member, actualType.name);
+            }
+
             if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
                 if (auto objLiteral = dynamic_cast<LiteralObjNode*>(baseLiteral->literal())) {
                     auto varName = objLiteral->getValue()->getText();
@@ -1239,7 +1259,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
             llvm::Value* indices[] = {zero, idx};
 
             auto fieldPtr = _builder.CreateGEP(structType, structPtr, indices, "struct.field");
-            auto fieldType = structDecl->fields()[fieldIndex]->getType();
+            auto fieldType = field->getType();
 
             return _builder.CreateLoad(getLLVMType(fieldType), fieldPtr, "field.load");
         }
@@ -1501,13 +1521,18 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
             throw YuxError("Struct {} has no field: {}", currentType.name, memberName);
         }
         
+        auto field = structDecl->fields()[fieldIndex];
+        if (field->isPrivate() && _currentStructName != currentType.name) {
+            throw YuxError("Cannot access private field '{}' of struct '{}'", memberName, currentType.name);
+        }
+        
         auto structType = getLLVMType(currentType);
         auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
         auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIndex);
         llvm::Value* indices[] = {zero, idx};
         
         currentPtr = _builder.CreateGEP(structType, currentPtr, indices, "struct.field.ptr");
-        currentType = structDecl->fields()[fieldIndex]->getType();
+        currentType = field->getType();
     }
     
     return currentPtr;

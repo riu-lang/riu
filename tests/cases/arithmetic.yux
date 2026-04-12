@@ -1,0 +1,16 @@
+fn main() {
+  val a = 10 + 5
+  println(a)
+  val b = 10 - 5
+  println(b)
+  val c = 10 * 5
+  println(c)
+  val d = 10 / 5
+  println(d)
+  val e = 10 % 3
+  println(e)
+  val f = 3.14 + 2.86
+  println(f)
+  val g = 10.0 - 0.5
+  println(g)
+}

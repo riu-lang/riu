@@ -1,0 +1,19 @@
+fn nop() {
+}
+
+fn add(a i32, b i32) i32 = a + b
+
+fn sub(a i32, b i32) i32 {
+  ret a - b
+}
+
+fn _pri_fn() {
+  println(999)
+}
+
+fn main() {
+  nop()
+  println(add(1, 2))
+  println(sub(5, 3))
+  _pri_fn()
+}

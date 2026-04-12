@@ -212,5 +212,11 @@ Abc {
     self.a = a
     self.b = b.to_u8()
   }
+
+  / 成员函数
+  fn some() i32 {
+    123
+  }
+
 }
 ```

@@ -1,0 +1,5 @@
+/ 错误：逗号后缺少空格
+fn main() {
+  val arr = [1,2,3]
+  println(arr[0])
+}

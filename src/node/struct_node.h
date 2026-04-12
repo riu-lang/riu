@@ -10,24 +10,29 @@
 class StructFieldNode : public Node {
     Token _name;
     p<TypeNode> _type;
+    bool _isPrivate;
 
 public:
     StructFieldNode(const p<Node>& parent, Token name, p<TypeNode> type) :
         Node(parent), _name(name), _type(type) {
+        _isPrivate = name && !name->getText().empty() && name->getText()[0] == '_';
     }
 
     [[nodiscard]] Token name() const { return _name; }
     [[nodiscard]] p<TypeNode> type() const { return _type; }
     [[nodiscard]] TypeInfo getType() const { return _type->getType(); }
+    [[nodiscard]] bool isPrivate() const { return _isPrivate; }
 };
 
 class StructDeclNode : public ScopeNode, public Named {
     vector<p<StructFieldNode>> _fields;
     map<string, size_t> _fieldIndices;
+    bool _isPrivate;
 
 public:
     StructDeclNode(const p<Node>& parent, Token name) :
         ScopeNode(parent), Named(name) {
+        _isPrivate = name && !name->getText().empty() && name->getText()[0] == '_';
     }
 
     void addField(p<StructFieldNode> field) {
@@ -44,6 +49,7 @@ public:
         int idx = fieldIndex(name);
         return idx >= 0 ? _fields[idx] : nullptr;
     }
+    [[nodiscard]] bool isPrivate() const { return _isPrivate; }
 };
 
 class StructImplNode : public ScopeNode, public Named {

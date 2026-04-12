@@ -1,0 +1,14 @@
+fn main() {
+  var a i32 = 10
+  println(a)
+  a = 20
+  println(a)
+  val b i64 = 100
+  println(b)
+  val c = 123
+  println(c)
+  val d = 3.14
+  println(d)
+  val e = true
+  println(e)
+}

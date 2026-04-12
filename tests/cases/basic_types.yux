@@ -1,0 +1,4 @@
+fn main() {
+  val b bool = true
+  println(b)
+}

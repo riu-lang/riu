@@ -1,0 +1,22 @@
+fn main() {
+  val a = 42
+  println(a)
+  val e = 42i8
+  println(e)
+  val f = 100u64
+  println(f)
+  val g = -123i32
+  println(g)
+  val h = 3.14
+  println(h)
+  val i = 2.5f32
+  println(i)
+  val j = 1.0f64
+  println(j)
+  val k = -0.5
+  println(k)
+  val l = true
+  println(l)
+  val m = false
+  println(m)
+}

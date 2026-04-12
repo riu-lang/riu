@@ -1,0 +1,9 @@
+fn main() {
+  var arr = [10, 20, 30]
+  val first = arr[0]
+  println(first)
+  arr[1] = 25
+  println(arr[1])
+  arr[2] = arr[0] + arr[1]
+  println(arr[2])
+}

@@ -132,11 +132,11 @@ expr:
           (SymbolComma Space args+=expr)*
         )?
       ParEnd # exprCall
-    // 判断
-    | left=expr Space op=(SymbolEqEq|SymbolMt|SymbolMtEq|SymbolLt|SymbolLtEq) Space right=expr # exprCompare
      // e * e e / e
     | left=expr Space op=(SymbolMul|SymbolDiv|SymbolMod) Space right=expr # exprMulDivMod
     | left=expr Space op=(SymbolAdd|SymbolSub) Space right=expr # exprAddSub
+    // 判断
+    | left=expr Space op=(SymbolEqEq|SymbolExclEq|SymbolMt|SymbolMtEq|SymbolLt|SymbolLtEq) Space right=expr # exprCompare
     | literal # exprLiteral;
 
 // elif {

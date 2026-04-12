@@ -1,0 +1,11 @@
+fn main() {
+  var buf [u8 * 5] = [0u8 ...]
+  println(buf[0])
+  println(buf[4])
+  var arr [i32 * 3] = [0 ... i32]
+  println(arr[0])
+  println(arr[2])
+  var flags [bool * 3] = [true ...]
+  println(flags[0])
+  println(flags[2])
+}

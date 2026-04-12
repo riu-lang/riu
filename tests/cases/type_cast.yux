@@ -1,0 +1,16 @@
+fn main() {
+  val a i32 = 10
+  val b f64 = a.to_f64()
+  println(b)
+  val c i64 = a.to_i64()
+  println(c)
+  val d u8 = 100u8
+  val e i32 = d.to_i32()
+  println(e)
+  val f f64 = 3.7
+  val g i32 = f.to_i32()
+  println(g)
+  val h i64 = -123i64
+  val i i32 = h.to_i32()
+  println(i)
+}

@@ -109,6 +109,11 @@ fn print(n f64) {
   }
 }
 
+/ 打印函数 - f32
+fn print(n f32) {
+  print(n.to_f64())
+}
+
 / 打印函数 - 布尔值
 fn print(b bool) {
   if b {
@@ -160,6 +165,11 @@ fn println(n u64) {
 }
 
 fn println(n f64) {
+  print(n)
+  _stdout_write([10u8], 0i64, 1i64)
+}
+
+fn println(n f32) {
   print(n)
   _stdout_write([10u8], 0i64, 1i64)
 }

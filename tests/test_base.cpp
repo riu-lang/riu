@@ -54,6 +54,7 @@ struct TestCase {
     fs::path yuxFile;
     fs::path expectedFile;
     std::string name;
+    bool expectError;
 };
 
 class YuxCompilerTest : public ::testing::TestWithParam<TestCase> {};
@@ -71,11 +72,11 @@ TEST_P(YuxCompilerTest, CompileAndCompareOutput) {
     std::string stem = yuxFile.stem().string();
     
 #ifdef _WIN32
-    fs::path exeFile = workDir / (stem + ".exe");
-    fs::path objFile = workDir / (stem + ".obj");
+    fs::path exeFile = workDir / "build" / (stem + ".exe");
+    fs::path objFile = workDir / "build" / (stem + ".obj");
 #else
-    fs::path exeFile = workDir / stem;
-    fs::path objFile = workDir / (stem + ".o");
+    fs::path exeFile = workDir / "build" / stem;
+    fs::path objFile = workDir / "build" / (stem + ".o");
 #endif
     
     if (fs::exists(exeFile)) fs::remove(exeFile);
@@ -88,6 +89,11 @@ TEST_P(YuxCompilerTest, CompileAndCompareOutput) {
     int compileResult = std::system(compileCmd.c_str());
     
     fs::current_path(originalDir);
+    
+    if (tc.expectError) {
+        EXPECT_NE(compileResult, 0) << "Expected compilation to fail for: " << yuxFile;
+        return;
+    }
     
     ASSERT_EQ(compileResult, 0) << "Compilation failed for: " << yuxFile;
     
@@ -125,8 +131,29 @@ std::vector<TestCase> discoverTestCases() {
                 cases.push_back({
                     yuxFile,
                     expectedFile,
-                    yuxFile.stem().string()
+                    yuxFile.stem().string(),
+                    false
                 });
+            }
+        }
+    }
+    
+    fs::path errorDir = casesDir / "error";
+    if (fs::exists(errorDir)) {
+        for (const auto& entry : fs::directory_iterator(errorDir)) {
+            if (entry.path().extension() == ".yux") {
+                fs::path yuxFile = entry.path();
+                fs::path expectedFile = yuxFile;
+                expectedFile.replace_extension(".expected");
+                
+                if (fs::exists(expectedFile)) {
+                    cases.push_back({
+                        yuxFile,
+                        expectedFile,
+                        yuxFile.stem().string(),
+                        true
+                    });
+                }
             }
         }
     }

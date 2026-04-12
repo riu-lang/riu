@@ -39,6 +39,7 @@ class Compiler {
 
     llvm::Function* _currentFn = nullptr;
     p<FnNode> _currentFnNode;
+    string _currentStructName;
 
     vector<llvm::BasicBlock*> _loopExitBlocks;
 

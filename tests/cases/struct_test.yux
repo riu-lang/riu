@@ -1,0 +1,17 @@
+struct Point {
+  x f64
+  y f64
+}
+
+Point {
+  fn Point(x f64, y f64) {
+    self.x = x
+    self.y = y
+  }
+}
+
+fn main() {
+  val p = Point(1.0, 2.0)
+  println(p.x)
+  println(p.y)
+}

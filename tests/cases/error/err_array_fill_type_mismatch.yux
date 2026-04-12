@@ -1,0 +1,5 @@
+/ 错误：数组填充类型不匹配
+fn main() {
+  val arr [i32 * 5] = [0u8 ...]
+  println(arr[0])
+}
