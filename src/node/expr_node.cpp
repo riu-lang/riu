@@ -194,6 +194,13 @@ TypeInfo ExprDotNode::getType() const {
                     return field->getType();
                 }
             }
+            
+            string methodFullName = actualType.name + "." + member;
+            auto methodSym = file->lookupFnSymbol(methodFullName);
+            if (methodSym) {
+                DEBUG_LOG_VAL("ExprDotNode::getType - found method, returning fn()", methodSym->retType.name);
+                return TypeInfo("fn() " + methodSym->retType.name);
+            }
         }
     }
 

@@ -122,7 +122,7 @@ llvm::Function* Compiler::getFunction(p<FnHeaderNode> header) {
     return func;
 }
 
-llvm::Function* Compiler::getMethodFunction(const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes) {
+llvm::Function* Compiler::getMethodFunction(const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes, const TypeInfo& retType) {
     string mangledStructName = _file->getMangledName(structName);
     string mangledName = mangledStructName + "_" + methodName;
     
@@ -138,7 +138,8 @@ llvm::Function* Compiler::getMethodFunction(const string& structName, const stri
         llvmParamTypes.push_back(getLLVMType(paramType));
     }
     
-    auto fnType = llvm::FunctionType::get(_builder.getVoidTy(), llvmParamTypes, false);
+    auto llvmRetType = retType.empty() ? _builder.getVoidTy() : getLLVMType(retType);
+    auto fnType = llvm::FunctionType::get(llvmRetType, llvmParamTypes, false);
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
 }
 
@@ -367,7 +368,11 @@ void Compiler::compileStructImpls() {
                     paramTypes.push_back(param->type()->getType());
                 }
             }
-            auto func = getMethodFunction(structName, method->header()->name()->getText(), paramTypes);
+            TypeInfo retType;
+            if (method->header()->retType()) {
+                retType = method->header()->retType()->getType();
+            }
+            auto func = getMethodFunction(structName, method->header()->name()->getText(), paramTypes, retType);
             compileMethod(method, func, structName);
         }
     }
@@ -1057,10 +1062,27 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
             throw YuxError("Cannot call private method '{}' of struct '{}'", member, baseType.name);
         }
 
-        auto baseVal = compileExpr(baseExpr);
+        llvm::Value* basePtr = nullptr;
+        if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
+            if (auto objLiteral = dynamic_cast<LiteralObjNode*>(baseLiteral->literal())) {
+                auto varName = objLiteral->getValue()->getText();
+                auto it = _localVarPtrs.find(varName);
+                if (it != _localVarPtrs.end()) {
+                    basePtr = it->second;
+                }
+            }
+        }
+        
+        if (!basePtr) {
+            auto baseVal = compileExpr(baseExpr);
+            auto structType = getLLVMType(baseType);
+            auto alloca = _builder.CreateAlloca(structType, nullptr, "method_tmp");
+            _builder.CreateStore(baseVal, alloca);
+            basePtr = alloca;
+        }
 
         vector<llvm::Value*> methodArgs;
-        methodArgs.push_back(baseVal);
+        methodArgs.push_back(basePtr);
         for (auto& arg : args) {
             methodArgs.push_back(arg);
         }
@@ -1070,7 +1092,7 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
         auto fn = _module->getFunction(mangledName);
         if (!fn) {
             vector<llvm::Type*> paramTypes;
-            paramTypes.push_back(getLLVMType(baseType));
+            paramTypes.push_back(llvm::PointerType::get(getLLVMType(baseType), 0));
             for (auto& t : argTypes) {
                 paramTypes.push_back(getLLVMType(t));
             }

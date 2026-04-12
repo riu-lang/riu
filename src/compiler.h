@@ -53,7 +53,7 @@ class Compiler {
     llvm::Function* getStdoutWriteFn();
 
     llvm::Function* getFunction(p<FnHeaderNode> header);
-    llvm::Function* getMethodFunction(const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes);
+    llvm::Function* getMethodFunction(const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes, const TypeInfo& retType);
     llvm::Value* compileExpr(p<ExprNode> node);
     llvm::Value* compileArrayInitExpr(p<ExprArrayInitNode> node, const TypeInfo& targetType);
     llvm::Value* createCast(llvm::Value* val, const TypeInfo& srcType, const TypeInfo& dstType);
