@@ -50,6 +50,15 @@ StructDeclNode* FileNode::getStructDecl(const string& name) const {
     return nullptr;
 }
 
+StructImplNode* FileNode::getStructImpl(const string& name) const {
+    for (auto& impl : _structImpls) {
+        if (impl->structName() == name) {
+            return impl;
+        }
+    }
+    return nullptr;
+}
+
 string FileNode::getMangledName(const string& symbolName) const {
     if (_moduleName == "sdk") {
         return symbolName;

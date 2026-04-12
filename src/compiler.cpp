@@ -143,6 +143,22 @@ llvm::Function* Compiler::getMethodFunction(const string& structName, const stri
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
 }
 
+llvm::Function* Compiler::getDestructorFunction(const string& structName) {
+    string mangledStructName = _file->getMangledName(structName);
+    string mangledName = mangledStructName + "__destructor";
+    
+    auto func = _module->getFunction(mangledName);
+    if (func) {
+        return func;
+    }
+    
+    vector<llvm::Type*> llvmParamTypes;
+    llvmParamTypes.push_back(llvm::PointerType::get(getLLVMType(TypeInfo(structName)), 0));
+    
+    auto fnType = llvm::FunctionType::get(_builder.getVoidTy(), llvmParamTypes, false);
+    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
+}
+
 llvm::Function* Compiler::getStdoutWriteFn() {
     string fnName = "_stdout_write";
     auto func = _module->getFunction(fnName);
@@ -361,6 +377,16 @@ void Compiler::compileStructDecls() {
 void Compiler::compileStructImpls() {
     for (auto structImpl : _file->getStructImpls()) {
         string structName = structImpl->structName();
+        
+        if (structImpl->hasDestructor()) {
+            auto destructor = structImpl->destructor();
+            vector<TypeInfo> paramTypes;
+            paramTypes.push_back(TypeInfo(structName));
+            
+            auto func = getDestructorFunction(structName);
+            compileMethod(destructor, func, structName);
+        }
+        
         for (auto method : structImpl->methods()) {
             vector<TypeInfo> paramTypes;
             for (auto param : method->header()->params()) {
@@ -383,6 +409,7 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
     _currentFnNode = node;
     _currentStructName.clear();
     _localVarPtrs.clear();
+    _scopeVars.clear();
 
     DEBUG_LOG_VAL("Compiling function", node->header()->name()->getText());
 
@@ -413,9 +440,12 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
     }
 
     auto fnName = node->header()->name()->getText();
-    if (func->getReturnType()->isVoidTy()) {
-        _builder.CreateRetVoid();
-        DEBUG_LOG("  Added implicit void return");
+    if (!_builder.GetInsertBlock()->getTerminator()) {
+        if (func->getReturnType()->isVoidTy()) {
+            callDestructorsForScope();
+            _builder.CreateRetVoid();
+            DEBUG_LOG("  Added implicit void return");
+        }
     }
     DEBUG_LOG_VAL("Finished compiling function", node->header()->name()->getText());
 }
@@ -425,6 +455,7 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
     _currentFnNode = node;
     _currentStructName = structName;
     _localVarPtrs.clear();
+    _scopeVars.clear();
 
     DEBUG_LOG_VAL("Compiling method", structName << "." << node->header()->name()->getText());
 
@@ -460,9 +491,12 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
         compileStatement(s);
     }
 
-    if (func->getReturnType()->isVoidTy()) {
-        _builder.CreateRetVoid();
-        DEBUG_LOG("  Added implicit void return");
+    if (!_builder.GetInsertBlock()->getTerminator()) {
+        if (func->getReturnType()->isVoidTy()) {
+            callDestructorsForScope();
+            _builder.CreateRetVoid();
+            DEBUG_LOG("  Added implicit void return");
+        }
     }
     DEBUG_LOG_VAL("Finished compiling method", structName << "." << node->header()->name()->getText());
 }
@@ -470,13 +504,21 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
 void Compiler::compileRetStatement(p<StatementRetNode> node) {
     DEBUG_LOG("  Statement: Return");
     auto retType = node->expr()->getType();
+    llvm::Value* retVal = nullptr;
     if (retType.empty()) {
         compileExpr(node->expr());
         DEBUG_LOG("    Expression compiled as void return");
     } else {
-        auto retVal = compileExpr(node->expr());
+        retVal = compileExpr(node->expr());
+        DEBUG_LOG("    Created return value");
+    }
+    callDestructorsForScope();
+    if (retVal) {
         _builder.CreateRet(retVal);
         DEBUG_LOG("    Created return instruction");
+    } else {
+        _builder.CreateRetVoid();
+        DEBUG_LOG("    Created void return instruction");
     }
 }
 
@@ -531,6 +573,11 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         }
         
         _builder.CreateStore(exprVal, alloca);
+        
+        auto structDecl = _file->getStructDecl(varType.name);
+        if (structDecl) {
+            _scopeVars.push_back(varName);
+        }
     }
 }
 
@@ -1739,4 +1786,43 @@ llvm::Value* Compiler::compileStatementBlockWithResult(p<StatementBlockNode> blo
     
     _builder.CreateBr(continueBlock);
     return nullptr;
+}
+
+void Compiler::callDestructor(const string& varName, const TypeInfo& varType) {
+    if (varType.isArray() || varType.isRef()) {
+        return;
+    }
+    
+    auto structDecl = _file->getStructDecl(varType.name);
+    if (!structDecl) {
+        return;
+    }
+    
+    auto structImpl = _file->getStructImpl(varType.name);
+    if (!structImpl || !structImpl->hasDestructor()) {
+        return;
+    }
+    
+    auto it = _localVarPtrs.find(varName);
+    if (it == _localVarPtrs.end()) {
+        return;
+    }
+    
+    DEBUG_LOG_VAL("  Calling destructor for", varName << " : " << varType.name);
+    
+    llvm::Value* selfPtr = it->second;
+    
+    auto destructorFn = getDestructorFunction(varType.name);
+    
+    _builder.CreateCall(destructorFn, {selfPtr});
+}
+
+void Compiler::callDestructorsForScope() {
+    for (auto it = _scopeVars.rbegin(); it != _scopeVars.rend(); ++it) {
+        const string& varName = *it;
+        auto sym = _currentFnNode->lookupSymbol(varName);
+        if (sym) {
+            callDestructor(varName, sym->type);
+        }
+    }
 }

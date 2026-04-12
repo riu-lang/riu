@@ -29,6 +29,7 @@ public:
     const vector<p<StructImplNode>>& getStructImpls() const { return _structImpls; }
     
     StructDeclNode* getStructDecl(const string& name) const;
+    StructImplNode* getStructImpl(const string& name) const;
     
     void setModuleName(const string& name) { _moduleName = name; }
     const string& moduleName() const { return _moduleName; }

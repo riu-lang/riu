@@ -36,6 +36,8 @@ class Compiler {
     map<string, llvm::Value*> _localVarPtrs;
     map<string, CastInfo> _castFunctions;
     int _castCounter = 0;
+    
+    vector<string> _scopeVars;
 
     llvm::Function* _currentFn = nullptr;
     p<FnNode> _currentFnNode;
@@ -54,11 +56,15 @@ class Compiler {
 
     llvm::Function* getFunction(p<FnHeaderNode> header);
     llvm::Function* getMethodFunction(const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes, const TypeInfo& retType);
+    llvm::Function* getDestructorFunction(const string& structName);
     llvm::Value* compileExpr(p<ExprNode> node);
     llvm::Value* compileArrayInitExpr(p<ExprArrayInitNode> node, const TypeInfo& targetType);
     llvm::Value* createCast(llvm::Value* val, const TypeInfo& srcType, const TypeInfo& dstType);
     void compileStatementBlock(p<StatementBlockNode> block);
     llvm::Value* compileStatementBlockWithResult(p<StatementBlockNode> block, llvm::BasicBlock* continueBlock, llvm::PHINode* phi, const TypeInfo& resultType);
+    
+    void callDestructor(const string& varName, const TypeInfo& varType);
+    void callDestructorsForScope();
 
     void compileRetStatement(p<StatementRetNode> node);
     void compileDeclareAssignStatement(p<StatementDeclareAssignNode> node);

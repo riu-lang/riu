@@ -48,6 +48,11 @@ type:
 // 函数
 ///////////
 
+// fn ~()
+fnClean: Fn Space SymbolRev ParStart ParEnd Space
+      fnBody
+      ;
+
 // fn name() {}
 fn: fnHeader Space fnBody;
 
@@ -84,6 +89,8 @@ structDecl: Struct Space name=ID (SymbolLt types+=type (SymbolComma Space types+
    ;
 
 structImpl: name=ID (SymbolLt types+=type (SymbolComma Space types+=type)* SymbolMt)? Space BlockStart
+     codeLineEnd
+    (Space* fnClean)?
     (
       ( Space* fn)
      | comment

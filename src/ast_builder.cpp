@@ -239,6 +239,25 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
 
     string structName = ctx->name->getText();
 
+    if (ctx->fnClean()) {
+        auto destructor = any_cast_p<FnNode>(visitFnClean(ctx->fnClean()));
+        destructor->setParentScope(file);
+        structImpl->setDestructor(destructor);
+        
+        string destructorName = structName + ".~" + structName;
+        DEBUG_LOG_VAL("  Register destructor", destructorName);
+        
+        vector<TypeInfo> paramTypes;
+        paramTypes.push_back(TypeInfo(structName));
+        
+        SymbolInfo destructorSym(SymbolKind::Function, "~" + structName, TypeInfo());
+        destructorSym.moduleName = file->moduleName();
+        file->registerSymbol(destructorName, destructorSym);
+        
+        FnSymbolInfo destructorFnSym{destructorName, file->moduleName(), paramTypes, TypeInfo()};
+        file->registerFnSymbol(destructorName, destructorFnSym);
+    }
+
     for (auto fnCtx : ctx->fn()) {
         auto header = any_cast_p<FnHeaderNode>(visitFnHeader(fnCtx->fnHeader()));
         auto fn = create<FnNode>(structImpl, header);
@@ -283,6 +302,57 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
     stack.pop_back();
 
     return p<StructImplNode>(structImpl);
+}
+
+std::any ASTBuilder::visitFnClean(yux::yuxParser::FnCleanContext* ctx) {
+    auto parent = currentScope();
+    DEBUG_LOG("  Visit: FnClean (destructor)");
+    
+    auto file = _scopeStack.empty() ? nullptr : dynamic_cast<FileNode*>(_scopeStack[0]);
+    if (!file) {
+        file = any_cast_p<FileNode>(stack.back());
+    }
+    
+    auto header = create<FnHeaderNode>(file, nullptr, nullptr);
+    
+    auto fn = create<FnNode>(parent, header);
+    
+    stack.emplace_back(fn);
+    _scopeStack.push_back(fn);
+    
+    string structName;
+    if (auto structImpl = dynamic_cast<StructImplNode*>(parent)) {
+        structName = structImpl->structName();
+    }
+    
+    if (!structName.empty()) {
+        fn->registerSymbol("self", {SymbolKind::Variable, "self", TypeInfo(structName)});
+    }
+    
+    if (ctx->fnBody()->fnExprkBody()) {
+        auto exprBody = ctx->fnBody()->fnExprkBody();
+        auto expr = any_cast_p<ExprNode>(visit(exprBody->expr()));
+        auto retStmt = create<StatementRetNode>(fn, expr);
+        fn->addStatement(retStmt);
+    } else if (ctx->fnBody()->fnBlockBody()) {
+        auto blockBody = ctx->fnBody()->fnBlockBody();
+        auto stmtBlockNode = any_cast_p<StatementBlockNode>(visit(blockBody->statementBlock()));
+        
+        for (auto stmt : stmtBlockNode->statements()) {
+            fn->addStatement(stmt);
+        }
+        
+        if (stmtBlockNode->hasResult()) {
+            auto retStmt = create<StatementRetNode>(fn, stmtBlockNode->resultExpr());
+            fn->addStatement(retStmt);
+        }
+    }
+    
+    _scopeStack.pop_back();
+    stack.pop_back();
+    
+    DEBUG_LOG_VAL("  Finished: FnClean (destructor)", structName);
+    return fn;
 }
 
 std::any ASTBuilder::visitFiledDecl(yux::yuxParser::FiledDeclContext* ctx) {

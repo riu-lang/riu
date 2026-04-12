@@ -54,18 +54,25 @@ public:
 
 class StructImplNode : public ScopeNode, public Named {
     vector<p<FnNode>> _methods;
+    p<FnNode> _destructor;
     string _structName;
 
 public:
     StructImplNode(const p<Node>& parent, Token structName) :
-        ScopeNode(parent), Named(structName), _structName(structName->getText()) {
+        ScopeNode(parent), Named(structName), _destructor(nullptr), _structName(structName->getText()) {
     }
 
     void addMethod(p<FnNode> method) {
         _methods.push_back(method);
     }
 
+    void setDestructor(p<FnNode> destructor) {
+        _destructor = destructor;
+    }
+
     [[nodiscard]] const vector<p<FnNode>>& methods() const { return _methods; }
+    [[nodiscard]] const p<FnNode>& destructor() const { return _destructor; }
+    [[nodiscard]] bool hasDestructor() const { return _destructor != nullptr; }
     [[nodiscard]] const string& structName() const { return _structName; }
 };
 
