@@ -29,6 +29,17 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& type) {
         return llvm::PointerType::get(_builder.getInt8Ty(), 0);
     }
     
+    if (type.isBox()) {
+        auto elemType = type.boxElementType();
+        if (elemType) {
+            vector<llvm::Type*> boxFields;
+            boxFields.push_back(llvm::PointerType::get(getLLVMType(*elemType), 0));
+            boxFields.push_back(llvm::PointerType::get(_builder.getInt64Ty(), 0));
+            return llvm::StructType::get(_context, boxFields);
+        }
+        return llvm::PointerType::get(_builder.getInt8Ty(), 0);
+    }
+    
     if (type.isGeneric()) {
         string mangledName = _file->getMangledName(type.getFullName());
         auto it = _structTypes.find(type.getFullName());
@@ -295,6 +306,179 @@ void Compiler::emitRuntimeHelpers() {
     }
 }
 
+llvm::Function* Compiler::getBoxAllocFn() {
+    string fnName = "_box_alloc";
+    auto func = _module->getFunction(fnName);
+    if (func) {
+        return func;
+    }
+    
+    vector<llvm::Type*> paramTypes;
+    paramTypes.push_back(_builder.getInt64Ty());
+    
+    auto fnType = llvm::FunctionType::get(
+        llvm::PointerType::get(_builder.getInt8Ty(), 0),
+        paramTypes,
+        false
+    );
+    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, _module);
+}
+
+llvm::Function* Compiler::getBoxRetainFn() {
+    string fnName = "_box_retain";
+    auto func = _module->getFunction(fnName);
+    if (func) {
+        return func;
+    }
+    
+    vector<llvm::Type*> paramTypes;
+    paramTypes.push_back(llvm::PointerType::get(_builder.getInt64Ty(), 0));
+    
+    auto fnType = llvm::FunctionType::get(_builder.getVoidTy(), paramTypes, false);
+    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, _module);
+}
+
+llvm::Function* Compiler::getBoxReleaseFn() {
+    string fnName = "_box_release";
+    auto func = _module->getFunction(fnName);
+    if (func) {
+        return func;
+    }
+    
+    vector<llvm::Type*> paramTypes;
+    paramTypes.push_back(llvm::PointerType::get(_builder.getInt64Ty(), 0));
+    paramTypes.push_back(llvm::PointerType::get(_builder.getInt8Ty(), 0));
+    
+    auto fnType = llvm::FunctionType::get(_builder.getVoidTy(), paramTypes, false);
+    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, _module);
+}
+
+void Compiler::emitBoxHelpers() {
+    auto getProcessHeapFn = _module->getFunction("GetProcessHeap");
+    if (!getProcessHeapFn) {
+        auto fnType = llvm::FunctionType::get(
+            llvm::PointerType::get(_builder.getInt8Ty(), 0),
+            {},
+            false
+        );
+        getProcessHeapFn = llvm::Function::Create(
+            fnType,
+            llvm::Function::ExternalLinkage,
+            "GetProcessHeap",
+            _module
+        );
+    }
+    
+    auto heapAllocFn = _module->getFunction("HeapAlloc");
+    if (!heapAllocFn) {
+        auto fnType = llvm::FunctionType::get(
+            llvm::PointerType::get(_builder.getInt8Ty(), 0),
+            {llvm::PointerType::get(_builder.getInt8Ty(), 0), _builder.getInt64Ty(), _builder.getInt64Ty()},
+            false
+        );
+        heapAllocFn = llvm::Function::Create(
+            fnType,
+            llvm::Function::ExternalLinkage,
+            "HeapAlloc",
+            _module
+        );
+    }
+    
+    auto heapFreeFn = _module->getFunction("HeapFree");
+    if (!heapFreeFn) {
+        auto fnType = llvm::FunctionType::get(
+            _builder.getInt32Ty(),
+            {llvm::PointerType::get(_builder.getInt8Ty(), 0), _builder.getInt64Ty(), llvm::PointerType::get(_builder.getInt8Ty(), 0)},
+            false
+        );
+        heapFreeFn = llvm::Function::Create(
+            fnType,
+            llvm::Function::ExternalLinkage,
+            "HeapFree",
+            _module
+        );
+    }
+
+    {
+        auto allocFn = getBoxAllocFn();
+        if (allocFn->empty()) {
+            auto entry = llvm::BasicBlock::Create(_context, "entry", allocFn);
+            _builder.SetInsertPoint(entry);
+            
+            auto args = allocFn->args();
+            auto argIt = args.begin();
+            llvm::Value* sizeVal = &(*argIt);
+            
+            auto heap = _builder.CreateCall(getProcessHeapFn, {}, "heap");
+            
+            auto refCountSize = _builder.getInt64(8);
+            auto totalSize = _builder.CreateAdd(sizeVal, refCountSize, "total_size");
+            
+            auto mem = _builder.CreateCall(heapAllocFn, {heap, _builder.getInt64(0), totalSize}, "mem");
+            
+            auto refCountPtr = _builder.CreateBitCast(mem, llvm::PointerType::get(_builder.getInt64Ty(), 0), "ref_count_ptr");
+            _builder.CreateStore(_builder.getInt64(1), refCountPtr);
+            
+            auto dataPtr = _builder.CreateGEP(_builder.getInt8Ty(), mem, {refCountSize}, "data_ptr");
+            
+            _builder.CreateRet(dataPtr);
+        }
+    }
+    
+    {
+        auto retainFn = getBoxRetainFn();
+        if (retainFn->empty()) {
+            auto entry = llvm::BasicBlock::Create(_context, "entry", retainFn);
+            _builder.SetInsertPoint(entry);
+            
+            auto args = retainFn->args();
+            auto argIt = args.begin();
+            llvm::Value* refCountPtr = &(*argIt);
+            
+            auto currentCount = _builder.CreateLoad(_builder.getInt64Ty(), refCountPtr, "current_count");
+            auto newCount = _builder.CreateAdd(currentCount, _builder.getInt64(1), "new_count");
+            _builder.CreateStore(newCount, refCountPtr);
+            
+            _builder.CreateRetVoid();
+        }
+    }
+    
+    {
+        auto releaseFn = getBoxReleaseFn();
+        if (releaseFn->empty()) {
+            auto entry = llvm::BasicBlock::Create(_context, "entry", releaseFn);
+            _builder.SetInsertPoint(entry);
+            
+            auto args = releaseFn->args();
+            auto argIt = args.begin();
+            llvm::Value* refCountPtr = &(*argIt);
+            ++argIt;
+            llvm::Value* dataPtr = &(*argIt);
+            
+            auto currentCount = _builder.CreateLoad(_builder.getInt64Ty(), refCountPtr, "current_count");
+            auto newCount = _builder.CreateSub(currentCount, _builder.getInt64(1), "new_count");
+            _builder.CreateStore(newCount, refCountPtr);
+            
+            auto isZero = _builder.CreateICmpEQ(newCount, _builder.getInt64(0), "is_zero");
+            
+            auto freeBB = llvm::BasicBlock::Create(_context, "free", releaseFn);
+            auto doneBB = llvm::BasicBlock::Create(_context, "done", releaseFn);
+            
+            _builder.CreateCondBr(isZero, freeBB, doneBB);
+            
+            _builder.SetInsertPoint(freeBB);
+            auto heap = _builder.CreateCall(getProcessHeapFn, {}, "heap");
+            auto refCountSize = _builder.getInt64(8);
+            auto memPtr = _builder.CreateGEP(_builder.getInt8Ty(), dataPtr, {_builder.CreateNeg(refCountSize)}, "mem_ptr");
+            _builder.CreateCall(heapFreeFn, {heap, _builder.getInt64(0), memPtr});
+            _builder.CreateBr(doneBB);
+            
+            _builder.SetInsertPoint(doneBB);
+            _builder.CreateRetVoid();
+        }
+    }
+}
+
 void Compiler::emitMainStartup() {
     auto setConsoleOutputCP = _module->getFunction("SetConsoleOutputCP");
     if (!setConsoleOutputCP) {
@@ -355,6 +539,8 @@ void Compiler::compile(p<FileNode> file) {
     if (_isSdk) {
         emitStdoutWrite();
         emitRuntimeHelpers();
+    } else {
+        emitBoxHelpers();
     }
     
     auto functions = file->getFunctions();
@@ -565,25 +751,86 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         auto alloca = _builder.CreateAlloca(llvmType, nullptr, varName);
         _localVarPtrs[varName] = alloca;
         
-        auto exprVal = compileExpr(expr);
-        auto exprType = expr->getType();
-        
-        if (varType.isArray() && exprType.isArray()) {
-            if (varType.arraySize != exprType.arraySize) {
-                throw YuxError("Array size mismatch: expected {}, got {}", varType.arraySize, exprType.arraySize);
+        if (varType.isBox()) {
+            auto elemType = varType.boxElementType();
+            if (!elemType) {
+                throw YuxError("Box type requires element type");
             }
-            if (varType.elementType && exprType.elementType) {
-                if (*varType.elementType != *exprType.elementType) {
-                    throw YuxError("Array element type mismatch: expected {}, got {}", varType.elementType->name, exprType.elementType->name);
+            
+            auto exprVal = compileExpr(expr);
+            auto exprType = expr->getType();
+            
+            auto boxStructType = getLLVMType(varType);
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+            
+            auto elemLLVMType = getLLVMType(*elemType);
+            auto sizeVal = _builder.CreateIntCast(
+                _builder.getInt64(elemLLVMType->getPrimitiveSizeInBits() / 8),
+                _builder.getInt64Ty(),
+                false
+            );
+            
+            auto allocFn = getBoxAllocFn();
+            auto dataPtr = _builder.CreateCall(allocFn, {sizeVal}, "box_data_ptr");
+            
+            auto dataPtrTyped = _builder.CreateBitCast(dataPtr, llvm::PointerType::get(elemLLVMType, 0), "box_data_typed");
+            
+            if (exprType == *elemType) {
+                _builder.CreateStore(exprVal, dataPtrTyped);
+            } else if (exprType.isBox() && exprType.boxElementType() && *exprType.boxElementType() == *elemType) {
+                auto srcBoxPtr = _localVarPtrs.find(varName);
+                if (srcBoxPtr != _localVarPtrs.end()) {
+                    auto srcDataPtrPtr = _builder.CreateGEP(boxStructType, exprVal, {zero, zero}, "src_data_ptr_ptr");
+                    auto srcDataPtr = _builder.CreateLoad(llvm::PointerType::get(elemLLVMType, 0), srcDataPtrPtr, "src_data_ptr");
+                    _builder.CreateStore(srcDataPtr, dataPtrTyped);
+                }
+            } else {
+                throw YuxError("Box type mismatch: expected Box<{}>, got {}", elemType->name, exprType.name);
+            }
+            
+            auto refCountPtr = _builder.CreateGEP(
+                _builder.getInt8Ty(),
+                dataPtr,
+                {_builder.getInt64(-8)},
+                "ref_count_ptr_raw"
+            );
+            auto refCountPtrTyped = _builder.CreateBitCast(
+                refCountPtr,
+                llvm::PointerType::get(_builder.getInt64Ty(), 0),
+                "ref_count_ptr"
+            );
+            
+            llvm::Value* indices[] = {zero, zero};
+            auto dataPtrField = _builder.CreateGEP(boxStructType, alloca, indices, "data_ptr_field");
+            _builder.CreateStore(dataPtrTyped, dataPtrField);
+            
+            llvm::Value* indices2[] = {zero, one};
+            auto refCountField = _builder.CreateGEP(boxStructType, alloca, indices2, "ref_count_field");
+            _builder.CreateStore(refCountPtrTyped, refCountField);
+            
+            _scopeVars.push_back(varName);
+        } else {
+            auto exprVal = compileExpr(expr);
+            auto exprType = expr->getType();
+            
+            if (varType.isArray() && exprType.isArray()) {
+                if (varType.arraySize != exprType.arraySize) {
+                    throw YuxError("Array size mismatch: expected {}, got {}", varType.arraySize, exprType.arraySize);
+                }
+                if (varType.elementType && exprType.elementType) {
+                    if (*varType.elementType != *exprType.elementType) {
+                        throw YuxError("Array element type mismatch: expected {}, got {}", varType.elementType->name, exprType.elementType->name);
+                    }
                 }
             }
-        }
-        
-        _builder.CreateStore(exprVal, alloca);
-        
-        auto structDecl = _file->getStructDecl(varType.name);
-        if (structDecl) {
-            _scopeVars.push_back(varName);
+            
+            _builder.CreateStore(exprVal, alloca);
+            
+            auto structDecl = _file->getStructDecl(varType.name);
+            if (structDecl) {
+                _scopeVars.push_back(varName);
+            }
         }
     }
 }
@@ -1103,10 +1350,19 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
     }
 
     auto baseType = baseExpr->getType();
-    string methodFullName = baseType.name + "." + member;
+    TypeInfo actualType = baseType;
+    
+    if (baseType.isBox()) {
+        auto boxElemType = baseType.boxElementType();
+        if (boxElemType) {
+            actualType = *boxElemType;
+        }
+    }
+    
+    string methodFullName = actualType.name + "." + member;
     
     vector<TypeInfo> methodParamTypes;
-    methodParamTypes.push_back(baseType);
+    methodParamTypes.push_back(actualType);
     for (auto& t : argTypes) {
         methodParamTypes.push_back(t);
     }
@@ -1115,8 +1371,8 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
     if (methodSymbol) {
         DEBUG_LOG_VAL("    Expr: MethodCall", methodFullName);
 
-        if (methodSymbol->isPrivate && _currentStructName != baseType.name) {
-            throw YuxError("Cannot call private method '{}' of struct '{}'", member, baseType.name);
+        if (methodSymbol->isPrivate && _currentStructName != actualType.name) {
+            throw YuxError("Cannot call private method '{}' of struct '{}'", member, actualType.name);
         }
 
         llvm::Value* basePtr = nullptr;
@@ -1132,24 +1388,34 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
         
         if (!basePtr) {
             auto baseVal = compileExpr(baseExpr);
-            auto structType = getLLVMType(baseType);
+            auto structType = getLLVMType(actualType);
             auto alloca = _builder.CreateAlloca(structType, nullptr, "method_tmp");
             _builder.CreateStore(baseVal, alloca);
             basePtr = alloca;
         }
+        
+        llvm::Value* dataPtr = basePtr;
+        
+        if (baseType.isBox()) {
+            auto boxStructType = getLLVMType(baseType);
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            llvm::Value* indices[] = {zero, zero};
+            auto dataPtrField = _builder.CreateGEP(boxStructType, basePtr, indices, "box.data_ptr_field");
+            dataPtr = _builder.CreateLoad(llvm::PointerType::get(getLLVMType(actualType), 0), dataPtrField, "box.data_ptr");
+        }
 
         vector<llvm::Value*> methodArgs;
-        methodArgs.push_back(basePtr);
+        methodArgs.push_back(dataPtr);
         for (auto& arg : args) {
             methodArgs.push_back(arg);
         }
 
-        string mangledStructName = _file->getMangledName(baseType.name);
+        string mangledStructName = _file->getMangledName(actualType.name);
         string mangledName = mangledStructName + "_" + member;
         auto fn = _module->getFunction(mangledName);
         if (!fn) {
             vector<llvm::Type*> paramTypes;
-            paramTypes.push_back(llvm::PointerType::get(getLLVMType(baseType), 0));
+            paramTypes.push_back(llvm::PointerType::get(getLLVMType(actualType), 0));
             for (auto& t : argTypes) {
                 paramTypes.push_back(getLLVMType(t));
             }
@@ -1315,6 +1581,26 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
                 }
             }
         }
+        
+        if (argTypes[i].isBox()) {
+            auto boxStructType = getLLVMType(argTypes[i]);
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+            
+            auto boxAlloca = _builder.CreateAlloca(boxStructType, nullptr, "box_arg_tmp");
+            _builder.CreateStore(args[i], boxAlloca);
+            
+            llvm::Value* indices1[] = {zero, one};
+            auto refCountFieldPtr = _builder.CreateGEP(boxStructType, boxAlloca, indices1, "ref_count_field_ptr");
+            auto refCountPtr = _builder.CreateLoad(llvm::PointerType::get(_builder.getInt64Ty(), 0), refCountFieldPtr, "ref_count_ptr");
+            
+            auto retainFn = getBoxRetainFn();
+            _builder.CreateCall(retainFn, {refCountPtr});
+            
+            callArgs.push_back(args[i]);
+            continue;
+        }
+        
         callArgs.push_back(args[i]);
     }
     
@@ -1380,6 +1666,13 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
         }
     }
     
+    if (baseType.isBox()) {
+        auto boxElemType = baseType.boxElementType();
+        if (boxElemType) {
+            actualType = *boxElemType;
+        }
+    }
+    
     auto structDecl = _file->getStructDecl(actualType.name);
 
     if (structDecl) {
@@ -1405,13 +1698,23 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
             if (!structPtr) {
                 throw YuxError("Cannot access field on non-variable struct");
             }
+            
+            llvm::Value* dataPtr = structPtr;
+            
+            if (baseType.isBox()) {
+                auto boxStructType = getLLVMType(baseType);
+                auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+                llvm::Value* indices[] = {zero, zero};
+                auto dataPtrField = _builder.CreateGEP(boxStructType, structPtr, indices, "box.data_ptr_field");
+                dataPtr = _builder.CreateLoad(llvm::PointerType::get(getLLVMType(actualType), 0), dataPtrField, "box.data_ptr");
+            }
 
             auto structType = getLLVMType(actualType);
             auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
             auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIndex);
             llvm::Value* indices[] = {zero, idx};
 
-            auto fieldPtr = _builder.CreateGEP(structType, structPtr, indices, "struct.field");
+            auto fieldPtr = _builder.CreateGEP(structType, dataPtr, indices, "struct.field");
             auto fieldType = field->getType();
 
             return _builder.CreateLoad(getLLVMType(fieldType), fieldPtr, "field.load");
@@ -1800,6 +2103,32 @@ llvm::Value* Compiler::compileStatementBlockWithResult(p<StatementBlockNode> blo
 
 void Compiler::callDestructor(const string& varName, const TypeInfo& varType) {
     if (varType.isArray() || varType.isRef()) {
+        return;
+    }
+    
+    if (varType.isBox()) {
+        auto it = _localVarPtrs.find(varName);
+        if (it == _localVarPtrs.end()) {
+            return;
+        }
+        
+        DEBUG_LOG_VAL("  Calling Box destructor for", varName << " : " << varType.getFullName());
+        
+        auto boxStructType = getLLVMType(varType);
+        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+        
+        llvm::Value* indices1[] = {zero, one};
+        auto refCountFieldPtr = _builder.CreateGEP(boxStructType, it->second, indices1, "ref_count_field_ptr");
+        auto refCountPtr = _builder.CreateLoad(llvm::PointerType::get(_builder.getInt64Ty(), 0), refCountFieldPtr, "ref_count_ptr");
+        
+        llvm::Value* indices2[] = {zero, zero};
+        auto dataFieldPtr = _builder.CreateGEP(boxStructType, it->second, indices2, "data_field_ptr");
+        auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_builder.getInt8Ty(), 0), dataFieldPtr, "data_ptr");
+        
+        auto releaseFn = getBoxReleaseFn();
+        _builder.CreateCall(releaseFn, {refCountPtr, dataPtr});
+        
         return;
     }
     

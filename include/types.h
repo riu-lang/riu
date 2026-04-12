@@ -120,6 +120,17 @@ struct TypeInfo {
         return nullptr;
     }
     
+    [[nodiscard]] bool isBox() const {
+        return kind == TypeKind::Generic && name == "Box" && genericArgs.size() == 1;
+    }
+    
+    [[nodiscard]] sp<TypeInfo> boxElementType() const {
+        if (isBox() && genericArgs.size() == 1) {
+            return genericArgs[0];
+        }
+        return nullptr;
+    }
+    
     string getFullName() const {
         if (kind == TypeKind::Generic && !genericArgs.empty()) {
             string result = name;

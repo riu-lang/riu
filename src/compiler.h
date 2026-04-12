@@ -51,8 +51,12 @@ class Compiler {
 
     void emitStdoutWrite();
     void emitRuntimeHelpers();
+    void emitBoxHelpers();
     void emitMainStartup();
     llvm::Function* getStdoutWriteFn();
+    llvm::Function* getBoxAllocFn();
+    llvm::Function* getBoxRetainFn();
+    llvm::Function* getBoxReleaseFn();
 
     llvm::Function* getFunction(p<FnHeaderNode> header);
     llvm::Function* getMethodFunction(const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes, const TypeInfo& retType);

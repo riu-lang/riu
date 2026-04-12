@@ -179,6 +179,13 @@ TypeInfo ExprDotNode::getType() const {
         }
     }
     
+    if (baseType.isBox()) {
+        auto boxElemType = baseType.boxElementType();
+        if (boxElemType) {
+            actualType = *boxElemType;
+        }
+    }
+    
     auto scope = findNearestScope();
     if (scope) {
         auto file = dynamic_cast<FileNode*>(scope);
