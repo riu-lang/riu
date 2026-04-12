@@ -395,3 +395,15 @@ TypeInfo ExprGetRefNode::getType() const {
     genericArgs.push_back(make_shared<TypeInfo>(baseType));
     return TypeInfo("Ref", genericArgs);
 }
+
+ExprUnaryNode::Op ExprUnaryNode::op() const {
+    return _op;
+}
+
+const p<ExprNode>& ExprUnaryNode::right() const {
+    return _right;
+}
+
+TypeInfo ExprUnaryNode::getType() const {
+    return _right->getType();
+}

@@ -74,6 +74,7 @@ public:
     std::any visitExprGetRef(yux::yuxParser::ExprGetRefContext* ctx) override;
     std::any visitExprArray(yux::yuxParser::ExprArrayContext* ctx) override;
     std::any visitExprArrayInit(yux::yuxParser::ExprArrayInitContext* ctx) override;
+    std::any visitExprUnary(yux::yuxParser::ExprUnaryContext* ctx) override;
 
     std::any visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) override;
     std::any visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) override;

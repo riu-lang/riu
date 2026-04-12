@@ -132,6 +132,8 @@ expr:
           (SymbolComma Space args+=expr)*
         )?
       ParEnd # exprCall
+    // !e ~e -e 没有空格，低于成员访问优先级
+    | op=(SymbolSub|SymbolRev|SymbolExcl) right=expr # exprUnary
     // e & e | e ^ e
     | left=expr Space op=(SymbolAnd|SymbolOr|SymbolXor) Space right=expr # exprBinOp
      // e * e e / e

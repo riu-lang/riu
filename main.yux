@@ -15,7 +15,7 @@ fn aa() {
 fn main() {
   / 打印
   val n N = N(1.5)
-  val a = n.n + 2.to_f64()
+  val a = n.n - -2.to_f64()
   println(a)
   aa()
   p(123)

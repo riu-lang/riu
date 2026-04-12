@@ -283,4 +283,24 @@ public:
     [[nodiscard]] TypeInfo getType() const override;
 };
 
+class ExprUnaryNode : public ExprNode {
+public:
+    enum class Op { Neg, Rev, Not };
+
+protected:
+    Op _op;
+    p<ExprNode> _right;
+
+public:
+    ExprUnaryNode(const p<Node>& parent, Op op, p<ExprNode> right) :
+        ExprNode(parent),
+        _op(op),
+        _right(right) {
+    }
+
+    [[nodiscard]] Op op() const;
+    [[nodiscard]] const p<ExprNode>& right() const;
+    [[nodiscard]] TypeInfo getType() const override;
+};
+
 #endif //YUX_LANG_EXPR_NODE_H

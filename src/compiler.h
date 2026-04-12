@@ -78,6 +78,7 @@ class Compiler {
     llvm::Value* compileArrayGetExpr(p<ExprGetNode> node);
     llvm::Value* compileArrayLiteralExpr(p<ExprArrayNode> node);
     llvm::Value* compileGetRefExpr(p<ExprGetRefNode> node);
+    llvm::Value* compileUnaryExpr(p<ExprUnaryNode> node);
 
     llvm::Value* compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode> dotNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
     llvm::Value* compileFunctionCall(p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);

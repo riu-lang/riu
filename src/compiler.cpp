@@ -1562,6 +1562,40 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
     return currentPtr;
 }
 
+llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
+    auto right = compileExpr(node->right());
+    auto type = node->getType();
+    bool isFloat = type.startsWith('f');
+    bool isBool = type.name == "bool";
+
+    string opStr;
+    switch (node->op()) {
+        case ExprUnaryNode::Op::Neg:
+            opStr = "-";
+            DEBUG_LOG_VAL("    Expr: Unary", opStr << " : " << type.name);
+            if (isFloat) {
+                return _builder.CreateFNeg(right, "neg");
+            }
+            return _builder.CreateNeg(right, "neg");
+        case ExprUnaryNode::Op::Rev:
+            opStr = "~";
+            DEBUG_LOG_VAL("    Expr: Unary", opStr << " : " << type.name);
+            if (isFloat) {
+                throw YuxError("Cannot apply bitwise NOT to float type: {}", type.name);
+            }
+            return _builder.CreateNot(right, "not");
+        case ExprUnaryNode::Op::Not:
+            opStr = "!";
+            DEBUG_LOG_VAL("    Expr: Unary", opStr << " : " << type.name);
+            if (!isBool) {
+                throw YuxError("Cannot apply logical NOT to non-bool type: {}", type.name);
+            }
+            return _builder.CreateNot(right, "lnot");
+    }
+    
+    throw YuxError("Unknown unary operator");
+}
+
 llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
     if (auto literalNode = dynamic_cast<ExprLiteralNode*>(node)) {
         return compileLiteralExpr(literalNode);
@@ -1598,6 +1632,9 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
     }
     else if (auto getRefNode = dynamic_cast<ExprGetRefNode*>(node)) {
         return compileGetRefExpr(getRefNode);
+    }
+    else if (auto unaryNode = dynamic_cast<ExprUnaryNode*>(node)) {
+        return compileUnaryExpr(unaryNode);
     }
 
     throw YuxError("Unsupported expression type");

@@ -647,6 +647,24 @@ std::any ASTBuilder::visitExprArrayInit(yux::yuxParser::ExprArrayInitContext* ct
     return p<ExprNode>(create<ExprArrayInitNode>(scope, literal, explicitType));
 }
 
+std::any ASTBuilder::visitExprUnary(yux::yuxParser::ExprUnaryContext* ctx) {
+    auto scope = currentScope();
+    auto right = any_cast_p<ExprNode>(visit(ctx->right));
+
+    auto opText = ctx->op->getText();
+    ExprUnaryNode::Op op;
+    if (opText == "-") {
+        op = ExprUnaryNode::Op::Neg;
+    } else if (opText == "~") {
+        op = ExprUnaryNode::Op::Rev;
+    } else {
+        op = ExprUnaryNode::Op::Not;
+    }
+
+    DEBUG_LOG_VAL("    Expr: Unary", opText);
+    return p<ExprNode>(create<ExprUnaryNode>(scope, op, right));
+}
+
 std::any ASTBuilder::visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) {
     p<Node> parent = currentScope();
     DEBUG_LOG_VAL("    Type: Normal", ctx->ID()->getSymbol()->getText());
