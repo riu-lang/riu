@@ -425,6 +425,12 @@ std::any ASTBuilder::visitStatementRet(yux::yuxParser::StatementRetContext* ctx)
     return p<StatementNode>(create<StatementRetNode>(scope, expr));
 }
 
+std::any ASTBuilder::visitStatementRetVoid(yux::yuxParser::StatementRetVoidContext* ctx) {
+    auto scope = currentScope();
+    DEBUG_LOG("  Statement: Return Void");
+    return p<StatementNode>(create<StatementRetVoidNode>(scope));
+}
+
 std::any ASTBuilder::visitStatementLoop(yux::yuxParser::StatementLoopContext* ctx) {
     auto scope = currentScope();
     auto block = any_cast_p<StatementBlockNode>(visit(ctx->statementBlock()));

@@ -42,6 +42,11 @@ public:
     }
 };
 
+class StatementRetVoidNode : public StatementNode {
+public:
+    explicit StatementRetVoidNode(const p<Node>& parent) : StatementNode(parent) {}
+};
+
 enum class DeclareType {
     Var,
     Val,

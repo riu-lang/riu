@@ -522,6 +522,13 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
     }
 }
 
+void Compiler::compileRetVoidStatement(p<StatementRetVoidNode> node) {
+    DEBUG_LOG("  Statement: Return Void");
+    callDestructorsForScope();
+    _builder.CreateRetVoid();
+    DEBUG_LOG("    Created void return instruction");
+}
+
 void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node) {
     auto expr = node->expr();
     auto varName = node->name()->getText();
@@ -765,6 +772,9 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
 void Compiler::compileStatement(p<StatementNode> node) {
     if (auto retNode = dynamic_cast<StatementRetNode*>(node)) {
         compileRetStatement(retNode);
+    }
+    else if (auto retVoidNode = dynamic_cast<StatementRetVoidNode*>(node)) {
+        compileRetVoidStatement(retVoidNode);
     }
     else if (auto declareNode = dynamic_cast<StatementDeclareAssignNode*>(node)) {
         compileDeclareAssignStatement(declareNode);

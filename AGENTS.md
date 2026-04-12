@@ -159,6 +159,22 @@ OPTIONS:
 
 **不存在隐式转换，所有类型必须显式转换。**
 
+关键字，不能做标识符：
+- fn
+- var
+- val
+- cval
+- if
+- elif
+- else
+- ret
+- break
+- null
+- true
+- false
+- loop
+- struct
+
 详情见[语法](语法.md)
 
 ```yux

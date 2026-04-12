@@ -67,6 +67,7 @@ class Compiler {
     void callDestructorsForScope();
 
     void compileRetStatement(p<StatementRetNode> node);
+    void compileRetVoidStatement(p<StatementRetVoidNode> node);
     void compileDeclareAssignStatement(p<StatementDeclareAssignNode> node);
     void compileAssignStatement(p<StatementAssignNode> node);
     void compileLoopStatement(p<StatementLoopNode> node);

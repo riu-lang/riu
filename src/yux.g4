@@ -181,7 +181,9 @@ statement:
     | expr SymbolSemicolon? codeLineEnd # statementExpr
     // ret value
     | Ret Space expr codeLineEnd # statementRet
-    // break; 不返回任何值
+    // ret; 返回空，强制尾随;表示空返回
+    | Ret SymbolSemicolon# statementRetVoid
+    // break; 强制尾随;不返回任何值
     | Break SymbolSemicolon # statementBreak
     ;
 
