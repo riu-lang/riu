@@ -2,7 +2,7 @@
 
 #include "yux.h"
 
-Yux::Yux() = default;
+Yux::Yux() : _sdkFile(nullptr) {}
 
 Yux::~Yux() {
     for (auto file : _files) {

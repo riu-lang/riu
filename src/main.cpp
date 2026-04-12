@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <regex>
+#include <csignal>
 
 #include <lld/Common/Driver.h>
 #include <llvm/CodeGen/CommandFlags.h>
@@ -27,6 +28,7 @@
 #include "ast_builder.h"
 #include "utf8.h"
 #include "yux.h"
+#include "build_cache.h"
 
 #include "CLI11.hpp"
 
@@ -125,6 +127,31 @@ struct IRResult {
     unique_ptr<llvm::Module> module;
 };
 
+void parseAST(string inputFile, Yux& yux, bool isSdk = false) {
+    antlr4::ANTLRFileStream file;
+    file.loadFromFile(inputFile);
+    yuxLexer lexer(&file);
+
+    antlr4::CommonTokenStream tokenStream(&lexer);
+
+    yuxParser parser(&tokenStream);
+
+    auto program = parser.program();
+    if (parser.getNumberOfSyntaxErrors()) {
+        exit(1);
+    }
+
+    llvm::LLVMContext context;
+    ASTBuilder astBuilder(context, yux, isSdk);
+
+    try {
+        astBuilder.build(program);
+    } catch (runtime_error& e) {
+        std::cerr << e.what() << std::endl;
+        exit(1);
+    }
+}
+
 IRResult compileIR(string inputFile, Yux& yux, bool isSdk = false) {
     antlr4::ANTLRFileStream file;
     file.loadFromFile(inputFile);
@@ -185,9 +212,18 @@ string findSdkPath() {
     return "";
 }
 
+void handleCrash(int signal) {
+    std::cerr << "\nProgram crashed! Signal: " << signal << std::endl;
+    _exit(1);
+}
+
 int wmain(int argc, wchar_t* argv[]) {
     SetConsoleCP(CP_UTF8);
     SetConsoleOutputCP(CP_UTF8);
+    
+    signal(SIGSEGV, handleCrash);
+    signal(SIGABRT, handleCrash);
+    signal(SIGFPE, handleCrash);
 
     CLI::App app{"yux compiler"};
 
@@ -210,92 +246,138 @@ int wmain(int argc, wchar_t* argv[]) {
         return 1;
     }
 
+    inputFile = std::filesystem::absolute(inputFile).string();
+
     ensureBuildDir();
     string buildDir = getBuildDir();
+
+    BuildCache cache(buildDir);
+    cache.load();
 
     Yux yux;
     
     string sdkPath = findSdkPath();
     string sdkObjPath;
+    bool compiled = false;
     
     if (!sdkPath.empty()) {
-        std::cout << "Compiling SDK: " << sdkPath << std::endl;
-        auto sdkIrr = compileIR(sdkPath, yux, true);
-        auto sdkModule = sdkIrr.module.get();
-        
+        sdkPath = std::filesystem::absolute(sdkPath).string();
         sdkObjPath = buildDir + "/sdk.obj";
         
-        if (emitIr) {
-            string sdkIrPath = buildDir + "/sdk.ll";
-            std::error_code ec;
-            llvm::raw_fd_ostream irFile(sdkIrPath, ec);
-            if (!ec) {
-                sdkModule->print(irFile, nullptr);
-                irFile.flush();
-                std::cout << "Write SDK IR: " << sdkIrPath << std::endl;
+        bool needCompile = !std::filesystem::exists(sdkObjPath) || cache.needRecompile(sdkPath);
+        if (needCompile) {
+            std::cout << "Compiling SDK: " << sdkPath << std::endl;
+            auto sdkIrr = compileIR(sdkPath, yux, true);
+            auto sdkModule = sdkIrr.module.get();
+            
+            if (emitIr) {
+                string sdkIrPath = buildDir + "/sdk.ll";
+                std::error_code ec;
+                llvm::raw_fd_ostream irFile(sdkIrPath, ec);
+                if (!ec) {
+                    sdkModule->print(irFile, nullptr);
+                    irFile.flush();
+                    std::cout << "Write SDK IR: " << sdkIrPath << std::endl;
+                }
             }
+            
+            if (!compileIRToObj(sdkModule, sdkObjPath)) {
+                std::cerr << "Failed to compile SDK to object file" << std::endl;
+                return 1;
+            }
+            std::cout << "Write SDK obj: " << sdkObjPath << std::endl;
+            cache.updateCache(sdkPath);
+            compiled = true;
+        } else {
+            parseAST(sdkPath, yux, true);
         }
-        
-        if (!compileIRToObj(sdkModule, sdkObjPath)) {
-            std::cerr << "Failed to compile SDK to object file" << std::endl;
-            return 1;
-        }
-        std::cout << "Write SDK obj: " << sdkObjPath << std::endl;
     }
 
     std::string baseName = llvm::sys::path::stem(inputFile).str();
     std::string objPath = buildDir + "/" + baseName + ".obj";
 
-    auto irr = compileIR(inputFile, yux, false);
-    auto module = irr.module.get();
+    bool needCompile = !std::filesystem::exists(objPath) || cache.needRecompile(inputFile);
+    if (needCompile) {
+        auto irr = compileIR(inputFile, yux, false);
+        auto module = irr.module.get();
 
-    if (emitIr) {
-        std::string irPath = buildDir + "/" + baseName + ".ll";
-        std::error_code ec;
-        llvm::raw_fd_ostream irFile(irPath, ec);
-        if (ec) {
-            std::cerr << "Error opening IR file: " << ec.message() << std::endl;
-        } else {
-            module->print(irFile, nullptr);
-            irFile.flush();
-            std::cout << "Write IR ok: " << irPath << std::endl;
+        if (emitIr) {
+            std::string irPath = buildDir + "/" + baseName + ".ll";
+            std::error_code ec;
+            llvm::raw_fd_ostream irFile(irPath, ec);
+            if (ec) {
+                std::cerr << "Error opening IR file: " << ec.message() << std::endl;
+            } else {
+                module->print(irFile, nullptr);
+                irFile.flush();
+                std::cout << "Write IR ok: " << irPath << std::endl;
+            }
         }
-    }
 
-    if (!compileIRToObj(module, objPath)) {
-        std::cerr << "Failed to compile IR to object file" << std::endl;
-        return 1;
-    }
+        if (!compileIRToObj(module, objPath)) {
+            std::cerr << "Failed to compile IR to object file" << std::endl;
+            return 1;
+        }
 
-    std::cout << "Write obj: " << objPath << std::endl;
+        std::cout << "Write obj: " << objPath << std::endl;
+        cache.updateCache(inputFile);
+        compiled = true;
+    }
 
     std::string exePath = buildDir + "/" + baseName + ".exe";
-    auto exeOut = "/out:" + exePath;
-
-    std::vector<const char*> args = {
-        "lld-link",
-        objPath.c_str(),
-        exeOut.c_str(),
-        "/subsystem:console",
-        "/entry:yux_main",
-        "kernel32.lib"
-    };
     
-    if (!sdkObjPath.empty()) {
-        args.insert(args.begin() + 2, sdkObjPath.c_str());
+    bool needLink = !std::filesystem::exists(exePath);
+    if (!needLink) {
+        try {
+            auto exeTime = std::filesystem::last_write_time(exePath);
+            auto objTime = std::filesystem::last_write_time(objPath);
+            if (!sdkObjPath.empty()) {
+                auto sdkTime = std::filesystem::last_write_time(sdkObjPath);
+                needLink = (objTime > exeTime) || (sdkTime > exeTime);
+            } else {
+                needLink = objTime > exeTime;
+            }
+        } catch (const std::exception& e) {
+            needLink = true;
+        }
+    }
+    
+    if (needLink) {
+        auto exeOut = "/out:" + exePath;
+
+        std::vector<const char*> args = {
+            "lld-link",
+            objPath.c_str(),
+            exeOut.c_str(),
+            "/subsystem:console",
+            "/entry:yux_main",
+            "kernel32.lib"
+        };
+        
+        if (!sdkObjPath.empty()) {
+            args.insert(args.begin() + 2, sdkObjPath.c_str());
+        }
+
+        std::string stdoutStr, stderrStr;
+        llvm::raw_string_ostream stdoutOS(stdoutStr), stderrOS(stderrStr);
+
+        std::cout << "Link obj: " << exePath << std::endl;
+        lld::DriverDef driverDef = {lld::WinLink, &lld::coff::link};
+        lld::Result result = lldMain(args, stdoutOS, stderrOS, llvm::ArrayRef{driverDef});
+
+        if (result.retCode) {
+            llvm::errs() << stderrStr;
+            return 1;
+        }
+        compiled = true;
+    }
+    
+    if (!compiled) {
+        std::cout << "no work to do." << std::endl;
     }
 
-    std::string stdoutStr, stderrStr;
-    llvm::raw_string_ostream stdoutOS(stdoutStr), stderrOS(stderrStr);
-
-    std::cout << "Link obj: " << exePath << std::endl;
-    lld::DriverDef driverDef = {lld::WinLink, &lld::coff::link};
-    lld::Result result = lldMain(args, stdoutOS, stderrOS, llvm::ArrayRef{driverDef});
-
-    if (result.retCode) {
-        llvm::errs() << stderrStr;
-        return 1;
-    }
-
-    return 0;
+    cache.save();
+    std::cout.flush();
+    std::cerr.flush();
+    _exit(0);
 }
