@@ -1,0 +1,32 @@
+CompileFlags:
+  CompilationDatabase: cmake-build-debug
+  Add:
+    - "-Wno-language-extension-token"
+    - "-std=c++23"
+  Remove:
+    - "-Wno-language-extension-token"
+
+Diagnostics:
+  ClangTidy:
+    Add:
+      - modernize*
+      - bugprone*
+      - performance*
+    Remove:
+      - modernize-use-trailing-return-type
+  UnusedIncludes: Strict
+  MissingIncludes: Strict
+
+InlayHints:
+  Enabled: Yes
+  Designators: Yes
+  ParameterNames: Yes
+  DeducedTypes: Yes
+  BlockEnd: Yes
+
+Hover:
+  ShowAKA: Yes
+
+Index:
+  Background: Build
+  StandardLibrary: Yes

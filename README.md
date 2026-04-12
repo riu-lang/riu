@@ -37,6 +37,8 @@ fn main() {
 - **构建工具**: CMake + Ninja
 - **系统**: Windows
 
+[clangd-mcp](https://github.com/felipeerias/clangd-mcp-server.git)，配置项目路径到环境变量，见[mcp.json](.trae/mcp.json)。
+
 ### 依赖
 
 项目依赖以下库（位于 `third_party/` 目录）：
@@ -60,7 +62,6 @@ yux-lang/
 │   ├── ast_builder.*   # AST 构建器
 │   └── node/           # AST 节点定义
 ├── gen/                # ANTLR4 生成的代码
-├── rt/                 # 运行时静态库
 ├── include/            # 公共头文件
 ├── libs/               # 依赖库 CMake 配置
 ├── tests/              # 测试用例

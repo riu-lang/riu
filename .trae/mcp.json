@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+   "clangd": {
+      "command": "clangd-mcp-server",
+      "env": {
+        "PROJECT_ROOT": "/path/to/yux-lang"
+      },
+      "alwaysAllow": [
+        "*"
+      ]
+    }
+  }
+}
