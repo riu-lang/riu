@@ -9,11 +9,36 @@
     { "include": "#numbers" },
     { "include": "#operators" },
     { "include": "#punctuation" },
+    { "include": "#generics" },
     { "include": "#types" },
     { "include": "#functions" },
     { "include": "#identifiers" }
   ],
   "repository": {
+    "generics": {
+      "patterns": [
+        {
+          "name": "meta.generic.yux",
+          "begin": "\\b([A-Z][a-zA-Z0-9_]*)\\s*(<)",
+          "beginCaptures": {
+            "1": { "name": "support.type.user-defined.yux" },
+            "2": { "name": "punctuation.definition.generic.begin.yux" }
+          },
+          "end": ">",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.generic.end.yux" }
+          },
+          "patterns": [
+            { "include": "#types" },
+            { "include": "#generics" },
+            {
+              "name": "punctuation.separator.comma.yux",
+              "match": ","
+            }
+          ]
+        }
+      ]
+    },
     "comments": {
       "patterns": [
         {
@@ -131,6 +156,10 @@
           "match": "="
         },
         {
+          "name": "keyword.operator.reference.yux",
+          "match": "&"
+        },
+        {
           "name": "keyword.operator.arrow.yux",
           "match": "->"
         },
@@ -177,6 +206,10 @@
         {
           "name": "support.type.primitive.yux",
           "match": "\\b(bool|i8|i16|i32|i64|u8|u16|u32|u64|f32|f64)\\b"
+        },
+        {
+          "name": "support.type.generic.yux",
+          "match": "\\b(Ref)\\b"
         },
         {
           "name": "support.type.user-defined.yux",

@@ -59,4 +59,30 @@ public:
     }
 };
 
+class TypeGenericNode : public TypeNode {
+    Token _baseName;
+    vector<p<TypeNode>> _typeArgs;
+
+public:
+    TypeGenericNode(const p<Node>& parent, Token baseName, vector<p<TypeNode>> typeArgs) :
+        TypeNode(parent), _baseName(baseName), _typeArgs(std::move(typeArgs)) {
+    }
+
+    [[nodiscard]] TypeInfo getType() const override {
+        vector<sp<TypeInfo>> args;
+        for (auto& typeArg : _typeArgs) {
+            args.push_back(make_shared<TypeInfo>(typeArg->getType()));
+        }
+        return TypeInfo(_baseName->getText(), args);
+    }
+
+    [[nodiscard]] Token baseName() const {
+        return _baseName;
+    }
+
+    [[nodiscard]] const vector<p<TypeNode>>& typeArgs() const {
+        return _typeArgs;
+    }
+};
+
 #endif //YUX_LANG_TYPE_NODE_H

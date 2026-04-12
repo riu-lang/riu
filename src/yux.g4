@@ -36,14 +36,13 @@ numInt: INT;
 // 浮点数
 numFloat: FLOAT;
 
-type: typeNormal | typeArray;
+type:
+    ID # typeNormal
+   // | type SymbolQuest # typeNullable
+   | ID SymbolLt types+=type (SymbolComma Space types+=type)* SymbolMt # typeGeneric
+    // [ type * count ]
+   | GetStart type Space SymbolMul Space INT GetEnd # typeArray;
 
-typeNormal: ID;
-
-//typeNullbale: type SymbolQuest;
-
-// [ type * count ]
-typeArray: GetStart type Space SymbolMul Space INT GetEnd;
 
 ///////////
 // 函数
@@ -73,7 +72,9 @@ fnBlockBody: statementBlock;
 // 结构体
 ///////////
 
-structDecl: Struct Space name=ID Space BlockStart
+// struct A
+// struct A<T1, T2>
+structDecl: Struct Space name=ID (SymbolLt types+=type (SymbolComma Space types+=type)* SymbolMt)? Space BlockStart
    (
       (Space* filedDecl codeLineEnd?)
      | comment
@@ -82,7 +83,7 @@ structDecl: Struct Space name=ID Space BlockStart
    BlockEnd
    ;
 
-structImpl: name=ID Space BlockStart
+structImpl: name=ID (SymbolLt types+=type (SymbolComma Space types+=type)* SymbolMt)? Space BlockStart
     (
       ( Space* fn)
      | comment
@@ -100,6 +101,8 @@ filedDecl: name=ID Space type;
 expr:
     // ( e )
       ParStart expr ParEnd # exprParen
+    // &a.b => Ref<T>
+    | SymbolAnd obj=ID (SymbolDot subs+=ID)* # exprGetRef
     // e[a, b, c] 实际应为成员函数get的快捷调用
     | expr
         GetStart
@@ -205,6 +208,7 @@ Struct : 'struct';
 True : 'true';
 
 SymbolAdd: '+';
+SymbolAnd: '&';
 SymbolArrow: '->';
 SymbolComma: ',';
 SymbolDiv: '/';

@@ -58,6 +58,31 @@ class Compiler {
     void compileStatementBlock(p<StatementBlockNode> block);
     llvm::Value* compileStatementBlockWithResult(p<StatementBlockNode> block, llvm::BasicBlock* continueBlock, llvm::PHINode* phi, const TypeInfo& resultType);
 
+    void compileRetStatement(p<StatementRetNode> node);
+    void compileDeclareAssignStatement(p<StatementDeclareAssignNode> node);
+    void compileAssignStatement(p<StatementAssignNode> node);
+    void compileLoopStatement(p<StatementLoopNode> node);
+    void compileBreakStatement(p<StatementBreakNode> node);
+    void compileArraySetStatement(p<StatementSetNode> node);
+
+    llvm::Value* compileLiteralExpr(p<ExprLiteralNode> node);
+    llvm::Value* compileAddSubExpr(p<ExprAddSubNode> node);
+    llvm::Value* compileMulDivModExpr(p<ExprMulDivModNode> node);
+    llvm::Value* compileParenExpr(p<ExprParenNode> node);
+    llvm::Value* compileCallExpr(p<ExprCallNode> node);
+    llvm::Value* compileDotExpr(p<ExprDotNode> node);
+    llvm::Value* compileCompareExpr(p<ExprCompareNode> node);
+    llvm::Value* compileIfElseExpr(p<ExprIfElseNode> node);
+    llvm::Value* compileArrayGetExpr(p<ExprGetNode> node);
+    llvm::Value* compileArrayLiteralExpr(p<ExprArrayNode> node);
+    llvm::Value* compileGetRefExpr(p<ExprGetRefNode> node);
+
+    llvm::Value* compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode> dotNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
+    llvm::Value* compileFunctionCall(p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
+    llvm::Value* compileConstructorCall(const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
+    llvm::Value* compileKnownFunctionCall(p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes, FnSymbolInfo* fnSymbol);
+    llvm::Value* compileStdoutWriteCall(llvm::Function* fn, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
+
 public:
     Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, p<FileNode> file, bool isSdk = false);
 

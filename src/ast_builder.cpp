@@ -588,6 +588,19 @@ std::any ASTBuilder::visitExprGet(yux::yuxParser::ExprGetContext* ctx) {
     return p<ExprNode>(create<ExprGetNode>(scope, arrayExpr, indices));
 }
 
+std::any ASTBuilder::visitExprGetRef(yux::yuxParser::ExprGetRefContext* ctx) {
+    DEBUG_LOG("    Expr: GetRef");
+    auto scope = currentScope();
+    
+    auto obj = ctx->obj;
+    vector<Token> subs;
+    for (auto sub : ctx->subs) {
+        subs.push_back(sub);
+    }
+    
+    return p<ExprNode>(create<ExprGetRefNode>(scope, obj, subs));
+}
+
 std::any ASTBuilder::visitExprArray(yux::yuxParser::ExprArrayContext* ctx) {
     DEBUG_LOG_VAL("    Expr: Array", "elements: " << ctx->velues.size());
     auto scope = currentScope();
@@ -615,17 +628,29 @@ std::any ASTBuilder::visitExprArrayInit(yux::yuxParser::ExprArrayInitContext* ct
     return p<ExprNode>(create<ExprArrayInitNode>(scope, literal, explicitType));
 }
 
-std::any ASTBuilder::visitType(yux::yuxParser::TypeContext* ctx) {
-    if (ctx->typeNormal()) {
-        return visit(ctx->typeNormal());
-    }
-    return visit(ctx->typeArray());
-}
-
 std::any ASTBuilder::visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) {
     p<Node> parent = currentScope();
     DEBUG_LOG_VAL("    Type: Normal", ctx->ID()->getSymbol()->getText());
     return p<TypeNode>(create<TypeNormalNode>(parent, ctx->ID()->getSymbol()));
+}
+
+std::any ASTBuilder::visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) {
+    p<Node> parent = currentScope();
+    auto baseName = ctx->ID()->getSymbol();
+    
+    vector<p<TypeNode>> typeArgs;
+    for (auto typeCtx : ctx->types) {
+        typeArgs.push_back(any_cast_p<TypeNode>(visit(typeCtx)));
+    }
+    
+    string argsStr;
+    for (size_t i = 0; i < typeArgs.size(); ++i) {
+        if (i > 0) argsStr += ", ";
+        argsStr += typeArgs[i]->getType().name;
+    }
+    DEBUG_LOG_VAL("    Type: Generic", baseName->getText() << "<" << argsStr << ">");
+    
+    return p<TypeNode>(create<TypeGenericNode>(parent, baseName, typeArgs));
 }
 
 std::any ASTBuilder::visitTypeArray(yux::yuxParser::TypeArrayContext* ctx) {

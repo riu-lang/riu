@@ -245,4 +245,20 @@ public:
     [[nodiscard]] TypeInfo getType() const override;
 };
 
+class ExprGetRefNode : public ExprNode {
+    Token _obj;
+    vector<Token> _subs;
+
+public:
+    ExprGetRefNode(const p<Node>& parent, Token obj, vector<Token> subs) :
+        ExprNode(parent),
+        _obj(obj),
+        _subs(std::move(subs)) {
+    }
+
+    [[nodiscard]] Token obj() const { return _obj; }
+    [[nodiscard]] const vector<Token>& subs() const { return _subs; }
+    [[nodiscard]] TypeInfo getType() const override;
+};
+
 #endif //YUX_LANG_EXPR_NODE_H

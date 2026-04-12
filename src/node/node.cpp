@@ -9,7 +9,7 @@
 string Node::getCName(const string& name, const vector<TypeInfo>& paramsType)  {
     string res = "fn_" + name + "(";
     for (size_t i = 0; i < paramsType.size(); ++i) {
-        res += paramsType[i].name;
+        res += paramsType[i].getFullName();
         if (i < paramsType.size() - 1) {
             res += ",";
         }
@@ -67,10 +67,17 @@ FnSymbolInfo* ScopeNode::lookupFnSymbolWithParams(const string& name, const vect
             if (fnInfo.params.size() == paramTypes.size()) {
                 bool match = true;
                 for (size_t i = 0; i < paramTypes.size(); ++i) {
-                    if (fnInfo.params[i] != paramTypes[i]) {
-                        match = false;
-                        break;
+                    if (fnInfo.params[i] == paramTypes[i]) {
+                        continue;
                     }
+                    if (fnInfo.params[i].isRef()) {
+                        auto refElemType = fnInfo.params[i].refElementType();
+                        if (refElemType && *refElemType == paramTypes[i]) {
+                            continue;
+                        }
+                    }
+                    match = false;
+                    break;
                 }
                 if (match) {
                     return &fnInfo;

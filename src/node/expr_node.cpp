@@ -149,6 +149,15 @@ TypeInfo ExprDotNode::getType() const {
     }
 
     auto baseType = _baseExpr->getType();
+    TypeInfo actualType = baseType;
+    
+    if (baseType.isRef()) {
+        auto refElemType = baseType.refElementType();
+        if (refElemType) {
+            actualType = *refElemType;
+        }
+    }
+    
     auto scope = findNearestScope();
     if (scope) {
         auto file = dynamic_cast<FileNode*>(scope);
@@ -157,7 +166,7 @@ TypeInfo ExprDotNode::getType() const {
             file = dynamic_cast<FileNode*>(scope);
         }
         if (file) {
-            auto structDecl = file->getStructDecl(baseType.name);
+            auto structDecl = file->getStructDecl(actualType.name);
             if (structDecl) {
                 auto field = structDecl->field(member);
                 if (field) {
@@ -322,4 +331,46 @@ TypeInfo ExprArrayInitNode::getType() const {
     
     auto elemShared = make_shared<TypeInfo>(elementType);
     return TypeInfo(elemShared, 0);
+}
+
+TypeInfo ExprGetRefNode::getType() const {
+    auto scope = findNearestScope();
+    if (!scope) {
+        throw YuxError("Cannot determine type for reference expression: no scope");
+    }
+    
+    auto sym = scope->lookupSymbol(_obj->getText());
+    if (!sym) {
+        throw YuxError("Undefined variable: {}", _obj->getText());
+    }
+    
+    TypeInfo baseType = sym->type;
+    
+    for (auto& sub : _subs) {
+        auto file = dynamic_cast<FileNode*>(scope);
+        auto currentScope = scope;
+        while (!file && currentScope) {
+            currentScope = currentScope->parentScope();
+            file = dynamic_cast<FileNode*>(currentScope);
+        }
+        if (!file) {
+            throw YuxError("Cannot find struct declaration for field access");
+        }
+        
+        auto structDecl = file->getStructDecl(baseType.name);
+        if (!structDecl) {
+            throw YuxError("Cannot access field on non-struct type: {}", baseType.name);
+        }
+        
+        auto field = structDecl->field(sub->getText());
+        if (!field) {
+            throw YuxError("Struct {} has no field: {}", baseType.name, sub->getText());
+        }
+        
+        baseType = field->getType();
+    }
+    
+    vector<sp<TypeInfo>> genericArgs;
+    genericArgs.push_back(make_shared<TypeInfo>(baseType));
+    return TypeInfo("Ref", genericArgs);
 }

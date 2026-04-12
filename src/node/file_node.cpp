@@ -22,8 +22,6 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
             registerFnSymbol(fullName, {fnName, "", {}, TypeInfo(f)});
         }
     }
-    
-    registerSymbol("Ref", {SymbolKind::Struct, "Ref", TypeInfo("Ref")});
 }
 
 void FileNode::addFunction(const p<FnNode>& function) {

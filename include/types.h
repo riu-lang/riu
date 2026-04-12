@@ -72,6 +72,7 @@ p<T> any_cast_p(const std::any& a) {
 
 enum class TypeKind : u8 {
     Normal,
+    Generic,
     Array
 };
 
@@ -80,10 +81,16 @@ struct TypeInfo {
     string name;
     u64 arraySize = 0;
     sp<TypeInfo> elementType = nullptr;
+    vector<sp<TypeInfo>> genericArgs;
     
     TypeInfo() = default;
     
     explicit TypeInfo(string n) : kind(TypeKind::Normal), name(std::move(n)) {}
+    
+    TypeInfo(string n, vector<sp<TypeInfo>> args) :
+        kind(TypeKind::Generic),
+        name(std::move(n)),
+        genericArgs(std::move(args)) {}
     
     TypeInfo(sp<TypeInfo> elemType, u64 size) :
         kind(TypeKind::Array),
@@ -96,9 +103,33 @@ struct TypeInfo {
     
     [[nodiscard]] bool isNormal() const { return kind == TypeKind::Normal; }
     
+    [[nodiscard]] bool isGeneric() const { return kind == TypeKind::Generic; }
+    
     [[nodiscard]] bool empty() const { return name.empty(); }
     
     [[nodiscard]] bool startsWith(char c) const { return !name.empty() && name[0] == c; }
+    
+    [[nodiscard]] bool isRef() const {
+        return kind == TypeKind::Generic && name == "Ref" && genericArgs.size() == 1;
+    }
+    
+    [[nodiscard]] sp<TypeInfo> refElementType() const {
+        if (isRef() && genericArgs.size() == 1) {
+            return genericArgs[0];
+        }
+        return nullptr;
+    }
+    
+    string getFullName() const {
+        if (kind == TypeKind::Generic && !genericArgs.empty()) {
+            string result = name;
+            for (size_t i = 0; i < genericArgs.size(); ++i) {
+                result += "_" + genericArgs[i]->getFullName();
+            }
+            return result;
+        }
+        return name;
+    }
     
     bool operator==(const TypeInfo& other) const {
         if (kind != other.kind) return false;
@@ -108,6 +139,14 @@ struct TypeInfo {
             if (!elementType && !other.elementType) return true;
             if (!elementType || !other.elementType) return false;
             return *elementType == *other.elementType;
+        }
+        if (kind == TypeKind::Generic) {
+            if (genericArgs.size() != other.genericArgs.size()) return false;
+            for (size_t i = 0; i < genericArgs.size(); ++i) {
+                if (!genericArgs[i] && !other.genericArgs[i]) continue;
+                if (!genericArgs[i] || !other.genericArgs[i]) return false;
+                if (*genericArgs[i] != *other.genericArgs[i]) return false;
+            }
         }
         return true;
     }
