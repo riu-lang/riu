@@ -49,6 +49,7 @@ class Compiler {
 
     void emitStdoutWrite();
     void emitRuntimeHelpers();
+    void emitMainStartup();
     llvm::Function* getStdoutWriteFn();
 
     llvm::Function* getFunction(p<FnHeaderNode> header);

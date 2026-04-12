@@ -79,10 +79,6 @@ llvm::FunctionType* Compiler::getLLVMFunctionType(p<FnHeaderNode> header) {
     }
     auto retType = header->retType();
     TypeInfo retTypeInfo = retType ? retType->getType() : TypeInfo();
-    auto fnName = header->name()->getText();
-    if (fnName == "main" && retTypeInfo.name.empty()) {
-        return llvm::FunctionType::get(_builder.getInt32Ty(), paramTypes, false);
-    }
     return llvm::FunctionType::get(getLLVMType(retTypeInfo), paramTypes, false);
 }
 
@@ -282,6 +278,59 @@ void Compiler::emitRuntimeHelpers() {
     }
 }
 
+void Compiler::emitMainStartup() {
+    auto setConsoleOutputCP = _module->getFunction("SetConsoleOutputCP");
+    if (!setConsoleOutputCP) {
+        auto fnType = llvm::FunctionType::get(
+            _builder.getInt1Ty(),
+            {_builder.getInt32Ty()},
+            false
+        );
+        setConsoleOutputCP = llvm::Function::Create(
+            fnType,
+            llvm::Function::ExternalLinkage,
+            "SetConsoleOutputCP",
+            _module
+        );
+    }
+    
+    auto setConsoleCP = _module->getFunction("SetConsoleCP");
+    if (!setConsoleCP) {
+        auto fnType = llvm::FunctionType::get(
+            _builder.getInt1Ty(),
+            {_builder.getInt32Ty()},
+            false
+        );
+        setConsoleCP = llvm::Function::Create(
+            fnType,
+            llvm::Function::ExternalLinkage,
+            "SetConsoleCP",
+            _module
+        );
+    }
+    
+    auto fnType = llvm::FunctionType::get(_builder.getInt32Ty(), {}, false);
+    auto mainStartup = llvm::Function::Create(
+        fnType,
+        llvm::Function::ExternalLinkage,
+        "mainStartup",
+        _module
+    );
+    
+    auto entry = llvm::BasicBlock::Create(_context, "entry", mainStartup);
+    _builder.SetInsertPoint(entry);
+    
+    auto cpUtf8 = llvm::ConstantInt::get(_builder.getInt32Ty(), 65001);
+    _builder.CreateCall(setConsoleOutputCP, {cpUtf8});
+    _builder.CreateCall(setConsoleCP, {cpUtf8});
+    
+    auto yuxMain = _module->getFunction("yux_main");
+    if (yuxMain) {
+        _builder.CreateCall(yuxMain, {});
+    }
+    _builder.CreateRet(_builder.getInt32(0));
+}
+
 void Compiler::compile(p<FileNode> file) {
     compileStructDecls();
     compileStructImpls();
@@ -295,6 +344,10 @@ void Compiler::compile(p<FileNode> file) {
     for (auto fn : functions) {
         auto func = getFunction(fn->header());
         compileFn(fn, func);
+    }
+    
+    if (!_isSdk) {
+        emitMainStartup();
     }
 }
 
@@ -355,10 +408,7 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
     }
 
     auto fnName = node->header()->name()->getText();
-    if (fnName == "main" && func->getReturnType()->isIntegerTy(32)) {
-        _builder.CreateRet(_builder.getInt32(0));
-        DEBUG_LOG("  Added implicit return 0 for main");
-    } else if (func->getReturnType()->isVoidTy()) {
+    if (func->getReturnType()->isVoidTy()) {
         _builder.CreateRetVoid();
         DEBUG_LOG("  Added implicit void return");
     }

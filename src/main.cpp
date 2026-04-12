@@ -350,7 +350,7 @@ int wmain(int argc, wchar_t* argv[]) {
             objPath.c_str(),
             exeOut.c_str(),
             "/subsystem:console",
-            "/entry:yux_main",
+            "/entry:mainStartup",
             "kernel32.lib"
         };
         
