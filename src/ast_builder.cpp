@@ -21,6 +21,41 @@ p<FileNode> ASTBuilder::build(yux::yuxParser::ProgramContext* ctx) {
     return any_cast_p<FileNode>(visitProgram(ctx));
 }
 
+std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
+    DEBUG_LOG("Visit: ExternDelc");
+    auto file = any_cast_p<FileNode>(stack.back());
+
+    auto fnHeaders = ctx->fnHeader();
+    for (auto header : fnHeaders) {
+        auto fnName = header->name->getText();
+
+        vector<TypeInfo> paramTypes;
+        for (auto param : header->params) {
+            if (param->type()) {
+                auto typeNode = any_cast_p<TypeNode>(visit(param->type()));
+                paramTypes.push_back(typeNode->getType());
+            }
+        }
+        TypeInfo retType;
+        if (header->retType) {
+            auto typeNode = any_cast_p<TypeNode>(visit(header->retType));
+            retType = typeNode->getType();
+        }
+
+        DEBUG_LOG_VAL("  Register external function", fnName);
+        SymbolInfo fnSym(SymbolKind::Function, fnName, retType);
+        fnSym.moduleName = file->moduleName();
+        fnSym.isExternal = true;
+        file->registerSymbol(fnName, fnSym);
+
+        FnSymbolInfo fnFnSym{fnName, file->moduleName(), paramTypes, retType};
+        fnFnSym.isExternal = true;
+        file->registerFnSymbol(fnName, fnFnSym);
+    }
+
+    return nullptr;
+}
+
 std::any ASTBuilder::visitComment(yux::yuxParser::CommentContext* ctx) {
     DEBUG_LOG("  Visit: Comment");
     return nullptr;
@@ -616,6 +651,11 @@ std::any ASTBuilder::visitLiteralBool(yux::yuxParser::LiteralBoolContext* ctx) {
     auto token = ctx->True() ? ctx->True()->getSymbol() : ctx->False()->getSymbol();
     DEBUG_LOG_VAL("      Literal: Bool", (ctx->True() ? "true" : "false"));
     return p<LiteralNode>(create<LiteralBoolNode>(token));
+}
+
+std::any ASTBuilder::visitLiteralNull(yux::yuxParser::LiteralNullContext* ctx) {
+    DEBUG_LOG("      Literal: Null");
+    return p<LiteralNode>(create<LiteralNullNode>(ctx->Null()->getSymbol()));
 }
 
 std::any ASTBuilder::visitLiteralObj(yux::yuxParser::LiteralObjContext* ctx) {

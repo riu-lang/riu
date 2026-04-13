@@ -7,6 +7,7 @@ options {
 program:
    (
     fn
+   | externDelc
    | structDecl
    | structImpl
    | comment
@@ -19,6 +20,19 @@ comment
 
 codeLineEnd: LineEndComment? LineEnd;
 
+// 外部声明
+// extern {
+//  函数头
+// }
+externDelc: Extern Space BlockStart
+    (
+     Space* fnHeader
+     | comment
+     | codeLineEnd
+    )*
+    BlockEnd
+    ;
+
 ///////////
 // 字面量
 ///////////
@@ -28,6 +42,7 @@ literal:
     | (True|False) #literalBool
     // 变量等
     | name=ID #literalObj
+    | Null # literalNull
     ;
 
 number: numInt|numFloat;
@@ -211,6 +226,7 @@ Break : 'break';
 DeclKey: 'va'[rl] | 'cval';
 Elif : 'elif';
 Else : 'else';
+Extern : 'extern';
 False : 'false';
 Fn : 'fn';
 If : 'if';

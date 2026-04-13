@@ -186,6 +186,12 @@ TypeInfo ExprDotNode::getType() const {
         }
     }
     
+    if (baseType.isPtr()) {
+        if (member == "_value") {
+            return TypeInfo("u64");
+        }
+    }
+    
     auto scope = findNearestScope();
     if (scope) {
         auto file = dynamic_cast<FileNode*>(scope);

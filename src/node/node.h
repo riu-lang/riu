@@ -22,13 +22,14 @@ struct SymbolInfo {
     TypeInfo type;
     bool writeable = false;
     bool isPrivate = false;
-    
+    bool isExternal = false;
+
     SymbolInfo() = default;
     SymbolInfo(SymbolKind k, string n, TypeInfo t = TypeInfo(), bool w = false)
         : kind(k), name(std::move(n)), type(std::move(t)), writeable(w) {
         isPrivate = !this->name.empty() && this->name[0] == '_';
     }
-    
+
     string getFullName() const {
         if (moduleName.empty()) return name;
         return moduleName + "_" + name;
@@ -41,13 +42,14 @@ struct FnSymbolInfo {
     vector<TypeInfo> params;
     TypeInfo retType;
     bool isPrivate = false;
-    
+    bool isExternal = false;
+
     FnSymbolInfo() = default;
     FnSymbolInfo(string n, string mod, vector<TypeInfo> p, TypeInfo r)
         : name(std::move(n)), moduleName(std::move(mod)), params(std::move(p)), retType(std::move(r)) {
         isPrivate = !this->name.empty() && this->name[0] == '_';
     }
-    
+
     string getFullName() const {
         if (moduleName.empty()) return name;
         return moduleName + "_" + name;

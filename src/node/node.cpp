@@ -76,6 +76,9 @@ FnSymbolInfo* ScopeNode::lookupFnSymbolWithParams(const string& name, const vect
                             continue;
                         }
                     }
+                    if (fnInfo.params[i].isPtr() && paramTypes[i].isRef()) {
+                        continue;
+                    }
                     match = false;
                     break;
                 }

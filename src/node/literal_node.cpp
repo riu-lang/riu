@@ -87,3 +87,12 @@ TypeInfo LiteralObjNode::getType() const {
 string LiteralObjNode::getLocation() const {
     return _parent->getLocation() + "." + _value->getText();
 }
+
+LiteralNullNode::LiteralNullNode(Token value) : LiteralNode(std::move(value)) {
+}
+
+TypeInfo LiteralNullNode::getType() const {
+    vector<sp<TypeInfo>> genericArgs;
+    genericArgs.push_back(make_shared<TypeInfo>("__nullable"));
+    return TypeInfo("Ptr", genericArgs);
+}

@@ -58,4 +58,10 @@ public:
    [[nodiscard]] string getLocation() const override;
 };
 
+class LiteralNullNode : public LiteralNode {
+public:
+    explicit LiteralNullNode(Token value);
+    [[nodiscard]] TypeInfo getType() const override;
+};
+
 #endif //YUX_LANG_LITERAL_NODE_H

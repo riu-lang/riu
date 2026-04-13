@@ -123,9 +123,20 @@ struct TypeInfo {
     [[nodiscard]] bool isBox() const {
         return kind == TypeKind::Generic && name == "Box" && genericArgs.size() == 1;
     }
-    
+
     [[nodiscard]] sp<TypeInfo> boxElementType() const {
         if (isBox() && genericArgs.size() == 1) {
+            return genericArgs[0];
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] bool isPtr() const {
+        return kind == TypeKind::Generic && name == "Ptr" && genericArgs.size() == 1;
+    }
+
+    [[nodiscard]] sp<TypeInfo> ptrElementType() const {
+        if (isPtr() && genericArgs.size() == 1) {
             return genericArgs[0];
         }
         return nullptr;

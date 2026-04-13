@@ -42,6 +42,7 @@ public:
     std::any visitComment(yux::yuxParser::CommentContext* ctx) override;
     std::any visitCodeLineEnd(yux::yuxParser::CodeLineEndContext* ctx) override;
     std::any visitProgram(yux::yuxParser::ProgramContext* ctx) override;
+    std::any visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) override;
     std::any visitFn(yux::yuxParser::FnContext* ctx) override;
     std::any visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) override;
     std::any visitFnParam(yux::yuxParser::FnParamContext* ctx) override;
@@ -84,6 +85,7 @@ public:
 
     std::any visitLiteralNumber(yux::yuxParser::LiteralNumberContext* ctx) override;
     std::any visitLiteralBool(yux::yuxParser::LiteralBoolContext* ctx) override;
+    std::any visitLiteralNull(yux::yuxParser::LiteralNullContext* ctx) override;
     std::any visitLiteralObj(yux::yuxParser::LiteralObjContext* ctx) override;
     std::any visitNumInt(yux::yuxParser::NumIntContext* ctx) override;
     std::any visitNumFloat(yux::yuxParser::NumFloatContext* ctx) override;
