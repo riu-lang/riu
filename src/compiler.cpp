@@ -423,6 +423,7 @@ void Compiler::emitRuntimeHelpers() {
 }
 
 void Compiler::compile(p<FileNode> file) {
+    compileGlobalConsts();
     compileStructDecls();
     compileStructImpls();
     
@@ -440,6 +441,66 @@ void Compiler::compile(p<FileNode> file) {
     
     if (!_isSdk) {
         emitMainStartup();
+    }
+}
+
+void Compiler::compileGlobalConsts() {
+    for (auto globalConst : _file->getGlobalConsts()) {
+        string name = globalConst->name()->getText();
+        string mangledName = _file->getMangledName(name);
+        TypeInfo type = globalConst->getType();
+        auto llvmType = getLLVMType(type);
+        
+        llvm::Constant* initValue = nullptr;
+        auto literal = globalConst->value();
+        auto text = literal->getValue()->getText();
+        
+        if (auto intLiteral = dynamic_cast<LiteralIntNode*>(literal)) {
+            string numStr;
+            for (char c : text) {
+                if (isdigit(c) || c == '-') {
+                    numStr += c;
+                } else {
+                    break;
+                }
+            }
+            i64 numVal = stoll(numStr);
+            initValue = llvm::ConstantInt::get(llvmType, numVal, true);
+        }
+        else if (auto floatLiteral = dynamic_cast<LiteralFloatNode*>(literal)) {
+            string numStr;
+            for (char c : text) {
+                if (isdigit(c) || c == '.' || c == '-') {
+                    numStr += c;
+                } else {
+                    break;
+                }
+            }
+            f64 numVal = stod(numStr);
+            initValue = llvm::ConstantFP::get(llvmType, numVal);
+        }
+        else if (auto boolLiteral = dynamic_cast<LiteralBoolNode*>(literal)) {
+            bool boolVal = (text == "true");
+            initValue = llvm::ConstantInt::get(llvmType, boolVal ? 1 : 0, false);
+        }
+        else {
+            throw YuxError("Unsupported literal type for global constant: {}", type.name);
+        }
+        
+        auto linkage = globalConst->isPrivate() ? 
+            llvm::GlobalValue::InternalLinkage : 
+            llvm::GlobalValue::ExternalLinkage;
+        
+        auto globalVar = new llvm::GlobalVariable(
+            *_module,
+            llvmType,
+            true,
+            linkage,
+            initValue,
+            mangledName
+        );
+        
+        DEBUG_LOG_VAL("Created global constant", mangledName << " : " << type.name);
     }
 }
 
@@ -1169,10 +1230,19 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
     else if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literal)) {
         auto varName = text;
         auto sym = _currentFnNode->lookupSymbol(varName);
+        
         if (sym && _localVarPtrs.contains(varName)) {
             DEBUG_LOG_VAL("    Expr: VariableLoad", varName << " : " << sym->type.name);
             return _builder.CreateLoad(getLLVMType(sym->type), _localVarPtrs[varName]);
         }
+        
+        string mangledName = _file->getMangledName(varName);
+        auto globalVar = _module->getGlobalVariable(mangledName, true);
+        if (globalVar) {
+            DEBUG_LOG_VAL("    Expr: GlobalConstLoad", varName << " : " << (sym ? sym->type.name : "unknown"));
+            return _builder.CreateLoad(globalVar->getValueType(), globalVar, "global.load");
+        }
+        
         throw YuxError("Undefined variable: {}", varName);
     }
     else if (auto nullLiteral = dynamic_cast<LiteralNullNode*>(literal)) {

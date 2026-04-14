@@ -37,6 +37,14 @@ void FileNode::addStructImpl(const p<StructImplNode>& structImpl) {
     _structImpls.push_back(structImpl);
 }
 
+void FileNode::addGlobalConst(const p<GlobalConstNode>& globalConst) {
+    _globalConsts.push_back(globalConst);
+    string name = globalConst->name()->getText();
+    if (!lookupSymbol(name)) {
+        registerSymbol(name, {SymbolKind::Variable, name, globalConst->getType(), false});
+    }
+}
+
 const vector<p<FnNode>>& FileNode::getFunctions() const {
     return _functions;
 }
@@ -64,6 +72,9 @@ string FileNode::getMangledName(const string& symbolName) const {
         return symbolName;
     }
     if (isPrivateName(symbolName)) {
+        if (_moduleName.empty()) {
+            return symbolName;
+        }
         return _moduleName + "_" + symbolName;
     }
     if (_moduleName.empty()) {

@@ -8,6 +8,7 @@
 
 #include "yux.h"
 #include "node/fn_node.h"
+#include "node/global_const_node.h"
 #include "yux/yuxBaseVisitor.h"
 #include "yux/yuxVisitor.h"
 
@@ -16,6 +17,7 @@ class ASTBuilder : public yux::yuxBaseVisitor {
     llvm::IRBuilder<> irBuilder;
     Yux& _yux;
     bool _isSdk = false;
+    string _moduleName;
 
     vector<std::any> stack;
     vector<p<Node>> _nodes;
@@ -34,7 +36,7 @@ class ASTBuilder : public yux::yuxBaseVisitor {
     }
 
 public:
-    explicit ASTBuilder(llvm::LLVMContext& ctx, Yux& yux, bool isSdk = false);
+    explicit ASTBuilder(llvm::LLVMContext& ctx, Yux& yux, const string& moduleName = "", bool isSdk = false);
     ~ASTBuilder() override;
 
     p<FileNode> build(yux::yuxParser::ProgramContext* ctx);
@@ -43,6 +45,7 @@ public:
     std::any visitCodeLineEnd(yux::yuxParser::CodeLineEndContext* ctx) override;
     std::any visitProgram(yux::yuxParser::ProgramContext* ctx) override;
     std::any visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) override;
+    std::any visitGlobalConst(yux::yuxParser::GlobalConstContext* ctx) override;
     std::any visitFn(yux::yuxParser::FnContext* ctx) override;
     std::any visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) override;
     std::any visitFnParam(yux::yuxParser::FnParamContext* ctx) override;

@@ -8,6 +8,7 @@ program:
    (
     fn
    | externDelc
+   | globalConst
    | structDecl
    | structImpl
    | comment
@@ -32,6 +33,9 @@ externDelc: Extern Space BlockStart
     )*
     BlockEnd
     ;
+
+// cval a i32 = 1
+globalConst: 'cval' Space name=ID Space type Space SymbolEq Space literal;
 
 ///////////
 // 字面量

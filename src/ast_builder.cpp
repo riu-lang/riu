@@ -7,8 +7,8 @@
 #include <algorithm>
 #include "types.h"
 
-ASTBuilder::ASTBuilder(llvm::LLVMContext& ctx, Yux& yux, bool isSdk) :
-    context(ctx), irBuilder(ctx), _yux(yux), _isSdk(isSdk) {
+ASTBuilder::ASTBuilder(llvm::LLVMContext& ctx, Yux& yux, const string& moduleName, bool isSdk) :
+    context(ctx), irBuilder(ctx), _yux(yux), _moduleName(moduleName), _isSdk(isSdk) {
 }
 
 ASTBuilder::~ASTBuilder() {
@@ -56,6 +56,21 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
     return nullptr;
 }
 
+std::any ASTBuilder::visitGlobalConst(yux::yuxParser::GlobalConstContext* ctx) {
+    DEBUG_LOG("Visit: GlobalConst");
+    auto file = any_cast_p<FileNode>(stack.back());
+    
+    auto name = ctx->name;
+    auto typeNode = any_cast_p<TypeNode>(visit(ctx->type()));
+    auto literal = any_cast_p<LiteralNode>(visit(ctx->literal()));
+    
+    auto globalConst = create<GlobalConstNode>(file, name, typeNode, literal);
+    file->addGlobalConst(globalConst);
+    
+    DEBUG_LOG_VAL("  GlobalConst", name->getText() << " : " << typeNode->getType().name);
+    return p<GlobalConstNode>(globalConst);
+}
+
 std::any ASTBuilder::visitComment(yux::yuxParser::CommentContext* ctx) {
     DEBUG_LOG("  Visit: Comment");
     return nullptr;
@@ -72,7 +87,7 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
     if (_isSdk) {
         file = _yux.createSdkFile();
     } else {
-        file = _yux.createFile("");
+        file = _yux.createFile(_moduleName);
     }
     
     auto moduleName = file->moduleName();
@@ -153,6 +168,20 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
             FnSymbolInfo methodFnSym{fullName, moduleName, paramTypes, retType};
             file->registerFnSymbol(fullName, methodFnSym);
         }
+    }
+
+    auto globalConsts = ctx->globalConst();
+    DEBUG_LOG_VAL("  Global constants count", globalConsts.size());
+    for (auto globalConstCtx : globalConsts) {
+        auto name = globalConstCtx->name->getText();
+        auto typeNode = any_cast_p<TypeNode>(visit(globalConstCtx->type()));
+        TypeInfo type = typeNode->getType();
+        
+        SymbolInfo sym(SymbolKind::Variable, name, type, false);
+        sym.moduleName = moduleName;
+        file->registerSymbol(name, sym);
+        
+        DEBUG_LOG_VAL("  Register global const", name << " : " << type.name);
     }
 
     visitChildren(ctx);

@@ -7,26 +7,24 @@ extern {
   fn WriteFile(hFile Ptr<u8>, lpBuffer Ptr<u8>, nNumberOfBytesToWrite u32, lpNumberOfBytesWritten Ptr<u32>, lpOverlapped Ptr<u8>) i32
 }
 
+/ 全局常量
+cval _STD_OUTPUT_HANDLE i32 = -11
 
 / 内部：向 stdout 写入
 fn _stdout_write(buf Ptr<u8>, off i64, len i64) {
-  / stdout 句柄常量
-  val STD_OUTPUT_HANDLE = -11i32
-  var hStdout Ptr<u8> = GetStdHandle(STD_OUTPUT_HANDLE)
+  var hStdout Ptr<u8> = GetStdHandle(_STD_OUTPUT_HANDLE)
   var bufWithOff Ptr<u8> = null
   bufWithOff._value = buf._value + off.to_u64()
   var written u32 = 0u32
   WriteFile(hStdout, bufWithOff, len.to_u32(), &written, null)
 }
 
-/ 内部：数字转字符串（返回长度，结果在buf中）
-
 fn print(n i64) {
   var buf [u8 * 21] = [0u8 ...]
   var is_neg = n < 0i64
   var v i64 = n
   if is_neg {
-    v = 0i64 - n
+    v = -n
   }
   var i i64 = 0i64
   loop {
@@ -52,7 +50,6 @@ fn print(n i64) {
   _stdout_write(bufp, start, i)
 }
 
-/ 打印函数 - 整数类型
 fn print(n i8) {
   print(n.to_i64())
 }
@@ -65,7 +62,6 @@ fn print(n i32) {
   print(n.to_i64())
 }
 
-/ 打印函数 - 无符号整数类型
 fn print(n u8) {
   print(n.to_u64())
 }
@@ -99,7 +95,6 @@ fn print(n u64) {
   _stdout_write(bufp, 21i64 - i, i)
 }
 
-/ 打印函数 - 浮点数
 fn print(n f64) {
   var is_neg = n < 0.0f64
   var v f64 = n
@@ -128,12 +123,10 @@ fn print(n f64) {
   }
 }
 
-/ 打印函数 - f32
 fn print(n f32) {
   print(n.to_f64())
 }
 
-/ 打印函数 - 布尔值
 fn print(b bool) {
   if b {
     val t [u8 * 4] = [116u8, 114u8, 117u8, 101u8]
@@ -144,7 +137,6 @@ fn print(b bool) {
   }
 }
 
-/ println函数 - 所有类型统一实现
 fn println(n i8) {
   print(n)
   val nl [u8 * 1] = [10u8]

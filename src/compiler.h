@@ -14,6 +14,7 @@
 
 #include "node/file_node.h"
 #include "node/fn_node.h"
+#include "node/global_const_node.h"
 #include "node/statement_node.h"
 #include "node/expr_node.h"
 #include "node/struct_node.h"
@@ -102,6 +103,7 @@ public:
     Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, p<FileNode> file, bool isSdk = false);
 
     void compile(p<FileNode> file);
+    void compileGlobalConsts();
     void compileStructDecls();
     void compileStructImpls();
     void compileFn(p<FnNode> node, llvm::Function* func);

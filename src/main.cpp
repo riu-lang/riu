@@ -142,7 +142,7 @@ void parseAST(string inputFile, Yux& yux, bool isSdk = false) {
     }
 
     llvm::LLVMContext context;
-    ASTBuilder astBuilder(context, yux, isSdk);
+    ASTBuilder astBuilder(context, yux, "sdk", true);
 
     try {
         astBuilder.build(program);
@@ -185,7 +185,7 @@ IRResult compileIR(string inputFile, Yux& yux, bool isSdk = false) {
 
     llvm::IRBuilder<> builder(*context);
 
-    ASTBuilder astBuilder(*context, yux, isSdk);
+    ASTBuilder astBuilder(*context, yux, moduleName, isSdk);
 
     try {
         auto ast = astBuilder.build(program);
