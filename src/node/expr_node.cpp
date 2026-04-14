@@ -322,6 +322,15 @@ const vector<p<ExprNode>>& ExprGetNode::indices() const {
 
 TypeInfo ExprGetNode::getType() const {
     auto arrayType = _arrayExpr->getType();
+    
+    if (arrayType.isArrayGeneric()) {
+        auto elemType = arrayType.arrayGenericElementType();
+        if (!elemType) {
+            throw YuxError("Invalid Array<T> type: missing element type");
+        }
+        return *elemType;
+    }
+
     if (!arrayType.isArray()) {
         throw YuxError("Cannot index non-array type: {}", arrayType.name);
     }
@@ -339,7 +348,7 @@ const vector<p<ExprNode>>& ExprArrayNode::elements() const {
 
 TypeInfo ExprArrayNode::getType() const {
     if (_elements.empty()) {
-        throw YuxError("Cannot infer type of empty array");
+        return TypeInfo(make_shared<TypeInfo>("__empty"), 0);
     }
 
     TypeInfo elementType = _elements[0]->getType();

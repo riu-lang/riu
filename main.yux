@@ -4,7 +4,11 @@ fn p(a i32) {
 }
 
 fn aa() {
-  var x = 10
+  / 测试空数组
+  var empty Array<i32> = []
+  println(0)
+  val arr Array<i32> = [10]
+  var x = arr[0]
   println(x)
   x = 20
   println(x)

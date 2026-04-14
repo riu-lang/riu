@@ -45,6 +45,18 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& type) {
         }
         return llvm::PointerType::get(_builder.getInt8Ty(), 0);
     }
+
+    if (type.isArrayGeneric()) {
+        auto elemType = type.arrayGenericElementType();
+        if (elemType) {
+            vector<llvm::Type*> arrayFields;
+            arrayFields.push_back(llvm::PointerType::get(getLLVMType(*elemType), 0));
+            arrayFields.push_back(_builder.getInt64Ty());
+            arrayFields.push_back(_builder.getInt64Ty());
+            return llvm::StructType::get(_context, arrayFields);
+        }
+        return llvm::PointerType::get(_builder.getInt8Ty(), 0);
+    }
     
     if (type.isGeneric()) {
         string mangledName = _file->getMangledName(type.getFullName());
@@ -347,6 +359,202 @@ void Compiler::emitBoxHelpers() {
     }
 }
 
+llvm::Function* Compiler::getArrayAllocFn() {
+    string fnName = "_array_alloc";
+    auto func = _module->getFunction(fnName);
+    if (func) {
+        return func;
+    }
+    
+    vector<llvm::Type*> paramTypes;
+    paramTypes.push_back(_builder.getInt64Ty());
+    
+    auto fnType = llvm::FunctionType::get(
+        llvm::PointerType::get(_builder.getInt8Ty(), 0),
+        paramTypes,
+        false
+    );
+    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, _module);
+}
+
+llvm::Function* Compiler::getArrayGrowFn() {
+    string fnName = "_array_grow";
+    auto func = _module->getFunction(fnName);
+    if (func) {
+        return func;
+    }
+    
+    vector<llvm::Type*> paramTypes;
+    paramTypes.push_back(llvm::PointerType::get(_builder.getInt8Ty(), 0));
+    paramTypes.push_back(_builder.getInt64Ty());
+    
+    auto fnType = llvm::FunctionType::get(
+        llvm::PointerType::get(_builder.getInt8Ty(), 0),
+        paramTypes,
+        false
+    );
+    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, _module);
+}
+
+llvm::Function* Compiler::getArrayReleaseFn() {
+    string fnName = "_array_release";
+    auto func = _module->getFunction(fnName);
+    if (func) {
+        return func;
+    }
+    
+    vector<llvm::Type*> paramTypes;
+    paramTypes.push_back(llvm::PointerType::get(_builder.getInt8Ty(), 0));
+    
+    auto fnType = llvm::FunctionType::get(_builder.getVoidTy(), paramTypes, false);
+    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, _module);
+}
+
+void Compiler::emitArrayHelpers() {
+    auto getProcessHeapFn = _module->getFunction("GetProcessHeap");
+    if (!getProcessHeapFn) {
+        auto fnType = llvm::FunctionType::get(
+            llvm::PointerType::get(_builder.getInt8Ty(), 0),
+            {},
+            false
+        );
+        getProcessHeapFn = llvm::Function::Create(
+            fnType,
+            llvm::Function::ExternalLinkage,
+            "GetProcessHeap",
+            _module
+        );
+    }
+    
+    auto heapAllocFn = _module->getFunction("HeapAlloc");
+    if (!heapAllocFn) {
+        auto fnType = llvm::FunctionType::get(
+            llvm::PointerType::get(_builder.getInt8Ty(), 0),
+            {llvm::PointerType::get(_builder.getInt8Ty(), 0), _builder.getInt64Ty(), _builder.getInt64Ty()},
+            false
+        );
+        heapAllocFn = llvm::Function::Create(
+            fnType,
+            llvm::Function::ExternalLinkage,
+            "HeapAlloc",
+            _module
+        );
+    }
+    
+    auto heapReAllocFn = _module->getFunction("HeapReAlloc");
+    if (!heapReAllocFn) {
+        auto fnType = llvm::FunctionType::get(
+            llvm::PointerType::get(_builder.getInt8Ty(), 0),
+            {llvm::PointerType::get(_builder.getInt8Ty(), 0), _builder.getInt64Ty(), llvm::PointerType::get(_builder.getInt8Ty(), 0), _builder.getInt64Ty()},
+            false
+        );
+        heapReAllocFn = llvm::Function::Create(
+            fnType,
+            llvm::Function::ExternalLinkage,
+            "HeapReAlloc",
+            _module
+        );
+    }
+    
+    auto heapFreeFn = _module->getFunction("HeapFree");
+    if (!heapFreeFn) {
+        auto fnType = llvm::FunctionType::get(
+            _builder.getInt32Ty(),
+            {llvm::PointerType::get(_builder.getInt8Ty(), 0), _builder.getInt64Ty(), llvm::PointerType::get(_builder.getInt8Ty(), 0)},
+            false
+        );
+        heapFreeFn = llvm::Function::Create(
+            fnType,
+            llvm::Function::ExternalLinkage,
+            "HeapFree",
+            _module
+        );
+    }
+
+    {
+        auto allocFn = getArrayAllocFn();
+        if (allocFn->empty()) {
+            auto entry = llvm::BasicBlock::Create(_context, "entry", allocFn);
+            _builder.SetInsertPoint(entry);
+            
+            auto args = allocFn->args();
+            auto argIt = args.begin();
+            llvm::Value* sizeVal = &(*argIt);
+            
+            auto heap = _builder.CreateCall(getProcessHeapFn, {}, "heap");
+            auto mem = _builder.CreateCall(heapAllocFn, {heap, _builder.getInt64(0), sizeVal}, "mem");
+            
+            _builder.CreateRet(mem);
+        }
+    }
+    
+    {
+        auto growFn = getArrayGrowFn();
+        if (growFn->empty()) {
+            auto entry = llvm::BasicBlock::Create(_context, "entry", growFn);
+            _builder.SetInsertPoint(entry);
+            
+            auto args = growFn->args();
+            auto argIt = args.begin();
+            llvm::Value* oldPtr = &(*argIt);
+            ++argIt;
+            llvm::Value* newSize = &(*argIt);
+            
+            auto heap = _builder.CreateCall(getProcessHeapFn, {}, "heap");
+            
+            auto isNull = _builder.CreateICmpEQ(oldPtr, llvm::ConstantPointerNull::get(llvm::PointerType::get(_builder.getInt8Ty(), 0)), "is_null");
+            
+            auto allocBB = llvm::BasicBlock::Create(_context, "alloc", growFn);
+            auto reallocBB = llvm::BasicBlock::Create(_context, "realloc", growFn);
+            auto doneBB = llvm::BasicBlock::Create(_context, "done", growFn);
+            
+            _builder.CreateCondBr(isNull, allocBB, reallocBB);
+            
+            _builder.SetInsertPoint(allocBB);
+            auto newMemAlloc = _builder.CreateCall(heapAllocFn, {heap, _builder.getInt64(0), newSize}, "new_mem");
+            _builder.CreateBr(doneBB);
+            
+            _builder.SetInsertPoint(reallocBB);
+            auto newMemRealloc = _builder.CreateCall(heapReAllocFn, {heap, _builder.getInt64(0), oldPtr, newSize}, "new_mem");
+            _builder.CreateBr(doneBB);
+            
+            _builder.SetInsertPoint(doneBB);
+            auto phi = _builder.CreatePHI(llvm::PointerType::get(_builder.getInt8Ty(), 0), 2, "result");
+            phi->addIncoming(newMemAlloc, allocBB);
+            phi->addIncoming(newMemRealloc, reallocBB);
+            
+            _builder.CreateRet(phi);
+        }
+    }
+    
+    {
+        auto releaseFn = getArrayReleaseFn();
+        if (releaseFn->empty()) {
+            auto entry = llvm::BasicBlock::Create(_context, "entry", releaseFn);
+            _builder.SetInsertPoint(entry);
+            
+            auto args = releaseFn->args();
+            auto argIt = args.begin();
+            llvm::Value* dataPtr = &(*argIt);
+            
+            auto isNull = _builder.CreateICmpEQ(dataPtr, llvm::ConstantPointerNull::get(llvm::PointerType::get(_builder.getInt8Ty(), 0)), "is_null");
+            
+            auto freeBB = llvm::BasicBlock::Create(_context, "free", releaseFn);
+            auto doneBB = llvm::BasicBlock::Create(_context, "done", releaseFn);
+            
+            _builder.CreateCondBr(isNull, doneBB, freeBB);
+            
+            _builder.SetInsertPoint(freeBB);
+            auto heap = _builder.CreateCall(getProcessHeapFn, {}, "heap");
+            _builder.CreateCall(heapFreeFn, {heap, _builder.getInt64(0), dataPtr});
+            _builder.CreateBr(doneBB);
+            
+            _builder.SetInsertPoint(doneBB);
+            _builder.CreateRetVoid();
+        }
+    }
+}
+
 void Compiler::emitMainStartup() {
     auto setConsoleOutputCP = _module->getFunction("SetConsoleOutputCP");
     if (!setConsoleOutputCP) {
@@ -431,6 +639,7 @@ void Compiler::compile(p<FileNode> file) {
         emitRuntimeHelpers();
     } else {
         emitBoxHelpers();
+        emitArrayHelpers();
     }
     
     auto functions = file->getFunctions();
@@ -760,6 +969,58 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             _builder.CreateStore(refCountPtrTyped, refCountField);
             
             _scopeVars.push_back(varName);
+        } else if (varType.isArrayGeneric()) {
+            auto elemType = varType.arrayGenericElementType();
+            if (!elemType) {
+                throw YuxError("Array type requires element type");
+            }
+            
+            auto arrayStructType = getLLVMType(varType);
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+            auto two = llvm::ConstantInt::get(_builder.getInt32Ty(), 2);
+            
+            auto elemLLVMType = getLLVMType(*elemType);
+            auto elemSize = elemLLVMType->getPrimitiveSizeInBits() / 8;
+            
+            if (auto arrayNode = dynamic_cast<ExprArrayNode*>(expr)) {
+                auto& elements = arrayNode->elements();
+                auto count = elements.size();
+                
+                llvm::Value* dataPtr = nullptr;
+                if (count > 0) {
+                    auto totalSize = _builder.getInt64(count * elemSize);
+                    auto allocFn = getArrayAllocFn();
+                    dataPtr = _builder.CreateCall(allocFn, {totalSize}, "array_data_ptr");
+                    
+                    auto dataPtrTyped = _builder.CreateBitCast(dataPtr, llvm::PointerType::get(elemLLVMType, 0), "array_data_typed");
+                    
+                    for (size_t i = 0; i < count; ++i) {
+                        auto elemVal = compileExpr(elements[i]);
+                        auto index = llvm::ConstantInt::get(_builder.getInt64Ty(), i);
+                        auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtrTyped, {index}, "elem.ptr");
+                        _builder.CreateStore(elemVal, elemPtr);
+                    }
+                } else {
+                    dataPtr = llvm::ConstantPointerNull::get(llvm::PointerType::get(_builder.getInt8Ty(), 0));
+                }
+                
+                llvm::Value* indices0[] = {zero, zero};
+                auto dataField = _builder.CreateGEP(arrayStructType, alloca, indices0, "data_field");
+                _builder.CreateStore(dataPtr, dataField);
+                
+                llvm::Value* indices1[] = {zero, one};
+                auto lenField = _builder.CreateGEP(arrayStructType, alloca, indices1, "len_field");
+                _builder.CreateStore(_builder.getInt64(count), lenField);
+                
+                llvm::Value* indices2[] = {zero, two};
+                auto capField = _builder.CreateGEP(arrayStructType, alloca, indices2, "cap_field");
+                _builder.CreateStore(_builder.getInt64(count), capField);
+            } else {
+                throw YuxError("Array<T> initialization requires array literal");
+            }
+            
+            _scopeVars.push_back(varName);
         } else {
             auto exprVal = compileExpr(expr);
             auto exprType = expr->getType();
@@ -946,10 +1207,6 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
     auto arrayExpr = node->arrayExpr();
     auto arrayType = arrayExpr->getType();
 
-    if (!arrayType.isArray()) {
-        throw YuxError("Cannot index non-array type: {}", arrayType.name);
-    }
-
     auto& indices = node->indices();
     if (indices.empty()) {
         throw YuxError("Array assignment requires at least one index");
@@ -973,6 +1230,32 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
 
     if (!currentPtr) {
         throw YuxError("Array assignment requires a variable");
+    }
+
+    if (arrayType.isArrayGeneric()) {
+        auto elemType = arrayType.arrayGenericElementType();
+        if (!elemType) {
+            throw YuxError("Array type requires element type");
+        }
+        
+        auto arrayStructType = getLLVMType(arrayType);
+        auto elemLLVMType = getLLVMType(*elemType);
+        
+        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        llvm::Value* indices0[] = {zero, zero};
+        auto dataFieldPtr = _builder.CreateGEP(arrayStructType, currentPtr, indices0, "array.data.field");
+        auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(elemLLVMType, 0), dataFieldPtr, "array.data.ptr");
+        
+        auto indexVal = compileExpr(indices[0]);
+        auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {indexVal}, "array.elem.ptr");
+        
+        auto valueVal = compileExpr(node->valueExpr());
+        _builder.CreateStore(valueVal, elemPtr);
+        return;
+    }
+
+    if (!arrayType.isArray()) {
+        throw YuxError("Cannot index non-array type: {}", arrayType.name);
     }
 
     for (auto& indexExpr : indices) {
@@ -2033,10 +2316,6 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
     auto arrayExpr = node->arrayExpr();
     auto arrayType = arrayExpr->getType();
 
-    if (!arrayType.isArray()) {
-        throw YuxError("Cannot index non-array type: {}", arrayType.name);
-    }
-
     auto& indices = node->indices();
     if (indices.empty()) {
         throw YuxError("Array access requires at least one index");
@@ -2060,6 +2339,30 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
 
     if (!currentPtr) {
         throw YuxError("Array access requires a variable");
+    }
+
+    if (arrayType.isArrayGeneric()) {
+        auto elemType = arrayType.arrayGenericElementType();
+        if (!elemType) {
+            throw YuxError("Array type requires element type");
+        }
+        
+        auto arrayStructType = getLLVMType(arrayType);
+        auto elemLLVMType = getLLVMType(*elemType);
+        
+        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        llvm::Value* indices0[] = {zero, zero};
+        auto dataFieldPtr = _builder.CreateGEP(arrayStructType, currentPtr, indices0, "array.data.field");
+        auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(elemLLVMType, 0), dataFieldPtr, "array.data.ptr");
+        
+        auto indexVal = compileExpr(indices[0]);
+        auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {indexVal}, "array.elem.ptr");
+        
+        return _builder.CreateLoad(elemLLVMType, elemPtr, "array.elem.load");
+    }
+
+    if (!arrayType.isArray()) {
+        throw YuxError("Cannot index non-array type: {}", arrayType.name);
     }
 
     for (auto& indexExpr : indices) {
@@ -2285,6 +2588,27 @@ void Compiler::callDestructor(const string& varName, const TypeInfo& varType) {
         
         auto releaseFn = getBoxReleaseFn();
         _builder.CreateCall(releaseFn, {refCountPtr, dataPtr});
+        
+        return;
+    }
+    
+    if (varType.isArrayGeneric()) {
+        auto it = _localVarPtrs.find(varName);
+        if (it == _localVarPtrs.end()) {
+            return;
+        }
+        
+        DEBUG_LOG_VAL("  Calling Array destructor for", varName << " : " << varType.getFullName());
+        
+        auto arrayStructType = getLLVMType(varType);
+        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        
+        llvm::Value* indices0[] = {zero, zero};
+        auto dataFieldPtr = _builder.CreateGEP(arrayStructType, it->second, indices0, "data_field_ptr");
+        auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_builder.getInt8Ty(), 0), dataFieldPtr, "data_ptr");
+        
+        auto releaseFn = getArrayReleaseFn();
+        _builder.CreateCall(releaseFn, {dataPtr});
         
         return;
     }

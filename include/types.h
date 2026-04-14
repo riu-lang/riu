@@ -141,6 +141,17 @@ struct TypeInfo {
         }
         return nullptr;
     }
+
+    [[nodiscard]] bool isArrayGeneric() const {
+        return kind == TypeKind::Generic && name == "Array" && genericArgs.size() == 1;
+    }
+
+    [[nodiscard]] sp<TypeInfo> arrayGenericElementType() const {
+        if (isArrayGeneric() && genericArgs.size() == 1) {
+            return genericArgs[0];
+        }
+        return nullptr;
+    }
     
     string getFullName() const {
         if (kind == TypeKind::Generic && !genericArgs.empty()) {
