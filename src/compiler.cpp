@@ -1614,6 +1614,8 @@ llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
         case ExprBinOpNode::Op::And: opStr = "&"; break;
         case ExprBinOpNode::Op::Or: opStr = "|"; break;
         case ExprBinOpNode::Op::Xor: opStr = "^"; break;
+        case ExprBinOpNode::Op::Shl: opStr = "<<"; break;
+        case ExprBinOpNode::Op::Shr: opStr = ">>"; break;
     }
     DEBUG_LOG_VAL("    Expr: BinOp", opStr << " : " << type.name);
 
@@ -1624,6 +1626,13 @@ llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
             return _builder.CreateOr(left, right);
         case ExprBinOpNode::Op::Xor:
             return _builder.CreateXor(left, right);
+        case ExprBinOpNode::Op::Shl:
+            return _builder.CreateShl(left, right);
+        case ExprBinOpNode::Op::Shr:
+            if (type.startsWith('u')) {
+                return _builder.CreateLShr(left, right);
+            }
+            return _builder.CreateAShr(left, right);
     }
     throw YuxError("Unsupported binary operation");
 }
@@ -2195,6 +2204,8 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
         case ExprCompareNode::Op::Le: opStr = "<="; break;
         case ExprCompareNode::Op::Gt: opStr = ">"; break;
         case ExprCompareNode::Op::Ge: opStr = ">="; break;
+        case ExprCompareNode::Op::AndAnd: opStr = "&&"; break;
+        case ExprCompareNode::Op::OrOr: opStr = "||"; break;
     }
     DEBUG_LOG_VAL("    Expr: Compare", opStr << " : " << leftType.name);
 
@@ -2241,6 +2252,16 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
                 return _builder.CreateICmpUGE(left, right);
             }
             return _builder.CreateICmpSGE(left, right);
+        case ExprCompareNode::Op::AndAnd: {
+            auto leftBool = _builder.CreateICmpNE(left, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "and.lhs");
+            auto rightBool = _builder.CreateICmpNE(right, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "and.rhs");
+            return _builder.CreateAnd(leftBool, rightBool, "and");
+        }
+        case ExprCompareNode::Op::OrOr: {
+            auto leftBool = _builder.CreateICmpNE(left, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "or.lhs");
+            auto rightBool = _builder.CreateICmpNE(right, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "or.rhs");
+            return _builder.CreateOr(leftBool, rightBool, "or");
+        }
     }
     throw YuxError("Unsupported comparison operation");
 }

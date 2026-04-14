@@ -617,8 +617,12 @@ std::any ASTBuilder::visitExprBinOp(yux::yuxParser::ExprBinOpContext* ctx) {
         op = ExprBinOpNode::Op::And;
     } else if (opText == "|") {
         op = ExprBinOpNode::Op::Or;
-    } else {
+    } else if (opText == "^") {
         op = ExprBinOpNode::Op::Xor;
+    } else if (opText == "<<") {
+        op = ExprBinOpNode::Op::Shl;
+    } else {
+        op = ExprBinOpNode::Op::Shr;
     }
 
     DEBUG_LOG_VAL("    Expr: BinOp", opText);
@@ -663,8 +667,12 @@ std::any ASTBuilder::visitExprCompare(yux::yuxParser::ExprCompareContext* ctx) {
         op = ExprCompareNode::Op::Le;
     } else if (opText == ">") {
         op = ExprCompareNode::Op::Gt;
-    } else {
+    } else if (opText == ">=") {
         op = ExprCompareNode::Op::Ge;
+    } else if (opText == "&&") {
+        op = ExprCompareNode::Op::AndAnd;
+    } else {
+        op = ExprCompareNode::Op::OrOr;
     }
 
     DEBUG_LOG_VAL("    Expr: Compare", opText);

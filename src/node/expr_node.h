@@ -100,7 +100,7 @@ public:
 
 class ExprBinOpNode : public ExprNode {
 public:
-    enum class Op { And, Or, Xor };
+    enum class Op { And, Or, Xor, Shl, Shr };
 
 protected:
     Op _op;
@@ -151,7 +151,7 @@ public:
 
 class ExprCompareNode : public ExprNode {
 public:
-    enum class Op { Eq, Ne, Lt, Le, Gt, Ge };
+    enum class Op { Eq, Ne, Lt, Le, Gt, Ge, AndAnd, OrOr };
 
 protected:
     Op _op;

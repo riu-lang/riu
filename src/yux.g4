@@ -161,12 +161,12 @@ expr:
     // !e ~e -e 没有空格，低于成员访问优先级
     | op=(SymbolSub|SymbolRev|SymbolExcl) right=expr # exprUnary
     // e & e | e ^ e
-    | left=expr Space op=(SymbolAnd|SymbolOr|SymbolXor) Space right=expr # exprBinOp
+    | left=expr Space op=(SymbolAnd|SymbolOr|SymbolXor|SymbolLtLt|SymbolMtMt) Space right=expr # exprBinOp
      // e * e e / e
     | left=expr Space op=(SymbolMul|SymbolDiv|SymbolMod) Space right=expr # exprMulDivMod
     | left=expr Space op=(SymbolAdd|SymbolSub) Space right=expr # exprAddSub
     // 判断
-    | left=expr Space op=(SymbolEqEq|SymbolExclEq|SymbolMt|SymbolMtEq|SymbolLt|SymbolLtEq) Space right=expr # exprCompare
+    | left=expr Space op=(SymbolEqEq|SymbolExclEq|SymbolMt|SymbolMtEq|SymbolLt|SymbolLtEq|SymbolOrOr|SymbolAndAnd) Space right=expr # exprCompare
     | literal # exprLiteral;
 
 // elif {
@@ -242,6 +242,7 @@ True : 'true';
 
 SymbolAdd: '+';
 SymbolAnd: '&';
+SymbolAndAnd: '&&';
 SymbolArrow: '->';
 SymbolComma: ',';
 SymbolDiv: '/';
@@ -254,11 +255,14 @@ SymbolExcl: '!';
 SymbolExclEq: '!=';
 SymbolLt: '<';
 SymbolLtEq: '<=';
+SymbolLtLt: '<<';
 SymbolMod: '%';
 SymbolMt: '>';
 SymbolMtEq: '>=';
+SymbolMtMt: '>>';
 SymbolMul: '*';
 SymbolOr: '|';
+SymbolOrOr: '||';
 SymbolQuest: '?';
 SymbolQuote2: '"';
 SymbolQuote: ['];
