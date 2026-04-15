@@ -202,7 +202,9 @@ statement:
     // 循环
     | Loop Space statementBlock # statementLoop
     // obj.member = expr
-    | obj=ID (SymbolDot subs+=ID)* Space SymbolEq Space expr codeLineEnd #statementAssign
+    | obj=ID (SymbolDot subs+=ID)* Space
+        op=(SymbolEq|SymbolAddEq|SymbolSubEq|SymbolMulEq|SymbolDivEq|SymbolModEq|SymbolMtMtEq|SymbolLtLtEq)
+        Space expr codeLineEnd #statementAssign
     // 尾随;表示空类型（void）
     | expr SymbolSemicolon? codeLineEnd # statementExpr
     // ret value
@@ -248,11 +250,13 @@ Struct : 'struct';
 True : 'true';
 
 SymbolAdd: '+';
+SymbolAddEq: '+=';
 SymbolAnd: '&';
 SymbolAndAnd: '&&';
 SymbolArrow: '->';
 SymbolComma: ',';
 SymbolDiv: '/';
+SymbolDivEq: '/=';
 SymbolDot: '.';
 SymbolDotDot: '..';
 SymbolDotDotDot: '...';
@@ -263,11 +267,15 @@ SymbolExclEq: '!=';
 SymbolLt: '<';
 SymbolLtEq: '<=';
 SymbolLtLt: '<<';
+SymbolLtLtEq: '<<=';
 SymbolMod: '%';
+SymbolModEq: '%=';
 SymbolMt: '>';
 SymbolMtEq: '>=';
 SymbolMtMt: '>>';
+SymbolMtMtEq: '>>=';
 SymbolMul: '*';
+SymbolMulEq: '*=';
 SymbolOr: '|';
 SymbolOrOr: '||';
 SymbolQuest: '?';
@@ -276,6 +284,7 @@ SymbolQuote: ['];
 SymbolRev: '~';
 SymbolSemicolon: ';';
 SymbolSub: '-';
+SymbolSubEq: '-=';
 SymbolXor: '^';
 
 ParStart: '(';

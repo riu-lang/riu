@@ -141,6 +141,10 @@
           "match": "(==|!=|<=|>=|<|>)"
         },
         {
+          "name": "keyword.operator.assignment.compound.yux",
+          "match": "(\\+=|-=|\\*=|/=|%=|>>=|<<=)"
+        },
+        {
           "name": "keyword.operator.arithmetic.yux",
           "match": "[+\\-*/%]"
         },

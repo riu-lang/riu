@@ -70,20 +70,34 @@ public:
     [[nodiscard]] p<TypeNode> varType() const;
 };
 
+enum class AssignOp {
+    Eq,
+    AddEq,
+    SubEq,
+    MulEq,
+    DivEq,
+    ModEq,
+    MtMtEq,
+    LtLtEq
+};
+
 class StatementAssignNode : public StatementExprNode {
 protected:
     Token _obj;
     vector<Token> _subs;
+    AssignOp _op;
 
 public:
-    explicit StatementAssignNode(const p<Node>& parent, Token obj, vector<Token> subs, p<ExprNode> expr) :
+    explicit StatementAssignNode(const p<Node>& parent, Token obj, vector<Token> subs, p<ExprNode> expr, AssignOp op = AssignOp::Eq) :
         StatementExprNode(parent, std::move(expr)),
         _obj(obj),
-        _subs(std::move(subs)) {
+        _subs(std::move(subs)),
+        _op(op) {
     }
 
     [[nodiscard]] Token obj() const { return _obj; }
     [[nodiscard]] const vector<Token>& subs() const { return _subs; }
+    [[nodiscard]] AssignOp op() const { return _op; }
 };
 
 class StatementBlockNode;

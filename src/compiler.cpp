@@ -1201,6 +1201,57 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
     auto objName = node->obj().getText();
     auto expr = node->expr();
     auto& subs = node->subs();
+    auto assignOp = node->op();
+
+    auto isFloatType = [](const TypeInfo& type) -> bool {
+        return type.name == "f32" || type.name == "f64";
+    };
+
+    auto isUnsignedType = [](const TypeInfo& type) -> bool {
+        return type.name == "u8" || type.name == "u16" || type.name == "u32" || type.name == "u64";
+    };
+
+    auto applyCompoundOp = [this, isFloatType, isUnsignedType](llvm::Value* currentVal, llvm::Value* exprVal, AssignOp op, const TypeInfo& type) -> llvm::Value* {
+        switch (op) {
+            case AssignOp::AddEq:
+                if (isFloatType(type)) {
+                    return _builder.CreateFAdd(currentVal, exprVal, "addtmp");
+                }
+                return _builder.CreateAdd(currentVal, exprVal, "addtmp");
+            case AssignOp::SubEq:
+                if (isFloatType(type)) {
+                    return _builder.CreateFSub(currentVal, exprVal, "subtmp");
+                }
+                return _builder.CreateSub(currentVal, exprVal, "subtmp");
+            case AssignOp::MulEq:
+                if (isFloatType(type)) {
+                    return _builder.CreateFMul(currentVal, exprVal, "multmp");
+                }
+                return _builder.CreateMul(currentVal, exprVal, "multmp");
+            case AssignOp::DivEq:
+                if (isFloatType(type)) {
+                    return _builder.CreateFDiv(currentVal, exprVal, "divtmp");
+                }
+                if (isUnsignedType(type)) {
+                    return _builder.CreateUDiv(currentVal, exprVal, "divtmp");
+                }
+                return _builder.CreateSDiv(currentVal, exprVal, "divtmp");
+            case AssignOp::ModEq:
+                if (isFloatType(type)) {
+                    return _builder.CreateFRem(currentVal, exprVal, "modtmp");
+                }
+                if (isUnsignedType(type)) {
+                    return _builder.CreateURem(currentVal, exprVal, "modtmp");
+                }
+                return _builder.CreateSRem(currentVal, exprVal, "modtmp");
+            case AssignOp::MtMtEq:
+                return _builder.CreateAShr(currentVal, exprVal, "shrtmp");
+            case AssignOp::LtLtEq:
+                return _builder.CreateShl(currentVal, exprVal, "shltmp");
+            default:
+                return exprVal;
+        }
+    };
 
     if (subs.empty()) {
         auto sym = _currentFnNode->lookupSymbol(objName);
@@ -1249,7 +1300,16 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
 
         auto exprVal = compileExpr(expr);
         auto exprType = expr->getType();
-        auto valToStore = createCast(exprVal, exprType, sym->type);
+        llvm::Value* valToStore;
+
+        if (assignOp != AssignOp::Eq) {
+            auto currentVal = _builder.CreateLoad(getLLVMType(sym->type), _localVarPtrs[objName], "current.load");
+            auto castedExprVal = createCast(exprVal, exprType, sym->type);
+            valToStore = applyCompoundOp(currentVal, castedExprVal, assignOp, sym->type);
+        } else {
+            valToStore = createCast(exprVal, exprType, sym->type);
+        }
+
         _builder.CreateStore(valToStore, _localVarPtrs[objName]);
     } else {
         auto sym = _currentFnNode->lookupSymbol(objName);
@@ -1287,6 +1347,13 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                 auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
                 llvm::Value* indices[] = {zero, zero};
                 auto valueField = _builder.CreateGEP(ptrStructType, it->second, indices, "ptr_value_field");
+
+                if (assignOp != AssignOp::Eq) {
+                    auto currentVal = _builder.CreateLoad(exprVal->getType(), valueField, "current.load");
+                    TypeInfo i64Type("i64");
+                    exprVal = applyCompoundOp(currentVal, exprVal, assignOp, i64Type);
+                }
+
                 _builder.CreateStore(exprVal, valueField);
                 return;
             }
@@ -1385,7 +1452,17 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
 
                 auto exprVal = compileExpr(expr);
                 auto exprType = expr->getType();
-                auto valToStore = createCast(exprVal, exprType, fieldType);
+                llvm::Value* valToStore;
+
+                if (assignOp != AssignOp::Eq) {
+                    auto fieldLLVMType = getLLVMType(fieldType);
+                    auto currentVal = _builder.CreateLoad(fieldLLVMType, fieldPtr, "current.load");
+                    auto castedExprVal = createCast(exprVal, exprType, fieldType);
+                    valToStore = applyCompoundOp(currentVal, castedExprVal, assignOp, fieldType);
+                } else {
+                    valToStore = createCast(exprVal, exprType, fieldType);
+                }
+
                 _builder.CreateStore(valToStore, fieldPtr);
             } else {
                 throw YuxError("Nested member access not yet supported");

@@ -474,8 +474,21 @@ std::any ASTBuilder::visitStatementAssign(yux::yuxParser::StatementAssignContext
     for (auto sub : ctx->subs) {
         subs.push_back(sub);
     }
+
+    AssignOp op = AssignOp::Eq;
+    if (ctx->op) {
+        auto opText = ctx->op->getText();
+        if (opText == "+=") op = AssignOp::AddEq;
+        else if (opText == "-=") op = AssignOp::SubEq;
+        else if (opText == "*=") op = AssignOp::MulEq;
+        else if (opText == "/=") op = AssignOp::DivEq;
+        else if (opText == "%=") op = AssignOp::ModEq;
+        else if (opText == ">>=") op = AssignOp::MtMtEq;
+        else if (opText == "<<=") op = AssignOp::LtLtEq;
+    }
+
     DEBUG_LOG_VAL("  Statement: Assign", ctx->obj->getText() << (subs.empty() ? "" : "." + subs[0].getText()));
-    return p<StatementNode>(create<StatementAssignNode>(scope, ctx->obj, subs, expr));
+    return p<StatementNode>(create<StatementAssignNode>(scope, ctx->obj, subs, expr, op));
 }
 
 std::any ASTBuilder::visitStatementExpr(yux::yuxParser::StatementExprContext* ctx) {
