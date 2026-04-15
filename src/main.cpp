@@ -33,8 +33,11 @@
 #include "CLI11.hpp"
 
 LLD_HAS_DRIVER(coff)
+
 LLD_HAS_DRIVER(elf)
+
 LLD_HAS_DRIVER(macho)
+
 LLD_HAS_DRIVER(wasm)
 
 #include "yux/yuxLexer.h"
@@ -147,7 +150,14 @@ void parseAST(string inputFile, Yux& yux, bool isSdk = false) {
     try {
         astBuilder.build(program);
     } catch (runtime_error& e) {
-        std::cerr << e.what() << std::endl;
+        string msg = e.what();
+        if (auto* yuxErr = dynamic_cast<YuxError*>(&e)) {
+            int line = yuxErr->getLineNumber();
+            if (line > 0) {
+                msg = "line " + to_string(line) + ": " + msg;
+            }
+        }
+        std::cerr << msg << std::endl;
         exit(1);
     }
 }
@@ -174,11 +184,11 @@ IRResult compileIR(string inputFile, Yux& yux, bool isSdk = false) {
             moduleName = parentName + "." + moduleName;
         }
     }
-    
+
     if (isSdk) {
         moduleName = "sdk";
     }
-    
+
     std::cout << "Compile IR... (module: " << moduleName << ")" << std::endl;
     auto context = make_unique<llvm::LLVMContext>();
     auto module = make_unique<llvm::Module>(moduleName, *context);
@@ -192,7 +202,14 @@ IRResult compileIR(string inputFile, Yux& yux, bool isSdk = false) {
         Compiler compiler(*context, builder, module.get(), ast, &yux, isSdk);
         compiler.compile(ast);
     } catch (runtime_error& e) {
-        std::cerr << e.what() << std::endl;
+        string msg = e.what();
+        if (auto* yuxErr = dynamic_cast<YuxError*>(&e)) {
+            int line = yuxErr->getLineNumber();
+            if (line > 0) {
+                msg = "line " + to_string(line) + ": " + msg;
+            }
+        }
+        std::cerr << msg << std::endl;
         exit(1);
     }
     return {(std::move(context)), std::move(module)};
@@ -220,7 +237,7 @@ void handleCrash(int signal) {
 int wmain(int argc, wchar_t* argv[]) {
     SetConsoleCP(CP_UTF8);
     SetConsoleOutputCP(CP_UTF8);
-    
+
     signal(SIGSEGV, handleCrash);
     signal(SIGABRT, handleCrash);
     signal(SIGFPE, handleCrash);
@@ -255,21 +272,21 @@ int wmain(int argc, wchar_t* argv[]) {
     cache.load();
 
     Yux yux;
-    
+
     string sdkPath = findSdkPath();
     string sdkObjPath;
     bool compiled = false;
-    
+
     if (!sdkPath.empty()) {
         sdkPath = std::filesystem::absolute(sdkPath).string();
         sdkObjPath = buildDir + "/sdk.obj";
-        
+
         bool needCompile = !std::filesystem::exists(sdkObjPath) || cache.needRecompile(sdkPath);
         if (needCompile) {
             std::cout << "Compiling SDK: " << sdkPath << std::endl;
             auto sdkIrr = compileIR(sdkPath, yux, true);
             auto sdkModule = sdkIrr.module.get();
-            
+
             if (emitIr) {
                 string sdkIrPath = buildDir + "/sdk.ll";
                 std::error_code ec;
@@ -280,7 +297,7 @@ int wmain(int argc, wchar_t* argv[]) {
                     std::cout << "Write SDK IR: " << sdkIrPath << std::endl;
                 }
             }
-            
+
             if (!compileIRToObj(sdkModule, sdkObjPath)) {
                 std::cerr << "Failed to compile SDK to object file" << std::endl;
                 return 1;
@@ -325,7 +342,7 @@ int wmain(int argc, wchar_t* argv[]) {
     }
 
     std::string exePath = buildDir + "/" + baseName + ".exe";
-    
+
     bool needLink = !std::filesystem::exists(exePath);
     if (!needLink) {
         try {
@@ -341,7 +358,7 @@ int wmain(int argc, wchar_t* argv[]) {
             needLink = true;
         }
     }
-    
+
     if (needLink) {
         auto exeOut = "/out:" + exePath;
 
@@ -353,7 +370,7 @@ int wmain(int argc, wchar_t* argv[]) {
             "/entry:mainStartup",
             "kernel32.lib"
         };
-        
+
         if (!sdkObjPath.empty()) {
             args.insert(args.begin() + 2, sdkObjPath.c_str());
         }
@@ -371,7 +388,7 @@ int wmain(int argc, wchar_t* argv[]) {
         }
         compiled = true;
     }
-    
+
     if (!compiled) {
         std::cout << "no work to do." << std::endl;
     }

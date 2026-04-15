@@ -98,13 +98,23 @@ public:
 using Token = TokenInfo;
 
 class YuxError : public std::runtime_error {
+    int _line = -1;
+
 public:
-    explicit YuxError(const string& msg) : runtime_error(msg) {
+    explicit YuxError(const string& msg, int line = -1) : runtime_error(msg), _line(line) {
     }
 
     template <class... _Types>
     explicit YuxError(const format_string<_Types...> format, _Types&&... args) : runtime_error(
         std::vformat(format.get(), std::make_format_args(args...))) {
+    }
+
+    void setLineNumber(int line) {
+        _line = line;
+    }
+
+    [[nodiscard]] int getLineNumber() const {
+        return _line;
     }
 };
 
@@ -125,44 +135,46 @@ struct TypeInfo {
     u64 arraySize = 0;
     sp<TypeInfo> elementType = nullptr;
     vector<sp<TypeInfo>> genericArgs;
-    
+
     TypeInfo() = default;
-    
-    explicit TypeInfo(string n) : kind(TypeKind::Normal), name(std::move(n)) {}
-    
+
+    explicit TypeInfo(string n) : name(std::move(n)) {
+    }
+
     TypeInfo(string n, vector<sp<TypeInfo>> args) :
         kind(TypeKind::Generic),
         name(std::move(n)),
-        genericArgs(std::move(args)) {}
-    
+        genericArgs(std::move(args)) {
+    }
+
     TypeInfo(sp<TypeInfo> elemType, u64 size) :
         kind(TypeKind::Array),
         arraySize(size),
         elementType(std::move(elemType)) {
         name = "[" + elementType->name + " * " + to_string(arraySize) + "]";
     }
-    
+
     [[nodiscard]] bool isArray() const { return kind == TypeKind::Array; }
-    
+
     [[nodiscard]] bool isNormal() const { return kind == TypeKind::Normal; }
-    
+
     [[nodiscard]] bool isGeneric() const { return kind == TypeKind::Generic; }
-    
+
     [[nodiscard]] bool empty() const { return name.empty(); }
-    
+
     [[nodiscard]] bool startsWith(char c) const { return !name.empty() && name[0] == c; }
-    
+
     [[nodiscard]] bool isRef() const {
         return kind == TypeKind::Generic && name == "Ref" && genericArgs.size() == 1;
     }
-    
+
     [[nodiscard]] sp<TypeInfo> refElementType() const {
         if (isRef() && genericArgs.size() == 1) {
             return genericArgs[0];
         }
         return nullptr;
     }
-    
+
     [[nodiscard]] bool isBox() const {
         return kind == TypeKind::Generic && name == "Box" && genericArgs.size() == 1;
     }
@@ -195,7 +207,7 @@ struct TypeInfo {
         }
         return nullptr;
     }
-    
+
     string getFullName() const {
         if (kind == TypeKind::Generic && !genericArgs.empty()) {
             string result = name;
@@ -206,7 +218,7 @@ struct TypeInfo {
         }
         return name;
     }
-    
+
     bool operator==(const TypeInfo& other) const {
         if (kind != other.kind) return false;
         if (name != other.name) return false;
@@ -226,7 +238,7 @@ struct TypeInfo {
         }
         return true;
     }
-    
+
     bool operator!=(const TypeInfo& other) const {
         return !(*this == other);
     }

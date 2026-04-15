@@ -29,6 +29,19 @@ class ASTBuilder : public yux::yuxBaseVisitor {
         _nodes.push_back(node);
         return node;
     }
+
+    template<typename T, typename Ctx, typename... Args>
+    p<T> createWithLine(Ctx ctx, Args&&... args) {
+        auto node = new T(std::forward<Args>(args)...);
+        _nodes.push_back(node);
+        if (ctx) {
+            auto start = ctx->getStart();
+            if (start) {
+                node->setLineNumber(start->getLine());
+            }
+        }
+        return node;
+    }
     
     p<ScopeNode> currentScope() const {
         if (_scopeStack.empty()) return nullptr;

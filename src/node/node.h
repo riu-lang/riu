@@ -61,6 +61,7 @@ class ScopeNode;
 class Node {
 protected:
     p<Node> _parent;
+    int _line = -1;
 
 public:
     static string getCName(const string& name, const vector<TypeInfo>& paramsType);
@@ -75,6 +76,12 @@ public:
     [[nodiscard]] p<Node> parent() const;
 
     [[nodiscard]] p<ScopeNode> findNearestScope() const;
+
+    void setLineNumber(int line) { _line = line; }
+    
+    [[nodiscard]] int getLineNumber() const { return _line; }
+    
+    [[nodiscard]] virtual int resolveLineNumber() const;
 };
 
 class Named {

@@ -588,7 +588,7 @@ std::any ASTBuilder::visitExprAddSub(yux::yuxParser::ExprAddSubContext* ctx) {
     auto op = (opText == "+") ? ExprAddSubNode::Op::Add : ExprAddSubNode::Op::Sub;
 
     DEBUG_LOG_VAL("    Expr: AddSub", opText);
-    return p<ExprNode>(create<ExprAddSubNode>(scope, op, left, right));
+    return p<ExprNode>(createWithLine<ExprAddSubNode>(ctx, scope, op, left, right));
 }
 
 std::any ASTBuilder::visitExprMulDivMod(yux::yuxParser::ExprMulDivModContext* ctx) {
@@ -607,7 +607,7 @@ std::any ASTBuilder::visitExprMulDivMod(yux::yuxParser::ExprMulDivModContext* ct
     }
 
     DEBUG_LOG_VAL("    Expr: MulDivMod", opText);
-    return p<ExprNode>(create<ExprMulDivModNode>(scope, op, left, right));
+    return p<ExprNode>(createWithLine<ExprMulDivModNode>(ctx, scope, op, left, right));
 }
 
 std::any ASTBuilder::visitExprBinOp(yux::yuxParser::ExprBinOpContext* ctx) {
@@ -630,7 +630,7 @@ std::any ASTBuilder::visitExprBinOp(yux::yuxParser::ExprBinOpContext* ctx) {
     }
 
     DEBUG_LOG_VAL("    Expr: BinOp", opText);
-    return p<ExprNode>(create<ExprBinOpNode>(scope, op, left, right));
+    return p<ExprNode>(createWithLine<ExprBinOpNode>(ctx, scope, op, left, right));
 }
 
 std::any ASTBuilder::visitExprLiteral(yux::yuxParser::ExprLiteralContext* ctx) {
@@ -680,7 +680,7 @@ std::any ASTBuilder::visitExprCompare(yux::yuxParser::ExprCompareContext* ctx) {
     }
 
     DEBUG_LOG_VAL("    Expr: Compare", opText);
-    return p<ExprNode>(create<ExprCompareNode>(scope, op, left, right));
+    return p<ExprNode>(createWithLine<ExprCompareNode>(ctx, scope, op, left, right));
 }
 
 std::any ASTBuilder::visitLiteralNumber(yux::yuxParser::LiteralNumberContext* ctx) {
@@ -740,7 +740,7 @@ std::any ASTBuilder::visitExprIfElse(yux::yuxParser::ExprIfElseContext* ctx) {
         elseBlock = any_cast_p<StatementBlockNode>(visit(ctx->exprElse()));
     }
 
-    return p<ExprNode>(create<ExprIfElseNode>(scope, condition, thenBlock, elifs, elseBlock));
+    return p<ExprNode>(createWithLine<ExprIfElseNode>(ctx, scope, condition, thenBlock, elifs, elseBlock));
 }
 
 std::any ASTBuilder::visitExprElIf(yux::yuxParser::ExprElIfContext* ctx) {
@@ -767,7 +767,7 @@ std::any ASTBuilder::visitExprGet(yux::yuxParser::ExprGetContext* ctx) {
         indices.push_back(any_cast_p<ExprNode>(visit(exprs[i])));
     }
 
-    return p<ExprNode>(create<ExprGetNode>(scope, arrayExpr, indices));
+    return p<ExprNode>(createWithLine<ExprGetNode>(ctx, scope, arrayExpr, indices));
 }
 
 std::any ASTBuilder::visitExprGetRef(yux::yuxParser::ExprGetRefContext* ctx) {
@@ -780,7 +780,7 @@ std::any ASTBuilder::visitExprGetRef(yux::yuxParser::ExprGetRefContext* ctx) {
         subs.push_back(sub);
     }
     
-    return p<ExprNode>(create<ExprGetRefNode>(scope, obj, subs));
+    return p<ExprNode>(createWithLine<ExprGetRefNode>(ctx, scope, obj, subs));
 }
 
 std::any ASTBuilder::visitExprArray(yux::yuxParser::ExprArrayContext* ctx) {
@@ -792,7 +792,7 @@ std::any ASTBuilder::visitExprArray(yux::yuxParser::ExprArrayContext* ctx) {
         elements.push_back(any_cast_p<ExprNode>(visit(elemCtx)));
     }
 
-    return p<ExprNode>(create<ExprArrayNode>(scope, elements));
+    return p<ExprNode>(createWithLine<ExprArrayNode>(ctx, scope, elements));
 }
 
 std::any ASTBuilder::visitExprArrayInit(yux::yuxParser::ExprArrayInitContext* ctx) {
@@ -807,7 +807,7 @@ std::any ASTBuilder::visitExprArrayInit(yux::yuxParser::ExprArrayInitContext* ct
         explicitType = any_cast_p<TypeNode>(visit(ctx->type()));
     }
 
-    return p<ExprNode>(create<ExprArrayInitNode>(scope, literal, explicitType));
+    return p<ExprNode>(createWithLine<ExprArrayInitNode>(ctx, scope, literal, explicitType));
 }
 
 std::any ASTBuilder::visitExprUnary(yux::yuxParser::ExprUnaryContext* ctx) {
@@ -825,7 +825,7 @@ std::any ASTBuilder::visitExprUnary(yux::yuxParser::ExprUnaryContext* ctx) {
     }
 
     DEBUG_LOG_VAL("    Expr: Unary", opText);
-    return p<ExprNode>(create<ExprUnaryNode>(scope, op, right));
+    return p<ExprNode>(createWithLine<ExprUnaryNode>(ctx, scope, op, right));
 }
 
 std::any ASTBuilder::visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) {

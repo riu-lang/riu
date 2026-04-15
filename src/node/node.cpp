@@ -130,3 +130,7 @@ p<ScopeNode> Node::findNearestScope() const {
     }
     return nullptr;
 }
+
+int Node::resolveLineNumber() const {
+    return _line;
+}

@@ -10,7 +10,7 @@ fn aa() {
   val arr Array<i32> = [10]
   var x = arr[0]
   println(x)
-  x = 20
+  x = 10 + 5
   println(x)
   x = x + 5
   println(x)

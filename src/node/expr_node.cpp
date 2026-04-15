@@ -55,7 +55,9 @@ TypeInfo ExprCallNode::getType() const {
             }
         }
         if (sym && sym->kind != SymbolKind::Function) {
-            throw YuxError("Type {} is not a Function", sym->name);
+            YuxError err("Type {} is not a Function", sym->name);
+            err.setLineNumber(resolveLineNumber());
+            throw err;
         }
         
         vector<TypeInfo> argTypes;
@@ -96,9 +98,18 @@ TypeInfo ExprAddSubNode::getType() const {
     auto leftType = _left->getType();
     auto rightType = _right->getType();
     if (leftType != rightType) {
-        throw YuxError("Type mismatch in +-/ operation: left is {}, right is {}", leftType.name, rightType.name);
+        YuxError err("Type mismatch in +-/ operation: left is {}, right is {}", leftType.name, rightType.name);
+        err.setLineNumber(resolveLineNumber());
+        throw err;
     }
     return leftType;
+}
+
+int ExprAddSubNode::resolveLineNumber() const {
+    if (_line > 0) return _line;
+    int leftLine = _left->resolveLineNumber();
+    if (leftLine > 0) return leftLine;
+    return _right->resolveLineNumber();
 }
 
 ExprMulDivModNode::Op ExprMulDivModNode::op() const {
@@ -117,9 +128,18 @@ TypeInfo ExprMulDivModNode::getType() const {
     auto leftType = _left->getType();
     auto rightType = _right->getType();
     if (leftType != rightType) {
-        throw YuxError("Type mismatch in */% operation: left is {}, right is {}", leftType.name, rightType.name);
+        YuxError err("Type mismatch in */% operation: left is {}, right is {}", leftType.name, rightType.name);
+        err.setLineNumber(resolveLineNumber());
+        throw err;
     }
     return leftType;
+}
+
+int ExprMulDivModNode::resolveLineNumber() const {
+    if (_line > 0) return _line;
+    int leftLine = _left->resolveLineNumber();
+    if (leftLine > 0) return leftLine;
+    return _right->resolveLineNumber();
 }
 
 ExprBinOpNode::Op ExprBinOpNode::op() const {
@@ -138,9 +158,18 @@ TypeInfo ExprBinOpNode::getType() const {
     auto leftType = _left->getType();
     auto rightType = _right->getType();
     if (leftType != rightType) {
-        throw YuxError("Type mismatch in &|^ operation: left is {}, right is {}", leftType.name, rightType.name);
+        YuxError err("Type mismatch in &|^ operation: left is {}, right is {}", leftType.name, rightType.name);
+        err.setLineNumber(resolveLineNumber());
+        throw err;
     }
     return leftType;
+}
+
+int ExprBinOpNode::resolveLineNumber() const {
+    if (_line > 0) return _line;
+    int leftLine = _left->resolveLineNumber();
+    if (leftLine > 0) return leftLine;
+    return _right->resolveLineNumber();
 }
 
 const p<ExprNode>& ExprParenNode::expr() const {
@@ -242,9 +271,18 @@ TypeInfo ExprCompareNode::getType() const {
     auto leftType = _left->getType();
     auto rightType = _right->getType();
     if (leftType != rightType) {
-        throw YuxError("Type mismatch in comparison: left is {}, right is {}", leftType.name, rightType.name);
+        YuxError err("Type mismatch in comparison: left is {}, right is {}", leftType.name, rightType.name);
+        err.setLineNumber(resolveLineNumber());
+        throw err;
     }
     return TypeInfo("bool");
+}
+
+int ExprCompareNode::resolveLineNumber() const {
+    if (_line > 0) return _line;
+    int leftLine = _left->resolveLineNumber();
+    if (leftLine > 0) return leftLine;
+    return _right->resolveLineNumber();
 }
 
 StatementBlockNode::StatementBlockNode(const p<Node>& parent, vector<p<StatementNode>> statements, p<ExprNode> resultExpr, bool hasResult) :
@@ -302,20 +340,29 @@ TypeInfo ExprIfElseNode::getType() const {
         }
         auto elifType = elif->block()->resultExpr()->getType();
         if (elifType != resultType) {
-            throw YuxError("Type mismatch in if-elif branches: {} vs {}", resultType.name, elifType.name);
+            YuxError err("Type mismatch in if-elif branches: {} vs {}", resultType.name, elifType.name);
+            err.setLineNumber(resolveLineNumber());
+            throw err;
         }
     }
 
     if (_elseBlock && _elseBlock->hasResult()) {
         auto elseType = _elseBlock->resultExpr()->getType();
         if (elseType != resultType) {
-            throw YuxError("Type mismatch in if-else branches: {} vs {}", resultType.name, elseType.name);
+            YuxError err("Type mismatch in if-else branches: {} vs {}", resultType.name, elseType.name);
+            err.setLineNumber(resolveLineNumber());
+            throw err;
         }
     } else if (!_elseBlock || !_elseBlock->hasResult()) {
         return TypeInfo();
     }
 
     return resultType;
+}
+
+int ExprIfElseNode::resolveLineNumber() const {
+    if (_line > 0) return _line;
+    return _condition->resolveLineNumber();
 }
 
 const p<ExprNode>& ExprGetNode::arrayExpr() const {
@@ -332,20 +379,31 @@ TypeInfo ExprGetNode::getType() const {
     if (arrayType.isArrayGeneric()) {
         auto elemType = arrayType.arrayGenericElementType();
         if (!elemType) {
-            throw YuxError("Invalid Array<T> type: missing element type");
+            YuxError err("Invalid Array<T> type: missing element type");
+            err.setLineNumber(resolveLineNumber());
+            throw err;
         }
         return *elemType;
     }
 
     if (!arrayType.isArray()) {
-        throw YuxError("Cannot index non-array type: {}", arrayType.name);
+        YuxError err("Cannot index non-array type: {}", arrayType.name);
+        err.setLineNumber(resolveLineNumber());
+        throw err;
     }
 
     if (!arrayType.elementType) {
-        throw YuxError("Invalid array type: missing element type");
+        YuxError err("Invalid array type: missing element type");
+        err.setLineNumber(resolveLineNumber());
+        throw err;
     }
 
     return *arrayType.elementType;
+}
+
+int ExprGetNode::resolveLineNumber() const {
+    if (_line > 0) return _line;
+    return _arrayExpr->resolveLineNumber();
 }
 
 const vector<p<ExprNode>>& ExprArrayNode::elements() const {
@@ -361,12 +419,22 @@ TypeInfo ExprArrayNode::getType() const {
     for (size_t i = 1; i < _elements.size(); ++i) {
         auto elemType = _elements[i]->getType();
         if (elemType != elementType) {
-            throw YuxError("Array elements must have the same type: {} vs {}", elementType.name, elemType.name);
+            YuxError err("Array elements must have the same type: {} vs {}", elementType.name, elemType.name);
+            err.setLineNumber(resolveLineNumber());
+            throw err;
         }
     }
 
     auto elemShared = make_shared<TypeInfo>(elementType);
     return TypeInfo(elemShared, _elements.size());
+}
+
+int ExprArrayNode::resolveLineNumber() const {
+    if (_line > 0) return _line;
+    if (!_elements.empty()) {
+        return _elements[0]->resolveLineNumber();
+    }
+    return -1;
 }
 
 const p<LiteralNode>& ExprArrayInitNode::value() const {
@@ -392,12 +460,16 @@ TypeInfo ExprArrayInitNode::getType() const {
 TypeInfo ExprGetRefNode::getType() const {
     auto scope = findNearestScope();
     if (!scope) {
-        throw YuxError("Cannot determine type for reference expression: no scope");
+        YuxError err("Cannot determine type for reference expression: no scope");
+        err.setLineNumber(resolveLineNumber());
+        throw err;
     }
     
     auto sym = scope->lookupSymbol(_obj.getText());
     if (!sym) {
-        throw YuxError("Undefined variable: {}", _obj.getText());
+        YuxError err("Undefined variable: {}", _obj.getText());
+        err.setLineNumber(resolveLineNumber());
+        throw err;
     }
     
     TypeInfo baseType = sym->type;
@@ -410,17 +482,23 @@ TypeInfo ExprGetRefNode::getType() const {
             file = dynamic_cast<FileNode*>(currentScope);
         }
         if (!file) {
-            throw YuxError("Cannot find struct declaration for field access");
+            YuxError err("Cannot find struct declaration for field access");
+            err.setLineNumber(resolveLineNumber());
+            throw err;
         }
         
         auto structDecl = file->getStructDecl(baseType.name);
         if (!structDecl) {
-            throw YuxError("Cannot access field on non-struct type: {}", baseType.name);
+            YuxError err("Cannot access field on non-struct type: {}", baseType.name);
+            err.setLineNumber(resolveLineNumber());
+            throw err;
         }
         
         auto field = structDecl->field(sub.getText());
         if (!field) {
-            throw YuxError("Struct {} has no field: {}", baseType.name, sub.getText());
+            YuxError err("Struct {} has no field: {}", baseType.name, sub.getText());
+            err.setLineNumber(resolveLineNumber());
+            throw err;
         }
         
         baseType = field->getType();
@@ -429,6 +507,11 @@ TypeInfo ExprGetRefNode::getType() const {
     vector<sp<TypeInfo>> genericArgs;
     genericArgs.push_back(make_shared<TypeInfo>(baseType));
     return TypeInfo("Ref", genericArgs);
+}
+
+int ExprGetRefNode::resolveLineNumber() const {
+    if (_line > 0) return _line;
+    return static_cast<int>(_obj.getLine());
 }
 
 ExprUnaryNode::Op ExprUnaryNode::op() const {
@@ -441,4 +524,9 @@ const p<ExprNode>& ExprUnaryNode::right() const {
 
 TypeInfo ExprUnaryNode::getType() const {
     return _right->getType();
+}
+
+int ExprUnaryNode::resolveLineNumber() const {
+    if (_line > 0) return _line;
+    return _right->resolveLineNumber();
 }

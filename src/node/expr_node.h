@@ -74,6 +74,7 @@ public:
     [[nodiscard]] const p<ExprNode>& left() const;
     [[nodiscard]] const p<ExprNode>& right() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] int resolveLineNumber() const override;
 };
 
 class ExprMulDivModNode : public ExprNode {
@@ -96,6 +97,7 @@ public:
     [[nodiscard]] const p<ExprNode>& left() const;
     [[nodiscard]] const p<ExprNode>& right() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] int resolveLineNumber() const override;
 };
 
 class ExprBinOpNode : public ExprNode {
@@ -118,6 +120,7 @@ public:
     [[nodiscard]] const p<ExprNode>& left() const;
     [[nodiscard]] const p<ExprNode>& right() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] int resolveLineNumber() const override;
 };
 
 class ExprParenNode : public ExprNode {
@@ -169,6 +172,7 @@ public:
     [[nodiscard]] const p<ExprNode>& left() const;
     [[nodiscard]] const p<ExprNode>& right() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] int resolveLineNumber() const override;
 };
 
 class StatementBlockNode : public ScopeNode {
@@ -220,6 +224,7 @@ public:
     [[nodiscard]] const vector<p<ExprElIfNode>>& elifs() const;
     [[nodiscard]] const p<StatementBlockNode>& elseBlock() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] int resolveLineNumber() const override;
 };
 
 class ExprGetNode : public ExprNode {
@@ -236,6 +241,7 @@ public:
     [[nodiscard]] const p<ExprNode>& arrayExpr() const;
     [[nodiscard]] const vector<p<ExprNode>>& indices() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] int resolveLineNumber() const override;
 };
 
 class ExprArrayNode : public ExprNode {
@@ -249,6 +255,7 @@ public:
 
     [[nodiscard]] const vector<p<ExprNode>>& elements() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] int resolveLineNumber() const override;
 };
 
 class ExprArrayInitNode : public ExprNode {
@@ -281,6 +288,7 @@ public:
     [[nodiscard]] Token obj() const { return _obj; }
     [[nodiscard]] const vector<Token>& subs() const { return _subs; }
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] int resolveLineNumber() const override;
 };
 
 class ExprUnaryNode : public ExprNode {
@@ -301,6 +309,7 @@ public:
     [[nodiscard]] Op op() const;
     [[nodiscard]] const p<ExprNode>& right() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] int resolveLineNumber() const override;
 };
 
 #endif //YUX_LANG_EXPR_NODE_H
