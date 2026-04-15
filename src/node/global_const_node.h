@@ -15,7 +15,7 @@ class GlobalConstNode : public Node, public Named, public Typed {
 public:
     GlobalConstNode(const p<Node>& parent, Token name, p<TypeNode> type, p<LiteralNode> value)
         : Node(parent), Named(name), _type(type), _value(value) {
-        _isPrivate = !name->getText().empty() && name->getText()[0] == '_';
+        _isPrivate = !name.getText().empty() && name.getText()[0] == '_';
     }
 
     [[nodiscard]] p<TypeNode> typeNode() const;

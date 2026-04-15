@@ -12,6 +12,9 @@ ASTBuilder::ASTBuilder(llvm::LLVMContext& ctx, Yux& yux, const string& moduleNam
 }
 
 ASTBuilder::~ASTBuilder() {
+    if (_isSdk) {
+        return;
+    }
     for (auto node : _nodes) {
         delete node;
     }
@@ -129,8 +132,8 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         file->addStructDecl(decl);
 
         for (auto field : decl->fields()) {
-            string methodKey = decl->name()->getText() + "." + field->name()->getText();
-            SymbolInfo fieldSym(SymbolKind::Variable, field->name()->getText(), field->getType());
+            string methodKey = decl->name().getText() + "." + field->name().getText();
+            SymbolInfo fieldSym(SymbolKind::Variable, field->name().getText(), field->getType());
             fieldSym.moduleName = moduleName;
             file->registerSymbol(methodKey, fieldSym);
         }
@@ -144,7 +147,7 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
 
         string structName = impl->structName();
         for (auto method : impl->methods()) {
-            string methodName = method->header()->name()->getText();
+            string methodName = method->header()->name().getText();
             string fullName = structName + "." + methodName;
 
             vector<TypeInfo> paramTypes;
@@ -198,7 +201,7 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
     fn->setParentScope(file);
     file->addFunction(fn);
 
-    DEBUG_LOG_VAL("Visit: Function", header->name()->getText());
+    DEBUG_LOG_VAL("Visit: Function", header->name().getText());
 
     stack.emplace_back(fn);
     _scopeStack.push_back(fn);
@@ -206,8 +209,8 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
     for (auto param : header->params()) {
         TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();
         fn->registerSymbol(
-            param->name()->getText(), {SymbolKind::Variable, param->name()->getText(), paramType});
-        DEBUG_LOG_VAL("  Param", param->name()->getText() << " : " << paramType.name);
+            param->name().getText(), {SymbolKind::Variable, param->name().getText(), paramType});
+        DEBUG_LOG_VAL("  Param", param->name().getText() << " : " << paramType.name);
     }
 
     if (ctx->fnBody()->fnExprkBody()) {
@@ -234,7 +237,7 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
 
     _scopeStack.pop_back();
     stack.pop_back();
-    DEBUG_LOG_VAL("Finished: Function", header->name()->getText());
+    DEBUG_LOG_VAL("Finished: Function", header->name().getText());
     return fn;
 }
 
@@ -334,7 +337,7 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
 
         for (auto param : header->params()) {
             TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();
-            fn->registerSymbol(param->name()->getText(), {SymbolKind::Variable, param->name()->getText(), paramType});
+            fn->registerSymbol(param->name().getText(), {SymbolKind::Variable, param->name().getText(), paramType});
         }
 
         if (fnCtx->fnBody()->fnExprkBody()) {
@@ -377,17 +380,18 @@ std::any ASTBuilder::visitFnClean(yux::yuxParser::FnCleanContext* ctx) {
         file = any_cast_p<FileNode>(stack.back());
     }
     
-    auto header = create<FnHeaderNode>(file, nullptr, nullptr);
+    string structName;
+    if (auto structImpl = dynamic_cast<StructImplNode*>(parent)) {
+        structName = structImpl->structName();
+    }
+    
+    auto destructorNameToken = ctx->getStart();
+    auto header = create<FnHeaderNode>(file, destructorNameToken, nullptr);
     
     auto fn = create<FnNode>(parent, header);
     
     stack.emplace_back(fn);
     _scopeStack.push_back(fn);
-    
-    string structName;
-    if (auto structImpl = dynamic_cast<StructImplNode*>(parent)) {
-        structName = structImpl->structName();
-    }
     
     if (!structName.empty()) {
         fn->registerSymbol("self", {SymbolKind::Variable, "self", TypeInfo(structName)});
@@ -470,7 +474,7 @@ std::any ASTBuilder::visitStatementAssign(yux::yuxParser::StatementAssignContext
     for (auto sub : ctx->subs) {
         subs.push_back(sub);
     }
-    DEBUG_LOG_VAL("  Statement: Assign", ctx->obj->getText() << (subs.empty() ? "" : "." + subs[0]->getText()));
+    DEBUG_LOG_VAL("  Statement: Assign", ctx->obj->getText() << (subs.empty() ? "" : "." + subs[0].getText()));
     return p<StatementNode>(create<StatementAssignNode>(scope, ctx->obj, subs, expr));
 }
 
@@ -701,9 +705,15 @@ std::any ASTBuilder::visitLiteralObj(yux::yuxParser::LiteralObjContext* ctx) {
     return p<LiteralNode>(create<LiteralObjNode>(scope, ctx->name));
 }
 
+std::any ASTBuilder::visitLiteralStringLine(yux::yuxParser::LiteralStringLineContext* ctx) {
+    auto token = ctx->STR_LINE()->getSymbol();
+    DEBUG_LOG_VAL("      Literal: String", token->getText());
+    return p<LiteralNode>(create<LiteralStringNode>(token));
+}
+
 std::any ASTBuilder::visitNumInt(yux::yuxParser::NumIntContext* ctx) {
     DEBUG_LOG_VAL("        Num: Int", ctx->INT()->getSymbol()->getText());
-    return p<LiteralNode>(create<LiteralIntNode>(ctx->INT()->getSymbol()));
+    return p<LiteralNode>(create<LiteralIntNode>(Token(ctx->INT()->getSymbol())));
 }
 
 std::any ASTBuilder::visitNumFloat(yux::yuxParser::NumFloatContext* ctx) {

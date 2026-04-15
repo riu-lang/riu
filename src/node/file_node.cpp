@@ -30,7 +30,7 @@ void FileNode::addFunction(const p<FnNode>& function) {
 
 void FileNode::addStructDecl(const p<StructDeclNode>& structDecl) {
     _structDecls.push_back(structDecl);
-    registerSymbol(structDecl->name()->getText(), {SymbolKind::Struct, structDecl->name()->getText(), TypeInfo(structDecl->name()->getText())});
+    registerSymbol(structDecl->name().getText(), {SymbolKind::Struct, structDecl->name().getText(), TypeInfo(structDecl->name().getText())});
 }
 
 void FileNode::addStructImpl(const p<StructImplNode>& structImpl) {
@@ -39,7 +39,7 @@ void FileNode::addStructImpl(const p<StructImplNode>& structImpl) {
 
 void FileNode::addGlobalConst(const p<GlobalConstNode>& globalConst) {
     _globalConsts.push_back(globalConst);
-    string name = globalConst->name()->getText();
+    string name = globalConst->name().getText();
     if (!lookupSymbol(name)) {
         registerSymbol(name, {SymbolKind::Variable, name, globalConst->getType(), false});
     }
@@ -51,7 +51,7 @@ const vector<p<FnNode>>& FileNode::getFunctions() const {
 
 StructDeclNode* FileNode::getStructDecl(const string& name) const {
     for (auto& decl : _structDecls) {
-        if (decl->name()->getText() == name) {
+        if (decl->name().getText() == name) {
             return decl;
         }
     }
@@ -88,8 +88,5 @@ string FileNode::getMangledName(const string& symbolName, const vector<TypeInfo>
     if (paramTypes.empty()) {
         return baseName;
     }
-    if (_moduleName == "sdk") {
-        return Node::getCName(symbolName, paramTypes);
-    }
-    return Node::getCName(symbolName, paramTypes);
+    return Node::getCName(baseName, paramTypes);
 }

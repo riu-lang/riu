@@ -23,6 +23,8 @@ fn main() {
   println(a)
   aa()
   p(123)
+  val str String = "hello world"
+  println(str)
 }
 
 struct N {

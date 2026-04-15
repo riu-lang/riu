@@ -52,7 +52,50 @@ extern bool debug;
 
 #endif
 
-using Token = antlr4::Token*;
+class TokenInfo {
+    string _text;
+    size_t _line = 0;
+    size_t _charPositionInLine = 0;
+    size_t _tokenIndex = 0;
+    size_t _startIndex = 0;
+    size_t _stopIndex = 0;
+
+public:
+    TokenInfo() = default;
+
+    TokenInfo(antlr4::Token* token) {
+        if (token) {
+            _text = token->getText();
+            _line = token->getLine();
+            _charPositionInLine = token->getCharPositionInLine();
+            _tokenIndex = token->getTokenIndex();
+            _startIndex = token->getStartIndex();
+            _stopIndex = token->getStopIndex();
+        }
+    }
+
+    TokenInfo(const TokenInfo& other) = default;
+    TokenInfo(TokenInfo&& other) noexcept = default;
+    TokenInfo& operator=(const TokenInfo& other) = default;
+    TokenInfo& operator=(TokenInfo&& other) noexcept = default;
+
+    [[nodiscard]] const string& getText() const { return _text; }
+    [[nodiscard]] size_t getLine() const { return _line; }
+    [[nodiscard]] size_t getCharPositionInLine() const { return _charPositionInLine; }
+    [[nodiscard]] size_t getTokenIndex() const { return _tokenIndex; }
+    [[nodiscard]] size_t getStartIndex() const { return _startIndex; }
+    [[nodiscard]] size_t getStopIndex() const { return _stopIndex; }
+
+    [[nodiscard]] bool empty() const { return _text.empty(); }
+    [[nodiscard]] bool valid() const { return !_text.empty() || _line > 0; }
+
+    explicit operator bool() const { return valid(); }
+
+    bool operator==(const TokenInfo& other) const { return _text == other._text && _line == other._line; }
+    bool operator!=(const TokenInfo& other) const { return !(*this == other); }
+};
+
+using Token = TokenInfo;
 
 class YuxError : public std::runtime_error {
 public:

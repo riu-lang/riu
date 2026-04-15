@@ -79,9 +79,10 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& type) {
     return _typeMap[type.name];
 }
 
-llvm::StructType* Compiler::getOrCreateStructType(p<StructDeclNode> structDecl) {
-    string name = structDecl->name()->getText();
-    string mangledName = _file->getMangledName(name);
+llvm::StructType* Compiler::getOrCreateStructType(p<StructDeclNode> structDecl, p<FileNode> sourceFile) {
+    string name = structDecl->name().getText();
+    auto file = sourceFile ? sourceFile : _file;
+    string mangledName = file->getMangledName(name);
     
     auto it = _structTypes.find(name);
     if (it != _structTypes.end()) {
@@ -104,15 +105,20 @@ llvm::FunctionType* Compiler::getLLVMFunctionType(p<FnHeaderNode> header) {
     vector<llvm::Type*> paramTypes;
     for (auto param : header->params()) {
         TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();
-        paramTypes.push_back(getLLVMType(paramType));
+        auto structDecl = _file->getStructDecl(paramType.name);
+        if (structDecl) {
+            paramTypes.push_back(llvm::PointerType::get(getLLVMType(paramType), 0));
+        } else {
+            paramTypes.push_back(getLLVMType(paramType));
+        }
     }
     auto retType = header->retType();
     TypeInfo retTypeInfo = retType ? retType->getType() : TypeInfo();
     return llvm::FunctionType::get(getLLVMType(retTypeInfo), paramTypes, false);
 }
 
-Compiler::Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, p<FileNode> file, bool isSdk) :
-    _context(context), _builder(builder), _module(mod), _file(file), _isSdk(isSdk) {
+Compiler::Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, p<FileNode> file, Yux* yux, bool isSdk) :
+    _context(context), _builder(builder), _module(mod), _file(file), _yux(yux), _isSdk(isSdk) {
     _typeMap.insert({"", _builder.getVoidTy()});
     _typeMap.insert({"bool", _builder.getInt1Ty()});
     _typeMap.insert({"i8", _builder.getInt8Ty()});
@@ -128,7 +134,7 @@ Compiler::Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm:
 }
 
 llvm::Function* Compiler::getFunction(p<FnHeaderNode> header) {
-    auto name = header->name()->getText();
+    auto name = header->name().getText();
     if (name == "main") {
         name = "yux_main";
     } else {
@@ -153,6 +159,10 @@ llvm::Function* Compiler::getMethodFunction(const string& structName, const stri
     string mangledStructName = _file->getMangledName(structName);
     string mangledName = mangledStructName + "_" + methodName;
     
+    if (!paramTypes.empty()) {
+        mangledName = Node::getCName(mangledName, paramTypes);
+    }
+    
     auto func = _module->getFunction(mangledName);
     if (func) {
         return func;
@@ -162,7 +172,12 @@ llvm::Function* Compiler::getMethodFunction(const string& structName, const stri
     llvmParamTypes.push_back(llvm::PointerType::get(getLLVMType(TypeInfo(structName)), 0));
     
     for (auto& paramType : paramTypes) {
-        llvmParamTypes.push_back(getLLVMType(paramType));
+        auto structDecl = _file->getStructDecl(paramType.name);
+        if (structDecl) {
+            llvmParamTypes.push_back(llvm::PointerType::get(getLLVMType(paramType), 0));
+        } else {
+            llvmParamTypes.push_back(getLLVMType(paramType));
+        }
     }
     
     auto llvmRetType = retType.empty() ? _builder.getVoidTy() : getLLVMType(retType);
@@ -655,14 +670,14 @@ void Compiler::compile(p<FileNode> file) {
 
 void Compiler::compileGlobalConsts() {
     for (auto globalConst : _file->getGlobalConsts()) {
-        string name = globalConst->name()->getText();
+        string name = globalConst->name().getText();
         string mangledName = _file->getMangledName(name);
         TypeInfo type = globalConst->getType();
         auto llvmType = getLLVMType(type);
         
         llvm::Constant* initValue = nullptr;
         auto literal = globalConst->value();
-        auto text = literal->getValue()->getText();
+        auto text = literal->getValue().getText();
         
         if (auto intLiteral = dynamic_cast<LiteralIntNode*>(literal)) {
             string numStr;
@@ -714,7 +729,16 @@ void Compiler::compileGlobalConsts() {
 }
 
 void Compiler::compileStructDecls() {
+    if (_yux && _yux->sdkFile() && _file != _yux->sdkFile()) {
+        DEBUG_LOG_VAL("Compiling SDK struct declarations", _yux->sdkFile()->getStructDecls().size());
+        for (auto structDecl : _yux->sdkFile()->getStructDecls()) {
+            DEBUG_LOG_VAL("  SDK struct", structDecl->name().getText());
+            getOrCreateStructType(structDecl, _yux->sdkFile());
+        }
+    }
+    DEBUG_LOG_VAL("Compiling file struct declarations", _file->getStructDecls().size());
     for (auto structDecl : _file->getStructDecls()) {
+        DEBUG_LOG_VAL("  struct", structDecl->name().getText());
         getOrCreateStructType(structDecl);
     }
 }
@@ -743,7 +767,7 @@ void Compiler::compileStructImpls() {
             if (method->header()->retType()) {
                 retType = method->header()->retType()->getType();
             }
-            auto func = getMethodFunction(structName, method->header()->name()->getText(), paramTypes, retType);
+            auto func = getMethodFunction(structName, method->header()->name().getText(), paramTypes, retType);
             compileMethod(method, func, structName);
         }
     }
@@ -756,14 +780,14 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
     _localVarPtrs.clear();
     _scopeVars.clear();
 
-    DEBUG_LOG_VAL("Compiling function", node->header()->name()->getText());
+    DEBUG_LOG_VAL("Compiling function", node->header()->name().getText());
 
     llvm::BasicBlock* entry = llvm::BasicBlock::Create(_context, "entry", func);
     _builder.SetInsertPoint(entry);
     DEBUG_LOG("Created entry basic block");
 
     for (auto& arg : func->args()) {
-        auto paramName = node->header()->params()[arg.getArgNo()]->name()->getText();
+        auto paramName = node->header()->params()[arg.getArgNo()]->name().getText();
         TypeInfo paramType = node->header()->params()[arg.getArgNo()]->type() 
             ? node->header()->params()[arg.getArgNo()]->type()->getType() 
             : TypeInfo();
@@ -773,10 +797,17 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
             DEBUG_LOG_VAL("  Param (ref)", paramName << " : " << paramType.getFullName());
         } else {
             auto llvmType = getLLVMType(paramType);
-            auto alloca = _builder.CreateAlloca(llvmType, nullptr, paramName);
-            _builder.CreateStore(&arg, alloca);
-            _localVarPtrs[paramName] = alloca;
-            DEBUG_LOG_VAL("  Param", paramName << " : " << paramType.name);
+            auto structDecl = _file->getStructDecl(paramType.name);
+            
+            if (structDecl) {
+                _localVarPtrs[paramName] = &arg;
+                DEBUG_LOG_VAL("  Param (struct ptr)", paramName << " : " << paramType.name << "*");
+            } else {
+                auto alloca = _builder.CreateAlloca(llvmType, nullptr, paramName);
+                _builder.CreateStore(&arg, alloca);
+                _localVarPtrs[paramName] = alloca;
+                DEBUG_LOG_VAL("  Param", paramName << " : " << paramType.name);
+            }
         }
     }
 
@@ -784,7 +815,7 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
         compileStatement(s);
     }
 
-    auto fnName = node->header()->name()->getText();
+    auto fnName = node->header()->name().getText();
     if (!_builder.GetInsertBlock()->getTerminator()) {
         if (func->getReturnType()->isVoidTy()) {
             callDestructorsForScope();
@@ -792,7 +823,7 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
             DEBUG_LOG("  Added implicit void return");
         }
     }
-    DEBUG_LOG_VAL("Finished compiling function", node->header()->name()->getText());
+    DEBUG_LOG_VAL("Finished compiling function", node->header()->name().getText());
 }
 
 void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string& structName) {
@@ -802,7 +833,10 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
     _localVarPtrs.clear();
     _scopeVars.clear();
 
-    DEBUG_LOG_VAL("Compiling method", structName << "." << node->header()->name()->getText());
+    DEBUG_LOG_VAL("Compiling method", structName << "." << node->header()->name().getText());
+    
+    DEBUG_LOG_VAL("  Method params count", node->header()->params().size());
+    DEBUG_LOG_VAL("  LLVM args count", func->arg_size());
 
     llvm::BasicBlock* entry = llvm::BasicBlock::Create(_context, "entry", func);
     _builder.SetInsertPoint(entry);
@@ -821,14 +855,20 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
     for (auto& param : node->header()->params()) {
         if (argIt == args.end()) break;
         
-        auto paramName = param->name()->getText();
+        auto paramName = param->name().getText();
         TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();
         auto llvmType = getLLVMType(paramType);
-        auto alloca = _builder.CreateAlloca(llvmType, nullptr, paramName);
-        _builder.CreateStore(&(*argIt), alloca);
-        _localVarPtrs[paramName] = alloca;
-
-        DEBUG_LOG_VAL("  Param", paramName << " : " << paramType.name);
+        
+        auto structDecl = _file->getStructDecl(paramType.name);
+        if (structDecl) {
+            _localVarPtrs[paramName] = &(*argIt);
+            DEBUG_LOG_VAL("  Param (struct ptr)", paramName << " : " << paramType.name << "*");
+        } else {
+            auto alloca = _builder.CreateAlloca(llvmType, nullptr, paramName);
+            _builder.CreateStore(&(*argIt), alloca);
+            _localVarPtrs[paramName] = alloca;
+            DEBUG_LOG_VAL("  Param", paramName << " : " << paramType.name);
+        }
         ++argIt;
     }
 
@@ -843,7 +883,7 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
             DEBUG_LOG("  Added implicit void return");
         }
     }
-    DEBUG_LOG_VAL("Finished compiling method", structName << "." << node->header()->name()->getText());
+    DEBUG_LOG_VAL("Finished compiling method", structName << "." << node->header()->name().getText());
 }
 
 void Compiler::compileRetStatement(p<StatementRetNode> node) {
@@ -876,7 +916,7 @@ void Compiler::compileRetVoidStatement(p<StatementRetVoidNode> node) {
 
 void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node) {
     auto expr = node->expr();
-    auto varName = node->name()->getText();
+    auto varName = node->name().getText();
 
     if (auto arrayInitNode = dynamic_cast<ExprArrayInitNode*>(expr)) {
         if (!node->varType()) {
@@ -1047,9 +1087,8 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
 }
 
 void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
-    auto objName = node->obj()->getText();
+    auto objName = node->obj().getText();
     auto expr = node->expr();
-    auto exprVal = compileExpr(expr);
     auto& subs = node->subs();
     
     if (subs.empty()) {
@@ -1063,7 +1102,40 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         }
 
         DEBUG_LOG_VAL("  Statement: Assign", objName << " : " << sym->type.name);
+        
+        if (sym->type.isArrayGeneric()) {
+            if (auto arrayNode = dynamic_cast<ExprArrayNode*>(expr)) {
+                if (arrayNode->elements().empty()) {
+                    auto arrayStructType = getLLVMType(sym->type);
+                    auto it = _localVarPtrs.find(objName);
+                    if (it != _localVarPtrs.end()) {
+                        auto alloca = _builder.CreateAlloca(arrayStructType, nullptr, "empty_array_assign");
+                        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+                        
+                        llvm::Value* dataIndices[] = {zero, zero};
+                        auto dataPtrField = _builder.CreateGEP(arrayStructType, alloca, dataIndices, "data_ptr_field");
+                        
+                        auto elemType = sym->type.arrayGenericElementType();
+                        auto elemLLVMType = elemType ? getLLVMType(*elemType) : _builder.getInt8Ty();
+                        _builder.CreateStore(llvm::ConstantPointerNull::get(llvm::PointerType::get(elemLLVMType, 0)), dataPtrField);
+                        
+                        llvm::Value* lenIndices[] = {zero, llvm::ConstantInt::get(_builder.getInt32Ty(), 1)};
+                        auto lenField = _builder.CreateGEP(arrayStructType, alloca, lenIndices, "len_field");
+                        _builder.CreateStore(_builder.getInt64(0), lenField);
+                        
+                        llvm::Value* capIndices[] = {zero, llvm::ConstantInt::get(_builder.getInt32Ty(), 2)};
+                        auto capField = _builder.CreateGEP(arrayStructType, alloca, capIndices, "cap_field");
+                        _builder.CreateStore(_builder.getInt64(0), capField);
+                        
+                        auto emptyArrayVal = _builder.CreateLoad(arrayStructType, alloca, "empty_array.load");
+                        _builder.CreateStore(emptyArrayVal, it->second);
+                        return;
+                    }
+                }
+            }
+        }
 
+        auto exprVal = compileExpr(expr);
         auto exprType = expr->getType();
         auto valToStore = createCast(exprVal, exprType, sym->type);
         _builder.CreateStore(valToStore, _localVarPtrs[objName]);
@@ -1082,7 +1154,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         }
         
         if (sym->type.isPtr()) {
-            auto memberName = subs[0]->getText();
+            auto memberName = subs[0].getText();
             if (memberName == "_value") {
                 if (!_isSdk) {
                     throw YuxError("Cannot access private field '_value' of Ptr type (sdk only)");
@@ -1098,6 +1170,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                     throw YuxError("Variable not found: {}", objName);
                 }
                 
+                auto exprVal = compileExpr(expr);
                 auto ptrStructType = getLLVMType(sym->type);
                 auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
                 llvm::Value* indices[] = {zero, zero};
@@ -1112,7 +1185,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             throw YuxError("Cannot access member on non-struct type: {}", actualType.name);
         }
         
-        DEBUG_LOG_VAL("  Statement: MemberAssign", objName << "." << subs[0]->getText());
+        DEBUG_LOG_VAL("  Statement: MemberAssign", objName << "." << subs[0].getText());
         
         auto it = _localVarPtrs.find(objName);
         if (it == _localVarPtrs.end()) {
@@ -1120,10 +1193,11 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         }
         
         llvm::Value* structPtr = it->second;
+        
         auto structType = getLLVMType(actualType);
         
         for (size_t i = 0; i < subs.size(); ++i) {
-            auto memberName = subs[i]->getText();
+            auto memberName = subs[i].getText();
             int fieldIndex = structDecl->fieldIndex(memberName);
             if (fieldIndex < 0) {
                 throw YuxError("Struct {} has no field: {}", actualType.name, memberName);
@@ -1140,8 +1214,63 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                 llvm::Value* indices[] = {zero, idx};
                 
                 auto fieldPtr = _builder.CreateGEP(structType, structPtr, indices, "struct.field");
+                auto fieldType = field->getType();
+                
+                if (fieldType.isArrayGeneric()) {
+                    if (auto arrayNode = dynamic_cast<ExprArrayNode*>(expr)) {
+                        auto& elements = arrayNode->elements();
+                        auto arrayStructType = getLLVMType(fieldType);
+                        auto alloca = _builder.CreateAlloca(arrayStructType, nullptr, "array_field_tmp");
+                        
+                        auto elemType = fieldType.arrayGenericElementType();
+                        auto elemLLVMType = elemType ? getLLVMType(*elemType) : _builder.getInt8Ty();
+                        
+                        if (elements.empty()) {
+                            llvm::Value* dataIndices[] = {zero, zero};
+                            auto dataPtrField = _builder.CreateGEP(arrayStructType, alloca, dataIndices, "data_ptr_field");
+                            _builder.CreateStore(llvm::ConstantPointerNull::get(llvm::PointerType::get(elemLLVMType, 0)), dataPtrField);
+                            
+                            llvm::Value* lenIndices[] = {zero, llvm::ConstantInt::get(_builder.getInt32Ty(), 1)};
+                            auto lenField = _builder.CreateGEP(arrayStructType, alloca, lenIndices, "len_field");
+                            _builder.CreateStore(_builder.getInt64(0), lenField);
+                            
+                            llvm::Value* capIndices[] = {zero, llvm::ConstantInt::get(_builder.getInt32Ty(), 2)};
+                            auto capField = _builder.CreateGEP(arrayStructType, alloca, capIndices, "cap_field");
+                            _builder.CreateStore(_builder.getInt64(0), capField);
+                        } else {
+                            auto arrType = llvm::ArrayType::get(elemLLVMType, elements.size());
+                            auto arrAlloca = _builder.CreateAlloca(arrType, nullptr, "arr_data");
+                            
+                            for (size_t j = 0; j < elements.size(); ++j) {
+                                auto elemVal = compileExpr(elements[j]);
+                                llvm::Value* arrIndices[] = {zero, llvm::ConstantInt::get(_builder.getInt64Ty(), j)};
+                                auto elemPtr = _builder.CreateGEP(arrType, arrAlloca, arrIndices);
+                                _builder.CreateStore(elemVal, elemPtr);
+                            }
+                            
+                            llvm::Value* dataIndices[] = {zero, zero};
+                            auto dataPtrField = _builder.CreateGEP(arrayStructType, alloca, dataIndices, "data_ptr_field");
+                            auto arrPtr = _builder.CreateBitCast(arrAlloca, llvm::PointerType::get(elemLLVMType, 0));
+                            _builder.CreateStore(arrPtr, dataPtrField);
+                            
+                            llvm::Value* lenIndices[] = {zero, llvm::ConstantInt::get(_builder.getInt32Ty(), 1)};
+                            auto lenField = _builder.CreateGEP(arrayStructType, alloca, lenIndices, "len_field");
+                            _builder.CreateStore(_builder.getInt64(elements.size()), lenField);
+                            
+                            llvm::Value* capIndices[] = {zero, llvm::ConstantInt::get(_builder.getInt32Ty(), 2)};
+                            auto capField = _builder.CreateGEP(arrayStructType, alloca, capIndices, "cap_field");
+                            _builder.CreateStore(_builder.getInt64(elements.size()), capField);
+                        }
+                        
+                        auto arrayVal = _builder.CreateLoad(arrayStructType, alloca, "array.load");
+                        _builder.CreateStore(arrayVal, fieldPtr);
+                        return;
+                    }
+                }
+                
+                auto exprVal = compileExpr(expr);
                 auto exprType = expr->getType();
-                auto valToStore = createCast(exprVal, exprType, field->getType());
+                auto valToStore = createCast(exprVal, exprType, fieldType);
                 _builder.CreateStore(valToStore, fieldPtr);
             } else {
                 throw YuxError("Nested member access not yet supported");
@@ -1219,7 +1348,7 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
 
     if (auto literalNode = dynamic_cast<ExprLiteralNode*>(arrayExpr)) {
         if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literalNode->literal())) {
-            auto varName = objLiteral->getValue()->getText();
+            auto varName = objLiteral->getValue().getText();
             auto it = _localVarPtrs.find(varName);
             if (it == _localVarPtrs.end()) {
                 throw YuxError("Array variable not found: {}", varName);
@@ -1306,7 +1435,7 @@ void Compiler::compileStatement(p<StatementNode> node) {
 llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const TypeInfo& targetType) {
     auto literal = node->value();
     auto literalType = literal->getType();
-    auto text = literal->getValue()->getText();
+    auto text = literal->getValue().getText();
     
     TypeInfo elementType;
     if (node->explicitType()) {
@@ -1477,7 +1606,7 @@ llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& srcType, con
 llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
     auto literal = node->literal();
     auto type = literal->getType();
-    auto text = literal->getValue()->getText();
+    auto text = literal->getValue().getText();
 
     if (auto intLiteral = dynamic_cast<LiteralIntNode*>(literal)) {
         string numStr;
@@ -1537,6 +1666,59 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
         auto valueField = _builder.CreateGEP(ptrStructType, alloca, indices, "null_value_field");
         _builder.CreateStore(_builder.getInt64(0), valueField);
         return _builder.CreateLoad(ptrStructType, alloca, "null_ptr");
+    }
+    else if (auto stringLiteral = dynamic_cast<LiteralStringNode*>(literal)) {
+        DEBUG_LOG_VAL("    Expr: StringLiteral", text);
+        auto codePoints = stringLiteral->codePoints();
+        size_t len = codePoints.size();
+        
+        auto stringType = getLLVMType(TypeInfo("String"));
+        
+        auto alloca = _builder.CreateAlloca(stringType, nullptr, "str_tmp");
+        
+        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+        auto two = llvm::ConstantInt::get(_builder.getInt32Ty(), 2);
+        
+        llvm::Value* dataPtrIndices[] = {zero, zero, zero};
+        auto dataPtrField = _builder.CreateGEP(stringType, alloca, dataPtrIndices, "str_data_ptr");
+        
+        llvm::Value* lenIndices[] = {zero, zero, one};
+        auto lenField = _builder.CreateGEP(stringType, alloca, lenIndices, "str_len");
+        
+        llvm::Value* capIndices[] = {zero, zero, two};
+        auto capField = _builder.CreateGEP(stringType, alloca, capIndices, "str_cap");
+        
+        if (len > 0) {
+            auto arrType = llvm::ArrayType::get(_builder.getInt32Ty(), len);
+            
+            vector<llvm::Constant*> elements;
+            for (size_t i = 0; i < len; ++i) {
+                elements.push_back(llvm::ConstantInt::get(_builder.getInt32Ty(), codePoints[i]));
+            }
+            auto arrInit = llvm::ConstantArray::get(arrType, elements);
+            
+            static int strCounter = 0;
+            string globalName = ".str." + to_string(strCounter++);
+            auto globalVar = new llvm::GlobalVariable(
+                *_module,
+                arrType,
+                true,
+                llvm::GlobalValue::PrivateLinkage,
+                arrInit,
+                globalName
+            );
+            
+            auto arrPtr = _builder.CreateBitCast(globalVar, llvm::PointerType::get(_builder.getInt32Ty(), 0));
+            _builder.CreateStore(arrPtr, dataPtrField);
+        } else {
+            _builder.CreateStore(llvm::ConstantPointerNull::get(llvm::PointerType::get(_builder.getInt32Ty(), 0)), dataPtrField);
+        }
+        
+        _builder.CreateStore(llvm::ConstantInt::get(_builder.getInt64Ty(), len), lenField);
+        _builder.CreateStore(llvm::ConstantInt::get(_builder.getInt64Ty(), len), capField);
+        
+        return _builder.CreateLoad(stringType, alloca, "str_val");
     }
     throw YuxError("Unsupported literal type");
 }
@@ -1660,7 +1842,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
 
     if (auto calleeLiteral = dynamic_cast<ExprLiteralNode*>(calleeExpr)) {
         if (auto objLiteral = dynamic_cast<LiteralObjNode*>(calleeLiteral->literal())) {
-            return compileFunctionCall(node, objLiteral->getValue()->getText(), args, argTypes);
+            return compileFunctionCall(node, objLiteral->getValue().getText(), args, argTypes);
         }
     }
 
@@ -1681,6 +1863,27 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
 
     auto baseType = baseExpr->getType();
     TypeInfo actualType = baseType;
+    
+    if (baseType.isArrayGeneric()) {
+        auto baseVal = compileExpr(baseExpr);
+        auto arrayStructType = getLLVMType(baseType);
+        auto alloca = _builder.CreateAlloca(arrayStructType, nullptr, "array_tmp");
+        _builder.CreateStore(baseVal, alloca);
+        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        
+        if (member == "_len") {
+            DEBUG_LOG("    Expr: Array._len()");
+            llvm::Value* indices[] = {zero, llvm::ConstantInt::get(_builder.getInt32Ty(), 1)};
+            auto lenField = _builder.CreateGEP(arrayStructType, alloca, indices, "len_field");
+            return _builder.CreateLoad(_builder.getInt64Ty(), lenField, "array.len");
+        }
+        if (member == "_cap") {
+            DEBUG_LOG("    Expr: Array._cap()");
+            llvm::Value* indices[] = {zero, llvm::ConstantInt::get(_builder.getInt32Ty(), 2)};
+            auto capField = _builder.CreateGEP(arrayStructType, alloca, indices, "cap_field");
+            return _builder.CreateLoad(_builder.getInt64Ty(), capField, "array.cap");
+        }
+    }
     
     if (baseType.isBox()) {
         auto boxElemType = baseType.boxElementType();
@@ -1708,7 +1911,7 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
         llvm::Value* basePtr = nullptr;
         if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
             if (auto objLiteral = dynamic_cast<LiteralObjNode*>(baseLiteral->literal())) {
-                auto varName = objLiteral->getValue()->getText();
+                auto varName = objLiteral->getValue().getText();
                 auto it = _localVarPtrs.find(varName);
                 if (it != _localVarPtrs.end()) {
                     basePtr = it->second;
@@ -1758,7 +1961,7 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
 
     if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
         if (auto objLiteral = dynamic_cast<LiteralObjNode*>(baseLiteral->literal())) {
-            auto objName = objLiteral->getValue()->getText();
+            auto objName = objLiteral->getValue().getText();
             auto fnSymbol = _file->lookupFnSymbolWithParams(objName, argTypes);
             if (fnSymbol) {
                 auto cName = Node::getCName(objName, argTypes);
@@ -1889,8 +2092,8 @@ llvm::Value* Compiler::compileConstructorCall(const string& fnName, vector<llvm:
         }
 
         string mangledStructName = _file->getMangledName(fnName);
-        string mangledName = mangledStructName + "_" + fnName;
-        auto fn = _module->getFunction(mangledName);
+        string cName = Node::getCName(mangledStructName + "_" + fnName, argTypes);
+        auto fn = _module->getFunction(cName);
         if (!fn) {
             vector<llvm::Type*> paramTypes;
             paramTypes.push_back(llvm::PointerType::get(structType, 0));
@@ -1899,7 +2102,7 @@ llvm::Value* Compiler::compileConstructorCall(const string& fnName, vector<llvm:
             }
             auto retType = _builder.getVoidTy();
             auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
-            fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
+            fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, cName, _module);
         }
         _builder.CreateCall(fn, ctorArgs);
 
@@ -1914,6 +2117,8 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
         cName = fnName;
     } else if (fnName == "main") {
         cName = "yux_main";
+    } else if (fnSymbol->moduleName == "sdk") {
+        cName = Node::getCName(fnName, fnSymbol->params);
     } else {
         cName = _file->getMangledName(fnName, fnSymbol->params);
     }
@@ -1935,7 +2140,18 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
             if (fnSymbol->isExternal && fnSymbol->params[i].isPtr()) {
                 paramTypes.push_back(llvm::PointerType::get(_builder.getInt8Ty(), 0));
             } else {
-                paramTypes.push_back(getLLVMType(fnSymbol->params[i]));
+                auto paramStructDecl = _file->getStructDecl(fnSymbol->params[i].name);
+                bool isStructType = paramStructDecl != nullptr;
+                
+                if (!isStructType && _yux && _yux->sdkFile()) {
+                    isStructType = _yux->sdkFile()->getStructDecl(fnSymbol->params[i].name) != nullptr;
+                }
+                
+                if (isStructType) {
+                    paramTypes.push_back(llvm::PointerType::get(getLLVMType(fnSymbol->params[i]), 0));
+                } else {
+                    paramTypes.push_back(getLLVMType(fnSymbol->params[i]));
+                }
             }
         }
         auto retType = fnSymbol->retType.empty() ? _builder.getVoidTy() : 
@@ -1966,7 +2182,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
         if (fnSymbol->params[i].isRef() && !fnSymbol->isExternal) {
             if (auto literalNode = dynamic_cast<ExprLiteralNode*>(callNode->getArgs()[i])) {
                 if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literalNode->literal())) {
-                    auto varName = objLiteral->getValue()->getText();
+                    auto varName = objLiteral->getValue().getText();
                     auto it = _localVarPtrs.find(varName);
                     if (it != _localVarPtrs.end()) {
                         callArgs.push_back(it->second);
@@ -2045,6 +2261,27 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
             continue;
         }
         
+        auto paramStructDecl = _file->getStructDecl(fnSymbol->params[i].name);
+        bool isStructType = paramStructDecl != nullptr;
+        
+        if (!isStructType && _yux && _yux->sdkFile()) {
+            isStructType = _yux->sdkFile()->getStructDecl(fnSymbol->params[i].name) != nullptr;
+        }
+        
+        if (!isStructType) {
+            auto it = _structTypes.find(fnSymbol->params[i].name);
+            isStructType = (it != _structTypes.end());
+        }
+        
+        if (isStructType) {
+            DEBUG_LOG_VAL("    Passing struct by pointer", "arg " << i << " : " << fnSymbol->params[i].name);
+            auto structType = getLLVMType(argTypes[i]);
+            auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");
+            _builder.CreateStore(args[i], alloca);
+            callArgs.push_back(alloca);
+            continue;
+        }
+        
         callArgs.push_back(args[i]);
     }
     
@@ -2107,7 +2344,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
             
             if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
                 if (auto objLiteral = dynamic_cast<LiteralObjNode*>(baseLiteral->literal())) {
-                    auto varName = objLiteral->getValue()->getText();
+                    auto varName = objLiteral->getValue().getText();
                     auto it = _localVarPtrs.find(varName);
                     if (it != _localVarPtrs.end()) {
                         auto ptrStructType = getLLVMType(baseType);
@@ -2136,7 +2373,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
 
             if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
                 if (auto objLiteral = dynamic_cast<LiteralObjNode*>(baseLiteral->literal())) {
-                    auto varName = objLiteral->getValue()->getText();
+                    auto varName = objLiteral->getValue().getText();
                     auto it = _localVarPtrs.find(varName);
                     if (it != _localVarPtrs.end()) {
                         structPtr = it->second;
@@ -2172,7 +2409,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
 
     if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
         if (auto objLiteral = dynamic_cast<LiteralObjNode*>(baseLiteral->literal())) {
-            auto objName = objLiteral->getValue()->getText();
+            auto objName = objLiteral->getValue().getText();
             auto sym = _currentFnNode->lookupSymbol(objName);
             if (sym && _localVarPtrs.contains(objName)) {
                 DEBUG_LOG_VAL("    Expr: DotMemberLoad", objName << "." << member);
@@ -2349,12 +2586,26 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
 
     if (auto literalNode = dynamic_cast<ExprLiteralNode*>(arrayExpr)) {
         if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literalNode->literal())) {
-            auto varName = objLiteral->getValue()->getText();
+            auto varName = objLiteral->getValue().getText();
             auto it = _localVarPtrs.find(varName);
             if (it == _localVarPtrs.end()) {
                 throw YuxError("Array variable not found: {}", varName);
             }
             currentPtr = it->second;
+        }
+    } else if (auto dotNode = dynamic_cast<ExprDotNode*>(arrayExpr)) {
+        auto fieldPtr = compileExpr(dotNode);
+        auto baseType = dotNode->baseExpr()->getType();
+        auto member = dotNode->member();
+        
+        auto structDecl = _file->getStructDecl(baseType.name);
+        if (structDecl) {
+            int fieldIndex = structDecl->fieldIndex(member);
+            if (fieldIndex >= 0) {
+                auto alloca = _builder.CreateAlloca(getLLVMType(arrayType), nullptr, "array_field_tmp");
+                _builder.CreateStore(fieldPtr, alloca);
+                currentPtr = alloca;
+            }
         }
     }
 
@@ -2404,14 +2655,36 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
 
 llvm::Value* Compiler::compileArrayLiteralExpr(p<ExprArrayNode> node) {
     auto& elements = node->elements();
-    if (elements.empty()) {
-        throw YuxError("Empty array literal not supported");
-    }
-
     auto arrayType = node->getType();
     auto llvmArrayType = getLLVMType(arrayType);
 
     DEBUG_LOG_VAL("    Expr: ArrayLiteral", arrayType.name);
+    
+    if (arrayType.isArrayGeneric() && elements.empty()) {
+        auto alloca = _builder.CreateAlloca(llvmArrayType, nullptr, "empty_array");
+        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        
+        llvm::Value* indices0[] = {zero, zero};
+        auto dataPtrField = _builder.CreateGEP(llvmArrayType, alloca, indices0, "data_ptr_field");
+        
+        auto elemType = arrayType.arrayGenericElementType();
+        auto elemLLVMType = elemType ? getLLVMType(*elemType) : _builder.getInt8Ty();
+        _builder.CreateStore(llvm::ConstantPointerNull::get(llvm::PointerType::get(elemLLVMType, 0)), dataPtrField);
+        
+        llvm::Value* indices1[] = {zero, llvm::ConstantInt::get(_builder.getInt32Ty(), 1)};
+        auto lenField = _builder.CreateGEP(llvmArrayType, alloca, indices1, "len_field");
+        _builder.CreateStore(_builder.getInt64(0), lenField);
+        
+        llvm::Value* indices2[] = {zero, llvm::ConstantInt::get(_builder.getInt32Ty(), 2)};
+        auto capField = _builder.CreateGEP(llvmArrayType, alloca, indices2, "cap_field");
+        _builder.CreateStore(_builder.getInt64(0), capField);
+        
+        return _builder.CreateLoad(llvmArrayType, alloca, "empty_array.load");
+    }
+    
+    if (elements.empty()) {
+        throw YuxError("Empty array literal not supported");
+    }
 
     auto alloca = _builder.CreateAlloca(llvmArrayType, nullptr, "array.literal");
 
@@ -2428,7 +2701,7 @@ llvm::Value* Compiler::compileArrayLiteralExpr(p<ExprArrayNode> node) {
 }
 
 llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
-    auto objName = node->obj()->getText();
+    auto objName = node->obj().getText();
     auto& subs = node->subs();
     
     DEBUG_LOG_VAL("    Expr: GetRef", objName);
@@ -2447,7 +2720,7 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
     TypeInfo currentType = sym->type;
     
     for (auto& sub : subs) {
-        auto memberName = sub->getText();
+        auto memberName = sub.getText();
         auto structDecl = _file->getStructDecl(currentType.name);
         if (!structDecl) {
             throw YuxError("Cannot access field on non-struct type: {}", currentType.name);

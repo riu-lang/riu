@@ -22,7 +22,7 @@ TypeInfo ExprCallNode::getType() const {
     if (type.name == "fn_overload") {
         if (auto literalNode = dynamic_cast<ExprLiteralNode*>(_calleeExpr)) {
             if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literalNode->literal())) {
-                auto fnName = objLiteral->getValue()->getText();
+                auto fnName = objLiteral->getValue().getText();
                 auto scope = findNearestScope();
                 if (scope) {
                     vector<TypeInfo> argTypes;
@@ -156,11 +156,11 @@ const p<ExprNode>& ExprDotNode::baseExpr() const {
 }
 
 string ExprDotNode::member() const {
-    return _member->getText();
+    return _member.getText();
 }
 
 TypeInfo ExprDotNode::getType() const {
-    auto member = _member->getText();
+    auto member = _member.getText();
     DEBUG_LOG_VAL("ExprDotNode::getType - member", member);
     DEBUG_LOG_VAL("ExprDotNode::getType - starts_with('to_')", member.starts_with("to_"));
     if (member.starts_with("to_")) {
@@ -189,6 +189,12 @@ TypeInfo ExprDotNode::getType() const {
     if (baseType.isPtr()) {
         if (member == "_value") {
             return TypeInfo("u64");
+        }
+    }
+    
+    if (baseType.isArrayGeneric()) {
+        if (member == "_len" || member == "_cap") {
+            return TypeInfo("fn() i64");
         }
     }
     
@@ -389,9 +395,9 @@ TypeInfo ExprGetRefNode::getType() const {
         throw YuxError("Cannot determine type for reference expression: no scope");
     }
     
-    auto sym = scope->lookupSymbol(_obj->getText());
+    auto sym = scope->lookupSymbol(_obj.getText());
     if (!sym) {
-        throw YuxError("Undefined variable: {}", _obj->getText());
+        throw YuxError("Undefined variable: {}", _obj.getText());
     }
     
     TypeInfo baseType = sym->type;
@@ -412,9 +418,9 @@ TypeInfo ExprGetRefNode::getType() const {
             throw YuxError("Cannot access field on non-struct type: {}", baseType.name);
         }
         
-        auto field = structDecl->field(sub->getText());
+        auto field = structDecl->field(sub.getText());
         if (!field) {
-            throw YuxError("Struct {} has no field: {}", baseType.name, sub->getText());
+            throw YuxError("Struct {} has no field: {}", baseType.name, sub.getText());
         }
         
         baseType = field->getType();

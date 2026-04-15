@@ -74,6 +74,10 @@
           "match": "\\bstruct\\b"
         },
         {
+          "name": "keyword.other.extern.yux",
+          "match": "\\bextern\\b"
+        },
+        {
           "name": "constant.language.boolean.yux",
           "match": "\\b(true|false)\\b"
         },
@@ -97,17 +101,6 @@
           "name": "string.quoted.double.yux",
           "begin": "\"",
           "end": "\"",
-          "patterns": [
-            {
-              "name": "constant.character.escape.yux",
-              "match": "\\\\."
-            }
-          ]
-        },
-        {
-          "name": "string.quoted.single.yux",
-          "begin": "'",
-          "end": "'",
           "patterns": [
             {
               "name": "constant.character.escape.yux",
@@ -209,7 +202,7 @@
         },
         {
           "name": "support.type.generic.yux",
-          "match": "\\b(Ref)\\b"
+          "match": "\\b(Ref|Box|Ptr|Array)\\b"
         },
         {
           "name": "support.type.user-defined.yux",

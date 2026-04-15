@@ -22,7 +22,7 @@ public:
     }
 
     [[nodiscard]] TypeInfo getType() const override {
-        return TypeInfo(_typeName->getText());
+        return TypeInfo(_typeName.getText());
     }
 
     [[nodiscard]] Token typeNameToken() const {
@@ -42,7 +42,7 @@ public:
     [[nodiscard]] TypeInfo getType() const override {
         auto elemTypeInfo = _elementType->getType();
         auto elemShared = make_shared<TypeInfo>(elemTypeInfo);
-        u64 size = stoull(_count->getText());
+        u64 size = stoull(_count.getText());
         return TypeInfo(elemShared, size);
     }
 
@@ -73,7 +73,7 @@ public:
         for (auto& typeArg : _typeArgs) {
             args.push_back(make_shared<TypeInfo>(typeArg->getType()));
         }
-        return TypeInfo(_baseName->getText(), args);
+        return TypeInfo(_baseName.getText(), args);
     }
 
     [[nodiscard]] Token baseName() const {

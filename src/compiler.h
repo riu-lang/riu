@@ -18,6 +18,7 @@
 #include "node/statement_node.h"
 #include "node/expr_node.h"
 #include "node/struct_node.h"
+#include "yux.h"
 
 struct CastInfo {
     llvm::Value* value;
@@ -30,6 +31,7 @@ class Compiler {
     llvm::IRBuilder<>& _builder;
     llvm::Module* _module;
     p<FileNode> _file;
+    Yux* _yux = nullptr;
     bool _isSdk = false;
 
     map<string, llvm::Type*> _typeMap;
@@ -48,7 +50,7 @@ class Compiler {
 
     llvm::Type* getLLVMType(const TypeInfo& type);
     llvm::FunctionType* getLLVMFunctionType(p<FnHeaderNode> header);
-    llvm::StructType* getOrCreateStructType(p<StructDeclNode> structDecl);
+    llvm::StructType* getOrCreateStructType(p<StructDeclNode> structDecl, p<FileNode> sourceFile = nullptr);
 
     void emitStdoutWrite();
     void emitRuntimeHelpers();
@@ -104,7 +106,7 @@ class Compiler {
     llvm::Value* compileStdoutWriteCall(llvm::Function* fn, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
 
 public:
-    Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, p<FileNode> file, bool isSdk = false);
+    Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, p<FileNode> file, Yux* yux = nullptr, bool isSdk = false);
 
     void compile(p<FileNode> file);
     void compileGlobalConsts();

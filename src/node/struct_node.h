@@ -15,7 +15,7 @@ class StructFieldNode : public Node {
 public:
     StructFieldNode(const p<Node>& parent, Token name, p<TypeNode> type) :
         Node(parent), _name(name), _type(type) {
-        _isPrivate = name && !name->getText().empty() && name->getText()[0] == '_';
+        _isPrivate = !name.getText().empty() && name.getText()[0] == '_';
     }
 
     [[nodiscard]] Token name() const { return _name; }
@@ -32,11 +32,11 @@ class StructDeclNode : public ScopeNode, public Named {
 public:
     StructDeclNode(const p<Node>& parent, Token name) :
         ScopeNode(parent), Named(name) {
-        _isPrivate = name && !name->getText().empty() && name->getText()[0] == '_';
+        _isPrivate = !name.getText().empty() && name.getText()[0] == '_';
     }
 
     void addField(p<StructFieldNode> field) {
-        _fieldIndices[field->name()->getText()] = _fields.size();
+        _fieldIndices[field->name().getText()] = _fields.size();
         _fields.push_back(field);
     }
 
@@ -59,7 +59,7 @@ class StructImplNode : public ScopeNode, public Named {
 
 public:
     StructImplNode(const p<Node>& parent, Token structName) :
-        ScopeNode(parent), Named(structName), _destructor(nullptr), _structName(structName->getText()) {
+        ScopeNode(parent), Named(structName), _destructor(nullptr), _structName(structName.getText()) {
     }
 
     void addMethod(p<FnNode> method) {

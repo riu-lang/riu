@@ -46,6 +46,7 @@ literal:
     | (True|False) #literalBool
     // 变量等
     | name=ID #literalObj
+    | STR_LINE # literalStringLine
     | Null # literalNull
     ;
 

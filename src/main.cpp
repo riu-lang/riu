@@ -189,7 +189,7 @@ IRResult compileIR(string inputFile, Yux& yux, bool isSdk = false) {
 
     try {
         auto ast = astBuilder.build(program);
-        Compiler compiler(*context, builder, module.get(), ast, isSdk);
+        Compiler compiler(*context, builder, module.get(), ast, &yux, isSdk);
         compiler.compile(ast);
     } catch (runtime_error& e) {
         std::cerr << e.what() << std::endl;

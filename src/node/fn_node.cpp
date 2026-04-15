@@ -55,5 +55,5 @@ TypeInfo FnNode::getType() const {
 }
 
 string FnNode::getLocation() const {
-    return _header->name()->getText();
+    return _header->name().getText();
 }

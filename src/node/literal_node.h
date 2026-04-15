@@ -64,4 +64,12 @@ public:
     [[nodiscard]] TypeInfo getType() const override;
 };
 
+class LiteralStringNode : public LiteralNode {
+    vector<u32> _codePoints;
+public:
+    explicit LiteralStringNode(Token value);
+    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] const vector<u32>& codePoints() const { return _codePoints; }
+};
+
 #endif //YUX_LANG_LITERAL_NODE_H

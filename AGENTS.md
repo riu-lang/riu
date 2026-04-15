@@ -25,37 +25,6 @@ ninja -C cmake-build-debug yux
 yux main.yux
 ```
 
-### 3. 基本语法示例
-
-```yux
-/ 函数定义
-fn add(a i32, b i32) i32 = a + b
-
-/ 入口函数
-fn main() {
-  val x = add(1, 2)
-  println(x)
-  
-  / 结构体
-  val p = Point(1.0, 2.0)
-  println(p.x)
-}
-
-/ 结构体定义
-struct Point {
-  x f64
-  y f64
-}
-
-/ 结构体实现
-Point {
-  fn Point(x f64, y f64) {
-    self.x = x
-    self.y = y
-  }
-}
-```
-
 ## 环境
 
 项目用`Clang`构建
@@ -64,7 +33,7 @@ Point {
 
 系统PATH包含 llvm/bin
 
-命令环境含有`windows`兼容 `head` `tail`，不支持直接`-行数`，用`-n 行数`
+命令环境含有`windows`兼容 `head` `tail`，不支持直接`-行数`，用`-n 行数`，始终返回0，不管上游有什么错误退出了。
 
 ## 项目结构
 
@@ -149,7 +118,7 @@ OPTIONS:
 
 编译成功后在工作目录输出到`build`目录，返回`0`。
 编译成功才会有IR。
--d始终会有信息，信息大多为入参出参。
+-d始终会有信息，信息大多为入参出参，信息非常多，请配合`tail`或其它过滤的使用。
 
 ## 测试
 
@@ -194,6 +163,7 @@ val arr = [ 1,2,3 ]        ; 括号内多余空格
 - 整数：`i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`
 - 浮点：`f32`, `f64`
 - 布尔：`bool`
+- 字符串：`String`
 
 **特殊类型：**
 - `Ref<T>` - 不可空引用
@@ -209,9 +179,9 @@ val arr = [ 1,2,3 ]        ; 括号内多余空格
 ### 变量声明
 
 ```yux
-var a i32 = 10      / 可变变量
-val b i64 = 100     / 不可变变量
-cval MAX i32 = 1024 / 全局常量
+var a i32 = 10      ; 可变变量
+val b i64 = 100     ; 不可变变量
+cval MAX i32 = 1024 ; 常量
 ```
 
 ### 函数
@@ -341,6 +311,9 @@ fn main() {
     println(b)
     b = b - 1
   }
+
+  val str String = "end"
+  println(str)
 }
 
 struct Abc {
