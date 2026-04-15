@@ -39,11 +39,11 @@ class Compiler {
     map<string, llvm::Value*> _localVarPtrs;
     map<string, CastInfo> _castFunctions;
     int _castCounter = 0;
-    
+
     vector<string> _scopeVars;
 
     llvm::Function* _currentFn = nullptr;
-    p<FnNode> _currentFnNode;
+    p<FnNode> _currentFnNode = nullptr;
     string _currentStructName;
 
     vector<llvm::BasicBlock*> _loopExitBlocks;
@@ -52,12 +52,10 @@ class Compiler {
     llvm::FunctionType* getLLVMFunctionType(p<FnHeaderNode> header);
     llvm::StructType* getOrCreateStructType(p<StructDeclNode> structDecl, p<FileNode> sourceFile = nullptr);
 
-    void emitStdoutWrite();
     void emitRuntimeHelpers();
     void emitBoxHelpers();
     void emitArrayHelpers();
     void emitMainStartup();
-    llvm::Function* getStdoutWriteFn();
     llvm::Function* getBoxAllocFn();
     llvm::Function* getBoxRetainFn();
     llvm::Function* getBoxReleaseFn();
@@ -66,14 +64,17 @@ class Compiler {
     llvm::Function* getArrayReleaseFn();
 
     llvm::Function* getFunction(p<FnHeaderNode> header);
-    llvm::Function* getMethodFunction(const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes, const TypeInfo& retType);
+    llvm::Function* getMethodFunction(
+        const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes,
+        const TypeInfo& retType);
     llvm::Function* getDestructorFunction(const string& structName);
     llvm::Value* compileExpr(p<ExprNode> node);
     llvm::Value* compileArrayInitExpr(p<ExprArrayInitNode> node, const TypeInfo& targetType);
     llvm::Value* createCast(llvm::Value* val, const TypeInfo& srcType, const TypeInfo& dstType);
     void compileStatementBlock(p<StatementBlockNode> block);
-    llvm::Value* compileStatementBlockWithResult(p<StatementBlockNode> block, llvm::BasicBlock* continueBlock, llvm::PHINode* phi, const TypeInfo& resultType);
-    
+    llvm::Value* compileStatementBlockWithResult(
+        p<StatementBlockNode> block, llvm::BasicBlock* continueBlock, llvm::PHINode* phi, const TypeInfo& resultType);
+
     void callDestructor(const string& varName, const TypeInfo& varType);
     void callDestructorsForScope();
 
@@ -99,14 +100,19 @@ class Compiler {
     llvm::Value* compileGetRefExpr(p<ExprGetRefNode> node);
     llvm::Value* compileUnaryExpr(p<ExprUnaryNode> node);
 
-    llvm::Value* compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode> dotNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
-    llvm::Value* compileFunctionCall(p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
+    llvm::Value* compileMethodCall(
+        p<ExprCallNode> callNode, p<ExprDotNode> dotNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
+    llvm::Value* compileFunctionCall(
+        p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
     llvm::Value* compileConstructorCall(const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
-    llvm::Value* compileKnownFunctionCall(p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes, FnSymbolInfo* fnSymbol);
-    llvm::Value* compileStdoutWriteCall(llvm::Function* fn, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
+    llvm::Value* compileKnownFunctionCall(
+        p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
+        FnSymbolInfo* fnSymbol);
 
 public:
-    Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, p<FileNode> file, Yux* yux = nullptr, bool isSdk = false);
+    Compiler(
+        llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, p<FileNode> file, Yux* yux = nullptr,
+        bool isSdk = false);
 
     void compile(p<FileNode> file);
     void compileGlobalConsts();
