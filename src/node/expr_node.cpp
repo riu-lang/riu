@@ -365,6 +365,38 @@ int ExprIfElseNode::resolveLineNumber() const {
     return _condition->resolveLineNumber();
 }
 
+TypeInfo ExprOneLineIfElseNode::getType() const {
+    auto trueType = _trueValue->getType();
+    auto falseType = _falseValue->getType();
+    if (trueType != falseType) {
+        YuxError err("Type mismatch in one-line if-else: true branch is {}, false branch is {}", trueType.name, falseType.name);
+        err.setLineNumber(resolveLineNumber());
+        throw err;
+    }
+    return trueType;
+}
+
+int ExprOneLineIfElseNode::resolveLineNumber() const {
+    if (_line > 0) return _line;
+    return _condition->resolveLineNumber();
+}
+
+TypeInfo ExprIfElsePreValueNode::getType() const {
+    auto trueType = _trueValue->getType();
+    auto falseType = _falseValue->getType();
+    if (trueType != falseType) {
+        YuxError err("Type mismatch in if-else expression: true branch is {}, false branch is {}", trueType.name, falseType.name);
+        err.setLineNumber(resolveLineNumber());
+        throw err;
+    }
+    return trueType;
+}
+
+int ExprIfElsePreValueNode::resolveLineNumber() const {
+    if (_line > 0) return _line;
+    return _condition->resolveLineNumber();
+}
+
 const p<ExprNode>& ExprGetNode::arrayExpr() const {
     return _arrayExpr;
 }

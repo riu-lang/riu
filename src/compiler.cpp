@@ -2715,6 +2715,80 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
     return nullptr;
 }
 
+llvm::Value* Compiler::compileOneLineIfElseExpr(p<ExprOneLineIfElseNode> node) {
+    auto resultType = node->getType();
+
+    DEBUG_LOG_VAL("    Expr: OneLineIfElse", "type=" << resultType.name);
+
+    auto condVal = compileExpr(node->condition());
+    auto condBool = _builder.CreateICmpNE(condVal, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "if.cond");
+
+    llvm::Function* func = _builder.GetInsertBlock()->getParent();
+
+    llvm::BasicBlock* thenBB = llvm::BasicBlock::Create(_context, "if.then", func);
+    llvm::BasicBlock* elseBB = llvm::BasicBlock::Create(_context, "if.else");
+    llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(_context, "if.merge");
+
+    _builder.CreateCondBr(condBool, thenBB, elseBB);
+
+    _builder.SetInsertPoint(thenBB);
+    auto trueVal = compileExpr(node->trueValue());
+    _builder.CreateBr(mergeBB);
+    auto thenEndBB = _builder.GetInsertBlock();
+
+    func->insert(func->end(), elseBB);
+    _builder.SetInsertPoint(elseBB);
+    auto falseVal = compileExpr(node->falseValue());
+    _builder.CreateBr(mergeBB);
+    auto elseEndBB = _builder.GetInsertBlock();
+
+    func->insert(func->end(), mergeBB);
+    _builder.SetInsertPoint(mergeBB);
+
+    auto phi = llvm::PHINode::Create(getLLVMType(resultType), 2, "if.result", mergeBB);
+    phi->addIncoming(trueVal, thenEndBB);
+    phi->addIncoming(falseVal, elseEndBB);
+
+    return phi;
+}
+
+llvm::Value* Compiler::compileIfElsePreValueExpr(p<ExprIfElsePreValueNode> node) {
+    auto resultType = node->getType();
+
+    DEBUG_LOG_VAL("    Expr: IfElsePreValue", "type=" << resultType.name);
+
+    auto condVal = compileExpr(node->condition());
+    auto condBool = _builder.CreateICmpNE(condVal, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "if.cond");
+
+    llvm::Function* func = _builder.GetInsertBlock()->getParent();
+
+    llvm::BasicBlock* thenBB = llvm::BasicBlock::Create(_context, "if.then", func);
+    llvm::BasicBlock* elseBB = llvm::BasicBlock::Create(_context, "if.else");
+    llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(_context, "if.merge");
+
+    _builder.CreateCondBr(condBool, thenBB, elseBB);
+
+    _builder.SetInsertPoint(thenBB);
+    auto trueVal = compileExpr(node->trueValue());
+    _builder.CreateBr(mergeBB);
+    auto thenEndBB = _builder.GetInsertBlock();
+
+    func->insert(func->end(), elseBB);
+    _builder.SetInsertPoint(elseBB);
+    auto falseVal = compileExpr(node->falseValue());
+    _builder.CreateBr(mergeBB);
+    auto elseEndBB = _builder.GetInsertBlock();
+
+    func->insert(func->end(), mergeBB);
+    _builder.SetInsertPoint(mergeBB);
+
+    auto phi = llvm::PHINode::Create(getLLVMType(resultType), 2, "if.result", mergeBB);
+    phi->addIncoming(trueVal, thenEndBB);
+    phi->addIncoming(falseVal, elseEndBB);
+
+    return phi;
+}
+
 llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
     auto arrayExpr = node->arrayExpr();
     auto arrayType = arrayExpr->getType();
@@ -2949,6 +3023,10 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         return compileCompareExpr(compareNode);
     } else if (auto ifElseNode = dynamic_cast<ExprIfElseNode*>(node)) {
         return compileIfElseExpr(ifElseNode);
+    } else if (auto oneLineIfElseNode = dynamic_cast<ExprOneLineIfElseNode*>(node)) {
+        return compileOneLineIfElseExpr(oneLineIfElseNode);
+    } else if (auto ifElsePreValueNode = dynamic_cast<ExprIfElsePreValueNode*>(node)) {
+        return compileIfElsePreValueExpr(ifElsePreValueNode);
     } else if (auto getNode = dynamic_cast<ExprGetNode*>(node)) {
         return compileArrayGetExpr(getNode);
     } else if (auto arrayNode = dynamic_cast<ExprArrayNode*>(node)) {

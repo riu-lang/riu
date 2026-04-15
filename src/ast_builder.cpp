@@ -743,6 +743,26 @@ std::any ASTBuilder::visitExprIfElse(yux::yuxParser::ExprIfElseContext* ctx) {
     return p<ExprNode>(createWithLine<ExprIfElseNode>(ctx, scope, condition, thenBlock, elifs, elseBlock));
 }
 
+std::any ASTBuilder::visitExprOneLineIfElse(yux::yuxParser::ExprOneLineIfElseContext* ctx) {
+    DEBUG_LOG("    Expr: OneLineIfElse");
+    auto scope = currentScope();
+    auto condition = any_cast_p<ExprNode>(visit(ctx->condition));
+    auto trueValue = any_cast_p<ExprNode>(visit(ctx->trueValue));
+    auto falseValue = any_cast_p<ExprNode>(visit(ctx->falseValue));
+
+    return p<ExprNode>(createWithLine<ExprOneLineIfElseNode>(ctx, scope, condition, trueValue, falseValue));
+}
+
+std::any ASTBuilder::visitExprIfElsePreValue(yux::yuxParser::ExprIfElsePreValueContext* ctx) {
+    DEBUG_LOG("    Expr: IfElsePreValue (Python-style)");
+    auto scope = currentScope();
+    auto trueValue = any_cast_p<ExprNode>(visit(ctx->trueValue));
+    auto condition = any_cast_p<ExprNode>(visit(ctx->condition));
+    auto falseValue = any_cast_p<ExprNode>(visit(ctx->falseValue));
+
+    return p<ExprNode>(createWithLine<ExprIfElsePreValueNode>(ctx, scope, condition, trueValue, falseValue));
+}
+
 std::any ASTBuilder::visitExprElIf(yux::yuxParser::ExprElIfContext* ctx) {
     DEBUG_LOG("      Visit: Elif");
     auto scope = currentScope();

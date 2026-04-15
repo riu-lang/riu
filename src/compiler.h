@@ -95,6 +95,8 @@ class Compiler {
     llvm::Value* compileDotExpr(p<ExprDotNode> node);
     llvm::Value* compileCompareExpr(p<ExprCompareNode> node);
     llvm::Value* compileIfElseExpr(p<ExprIfElseNode> node);
+    llvm::Value* compileOneLineIfElseExpr(p<ExprOneLineIfElseNode> node);
+    llvm::Value* compileIfElsePreValueExpr(p<ExprIfElsePreValueNode> node);
     llvm::Value* compileArrayGetExpr(p<ExprGetNode> node);
     llvm::Value* compileArrayLiteralExpr(p<ExprArrayNode> node);
     llvm::Value* compileGetRefExpr(p<ExprGetRefNode> node);

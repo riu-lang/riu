@@ -87,6 +87,8 @@ public:
     std::any visitExprDot(yux::yuxParser::ExprDotContext* ctx) override;
     std::any visitExprCompare(yux::yuxParser::ExprCompareContext* ctx) override;
     std::any visitExprIfElse(yux::yuxParser::ExprIfElseContext* ctx) override;
+    std::any visitExprOneLineIfElse(yux::yuxParser::ExprOneLineIfElseContext* ctx) override;
+    std::any visitExprIfElsePreValue(yux::yuxParser::ExprIfElsePreValueContext* ctx) override;
     std::any visitExprElIf(yux::yuxParser::ExprElIfContext* ctx) override;
     std::any visitExprElse(yux::yuxParser::ExprElseContext* ctx) override;
     std::any visitExprGet(yux::yuxParser::ExprGetContext* ctx) override;

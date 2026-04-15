@@ -136,6 +136,12 @@ expr:
             args+=expr
             (SymbolComma Space args+=expr)*
         GetEnd # exprGet
+    // if 1 { 1 } else { 2 }
+    | If Space condition=expr Space BlockStart Space trueValue=expr Space BlockEnd
+        Space Else Space BlockStart Space falseValue=expr Space BlockEnd # exprOneLineIfElse
+    // true if condition else false 类python
+    | trueValue=expr Space If Space condition=expr Space
+        Else Space falseValue=expr # exprIfElsePreValue
     // if e {
     // ...
     // } elif e {

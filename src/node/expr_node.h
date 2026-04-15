@@ -227,6 +227,46 @@ public:
     [[nodiscard]] int resolveLineNumber() const override;
 };
 
+class ExprOneLineIfElseNode : public ExprNode {
+    p<ExprNode> _condition;
+    p<ExprNode> _trueValue;
+    p<ExprNode> _falseValue;
+
+public:
+    ExprOneLineIfElseNode(const p<Node>& parent, p<ExprNode> condition, p<ExprNode> trueValue, p<ExprNode> falseValue) :
+        ExprNode(parent),
+        _condition(condition),
+        _trueValue(trueValue),
+        _falseValue(falseValue) {
+    }
+
+    [[nodiscard]] const p<ExprNode>& condition() const { return _condition; }
+    [[nodiscard]] const p<ExprNode>& trueValue() const { return _trueValue; }
+    [[nodiscard]] const p<ExprNode>& falseValue() const { return _falseValue; }
+    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] int resolveLineNumber() const override;
+};
+
+class ExprIfElsePreValueNode : public ExprNode {
+    p<ExprNode> _condition;
+    p<ExprNode> _trueValue;
+    p<ExprNode> _falseValue;
+
+public:
+    ExprIfElsePreValueNode(const p<Node>& parent, p<ExprNode> condition, p<ExprNode> trueValue, p<ExprNode> falseValue) :
+        ExprNode(parent),
+        _condition(condition),
+        _trueValue(trueValue),
+        _falseValue(falseValue) {
+    }
+
+    [[nodiscard]] const p<ExprNode>& condition() const { return _condition; }
+    [[nodiscard]] const p<ExprNode>& trueValue() const { return _trueValue; }
+    [[nodiscard]] const p<ExprNode>& falseValue() const { return _falseValue; }
+    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] int resolveLineNumber() const override;
+};
+
 class ExprGetNode : public ExprNode {
     p<ExprNode> _arrayExpr;
     vector<p<ExprNode>> _indices;
