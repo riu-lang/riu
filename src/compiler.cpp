@@ -14,22 +14,29 @@
 #include <llvm/IR/DerivedTypes.h>
 
 llvm::Type* Compiler::getLLVMType(const TypeInfo& type) {
+    DEBUG_LOG_VAL("  getLLVMType", type.name << " (kind=" << static_cast<int>(type.kind) << ")");
+
     if (type.isArray()) {
         if (type.elementType) {
             auto elementLLVMType = getLLVMType(*type.elementType);
-            return llvm::ArrayType::get(elementLLVMType, type.arraySize);
+            auto result = llvm::ArrayType::get(elementLLVMType, type.arraySize);
+            DEBUG_LOG_VAL("    -> ArrayType", type.arraySize << " x " << type.elementType->name);
+            return result;
         }
     }
 
     if (type.isRef()) {
         auto elemType = type.refElementType();
         if (elemType) {
+            DEBUG_LOG_VAL("    -> RefType (pointer)", "Ref<" << elemType->name << ">");
             return llvm::PointerType::get(_context, 0);
         }
         return llvm::PointerType::get(_context, 0);
     }
 
     if (type.isPtr()) {
+        DEBUG_LOG_VAL(
+            "    -> PtrType (struct)", "Ptr<" << (type.ptrElementType() ? type.ptrElementType()->name : "?") << ">");
         vector<llvm::Type*> ptrFields;
         ptrFields.push_back(_builder.getInt64Ty());
         return llvm::StructType::get(_context, ptrFields);
@@ -38,6 +45,7 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& type) {
     if (type.isBox()) {
         auto elemType = type.boxElementType();
         if (elemType) {
+            DEBUG_LOG_VAL("    -> BoxType (struct)", "Box<" << elemType->name << ">");
             vector<llvm::Type*> boxFields;
             boxFields.push_back(llvm::PointerType::get(_context, 0));
             boxFields.push_back(llvm::PointerType::get(_context, 0));
@@ -49,6 +57,7 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& type) {
     if (type.isArrayGeneric()) {
         auto elemType = type.arrayGenericElementType();
         if (elemType) {
+            DEBUG_LOG_VAL("    -> ArrayGeneric (struct)", "Array<" << elemType->name << ">");
             vector<llvm::Type*> arrayFields;
             arrayFields.push_back(llvm::PointerType::get(_context, 0));
             arrayFields.push_back(_builder.getInt64Ty());
@@ -62,21 +71,32 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& type) {
         string mangledName = _file->getMangledName(type.getFullName());
         auto it = _structTypes.find(type.getFullName());
         if (it != _structTypes.end()) {
+            DEBUG_LOG_VAL("    -> Generic struct (cached)", type.getFullName());
             return it->second;
         }
         auto structIt = _structTypes.find(mangledName);
         if (structIt != _structTypes.end()) {
+            DEBUG_LOG_VAL("    -> Generic struct (mangled)", mangledName);
             return structIt->second;
         }
+        DEBUG_LOG_VAL("    -> Generic (fallback pointer)", type.getFullName());
         return llvm::PointerType::get(_context, 0);
     }
 
     auto it = _structTypes.find(type.name);
     if (it != _structTypes.end()) {
+        DEBUG_LOG_VAL("    -> Struct (cached)", type.name);
         return it->second;
     }
 
-    return _typeMap[type.name];
+    auto basicIt = _typeMap.find(type.name);
+    if (basicIt != _typeMap.end()) {
+        DEBUG_LOG_VAL("    -> Basic type", type.name);
+        return basicIt->second;
+    }
+
+    DEBUG_LOG_VAL("    -> Unknown type (null)", type.name);
+    return nullptr;
 }
 
 llvm::StructType* Compiler::getOrCreateStructType(p<StructDeclNode> structDecl, p<FileNode> sourceFile) {
@@ -102,19 +122,25 @@ llvm::StructType* Compiler::getOrCreateStructType(p<StructDeclNode> structDecl, 
 }
 
 llvm::FunctionType* Compiler::getLLVMFunctionType(p<FnHeaderNode> header) {
+    DEBUG_LOG_VAL("  getLLVMFunctionType", header->name().getText());
+
     vector<llvm::Type*> paramTypes;
     for (auto param : header->params()) {
         TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();
         auto structDecl = _file->getStructDecl(paramType.name);
         if (structDecl) {
             paramTypes.push_back(llvm::PointerType::get(_context, 0));
+            DEBUG_LOG_VAL("    param", param->name().getText() << " : " << paramType.name << " (struct ptr)");
         } else {
             paramTypes.push_back(getLLVMType(paramType));
+            DEBUG_LOG_VAL("    param", param->name().getText() << " : " << paramType.name);
         }
     }
     auto retType = header->retType();
     TypeInfo retTypeInfo = retType ? retType->getType() : TypeInfo();
-    return llvm::FunctionType::get(getLLVMType(retTypeInfo), paramTypes, false);
+    auto llvmRetType = getLLVMType(retTypeInfo);
+    DEBUG_LOG_VAL("    return type", (retTypeInfo.empty() ? "void" : retTypeInfo.name));
+    return llvm::FunctionType::get(llvmRetType, paramTypes, false);
 }
 
 Compiler::Compiler(
@@ -136,8 +162,11 @@ Compiler::Compiler(
 
 llvm::Function* Compiler::getFunction(p<FnHeaderNode> header) {
     auto name = header->name().getText();
+    DEBUG_LOG_VAL("  getFunction", name);
+
     if (name == "main") {
         name = "yux_main";
+        DEBUG_LOG("    -> renamed to yux_main");
     } else {
         vector<TypeInfo> paramTypes;
         for (auto param : header->params()) {
@@ -146,27 +175,35 @@ llvm::Function* Compiler::getFunction(p<FnHeaderNode> header) {
             }
         }
         name = _file->getMangledName(name, paramTypes);
+        DEBUG_LOG_VAL("    -> mangled name", name);
     }
 
     auto fnType = getLLVMFunctionType(header);
     auto func = _module->getFunction(name);
     if (!func) {
         func = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, name, _module);
+        DEBUG_LOG("    -> created new function");
+    } else {
+        DEBUG_LOG("    -> found existing function");
     }
     return func;
 }
 
 llvm::Function* Compiler::getMethodFunction(
     const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes, const TypeInfo& retType) {
+    DEBUG_LOG_VAL("  getMethodFunction", structName << "." << methodName);
+
     string mangledStructName = _file->getMangledName(structName);
     string mangledName = mangledStructName + "_" + methodName;
 
     if (!paramTypes.empty()) {
         mangledName = Node::getCName(mangledName, paramTypes);
     }
+    DEBUG_LOG_VAL("    -> mangled name", mangledName);
 
     auto func = _module->getFunction(mangledName);
     if (func) {
+        DEBUG_LOG("    -> found existing function");
         return func;
     }
 
@@ -183,16 +220,22 @@ llvm::Function* Compiler::getMethodFunction(
     }
 
     auto llvmRetType = retType.empty() ? _builder.getVoidTy() : getLLVMType(retType);
+    DEBUG_LOG_VAL("    -> return type", (retType.empty() ? "void" : retType.name));
     auto fnType = llvm::FunctionType::get(llvmRetType, llvmParamTypes, false);
+    DEBUG_LOG("    -> created new function");
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
 }
 
 llvm::Function* Compiler::getDestructorFunction(const string& structName) {
+    DEBUG_LOG_VAL("  getDestructorFunction", structName);
+
     string mangledStructName = _file->getMangledName(structName);
     string mangledName = mangledStructName + "__destructor";
+    DEBUG_LOG_VAL("    -> mangled name", mangledName);
 
     auto func = _module->getFunction(mangledName);
     if (func) {
+        DEBUG_LOG("    -> found existing function");
         return func;
     }
 
@@ -200,6 +243,7 @@ llvm::Function* Compiler::getDestructorFunction(const string& structName) {
     llvmParamTypes.push_back(llvm::PointerType::get(_context, 0));
 
     auto fnType = llvm::FunctionType::get(_builder.getVoidTy(), llvmParamTypes, false);
+    DEBUG_LOG("    -> created new function");
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
 }
 
@@ -251,6 +295,8 @@ llvm::Function* Compiler::getBoxReleaseFn() {
 }
 
 void Compiler::emitBoxHelpers() {
+    DEBUG_LOG("Emitting Box helper functions");
+
     auto getProcessHeapFn = _module->getFunction("GetProcessHeap");
     if (!getProcessHeapFn) {
         auto fnType = llvm::FunctionType::get(
@@ -264,6 +310,7 @@ void Compiler::emitBoxHelpers() {
             "GetProcessHeap",
             _module
         );
+        DEBUG_LOG("  Declared external: GetProcessHeap");
     }
 
     auto heapAllocFn = _module->getFunction("HeapAlloc");
@@ -279,6 +326,7 @@ void Compiler::emitBoxHelpers() {
             "HeapAlloc",
             _module
         );
+        DEBUG_LOG("  Declared external: HeapAlloc");
     }
 
     auto heapFreeFn = _module->getFunction("HeapFree");
@@ -294,9 +342,11 @@ void Compiler::emitBoxHelpers() {
             "HeapFree",
             _module
         );
+        DEBUG_LOG("  Declared external: HeapFree");
     }
 
     {
+        DEBUG_LOG("  Emitting _box_alloc");
         auto allocFn = getBoxAllocFn();
         if (allocFn->empty()) {
             auto entry = llvm::BasicBlock::Create(_context, "entry", allocFn);
@@ -324,6 +374,7 @@ void Compiler::emitBoxHelpers() {
     }
 
     {
+        DEBUG_LOG("  Emitting _box_retain");
         auto retainFn = getBoxRetainFn();
         if (retainFn->empty()) {
             auto entry = llvm::BasicBlock::Create(_context, "entry", retainFn);
@@ -342,6 +393,7 @@ void Compiler::emitBoxHelpers() {
     }
 
     {
+        DEBUG_LOG("  Emitting _box_release");
         auto releaseFn = getBoxReleaseFn();
         if (releaseFn->empty()) {
             auto entry = llvm::BasicBlock::Create(_context, "entry", releaseFn);
@@ -430,6 +482,8 @@ llvm::Function* Compiler::getArrayReleaseFn() {
 }
 
 void Compiler::emitArrayHelpers() {
+    DEBUG_LOG("Emitting Array helper functions");
+
     auto getProcessHeapFn = _module->getFunction("GetProcessHeap");
     if (!getProcessHeapFn) {
         auto fnType = llvm::FunctionType::get(
@@ -443,6 +497,7 @@ void Compiler::emitArrayHelpers() {
             "GetProcessHeap",
             _module
         );
+        DEBUG_LOG("  Declared external: GetProcessHeap");
     }
 
     auto heapAllocFn = _module->getFunction("HeapAlloc");
@@ -458,6 +513,7 @@ void Compiler::emitArrayHelpers() {
             "HeapAlloc",
             _module
         );
+        DEBUG_LOG("  Declared external: HeapAlloc");
     }
 
     auto heapReAllocFn = _module->getFunction("HeapReAlloc");
@@ -476,6 +532,7 @@ void Compiler::emitArrayHelpers() {
             "HeapReAlloc",
             _module
         );
+        DEBUG_LOG("  Declared external: HeapReAlloc");
     }
 
     auto heapFreeFn = _module->getFunction("HeapFree");
@@ -494,9 +551,11 @@ void Compiler::emitArrayHelpers() {
             "HeapFree",
             _module
         );
+        DEBUG_LOG("  Declared external: HeapFree");
     }
 
     {
+        DEBUG_LOG("  Emitting _array_alloc");
         auto allocFn = getArrayAllocFn();
         if (allocFn->empty()) {
             auto entry = llvm::BasicBlock::Create(_context, "entry", allocFn);
@@ -514,6 +573,7 @@ void Compiler::emitArrayHelpers() {
     }
 
     {
+        DEBUG_LOG("  Emitting _array_grow");
         auto growFn = getArrayGrowFn();
         if (growFn->empty()) {
             auto entry = llvm::BasicBlock::Create(_context, "entry", growFn);
@@ -555,6 +615,7 @@ void Compiler::emitArrayHelpers() {
     }
 
     {
+        DEBUG_LOG("  Emitting _array_release");
         auto releaseFn = getArrayReleaseFn();
         if (releaseFn->empty()) {
             auto entry = llvm::BasicBlock::Create(_context, "entry", releaseFn);
@@ -584,6 +645,8 @@ void Compiler::emitArrayHelpers() {
 }
 
 void Compiler::emitMainStartup() {
+    DEBUG_LOG("Emitting main startup function");
+
     auto setConsoleOutputCP = _module->getFunction("SetConsoleOutputCP");
     if (!setConsoleOutputCP) {
         auto fnType = llvm::FunctionType::get(
@@ -597,6 +660,7 @@ void Compiler::emitMainStartup() {
             "SetConsoleOutputCP",
             _module
         );
+        DEBUG_LOG("  Declared external: SetConsoleOutputCP");
     }
 
     auto setConsoleCP = _module->getFunction("SetConsoleCP");
@@ -612,6 +676,7 @@ void Compiler::emitMainStartup() {
             "SetConsoleCP",
             _module
         );
+        DEBUG_LOG("  Declared external: SetConsoleCP");
     }
 
     auto fnType = llvm::FunctionType::get(_builder.getInt32Ty(), {}, false);
@@ -621,6 +686,7 @@ void Compiler::emitMainStartup() {
         "mainStartup",
         _module
     );
+    DEBUG_LOG("  Created mainStartup function");
 
     auto entry = llvm::BasicBlock::Create(_context, "entry", mainStartup);
     _builder.SetInsertPoint(entry);
@@ -628,15 +694,21 @@ void Compiler::emitMainStartup() {
     auto cpUtf8 = llvm::ConstantInt::get(_builder.getInt32Ty(), 65001);
     _builder.CreateCall(setConsoleOutputCP, {cpUtf8});
     _builder.CreateCall(setConsoleCP, {cpUtf8});
+    DEBUG_LOG("  Set console code page to UTF-8");
 
     auto yuxMain = _module->getFunction("yux_main");
     if (yuxMain) {
         _builder.CreateCall(yuxMain, {});
+        DEBUG_LOG("  Called yux_main");
+    } else {
+        DEBUG_LOG("  yux_main not found");
     }
     _builder.CreateRet(_builder.getInt32(0));
 }
 
 void Compiler::emitRuntimeHelpers() {
+    DEBUG_LOG("Emitting runtime helpers (SDK)");
+
     auto chkstkFnType = llvm::FunctionType::get(_builder.getVoidTy(), {}, false);
     auto chkstk = llvm::Function::Create(
         chkstkFnType,
@@ -647,6 +719,7 @@ void Compiler::emitRuntimeHelpers() {
     auto chkstkEntry = llvm::BasicBlock::Create(_context, "entry", chkstk);
     _builder.SetInsertPoint(chkstkEntry);
     _builder.CreateRetVoid();
+    DEBUG_LOG("  Emitted __chkstk");
 
     auto fltused = new llvm::GlobalVariable(
         *_module,
@@ -656,29 +729,44 @@ void Compiler::emitRuntimeHelpers() {
         _builder.getInt32(0),
         "_fltused"
     );
+    DEBUG_LOG("  Created _fltused global");
 }
 
 void Compiler::compile(p<FileNode> file) {
+    DEBUG_LOG("=== Starting compilation ===");
+    DEBUG_LOG_VAL("  isSdk", _isSdk);
+
+    DEBUG_LOG("Compiling global constants...");
     compileGlobalConsts();
+
+    DEBUG_LOG("Compiling struct declarations...");
     compileStructDecls();
+
+    DEBUG_LOG("Compiling struct implementations...");
     compileStructImpls();
 
     if (_isSdk) {
+        DEBUG_LOG("Emitting runtime helpers (SDK mode)");
         emitRuntimeHelpers();
     } else {
+        DEBUG_LOG("Emitting Box helpers");
         emitBoxHelpers();
+        DEBUG_LOG("Emitting Array helpers");
         emitArrayHelpers();
     }
 
     auto functions = file->getFunctions();
+    DEBUG_LOG_VAL("Compiling functions", functions.size());
     for (auto fn : functions) {
         auto func = getFunction(fn->header());
         compileFn(fn, func);
     }
 
     if (!_isSdk) {
+        DEBUG_LOG("Emitting main startup");
         emitMainStartup();
     }
+    DEBUG_LOG("=== Compilation complete ===");
 }
 
 void Compiler::compileGlobalConsts() {
@@ -754,10 +842,15 @@ void Compiler::compileStructDecls() {
 }
 
 void Compiler::compileStructImpls() {
-    for (auto structImpl : _file->getStructImpls()) {
+    auto& impls = _file->getStructImpls();
+    DEBUG_LOG_VAL("  compileStructImpls", impls.size() << " implementations");
+
+    for (auto structImpl : impls) {
         string structName = structImpl->structName();
+        DEBUG_LOG_VAL("    Processing struct impl", structName);
 
         if (structImpl->hasDestructor()) {
+            DEBUG_LOG("      Has destructor");
             auto destructor = structImpl->destructor();
             vector<TypeInfo> paramTypes;
             paramTypes.emplace_back(structName);
@@ -766,7 +859,10 @@ void Compiler::compileStructImpls() {
             compileMethod(destructor, func, structName);
         }
 
-        for (auto method : structImpl->methods()) {
+        auto& methods = structImpl->methods();
+        DEBUG_LOG_VAL("      Methods count", methods.size());
+        for (auto method : methods) {
+            DEBUG_LOG_VAL("        Compiling method", method->header()->name().getText());
             vector<TypeInfo> paramTypes;
             for (auto param : method->header()->params()) {
                 if (param->type()) {
@@ -2545,6 +2641,9 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
     auto resultType = node->getType();
     bool hasResult = !resultType.empty();
 
+    DEBUG_LOG_VAL(
+        "    Expr: IfElse", "hasResult=" << hasResult << ", type=" << (resultType.empty() ? "void" : resultType.name));
+
     auto condVal = compileExpr(node->condition());
     auto condBool = _builder.CreateICmpNE(condVal, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "if.cond");
 
@@ -2554,6 +2653,7 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
     llvm::BasicBlock* elseBB = llvm::BasicBlock::Create(_context, "if.else");
     llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(_context, "if.merge");
 
+    DEBUG_LOG("      Created basic blocks: if.then, if.else, if.merge");
     _builder.CreateCondBr(condBool, thenBB, elseBB);
 
     _builder.SetInsertPoint(thenBB);
@@ -2563,6 +2663,7 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
         phi = llvm::PHINode::Create(getLLVMType(resultType), 2, "if.result", mergeBB);
     }
 
+    DEBUG_LOG("      Compiling then block");
     compileStatementBlockWithResult(node->thenBlock(), mergeBB, phi, resultType);
 
     func->insert(func->end(), elseBB);
@@ -2570,10 +2671,12 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
 
     auto& elifs = node->elifs();
     auto elseBlock = node->elseBlock();
+    DEBUG_LOG_VAL("      elifs count", elifs.size());
 
     if (!elifs.empty()) {
         for (size_t i = 0; i < elifs.size(); ++i) {
             auto& elif = elifs[i];
+            DEBUG_LOG_VAL("        Compiling elif", i);
             auto elifCond = compileExpr(elif->condition());
             auto elifCondBool = _builder.CreateICmpNE(
                 elifCond, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "elif.cond");
@@ -2592,8 +2695,10 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
     }
 
     if (elseBlock) {
+        DEBUG_LOG("      Compiling else block");
         compileStatementBlockWithResult(elseBlock, mergeBB, phi, resultType);
     } else {
+        DEBUG_LOG("      No else block");
         if (hasResult) {
             phi->addIncoming(llvm::UndefValue::get(getLLVMType(resultType)), _builder.GetInsertBlock());
         }
@@ -2604,6 +2709,7 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
     _builder.SetInsertPoint(mergeBB);
 
     if (hasResult) {
+        DEBUG_LOG("      Returning phi node");
         return phi;
     }
     return nullptr;
@@ -2822,6 +2928,9 @@ llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
 }
 
 llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
+    auto type = node->getType();
+    DEBUG_LOG_VAL("  compileExpr", "type=" << (type.empty() ? "void" : type.name));
+
     if (auto literalNode = dynamic_cast<ExprLiteralNode*>(node)) {
         return compileLiteralExpr(literalNode);
     } else if (auto addSubNode = dynamic_cast<ExprAddSubNode*>(node)) {
@@ -2854,10 +2963,13 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
 }
 
 void Compiler::compileStatementBlock(p<StatementBlockNode> block) {
+    DEBUG_LOG_VAL(
+        "  compileStatementBlock", block->statements().size() << " statements, hasResult=" << block->hasResult());
     for (auto& stmt : block->statements()) {
         compileStatement(stmt);
     }
     if (block->hasResult()) {
+        DEBUG_LOG("    Compiling result expression");
         compileExpr(block->resultExpr());
     }
 }
@@ -2961,6 +3073,7 @@ void Compiler::callDestructor(const string& varName, const TypeInfo& varType) {
 }
 
 void Compiler::callDestructorsForScope() {
+    DEBUG_LOG_VAL("  callDestructorsForScope", _scopeVars.size() << " vars in scope");
     for (auto it = _scopeVars.rbegin(); it != _scopeVars.rend(); ++it) {
         const string& varName = *it;
         auto sym = _currentFnNode->lookupSymbol(varName);

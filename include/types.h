@@ -42,8 +42,8 @@ using p = T*;
 
 extern bool debug;
 
-#define DEBUG_LOG(msg) if(debug) { std::cerr << "[DEBUG] " << msg << std::endl; }
-#define DEBUG_LOG_VAL(msg, val) if(debug) { std::cerr << "[DEBUG] " << msg << ": " << val << std::endl; }
+#define DEBUG_LOG(msg) if(debug) { std::cerr << "[DEBUG] " << msg << '\n'; }
+#define DEBUG_LOG_VAL(msg, val) if(debug) { std::cerr << "[DEBUG] " << msg << ": " << val << '\n'; }
 
 #else
 
