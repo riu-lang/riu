@@ -191,13 +191,7 @@ string ExprDotNode::member() const {
 TypeInfo ExprDotNode::getType() const {
     auto member = _member.getText();
     DEBUG_LOG_VAL("ExprDotNode::getType - member", member);
-    DEBUG_LOG_VAL("ExprDotNode::getType - starts_with('to_')", member.starts_with("to_"));
-    if (member.starts_with("to_")) {
-        string dstType = member.substr(3);
-        DEBUG_LOG_VAL("ExprDotNode::getType - returning fn()", dstType);
-        return TypeInfo("fn() " + dstType);
-    }
-
+    
     auto baseType = _baseExpr->getType();
     TypeInfo actualType = baseType;
     
@@ -213,6 +207,35 @@ TypeInfo ExprDotNode::getType() const {
         if (boxElemType) {
             actualType = *boxElemType;
         }
+    }
+    
+    if (isBuiltinType(actualType.name)) {
+        if (member.starts_with("to_")) {
+            string dstType = member.substr(3);
+            if (isBuiltinType(dstType)) {
+                DEBUG_LOG_VAL("ExprDotNode::getType - returning fn() for builtin cast", dstType);
+                return TypeInfo("fn() " + dstType);
+            }
+        }
+        
+        auto scope = findNearestScope();
+        if (scope) {
+            auto file = dynamic_cast<FileNode*>(scope);
+            while (!file && scope) {
+                scope = scope->parentScope();
+                file = dynamic_cast<FileNode*>(scope);
+            }
+            if (file) {
+                string methodFullName = actualType.name + "." + member;
+                auto methodSym = file->lookupFnSymbol(methodFullName);
+                if (methodSym) {
+                    DEBUG_LOG_VAL("ExprDotNode::getType - found SDK method for builtin type, returning fn()", methodSym->retType.name);
+                    return TypeInfo("fn() " + methodSym->retType.name);
+                }
+            }
+        }
+        
+        return _baseExpr->getType();
     }
     
     if (baseType.isPtr()) {

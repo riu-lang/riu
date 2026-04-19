@@ -16,7 +16,7 @@ fn _stdout_write(buf Ptr<u8>, off i64, len i64) {
   var bufWithOff Ptr<u8> = null
   bufWithOff._value = buf._value + off.to_u64()
   var written u32 = 0u32
-  WriteFile(hStdout, bufWithOff, len.to_u32(), &written, null)
+  WriteFile(hStdout, bufWithOff, len.to_u32(), &written, null);
 }
 
 fn print(n i64) {
@@ -202,6 +202,494 @@ fn println(b bool) {
   val nl [u8 * 1] = [10u8]
   _stdout_write(&nl, 0i64, 1i64)
 }
+
+
+/ 内置类型
+/ 结构体仅占位，为实际类型
+/ to_数字 to_bool 函数编译器实现
+
+struct i8 {
+  / 原始类型
+}
+
+i8 {
+  fn to_i8() i8 {
+    self
+  }
+
+  fn to_u8() u8 {
+    self
+  }
+
+  fn to_i16() i16 {
+    self
+  }
+
+  fn to_u16() u16 {
+    self
+  }
+
+  fn to_i32() i32 {
+    self
+  }
+
+  fn to_u32() u32 {
+    self
+  }
+
+  fn to_i64() i64 {
+    self
+  }
+
+  fn to_u64() u64 {
+    self
+  }
+
+  fn to_f64() f64 {
+    self
+  }
+
+  fn to_f32() f32 {
+    self
+  }
+
+  fn to_bool() bool {
+    self != 0i8
+  }
+}
+
+struct u8 {
+  / 原始类型
+}
+
+u8 {
+
+  fn to_i8() i8 {
+    self
+  }
+
+  fn to_u8() u8 {
+    self
+  }
+
+  fn to_i16() i16 {
+    self
+  }
+
+  fn to_u16() u16 {
+    self
+  }
+
+  fn to_i32() i32 {
+    self
+  }
+
+  fn to_u32() u32 {
+    self
+  }
+
+  fn to_u64() u64 {
+    self
+  }
+
+  fn to_f64() f64 {
+    self
+  }
+
+  fn to_f32() f32 {
+    self
+  }
+
+  fn to_bool() bool {
+    self != 0u8
+  }
+
+}
+
+struct i16 {
+  / 原始类型
+}
+
+i16 {
+
+  fn to_i8() i8 {
+    self
+  }
+
+  fn to_u8() u8 {
+    self
+  }
+
+  fn to_i16() i16 {
+    self
+  }
+
+  fn to_u16() u16 {
+    self
+  }
+
+  fn to_i32() i32 {
+    self
+  }
+
+  fn to_u32() u32 {
+    self
+  }
+
+  fn to_u64() u64 {
+    self
+  }
+
+  fn to_f64() f64 {
+    self
+  }
+
+  fn to_f32() f32 {
+    self
+  }
+
+  fn to_bool() bool {
+    self != 0i16
+  }
+
+}
+
+struct u16 {
+  / 原始类型
+}
+
+u16 {
+
+  fn to_i8() i8 {
+    self
+  }
+
+  fn to_u8() u8 {
+    self
+  }
+
+  fn to_i16() i16 {
+    self
+  }
+
+  fn to_u16() u16 {
+    self
+  }
+
+  fn to_i32() i32 {
+    self
+  }
+
+  fn to_u32() u32 {
+    self
+  }
+
+  fn to_u64() u64 {
+    self
+  }
+
+  fn to_f64() f64 {
+    self
+  }
+
+  fn to_f32() f32 {
+    self
+  }
+
+  fn to_bool() bool {
+    self != 0u16
+  }
+
+}
+
+struct i32 {
+  / 原始类型
+}
+
+i32 {
+
+  fn to_i8() i8 {
+    self
+  }
+
+  fn to_u8() u8 {
+    self
+  }
+
+  fn to_i16() i16 {
+    self
+  }
+
+  fn to_u16() u16 {
+    self
+  }
+
+  fn to_i32() i32 {
+    self
+  }
+
+  fn to_u32() u32 {
+    self
+  }
+
+  fn to_u64() u64 {
+    self
+  }
+
+  fn to_f64() f64 {
+    self
+  }
+
+  fn to_f32() f32 {
+    self
+  }
+
+  fn to_bool() bool {
+    self != 0i32
+  }
+
+}
+
+struct u32 {
+  / 原始类型
+}
+
+u32 {
+
+  fn to_i8() i8 {
+    self
+  }
+
+  fn to_u8() u8 {
+    self
+  }
+
+  fn to_i16() i16 {
+    self
+  }
+
+  fn to_u16() u16 {
+    self
+  }
+
+  fn to_i32() i32 {
+    self
+  }
+
+  fn to_u32() u32 {
+    self
+  }
+
+  fn to_u64() u64 {
+    self
+  }
+
+  fn to_f64() f64 {
+    self
+  }
+
+  fn to_f32() f32 {
+    self
+  }
+
+  fn to_bool() bool {
+    self != 0u32
+  }
+
+}
+
+struct i64 {
+  / 原始类型
+}
+
+i64 {
+
+  fn to_i8() i8 {
+    self
+  }
+
+  fn to_u8() u8 {
+    self
+  }
+
+  fn to_i16() i16 {
+    self
+  }
+
+  fn to_u16() u16 {
+    self
+  }
+
+  fn to_i32() i32 {
+    self
+  }
+
+  fn to_u32() u32 {
+    self
+  }
+
+  fn to_u64() u64 {
+    self
+  }
+
+  fn to_f64() f64 {
+    self
+  }
+
+  fn to_f32() f32 {
+    self
+  }
+
+  fn to_bool() bool {
+    self != 0i64
+  }
+
+}
+
+struct u64 {
+  / 原始类型
+}
+
+u64 {
+
+  fn to_i8() i8 {
+    self
+  }
+
+  fn to_u8() u8 {
+    self
+  }
+
+  fn to_i16() i16 {
+    self
+  }
+
+  fn to_u16() u16 {
+    self
+  }
+
+  fn to_i32() i32 {
+    self
+  }
+
+  fn to_u32() u32 {
+    self
+  }
+
+  fn to_u64() u64 {
+    self
+  }
+
+  fn to_f64() f64 {
+    self
+  }
+
+  fn to_f32() f32 {
+    self
+  }
+
+  fn to_bool() bool {
+    self != 0u64
+  }
+
+}
+
+struct f64 {
+  / 原始类型
+}
+
+f64 {
+
+  fn to_i8() i8 {
+    self
+  }
+
+  fn to_u8() u8 {
+    self
+  }
+
+  fn to_i16() i16 {
+    self
+  }
+
+  fn to_u16() u16 {
+    self
+  }
+
+  fn to_i32() i32 {
+    self
+  }
+
+  fn to_u32() u32 {
+    self
+  }
+
+  fn to_u64() u64 {
+    self
+  }
+
+  fn to_f64() f64 {
+    self
+  }
+
+  fn to_f32() f32 {
+    self
+  }
+
+  fn to_bool() bool {
+    self != 0.0f64
+  }
+
+}
+
+struct f32 {
+  / 原始类型
+}
+
+f32 {
+
+  fn to_i8() i8 {
+    self
+  }
+
+  fn to_u8() u8 {
+    self
+  }
+
+  fn to_i16() i16 {
+    self
+  }
+
+  fn to_u16() u16 {
+    self
+  }
+
+  fn to_i32() i32 {
+    self
+  }
+
+  fn to_u32() u32 {
+    self
+  }
+
+  fn to_u64() u64 {
+    self
+  }
+
+  fn to_f64() f64 {
+    self
+  }
+
+  fn to_f32() f32 {
+    self
+  }
+
+  fn to_bool() bool {
+    self != 0.0f32
+  }
+
+}
+
 
 / String 类型 - 内部使用 Array<u32> 存储 Unicode code points
 struct String {

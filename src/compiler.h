@@ -81,6 +81,7 @@ class Compiler {
     void generateDefaultDestructor(const string& structName);
     bool typeNeedsDestructor(const TypeInfo& type);
     bool structNeedsDestructor(const string& structName);
+    bool isBuiltinType(const string& typeName) const;
 
     void compileRetStatement(p<StatementRetNode> node);
     void compileRetVoidStatement(p<StatementRetVoidNode> node);

@@ -83,16 +83,16 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& type) {
         return llvm::PointerType::get(_context, 0);
     }
 
-    auto it = _structTypes.find(type.name);
-    if (it != _structTypes.end()) {
-        DEBUG_LOG_VAL("    -> Struct (cached)", type.name);
-        return it->second;
-    }
-
     auto basicIt = _typeMap.find(type.name);
     if (basicIt != _typeMap.end()) {
         DEBUG_LOG_VAL("    -> Basic type", type.name);
         return basicIt->second;
+    }
+
+    auto it = _structTypes.find(type.name);
+    if (it != _structTypes.end()) {
+        DEBUG_LOG_VAL("    -> Struct (cached)", type.name);
+        return it->second;
     }
 
     DEBUG_LOG_VAL("    -> Unknown type (null)", type.name);
@@ -101,6 +101,12 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& type) {
 
 llvm::StructType* Compiler::getOrCreateStructType(p<StructDeclNode> structDecl, p<FileNode> sourceFile) {
     string name = structDecl->name().getText();
+    
+    if (isBuiltinType(name)) {
+        DEBUG_LOG_VAL("Skipping builtin type struct declaration", name);
+        return nullptr;
+    }
+    
     auto file = sourceFile ? sourceFile : _file;
     string mangledName = file->getMangledName(name);
 
@@ -128,7 +134,7 @@ llvm::FunctionType* Compiler::getLLVMFunctionType(p<FnHeaderNode> header) {
     for (auto param : header->params()) {
         TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();
         auto structDecl = _file->getStructDecl(paramType.name);
-        if (structDecl) {
+        if (structDecl && !isBuiltinType(paramType.name)) {
             paramTypes.push_back(llvm::PointerType::get(_context, 0));
             DEBUG_LOG_VAL("    param", param->name().getText() << " : " << paramType.name << " (struct ptr)");
         } else {
@@ -208,11 +214,16 @@ llvm::Function* Compiler::getMethodFunction(
     }
 
     vector<llvm::Type*> llvmParamTypes;
-    llvmParamTypes.push_back(llvm::PointerType::get(_context, 0));
+    
+    if (isBuiltinType(structName)) {
+        llvmParamTypes.push_back(getLLVMType(TypeInfo(structName)));
+    } else {
+        llvmParamTypes.push_back(llvm::PointerType::get(_context, 0));
+    }
 
     for (auto& paramType : paramTypes) {
         auto structDecl = _file->getStructDecl(paramType.name);
-        if (structDecl) {
+        if (structDecl && !isBuiltinType(paramType.name)) {
             llvmParamTypes.push_back(llvm::PointerType::get(_context, 0));
         } else {
             llvmParamTypes.push_back(getLLVMType(paramType));
@@ -879,7 +890,17 @@ void Compiler::compileStructImpls() {
         auto& methods = structImpl->methods();
         DEBUG_LOG_VAL("      Methods count", methods.size());
         for (auto method : methods) {
-            DEBUG_LOG_VAL("        Compiling method", method->header()->name().getText());
+            string methodName = method->header()->name().getText();
+            
+            if (isBuiltinType(structName) && methodName.starts_with("to_")) {
+                string dstType = methodName.substr(3);
+                if (isBuiltinType(dstType)) {
+                    DEBUG_LOG_VAL("        Skipping builtin cast method (compiler handles)", structName << "." << methodName);
+                    continue;
+                }
+            }
+            
+            DEBUG_LOG_VAL("        Compiling method", methodName);
             vector<TypeInfo> paramTypes;
             for (auto param : method->header()->params()) {
                 if (param->type()) {
@@ -890,7 +911,7 @@ void Compiler::compileStructImpls() {
             if (method->header()->retType()) {
                 retType = method->header()->retType()->getType();
             }
-            auto func = getMethodFunction(structName, method->header()->name().getText(), paramTypes, retType);
+            auto func = getMethodFunction(structName, methodName, paramTypes, retType);
             compileMethod(method, func, structName);
         }
     }
@@ -932,7 +953,7 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
             auto llvmType = getLLVMType(paramType);
             auto structDecl = _file->getStructDecl(paramType.name);
 
-            if (structDecl) {
+            if (structDecl && !isBuiltinType(paramType.name)) {
                 _localVarPtrs[paramName] = &arg;
                 DEBUG_LOG_VAL("  Param (struct ptr)", paramName << " : " << paramType.name << "*");
             } else {
@@ -981,9 +1002,18 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
     llvm::Value* selfPtr = nullptr;
     if (argIt != args.end()) {
         string selfName = "self";
-        _localVarPtrs[selfName] = argIt;
-        selfPtr = argIt;
-        DEBUG_LOG_VAL("  Param (self)", selfName << " : " << structName << "*");
+        
+        if (isBuiltinType(structName)) {
+            auto selfAlloca = _builder.CreateAlloca(getLLVMType(TypeInfo(structName)), nullptr, "self.addr");
+            _builder.CreateStore(argIt, selfAlloca);
+            _localVarPtrs[selfName] = selfAlloca;
+            selfPtr = selfAlloca;
+            DEBUG_LOG_VAL("  Param (self - builtin value)", selfName << " : " << structName);
+        } else {
+            _localVarPtrs[selfName] = argIt;
+            selfPtr = argIt;
+            DEBUG_LOG_VAL("  Param (self)", selfName << " : " << structName << "*");
+        }
         ++argIt;
     }
 
@@ -2121,16 +2151,62 @@ llvm::Value* Compiler::compileMethodCall(
     p<ExprCallNode> callNode, p<ExprDotNode> dotNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
     auto baseExpr = dotNode->baseExpr();
     auto member = dotNode->member();
+    auto baseType = baseExpr->getType();
 
-    if (member.starts_with("to_")) {
-        string dstType = member.substr(3);
-        DEBUG_LOG_VAL("    Expr: CastCall (to_)", dstType);
-        auto baseVal = compileExpr(baseExpr);
-        auto srcType = baseExpr->getType();
-        return createCast(baseVal, srcType, TypeInfo(dstType));
+    bool isBuiltin = isBuiltinType(baseType.name);
+
+    if (isBuiltin) {
+        if (member.starts_with("to_")) {
+            string dstType = member.substr(3);
+            if (isBuiltinType(dstType)) {
+                DEBUG_LOG_VAL("    Expr: CastCall (to_)", dstType);
+                auto baseVal = compileExpr(baseExpr);
+                auto srcType = baseExpr->getType();
+                return createCast(baseVal, srcType, TypeInfo(dstType));
+            }
+        }
+        
+        vector<TypeInfo> methodParamTypes;
+        methodParamTypes.push_back(baseType);
+        for (auto& t : argTypes) {
+            methodParamTypes.push_back(t);
+        }
+        
+        string methodFullName = baseType.name + "." + member;
+        FnSymbolInfo* sdkMethodSymbol = nullptr;
+        if (_yux && _yux->sdkFile()) {
+            sdkMethodSymbol = _yux->sdkFile()->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
+        }
+        
+        if (sdkMethodSymbol) {
+            DEBUG_LOG_VAL("    Expr: BuiltinTypeMethodCall (SDK)", methodFullName);
+            
+            auto baseVal = compileExpr(baseExpr);
+            
+            vector<llvm::Value*> methodArgs;
+            methodArgs.push_back(baseVal);
+            for (auto& arg : args) {
+                methodArgs.push_back(arg);
+            }
+            
+            string mangledName = baseType.name + "_" + member;
+            auto fn = _module->getFunction(mangledName);
+            if (!fn) {
+                vector<llvm::Type*> paramTypes;
+                paramTypes.push_back(getLLVMType(baseType));
+                for (auto& t : argTypes) {
+                    paramTypes.push_back(getLLVMType(t));
+                }
+                auto retType = sdkMethodSymbol->retType.empty() ? _builder.getVoidTy() : getLLVMType(sdkMethodSymbol->retType);
+                auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
+                fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
+            }
+            return _builder.CreateCall(fn, methodArgs);
+        }
+        
+        throw YuxError(callNode->getLineNumber(), "Unknown method '{}' for builtin type '{}'", member, baseType.name);
     }
 
-    auto baseType = baseExpr->getType();
     TypeInfo actualType = baseType;
 
     if (baseType.isArrayGeneric()) {
@@ -2416,10 +2492,10 @@ llvm::Value* Compiler::compileKnownFunctionCall(
                 paramTypes.push_back(llvm::PointerType::get(_context, 0));
             } else {
                 auto paramStructDecl = _file->getStructDecl(fnSymbol->params[i].name);
-                bool isStructType = paramStructDecl != nullptr;
+                bool isStructType = paramStructDecl != nullptr && !isBuiltinType(fnSymbol->params[i].name);
 
                 if (!isStructType && _yux && _yux->sdkFile()) {
-                    isStructType = _yux->sdkFile()->getStructDecl(fnSymbol->params[i].name) != nullptr;
+                    isStructType = _yux->sdkFile()->getStructDecl(fnSymbol->params[i].name) != nullptr && !isBuiltinType(fnSymbol->params[i].name);
                 }
 
                 if (isStructType) {
@@ -2546,10 +2622,10 @@ llvm::Value* Compiler::compileKnownFunctionCall(
         }
 
         auto paramStructDecl = _file->getStructDecl(fnSymbol->params[i].name);
-        bool isStructType = paramStructDecl != nullptr;
+        bool isStructType = paramStructDecl != nullptr && !isBuiltinType(fnSymbol->params[i].name);
 
         if (!isStructType && _yux && _yux->sdkFile()) {
-            isStructType = _yux->sdkFile()->getStructDecl(fnSymbol->params[i].name) != nullptr;
+            isStructType = _yux->sdkFile()->getStructDecl(fnSymbol->params[i].name) != nullptr && !isBuiltinType(fnSymbol->params[i].name);
         }
 
         if (!isStructType) {
@@ -3352,6 +3428,10 @@ bool Compiler::structNeedsDestructor(const string& structName) {
         }
     }
     return false;
+}
+
+bool Compiler::isBuiltinType(const string& typeName) const {
+    return _typeMap.find(typeName) != _typeMap.end();
 }
 
 void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structName) {

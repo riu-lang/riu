@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 #include <map>
+#include <algorithm>
 #include <xstring>
 #include <exception>
 #include <stdexcept>
@@ -248,3 +249,10 @@ struct TypeInfo {
         return !(*this == other);
     }
 };
+
+inline bool isBuiltinType(const string& typeName) {
+    static const vector<string> builtinTypes = {
+        "bool", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64"
+    };
+    return std::find(builtinTypes.begin(), builtinTypes.end(), typeName) != builtinTypes.end();
+}
