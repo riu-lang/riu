@@ -4,40 +4,43 @@
 
 ## 项目简介
 
-yux 是一门简单的编程语言，使用 ANTLR4 解析语法，LLVM 作为编译后端。编译器将 `.yux` 源文件编译为可执行文件。
+yux 是一门自举的编程语言，使用 ANTLR4 解析语法，LLVM 作为编译后端。编译器将 `.yux` 源文件编译为可执行文件。
 
 ### 语言特性
 
-- 简洁的语法设计
-- 静态类型系统
-- 支持函数定义、变量声明、条件表达式等
-- 支持多种整数和浮点数类型（i8, i16, i32, i64, u8, u16, u32, u64, f32, f64）
+- 静态类型系统，无隐式类型转换
+- 结构体和成员函数
+- 泛型类型（Ref<T>, Box<T>, Ptr<T>, Array<T>）
+- 自动内存管理（Box<T> 引用计数）
+- 与 C/Windows API 互操作
 
 ### 示例代码
 
 ```yux
 / 注释，顶行/，可加空格缩进
 
-fn p(a i32) {
-  println(a + 1)
-}
+fn add(a i32, b i32) i32 = a + b
 
 fn main() {
-  val a = 1.5 + 2.to_f64()
+  val a = add(1, 2)
   println(a)
-  p(123)
+  
+  / if 表达式
+  val max = if a > 0 { a } else { -a }
+  println(max)
 }
 ```
+
+详细语法说明请参考 [语法.md](语法.md)。
 
 ## 开发
 
 ### 环境要求
 
-- **编译器**: Clang（仅支持 Clang）
+- **编译器**: Clang
 - **构建工具**: xmake
 - **系统**: Windows
-
-[clangd-mcp](https://github.com/felipeerias/clangd-mcp-server.git)，配置项目路径到环境变量，见[mcp.json](.trae/mcp.json)。
+- `build/windows/x64/debug`的绝对路径添加到`PATH`，以便调用
 
 ### 依赖
 
@@ -55,19 +58,22 @@ fn main() {
 
 ```
 yux-lang/
-├── src/                # 源代码
-│   ├── yux.g4          # 语法文件
-│   ├── main.cpp        # 程序入口
-│   ├── compiler.*      # 编译器核心
-│   ├── ast_builder.*   # AST 构建器
-│   └── node/           # AST 节点定义
-├── gen/                # ANTLR4 生成的代码
-├── include/            # 公共头文件
-├── libs/               # 依赖库 CMake 配置
-├── tests/              # 测试用例
-├── third_party/        # 外部依赖
-└── yux-vscode/         # VSCode 扩展
+├── src/                  # 源代码
+│   ├── yux.g4            # 语法文件
+│   ├── main.cpp          # 程序入口
+│   ├── compiler.*        # LLVM IR 生成
+│   ├── ast_builder.*     # AST 构建
+│   └── node/             # AST 节点定义
+├── include/              # 公共头文件
+├── sdk/                  # 自举运行时库
+├── gen/                  # ANTLR4 生成的代码
+├── tests/                # 测试用例
+├── third_party/          # 外部依赖
+├── build/                # 编译输出
+└── yux-vscode/           # VSCode 扩展
 ```
+
+详细的项目结构说明请参考 [AGENTS.md](AGENTS.md)。
 
 ### 同步依赖
 
@@ -76,8 +82,6 @@ yux-lang/
 ```
 
 ## 构建
-
-使用 xmake 构建指定目标：
 
 ```powershell
 # 构建 yux 编译器
