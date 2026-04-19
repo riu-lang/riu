@@ -109,6 +109,11 @@ public:
         std::vformat(format.get(), std::make_format_args(args...))) {
     }
 
+    template <class... _Types>
+    explicit YuxError(int line, const format_string<_Types...> format, _Types&&... args) : runtime_error(
+        std::vformat(format.get(), std::make_format_args(args...))), _line(line) {
+    }
+
     void setLineNumber(int line) {
         _line = line;
     }

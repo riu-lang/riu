@@ -818,7 +818,7 @@ void Compiler::compileGlobalConsts() {
             bool boolVal = (text == "true");
             initValue = llvm::ConstantInt::get(llvmType, boolVal ? 1 : 0, false);
         } else {
-            throw YuxError("Unsupported literal type for global constant: {}", type.name);
+            throw YuxError(globalConst->getLineNumber(), "Unsupported literal type for global constant: {}", type.name);
         }
 
         auto linkage = globalConst->isPrivate()
@@ -1058,12 +1058,12 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
 
     if (auto arrayInitNode = dynamic_cast<ExprArrayInitNode*>(expr)) {
         if (!node->varType()) {
-            throw YuxError("Array fill expression requires array type annotation with size");
+            throw YuxError(node->getLineNumber(), "Array fill expression requires array type annotation with size");
         }
 
         TypeInfo varType = node->varType()->getType();
         if (!varType.isArray()) {
-            throw YuxError("Array fill expression requires array type annotation");
+            throw YuxError(node->getLineNumber(), "Array fill expression requires array type annotation");
         }
 
         DEBUG_LOG_VAL("  Statement: Declare (ArrayFill)", varName << " : " << varType.name);
@@ -1090,7 +1090,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         if (varType.isBox()) {
             auto elemType = varType.boxElementType();
             if (!elemType) {
-                throw YuxError("Box type requires element type");
+                throw YuxError(node->getLineNumber(), "Box type requires element type");
             }
 
             auto exprVal = compileExpr(expr);
@@ -1124,7 +1124,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                     _builder.CreateStore(srcDataPtr, dataPtrTyped);
                 }
             } else {
-                throw YuxError("Box type mismatch: expected Box<{}>, got {}", elemType->name, exprType.name);
+                throw YuxError(node->getLineNumber(), "Box type mismatch: expected Box<{}>, got {}", elemType->name, exprType.name);
             }
 
             auto refCountPtr = _builder.CreateGEP(
@@ -1151,7 +1151,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         } else if (varType.isArrayGeneric()) {
             auto elemType = varType.arrayGenericElementType();
             if (!elemType) {
-                throw YuxError("Array type requires element type");
+                throw YuxError(node->getLineNumber(), "Array type requires element type");
             }
 
             auto arrayStructType = getLLVMType(varType);
@@ -1197,7 +1197,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 auto capField = _builder.CreateGEP(arrayStructType, alloca, indices2, "cap_field");
                 _builder.CreateStore(_builder.getInt64(count), capField);
             } else {
-                throw YuxError("Array<T> initialization requires array literal");
+                throw YuxError(node->getLineNumber(), "Array<T> initialization requires array literal");
             }
 
             _scopeVars.push_back(varName);
@@ -1207,11 +1207,11 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
 
             if (varType.isArray() && exprType.isArray()) {
                 if (varType.arraySize != exprType.arraySize) {
-                    throw YuxError("Array size mismatch: expected {}, got {}", varType.arraySize, exprType.arraySize);
+                    throw YuxError(node->getLineNumber(), "Array size mismatch: expected {}, got {}", varType.arraySize, exprType.arraySize);
                 }
                 if (varType.elementType && exprType.elementType) {
                     if (*varType.elementType != *exprType.elementType) {
-                        throw YuxError(
+                        throw YuxError(node->getLineNumber(),
                             "Array element type mismatch: expected {}, got {}", varType.elementType->name,
                             exprType.elementType->name);
                     }
@@ -1290,11 +1290,11 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
     if (subs.empty()) {
         auto sym = _currentFnNode->lookupSymbol(objName);
         if (!sym) {
-            throw YuxError("Undefined variable: {}", objName);
+            throw YuxError(node->getLineNumber(), "Undefined variable: {}", objName);
         }
 
         if (!sym->writeable) {
-            throw YuxError("Cannot assign to immutable variable: {}", objName);
+            throw YuxError(node->getLineNumber(), "Cannot assign to immutable variable: {}", objName);
         }
 
         DEBUG_LOG_VAL("  Statement: Assign", objName << " : " << sym->type.name);
@@ -1348,7 +1348,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
     } else {
         auto sym = _currentFnNode->lookupSymbol(objName);
         if (!sym) {
-            throw YuxError("Undefined variable: {}", objName);
+            throw YuxError(node->getLineNumber(), "Undefined variable: {}", objName);
         }
 
         TypeInfo actualType = sym->type;
@@ -1363,17 +1363,17 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             auto memberName = subs[0].getText();
             if (memberName == "_value") {
                 if (!_isSdk) {
-                    throw YuxError("Cannot access private field '_value' of Ptr type (sdk only)");
+                    throw YuxError(node->getLineNumber(), "Cannot access private field '_value' of Ptr type (sdk only)");
                 }
                 if (subs.size() != 1) {
-                    throw YuxError("Nested member access not supported for Ptr._value");
+                    throw YuxError(node->getLineNumber(), "Nested member access not supported for Ptr._value");
                 }
 
                 DEBUG_LOG_VAL("  Statement: PtrValueAssign", objName << "._value");
 
                 auto it = _localVarPtrs.find(objName);
                 if (it == _localVarPtrs.end()) {
-                    throw YuxError("Variable not found: {}", objName);
+                    throw YuxError(node->getLineNumber(), "Variable not found: {}", objName);
                 }
 
                 auto exprVal = compileExpr(expr);
@@ -1395,14 +1395,14 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
 
         auto structDecl = _file->getStructDecl(actualType.name);
         if (!structDecl) {
-            throw YuxError("Cannot access member on non-struct type: {}", actualType.name);
+            throw YuxError(node->getLineNumber(), "Cannot access member on non-struct type: {}", actualType.name);
         }
 
         DEBUG_LOG_VAL("  Statement: MemberAssign", objName << "." << subs[0].getText());
 
         auto it = _localVarPtrs.find(objName);
         if (it == _localVarPtrs.end()) {
-            throw YuxError("Variable not found: {}", objName);
+            throw YuxError(node->getLineNumber(), "Variable not found: {}", objName);
         }
 
         llvm::Value* structPtr = it->second;
@@ -1413,12 +1413,12 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             auto memberName = subs[i].getText();
             int fieldIndex = structDecl->fieldIndex(memberName);
             if (fieldIndex < 0) {
-                throw YuxError("Struct {} has no field: {}", actualType.name, memberName);
+                throw YuxError(node->getLineNumber(), "Struct {} has no field: {}", actualType.name, memberName);
             }
 
             auto field = structDecl->fields()[fieldIndex];
             if (field->isPrivate() && _currentStructName != actualType.name) {
-                throw YuxError("Cannot access private field '{}' of struct '{}'", memberName, actualType.name);
+                throw YuxError(node->getLineNumber(), "Cannot access private field '{}' of struct '{}'", memberName, actualType.name);
             }
 
             if (i == subs.size() - 1) {
@@ -1499,7 +1499,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
 
                 _builder.CreateStore(valToStore, fieldPtr);
             } else {
-                throw YuxError("Nested member access not yet supported");
+                throw YuxError(node->getLineNumber(), "Nested member access not yet supported");
             }
         }
     }
@@ -1547,7 +1547,7 @@ void Compiler::compileBreakStatement(p<StatementBreakNode> node) {
     DEBUG_LOG("  Statement: Break");
 
     if (_loopExitBlocks.empty()) {
-        throw YuxError("break statement not within a loop");
+        throw YuxError(node->getLineNumber(), "break statement not within a loop");
     }
 
     llvm::BasicBlock* exitBB = _loopExitBlocks.back();
@@ -1564,7 +1564,7 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
 
     auto& indices = node->indices();
     if (indices.empty()) {
-        throw YuxError("Array assignment requires at least one index");
+        throw YuxError(node->getLineNumber(), "Array assignment requires at least one index");
     }
 
     DEBUG_LOG_VAL("  Statement: ArraySet", arrayType.name);
@@ -1577,20 +1577,20 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
             auto varName = objLiteral->getValue().getText();
             auto it = _localVarPtrs.find(varName);
             if (it == _localVarPtrs.end()) {
-                throw YuxError("Array variable not found: {}", varName);
+                throw YuxError(node->getLineNumber(), "Array variable not found: {}", varName);
             }
             currentPtr = it->second;
         }
     }
 
     if (!currentPtr) {
-        throw YuxError("Array assignment requires a variable");
+        throw YuxError(node->getLineNumber(), "Array assignment requires a variable");
     }
 
     if (arrayType.isArrayGeneric()) {
         auto elemType = arrayType.arrayGenericElementType();
         if (!elemType) {
-            throw YuxError("Array type requires element type");
+            throw YuxError(node->getLineNumber(), "Array type requires element type");
         }
 
         auto arrayStructType = getLLVMType(arrayType);
@@ -1610,7 +1610,7 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
     }
 
     if (!arrayType.isArray()) {
-        throw YuxError("Cannot index non-array type: {}", arrayType.name);
+        throw YuxError(node->getLineNumber(), "Cannot index non-array type: {}", arrayType.name);
     }
 
     for (auto& indexExpr : indices) {
@@ -1660,7 +1660,7 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
     if (node->explicitType()) {
         elementType = node->explicitType()->getType();
         if (literalType != elementType) {
-            throw YuxError(
+            throw YuxError(node->getLineNumber(),
                 "Array fill literal type mismatch: literal is {}, but explicit type is {}",
                 literalType.name, elementType.name);
         }
@@ -1669,7 +1669,7 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
     }
 
     if (targetType.elementType && *targetType.elementType != elementType) {
-        throw YuxError(
+        throw YuxError(node->getLineNumber(),
             "Array fill element type mismatch: expected {}, got {}",
             targetType.elementType->name, elementType.name);
     }
@@ -1716,7 +1716,7 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
         fillValue = llvm::ConstantInt::get(getLLVMType(elementType), boolVal ? 1 : 0, false);
         isZeroFill = !boolVal;
     } else {
-        throw YuxError("Unsupported literal type for array fill");
+        throw YuxError(node->getLineNumber(), "Unsupported literal type for array fill");
     }
 
     if (isZeroFill) {
@@ -1890,7 +1890,7 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             return _builder.CreateLoad(globalVar->getValueType(), globalVar, "global.load");
         }
 
-        throw YuxError("Undefined variable: {}", varName);
+        throw YuxError(node->getLineNumber(), "Undefined variable: {}", varName);
     } else if (auto nullLiteral = dynamic_cast<LiteralNullNode*>(literal)) {
         DEBUG_LOG("    Expr: NullLiteral");
         auto ptrStructType = getLLVMType(TypeInfo("Ptr", {make_shared<TypeInfo>("u8")}));
@@ -1980,7 +1980,7 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
 
         return _builder.CreateLoad(stringType, alloca, "str_val");
     }
-    throw YuxError("Unsupported literal type");
+    throw YuxError(node->getLineNumber(), "Unsupported literal type");
 }
 
 llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
@@ -2046,7 +2046,7 @@ llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
         }
         return _builder.CreateSRem(left, right);
     }
-    throw YuxError("Unsupported mul/div/mod operation");
+    throw YuxError(node->getLineNumber(), "Unsupported mul/div/mod operation");
 }
 
 llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
@@ -2084,7 +2084,7 @@ llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
         }
         return _builder.CreateAShr(left, right);
     }
-    throw YuxError("Unsupported binary operation");
+    throw YuxError(node->getLineNumber(), "Unsupported binary operation");
 }
 
 llvm::Value* Compiler::compileParenExpr(p<ExprParenNode> node) {
@@ -2114,7 +2114,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
         }
     }
 
-    throw YuxError("Unsupported call expression");
+    throw YuxError(node->getLineNumber(), "Unsupported call expression");
 }
 
 llvm::Value* Compiler::compileMethodCall(
@@ -2174,7 +2174,7 @@ llvm::Value* Compiler::compileMethodCall(
         DEBUG_LOG_VAL("    Expr: MethodCall", methodFullName);
 
         if (methodSymbol->isPrivate && _currentStructName != actualType.name) {
-            throw YuxError("Cannot call private method '{}' of struct '{}'", member, actualType.name);
+            throw YuxError(callNode->getLineNumber(), "Cannot call private method '{}' of struct '{}'", member, actualType.name);
         }
 
         llvm::Value* basePtr = nullptr;
@@ -2263,7 +2263,7 @@ llvm::Value* Compiler::compileFunctionCall(
     auto structDecl = _file->getStructDecl(fnName);
     if (structDecl) {
         if (structDecl->isPrivate()) {
-            throw YuxError("Cannot use private struct '{}' in constructor", fnName);
+            throw YuxError(callNode->getLineNumber(), "Cannot use private struct '{}' in constructor", fnName);
         }
         auto result = compileConstructorCall(fnName, args, argTypes);
         if (result) {
@@ -2275,7 +2275,7 @@ llvm::Value* Compiler::compileFunctionCall(
 
     if (fnSymbol) {
         if (fnSymbol->isPrivate && !fnSymbol->moduleName.empty() && fnSymbol->moduleName != _file->moduleName()) {
-            throw YuxError("Cannot call private function '{}'", fnName);
+            throw YuxError(callNode->getLineNumber(), "Cannot call private function '{}'", fnName);
         }
         return compileKnownFunctionCall(callNode, fnName, args, argTypes, fnSymbol);
     }
@@ -2622,7 +2622,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
     if (baseType.isPtr()) {
         if (member == "_value") {
             if (!_isSdk) {
-                throw YuxError("Cannot access private field '_value' of Ptr type (sdk only)");
+                throw YuxError(node->getLineNumber(), "Cannot access private field '_value' of Ptr type (sdk only)");
             }
             DEBUG_LOG_VAL("    Expr: PtrFieldValue", "_value");
 
@@ -2639,7 +2639,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
                     }
                 }
             }
-            throw YuxError("Cannot access _value on non-variable Ptr");
+            throw YuxError(node->getLineNumber(), "Cannot access _value on non-variable Ptr");
         }
     }
 
@@ -2652,7 +2652,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
 
             auto field = structDecl->fields()[fieldIndex];
             if (field->isPrivate() && _currentStructName != actualType.name) {
-                throw YuxError("Cannot access private field '{}' of struct '{}'", member, actualType.name);
+                throw YuxError(node->getLineNumber(), "Cannot access private field '{}' of struct '{}'", member, actualType.name);
             }
 
             if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
@@ -2666,7 +2666,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
             }
 
             if (!structPtr) {
-                throw YuxError("Cannot access field on non-variable struct");
+                throw YuxError(node->getLineNumber(), "Cannot access field on non-variable struct");
             }
 
             llvm::Value* dataPtr = structPtr;
@@ -2702,7 +2702,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
             }
         }
     }
-    throw YuxError("Unsupported dot expression");
+    throw YuxError(node->getLineNumber(), "Unsupported dot expression");
 }
 
 llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
@@ -2712,7 +2712,7 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
     auto rightType = node->right()->getType();
 
     if (leftType != rightType) {
-        throw YuxError("Type mismatch in comparison: left is {}, right is {}", leftType.name, rightType.name);
+        throw YuxError(node->getLineNumber(), "Type mismatch in comparison: left is {}, right is {}", leftType.name, rightType.name);
     }
 
     bool isFloat = leftType.startsWith('f');
@@ -2793,7 +2793,7 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
         return _builder.CreateOr(leftBool, rightBool, "or");
     }
     }
-    throw YuxError("Unsupported comparison operation");
+    throw YuxError(node->getLineNumber(), "Unsupported comparison operation");
 }
 
 llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
@@ -2954,7 +2954,7 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
 
     auto& indices = node->indices();
     if (indices.empty()) {
-        throw YuxError("Array access requires at least one index");
+        throw YuxError(node->getLineNumber(), "Array access requires at least one index");
     }
 
     DEBUG_LOG_VAL("    Expr: ArrayGet", arrayType.name);
@@ -2967,7 +2967,7 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
             auto varName = objLiteral->getValue().getText();
             auto it = _localVarPtrs.find(varName);
             if (it == _localVarPtrs.end()) {
-                throw YuxError("Array variable not found: {}", varName);
+                throw YuxError(node->getLineNumber(), "Array variable not found: {}", varName);
             }
             currentPtr = it->second;
         }
@@ -2988,13 +2988,13 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
     }
 
     if (!currentPtr) {
-        throw YuxError("Array access requires a variable");
+        throw YuxError(node->getLineNumber(), "Array access requires a variable");
     }
 
     if (arrayType.isArrayGeneric()) {
         auto elemType = arrayType.arrayGenericElementType();
         if (!elemType) {
-            throw YuxError("Array type requires element type");
+            throw YuxError(node->getLineNumber(), "Array type requires element type");
         }
 
         auto arrayStructType = getLLVMType(arrayType);
@@ -3012,7 +3012,7 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
     }
 
     if (!arrayType.isArray()) {
-        throw YuxError("Cannot index non-array type: {}", arrayType.name);
+        throw YuxError(node->getLineNumber(), "Cannot index non-array type: {}", arrayType.name);
     }
 
     for (auto& indexExpr : indices) {
@@ -3061,7 +3061,7 @@ llvm::Value* Compiler::compileArrayLiteralExpr(p<ExprArrayNode> node) {
     }
 
     if (elements.empty()) {
-        throw YuxError("Empty array literal not supported");
+        throw YuxError(node->getLineNumber(), "Empty array literal not supported");
     }
 
     auto alloca = _builder.CreateAlloca(llvmArrayType, nullptr, "array.literal");
@@ -3086,13 +3086,13 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
 
     auto it = _localVarPtrs.find(objName);
     if (it == _localVarPtrs.end()) {
-        throw YuxError("Variable not found: {}", objName);
+        throw YuxError(node->getLineNumber(), "Variable not found: {}", objName);
     }
 
     llvm::Value* currentPtr = it->second;
     auto sym = _currentFnNode->lookupSymbol(objName);
     if (!sym) {
-        throw YuxError("Undefined variable: {}", objName);
+        throw YuxError(node->getLineNumber(), "Undefined variable: {}", objName);
     }
 
     TypeInfo currentType = sym->type;
@@ -3101,17 +3101,17 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
         auto memberName = sub.getText();
         auto structDecl = _file->getStructDecl(currentType.name);
         if (!structDecl) {
-            throw YuxError("Cannot access field on non-struct type: {}", currentType.name);
+            throw YuxError(node->getLineNumber(), "Cannot access field on non-struct type: {}", currentType.name);
         }
 
         int fieldIndex = structDecl->fieldIndex(memberName);
         if (fieldIndex < 0) {
-            throw YuxError("Struct {} has no field: {}", currentType.name, memberName);
+            throw YuxError(node->getLineNumber(), "Struct {} has no field: {}", currentType.name, memberName);
         }
 
         auto field = structDecl->fields()[fieldIndex];
         if (field->isPrivate() && _currentStructName != currentType.name) {
-            throw YuxError("Cannot access private field '{}' of struct '{}'", memberName, currentType.name);
+            throw YuxError(node->getLineNumber(), "Cannot access private field '{}' of struct '{}'", memberName, currentType.name);
         }
 
         auto structType = getLLVMType(currentType);
@@ -3145,19 +3145,19 @@ llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
         opStr = "~";
         DEBUG_LOG_VAL("    Expr: Unary", opStr << " : " << type.name);
         if (isFloat) {
-            throw YuxError("Cannot apply bitwise NOT to float type: {}", type.name);
+            throw YuxError(node->getLineNumber(), "Cannot apply bitwise NOT to float type: {}", type.name);
         }
         return _builder.CreateNot(right, "not");
     case ExprUnaryNode::Op::Not:
         opStr = "!";
         DEBUG_LOG_VAL("    Expr: Unary", opStr << " : " << type.name);
         if (!isBool) {
-            throw YuxError("Cannot apply logical NOT to non-bool type: {}", type.name);
+            throw YuxError(node->getLineNumber(), "Cannot apply logical NOT to non-bool type: {}", type.name);
         }
         return _builder.CreateNot(right, "lnot");
     }
 
-    throw YuxError("Unknown unary operator");
+    throw YuxError(node->getLineNumber(), "Unknown unary operator");
 }
 
 llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
@@ -3196,7 +3196,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         return compileUnaryExpr(unaryNode);
     }
 
-    throw YuxError("Unsupported expression type");
+    throw YuxError(node->getLineNumber(), "Unsupported expression type");
 }
 
 void Compiler::compileStatementBlock(p<StatementBlockNode> block) {
