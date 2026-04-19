@@ -229,8 +229,20 @@ llvm::Function* Compiler::getMethodFunction(
 llvm::Function* Compiler::getDestructorFunction(const string& structName) {
     DEBUG_LOG_VAL("  getDestructorFunction", structName);
 
-    string mangledStructName = _file->getMangledName(structName);
-    string mangledName = mangledStructName + "__destructor";
+    string mangledName;
+    auto structDecl = _file->getStructDecl(structName);
+    if (structDecl) {
+        mangledName = _file->getMangledName(structName) + "__destructor";
+    } else if (_yux) {
+        auto sdkStructDecl = _yux->sdkFile()->getStructDecl(structName);
+        if (sdkStructDecl) {
+            mangledName = structName + "__destructor";
+        } else {
+            mangledName = _file->getMangledName(structName) + "__destructor";
+        }
+    } else {
+        mangledName = _file->getMangledName(structName) + "__destructor";
+    }
     DEBUG_LOG_VAL("    -> mangled name", mangledName);
 
     auto func = _module->getFunction(mangledName);
@@ -845,18 +857,23 @@ void Compiler::compileStructImpls() {
     auto& impls = _file->getStructImpls();
     DEBUG_LOG_VAL("  compileStructImpls", impls.size() << " implementations");
 
+    set<string> processedStructs;
+    set<string> hasExplicitDestructor;
+
     for (auto structImpl : impls) {
         string structName = structImpl->structName();
+        processedStructs.insert(structName);
         DEBUG_LOG_VAL("    Processing struct impl", structName);
 
         if (structImpl->hasDestructor()) {
+            hasExplicitDestructor.insert(structName);
             DEBUG_LOG("      Has destructor");
             auto destructor = structImpl->destructor();
             vector<TypeInfo> paramTypes;
             paramTypes.emplace_back(structName);
 
             auto func = getDestructorFunction(structName);
-            compileMethod(destructor, func, structName);
+            compileMethod(destructor, func, structName, true);
         }
 
         auto& methods = structImpl->methods();
@@ -875,6 +892,16 @@ void Compiler::compileStructImpls() {
             }
             auto func = getMethodFunction(structName, method->header()->name().getText(), paramTypes, retType);
             compileMethod(method, func, structName);
+        }
+    }
+
+    for (auto structDecl : _file->getStructDecls()) {
+        string structName = structDecl->name().getText();
+        if (hasExplicitDestructor.find(structName) == hasExplicitDestructor.end()) {
+            if (structNeedsDestructor(structName)) {
+                DEBUG_LOG_VAL("  Generating default destructor for struct", structName);
+                generateDefaultDestructor(structName);
+            }
         }
     }
 }
@@ -932,7 +959,7 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
     DEBUG_LOG_VAL("Finished compiling function", node->header()->name().getText());
 }
 
-void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string& structName) {
+void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string& structName, bool isDestructor) {
     _currentFn = func;
     _currentFnNode = node;
     _currentStructName = structName;
@@ -951,9 +978,11 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
     auto args = func->args();
     auto argIt = args.begin();
 
+    llvm::Value* selfPtr = nullptr;
     if (argIt != args.end()) {
         string selfName = "self";
         _localVarPtrs[selfName] = argIt;
+        selfPtr = argIt;
         DEBUG_LOG_VAL("  Param (self)", selfName << " : " << structName << "*");
         ++argIt;
     }
@@ -985,6 +1014,9 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
     if (!_builder.GetInsertBlock()->getTerminator()) {
         if (func->getReturnType()->isVoidTy()) {
             callDestructorsForScope();
+            if (isDestructor && selfPtr) {
+                callFieldDestructor(selfPtr, structName);
+            }
             _builder.CreateRetVoid();
             DEBUG_LOG("  Added implicit void return");
         }
@@ -1040,8 +1072,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         auto alloca = _builder.CreateAlloca(llvmType, nullptr, varName);
         _localVarPtrs[varName] = alloca;
 
-        auto exprVal = compileArrayInitExpr(arrayInitNode, varType);
-        _builder.CreateStore(exprVal, alloca);
+        compileArrayInitExpr(arrayInitNode, varType, alloca);
     } else {
         TypeInfo varType;
         if (node->varType()) {
@@ -1190,6 +1221,9 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             _builder.CreateStore(exprVal, alloca);
 
             auto structDecl = _file->getStructDecl(varType.name);
+            if (!structDecl && _yux) {
+                structDecl = _yux->sdkFile()->getStructDecl(varType.name);
+            }
             if (structDecl) {
                 _scopeVars.push_back(varName);
             }
@@ -1617,7 +1651,7 @@ void Compiler::compileStatement(p<StatementNode> node) {
     }
 }
 
-llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const TypeInfo& targetType) {
+llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const TypeInfo& targetType, llvm::Value* destPtr) {
     auto literal = node->value();
     auto literalType = literal->getType();
     auto text = literal->getValue().getText();
@@ -1643,9 +1677,16 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
     DEBUG_LOG_VAL("    Expr: ArrayInit", targetType.name);
 
     auto llvmArrayType = getLLVMType(targetType);
-    auto alloca = _builder.CreateAlloca(llvmArrayType, nullptr, "array.init");
+    bool needLoad = (destPtr == nullptr);
+    if (needLoad) {
+        destPtr = _builder.CreateAlloca(llvmArrayType, nullptr, "array.init");
+    }
 
     llvm::Value* fillValue;
+    bool isZeroFill = false;
+    i64 intFillVal = 0;
+    f64 floatFillVal = 0.0;
+
     if (auto intLiteral = dynamic_cast<LiteralIntNode*>(literal)) {
         string numStr;
         for (char c : text) {
@@ -1655,8 +1696,9 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
                 break;
             }
         }
-        i64 numVal = stoll(numStr);
-        fillValue = llvm::ConstantInt::get(getLLVMType(elementType), numVal, true);
+        intFillVal = stoll(numStr);
+        fillValue = llvm::ConstantInt::get(getLLVMType(elementType), intFillVal, true);
+        isZeroFill = (intFillVal == 0);
     } else if (auto floatLiteral = dynamic_cast<LiteralFloatNode*>(literal)) {
         string numStr;
         for (char c : text) {
@@ -1666,24 +1708,38 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
                 break;
             }
         }
-        f64 numVal = stod(numStr);
-        fillValue = llvm::ConstantFP::get(getLLVMType(elementType), numVal);
+        floatFillVal = stod(numStr);
+        fillValue = llvm::ConstantFP::get(getLLVMType(elementType), floatFillVal);
+        isZeroFill = (floatFillVal == 0.0);
     } else if (auto boolLiteral = dynamic_cast<LiteralBoolNode*>(literal)) {
         bool boolVal = (text == "true");
         fillValue = llvm::ConstantInt::get(getLLVMType(elementType), boolVal ? 1 : 0, false);
+        isZeroFill = !boolVal;
     } else {
         throw YuxError("Unsupported literal type for array fill");
     }
 
-    for (u64 i = 0; i < targetType.arraySize; ++i) {
-        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-        auto index = llvm::ConstantInt::get(_builder.getInt32Ty(), i);
-        llvm::Value* indices[] = {zero, index};
-        auto elemPtr = _builder.CreateGEP(llvmArrayType, alloca, indices, "array.elem.ptr");
-        _builder.CreateStore(fillValue, elemPtr);
+    if (isZeroFill) {
+        auto zeroInit = llvm::ConstantAggregateZero::get(llvmArrayType);
+        _builder.CreateStore(zeroInit, destPtr);
+    } else if (elementType.name == "i8" || elementType.name == "u8" || elementType.name == "bool") {
+        auto size = llvm::ConstantInt::get(_builder.getInt64Ty(), targetType.arraySize);
+        auto fillByte = _builder.getInt8(static_cast<u8>(intFillVal));
+        _builder.CreateMemSetInline(destPtr, llvm::MaybeAlign(1), fillByte, size);
+    } else {
+        for (u64 i = 0; i < targetType.arraySize; ++i) {
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto index = llvm::ConstantInt::get(_builder.getInt32Ty(), i);
+            llvm::Value* indices[] = {zero, index};
+            auto elemPtr = _builder.CreateGEP(llvmArrayType, destPtr, indices, "array.elem.ptr");
+            _builder.CreateStore(fillValue, elemPtr);
+        }
     }
 
-    return _builder.CreateLoad(llvmArrayType, alloca, "array.load");
+    if (needLoad) {
+        return _builder.CreateLoad(llvmArrayType, destPtr, "array.load");
+    }
+    return nullptr;
 }
 
 llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& srcType, const TypeInfo& dstType) {
@@ -1867,6 +1923,11 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
         auto capField = _builder.CreateGEP(stringType, alloca, capIndices, "str_cap");
 
         if (len > 0) {
+            auto elemSize = _builder.getInt64(4);
+            auto totalSize = _builder.getInt64(len * 4);
+            auto allocFn = getArrayAllocFn();
+            auto heapPtr = _builder.CreateCall(allocFn, {totalSize}, "str_heap_ptr");
+
             auto arrType = llvm::ArrayType::get(_builder.getInt32Ty(), len);
 
             vector<llvm::Constant*> elements;
@@ -1886,8 +1947,29 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
                 globalName
             );
 
-            auto arrPtr = _builder.CreateBitCast(globalVar, llvm::PointerType::get(_context, 0));
-            _builder.CreateStore(arrPtr, dataPtrField);
+            auto memcpyFn = _module->getFunction("llvm.memcpy.p0.p0.i64");
+            if (!memcpyFn) {
+                llvm::Type* memcpyArgTypes[] = {
+                    llvm::PointerType::get(_context, 0),
+                    llvm::PointerType::get(_context, 0),
+                    _builder.getInt64Ty(),
+                    _builder.getInt1Ty()
+                };
+                auto memcpyType = llvm::FunctionType::get(_builder.getVoidTy(), memcpyArgTypes, false);
+                memcpyFn = llvm::Function::Create(
+                    memcpyType,
+                    llvm::Function::ExternalLinkage,
+                    "llvm.memcpy.p0.p0.i64",
+                    _module
+                );
+            }
+
+            auto globalPtr = _builder.CreateBitCast(globalVar, llvm::PointerType::get(_context, 0));
+            auto heapPtrTyped = _builder.CreateBitCast(heapPtr, llvm::PointerType::get(_context, 0));
+
+            _builder.CreateCall(memcpyFn, {heapPtrTyped, globalPtr, totalSize, _builder.getInt1(false)});
+
+            _builder.CreateStore(heapPtrTyped, dataPtrField);
         } else {
             _builder.CreateStore(
                 llvm::ConstantPointerNull::get(llvm::PointerType::get(_context, 0)), dataPtrField);
@@ -3205,11 +3287,13 @@ void Compiler::callDestructor(const string& varName, const TypeInfo& varType) {
 
     auto structDecl = _file->getStructDecl(varType.name);
     if (!structDecl) {
-        return;
+        auto sdkStructDecl = _yux ? _yux->sdkFile()->getStructDecl(varType.name) : nullptr;
+        if (!sdkStructDecl) {
+            return;
+        }
     }
 
-    auto structImpl = _file->getStructImpl(varType.name);
-    if (!structImpl || !structImpl->hasDestructor()) {
+    if (!structNeedsDestructor(varType.name)) {
         return;
     }
 
@@ -3236,4 +3320,111 @@ void Compiler::callDestructorsForScope() {
             callDestructor(varName, sym->type);
         }
     }
+}
+
+bool Compiler::typeNeedsDestructor(const TypeInfo& type) {
+    if (type.isBox() || type.isArrayGeneric()) {
+        return true;
+    }
+    if (type.isArray()) {
+        return false;
+    }
+    if (type.isRef() || type.isPtr()) {
+        return false;
+    }
+    return structNeedsDestructor(type.name);
+}
+
+bool Compiler::structNeedsDestructor(const string& structName) {
+    auto structDecl = _file->getStructDecl(structName);
+    if (!structDecl) {
+        if (_yux) {
+            structDecl = _yux->sdkFile()->getStructDecl(structName);
+        }
+    }
+    if (!structDecl) {
+        return false;
+    }
+
+    for (auto field : structDecl->fields()) {
+        if (typeNeedsDestructor(field->getType())) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structName) {
+    auto structDecl = _file->getStructDecl(structName);
+    if (!structDecl) {
+        if (_yux) {
+            structDecl = _yux->sdkFile()->getStructDecl(structName);
+        }
+    }
+    if (!structDecl) {
+        return;
+    }
+
+    auto structType = getLLVMType(TypeInfo(structName));
+    auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+
+    int fieldIndex = 0;
+    for (auto field : structDecl->fields()) {
+        TypeInfo fieldType = field->getType();
+
+        if (typeNeedsDestructor(fieldType)) {
+            llvm::Value* indices[] = {zero, llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIndex)};
+            auto fieldPtr = _builder.CreateGEP(structType, structPtr, indices, "field_ptr");
+
+            if (fieldType.isBox()) {
+                auto boxStructType = getLLVMType(fieldType);
+                llvm::Value* indices1[] = {zero, llvm::ConstantInt::get(_builder.getInt32Ty(), 1)};
+                auto refCountFieldPtr = _builder.CreateGEP(boxStructType, fieldPtr, indices1, "ref_count_field_ptr");
+                auto refCountPtr = _builder.CreateLoad(
+                    llvm::PointerType::get(_context, 0), refCountFieldPtr, "ref_count_ptr");
+
+                llvm::Value* indices2[] = {zero, zero};
+                auto dataFieldPtr = _builder.CreateGEP(boxStructType, fieldPtr, indices2, "data_field_ptr");
+                auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataFieldPtr, "data_ptr");
+
+                auto releaseFn = getBoxReleaseFn();
+                _builder.CreateCall(releaseFn, {refCountPtr, dataPtr});
+            } else if (fieldType.isArrayGeneric()) {
+                auto arrayStructType = getLLVMType(fieldType);
+                llvm::Value* indices0[] = {zero, zero};
+                auto dataFieldPtr = _builder.CreateGEP(arrayStructType, fieldPtr, indices0, "data_field_ptr");
+                auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataFieldPtr, "data_ptr");
+
+                auto releaseFn = getArrayReleaseFn();
+                _builder.CreateCall(releaseFn, {dataPtr});
+            } else {
+                auto fieldDestructorFn = getDestructorFunction(fieldType.name);
+                _builder.CreateCall(fieldDestructorFn, {fieldPtr});
+            }
+        }
+
+        fieldIndex++;
+    }
+}
+
+void Compiler::generateDefaultDestructor(const string& structName) {
+    DEBUG_LOG_VAL("  Generating default destructor for", structName);
+
+    auto func = getDestructorFunction(structName);
+
+    llvm::BasicBlock* entry = llvm::BasicBlock::Create(_context, "entry", func);
+    _builder.SetInsertPoint(entry);
+
+    auto args = func->args();
+    auto argIt = args.begin();
+    if (argIt == args.end()) {
+        _builder.CreateRetVoid();
+        return;
+    }
+
+    llvm::Value* selfPtr = argIt;
+
+    callFieldDestructor(selfPtr, structName);
+
+    _builder.CreateRetVoid();
 }

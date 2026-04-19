@@ -69,7 +69,7 @@ class Compiler {
         const TypeInfo& retType);
     llvm::Function* getDestructorFunction(const string& structName);
     llvm::Value* compileExpr(p<ExprNode> node);
-    llvm::Value* compileArrayInitExpr(p<ExprArrayInitNode> node, const TypeInfo& targetType);
+    llvm::Value* compileArrayInitExpr(p<ExprArrayInitNode> node, const TypeInfo& targetType, llvm::Value* destPtr = nullptr);
     llvm::Value* createCast(llvm::Value* val, const TypeInfo& srcType, const TypeInfo& dstType);
     void compileStatementBlock(p<StatementBlockNode> block);
     llvm::Value* compileStatementBlockWithResult(
@@ -77,6 +77,10 @@ class Compiler {
 
     void callDestructor(const string& varName, const TypeInfo& varType);
     void callDestructorsForScope();
+    void callFieldDestructor(llvm::Value* structPtr, const string& structName);
+    void generateDefaultDestructor(const string& structName);
+    bool typeNeedsDestructor(const TypeInfo& type);
+    bool structNeedsDestructor(const string& structName);
 
     void compileRetStatement(p<StatementRetNode> node);
     void compileRetVoidStatement(p<StatementRetVoidNode> node);
@@ -121,7 +125,7 @@ public:
     void compileStructDecls();
     void compileStructImpls();
     void compileFn(p<FnNode> node, llvm::Function* func);
-    void compileMethod(p<FnNode> node, llvm::Function* func, const string& structName);
+    void compileMethod(p<FnNode> node, llvm::Function* func, const string& structName, bool isDestructor = false);
     void compileStatement(p<StatementNode> node);
 };
 
