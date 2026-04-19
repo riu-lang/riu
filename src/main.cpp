@@ -216,13 +216,16 @@ IRResult compileIR(string inputFile, Yux& yux, bool isSdk = false) {
 }
 
 string findSdkPath() {
+#ifdef _DEBUG
     if (std::filesystem::exists("sdk/sdk.yux")) {
         return "sdk/sdk.yux";
     }
+#endif
     char exePath[MAX_PATH];
     GetModuleFileNameA(nullptr, exePath, MAX_PATH);
     auto exeDir = llvm::sys::path::parent_path(exePath).str();
-    string sdkPath = exeDir + "/sdk/sdk.yux";
+    auto rootDir = llvm::sys::path::parent_path(exeDir).str();
+    string sdkPath = rootDir + "/sdk/sdk.yux";
     if (std::filesystem::exists(sdkPath)) {
         return sdkPath;
     }

@@ -1,0 +1,17 @@
+local third_party = path.join(os.projectdir(), "third_party")
+
+target("gtest")
+    set_kind("static")
+    set_languages("c++20")
+    add_includedirs(path.join(third_party, "googletest/googletest/include"), {public = true})
+    add_includedirs(path.join(third_party, "googletest/googlemock/include"), {public = true})
+    add_files(path.join(third_party, "googletest/googletest/src/*.cc"))
+    add_files(path.join(third_party, "googletest/googlemock/src/*.cc"))
+    add_defines("_HAS_EXCEPTIONS=0")
+    add_cxxflags("-Wno-unknown-warning-option", "-Wno-unused-function", {force = true})
+
+target("test_base")
+    set_kind("binary")
+    set_languages("c++20")
+    add_deps("gtest")
+    add_files("test_base.cpp")

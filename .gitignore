@@ -5,3 +5,6 @@
 /third_party/
 .cache/
 /compile_commands.json
+/.cache/
+/.xmake/
+/.vscode/

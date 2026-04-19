@@ -34,7 +34,7 @@ fn main() {
 ### 环境要求
 
 - **编译器**: Clang（仅支持 Clang）
-- **构建工具**: CMake + Ninja
+- **构建工具**: xmake
 - **系统**: Windows
 
 [clangd-mcp](https://github.com/felipeerias/clangd-mcp-server.git)，配置项目路径到环境变量，见[mcp.json](.trae/mcp.json)。
@@ -77,14 +77,11 @@ yux-lang/
 
 ## 构建
 
-使用 Ninja 构建指定目标：
+使用 xmake 构建指定目标：
 
 ```powershell
 # 构建 yux 编译器
-ninja -C cmake-build-debug yux
-
-# 构建运行时库
-ninja -C cmake-build-debug yux_rt
+xmake build yux
 ```
 
 ## 使用
@@ -108,8 +105,8 @@ yux <input.yux>
 测试用例位于 `tests/cases/` 目录，使用 googletest 框架。
 
 ```powershell
-ninja -C cmake-build-debug yux_test
-./cmake-build-debug/yux_test.exe
+xmake build yux_test
+./build/windows/x64/debug/yux_test.exe
 ```
 
 ## License

@@ -19,7 +19,7 @@ Yux 是一个自举的编程语言编译器，使用 LLVM 作为后端，支持�
 
 ```powershell
 # 构建 yux 编译器（推荐）
-ninja -C cmake-build-debug yux
+xmake build yux
 
 # 测试编译
 yux main.yux
@@ -27,7 +27,7 @@ yux main.yux
 
 ## 环境
 
-项目用`Clang`构建
+项目用`xmake`+`Clang`构建
 
 命令行为 windows `powershell`，无msvc开发环境变量
 
@@ -93,12 +93,7 @@ IR 生成 (Compiler → LLVM IR)
 目标：
 - `yux`
 
-- `ninja` 构建`yux`目标 推荐使用；无法构建全部目标，**不指定目标会构建失败**
-- 目录`cmake-build-debug` 配置会自动重新加载。 只能执行构建命令，不要改动配置，如需操作，告诉用户（用户会重新配置）
-
 ## 调试编译exe
-
-debug构建目录已加到`PATH`，可直接用`yux`
 
 ```debug build help
 yux compiler
