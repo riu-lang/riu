@@ -2,7 +2,7 @@
   "name": "yux-vscode",
   "displayName": "yux-vscode",
   "description": "",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "engines": {
     "vscode": "^1.107.1"
   },
@@ -32,6 +32,14 @@
         "language": "yux",
         "scopeName": "source.yux",
         "path": "./syntaxes/yux.tmLanguage.json"
+      },
+      {
+        "scopeName": "markdown.yux.codeblock",
+        "path": "./syntaxes/yux.markdown.tmLanguage.json",
+        "injectTo": ["text.html.markdown"],
+        "embeddedLanguages": {
+          "meta.embedded.block.yux": "yux"
+        }
       }
     ],
     "commands": [
