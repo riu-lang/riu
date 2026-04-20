@@ -1,14 +1,14 @@
 fn main() {
   val a = 1 + 2 * 3
-  println(a)
+  println(a.to_string())
   val b = (1 + 2) * 3
-  println(b)
+  println(b.to_string())
   val c = 10 - 2 - 3
-  println(c)
+  println(c.to_string())
   val d = 10 / 2 * 3
-  println(d)
+  println(d.to_string())
   val e = (1 + 2) > 2
-  println(e)
+  println(e.to_string())
   val f = (3 * 2) == 6
-  println(f)
+  println(f.to_string())
 }

@@ -1,8 +1,8 @@
 fn helper() {
-  println(100)
+  println(100.to_string())
 }
 
 fn main() {
   helper()
-  println(200)
+  println(200.to_string())
 }

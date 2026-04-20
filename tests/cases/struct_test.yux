@@ -12,6 +12,6 @@ Point {
 
 fn main() {
   val p = Point(1.0, 2.0)
-  println(p.x)
-  println(p.y)
+  println(p.x.to_string())
+  println(p.y.to_string())
 }

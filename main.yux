@@ -1,18 +1,18 @@
 fn arr() {
   val arr Array<i32> = [10]
   var x = arr[0]
-  println(x)
+  println(x.to_string())
   x = 10 + 5
-  println(x)
+  println(x.to_string())
   x += 5
-  println(x)
+  println(x.to_string())
 }
 
 fn main() {
   / 打印
   val n N = N(1.5)
   val a = n.n - -2.to_f64()
-  println(a)
+  println(a.to_string())
   arr()
   val str String = "hello"
   str.append(c' ')

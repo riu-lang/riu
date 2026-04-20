@@ -4,8 +4,8 @@ fn main() {
     if i >= 5 {
       break;
     }
-    println(i)
+    println(i.to_string())
     i = i + 1
   }
-  println(99)
+  println(99.to_string())
 }

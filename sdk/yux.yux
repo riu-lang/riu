@@ -19,191 +19,6 @@ fn _stdout_write(buf Ptr<u8>, off i64, len i64) {
   WriteFile(hStdout, bufWithOff, len.to_u32(), &written, null);
 }
 
-fn print(n i64) {
-  var buf [u8 * 21] = [0u8 ...]
-  var is_neg = n < 0i64
-  var v i64 = n
-  if is_neg {
-    v = -n
-  }
-  var i i64 = 0
-  loop {
-    if v == 0 {
-      break;
-    }
-    var digit i64 = v % 10
-    buf[20i64 - i] = 48u8 + digit.to_u8()
-    v /= 10
-    i += 1
-  }
-  if i == 0 {
-    buf[20i64] = 48u8
-    i = 1
-  }
-  var start i64 = 21i64 - i
-  if is_neg {
-    start -= 1
-    buf[start] = 45u8
-    i += 1
-  }
-  val bufp Ref<[u8 * 21]> = &buf
-  _stdout_write(bufp, start, i)
-}
-
-fn print(n i8) {
-  print(n.to_i64())
-}
-
-fn print(n i16) {
-  print(n.to_i64())
-}
-
-fn print(n i32) {
-  print(n.to_i64())
-}
-
-fn print(n u8) {
-  print(n.to_u64())
-}
-
-fn print(n u16) {
-  print(n.to_u64())
-}
-
-fn print(n u32) {
-  print(n.to_u64())
-}
-
-fn print(n u64) {
-  var buf [u8 * 21] = [0u8 ...]
-  var v u64 = n
-  var i i64 = 0
-  loop {
-    if v == 0u64 {
-      break;
-    }
-    var digit u64 = v % 10u64
-    buf[20i64 - i] = 48u8 + digit.to_u8()
-    v /= 10u64
-    i += 1
-  }
-  if i == 0 {
-    buf[20i64] = 48u8
-    i = 1
-  }
-  val bufp Ref<[u8 * 21]> = &buf
-  _stdout_write(bufp, 21i64 - i, i)
-}
-
-fn print(n f64) {
-  var is_neg = n < 0.0f64
-  var v f64 = n
-  if is_neg {
-    v = 0.0f64 - n
-  }
-  if is_neg {
-    val tmp [u8 * 1] = [45u8]
-    _stdout_write(&tmp, 0i64, 1i64)
-  }
-  print(v.to_i64())
-  val dot [u8 * 1] = [46u8]
-  _stdout_write(&dot, 0i64, 1i64)
-  var frac f64 = v - v.to_i64().to_f64()
-  var i i64 = 0
-  loop {
-    if i == 6 {
-      break;
-    }
-    frac *= 10.0f64
-    var digit i64 = frac.to_i64()
-    val d [u8 * 1] = [48u8 + digit.to_u8()]
-    _stdout_write(&d, 0i64, 1i64)
-    frac -= digit.to_f64()
-    i += 1
-  }
-}
-
-fn print(n f32) {
-  print(n.to_f64())
-}
-
-fn print(b bool) {
-  if b {
-    val t [u8 * 4] = [116u8, 114u8, 117u8, 101u8]
-    _stdout_write(&t, 0i64, 4i64)
-  } else {
-    val f [u8 * 5] = [102u8, 97u8, 108u8, 115u8, 101u8]
-    _stdout_write(&f, 0i64, 5i64)
-  }
-}
-
-fn println(n i8) {
-  print(n)
-  val nl [u8 * 1] = [10u8]
-  _stdout_write(&nl, 0i64, 1i64)
-}
-
-fn println(n i16) {
-  print(n)
-  val nl [u8 * 1] = [10u8]
-  _stdout_write(&nl, 0i64, 1i64)
-}
-
-fn println(n i32) {
-  print(n)
-  val nl [u8 * 1] = [10u8]
-  _stdout_write(&nl, 0i64, 1i64)
-}
-
-fn println(n i64) {
-  print(n)
-  val nl [u8 * 1] = [10u8]
-  _stdout_write(&nl, 0i64, 1i64)
-}
-
-fn println(n u8) {
-  print(n)
-  val nl [u8 * 1] = [10u8]
-  _stdout_write(&nl, 0i64, 1i64)
-}
-
-fn println(n u16) {
-  print(n)
-  val nl [u8 * 1] = [10u8]
-  _stdout_write(&nl, 0i64, 1i64)
-}
-
-fn println(n u32) {
-  print(n)
-  val nl [u8 * 1] = [10u8]
-  _stdout_write(&nl, 0i64, 1i64)
-}
-
-fn println(n u64) {
-  print(n)
-  val nl [u8 * 1] = [10u8]
-  _stdout_write(&nl, 0i64, 1i64)
-}
-
-fn println(n f64) {
-  print(n)
-  val nl [u8 * 1] = [10u8]
-  _stdout_write(&nl, 0i64, 1i64)
-}
-
-fn println(n f32) {
-  print(n)
-  val nl [u8 * 1] = [10u8]
-  _stdout_write(&nl, 0i64, 1i64)
-}
-
-fn println(b bool) {
-  print(b)
-  val nl [u8 * 1] = [10u8]
-  _stdout_write(&nl, 0i64, 1i64)
-}
-
-
 / 内置类型
 / 结构体仅占位，为实际类型
 / to_数字 to_bool 函数编译器实现
@@ -256,6 +71,10 @@ i8 {
   fn to_bool() bool {
     self != 0i8
   }
+
+  fn to_string() String {
+    self.to_i64().to_string()
+  }
 }
 
 struct u8 {
@@ -304,6 +123,9 @@ u8 {
     self != 0u8
   }
 
+  fn to_string() String {
+    self.to_u64().to_string()
+  }
 }
 
 struct i16 {
@@ -352,6 +174,9 @@ i16 {
     self != 0i16
   }
 
+  fn to_string() String {
+    self.to_i64().to_string()
+  }
 }
 
 struct u16 {
@@ -400,6 +225,9 @@ u16 {
     self != 0u16
   }
 
+  fn to_string() String {
+    self.to_u64().to_string()
+  }
 }
 
 struct i32 {
@@ -448,6 +276,9 @@ i32 {
     self != 0
   }
 
+  fn to_string() String {
+    self.to_i64().to_string()
+  }
 }
 
 struct u32 {
@@ -496,6 +327,9 @@ u32 {
     self != 0u32
   }
 
+  fn to_string() String {
+    self.to_u64().to_string()
+  }
 }
 
 struct i64 {
@@ -544,6 +378,42 @@ i64 {
     self != 0i64
   }
 
+  fn to_string() String {
+    var s String = String()
+    var buf [u8 * 21] = [0u8 ...]
+    var is_neg = self < 0i64
+    var v i64 = self
+    if is_neg {
+      v = -self
+    }
+    var i i64 = 0
+    loop {
+      if v == 0 {
+        break;
+      }
+      var digit i64 = v % 10
+      buf[20i64 - i] = 48u8 + digit.to_u8()
+      v /= 10
+      i += 1
+    }
+    if i == 0 {
+      buf[20i64] = 48u8
+      i = 1
+    }
+    if is_neg {
+      s.append(c'-')
+    }
+    var start i64 = 21i64 - i
+    var k i64 = 0
+    loop {
+      if k >= i {
+        break;
+      }
+      s.append(buf[start + k])
+      k += 1
+    }
+    s
+  }
 }
 
 struct u64 {
@@ -592,6 +462,35 @@ u64 {
     self != 0u64
   }
 
+  fn to_string() String {
+    var s String = String()
+    var buf [u8 * 21] = [0u8 ...]
+    var v u64 = self
+    var i i64 = 0
+    loop {
+      if v == 0u64 {
+        break;
+      }
+      var digit u64 = v % 10u64
+      buf[20i64 - i] = 48u8 + digit.to_u8()
+      v /= 10u64
+      i += 1
+    }
+    if i == 0 {
+      buf[20i64] = 48u8
+      i = 1
+    }
+    var start i64 = 21i64 - i
+    var k i64 = 0
+    loop {
+      if k >= i {
+        break;
+      }
+      s.append(buf[start + k])
+      k += 1
+    }
+    s
+  }
 }
 
 struct f64 {
@@ -640,6 +539,32 @@ f64 {
     self != 0.0f64
   }
 
+  fn to_string() String {
+    var s String = String()
+    var is_neg = self < 0.0f64
+    var v f64 = self
+    if is_neg {
+      v = 0.0f64 - self
+    }
+    if is_neg {
+      s.append(c'-')
+    }
+    s.append(v.to_i64().to_string())
+    s.append(c'.')
+    var frac f64 = v - v.to_i64().to_f64()
+    var i i64 = 0
+    loop {
+      if i == 6 {
+        break;
+      }
+      frac *= 10.0f64
+      var digit i64 = frac.to_i64()
+      s.append((48u8 + digit.to_u8()).to_u32())
+      frac -= digit.to_f64()
+      i += 1
+    }
+    s
+  }
 }
 
 struct f32 {
@@ -688,6 +613,9 @@ f32 {
     self != 0.0f32
   }
 
+  fn to_string() String {
+    self.to_f64().to_string()
+  }
 }
 
 
@@ -771,37 +699,62 @@ String {
     }
     self.data._set_len(n)
   }
+
+  / 转为 UTF-8 字节数组
+  fn to_bytes() Array<u8> {
+    var r Array<u8> = []
+    var i i64 = 0
+    loop {
+      if i >= self.data._len() {
+        break;
+      }
+      val cp u32 = self.data[i]
+      if cp < 128u32 {
+        r._push(cp.to_u8());
+      } elif cp < 2048u32 {
+        r._push(192u8 + ((cp >> 6u32) & 31u32).to_u8())
+        r._push(128u8 + (cp & 63u32).to_u8());
+      } elif cp < 65536u32 {
+        r._push(224u8 + ((cp >> 12u32) & 15u32).to_u8())
+        r._push(128u8 + ((cp >> 6u32) & 63u32).to_u8())
+        r._push(128u8 + (cp & 63u32).to_u8());
+      } else {
+        r._push(240u8 + ((cp >> 18u32) & 7u32).to_u8())
+        r._push(128u8 + ((cp >> 12u32) & 63u32).to_u8())
+        r._push(128u8 + ((cp >> 6u32) & 63u32).to_u8())
+        r._push(128u8 + (cp & 63u32).to_u8());
+      }
+      i += 1
+    }
+    r
+  }
+}
+
+struct bool {
+  / 原始类型
+}
+
+bool {
+  fn to_string() String {
+    var s String = String()
+    if self {
+      s.append("true")
+    } else {
+      s.append("false")
+    }
+    s
+  }
 }
 
 fn print(s String) {
+  val bytes Array<u8> = s.to_bytes()
   var i i64 = 0
   loop {
-    if i >= s.data._len() {
+    if i >= bytes._len() {
       break;
     }
-    val cp u32 = s.data[i]
-    if cp < 128u32 {
-      val b [u8 * 1] = [cp.to_u8()]
-      _stdout_write(&b, 0i64, 1i64)
-    } elif cp < 2048u32 {
-      val b1 u8 = 192u8 + ((cp >> 6u32) & 31u32).to_u8()
-      val b2 u8 = 128u8 + (cp & 63u32).to_u8()
-      val buf [u8 * 2] = [b1, b2]
-      _stdout_write(&buf, 0i64, 2i64)
-    } elif cp < 65536u32 {
-      val b1 u8 = 224u8 + ((cp >> 12u32) & 15u32).to_u8()
-      val b2 u8 = 128u8 + ((cp >> 6u32) & 63u32).to_u8()
-      val b3 u8 = 128u8 + (cp & 63u32).to_u8()
-      val buf [u8 * 3] = [b1, b2, b3]
-      _stdout_write(&buf, 0i64, 3i64)
-    } else {
-      val b1 u8 = 240u8 + ((cp >> 18u32) & 7u32).to_u8()
-      val b2 u8 = 128u8 + ((cp >> 12u32) & 63u32).to_u8()
-      val b3 u8 = 128u8 + ((cp >> 6u32) & 63u32).to_u8()
-      val b4 u8 = 128u8 + (cp & 63u32).to_u8()
-      val buf [u8 * 4] = [b1, b2, b3, b4]
-      _stdout_write(&buf, 0i64, 4i64)
-    }
+    val b [u8 * 1] = [bytes[i]]
+    _stdout_write(&b, 0i64, 1i64)
     i += 1
   }
 }

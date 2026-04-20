@@ -1,16 +1,16 @@
 fn main() {
   val a = 10 + 5
-  println(a)
+  println(a.to_string())
   val b = 10 - 5
-  println(b)
+  println(b.to_string())
   val c = 10 * 5
-  println(c)
+  println(c.to_string())
   val d = 10 / 5
-  println(d)
+  println(d.to_string())
   val e = 10 % 3
-  println(e)
+  println(e.to_string())
   val f = 3.14 + 2.86
-  println(f)
+  println(f.to_string())
   val g = 10.0 - 0.5
-  println(g)
+  println(g.to_string())
 }

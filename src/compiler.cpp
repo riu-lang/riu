@@ -11,6 +11,7 @@
 #include "node/literal_node.h"
 #include "types.h"
 #include <utility>
+#include <algorithm>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 
@@ -1081,6 +1082,12 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         retVal = compileExpr(node->expr());
         DEBUG_LOG("    Created return value");
     }
+    if (auto litNode = dynamic_cast<ExprLiteralNode*>(node->expr())) {
+        if (auto objLit = dynamic_cast<LiteralObjNode*>(litNode->literal())) {
+            auto varName = objLit->getValue().getText();
+            _scopeVars.erase(std::remove(_scopeVars.begin(), _scopeVars.end(), varName), _scopeVars.end());
+        }
+    }
     callDestructorsForScope();
     if (retVal) {
         _builder.CreateRet(retVal);
@@ -1246,7 +1253,12 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 auto capField = _builder.CreateGEP(arrayStructType, alloca, indices2, "cap_field");
                 _builder.CreateStore(_builder.getInt64(count), capField);
             } else {
-                throw YuxError(node->getLineNumber(), "Array<T> initialization requires array literal");
+                auto exprType = expr->getType();
+                if (!exprType.isArrayGeneric() && exprType.name != "Array") {
+                    throw YuxError(node->getLineNumber(), "Array<T> initialization requires Array<T> expression or array literal");
+                }
+                auto exprVal = compileExpr(expr);
+                _builder.CreateStore(exprVal, alloca);
             }
 
             _scopeVars.push_back(varName);

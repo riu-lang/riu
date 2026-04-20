@@ -1,22 +1,22 @@
 fn main() {
   val a = 42
-  println(a)
+  println(a.to_string())
   val e = 42i8
-  println(e)
+  println(e.to_string())
   val f = 100u64
-  println(f)
+  println(f.to_string())
   val g = -123i32
-  println(g)
+  println(g.to_string())
   val h = 3.14
-  println(h)
+  println(h.to_string())
   val i = 2.5f32
-  println(i)
+  println(i.to_string())
   val j = 1.0f64
-  println(j)
+  println(j.to_string())
   val k = -0.5
-  println(k)
+  println(k.to_string())
   val l = true
-  println(l)
+  println(l.to_string())
   val m = false
-  println(m)
+  println(m.to_string())
 }

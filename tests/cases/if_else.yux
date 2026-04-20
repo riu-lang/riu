@@ -6,7 +6,7 @@ fn main() {
   } else {
     b
   }
-  println(max)
+  println(max.to_string())
   val score = 85
   val grade = if score >= 90 {
     1
@@ -17,8 +17,8 @@ fn main() {
   } else {
     4
   }
-  println(grade)
+  println(grade.to_string())
   if a > 0 {
-    println(a);
+    println(a.to_string());
   }
 }
