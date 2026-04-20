@@ -1,0 +1,18 @@
+fn main() {
+  var a i32 = 10
+  a += 5
+  println(a.to_string())
+  a -= 3
+  println(a.to_string())
+  a *= 2
+  println(a.to_string())
+  a /= 4
+  println(a.to_string())
+  a %= 3
+  println(a.to_string())
+  var b i32 = 16
+  b >>= 2
+  println(b.to_string())
+  b <<= 1
+  println(b.to_string())
+}

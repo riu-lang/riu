@@ -1,0 +1,12 @@
+fn main() {
+  val a = 10
+  val b = 20
+  val max1 = if a > b { a } else { b }
+  println(max1.to_string())
+  val max2 = a if a > b else b
+  println(max2.to_string())
+  val sign = 1 if a >= 0 else -1
+  println(sign.to_string())
+  val msg = "positive" if a > 0 else "non-positive"
+  println(msg)
+}

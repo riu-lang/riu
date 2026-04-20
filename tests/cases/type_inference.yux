@@ -1,0 +1,22 @@
+fn add_u8(a u8, b u8) u8 = a + b
+
+fn main() {
+  val a u8 = 1u8 + 2
+  println(a.to_string())
+  val b i64 = 100 + 200
+  println(b.to_string())
+  val c u32 = 5u32 * 3 + 1
+  println(c.to_string())
+  var x u8 = 42
+  println(x.to_string())
+  x = 10
+  println(x.to_string())
+  x += 5
+  println(x.to_string())
+  val r = add_u8(1, 2)
+  println(r.to_string())
+}
+
+fn big() i64 {
+  ret 123456789
+}

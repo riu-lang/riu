@@ -1,0 +1,12 @@
+fn main() {
+  val a = true && true
+  println(a.to_string())
+  val b = true && false
+  println(b.to_string())
+  val c = false || true
+  println(c.to_string())
+  val d = false || false
+  println(d.to_string())
+  val e = true && !false
+  println(e.to_string())
+}

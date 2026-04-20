@@ -1,0 +1,12 @@
+fn main() {
+  val a = -10
+  println(a.to_string())
+  val b = -3.14
+  println(b.to_string())
+  val c = ~5
+  println(c.to_string())
+  val d = !true
+  println(d.to_string())
+  val e = !false
+  println(e.to_string())
+}
