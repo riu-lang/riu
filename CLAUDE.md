@@ -8,7 +8,7 @@ See also: [AGENTS.md](AGENTS.md) for detailed project structure, [语法.md](语
 
 - **Do not modify `src/yux.g4`** (the ANTLR4 grammar). If a task seems to require grammar changes, stop and ask the user — list the problems and what would need to change.
 - Environment is Windows PowerShell with **Clang only** (no MSVC env vars). LLVM is expected on PATH via `llvm/bin`.
-- `build/windows/x64/debug` should be on PATH so the `yux` compiler can be invoked directly after building.
+- `build/windows/x64/debug` defaults on PATH so the `yux` compiler can be invoked directly after building.
 
 ## Common commands
 
@@ -29,7 +29,7 @@ yux main.yux
 ./build/main.exe
 ```
 
-**Testing:** 
+**Testing:**
 1. **Smoke test first**: Use `yux main.yux && ./build/main.exe` ( or create new yux file) for quick validation after changes.
 2. **Full suite**: Once smoke test passes, run `xmake test` to verify all test cases.
 

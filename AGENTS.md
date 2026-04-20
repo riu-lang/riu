@@ -1,254 +1,100 @@
 # yux 编译器开发指南
 
-独立的编译器，类似于clang，一个程序能完成所有。
+独立编译器，单程序完成全流程（解析→IR→链接→exe）。
 
-**不要改语法文件**，有问题直接暂停任务，告诉用户有哪些问题，需要修改什么。
+**不要改语法文件 `src/yux.g4`**，有问题直接暂停任务，告诉用户有哪些问题，需要修改什么。
 
-## 快速入门
+## 硬性规则
 
-### 项目概述
+- 环境：Windows PowerShell + Clang（无 MSVC 环境变量）
+- LLVM 工具链在 PATH（`llvm/bin`）
+- `build/windows/x64/debug` 默认在 PATH，构建后可直接调用 `yux`
+- 调试工具：Windows 兼容的 `head`、`tail`（使用 `-n 行数` 参数）
 
-Yux 是一个自举的编程语言编译器，使用 LLVM 作为后端，支持：
-- 静态类型系统，无隐式类型转换
-- 结构体和成员函数
-- 泛型类型（Ref<T>, Box<T>, Ptr<T>, Array<T>）
-- 自动内存管理（Box<T> 引用计数）
-- 与 C/Windows API 互操作
-
-### 快速构建
+## 常用命令
 
 ```powershell
-# 构建 yux 编译器
+# 同步依赖（克隆后执行一次）
+./sync-deps.ps1
+
+# 构建编译器
 xmake build yux
 
-# 测试编译
-yux main.yux
-```
+# 编译 .yux 源文件（输出到 build/）
+yux main.yux              # 生成 build/main.exe
+yux --emit-ir input.yux   # 同时生成 .ll 文件
+yux -d input.yux          # 调试 IR 输出（信息量大，配合 tail 使用）
 
-## 开发环境
-
-- 构建系统：`xmake` + `Clang`
-- 运行环境：Windows PowerShell，无 MSVC 开发环境变量
-- LLVM 工具链：系统 PATH 包含 llvm/bin
-- 调试工具：Windows 兼容的 `head`、`tail`（使用 `-n 行数` 参数，始终返回 0）
-
-## 项目结构
-
-### 根目录
-
-```
-yux-lang/
-├── src/                  # 源代码（详见下文）
-├── include/              # 头文件
-├── sdk/                  # 自举运行时库
-├── gen/                  # ANTLR4 生成代码
-├── third_party/          # 外部依赖
-├── tests/                # 测试用例
-├── build/                # 编译输出（详见下文）
-├── .xmake/               # xmake 构建配置
-├── .cache/               # clangd 缓存
-├── yux-vscode/           # VS Code 插件
-├── xmake.lua             # 构建脚本
-├── compile_commands.json # 编译数据库（clangd）
-├── main.yux              # 测试入口
-├── AGENTS.md             # 本文档
-└── 语法.md               # 语法详细说明
-```
-
-### 源代码目录 (src/)
-
-```
-src/
-├── main.cpp              # 程序入口
-├── yux.g4                # ANTLR4 语法文件（不要修改）
-├── yux.cpp/h             # 编译器主类
-├── compiler.cpp/h        # LLVM IR 生成
-├── ast_builder.cpp/h     # AST 构建
-├── build_cache.cpp/h     # 构建缓存管理
-└── node/                 # AST 节点定义
-    ├── expr_node.*       # 表达式节点
-    ├── fn_node.*         # 函数节点
-    ├── struct_node.*     # 结构体节点
-    └── statement_node.*  # 语句节点
-```
-
-### 构建目录 (build/)
-
-**重要：build 目录包含 xmake 和 yux 编译器的共用输出，清理时需谨慎！**
-
-```
-build/
-├── build.cache           # yux 编译缓存（详见下文）
-├── main.exe              # yux 编译的测试程序
-├── main.ll               # 生成的 LLVM IR
-├── main.obj              # 目标文件
-├── sdk.ll                # SDK 的 LLVM IR
-├── sdk.obj               # SDK 目标文件
-│
-├── windows/              # xmake 输出目录（共用）
-│   └── x64/
-│       └── debug/
-│           ├── yux.exe   # yux 编译器可执行文件
-│           ├── yux.pdb   # 调试符号
-│           ├── antlr4_static.lib
-│           └── zlib.lib
-│
-├── .build_cache/         # xmake 构建缓存
-├── .deps/                # xmake 依赖信息
-├── .gens/                # xmake 生成文件
-├── .objs/                # xmake 目标文件
-├── .xpack/               # xmake 打包输出
-├── config/               # xmake 配置
-├── toolchain/            # xmake 工具链信息
-└── xpack/                # xmake 打包配置
-```
-
-**清理建议：**
-- 安全清理：仅删除 `build/*.exe`、`build/*.ll`、`build/*.obj`、`build/build.cache`
-- 完全清理：`xmake clean -a`（会清理所有 xmake 输出）
-
-### 构建缓存 (build/build.cache)
-
-yux 编译器使用构建缓存来避免重复编译未修改的文件：
-
-**文件格式：**
-```
-文件路径
-修改时间戳 文件大小
-...
-```
-
-**示例：**
-```
-/abs/path/main.yux
-1776603026 507
-/abs/path/sdk/sdk.yux
-1776596925 5068
-```
-
-**工作原理：**
-- 编译前检查源文件的修改时间和大小
-- 如果缓存中记录的时间戳和大小都匹配，则跳过编译
-
-### 测试目录 (tests/)
-
-```
-tests/
-├── xmake.lua             # 测试构建脚本
-├── test_base.cpp         # 测试框架
-├── CMakeLists.txt        # CMake 配置（备用）
-└── cases/                # 测试用例
-    ├── *.yux             # 测试源文件
-    ├── *.expected        # 期望输出
-    └── error/            # 错误测试用例
-        ├── err_*.yux     # 应该编译失败的测试
-        └── err_*.expected
-```
-
-### 外部依赖 (third_party/)
-
-```
-third_party/
-├── antlr4/               # 解析器生成器
-├── llvm/                 # 编译器后端
-│   ├── llvm/             # LLVM 源码
-│   └── lld/              # 链接器源码
-├── googletest/           # 测试框架
-├── utfcpp/               # UTF-8 处理
-└── zlib/                 # 压缩库
-```
-
-### 编译流程
-
-```
-源代码 (.yux)
-    ↓
-词法分析 (ANTLR4 Lexer)
-    ↓
-语法分析 (ANTLR4 Parser)
-    ↓
-AST 构建 (ASTBuilder)
-    ↓
-语义分析 (符号表、类型检查)
-    ↓
-IR 生成 (Compiler → LLVM IR)
-    ↓
-目标代码生成 (LLVM)
-    ↓
-链接 (LLD)
-    ↓
-可执行文件 (build/*.exe)
-```
-
-## 调试
-
-### 编译命令
-
-```bash
-yux input.yux                    # 编译
-yux --emit-ir input.yux          # 生成 IR
-yux -d input.yux                 # 调试模式
-```
-
-### 输出说明
-
-- 编译成功后在工作目录输出到 `build` 目录，返回 `0`
-- `--emit-ir` 会在 `build` 目录生成 `.ll` 文件
-- `-d` 输出编译 IR 调试信息，信息量大，建议配合 `tail` 或其他过滤工具使用
-
-## 测试
-
-推荐的开发流程：
-1. **简易测试**：使用 `yux main.yux && ./build/main.exe` （或创建新 yux 文件） 快速验证改动
-2. **完整测试**：简易测试通过后，运行 `xmake test` 验证所有测试用例
-
-```powershell
-# 简易测试
-yux main.yux
+# 运行编译结果
 ./build/main.exe
-
-# 完整测试套件
-xmake test              # 运行全部测试
-xmake test -v           # 详细输出
-xmake test yux_tests/<name>  # 单独运行某个测试
 ```
 
-测试入口：[main.yux](main.yux)
+**测试流程：**
+1. **简易测试**：`yux main.yux && ./build/main.exe`（或创建新 yux 文件）快速验证
+2. **完整测试**：简易测试通过后，`xmake test` 验证所有用例
 
-## 语法参考
+测试运行器（`tests/xmake.lua`）调用 `yux` 编译每个 `.yux`，比较 stdout 与配对的 `.expected`；`error/err_*.yux` 期望编译失败。当测试用例与语言规范冲突时，更新测试用例——`src/yux.g4` 和 `语法.md` 是权威规范。
 
-详细语法说明请参考 [语法.md](语法.md)
+## 架构
 
-### 编译器开发注意事项
+编译器单二进制（`yux.exe`）完成全流程，无外部汇编器/链接器：
 
-1. **注释规则**：
-   - 行注释：顶行或缩进，匹配 `^\s*/.*`
-   - 尾随注释：用 ` ;`，代码行或空行后，不能用 `/` 尾随
+```
+.yux → ANTLR4 Lexer/Parser → ASTBuilder → 语义分析
+     → Compiler (LLVM IR) → LLVM codegen → LLD link → .exe
+```
 
-2. **空格规则**：
-   - 关键字后必须有空格
-   - 二元运算符两边必须有空格
-   - `()` `[]` 内部无空格
-   - `,` 后有空格
+**源码边界（`src/`）：**
+- `main.cpp` — CLI 入口、参数解析
+- `yux.cpp/h` — 编译器主类，编排流水线
+- `ast_builder.cpp/h` — ANTLR 解析树 → AST 节点（`src/node/` 下 `expr_node`, `fn_node`, `struct_node`, `statement_node`）
+- `compiler.cpp/h` — AST → LLVM IR
+- `build_cache.cpp/h` — 源文件 mtime+size 缓存，存储于 `build/build.cache`；时间戳和大小都匹配时跳过编译
+- ANTLR 生成代码在 `gen/`（非 `src/`）
 
-3. **类型系统**：
-   - 无隐式转换，所有类型必须显式转换
-   - 使用 `.to_类型()` 方法进行类型转换
-   - 无后缀整数字面量默认 `i32`，但可按上下文自动推断：二元运算的另一侧类型、带显式类型的声明/赋值、函数返回类型、唯一匹配的函数重载参数。若多个重载均可自动匹配则报错，需用类型后缀消歧（如 `2u8`）。
+`sdk/` 是自举运行时（yux 自身编写），编译为 `build/sdk.ll` / `build/sdk.obj`，链接到每个 yux 程序。
 
-4. **关键字**：
-   - `fn`, `var`, `val`, `cval`
-   - `if`, `elif`, `else`
-   - `ret`, `break`
-   - `null`, `true`, `false`
-   - `loop`, `struct`
+## 构建输出布局
 
-5. **字符串字面量**：
-   - 普通字符串 `"..."` 支持转义：`\n` `\t` `\\` `\"` `\'`
-   - 原始字符串 `r"..."` 不处理任何转义，内容原样保留（适用于路径、正则等）
+`build/` **由 xmake 和 yux 编译器共用**：
 
-6. **代码点字面量**：
-   - 语法 `c'X'`，类型为 `u32`，表示单个 Unicode 代码点（如 `c'A'` → 65，`c'中'` → 20013）
-   - 引号内仅允许**一个字符或一个转义序列**
-   - 支持的转义：`\n` `\r` `\t` `\v` `\b` `\0` `\\` `\'`
-   - **不支持** `\xNN` / `\uNNNN` 数值转义，也不需要
+- xmake 输出：`build/windows/x64/debug/` 及点开头目录（`.objs/`, `.deps/`, `.build_cache/` 等）
+- yux 输出：`build/*.exe`, `build/*.ll`, `build/*.obj`, `build/build.cache`
+
+**清理：**
+- 安全清理：删除 `build/*.exe build/*.ll build/*.obj build/build.cache`
+- 完全清理：`xmake clean -a`
+- **不要直接删除整个 `build/` 目录**
+
+## 语言语法（影响代码生成和测试）
+
+**注释：**
+- 行注释：`^\s*/.*`（顶行或缩进的 `/` 开头）
+- 尾随注释：` ;`（代码行或空行后）
+- 尾随 `/` 不是注释
+
+**空格：**
+- 关键字后必须有空格
+- 二元运算符两边必须有空格
+- `()` `[]` 内部无空格
+- `,` 后有空格
+
+**类型：**
+- 无隐式转换，使用 `.to_<类型>()` 方法
+- 无后缀整数字面量默认 `i32`，但可按上下文推断：二元运算另一侧类型、显式类型声明、函数返回类型、唯一匹配的重载参数。多个重载均可匹配时报错，需用类型后缀消歧（如 `2u8`）
+
+**关键字：** `fn var val cval if elif else ret break null true false loop struct`
+
+**内置泛型：** `Ref<T>`, `Box<T>`（引用计数）, `Ptr<T>`, `Array<T>`
+
+**字符串字面量：**
+- 普通字符串 `"..."` 支持转义：`\n \t \\ \" \'`
+- 原始字符串 `r"..."` 不处理转义，内容原样保留
+
+**代码点字面量：**
+- 语法 `c'X'`，类型 `u32`，表示单个 Unicode 代码点
+- 引号内仅允许一个字符或一个转义序列
+- 支持转义：`\n \r \t \v \b \0 \\ \'`
+- **不支持** `\xNN` / `\uNNNN` 数值转义
+
+详细语法见 [语法.md](语法.md)
