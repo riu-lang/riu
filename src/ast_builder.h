@@ -106,6 +106,7 @@ public:
     std::any visitLiteralNull(yux::yuxParser::LiteralNullContext* ctx) override;
     std::any visitLiteralObj(yux::yuxParser::LiteralObjContext* ctx) override;
     std::any visitLiteralStringLine(yux::yuxParser::LiteralStringLineContext* ctx) override;
+    std::any visitLiteralStringLineRaw(yux::yuxParser::LiteralStringLineRawContext* ctx) override;
     std::any visitLiteralCodePoint(yux::yuxParser::LiteralCodePointContext* ctx) override;
     std::any visitNumInt(yux::yuxParser::NumIntContext* ctx) override;
     std::any visitNumFloat(yux::yuxParser::NumFloatContext* ctx) override;

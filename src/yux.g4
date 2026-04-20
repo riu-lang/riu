@@ -47,6 +47,7 @@ literal:
     // 变量等
     | name=ID #literalObj
     | STR_LINE # literalStringLine
+    | STR_LINE_RAW # literalStringLineRaw
     // 编译为u32
     | CODE_POINT # literalCodePoint
     | Null # literalNull

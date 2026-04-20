@@ -81,7 +81,7 @@ public:
 class LiteralStringNode : public LiteralNode {
     vector<u32> _codePoints;
 public:
-    explicit LiteralStringNode(Token value);
+    explicit LiteralStringNode(Token value, bool raw = false);
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] const vector<u32>& codePoints() const { return _codePoints; }
 };

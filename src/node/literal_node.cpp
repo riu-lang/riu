@@ -139,13 +139,16 @@ TypeInfo LiteralCodePointNode::getType() const {
     return TypeInfo("u32");
 }
 
-LiteralStringNode::LiteralStringNode(Token value) : LiteralNode(std::move(value)) {
+LiteralStringNode::LiteralStringNode(Token value, bool raw) : LiteralNode(std::move(value)) {
     auto text = _value.getText();
+    if (raw && text.size() >= 3 && text.front() == 'r') {
+        text = text.substr(1);
+    }
     if (text.size() >= 2 && text.front() == '"' && text.back() == '"') {
         string content = text.substr(1, text.size() - 2);
         for (size_t i = 0; i < content.size(); ) {
             u32 cp = 0;
-            if (content[i] == '\\' && i + 1 < content.size()) {
+            if (!raw && content[i] == '\\' && i + 1 < content.size()) {
                 i++;
                 switch (content[i]) {
                     case 'n': cp = '\n'; break;
