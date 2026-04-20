@@ -182,7 +182,6 @@ includes("@builtin/xpack")
 
 local third_party_licenses = {
     {lib = "antlr4", license = "LICENSE.txt"},
-    {lib = "googletest", license = "LICENSE"},
     {lib = "llvm", license = "LICENSE.TXT"},
     {lib = "utfcpp", license = "LICENSE"},
     {lib = "zlib", license = "LICENSE"},

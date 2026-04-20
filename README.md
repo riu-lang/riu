@@ -52,7 +52,6 @@ fn main() {
 | ANTLR4 | 语法解析器生成器 |
 | utfcpp | UTF-8 编码处理 |
 | zlib | 压缩库 |
-| googletest | 测试框架 |
 
 ### 目录结构
 
@@ -106,12 +105,33 @@ yux <input.yux>
 
 ## 测试
 
-测试用例位于 `tests/cases/` 目录，使用 googletest 框架。
+测试用例位于 `tests/cases/` 目录，使用 xmake 原生测试机制驱动，不再依赖 googletest / CMake。
+
+**用例结构：**
+
+- `tests/cases/*.yux` + 同名 `*.expected`：编译应成功，运行产物的 stdout 需与 `.expected` 完全一致
+- `tests/cases/error/err_*.yux` + 同名 `*.expected`：编译应失败（`.expected` 内容仅作占位）
+
+语法以 [`src/yux.g4`](src/yux.g4) 和 [语法.md](语法.md) 为准，用例需符合这两者；不一致时以 g4 / 语法.md 为准。
+
+**运行方式：**
 
 ```powershell
-xmake build yux_test
-./build/windows/x64/debug/yux_test.exe
+# 先构建编译器（测试会通过 xmake 依赖自动构建，但显式构建便于定位编译期错误）
+xmake build yux
+
+# 发现并运行全部用例
+xmake test
+
+# 详细日志
+xmake test -v
+
+# 单独运行某个用例（xmake 的语法：<target>/<test-name>）
+xmake test yux_tests/basic_types.yux
+xmake test yux_tests/error_err_val_reassign.yux
 ```
+
+测试逻辑定义在 [tests/xmake.lua](tests/xmake.lua) 的 `yux_tests` target，通过 `add_tests` + 自定义 `on_run` 完成「编译 → 运行 → 比对输出」。
 
 ## License
 
