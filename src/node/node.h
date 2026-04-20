@@ -124,6 +124,8 @@ public:
     
     FnSymbolInfo* lookupFnSymbolWithParams(const string& name, const vector<TypeInfo>& paramTypes);
 
+    void collectFnOverloads(const string& name, vector<FnSymbolInfo*>& out);
+
     [[nodiscard]] bool hasSymbol(const string& name) const;
 
     [[nodiscard]] bool hasFnSymbol(const string& name) const;

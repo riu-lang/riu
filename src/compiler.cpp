@@ -1066,6 +1066,12 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
 
 void Compiler::compileRetStatement(p<StatementRetNode> node) {
     DEBUG_LOG("  Statement: Return");
+    if (_currentFnNode && _currentFnNode->header() && _currentFnNode->header()->retType()) {
+        auto declRet = _currentFnNode->header()->retType()->getType();
+        if (isIntTypeName(declRet.name) && isFlexibleIntExpr(node->expr())) {
+            tryInferIntType(node->expr(), declRet);
+        }
+    }
     auto retType = node->expr()->getType();
     llvm::Value* retVal = nullptr;
     if (retType.empty()) {
@@ -1117,6 +1123,9 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         TypeInfo varType;
         if (node->varType()) {
             varType = node->varType()->getType();
+            if (isIntTypeName(varType.name) && isFlexibleIntExpr(expr)) {
+                tryInferIntType(expr, varType);
+            }
         } else {
             varType = expr->getType();
         }
@@ -1338,6 +1347,10 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         }
 
         DEBUG_LOG_VAL("  Statement: Assign", objName << " : " << sym->type.name);
+
+        if (isIntTypeName(sym->type.name) && isFlexibleIntExpr(expr)) {
+            tryInferIntType(expr, sym->type);
+        }
 
         if (sym->type.isArrayGeneric()) {
             if (auto arrayNode = dynamic_cast<ExprArrayNode*>(expr)) {
@@ -2026,9 +2039,9 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
 }
 
 llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
+    auto type = node->getType();
     auto left = compileExpr(node->left());
     auto right = compileExpr(node->right());
-    auto type = node->getType();
     bool isFloat = type.startsWith('f');
 
     string opStr = (node->op() == ExprAddSubNode::Op::Add) ? "+" : "-";
@@ -2048,9 +2061,9 @@ llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
 }
 
 llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
+    auto type = node->getType();
     auto left = compileExpr(node->left());
     auto right = compileExpr(node->right());
-    auto type = node->getType();
     bool isFloat = type.startsWith('f');
     bool isUnsigned = type.startsWith('u');
 
@@ -2092,9 +2105,9 @@ llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
 }
 
 llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
+    auto type = node->getType();
     auto left = compileExpr(node->left());
     auto right = compileExpr(node->right());
-    auto type = node->getType();
 
     string opStr;
     switch (node->op()) {
@@ -2134,8 +2147,108 @@ llvm::Value* Compiler::compileParenExpr(p<ExprParenNode> node) {
     return compileExpr(node->expr());
 }
 
+static bool paramAccepts(const TypeInfo& param, const TypeInfo& argType) {
+    if (param == argType) return true;
+    if (param.isRef()) {
+        auto ref = param.refElementType();
+        if (ref && *ref == argType) return true;
+    }
+    if (param.isPtr() && argType.isRef()) return true;
+    return false;
+}
+
+static bool overloadMatchesFlexible(const vector<p<ExprNode>>& args, const vector<TypeInfo>& params) {
+    if (params.size() != args.size()) return false;
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (isFlexibleIntExpr(args[i])) {
+            if (isIntTypeName(params[i].name)) continue;
+            try {
+                if (paramAccepts(params[i], args[i]->getType())) continue;
+            } catch (...) {}
+            return false;
+        }
+        try {
+            if (!paramAccepts(params[i], args[i]->getType())) return false;
+        } catch (...) { return false; }
+    }
+    return true;
+}
+
+static bool overloadMatchesDefault(const vector<p<ExprNode>>& args, const vector<TypeInfo>& params) {
+    if (params.size() != args.size()) return false;
+    TypeInfo i32Type("i32");
+    for (size_t i = 0; i < args.size(); ++i) {
+        TypeInfo argType;
+        if (isFlexibleIntExpr(args[i])) {
+            argType = i32Type;
+        } else {
+            try { argType = args[i]->getType(); } catch (...) { return false; }
+        }
+        if (!paramAccepts(params[i], argType)) return false;
+    }
+    return true;
+}
+
+static void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName,
+                              const vector<p<ExprNode>>& args, int line) {
+    (void)sdkFile;
+    vector<FnSymbolInfo*> candidates;
+    file->collectFnOverloads(fnName, candidates);
+    if (candidates.empty()) return;
+
+    vector<FnSymbolInfo*> defaultMatches;
+    for (auto c : candidates) {
+        if (overloadMatchesDefault(args, c->params)) defaultMatches.push_back(c);
+    }
+
+    vector<FnSymbolInfo*> matches;
+    if (defaultMatches.size() == 1) {
+        matches = defaultMatches;
+    } else if (defaultMatches.empty()) {
+        for (auto c : candidates) {
+            if (overloadMatchesFlexible(args, c->params)) matches.push_back(c);
+        }
+    } else {
+        matches = defaultMatches;
+    }
+
+    if (matches.size() == 1) {
+        auto fn = matches[0];
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (isFlexibleIntExpr(args[i]) && isIntTypeName(fn->params[i].name)) {
+                tryInferIntType(args[i], fn->params[i]);
+            }
+        }
+    } else if (matches.size() > 1) {
+        string sigs;
+        for (auto m : matches) {
+            sigs += "\n  " + fnName + "(";
+            for (size_t i = 0; i < m->params.size(); ++i) {
+                if (i) sigs += ", ";
+                sigs += m->params[i].name;
+            }
+            sigs += ")";
+        }
+        string argSigs;
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (i) argSigs += ", ";
+            try { argSigs += args[i]->getType().name; } catch(...) { argSigs += "?"; }
+        }
+        throw YuxError(line, "Ambiguous call to '{}({})': {} overloads match; add type suffix to disambiguate:{}", fnName, argSigs, matches.size(), sigs);
+    }
+}
+
 llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
     auto calleeExpr = node->getCalleeExpr();
+
+    if (auto calleeLiteral = dynamic_cast<ExprLiteralNode*>(calleeExpr)) {
+        if (auto objLiteral = dynamic_cast<LiteralObjNode*>(calleeLiteral->literal())) {
+            string fnName = objLiteral->getValue().getText();
+            resolveFnOverload(_file, _yux ? _yux->sdkFile() : nullptr, fnName,
+                              node->getArgs(), node->getLineNumber());
+        }
+    }
+
     vector<llvm::Value*> args;
     vector<TypeInfo> argTypes;
     for (auto& arg : node->getArgs()) {
@@ -2804,6 +2917,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
 }
 
 llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
+    (void)node->getType();
     auto left = compileExpr(node->left());
     auto right = compileExpr(node->right());
     auto leftType = node->left()->getType();

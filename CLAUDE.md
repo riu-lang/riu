@@ -62,6 +62,7 @@ Safe targeted cleanup: delete `build/*.exe build/*.ll build/*.obj build/build.ca
 ## Language conventions that affect codegen/tests
 
 - No implicit type conversions anywhere — use `.to_<type>()` methods.
+- Untyped int literals default to `i32` but are inferred from context (binop peer type, declared variable type, return type, or unique overload match). Ambiguous overload matches error — add a type suffix (e.g. `2u8`) to disambiguate.
 - Comments: line comments match `^\s*/.*` (leading `/`, indent allowed); trailing comments use ` ;`. A trailing `/` is **not** a comment.
 - Spacing is enforced: space after keywords, around binary operators, after `,`; no space inside `()` / `[]`.
 - Keywords: `fn var val cval if elif else ret break null true false loop struct`.

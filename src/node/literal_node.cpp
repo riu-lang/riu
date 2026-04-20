@@ -31,6 +31,7 @@ LiteralIntNode::LiteralIntNode(Token value) : LiteralNumberNode(value) {
     static const std::regex type_regex(R"([ui](\d+)$)");
     if (std::smatch match; std::regex_search(v, match, type_regex)) {
         _type = TypeInfo(match.str());
+        _hasSuffix = true;
     } else
         _type = TypeInfo("i32");
 }
@@ -45,6 +46,7 @@ LiteralFloatNode::LiteralFloatNode(const Token& value) : LiteralNumberNode(value
     static const std::regex type_regex(R"(f(\d+)$)");
     if (std::smatch match; std::regex_search(v, match, type_regex)) {
         _type = TypeInfo(match.str());
+        _hasSuffix = true;
     } else
         _type = TypeInfo("f64");
 }

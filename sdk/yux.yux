@@ -26,25 +26,25 @@ fn print(n i64) {
   if is_neg {
     v = -n
   }
-  var i i64 = 0i64
+  var i i64 = 0
   loop {
-    if v == 0i64 {
+    if v == 0 {
       break;
     }
-    var digit i64 = v % 10i64
+    var digit i64 = v % 10
     buf[20i64 - i] = 48u8 + digit.to_u8()
-    v = v / 10i64
-    i = i + 1i64
+    v /= 10
+    i += 1
   }
-  if i == 0i64 {
+  if i == 0 {
     buf[20i64] = 48u8
-    i = 1i64
+    i = 1
   }
   var start i64 = 21i64 - i
   if is_neg {
-    start = start - 1i64
+    start -= 1
     buf[start] = 45u8
-    i = i + 1i64
+    i += 1
   }
   val bufp Ref<[u8 * 21]> = &buf
   _stdout_write(bufp, start, i)
@@ -77,19 +77,19 @@ fn print(n u32) {
 fn print(n u64) {
   var buf [u8 * 21] = [0u8 ...]
   var v u64 = n
-  var i i64 = 0i64
+  var i i64 = 0
   loop {
     if v == 0u64 {
       break;
     }
     var digit u64 = v % 10u64
     buf[20i64 - i] = 48u8 + digit.to_u8()
-    v = v / 10u64
-    i = i + 1i64
+    v /= 10u64
+    i += 1
   }
-  if i == 0i64 {
+  if i == 0 {
     buf[20i64] = 48u8
-    i = 1i64
+    i = 1
   }
   val bufp Ref<[u8 * 21]> = &buf
   _stdout_write(bufp, 21i64 - i, i)
@@ -109,17 +109,17 @@ fn print(n f64) {
   val dot [u8 * 1] = [46u8]
   _stdout_write(&dot, 0i64, 1i64)
   var frac f64 = v - v.to_i64().to_f64()
-  var i i64 = 0i64
+  var i i64 = 0
   loop {
-    if i == 6i64 {
+    if i == 6 {
       break;
     }
-    frac = frac * 10.0f64
+    frac *= 10.0f64
     var digit i64 = frac.to_i64()
     val d [u8 * 1] = [48u8 + digit.to_u8()]
     _stdout_write(&d, 0i64, 1i64)
-    frac = frac - digit.to_f64()
-    i = i + 1i64
+    frac -= digit.to_f64()
+    i += 1
   }
 }
 
@@ -445,7 +445,7 @@ i32 {
   }
 
   fn to_bool() bool {
-    self != 0i32
+    self != 0
   }
 
 }
@@ -700,22 +700,22 @@ String {
   fn ~() {
     / Array<u32> 会自动释放
   }
-  
+
   fn String() {
     self.data = []
   }
-  
+
   fn String(s String) {
     self.data = s.data
   }
-  
+
   fn len() i64 {
     self.data._len()
   }
 }
 
 fn print(s String) {
-  var i i64 = 0i64
+  var i i64 = 0
   loop {
     if i >= s.data._len() {
       break;
@@ -743,7 +743,7 @@ fn print(s String) {
       val buf [u8 * 4] = [b1, b2, b3, b4]
       _stdout_write(&buf, 0i64, 4i64)
     }
-    i = i + 1i64
+    i += 1
   }
 }
 

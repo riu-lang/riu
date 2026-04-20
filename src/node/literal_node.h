@@ -31,18 +31,24 @@ public:
 class LiteralIntNode : public LiteralNumberNode {
 protected:
     TypeInfo _type;
+    bool _hasSuffix = false;
 
 public:
     explicit LiteralIntNode(Token value);
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] bool hasSuffix() const { return _hasSuffix; }
+    void setType(TypeInfo t) { _type = std::move(t); }
 };
 
 class LiteralFloatNode : public LiteralNumberNode {
 protected:
     TypeInfo _type;
+    bool _hasSuffix = false;
 public:
     explicit LiteralFloatNode(const Token& value);
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] bool hasSuffix() const { return _hasSuffix; }
+    void setType(TypeInfo t) { _type = std::move(t); }
 };
 
 class LiteralBoolNode : public LiteralNode {

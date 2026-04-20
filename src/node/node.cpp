@@ -82,6 +82,18 @@ FnSymbolInfo* ScopeNode::lookupFnSymbolWithParams(const string& name, const vect
     return nullptr;
 }
 
+void ScopeNode::collectFnOverloads(const string& name, vector<FnSymbolInfo*>& out) {
+    auto it = _fnSymbols.find(name);
+    if (it != _fnSymbols.end()) {
+        for (auto& fn : it->second) {
+            out.push_back(&fn);
+        }
+    }
+    if (_parentScope) {
+        _parentScope->collectFnOverloads(name, out);
+    }
+}
+
 bool ScopeNode::hasSymbol(const string& name) const {
     if (_symbols.contains(name)) {
         return true;

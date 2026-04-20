@@ -19,6 +19,20 @@ public:
     }
 };
 
+// 如果表达式是无后缀的整数字面量且其类型可以推断，则返回 true。
+// "灵活"子树只包含无类型后缀的整数字面量、括号、一元运算符和二元运算符。
+bool isFlexibleIntExpr(p<ExprNode> expr);
+
+// 尝试将子树中所有无类型后缀的整数字面量的类型设置为 `target`。
+// 如果成功则返回 true（子树与 target 兼容——既可以是灵活类型并被传播，
+// 也可以是其类型已经等于 target）。
+bool tryInferIntType(p<ExprNode> expr, const TypeInfo& target);
+
+inline bool isIntTypeName(const string& n) {
+    return n == "i8" || n == "i16" || n == "i32" || n == "i64" ||
+           n == "u8" || n == "u16" || n == "u32" || n == "u64";
+}
+
 class ExprCallNode : public ExprNode {
 protected:
     p<ExprNode> _calleeExpr;

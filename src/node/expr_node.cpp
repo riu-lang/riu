@@ -8,6 +8,69 @@
 #include "fn_node.h"
 #include "file_node.h"
 
+static p<ExprNode> unwrapParen(p<ExprNode> e) {
+    while (auto paren = dynamic_cast<ExprParenNode*>(e)) {
+        e = paren->expr();
+    }
+    return e;
+}
+
+bool isFlexibleIntExpr(p<ExprNode> expr) {
+    expr = unwrapParen(expr);
+    if (auto lit = dynamic_cast<ExprLiteralNode*>(expr)) {
+        if (auto ilit = dynamic_cast<LiteralIntNode*>(lit->literal())) {
+            return !ilit->hasSuffix();
+        }
+        return false;
+    }
+    if (auto u = dynamic_cast<ExprUnaryNode*>(expr)) {
+        return u->op() != ExprUnaryNode::Op::Not && isFlexibleIntExpr(u->right());
+    }
+    if (auto a = dynamic_cast<ExprAddSubNode*>(expr)) {
+        return isFlexibleIntExpr(a->left()) && isFlexibleIntExpr(a->right());
+    }
+    if (auto m = dynamic_cast<ExprMulDivModNode*>(expr)) {
+        return isFlexibleIntExpr(m->left()) && isFlexibleIntExpr(m->right());
+    }
+    if (auto b = dynamic_cast<ExprBinOpNode*>(expr)) {
+        return isFlexibleIntExpr(b->left()) && isFlexibleIntExpr(b->right());
+    }
+    return false;
+}
+
+bool tryInferIntType(p<ExprNode> expr, const TypeInfo& target) {
+    if (!isIntTypeName(target.name)) return false;
+    expr = unwrapParen(expr);
+    if (auto lit = dynamic_cast<ExprLiteralNode*>(expr)) {
+        if (auto ilit = dynamic_cast<LiteralIntNode*>(lit->literal())) {
+            if (!ilit->hasSuffix()) {
+                ilit->setType(target);
+                return true;
+            }
+            return ilit->getType() == target;
+        }
+        return false;
+    }
+    if (auto u = dynamic_cast<ExprUnaryNode*>(expr)) {
+        if (u->op() == ExprUnaryNode::Op::Not) return false;
+        return tryInferIntType(u->right(), target);
+    }
+    if (auto a = dynamic_cast<ExprAddSubNode*>(expr)) {
+        return tryInferIntType(a->left(), target) && tryInferIntType(a->right(), target);
+    }
+    if (auto m = dynamic_cast<ExprMulDivModNode*>(expr)) {
+        return tryInferIntType(m->left(), target) && tryInferIntType(m->right(), target);
+    }
+    if (auto b = dynamic_cast<ExprBinOpNode*>(expr)) {
+        return tryInferIntType(b->left(), target) && tryInferIntType(b->right(), target);
+    }
+    try {
+        return expr->getType() == target;
+    } catch (...) {
+        return false;
+    }
+}
+
 const p<ExprNode>& ExprCallNode::getCalleeExpr() const { return _calleeExpr; }
 
 const std::vector<p<ExprNode>>& ExprCallNode::getArgs() const { return _args; }
@@ -98,6 +161,12 @@ TypeInfo ExprAddSubNode::getType() const {
     auto leftType = _left->getType();
     auto rightType = _right->getType();
     if (leftType != rightType) {
+        if (isFlexibleIntExpr(_right) && tryInferIntType(_right, leftType)) {
+            return leftType;
+        }
+        if (isFlexibleIntExpr(_left) && tryInferIntType(_left, rightType)) {
+            return rightType;
+        }
         YuxError err("Type mismatch in +-/ operation: left is {}, right is {}", leftType.name, rightType.name);
         err.setLineNumber(resolveLineNumber());
         throw err;
@@ -128,6 +197,12 @@ TypeInfo ExprMulDivModNode::getType() const {
     auto leftType = _left->getType();
     auto rightType = _right->getType();
     if (leftType != rightType) {
+        if (isFlexibleIntExpr(_right) && tryInferIntType(_right, leftType)) {
+            return leftType;
+        }
+        if (isFlexibleIntExpr(_left) && tryInferIntType(_left, rightType)) {
+            return rightType;
+        }
         YuxError err("Type mismatch in */% operation: left is {}, right is {}", leftType.name, rightType.name);
         err.setLineNumber(resolveLineNumber());
         throw err;
@@ -158,6 +233,12 @@ TypeInfo ExprBinOpNode::getType() const {
     auto leftType = _left->getType();
     auto rightType = _right->getType();
     if (leftType != rightType) {
+        if (isFlexibleIntExpr(_right) && tryInferIntType(_right, leftType)) {
+            return leftType;
+        }
+        if (isFlexibleIntExpr(_left) && tryInferIntType(_left, rightType)) {
+            return rightType;
+        }
         YuxError err("Type mismatch in &|^ operation: left is {}, right is {}", leftType.name, rightType.name);
         err.setLineNumber(resolveLineNumber());
         throw err;
@@ -294,6 +375,12 @@ TypeInfo ExprCompareNode::getType() const {
     auto leftType = _left->getType();
     auto rightType = _right->getType();
     if (leftType != rightType) {
+        if (isFlexibleIntExpr(_right) && tryInferIntType(_right, leftType)) {
+            return TypeInfo("bool");
+        }
+        if (isFlexibleIntExpr(_left) && tryInferIntType(_left, rightType)) {
+            return TypeInfo("bool");
+        }
         YuxError err("Type mismatch in comparison: left is {}, right is {}", leftType.name, rightType.name);
         err.setLineNumber(resolveLineNumber());
         throw err;

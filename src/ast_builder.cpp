@@ -584,7 +584,7 @@ std::any ASTBuilder::visitExprCall(yux::yuxParser::ExprCallContext* ctx) {
     auto callee = any_cast_p<ExprNode>(visit(ctx->left));
     DEBUG_LOG_VAL("    Expr: Call - callee type", typeid(*callee).name());
 
-    auto call = create<ExprCallNode>(scope, callee);
+    auto call = createWithLine<ExprCallNode>(ctx, scope, callee);
     DEBUG_LOG_VAL("    Expr: Call", "args count: " << ctx->args.size());
     for (auto arg : ctx->args) {
         call->addArg(any_cast_p<ExprNode>(visit(arg)));
