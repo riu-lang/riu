@@ -69,15 +69,16 @@ target("yux_tests")
         local expected_file = case:gsub("%.yux$", ".expected")
         local workdir = path.directory(case)
         local stem = path.basename(case)
-        local exe = path.join(workdir, "build", stem .. ".exe")
-        local obj = path.join(workdir, "build", stem .. ".obj")
+        local project_root = path.join(target:scriptdir(), "..")
+        local exe = path.join(project_root, "build", stem .. ".exe")
+        local obj = path.join(project_root, "build", stem .. ".obj")
         os.tryrm(exe)
         os.tryrm(obj)
 
         local stdout_data, stderr_data
         local ok = try {
             function ()
-                stdout_data, stderr_data = os.iorunv(yux_exe, {path.filename(case)}, {curdir = workdir})
+                stdout_data, stderr_data = os.iorunv(yux_exe, {case}, {curdir = project_root})
                 return true
             end,
             catch {

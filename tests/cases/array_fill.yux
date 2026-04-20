@@ -5,7 +5,7 @@ fn main() {
   var arr [i32 * 3] = [0 ... i32]
   println(arr[0].to_string())
   println(arr[2].to_string())
-  var flags [bool * 3] = [true ...]
+  var flags [bool * 3] = [true, true, true]
   println(flags[0].to_string())
   println(flags[2].to_string())
 }

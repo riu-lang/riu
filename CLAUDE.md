@@ -29,7 +29,11 @@ yux main.yux
 ./build/main.exe
 ```
 
-**Testing:** regression suite runs via xmake's native test mechanism (no googletest / CMake). Use `xmake test` to run all cases under `tests/cases/`, or `xmake test yux_tests/<name>` for a single case. The runner (`tests/xmake.lua`, `yux_tests` target) invokes the built `yux` on each `.yux` and compares stdout to the paired `.expected`; for `error/err_*.yux` it expects compilation to fail. When a case and the language disagree, update the case — `src/yux.g4` and `语法.md` are authoritative. Smoke-testing via `yux main.yux` remains useful for ad-hoc checks.
+**Testing:** 
+1. **Smoke test first**: Use `yux main.yux && ./build/main.exe` ( or create new yux file) for quick validation after changes.
+2. **Full suite**: Once smoke test passes, run `xmake test` to verify all test cases.
+
+The regression suite runs via xmake's native test mechanism (no googletest / CMake). Use `xmake test` to run all cases under `tests/cases/`, or `xmake test yux_tests/<name>` for a single case. The runner (`tests/xmake.lua`, `yux_tests` target) invokes the built `yux` on each `.yux` and compares stdout to the paired `.expected`; for `error/err_*.yux` it expects compilation to fail. When a case and the language disagree, update the case — `src/yux.g4` and `语法.md` are authoritative.
 
 ## Architecture
 

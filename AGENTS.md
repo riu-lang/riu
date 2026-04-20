@@ -198,7 +198,22 @@ yux -d input.yux                 # 调试模式
 
 ## 测试
 
-[main.yux](main.yux)
+推荐的开发流程：
+1. **简易测试**：使用 `yux main.yux && ./build/main.exe` （或创建新 yux 文件） 快速验证改动
+2. **完整测试**：简易测试通过后，运行 `xmake test` 验证所有测试用例
+
+```powershell
+# 简易测试
+yux main.yux
+./build/main.exe
+
+# 完整测试套件
+xmake test              # 运行全部测试
+xmake test -v           # 详细输出
+xmake test yux_tests/<name>  # 单独运行某个测试
+```
+
+测试入口：[main.yux](main.yux)
 
 ## 语法参考
 
