@@ -20,5 +20,12 @@
       "url": "https://github.com/madler/zlib.git",
       "commit": "da607da739fa6047df13e66a2af6b8bec7c2a498"
     }
+  },
+  "skills": {
+    "skills": {
+      "url": "https://github.com/xmake-io/xmake-skills.git",
+      "commit": "96fca61d2dcd314664b212378a57b76a19813ba4",
+      "flatten": "skills"
+    }
   }
 }

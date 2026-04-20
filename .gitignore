@@ -8,3 +8,6 @@
 /.cache/
 /.xmake/
 /.vscode/
+
+/.trae/skills/xmake-skills/
+/.claude/skills/xmake-skills/
