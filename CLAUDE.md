@@ -67,3 +67,5 @@ Safe targeted cleanup: delete `build/*.exe build/*.ll build/*.obj build/build.ca
 - Spacing is enforced: space after keywords, around binary operators, after `,`; no space inside `()` / `[]`.
 - Keywords: `fn var val cval if elif else ret break null true false loop struct`.
 - Generics/runtime types baked into the language: `Ref<T>`, `Box<T>` (refcounted), `Ptr<T>`, `Array<T>`.
+- String literals: `"..."` supports escapes `\n \t \\ \" \'`; raw strings `r"..."` treat content verbatim (no escape processing).
+- Codepoint literals: `c'X'` is a single Unicode codepoint of type `u32`. Only one character or one escape allowed between the quotes; supported escapes are `\n \r \t \v \b \0 \\ \'`. Numeric escapes (`\xNN`, `\uNNNN`) are **not** supported.
