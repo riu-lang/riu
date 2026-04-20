@@ -101,6 +101,44 @@ TypeInfo LiteralNullNode::getType() const {
     return TypeInfo("Ptr", genericArgs);
 }
 
+LiteralCodePointNode::LiteralCodePointNode(Token value) : LiteralNode(std::move(value)) {
+    auto text = _value.getText();
+    // text: c'...'
+    if (text.size() < 4) return;
+    string content = text.substr(2, text.size() - 3);
+    if (content.empty()) return;
+    if (content[0] == '\\' && content.size() >= 2) {
+        switch (content[1]) {
+            case 'n': _codePoint = '\n'; break;
+            case 'r': _codePoint = '\r'; break;
+            case 't': _codePoint = '\t'; break;
+            case 'v': _codePoint = '\v'; break;
+            case 'b': _codePoint = '\b'; break;
+            case '0': _codePoint = '\0'; break;
+            case '\\': _codePoint = '\\'; break;
+            case '\'': _codePoint = '\''; break;
+            default: _codePoint = static_cast<u8>(content[1]); break;
+        }
+    } else {
+        u8 c = static_cast<u8>(content[0]);
+        if (c < 0x80) {
+            _codePoint = c;
+        } else if ((c & 0xE0) == 0xC0 && content.size() >= 2) {
+            _codePoint = ((c & 0x1F) << 6) | (static_cast<u8>(content[1]) & 0x3F);
+        } else if ((c & 0xF0) == 0xE0 && content.size() >= 3) {
+            _codePoint = ((c & 0x0F) << 12) | ((static_cast<u8>(content[1]) & 0x3F) << 6) | (static_cast<u8>(content[2]) & 0x3F);
+        } else if ((c & 0xF8) == 0xF0 && content.size() >= 4) {
+            _codePoint = ((c & 0x07) << 18) | ((static_cast<u8>(content[1]) & 0x3F) << 12) | ((static_cast<u8>(content[2]) & 0x3F) << 6) | (static_cast<u8>(content[3]) & 0x3F);
+        } else {
+            _codePoint = c;
+        }
+    }
+}
+
+TypeInfo LiteralCodePointNode::getType() const {
+    return TypeInfo("u32");
+}
+
 LiteralStringNode::LiteralStringNode(Token value) : LiteralNode(std::move(value)) {
     auto text = _value.getText();
     if (text.size() >= 2 && text.front() == '"' && text.back() == '"') {

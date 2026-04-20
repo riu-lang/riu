@@ -1990,6 +1990,9 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
         }
 
         throw YuxError(node->getLineNumber(), "Undefined variable: {}", varName);
+    } else if (auto cpLiteral = dynamic_cast<LiteralCodePointNode*>(literal)) {
+        DEBUG_LOG_VAL("    Expr: CodePointLiteral", text << " : u32");
+        return llvm::ConstantInt::get(getLLVMType(type), cpLiteral->codePoint(), false);
     } else if (auto nullLiteral = dynamic_cast<LiteralNullNode*>(literal)) {
         DEBUG_LOG("    Expr: NullLiteral");
         auto ptrStructType = getLLVMType(TypeInfo("Ptr", {make_shared<TypeInfo>("u8")}));

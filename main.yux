@@ -15,7 +15,7 @@ fn main() {
   println(a)
   arr()
   val str String = "hello"
-  str.append(" ")
+  str.append(c' ')
   str.append("world")
   println(str)
 }

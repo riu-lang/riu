@@ -5,6 +5,7 @@
   "patterns": [
     { "include": "#comments" },
     { "include": "#keywords" },
+    { "include": "#codepoints" },
     { "include": "#strings" },
     { "include": "#numbers" },
     { "include": "#operators" },
@@ -86,8 +87,23 @@
           "match": "\\bnull\\b"
         },
         {
+          "name": "variable.language.self.yux",
+          "match": "\\bself\\b"
+        },
+        {
           "name": "storage.modifier.yux",
           "match": "\\b(var|val|cval)\\b"
+        }
+      ]
+    },
+    "codepoints": {
+      "patterns": [
+        {
+          "name": "constant.character.codepoint.yux",
+          "match": "c'(?:\\\\[nrtvb0\\\\'\"]|[^\\\\'])'",
+          "captures": {
+            "0": { "name": "constant.character.codepoint.yux" }
+          }
         }
       ]
     },

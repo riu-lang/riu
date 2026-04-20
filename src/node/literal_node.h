@@ -70,6 +70,14 @@ public:
     [[nodiscard]] TypeInfo getType() const override;
 };
 
+class LiteralCodePointNode : public LiteralNode {
+    u32 _codePoint = 0;
+public:
+    explicit LiteralCodePointNode(Token value);
+    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] u32 codePoint() const { return _codePoint; }
+};
+
 class LiteralStringNode : public LiteralNode {
     vector<u32> _codePoints;
 public:

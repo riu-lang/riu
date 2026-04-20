@@ -724,6 +724,12 @@ std::any ASTBuilder::visitLiteralStringLine(yux::yuxParser::LiteralStringLineCon
     return p<LiteralNode>(create<LiteralStringNode>(token));
 }
 
+std::any ASTBuilder::visitLiteralCodePoint(yux::yuxParser::LiteralCodePointContext* ctx) {
+    auto token = ctx->CODE_POINT()->getSymbol();
+    DEBUG_LOG_VAL("      Literal: CodePoint", token->getText());
+    return p<LiteralNode>(create<LiteralCodePointNode>(token));
+}
+
 std::any ASTBuilder::visitNumInt(yux::yuxParser::NumIntContext* ctx) {
     DEBUG_LOG_VAL("        Num: Int", ctx->INT()->getSymbol()->getText());
     return p<LiteralNode>(create<LiteralIntNode>(Token(ctx->INT()->getSymbol())));

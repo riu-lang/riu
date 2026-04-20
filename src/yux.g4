@@ -47,6 +47,8 @@ literal:
     // 变量等
     | name=ID #literalObj
     | STR_LINE # literalStringLine
+    // 编译为u32
+    | CODE_POINT # literalCodePoint
     | Null # literalNull
     ;
 
@@ -300,6 +302,11 @@ INT : NUN_SIGN? (INT_10|INT_2|INT_8|INT_16) INT_SUFFIX?;
 FLOAT : NUN_SIGN? (INT_10|FLOAT_DOT|FLOAT_EXP) FLOAT_SUFFIX?;
 STR_LINE : SymbolQuote2 ('\\'.|~[\r\n\\])*? SymbolQuote2;
 STR_LINE_RAW : 'r' SymbolQuote2 ~[\r\n]*? SymbolQuote2;
+CODE_POINT: 'c' '\''
+    ( '\\' [bnrtv0\\']
+    | ~[\r\n\\']
+    )
+    '\'';
 
 // 低优先级
 
