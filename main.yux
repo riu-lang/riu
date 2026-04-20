@@ -1,6 +1,4 @@
 fn arr() {
-  / 测试空数组
-  var empty Array<i32> = []
   val arr Array<i32> = [10]
   var x = arr[0]
   println(x)
@@ -16,7 +14,9 @@ fn main() {
   val a = n.n - -2.to_f64()
   println(a)
   arr()
-  val str String = "hello world"
+  val str String = "hello"
+  str.append(" ")
+  str.append("world")
   println(str)
 }
 

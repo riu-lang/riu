@@ -712,6 +712,65 @@ String {
   fn len() i64 {
     self.data._len()
   }
+
+  / 清空字符串
+  fn clear() {
+    self.data._clear()
+  }
+
+  / 追加一个 Unicode 码点
+  fn append(cp u32) {
+    self.data._push(cp)
+  }
+
+  / 追加另一个字符串
+  fn append(s String) {
+    var i i64 = 0
+    loop {
+      if i >= s.data._len() {
+        break;
+      }
+      self.data._push(s.data[i])
+      i += 1
+    }
+  }
+
+  / 追加 ASCII 字节（作为 u32 码点写入）
+  fn append(b u8) {
+    self.data._push(b.to_u32())
+  }
+
+  / 取码点
+  fn at(i i64) u32 {
+    self.data[i]
+  }
+
+  / 就地截取 [start, end)，修改 self
+  fn sub_string(start i64, end i64) {
+    var len i64 = self.data._len()
+    var s i64 = start
+    var e i64 = end
+    if s < 0 {
+      s = 0
+    }
+    if e > len {
+      e = len
+    }
+    if s >= e {
+      self.data._set_len(0i64)
+      ret;
+    }
+    var i i64 = 0
+    var n i64 = e - s
+    loop {
+      if i >= n {
+        break;
+      }
+      self.data[i] = self.data[s + i]
+      i += 1
+    }
+    self.data._set_len(n)
+  }
 }
 
 fn print(s String) {

@@ -1035,7 +1035,7 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
         auto llvmType = getLLVMType(paramType);
 
         auto structDecl = _file->getStructDecl(paramType.name);
-        if (structDecl) {
+        if (structDecl && !isBuiltinType(paramType.name)) {
             _localVarPtrs[paramName] = argIt;
             DEBUG_LOG_VAL("  Param (struct ptr)", paramName << " : " << paramType.name << "*");
         } else {
@@ -1633,6 +1633,50 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
                 throw YuxError(node->getLineNumber(), "Array variable not found: {}", varName);
             }
             currentPtr = it->second;
+        }
+    } else if (auto dotExpr = dynamic_cast<ExprDotNode*>(arrayExpr)) {
+        auto outerBase = dotExpr->baseExpr();
+        auto outerType = outerBase->getType();
+        TypeInfo outerActual = outerType;
+        if (outerType.isRef()) {
+            auto t = outerType.refElementType();
+            if (t) outerActual = *t;
+        }
+        if (outerType.isBox()) {
+            auto t = outerType.boxElementType();
+            if (t) outerActual = *t;
+        }
+        llvm::Value* outerPtr = nullptr;
+        if (auto ol = dynamic_cast<ExprLiteralNode*>(outerBase)) {
+            if (auto oobj = dynamic_cast<LiteralObjNode*>(ol->literal())) {
+                auto it = _localVarPtrs.find(oobj->getValue().getText());
+                if (it != _localVarPtrs.end()) {
+                    outerPtr = it->second;
+                }
+            }
+        }
+        auto outerStructDecl = _file->getStructDecl(outerActual.name);
+        if (!outerStructDecl && _yux && _yux->sdkFile()) {
+            outerStructDecl = _yux->sdkFile()->getStructDecl(outerActual.name);
+        }
+        if (outerPtr && outerStructDecl) {
+            int fi = outerStructDecl->fieldIndex(dotExpr->member());
+            if (fi >= 0) {
+                llvm::Value* dataPtr = outerPtr;
+                auto zeroIdx = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+                if (outerType.isBox()) {
+                    auto boxStructType = getLLVMType(outerType);
+                    llvm::Value* bIndices[] = {zeroIdx, zeroIdx};
+                    auto dataPtrField = _builder.CreateGEP(
+                        boxStructType, outerPtr, bIndices, "box.data_ptr_field");
+                    dataPtr = _builder.CreateLoad(
+                        llvm::PointerType::get(_context, 0), dataPtrField, "box.data_ptr");
+                }
+                auto outerLLVM = getLLVMType(outerActual);
+                auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fi);
+                llvm::Value* indicesF[] = {zeroIdx, idx};
+                currentPtr = _builder.CreateGEP(outerLLVM, dataPtr, indicesF, "array.field.ptr");
+            }
         }
     }
 
@@ -2338,23 +2382,160 @@ llvm::Value* Compiler::compileMethodCall(
     TypeInfo actualType = baseType;
 
     if (baseType.isArrayGeneric()) {
-        auto baseVal = compileExpr(baseExpr);
+        auto elemType = baseType.arrayGenericElementType();
         auto arrayStructType = getLLVMType(baseType);
-        auto alloca = _builder.CreateAlloca(arrayStructType, nullptr, "array_tmp");
-        _builder.CreateStore(baseVal, alloca);
         auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+        auto two = llvm::ConstantInt::get(_builder.getInt32Ty(), 2);
+
+        // 尝试获取 Array<T> 的左值指针（用于可变方法 _push/_set_len/_clear）
+        llvm::Value* arrayPtr = nullptr;
+        if (auto baseLit = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
+            if (auto obj = dynamic_cast<LiteralObjNode*>(baseLit->literal())) {
+                auto it = _localVarPtrs.find(obj->getValue().getText());
+                if (it != _localVarPtrs.end()) {
+                    arrayPtr = it->second;
+                }
+            }
+        } else if (auto dotBase = dynamic_cast<ExprDotNode*>(baseExpr)) {
+            auto outerBase = dotBase->baseExpr();
+            auto outerType = outerBase->getType();
+            TypeInfo outerActual = outerType;
+            if (outerType.isRef()) {
+                auto t = outerType.refElementType();
+                if (t) outerActual = *t;
+            }
+            if (outerType.isBox()) {
+                auto t = outerType.boxElementType();
+                if (t) outerActual = *t;
+            }
+            llvm::Value* outerPtr = nullptr;
+            if (auto ol = dynamic_cast<ExprLiteralNode*>(outerBase)) {
+                if (auto oobj = dynamic_cast<LiteralObjNode*>(ol->literal())) {
+                    auto it = _localVarPtrs.find(oobj->getValue().getText());
+                    if (it != _localVarPtrs.end()) {
+                        outerPtr = it->second;
+                    }
+                }
+            }
+            auto outerStructDecl = _file->getStructDecl(outerActual.name);
+            if (!outerStructDecl && _yux && _yux->sdkFile()) {
+                outerStructDecl = _yux->sdkFile()->getStructDecl(outerActual.name);
+            }
+            if (outerPtr && outerStructDecl) {
+                int fi = outerStructDecl->fieldIndex(dotBase->member());
+                if (fi >= 0) {
+                    llvm::Value* dataPtr = outerPtr;
+                    if (outerType.isBox()) {
+                        auto boxStructType = getLLVMType(outerType);
+                        llvm::Value* bIndices[] = {zero, zero};
+                        auto dataPtrField = _builder.CreateGEP(boxStructType, outerPtr, bIndices, "box.data_ptr_field");
+                        dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataPtrField, "box.data_ptr");
+                    }
+                    auto outerLLVM = getLLVMType(outerActual);
+                    auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fi);
+                    llvm::Value* indices[] = {zero, idx};
+                    arrayPtr = _builder.CreateGEP(outerLLVM, dataPtr, indices, "array.field.ptr");
+                }
+            }
+        }
+
+        auto getReadPtr = [&]() -> llvm::Value* {
+            if (arrayPtr) return arrayPtr;
+            auto baseVal = compileExpr(baseExpr);
+            auto tmp = _builder.CreateAlloca(arrayStructType, nullptr, "array_tmp");
+            _builder.CreateStore(baseVal, tmp);
+            return tmp;
+        };
 
         if (member == "_len") {
             DEBUG_LOG("    Expr: Array._len()");
-            llvm::Value* indices[] = {zero, llvm::ConstantInt::get(_builder.getInt32Ty(), 1)};
-            auto lenField = _builder.CreateGEP(arrayStructType, alloca, indices, "len_field");
+            auto ptr = getReadPtr();
+            llvm::Value* indices[] = {zero, one};
+            auto lenField = _builder.CreateGEP(arrayStructType, ptr, indices, "len_field");
             return _builder.CreateLoad(_builder.getInt64Ty(), lenField, "array.len");
         }
         if (member == "_cap") {
             DEBUG_LOG("    Expr: Array._cap()");
-            llvm::Value* indices[] = {zero, llvm::ConstantInt::get(_builder.getInt32Ty(), 2)};
-            auto capField = _builder.CreateGEP(arrayStructType, alloca, indices, "cap_field");
+            auto ptr = getReadPtr();
+            llvm::Value* indices[] = {zero, two};
+            auto capField = _builder.CreateGEP(arrayStructType, ptr, indices, "cap_field");
             return _builder.CreateLoad(_builder.getInt64Ty(), capField, "array.cap");
+        }
+
+        if (member == "_push" || member == "_set_len" || member == "_clear") {
+            if (!arrayPtr) {
+                throw YuxError(callNode->getLineNumber(),
+                    "Array mutation method '{}' requires an lvalue array", member);
+            }
+            if (!elemType) {
+                throw YuxError(callNode->getLineNumber(), "Array type requires element type");
+            }
+            auto elemLLVMType = getLLVMType(*elemType);
+            uint64_t elemSize = elemLLVMType->getPrimitiveSizeInBits() / 8;
+            if (elemSize == 0) {
+                elemSize = _module->getDataLayout().getTypeAllocSize(elemLLVMType);
+            }
+
+            llvm::Value* dataIdx[] = {zero, zero};
+            llvm::Value* lenIdx[] = {zero, one};
+            llvm::Value* capIdx[] = {zero, two};
+            auto dataFieldPtr = _builder.CreateGEP(arrayStructType, arrayPtr, dataIdx, "a.data.field");
+            auto lenFieldPtr = _builder.CreateGEP(arrayStructType, arrayPtr, lenIdx, "a.len.field");
+            auto capFieldPtr = _builder.CreateGEP(arrayStructType, arrayPtr, capIdx, "a.cap.field");
+
+            auto voidResult = [&]() -> llvm::Value* {
+                return llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            };
+
+            if (member == "_clear") {
+                DEBUG_LOG("    Expr: Array._clear()");
+                _builder.CreateStore(_builder.getInt64(0), lenFieldPtr);
+                return voidResult();
+            }
+            if (member == "_set_len") {
+                DEBUG_LOG("    Expr: Array._set_len()");
+                if (args.size() != 1) {
+                    throw YuxError(callNode->getLineNumber(), "_set_len requires 1 argument");
+                }
+                _builder.CreateStore(args[0], lenFieldPtr);
+                return voidResult();
+            }
+            // _push
+            DEBUG_LOG("    Expr: Array._push()");
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), "_push requires 1 argument");
+            }
+            auto elemVal = args[0];
+            auto lenVal = _builder.CreateLoad(_builder.getInt64Ty(), lenFieldPtr, "a.len");
+            auto capVal = _builder.CreateLoad(_builder.getInt64Ty(), capFieldPtr, "a.cap");
+
+            auto needGrow = _builder.CreateICmpUGE(lenVal, capVal, "push.need_grow");
+            auto growBB = llvm::BasicBlock::Create(_context, "push.grow", _currentFn);
+            auto storeBB = llvm::BasicBlock::Create(_context, "push.store", _currentFn);
+            _builder.CreateCondBr(needGrow, growBB, storeBB);
+
+            _builder.SetInsertPoint(growBB);
+            auto oldData = _builder.CreateLoad(
+                llvm::PointerType::get(_context, 0), dataFieldPtr, "a.data.old");
+            auto capIsZero = _builder.CreateICmpEQ(capVal, _builder.getInt64(0), "cap.is_zero");
+            auto doubled = _builder.CreateMul(capVal, _builder.getInt64(2), "cap.dbl");
+            auto newCap = _builder.CreateSelect(capIsZero, _builder.getInt64(4), doubled, "new.cap");
+            auto newBytes = _builder.CreateMul(newCap, _builder.getInt64(elemSize), "new.bytes");
+            auto growFn = getArrayGrowFn();
+            auto newData = _builder.CreateCall(growFn, {oldData, newBytes}, "a.data.new");
+            _builder.CreateStore(newData, dataFieldPtr);
+            _builder.CreateStore(newCap, capFieldPtr);
+            _builder.CreateBr(storeBB);
+
+            _builder.SetInsertPoint(storeBB);
+            auto curData = _builder.CreateLoad(
+                llvm::PointerType::get(_context, 0), dataFieldPtr, "a.data.cur");
+            auto elemPtr = _builder.CreateGEP(elemLLVMType, curData, {lenVal}, "push.elem.ptr");
+            _builder.CreateStore(elemVal, elemPtr);
+            auto newLen = _builder.CreateAdd(lenVal, _builder.getInt64(1), "new.len");
+            _builder.CreateStore(newLen, lenFieldPtr);
+            return voidResult();
         }
     }
 
@@ -2413,8 +2594,21 @@ llvm::Value* Compiler::compileMethodCall(
 
         vector<llvm::Value*> methodArgs;
         methodArgs.push_back(dataPtr);
-        for (auto& arg : args) {
-            methodArgs.push_back(arg);
+        for (size_t i = 0; i < args.size(); ++i) {
+            auto& at = argTypes[i];
+            auto argStructDecl = _file->getStructDecl(at.name);
+            if (!argStructDecl && _yux && _yux->sdkFile()) {
+                argStructDecl = _yux->sdkFile()->getStructDecl(at.name);
+            }
+            if (argStructDecl && !isBuiltinType(at.name)) {
+                // 结构体按指针传递：临时落地后传地址
+                auto structType = getLLVMType(at);
+                auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");
+                _builder.CreateStore(args[i], alloca);
+                methodArgs.push_back(alloca);
+            } else {
+                methodArgs.push_back(args[i]);
+            }
         }
 
         // 普通结构体方法：归属 struct 所属模块
@@ -2426,7 +2620,15 @@ llvm::Value* Compiler::compileMethodCall(
             vector<llvm::Type*> paramTypes;
             paramTypes.push_back(llvm::PointerType::get(_context, 0));
             for (auto& t : argTypes) {
-                paramTypes.push_back(getLLVMType(t));
+                auto sd = _file->getStructDecl(t.name);
+                if (!sd && _yux && _yux->sdkFile()) {
+                    sd = _yux->sdkFile()->getStructDecl(t.name);
+                }
+                if (sd && !isBuiltinType(t.name)) {
+                    paramTypes.push_back(llvm::PointerType::get(_context, 0));
+                } else {
+                    paramTypes.push_back(getLLVMType(t));
+                }
             }
             auto retType = methodSymbol->retType.empty() ? _builder.getVoidTy() : getLLVMType(methodSymbol->retType);
             auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
