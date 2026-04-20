@@ -145,7 +145,7 @@ void parseAST(string inputFile, Yux& yux, bool isSdk = false) {
     }
 
     llvm::LLVMContext context;
-    ASTBuilder astBuilder(context, yux, "sdk", true);
+    ASTBuilder astBuilder(context, yux, "yux", true);
 
     try {
         astBuilder.build(program);
@@ -186,7 +186,8 @@ IRResult compileIR(string inputFile, Yux& yux, bool isSdk = false) {
     }
 
     if (isSdk) {
-        moduleName = "sdk";
+        // SDK 文件即 yux 模块
+        moduleName = "yux";
     }
 
     std::cout << "Compile IR... (module: " << moduleName << ")" << std::endl;
@@ -217,15 +218,15 @@ IRResult compileIR(string inputFile, Yux& yux, bool isSdk = false) {
 
 string findSdkPath() {
 #ifdef _DEBUG
-    if (std::filesystem::exists("sdk/sdk.yux")) {
-        return "sdk/sdk.yux";
+    if (std::filesystem::exists("sdk/yux.yux")) {
+        return "sdk/yux.yux";
     }
 #endif
     char exePath[MAX_PATH];
     GetModuleFileNameA(nullptr, exePath, MAX_PATH);
     auto exeDir = llvm::sys::path::parent_path(exePath).str();
     auto rootDir = llvm::sys::path::parent_path(exeDir).str();
-    string sdkPath = rootDir + "/sdk/sdk.yux";
+    string sdkPath = rootDir + "/sdk/yux.yux";
     if (std::filesystem::exists(sdkPath)) {
         return sdkPath;
     }
@@ -282,7 +283,7 @@ int wmain(int argc, wchar_t* argv[]) {
 
     if (!sdkPath.empty()) {
         sdkPath = std::filesystem::absolute(sdkPath).string();
-        sdkObjPath = buildDir + "/sdk.obj";
+        sdkObjPath = buildDir + "/yux.obj";
 
         bool needCompile = !std::filesystem::exists(sdkObjPath) || cache.needRecompile(sdkPath);
         if (needCompile) {
@@ -291,7 +292,7 @@ int wmain(int argc, wchar_t* argv[]) {
             auto sdkModule = sdkIrr.module.get();
 
             if (emitIr) {
-                string sdkIrPath = buildDir + "/sdk.ll";
+                string sdkIrPath = buildDir + "/yux.ll";
                 std::error_code ec;
                 llvm::raw_fd_ostream irFile(sdkIrPath, ec);
                 if (!ec) {

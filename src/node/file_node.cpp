@@ -1,20 +1,13 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 
-//
-// Created by yjl_1 on 2026/4/4.
-//
-
 #include "file_node.h"
 
-static bool isPrivateName(const string& name) {
-    return !name.empty() && name[0] == '_';
-}
-
 FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::move(moduleName)) {
+    // 注册基本类型为 struct 占位符，并预声明 to_<type>() 方法符号
     const initializer_list<string> TYPES = {"bool", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64"};
     for (auto t : TYPES) {
         registerSymbol(t, {SymbolKind::Struct, t, TypeInfo(t)});
-        
+
         for (auto f : TYPES) {
             string fnName = "to_" + f;
             string fullName = t + "." + fnName;
@@ -67,26 +60,8 @@ StructImplNode* FileNode::getStructImpl(const string& name) const {
     return nullptr;
 }
 
-string FileNode::getMangledName(const string& symbolName) const {
-    if (_moduleName == "sdk") {
-        return symbolName;
-    }
-    if (isPrivateName(symbolName)) {
-        if (_moduleName.empty()) {
-            return symbolName;
-        }
-        return _moduleName + "_" + symbolName;
-    }
-    if (_moduleName.empty()) {
-        return symbolName;
-    }
-    return _moduleName + "_" + symbolName;
-}
-
-string FileNode::getMangledName(const string& symbolName, const vector<TypeInfo>& paramTypes) const {
-    string baseName = getMangledName(symbolName);
-    if (paramTypes.empty()) {
-        return baseName;
-    }
-    return Node::getCName(baseName, paramTypes);
+void FileNode::addImport(const string& mod) {
+    if (mod.empty() || mod == _moduleName) return;
+    for (auto& m : _imports) if (m == mod) return;
+    _imports.push_back(mod);
 }

@@ -37,9 +37,14 @@ public:
     
     void setModuleName(const string& name) { _moduleName = name; }
     const string& moduleName() const { return _moduleName; }
-    
-    string getMangledName(const string& symbolName) const;
-    string getMangledName(const string& symbolName, const vector<TypeInfo>& paramTypes) const;
+
+    // 隐式/显式导入的模块名列表。yux 模块默认导入。
+    // 预留扩展点以便后续支持 import/use 语法。
+    void addImport(const string& mod);
+    const vector<string>& imports() const { return _imports; }
+
+private:
+    vector<string> _imports;
 };
 
 #endif //YUX_LANG_FILE_NODE_H

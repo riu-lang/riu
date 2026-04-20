@@ -64,8 +64,6 @@ protected:
     int _line = -1;
 
 public:
-    static string getCName(const string& name, const vector<TypeInfo>& paramsType);
-
     explicit Node(const p<Node>& parent) : _parent(parent) {
     }
 

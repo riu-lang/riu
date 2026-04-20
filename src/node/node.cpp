@@ -6,18 +6,6 @@
 
 #include "node.h"
 
-string Node::getCName(const string& name, const vector<TypeInfo>& paramsType)  {
-    string res = "fn_" + name + "(";
-    for (size_t i = 0; i < paramsType.size(); ++i) {
-        res += paramsType[i].getFullName();
-        if (i < paramsType.size() - 1) {
-            res += ",";
-        }
-    }
-    res += ")";
-    return res;
-}
-
 string Node::getLocation() const { return ""; }
 
 p<Node> Node::parent() const { return _parent; }

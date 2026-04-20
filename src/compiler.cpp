@@ -5,6 +5,7 @@
 //
 
 #include "compiler.h"
+#include "mangler.h"
 #include "node/fn_node.h"
 #include "node/expr_node.h"
 #include "node/literal_node.h"
@@ -12,6 +13,17 @@
 #include <utility>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
+
+// 命名约定（详见 mangler.h）：
+//   函数         mod_fn(types)            私有：mod__fn(types)
+//   方法         mod#Struct_m(types)      私有：mod#Struct__m(types)
+//   构造         mod#Struct(types)
+//   析构         mod#Struct_~()
+//   结构体       mod#Struct
+//   全局常量     mod_name                 私有：mod__name
+// 运行时辅助、Windows API、LLVM intrinsic 保留各自字面名称（不参与 mangling）。
+// 运行时辅助（_box_*, _array_*）的实现仅在 yux 模块中生成；
+// 其他模块只声明为 external，链接时引用 yux.obj 中的实现。
 
 llvm::Type* Compiler::getLLVMType(const TypeInfo& type) {
     DEBUG_LOG_VAL("  getLLVMType", type.name << " (kind=" << static_cast<int>(type.kind) << ")");
@@ -68,7 +80,7 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& type) {
     }
 
     if (type.isGeneric()) {
-        string mangledName = _file->getMangledName(type.getFullName());
+        string mangledName = Mangler::structType(_file->moduleName(), type.getFullName());
         auto it = _structTypes.find(type.getFullName());
         if (it != _structTypes.end()) {
             DEBUG_LOG_VAL("    -> Generic struct (cached)", type.getFullName());
@@ -108,7 +120,7 @@ llvm::StructType* Compiler::getOrCreateStructType(p<StructDeclNode> structDecl, 
     }
     
     auto file = sourceFile ? sourceFile : _file;
-    string mangledName = file->getMangledName(name);
+    string mangledName = Mangler::structType(file->moduleName(), name);
 
     auto it = _structTypes.find(name);
     if (it != _structTypes.end()) {
@@ -180,7 +192,8 @@ llvm::Function* Compiler::getFunction(p<FnHeaderNode> header) {
                 paramTypes.push_back(param->type()->getType());
             }
         }
-        name = _file->getMangledName(name, paramTypes);
+        bool isPriv = !name.empty() && name[0] == '_';
+        name = Mangler::function(_file->moduleName(), name, paramTypes, isPriv);
         DEBUG_LOG_VAL("    -> mangled name", name);
     }
 
@@ -197,14 +210,16 @@ llvm::Function* Compiler::getFunction(p<FnHeaderNode> header) {
 
 llvm::Function* Compiler::getMethodFunction(
     const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes, const TypeInfo& retType) {
+    // === 方法/构造函数定义的 mangled 名 ===
+    // 方法名等于结构体名时视为构造函数
     DEBUG_LOG_VAL("  getMethodFunction", structName << "." << methodName);
 
-    string mangledStructName = _file->getMangledName(structName);
-    string mangledName = mangledStructName + "_" + methodName;
-
-    if (!paramTypes.empty()) {
-        mangledName = Node::getCName(mangledName, paramTypes);
-    }
+    // paramTypes 不含 self；方法名等于结构体名时视为构造函数
+    bool isCtor = methodName == structName;
+    bool isPriv = !methodName.empty() && methodName[0] == '_';
+    string mangledName = isCtor
+        ? Mangler::ctor(_file->moduleName(), structName, paramTypes)
+        : Mangler::method(_file->moduleName(), structName, methodName, paramTypes, isPriv);
     DEBUG_LOG_VAL("    -> mangled name", mangledName);
 
     auto func = _module->getFunction(mangledName);
@@ -238,22 +253,16 @@ llvm::Function* Compiler::getMethodFunction(
 }
 
 llvm::Function* Compiler::getDestructorFunction(const string& structName) {
+    // === 析构函数 mangled 名 ===
+    // 析构函数归属 struct 所在模块；本模块没有该 struct 时回退到 yux 模块
     DEBUG_LOG_VAL("  getDestructorFunction", structName);
 
-    string mangledName;
-    auto structDecl = _file->getStructDecl(structName);
-    if (structDecl) {
-        mangledName = _file->getMangledName(structName) + "__destructor";
-    } else if (_yux) {
-        auto sdkStructDecl = _yux->sdkFile()->getStructDecl(structName);
-        if (sdkStructDecl) {
-            mangledName = structName + "__destructor";
-        } else {
-            mangledName = _file->getMangledName(structName) + "__destructor";
-        }
-    } else {
-        mangledName = _file->getMangledName(structName) + "__destructor";
+    string ownerModule = _file->moduleName();
+    if (!_file->getStructDecl(structName) && _yux && _yux->sdkFile()
+        && _yux->sdkFile()->getStructDecl(structName)) {
+        ownerModule = _yux->sdkFile()->moduleName();
     }
+    string mangledName = Mangler::dtor(ownerModule, structName);
     DEBUG_LOG_VAL("    -> mangled name", mangledName);
 
     auto func = _module->getFunction(mangledName);
@@ -768,13 +777,12 @@ void Compiler::compile(p<FileNode> file) {
     DEBUG_LOG("Compiling struct implementations...");
     compileStructImpls();
 
+    // 运行时辅助实现集中放在 yux 模块（sdk 编译产物）；
+    // 其他模块只在使用时按需声明为 external，链接时引用 yux.obj 中的实现。
     if (_isSdk) {
-        DEBUG_LOG("Emitting runtime helpers (SDK mode)");
+        DEBUG_LOG("Emitting runtime helpers (yux module)");
         emitRuntimeHelpers();
-    } else {
-        DEBUG_LOG("Emitting Box helpers");
         emitBoxHelpers();
-        DEBUG_LOG("Emitting Array helpers");
         emitArrayHelpers();
     }
 
@@ -793,9 +801,11 @@ void Compiler::compile(p<FileNode> file) {
 }
 
 void Compiler::compileGlobalConsts() {
+    // === 全局常量 ===
     for (auto globalConst : _file->getGlobalConsts()) {
         string name = globalConst->name().getText();
-        string mangledName = _file->getMangledName(name);
+        bool isPriv = !name.empty() && name[0] == '_';
+        string mangledName = Mangler::global(_file->moduleName(), name, isPriv);
         TypeInfo type = globalConst->getType();
         auto llvmType = getLLVMType(type);
 
@@ -1913,7 +1923,9 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             return _builder.CreateLoad(getLLVMType(sym->type), _localVarPtrs[varName]);
         }
 
-        string mangledName = _file->getMangledName(varName);
+        string ownerMod = (sym && !sym->moduleName.empty()) ? sym->moduleName : _file->moduleName();
+        bool globPriv = !varName.empty() && varName[0] == '_';
+        string mangledName = Mangler::global(ownerMod, varName, globPriv);
         auto globalVar = _module->getGlobalVariable(mangledName, true);
         if (globalVar) {
             DEBUG_LOG_VAL("    Expr: GlobalConstLoad", varName << " : " << (sym ? sym->type.name : "unknown"));
@@ -2189,7 +2201,10 @@ llvm::Value* Compiler::compileMethodCall(
                 methodArgs.push_back(arg);
             }
             
-            string mangledName = baseType.name + "_" + member;
+            // 内置类型方法：归属 yux 模块（即 SDK 文件所在模块）
+            string ownerMod = _yux->sdkFile()->moduleName();
+            bool methPriv = !member.empty() && member[0] == '_';
+            string mangledName = Mangler::method(ownerMod, baseType.name, member, argTypes, methPriv);
             auto fn = _module->getFunction(mangledName);
             if (!fn) {
                 vector<llvm::Type*> paramTypes;
@@ -2289,8 +2304,10 @@ llvm::Value* Compiler::compileMethodCall(
             methodArgs.push_back(arg);
         }
 
-        string mangledStructName = _file->getMangledName(actualType.name);
-        string mangledName = mangledStructName + "_" + member;
+        // 普通结构体方法：归属 struct 所属模块
+        string ownerMod = methodSymbol->moduleName.empty() ? _file->moduleName() : methodSymbol->moduleName;
+        bool methPriv = !member.empty() && member[0] == '_';
+        string mangledName = Mangler::method(ownerMod, actualType.name, member, argTypes, methPriv);
         auto fn = _module->getFunction(mangledName);
         if (!fn) {
             vector<llvm::Type*> paramTypes;
@@ -2310,7 +2327,9 @@ llvm::Value* Compiler::compileMethodCall(
             auto objName = objLiteral->getValue().getText();
             auto fnSymbol = _file->lookupFnSymbolWithParams(objName, argTypes);
             if (fnSymbol) {
-                auto cName = Node::getCName(objName, argTypes);
+                string ownerMod = fnSymbol->moduleName.empty() ? _file->moduleName() : fnSymbol->moduleName;
+                bool fnPriv = !objName.empty() && objName[0] == '_';
+                auto cName = Mangler::function(ownerMod, objName, argTypes, fnPriv);
                 DEBUG_LOG_VAL("    Expr: InnerFnCall (dot)", objName << " -> " << cName);
                 auto fn = _module->getFunction(cName);
                 if (!fn) {
@@ -2440,8 +2459,9 @@ llvm::Value* Compiler::compileConstructorCall(
             ctorArgs.push_back(arg);
         }
 
-        string mangledStructName = _file->getMangledName(fnName);
-        string cName = Node::getCName(mangledStructName + "_" + fnName, argTypes);
+        // 构造函数：归属 struct 所属模块
+        string ownerMod = ctorSymbol->moduleName.empty() ? _file->moduleName() : ctorSymbol->moduleName;
+        string cName = Mangler::ctor(ownerMod, fnName, argTypes);
         auto fn = _module->getFunction(cName);
         if (!fn) {
             vector<llvm::Type*> paramTypes;
@@ -2463,15 +2483,17 @@ llvm::Value* Compiler::compileConstructorCall(
 llvm::Value* Compiler::compileKnownFunctionCall(
     p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
     FnSymbolInfo* fnSymbol) {
+    // === 函数调用名解析 ===
+    // external: 字面 C 名；其余按所属模块 mangling
     string cName;
     if (fnSymbol->isExternal) {
         cName = fnName;
     } else if (fnName == "main") {
         cName = "yux_main";
-    } else if (fnSymbol->moduleName == "sdk") {
-        cName = Node::getCName(fnName, fnSymbol->params);
     } else {
-        cName = _file->getMangledName(fnName, fnSymbol->params);
+        string ownerMod = fnSymbol->moduleName.empty() ? _file->moduleName() : fnSymbol->moduleName;
+        bool isPriv = !fnName.empty() && fnName[0] == '_';
+        cName = Mangler::function(ownerMod, fnName, fnSymbol->params, isPriv);
     }
 
     DEBUG_LOG_VAL("    Expr: FunctionCall", fnName << " -> " << cName);
