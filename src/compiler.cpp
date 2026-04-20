@@ -1067,13 +1067,43 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
 
 void Compiler::compileRetStatement(p<StatementRetNode> node) {
     DEBUG_LOG("  Statement: Return");
+    
+    TypeInfo declRetType;
+    bool hasDeclaredRetType = false;
     if (_currentFnNode && _currentFnNode->header() && _currentFnNode->header()->retType()) {
-        auto declRet = _currentFnNode->header()->retType()->getType();
-        if (isIntTypeName(declRet.name) && isFlexibleIntExpr(node->expr())) {
-            tryInferIntType(node->expr(), declRet);
+        declRetType = _currentFnNode->header()->retType()->getType();
+        hasDeclaredRetType = true;
+        if (isIntTypeName(declRetType.name) && isFlexibleIntExpr(node->expr())) {
+            tryInferIntType(node->expr(), declRetType);
         }
     }
+    
     auto retType = node->expr()->getType();
+    
+    int lineNum = node->getLineNumber();
+    if (lineNum < 0) {
+        lineNum = node->expr()->resolveLineNumber();
+    }
+    
+    if (hasDeclaredRetType) {
+        if (retType.empty()) {
+            throw YuxError(lineNum, 
+                "Function declares return type '{}', but returns void", 
+                declRetType.getFullName());
+        }
+        if (retType != declRetType) {
+            throw YuxError(lineNum,
+                "Return type mismatch: function declares '{}', but expression has type '{}'",
+                declRetType.getFullName(), retType.getFullName());
+        }
+    } else {
+        if (!retType.empty()) {
+            throw YuxError(lineNum,
+                "Void function cannot return a value of type '{}'",
+                retType.getFullName());
+        }
+    }
+    
     llvm::Value* retVal = nullptr;
     if (retType.empty()) {
         compileExpr(node->expr());

@@ -218,6 +218,7 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
         auto exprBody = ctx->fnBody()->fnExprkBody();
         auto expr = any_cast_p<ExprNode>(visit(exprBody->expr()));
         auto retStmt = create<StatementRetNode>(fn, expr);
+        retStmt->setLineNumber(expr->resolveLineNumber());
         fn->addStatement(retStmt);
     } else if (ctx->fnBody()->fnBlockBody()) {
         DEBUG_LOG("  Body: Block");
@@ -230,7 +231,9 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
 
         if (stmtBlockNode->hasResult()) {
             DEBUG_LOG("  Block has result, adding return");
-            auto retStmt = create<StatementRetNode>(fn, stmtBlockNode->resultExpr());
+            auto resultExpr = stmtBlockNode->resultExpr();
+            auto retStmt = create<StatementRetNode>(fn, resultExpr);
+            retStmt->setLineNumber(resultExpr->resolveLineNumber());
             fn->addStatement(retStmt);
         }
     }
@@ -344,6 +347,7 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
             auto exprBody = fnCtx->fnBody()->fnExprkBody();
             auto expr = any_cast_p<ExprNode>(visit(exprBody->expr()));
             auto retStmt = create<StatementRetNode>(fn, expr);
+            retStmt->setLineNumber(expr->resolveLineNumber());
             fn->addStatement(retStmt);
         } else if (fnCtx->fnBody()->fnBlockBody()) {
             auto blockBody = fnCtx->fnBody()->fnBlockBody();
@@ -354,7 +358,9 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
             }
 
             if (stmtBlockNode->hasResult()) {
-                auto retStmt = create<StatementRetNode>(fn, stmtBlockNode->resultExpr());
+                auto resultExpr = stmtBlockNode->resultExpr();
+                auto retStmt = create<StatementRetNode>(fn, resultExpr);
+                retStmt->setLineNumber(resultExpr->resolveLineNumber());
                 fn->addStatement(retStmt);
             }
         }
@@ -401,6 +407,7 @@ std::any ASTBuilder::visitFnClean(yux::yuxParser::FnCleanContext* ctx) {
         auto exprBody = ctx->fnBody()->fnExprkBody();
         auto expr = any_cast_p<ExprNode>(visit(exprBody->expr()));
         auto retStmt = create<StatementRetNode>(fn, expr);
+        retStmt->setLineNumber(expr->resolveLineNumber());
         fn->addStatement(retStmt);
     } else if (ctx->fnBody()->fnBlockBody()) {
         auto blockBody = ctx->fnBody()->fnBlockBody();
@@ -411,7 +418,9 @@ std::any ASTBuilder::visitFnClean(yux::yuxParser::FnCleanContext* ctx) {
         }
         
         if (stmtBlockNode->hasResult()) {
-            auto retStmt = create<StatementRetNode>(fn, stmtBlockNode->resultExpr());
+            auto resultExpr = stmtBlockNode->resultExpr();
+            auto retStmt = create<StatementRetNode>(fn, resultExpr);
+            retStmt->setLineNumber(resultExpr->resolveLineNumber());
             fn->addStatement(retStmt);
         }
     }
@@ -503,7 +512,9 @@ std::any ASTBuilder::visitStatementRet(yux::yuxParser::StatementRetContext* ctx)
     auto scope = currentScope();
     auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
     DEBUG_LOG("  Statement: Return");
-    return p<StatementNode>(create<StatementRetNode>(scope, expr));
+    auto retStmt = create<StatementRetNode>(scope, expr);
+    retStmt->setLineNumber(expr->resolveLineNumber());
+    return p<StatementNode>(retStmt);
 }
 
 std::any ASTBuilder::visitStatementRetVoid(yux::yuxParser::StatementRetVoidContext* ctx) {

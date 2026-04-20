@@ -62,6 +62,7 @@ public:
     explicit ExprLiteralNode(const p<Node>& parent, p<LiteralNode> literal) :
         ExprNode(parent),
         _literal(literal) {
+        _line = literal->getLineNumber();
     }
 
     [[nodiscard]] const p<LiteralNode>& literal() const;

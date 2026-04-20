@@ -12,6 +12,7 @@
 
 LiteralNode::LiteralNode(Token value) :
     Node(nullptr), _value(value) {
+    _line = static_cast<int>(value.getLine());
 }
 
 Token LiteralNode::getValue() const {
