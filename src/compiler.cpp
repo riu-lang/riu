@@ -1822,7 +1822,8 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
         isZeroFill = (floatFillVal == 0.0);
     } else if (auto boolLiteral = dynamic_cast<LiteralBoolNode*>(literal)) {
         bool boolVal = (text == "true");
-        fillValue = llvm::ConstantInt::get(getLLVMType(elementType), boolVal ? 1 : 0, false);
+        intFillVal = boolVal ? 1 : 0;
+        fillValue = llvm::ConstantInt::get(getLLVMType(elementType), intFillVal, false);
         isZeroFill = !boolVal;
     } else {
         throw YuxError(node->getLineNumber(), "Unsupported literal type for array fill");
