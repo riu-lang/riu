@@ -68,6 +68,10 @@ Safe targeted cleanup: delete `build/*.exe build/*.ll build/*.obj build/build.ca
 - No implicit type conversions anywhere — use `.to_<type>()` methods.
 - Untyped int literals default to `i32` but are inferred from context (binop peer type, declared variable type, return type, or unique overload match). Ambiguous overload matches error — add a type suffix (e.g. `2u8`) to disambiguate.
 - Comments: line comments match `^\s*/.*` (leading `/`, indent allowed); trailing comments use ` ;`. A trailing `/` is **not** a comment.
+- Mandatory trailing `;` rules:
+  - `ret;` for early return in void functions must end with `;`
+  - `break;` for loop exit must end with `;`
+  - `expression ends with `;` is denoted empty return, else it returns the expression value.
 - Spacing is enforced: space after keywords, around binary operators, after `,`; no space inside `()` / `[]`.
 - Keywords: `fn var val cval if elif else ret break null true false loop struct`.
 - Generics/runtime types baked into the language: `Ref<T>`, `Box<T>` (refcounted), `Ptr<T>`, `Array<T>`.
