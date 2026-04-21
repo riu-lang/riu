@@ -11,3 +11,5 @@
 
 /.trae/skills/xmake-skills/
 /.claude/skills/xmake-skills/
+
+.claude/settings.local.json

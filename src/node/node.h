@@ -12,7 +12,8 @@
 enum class SymbolKind : u8 {
     Struct,
     Function,
-    Variable
+    Variable,
+    TypeParam
 };
 
 struct SymbolInfo {

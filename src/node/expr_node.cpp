@@ -103,8 +103,34 @@ TypeInfo ExprCallNode::getType() const {
     }
 
     if (type.name.starts_with("fn() ")) {
-        DEBUG_LOG_VAL("ExprCallNode::getType - returning", type.name.substr(5));
-        return TypeInfo(type.name.substr(5));
+        TypeInfo retType(type.name.substr(5));
+        // 显式泛型调用 e<T>(...): 将 retType 按 typeParams → typeArgs 替换
+        if (!_typeArgs.empty()) {
+            if (auto literalNode = dynamic_cast<ExprLiteralNode*>(_calleeExpr)) {
+                if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literalNode->literal())) {
+                    auto fnName = objLiteral->getValue().getText();
+                    p<Node> cur = _parent;
+                    p<FileNode> file = nullptr;
+                    while (cur) {
+                        if (auto f = dynamic_cast<FileNode*>(cur)) { file = f; break; }
+                        cur = cur->parent();
+                    }
+                    if (file) {
+                        auto fnNode = file->getFunction(fnName);
+                        if (fnNode && fnNode->header() && fnNode->header()->isGeneric()
+                            && fnNode->header()->typeParams().size() == _typeArgs.size()) {
+                            std::map<std::string, TypeInfo> subst;
+                            for (size_t i = 0; i < _typeArgs.size(); ++i) {
+                                subst[fnNode->header()->typeParams()[i]] = _typeArgs[i]->getType();
+                            }
+                            retType = retType.substitute(subst);
+                        }
+                    }
+                }
+            }
+        }
+        DEBUG_LOG_VAL("ExprCallNode::getType - returning", retType.name);
+        return retType;
     }
 
     auto scope = findNearestScope();
@@ -343,18 +369,33 @@ TypeInfo ExprDotNode::getType() const {
         }
         if (file) {
             auto structDecl = file->getStructDecl(actualType.name);
+
+            // 若 actualType 是泛型实例，构造 T→具体 的替换表
+            map<string, TypeInfo> genSubst;
+            if (actualType.isGeneric() && structDecl && structDecl->isGeneric()
+                && structDecl->typeParams().size() == actualType.genericArgs.size()) {
+                for (size_t i = 0; i < actualType.genericArgs.size(); ++i) {
+                    auto& a = actualType.genericArgs[i];
+                    genSubst[structDecl->typeParams()[i]] = a ? *a : TypeInfo();
+                }
+            }
+
             if (structDecl) {
                 auto field = structDecl->field(member);
                 if (field) {
-                    return field->getType();
+                    auto ft = field->getType();
+                    if (!genSubst.empty()) ft = ft.substitute(genSubst);
+                    return ft;
                 }
             }
-            
+
             string methodFullName = actualType.name + "." + member;
             auto methodSym = file->lookupFnSymbol(methodFullName);
             if (methodSym) {
-                DEBUG_LOG_VAL("ExprDotNode::getType - found method, returning fn()", methodSym->retType.name);
-                return TypeInfo("fn() " + methodSym->retType.name);
+                auto rt = methodSym->retType;
+                if (!genSubst.empty()) rt = rt.substitute(genSubst);
+                DEBUG_LOG_VAL("ExprDotNode::getType - found method, returning fn()", rt.name);
+                return TypeInfo("fn() " + rt.getFullName());
             }
         }
     }

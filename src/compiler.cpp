@@ -26,7 +26,115 @@
 // 运行时辅助（_box_*, _array_*）的实现仅在 yux 模块中生成；
 // 其他模块只声明为 external，链接时引用 yux.obj 中的实现。
 
-llvm::Type* Compiler::getLLVMType(const TypeInfo& type) {
+void Compiler::rethrowWithInstantiationContext(const YuxError& e) const {
+    string ctx = formatInstantiationContext();
+    // 已经带过链（常见形式：消息中含 "instantiated as '"）时不重复追加
+    string what = e.what();
+    if (ctx.empty() || what.find("instantiated as '") != string::npos) {
+        throw e;
+    }
+    throw YuxError(e.getLineNumber(), "{}\n  {}", what, ctx);
+}
+
+string Compiler::formatInstantiationContext() const {
+    if (_substStack.empty()) return "";
+    string result;
+    for (auto it = _substStack.rbegin(); it != _substStack.rend(); ++it) {
+        const auto& frame = *it;
+        if (!frame.effStructName.empty()) {
+            if (!result.empty()) result += "\n  ";
+            result += "instantiated as '" + frame.effStructName + "'";
+            if (!frame.sourceFile.empty()) {
+                result += " at " + frame.sourceFile;
+                if (frame.sourceLine > 0) {
+                    result += ":" + to_string(frame.sourceLine);
+                }
+            }
+        }
+    }
+    return result;
+}
+
+TypeInfo Compiler::applySubst(const TypeInfo& t) const {
+    if (_substStack.empty()) return t;
+    auto& frame = _substStack.back();
+    TypeInfo result = t.substitute(frame.subst);
+    // 泛型原名的裸引用（如方法内 self 的声明类型 "Box2"）映射到实例名
+    if (result.kind == TypeKind::Normal && !frame.baseStructName.empty()
+        && result.name == frame.baseStructName) {
+        result.name = frame.effStructName;
+    }
+    return result;
+}
+
+string Compiler::ensureStructInstance(
+    p<StructDeclNode> baseDecl, const vector<sp<TypeInfo>>& args, p<FileNode> ownerFile, int sourceLine) {
+    string baseName = baseDecl->name().getText();
+    string mangledName = baseName;
+    for (auto& a : args) {
+        mangledName += "$" + (a ? a->getGenericMangleName() : string("?"));
+    }
+
+    auto it = _structInstances.find(mangledName);
+    if (it != _structInstances.end()) return mangledName;
+
+    if (args.size() != baseDecl->typeParams().size()) {
+        throw YuxError(
+            "Generic struct '{}' expects {} type args, got {}",
+            baseName, baseDecl->typeParams().size(), args.size());
+    }
+
+    StructInstance inst;
+    inst.baseDecl = baseDecl;
+    inst.ownerFile = ownerFile ? ownerFile : _file;
+    inst.mangledName = mangledName;
+    inst.baseImpl = inst.ownerFile ? inst.ownerFile->getStructImpl(baseName) : nullptr;
+    if (!inst.baseImpl && _yux && _yux->sdkFile() && _yux->sdkFile() != inst.ownerFile) {
+        inst.baseImpl = _yux->sdkFile()->getStructImpl(baseName);
+    }
+    inst.args.reserve(args.size());
+    for (auto& a : args) inst.args.push_back(a ? *a : TypeInfo());
+    inst.sourceFile = _file ? _file->moduleName() : "";
+    inst.sourceLine = sourceLine;
+
+    map<string, TypeInfo> subst;
+    for (size_t i = 0; i < args.size(); ++i) {
+        subst[baseDecl->typeParams()[i]] = inst.args[i];
+    }
+
+    _substStack.push_back(SubstFrame{subst, baseName, mangledName, inst.sourceFile, inst.sourceLine});
+
+    vector<llvm::Type*> fieldTypes;
+    try {
+        for (auto field : baseDecl->fields()) {
+            auto fieldType = field->getType();
+            auto llvmTy = getLLVMType(fieldType);
+            if (!llvmTy) {
+                auto substituted = applySubst(fieldType);
+                throw YuxError(
+                    field->name().getLine(),
+                    "Unknown type '{}' for field '{}' of generic struct '{}'",
+                    substituted.getFullName(), field->name().getText(), baseName);
+            }
+            fieldTypes.push_back(llvmTy);
+        }
+    } catch (const YuxError& e) {
+        _substStack.pop_back();
+        rethrowWithInstantiationContext(e);
+    }
+    string fullMangled = Mangler::structType(inst.ownerFile->moduleName(), mangledName);
+    auto structType = llvm::StructType::create(_context, fieldTypes, fullMangled);
+    _structTypes[mangledName] = structType;
+    DEBUG_LOG_VAL("Created generic struct instance", fullMangled);
+
+    _substStack.pop_back();
+
+    _structInstances[mangledName] = std::move(inst);
+    return mangledName;
+}
+
+llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
+    auto type = applySubst(rawType);
     DEBUG_LOG_VAL("  getLLVMType", type.name << " (kind=" << static_cast<int>(type.kind) << ")");
 
     if (type.isArray()) {
@@ -81,16 +189,22 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& type) {
     }
 
     if (type.isGeneric()) {
-        string mangledName = Mangler::structType(_file->moduleName(), type.getFullName());
-        auto it = _structTypes.find(type.getFullName());
-        if (it != _structTypes.end()) {
-            DEBUG_LOG_VAL("    -> Generic struct (cached)", type.getFullName());
-            return it->second;
+        // 用户泛型结构体：按需单态化
+        auto baseDecl = _file->getStructDecl(type.name);
+        p<FileNode> owner = _file;
+        if (!baseDecl && _yux && _yux->sdkFile()) {
+            baseDecl = _yux->sdkFile()->getStructDecl(type.name);
+            if (baseDecl) owner = _yux->sdkFile();
         }
-        auto structIt = _structTypes.find(mangledName);
-        if (structIt != _structTypes.end()) {
-            DEBUG_LOG_VAL("    -> Generic struct (mangled)", mangledName);
-            return structIt->second;
+        if (baseDecl && baseDecl->isGeneric()) {
+            string mangled = ensureStructInstance(baseDecl, type.genericArgs, owner);
+            return _structTypes[mangled];
+        }
+        string mangledKey = type.getGenericMangleName();
+        auto it = _structTypes.find(mangledKey);
+        if (it != _structTypes.end()) {
+            DEBUG_LOG_VAL("    -> Generic struct (cached)", mangledKey);
+            return it->second;
         }
         DEBUG_LOG_VAL("    -> Generic (fallback pointer)", type.getFullName());
         return llvm::PointerType::get(_context, 0);
@@ -790,9 +904,19 @@ void Compiler::compile(p<FileNode> file) {
     auto functions = file->getFunctions();
     DEBUG_LOG_VAL("Compiling functions", functions.size());
     for (auto fn : functions) {
+        if (fn->header()->isGeneric()) {
+            DEBUG_LOG_VAL("  Skipping generic function template", fn->header()->name().getText());
+            continue;
+        }
         auto func = getFunction(fn->header());
         compileFn(fn, func);
     }
+
+    DEBUG_LOG("Emitting generic instance methods");
+    emitInstanceMethods();
+
+    DEBUG_LOG("Emitting generic function instances");
+    emitFnInstances();
 
     if (!_isSdk) {
         DEBUG_LOG("Emitting main startup");
@@ -864,12 +988,14 @@ void Compiler::compileStructDecls() {
     if (_yux && _yux->sdkFile() && _file != _yux->sdkFile()) {
         DEBUG_LOG_VAL("Compiling SDK struct declarations", _yux->sdkFile()->getStructDecls().size());
         for (auto structDecl : _yux->sdkFile()->getStructDecls()) {
+            if (structDecl->isGeneric()) continue;
             DEBUG_LOG_VAL("  SDK struct", structDecl->name().getText());
             getOrCreateStructType(structDecl, _yux->sdkFile());
         }
     }
     DEBUG_LOG_VAL("Compiling file struct declarations", _file->getStructDecls().size());
     for (auto structDecl : _file->getStructDecls()) {
+        if (structDecl->isGeneric()) continue;
         DEBUG_LOG_VAL("  struct", structDecl->name().getText());
         getOrCreateStructType(structDecl);
     }
@@ -883,6 +1009,7 @@ void Compiler::compileStructImpls() {
     set<string> hasExplicitDestructor;
 
     for (auto structImpl : impls) {
+        if (structImpl->isGeneric()) continue;
         string structName = structImpl->structName();
         processedStructs.insert(structName);
         DEBUG_LOG_VAL("    Processing struct impl", structName);
@@ -928,12 +1055,179 @@ void Compiler::compileStructImpls() {
     }
 
     for (auto structDecl : _file->getStructDecls()) {
+        if (structDecl->isGeneric()) continue;
         string structName = structDecl->name().getText();
         if (hasExplicitDestructor.find(structName) == hasExplicitDestructor.end()) {
             if (structNeedsDestructor(structName)) {
                 DEBUG_LOG_VAL("  Generating default destructor for struct", structName);
                 generateDefaultDestructor(structName);
             }
+        }
+    }
+}
+
+void Compiler::emitInstanceMethods() {
+    bool progress = true;
+    while (progress) {
+        progress = false;
+        // 拷贝 key 列表：发射方法时可能触发更多实例化
+        vector<string> keys;
+        keys.reserve(_structInstances.size());
+        for (auto& [k, _] : _structInstances) keys.push_back(k);
+
+        for (auto& key : keys) {
+            auto& inst = _structInstances[key];
+            if (inst.methodsEmitted) continue;
+            inst.methodsEmitted = true;
+            progress = true;
+
+            if (!inst.baseImpl) continue;
+
+            map<string, TypeInfo> subst;
+            for (size_t i = 0; i < inst.args.size(); ++i) {
+                subst[inst.baseDecl->typeParams()[i]] = inst.args[i];
+            }
+            string baseName = inst.baseDecl->name().getText();
+            _substStack.push_back(SubstFrame{subst, baseName, inst.mangledName, inst.sourceFile, inst.sourceLine});
+
+            string structName = inst.mangledName; // 用于 mangle 方法名
+            DEBUG_LOG_VAL("  Emitting generic instance methods", structName);
+
+            try {
+                if (inst.baseImpl->hasDestructor()) {
+                    auto destructor = inst.baseImpl->destructor();
+                    auto func = getDestructorFunction(structName);
+                    compileMethod(destructor, func, structName, true);
+                }
+
+                for (auto method : inst.baseImpl->methods()) {
+                    string methodName = method->header()->name().getText();
+                    vector<TypeInfo> paramTypes;
+                    for (auto param : method->header()->params()) {
+                        if (param->type()) {
+                            paramTypes.push_back(applySubst(param->type()->getType()));
+                        }
+                    }
+                    TypeInfo retType;
+                    if (method->header()->retType()) {
+                        retType = applySubst(method->header()->retType()->getType());
+                    }
+                    // 源码里方法名等于泛型原名即构造函数；mangle 时用实例名
+                    string effMethodName = (methodName == baseName) ? structName : methodName;
+                    auto func = getMethodFunction(structName, effMethodName, paramTypes, retType);
+                    compileMethod(method, func, structName);
+                }
+
+                if (!inst.baseImpl->hasDestructor() && structNeedsDestructor(structName)) {
+                    generateDefaultDestructor(structName);
+                }
+            } catch (const YuxError& e) {
+                _substStack.pop_back();
+                rethrowWithInstantiationContext(e);
+            }
+
+            _substStack.pop_back();
+        }
+    }
+}
+
+string Compiler::ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& typeArgs, p<FileNode> ownerFile) {
+    string baseName = baseFn->header()->name().getText();
+    string mangledName = baseName;
+    for (auto& a : typeArgs) {
+        mangledName += "$" + a.getGenericMangleName();
+    }
+
+    auto it = _fnInstances.find(mangledName);
+    if (it != _fnInstances.end()) return mangledName;
+
+    auto& typeParams = baseFn->header()->typeParams();
+    if (typeArgs.size() != typeParams.size()) {
+        throw YuxError(
+            "Generic function '{}' expects {} type args, got {}",
+            baseName, typeParams.size(), typeArgs.size());
+    }
+
+    FnInstance inst;
+    inst.baseFn = baseFn;
+    inst.ownerFile = ownerFile ? ownerFile : _file;
+    inst.typeArgs = typeArgs;
+    inst.mangledName = mangledName;
+
+    _fnInstances[mangledName] = std::move(inst);
+    DEBUG_LOG_VAL("Created generic function instance", mangledName);
+    return mangledName;
+}
+
+void Compiler::emitFnInstances() {
+    bool progress = true;
+    while (progress) {
+        progress = false;
+        vector<string> keys;
+        keys.reserve(_fnInstances.size());
+        for (auto& [k, _] : _fnInstances) keys.push_back(k);
+
+        for (auto& key : keys) {
+            auto& inst = _fnInstances[key];
+            if (inst.emitted) continue;
+            inst.emitted = true;
+            progress = true;
+
+            auto baseFn = inst.baseFn;
+            auto& typeParams = baseFn->header()->typeParams();
+
+            map<string, TypeInfo> subst;
+            for (size_t i = 0; i < typeParams.size(); ++i) {
+                subst[typeParams[i]] = inst.typeArgs[i];
+            }
+
+            string srcFile = _file ? _file->moduleName() : "";
+            _substStack.push_back(SubstFrame{subst, "", inst.mangledName, srcFile, 0});
+
+            try {
+                vector<TypeInfo> paramTypes;
+                for (auto param : baseFn->header()->params()) {
+                    if (param->type()) {
+                        paramTypes.push_back(applySubst(param->type()->getType()));
+                    }
+                }
+
+                TypeInfo retType;
+                if (baseFn->header()->retType()) {
+                    retType = applySubst(baseFn->header()->retType()->getType());
+                }
+
+                bool isPrivate = !inst.mangledName.empty() && inst.mangledName[0] == '_';
+                string mangledFnName = Mangler::function(
+                    inst.ownerFile->moduleName(), inst.mangledName, paramTypes, isPrivate);
+
+                auto fn = _module->getFunction(mangledFnName);
+                if (!fn) {
+                    vector<llvm::Type*> llvmParamTypes;
+                    for (auto& t : paramTypes) {
+                        auto sd = _file->getStructDecl(t.name);
+                        if (!sd && _yux && _yux->sdkFile()) {
+                            sd = _yux->sdkFile()->getStructDecl(t.name);
+                        }
+                        if (sd && !isBuiltinType(t.name)) {
+                            llvmParamTypes.push_back(llvm::PointerType::get(_context, 0));
+                        } else {
+                            llvmParamTypes.push_back(getLLVMType(t));
+                        }
+                    }
+                    auto llvmRetType = retType.empty() ? _builder.getVoidTy() : getLLVMType(retType);
+                    auto fnType = llvm::FunctionType::get(llvmRetType, llvmParamTypes, false);
+                    fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledFnName, _module);
+                }
+
+                DEBUG_LOG_VAL("  Emitting generic function instance", inst.mangledName);
+                compileFn(baseFn, fn);
+            } catch (const YuxError& e) {
+                _substStack.pop_back();
+                rethrowWithInstantiationContext(e);
+            }
+
+            _substStack.pop_back();
         }
     }
 }
@@ -2331,11 +2625,60 @@ static void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& f
 llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
     auto calleeExpr = node->getCalleeExpr();
 
+    // 先检查是否是泛型函数调用，以便在编译参数前确定类型参数
     if (auto calleeLiteral = dynamic_cast<ExprLiteralNode*>(calleeExpr)) {
         if (auto objLiteral = dynamic_cast<LiteralObjNode*>(calleeLiteral->literal())) {
             string fnName = objLiteral->getValue().getText();
-            resolveFnOverload(_file, _yux ? _yux->sdkFile() : nullptr, fnName,
-                              node->getArgs(), node->getLineNumber());
+            
+            // 检查是否是泛型函数
+            auto genericFn = _file->getFunction(fnName);
+            p<FileNode> fnOwner = _file;
+            if (!genericFn && _yux && _yux->sdkFile()) {
+                genericFn = _yux->sdkFile()->getFunction(fnName);
+                if (genericFn) fnOwner = _yux->sdkFile();
+            }
+
+            if (genericFn && genericFn->header()->isGeneric()) {
+                const auto& typeParams = genericFn->header()->typeParams();
+                vector<TypeInfo> typeArgs;
+
+                // 优先使用显式类型参数
+                const auto& explicitTypeArgs = node->getTypeArgs();
+                if (!explicitTypeArgs.empty()) {
+                    if (explicitTypeArgs.size() != typeParams.size()) {
+                        throw YuxError(node->getLineNumber(),
+                            "Generic function '{}' expects {} type args, got {}",
+                            fnName, typeParams.size(), explicitTypeArgs.size());
+                    }
+                    for (auto& tn : explicitTypeArgs) {
+                        typeArgs.push_back(applySubst(tn->getType()));
+                    }
+
+                    // 构建实例化后的参数类型，用于推断无后缀整数字面量
+                    map<string, TypeInfo> subst;
+                    for (size_t i = 0; i < typeParams.size(); ++i) {
+                        subst[typeParams[i]] = typeArgs[i];
+                    }
+                    _substStack.push_back(SubstFrame{subst, "", ""});
+
+                    auto params = genericFn->header()->params();
+                    for (size_t i = 0; i < params.size(); ++i) {
+                        auto paramType = params[i]->type();
+                        if (paramType) {
+                            TypeInfo instParamType = applySubst(paramType->getType());
+                            if (isIntTypeName(instParamType.name) && i < node->getArgs().size()) {
+                                tryInferIntType(node->getArgs()[i], instParamType);
+                            }
+                        }
+                    }
+
+                    _substStack.pop_back();
+                }
+            } else {
+                // 非泛型函数，进行重载解析
+                resolveFnOverload(_file, _yux ? _yux->sdkFile() : nullptr, fnName,
+                                  node->getArgs(), node->getLineNumber());
+            }
         }
     }
 
@@ -2592,6 +2935,85 @@ llvm::Value* Compiler::compileMethodCall(
         }
     }
 
+    // 泛型实例方法：基于 base 实现 + 实例 mangle
+    if (actualType.isGeneric()) {
+        auto baseDecl = _file->getStructDecl(actualType.name);
+        p<FileNode> owner = _file;
+        if (!baseDecl && _yux && _yux->sdkFile()) {
+            baseDecl = _yux->sdkFile()->getStructDecl(actualType.name);
+            if (baseDecl) owner = _yux->sdkFile();
+        }
+        if (baseDecl && baseDecl->isGeneric()) {
+            string effName = ensureStructInstance(baseDecl, actualType.genericArgs, owner);
+            auto& inst = _structInstances[effName];
+            if (inst.baseImpl) {
+                // 查找同名方法（按形参数匹配）
+                p<FnNode> chosen = nullptr;
+                for (auto m : inst.baseImpl->methods()) {
+                    if (m->header()->name().getText() != member) continue;
+                    if (m->header()->params().size() != argTypes.size()) continue;
+                    chosen = m;
+                    break;
+                }
+                if (chosen) {
+                    // 取 self 指针
+                    llvm::Value* basePtr = nullptr;
+                    if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
+                        if (auto objLiteral = dynamic_cast<LiteralObjNode*>(baseLiteral->literal())) {
+                            auto varName = objLiteral->getValue().getText();
+                            auto it = _localVarPtrs.find(varName);
+                            if (it != _localVarPtrs.end()) basePtr = it->second;
+                        }
+                    }
+                    if (!basePtr) {
+                        auto baseVal = compileExpr(baseExpr);
+                        auto structType = _structTypes[effName];
+                        auto alloca = _builder.CreateAlloca(structType, nullptr, "method_tmp");
+                        _builder.CreateStore(baseVal, alloca);
+                        basePtr = alloca;
+                    }
+
+                    vector<llvm::Value*> methodArgs;
+                    methodArgs.push_back(basePtr);
+                    for (auto& a : args) methodArgs.push_back(a);
+
+                    string ownerMod = owner->moduleName();
+                    bool methPriv = !member.empty() && member[0] == '_';
+                    string mangledName = Mangler::method(ownerMod, effName, member, argTypes, methPriv);
+                    auto fn = _module->getFunction(mangledName);
+                    if (!fn) {
+                        // 根据 baseImpl 方法的签名（应用实例 subst）声明外部函数
+                        map<string, TypeInfo> subst;
+                        for (size_t i = 0; i < inst.args.size(); ++i) {
+                            subst[inst.baseDecl->typeParams()[i]] = inst.args[i];
+                        }
+                        vector<llvm::Type*> paramTypes;
+                        paramTypes.push_back(llvm::PointerType::get(_context, 0));
+                        for (auto& t : argTypes) {
+                            auto sd = _file->getStructDecl(t.name);
+                            if (!sd && _yux && _yux->sdkFile()) {
+                                sd = _yux->sdkFile()->getStructDecl(t.name);
+                            }
+                            if (sd && !isBuiltinType(t.name)) {
+                                paramTypes.push_back(llvm::PointerType::get(_context, 0));
+                            } else {
+                                paramTypes.push_back(getLLVMType(t));
+                            }
+                        }
+                        TypeInfo retType;
+                        if (chosen->header()->retType()) {
+                            retType = chosen->header()->retType()->getType().substitute(subst);
+                        }
+                        auto llvmRetType = retType.empty() ? _builder.getVoidTy() : getLLVMType(retType);
+                        auto fnType = llvm::FunctionType::get(llvmRetType, paramTypes, false);
+                        fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
+                    }
+                    return _builder.CreateCall(fn, methodArgs);
+                }
+            }
+        }
+    }
+
     string methodFullName = actualType.name + "." + member;
 
     vector<TypeInfo> methodParamTypes;
@@ -2717,17 +3139,221 @@ llvm::Value* Compiler::compileFunctionCall(
     }
 
     auto structDecl = _file->getStructDecl(fnName);
+    p<FileNode> structOwner = _file;
+    if (!structDecl && _yux && _yux->sdkFile()) {
+        auto sdkDecl = _yux->sdkFile()->getStructDecl(fnName);
+        if (sdkDecl) {
+            structDecl = sdkDecl;
+            structOwner = _yux->sdkFile();
+        }
+    }
     if (structDecl) {
         if (structDecl->isPrivate()) {
             throw YuxError(callNode->getLineNumber(), "Cannot use private struct '{}' in constructor", fnName);
         }
-        auto result = compileConstructorCall(fnName, args, argTypes);
+        string effName = fnName;
+        bool isGenericCtor = false;
+        if (structDecl->isGeneric()) {
+            const auto& typeArgs = callNode->getTypeArgs();
+            if (typeArgs.empty()) {
+                throw YuxError(
+                    callNode->getLineNumber(),
+                    "Generic struct '{}' constructor requires explicit type arguments", fnName);
+            }
+            vector<sp<TypeInfo>> instArgs;
+            instArgs.reserve(typeArgs.size());
+            for (auto& tn : typeArgs) {
+                instArgs.push_back(make_shared<TypeInfo>(applySubst(tn->getType())));
+            }
+            effName = ensureStructInstance(structDecl, instArgs, structOwner);
+            isGenericCtor = true;
+        }
+        if (isGenericCtor) {
+            // 泛型实例构造：直接按 effName 生成调用，不走符号表
+            auto structType = _structTypes[effName];
+            auto alloca = _builder.CreateAlloca(structType, nullptr, effName + "_tmp");
+            vector<llvm::Value*> ctorArgs;
+            ctorArgs.push_back(alloca);
+            for (auto& a : args) ctorArgs.push_back(a);
+            string ownerMod = structOwner->moduleName();
+            string cName = Mangler::ctor(ownerMod, effName, argTypes);
+            auto fn = _module->getFunction(cName);
+            if (!fn) {
+                vector<llvm::Type*> paramTypes;
+                paramTypes.push_back(llvm::PointerType::get(_context, 0));
+                for (auto& t : argTypes) {
+                    auto sd = _file->getStructDecl(t.name);
+                    if (!sd && _yux && _yux->sdkFile()) {
+                        sd = _yux->sdkFile()->getStructDecl(t.name);
+                    }
+                    if (sd && !isBuiltinType(t.name)) {
+                        paramTypes.push_back(llvm::PointerType::get(_context, 0));
+                    } else {
+                        paramTypes.push_back(getLLVMType(t));
+                    }
+                }
+                auto fnType = llvm::FunctionType::get(_builder.getVoidTy(), paramTypes, false);
+                fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, cName, _module);
+            }
+            _builder.CreateCall(fn, ctorArgs);
+            return _builder.CreateLoad(structType, alloca);
+        }
+        auto result = compileConstructorCall(fnName, effName, args, argTypes);
         if (result) {
             return result;
         }
     }
 
     auto fnSymbol = _file->lookupFnSymbolWithParams(fnName, argTypes);
+
+    // 检查是否是泛型函数
+    auto genericFn = _file->getFunction(fnName);
+    p<FileNode> fnOwner = _file;
+    if (!genericFn && _yux && _yux->sdkFile()) {
+        genericFn = _yux->sdkFile()->getFunction(fnName);
+        if (genericFn) fnOwner = _yux->sdkFile();
+    }
+
+    if (genericFn && genericFn->header()->isGeneric()) {
+        const auto& typeParams = genericFn->header()->typeParams();
+        vector<TypeInfo> typeArgs;
+
+        // 优先使用显式类型参数
+        const auto& explicitTypeArgs = callNode->getTypeArgs();
+        if (!explicitTypeArgs.empty()) {
+            if (explicitTypeArgs.size() != typeParams.size()) {
+                throw YuxError(callNode->getLineNumber(),
+                    "Generic function '{}' expects {} type args, got {}",
+                    fnName, typeParams.size(), explicitTypeArgs.size());
+            }
+            for (auto& tn : explicitTypeArgs) {
+                typeArgs.push_back(applySubst(tn->getType()));
+            }
+        } else {
+            // 从实参类型推断
+            auto params = genericFn->header()->params();
+            if (params.size() != argTypes.size()) {
+                throw YuxError(callNode->getLineNumber(),
+                    "Generic function '{}' expects {} params, got {} args",
+                    fnName, params.size(), argTypes.size());
+            }
+
+            map<string, TypeInfo> inferred;
+            for (size_t i = 0; i < params.size(); ++i) {
+                auto paramType = params[i]->type();
+                if (!paramType) continue;
+                TypeInfo pType = paramType->getType();
+                TypeInfo aType = argTypes[i];
+
+                // 简单推断：如果参数类型是类型参数名，则用实参类型
+                if (pType.isNormal() && !isBuiltinType(pType.name)) {
+                    bool isTypeParam = false;
+                    for (auto& tp : typeParams) {
+                        if (pType.name == tp) {
+                            isTypeParam = true;
+                            break;
+                        }
+                    }
+                    if (isTypeParam) {
+                        inferred[pType.name] = aType;
+                    }
+                }
+            }
+
+            // 检查是否所有类型参数都被推断
+            for (auto& tp : typeParams) {
+                auto it = inferred.find(tp);
+                if (it == inferred.end()) {
+                    throw YuxError(callNode->getLineNumber(),
+                        "Cannot infer type parameter '{}' for generic function '{}'",
+                        tp, fnName);
+                }
+                typeArgs.push_back(it->second);
+            }
+        }
+
+        // 确保实例化
+        string mangledName = ensureFnInstance(genericFn, typeArgs, fnOwner);
+
+        // 构建实例化后的参数类型
+        map<string, TypeInfo> subst;
+        for (size_t i = 0; i < typeParams.size(); ++i) {
+            subst[typeParams[i]] = typeArgs[i];
+        }
+        _substStack.push_back(SubstFrame{subst, "", ""});
+
+        vector<TypeInfo> instParamTypes;
+        for (auto param : genericFn->header()->params()) {
+            if (param->type()) {
+                instParamTypes.push_back(applySubst(param->type()->getType()));
+            }
+        }
+
+        TypeInfo instRetType;
+        if (genericFn->header()->retType()) {
+            instRetType = applySubst(genericFn->header()->retType()->getType());
+        }
+
+        _substStack.pop_back();
+
+        // 生成调用
+        bool isPrivate = !fnName.empty() && fnName[0] == '_';
+        string cName = Mangler::function(fnOwner->moduleName(), mangledName, instParamTypes, isPrivate);
+        DEBUG_LOG_VAL("    Expr: GenericFunctionCall", fnName << " -> " << cName);
+
+        auto fn = _module->getFunction(cName);
+        if (!fn) {
+            vector<llvm::Type*> paramTypes;
+            for (auto& t : instParamTypes) {
+                auto sd = _file->getStructDecl(t.name);
+                if (!sd && _yux && _yux->sdkFile()) {
+                    sd = _yux->sdkFile()->getStructDecl(t.name);
+                }
+                if (sd && !isBuiltinType(t.name)) {
+                    paramTypes.push_back(llvm::PointerType::get(_context, 0));
+                } else {
+                    paramTypes.push_back(getLLVMType(t));
+                }
+            }
+            auto retType = instRetType.empty() ? _builder.getVoidTy() : getLLVMType(instRetType);
+            auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
+            fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, cName, _module);
+        }
+
+        vector<llvm::Value*> callArgs;
+        for (size_t i = 0; i < args.size(); ++i) {
+            auto& at = instParamTypes[i];
+            auto sd = _file->getStructDecl(at.name);
+            if (!sd && _yux && _yux->sdkFile()) {
+                sd = _yux->sdkFile()->getStructDecl(at.name);
+            }
+            if (sd && !isBuiltinType(at.name)) {
+                auto structType = getLLVMType(at);
+                auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");
+                _builder.CreateStore(args[i], alloca);
+                callArgs.push_back(alloca);
+            } else {
+                callArgs.push_back(args[i]);
+            }
+        }
+
+        auto callResult = _builder.CreateCall(fn, callArgs);
+
+        if (!instRetType.empty()) {
+            auto sd = _file->getStructDecl(instRetType.name);
+            if (!sd && _yux && _yux->sdkFile()) {
+                sd = _yux->sdkFile()->getStructDecl(instRetType.name);
+            }
+            if (sd && !isBuiltinType(instRetType.name)) {
+                auto structType = getLLVMType(instRetType);
+                auto alloca = _builder.CreateAlloca(structType, nullptr, "ret_tmp");
+                _builder.CreateStore(callResult, alloca);
+                return _builder.CreateLoad(structType, alloca);
+            }
+        }
+
+        return callResult;
+    }
 
     if (fnSymbol) {
         if (fnSymbol->isPrivate && !fnSymbol->moduleName.empty() && fnSymbol->moduleName != _file->moduleName()) {
@@ -2798,21 +3424,28 @@ llvm::Value* Compiler::compileFunctionCall(
 }
 
 llvm::Value* Compiler::compileConstructorCall(
-    const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
-    string ctorFullName = fnName + "." + fnName;
+    const string& baseName, const string& effName,
+    vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
+    // ctor 符号按 base 名登记；effName 用于 LLVM 层：结构体类型、mangle
+    string ctorFullName = baseName + "." + baseName;
 
     vector<TypeInfo> ctorParamTypes;
-    ctorParamTypes.push_back(TypeInfo(fnName));
+    ctorParamTypes.push_back(TypeInfo(baseName));
     for (auto& t : argTypes) {
         ctorParamTypes.push_back(t);
     }
     auto ctorSymbol = _file->lookupFnSymbolWithParams(ctorFullName, ctorParamTypes);
 
     if (ctorSymbol) {
-        DEBUG_LOG_VAL("    Expr: ConstructorCall", fnName);
+        DEBUG_LOG_VAL("    Expr: ConstructorCall", effName);
 
-        auto structType = getLLVMType(TypeInfo(fnName));
-        auto alloca = _builder.CreateAlloca(structType, nullptr, fnName + "_tmp");
+        llvm::Type* structType = nullptr;
+        if (auto it = _structTypes.find(effName); it != _structTypes.end()) {
+            structType = it->second;
+        } else {
+            structType = getLLVMType(TypeInfo(effName));
+        }
+        auto alloca = _builder.CreateAlloca(structType, nullptr, effName + "_tmp");
 
         vector<llvm::Value*> ctorArgs;
         ctorArgs.push_back(alloca);
@@ -2822,7 +3455,7 @@ llvm::Value* Compiler::compileConstructorCall(
 
         // 构造函数：归属 struct 所属模块
         string ownerMod = ctorSymbol->moduleName.empty() ? _file->moduleName() : ctorSymbol->moduleName;
-        string cName = Mangler::ctor(ownerMod, fnName, argTypes);
+        string cName = Mangler::ctor(ownerMod, effName, argTypes);
         auto fn = _module->getFunction(cName);
         if (!fn) {
             vector<llvm::Type*> paramTypes;
@@ -3103,6 +3736,9 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
     }
 
     auto structDecl = _file->getStructDecl(actualType.name);
+    if (!structDecl && _yux && _yux->sdkFile()) {
+        structDecl = _yux->sdkFile()->getStructDecl(actualType.name);
+    }
 
     if (structDecl) {
         int fieldIndex = structDecl->fieldIndex(member);
@@ -3146,6 +3782,17 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
 
             auto fieldPtr = _builder.CreateGEP(structType, dataPtr, indices, "struct.field");
             auto fieldType = field->getType();
+
+            // 若访问的是泛型结构体实例的字段，按实例的类型实参替换字段类型
+            if (actualType.isGeneric() && structDecl->isGeneric()
+                && actualType.genericArgs.size() == structDecl->typeParams().size()) {
+                map<string, TypeInfo> subst;
+                for (size_t i = 0; i < structDecl->typeParams().size(); ++i) {
+                    subst[structDecl->typeParams()[i]] =
+                        actualType.genericArgs[i] ? *actualType.genericArgs[i] : TypeInfo();
+                }
+                fieldType = fieldType.substitute(subst);
+            }
 
             return _builder.CreateLoad(getLLVMType(fieldType), fieldPtr, "field.load");
         }

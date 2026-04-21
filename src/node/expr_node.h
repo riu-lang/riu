@@ -37,6 +37,7 @@ class ExprCallNode : public ExprNode {
 protected:
     p<ExprNode> _calleeExpr;
     vector<p<ExprNode>> _args;
+    vector<p<TypeNode>> _typeArgs;
 
 public:
     ExprCallNode(const p<Node>& parent, p<ExprNode> callee) :
@@ -47,6 +48,9 @@ public:
     void addArg(p<ExprNode> arg) {
         _args.push_back(arg);
     }
+
+    void setTypeArgs(vector<p<TypeNode>> args) { _typeArgs = std::move(args); }
+    [[nodiscard]] const vector<p<TypeNode>>& getTypeArgs() const { return _typeArgs; }
 
     [[nodiscard]] const p<ExprNode>& getCalleeExpr() const;
     [[nodiscard]] const std::vector<p<ExprNode>>& getArgs() const;

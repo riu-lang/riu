@@ -60,12 +60,21 @@ numInt: INT;
 numFloat: FLOAT;
 
 type:
-    ID # typeNormal
-   // | type SymbolQuest # typeNullable
-   | ID SymbolLt types+=type (SymbolComma Space types+=type)* SymbolMt # typeGeneric
-    // [ type * count ]
-   | GetStart type Space SymbolMul Space INT GetEnd # typeArray;
+    typeNormal
+   | typeGeneric
+   | typeArray;
 
+// 普通名
+typeNormal: ID;
+
+// A<T> B<T1, T2>
+typeGeneric: ID genericDef;
+
+// [ type * count ]
+typeArray: GetStart type Space SymbolMul Space INT GetEnd;
+
+// 共享
+genericDef: SymbolLt types+=type (SymbolComma Space types+=type)* SymbolMt;
 
 ///////////
 // 函数
@@ -81,7 +90,8 @@ fn: fnHeader Space fnBody;
 
 // fn name() 空返回
 // fn name() type 返回 type
-fnHeader: Fn Space name=ID ParStart
+// fn <T> some() T
+fnHeader: Fn Space ( genericDef Space)? name=ID ParStart
     (params+=fnParam (SymbolComma Space params+=fnParam)* )?
     ParEnd (Space retType=type)?
     ;
@@ -162,8 +172,8 @@ expr:
     | left=expr SymbolDot member+=ID # exprDot
     // [e1, e2]
     | GetStart (velues+=expr (SymbolComma Space velues+=expr)* )? GetEnd # exprArray
-    // e() e(e) e(e,e)
-    | left=expr ParStart
+    // e() e(e) e(e,e) e<T>()
+    | left=expr genericDef? ParStart
         ( args+=expr
           (SymbolComma Space args+=expr)*
         )?

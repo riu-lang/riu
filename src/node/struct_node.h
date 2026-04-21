@@ -27,6 +27,7 @@ public:
 class StructDeclNode : public ScopeNode, public Named {
     vector<p<StructFieldNode>> _fields;
     map<string, size_t> _fieldIndices;
+    vector<string> _typeParams;
     bool _isPrivate;
 
 public:
@@ -50,11 +51,16 @@ public:
         return idx >= 0 ? _fields[idx] : nullptr;
     }
     [[nodiscard]] bool isPrivate() const { return _isPrivate; }
+
+    void setTypeParams(vector<string> params) { _typeParams = std::move(params); }
+    [[nodiscard]] const vector<string>& typeParams() const { return _typeParams; }
+    [[nodiscard]] bool isGeneric() const { return !_typeParams.empty(); }
 };
 
 class StructImplNode : public ScopeNode, public Named {
     vector<p<FnNode>> _methods;
     p<FnNode> _destructor;
+    vector<string> _typeParams;
     string _structName;
 
 public:
@@ -74,6 +80,10 @@ public:
     [[nodiscard]] const p<FnNode>& destructor() const { return _destructor; }
     [[nodiscard]] bool hasDestructor() const { return _destructor != nullptr; }
     [[nodiscard]] const string& structName() const { return _structName; }
+
+    void setTypeParams(vector<string> params) { _typeParams = std::move(params); }
+    [[nodiscard]] const vector<string>& typeParams() const { return _typeParams; }
+    [[nodiscard]] bool isGeneric() const { return !_typeParams.empty(); }
 };
 
 #endif //YUX_LANG_STRUCT_NODE_H

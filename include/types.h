@@ -225,6 +225,43 @@ struct TypeInfo {
         return name;
     }
 
+    // 单态化实例 mangle 名：Base$Arg1$Arg2，嵌套递归（e.g. A<B<i32>> → A$B$i32）
+    string getGenericMangleName() const {
+        if (kind == TypeKind::Generic && !genericArgs.empty()) {
+            string result = name;
+            for (auto& a : genericArgs) {
+                result += "$" + a->getGenericMangleName();
+            }
+            return result;
+        }
+        if (kind == TypeKind::Array && elementType) {
+            return "[" + elementType->getGenericMangleName() + "*" + std::to_string(arraySize) + "]";
+        }
+        return name;
+    }
+
+    // 应用类型形参替换。Normal 类型若匹配 subst 键则整体替换（可被替换为 Generic/Array）。
+    TypeInfo substitute(const std::map<std::string, TypeInfo>& subst) const {
+        if (kind == TypeKind::Normal) {
+            auto it = subst.find(name);
+            if (it != subst.end()) return it->second;
+            return *this;
+        }
+        if (kind == TypeKind::Generic) {
+            vector<sp<TypeInfo>> newArgs;
+            newArgs.reserve(genericArgs.size());
+            for (auto& a : genericArgs) {
+                newArgs.push_back(std::make_shared<TypeInfo>(a ? a->substitute(subst) : TypeInfo()));
+            }
+            return TypeInfo(name, std::move(newArgs));
+        }
+        if (kind == TypeKind::Array && elementType) {
+            auto sub = elementType->substitute(subst);
+            return TypeInfo(std::make_shared<TypeInfo>(std::move(sub)), arraySize);
+        }
+        return *this;
+    }
+
     bool operator==(const TypeInfo& other) const {
         if (kind != other.kind) return false;
         if (name != other.name) return false;

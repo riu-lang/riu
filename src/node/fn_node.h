@@ -34,6 +34,7 @@ public:
 class FnHeaderNode : public Node, public Named, public Typed {
 protected:
     vector<p<FnParamNode>> _params;
+    vector<string> _typeParams;
     p<TypeNode> _retType;
 
 public:
@@ -42,6 +43,10 @@ public:
     }
 
     void addParam(p<FnParamNode> param);
+
+    void setTypeParams(vector<string> params) { _typeParams = std::move(params); }
+    [[nodiscard]] const vector<string>& typeParams() const { return _typeParams; }
+    [[nodiscard]] bool isGeneric() const { return !_typeParams.empty(); }
 
     [[nodiscard]] Token name() const override;
     [[nodiscard]] p<TypeNode> retType() const;

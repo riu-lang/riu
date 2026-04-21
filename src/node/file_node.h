@@ -34,6 +34,7 @@ public:
     
     StructDeclNode* getStructDecl(const string& name) const;
     StructImplNode* getStructImpl(const string& name) const;
+    FnNode* getFunction(const string& name) const;
     
     void setModuleName(const string& name) { _moduleName = name; }
     const string& moduleName() const { return _moduleName; }

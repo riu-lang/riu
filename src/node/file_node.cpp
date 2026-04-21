@@ -60,6 +60,15 @@ StructImplNode* FileNode::getStructImpl(const string& name) const {
     return nullptr;
 }
 
+FnNode* FileNode::getFunction(const string& name) const {
+    for (auto& fn : _functions) {
+        if (fn->header()->name().getText() == name) {
+            return fn;
+        }
+    }
+    return nullptr;
+}
+
 void FileNode::addImport(const string& mod) {
     if (mod.empty() || mod == _moduleName) return;
     for (auto& m : _imports) if (m == mod) return;

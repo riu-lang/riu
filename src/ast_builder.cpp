@@ -206,6 +206,11 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
     stack.emplace_back(fn);
     _scopeStack.push_back(fn);
 
+    for (auto& tp : header->typeParams()) {
+        fn->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
+        DEBUG_LOG_VAL("  TypeParam", tp);
+    }
+
     for (auto param : header->params()) {
         TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();
         fn->registerSymbol(
@@ -259,6 +264,19 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
 
     auto header = create<FnHeaderNode>(file, ctx->name, retType);
 
+    if (auto gd = ctx->genericDef()) {
+        vector<string> typeParams;
+        for (auto tCtx : gd->types) {
+            if (auto tn = tCtx->typeNormal()) {
+                typeParams.push_back(tn->ID()->getText());
+            }
+        }
+        header->setTypeParams(typeParams);
+        for (auto& tp : header->typeParams()) {
+            DEBUG_LOG_VAL("    TypeParam", tp);
+        }
+    }
+
     stack.emplace_back(header);
 
     for (auto paramCtx : ctx->params) {
@@ -284,8 +302,21 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
 
     DEBUG_LOG_VAL("Visit: StructDecl", ctx->name->getText());
 
+    vector<string> typeParams;
+    for (auto tCtx : ctx->types) {
+        if (auto tn = tCtx->typeNormal()) {
+            typeParams.push_back(tn->ID()->getText());
+        }
+    }
+    structDecl->setTypeParams(typeParams);
+
     stack.emplace_back(structDecl);
     _scopeStack.push_back(structDecl);
+
+    for (auto& tp : structDecl->typeParams()) {
+        structDecl->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
+        DEBUG_LOG_VAL("    TypeParam", tp);
+    }
 
     for (auto fieldCtx : ctx->filedDecl()) {
         auto field = any_cast_p<StructFieldNode>(visit(fieldCtx));
@@ -304,8 +335,21 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
 
     DEBUG_LOG_VAL("Visit: StructImpl", ctx->name->getText());
 
+    vector<string> typeParams;
+    for (auto tCtx : ctx->types) {
+        if (auto tn = tCtx->typeNormal()) {
+            typeParams.push_back(tn->ID()->getText());
+        }
+    }
+    structImpl->setTypeParams(typeParams);
+
     stack.emplace_back(structImpl);
     _scopeStack.push_back(structImpl);
+
+    for (auto& tp : structImpl->typeParams()) {
+        structImpl->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
+        DEBUG_LOG_VAL("    TypeParam", tp);
+    }
 
     string structName = ctx->name->getText();
 
@@ -335,6 +379,13 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
 
         stack.emplace_back(fn);
         _scopeStack.push_back(fn);
+
+        for (auto& tp : structImpl->typeParams()) {
+            fn->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
+        }
+        for (auto& tp : header->typeParams()) {
+            fn->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
+        }
 
         fn->registerSymbol("self", {SymbolKind::Variable, "self", TypeInfo(structName)});
 
@@ -599,6 +650,13 @@ std::any ASTBuilder::visitExprCall(yux::yuxParser::ExprCallContext* ctx) {
     DEBUG_LOG_VAL("    Expr: Call", "args count: " << ctx->args.size());
     for (auto arg : ctx->args) {
         call->addArg(any_cast_p<ExprNode>(visit(arg)));
+    }
+    if (auto gd = ctx->genericDef()) {
+        vector<p<TypeNode>> typeArgs;
+        for (auto tCtx : gd->types) {
+            typeArgs.push_back(any_cast_p<TypeNode>(visit(tCtx)));
+        }
+        call->setTypeArgs(std::move(typeArgs));
     }
     return p<ExprNode>(call);
 }
@@ -901,9 +959,9 @@ std::any ASTBuilder::visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) {
 std::any ASTBuilder::visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) {
     p<Node> parent = currentScope();
     auto baseName = ctx->ID()->getSymbol();
-    
+
     vector<p<TypeNode>> typeArgs;
-    for (auto typeCtx : ctx->types) {
+    for (auto typeCtx : ctx->genericDef()->types) {
         typeArgs.push_back(any_cast_p<TypeNode>(visit(typeCtx)));
     }
     

@@ -40,6 +40,47 @@ class Compiler {
     map<string, CastInfo> _castFunctions;
     int _castCounter = 0;
 
+    // 泛型结构体单态化：key = 实例 mangle 名（如 "A$i32"）
+    struct StructInstance {
+        p<StructDeclNode> baseDecl;
+        p<StructImplNode> baseImpl;
+        p<FileNode> ownerFile;
+        vector<TypeInfo> args;
+        string mangledName;
+        bool methodsEmitted = false;
+        string sourceFile;      // 实例化发生的源文件
+        int sourceLine = 0;     // 实例化发生的行号
+    };
+    map<string, StructInstance> _structInstances;
+
+    // 泛型函数单态化：key = 实例 mangle 名（如 "foo$i32"）
+    struct FnInstance {
+        p<FnNode> baseFn;
+        p<FileNode> ownerFile;
+        vector<TypeInfo> typeArgs;
+        string mangledName;
+        bool emitted = false;
+    };
+    map<string, FnInstance> _fnInstances;
+
+    struct SubstFrame {
+        map<string, TypeInfo> subst;
+        string baseStructName;  // 泛型原名，如 "Box2"
+        string effStructName;   // 实例名，如 "Box2$i32"
+        string sourceFile;      // 实例化发生的源文件
+        int sourceLine = 0;     // 实例化发生的行号
+    };
+    vector<SubstFrame> _substStack;
+
+    [[nodiscard]] string formatInstantiationContext() const;
+    [[noreturn]] void rethrowWithInstantiationContext(const YuxError& e) const;
+
+    TypeInfo applySubst(const TypeInfo& t) const;
+    string ensureStructInstance(p<StructDeclNode> baseDecl, const vector<sp<TypeInfo>>& args, p<FileNode> ownerFile, int sourceLine = 0);
+    string ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& typeArgs, p<FileNode> ownerFile);
+    void emitInstanceMethods();
+    void emitFnInstances();
+
     vector<string> _scopeVars;
 
     llvm::Function* _currentFn = nullptr;
@@ -111,7 +152,9 @@ class Compiler {
         p<ExprCallNode> callNode, p<ExprDotNode> dotNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
     llvm::Value* compileFunctionCall(
         p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
-    llvm::Value* compileConstructorCall(const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
+    llvm::Value* compileConstructorCall(
+        const string& baseName, const string& effName,
+        vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
     llvm::Value* compileKnownFunctionCall(
         p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
         FnSymbolInfo* fnSymbol);
