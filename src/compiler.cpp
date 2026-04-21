@@ -12,6 +12,7 @@
 #include "types.h"
 #include <utility>
 #include <algorithm>
+#include <regex>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 
@@ -25,6 +26,35 @@
 // 运行时辅助、Windows API、LLVM intrinsic 保留各自字面名称（不参与 mangling）。
 // 运行时辅助（_box_*, _array_*）的实现仅在 yux 模块中生成；
 // 其他模块只声明为 external，链接时引用 yux.obj 中的实现。
+
+namespace {
+    i64 parseIntLiteral(const string& text) {
+        string numStr = text;
+        
+        static const std::regex suffix_regex(R"([iu](?:8|16|32|64)?$)");
+        numStr = std::regex_replace(numStr, suffix_regex, "");
+        
+        int base = 10;
+        string parseStr = numStr;
+        
+        if (numStr.size() >= 2) {
+            if (numStr[0] == '0' && (numStr[1] == 'b' || numStr[1] == 'B')) {
+                base = 2;
+                parseStr = numStr.substr(2);
+            } else if (numStr[0] == '0' && (numStr[1] == 'o' || numStr[1] == 'O')) {
+                base = 8;
+                parseStr = numStr.substr(2);
+            } else if (numStr[0] == '0' && (numStr[1] == 'x' || numStr[1] == 'X')) {
+                base = 16;
+                parseStr = numStr.substr(2);
+            }
+        }
+        
+        parseStr.erase(std::remove(parseStr.begin(), parseStr.end(), '_'), parseStr.end());
+        
+        return std::stoll(parseStr, nullptr, base);
+    }
+}
 
 void Compiler::rethrowWithInstantiationContext(const YuxError& e) const {
     string ctx = formatInstantiationContext();
@@ -939,15 +969,7 @@ void Compiler::compileGlobalConsts() {
         auto text = literal->getValue().getText();
 
         if (auto intLiteral = dynamic_cast<LiteralIntNode*>(literal)) {
-            string numStr;
-            for (char c : text) {
-                if (isdigit(c) || c == '-') {
-                    numStr += c;
-                } else {
-                    break;
-                }
-            }
-            i64 numVal = stoll(numStr);
+            i64 numVal = parseIntLiteral(text);
             initValue = llvm::ConstantInt::get(llvmType, numVal, true);
         } else if (auto floatLiteral = dynamic_cast<LiteralFloatNode*>(literal)) {
             string numStr;
@@ -2121,15 +2143,7 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
     f64 floatFillVal = 0.0;
 
     if (auto intLiteral = dynamic_cast<LiteralIntNode*>(literal)) {
-        string numStr;
-        for (char c : text) {
-            if (isdigit(c) || c == '-') {
-                numStr += c;
-            } else {
-                break;
-            }
-        }
-        intFillVal = stoll(numStr);
+        intFillVal = parseIntLiteral(text);
         fillValue = llvm::ConstantInt::get(getLLVMType(elementType), intFillVal, true);
         isZeroFill = (intFillVal == 0);
     } else if (auto floatLiteral = dynamic_cast<LiteralFloatNode*>(literal)) {
@@ -2281,15 +2295,7 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
     auto text = literal->getValue().getText();
 
     if (auto intLiteral = dynamic_cast<LiteralIntNode*>(literal)) {
-        string numStr;
-        for (char c : text) {
-            if (isdigit(c) || c == '-') {
-                numStr += c;
-            } else {
-                break;
-            }
-        }
-        i64 numVal = stoll(numStr);
+        i64 numVal = parseIntLiteral(text);
         DEBUG_LOG_VAL("    Expr: IntLiteral", text << " : " << type.name);
         return llvm::ConstantInt::get(getLLVMType(type), numVal, true);
     } else if (auto floatLiteral = dynamic_cast<LiteralFloatNode*>(literal)) {

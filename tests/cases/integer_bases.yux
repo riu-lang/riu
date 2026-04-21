@@ -1,0 +1,22 @@
+fn main() {
+  val a = 42
+  println(a.to_string())
+  val b = 0b1010
+  println(b.to_string())
+  val c = 0o755
+  println(c.to_string())
+  val d = 0xFF
+  println(d.to_string())
+  val e = 0b1111_1111
+  println(e.to_string())
+  val f = 0o777
+  println(f.to_string())
+  val g = 0xFFFF
+  println(g.to_string())
+  val h = 0b1010u8
+  println(h.to_string())
+  val i = 0o644i32
+  println(i.to_string())
+  val j = 0xABCDu64
+  println(j.to_string())
+}
