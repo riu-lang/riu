@@ -157,7 +157,7 @@ expr:
           (elifs+=exprElIf)*
              exprElse? # exprIfElse
     // [0 ...] [1u8 ... u8] 填充数组
-    | GetStart value=literal Space SymbolDotDotDot (Space type)?  GetEnd # exprArrayInit
+    | GetStart value=literal Space SymbolDot SymbolDot SymbolDot (Space type)?  GetEnd # exprArrayInit
     // a.b ...
     | left=expr SymbolDot member+=ID # exprDot
     // [e1, e2]
@@ -170,13 +170,14 @@ expr:
       ParEnd # exprCall
     // !e ~e -e 没有空格，低于成员访问优先级
     | op=(SymbolSub|SymbolRev|SymbolExcl) right=expr # exprUnary
-    // e & e | e ^ e
-    | left=expr Space op=(SymbolAnd|SymbolOr|SymbolXor|SymbolLtLt|SymbolMtMt) Space right=expr # exprBinOp
+    // e & e | e ^ e | e << e | e >> e
+    | left=expr Space op=(SymbolAnd|SymbolOr|SymbolXor) Space right=expr # exprBinOp
+    | left=expr Space opShift Space right=expr # exprShift
      // e * e e / e
     | left=expr Space op=(SymbolMul|SymbolDiv|SymbolMod) Space right=expr # exprMulDivMod
     | left=expr Space op=(SymbolAdd|SymbolSub) Space right=expr # exprAddSub
     // 判断
-    | left=expr Space op=(SymbolEqEq|SymbolExclEq|SymbolMt|SymbolMtEq|SymbolLt|SymbolLtEq|SymbolOrOr|SymbolAndAnd) Space right=expr # exprCompare
+    | left=expr Space opCompare Space right=expr # exprCompare
     | literal # exprLiteral;
 
 // elif {
@@ -188,6 +189,32 @@ exprElIf : Space Elif Space condition=expr Space statementBlock;
 // }
 exprElse : Space Else Space statementBlock;
 
+// 移位操作符: << >>
+opShift: SymbolLt SymbolLt | SymbolMt SymbolMt;
+
+// 比较操作符: == != > >= < <= || &&
+opCompare:
+      SymbolEq SymbolEq
+    | SymbolExcl SymbolEq
+    | SymbolMt
+    | SymbolMt SymbolEq
+    | SymbolLt
+    | SymbolLt SymbolEq
+    | SymbolOr SymbolOr
+    | SymbolAnd SymbolAnd
+    ;
+
+// 赋值操作符: = += -= *= /= %= >>= <<=
+opAssign:
+      SymbolEq
+    | SymbolAdd SymbolEq
+    | SymbolSub SymbolEq
+    | SymbolMul SymbolEq
+    | SymbolDiv SymbolEq
+    | SymbolMod SymbolEq
+    | SymbolMt SymbolMt SymbolEq
+    | SymbolLt SymbolLt SymbolEq
+    ;
 
 ///////////
 // 语句
@@ -206,7 +233,7 @@ statement:
     | Loop Space statementBlock # statementLoop
     // obj.member = expr
     | obj=ID (SymbolDot subs+=ID)* Space
-        op=(SymbolEq|SymbolAddEq|SymbolSubEq|SymbolMulEq|SymbolDivEq|SymbolModEq|SymbolMtMtEq|SymbolLtLtEq)
+        opAssign
         Space expr codeLineEnd #statementAssign
     // 尾随;表示空类型（void）
     | expr SymbolSemicolon? codeLineEnd # statementExpr
@@ -253,41 +280,23 @@ Struct : 'struct';
 True : 'true';
 
 SymbolAdd: '+';
-SymbolAddEq: '+=';
 SymbolAnd: '&';
-SymbolAndAnd: '&&';
-SymbolArrow: '->';
 SymbolComma: ',';
 SymbolDiv: '/';
-SymbolDivEq: '/=';
 SymbolDot: '.';
-SymbolDotDot: '..';
-SymbolDotDotDot: '...';
 SymbolEq: '=';
-SymbolEqEq: '==';
 SymbolExcl: '!';
-SymbolExclEq: '!=';
 SymbolLt: '<';
-SymbolLtEq: '<=';
-SymbolLtLt: '<<';
-SymbolLtLtEq: '<<=';
 SymbolMod: '%';
-SymbolModEq: '%=';
 SymbolMt: '>';
-SymbolMtEq: '>=';
-SymbolMtMt: '>>';
-SymbolMtMtEq: '>>=';
 SymbolMul: '*';
-SymbolMulEq: '*=';
 SymbolOr: '|';
-SymbolOrOr: '||';
 SymbolQuest: '?';
 SymbolQuote2: '"';
 SymbolQuote: ['];
 SymbolRev: '~';
 SymbolSemicolon: ';';
 SymbolSub: '-';
-SymbolSubEq: '-=';
 SymbolXor: '^';
 
 ParStart: '(';

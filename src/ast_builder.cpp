@@ -485,8 +485,8 @@ std::any ASTBuilder::visitStatementAssign(yux::yuxParser::StatementAssignContext
     }
 
     AssignOp op = AssignOp::Eq;
-    if (ctx->op) {
-        auto opText = ctx->op->getText();
+    if (ctx->opAssign()) {
+        auto opText = ctx->opAssign()->getText();
         if (opText == "+=") op = AssignOp::AddEq;
         else if (opText == "-=") op = AssignOp::SubEq;
         else if (opText == "*=") op = AssignOp::MulEq;
@@ -645,15 +645,23 @@ std::any ASTBuilder::visitExprBinOp(yux::yuxParser::ExprBinOpContext* ctx) {
         op = ExprBinOpNode::Op::And;
     } else if (opText == "|") {
         op = ExprBinOpNode::Op::Or;
-    } else if (opText == "^") {
-        op = ExprBinOpNode::Op::Xor;
-    } else if (opText == "<<") {
-        op = ExprBinOpNode::Op::Shl;
     } else {
-        op = ExprBinOpNode::Op::Shr;
+        op = ExprBinOpNode::Op::Xor;
     }
 
     DEBUG_LOG_VAL("    Expr: BinOp", opText);
+    return p<ExprNode>(createWithLine<ExprBinOpNode>(ctx, scope, op, left, right));
+}
+
+std::any ASTBuilder::visitExprShift(yux::yuxParser::ExprShiftContext* ctx) {
+    auto scope = currentScope();
+    auto left = any_cast_p<ExprNode>(visit(ctx->left));
+    auto right = any_cast_p<ExprNode>(visit(ctx->right));
+
+    auto opText = ctx->opShift()->getText();
+    ExprBinOpNode::Op op = (opText == "<<") ? ExprBinOpNode::Op::Shl : ExprBinOpNode::Op::Shr;
+
+    DEBUG_LOG_VAL("    Expr: Shift", opText);
     return p<ExprNode>(createWithLine<ExprBinOpNode>(ctx, scope, op, left, right));
 }
 
@@ -683,7 +691,7 @@ std::any ASTBuilder::visitExprCompare(yux::yuxParser::ExprCompareContext* ctx) {
     auto left = any_cast_p<ExprNode>(visit(ctx->left));
     auto right = any_cast_p<ExprNode>(visit(ctx->right));
 
-    auto opText = ctx->op->getText();
+    auto opText = ctx->opCompare()->getText();
     ExprCompareNode::Op op;
     if (opText == "==") {
         op = ExprCompareNode::Op::Eq;

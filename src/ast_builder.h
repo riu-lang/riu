@@ -83,6 +83,7 @@ public:
     std::any visitExprAddSub(yux::yuxParser::ExprAddSubContext* ctx) override;
     std::any visitExprMulDivMod(yux::yuxParser::ExprMulDivModContext* ctx) override;
     std::any visitExprBinOp(yux::yuxParser::ExprBinOpContext* ctx) override;
+    std::any visitExprShift(yux::yuxParser::ExprShiftContext* ctx) override;
     std::any visitExprLiteral(yux::yuxParser::ExprLiteralContext* ctx) override;
     std::any visitExprDot(yux::yuxParser::ExprDotContext* ctx) override;
     std::any visitExprCompare(yux::yuxParser::ExprCompareContext* ctx) override;
