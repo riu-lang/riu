@@ -4,36 +4,31 @@
 #define YUX_LANG_BUILD_CACHE_H
 
 #include <string>
-#include <map>
 #include <filesystem>
 
 using namespace std;
 
-struct FileCacheInfo {
-    string path;
-    int64_t timestamp;
-    uintmax_t size;
-    
-    FileCacheInfo() : timestamp(0), size(0) {}
-    FileCacheInfo(const string& p, int64_t ts, uintmax_t sz) 
-        : path(p), timestamp(ts), size(sz) {}
-};
-
 class BuildCache {
-    string _cachePath;
-    map<string, FileCacheInfo> _cache;
-    
 public:
-    BuildCache(const string& buildDir);
-    
-    void load();
-    void save();
-    
-    bool needRecompile(const string& filePath);
-    void updateCache(const string& filePath);
+    static bool needRecompile(const string& objPath, const string& srcPath);
+    static void updateCache(const string& objPath, const string& srcPath);
     
 private:
-    FileCacheInfo getFileCacheInfo(const string& filePath);
+    static string getCachePath(const string& objPath);
+    static int64_t getFileTimestamp(const string& filePath);
+    static uintmax_t getFileSize(const string& filePath);
+};
+
+class SdkLock {
+    void* _handle;
+    bool _locked;
+    
+public:
+    SdkLock();
+    ~SdkLock();
+    
+    bool tryLock();
+    void unlock();
 };
 
 #endif

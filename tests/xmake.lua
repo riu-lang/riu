@@ -72,8 +72,10 @@ target("yux_tests")
         local project_root = path.join(target:scriptdir(), "..")
         local exe = path.join(project_root, "build", stem .. ".exe")
         local obj = path.join(project_root, "build", stem .. ".obj")
+        local cache = obj .. ".cache"
         os.tryrm(exe)
         os.tryrm(obj)
+        os.tryrm(cache)
 
         local stdout_data, stderr_data
         local ok = try {
@@ -130,5 +132,6 @@ target("yux_tests")
         end
         os.tryrm(exe)
         os.tryrm(obj)
+        os.tryrm(cache)
         return true
     end)

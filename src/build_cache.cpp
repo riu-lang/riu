@@ -4,75 +4,116 @@
 #include <fstream>
 #include <iostream>
 
-BuildCache::BuildCache(const string& buildDir) {
-    _cachePath = buildDir + "/build.cache";
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+
+string BuildCache::getCachePath(const string& objPath) {
+    return objPath + ".cache";
 }
 
-void BuildCache::load() {
-    ifstream file(_cachePath);
-    if (!file.is_open()) {
-        return;
-    }
-    
-    string line1, line2;
-    while (getline(file, line1) && getline(file, line2)) {
-        if (line1.empty()) continue;
-        
-        size_t spacePos = line2.find(' ');
-        if (spacePos == string::npos) continue;
-        
-        int64_t timestamp = stoll(line2.substr(0, spacePos));
-        uintmax_t size = stoull(line2.substr(spacePos + 1));
-        
-        _cache[line1] = FileCacheInfo(line1, timestamp, size);
-    }
-    
-    file.close();
-}
-
-void BuildCache::save() {
-    ofstream file(_cachePath);
-    if (!file.is_open()) {
-        return;
-    }
-    
-    for (const auto& pair : _cache) {
-        file << pair.second.path << "\n";
-        file << pair.second.timestamp << " " << pair.second.size << "\n";
-    }
-    
-    file.close();
-}
-
-bool BuildCache::needRecompile(const string& filePath) {
-    auto it = _cache.find(filePath);
-    if (it == _cache.end()) {
-        return true;
-    }
-    
-    auto currentInfo = getFileCacheInfo(filePath);
-    return currentInfo.timestamp != it->second.timestamp || 
-           currentInfo.size != it->second.size;
-}
-
-void BuildCache::updateCache(const string& filePath) {
-    _cache[filePath] = getFileCacheInfo(filePath);
-}
-
-FileCacheInfo BuildCache::getFileCacheInfo(const string& filePath) {
-    FileCacheInfo info;
-    info.path = filePath;
-    
+int64_t BuildCache::getFileTimestamp(const string& filePath) {
     if (!filesystem::exists(filePath)) {
-        return info;
+        return 0;
     }
     
     auto ftime = filesystem::last_write_time(filePath);
     auto sctp = chrono::time_point_cast<chrono::system_clock::duration>(
         ftime - filesystem::file_time_type::clock::now() + chrono::system_clock::now()
     );
-    info.timestamp = chrono::duration_cast<chrono::seconds>(sctp.time_since_epoch()).count();
-    info.size = filesystem::file_size(filePath);
+    return chrono::duration_cast<chrono::seconds>(sctp.time_since_epoch()).count();
+}
+
+uintmax_t BuildCache::getFileSize(const string& filePath) {
+    if (!filesystem::exists(filePath)) {
+        return 0;
+    }
+    return filesystem::file_size(filePath);
+}
+
+bool BuildCache::needRecompile(const string& objPath, const string& srcPath) {
+    if (!filesystem::exists(objPath)) {
+        return true;
+    }
     
-    return info;
+    string cachePath = getCachePath(objPath);
+    if (!filesystem::exists(cachePath)) {
+        return true;
+    }
+    
+    ifstream file(cachePath);
+    if (!file.is_open()) {
+        return true;
+    }
+    
+    int64_t cachedTimestamp;
+    uintmax_t cachedSize;
+    file >> cachedTimestamp >> cachedSize;
+    file.close();
+    
+    int64_t currentTimestamp = getFileTimestamp(srcPath);
+    uintmax_t currentSize = getFileSize(srcPath);
+    
+    return cachedTimestamp != currentTimestamp || cachedSize != currentSize;
+}
+
+void BuildCache::updateCache(const string& objPath, const string& srcPath) {
+    string cachePath = getCachePath(objPath);
+    
+    ofstream file(cachePath);
+    if (!file.is_open()) {
+        return;
+    }
+    
+    file << getFileTimestamp(srcPath) << " " << getFileSize(srcPath);
+    file.close();
+}
+
+SdkLock::SdkLock() : _handle(nullptr), _locked(false) {
+}
+
+SdkLock::~SdkLock() {
+    unlock();
+}
+
+bool SdkLock::tryLock() {
+    if (_locked) {
+        return true;
+    }
+    
+    HANDLE mutex = CreateMutexA(nullptr, FALSE, "Global\\YuxSdkCompileMutex");
+    if (mutex == nullptr) {
+        return false;
+    }
+    
+    DWORD result = WaitForSingleObject(mutex, 0);
+    if (result == WAIT_OBJECT_0 || result == WAIT_ABANDONED) {
+        _handle = mutex;
+        _locked = true;
+        return true;
+    }
+    
+    if (result == WAIT_TIMEOUT) {
+        std::cout << "Waiting for another SDK compilation to complete..." << std::endl;
+        std::cout.flush();
+        
+        result = WaitForSingleObject(mutex, INFINITE);
+        if (result == WAIT_OBJECT_0 || result == WAIT_ABANDONED) {
+            _handle = mutex;
+            _locked = true;
+            return true;
+        }
+    }
+    
+    CloseHandle(mutex);
+    return false;
+}
+
+void SdkLock::unlock() {
+    if (_locked && _handle) {
+        ReleaseMutex((HANDLE)_handle);
+        CloseHandle((HANDLE)_handle);
+        _handle = nullptr;
+        _locked = false;
+    }
 }

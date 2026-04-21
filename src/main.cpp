@@ -186,7 +186,6 @@ IRResult compileIR(string inputFile, Yux& yux, bool isSdk = false) {
     }
 
     if (isSdk) {
-        // SDK 文件即 yux 模块
         moduleName = "yux";
     }
 
@@ -272,9 +271,6 @@ int wmain(int argc, wchar_t* argv[]) {
     ensureBuildDir();
     string buildDir = getBuildDir();
 
-    BuildCache cache(buildDir);
-    cache.load();
-
     Yux yux;
 
     string sdkPath = findSdkPath();
@@ -285,30 +281,38 @@ int wmain(int argc, wchar_t* argv[]) {
         sdkPath = std::filesystem::absolute(sdkPath).string();
         sdkObjPath = buildDir + "/yux.obj";
 
-        bool needCompile = !std::filesystem::exists(sdkObjPath) || cache.needRecompile(sdkPath);
+        bool needCompile = BuildCache::needRecompile(sdkObjPath, sdkPath);
         if (needCompile) {
-            std::cout << "Compiling SDK: " << sdkPath << std::endl;
-            auto sdkIrr = compileIR(sdkPath, yux, true);
-            auto sdkModule = sdkIrr.module.get();
+            SdkLock sdkLock;
+            sdkLock.tryLock();
+            
+            needCompile = BuildCache::needRecompile(sdkObjPath, sdkPath);
+            if (needCompile) {
+                std::cout << "Compiling SDK: " << sdkPath << std::endl;
+                auto sdkIrr = compileIR(sdkPath, yux, true);
+                auto sdkModule = sdkIrr.module.get();
 
-            if (emitIr) {
-                string sdkIrPath = buildDir + "/yux.ll";
-                std::error_code ec;
-                llvm::raw_fd_ostream irFile(sdkIrPath, ec);
-                if (!ec) {
-                    sdkModule->print(irFile, nullptr);
-                    irFile.flush();
-                    std::cout << "Write SDK IR: " << sdkIrPath << std::endl;
+                if (emitIr) {
+                    string sdkIrPath = buildDir + "/yux.ll";
+                    std::error_code ec;
+                    llvm::raw_fd_ostream irFile(sdkIrPath, ec);
+                    if (!ec) {
+                        sdkModule->print(irFile, nullptr);
+                        irFile.flush();
+                        std::cout << "Write SDK IR: " << sdkIrPath << std::endl;
+                    }
                 }
-            }
 
-            if (!compileIRToObj(sdkModule, sdkObjPath)) {
-                std::cerr << "Failed to compile SDK to object file" << std::endl;
-                return 1;
+                if (!compileIRToObj(sdkModule, sdkObjPath)) {
+                    std::cerr << "Failed to compile SDK to object file" << std::endl;
+                    return 1;
+                }
+                std::cout << "Write SDK obj: " << sdkObjPath << std::endl;
+                BuildCache::updateCache(sdkObjPath, sdkPath);
+                compiled = true;
+            } else {
+                parseAST(sdkPath, yux, true);
             }
-            std::cout << "Write SDK obj: " << sdkObjPath << std::endl;
-            cache.updateCache(sdkPath);
-            compiled = true;
         } else {
             parseAST(sdkPath, yux, true);
         }
@@ -317,7 +321,7 @@ int wmain(int argc, wchar_t* argv[]) {
     std::string baseName = llvm::sys::path::stem(inputFile).str();
     std::string objPath = buildDir + "/" + baseName + ".obj";
 
-    bool needCompile = !std::filesystem::exists(objPath) || cache.needRecompile(inputFile);
+    bool needCompile = BuildCache::needRecompile(objPath, inputFile);
     if (needCompile) {
         auto irr = compileIR(inputFile, yux, false);
         auto module = irr.module.get();
@@ -341,7 +345,7 @@ int wmain(int argc, wchar_t* argv[]) {
         }
 
         std::cout << "Write obj: " << objPath << std::endl;
-        cache.updateCache(inputFile);
+        BuildCache::updateCache(objPath, inputFile);
         compiled = true;
     }
 
@@ -397,7 +401,6 @@ int wmain(int argc, wchar_t* argv[]) {
         std::cout << "no work to do." << std::endl;
     }
 
-    cache.save();
     std::cout.flush();
     std::cerr.flush();
     _exit(0);
