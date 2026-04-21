@@ -329,6 +329,9 @@ TypeInfo ExprDotNode::getType() const {
         if (member == "_len" || member == "_cap") {
             return TypeInfo("fn() i64");
         }
+        if (member == "_push" || member == "_clear" || member == "_set_len") {
+            return TypeInfo("fn() ");
+        }
     }
     
     auto scope = findNearestScope();
