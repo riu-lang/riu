@@ -1,14 +1,25 @@
 {
   "name": "yux-vscode",
   "displayName": "yux-vscode",
-  "description": "",
-  "version": "0.0.11",
+  "description": "Yux language support for VS Code",
+  "version": "0.1.0",
+  "author": "yux-lang",
+  "license": "MIT",
   "engines": {
     "vscode": "^1.107.1"
   },
   "categories": [
-    "Other"
+    "Programming Languages"
   ],
+  "capabilities": {
+    "definitionProvider": true,
+    "documentSymbolProvider": true,
+    "referencesProvider": true,
+    "completionProvider": {
+      "resolveProvider": false,
+      "triggerCharacters": [".", " ", "(", "{"]
+    }
+  },
   "activationEvents": [
     "onLanguage:yux"
   ],
