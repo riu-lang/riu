@@ -6,7 +6,7 @@ string Mangler::paramList(const vector<TypeInfo>& params) {
     string s = "(";
     for (size_t i = 0; i < params.size(); ++i) {
         if (i > 0) s += ",";
-        s += params[i].getFullName();
+        s += params[i].getGenericMangleName();
     }
     s += ")";
     return s;

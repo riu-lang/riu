@@ -2675,18 +2675,155 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                     _substStack.pop_back();
                 }
             } else {
-                // 非泛型函数，进行重载解析
-                resolveFnOverload(_file, _yux ? _yux->sdkFile() : nullptr, fnName,
-                                  node->getArgs(), node->getLineNumber());
+                auto structDecl = _file->getStructDecl(fnName);
+                p<FileNode> structOwner = _file;
+                if (!structDecl && _yux && _yux->sdkFile()) {
+                    auto sdkDecl = _yux->sdkFile()->getStructDecl(fnName);
+                    if (sdkDecl) {
+                        structDecl = sdkDecl;
+                        structOwner = _yux->sdkFile();
+                    }
+                }
+                if (structDecl && structDecl->isGeneric() && !node->getTypeArgs().empty()) {
+                    const auto& explicitTypeArgs = node->getTypeArgs();
+                    if (explicitTypeArgs.size() == structDecl->typeParams().size()) {
+                        vector<sp<TypeInfo>> instArgs;
+                        instArgs.reserve(explicitTypeArgs.size());
+                        for (auto& tn : explicitTypeArgs) {
+                            instArgs.push_back(make_shared<TypeInfo>(applySubst(tn->getType())));
+                        }
+                        string effName = fnName;
+                        for (auto& a : instArgs) {
+                            effName += "$" + a->getGenericMangleName();
+                        }
+                        
+                        map<string, TypeInfo> subst;
+                        for (size_t i = 0; i < structDecl->typeParams().size(); ++i) {
+                            subst[structDecl->typeParams()[i]] = *instArgs[i];
+                        }
+                        
+                        auto structImpl = structOwner->getStructImpl(fnName);
+                        if (!structImpl && _yux && _yux->sdkFile() && _yux->sdkFile() != structOwner) {
+                            structImpl = _yux->sdkFile()->getStructImpl(fnName);
+                        }
+                        
+                        if (structImpl) {
+                            for (auto& method : structImpl->methods()) {
+                                if (method->header()->name().getText() == fnName) {
+                                    auto params = method->header()->params();
+                                    for (size_t i = 0; i < params.size() && i < node->getArgs().size(); ++i) {
+                                        auto paramType = params[i]->type();
+                                        if (paramType) {
+                                            TypeInfo instParamType = paramType->getType().substitute(subst);
+                                            if (isIntTypeName(instParamType.name)) {
+                                                tryInferIntType(node->getArgs()[i], instParamType);
+                                            }
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    resolveFnOverload(_file, _yux ? _yux->sdkFile() : nullptr, fnName,
+                                      node->getArgs(), node->getLineNumber());
+                }
             }
         }
     }
 
     vector<llvm::Value*> args;
     vector<TypeInfo> argTypes;
+    
+    bool isGenericCtorCall = false;
+    map<string, TypeInfo> ctorSubst;
+    p<StructImplNode> ctorStructImpl;
+    p<FileNode> ctorStructOwner;
+    string ctorFnName;
+    
+    if (auto calleeLiteral = dynamic_cast<ExprLiteralNode*>(calleeExpr)) {
+        if (auto objLiteral = dynamic_cast<LiteralObjNode*>(calleeLiteral->literal())) {
+            ctorFnName = objLiteral->getValue().getText();
+            auto structDecl = _file->getStructDecl(ctorFnName);
+            p<FileNode> structOwner = _file;
+            if (!structDecl && _yux && _yux->sdkFile()) {
+                auto sdkDecl = _yux->sdkFile()->getStructDecl(ctorFnName);
+                if (sdkDecl) {
+                    structDecl = sdkDecl;
+                    structOwner = _yux->sdkFile();
+                }
+            }
+            if (structDecl && structDecl->isGeneric() && !node->getTypeArgs().empty()) {
+                const auto& explicitTypeArgs = node->getTypeArgs();
+                if (explicitTypeArgs.size() == structDecl->typeParams().size()) {
+                    isGenericCtorCall = true;
+                    ctorStructOwner = structOwner;
+                    
+                    vector<sp<TypeInfo>> instArgs;
+                    instArgs.reserve(explicitTypeArgs.size());
+                    for (auto& tn : explicitTypeArgs) {
+                        instArgs.push_back(make_shared<TypeInfo>(applySubst(tn->getType())));
+                    }
+                    
+                    for (size_t i = 0; i < structDecl->typeParams().size(); ++i) {
+                        ctorSubst[structDecl->typeParams()[i]] = *instArgs[i];
+                    }
+                    
+                    ctorStructImpl = structOwner->getStructImpl(ctorFnName);
+                    if (!ctorStructImpl && _yux && _yux->sdkFile() && _yux->sdkFile() != structOwner) {
+                        ctorStructImpl = _yux->sdkFile()->getStructImpl(ctorFnName);
+                    }
+                }
+            }
+        }
+    }
+    
     for (auto& arg : node->getArgs()) {
-        args.push_back(compileExpr(arg));
-        argTypes.push_back(arg->getType());
+        auto argType = arg->getType();
+        argTypes.push_back(argType);
+        
+        bool passByPtr = false;
+        if (isGenericCtorCall && ctorStructImpl) {
+            for (auto& method : ctorStructImpl->methods()) {
+                if (method->header()->name().getText() == ctorFnName) {
+                    auto params = method->header()->params();
+                    size_t argIdx = args.size();
+                    if (argIdx < params.size()) {
+                        auto paramType = params[argIdx]->type();
+                        if (paramType) {
+                            TypeInfo instParamType = paramType->getType().substitute(ctorSubst);
+                            auto sd = _file->getStructDecl(instParamType.name);
+                            if (!sd && _yux && _yux->sdkFile()) {
+                                sd = _yux->sdkFile()->getStructDecl(instParamType.name);
+                            }
+                            if (sd && !isBuiltinType(instParamType.name)) {
+                                passByPtr = true;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+        
+        if (passByPtr) {
+            if (auto litExpr = dynamic_cast<ExprLiteralNode*>(arg)) {
+                if (auto objLit = dynamic_cast<LiteralObjNode*>(litExpr->literal())) {
+                    auto varName = objLit->getValue().getText();
+                    if (_localVarPtrs.contains(varName)) {
+                        args.push_back(_localVarPtrs[varName]);
+                        continue;
+                    }
+                }
+            }
+            auto val = compileExpr(arg);
+            auto tmpAlloca = _builder.CreateAlloca(getLLVMType(argType), nullptr, "arg_tmp");
+            _builder.CreateStore(val, tmpAlloca);
+            args.push_back(tmpAlloca);
+        } else {
+            args.push_back(compileExpr(arg));
+        }
     }
 
     if (auto dotNode = dynamic_cast<ExprDotNode*>(calleeExpr)) {
@@ -3169,7 +3306,6 @@ llvm::Value* Compiler::compileFunctionCall(
             isGenericCtor = true;
         }
         if (isGenericCtor) {
-            // 泛型实例构造：直接按 effName 生成调用，不走符号表
             auto structType = _structTypes[effName];
             auto alloca = _builder.CreateAlloca(structType, nullptr, effName + "_tmp");
             vector<llvm::Value*> ctorArgs;
@@ -3761,7 +3897,10 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
             }
 
             if (!structPtr) {
-                throw YuxError(node->getLineNumber(), "Cannot access field on non-variable struct");
+                auto baseVal = compileExpr(baseExpr);
+                auto tmpAlloca = _builder.CreateAlloca(getLLVMType(baseType), nullptr, "struct_field_tmp");
+                _builder.CreateStore(baseVal, tmpAlloca);
+                structPtr = tmpAlloca;
             }
 
             llvm::Value* dataPtr = structPtr;

@@ -140,6 +140,14 @@ TypeInfo ExprCallNode::getType() const {
             string ctorFullName = type.name + "." + type.name;
             auto fn = scope->lookupFnSymbol(ctorFullName);
             if (fn) {
+                if (!_typeArgs.empty()) {
+                    vector<sp<TypeInfo>> genericArgs;
+                    genericArgs.reserve(_typeArgs.size());
+                    for (auto& tn : _typeArgs) {
+                        genericArgs.push_back(make_shared<TypeInfo>(tn->getType()));
+                    }
+                    return TypeInfo(type.name, genericArgs);
+                }
                 return TypeInfo(type.name);
             }
         }
