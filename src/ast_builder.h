@@ -57,6 +57,7 @@ public:
     std::any visitComment(yux::yuxParser::CommentContext* ctx) override;
     std::any visitCodeLineEnd(yux::yuxParser::CodeLineEndContext* ctx) override;
     std::any visitProgram(yux::yuxParser::ProgramContext* ctx) override;
+    std::any visitImports(yux::yuxParser::ImportsContext* ctx) override;
     std::any visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) override;
     std::any visitGlobalConst(yux::yuxParser::GlobalConstContext* ctx) override;
     std::any visitFn(yux::yuxParser::FnContext* ctx) override;

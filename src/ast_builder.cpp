@@ -84,6 +84,74 @@ std::any ASTBuilder::visitCodeLineEnd(yux::yuxParser::CodeLineEndContext* ctx) {
     return nullptr;
 }
 
+std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
+    auto file = any_cast_p<FileNode>(stack.back());
+
+    string modName;
+    for (size_t i = 0; i < ctx->pkgs.size(); ++i) {
+        if (i > 0) modName += ".";
+        modName += ctx->pkgs[i]->getText();
+    }
+    bool wildcard = ctx->useAll != nullptr;
+    int line = ctx->getStart() ? (int)ctx->getStart()->getLine() : 0;
+
+    string alias;
+    if (!wildcard && !ctx->pkgs.empty()) {
+        alias = ctx->pkgs.back()->getText();
+    }
+
+    DEBUG_LOG_VAL("  Visit: Import", modName << (wildcard ? ".*" : ""));
+
+    FileNode::UseSpec spec;
+    spec.moduleName = modName;
+    spec.alias = alias;
+    spec.wildcard = wildcard;
+    spec.line = line;
+    file->addUseSpec(spec);
+    file->addImport(modName);
+
+    // `yux.core` 已通过 parent scope 默认注入，跳过。
+    if (modName == "yux.core" || modName == file->moduleName()) {
+        return nullptr;
+    }
+
+    if (!wildcard) {
+        // 命名空间别名导入（`use a.b.c`）尚未实现，见 BUGS.md。
+        throw YuxError(
+            "named module import (`use " + modName + "`) is not yet implemented; "
+            "use `" + modName + ".*` wildcard for now (see BUGS.md)",
+            line);
+    }
+
+    // 通配导入：加载目标文件模块并把非私有成员注入当前文件。
+    auto imported = _yux.loadModule(modName, line);
+
+    // 注入函数符号（保留源模块名，便于 mangler 生成外部符号）。
+    for (auto& [name, overloads] : imported->localFnSymbols()) {
+        for (auto& fnInfo : overloads) {
+            if (fnInfo.moduleName != imported->moduleName()) continue; // 跳过内置（如 to_i8）
+            if (fnInfo.isPrivate) continue;
+            file->registerFnSymbol(name, fnInfo);
+        }
+    }
+
+    // 注入值符号（全局常量、函数占位符等）。
+    for (auto& [name, sym] : imported->localSymbols()) {
+        if (sym.moduleName != imported->moduleName()) continue;
+        if (sym.isPrivate) continue;
+        // 已经有同名符号则不覆盖（主要是避免覆盖本模块自己的声明）。
+        if (file->localSymbols().count(name)) continue;
+        file->registerSymbol(name, sym);
+    }
+
+    // 结构体导入暂未支持：若导入模块定义了结构体，提示用户（BUGS.md #phase-2）。
+    if (!imported->getStructDecls().empty() || !imported->getStructImpls().empty()) {
+        DEBUG_LOG_VAL("  (info) imported module has structs, not yet injectable", modName);
+    }
+
+    return nullptr;
+}
+
 std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
     DEBUG_LOG("Visit: Program");
     p<FileNode> file;

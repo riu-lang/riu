@@ -60,9 +60,9 @@ The `sdk/` directory contains the bootstrap runtime (written in yux itself) — 
 `build/` is **shared between xmake and the yux compiler itself**:
 
 - xmake writes to `build/windows/x64/debug/` and the dotted dirs (`.objs/`, `.deps/`, `.build_cache/`, etc.)
-- yux writes `build/*.exe`, `build/*.ll`, `build/*.obj`, `build/build.cache` directly
+- yux writes `build/*.exe`, `build/*.ll`, `build/*.obj`, `build/*.obj.cache` directly
 
-Safe targeted cleanup: delete `build/*.exe build/*.ll build/*.obj build/build.cache`. For a full reset use `xmake clean -a`. Do not nuke `build/` wholesale.
+Safe targeted cleanup: delete `build/*.exe build/*.ll build/*.obj build/*.obj.cache`. For a full reset use `xmake clean -a`. Do not nuke `build/` wholesale.
 
 ## Language conventions that affect codegen/tests
 

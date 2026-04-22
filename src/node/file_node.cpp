@@ -74,3 +74,8 @@ void FileNode::addImport(const string& mod) {
     for (auto& m : _imports) if (m == mod) return;
     _imports.push_back(mod);
 }
+
+void FileNode::addUseSpec(UseSpec spec) {
+    if (spec.moduleName.empty() || spec.moduleName == _moduleName) return;
+    _useSpecs.push_back(std::move(spec));
+}

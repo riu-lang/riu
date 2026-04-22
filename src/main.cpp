@@ -145,7 +145,7 @@ void parseAST(string inputFile, Yux& yux, bool isSdk = false) {
     }
 
     llvm::LLVMContext context;
-    ASTBuilder astBuilder(context, yux, "yux", true);
+    ASTBuilder astBuilder(context, yux, "yux.core", true);
 
     try {
         astBuilder.build(program);
@@ -186,7 +186,7 @@ IRResult compileIR(string inputFile, Yux& yux, bool isSdk = false) {
     }
 
     if (isSdk) {
-        moduleName = "yux";
+        moduleName = "yux.core";
     }
 
     std::cout << "Compile IR... (module: " << moduleName << ")" << std::endl;
@@ -217,15 +217,15 @@ IRResult compileIR(string inputFile, Yux& yux, bool isSdk = false) {
 
 string findSdkPath() {
 #ifdef _DEBUG
-    if (std::filesystem::exists("sdk/yux.yux")) {
-        return "sdk/yux.yux";
+    if (std::filesystem::exists("sdk/yux/core.yux")) {
+        return "sdk/yux/core.yux";
     }
 #endif
     char exePath[MAX_PATH];
     GetModuleFileNameA(nullptr, exePath, MAX_PATH);
     auto exeDir = llvm::sys::path::parent_path(exePath).str();
     auto rootDir = llvm::sys::path::parent_path(exeDir).str();
-    string sdkPath = rootDir + "/sdk/yux.yux";
+    string sdkPath = rootDir + "/sdk/yux/core.yux";
     if (std::filesystem::exists(sdkPath)) {
         return sdkPath;
     }
@@ -279,7 +279,7 @@ int wmain(int argc, wchar_t* argv[]) {
 
     if (!sdkPath.empty()) {
         sdkPath = std::filesystem::absolute(sdkPath).string();
-        sdkObjPath = buildDir + "/yux.obj";
+        sdkObjPath = buildDir + "/yux.core.obj";
 
         bool needCompile = BuildCache::needRecompile(sdkObjPath, sdkPath);
         if (needCompile) {
@@ -293,7 +293,7 @@ int wmain(int argc, wchar_t* argv[]) {
                 auto sdkModule = sdkIrr.module.get();
 
                 if (emitIr) {
-                    string sdkIrPath = buildDir + "/yux.ll";
+                    string sdkIrPath = buildDir + "/yux.core.ll";
                     std::error_code ec;
                     llvm::raw_fd_ostream irFile(sdkIrPath, ec);
                     if (!ec) {
@@ -321,32 +321,89 @@ int wmain(int argc, wchar_t* argv[]) {
     std::string baseName = llvm::sys::path::stem(inputFile).str();
     std::string objPath = buildDir + "/" + baseName + ".obj";
 
-    bool needCompile = BuildCache::needRecompile(objPath, inputFile);
-    if (needCompile) {
-        auto irr = compileIR(inputFile, yux, false);
-        auto module = irr.module.get();
+    // 始终先解析主文件的 AST（也会触发 `use` 递归加载所有导入模块），
+    // 以便后续决定哪些模块需要重新 codegen 与链接。
+    p<FileNode> mainFile = nullptr;
+    try {
+        mainFile = yux.loadMainFile(inputFile, baseName);
+    } catch (runtime_error& e) {
+        string msg = e.what();
+        if (auto* yuxErr = dynamic_cast<YuxError*>(&e)) {
+            int line = yuxErr->getLineNumber();
+            if (line > 0) {
+                msg = "line " + to_string(line) + ": " + msg;
+            }
+        }
+        std::cerr << msg << std::endl;
+        return 1;
+    }
+
+    auto codegenTo = [&](p<FileNode> file, const std::string& moduleName,
+                         const std::string& objOut, const std::string& irOut) -> bool {
+        std::cout << "Compile IR... (module: " << moduleName << ")" << std::endl;
+        auto ctx = std::make_unique<llvm::LLVMContext>();
+        auto mod = std::make_unique<llvm::Module>(moduleName, *ctx);
+        llvm::IRBuilder<> builder(*ctx);
+        try {
+            Compiler compiler(*ctx, builder, mod.get(), file, &yux, false);
+            compiler.compile(file);
+        } catch (runtime_error& e) {
+            string msg = e.what();
+            if (auto* yuxErr = dynamic_cast<YuxError*>(&e)) {
+                int line = yuxErr->getLineNumber();
+                if (line > 0) msg = "line " + to_string(line) + ": " + msg;
+            }
+            std::cerr << msg << std::endl;
+            return false;
+        }
 
         if (emitIr) {
-            std::string irPath = buildDir + "/" + baseName + ".ll";
             std::error_code ec;
-            llvm::raw_fd_ostream irFile(irPath, ec);
+            llvm::raw_fd_ostream irFile(irOut, ec);
             if (ec) {
                 std::cerr << "Error opening IR file: " << ec.message() << std::endl;
             } else {
-                module->print(irFile, nullptr);
+                mod->print(irFile, nullptr);
                 irFile.flush();
-                std::cout << "Write IR ok: " << irPath << std::endl;
+                std::cout << "Write IR ok: " << irOut << std::endl;
             }
         }
 
-        if (!compileIRToObj(module, objPath)) {
-            std::cerr << "Failed to compile IR to object file" << std::endl;
+        if (!compileIRToObj(mod.get(), objOut)) {
+            std::cerr << "Failed to compile IR to object file: " << objOut << std::endl;
+            return false;
+        }
+        std::cout << "Write obj: " << objOut << std::endl;
+        return true;
+    };
+
+    // 主模块
+    bool needCompile = BuildCache::needRecompile(objPath, inputFile);
+    if (needCompile) {
+        std::string irPath = buildDir + "/" + baseName + ".ll";
+        if (!codegenTo(mainFile, baseName, objPath, irPath)) {
             return 1;
         }
-
-        std::cout << "Write obj: " << objPath << std::endl;
         BuildCache::updateCache(objPath, inputFile);
         compiled = true;
+    }
+
+    // 导入的用户模块
+    std::vector<std::string> modObjPaths;
+    for (auto& modName : yux.loadOrder()) {
+        auto modFile = yux.module(modName);
+        if (!modFile || modFile == yux.sdkFile()) continue;
+        std::string modSrc = yux.modulePath(modName);
+        std::string modObj = buildDir + "/" + modName + ".obj";
+        std::string modIr = buildDir + "/" + modName + ".ll";
+        if (BuildCache::needRecompile(modObj, modSrc)) {
+            if (!codegenTo(modFile, modName, modObj, modIr)) {
+                return 1;
+            }
+            BuildCache::updateCache(modObj, modSrc);
+            compiled = true;
+        }
+        modObjPaths.push_back(modObj);
     }
 
     std::string exePath = buildDir + "/" + baseName + ".exe";
@@ -355,12 +412,18 @@ int wmain(int argc, wchar_t* argv[]) {
     if (!needLink) {
         try {
             auto exeTime = std::filesystem::last_write_time(exePath);
-            auto objTime = std::filesystem::last_write_time(objPath);
-            if (!sdkObjPath.empty()) {
-                auto sdkTime = std::filesystem::last_write_time(sdkObjPath);
-                needLink = (objTime > exeTime) || (sdkTime > exeTime);
-            } else {
-                needLink = objTime > exeTime;
+            if (std::filesystem::last_write_time(objPath) > exeTime) {
+                needLink = true;
+            }
+            if (!sdkObjPath.empty() &&
+                std::filesystem::last_write_time(sdkObjPath) > exeTime) {
+                needLink = true;
+            }
+            for (auto& mo : modObjPaths) {
+                if (std::filesystem::last_write_time(mo) > exeTime) {
+                    needLink = true;
+                    break;
+                }
             }
         } catch (const std::exception& e) {
             needLink = true;
@@ -381,6 +444,9 @@ int wmain(int argc, wchar_t* argv[]) {
 
         if (!sdkObjPath.empty()) {
             args.insert(args.begin() + 2, sdkObjPath.c_str());
+        }
+        for (auto& mo : modObjPaths) {
+            args.insert(args.begin() + 2, mo.c_str());
         }
 
         std::string stdoutStr, stderrStr;

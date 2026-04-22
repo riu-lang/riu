@@ -5,6 +5,8 @@ options {
 }
 
 program:
+   comment*
+   imports*
    (
     fn
    | externDelc
@@ -20,6 +22,12 @@ comment
     ;
 
 codeLineEnd: LineEndComment? LineEnd;
+
+/////////
+// 导入
+/////////
+
+imports: Use Space pkgs+=ID (SymbolDot pkgs+=ID)* (SymbolDot useAll=SymbolMul)? codeLineEnd;
 
 // 外部声明
 // extern {
@@ -288,6 +296,7 @@ Null : 'null';
 Ret : 'ret';
 Struct : 'struct';
 True : 'true';
+Use : 'use';
 
 SymbolAdd: '+';
 SymbolAnd: '&';

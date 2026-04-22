@@ -948,7 +948,9 @@ void Compiler::compile(p<FileNode> file) {
     DEBUG_LOG("Emitting generic function instances");
     emitFnInstances();
 
-    if (!_isSdk) {
+    // 仅在本模块实际定义 `main` 函数时发射 mainStartup（入口壳），
+    // 否则被当作入口模块的用户模块也会发射一份，链接时与主模块冲突。
+    if (!_isSdk && _file->getFunction("main")) {
         DEBUG_LOG("Emitting main startup");
         emitMainStartup();
     }

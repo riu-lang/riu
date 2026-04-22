@@ -1,32 +1,7 @@
-fn arr() {
-  val arr Array<i32> = [10]
-  var x = arr[0]
-  println(x.to_string())
-  x = 10 + 5
-  println(x.to_string())
-  x += 5
-  println(x.to_string())
-}
+use yux.core.*
+use helper.*
 
 fn main() {
-  / 打印
-  val n N = N(1.5)
-  val a = n.n - -2.to_f64()
-  println(a.to_string())
-  arr()
-  val str String = "hello"
-  str.append(c' ')
-  str.append("world")
-  println(str)
-}
-
-struct N {
-  n f64
-}
-
-N {
-  / 构造函数，同结构体名
-  fn N(n f64) {
-    self.n = n
-  }
+    greet()
+    println(add42(8).to_string())
 }

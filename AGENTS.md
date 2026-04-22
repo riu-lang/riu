@@ -60,10 +60,10 @@ yux -d input.yux          # 调试 IR 输出（信息量大，配合 tail 使用
 `build/` **由 xmake 和 yux 编译器共用**：
 
 - xmake 输出：`build/windows/x64/debug/` 及点开头目录（`.objs/`, `.deps/`, `.build_cache/` 等）
-- yux 输出：`build/*.exe`, `build/*.ll`, `build/*.obj`, `build/build.cache`
+- yux 输出：`build/*.exe`, `build/*.ll`, `build/*.obj`, `build/*.obj.cache`
 
 **清理：**
-- 安全清理：删除 `build/*.exe build/*.ll build/*.obj build/build.cache`
+- 安全清理：删除 `build/*.exe build/*.ll build/*.obj build/*.obj.cache`
 - 完全清理：`xmake clean -a`
 - **不要直接删除整个 `build/` 目录**
 

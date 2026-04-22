@@ -44,8 +44,21 @@ public:
     void addImport(const string& mod);
     const vector<string>& imports() const { return _imports; }
 
+    // `use` 指令（源码显式导入）。wildcard=true 表示 `use a.b.*`，
+    // 语义为"导入模块 a.b 的所有非私有成员"。wildcard=false 表示
+    // `use a.b.c`，语义为"引入模块别名 c 指向 a.b.c"（暂未实现，见 BUGS.md）。
+    struct UseSpec {
+        string moduleName;          // 点分，如 "yux.net"
+        string alias;               // 最后一段，如 "net"；wildcard 时未使用
+        bool wildcard = false;      // 是否 `.*`
+        int line = 0;               // 源码行号，用于报错
+    };
+    void addUseSpec(UseSpec spec);
+    const vector<UseSpec>& useSpecs() const { return _useSpecs; }
+
 private:
     vector<string> _imports;
+    vector<UseSpec> _useSpecs;
 };
 
 #endif //YUX_LANG_FILE_NODE_H

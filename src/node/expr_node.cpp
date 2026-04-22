@@ -102,7 +102,46 @@ TypeInfo ExprCallNode::getType() const {
         return TypeInfo();
     }
 
+    // 方法调用（callee 为 ExprDotNode）：直接查方法符号，拿到完整 retType（含泛型 typeArgs）。
+    // 避免走 "fn() <name>" 字符串编码丢失泛型信息（例如 Array<u8> 被编码为 Array_u8）。
     if (type.name.starts_with("fn() ")) {
+        if (auto dotNode = dynamic_cast<ExprDotNode*>(_calleeExpr)) {
+            auto baseType = dotNode->baseExpr()->getType();
+            TypeInfo actualType = baseType;
+            if (baseType.isRef()) {
+                if (auto e = baseType.refElementType()) actualType = *e;
+            } else if (baseType.isBox()) {
+                if (auto e = baseType.boxElementType()) actualType = *e;
+            }
+            auto scope = findNearestScope();
+            FileNode* file = dynamic_cast<FileNode*>(scope);
+            while (!file && scope) {
+                scope = scope->parentScope();
+                file = dynamic_cast<FileNode*>(scope);
+            }
+            if (file) {
+                string methodFullName = actualType.name + "." + dotNode->member();
+                auto methodSym = file->lookupFnSymbol(methodFullName);
+                if (methodSym) {
+                    auto rt = methodSym->retType;
+                    // 结构体泛型实参替换：T→具体类型
+                    if (actualType.isGeneric()) {
+                        auto structDecl = file->getStructDecl(actualType.name);
+                        if (structDecl && structDecl->isGeneric()
+                            && structDecl->typeParams().size() == actualType.genericArgs.size()) {
+                            std::map<std::string, TypeInfo> subst;
+                            for (size_t i = 0; i < actualType.genericArgs.size(); ++i) {
+                                auto& a = actualType.genericArgs[i];
+                                subst[structDecl->typeParams()[i]] = a ? *a : TypeInfo();
+                            }
+                            rt = rt.substitute(subst);
+                        }
+                    }
+                    DEBUG_LOG_VAL("ExprCallNode::getType - method returning", rt.getFullName());
+                    return rt;
+                }
+            }
+        }
         TypeInfo retType(type.name.substr(5));
         // 显式泛型调用 e<T>(...): 将 retType 按 typeParams → typeArgs 替换
         if (!_typeArgs.empty()) {
