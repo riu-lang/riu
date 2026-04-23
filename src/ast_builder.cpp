@@ -116,11 +116,20 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
     }
 
     if (!wildcard) {
-        // 命名空间别名导入（`use a.b.c`）尚未实现，见 BUGS.md。
-        throw YuxError(
-            "named module import (`use " + modName + "`) is not yet implemented; "
-            "use `" + modName + ".*` wildcard for now (see BUGS.md)",
-            line);
+        // 命名空间别名导入：`use a.b.c` 把 `c` 作为指向 a.b.c 的模块别名。
+        // 冲突检测：若当前作用域已有同名符号，立即报错。
+        if (file->hasSymbol(alias)) {
+            throw YuxError(
+                "module alias `" + alias + "` conflicts with existing symbol",
+                line);
+        }
+        auto target = _yux.loadModule(modName, line);
+        SymbolInfo aliasSym(SymbolKind::Module, alias, TypeInfo());
+        aliasSym.moduleName = modName;
+        file->registerSymbol(alias, aliasSym);
+        file->addModuleAlias(alias, target);
+        DEBUG_LOG_VAL("    register module alias", alias << " -> " << modName);
+        return nullptr;
     }
 
     // 通配导入：加载目标文件模块并把非私有成员注入当前文件。
@@ -144,9 +153,19 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
         file->registerSymbol(name, sym);
     }
 
-    // 结构体导入暂未支持：若导入模块定义了结构体，提示用户（BUGS.md #phase-2）。
-    if (!imported->getStructDecls().empty() || !imported->getStructImpls().empty()) {
-        DEBUG_LOG_VAL("  (info) imported module has structs, not yet injectable", modName);
+    // Phase 2 — 结构体通配导入：把导入模块的非私有 struct 注册为本文件可见
+    // 的 Struct 符号（用于类型解析），并通过 wildcardImports 让
+    // FileNode::getStructDecl/getStructImpl 回退检索到原始声明（保留 owner
+    // FileNode，使 Compiler 用源模块名 mangle 类型与方法符号）。
+    file->addWildcardImport(imported);
+    for (auto* decl : imported->getStructDecls()) {
+        if (!decl) continue;
+        // 注意：decl->name() 按值返回 Token，绑定 .getText() 的引用会悬空，需复制成 string。
+        string sname = decl->name().getText();
+        if (sname.empty() || sname[0] == '_') continue; // 私有结构体不注入
+        if (file->lookupSymbol(sname)) continue;        // 已有同名符号则跳过
+        file->registerSymbol(sname, {SymbolKind::Struct, sname, TypeInfo(sname)});
+        DEBUG_LOG_VAL("    inject imported struct", sname << " from " << imported->moduleName());
     }
 
     return nullptr;

@@ -1,7 +1,0 @@
-/ smoke test for `use helper.*`
-
-fn greet() {
-  println("hello from helper")
-}
-
-fn add42(x i32) i32 = x + 42

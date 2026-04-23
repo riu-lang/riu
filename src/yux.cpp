@@ -44,6 +44,19 @@ p<FileNode> Yux::createSdkFile() {
     return _sdkFile;
 }
 
+void Yux::initProjectRoot(const string& mainFileAbsPath) {
+    namespace fs = std::filesystem;
+    auto dir = fs::path(mainFileAbsPath).parent_path();
+    for (auto cur = dir; !cur.empty(); cur = cur.parent_path()) {
+        if (fs::exists(cur / "yux.toml")) {
+            _projectRoot = cur.string();
+            return;
+        }
+        if (cur == cur.root_path()) break;
+    }
+    _projectRoot = dir.string();
+}
+
 p<FileNode> Yux::module(const string& moduleName) const {
     auto it = _modules.find(moduleName);
     if (it != _modules.end()) return it->second;
@@ -105,11 +118,15 @@ p<FileNode> Yux::loadModule(const string& moduleName, int errorLine) {
     }
     relPath += ".yux";
 
-    if (!std::filesystem::exists(relPath)) {
-        throw YuxError("module not found: " + moduleName + " (expected file " + relPath + ")", errorLine);
+    std::filesystem::path fullPath = _projectRoot.empty()
+        ? std::filesystem::path(relPath)
+        : std::filesystem::path(_projectRoot) / relPath;
+
+    if (!std::filesystem::exists(fullPath)) {
+        throw YuxError("module not found: " + moduleName + " (expected file " + fullPath.string() + ")", errorLine);
     }
 
-    string absPath = std::filesystem::absolute(relPath).string();
+    string absPath = std::filesystem::absolute(fullPath).string();
 
     _loadStack.push_back(moduleName);
     p<FileNode> fileNode = nullptr;

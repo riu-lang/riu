@@ -1,0 +1,21 @@
+/ smoke test for `use helper.*`
+
+struct Point {
+  x i32
+  y i32
+}
+
+Point {
+  fn Point(x i32, y i32) {
+    self.x = x
+    self.y = y
+  }
+
+  fn sum() i32 = self.x + self.y
+}
+
+fn greet() {
+  println("hello from helper")
+}
+
+fn add42(x i32) i32 = x + 42

@@ -99,6 +99,30 @@ TypeInfo ExprCallNode::getType() const {
                 }
             }
         }
+        // 模块别名调用 `alias.fn(args)`：在目标模块内解析 fn 的重载。
+        if (auto dotNode = dynamic_cast<ExprDotNode*>(_calleeExpr)) {
+            if (auto baseLit = dynamic_cast<ExprLiteralNode*>(dotNode->baseExpr())) {
+                if (auto objLit = dynamic_cast<LiteralObjNode*>(baseLit->literal())) {
+                    auto aliasName = objLit->getValue().getText();
+                    auto scope = findNearestScope();
+                    FileNode* file = dynamic_cast<FileNode*>(scope);
+                    while (!file && scope) {
+                        scope = scope->parentScope();
+                        file = dynamic_cast<FileNode*>(scope);
+                    }
+                    if (file) {
+                        if (auto* target = file->moduleAlias(aliasName)) {
+                            vector<TypeInfo> argTypes;
+                            for (auto& arg : _args) {
+                                argTypes.push_back(arg->getType());
+                            }
+                            auto* fn = target->lookupFnSymbolWithParams(dotNode->member(), argTypes);
+                            if (fn) return fn->retType;
+                        }
+                    }
+                }
+            }
+        }
         return TypeInfo();
     }
 
@@ -345,7 +369,22 @@ string ExprDotNode::member() const {
 TypeInfo ExprDotNode::getType() const {
     auto member = _member.getText();
     DEBUG_LOG_VAL("ExprDotNode::getType - member", member);
-    
+
+    // 模块别名：`alias.fn` → 目标模块的自由函数，返回 "fn_overload" 由
+    // ExprCallNode::getType 用 argTypes 在目标模块内解析出具体重载。
+    if (auto baseLit = dynamic_cast<ExprLiteralNode*>(_baseExpr)) {
+        if (auto objLit = dynamic_cast<LiteralObjNode*>(baseLit->literal())) {
+            auto aliasName = objLit->getValue().getText();
+            auto scope = findNearestScope();
+            if (scope) {
+                auto sym = scope->lookupSymbol(aliasName);
+                if (sym && sym->kind == SymbolKind::Module) {
+                    return TypeInfo("fn_overload");
+                }
+            }
+        }
+    }
+
     auto baseType = _baseExpr->getType();
     TypeInfo actualType = baseType;
     

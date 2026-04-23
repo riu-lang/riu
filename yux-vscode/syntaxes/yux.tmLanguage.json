@@ -4,6 +4,7 @@
   "scopeName": "source.yux",
   "patterns": [
     { "include": "#comments" },
+    { "include": "#imports" },
     { "include": "#keywords" },
     { "include": "#codepoints" },
     { "include": "#strings" },
@@ -16,6 +17,19 @@
     { "include": "#identifiers" }
   ],
   "repository": {
+    "imports": {
+      "patterns": [
+        {
+          "name": "meta.import.yux",
+          "match": "\\b(use)\\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\\.[a-zA-Z_][a-zA-Z0-9_]*)*)(\\.\\*)?",
+          "captures": {
+            "1": { "name": "keyword.other.import.yux" },
+            "2": { "name": "entity.name.module.yux" },
+            "3": { "name": "keyword.operator.wildcard.yux" }
+          }
+        }
+      ]
+    },
     "generics": {
       "patterns": [
         {

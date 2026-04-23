@@ -362,9 +362,22 @@ llvm::Function* Compiler::getMethodFunction(
     // paramTypes 不含 self；方法名等于结构体名时视为构造函数
     bool isCtor = methodName == structName;
     bool isPriv = !methodName.empty() && methodName[0] == '_';
+
+    // 选择 mangle 用的模块名：本地结构体用本模块；通配导入而来的结构体
+    // 用其源模块；都不存在时回退到 SDK 模块（如 yux.core 内置类型方法）。
+    string ownerModule = _file->moduleName();
+    if (!isBuiltinType(structName)) {
+        auto* owner = _file->getStructOwner(structName);
+        if (owner && owner != _file) {
+            ownerModule = owner->moduleName();
+        } else if (!owner && _yux && _yux->sdkFile() && _yux->sdkFile() != _file
+                   && _yux->sdkFile()->getStructDecl(structName)) {
+            ownerModule = _yux->sdkFile()->moduleName();
+        }
+    }
     string mangledName = isCtor
-        ? Mangler::ctor(_file->moduleName(), structName, paramTypes)
-        : Mangler::method(_file->moduleName(), structName, methodName, paramTypes, isPriv);
+        ? Mangler::ctor(ownerModule, structName, paramTypes)
+        : Mangler::method(ownerModule, structName, methodName, paramTypes, isPriv);
     DEBUG_LOG_VAL("    -> mangled name", mangledName);
 
     auto func = _module->getFunction(mangledName);
@@ -403,8 +416,11 @@ llvm::Function* Compiler::getDestructorFunction(const string& structName) {
     DEBUG_LOG_VAL("  getDestructorFunction", structName);
 
     string ownerModule = _file->moduleName();
-    if (!_file->getStructDecl(structName) && _yux && _yux->sdkFile()
-        && _yux->sdkFile()->getStructDecl(structName)) {
+    auto* owner = _file->getStructOwner(structName);
+    if (owner && owner != _file) {
+        ownerModule = owner->moduleName();
+    } else if (!owner && _yux && _yux->sdkFile()
+               && _yux->sdkFile()->getStructDecl(structName)) {
         ownerModule = _yux->sdkFile()->moduleName();
     }
     string mangledName = Mangler::dtor(ownerModule, structName);
@@ -1015,6 +1031,16 @@ void Compiler::compileStructDecls() {
             if (structDecl->isGeneric()) continue;
             DEBUG_LOG_VAL("  SDK struct", structDecl->name().getText());
             getOrCreateStructType(structDecl, _yux->sdkFile());
+        }
+    }
+    // 通配导入的用户模块的结构体（Phase 2）
+    for (auto* imp : _file->wildcardImports()) {
+        if (imp == _yux->sdkFile()) continue;
+        DEBUG_LOG_VAL("Compiling imported struct declarations from", imp->moduleName());
+        for (auto structDecl : imp->getStructDecls()) {
+            if (structDecl->isGeneric()) continue;
+            DEBUG_LOG_VAL("  imported struct", structDecl->name().getText());
+            getOrCreateStructType(structDecl, imp);
         }
     }
     DEBUG_LOG_VAL("Compiling file struct declarations", _file->getStructDecls().size());
@@ -2854,6 +2880,32 @@ llvm::Value* Compiler::compileMethodCall(
     p<ExprCallNode> callNode, p<ExprDotNode> dotNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
     auto baseExpr = dotNode->baseExpr();
     auto member = dotNode->member();
+
+    // 模块别名调用：`alias.fn(args)` → 目标模块中的自由函数。
+    if (auto baseLit = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
+        if (auto objLit = dynamic_cast<LiteralObjNode*>(baseLit->literal())) {
+            auto aliasName = objLit->getValue().getText();
+            auto aliasSym = _file->lookupSymbol(aliasName);
+            if (aliasSym && aliasSym->kind == SymbolKind::Module) {
+                auto targetMod = _yux ? _yux->module(aliasSym->moduleName) : nullptr;
+                if (!targetMod) {
+                    throw YuxError(callNode->getLineNumber(),
+                        "module `{}` (alias `{}`) not loaded", aliasSym->moduleName, aliasName);
+                }
+                auto* fnSym = targetMod->lookupFnSymbolWithParams(member, argTypes);
+                if (!fnSym) {
+                    throw YuxError(callNode->getLineNumber(),
+                        "function `{}` not found in module `{}`", member, aliasSym->moduleName);
+                }
+                if (fnSym->isPrivate) {
+                    throw YuxError(callNode->getLineNumber(),
+                        "Cannot call private function `{}` via module alias", member);
+                }
+                return compileKnownFunctionCall(callNode, member, args, argTypes, fnSym);
+            }
+        }
+    }
+
     auto baseType = baseExpr->getType();
 
     bool isBuiltin = isBuiltinType(baseType.name);

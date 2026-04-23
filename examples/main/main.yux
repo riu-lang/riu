@@ -1,0 +1,12 @@
+use yux.core.*
+use helper.*
+use math
+
+fn main() {
+    greet()
+    println(add42(8).to_string())
+    val p = Point(3, 4)
+    println(p.sum().to_string())
+    println(math.square(7).to_string())
+    println(math.cube(3).to_string())
+}

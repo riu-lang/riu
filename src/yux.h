@@ -24,6 +24,9 @@ class Yux {
     // 持有导入模块的 ASTBuilder，使 AST 节点存活至 Yux 析构
     vector<std::unique_ptr<ASTBuilder>> _moduleBuilders;
 
+    // 项目根目录（含 `yux.toml` 的最近祖先目录；否则为主文件所在目录）
+    string _projectRoot;
+
 public:
     Yux();
     ~Yux();
@@ -42,6 +45,11 @@ public:
     // 解析主入口 `.yux` 文件（不走 moduleName → path 映射）。
     // 产生的 ASTBuilder 被 Yux 持有，AST 节点在 Yux 析构前有效。
     p<FileNode> loadMainFile(const string& absPath, const string& moduleName);
+
+    // 从主文件绝对路径向上查找 `yux.toml`，设置项目根目录。
+    // 未找到则使用主文件所在目录。
+    void initProjectRoot(const string& mainFileAbsPath);
+    const string& projectRoot() const { return _projectRoot; }
 
     // 已成功加载的用户模块名列表（按首次加载顺序）。
     const vector<string>& loadOrder() const { return _loadOrder; }

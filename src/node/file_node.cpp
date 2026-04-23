@@ -48,6 +48,11 @@ StructDeclNode* FileNode::getStructDecl(const string& name) const {
             return decl;
         }
     }
+    for (auto* imp : _wildcardImports) {
+        for (auto& decl : imp->_structDecls) {
+            if (decl->name().getText() == name) return decl;
+        }
+    }
     return nullptr;
 }
 
@@ -55,6 +60,11 @@ StructImplNode* FileNode::getStructImpl(const string& name) const {
     for (auto& impl : _structImpls) {
         if (impl->structName() == name) {
             return impl;
+        }
+    }
+    for (auto* imp : _wildcardImports) {
+        for (auto& impl : imp->_structImpls) {
+            if (impl->structName() == name) return impl;
         }
     }
     return nullptr;
@@ -73,6 +83,32 @@ void FileNode::addImport(const string& mod) {
     if (mod.empty() || mod == _moduleName) return;
     for (auto& m : _imports) if (m == mod) return;
     _imports.push_back(mod);
+}
+
+void FileNode::addModuleAlias(const string& alias, FileNode* file) {
+    _moduleAliases[alias] = file;
+}
+
+FileNode* FileNode::moduleAlias(const string& alias) const {
+    auto it = _moduleAliases.find(alias);
+    if (it != _moduleAliases.end()) return it->second;
+    return nullptr;
+}
+
+void FileNode::addWildcardImport(FileNode* file) {
+    if (!file || file == this) return;
+    for (auto* f : _wildcardImports) if (f == file) return;
+    _wildcardImports.push_back(file);
+}
+
+FileNode* FileNode::getStructOwner(const string& name) {
+    for (auto& decl : _structDecls) {
+        if (decl->name().getText() == name) return this;
+    }
+    for (auto* imp : _wildcardImports) {
+        if (imp->getStructDecl(name) || imp->getStructImpl(name)) return imp;
+    }
+    return nullptr;
 }
 
 void FileNode::addUseSpec(UseSpec spec) {

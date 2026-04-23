@@ -57,12 +57,36 @@ bool debug = false;
 
 #endif
 
-string getBuildDir() {
-    return "build";
+string getBuildDir(const string& projectRoot) {
+    if (projectRoot.empty()) return "build";
+    return (std::filesystem::path(projectRoot) / "build").string();
 }
 
-void ensureBuildDir() {
-    std::filesystem::create_directories(getBuildDir());
+void ensureBuildDir(const string& buildDir) {
+    std::filesystem::create_directories(buildDir);
+}
+
+// 模块名 → 构建产物基础路径（不含扩展名）。
+// 多段 `A.B.C` → `<buildDir>/A/B/C`；单段 `X`（本项目内模块）→ `<buildDir>/<projectName>/X`。
+string moduleOutputBase(const string& buildDir, const string& projectName, const string& moduleName) {
+    std::filesystem::path p(buildDir);
+    size_t start = 0;
+    size_t dot = moduleName.find('.');
+    if (dot == string::npos) {
+        p /= projectName;
+        p /= moduleName;
+        return p.string();
+    }
+    while (true) {
+        size_t next = moduleName.find('.', start);
+        if (next == string::npos) {
+            p /= moduleName.substr(start);
+            break;
+        }
+        p /= moduleName.substr(start, next - start);
+        start = next + 1;
+    }
+    return p.string();
 }
 
 bool compileIRToObj(llvm::Module* module, const std::string& outputPath) {
@@ -268,10 +292,17 @@ int wmain(int argc, wchar_t* argv[]) {
 
     inputFile = std::filesystem::absolute(inputFile).string();
 
-    ensureBuildDir();
-    string buildDir = getBuildDir();
-
     Yux yux;
+    yux.initProjectRoot(inputFile);
+    std::cout << "Project root: " << yux.projectRoot() << std::endl;
+
+    string buildDir = getBuildDir(yux.projectRoot());
+    ensureBuildDir(buildDir);
+
+    // 项目名：暂取项目根目录名（yux.toml 目前为空，无 name 字段）。
+    string projectName = std::filesystem::path(yux.projectRoot()).filename().string();
+    string projectBuildDir = buildDir + "/" + projectName;
+    ensureBuildDir(projectBuildDir);
 
     string sdkPath = findSdkPath();
     string sdkObjPath;
@@ -279,7 +310,9 @@ int wmain(int argc, wchar_t* argv[]) {
 
     if (!sdkPath.empty()) {
         sdkPath = std::filesystem::absolute(sdkPath).string();
-        sdkObjPath = buildDir + "/yux.core.obj";
+        string sdkBase = moduleOutputBase(buildDir, projectName, "yux.core");
+        std::filesystem::create_directories(std::filesystem::path(sdkBase).parent_path());
+        sdkObjPath = sdkBase + ".obj";
 
         bool needCompile = BuildCache::needRecompile(sdkObjPath, sdkPath);
         if (needCompile) {
@@ -293,7 +326,7 @@ int wmain(int argc, wchar_t* argv[]) {
                 auto sdkModule = sdkIrr.module.get();
 
                 if (emitIr) {
-                    string sdkIrPath = buildDir + "/yux.core.ll";
+                    string sdkIrPath = sdkBase + ".ll";
                     std::error_code ec;
                     llvm::raw_fd_ostream irFile(sdkIrPath, ec);
                     if (!ec) {
@@ -319,7 +352,7 @@ int wmain(int argc, wchar_t* argv[]) {
     }
 
     std::string baseName = llvm::sys::path::stem(inputFile).str();
-    std::string objPath = buildDir + "/" + baseName + ".obj";
+    std::string objPath = projectBuildDir + "/" + baseName + ".obj";
 
     // 始终先解析主文件的 AST（也会触发 `use` 递归加载所有导入模块），
     // 以便后续决定哪些模块需要重新 codegen 与链接。
@@ -380,7 +413,7 @@ int wmain(int argc, wchar_t* argv[]) {
     // 主模块
     bool needCompile = BuildCache::needRecompile(objPath, inputFile);
     if (needCompile) {
-        std::string irPath = buildDir + "/" + baseName + ".ll";
+        std::string irPath = projectBuildDir + "/" + baseName + ".ll";
         if (!codegenTo(mainFile, baseName, objPath, irPath)) {
             return 1;
         }
@@ -394,8 +427,10 @@ int wmain(int argc, wchar_t* argv[]) {
         auto modFile = yux.module(modName);
         if (!modFile || modFile == yux.sdkFile()) continue;
         std::string modSrc = yux.modulePath(modName);
-        std::string modObj = buildDir + "/" + modName + ".obj";
-        std::string modIr = buildDir + "/" + modName + ".ll";
+        std::string modBase = moduleOutputBase(buildDir, projectName, modName);
+        std::filesystem::create_directories(std::filesystem::path(modBase).parent_path());
+        std::string modObj = modBase + ".obj";
+        std::string modIr = modBase + ".ll";
         if (BuildCache::needRecompile(modObj, modSrc)) {
             if (!codegenTo(modFile, modName, modObj, modIr)) {
                 return 1;
@@ -406,7 +441,7 @@ int wmain(int argc, wchar_t* argv[]) {
         modObjPaths.push_back(modObj);
     }
 
-    std::string exePath = buildDir + "/" + baseName + ".exe";
+    std::string exePath = projectBuildDir + "/" + baseName + ".exe";
 
     bool needLink = !std::filesystem::exists(exePath);
     if (!needLink) {

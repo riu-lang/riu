@@ -56,9 +56,23 @@ public:
     void addUseSpec(UseSpec spec);
     const vector<UseSpec>& useSpecs() const { return _useSpecs; }
 
+    // 通配 `use a.b.*` 导入的源 FileNode。结构体/方法查找会回退到这里。
+    void addWildcardImport(FileNode* file);
+    const vector<FileNode*>& wildcardImports() const { return _wildcardImports; }
+
+    // `use a.b.c` 引入的模块别名 → 目标 FileNode。用于类型推断 / 调用分发。
+    void addModuleAlias(const string& alias, FileNode* file);
+    FileNode* moduleAlias(const string& alias) const;
+
+    // 给定结构体名，返回其所属的 FileNode；本地优先，其次按 wildcardImports
+    // 顺序查找。未找到返回 nullptr。
+    FileNode* getStructOwner(const string& name);
+
 private:
     vector<string> _imports;
     vector<UseSpec> _useSpecs;
+    vector<FileNode*> _wildcardImports;
+    map<string, FileNode*> _moduleAliases;
 };
 
 #endif //YUX_LANG_FILE_NODE_H

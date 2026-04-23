@@ -13,7 +13,8 @@ enum class SymbolKind : u8 {
     Struct,
     Function,
     Variable,
-    TypeParam
+    TypeParam,
+    Module, // `use a.b.c` 引入的模块别名；moduleName 存全限定名
 };
 
 struct SymbolInfo {

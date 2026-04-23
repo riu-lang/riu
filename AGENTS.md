@@ -9,7 +9,7 @@
 - 环境：Windows PowerShell + Clang（无 MSVC 环境变量）
 - LLVM 工具链在 PATH（`llvm/bin`）
 - `build/windows/x64/debug` 默认在 PATH，构建后可直接调用 `yux`
-- 调试工具：Windows 兼容的 `head`、`tail`（使用 `-n 行数` 参数）
+- 调试工具：Windows 兼容的 `head`、`tail`
 - **遇到难以解决的问题时，写入 `BUGS.md`**：包括需要大量改动的、非本次修改引起的、需要大量排查的问题。暂停相关任务，向用户说明情况。
 
 ## 常用命令
