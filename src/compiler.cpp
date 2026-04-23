@@ -2881,6 +2881,42 @@ llvm::Value* Compiler::compileMethodCall(
     auto baseExpr = dotNode->baseExpr();
     auto member = dotNode->member();
 
+    // 包链式调用：`pkg.s1. .. .sN(args)` → pkg/s1/.../s(N-1).yux 的自由函数 sN。
+    {
+        string aliasName;
+        vector<string> segs;
+        if (ExprDotNode::parseChain(dotNode, aliasName, segs) && segs.size() >= 2) {
+            auto aliasSym = _file->lookupSymbol(aliasName);
+            if (aliasSym && (aliasSym->kind == SymbolKind::Package || aliasSym->kind == SymbolKind::Module)
+                && _file->isAmbiguousAlias(aliasName)) {
+                _file->throwAmbiguousAlias(aliasName, callNode->getLineNumber());
+            }
+            if (aliasSym && aliasSym->kind == SymbolKind::Package) {
+                string childKey;
+                for (size_t i = 0; i + 1 < segs.size(); ++i) {
+                    if (i) childKey += ".";
+                    childKey += segs[i];
+                }
+                auto* target = _file->packageChild(aliasName, childKey);
+                if (!target) {
+                    throw YuxError(callNode->getLineNumber(),
+                        "module `{}` not found in package `{}`", childKey, aliasSym->moduleName);
+                }
+                const string& fnName = segs.back();
+                auto* fnSym = target->lookupFnSymbolWithParams(fnName, argTypes);
+                if (!fnSym) {
+                    throw YuxError(callNode->getLineNumber(),
+                        "function `{}` not found in module `{}.{}`", fnName, aliasSym->moduleName, childKey);
+                }
+                if (fnSym->isPrivate) {
+                    throw YuxError(callNode->getLineNumber(),
+                        "Cannot call private function `{}` via package alias", fnName);
+                }
+                return compileKnownFunctionCall(callNode, fnName, args, argTypes, fnSym);
+            }
+        }
+    }
+
     // 模块别名调用：`alias.fn(args)` → 目标模块中的自由函数。
     if (auto baseLit = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
         if (auto objLit = dynamic_cast<LiteralObjNode*>(baseLit->literal())) {

@@ -84,6 +84,22 @@ std::any ASTBuilder::visitCodeLineEnd(yux::yuxParser::CodeLineEndContext* ctx) {
     return nullptr;
 }
 
+void ASTBuilder::preloadPackageChildren(FileNode* file, const string& alias, const string& pkgModName,
+                                         const string& relPrefix, int errorLine) {
+    for (auto& child : _yux.listPackageYuxChildren(pkgModName)) {
+        string childMod = pkgModName + "." + child;
+        auto childFile = _yux.loadModule(childMod, errorLine);
+        string key = relPrefix.empty() ? child : (relPrefix + "." + child);
+        file->addPackageChild(alias, key, childFile);
+        DEBUG_LOG_VAL("    register package child", alias << "." << key << " -> " << childMod);
+    }
+    for (auto& sub : _yux.listPackageSubdirs(pkgModName)) {
+        string subMod = pkgModName + "." + sub;
+        string nextPrefix = relPrefix.empty() ? sub : (relPrefix + "." + sub);
+        preloadPackageChildren(file, alias, subMod, nextPrefix, errorLine);
+    }
+}
+
 std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
     auto file = any_cast_p<FileNode>(stack.back());
 
@@ -115,13 +131,31 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
         return nullptr;
     }
 
+    auto pathKind = _yux.modulePathKind(modName);
+    if (pathKind == Yux::ModulePathKind::Conflict) {
+        throw YuxError(
+            "module `" + modName + "` is ambiguous: both `" + modName + ".yux` and `" + modName + "/` exist",
+            line);
+    }
+
     if (!wildcard) {
-        // 命名空间别名导入：`use a.b.c` 把 `c` 作为指向 a.b.c 的模块别名。
+        // 命名空间别名导入：`use a.b.c` 把 `c` 作为指向 a.b.c 的模块/包别名。
         // 冲突检测：若当前作用域已有同名符号，立即报错。
         if (file->hasSymbol(alias)) {
             throw YuxError(
                 "module alias `" + alias + "` conflicts with existing symbol",
                 line);
+        }
+        if (pathKind == Yux::ModulePathKind::Package) {
+            // 目录作为包别名：`use math` 其中 math/ 是目录。
+            // 注册 Package 符号，并递归加载所有子孙 .yux（点分子路径为 key）。
+            SymbolInfo aliasSym(SymbolKind::Package, alias, TypeInfo());
+            aliasSym.moduleName = modName;
+            file->registerSymbol(alias, aliasSym);
+            file->addPackageAlias(alias, modName);
+            preloadPackageChildren(file, alias, modName, "", line);
+            DEBUG_LOG_VAL("    register package alias", alias << " -> " << modName);
+            return nullptr;
         }
         auto target = _yux.loadModule(modName, line);
         SymbolInfo aliasSym(SymbolKind::Module, alias, TypeInfo());
@@ -132,7 +166,48 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
         return nullptr;
     }
 
-    // 通配导入：加载目标文件模块并把非私有成员注入当前文件。
+    // 目录（包）通配导入：`use pkg.*` 把 pkg/ 下每个 .yux 注册为模块别名，
+    // 每个子目录注册为 Package 别名（其下的 .yux 递归预加载）。
+    if (pathKind == Yux::ModulePathKind::Package) {
+        // 通配注入的别名在 _wildcardAliasSources 中记录来源；已注入过的同名别名不
+        // 立即报错，而是追加来源，留到使用点检查歧义（Phase 5）。
+        for (auto& child : _yux.listPackageYuxChildren(modName)) {
+            string childMod = modName + "." + child;
+            bool alreadyWildcard = file->wildcardAliasSources(child) != nullptr;
+            // 非通配来源（本地声明 / `use X.Y` 非通配引入）优先，直接跳过。
+            if (!alreadyWildcard && file->hasSymbol(child)) continue;
+            if (!alreadyWildcard) {
+                auto target = _yux.loadModule(childMod, line);
+                SymbolInfo aliasSym(SymbolKind::Module, child, TypeInfo());
+                aliasSym.moduleName = childMod;
+                file->registerSymbol(child, aliasSym);
+                file->addModuleAlias(child, target);
+                DEBUG_LOG_VAL("    register module alias (from pkg.*)", child << " -> " << childMod);
+            } else {
+                DEBUG_LOG_VAL("    alias collision (pkg.*), mark ambiguous", child << " <- " << childMod);
+            }
+            file->addWildcardAliasSource(child, childMod);
+        }
+        for (auto& sub : _yux.listPackageSubdirs(modName)) {
+            string subMod = modName + "." + sub;
+            bool alreadyWildcard = file->wildcardAliasSources(sub) != nullptr;
+            if (!alreadyWildcard && file->hasSymbol(sub)) continue;
+            if (!alreadyWildcard) {
+                SymbolInfo subSym(SymbolKind::Package, sub, TypeInfo());
+                subSym.moduleName = subMod;
+                file->registerSymbol(sub, subSym);
+                file->addPackageAlias(sub, subMod);
+                preloadPackageChildren(file, sub, subMod, "", line);
+                DEBUG_LOG_VAL("    register package alias (from pkg.*)", sub << " -> " << subMod);
+            } else {
+                DEBUG_LOG_VAL("    alias collision (pkg.*), mark ambiguous", sub << " <- " << subMod);
+            }
+            file->addWildcardAliasSource(sub, subMod);
+        }
+        return nullptr;
+    }
+
+    // 通配导入（文件模块）：加载目标文件模块并把非私有成员注入当前文件。
     auto imported = _yux.loadModule(modName, line);
 
     // 注入函数符号（保留源模块名，便于 mangler 生成外部符号）。

@@ -54,6 +54,11 @@ public:
 
     p<FileNode> build(yux::yuxParser::ProgramContext* ctx);
 
+    // 递归预加载包 `pkgModName` 下的所有 .yux 后代模块，按点分相对路径（相对于 pkgModName）
+    // 注册到 `file` 的 packageChild 表下（键形如 "a.b.inner"）。中间子目录不单独注册。
+    void preloadPackageChildren(FileNode* file, const string& alias, const string& pkgModName,
+                                const string& relPrefix, int errorLine);
+
     std::any visitComment(yux::yuxParser::CommentContext* ctx) override;
     std::any visitCodeLineEnd(yux::yuxParser::CodeLineEndContext* ctx) override;
     std::any visitProgram(yux::yuxParser::ProgramContext* ctx) override;

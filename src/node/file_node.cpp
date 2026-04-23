@@ -95,6 +95,62 @@ FileNode* FileNode::moduleAlias(const string& alias) const {
     return nullptr;
 }
 
+void FileNode::addPackageAlias(const string& alias, const string& dottedPath) {
+    _packageAliases[alias] = dottedPath;
+}
+
+const string* FileNode::packageAlias(const string& alias) const {
+    auto it = _packageAliases.find(alias);
+    if (it != _packageAliases.end()) return &it->second;
+    return nullptr;
+}
+
+void FileNode::addPackageChild(const string& alias, const string& child, FileNode* file) {
+    _packageChildren[alias][child] = file;
+}
+
+FileNode* FileNode::packageChild(const string& alias, const string& child) const {
+    auto it = _packageChildren.find(alias);
+    if (it == _packageChildren.end()) return nullptr;
+    auto jt = it->second.find(child);
+    if (jt == it->second.end()) return nullptr;
+    return jt->second;
+}
+
+void FileNode::addWildcardAliasSource(const string& alias, const string& sourceModule) {
+    auto& sources = _wildcardAliasSources[alias];
+    for (auto& s : sources) {
+        if (s == sourceModule) return;
+    }
+    sources.push_back(sourceModule);
+}
+
+const vector<string>* FileNode::wildcardAliasSources(const string& alias) const {
+    auto it = _wildcardAliasSources.find(alias);
+    if (it == _wildcardAliasSources.end()) return nullptr;
+    return &it->second;
+}
+
+bool FileNode::isAmbiguousAlias(const string& alias) const {
+    auto it = _wildcardAliasSources.find(alias);
+    if (it == _wildcardAliasSources.end()) return false;
+    return it->second.size() >= 2;
+}
+
+void FileNode::throwAmbiguousAlias(const string& alias, int line) const {
+    auto it = _wildcardAliasSources.find(alias);
+    string msg = "`" + alias + "` is ambiguous, matched";
+    if (it != _wildcardAliasSources.end()) {
+        for (size_t i = 0; i < it->second.size(); ++i) {
+            msg += (i == 0 ? " " : " and ");
+            msg += it->second[i];
+        }
+    }
+    YuxError err(msg);
+    err.setLineNumber(line);
+    throw err;
+}
+
 void FileNode::addWildcardImport(FileNode* file) {
     if (!file || file == this) return;
     for (auto* f : _wildcardImports) if (f == file) return;

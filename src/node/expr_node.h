@@ -169,6 +169,12 @@ public:
     [[nodiscard]] const p<ExprNode>& baseExpr() const;
     [[nodiscard]] string member() const;
     [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] int resolveLineNumber() const override;
+
+    // 解析形如 `aliasLit.s1.s2...sN` 的 Dot 链。
+    // 成功时：aliasName 置为根字面量；segments 按顺序存放 [s1, ..., sN]（不含 alias）。
+    // 失败返回 false（链底不是字面量对象）。
+    static bool parseChain(const ExprDotNode* top, string& aliasName, vector<string>& segments);
 };
 
 class ExprCompareNode : public ExprNode {

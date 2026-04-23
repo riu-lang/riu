@@ -64,6 +64,21 @@ public:
     void addModuleAlias(const string& alias, FileNode* file);
     FileNode* moduleAlias(const string& alias) const;
 
+    // `use a.b` 中 a.b 是目录 → 包别名 `b` 指向点分路径 "a.b"，并记录直接 .yux 子项
+    // 对应的 FileNode。支持 `b.child.fn()` 形式调用（单层子模块）。
+    void addPackageAlias(const string& alias, const string& dottedPath);
+    const string* packageAlias(const string& alias) const;
+    void addPackageChild(const string& alias, const string& child, FileNode* file);
+    FileNode* packageChild(const string& alias, const string& child) const;
+
+    // 通配导入注入的别名来源追踪。同名别名被多个 `use X.*` 注入时，两个源模块
+    // 都会被记录；查找时再判定为歧义。
+    void addWildcardAliasSource(const string& alias, const string& sourceModule);
+    const vector<string>* wildcardAliasSources(const string& alias) const;
+    bool isAmbiguousAlias(const string& alias) const;
+    // 查找点若发现 alias 歧义，调用此方法抛出带候选列表的错误。
+    [[noreturn]] void throwAmbiguousAlias(const string& alias, int line) const;
+
     // 给定结构体名，返回其所属的 FileNode；本地优先，其次按 wildcardImports
     // 顺序查找。未找到返回 nullptr。
     FileNode* getStructOwner(const string& name);
@@ -73,6 +88,9 @@ private:
     vector<UseSpec> _useSpecs;
     vector<FileNode*> _wildcardImports;
     map<string, FileNode*> _moduleAliases;
+    map<string, string> _packageAliases;                    // alias → dotted path
+    map<string, map<string, FileNode*>> _packageChildren;   // alias → { child file name → FileNode }
+    map<string, vector<string>> _wildcardAliasSources;      // alias → 注入过该别名的源模块点分路径列表
 };
 
 #endif //YUX_LANG_FILE_NODE_H

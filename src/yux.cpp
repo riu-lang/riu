@@ -93,6 +93,56 @@ p<FileNode> Yux::loadMainFile(const string& absPath, const string& moduleName) {
     return fileNode;
 }
 
+Yux::ModulePathKind Yux::modulePathKind(const string& moduleName) const {
+    namespace fs = std::filesystem;
+    if (moduleName.empty()) return ModulePathKind::NotFound;
+    string rel = moduleName;
+    for (auto& c : rel) if (c == '.') c = '/';
+    fs::path root = _projectRoot.empty() ? fs::path() : fs::path(_projectRoot);
+    fs::path dirPath = root.empty() ? fs::path(rel) : (root / rel);
+    fs::path filePath = dirPath; filePath += ".yux";
+    bool hasFile = fs::exists(filePath) && fs::is_regular_file(filePath);
+    bool hasDir  = fs::exists(dirPath) && fs::is_directory(dirPath);
+    if (hasFile && hasDir) return ModulePathKind::Conflict;
+    if (hasFile) return ModulePathKind::File;
+    if (hasDir)  return ModulePathKind::Package;
+    return ModulePathKind::NotFound;
+}
+
+vector<string> Yux::listPackageYuxChildren(const string& moduleName) const {
+    namespace fs = std::filesystem;
+    vector<string> out;
+    string rel = moduleName;
+    for (auto& c : rel) if (c == '.') c = '/';
+    fs::path root = _projectRoot.empty() ? fs::path() : fs::path(_projectRoot);
+    fs::path dirPath = root.empty() ? fs::path(rel) : (root / rel);
+    if (!fs::exists(dirPath) || !fs::is_directory(dirPath)) return out;
+    for (auto& entry : fs::directory_iterator(dirPath)) {
+        if (!entry.is_regular_file()) continue;
+        auto p = entry.path();
+        if (p.extension() != ".yux") continue;
+        out.push_back(p.stem().string());
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+vector<string> Yux::listPackageSubdirs(const string& moduleName) const {
+    namespace fs = std::filesystem;
+    vector<string> out;
+    string rel = moduleName;
+    for (auto& c : rel) if (c == '.') c = '/';
+    fs::path root = _projectRoot.empty() ? fs::path() : fs::path(_projectRoot);
+    fs::path dirPath = root.empty() ? fs::path(rel) : (root / rel);
+    if (!fs::exists(dirPath) || !fs::is_directory(dirPath)) return out;
+    for (auto& entry : fs::directory_iterator(dirPath)) {
+        if (!entry.is_directory()) continue;
+        out.push_back(entry.path().filename().string());
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
 p<FileNode> Yux::loadModule(const string& moduleName, int errorLine) {
     // 命中缓存
     auto it = _modules.find(moduleName);

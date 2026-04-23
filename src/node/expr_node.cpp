@@ -99,6 +99,35 @@ TypeInfo ExprCallNode::getType() const {
                 }
             }
         }
+        // 包链式调用 `pkg.s1. .. .sN(args)`：s1..s(N-1) 为子路径，sN 为函数名。
+        if (auto dotNode = dynamic_cast<ExprDotNode*>(_calleeExpr)) {
+            string aliasName;
+            vector<string> segs;
+            if (ExprDotNode::parseChain(dotNode, aliasName, segs) && segs.size() >= 2) {
+                auto scope = findNearestScope();
+                FileNode* file = dynamic_cast<FileNode*>(scope);
+                while (!file && scope) {
+                    scope = scope->parentScope();
+                    file = dynamic_cast<FileNode*>(scope);
+                }
+                if (file) {
+                    auto sym = file->lookupSymbol(aliasName);
+                    if (sym && sym->kind == SymbolKind::Package) {
+                        string childKey;
+                        for (size_t i = 0; i + 1 < segs.size(); ++i) {
+                            if (i) childKey += ".";
+                            childKey += segs[i];
+                        }
+                        if (auto* target = file->packageChild(aliasName, childKey)) {
+                            vector<TypeInfo> argTypes;
+                            for (auto& arg : _args) argTypes.push_back(arg->getType());
+                            auto* fn = target->lookupFnSymbolWithParams(segs.back(), argTypes);
+                            if (fn) return fn->retType;
+                        }
+                    }
+                }
+            }
+        }
         // 模块别名调用 `alias.fn(args)`：在目标模块内解析 fn 的重载。
         if (auto dotNode = dynamic_cast<ExprDotNode*>(_calleeExpr)) {
             if (auto baseLit = dynamic_cast<ExprLiteralNode*>(dotNode->baseExpr())) {
@@ -366,20 +395,72 @@ string ExprDotNode::member() const {
     return _member.getText();
 }
 
+int ExprDotNode::resolveLineNumber() const {
+    if (_line > 0) return _line;
+    int memberLine = static_cast<int>(_member.getLine());
+    if (memberLine > 0) return memberLine;
+    if (_baseExpr) return _baseExpr->resolveLineNumber();
+    return -1;
+}
+
+bool ExprDotNode::parseChain(const ExprDotNode* top, string& aliasName, vector<string>& segments) {
+    segments.clear();
+    segments.push_back(top->member());
+    ExprNode* cur = top->_baseExpr;
+    while (auto* d = dynamic_cast<ExprDotNode*>(cur)) {
+        segments.push_back(d->member());
+        cur = d->_baseExpr;
+    }
+    auto* baseLit = dynamic_cast<ExprLiteralNode*>(cur);
+    if (!baseLit) return false;
+    auto* objLit = dynamic_cast<LiteralObjNode*>(baseLit->literal());
+    if (!objLit) return false;
+    aliasName = objLit->getValue().getText();
+    std::reverse(segments.begin(), segments.end());
+    return true;
+}
+
 TypeInfo ExprDotNode::getType() const {
     auto member = _member.getText();
     DEBUG_LOG_VAL("ExprDotNode::getType - member", member);
 
-    // 模块别名：`alias.fn` → 目标模块的自由函数，返回 "fn_overload" 由
-    // ExprCallNode::getType 用 argTypes 在目标模块内解析出具体重载。
-    if (auto baseLit = dynamic_cast<ExprLiteralNode*>(_baseExpr)) {
-        if (auto objLit = dynamic_cast<LiteralObjNode*>(baseLit->literal())) {
-            auto aliasName = objLit->getValue().getText();
+    // 链式 Dot 访问 alias-rooted：
+    //   模块别名：`alias.fn` → fn_overload。
+    //   包别名：`pkg.s1. .. .sN` → 若 s1..s(N-1) 指向已加载的子文件，则 sN 为 fn
+    //   交给 ExprCall 分派（fn_overload）；否则仍在包树中导航（pkg_chain）。
+    {
+        string aliasName;
+        vector<string> segs;
+        if (parseChain(this, aliasName, segs)) {
             auto scope = findNearestScope();
             if (scope) {
                 auto sym = scope->lookupSymbol(aliasName);
-                if (sym && sym->kind == SymbolKind::Module) {
+                if (sym && (sym->kind == SymbolKind::Module || sym->kind == SymbolKind::Package)) {
+                    FileNode* f = dynamic_cast<FileNode*>(scope);
+                    auto s = scope;
+                    while (!f && s) { s = s->parentScope(); f = dynamic_cast<FileNode*>(s); }
+                    if (f && f->isAmbiguousAlias(aliasName)) {
+                        f->throwAmbiguousAlias(aliasName, resolveLineNumber());
+                    }
+                }
+                if (sym && sym->kind == SymbolKind::Module && segs.size() == 1) {
                     return TypeInfo("fn_overload");
+                }
+                if (sym && sym->kind == SymbolKind::Package) {
+                    FileNode* file = dynamic_cast<FileNode*>(scope);
+                    auto s = scope;
+                    while (!file && s) { s = s->parentScope(); file = dynamic_cast<FileNode*>(s); }
+                    if (file && segs.size() >= 2) {
+                        string childKey;
+                        for (size_t i = 0; i + 1 < segs.size(); ++i) {
+                            if (i) childKey += ".";
+                            childKey += segs[i];
+                        }
+                        if (file->packageChild(aliasName, childKey)) {
+                            return TypeInfo("fn_overload");
+                        }
+                    }
+                    return TypeInfo("pkg_chain");
                 }
             }
         }

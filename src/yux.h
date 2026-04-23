@@ -42,6 +42,16 @@ public:
     // errorLine 仅用于错误报告。未找到文件 / 循环依赖时抛 YuxError。
     p<FileNode> loadModule(const string& moduleName, int errorLine = 0);
 
+    // 模块名在文件系统中对应的形态。
+    enum class ModulePathKind { NotFound, File, Package, Conflict };
+    // 将点分模块名解析到项目根下的路径，判断其形态。
+    // Conflict = 同名 `<m>.yux` 与 `<m>/` 并存。
+    ModulePathKind modulePathKind(const string& moduleName) const;
+    // 列出包（目录）下的直接 `.yux` 子项（去掉 .yux 后缀的简单名）。
+    vector<string> listPackageYuxChildren(const string& moduleName) const;
+    // 列出包（目录）下的直接子目录名。
+    vector<string> listPackageSubdirs(const string& moduleName) const;
+
     // 解析主入口 `.yux` 文件（不走 moduleName → path 映射）。
     // 产生的 ASTBuilder 被 Yux 持有，AST 节点在 Yux 析构前有效。
     p<FileNode> loadMainFile(const string& absPath, const string& moduleName);

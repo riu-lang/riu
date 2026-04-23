@@ -15,6 +15,7 @@ enum class SymbolKind : u8 {
     Variable,
     TypeParam,
     Module, // `use a.b.c` 引入的模块别名；moduleName 存全限定名
+    Package, // `use a.b` 中 a.b 是目录时引入的包别名；moduleName 存点分路径
 };
 
 struct SymbolInfo {

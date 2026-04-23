@@ -1,6 +1,8 @@
 use yux.core.*
 use helper.*
 use math
+use utils.*
+use ops
 
 fn main() {
     greet()
@@ -9,4 +11,9 @@ fn main() {
     println(p.sum().to_string())
     println(math.square(7).to_string())
     println(math.cube(3).to_string())
+    println(abs.my_abs(-5).to_string())
+    println(dbl.dbl(7).to_string())
+    println(ops.add.plus(10, 20).to_string())
+    println(ops.mul.times(6, 7).to_string())
+    println(ops.sub.inner.deep(50, 8).to_string())
 }
