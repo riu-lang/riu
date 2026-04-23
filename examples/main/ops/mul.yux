@@ -1,3 +1,3 @@
-/ ops/mul.yux — sub-module inside `ops` package
+; ops/mul.yux — sub-module inside `ops` package
 
 fn times(a i32, b i32) i32 = a * b

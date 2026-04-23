@@ -1,4 +1,4 @@
-/ smoke test for `use helper.*`
+; smoke test for `use helper.*`
 
 struct Point {
   x i32

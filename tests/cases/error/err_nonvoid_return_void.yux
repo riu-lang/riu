@@ -1,4 +1,4 @@
-/ 错误：有返回类型的函数返回void
+; 错误：有返回类型的函数返回void
 fn nonvoid_return_void() i32 {
   val x = 1
   println(x)

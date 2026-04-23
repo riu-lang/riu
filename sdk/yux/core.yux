@@ -1,16 +1,16 @@
-/ yux SDK - 自举运行时
-/ 使用 Windows API 进行 I/O
+; yux SDK - 自举运行时
+; 使用 Windows API 进行 I/O
 
-/ 外部 Windows 函数声明
+; 外部 Windows 函数声明
 extern {
   fn GetStdHandle(nStdHandle i32) Ptr<u8>
   fn WriteFile(hFile Ptr<u8>, lpBuffer Ptr<u8>, nNumberOfBytesToWrite u32, lpNumberOfBytesWritten Ptr<u32>, lpOverlapped Ptr<u8>) i32
 }
 
-/ 全局常量
+; 全局常量
 cval _STD_OUTPUT_HANDLE i32 = -11
 
-/ 内部：向 stdout 写入
+; 内部：向 stdout 写入
 fn _stdout_write(buf Ptr<u8>, off i64, len i64) {
   var hStdout Ptr<u8> = GetStdHandle(_STD_OUTPUT_HANDLE)
   var bufWithOff Ptr<u8> = null
@@ -19,12 +19,12 @@ fn _stdout_write(buf Ptr<u8>, off i64, len i64) {
   WriteFile(hStdout, bufWithOff, len.to_u32(), &written, null);
 }
 
-/ 内置类型
-/ 结构体仅占位，为实际类型
-/ to_数字 to_bool 函数编译器实现
+; 内置类型
+; 结构体仅占位，为实际类型
+; to_数字 to_bool 函数编译器实现
 
 struct i8 {
-  / 原始类型
+  ; 原始类型
 }
 
 i8 {
@@ -78,7 +78,7 @@ i8 {
 }
 
 struct u8 {
-  / 原始类型
+  ; 原始类型
 }
 
 u8 {
@@ -129,7 +129,7 @@ u8 {
 }
 
 struct i16 {
-  / 原始类型
+  ; 原始类型
 }
 
 i16 {
@@ -180,7 +180,7 @@ i16 {
 }
 
 struct u16 {
-  / 原始类型
+  ; 原始类型
 }
 
 u16 {
@@ -231,7 +231,7 @@ u16 {
 }
 
 struct i32 {
-  / 原始类型
+  ; 原始类型
 }
 
 i32 {
@@ -282,7 +282,7 @@ i32 {
 }
 
 struct u32 {
-  / 原始类型
+  ; 原始类型
 }
 
 u32 {
@@ -333,7 +333,7 @@ u32 {
 }
 
 struct i64 {
-  / 原始类型
+  ; 原始类型
 }
 
 i64 {
@@ -417,7 +417,7 @@ i64 {
 }
 
 struct u64 {
-  / 原始类型
+  ; 原始类型
 }
 
 u64 {
@@ -494,7 +494,7 @@ u64 {
 }
 
 struct f64 {
-  / 原始类型
+  ; 原始类型
 }
 
 f64 {
@@ -568,7 +568,7 @@ f64 {
 }
 
 struct f32 {
-  / 原始类型
+  ; 原始类型
 }
 
 f32 {
@@ -619,14 +619,14 @@ f32 {
 }
 
 
-/ String 类型 - 内部使用 Array<u32> 存储 Unicode code points
+; String 类型 - 内部使用 Array<u32> 存储 Unicode code points
 struct String {
   data Array<u32>
 }
 
 String {
   fn ~() {
-    / Array<u32> 会自动释放
+    ; Array<u32> 会自动释放
   }
 
   fn String() {
@@ -641,17 +641,17 @@ String {
     self.data._len()
   }
 
-  / 清空字符串
+  ; 清空字符串
   fn clear() {
     self.data._clear()
   }
 
-  / 追加一个 Unicode 码点
+  ; 追加一个 Unicode 码点
   fn append(cp u32) {
     self.data._push(cp)
   }
 
-  / 追加另一个字符串
+  ; 追加另一个字符串
   fn append(s String) {
     var i i64 = 0
     loop {
@@ -663,17 +663,17 @@ String {
     }
   }
 
-  / 追加 ASCII 字节（作为 u32 码点写入）
+  ; 追加 ASCII 字节（作为 u32 码点写入）
   fn append(b u8) {
     self.data._push(b.to_u32())
   }
 
-  / 取码点
+  ; 取码点
   fn at(i i64) u32 {
     self.data[i]
   }
 
-  / 就地截取 [start, end)，修改 self
+  ; 就地截取 [start, end)，修改 self
   fn sub_string(start i64, end i64) {
     var len i64 = self.data._len()
     var s i64 = start
@@ -700,7 +700,7 @@ String {
     self.data._set_len(n)
   }
 
-  / 转为 UTF-8 字节数组
+  ; 转为 UTF-8 字节数组
   fn to_bytes() Array<u8> {
     var r Array<u8> = []
     var i i64 = 0
@@ -731,7 +731,7 @@ String {
 }
 
 struct bool {
-  / 原始类型
+  ; 原始类型
 }
 
 bool {

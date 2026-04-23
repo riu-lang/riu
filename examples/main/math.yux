@@ -1,4 +1,4 @@
-/ smoke test for `use math` (module alias import)
+; smoke test for `use math` (module alias import)
 
 fn square(x i32) i32 = x * x
 

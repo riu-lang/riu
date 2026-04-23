@@ -271,7 +271,7 @@ statementBlock:
 //
 
 LineComment
-    : {getCharPositionInLine()==0}? Space* SymbolDiv ~[\r\n]* LineEnd
+    : {getCharPositionInLine()==0}? Space* SymbolSemicolon ~[\r\n]* LineEnd
     ;
 
 LineEndComment

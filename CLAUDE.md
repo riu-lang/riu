@@ -71,17 +71,21 @@ The `sdk/` directory contains the bootstrap runtime (written in yux itself) — 
 
 Safe targeted cleanup: delete `build/*.exe build/*.ll build/*.obj build/*.obj.cache`. For a full reset use `xmake clean -a`. Do not nuke `build/` wholesale.
 
-## Language conventions that affect codegen/tests
+## Writing yux code
 
-- No implicit type conversions anywhere — use `.to_<type>()` methods.
-- Untyped int literals default to `i32` but are inferred from context (binop peer type, declared variable type, return type, or unique overload match). Ambiguous overload matches error — add a type suffix (e.g. `2u8`) to disambiguate.
-- Comments: line comments match `^\s*/.*` (leading `/`, indent allowed); trailing comments use ` ;`. A trailing `/` is **not** a comment.
-- Mandatory trailing `;` rules:
+When generating or modifying yux source code, follow these rules:
+
+**Documentation priority:**
+1. **Read docs first** — Always consult `docs/*.md` (especially `基础语法.md`, `类型系统.md`, `函数.md`, `结构体.md`, `控制流.md`) before writing yux code
+2. **Grammar second** — If docs are insufficient, refer to `src/yux.g4` for precise syntax rules
+3. **Compiler code last** — Only read compiler source (`src/*.cpp`, `src/node/*.cpp`) as a last resort to understand behavior
+4. **Do NOT reference Rust** — yux is its own language with different semantics; do not assume Rust-like behavior
+
+**Code style requirements:**
+- **Comments**: Line comments start with `;` (can be indented); trailing comments use ` ;`
+- **Spacing**: Space after keywords, around binary operators, after `,`; no space inside `()` / `[]`
+- **Mandatory trailing `;`**:
   - `ret;` for early return in void functions must end with `;`
   - `break;` for loop exit must end with `;`
-  - `expression ends with `;` is denoted empty return, else it returns the expression value.
-- Spacing is enforced: space after keywords, around binary operators, after `,`; no space inside `()` / `[]`.
-- Keywords: `fn var val cval if elif else ret break null true false loop struct`.
-- Generics/runtime types baked into the language: `Ref<T>`, `Box<T>` (refcounted), `Ptr<T>`, `Array<T>`.
-- String literals: `"..."` supports escapes `\n \t \\ \" \'`; raw strings `r"..."` treat content verbatim (no escape processing).
-- Codepoint literals: `c'X'` is a single Unicode codepoint of type `u32`. Only one character or one escape allowed between the quotes; supported escapes are `\n \r \t \v \b \0 \\ \'`. Numeric escapes (`\xNN`, `\uNNNN`) are **not** supported.
+  - Expression statements ending with `;` return void; without `;` they return the expression value
+- **No implicit conversions** — Use `.to_<type>()` methods explicitly

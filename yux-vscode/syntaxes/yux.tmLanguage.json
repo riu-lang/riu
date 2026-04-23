@@ -78,7 +78,7 @@
       "patterns": [
         {
           "name": "comment.line.yux",
-          "match": "^\\s*/[^\\r\\n]*"
+          "match": "^\\s*;[^\\r\\n]*"
         },
         {
           "name": "comment.line.end.yux",

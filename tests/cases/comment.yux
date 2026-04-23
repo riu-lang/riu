@@ -1,7 +1,7 @@
-/ 顶行注释测试
+; 顶行注释测试
 fn main() {
-  / 缩进注释
+  ; 缩进注释
   println(1.to_string()) ; 尾随注释
-  / 另一个注释
+  ; 另一个注释
   println(2.to_string())
 }
