@@ -9,7 +9,9 @@ See also: [AGENTS.md](AGENTS.md) for detailed project structure, [语法.md](语
 - **Do not modify `src/yux.g4`** (the ANTLR4 grammar). If a task seems to require grammar changes, stop and ask the user — list the problems and what would need to change.
 - Environment is Windows PowerShell with **Clang only** (no MSVC env vars). LLVM is expected on PATH via `llvm/bin`.
 - `build/windows/x64/debug` defaults on PATH so the `yux` compiler can be invoked directly after building.
-- **Write difficult problems to `BUGS.md`**: issues that require extensive changes, are not caused by the current modification, or need heavy investigation. Pause the related task and inform the user.
+- **Task/bug tracking** — use both files, don't mix:
+  - `CURRENT.md` holds the *in-progress multi-step task*. **When given a multi-step task, write the phased plan into `CURRENT.md` first** to track it. Read before starting, update as phases complete, remove the entry when the whole task is done.
+  - `BUGS.md` holds *newly discovered* bugs (unrelated to the current change, requiring heavy investigation, or temporarily worked around). Follow the template, pause the related task, and tell the user.
 
 ## Common commands
 
