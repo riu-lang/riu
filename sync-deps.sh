@@ -2,6 +2,7 @@
 
 #
 # Copyright (c) 2026. Yin-Jinlong@github
+# MPL-2.0
 #
 
 if ! command -v node >/dev/null 2>&1; then

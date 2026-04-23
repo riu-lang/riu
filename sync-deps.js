@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2026. Yin-Jinlong@github
+ * MPL-2.0
  */
 
 const fs = require('fs');

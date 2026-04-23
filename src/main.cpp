@@ -1,4 +1,5 @@
 // Copyright (c) 2026. Yin-Jinlong@github
+// MPL-2.0
 
 #include <windows.h>
 
@@ -30,7 +31,7 @@
 #include "yux.h"
 #include "build_cache.h"
 
-#include "CLI11.hpp"
+#include "CLI/CLI.hpp"
 
 LLD_HAS_DRIVER(coff)
 

@@ -31,7 +31,7 @@ fn main() {
 }
 ```
 
-详细语法说明请参考 [语法.md](语法.md)。
+详细语法说明请参考 [文档](docs/index.md)。
 
 ## 开发
 
@@ -71,8 +71,6 @@ yux-lang/
 ├── build/                # 编译输出
 └── yux-vscode/           # VSCode 扩展
 ```
-
-详细的项目结构说明请参考 [AGENTS.md](AGENTS.md)。
 
 ### 同步依赖
 
@@ -131,7 +129,7 @@ entry="main.yux"
 
 测试运行器当前以单文件模式在内部调用 `yux` 编译每个用例，产物落在 `tests/cases/build/<stem>.exe`（错误用例在 `tests/cases/error/build/`）。单文件模式本身已弃用，这里是最后一处内部使用，未来会替换为每用例一个小项目的 harness。
 
-语法以 [`src/yux.g4`](src/yux.g4) 和 [语法.md](语法.md) 为准，用例需符合这两者；不一致时以 g4 / 语法.md 为准。
+语法以 [`src/yux.g4`](src/yux.g4) 和 [文档](docs/index.md) 为准，用例需符合这两者；
 
 **运行方式：**
 
@@ -153,5 +151,7 @@ xmake test yux_tests/error_err_val_reassign.yux
 测试逻辑定义在 [tests/xmake.lua](tests/xmake.lua) 的 `yux_tests` target，通过 `add_tests` + 自定义 `on_run` 完成「编译 → 运行 → 比对输出」。
 
 ## License
+
+[MPL-2.0](LICENSE.txt)
 
 Copyright (c) 2025. Yin-Jinlong@github

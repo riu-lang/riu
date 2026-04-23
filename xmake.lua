@@ -1,3 +1,6 @@
+-- Copyright (c) 2026. Yin-Jinlong@github
+-- MPL-2.0
+
 set_project("yux-lang")
 set_version("0.1.0")
 set_languages("c++23")
@@ -152,6 +155,7 @@ target("yux")
     add_includedirs(path.join(third_party, "antlr4/runtime/Cpp/runtime/src"))
     add_includedirs(path.join(third_party, "utfcpp/source"))
     add_includedirs(path.join(third_party, "toml11/single_include"))
+    add_includedirs(path.join(third_party, "cli11/include"))
     add_includedirs(path.join(third_party, "llvm/llvm/include"))
     add_includedirs(path.join(third_party, "llvm/lld/include"))
 
@@ -183,6 +187,7 @@ includes("@builtin/xpack")
 
 local third_party_licenses = {
     {lib = "antlr4", license = "LICENSE.txt"},
+    {lib = "cli11", license = "LICENSE"},
     {lib = "llvm", license = "LICENSE.TXT", subdir = "llvm"},
     {lib = "utfcpp", license = "LICENSE"},
     {lib = "zlib", license = "LICENSE"},
@@ -197,9 +202,10 @@ xpack("yux")
     add_installfiles("sdk/(**)", {prefixdir = "sdk"})
     add_installfiles("examples/(**)", {prefixdir = "examples"})
     add_installfiles("README.md", {prefixdir = "."})
-    add_installfiles("语法.md", {prefixdir = "."})
+    add_installfiles("LICENSE.txt", {prefixdir = "."})
+    add_installfiles("docs/(**)", {prefixdir = "docs"})
     for _, t in ipairs(third_party_licenses) do
         local lib_path = t.subdir and path.join("third_party", t.lib, t.subdir, t.license)
                          or path.join("third_party", t.lib, t.license)
-        add_installfiles(lib_path, {prefixdir = path.join("licenses", t.lib), filename = t.license})
+        add_installfiles(lib_path, {prefixdir = path.join("shared/licenses", t.lib), filename = t.license})
     end

@@ -1,3 +1,6 @@
+-- Copyright (c) 2026. Yin-Jinlong@github
+-- MPL-2.0
+
 -- yux 语言测试：使用 xmake 原生测试机制（xmake test）
 --
 -- 每个 tests/cases/*.yux 配对一个 *.expected：

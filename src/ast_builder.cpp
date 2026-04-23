@@ -1,4 +1,5 @@
 // Copyright (c) 2026. Yin-Jinlong@github
+// MPL-2.0
 
 #include "ast_builder.h"
 #include "node/expr_node.h"
