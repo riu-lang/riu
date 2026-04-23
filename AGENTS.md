@@ -26,26 +26,25 @@
 # 构建编译器
 xmake build yux
 
-# 单文件模式：产物扁平放在 <源文件目录>/build/
-yux main.yux              # 生成 <srcDir>/build/main.exe
-yux --emit-ir input.yux   # 同时生成 .ll 文件
-yux -d input.yux          # 调试 IR 输出（信息量大，配合 tail 使用）
-
 # 项目模式：必须在项目根目录（含 yux.toml）执行
-yux build <name>          # <name> 必须与 yux.toml 的 name 一致；入口取 toml 的 entry
-                          # 产物落在 <projectRoot>/build/<name>/<name>.exe
+yux build <name>             # <name> 必须与 yux.toml 的 name 一致；入口取 toml 的 entry
+                             # 产物落在 <projectRoot>/build/<name>/<name>.exe
+yux build <name> --emit-ir   # 同时生成 .ll 文件
+yux build <name> -d          # 调试 IR 输出（信息量大，配合 tail 使用）
 
-# 运行编译结果
-./build/main.exe
+# 简易验证（以仓库内 examples/main 为例，yux.toml 里 name="test"）
+cd examples/main && yux build test && ./build/test/test.exe
 ```
 
-`yux.toml` 字段（详见 语法.md）：`name`（项目 / exe 名）、`entry`（入口 .yux，相对项目根）、`version`。单文件模式完全忽略 yux.toml，不引入项目名子目录。
+`yux.toml` 字段（详见 语法.md）：`name`（项目 / exe 名）、`entry`（入口 .yux，相对项目根）、`version`。
+
+单文件模式（`yux <file>.yux`）二进制里仍保留，也是测试 harness 目前内部驱动编译的方式，但已弃用、未来会移除——新增代码、示例、文档一律走项目模式，不要再用 `yux` 直接编译单个 `.yux` 文件。
 
 **测试流程：**
-1. **简易测试**：`yux main.yux && ./build/main.exe`（或创建新 yux 文件）快速验证
+1. **简易测试**：构建并运行 `examples/main`（或随手建一个小项目）快速验证
 2. **完整测试**：简易测试通过后，`xmake test` 验证所有用例
 
-测试运行器（`tests/xmake.lua`）以**单文件模式**调用 `yux` 编译每个 `tests/cases/*.yux`，比较 stdout 与配对的 `.expected`；`error/err_*.yux` 期望编译失败。每个用例的产物放在 `tests/cases/build/<stem>.exe`（错误用例在 `tests/cases/error/build/`）。项目级测试将来单独写一套 harness。当测试用例与语言规范冲突时，更新测试用例——`src/yux.g4` 和 `语法.md` 是权威规范。
+测试运行器（`tests/xmake.lua`）当前以单文件模式调用 `yux` 编译每个 `tests/cases/*.yux`（这是单文件模式最后一处内部使用，后续会替换成每用例一个小项目的 harness），比较 stdout 与配对的 `.expected`；`error/err_*.yux` 期望编译失败。每个用例的产物放在 `tests/cases/build/<stem>.exe`（错误用例在 `tests/cases/error/build/`）。当测试用例与语言规范冲突时，更新测试用例——`src/yux.g4` 和 `语法.md` 是权威规范。
 
 ## 架构
 
@@ -61,7 +60,7 @@ yux build <name>          # <name> 必须与 yux.toml 的 name 一致；入口�
 - `yux.cpp/h` — 编译器主类，编排流水线
 - `ast_builder.cpp/h` — ANTLR 解析树 → AST 节点（`src/node/` 下 `expr_node`, `fn_node`, `struct_node`, `statement_node`）
 - `compiler.cpp/h` — AST → LLVM IR
-- `build_cache.cpp/h` — 源文件 mtime+size 缓存，存储于 `build/build.cache`；时间戳和大小都匹配时跳过编译
+- `build_cache.cpp/h` — 源文件 mtime+size 缓存，时间戳和大小都匹配时跳过编译
 - ANTLR 生成代码在 `gen/`（非 `src/`）
 
 `sdk/` 是自举运行时（yux 自身编写），编译为 `build/sdk.ll` / `build/sdk.obj`，链接到每个 yux 程序。

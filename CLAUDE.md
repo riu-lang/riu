@@ -22,27 +22,25 @@ See also: [AGENTS.md](AGENTS.md) for detailed project structure, [语法.md](语
 # Build the compiler
 xmake build yux
 
-# Single-file mode — flat output in <srcDir>/build/
-yux main.yux               # produces <srcDir>/build/main.exe
-yux --emit-ir input.yux    # also emit .ll
-yux -d input.yux           # debug IR dump (Debug builds only; voluminous — pipe through tail)
-
 # Project mode — run at project root (must contain yux.toml)
 yux build <name>           # <name> must match `name` in yux.toml; entry comes from toml `entry`
                            # outputs <projectRoot>/build/<name>/<name>.exe
+yux build <name> --emit-ir # also emit .ll
+yux build <name> -d        # debug IR dump (Debug builds only; voluminous — pipe through tail)
 
-# Smoke-test the compiler on a single source
-yux main.yux
-./build/main.exe
+# Smoke-test the compiler against examples/main (has yux.toml with name="test")
+cd examples/main && yux build test && ./build/test/test.exe
 ```
 
-`yux.toml` fields (see 语法.md): `name` (project / exe name), `entry` (entry .yux relative to project root), `version`. Single-file mode ignores yux.toml entirely — no project name subdir.
+`yux.toml` fields (see 语法.md): `name` (project / exe name), `entry` (entry .yux relative to project root), `version`.
+
+Single-file mode (`yux <file>.yux`) still exists in the binary and is what the test harness drives internally, but it is deprecated for user-facing use and will be removed — model new work and examples on project mode. Do not add new docs or examples that invoke `yux` on a bare `.yux` file.
 
 **Testing:**
-1. **Smoke test first**: Use `yux main.yux && ./build/main.exe` ( or create new yux file) for quick validation after changes.
-2. **Full suite**: Once smoke test passes, run `xmake test` to verify all test cases.
+1. **Smoke test first**: build & run `examples/main` (or a small throwaway project) for quick validation after changes.
+2. **Full suite**: once the smoke test passes, run `xmake test` to verify all test cases.
 
-The regression suite runs via xmake's native test mechanism (no googletest / CMake). Use `xmake test` to run all cases under `tests/cases/`, or `xmake test yux_tests/<name>` for a single case. The runner (`tests/xmake.lua`, `yux_tests` target) invokes the built `yux` on each `.yux` in **single-file mode** and compares stdout to the paired `.expected`; for `error/err_*.yux` it expects compilation to fail. Per-case products land at `tests/cases/build/<stem>.exe` (or `tests/cases/error/build/...`). Project-mode tests will be a separate harness later. When a case and the language disagree, update the case — `src/yux.g4` and `语法.md` are authoritative.
+The regression suite runs via xmake's native test mechanism (no googletest / CMake). Use `xmake test` to run all cases under `tests/cases/`, or `xmake test yux_tests/<name>` for a single case. The runner (`tests/xmake.lua`, `yux_tests` target) currently invokes the built `yux` on each `.yux` in single-file mode (this is the last remaining internal use of that mode — a project-per-case harness will replace it) and compares stdout to the paired `.expected`; for `error/err_*.yux` it expects compilation to fail. Per-case products land at `tests/cases/build/<stem>.exe` (or `tests/cases/error/build/...`). When a case and the language disagree, update the case — `src/yux.g4` and `语法.md` are authoritative.
 
 ## Architecture
 
@@ -58,7 +56,7 @@ Key source boundaries in `src/`:
 - `yux.cpp/h` — top-level compiler driver orchestrating the pipeline
 - `ast_builder.cpp/h` — walks the ANTLR parse tree into AST nodes under `src/node/` (`expr_node`, `fn_node`, `struct_node`, `statement_node`)
 - `compiler.cpp/h` — AST → LLVM IR
-- `build_cache.cpp/h` — source-file mtime+size cache stored at `build/build.cache`; skips recompilation of unchanged `.yux` files
+- `build_cache.cpp/h` — source-file mtime+size cache written as `<objPath>.cache` next to each object; skips recompilation when both match
 - ANTLR-generated code lives in `gen/` (not `src/`)
 
 The `sdk/` directory contains the bootstrap runtime (written in yux itself) — it compiles to `build/sdk.ll` / `build/sdk.obj` and is linked into every yux program.

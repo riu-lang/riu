@@ -89,13 +89,9 @@ xmake build yux
 
 ## 使用
 
-两种模式：
+在项目根目录（含 `yux.toml`）执行：
 
 ```powershell
-# 单文件模式：产物扁平放在 <源文件目录>/build/
-yux <input.yux>            # 生成 <srcDir>/build/<stem>.exe
-
-# 项目模式：在项目根目录（含 yux.toml）执行
 yux build <name>           # <name> 必须与 yux.toml 的 name 一致，入口取 toml 的 entry
                            # 产物落在 <projectRoot>/build/<name>/<name>.exe
 ```
@@ -108,14 +104,19 @@ yux build <name>           # <name> 必须与 yux.toml 的 name 一致，入口�
 | `entry` | 入口 `.yux`，相对项目根 |
 | `version` | 版本号（当前仅记录） |
 
-单文件模式完全忽略 yux.toml。
+最小示例：
+
+```toml
+name="test"
+version="1.0.0"
+entry="main.yux"
+```
 
 ### 命令行参数
 
 | 参数 | 说明 |
 |------|------|
-| `input` | 输入的 .yux 文件（单文件模式） |
-| `build <name>` | 项目模式子命令 |
+| `build <name>` | 项目构建子命令 |
 | `--emit-ir` | 输出 LLVM IR 到 .ll 文件 |
 | `-d, --debug` | 输出编译 IR 调试信息（仅 Debug 构建） |
 
@@ -128,7 +129,7 @@ yux build <name>           # <name> 必须与 yux.toml 的 name 一致，入口�
 - `tests/cases/*.yux` + 同名 `*.expected`：编译应成功，运行产物的 stdout 需与 `.expected` 完全一致
 - `tests/cases/error/err_*.yux` + 同名 `*.expected`：编译应失败（`.expected` 内容仅作占位）
 
-测试运行器以**单文件模式**调用 `yux`（`yux <case.yux>`），每个用例的产物落在 `tests/cases/build/<stem>.exe`（错误用例在 `tests/cases/error/build/`）。项目级测试暂未纳入此 harness，将来单独写一套。
+测试运行器当前以单文件模式在内部调用 `yux` 编译每个用例，产物落在 `tests/cases/build/<stem>.exe`（错误用例在 `tests/cases/error/build/`）。单文件模式本身已弃用，这里是最后一处内部使用，未来会替换为每用例一个小项目的 harness。
 
 语法以 [`src/yux.g4`](src/yux.g4) 和 [语法.md](语法.md) 为准，用例需符合这两者；不一致时以 g4 / 语法.md 为准。
 
