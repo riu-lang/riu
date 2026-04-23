@@ -67,13 +67,14 @@ void ensureBuildDir(const string& buildDir) {
 }
 
 // 模块名 → 构建产物基础路径（不含扩展名）。
-// 多段 `A.B.C` → `<buildDir>/A/B/C`；单段 `X`（本项目内模块）→ `<buildDir>/<projectName>/X`。
+// 多段 `A.B.C` → `<buildDir>/A/B/C`；
+// 单段 `X`：项目模式 `<buildDir>/<projectName>/X`，单文件模式 `<buildDir>/X`。
 string moduleOutputBase(const string& buildDir, const string& projectName, const string& moduleName) {
     std::filesystem::path p(buildDir);
     size_t start = 0;
     size_t dot = moduleName.find('.');
     if (dot == string::npos) {
-        p /= projectName;
+        if (!projectName.empty()) p /= projectName;
         p /= moduleName;
         return p.string();
     }
@@ -270,6 +271,7 @@ int wmain(int argc, wchar_t* argv[]) {
     signal(SIGFPE, handleCrash);
 
     CLI::App app{"yux compiler"};
+    app.require_subcommand(0, 1);
 
     bool emitIr = false;
     app.add_flag("--emit-ir", emitIr, "Emit LLVM IR to .ll file");
@@ -280,28 +282,70 @@ int wmain(int argc, wchar_t* argv[]) {
     std::cout << "Working at: " << std::filesystem::absolute(std::filesystem::current_path()).string() << std::endl;
 
     std::string inputFile;
-    app.add_option("input", inputFile, "Input .yux file")
-       ->required(true);
+    app.add_option("input", inputFile, "Input .yux file (single-file mode)");
+
+    auto* buildCmd = app.add_subcommand("build", "Build project (must run at project root containing yux.toml)");
+    std::string buildNameArg;
+    buildCmd->add_option("name", buildNameArg, "Project name; must match `name` in yux.toml")->required();
 
     CLI11_PARSE(app, argc, argv);
 
-    if (!std::filesystem::exists(inputFile)) {
-        std::cerr << "Error: Input file not found: " << inputFile << std::endl;
-        return 1;
-    }
-
-    inputFile = std::filesystem::absolute(inputFile).string();
+    bool projectMode = buildCmd->parsed();
 
     Yux yux;
-    yux.initProjectRoot(inputFile);
+    string projectName;
+    string projectBuildDir;
+    string buildDir;
+
+    if (projectMode) {
+        if (!inputFile.empty()) {
+            std::cerr << "Error: cannot combine `build` subcommand with an input file positional" << std::endl;
+            return 1;
+        }
+        string cwd = std::filesystem::current_path().string();
+        try {
+            yux.initProjectFromDir(cwd);
+        } catch (runtime_error& e) {
+            std::cerr << e.what() << std::endl;
+            return 1;
+        }
+        if (yux.projectName() != buildNameArg) {
+            std::cerr << "Error: build target `" << buildNameArg
+                      << "` does not match yux.toml name `" << yux.projectName() << "`" << std::endl;
+            return 1;
+        }
+        if (yux.projectEntry().empty()) {
+            std::cerr << "Error: yux.toml is missing `entry`" << std::endl;
+            return 1;
+        }
+        inputFile = (std::filesystem::path(yux.projectRoot()) / yux.projectEntry()).string();
+        if (!std::filesystem::exists(inputFile)) {
+            std::cerr << "Error: entry file not found: " << inputFile << std::endl;
+            return 1;
+        }
+        inputFile = std::filesystem::absolute(inputFile).string();
+        projectName = yux.projectName();
+        buildDir = getBuildDir(yux.projectRoot());
+        projectBuildDir = buildDir + "/" + projectName;
+    } else {
+        if (inputFile.empty()) {
+            std::cerr << app.help() << std::endl;
+            return 1;
+        }
+        if (!std::filesystem::exists(inputFile)) {
+            std::cerr << "Error: Input file not found: " << inputFile << std::endl;
+            return 1;
+        }
+        inputFile = std::filesystem::absolute(inputFile).string();
+        yux.initSingleFileRoot(inputFile);
+        // 单文件模式：产物扁平放在 `<srcDir>/build/`，不使用项目名子目录。
+        projectName = "";
+        buildDir = getBuildDir(yux.projectRoot());
+        projectBuildDir = buildDir;
+    }
+
     std::cout << "Project root: " << yux.projectRoot() << std::endl;
-
-    string buildDir = getBuildDir(yux.projectRoot());
     ensureBuildDir(buildDir);
-
-    // 项目名：暂取项目根目录名（yux.toml 目前为空，无 name 字段）。
-    string projectName = std::filesystem::path(yux.projectRoot()).filename().string();
-    string projectBuildDir = buildDir + "/" + projectName;
     ensureBuildDir(projectBuildDir);
 
     string sdkPath = findSdkPath();
@@ -441,7 +485,9 @@ int wmain(int argc, wchar_t* argv[]) {
         modObjPaths.push_back(modObj);
     }
 
-    std::string exePath = projectBuildDir + "/" + baseName + ".exe";
+    // 项目模式 exe 使用 yux.toml 的 name；单文件模式用源文件 basename。
+    std::string exeStem = projectMode ? projectName : baseName;
+    std::string exePath = projectBuildDir + "/" + exeStem + ".exe";
 
     bool needLink = !std::filesystem::exists(exePath);
     if (!needLink) {

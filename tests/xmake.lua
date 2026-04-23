@@ -70,9 +70,10 @@ target("yux_tests")
         local workdir = path.directory(case)
         local stem = path.basename(case)
         local project_root = path.directory(target:scriptdir())
-        local project_name = path.filename(project_root)
-        local exe = path.join(project_root, "build", project_name, stem .. ".exe")
-        local obj = path.join(project_root, "build", project_name, stem .. ".obj")
+        -- 单文件模式：产物扁平放在源文件同级的 `build/` 下。
+        local build_root = path.join(workdir, "build")
+        local exe = path.join(build_root, stem .. ".exe")
+        local obj = path.join(build_root, stem .. ".obj")
         local cache = obj .. ".cache"
         os.tryrm(exe)
         os.tryrm(obj)

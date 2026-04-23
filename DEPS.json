@@ -8,6 +8,10 @@
       "url": "https://github.com/llvm/llvm-project.git",
       "commit": "e9846648fd6183ee6d8cbdb4502213fcf902a211"
     },
+    "toml11": {
+      "url": "https://github.com/ToruNiina/toml11.git",
+      "commit": "be08ba2be2a964edcdb3d3e3ea8d100abc26f286"
+    },
     "utfcpp": {
       "url": "https://github.com/nemtrif/utfcpp.git",
       "commit": "63d64de49fd6b829f7c8694df5ab2ee625cb7134"

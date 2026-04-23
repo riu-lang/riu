@@ -20,21 +20,27 @@ See also: [AGENTS.md](AGENTS.md) for detailed project structure, [语法.md](语
 # Build the compiler
 xmake build yux
 
-# Compile a .yux source (outputs to build/)
-yux main.yux
+# Single-file mode — flat output in <srcDir>/build/
+yux main.yux               # produces <srcDir>/build/main.exe
 yux --emit-ir input.yux    # also emit .ll
 yux -d input.yux           # debug IR dump (Debug builds only; voluminous — pipe through tail)
+
+# Project mode — run at project root (must contain yux.toml)
+yux build <name>           # <name> must match `name` in yux.toml; entry comes from toml `entry`
+                           # outputs <projectRoot>/build/<name>/<name>.exe
 
 # Smoke-test the compiler on a single source
 yux main.yux
 ./build/main.exe
 ```
 
+`yux.toml` fields (see 语法.md): `name` (project / exe name), `entry` (entry .yux relative to project root), `version`. Single-file mode ignores yux.toml entirely — no project name subdir.
+
 **Testing:**
 1. **Smoke test first**: Use `yux main.yux && ./build/main.exe` ( or create new yux file) for quick validation after changes.
 2. **Full suite**: Once smoke test passes, run `xmake test` to verify all test cases.
 
-The regression suite runs via xmake's native test mechanism (no googletest / CMake). Use `xmake test` to run all cases under `tests/cases/`, or `xmake test yux_tests/<name>` for a single case. The runner (`tests/xmake.lua`, `yux_tests` target) invokes the built `yux` on each `.yux` and compares stdout to the paired `.expected`; for `error/err_*.yux` it expects compilation to fail. When a case and the language disagree, update the case — `src/yux.g4` and `语法.md` are authoritative.
+The regression suite runs via xmake's native test mechanism (no googletest / CMake). Use `xmake test` to run all cases under `tests/cases/`, or `xmake test yux_tests/<name>` for a single case. The runner (`tests/xmake.lua`, `yux_tests` target) invokes the built `yux` on each `.yux` in **single-file mode** and compares stdout to the paired `.expected`; for `error/err_*.yux` it expects compilation to fail. Per-case products land at `tests/cases/build/<stem>.exe` (or `tests/cases/error/build/...`). Project-mode tests will be a separate harness later. When a case and the language disagree, update the case — `src/yux.g4` and `语法.md` are authoritative.
 
 ## Architecture
 
@@ -60,7 +66,8 @@ The `sdk/` directory contains the bootstrap runtime (written in yux itself) — 
 `build/` is **shared between xmake and the yux compiler itself**:
 
 - xmake writes to `build/windows/x64/debug/` and the dotted dirs (`.objs/`, `.deps/`, `.build_cache/`, etc.)
-- yux writes `build/*.exe`, `build/*.ll`, `build/*.obj`, `build/*.obj.cache` directly
+- yux single-file mode writes `<srcDir>/build/*.exe`, `*.ll`, `*.obj`, `*.obj.cache` flat (multi-segment modules `A.B.C` go to `<buildDir>/A/B/C.obj`)
+- yux project mode writes under `<projectRoot>/build/<projectName>/` for the main module + single-segment imports; multi-segment modules follow their dotted path under `build/`
 
 Safe targeted cleanup: delete `build/*.exe build/*.ll build/*.obj build/*.obj.cache`. For a full reset use `xmake clean -a`. Do not nuke `build/` wholesale.
 

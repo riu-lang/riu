@@ -26,6 +26,10 @@ class Yux {
 
     // 项目根目录（含 `yux.toml` 的最近祖先目录；否则为主文件所在目录）
     string _projectRoot;
+    // yux.toml 字段；未找到 toml 或字段缺省则为空。
+    string _projectName;
+    string _projectEntry;
+    string _projectVersion;
 
 public:
     Yux();
@@ -56,10 +60,18 @@ public:
     // 产生的 ASTBuilder 被 Yux 持有，AST 节点在 Yux 析构前有效。
     p<FileNode> loadMainFile(const string& absPath, const string& moduleName);
 
-    // 从主文件绝对路径向上查找 `yux.toml`，设置项目根目录。
-    // 未找到则使用主文件所在目录。
-    void initProjectRoot(const string& mainFileAbsPath);
+    // 单文件模式：`_projectRoot` 设为主文件所在目录，不解析 yux.toml。
+    // 用于 `yux <src.yux>` 调用，产物扁平放在 `build/`。
+    void initSingleFileRoot(const string& mainFileAbsPath);
+    // 项目模式：`rootDir` 必须包含 `yux.toml`。解析 name/entry/version。
+    // 未找到 yux.toml 抛 YuxError。
+    void initProjectFromDir(const string& rootDir);
     const string& projectRoot() const { return _projectRoot; }
+    // 项目名：yux.toml 的 `name` 字段，缺省回落到项目根目录名。
+    string projectName() const;
+    // yux.toml 的 `entry` 字段，缺省返回空串。
+    const string& projectEntry() const { return _projectEntry; }
+    const string& projectVersion() const { return _projectVersion; }
 
     // 已成功加载的用户模块名列表（按首次加载顺序）。
     const vector<string>& loadOrder() const { return _loadOrder; }

@@ -151,6 +151,7 @@ target("yux")
     add_includedirs("include", "gen")
     add_includedirs(path.join(third_party, "antlr4/runtime/Cpp/runtime/src"))
     add_includedirs(path.join(third_party, "utfcpp/source"))
+    add_includedirs(path.join(third_party, "toml11/single_include"))
     add_includedirs(path.join(third_party, "llvm/llvm/include"))
     add_includedirs(path.join(third_party, "llvm/lld/include"))
 

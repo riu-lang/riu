@@ -21,20 +21,26 @@
 # 构建编译器
 xmake build yux
 
-# 编译 .yux 源文件（输出到 build/）
-yux main.yux              # 生成 build/main.exe
+# 单文件模式：产物扁平放在 <源文件目录>/build/
+yux main.yux              # 生成 <srcDir>/build/main.exe
 yux --emit-ir input.yux   # 同时生成 .ll 文件
 yux -d input.yux          # 调试 IR 输出（信息量大，配合 tail 使用）
+
+# 项目模式：必须在项目根目录（含 yux.toml）执行
+yux build <name>          # <name> 必须与 yux.toml 的 name 一致；入口取 toml 的 entry
+                          # 产物落在 <projectRoot>/build/<name>/<name>.exe
 
 # 运行编译结果
 ./build/main.exe
 ```
 
+`yux.toml` 字段（详见 语法.md）：`name`（项目 / exe 名）、`entry`（入口 .yux，相对项目根）、`version`。单文件模式完全忽略 yux.toml，不引入项目名子目录。
+
 **测试流程：**
 1. **简易测试**：`yux main.yux && ./build/main.exe`（或创建新 yux 文件）快速验证
 2. **完整测试**：简易测试通过后，`xmake test` 验证所有用例
 
-测试运行器（`tests/xmake.lua`）调用 `yux` 编译每个 `.yux`，比较 stdout 与配对的 `.expected`；`error/err_*.yux` 期望编译失败。当测试用例与语言规范冲突时，更新测试用例——`src/yux.g4` 和 `语法.md` 是权威规范。
+测试运行器（`tests/xmake.lua`）以**单文件模式**调用 `yux` 编译每个 `tests/cases/*.yux`，比较 stdout 与配对的 `.expected`；`error/err_*.yux` 期望编译失败。每个用例的产物放在 `tests/cases/build/<stem>.exe`（错误用例在 `tests/cases/error/build/`）。项目级测试将来单独写一套 harness。当测试用例与语言规范冲突时，更新测试用例——`src/yux.g4` 和 `语法.md` 是权威规范。
 
 ## 架构
 
@@ -60,7 +66,8 @@ yux -d input.yux          # 调试 IR 输出（信息量大，配合 tail 使用
 `build/` **由 xmake 和 yux 编译器共用**：
 
 - xmake 输出：`build/windows/x64/debug/` 及点开头目录（`.objs/`, `.deps/`, `.build_cache/` 等）
-- yux 输出：`build/*.exe`, `build/*.ll`, `build/*.obj`, `build/*.obj.cache`
+- yux 单文件模式：`<srcDir>/build/*.exe`, `*.ll`, `*.obj`, `*.obj.cache`；多段模块 `A.B.C` 展开为 `<buildDir>/A/B/C.obj`
+- yux 项目模式：主模块 + 单段导入落在 `<projectRoot>/build/<projectName>/`；多段模块仍按点分路径展开
 
 **清理：**
 - 安全清理：删除 `build/*.exe build/*.ll build/*.obj build/*.obj.cache`

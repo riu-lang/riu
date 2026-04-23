@@ -4,6 +4,8 @@
 
 #include <filesystem>
 
+#include <toml.hpp>
+
 #include "ast_builder.h"
 #include "yux/yuxLexer.h"
 #include "yux/yuxParser.h"
@@ -44,17 +46,38 @@ p<FileNode> Yux::createSdkFile() {
     return _sdkFile;
 }
 
-void Yux::initProjectRoot(const string& mainFileAbsPath) {
+void Yux::initSingleFileRoot(const string& mainFileAbsPath) {
+    _projectRoot = std::filesystem::path(mainFileAbsPath).parent_path().string();
+}
+
+void Yux::initProjectFromDir(const string& rootDir) {
     namespace fs = std::filesystem;
-    auto dir = fs::path(mainFileAbsPath).parent_path();
-    for (auto cur = dir; !cur.empty(); cur = cur.parent_path()) {
-        if (fs::exists(cur / "yux.toml")) {
-            _projectRoot = cur.string();
-            return;
-        }
-        if (cur == cur.root_path()) break;
+    fs::path root(rootDir);
+    fs::path tomlPath = root / "yux.toml";
+    if (!fs::exists(tomlPath)) {
+        throw YuxError("yux.toml not found in " + rootDir);
     }
-    _projectRoot = dir.string();
+    _projectRoot = root.string();
+    try {
+        auto data = toml::parse(tomlPath.string());
+        if (data.contains("name") && data.at("name").is_string()) {
+            _projectName = data.at("name").as_string();
+        }
+        if (data.contains("entry") && data.at("entry").is_string()) {
+            _projectEntry = data.at("entry").as_string();
+        }
+        if (data.contains("version") && data.at("version").is_string()) {
+            _projectVersion = data.at("version").as_string();
+        }
+    } catch (const std::exception& e) {
+        throw YuxError(string("failed to parse yux.toml: ") + e.what());
+    }
+}
+
+string Yux::projectName() const {
+    if (!_projectName.empty()) return _projectName;
+    if (_projectRoot.empty()) return {};
+    return std::filesystem::path(_projectRoot).filename().string();
 }
 
 p<FileNode> Yux::module(const string& moduleName) const {
