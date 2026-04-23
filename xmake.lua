@@ -183,9 +183,10 @@ includes("@builtin/xpack")
 
 local third_party_licenses = {
     {lib = "antlr4", license = "LICENSE.txt"},
-    {lib = "llvm", license = "LICENSE.TXT"},
+    {lib = "llvm", license = "LICENSE.TXT", subdir = "llvm"},
     {lib = "utfcpp", license = "LICENSE"},
     {lib = "zlib", license = "LICENSE"},
+    {lib = "toml11", license = "LICENSE"},
 }
 
 xpack("yux")
@@ -193,7 +194,12 @@ xpack("yux")
     set_basename("yux-$(version)")
 
     add_installfiles("build/windows/x64/**/yux.exe", {prefixdir = "bin", flat = true})
-    add_installfiles("sdk/sdk.yux", {prefixdir = "sdk", flat = true})
+    add_installfiles("sdk/(**)", {prefixdir = "sdk"})
+    add_installfiles("examples/(**)", {prefixdir = "examples"})
+    add_installfiles("README.md", {prefixdir = "."})
+    add_installfiles("语法.md", {prefixdir = "."})
     for _, t in ipairs(third_party_licenses) do
-        add_installfiles(path.join("third_party", t.lib, t.license), {prefixdir = path.join("shared/license", t.lib), filename = t.license})
+        local lib_path = t.subdir and path.join("third_party", t.lib, t.subdir, t.license)
+                         or path.join("third_party", t.lib, t.license)
+        add_installfiles(lib_path, {prefixdir = path.join("licenses", t.lib), filename = t.license})
     end
