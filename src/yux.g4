@@ -3,9 +3,10 @@
 
 grammar yux;
 
-options {
-    language=Cpp;
-}
+// 在命令行控制
+//options {
+//    language=Cpp;
+//}
 
 program:
    comment*

@@ -4,7 +4,8 @@
  */
 
 import * as vscode from 'vscode';
-import { YuxSymbolParser, YuxWorkspaceSymbols, YuxSymbol, StructInfo, FunctionInfo, VariableInfo } from './symbols';
+import { YuxWorkspaceSymbols } from './symbols';
+import { invalidateFileCache } from './ast/workspace';
 
 const KEYWORDS = [
     { label: 'fn', kind: vscode.CompletionItemKind.Keyword, detail: '函数声明' },
@@ -190,11 +191,38 @@ export function activate(context: vscode.ExtensionContext) {
         new YuxReferenceProvider()
     );
     context.subscriptions.push(referenceProvider);
+
+    const hoverProvider = vscode.languages.registerHoverProvider(
+        { language: 'yux' },
+        new YuxHoverProvider()
+    );
+    context.subscriptions.push(hoverProvider);
+
+    const signatureProvider = vscode.languages.registerSignatureHelpProvider(
+        { language: 'yux' },
+        new YuxSignatureHelpProvider(),
+        '(', ','
+    );
+    context.subscriptions.push(signatureProvider);
+
+    const watcher = vscode.workspace.createFileSystemWatcher('**/*.yux');
+    watcher.onDidChange((uri) => invalidateFileCache(uri.fsPath));
+    watcher.onDidCreate((uri) => invalidateFileCache(uri.fsPath));
+    watcher.onDidDelete((uri) => invalidateFileCache(uri.fsPath));
+    context.subscriptions.push(watcher);
+
+    context.subscriptions.push(
+        vscode.workspace.onDidSaveTextDocument((doc) => {
+            if (doc.languageId === 'yux') {
+                invalidateFileCache(doc.uri.fsPath);
+            }
+        }),
+    );
 }
 
 class YuxDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
     provideDocumentSymbols(document: vscode.TextDocument): vscode.ProviderResult<vscode.DocumentSymbol[]> {
-        const parser = new YuxSymbolParser(document);
+        const parser = workspaceSymbols.getParser(document);
         const symbols = parser.parse();
         return symbols.map(s => {
             const symbol = new vscode.DocumentSymbol(
@@ -217,19 +245,27 @@ class YuxDefinitionProvider implements vscode.DefinitionProvider {
         }
 
         const word = document.getText(wordRange);
-        const parser = new YuxSymbolParser(document);
+        const parser = workspaceSymbols.getParser(document);
+
+        const importJump = parser.resolveImportAt(position);
+        if (importJump) {
+            return importJump;
+        }
+
+        const localVar = parser.resolveVariableAt(word, position);
+        if (localVar) {
+            return new vscode.Location(document.uri, localVar.range);
+        }
+
+        const memberJump = resolveMemberJump(parser, document, position, wordRange, word);
+        if (memberJump) {
+            return memberJump;
+        }
 
         const functions = parser.parseFunctions();
         for (const fn of functions) {
             if (fn.name === word) {
                 return new vscode.Location(document.uri, fn.range);
-            }
-        }
-
-        const variables = parser.parseVariables();
-        for (const v of variables) {
-            if (v.name === word) {
-                return new vscode.Location(document.uri, v.range);
             }
         }
 
@@ -250,6 +286,16 @@ class YuxDefinitionProvider implements vscode.DefinitionProvider {
                     return new vscode.Location(document.uri, method.range);
                 }
             }
+        }
+
+        const importedStruct = parser.findImportedStruct(word);
+        if (importedStruct) {
+            return new vscode.Location(vscode.Uri.file(importedStruct.file), importedStruct.info.range);
+        }
+
+        const imported = parser.findImportedSymbol(word);
+        if (imported) {
+            return imported;
         }
 
         return null;
@@ -298,7 +344,7 @@ class YuxCompletionProvider implements vscode.CompletionItemProvider {
             items.push(item);
         }
 
-        const parser = new YuxSymbolParser(document);
+        const parser = workspaceSymbols.getParser(document);
         const functions = parser.parseFunctions();
         for (const fn of functions) {
             const item = new vscode.CompletionItem(fn.name, vscode.CompletionItemKind.Function);
@@ -306,7 +352,7 @@ class YuxCompletionProvider implements vscode.CompletionItemProvider {
             items.push(item);
         }
 
-        const variables = parser.parseVariables();
+        const variables = parser.visibleVariablesAt(position);
         for (const v of variables) {
             const item = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
             item.detail = v.type || (v.isMutable ? 'var' : 'val');
@@ -317,6 +363,23 @@ class YuxCompletionProvider implements vscode.CompletionItemProvider {
         for (const [name] of structs) {
             const item = new vscode.CompletionItem(name, vscode.CompletionItemKind.Class);
             item.detail = 'struct';
+            items.push(item);
+        }
+
+        const imported = parser.collectImportedCompletions();
+        for (const fn of imported.functions) {
+            const item = new vscode.CompletionItem(fn.name, vscode.CompletionItemKind.Function);
+            item.detail = fn.returnType ? `(${fn.params}) ${fn.returnType}` : `(${fn.params})`;
+            items.push(item);
+        }
+        for (const name of imported.structs) {
+            const item = new vscode.CompletionItem(name, vscode.CompletionItemKind.Class);
+            item.detail = 'struct';
+            items.push(item);
+        }
+        for (const c of imported.constants) {
+            const item = new vscode.CompletionItem(c.name, vscode.CompletionItemKind.Constant);
+            item.detail = c.detail;
             items.push(item);
         }
 
@@ -333,19 +396,18 @@ class YuxCompletionProvider implements vscode.CompletionItemProvider {
             return items;
         }
 
-        const objectName = this.extractObjectName(textBeforeCursor.substring(0, dotIndex));
-        if (!objectName) {
+        const chainText = this.extractChain(textBeforeCursor.substring(0, dotIndex));
+        if (!chainText) {
             return this.getDefaultMemberCompletions();
         }
 
-        const objectType = this.findVariableType(document, objectName);
+        const parser = workspaceSymbols.getParser(document);
+        const objectType = parser.resolveExprType(chainText, position);
         if (!objectType) {
             return this.getDefaultMemberCompletions();
         }
 
-        const parser = new YuxSymbolParser(document);
-        const structs = parser.parseStructs();
-
+        const structs = parser.allStructs();
         const struct = structs.get(objectType);
         if (struct) {
             for (const field of struct.fields) {
@@ -370,29 +432,13 @@ class YuxCompletionProvider implements vscode.CompletionItemProvider {
         return items;
     }
 
-    private extractObjectName(text: string): string | null {
-        const match = text.match(/(\w+)\s*$/);
-        return match ? match[1] : null;
-    }
-
-    private findVariableType(document: vscode.TextDocument, varName: string): string | null {
-        const parser = new YuxSymbolParser(document);
-        const variables = parser.parseVariables();
-
-        for (const v of variables) {
-            if (v.name === varName && v.type) {
-                let type = v.type;
-                if (type.startsWith('Ref<') || type.startsWith('Box<') || type.startsWith('Ptr<')) {
-                    const innerMatch = type.match(/<(.+)>/);
-                    if (innerMatch) {
-                        type = innerMatch[1];
-                    }
-                }
-                return type;
-            }
+    private extractChain(text: string): string | null {
+        const match = text.match(/([\w.()<>,\s]*?)\s*$/);
+        if (!match) {
+            return null;
         }
-
-        return null;
+        const raw = match[1].replace(/\s+/g, '');
+        return raw || null;
     }
 
     private getDefaultMemberCompletions(): vscode.CompletionItem[] {
@@ -474,6 +520,207 @@ class YuxReferenceProvider implements vscode.ReferenceProvider {
 
         return locations;
     }
+}
+
+class YuxHoverProvider implements vscode.HoverProvider {
+    provideHover(document: vscode.TextDocument, position: vscode.Position): vscode.ProviderResult<vscode.Hover> {
+        const wordRange = document.getWordRangeAtPosition(position);
+        if (!wordRange) {
+            return null;
+        }
+        const word = document.getText(wordRange);
+        const parser = workspaceSymbols.getParser(document);
+
+        const v = parser.resolveVariableAt(word, position);
+        if (v) {
+            const kw = v.isMutable ? 'var' : 'val';
+            const md = new vscode.MarkdownString().appendCodeblock(
+                v.type ? `${kw} ${v.name} ${v.type}` : `${kw} ${v.name}`,
+                'yux',
+            );
+            return new vscode.Hover(md, wordRange);
+        }
+
+        for (const fn of parser.parseFunctions()) {
+            if (fn.name === word && !fn.isMethod) {
+                const sig = fn.returnType ? `fn ${fn.name}(${fn.params}) ${fn.returnType}` : `fn ${fn.name}(${fn.params})`;
+                return new vscode.Hover(new vscode.MarkdownString().appendCodeblock(sig, 'yux'), wordRange);
+            }
+        }
+
+        const structs = parser.allStructs();
+        const st = structs.get(word);
+        if (st) {
+            const lines = [`struct ${word} {`, ...st.fields.map((f) => `    ${f.name} ${f.type}`), '}'];
+            return new vscode.Hover(new vscode.MarkdownString().appendCodeblock(lines.join('\n'), 'yux'), wordRange);
+        }
+
+        for (const [sname, s] of structs) {
+            for (const m of s.methods) {
+                if (m.name === word) {
+                    const sig = m.returnType
+                        ? `fn ${sname}.${m.name}(${m.params}) ${m.returnType}`
+                        : `fn ${sname}.${m.name}(${m.params})`;
+                    return new vscode.Hover(new vscode.MarkdownString().appendCodeblock(sig, 'yux'), wordRange);
+                }
+            }
+        }
+        return null;
+    }
+}
+
+class YuxSignatureHelpProvider implements vscode.SignatureHelpProvider {
+    provideSignatureHelp(
+        document: vscode.TextDocument,
+        position: vscode.Position,
+    ): vscode.ProviderResult<vscode.SignatureHelp> {
+        const parser = workspaceSymbols.getParser(document);
+        const call = findEnclosingCall(document, position);
+        if (!call) {
+            return null;
+        }
+
+        const resolveFn = (name: string): { params: string; returnType: string } | null => {
+            for (const fn of parser.parseFunctions()) {
+                if (fn.name === name && !fn.isMethod) {
+                    return { params: fn.params, returnType: fn.returnType };
+                }
+            }
+            for (const fn of parser.collectImportedCompletions().functions) {
+                if (fn.name === name) {
+                    return { params: fn.params, returnType: fn.returnType };
+                }
+            }
+            return null;
+        };
+
+        let info: { params: string; returnType: string } | null = null;
+        if (call.chain.includes('.')) {
+            const lastDot = call.chain.lastIndexOf('.');
+            const recvChain = call.chain.slice(0, lastDot);
+            const methodName = call.chain.slice(lastDot + 1);
+            const recvType = parser.resolveExprType(recvChain, call.callPos);
+            if (recvType) {
+                const st = parser.allStructs().get(recvType);
+                const m = st?.methods.find((mm) => mm.name === methodName);
+                if (m) {
+                    info = { params: m.params, returnType: m.returnType };
+                }
+            }
+        } else {
+            info = resolveFn(call.chain);
+        }
+        if (!info) {
+            return null;
+        }
+
+        const label = info.returnType ? `(${info.params}) ${info.returnType}` : `(${info.params})`;
+        const sig = new vscode.SignatureInformation(label);
+        const paramList = info.params ? info.params.split(',').map((s) => s.trim()) : [];
+        sig.parameters = paramList.map((p) => new vscode.ParameterInformation(p));
+
+        const help = new vscode.SignatureHelp();
+        help.signatures = [sig];
+        help.activeSignature = 0;
+        help.activeParameter = Math.min(call.activeArg, Math.max(0, paramList.length - 1));
+        return help;
+    }
+}
+
+/**
+ * 当光标在 `recv.member` 的 member 上时，解析 recv 的类型，到对应 struct 里找字段/方法。
+ * 支持本地 struct 与 import 进来的 struct（后者返回跨文件 Location）。
+ */
+function resolveMemberJump(
+    parser: ReturnType<YuxWorkspaceSymbols['getParser']>,
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    wordRange: vscode.Range,
+    word: string,
+): vscode.Location | null {
+    const lineText = document.lineAt(position).text;
+    const beforeWord = lineText.substring(0, wordRange.start.character);
+    if (!/\.\s*$/.test(beforeWord)) {
+        return null;
+    }
+    const chainText = beforeWord.replace(/\.\s*$/, '');
+    const m = chainText.match(/([\w.()<>,\s]+)$/);
+    if (!m) {
+        return null;
+    }
+    const chain = m[1].replace(/\s+/g, '');
+    if (!chain) {
+        return null;
+    }
+    const recvType = parser.resolveExprType(chain, position);
+    if (!recvType) {
+        return null;
+    }
+    const local = parser.parseStructs().get(recvType);
+    if (local) {
+        for (const f of local.fields) {
+            if (f.name === word) {
+                return new vscode.Location(document.uri, f.range);
+            }
+        }
+        for (const mm of local.methods) {
+            if (mm.name === word) {
+                return new vscode.Location(document.uri, mm.range);
+            }
+        }
+    }
+    const imported = parser.findImportedStruct(recvType);
+    if (imported) {
+        for (const f of imported.info.fields) {
+            if (f.name === word) {
+                return new vscode.Location(vscode.Uri.file(imported.file), f.range);
+            }
+        }
+        for (const mm of imported.info.methods) {
+            if (mm.name === word) {
+                return new vscode.Location(vscode.Uri.file(imported.file), mm.range);
+            }
+        }
+    }
+    return null;
+}
+
+interface CallContext {
+    chain: string;
+    activeArg: number;
+    callPos: vscode.Position;
+}
+
+function findEnclosingCall(document: vscode.TextDocument, position: vscode.Position): CallContext | null {
+    const text = document.getText(new vscode.Range(new vscode.Position(0, 0), position));
+    let depth = 0;
+    let openIdx = -1;
+    let commas = 0;
+    for (let i = text.length - 1; i >= 0; i--) {
+        const c = text[i];
+        if (c === ')') {
+            depth++;
+        } else if (c === '(') {
+            if (depth === 0) {
+                openIdx = i;
+                break;
+            }
+            depth--;
+        } else if (c === ',' && depth === 0) {
+            commas++;
+        }
+    }
+    if (openIdx < 0) {
+        return null;
+    }
+    const before = text.slice(0, openIdx);
+    const m = before.match(/([A-Za-z_][\w.()]*?)\s*$/);
+    if (!m) {
+        return null;
+    }
+    const chain = m[1].replace(/\s+/g, '');
+    const offsetToPos = document.positionAt(openIdx);
+    return { chain, activeArg: commas, callPos: offsetToPos };
 }
 
 export function deactivate() {}

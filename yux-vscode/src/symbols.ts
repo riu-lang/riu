@@ -1,9 +1,17 @@
 /*
  * Copyright (c) 2026. Yin-Jinlong@github
  * MPL-2.0
+ *
+ * 对外符号接口。真正的抽取由 ast/visitor.ts 完成；
+ * YuxSymbolParser 负责解析一次并缓存结果。
  */
 
 import * as vscode from 'vscode';
+import { parseYux } from './parser';
+import { extractSymbols, ExtractedSymbols, ImportInfo } from './ast/visitor';
+import { buildScopeTree, ScopeTree, findScopeAt, visibleVars, resolveVar, enclosingStruct, Scope } from './ast/scope';
+import { resolveChainType } from './ast/typeResolver';
+import { findProjectRoot, findSymbolInImports, resolvePackageSegment, collectImportedCompletions, collectImportedStructs, ImportedCompletion } from './ast/workspace';
 
 export interface YuxSymbol {
     name: string;
@@ -45,311 +53,165 @@ export interface GlobalConstInfo {
 
 export class YuxSymbolParser {
     private document: vscode.TextDocument;
+    private cachedExtract: ExtractedSymbols | null = null;
+    private cachedScope: ScopeTree | null = null;
 
     constructor(document: vscode.TextDocument) {
         this.document = document;
     }
 
-    parse(): YuxSymbol[] {
-        const symbols: YuxSymbol[] = [];
-        const text = this.document.getText();
-        const lines = text.split('\n');
-
-        let currentStructImpl: string | undefined;
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            const lineNum = i;
-
-            const structImplMatch = this.matchStructImplStart(line);
-            if (structImplMatch) {
-                currentStructImpl = structImplMatch.name;
-                continue;
-            }
-
-            if (currentStructImpl && line.trim() === '}') {
-                currentStructImpl = undefined;
-                continue;
-            }
-
-            const structSymbol = this.parseStructDefinition(line, lineNum);
-            if (structSymbol) {
-                symbols.push(structSymbol);
-                continue;
-            }
-
-            const fnSymbol = this.parseFunctionDefinition(line, lineNum, currentStructImpl);
-            if (fnSymbol) {
-                symbols.push(fnSymbol);
-                continue;
-            }
-
-            const varSymbol = this.parseVariableDeclaration(line, lineNum);
-            if (varSymbol) {
-                symbols.push(varSymbol);
-                continue;
-            }
-
-            const constSymbol = this.parseGlobalConst(line, lineNum);
-            if (constSymbol) {
-                symbols.push(constSymbol);
-            }
+    private parseOnce(): { extract: ExtractedSymbols; scope: ScopeTree } {
+        if (this.cachedExtract && this.cachedScope) {
+            return { extract: this.cachedExtract, scope: this.cachedScope };
         }
+        const text = this.document.getText();
+        const { tree } = parseYux(text);
+        this.cachedExtract = extractSymbols(tree);
+        this.cachedScope = buildScopeTree(tree, text);
+        return { extract: this.cachedExtract, scope: this.cachedScope };
+    }
 
-        return symbols;
+    parse(): YuxSymbol[] {
+        return this.parseOnce().extract.symbols;
     }
 
     parseStructs(): Map<string, StructInfo> {
-        const structs = new Map<string, StructInfo>();
-        const text = this.document.getText();
-        const lines = text.split('\n');
+        return this.parseOnce().extract.structs;
+    }
 
-        let currentStruct: StructInfo | null = null;
-        let currentImpl: string | null = null;
-        let braceDepth = 0;
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            const trimmed = line.trim();
-
-            if (currentStruct) {
-                if (trimmed === '}') {
-                    structs.set(currentStruct.name, currentStruct);
-                    currentStruct = null;
-                    continue;
-                }
-
-                const fieldMatch = trimmed.match(/^(\w+)\s+(\S+)/);
-                if (fieldMatch && !trimmed.startsWith('fn ') && !trimmed.startsWith('/')) {
-                    currentStruct.fields.push({
-                        name: fieldMatch[1],
-                        type: fieldMatch[2],
-                        range: new vscode.Range(i, line.indexOf(fieldMatch[1]), i, line.indexOf(fieldMatch[1]) + fieldMatch[1].length)
-                    });
-                }
-            } else if (currentImpl) {
-                if (trimmed === '}') {
-                    currentImpl = null;
-                    continue;
-                }
-
-                const methodMatch = this.parseMethodDefinition(trimmed, i, currentImpl);
-                if (methodMatch && structs.has(currentImpl)) {
-                    const struct = structs.get(currentImpl)!;
-                    struct.methods.push(methodMatch);
-                }
-            } else {
-                const structMatch = trimmed.match(/^struct\s+(\w+)\s*\{/);
-                if (structMatch) {
-                    currentStruct = {
-                        name: structMatch[1],
-                        range: new vscode.Range(i, 0, i, line.length),
-                        fields: [],
-                        methods: []
-                    };
-                }
-
-                const implMatch = trimmed.match(/^(\w+)\s*\{$/);
-                if (implMatch) {
-                    currentImpl = implMatch[1];
-                }
+    /** 本地 + 已导入模块的 struct 合并表（本地优先）。 */
+    allStructs(): Map<string, StructInfo> {
+        const local = this.parseOnce().extract.structs;
+        const root = findProjectRoot(this.document.uri.fsPath);
+        if (!root) {
+            return local;
+        }
+        const merged = new Map<string, StructInfo>(local);
+        for (const [name, hit] of collectImportedStructs(root, this.parseImports())) {
+            if (!merged.has(name)) {
+                merged.set(name, hit.info);
             }
         }
+        return merged;
+    }
 
-        return structs;
+    /** 在导入模块中查找 struct，返回 (file, StructInfo)。 */
+    findImportedStruct(name: string): { file: string; info: StructInfo } | null {
+        const root = findProjectRoot(this.document.uri.fsPath);
+        if (!root) {
+            return null;
+        }
+        return collectImportedStructs(root, this.parseImports()).get(name) ?? null;
     }
 
     parseFunctions(): FunctionInfo[] {
-        const functions: FunctionInfo[] = [];
-        const text = this.document.getText();
-        const lines = text.split('\n');
-
-        let currentImpl: string | null = null;
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            const trimmed = line.trim();
-
-            const implMatch = trimmed.match(/^(\w+)\s*\{$/);
-            if (implMatch) {
-                currentImpl = implMatch[1];
-                continue;
-            }
-
-            if (currentImpl && trimmed === '}') {
-                currentImpl = null;
-                continue;
-            }
-
-            const fnMatch = trimmed.match(/^fn\s+(\w+)\s*\(([^)]*)\)(?:\s*(\S+))?\s*[\{=]/);
-            if (fnMatch) {
-                functions.push({
-                    name: fnMatch[1],
-                    params: fnMatch[2].trim(),
-                    returnType: fnMatch[3] || '',
-                    range: new vscode.Range(i, line.indexOf('fn'), i, line.length),
-                    isMethod: currentImpl !== null,
-                    containerName: currentImpl || undefined
-                });
-            }
-        }
-
-        return functions;
+        return this.parseOnce().extract.functions;
     }
 
     parseVariables(): VariableInfo[] {
-        const variables: VariableInfo[] = [];
-        const text = this.document.getText();
-        const lines = text.split('\n');
+        return this.parseOnce().extract.variables;
+    }
 
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            const trimmed = line.trim();
+    scopeAt(pos: vscode.Position): Scope {
+        return findScopeAt(this.parseOnce().scope, pos);
+    }
 
-            const varMatch = trimmed.match(/^(var|val)\s+(\w+)(?:\s+(\S+))?\s*=/);
-            if (varMatch) {
-                variables.push({
-                    name: varMatch[2],
-                    type: varMatch[3] || '',
-                    range: new vscode.Range(i, line.indexOf(varMatch[2]), i, line.indexOf(varMatch[2]) + varMatch[2].length),
-                    isMutable: varMatch[1] === 'var'
-                });
+    visibleVariablesAt(pos: vscode.Position): VariableInfo[] {
+        const scope = this.scopeAt(pos);
+        return visibleVars(scope, pos).map((v) => ({
+            name: v.name,
+            type: v.type,
+            range: v.nameRange,
+            isMutable: v.isMutable,
+        }));
+    }
+
+    resolveVariableAt(name: string, pos: vscode.Position): VariableInfo | null {
+        const scope = this.scopeAt(pos);
+        const v = resolveVar(scope, name, pos);
+        return v ? { name: v.name, type: v.type, range: v.nameRange, isMutable: v.isMutable } : null;
+    }
+
+    resolveExprType(text: string, pos: vscode.Position): string | null {
+        const scope = this.scopeAt(pos);
+        return resolveChainType(text, scope, pos, this.allStructs());
+    }
+
+    enclosingStructAt(pos: vscode.Position): string | undefined {
+        return enclosingStruct(this.scopeAt(pos));
+    }
+
+    parseImports(): ImportInfo[] {
+        return this.parseOnce().extract.imports;
+    }
+
+    /** 光标在 use 语句的包段上时，返回目标文件/目录 Location；否则 null。 */
+    resolveImportAt(pos: vscode.Position): vscode.Location | null {
+        const root = findProjectRoot(this.document.uri.fsPath);
+        if (!root) {
+            return null;
+        }
+        for (const imp of this.parseImports()) {
+            for (let i = 0; i < imp.pkgRanges.length; i++) {
+                if (imp.pkgRanges[i].contains(pos)) {
+                    return resolvePackageSegment(root, imp.pkgs.slice(0, i + 1));
+                }
             }
         }
-
-        return variables;
-    }
-
-    private matchStructImplStart(line: string): { name: string } | null {
-        const trimmed = line.trim();
-        const match = trimmed.match(/^(\w+)\s*\{$/);
-        if (match && !trimmed.startsWith('struct ') && !trimmed.startsWith('fn ')) {
-            return { name: match[1] };
-        }
         return null;
     }
 
-    private parseStructDefinition(line: string, lineNum: number): YuxSymbol | null {
-        const trimmed = line.trim();
-        const match = trimmed.match(/^struct\s+(\w+)\s*\{/);
-        if (match) {
-            const name = match[1];
-            const startPos = line.indexOf(name);
-            return {
-                name,
-                kind: vscode.SymbolKind.Struct,
-                range: new vscode.Range(lineNum, 0, lineNum, line.length),
-                selectionRange: new vscode.Range(lineNum, startPos, lineNum, startPos + name.length),
-                detail: 'struct'
-            };
+    /** 收集 `use` 引入的模块里所有顶层符号，用于补全。 */
+    collectImportedCompletions(): ImportedCompletion {
+        const root = findProjectRoot(this.document.uri.fsPath);
+        if (!root) {
+            return { functions: [], structs: [], constants: [] };
         }
-        return null;
+        return collectImportedCompletions(root, this.parseImports());
     }
 
-    private parseFunctionDefinition(line: string, lineNum: number, containerName?: string): YuxSymbol | null {
-        const trimmed = line.trim();
-        const match = trimmed.match(/^fn\s+(\w+)\s*\(([^)]*)\)(?:\s*(\S+))?\s*[\{=]/);
-        if (match) {
-            const name = match[1];
-            const params = match[2].trim();
-            const returnType = match[3] || '';
-            const startPos = line.indexOf(name);
-
-            let kind = vscode.SymbolKind.Function;
-            if (name.startsWith('~')) {
-                kind = vscode.SymbolKind.Constructor;
-            } else if (containerName && name === containerName) {
-                kind = vscode.SymbolKind.Constructor;
-            }
-
-            return {
-                name,
-                kind,
-                range: new vscode.Range(lineNum, 0, lineNum, line.length),
-                selectionRange: new vscode.Range(lineNum, startPos, lineNum, startPos + name.length),
-                containerName,
-                detail: returnType ? `(${params}) ${returnType}` : `(${params})`
-            };
+    /** 在当前文件 `use` 所引入的模块中查找顶层符号（非 method）。 */
+    findImportedSymbol(name: string): vscode.Location | null {
+        const root = findProjectRoot(this.document.uri.fsPath);
+        if (!root) {
+            return null;
         }
-        return null;
-    }
-
-    private parseVariableDeclaration(line: string, lineNum: number): YuxSymbol | null {
-        const trimmed = line.trim();
-        const match = trimmed.match(/^(var|val)\s+(\w+)(?:\s+(\S+))?\s*=/);
-        if (match) {
-            const name = match[2];
-            const type = match[3] || '';
-            const startPos = line.indexOf(name);
-            return {
-                name,
-                kind: vscode.SymbolKind.Variable,
-                range: new vscode.Range(lineNum, 0, lineNum, line.length),
-                selectionRange: new vscode.Range(lineNum, startPos, lineNum, startPos + name.length),
-                detail: type || (match[1] === 'var' ? 'var' : 'val')
-            };
+        const hit = findSymbolInImports(root, this.parseImports(), name);
+        if (!hit) {
+            return null;
         }
-        return null;
-    }
-
-    private parseGlobalConst(line: string, lineNum: number): YuxSymbol | null {
-        const trimmed = line.trim();
-        const match = trimmed.match(/^cval\s+(\w+)(?:\s+(\S+))?\s*=/);
-        if (match) {
-            const name = match[1];
-            const type = match[2] || '';
-            const startPos = line.indexOf(name);
-            return {
-                name,
-                kind: vscode.SymbolKind.Constant,
-                range: new vscode.Range(lineNum, 0, lineNum, line.length),
-                selectionRange: new vscode.Range(lineNum, startPos, lineNum, startPos + name.length),
-                detail: type || 'const'
-            };
-        }
-        return null;
-    }
-
-    private parseMethodDefinition(line: string, lineNum: number, structName: string): { name: string; params: string; returnType: string; range: vscode.Range } | null {
-        const match = line.match(/^fn\s+(\w+)\s*\(([^)]*)\)(?:\s*(\S+))?\s*[\{=]/);
-        if (match) {
-            return {
-                name: match[1],
-                params: match[2].trim(),
-                returnType: match[3] || '',
-                range: new vscode.Range(lineNum, 0, lineNum, line.length)
-            };
-        }
-        return null;
+        return new vscode.Location(vscode.Uri.file(hit.file), hit.range);
     }
 }
 
 export class YuxWorkspaceSymbols {
-    private cache: Map<string, { symbols: YuxSymbol[]; structs: Map<string, StructInfo>; functions: FunctionInfo[]; variables: VariableInfo[] }> = new Map();
+    private cache: Map<string, { parser: YuxSymbolParser; version: number }> = new Map();
 
-    getDocumentSymbols(document: vscode.TextDocument): YuxSymbol[] {
-        const cached = this.cache.get(document.uri.toString());
-        if (cached) {
-            return cached.symbols;
+    getParser(document: vscode.TextDocument): YuxSymbolParser {
+        const key = document.uri.toString();
+        const cur = this.cache.get(key);
+        if (cur && cur.version === document.version) {
+            return cur.parser;
         }
         const parser = new YuxSymbolParser(document);
-        const symbols = parser.parse();
-        return symbols;
+        this.cache.set(key, { parser, version: document.version });
+        return parser;
+    }
+
+    getDocumentSymbols(document: vscode.TextDocument): YuxSymbol[] {
+        return this.getParser(document).parse();
     }
 
     getStructs(document: vscode.TextDocument): Map<string, StructInfo> {
-        const parser = new YuxSymbolParser(document);
-        return parser.parseStructs();
+        return this.getParser(document).parseStructs();
     }
 
     getFunctions(document: vscode.TextDocument): FunctionInfo[] {
-        const parser = new YuxSymbolParser(document);
-        return parser.parseFunctions();
+        return this.getParser(document).parseFunctions();
     }
 
     getVariables(document: vscode.TextDocument): VariableInfo[] {
-        const parser = new YuxSymbolParser(document);
-        return parser.parseVariables();
+        return this.getParser(document).parseVariables();
     }
 
     invalidate(document: vscode.TextDocument): void {
