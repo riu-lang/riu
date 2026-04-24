@@ -541,6 +541,61 @@ struct Array<T> {
   ; 内部处理
 }
 
+Array<T> {
+  ; 获取数组长度
+  fn len() i64 {
+    self._len()
+  }
+
+  ; 获取数组容量
+  fn cap() i64 {
+    self._cap()
+  }
+
+  ; 追加元素
+  fn push(value T) {
+    self._push(value)
+  }
+
+  ; 清空数组
+  fn clear() {
+    self._clear()
+  }
+
+  ; 设置长度（用于截断）
+  fn set_len(new_len i64) {
+    self._set_len(new_len)
+  }
+
+  ; 判断是否为空
+  fn is_empty() bool {
+    self._len() == 0i64
+  }
+
+  ; 获取指定位置的元素
+  fn at(i i64) T {
+    self[i]
+  }
+
+  ; 获取第一个元素
+  fn first() T {
+    self[0i64]
+  }
+
+  ; 获取最后一个元素
+  fn last() T {
+    self[self._len() - 1i64]
+  }
+
+  ; 移除并返回最后一个元素
+  fn pop() T {
+    var len i64 = self._len()
+    var elem T = self[len - 1i64]
+    self._set_len(len - 1i64)
+    elem
+  }
+}
+
 ; String 类型 - 内部使用 Array<u32> 存储 Unicode code points
 struct String {
   data Array<u32>

@@ -512,11 +512,21 @@ TypeInfo ExprDotNode::getType() const {
     }
     
     if (baseType.isArrayGeneric()) {
-        if (member == "_len" || member == "_cap") {
+        if (member == "_len" || member == "_cap" || member == "len" || member == "cap") {
             return TypeInfo("fn() i64");
         }
-        if (member == "_push" || member == "_clear" || member == "_set_len") {
+        if (member == "_push" || member == "_clear" || member == "_set_len" ||
+            member == "push" || member == "clear" || member == "set_len") {
             return TypeInfo("fn() ");
+        }
+        if (member == "is_empty") {
+            return TypeInfo("fn() bool");
+        }
+        if (member == "at" || member == "first" || member == "last" || member == "pop") {
+            auto elemType = baseType.arrayGenericElementType();
+            if (elemType) {
+                return TypeInfo("fn() " + elemType->getFullName());
+            }
         }
     }
     

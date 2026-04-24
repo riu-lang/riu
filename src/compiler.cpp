@@ -3068,14 +3068,14 @@ llvm::Value* Compiler::compileMethodCall(
             return tmp;
         };
 
-        if (member == "_len") {
+        if (member == "_len" || member == "len") {
             DEBUG_LOG("    Expr: Array._len()");
             auto ptr = getReadPtr();
             llvm::Value* indices[] = {zero, one};
             auto lenField = _builder.CreateGEP(arrayStructType, ptr, indices, "len_field");
             return _builder.CreateLoad(_builder.getInt64Ty(), lenField, "array.len");
         }
-        if (member == "_cap") {
+        if (member == "_cap" || member == "cap") {
             DEBUG_LOG("    Expr: Array._cap()");
             auto ptr = getReadPtr();
             llvm::Value* indices[] = {zero, two};
@@ -3083,15 +3083,89 @@ llvm::Value* Compiler::compileMethodCall(
             return _builder.CreateLoad(_builder.getInt64Ty(), capField, "array.cap");
         }
 
-        if (member == "_push" || member == "_set_len" || member == "_clear") {
+        if (!elemType) {
+            throw YuxError(callNode->getLineNumber(), "Array type requires element type");
+        }
+        auto elemLLVMType = getLLVMType(*elemType);
+
+        if (member == "is_empty") {
+            DEBUG_LOG("    Expr: Array.is_empty()");
+            auto ptr = getReadPtr();
+            llvm::Value* indices[] = {zero, one};
+            auto lenField = _builder.CreateGEP(arrayStructType, ptr, indices, "len_field");
+            auto lenVal = _builder.CreateLoad(_builder.getInt64Ty(), lenField, "array.len");
+            return _builder.CreateICmpEQ(lenVal, _builder.getInt64(0), "array.is_empty");
+        }
+
+        if (member == "at") {
+            DEBUG_LOG("    Expr: Array.at()");
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), "at requires 1 argument");
+            }
+            auto ptr = getReadPtr();
+            llvm::Value* lenIndices[] = {zero, one};
+            auto lenField = _builder.CreateGEP(arrayStructType, ptr, lenIndices, "len_field");
+            auto lenVal = _builder.CreateLoad(_builder.getInt64Ty(), lenField, "array.len");
+            
+            llvm::Value* dataIndices[] = {zero, zero};
+            auto dataFieldPtr = _builder.CreateGEP(arrayStructType, ptr, dataIndices, "a.data.field");
+            auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataFieldPtr, "a.data");
+            auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {args[0]}, "at.elem.ptr");
+            return _builder.CreateLoad(elemLLVMType, elemPtr, "at.elem");
+        }
+
+        if (member == "first") {
+            DEBUG_LOG("    Expr: Array.first()");
+            auto ptr = getReadPtr();
+            llvm::Value* dataIndices[] = {zero, zero};
+            auto dataFieldPtr = _builder.CreateGEP(arrayStructType, ptr, dataIndices, "a.data.field");
+            auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataFieldPtr, "a.data");
+            auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {_builder.getInt64(0)}, "first.elem.ptr");
+            return _builder.CreateLoad(elemLLVMType, elemPtr, "first.elem");
+        }
+
+        if (member == "last") {
+            DEBUG_LOG("    Expr: Array.last()");
+            auto ptr = getReadPtr();
+            llvm::Value* lenIndices[] = {zero, one};
+            auto lenField = _builder.CreateGEP(arrayStructType, ptr, lenIndices, "len_field");
+            auto lenVal = _builder.CreateLoad(_builder.getInt64Ty(), lenField, "array.len");
+            auto lastIdx = _builder.CreateSub(lenVal, _builder.getInt64(1), "last.idx");
+            
+            llvm::Value* dataIndices[] = {zero, zero};
+            auto dataFieldPtr = _builder.CreateGEP(arrayStructType, ptr, dataIndices, "a.data.field");
+            auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataFieldPtr, "a.data");
+            auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {lastIdx}, "last.elem.ptr");
+            return _builder.CreateLoad(elemLLVMType, elemPtr, "last.elem");
+        }
+
+        if (member == "pop") {
+            DEBUG_LOG("    Expr: Array.pop()");
+            if (!arrayPtr) {
+                throw YuxError(callNode->getLineNumber(), "Array.pop() requires an lvalue array");
+            }
+            llvm::Value* lenIndices[] = {zero, one};
+            auto lenFieldPtr = _builder.CreateGEP(arrayStructType, arrayPtr, lenIndices, "a.len.field");
+            auto lenVal = _builder.CreateLoad(_builder.getInt64Ty(), lenFieldPtr, "a.len");
+            auto lastIdx = _builder.CreateSub(lenVal, _builder.getInt64(1), "pop.idx");
+            
+            llvm::Value* dataIndices[] = {zero, zero};
+            auto dataFieldPtr = _builder.CreateGEP(arrayStructType, arrayPtr, dataIndices, "a.data.field");
+            auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataFieldPtr, "a.data");
+            auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {lastIdx}, "pop.elem.ptr");
+            auto elemVal = _builder.CreateLoad(elemLLVMType, elemPtr, "pop.elem");
+            
+            auto newLen = _builder.CreateSub(lenVal, _builder.getInt64(1), "pop.new_len");
+            _builder.CreateStore(newLen, lenFieldPtr);
+            return elemVal;
+        }
+
+        if (member == "_push" || member == "_set_len" || member == "_clear" ||
+            member == "push" || member == "set_len" || member == "clear") {
             if (!arrayPtr) {
                 throw YuxError(callNode->getLineNumber(),
                     "Array mutation method '{}' requires an lvalue array", member);
             }
-            if (!elemType) {
-                throw YuxError(callNode->getLineNumber(), "Array type requires element type");
-            }
-            auto elemLLVMType = getLLVMType(*elemType);
             uint64_t elemSize = elemLLVMType->getPrimitiveSizeInBits() / 8;
             if (elemSize == 0) {
                 elemSize = _module->getDataLayout().getTypeAllocSize(elemLLVMType);
@@ -3108,12 +3182,12 @@ llvm::Value* Compiler::compileMethodCall(
                 return llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
             };
 
-            if (member == "_clear") {
+            if (member == "_clear" || member == "clear") {
                 DEBUG_LOG("    Expr: Array._clear()");
                 _builder.CreateStore(_builder.getInt64(0), lenFieldPtr);
                 return voidResult();
             }
-            if (member == "_set_len") {
+            if (member == "_set_len" || member == "set_len") {
                 DEBUG_LOG("    Expr: Array._set_len()");
                 if (args.size() != 1) {
                     throw YuxError(callNode->getLineNumber(), "_set_len requires 1 argument");
@@ -3121,7 +3195,7 @@ llvm::Value* Compiler::compileMethodCall(
                 _builder.CreateStore(args[0], lenFieldPtr);
                 return voidResult();
             }
-            // _push
+            // _push or push
             DEBUG_LOG("    Expr: Array._push()");
             if (args.size() != 1) {
                 throw YuxError(callNode->getLineNumber(), "_push requires 1 argument");
