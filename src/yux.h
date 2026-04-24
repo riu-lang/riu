@@ -65,10 +65,11 @@ public:
     // 用于 `yux <src.yux>` 调用，产物扁平放在 `build/`。
     void initSingleFileRoot(const string& mainFileAbsPath);
     // 项目模式：`rootDir` 必须包含 `yux.toml`。解析 name/entry/version。
-    // 未找到 yux.toml 抛 YuxError。
+    // `name` 为必填字段；未找到 yux.toml 或缺 `name` 抛 YuxError。
+    // toml11 原生 UTF-8，允许中文等非 ASCII 的项目名。
     void initProjectFromDir(const string& rootDir);
     const string& projectRoot() const { return _projectRoot; }
-    // 项目名：yux.toml 的 `name` 字段，缺省回落到项目根目录名。
+    // 项目名：yux.toml 的 `name` 字段（必填，非空）。
     string projectName() const;
     // yux.toml 的 `entry` 字段，缺省返回空串。
     const string& projectEntry() const { return _projectEntry; }
