@@ -542,58 +542,35 @@ struct Array<T> {
 }
 
 Array<T> {
-  ; 获取数组长度
-  fn len() i64 {
-    self._len()
-  }
+  #CompilerInner
+  fn len() i64
 
-  ; 获取数组容量
-  fn cap() i64 {
-    self._cap()
-  }
+  #CompilerInner
+  fn cap() i64
 
-  ; 追加元素
-  fn push(value T) {
-    self._push(value)
-  }
+  #CompilerInner
+  fn push(value T)
 
-  ; 清空数组
-  fn clear() {
-    self._clear()
-  }
+  #CompilerInner
+  fn clear()
 
-  ; 设置长度（用于截断）
-  fn set_len(new_len i64) {
-    self._set_len(new_len)
-  }
+  #CompilerInner
+  fn set_len(new_len i64)
 
-  ; 判断是否为空
-  fn is_empty() bool {
-    self._len() == 0i64
-  }
+  #CompilerInner
+  fn is_empty() bool
 
-  ; 获取指定位置的元素
-  fn at(i i64) T {
-    self[i]
-  }
+  #CompilerInner
+  fn at(i i64) T
 
-  ; 获取第一个元素
-  fn first() T {
-    self[0i64]
-  }
+  #CompilerInner
+  fn first() T
 
-  ; 获取最后一个元素
-  fn last() T {
-    self[self._len() - 1i64]
-  }
+  #CompilerInner
+  fn last() T
 
-  ; 移除并返回最后一个元素
-  fn pop() T {
-    var len i64 = self._len()
-    var elem T = self[len - 1i64]
-    self._set_len(len - 1i64)
-    elem
-  }
+  #CompilerInner
+  fn pop() T
 }
 
 ; String 类型 - 内部使用 Array<u32> 存储 Unicode code points
@@ -615,34 +592,34 @@ String {
   }
 
   fn len() i64 {
-    self.data._len()
+    self.data.len()
   }
 
   ; 清空字符串
   fn clear() {
-    self.data._clear()
+    self.data.clear()
   }
 
   ; 追加一个 Unicode 码点
   fn append(cp u32) {
-    self.data._push(cp)
+    self.data.push(cp)
   }
 
   ; 追加另一个字符串
   fn append(s String) {
     var i i64 = 0
     loop {
-      if i >= s.data._len() {
+      if i >= s.data.len() {
         break;
       }
-      self.data._push(s.data[i])
+      self.data.push(s.data[i])
       i += 1
     }
   }
 
   ; 追加 ASCII 字节（作为 u32 码点写入）
   fn append(b u8) {
-    self.data._push(b.to_u32())
+    self.data.push(b.to_u32())
   }
 
   ; 取码点
@@ -652,7 +629,7 @@ String {
 
   ; 就地截取 [start, end)，修改 self
   fn sub_string(start i64, end i64) {
-    var len i64 = self.data._len()
+    var len i64 = self.data.len()
     var s i64 = start
     var e i64 = end
     if s < 0 {
@@ -662,7 +639,7 @@ String {
       e = len
     }
     if s >= e {
-      self.data._set_len(0i64)
+      self.data.set_len(0i64)
       ret;
     }
     var i i64 = 0
@@ -674,7 +651,7 @@ String {
       self.data[i] = self.data[s + i]
       i += 1
     }
-    self.data._set_len(n)
+    self.data.set_len(n)
   }
 
   ; 转为 UTF-8 字节数组
@@ -682,24 +659,24 @@ String {
     var r Array<u8> = []
     var i i64 = 0
     loop {
-      if i >= self.data._len() {
+      if i >= self.data.len() {
         break;
       }
       val cp u32 = self.data[i]
       if cp < 128u32 {
-        r._push(cp.to_u8());
+        r.push(cp.to_u8());
       } elif cp < 2048u32 {
-        r._push(192u8 + ((cp >> 6u32) & 31u32).to_u8())
-        r._push(128u8 + (cp & 63u32).to_u8());
+        r.push(192u8 + ((cp >> 6u32) & 31u32).to_u8())
+        r.push(128u8 + (cp & 63u32).to_u8());
       } elif cp < 65536u32 {
-        r._push(224u8 + ((cp >> 12u32) & 15u32).to_u8())
-        r._push(128u8 + ((cp >> 6u32) & 63u32).to_u8())
-        r._push(128u8 + (cp & 63u32).to_u8());
+        r.push(224u8 + ((cp >> 12u32) & 15u32).to_u8())
+        r.push(128u8 + ((cp >> 6u32) & 63u32).to_u8())
+        r.push(128u8 + (cp & 63u32).to_u8());
       } else {
-        r._push(240u8 + ((cp >> 18u32) & 7u32).to_u8())
-        r._push(128u8 + ((cp >> 12u32) & 63u32).to_u8())
-        r._push(128u8 + ((cp >> 6u32) & 63u32).to_u8())
-        r._push(128u8 + (cp & 63u32).to_u8());
+        r.push(240u8 + ((cp >> 18u32) & 7u32).to_u8())
+        r.push(128u8 + ((cp >> 12u32) & 63u32).to_u8())
+        r.push(128u8 + ((cp >> 6u32) & 63u32).to_u8())
+        r.push(128u8 + (cp & 63u32).to_u8());
       }
       i += 1
     }
@@ -728,7 +705,7 @@ fn print(s String) {
   val bytes Array<u8> = s.to_bytes()
   var i i64 = 0
   loop {
-    if i >= bytes._len() {
+    if i >= bytes.len() {
       break;
     }
     val b [u8 * 1] = [bytes[i]]

@@ -9,6 +9,30 @@
 #include "fn_node.h"
 #include "file_node.h"
 
+static bool isCompilerInnerMethod(ScopeNode* scope, const string& structName, const string& methodName) {
+    if (!scope) return false;
+    
+    FileNode* file = dynamic_cast<FileNode*>(scope);
+    auto s = scope;
+    while (!file && s) {
+        s = s->parentScope();
+        file = dynamic_cast<FileNode*>(s);
+    }
+    
+    if (!file) return false;
+    
+    auto structImpl = file->getStructImpl(structName);
+    if (!structImpl) return false;
+    
+    for (auto& method : structImpl->methods()) {
+        if (method->header()->name().getText() == methodName) {
+            return method->header()->hasAnno("CompilerInner");
+        }
+    }
+    
+    return false;
+}
+
 static p<ExprNode> unwrapParen(p<ExprNode> e) {
     while (auto paren = dynamic_cast<ExprParenNode*>(e)) {
         e = paren->expr();
@@ -511,12 +535,11 @@ TypeInfo ExprDotNode::getType() const {
         }
     }
     
-    if (baseType.isArrayGeneric()) {
-        if (member == "_len" || member == "_cap" || member == "len" || member == "cap") {
+    if (baseType.isArrayGeneric() && isCompilerInnerMethod(findNearestScope(), "Array", member)) {
+        if (member == "len" || member == "cap") {
             return TypeInfo("fn() i64");
         }
-        if (member == "_push" || member == "_clear" || member == "_set_len" ||
-            member == "push" || member == "clear" || member == "set_len") {
+        if (member == "push" || member == "clear" || member == "set_len") {
             return TypeInfo("fn() ");
         }
         if (member == "is_empty") {

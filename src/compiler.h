@@ -149,6 +149,7 @@ class Compiler {
     llvm::Value* compileGetRefExpr(p<ExprGetRefNode> node);
     llvm::Value* compileUnaryExpr(p<ExprUnaryNode> node);
 
+    bool isCompilerInnerMethod(const string& structName, const string& methodName);
     llvm::Value* compileMethodCall(
         p<ExprCallNode> callNode, p<ExprDotNode> dotNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
     llvm::Value* compileFunctionCall(
