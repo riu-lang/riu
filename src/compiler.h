@@ -78,7 +78,7 @@ class Compiler {
 
     TypeInfo applySubst(const TypeInfo& t) const;
     string ensureStructInstance(p<StructDeclNode> baseDecl, const vector<sp<TypeInfo>>& args, p<FileNode> ownerFile, int sourceLine = 0);
-    string ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& typeArgs, p<FileNode> ownerFile);
+    string ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& typeArgs, p<FileNode> ownerFile, int sourceLine);
     void emitInstanceMethods();
     void emitFnInstances();
 

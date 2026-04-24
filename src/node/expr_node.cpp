@@ -245,9 +245,7 @@ TypeInfo ExprCallNode::getType() const {
             }
         }
         if (sym && sym->kind != SymbolKind::Function) {
-            YuxError err("Type {} is not a Function", sym->name);
-            err.setLineNumber(resolveLineNumber());
-            throw err;
+            throw YuxError(resolveLineNumber(), "Type {} is not a Function", sym->name);
         }
         
         vector<TypeInfo> argTypes;
@@ -294,9 +292,7 @@ TypeInfo ExprAddSubNode::getType() const {
         if (isFlexibleIntExpr(_left) && tryInferIntType(_left, rightType)) {
             return rightType;
         }
-        YuxError err("Type mismatch in +-/ operation: left is {}, right is {}", leftType.name, rightType.name);
-        err.setLineNumber(resolveLineNumber());
-        throw err;
+        throw YuxError(resolveLineNumber(), "Type mismatch in +-/ operation: left is {}, right is {}", leftType.name, rightType.name);
     }
     return leftType;
 }
@@ -330,9 +326,7 @@ TypeInfo ExprMulDivModNode::getType() const {
         if (isFlexibleIntExpr(_left) && tryInferIntType(_left, rightType)) {
             return rightType;
         }
-        YuxError err("Type mismatch in */% operation: left is {}, right is {}", leftType.name, rightType.name);
-        err.setLineNumber(resolveLineNumber());
-        throw err;
+        throw YuxError(resolveLineNumber(), "Type mismatch in */% operation: left is {}, right is {}", leftType.name, rightType.name);
     }
     return leftType;
 }
@@ -366,9 +360,7 @@ TypeInfo ExprBinOpNode::getType() const {
         if (isFlexibleIntExpr(_left) && tryInferIntType(_left, rightType)) {
             return rightType;
         }
-        YuxError err("Type mismatch in &|^ operation: left is {}, right is {}", leftType.name, rightType.name);
-        err.setLineNumber(resolveLineNumber());
-        throw err;
+        throw YuxError(resolveLineNumber(), "Type mismatch in &|^ operation: left is {}, right is {}", leftType.name, rightType.name);
     }
     return leftType;
 }
@@ -401,7 +393,7 @@ int ExprDotNode::resolveLineNumber() const {
     int memberLine = static_cast<int>(_member.getLine());
     if (memberLine > 0) return memberLine;
     if (_baseExpr) return _baseExpr->resolveLineNumber();
-    return -1;
+    return 0;
 }
 
 bool ExprDotNode::parseChain(const ExprDotNode* top, string& aliasName, vector<string>& segments) {
@@ -593,9 +585,7 @@ TypeInfo ExprCompareNode::getType() const {
         if (isFlexibleIntExpr(_left) && tryInferIntType(_left, rightType)) {
             return TypeInfo("bool");
         }
-        YuxError err("Type mismatch in comparison: left is {}, right is {}", leftType.name, rightType.name);
-        err.setLineNumber(resolveLineNumber());
-        throw err;
+        throw YuxError(resolveLineNumber(), "Type mismatch in comparison: left is {}, right is {}", leftType.name, rightType.name);
     }
     return TypeInfo("bool");
 }
@@ -662,18 +652,14 @@ TypeInfo ExprIfElseNode::getType() const {
         }
         auto elifType = elif->block()->resultExpr()->getType();
         if (elifType != resultType) {
-            YuxError err("Type mismatch in if-elif branches: {} vs {}", resultType.name, elifType.name);
-            err.setLineNumber(resolveLineNumber());
-            throw err;
+            throw YuxError(resolveLineNumber(), "Type mismatch in if-elif branches: {} vs {}", resultType.name, elifType.name);
         }
     }
 
     if (_elseBlock && _elseBlock->hasResult()) {
         auto elseType = _elseBlock->resultExpr()->getType();
         if (elseType != resultType) {
-            YuxError err("Type mismatch in if-else branches: {} vs {}", resultType.name, elseType.name);
-            err.setLineNumber(resolveLineNumber());
-            throw err;
+            throw YuxError(resolveLineNumber(), "Type mismatch in if-else branches: {} vs {}", resultType.name, elseType.name);
         }
     } else if (!_elseBlock || !_elseBlock->hasResult()) {
         return TypeInfo();
@@ -691,9 +677,7 @@ TypeInfo ExprOneLineIfElseNode::getType() const {
     auto trueType = _trueValue->getType();
     auto falseType = _falseValue->getType();
     if (trueType != falseType) {
-        YuxError err("Type mismatch in one-line if-else: true branch is {}, false branch is {}", trueType.name, falseType.name);
-        err.setLineNumber(resolveLineNumber());
-        throw err;
+        throw YuxError(resolveLineNumber(), "Type mismatch in one-line if-else: true branch is {}, false branch is {}", trueType.name, falseType.name);
     }
     return trueType;
 }
@@ -707,9 +691,7 @@ TypeInfo ExprIfElsePreValueNode::getType() const {
     auto trueType = _trueValue->getType();
     auto falseType = _falseValue->getType();
     if (trueType != falseType) {
-        YuxError err("Type mismatch in if-else expression: true branch is {}, false branch is {}", trueType.name, falseType.name);
-        err.setLineNumber(resolveLineNumber());
-        throw err;
+        throw YuxError(resolveLineNumber(), "Type mismatch in if-else expression: true branch is {}, false branch is {}", trueType.name, falseType.name);
     }
     return trueType;
 }
@@ -733,23 +715,17 @@ TypeInfo ExprGetNode::getType() const {
     if (arrayType.isArrayGeneric()) {
         auto elemType = arrayType.arrayGenericElementType();
         if (!elemType) {
-            YuxError err("Invalid Array<T> type: missing element type");
-            err.setLineNumber(resolveLineNumber());
-            throw err;
+            throw YuxError(resolveLineNumber(), "Invalid Array<T> type: missing element type");
         }
         return *elemType;
     }
 
     if (!arrayType.isArray()) {
-        YuxError err("Cannot index non-array type: {}", arrayType.name);
-        err.setLineNumber(resolveLineNumber());
-        throw err;
+        throw YuxError(resolveLineNumber(), "Cannot index non-array type: {}", arrayType.name);
     }
 
     if (!arrayType.elementType) {
-        YuxError err("Invalid array type: missing element type");
-        err.setLineNumber(resolveLineNumber());
-        throw err;
+        throw YuxError(resolveLineNumber(), "Invalid array type: missing element type");
     }
 
     return *arrayType.elementType;
@@ -773,9 +749,7 @@ TypeInfo ExprArrayNode::getType() const {
     for (size_t i = 1; i < _elements.size(); ++i) {
         auto elemType = _elements[i]->getType();
         if (elemType != elementType) {
-            YuxError err("Array elements must have the same type: {} vs {}", elementType.name, elemType.name);
-            err.setLineNumber(resolveLineNumber());
-            throw err;
+            throw YuxError(resolveLineNumber(), "Array elements must have the same type: {} vs {}", elementType.name, elemType.name);
         }
     }
 
@@ -788,7 +762,7 @@ int ExprArrayNode::resolveLineNumber() const {
     if (!_elements.empty()) {
         return _elements[0]->resolveLineNumber();
     }
-    return -1;
+    return 0;
 }
 
 const p<LiteralNode>& ExprArrayInitNode::value() const {
@@ -814,16 +788,12 @@ TypeInfo ExprArrayInitNode::getType() const {
 TypeInfo ExprGetRefNode::getType() const {
     auto scope = findNearestScope();
     if (!scope) {
-        YuxError err("Cannot determine type for reference expression: no scope");
-        err.setLineNumber(resolveLineNumber());
-        throw err;
+        throw YuxError(resolveLineNumber(), "Cannot determine type for reference expression: no scope");
     }
     
     auto sym = scope->lookupSymbol(_obj.getText());
     if (!sym) {
-        YuxError err("Undefined variable: {}", _obj.getText());
-        err.setLineNumber(resolveLineNumber());
-        throw err;
+        throw YuxError(resolveLineNumber(), "Undefined variable: {}", _obj.getText());
     }
     
     TypeInfo baseType = sym->type;
@@ -836,23 +806,17 @@ TypeInfo ExprGetRefNode::getType() const {
             file = dynamic_cast<FileNode*>(currentScope);
         }
         if (!file) {
-            YuxError err("Cannot find struct declaration for field access");
-            err.setLineNumber(resolveLineNumber());
-            throw err;
+            throw YuxError(resolveLineNumber(), "Cannot find struct declaration for field access");
         }
         
         auto structDecl = file->getStructDecl(baseType.name);
         if (!structDecl) {
-            YuxError err("Cannot access field on non-struct type: {}", baseType.name);
-            err.setLineNumber(resolveLineNumber());
-            throw err;
+            throw YuxError(resolveLineNumber(), "Cannot access field on non-struct type: {}", baseType.name);
         }
         
         auto field = structDecl->field(sub.getText());
         if (!field) {
-            YuxError err("Struct {} has no field: {}", baseType.name, sub.getText());
-            err.setLineNumber(resolveLineNumber());
-            throw err;
+            throw YuxError(resolveLineNumber(), "Struct {} has no field: {}", baseType.name, sub.getText());
         }
         
         baseType = field->getType();

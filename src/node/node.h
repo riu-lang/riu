@@ -65,7 +65,7 @@ class ScopeNode;
 class Node {
 protected:
     p<Node> _parent;
-    int _line = -1;
+    int _line = 0;
 
 public:
     explicit Node(const p<Node>& parent) : _parent(parent) {

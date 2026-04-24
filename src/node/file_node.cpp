@@ -147,9 +147,7 @@ void FileNode::throwAmbiguousAlias(const string& alias, int line) const {
             msg += it->second[i];
         }
     }
-    YuxError err(msg);
-    err.setLineNumber(line);
-    throw err;
+    throw YuxError(msg, line);
 }
 
 void FileNode::addWildcardImport(FileNode* file) {

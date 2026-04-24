@@ -85,9 +85,7 @@ TypeInfo LiteralObjNode::getType() const {
         return TypeInfo("fn() ");
     }
     
-    YuxError err("Symbol {} not found", name);
-    err.setLineNumber(static_cast<int>(_value.getLine()));
-    throw err;
+    throw YuxError(static_cast<int>(_value.getLine()), "Symbol {} not found", name);
 }
 
 string LiteralObjNode::getLocation() const {

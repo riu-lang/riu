@@ -56,7 +56,7 @@ void Yux::initProjectFromDir(const string& rootDir) {
     fs::path root(rootDir);
     fs::path tomlPath = root / "yux.toml";
     if (!fs::exists(tomlPath)) {
-        throw YuxError("yux.toml not found in " + rootDir);
+        throw YuxError("yux.toml not found in " + rootDir, 1);
     }
     _projectRoot = root.string();
     try {
@@ -64,14 +64,14 @@ void Yux::initProjectFromDir(const string& rootDir) {
         // name 是必填字段：缺失或空串都视为配置错误。
         // toml11 原生 UTF-8，`name="中文"` 能正确读入。
         if (!data.contains("name")) {
-            throw YuxError("yux.toml is missing required field `name`");
+            throw YuxError("yux.toml is missing required field `name`", 1);
         }
         if (!data.at("name").is_string()) {
-            throw YuxError("yux.toml field `name` must be a string");
+            throw YuxError("yux.toml field `name` must be a string", 1);
         }
         _projectName = data.at("name").as_string();
         if (_projectName.empty()) {
-            throw YuxError("yux.toml field `name` must not be empty");
+            throw YuxError("yux.toml field `name` must not be empty", 1);
         }
         if (data.contains("entry") && data.at("entry").is_string()) {
             _projectEntry = data.at("entry").as_string();
@@ -82,7 +82,7 @@ void Yux::initProjectFromDir(const string& rootDir) {
     } catch (const YuxError&) {
         throw;
     } catch (const std::exception& e) {
-        throw YuxError(string("failed to parse yux.toml: ") + e.what());
+        throw YuxError(string("failed to parse yux.toml: ") + e.what(), 1);
     }
 }
 
@@ -120,7 +120,7 @@ p<FileNode> Yux::_parseFile(const string& absPath, const string& moduleName, int
 }
 
 p<FileNode> Yux::loadMainFile(const string& absPath, const string& moduleName) {
-    auto fileNode = _parseFile(absPath, moduleName, 0);
+    auto fileNode = _parseFile(absPath, moduleName, 1);
     _modules[moduleName] = fileNode;
     _modulePaths[moduleName] = absPath;
     return fileNode;

@@ -14,6 +14,7 @@
 #include <xstring>
 #include <exception>
 #include <stdexcept>
+#include <cassert>
 #include <iostream>
 #include "antlr4-runtime.h"
 
@@ -100,23 +101,21 @@ public:
 using Token = TokenInfo;
 
 class YuxError : public std::runtime_error {
-    int _line = -1;
+    int _line = 0;
 
 public:
-    explicit YuxError(const string& msg, int line = -1) : runtime_error(msg), _line(line) {
-    }
-
-    template <class... _Types>
-    explicit YuxError(const format_string<_Types...> format, _Types&&... args) : runtime_error(
-        std::vformat(format.get(), std::make_format_args(args...))) {
+    explicit YuxError(const string& msg, int line) : runtime_error(msg), _line(line) {
+        assert(line > 0 && "YuxError line must be > 0");
     }
 
     template <class... _Types>
     explicit YuxError(int line, const format_string<_Types...> format, _Types&&... args) : runtime_error(
         std::vformat(format.get(), std::make_format_args(args...))), _line(line) {
+        assert(line > 0 && "YuxError line must be > 0");
     }
 
     void setLineNumber(int line) {
+        assert(line > 0 && "YuxError line must be > 0");
         _line = line;
     }
 

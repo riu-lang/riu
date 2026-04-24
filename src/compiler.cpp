@@ -110,7 +110,7 @@ string Compiler::ensureStructInstance(
     if (it != _structInstances.end()) return mangledName;
 
     if (args.size() != baseDecl->typeParams().size()) {
-        throw YuxError(
+        throw YuxError(sourceLine,
             "Generic struct '{}' expects {} type args, got {}",
             baseName, baseDecl->typeParams().size(), args.size());
     }
@@ -1182,7 +1182,7 @@ void Compiler::emitInstanceMethods() {
     }
 }
 
-string Compiler::ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& typeArgs, p<FileNode> ownerFile) {
+string Compiler::ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& typeArgs, p<FileNode> ownerFile, int sourceLine) {
     string baseName = baseFn->header()->name().getText();
     string mangledName = baseName;
     for (auto& a : typeArgs) {
@@ -1194,7 +1194,7 @@ string Compiler::ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& type
 
     auto& typeParams = baseFn->header()->typeParams();
     if (typeArgs.size() != typeParams.size()) {
-        throw YuxError(
+        throw YuxError(sourceLine,
             "Generic function '{}' expects {} type args, got {}",
             baseName, typeParams.size(), typeArgs.size());
     }
@@ -3506,7 +3506,7 @@ llvm::Value* Compiler::compileFunctionCall(
         }
 
         // 确保实例化
-        string mangledName = ensureFnInstance(genericFn, typeArgs, fnOwner);
+        string mangledName = ensureFnInstance(genericFn, typeArgs, fnOwner, callNode->getLineNumber());
 
         // 构建实例化后的参数类型
         map<string, TypeInfo> subst;
