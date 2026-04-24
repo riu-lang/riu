@@ -5,6 +5,7 @@
   "patterns": [
     { "include": "#comments" },
     { "include": "#imports" },
+    { "include": "#annotations" },
     { "include": "#keywords" },
     { "include": "#codepoints" },
     { "include": "#strings" },
@@ -17,6 +18,18 @@
     { "include": "#identifiers" }
   ],
   "repository": {
+    "annotations": {
+      "patterns": [
+        {
+          "name": "meta.annotation.build.yux",
+          "match": "(#)([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "punctuation.definition.annotation.yux" },
+            "2": { "name": "entity.name.tag.annotation.yux" }
+          }
+        }
+      ]
+    },
     "imports": {
       "patterns": [
         {

@@ -32,7 +32,7 @@ public:
     [[nodiscard]] p<TypeNode> type() const;
 };
 
-class FnHeaderNode : public Node, public Named, public Typed {
+class FnHeaderNode : public Node, public Named, public Typed, public Annotated {
 protected:
     vector<p<FnParamNode>> _params;
     vector<string> _typeParams;

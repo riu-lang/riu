@@ -25,7 +25,7 @@ public:
     [[nodiscard]] bool isPrivate() const { return _isPrivate; }
 };
 
-class StructDeclNode : public ScopeNode, public Named {
+class StructDeclNode : public ScopeNode, public Named, public Annotated {
     vector<p<StructFieldNode>> _fields;
     map<string, size_t> _fieldIndices;
     vector<string> _typeParams;
@@ -58,7 +58,7 @@ public:
     [[nodiscard]] bool isGeneric() const { return !_typeParams.empty(); }
 };
 
-class StructImplNode : public ScopeNode, public Named {
+class StructImplNode : public ScopeNode, public Named, public Annotated {
     vector<p<FnNode>> _methods;
     p<FnNode> _destructor;
     vector<string> _typeParams;

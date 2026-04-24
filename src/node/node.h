@@ -107,6 +107,23 @@ public:
 };
 
 
+class Annotated {
+protected:
+    vector<string> _annos;
+
+public:
+    virtual ~Annotated() = default;
+
+    void addAnno(const string& name) { _annos.push_back(name); }
+    void setAnnos(vector<string> annos) { _annos = std::move(annos); }
+    [[nodiscard]] const vector<string>& annos() const { return _annos; }
+    [[nodiscard]] bool hasAnno(const string& name) const {
+        for (auto& a : _annos) if (a == name) return true;
+        return false;
+    }
+};
+
+
 class ScopeNode : public Node {
 protected:
     map<string, SymbolInfo> _symbols;

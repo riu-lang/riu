@@ -20,363 +20,293 @@ fn _stdout_write(buf Ptr<u8>, off i64, len i64) {
 }
 
 ; 内置类型
-; 结构体仅占位，为实际类型
-; to_数字 to_bool 函数编译器实现
+; 结构体仅占位，实际类型由编译器处理
+; to_<数字/bool> 方法由编译器合成，通过 #CompilerInner 标注
 
+#CompilerInner
 struct i8 {
-  ; 原始类型
+  ; 内部处理
 }
 
 i8 {
-  fn to_i8() i8 {
-    self
-  }
+  #CompilerInner
+  fn to_i8() i8
 
-  fn to_u8() u8 {
-    self
-  }
+  #CompilerInner
+  fn to_u8() u8
 
-  fn to_i16() i16 {
-    self
-  }
+  #CompilerInner
+  fn to_i16() i16
 
-  fn to_u16() u16 {
-    self
-  }
+  #CompilerInner
+  fn to_u16() u16
 
-  fn to_i32() i32 {
-    self
-  }
+  #CompilerInner
+  fn to_i32() i32
 
-  fn to_u32() u32 {
-    self
-  }
+  #CompilerInner
+  fn to_u32() u32
 
-  fn to_i64() i64 {
-    self
-  }
+  #CompilerInner
+  fn to_i64() i64
 
-  fn to_u64() u64 {
-    self
-  }
+  #CompilerInner
+  fn to_u64() u64
 
-  fn to_f64() f64 {
-    self
-  }
+  #CompilerInner
+  fn to_f64() f64
 
-  fn to_f32() f32 {
-    self
-  }
+  #CompilerInner
+  fn to_f32() f32
 
-  fn to_bool() bool {
-    self != 0i8
-  }
+  #CompilerInner
+  fn to_bool() bool
 
   fn to_string() String {
     self.to_i64().to_string()
   }
 }
 
+#CompilerInner
 struct u8 {
-  ; 原始类型
+  ; 内部处理
 }
 
 u8 {
+  #CompilerInner
+  fn to_i8() i8
 
-  fn to_i8() i8 {
-    self
-  }
+  #CompilerInner
+  fn to_u8() u8
 
-  fn to_u8() u8 {
-    self
-  }
+  #CompilerInner
+  fn to_i16() i16
 
-  fn to_i16() i16 {
-    self
-  }
+  #CompilerInner
+  fn to_u16() u16
 
-  fn to_u16() u16 {
-    self
-  }
+  #CompilerInner
+  fn to_i32() i32
 
-  fn to_i32() i32 {
-    self
-  }
+  #CompilerInner
+  fn to_u32() u32
 
-  fn to_u32() u32 {
-    self
-  }
+  #CompilerInner
+  fn to_u64() u64
 
-  fn to_u64() u64 {
-    self
-  }
+  #CompilerInner
+  fn to_f64() f64
 
-  fn to_f64() f64 {
-    self
-  }
+  #CompilerInner
+  fn to_f32() f32
 
-  fn to_f32() f32 {
-    self
-  }
-
-  fn to_bool() bool {
-    self != 0u8
-  }
+  #CompilerInner
+  fn to_bool() bool
 
   fn to_string() String {
     self.to_u64().to_string()
   }
 }
 
+#CompilerInner
 struct i16 {
-  ; 原始类型
+  ; 内部处理
 }
 
 i16 {
+  #CompilerInner
+  fn to_i8() i8
 
-  fn to_i8() i8 {
-    self
-  }
+  #CompilerInner
+  fn to_u8() u8
 
-  fn to_u8() u8 {
-    self
-  }
+  #CompilerInner
+  fn to_i16() i16
 
-  fn to_i16() i16 {
-    self
-  }
+  #CompilerInner
+  fn to_u16() u16
 
-  fn to_u16() u16 {
-    self
-  }
+  #CompilerInner
+  fn to_i32() i32
 
-  fn to_i32() i32 {
-    self
-  }
+  #CompilerInner
+  fn to_u32() u32
 
-  fn to_u32() u32 {
-    self
-  }
+  #CompilerInner
+  fn to_u64() u64
 
-  fn to_u64() u64 {
-    self
-  }
+  #CompilerInner
+  fn to_f64() f64
 
-  fn to_f64() f64 {
-    self
-  }
+  #CompilerInner
+  fn to_f32() f32
 
-  fn to_f32() f32 {
-    self
-  }
-
-  fn to_bool() bool {
-    self != 0i16
-  }
+  #CompilerInner
+  fn to_bool() bool
 
   fn to_string() String {
     self.to_i64().to_string()
   }
 }
 
+#CompilerInner
 struct u16 {
-  ; 原始类型
+  ; 内部处理
 }
 
 u16 {
+  #CompilerInner
+  fn to_i8() i8
 
-  fn to_i8() i8 {
-    self
-  }
+  #CompilerInner
+  fn to_u8() u8
 
-  fn to_u8() u8 {
-    self
-  }
+  #CompilerInner
+  fn to_i16() i16
 
-  fn to_i16() i16 {
-    self
-  }
+  #CompilerInner
+  fn to_u16() u16
 
-  fn to_u16() u16 {
-    self
-  }
+  #CompilerInner
+  fn to_i32() i32
 
-  fn to_i32() i32 {
-    self
-  }
+  #CompilerInner
+  fn to_u32() u32
 
-  fn to_u32() u32 {
-    self
-  }
+  #CompilerInner
+  fn to_u64() u64
 
-  fn to_u64() u64 {
-    self
-  }
+  #CompilerInner
+  fn to_f64() f64
 
-  fn to_f64() f64 {
-    self
-  }
+  #CompilerInner
+  fn to_f32() f32
 
-  fn to_f32() f32 {
-    self
-  }
-
-  fn to_bool() bool {
-    self != 0u16
-  }
+  #CompilerInner
+  fn to_bool() bool
 
   fn to_string() String {
     self.to_u64().to_string()
   }
 }
 
+#CompilerInner
 struct i32 {
-  ; 原始类型
+  ; 内部处理
 }
 
 i32 {
+  #CompilerInner
+  fn to_i8() i8
 
-  fn to_i8() i8 {
-    self
-  }
+  #CompilerInner
+  fn to_u8() u8
 
-  fn to_u8() u8 {
-    self
-  }
+  #CompilerInner
+  fn to_i16() i16
 
-  fn to_i16() i16 {
-    self
-  }
+  #CompilerInner
+  fn to_u16() u16
 
-  fn to_u16() u16 {
-    self
-  }
+  #CompilerInner
+  fn to_i32() i32
 
-  fn to_i32() i32 {
-    self
-  }
+  #CompilerInner
+  fn to_u32() u32
 
-  fn to_u32() u32 {
-    self
-  }
+  #CompilerInner
+  fn to_u64() u64
 
-  fn to_u64() u64 {
-    self
-  }
+  #CompilerInner
+  fn to_f64() f64
 
-  fn to_f64() f64 {
-    self
-  }
+  #CompilerInner
+  fn to_f32() f32
 
-  fn to_f32() f32 {
-    self
-  }
-
-  fn to_bool() bool {
-    self != 0
-  }
+  #CompilerInner
+  fn to_bool() bool
 
   fn to_string() String {
     self.to_i64().to_string()
   }
 }
 
+#CompilerInner
 struct u32 {
-  ; 原始类型
+  ; 内部处理
 }
 
 u32 {
+  #CompilerInner
+  fn to_i8() i8
 
-  fn to_i8() i8 {
-    self
-  }
+  #CompilerInner
+  fn to_u8() u8
 
-  fn to_u8() u8 {
-    self
-  }
+  #CompilerInner
+  fn to_i16() i16
 
-  fn to_i16() i16 {
-    self
-  }
+  #CompilerInner
+  fn to_u16() u16
 
-  fn to_u16() u16 {
-    self
-  }
+  #CompilerInner
+  fn to_i32() i32
 
-  fn to_i32() i32 {
-    self
-  }
+  #CompilerInner
+  fn to_u32() u32
 
-  fn to_u32() u32 {
-    self
-  }
+  #CompilerInner
+  fn to_u64() u64
 
-  fn to_u64() u64 {
-    self
-  }
+  #CompilerInner
+  fn to_f64() f64
 
-  fn to_f64() f64 {
-    self
-  }
+  #CompilerInner
+  fn to_f32() f32
 
-  fn to_f32() f32 {
-    self
-  }
-
-  fn to_bool() bool {
-    self != 0u32
-  }
+  #CompilerInner
+  fn to_bool() bool
 
   fn to_string() String {
     self.to_u64().to_string()
   }
 }
 
+#CompilerInner
 struct i64 {
-  ; 原始类型
+  ; 内部处理
 }
 
 i64 {
+  #CompilerInner
+  fn to_i8() i8
 
-  fn to_i8() i8 {
-    self
-  }
+  #CompilerInner
+  fn to_u8() u8
 
-  fn to_u8() u8 {
-    self
-  }
+  #CompilerInner
+  fn to_i16() i16
 
-  fn to_i16() i16 {
-    self
-  }
+  #CompilerInner
+  fn to_u16() u16
 
-  fn to_u16() u16 {
-    self
-  }
+  #CompilerInner
+  fn to_i32() i32
 
-  fn to_i32() i32 {
-    self
-  }
+  #CompilerInner
+  fn to_u32() u32
 
-  fn to_u32() u32 {
-    self
-  }
+  #CompilerInner
+  fn to_u64() u64
 
-  fn to_u64() u64 {
-    self
-  }
+  #CompilerInner
+  fn to_f64() f64
 
-  fn to_f64() f64 {
-    self
-  }
+  #CompilerInner
+  fn to_f32() f32
 
-  fn to_f32() f32 {
-    self
-  }
-
-  fn to_bool() bool {
-    self != 0i64
-  }
+  #CompilerInner
+  fn to_bool() bool
 
   fn to_string() String {
     var s String = String()
@@ -416,51 +346,41 @@ i64 {
   }
 }
 
+#CompilerInner
 struct u64 {
-  ; 原始类型
+  ; 内部处理
 }
 
 u64 {
+  #CompilerInner
+  fn to_i8() i8
 
-  fn to_i8() i8 {
-    self
-  }
+  #CompilerInner
+  fn to_u8() u8
 
-  fn to_u8() u8 {
-    self
-  }
+  #CompilerInner
+  fn to_i16() i16
 
-  fn to_i16() i16 {
-    self
-  }
+  #CompilerInner
+  fn to_u16() u16
 
-  fn to_u16() u16 {
-    self
-  }
+  #CompilerInner
+  fn to_i32() i32
 
-  fn to_i32() i32 {
-    self
-  }
+  #CompilerInner
+  fn to_u32() u32
 
-  fn to_u32() u32 {
-    self
-  }
+  #CompilerInner
+  fn to_u64() u64
 
-  fn to_u64() u64 {
-    self
-  }
+  #CompilerInner
+  fn to_f64() f64
 
-  fn to_f64() f64 {
-    self
-  }
+  #CompilerInner
+  fn to_f32() f32
 
-  fn to_f32() f32 {
-    self
-  }
-
-  fn to_bool() bool {
-    self != 0u64
-  }
+  #CompilerInner
+  fn to_bool() bool
 
   fn to_string() String {
     var s String = String()
@@ -493,51 +413,41 @@ u64 {
   }
 }
 
+#CompilerInner
 struct f64 {
-  ; 原始类型
+  ; 内部处理
 }
 
 f64 {
+  #CompilerInner
+  fn to_i8() i8
 
-  fn to_i8() i8 {
-    self
-  }
+  #CompilerInner
+  fn to_u8() u8
 
-  fn to_u8() u8 {
-    self
-  }
+  #CompilerInner
+  fn to_i16() i16
 
-  fn to_i16() i16 {
-    self
-  }
+  #CompilerInner
+  fn to_u16() u16
 
-  fn to_u16() u16 {
-    self
-  }
+  #CompilerInner
+  fn to_i32() i32
 
-  fn to_i32() i32 {
-    self
-  }
+  #CompilerInner
+  fn to_u32() u32
 
-  fn to_u32() u32 {
-    self
-  }
+  #CompilerInner
+  fn to_u64() u64
 
-  fn to_u64() u64 {
-    self
-  }
+  #CompilerInner
+  fn to_f64() f64
 
-  fn to_f64() f64 {
-    self
-  }
+  #CompilerInner
+  fn to_f32() f32
 
-  fn to_f32() f32 {
-    self
-  }
-
-  fn to_bool() bool {
-    self != 0.0f64
-  }
+  #CompilerInner
+  fn to_bool() bool
 
   fn to_string() String {
     var s String = String()
@@ -567,57 +477,69 @@ f64 {
   }
 }
 
+#CompilerInner
 struct f32 {
-  ; 原始类型
+  ; 内部处理
 }
 
 f32 {
+  #CompilerInner
+  fn to_i8() i8
 
-  fn to_i8() i8 {
-    self
-  }
+  #CompilerInner
+  fn to_u8() u8
 
-  fn to_u8() u8 {
-    self
-  }
+  #CompilerInner
+  fn to_i16() i16
 
-  fn to_i16() i16 {
-    self
-  }
+  #CompilerInner
+  fn to_u16() u16
 
-  fn to_u16() u16 {
-    self
-  }
+  #CompilerInner
+  fn to_i32() i32
 
-  fn to_i32() i32 {
-    self
-  }
+  #CompilerInner
+  fn to_u32() u32
 
-  fn to_u32() u32 {
-    self
-  }
+  #CompilerInner
+  fn to_u64() u64
 
-  fn to_u64() u64 {
-    self
-  }
+  #CompilerInner
+  fn to_f64() f64
 
-  fn to_f64() f64 {
-    self
-  }
+  #CompilerInner
+  fn to_f32() f32
 
-  fn to_f32() f32 {
-    self
-  }
-
-  fn to_bool() bool {
-    self != 0.0f32
-  }
+  #CompilerInner
+  fn to_bool() bool
 
   fn to_string() String {
     self.to_f64().to_string()
   }
 }
 
+
+; 内置泛型类型占位：实际布局与方法（_push/_len/... 等）由编译器合成
+
+#CompilerInner
+struct Ref<T> {
+  ; 内部处理
+}
+
+#CompilerInner
+struct Ptr<T> {
+  ; 内部处理
+}
+
+#CompilerInner
+struct Box<T> {
+  ; 内部处理
+}
+
+#CompilerInner
+struct Array<T> {
+  ; 内部处理
+}
 
 ; String 类型 - 内部使用 Array<u32> 存储 Unicode code points
 struct String {
@@ -730,8 +652,9 @@ String {
   }
 }
 
+#CompilerInner
 struct bool {
-  ; 原始类型
+  ; 内部处理
 }
 
 bool {

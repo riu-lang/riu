@@ -36,7 +36,8 @@ imports: Use Space pkgs+=ID (SymbolDot pkgs+=ID)* (SymbolDot useAll=SymbolMul)? 
 // extern {
 //  函数头
 // }
-externDelc: Extern Space BlockStart
+// 预留注解，未来可用于指定链接哪个库
+externDelc: (buildAnnos+=buildAnno)* Extern Space BlockStart
     (
      Space* fnHeader
      | comment
@@ -46,7 +47,18 @@ externDelc: Extern Space BlockStart
     ;
 
 // cval a i32 = 1
-globalConst: 'cval' Space name=ID Space type Space SymbolEq Space literal;
+globalConst: (buildAnnos+=buildAnno)* 'cval' Space name=ID Space type Space SymbolEq Space literal;
+
+//////////////
+// 构建注解
+//////////////
+
+// #Name
+buildAnno:
+    Space* SymbolHash
+    name=ID
+    codeLineEnd
+    ;
 
 ///////////
 // 字面量
@@ -97,12 +109,13 @@ fnClean: Fn Space SymbolRev ParStart ParEnd Space
       ;
 
 // fn name() {}
-fn: fnHeader Space fnBody;
+// 只有函数头的必须要有构建注解（比如用代码生成函数体，未来实现）
+fn: fnHeader (Space fnBody)?;
 
 // fn name() 空返回
 // fn name() type 返回 type
 // fn <T> some() T
-fnHeader: Fn Space ( genericDef Space)? name=ID ParStart
+fnHeader: (buildAnnos+=buildAnno)* Space* Fn Space ( genericDef Space)? name=ID ParStart
     (params+=fnParam (SymbolComma Space params+=fnParam)* )?
     ParEnd (Space retType=type)?
     ;
@@ -123,7 +136,7 @@ fnBlockBody: statementBlock;
 
 // struct A
 // struct A<T1, T2>
-structDecl: Struct Space name=ID (SymbolLt types+=type (SymbolComma Space types+=type)* SymbolMt)? Space BlockStart
+structDecl: (buildAnnos+=buildAnno)* Struct Space name=ID (SymbolLt types+=type (SymbolComma Space types+=type)* SymbolMt)? Space BlockStart
    (
       (Space* filedDecl codeLineEnd?)
      | comment
@@ -132,7 +145,7 @@ structDecl: Struct Space name=ID (SymbolLt types+=type (SymbolComma Space types+
    BlockEnd
    ;
 
-structImpl: name=ID (SymbolLt types+=type (SymbolComma Space types+=type)* SymbolMt)? Space BlockStart
+structImpl: (buildAnnos+=buildAnno)* name=ID (SymbolLt types+=type (SymbolComma Space types+=type)* SymbolMt)? Space BlockStart
      codeLineEnd
     (Space* fnClean)?
     (
@@ -308,6 +321,7 @@ SymbolDiv: '/';
 SymbolDot: '.';
 SymbolEq: '=';
 SymbolExcl: '!';
+SymbolHash: '#';
 SymbolLt: '<';
 SymbolMod: '%';
 SymbolMt: '>';

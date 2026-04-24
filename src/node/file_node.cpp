@@ -44,14 +44,16 @@ const vector<p<FnNode>>& FileNode::getFunctions() const {
 }
 
 StructDeclNode* FileNode::getStructDecl(const string& name) const {
+    // `#CompilerInner` 声明仅作语言层占位（如 Box/Ref/Ptr/Array 及 i8..f64），
+    // 它们的布局与方法由编译器合成，对用户结构体逻辑不可见。
     for (auto& decl : _structDecls) {
-        if (decl->name().getText() == name) {
+        if (decl->name().getText() == name && !decl->hasAnno("CompilerInner")) {
             return decl;
         }
     }
     for (auto* imp : _wildcardImports) {
         for (auto& decl : imp->_structDecls) {
-            if (decl->name().getText() == name) return decl;
+            if (decl->name().getText() == name && !decl->hasAnno("CompilerInner")) return decl;
         }
     }
     return nullptr;

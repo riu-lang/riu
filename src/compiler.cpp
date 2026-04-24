@@ -1081,12 +1081,9 @@ void Compiler::compileStructImpls() {
         for (auto method : methods) {
             string methodName = method->header()->name().getText();
             
-            if (isBuiltinType(structName) && methodName.starts_with("to_")) {
-                string dstType = methodName.substr(3);
-                if (isBuiltinType(dstType)) {
-                    DEBUG_LOG_VAL("        Skipping builtin cast method (compiler handles)", structName << "." << methodName);
-                    continue;
-                }
+            if (method->header()->hasAnno("CompilerInner")) {
+                DEBUG_LOG_VAL("        Skipping #CompilerInner method (compiler handles)", structName << "." << methodName);
+                continue;
             }
             
             DEBUG_LOG_VAL("        Compiling method", methodName);

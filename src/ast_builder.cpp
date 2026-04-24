@@ -8,6 +8,31 @@
 #include <algorithm>
 #include "types.h"
 
+namespace {
+
+// 已知的构建注解名字白名单；未知注解在 AST 构建期报错
+const set<string>& knownAnnos() {
+    static const set<string> s = {"CompilerInner"};
+    return s;
+}
+
+template<typename AnnoVec>
+vector<string> collectAnnos(const AnnoVec& annos) {
+    vector<string> out;
+    for (auto* a : annos) {
+        string name = a->name->getText();
+        if (!knownAnnos().contains(name)) {
+            throw YuxError(
+                a->name->getLine(),
+                "Unknown build annotation `#{}`", name);
+        }
+        out.push_back(std::move(name));
+    }
+    return out;
+}
+
+} // namespace
+
 ASTBuilder::ASTBuilder(llvm::LLVMContext& ctx, Yux& yux, const string& moduleName, bool isSdk) :
     context(ctx), irBuilder(ctx), _yux(yux), _moduleName(moduleName), _isSdk(isSdk) {
 }
@@ -29,8 +54,12 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
     DEBUG_LOG("Visit: ExternDelc");
     auto file = any_cast_p<FileNode>(stack.back());
 
+    // extern 本身和内部 fnHeader 的注解当前仅验证名字（预留未来使用）
+    (void)collectAnnos(ctx->buildAnnos);
+
     auto fnHeaders = ctx->fnHeader();
     for (auto header : fnHeaders) {
+        (void)collectAnnos(header->buildAnnos);
         auto fnName = header->name->getText();
 
         vector<TypeInfo> paramTypes;
@@ -63,7 +92,8 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
 std::any ASTBuilder::visitGlobalConst(yux::yuxParser::GlobalConstContext* ctx) {
     DEBUG_LOG("Visit: GlobalConst");
     auto file = any_cast_p<FileNode>(stack.back());
-    
+    (void)collectAnnos(ctx->buildAnnos);
+
     auto name = ctx->name;
     auto typeNode = any_cast_p<TypeNode>(visit(ctx->type()));
     auto literal = any_cast_p<LiteralNode>(visit(ctx->literal()));
@@ -381,7 +411,15 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
         DEBUG_LOG_VAL("  Param", param->name().getText() << " : " << paramType.name);
     }
 
-    if (ctx->fnBody()->fnExprkBody()) {
+    if (!ctx->fnBody()) {
+        if (!header->hasAnno("CompilerInner")) {
+            throw YuxError(
+                header->getLineNumber(),
+                "Function `{}` has no body; only `#CompilerInner` functions may omit the body",
+                header->name().getText());
+        }
+        DEBUG_LOG("  Body: (compiler-synthesized)");
+    } else if (ctx->fnBody()->fnExprkBody()) {
         DEBUG_LOG("  Body: Expression");
         auto exprBody = ctx->fnBody()->fnExprkBody();
         auto expr = any_cast_p<ExprNode>(visit(exprBody->expr()));
@@ -426,6 +464,7 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
     }
 
     auto header = createWithLine<FnHeaderNode>(ctx, file, ctx->name, retType);
+    header->setAnnos(collectAnnos(ctx->buildAnnos));
 
     if (auto gd = ctx->genericDef()) {
         vector<string> typeParams;
@@ -462,6 +501,7 @@ std::any ASTBuilder::visitFnParam(yux::yuxParser::FnParamContext* ctx) {
 std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
     auto file = any_cast_p<FileNode>(stack.back());
     auto structDecl = createWithLine<StructDeclNode>(ctx, file, ctx->name);
+    structDecl->setAnnos(collectAnnos(ctx->buildAnnos));
 
     DEBUG_LOG_VAL("Visit: StructDecl", ctx->name->getText());
 
@@ -495,6 +535,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
 std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
     auto file = any_cast_p<FileNode>(stack.back());
     auto structImpl = createWithLine<StructImplNode>(ctx, file, ctx->name);
+    structImpl->setAnnos(collectAnnos(ctx->buildAnnos));
 
     DEBUG_LOG_VAL("Visit: StructImpl", ctx->name->getText());
 
@@ -557,7 +598,14 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
             fn->registerSymbol(param->name().getText(), {SymbolKind::Variable, param->name().getText(), paramType});
         }
 
-        if (fnCtx->fnBody()->fnExprkBody()) {
+        if (!fnCtx->fnBody()) {
+            if (!header->hasAnno("CompilerInner")) {
+                throw YuxError(
+                    header->getLineNumber(),
+                    "Method `{}.{}` has no body; only `#CompilerInner` methods may omit the body",
+                    structName, header->name().getText());
+            }
+        } else if (fnCtx->fnBody()->fnExprkBody()) {
             auto exprBody = fnCtx->fnBody()->fnExprkBody();
             auto expr = any_cast_p<ExprNode>(visit(exprBody->expr()));
             auto retStmt = createWithLine<StatementRetNode>(ctx, fn, expr);
