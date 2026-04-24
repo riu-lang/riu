@@ -17,17 +17,17 @@ yux 是一门自举的编程语言，使用 ANTLR4 解析语法，LLVM 作为编
 ### 示例代码
 
 ```yux
-/ 注释，顶行/，可加空格缩进
+; 注释，顶行 ;，可加空格缩进
 
 fn add(a i32, b i32) i32 = a + b
 
 fn main() {
   val a = add(1, 2)
-  println(a)
+  println(a.to_string())
   
-  / if 表达式
+  ; if 表达式
   val max = if a > 0 { a } else { -a }
-  println(max)
+  println(max.to_string())
 }
 ```
 

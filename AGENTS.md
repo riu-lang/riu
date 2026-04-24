@@ -36,7 +36,7 @@ yux build <name> -d          # 调试 IR 输出（信息量大，配合 tail 使
 cd examples/main && yux build test && ./build/test/test.exe
 ```
 
-`yux.toml` 字段（详见 语法.md）：`name`（项目 / exe 名）、`entry`（入口 .yux，相对项目根）、`version`。
+`yux.toml` 字段（详见 [docs/模块系统.md](docs/模块系统.md)）：`name`（项目 / exe 名）、`entry`（入口 .yux，相对项目根）、`version`。
 
 单文件模式（`yux <file>.yux`）二进制里仍保留，也是测试 harness 目前内部驱动编译的方式，但已弃用、未来会移除——新增代码、示例、文档一律走项目模式，不要再用 `yux` 直接编译单个 `.yux` 文件。
 
@@ -44,7 +44,7 @@ cd examples/main && yux build test && ./build/test/test.exe
 1. **简易测试**：构建并运行 `examples/main`（或随手建一个小项目）快速验证
 2. **完整测试**：简易测试通过后，`xmake test` 验证所有用例
 
-测试运行器（`tests/xmake.lua`）当前以单文件模式调用 `yux` 编译每个 `tests/cases/*.yux`（这是单文件模式最后一处内部使用，后续会替换成每用例一个小项目的 harness），比较 stdout 与配对的 `.expected`；`error/err_*.yux` 期望编译失败。每个用例的产物放在 `tests/cases/build/<stem>.exe`（错误用例在 `tests/cases/error/build/`）。当测试用例与语言规范冲突时，更新测试用例——`src/yux.g4` 和 `语法.md` 是权威规范。
+测试运行器（`tests/xmake.lua`）当前以单文件模式调用 `yux` 编译每个 `tests/cases/*.yux`（这是单文件模式最后一处内部使用，后续会替换成每用例一个小项目的 harness），比较 stdout 与配对的 `.expected`；`error/err_*.yux` 期望编译失败。每个用例的产物放在 `tests/cases/build/<stem>.exe`（错误用例在 `tests/cases/error/build/`）。当测试用例与语言规范冲突时，更新测试用例——`src/yux.g4` 和编译器是权威规范，`docs/` 为参考。
 
 ## 架构
 

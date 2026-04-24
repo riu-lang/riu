@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-See also: [AGENTS.md](AGENTS.md) for detailed project structure, [语法.md](语法.md) for language syntax, [README.md](README.md) for user-facing overview.
+See also: [AGENTS.md](AGENTS.md) for detailed project structure, [docs/index.md](docs/index.md) for language documentation (with [src/yux.g4](src/yux.g4) as the authoritative grammar), [README.md](README.md) for user-facing overview.
 
 ## Hard rules
 
@@ -32,7 +32,7 @@ yux build <name> -d        # debug IR dump (Debug builds only; voluminous — pi
 cd examples/main && yux build test && ./build/test/test.exe
 ```
 
-`yux.toml` fields (see 语法.md): `name` (project / exe name), `entry` (entry .yux relative to project root), `version`.
+`yux.toml` fields (see [docs/模块系统.md](docs/模块系统.md)): `name` (project / exe name), `entry` (entry .yux relative to project root), `version`.
 
 Single-file mode (`yux <file>.yux`) still exists in the binary and is what the test harness drives internally, but it is deprecated for user-facing use and will be removed — model new work and examples on project mode. Do not add new docs or examples that invoke `yux` on a bare `.yux` file.
 
@@ -40,7 +40,7 @@ Single-file mode (`yux <file>.yux`) still exists in the binary and is what the t
 1. **Smoke test first**: build & run `examples/main` (or a small throwaway project) for quick validation after changes.
 2. **Full suite**: once the smoke test passes, run `xmake test` to verify all test cases.
 
-The regression suite runs via xmake's native test mechanism (no googletest / CMake). Use `xmake test` to run all cases under `tests/cases/`, or `xmake test yux_tests/<name>` for a single case. The runner (`tests/xmake.lua`, `yux_tests` target) currently invokes the built `yux` on each `.yux` in single-file mode (this is the last remaining internal use of that mode — a project-per-case harness will replace it) and compares stdout to the paired `.expected`; for `error/err_*.yux` it expects compilation to fail. Per-case products land at `tests/cases/build/<stem>.exe` (or `tests/cases/error/build/...`). When a case and the language disagree, update the case — `src/yux.g4` and `语法.md` are authoritative.
+The regression suite runs via xmake's native test mechanism (no googletest / CMake). Use `xmake test` to run all cases under `tests/cases/`, or `xmake test yux_tests/<name>` for a single case. The runner (`tests/xmake.lua`, `yux_tests` target) currently invokes the built `yux` on each `.yux` in single-file mode (this is the last remaining internal use of that mode — a project-per-case harness will replace it) and compares stdout to the paired `.expected`; for `error/err_*.yux` it expects compilation to fail. Per-case products land at `tests/cases/build/<stem>.exe` (or `tests/cases/error/build/...`). When a case and the language disagree, update the case — `src/yux.g4` and the compiler are authoritative; `docs/` is reference.
 
 ## Architecture
 
