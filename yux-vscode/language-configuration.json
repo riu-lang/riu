@@ -1,6 +1,6 @@
 {
   "comments": {
-    "lineComment": "/"
+    "lineComment": ";"
   },
   "brackets": [
     ["{", "}"],
@@ -35,7 +35,7 @@
       "afterText": "^\\s*\\}",
       "action": {
         "indent": "indentOutdent",
-        "appendText": "\t"
+        "appendText": "  "
       }
     },
     {
