@@ -2,90 +2,21 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-See also: [AGENTS.md](AGENTS.md) for detailed project structure, [docs/index.md](docs/index.md) for language documentation (with [src/yux.g4](src/yux.g4) as the authoritative grammar), [README.md](README.md) for user-facing overview.
+## 规则来源
 
-## Hard rules
+本项目所有通用约定（目录结构、构建命令、测试流程、架构、yux 代码风格等）统一写在 [AGENTS.md](AGENTS.md)，它是唯一事实源。**开始任何任务前先读 AGENTS.md**，不要凭文件名或 README 推测项目约定。
 
-- **Do not modify `src/yux.g4`** (the ANTLR4 grammar). If a task seems to require grammar changes, stop and ask the user — list the problems and what would need to change.
-- Environment is Windows PowerShell with **Clang only** (no MSVC env vars). LLVM is expected on PATH via `llvm/bin`.
-- `build/windows/x64/debug` defaults on PATH so the `yux` compiler can be invoked directly after building.
-- **Task/bug tracking** — use both files, don't mix:
-  - `CURRENT.md` holds the *in-progress multi-step task*. **When given a multi-step task, write the phased plan into `CURRENT.md` first** to track it. Read before starting, update as phases complete, remove the entry when the whole task is done.
-  - `BUGS.md` holds *newly discovered* bugs (unrelated to the current change, requiring heavy investigation, or temporarily worked around). Follow the template, pause the related task, and tell the user.
+其他参考：
+- [docs/index.md](docs/index.md) — 语言文档索引（中文）
+- [src/yux.g4](src/yux.g4) — 权威 ANTLR4 语法（**只读**）
+- [README.md](README.md) — 面向用户的概述
 
-## Common commands
+## 仅针对 Claude 的行为约束
 
-```powershell
-# Sync third_party dependencies (run once after clone)
-./sync-deps.ps1
+以下是 Claude Code 在本仓库工作时必须遵守的、超出 AGENTS.md 通用规则之外的附加行为：
 
-# Build the compiler
-xmake build yux
-
-# Project mode — run at project root (must contain yux.toml)
-yux build <name>           # <name> must match `name` in yux.toml; entry comes from toml `entry`
-                           # outputs <projectRoot>/build/<name>/<name>.exe
-yux build <name> --emit-ir # also emit .ll
-yux build <name> -d        # debug IR dump (Debug builds only; voluminous — pipe through tail)
-
-# Smoke-test the compiler against examples/main (has yux.toml with name="test")
-cd examples/main && yux build test && ./build/test/test.exe
-```
-
-`yux.toml` fields (see [docs/模块系统.md](docs/模块系统.md)): `name` (project / exe name), `entry` (entry .yux relative to project root), `version`.
-
-Single-file mode (`yux <file>.yux`) still exists in the binary and is what the test harness drives internally, but it is deprecated for user-facing use and will be removed — model new work and examples on project mode. Do not add new docs or examples that invoke `yux` on a bare `.yux` file.
-
-**Testing:**
-1. **Smoke test first**: build & run `examples/main` (or a small throwaway project) for quick validation after changes.
-2. **Full suite**: once the smoke test passes, run `xmake test` to verify all test cases.
-
-The regression suite runs via xmake's native test mechanism (no googletest / CMake). Use `xmake test` to run all cases under `tests/cases/`, or `xmake test yux_tests/<name>` for a single case. The runner (`tests/xmake.lua`, `yux_tests` target) currently invokes the built `yux` on each `.yux` in single-file mode (this is the last remaining internal use of that mode — a project-per-case harness will replace it) and compares stdout to the paired `.expected`; for `error/err_*.yux` it expects compilation to fail. Per-case products land at `tests/cases/build/<stem>.exe` (or `tests/cases/error/build/...`). When a case and the language disagree, update the case — `src/yux.g4` and the compiler are authoritative; `docs/` is reference.
-
-## Architecture
-
-The compiler is a single binary (`yux.exe`) that takes a `.yux` source through the full pipeline to a linked executable — no external assembler/linker invocation:
-
-```
-.yux → ANTLR4 Lexer/Parser → ASTBuilder → semantic analysis
-     → Compiler (LLVM IR) → LLVM codegen → LLD link → .exe
-```
-
-Key source boundaries in `src/`:
-- `main.cpp` — CLI entry, arg parsing
-- `yux.cpp/h` — top-level compiler driver orchestrating the pipeline
-- `ast_builder.cpp/h` — walks the ANTLR parse tree into AST nodes under `src/node/` (`expr_node`, `fn_node`, `struct_node`, `statement_node`)
-- `compiler.cpp/h` — AST → LLVM IR
-- `build_cache.cpp/h` — source-file mtime+size cache written as `<objPath>.cache` next to each object; skips recompilation when both match
-- ANTLR-generated code lives in `gen/` (not `src/`)
-
-The `sdk/` directory contains the bootstrap runtime (written in yux itself) — it compiles to `build/sdk.ll` / `build/sdk.obj` and is linked into every yux program.
-
-## Build output layout — careful when cleaning
-
-`build/` is **shared between xmake and the yux compiler itself**:
-
-- xmake writes to `build/windows/x64/debug/` and the dotted dirs (`.objs/`, `.deps/`, `.build_cache/`, etc.)
-- yux single-file mode writes `<srcDir>/build/*.exe`, `*.ll`, `*.obj`, `*.obj.cache` flat (multi-segment modules `A.B.C` go to `<buildDir>/A/B/C.obj`)
-- yux project mode writes under `<projectRoot>/build/<projectName>/` for the main module + single-segment imports; multi-segment modules follow their dotted path under `build/`
-
-Safe targeted cleanup: delete `build/*.exe build/*.ll build/*.obj build/*.obj.cache`. For a full reset use `xmake clean -a`. Do not nuke `build/` wholesale.
-
-## Writing yux code
-
-When generating or modifying yux source code, follow these rules:
-
-**Documentation priority:**
-1. **Read docs first** — Always consult `docs/*.md` (especially `基础语法.md`, `类型系统.md`, `函数.md`, `结构体.md`, `控制流.md`) before writing yux code
-2. **Grammar second** — If docs are insufficient, refer to `src/yux.g4` for precise syntax rules
-3. **Compiler code last** — Only read compiler source (`src/*.cpp`, `src/node/*.cpp`) as a last resort to understand behavior
-4. **Do NOT reference Rust** — yux is its own language with different semantics; do not assume Rust-like behavior
-
-**Code style requirements:**
-- **Comments**: Line comments start with `;` (can be indented); trailing comments use ` ;`
-- **Spacing**: Space after keywords, around binary operators, after `,`; no space inside `()` / `[]`
-- **Mandatory trailing `;`**:
-  - `ret;` for early return in void functions must end with `;`
-  - `break;` for loop exit must end with `;`
-  - Expression statements ending with `;` return void; without `;` they return the expression value
-- **No implicit conversions** — Use `.to_<type>()` methods explicitly
+- **不要自行修改 `src/yux.g4`**：如果任务看起来需要改语法，立刻暂停，列出遇到的问题与可能的修改方向，交给用户决定。不要"先改一点试试"。
+- **多步任务必须先落到 `CURRENT.md`**：接到多步骤任务时，先在 `CURRENT.md` 写入分阶段计划（格式参照该文件现有条目），每完成一个阶段就地更新；整个任务完成后删除该条目。单步小修不需要写。
+- **新发现的 bug 写入 `BUGS.md`**：指的是**与当前任务无关**、或需大量排查、或临时绕过的 bug。按文件里的模板填写，然后暂停相关任务并告知用户。不要把它和 `CURRENT.md` 混用。
+- **信息不足时先查证，不要编造**：涉及到具体的测试名、目录路径、文件内容、命令参数时，用 Read/Grep/Glob 查实际文件，不要凭命名推断；当 docs、yux.g4、编译器三者冲突时以 `src/yux.g4` 和编译器源码为准，随后更新 docs，不要反过来。
+- **写 yux 代码前按顺序读文档**：先 `docs/*.md`（中文），再 `src/yux.g4`，最后才看 `src/*.cpp`。不要拿 Rust / C++ / Go 的语义去套 yux。
