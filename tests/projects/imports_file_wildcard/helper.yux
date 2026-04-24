@@ -1,0 +1,7 @@
+; file-level wildcard import smoke test
+
+fn greet() {
+    println("hi from helper")
+}
+
+fn add42(x i32) i32 = x + 42

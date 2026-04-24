@@ -11,6 +11,10 @@ const DEPS_FILE = path.join(__dirname, 'DEPS.json');
 const THIRD_PARTY_DIR = path.join(__dirname, 'third_party');
 const SKILLS_DIR_TRAE = path.join(__dirname, '.trae', 'skills');
 const SKILLS_DIR_CLAUDE = path.join(__dirname, '.claude', 'skills');
+const SDK_SRC_DIR = path.join(__dirname, 'sdk');
+// Debug/Release 构建下 `findSdkPath()` fallback 到 <exeDir>/../sdk/<...>，
+// 即 build/windows/x64/sdk/。这里建一个指向源 sdk/ 的链接，避免手动拷贝走样。
+const SDK_LINK_DIR = path.join(__dirname, 'build', 'windows', 'x64', 'sdk');
 
 function log(msg, color = 'reset') {
   const colors = {
@@ -174,6 +178,43 @@ async function finalizeSkillClone(tempPath, targetPath, flatten) {
   log(`Skill flattened to ${targetPath}`, 'green');
 }
 
+function syncSdkLink() {
+  log(`\n=== Linking SDK ===`, 'cyan');
+  log(`Source: ${SDK_SRC_DIR}`);
+  log(`Link:   ${SDK_LINK_DIR}`);
+
+  if (!fs.existsSync(SDK_SRC_DIR)) {
+    log(`SDK source missing: ${SDK_SRC_DIR}`, 'red');
+    throw new Error('sdk/ not found at project root');
+  }
+
+  fs.mkdirSync(path.dirname(SDK_LINK_DIR), { recursive: true });
+
+  let st = null;
+  try { st = fs.lstatSync(SDK_LINK_DIR); } catch {}
+  if (st) {
+    if (st.isSymbolicLink()) {
+      try {
+        const cur = fs.readlinkSync(SDK_LINK_DIR);
+        const resolved = path.resolve(path.dirname(SDK_LINK_DIR), cur);
+        if (resolved === SDK_SRC_DIR) {
+          log(`Already linked, skipping`, 'green');
+          return;
+        }
+      } catch {}
+      fs.unlinkSync(SDK_LINK_DIR);
+    } else {
+      // 真实目录（历史拷贝）——移除后重建为链接
+      fs.rmSync(SDK_LINK_DIR, { recursive: true, force: true });
+    }
+  }
+
+  // Windows 上用 junction，无需管理员权限；其它平台用 'dir' 符号链接。
+  const type = process.platform === 'win32' ? 'junction' : 'dir';
+  fs.symlinkSync(SDK_SRC_DIR, SDK_LINK_DIR, type);
+  log(`Linked (${type})`, 'green');
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run') || args.includes('-n');
@@ -233,6 +274,16 @@ async function main() {
       await syncSkill(name, config);
     } catch (e) {
       log(`Failed to sync skill ${name}: ${e.message}`, 'red');
+      process.exit(1);
+    }
+  }
+
+  // 只有在全量同步时建 SDK 链接；按名字指定子集的调用跳过。
+  if (targetDeps.length === 0) {
+    try {
+      syncSdkLink();
+    } catch (e) {
+      log(`Failed to link SDK: ${e.message}`, 'red');
       process.exit(1);
     }
   }

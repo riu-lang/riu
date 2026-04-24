@@ -1,0 +1,7 @@
+use yux.core.*
+use helper.*
+
+fn main() {
+    greet()
+    println(add42(8).to_string())
+}

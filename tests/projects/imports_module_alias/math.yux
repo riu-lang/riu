@@ -1,0 +1,2 @@
+fn square(x i32) i32 = x * x
+fn cube(x i32) i32 = x * x * x

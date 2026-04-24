@@ -7,6 +7,9 @@
 --   - cases/*.yux          编译应成功；运行产物 .exe，stdout 需与 .expected 完全一致
 --   - cases/error/*.yux    编译应失败；.expected 内容仅作占位（约定 "error"）
 --
+-- 项目级用例：tests/projects/<case>/ 下包含 yux.toml + 入口源文件 + expected.txt。
+-- 以该目录为 CWD 调用 `yux build <case>`，运行 build/<case>/<case>.exe 并比对 expected.txt。
+--
 -- 运行：
 --   xmake build yux                         先构建编译器
 --   xmake test                              运行全部用例
@@ -15,6 +18,7 @@
 --   xmake test "yux_tests/*"                通配符
 
 local cases_dir = path.join(os.scriptdir(), "cases")
+local projects_dir = path.join(os.scriptdir(), "projects")
 
 local function list_case_names()
     local r = {}
@@ -26,6 +30,11 @@ local function list_case_names()
     for _, f in ipairs(os.files(path.join(cases_dir, "error", "*.yux"))) do
         if os.isfile((f:gsub("%.yux$", ".expected"))) then
             r["error_" .. path.basename(f)] = true
+        end
+    end
+    for _, d in ipairs(os.dirs(path.join(projects_dir, "*"))) do
+        if os.isfile(path.join(d, "yux.toml")) and os.isfile(path.join(d, "expected.txt")) then
+            r["project_" .. path.filename(d)] = true
         end
     end
     return r
@@ -54,6 +63,17 @@ target("yux_tests")
                 cases["error_" .. path.basename(f)] = {file = path.absolute(f), expect_error = true}
             end
         end
+        local pd = path.join(target:scriptdir(), "projects")
+        for _, d in ipairs(os.dirs(path.join(pd, "*"))) do
+            if os.isfile(path.join(d, "yux.toml")) and os.isfile(path.join(d, "expected.txt")) then
+                cases["project_" .. path.filename(d)] = {
+                    project_dir = path.absolute(d),
+                    project_name = path.filename(d),
+                    expected_file = path.absolute(path.join(d, "expected.txt")),
+                    is_project = true,
+                }
+            end
+        end
 
         local short = opt.name:match("/(.+)$") or opt.name
         local entry = cases[short]
@@ -66,6 +86,61 @@ target("yux_tests")
         local yux_exe = yux_dep and yux_dep:targetfile() or nil
         if not yux_exe or not os.isfile(path.absolute(yux_exe)) then
             yux_exe = "yux"
+        end
+
+        if entry.is_project then
+            local pdir = entry.project_dir
+            local pname = entry.project_name
+            local build_dir = path.join(pdir, "build")
+            local exe = path.join(build_dir, pname, pname .. ".exe")
+            os.tryrm(build_dir)
+
+            local stdout_data, stderr_data
+            local ok = try {
+                function ()
+                    stdout_data, stderr_data = os.iorunv(yux_exe, {"build", pname}, {curdir = pdir})
+                    return true
+                end,
+                catch {
+                    function (errs)
+                        stderr_data = tostring(errs)
+                        return nil
+                    end
+                }
+            }
+            opt.stdout = stdout_data
+            opt.stderr = stderr_data
+            if not ok or not os.isfile(exe) then
+                opt.errors = "project compile failed: " .. pdir .. "\n" .. tostring(stderr_data or "")
+                return false
+            end
+
+            local actual = ""
+            local run_ok = try {
+                function ()
+                    actual = os.iorunv(exe, {}, {curdir = pdir})
+                    return true
+                end,
+                catch {
+                    function (errs)
+                        opt.errors = "run failed: " .. exe .. "\n" .. tostring(errs)
+                        return nil
+                    end
+                }
+            }
+            if not run_ok then
+                return false
+            end
+
+            local expected = io.readfile(entry.expected_file) or ""
+            if actual ~= expected then
+                opt.errors = format("output mismatch for project %s\n--- expected ---\n%s\n--- actual ---\n%s",
+                                    pname, expected, actual)
+                opt.stdout = actual
+                return false
+            end
+            os.tryrm(build_dir)
+            return true
         end
 
         local case = entry.file

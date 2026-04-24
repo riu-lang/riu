@@ -1,0 +1,7 @@
+use yux.core.*
+use utils.*
+
+fn main() {
+    println(abs.my_abs(-5).to_string())
+    println(dbl.dbl(7).to_string())
+}
