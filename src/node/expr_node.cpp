@@ -535,24 +535,6 @@ TypeInfo ExprDotNode::getType() const {
         }
     }
     
-    if (baseType.isArrayGeneric() && isCompilerInnerMethod(findNearestScope(), "Array", member)) {
-        if (member == "len" || member == "cap") {
-            return TypeInfo("fn() i64");
-        }
-        if (member == "push" || member == "clear" || member == "set_len") {
-            return TypeInfo("fn() ");
-        }
-        if (member == "is_empty") {
-            return TypeInfo("fn() bool");
-        }
-        if (member == "at" || member == "first" || member == "last" || member == "pop") {
-            auto elemType = baseType.arrayGenericElementType();
-            if (elemType) {
-                return TypeInfo("fn() " + elemType->getFullName());
-            }
-        }
-    }
-    
     auto scope = findNearestScope();
     if (scope) {
         auto file = dynamic_cast<FileNode*>(scope);

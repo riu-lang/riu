@@ -19,6 +19,9 @@ fn _stdout_write(buf Ptr<u8>, off i64, len i64) {
   WriteFile(hStdout, bufWithOff, len.to_u32(), &written, null);
 }
 
+#CompilerInner
+fn <T> size_of() u64
+
 ; 内置类型
 ; 结构体仅占位，实际类型由编译器处理
 ; to_<数字/bool> 方法由编译器合成，通过 #CompilerInner 标注
@@ -536,29 +539,35 @@ struct Box<T> {
   ; 内部处理
 }
 
-#CompilerInner
 struct Array<T> {
-  ; 内部处理
+  _data Ptr<T>
+  _len i64
+  _cap i64
 }
 
 Array<T> {
-  #CompilerInner
-  fn len() i64
+  fn len() i64 {
+    self._len
+  }
 
-  #CompilerInner
-  fn cap() i64
+  fn cap() i64 {
+    self._cap
+  }
+
+  fn is_empty() bool {
+    self._len == 0i64
+  }
+
+  fn clear() {
+    self._len = 0i64
+  }
+
+  fn set_len(new_len i64) {
+    self._len = new_len
+  }
 
   #CompilerInner
   fn push(value T)
-
-  #CompilerInner
-  fn clear()
-
-  #CompilerInner
-  fn set_len(new_len i64)
-
-  #CompilerInner
-  fn is_empty() bool
 
   #CompilerInner
   fn at(i i64) T

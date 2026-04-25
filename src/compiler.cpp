@@ -153,6 +153,15 @@ string Compiler::ensureStructInstance(
         _substStack.pop_back();
         rethrowWithInstantiationContext(e);
     }
+    // Array uses hardcoded {ptr, i64, i64} layout (from isArrayGeneric())
+    // instead of {{i64}, i64, i64} from field-based Ptr<T> type
+    if (baseName == "Array") {
+        fieldTypes.clear();
+        fieldTypes.push_back(llvm::PointerType::get(_context, 0));
+        fieldTypes.push_back(_builder.getInt64Ty());
+        fieldTypes.push_back(_builder.getInt64Ty());
+    }
+
     string fullMangled = Mangler::structType(inst.ownerFile->moduleName(), mangledName);
     auto structType = llvm::StructType::create(_context, fieldTypes, fullMangled);
     _structTypes[mangledName] = structType;
@@ -1149,6 +1158,11 @@ void Compiler::emitInstanceMethods() {
                 }
 
                 for (auto method : inst.baseImpl->methods()) {
+                    if (method->header()->hasAnno("CompilerInner")) {
+                        DEBUG_LOG_VAL("        Skipping #CompilerInner method (compiler handles)", baseName << "." << method->header()->name().getText());
+                        continue;
+                    }
+
                     string methodName = method->header()->name().getText();
                     vector<TypeInfo> paramTypes;
                     for (auto param : method->header()->params()) {
@@ -1831,6 +1845,9 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         }
 
         auto structDecl = _file->getStructDecl(actualType.name);
+        if (!structDecl && _yux && _yux->sdkFile()) {
+            structDecl = _yux->sdkFile()->getStructDecl(actualType.name);
+        }
         if (!structDecl) {
             throw YuxError(node->getLineNumber(), "Cannot access member on non-struct type: {}", actualType.name);
         }
@@ -1854,8 +1871,13 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             }
 
             auto field = structDecl->fields()[fieldIndex];
-            if (field->isPrivate() && _currentStructName != actualType.name) {
-                throw YuxError(node->getLineNumber(), "Cannot access private field '{}' of struct '{}'", memberName, actualType.name);
+            if (field->isPrivate()) {
+                string currentBase = _currentStructName;
+                auto dollarPos = currentBase.find('$');
+                if (dollarPos != string::npos) currentBase = currentBase.substr(0, dollarPos);
+                if (currentBase != actualType.name) {
+                    throw YuxError(node->getLineNumber(), "Cannot access private field '{}' of struct '{}'", memberName, actualType.name);
+                }
             }
 
             if (i == subs.size() - 1) {
@@ -3016,7 +3038,7 @@ llvm::Value* Compiler::compileMethodCall(
 
     TypeInfo actualType = baseType;
 
-    if (baseType.isArrayGeneric() && isCompilerInnerMethod("Array", member)) {
+    if (baseType.isArrayGeneric()) {
         auto elemType = baseType.arrayGenericElementType();
         auto arrayStructType = getLLVMType(baseType);
         auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
@@ -3175,10 +3197,7 @@ llvm::Value* Compiler::compileMethodCall(
                 throw YuxError(callNode->getLineNumber(),
                     "Array mutation method '{}' requires an lvalue array", member);
             }
-            uint64_t elemSize = elemLLVMType->getPrimitiveSizeInBits() / 8;
-            if (elemSize == 0) {
-                elemSize = _module->getDataLayout().getTypeAllocSize(elemLLVMType);
-            }
+            auto elemSize = _module->getDataLayout().getTypeAllocSize(elemLLVMType);
 
             llvm::Value* dataIdx[] = {zero, zero};
             llvm::Value* lenIdx[] = {zero, one};
@@ -3339,8 +3358,13 @@ llvm::Value* Compiler::compileMethodCall(
     if (methodSymbol) {
         DEBUG_LOG_VAL("    Expr: MethodCall", methodFullName);
 
-        if (methodSymbol->isPrivate && _currentStructName != actualType.name) {
-            throw YuxError(callNode->getLineNumber(), "Cannot call private method '{}' of struct '{}'", member, actualType.name);
+        if (methodSymbol->isPrivate) {
+            string currentBase = _currentStructName;
+            auto dollarPos = currentBase.find('$');
+            if (dollarPos != string::npos) currentBase = currentBase.substr(0, dollarPos);
+            if (currentBase != actualType.name) {
+                throw YuxError(callNode->getLineNumber(), "Cannot call private method '{}' of struct '{}'", member, actualType.name);
+            }
         }
 
         llvm::Value* basePtr = nullptr;
@@ -3582,6 +3606,25 @@ llvm::Value* Compiler::compileFunctionCall(
                 }
                 typeArgs.push_back(it->second);
             }
+        }
+
+        // #CompilerInner 函数由编译器直接处理，不生成函数调用
+        if (genericFn->header()->hasAnno("CompilerInner")) {
+            if (fnName == "size_of") {
+                if (typeArgs.empty()) {
+                    throw YuxError(callNode->getLineNumber(),
+                        "Cannot determine type argument for size_of");
+                }
+                auto llvmType = getLLVMType(typeArgs[0]);
+                if (!llvmType) {
+                    throw YuxError(callNode->getLineNumber(),
+                        "Cannot determine LLVM type for '{}'", typeArgs[0].getFullName());
+                }
+                auto size = _module->getDataLayout().getTypeAllocSize(llvmType);
+                return _builder.getInt64(size);
+            }
+            throw YuxError(callNode->getLineNumber(),
+                "Unknown #CompilerInner function '{}'", fnName);
         }
 
         // 确保实例化
@@ -4058,8 +4101,13 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
             DEBUG_LOG_VAL("    Expr: StructFieldAccess", actualType.name << "." << member);
 
             auto field = structDecl->fields()[fieldIndex];
-            if (field->isPrivate() && _currentStructName != actualType.name) {
-                throw YuxError(node->getLineNumber(), "Cannot access private field '{}' of struct '{}'", member, actualType.name);
+            if (field->isPrivate()) {
+                string currentBase = _currentStructName;
+                auto dollarPos = currentBase.find('$');
+                if (dollarPos != string::npos) currentBase = currentBase.substr(0, dollarPos);
+                if (currentBase != actualType.name) {
+                    throw YuxError(node->getLineNumber(), "Cannot access private field '{}' of struct '{}'", member, actualType.name);
+                }
             }
 
             if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
@@ -4532,8 +4580,13 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
         }
 
         auto field = structDecl->fields()[fieldIndex];
-        if (field->isPrivate() && _currentStructName != currentType.name) {
-            throw YuxError(node->getLineNumber(), "Cannot access private field '{}' of struct '{}'", memberName, currentType.name);
+        if (field->isPrivate()) {
+            string currentBase = _currentStructName;
+            auto dollarPos = currentBase.find('$');
+            if (dollarPos != string::npos) currentBase = currentBase.substr(0, dollarPos);
+            if (currentBase != currentType.name) {
+                throw YuxError(node->getLineNumber(), "Cannot access private field '{}' of struct '{}'", memberName, currentType.name);
+            }
         }
 
         auto structType = getLLVMType(currentType);
