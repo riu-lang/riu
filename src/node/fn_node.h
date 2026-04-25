@@ -1,10 +1,6 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 
-//
-// Created by yjl_1 on 2026/3/29.
-//
-
 #ifndef YUX_LANG_FN_NODE_H
 #define YUX_LANG_FN_NODE_H
 

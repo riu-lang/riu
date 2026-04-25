@@ -1,0 +1,1143 @@
+// Copyright (c) 2026. Yin-Jinlong@github
+// MPL-2.0
+
+// 表达式编译实现
+// 
+// 本文件包含所有表达式类型的编译逻辑:
+// - 字面量表达式 (整数、浮点数、布尔值、字符串)
+// - 算术表达式 (加减乘除取模)
+// - 位运算表达式 (与或异或左移右移)
+// - 比较表达式 (相等、不等、大小比较)
+// - 括号表达式
+// - 函数调用表达式
+// - 成员访问表达式
+// - if-else 表达式
+// - 数组表达式
+// - 一元表达式 (取负、取反、取引用)
+
+#include "compiler.h"
+#include "node/expr_node.h"
+#include "node/literal_node.h"
+#include "compiler_runtime.h"
+#include "mangler.h"
+#include <llvm/IR/Constants.h>
+#include <llvm/IR/DerivedTypes.h>
+#include <regex>
+
+// ==================== 辅助函数 ====================
+
+// 解析整数字面量
+// 支持多种格式: 十进制、二进制 (0b)、八进制 (0o)、十六进制 (0x)
+// 支持类型后缀 (i32, u64 等) 和下划线分隔符
+namespace {
+    i64 parseIntLiteral(const string& text) {
+        string numStr = text;
+        
+        // 移除类型后缀 (如 i32, u64)
+        static const std::regex suffix_regex(R"([iu](?:8|16|32|64)?$)");
+        numStr = std::regex_replace(numStr, suffix_regex, "");
+        
+        int base = 10;
+        string parseStr = numStr;
+        
+        // 检测进制前缀
+        if (numStr.size() >= 2) {
+            if (numStr[0] == '0' && (numStr[1] == 'b' || numStr[1] == 'B')) {
+                base = 2;
+                parseStr = numStr.substr(2);
+            } else if (numStr[0] == '0' && (numStr[1] == 'o' || numStr[1] == 'O')) {
+                base = 8;
+                parseStr = numStr.substr(2);
+            } else if (numStr[0] == '0' && (numStr[1] == 'x' || numStr[1] == 'X')) {
+                base = 16;
+                parseStr = numStr.substr(2);
+            }
+        }
+        
+        // 移除下划线分隔符
+        parseStr.erase(std::remove(parseStr.begin(), parseStr.end(), '_'), parseStr.end());
+        
+        return std::stoll(parseStr, nullptr, base);
+    }
+}
+
+// ==================== 数组初始化表达式编译 ====================
+
+// 编译数组填充表达式 ([value ... Type] 语法)
+// 使用指定值填充整个数组
+llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const TypeInfo& targetType, llvm::Value* destPtr) {
+    auto literal = node->value();
+    auto literalType = literal->getType();
+    auto text = literal->getValue().getText();
+
+    // 确定元素类型
+    TypeInfo elementType;
+    if (node->explicitType()) {
+        elementType = node->explicitType()->getType();
+        // 类型检查
+        if (literalType != elementType) {
+            throw YuxError(node->getLineNumber(),
+                "Array fill literal type mismatch: literal is {}, but explicit type is {}",
+                literalType.name, elementType.name);
+        }
+    } else {
+        elementType = literalType;
+    }
+
+    // 验证元素类型与目标数组类型匹配
+    if (targetType.elementType && *targetType.elementType != elementType) {
+        throw YuxError(node->getLineNumber(),
+            "Array fill element type mismatch: expected {}, got {}",
+            targetType.elementType->name, elementType.name);
+    }
+
+    DEBUG_LOG_VAL("    Expr: ArrayInit", targetType.name);
+
+    auto llvmArrayType = getLLVMType(targetType);
+    bool needLoad = (destPtr == nullptr);
+    if (needLoad) {
+        destPtr = _builder.CreateAlloca(llvmArrayType, nullptr, "array.init");
+    }
+
+    // 解析填充值
+    llvm::Value* fillValue;
+    bool isZeroFill = false;
+    i64 intFillVal = 0;
+    f64 floatFillVal = 0.0;
+
+    if (auto intLiteral = dynamic_cast<LiteralIntNode*>(literal)) {
+        intFillVal = parseIntLiteral(text);
+        fillValue = llvm::ConstantInt::get(getLLVMType(elementType), intFillVal, true);
+        isZeroFill = (intFillVal == 0);  // 零值优化
+    } else if (auto floatLiteral = dynamic_cast<LiteralFloatNode*>(literal)) {
+        string numStr;
+        for (char c : text) {
+            if (isdigit(c) || c == '.' || c == '-') {
+                numStr += c;
+            } else {
+                break;
+            }
+        }
+        floatFillVal = stod(numStr);
+        fillValue = llvm::ConstantFP::get(getLLVMType(elementType), floatFillVal);
+        isZeroFill = (floatFillVal == 0.0);  // 零值优化
+    } else if (auto boolLiteral = dynamic_cast<LiteralBoolNode*>(literal)) {
+        bool boolVal = (text == "true");
+        intFillVal = boolVal ? 1 : 0;
+        fillValue = llvm::ConstantInt::get(getLLVMType(elementType), intFillVal, false);
+        isZeroFill = !boolVal;  // false 值优化
+    } else {
+        throw YuxError(node->getLineNumber(), "Unsupported literal type for array fill");
+    }
+
+    // 填充数组
+    if (isZeroFill) {
+        // 零值优化: 使用 LLVM 的零初始化
+        auto zeroInit = llvm::ConstantAggregateZero::get(llvmArrayType);
+        _builder.CreateStore(zeroInit, destPtr);
+    } else if (elementType.name == "i8" || elementType.name == "u8" || elementType.name == "bool") {
+        // 字节类型优化: 使用 memset
+        auto size = llvm::ConstantInt::get(_builder.getInt64Ty(), targetType.arraySize);
+        auto fillByte = _builder.getInt8(static_cast<u8>(intFillVal));
+        _builder.CreateMemSetInline(destPtr, llvm::MaybeAlign(1), fillByte, size);
+    } else {
+        // 通用情况: 逐元素填充
+        for (u64 i = 0; i < targetType.arraySize; ++i) {
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto index = llvm::ConstantInt::get(_builder.getInt32Ty(), i);
+            llvm::Value* indices[] = {zero, index};
+            auto elemPtr = _builder.CreateGEP(llvmArrayType, destPtr, indices, "array.elem.ptr");
+            _builder.CreateStore(fillValue, elemPtr);
+        }
+    }
+
+    if (needLoad) {
+        return _builder.CreateLoad(llvmArrayType, destPtr, "array.load");
+    }
+    return nullptr;
+}
+
+// ==================== 类型转换 ====================
+
+// 创建类型转换
+// 处理整数、浮点数、指针、引用等类型之间的转换
+llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& srcType, const TypeInfo& dstType) {
+    // 相同类型无需转换
+    if (srcType == dstType) {
+        DEBUG_LOG_VAL("    Cast: no-op", srcType.name);
+        return val;
+    }
+
+    DEBUG_LOG_VAL("    Cast", srcType.name << " -> " << dstType.name);
+
+    // 指针类型转换
+    if (dstType.isPtr()) {
+        if (srcType.isRef()) {
+            DEBUG_LOG("      Ref -> Ptr");
+            return _builder.CreateBitCast(val, llvm::PointerType::get(_context, 0), "ref_to_ptr");
+        }
+        if (srcType.isBox()) {
+            DEBUG_LOG("      Box -> Ptr");
+            // Box 类型: 解包获取数据指针
+            auto boxStructType = getLLVMType(srcType);
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            llvm::Value* indices[] = {zero, zero};
+            auto dataPtrField = _builder.CreateGEP(boxStructType, val, indices, "box.data_ptr_field");
+            return _builder.CreateLoad(
+                llvm::PointerType::get(_context, 0), dataPtrField, "box.data_ptr");
+        }
+    }
+
+    // 数值类型转换
+    auto dstLLVMType = getLLVMType(dstType);
+    bool srcIsFloat = srcType.startsWith('f');
+    bool dstIsFloat = dstType.startsWith('f');
+    bool srcIsUnsigned = srcType.startsWith('u');
+    bool dstIsUnsigned = dstType.startsWith('u');
+
+    if (srcIsFloat && dstIsFloat) {
+        // 浮点数之间的转换
+        if (srcType.name == "f64" && dstType.name == "f32") {
+            DEBUG_LOG("      FPTrunc (f64 -> f32)");
+            return _builder.CreateFPTrunc(val, dstLLVMType);
+        } else {
+            DEBUG_LOG("      FPExt (f32 -> f64)");
+            return _builder.CreateFPExt(val, dstLLVMType);
+        }
+    } else if (!srcIsFloat && !dstIsFloat) {
+        // 整数之间的转换
+        auto srcLLVMType = getLLVMType(srcType);
+        if (dstLLVMType->getIntegerBitWidth() > srcLLVMType->getIntegerBitWidth()) {
+            // 扩展
+            if (srcIsUnsigned) {
+                DEBUG_LOG("      ZExt (unsigned int extension)");
+                return _builder.CreateZExt(val, dstLLVMType);
+            } else {
+                DEBUG_LOG("      SExt (signed int extension)");
+                return _builder.CreateSExt(val, dstLLVMType);
+            }
+        } else {
+            // 截断
+            DEBUG_LOG("      Trunc (int truncation)");
+            return _builder.CreateTrunc(val, dstLLVMType);
+        }
+    } else if (!srcIsFloat && dstIsFloat) {
+        // 整数转浮点数
+        if (srcIsUnsigned) {
+            DEBUG_LOG("      UIToFP (unsigned int to float)");
+            return _builder.CreateUIToFP(val, dstLLVMType);
+        } else {
+            DEBUG_LOG("      SIToFP (signed int to float)");
+            return _builder.CreateSIToFP(val, dstLLVMType);
+        }
+    } else {
+        // 浮点数转整数
+        if (dstIsUnsigned) {
+            DEBUG_LOG("      FPToUI (float to unsigned int)");
+            return _builder.CreateFPToUI(val, dstLLVMType);
+        } else {
+            DEBUG_LOG("      FPToSI (float to signed int)");
+            return _builder.CreateFPToSI(val, dstLLVMType);
+        }
+    }
+}
+
+// ==================== 字面量表达式编译 ====================
+
+// 编译字面量表达式
+// 处理整数、浮点数、布尔值、对象名等
+llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
+    auto literal = node->literal();
+    auto type = literal->getType();
+    auto text = literal->getValue().getText();
+
+    if (auto intLiteral = dynamic_cast<LiteralIntNode*>(literal)) {
+        i64 numVal = parseIntLiteral(text);
+        DEBUG_LOG_VAL("    Expr: IntLiteral", text << " : " << type.name);
+        return llvm::ConstantInt::get(getLLVMType(type), numVal, true);
+    } else if (auto floatLiteral = dynamic_cast<LiteralFloatNode*>(literal)) {
+        string numStr;
+        for (char c : text) {
+            if (isdigit(c) || c == '.' || c == '-') {
+                numStr += c;
+            } else {
+                break;
+            }
+        }
+        f64 numVal = stod(numStr);
+        DEBUG_LOG_VAL("    Expr: FloatLiteral", text << " : " << type.name);
+        return llvm::ConstantFP::get(getLLVMType(type), numVal);
+    } else if (auto boolLiteral = dynamic_cast<LiteralBoolNode*>(literal)) {
+        bool boolVal = (text == "true");
+        DEBUG_LOG_VAL("    Expr: BoolLiteral", text << " : " << type.name);
+        return llvm::ConstantInt::get(getLLVMType(type), boolVal ? 1 : 0, false);
+    } else if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literal)) {
+        auto varName = text;
+        auto sym = _currentFnNode->lookupSymbol(varName);
+
+        if (sym && _localVarPtrs.contains(varName)) {
+            DEBUG_LOG_VAL("    Expr: VariableLoad", varName << " : " << sym->type.name);
+            return _builder.CreateLoad(getLLVMType(sym->type), _localVarPtrs[varName]);
+        }
+
+        string ownerMod = (sym && !sym->moduleName.empty()) ? sym->moduleName : _file->moduleName();
+        bool globPriv = !varName.empty() && varName[0] == '_';
+        string mangledName = Mangler::global(ownerMod, varName, globPriv);
+        auto globalVar = _module->getGlobalVariable(mangledName, true);
+        if (globalVar) {
+            DEBUG_LOG_VAL("    Expr: GlobalConstLoad", varName << " : " << (sym ? sym->type.name : "unknown"));
+            return _builder.CreateLoad(globalVar->getValueType(), globalVar, "global.load");
+        }
+
+        throw YuxError(node->getLineNumber(), "Undefined variable: {}", varName);
+    } else if (auto cpLiteral = dynamic_cast<LiteralCodePointNode*>(literal)) {
+        DEBUG_LOG_VAL("    Expr: CodePointLiteral", text << " : u32");
+        return llvm::ConstantInt::get(getLLVMType(type), cpLiteral->codePoint(), false);
+    } else if (auto nullLiteral = dynamic_cast<LiteralNullNode*>(literal)) {
+        DEBUG_LOG("    Expr: NullLiteral");
+        return llvm::ConstantPointerNull::get(llvm::PointerType::get(_context, 0));
+    } else if (auto stringLiteral = dynamic_cast<LiteralStringNode*>(literal)) {
+        DEBUG_LOG_VAL("    Expr: StringLiteral", text);
+        auto codePoints = stringLiteral->codePoints();
+        size_t len = codePoints.size();
+
+        auto stringType = getLLVMType(TypeInfo("String"));
+
+        auto alloca = _builder.CreateAlloca(stringType, nullptr, "str_tmp");
+
+        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+        auto two = llvm::ConstantInt::get(_builder.getInt32Ty(), 2);
+
+        llvm::Value* dataPtrIndices[] = {zero, zero, zero};
+        auto dataPtrField = _builder.CreateGEP(stringType, alloca, dataPtrIndices, "str_data_ptr");
+
+        llvm::Value* lenIndices[] = {zero, zero, one};
+        auto lenField = _builder.CreateGEP(stringType, alloca, lenIndices, "str_len");
+
+        llvm::Value* capIndices[] = {zero, zero, two};
+        auto capField = _builder.CreateGEP(stringType, alloca, capIndices, "str_cap");
+
+        if (len > 0) {
+            auto elemSize = _builder.getInt64(4);
+            auto totalSize = _builder.getInt64(len * 4);
+            auto allocFn = runtime::getArrayAllocFn(_module, _builder);
+            auto heapPtr = _builder.CreateCall(allocFn, {totalSize}, "str_heap_ptr");
+
+            auto arrType = llvm::ArrayType::get(_builder.getInt32Ty(), len);
+
+            vector<llvm::Constant*> elements;
+            for (size_t i = 0; i < len; ++i) {
+                elements.push_back(llvm::ConstantInt::get(_builder.getInt32Ty(), codePoints[i]));
+            }
+            auto arrInit = llvm::ConstantArray::get(arrType, elements);
+
+            static int strCounter = 0;
+            string globalName = ".str." + to_string(strCounter++);
+            auto globalVar = new llvm::GlobalVariable(
+                *_module,
+                arrType,
+                true,
+                llvm::GlobalValue::PrivateLinkage,
+                arrInit,
+                globalName
+            );
+
+            auto memcpyFn = _module->getFunction("llvm.memcpy.p0.p0.i64");
+            if (!memcpyFn) {
+                llvm::Type* memcpyArgTypes[] = {
+                    llvm::PointerType::get(_context, 0),
+                    llvm::PointerType::get(_context, 0),
+                    _builder.getInt64Ty(),
+                    _builder.getInt1Ty()
+                };
+                auto memcpyType = llvm::FunctionType::get(_builder.getVoidTy(), memcpyArgTypes, false);
+                memcpyFn = llvm::Function::Create(
+                    memcpyType,
+                    llvm::Function::ExternalLinkage,
+                    "llvm.memcpy.p0.p0.i64",
+                    _module
+                );
+            }
+
+            auto globalPtr = _builder.CreateBitCast(globalVar, llvm::PointerType::get(_context, 0));
+            auto heapPtrTyped = _builder.CreateBitCast(heapPtr, llvm::PointerType::get(_context, 0));
+
+            _builder.CreateCall(memcpyFn, {heapPtrTyped, globalPtr, totalSize, _builder.getInt1(false)});
+
+            _builder.CreateStore(heapPtrTyped, dataPtrField);
+        } else {
+            _builder.CreateStore(
+                llvm::ConstantPointerNull::get(llvm::PointerType::get(_context, 0)), dataPtrField);
+        }
+
+        _builder.CreateStore(llvm::ConstantInt::get(_builder.getInt64Ty(), len), lenField);
+        _builder.CreateStore(llvm::ConstantInt::get(_builder.getInt64Ty(), len), capField);
+
+        return _builder.CreateLoad(stringType, alloca, "str_val");
+    }
+    throw YuxError(node->getLineNumber(), "Unsupported literal type");
+}
+
+llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
+    auto type = node->getType();
+    auto left = compileExpr(node->left());
+    auto right = compileExpr(node->right());
+    bool isFloat = type.startsWith('f');
+
+    string opStr = (node->op() == ExprAddSubNode::Op::Add) ? "+" : "-";
+    DEBUG_LOG_VAL("    Expr: AddSub", opStr << " : " << type.name);
+
+    if (node->op() == ExprAddSubNode::Op::Add) {
+        if (isFloat) {
+            return _builder.CreateFAdd(left, right);
+        }
+        return _builder.CreateAdd(left, right);
+    } else {
+        if (isFloat) {
+            return _builder.CreateFSub(left, right);
+        }
+        return _builder.CreateSub(left, right);
+    }
+}
+
+llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
+    auto type = node->getType();
+    auto left = compileExpr(node->left());
+    auto right = compileExpr(node->right());
+    bool isFloat = type.startsWith('f');
+    bool isUnsigned = type.startsWith('u');
+
+    string opStr;
+    switch (node->op()) {
+    case ExprMulDivModNode::Op::Mul: opStr = "*";
+        break;
+    case ExprMulDivModNode::Op::Div: opStr = "/";
+        break;
+    case ExprMulDivModNode::Op::Mod: opStr = "%";
+        break;
+    }
+    DEBUG_LOG_VAL("    Expr: MulDivMod", opStr << " : " << type.name);
+
+    switch (node->op()) {
+    case ExprMulDivModNode::Op::Mul:
+        if (isFloat) {
+            return _builder.CreateFMul(left, right);
+        }
+        return _builder.CreateMul(left, right);
+    case ExprMulDivModNode::Op::Div:
+        if (isFloat) {
+            return _builder.CreateFDiv(left, right);
+        }
+        if (isUnsigned) {
+            return _builder.CreateUDiv(left, right);
+        }
+        return _builder.CreateSDiv(left, right);
+    case ExprMulDivModNode::Op::Mod:
+        if (isFloat) {
+            return _builder.CreateFRem(left, right);
+        }
+        if (isUnsigned) {
+            return _builder.CreateURem(left, right);
+        }
+        return _builder.CreateSRem(left, right);
+    }
+    throw YuxError(node->getLineNumber(), "Unsupported mul/div/mod operation");
+}
+
+llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
+    auto type = node->getType();
+    auto left = compileExpr(node->left());
+    auto right = compileExpr(node->right());
+
+    string opStr;
+    switch (node->op()) {
+    case ExprBinOpNode::Op::And: opStr = "&";
+        break;
+    case ExprBinOpNode::Op::Or: opStr = "|";
+        break;
+    case ExprBinOpNode::Op::Xor: opStr = "^";
+        break;
+    case ExprBinOpNode::Op::Shl: opStr = "<<";
+        break;
+    case ExprBinOpNode::Op::Shr: opStr = ">>";
+        break;
+    }
+    DEBUG_LOG_VAL("    Expr: BinOp", opStr << " : " << type.name);
+
+    switch (node->op()) {
+    case ExprBinOpNode::Op::And:
+        return _builder.CreateAnd(left, right);
+    case ExprBinOpNode::Op::Or:
+        return _builder.CreateOr(left, right);
+    case ExprBinOpNode::Op::Xor:
+        return _builder.CreateXor(left, right);
+    case ExprBinOpNode::Op::Shl:
+        return _builder.CreateShl(left, right);
+    case ExprBinOpNode::Op::Shr:
+        if (type.startsWith('u')) {
+            return _builder.CreateLShr(left, right);
+        }
+        return _builder.CreateAShr(left, right);
+    }
+    throw YuxError(node->getLineNumber(), "Unsupported binary operation");
+}
+
+llvm::Value* Compiler::compileParenExpr(p<ExprParenNode> node) {
+    DEBUG_LOG("    Expr: Paren");
+    return compileExpr(node->expr());
+}
+
+llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
+    (void)node->getType();
+    auto left = compileExpr(node->left());
+    auto right = compileExpr(node->right());
+    auto leftType = node->left()->getType();
+    auto rightType = node->right()->getType();
+
+    if (leftType != rightType) {
+        throw YuxError(node->getLineNumber(), "Type mismatch in comparison: left is {}, right is {}", leftType.name, rightType.name);
+    }
+
+    bool isFloat = leftType.startsWith('f');
+    bool isUnsigned = leftType.startsWith('u');
+
+    string opStr;
+    switch (node->op()) {
+    case ExprCompareNode::Op::Eq: opStr = "==";
+        break;
+    case ExprCompareNode::Op::Ne: opStr = "!=";
+        break;
+    case ExprCompareNode::Op::Lt: opStr = "<";
+        break;
+    case ExprCompareNode::Op::Le: opStr = "<=";
+        break;
+    case ExprCompareNode::Op::Gt: opStr = ">";
+        break;
+    case ExprCompareNode::Op::Ge: opStr = ">=";
+        break;
+    case ExprCompareNode::Op::AndAnd: opStr = "&&";
+        break;
+    case ExprCompareNode::Op::OrOr: opStr = "||";
+        break;
+    }
+    DEBUG_LOG_VAL("    Expr: Compare", opStr << " : " << leftType.name);
+
+    switch (node->op()) {
+    case ExprCompareNode::Op::Eq:
+        if (isFloat) {
+            return _builder.CreateFCmpOEQ(left, right);
+        }
+        return _builder.CreateICmpEQ(left, right);
+    case ExprCompareNode::Op::Ne:
+        if (isFloat) {
+            return _builder.CreateFCmpONE(left, right);
+        }
+        return _builder.CreateICmpNE(left, right);
+    case ExprCompareNode::Op::Lt:
+        if (isFloat) {
+            return _builder.CreateFCmpOLT(left, right);
+        }
+        if (isUnsigned) {
+            return _builder.CreateICmpULT(left, right);
+        }
+        return _builder.CreateICmpSLT(left, right);
+    case ExprCompareNode::Op::Le:
+        if (isFloat) {
+            return _builder.CreateFCmpOLE(left, right);
+        }
+        if (isUnsigned) {
+            return _builder.CreateICmpULE(left, right);
+        }
+        return _builder.CreateICmpSLE(left, right);
+    case ExprCompareNode::Op::Gt:
+        if (isFloat) {
+            return _builder.CreateFCmpOGT(left, right);
+        }
+        if (isUnsigned) {
+            return _builder.CreateICmpUGT(left, right);
+        }
+        return _builder.CreateICmpSGT(left, right);
+    case ExprCompareNode::Op::Ge:
+        if (isFloat) {
+            return _builder.CreateFCmpOGE(left, right);
+        }
+        if (isUnsigned) {
+            return _builder.CreateICmpUGE(left, right);
+        }
+        return _builder.CreateICmpSGE(left, right);
+    case ExprCompareNode::Op::AndAnd: {
+        auto leftBool = _builder.CreateICmpNE(left, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "and.lhs");
+        auto rightBool = _builder.CreateICmpNE(right, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "and.rhs");
+        return _builder.CreateAnd(leftBool, rightBool, "and");
+    }
+    case ExprCompareNode::Op::OrOr: {
+        auto leftBool = _builder.CreateICmpNE(left, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "or.lhs");
+        auto rightBool = _builder.CreateICmpNE(right, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "or.rhs");
+        return _builder.CreateOr(leftBool, rightBool, "or");
+    }
+    }
+    throw YuxError(node->getLineNumber(), "Unsupported comparison operation");
+}
+
+llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
+    auto resultType = node->getType();
+    bool hasResult = !resultType.empty();
+
+    DEBUG_LOG_VAL(
+        "    Expr: IfElse", "hasResult=" << hasResult << ", type=" << (resultType.empty() ? "void" : resultType.name));
+
+    auto condVal = compileExpr(node->condition());
+    auto condBool = _builder.CreateICmpNE(condVal, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "if.cond");
+
+    llvm::Function* func = _builder.GetInsertBlock()->getParent();
+
+    llvm::BasicBlock* thenBB = llvm::BasicBlock::Create(_context, "if.then", func);
+    llvm::BasicBlock* elseBB = llvm::BasicBlock::Create(_context, "if.else");
+    llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(_context, "if.merge");
+
+    DEBUG_LOG("      Created basic blocks: if.then, if.else, if.merge");
+    _builder.CreateCondBr(condBool, thenBB, elseBB);
+
+    _builder.SetInsertPoint(thenBB);
+
+    llvm::PHINode* phi = nullptr;
+    if (hasResult) {
+        phi = llvm::PHINode::Create(getLLVMType(resultType), 2, "if.result", mergeBB);
+    }
+
+    DEBUG_LOG("      Compiling then block");
+    compileStatementBlockWithResult(node->thenBlock(), mergeBB, phi, resultType);
+
+    func->insert(func->end(), elseBB);
+    _builder.SetInsertPoint(elseBB);
+
+    auto& elifs = node->elifs();
+    auto elseBlock = node->elseBlock();
+    DEBUG_LOG_VAL("      elifs count", elifs.size());
+
+    if (!elifs.empty()) {
+        for (size_t i = 0; i < elifs.size(); ++i) {
+            auto& elif = elifs[i];
+            DEBUG_LOG_VAL("        Compiling elif", i);
+            auto elifCond = compileExpr(elif->condition());
+            auto elifCondBool = _builder.CreateICmpNE(
+                elifCond, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "elif.cond");
+
+            llvm::BasicBlock* elifThenBB = llvm::BasicBlock::Create(_context, "elif.then", func);
+            llvm::BasicBlock* elifElseBB = llvm::BasicBlock::Create(_context, "elif.else");
+
+            _builder.CreateCondBr(elifCondBool, elifThenBB, elifElseBB);
+
+            _builder.SetInsertPoint(elifThenBB);
+            compileStatementBlockWithResult(elif->block(), mergeBB, phi, resultType);
+
+            func->insert(func->end(), elifElseBB);
+            _builder.SetInsertPoint(elifElseBB);
+        }
+    }
+
+    if (elseBlock) {
+        DEBUG_LOG("      Compiling else block");
+        compileStatementBlockWithResult(elseBlock, mergeBB, phi, resultType);
+    } else {
+        DEBUG_LOG("      No else block");
+        if (hasResult) {
+            phi->addIncoming(llvm::UndefValue::get(getLLVMType(resultType)), _builder.GetInsertBlock());
+        }
+        _builder.CreateBr(mergeBB);
+    }
+
+    func->insert(func->end(), mergeBB);
+    _builder.SetInsertPoint(mergeBB);
+
+    if (hasResult) {
+        DEBUG_LOG("      Returning phi node");
+        return phi;
+    }
+    return nullptr;
+}
+
+llvm::Value* Compiler::compileOneLineIfElseExpr(p<ExprOneLineIfElseNode> node) {
+    auto resultType = node->getType();
+
+    DEBUG_LOG_VAL("    Expr: OneLineIfElse", "type=" << resultType.name);
+
+    auto condVal = compileExpr(node->condition());
+    auto condBool = _builder.CreateICmpNE(condVal, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "if.cond");
+
+    llvm::Function* func = _builder.GetInsertBlock()->getParent();
+
+    llvm::BasicBlock* thenBB = llvm::BasicBlock::Create(_context, "if.then", func);
+    llvm::BasicBlock* elseBB = llvm::BasicBlock::Create(_context, "if.else");
+    llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(_context, "if.merge");
+
+    _builder.CreateCondBr(condBool, thenBB, elseBB);
+
+    _builder.SetInsertPoint(thenBB);
+    auto trueVal = compileExpr(node->trueValue());
+    _builder.CreateBr(mergeBB);
+    auto thenEndBB = _builder.GetInsertBlock();
+
+    func->insert(func->end(), elseBB);
+    _builder.SetInsertPoint(elseBB);
+    auto falseVal = compileExpr(node->falseValue());
+    _builder.CreateBr(mergeBB);
+    auto elseEndBB = _builder.GetInsertBlock();
+
+    func->insert(func->end(), mergeBB);
+    _builder.SetInsertPoint(mergeBB);
+
+    auto phi = llvm::PHINode::Create(getLLVMType(resultType), 2, "if.result", mergeBB);
+    phi->addIncoming(trueVal, thenEndBB);
+    phi->addIncoming(falseVal, elseEndBB);
+
+    return phi;
+}
+
+llvm::Value* Compiler::compileIfElsePreValueExpr(p<ExprIfElsePreValueNode> node) {
+    auto resultType = node->getType();
+
+    DEBUG_LOG_VAL("    Expr: IfElsePreValue", "type=" << resultType.name);
+
+    auto condVal = compileExpr(node->condition());
+    auto condBool = _builder.CreateICmpNE(condVal, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "if.cond");
+
+    llvm::Function* func = _builder.GetInsertBlock()->getParent();
+
+    llvm::BasicBlock* thenBB = llvm::BasicBlock::Create(_context, "if.then", func);
+    llvm::BasicBlock* elseBB = llvm::BasicBlock::Create(_context, "if.else");
+    llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(_context, "if.merge");
+
+    _builder.CreateCondBr(condBool, thenBB, elseBB);
+
+    _builder.SetInsertPoint(thenBB);
+    auto trueVal = compileExpr(node->trueValue());
+    _builder.CreateBr(mergeBB);
+    auto thenEndBB = _builder.GetInsertBlock();
+
+    func->insert(func->end(), elseBB);
+    _builder.SetInsertPoint(elseBB);
+    auto falseVal = compileExpr(node->falseValue());
+    _builder.CreateBr(mergeBB);
+    auto elseEndBB = _builder.GetInsertBlock();
+
+    func->insert(func->end(), mergeBB);
+    _builder.SetInsertPoint(mergeBB);
+
+    auto phi = llvm::PHINode::Create(getLLVMType(resultType), 2, "if.result", mergeBB);
+    phi->addIncoming(trueVal, thenEndBB);
+    phi->addIncoming(falseVal, elseEndBB);
+
+    return phi;
+}
+
+llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
+    auto arrayExpr = node->arrayExpr();
+    auto arrayType = arrayExpr->getType();
+
+    auto& indices = node->indices();
+    if (indices.empty()) {
+        throw YuxError(node->getLineNumber(), "Array access requires at least one index");
+    }
+
+    DEBUG_LOG_VAL("    Expr: ArrayGet", arrayType.name);
+
+    llvm::Value* currentPtr = nullptr;
+    TypeInfo currentType = arrayType;
+
+    if (auto literalNode = dynamic_cast<ExprLiteralNode*>(arrayExpr)) {
+        if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literalNode->literal())) {
+            auto varName = objLiteral->getValue().getText();
+            auto it = _localVarPtrs.find(varName);
+            if (it == _localVarPtrs.end()) {
+                throw YuxError(node->getLineNumber(), "Array variable not found: {}", varName);
+            }
+            currentPtr = it->second;
+        }
+    } else if (auto dotNode = dynamic_cast<ExprDotNode*>(arrayExpr)) {
+        auto fieldPtr = compileExpr(dotNode);
+        auto baseType = dotNode->baseExpr()->getType();
+        auto member = dotNode->member();
+
+        auto structDecl = _file->getStructDecl(baseType.name);
+        if (structDecl) {
+            int fieldIndex = structDecl->fieldIndex(member);
+            if (fieldIndex >= 0) {
+                auto alloca = _builder.CreateAlloca(getLLVMType(arrayType), nullptr, "array_field_tmp");
+                _builder.CreateStore(fieldPtr, alloca);
+                currentPtr = alloca;
+            }
+        }
+    }
+
+    if (!currentPtr) {
+        throw YuxError(node->getLineNumber(), "Array access requires a variable");
+    }
+
+    if (arrayType.isArrayGeneric()) {
+        auto elemType = arrayType.arrayGenericElementType();
+        if (!elemType) {
+            throw YuxError(node->getLineNumber(), "Array type requires element type");
+        }
+
+        auto arrayStructType = getLLVMType(arrayType);
+        auto elemLLVMType = getLLVMType(*elemType);
+
+        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        llvm::Value* indices0[] = {zero, zero};
+        auto dataFieldPtr = _builder.CreateGEP(arrayStructType, currentPtr, indices0, "array.data.field");
+        auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataFieldPtr, "array.data.ptr");
+
+        auto indexVal = compileExpr(indices[0]);
+        auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {indexVal}, "array.elem.ptr");
+
+        return _builder.CreateLoad(elemLLVMType, elemPtr, "array.elem.load");
+    }
+
+    if (!arrayType.isArray()) {
+        throw YuxError(node->getLineNumber(), "Cannot index non-array type: {}", arrayType.name);
+    }
+
+    for (auto& indexExpr : indices) {
+        auto indexVal = compileExpr(indexExpr);
+        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        llvm::Value* gepIndices[] = {zero, indexVal};
+
+        auto llvmArrayType = getLLVMType(currentType);
+        currentPtr = _builder.CreateGEP(llvmArrayType, currentPtr, gepIndices, "array.element");
+
+        if (currentType.elementType) {
+            currentType = *currentType.elementType;
+        }
+    }
+
+    return _builder.CreateLoad(getLLVMType(currentType), currentPtr, "array.load");
+}
+
+llvm::Value* Compiler::compileArrayLiteralExpr(p<ExprArrayNode> node) {
+    auto& elements = node->elements();
+    auto arrayType = node->getType();
+    auto llvmArrayType = getLLVMType(arrayType);
+
+    DEBUG_LOG_VAL("    Expr: ArrayLiteral", arrayType.name);
+
+    if (arrayType.isArrayGeneric() && elements.empty()) {
+        auto alloca = _builder.CreateAlloca(llvmArrayType, nullptr, "empty_array");
+        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+
+        llvm::Value* indices0[] = {zero, zero};
+        auto dataPtrField = _builder.CreateGEP(llvmArrayType, alloca, indices0, "data_ptr_field");
+
+        auto elemType = arrayType.arrayGenericElementType();
+        auto elemLLVMType = elemType ? getLLVMType(*elemType) : _builder.getInt8Ty();
+        _builder.CreateStore(llvm::ConstantPointerNull::get(llvm::PointerType::get(_context, 0)), dataPtrField);
+
+        llvm::Value* indices1[] = {zero, llvm::ConstantInt::get(_builder.getInt32Ty(), 1)};
+        auto lenField = _builder.CreateGEP(llvmArrayType, alloca, indices1, "len_field");
+        _builder.CreateStore(_builder.getInt64(0), lenField);
+
+        llvm::Value* indices2[] = {zero, llvm::ConstantInt::get(_builder.getInt32Ty(), 2)};
+        auto capField = _builder.CreateGEP(llvmArrayType, alloca, indices2, "cap_field");
+        _builder.CreateStore(_builder.getInt64(0), capField);
+
+        return _builder.CreateLoad(llvmArrayType, alloca, "empty_array.load");
+    }
+
+    if (elements.empty()) {
+        throw YuxError(node->getLineNumber(), "Empty array literal not supported");
+    }
+
+    auto alloca = _builder.CreateAlloca(llvmArrayType, nullptr, "array.literal");
+
+    for (size_t i = 0; i < elements.size(); ++i) {
+        auto elemVal = compileExpr(elements[i]);
+        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        auto index = llvm::ConstantInt::get(_builder.getInt32Ty(), i);
+        llvm::Value* indices[] = {zero, index};
+        auto elemPtr = _builder.CreateGEP(llvmArrayType, alloca, indices, "array.elem.ptr");
+        _builder.CreateStore(elemVal, elemPtr);
+    }
+
+    return _builder.CreateLoad(llvmArrayType, alloca, "array.load");
+}
+
+llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
+    auto objName = node->obj().getText();
+    auto& subs = node->subs();
+
+    DEBUG_LOG_VAL("    Expr: GetRef", objName);
+
+    auto it = _localVarPtrs.find(objName);
+    if (it == _localVarPtrs.end()) {
+        throw YuxError(node->getLineNumber(), "Variable not found: {}", objName);
+    }
+
+    llvm::Value* currentPtr = it->second;
+    auto sym = _currentFnNode->lookupSymbol(objName);
+    if (!sym) {
+        throw YuxError(node->getLineNumber(), "Undefined variable: {}", objName);
+    }
+
+    TypeInfo currentType = sym->type;
+
+    for (auto& sub : subs) {
+        auto memberName = sub.getText();
+        auto structDecl = _file->getStructDecl(currentType.name);
+        if (!structDecl) {
+            throw YuxError(node->getLineNumber(), "Cannot access field on non-struct type: {}", currentType.name);
+        }
+
+        int fieldIndex = structDecl->fieldIndex(memberName);
+        if (fieldIndex < 0) {
+            throw YuxError(node->getLineNumber(), "Struct {} has no field: {}", currentType.name, memberName);
+        }
+
+        auto field = structDecl->fields()[fieldIndex];
+        if (field->isPrivate()) {
+            string currentBase = _currentStructName;
+            auto dollarPos = currentBase.find('$');
+            if (dollarPos != string::npos) currentBase = currentBase.substr(0, dollarPos);
+            if (currentBase != currentType.name) {
+                throw YuxError(node->getLineNumber(), "Cannot access private field '{}' of struct '{}'", memberName, currentType.name);
+            }
+        }
+
+        auto structType = getLLVMType(currentType);
+        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIndex);
+        llvm::Value* indices[] = {zero, idx};
+
+        currentPtr = _builder.CreateGEP(structType, currentPtr, indices, "struct.field.ptr");
+        currentType = field->getType();
+    }
+
+    return currentPtr;
+}
+
+llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
+    auto right = compileExpr(node->right());
+    auto type = node->getType();
+    bool isFloat = type.startsWith('f');
+    bool isBool = type.name == "bool";
+
+    string opStr;
+    switch (node->op()) {
+    case ExprUnaryNode::Op::Neg:
+        opStr = "-";
+        DEBUG_LOG_VAL("    Expr: Unary", opStr << " : " << type.name);
+        if (isFloat) {
+            return _builder.CreateFNeg(right, "neg");
+        }
+        return _builder.CreateNeg(right, "neg");
+    case ExprUnaryNode::Op::Rev:
+        opStr = "~";
+        DEBUG_LOG_VAL("    Expr: Unary", opStr << " : " << type.name);
+        if (isFloat) {
+            throw YuxError(node->getLineNumber(), "Cannot apply bitwise NOT to float type: {}", type.name);
+        }
+        return _builder.CreateNot(right, "not");
+    case ExprUnaryNode::Op::Not:
+        opStr = "!";
+        DEBUG_LOG_VAL("    Expr: Unary", opStr << " : " << type.name);
+        if (!isBool) {
+            throw YuxError(node->getLineNumber(), "Cannot apply logical NOT to non-bool type: {}", type.name);
+        }
+        return _builder.CreateNot(right, "lnot");
+    }
+
+    throw YuxError(node->getLineNumber(), "Unknown unary operator");
+}
+
+llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
+    auto baseExpr = node->baseExpr();
+    auto member = node->member();
+
+    if (member.starts_with("to_")) {
+        string dstType = member.substr(3);
+        DEBUG_LOG_VAL("    Expr: DotCast", member);
+        auto baseVal = compileExpr(baseExpr);
+        auto srcType = baseExpr->getType();
+
+        string castFnName = "__cast_" + to_string(_castCounter++);
+        _castFunctions[castFnName] = {baseVal, srcType, TypeInfo(dstType)};
+
+        return llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+    }
+
+    auto baseType = baseExpr->getType();
+    TypeInfo actualType = baseType;
+    llvm::Value* structPtr = nullptr;
+
+    if (baseType.isRef()) {
+        auto refElemType = baseType.refElementType();
+        if (refElemType) {
+            actualType = *refElemType;
+        }
+    }
+
+    if (baseType.isBox()) {
+        auto boxElemType = baseType.boxElementType();
+        if (boxElemType) {
+            actualType = *boxElemType;
+        }
+    }
+
+    auto structDecl = _file->getStructDecl(actualType.name);
+    if (!structDecl && _yux && _yux->sdkFile()) {
+        structDecl = _yux->sdkFile()->getStructDecl(actualType.name);
+    }
+
+    if (structDecl) {
+        int fieldIndex = structDecl->fieldIndex(member);
+        if (fieldIndex >= 0) {
+            DEBUG_LOG_VAL("    Expr: StructFieldAccess", actualType.name << "." << member);
+
+            auto field = structDecl->fields()[fieldIndex];
+            if (field->isPrivate()) {
+                string currentBase = _currentStructName;
+                auto dollarPos = currentBase.find('$');
+                if (dollarPos != string::npos) currentBase = currentBase.substr(0, dollarPos);
+                if (currentBase != actualType.name) {
+                    throw YuxError(node->getLineNumber(), "Cannot access private field '{}' of struct '{}'", member, actualType.name);
+                }
+            }
+
+            if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
+                if (auto objLiteral = dynamic_cast<LiteralObjNode*>(baseLiteral->literal())) {
+                    auto varName = objLiteral->getValue().getText();
+                    auto it = _localVarPtrs.find(varName);
+                    if (it != _localVarPtrs.end()) {
+                        structPtr = it->second;
+                    }
+                }
+            }
+
+            if (!structPtr) {
+                auto baseVal = compileExpr(baseExpr);
+                auto tmpAlloca = _builder.CreateAlloca(getLLVMType(baseType), nullptr, "struct_field_tmp");
+                _builder.CreateStore(baseVal, tmpAlloca);
+                structPtr = tmpAlloca;
+            }
+
+            llvm::Value* dataPtr = structPtr;
+
+            if (baseType.isBox()) {
+                auto boxStructType = getLLVMType(baseType);
+                auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+                llvm::Value* indices[] = {zero, zero};
+                auto dataPtrField = _builder.CreateGEP(boxStructType, structPtr, indices, "box.data_ptr_field");
+                dataPtr = _builder.CreateLoad(
+                    llvm::PointerType::get(_context, 0), dataPtrField, "box.data_ptr");
+            }
+
+            auto structType = getLLVMType(actualType);
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIndex);
+            llvm::Value* indices[] = {zero, idx};
+
+            auto fieldPtr = _builder.CreateGEP(structType, dataPtr, indices, "struct.field");
+            auto fieldType = field->getType();
+
+            if (actualType.isGeneric() && structDecl->isGeneric()
+                && actualType.genericArgs.size() == structDecl->typeParams().size()) {
+                map<string, TypeInfo> subst;
+                for (size_t i = 0; i < structDecl->typeParams().size(); ++i) {
+                    subst[structDecl->typeParams()[i]] =
+                        actualType.genericArgs[i] ? *actualType.genericArgs[i] : TypeInfo();
+                }
+                fieldType = fieldType.substitute(subst);
+            }
+
+            return _builder.CreateLoad(getLLVMType(fieldType), fieldPtr, "field.load");
+        }
+    }
+
+    if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
+        if (auto objLiteral = dynamic_cast<LiteralObjNode*>(baseLiteral->literal())) {
+            auto objName = objLiteral->getValue().getText();
+            auto sym = _currentFnNode->lookupSymbol(objName);
+            if (sym && _localVarPtrs.contains(objName)) {
+                DEBUG_LOG_VAL("    Expr: DotMemberLoad", objName << "." << member);
+                return _builder.CreateLoad(getLLVMType(sym->type), _localVarPtrs[objName]);
+            }
+        }
+    }
+    throw YuxError(node->getLineNumber(), "Unsupported dot expression");
+}
+
+llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
+    auto type = node->getType();
+    DEBUG_LOG_VAL("  compileExpr", "type=" << (type.empty() ? "void" : type.name));
+
+    if (auto literalNode = dynamic_cast<ExprLiteralNode*>(node)) {
+        return compileLiteralExpr(literalNode);
+    } else if (auto addSubNode = dynamic_cast<ExprAddSubNode*>(node)) {
+        return compileAddSubExpr(addSubNode);
+    } else if (auto mulDivModNode = dynamic_cast<ExprMulDivModNode*>(node)) {
+        return compileMulDivModExpr(mulDivModNode);
+    } else if (auto binOpNode = dynamic_cast<ExprBinOpNode*>(node)) {
+        return compileBinOpExpr(binOpNode);
+    } else if (auto parenNode = dynamic_cast<ExprParenNode*>(node)) {
+        return compileParenExpr(parenNode);
+    } else if (auto callNode = dynamic_cast<ExprCallNode*>(node)) {
+        return compileCallExpr(callNode);
+    } else if (auto dotNode = dynamic_cast<ExprDotNode*>(node)) {
+        return compileDotExpr(dotNode);
+    } else if (auto compareNode = dynamic_cast<ExprCompareNode*>(node)) {
+        return compileCompareExpr(compareNode);
+    } else if (auto ifElseNode = dynamic_cast<ExprIfElseNode*>(node)) {
+        return compileIfElseExpr(ifElseNode);
+    } else if (auto oneLineIfElseNode = dynamic_cast<ExprOneLineIfElseNode*>(node)) {
+        return compileOneLineIfElseExpr(oneLineIfElseNode);
+    } else if (auto ifElsePreValueNode = dynamic_cast<ExprIfElsePreValueNode*>(node)) {
+        return compileIfElsePreValueExpr(ifElsePreValueNode);
+    } else if (auto getNode = dynamic_cast<ExprGetNode*>(node)) {
+        return compileArrayGetExpr(getNode);
+    } else if (auto arrayNode = dynamic_cast<ExprArrayNode*>(node)) {
+        return compileArrayLiteralExpr(arrayNode);
+    } else if (auto getRefNode = dynamic_cast<ExprGetRefNode*>(node)) {
+        return compileGetRefExpr(getRefNode);
+    } else if (auto unaryNode = dynamic_cast<ExprUnaryNode*>(node)) {
+        return compileUnaryExpr(unaryNode);
+    } else if (auto arrayInitNode = dynamic_cast<ExprArrayInitNode*>(node)) {
+        // 数组填充表达式需要类型注解，这里返回 nullptr
+        // 实际处理在 compileDeclareAssignStatement 中
+        return nullptr;
+    } else {
+        throw YuxError(node->getLineNumber(), "Unknown expression type");
+    }
+}
+
+void Compiler::compileStatementBlock(p<StatementBlockNode> block) {
+    DEBUG_LOG_VAL(
+        "  compileStatementBlock", block->statements().size() << " statements, hasResult=" << block->hasResult());
+    for (auto& stmt : block->statements()) {
+        compileStatement(stmt);
+    }
+    if (block->hasResult()) {
+        DEBUG_LOG("    Compiling result expression");
+        compileExpr(block->resultExpr());
+    }
+}
+
+llvm::Value* Compiler::compileStatementBlockWithResult(
+    p<StatementBlockNode> block, llvm::BasicBlock* continueBlock, llvm::PHINode* phi, const TypeInfo& resultType) {
+    for (auto& stmt : block->statements()) {
+        compileStatement(stmt);
+    }
+
+    if (_builder.GetInsertBlock()->getTerminator()) {
+        return nullptr;
+    }
+
+    if (block->hasResult()) {
+        auto resultVal = compileExpr(block->resultExpr());
+        if (phi && !resultType.empty()) {
+            phi->addIncoming(resultVal, _builder.GetInsertBlock());
+        }
+    }
+
+    _builder.CreateBr(continueBlock);
+    return nullptr;
+}

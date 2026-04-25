@@ -1,10 +1,6 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 
-//
-// Created by yjl_1 on 2026/4/4.
-//
-
 #include "expr_node.h"
 #include "fn_node.h"
 #include "file_node.h"

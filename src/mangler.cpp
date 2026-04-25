@@ -3,6 +3,16 @@
 
 #include "mangler.h"
 
+// 命名约定（详见 mangler.h）：
+//   函数         mod_fn(types)            私有：mod__fn(types)
+//   方法         mod#Struct_m(types)      私有：mod#Struct__m(types)
+//   构造         mod#Struct(types)
+//   析构         mod#Struct_~()
+//   结构体       mod#Struct
+//   全局常量     mod_name                 私有：mod__name
+// 运行时辅助、Windows API、LLVM intrinsic 保留各自字面名称（不参与 mangling）。
+// 其他模块只声明为 external，链接时引用 yux.obj 中的实现。
+
 string Mangler::paramList(const vector<TypeInfo>& params) {
     string s = "(";
     for (size_t i = 0; i < params.size(); ++i) {
