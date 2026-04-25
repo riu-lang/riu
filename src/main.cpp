@@ -288,6 +288,11 @@ int wmain(int argc, wchar_t* argv[]) {
     auto* buildCmd = app.add_subcommand("build", "Build project (must run at project root containing yux.toml)");
     std::string buildNameArg;
     buildCmd->add_option("name", buildNameArg, "Project name; must match `name` in yux.toml")->required();
+    buildCmd->add_flag("--emit-ir", emitIr, "Emit LLVM IR to .ll file");
+
+#ifdef _DEBUG
+    buildCmd->add_flag("-d,--debug", debug, "Output compilation IR debug information");
+#endif
 
     CLI11_PARSE(app, argc, argv);
 
