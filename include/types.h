@@ -193,7 +193,7 @@ struct TypeInfo {
     }
 
     [[nodiscard]] bool isPtr() const {
-        return kind == TypeKind::Generic && name == "Ptr" && genericArgs.size() == 1;
+        return name == "Ptr";
     }
 
     [[nodiscard]] sp<TypeInfo> ptrElementType() const {

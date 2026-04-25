@@ -96,9 +96,7 @@ LiteralNullNode::LiteralNullNode(Token value) : LiteralNode(std::move(value)) {
 }
 
 TypeInfo LiteralNullNode::getType() const {
-    vector<sp<TypeInfo>> genericArgs;
-    genericArgs.push_back(make_shared<TypeInfo>("__nullable"));
-    return TypeInfo("Ptr", genericArgs);
+    return TypeInfo("Ptr");
 }
 
 LiteralCodePointNode::LiteralCodePointNode(Token value) : LiteralNode(std::move(value)) {

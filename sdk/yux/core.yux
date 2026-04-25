@@ -3,18 +3,17 @@
 
 ; 外部 Windows 函数声明
 extern {
-  fn GetStdHandle(nStdHandle i32) Ptr<u8>
-  fn WriteFile(hFile Ptr<u8>, lpBuffer Ptr<u8>, nNumberOfBytesToWrite u32, lpNumberOfBytesWritten Ptr<u32>, lpOverlapped Ptr<u8>) i32
+  fn GetStdHandle(nStdHandle i32) Ptr
+  fn WriteFile(hFile Ptr, lpBuffer Ptr, nNumberOfBytesToWrite u32, lpNumberOfBytesWritten Ptr, lpOverlapped Ptr) i32
 }
 
 ; 全局常量
 cval _STD_OUTPUT_HANDLE i32 = -11
 
 ; 内部：向 stdout 写入
-fn _stdout_write(buf Ptr<u8>, off i64, len i64) {
-  var hStdout Ptr<u8> = GetStdHandle(_STD_OUTPUT_HANDLE)
-  var bufWithOff Ptr<u8> = null
-  bufWithOff._value = buf._value + off.to_u64()
+fn _stdout_write(buf Ptr, off i64, len i64) {
+  var hStdout Ptr = GetStdHandle(_STD_OUTPUT_HANDLE)
+  var bufWithOff Ptr = ptr_from_addr(buf.to_int() + off.to_u64())
   var written u32 = 0u32
   WriteFile(hStdout, bufWithOff, len.to_u32(), &written, null);
 }
@@ -530,9 +529,17 @@ struct Ref<T> {
 }
 
 #CompilerInner
-struct Ptr<T> {
-  ; 内部处理
+struct Ptr {
+  ; 编译为 C void*
 }
+
+Ptr {
+  #CompilerInner
+  fn to_int() u64
+}
+
+#CompilerInner
+fn ptr_from_addr(addr u64) Ptr
 
 #CompilerInner
 struct Box<T> {
@@ -540,7 +547,7 @@ struct Box<T> {
 }
 
 struct Array<T> {
-  _data Ptr<T>
+  _data Ptr
   _len i64
   _cap i64
 }
