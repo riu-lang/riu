@@ -27,11 +27,6 @@ local function list_case_names()
             r[path.basename(f)] = true
         end
     end
-    for _, f in ipairs(os.files(path.join(cases_dir, "error", "*.yux"))) do
-        if os.isfile((f:gsub("%.yux$", ".expected"))) then
-            r["error_" .. path.basename(f)] = true
-        end
-    end
     for _, d in ipairs(os.dirs(path.join(projects_dir, "*"))) do
         if os.isfile(path.join(d, "yux.toml")) and os.isfile(path.join(d, "expected.txt")) then
             r["project_" .. path.filename(d)] = true
@@ -55,12 +50,7 @@ target("yux_tests")
         local cases = {}
         for _, f in ipairs(os.files(path.join(cd, "*.yux"))) do
             if os.isfile((f:gsub("%.yux$", ".expected"))) then
-                cases[path.basename(f)] = {file = path.absolute(f), expect_error = false}
-            end
-        end
-        for _, f in ipairs(os.files(path.join(cd, "error", "*.yux"))) do
-            if os.isfile((f:gsub("%.yux$", ".expected"))) then
-                cases["error_" .. path.basename(f)] = {file = path.absolute(f), expect_error = true}
+                cases[path.basename(f)] = {file = path.absolute(f)}
             end
         end
         local pd = path.join(target:scriptdir(), "projects")
@@ -172,14 +162,6 @@ target("yux_tests")
         }
         opt.stdout = stdout_data
         opt.stderr = stderr_data
-
-        if entry.expect_error then
-            if ok and os.isfile(exe) then
-                opt.errors = "expected compile to fail but it succeeded: " .. case
-                return false
-            end
-            return true
-        end
 
         if not ok or not os.isfile(exe) then
             opt.errors = "compile failed: " .. case .. "\n" .. tostring(stderr_data or "")

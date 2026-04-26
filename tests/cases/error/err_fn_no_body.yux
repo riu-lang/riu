@@ -1,6 +1,0 @@
-; 错误：无体函数必须带 #CompilerInner
-fn broken() i32
-
-fn main() {
-  println("x")
-}

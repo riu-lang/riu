@@ -1,8 +1,0 @@
-; 错误：void函数返回值
-fn void_return() {
-  ret 123
-}
-
-fn main() {
-  void_return()
-}

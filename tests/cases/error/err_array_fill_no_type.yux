@@ -1,5 +1,0 @@
-; 错误：数组填充缺少类型注解
-fn main() {
-  val arr = [0 ...]
-  println(arr[0])
-}

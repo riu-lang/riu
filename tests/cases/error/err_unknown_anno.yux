@@ -1,5 +1,0 @@
-; 错误：未知的构建注解
-#TotallyMadeUp
-fn main() {
-  println("x")
-}

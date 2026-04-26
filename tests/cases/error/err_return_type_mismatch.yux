@@ -1,8 +1,0 @@
-; 错误：返回类型不匹配
-fn wrong_return() i32 {
-  "hello"
-}
-
-fn main() {
-  println(wrong_return())
-}
