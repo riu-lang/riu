@@ -45,7 +45,7 @@ function main() {
   log(`Output:  ${OUTPUT_DIR}`);
   log(`JAR:     ${JAR_FILE}\n`);
 
-  const cmd = `java -jar "${JAR_FILE}" -Dlanguage=Cpp -visitor -no-listener -o "${OUTPUT_DIR}" "${GRAMMAR_FILE}"`;
+  const cmd = `java -jar "${JAR_FILE}" -Dlanguage=Cpp -package yux -visitor -no-listener -o "${OUTPUT_DIR}" "${GRAMMAR_FILE}"`;
 
   log(`Running: ${cmd}\n`);
 
