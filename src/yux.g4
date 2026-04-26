@@ -118,11 +118,20 @@ fn: fnHeader (Space fnBody)?;
 // fn <T> some() T
 fnHeader: (buildAnnos+=buildAnno)*
     indent* Fn Space ( genericDef Space)? name=ID ParStart
-    (params+=fnParam (SymbolComma Space params+=fnParam)* )?
+    fnParams?
     ParEnd (Space retType=type)?
     ;
 
-fnParam: name=ID Space type;
+fnParams: fnParam (SymbolComma Space params+=fnParam)* ;
+
+fnParam: fnParamStd | fnParamGroup;
+
+// a i32
+fnParamStd: name=ID Space type;
+
+// a, b i32
+// a, b, c i32
+fnParamGroup: (names+=ID SymbolComma Space)* names+=ID Space type;
 
 fnBody: fnExprkBody | fnBlockBody;
 

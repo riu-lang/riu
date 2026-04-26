@@ -2,7 +2,7 @@
   "name": "yux-vscode",
   "displayName": "yux-vscode",
   "description": "Yux language support for VS Code",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "author": "yux-lang",
   "license": "MIT",
   "engines": {

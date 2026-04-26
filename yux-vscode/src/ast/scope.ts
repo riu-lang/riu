@@ -15,6 +15,7 @@ import {
     StatementBlockContext,
     StatementDeclareAssignContext,
     StructImplContext,
+    FnParamsContext,
 } from '../gen/yuxParser';
 
 export interface ScopeVar {
@@ -126,18 +127,38 @@ function buildFnScope(fn: FnContext, parent: Scope, containerStruct?: string): S
 
 function collectParams(header: FnHeaderContext): ScopeVar[] {
     const out: ScopeVar[] = [];
-    for (const p of header._params) {
-        const nameTok = p._name;
-        if (!nameTok) {
+    const paramsCtx = header.fnParams();
+    if (!paramsCtx) {
+        return out;
+    }
+    for (const paramCtx of paramsCtx.fnParam()) {
+        const std = paramCtx.fnParamStd();
+        if (std) {
+            const nameTok = std._name;
+            if (nameTok) {
+                out.push({
+                    name: nameTok.text ?? '',
+                    type: std.type().getText(),
+                    isMutable: false,
+                    declPos: tokenStart(nameTok),
+                    nameRange: tokenRange(nameTok),
+                });
+            }
             continue;
         }
-        out.push({
-            name: nameTok.text ?? '',
-            type: p.type().getText(),
-            isMutable: false,
-            declPos: tokenStart(nameTok),
-            nameRange: tokenRange(nameTok),
-        });
+        const group = paramCtx.fnParamGroup();
+        if (group) {
+            const type = group.type().getText();
+            for (const nameTok of group._names) {
+                out.push({
+                    name: nameTok.text ?? '',
+                    type,
+                    isMutable: false,
+                    declPos: tokenStart(nameTok),
+                    nameRange: tokenRange(nameTok),
+                });
+            }
+        }
     }
     return out;
 }

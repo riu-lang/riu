@@ -309,8 +309,45 @@
           }
         },
         {
+          "name": "meta.function.parameters.yux",
+          "begin": "(?<=\\()",
+          "end": "\\)",
+          "patterns": [
+            { "include": "#function-params" },
+            { "include": "#types" },
+            {
+              "name": "punctuation.separator.comma.yux",
+              "match": ","
+            }
+          ]
+        },
+        {
           "name": "entity.name.function.call.yux",
           "match": "\\b([a-zA-Z_\\p{L}][a-zA-Z0-9_\\p{L}]*)\\s*(?=\\()"
+        }
+      ]
+    },
+    "function-params": {
+      "patterns": [
+        {
+          "name": "meta.function.param-group.yux",
+          "begin": "\\b([a-zA-Z_\\p{L}][a-zA-Z0-9_\\p{L}]*)\\b",
+          "beginCaptures": {
+            "1": { "name": "variable.parameter.yux" }
+          },
+          "end": "(?=[,)])",
+          "patterns": [
+            {
+              "name": "variable.parameter.yux",
+              "match": "\\b([a-zA-Z_\\p{L}][a-zA-Z0-9_\\p{L}]*)\\b"
+            },
+            {
+              "name": "punctuation.separator.comma.yux",
+              "match": ","
+            },
+            { "include": "#types" },
+            { "include": "#generics" }
+          ]
         }
       ]
     },

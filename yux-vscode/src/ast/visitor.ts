@@ -18,6 +18,8 @@ import {
     StatementDeclareAssignContext,
     TypeContext,
     ImportsContext,
+    FnParamsContext,
+    FnParamContext,
 } from '../gen/yuxParser';
 import type { YuxSymbol, StructInfo, FunctionInfo, VariableInfo } from '../symbols';
 
@@ -248,7 +250,8 @@ function fnHeaderInfo(header: FnHeaderContext, _container?: string): FnHeaderBas
     if (!nameTok) {
         return null;
     }
-    const params = header._params.map((p) => p.getText()).join(', ');
+    const paramsCtx = header.fnParams();
+    const params = paramsCtx ? extractParams(paramsCtx) : '';
     const retTypeCtx: TypeContext | null = header._retType ?? null;
     const returnType = retTypeCtx ? retTypeCtx.getText() : '';
 
@@ -258,6 +261,33 @@ function fnHeaderInfo(header: FnHeaderContext, _container?: string): FnHeaderBas
         returnType,
         range: ctxRange(header),
     };
+}
+
+function extractParams(ctx: FnParamsContext): string {
+    const parts: string[] = [];
+    for (const paramCtx of ctx.fnParam()) {
+        const paramStr = extractParam(paramCtx);
+        if (paramStr) {
+            parts.push(paramStr);
+        }
+    }
+    return parts.join(', ');
+}
+
+function extractParam(ctx: FnParamContext): string {
+    const std = ctx.fnParamStd();
+    if (std) {
+        const name = std._name?.text ?? '';
+        const type = std.type()?.getText() ?? '';
+        return `${name} ${type}`;
+    }
+    const group = ctx.fnParamGroup();
+    if (group) {
+        const names = group._names.map((t) => t.text ?? '').join(', ');
+        const type = group.type()?.getText() ?? '';
+        return `${names} ${type}`;
+    }
+    return '';
 }
 
 function ctxRange(ctx: ParserRuleContext): vscode.Range {

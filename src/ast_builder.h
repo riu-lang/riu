@@ -61,7 +61,10 @@ public:
     std::any visitGlobalConst(yux::yuxParser::GlobalConstContext* ctx) override;
     std::any visitFn(yux::yuxParser::FnContext* ctx) override;
     std::any visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) override;
+    std::any visitFnParams(yux::yuxParser::FnParamsContext* ctx) override;
     std::any visitFnParam(yux::yuxParser::FnParamContext* ctx) override;
+    std::any visitFnParamStd(yux::yuxParser::FnParamStdContext* ctx) override;
+    std::any visitFnParamGroup(yux::yuxParser::FnParamGroupContext* ctx) override;
     std::any visitFnClean(yux::yuxParser::FnCleanContext* ctx) override;
 
     std::any visitStructDecl(yux::yuxParser::StructDeclContext* ctx) override;

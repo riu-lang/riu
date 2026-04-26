@@ -63,10 +63,21 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
         auto fnName = header->name->getText();
 
         vector<TypeInfo> paramTypes;
-        for (auto param : header->params) {
-            if (param->type()) {
-                auto typeNode = any_cast_p<TypeNode>(visit(param->type()));
-                paramTypes.push_back(typeNode->getType());
+        if (auto fnParamsCtx = header->fnParams()) {
+            for (auto paramCtx : fnParamsCtx->fnParam()) {
+                if (auto stdCtx = paramCtx->fnParamStd()) {
+                    if (stdCtx->type()) {
+                        auto typeNode = any_cast_p<TypeNode>(visit(stdCtx->type()));
+                        paramTypes.push_back(typeNode->getType());
+                    }
+                } else if (auto groupCtx = paramCtx->fnParamGroup()) {
+                    if (groupCtx->type()) {
+                        auto typeNode = any_cast_p<TypeNode>(visit(groupCtx->type()));
+                        for (size_t i = 0; i < groupCtx->names.size(); ++i) {
+                            paramTypes.push_back(typeNode->getType());
+                        }
+                    }
+                }
             }
         }
         TypeInfo retType;
@@ -298,10 +309,21 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         auto fnName = header->name->getText();
 
         vector<TypeInfo> paramTypes;
-        for (auto param : header->params) {
-            if (param->type()) {
-                auto typeNode = any_cast_p<TypeNode>(visit(param->type()));
-                paramTypes.push_back(typeNode->getType());
+        if (auto fnParamsCtx = header->fnParams()) {
+            for (auto paramCtx : fnParamsCtx->fnParam()) {
+                if (auto stdCtx = paramCtx->fnParamStd()) {
+                    if (stdCtx->type()) {
+                        auto typeNode = any_cast_p<TypeNode>(visit(stdCtx->type()));
+                        paramTypes.push_back(typeNode->getType());
+                    }
+                } else if (auto groupCtx = paramCtx->fnParamGroup()) {
+                    if (groupCtx->type()) {
+                        auto typeNode = any_cast_p<TypeNode>(visit(groupCtx->type()));
+                        for (size_t i = 0; i < groupCtx->names.size(); ++i) {
+                            paramTypes.push_back(typeNode->getType());
+                        }
+                    }
+                }
             }
         }
         TypeInfo retType;
@@ -481,9 +503,11 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
 
     stack.emplace_back(header);
 
-    for (auto paramCtx : ctx->params) {
-        auto param = any_cast_p<FnParamNode>(visit(paramCtx));
-        header->addParam(param);
+    if (auto fnParamsCtx = ctx->fnParams()) {
+        auto params = any_cast_v<vector<p<FnParamNode>>>(visit(fnParamsCtx));
+        for (auto param : params) {
+            header->addParam(param);
+        }
     }
 
     stack.pop_back();
@@ -491,11 +515,47 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
     return header;
 }
 
+std::any ASTBuilder::visitFnParams(yux::yuxParser::FnParamsContext* ctx) {
+    vector<p<FnParamNode>> allParams;
+    
+    for (auto paramCtx : ctx->fnParam()) {
+        auto params = any_cast_v<vector<p<FnParamNode>>>(visit(paramCtx));
+        allParams.insert(allParams.end(), params.begin(), params.end());
+    }
+    
+    return allParams;
+}
+
 std::any ASTBuilder::visitFnParam(yux::yuxParser::FnParamContext* ctx) {
+    if (auto stdCtx = ctx->fnParamStd()) {
+        return visit(stdCtx);
+    }
+    if (auto groupCtx = ctx->fnParamGroup()) {
+        return visit(groupCtx);
+    }
+    return vector<p<FnParamNode>>();
+}
+
+std::any ASTBuilder::visitFnParamStd(yux::yuxParser::FnParamStdContext* ctx) {
     p<Node> parent = any_cast_p<FnHeaderNode>(stack.back());
     auto type = any_cast_p<TypeNode>(visit(ctx->type()));
     DEBUG_LOG_VAL("    Param", ctx->name->getText() << " : " << type->getType().name);
-    return p<FnParamNode>(createWithLine<FnParamNode>(ctx, parent, ctx->name, type));
+    
+    vector<p<FnParamNode>> params;
+    params.push_back(p<FnParamNode>(createWithLine<FnParamNode>(ctx, parent, ctx->name, type)));
+    return params;
+}
+
+std::any ASTBuilder::visitFnParamGroup(yux::yuxParser::FnParamGroupContext* ctx) {
+    p<Node> parent = any_cast_p<FnHeaderNode>(stack.back());
+    auto type = any_cast_p<TypeNode>(visit(ctx->type()));
+    
+    vector<p<FnParamNode>> params;
+    for (auto nameToken : ctx->names) {
+        DEBUG_LOG_VAL("    Param (group)", nameToken->getText() << " : " << type->getType().name);
+        params.push_back(p<FnParamNode>(createWithLine<FnParamNode>(ctx, parent, nameToken, type)));
+    }
+    return params;
 }
 
 std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {

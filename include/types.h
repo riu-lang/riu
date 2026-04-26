@@ -129,6 +129,11 @@ p<T> any_cast_p(const std::any& a) {
     return std::any_cast<p<T>>(a);
 }
 
+template <typename T>
+T any_cast_v(const std::any& a) {
+    return std::any_cast<T>(a);
+}
+
 enum class TypeKind : u8 {
     Normal,
     Generic,
