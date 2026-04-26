@@ -8,6 +8,7 @@
 /.cache/
 /.xmake/
 /.vscode/
+/bin/
 
 /.trae/skills/xmake-skills/
 /.claude/skills/xmake-skills/
@@ -15,3 +16,7 @@
 .claude/settings.local.json
 /BUGS.md
 /CURRENT.md
+
+/*.cmd
+/*.ps1
+/*.sh

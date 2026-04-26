@@ -7,14 +7,14 @@ const fs = require('fs');
 const path = require('path');
 const { execSync, exec } = require('child_process');
 
-const DEPS_FILE = path.join(__dirname, 'DEPS.json');
-const THIRD_PARTY_DIR = path.join(__dirname, 'third_party');
-const SKILLS_DIR_TRAE = path.join(__dirname, '.trae', 'skills');
-const SKILLS_DIR_CLAUDE = path.join(__dirname, '.claude', 'skills');
-const SDK_SRC_DIR = path.join(__dirname, 'sdk');
-// Debug/Release 构建下 `findSdkPath()` fallback 到 <exeDir>/../sdk/<...>，
-// 即 build/windows/x64/sdk/。这里建一个指向源 sdk/ 的链接，避免手动拷贝走样。
-const SDK_LINK_DIR = path.join(__dirname, 'build', 'windows', 'x64', 'sdk');
+const PROJECT_ROOT = path.join(__dirname, '..');
+const DEPS_FILE = path.join(PROJECT_ROOT, 'DEPS.json');
+const THIRD_PARTY_DIR = path.join(PROJECT_ROOT, 'third_party');
+const BIN_DIR = path.join(PROJECT_ROOT, 'bin');
+const SKILLS_DIR_TRAE = path.join(PROJECT_ROOT, '.trae', 'skills');
+const SKILLS_DIR_CLAUDE = path.join(PROJECT_ROOT, '.claude', 'skills');
+const SDK_SRC_DIR = path.join(PROJECT_ROOT, 'sdk');
+const SDK_LINK_DIR = path.join(PROJECT_ROOT, 'build', 'windows', 'x64', 'sdk');
 
 function log(msg, color = 'reset') {
   const colors = {
@@ -132,7 +132,6 @@ async function syncSkill(name, config) {
     log(`URL: ${url}`);
     log(`Commit: ${commit.substring(0, 8)}...`);
 
-    // 使用临时目录克隆，然后根据需要扁平化
     const tempPath = `${targetPath}.temp`;
 
     if (fs.existsSync(targetPath)) {
@@ -154,7 +153,6 @@ async function syncSkill(name, config) {
 }
 
 async function finalizeSkillClone(tempPath, targetPath, flatten) {
-  // 如果需要扁平化，将子目录内容移到目标目录
   const sourcePath = flatten ? path.join(tempPath, flatten) : tempPath;
 
   if (!fs.existsSync(sourcePath)) {
@@ -163,7 +161,6 @@ async function finalizeSkillClone(tempPath, targetPath, flatten) {
     throw new Error(`Flatten path not found: ${flatten}`);
   }
 
-  // 创建目标目录并移动内容
   fs.mkdirSync(targetPath, { recursive: true });
 
   const entries = fs.readdirSync(sourcePath);
@@ -173,9 +170,73 @@ async function finalizeSkillClone(tempPath, targetPath, flatten) {
     fs.renameSync(srcEntry, destEntry);
   }
 
-  // 清理临时目录
   fs.rmSync(tempPath, { recursive: true, force: true });
   log(`Skill flattened to ${targetPath}`, 'green');
+}
+
+async function downloadFile(url, destPath) {
+  const https = require('https');
+  const http = require('http');
+  
+  return new Promise((resolve, reject) => {
+    const protocol = url.startsWith('https') ? https : http;
+    
+    log(`Downloading ${url}...`);
+    
+    const file = fs.createWriteStream(destPath);
+    
+    protocol.get(url, (response) => {
+      if (response.statusCode === 301 || response.statusCode === 302) {
+        file.close();
+        fs.unlinkSync(destPath);
+        downloadFile(response.headers.location, destPath).then(resolve).catch(reject);
+        return;
+      }
+      
+      if (response.statusCode !== 200) {
+        file.close();
+        fs.unlinkSync(destPath);
+        reject(new Error(`HTTP ${response.statusCode}`));
+        return;
+      }
+      
+      response.pipe(file);
+      
+      file.on('finish', () => {
+        file.close();
+        resolve();
+      });
+    }).on('error', (err) => {
+      file.close();
+      fs.unlinkSync(destPath);
+      reject(err);
+    });
+  });
+}
+
+async function syncBinary(name, config) {
+  const { url, version } = config;
+  const targetPath = path.join(BIN_DIR, path.basename(url));
+  
+  log(`\n=== Syncing binary ${name} ===`, 'cyan');
+  log(`URL: ${url}`);
+  log(`Version: ${version}`);
+  log(`Target: ${targetPath}`);
+  
+  fs.mkdirSync(BIN_DIR, { recursive: true });
+  
+  if (fs.existsSync(targetPath)) {
+    log(`Already exists, skipping`, 'green');
+    return;
+  }
+  
+  try {
+    await downloadFile(url, targetPath);
+    log(`Downloaded ${name}`, 'green');
+  } catch (e) {
+    log(`Failed to download ${name}: ${e.message}`, 'red');
+    throw e;
+  }
 }
 
 function syncSdkLink() {
@@ -204,12 +265,10 @@ function syncSdkLink() {
       } catch {}
       fs.unlinkSync(SDK_LINK_DIR);
     } else {
-      // 真实目录（历史拷贝）——移除后重建为链接
       fs.rmSync(SDK_LINK_DIR, { recursive: true, force: true });
     }
   }
 
-  // Windows 上用 junction，无需管理员权限；其它平台用 'dir' 符号链接。
   const type = process.platform === 'win32' ? 'junction' : 'dir';
   fs.symlinkSync(SDK_SRC_DIR, SDK_LINK_DIR, type);
   log(`Linked (${type})`, 'green');
@@ -226,12 +285,18 @@ async function main() {
   }
 
   const deps = JSON.parse(fs.readFileSync(DEPS_FILE, 'utf8'));
+  const binaries = deps.binaries || {};
   const dependencies = deps.dependencies || {};
   const skills = deps.skills || {};
 
   fs.mkdirSync(THIRD_PARTY_DIR, { recursive: true });
+  fs.mkdirSync(BIN_DIR, { recursive: true });
   fs.mkdirSync(SKILLS_DIR_TRAE, { recursive: true });
   fs.mkdirSync(SKILLS_DIR_CLAUDE, { recursive: true });
+
+  const binariesToProcess = targetDeps.length > 0
+    ? Object.fromEntries(targetDeps.filter(n => binaries[n]).map(n => [n, binaries[n]]))
+    : binaries;
 
   const toProcess = targetDeps.length > 0
     ? Object.fromEntries(targetDeps.filter(n => dependencies[n] && !skills[n]).map(n => [n, dependencies[n]]))
@@ -241,16 +306,20 @@ async function main() {
     ? Object.fromEntries(targetDeps.filter(n => skills[n]).map(n => [n, skills[n]]))
     : skills;
 
-  if (Object.keys(toProcess).length === 0 && Object.keys(skillsToProcess).length === 0) {
+  if (Object.keys(binariesToProcess).length === 0 && Object.keys(toProcess).length === 0 && Object.keys(skillsToProcess).length === 0) {
     log('No dependencies to process', 'yellow');
     return;
   }
 
-  log(`\nSyncing ${Object.keys(toProcess).length} dependencies...`, 'cyan');
+  log(`\nSyncing ${Object.keys(binariesToProcess).length} binaries...`, 'cyan');
+  log(`Syncing ${Object.keys(toProcess).length} dependencies...`, 'cyan');
   log(`Syncing ${Object.keys(skillsToProcess).length} skills...`, 'cyan');
 
   if (dryRun) {
     log('(dry run)', 'yellow');
+    for (const [name, config] of Object.entries(binariesToProcess)) {
+      log(`\n  binary/${name}: ${config.version}`);
+    }
     for (const [name, config] of Object.entries(toProcess)) {
       log(`\n  ${name}: ${config.commit.substring(0, 8)}`);
     }
@@ -258,6 +327,15 @@ async function main() {
       log(`\n  skill/${name}: ${config.commit.substring(0, 8)}`);
     }
     return;
+  }
+
+  for (const [name, config] of Object.entries(binariesToProcess)) {
+    try {
+      await syncBinary(name, config);
+    } catch (e) {
+      log(`Failed to sync binary ${name}: ${e.message}`, 'red');
+      process.exit(1);
+    }
   }
 
   for (const [name, config] of Object.entries(toProcess)) {
@@ -278,7 +356,6 @@ async function main() {
     }
   }
 
-  // 只有在全量同步时建 SDK 链接；按名字指定子集的调用跳过。
   if (targetDeps.length === 0) {
     try {
       syncSdkLink();

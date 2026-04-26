@@ -68,15 +68,42 @@ yux-lang/
 ├── gen/                  # ANTLR4 生成的代码
 ├── tests/                # 测试用例
 ├── third_party/          # 外部依赖
+├── bin/                  # 二进制工具（antlr4 jar 等）
 ├── build/                # 编译输出
 └── yux-vscode/           # VSCode 扩展
 ```
 
+### 初始化项目
+
+克隆仓库后，运行初始化脚本生成跨平台包装脚本：
+
+```powershell
+node init.js
+```
+
+此命令会在项目根目录生成 `sync-deps` 和 `gen-antlr` 的跨平台包装脚本（`.ps1`、`.sh`、`.cmd`）。
+
 ### 同步依赖
 
 ```powershell
-./sync-deps.ps1
+./sync-deps.ps1      # Windows PowerShell
+./sync-deps.sh       # Linux/macOS
+sync-deps.cmd        # Windows CMD
 ```
+
+此命令会下载 `third_party/` 下的源码依赖，以及 `bin/` 下的二进制工具（如 ANTLR4 jar）。
+
+### 生成解析器代码
+
+当修改 `src/yux.g4` 语法文件后，需要重新生成 C++ 解析器代码：
+
+```powershell
+./gen-antlr.ps1      # Windows PowerShell
+./gen-antlr.sh       # Linux/macOS
+gen-antlr.cmd        # Windows CMD
+```
+
+此命令使用 `bin/antlr-4.13.2-complete.jar` 从语法文件生成代码到 `gen/yux/` 目录。
 
 ## 构建
 

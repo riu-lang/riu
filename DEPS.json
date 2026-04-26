@@ -1,4 +1,10 @@
 {
+  "binaries": {
+    "antlr4-jar": {
+      "url": "https://www.antlr.org/download/antlr-4.13.2-complete.jar",
+      "version": "4.13.2"
+    }
+  },
   "dependencies": {
     "antlr4": {
       "url": "https://github.com/antlr/antlr4.git",

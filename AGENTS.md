@@ -27,8 +27,11 @@
 ## 常用命令
 
 ```powershell
-# 同步第三方依赖（克隆后执行一次；下载 third_party/ 内容）
+# 同步第三方依赖（克隆后执行一次；下载 third_party/ 内容和 bin/ 下的二进制工具）
 ./sync-deps.ps1
+
+# 生成 ANTLR4 解析器代码（修改 src/yux.g4 后执行）
+./gen-antlr.ps1
 
 # 构建编译器
 xmake build yux
@@ -115,6 +118,7 @@ yux-lang/
 │   ├── projects/     项目模式用例（每目录一个 yux.toml + expected.txt）
 │   └── xmake.lua     测试运行器（yux_tests target）
 ├── third_party/      依赖：antlr4, cli11, llvm, toml11, utfcpp, zlib（由 sync-deps 拉取）
+├── bin/              二进制工具：antlr-4.13.2-complete.jar（由 sync-deps 拉取）
 ├── build/            xmake 与 yux 共用产物目录，详见「构建输出布局」
 ├── yux-vscode/       VSCode 语法高亮插件
 ├── xmake.lua         顶层构建脚本
