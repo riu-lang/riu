@@ -68,6 +68,7 @@ public:
     std::any visitStructImpl(yux::yuxParser::StructImplContext* ctx) override;
     std::any visitFiledDecl(yux::yuxParser::FiledDeclContext* ctx) override;
 
+    std::any visitStatementDeclare(yux::yuxParser::StatementDeclareContext* ctx) override;
     std::any visitStatementDeclareAssign(yux::yuxParser::StatementDeclareAssignContext* ctx) override;
     std::any visitStatementAssign(yux::yuxParser::StatementAssignContext* ctx) override;
     std::any visitStatementExpr(yux::yuxParser::StatementExprContext* ctx) override;

@@ -104,7 +104,25 @@ void Compiler::compileRetVoidStatement(p<StatementRetVoidNode> node) {
 
 // ==================== 变量声明语句编译 ====================
 
-// 编译变量声明语句
+// 编译变量声明语句（无初始化）
+// 为变量分配栈空间，但不进行初始化
+void Compiler::compileDeclareStatement(p<StatementDeclareNode> node) {
+    auto varName = node->name().getText();
+    TypeInfo varType = node->varType()->getType();
+
+    DEBUG_LOG_VAL("  Statement: Declare (uninitialized)", varName << " : " << varType.name);
+
+    auto llvmType = getLLVMType(varType);
+    auto alloca = _builder.CreateAlloca(llvmType, nullptr, varName);
+    _localVarPtrs[varName] = alloca;
+
+    // 对于需要析构的类型，加入作用域变量列表
+    if (typeNeedsDestructor(varType)) {
+        _scopeVars.push_back(varName);
+    }
+}
+
+// 编译变量声明并赋值语句
 // 处理普通变量、数组初始化、Box 类型、Array<T> 类型
 void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node) {
     auto expr = node->expr();
@@ -800,8 +818,10 @@ void Compiler::compileStatement(p<StatementNode> node) {
         compileRetStatement(retNode);
     } else if (auto retVoidNode = dynamic_cast<StatementRetVoidNode*>(node)) {
         compileRetVoidStatement(retVoidNode);
-    } else if (auto declareNode = dynamic_cast<StatementDeclareAssignNode*>(node)) {
-        compileDeclareAssignStatement(declareNode);
+    } else if (auto declareNode = dynamic_cast<StatementDeclareNode*>(node)) {
+        compileDeclareStatement(declareNode);
+    } else if (auto declareAssignNode = dynamic_cast<StatementDeclareAssignNode*>(node)) {
+        compileDeclareAssignStatement(declareAssignNode);
     } else if (auto assignNode = dynamic_cast<StatementAssignNode*>(node)) {
         compileAssignStatement(assignNode);
     } else if (auto exprNode = dynamic_cast<StatementExprNode*>(node)) {

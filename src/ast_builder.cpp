@@ -701,6 +701,34 @@ std::any ASTBuilder::visitFiledDecl(yux::yuxParser::FiledDeclContext* ctx) {
     return p<StructFieldNode>(createWithLine<StructFieldNode>(ctx, parent, ctx->name, type));
 }
 
+std::any ASTBuilder::visitStatementDeclare(yux::yuxParser::StatementDeclareContext* ctx) {
+    auto scope = currentScope();
+
+    auto declKey = ctx->DeclKey()->getText();
+    DeclareType declType;
+    if (declKey[2] == 'r') {
+        declType = DeclareType::Var;
+    } else if (declKey[2] == 'l') {
+        declType = DeclareType::Val;
+    } else {
+        declType = DeclareType::CVal;
+    }
+
+    auto name = ctx->name;
+    auto type = any_cast_p<TypeNode>(visit(ctx->type()));
+
+    TypeInfo varType = type->getType();
+
+    DEBUG_LOG_VAL("  Statement: Declare (no init)", name->getText() << " : " << varType.name << " (" << declKey << ")");
+
+    if (scope) {
+        scope->registerSymbol(
+            name->getText(), {SymbolKind::Variable, name->getText(), varType, declType == DeclareType::Var});
+    }
+
+    return p<StatementNode>(createWithLine<StatementDeclareNode>(ctx, scope, declType, name, type));
+}
+
 std::any ASTBuilder::visitStatementDeclareAssign(yux::yuxParser::StatementDeclareAssignContext* ctx) {
     auto scope = currentScope();
     auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));

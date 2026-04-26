@@ -12,6 +12,18 @@ bool StatementExprNode::hasSemicolon() const {
     return _hasSemicolon;
 }
 
+DeclareType StatementDeclareNode::declareType() const {
+    return _declareType;
+}
+
+Token StatementDeclareNode::name() const {
+    return _name;
+}
+
+p<TypeNode> StatementDeclareNode::varType() const {
+    return _type;
+}
+
 DeclareType StatementDeclareAssignNode::declareType() const {
     return _declareType;
 }

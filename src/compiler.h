@@ -142,6 +142,7 @@ class Compiler {
     // ==================== 语句编译 ====================
     void compileRetStatement(p<StatementRetNode> node);                         // 编译 return 语句
     void compileRetVoidStatement(p<StatementRetVoidNode> node);                 // 编译 return; 语句
+    void compileDeclareStatement(p<StatementDeclareNode> node);                 // 编译变量声明语句（无初始化）
     void compileDeclareAssignStatement(p<StatementDeclareAssignNode> node);     // 编译变量声明语句
     void compileAssignStatement(p<StatementAssignNode> node);                   // 编译赋值语句
     void compileLoopStatement(p<StatementLoopNode> node);                       // 编译 loop 语句

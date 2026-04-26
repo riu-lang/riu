@@ -50,6 +50,21 @@ enum class DeclareType {
     CVal
 };
 
+class StatementDeclareNode : public StatementNode {
+protected:
+    DeclareType _declareType;
+    Token _name;
+    p<TypeNode> _type;
+
+public:
+    explicit StatementDeclareNode(const p<Node>& parent, DeclareType declType, Token name, p<TypeNode> type) :
+        StatementNode(parent), _declareType(declType), _name(name), _type(type) {
+    }
+
+    [[nodiscard]] DeclareType declareType() const;
+    [[nodiscard]] Token name() const;
+    [[nodiscard]] p<TypeNode> varType() const;
+};
 
 class StatementDeclareAssignNode : public StatementExprNode {
 protected:

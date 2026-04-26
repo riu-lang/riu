@@ -256,9 +256,11 @@ opAssign:
 ///////////
 
 statement:
+    // val a i32
+     DeclKey Space name=ID Space type codeLineEnd #statementDeclare
     // var name = expr
     // var name type = expr
-     DeclKey Space name=ID Space (type Space)? SymbolEq Space expr codeLineEnd #statementDeclareAssign
+    | DeclKey Space name=ID Space (type Space)? SymbolEq Space expr codeLineEnd #statementDeclareAssign
     // e[a, b, c] = e 实际应为成员函数set的快捷调用
     | obj=expr GetStart
           args+=expr
