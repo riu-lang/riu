@@ -40,7 +40,7 @@ imports: Use Space pkgs+=ID (SymbolDot pkgs+=ID)* (SymbolDot useAll=SymbolMul)? 
 // 预留注解，未来可用于指定链接哪个库
 externDelc: (buildAnnos+=buildAnno)* Extern Space BlockStart
     (
-     Space* fnHeader
+     fnHeader
      | comment
      | codeLineEnd
     )*
@@ -56,7 +56,7 @@ globalConst: (buildAnnos+=buildAnno)* 'cval' Space name=ID Space type Space Symb
 
 // #Name
 buildAnno:
-    Space* SymbolHash
+    indent* SymbolHash
     name=ID
     codeLineEnd
     ;
@@ -105,7 +105,7 @@ genericDef: SymbolLt types+=type (SymbolComma Space types+=type)* SymbolMt;
 ///////////
 
 // fn ~()
-fnClean: Fn Space SymbolRev ParStart ParEnd Space
+fnClean: indent* Fn Space SymbolRev ParStart ParEnd Space
       fnBody
       ;
 
@@ -116,7 +116,8 @@ fn: fnHeader (Space fnBody)?;
 // fn name() 空返回
 // fn name() type 返回 type
 // fn <T> some() T
-fnHeader: (buildAnnos+=buildAnno)* Space* Fn Space ( genericDef Space)? name=ID ParStart
+fnHeader: (buildAnnos+=buildAnno)*
+    indent* Fn Space ( genericDef Space)? name=ID ParStart
     (params+=fnParam (SymbolComma Space params+=fnParam)* )?
     ParEnd (Space retType=type)?
     ;
@@ -137,9 +138,10 @@ fnBlockBody: statementBlock;
 
 // struct A
 // struct A<T1, T2>
-structDecl: (buildAnnos+=buildAnno)* Struct Space name=ID (SymbolLt types+=type (SymbolComma Space types+=type)* SymbolMt)? Space BlockStart
+structDecl: (buildAnnos+=buildAnno)*
+   Struct Space name=ID (SymbolLt types+=type (SymbolComma Space types+=type)* SymbolMt)? Space BlockStart
    (
-      (Space* filedDecl codeLineEnd?)
+      (indent* filedDecl codeLineEnd?)
      | comment
      | codeLineEnd
    )*
@@ -148,13 +150,13 @@ structDecl: (buildAnnos+=buildAnno)* Struct Space name=ID (SymbolLt types+=type 
 
 structImpl: (buildAnnos+=buildAnno)* name=ID (SymbolLt types+=type (SymbolComma Space types+=type)* SymbolMt)? Space BlockStart
      codeLineEnd
-    (Space* fnClean)?
+    fnClean?
     (
-      ( Space* fn)
+      ( indent* fn)
      | comment
      | codeLineEnd
     )*
-    BlockEnd
+    indent* BlockEnd
     ;
 
 filedDecl: name=ID Space type;
@@ -277,15 +279,18 @@ statement:
     // ret value
     | Ret Space expr codeLineEnd # statementRet
     // ret; 返回空，强制尾随;表示空返回
-    | Ret SymbolSemicolon# statementRetVoid
+    | Ret SymbolSemicolon LineEnd # statementRetVoid
     // break; 强制尾随;不返回任何值
-    | Break SymbolSemicolon # statementBreak
+    | Break SymbolSemicolon codeLineEnd # statementBreak
     ;
 
 statementBlock:
     BlockStart codeLineEnd
-        (Space+|statement|comment|codeLineEnd)*
+        ((indent* statement)|comment|codeLineEnd)*
+    indent*
     BlockEnd;
+
+indent: Space Space;
 
 //
 
@@ -294,7 +299,7 @@ LineComment
     ;
 
 LineEndComment
-    : Space SymbolSemicolon ~[\r\n]*
+    : Space+ SymbolSemicolon ~[\r\n]*
     ;
 
 Space : ' ';
