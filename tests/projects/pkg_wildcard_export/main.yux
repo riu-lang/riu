@@ -1,0 +1,9 @@
+use yux.core.*
+use mymath.*
+
+fn main() {
+    ; add 函数应该直接可用（因为 add.* 导出）
+    println(add(10, 5).to_string())
+    ; sub 模块作为别名导出，需要通过 sub.sub 调用
+    println(sub.sub(10, 5).to_string())
+}

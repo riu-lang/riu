@@ -4,6 +4,7 @@
 #include "yux.h"
 
 #include <filesystem>
+#include <fstream>
 
 #include <toml.hpp>
 
@@ -41,7 +42,11 @@ p<FileNode> Yux::createFile(const string& moduleName) {
 }
 
 p<FileNode> Yux::createSdkFile() {
-    // SDK 自举运行时。文件 sdk/yux/core.yux，模块名 "yux.core"。
+    // SDK 自举运行时。文件 sdk/yux/core/*.yux，模块名 "yux.core"。
+    // 如果 _sdkFile 已存在，返回现有的，避免多个 SDK 文件互相覆盖。
+    if (_sdkFile) {
+        return _sdkFile;
+    }
     _sdkFile = new FileNode("yux.core");
     _modules["yux.core"] = _sdkFile;
     return _sdkFile;
@@ -174,6 +179,64 @@ vector<string> Yux::listPackageSubdirs(const string& moduleName) const {
     }
     std::sort(out.begin(), out.end());
     return out;
+}
+
+bool Yux::hasPkgFile(const string& moduleName) const {
+    namespace fs = std::filesystem;
+    string rel = moduleName;
+    for (auto& c : rel) if (c == '.') c = '/';
+    fs::path root = _projectRoot.empty() ? fs::path() : fs::path(_projectRoot);
+    fs::path dirPath = root.empty() ? fs::path(rel) : (root / rel);
+    fs::path pkgPath = dirPath / "pkg";
+    return fs::exists(pkgPath) && fs::is_regular_file(pkgPath);
+}
+
+vector<PkgExportItem> Yux::parsePkgFile(const string& moduleName) const {
+    namespace fs = std::filesystem;
+    vector<PkgExportItem> items;
+    
+    string rel = moduleName;
+    for (auto& c : rel) if (c == '.') c = '/';
+    fs::path root = _projectRoot.empty() ? fs::path() : fs::path(_projectRoot);
+    fs::path dirPath = root.empty() ? fs::path(rel) : (root / rel);
+    fs::path pkgPath = dirPath / "pkg";
+    
+    if (!fs::exists(pkgPath) || !fs::is_regular_file(pkgPath)) {
+        return items;
+    }
+    
+    std::ifstream file(pkgPath);
+    if (!file.is_open()) {
+        return items;
+    }
+    
+    string line;
+    while (std::getline(file, line)) {
+        // 去除首尾空白
+        size_t start = line.find_first_not_of(" \t\r\n");
+        if (start == string::npos) continue;  // 空行
+        size_t end = line.find_last_not_of(" \t\r\n");
+        line = line.substr(start, end - start + 1);
+        
+        // 跳过空行和注释行（以 ; 开头）
+        if (line.empty() || line[0] == ';') continue;
+        
+        // 解析导出项
+        PkgExportItem item;
+        if (line.size() >= 2 && line.substr(line.size() - 2) == ".*") {
+            item.name = line.substr(0, line.size() - 2);
+            item.wildcard = true;
+        } else {
+            item.name = line;
+            item.wildcard = false;
+        }
+        
+        if (!item.name.empty()) {
+            items.push_back(item);
+        }
+    }
+    
+    return items;
 }
 
 p<FileNode> Yux::loadModule(const string& moduleName, int errorLine) {

@@ -238,21 +238,143 @@ IRResult compileIR(string inputFile, Yux& yux, bool isSdk = false) {
         std::cerr << msg << std::endl;
         exit(1);
     }
-    return {(std::move(context)), std::move(module)};
+    return {std::move(context), std::move(module)};
+}
+
+bool needRecompileSdkDir(const string& sdkDir, const string& sdkObjPath) {
+    if (!std::filesystem::exists(sdkObjPath)) {
+        return true;
+    }
+    
+    auto objTime = std::filesystem::last_write_time(sdkObjPath);
+    
+    for (const auto& entry : std::filesystem::directory_iterator(sdkDir)) {
+        if (entry.is_regular_file()) {
+            string filename = entry.path().filename().string();
+            if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".yux") {
+                if (std::filesystem::last_write_time(entry.path()) > objTime) {
+                    return true;
+                }
+            }
+        }
+    }
+    
+    return false;
+}
+
+void parseSdkDir(string sdkDir, Yux& yux) {
+    vector<string> yuxFiles;
+    for (const auto& entry : std::filesystem::directory_iterator(sdkDir)) {
+        if (entry.is_regular_file()) {
+            string filename = entry.path().filename().string();
+            if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".yux") {
+                yuxFiles.push_back(entry.path().string());
+            }
+        }
+    }
+    
+    std::sort(yuxFiles.begin(), yuxFiles.end());
+    
+    for (const auto& yuxFile : yuxFiles) {
+        antlr4::ANTLRFileStream file;
+        file.loadFromFile(yuxFile);
+        yuxLexer lexer(&file);
+        antlr4::CommonTokenStream tokenStream(&lexer);
+        yuxParser parser(&tokenStream);
+        
+        auto program = parser.program();
+        if (parser.getNumberOfSyntaxErrors()) {
+            std::cerr << "Syntax errors in SDK file: " << yuxFile << std::endl;
+            exit(1);
+        }
+        
+        llvm::LLVMContext context;
+        ASTBuilder astBuilder(context, yux, "yux.core", true);
+        
+        try {
+            astBuilder.build(program);
+        } catch (runtime_error& e) {
+            string msg = e.what();
+            if (auto* yuxErr = dynamic_cast<YuxError*>(&e)) {
+                int line = yuxErr->getLineNumber();
+                if (line > 0) {
+                    msg = "line " + to_string(line) + ": " + msg;
+                }
+            }
+            std::cerr << "Error in SDK file " << yuxFile << ": " << msg << std::endl;
+            exit(1);
+        }
+    }
+}
+
+IRResult compileSdkDir(string sdkDir, Yux& yux) {
+    std::cout << "Compiling SDK from directory: " << sdkDir << std::endl;
+    
+    auto context = make_unique<llvm::LLVMContext>();
+    auto module = make_unique<llvm::Module>("yux.core", *context);
+    llvm::IRBuilder<> builder(*context);
+    
+    vector<string> yuxFiles;
+    for (const auto& entry : std::filesystem::directory_iterator(sdkDir)) {
+        if (entry.is_regular_file()) {
+            string filename = entry.path().filename().string();
+            if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".yux") {
+                yuxFiles.push_back(entry.path().string());
+            }
+        }
+    }
+    
+    std::sort(yuxFiles.begin(), yuxFiles.end());
+    
+    for (const auto& yuxFile : yuxFiles) {
+        std::cout << "  Processing: " << yuxFile << std::endl;
+        
+        antlr4::ANTLRFileStream file;
+        file.loadFromFile(yuxFile);
+        yuxLexer lexer(&file);
+        antlr4::CommonTokenStream tokenStream(&lexer);
+        yuxParser parser(&tokenStream);
+        
+        auto program = parser.program();
+        if (parser.getNumberOfSyntaxErrors()) {
+            std::cerr << "Syntax errors in SDK file: " << yuxFile << std::endl;
+            exit(1);
+        }
+        
+        ASTBuilder astBuilder(*context, yux, "yux.core", true);
+        
+        try {
+            auto ast = astBuilder.build(program);
+            Compiler compiler(*context, builder, module.get(), ast, &yux, true);
+            compiler.compile(ast);
+        } catch (runtime_error& e) {
+            string msg = e.what();
+            if (auto* yuxErr = dynamic_cast<YuxError*>(&e)) {
+                int line = yuxErr->getLineNumber();
+                if (line > 0) {
+                    msg = "line " + to_string(line) + ": " + msg;
+                }
+            }
+            std::cerr << "Error in SDK file " << yuxFile << ": " << msg << std::endl;
+            exit(1);
+        }
+    }
+    
+    return {std::move(context), std::move(module)};
 }
 
 string findSdkPath() {
 #ifdef _DEBUG
-    if (std::filesystem::exists("sdk/yux/core.yux")) {
-        return "sdk/yux/core.yux";
+    if (std::filesystem::is_directory("sdk/yux/core")) {
+        return "sdk/yux/core";
     }
 #endif
     char exePath[MAX_PATH];
     GetModuleFileNameA(nullptr, exePath, MAX_PATH);
     auto exeDir = llvm::sys::path::parent_path(exePath).str();
     auto rootDir = llvm::sys::path::parent_path(exeDir).str();
-    string sdkPath = rootDir + "/sdk/yux/core.yux";
-    if (std::filesystem::exists(sdkPath)) {
+    string sdkPath = rootDir + "/sdk/yux/core";
+    if (std::filesystem::is_directory(sdkPath)) {
         return sdkPath;
     }
     return "";
@@ -364,15 +486,14 @@ int wmain(int argc, wchar_t* argv[]) {
         std::filesystem::create_directories(std::filesystem::path(sdkBase).parent_path());
         sdkObjPath = sdkBase + ".obj";
 
-        bool needCompile = BuildCache::needRecompile(sdkObjPath, sdkPath);
+        bool needCompile = needRecompileSdkDir(sdkPath, sdkObjPath);
         if (needCompile) {
             SdkLock sdkLock;
             sdkLock.tryLock();
             
-            needCompile = BuildCache::needRecompile(sdkObjPath, sdkPath);
+            needCompile = needRecompileSdkDir(sdkPath, sdkObjPath);
             if (needCompile) {
-                std::cout << "Compiling SDK: " << sdkPath << std::endl;
-                auto sdkIrr = compileIR(sdkPath, yux, true);
+                auto sdkIrr = compileSdkDir(sdkPath, yux);
                 auto sdkModule = sdkIrr.module.get();
 
                 if (emitIr) {
@@ -391,13 +512,12 @@ int wmain(int argc, wchar_t* argv[]) {
                     return 1;
                 }
                 std::cout << "Write SDK obj: " << sdkObjPath << std::endl;
-                BuildCache::updateCache(sdkObjPath, sdkPath);
                 compiled = true;
             } else {
-                parseAST(sdkPath, yux, true);
+                parseSdkDir(sdkPath, yux);
             }
         } else {
-            parseAST(sdkPath, yux, true);
+            parseSdkDir(sdkPath, yux);
         }
     }
 

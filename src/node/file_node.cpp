@@ -4,17 +4,78 @@
 #include "file_node.h"
 
 FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::move(moduleName)) {
-    // 注册基本类型为 struct 占位符，并预声明 to_<type>() 方法符号
+    // 注册基本类型为 struct 占位符，并预声明方法符号
     const initializer_list<string> TYPES = {"bool", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64"};
+    const initializer_list<string> INT_TYPES = {"i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"};
+    const initializer_list<string> FLOAT_TYPES = {"f32", "f64"};
+    
     for (auto t : TYPES) {
         registerSymbol(t, {SymbolKind::Struct, t, TypeInfo(t)});
 
+        // 类型转换方法
         for (auto f : TYPES) {
             string fnName = "to_" + f;
             string fullName = t + "." + fnName;
             registerSymbol(fullName, {SymbolKind::Function, fnName, TypeInfo(f)});
             registerFnSymbol(fullName, {fnName, "", {}, TypeInfo(f)});
         }
+    }
+    
+    // 整数类型运算符方法
+    for (auto t : INT_TYPES) {
+        // 算术运算符: plus, minus, mul, div, mod
+        for (auto op : {"plus", "minus", "mul", "div", "mod"}) {
+            string fullName = string(t) + "." + op;
+            registerSymbol(fullName, {SymbolKind::Function, op, TypeInfo(t)});
+            registerFnSymbol(fullName, {op, "", {TypeInfo(t)}, TypeInfo(t)});
+        }
+        // 比较运算符: eq, ne, lt, le, gt, ge
+        for (auto op : {"eq", "ne", "lt", "le", "gt", "ge"}) {
+            string fullName = string(t) + "." + op;
+            registerSymbol(fullName, {SymbolKind::Function, op, TypeInfo("bool")});
+            registerFnSymbol(fullName, {op, "", {TypeInfo(t)}, TypeInfo("bool")});
+        }
+        // 位运算符: and, or, xor, shl, shr
+        for (auto op : {"and", "or", "xor", "shl", "shr"}) {
+            string fullName = string(t) + "." + op;
+            registerSymbol(fullName, {SymbolKind::Function, op, TypeInfo(t)});
+            registerFnSymbol(fullName, {op, "", {TypeInfo(t)}, TypeInfo(t)});
+        }
+        // 一元运算符: neg, inv
+        for (auto op : {"neg", "inv"}) {
+            string fullName = string(t) + "." + op;
+            registerSymbol(fullName, {SymbolKind::Function, op, TypeInfo(t)});
+            registerFnSymbol(fullName, {op, "", {}, TypeInfo(t)});
+        }
+    }
+    
+    // 浮点类型运算符方法
+    for (auto t : FLOAT_TYPES) {
+        // 算术运算符: plus, minus, mul, div, mod
+        for (auto op : {"plus", "minus", "mul", "div", "mod"}) {
+            string fullName = string(t) + "." + op;
+            registerSymbol(fullName, {SymbolKind::Function, op, TypeInfo(t)});
+            registerFnSymbol(fullName, {op, "", {TypeInfo(t)}, TypeInfo(t)});
+        }
+        // 比较运算符: eq, ne, lt, le, gt, ge
+        for (auto op : {"eq", "ne", "lt", "le", "gt", "ge"}) {
+            string fullName = string(t) + "." + op;
+            registerSymbol(fullName, {SymbolKind::Function, op, TypeInfo("bool")});
+            registerFnSymbol(fullName, {op, "", {TypeInfo(t)}, TypeInfo("bool")});
+        }
+        // 一元运算符: neg
+        {
+            string fullName = string(t) + ".neg";
+            registerSymbol(fullName, {SymbolKind::Function, "neg", TypeInfo(t)});
+            registerFnSymbol(fullName, {"neg", "", {}, TypeInfo(t)});
+        }
+    }
+    
+    // bool 类型运算符方法
+    {
+        string fullName = "bool.not";
+        registerSymbol(fullName, {SymbolKind::Function, "not", TypeInfo("bool")});
+        registerFnSymbol(fullName, {"not", "", {}, TypeInfo("bool")});
     }
 }
 

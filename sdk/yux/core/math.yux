@@ -1,0 +1,7 @@
+fn abs(v i8) i8 {
+  if v < 0 {
+    -v
+  } else {
+    v
+  }
+}

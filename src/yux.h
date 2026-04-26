@@ -10,6 +10,12 @@
 
 class ASTBuilder;
 
+// pkg 文件导出项
+struct PkgExportItem {
+    string name;        // 模块名或包名
+    bool wildcard;      // true 表示 "name.*"，false 表示 "name"
+};
+
 class Yux {
     vector<p<FileNode>> _files;
     p<FileNode> _sdkFile;
@@ -56,6 +62,12 @@ public:
     vector<string> listPackageYuxChildren(const string& moduleName) const;
     // 列出包（目录）下的直接子目录名。
     vector<string> listPackageSubdirs(const string& moduleName) const;
+    
+    // pkg 文件相关
+    // 检查包目录下是否存在 pkg 文件
+    bool hasPkgFile(const string& moduleName) const;
+    // 解析 pkg 文件，返回导出项列表。文件不存在或为空返回空列表。
+    vector<PkgExportItem> parsePkgFile(const string& moduleName) const;
 
     // 解析主入口 `.yux` 文件（不走 moduleName → path 映射）。
     // 产生的 ASTBuilder 被 Yux 持有，AST 节点在 Yux 析构前有效。

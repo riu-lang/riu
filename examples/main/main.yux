@@ -25,6 +25,7 @@ fn main() {
   println(n3.v.to_string())
   
   var a = 1
+  println((a + 2).to_string())
   var b = a.plus(2)
   println(b.to_string())
   println("=== 测试完成 ===")
