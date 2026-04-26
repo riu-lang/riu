@@ -31,14 +31,14 @@ codeLineEnd: LineEndComment? LineEnd;
 // 导入
 /////////
 
-imports: Use Space pkgs+=ID (SymbolDot pkgs+=ID)* (SymbolDot useAll=SymbolMul)? codeLineEnd;
+imports: Use pkgs+=ID (SymbolDot pkgs+=ID)* (SymbolDot useAll=SymbolMul)? codeLineEnd;
 
 // 外部声明
 // extern {
 //  函数头
 // }
 // 预留注解，未来可用于指定链接哪个库
-externDelc: (buildAnnos+=buildAnno)* Extern Space BlockStart
+externDelc: (buildAnnos+=buildAnno)* Extern BlockStart
     (
      fnHeader
      | comment
@@ -48,7 +48,7 @@ externDelc: (buildAnnos+=buildAnno)* Extern Space BlockStart
     ;
 
 // cval a i32 = 1
-globalConst: (buildAnnos+=buildAnno)* 'cval' Space name=ID Space type Space SymbolEq Space literal;
+globalConst: (buildAnnos+=buildAnno)* 'cval' name=ID type SymbolEq literal;
 
 //////////////
 // 构建注解
@@ -56,7 +56,7 @@ globalConst: (buildAnnos+=buildAnno)* 'cval' Space name=ID Space type Space Symb
 
 // #Name
 buildAnno:
-    indent* SymbolHash
+    SymbolHash
     name=ID
     codeLineEnd
     ;
@@ -95,48 +95,48 @@ typeNormal: ID;
 typeGeneric: ID genericDef;
 
 // [ type * count ]
-typeArray: GetStart type Space SymbolMul Space INT GetEnd;
+typeArray: GetStart type SymbolMul INT GetEnd;
 
 // 共享
-genericDef: SymbolLt types+=type (SymbolComma Space types+=type)* SymbolMt;
+genericDef: SymbolLt types+=type (SymbolComma types+=type)* SymbolMt;
 
 ///////////
 // 函数
 ///////////
 
 // fn ~()
-fnClean: indent* Fn Space SymbolRev ParStart ParEnd Space
+fnClean: Fn SymbolRev ParStart ParEnd
       fnBody
       ;
 
 // fn name() {}
 // 只有函数头的必须要有构建注解（比如用代码生成函数体，未来实现）
-fn: fnHeader (Space fnBody)?;
+fn: fnHeader fnBody?;
 
 // fn name() 空返回
 // fn name() type 返回 type
 // fn <T> some() T
 fnHeader: (buildAnnos+=buildAnno)*
-    indent* Fn Space ( genericDef Space)? name=ID ParStart
+    Fn genericDef? name=ID ParStart
     fnParams?
-    ParEnd (Space retType=type)?
+    ParEnd (retType=type)?
     ;
 
-fnParams: fnParam (SymbolComma Space params+=fnParam)* ;
+fnParams: fnParam (SymbolComma params+=fnParam)* ;
 
 fnParam: fnParamStd | fnParamGroup;
 
 // a i32
-fnParamStd: name=ID Space type;
+fnParamStd: name=ID type;
 
 // a, b i32
 // a, b, c i32
-fnParamGroup: (names+=ID SymbolComma Space)* names+=ID Space type;
+fnParamGroup: (names+=ID SymbolComma)* names+=ID type;
 
 fnBody: fnExprkBody | fnBlockBody;
 
 fnExprkBody: LineEnd?
-    SymbolEq Space expr codeLineEnd?
+    SymbolEq expr codeLineEnd?
     ;
 
 fnBlockBody: statementBlock;
@@ -148,27 +148,27 @@ fnBlockBody: statementBlock;
 // struct A
 // struct A<T1, T2>
 structDecl: (buildAnnos+=buildAnno)*
-   Struct Space name=ID (SymbolLt types+=type (SymbolComma Space types+=type)* SymbolMt)? Space BlockStart
+   Struct name=ID (SymbolLt types+=type (SymbolComma types+=type)* SymbolMt)? BlockStart
    (
-      (indent* filedDecl codeLineEnd?)
+      (filedDecl codeLineEnd?)
      | comment
      | codeLineEnd
    )*
    BlockEnd
    ;
 
-structImpl: (buildAnnos+=buildAnno)* name=ID (SymbolLt types+=type (SymbolComma Space types+=type)* SymbolMt)? Space BlockStart
+structImpl: (buildAnnos+=buildAnno)* name=ID (SymbolLt types+=type (SymbolComma types+=type)* SymbolMt)? BlockStart
      codeLineEnd
     fnClean?
     (
-      ( indent* fn)
+      fn
      | comment
      | codeLineEnd
     )*
-    indent* BlockEnd
+    BlockEnd
     ;
 
-filedDecl: name=ID Space type;
+filedDecl: name=ID type;
 
 ///////////
 // 表达式
@@ -183,14 +183,14 @@ expr:
     | expr
         GetStart
             args+=expr
-            (SymbolComma Space args+=expr)*
+            (SymbolComma args+=expr)*
         GetEnd # exprGet
     // if 1 { 1 } else { 2 }
-    | If Space condition=expr Space BlockStart Space trueValue=expr Space BlockEnd
-        Space Else Space BlockStart Space falseValue=expr Space BlockEnd # exprOneLineIfElse
+    | If condition=expr BlockStart trueValue=expr BlockEnd
+        Else BlockStart falseValue=expr BlockEnd # exprOneLineIfElse
     // true if condition else false 类python
-    | trueValue=expr Space If Space condition=expr Space
-        Else Space falseValue=expr # exprIfElsePreValue
+    | trueValue=expr If condition=expr
+        Else falseValue=expr # exprIfElsePreValue
     // if e {
     // ...
     // } elif e {
@@ -198,42 +198,42 @@ expr:
     // } else {
     // ...
     // }
-    | If Space condition=expr Space
+    | If condition=expr
           statementBlock
           (elifs+=exprElIf)*
              exprElse? # exprIfElse
     // [0 ...] [1u8 ... u8] 填充数组
-    | GetStart value=literal Space SymbolDot SymbolDot SymbolDot (Space type)?  GetEnd # exprArrayInit
+    | GetStart value=literal SymbolDot SymbolDot SymbolDot type?  GetEnd # exprArrayInit
     // a.b ...
     | left=expr SymbolDot member+=ID # exprDot
     // [e1, e2]
-    | GetStart (velues+=expr (SymbolComma Space velues+=expr)* )? GetEnd # exprArray
+    | GetStart (velues+=expr (SymbolComma velues+=expr)* )? GetEnd # exprArray
     // e() e(e) e(e,e) e<T>()
     | left=expr genericDef? ParStart
         ( args+=expr
-          (SymbolComma Space args+=expr)*
+          (SymbolComma args+=expr)*
         )?
       ParEnd # exprCall
     // !e ~e -e 没有空格，低于成员访问优先级
     | op=(SymbolSub|SymbolRev|SymbolExcl) right=expr # exprUnary
     // e & e | e ^ e | e << e | e >> e
-    | left=expr Space op=(SymbolAnd|SymbolOr|SymbolXor) Space right=expr # exprBinOp
-    | left=expr Space opShift Space right=expr # exprShift
+    | left=expr op=(SymbolAnd|SymbolOr|SymbolXor) right=expr # exprBinOp
+    | left=expr opShift right=expr # exprShift
      // e * e e / e
-    | left=expr Space op=(SymbolMul|SymbolDiv|SymbolMod) Space right=expr # exprMulDivMod
-    | left=expr Space op=(SymbolAdd|SymbolSub) Space right=expr # exprAddSub
+    | left=expr op=(SymbolMul|SymbolDiv|SymbolMod) right=expr # exprMulDivMod
+    | left=expr op=(SymbolAdd|SymbolSub) right=expr # exprAddSub
     // 判断
-    | left=expr Space opCompare Space right=expr # exprCompare
+    | left=expr opCompare right=expr # exprCompare
     | literal # exprLiteral;
 
 // elif {
 // ...
 // }
-exprElIf : Space Elif Space condition=expr Space statementBlock;
+exprElIf : Elif condition=expr statementBlock;
 // else {
 // ...
 // }
-exprElse : Space Else Space statementBlock;
+exprElse : Else statementBlock;
 
 // 移位操作符: << >>
 opShift: SymbolLt SymbolLt | SymbolMt SymbolMt;
@@ -268,25 +268,25 @@ opAssign:
 
 statement:
     // val a i32
-     DeclKey Space name=ID Space type codeLineEnd #statementDeclare
+     DeclKey name=ID type codeLineEnd #statementDeclare
     // var name = expr
     // var name type = expr
-    | DeclKey Space name=ID Space (type Space)? SymbolEq Space expr codeLineEnd #statementDeclareAssign
+    | DeclKey name=ID type? SymbolEq expr codeLineEnd #statementDeclareAssign
     // e[a, b, c] = e 实际应为成员函数set的快捷调用
     | obj=expr GetStart
           args+=expr
-          (SymbolComma Space args+=expr)*
-        GetEnd Space SymbolEq Space value=expr # statementSet
+          (SymbolComma args+=expr)*
+        GetEnd SymbolEq value=expr # statementSet
     // 循环
-    | Loop Space statementBlock # statementLoop
+    | Loop statementBlock # statementLoop
     // obj.member = expr
-    | obj=ID (SymbolDot subs+=ID)* Space
+    | obj=ID (SymbolDot subs+=ID)*
         opAssign
-        Space expr codeLineEnd #statementAssign
+        expr codeLineEnd #statementAssign
     // 尾随;表示空类型（void）
     | expr SymbolSemicolon? codeLineEnd # statementExpr
     // ret value
-    | Ret Space expr codeLineEnd # statementRet
+    | Ret expr codeLineEnd # statementRet
     // ret; 返回空，强制尾随;表示空返回
     | Ret SymbolSemicolon LineEnd # statementRetVoid
     // break; 强制尾随;不返回任何值
@@ -295,11 +295,8 @@ statement:
 
 statementBlock:
     BlockStart codeLineEnd
-        ((indent* statement)|comment|codeLineEnd)*
-    indent*
+        (statement|comment|codeLineEnd)*
     BlockEnd;
-
-indent: Space Space;
 
 //
 
@@ -311,7 +308,7 @@ LineEndComment
     : Space+ SymbolSemicolon ~[\r\n]*
     ;
 
-Space : ' ';
+Space : ' ' -> channel(HIDDEN);
 LineEnd : '\r'? '\n' | '\n' | EOF;
 EmptyLine : {getCharPositionInLine()==0}? [ \t]*  LineEnd -> channel(HIDDEN);
 //WhiteSpace : ~[\P{White_Space} \t\r\n]+ -> channel(HIDDEN);

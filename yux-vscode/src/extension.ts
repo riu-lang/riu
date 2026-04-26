@@ -6,6 +6,8 @@
 import * as vscode from 'vscode';
 import { YuxWorkspaceSymbols } from './symbols';
 import { invalidateFileCache } from './ast/workspace';
+import { spawn } from 'child_process';
+import * as path from 'path';
 
 const KEYWORDS = [
     { label: 'fn', kind: vscode.CompletionItemKind.Keyword, detail: '函数声明' },
@@ -204,6 +206,12 @@ export function activate(context: vscode.ExtensionContext) {
         '(', ','
     );
     context.subscriptions.push(signatureProvider);
+
+    const formattingProvider = vscode.languages.registerDocumentFormattingEditProvider(
+        { language: 'yux' },
+        new YuxDocumentFormattingEditProvider()
+    );
+    context.subscriptions.push(formattingProvider);
 
     const watcher = vscode.workspace.createFileSystemWatcher('**/*.yux');
     watcher.onDidChange((uri) => invalidateFileCache(uri.fsPath));
@@ -721,6 +729,86 @@ function findEnclosingCall(document: vscode.TextDocument, position: vscode.Posit
     const chain = m[1].replace(/\s+/g, '');
     const offsetToPos = document.positionAt(openIdx);
     return { chain, activeArg: commas, callPos: offsetToPos };
+}
+
+class YuxDocumentFormattingEditProvider implements vscode.DocumentFormattingEditProvider {
+    async provideDocumentFormattingEdits(
+        document: vscode.TextDocument,
+        options: vscode.FormattingOptions,
+        token: vscode.CancellationToken
+    ): Promise<vscode.TextEdit[]> {
+        const source = document.getText();
+        
+        try {
+            const formatted = await this.runYuxFormat(source, token);
+            if (formatted === null) {
+                return [];
+            }
+            
+            const fullRange = new vscode.Range(
+                document.positionAt(0),
+                document.positionAt(source.length)
+            );
+            
+            return [vscode.TextEdit.replace(fullRange, formatted)];
+        } catch (error) {
+            vscode.window.showErrorMessage(`Format failed: ${error}`);
+            return [];
+        }
+    }
+    
+    private runYuxFormat(source: string, token: vscode.CancellationToken): Promise<string | null> {
+        return new Promise((resolve, reject) => {
+            const yuxPath = this.findYuxExecutable();
+            if (!yuxPath) {
+                reject(new Error('yux executable not found. Please ensure yux is in PATH.'));
+                return;
+            }
+            
+            const yuxProcess = spawn(yuxPath, ['format', '--stdin']);
+            let stdout = '';
+            let stderr = '';
+            
+            yuxProcess.stdout.on('data', (data) => {
+                stdout += data.toString();
+            });
+            
+            yuxProcess.stderr.on('data', (data) => {
+                stderr += data.toString();
+            });
+            
+            yuxProcess.on('close', (code) => {
+                if (code === 0) {
+                    resolve(stdout);
+                } else {
+                    reject(new Error(stderr || `yux format exited with code ${code}`));
+                }
+            });
+            
+            yuxProcess.on('error', (err) => {
+                reject(new Error(`Failed to run yux format: ${err.message}`));
+            });
+            
+            if (token) {
+                token.onCancellationRequested(() => {
+                    yuxProcess.kill();
+                    resolve(null);
+                });
+            }
+            
+            yuxProcess.stdin.write(source);
+            yuxProcess.stdin.end();
+        });
+    }
+    
+    private findYuxExecutable(): string | null {
+        const config = vscode.workspace.getConfiguration('yux');
+        const customPath = config.get<string>('executablePath');
+        if (customPath) {
+            return customPath;
+        }
+        return 'yux';
+    }
 }
 
 export function deactivate() {}

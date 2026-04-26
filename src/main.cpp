@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <regex>
 #include <csignal>
+#include <fstream>
 
 #include <lld/Common/Driver.h>
 #include <llvm/CodeGen/CommandFlags.h>
@@ -30,6 +31,7 @@
 #include "utf8.h"
 #include "yux.h"
 #include "build_cache.h"
+#include "formatter.h"
 
 #include "CLI/CLI.hpp"
 
@@ -402,7 +404,6 @@ int wmain(int argc, wchar_t* argv[]) {
 #ifdef _DEBUG
     app.add_flag("-d,--debug", debug, "Output compilation IR debug information");
 #endif
-    std::cout << "Working at: " << std::filesystem::absolute(std::filesystem::current_path()).string() << std::endl;
 
     std::string inputFile;
     app.add_option("input", inputFile, "Input .yux file (single-file mode)");
@@ -416,7 +417,75 @@ int wmain(int argc, wchar_t* argv[]) {
     buildCmd->add_flag("-d,--debug", debug, "Output compilation IR debug information");
 #endif
 
+    auto* formatCmd = app.add_subcommand("format", "Format a .yux source file");
+    std::string formatFile;
+    formatCmd->add_option("file", formatFile, "Input .yux file to format");
+    bool formatInPlace = false;
+    formatCmd->add_flag("-i,--in-place", formatInPlace, "Edit file in place");
+    bool formatStdin = false;
+    formatCmd->add_flag("--stdin", formatStdin, "Read from stdin instead of file");
+
     CLI11_PARSE(app, argc, argv);
+
+    // 处理格式化命令
+    if (formatCmd->parsed()) {
+        std::string source;
+        std::string filePath;
+        
+        if (formatStdin) {
+            // 从 stdin 读取
+            std::stringstream buffer;
+            buffer << std::cin.rdbuf();
+            source = buffer.str();
+        } else {
+            // 从文件读取
+            if (formatFile.empty()) {
+                std::cerr << "Error: No input file specified" << std::endl;
+                return 1;
+            }
+            if (!std::filesystem::exists(formatFile)) {
+                std::cerr << "Error: Input file not found: " << formatFile << std::endl;
+                return 1;
+            }
+            
+            std::ifstream inFile(formatFile);
+            if (!inFile) {
+                std::cerr << "Error: Cannot open file: " << formatFile << std::endl;
+                return 1;
+            }
+            
+            std::stringstream buffer;
+            buffer << inFile.rdbuf();
+            source = buffer.str();
+            inFile.close();
+            filePath = formatFile;
+        }
+        
+        try {
+            Formatter formatter(source);
+            std::string formatted = formatter.format();
+            
+            if (formatInPlace && !filePath.empty()) {
+                std::ofstream outFile(filePath);
+                if (!outFile) {
+                    std::cerr << "Error: Cannot write to file: " << filePath << std::endl;
+                    return 1;
+                }
+                outFile << formatted;
+                outFile.close();
+                std::cout << "Formatted: " << filePath << std::endl;
+            } else {
+                std::cout << formatted;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Format error: " << e.what() << std::endl;
+            return 1;
+        }
+        
+        return 0;
+    }
+
+    std::cout << "Working at: " << std::filesystem::absolute(std::filesystem::current_path()).string() << std::endl;
 
     bool projectMode = buildCmd->parsed();
 
