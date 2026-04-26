@@ -166,6 +166,13 @@ class Compiler {
     llvm::Value* compileGetRefExpr(p<ExprGetRefNode> node);                     // 编译取引用表达式
     llvm::Value* compileUnaryExpr(p<ExprUnaryNode> node);                       // 编译一元表达式
 
+    // ==================== 自定义类型运算符方法调用 ====================
+    llvm::Value* compileCustomTypeBinaryOp(
+        p<ExprNode> leftExpr, p<ExprNode> rightExpr, const TypeInfo& leftType,
+        const string& methodName, int lineNum);                                 // 编译自定义类型二元运算符
+    llvm::Value* compileCustomTypeUnaryOp(
+        p<ExprNode> expr, const TypeInfo& type, const string& methodName, int lineNum);  // 编译自定义类型一元运算符
+
     // ==================== 方法/函数调用编译 ====================
     bool isCompilerInnerMethod(const string& structName, const string& methodName);  // 检查是否为编译器内部方法
     llvm::Value* compileMethodCall(

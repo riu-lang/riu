@@ -379,14 +379,195 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
     throw YuxError(node->getLineNumber(), "Unsupported literal type");
 }
 
+// ==================== 自定义类型运算符方法调用 ====================
+
+// 编译自定义类型的二元运算符方法调用
+// 将运算符表达式转换为方法调用，如 a + b -> a.plus(b)
+llvm::Value* Compiler::compileCustomTypeBinaryOp(
+    p<ExprNode> leftExpr, p<ExprNode> rightExpr, const TypeInfo& leftType,
+    const string& methodName, int lineNum) {
+    
+    DEBUG_LOG_VAL("    Expr: CustomTypeBinaryOp", leftType.name << "." << methodName);
+    
+    // 获取左操作数的指针
+    llvm::Value* leftPtr = nullptr;
+    if (auto leftLiteral = dynamic_cast<ExprLiteralNode*>(leftExpr)) {
+        if (auto objLiteral = dynamic_cast<LiteralObjNode*>(leftLiteral->literal())) {
+            auto varName = objLiteral->getValue().getText();
+            auto it = _localVarPtrs.find(varName);
+            if (it != _localVarPtrs.end()) {
+                leftPtr = it->second;
+            }
+        }
+    }
+    
+    if (!leftPtr) {
+        auto leftVal = compileExpr(leftExpr);
+        auto structType = getLLVMType(leftType);
+        if (!structType) {
+            throw YuxError(lineNum, "Cannot get LLVM type for '{}'", leftType.name);
+        }
+        auto alloca = _builder.CreateAlloca(structType, nullptr, "op_lhs_tmp");
+        _builder.CreateStore(leftVal, alloca);
+        leftPtr = alloca;
+    }
+    
+    // 编译右操作数
+    auto rightVal = compileExpr(rightExpr);
+    auto rightType = rightExpr->getType();
+    
+    // 查找方法
+    string methodFullName = leftType.name + "." + methodName;
+    vector<TypeInfo> methodParamTypes;
+    methodParamTypes.push_back(leftType);
+    methodParamTypes.push_back(rightType);
+    
+    auto methodSymbol = _file->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
+    if (!methodSymbol && _yux && _yux->sdkFile()) {
+        methodSymbol = _yux->sdkFile()->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
+    }
+    
+    if (!methodSymbol) {
+        throw YuxError(lineNum, "Type '{}' does not support operator '{}' (method '{}' not found)", 
+                       leftType.name, methodName == "plus" ? "+" : 
+                       methodName == "minus" ? "-" : 
+                       methodName == "mul" ? "*" : 
+                       methodName == "div" ? "/" : 
+                       methodName == "mod" ? "%" : 
+                       methodName == "and" ? "&" : 
+                       methodName == "or" ? "|" : 
+                       methodName == "xor" ? "^" : 
+                       methodName == "shl" ? "<<" : 
+                       methodName == "shr" ? ">>" : 
+                       methodName == "eq" ? "==" : 
+                       methodName == "ne" ? "!=" : 
+                       methodName == "lt" ? "<" : 
+                       methodName == "le" ? "<=" : 
+                       methodName == "gt" ? ">" : 
+                       methodName == "ge" ? ">=" : methodName, methodName);
+    }
+    
+    // 准备方法参数
+    vector<llvm::Value*> methodArgs;
+    methodArgs.push_back(leftPtr);
+    
+    // 检查右操作数是否需要通过指针传递
+    auto rightStructDecl = _file->getStructDecl(rightType.name);
+    if (!rightStructDecl && _yux && _yux->sdkFile()) {
+        rightStructDecl = _yux->sdkFile()->getStructDecl(rightType.name);
+    }
+    if (rightStructDecl && !isBuiltinType(rightType.name)) {
+        auto structType = getLLVMType(rightType);
+        auto alloca = _builder.CreateAlloca(structType, nullptr, "op_rhs_tmp");
+        _builder.CreateStore(rightVal, alloca);
+        methodArgs.push_back(alloca);
+    } else {
+        methodArgs.push_back(rightVal);
+    }
+    
+    // 获取或创建方法函数
+    string ownerMod = methodSymbol->moduleName.empty() ? _file->moduleName() : methodSymbol->moduleName;
+    bool methPriv = !methodName.empty() && methodName[0] == '_';
+    vector<TypeInfo> argTypes;
+    argTypes.push_back(rightType);
+    string mangledName = Mangler::method(ownerMod, leftType.name, methodName, argTypes, methPriv);
+    
+    auto fn = _module->getFunction(mangledName);
+    if (!fn) {
+        vector<llvm::Type*> paramTypes;
+        paramTypes.push_back(llvm::PointerType::get(_context, 0));
+        if (rightStructDecl && !isBuiltinType(rightType.name)) {
+            paramTypes.push_back(llvm::PointerType::get(_context, 0));
+        } else {
+            paramTypes.push_back(getLLVMType(rightType));
+        }
+        auto retType = methodSymbol->retType.empty() ? _builder.getVoidTy() : getLLVMType(methodSymbol->retType);
+        auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
+        fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
+    }
+    
+    return _builder.CreateCall(fn, methodArgs);
+}
+
+// 编译自定义类型的一元运算符方法调用
+// 将运算符表达式转换为方法调用，如 -a -> a.neg()
+llvm::Value* Compiler::compileCustomTypeUnaryOp(
+    p<ExprNode> expr, const TypeInfo& type, const string& methodName, int lineNum) {
+    
+    DEBUG_LOG_VAL("    Expr: CustomTypeUnaryOp", type.name << "." << methodName);
+    
+    // 获取操作数的指针
+    llvm::Value* ptr = nullptr;
+    if (auto literal = dynamic_cast<ExprLiteralNode*>(expr)) {
+        if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literal->literal())) {
+            auto varName = objLiteral->getValue().getText();
+            auto it = _localVarPtrs.find(varName);
+            if (it != _localVarPtrs.end()) {
+                ptr = it->second;
+            }
+        }
+    }
+    
+    if (!ptr) {
+        auto val = compileExpr(expr);
+        auto structType = getLLVMType(type);
+        auto alloca = _builder.CreateAlloca(structType, nullptr, "op_tmp");
+        _builder.CreateStore(val, alloca);
+        ptr = alloca;
+    }
+    
+    // 查找方法
+    string methodFullName = type.name + "." + methodName;
+    vector<TypeInfo> methodParamTypes;
+    methodParamTypes.push_back(type);
+    
+    auto methodSymbol = _file->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
+    if (!methodSymbol && _yux && _yux->sdkFile()) {
+        methodSymbol = _yux->sdkFile()->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
+    }
+    
+    if (!methodSymbol) {
+        throw YuxError(lineNum, "Type '{}' does not support unary operator '{}' (method '{}' not found)", 
+                       type.name, methodName == "neg" ? "-" : 
+                       methodName == "inv" ? "~" : 
+                       methodName == "not" ? "!" : methodName, methodName);
+    }
+    
+    // 获取或创建方法函数
+    string ownerMod = methodSymbol->moduleName.empty() ? _file->moduleName() : methodSymbol->moduleName;
+    bool methPriv = !methodName.empty() && methodName[0] == '_';
+    vector<TypeInfo> argTypes;
+    string mangledName = Mangler::method(ownerMod, type.name, methodName, argTypes, methPriv);
+    
+    auto fn = _module->getFunction(mangledName);
+    if (!fn) {
+        vector<llvm::Type*> paramTypes;
+        paramTypes.push_back(llvm::PointerType::get(_context, 0));
+        auto retType = methodSymbol->retType.empty() ? _builder.getVoidTy() : getLLVMType(methodSymbol->retType);
+        auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
+        fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
+    }
+    
+    return _builder.CreateCall(fn, {ptr});
+}
+
 llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
     auto type = node->getType();
+    auto leftType = node->left()->getType();
+    
+    string opStr = (node->op() == ExprAddSubNode::Op::Add) ? "+" : "-";
+    DEBUG_LOG_VAL("    Expr: AddSub", opStr << " : " << type.name);
+    
+    // 检查是否为自定义类型
+    if (!isBuiltinType(leftType.name)) {
+        string methodName = (node->op() == ExprAddSubNode::Op::Add) ? "plus" : "minus";
+        return compileCustomTypeBinaryOp(node->left(), node->right(), leftType, methodName, node->getLineNumber());
+    }
+    
+    // 内置类型：直接生成 LLVM IR
     auto left = compileExpr(node->left());
     auto right = compileExpr(node->right());
     bool isFloat = type.startsWith('f');
-
-    string opStr = (node->op() == ExprAddSubNode::Op::Add) ? "+" : "-";
-    DEBUG_LOG_VAL("    Expr: AddSub", opStr << " : " << type.name);
 
     if (node->op() == ExprAddSubNode::Op::Add) {
         if (isFloat) {
@@ -403,10 +584,7 @@ llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
 
 llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
     auto type = node->getType();
-    auto left = compileExpr(node->left());
-    auto right = compileExpr(node->right());
-    bool isFloat = type.startsWith('f');
-    bool isUnsigned = type.startsWith('u');
+    auto leftType = node->left()->getType();
 
     string opStr;
     switch (node->op()) {
@@ -418,6 +596,23 @@ llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
         break;
     }
     DEBUG_LOG_VAL("    Expr: MulDivMod", opStr << " : " << type.name);
+
+    // 检查是否为自定义类型
+    if (!isBuiltinType(leftType.name)) {
+        string methodName;
+        switch (node->op()) {
+        case ExprMulDivModNode::Op::Mul: methodName = "mul"; break;
+        case ExprMulDivModNode::Op::Div: methodName = "div"; break;
+        case ExprMulDivModNode::Op::Mod: methodName = "mod"; break;
+        }
+        return compileCustomTypeBinaryOp(node->left(), node->right(), leftType, methodName, node->getLineNumber());
+    }
+
+    // 内置类型：直接生成 LLVM IR
+    auto left = compileExpr(node->left());
+    auto right = compileExpr(node->right());
+    bool isFloat = type.startsWith('f');
+    bool isUnsigned = type.startsWith('u');
 
     switch (node->op()) {
     case ExprMulDivModNode::Op::Mul:
@@ -447,8 +642,7 @@ llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
 
 llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
     auto type = node->getType();
-    auto left = compileExpr(node->left());
-    auto right = compileExpr(node->right());
+    auto leftType = node->left()->getType();
 
     string opStr;
     switch (node->op()) {
@@ -464,6 +658,23 @@ llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
         break;
     }
     DEBUG_LOG_VAL("    Expr: BinOp", opStr << " : " << type.name);
+
+    // 检查是否为自定义类型
+    if (!isBuiltinType(leftType.name)) {
+        string methodName;
+        switch (node->op()) {
+        case ExprBinOpNode::Op::And: methodName = "and"; break;
+        case ExprBinOpNode::Op::Or: methodName = "or"; break;
+        case ExprBinOpNode::Op::Xor: methodName = "xor"; break;
+        case ExprBinOpNode::Op::Shl: methodName = "shl"; break;
+        case ExprBinOpNode::Op::Shr: methodName = "shr"; break;
+        }
+        return compileCustomTypeBinaryOp(node->left(), node->right(), leftType, methodName, node->getLineNumber());
+    }
+
+    // 内置类型：直接生成 LLVM IR
+    auto left = compileExpr(node->left());
+    auto right = compileExpr(node->right());
 
     switch (node->op()) {
     case ExprBinOpNode::Op::And:
@@ -490,17 +701,12 @@ llvm::Value* Compiler::compileParenExpr(p<ExprParenNode> node) {
 
 llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
     (void)node->getType();
-    auto left = compileExpr(node->left());
-    auto right = compileExpr(node->right());
     auto leftType = node->left()->getType();
     auto rightType = node->right()->getType();
 
     if (leftType != rightType) {
         throw YuxError(node->getLineNumber(), "Type mismatch in comparison: left is {}, right is {}", leftType.name, rightType.name);
     }
-
-    bool isFloat = leftType.startsWith('f');
-    bool isUnsigned = leftType.startsWith('u');
 
     string opStr;
     switch (node->op()) {
@@ -522,6 +728,42 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
         break;
     }
     DEBUG_LOG_VAL("    Expr: Compare", opStr << " : " << leftType.name);
+
+    // && 和 || 是逻辑运算符，不转换为方法调用
+    if (node->op() == ExprCompareNode::Op::AndAnd || node->op() == ExprCompareNode::Op::OrOr) {
+        auto left = compileExpr(node->left());
+        auto right = compileExpr(node->right());
+        if (node->op() == ExprCompareNode::Op::AndAnd) {
+            auto leftBool = _builder.CreateICmpNE(left, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "and.lhs");
+            auto rightBool = _builder.CreateICmpNE(right, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "and.rhs");
+            return _builder.CreateAnd(leftBool, rightBool, "and");
+        } else {
+            auto leftBool = _builder.CreateICmpNE(left, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "or.lhs");
+            auto rightBool = _builder.CreateICmpNE(right, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "or.rhs");
+            return _builder.CreateOr(leftBool, rightBool, "or");
+        }
+    }
+
+    // 检查是否为自定义类型
+    if (!isBuiltinType(leftType.name)) {
+        string methodName;
+        switch (node->op()) {
+        case ExprCompareNode::Op::Eq: methodName = "eq"; break;
+        case ExprCompareNode::Op::Ne: methodName = "ne"; break;
+        case ExprCompareNode::Op::Lt: methodName = "lt"; break;
+        case ExprCompareNode::Op::Le: methodName = "le"; break;
+        case ExprCompareNode::Op::Gt: methodName = "gt"; break;
+        case ExprCompareNode::Op::Ge: methodName = "ge"; break;
+        default: break;
+        }
+        return compileCustomTypeBinaryOp(node->left(), node->right(), leftType, methodName, node->getLineNumber());
+    }
+
+    // 内置类型：直接生成 LLVM IR
+    auto left = compileExpr(node->left());
+    auto right = compileExpr(node->right());
+    bool isFloat = leftType.startsWith('f');
+    bool isUnsigned = leftType.startsWith('u');
 
     switch (node->op()) {
     case ExprCompareNode::Op::Eq:
@@ -566,16 +808,8 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
             return _builder.CreateICmpUGE(left, right);
         }
         return _builder.CreateICmpSGE(left, right);
-    case ExprCompareNode::Op::AndAnd: {
-        auto leftBool = _builder.CreateICmpNE(left, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "and.lhs");
-        auto rightBool = _builder.CreateICmpNE(right, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "and.rhs");
-        return _builder.CreateAnd(leftBool, rightBool, "and");
-    }
-    case ExprCompareNode::Op::OrOr: {
-        auto leftBool = _builder.CreateICmpNE(left, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "or.lhs");
-        auto rightBool = _builder.CreateICmpNE(right, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "or.rhs");
-        return _builder.CreateOr(leftBool, rightBool, "or");
-    }
+    default:
+        break;
     }
     throw YuxError(node->getLineNumber(), "Unsupported comparison operation");
 }
@@ -916,30 +1150,51 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
 }
 
 llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
-    auto right = compileExpr(node->right());
     auto type = node->getType();
-    bool isFloat = type.startsWith('f');
-    bool isBool = type.name == "bool";
+    auto rightType = node->right()->getType();
 
     string opStr;
     switch (node->op()) {
     case ExprUnaryNode::Op::Neg:
         opStr = "-";
-        DEBUG_LOG_VAL("    Expr: Unary", opStr << " : " << type.name);
+        break;
+    case ExprUnaryNode::Op::Rev:
+        opStr = "~";
+        break;
+    case ExprUnaryNode::Op::Not:
+        opStr = "!";
+        break;
+    }
+    DEBUG_LOG_VAL("    Expr: Unary", opStr << " : " << type.name);
+
+    // 检查是否为自定义类型
+    if (!isBuiltinType(rightType.name)) {
+        string methodName;
+        switch (node->op()) {
+        case ExprUnaryNode::Op::Neg: methodName = "neg"; break;
+        case ExprUnaryNode::Op::Rev: methodName = "inv"; break;
+        case ExprUnaryNode::Op::Not: methodName = "not"; break;
+        }
+        return compileCustomTypeUnaryOp(node->right(), rightType, methodName, node->getLineNumber());
+    }
+
+    // 内置类型：直接生成 LLVM IR
+    auto right = compileExpr(node->right());
+    bool isFloat = type.startsWith('f');
+    bool isBool = type.name == "bool";
+
+    switch (node->op()) {
+    case ExprUnaryNode::Op::Neg:
         if (isFloat) {
             return _builder.CreateFNeg(right, "neg");
         }
         return _builder.CreateNeg(right, "neg");
     case ExprUnaryNode::Op::Rev:
-        opStr = "~";
-        DEBUG_LOG_VAL("    Expr: Unary", opStr << " : " << type.name);
         if (isFloat) {
             throw YuxError(node->getLineNumber(), "Cannot apply bitwise NOT to float type: {}", type.name);
         }
         return _builder.CreateNot(right, "not");
     case ExprUnaryNode::Op::Not:
-        opStr = "!";
-        DEBUG_LOG_VAL("    Expr: Unary", opStr << " : " << type.name);
         if (!isBool) {
             throw YuxError(node->getLineNumber(), "Cannot apply logical NOT to non-bool type: {}", type.name);
         }

@@ -1,81 +1,31 @@
 use yux.core.*
 
+struct N {
+  v i32
+}
+
+N {
+
+  fn N(v i32) {
+    self.v = v
+  }
+
+  ; 算术运算符
+  fn plus(other N) N {
+    N(self.v + other.v)
+  }
+}
+
+
 fn main() {
-    ; 测试声明语句（无初始化）
-    println("=== 声明语句测试 ===")
-    
-    ; 声明变量但不初始化
-    var a i32
-    var b i64
-    var c f32
-    
-    ; 后续赋值
-    a = 10
-    b = 20
-    c = 3.14
-    
-    println(a.to_string())
-    println(b.to_string())
-    println(c.to_string())
-    
-    println("=== 声明语句测试完成 ===")
-    
-    ; 测试 Array<T> 的公开方法
-    println("=== Array<T> 公开方法测试 ===")
-    
-    ; 创建数组
-    var arr Array<i32> = [1, 2, 3]
-    var len1 i64 = arr.len()
-    println(len1.to_string())
-    
-    ; 测试 push
-    arr.push(4)
-    arr.push(5)
-    var len2 i64 = arr.len()
-    println(len2.to_string())
-    
-    ; 测试 at
-    var elem i32 = arr.at(2i64)
-    println(elem.to_string())
-    
-    ; 测试 first 和 last
-    var first_elem i32 = arr.first()
-    println(first_elem.to_string())
-    
-    var last_elem i32 = arr.last()
-    println(last_elem.to_string())
-    
-    ; 测试 pop
-    var popped i32 = arr.pop()
-    println(popped.to_string())
-    var len3 i64 = arr.len()
-    println(len3.to_string())
-    
-    ; 测试 is_empty
-    var empty bool = arr.is_empty()
-    println(empty.to_string())
-    
-    ; 测试 clear
-    arr.clear()
-    var len4 i64 = arr.len()
-    println(len4.to_string())
-    var empty2 bool = arr.is_empty()
-    println(empty2.to_string())
-    
-    ; 测试 set_len
-    arr.push(10)
-    arr.push(20)
-    arr.push(30)
-    var len5 i64 = arr.len()
-    println(len5.to_string())
-    
-    arr.set_len(2i64)
-    var len6 i64 = arr.len()
-    println(len6.to_string())
-    
-    ; 测试 cap
-    var cap1 i64 = arr.cap()
-    println(cap1.to_string())
-    
-    println("=== 测试完成 ===")
+  println("=== 调用语法糖测试 ===")
+  var n N = N(1)
+  var n2 N = N(2)
+  var n3 = n.plus(n2)
+  println(n3.v.to_string())
+  
+  var a = 1
+  var b = a.plus(2)
+  println(b.to_string())
+  println("=== 测试完成 ===")
 }

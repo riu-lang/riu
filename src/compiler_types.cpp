@@ -165,6 +165,12 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     // 先应用类型替换
     auto type = applySubst(rawType);
     DEBUG_LOG_VAL("  getLLVMType", type.name << " (kind=" << static_cast<int>(type.kind) << ")");
+    
+    // 空类型返回 void
+    if (type.empty()) {
+        DEBUG_LOG("    -> Void type");
+        return _builder.getVoidTy();
+    }
 
     // 固定大小数组 [N]T
     if (type.isArray()) {
@@ -257,6 +263,31 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     if (it != _structTypes.end()) {
         DEBUG_LOG_VAL("    -> Struct (cached)", type.name);
         return it->second;
+    }
+
+    // 尝试查找并创建结构体类型
+    auto structDecl = _file->getStructDecl(type.name);
+    p<FileNode> sourceFile = _file;
+    if (!structDecl && _yux && _yux->sdkFile()) {
+        structDecl = _yux->sdkFile()->getStructDecl(type.name);
+        sourceFile = _yux->sdkFile();
+    }
+    if (!structDecl) {
+        for (auto* imp : _file->wildcardImports()) {
+            structDecl = imp->getStructDecl(type.name);
+            if (structDecl) {
+                sourceFile = imp;
+                break;
+            }
+        }
+    }
+    
+    if (structDecl) {
+        DEBUG_LOG_VAL("    -> Struct (creating on demand)", type.name);
+        auto structType = getOrCreateStructType(structDecl, sourceFile);
+        if (structType) {
+            return structType;
+        }
     }
 
     DEBUG_LOG_VAL("    -> Unknown type (null)", type.name);

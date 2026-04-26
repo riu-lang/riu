@@ -1179,6 +1179,205 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         }
     }
     
+    // 处理 #CompilerInner 运算符方法：直接生成 LLVM IR
+    if (isCompilerInnerMethod(baseType.name, member)) {
+        auto baseVal = compileExpr(baseExpr);
+        bool isFloat = baseType.startsWith('f');
+        bool isUnsigned = baseType.startsWith('u');
+        
+        // 算术运算符
+        if (member == "plus") {
+            DEBUG_LOG_VAL("    Expr: CompilerInner plus", baseType.name);
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), "plus requires 1 argument");
+            }
+            if (isFloat) {
+                return _builder.CreateFAdd(baseVal, args[0], "add");
+            }
+            return _builder.CreateAdd(baseVal, args[0], "add");
+        }
+        if (member == "minus") {
+            DEBUG_LOG_VAL("    Expr: CompilerInner minus", baseType.name);
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), "minus requires 1 argument");
+            }
+            if (isFloat) {
+                return _builder.CreateFSub(baseVal, args[0], "sub");
+            }
+            return _builder.CreateSub(baseVal, args[0], "sub");
+        }
+        if (member == "mul") {
+            DEBUG_LOG_VAL("    Expr: CompilerInner mul", baseType.name);
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), "mul requires 1 argument");
+            }
+            if (isFloat) {
+                return _builder.CreateFMul(baseVal, args[0], "mul");
+            }
+            return _builder.CreateMul(baseVal, args[0], "mul");
+        }
+        if (member == "div") {
+            DEBUG_LOG_VAL("    Expr: CompilerInner div", baseType.name);
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), "div requires 1 argument");
+            }
+            if (isFloat) {
+                return _builder.CreateFDiv(baseVal, args[0], "div");
+            }
+            if (isUnsigned) {
+                return _builder.CreateUDiv(baseVal, args[0], "div");
+            }
+            return _builder.CreateSDiv(baseVal, args[0], "div");
+        }
+        if (member == "mod") {
+            DEBUG_LOG_VAL("    Expr: CompilerInner mod", baseType.name);
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), "mod requires 1 argument");
+            }
+            if (isFloat) {
+                return _builder.CreateFRem(baseVal, args[0], "mod");
+            }
+            if (isUnsigned) {
+                return _builder.CreateURem(baseVal, args[0], "mod");
+            }
+            return _builder.CreateSRem(baseVal, args[0], "mod");
+        }
+        
+        // 比较运算符
+        if (member == "eq") {
+            DEBUG_LOG_VAL("    Expr: CompilerInner eq", baseType.name);
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), "eq requires 1 argument");
+            }
+            if (isFloat) {
+                return _builder.CreateFCmpOEQ(baseVal, args[0], "eq");
+            }
+            return _builder.CreateICmpEQ(baseVal, args[0], "eq");
+        }
+        if (member == "ne") {
+            DEBUG_LOG_VAL("    Expr: CompilerInner ne", baseType.name);
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), "ne requires 1 argument");
+            }
+            if (isFloat) {
+                return _builder.CreateFCmpONE(baseVal, args[0], "ne");
+            }
+            return _builder.CreateICmpNE(baseVal, args[0], "ne");
+        }
+        if (member == "lt") {
+            DEBUG_LOG_VAL("    Expr: CompilerInner lt", baseType.name);
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), "lt requires 1 argument");
+            }
+            if (isFloat) {
+                return _builder.CreateFCmpOLT(baseVal, args[0], "lt");
+            }
+            if (isUnsigned) {
+                return _builder.CreateICmpULT(baseVal, args[0], "lt");
+            }
+            return _builder.CreateICmpSLT(baseVal, args[0], "lt");
+        }
+        if (member == "le") {
+            DEBUG_LOG_VAL("    Expr: CompilerInner le", baseType.name);
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), "le requires 1 argument");
+            }
+            if (isFloat) {
+                return _builder.CreateFCmpOLE(baseVal, args[0], "le");
+            }
+            if (isUnsigned) {
+                return _builder.CreateICmpULE(baseVal, args[0], "le");
+            }
+            return _builder.CreateICmpSLE(baseVal, args[0], "le");
+        }
+        if (member == "gt") {
+            DEBUG_LOG_VAL("    Expr: CompilerInner gt", baseType.name);
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), "gt requires 1 argument");
+            }
+            if (isFloat) {
+                return _builder.CreateFCmpOGT(baseVal, args[0], "gt");
+            }
+            if (isUnsigned) {
+                return _builder.CreateICmpUGT(baseVal, args[0], "gt");
+            }
+            return _builder.CreateICmpSGT(baseVal, args[0], "gt");
+        }
+        if (member == "ge") {
+            DEBUG_LOG_VAL("    Expr: CompilerInner ge", baseType.name);
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), "ge requires 1 argument");
+            }
+            if (isFloat) {
+                return _builder.CreateFCmpOGE(baseVal, args[0], "ge");
+            }
+            if (isUnsigned) {
+                return _builder.CreateICmpUGE(baseVal, args[0], "ge");
+            }
+            return _builder.CreateICmpSGE(baseVal, args[0], "ge");
+        }
+        
+        // 位运算符
+        if (member == "and") {
+            DEBUG_LOG_VAL("    Expr: CompilerInner and", baseType.name);
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), "and requires 1 argument");
+            }
+            return _builder.CreateAnd(baseVal, args[0], "and");
+        }
+        if (member == "or") {
+            DEBUG_LOG_VAL("    Expr: CompilerInner or", baseType.name);
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), "or requires 1 argument");
+            }
+            return _builder.CreateOr(baseVal, args[0], "or");
+        }
+        if (member == "xor") {
+            DEBUG_LOG_VAL("    Expr: CompilerInner xor", baseType.name);
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), "xor requires 1 argument");
+            }
+            return _builder.CreateXor(baseVal, args[0], "xor");
+        }
+        if (member == "shl") {
+            DEBUG_LOG_VAL("    Expr: CompilerInner shl", baseType.name);
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), "shl requires 1 argument");
+            }
+            return _builder.CreateShl(baseVal, args[0], "shl");
+        }
+        if (member == "shr") {
+            DEBUG_LOG_VAL("    Expr: CompilerInner shr", baseType.name);
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), "shr requires 1 argument");
+            }
+            if (isUnsigned) {
+                return _builder.CreateLShr(baseVal, args[0], "shr");
+            }
+            return _builder.CreateAShr(baseVal, args[0], "shr");
+        }
+        
+        // 一元运算符
+        if (member == "neg") {
+            DEBUG_LOG_VAL("    Expr: CompilerInner neg", baseType.name);
+            if (isFloat) {
+                return _builder.CreateFNeg(baseVal, "neg");
+            }
+            return _builder.CreateNeg(baseVal, "neg");
+        }
+        if (member == "inv") {
+            DEBUG_LOG_VAL("    Expr: CompilerInner inv", baseType.name);
+            if (isFloat) {
+                throw YuxError(callNode->getLineNumber(), "Cannot apply bitwise NOT to float type: {}", baseType.name);
+            }
+            return _builder.CreateNot(baseVal, "inv");
+        }
+        if (member == "not") {
+            DEBUG_LOG_VAL("    Expr: CompilerInner not", baseType.name);
+            return _builder.CreateNot(baseVal, "not");
+        }
+    }
+    
     vector<TypeInfo> methodParamTypes;
     methodParamTypes.push_back(baseType);
     for (auto& t : argTypes) {
