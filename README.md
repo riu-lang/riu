@@ -70,7 +70,8 @@ yux-lang/
 ├── third_party/          # 外部依赖
 ├── bin/                  # 二进制工具（antlr4 jar 等）
 ├── build/                # 编译输出
-└── yux-vscode/           # VSCode 扩展
+├── yux-vscode/           # VSCode 扩展
+└── yux-idea/             # IntelliJ 插件（通过 LSP4IJ 接入 yux lsp）
 ```
 
 ### 初始化项目
@@ -144,6 +145,12 @@ entry="main.yux"
 | `build <name>` | 项目构建子命令 |
 | `--emit-ir` | 输出 LLVM IR 到 .ll 文件 |
 | `-d, --debug` | 输出编译 IR 调试信息（仅 Debug 构建） |
+| `lsp` | 以 stdio 启动语言服务器（供 [yux-vscode](yux-vscode/) / [yux-idea](yux-idea/) 等编辑器集成使用） |
+
+## 编辑器支持
+
+- [`yux-vscode/`](yux-vscode/) —— VSCode 扩展
+- [`yux-idea/`](yux-idea/) —— IntelliJ 系插件，通过 [LSP4IJ](https://github.com/redhat-developer/lsp4ij) 接入 `yux lsp`
 
 ## 测试
 

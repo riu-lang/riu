@@ -15,6 +15,7 @@
 #include "document.h"
 #include "position.h"
 #include "completion.h"
+#include "semantic_tokens.h"
 #include "workspace.h"
 #include "symbol_lookup.h"
 #include "../formatter.h"
@@ -95,6 +96,13 @@ static json buildCapabilities() {
         {"signatureHelpProvider", {
             {"triggerCharacters", json::array({"(", ","})},
         }},
+        {"semanticTokensProvider", {
+            {"legend", {
+                {"tokenTypes", json(semanticTokenTypes())},
+                {"tokenModifiers", json(semanticTokenModifiers())},
+            }},
+            {"full", true},
+        }},
     };
 }
 
@@ -144,7 +152,7 @@ static void handleInitialize(ServerState& st, const json& msg) {
         {"serverInfo", {{"name", "yux-lsp"}, {"version", "0.1.0"}}},
     };
     sendResult(id, std::move(result));
-    (void)st; // initialized 状态在收到 "initialized" 通知后才置位
+    (void)st;
 }
 
 static void handleShutdown(ServerState& st, const json& msg) {
@@ -380,7 +388,12 @@ locateLookup(Project& project, const LookupResult& r) {
     s.line = static_cast<int>(tok.getLine() > 0 ? tok.getLine() - 1 : 0);
     s.character = static_cast<int>(tok.getCharPositionInLine());
     e.line = s.line;
-    e.character = s.character + static_cast<int>(tok.getText().size());
+    // 名字 token 不含换行；用 codepoint 计长度，与 character（codepoint 列）一致
+    const std::string& tn = tok.getText();
+    int cpLen = 0;
+    try { cpLen = static_cast<int>(utf8::distance(tn.begin(), tn.end())); }
+    catch (...) { cpLen = static_cast<int>(tn.size()); }
+    e.character = s.character + cpLen;
     return std::make_pair(pathToUri(ownerPath), std::make_pair(s, e));
 }
 
@@ -407,11 +420,16 @@ static void handleDefinition(ServerState& st, const json& msg) {
     auto lk = lookupName(*resolved.project, resolved.file, hit.text);
     auto loc = locateLookup(*resolved.project, lk);
     if (!loc) { sendResult(id, nullptr); return; }
-    json result = {
-        {"uri", loc->first},
-        {"range", rangeToJson(loc->second.first, loc->second.second)},
+    // 始终返回 LocationLink：originSelectionRange 限制 ctrl-hover 时
+    // 客户端显示的可点击下划线范围（否则没有 PSI 的客户端会按整行兜底）。
+    // LSP4IJ 等现代客户端均支持 LocationLink；不支持的客户端会忽略。
+    json link = {
+        {"originSelectionRange", rangeToJson(hit.start, hit.end)},
+        {"targetUri", loc->first},
+        {"targetRange", rangeToJson(loc->second.first, loc->second.second)},
+        {"targetSelectionRange", rangeToJson(loc->second.first, loc->second.second)},
     };
-    sendResult(id, std::move(result));
+    sendResult(id, json::array({std::move(link)}));
 }
 
 static void handleHover(ServerState& st, const json& msg) {
@@ -474,6 +492,19 @@ static void handleSignatureHelp(ServerState& st, const json& msg) {
         {"activeParameter", cc.activeParam},
     };
     sendResult(id, std::move(result));
+}
+
+static void handleSemanticTokensFull(ServerState& st, const json& msg) {
+    const json id = extractId(msg);
+    const json params = msg.value("params", json::object());
+    const std::string uri = textDocumentUri(params);
+    Document* doc = uri.empty() ? nullptr : st.docs.get(uri);
+    json data = json::array();
+    if (doc) {
+        auto encoded = computeSemanticTokens(doc->text());
+        for (int v : encoded) data.push_back(v);
+    }
+    sendResult(id, json{{"data", std::move(data)}});
 }
 
 static void handleDocumentSymbol(ServerState& st, const json& msg) {
@@ -576,6 +607,10 @@ static bool dispatch(ServerState& st, const json& msg) {
     }
     if (method == "textDocument/signatureHelp") {
         handleSignatureHelp(st, msg);
+        return true;
+    }
+    if (method == "textDocument/semanticTokens/full") {
+        handleSemanticTokensFull(st, msg);
         return true;
     }
 

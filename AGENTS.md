@@ -121,6 +121,7 @@ yux-lang/
 ├── bin/              二进制工具：antlr-4.13.2-complete.jar（由 sync-deps 拉取）
 ├── build/            xmake 与 yux 共用产物目录，详见「构建输出布局」
 ├── yux-vscode/       VSCode 语法高亮插件
+├── yux-idea/         IntelliJ 插件（通过 LSP4IJ 接入 `yux lsp`，含语法高亮 / 配色 / 代码风格）
 ├── xmake.lua         顶层构建脚本
 ├── yux.toml          仓库自身的 dogfood 项目配置
 ├── CURRENT.md        当前多步任务追踪
