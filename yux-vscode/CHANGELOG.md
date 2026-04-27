@@ -4,6 +4,14 @@ All notable changes to the "yux-vscode" extension will be documented in this fil
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.3.0]
+
+- 切换为纯 LSP 客户端：删除内置 antlr-ng / antlr4ng / 自带 parser / scope / 跨文件索引
+- 语言服务全部由编译器 `yux lsp` 子命令提供（stdio JSON-RPC）
+- 新增配置项 `yux.executablePath` 指定 yux 可执行文件路径，留空走 PATH
+- 当前由服务器提供能力：诊断、文档符号、格式化、静态补全（关键字 / 类型 / 内置函数 / snippet）
+- 跳转 / hover / signatureHelp / 动态补全将在后续版本由服务器补齐
+
 ## [0.2.0]
 
 - 用基于 `src/yux.g4` 生成的 antlr-ng parser（通过 `-D language=TypeScript` 覆盖 .g4 的 Cpp 目标）替换原正则方案

@@ -1,8 +1,8 @@
 {
   "name": "yux-vscode",
   "displayName": "yux-vscode",
-  "description": "Yux language support for VS Code",
-  "version": "0.2.4",
+  "description": "Yux language support for VS Code (LSP client)",
+  "version": "0.3.0",
   "author": "yux-lang",
   "license": "MIT",
   "engines": {
@@ -11,33 +11,22 @@
   "categories": [
     "Programming Languages"
   ],
-  "capabilities": {
-    "definitionProvider": true,
-    "documentSymbolProvider": true,
-    "referencesProvider": true,
-    "hoverProvider": true,
-    "documentFormattingProvider": true,
-    "signatureHelpProvider": {
-      "triggerCharacters": [
-        "(",
-        ","
-      ]
-    },
-    "completionProvider": {
-      "resolveProvider": false,
-      "triggerCharacters": [
-        ".",
-        " ",
-        "(",
-        "{"
-      ]
-    }
-  },
   "activationEvents": [
     "onLanguage:yux"
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "configuration": {
+      "type": "object",
+      "title": "Yux",
+      "properties": {
+        "yux.executablePath": {
+          "type": "string",
+          "default": "",
+          "description": "yux 编译器可执行文件路径。留空则使用 PATH 中的 `yux`（Windows 为 `yux.exe`）。`yux lsp` 子命令将作为语言服务器启动。"
+        }
+      }
+    },
     "configurationDefaults": {
       "[yux]": {
         "editor.tabSize": 2,
@@ -73,30 +62,25 @@
           "meta.embedded.block.yux": "yux"
         }
       }
-    ],
-    "commands": [
-      {
-        "command": "yux-vscode.helloWorld",
-        "title": "Hello World"
-      }
     ]
   },
   "scripts": {
-    "vscode:prepublish": "pnpm run package",
-    "compile": "pnpm run check-types && pnpm run lint && node esbuild.js",
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-    "package": "pnpm run check-types && pnpm run lint && node esbuild.js --production",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
-    "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vscode-test",
-    "build": "vsce package",
-    "gen:parser": "node scripts/gen-parser.mjs",
-    "smoke:parse": "node scripts/smoke-parse.mjs"
+    "build": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -105,8 +89,6 @@
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.7.1",
-    "antlr-ng": "^1.0.10",
-    "antlr4ng": "^3.0.16",
     "esbuild": "^0.27.3",
     "eslint": "^9.39.3",
     "npm-run-all": "^4.1.5",

@@ -32,6 +32,7 @@
 #include "yux.h"
 #include "build_cache.h"
 #include "formatter.h"
+#include "lsp/lsp_server.h"
 
 #include "CLI/CLI.hpp"
 
@@ -417,6 +418,8 @@ int wmain(int argc, wchar_t* argv[]) {
     buildCmd->add_flag("-d,--debug", debug, "Output compilation IR debug information");
 #endif
 
+    auto* lspCmd = app.add_subcommand("lsp", "Run as a Language Server (stdio JSON-RPC)");
+
     auto* formatCmd = app.add_subcommand("format", "Format a .yux source file");
     std::string formatFile;
     formatCmd->add_option("file", formatFile, "Input .yux file to format");
@@ -426,6 +429,11 @@ int wmain(int argc, wchar_t* argv[]) {
     formatCmd->add_flag("--stdin", formatStdin, "Read from stdin instead of file");
 
     CLI11_PARSE(app, argc, argv);
+
+    // 处理 LSP 子命令：进入 stdio JSON-RPC 主循环
+    if (lspCmd->parsed()) {
+        return yux::lsp::runServer();
+    }
 
     // 处理格式化命令
     if (formatCmd->parsed()) {

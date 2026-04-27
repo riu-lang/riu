@@ -156,11 +156,13 @@ target("yux")
     add_includedirs(path.join(third_party, "utfcpp/source"))
     add_includedirs(path.join(third_party, "toml11/single_include"))
     add_includedirs(path.join(third_party, "cli11/include"))
+    add_includedirs(path.join(third_party, "nlohmann_json/single_include"))
     add_includedirs(path.join(third_party, "llvm/llvm/include"))
     add_includedirs(path.join(third_party, "llvm/lld/include"))
 
     add_files("src/*.cpp")
     add_files("src/node/*.cpp")
+    add_files("src/lsp/*.cpp")
     add_files("gen/yux/*.cpp")
 
     add_defines("UNICODE", "NOMINMAX", "ANTLR4CPP_STATIC")
@@ -192,6 +194,7 @@ local third_party_licenses = {
     {lib = "utfcpp", license = "LICENSE"},
     {lib = "zlib", license = "LICENSE"},
     {lib = "toml11", license = "LICENSE"},
+    {lib = "nlohmann_json", license = "LICENSE.MIT"},
 }
 
 xpack("yux")

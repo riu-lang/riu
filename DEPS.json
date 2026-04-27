@@ -18,6 +18,10 @@
       "url": "https://github.com/llvm/llvm-project.git",
       "commit": "e9846648fd6183ee6d8cbdb4502213fcf902a211"
     },
+    "nlohmann_json": {
+      "url": "https://github.com/nlohmann/json.git",
+      "commit": "55f93686c01528224f448c19128836e7df245f72"
+    },
     "toml11": {
       "url": "https://github.com/ToruNiina/toml11.git",
       "commit": "be08ba2be2a964edcdb3d3e3ea8d100abc26f286"
