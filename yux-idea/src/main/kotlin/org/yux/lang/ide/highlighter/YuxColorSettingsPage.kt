@@ -55,6 +55,7 @@ class YuxColorSettingsPage : ColorSettingsPage {
             AttributesDescriptor("数字",       YuxColors.NUMBER),
             AttributesDescriptor("关键字",     YuxColors.KEYWORD),
             AttributesDescriptor("运算符",     YuxColors.OPERATOR),
+            AttributesDescriptor("构建注解",   YuxColors.METADATA),
             AttributesDescriptor("标识符",     YuxColors.IDENTIFIER),
             AttributesDescriptor("变量",       YuxColors.VARIABLE),
             AttributesDescriptor("参数",       YuxColors.PARAMETER),

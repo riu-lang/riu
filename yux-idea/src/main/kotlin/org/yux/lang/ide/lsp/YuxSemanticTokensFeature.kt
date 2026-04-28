@@ -28,6 +28,7 @@ class YuxSemanticTokensFeature : LSPSemanticTokensFeature() {
             "method"    -> YuxColors.METHOD
             "property"  -> YuxColors.PROPERTY
             "parameter" -> YuxColors.PARAMETER
+            "metadata"  -> YuxColors.METADATA
             else        -> super.getTextAttributesKey(tokenType, tokenModifiers, file)
         }
     }

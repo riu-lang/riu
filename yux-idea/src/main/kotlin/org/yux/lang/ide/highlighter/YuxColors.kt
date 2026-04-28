@@ -14,6 +14,7 @@ object YuxColors {
     val NUMBER        = key("YUX_NUMBER",       Default.NUMBER)
     val KEYWORD       = key("YUX_KEYWORD",      Default.KEYWORD)
     val OPERATOR      = key("YUX_OPERATOR",     Default.OPERATION_SIGN)
+    val METADATA      = key("YUX_METADATA",     Default.METADATA)
 
     val IDENTIFIER    = key("YUX_IDENTIFIER",   Default.IDENTIFIER)
     val VARIABLE      = key("YUX_VARIABLE",     Default.LOCAL_VARIABLE)

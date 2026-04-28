@@ -102,6 +102,15 @@ class YuxLexer : LexerBase() {
             return
         }
 
+        // 构建注解 #Name
+        if (c == '#' && tokenStart + 1 < endOffset && isIdStart(buffer[tokenStart + 1])) {
+            var i = tokenStart + 2
+            while (i < endOffset && isIdPart(buffer[i])) i++
+            tokenEnd = i
+            tokenType = YuxTokenTypes.METADATA
+            return
+        }
+
         // 标识符或关键字（含非 ASCII）
         if (isIdStart(c)) {
             var i = tokenStart + 1

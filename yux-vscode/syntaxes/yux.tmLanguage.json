@@ -21,11 +21,11 @@
     "annotations": {
       "patterns": [
         {
-          "name": "meta.annotation.build.yux",
+          "name": "meta.annotation.yux",
           "match": "(#)([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": { "name": "punctuation.definition.annotation.yux" },
-            "2": { "name": "entity.name.tag.annotation.yux" }
+            "2": { "name": "meta.annotation.name.yux" }
           }
         }
       ]

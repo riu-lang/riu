@@ -23,6 +23,7 @@ class YuxSyntaxHighlighter : SyntaxHighlighterBase() {
             YuxTokenTypes.CODE_POINT   -> CODE_POINT
             YuxTokenTypes.NUMBER       -> NUMBER
             YuxTokenTypes.KEYWORD      -> KEYWORD
+            YuxTokenTypes.METADATA     -> METADATA
             else -> EMPTY
         }
 
@@ -32,6 +33,7 @@ class YuxSyntaxHighlighter : SyntaxHighlighterBase() {
         private val CODE_POINT = arrayOf(YuxColors.CODE_POINT)
         private val NUMBER     = arrayOf(YuxColors.NUMBER)
         private val KEYWORD    = arrayOf(YuxColors.KEYWORD)
+        private val METADATA   = arrayOf(YuxColors.METADATA)
         private val EMPTY      = emptyArray<TextAttributesKey>()
     }
 }

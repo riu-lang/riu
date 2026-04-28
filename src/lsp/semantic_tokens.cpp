@@ -30,11 +30,12 @@ enum class TT : int {
     Property = 8,
     Parameter = 9,
     Method = 10,
+    Metadata = 11,
 };
 
 const std::vector<std::string> kTypes = {
     "keyword", "operator", "string", "number", "comment",
-    "variable", "class", "function", "property", "parameter", "method",
+    "variable", "class", "function", "property", "parameter", "method", "metadata",
 };
 const std::vector<std::string> kModifiers = {
     "declaration",
@@ -146,6 +147,9 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
         }
     } else if (auto* c = dynamic_cast<P::FnHeaderContext*>(node)) {
         put(out, c->name, TT::Function, MOD_DECLARATION);
+    } else if (auto* c = dynamic_cast<P::BuildAnnoContext*>(node)) {
+        // 构建注解 #Name
+        if (c->name) put(out, c->name, TT::Metadata, 0);
     } else if (auto* c = dynamic_cast<P::FiledDeclContext*>(node)) {
         put(out, c->name, TT::Property, MOD_DECLARATION);
     } else if (auto* c = dynamic_cast<P::FnParamStdContext*>(node)) {

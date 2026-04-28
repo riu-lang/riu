@@ -11,6 +11,7 @@ object YuxTokenTypes {
     @JvmField val CODE_POINT = YuxTokenType("YUX_CODE_POINT")
     @JvmField val NUMBER = YuxTokenType("YUX_NUMBER")
     @JvmField val KEYWORD = YuxTokenType("YUX_KEYWORD")
+    @JvmField val METADATA = YuxTokenType("YUX_METADATA")
     @JvmField val IDENTIFIER = YuxTokenType("YUX_IDENTIFIER")
     @JvmField val SYMBOL = YuxTokenType("YUX_SYMBOL")
 
