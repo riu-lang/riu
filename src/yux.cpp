@@ -54,6 +54,7 @@ p<FileNode> Yux::createSdkFile() {
 
 void Yux::initSingleFileRoot(const string& mainFileAbsPath) {
     _projectRoot = std::filesystem::path(mainFileAbsPath).parent_path().string();
+    _sourceRoot = _projectRoot;
 }
 
 void Yux::initProjectFromDir(const string& rootDir) {
@@ -64,6 +65,9 @@ void Yux::initProjectFromDir(const string& rootDir) {
         throw YuxError("yux.toml not found in " + rootDir, 1);
     }
     _projectRoot = root.string();
+    // 项目模式下，模块/包根路径是 `<projectRoot>/src`
+    fs::path srcDir = root / "src";
+    _sourceRoot = fs::is_directory(srcDir) ? srcDir.string() : _projectRoot;
     try {
         auto data = toml::parse(tomlPath.string());
         // name 是必填字段：缺失或空串都视为配置错误。
@@ -83,6 +87,29 @@ void Yux::initProjectFromDir(const string& rootDir) {
         }
         if (data.contains("version") && data.at("version").is_string()) {
             _projectVersion = data.at("version").as_string();
+        }
+        // [lib] 表：type = "static" | "dynamic"
+        if (data.contains("lib")) {
+            const auto& lib = data.at("lib");
+            if (!lib.is_table()) {
+                throw YuxError("yux.toml `lib` must be a table", 1);
+            }
+            if (lib.contains("type") && lib.at("type").is_string()) {
+                _projectLibType = lib.at("type").as_string();
+            } else {
+                _projectLibType = "static";
+            }
+            if (_projectLibType != "static" && _projectLibType != "dynamic") {
+                throw YuxError("yux.toml `lib.type` must be \"static\" or \"dynamic\"", 1);
+            }
+            // TODO(dynamic): 暂只实现 static；dynamic 待项目依赖功能完善后做
+            if (_projectLibType == "dynamic") {
+                throw YuxError("yux.toml `lib.type=\"dynamic\"` not yet supported", 1);
+            }
+        }
+        // lib 与 entry 互斥
+        if (!_projectLibType.empty() && !_projectEntry.empty()) {
+            throw YuxError("yux.toml `[lib]` and `entry` are mutually exclusive", 1);
         }
     } catch (const YuxError&) {
         throw;
@@ -136,7 +163,7 @@ Yux::ModulePathKind Yux::modulePathKind(const string& moduleName) const {
     if (moduleName.empty()) return ModulePathKind::NotFound;
     string rel = moduleName;
     for (auto& c : rel) if (c == '.') c = '/';
-    fs::path root = _projectRoot.empty() ? fs::path() : fs::path(_projectRoot);
+    fs::path root = _sourceRoot.empty() ? fs::path() : fs::path(_sourceRoot);
     fs::path dirPath = root.empty() ? fs::path(rel) : (root / rel);
     fs::path filePath = dirPath; filePath += ".yux";
     bool hasFile = fs::exists(filePath) && fs::is_regular_file(filePath);
@@ -152,7 +179,7 @@ vector<string> Yux::listPackageYuxChildren(const string& moduleName) const {
     vector<string> out;
     string rel = moduleName;
     for (auto& c : rel) if (c == '.') c = '/';
-    fs::path root = _projectRoot.empty() ? fs::path() : fs::path(_projectRoot);
+    fs::path root = _sourceRoot.empty() ? fs::path() : fs::path(_sourceRoot);
     fs::path dirPath = root.empty() ? fs::path(rel) : (root / rel);
     if (!fs::exists(dirPath) || !fs::is_directory(dirPath)) return out;
     for (auto& entry : fs::directory_iterator(dirPath)) {
@@ -170,7 +197,7 @@ vector<string> Yux::listPackageSubdirs(const string& moduleName) const {
     vector<string> out;
     string rel = moduleName;
     for (auto& c : rel) if (c == '.') c = '/';
-    fs::path root = _projectRoot.empty() ? fs::path() : fs::path(_projectRoot);
+    fs::path root = _sourceRoot.empty() ? fs::path() : fs::path(_sourceRoot);
     fs::path dirPath = root.empty() ? fs::path(rel) : (root / rel);
     if (!fs::exists(dirPath) || !fs::is_directory(dirPath)) return out;
     for (auto& entry : fs::directory_iterator(dirPath)) {
@@ -185,7 +212,7 @@ bool Yux::hasPkgFile(const string& moduleName) const {
     namespace fs = std::filesystem;
     string rel = moduleName;
     for (auto& c : rel) if (c == '.') c = '/';
-    fs::path root = _projectRoot.empty() ? fs::path() : fs::path(_projectRoot);
+    fs::path root = _sourceRoot.empty() ? fs::path() : fs::path(_sourceRoot);
     fs::path dirPath = root.empty() ? fs::path(rel) : (root / rel);
     fs::path pkgPath = dirPath / "pkg";
     return fs::exists(pkgPath) && fs::is_regular_file(pkgPath);
@@ -197,7 +224,7 @@ vector<PkgExportItem> Yux::parsePkgFile(const string& moduleName) const {
     
     string rel = moduleName;
     for (auto& c : rel) if (c == '.') c = '/';
-    fs::path root = _projectRoot.empty() ? fs::path() : fs::path(_projectRoot);
+    fs::path root = _sourceRoot.empty() ? fs::path() : fs::path(_sourceRoot);
     fs::path dirPath = root.empty() ? fs::path(rel) : (root / rel);
     fs::path pkgPath = dirPath / "pkg";
     
@@ -264,9 +291,9 @@ p<FileNode> Yux::loadModule(const string& moduleName, int errorLine) {
     }
     relPath += ".yux";
 
-    std::filesystem::path fullPath = _projectRoot.empty()
+    std::filesystem::path fullPath = _sourceRoot.empty()
         ? std::filesystem::path(relPath)
-        : std::filesystem::path(_projectRoot) / relPath;
+        : std::filesystem::path(_sourceRoot) / relPath;
 
     if (!std::filesystem::exists(fullPath)) {
         throw YuxError("module not found: " + moduleName + " (expected file " + fullPath.string() + ")", errorLine);

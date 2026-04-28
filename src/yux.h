@@ -33,10 +33,15 @@ class Yux {
 
     // 项目根目录（含 `yux.toml` 的最近祖先目录；否则为主文件所在目录）
     string _projectRoot;
+    // 模块查找根目录：项目模式 = `_projectRoot/src`，单文件模式 = `_projectRoot`
+    string _sourceRoot;
     // yux.toml 字段；未找到 toml 或字段缺省则为空。
     string _projectName;
     string _projectEntry;
     string _projectVersion;
+    // [lib].type："static" / "dynamic"；空 = 非库项目
+    // TODO(dynamic)：当前仅 static 生效；dynamic 待项目依赖功能补齐
+    string _projectLibType;
 
 public:
     Yux();
@@ -81,11 +86,16 @@ public:
     // toml11 原生 UTF-8，允许中文等非 ASCII 的项目名。
     void initProjectFromDir(const string& rootDir);
     const string& projectRoot() const { return _projectRoot; }
+    // 模块/包源码搜索根：项目模式下为 `<projectRoot>/src`，单文件模式下为主文件所在目录
+    const string& sourceRoot() const { return _sourceRoot; }
     // 项目名：yux.toml 的 `name` 字段（必填，非空）。
     string projectName() const;
     // yux.toml 的 `entry` 字段，缺省返回空串。
     const string& projectEntry() const { return _projectEntry; }
     const string& projectVersion() const { return _projectVersion; }
+    // 是否为库项目；true 时 entry 应为空
+    bool isLibProject() const { return !_projectLibType.empty(); }
+    const string& projectLibType() const { return _projectLibType; }
 
     // 已成功加载的用户模块名列表（按首次加载顺序）。
     const vector<string>& loadOrder() const { return _loadOrder; }

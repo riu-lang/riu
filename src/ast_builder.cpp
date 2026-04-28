@@ -182,8 +182,8 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
 
     if (!wildcard) {
         // 命名空间别名导入：`use a.b.c` 把 `c` 作为指向 a.b.c 的模块/包别名。
-        // 冲突检测：若当前作用域已有同名符号，立即报错。
-        if (file->hasSymbol(alias)) {
+        // 冲突检测：仅看当前文件的本地符号（允许覆盖 SDK 在父作用域注册的同名别名）
+        if (file->localSymbols().contains(alias)) {
             throw YuxError(
                 "module alias `" + alias + "` conflicts with existing symbol",
                 line);

@@ -156,6 +156,15 @@ void FileNode::addModuleAlias(const string& alias, FileNode* file) {
 FileNode* FileNode::moduleAlias(const string& alias) const {
     auto it = _moduleAliases.find(alias);
     if (it != _moduleAliases.end()) return it->second;
+    // 沿父作用域查找（用户文件经父作用域继承 _sdkFile 的别名）
+    ScopeNode* parent = const_cast<FileNode*>(this)->parentScope();
+    while (parent) {
+        if (auto* parentFile = dynamic_cast<FileNode*>(parent)) {
+            auto pit = parentFile->_moduleAliases.find(alias);
+            if (pit != parentFile->_moduleAliases.end()) return pit->second;
+        }
+        parent = parent->parentScope();
+    }
     return nullptr;
 }
 
