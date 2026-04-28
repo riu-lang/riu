@@ -8,7 +8,9 @@ import org.yux.lang.ide.lexer.YuxLexer
 import org.yux.lang.ide.lexer.YuxTokenTypes
 
 /**
- * 仅给 LSP 未就绪/断线时的兜底色。语义色（关键字/类/函数/字段/参数）由 LSP semantic tokens 决定。
+ * 基础语法高亮器：提供注释、字符串、代码点、数字、关键字的高亮。
+ * 语义高亮（类/函数/字段/参数等）由 LSP semantic tokens 提供。
+ * 在 markdown 代码块等内嵌场景下，LSP 无法工作，此时仅使用此基础高亮。
  */
 class YuxSyntaxHighlighter : SyntaxHighlighterBase() {
 
@@ -20,6 +22,7 @@ class YuxSyntaxHighlighter : SyntaxHighlighterBase() {
             YuxTokenTypes.STRING       -> STRING
             YuxTokenTypes.CODE_POINT   -> CODE_POINT
             YuxTokenTypes.NUMBER       -> NUMBER
+            YuxTokenTypes.KEYWORD      -> KEYWORD
             else -> EMPTY
         }
 
@@ -28,6 +31,7 @@ class YuxSyntaxHighlighter : SyntaxHighlighterBase() {
         private val STRING     = arrayOf(YuxColors.STRING)
         private val CODE_POINT = arrayOf(YuxColors.CODE_POINT)
         private val NUMBER     = arrayOf(YuxColors.NUMBER)
+        private val KEYWORD    = arrayOf(YuxColors.KEYWORD)
         private val EMPTY      = emptyArray<TextAttributesKey>()
     }
 }

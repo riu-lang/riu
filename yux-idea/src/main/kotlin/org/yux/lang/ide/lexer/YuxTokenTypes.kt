@@ -10,6 +10,12 @@ object YuxTokenTypes {
     @JvmField val STRING = YuxTokenType("YUX_STRING")
     @JvmField val CODE_POINT = YuxTokenType("YUX_CODE_POINT")
     @JvmField val NUMBER = YuxTokenType("YUX_NUMBER")
+    @JvmField val KEYWORD = YuxTokenType("YUX_KEYWORD")
     @JvmField val IDENTIFIER = YuxTokenType("YUX_IDENTIFIER")
     @JvmField val SYMBOL = YuxTokenType("YUX_SYMBOL")
+
+    val KEYWORDS = setOf(
+        "break", "cval", "elif", "else", "extern", "false", "fn", "if",
+        "loop", "null", "ret", "struct", "true", "use", "val", "var"
+    )
 }

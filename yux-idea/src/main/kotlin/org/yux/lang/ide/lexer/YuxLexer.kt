@@ -5,8 +5,9 @@ import com.intellij.psi.TokenType
 import com.intellij.psi.tree.IElementType
 
 /**
- * 粗粒度手写 Lexer：仅给 IntelliJ token 边界。
- * 真实分色（关键字/类/函数/字段/参数 等）由 LSP semantic tokens 决定。
+ * 手写 Lexer：提供 IntelliJ token 边界。
+ * 识别关键字、注释、字符串、代码点、数字、标识符、符号。
+ * 语义高亮（类/函数/字段/参数等）由 LSP semantic tokens 提供。
  */
 class YuxLexer : LexerBase() {
 
@@ -101,12 +102,13 @@ class YuxLexer : LexerBase() {
             return
         }
 
-        // 标识符（含非 ASCII）
+        // 标识符或关键字（含非 ASCII）
         if (isIdStart(c)) {
             var i = tokenStart + 1
             while (i < endOffset && isIdPart(buffer[i])) i++
             tokenEnd = i
-            tokenType = YuxTokenTypes.IDENTIFIER
+            val text = buffer.subSequence(tokenStart, tokenEnd).toString()
+            tokenType = if (text in YuxTokenTypes.KEYWORDS) YuxTokenTypes.KEYWORD else YuxTokenTypes.IDENTIFIER
             return
         }
 
