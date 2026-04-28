@@ -25,7 +25,7 @@ class YuxSemanticTokensFeature : LSPSemanticTokensFeature() {
             "variable"  -> YuxColors.VARIABLE
             "class"     -> YuxColors.CLASS
             "function"  -> if (isDecl) YuxColors.FUNCTION_DECLARATION else YuxColors.FUNCTION_CALL
-            "method"    -> YuxColors.METHOD
+            "method"    -> if (isDecl) YuxColors.FUNCTION_DECLARATION else YuxColors.FUNCTION_CALL
             "property"  -> YuxColors.PROPERTY
             "parameter" -> YuxColors.PARAMETER
             "metadata"  -> YuxColors.METADATA
