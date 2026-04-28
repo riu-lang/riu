@@ -437,6 +437,55 @@ TypeInfo ExprDotNode::getType() const {
     auto member = _member.getText();
     DEBUG_LOG_VAL("ExprDotNode::getType - member", member);
 
+    // 安全访问 a?.b：base 必须是 Nullable<T>
+    // 类型规则：解出 T，从 T 的字段查 b 的类型 U，结果为 Nullable<U>
+    // 不支持方法调用形式（要求 exprCall 同时知道 safe，目前只解到字段）
+    if (_safe) {
+        auto baseT = _baseExpr->getType();
+        if (!baseT.isNullable()) {
+            throw YuxError(resolveLineNumber(),
+                "`?.` requires Nullable<T> on the left, got {}", baseT.name);
+        }
+        auto innerType = baseT.nullableInnerType();
+        if (!innerType) {
+            throw YuxError(resolveLineNumber(), "Nullable<T> missing inner type T");
+        }
+        auto scope = findNearestScope();
+        FileNode* file = dynamic_cast<FileNode*>(scope);
+        while (!file && scope) {
+            scope = scope->parentScope();
+            file = dynamic_cast<FileNode*>(scope);
+        }
+        if (!file) {
+            return TypeInfo();
+        }
+        auto sd = file->getStructDecl(innerType->name);
+        if (!sd) {
+            throw YuxError(resolveLineNumber(),
+                "`?.` inner type {} has no struct decl", innerType->name);
+        }
+        int idx = sd->fieldIndex(member);
+        if (idx < 0) {
+            throw YuxError(resolveLineNumber(),
+                "Struct {} has no field `{}` (used via ?.)", innerType->name, member);
+        }
+        auto fieldType = sd->fields()[idx]->getType();
+        // 泛型实参替换 T → 实际类型
+        if (innerType->isGeneric() && sd->isGeneric()
+            && innerType->genericArgs.size() == sd->typeParams().size()) {
+            std::map<std::string, TypeInfo> subst;
+            for (size_t i = 0; i < sd->typeParams().size(); ++i) {
+                subst[sd->typeParams()[i]] =
+                    innerType->genericArgs[i] ? *innerType->genericArgs[i] : TypeInfo();
+            }
+            fieldType = fieldType.substitute(subst);
+        }
+        // 包装为 Nullable<U>
+        std::vector<sp<TypeInfo>> args;
+        args.push_back(make_shared<TypeInfo>(fieldType));
+        return TypeInfo("Nullable", args);
+    }
+
     // 链式 Dot 访问 alias-rooted：
     //   模块别名：`alias.fn` → fn_overload。
     //   包别名：`pkg.s1. .. .sN` → 若 s1..s(N-1) 指向已加载的子文件，则 sN 为 fn
@@ -852,4 +901,22 @@ TypeInfo ExprUnaryNode::getType() const {
 int ExprUnaryNode::resolveLineNumber() const {
     if (_line > 0) return _line;
     return _right->resolveLineNumber();
+}
+
+// ExprNullElseNode: a ?? b
+// 类型规则：a 必须是 Nullable<T>，结果类型为 T；b 必须能转为 T
+TypeInfo ExprNullElseNode::getType() const {
+    auto leftType = _left->getType();
+    // 左侧若为 Nullable<T>，结果为 T
+    if (leftType.kind == TypeKind::Generic && leftType.name == "Nullable"
+        && leftType.genericArgs.size() == 1) {
+        return *leftType.genericArgs[0];
+    }
+    // 容错：非 Nullable 时退回右侧类型，由后续语义检查报错
+    return _right->getType();
+}
+
+int ExprNullElseNode::resolveLineNumber() const {
+    if (_line > 0) return _line;
+    return _left->resolveLineNumber();
 }

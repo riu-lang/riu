@@ -329,6 +329,14 @@ void Compiler::emitInstanceMethods() {
             string structName = inst.mangledName;
             DEBUG_LOG_VAL("  Emitting generic instance methods", structName);
 
+            // 编译方法体时把 _file 临时切换到泛型结构体的定义文件（owner）。
+            // 这样体内对其它私有 SDK 函数（如 _exit）的调用，私有可见性检查能通过。
+            // 否则 _file 仍是用户文件，跨模块访问会被拦截。
+            auto savedFile = _file;
+            if (inst.ownerFile && inst.ownerFile != _file) {
+                _file = inst.ownerFile;
+            }
+
             try {
                 // 编译析构函数 (如果有)
                 if (inst.baseImpl->hasDestructor()) {
@@ -367,10 +375,12 @@ void Compiler::emitInstanceMethods() {
                     generateDefaultDestructor(structName);
                 }
             } catch (const YuxError& e) {
+                _file = savedFile;
                 _substStack.pop_back();
                 rethrowWithInstantiationContext(e);  // 附加实例化上下文后重新抛出
             }
 
+            _file = savedFile;
             _substStack.pop_back();
         }
     }

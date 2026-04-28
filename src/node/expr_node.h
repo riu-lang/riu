@@ -160,6 +160,8 @@ class ExprDotNode : public ExprNode {
 protected:
     p<ExprNode> _baseExpr;
     Token _member;
+    // 安全访问标志：true 表示 a?.b（base 为 Nullable<T>，空时整体取 null）
+    bool _safe = false;
 
 public:
     ExprDotNode(const p<Node>& parent, p<ExprNode> baseExpr, Token member) :
@@ -167,8 +169,14 @@ public:
         _baseExpr(baseExpr), _member(member) {
     }
 
+    ExprDotNode(const p<Node>& parent, p<ExprNode> baseExpr, Token member, bool safe) :
+        ExprNode(parent),
+        _baseExpr(baseExpr), _member(member), _safe(safe) {
+    }
+
     [[nodiscard]] const p<ExprNode>& baseExpr() const;
     [[nodiscard]] string member() const;
+    [[nodiscard]] bool isSafe() const { return _safe; }
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
 
@@ -374,6 +382,24 @@ public:
 
     [[nodiscard]] Op op() const;
     [[nodiscard]] const p<ExprNode>& right() const;
+    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] int resolveLineNumber() const override;
+};
+
+// a ?? b：a 为 Nullable<T> 时，有值取 a.get()，否则取 b
+class ExprNullElseNode : public ExprNode {
+    p<ExprNode> _left;
+    p<ExprNode> _right;
+
+public:
+    ExprNullElseNode(const p<Node>& parent, p<ExprNode> left, p<ExprNode> right) :
+        ExprNode(parent),
+        _left(std::move(left)),
+        _right(std::move(right)) {
+    }
+
+    [[nodiscard]] const p<ExprNode>& left() const { return _left; }
+    [[nodiscard]] const p<ExprNode>& right() const { return _right; }
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
 };

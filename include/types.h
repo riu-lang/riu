@@ -77,6 +77,12 @@ public:
         }
     }
 
+    // 合成 Token：用于编译器解糖时构造没有真实 antlr token 的节点
+    // 例如 T? -> Nullable<T> 时，"Nullable" 这个名字没有源文件来源
+    TokenInfo(string text, size_t line)
+        : _text(std::move(text)), _line(line) {
+    }
+
     TokenInfo(const TokenInfo& other) = default;
     TokenInfo(TokenInfo&& other) noexcept = default;
     TokenInfo& operator=(const TokenInfo& other) = default;
@@ -214,6 +220,18 @@ struct TypeInfo {
 
     [[nodiscard]] sp<TypeInfo> arrayGenericElementType() const {
         if (isArrayGeneric() && genericArgs.size() == 1) {
+            return genericArgs[0];
+        }
+        return nullptr;
+    }
+
+    // Nullable<T>：T? 解糖后的类型；layout = { bool _has; T _value }
+    [[nodiscard]] bool isNullable() const {
+        return kind == TypeKind::Generic && name == "Nullable" && genericArgs.size() == 1;
+    }
+
+    [[nodiscard]] sp<TypeInfo> nullableInnerType() const {
+        if (isNullable() && genericArgs.size() == 1) {
             return genericArgs[0];
         }
         return nullptr;

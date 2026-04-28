@@ -296,7 +296,62 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             }
 
             _scopeVars.push_back(varName);  // 加入作用域变量列表 (需要析构)
-        } else {
+        }
+        // 处理 Nullable<T> 类型 (T? 的解糖)
+        // 三种 RHS:
+        //   1) null 字面量 → { _has=false, _value=zeroinit }
+        //   2) T 值 → 隐式包装为 { _has=true, _value=expr }
+        //   3) 已是 Nullable<T> → 整体结构体复制
+        else if (varType.isNullable()) {
+            auto innerType = varType.nullableInnerType();
+            if (!innerType) {
+                throw YuxError(node->getLineNumber(), "Nullable type requires inner type");
+            }
+
+            auto nullableStructType = getLLVMType(varType);
+            auto innerLLVMType = getLLVMType(*innerType);
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+
+            llvm::Value* hasField = _builder.CreateGEP(nullableStructType, alloca, {zero, zero}, "nullable_has");
+            llvm::Value* valueField = _builder.CreateGEP(nullableStructType, alloca, {zero, one}, "nullable_value");
+
+            // 是否是 null 字面量？
+            bool isNullLit = false;
+            if (auto litWrap = dynamic_cast<ExprLiteralNode*>(expr)) {
+                if (dynamic_cast<LiteralNullNode*>(litWrap->literal())) {
+                    isNullLit = true;
+                }
+            }
+
+            if (isNullLit) {
+                // null → _has=false, _value=zero
+                _builder.CreateStore(_builder.getInt1(false), hasField);
+                _builder.CreateStore(llvm::Constant::getNullValue(innerLLVMType), valueField);
+            } else {
+                // 触发 flexible int 推断（如 var x i32? = 5 中 5 推断为 i32）
+                if (isIntTypeName(innerType->name) && isFlexibleIntExpr(expr)) {
+                    tryInferIntType(expr, *innerType);
+                }
+                auto exprType = expr->getType();
+                auto exprVal = compileExpr(expr);
+
+                if (exprType.isNullable() && exprType == varType) {
+                    // 整体复制 Nullable<T>
+                    _builder.CreateStore(exprVal, alloca);
+                } else if (exprType == *innerType) {
+                    // 隐式包装：T → Nullable<T>
+                    _builder.CreateStore(_builder.getInt1(true), hasField);
+                    _builder.CreateStore(exprVal, valueField);
+                } else {
+                    throw YuxError(node->getLineNumber(),
+                        "Cannot assign {} to Nullable<{}>",
+                        exprType.name, innerType->name);
+                }
+            }
+            _scopeVars.push_back(varName);
+        }
+        else {
             // 普通变量
             auto exprVal = compileExpr(expr);
             auto exprType = expr->getType();

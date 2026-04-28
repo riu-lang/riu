@@ -4,6 +4,10 @@ All notable changes to the "yux-vscode" extension will be documented in this fil
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.4.0]
+
+- 新增 `Nullable<T>` / `T?` 可空类型相关高亮：`Nullable` 识别为内置泛型类型；`??`（默认值）和 `?.`（安全字段访问）作为独立运算符高亮
+
 ## [0.3.0]
 
 - 切换为纯 LSP 客户端：删除内置 antlr-ng / antlr4ng / 自带 parser / scope / 跨文件索引

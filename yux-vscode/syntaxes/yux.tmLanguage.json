@@ -200,6 +200,14 @@
     "operators": {
       "patterns": [
         {
+          "name": "keyword.operator.nullable.coalesce.yux",
+          "match": "\\?\\?"
+        },
+        {
+          "name": "keyword.operator.nullable.access.yux",
+          "match": "\\?\\."
+        },
+        {
           "name": "keyword.operator.comparison.yux",
           "match": "(==|!=|<=|>=|<|>)"
         },
@@ -269,7 +277,7 @@
         },
         {
           "name": "support.type.generic.yux",
-          "match": "\\b(Ref|Box|Ptr|Array)\\b"
+          "match": "\\b(Ref|Box|Ptr|Array|Nullable)\\b"
         },
         {
           "name": "support.type.user-defined.yux",

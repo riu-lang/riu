@@ -1207,6 +1207,10 @@ llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
 }
 
 llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
+    // 安全访问 a?.b：单独走分支
+    if (node->isSafe()) {
+        return compileSafeDotExpr(node);
+    }
     auto baseExpr = node->baseExpr();
     auto member = node->member();
 
@@ -1323,6 +1327,162 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
     throw YuxError(node->getLineNumber(), "Unsupported dot expression");
 }
 
+// 编译 a?.b 安全成员访问
+// 语义：a 是 Nullable<T>，T 是结构体，b 是 T 的字段
+//   - a 持值 → Nullable<U>{ has=true, value=a._value.b }
+//   - a 不持值 → Nullable<U>{ has=false, value=zero }
+// 当前实现仅覆盖字段访问；方法调用形式 a?.foo() 不在本阶段
+// 链式 a?.b?.c 自然递归（每层 base 类型为 Nullable<X>，仍走同分支）
+llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
+    auto baseExpr = node->baseExpr();
+    auto member = node->member();
+    auto baseType = baseExpr->getType();
+
+    if (!baseType.isNullable()) {
+        throw YuxError(node->resolveLineNumber(),
+            "`?.` requires Nullable<T> on the left, got {}", baseType.name);
+    }
+    auto innerType = baseType.nullableInnerType();
+    auto innerStructDecl = _file->getStructDecl(innerType->name);
+    if (!innerStructDecl && _yux && _yux->sdkFile()) {
+        innerStructDecl = _yux->sdkFile()->getStructDecl(innerType->name);
+    }
+    if (!innerStructDecl) {
+        throw YuxError(node->resolveLineNumber(),
+            "`?.` inner type {} has no struct decl", innerType->name);
+    }
+    int fieldIdx = innerStructDecl->fieldIndex(member);
+    if (fieldIdx < 0) {
+        throw YuxError(node->resolveLineNumber(),
+            "Struct {} has no field `{}`", innerType->name, member);
+    }
+    auto fieldType = innerStructDecl->fields()[fieldIdx]->getType();
+    if (innerType->isGeneric() && innerStructDecl->isGeneric()
+        && innerType->genericArgs.size() == innerStructDecl->typeParams().size()) {
+        map<string, TypeInfo> subst;
+        for (size_t i = 0; i < innerStructDecl->typeParams().size(); ++i) {
+            subst[innerStructDecl->typeParams()[i]] =
+                innerType->genericArgs[i] ? *innerType->genericArgs[i] : TypeInfo();
+        }
+        fieldType = fieldType.substitute(subst);
+    }
+
+    // 结果类型 Nullable<U>
+    vector<sp<TypeInfo>> nullArgs;
+    nullArgs.push_back(make_shared<TypeInfo>(fieldType));
+    TypeInfo resultType("Nullable", nullArgs);
+
+    auto baseLLVMType = getLLVMType(baseType);     // Nullable<T> struct
+    auto innerLLVMType = getLLVMType(*innerType);  // T struct
+    auto fieldLLVMType = getLLVMType(fieldType);   // U
+    auto resultLLVMType = getLLVMType(resultType); // Nullable<U> struct
+
+    auto baseVal = compileExpr(baseExpr);
+    auto hasVal = _builder.CreateExtractValue(baseVal, {0}, "sd.base.has");
+    auto innerVal = _builder.CreateExtractValue(baseVal, {1}, "sd.base.inner");
+
+    auto resultAlloca = _builder.CreateAlloca(resultLLVMType, nullptr, "sd.result");
+    auto zero32 = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+    auto one32 = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+    auto resHasField = _builder.CreateGEP(resultLLVMType, resultAlloca, {zero32, zero32}, "sd.res.has");
+    auto resValueField = _builder.CreateGEP(resultLLVMType, resultAlloca, {zero32, one32}, "sd.res.value");
+
+    llvm::Function* func = _builder.GetInsertBlock()->getParent();
+    auto thenBB = llvm::BasicBlock::Create(_context, "sd.then", func);
+    auto elseBB = llvm::BasicBlock::Create(_context, "sd.else");
+    auto mergeBB = llvm::BasicBlock::Create(_context, "sd.merge");
+
+    _builder.CreateCondBr(hasVal, thenBB, elseBB);
+
+    // then: 取出 inner 的字段，包装到 result
+    _builder.SetInsertPoint(thenBB);
+    auto innerAlloca = _builder.CreateAlloca(innerLLVMType, nullptr, "sd.inner.tmp");
+    _builder.CreateStore(innerVal, innerAlloca);
+    auto fieldIdxConst = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIdx);
+    auto fieldPtr = _builder.CreateGEP(innerLLVMType, innerAlloca, {zero32, fieldIdxConst}, "sd.field");
+    auto fieldVal = _builder.CreateLoad(fieldLLVMType, fieldPtr, "sd.field.load");
+    _builder.CreateStore(_builder.getInt1(true), resHasField);
+    _builder.CreateStore(fieldVal, resValueField);
+    _builder.CreateBr(mergeBB);
+
+    // else: 空 Nullable<U>
+    func->insert(func->end(), elseBB);
+    _builder.SetInsertPoint(elseBB);
+    _builder.CreateStore(_builder.getInt1(false), resHasField);
+    _builder.CreateStore(llvm::Constant::getNullValue(fieldLLVMType), resValueField);
+    _builder.CreateBr(mergeBB);
+
+    // merge: load result 作为 ssa 值
+    func->insert(func->end(), mergeBB);
+    _builder.SetInsertPoint(mergeBB);
+    return _builder.CreateLoad(resultLLVMType, resultAlloca, "sd.result.load");
+}
+
+// 编译 a ?? b 表达式
+// 语义：a 是 Nullable<T>。a 持值则结果取 a._value，否则取 b（b 必须可转 T）
+// IR 形态：
+//   %has = extractvalue %a, 0
+//   %v   = extractvalue %a, 1
+//   br %has, then, else
+//   then: br merge (carry %v)
+//   else: %r = compile(b); br merge (carry %r)
+//   merge: phi T [%v, then] [%r, else]
+llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
+    auto leftType = node->left()->getType();
+    if (!leftType.isNullable()) {
+        throw YuxError(node->resolveLineNumber(),
+            "Left side of `??` must be Nullable<T>, got {}", leftType.name);
+    }
+    auto innerType = leftType.nullableInnerType();
+    if (!innerType) {
+        throw YuxError(node->resolveLineNumber(), "Nullable<T> missing inner type T");
+    }
+    auto innerLLVMType = getLLVMType(*innerType);
+
+    // flexible int 推断：右侧无后缀整数 → 推断为 T
+    if (isIntTypeName(innerType->name) && isFlexibleIntExpr(node->right())) {
+        tryInferIntType(node->right(), *innerType);
+    }
+
+    // 计算左侧（Nullable 结构体值）
+    auto leftVal = compileExpr(node->left());
+    auto hasVal = _builder.CreateExtractValue(leftVal, {0}, "ne.has");
+    auto valueVal = _builder.CreateExtractValue(leftVal, {1}, "ne.value");
+
+    llvm::Function* func = _builder.GetInsertBlock()->getParent();
+    auto thenBB = llvm::BasicBlock::Create(_context, "ne.then", func);
+    auto elseBB = llvm::BasicBlock::Create(_context, "ne.else");
+    auto mergeBB = llvm::BasicBlock::Create(_context, "ne.merge");
+
+    _builder.CreateCondBr(hasVal, thenBB, elseBB);
+
+    // then: 持值，直接用 _value
+    _builder.SetInsertPoint(thenBB);
+    auto thenEndBB = _builder.GetInsertBlock();
+    _builder.CreateBr(mergeBB);
+
+    // else: 取右侧默认值
+    func->insert(func->end(), elseBB);
+    _builder.SetInsertPoint(elseBB);
+    auto rightVal = compileExpr(node->right());
+    auto rightType = node->right()->getType();
+    if (rightType != *innerType) {
+        throw YuxError(node->resolveLineNumber(),
+            "`??` right side type {} doesn't match Nullable inner type {}",
+            rightType.name, innerType->name);
+    }
+    auto elseEndBB = _builder.GetInsertBlock();
+    _builder.CreateBr(mergeBB);
+
+    // merge: phi 合并
+    func->insert(func->end(), mergeBB);
+    _builder.SetInsertPoint(mergeBB);
+    auto phi = _builder.CreatePHI(innerLLVMType, 2, "ne.result");
+    phi->addIncoming(valueVal, thenEndBB);
+    phi->addIncoming(rightVal, elseEndBB);
+    return phi;
+}
+
 llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
     auto type = node->getType();
     DEBUG_LOG_VAL("  compileExpr", "type=" << (type.empty() ? "void" : type.name));
@@ -1357,6 +1517,8 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         return compileGetRefExpr(getRefNode);
     } else if (auto unaryNode = dynamic_cast<ExprUnaryNode*>(node)) {
         return compileUnaryExpr(unaryNode);
+    } else if (auto nullElseNode = dynamic_cast<ExprNullElseNode*>(node)) {
+        return compileNullElseExpr(nullElseNode);
     } else if (auto arrayInitNode = dynamic_cast<ExprArrayInitNode*>(node)) {
         // 数组填充表达式需要类型注解，这里返回 nullptr
         // 实际处理在 compileDeclareAssignStatement 中

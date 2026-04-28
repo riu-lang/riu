@@ -103,10 +103,12 @@ public:
     std::any visitExprArray(yux::yuxParser::ExprArrayContext* ctx) override;
     std::any visitExprArrayInit(yux::yuxParser::ExprArrayInitContext* ctx) override;
     std::any visitExprUnary(yux::yuxParser::ExprUnaryContext* ctx) override;
+    std::any visitExprNullElse(yux::yuxParser::ExprNullElseContext* ctx) override;
 
     std::any visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) override;
     std::any visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) override;
     std::any visitTypeArray(yux::yuxParser::TypeArrayContext* ctx) override;
+    std::any visitTypeNullable(yux::yuxParser::TypeNullableContext* ctx) override;
 
     std::any visitLiteralNumber(yux::yuxParser::LiteralNumberContext* ctx) override;
     std::any visitLiteralBool(yux::yuxParser::LiteralBoolContext* ctx) override;

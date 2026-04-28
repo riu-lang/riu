@@ -84,18 +84,12 @@ numInt: INT;
 numFloat: FLOAT;
 
 type:
-    typeNormal
-   | typeGeneric
-   | typeArray;
-
-// 普通名
-typeNormal: ID;
-
-// A<T> B<T1, T2>
-typeGeneric: ID genericDef;
-
-// [ type * count ]
-typeArray: GetStart type SymbolMul INT GetEnd;
+    ID #typeNormal
+   | type SymbolQuest #typeNullable
+    // A<T> B<T1, T2>
+   | ID genericDef #typeGeneric
+    // [ type * count ]
+   | GetStart type SymbolMul INT GetEnd #typeArray;
 
 // 共享
 genericDef: SymbolLt types+=type (SymbolComma types+=type)* SymbolMt;
@@ -204,8 +198,9 @@ expr:
              exprElse? # exprIfElse
     // [0 ...] [1u8 ... u8] 填充数组
     | GetStart value=literal SymbolDot SymbolDot SymbolDot type?  GetEnd # exprArrayInit
-    // a.b ...
-    | left=expr SymbolDot member+=ID # exprDot
+    // a.b
+    // a?.b
+    | left=expr SymbolQuest? SymbolDot member+=ID # exprDot
     // [e1, e2]
     | GetStart (velues+=expr (SymbolComma velues+=expr)* )? GetEnd # exprArray
     // e() e(e) e(e,e) e<T>()
@@ -228,7 +223,10 @@ expr:
     | left=expr opEq right=expr # exprEq
     // 布尔
     | left=expr opBool right=expr # exprBool
-    | literal # exprLiteral;
+    | literal # exprLiteral
+    // e ?? e
+    | expr SymbolQuest SymbolQuest expr #exprNullElse
+    ;
 
 // elif {
 // ...

@@ -613,7 +613,8 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
     if (auto gd = ctx->genericDef()) {
         vector<string> typeParams;
         for (auto tCtx : gd->types) {
-            if (auto tn = tCtx->typeNormal()) {
+            // typeNormal 现为 type 的 labeled alternative，需 dynamic_cast 取出
+            if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(tCtx)) {
                 typeParams.push_back(tn->ID()->getText());
             }
         }
@@ -689,7 +690,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
 
     vector<string> typeParams;
     for (auto tCtx : ctx->types) {
-        if (auto tn = tCtx->typeNormal()) {
+        if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(tCtx)) {
             typeParams.push_back(tn->ID()->getText());
         }
     }
@@ -723,7 +724,7 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
 
     vector<string> typeParams;
     for (auto tCtx : ctx->types) {
-        if (auto tn = tCtx->typeNormal()) {
+        if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(tCtx)) {
             typeParams.push_back(tn->ID()->getText());
         }
     }
@@ -1160,7 +1161,12 @@ std::any ASTBuilder::visitExprDot(yux::yuxParser::ExprDotContext* ctx) {
         DEBUG_LOG_VAL("    Expr: Dot - member[" + to_string(i) + "]", ctx->member[i]->getText());
     }
     DEBUG_LOG_VAL("    Expr: Dot", ctx->member.back()->getText());
-    auto result = p<ExprNode>(createWithLine<ExprDotNode>(ctx, scope, base, ctx->member.back()));
+    // 检测 ?. 安全访问标志（grammar: SymbolDot SymbolQuest? member）
+    bool safe = ctx->SymbolQuest() != nullptr;
+    if (safe) {
+        DEBUG_LOG("    Expr: Dot - safe access (?.)");
+    }
+    auto result = p<ExprNode>(createWithLine<ExprDotNode>(ctx, scope, base, ctx->member.back(), safe));
     DEBUG_LOG_VAL("    Expr: Dot - result type", typeid(*result).name());
     return result;
 }
@@ -1421,4 +1427,31 @@ std::any ASTBuilder::visitTypeArray(yux::yuxParser::TypeArrayContext* ctx) {
     auto count = ctx->INT()->getSymbol();
     DEBUG_LOG_VAL("    Type: Array", "[" << count->getText() << "]");
     return p<TypeNode>(createWithLine<TypeArrayNode>(ctx, parent, elementType, count));
+}
+
+// T? 解糖为 Nullable<T>
+// 直接构造 TypeGenericNode("Nullable", [T])，复用现有泛型实例化通路
+// "Nullable" 名字 token 用合成构造，line 取自 SymbolQuest
+std::any ASTBuilder::visitTypeNullable(yux::yuxParser::TypeNullableContext* ctx) {
+    p<Node> parent = currentScope();
+    auto inner = any_cast_p<TypeNode>(visit(ctx->type()));
+
+    auto questTok = ctx->SymbolQuest()->getSymbol();
+    Token nullableName(string("Nullable"), questTok ? questTok->getLine() : 0);
+
+    vector<p<TypeNode>> args;
+    args.push_back(inner);
+
+    DEBUG_LOG_VAL("    Type: Nullable", inner->getType().name << "?");
+    return p<TypeNode>(createWithLine<TypeGenericNode>(ctx, parent, nullableName, args));
+}
+
+// a ?? b
+std::any ASTBuilder::visitExprNullElse(yux::yuxParser::ExprNullElseContext* ctx) {
+    auto scope = currentScope();
+    auto exprs = ctx->expr();
+    auto left = any_cast_p<ExprNode>(visit(exprs[0]));
+    auto right = any_cast_p<ExprNode>(visit(exprs[1]));
+    DEBUG_LOG("    Expr: NullElse a??b");
+    return p<ExprNode>(createWithLine<ExprNullElseNode>(ctx, scope, left, right));
 }
