@@ -1165,6 +1165,7 @@ std::any ASTBuilder::visitExprDot(yux::yuxParser::ExprDotContext* ctx) {
     return result;
 }
 
+// 比较: < <= > >=
 std::any ASTBuilder::visitExprCompare(yux::yuxParser::ExprCompareContext* ctx) {
     auto scope = currentScope();
     auto left = any_cast_p<ExprNode>(visit(ctx->left));
@@ -1172,25 +1173,43 @@ std::any ASTBuilder::visitExprCompare(yux::yuxParser::ExprCompareContext* ctx) {
 
     auto opText = ctx->opCompare()->getText();
     ExprCompareNode::Op op;
-    if (opText == "==") {
-        op = ExprCompareNode::Op::Eq;
-    } else if (opText == "!=") {
-        op = ExprCompareNode::Op::Ne;
-    } else if (opText == "<") {
+    if (opText == "<") {
         op = ExprCompareNode::Op::Lt;
     } else if (opText == "<=") {
         op = ExprCompareNode::Op::Le;
     } else if (opText == ">") {
         op = ExprCompareNode::Op::Gt;
-    } else if (opText == ">=") {
-        op = ExprCompareNode::Op::Ge;
-    } else if (opText == "&&") {
-        op = ExprCompareNode::Op::AndAnd;
     } else {
-        op = ExprCompareNode::Op::OrOr;
+        op = ExprCompareNode::Op::Ge;
     }
 
     DEBUG_LOG_VAL("    Expr: Compare", opText);
+    return p<ExprNode>(createWithLine<ExprCompareNode>(ctx, scope, op, left, right));
+}
+
+// 相等: == !=
+std::any ASTBuilder::visitExprEq(yux::yuxParser::ExprEqContext* ctx) {
+    auto scope = currentScope();
+    auto left = any_cast_p<ExprNode>(visit(ctx->left));
+    auto right = any_cast_p<ExprNode>(visit(ctx->right));
+
+    auto opText = ctx->opEq()->getText();
+    ExprCompareNode::Op op = (opText == "==") ? ExprCompareNode::Op::Eq : ExprCompareNode::Op::Ne;
+
+    DEBUG_LOG_VAL("    Expr: Eq", opText);
+    return p<ExprNode>(createWithLine<ExprCompareNode>(ctx, scope, op, left, right));
+}
+
+// 短路逻辑: && ||
+std::any ASTBuilder::visitExprBool(yux::yuxParser::ExprBoolContext* ctx) {
+    auto scope = currentScope();
+    auto left = any_cast_p<ExprNode>(visit(ctx->left));
+    auto right = any_cast_p<ExprNode>(visit(ctx->right));
+
+    auto opText = ctx->opBool()->getText();
+    ExprCompareNode::Op op = (opText == "&&") ? ExprCompareNode::Op::AndAnd : ExprCompareNode::Op::OrOr;
+
+    DEBUG_LOG_VAL("    Expr: Bool", opText);
     return p<ExprNode>(createWithLine<ExprCompareNode>(ctx, scope, op, left, right));
 }
 

@@ -216,7 +216,7 @@ expr:
       ParEnd # exprCall
     // !e ~e -e 没有空格，低于成员访问优先级
     | op=(SymbolSub|SymbolRev|SymbolExcl) right=expr # exprUnary
-    // e & e | e ^ e | e << e | e >> e
+    // e & e | e ^ e
     | left=expr op=(SymbolAnd|SymbolOr|SymbolXor) right=expr # exprBinOp
     | left=expr opShift right=expr # exprShift
      // e * e e / e
@@ -224,6 +224,10 @@ expr:
     | left=expr op=(SymbolAdd|SymbolSub) right=expr # exprAddSub
     // 判断
     | left=expr opCompare right=expr # exprCompare
+    // == 需要小于比大小
+    | left=expr opEq right=expr # exprEq
+    // 布尔
+    | left=expr opBool right=expr # exprBool
     | literal # exprLiteral;
 
 // elif {
@@ -238,26 +242,34 @@ exprElse : Else statementBlock;
 // 移位操作符: << >>
 opShift: SymbolLt SymbolLt | SymbolMt SymbolMt;
 
-// 比较操作符: == != > >= < <= || &&
+// 比较操作符: > >= < <=
 opCompare:
-      SymbolEq SymbolEq
-    | SymbolExcl SymbolEq
-    | SymbolMt
+      SymbolMt
     | SymbolMt SymbolEq
     | SymbolLt
     | SymbolLt SymbolEq
-    | SymbolOr SymbolOr
-    | SymbolAnd SymbolAnd
+    ;
+
+// 布尔操作符: || &&
+opBool:
+      SymbolOrOr
+    | SymbolAndAnd
+    ;
+
+// == !=
+opEq:
+      SymbolEqEq
+    | SymbolExclEq
     ;
 
 // 赋值操作符: = += -= *= /= %= >>= <<=
 opAssign:
       SymbolEq
-    | SymbolAdd SymbolEq
-    | SymbolSub SymbolEq
-    | SymbolMul SymbolEq
-    | SymbolDiv SymbolEq
-    | SymbolMod SymbolEq
+    | SymbolAddEq
+    | SymbolSubEq
+    | SymbolMulEq
+    | SymbolDivEq
+    | SymbolModEq
     | SymbolMt SymbolMt SymbolEq
     | SymbolLt SymbolLt SymbolEq
     ;
@@ -329,25 +341,35 @@ True : 'true';
 Use : 'use';
 
 SymbolAdd: '+';
+SymbolAddEq: '+=';
 SymbolAnd: '&';
+SymbolAndAnd: '&&';
 SymbolComma: ',';
 SymbolDiv: '/';
+SymbolDivEq: '/=';
 SymbolDot: '.';
 SymbolEq: '=';
+SymbolEqEq: '==';
 SymbolExcl: '!';
+SymbolExclEq: '!=';
 SymbolHash: '#';
 SymbolLt: '<';
 SymbolMod: '%';
+SymbolModEq: '%=';
 SymbolMt: '>';
 SymbolMul: '*';
+SymbolMulEq: '*=';
 SymbolOr: '|';
+SymbolOrOr: '||';
 SymbolQuest: '?';
 SymbolQuote2: '"';
 SymbolQuote: ['];
 SymbolRev: '~';
 SymbolSemicolon: ';';
 SymbolSub: '-';
+SymbolSubEq: '-=';
 SymbolXor: '^';
+SymbolXorEq: '^=';
 
 ParStart: '(';
 ParEnd: ')';

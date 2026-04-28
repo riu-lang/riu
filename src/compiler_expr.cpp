@@ -110,12 +110,13 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
         fillValue = llvm::ConstantInt::get(getLLVMType(elementType), intFillVal, true);
         isZeroFill = (intFillVal == 0);  // 零值优化
     } else if (auto floatLiteral = dynamic_cast<LiteralFloatNode*>(literal)) {
-        string numStr;
-        for (char c : text) {
-            if (isdigit(c) || c == '.' || c == '-') {
-                numStr += c;
-            } else {
-                break;
+        // FLOAT 词法可能含科学计数法 (e[-]?\d+) 与类型后缀 f32/f64
+        // 仅剥掉后缀，其余交给 stod
+        string numStr = text;
+        if (numStr.size() >= 3) {
+            string suf = numStr.substr(numStr.size() - 3);
+            if (suf == "f32" || suf == "f64") {
+                numStr = numStr.substr(0, numStr.size() - 3);
             }
         }
         floatFillVal = stod(numStr);
@@ -256,12 +257,13 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
         DEBUG_LOG_VAL("    Expr: IntLiteral", text << " : " << type.name);
         return llvm::ConstantInt::get(getLLVMType(type), numVal, true);
     } else if (auto floatLiteral = dynamic_cast<LiteralFloatNode*>(literal)) {
-        string numStr;
-        for (char c : text) {
-            if (isdigit(c) || c == '.' || c == '-') {
-                numStr += c;
-            } else {
-                break;
+        // FLOAT 词法可能含科学计数法 (e[-]?\d+) 与类型后缀 f32/f64
+        // 仅剥掉后缀，其余交给 stod
+        string numStr = text;
+        if (numStr.size() >= 3) {
+            string suf = numStr.substr(numStr.size() - 3);
+            if (suf == "f32" || suf == "f64") {
+                numStr = numStr.substr(0, numStr.size() - 3);
             }
         }
         f64 numVal = stod(numStr);

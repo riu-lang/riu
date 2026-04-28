@@ -156,18 +156,19 @@ void Compiler::compileGlobalConsts() {
             initValue = llvm::ConstantInt::get(llvmType, numVal, true);
         } 
         // 处理浮点数字面量
+        // FLOAT 词法形如: [-]?(INT_10|INT.INT|INT.INT 'e' '-'? INT) ('f32'|'f64')?
+        // 需保留科学计数法 (e[-]?\d+)，仅剥掉类型后缀 f32/f64
         else if (auto floatLiteral = dynamic_cast<LiteralFloatNode*>(literal)) {
-            string numStr;
-            for (char c : text) {
-                if (isdigit(c) || c == '.' || c == '-') {
-                    numStr += c;
-                } else {
-                    break;
+            string numStr = text;
+            if (numStr.size() >= 3) {
+                string suf = numStr.substr(numStr.size() - 3);
+                if (suf == "f32" || suf == "f64") {
+                    numStr = numStr.substr(0, numStr.size() - 3);
                 }
             }
             f64 numVal = stod(numStr);
             initValue = llvm::ConstantFP::get(llvmType, numVal);
-        } 
+        }
         // 处理布尔字面量
         else if (auto boolLiteral = dynamic_cast<LiteralBoolNode*>(literal)) {
             bool boolVal = (text == "true");
