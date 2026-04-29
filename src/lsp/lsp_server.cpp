@@ -299,10 +299,72 @@ constexpr int kCikFunction = 3;
 constexpr int kCikConstant = 21;
 constexpr int kCikStruct = 22;
 
+// LSP CompletionItemKind: Field=5, Method=2
+constexpr int kCikField = 5;
+constexpr int kCikMethod = 2;
+
+static std::optional<LspPosition> jsonToPos(const json& params);
+static FnNode* findEnclosingFn(FileNode* file, int lspLine0);
+static std::string resolveReceiverStructName(FnNode* fn, const std::string& name);
+
 static void handleCompletion(ServerState& st, const json& msg) {
     const json id = extractId(msg);
     const json params = msg.value("params", json::object());
     json items = json::array();
+
+    // receiver.member 上下文优先：仅返回结构体成员（不混静态项 / 全局名）
+    {
+        const std::string uri = textDocumentUri(params);
+        Document* doc = uri.empty() ? nullptr : st.docs.get(uri);
+        auto pos = jsonToPos(params);
+        if (doc && pos) {
+            auto rc = receiverContextAt(doc->text(), *pos);
+            if (rc.found) {
+                auto resolved = st.ws.resolveUri(uri);
+                if (resolved.project && resolved.file) {
+                    FnNode* fn = findEnclosingFn(resolved.file, pos->line);
+                    std::string structName = resolveReceiverStructName(fn, rc.receiver);
+                    if (!structName.empty()) {
+                        auto mems = collectStructMembers(*resolved.project, resolved.file, structName);
+                        std::set<std::string> seen;
+                        for (auto* sd : mems.structs) {
+                            for (const auto& f : sd->fields()) {
+                                std::string nm = f->name().getText();
+                                if (!seen.insert("f:" + nm).second) continue;
+                                items.push_back({
+                                    {"label", nm},
+                                    {"kind", kCikField},
+                                    {"detail", nm + " " + typeInfoDisplay(f->getType())},
+                                });
+                            }
+                        }
+                        for (auto* m : mems.methods) {
+                            std::string nm = m->header()->name().getText();
+                            // 重载只展示一次（detail 用首个签名）
+                            if (!seen.insert("m:" + nm).second) continue;
+                            auto sig = renderSignature(m);
+                            items.push_back({
+                                {"label", nm},
+                                {"kind", kCikMethod},
+                                {"detail", sig.label},
+                            });
+                        }
+                        sendResult(id, json{
+                            {"isIncomplete", false},
+                            {"items", std::move(items)},
+                        });
+                        return;
+                    }
+                }
+                // receiver 解析失败 → 仍返回空成员列表，避免误展示全局名
+                sendResult(id, json{
+                    {"isIncomplete", false},
+                    {"items", json::array()},
+                });
+                return;
+            }
+        }
+    }
 
     // 1. 静态项（关键字 / 类型 / 内置函数 / snippet）
     for (const auto& it : staticCompletions()) {
@@ -397,6 +459,45 @@ locateLookup(Project& project, const LookupResult& r) {
     return std::make_pair(pathToUri(ownerPath), std::make_pair(s, e));
 }
 
+// 根据光标行号在文件中找到包含它的最近 fn（含 struct impl 方法）。
+// 仅按起始行筛选 + 取最大者；无 end-line 信息，对单文件场景已足够。
+static FnNode* findEnclosingFn(FileNode* file, int lspLine0) {
+    if (!file) return nullptr;
+    int targetLine = lspLine0 + 1; // ANTLR 行号是 1-based
+    FnNode* best = nullptr;
+    int bestLine = 0;
+    auto consider = [&](FnNode* fn) {
+        if (!fn) return;
+        int ln = fn->getLineNumber();
+        if (ln <= targetLine && ln > bestLine) {
+            best = fn;
+            bestLine = ln;
+        }
+    };
+    for (const auto& fn : file->getFunctions()) consider(fn);
+    for (const auto& si : file->getStructImpls()) {
+        for (const auto& m : si->methods()) consider(m);
+    }
+    return best;
+}
+
+// 从 receiver 名解析其结构体类型名（含 "Box<T>"/"T?" 解包到内部 T；
+// 若 T 是结构体则返回 T 名）。失败返回空串。
+static std::string resolveReceiverStructName(FnNode* fn, const std::string& name) {
+    if (!fn) return {};
+    auto* sym = fn->lookupSymbol(name);
+    if (!sym) return {};
+    TypeInfo t = sym->type;
+    // 解包常见包装：Box<T>/Nullable<T>/Ref —— 仅对成员补全/跳转一层展开
+    if (t.isRef()) {
+        if (auto e = t.refElementType()) t = *e;
+    }
+    if (t.isBox()) {
+        if (auto e = t.boxElementType()) t = *e;
+    }
+    return t.name;
+}
+
 static std::optional<LspPosition> jsonToPos(const json& params) {
     auto it = params.find("position");
     if (it == params.end() || !it->is_object()) return std::nullopt;
@@ -404,6 +505,32 @@ static std::optional<LspPosition> jsonToPos(const json& params) {
     p.line = it->value("line", 0);
     p.character = it->value("character", 0);
     return p;
+}
+
+// 把 (token, ownerFile) 转 LSP Location 链接 JSON
+static std::optional<json> tokenLocLink(Project& project, FileNode* ownerFile,
+                                         const Token& tok,
+                                         const LspPosition& origStart,
+                                         const LspPosition& origEnd) {
+    std::string ownerPath;
+    for (const auto& kv : project.allFiles()) {
+        if (kv.second == ownerFile) { ownerPath = kv.first; break; }
+    }
+    if (ownerPath.empty()) return std::nullopt;
+    LspPosition s, e;
+    s.line = static_cast<int>(tok.getLine() > 0 ? tok.getLine() - 1 : 0);
+    s.character = static_cast<int>(tok.getCharPositionInLine());
+    e.line = s.line;
+    int cpLen = 0;
+    try { cpLen = static_cast<int>(utf8::distance(tok.getText().begin(), tok.getText().end())); }
+    catch (...) { cpLen = static_cast<int>(tok.getText().size()); }
+    e.character = s.character + cpLen;
+    return json{
+        {"originSelectionRange", rangeToJson(origStart, origEnd)},
+        {"targetUri", pathToUri(ownerPath)},
+        {"targetRange", rangeToJson(s, e)},
+        {"targetSelectionRange", rangeToJson(s, e)},
+    };
 }
 
 static void handleDefinition(ServerState& st, const json& msg) {
@@ -417,6 +544,32 @@ static void handleDefinition(ServerState& st, const json& msg) {
     if (!hit.found) { sendResult(id, nullptr); return; }
     auto resolved = st.ws.resolveUri(uri);
     if (!resolved.project || !resolved.file) { sendResult(id, nullptr); return; }
+
+    // receiver.member 优先：仅当 hit IDENT 紧邻在 `IDENT . ` 之后才走成员路径
+    auto rc = receiverContextAt(doc->text(), *pos);
+    if (rc.found && !rc.member.empty() && rc.member == hit.text) {
+        FnNode* fn = findEnclosingFn(resolved.file, pos->line);
+        std::string structName = resolveReceiverStructName(fn, rc.receiver);
+        if (!structName.empty()) {
+            auto mh = lookupStructMember(*resolved.project, resolved.file, structName, rc.member);
+            std::optional<json> link;
+            if (mh.kind == MemberHit::Kind::Field && mh.field) {
+                link = tokenLocLink(*resolved.project, mh.ownerFile, mh.field->name(), hit.start, hit.end);
+            } else if (mh.kind == MemberHit::Kind::Method && mh.method) {
+                link = tokenLocLink(*resolved.project, mh.ownerFile,
+                                     mh.method->header()->name(), hit.start, hit.end);
+            }
+            if (link) {
+                sendResult(id, json::array({*link}));
+                return;
+            }
+            // 成员未找到 → 不再回退到全局，避免误跳
+            sendResult(id, nullptr);
+            return;
+        }
+        // 类型解析失败（receiver 不在当前 fn 里） → 回退全局
+    }
+
     auto lk = lookupName(*resolved.project, resolved.file, hit.text);
     auto loc = locateLookup(*resolved.project, lk);
     if (!loc) { sendResult(id, nullptr); return; }

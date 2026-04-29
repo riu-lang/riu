@@ -200,7 +200,18 @@ TypeInfo ExprCallNode::getType() const {
                     auto rt = methodSym->retType;
                     // 结构体泛型实参替换：T→具体类型
                     if (actualType.isGeneric()) {
-                        auto structDecl = file->getStructDecl(actualType.name);
+                        // 用户 file 找不到时（例如 Nullable/Array 等 SDK 泛型），
+                        // 沿父作用域回退到 SDK file
+                        StructDeclNode* structDecl = file->getStructDecl(actualType.name);
+                        if (!structDecl) {
+                            ScopeNode* p = file->parentScope();
+                            while (p && !structDecl) {
+                                if (auto* pf = dynamic_cast<FileNode*>(p)) {
+                                    structDecl = pf->getStructDecl(actualType.name);
+                                }
+                                p = p->parentScope();
+                            }
+                        }
                         if (structDecl && structDecl->isGeneric()
                             && structDecl->typeParams().size() == actualType.genericArgs.size()) {
                             std::map<std::string, TypeInfo> subst;

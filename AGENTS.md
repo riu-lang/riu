@@ -60,18 +60,16 @@ cd examples/main && yux build test && ./build/test/test.exe
 
 | 类别 | 位置 | 对照文件 | 命名要求 | xmake test 名 |
 |------|------|---------|---------|---------------|
-| 单文件成功用例 | `tests/cases/*.yux` | 同名 `.expected` | —— | `yux_tests/<basename>.yux` |
-| 单文件错误用例 | `tests/cases/error/*.yux` | 同名 `.expected`（占位即可） | 约定 `err_*.yux` | `yux_tests/error_<basename>.yux` |
+| 单文件成功用例 | `tests/cases/*.yux` | 同名 `.expected` | —— | `yux_tests/<basename>`（不带 `.yux`） |
 | 项目模式用例 | `tests/projects/<case>/` | 同目录 `expected.txt` | 目录内必须有 `yux.toml`、入口源文件、`expected.txt` | `yux_tests/project_<dirname>` |
 
-单文件用例内部仍以单文件模式调用 `yux <file>`，比较 stdout 与 `.expected`；错误用例则期望编译失败。项目用例以该目录为 CWD 调用 `yux build <case>`，运行 `build/<case>/<case>.exe` 并比对 `expected.txt`（项目用例跑完会清掉 `build/`）。
+只测能编译运行的用例（不写错误用例）。单文件用例内部仍以单文件模式调用 `yux <file>`，比较 stdout 与 `.expected`；项目用例以该目录为 CWD 调用 `yux build <case>`，运行 `build/<case>/<case>.exe` 并比对 `expected.txt`（项目用例跑完会清掉 `build/`）。
 
 ```powershell
 xmake build yux                          # 测试会自动依赖构建，但显式先构建便于定位编译错误
 xmake test                               # 全部用例
 xmake test -v                            # 失败时打印 stdout / stderr / errors
-xmake test yux_tests/basic_types.yux     # 单个成功用例
-xmake test yux_tests/error_err_val_reassign.yux
+xmake test yux_tests/basic_types         # 单个用例（注意：不带 .yux 后缀）
 xmake test yux_tests/project_imports_struct
 xmake test "yux_tests/*"                 # 通配符
 ```
