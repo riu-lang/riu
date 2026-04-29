@@ -171,8 +171,12 @@ llvm::Function* Compiler::getMethodFunction(
     bool isPriv = !methodName.empty() && methodName[0] == '_';
 
     // 确定方法所属的模块
+    // 泛型实例：使用消费方模块（每个使用方模块各自生成一份实例 IR，避免重复符号）
+    // 普通结构体：使用 baseDecl owner 模块（跨模块仍引用同一份定义）
     string ownerModule = _file->moduleName();
-    if (!isBuiltinType(structName)) {
+    if (auto instIt = _structInstances.find(structName); instIt != _structInstances.end()) {
+        ownerModule = instIt->second.consumerModule;
+    } else if (!isBuiltinType(structName)) {
         auto* owner = _file->getStructOwner(structName);
         if (owner && owner != _file) {
             ownerModule = owner->moduleName();
@@ -229,13 +233,19 @@ llvm::Function* Compiler::getDestructorFunction(const string& structName) {
     DEBUG_LOG_VAL("  getDestructorFunction", structName);
 
     // 确定析构函数所属的模块
+    // 泛型实例：用消费方模块（每个使用方模块各自一份）
+    // 普通结构体：仍走 owner 模块
     string ownerModule = _file->moduleName();
-    auto* owner = _file->getStructOwner(structName);
-    if (owner && owner != _file) {
-        ownerModule = owner->moduleName();
-    } else if (!owner && _yux && _yux->sdkFile()
-               && _yux->sdkFile()->getStructDecl(structName)) {
-        ownerModule = _yux->sdkFile()->moduleName();
+    if (auto instIt = _structInstances.find(structName); instIt != _structInstances.end()) {
+        ownerModule = instIt->second.consumerModule;
+    } else {
+        auto* owner = _file->getStructOwner(structName);
+        if (owner && owner != _file) {
+            ownerModule = owner->moduleName();
+        } else if (!owner && _yux && _yux->sdkFile()
+                   && _yux->sdkFile()->getStructDecl(structName)) {
+            ownerModule = _yux->sdkFile()->moduleName();
+        }
     }
     string mangledName = Mangler::dtor(ownerModule, structName);
     DEBUG_LOG_VAL("    -> mangled name", mangledName);
@@ -678,7 +688,8 @@ llvm::Value* Compiler::compileFunctionCall(
             vector<llvm::Value*> ctorArgs;
             ctorArgs.push_back(alloca);
             for (auto& a : args) ctorArgs.push_back(a);
-            string ownerMod = structOwner->moduleName();
+            // 泛型实例构造器：用消费方模块作前缀（与 emit / 方法调用一致）
+            string ownerMod = _structInstances[effName].consumerModule;
             string cName = Mangler::ctor(ownerMod, effName, argTypes);
             auto fn = _module->getFunction(cName);
             if (!fn) {
@@ -1464,7 +1475,8 @@ llvm::Value* Compiler::compileStructMethodCall(
                     methodArgs.push_back(basePtr);
                     for (auto& a : args) methodArgs.push_back(a);
 
-                    string ownerMod = owner->moduleName();
+                    // 泛型实例方法：用消费方模块作为前缀（与 emit 端一致）
+                    string ownerMod = inst.consumerModule;
                     bool methPriv = !member.empty() && member[0] == '_';
                     string mangledName = Mangler::method(ownerMod, effName, member, argTypes, methPriv);
                     auto fn = _module->getFunction(mangledName);
@@ -1626,7 +1638,13 @@ llvm::Value* Compiler::compileConstructorCall(
             ctorArgs.push_back(arg);
         }
 
-        string ownerMod = ctorSymbol->moduleName.empty() ? _file->moduleName() : ctorSymbol->moduleName;
+        // 若 effName 是泛型实例，按消费方模块取前缀；否则按 ctorSymbol 的模块。
+        string ownerMod;
+        if (auto instIt = _structInstances.find(effName); instIt != _structInstances.end()) {
+            ownerMod = instIt->second.consumerModule;
+        } else {
+            ownerMod = ctorSymbol->moduleName.empty() ? _file->moduleName() : ctorSymbol->moduleName;
+        }
         string cName = Mangler::ctor(ownerMod, effName, argTypes);
         auto fn = _module->getFunction(cName);
         if (!fn) {

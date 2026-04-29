@@ -1,0 +1,12 @@
+use yux.core.*
+use lookup.*
+
+fn main() {
+  ; main 模块也独立用 Nullable<i64>
+  var local i64? = 99i64
+  println(local.has().to_string())
+  println(local.get().to_string())
+
+  ; 调用 lookup 模块（其内部也用 Nullable<i64>），返回 i64 不跨边界传 Nullable
+  println(lookup_demo(42i64).to_string())
+}

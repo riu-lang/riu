@@ -108,6 +108,10 @@ string Compiler::ensureStructInstance(
     for (auto& a : args) inst.args.push_back(a ? *a : TypeInfo());
     inst.sourceFile = _file ? _file->moduleName() : "";
     inst.sourceLine = sourceLine;
+    // 关键：把当前编译模块记下来，作为本实例 IR 的符号前缀。
+    // 即便后续 emitInstanceMethods 为了可见性把 _file 切到 ownerFile，
+    // 实例方法的符号名仍用此处记录的消费方模块。
+    inst.consumerModule = _file ? _file->moduleName() : "";
 
     // 建立类型参数替换映射
     map<string, TypeInfo> subst;

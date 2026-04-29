@@ -45,14 +45,38 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         lineNum = node->expr()->resolveLineNumber();
     }
     
+    // 返回 Nullable<T>：允许 null 字面量或 T 值，自动包装
+    bool nullableWrap = false;
+    bool nullableWrapNullLit = false;
+    if (hasDeclaredRetType && declRetType.isNullable()) {
+        auto innerType = declRetType.nullableInnerType();
+        if (innerType) {
+            if (auto litWrap = dynamic_cast<ExprLiteralNode*>(node->expr())) {
+                if (dynamic_cast<LiteralNullNode*>(litWrap->literal())) {
+                    nullableWrap = true;
+                    nullableWrapNullLit = true;
+                }
+            }
+            if (!nullableWrap) {
+                if (isIntTypeName(innerType->name) && isFlexibleIntExpr(node->expr())) {
+                    tryInferIntType(node->expr(), *innerType);
+                    retType = node->expr()->getType();
+                }
+                if (retType == *innerType) {
+                    nullableWrap = true;
+                }
+            }
+        }
+    }
+
     // 类型检查
     if (hasDeclaredRetType) {
         if (retType.empty()) {
-            throw YuxError(lineNum, 
-                "Function declares return type '{}', but returns void", 
+            throw YuxError(lineNum,
+                "Function declares return type '{}', but returns void",
                 declRetType.getFullName());
         }
-        if (retType != declRetType) {
+        if (!nullableWrap && retType != declRetType) {
             throw YuxError(lineNum,
                 "Return type mismatch: function declares '{}', but expression has type '{}'",
                 declRetType.getFullName(), retType.getFullName());
@@ -64,12 +88,31 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
                 retType.getFullName());
         }
     }
-    
+
     // 编译返回值表达式
     llvm::Value* retVal = nullptr;
     if (retType.empty()) {
         compileExpr(node->expr());
         DEBUG_LOG("    Expression compiled as void return");
+    } else if (nullableWrap) {
+        auto innerType = declRetType.nullableInnerType();
+        auto nullableStructType = getLLVMType(declRetType);
+        auto innerLLVMType = getLLVMType(*innerType);
+        auto tmp = _builder.CreateAlloca(nullableStructType, nullptr, "nullable_ret");
+        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+        llvm::Value* hasField = _builder.CreateGEP(nullableStructType, tmp, {zero, zero}, "nullable_has");
+        llvm::Value* valueField = _builder.CreateGEP(nullableStructType, tmp, {zero, one}, "nullable_value");
+        if (nullableWrapNullLit) {
+            _builder.CreateStore(_builder.getInt1(false), hasField);
+            _builder.CreateStore(llvm::Constant::getNullValue(innerLLVMType), valueField);
+        } else {
+            auto innerVal = compileExpr(node->expr());
+            _builder.CreateStore(_builder.getInt1(true), hasField);
+            _builder.CreateStore(innerVal, valueField);
+        }
+        retVal = _builder.CreateLoad(nullableStructType, tmp, "nullable_ret.load");
+        DEBUG_LOG("    Created Nullable-wrapped return value");
     } else {
         retVal = compileExpr(node->expr());
         DEBUG_LOG("    Created return value");
@@ -497,6 +540,57 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                     }
                 }
             }
+        }
+
+        // Nullable<T> 赋值：与 compileVarStatement 的初始化路径保持一致
+        // 三种 RHS:
+        //   1) null 字面量 → { _has=false, _value=zeroinit }
+        //   2) T 值 → 隐式包装为 { _has=true, _value=expr }
+        //   3) 已是 Nullable<T> → 整体结构体复制
+        if (assignOp == AssignOp::Eq && sym->type.isNullable()) {
+            auto innerType = sym->type.nullableInnerType();
+            if (!innerType) {
+                throw YuxError(node->getLineNumber(), "Nullable type requires inner type");
+            }
+
+            auto nullableStructType = getLLVMType(sym->type);
+            auto innerLLVMType = getLLVMType(*innerType);
+            auto alloca = _localVarPtrs[objName];
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+
+            llvm::Value* hasField = _builder.CreateGEP(nullableStructType, alloca, {zero, zero}, "nullable_has");
+            llvm::Value* valueField = _builder.CreateGEP(nullableStructType, alloca, {zero, one}, "nullable_value");
+
+            bool isNullLit = false;
+            if (auto litWrap = dynamic_cast<ExprLiteralNode*>(expr)) {
+                if (dynamic_cast<LiteralNullNode*>(litWrap->literal())) {
+                    isNullLit = true;
+                }
+            }
+
+            if (isNullLit) {
+                _builder.CreateStore(_builder.getInt1(false), hasField);
+                _builder.CreateStore(llvm::Constant::getNullValue(innerLLVMType), valueField);
+            } else {
+                if (isIntTypeName(innerType->name) && isFlexibleIntExpr(expr)) {
+                    tryInferIntType(expr, *innerType);
+                }
+                auto exprType = expr->getType();
+                auto exprVal = compileExpr(expr);
+
+                if (exprType.isNullable() && exprType == sym->type) {
+                    _builder.CreateStore(exprVal, alloca);
+                } else if (exprType == *innerType) {
+                    _builder.CreateStore(_builder.getInt1(true), hasField);
+                    _builder.CreateStore(exprVal, valueField);
+                } else {
+                    throw YuxError(node->getLineNumber(),
+                        "Cannot assign {} to Nullable<{}>",
+                        exprType.name, innerType->name);
+                }
+            }
+            return;
         }
 
         auto exprVal = compileExpr(expr);

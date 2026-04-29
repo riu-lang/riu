@@ -60,6 +60,11 @@ class Compiler {
         p<FileNode> ownerFile;          // 定义该结构体的文件
         vector<TypeInfo> args;          // 类型参数实例化参数
         string mangledName;             // mangle 后的实例名
+        // 实例的"消费方"模块名，即触发该实例化的当前编译模块。
+        // 每个用到泛型实例的模块各自生成一份 IR，符号名以本字段为前缀，
+        // 不再共用 baseDecl owner 的前缀，避免 SDK + 用户模块同时实例化
+        // 相同 Nullable<T> 时出现 lld-link duplicate symbol。
+        string consumerModule;
         bool methodsEmitted = false;    // 方法是否已生成
         string sourceFile;              // 实例化发生的源文件 (用于错误报告)
         int sourceLine = 0;             // 实例化发生的行号 (用于错误报告)

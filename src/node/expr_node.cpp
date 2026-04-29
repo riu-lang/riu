@@ -227,7 +227,21 @@ TypeInfo ExprCallNode::getType() const {
                 }
             }
         }
+        // 通过函数符号查 retType（保留 genericArgs，避免被字符串编码拍平）
         TypeInfo retType(type.name.substr(5));
+        if (auto literalNode = dynamic_cast<ExprLiteralNode*>(_calleeExpr)) {
+            if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literalNode->literal())) {
+                auto fnName = objLiteral->getValue().getText();
+                auto scope = findNearestScope();
+                if (scope) {
+                    vector<TypeInfo> argTypes;
+                    for (auto& arg : _args) argTypes.push_back(arg->getType());
+                    auto fn = scope->lookupFnSymbolWithParams(fnName, argTypes);
+                    if (!fn) fn = scope->lookupFnSymbol(fnName);
+                    if (fn) retType = fn->retType;
+                }
+            }
+        }
         // 显式泛型调用 e<T>(...): 将 retType 按 typeParams → typeArgs 替换
         if (!_typeArgs.empty()) {
             if (auto literalNode = dynamic_cast<ExprLiteralNode*>(_calleeExpr)) {
