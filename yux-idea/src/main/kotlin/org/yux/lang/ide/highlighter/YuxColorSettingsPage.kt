@@ -29,11 +29,11 @@ class YuxColorSettingsPage : ColorSettingsPage {
 
         N {
           fn N(v i32) {
-            self.v = v
+            ${'$'}.v = v
           }
 
           fn plus(other N) N {
-            N(self.v + other.v)
+            N(${'$'}.v + other.v)
           }
         }
 

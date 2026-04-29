@@ -5,8 +5,8 @@ struct Point {
 
 Point {
   fn Point(x f64, y f64) {
-    self.x = x
-    self.y = y
+    $.x = x
+    $.y = y
   }
 }
 

@@ -129,7 +129,7 @@ i8 {
   fn inv() i8
 
   fn to_string() String {
-    self.to_i64().to_string()
+    $.to_i64().to_string()
   }
 }
 
@@ -228,7 +228,7 @@ u8 {
   fn inv() u8
 
   fn to_string() String {
-    self.to_u64().to_string()
+    $.to_u64().to_string()
   }
 }
 
@@ -327,7 +327,7 @@ i16 {
   fn inv() i16
 
   fn to_string() String {
-    self.to_i64().to_string()
+    $.to_i64().to_string()
   }
 }
 
@@ -426,7 +426,7 @@ u16 {
   fn inv() u16
 
   fn to_string() String {
-    self.to_u64().to_string()
+    $.to_u64().to_string()
   }
 }
 
@@ -525,7 +525,7 @@ i32 {
   fn inv() i32
 
   fn to_string() String {
-    self.to_i64().to_string()
+    $.to_i64().to_string()
   }
 }
 
@@ -624,7 +624,7 @@ u32 {
   fn inv() u32
 
   fn to_string() String {
-    self.to_u64().to_string()
+    $.to_u64().to_string()
   }
 }
 
@@ -725,10 +725,10 @@ i64 {
   fn to_string() String {
     var s String = String()
     var buf [u8 * 21] = [0u8 ...]
-    var is_neg = self < 0i64
-    var v i64 = self
+    var is_neg = $ < 0i64
+    var v i64 = $
     if is_neg {
-      v = -self
+      v = -$
     }
     var i i64 = 0
     loop {
@@ -857,7 +857,7 @@ u64 {
   fn to_string() String {
     var s String = String()
     var buf [u8 * 21] = [0u8 ...]
-    var v u64 = self
+    var v u64 = $
     var i i64 = 0
     loop {
       if v == 0u64 {
@@ -962,10 +962,10 @@ f64 {
 
   fn to_string() String {
     var s String = String()
-    var is_neg = self < 0.0f64
-    var v f64 = self
+    var is_neg = $ < 0.0f64
+    var v f64 = $
     if is_neg {
-      v = 0.0f64 - self
+      v = 0.0f64 - $
     }
     if is_neg {
       s.append(c'-')
@@ -1064,7 +1064,7 @@ f32 {
   fn neg() f32
 
   fn to_string() String {
-    self.to_f64().to_string()
+    $.to_f64().to_string()
   }
 }
 
@@ -1102,23 +1102,23 @@ struct Array<T> {
 
 Array<T> {
   fn len() i64 {
-    self._len
+    $._len
   }
 
   fn cap() i64 {
-    self._cap
+    $._cap
   }
 
   fn is_empty() bool {
-    self._len == 0i64
+    $._len == 0i64
   }
 
   fn clear() {
-    self._len = 0i64
+    $._len = 0i64
   }
 
   fn set_len(new_len i64) {
-    self._len = new_len
+    $._len = new_len
   }
 
   #CompilerInner
@@ -1148,24 +1148,24 @@ struct Nullable<T> {
 Nullable<T> {
   ; 空构造：未持值
   fn Nullable() {
-    self._has = false
+    $._has = false
   }
 
   ; 包一个值
   fn Nullable(v T) {
-    self._has = true
-    self._value = v
+    $._has = true
+    $._value = v
   }
 
   ; 是否持有值
-  fn has() bool = self._has
+  fn has() bool = $._has
 
   ; 取值。空时调用 _exit(1) 终止进程（语言尚无 panic 设施）
   fn get() T {
-    if !self._has {
+    if !$._has {
       _exit(1i32);
     }
-    self._value
+    $._value
   }
 }
 
@@ -1180,25 +1180,25 @@ String {
   }
 
   fn String() {
-    self.data = []
+    $.data = []
   }
 
   fn String(s String) {
-    self.data = s.data
+    $.data = s.data
   }
 
   fn len() i64 {
-    self.data.len()
+    $.data.len()
   }
 
   ; 清空字符串
   fn clear() {
-    self.data.clear()
+    $.data.clear()
   }
 
   ; 追加一个 Unicode 码点
   fn append(cp u32) {
-    self.data.push(cp)
+    $.data.push(cp)
   }
 
   ; 追加另一个字符串
@@ -1208,24 +1208,24 @@ String {
       if i >= s.data.len() {
         break;
       }
-      self.data.push(s.data[i])
+      $.data.push(s.data[i])
       i += 1
     }
   }
 
   ; 追加 ASCII 字节（作为 u32 码点写入）
   fn append(b u8) {
-    self.data.push(b.to_u32())
+    $.data.push(b.to_u32())
   }
 
   ; 取码点
   fn at(i i64) u32 {
-    self.data[i]
+    $.data[i]
   }
 
-  ; 就地截取 [start, end)，修改 self
+  ; 就地截取 [start, end)，修改 $
   fn sub_string(start i64, end i64) {
-    var len i64 = self.data.len()
+    var len i64 = $.data.len()
     var s i64 = start
     var e i64 = end
     if s < 0 {
@@ -1235,7 +1235,7 @@ String {
       e = len
     }
     if s >= e {
-      self.data.set_len(0i64)
+      $.data.set_len(0i64)
       ret;
     }
     var i i64 = 0
@@ -1244,10 +1244,10 @@ String {
       if i >= n {
         break;
       }
-      self.data[i] = self.data[s + i]
+      $.data[i] = $.data[s + i]
       i += 1
     }
-    self.data.set_len(n)
+    $.data.set_len(n)
   }
 
   ; 转为 UTF-8 字节数组
@@ -1255,10 +1255,10 @@ String {
     var r Array<u8> = []
     var i i64 = 0
     loop {
-      if i >= self.data.len() {
+      if i >= $.data.len() {
         break;
       }
-      val cp u32 = self.data[i]
+      val cp u32 = $.data[i]
       if cp < 128u32 {
         r.push(cp.to_u8());
       } elif cp < 2048u32 {
@@ -1292,7 +1292,7 @@ bool {
 
   fn to_string() String {
     var s String = String()
-    if self {
+    if $ {
       s.append("true")
     } else {
       s.append("false")

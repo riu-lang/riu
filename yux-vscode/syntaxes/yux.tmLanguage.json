@@ -136,7 +136,7 @@
         },
         {
           "name": "variable.language.self.yux",
-          "match": "\\bself\\b"
+          "match": "\\$"
         },
         {
           "name": "storage.modifier.yux",

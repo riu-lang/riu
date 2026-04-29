@@ -196,7 +196,7 @@ llvm::Function* Compiler::getMethodFunction(
     // 构建参数类型列表
     vector<llvm::Type*> llvmParamTypes;
 
-    // 第一个参数是 self
+    // 第一个参数是当前实例（用户层 `$`）
     if (isBuiltinType(structName) || TypeInfo(structName).isPtr() || TypeInfo(structName).isRef()) {
         llvmParamTypes.push_back(getLLVMType(TypeInfo(structName)));
     } else {

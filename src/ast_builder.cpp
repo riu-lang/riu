@@ -774,7 +774,7 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
             fn->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
         }
 
-        fn->registerSymbol("self", {SymbolKind::Variable, "self", TypeInfo(structName)});
+        fn->registerSymbol("$", {SymbolKind::Variable, "$", TypeInfo(structName)});
 
         for (auto param : header->params()) {
             TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();
@@ -845,7 +845,7 @@ std::any ASTBuilder::visitFnClean(yux::yuxParser::FnCleanContext* ctx) {
     _scopeStack.push_back(fn);
     
     if (!structName.empty()) {
-        fn->registerSymbol("self", {SymbolKind::Variable, "self", TypeInfo(structName)});
+        fn->registerSymbol("$", {SymbolKind::Variable, "$", TypeInfo(structName)});
     }
     
     if (ctx->fnBody()->fnExprkBody()) {
@@ -969,8 +969,12 @@ std::any ASTBuilder::visitStatementAssign(yux::yuxParser::StatementAssignContext
         else if (opText == "<<=") op = AssignOp::LtLtEq;
     }
 
-    DEBUG_LOG_VAL("  Statement: Assign", ctx->obj->getText() << (subs.empty() ? "" : "." + subs[0].getText()));
-    return p<StatementNode>(createWithLine<StatementAssignNode>(ctx, scope, ctx->obj, subs, expr, op));
+    Token objToken = (ctx->obj->getType() == yux::yuxParser::SymbolThis)
+        ? Token("$", ctx->obj->getLine())
+        : Token(ctx->obj);
+
+    DEBUG_LOG_VAL("  Statement: Assign", objToken.getText() << (subs.empty() ? "" : "." + subs[0].getText()));
+    return p<StatementNode>(createWithLine<StatementAssignNode>(ctx, scope, objToken, subs, expr, op));
 }
 
 std::any ASTBuilder::visitStatementExpr(yux::yuxParser::StatementExprContext* ctx) {
@@ -1454,4 +1458,14 @@ std::any ASTBuilder::visitExprNullElse(yux::yuxParser::ExprNullElseContext* ctx)
     auto right = any_cast_p<ExprNode>(visit(exprs[1]));
     DEBUG_LOG("    Expr: NullElse a??b");
     return p<ExprNode>(createWithLine<ExprNullElseNode>(ctx, scope, left, right));
+}
+
+// `$` 单独表达式：当前实例引用
+// 成员函数体内通过名字 "$" 查到隐式注入的 receiver 变量
+std::any ASTBuilder::visitExprThis(yux::yuxParser::ExprThisContext* ctx) {
+    auto scope = currentScope();
+    DEBUG_LOG("    Expr: This ($)");
+    auto line = ctx->getStart()->getLine();
+    auto literal = p<LiteralNode>(createWithLine<LiteralObjNode>(ctx, scope, Token("$", line)));
+    return p<ExprNode>(createWithLine<ExprLiteralNode>(ctx, scope, literal));
 }

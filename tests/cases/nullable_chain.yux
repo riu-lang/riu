@@ -4,7 +4,7 @@ struct N {
 
 N {
   fn N(v i32) {
-    self.v = v
+    $.v = v
   }
 }
 

@@ -104,6 +104,7 @@ public:
     std::any visitExprArrayInit(yux::yuxParser::ExprArrayInitContext* ctx) override;
     std::any visitExprUnary(yux::yuxParser::ExprUnaryContext* ctx) override;
     std::any visitExprNullElse(yux::yuxParser::ExprNullElseContext* ctx) override;
+    std::any visitExprThis(yux::yuxParser::ExprThisContext* ctx) override;
 
     std::any visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) override;
     std::any visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) override;

@@ -96,11 +96,11 @@ struct Counter {
 
 Counter {
   fn Counter(initial i32) {
-    self.value = initial
+    $.value = initial
   }
   
-  fn increment(self Ref<Counter>) {
-    self.value = self.value + 1
+  fn increment() {
+    $.value = $.value + 1
   }
 }
 

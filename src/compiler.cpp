@@ -575,7 +575,7 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
 
 // ==================== 方法编译 ====================
 // 编译结构体方法
-// 与普通函数类似，但需要处理 self 参数
+// 与普通函数类似，但需要处理当前实例参数（`$`）
 void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string& structName, bool isDestructor) {
     _currentFn = func;
     _currentFnNode = node;
@@ -596,23 +596,23 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
     auto args = func->args();
     auto argIt = args.begin();
 
-    // 处理 self 参数 (方法的第一个参数)
-    llvm::Value* selfPtr = nullptr;
+    // 处理当前实例参数（方法的第一个参数，对应用户层 `$`）
+    llvm::Value* thisPtr = nullptr;
     if (argIt != args.end()) {
-        string selfName = "self";
-        
+        string thisName = "$";
+
         if (isBuiltinType(structName)) {
-            // 内置类型: self 是值类型，需要创建 alloca
-            auto selfAlloca = _builder.CreateAlloca(getLLVMType(TypeInfo(structName)), nullptr, "self.addr");
-            _builder.CreateStore(argIt, selfAlloca);
-            _localVarPtrs[selfName] = selfAlloca;
-            selfPtr = selfAlloca;
-            DEBUG_LOG_VAL("  Param (self - builtin value)", selfName << " : " << structName);
+            // 内置类型：值类型，需要创建 alloca
+            auto thisAlloca = _builder.CreateAlloca(getLLVMType(TypeInfo(structName)), nullptr, "this.addr");
+            _builder.CreateStore(argIt, thisAlloca);
+            _localVarPtrs[thisName] = thisAlloca;
+            thisPtr = thisAlloca;
+            DEBUG_LOG_VAL("  Param ($ - builtin value)", thisName << " : " << structName);
         } else {
-            // 结构体类型: self 是指针类型
-            _localVarPtrs[selfName] = argIt;
-            selfPtr = argIt;
-            DEBUG_LOG_VAL("  Param (self)", selfName << " : " << structName << "*");
+            // 结构体类型：指针类型
+            _localVarPtrs[thisName] = argIt;
+            thisPtr = argIt;
+            DEBUG_LOG_VAL("  Param ($)", thisName << " : " << structName << "*");
         }
         ++argIt;
     }
@@ -650,8 +650,8 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
         if (func->getReturnType()->isVoidTy()) {
             callDestructorsForScope();
             // 析构函数需要在返回前调用字段析构函数
-            if (isDestructor && selfPtr) {
-                callFieldDestructor(selfPtr, structName);
+            if (isDestructor && thisPtr) {
+                callFieldDestructor(thisPtr, structName);
             }
             _builder.CreateRetVoid();
             DEBUG_LOG("  Added implicit void return");

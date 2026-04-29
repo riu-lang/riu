@@ -226,6 +226,7 @@ expr:
     | literal # exprLiteral
     // e ?? e
     | expr SymbolQuest SymbolQuest expr #exprNullElse
+    | SymbolThis #exprThis
     ;
 
 // elif {
@@ -290,7 +291,7 @@ statement:
     // 循环
     | Loop statementBlock # statementLoop
     // obj.member = expr
-    | obj=ID (SymbolDot subs+=ID)*
+    | obj=(ID|SymbolThis) (SymbolDot subs+=ID)*
         opAssign
         expr codeLineEnd #statementAssign
     // 尾随;表示空类型（void）
@@ -367,6 +368,8 @@ SymbolRev: '~';
 SymbolSemicolon: ';';
 SymbolSub: '-';
 SymbolSubEq: '-=';
+// 当前作用域
+SymbolThis: '$';
 SymbolXor: '^';
 SymbolXorEq: '^=';
 

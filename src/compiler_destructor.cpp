@@ -189,11 +189,11 @@ void Compiler::generateDefaultDestructor(const string& structName) {
     llvm::BasicBlock* entry = llvm::BasicBlock::Create(_context, "entry", dtorFn);
     _builder.SetInsertPoint(entry);
 
-    // 获取 self 参数
-    auto selfArg = &*dtorFn->arg_begin();
+    // 获取当前实例参数（`$`）
+    auto thisArg = &*dtorFn->arg_begin();
 
     // 调用字段析构函数
-    callFieldDestructor(selfArg, structName);
+    callFieldDestructor(thisArg, structName);
 
     // 返回
     _builder.CreateRetVoid();
