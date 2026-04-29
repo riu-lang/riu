@@ -4,6 +4,10 @@ All notable changes to the "yux-vscode" extension will be documented in this fil
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.4.2]
+
+- 跟随语言：显式泛型调用改为 turbofish 形式 `name:<T>(args)`，更新对应的 TextMate 模式
+
 ## [0.4.1]
 
 - 新增构建注解高亮

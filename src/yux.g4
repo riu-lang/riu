@@ -3,10 +3,10 @@
 
 grammar yux;
 
-// 在命令行控制
-//options {
-//    language=Cpp;
-//}
+// 内涵c++代码，其它目标需转义，重写目标在命令行控制
+options {
+    language=Cpp;
+}
 
 program:
    comment*
@@ -204,7 +204,7 @@ expr:
     // [e1, e2]
     | GetStart (velues+=expr (SymbolComma velues+=expr)* )? GetEnd # exprArray
     // e() e(e) e(e,e) e<T>()
-    | left=expr genericDef? ParStart
+    | left=expr (SymbolColon genericDef)? ParStart
         ( args+=expr
           (SymbolComma args+=expr)*
         )?
@@ -342,6 +342,7 @@ SymbolAdd: '+';
 SymbolAddEq: '+=';
 SymbolAnd: '&';
 SymbolAndAnd: '&&';
+SymbolColon: ':';
 SymbolComma: ',';
 SymbolDiv: '/';
 SymbolDivEq: '/=';

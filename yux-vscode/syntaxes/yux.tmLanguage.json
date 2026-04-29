@@ -67,10 +67,11 @@
         },
         {
           "name": "meta.generic.function.yux",
-          "begin": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(<)(?=[^>]*>\\s*\\()",
+          "begin": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(:)\\s*(<)(?=[^>]*>\\s*\\()",
           "beginCaptures": {
             "1": { "name": "entity.name.function.yux" },
-            "2": { "name": "punctuation.definition.generic.begin.yux" }
+            "2": { "name": "punctuation.definition.generic.turbofish.yux" },
+            "3": { "name": "punctuation.definition.generic.begin.yux" }
           },
           "end": ">",
           "endCaptures": {

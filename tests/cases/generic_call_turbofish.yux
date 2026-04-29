@@ -1,0 +1,13 @@
+; turbofish: 显式泛型调用 name:<T>(args)
+; 用于消歧 Generic<T>(args) 与比较表达式
+fn main() {
+  ; 显式构造 Nullable<i32>
+  var n i32? = Nullable:<i32>(42i32)
+  var v i32 = n ?? -1i32
+  println(v.to_string())
+
+  ; 空构造
+  var e i32? = Nullable:<i32>()
+  var ev i32 = e ?? -1i32
+  println(ev.to_string())
+}
