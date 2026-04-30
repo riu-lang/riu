@@ -303,20 +303,23 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
         auto codePoints = stringLiteral->codePoints();
         size_t len = codePoints.size();
 
-        // String layout：{ data: Array<u32> } = { { ptr handle } }
-        // 分配 Array<u32> 的 Block（cap=len、len=len），把 codepoint 写到 block.data
-        // TODO(Phase 1c)：String 字面量改走 .rodata 哨兵 Block，避免每次启动堆分配
+        // Phase 1c.1：字面量走 .rodata 哨兵 Block，零启动开销。
+        // Block 字节布局匹配 Array<T>（compiler_runtime.cpp）：
+        //   { i32 strong=0xFFFFFFFF, i32 weak=0, i64 len, i64 cap, ptr data }
+        // strong = 0xFFFFFFFF 让 _array_retain / _array_release 直接跳过；
+        // String layout 仍是 { data: Array<u32> } = { { ptr handle } }，handle = &block。
         auto stringType = getLLVMType(TypeInfo("String"));
         auto alloca = _builder.CreateAlloca(stringType, nullptr, "str_tmp");
 
         auto i32Ty = _builder.getInt32Ty();
+        auto i64Ty = _builder.getInt64Ty();
         auto ptrTy = llvm::PointerType::get(_context, 0);
-        auto lenVal = _builder.getInt64(len);
+        auto sentinel = llvm::ConstantInt::get(i32Ty, 0xFFFFFFFFu);
+        auto i32Zero = llvm::ConstantInt::get(i32Ty, 0);
 
-        auto block = allocArrayBlock(i32Ty, lenVal, lenVal);
-
+        // 数据缓冲：len > 0 时铺常量 u32 数组，否则用 null 指针（Block.data）。
+        llvm::Constant* dataConst = llvm::ConstantPointerNull::get(ptrTy);
         if (len > 0) {
-            // 用全局 .rodata 数组初始化 block.data 缓冲，避免逐元素 store 膨胀 IR
             auto arrType = llvm::ArrayType::get(i32Ty, len);
             vector<llvm::Constant*> elements;
             elements.reserve(len);
@@ -325,28 +328,38 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             }
             auto arrInit = llvm::ConstantArray::get(arrType, elements);
 
-            static int strCounter = 0;
-            string globalName = ".str." + to_string(strCounter++);
-            auto globalVar = new llvm::GlobalVariable(
-                *_module, arrType, true,
-                llvm::GlobalValue::PrivateLinkage, arrInit, globalName);
-
-            auto memcpyFn = _module->getFunction("llvm.memcpy.p0.p0.i64");
-            if (!memcpyFn) {
-                llvm::Type* memcpyArgTypes[] = {ptrTy, ptrTy, _builder.getInt64Ty(), _builder.getInt1Ty()};
-                auto memcpyType = llvm::FunctionType::get(_builder.getVoidTy(), memcpyArgTypes, false);
-                memcpyFn = llvm::Function::Create(
-                    memcpyType, llvm::Function::ExternalLinkage,
-                    "llvm.memcpy.p0.p0.i64", _module);
-            }
-
-            auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(block), "str.data");
-            auto totalSize = _builder.getInt64(len * 4);
-            _builder.CreateCall(memcpyFn, {dataPtr, globalVar, totalSize, _builder.getInt1(false)});
+            static int strDataCounter = 0;
+            string dataName = ".str.data." + to_string(strDataCounter++);
+            dataConst = new llvm::GlobalVariable(
+                *_module, arrType, /*isConstant=*/true,
+                llvm::GlobalValue::PrivateLinkage, arrInit, dataName);
         }
 
-        // String.data（Array<u32> 实例）的 handle 字段在 String 起始 offset 0
-        storeArrayHandle(alloca, block);
+        // .rodata Block：32 字节精确匹配 Array Block layout。
+        auto blockTy = llvm::StructType::get(_context, {i32Ty, i32Ty, i64Ty, i64Ty, ptrTy});
+        auto lenC = llvm::ConstantInt::get(i64Ty, len);
+        auto blockInit = llvm::ConstantStruct::get(
+            blockTy, {sentinel, i32Zero, lenC, lenC, dataConst});
+
+        // 空字面量共享同一全局，省 .rodata 体积。
+        llvm::GlobalVariable* blockGlobal = nullptr;
+        if (len == 0) {
+            const char* sharedName = ".str.empty.block";
+            blockGlobal = _module->getNamedGlobal(sharedName);
+            if (!blockGlobal) {
+                blockGlobal = new llvm::GlobalVariable(
+                    *_module, blockTy, /*isConstant=*/true,
+                    llvm::GlobalValue::PrivateLinkage, blockInit, sharedName);
+            }
+        } else {
+            static int strBlockCounter = 0;
+            string blockName = ".str.block." + to_string(strBlockCounter++);
+            blockGlobal = new llvm::GlobalVariable(
+                *_module, blockTy, /*isConstant=*/true,
+                llvm::GlobalValue::PrivateLinkage, blockInit, blockName);
+        }
+
+        storeArrayHandle(alloca, blockGlobal);
         return _builder.CreateLoad(stringType, alloca, "str_val");
     }
     throw YuxError(node->getLineNumber(), "Unsupported literal type");
