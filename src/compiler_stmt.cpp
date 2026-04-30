@@ -259,6 +259,65 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
 
             _scopeVars.push_back(varName);  // 加入作用域变量列表 (需要析构)
         }
+        // 处理 Weak<T> 类型（Phase 1d.1：仅支持从 Box<T> 构造，weak++）
+        else if (varType.isWeak()) {
+            auto elemType = varType.weakElementType();
+            if (!elemType) {
+                throw YuxError(node->getLineNumber(), "Weak type requires element type");
+            }
+
+            auto exprVal = compileExpr(expr);
+            auto exprType = expr->getType();
+
+            // 仅接受 Box<T> RHS（同元素类型）；Weak-to-Weak 复制留给 1d.2
+            if (!exprType.isBox() || !exprType.boxElementType() || !(*exprType.boxElementType() == *elemType)) {
+                throw YuxError(node->getLineNumber(),
+                    "Weak<{}> 1d.1 仅支持从 Box<{}> 构造", elemType->name, elemType->name);
+            }
+
+            auto boxStructType = getLLVMType(exprType);
+            auto weakStructType = getLLVMType(varType);
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto ptrTy = llvm::PointerType::get(_context, 0);
+            auto i32Ty = _builder.getInt32Ty();
+            auto i8Ty = _builder.getInt8Ty();
+
+            // 取源 Box 的 handle
+            auto tmpAlloca = _builder.CreateAlloca(boxStructType, nullptr, "weak_src_tmp");
+            _builder.CreateStore(exprVal, tmpAlloca);
+            auto srcHandleField = _builder.CreateGEP(boxStructType, tmpAlloca, {zero, zero}, "src_handle_field");
+            auto srcHandle = _builder.CreateLoad(ptrTy, srcHandleField, "src_handle");
+
+            // weak++（哨兵 / null 跳过）
+            auto incBB = llvm::BasicBlock::Create(_context, "weak_inc", _builder.GetInsertBlock()->getParent());
+            auto checkBB = llvm::BasicBlock::Create(_context, "weak_check", _builder.GetInsertBlock()->getParent());
+            auto doneBB = llvm::BasicBlock::Create(_context, "weak_inc_done", _builder.GetInsertBlock()->getParent());
+            auto sentinel = llvm::ConstantInt::get(i32Ty, 0xFFFFFFFFu);
+            auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
+
+            auto isNull = _builder.CreateICmpEQ(srcHandle, nullPtr, "is_null");
+            _builder.CreateCondBr(isNull, doneBB, checkBB);
+
+            _builder.SetInsertPoint(checkBB);
+            auto strong = _builder.CreateLoad(i32Ty, srcHandle, "strong");
+            auto isSentinel = _builder.CreateICmpEQ(strong, sentinel, "is_sentinel");
+            _builder.CreateCondBr(isSentinel, doneBB, incBB);
+
+            _builder.SetInsertPoint(incBB);
+            auto weakPtr = _builder.CreateGEP(i8Ty, srcHandle, {_builder.getInt64(4)}, "weak_ptr");
+            auto weak = _builder.CreateLoad(i32Ty, weakPtr, "weak");
+            auto newWeak = _builder.CreateAdd(weak, llvm::ConstantInt::get(i32Ty, 1), "new_weak");
+            _builder.CreateStore(newWeak, weakPtr);
+            _builder.CreateBr(doneBB);
+
+            _builder.SetInsertPoint(doneBB);
+
+            // 写 Weak.handle 字段
+            auto handleField = _builder.CreateGEP(weakStructType, alloca, {zero, zero}, "weak_handle_field");
+            _builder.CreateStore(srcHandle, handleField);
+
+            _scopeVars.push_back(varName);
+        }
         // 处理 Array<T> 类型 (动态数组，Phase 1b 单 handle Block 布局)
         else if (varType.isArrayGeneric()) {
             auto elemType = varType.arrayGenericElementType();

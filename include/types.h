@@ -203,6 +203,19 @@ struct TypeInfo {
         return nullptr;
     }
 
+    // Weak<T>：弱引用，layout 与 Box<T> 同形 { ptr handle }
+    // handle 指向 Box 的 Block；weak 计数维护 block 存活，不维护 payload 存活
+    [[nodiscard]] bool isWeak() const {
+        return kind == TypeKind::Generic && name == "Weak" && genericArgs.size() == 1;
+    }
+
+    [[nodiscard]] sp<TypeInfo> weakElementType() const {
+        if (isWeak() && genericArgs.size() == 1) {
+            return genericArgs[0];
+        }
+        return nullptr;
+    }
+
     [[nodiscard]] bool isPtr() const {
         return name == "Ptr";
     }

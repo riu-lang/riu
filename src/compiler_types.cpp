@@ -272,6 +272,19 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         return llvm::PointerType::get(_context, 0);
     }
 
+    // Weak<T> 类型 (Phase 1d.1 弱引用)
+    // 结构: { ptr handle }，与 Box<T> 同形；handle 指向同一 Block；只维护 block 存活
+    if (type.isWeak()) {
+        auto elemType = type.weakElementType();
+        if (elemType) {
+            DEBUG_LOG_VAL("    -> WeakType (struct)", "Weak<" << elemType->name << ">");
+            vector<llvm::Type*> weakFields;
+            weakFields.push_back(llvm::PointerType::get(_context, 0));  // handle: Block*
+            return llvm::StructType::get(_context, weakFields);
+        }
+        return llvm::PointerType::get(_context, 0);
+    }
+
     // Array<T> 类型 (动态数组，Phase 1b 新布局)
     // 结构: { ptr handle }；handle 指向 Block = { u32 strong, u32 weak, i64 len, i64 cap, *T data }
     // handle == null 表示空数组（无分配）；data 间接指针，realloc 只换 data 不动 block

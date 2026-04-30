@@ -76,6 +76,7 @@ void Compiler::compile(p<FileNode> file) {
         DEBUG_LOG("Emitting runtime helpers (yux module)");
         runtime::emitRuntimeHelpers(_builder, _module);
         runtime::emitBoxHelpers(_context, _builder, _module);
+        runtime::emitWeakHelpers(_context, _builder, _module);
         runtime::emitArrayHelpers(_context, _builder, _module);
     }
 

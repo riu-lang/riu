@@ -54,6 +54,22 @@ void Compiler::callDestructor(const string& varName, const TypeInfo& varType) {
         return;
     }
 
+    // 处理 Weak<T> 类型 (Phase 1d.1)
+    // 调用 _weak_release(handle)；weak==0 时 free block
+    if (varType.isWeak()) {
+        DEBUG_LOG_VAL("  Calling Weak destructor for", varName);
+
+        auto weakStructType = getLLVMType(varType);
+        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+
+        auto handleField = _builder.CreateGEP(weakStructType, varPtr, {zero, zero}, "weak.handle_field");
+        auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "weak.handle");
+
+        auto weakReleaseFn = runtime::getWeakReleaseFn(_module, _builder);
+        _builder.CreateCall(weakReleaseFn, {handle});
+        return;
+    }
+
     // 处理 Array<T> 类型 (动态数组)
     // Array 需要释放数据内存
     if (varType.isArrayGeneric()) {
@@ -139,6 +155,14 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
 
             auto boxReleaseFn = runtime::getBoxReleaseFn(_module, _builder);
             _builder.CreateCall(boxReleaseFn, {handle});
+        } else if (fieldType.isWeak()) {
+            // Weak 字段：load handle，调用 _weak_release(handle)
+            auto weakStructType = getLLVMType(fieldType);
+            auto handleField = _builder.CreateGEP(weakStructType, fieldPtr, {zero, zero});
+            auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField);
+
+            auto weakReleaseFn = runtime::getWeakReleaseFn(_module, _builder);
+            _builder.CreateCall(weakReleaseFn, {handle});
         } else if (fieldType.isArrayGeneric()) {
             // Array 字段: 调用 Array 释放函数
             auto arrayStructType = getLLVMType(fieldType);
@@ -197,8 +221,8 @@ bool Compiler::typeNeedsDestructor(const TypeInfo& type) {
     // 指针类型不需要析构 (不拥有数据)
     if (type.isPtr()) return false;
 
-    // Box 和 Array 需要析构
-    if (type.isBox() || type.isArrayGeneric()) return true;
+    // Box / Weak / Array 需要析构
+    if (type.isBox() || type.isWeak() || type.isArrayGeneric()) return true;
 
     // 检查结构体是否需要析构
     return structNeedsDestructor(type.name);
