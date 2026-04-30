@@ -178,6 +178,45 @@ llvm::StructType* Compiler::getArrayBlockType() {
     return llvm::StructType::create(_context, fields, kName);
 }
 
+// ==================== Array<T> 句柄辅助（Phase 1b） ====================
+// Array 实例 layout：{ ptr handle }（由 getLLVMType 返回 8 字节单字段 struct）
+// Block layout：{ u32 strong @0, u32 weak @4, i64 len @8, i64 cap @16, ptr data @24 }
+
+// 从 Array<T> 实例（栈上 alloca）加载句柄
+// arrayStructPtr 指向 { ptr handle }，handle 字段在 offset 0，直接 load 即可
+llvm::Value* Compiler::loadArrayHandle(llvm::Value* arrayStructPtr, const string& name) {
+    auto ptrTy = llvm::PointerType::get(_context, 0);
+    return _builder.CreateLoad(ptrTy, arrayStructPtr, name);
+}
+
+// 把句柄写回 Array<T> 实例
+void Compiler::storeArrayHandle(llvm::Value* arrayStructPtr, llvm::Value* handle) {
+    _builder.CreateStore(handle, arrayStructPtr);
+}
+
+// Block.len 字段指针（offset 8）
+llvm::Value* Compiler::arrayBlockLenPtr(llvm::Value* handle) {
+    return _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "block.len_ptr");
+}
+
+// Block.cap 字段指针（offset 16）
+llvm::Value* Compiler::arrayBlockCapPtr(llvm::Value* handle) {
+    return _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(16)}, "block.cap_ptr");
+}
+
+// Block.data 字段指针（offset 24，存放数据缓冲首地址）
+llvm::Value* Compiler::arrayBlockDataFieldPtr(llvm::Value* handle) {
+    return _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(24)}, "block.data_field");
+}
+
+// 分配 Array<T> 的 Block
+// initCap > 0 时同时分配数据缓冲；调用方负责把元素写入 block.data
+llvm::Value* Compiler::allocArrayBlock(llvm::Type* elemLLVMType, llvm::Value* initCap, llvm::Value* initLen) {
+    auto elemSize = _module->getDataLayout().getTypeAllocSize(elemLLVMType);
+    auto allocFn = runtime::getArrayAllocFn(_module, _builder);
+    return _builder.CreateCall(allocFn, {_builder.getInt64(elemSize), initCap, initLen}, "array.block");
+}
+
 // ==================== 类型映射 ====================
 
 // 将 TypeInfo 转换为 LLVM 类型

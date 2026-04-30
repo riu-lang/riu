@@ -956,8 +956,8 @@ llvm::Value* Compiler::compileArrayMethodCall(
     auto elemType = baseType.arrayGenericElementType();
     auto arrayStructType = getLLVMType(baseType);
     auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-    auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
-    auto two = llvm::ConstantInt::get(_builder.getInt32Ty(), 2);
+    auto i64Ty = _builder.getInt64Ty();
+    auto ptrTy = llvm::PointerType::get(_context, 0);
 
     llvm::Value* arrayPtr = nullptr;
     if (auto baseLit = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
@@ -1022,16 +1022,16 @@ llvm::Value* Compiler::compileArrayMethodCall(
     if (member == "len") {
         DEBUG_LOG("    Expr: Array.len()");
         auto ptr = getReadPtr();
-        llvm::Value* indices[] = {zero, one};
-        auto lenField = _builder.CreateGEP(arrayStructType, ptr, indices, "len_field");
-        return _builder.CreateLoad(_builder.getInt64Ty(), lenField, "array.len");
+        auto handle = loadArrayHandle(ptr);
+        auto lenField = arrayBlockLenPtr(handle);
+        return _builder.CreateLoad(i64Ty, lenField, "array.len");
     }
     if (member == "cap") {
         DEBUG_LOG("    Expr: Array.cap()");
         auto ptr = getReadPtr();
-        llvm::Value* indices[] = {zero, two};
-        auto capField = _builder.CreateGEP(arrayStructType, ptr, indices, "cap_field");
-        return _builder.CreateLoad(_builder.getInt64Ty(), capField, "array.cap");
+        auto handle = loadArrayHandle(ptr);
+        auto capField = arrayBlockCapPtr(handle);
+        return _builder.CreateLoad(i64Ty, capField, "array.cap");
     }
 
     if (!elemType) {
@@ -1042,9 +1042,9 @@ llvm::Value* Compiler::compileArrayMethodCall(
     if (member == "is_empty") {
         DEBUG_LOG("    Expr: Array.is_empty()");
         auto ptr = getReadPtr();
-        llvm::Value* indices[] = {zero, one};
-        auto lenField = _builder.CreateGEP(arrayStructType, ptr, indices, "len_field");
-        auto lenVal = _builder.CreateLoad(_builder.getInt64Ty(), lenField, "array.len");
+        auto handle = loadArrayHandle(ptr);
+        auto lenField = arrayBlockLenPtr(handle);
+        auto lenVal = _builder.CreateLoad(i64Ty, lenField, "array.len");
         return _builder.CreateICmpEQ(lenVal, _builder.getInt64(0), "array.is_empty");
     }
 
@@ -1054,9 +1054,8 @@ llvm::Value* Compiler::compileArrayMethodCall(
             throw YuxError(callNode->getLineNumber(), "at requires 1 argument");
         }
         auto ptr = getReadPtr();
-        llvm::Value* dataIndices[] = {zero, zero};
-        auto dataFieldPtr = _builder.CreateGEP(arrayStructType, ptr, dataIndices, "a.data.field");
-        auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataFieldPtr, "a.data");
+        auto handle = loadArrayHandle(ptr);
+        auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(handle), "a.data");
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {args[0]}, "at.elem.ptr");
         return _builder.CreateLoad(elemLLVMType, elemPtr, "at.elem");
     }
@@ -1064,9 +1063,8 @@ llvm::Value* Compiler::compileArrayMethodCall(
     if (member == "first") {
         DEBUG_LOG("    Expr: Array.first()");
         auto ptr = getReadPtr();
-        llvm::Value* dataIndices[] = {zero, zero};
-        auto dataFieldPtr = _builder.CreateGEP(arrayStructType, ptr, dataIndices, "a.data.field");
-        auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataFieldPtr, "a.data");
+        auto handle = loadArrayHandle(ptr);
+        auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(handle), "a.data");
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {_builder.getInt64(0)}, "first.elem.ptr");
         return _builder.CreateLoad(elemLLVMType, elemPtr, "first.elem");
     }
@@ -1074,14 +1072,10 @@ llvm::Value* Compiler::compileArrayMethodCall(
     if (member == "last") {
         DEBUG_LOG("    Expr: Array.last()");
         auto ptr = getReadPtr();
-        llvm::Value* lenIndices[] = {zero, one};
-        auto lenField = _builder.CreateGEP(arrayStructType, ptr, lenIndices, "len_field");
-        auto lenVal = _builder.CreateLoad(_builder.getInt64Ty(), lenField, "array.len");
+        auto handle = loadArrayHandle(ptr);
+        auto lenVal = _builder.CreateLoad(i64Ty, arrayBlockLenPtr(handle), "array.len");
         auto lastIdx = _builder.CreateSub(lenVal, _builder.getInt64(1), "last.idx");
-        
-        llvm::Value* dataIndices[] = {zero, zero};
-        auto dataFieldPtr = _builder.CreateGEP(arrayStructType, ptr, dataIndices, "a.data.field");
-        auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataFieldPtr, "a.data");
+        auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(handle), "a.data");
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {lastIdx}, "last.elem.ptr");
         return _builder.CreateLoad(elemLLVMType, elemPtr, "last.elem");
     }
@@ -1091,19 +1085,16 @@ llvm::Value* Compiler::compileArrayMethodCall(
         if (!arrayPtr) {
             throw YuxError(callNode->getLineNumber(), "Array.pop() requires an lvalue array");
         }
-        llvm::Value* lenIndices[] = {zero, one};
-        auto lenFieldPtr = _builder.CreateGEP(arrayStructType, arrayPtr, lenIndices, "a.len.field");
-        auto lenVal = _builder.CreateLoad(_builder.getInt64Ty(), lenFieldPtr, "a.len");
+        auto handle = loadArrayHandle(arrayPtr);
+        auto lenFieldPtr = arrayBlockLenPtr(handle);
+        auto lenVal = _builder.CreateLoad(i64Ty, lenFieldPtr, "a.len");
         auto lastIdx = _builder.CreateSub(lenVal, _builder.getInt64(1), "pop.idx");
-        
-        llvm::Value* dataIndices[] = {zero, zero};
-        auto dataFieldPtr = _builder.CreateGEP(arrayStructType, arrayPtr, dataIndices, "a.data.field");
-        auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataFieldPtr, "a.data");
+
+        auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(handle), "a.data");
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {lastIdx}, "pop.elem.ptr");
         auto elemVal = _builder.CreateLoad(elemLLVMType, elemPtr, "pop.elem");
-        
-        auto newLen = _builder.CreateSub(lenVal, _builder.getInt64(1), "pop.new_len");
-        _builder.CreateStore(newLen, lenFieldPtr);
+
+        _builder.CreateStore(lastIdx, lenFieldPtr);
         return elemVal;
     }
 
@@ -1112,14 +1103,9 @@ llvm::Value* Compiler::compileArrayMethodCall(
             throw YuxError(callNode->getLineNumber(),
                 "Array mutation method '{}' requires an lvalue array", member);
         }
-        auto elemSize = _module->getDataLayout().getTypeAllocSize(elemLLVMType);
-
-        llvm::Value* dataIdx[] = {zero, zero};
-        llvm::Value* lenIdx[] = {zero, one};
-        llvm::Value* capIdx[] = {zero, two};
-        auto dataFieldPtr = _builder.CreateGEP(arrayStructType, arrayPtr, dataIdx, "a.data.field");
-        auto lenFieldPtr = _builder.CreateGEP(arrayStructType, arrayPtr, lenIdx, "a.len.field");
-        auto capFieldPtr = _builder.CreateGEP(arrayStructType, arrayPtr, capIdx, "a.cap.field");
+        auto handle = loadArrayHandle(arrayPtr);
+        auto lenFieldPtr = arrayBlockLenPtr(handle);
+        auto capFieldPtr = arrayBlockCapPtr(handle);
 
         auto voidResult = [&]() -> llvm::Value* {
             return llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
@@ -1142,31 +1128,28 @@ llvm::Value* Compiler::compileArrayMethodCall(
         if (args.size() != 1) {
             throw YuxError(callNode->getLineNumber(), "push requires 1 argument");
         }
+        auto elemSize = _module->getDataLayout().getTypeAllocSize(elemLLVMType);
         auto elemVal = args[0];
-        auto lenVal = _builder.CreateLoad(_builder.getInt64Ty(), lenFieldPtr, "a.len");
-        auto capVal = _builder.CreateLoad(_builder.getInt64Ty(), capFieldPtr, "a.cap");
+        auto lenVal = _builder.CreateLoad(i64Ty, lenFieldPtr, "a.len");
+        auto capVal = _builder.CreateLoad(i64Ty, capFieldPtr, "a.cap");
 
         auto needGrow = _builder.CreateICmpUGE(lenVal, capVal, "push.need_grow");
         auto growBB = llvm::BasicBlock::Create(_context, "push.grow", _currentFn);
         auto storeBB = llvm::BasicBlock::Create(_context, "push.store", _currentFn);
         _builder.CreateCondBr(needGrow, growBB, storeBB);
 
+        // 扩容路径：通过 _array_grow 在 Block 内原地更新 cap、data
         _builder.SetInsertPoint(growBB);
-        auto oldData = _builder.CreateLoad(
-            llvm::PointerType::get(_context, 0), dataFieldPtr, "a.data.old");
         auto capIsZero = _builder.CreateICmpEQ(capVal, _builder.getInt64(0), "cap.is_zero");
         auto doubled = _builder.CreateMul(capVal, _builder.getInt64(2), "cap.dbl");
         auto newCap = _builder.CreateSelect(capIsZero, _builder.getInt64(4), doubled, "new.cap");
-        auto newBytes = _builder.CreateMul(newCap, _builder.getInt64(elemSize), "new.bytes");
         auto growFn = runtime::getArrayGrowFn(_module, _builder);
-        auto newData = _builder.CreateCall(growFn, {oldData, newBytes}, "a.data.new");
-        _builder.CreateStore(newData, dataFieldPtr);
-        _builder.CreateStore(newCap, capFieldPtr);
+        _builder.CreateCall(growFn, {handle, _builder.getInt64(elemSize), newCap});
         _builder.CreateBr(storeBB);
 
+        // 写入新元素并 len++
         _builder.SetInsertPoint(storeBB);
-        auto curData = _builder.CreateLoad(
-            llvm::PointerType::get(_context, 0), dataFieldPtr, "a.data.cur");
+        auto curData = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(handle), "a.data.cur");
         auto elemPtr = _builder.CreateGEP(elemLLVMType, curData, {lenVal}, "push.elem.ptr");
         _builder.CreateStore(elemVal, elemPtr);
         auto newLen = _builder.CreateAdd(lenVal, _builder.getInt64(1), "new.len");

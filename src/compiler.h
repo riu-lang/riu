@@ -117,6 +117,15 @@ class Compiler {
     // ==================== 类型系统 ====================
     llvm::Type* getLLVMType(const TypeInfo& type);                              // 将 TypeInfo 转换为 LLVM 类型
     llvm::StructType* getArrayBlockType();                                      // Phase 1b: { u32 strong, u32 weak, i64 len, i64 cap, ptr data } - Array<T> 的 RC Block 布局，与 T 无关
+
+    // ==================== Array<T> 句柄辅助（Phase 1b） ====================
+    // 这些辅助统一处理 Array<T> 实例 = { ptr handle } 经由 handle 间接访问 Block 的模式
+    llvm::Value* loadArrayHandle(llvm::Value* arrayStructPtr, const string& name = "array.handle");  // 从 Array<T> 实例 alloca 加载句柄（指向 Block）
+    llvm::Value* arrayBlockLenPtr(llvm::Value* handle);                         // Block.len 字段地址（i64*）
+    llvm::Value* arrayBlockCapPtr(llvm::Value* handle);                         // Block.cap 字段地址（i64*）
+    llvm::Value* arrayBlockDataFieldPtr(llvm::Value* handle);                   // Block.data 字段地址（ptr*；存放当前数据缓冲指针）
+    llvm::Value* allocArrayBlock(llvm::Type* elemLLVMType, llvm::Value* initCap, llvm::Value* initLen);  // 调用 _array_alloc 返回 Block*
+    void storeArrayHandle(llvm::Value* arrayStructPtr, llvm::Value* handle);    // 把句柄写到 Array<T> 实例（field 0）
     llvm::FunctionType* getLLVMFunctionType(p<FnHeaderNode> header);            // 获取函数的 LLVM 类型
     llvm::StructType* getOrCreateStructType(p<StructDeclNode> structDecl, p<FileNode> sourceFile = nullptr);  // 获取或创建结构体类型
 

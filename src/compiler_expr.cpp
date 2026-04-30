@@ -303,79 +303,50 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
         auto codePoints = stringLiteral->codePoints();
         size_t len = codePoints.size();
 
+        // String layout：{ data: Array<u32> } = { { ptr handle } }
+        // 分配 Array<u32> 的 Block（cap=len、len=len），把 codepoint 写到 block.data
+        // TODO(Phase 1c)：String 字面量改走 .rodata 哨兵 Block，避免每次启动堆分配
         auto stringType = getLLVMType(TypeInfo("String"));
-
         auto alloca = _builder.CreateAlloca(stringType, nullptr, "str_tmp");
 
-        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-        auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
-        auto two = llvm::ConstantInt::get(_builder.getInt32Ty(), 2);
+        auto i32Ty = _builder.getInt32Ty();
+        auto ptrTy = llvm::PointerType::get(_context, 0);
+        auto lenVal = _builder.getInt64(len);
 
-        llvm::Value* dataPtrIndices[] = {zero, zero, zero};
-        auto dataPtrField = _builder.CreateGEP(stringType, alloca, dataPtrIndices, "str_data_ptr");
-
-        llvm::Value* lenIndices[] = {zero, zero, one};
-        auto lenField = _builder.CreateGEP(stringType, alloca, lenIndices, "str_len");
-
-        llvm::Value* capIndices[] = {zero, zero, two};
-        auto capField = _builder.CreateGEP(stringType, alloca, capIndices, "str_cap");
+        auto block = allocArrayBlock(i32Ty, lenVal, lenVal);
 
         if (len > 0) {
-            auto elemSize = _builder.getInt64(4);
-            auto totalSize = _builder.getInt64(len * 4);
-            auto allocFn = runtime::getArrayAllocFn(_module, _builder);
-            auto heapPtr = _builder.CreateCall(allocFn, {totalSize}, "str_heap_ptr");
-
-            auto arrType = llvm::ArrayType::get(_builder.getInt32Ty(), len);
-
+            // 用全局 .rodata 数组初始化 block.data 缓冲，避免逐元素 store 膨胀 IR
+            auto arrType = llvm::ArrayType::get(i32Ty, len);
             vector<llvm::Constant*> elements;
+            elements.reserve(len);
             for (size_t i = 0; i < len; ++i) {
-                elements.push_back(llvm::ConstantInt::get(_builder.getInt32Ty(), codePoints[i]));
+                elements.push_back(llvm::ConstantInt::get(i32Ty, codePoints[i]));
             }
             auto arrInit = llvm::ConstantArray::get(arrType, elements);
 
             static int strCounter = 0;
             string globalName = ".str." + to_string(strCounter++);
             auto globalVar = new llvm::GlobalVariable(
-                *_module,
-                arrType,
-                true,
-                llvm::GlobalValue::PrivateLinkage,
-                arrInit,
-                globalName
-            );
+                *_module, arrType, true,
+                llvm::GlobalValue::PrivateLinkage, arrInit, globalName);
 
             auto memcpyFn = _module->getFunction("llvm.memcpy.p0.p0.i64");
             if (!memcpyFn) {
-                llvm::Type* memcpyArgTypes[] = {
-                    llvm::PointerType::get(_context, 0),
-                    llvm::PointerType::get(_context, 0),
-                    _builder.getInt64Ty(),
-                    _builder.getInt1Ty()
-                };
+                llvm::Type* memcpyArgTypes[] = {ptrTy, ptrTy, _builder.getInt64Ty(), _builder.getInt1Ty()};
                 auto memcpyType = llvm::FunctionType::get(_builder.getVoidTy(), memcpyArgTypes, false);
                 memcpyFn = llvm::Function::Create(
-                    memcpyType,
-                    llvm::Function::ExternalLinkage,
-                    "llvm.memcpy.p0.p0.i64",
-                    _module
-                );
+                    memcpyType, llvm::Function::ExternalLinkage,
+                    "llvm.memcpy.p0.p0.i64", _module);
             }
 
-            auto globalPtr = _builder.CreateBitCast(globalVar, llvm::PointerType::get(_context, 0));
-            auto heapPtrTyped = _builder.CreateBitCast(heapPtr, llvm::PointerType::get(_context, 0));
-
-            _builder.CreateCall(memcpyFn, {heapPtrTyped, globalPtr, totalSize, _builder.getInt1(false)});
-
-            _builder.CreateStore(heapPtrTyped, dataPtrField);
-        } else {
-            _builder.CreateStore(
-                llvm::ConstantPointerNull::get(llvm::PointerType::get(_context, 0)), dataPtrField);
+            auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(block), "str.data");
+            auto totalSize = _builder.getInt64(len * 4);
+            _builder.CreateCall(memcpyFn, {dataPtr, globalVar, totalSize, _builder.getInt1(false)});
         }
 
-        _builder.CreateStore(llvm::ConstantInt::get(_builder.getInt64Ty(), len), lenField);
-        _builder.CreateStore(llvm::ConstantInt::get(_builder.getInt64Ty(), len), capField);
-
+        // String.data（Array<u32> 实例）的 handle 字段在 String 起始 offset 0
+        storeArrayHandle(alloca, block);
         return _builder.CreateLoad(stringType, alloca, "str_val");
     }
     throw YuxError(node->getLineNumber(), "Unsupported literal type");
@@ -1017,13 +988,9 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
             throw YuxError(node->getLineNumber(), "Array type requires element type");
         }
 
-        auto arrayStructType = getLLVMType(arrayType);
         auto elemLLVMType = getLLVMType(*elemType);
-
-        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-        llvm::Value* indices0[] = {zero, zero};
-        auto dataFieldPtr = _builder.CreateGEP(arrayStructType, currentPtr, indices0, "array.data.field");
-        auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataFieldPtr, "array.data.ptr");
+        auto handle = loadArrayHandle(currentPtr);
+        auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), arrayBlockDataFieldPtr(handle), "array.data.ptr");
 
         auto indexVal = compileExpr(indices[0]);
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {indexVal}, "array.elem.ptr");
@@ -1058,28 +1025,32 @@ llvm::Value* Compiler::compileArrayLiteralExpr(p<ExprArrayNode> node) {
 
     DEBUG_LOG_VAL("    Expr: ArrayLiteral", arrayType.name);
 
-    if (arrayType.isArrayGeneric() && elements.empty()) {
-        auto alloca = _builder.CreateAlloca(llvmArrayType, nullptr, "empty_array");
-        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-
-        llvm::Value* indices0[] = {zero, zero};
-        auto dataPtrField = _builder.CreateGEP(llvmArrayType, alloca, indices0, "data_ptr_field");
-
+    // Array<T> 字面量（动态数组）：分配 Block，写入元素，返回 { handle } 结构体值
+    if (arrayType.isArrayGeneric()) {
         auto elemType = arrayType.arrayGenericElementType();
         auto elemLLVMType = elemType ? getLLVMType(*elemType) : _builder.getInt8Ty();
-        _builder.CreateStore(llvm::ConstantPointerNull::get(llvm::PointerType::get(_context, 0)), dataPtrField);
+        auto count = elements.size();
+        auto countVal = _builder.getInt64(count);
 
-        llvm::Value* indices1[] = {zero, llvm::ConstantInt::get(_builder.getInt32Ty(), 1)};
-        auto lenField = _builder.CreateGEP(llvmArrayType, alloca, indices1, "len_field");
-        _builder.CreateStore(_builder.getInt64(0), lenField);
+        auto block = allocArrayBlock(elemLLVMType, countVal, countVal);
 
-        llvm::Value* indices2[] = {zero, llvm::ConstantInt::get(_builder.getInt32Ty(), 2)};
-        auto capField = _builder.CreateGEP(llvmArrayType, alloca, indices2, "cap_field");
-        _builder.CreateStore(_builder.getInt64(0), capField);
+        if (count > 0) {
+            auto ptrTy = llvm::PointerType::get(_context, 0);
+            auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(block), "lit.data");
+            for (size_t i = 0; i < count; ++i) {
+                auto elemVal = compileExpr(elements[i]);
+                auto idx = _builder.getInt64(i);
+                auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {idx}, "lit.elem.ptr");
+                _builder.CreateStore(elemVal, elemPtr);
+            }
+        }
 
-        return _builder.CreateLoad(llvmArrayType, alloca, "empty_array.load");
+        auto alloca = _builder.CreateAlloca(llvmArrayType, nullptr, "array.literal");
+        storeArrayHandle(alloca, block);
+        return _builder.CreateLoad(llvmArrayType, alloca, "array.literal.load");
     }
 
+    // 固定大小数组 [N]T 字面量
     if (elements.empty()) {
         throw YuxError(node->getLineNumber(), "Empty array literal not supported");
     }

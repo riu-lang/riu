@@ -1094,32 +1094,27 @@ struct Box<T> {
   ; 内部处理
 }
 
+; Array<T> 实例 layout 由编译器内部管理：{ ptr handle }，handle 指向 Block
+; （Phase 1b：所有方法编译器特例化，主体不再读 yux 端字段）
+#CompilerInner
 struct Array<T> {
-  _data Ptr
-  _len i64
-  _cap i64
 }
 
 Array<T> {
-  fn len() i64 {
-    $._len
-  }
+  #CompilerInner
+  fn len() i64
 
-  fn cap() i64 {
-    $._cap
-  }
+  #CompilerInner
+  fn cap() i64
 
-  fn is_empty() bool {
-    $._len == 0i64
-  }
+  #CompilerInner
+  fn is_empty() bool
 
-  fn clear() {
-    $._len = 0i64
-  }
+  #CompilerInner
+  fn clear()
 
-  fn set_len(new_len i64) {
-    $._len = new_len
-  }
+  #CompilerInner
+  fn set_len(new_len i64)
 
   #CompilerInner
   fn push(value T)
