@@ -209,6 +209,25 @@ llvm::Function* getBoxReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
+// 获取 Box 升级（Weak→Box）函数（Phase 1d.2）
+// 签名: ptr _box_upgrade(ptr block)
+// null/strong==0 → 返回 null；哨兵 → 直接返回 block；否则 strong++ 并返回 block
+llvm::Function* getBoxUpgradeFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
+    string fnName = "_box_upgrade";
+    auto func = module->getFunction(fnName);
+    if (func) return func;
+
+    vector<llvm::Type*> paramTypes;
+    paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0));
+
+    auto fnType = llvm::FunctionType::get(
+        llvm::PointerType::get(builder.getContext(), 0),
+        paramTypes,
+        false
+    );
+    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
+}
+
 // 获取 Weak 引用减少函数
 // 签名: void _weak_release(ptr block)
 // 哨兵 / null 跳过；否则 weak--；weak==0 时 free 整个 block
@@ -432,6 +451,44 @@ void emitWeakHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llv
     auto i32Ty = builder.getInt32Ty();
     auto sentinel = llvm::ConstantInt::get(i32Ty, 0xFFFFFFFFu);
     auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
+
+    // _box_upgrade(handle) -> handle_or_null
+    // Phase 1d.2：null → null；哨兵 → handle；strong==0 → null；否则 strong++ 返回 handle
+    DEBUG_LOG("  Emitting _box_upgrade");
+    auto upgradeFn = getBoxUpgradeFn(module, builder);
+    if (upgradeFn->empty()) {
+        auto entry = llvm::BasicBlock::Create(context, "entry", upgradeFn);
+        auto checkBB = llvm::BasicBlock::Create(context, "check", upgradeFn);
+        auto retBlockBB = llvm::BasicBlock::Create(context, "ret_block", upgradeFn);
+        auto strongCheckBB = llvm::BasicBlock::Create(context, "strong_check", upgradeFn);
+        auto incBB = llvm::BasicBlock::Create(context, "inc", upgradeFn);
+        auto retNullBB = llvm::BasicBlock::Create(context, "ret_null", upgradeFn);
+
+        builder.SetInsertPoint(entry);
+        llvm::Value* block = &*upgradeFn->arg_begin();
+        auto isNull = builder.CreateICmpEQ(block, nullPtr, "is_null");
+        builder.CreateCondBr(isNull, retNullBB, checkBB);
+
+        builder.SetInsertPoint(checkBB);
+        auto strong = builder.CreateLoad(i32Ty, block, "strong");
+        auto isSentinel = builder.CreateICmpEQ(strong, sentinel, "is_sentinel");
+        builder.CreateCondBr(isSentinel, retBlockBB, strongCheckBB);
+
+        builder.SetInsertPoint(strongCheckBB);
+        auto isZero = builder.CreateICmpEQ(strong, llvm::ConstantInt::get(i32Ty, 0), "is_zero");
+        builder.CreateCondBr(isZero, retNullBB, incBB);
+
+        builder.SetInsertPoint(incBB);
+        auto newStrong = builder.CreateAdd(strong, llvm::ConstantInt::get(i32Ty, 1), "new_strong");
+        builder.CreateStore(newStrong, block);
+        builder.CreateBr(retBlockBB);
+
+        builder.SetInsertPoint(retBlockBB);
+        builder.CreateRet(block);
+
+        builder.SetInsertPoint(retNullBB);
+        builder.CreateRet(nullPtr);
+    }
 
     // _weak_release(handle): null/哨兵跳过；weak--；weak==0 free
     DEBUG_LOG("  Emitting _weak_release");

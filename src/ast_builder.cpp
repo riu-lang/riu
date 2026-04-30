@@ -1448,6 +1448,16 @@ std::any ASTBuilder::visitTypeNullable(yux::yuxParser::TypeNullableContext* ctx)
     auto inner = any_cast_p<TypeNode>(visit(ctx->type()));
 
     auto questTok = ctx->SymbolQuest()->getSymbol();
+
+    // Phase 1d.3：禁 Weak<T>?（DRAFT §5：Weak 已原生可空，再裹 Nullable 无意义）
+    {
+        auto innerTI = inner->getType();
+        if (innerTI.kind == TypeKind::Generic && innerTI.name == "Weak") {
+            int line = questTok ? (int)questTok->getLine() : 0;
+            throw YuxError(line, "Weak<T>? 禁用：Weak 已原生可空（upgrade 返回 Box<T>?）");
+        }
+    }
+
     Token nullableName(string("Nullable"), questTok ? questTok->getLine() : 0);
 
     vector<p<TypeNode>> args;

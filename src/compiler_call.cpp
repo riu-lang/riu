@@ -17,6 +17,7 @@
 #include "mangler.h"
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
+#include <functional>
 
 // ==================== 辅助函数: 参数类型匹配 ====================
 
@@ -813,24 +814,32 @@ llvm::Value* Compiler::compileGenericFunctionCall(
         }
 
         map<string, TypeInfo> inferred;
+        // 递归 unify：参数 pType 与实参 aType 匹配；遇到形如 T 的裸类型参数则记录推断
+        std::function<void(const TypeInfo&, const TypeInfo&)> unify =
+            [&](const TypeInfo& pType, const TypeInfo& aType) {
+                if (pType.isNormal() && !isBuiltinType(pType.name)) {
+                    for (auto& tp : typeParams) {
+                        if (pType.name == tp) {
+                            inferred[tp] = aType;
+                            return;
+                        }
+                    }
+                }
+                // Generic vs Generic：同名同元数则递归各 typeArg
+                if (pType.kind == TypeKind::Generic && aType.kind == TypeKind::Generic
+                    && pType.name == aType.name
+                    && pType.genericArgs.size() == aType.genericArgs.size()) {
+                    for (size_t i = 0; i < pType.genericArgs.size(); ++i) {
+                        if (pType.genericArgs[i] && aType.genericArgs[i]) {
+                            unify(*pType.genericArgs[i], *aType.genericArgs[i]);
+                        }
+                    }
+                }
+            };
         for (size_t i = 0; i < params.size(); ++i) {
             auto paramType = params[i]->type();
             if (!paramType) continue;
-            TypeInfo pType = paramType->getType();
-            TypeInfo aType = argTypes[i];
-
-            if (pType.isNormal() && !isBuiltinType(pType.name)) {
-                bool isTypeParam = false;
-                for (auto& tp : typeParams) {
-                    if (pType.name == tp) {
-                        isTypeParam = true;
-                        break;
-                    }
-                }
-                if (isTypeParam) {
-                    inferred[pType.name] = aType;
-                }
-            }
+            unify(paramType->getType(), argTypes[i]);
         }
 
         for (auto& tp : typeParams) {
@@ -857,6 +866,53 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             }
             auto size = _module->getDataLayout().getTypeAllocSize(llvmType);
             return _builder.getInt64(size);
+        }
+        if (fnName == "upgrade") {
+            // Phase 1d.2：Weak<T> → Box<T>?
+            if (typeArgs.size() != 1) {
+                throw YuxError(callNode->getLineNumber(),
+                    "upgrade expects 1 type argument");
+            }
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(),
+                    "upgrade expects 1 argument");
+            }
+            auto& T = typeArgs[0];
+            auto tShared = make_shared<TypeInfo>(T);
+            TypeInfo weakTy("Weak", {tShared});
+            TypeInfo boxTy("Box", {tShared});
+            auto boxShared = make_shared<TypeInfo>(boxTy);
+            TypeInfo nullableBoxTy("Nullable", {boxShared});
+
+            auto ptrTy = llvm::PointerType::get(_context, 0);
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+
+            // 取 Weak.handle
+            auto weakStructTy = getLLVMType(weakTy);
+            auto weakTmp = _builder.CreateAlloca(weakStructTy, nullptr, "upgrade.weak_tmp");
+            _builder.CreateStore(args[0], weakTmp);
+            auto handleField = _builder.CreateGEP(weakStructTy, weakTmp, {zero, zero}, "upgrade.handle_field");
+            auto handle = _builder.CreateLoad(ptrTy, handleField, "upgrade.handle");
+
+            // 调 _box_upgrade(handle) → handle_or_null
+            auto upgradeFn = runtime::getBoxUpgradeFn(_module, _builder);
+            auto resultHandle = _builder.CreateCall(upgradeFn, {handle}, "upgrade.result");
+
+            // 构造 Nullable<Box<T>> = { i1 _has, { ptr handle } _value }
+            auto nullableLLVMTy = getLLVMType(nullableBoxTy);
+            auto resultAlloca = _builder.CreateAlloca(nullableLLVMTy, nullptr, "upgrade.nullable");
+            auto hasField = _builder.CreateGEP(nullableLLVMTy, resultAlloca, {zero, zero}, "upgrade.has_field");
+            auto valueField = _builder.CreateGEP(nullableLLVMTy, resultAlloca, {zero, one}, "upgrade.value_field");
+
+            auto isNotNull = _builder.CreateICmpNE(resultHandle, llvm::ConstantPointerNull::get(ptrTy), "upgrade.has");
+            _builder.CreateStore(isNotNull, hasField);
+            // Box<T> = { ptr handle }；不论 has 与否都写 handle（null 时 _has=false 已表示无效）
+            auto boxStructTy = getLLVMType(boxTy);
+            auto innerHandleField = _builder.CreateGEP(boxStructTy, valueField, {zero, zero}, "upgrade.inner_handle");
+            _builder.CreateStore(resultHandle, innerHandleField);
+
+            return _builder.CreateLoad(nullableLLVMTy, resultAlloca, "upgrade.value");
         }
         throw YuxError(callNode->getLineNumber(),
             "Unknown #CompilerInner function '{}'", fnName);

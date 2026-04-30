@@ -259,7 +259,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
 
             _scopeVars.push_back(varName);  // 加入作用域变量列表 (需要析构)
         }
-        // 处理 Weak<T> 类型（Phase 1d.1：仅支持从 Box<T> 构造，weak++）
+        // 处理 Weak<T> 类型（Phase 1d.2：支持从 Box<T> 或 Weak<T> 构造，weak++）
         else if (varType.isWeak()) {
             auto elemType = varType.weakElementType();
             if (!elemType) {
@@ -269,23 +269,24 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             auto exprVal = compileExpr(expr);
             auto exprType = expr->getType();
 
-            // 仅接受 Box<T> RHS（同元素类型）；Weak-to-Weak 复制留给 1d.2
-            if (!exprType.isBox() || !exprType.boxElementType() || !(*exprType.boxElementType() == *elemType)) {
+            bool fromBox = exprType.isBox() && exprType.boxElementType() && *exprType.boxElementType() == *elemType;
+            bool fromWeak = exprType.isWeak() && exprType.weakElementType() && *exprType.weakElementType() == *elemType;
+            if (!fromBox && !fromWeak) {
                 throw YuxError(node->getLineNumber(),
-                    "Weak<{}> 1d.1 仅支持从 Box<{}> 构造", elemType->name, elemType->name);
+                    "Weak<{}> 仅支持从 Box<{}> 或 Weak<{}> 构造", elemType->name, elemType->name, elemType->name);
             }
 
-            auto boxStructType = getLLVMType(exprType);
+            auto srcStructType = getLLVMType(exprType);
             auto weakStructType = getLLVMType(varType);
             auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
             auto ptrTy = llvm::PointerType::get(_context, 0);
             auto i32Ty = _builder.getInt32Ty();
             auto i8Ty = _builder.getInt8Ty();
 
-            // 取源 Box 的 handle
-            auto tmpAlloca = _builder.CreateAlloca(boxStructType, nullptr, "weak_src_tmp");
+            // 取源 Box/Weak 的 handle（两者 layout 同形 { ptr handle }）
+            auto tmpAlloca = _builder.CreateAlloca(srcStructType, nullptr, "weak_src_tmp");
             _builder.CreateStore(exprVal, tmpAlloca);
-            auto srcHandleField = _builder.CreateGEP(boxStructType, tmpAlloca, {zero, zero}, "src_handle_field");
+            auto srcHandleField = _builder.CreateGEP(srcStructType, tmpAlloca, {zero, zero}, "src_handle_field");
             auto srcHandle = _builder.CreateLoad(ptrTy, srcHandleField, "src_handle");
 
             // weak++（哨兵 / null 跳过）

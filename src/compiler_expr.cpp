@@ -694,6 +694,13 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
         throw YuxError(node->getLineNumber(), "Type mismatch in comparison: left is {}, right is {}", leftType.name, rightType.name);
     }
 
+    // Phase 1d.3：禁 Weak == / !=（DRAFT §5：v1 不暴露 handle 比较语义）
+    if (leftType.isWeak()) {
+        if (node->op() == ExprCompareNode::Op::Eq || node->op() == ExprCompareNode::Op::Ne) {
+            throw YuxError(node->getLineNumber(), "Weak<T> 不支持 == / !=（v1 不暴露 handle 比较语义）");
+        }
+    }
+
     string opStr;
     switch (node->op()) {
     case ExprCompareNode::Op::Eq: opStr = "==";

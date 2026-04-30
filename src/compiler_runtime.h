@@ -48,6 +48,10 @@ llvm::Function* getBoxRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder)
 // upgrade 必须读 strong 来判活而非 payload；Weak 自身仅维护 block 存活
 llvm::Function* getBoxReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 
+// _box_upgrade(handle) -> handle_or_null
+// Phase 1d.2：Weak→Box 升级；null/strong==0 → null；哨兵 → handle；其他 strong++ 返回 handle
+llvm::Function* getBoxUpgradeFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+
 // _weak_release(handle) -> void
 // weak--；归零时 free 整个 block（前提：strong 已 0，否则 weak 不可能比 strong 先归零）
 // null/哨兵跳过

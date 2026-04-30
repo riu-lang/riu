@@ -243,26 +243,65 @@ TypeInfo ExprCallNode::getType() const {
             }
         }
         // 显式泛型调用 e<T>(...): 将 retType 按 typeParams → typeArgs 替换
-        if (!_typeArgs.empty()) {
-            if (auto literalNode = dynamic_cast<ExprLiteralNode*>(_calleeExpr)) {
-                if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literalNode->literal())) {
-                    auto fnName = objLiteral->getValue().getText();
-                    p<Node> cur = _parent;
-                    p<FileNode> file = nullptr;
-                    while (cur) {
-                        if (auto f = dynamic_cast<FileNode*>(cur)) { file = f; break; }
-                        cur = cur->parent();
-                    }
-                    if (file) {
-                        auto fnNode = file->getFunction(fnName);
-                        if (fnNode && fnNode->header() && fnNode->header()->isGeneric()
-                            && fnNode->header()->typeParams().size() == _typeArgs.size()) {
-                            std::map<std::string, TypeInfo> subst;
-                            for (size_t i = 0; i < _typeArgs.size(); ++i) {
-                                subst[fnNode->header()->typeParams()[i]] = _typeArgs[i]->getType();
+        // 隐式（_typeArgs 为空）则尝试从实参推断（递归 unify Generic<T> ↔ Generic<U>）
+        if (auto literalNode = dynamic_cast<ExprLiteralNode*>(_calleeExpr)) {
+            if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literalNode->literal())) {
+                auto fnName = objLiteral->getValue().getText();
+                p<Node> cur = _parent;
+                p<FileNode> file = nullptr;
+                while (cur) {
+                    if (auto f = dynamic_cast<FileNode*>(cur)) { file = f; break; }
+                    cur = cur->parent();
+                }
+                p<FnNode> fnNode = nullptr;
+                if (file) {
+                    fnNode = file->getFunction(fnName);
+                    // 用户文件查不到时回退 SDK
+                    if (!fnNode) {
+                        ScopeNode* p = file->parentScope();
+                        while (p && !fnNode) {
+                            if (auto* pf = dynamic_cast<FileNode*>(p)) {
+                                fnNode = pf->getFunction(fnName);
                             }
-                            retType = retType.substitute(subst);
+                            p = p->parentScope();
                         }
+                    }
+                }
+                if (fnNode && fnNode->header() && fnNode->header()->isGeneric()) {
+                    auto typeParams = fnNode->header()->typeParams();
+                    std::map<std::string, TypeInfo> subst;
+                    if (!_typeArgs.empty() && typeParams.size() == _typeArgs.size()) {
+                        for (size_t i = 0; i < _typeArgs.size(); ++i) {
+                            subst[typeParams[i]] = _typeArgs[i]->getType();
+                        }
+                    } else if (_typeArgs.empty()) {
+                        // 隐式推断：unify 形参类型与实参类型
+                        std::function<void(const TypeInfo&, const TypeInfo&)> unify =
+                            [&](const TypeInfo& pT, const TypeInfo& aT) {
+                                if (pT.isNormal()) {
+                                    for (auto& tp : typeParams) {
+                                        if (pT.name == tp) { subst[tp] = aT; return; }
+                                    }
+                                }
+                                if (pT.kind == TypeKind::Generic && aT.kind == TypeKind::Generic
+                                    && pT.name == aT.name
+                                    && pT.genericArgs.size() == aT.genericArgs.size()) {
+                                    for (size_t i = 0; i < pT.genericArgs.size(); ++i) {
+                                        if (pT.genericArgs[i] && aT.genericArgs[i]) {
+                                            unify(*pT.genericArgs[i], *aT.genericArgs[i]);
+                                        }
+                                    }
+                                }
+                            };
+                        auto params = fnNode->header()->params();
+                        for (size_t i = 0; i < params.size() && i < _args.size(); ++i) {
+                            if (params[i]->type()) {
+                                unify(params[i]->type()->getType(), _args[i]->getType());
+                            }
+                        }
+                    }
+                    if (!subst.empty()) {
+                        retType = retType.substitute(subst);
                     }
                 }
             }

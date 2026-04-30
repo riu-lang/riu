@@ -1096,10 +1096,13 @@ struct Box<T> {
 
 ; Weak<T> 实例 layout = { ptr handle }，与 Box<T> 同形
 ; handle 指向同一 Block；weak 计数维护 block 存活；不维护 payload 存活
-; （Phase 1d.1：仅支持构造 Weak<T>(box)；upgrade/复制 retain 在 1d.2）
 #CompilerInner
 struct Weak<T> {
 }
+
+; upgrade(w) Box<T>?：尝试从 Weak 升级到 Box；strong==0 → null；存活 → strong++ 返回 Some(Box{handle})
+#CompilerInner
+fn <T> upgrade(w Weak<T>) Box<T>?
 
 ; Array<T> 实例 layout 由编译器内部管理：{ ptr handle }，handle 指向 Block
 ; （Phase 1b：所有方法编译器特例化，主体不再读 yux 端字段）
