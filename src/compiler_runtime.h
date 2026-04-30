@@ -44,11 +44,22 @@ llvm::Function* getBoxAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 llvm::Function* getBoxRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 llvm::Function* getBoxReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 
-// ==================== Array<T> 动态数组支持 ====================
+// ==================== Array<T> 动态数组支持（Phase 1b）====================
+// Block 布局: { u32 strong, u32 weak, i64 len, i64 cap, ptr data }；data 是间接指针
+// handle == null 表示空数组；强引用归零时 free(data) + free(block)；哨兵 0xFFFFFFFF 跳过 RC
 
+// _array_alloc(elemSize, initCap, initLen) -> Block*
+//   分配 block + (initCap > 0 ? data 缓冲)；strong=1, weak=1；len=initLen；data 由调用方填充
 llvm::Function* getArrayAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+// _array_grow(handle, elemSize, newCap) -> void
+//   原地修改 block.cap、block.data；外部 handle 不动
 llvm::Function* getArrayGrowFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+// _array_release(handle) -> void
+//   strong--；归零时 free(data) + free(block)；null/哨兵跳过
 llvm::Function* getArrayReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+// _array_retain(handle) -> void
+//   strong++；null/哨兵跳过
+llvm::Function* getArrayRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 
 // ==================== 运行时辅助函数生成 ====================
 

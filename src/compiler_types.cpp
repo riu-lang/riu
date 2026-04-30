@@ -141,12 +141,11 @@ string Compiler::ensureStructInstance(
         _substStack.pop_back();
         rethrowWithInstantiationContext(e);
     }
-    // Array<T> 特殊处理: 使用标准布局 { ptr, i64, i64 }
+    // Array<T> 特殊处理: 使用标准布局 { handle: Block* } 单字段（Phase 1b）
+    // Block = { u32 strong, u32 weak, i64 len, i64 cap, *T data }；handle == null 表示空数组
     if (baseName == "Array") {
         fieldTypes.clear();
         fieldTypes.push_back(llvm::PointerType::get(_context, 0));
-        fieldTypes.push_back(_builder.getInt64Ty());
-        fieldTypes.push_back(_builder.getInt64Ty());
     }
 
     // 创建 LLVM 结构体类型
@@ -159,6 +158,24 @@ string Compiler::ensureStructInstance(
 
     _structInstances[mangledName] = std::move(inst);
     return mangledName;
+}
+
+// Phase 1b: Array<T> 的 RC Block 布局
+// { u32 strong, u32 weak, i64 len, i64 cap, ptr data }
+// 字段索引：0=strong, 1=weak, 2=len, 3=cap, 4=data
+// 与元素类型 T 无关（data 是不透明指针，元素大小由 sizeof(T) 在调用方算）
+llvm::StructType* Compiler::getArrayBlockType() {
+    static const char* kName = "ArrayBlock";
+    if (auto existing = llvm::StructType::getTypeByName(_context, kName)) {
+        return existing;
+    }
+    vector<llvm::Type*> fields;
+    fields.push_back(_builder.getInt32Ty());                       // strong
+    fields.push_back(_builder.getInt32Ty());                       // weak
+    fields.push_back(_builder.getInt64Ty());                       // len
+    fields.push_back(_builder.getInt64Ty());                       // cap
+    fields.push_back(llvm::PointerType::get(_context, 0));         // data
+    return llvm::StructType::create(_context, fields, kName);
 }
 
 // ==================== 类型映射 ====================
@@ -202,30 +219,29 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         return llvm::PointerType::get(_context, 0);
     }
 
-    // Box<T> 类型 (智能指针)
-    // 结构: { ptr data, ptr ref_count }
+    // Box<T> 类型 (智能指针，Phase 1a 新布局)
+    // 结构: { ptr handle }
+    // handle 指向 Block = { u32 strong, u32 weak, payload: T }；payload 始于偏移 8
     if (type.isBox()) {
         auto elemType = type.boxElementType();
         if (elemType) {
             DEBUG_LOG_VAL("    -> BoxType (struct)", "Box<" << elemType->name << ">");
             vector<llvm::Type*> boxFields;
-            boxFields.push_back(llvm::PointerType::get(_context, 0));  // data pointer
-            boxFields.push_back(llvm::PointerType::get(_context, 0));  // ref_count pointer
+            boxFields.push_back(llvm::PointerType::get(_context, 0));  // handle: Block*
             return llvm::StructType::get(_context, boxFields);
         }
         return llvm::PointerType::get(_context, 0);
     }
 
-    // Array<T> 类型 (动态数组)
-    // 结构: { ptr data, i64 len, i64 cap }
+    // Array<T> 类型 (动态数组，Phase 1b 新布局)
+    // 结构: { ptr handle }；handle 指向 Block = { u32 strong, u32 weak, i64 len, i64 cap, *T data }
+    // handle == null 表示空数组（无分配）；data 间接指针，realloc 只换 data 不动 block
     if (type.isArrayGeneric()) {
         auto elemType = type.arrayGenericElementType();
         if (elemType) {
             DEBUG_LOG_VAL("    -> ArrayGeneric (struct)", "Array<" << elemType->name << ">");
             vector<llvm::Type*> arrayFields;
-            arrayFields.push_back(llvm::PointerType::get(_context, 0));  // data pointer
-            arrayFields.push_back(_builder.getInt64Ty());                 // length
-            arrayFields.push_back(_builder.getInt64Ty());                 // capacity
+            arrayFields.push_back(llvm::PointerType::get(_context, 0));  // handle: Block*
             return llvm::StructType::get(_context, arrayFields);
         }
         return llvm::PointerType::get(_context, 0);

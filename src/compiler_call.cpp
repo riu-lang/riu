@@ -997,10 +997,11 @@ llvm::Value* Compiler::compileArrayMethodCall(
             if (fi >= 0) {
                 llvm::Value* dataPtr = outerPtr;
                 if (outerType.isBox()) {
+                    // Box.field：load handle，payload = handle + 8
                     auto boxStructType = getLLVMType(outerType);
-                    llvm::Value* bIndices[] = {zero, zero};
-                    auto dataPtrField = _builder.CreateGEP(boxStructType, outerPtr, bIndices, "box.data_ptr_field");
-                    dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataPtrField, "box.data_ptr");
+                    auto handleField = _builder.CreateGEP(boxStructType, outerPtr, {zero, zero}, "box.handle_field");
+                    auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "box.handle");
+                    dataPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "box.payload");
                 }
                 auto outerLLVM = getLLVMType(outerActual);
                 auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fi);
@@ -1555,12 +1556,12 @@ llvm::Value* Compiler::compileStructMethodCall(
         llvm::Value* dataPtr = basePtr;
 
         if (baseType.isBox()) {
+            // Box 方法 receiver：load handle，payload = handle + 8
             auto boxStructType = getLLVMType(baseType);
             auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-            llvm::Value* indices[] = {zero, zero};
-            auto dataPtrField = _builder.CreateGEP(boxStructType, basePtr, indices, "box.data_ptr_field");
-            dataPtr = _builder.CreateLoad(
-                llvm::PointerType::get(_context, 0), dataPtrField, "box.data_ptr");
+            auto handleField = _builder.CreateGEP(boxStructType, basePtr, {zero, zero}, "box.handle_field");
+            auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "box.handle");
+            dataPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "box.payload");
         }
 
         vector<llvm::Value*> methodArgs;
@@ -1761,20 +1762,18 @@ llvm::Value* Compiler::compileKnownFunctionCall(
         }
 
         if (argTypes[i].isBox()) {
+            // callee-clean (DRAFT §7.3)：传参前 retain block；callee 末尾析构 release 抵消
             auto boxStructType = getLLVMType(argTypes[i]);
             auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-            auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
 
             auto boxAlloca = _builder.CreateAlloca(boxStructType, nullptr, "box_arg_tmp");
             _builder.CreateStore(args[i], boxAlloca);
 
-            llvm::Value* indices1[] = {zero, one};
-            auto refCountFieldPtr = _builder.CreateGEP(boxStructType, boxAlloca, indices1, "ref_count_field_ptr");
-            auto refCountPtr = _builder.CreateLoad(
-                llvm::PointerType::get(_context, 0), refCountFieldPtr, "ref_count_ptr");
+            auto handleField = _builder.CreateGEP(boxStructType, boxAlloca, {zero, zero}, "handle_field");
+            auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "handle");
 
             auto retainFn = runtime::getBoxRetainFn(_module, _builder);
-            _builder.CreateCall(retainFn, {refCountPtr});
+            _builder.CreateCall(retainFn, {handle});
 
             callArgs.push_back(args[i]);
             continue;

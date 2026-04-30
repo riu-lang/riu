@@ -152,10 +152,16 @@ llvm::Function* getSetConsoleCPFn(llvm::Module* module, llvm::IRBuilder<>& build
 }
 
 // ==================== Box<T> 智能指针支持 ====================
+//
+// Phase 1a 新布局（DRAFT §7.1）：
+// Block = { strong: u32, weak: u32, payload: T }，payload 始于偏移 8
+// Box 实例只持有一个 block 指针（handle）；payload 指针 = handle + 8
+// 哨兵 strong == 0xFFFFFFFF 时所有 retain/release 操作 no-op（用于 .rodata 字面量；Phase 1c 启用）
+// Phase 1a 仅维护 strong 计数；weak 字段已写入 layout 但仅初始化为 1，Phase 1d 接入弱引用协议时启用
 
 // 获取 Box 内存分配函数
-// 签名: ptr _box_alloc(i64 size)
-// 分配 size 字节内存 + 8 字节引用计数
+// 签名: ptr _box_alloc(i64 payload_size)
+// 分配 8 字节 RC 头 + payload_size，初始化 strong=1, weak=1，返回 block 指针
 llvm::Function* getBoxAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
     string fnName = "_box_alloc";
     auto func = module->getFunction(fnName);
@@ -173,7 +179,8 @@ llvm::Function* getBoxAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder) 
 }
 
 // 获取 Box 引用计数增加函数
-// 签名: void _box_retain(ptr refCountPtr)
+// 签名: void _box_retain(ptr block)
+// 哨兵跳过；否则 strong++
 llvm::Function* getBoxRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
     string fnName = "_box_retain";
     auto func = module->getFunction(fnName);
@@ -187,8 +194,9 @@ llvm::Function* getBoxRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder)
 }
 
 // 获取 Box 引用计数减少函数
-// 签名: void _box_release(ptr refCountPtr, ptr dataPtr)
-// 当引用计数降为 0 时释放内存
+// 签名: void _box_release(ptr block)
+// 哨兵跳过；否则 strong--；当 strong=0 时释放整个 block
+// payload 析构由调用方在 IR 内联（Phase 1a 与现状一致；Phase 1d 加入 weak 协议）
 llvm::Function* getBoxReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
     string fnName = "_box_release";
     auto func = module->getFunction(fnName);
@@ -196,23 +204,24 @@ llvm::Function* getBoxReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder
 
     vector<llvm::Type*> paramTypes;
     paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0));
-    paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0));
 
     auto fnType = llvm::FunctionType::get(builder.getVoidTy(), paramTypes, false);
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
-// ==================== Array<T> 动态数组支持 ====================
+// ==================== Array<T> 动态数组支持（Phase 1b 新 ABI） ====================
 
-// 获取 Array 内存分配函数
-// 签名: ptr _array_alloc(i64 size)
+// _array_alloc(i64 elemSize, i64 initCap, i64 initLen) -> Block*
+// 分配 block + 可选 data 缓冲；strong=1, weak=1；调用方负责把元素 memcpy 进 data
 llvm::Function* getArrayAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
     string fnName = "_array_alloc";
     auto func = module->getFunction(fnName);
     if (func) return func;
 
     vector<llvm::Type*> paramTypes;
-    paramTypes.push_back(builder.getInt64Ty());
+    paramTypes.push_back(builder.getInt64Ty());  // elemSize
+    paramTypes.push_back(builder.getInt64Ty());  // initCap
+    paramTypes.push_back(builder.getInt64Ty());  // initLen
 
     auto fnType = llvm::FunctionType::get(
         llvm::PointerType::get(builder.getContext(), 0),
@@ -222,27 +231,24 @@ llvm::Function* getArrayAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
-// 获取 Array 扩容函数
-// 签名: ptr _array_grow(ptr oldPtr, i64 newSize)
+// _array_grow(Block* handle, i64 elemSize, i64 newCap) -> void
+// handle 必须非空；原地修改 block.cap、block.data
 llvm::Function* getArrayGrowFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
     string fnName = "_array_grow";
     auto func = module->getFunction(fnName);
     if (func) return func;
 
     vector<llvm::Type*> paramTypes;
-    paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0));
-    paramTypes.push_back(builder.getInt64Ty());
+    paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0));  // handle
+    paramTypes.push_back(builder.getInt64Ty());  // elemSize
+    paramTypes.push_back(builder.getInt64Ty());  // newCap
 
-    auto fnType = llvm::FunctionType::get(
-        llvm::PointerType::get(builder.getContext(), 0),
-        paramTypes,
-        false
-    );
+    auto fnType = llvm::FunctionType::get(builder.getVoidTy(), paramTypes, false);
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
-// 获取 Array 释放函数
-// 签名: void _array_release(ptr dataPtr)
+// _array_release(Block* handle) -> void
+// strong--；归零时 free(data) + free(block)；null/哨兵跳过
 llvm::Function* getArrayReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
     string fnName = "_array_release";
     auto func = module->getFunction(fnName);
@@ -255,9 +261,25 @@ llvm::Function* getArrayReleaseFn(llvm::Module* module, llvm::IRBuilder<>& build
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
+// _array_retain(Block* handle) -> void
+// strong++；null/哨兵跳过
+llvm::Function* getArrayRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
+    string fnName = "_array_retain";
+    auto func = module->getFunction(fnName);
+    if (func) return func;
+
+    vector<llvm::Type*> paramTypes;
+    paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0));
+
+    auto fnType = llvm::FunctionType::get(builder.getVoidTy(), paramTypes, false);
+    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
+}
+
 // ==================== Box 辅助函数实现 ====================
 
-// 生成 Box 相关的辅助函数实现
+// 生成 Box 相关的辅助函数实现（Phase 1a 新布局）
+// Block = { u32 strong, u32 weak, payload... }
+// 哨兵：strong == 0xFFFFFFFF 表示 .rodata 字面量，所有 retain/release 跳过
 void emitBoxHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module) {
     DEBUG_LOG("Emitting Box helper functions");
 
@@ -265,7 +287,12 @@ void emitBoxHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm
     auto heapAllocFn = runtime::getHeapAllocFn(module, builder);
     auto heapFreeFn = runtime::getHeapFreeFn(module, builder);
 
-    // _box_alloc: 分配内存并初始化引用计数为 1
+    auto ptrTy = llvm::PointerType::get(context, 0);
+    auto i32Ty = builder.getInt32Ty();
+    auto i64Ty = builder.getInt64Ty();
+    auto sentinel = llvm::ConstantInt::get(i32Ty, 0xFFFFFFFFu);
+
+    // _box_alloc: 分配 8 字节 RC 头 + payload_size，初始化 strong=1, weak=1
     {
         DEBUG_LOG("  Emitting _box_alloc");
         auto allocFn = getBoxAllocFn(module, builder);
@@ -273,99 +300,98 @@ void emitBoxHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm
             auto entry = llvm::BasicBlock::Create(context, "entry", allocFn);
             builder.SetInsertPoint(entry);
 
-            auto args = allocFn->args();
-            auto argIt = args.begin();
-            llvm::Value* sizeVal = argIt;
+            llvm::Value* payloadSize = &*allocFn->arg_begin();
 
-            // 获取进程堆
             auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
 
-            // 计算总大小 = 数据大小 + 引用计数大小(8字节)
-            auto refCountSize = builder.getInt64(8);
-            auto totalSize = builder.CreateAdd(sizeVal, refCountSize, "total_size");
+            // 总大小 = 8（RC 头）+ payload_size
+            auto headerSize = builder.getInt64(8);
+            auto totalSize = builder.CreateAdd(payloadSize, headerSize, "total_size");
 
-            // 分配内存
-            auto mem = builder.CreateCall(heapAllocFn, {heap, builder.getInt64(0), totalSize}, "mem");
+            auto block = builder.CreateCall(heapAllocFn, {heap, builder.getInt64(0), totalSize}, "block");
 
-            // 初始化引用计数为 1
-            auto refCountPtr = builder.CreateBitCast(
-                mem, llvm::PointerType::get(context, 0), "ref_count_ptr");
-            builder.CreateStore(builder.getInt64(1), refCountPtr);
+            // 写 strong=1（offset 0）
+            auto strongPtr = block;
+            builder.CreateStore(llvm::ConstantInt::get(i32Ty, 1), strongPtr);
+            // 写 weak=1（offset 4）
+            auto weakPtr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(4)}, "weak_ptr");
+            builder.CreateStore(llvm::ConstantInt::get(i32Ty, 1), weakPtr);
 
-            // 返回数据指针 (跳过引用计数)
-            auto dataPtr = builder.CreateGEP(builder.getInt8Ty(), mem, {refCountSize}, "data_ptr");
-
-            builder.CreateRet(dataPtr);
+            builder.CreateRet(block);
         }
     }
 
-    // _box_retain: 增加引用计数
+    // _box_retain: 哨兵跳过；否则 strong++
     {
         DEBUG_LOG("  Emitting _box_retain");
         auto retainFn = getBoxRetainFn(module, builder);
         if (retainFn->empty()) {
             auto entry = llvm::BasicBlock::Create(context, "entry", retainFn);
+            auto incBB = llvm::BasicBlock::Create(context, "inc", retainFn);
+            auto doneBB = llvm::BasicBlock::Create(context, "done", retainFn);
             builder.SetInsertPoint(entry);
 
-            auto args = retainFn->args();
-            auto argIt = args.begin();
-            llvm::Value* refCountPtr = argIt;
+            llvm::Value* block = &*retainFn->arg_begin();
 
-            // 引用计数 + 1
-            auto currentCount = builder.CreateLoad(builder.getInt64Ty(), refCountPtr, "current_count");
-            auto newCount = builder.CreateAdd(currentCount, builder.getInt64(1), "new_count");
-            builder.CreateStore(newCount, refCountPtr);
+            // 哨兵检测：strong == 0xFFFFFFFF
+            auto strongPtr = block;
+            auto strong = builder.CreateLoad(i32Ty, strongPtr, "strong");
+            auto isSentinel = builder.CreateICmpEQ(strong, sentinel, "is_sentinel");
+            builder.CreateCondBr(isSentinel, doneBB, incBB);
 
-            builder.CreateRetVoid();
-        }
-    }
-
-    // _box_release: 减少引用计数，如果为 0 则释放内存
-    {
-        DEBUG_LOG("  Emitting _box_release");
-        auto releaseFn = getBoxReleaseFn(module, builder);
-        if (releaseFn->empty()) {
-            auto entry = llvm::BasicBlock::Create(context, "entry", releaseFn);
-            builder.SetInsertPoint(entry);
-
-            auto args = releaseFn->args();
-            auto argIt = args.begin();
-            llvm::Value* refCountPtr = argIt;
-            ++argIt;
-            llvm::Value* dataPtr = argIt;
-
-            // 引用计数 - 1
-            auto currentCount = builder.CreateLoad(builder.getInt64Ty(), refCountPtr, "current_count");
-            auto newCount = builder.CreateSub(currentCount, builder.getInt64(1), "new_count");
-            builder.CreateStore(newCount, refCountPtr);
-
-            // 检查是否为 0
-            auto isZero = builder.CreateICmpEQ(newCount, builder.getInt64(0), "is_zero");
-
-            auto freeBB = llvm::BasicBlock::Create(context, "free", releaseFn);
-            auto doneBB = llvm::BasicBlock::Create(context, "done", releaseFn);
-
-            builder.CreateCondBr(isZero, freeBB, doneBB);
-
-            // 释放内存
-            builder.SetInsertPoint(freeBB);
-            auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
-            auto refCountSize = builder.getInt64(8);
-            // 计算原始内存指针 (数据指针 - 8)
-            auto memPtr = builder.CreateGEP(
-                builder.getInt8Ty(), dataPtr, {builder.CreateNeg(refCountSize)}, "mem_ptr");
-            builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), memPtr});
+            builder.SetInsertPoint(incBB);
+            auto newStrong = builder.CreateAdd(strong, llvm::ConstantInt::get(i32Ty, 1), "new_strong");
+            builder.CreateStore(newStrong, strongPtr);
             builder.CreateBr(doneBB);
 
             builder.SetInsertPoint(doneBB);
             builder.CreateRetVoid();
         }
     }
+
+    // _box_release: 哨兵跳过；否则 strong--；strong=0 时 free 整个 block
+    // Phase 1a：单纯按 strong 计数管理生命周期（Phase 1d 接入 weak 协议时改造）
+    {
+        DEBUG_LOG("  Emitting _box_release");
+        auto releaseFn = getBoxReleaseFn(module, builder);
+        if (releaseFn->empty()) {
+            auto entry = llvm::BasicBlock::Create(context, "entry", releaseFn);
+            auto decBB = llvm::BasicBlock::Create(context, "dec", releaseFn);
+            auto freeBB = llvm::BasicBlock::Create(context, "free", releaseFn);
+            auto doneBB = llvm::BasicBlock::Create(context, "done", releaseFn);
+            builder.SetInsertPoint(entry);
+
+            llvm::Value* block = &*releaseFn->arg_begin();
+
+            auto strongPtr = block;
+            auto strong = builder.CreateLoad(i32Ty, strongPtr, "strong");
+            auto isSentinel = builder.CreateICmpEQ(strong, sentinel, "is_sentinel");
+            builder.CreateCondBr(isSentinel, doneBB, decBB);
+
+            builder.SetInsertPoint(decBB);
+            auto newStrong = builder.CreateSub(strong, llvm::ConstantInt::get(i32Ty, 1), "new_strong");
+            builder.CreateStore(newStrong, strongPtr);
+            auto isZero = builder.CreateICmpEQ(newStrong, llvm::ConstantInt::get(i32Ty, 0), "is_zero");
+            builder.CreateCondBr(isZero, freeBB, doneBB);
+
+            builder.SetInsertPoint(freeBB);
+            auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
+            builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), block});
+            builder.CreateBr(doneBB);
+
+            builder.SetInsertPoint(doneBB);
+            builder.CreateRetVoid();
+        }
+    }
+
+    (void)ptrTy;
+    (void)i64Ty;
 }
 
-// ==================== Array 辅助函数实现 ====================
+// ==================== Array 辅助函数实现（Phase 1b 新 ABI） ====================
+// Block 字节布局: { u32 strong @0, u32 weak @4, i64 len @8, i64 cap @16, ptr data @24 }
+// Block 总头部 = 32 字节；data 是间接指针指向独立 heap 缓冲
 
-// 生成 Array 相关的辅助函数实现
 void emitArrayHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module) {
     DEBUG_LOG("Emitting Array helper functions");
 
@@ -374,103 +400,187 @@ void emitArrayHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, ll
     auto heapReAllocFn = runtime::getHeapReAllocFn(module, builder);
     auto heapFreeFn = runtime::getHeapFreeFn(module, builder);
 
-    // _array_alloc: 分配数组内存
+    auto ptrTy = llvm::PointerType::get(context, 0);
+    auto i32Ty = builder.getInt32Ty();
+    auto i64Ty = builder.getInt64Ty();
+    auto i8Ty = builder.getInt8Ty();
+    auto sentinel = llvm::ConstantInt::get(i32Ty, 0xFFFFFFFFu);
+    auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
+
+    auto i64C = [&](int64_t v) { return builder.getInt64(v); };
+
+    // _array_alloc(elemSize, initCap, initLen) -> Block*
+    // 分配 32 字节 Block；如 initCap > 0 则额外分配 initCap*elemSize 数据缓冲，否则 data=null
     {
         DEBUG_LOG("  Emitting _array_alloc");
         auto allocFn = getArrayAllocFn(module, builder);
         if (allocFn->empty()) {
             auto entry = llvm::BasicBlock::Create(context, "entry", allocFn);
+            auto allocDataBB = llvm::BasicBlock::Create(context, "alloc_data", allocFn);
+            auto doneBB = llvm::BasicBlock::Create(context, "done", allocFn);
             builder.SetInsertPoint(entry);
 
-            auto args = allocFn->args();
-            auto argIt = args.begin();
-            llvm::Value* sizeVal = argIt;
+            auto argIt = allocFn->args().begin();
+            llvm::Value* elemSize = argIt; elemSize->setName("elem_size"); ++argIt;
+            llvm::Value* initCap = argIt; initCap->setName("init_cap"); ++argIt;
+            llvm::Value* initLen = argIt; initLen->setName("init_len");
 
             auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
-            auto mem = builder.CreateCall(heapAllocFn, {heap, builder.getInt64(0), sizeVal}, "mem");
+            auto block = builder.CreateCall(heapAllocFn, {heap, i64C(0), i64C(32)}, "block");
 
-            builder.CreateRet(mem);
+            builder.CreateStore(llvm::ConstantInt::get(i32Ty, 1), block);                              // strong @0
+            auto weakPtr = builder.CreateGEP(i8Ty, block, {i64C(4)}, "weak_ptr");
+            builder.CreateStore(llvm::ConstantInt::get(i32Ty, 1), weakPtr);                            // weak @4
+            auto lenPtr = builder.CreateGEP(i8Ty, block, {i64C(8)}, "len_ptr");
+            builder.CreateStore(initLen, lenPtr);                                                       // len @8
+            auto capPtr = builder.CreateGEP(i8Ty, block, {i64C(16)}, "cap_ptr");
+            builder.CreateStore(initCap, capPtr);                                                       // cap @16
+            auto dataFieldPtr = builder.CreateGEP(i8Ty, block, {i64C(24)}, "data_field_ptr");
+            builder.CreateStore(nullPtr, dataFieldPtr);                                                 // data @24 = null（默认）
+
+            auto needData = builder.CreateICmpSGT(initCap, i64C(0), "need_data");
+            builder.CreateCondBr(needData, allocDataBB, doneBB);
+
+            builder.SetInsertPoint(allocDataBB);
+            auto byteSize = builder.CreateMul(initCap, elemSize, "byte_size");
+            auto dataMem = builder.CreateCall(heapAllocFn, {heap, i64C(0), byteSize}, "data_mem");
+            builder.CreateStore(dataMem, dataFieldPtr);
+            builder.CreateBr(doneBB);
+
+            builder.SetInsertPoint(doneBB);
+            builder.CreateRet(block);
         }
     }
 
-    // _array_grow: 扩容数组 (支持从 null 分配或重新分配)
+    // _array_grow(handle, elemSize, newCap) -> void
+    // handle 必须非空；realloc data 缓冲并更新 block.cap、block.data
     {
         DEBUG_LOG("  Emitting _array_grow");
         auto growFn = getArrayGrowFn(module, builder);
         if (growFn->empty()) {
             auto entry = llvm::BasicBlock::Create(context, "entry", growFn);
+            auto allocBB = llvm::BasicBlock::Create(context, "alloc", growFn);
+            auto reallocBB = llvm::BasicBlock::Create(context, "realloc", growFn);
+            auto storeBB = llvm::BasicBlock::Create(context, "store", growFn);
             builder.SetInsertPoint(entry);
 
-            auto args = growFn->args();
-            auto argIt = args.begin();
-            llvm::Value* oldPtr = argIt;
-            ++argIt;
-            llvm::Value* newSize = argIt;
+            auto argIt = growFn->args().begin();
+            llvm::Value* handle = argIt; handle->setName("handle"); ++argIt;
+            llvm::Value* elemSize = argIt; elemSize->setName("elem_size"); ++argIt;
+            llvm::Value* newCap = argIt; newCap->setName("new_cap");
 
             auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
 
-            // 检查旧指针是否为 null
-            auto isNull = builder.CreateICmpEQ(
-                oldPtr, llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0)), "is_null");
+            auto capPtr = builder.CreateGEP(i8Ty, handle, {i64C(16)}, "cap_ptr");
+            auto dataFieldPtr = builder.CreateGEP(i8Ty, handle, {i64C(24)}, "data_field_ptr");
+            auto oldData = builder.CreateLoad(ptrTy, dataFieldPtr, "old_data");
+            auto newByteSize = builder.CreateMul(newCap, elemSize, "new_byte_size");
 
-            auto allocBB = llvm::BasicBlock::Create(context, "alloc", growFn);
-            auto reallocBB = llvm::BasicBlock::Create(context, "realloc", growFn);
-            auto doneBB = llvm::BasicBlock::Create(context, "done", growFn);
-
+            auto isNull = builder.CreateICmpEQ(oldData, nullPtr, "data_is_null");
             builder.CreateCondBr(isNull, allocBB, reallocBB);
 
-            // 新分配
             builder.SetInsertPoint(allocBB);
-            auto newMemAlloc = builder.CreateCall(heapAllocFn, {heap, builder.getInt64(0), newSize}, "new_mem");
-            builder.CreateBr(doneBB);
+            auto allocedData = builder.CreateCall(heapAllocFn, {heap, i64C(0), newByteSize}, "alloced_data");
+            builder.CreateBr(storeBB);
 
-            // 重新分配
             builder.SetInsertPoint(reallocBB);
-            auto newMemRealloc = builder.CreateCall(
-                heapReAllocFn, {heap, builder.getInt64(0), oldPtr, newSize}, "new_mem");
-            builder.CreateBr(doneBB);
+            auto realloced = builder.CreateCall(heapReAllocFn, {heap, i64C(0), oldData, newByteSize}, "realloced");
+            builder.CreateBr(storeBB);
 
-            // 返回结果
-            builder.SetInsertPoint(doneBB);
-            auto phi = builder.CreatePHI(llvm::PointerType::get(context, 0), 2, "result");
-            phi->addIncoming(newMemAlloc, allocBB);
-            phi->addIncoming(newMemRealloc, reallocBB);
-
-            builder.CreateRet(phi);
+            builder.SetInsertPoint(storeBB);
+            auto phi = builder.CreatePHI(ptrTy, 2, "new_data");
+            phi->addIncoming(allocedData, allocBB);
+            phi->addIncoming(realloced, reallocBB);
+            builder.CreateStore(phi, dataFieldPtr);
+            builder.CreateStore(newCap, capPtr);
+            builder.CreateRetVoid();
         }
     }
 
-    // _array_release: 释放数组内存
+    // _array_retain(handle) -> void
+    // null/哨兵跳过；否则 strong++
     {
-        DEBUG_LOG("  Emitting _array_release");
-        auto releaseFn = getArrayReleaseFn(module, builder);
-        if (releaseFn->empty()) {
-            auto entry = llvm::BasicBlock::Create(context, "entry", releaseFn);
+        DEBUG_LOG("  Emitting _array_retain");
+        auto retainFn = getArrayRetainFn(module, builder);
+        if (retainFn->empty()) {
+            auto entry = llvm::BasicBlock::Create(context, "entry", retainFn);
+            auto checkBB = llvm::BasicBlock::Create(context, "check", retainFn);
+            auto incBB = llvm::BasicBlock::Create(context, "inc", retainFn);
+            auto doneBB = llvm::BasicBlock::Create(context, "done", retainFn);
             builder.SetInsertPoint(entry);
 
-            auto args = releaseFn->args();
-            auto argIt = args.begin();
-            llvm::Value* dataPtr = argIt;
+            llvm::Value* handle = &*retainFn->arg_begin();
+            auto isNull = builder.CreateICmpEQ(handle, nullPtr, "is_null");
+            builder.CreateCondBr(isNull, doneBB, checkBB);
 
-            // 检查是否为 null
-            auto isNull = builder.CreateICmpEQ(
-                dataPtr, llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0)), "is_null");
+            builder.SetInsertPoint(checkBB);
+            auto strong = builder.CreateLoad(i32Ty, handle, "strong");
+            auto isSentinel = builder.CreateICmpEQ(strong, sentinel, "is_sentinel");
+            builder.CreateCondBr(isSentinel, doneBB, incBB);
 
-            auto freeBB = llvm::BasicBlock::Create(context, "free", releaseFn);
-            auto doneBB = llvm::BasicBlock::Create(context, "done", releaseFn);
-
-            builder.CreateCondBr(isNull, doneBB, freeBB);
-
-            // 释放内存
-            builder.SetInsertPoint(freeBB);
-            auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
-            builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), dataPtr});
+            builder.SetInsertPoint(incBB);
+            auto newStrong = builder.CreateAdd(strong, llvm::ConstantInt::get(i32Ty, 1), "new_strong");
+            builder.CreateStore(newStrong, handle);
             builder.CreateBr(doneBB);
 
             builder.SetInsertPoint(doneBB);
             builder.CreateRetVoid();
         }
     }
+
+    // _array_release(handle) -> void
+    // null/哨兵跳过；strong--；归零时 free(data) + free(block)
+    {
+        DEBUG_LOG("  Emitting _array_release");
+        auto releaseFn = getArrayReleaseFn(module, builder);
+        if (releaseFn->empty()) {
+            auto entry = llvm::BasicBlock::Create(context, "entry", releaseFn);
+            auto checkBB = llvm::BasicBlock::Create(context, "check", releaseFn);
+            auto decBB = llvm::BasicBlock::Create(context, "dec", releaseFn);
+            auto freeBB = llvm::BasicBlock::Create(context, "free", releaseFn);
+            auto freeDataBB = llvm::BasicBlock::Create(context, "free_data", releaseFn);
+            auto freeBlockBB = llvm::BasicBlock::Create(context, "free_block", releaseFn);
+            auto doneBB = llvm::BasicBlock::Create(context, "done", releaseFn);
+            builder.SetInsertPoint(entry);
+
+            llvm::Value* handle = &*releaseFn->arg_begin();
+            auto isNull = builder.CreateICmpEQ(handle, nullPtr, "is_null");
+            builder.CreateCondBr(isNull, doneBB, checkBB);
+
+            builder.SetInsertPoint(checkBB);
+            auto strong = builder.CreateLoad(i32Ty, handle, "strong");
+            auto isSentinel = builder.CreateICmpEQ(strong, sentinel, "is_sentinel");
+            builder.CreateCondBr(isSentinel, doneBB, decBB);
+
+            builder.SetInsertPoint(decBB);
+            auto newStrong = builder.CreateSub(strong, llvm::ConstantInt::get(i32Ty, 1), "new_strong");
+            builder.CreateStore(newStrong, handle);
+            auto isZero = builder.CreateICmpEQ(newStrong, llvm::ConstantInt::get(i32Ty, 0), "is_zero");
+            builder.CreateCondBr(isZero, freeBB, doneBB);
+
+            builder.SetInsertPoint(freeBB);
+            // free(data) if data != null
+            auto dataFieldPtr = builder.CreateGEP(i8Ty, handle, {i64C(24)}, "data_field_ptr");
+            auto data = builder.CreateLoad(ptrTy, dataFieldPtr, "data");
+            auto dataIsNull = builder.CreateICmpEQ(data, nullPtr, "data_is_null");
+            builder.CreateCondBr(dataIsNull, freeBlockBB, freeDataBB);
+
+            builder.SetInsertPoint(freeDataBB);
+            auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
+            builder.CreateCall(heapFreeFn, {heap, i64C(0), data});
+            builder.CreateBr(freeBlockBB);
+
+            builder.SetInsertPoint(freeBlockBB);
+            auto heap2 = builder.CreateCall(getProcessHeapFn, {}, "heap");
+            builder.CreateCall(heapFreeFn, {heap2, i64C(0), handle});
+            builder.CreateBr(doneBB);
+
+            builder.SetInsertPoint(doneBB);
+            builder.CreateRetVoid();
+        }
+    }
+
+    (void)ptrTy;
 }
 
 // ==================== 程序启动 ====================

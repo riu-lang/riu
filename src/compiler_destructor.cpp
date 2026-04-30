@@ -34,31 +34,23 @@ void Compiler::callDestructor(const string& varName, const TypeInfo& varType) {
     // 获取变量指针
     llvm::Value* varPtr = it->second;
 
-    // 处理 Box<T> 类型 (智能指针)
-    // Box 需要减少引用计数，如果计数为 0 则释放内存
+    // 处理 Box<T> 类型 (Phase 1a 单 handle 布局)
+    // 调用 _box_release(handle)；strong=0 时整 block 释放
     if (varType.isBox()) {
         auto elemType = varType.boxElementType();
         if (!elemType) return;
 
         DEBUG_LOG_VAL("  Calling Box destructor for", varName);
 
-        // 获取 Box 结构体类型
         auto boxStructType = getLLVMType(varType);
         auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-        auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
 
-        // 获取数据指针和引用计数指针
-        llvm::Value* dataIndices[] = {zero, zero};
-        auto dataPtrField = _builder.CreateGEP(boxStructType, varPtr, dataIndices, "box.data_ptr_field");
-        auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataPtrField, "box.data_ptr");
+        auto handleField = _builder.CreateGEP(boxStructType, varPtr, {zero, zero}, "box.handle_field");
+        auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "box.handle");
 
-        llvm::Value* refCountIndices[] = {zero, one};
-        auto refCountField = _builder.CreateGEP(boxStructType, varPtr, refCountIndices, "box.ref_count_field");
-        auto refCountPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), refCountField, "box.ref_count_ptr");
-
-        // 调用 Box 释放函数
+        // TODO(Phase 1d): payload 析构需要在此处调用（结构体字段级递归 release）；当前路径 payload 是 RC 字段时未处理
         auto boxReleaseFn = runtime::getBoxReleaseFn(_module, _builder);
-        _builder.CreateCall(boxReleaseFn, {dataPtr, refCountPtr});
+        _builder.CreateCall(boxReleaseFn, {handle});
         return;
     }
 
@@ -140,20 +132,13 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
 
         // 调用字段析构函数
         if (fieldType.isBox()) {
-            // Box 字段: 调用 Box 释放函数
+            // Box 字段：load handle，调用 _box_release(handle)
             auto boxStructType = getLLVMType(fieldType);
-            auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
-
-            llvm::Value* dataIndices[] = {zero, zero};
-            auto dataPtrField = _builder.CreateGEP(boxStructType, fieldPtr, dataIndices);
-            auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataPtrField);
-
-            llvm::Value* refCountIndices[] = {zero, one};
-            auto refCountField = _builder.CreateGEP(boxStructType, fieldPtr, refCountIndices);
-            auto refCountPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), refCountField);
+            auto handleField = _builder.CreateGEP(boxStructType, fieldPtr, {zero, zero});
+            auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField);
 
             auto boxReleaseFn = runtime::getBoxReleaseFn(_module, _builder);
-            _builder.CreateCall(boxReleaseFn, {dataPtr, refCountPtr});
+            _builder.CreateCall(boxReleaseFn, {handle});
         } else if (fieldType.isArrayGeneric()) {
             // Array 字段: 调用 Array 释放函数
             auto arrayStructType = getLLVMType(fieldType);

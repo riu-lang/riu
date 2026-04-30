@@ -179,13 +179,13 @@ llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& srcType, con
         }
         if (srcType.isBox()) {
             DEBUG_LOG("      Box -> Ptr");
-            // Box 类型: 解包获取数据指针
+            // Box -> Ptr：取 payload 首地址（DRAFT §9.4 跳过 RC 头）
+            // payload = handle + 8
             auto boxStructType = getLLVMType(srcType);
             auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-            llvm::Value* indices[] = {zero, zero};
-            auto dataPtrField = _builder.CreateGEP(boxStructType, val, indices, "box.data_ptr_field");
-            return _builder.CreateLoad(
-                llvm::PointerType::get(_context, 0), dataPtrField, "box.data_ptr");
+            auto handleField = _builder.CreateGEP(boxStructType, val, {zero, zero}, "box.handle_field");
+            auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "box.handle");
+            return _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "box.payload");
         }
     }
 
@@ -1284,12 +1284,12 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
             llvm::Value* dataPtr = structPtr;
 
             if (baseType.isBox()) {
+                // Box.field：load handle，payload = handle + 8
                 auto boxStructType = getLLVMType(baseType);
                 auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-                llvm::Value* indices[] = {zero, zero};
-                auto dataPtrField = _builder.CreateGEP(boxStructType, structPtr, indices, "box.data_ptr_field");
-                dataPtr = _builder.CreateLoad(
-                    llvm::PointerType::get(_context, 0), dataPtrField, "box.data_ptr");
+                auto handleField = _builder.CreateGEP(boxStructType, structPtr, {zero, zero}, "box.handle_field");
+                auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "box.handle");
+                dataPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "box.payload");
             }
 
             auto structType = getLLVMType(actualType);

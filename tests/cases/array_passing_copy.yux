@@ -1,0 +1,15 @@
+; 验证 Array<T> 传参语义为深拷贝：
+; 被调用方修改不影响调用方
+fn modify(a Array<i32>) {
+  a[0] = 99
+  a.push(42i32)
+}
+
+fn main() {
+  var arr Array<i32> = [1i32, 2i32, 3i32]
+  modify(arr)
+  println(arr.len().to_string())   ; 期望 3
+  println(arr[0].to_string())      ; 期望 1
+  println(arr[1].to_string())      ; 期望 2
+  println(arr[2].to_string())      ; 期望 3
+}

@@ -116,6 +116,7 @@ class Compiler {
 
     // ==================== 类型系统 ====================
     llvm::Type* getLLVMType(const TypeInfo& type);                              // 将 TypeInfo 转换为 LLVM 类型
+    llvm::StructType* getArrayBlockType();                                      // Phase 1b: { u32 strong, u32 weak, i64 len, i64 cap, ptr data } - Array<T> 的 RC Block 布局，与 T 无关
     llvm::FunctionType* getLLVMFunctionType(p<FnHeaderNode> header);            // 获取函数的 LLVM 类型
     llvm::StructType* getOrCreateStructType(p<StructDeclNode> structDecl, p<FileNode> sourceFile = nullptr);  // 获取或创建结构体类型
 

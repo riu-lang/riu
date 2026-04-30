@@ -208,7 +208,8 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         auto alloca = _builder.CreateAlloca(llvmType, nullptr, varName);
         _localVarPtrs[varName] = alloca;
 
-        // 处理 Box<T> 类型 (堆分配的智能指针)
+        // 处理 Box<T> 类型（Phase 1a 新布局：单 handle 指针 + Block 单分配）
+        // Box 实例 = { handle: Block* }；Block = { u32 strong, u32 weak, payload }
         if (varType.isBox()) {
             auto elemType = varType.boxElementType();
             if (!elemType) {
@@ -220,62 +221,44 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
 
             auto boxStructType = getLLVMType(varType);
             auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-            auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+            auto ptrTy = llvm::PointerType::get(_context, 0);
 
-            // 分配堆内存
-            auto elemLLVMType = getLLVMType(*elemType);
-            auto sizeVal = _builder.CreateIntCast(
-                _builder.getInt64(elemLLVMType->getPrimitiveSizeInBits() / 8),
-                _builder.getInt64Ty(),
-                false
-            );
+            if (exprType.isBox() && exprType.boxElementType() && *exprType.boxElementType() == *elemType) {
+                // Box -> Box 复制：复制 handle 并 retain（DRAFT §7.3 callee-clean 还在 Phase 3，但句柄共享 retain 必须在 1a 启用）
+                // exprVal 是源 Box 的 struct 值，先存 tmp alloca 才能 GEP 取 handle 字段
+                auto tmpAlloca = _builder.CreateAlloca(boxStructType, nullptr, "box_src_tmp");
+                _builder.CreateStore(exprVal, tmpAlloca);
+                auto srcHandleField = _builder.CreateGEP(boxStructType, tmpAlloca, {zero, zero}, "src_handle_field");
+                auto srcHandle = _builder.CreateLoad(ptrTy, srcHandleField, "src_handle");
 
-            auto allocFn = runtime::getBoxAllocFn(_module, _builder);
-            auto dataPtr = _builder.CreateCall(allocFn, {sizeVal}, "box_data_ptr");
+                // 句柄复制 = retain（_box_retain 内部哨兵跳过 .rodata 字面量）
+                auto retainFn = runtime::getBoxRetainFn(_module, _builder);
+                _builder.CreateCall(retainFn, {srcHandle});
 
-            auto dataPtrTyped = _builder.CreateBitCast(
-                dataPtr, llvm::PointerType::get(_context, 0), "box_data_typed");
+                // 写入新 Box 的 handle 字段
+                auto handleField = _builder.CreateGEP(boxStructType, alloca, {zero, zero}, "handle_field");
+                _builder.CreateStore(srcHandle, handleField);
+            } else if (exprType == *elemType) {
+                // 由值构造 Box：分配 Block，把 payload 存入 block+8
+                auto elemLLVMType = getLLVMType(*elemType);
+                auto sizeVal = _builder.getInt64(elemLLVMType->getPrimitiveSizeInBits() / 8);
 
-            // 存储值到堆内存
-            if (exprType == *elemType) {
-                _builder.CreateStore(exprVal, dataPtrTyped);
-            } else if (exprType.isBox() && exprType.boxElementType() && *exprType.boxElementType() == *elemType) {
-                // Box 到 Box 的复制
-                auto srcBoxPtr = _localVarPtrs.find(varName);
-                if (srcBoxPtr != _localVarPtrs.end()) {
-                    auto srcDataPtrPtr = _builder.CreateGEP(boxStructType, exprVal, {zero, zero}, "src_data_ptr_ptr");
-                    auto srcDataPtr = _builder.CreateLoad(
-                        llvm::PointerType::get(_context, 0), srcDataPtrPtr, "src_data_ptr");
-                    _builder.CreateStore(srcDataPtr, dataPtrTyped);
-                }
+                auto allocFn = runtime::getBoxAllocFn(_module, _builder);
+                auto block = _builder.CreateCall(allocFn, {sizeVal}, "box_block");
+
+                // payload 起始 = block + 8
+                auto payloadPtr = _builder.CreateGEP(_builder.getInt8Ty(), block, {_builder.getInt64(8)}, "box_payload");
+                _builder.CreateStore(exprVal, payloadPtr);
+
+                // 写 handle 字段
+                auto handleField = _builder.CreateGEP(boxStructType, alloca, {zero, zero}, "handle_field");
+                _builder.CreateStore(block, handleField);
             } else {
                 throw YuxError(node->getLineNumber(), "Box type mismatch: expected Box<{}>, got {}", elemType->name, exprType.name);
             }
 
-            // 设置引用计数指针
-            auto refCountPtr = _builder.CreateGEP(
-                _builder.getInt8Ty(),
-                dataPtr,
-                {_builder.getInt64(-8)},
-                "ref_count_ptr_raw"
-            );
-            auto refCountPtrTyped = _builder.CreateBitCast(
-                refCountPtr,
-                llvm::PointerType::get(_context, 0),
-                "ref_count_ptr"
-            );
-
-            // 初始化 Box 结构体字段
-            llvm::Value* indices[] = {zero, zero};
-            auto dataPtrField = _builder.CreateGEP(boxStructType, alloca, indices, "data_ptr_field");
-            _builder.CreateStore(dataPtrTyped, dataPtrField);
-
-            llvm::Value* indices2[] = {zero, one};
-            auto refCountField = _builder.CreateGEP(boxStructType, alloca, indices2, "ref_count_field");
-            _builder.CreateStore(refCountPtrTyped, refCountField);
-
             _scopeVars.push_back(varName);  // 加入作用域变量列表 (需要析构)
-        } 
+        }
         // 处理 Array<T> 类型 (动态数组)
         else if (varType.isArrayGeneric()) {
             auto elemType = varType.arrayGenericElementType();

@@ -66,13 +66,15 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
         if (auto fnParamsCtx = header->fnParams()) {
             for (auto paramCtx : fnParamsCtx->fnParam()) {
                 if (auto stdCtx = paramCtx->fnParamStd()) {
-                    if (stdCtx->type()) {
-                        auto typeNode = any_cast_p<TypeNode>(visit(stdCtx->type()));
+                    // TODO(Phase 4): 处理 typeWithRef 的 SymbolAnd 标志，建立 T& 借用语义
+                    if (auto twr = stdCtx->typeWithRef(); twr && twr->type()) {
+                        auto typeNode = any_cast_p<TypeNode>(visit(twr->type()));
                         paramTypes.push_back(typeNode->getType());
                     }
                 } else if (auto groupCtx = paramCtx->fnParamGroup()) {
-                    if (groupCtx->type()) {
-                        auto typeNode = any_cast_p<TypeNode>(visit(groupCtx->type()));
+                    // TODO(Phase 4): 处理 typeWithRef 的 SymbolAnd 标志
+                    if (auto twr = groupCtx->typeWithRef(); twr && twr->type()) {
+                        auto typeNode = any_cast_p<TypeNode>(visit(twr->type()));
                         for (size_t i = 0; i < groupCtx->names.size(); ++i) {
                             paramTypes.push_back(typeNode->getType());
                         }
@@ -434,13 +436,15 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         if (auto fnParamsCtx = header->fnParams()) {
             for (auto paramCtx : fnParamsCtx->fnParam()) {
                 if (auto stdCtx = paramCtx->fnParamStd()) {
-                    if (stdCtx->type()) {
-                        auto typeNode = any_cast_p<TypeNode>(visit(stdCtx->type()));
+                    // TODO(Phase 4): 处理 typeWithRef 的 SymbolAnd 标志，建立 T& 借用语义
+                    if (auto twr = stdCtx->typeWithRef(); twr && twr->type()) {
+                        auto typeNode = any_cast_p<TypeNode>(visit(twr->type()));
                         paramTypes.push_back(typeNode->getType());
                     }
                 } else if (auto groupCtx = paramCtx->fnParamGroup()) {
-                    if (groupCtx->type()) {
-                        auto typeNode = any_cast_p<TypeNode>(visit(groupCtx->type()));
+                    // TODO(Phase 4): 处理 typeWithRef 的 SymbolAnd 标志
+                    if (auto twr = groupCtx->typeWithRef(); twr && twr->type()) {
+                        auto typeNode = any_cast_p<TypeNode>(visit(twr->type()));
                         for (size_t i = 0; i < groupCtx->names.size(); ++i) {
                             paramTypes.push_back(typeNode->getType());
                         }
@@ -661,7 +665,8 @@ std::any ASTBuilder::visitFnParam(yux::yuxParser::FnParamContext* ctx) {
 
 std::any ASTBuilder::visitFnParamStd(yux::yuxParser::FnParamStdContext* ctx) {
     p<Node> parent = any_cast_p<FnHeaderNode>(stack.back());
-    auto type = any_cast_p<TypeNode>(visit(ctx->type()));
+    // TODO(Phase 4): typeWithRef 的 SymbolAnd 表示 T& 借用类型，建立借用语义
+    auto type = any_cast_p<TypeNode>(visit(ctx->typeWithRef()->type()));
     DEBUG_LOG_VAL("    Param", ctx->name->getText() << " : " << type->getType().name);
     
     vector<p<FnParamNode>> params;
@@ -671,7 +676,8 @@ std::any ASTBuilder::visitFnParamStd(yux::yuxParser::FnParamStdContext* ctx) {
 
 std::any ASTBuilder::visitFnParamGroup(yux::yuxParser::FnParamGroupContext* ctx) {
     p<Node> parent = any_cast_p<FnHeaderNode>(stack.back());
-    auto type = any_cast_p<TypeNode>(visit(ctx->type()));
+    // TODO(Phase 4): typeWithRef 的 SymbolAnd 表示 T& 借用类型
+    auto type = any_cast_p<TypeNode>(visit(ctx->typeWithRef()->type()));
     
     vector<p<FnParamNode>> params;
     for (auto nameToken : ctx->names) {
@@ -928,8 +934,9 @@ std::any ASTBuilder::visitStatementDeclareAssign(yux::yuxParser::StatementDeclar
 
     auto name = ctx->name;
     p<TypeNode> type = nullptr;
-    if (ctx->type()) {
-        type = any_cast_p<TypeNode>(visit(ctx->type()));
+    // TODO(Phase 4): typeWithRef 的 SymbolAnd 表示局部变量为 T& 借用
+    if (auto twr = ctx->typeWithRef(); twr && twr->type()) {
+        type = any_cast_p<TypeNode>(visit(twr->type()));
     }
 
     TypeInfo varType;

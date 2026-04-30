@@ -91,6 +91,8 @@ type:
     // [ type * count ]
    | GetStart type SymbolMul INT GetEnd #typeArray;
 
+typeWithRef: type SymbolAnd?;
+
 // 共享
 genericDef: SymbolLt types+=type (SymbolComma types+=type)* SymbolMt;
 
@@ -121,11 +123,11 @@ fnParams: fnParam (SymbolComma params+=fnParam)* ;
 fnParam: fnParamStd | fnParamGroup;
 
 // a i32
-fnParamStd: name=ID type;
+fnParamStd: name=ID typeWithRef;
 
 // a, b i32
 // a, b, c i32
-fnParamGroup: (names+=ID SymbolComma)* names+=ID type;
+fnParamGroup: (names+=ID SymbolComma)* names+=ID typeWithRef;
 
 fnBody: fnExprkBody | fnBlockBody;
 
@@ -171,8 +173,8 @@ filedDecl: name=ID type;
 expr:
     // ( e )
       ParStart expr ParEnd # exprParen
-    // &a.b => Ref<T>
-    | SymbolAnd obj=ID (SymbolDot subs+=ID)* # exprGetRef
+    // &a.b => T&
+    | SymbolAnd obj=(ID|SymbolThis) (SymbolDot subs+=ID)* # exprGetRef
     // e[a, b, c] 实际应为成员函数get的快捷调用
     | expr
         GetStart
@@ -282,7 +284,7 @@ statement:
      DeclKey name=ID type codeLineEnd #statementDeclare
     // var name = expr
     // var name type = expr
-    | DeclKey name=ID type? SymbolEq expr codeLineEnd #statementDeclareAssign
+    | DeclKey name=ID typeWithRef? SymbolEq expr codeLineEnd #statementDeclareAssign
     // e[a, b, c] = e 实际应为成员函数set的快捷调用
     | obj=expr GetStart
           args+=expr
