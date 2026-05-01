@@ -14,6 +14,7 @@
 
 #include "compiler.h"
 #include "borrow_checker.h"
+#include "ctor_daa.h"
 #include "mangler.h"
 #include "node/fn_node.h"
 #include "node/expr_node.h"
@@ -638,6 +639,20 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
                     thisPtr, llvm::MaybeAlign(1), _builder.getInt8(0),
                     _builder.getInt64(sizeBytes));
                 DEBUG_LOG_VAL("  Ctor zero-init", structName << " size=" << sizeBytes);
+
+                // Phase 6: 构造函数定性赋值分析（DAA）
+                auto sd = _file->getStructDecl(structName);
+                if (!sd && _yux && _yux->sdkFile()) {
+                    sd = _yux->sdkFile()->getStructDecl(structName);
+                }
+                if (sd) {
+                    std::vector<std::string> fieldNames;
+                    fieldNames.reserve(sd->fields().size());
+                    for (auto& f : sd->fields()) {
+                        fieldNames.push_back(f->name().getText());
+                    }
+                    checkConstructorDAA(node, structName, fieldNames);
+                }
             }
         }
         ++argIt;
