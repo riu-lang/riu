@@ -1,4 +1,4 @@
-; Phase 3c.2.b 验证：String 走 3c.2.a 通用 by-value 路径
+; Phase 2 验证：String 不可变 + Array<u32> 缓冲构造
 ; { data: Array<u32> } 视为含一个 Array 字段的非平凡 struct
 ; 调用点对 data 字段 retain，callee 末尾释放，引用计数平衡
 
@@ -7,8 +7,11 @@ fn show(s String) {
 }
 
 fn main() {
-  var s String = String()
-  s.append("Hi")
+  ; 走 String(buf Array<u32>) 接管句柄构造（非 sentinel 路径）
+  var buf Array<u32> = []
+  buf.push(c'H')
+  buf.push(c'i')
+  var s String = String(buf)
   show(s)
   show(s)
   println(s)

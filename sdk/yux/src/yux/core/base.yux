@@ -723,7 +723,7 @@ i64 {
   fn inv() i64
 
   fn to_string() String {
-    var s String = String()
+    var out Array<u32> = []
     var buf [u8 * 21] = [0u8 ...]
     var is_neg = $ < 0i64
     var v i64 = $
@@ -745,7 +745,7 @@ i64 {
       i = 1
     }
     if is_neg {
-      s.append(c'-')
+      out.push(c'-')
     }
     var start i64 = 21i64 - i
     var k i64 = 0
@@ -753,10 +753,10 @@ i64 {
       if k >= i {
         break;
       }
-      s.append(buf[start + k])
+      out.push(buf[start + k].to_u32())
       k += 1
     }
-    s
+    String(out)
   }
 }
 
@@ -855,7 +855,7 @@ u64 {
   fn inv() u64
 
   fn to_string() String {
-    var s String = String()
+    var out Array<u32> = []
     var buf [u8 * 21] = [0u8 ...]
     var v u64 = $
     var i i64 = 0
@@ -878,10 +878,10 @@ u64 {
       if k >= i {
         break;
       }
-      s.append(buf[start + k])
+      out.push(buf[start + k].to_u32())
       k += 1
     }
-    s
+    String(out)
   }
 }
 
@@ -961,17 +961,26 @@ f64 {
   fn neg() f64
 
   fn to_string() String {
-    var s String = String()
+    var out Array<u32> = []
     var is_neg = $ < 0.0f64
     var v f64 = $
     if is_neg {
       v = 0.0f64 - $
     }
     if is_neg {
-      s.append(c'-')
+      out.push(c'-')
     }
-    s.append(v.to_i64().to_string())
-    s.append(c'.')
+    ; 整数部分：复用 i64.to_string 后逐码点 push
+    val int_part String = v.to_i64().to_string()
+    var ii i64 = 0
+    loop {
+      if ii >= int_part.len() {
+        break;
+      }
+      out.push(int_part.at(ii))
+      ii += 1
+    }
+    out.push(c'.')
     var frac f64 = v - v.to_i64().to_f64()
     var i i64 = 0
     loop {
@@ -980,11 +989,11 @@ f64 {
       }
       frac *= 10.0f64
       var digit i64 = frac.to_i64()
-      s.append((48u8 + digit.to_u8()).to_u32())
+      out.push((48u8 + digit.to_u8()).to_u32())
       frac -= digit.to_f64()
       i += 1
     }
-    s
+    String(out)
   }
 }
 
@@ -1174,7 +1183,8 @@ Nullable<T> {
   }
 }
 
-; String 类型 - 内部使用 Array<u32> 存储 Unicode code points
+; String 类型 - 不可变；内部使用 Array<u32> 存储 Unicode code points
+; v1 mutable 用例走 Array<u32> 缓冲 + String(buf) 构造
 struct String {
   data Array<u32>
 }
@@ -1184,75 +1194,29 @@ String {
     ; Array<u32> 会自动释放
   }
 
+  ; 空字符串构造
   fn String() {
     $.data = []
   }
 
+  ; 拷贝构造（句柄共享）
   fn String(s String) {
     $.data = s.data
+  }
+
+  ; 接管 Array<u32> 缓冲构造
+  ; 共享 buf 的 Block；调用方仍持原句柄，作用域结束自动 release
+  fn String(buf Array<u32>) {
+    $.data = buf
   }
 
   fn len() i64 {
     $.data.len()
   }
 
-  ; 清空字符串
-  fn clear() {
-    $.data.clear()
-  }
-
-  ; 追加一个 Unicode 码点
-  fn append(cp u32) {
-    $.data.push(cp)
-  }
-
-  ; 追加另一个字符串
-  fn append(s String) {
-    var i i64 = 0
-    loop {
-      if i >= s.data.len() {
-        break;
-      }
-      $.data.push(s.data[i])
-      i += 1
-    }
-  }
-
-  ; 追加 ASCII 字节（作为 u32 码点写入）
-  fn append(b u8) {
-    $.data.push(b.to_u32())
-  }
-
   ; 取码点
   fn at(i i64) u32 {
     $.data[i]
-  }
-
-  ; 就地截取 [start, end)，修改 $
-  fn sub_string(start i64, end i64) {
-    var len i64 = $.data.len()
-    var s i64 = start
-    var e i64 = end
-    if s < 0 {
-      s = 0
-    }
-    if e > len {
-      e = len
-    }
-    if s >= e {
-      $.data.set_len(0i64)
-      ret;
-    }
-    var i i64 = 0
-    var n i64 = e - s
-    loop {
-      if i >= n {
-        break;
-      }
-      $.data[i] = $.data[s + i]
-      i += 1
-    }
-    $.data.set_len(n)
   }
 
   ; 转为 UTF-8 字节数组
@@ -1285,6 +1249,58 @@ String {
   }
 }
 
+; StringBuilder - 可变字符串缓冲
+; 内部持有 Array<u32> 码点缓冲；支持追加；build() 终态产出不可变 String 并重置自身
+; 推荐用法：本地短生命周期累积 → build() 一次产出 String；不要在 build() 之后继续写入并对外暴露同一 String
+struct StringBuilder {
+  data Array<u32>
+}
+
+StringBuilder {
+  fn StringBuilder() {
+    $.data = []
+  }
+
+  fn len() i64 {
+    $.data.len()
+  }
+
+  ; 追加一个 Unicode 码点
+  fn append(cp u32) {
+    $.data.push(cp)
+  }
+
+  ; 追加 ASCII 字节（作为 u32 码点写入）
+  fn append(b u8) {
+    $.data.push(b.to_u32())
+  }
+
+  ; 追加另一个字符串的全部码点
+  fn append(s String) {
+    var i i64 = 0
+    loop {
+      if i >= s.len() {
+        break;
+      }
+      $.data.push(s.at(i))
+      i += 1
+    }
+  }
+
+  ; 清空缓冲
+  fn clear() {
+    $.data = []
+  }
+
+  ; 取出缓冲、构造不可变 String、自身重置为空
+  ; 取出后再 append/clear 不会影响已返回的 String（不同 Array<u32> Block）
+  fn build() String {
+    val s String = String($.data)
+    $.data = []
+    s
+  }
+}
+
 #CompilerInner
 struct bool {
   ; 内部处理
@@ -1296,13 +1312,7 @@ bool {
   fn not() bool
 
   fn to_string() String {
-    var s String = String()
-    if $ {
-      s.append("true")
-    } else {
-      s.append("false")
-    }
-    s
+    if $ { "true" } else { "false" }
   }
 }
 
