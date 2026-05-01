@@ -1,0 +1,28 @@
+; Phase 3b 验证：函数返回 Box<T> 走 move-return retain
+; - make_cell 内 ret 时 retain（+1），作用域析构 release（-1），caller 接住净 +1
+; - caller 再 Box-Box 复制路径目前会多 retain（已知，Phase 8 临时值清单收尾）
+;   但运行时正确性不变：字段读应当成功，进程退出时多一次 leak 不影响 stdout
+
+struct Cell {
+  n i32
+}
+
+Cell {
+  fn Cell(n i32) {
+    $.n = n
+  }
+}
+
+fn make_cell(x i32) Box<Cell> {
+  var c Box<Cell> = Cell(x)
+  ret c
+}
+
+fn main() {
+  var b Box<Cell> = make_cell(42i32)
+  println(b.n.to_string())
+
+  ; 再来一次确认重复返回不崩
+  var b2 Box<Cell> = make_cell(7i32)
+  println(b2.n.to_string())
+}

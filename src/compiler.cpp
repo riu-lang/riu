@@ -538,20 +538,22 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
             // 引用类型直接使用传入的指针
             _localVarPtrs[paramName] = &arg;
             DEBUG_LOG_VAL("  Param (ref)", paramName << " : " << paramType.getFullName());
+        } else if (structParamUsesPointer(paramType.name)) {
+            // Phase 3c.1: 非平凡结构体仍走指针 ABI
+            _localVarPtrs[paramName] = &arg;
+            DEBUG_LOG_VAL("  Param (struct ptr)", paramName << " : " << paramType.name << "*");
         } else {
+            // 基本类型 / 平凡结构体: 创建 alloca 并存储 by-value 参数
             auto llvmType = getLLVMType(paramType);
-            auto structDecl = _file->getStructDecl(paramType.name);
+            auto alloca = _builder.CreateAlloca(llvmType, nullptr, paramName);
+            _builder.CreateStore(&arg, alloca);
+            _localVarPtrs[paramName] = alloca;
+            DEBUG_LOG_VAL("  Param", paramName << " : " << paramType.name);
 
-            if (structDecl && !isBuiltinType(paramType.name)) {
-                // 结构体类型通过指针传递 (避免复制)
-                _localVarPtrs[paramName] = &arg;
-                DEBUG_LOG_VAL("  Param (struct ptr)", paramName << " : " << paramType.name << "*");
-            } else {
-                // 基本类型: 创建 alloca 并存储参数值
-                auto alloca = _builder.CreateAlloca(llvmType, nullptr, paramName);
-                _builder.CreateStore(&arg, alloca);
-                _localVarPtrs[paramName] = alloca;
-                DEBUG_LOG_VAL("  Param", paramName << " : " << paramType.name);
+            // Phase 3a: 堆句柄参数（Box/Array/Weak）按 callee-clean 协议
+            // 在作用域结束时 release，与局部变量同路径
+            if (typeNeedsDestructor(paramType)) {
+                _scopeVars.push_back(paramName);
             }
         }
     }
@@ -626,17 +628,21 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
         TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();
         auto llvmType = getLLVMType(paramType);
 
-        auto structDecl = _file->getStructDecl(paramType.name);
-        if (structDecl && !isBuiltinType(paramType.name)) {
-            // 结构体类型通过指针传递
+        if (structParamUsesPointer(paramType.name)) {
+            // Phase 3c.1: 非平凡结构体仍走指针 ABI
             _localVarPtrs[paramName] = argIt;
             DEBUG_LOG_VAL("  Param (struct ptr)", paramName << " : " << paramType.name << "*");
         } else {
-            // 基本类型: 创建 alloca 并存储参数值
+            // 基本类型 / 平凡结构体: 创建 alloca 并存储 by-value 参数
             auto alloca = _builder.CreateAlloca(llvmType, nullptr, paramName);
             _builder.CreateStore(argIt, alloca);
             _localVarPtrs[paramName] = alloca;
             DEBUG_LOG_VAL("  Param", paramName << " : " << paramType.name);
+
+            // Phase 3a: 堆句柄参数（Box/Array/Weak）按 callee-clean 协议在作用域末 release
+            if (typeNeedsDestructor(paramType)) {
+                _scopeVars.push_back(paramName);
+            }
         }
         ++argIt;
     }

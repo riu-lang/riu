@@ -118,14 +118,30 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         DEBUG_LOG("    Created return value");
     }
     
-    // 从作用域变量列表中移除返回的变量 (避免重复析构)
-    if (auto litNode = dynamic_cast<ExprLiteralNode*>(node->expr())) {
-        if (auto objLit = dynamic_cast<LiteralObjNode*>(litNode->literal())) {
-            auto varName = objLit->getValue().getText();
-            _scopeVars.erase(std::remove(_scopeVars.begin(), _scopeVars.end(), varName), _scopeVars.end());
+    // Phase 3b: move-return retain
+    // 堆句柄返回类型（Box / Array / Weak）在返回前 retain 一次，配合 callee-clean
+    // 局部变量 release（callDestructorsForScope）让调用方接住净 +1 句柄；
+    // 不做 peephole（DRAFT §7.3）——纯局部 var 路径下 retain+release 互抵，函数调用
+    // 临时值的多余 retain 由 Phase 8 临时值清单负责。
+    bool didMoveRetainHandle = false;
+    if (retVal && hasDeclaredRetType && !nullableWrap) {
+        if (declRetType.isBox() || declRetType.isArrayGeneric() || declRetType.isWeak()) {
+            retainHandleAtCallSite(retVal, declRetType);
+            didMoveRetainHandle = true;
         }
     }
-    
+
+    // 从作用域变量列表中移除返回的变量 (避免重复析构)
+    // 仅对非堆句柄返回类型保留旧的 peephole；堆句柄走 Phase 3b retain + 析构 release
+    if (!didMoveRetainHandle) {
+        if (auto litNode = dynamic_cast<ExprLiteralNode*>(node->expr())) {
+            if (auto objLit = dynamic_cast<LiteralObjNode*>(litNode->literal())) {
+                auto varName = objLit->getValue().getText();
+                _scopeVars.erase(std::remove(_scopeVars.begin(), _scopeVars.end(), varName), _scopeVars.end());
+            }
+        }
+    }
+
     // 调用析构函数并返回
     callDestructorsForScope();
     if (retVal) {

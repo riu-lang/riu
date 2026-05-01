@@ -1,0 +1,30 @@
+; Phase 3c.1 验证：平凡结构体（无 RC 句柄字段）按 LLVM by-value 传参
+; - modify 改写形参字段，调用方原值不受影响
+; - show 读取形参字段
+struct Point {
+  x i32
+  y i32
+}
+
+Point {
+  fn Point(x i32, y i32) {
+    $.x = x
+    $.y = y
+  }
+}
+
+fn modify(p Point) {
+  p.x = 999i32
+  p.y = 888i32
+}
+
+fn show(p Point) {
+  println(p.x.to_string())
+  println(p.y.to_string())
+}
+
+fn main() {
+  var pt Point = Point(10i32, 20i32)
+  modify(pt)
+  show(pt)
+}

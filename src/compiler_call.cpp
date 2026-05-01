@@ -214,8 +214,7 @@ llvm::Function* Compiler::getMethodFunction(
             llvmParamTypes.push_back(llvm::PointerType::get(_context, 0));
             continue;
         }
-        auto structDecl = _file->getStructDecl(paramType.name);
-        if (structDecl && !isBuiltinType(paramType.name)) {
+        if (structParamUsesPointer(paramType.name)) {
             llvmParamTypes.push_back(llvm::PointerType::get(_context, 0));
         } else {
             llvmParamTypes.push_back(getLLVMType(paramType));
@@ -596,11 +595,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                         auto paramType = params[argIdx]->type();
                         if (paramType) {
                             TypeInfo instParamType = paramType->getType().substitute(ctorSubst);
-                            auto sd = _file->getStructDecl(instParamType.name);
-                            if (!sd && _yux && _yux->sdkFile()) {
-                                sd = _yux->sdkFile()->getStructDecl(instParamType.name);
-                            }
-                            if (sd && !isBuiltinType(instParamType.name)) {
+                            if (structParamUsesPointer(instParamType.name)) {
                                 passByPtr = true;
                             }
                         }
@@ -697,11 +692,7 @@ llvm::Value* Compiler::compileFunctionCall(
                 vector<llvm::Type*> paramTypes;
                 paramTypes.push_back(llvm::PointerType::get(_context, 0));
                 for (auto& t : argTypes) {
-                    auto sd = _file->getStructDecl(t.name);
-                    if (!sd && _yux && _yux->sdkFile()) {
-                        sd = _yux->sdkFile()->getStructDecl(t.name);
-                    }
-                    if (sd && !isBuiltinType(t.name)) {
+                    if (structParamUsesPointer(t.name)) {
                         paramTypes.push_back(llvm::PointerType::get(_context, 0));
                     } else {
                         paramTypes.push_back(getLLVMType(t));
@@ -948,11 +939,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(
     if (!fn) {
         vector<llvm::Type*> paramTypes;
         for (auto& t : instParamTypes) {
-            auto sd = _file->getStructDecl(t.name);
-            if (!sd && _yux && _yux->sdkFile()) {
-                sd = _yux->sdkFile()->getStructDecl(t.name);
-            }
-            if (sd && !isBuiltinType(t.name) && !t.isPtr() && !t.isRef()) {
+            if (!t.isPtr() && !t.isRef() && structParamUsesPointer(t.name)) {
                 paramTypes.push_back(llvm::PointerType::get(_context, 0));
             } else {
                 paramTypes.push_back(getLLVMType(t));
@@ -970,11 +957,12 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             callArgs.push_back(args[i]);
             continue;
         }
-        auto sd = _file->getStructDecl(at.name);
-        if (!sd && _yux && _yux->sdkFile()) {
-            sd = _yux->sdkFile()->getStructDecl(at.name);
+        // Phase 3a: Box/Array/Weak 实参传前 retain（callee-clean）
+        if (retainHandleAtCallSite(args[i], at)) {
+            callArgs.push_back(args[i]);
+            continue;
         }
-        if (sd && !isBuiltinType(at.name)) {
+        if (structParamUsesPointer(at.name)) {
             auto structType = getLLVMType(at);
             auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");
             _builder.CreateStore(args[i], alloca);
@@ -1528,11 +1516,7 @@ llvm::Value* Compiler::compileStructMethodCall(
                         vector<llvm::Type*> paramTypes;
                         paramTypes.push_back(llvm::PointerType::get(_context, 0));
                         for (auto& t : argTypes) {
-                            auto sd = _file->getStructDecl(t.name);
-                            if (!sd && _yux && _yux->sdkFile()) {
-                                sd = _yux->sdkFile()->getStructDecl(t.name);
-                            }
-                            if (sd && !isBuiltinType(t.name)) {
+                            if (structParamUsesPointer(t.name)) {
                                 paramTypes.push_back(llvm::PointerType::get(_context, 0));
                             } else {
                                 paramTypes.push_back(getLLVMType(t));
@@ -1607,11 +1591,7 @@ llvm::Value* Compiler::compileStructMethodCall(
         methodArgs.push_back(dataPtr);
         for (size_t i = 0; i < args.size(); ++i) {
             auto& at = argTypes[i];
-            auto argStructDecl = _file->getStructDecl(at.name);
-            if (!argStructDecl && _yux && _yux->sdkFile()) {
-                argStructDecl = _yux->sdkFile()->getStructDecl(at.name);
-            }
-            if (argStructDecl && !isBuiltinType(at.name)) {
+            if (structParamUsesPointer(at.name)) {
                 auto structType = getLLVMType(at);
                 auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");
                 _builder.CreateStore(args[i], alloca);
@@ -1629,11 +1609,7 @@ llvm::Value* Compiler::compileStructMethodCall(
             vector<llvm::Type*> paramTypes;
             paramTypes.push_back(llvm::PointerType::get(_context, 0));
             for (auto& t : argTypes) {
-                auto sd = _file->getStructDecl(t.name);
-                if (!sd && _yux && _yux->sdkFile()) {
-                    sd = _yux->sdkFile()->getStructDecl(t.name);
-                }
-                if (sd && !isBuiltinType(t.name)) {
+                if (structParamUsesPointer(t.name)) {
                     paramTypes.push_back(llvm::PointerType::get(_context, 0));
                 } else {
                     paramTypes.push_back(getLLVMType(t));
@@ -1734,19 +1710,10 @@ llvm::Value* Compiler::compileKnownFunctionCall(
         for (size_t i = 0; i < fnSymbol->params.size(); ++i) {
             if (fnSymbol->params[i].isPtr() || fnSymbol->params[i].isRef()) {
                 paramTypes.push_back(llvm::PointerType::get(_context, 0));
+            } else if (structParamUsesPointer(fnSymbol->params[i].name)) {
+                paramTypes.push_back(llvm::PointerType::get(_context, 0));
             } else {
-                auto paramStructDecl = _file->getStructDecl(fnSymbol->params[i].name);
-                bool isStructType = paramStructDecl != nullptr && !isBuiltinType(fnSymbol->params[i].name);
-
-                if (!isStructType && _yux && _yux->sdkFile()) {
-                    isStructType = _yux->sdkFile()->getStructDecl(fnSymbol->params[i].name) != nullptr && !isBuiltinType(fnSymbol->params[i].name);
-                }
-
-                if (isStructType) {
-                    paramTypes.push_back(llvm::PointerType::get(_context, 0));
-                } else {
-                    paramTypes.push_back(getLLVMType(fnSymbol->params[i]));
-                }
+                paramTypes.push_back(getLLVMType(fnSymbol->params[i]));
             }
         }
         auto retType = fnSymbol->retType.empty()
@@ -1800,37 +1767,13 @@ llvm::Value* Compiler::compileKnownFunctionCall(
             }
         }
 
-        if (argTypes[i].isBox()) {
-            // callee-clean (DRAFT §7.3)：传参前 retain block；callee 末尾析构 release 抵消
-            auto boxStructType = getLLVMType(argTypes[i]);
-            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-
-            auto boxAlloca = _builder.CreateAlloca(boxStructType, nullptr, "box_arg_tmp");
-            _builder.CreateStore(args[i], boxAlloca);
-
-            auto handleField = _builder.CreateGEP(boxStructType, boxAlloca, {zero, zero}, "handle_field");
-            auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "handle");
-
-            auto retainFn = runtime::getBoxRetainFn(_module, _builder);
-            _builder.CreateCall(retainFn, {handle});
-
+        if (retainHandleAtCallSite(args[i], argTypes[i])) {
+            // callee-clean (DRAFT §7.3)：传参前 retain；callee 末尾析构 release 抵消
             callArgs.push_back(args[i]);
             continue;
         }
 
-        auto paramStructDecl = _file->getStructDecl(fnSymbol->params[i].name);
-        bool isStructType = paramStructDecl != nullptr && !isBuiltinType(fnSymbol->params[i].name);
-
-        if (!isStructType && _yux && _yux->sdkFile()) {
-            isStructType = _yux->sdkFile()->getStructDecl(fnSymbol->params[i].name) != nullptr && !isBuiltinType(fnSymbol->params[i].name);
-        }
-
-        if (!isStructType) {
-            auto it = _structTypes.find(fnSymbol->params[i].name);
-            isStructType = (it != _structTypes.end());
-        }
-
-        if (isStructType) {
+        if (structParamUsesPointer(fnSymbol->params[i].name)) {
             DEBUG_LOG_VAL("    Passing struct by pointer", "arg " << i << " : " << fnSymbol->params[i].name);
             auto structType = getLLVMType(argTypes[i]);
             auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");

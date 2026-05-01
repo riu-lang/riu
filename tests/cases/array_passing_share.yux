@@ -1,0 +1,17 @@
+; Phase 3a 验证：Array<T> 传参语义为句柄共享（callee-clean retain/release）
+; - 调用方 modify(arr) 前 retain；callee 末尾析构 release
+; - 多句柄共享同一 block，被调用方修改对调用方可见
+fn modify(a Array<i32>) {
+  a[0] = 99
+  a.push(42i32)
+}
+
+fn main() {
+  var arr Array<i32> = [1i32, 2i32, 3i32]
+  modify(arr)
+  println(arr.len().to_string())   ; 期望 4（push 后）
+  println(arr[0].to_string())      ; 期望 99（modify 改写）
+  println(arr[1].to_string())      ; 期望 2
+  println(arr[2].to_string())      ; 期望 3
+  println(arr[3].to_string())      ; 期望 42（push 进来的）
+}

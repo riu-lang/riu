@@ -414,16 +414,13 @@ llvm::FunctionType* Compiler::getLLVMFunctionType(p<FnHeaderNode> header) {
         if (paramType.isPtr() || paramType.isRef()) {
             paramTypes.push_back(llvm::PointerType::get(_context, 0));
             DEBUG_LOG_VAL("    param", param->name().getText() << " : " << paramType.name << " (pointer type)");
+        } else if (structParamUsesPointer(paramType.name)) {
+            // Phase 3c.1: 非平凡结构体仍按指针传递；平凡结构体走 by-value
+            paramTypes.push_back(llvm::PointerType::get(_context, 0));
+            DEBUG_LOG_VAL("    param", param->name().getText() << " : " << paramType.name << " (struct ptr)");
         } else {
-            // 结构体类型通过指针传递 (避免复制)
-            auto structDecl = _file->getStructDecl(paramType.name);
-            if (structDecl && !isBuiltinType(paramType.name)) {
-                paramTypes.push_back(llvm::PointerType::get(_context, 0));
-                DEBUG_LOG_VAL("    param", param->name().getText() << " : " << paramType.name << " (struct ptr)");
-            } else {
-                paramTypes.push_back(getLLVMType(paramType));
-                DEBUG_LOG_VAL("    param", param->name().getText() << " : " << paramType.name);
-            }
+            paramTypes.push_back(getLLVMType(paramType));
+            DEBUG_LOG_VAL("    param", param->name().getText() << " : " << paramType.name);
         }
     }
     // 处理返回类型

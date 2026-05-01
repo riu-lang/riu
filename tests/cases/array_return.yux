@@ -1,0 +1,16 @@
+; Phase 3b 验证：函数返回 Array<T> 走 move-return retain
+; - make 内 ret 时 retain（+1），析构 release（-1），caller 接住净 +1
+; - caller 由 Array<T> 表达式初始化新 var，目前无额外 retain（裸句柄移动），
+;   作用域结束时 release 一次，净 0，无泄漏
+fn make() Array<i32> {
+  var a Array<i32> = [10i32, 20i32, 30i32]
+  ret a
+}
+
+fn main() {
+  var arr Array<i32> = make()
+  println(arr.len().to_string())
+  println(arr[0].to_string())
+  println(arr[1].to_string())
+  println(arr[2].to_string())
+}

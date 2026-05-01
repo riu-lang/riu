@@ -228,6 +228,21 @@ llvm::Function* getBoxUpgradeFn(llvm::Module* module, llvm::IRBuilder<>& builder
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
+// 获取 Weak 引用增加函数（Phase 3a）
+// 签名: void _weak_retain(ptr block)
+// null/哨兵跳过；否则 weak++
+llvm::Function* getWeakRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
+    string fnName = "_weak_retain";
+    auto func = module->getFunction(fnName);
+    if (func) return func;
+
+    vector<llvm::Type*> paramTypes;
+    paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0));
+
+    auto fnType = llvm::FunctionType::get(builder.getVoidTy(), paramTypes, false);
+    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
+}
+
 // 获取 Weak 引用减少函数
 // 签名: void _weak_release(ptr block)
 // 哨兵 / null 跳过；否则 weak--；weak==0 时 free 整个 block
@@ -488,6 +503,36 @@ void emitWeakHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llv
 
         builder.SetInsertPoint(retNullBB);
         builder.CreateRet(nullPtr);
+    }
+
+    // _weak_retain(handle): null/哨兵跳过；weak++（Phase 3a）
+    DEBUG_LOG("  Emitting _weak_retain");
+    auto retainFn = getWeakRetainFn(module, builder);
+    if (retainFn->empty()) {
+        auto entry = llvm::BasicBlock::Create(context, "entry", retainFn);
+        auto checkBB = llvm::BasicBlock::Create(context, "check", retainFn);
+        auto incBB = llvm::BasicBlock::Create(context, "inc", retainFn);
+        auto doneBB = llvm::BasicBlock::Create(context, "done", retainFn);
+
+        builder.SetInsertPoint(entry);
+        llvm::Value* block = &*retainFn->arg_begin();
+        auto isNull = builder.CreateICmpEQ(block, nullPtr, "is_null");
+        builder.CreateCondBr(isNull, doneBB, checkBB);
+
+        builder.SetInsertPoint(checkBB);
+        auto strong = builder.CreateLoad(i32Ty, block, "strong");
+        auto isSentinel = builder.CreateICmpEQ(strong, sentinel, "is_sentinel");
+        builder.CreateCondBr(isSentinel, doneBB, incBB);
+
+        builder.SetInsertPoint(incBB);
+        auto weakPtr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(4)}, "weak_ptr");
+        auto weak = builder.CreateLoad(i32Ty, weakPtr, "weak");
+        auto newWeak = builder.CreateAdd(weak, llvm::ConstantInt::get(i32Ty, 1), "new_weak");
+        builder.CreateStore(newWeak, weakPtr);
+        builder.CreateBr(doneBB);
+
+        builder.SetInsertPoint(doneBB);
+        builder.CreateRetVoid();
     }
 
     // _weak_release(handle): null/哨兵跳过；weak--；weak==0 free

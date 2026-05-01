@@ -70,22 +70,19 @@ void Compiler::callDestructor(const string& varName, const TypeInfo& varType) {
         return;
     }
 
-    // 处理 Array<T> 类型 (动态数组)
-    // Array 需要释放数据内存
+    // 处理 Array<T> 类型 (Phase 1b 单 handle 布局)
+    // 调用 _array_release(handle)；strong=0 时 free block
     if (varType.isArrayGeneric()) {
         DEBUG_LOG_VAL("  Calling Array destructor for", varName);
 
         auto arrayStructType = getLLVMType(varType);
         auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
 
-        // 获取数据指针
-        llvm::Value* dataIndices[] = {zero, zero};
-        auto dataPtrField = _builder.CreateGEP(arrayStructType, varPtr, dataIndices, "array.data_ptr_field");
-        auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataPtrField, "array.data_ptr");
+        auto handleField = _builder.CreateGEP(arrayStructType, varPtr, {zero, zero}, "array.handle_field");
+        auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "array.handle");
 
-        // 调用 Array 释放函数
         auto arrayReleaseFn = runtime::getArrayReleaseFn(_module, _builder);
-        _builder.CreateCall(arrayReleaseFn, {dataPtr});
+        _builder.CreateCall(arrayReleaseFn, {handle});
         return;
     }
 
@@ -164,15 +161,13 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
             auto weakReleaseFn = runtime::getWeakReleaseFn(_module, _builder);
             _builder.CreateCall(weakReleaseFn, {handle});
         } else if (fieldType.isArrayGeneric()) {
-            // Array 字段: 调用 Array 释放函数
+            // Array 字段：load handle，调用 _array_release(handle)
             auto arrayStructType = getLLVMType(fieldType);
-
-            llvm::Value* dataIndices[] = {zero, zero};
-            auto dataPtrField = _builder.CreateGEP(arrayStructType, fieldPtr, dataIndices);
-            auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataPtrField);
+            auto handleField = _builder.CreateGEP(arrayStructType, fieldPtr, {zero, zero});
+            auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField);
 
             auto arrayReleaseFn = runtime::getArrayReleaseFn(_module, _builder);
-            _builder.CreateCall(arrayReleaseFn, {dataPtr});
+            _builder.CreateCall(arrayReleaseFn, {handle});
         } else if (!isBuiltinType(fieldType.name)) {
             // 结构体字段: 调用其析构函数
             auto fieldDtorsFn = getDestructorFunction(fieldType.name);
@@ -208,6 +203,39 @@ void Compiler::generateDefaultDestructor(const string& structName) {
     _builder.CreateRetVoid();
 }
 
+// ==================== Phase 3a: 调用点 retain ====================
+
+// 给堆句柄实参在传入前 retain（callee-clean 调用约定，DRAFT §7.3）
+// 非堆句柄类型 no-op；返回 true 表示已发出 retain
+bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argType) {
+    if (!argVal) return false;
+
+    auto extractHandle = [&](const string& name) -> llvm::Value* {
+        // argVal 是 { ptr handle } struct value（来自 compileExpr 的 load）
+        return _builder.CreateExtractValue(argVal, {0}, name);
+    };
+
+    if (argType.isBox()) {
+        auto handle = extractHandle("arg.box.handle");
+        auto retainFn = runtime::getBoxRetainFn(_module, _builder);
+        _builder.CreateCall(retainFn, {handle});
+        return true;
+    }
+    if (argType.isArrayGeneric()) {
+        auto handle = extractHandle("arg.array.handle");
+        auto retainFn = runtime::getArrayRetainFn(_module, _builder);
+        _builder.CreateCall(retainFn, {handle});
+        return true;
+    }
+    if (argType.isWeak()) {
+        auto handle = extractHandle("arg.weak.handle");
+        auto retainFn = runtime::getWeakRetainFn(_module, _builder);
+        _builder.CreateCall(retainFn, {handle});
+        return true;
+    }
+    return false;
+}
+
 // ==================== 析构函数需求检查 ====================
 
 // 检查类型是否需要析构函数
@@ -226,6 +254,31 @@ bool Compiler::typeNeedsDestructor(const TypeInfo& type) {
 
     // 检查结构体是否需要析构
     return structNeedsDestructor(type.name);
+}
+
+// Phase 3c.1: 结构体形参是否按指针传递
+// 已知非泛型实例的"平凡结构体"（无 RC 句柄字段、无含 RC 字段的嵌套）→ by-value（false）；
+// 其他（含 RC 字段、泛型实例、仅 _structTypes 已注册的跨模块 struct）→ pointer（true）
+bool Compiler::structParamUsesPointer(const string& typeName) {
+    if (isBuiltinType(typeName)) return false;
+
+    // 泛型实例：3c.1 保守按指针，含字段类型替换的平凡判定推到 3c.2
+    if (_structInstances.find(typeName) != _structInstances.end()) return true;
+
+    auto structDecl = _file->getStructDecl(typeName);
+    if (!structDecl && _yux && _yux->sdkFile()) {
+        structDecl = _yux->sdkFile()->getStructDecl(typeName);
+    }
+    if (structDecl) {
+        return structNeedsDestructor(typeName);
+    }
+
+    // 仅在 LLVM 类型表中注册的（跨模块未通配导入等）保守按指针
+    if (_structTypes.find(typeName) != _structTypes.end()) {
+        return true;
+    }
+
+    return false;
 }
 
 // 检查结构体是否需要析构函数

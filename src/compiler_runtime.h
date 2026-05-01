@@ -57,6 +57,10 @@ llvm::Function* getBoxUpgradeFn(llvm::Module* module, llvm::IRBuilder<>& builder
 // null/哨兵跳过
 llvm::Function* getWeakReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 
+// _weak_retain(handle) -> void（Phase 3a）
+// weak++；null/哨兵跳过
+llvm::Function* getWeakRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+
 // ==================== Array<T> 动态数组支持（Phase 1b）====================
 // Block 布局: { u32 strong, u32 weak, i64 len, i64 cap, ptr data }；data 是间接指针
 // handle == null 表示空数组；强引用归零时 free(data) + free(block)；哨兵 0xFFFFFFFF 跳过 RC

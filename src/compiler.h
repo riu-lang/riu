@@ -154,6 +154,18 @@ class Compiler {
     bool typeNeedsDestructor(const TypeInfo& type);                             // 检查类型是否需要析构
     bool structNeedsDestructor(const string& structName);                       // 检查结构体是否需要析构
 
+    // Phase 3a: callee-clean 调用约定
+    // 给 Box/Array/Weak 实参在传入前 retain；callee 末尾析构 release 抵消
+    // 非堆句柄类型 no-op；返回 true 表示已发出 retain
+    bool retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argType);
+
+    // Phase 3c.1: 结构体形参 ABI 判定
+    // 返回 true 表示该结构体形参按指针传递（"非平凡"或保守路径），false 则按 LLVM by-value
+    // 规则：内置类型 / 未知类型 → false；用户已声明且无 RC 字段（recursive trivial）→ false；
+    // 含 RC 字段（含直接 Box/Array/Weak 或嵌套含 RC 字段的 struct）→ true；
+    // 泛型实例 / 仅在 _structTypes 中注册的跨模块 struct → 3c.1 保守 true（推到 3c.2）
+    bool structParamUsesPointer(const string& typeName);
+
     // ==================== 语句编译 ====================
     void compileRetStatement(p<StatementRetNode> node);                         // 编译 return 语句
     void compileRetVoidStatement(p<StatementRetVoidNode> node);                 // 编译 return; 语句
