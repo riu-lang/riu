@@ -66,12 +66,12 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
         if (auto fnParamsCtx = header->fnParams()) {
             for (auto paramCtx : fnParamsCtx->fnParam()) {
                 if (auto stdCtx = paramCtx->fnParamStd()) {
-                    if (auto twr = stdCtx->typeWithRef(); twr && twr->type()) {
+                    if (auto twr = stdCtx->typeWithRef(); twr) {
                         auto typeNode = buildTypeWithRef(twr, file);
                         paramTypes.push_back(typeNode->getType());
                     }
                 } else if (auto groupCtx = paramCtx->fnParamGroup()) {
-                    if (auto twr = groupCtx->typeWithRef(); twr && twr->type()) {
+                    if (auto twr = groupCtx->typeWithRef(); twr) {
                         auto typeNode = buildTypeWithRef(twr, file);
                         for (size_t i = 0; i < groupCtx->names.size(); ++i) {
                             paramTypes.push_back(typeNode->getType());
@@ -434,12 +434,12 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         if (auto fnParamsCtx = header->fnParams()) {
             for (auto paramCtx : fnParamsCtx->fnParam()) {
                 if (auto stdCtx = paramCtx->fnParamStd()) {
-                    if (auto twr = stdCtx->typeWithRef(); twr && twr->type()) {
+                    if (auto twr = stdCtx->typeWithRef(); twr) {
                         auto typeNode = buildTypeWithRef(twr, file);
                         paramTypes.push_back(typeNode->getType());
                     }
                 } else if (auto groupCtx = paramCtx->fnParamGroup()) {
-                    if (auto twr = groupCtx->typeWithRef(); twr && twr->type()) {
+                    if (auto twr = groupCtx->typeWithRef(); twr) {
                         auto typeNode = buildTypeWithRef(twr, file);
                         for (size_t i = 0; i < groupCtx->names.size(); ++i) {
                             paramTypes.push_back(typeNode->getType());
@@ -938,7 +938,7 @@ std::any ASTBuilder::visitStatementDeclareAssign(yux::yuxParser::StatementDeclar
 
     auto name = ctx->name;
     p<TypeNode> type = nullptr;
-    if (auto twr = ctx->typeWithRef(); twr && twr->type()) {
+    if (auto twr = ctx->typeWithRef(); twr) {
         type = buildTypeWithRef(twr, scope);
     }
 
@@ -1444,11 +1444,49 @@ std::any ASTBuilder::visitTypeArray(yux::yuxParser::TypeArrayContext* ctx) {
 }
 
 // Phase 4a: typeWithRef → TypeNode；SymbolAnd 存在则包成 Ref<inner>
+// 语法已改：typeWithRef 现有 4 个分支，与 type 的 4 个分支结构对应，但每个内部位置（generic args / array elem）
+// 也允许带 &，从而支持 Box<i32&> 这类嵌套引用类型作为参数 / 局部 var 类型。
 p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr, p<Node> parent) {
-    auto inner = any_cast_p<TypeNode>(visit(twr->type()));
-    if (twr->SymbolAnd()) {
-        auto andTok = twr->SymbolAnd()->getSymbol();
-        Token refName(string("Ref"), andTok ? andTok->getLine() : 0);
+    using namespace yux;
+    p<TypeNode> inner;
+    antlr4::tree::TerminalNode* andTok = nullptr;
+
+    if (auto n = dynamic_cast<yuxParser::TypeNormalWithRefContext*>(twr)) {
+        inner = p<TypeNode>(createWithLine<TypeNormalNode>(n, parent, n->ID()->getSymbol()));
+        andTok = n->SymbolAnd();
+    } else if (auto nul = dynamic_cast<yuxParser::TypeNullableWithRefContext*>(twr)) {
+        // 内层是 type（不带 &），直接复用 visitType* 通路
+        auto innerT = any_cast_p<TypeNode>(visit(nul->type()));
+        if (innerT->getType().kind == TypeKind::Generic && innerT->getType().name == "Weak") {
+            auto qt = nul->SymbolQuest()->getSymbol();
+            throw YuxError(qt ? (int)qt->getLine() : 0,
+                "Weak<T>? is forbidden: Weak is natively nullable (upgrade returns Box<T>?)");
+        }
+        auto qt = nul->SymbolQuest()->getSymbol();
+        Token nullableName(string("Nullable"), qt ? qt->getLine() : 0);
+        vector<p<TypeNode>> args; args.push_back(innerT);
+        inner = p<TypeNode>(createWithLine<TypeGenericNode>(nul, parent, nullableName, args));
+        andTok = nul->SymbolAnd();
+    } else if (auto g = dynamic_cast<yuxParser::TypeGenericWithRefContext*>(twr)) {
+        auto baseName = g->ID()->getSymbol();
+        vector<p<TypeNode>> typeArgs;
+        for (auto innerCtx : g->genericDefWithRef()->types) {
+            typeArgs.push_back(buildTypeWithRef(innerCtx, parent));
+        }
+        inner = p<TypeNode>(createWithLine<TypeGenericNode>(g, parent, baseName, typeArgs));
+        andTok = g->SymbolAnd();
+    } else if (auto a = dynamic_cast<yuxParser::TypeArrayWithRefContext*>(twr)) {
+        auto elemType = buildTypeWithRef(a->typeWithRef(), parent);
+        auto count = a->INT()->getSymbol();
+        inner = p<TypeNode>(createWithLine<TypeArrayNode>(a, parent, elemType, count));
+        andTok = a->SymbolAnd();
+    } else {
+        throw YuxError(0, "buildTypeWithRef: unknown typeWithRef alternative");
+    }
+
+    if (andTok) {
+        auto sym = andTok->getSymbol();
+        Token refName(string("Ref"), sym ? sym->getLine() : 0);
         vector<p<TypeNode>> args;
         args.push_back(inner);
         return p<TypeNode>(createWithLine<TypeGenericNode>(twr, parent, refName, args));

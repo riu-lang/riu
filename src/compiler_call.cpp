@@ -735,6 +735,20 @@ llvm::Value* Compiler::compileFunctionCall(
         return _builder.CreateIntToPtr(args[0], llvm::PointerType::get(_context, 0), "ptr_from_addr");
     }
 
+    if (fnName == "_ptr_offset") {
+        DEBUG_LOG("    Expr: _ptr_offset");
+        if (fnSymbol && fnSymbol->isPrivate && !fnSymbol->moduleName.empty() &&
+            fnSymbol->moduleName != _file->moduleName()) {
+            throw YuxError(callNode->getLineNumber(),
+                "Cannot call private function '_ptr_offset' (SDK-only Ptr arithmetic)");
+        }
+        if (args.size() != 2) {
+            throw YuxError(callNode->getLineNumber(), "_ptr_offset expects 2 arguments");
+        }
+        auto i8Ty = _builder.getInt8Ty();
+        return _builder.CreateGEP(i8Ty, args[0], args[1], "ptr_off");
+    }
+
     if (fnSymbol) {
         if (fnSymbol->isPrivate && !fnSymbol->moduleName.empty() && fnSymbol->moduleName != _file->moduleName()) {
             throw YuxError(callNode->getLineNumber(), "Cannot call private function '{}'", fnName);
@@ -908,6 +922,84 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             _builder.CreateStore(resultHandle, innerHandleField);
 
             return _builder.CreateLoad(nullableLLVMTy, resultAlloca, "upgrade.value");
+        }
+        if (fnName == "same_ref" || fnName == "ptr_of") {
+            // Phase 7：地址相等 / 显式取裸指针 builtin
+            // T 必须是堆句柄类型 (Box / Weak / Array / String) 或 T&
+            // 标量 / 用户 struct / Nullable 等其他类型在此报错
+            size_t expectedArgs = (fnName == "same_ref" ? 2 : 1);
+            if (typeArgs.size() != 1) {
+                throw YuxError(callNode->getLineNumber(),
+                    "{} expects 1 type argument", fnName);
+            }
+            if (args.size() != expectedArgs) {
+                throw YuxError(callNode->getLineNumber(),
+                    "{} expects {} argument(s)", fnName, expectedArgs);
+            }
+            auto& T = typeArgs[0];
+            auto ptrTy = llvm::PointerType::get(_context, 0);
+
+            // 工具：从第 i 个实参提取一个"裸指针"（handle / data / ref-ptr），按 T 的源类型决定如何抽
+            // ptr_of 模式：当 T = Box/Array/String 时，需要进一步跳过 RC 头或读 data 字段；same_ref 不跳头
+            auto extractRawPtr = [&](size_t i, bool forPtrOf) -> llvm::Value* {
+                if (T.isBox() || T.isWeak() || T.isArrayGeneric()) {
+                    // args[i] 为 { ptr handle } 结构体值；ExtractValue 0 取 handle
+                    auto handle = _builder.CreateExtractValue(args[i], {0}, "handle");
+                    if (!forPtrOf || T.isBox()) {
+                        if (forPtrOf && T.isBox()) {
+                            // Box payload 偏移 8（u32 strong + u32 weak）
+                            return _builder.CreateInBoundsGEP(
+                                _builder.getInt8Ty(), handle,
+                                {llvm::ConstantInt::get(_builder.getInt64Ty(), 8)},
+                                "box.payload");
+                        }
+                        return handle;
+                    }
+                    // Array<U>：读 Block.data（offset 24：8 字节 RC 头 + 16 字节 len/cap）
+                    auto dataAddr = _builder.CreateInBoundsGEP(
+                        _builder.getInt8Ty(), handle,
+                        {llvm::ConstantInt::get(_builder.getInt64Ty(), 24)},
+                        "array.data.addr");
+                    return _builder.CreateLoad(ptrTy, dataAddr, "array.data");
+                }
+                if (T.name == "String" && T.kind == TypeKind::Normal) {
+                    // String layout = { data: Array<u32> } = { { ptr handle } }
+                    auto handle = _builder.CreateExtractValue(args[i], {0, 0}, "string.handle");
+                    if (!forPtrOf) return handle;
+                    auto dataAddr = _builder.CreateInBoundsGEP(
+                        _builder.getInt8Ty(), handle,
+                        {llvm::ConstantInt::get(_builder.getInt64Ty(), 24)},
+                        "string.data.addr");
+                    return _builder.CreateLoad(ptrTy, dataAddr, "string.data");
+                }
+                if (T.isRef()) {
+                    // T& 路径：args[i] 是 compileExpr 自动 deref 后的 U 值，需要回溯 AST 拿原始指针
+                    auto argNode = callNode->getArgs()[i];
+                    if (auto litExpr = dynamic_cast<ExprLiteralNode*>(argNode)) {
+                        if (auto objLit = dynamic_cast<LiteralObjNode*>(litExpr->literal())) {
+                            auto name = objLit->getValue().getText();
+                            auto it = _localVarPtrs.find(name);
+                            if (it != _localVarPtrs.end()) return it->second;
+                        }
+                    }
+                    if (auto refExpr = dynamic_cast<ExprGetRefNode*>(argNode)) {
+                        return compileGetRefExpr(refExpr);
+                    }
+                    throw YuxError(callNode->getLineNumber(),
+                        "{}:<T&> requires a local var or &expr argument", fnName);
+                }
+                throw YuxError(callNode->getLineNumber(),
+                    "{}:<T> requires T to be Box/Weak/Array/String or U& (got '{}')",
+                    fnName, T.getFullName());
+            };
+
+            if (fnName == "same_ref") {
+                auto p0 = extractRawPtr(0, false);
+                auto p1 = extractRawPtr(1, false);
+                return _builder.CreateICmpEQ(p0, p1, "same_ref");
+            }
+            // ptr_of
+            return extractRawPtr(0, true);
         }
         throw YuxError(callNode->getLineNumber(),
             "Unknown #CompilerInner function '{}'", fnName);
@@ -1770,6 +1862,68 @@ llvm::Value* Compiler::compileKnownFunctionCall(
                     args[i], llvm::PointerType::get(_context, 0), "ptr_cast");
                 callArgs.push_back(ptrVal);
                 continue;
+            }
+            // Phase 7c (DRAFT §9.3): extern 边界自动转 Ptr
+            // T& / Box<T> / Weak<T> / Array<T> / String 作实参传给 Ptr 形参时自动转换
+            // 转换规则与 ptr_of 一致：Box → payload (跳 RC 头)；Array/String → data 区
+            if (fnSymbol->isExternal) {
+                auto& aType = argTypes[i];
+                auto ptrTy = llvm::PointerType::get(_context, 0);
+                if (aType.isRef()) {
+                    // T& → 原始指针：从 AST 回溯（args[i] 已被 compileExpr 自动 deref 为 U 值）
+                    auto argNode = callNode->getArgs()[i];
+                    llvm::Value* refPtr = nullptr;
+                    if (auto litExpr = dynamic_cast<ExprLiteralNode*>(argNode)) {
+                        if (auto objLit = dynamic_cast<LiteralObjNode*>(litExpr->literal())) {
+                            auto name = objLit->getValue().getText();
+                            auto it = _localVarPtrs.find(name);
+                            if (it != _localVarPtrs.end()) refPtr = it->second;
+                        }
+                    }
+                    if (!refPtr) {
+                        if (auto refExpr = dynamic_cast<ExprGetRefNode*>(argNode)) {
+                            refPtr = compileGetRefExpr(refExpr);
+                        }
+                    }
+                    if (refPtr) {
+                        callArgs.push_back(refPtr);
+                        continue;
+                    }
+                }
+                if (aType.isBox() || aType.isWeak() || aType.isArrayGeneric()) {
+                    auto handle = _builder.CreateExtractValue(args[i], {0}, "handle");
+                    if (aType.isWeak()) {
+                        callArgs.push_back(handle);
+                        continue;
+                    }
+                    if (aType.isBox()) {
+                        // Box payload 偏移 8（跳过 RC 头）
+                        auto payload = _builder.CreateInBoundsGEP(
+                            _builder.getInt8Ty(), handle,
+                            {llvm::ConstantInt::get(_builder.getInt64Ty(), 8)},
+                            "box.payload");
+                        callArgs.push_back(payload);
+                        continue;
+                    }
+                    // Array：读 Block.data (offset 24)
+                    auto dataAddr = _builder.CreateInBoundsGEP(
+                        _builder.getInt8Ty(), handle,
+                        {llvm::ConstantInt::get(_builder.getInt64Ty(), 24)},
+                        "array.data.addr");
+                    auto dataPtr = _builder.CreateLoad(ptrTy, dataAddr, "array.data");
+                    callArgs.push_back(dataPtr);
+                    continue;
+                }
+                if (aType.name == "String" && aType.kind == TypeKind::Normal) {
+                    auto handle = _builder.CreateExtractValue(args[i], {0, 0}, "string.handle");
+                    auto dataAddr = _builder.CreateInBoundsGEP(
+                        _builder.getInt8Ty(), handle,
+                        {llvm::ConstantInt::get(_builder.getInt64Ty(), 24)},
+                        "string.data.addr");
+                    auto dataPtr = _builder.CreateLoad(ptrTy, dataAddr, "string.data");
+                    callArgs.push_back(dataPtr);
+                    continue;
+                }
             }
         }
 

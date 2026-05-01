@@ -408,13 +408,15 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 }
                 storeArrayHandle(alloca, block);
             } else {
-                // 从其他 Array<T> 表达式初始化（暂时句柄复制；retain 留给 Phase 3 完整接入）
-                // TODO(Phase 3): 这里需要 _array_retain 让多句柄共享时计数正确
+                // 从其他 Array<T> 表达式初始化：句柄复制 + retain
+                // 与 Box 的 var q = p 路径同形（Phase 1a），否则作用域结束 LIFO 双重 release
+                // 触发同 handle freed-block read。修复 BUGS.md「Array 声明拷贝漏 retain」。
                 auto exprType = expr->getType();
                 if (!exprType.isArrayGeneric() && exprType.name != "Array") {
                     throw YuxError(node->getLineNumber(), "Array<T> initialization requires Array<T> expression or array literal");
                 }
                 auto exprVal = compileExpr(expr);
+                retainHandleAtCallSite(exprVal, exprType);
                 _builder.CreateStore(exprVal, alloca);
             }
 

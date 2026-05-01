@@ -1,0 +1,25 @@
+; Phase 7c 验证：extern fn 边界自动转 Ptr (DRAFT §9.3)
+; T& / Box / Array / String 作实参传给 Ptr 形参时自动转换；规则与 ptr_of 一致
+
+extern {
+  fn lstrlenA(lpString Ptr) i32
+}
+
+fn main() {
+  ; Array<u8> → Ptr：data 区首地址；NUL 终止字符串 "hi" 应得到长度 2
+  var a Array<u8> = [104u8, 105u8, 0u8]
+  println(lstrlenA(a).to_string())
+
+  ; String → Ptr：data 区是 UTF-32 码点 (4 字节/码点)；ASCII 字符的低字节非零、高 3 字节 0
+  ; 所以 lstrlenA 读到首字符的低字节即返回 1（'h' = 0x68 0x00 0x00 0x00）
+  var s String = "hi"
+  println(lstrlenA(s).to_string())
+
+  ; T& → Ptr (i32&)：x = 0i32（4 字节全 0），lstrlenA 立即遇 NUL 返回 0
+  var x i32 = 0i32
+  println(lstrlenA(&x).to_string())
+
+  ; Box<i32> → Ptr：payload = i32 = 0，同上返回 0
+  var b Box<i32> = 0i32
+  println(lstrlenA(b).to_string())
+}

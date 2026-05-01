@@ -19,7 +19,7 @@ cval _STD_OUTPUT_HANDLE i32 = -11
 ; 内部：向 stdout 写入
 fn _stdout_write(buf Ptr, off i64, len i64) {
   var hStdout Ptr = GetStdHandle(_STD_OUTPUT_HANDLE)
-  var bufWithOff Ptr = ptr_from_addr(buf.to_int() + off.to_u64())
+  var bufWithOff Ptr = _ptr_offset(buf, off)
   var written u32 = 0u32
   WriteFile(hStdout, bufWithOff, len.to_u32(), &written, null);
 }
@@ -1098,6 +1098,11 @@ Ptr {
 #CompilerInner
 fn ptr_from_addr(addr u64) Ptr
 
+; 私有（`_` 前缀约定）：Ptr + i64 字节偏移；编译器 GEP i8，不暴露给用户
+; 取代 ptr_from_addr(p.to_int() + off.to_u64()) 的冗长写法（DRAFT §9.1：Ptr 算术不开放给用户）
+#CompilerInner
+fn _ptr_offset(p Ptr, off i64) Ptr
+
 #CompilerInner
 struct Box<T> {
   ; 内部处理
@@ -1112,6 +1117,21 @@ struct Weak<T> {
 ; upgrade(w) Box<T>?：尝试从 Weak 升级到 Box；strong==0 → null；存活 → strong++ 返回 Some(Box{handle})
 #CompilerInner
 fn <T> upgrade(w Weak<T>) Box<T>?
+
+; same_ref:<T>(a, b) bool：地址相等比较（DRAFT §10）
+; T 必须是 Box<U> / Weak<U> / Array<U> / String / U&；标量禁
+; 比对底层 handle 指针；空 Weak 与任何活句柄不等
+#CompilerInner
+fn <T> same_ref(a T, b T) bool
+
+; ptr_of:<T>(obj) Ptr：显式取裸指针（DRAFT §9.4）
+; T = U&         → 指向 U 的 Ptr（短生命周期，C 端不可保存超出本次调用）
+; T = Box<U>    → 指向 U payload（跳过 RC 头；C 端只能读写 payload，不能 free）
+; T = Array<U>  → 指向元素首地址（同上）
+; T = String     → 指向 UTF-32 码点首地址（不带 NUL 终止）
+; T = 标量       → 报错
+#CompilerInner
+fn <T> ptr_of(obj T) Ptr
 
 ; Array<T> 实例 layout 由编译器内部管理：{ ptr handle }，handle 指向 Block
 ; （Phase 1b：所有方法编译器特例化，主体不再读 yux 端字段）

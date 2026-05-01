@@ -91,10 +91,18 @@ type:
     // [ type * count ]
    | GetStart type SymbolMul INT GetEnd #typeArray;
 
-typeWithRef: type SymbolAnd?;
+typeWithRef:
+    ID SymbolAnd? #typeNormalWithRef
+    | type SymbolQuest SymbolAnd? #typeNullableWithRef
+     // A<T> B<T1, T2>
+    | ID genericDefWithRef SymbolAnd? #typeGenericWithRef
+     // [ type * count ]
+    | GetStart typeWithRef SymbolMul INT GetEnd SymbolAnd? #typeArrayWithRef;
 
 // 共享
 genericDef: SymbolLt types+=type (SymbolComma types+=type)* SymbolMt;
+
+genericDefWithRef: SymbolLt types+=typeWithRef (SymbolComma types+=typeWithRef)* SymbolMt;
 
 ///////////
 // 函数

@@ -1,0 +1,48 @@
+; Phase 7b 验证：ptr_of:<T>(obj) Ptr —— 显式取裸指针
+; 覆盖：Box / Array / String 三种源类型
+; 验证策略：同句柄两次 ptr_of 应得到一致地址；不依赖 var b = a 共享路径（BUGS.md 已记录）
+
+struct Pair {
+  a i32
+  b i32
+}
+
+Pair {
+  fn Pair(a i32, b i32) {
+    $.a = a
+    $.b = b
+  }
+}
+
+fn yes_no(b bool) String {
+  ret if b {
+    "yes"
+  } else {
+    "no"
+  }
+}
+
+fn main() {
+  ; Box<Pair>：同一句柄两次 ptr_of 应得到同一 payload 地址
+  var p Box<Pair> = Pair(123i32, 456i32)
+  var pp1 Ptr = ptr_of:<Box<Pair>>(p)
+  var pp2 Ptr = ptr_of:<Box<Pair>>(p)
+  println(yes_no(pp1.to_int() == pp2.to_int()))
+
+  ; Array<i32>：同变量两次 ptr_of 应一致
+  var a Array<i32> = [10i32, 20i32, 30i32]
+  var ap1 Ptr = ptr_of:<Array<i32>>(a)
+  var ap2 Ptr = ptr_of:<Array<i32>>(a)
+  println(yes_no(ap1.to_int() == ap2.to_int()))
+
+  ; String：同变量两次 ptr_of 应一致
+  var s String = "hi"
+  var sp1 Ptr = ptr_of:<String>(s)
+  var sp2 Ptr = ptr_of:<String>(s)
+  println(yes_no(sp1.to_int() == sp2.to_int()))
+
+  ; Box payload 跳过 RC 头：ptr_of 得到的地址 != Box handle 起始（差 8 字节）
+  ; 间接验证：Box<i32> payload 写入 0xDEADBEEF，extern lstrlenA 读到首字节非 0 → 至少 1
+  ; 这里改用 sentinel 行为：payload 内值为 7i32 (0x07 0x00 0x00 0x00)，lstrlenA 立即遇 NUL=0 返回 0
+  ; 已在 extern_ptr_auto.yux 覆盖，此处仅冒烟稳定性
+}
