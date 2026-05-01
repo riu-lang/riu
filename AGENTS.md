@@ -44,7 +44,7 @@ yux build <name> --emit-ir   # 同时生成 .ll
 yux build <name> -d          # 编译期 IR 调试输出（仅 Debug 构建；量大，用 tail 过滤）
 
 # 冒烟测试（仓库内 examples/main 的 yux.toml 里 name="test"）
-cd examples/main && yux build test && ./build/test/test.exe
+cd examples/test && yux build test && ./build/test/test.exe
 ```
 
 `yux.toml` 字段（详见 [docs/模块系统.md](docs/模块系统.md)）：
@@ -77,7 +77,7 @@ xmake test "yux_tests/*"                 # 通配符
 测试用例与语言规范冲突时，**更新用例**（`src/yux.g4` + 编译器为准）；不要通过修改规范去迁就用例。
 
 开发流程建议：
-1. 先改 `examples/main` 或随手建项目做冒烟验证
+1. 先改 `examples/test` 或随手建项目做冒烟验证
 2. 冒烟过后 `xmake test` 全量回归
 
 ## 架构
@@ -110,7 +110,7 @@ yux-lang/
 ├── include/          公共 C++ 头（types.h）
 ├── sdk/yux/          自举运行时（core.yux），链接到每个 yux 程序
 ├── docs/             语言参考文档（中文）；入口 docs/index.md
-├── examples/main/    示例项目，用作快速冒烟测试
+├── examples/test/    示例项目，用作快速冒烟测试
 ├── tests/
 │   ├── cases/        单文件用例 + .expected；error/ 下为期望编译失败用例
 │   ├── projects/     项目模式用例（每目录一个 yux.toml + expected.txt）
