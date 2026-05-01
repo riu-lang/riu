@@ -1,0 +1,52 @@
+; Phase 3e 验证：含 RC 字段 struct 之间整体赋值走字段级 retain-then-release
+; - var h2 Holder = h1：声明初始化，h2 拷贝 h1，retain h1.bx.handle 一次
+; - h2 = h3：重赋值，retain h3 各 RC 字段（bx），release h2 旧的（即 h1.bx 这次共享），store
+;   净效果：h1.bx 共享计数 +1（声明）然后 -1（重赋时 release 旧 h2 = 旧 h1 共享）= 0 净；h3.bx 共享 +1
+; - 自赋值 h2 = h2：retain bx +1，release bx -1，净 0
+; - main 退出顺序析构 h3 → h2 → h1 → q → p；每次 release 一次
+
+struct Pair {
+  a i32
+  b i32
+}
+
+Pair {
+  fn Pair(a i32, b i32) {
+    $.a = a
+    $.b = b
+  }
+}
+
+struct Holder {
+  bx Box<Pair>
+  tag i32
+}
+
+Holder {
+  fn Holder(bx Box<Pair>, tag i32) {
+    $.bx = bx
+    $.tag = tag
+  }
+}
+
+fn main() {
+  var p Box<Pair> = Pair(1i32, 2i32)
+  var q Box<Pair> = Pair(3i32, 4i32)
+  var h1 Holder = Holder(p, 10i32)
+  var h3 Holder = Holder(q, 30i32)
+  ; 声明拷贝：h2 共享 h1 的 bx
+  var h2 Holder = h1
+  println(h2.bx.a.to_string())
+  println(h2.tag.to_string())
+  ; 整体赋值：retain h3 各 RC 字段，release h2 旧字段
+  h2 = h3
+  println(h2.bx.a.to_string())
+  println(h2.tag.to_string())
+  ; 自赋值不破坏
+  h2 = h2
+  println(h2.bx.b.to_string())
+  ; 来源仍可读
+  println(h1.bx.a.to_string())
+  println(p.a.to_string())
+  println(q.b.to_string())
+}
