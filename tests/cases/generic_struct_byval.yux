@@ -1,0 +1,42 @@
+; Phase 3c.2.c 验证：用户泛型 struct 实例（含 RC 句柄字段）按 LLVM by-value 传参
+; Holder<Box<Pair>> 在 _structInstances 注册；callsite 通过 resolveStructFieldTypes
+; 套替换识别 payload: Box<Pair> 为 Box 字段，发出 retain；callee 析构释放，引用计数平衡
+
+struct Pair {
+  a i32
+  b i32
+}
+
+Pair {
+  fn Pair(a i32, b i32) {
+    $.a = a
+    $.b = b
+  }
+}
+
+struct Holder<T> {
+  payload T
+  tag i32
+}
+
+Holder<T> {
+  fn Holder(payload T, tag i32) {
+    $.payload = payload
+    $.tag = tag
+  }
+}
+
+fn observe(h Holder<Box<Pair>>) {
+  println(h.payload.a.to_string())
+  println(h.payload.b.to_string())
+  println(h.tag.to_string())
+}
+
+fn main() {
+  var p Box<Pair> = Pair(11i32, 22i32)
+  var h Holder<Box<Pair>> = Holder:<Box<Pair>>(p, 7i32)
+  observe(h)
+  println(h.payload.a.to_string())
+  println(p.b.to_string())
+  println(h.tag.to_string())
+}

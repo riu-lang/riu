@@ -1,0 +1,15 @@
+; Phase 3c.2.b 验证：String 走 3c.2.a 通用 by-value 路径
+; { data: Array<u32> } 视为含一个 Array 字段的非平凡 struct
+; 调用点对 data 字段 retain，callee 末尾释放，引用计数平衡
+
+fn show(s String) {
+  println(s)
+}
+
+fn main() {
+  var s String = String()
+  s.append("Hi")
+  show(s)
+  show(s)
+  println(s)
+}

@@ -159,12 +159,20 @@ class Compiler {
     // 非堆句柄类型 no-op；返回 true 表示已发出 retain
     bool retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argType);
 
-    // Phase 3c.1: 结构体形参 ABI 判定
-    // 返回 true 表示该结构体形参按指针传递（"非平凡"或保守路径），false 则按 LLVM by-value
-    // 规则：内置类型 / 未知类型 → false；用户已声明且无 RC 字段（recursive trivial）→ false；
-    // 含 RC 字段（含直接 Box/Array/Weak 或嵌套含 RC 字段的 struct）→ true；
-    // 泛型实例 / 仅在 _structTypes 中注册的跨模块 struct → 3c.1 保守 true（推到 3c.2）
+    // Phase 3c.2.a: struct value 内逐 RC 字段（嵌套 struct 递归）retain
+    void retainStructFieldsAtCallSite(llvm::Value* argVal, const string& structName);
+
+    // Phase 3c.1/3c.2: 结构体形参 ABI 判定
+    // 返回 true 表示该结构体形参按指针传递（保守路径），false 则按 LLVM by-value
+    // 规则：内置类型 / Ptr / Ref → false；用户 struct（普通或泛型实例）一律 by-value（false）；
+    // 仅 _structTypes 中注册但找不到声明（跨模块未通配导入）→ 保守 true
     bool structParamUsesPointer(const string& typeName);
+
+    // Phase 3c.2.c: 解析结构体字段类型清单
+    // 普通 struct → 直接取 fields().getType()
+    // 泛型实例 (`_structInstances`) → 取 baseDecl 字段并按实例 args 套替换
+    // 找不到则返回空
+    vector<TypeInfo> resolveStructFieldTypes(const string& structName);
 
     // ==================== 语句编译 ====================
     void compileRetStatement(p<StatementRetNode> node);                         // 编译 return 语句

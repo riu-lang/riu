@@ -683,7 +683,11 @@ llvm::Value* Compiler::compileFunctionCall(
             auto alloca = _builder.CreateAlloca(structType, nullptr, effName + "_tmp");
             vector<llvm::Value*> ctorArgs;
             ctorArgs.push_back(alloca);
-            for (auto& a : args) ctorArgs.push_back(a);
+            for (size_t i = 0; i < args.size(); ++i) {
+                // Phase 3c.2.a: 泛型构造器调用点 retain
+                retainHandleAtCallSite(args[i], argTypes[i]);
+                ctorArgs.push_back(args[i]);
+            }
             // 泛型实例构造器：用消费方模块作前缀（与 emit / 方法调用一致）
             string ownerMod = _structInstances[effName].consumerModule;
             string cName = Mangler::ctor(ownerMod, effName, argTypes);
@@ -1650,8 +1654,10 @@ llvm::Value* Compiler::compileConstructorCall(
 
         vector<llvm::Value*> ctorArgs;
         ctorArgs.push_back(alloca);
-        for (auto& arg : args) {
-            ctorArgs.push_back(arg);
+        for (size_t i = 0; i < args.size(); ++i) {
+            // Phase 3c.2.a: 构造器调用点 retain；与函数调用同协议
+            retainHandleAtCallSite(args[i], argTypes[i]);
+            ctorArgs.push_back(args[i]);
         }
 
         // 若 effName 是泛型实例，按消费方模块取前缀；否则按 ctorSymbol 的模块。

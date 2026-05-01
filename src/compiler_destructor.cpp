@@ -120,20 +120,18 @@ void Compiler::callDestructorsForScope() {
 // 调用结构体字段的析构函数
 // 用于结构体析构函数中，递归调用所有字段的析构函数
 void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structName) {
-    auto structDecl = _file->getStructDecl(structName);
-    if (!structDecl && _yux && _yux->sdkFile()) {
-        structDecl = _yux->sdkFile()->getStructDecl(structName);
-    }
+    auto fieldTypes = resolveStructFieldTypes(structName);
+    if (fieldTypes.empty()) return;
 
-    if (!structDecl) return;
-
-    auto structType = getLLVMType(TypeInfo(structName));
+    auto structType = _structTypes.count(structName)
+        ? _structTypes[structName]
+        : llvm::cast_or_null<llvm::StructType>(getLLVMType(TypeInfo(structName)));
+    if (!structType) return;
     auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
 
     // 遍历所有字段
-    for (size_t i = 0; i < structDecl->fields().size(); ++i) {
-        auto field = structDecl->fields()[i];
-        auto fieldType = field->getType();
+    for (size_t i = 0; i < fieldTypes.size(); ++i) {
+        const auto& fieldType = fieldTypes[i];
 
         // 检查字段是否需要析构
         if (!typeNeedsDestructor(fieldType)) continue;
@@ -233,7 +231,39 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
         _builder.CreateCall(retainFn, {handle});
         return true;
     }
+
+    // Phase 3c.2.a: 含 RC 字段的非平凡 struct 按值传参，逐字段 retain；callee 析构释放
+    if (!isBuiltinType(argType.name) && structNeedsDestructor(argType.name)) {
+        retainStructFieldsAtCallSite(argVal, argType.name);
+        return true;
+    }
     return false;
+}
+
+// 递归把 struct value 中所有 RC 字段（含子 struct）retain
+// argVal 为按值 struct LLVM aggregate
+// 普通 struct / 泛型实例统一走 resolveStructFieldTypes
+void Compiler::retainStructFieldsAtCallSite(llvm::Value* argVal, const string& structName) {
+    auto fieldTypes = resolveStructFieldTypes(structName);
+    for (size_t i = 0; i < fieldTypes.size(); ++i) {
+        const auto& ft = fieldTypes[i];
+        if (!typeNeedsDestructor(ft)) continue;
+
+        if (ft.isBox() || ft.isArrayGeneric() || ft.isWeak()) {
+            // 取字段值（{ ptr handle } struct），再取 handle
+            auto fieldVal = _builder.CreateExtractValue(argVal, {static_cast<unsigned>(i)}, "field.val");
+            auto handle = _builder.CreateExtractValue(fieldVal, {0}, "field.handle");
+            llvm::Function* retainFn = nullptr;
+            if (ft.isBox()) retainFn = runtime::getBoxRetainFn(_module, _builder);
+            else if (ft.isArrayGeneric()) retainFn = runtime::getArrayRetainFn(_module, _builder);
+            else retainFn = runtime::getWeakRetainFn(_module, _builder);
+            _builder.CreateCall(retainFn, {handle});
+        } else if (!isBuiltinType(ft.name)) {
+            // 嵌套 struct 字段：递归
+            auto fieldVal = _builder.CreateExtractValue(argVal, {static_cast<unsigned>(i)}, "field.struct");
+            retainStructFieldsAtCallSite(fieldVal, ft.name);
+        }
+    }
 }
 
 // ==================== 析构函数需求检查 ====================
@@ -256,22 +286,24 @@ bool Compiler::typeNeedsDestructor(const TypeInfo& type) {
     return structNeedsDestructor(type.name);
 }
 
-// Phase 3c.1: 结构体形参是否按指针传递
-// 已知非泛型实例的"平凡结构体"（无 RC 句柄字段、无含 RC 字段的嵌套）→ by-value（false）；
-// 其他（含 RC 字段、泛型实例、仅 _structTypes 已注册的跨模块 struct）→ pointer（true）
+// Phase 3c.2.a/c: 用户 struct（普通 + 泛型实例）一律 by-value
+// 仅 _structTypes 已注册但找不到声明的跨模块 struct：保守按指针
 bool Compiler::structParamUsesPointer(const string& typeName) {
     if (isBuiltinType(typeName)) return false;
 
-    // 泛型实例：3c.1 保守按指针，含字段类型替换的平凡判定推到 3c.2
-    if (_structInstances.find(typeName) != _structInstances.end()) return true;
+    // Ptr / 引用形参不是 struct，按值传递（原始 ptr）
+    TypeInfo ti(typeName);
+    if (ti.isPtr() || ti.isRef()) return false;
 
+    // 普通 struct（当前文件 / SDK）→ by-value
     auto structDecl = _file->getStructDecl(typeName);
     if (!structDecl && _yux && _yux->sdkFile()) {
         structDecl = _yux->sdkFile()->getStructDecl(typeName);
     }
-    if (structDecl) {
-        return structNeedsDestructor(typeName);
-    }
+    if (structDecl) return false;
+
+    // 泛型实例 → by-value（3c.2.c）；fields 通过 resolveStructFieldTypes 套替换
+    if (_structInstances.find(typeName) != _structInstances.end()) return false;
 
     // 仅在 LLVM 类型表中注册的（跨模块未通配导入等）保守按指针
     if (_structTypes.find(typeName) != _structTypes.end()) {
@@ -283,20 +315,47 @@ bool Compiler::structParamUsesPointer(const string& typeName) {
 
 // 检查结构体是否需要析构函数
 // 如果结构体有任何需要析构的字段，则需要析构函数
+// 普通 struct 走 fields()；泛型实例走 baseDecl + 实例 args 替换
 bool Compiler::structNeedsDestructor(const string& structName) {
+    auto fieldTypes = resolveStructFieldTypes(structName);
+    for (const auto& ft : fieldTypes) {
+        if (typeNeedsDestructor(ft)) return true;
+    }
+    return false;
+}
+
+// Phase 3c.2.c: 解析任何 struct（含泛型实例）的字段类型清单
+// 普通 struct → fields() 直接取
+// 泛型实例 → baseDecl 字段套实例 args 替换
+// 找不到返回空（_structTypes-only 的跨模块 struct 等）
+vector<TypeInfo> Compiler::resolveStructFieldTypes(const string& structName) {
+    vector<TypeInfo> out;
+
     auto structDecl = _file->getStructDecl(structName);
     if (!structDecl && _yux && _yux->sdkFile()) {
         structDecl = _yux->sdkFile()->getStructDecl(structName);
     }
-
-    if (!structDecl) return false;
-
-    // 检查所有字段
-    for (auto field : structDecl->fields()) {
-        if (typeNeedsDestructor(field->getType())) {
-            return true;
+    if (structDecl) {
+        out.reserve(structDecl->fields().size());
+        for (auto field : structDecl->fields()) {
+            out.push_back(field->getType());
         }
+        return out;
     }
 
-    return false;
+    // 泛型实例：拼接 baseDecl typeParams → 实例 args 的替换表
+    auto instIt = _structInstances.find(structName);
+    if (instIt != _structInstances.end() && instIt->second.baseDecl) {
+        const auto& inst = instIt->second;
+        std::map<string, TypeInfo> subst;
+        const auto& tparams = inst.baseDecl->typeParams();
+        for (size_t i = 0; i < tparams.size() && i < inst.args.size(); ++i) {
+            subst[tparams[i]] = inst.args[i];
+        }
+        out.reserve(inst.baseDecl->fields().size());
+        for (auto field : inst.baseDecl->fields()) {
+            out.push_back(field->getType().substitute(subst));
+        }
+    }
+    return out;
 }
