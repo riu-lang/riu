@@ -514,6 +514,14 @@ TypeInfo ExprDotNode::getType() const {
         if (!innerType) {
             throw YuxError(resolveLineNumber(), "Nullable<T> missing inner type T");
         }
+        // Phase 5: Box<T>? 自动 deref —— 把 Box<U> 视为 U 进字段查
+        if (innerType->isBox()) {
+            auto boxInner = innerType->boxElementType();
+            if (!boxInner) {
+                throw YuxError(resolveLineNumber(), "Box<T> missing inner type T");
+            }
+            innerType = boxInner;
+        }
         auto scope = findNearestScope();
         FileNode* file = dynamic_cast<FileNode*>(scope);
         while (!file && scope) {

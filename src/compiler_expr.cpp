@@ -1371,6 +1371,16 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
             "`?.` requires Nullable<T> on the left, got {}", baseType.name);
     }
     auto innerType = baseType.nullableInnerType();
+    // Phase 5: Box<T>? 自动 deref —— 把 Box<U> 视为 U 进字段查
+    bool innerIsBox = innerType->isBox();
+    auto rawInnerType = innerType;  // Box<U>（用于 LLVM 类型 = { ptr handle }）
+    if (innerIsBox) {
+        auto boxInner = innerType->boxElementType();
+        if (!boxInner) {
+            throw YuxError(node->resolveLineNumber(), "Box<T> missing inner type T");
+        }
+        innerType = boxInner;
+    }
     auto innerStructDecl = _file->getStructDecl(innerType->name);
     if (!innerStructDecl && _yux && _yux->sdkFile()) {
         innerStructDecl = _yux->sdkFile()->getStructDecl(innerType->name);
@@ -1424,10 +1434,22 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
 
     // then: 取出 inner 的字段，包装到 result
     _builder.SetInsertPoint(thenBB);
-    auto innerAlloca = _builder.CreateAlloca(innerLLVMType, nullptr, "sd.inner.tmp");
-    _builder.CreateStore(innerVal, innerAlloca);
+    llvm::Value* fieldPtr = nullptr;
     auto fieldIdxConst = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIdx);
-    auto fieldPtr = _builder.CreateGEP(innerLLVMType, innerAlloca, {zero32, fieldIdxConst}, "sd.field");
+    if (innerIsBox) {
+        // Box<U>: 提取 handle，payload = handle + 8，GEP 到字段
+        auto rawInnerLLVMTy = getLLVMType(*rawInnerType);  // Box struct { ptr handle }
+        auto boxAlloca = _builder.CreateAlloca(rawInnerLLVMTy, nullptr, "sd.box.tmp");
+        _builder.CreateStore(innerVal, boxAlloca);
+        auto handleField = _builder.CreateGEP(rawInnerLLVMTy, boxAlloca, {zero32, zero32}, "sd.box.handle_field");
+        auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "sd.box.handle");
+        auto payload = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "sd.box.payload");
+        fieldPtr = _builder.CreateGEP(innerLLVMType, payload, {zero32, fieldIdxConst}, "sd.field");
+    } else {
+        auto innerAlloca = _builder.CreateAlloca(innerLLVMType, nullptr, "sd.inner.tmp");
+        _builder.CreateStore(innerVal, innerAlloca);
+        fieldPtr = _builder.CreateGEP(innerLLVMType, innerAlloca, {zero32, fieldIdxConst}, "sd.field");
+    }
     auto fieldVal = _builder.CreateLoad(fieldLLVMType, fieldPtr, "sd.field.load");
     _builder.CreateStore(_builder.getInt1(true), resHasField);
     _builder.CreateStore(fieldVal, resValueField);
