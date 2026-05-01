@@ -13,6 +13,7 @@
 // - 泛型单态化相关函数
 
 #include "compiler.h"
+#include "borrow_checker.h"
 #include "mangler.h"
 #include "node/fn_node.h"
 #include "node/expr_node.h"
@@ -521,6 +522,9 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
 
     DEBUG_LOG_VAL("Compiling function", node->header()->name().getText());
 
+    // Phase 4d: 借用静态检查（寿命 + 根对象重赋禁）
+    checkBorrows(node);
+
     // 创建入口基本块
     llvm::BasicBlock* entry = llvm::BasicBlock::Create(_context, "entry", func);
     _builder.SetInsertPoint(entry);
@@ -587,6 +591,9 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
     _scopeVars.clear();
 
     DEBUG_LOG_VAL("Compiling method", structName << "." << node->header()->name().getText());
+
+    // Phase 4d: 借用静态检查
+    checkBorrows(node, structName);
 
     DEBUG_LOG_VAL("  Method params count", node->header()->params().size());
     DEBUG_LOG_VAL("  LLVM args count", func->arg_size());

@@ -1,0 +1,27 @@
+; StringBuilder 验证：append 三种重载 + clear + build 后再写不影响已产出 String
+
+fn main() {
+  var sb StringBuilder = StringBuilder()
+  sb.append(c'H')
+  sb.append(c'i')
+  sb.append(33u8)
+  println(sb.len().to_string())
+  val s1 String = sb.build()
+  println(s1)
+  println(sb.len().to_string())
+
+  sb.append("World")
+  val s2 String = sb.build()
+  println(s2)
+
+  sb.append("abc")
+  println(sb.len().to_string())
+  sb.clear()
+  println(sb.len().to_string())
+
+  ; build 之后继续写不应影响 s2
+  sb.append(c'X')
+  val s3 String = sb.build()
+  println(s2)
+  println(s3)
+}

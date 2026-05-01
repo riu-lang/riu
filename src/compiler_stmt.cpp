@@ -220,6 +220,47 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
 
         DEBUG_LOG_VAL("  Statement: Declare", varName << " : " << varType.name);
 
+        // Phase 4a: T& 借用局部变量；不分配独立 slot，直接绑到来源指针
+        // expr 必须是 ExprGetRef（&x）或拷贝绑定 d2 = d（d 已为 Ref<T>）
+        if (varType.isRef()) {
+            auto innerType = varType.refElementType();
+            if (!innerType) {
+                throw YuxError(node->getLineNumber(), "Ref type requires element type");
+            }
+            llvm::Value* rhsPtr = nullptr;
+            if (auto getRefNode = dynamic_cast<ExprGetRefNode*>(expr)) {
+                rhsPtr = compileGetRefExpr(getRefNode);
+                // 校验 &expr 内层类型与声明 inner 一致
+                auto innerOfGetRef = getRefNode->getType().refElementType();
+                if (!innerOfGetRef || *innerOfGetRef != *innerType) {
+                    throw YuxError(node->getLineNumber(),
+                        "T& local initializer type mismatch: expected {}&, got {}&",
+                        innerType->name,
+                        innerOfGetRef ? innerOfGetRef->name : "?");
+                }
+            } else if (auto litExpr = dynamic_cast<ExprLiteralNode*>(expr); litExpr && dynamic_cast<LiteralObjNode*>(litExpr->literal())) {
+                auto litObj = dynamic_cast<LiteralObjNode*>(litExpr->literal());
+                auto srcName = litObj->getValue().getText();
+                auto sym = _currentFnNode->lookupSymbol(srcName);
+                if (!sym || !sym->type.isRef() || !sym->type.refElementType()
+                    || *sym->type.refElementType() != *innerType) {
+                    throw YuxError(node->getLineNumber(),
+                        "T& copy-bind source type mismatch: '{}' is not {}&",
+                        srcName, innerType->name);
+                }
+                auto it = _localVarPtrs.find(srcName);
+                if (it == _localVarPtrs.end()) {
+                    throw YuxError(node->getLineNumber(), "Cannot bind T& to non-local: {}", srcName);
+                }
+                rhsPtr = it->second;
+            } else {
+                throw YuxError(node->getLineNumber(),
+                    "T& local initializer must be &expr or copy-bind from a T& variable");
+            }
+            _localVarPtrs[varName] = rhsPtr;
+            return;
+        }
+
         auto llvmType = getLLVMType(varType);
         auto alloca = _builder.CreateAlloca(llvmType, nullptr, varName);
         _localVarPtrs[varName] = alloca;
@@ -536,11 +577,40 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             throw YuxError(node->getLineNumber(), "Undefined variable: {}", objName);
         }
 
-        if (!sym->writeable) {
+        // Phase 4b: T& 赋值是 store-through（改被引对象），不是 rebind；
+        // T& 形参 / val 局部 T& 的 writeable=false 不影响"写被引"，写权由源对象决定（4d 校验）
+        if (!sym->writeable && !sym->type.isRef()) {
             throw YuxError(node->getLineNumber(), "Cannot assign to immutable variable: {}", objName);
         }
 
         DEBUG_LOG_VAL("  Statement: Assign", objName << " : " << sym->type.name);
+
+        // Phase 4b: T& 赋值落 store-through 改被引对象（rebind 禁）
+        // _localVarPtrs[objName] 持有底层 T 的地址（由声明 / 形参路径建立）
+        if (sym->type.isRef()) {
+            auto innerType = sym->type.refElementType();
+            if (!innerType) {
+                throw YuxError(node->getLineNumber(), "Ref type missing inner type");
+            }
+            llvm::Value* targetPtr = _localVarPtrs[objName];
+            auto innerLLVMType = getLLVMType(*innerType);
+
+            if (isIntTypeName(innerType->name) && isFlexibleIntExpr(expr)) {
+                tryInferIntType(expr, *innerType);
+            }
+            auto exprVal = compileExpr(expr);
+            auto exprType = expr->getType();
+            llvm::Value* valToStore;
+            if (assignOp != AssignOp::Eq) {
+                auto currentVal = _builder.CreateLoad(innerLLVMType, targetPtr, "ref.current.load");
+                auto castedExprVal = createCast(exprVal, exprType, *innerType);
+                valToStore = applyCompoundOp(currentVal, castedExprVal, assignOp, *innerType);
+            } else {
+                valToStore = createCast(exprVal, exprType, *innerType);
+            }
+            _builder.CreateStore(valToStore, targetPtr);
+            return;
+        }
 
         // 推断灵活整数的类型
         if (isIntTypeName(sym->type.name) && isFlexibleIntExpr(expr)) {

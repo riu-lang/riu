@@ -915,7 +915,11 @@ TypeInfo ExprGetRefNode::getType() const {
     }
     
     TypeInfo baseType = sym->type;
-    
+    // Phase 4a: 若 sym 为 T&，剥到 T 后再走字段（&ref.f 与 &x.f 同义）
+    if (baseType.isRef()) {
+        if (auto inner = baseType.refElementType()) baseType = *inner;
+    }
+
     for (auto& sub : _subs) {
         auto file = dynamic_cast<FileNode*>(scope);
         auto currentScope = scope;
@@ -926,20 +930,37 @@ TypeInfo ExprGetRefNode::getType() const {
         if (!file) {
             throw YuxError(resolveLineNumber(), "Cannot find struct declaration for field access");
         }
-        
-        auto structDecl = file->getStructDecl(baseType.name);
-        if (!structDecl) {
-            throw YuxError(resolveLineNumber(), "Cannot access field on non-struct type: {}", baseType.name);
+
+        // Phase 4c: Box<T>.field 自动解引用到 payload 上找字段（&box.field → field&）
+        TypeInfo lookupType = baseType;
+        if (lookupType.isBox()) {
+            if (auto inner = lookupType.boxElementType()) lookupType = *inner;
         }
-        
+
+        auto structDecl = file->getStructDecl(lookupType.name);
+        if (!structDecl) {
+            throw YuxError(resolveLineNumber(), "Cannot access field on non-struct type: {}", lookupType.name);
+        }
+
         auto field = structDecl->field(sub.getText());
         if (!field) {
-            throw YuxError(resolveLineNumber(), "Struct {} has no field: {}", baseType.name, sub.getText());
+            throw YuxError(resolveLineNumber(), "Struct {} has no field: {}", lookupType.name, sub.getText());
         }
-        
-        baseType = field->getType();
+
+        TypeInfo fieldType = field->getType();
+        // 泛型实例：按 typeParam→arg 替换字段类型
+        if (lookupType.isGeneric() && structDecl->isGeneric()
+            && lookupType.genericArgs.size() == structDecl->typeParams().size()) {
+            map<string, TypeInfo> subst;
+            for (size_t i = 0; i < structDecl->typeParams().size(); ++i) {
+                subst[structDecl->typeParams()[i]] =
+                    lookupType.genericArgs[i] ? *lookupType.genericArgs[i] : TypeInfo();
+            }
+            fieldType = fieldType.substitute(subst);
+        }
+        baseType = fieldType;
     }
-    
+
     vector<sp<TypeInfo>> genericArgs;
     genericArgs.push_back(make_shared<TypeInfo>(baseType));
     return TypeInfo("Ref", genericArgs);

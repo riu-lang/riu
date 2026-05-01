@@ -66,15 +66,13 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
         if (auto fnParamsCtx = header->fnParams()) {
             for (auto paramCtx : fnParamsCtx->fnParam()) {
                 if (auto stdCtx = paramCtx->fnParamStd()) {
-                    // TODO(Phase 4): 处理 typeWithRef 的 SymbolAnd 标志，建立 T& 借用语义
                     if (auto twr = stdCtx->typeWithRef(); twr && twr->type()) {
-                        auto typeNode = any_cast_p<TypeNode>(visit(twr->type()));
+                        auto typeNode = buildTypeWithRef(twr, file);
                         paramTypes.push_back(typeNode->getType());
                     }
                 } else if (auto groupCtx = paramCtx->fnParamGroup()) {
-                    // TODO(Phase 4): 处理 typeWithRef 的 SymbolAnd 标志
                     if (auto twr = groupCtx->typeWithRef(); twr && twr->type()) {
-                        auto typeNode = any_cast_p<TypeNode>(visit(twr->type()));
+                        auto typeNode = buildTypeWithRef(twr, file);
                         for (size_t i = 0; i < groupCtx->names.size(); ++i) {
                             paramTypes.push_back(typeNode->getType());
                         }
@@ -436,15 +434,13 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         if (auto fnParamsCtx = header->fnParams()) {
             for (auto paramCtx : fnParamsCtx->fnParam()) {
                 if (auto stdCtx = paramCtx->fnParamStd()) {
-                    // TODO(Phase 4): 处理 typeWithRef 的 SymbolAnd 标志，建立 T& 借用语义
                     if (auto twr = stdCtx->typeWithRef(); twr && twr->type()) {
-                        auto typeNode = any_cast_p<TypeNode>(visit(twr->type()));
+                        auto typeNode = buildTypeWithRef(twr, file);
                         paramTypes.push_back(typeNode->getType());
                     }
                 } else if (auto groupCtx = paramCtx->fnParamGroup()) {
-                    // TODO(Phase 4): 处理 typeWithRef 的 SymbolAnd 标志
                     if (auto twr = groupCtx->typeWithRef(); twr && twr->type()) {
-                        auto typeNode = any_cast_p<TypeNode>(visit(twr->type()));
+                        auto typeNode = buildTypeWithRef(twr, file);
                         for (size_t i = 0; i < groupCtx->names.size(); ++i) {
                             paramTypes.push_back(typeNode->getType());
                         }
@@ -665,8 +661,7 @@ std::any ASTBuilder::visitFnParam(yux::yuxParser::FnParamContext* ctx) {
 
 std::any ASTBuilder::visitFnParamStd(yux::yuxParser::FnParamStdContext* ctx) {
     p<Node> parent = any_cast_p<FnHeaderNode>(stack.back());
-    // TODO(Phase 4): typeWithRef 的 SymbolAnd 表示 T& 借用类型，建立借用语义
-    auto type = any_cast_p<TypeNode>(visit(ctx->typeWithRef()->type()));
+    auto type = buildTypeWithRef(ctx->typeWithRef(), parent);
     DEBUG_LOG_VAL("    Param", ctx->name->getText() << " : " << type->getType().name);
     
     vector<p<FnParamNode>> params;
@@ -676,8 +671,7 @@ std::any ASTBuilder::visitFnParamStd(yux::yuxParser::FnParamStdContext* ctx) {
 
 std::any ASTBuilder::visitFnParamGroup(yux::yuxParser::FnParamGroupContext* ctx) {
     p<Node> parent = any_cast_p<FnHeaderNode>(stack.back());
-    // TODO(Phase 4): typeWithRef 的 SymbolAnd 表示 T& 借用类型
-    auto type = any_cast_p<TypeNode>(visit(ctx->typeWithRef()->type()));
+    auto type = buildTypeWithRef(ctx->typeWithRef(), parent);
     
     vector<p<FnParamNode>> params;
     for (auto nameToken : ctx->names) {
@@ -780,7 +774,14 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
             fn->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
         }
 
-        fn->registerSymbol("$", {SymbolKind::Variable, "$", TypeInfo(structName)});
+        // Phase 4e: receiver `$` 类型登记为 Self&（Ref<Self>）。IR 层仍是非空指针；
+        // sym.type 走 Ref 让 §3 借用规则统一适用（&$.field、传 Self& 形参等）。
+        // 字段 / 方法访问点已就位 Ref 自动剥皮（compileDotExpr / compileGetRefExpr / LiteralObjNode::getType）。
+        {
+            vector<sp<TypeInfo>> selfArgs;
+            selfArgs.push_back(make_shared<TypeInfo>(structName));
+            fn->registerSymbol("$", {SymbolKind::Variable, "$", TypeInfo("Ref", selfArgs)});
+        }
 
         for (auto param : header->params()) {
             TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();
@@ -851,7 +852,10 @@ std::any ASTBuilder::visitFnClean(yux::yuxParser::FnCleanContext* ctx) {
     _scopeStack.push_back(fn);
     
     if (!structName.empty()) {
-        fn->registerSymbol("$", {SymbolKind::Variable, "$", TypeInfo(structName)});
+        // Phase 4e: 析构函数 receiver 同 §4e：Self&
+        vector<sp<TypeInfo>> selfArgs;
+        selfArgs.push_back(make_shared<TypeInfo>(structName));
+        fn->registerSymbol("$", {SymbolKind::Variable, "$", TypeInfo("Ref", selfArgs)});
     }
     
     if (ctx->fnBody()->fnExprkBody()) {
@@ -934,9 +938,8 @@ std::any ASTBuilder::visitStatementDeclareAssign(yux::yuxParser::StatementDeclar
 
     auto name = ctx->name;
     p<TypeNode> type = nullptr;
-    // TODO(Phase 4): typeWithRef 的 SymbolAnd 表示局部变量为 T& 借用
     if (auto twr = ctx->typeWithRef(); twr && twr->type()) {
-        type = any_cast_p<TypeNode>(visit(twr->type()));
+        type = buildTypeWithRef(twr, scope);
     }
 
     TypeInfo varType;
@@ -1440,6 +1443,19 @@ std::any ASTBuilder::visitTypeArray(yux::yuxParser::TypeArrayContext* ctx) {
     return p<TypeNode>(createWithLine<TypeArrayNode>(ctx, parent, elementType, count));
 }
 
+// Phase 4a: typeWithRef → TypeNode；SymbolAnd 存在则包成 Ref<inner>
+p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr, p<Node> parent) {
+    auto inner = any_cast_p<TypeNode>(visit(twr->type()));
+    if (twr->SymbolAnd()) {
+        auto andTok = twr->SymbolAnd()->getSymbol();
+        Token refName(string("Ref"), andTok ? andTok->getLine() : 0);
+        vector<p<TypeNode>> args;
+        args.push_back(inner);
+        return p<TypeNode>(createWithLine<TypeGenericNode>(twr, parent, refName, args));
+    }
+    return inner;
+}
+
 // T? 解糖为 Nullable<T>
 // 直接构造 TypeGenericNode("Nullable", [T])，复用现有泛型实例化通路
 // "Nullable" 名字 token 用合成构造，line 取自 SymbolQuest
@@ -1454,7 +1470,7 @@ std::any ASTBuilder::visitTypeNullable(yux::yuxParser::TypeNullableContext* ctx)
         auto innerTI = inner->getType();
         if (innerTI.kind == TypeKind::Generic && innerTI.name == "Weak") {
             int line = questTok ? (int)questTok->getLine() : 0;
-            throw YuxError(line, "Weak<T>? 禁用：Weak 已原生可空（upgrade 返回 Box<T>?）");
+            throw YuxError(line, "Weak<T>? is forbidden: Weak is natively nullable (upgrade returns Box<T>?)");
         }
     }
 

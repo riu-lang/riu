@@ -73,6 +73,12 @@ TypeInfo LiteralObjNode::getType() const {
             if (sym->kind == SymbolKind::Function) {
                 return TypeInfo("fn() " + sym->type.name);
             }
+            // Phase 4a: T& 局部 / 参数 在表达式上下文按值语义出现（自动解引用为 T）；
+            // 借用绑定 / 调用借用形参 等需要原始 Ref 类型的场景，在调用点直接读 sym 表
+            if (sym->type.isRef()) {
+                auto inner = sym->type.refElementType();
+                if (inner) return *inner;
+            }
             return sym->type;
         }
     }

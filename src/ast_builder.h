@@ -42,6 +42,9 @@ class ASTBuilder : public yux::yuxBaseVisitor {
         return _scopeStack.back();
     }
 
+    // Phase 4a: typeWithRef -> TypeNode；若 SymbolAnd 存在，包成 Ref<inner>
+    p<TypeNode> buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr, p<Node> parent);
+
 public:
     explicit ASTBuilder(llvm::LLVMContext& ctx, Yux& yux, const string& moduleName = "", bool isSdk = false);
     ~ASTBuilder() override;

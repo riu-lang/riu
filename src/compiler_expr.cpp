@@ -279,6 +279,11 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
 
         if (sym && _localVarPtrs.contains(varName)) {
             DEBUG_LOG_VAL("    Expr: VariableLoad", varName << " : " << sym->type.name);
+            // Phase 4a: T& 借用 — _localVarPtrs[name] 是底层 T 的地址（参数/局部统一），自动解引用
+            if (sym->type.isRef()) {
+                auto innerType = sym->type.refElementType();
+                return _builder.CreateLoad(getLLVMType(*innerType), _localVarPtrs[varName]);
+            }
             return _builder.CreateLoad(getLLVMType(sym->type), _localVarPtrs[varName]);
         }
 
@@ -697,7 +702,7 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
     // Phase 1d.3：禁 Weak == / !=（DRAFT §5：v1 不暴露 handle 比较语义）
     if (leftType.isWeak()) {
         if (node->op() == ExprCompareNode::Op::Eq || node->op() == ExprCompareNode::Op::Ne) {
-            throw YuxError(node->getLineNumber(), "Weak<T> 不支持 == / !=（v1 不暴露 handle 比较语义）");
+            throw YuxError(node->getLineNumber(), "Weak<T> does not support == / != (v1 does not expose handle comparison)");
         }
     }
 
@@ -1111,10 +1116,28 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
     }
 
     TypeInfo currentType = sym->type;
+    // Phase 4a: 若源是 T&（参数 / 局部 ref），currentPtr 已经是底层 T 的地址；剥到 T
+    if (currentType.isRef()) {
+        if (auto inner = currentType.refElementType()) currentType = *inner;
+    }
 
     for (auto& sub : subs) {
         auto memberName = sub.getText();
+
+        // Phase 4c: Box<T>.field —— 自动 deref：load handle，payload = handle + 8
+        if (currentType.isBox()) {
+            auto boxStructType = getLLVMType(currentType);
+            auto zero32 = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto handleField = _builder.CreateGEP(boxStructType, currentPtr, {zero32, zero32}, "box.handle_field");
+            auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "box.handle");
+            currentPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "box.payload");
+            if (auto inner = currentType.boxElementType()) currentType = *inner;
+        }
+
         auto structDecl = _file->getStructDecl(currentType.name);
+        if (!structDecl && _yux && _yux->sdkFile()) {
+            structDecl = _yux->sdkFile()->getStructDecl(currentType.name);
+        }
         if (!structDecl) {
             throw YuxError(node->getLineNumber(), "Cannot access field on non-struct type: {}", currentType.name);
         }
@@ -1140,7 +1163,17 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
         llvm::Value* indices[] = {zero, idx};
 
         currentPtr = _builder.CreateGEP(structType, currentPtr, indices, "struct.field.ptr");
-        currentType = field->getType();
+        TypeInfo fieldType = field->getType();
+        if (currentType.isGeneric() && structDecl->isGeneric()
+            && currentType.genericArgs.size() == structDecl->typeParams().size()) {
+            map<string, TypeInfo> subst;
+            for (size_t i = 0; i < structDecl->typeParams().size(); ++i) {
+                subst[structDecl->typeParams()[i]] =
+                    currentType.genericArgs[i] ? *currentType.genericArgs[i] : TypeInfo();
+            }
+            fieldType = fieldType.substitute(subst);
+        }
+        currentType = fieldType;
     }
 
     return currentPtr;

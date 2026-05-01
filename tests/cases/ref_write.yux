@@ -1,0 +1,28 @@
+; Phase 4b: T& 赋值落 store-through —— 通过 T& 改原对象
+; rebind 禁：d = expr 永远是 *d = expr，不重新指向
+
+fn bump(r i32&) {
+  r = r + 1
+}
+
+fn main() {
+  var x i32 = 10
+
+  ; 通过局部 T& 改原对象
+  var d i32& = &x
+  d = 99
+  println(x.to_string())   ; 99
+
+  ; 复合赋值同样落 store-through
+  d = d + 1
+  println(x.to_string())   ; 100
+
+  ; 通过 T& 形参改原对象
+  bump(&x)
+  println(x.to_string())   ; 101
+
+  ; 拷贝绑定后写：d2 与 d 都引同一对象
+  var d2 i32& = d
+  d2 = 7
+  println(x.to_string())   ; 7
+}

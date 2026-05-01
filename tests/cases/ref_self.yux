@@ -1,0 +1,34 @@
+struct P {
+    x i32
+    y i32
+}
+
+P {
+    fn P(x i32, y i32) {
+        $.x = x
+        $.y = y
+    }
+
+    fn show() {
+        ; 把 $ 直接当 Self& 传给自由函数（4e: receiver 隐式 Self&）
+        dump(&$)
+        ; 字段借用 + 传 i32&（已由 4a/4c 覆盖，本用例兼测）
+        bump(&$.x)
+    }
+}
+
+fn dump(p P&) {
+    println(p.x.to_string())
+    println(p.y.to_string())
+}
+
+fn bump(v i32&) {
+    v = v + 1
+}
+
+fn main() i32 {
+    var p = P(10i32, 20i32)
+    p.show()
+    p.show()
+    ret 0i32
+}
