@@ -15,93 +15,61 @@
 
 // ==================== 析构函数调用 ====================
 
+// Phase 3d: 在槽位地址上释放 RC 值
+// 对 Box/Array/Weak: 从 { ptr handle } 槽 load handle 调对应 release
+// 含 RC 字段 struct: 调其默认析构（字段逆序 release）；
+// 平凡 / 内置 / 引用 / 指针: no-op
+void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
+    if (!slotPtr) return;
+    if (type.isRef() || type.isPtr()) return;
+    if (isBuiltinType(type.name)) return;
+
+    if (type.isBox()) {
+        auto ty = getLLVMType(type);
+        auto z = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        auto handleField = _builder.CreateGEP(ty, slotPtr, {z, z}, "old.box.handle_field");
+        auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "old.box.handle");
+        _builder.CreateCall(runtime::getBoxReleaseFn(_module, _builder), {handle});
+        return;
+    }
+    if (type.isWeak()) {
+        auto ty = getLLVMType(type);
+        auto z = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        auto handleField = _builder.CreateGEP(ty, slotPtr, {z, z}, "old.weak.handle_field");
+        auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "old.weak.handle");
+        _builder.CreateCall(runtime::getWeakReleaseFn(_module, _builder), {handle});
+        return;
+    }
+    if (type.isArrayGeneric()) {
+        auto ty = getLLVMType(type);
+        auto z = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        auto handleField = _builder.CreateGEP(ty, slotPtr, {z, z}, "old.array.handle_field");
+        auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "old.array.handle");
+        _builder.CreateCall(runtime::getArrayReleaseFn(_module, _builder), {handle});
+        return;
+    }
+
+    // 结构体：调其析构函数（默认析构按字段逆序 release）
+    if (structNeedsDestructor(type.name)) {
+        auto dtorFn = getDestructorFunction(type.name);
+        if (dtorFn) {
+            _builder.CreateCall(dtorFn, {slotPtr});
+        }
+    }
+}
+
 // 调用单个变量的析构函数
 // 如果变量类型有析构函数，则调用它
 void Compiler::callDestructor(const string& varName, const TypeInfo& varType) {
-    // 内置类型不需要析构函数
+    // 内置 / 引用 / 指针类型不需要析构
     if (isBuiltinType(varType.name)) return;
+    if (varType.isRef() || varType.isPtr()) return;
 
-    // 引用类型不需要析构 (不拥有数据)
-    if (varType.isRef()) return;
-
-    // 指针类型不需要析构 (不拥有数据)
-    if (varType.isPtr()) return;
-
-    // 检查变量是否存在
     auto it = _localVarPtrs.find(varName);
     if (it == _localVarPtrs.end()) return;
 
-    // 获取变量指针
-    llvm::Value* varPtr = it->second;
-
-    // 处理 Box<T> 类型 (Phase 1a 单 handle 布局)
-    // 调用 _box_release(handle)；strong=0 时整 block 释放
-    if (varType.isBox()) {
-        auto elemType = varType.boxElementType();
-        if (!elemType) return;
-
-        DEBUG_LOG_VAL("  Calling Box destructor for", varName);
-
-        auto boxStructType = getLLVMType(varType);
-        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-
-        auto handleField = _builder.CreateGEP(boxStructType, varPtr, {zero, zero}, "box.handle_field");
-        auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "box.handle");
-
-        // TODO(Phase 1d): payload 析构需要在此处调用（结构体字段级递归 release）；当前路径 payload 是 RC 字段时未处理
-        auto boxReleaseFn = runtime::getBoxReleaseFn(_module, _builder);
-        _builder.CreateCall(boxReleaseFn, {handle});
-        return;
-    }
-
-    // 处理 Weak<T> 类型 (Phase 1d.1)
-    // 调用 _weak_release(handle)；weak==0 时 free block
-    if (varType.isWeak()) {
-        DEBUG_LOG_VAL("  Calling Weak destructor for", varName);
-
-        auto weakStructType = getLLVMType(varType);
-        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-
-        auto handleField = _builder.CreateGEP(weakStructType, varPtr, {zero, zero}, "weak.handle_field");
-        auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "weak.handle");
-
-        auto weakReleaseFn = runtime::getWeakReleaseFn(_module, _builder);
-        _builder.CreateCall(weakReleaseFn, {handle});
-        return;
-    }
-
-    // 处理 Array<T> 类型 (Phase 1b 单 handle 布局)
-    // 调用 _array_release(handle)；strong=0 时 free block
-    if (varType.isArrayGeneric()) {
-        DEBUG_LOG_VAL("  Calling Array destructor for", varName);
-
-        auto arrayStructType = getLLVMType(varType);
-        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-
-        auto handleField = _builder.CreateGEP(arrayStructType, varPtr, {zero, zero}, "array.handle_field");
-        auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "array.handle");
-
-        auto arrayReleaseFn = runtime::getArrayReleaseFn(_module, _builder);
-        _builder.CreateCall(arrayReleaseFn, {handle});
-        return;
-    }
-
-    // 处理结构体类型
-    // 调用结构体的析构函数
-    auto structDecl = _file->getStructDecl(varType.name);
-    if (!structDecl && _yux && _yux->sdkFile()) {
-        structDecl = _yux->sdkFile()->getStructDecl(varType.name);
-    }
-
-    if (structDecl && structNeedsDestructor(varType.name)) {
-        DEBUG_LOG_VAL("  Calling struct destructor for", varName << " : " << varType.name);
-
-        // 获取析构函数
-        auto dtorFn = getDestructorFunction(varType.name);
-        if (dtorFn) {
-            _builder.CreateCall(dtorFn, {varPtr});
-        }
-    }
+    DEBUG_LOG_VAL("  Calling destructor for", varName << " : " << varType.name);
+    releaseAtPtr(it->second, varType);
 }
 
 // 调用当前作用域所有变量的析构函数
@@ -129,8 +97,9 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
     if (!structType) return;
     auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
 
-    // 遍历所有字段
-    for (size_t i = 0; i < fieldTypes.size(); ++i) {
+    // Phase 3d: 按声明逆序释放（DRAFT §7.4 "构造逆序对每个 RC 字段 release"）
+    for (size_t k = fieldTypes.size(); k > 0; --k) {
+        size_t i = k - 1;
         const auto& fieldType = fieldTypes[i];
 
         // 检查字段是否需要析构

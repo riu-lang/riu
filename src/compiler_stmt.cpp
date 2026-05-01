@@ -358,6 +358,10 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                         auto elemVal = compileExpr(elements[i]);
                         auto idx = _builder.getInt64(i);
                         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {idx}, "init.elem.ptr");
+                        // Phase 3d: RC 元素从已有 var/field 读出 → 复制语义 retain
+                        if (typeNeedsDestructor(*elemType)) {
+                            retainHandleAtCallSite(elemVal, *elemType);
+                        }
                         _builder.CreateStore(elemVal, elemPtr);
                     }
                 }
@@ -544,7 +548,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         }
 
         // 处理 Array<T> 字面量赋值（包括空数组 = []）
-        // TODO(Phase 3): 旧 handle 需要 release，新 handle 不需要 retain（_array_alloc 已置 strong=1）
+        // Phase 3d: 新 handle 来自 _array_alloc（strong=1），无需 retain；旧 handle 必须 release
         if (sym->type.isArrayGeneric()) {
             if (auto arrayNode = dynamic_cast<ExprArrayNode*>(expr)) {
                 auto it = _localVarPtrs.find(objName);
@@ -562,9 +566,14 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                             auto elemVal = compileExpr(elements[i]);
                             auto idx = _builder.getInt64(i);
                             auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {idx}, "assign.elem.ptr");
+                            if (typeNeedsDestructor(*elemType)) {
+                                retainHandleAtCallSite(elemVal, *elemType);
+                            }
                             _builder.CreateStore(elemVal, elemPtr);
                         }
                     }
+                    // Phase 3d: 释放旧 handle 后再写入新 handle
+                    releaseAtPtr(it->second, sym->type);
                     storeArrayHandle(it->second, block);
                     return;
                 }
@@ -635,6 +644,13 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             valToStore = createCast(exprVal, exprType, sym->type);
         }
 
+        // Phase 3d: RC 类型 / 含 RC 字段 struct 的赋值 → retain new → release old → store
+        // 自赋值 / 别名安全：先 retain 再 release，避免计数过早归零
+        if (assignOp == AssignOp::Eq && typeNeedsDestructor(sym->type)) {
+            retainHandleAtCallSite(valToStore, sym->type);
+            releaseAtPtr(_localVarPtrs[objName], sym->type);
+        }
+
         _builder.CreateStore(valToStore, _localVarPtrs[objName]);
     } else {
         // 处理成员访问赋值 (obj.field = value)
@@ -699,7 +715,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                 auto fieldType = field->getType();
 
                 // 处理 Array<T> 字段赋值（Phase 1b：分配 Block 并把 handle 写入字段）
-                // TODO(Phase 3): 旧 handle 应当 release，新 handle 不需要 retain
+                // Phase 3d: 新 handle 来自 _array_alloc（strong=1），无需 retain；旧 handle 必须 release
                 if (fieldType.isArrayGeneric()) {
                     if (auto arrayNode = dynamic_cast<ExprArrayNode*>(expr)) {
                         auto& elements = arrayNode->elements();
@@ -715,9 +731,14 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                                 auto elemVal = compileExpr(elements[j]);
                                 auto idx = _builder.getInt64(j);
                                 auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {idx}, "field.elem.ptr");
+                                if (typeNeedsDestructor(*elemType)) {
+                                    retainHandleAtCallSite(elemVal, *elemType);
+                                }
                                 _builder.CreateStore(elemVal, elemPtr);
                             }
                         }
+                        // Phase 3d: 释放旧 handle 后再写入新 handle
+                        releaseAtPtr(fieldPtr, fieldType);
                         // fieldPtr 指向 Array<T> 实例（{ ptr handle }）；handle 在 offset 0
                         storeArrayHandle(fieldPtr, block);
                         return;
@@ -735,6 +756,12 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                     valToStore = applyCompoundOp(currentVal, castedExprVal, assignOp, fieldType);
                 } else {
                     valToStore = createCast(exprVal, exprType, fieldType);
+                }
+
+                // Phase 3d: RC 字段 / 含 RC 字段 struct 字段 → retain new → release old → store
+                if (assignOp == AssignOp::Eq && typeNeedsDestructor(fieldType)) {
+                    retainHandleAtCallSite(valToStore, fieldType);
+                    releaseAtPtr(fieldPtr, fieldType);
                 }
 
                 _builder.CreateStore(valToStore, fieldPtr);
@@ -925,6 +952,13 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {indexVal}, "array.elem.ptr");
 
         auto valueVal = compileExpr(node->valueExpr());
+
+        // Phase 3d: RC 元素 / 含 RC 字段 struct 元素 → retain new → release old → store
+        if (typeNeedsDestructor(*elemType)) {
+            retainHandleAtCallSite(valueVal, *elemType);
+            releaseAtPtr(elemPtr, *elemType);
+        }
+
         _builder.CreateStore(valueVal, elemPtr);
         return;
     }

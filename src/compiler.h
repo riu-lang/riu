@@ -162,6 +162,11 @@ class Compiler {
     // Phase 3c.2.a: struct value 内逐 RC 字段（嵌套 struct 递归）retain
     void retainStructFieldsAtCallSite(llvm::Value* argVal, const string& structName);
 
+    // Phase 3d: 释放槽位（变量 / 字段 / 元素地址）当前持有的 RC 值
+    // Box/Array/Weak: load handle 后调对应 release；含 RC 字段 struct: 调其析构（字段逆序 release）
+    // 内置 / 引用 / 指针 / 平凡 struct: no-op
+    void releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type);
+
     // Phase 3c.1/3c.2: 结构体形参 ABI 判定
     // 返回 true 表示该结构体形参按指针传递（保守路径），false 则按 LLVM by-value
     // 规则：内置类型 / Ptr / Ref → false；用户 struct（普通或泛型实例）一律 by-value（false）；

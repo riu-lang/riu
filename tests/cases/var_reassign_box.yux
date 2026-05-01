@@ -1,0 +1,29 @@
+; Phase 3d 验证：Box 变量重赋值走 retain-then-release
+; b = q：retain q.handle（共享给 b），release b 原 handle（p 由 main 的 p 仍持有不会被 free）
+; 自赋值 b = b：先 retain（+1）再 release（-1），净 0，安全
+
+struct Pair {
+  a i32
+  b i32
+}
+
+Pair {
+  fn Pair(a i32, b i32) {
+    $.a = a
+    $.b = b
+  }
+}
+
+fn main() {
+  var p Box<Pair> = Pair(1i32, 2i32)
+  var q Box<Pair> = Pair(3i32, 4i32)
+  var b Box<Pair> = p
+  println(b.a.to_string())
+  b = q
+  println(b.a.to_string())
+  ; 自赋值不应破坏：p 仍可读
+  println(p.b.to_string())
+  println(q.a.to_string())
+  b = b
+  println(b.b.to_string())
+}

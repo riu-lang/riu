@@ -1061,6 +1061,10 @@ llvm::Value* Compiler::compileArrayLiteralExpr(p<ExprArrayNode> node) {
                 auto elemVal = compileExpr(elements[i]);
                 auto idx = _builder.getInt64(i);
                 auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {idx}, "lit.elem.ptr");
+                // Phase 3d: RC 元素从已有 var/field 读出再写入新槽位 → 复制语义 retain
+                if (elemType && typeNeedsDestructor(*elemType)) {
+                    retainHandleAtCallSite(elemVal, *elemType);
+                }
                 _builder.CreateStore(elemVal, elemPtr);
             }
         }

@@ -1,0 +1,43 @@
+; Phase 3d 验证：含 Box 字段的 struct 字段重赋值走 retain-then-release
+; - 第一次写 $.bx = bx 是 ctor 首次写：旧 handle 因零初始化为 null，release(null) no-op
+; - main 里 h.bx = q 是字段重赋值：retain q.handle，release 旧 h.bx.handle，store
+; - 旧 box p 在 h.bx 重赋后引用计数应回到 1（仅 main 局部 p 还持有），main 结束时 release 一次释放
+
+struct Pair {
+  a i32
+  b i32
+}
+
+Pair {
+  fn Pair(a i32, b i32) {
+    $.a = a
+    $.b = b
+  }
+}
+
+struct Holder {
+  bx Box<Pair>
+  tag i32
+}
+
+Holder {
+  fn Holder(bx Box<Pair>, tag i32) {
+    $.bx = bx
+    $.tag = tag
+  }
+}
+
+fn main() {
+  var p Box<Pair> = Pair(11i32, 22i32)
+  var q Box<Pair> = Pair(33i32, 44i32)
+  var h Holder = Holder(p, 7i32)
+  println(h.bx.a.to_string())
+  println(h.bx.b.to_string())
+  ; 字段重赋值：旧 box p 被 release 一次（仍由 main 的 p 持有 → 仍存活），新 box q 被 retain
+  h.bx = q
+  println(h.bx.a.to_string())
+  println(h.bx.b.to_string())
+  ; p 必须仍可读（h.bx 重赋只 release 一次，p 自己还持有 +1）
+  println(p.a.to_string())
+  println(q.b.to_string())
+}

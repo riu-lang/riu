@@ -616,6 +616,22 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
             _localVarPtrs[thisName] = argIt;
             thisPtr = argIt;
             DEBUG_LOG_VAL("  Param ($)", thisName << " : " << structName << "*");
+
+            // Phase 3d: 构造函数入口零初始化 `$`，让首次写字段的 retain-then-release
+            // 路径在 release 阶段拿到 null handle（runtime release 入口对 null 跳过）
+            // 不做 DAA 时这是最简单且对运行时安全的兜底；Phase 6 引入 DAA 后可改成
+            // "首次写 store-only / 重赋 retain-then-release"。
+            // 析构函数不走此路（自身就是清理）。
+            auto methodName = node->header()->name().getText();
+            if (!isDestructor && methodName == structName) {
+                auto structTy = getLLVMType(TypeInfo(structName));
+                auto& dl = _module->getDataLayout();
+                auto sizeBytes = dl.getTypeAllocSize(structTy).getFixedValue();
+                _builder.CreateMemSetInline(
+                    thisPtr, llvm::MaybeAlign(1), _builder.getInt8(0),
+                    _builder.getInt64(sizeBytes));
+                DEBUG_LOG_VAL("  Ctor zero-init", structName << " size=" << sizeBytes);
+            }
         }
         ++argIt;
     }
