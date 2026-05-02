@@ -1,0 +1,130 @@
+; Phase 8e：综合临时清单测试。覆盖 8d.1/8d.2/8d.3/8d.4 修过的所有路径，
+; 每个 block 跑完后检查 _rc_leak_count() 仍 = baseline，确保不堆积。
+
+struct Pair {
+  a i32
+  b i32
+}
+
+Pair {
+  fn Pair(a i32, b i32) {
+    $.a = a
+    $.b = b
+  }
+}
+
+fn make_box() Box<Pair> {
+  var b Box<Pair> = Pair(1, 2)
+  ret b
+}
+
+fn make_array() Array<i32> {
+  var a Array<i32> = [10, 20, 30]
+  ret a
+}
+
+fn pass_box(b Box<Pair>) i32 {
+  ret b.a
+}
+
+fn pass_array(a Array<i32>) i64 {
+  ret a.len()
+}
+
+; 8d.1：链式 make().field — fresh Box 借用为 receiver
+fn chain_box_field() i32 {
+  ret make_box().a
+}
+
+; 8d.1：链式 make().method — fresh Array 借用为 receiver
+fn chain_array_method() i64 {
+  ret make_array().len()
+}
+
+; 8d.2：f(g()) — fresh Box / Array 作为参数
+fn fresh_arg_box() i32 {
+  ret pass_box(make_box())
+}
+
+fn fresh_arg_array() i64 {
+  ret pass_array(make_array())
+}
+
+; var b = make() — fresh return 落 var slot（基础情况）
+fn assign_fresh_box() i32 {
+  var b Box<Pair> = make_box()
+  ret b.a
+}
+
+fn assign_fresh_array() i64 {
+  var a Array<i32> = make_array()
+  ret a.len()
+}
+
+; 8d.3：if-else 分支结果归一（fresh / fresh）
+fn pick_ff(c bool) Box<Pair> {
+  if c { make_box() } else { make_box() }
+}
+
+fn branch_ff() i32 {
+  ret pick_ff(true).a
+}
+
+; 表达式语句丢弃 fresh
+fn drop_box_stmt() {
+  make_box();
+}
+
+fn drop_array_stmt() {
+  make_array();
+}
+
+fn assert_zero(label String, before i64, after i64) {
+  if (after - before) != 0i64 {
+    println(label)
+    println("  delta:")
+    println((after - before).to_string())
+  }
+}
+
+fn main() {
+  var base i64 = rc_leak_count()
+
+  drop_box_stmt()
+  var d1 i64 = rc_leak_count()
+  assert_zero("drop_box_stmt", base, d1)
+
+  drop_array_stmt()
+  var d2 i64 = rc_leak_count()
+  assert_zero("drop_array_stmt", base, d2)
+
+  var v1 i32 = chain_box_field()
+  var d3 i64 = rc_leak_count()
+  assert_zero("chain_box_field", base, d3)
+
+  var v2 i64 = chain_array_method()
+  var d4 i64 = rc_leak_count()
+  assert_zero("chain_array_method", base, d4)
+
+  var v3 i32 = fresh_arg_box()
+  var d5 i64 = rc_leak_count()
+  assert_zero("fresh_arg_box", base, d5)
+
+  var v4 i64 = fresh_arg_array()
+  var d6 i64 = rc_leak_count()
+  assert_zero("fresh_arg_array", base, d6)
+
+  var v5 i32 = assign_fresh_box()
+  var d7 i64 = rc_leak_count()
+  assert_zero("assign_fresh_box", base, d7)
+
+  var v6 i64 = assign_fresh_array()
+  var d8 i64 = rc_leak_count()
+  assert_zero("assign_fresh_array", base, d8)
+
+  var v7 i32 = branch_ff()
+  var d9 i64 = rc_leak_count()
+  assert_zero("branch_ff", base, d9)
+
+  println("all zero")
+}

@@ -1,0 +1,75 @@
+; Phase 8d.1：fresh RC 句柄作为表达式语句被丢弃 / 作为方法 receiver 借用，
+; 应在语句结束时自动 release，不堆积 Block 计数。
+; 期望：所有 "after ... :" 行的 leak 数都不增长（与 baseline 持平）。
+
+struct Pair {
+  a i32
+  b i32
+}
+
+Pair {
+  fn Pair(a i32, b i32) {
+    $.a = a
+    $.b = b
+  }
+
+  fn show() {
+    println($.a.to_string())
+  }
+}
+
+fn make_box() Box<Pair> {
+  var b Box<Pair> = Pair(11, 22)
+  ret b
+}
+
+fn make_array() Array<i32> {
+  var a Array<i32> = [7, 8, 9]
+  ret a
+}
+
+fn drop_box() {
+  ; 表达式语句：fresh Box 句柄结果被丢弃，应在语句结束 release
+  make_box();
+}
+
+fn drop_array() {
+  ; 表达式语句：fresh Array 句柄结果被丢弃
+  make_array();
+}
+
+fn drop_array_lit() {
+  ; 数组字面量也是 fresh
+  [1, 2, 3];
+}
+
+fn chain_method() {
+  ; receiver 是 fresh Box，被借用为 Self&，方法返回后整条语句结束时应 release
+  make_box().show();
+}
+
+fn main() {
+  println("== baseline ==")
+  var base i64 = rc_leak_count()
+  println(base.to_string())
+
+  drop_box()
+  var d1 i64 = rc_leak_count()
+  println("after drop_box delta:")
+  println((d1 - base).to_string())
+
+  drop_array()
+  var d2 i64 = rc_leak_count()
+  println("after drop_array delta:")
+  println((d2 - d1).to_string())
+
+  drop_array_lit()
+  var d3 i64 = rc_leak_count()
+  println("after drop_array_lit delta:")
+  println((d3 - d2).to_string())
+
+  chain_method()
+  var d4 i64 = rc_leak_count()
+  println("after chain_method delta:")
+  println((d4 - d3).to_string())
+}

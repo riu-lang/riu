@@ -1,0 +1,26 @@
+== baseline ==
+0
+7
+after block_box:
+0
+1
+after block_box_from_call:
+0
+3
+after block_box_copy:
+0
+3
+after block_array_literal:
+0
+3
+after block_array_from_call:
+0
+3
+after block_array_copy:
+0
+1
+after block_pass_box_temp:
+0
+11
+after block_pass_box_var:
+0
