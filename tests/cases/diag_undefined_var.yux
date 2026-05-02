@@ -1,0 +1,4 @@
+fn main() {
+  val x i32 = foo
+  println(x.to_string())
+}

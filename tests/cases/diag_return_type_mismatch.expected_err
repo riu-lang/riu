@@ -1,0 +1,1 @@
+diag_return_type_mismatch.yux:2 [E3020] error: Return type mismatch: function declares 'i32', but expression has type 'bool'

@@ -1,0 +1,1 @@
+diag_weak_nullable.yux:3:18 [E2001] error: Weak<T>? is forbidden

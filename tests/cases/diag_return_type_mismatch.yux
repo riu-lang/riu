@@ -1,0 +1,8 @@
+fn add() i32 {
+  ret true
+}
+
+fn main() {
+  add()
+  ret;
+}

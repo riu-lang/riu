@@ -296,13 +296,22 @@ Array 内置方法（E6040..E6044）：
 
 ## D.5 路线图（*informative*）
 
-下列条目对应 `CURRENT.md` v0.3 后续阶段，落地后**应当**回写本附录：
+下列条目延期至短期目标（详见 `TARGETS.md`），落地后**应当**回写本附录：
 
-- **Phase 4**：启用 `DiagSeverity::Warning` 与 `Note`，引入 CLI `--warn` / `--allow` / `--deny` / `-Werror`，由"首错即停"改为聚合输出。
-- **Phase 5**：高频场景的 `note` / `help`，包括类型不匹配修复建议、未声明标识符的拼写近似（Levenshtein ≤ 2）、`T&` 禁止位置、`Weak<T>?` / `Weak ==`、`extern` 签名不匹配等。
-- **Phase 6**：`tests/cases/diag_*.{yux,expected_err}` 形态的诊断回归测试。
+- **诊断分级 / CLI 严重度开关**（原 v0.3 Phase 4）：启用 `DiagSeverity::Warning` 与 `Note`，引入 CLI `--warn` / `--allow` / `--deny` / `-Werror`，由"首错即停"改为聚合输出。注意：将已有 error 降级为 warning 依赖错误恢复机制，未实现前 `--warn` 仅对默认 severity 为 warning 的码生效。
+- **高频场景 提示/修复建议**（原 v0.3 Phase 5）：类型不匹配修复建议、未声明标识符的拼写近似（Levenshtein ≤ 2）、`T&` 禁止位置、`Weak<T>?` / `Weak ==`、`extern` 签名不匹配等的 `note` / `help`。
 
-## D.6 Open Issues
+## D.6 诊断回归测试
+
+诊断测试用例位于 `tests/cases/diag_*.yux`，配对 `*.expected_err`。测试运行器规则：
+
+- 编译必须以非零退出码结束；若 yux 意外编译成功（生成 `.exe`），用例失败。
+- `expected_err` 中以 `;` 开头或全空白的行是注释/空行；其余每一非空行视为**子串断言**：该字符串必须出现在 yux 进程的 stderr/stdout（合并视图）中。
+- 不强求行的出现顺序、不约束未列出的额外诊断；这一形态便于断言"必须命中"的关键内容（错误码、文件:行:列、关键消息片段），而对源码片段、对齐空白、绝对路径前缀保持鲁棒。
+
+每个用例**应当**至少断言 `<basename>:line:col [Exxxx] error:` 这条诊断头，使得错误码、定位与消息文本三者中任一回归都能被捕获。
+
+## D.7 Open Issues
 
 - 列号当前按字节计算，多字节字符（中文、emoji）下的插入符位置可能与视觉列偏离；是否改为列宽 / Unicode 段分割尚未决议。
 - E3099 采用包装上下文的双行模板，长期看应当替换为结构化 `note` 而非内嵌换行。

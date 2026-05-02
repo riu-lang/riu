@@ -1,0 +1,2 @@
+; 期望命中关键诊断行；runner 对每行做 stderr 子串包含匹配
+diag_undefined_var.yux:2:15 [E3032] error: Symbol foo not found

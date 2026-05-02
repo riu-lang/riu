@@ -4,11 +4,16 @@
 -- yux 语言测试：使用 xmake 原生测试机制（xmake test）
 --
 -- 每个 tests/cases/*.yux 配对一个 *.expected：
---   - cases/*.yux          编译应成功；运行产物 .exe，stdout 需与 .expected 完全一致
---   - cases/error/*.yux    编译应失败；.expected 内容仅作占位（约定 "error"）
+--   - cases/*.yux            编译应成功；运行产物 .exe，stdout 需与 .expected 完全一致
+--   - cases/diag_*.yux       编译应失败；配对 *.expected_err，逐行子串匹配 stderr
+--   - cases/error/*.yux      编译应失败；.expected 内容仅作占位（约定 "error"）
 --
 -- 项目级用例：tests/projects/<case>/ 下包含 yux.toml + 入口源文件 + expected.txt。
 -- 以该目录为 CWD 调用 `yux build <case>`，运行 build/<case>/<case>.exe 并比对 expected.txt。
+--
+-- 诊断回归用例 (cases/diag_*.yux + *.expected_err)：
+--   - expected_err 中每一非空、非 `;` 开头行视为子串断言，必须在 stderr 中出现
+--   - 编译必须以非零退出码结束（否则即使 stderr 含期望内容也算失败）
 --
 -- 运行：
 --   xmake build yux                         先构建编译器
@@ -24,6 +29,8 @@ local function list_case_names()
     local r = {}
     for _, f in ipairs(os.files(path.join(cases_dir, "*.yux"))) do
         if os.isfile((f:gsub("%.yux$", ".expected"))) then
+            r[path.basename(f)] = true
+        elseif os.isfile((f:gsub("%.yux$", ".expected_err"))) then
             r[path.basename(f)] = true
         end
     end
@@ -49,8 +56,16 @@ target("yux_tests")
         local cd = path.join(target:scriptdir(), "cases")
         local cases = {}
         for _, f in ipairs(os.files(path.join(cd, "*.yux"))) do
-            if os.isfile((f:gsub("%.yux$", ".expected"))) then
+            local exp = f:gsub("%.yux$", ".expected")
+            local exp_err = f:gsub("%.yux$", ".expected_err")
+            if os.isfile(exp) then
                 cases[path.basename(f)] = {file = path.absolute(f)}
+            elseif os.isfile(exp_err) then
+                cases[path.basename(f)] = {
+                    file = path.absolute(f),
+                    expected_err_file = path.absolute(exp_err),
+                    is_diag = true,
+                }
             end
         end
         local pd = path.join(target:scriptdir(), "projects")
@@ -146,6 +161,50 @@ target("yux_tests")
         os.tryrm(exe)
         os.tryrm(obj)
         os.tryrm(cache)
+
+        if entry.is_diag then
+            -- 诊断回归：编译应失败；逐行子串匹配 expected_err
+            local stdout_data, stderr_data
+            local compile_ok = try {
+                function ()
+                    stdout_data, stderr_data = os.iorunv(yux_exe, {case}, {curdir = project_root})
+                    return true
+                end,
+                catch {
+                    function (errs)
+                        stderr_data = tostring(errs)
+                        return nil
+                    end
+                }
+            }
+            opt.stdout = stdout_data
+            opt.stderr = stderr_data
+
+            if compile_ok and os.isfile(exe) then
+                opt.errors = "diag case unexpectedly compiled: " .. case
+                os.tryrm(exe); os.tryrm(obj); os.tryrm(cache)
+                return false
+            end
+
+            local expected_err = io.readfile(entry.expected_err_file) or ""
+            local haystack = (stderr_data or "") .. "\n" .. (stdout_data or "")
+            local missing = {}
+            for line in expected_err:gmatch("[^\r\n]+") do
+                local trimmed = line:match("^%s*(.-)%s*$")
+                if trimmed ~= "" and trimmed:sub(1, 1) ~= ";" then
+                    if not haystack:find(trimmed, 1, true) then
+                        table.insert(missing, trimmed)
+                    end
+                end
+            end
+            os.tryrm(exe); os.tryrm(obj); os.tryrm(cache)
+            if #missing > 0 then
+                opt.errors = format("diag mismatch for %s\n--- missing lines ---\n%s\n--- stderr ---\n%s",
+                                    case, table.concat(missing, "\n"), stderr_data or "")
+                return false
+            end
+            return true
+        end
 
         local stdout_data, stderr_data
         local ok = try {
