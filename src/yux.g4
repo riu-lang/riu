@@ -221,9 +221,9 @@ expr:
       ParEnd # exprCall
     // !e ~e -e 没有空格，低于成员访问优先级
     | op=(SymbolSub|SymbolRev|SymbolExcl) right=expr # exprUnary
+    | left=expr opShift right=expr # exprShift
     // e & e | e ^ e
     | left=expr op=(SymbolAnd|SymbolOr|SymbolXor) right=expr # exprBinOp
-    | left=expr opShift right=expr # exprShift
      // e * e e / e
     | left=expr op=(SymbolMul|SymbolDiv|SymbolMod) right=expr # exprMulDivMod
     | left=expr op=(SymbolAdd|SymbolSub) right=expr # exprAddSub
@@ -309,7 +309,7 @@ statement:
     // ret value
     | Ret expr codeLineEnd # statementRet
     // ret; 返回空，强制尾随;表示空返回
-    | Ret SymbolSemicolon LineEnd # statementRetVoid
+    | Ret SymbolSemicolon codeLineEnd # statementRetVoid
     // break; 强制尾随;不返回任何值
     | Break SymbolSemicolon codeLineEnd # statementBreak
     ;
