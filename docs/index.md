@@ -31,6 +31,11 @@ yux 是一门独立的编译型语言，具有以下特性：
 - [模块系统](模块系统.md) - 模块导入、项目配置
 - [构建注解](构建注解.md) - `#CompilerInner` 等编译期注解
 
+### 语言规范（草案）
+
+- [docs/spec/](spec/index.md) - 规范级文档，关心"语义如何被定义"，与教程并列
+- [docs/spec/CHANGELOG.md](spec/CHANGELOG.md) - 规范变更记录（上新下旧）
+
 ### 更多资源
 
 - [语法文件 yux.g4](../src/yux.g4) - 权威的 ANTLR4 语法定义
