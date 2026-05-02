@@ -2,7 +2,7 @@
 
 本文件归档 v0.1 所有权与 RC 模型的实施记录：每个 Phase 的核心决策、Block layout、ABI 协议、关键代码点。是后续回答"layout 为什么这样"、"sentinel 为何为 `0xFFFFFFFF`"等问题的事实来源。
 
-- 设计草案见本地 `DRAFT-所有权与引用.md`（不入库）
+- 设计草案见 `docs/spec/draft/DRAFT-所有权与引用.md`（已入库；不等同规范，以 §8 正文为准）
 - 规范条款见 `docs/spec/08-所有权与引用.md`
 - 进行中的工作见 `CURRENT.md`（本地）
 - 与本日志无关的待修 bug 见 `BUGS.md`（本地）

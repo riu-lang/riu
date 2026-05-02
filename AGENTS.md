@@ -14,10 +14,10 @@
 |------|------|--------|
 | `CURRENT.md` | 当前正在进行的多步骤任务、分阶段计划与勾选 | 否（本地） |
 | `BUGS.md` | 开发过程中**新发现**、与当前任务无关、需大量排查或临时绕过的 bug | 否（本地） |
-| `DRAFT-*.md` | 设计草案、决议讨论、未定型的语言面提案 | 否（本地） |
 | `MILESTONE.md` / `TARGETS.md` | 里程碑与短期目标 | 是 |
 | `docs/dev/*.md` | 已完成版本的实施日志归档（见下） | 是 |
 | `docs/spec/*.md` | 语言规范（草案中） | 是 |
+| `docs/spec/draft/DRAFT-*.md` | 跨章节的语言面设计草案、决议讨论；骨架范本见 `docs/spec/draft/_模板.md` | 是 |
 | `docs/*.md` | 语言用户教程（中文） | 是 |
 
 **使用规则**：
@@ -26,7 +26,7 @@
 - **新发现 bug**：按 `BUGS.md` 模板填写，暂停相关任务向用户说明。**进度→`CURRENT.md`，bug→`BUGS.md`，两者不混用**。
 - **完成一个版本后归档实施记录**：把 `CURRENT.md` 里某个大任务（如所有权 v0.1）的 Phase 列表精简后落到 `docs/dev/<topic>-impl-log.md`。归档时**剔除本地化指代**（人名 / 私人路径 / 邮箱）、剔除测试计数与具体行号（易腐烂），保留：核心决策、Block layout、ABI 协议、关键文件与函数名、跨 Phase 的 TODO 汇总。
 - **实施日志中引用 BUGS.md 的位置改写为 TODO**：`docs/dev/` 入库，`BUGS.md` 不入库，所以日志里"详见 BUGS.md 第 X 条"会变成悬挂引用。改写为该 TODO 本身的简述（如 "TODO：Array 声明拷贝漏 retain"），具体诊断与修复进度仍在本地 `BUGS.md` 维护。
-- **`DRAFT-*.md` 不入库**：草案里常含决议过程、未定型措辞、临时绕过方案；定型后内容应迁入 `docs/spec/` 或 `docs/dev/`，不要直接 commit 草案本身。
+- **`docs/spec/draft/DRAFT-*.md` 入库，但不等于规范**：草案用来沉淀跨章节设计的讨论与决议，**不一定会实施**；以 `docs/spec/` 正文为准。草案与 spec 冲突时，以 spec + `src/yux.g4` + 编译器源码为准；spec 未收口前，草案仅供参考、不构成实现承诺。新建草案从 `docs/spec/draft/_模板.md` 复制骨架；定型后按模板末尾「定型与归宿」拆分迁入 spec 正文与 CHANGELOG，原 DRAFT 文件删除或在头部标注「已落地，见 §N.M」保留为历史档。
 - **改动语言面，必须回写规范**：凡是新增 / 修改 / 删除语言特性、语法形态、用法语义、ABI 协议、内置类型行为等"涉及标准"的变更（无论是先改 spec 再实现，还是先实现再补 spec），落地前**先与用户确认条款措辞**，确认后同步更新：
   1. `docs/spec/` 对应章节（条款 §N.M.K + Open Issues）；
   2. `docs/spec/CHANGELOG.md` 顶部追加一条（上新下旧，记录日期 / 摘要 / 影响章节）；
@@ -65,7 +65,7 @@ yux build <name>             # <name> 必须与 yux.toml 的 name 一致；入�
 yux build <name> --emit-ir   # 同时生成 .ll
 yux build <name> -d          # 编译期 IR 调试输出（仅 Debug 构建；量大，用 tail 过滤）
 
-# 冒烟测试（仓库内 examples/main 的 yux.toml 里 name="test"）
+# 冒烟测试（仓库内 examples/test 的 yux.toml 里 name="test"）
 cd examples/test && yux build test && ./build/test/test.exe
 ```
 
@@ -120,7 +120,7 @@ xmake test "yux_tests/*"                 # 通配符
 - `node/` —— AST 节点定义：`node`、`file_node`、`expr_node`、`fn_node`、`struct_node`、`statement_node`、`literal_node`、`global_const_node`、`type_node`
 - ANTLR 生成代码在 `gen/`（**不要手改**）
 
-运行时 `sdk/yux/core.yux` 由 yux 自身编写，编译产出 `build/sdk.ll` / `build/sdk.obj`，链接进每个 yux 程序。
+运行时位于 `sdk/yux/`（独立的 yux 项目，`yux.toml` 含 `[lib] type="static"`），源码在 `sdk/yux/src/yux/core/`（`base.yux` / `math.yux` / `pkg` 文件等），由 yux 自身编写并编译为静态库 `sdk/yux/build/yux/yux.lib`，链接进每个 yux 程序。
 
 ## 目录结构
 
@@ -130,13 +130,14 @@ yux-lang/
 │   └── node/         AST 节点
 ├── gen/              ANTLR4 生成代码，不要手改
 ├── include/          公共 C++ 头（types.h）
-├── sdk/yux/          自举运行时（core.yux），链接到每个 yux 程序
+├── sdk/yux/          自举运行时（独立 yux 项目，编为静态库 yux.lib），链接到每个 yux 程序
 ├── docs/             语言参考文档（中文）；入口 docs/index.md
 │   ├── spec/         语言规范（草案中）
+│   │   └── draft/    跨章节设计草案（`DRAFT-<特性>.md` + `_模板.md`），入库但不等同规范
 │   └── dev/          已完成版本的实施日志归档（如 ownership-impl-log.md），内容为重大/重要变更实现，其它在git提交记录
 ├── examples/test/    示例项目，用作快速冒烟测试
 ├── tests/
-│   ├── cases/        单文件用例 + .expected；error/ 下为期望编译失败用例
+│   ├── cases/        单文件用例 + .expected（仅成功用例）
 │   ├── projects/     项目模式用例（每目录一个 yux.toml + expected.txt）
 │   └── xmake.lua     测试运行器（yux_tests target）
 ├── third_party/      依赖：antlr4, cli11, llvm, toml11, utfcpp, zlib（由 sync-deps 拉取）
@@ -148,7 +149,6 @@ yux-lang/
 ├── yux.toml          仓库自身的 dogfood 项目配置
 ├── CURRENT.md        当前多步任务追踪，本地（不入 git）
 ├── BUGS.md           新发现的 bug 清单，本地（不入 git）
-├── DRAFT-*.md        未定型的设计草案，本地（不入 git）
 ├── TARGETS.md        短期目标，次于里程碑
 ├── MILESTONE.md      里程碑，当前稳定版目标和已经实现的目标
 └── AGENTS.md / CLAUDE.md / README.md
