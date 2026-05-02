@@ -122,8 +122,8 @@ expr ::=
   | '[' (expr (',' expr)*)? ']'                                  # exprArray
   | expr (':' genericDef)? '(' (expr (',' expr)*)? ')'           # exprCall
   | ('-' | '~' | '!') expr                                       # exprUnary
-  | expr ('&' | '|' | '^') expr                                  # exprBinOp
   | expr opShift expr                                            # exprShift
+  | expr ('&' | '|' | '^') expr                                  # exprBinOp
   | expr ('*' | '/' | '%') expr                                  # exprMulDivMod
   | expr ('+' | '-') expr                                        # exprAddSub
   | expr opCompare expr                                          # exprCompare
