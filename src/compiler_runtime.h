@@ -18,6 +18,7 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/GlobalVariable.h>
 #include "types.h"
 
 class Compiler;
@@ -77,6 +78,11 @@ llvm::Function* getArrayReleaseFn(llvm::Module* module, llvm::IRBuilder<>& build
 // _array_retain(handle) -> void
 //   strong++；null/哨兵跳过
 llvm::Function* getArrayRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+
+// ==================== leak 检测（Phase 8a） ====================
+// 全局 i64 `_rc_block_count`：每次 alloc Block ++，每次实际 free Block --
+// 程序结束时 != 0 表示泄漏。SDK 模块定义；其他模块通过 extern 声明引用
+llvm::GlobalVariable* getRcBlockCountGlobal(llvm::Module* module, llvm::IRBuilder<>& builder);
 
 // ==================== 运行时辅助函数生成 ====================
 

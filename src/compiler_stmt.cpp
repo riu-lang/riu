@@ -123,11 +123,21 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
     // 局部变量 release（callDestructorsForScope）让调用方接住净 +1 句柄；
     // 不做 peephole（DRAFT §7.3）——纯局部 var 路径下 retain+release 互抵，函数调用
     // 临时值的多余 retain 由 Phase 8 临时值清单负责。
+    // Phase 8c: fresh retVal（call/array literal）已自带 +1，跳过 retain
     bool didMoveRetainHandle = false;
     if (retVal && hasDeclaredRetType && !nullableWrap) {
         if (declRetType.isBox() || declRetType.isArrayGeneric() || declRetType.isWeak()) {
-            retainHandleAtCallSite(retVal, declRetType);
+            if (!isFreshHandleExpr(node->expr())) {
+                retainHandleAtCallSite(retVal, declRetType);
+            } else {
+                // Phase 8d.1: fresh 返回值的 +1 直接交给调用方，从临时帧消费
+                consumeTemp(retVal);
+            }
             didMoveRetainHandle = true;
+        } else if (typeNeedsDestructor(declRetType) && isFreshHandleExpr(node->expr())) {
+            // Phase 8e: fresh 含 RC 字段 struct value 返回（如 i64.to_string() 的 String）：
+            // +1 直接交给调用方，从临时帧消费，避免 popAndReleaseTempFrame 调 dtor 双释放。
+            consumeTemp(retVal);
         }
     }
 
@@ -141,6 +151,14 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
             }
         }
     }
+
+    // Phase 8e: 在 CreateRet 之前释放本语句临时帧（fresh 返回值已被 consumeTemp 移除，
+    // 帧里只剩中间 fresh 子表达式如 `ret f(make_aux())` 里的 make_aux）。
+    // 否则 CreateRet 后 BB 终结，外层 compileStatement 的 popAndReleaseTempFrame
+    // 会因 BB 已终结而早返、临时帧被静默丢弃 → leak。
+    // pop+push 空帧保持栈平衡（外层 compileStatement 的 pop 仍能消掉本帧）。
+    popAndReleaseTempFrame();
+    pushTempFrame();
 
     // 调用析构函数并返回
     callDestructorsForScope();
@@ -156,6 +174,9 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
 // 编译无返回值的 return; 语句
 void Compiler::compileRetVoidStatement(p<StatementRetVoidNode> node) {
     DEBUG_LOG("  Statement: Return Void");
+    // Phase 8e: 同上，先释放临时帧再 CreateRetVoid（pop+push 保持栈平衡）
+    popAndReleaseTempFrame();
+    pushTempFrame();
     callDestructorsForScope();
     _builder.CreateRetVoid();
     DEBUG_LOG("    Created void return instruction");
@@ -289,8 +310,14 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 auto srcHandle = _builder.CreateLoad(ptrTy, srcHandleField, "src_handle");
 
                 // 句柄复制 = retain（_box_retain 内部哨兵跳过 .rodata 字面量）
-                auto retainFn = runtime::getBoxRetainFn(_module, _builder);
-                _builder.CreateCall(retainFn, {srcHandle});
+                // Phase 8b: fresh 来源（call/method/ctor 调用）已在 callee ret 处 move-return retain，跳过
+                // Phase 8d.1: fresh 来源的 +1 转给新 var，从临时帧消费
+                if (!isFreshHandleExpr(expr)) {
+                    auto retainFn = runtime::getBoxRetainFn(_module, _builder);
+                    _builder.CreateCall(retainFn, {srcHandle});
+                } else {
+                    consumeTemp(exprVal);
+                }
 
                 // 写入新 Box 的 handle 字段
                 auto handleField = _builder.CreateGEP(boxStructType, alloca, {zero, zero}, "handle_field");
@@ -347,6 +374,14 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             auto srcHandle = _builder.CreateLoad(ptrTy, srcHandleField, "src_handle");
 
             // weak++（哨兵 / null 跳过）
+            // Phase 8b: Weak-from-Weak fresh 源已 +1 weak（callee move-return retain 用 _weak_retain），跳过；
+            // Box 源始终需要 weak++（不是 retain，是 Weak 句柄首次被引用，与 Box 的 strong 计数无关）
+            bool needWeakInc = !(fromWeak && isFreshHandleExpr(expr));
+            // Phase 8d.1: fromWeak fresh 路径直接接 +1 weak，从临时帧消费
+            if (fromWeak && isFreshHandleExpr(expr)) {
+                consumeTemp(exprVal);
+            }
+            if (needWeakInc) {
             auto incBB = llvm::BasicBlock::Create(_context, "weak_inc", _builder.GetInsertBlock()->getParent());
             auto checkBB = llvm::BasicBlock::Create(_context, "weak_check", _builder.GetInsertBlock()->getParent());
             auto doneBB = llvm::BasicBlock::Create(_context, "weak_inc_done", _builder.GetInsertBlock()->getParent());
@@ -369,6 +404,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             _builder.CreateBr(doneBB);
 
             _builder.SetInsertPoint(doneBB);
+            }
 
             // 写 Weak.handle 字段
             auto handleField = _builder.CreateGEP(weakStructType, alloca, {zero, zero}, "weak_handle_field");
@@ -400,8 +436,14 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                         auto idx = _builder.getInt64(i);
                         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {idx}, "init.elem.ptr");
                         // Phase 3d: RC 元素从已有 var/field 读出 → 复制语义 retain
+                        // Phase 8b: fresh 元素表达式（如 [make_box()]）已 +1，跳过 retain
+                        // Phase 8d.1: fresh 元素从临时帧消费
                         if (typeNeedsDestructor(*elemType)) {
-                            retainHandleAtCallSite(elemVal, *elemType);
+                            if (!isFreshHandleExpr(elements[i])) {
+                                retainHandleAtCallSite(elemVal, *elemType);
+                            } else {
+                                consumeTemp(elemVal);
+                            }
                         }
                         _builder.CreateStore(elemVal, elemPtr);
                     }
@@ -411,12 +453,18 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 // 从其他 Array<T> 表达式初始化：句柄复制 + retain
                 // 与 Box 的 var q = p 路径同形（Phase 1a），否则作用域结束 LIFO 双重 release
                 // 触发同 handle freed-block read。修复 BUGS.md「Array 声明拷贝漏 retain」。
+                // Phase 8b: fresh 来源（call/method 调用）已 move-return retain，跳过
+                // Phase 8d.1: fresh 来源从临时帧消费
                 auto exprType = expr->getType();
                 if (!exprType.isArrayGeneric() && exprType.name != "Array") {
                     throw YuxError(node->getLineNumber(), "Array<T> initialization requires Array<T> expression or array literal");
                 }
                 auto exprVal = compileExpr(expr);
-                retainHandleAtCallSite(exprVal, exprType);
+                if (!isFreshHandleExpr(expr)) {
+                    retainHandleAtCallSite(exprVal, exprType);
+                } else {
+                    consumeTemp(exprVal);
+                }
                 _builder.CreateStore(exprVal, alloca);
             }
 
@@ -503,6 +551,11 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 structDecl = _yux->sdkFile()->getStructDecl(varType.name);
             }
             if (structDecl) {
+                // Phase 8d.4: fresh 含 RC 字段 struct value（如 String = i64.to_string()）
+                // 的 +1 已转给 var slot；从临时帧消费，避免帧弹出时再调 dtor 双释放
+                if (typeNeedsDestructor(varType) && isFreshHandleExpr(expr)) {
+                    consumeTemp(exprVal);
+                }
                 _scopeVars.push_back(varName);
             }
         }
@@ -638,8 +691,14 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                             auto elemVal = compileExpr(elements[i]);
                             auto idx = _builder.getInt64(i);
                             auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {idx}, "assign.elem.ptr");
+                            // Phase 8b: fresh 元素表达式跳过 retain
+                            // Phase 8d.1: fresh 元素从临时帧消费
                             if (typeNeedsDestructor(*elemType)) {
-                                retainHandleAtCallSite(elemVal, *elemType);
+                                if (!isFreshHandleExpr(elements[i])) {
+                                    retainHandleAtCallSite(elemVal, *elemType);
+                                } else {
+                                    consumeTemp(elemVal);
+                                }
                             }
                             _builder.CreateStore(elemVal, elemPtr);
                         }
@@ -718,8 +777,14 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
 
         // Phase 3d: RC 类型 / 含 RC 字段 struct 的赋值 → retain new → release old → store
         // 自赋值 / 别名安全：先 retain 再 release，避免计数过早归零
+        // Phase 8b: fresh 来源（call/method/ctor 调用）已 +1，跳过 retain；旧值仍需 release
+        // Phase 8d.1: fresh 来源从临时帧消费
         if (assignOp == AssignOp::Eq && typeNeedsDestructor(sym->type)) {
-            retainHandleAtCallSite(valToStore, sym->type);
+            if (!isFreshHandleExpr(expr)) {
+                retainHandleAtCallSite(valToStore, sym->type);
+            } else {
+                consumeTemp(valToStore);
+            }
             releaseAtPtr(_localVarPtrs[objName], sym->type);
         }
 
@@ -803,8 +868,14 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                                 auto elemVal = compileExpr(elements[j]);
                                 auto idx = _builder.getInt64(j);
                                 auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {idx}, "field.elem.ptr");
+                                // Phase 8b: fresh 元素表达式跳过 retain
+                                // Phase 8d.1: fresh 元素从临时帧消费
                                 if (typeNeedsDestructor(*elemType)) {
-                                    retainHandleAtCallSite(elemVal, *elemType);
+                                    if (!isFreshHandleExpr(elements[j])) {
+                                        retainHandleAtCallSite(elemVal, *elemType);
+                                    } else {
+                                        consumeTemp(elemVal);
+                                    }
                                 }
                                 _builder.CreateStore(elemVal, elemPtr);
                             }
@@ -831,8 +902,14 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                 }
 
                 // Phase 3d: RC 字段 / 含 RC 字段 struct 字段 → retain new → release old → store
+                // Phase 8b: fresh 来源跳过 retain
+                // Phase 8d.1: fresh 来源从临时帧消费
                 if (assignOp == AssignOp::Eq && typeNeedsDestructor(fieldType)) {
-                    retainHandleAtCallSite(valToStore, fieldType);
+                    if (!isFreshHandleExpr(expr)) {
+                        retainHandleAtCallSite(valToStore, fieldType);
+                    } else {
+                        consumeTemp(valToStore);
+                    }
                     releaseAtPtr(fieldPtr, fieldType);
                 }
 
@@ -1026,8 +1103,14 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
         auto valueVal = compileExpr(node->valueExpr());
 
         // Phase 3d: RC 元素 / 含 RC 字段 struct 元素 → retain new → release old → store
+        // Phase 8b: fresh 来源跳过 retain
+        // Phase 8d.1: fresh 来源从临时帧消费
         if (typeNeedsDestructor(*elemType)) {
-            retainHandleAtCallSite(valueVal, *elemType);
+            if (!isFreshHandleExpr(node->valueExpr())) {
+                retainHandleAtCallSite(valueVal, *elemType);
+            } else {
+                consumeTemp(valueVal);
+            }
             releaseAtPtr(elemPtr, *elemType);
         }
 
@@ -1063,6 +1146,9 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
 // 编译语句的主入口
 // 根据语句类型分发到对应的编译函数
 void Compiler::compileStatement(p<StatementNode> node) {
+    // Phase 8d.1: 入口 push 临时帧；分发完成后 pop+release 未消费的 fresh RC 句柄
+    pushTempFrame();
+
     if (auto retNode = dynamic_cast<StatementRetNode*>(node)) {
         compileRetStatement(retNode);
     } else if (auto retVoidNode = dynamic_cast<StatementRetVoidNode*>(node)) {
@@ -1084,6 +1170,9 @@ void Compiler::compileStatement(p<StatementNode> node) {
     } else if (auto setNode = dynamic_cast<StatementSetNode*>(node)) {
         compileArraySetStatement(setNode);
     } else {
+        popAndReleaseTempFrame();
         throw YuxError(node->getLineNumber(), "Unknown statement type");
     }
+
+    popAndReleaseTempFrame();
 }

@@ -167,6 +167,37 @@ class Compiler {
     // 内置 / 引用 / 指针 / 平凡 struct: no-op
     void releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type);
 
+    // Phase 8d.1: per-statement 临时清单
+    // 栈帧式追踪 fresh RC 句柄（Box/Array/Weak）；语句开始 pushTempFrame，
+    // 结束 popAndReleaseTempFrame 对未消费项发出 release 调用。
+    // 仅覆盖线性控制流；分支汇合（if-else 表达式作为语句）见 8d.3。
+    struct PendingTemp {
+        llvm::Value* val;
+        TypeInfo type;
+        // Phase 8d.4: 含 RC 字段 struct value 临时落 entry 块 alloca；
+        // 帧弹出时调 releaseAtPtr 释放。Box/Array/Weak 不用此字段（直接 extractValue 拿 handle）。
+        llvm::Value* spillSlot = nullptr;
+    };
+    vector<vector<PendingTemp>> _tempStack;
+    void pushTempFrame();
+    void popAndReleaseTempFrame();
+    void recordTemp(llvm::Value* val, const TypeInfo& type);
+    // 返回 true 表示在顶帧中找到并移除了该 Value（即调用方能由此推断 val 是 fresh）
+    bool consumeTemp(llvm::Value* val);
+    // Phase 8d.3: 在指定 BB 末尾对一个 RC 句柄 value 发 retain（用于分支汇合归一为 fresh）
+    void emitRetainOnHandleValue(llvm::Value* val, const TypeInfo& type);
+    // Phase 8d.3: 编译"分支结果表达式"——push 子帧、compile、consume 结果、pop 释放中间临时；
+    // 若 expectedType 是 RC 句柄（Box/Array/Weak）且结果非 fresh，发 retain 归一为 +1。
+    // 调用方在 phi 汇合后应 recordTemp(phi, expectedType) 把统一 +1 句柄交给外层 statement frame
+    llvm::Value* compileBranchResultNormalized(p<ExprNode> expr, const TypeInfo& expectedType);
+
+    // Phase 8b: 识别 +1 所有权（"fresh"）表达式
+    // - 函数 / 方法 / 构造器调用：callee 已在 ret 处 move-return retain，结果是 +1 所有权句柄
+    // - 数组字面量：_array_alloc 给 strong=1
+    // - 其他（变量引用 / 字段访问 / if-else / ?? 等）：视作借用，复制语义需 retain
+    // 用于在 declare-assign / assign / 字面量元素写入等"复制语义"路径上跳过多余 retain
+    bool isFreshHandleExpr(p<ExprNode> expr);
+
     // Phase 3c.1/3c.2: 结构体形参 ABI 判定
     // 返回 true 表示该结构体形参按指针传递（保守路径），false 则按 LLVM by-value
     // 规则：内置类型 / Ptr / Ref → false；用户 struct（普通或泛型实例）一律 by-value（false）；
@@ -223,7 +254,8 @@ class Compiler {
         p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);    // 编译函数调用
     llvm::Value* compileConstructorCall(
         const string& baseName, const string& effName,
-        vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);                // 编译构造函数调用
+        vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
+        const vector<bool>& argFresh = {});                                     // 编译构造函数调用
     llvm::Value* compileKnownFunctionCall(
         p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
         FnSymbolInfo* fnSymbol);                                                // 编译已知函数调用

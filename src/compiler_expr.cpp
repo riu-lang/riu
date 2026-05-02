@@ -885,6 +885,10 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
 
     if (hasResult) {
         DEBUG_LOG("      Returning phi node");
+        // Phase 8d.3: 各分支已归一为 +1，phi 整体作为 fresh 句柄交给外层 statement frame
+        if (resultType.isBox() || resultType.isArrayGeneric() || resultType.isWeak()) {
+            recordTemp(phi, resultType);
+        }
         return phi;
     }
     return nullptr;
@@ -907,13 +911,13 @@ llvm::Value* Compiler::compileOneLineIfElseExpr(p<ExprOneLineIfElseNode> node) {
     _builder.CreateCondBr(condBool, thenBB, elseBB);
 
     _builder.SetInsertPoint(thenBB);
-    auto trueVal = compileExpr(node->trueValue());
+    auto trueVal = compileBranchResultNormalized(node->trueValue(), resultType);
     _builder.CreateBr(mergeBB);
     auto thenEndBB = _builder.GetInsertBlock();
 
     func->insert(func->end(), elseBB);
     _builder.SetInsertPoint(elseBB);
-    auto falseVal = compileExpr(node->falseValue());
+    auto falseVal = compileBranchResultNormalized(node->falseValue(), resultType);
     _builder.CreateBr(mergeBB);
     auto elseEndBB = _builder.GetInsertBlock();
 
@@ -924,6 +928,10 @@ llvm::Value* Compiler::compileOneLineIfElseExpr(p<ExprOneLineIfElseNode> node) {
     phi->addIncoming(trueVal, thenEndBB);
     phi->addIncoming(falseVal, elseEndBB);
 
+    // Phase 8d.3: 两支已归一 +1，phi 作 fresh 句柄登记外层
+    if (resultType.isBox() || resultType.isArrayGeneric() || resultType.isWeak()) {
+        recordTemp(phi, resultType);
+    }
     return phi;
 }
 
@@ -944,13 +952,13 @@ llvm::Value* Compiler::compileIfElsePreValueExpr(p<ExprIfElsePreValueNode> node)
     _builder.CreateCondBr(condBool, thenBB, elseBB);
 
     _builder.SetInsertPoint(thenBB);
-    auto trueVal = compileExpr(node->trueValue());
+    auto trueVal = compileBranchResultNormalized(node->trueValue(), resultType);
     _builder.CreateBr(mergeBB);
     auto thenEndBB = _builder.GetInsertBlock();
 
     func->insert(func->end(), elseBB);
     _builder.SetInsertPoint(elseBB);
-    auto falseVal = compileExpr(node->falseValue());
+    auto falseVal = compileBranchResultNormalized(node->falseValue(), resultType);
     _builder.CreateBr(mergeBB);
     auto elseEndBB = _builder.GetInsertBlock();
 
@@ -961,6 +969,9 @@ llvm::Value* Compiler::compileIfElsePreValueExpr(p<ExprIfElsePreValueNode> node)
     phi->addIncoming(trueVal, thenEndBB);
     phi->addIncoming(falseVal, elseEndBB);
 
+    if (resultType.isBox() || resultType.isArrayGeneric() || resultType.isWeak()) {
+        recordTemp(phi, resultType);
+    }
     return phi;
 }
 
@@ -1067,8 +1078,14 @@ llvm::Value* Compiler::compileArrayLiteralExpr(p<ExprArrayNode> node) {
                 auto idx = _builder.getInt64(i);
                 auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {idx}, "lit.elem.ptr");
                 // Phase 3d: RC 元素从已有 var/field 读出再写入新槽位 → 复制语义 retain
+                // Phase 8b: fresh 元素表达式（如 [make_box()]）已 +1，跳过 retain
+                // Phase 8d.1: fresh 元素从临时帧消费
                 if (elemType && typeNeedsDestructor(*elemType)) {
-                    retainHandleAtCallSite(elemVal, *elemType);
+                    if (!isFreshHandleExpr(elements[i])) {
+                        retainHandleAtCallSite(elemVal, *elemType);
+                    } else {
+                        consumeTemp(elemVal);
+                    }
                 }
                 _builder.CreateStore(elemVal, elemPtr);
             }
@@ -1506,16 +1523,21 @@ llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
 
     _builder.CreateCondBr(hasVal, thenBB, elseBB);
 
-    // then: 持值，直接用 _value
+    bool isRcHandle = innerType->isBox() || innerType->isArrayGeneric() || innerType->isWeak();
+
+    // then: 持值，直接用 _value（这是从 Nullable struct 抽出的借用，需 retain 归一为 +1）
     _builder.SetInsertPoint(thenBB);
+    if (isRcHandle) {
+        emitRetainOnHandleValue(valueVal, *innerType);
+    }
     auto thenEndBB = _builder.GetInsertBlock();
     _builder.CreateBr(mergeBB);
 
-    // else: 取右侧默认值
+    // else: 取右侧默认值（用子帧 + 归一）
     func->insert(func->end(), elseBB);
     _builder.SetInsertPoint(elseBB);
-    auto rightVal = compileExpr(node->right());
     auto rightType = node->right()->getType();
+    auto rightVal = compileBranchResultNormalized(node->right(), *innerType);
     if (rightType != *innerType) {
         throw YuxError(node->resolveLineNumber(),
             "`??` right side type {} doesn't match Nullable inner type {}",
@@ -1530,6 +1552,10 @@ llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
     auto phi = _builder.CreatePHI(innerLLVMType, 2, "ne.result");
     phi->addIncoming(valueVal, thenEndBB);
     phi->addIncoming(rightVal, elseEndBB);
+    // Phase 8d.3: 两支已归一 +1，phi 作 fresh 句柄登记外层
+    if (isRcHandle) {
+        recordTemp(phi, *innerType);
+    }
     return phi;
 }
 
@@ -1548,7 +1574,12 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
     } else if (auto parenNode = dynamic_cast<ExprParenNode*>(node)) {
         return compileParenExpr(parenNode);
     } else if (auto callNode = dynamic_cast<ExprCallNode*>(node)) {
-        return compileCallExpr(callNode);
+        // Phase 8d.1: 调用结果若为 fresh RC 句柄（Box/Array/Weak），登记到当前语句临时帧
+        auto val = compileCallExpr(callNode);
+        if (val) {
+            recordTemp(val, type);
+        }
+        return val;
     } else if (auto dotNode = dynamic_cast<ExprDotNode*>(node)) {
         return compileDotExpr(dotNode);
     } else if (auto compareNode = dynamic_cast<ExprCompareNode*>(node)) {
@@ -1562,7 +1593,12 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
     } else if (auto getNode = dynamic_cast<ExprGetNode*>(node)) {
         return compileArrayGetExpr(getNode);
     } else if (auto arrayNode = dynamic_cast<ExprArrayNode*>(node)) {
-        return compileArrayLiteralExpr(arrayNode);
+        // Phase 8d.1: 数组字面量 _array_alloc 给 strong=1，登记为 fresh 临时
+        auto val = compileArrayLiteralExpr(arrayNode);
+        if (val) {
+            recordTemp(val, type);
+        }
+        return val;
     } else if (auto getRefNode = dynamic_cast<ExprGetRefNode*>(node)) {
         return compileGetRefExpr(getRefNode);
     } else if (auto unaryNode = dynamic_cast<ExprUnaryNode*>(node)) {
@@ -1601,7 +1637,8 @@ llvm::Value* Compiler::compileStatementBlockWithResult(
     }
 
     if (block->hasResult()) {
-        auto resultVal = compileExpr(block->resultExpr());
+        // Phase 8d.3: RC 句柄分支结果走子帧 + 归一 retain；非 RC 沿用旧行为
+        auto resultVal = compileBranchResultNormalized(block->resultExpr(), resultType);
         if (phi && !resultType.empty()) {
             phi->addIncoming(resultVal, _builder.GetInsertBlock());
         }

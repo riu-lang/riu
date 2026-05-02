@@ -1124,6 +1124,11 @@ fn <T> upgrade(w Weak<T>) Box<T>?
 #CompilerInner
 fn <T> same_ref(a T, b T) bool
 
+; rc_leak_count() i64：返回当前未释放的 RC Block 数（Box / Array / String / Weak 共用计数）
+; 仅供测试 / 自检使用；正常程序不应依赖
+#CompilerInner
+fn rc_leak_count() i64
+
 ; ptr_of:<T>(obj) Ptr：显式取裸指针（DRAFT §9.4）
 ; T = U&         → 指向 U 的 Ptr（短生命周期，C 端不可保存超出本次调用）
 ; T = Box<U>    → 指向 U payload（跳过 RC 头；C 端只能读写 payload，不能 free）

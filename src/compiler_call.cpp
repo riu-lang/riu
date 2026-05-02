@@ -685,7 +685,13 @@ llvm::Value* Compiler::compileFunctionCall(
             ctorArgs.push_back(alloca);
             for (size_t i = 0; i < args.size(); ++i) {
                 // Phase 3c.2.a: 泛型构造器调用点 retain
-                retainHandleAtCallSite(args[i], argTypes[i]);
+                // Phase 8c: fresh 实参（call/array literal）已自带 +1，跳过 retain
+                // Phase 8d.1: fresh 实参从临时帧消费
+                if (!isFreshHandleExpr(callNode->getArgs()[i])) {
+                    retainHandleAtCallSite(args[i], argTypes[i]);
+                } else {
+                    consumeTemp(args[i]);
+                }
                 ctorArgs.push_back(args[i]);
             }
             // 泛型实例构造器：用消费方模块作前缀（与 emit / 方法调用一致）
@@ -708,7 +714,11 @@ llvm::Value* Compiler::compileFunctionCall(
             _builder.CreateCall(fn, ctorArgs);
             return _builder.CreateLoad(structType, alloca);
         }
-        auto result = compileConstructorCall(fnName, effName, args, argTypes);
+        // Phase 8c: 计算每个实参的 fresh 标志，传给构造器调用点用于跳过 retain
+        vector<bool> argFresh;
+        argFresh.reserve(callNode->getArgs().size());
+        for (auto& a : callNode->getArgs()) argFresh.push_back(isFreshHandleExpr(a));
+        auto result = compileConstructorCall(fnName, effName, args, argTypes, argFresh);
         if (result) {
             return result;
         }
@@ -733,6 +743,15 @@ llvm::Value* Compiler::compileFunctionCall(
             throw YuxError(callNode->getLineNumber(), "ptr_from_addr expects 1 argument");
         }
         return _builder.CreateIntToPtr(args[0], llvm::PointerType::get(_context, 0), "ptr_from_addr");
+    }
+
+    if (fnName == "rc_leak_count") {
+        DEBUG_LOG("    Expr: rc_leak_count");
+        if (!args.empty()) {
+            throw YuxError(callNode->getLineNumber(), "rc_leak_count expects 0 arguments");
+        }
+        auto g = runtime::getRcBlockCountGlobal(_module, _builder);
+        return _builder.CreateLoad(_builder.getInt64Ty(), g, "rc_leak");
     }
 
     if (fnName == "_ptr_offset") {
@@ -1054,7 +1073,15 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             continue;
         }
         // Phase 3a: Box/Array/Weak 实参传前 retain（callee-clean）
-        if (retainHandleAtCallSite(args[i], at)) {
+        // Phase 8c: fresh 实参（call/array literal）已自带 +1，跳过 retain
+        // Phase 8d.1: fresh 实参的 +1 移交给 callee，从临时帧消费掉，避免帧末多余 release
+        bool isFresh = isFreshHandleExpr(callNode->getArgs()[i]);
+        if (typeNeedsDestructor(at)) {
+            if (!isFresh) {
+                retainHandleAtCallSite(args[i], at);
+            } else {
+                consumeTemp(args[i]);
+            }
             callArgs.push_back(args[i]);
             continue;
         }
@@ -1723,7 +1750,8 @@ llvm::Value* Compiler::compileStructMethodCall(
 
 llvm::Value* Compiler::compileConstructorCall(
     const string& baseName, const string& effName,
-    vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
+    vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
+    const vector<bool>& argFresh) {
     string ctorFullName = baseName + "." + baseName;
 
     vector<TypeInfo> ctorParamTypes;
@@ -1748,6 +1776,13 @@ llvm::Value* Compiler::compileConstructorCall(
         ctorArgs.push_back(alloca);
         for (size_t i = 0; i < args.size(); ++i) {
             // Phase 3c.2.a: 构造器调用点 retain；与函数调用同协议
+            // Phase 8c: fresh 实参跳过 retain
+            // Phase 8d.1: fresh 实参从临时帧消费
+            if (!argFresh.empty() && argFresh[i]) {
+                consumeTemp(args[i]);
+                ctorArgs.push_back(args[i]);
+                continue;
+            }
             retainHandleAtCallSite(args[i], argTypes[i]);
             ctorArgs.push_back(args[i]);
         }
@@ -1927,8 +1962,15 @@ llvm::Value* Compiler::compileKnownFunctionCall(
             }
         }
 
-        if (retainHandleAtCallSite(args[i], argTypes[i])) {
-            // callee-clean (DRAFT §7.3)：传参前 retain；callee 末尾析构 release 抵消
+        // callee-clean (DRAFT §7.3)：传参前 retain；callee 末尾析构 release 抵消
+        // Phase 8c: fresh 实参（call/array literal）已自带 +1，跳过 retain
+        // Phase 8d.1: fresh 实参的 +1 移交给 callee，从临时帧消费掉
+        if (typeNeedsDestructor(argTypes[i])) {
+            if (i < callNode->getArgs().size() && !isFreshHandleExpr(callNode->getArgs()[i])) {
+                retainHandleAtCallSite(args[i], argTypes[i]);
+            } else if (i < callNode->getArgs().size()) {
+                consumeTemp(args[i]);
+            }
             callArgs.push_back(args[i]);
             continue;
         }

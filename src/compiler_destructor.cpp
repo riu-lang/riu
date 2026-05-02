@@ -235,6 +235,126 @@ void Compiler::retainStructFieldsAtCallSite(llvm::Value* argVal, const string& s
     }
 }
 
+// ==================== Phase 8d.1: per-statement 临时清单 ====================
+
+// 在新语句入口 push 一个空帧
+void Compiler::pushTempFrame() {
+    _tempStack.emplace_back();
+}
+
+// 弹出顶帧；对其中未消费的 fresh RC 句柄发出 release（顺序无关，统一在帧末尾）
+// 覆盖 Box/Array/Weak（单 handle by-value）+ 含 RC 字段 struct value（Phase 8d.4，靠 spillSlot dtor）。
+// 调用前必须保证当前 IR 插入点能 dominate 帧内所有 Value*（线性控制流要求）。
+void Compiler::popAndReleaseTempFrame() {
+    if (_tempStack.empty()) return;
+    auto frame = std::move(_tempStack.back());
+    _tempStack.pop_back();
+    if (frame.empty()) return;
+
+    // 当前 BB 已被终结（如 ret 已 emit）就直接丢弃，避免在 unreachable 后插入指令
+    auto* bb = _builder.GetInsertBlock();
+    if (bb && bb->getTerminator()) return;
+
+    for (auto& t : frame) {
+        if (!t.val) continue;
+        if (t.type.isBox()) {
+            auto handle = _builder.CreateExtractValue(t.val, {0}, "temp.box.handle");
+            _builder.CreateCall(runtime::getBoxReleaseFn(_module, _builder), {handle});
+        } else if (t.type.isArrayGeneric()) {
+            auto handle = _builder.CreateExtractValue(t.val, {0}, "temp.array.handle");
+            _builder.CreateCall(runtime::getArrayReleaseFn(_module, _builder), {handle});
+        } else if (t.type.isWeak()) {
+            auto handle = _builder.CreateExtractValue(t.val, {0}, "temp.weak.handle");
+            _builder.CreateCall(runtime::getWeakReleaseFn(_module, _builder), {handle});
+        } else if (t.spillSlot) {
+            // Phase 8d.4: 含 RC 字段 struct value：调其析构（按字段逆序 release）
+            releaseAtPtr(t.spillSlot, t.type);
+        }
+    }
+}
+
+// 记录一个 fresh RC 临时到顶帧
+// - Box/Array/Weak: 直接保存 by-value struct {ptr handle}，pop 时 extractValue 取 handle
+// - 含 RC 字段 struct (e.g. String): 入 entry-block alloca 留 dtor 用，pop 时调 releaseAtPtr
+void Compiler::recordTemp(llvm::Value* val, const TypeInfo& type) {
+    if (!val) return;
+    if (_tempStack.empty()) return;
+    if (type.isBox() || type.isArrayGeneric() || type.isWeak()) {
+        _tempStack.back().push_back({val, type, nullptr});
+        return;
+    }
+    // Phase 8d.4: 含 RC 字段的 struct value（如 String）—— 落 entry 块 alloca，由 releaseAtPtr/dtor 释放
+    if (type.isRef() || type.isPtr()) return;
+    if (isBuiltinType(type.name)) return;
+    if (!structNeedsDestructor(type.name)) return;
+
+    auto* fn = _builder.GetInsertBlock()->getParent();
+    auto& entryBB = fn->getEntryBlock();
+    llvm::IRBuilder<> entryBuilder(&entryBB, entryBB.getFirstInsertionPt());
+    auto slot = entryBuilder.CreateAlloca(getLLVMType(type), nullptr, "temp.struct.spill");
+    _builder.CreateStore(val, slot);
+    _tempStack.back().push_back({val, type, slot});
+}
+
+// 消费顶帧中匹配的 Value*（用于 declare-assign / assign / ret / fresh-arg-callsite 路径）
+// 不存在则忽略（节点可能根本没产生 fresh，比如变量引用）
+// 返回 true 表示找到并移除（调用方借此判断"是否为 fresh"）
+bool Compiler::consumeTemp(llvm::Value* val) {
+    if (!val) return false;
+    if (_tempStack.empty()) return false;
+    auto& frame = _tempStack.back();
+    for (auto it = frame.rbegin(); it != frame.rend(); ++it) {
+        if (it->val == val) {
+            frame.erase(std::next(it).base());
+            return true;
+        }
+    }
+    return false;
+}
+
+// Phase 8d.3: 编译分支体的结果表达式：用子帧吃掉中间 fresh 临时；非 fresh 结果发 retain 归一
+llvm::Value* Compiler::compileBranchResultNormalized(p<ExprNode> expr, const TypeInfo& expectedType) {
+    bool isRcHandle = expectedType.isBox() || expectedType.isArrayGeneric() || expectedType.isWeak();
+    if (!isRcHandle) {
+        return compileExpr(expr);
+    }
+    pushTempFrame();
+    auto val = compileExpr(expr);
+    bool wasFresh = consumeTemp(val);
+    popAndReleaseTempFrame();
+    if (!wasFresh && val) {
+        emitRetainOnHandleValue(val, expectedType);
+    }
+    return val;
+}
+
+// Phase 8d.3: 对一个已存在的 RC 句柄 by-value（Box/Array/Weak struct value）发 retain。
+// 调用前 IR 插入点必须 dominate val。用于分支汇合时把"借用结果"归一为"fresh +1"。
+void Compiler::emitRetainOnHandleValue(llvm::Value* val, const TypeInfo& type) {
+    if (!val) return;
+    if (type.isBox()) {
+        auto handle = _builder.CreateExtractValue(val, {0}, "merge.box.handle");
+        _builder.CreateCall(runtime::getBoxRetainFn(_module, _builder), {handle});
+    } else if (type.isArrayGeneric()) {
+        auto handle = _builder.CreateExtractValue(val, {0}, "merge.array.handle");
+        _builder.CreateCall(runtime::getArrayRetainFn(_module, _builder), {handle});
+    } else if (type.isWeak()) {
+        auto handle = _builder.CreateExtractValue(val, {0}, "merge.weak.handle");
+        _builder.CreateCall(runtime::getWeakRetainFn(_module, _builder), {handle});
+    }
+}
+
+// ==================== Phase 8b: fresh 表达式判定 ====================
+
+// 识别 +1 所有权（fresh）表达式：调用结果（函数 / 方法 / 构造器）+ 数组字面量
+// 用于在复制语义 retain 路径上跳过多余 retain，避免 leak（DRAFT §7.6 / §8）
+bool Compiler::isFreshHandleExpr(p<ExprNode> expr) {
+    if (!expr) return false;
+    if (dynamic_cast<ExprCallNode*>(expr)) return true;
+    if (dynamic_cast<ExprArrayNode*>(expr)) return true;
+    return false;
+}
+
 // ==================== 析构函数需求检查 ====================
 
 // 检查类型是否需要析构函数

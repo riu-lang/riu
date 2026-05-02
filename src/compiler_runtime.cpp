@@ -151,6 +151,40 @@ llvm::Function* getSetConsoleCPFn(llvm::Module* module, llvm::IRBuilder<>& build
     return getOrCreateWindowsAPI(module, builder, "SetConsoleCP");
 }
 
+// ==================== leak 检测（Phase 8a） ====================
+
+// 获取（或新建 extern 声明）全局 _rc_block_count（i64）
+// 用户模块只声明、不定义；定义由 SDK 模块的 emitRcBlockCountDefinition 单独发射
+llvm::GlobalVariable* getRcBlockCountGlobal(llvm::Module* module, llvm::IRBuilder<>& builder) {
+    const string name = "_rc_block_count";
+    if (auto g = module->getGlobalVariable(name)) return g;
+    auto i64Ty = builder.getInt64Ty();
+    return new llvm::GlobalVariable(
+        *module,
+        i64Ty,
+        /*isConstant*/false,
+        llvm::GlobalValue::ExternalLinkage,
+        /*init*/nullptr,  // extern 声明
+        name
+    );
+}
+
+// SDK 端：把 _rc_block_count 由 extern 声明升级为带 init 0 的定义
+static void emitRcBlockCountDefinition(llvm::Module* module, llvm::IRBuilder<>& builder) {
+    auto g = getRcBlockCountGlobal(module, builder);
+    auto i64Ty = builder.getInt64Ty();
+    g->setInitializer(llvm::ConstantInt::get(i64Ty, 0));
+}
+
+// 在当前 IRBuilder 插入位置 emit `_rc_block_count += delta`（delta 为 +1 / -1 i64 常量）
+static void emitRcBlockCountAdd(llvm::IRBuilder<>& builder, llvm::Module* module, int64_t delta) {
+    auto g = getRcBlockCountGlobal(module, builder);
+    auto i64Ty = builder.getInt64Ty();
+    auto cur = builder.CreateLoad(i64Ty, g, "rc_blk_cur");
+    auto next = builder.CreateAdd(cur, llvm::ConstantInt::get(i64Ty, delta), "rc_blk_next");
+    builder.CreateStore(next, g);
+}
+
 // ==================== Box<T> 智能指针支持 ====================
 //
 // Phase 1a 新布局（DRAFT §7.1）：
@@ -332,6 +366,8 @@ llvm::Function* getArrayRetainFn(llvm::Module* module, llvm::IRBuilder<>& builde
 void emitBoxHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module) {
     DEBUG_LOG("Emitting Box helper functions");
 
+    emitRcBlockCountDefinition(module, builder);
+
     auto getProcessHeapFn = runtime::getProcessHeapFn(module, builder);
     auto heapAllocFn = runtime::getHeapAllocFn(module, builder);
     auto heapFreeFn = runtime::getHeapFreeFn(module, builder);
@@ -358,6 +394,8 @@ void emitBoxHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm
             auto totalSize = builder.CreateAdd(payloadSize, headerSize, "total_size");
 
             auto block = builder.CreateCall(heapAllocFn, {heap, builder.getInt64(0), totalSize}, "block");
+
+            emitRcBlockCountAdd(builder, module, +1);
 
             // 写 strong=1（offset 0）
             auto strongPtr = block;
@@ -441,6 +479,7 @@ void emitBoxHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm
             builder.SetInsertPoint(freeBB);
             auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
             builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), block});
+            emitRcBlockCountAdd(builder, module, -1);
             builder.CreateBr(doneBB);
 
             builder.SetInsertPoint(doneBB);
@@ -567,6 +606,7 @@ void emitWeakHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llv
         builder.SetInsertPoint(freeBB);
         auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
         builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), block});
+        emitRcBlockCountAdd(builder, module, -1);
         builder.CreateBr(doneBB);
 
         builder.SetInsertPoint(doneBB);
@@ -613,6 +653,8 @@ void emitArrayHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, ll
 
             auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
             auto block = builder.CreateCall(heapAllocFn, {heap, i64C(0), i64C(32)}, "block");
+
+            emitRcBlockCountAdd(builder, module, +1);
 
             builder.CreateStore(llvm::ConstantInt::get(i32Ty, 1), block);                              // strong @0
             auto weakPtr = builder.CreateGEP(i8Ty, block, {i64C(4)}, "weak_ptr");
@@ -759,6 +801,7 @@ void emitArrayHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, ll
             builder.SetInsertPoint(freeBlockBB);
             auto heap2 = builder.CreateCall(getProcessHeapFn, {}, "heap");
             builder.CreateCall(heapFreeFn, {heap2, i64C(0), handle});
+            emitRcBlockCountAdd(builder, module, -1);
             builder.CreateBr(doneBB);
 
             builder.SetInsertPoint(doneBB);
