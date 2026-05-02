@@ -122,7 +122,7 @@ static void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& f
             if (i) argSigs += ", ";
             try { argSigs += args[i]->getType().name; } catch(...) { argSigs += "?"; }
         }
-        throw YuxError(line, "Ambiguous call to '{}({})': {} overloads match; add type suffix to disambiguate:{}", fnName, argSigs, matches.size(), sigs);
+        throw YuxError(line, ErrorCode::E6014, fnName, argSigs, matches.size(), sigs);
     }
 }
 
@@ -309,18 +309,18 @@ llvm::Value* Compiler::compileMethodCall(
                 }
                 auto* target = _file->packageChild(aliasName, childKey);
                 if (!target) {
-                    throw YuxError(callNode->getLineNumber(),
-                        "module `{}` not found in package `{}`", childKey, aliasSym->moduleName);
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                        ErrorCode::E6001, childKey, aliasSym->moduleName);
                 }
                 const string& fnName = segs.back();
                 auto* fnSym = target->lookupFnSymbolWithParams(fnName, argTypes);
                 if (!fnSym) {
-                    throw YuxError(callNode->getLineNumber(),
-                        "function `{}` not found in module `{}.{}`", fnName, aliasSym->moduleName, childKey);
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                        ErrorCode::E6002, fnName, aliasSym->moduleName + "." + childKey);
                 }
                 if (fnSym->isPrivate) {
-                    throw YuxError(callNode->getLineNumber(),
-                        "Cannot call private function `{}` via package alias", fnName);
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                        ErrorCode::E6003, fnName);
                 }
                 return compileKnownFunctionCall(callNode, fnName, args, argTypes, fnSym);
             }
@@ -335,17 +335,17 @@ llvm::Value* Compiler::compileMethodCall(
             if (aliasSym && aliasSym->kind == SymbolKind::Module) {
                 auto targetMod = _yux ? _yux->module(aliasSym->moduleName) : nullptr;
                 if (!targetMod) {
-                    throw YuxError(callNode->getLineNumber(),
-                        "module `{}` (alias `{}`) not loaded", aliasSym->moduleName, aliasName);
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                        ErrorCode::E6005, aliasSym->moduleName, aliasName);
                 }
                 auto* fnSym = targetMod->lookupFnSymbolWithParams(member, argTypes);
                 if (!fnSym) {
-                    throw YuxError(callNode->getLineNumber(),
-                        "function `{}` not found in module `{}`", member, aliasSym->moduleName);
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                        ErrorCode::E6002, member, aliasSym->moduleName);
                 }
                 if (fnSym->isPrivate) {
-                    throw YuxError(callNode->getLineNumber(),
-                        "Cannot call private function `{}` via module alias", member);
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                        ErrorCode::E6004, member);
                 }
                 return compileKnownFunctionCall(callNode, member, args, argTypes, fnSym);
             }
@@ -442,9 +442,8 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                 if (!explicitTypeArgs.empty()) {
                     // 验证类型参数数量
                     if (explicitTypeArgs.size() != typeParams.size()) {
-                        throw YuxError(node->getLineNumber(),
-                            "Generic function '{}' expects {} type args, got {}",
-                            fnName, typeParams.size(), explicitTypeArgs.size());
+                        throw YuxError(node->getLineNumber(), node->getColumn(),
+                            ErrorCode::E6010, fnName, typeParams.size(), explicitTypeArgs.size());
                     }
                     for (auto& tn : explicitTypeArgs) {
                         typeArgs.push_back(applySubst(tn->getType()));
@@ -637,7 +636,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
         }
     }
 
-    throw YuxError(node->getLineNumber(), "Unsupported call expression");
+    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E6015);
 }
 
 llvm::Value* Compiler::compileFunctionCall(
@@ -659,7 +658,7 @@ llvm::Value* Compiler::compileFunctionCall(
     }
     if (structDecl) {
         if (structDecl->isPrivate()) {
-            throw YuxError(callNode->getLineNumber(), "Cannot use private struct '{}' in constructor", fnName);
+            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6008, fnName);
         }
         string effName = fnName;
         bool isGenericCtor = false;
@@ -667,8 +666,8 @@ llvm::Value* Compiler::compileFunctionCall(
             const auto& typeArgs = callNode->getTypeArgs();
             if (typeArgs.empty()) {
                 throw YuxError(
-                    callNode->getLineNumber(),
-                    "Generic struct '{}' constructor requires explicit type arguments", fnName);
+                    callNode->getLineNumber(), callNode->getColumn(),
+                    ErrorCode::E6009, fnName);
             }
             vector<sp<TypeInfo>> instArgs;
             instArgs.reserve(typeArgs.size());
@@ -740,7 +739,7 @@ llvm::Value* Compiler::compileFunctionCall(
     if (fnName == "ptr_from_addr") {
         DEBUG_LOG("    Expr: PtrFromAddr");
         if (args.size() != 1) {
-            throw YuxError(callNode->getLineNumber(), "ptr_from_addr expects 1 argument");
+            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6020);
         }
         return _builder.CreateIntToPtr(args[0], llvm::PointerType::get(_context, 0), "ptr_from_addr");
     }
@@ -748,7 +747,7 @@ llvm::Value* Compiler::compileFunctionCall(
     if (fnName == "rc_leak_count") {
         DEBUG_LOG("    Expr: rc_leak_count");
         if (!args.empty()) {
-            throw YuxError(callNode->getLineNumber(), "rc_leak_count expects 0 arguments");
+            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6021);
         }
         auto g = runtime::getRcBlockCountGlobal(_module, _builder);
         return _builder.CreateLoad(_builder.getInt64Ty(), g, "rc_leak");
@@ -758,11 +757,10 @@ llvm::Value* Compiler::compileFunctionCall(
         DEBUG_LOG("    Expr: _ptr_offset");
         if (fnSymbol && fnSymbol->isPrivate && !fnSymbol->moduleName.empty() &&
             fnSymbol->moduleName != _file->moduleName()) {
-            throw YuxError(callNode->getLineNumber(),
-                "Cannot call private function '_ptr_offset' (SDK-only Ptr arithmetic)");
+            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6023);
         }
         if (args.size() != 2) {
-            throw YuxError(callNode->getLineNumber(), "_ptr_offset expects 2 arguments");
+            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6022);
         }
         auto i8Ty = _builder.getInt8Ty();
         return _builder.CreateGEP(i8Ty, args[0], args[1], "ptr_off");
@@ -770,7 +768,7 @@ llvm::Value* Compiler::compileFunctionCall(
 
     if (fnSymbol) {
         if (fnSymbol->isPrivate && !fnSymbol->moduleName.empty() && fnSymbol->moduleName != _file->moduleName()) {
-            throw YuxError(callNode->getLineNumber(), "Cannot call private function '{}'", fnName);
+            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6006, fnName);
         }
         return compileKnownFunctionCall(callNode, fnName, args, argTypes, fnSymbol);
     }
@@ -826,9 +824,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(
     const auto& explicitTypeArgs = callNode->getTypeArgs();
     if (!explicitTypeArgs.empty()) {
         if (explicitTypeArgs.size() != typeParams.size()) {
-            throw YuxError(callNode->getLineNumber(),
-                "Generic function '{}' expects {} type args, got {}",
-                fnName, typeParams.size(), explicitTypeArgs.size());
+            throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                ErrorCode::E6010, fnName, typeParams.size(), explicitTypeArgs.size());
         }
         for (auto& tn : explicitTypeArgs) {
             typeArgs.push_back(applySubst(tn->getType()));
@@ -836,9 +833,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(
     } else {
         auto params = genericFn->header()->params();
         if (params.size() != argTypes.size()) {
-            throw YuxError(callNode->getLineNumber(),
-                "Generic function '{}' expects {} params, got {} args",
-                fnName, params.size(), argTypes.size());
+            throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                ErrorCode::E6012, fnName, params.size(), argTypes.size());
         }
 
         map<string, TypeInfo> inferred;
@@ -873,9 +869,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(
         for (auto& tp : typeParams) {
             auto it = inferred.find(tp);
             if (it == inferred.end()) {
-                throw YuxError(callNode->getLineNumber(),
-                    "Cannot infer type parameter '{}' for generic function '{}'",
-                    tp, fnName);
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                    ErrorCode::E6013, tp, fnName);
             }
             typeArgs.push_back(it->second);
         }
@@ -884,13 +879,12 @@ llvm::Value* Compiler::compileGenericFunctionCall(
     if (genericFn->header()->hasAnno("CompilerInner")) {
         if (fnName == "size_of") {
             if (typeArgs.empty()) {
-                throw YuxError(callNode->getLineNumber(),
-                    "Cannot determine type argument for size_of");
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6018);
             }
             auto llvmType = getLLVMType(typeArgs[0]);
             if (!llvmType) {
-                throw YuxError(callNode->getLineNumber(),
-                    "Cannot determine LLVM type for '{}'", typeArgs[0].getFullName());
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                    ErrorCode::E6019, typeArgs[0].getFullName());
             }
             auto size = _module->getDataLayout().getTypeAllocSize(llvmType);
             return _builder.getInt64(size);
@@ -898,12 +892,10 @@ llvm::Value* Compiler::compileGenericFunctionCall(
         if (fnName == "upgrade") {
             // Phase 1d.2：Weak<T> → Box<T>?
             if (typeArgs.size() != 1) {
-                throw YuxError(callNode->getLineNumber(),
-                    "upgrade expects 1 type argument");
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6024);
             }
             if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(),
-                    "upgrade expects 1 argument");
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6025);
             }
             auto& T = typeArgs[0];
             auto tShared = make_shared<TypeInfo>(T);
@@ -948,12 +940,12 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             // 标量 / 用户 struct / Nullable 等其他类型在此报错
             size_t expectedArgs = (fnName == "same_ref" ? 2 : 1);
             if (typeArgs.size() != 1) {
-                throw YuxError(callNode->getLineNumber(),
-                    "{} expects 1 type argument", fnName);
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                    ErrorCode::E6026, fnName);
             }
             if (args.size() != expectedArgs) {
-                throw YuxError(callNode->getLineNumber(),
-                    "{} expects {} argument(s)", fnName, expectedArgs);
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                    ErrorCode::E6027, fnName, expectedArgs);
             }
             auto& T = typeArgs[0];
             auto ptrTy = llvm::PointerType::get(_context, 0);
@@ -1004,12 +996,11 @@ llvm::Value* Compiler::compileGenericFunctionCall(
                     if (auto refExpr = dynamic_cast<ExprGetRefNode*>(argNode)) {
                         return compileGetRefExpr(refExpr);
                     }
-                    throw YuxError(callNode->getLineNumber(),
-                        "{}:<T&> requires a local var or &expr argument", fnName);
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                        ErrorCode::E6028, fnName);
                 }
-                throw YuxError(callNode->getLineNumber(),
-                    "{}:<T> requires T to be Box/Weak/Array/String or U& (got '{}')",
-                    fnName, T.getFullName());
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                    ErrorCode::E6029, fnName, T.getFullName());
             };
 
             if (fnName == "same_ref") {
@@ -1020,8 +1011,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             // ptr_of
             return extractRawPtr(0, true);
         }
-        throw YuxError(callNode->getLineNumber(),
-            "Unknown #CompilerInner function '{}'", fnName);
+        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+            ErrorCode::E6017, fnName);
     }
 
     string mangledName = ensureFnInstance(genericFn, typeArgs, fnOwner, callNode->getLineNumber());
@@ -1202,7 +1193,7 @@ llvm::Value* Compiler::compileArrayMethodCall(
     }
 
     if (!elemType) {
-        throw YuxError(callNode->getLineNumber(), "Array type requires element type");
+        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E3055);
     }
     auto elemLLVMType = getLLVMType(*elemType);
 
@@ -1218,7 +1209,7 @@ llvm::Value* Compiler::compileArrayMethodCall(
     if (member == "at") {
         DEBUG_LOG("    Expr: Array.at()");
         if (args.size() != 1) {
-            throw YuxError(callNode->getLineNumber(), "at requires 1 argument");
+            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6040);
         }
         auto ptr = getReadPtr();
         auto handle = loadArrayHandle(ptr);
@@ -1250,7 +1241,7 @@ llvm::Value* Compiler::compileArrayMethodCall(
     if (member == "pop") {
         DEBUG_LOG("    Expr: Array.pop()");
         if (!arrayPtr) {
-            throw YuxError(callNode->getLineNumber(), "Array.pop() requires an lvalue array");
+            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6041);
         }
         auto handle = loadArrayHandle(arrayPtr);
         auto lenFieldPtr = arrayBlockLenPtr(handle);
@@ -1267,8 +1258,8 @@ llvm::Value* Compiler::compileArrayMethodCall(
 
     if (member == "push" || member == "set_len" || member == "clear") {
         if (!arrayPtr) {
-            throw YuxError(callNode->getLineNumber(),
-                "Array mutation method '{}' requires an lvalue array", member);
+            throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                ErrorCode::E6042, member);
         }
         auto handle = loadArrayHandle(arrayPtr);
         auto lenFieldPtr = arrayBlockLenPtr(handle);
@@ -1286,14 +1277,14 @@ llvm::Value* Compiler::compileArrayMethodCall(
         if (member == "set_len") {
             DEBUG_LOG("    Expr: Array.set_len()");
             if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), "set_len requires 1 argument");
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6043);
             }
             _builder.CreateStore(args[0], lenFieldPtr);
             return voidResult();
         }
         DEBUG_LOG("    Expr: Array.push()");
         if (args.size() != 1) {
-            throw YuxError(callNode->getLineNumber(), "push requires 1 argument");
+            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6044);
         }
         auto elemSize = _module->getDataLayout().getTypeAllocSize(elemLLVMType);
         auto elemVal = args[0];
@@ -1351,7 +1342,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         if (member == "plus") {
             DEBUG_LOG_VAL("    Expr: CompilerInner plus", baseType.name);
             if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), "plus requires 1 argument");
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "plus");
             }
             if (isFloat) {
                 return _builder.CreateFAdd(baseVal, args[0], "add");
@@ -1361,7 +1352,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         if (member == "minus") {
             DEBUG_LOG_VAL("    Expr: CompilerInner minus", baseType.name);
             if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), "minus requires 1 argument");
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "minus");
             }
             if (isFloat) {
                 return _builder.CreateFSub(baseVal, args[0], "sub");
@@ -1371,7 +1362,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         if (member == "mul") {
             DEBUG_LOG_VAL("    Expr: CompilerInner mul", baseType.name);
             if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), "mul requires 1 argument");
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "mul");
             }
             if (isFloat) {
                 return _builder.CreateFMul(baseVal, args[0], "mul");
@@ -1381,7 +1372,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         if (member == "div") {
             DEBUG_LOG_VAL("    Expr: CompilerInner div", baseType.name);
             if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), "div requires 1 argument");
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "div");
             }
             if (isFloat) {
                 return _builder.CreateFDiv(baseVal, args[0], "div");
@@ -1394,7 +1385,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         if (member == "mod") {
             DEBUG_LOG_VAL("    Expr: CompilerInner mod", baseType.name);
             if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), "mod requires 1 argument");
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "mod");
             }
             if (isFloat) {
                 return _builder.CreateFRem(baseVal, args[0], "mod");
@@ -1409,7 +1400,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         if (member == "eq") {
             DEBUG_LOG_VAL("    Expr: CompilerInner eq", baseType.name);
             if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), "eq requires 1 argument");
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "eq");
             }
             if (isFloat) {
                 return _builder.CreateFCmpOEQ(baseVal, args[0], "eq");
@@ -1419,7 +1410,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         if (member == "ne") {
             DEBUG_LOG_VAL("    Expr: CompilerInner ne", baseType.name);
             if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), "ne requires 1 argument");
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "ne");
             }
             if (isFloat) {
                 return _builder.CreateFCmpONE(baseVal, args[0], "ne");
@@ -1429,7 +1420,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         if (member == "lt") {
             DEBUG_LOG_VAL("    Expr: CompilerInner lt", baseType.name);
             if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), "lt requires 1 argument");
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "lt");
             }
             if (isFloat) {
                 return _builder.CreateFCmpOLT(baseVal, args[0], "lt");
@@ -1442,7 +1433,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         if (member == "le") {
             DEBUG_LOG_VAL("    Expr: CompilerInner le", baseType.name);
             if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), "le requires 1 argument");
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "le");
             }
             if (isFloat) {
                 return _builder.CreateFCmpOLE(baseVal, args[0], "le");
@@ -1455,7 +1446,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         if (member == "gt") {
             DEBUG_LOG_VAL("    Expr: CompilerInner gt", baseType.name);
             if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), "gt requires 1 argument");
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "gt");
             }
             if (isFloat) {
                 return _builder.CreateFCmpOGT(baseVal, args[0], "gt");
@@ -1468,7 +1459,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         if (member == "ge") {
             DEBUG_LOG_VAL("    Expr: CompilerInner ge", baseType.name);
             if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), "ge requires 1 argument");
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "ge");
             }
             if (isFloat) {
                 return _builder.CreateFCmpOGE(baseVal, args[0], "ge");
@@ -1483,35 +1474,35 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         if (member == "and") {
             DEBUG_LOG_VAL("    Expr: CompilerInner and", baseType.name);
             if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), "and requires 1 argument");
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "and");
             }
             return _builder.CreateAnd(baseVal, args[0], "and");
         }
         if (member == "or") {
             DEBUG_LOG_VAL("    Expr: CompilerInner or", baseType.name);
             if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), "or requires 1 argument");
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "or");
             }
             return _builder.CreateOr(baseVal, args[0], "or");
         }
         if (member == "xor") {
             DEBUG_LOG_VAL("    Expr: CompilerInner xor", baseType.name);
             if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), "xor requires 1 argument");
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "xor");
             }
             return _builder.CreateXor(baseVal, args[0], "xor");
         }
         if (member == "shl") {
             DEBUG_LOG_VAL("    Expr: CompilerInner shl", baseType.name);
             if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), "shl requires 1 argument");
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "shl");
             }
             return _builder.CreateShl(baseVal, args[0], "shl");
         }
         if (member == "shr") {
             DEBUG_LOG_VAL("    Expr: CompilerInner shr", baseType.name);
             if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), "shr requires 1 argument");
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "shr");
             }
             if (isUnsigned) {
                 return _builder.CreateLShr(baseVal, args[0], "shr");
@@ -1530,7 +1521,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         if (member == "inv") {
             DEBUG_LOG_VAL("    Expr: CompilerInner inv", baseType.name);
             if (isFloat) {
-                throw YuxError(callNode->getLineNumber(), "Cannot apply bitwise NOT to float type: {}", baseType.name);
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E3070, baseType.name);
             }
             return _builder.CreateNot(baseVal, "inv");
         }
@@ -1580,7 +1571,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         return _builder.CreateCall(fn, methodArgs);
     }
     
-    throw YuxError(callNode->getLineNumber(), "Unknown method '{}' for builtin type '{}'", member, baseType.name);
+    throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6016, member, baseType.name);
 }
 
 llvm::Value* Compiler::compileStructMethodCall(
@@ -1676,7 +1667,7 @@ llvm::Value* Compiler::compileStructMethodCall(
             auto dollarPos = currentBase.find('$');
             if (dollarPos != string::npos) currentBase = currentBase.substr(0, dollarPos);
             if (currentBase != actualType.name) {
-                throw YuxError(callNode->getLineNumber(), "Cannot call private method '{}' of struct '{}'", member, actualType.name);
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6007, member, actualType.name);
             }
         }
 

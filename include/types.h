@@ -17,6 +17,7 @@
 #include <cassert>
 #include <iostream>
 #include "antlr4-runtime.h"
+#include "error_code.h"
 
 using namespace std;
 
@@ -106,8 +107,22 @@ public:
 
 using Token = TokenInfo;
 
+// 源码位置：line 为 1-based 行号，col 为 1-based 列号。col == 0 表示未知（合成节点 / 旧路径）。
+struct SourceLocation {
+    int line = 0;
+    int col = 0;
+
+    SourceLocation() = default;
+    SourceLocation(int l, int c) : line(l), col(c) {
+    }
+
+    [[nodiscard]] bool valid() const { return line > 0; }
+};
+
 class YuxError : public std::runtime_error {
     int _line = 0;
+    int _col = 0; // 0 表示列未知
+    const char* _code = "E0000"; // 指向 ErrorCode 表中的静态字面量
 
 public:
     explicit YuxError(const string& msg, int line) : runtime_error(msg), _line(line) {
@@ -120,14 +135,57 @@ public:
         assert(line > 0 && "YuxError line must be > 0");
     }
 
+    template <class... _Types>
+    explicit YuxError(int line, int col, const format_string<_Types...> format, _Types&&... args) : runtime_error(
+        std::vformat(format.get(), std::make_format_args(args...))), _line(line), _col(col) {
+        assert(line > 0 && "YuxError line must be > 0");
+    }
+
+    template <class... _Types>
+    explicit YuxError(SourceLocation loc, const format_string<_Types...> format, _Types&&... args) : runtime_error(
+        std::vformat(format.get(), std::make_format_args(args...))), _line(loc.line), _col(loc.col) {
+        assert(loc.line > 0 && "YuxError line must be > 0");
+    }
+
+    // ErrorCode 路径：模板取自 ec.message，code 取自 ec.code
+    template <class... _Types>
+    explicit YuxError(int line, int col, const ErrorCodeDef& ec, _Types&&... args) : runtime_error(
+        std::vformat(std::string_view(ec.message), std::make_format_args(args...))),
+        _line(line), _col(col), _code(ec.code) {
+        assert(line > 0 && "YuxError line must be > 0");
+    }
+
+    // 列未知场景的便利重载（驱动层 / 模块层 errorLine）
+    template <class... _Types>
+    explicit YuxError(int line, const ErrorCodeDef& ec, _Types&&... args) : runtime_error(
+        std::vformat(std::string_view(ec.message), std::make_format_args(args...))),
+        _line(line), _col(0), _code(ec.code) {
+        assert(line > 0 && "YuxError line must be > 0");
+    }
+
+    template <class... _Types>
+    explicit YuxError(SourceLocation loc, const ErrorCodeDef& ec, _Types&&... args) : runtime_error(
+        std::vformat(std::string_view(ec.message), std::make_format_args(args...))),
+        _line(loc.line), _col(loc.col), _code(ec.code) {
+        assert(loc.line > 0 && "YuxError line must be > 0");
+    }
+
     void setLineNumber(int line) {
         assert(line > 0 && "YuxError line must be > 0");
         _line = line;
     }
 
+    void setColumn(int col) { _col = col; }
+
     [[nodiscard]] int getLineNumber() const {
         return _line;
     }
+
+    [[nodiscard]] int getColumn() const { return _col; }
+
+    [[nodiscard]] SourceLocation location() const { return {_line, _col}; }
+
+    [[nodiscard]] const char* getCode() const { return _code; }
 };
 
 template <typename T>

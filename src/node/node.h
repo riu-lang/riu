@@ -62,6 +62,7 @@ class Node {
 protected:
     p<Node> _parent;
     int _line = 0;
+    int _col = 0; // 1-based 列号；0 表示未知（合成节点 / 旧路径）
 
 public:
     explicit Node(const p<Node>& parent) : _parent(parent) {
@@ -76,10 +77,30 @@ public:
     [[nodiscard]] p<ScopeNode> findNearestScope() const;
 
     void setLineNumber(int line) { _line = line; }
-    
+
+    void setColumn(int col) { _col = col; }
+
+    void setLocation(int line, int col) {
+        _line = line;
+        _col = col;
+    }
+
+    void setLocation(SourceLocation loc) {
+        _line = loc.line;
+        _col = loc.col;
+    }
+
     [[nodiscard]] int getLineNumber() const { return _line; }
-    
+
+    [[nodiscard]] int getColumn() const { return _col; }
+
+    [[nodiscard]] SourceLocation location() const { return {_line, _col}; }
+
     [[nodiscard]] virtual int resolveLineNumber() const;
+
+    [[nodiscard]] virtual int resolveColumn() const;
+
+    [[nodiscard]] virtual SourceLocation resolveLocation() const;
 };
 
 class Named {

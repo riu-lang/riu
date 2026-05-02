@@ -27,7 +27,7 @@ void Compiler::rethrowWithInstantiationContext(const YuxError& e) const {
     if (ctx.empty() || what.find("instantiated as '") != string::npos) {
         throw e;
     }
-    throw YuxError(e.getLineNumber(), "{}\n  {}", what, ctx);
+    throw YuxError(e.getLineNumber(), e.getColumn(), ErrorCode::E3099, what, ctx);
 }
 
 // 格式化泛型实例化上下文信息
@@ -89,8 +89,7 @@ string Compiler::ensureStructInstance(
 
     // 验证类型参数数量
     if (args.size() != baseDecl->typeParams().size()) {
-        throw YuxError(sourceLine,
-            "Generic struct '{}' expects {} type args, got {}",
+        throw YuxError(sourceLine, ErrorCode::E6011,
             baseName, baseDecl->typeParams().size(), args.size());
     }
 
@@ -131,8 +130,7 @@ string Compiler::ensureStructInstance(
             if (!llvmTy) {
                 auto substituted = applySubst(fieldType);
                 throw YuxError(
-                    field->name().getLine(),
-                    "Unknown type '{}' for field '{}' of generic struct '{}'",
+                    static_cast<int>(field->name().getLine()), ErrorCode::E3098,
                     substituted.getFullName(), field->name().getText(), baseName);
             }
             fieldTypes.push_back(llvmTy);

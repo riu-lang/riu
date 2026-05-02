@@ -212,14 +212,14 @@ bool FileNode::isAmbiguousAlias(const string& alias) const {
 
 void FileNode::throwAmbiguousAlias(const string& alias, int line) const {
     auto it = _wildcardAliasSources.find(alias);
-    string msg = "`" + alias + "` is ambiguous, matched";
+    string sources;
     if (it != _wildcardAliasSources.end()) {
         for (size_t i = 0; i < it->second.size(); ++i) {
-            msg += (i == 0 ? " " : " and ");
-            msg += it->second[i];
+            sources += (i == 0 ? "" : " and ");
+            sources += it->second[i];
         }
     }
-    throw YuxError(msg, line);
+    throw YuxError(line, ErrorCode::E2008, alias, sources);
 }
 
 void FileNode::addWildcardImport(FileNode* file) {

@@ -31,6 +31,8 @@
 #include "utf8.h"
 #include "yux.h"
 #include "build_cache.h"
+#include "diagnostic.h"
+#include "syntax_error_listener.h"
 #include "formatter.h"
 #include "lsp/lsp_server.h"
 
@@ -159,17 +161,35 @@ struct IRResult {
     unique_ptr<llvm::Module> module;
 };
 
+// 把 runtime_error 渲染成统一格式的诊断到 stderr。
+// sourcePath 提供文件名（可空），用于源码片段查找与错误头打印。
+// prefix 为可选前缀（如 "Error in SDK file " + path + ": "），写在诊断头之前。
+// 对非 YuxError 异常仅打印 prefix + msg。
+void reportRuntimeError(const string& sourcePath, const runtime_error& e, const string& prefix = "") {
+    if (auto* yuxErr = dynamic_cast<const YuxError*>(&e)) {
+        if (!prefix.empty()) std::cerr << prefix;
+        DiagnosticEngine::renderYuxError(std::cerr, sourcePath, *yuxErr);
+    } else {
+        std::cerr << prefix << e.what() << std::endl;
+    }
+}
+
 void parseAST(string inputFile, Yux& yux, bool isSdk = false) {
     antlr4::ANTLRFileStream file;
     file.loadFromFile(inputFile);
     yuxLexer lexer(&file);
+    SyntaxErrorListener errListener(inputFile, std::cerr);
+    lexer.removeErrorListeners();
+    lexer.addErrorListener(&errListener);
 
     antlr4::CommonTokenStream tokenStream(&lexer);
 
     yuxParser parser(&tokenStream);
+    parser.removeErrorListeners();
+    parser.addErrorListener(&errListener);
 
     auto program = parser.program();
-    if (parser.getNumberOfSyntaxErrors()) {
+    if (errListener.hasErrors() || parser.getNumberOfSyntaxErrors()) {
         exit(1);
     }
 
@@ -179,14 +199,7 @@ void parseAST(string inputFile, Yux& yux, bool isSdk = false) {
     try {
         astBuilder.build(program);
     } catch (runtime_error& e) {
-        string msg = e.what();
-        if (auto* yuxErr = dynamic_cast<YuxError*>(&e)) {
-            int line = yuxErr->getLineNumber();
-            if (line > 0) {
-                msg = "line " + to_string(line) + ": " + msg;
-            }
-        }
-        std::cerr << msg << std::endl;
+        reportRuntimeError(inputFile, e);
         exit(1);
     }
 }
@@ -195,13 +208,18 @@ IRResult compileIR(string inputFile, Yux& yux, bool isSdk = false) {
     antlr4::ANTLRFileStream file;
     file.loadFromFile(inputFile);
     yuxLexer lexer(&file);
+    SyntaxErrorListener errListener(inputFile, std::cerr);
+    lexer.removeErrorListeners();
+    lexer.addErrorListener(&errListener);
 
     antlr4::CommonTokenStream tokenStream(&lexer);
 
     yuxParser parser(&tokenStream);
+    parser.removeErrorListeners();
+    parser.addErrorListener(&errListener);
 
     auto program = parser.program();
-    if (parser.getNumberOfSyntaxErrors()) {
+    if (errListener.hasErrors() || parser.getNumberOfSyntaxErrors()) {
         exit(1);
     }
 
@@ -231,14 +249,7 @@ IRResult compileIR(string inputFile, Yux& yux, bool isSdk = false) {
         Compiler compiler(*context, builder, module.get(), ast, &yux, isSdk);
         compiler.compile(ast);
     } catch (runtime_error& e) {
-        string msg = e.what();
-        if (auto* yuxErr = dynamic_cast<YuxError*>(&e)) {
-            int line = yuxErr->getLineNumber();
-            if (line > 0) {
-                msg = "line " + to_string(line) + ": " + msg;
-            }
-        }
-        std::cerr << msg << std::endl;
+        reportRuntimeError(inputFile, e);
         exit(1);
     }
     return {std::move(context), std::move(module)};
@@ -338,10 +349,15 @@ void parseSdkDir(string sdkDir, Yux& yux) {
         antlr4::ANTLRFileStream file;
         file.loadFromFile(yuxFile);
         yuxLexer lexer(&file);
+        SyntaxErrorListener errListener(yuxFile, std::cerr);
+        lexer.removeErrorListeners();
+        lexer.addErrorListener(&errListener);
         antlr4::CommonTokenStream tokenStream(&lexer);
         yuxParser parser(&tokenStream);
+        parser.removeErrorListeners();
+        parser.addErrorListener(&errListener);
         auto program = parser.program();
-        if (parser.getNumberOfSyntaxErrors()) {
+        if (errListener.hasErrors() || parser.getNumberOfSyntaxErrors()) {
             std::cerr << "Syntax errors in SDK file: " << yuxFile << std::endl;
             exit(1);
         }
@@ -350,12 +366,7 @@ void parseSdkDir(string sdkDir, Yux& yux) {
         try {
             astBuilder.build(program);
         } catch (runtime_error& e) {
-            string msg = e.what();
-            if (auto* yuxErr = dynamic_cast<YuxError*>(&e)) {
-                int line = yuxErr->getLineNumber();
-                if (line > 0) msg = "line " + to_string(line) + ": " + msg;
-            }
-            std::cerr << "Error in SDK file " << yuxFile << ": " << msg << std::endl;
+            reportRuntimeError(yuxFile, e, "Error in SDK file " + yuxFile + ": ");
             exit(1);
         }
     }
@@ -369,12 +380,8 @@ void parseSdkDir(string sdkDir, Yux& yux) {
         try {
             yux.loadMainFile(fs::absolute(yuxFile).string(), it->second.moduleName);
         } catch (runtime_error& e) {
-            string msg = e.what();
-            if (auto* yuxErr = dynamic_cast<YuxError*>(&e)) {
-                int line = yuxErr->getLineNumber();
-                if (line > 0) msg = "line " + to_string(line) + ": " + msg;
-            }
-            std::cerr << "Error in SDK file " << yuxFile << ": " << msg << std::endl;
+            reportRuntimeError(fs::absolute(yuxFile).string(), e,
+                "Error in SDK file " + yuxFile + ": ");
             exit(1);
         }
     }
@@ -404,12 +411,7 @@ IRResult compileSdkDir(string sdkDir, Yux& yux) {
     std::sort(yuxFiles.begin(), yuxFiles.end());
 
     auto reportErr = [&](const string& yuxFile, runtime_error& e) {
-        string msg = e.what();
-        if (auto* yuxErr = dynamic_cast<YuxError*>(&e)) {
-            int line = yuxErr->getLineNumber();
-            if (line > 0) msg = "line " + to_string(line) + ": " + msg;
-        }
-        std::cerr << "Error in SDK file " << yuxFile << ": " << msg << std::endl;
+        reportRuntimeError(yuxFile, e, "Error in SDK file " + yuxFile + ": ");
     };
 
     // 第一遍：平铺文件 → 合并入 _sdkFile，Compiler isSdk=true 顺带发出运行时辅助
@@ -423,10 +425,15 @@ IRResult compileSdkDir(string sdkDir, Yux& yux) {
         antlr4::ANTLRFileStream file;
         file.loadFromFile(yuxFile);
         yuxLexer lexer(&file);
+        SyntaxErrorListener errListener(yuxFile, std::cerr);
+        lexer.removeErrorListeners();
+        lexer.addErrorListener(&errListener);
         antlr4::CommonTokenStream tokenStream(&lexer);
         yuxParser parser(&tokenStream);
+        parser.removeErrorListeners();
+        parser.addErrorListener(&errListener);
         auto program = parser.program();
-        if (parser.getNumberOfSyntaxErrors()) {
+        if (errListener.hasErrors() || parser.getNumberOfSyntaxErrors()) {
             std::cerr << "Syntax errors in SDK file: " << yuxFile << std::endl;
             exit(1);
         }
@@ -738,12 +745,9 @@ int wmain(int argc, wchar_t* argv[]) {
             Compiler compiler(*ctx, builder, mod.get(), file, &yux, false);
             compiler.compile(file);
         } catch (runtime_error& e) {
-            string msg = e.what();
-            if (auto* yuxErr = dynamic_cast<YuxError*>(&e)) {
-                int line = yuxErr->getLineNumber();
-                if (line > 0) msg = "line " + to_string(line) + ": " + msg;
-            }
-            std::cerr << msg << std::endl;
+            // 通过模块名查回源文件路径（Yux::modulePath 维护映射）
+            string srcPath = yux.modulePath(moduleName);
+            reportRuntimeError(srcPath, e);
             return false;
         }
 
@@ -797,12 +801,7 @@ int wmain(int argc, wchar_t* argv[]) {
             try {
                 yux.loadMainFile(abs, mn);
             } catch (runtime_error& e) {
-                string msg = e.what();
-                if (auto* yuxErr = dynamic_cast<YuxError*>(&e)) {
-                    int line = yuxErr->getLineNumber();
-                    if (line > 0) msg = "line " + to_string(line) + ": " + msg;
-                }
-                std::cerr << mn << ": " << msg << std::endl;
+                reportRuntimeError(abs, e, mn + ": ");
                 return 1;
             }
         }
@@ -866,14 +865,7 @@ int wmain(int argc, wchar_t* argv[]) {
     try {
         mainFile = yux.loadMainFile(inputFile, baseName);
     } catch (runtime_error& e) {
-        string msg = e.what();
-        if (auto* yuxErr = dynamic_cast<YuxError*>(&e)) {
-            int line = yuxErr->getLineNumber();
-            if (line > 0) {
-                msg = "line " + to_string(line) + ": " + msg;
-            }
-        }
-        std::cerr << msg << std::endl;
+        reportRuntimeError(inputFile, e);
         return 1;
     }
 

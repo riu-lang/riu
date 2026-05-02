@@ -9,6 +9,7 @@
 #include <toml.hpp>
 
 #include "ast_builder.h"
+#include "syntax_error_listener.h"
 #include "yux/yuxLexer.h"
 #include "yux/yuxParser.h"
 
@@ -62,7 +63,7 @@ void Yux::initProjectFromDir(const string& rootDir) {
     fs::path root(rootDir);
     fs::path tomlPath = root / "yux.toml";
     if (!fs::exists(tomlPath)) {
-        throw YuxError("yux.toml not found in " + rootDir, 1);
+        throw YuxError(1, ErrorCode::E5001, rootDir);
     }
     _projectRoot = root.string();
     // 项目模式下，模块/包根路径是 `<projectRoot>/src`
@@ -73,14 +74,14 @@ void Yux::initProjectFromDir(const string& rootDir) {
         // name 是必填字段：缺失或空串都视为配置错误。
         // toml11 原生 UTF-8，`name="中文"` 能正确读入。
         if (!data.contains("name")) {
-            throw YuxError("yux.toml is missing required field `name`", 1);
+            throw YuxError(1, ErrorCode::E5002);
         }
         if (!data.at("name").is_string()) {
-            throw YuxError("yux.toml field `name` must be a string", 1);
+            throw YuxError(1, ErrorCode::E5003);
         }
         _projectName = data.at("name").as_string();
         if (_projectName.empty()) {
-            throw YuxError("yux.toml field `name` must not be empty", 1);
+            throw YuxError(1, ErrorCode::E5004);
         }
         if (data.contains("entry") && data.at("entry").is_string()) {
             _projectEntry = data.at("entry").as_string();
@@ -92,7 +93,7 @@ void Yux::initProjectFromDir(const string& rootDir) {
         if (data.contains("lib")) {
             const auto& lib = data.at("lib");
             if (!lib.is_table()) {
-                throw YuxError("yux.toml `lib` must be a table", 1);
+                throw YuxError(1, ErrorCode::E5005);
             }
             if (lib.contains("type") && lib.at("type").is_string()) {
                 _projectLibType = lib.at("type").as_string();
@@ -100,21 +101,21 @@ void Yux::initProjectFromDir(const string& rootDir) {
                 _projectLibType = "static";
             }
             if (_projectLibType != "static" && _projectLibType != "dynamic") {
-                throw YuxError("yux.toml `lib.type` must be \"static\" or \"dynamic\"", 1);
+                throw YuxError(1, ErrorCode::E5006);
             }
             // TODO(dynamic): 暂只实现 static；dynamic 待项目依赖功能完善后做
             if (_projectLibType == "dynamic") {
-                throw YuxError("yux.toml `lib.type=\"dynamic\"` not yet supported", 1);
+                throw YuxError(1, ErrorCode::E5007);
             }
         }
         // lib 与 entry 互斥
         if (!_projectLibType.empty() && !_projectEntry.empty()) {
-            throw YuxError("yux.toml `[lib]` and `entry` are mutually exclusive", 1);
+            throw YuxError(1, ErrorCode::E5008);
         }
     } catch (const YuxError&) {
         throw;
     } catch (const std::exception& e) {
-        throw YuxError(string("failed to parse yux.toml: ") + e.what(), 1);
+        throw YuxError(1, ErrorCode::E5009, e.what());
     }
 }
 
@@ -138,11 +139,16 @@ p<FileNode> Yux::_parseFile(const string& absPath, const string& moduleName, int
     antlr4::ANTLRFileStream stream;
     stream.loadFromFile(absPath);
     yux::yuxLexer lexer(&stream);
+    SyntaxErrorListener errListener(absPath, std::cerr);
+    lexer.removeErrorListeners();
+    lexer.addErrorListener(&errListener);
     antlr4::CommonTokenStream tokenStream(&lexer);
     yux::yuxParser parser(&tokenStream);
+    parser.removeErrorListeners();
+    parser.addErrorListener(&errListener);
     auto program = parser.program();
-    if (parser.getNumberOfSyntaxErrors()) {
-        throw YuxError("syntax errors in " + absPath, errorLine);
+    if (errListener.hasErrors() || parser.getNumberOfSyntaxErrors()) {
+        throw YuxError(errorLine, ErrorCode::E5010, absPath);
     }
 
     auto astBuilder = std::make_unique<ASTBuilder>(_astContext, *this, moduleName, false);
@@ -280,7 +286,7 @@ p<FileNode> Yux::loadModule(const string& moduleName, int errorLine) {
                 chain += " -> ";
             }
             chain += moduleName;
-            throw YuxError("circular module import: " + chain, errorLine);
+            throw YuxError(errorLine, ErrorCode::E5011, chain);
         }
     }
 
@@ -296,7 +302,7 @@ p<FileNode> Yux::loadModule(const string& moduleName, int errorLine) {
         : std::filesystem::path(_sourceRoot) / relPath;
 
     if (!std::filesystem::exists(fullPath)) {
-        throw YuxError("module not found: " + moduleName + " (expected file " + fullPath.string() + ")", errorLine);
+        throw YuxError(errorLine, ErrorCode::E5012, moduleName, fullPath.string());
     }
 
     string absPath = std::filesystem::absolute(fullPath).string();

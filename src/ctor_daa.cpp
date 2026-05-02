@@ -59,9 +59,7 @@ private:
             return;
         }
         if (it->second != State::Init) {
-            throw YuxError(line,
-                "field '$.{}' {} before initialization (§8.2)",
-                f, what);
+            throw YuxError(line, ErrorCode::E4010, f, what);
         }
     }
 
@@ -69,9 +67,7 @@ private:
         for (auto& f : _fields) {
             auto it = _state.find(f);
             if (it == _state.end() || it->second != State::Init) {
-                throw YuxError(line,
-                    "field '$.{}' must be initialized before {} (§8.2)",
-                    f, reason);
+                throw YuxError(line, ErrorCode::E4011, f, reason);
             }
         }
     }
@@ -80,9 +76,7 @@ private:
         for (auto& f : _fields) {
             auto it = _state.find(f);
             if (it == _state.end() || it->second != State::Init) {
-                throw YuxError(line,
-                    "field '$.{}' is not initialized at constructor exit (§8.2)",
-                    f);
+                throw YuxError(line, ErrorCode::E4012, f);
             }
         }
     }
@@ -148,8 +142,7 @@ private:
         if (auto ret = dynamic_cast<StatementRetNode*>(s)) {
             if (ret->expr() && isSelfLiteral(ret->expr())) {
                 // §8.3：`ret $;` 禁止（返回 Self& 而非 Self by value）
-                throw YuxError(s->getLineNumber(),
-                    "cannot return `$` from constructor (§8.3)");
+                throw YuxError(s->getLineNumber(), s->getColumn(), ErrorCode::E4013);
             }
             if (ret->expr()) visitExpr(ret->expr());
             requireAllInit(s->getLineNumber(), "ret");

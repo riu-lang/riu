@@ -70,17 +70,14 @@ private:
                 return resolveRoot(name);
             }
         }
-        throw YuxError(line,
-            "T& borrow initializer must be &expr or an existing T& variable");
+        throw YuxError(line, ErrorCode::E4001);
     }
 
     void registerBorrow(const std::string& refName, const std::string& rootName, int line) {
         if (_declared.find(rootName) == _declared.end()) {
             // 根对象不在当前函数 declared 集合：在扁平作用域下意味着
             // 来源根对象的作用域不能覆盖借用方（§3.5 违规）。
-            throw YuxError(line,
-                "T& '{}' borrows root '{}' whose scope does not cover the borrow",
-                refName, rootName);
+            throw YuxError(line, ErrorCode::E4002, refName, rootName);
         }
         _refToRoot[refName] = rootName;
         _activeBorrows[rootName]++;
@@ -89,9 +86,7 @@ private:
     void checkRootReassign(const std::string& name, int line) {
         auto it = _activeBorrows.find(name);
         if (it != _activeBorrows.end() && it->second > 0) {
-            throw YuxError(line,
-                "root '{}' cannot be reassigned while borrowed (§3.5)",
-                name);
+            throw YuxError(line, ErrorCode::E4003, name);
         }
     }
 

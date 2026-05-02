@@ -72,19 +72,16 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
     // 类型检查
     if (hasDeclaredRetType) {
         if (retType.empty()) {
-            throw YuxError(lineNum,
-                "Function declares return type '{}', but returns void",
+            throw YuxError(lineNum, ErrorCode::E3021,
                 declRetType.getFullName());
         }
         if (!nullableWrap && retType != declRetType) {
-            throw YuxError(lineNum,
-                "Return type mismatch: function declares '{}', but expression has type '{}'",
+            throw YuxError(lineNum, ErrorCode::E3020,
                 declRetType.getFullName(), retType.getFullName());
         }
     } else {
         if (!retType.empty()) {
-            throw YuxError(lineNum,
-                "Void function cannot return a value of type '{}'",
+            throw YuxError(lineNum, ErrorCode::E3022,
                 retType.getFullName());
         }
     }
@@ -211,12 +208,12 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
     // 处理数组填充表达式 ([N; value] 语法)
     if (auto arrayInitNode = dynamic_cast<ExprArrayInitNode*>(expr)) {
         if (!node->varType()) {
-            throw YuxError(node->getLineNumber(), "Array fill expression requires array type annotation with size");
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3067);
         }
 
         TypeInfo varType = node->varType()->getType();
         if (!varType.isArray()) {
-            throw YuxError(node->getLineNumber(), "Array fill expression requires array type annotation");
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3068);
         }
 
         DEBUG_LOG_VAL("  Statement: Declare (ArrayFill)", varName << " : " << varType.name);
@@ -246,7 +243,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         if (varType.isRef()) {
             auto innerType = varType.refElementType();
             if (!innerType) {
-                throw YuxError(node->getLineNumber(), "Ref type requires element type");
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3053);
             }
             llvm::Value* rhsPtr = nullptr;
             if (auto getRefNode = dynamic_cast<ExprGetRefNode*>(expr)) {
@@ -254,8 +251,8 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 // 校验 &expr 内层类型与声明 inner 一致
                 auto innerOfGetRef = getRefNode->getType().refElementType();
                 if (!innerOfGetRef || *innerOfGetRef != *innerType) {
-                    throw YuxError(node->getLineNumber(),
-                        "T& local initializer type mismatch: expected {}&, got {}&",
+                    throw YuxError(node->getLineNumber(), node->getColumn(),
+                        ErrorCode::E3017,
                         innerType->name,
                         innerOfGetRef ? innerOfGetRef->name : "?");
                 }
@@ -265,18 +262,16 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 auto sym = _currentFnNode->lookupSymbol(srcName);
                 if (!sym || !sym->type.isRef() || !sym->type.refElementType()
                     || *sym->type.refElementType() != *innerType) {
-                    throw YuxError(node->getLineNumber(),
-                        "T& copy-bind source type mismatch: '{}' is not {}&",
-                        srcName, innerType->name);
+                    throw YuxError(node->getLineNumber(), node->getColumn(),
+                        ErrorCode::E3018, srcName, innerType->name);
                 }
                 auto it = _localVarPtrs.find(srcName);
                 if (it == _localVarPtrs.end()) {
-                    throw YuxError(node->getLineNumber(), "Cannot bind T& to non-local: {}", srcName);
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E4004, srcName);
                 }
                 rhsPtr = it->second;
             } else {
-                throw YuxError(node->getLineNumber(),
-                    "T& local initializer must be &expr or copy-bind from a T& variable");
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3019);
             }
             _localVarPtrs[varName] = rhsPtr;
             return;
@@ -291,7 +286,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         if (varType.isBox()) {
             auto elemType = varType.boxElementType();
             if (!elemType) {
-                throw YuxError(node->getLineNumber(), "Box type requires element type");
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3056);
             }
 
             auto exprVal = compileExpr(expr);
@@ -338,7 +333,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 auto handleField = _builder.CreateGEP(boxStructType, alloca, {zero, zero}, "handle_field");
                 _builder.CreateStore(block, handleField);
             } else {
-                throw YuxError(node->getLineNumber(), "Box type mismatch: expected Box<{}>, got {}", elemType->name, exprType.name);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, elemType->name, exprType.name);
             }
 
             _scopeVars.push_back(varName);  // 加入作用域变量列表 (需要析构)
@@ -347,7 +342,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         else if (varType.isWeak()) {
             auto elemType = varType.weakElementType();
             if (!elemType) {
-                throw YuxError(node->getLineNumber(), "Weak type requires element type");
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3052);
             }
 
             auto exprVal = compileExpr(expr);
@@ -356,8 +351,8 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             bool fromBox = exprType.isBox() && exprType.boxElementType() && *exprType.boxElementType() == *elemType;
             bool fromWeak = exprType.isWeak() && exprType.weakElementType() && *exprType.weakElementType() == *elemType;
             if (!fromBox && !fromWeak) {
-                throw YuxError(node->getLineNumber(),
-                    "Weak<{}> 仅支持从 Box<{}> 或 Weak<{}> 构造", elemType->name, elemType->name, elemType->name);
+                throw YuxError(node->getLineNumber(), node->getColumn(),
+                    ErrorCode::E3016, elemType->name, elemType->name, elemType->name);
             }
 
             auto srcStructType = getLLVMType(exprType);
@@ -416,7 +411,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         else if (varType.isArrayGeneric()) {
             auto elemType = varType.arrayGenericElementType();
             if (!elemType) {
-                throw YuxError(node->getLineNumber(), "Array type requires element type");
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3055);
             }
 
             auto elemLLVMType = getLLVMType(*elemType);
@@ -457,7 +452,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 // Phase 8d.1: fresh 来源从临时帧消费
                 auto exprType = expr->getType();
                 if (!exprType.isArrayGeneric() && exprType.name != "Array") {
-                    throw YuxError(node->getLineNumber(), "Array<T> initialization requires Array<T> expression or array literal");
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3064);
                 }
                 auto exprVal = compileExpr(expr);
                 if (!isFreshHandleExpr(expr)) {
@@ -478,7 +473,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         else if (varType.isNullable()) {
             auto innerType = varType.nullableInnerType();
             if (!innerType) {
-                throw YuxError(node->getLineNumber(), "Nullable type requires inner type");
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3051);
             }
 
             auto nullableStructType = getLLVMType(varType);
@@ -517,9 +512,8 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                     _builder.CreateStore(_builder.getInt1(true), hasField);
                     _builder.CreateStore(exprVal, valueField);
                 } else {
-                    throw YuxError(node->getLineNumber(),
-                        "Cannot assign {} to Nullable<{}>",
-                        exprType.name, innerType->name);
+                    throw YuxError(node->getLineNumber(), node->getColumn(),
+                        ErrorCode::E3015, exprType.name, innerType->name);
                 }
             }
             _scopeVars.push_back(varName);
@@ -532,12 +526,12 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             // 数组类型检查
             if (varType.isArray() && exprType.isArray()) {
                 if (varType.arraySize != exprType.arraySize) {
-                    throw YuxError(node->getLineNumber(), "Array size mismatch: expected {}, got {}", varType.arraySize, exprType.arraySize);
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3012, varType.arraySize, exprType.arraySize);
                 }
                 if (varType.elementType && exprType.elementType) {
                     if (*varType.elementType != *exprType.elementType) {
-                        throw YuxError(node->getLineNumber(),
-                            "Array element type mismatch: expected {}, got {}", varType.elementType->name,
+                        throw YuxError(node->getLineNumber(), node->getColumn(),
+                            ErrorCode::E3013, varType.elementType->name,
                             exprType.elementType->name);
                     }
                 }
@@ -629,13 +623,13 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
     if (subs.empty()) {
         auto sym = _currentFnNode->lookupSymbol(objName);
         if (!sym) {
-            throw YuxError(node->getLineNumber(), "Undefined variable: {}", objName);
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, objName);
         }
 
         // Phase 4b: T& 赋值是 store-through（改被引对象），不是 rebind；
         // T& 形参 / val 局部 T& 的 writeable=false 不影响"写被引"，写权由源对象决定（4d 校验）
         if (!sym->writeable && !sym->type.isRef()) {
-            throw YuxError(node->getLineNumber(), "Cannot assign to immutable variable: {}", objName);
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3093, objName);
         }
 
         DEBUG_LOG_VAL("  Statement: Assign", objName << " : " << sym->type.name);
@@ -645,7 +639,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         if (sym->type.isRef()) {
             auto innerType = sym->type.refElementType();
             if (!innerType) {
-                throw YuxError(node->getLineNumber(), "Ref type missing inner type");
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3054);
             }
             llvm::Value* targetPtr = _localVarPtrs[objName];
             auto innerLLVMType = getLLVMType(*innerType);
@@ -719,7 +713,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         if (assignOp == AssignOp::Eq && sym->type.isNullable()) {
             auto innerType = sym->type.nullableInnerType();
             if (!innerType) {
-                throw YuxError(node->getLineNumber(), "Nullable type requires inner type");
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3051);
             }
 
             auto nullableStructType = getLLVMType(sym->type);
@@ -754,9 +748,8 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                     _builder.CreateStore(_builder.getInt1(true), hasField);
                     _builder.CreateStore(exprVal, valueField);
                 } else {
-                    throw YuxError(node->getLineNumber(),
-                        "Cannot assign {} to Nullable<{}>",
-                        exprType.name, innerType->name);
+                    throw YuxError(node->getLineNumber(), node->getColumn(),
+                        ErrorCode::E3015, exprType.name, innerType->name);
                 }
             }
             return;
@@ -793,7 +786,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         // 处理成员访问赋值 (obj.field = value)
         auto sym = _currentFnNode->lookupSymbol(objName);
         if (!sym) {
-            throw YuxError(node->getLineNumber(), "Undefined variable: {}", objName);
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, objName);
         }
 
         TypeInfo actualType = sym->type;
@@ -809,14 +802,14 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             structDecl = _yux->sdkFile()->getStructDecl(actualType.name);
         }
         if (!structDecl) {
-            throw YuxError(node->getLineNumber(), "Cannot access member on non-struct type: {}", actualType.name);
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3045, actualType.name);
         }
 
         DEBUG_LOG_VAL("  Statement: MemberAssign", objName << "." << subs[0].getText());
 
         auto it = _localVarPtrs.find(objName);
         if (it == _localVarPtrs.end()) {
-            throw YuxError(node->getLineNumber(), "Variable not found: {}", objName);
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3031, objName);
         }
 
         llvm::Value* structPtr = it->second;
@@ -828,7 +821,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             auto memberName = subs[i].getText();
             int fieldIndex = structDecl->fieldIndex(memberName);
             if (fieldIndex < 0) {
-                throw YuxError(node->getLineNumber(), "Struct {} has no field: {}", actualType.name, memberName);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3040, actualType.name, memberName);
             }
 
             auto field = structDecl->fields()[fieldIndex];
@@ -838,7 +831,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                 auto dollarPos = currentBase.find('$');
                 if (dollarPos != string::npos) currentBase = currentBase.substr(0, dollarPos);
                 if (currentBase != actualType.name) {
-                    throw YuxError(node->getLineNumber(), "Cannot access private field '{}' of struct '{}'", memberName, actualType.name);
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3042, memberName, actualType.name);
                 }
             }
 
@@ -916,7 +909,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                 _builder.CreateStore(valToStore, fieldPtr);
             } else {
                 // TODO: 支持嵌套成员访问
-                throw YuxError(node->getLineNumber(), "Nested member access not yet supported");
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3046);
             }
         }
     }
@@ -983,7 +976,7 @@ void Compiler::compileBreakStatement(p<StatementBreakNode> node) {
 
     // 检查是否在循环内
     if (_loopExitBlocks.empty()) {
-        throw YuxError(node->getLineNumber(), "break statement not within a loop");
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3094);
     }
 
     // 跳转到循环退出块
@@ -1006,7 +999,7 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
 
     auto& indices = node->indices();
     if (indices.empty()) {
-        throw YuxError(node->getLineNumber(), "Array assignment requires at least one index");
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3065);
     }
 
     DEBUG_LOG_VAL("  Statement: ArraySet", arrayType.name);
@@ -1021,7 +1014,7 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
             auto varName = objLiteral->getValue().getText();
             auto it = _localVarPtrs.find(varName);
             if (it == _localVarPtrs.end()) {
-                throw YuxError(node->getLineNumber(), "Array variable not found: {}", varName);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3033, varName);
             }
             currentPtr = it->second;
         }
@@ -1082,14 +1075,14 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
     }
 
     if (!currentPtr) {
-        throw YuxError(node->getLineNumber(), "Array assignment requires a variable");
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3066);
     }
 
     // 处理动态数组 Array<T>（Phase 1b：经由 handle 间接访问 Block.data）
     if (arrayType.isArrayGeneric()) {
         auto elemType = arrayType.arrayGenericElementType();
         if (!elemType) {
-            throw YuxError(node->getLineNumber(), "Array type requires element type");
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3055);
         }
 
         auto elemLLVMType = getLLVMType(*elemType);
@@ -1120,7 +1113,7 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
 
     // 处理固定大小数组 [N]T
     if (!arrayType.isArray()) {
-        throw YuxError(node->getLineNumber(), "Cannot index non-array type: {}", arrayType.name);
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3062, arrayType.name);
     }
 
     // 支持多维数组索引
@@ -1171,7 +1164,7 @@ void Compiler::compileStatement(p<StatementNode> node) {
         compileArraySetStatement(setNode);
     } else {
         popAndReleaseTempFrame();
-        throw YuxError(node->getLineNumber(), "Unknown statement type");
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3092);
     }
 
     popAndReleaseTempFrame();

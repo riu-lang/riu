@@ -76,9 +76,8 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
         elementType = node->explicitType()->getType();
         // 类型检查
         if (literalType != elementType) {
-            throw YuxError(node->getLineNumber(),
-                "Array fill literal type mismatch: literal is {}, but explicit type is {}",
-                literalType.name, elementType.name);
+            throw YuxError(node->getLineNumber(), node->getColumn(),
+                ErrorCode::E3009, literalType.name, elementType.name);
         }
     } else {
         elementType = literalType;
@@ -86,9 +85,8 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
 
     // 验证元素类型与目标数组类型匹配
     if (targetType.elementType && *targetType.elementType != elementType) {
-        throw YuxError(node->getLineNumber(),
-            "Array fill element type mismatch: expected {}, got {}",
-            targetType.elementType->name, elementType.name);
+        throw YuxError(node->getLineNumber(), node->getColumn(),
+            ErrorCode::E3010, targetType.elementType->name, elementType.name);
     }
 
     DEBUG_LOG_VAL("    Expr: ArrayInit", targetType.name);
@@ -128,7 +126,7 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
         fillValue = llvm::ConstantInt::get(getLLVMType(elementType), intFillVal, false);
         isZeroFill = !boolVal;  // false 值优化
     } else {
-        throw YuxError(node->getLineNumber(), "Unsupported literal type for array fill");
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3081);
     }
 
     // 填充数组
@@ -296,7 +294,7 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             return _builder.CreateLoad(globalVar->getValueType(), globalVar, "global.load");
         }
 
-        throw YuxError(node->getLineNumber(), "Undefined variable: {}", varName);
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, varName);
     } else if (auto cpLiteral = dynamic_cast<LiteralCodePointNode*>(literal)) {
         DEBUG_LOG_VAL("    Expr: CodePointLiteral", text << " : u32");
         return llvm::ConstantInt::get(getLLVMType(type), cpLiteral->codePoint(), false);
@@ -367,7 +365,7 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
         storeArrayHandle(alloca, blockGlobal);
         return _builder.CreateLoad(stringType, alloca, "str_val");
     }
-    throw YuxError(node->getLineNumber(), "Unsupported literal type");
+    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3080);
 }
 
 // ==================== 自定义类型运算符方法调用 ====================
@@ -396,7 +394,7 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(
         auto leftVal = compileExpr(leftExpr);
         auto structType = getLLVMType(leftType);
         if (!structType) {
-            throw YuxError(lineNum, "Cannot get LLVM type for '{}'", leftType.name);
+            throw YuxError(lineNum, ErrorCode::E3096, leftType.name);
         }
         auto alloca = _builder.CreateAlloca(structType, nullptr, "op_lhs_tmp");
         _builder.CreateStore(leftVal, alloca);
@@ -419,22 +417,22 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(
     }
     
     if (!methodSymbol) {
-        throw YuxError(lineNum, "Type '{}' does not support operator '{}' (method '{}' not found)", 
-                       leftType.name, methodName == "plus" ? "+" : 
-                       methodName == "minus" ? "-" : 
-                       methodName == "mul" ? "*" : 
-                       methodName == "div" ? "/" : 
-                       methodName == "mod" ? "%" : 
-                       methodName == "and" ? "&" : 
-                       methodName == "or" ? "|" : 
-                       methodName == "xor" ? "^" : 
-                       methodName == "shl" ? "<<" : 
-                       methodName == "shr" ? ">>" : 
-                       methodName == "eq" ? "==" : 
-                       methodName == "ne" ? "!=" : 
-                       methodName == "lt" ? "<" : 
-                       methodName == "le" ? "<=" : 
-                       methodName == "gt" ? ">" : 
+        throw YuxError(lineNum, ErrorCode::E3073,
+                       leftType.name, methodName == "plus" ? "+" :
+                       methodName == "minus" ? "-" :
+                       methodName == "mul" ? "*" :
+                       methodName == "div" ? "/" :
+                       methodName == "mod" ? "%" :
+                       methodName == "and" ? "&" :
+                       methodName == "or" ? "|" :
+                       methodName == "xor" ? "^" :
+                       methodName == "shl" ? "<<" :
+                       methodName == "shr" ? ">>" :
+                       methodName == "eq" ? "==" :
+                       methodName == "ne" ? "!=" :
+                       methodName == "lt" ? "<" :
+                       methodName == "le" ? "<=" :
+                       methodName == "gt" ? ">" :
                        methodName == "ge" ? ">=" : methodName, methodName);
     }
     
@@ -518,9 +516,9 @@ llvm::Value* Compiler::compileCustomTypeUnaryOp(
     }
     
     if (!methodSymbol) {
-        throw YuxError(lineNum, "Type '{}' does not support unary operator '{}' (method '{}' not found)", 
-                       type.name, methodName == "neg" ? "-" : 
-                       methodName == "inv" ? "~" : 
+        throw YuxError(lineNum, ErrorCode::E3074,
+                       type.name, methodName == "neg" ? "-" :
+                       methodName == "inv" ? "~" :
                        methodName == "not" ? "!" : methodName, methodName);
     }
     
@@ -628,7 +626,7 @@ llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
         }
         return _builder.CreateSRem(left, right);
     }
-    throw YuxError(node->getLineNumber(), "Unsupported mul/div/mod operation");
+    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3077);
 }
 
 llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
@@ -682,7 +680,7 @@ llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
         }
         return _builder.CreateAShr(left, right);
     }
-    throw YuxError(node->getLineNumber(), "Unsupported binary operation");
+    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3075);
 }
 
 llvm::Value* Compiler::compileParenExpr(p<ExprParenNode> node) {
@@ -696,13 +694,13 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
     auto rightType = node->right()->getType();
 
     if (leftType != rightType) {
-        throw YuxError(node->getLineNumber(), "Type mismatch in comparison: left is {}, right is {}", leftType.name, rightType.name);
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3004, leftType.name, rightType.name);
     }
 
     // Phase 1d.3：禁 Weak == / !=（DRAFT §5：v1 不暴露 handle 比较语义）
     if (leftType.isWeak()) {
         if (node->op() == ExprCompareNode::Op::Eq || node->op() == ExprCompareNode::Op::Ne) {
-            throw YuxError(node->getLineNumber(), "Weak<T> does not support == / != (v1 does not expose handle comparison)");
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3078);
         }
     }
 
@@ -809,7 +807,7 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
     default:
         break;
     }
-    throw YuxError(node->getLineNumber(), "Unsupported comparison operation");
+    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3076);
 }
 
 llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
@@ -981,7 +979,7 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
 
     auto& indices = node->indices();
     if (indices.empty()) {
-        throw YuxError(node->getLineNumber(), "Array access requires at least one index");
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3060);
     }
 
     DEBUG_LOG_VAL("    Expr: ArrayGet", arrayType.name);
@@ -994,7 +992,7 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
             auto varName = objLiteral->getValue().getText();
             auto it = _localVarPtrs.find(varName);
             if (it == _localVarPtrs.end()) {
-                throw YuxError(node->getLineNumber(), "Array variable not found: {}", varName);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3033, varName);
             }
             currentPtr = it->second;
         }
@@ -1015,13 +1013,13 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
     }
 
     if (!currentPtr) {
-        throw YuxError(node->getLineNumber(), "Array access requires a variable");
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3061);
     }
 
     if (arrayType.isArrayGeneric()) {
         auto elemType = arrayType.arrayGenericElementType();
         if (!elemType) {
-            throw YuxError(node->getLineNumber(), "Array type requires element type");
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3055);
         }
 
         auto elemLLVMType = getLLVMType(*elemType);
@@ -1035,7 +1033,7 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
     }
 
     if (!arrayType.isArray()) {
-        throw YuxError(node->getLineNumber(), "Cannot index non-array type: {}", arrayType.name);
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3062, arrayType.name);
     }
 
     for (auto& indexExpr : indices) {
@@ -1098,7 +1096,7 @@ llvm::Value* Compiler::compileArrayLiteralExpr(p<ExprArrayNode> node) {
 
     // 固定大小数组 [N]T 字面量
     if (elements.empty()) {
-        throw YuxError(node->getLineNumber(), "Empty array literal not supported");
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3063);
     }
 
     auto alloca = _builder.CreateAlloca(llvmArrayType, nullptr, "array.literal");
@@ -1123,13 +1121,13 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
 
     auto it = _localVarPtrs.find(objName);
     if (it == _localVarPtrs.end()) {
-        throw YuxError(node->getLineNumber(), "Variable not found: {}", objName);
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3031, objName);
     }
 
     llvm::Value* currentPtr = it->second;
     auto sym = _currentFnNode->lookupSymbol(objName);
     if (!sym) {
-        throw YuxError(node->getLineNumber(), "Undefined variable: {}", objName);
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, objName);
     }
 
     TypeInfo currentType = sym->type;
@@ -1156,12 +1154,12 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
             structDecl = _yux->sdkFile()->getStructDecl(currentType.name);
         }
         if (!structDecl) {
-            throw YuxError(node->getLineNumber(), "Cannot access field on non-struct type: {}", currentType.name);
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3041, currentType.name);
         }
 
         int fieldIndex = structDecl->fieldIndex(memberName);
         if (fieldIndex < 0) {
-            throw YuxError(node->getLineNumber(), "Struct {} has no field: {}", currentType.name, memberName);
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3040, currentType.name, memberName);
         }
 
         auto field = structDecl->fields()[fieldIndex];
@@ -1170,7 +1168,7 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
             auto dollarPos = currentBase.find('$');
             if (dollarPos != string::npos) currentBase = currentBase.substr(0, dollarPos);
             if (currentBase != currentType.name) {
-                throw YuxError(node->getLineNumber(), "Cannot access private field '{}' of struct '{}'", memberName, currentType.name);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3042, memberName, currentType.name);
             }
         }
 
@@ -1238,17 +1236,17 @@ llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
         return _builder.CreateNeg(right, "neg");
     case ExprUnaryNode::Op::Rev:
         if (isFloat) {
-            throw YuxError(node->getLineNumber(), "Cannot apply bitwise NOT to float type: {}", type.name);
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3070, type.name);
         }
         return _builder.CreateNot(right, "not");
     case ExprUnaryNode::Op::Not:
         if (!isBool) {
-            throw YuxError(node->getLineNumber(), "Cannot apply logical NOT to non-bool type: {}", type.name);
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3071, type.name);
         }
         return _builder.CreateNot(right, "lnot");
     }
 
-    throw YuxError(node->getLineNumber(), "Unknown unary operator");
+    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3072);
 }
 
 llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
@@ -1305,7 +1303,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
                 auto dollarPos = currentBase.find('$');
                 if (dollarPos != string::npos) currentBase = currentBase.substr(0, dollarPos);
                 if (currentBase != actualType.name) {
-                    throw YuxError(node->getLineNumber(), "Cannot access private field '{}' of struct '{}'", member, actualType.name);
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3042, member, actualType.name);
                 }
             }
 
@@ -1369,7 +1367,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
             }
         }
     }
-    throw YuxError(node->getLineNumber(), "Unsupported dot expression");
+    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3090);
 }
 
 // 编译 a?.b 安全成员访问
@@ -1384,8 +1382,8 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
     auto baseType = baseExpr->getType();
 
     if (!baseType.isNullable()) {
-        throw YuxError(node->resolveLineNumber(),
-            "`?.` requires Nullable<T> on the left, got {}", baseType.name);
+        throw YuxError(node->resolveLineNumber(), node->resolveColumn(),
+            ErrorCode::E3025, baseType.name);
     }
     auto innerType = baseType.nullableInnerType();
     // Phase 5: Box<T>? 自动 deref —— 把 Box<U> 视为 U 进字段查
@@ -1394,7 +1392,7 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
     if (innerIsBox) {
         auto boxInner = innerType->boxElementType();
         if (!boxInner) {
-            throw YuxError(node->resolveLineNumber(), "Box<T> missing inner type T");
+            throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3050);
         }
         innerType = boxInner;
     }
@@ -1403,13 +1401,13 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
         innerStructDecl = _yux->sdkFile()->getStructDecl(innerType->name);
     }
     if (!innerStructDecl) {
-        throw YuxError(node->resolveLineNumber(),
-            "`?.` inner type {} has no struct decl", innerType->name);
+        throw YuxError(node->resolveLineNumber(), node->resolveColumn(),
+            ErrorCode::E3044, innerType->name);
     }
     int fieldIdx = innerStructDecl->fieldIndex(member);
     if (fieldIdx < 0) {
-        throw YuxError(node->resolveLineNumber(),
-            "Struct {} has no field `{}`", innerType->name, member);
+        throw YuxError(node->resolveLineNumber(), node->resolveColumn(),
+            ErrorCode::E3040, innerType->name, member);
     }
     auto fieldType = innerStructDecl->fields()[fieldIdx]->getType();
     if (innerType->isGeneric() && innerStructDecl->isGeneric()
@@ -1497,12 +1495,12 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
 llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
     auto leftType = node->left()->getType();
     if (!leftType.isNullable()) {
-        throw YuxError(node->resolveLineNumber(),
-            "Left side of `??` must be Nullable<T>, got {}", leftType.name);
+        throw YuxError(node->resolveLineNumber(), node->resolveColumn(),
+            ErrorCode::E3024, leftType.name);
     }
     auto innerType = leftType.nullableInnerType();
     if (!innerType) {
-        throw YuxError(node->resolveLineNumber(), "Nullable<T> missing inner type T");
+        throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3051);
     }
     auto innerLLVMType = getLLVMType(*innerType);
 
@@ -1539,9 +1537,8 @@ llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
     auto rightType = node->right()->getType();
     auto rightVal = compileBranchResultNormalized(node->right(), *innerType);
     if (rightType != *innerType) {
-        throw YuxError(node->resolveLineNumber(),
-            "`??` right side type {} doesn't match Nullable inner type {}",
-            rightType.name, innerType->name);
+        throw YuxError(node->resolveLineNumber(), node->resolveColumn(),
+            ErrorCode::E3023, rightType.name, innerType->name);
     }
     auto elseEndBB = _builder.GetInsertBlock();
     _builder.CreateBr(mergeBB);
@@ -1610,7 +1607,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         // 实际处理在 compileDeclareAssignStatement 中
         return nullptr;
     } else {
-        throw YuxError(node->getLineNumber(), "Unknown expression type");
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3091);
     }
 }
 

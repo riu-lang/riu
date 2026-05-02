@@ -177,7 +177,7 @@ void Compiler::compileGlobalConsts() {
             bool boolVal = (text == "true");
             initValue = llvm::ConstantInt::get(llvmType, boolVal ? 1 : 0, false);
         } else {
-            throw YuxError(globalConst->getLineNumber(), "Unsupported literal type for global constant: {}", type.name);
+            throw YuxError(globalConst->getLineNumber(), globalConst->getColumn(), ErrorCode::E3082, type.name);
         }
 
         // 设置链接类型: 私有常量使用内部链接，公开常量使用外部链接
@@ -407,8 +407,7 @@ string Compiler::ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& type
     // 验证类型参数数量
     auto& typeParams = baseFn->header()->typeParams();
     if (typeArgs.size() != typeParams.size()) {
-        throw YuxError(sourceLine,
-            "Generic function '{}' expects {} type args, got {}",
+        throw YuxError(sourceLine, ErrorCode::E6010,
             baseName, typeParams.size(), typeArgs.size());
     }
 

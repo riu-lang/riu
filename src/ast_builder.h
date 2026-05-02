@@ -31,7 +31,9 @@ class ASTBuilder : public yux::yuxBaseVisitor {
         if (ctx) {
             auto start = ctx->getStart();
             if (start) {
-                node->setLineNumber(start->getLine());
+                // 列号转 1-based（ANTLR 的 charPositionInLine 为 0-based）
+                node->setLocation(static_cast<int>(start->getLine()),
+                                  static_cast<int>(start->getCharPositionInLine()) + 1);
             }
         }
         return node;

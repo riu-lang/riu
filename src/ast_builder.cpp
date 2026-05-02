@@ -23,8 +23,9 @@ vector<string> collectAnnos(const AnnoVec& annos) {
         string name = a->name->getText();
         if (!knownAnnos().contains(name)) {
             throw YuxError(
-                a->name->getLine(),
-                "Unknown build annotation `#{}`", name);
+                static_cast<int>(a->name->getLine()),
+                static_cast<int>(a->name->getCharPositionInLine()) + 1,
+                ErrorCode::E2005, name);
         }
         out.push_back(std::move(name));
     }
@@ -175,18 +176,14 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
 
     auto pathKind = _yux.modulePathKind(modName);
     if (pathKind == Yux::ModulePathKind::Conflict) {
-        throw YuxError(
-            "module `" + modName + "` is ambiguous: both `" + modName + ".yux` and `" + modName + "/` exist",
-            line);
+        throw YuxError(line, ErrorCode::E2003, modName, modName, modName);
     }
 
     if (!wildcard) {
         // 命名空间别名导入：`use a.b.c` 把 `c` 作为指向 a.b.c 的模块/包别名。
         // 冲突检测：仅看当前文件的本地符号（允许覆盖 SDK 在父作用域注册的同名别名）
         if (file->localSymbols().contains(alias)) {
-            throw YuxError(
-                "module alias `" + alias + "` conflicts with existing symbol",
-                line);
+            throw YuxError(line, ErrorCode::E2004, alias);
         }
         if (pathKind == Yux::ModulePathKind::Package) {
             // 目录作为包别名：`use math` 其中 math/ 是目录。
@@ -558,9 +555,8 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
     if (!ctx->fnBody()) {
         if (!header->hasAnno("CompilerInner")) {
             throw YuxError(
-                header->getLineNumber(),
-                "Function `{}` has no body; only `#CompilerInner` functions may omit the body",
-                header->name().getText());
+                header->getLineNumber(), header->getColumn(),
+                ErrorCode::E2006, header->name().getText());
         }
         DEBUG_LOG("  Body: (compiler-synthesized)");
     } else if (ctx->fnBody()->fnExprkBody()) {
@@ -568,7 +564,7 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
         auto exprBody = ctx->fnBody()->fnExprkBody();
         auto expr = any_cast_p<ExprNode>(visit(exprBody->expr()));
         auto retStmt = createWithLine<StatementRetNode>(ctx, fn, expr);
-        retStmt->setLineNumber(expr->resolveLineNumber());
+        retStmt->setLocation(expr->resolveLineNumber(), expr->resolveColumn());
         fn->addStatement(retStmt);
     } else if (ctx->fnBody()->fnBlockBody()) {
         DEBUG_LOG("  Body: Block");
@@ -583,7 +579,7 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
             DEBUG_LOG("  Block has result, adding return");
             auto resultExpr = stmtBlockNode->resultExpr();
             auto retStmt = createWithLine<StatementRetNode>(ctx, fn, resultExpr);
-            retStmt->setLineNumber(resultExpr->resolveLineNumber());
+            retStmt->setLocation(resultExpr->resolveLineNumber(), resultExpr->resolveColumn());
             fn->addStatement(retStmt);
         }
     }
@@ -791,15 +787,14 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
         if (!fnCtx->fnBody()) {
             if (!header->hasAnno("CompilerInner")) {
                 throw YuxError(
-                    header->getLineNumber(),
-                    "Method `{}.{}` has no body; only `#CompilerInner` methods may omit the body",
-                    structName, header->name().getText());
+                    header->getLineNumber(), header->getColumn(),
+                    ErrorCode::E2007, structName, header->name().getText());
             }
         } else if (fnCtx->fnBody()->fnExprkBody()) {
             auto exprBody = fnCtx->fnBody()->fnExprkBody();
             auto expr = any_cast_p<ExprNode>(visit(exprBody->expr()));
             auto retStmt = createWithLine<StatementRetNode>(ctx, fn, expr);
-            retStmt->setLineNumber(expr->resolveLineNumber());
+            retStmt->setLocation(expr->resolveLineNumber(), expr->resolveColumn());
             fn->addStatement(retStmt);
         } else if (fnCtx->fnBody()->fnBlockBody()) {
             auto blockBody = fnCtx->fnBody()->fnBlockBody();
@@ -812,7 +807,7 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
             if (stmtBlockNode->hasResult()) {
                 auto resultExpr = stmtBlockNode->resultExpr();
                 auto retStmt = createWithLine<StatementRetNode>(ctx, fn, resultExpr);
-                retStmt->setLineNumber(resultExpr->resolveLineNumber());
+                retStmt->setLocation(resultExpr->resolveLineNumber(), resultExpr->resolveColumn());
                 fn->addStatement(retStmt);
             }
         }
@@ -862,7 +857,7 @@ std::any ASTBuilder::visitFnClean(yux::yuxParser::FnCleanContext* ctx) {
         auto exprBody = ctx->fnBody()->fnExprkBody();
         auto expr = any_cast_p<ExprNode>(visit(exprBody->expr()));
         auto retStmt = createWithLine<StatementRetNode>(ctx, fn, expr);
-        retStmt->setLineNumber(expr->resolveLineNumber());
+        retStmt->setLocation(expr->resolveLineNumber(), expr->resolveColumn());
         fn->addStatement(retStmt);
     } else if (ctx->fnBody()->fnBlockBody()) {
         auto blockBody = ctx->fnBody()->fnBlockBody();
@@ -875,7 +870,7 @@ std::any ASTBuilder::visitFnClean(yux::yuxParser::FnCleanContext* ctx) {
         if (stmtBlockNode->hasResult()) {
             auto resultExpr = stmtBlockNode->resultExpr();
             auto retStmt = createWithLine<StatementRetNode>(ctx, fn, resultExpr);
-            retStmt->setLineNumber(resultExpr->resolveLineNumber());
+            retStmt->setLocation(resultExpr->resolveLineNumber(), resultExpr->resolveColumn());
             fn->addStatement(retStmt);
         }
     }
@@ -1000,7 +995,7 @@ std::any ASTBuilder::visitStatementRet(yux::yuxParser::StatementRetContext* ctx)
     auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
     DEBUG_LOG("  Statement: Return");
     auto retStmt = createWithLine<StatementRetNode>(ctx, scope, expr);
-    retStmt->setLineNumber(expr->resolveLineNumber());
+    retStmt->setLocation(expr->resolveLineNumber(), expr->resolveColumn());
     return p<StatementNode>(retStmt);
 }
 
@@ -1460,7 +1455,8 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
         if (innerT->getType().kind == TypeKind::Generic && innerT->getType().name == "Weak") {
             auto qt = nul->SymbolQuest()->getSymbol();
             throw YuxError(qt ? (int)qt->getLine() : 0,
-                "Weak<T>? is forbidden: Weak is natively nullable (upgrade returns Box<T>?)");
+                qt ? static_cast<int>(qt->getCharPositionInLine()) + 1 : 0,
+                ErrorCode::E2001);
         }
         auto qt = nul->SymbolQuest()->getSymbol();
         Token nullableName(string("Nullable"), qt ? qt->getLine() : 0);
@@ -1481,7 +1477,7 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
         inner = p<TypeNode>(createWithLine<TypeArrayNode>(a, parent, elemType, count));
         andTok = a->SymbolAnd();
     } else {
-        throw YuxError(0, "buildTypeWithRef: unknown typeWithRef alternative");
+        throw YuxError(1, ErrorCode::E2002);
     }
 
     if (andTok) {
@@ -1508,7 +1504,8 @@ std::any ASTBuilder::visitTypeNullable(yux::yuxParser::TypeNullableContext* ctx)
         auto innerTI = inner->getType();
         if (innerTI.kind == TypeKind::Generic && innerTI.name == "Weak") {
             int line = questTok ? (int)questTok->getLine() : 0;
-            throw YuxError(line, "Weak<T>? is forbidden: Weak is natively nullable (upgrade returns Box<T>?)");
+            int col  = questTok ? (int)questTok->getCharPositionInLine() + 1 : 0;
+            throw YuxError(line, col, ErrorCode::E2001);
         }
     }
 

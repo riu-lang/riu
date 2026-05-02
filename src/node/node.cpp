@@ -138,3 +138,11 @@ p<ScopeNode> Node::findNearestScope() const {
 int Node::resolveLineNumber() const {
     return _line;
 }
+
+int Node::resolveColumn() const {
+    return _col;
+}
+
+SourceLocation Node::resolveLocation() const {
+    return {resolveLineNumber(), resolveColumn()};
+}

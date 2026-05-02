@@ -95,6 +95,7 @@ public:
     [[nodiscard]] const p<ExprNode>& right() const;
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
+    [[nodiscard]] int resolveColumn() const override;
 };
 
 class ExprMulDivModNode : public ExprNode {
@@ -118,6 +119,7 @@ public:
     [[nodiscard]] const p<ExprNode>& right() const;
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
+    [[nodiscard]] int resolveColumn() const override;
 };
 
 class ExprBinOpNode : public ExprNode {
@@ -141,6 +143,7 @@ public:
     [[nodiscard]] const p<ExprNode>& right() const;
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
+    [[nodiscard]] int resolveColumn() const override;
 };
 
 class ExprParenNode : public ExprNode {
@@ -179,6 +182,7 @@ public:
     [[nodiscard]] bool isSafe() const { return _safe; }
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
+    [[nodiscard]] int resolveColumn() const override;
 
     // 解析形如 `aliasLit.s1.s2...sN` 的 Dot 链。
     // 成功时：aliasName 置为根字面量；segments 按顺序存放 [s1, ..., sN]（不含 alias）。
@@ -207,6 +211,7 @@ public:
     [[nodiscard]] const p<ExprNode>& right() const;
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
+    [[nodiscard]] int resolveColumn() const override;
 };
 
 class StatementBlockNode : public ScopeNode {
@@ -259,6 +264,7 @@ public:
     [[nodiscard]] const p<StatementBlockNode>& elseBlock() const;
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
+    [[nodiscard]] int resolveColumn() const override;
 };
 
 class ExprOneLineIfElseNode : public ExprNode {
@@ -279,6 +285,7 @@ public:
     [[nodiscard]] const p<ExprNode>& falseValue() const { return _falseValue; }
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
+    [[nodiscard]] int resolveColumn() const override;
 };
 
 class ExprIfElsePreValueNode : public ExprNode {
@@ -299,6 +306,7 @@ public:
     [[nodiscard]] const p<ExprNode>& falseValue() const { return _falseValue; }
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
+    [[nodiscard]] int resolveColumn() const override;
 };
 
 class ExprGetNode : public ExprNode {
@@ -316,6 +324,7 @@ public:
     [[nodiscard]] const vector<p<ExprNode>>& indices() const;
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
+    [[nodiscard]] int resolveColumn() const override;
 };
 
 class ExprArrayNode : public ExprNode {
@@ -330,6 +339,7 @@ public:
     [[nodiscard]] const vector<p<ExprNode>>& elements() const;
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
+    [[nodiscard]] int resolveColumn() const override;
 };
 
 class ExprArrayInitNode : public ExprNode {
@@ -363,6 +373,7 @@ public:
     [[nodiscard]] const vector<Token>& subs() const { return _subs; }
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
+    [[nodiscard]] int resolveColumn() const override;
 };
 
 class ExprUnaryNode : public ExprNode {
@@ -384,6 +395,7 @@ public:
     [[nodiscard]] const p<ExprNode>& right() const;
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
+    [[nodiscard]] int resolveColumn() const override;
 };
 
 // a ?? b：a 为 Nullable<T> 时，有值取 a.get()，否则取 b
@@ -402,6 +414,7 @@ public:
     [[nodiscard]] const p<ExprNode>& right() const { return _right; }
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
+    [[nodiscard]] int resolveColumn() const override;
 };
 
 #endif //YUX_LANG_EXPR_NODE_H
