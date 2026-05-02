@@ -16,6 +16,7 @@
 .claude/settings.local.json
 /BUGS.md
 /CURRENT.md
+/DRAFT-*.md
 
 /*.cmd
 /*.ps1
