@@ -16,6 +16,9 @@
 #include <lld/Common/Driver.h>
 #include <llvm/CodeGen/CommandFlags.h>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
+#include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
+#include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
+#include <llvm/Support/MemoryBuffer.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/LegacyPassManager.h>
@@ -149,6 +152,88 @@ bool compileIRToObj(llvm::Module* module, const std::string& outputPath) {
 
     delete targetMachine;
     return true;
+}
+
+// Phase 1 spike: build a user IR module and run via in-process LLJIT.
+// 加载预编译 sdk core.obj 作为对象层符号源，再加用户 IR；用 process loader
+// 兜底解析 kernel32 等动态库符号；查 mainStartup 直接调用并返回退出码。
+//
+// 该路径绕过 obj 写盘 + LLD 链接，单次成功用例从 ~2.1s 降到 IR 生成 + JIT 装载耗时。
+// 仅供 Phase 1 验证；Phase 2 起会被 `yux test` 子命令收编。
+int runViaJIT(std::unique_ptr<llvm::Module> mod,
+              std::unique_ptr<llvm::LLVMContext> ctx,
+              const std::vector<std::unique_ptr<llvm::Module>>& extraMods,
+              std::vector<std::unique_ptr<llvm::LLVMContext>>& extraCtxs,
+              const std::string& sdkObjPath) {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+
+    auto jitOrErr = llvm::orc::LLJITBuilder().create();
+    if (!jitOrErr) {
+        llvm::errs() << "[jit] LLJIT create failed: "
+                     << llvm::toString(jitOrErr.takeError()) << "\n";
+        return 1;
+    }
+    auto& jit = *jitOrErr;
+    auto& jd = jit->getMainJITDylib();
+
+    // 进程内符号兜底（kernel32: HeapAlloc, GetStdHandle, WriteFile, ...）
+    auto procGen = llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
+        jit->getDataLayout().getGlobalPrefix());
+    if (!procGen) {
+        llvm::errs() << "[jit] process generator failed: "
+                     << llvm::toString(procGen.takeError()) << "\n";
+        return 1;
+    }
+    jd.addGenerator(std::move(*procGen));
+
+    // 加载 sdk core.obj
+    if (!sdkObjPath.empty() && std::filesystem::exists(sdkObjPath)) {
+        auto bufOrErr = llvm::MemoryBuffer::getFile(sdkObjPath);
+        if (!bufOrErr) {
+            llvm::errs() << "[jit] read sdk obj failed: " << sdkObjPath << "\n";
+            return 1;
+        }
+        if (auto e = jit->addObjectFile(std::move(*bufOrErr))) {
+            llvm::errs() << "[jit] addObjectFile failed: "
+                         << llvm::toString(std::move(e)) << "\n";
+            return 1;
+        }
+    } else {
+        llvm::errs() << "[jit] warning: sdk obj not found at " << sdkObjPath << "\n";
+    }
+
+    // 用户主模块
+    mod->setDataLayout(jit->getDataLayout());
+    llvm::orc::ThreadSafeModule mainTsm(std::move(mod), std::move(ctx));
+    if (auto e = jit->addIRModule(std::move(mainTsm))) {
+        llvm::errs() << "[jit] addIRModule(main) failed: "
+                     << llvm::toString(std::move(e)) << "\n";
+        return 1;
+    }
+
+    // 用户导入模块
+    for (size_t i = 0; i < extraMods.size(); ++i) {
+        auto& m = const_cast<std::unique_ptr<llvm::Module>&>(extraMods[i]);
+        if (!m) continue;
+        m->setDataLayout(jit->getDataLayout());
+        llvm::orc::ThreadSafeModule tsm(std::move(m), std::move(extraCtxs[i]));
+        if (auto e = jit->addIRModule(std::move(tsm))) {
+            llvm::errs() << "[jit] addIRModule(extra) failed: "
+                         << llvm::toString(std::move(e)) << "\n";
+            return 1;
+        }
+    }
+
+    auto sym = jit->lookup("mainStartup");
+    if (!sym) {
+        llvm::errs() << "[jit] lookup mainStartup failed: "
+                     << llvm::toString(sym.takeError()) << "\n";
+        return 1;
+    }
+    auto fn = sym->toPtr<int (*)()>();
+    return fn();
 }
 
 std::string wstr2str(const std::wstring& wstr) {
@@ -516,6 +601,12 @@ int wmain(int argc, wchar_t* argv[]) {
 
     bool emitIr = false;
     app.add_flag("--emit-ir", emitIr, "Emit LLVM IR to .ll file");
+
+    // [Phase 1 spike] 在进程内 JIT 跑入口模块，绕开 obj 写盘 + LLD 链接。
+    // 仅单文件模式生效；正式 `yux test` 子命令会替代它。
+    bool jitRun = false;
+    app.add_flag("--jit-run", jitRun,
+                 "[spike] Run input via in-process JIT (single-file only; skips obj/exe)");
 
     // 诊断严重度开关：允许在主命令和 build 子命令上都使用
     // --warn=<code>  把指定 code 视为 warning（仅对默认 sev <= Warning 的码生效；Error 码拒绝降级）
@@ -959,6 +1050,65 @@ int wmain(int argc, wchar_t* argv[]) {
     } catch (runtime_error& e) {
         reportRuntimeError(inputFile, e);
         return 1;
+    }
+
+    // [Phase 1 spike] --jit-run：把主模块 + 用户导入模块 IR 直接送入 LLJIT 执行。
+    // 不写 obj、不调 LLD；sdk 通过预编译的 core.obj 装载。
+    if (jitRun) {
+        if (projectMode) {
+            std::cerr << "Error: --jit-run only supports single-file mode in Phase 1 spike\n";
+            return 1;
+        }
+        auto buildIR = [&](p<FileNode> file, const std::string& moduleName)
+            -> std::pair<std::unique_ptr<llvm::Module>, std::unique_ptr<llvm::LLVMContext>> {
+            auto ctx = std::make_unique<llvm::LLVMContext>();
+            auto mod = std::make_unique<llvm::Module>(moduleName, *ctx);
+            llvm::IRBuilder<> builder(*ctx);
+            Compiler compiler(*ctx, builder, mod.get(), file, &yux, false);
+            compiler.compile(file);
+            return {std::move(mod), std::move(ctx)};
+        };
+
+        std::unique_ptr<llvm::Module> mainMod;
+        std::unique_ptr<llvm::LLVMContext> mainCtx;
+        try {
+            auto pr = buildIR(mainFile, baseName);
+            mainMod = std::move(pr.first);
+            mainCtx = std::move(pr.second);
+        } catch (runtime_error& e) {
+            reportRuntimeError(inputFile, e);
+            return 1;
+        }
+
+        std::vector<std::unique_ptr<llvm::Module>> extraMods;
+        std::vector<std::unique_ptr<llvm::LLVMContext>> extraCtxs;
+        for (auto& modName : yux.loadOrder()) {
+            auto modFile = yux.module(modName);
+            if (!modFile || modFile == yux.sdkFile()) continue;
+            try {
+                auto pr = buildIR(modFile, modName);
+                extraMods.push_back(std::move(pr.first));
+                extraCtxs.push_back(std::move(pr.second));
+            } catch (runtime_error& e) {
+                std::string mp = yux.modulePath(modName);
+                reportRuntimeError(mp, e, modName + ": ");
+                return 1;
+            }
+        }
+
+        std::string sdkObjPath;
+        if (!sdkPath.empty()) {
+            namespace fs = std::filesystem;
+            fs::path sdkRoot = fs::path(sdkPath).parent_path().parent_path().parent_path();
+            sdkObjPath = (sdkRoot / "build" / "yux" / "core.obj").string();
+        }
+
+        int rc = runViaJIT(std::move(mainMod), std::move(mainCtx),
+                           extraMods, extraCtxs, sdkObjPath);
+        std::cout << "[jit-run] exit code = " << rc << std::endl;
+        std::cout.flush();
+        std::cerr.flush();
+        _exit(rc);
     }
 
     // 文件级聚合：主模块与各导入模块逐个 codegen，单文件失败不立即退出，继续编译其余文件
