@@ -124,6 +124,8 @@ class YuxError : public std::runtime_error {
     int _col = 0; // 0 表示列未知
     const char* _code = "E0000"; // 指向 ErrorCode 表中的静态字面量
     DiagSeverity _sev = DiagSeverity::Error; // 默认严重等级（来源于 ErrorCodeDef.defaultSev）
+    vector<string> _hints; // 修复建议（"= help: ..."），可链式 withHint 追加
+    vector<string> _notes; // 附加说明（"= note: ..."），可链式 withNote 追加
 
 public:
     explicit YuxError(const string& msg, int line) : runtime_error(msg), _line(line) {
@@ -189,6 +191,15 @@ public:
     [[nodiscard]] const char* getCode() const { return _code; }
 
     [[nodiscard]] DiagSeverity getSeverity() const { return _sev; }
+
+    // 链式追加 help / note：支持 `throw YuxError(...).withHint("...")` 形态
+    YuxError& withHint(string h) & { _hints.push_back(std::move(h)); return *this; }
+    YuxError&& withHint(string h) && { _hints.push_back(std::move(h)); return std::move(*this); }
+    YuxError& withNote(string n) & { _notes.push_back(std::move(n)); return *this; }
+    YuxError&& withNote(string n) && { _notes.push_back(std::move(n)); return std::move(*this); }
+
+    [[nodiscard]] const vector<string>& hints() const { return _hints; }
+    [[nodiscard]] const vector<string>& notes() const { return _notes; }
 };
 
 template <typename T>

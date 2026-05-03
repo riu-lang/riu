@@ -20,6 +20,7 @@
 #include "node/literal_node.h"
 #include "compiler_runtime.h"
 #include "mangler.h"
+#include "symbol_suggest.h"
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <regex>
@@ -294,7 +295,8 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             return _builder.CreateLoad(globalVar->getValueType(), globalVar, "global.load");
         }
 
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, varName);
+        SymbolSuggest::throwSymbolNotFound(_currentFnNode,
+            node->getLineNumber(), node->getColumn(), ErrorCode::E3030, varName);
     } else if (auto cpLiteral = dynamic_cast<LiteralCodePointNode*>(literal)) {
         DEBUG_LOG_VAL("    Expr: CodePointLiteral", text << " : u32");
         return llvm::ConstantInt::get(getLLVMType(type), cpLiteral->codePoint(), false);
@@ -700,7 +702,8 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
     // Phase 1d.3：禁 Weak == / !=（DRAFT §5：v1 不暴露 handle 比较语义）
     if (leftType.isWeak()) {
         if (node->op() == ExprCompareNode::Op::Eq || node->op() == ExprCompareNode::Op::Ne) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3078);
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3078)
+                .withHint("先 `upgrade(weak)` 取得 Box<T>?，再用 `?.` / `??` / 相等比较判定目标对象");
         }
     }
 
@@ -1121,13 +1124,15 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
 
     auto it = _localVarPtrs.find(objName);
     if (it == _localVarPtrs.end()) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3031, objName);
+        SymbolSuggest::throwSymbolNotFound(_currentFnNode,
+            node->getLineNumber(), node->getColumn(), ErrorCode::E3031, objName);
     }
 
     llvm::Value* currentPtr = it->second;
     auto sym = _currentFnNode->lookupSymbol(objName);
     if (!sym) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, objName);
+        SymbolSuggest::throwSymbolNotFound(_currentFnNode,
+            node->getLineNumber(), node->getColumn(), ErrorCode::E3030, objName);
     }
 
     TypeInfo currentType = sym->type;

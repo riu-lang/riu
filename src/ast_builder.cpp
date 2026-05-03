@@ -556,7 +556,8 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
         if (!header->hasAnno("CompilerInner")) {
             throw YuxError(
                 header->getLineNumber(), header->getColumn(),
-                ErrorCode::E2006, header->name().getText());
+                ErrorCode::E2006, header->name().getText())
+                .withHint("普通函数必须有函数体；若仅声明（由编译器内部提供实现），在签名上加 `#CompilerInner` 注解");
         }
         DEBUG_LOG("  Body: (compiler-synthesized)");
     } else if (ctx->fnBody()->fnExprkBody()) {
@@ -788,7 +789,8 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
             if (!header->hasAnno("CompilerInner")) {
                 throw YuxError(
                     header->getLineNumber(), header->getColumn(),
-                    ErrorCode::E2007, structName, header->name().getText());
+                    ErrorCode::E2007, structName, header->name().getText())
+                    .withHint("结构体方法必须有函数体；若仅声明（由编译器内部提供实现），在签名上加 `#CompilerInner` 注解");
             }
         } else if (fnCtx->fnBody()->fnExprkBody()) {
             auto exprBody = fnCtx->fnBody()->fnExprkBody();
@@ -1456,7 +1458,8 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
             auto qt = nul->SymbolQuest()->getSymbol();
             throw YuxError(qt ? (int)qt->getLine() : 0,
                 qt ? static_cast<int>(qt->getCharPositionInLine()) + 1 : 0,
-                ErrorCode::E2001);
+                ErrorCode::E2001)
+                .withHint("Weak<T> 本身已可空；若需在持有者失效后取值，使用 `upgrade(weak)`，其结果即为 Box<T>?");
         }
         auto qt = nul->SymbolQuest()->getSymbol();
         Token nullableName(string("Nullable"), qt ? qt->getLine() : 0);
@@ -1505,7 +1508,8 @@ std::any ASTBuilder::visitTypeNullable(yux::yuxParser::TypeNullableContext* ctx)
         if (innerTI.kind == TypeKind::Generic && innerTI.name == "Weak") {
             int line = questTok ? (int)questTok->getLine() : 0;
             int col  = questTok ? (int)questTok->getCharPositionInLine() + 1 : 0;
-            throw YuxError(line, col, ErrorCode::E2001);
+            throw YuxError(line, col, ErrorCode::E2001)
+                .withHint("Weak<T> 本身已可空；若需在持有者失效后取值，使用 `upgrade(weak)`，其结果即为 Box<T>?");
         }
     }
 

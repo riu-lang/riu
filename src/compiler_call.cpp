@@ -443,7 +443,11 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                     // 验证类型参数数量
                     if (explicitTypeArgs.size() != typeParams.size()) {
                         throw YuxError(node->getLineNumber(), node->getColumn(),
-                            ErrorCode::E6010, fnName, typeParams.size(), explicitTypeArgs.size());
+                            ErrorCode::E6010, fnName, typeParams.size(), explicitTypeArgs.size())
+                            .withHint(std::format("调用处的类型实参个数需与声明匹配；改写为 `{}:<{}>(...)` 形式补齐 {} 个类型",
+                                fnName,
+                                std::string(typeParams.size() == 1 ? "T" : "T1, T2, ..."),
+                                typeParams.size()));
                     }
                     for (auto& tn : explicitTypeArgs) {
                         typeArgs.push_back(applySubst(tn->getType()));
@@ -825,7 +829,11 @@ llvm::Value* Compiler::compileGenericFunctionCall(
     if (!explicitTypeArgs.empty()) {
         if (explicitTypeArgs.size() != typeParams.size()) {
             throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                ErrorCode::E6010, fnName, typeParams.size(), explicitTypeArgs.size());
+                ErrorCode::E6010, fnName, typeParams.size(), explicitTypeArgs.size())
+                .withHint(std::format("调用处的类型实参个数需与声明匹配；改写为 `{}:<{}>(...)` 形式补齐 {} 个类型",
+                    fnName,
+                    std::string(typeParams.size() == 1 ? "T" : "T1, T2, ..."),
+                    typeParams.size()));
         }
         for (auto& tn : explicitTypeArgs) {
             typeArgs.push_back(applySubst(tn->getType()));

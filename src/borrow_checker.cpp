@@ -70,7 +70,8 @@ private:
                 return resolveRoot(name);
             }
         }
-        throw YuxError(line, ErrorCode::E4001);
+        throw YuxError(line, ErrorCode::E4001)
+            .withHint("T& 借用初始化形如 `val r T& = &x` 或 `val r2 T& = r1`（拷绑已有 T& 变量）");
     }
 
     void registerBorrow(const std::string& refName, const std::string& rootName, int line) {

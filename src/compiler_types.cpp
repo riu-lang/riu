@@ -90,7 +90,11 @@ string Compiler::ensureStructInstance(
     // 验证类型参数数量
     if (args.size() != baseDecl->typeParams().size()) {
         throw YuxError(sourceLine, ErrorCode::E6011,
-            baseName, baseDecl->typeParams().size(), args.size());
+            baseName, baseDecl->typeParams().size(), args.size())
+            .withHint(std::format("实例化时的类型实参个数需与声明匹配；改写为 `{}<{}>` 形式补齐 {} 个类型",
+                baseName,
+                std::string(baseDecl->typeParams().size() == 1 ? "T" : "T1, T2, ..."),
+                baseDecl->typeParams().size()));
     }
 
     // 创建实例记录

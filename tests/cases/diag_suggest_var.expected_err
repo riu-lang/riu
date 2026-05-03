@@ -1,0 +1,3 @@
+; 期望命中关键诊断行；runner 对每行做 stderr 子串包含匹配
+diag_suggest_var.yux:3:11 [E3032] error: Symbol conut not found
+= help: did you mean `count`?

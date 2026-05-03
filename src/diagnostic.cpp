@@ -165,5 +165,7 @@ void DiagnosticEngine::renderYuxError(std::ostream& out,
     d.line = err.getLineNumber();
     d.col = err.getColumn();
     d.message = err.what();
+    d.notes = err.notes();
+    d.hints = err.hints();
     render(out, d);
 }

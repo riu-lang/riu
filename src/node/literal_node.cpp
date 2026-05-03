@@ -3,6 +3,7 @@
 
 #include "literal_node.h"
 #include "file_node.h"
+#include "../symbol_suggest.h"
 
 #include <utility>
 #include <regex>
@@ -87,7 +88,8 @@ TypeInfo LiteralObjNode::getType() const {
         return TypeInfo("fn() ");
     }
     
-    throw YuxError(static_cast<int>(_value.getLine()),
+    SymbolSuggest::throwSymbolNotFound(scope,
+        static_cast<int>(_value.getLine()),
         static_cast<int>(_value.getCharPositionInLine()) + 1,
         ErrorCode::E3032, name);
 }

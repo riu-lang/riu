@@ -408,7 +408,10 @@ string Compiler::ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& type
     auto& typeParams = baseFn->header()->typeParams();
     if (typeArgs.size() != typeParams.size()) {
         throw YuxError(sourceLine, ErrorCode::E6010,
-            baseName, typeParams.size(), typeArgs.size());
+            baseName, typeParams.size(), typeArgs.size())
+            .withHint(std::format("实例化时的类型实参个数需与声明匹配；调用处补齐 {} 个类型 `:<{}>`",
+                typeParams.size(),
+                std::string(typeParams.size() == 1 ? "T" : "T1, T2, ...")));
     }
 
     // 创建实例记录

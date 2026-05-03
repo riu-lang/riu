@@ -4,6 +4,7 @@
 #include "expr_node.h"
 #include "fn_node.h"
 #include "file_node.h"
+#include "../symbol_suggest.h"
 
 static bool isCompilerInnerMethod(ScopeNode* scope, const string& structName, const string& methodName) {
     if (!scope) return false;
@@ -980,7 +981,8 @@ TypeInfo ExprGetRefNode::getType() const {
     
     auto sym = scope->lookupSymbol(_obj.getText());
     if (!sym) {
-        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3030, _obj.getText());
+        SymbolSuggest::throwSymbolNotFound(scope,
+            resolveLineNumber(), resolveColumn(), ErrorCode::E3030, _obj.getText());
     }
     
     TypeInfo baseType = sym->type;

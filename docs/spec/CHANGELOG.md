@@ -15,6 +15,35 @@
 
 ---
 
+## 2026-05-03 —— Phase 5 B 阶段：未声明标识符的拼写近似建议
+
+- **新增**：`src/symbol_suggest.{h,cpp}` 提供 `nearby` / `buildHint` / `throwSymbolNotFound`：从给定 `ScopeNode` 开始
+  沿父链汇总可见变量与函数名，按 Levenshtein 距离 ≤ 2 排序后取最近 1–3 个候选，组装成
+  `did you mean \`foo\`?` / `did you mean one of: \`foo\`, \`bar\`?` 形式的 help 行。
+- **挂 hint 的站点**：E3030（`compiler_expr.cpp` 字面量加载、成员访问 / 取地址父链 lookup；`compiler_stmt.cpp`
+  普通赋值与成员赋值；`node/expr_node.cpp` `&obj`）、E3031（`compiler_expr.cpp` / `compiler_stmt.cpp` 成员访问的
+  `_localVarPtrs` miss）、E3032（`node/literal_node.cpp` 标识符字面量类型解析）。
+- **测试**：新增 `tests/cases/diag_suggest_var.{yux,expected_err}`，断言 `conut` → `count` 的 help 行。
+- **冲突 / 兼容**：无规范条款变更；候选为空时不附 hint，原有错误信息逐字保留，所有既有测试不受影响。
+
+## 2026-05-03 —— Phase 5 A 阶段：诊断 help / note 基础设施 + 高频站点 hint
+
+- **新增**：`Diagnostic` 已有的 `notes` / `hints` 字段接通 `YuxError` —— `YuxError` 携带 `_hints` / `_notes`，提供链式
+  `withHint(string)` / `withNote(string)` 便利接口；`DiagnosticEngine::renderYuxError` 把它们作为 `= help: ...` /
+  `= note: ...` 行附在源码片段之后输出，遵循 §D.1.1 既有格式。
+- **挂 hint 的站点**：
+  - E2001 `Weak<T>?`、E3078 `Weak == / !=`：提示 `upgrade(weak)` 路径
+  - E3017 / E3018 / E3019：T& 局部初始化形态指引
+  - E4001 `BorrowChecker` 借用初始化、E4004 不能绑非本地
+  - E2006 / E2007 缺函数体：提示加 `#CompilerInner` 或补 body
+  - E6010 / E6011 泛型实参个数：给出 `:<T...>` 模板
+  - E1002 ANTLR 文法错误：按消息模式（`';'`、`mismatched/extraneous input`、`no viable alternative`）附简单空格 / `;` 提示
+- **测试**：新增 `tests/cases/diag_ref_init_form.{yux,expected_err}` 与 `diag_generic_arity.{yux,expected_err}`；
+  `diag_weak_nullable.expected_err` 追加 help 断言。
+- **附录 D**：§D.5.4 路线图重写为 A / B 两阶段，标注 A 已落地；附 hint 的码段一并列出。
+- **冲突 / 兼容**：诊断输出格式不变；新增的 `= help:` / `= note:` 行属于 §D.1.1 已经允许的"0..N 条 note / help"，
+  既有 `expected_err` 子串匹配机制不会因之失败。
+
 ## 2026-05-03 —— Phase 4：诊断分级 / CLI 严重度开关 / 文件级聚合
 
 - **新增**：`DiagSeverity { Note, Warning, Error }` 落地，每个错误码（`ErrorCode::EXXXX`）通过 `DEF_ERR` / `DEF_WARN` / `DEF_NOTE` 携带 `defaultSev`；当前所有码默认 `Error`，`Warning` / `Note` 留待 Phase 5 与未来错误恢复后启用。

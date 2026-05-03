@@ -16,6 +16,7 @@
 #include "node/expr_node.h"
 #include "compiler_runtime.h"
 #include "mangler.h"
+#include "symbol_suggest.h"
 #include <algorithm>
 
 // ==================== Return 语句编译 ====================
@@ -254,7 +255,10 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                     throw YuxError(node->getLineNumber(), node->getColumn(),
                         ErrorCode::E3017,
                         innerType->name,
-                        innerOfGetRef ? innerOfGetRef->name : "?");
+                        innerOfGetRef ? innerOfGetRef->name : "?")
+                        .withHint(std::format("&expr 的内层类型必须与声明一致；预期 `&<{}>`，源表达式给出 `&<{}>`",
+                            innerType->name,
+                            innerOfGetRef ? innerOfGetRef->name : "?"));
                 }
             } else if (auto litExpr = dynamic_cast<ExprLiteralNode*>(expr); litExpr && dynamic_cast<LiteralObjNode*>(litExpr->literal())) {
                 auto litObj = dynamic_cast<LiteralObjNode*>(litExpr->literal());
@@ -263,15 +267,19 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 if (!sym || !sym->type.isRef() || !sym->type.refElementType()
                     || *sym->type.refElementType() != *innerType) {
                     throw YuxError(node->getLineNumber(), node->getColumn(),
-                        ErrorCode::E3018, srcName, innerType->name);
+                        ErrorCode::E3018, srcName, innerType->name)
+                        .withHint(std::format("`{}` 不是 {}& 类型，无法 copy-bind 到此声明；改写为 `&<expr-of-{}>` 或先声明同类型 T&",
+                            srcName, innerType->name, innerType->name));
                 }
                 auto it = _localVarPtrs.find(srcName);
                 if (it == _localVarPtrs.end()) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E4004, srcName);
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E4004, srcName)
+                        .withHint("T& 只能绑定到当前函数内的局部变量；不可绑参数、全局符号或外层闭包变量");
                 }
                 rhsPtr = it->second;
             } else {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3019);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3019)
+                    .withHint("T& 局部初始化形如 `val r T& = &x` 或 `val r2 T& = r1`（拷贝绑定已有 T& 变量）");
             }
             _localVarPtrs[varName] = rhsPtr;
             return;
@@ -623,7 +631,8 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
     if (subs.empty()) {
         auto sym = _currentFnNode->lookupSymbol(objName);
         if (!sym) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, objName);
+            SymbolSuggest::throwSymbolNotFound(_currentFnNode,
+                node->getLineNumber(), node->getColumn(), ErrorCode::E3030, objName);
         }
 
         // Phase 4b: T& 赋值是 store-through（改被引对象），不是 rebind；
@@ -786,7 +795,8 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         // 处理成员访问赋值 (obj.field = value)
         auto sym = _currentFnNode->lookupSymbol(objName);
         if (!sym) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, objName);
+            SymbolSuggest::throwSymbolNotFound(_currentFnNode,
+                node->getLineNumber(), node->getColumn(), ErrorCode::E3030, objName);
         }
 
         TypeInfo actualType = sym->type;
@@ -809,7 +819,8 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
 
         auto it = _localVarPtrs.find(objName);
         if (it == _localVarPtrs.end()) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3031, objName);
+            SymbolSuggest::throwSymbolNotFound(_currentFnNode,
+                node->getLineNumber(), node->getColumn(), ErrorCode::E3031, objName);
         }
 
         llvm::Value* structPtr = it->second;

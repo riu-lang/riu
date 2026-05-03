@@ -327,7 +327,16 @@ Array 内置方法（E6040..E6044）：
 
 ### D.5.4 路线图（*informative*）
 
-- **高频场景 提示/修复建议**（原 v0.3 Phase 5）：类型不匹配修复建议、未声明标识符的拼写近似（Levenshtein ≤ 2）、`T&` 禁止位置、`Weak<T>?` / `Weak ==`、`extern` 签名不匹配等的 `note` / `help`。
+- **高频场景 提示/修复建议**（原 v0.3 Phase 5）：
+  - **A 阶段（已落地）**：诊断渲染支持 `= help: ...` 与 `= note: ...`；`YuxError` 通过链式 `withHint` / `withNote` 携带。
+    已在 E2001（`Weak<T>?`）、E3078（`Weak == / !=`）、E3017 / E3018 / E3019 / E4001 / E4004（`T&`
+    初始化与借用形态）、E2006 / E2007（缺函数体 vs `#CompilerInner`）、E6010 / E6011（泛型实参个数）以及
+    E1002（`SyntaxErrorListener` 对常见 `';'` / `mismatched input` / `extraneous input` 等模式）站点附了简单 hint。
+    回归位于 `tests/cases/diag_*.yux`。
+  - **B 阶段（已落地）**：未声明标识符的拼写近似建议（Levenshtein ≤ 2）。`src/symbol_suggest.{h,cpp}` 沿
+    `ScopeNode` 父链汇总可见变量与函数名，对 E3030 / E3031 / E3032 抛出处给出最近 1–3 个候选，组装为
+    `did you mean ...` 风格的 `= help:` 行；候选为空时不附 hint。回归位于 `tests/cases/diag_suggest_var.{yux,expected_err}`。
+  - **后续候选场景（待启）**：类型不匹配时的 `.to_<type>()` 候选；`extern` 签名不匹配；字段拼写近似（E304x）等。
 
 ## D.6 诊断回归测试
 
