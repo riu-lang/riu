@@ -22,7 +22,8 @@ N | <源码行原文>
 约束：
 
 - `file` 为相对或绝对路径，由命令行入口决定；缺失时回退为 `line N` 或省略。
-- `line` 为 1-based 行号；`col` 为 1-based **字节**列号（多字节字符按字节对齐，未来可能改为列宽对齐，*informative*）。
+- `line` 为 1-based 行号；`col` 为 1-based **字符**列号（按 Unicode codepoint 计数，与 ANTLR `getCharPositionInLine() + 1` 同源）。一个 CJK 字 / 一个 emoji 计 1 列；BMP 外的码点（如组合表情 + 变体选择子）按各自的 codepoint 数计列。
+- 源码片段下的插入符（`^`）按**显示列宽**对齐：插入符前的 padding 不再是单纯的列号空格，而是按源码行中各 codepoint 的视觉宽度展开（CJK / 全角 / 常见 emoji 计 2 列宽，组合标记 / 零宽字符计 0 列宽，Tab 原样保留以让终端按相同 tab stop 扩展）。这样 `^` 在等宽终端中始终落在出错字符的正下方，不受多字节字符前缀影响。
 - `code` 形如 `EXXXX`，与 `ErrorCode::EXXXX.code` 同字面值；占位错误码 `E0000` 表示尚未挂码的位置，迁移完成后**不应**再出现。
 - `severity` 取 `note` / `warning` / `error` 之一；每个错误码挂默认严重度，CLI `--warn` / `--allow` / `--deny` / `--Werror` 可在策略允许范围内调整。详见 D.5。
 - `message` 为消息模板用具体参数渲染后的结果，模板见 D.3。
@@ -350,6 +351,7 @@ Array 内置方法（E6040..E6044）：
 
 ## D.7 Open Issues
 
-- 列号当前按字节计算，多字节字符（中文、emoji）下的插入符位置可能与视觉列偏离；是否改为列宽 / Unicode 段分割尚未决议。
 - E3099 采用包装上下文的双行模板，长期看应当替换为结构化 `note` 而非内嵌换行。
 - E6045（内置算子 arity）目前用占位字段承载方法名，未来若按算子细分，可能拆为 E60xx 段独立码。
+
+> 已收口：原"列号按字节计算导致多字节字符插入符偏移"的 Open Issue（v0.4.x）已实现 —— `col` 改为 codepoint 列号、插入符按显示列宽对齐，详见 D.1.1。

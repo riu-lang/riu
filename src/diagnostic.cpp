@@ -12,7 +12,8 @@
 
 #include <fstream>
 #include <map>
-#include <sstream>
+
+#include "utf8.h"
 
 // ==================== DiagPolicy 全局状态 ====================
 
@@ -95,6 +96,104 @@ const vector<string>* loadSource(const string& path) {
     return &cache[path];
 }
 
+// 估算单个 Unicode codepoint 在等宽终端中的显示列宽
+//
+// 简化的 East Asian Width 近似：
+//   - 控制字符 / 组合标记 / 零宽字符 → 0
+//   - CJK 表意 / 韩文音节 / 假名 / CJK 符号与标点 / 全角形式 / 常见 emoji → 2
+//   - 其他 → 1
+//
+// 不依赖 ICU；够覆盖中文 + 常见 emoji 的诊断插入符对齐。
+// 对罕见脚本（如阿拉伯文连字、泰文上下叠合）会有偏差，留待后续按需扩展。
+int displayWidthOfCodepoint(char32_t cp) {
+    // 控制字符
+    if (cp < 0x20 || cp == 0x7F) return 0;
+
+    // 组合标记 / 零宽
+    if ((cp >= 0x0300 && cp <= 0x036F) ||  // Combining Diacritical Marks
+        (cp >= 0x0483 && cp <= 0x0489) ||
+        (cp >= 0x200B && cp <= 0x200F) ||  // ZWSP / ZWNJ / ZWJ / LRM / RLM
+        cp == 0x2028 || cp == 0x2029 ||
+        (cp >= 0x202A && cp <= 0x202E) ||
+        (cp >= 0xFE00 && cp <= 0xFE0F) ||  // Variation Selectors
+        (cp >= 0xE0100 && cp <= 0xE01EF))  // VS Supplement
+        return 0;
+
+    // 全宽 / CJK / 韩文 / 假名 / 全角符号
+    if ((cp >= 0x1100 && cp <= 0x115F) ||  // Hangul Jamo
+        (cp >= 0x2E80 && cp <= 0x303E) ||  // CJK Radicals / Kangxi / Symbols
+        (cp >= 0x3041 && cp <= 0x33FF) ||  // Hiragana / Katakana / Bopomofo / Compat
+        (cp >= 0x3400 && cp <= 0x4DBF) ||  // CJK Ext A
+        (cp >= 0x4E00 && cp <= 0x9FFF) ||  // CJK Unified
+        (cp >= 0xA000 && cp <= 0xA4CF) ||  // Yi
+        (cp >= 0xAC00 && cp <= 0xD7A3) ||  // Hangul Syllables
+        (cp >= 0xF900 && cp <= 0xFAFF) ||  // CJK Compat Ideographs
+        (cp >= 0xFE30 && cp <= 0xFE4F) ||  // CJK Compat Forms
+        (cp >= 0xFF00 && cp <= 0xFF60) ||  // Fullwidth Forms
+        (cp >= 0xFFE0 && cp <= 0xFFE6) ||  // Fullwidth Signs
+        (cp >= 0x20000 && cp <= 0x2FFFD) ||  // CJK Ext B-F
+        (cp >= 0x30000 && cp <= 0x3FFFD))    // CJK Ext G+
+        return 2;
+
+    // 常见 emoji 段（粗略覆盖；不区分 text/emoji presentation）
+    if ((cp >= 0x2600 && cp <= 0x27BF) ||    // Misc Symbols / Dingbats
+        (cp >= 0x1F300 && cp <= 0x1F5FF) ||  // Misc Symbols and Pictographs
+        (cp >= 0x1F600 && cp <= 0x1F64F) ||  // Emoticons
+        (cp >= 0x1F680 && cp <= 0x1F6FF) ||  // Transport and Map
+        (cp >= 0x1F700 && cp <= 0x1F77F) ||
+        (cp >= 0x1F780 && cp <= 0x1F7FF) ||
+        (cp >= 0x1F800 && cp <= 0x1F8FF) ||
+        (cp >= 0x1F900 && cp <= 0x1F9FF) ||  // Supplemental Symbols and Pictographs
+        (cp >= 0x1FA00 && cp <= 0x1FA6F) ||
+        (cp >= 0x1FA70 && cp <= 0x1FAFF))    // Symbols and Pictographs Ext-A
+        return 2;
+
+    return 1;
+}
+
+// 把列号 col（1-based）转成插入符 padding 字符串
+//
+// `col` 与 ANTLR 的 `getCharPositionInLine() + 1` 同源，按 Unicode codepoint 计数
+// （而非字节）。规则：扫描 srcLine 前 (col-1) 个 codepoint：
+//   - tab 原样保留（让终端按与源码行一致的 tab stop 扩展）
+//   - 其他按 displayWidthOfCodepoint 输出对应数量的空格
+// 这样 `<srcLine>` 与下一行的 `<padding>^` 在终端里视觉对齐，
+// 中文 / emoji / 全角符号都不会让 ^ 偏移（D.1.1 + D.7）。
+//
+// 解码失败（损坏的 utf-8 序列）按 1 codepoint / 1 字节跳过，避免抛异常打断诊断输出。
+string caretPaddingFromCol(const string& srcLine, int col) {
+    string out;
+    if (col <= 1) return out;
+    size_t targetCp = static_cast<size_t>(col - 1);
+
+    const char* it = srcLine.data();
+    const char* end = it + srcLine.size();
+    size_t cpCount = 0;
+    while (it < end && cpCount < targetCp) {
+        if (*it == '\t') {
+            out.push_back('\t');
+            ++it;
+            ++cpCount;
+            continue;
+        }
+        const char* prev = it;
+        char32_t cp = 0;
+        try {
+            cp = utf8::next(it, end);
+        } catch (...) {
+            // 损坏字节：当作宽度 1 跳过 1 字节，继续渲染
+            it = prev + 1;
+            out.push_back(' ');
+            ++cpCount;
+            continue;
+        }
+        int w = displayWidthOfCodepoint(cp);
+        for (int i = 0; i < w; ++i) out.push_back(' ');
+        ++cpCount;
+    }
+    return out;
+}
+
 const char* severityLabel(DiagSeverity s) {
     switch (s) {
         case DiagSeverity::Note:    return "note";
@@ -138,10 +237,9 @@ void DiagnosticEngine::render(std::ostream& out, const Diagnostic& diagIn) {
             out << lineNoStr << " | " << srcLine << '\n';
             if (diag.col > 0) {
                 out << gutter << " | ";
-                // col 是 1-based 列号；按字节宽度对齐（中文等多字节会偏移，Phase 1 接受）
-                int padding = diag.col - 1;
-                if (padding < 0) padding = 0;
-                out << string(padding, ' ') << "^\n";
+                // col 仍为 1-based 字节列号；插入符 padding 按显示列宽换算，
+                // 让中文 / emoji / 全角符号下的 ^ 与视觉位置对齐（D.1.1 + D.7）。
+                out << caretPaddingFromCol(srcLine, diag.col) << "^\n";
             }
         }
     }

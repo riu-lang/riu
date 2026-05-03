@@ -1,0 +1,7 @@
+; 头部：col 按字符计数，`未定义` 在第 19 个字符位
+diag_multibyte_caret.yux:6:19 [E3032] error: Symbol 未定义 not found
+; 源码片段
+6 |   val r i32 = 值 + 未定义
+; 插入符 padding 按显示列宽对齐：`  val r i32 = 值 + ` = 2+12+2+3 = 19 列
+; 因此 ^ 之前应有 19 个空格（验证 D.7 多字节适配）
+ |                    ^

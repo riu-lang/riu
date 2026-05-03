@@ -15,6 +15,13 @@
 
 ---
 
+## 2026-05-03 —— 诊断列号语义收口 + 多字节插入符对齐
+
+- **修改**：附录 D §D.1.1 —— `col` 字段语义由"1-based 字节列号"更正为"1-based 字符列号"（按 Unicode codepoint 计数，与 ANTLR `getCharPositionInLine() + 1` 同源；纯 ASCII 输入下数值与原文档一致，回归测试 0 改动）。
+- **新增**：§D.1.1 明确插入符 `^` 按**显示列宽**对齐：CJK / 全角 / 常见 emoji 计 2 列，组合标记 / 零宽字符计 0 列，Tab 原样保留。
+- **删除**：§D.7 Open Issues 第 1 条（"列号当前按字节计算..."），改写为已收口注记。
+- **冲突 / 兼容**：纯措辞 + 渲染对齐改进；`col` 数值不变；现有 `diag_*.expected_err` 子串断言全部兼容。新增 `tests/cases/diag_multibyte_caret.{yux,expected_err}` 锁定多字节场景下 ^ 落点。
+
 ## 2026-05-03 —— 语法换行规则放宽（Kotlin 风单行 / 多行）
 
 - **新增**：
