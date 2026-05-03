@@ -12,6 +12,7 @@
 #include <regex>
 #include <csignal>
 #include <fstream>
+#include <io.h>
 
 #include <lld/Common/Driver.h>
 #include <llvm/CodeGen/CommandFlags.h>
@@ -589,6 +590,103 @@ void handleCrash(int signal) {
     _exit(1);
 }
 
+// ==================== `yux test` 运行辅助 ====================
+
+// SEH 包裹单次测试调用。返回 0 表示无异常；非 0 为 GetExceptionCode()。
+// 必须保持 extern "C" + 无 C++ 析构对象，避免 clang 对 SEH + 局部对象的限制。
+extern "C" unsigned long runTestSEH(void (*fn)()) noexcept {
+    __try {
+        fn();
+        return 0;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return GetExceptionCode();
+    }
+}
+
+// 把 Win32 SEH 异常码翻译成可读名字
+static const char* sehExceptionName(unsigned long code) {
+    switch (code) {
+        case EXCEPTION_ACCESS_VIOLATION:      return "ACCESS_VIOLATION";
+        case EXCEPTION_INT_DIVIDE_BY_ZERO:    return "INT_DIVIDE_BY_ZERO";
+        case EXCEPTION_INT_OVERFLOW:          return "INT_OVERFLOW";
+        case EXCEPTION_FLT_DIVIDE_BY_ZERO:    return "FLT_DIVIDE_BY_ZERO";
+        case EXCEPTION_FLT_OVERFLOW:          return "FLT_OVERFLOW";
+        case EXCEPTION_FLT_UNDERFLOW:         return "FLT_UNDERFLOW";
+        case EXCEPTION_FLT_INVALID_OPERATION: return "FLT_INVALID_OPERATION";
+        case EXCEPTION_STACK_OVERFLOW:        return "STACK_OVERFLOW";
+        case EXCEPTION_ILLEGAL_INSTRUCTION:   return "ILLEGAL_INSTRUCTION";
+        case EXCEPTION_PRIV_INSTRUCTION:      return "PRIV_INSTRUCTION";
+        case EXCEPTION_BREAKPOINT:            return "BREAKPOINT";
+        case EXCEPTION_DATATYPE_MISALIGNMENT: return "DATATYPE_MISALIGNMENT";
+        case EXCEPTION_ARRAY_BOUNDS_EXCEEDED: return "ARRAY_BOUNDS_EXCEEDED";
+        default:                              return "UNKNOWN";
+    }
+}
+
+// 把 stdout / stderr 的底层 fd 重定向到一个临时文件，stop() 时还原并读出内容。
+// 用 tmpfile()（C 运行时，自动删除）避免 pipe 缓冲被填满后被测函数阻塞。
+struct TestOutputCapture {
+    int savedOut = -1;
+    int savedErr = -1;
+    FILE* tmp = nullptr;
+
+    bool start() {
+        std::cout.flush();
+        std::cerr.flush();
+        std::fflush(stdout);
+        std::fflush(stderr);
+        tmp = std::tmpfile();
+        if (!tmp) return false;
+        int fd = _fileno(tmp);
+        savedOut = _dup(_fileno(stdout));
+        savedErr = _dup(_fileno(stderr));
+        if (savedOut < 0 || savedErr < 0) return false;
+        if (_dup2(fd, _fileno(stdout)) < 0) return false;
+        if (_dup2(fd, _fileno(stderr)) < 0) return false;
+        return true;
+    }
+
+    std::string stop() {
+        std::cout.flush();
+        std::cerr.flush();
+        std::fflush(stdout);
+        std::fflush(stderr);
+        if (savedOut >= 0) { _dup2(savedOut, _fileno(stdout)); _close(savedOut); savedOut = -1; }
+        if (savedErr >= 0) { _dup2(savedErr, _fileno(stderr)); _close(savedErr); savedErr = -1; }
+        std::string buf;
+        if (tmp) {
+            std::fseek(tmp, 0, SEEK_END);
+            long sz = std::ftell(tmp);
+            std::fseek(tmp, 0, SEEK_SET);
+            if (sz > 0) {
+                buf.resize(static_cast<size_t>(sz));
+                size_t n = std::fread(buf.data(), 1, static_cast<size_t>(sz), tmp);
+                buf.resize(n);
+            }
+            std::fclose(tmp);
+            tmp = nullptr;
+        }
+        return buf;
+    }
+};
+
+// 把捕获到的输出按行缩进打印到 std::cout，便于在 RUN/FAIL 行下视觉归属
+static void printCapturedOutput(const std::string& out) {
+    if (out.empty()) return;
+    std::cout << "  ---- output ----\n";
+    size_t pos = 0;
+    while (pos < out.size()) {
+        size_t nl = out.find('\n', pos);
+        if (nl == std::string::npos) {
+            std::cout << "  | " << out.substr(pos) << "\n";
+            break;
+        }
+        std::cout << "  | " << out.substr(pos, nl - pos) << "\n";
+        pos = nl + 1;
+    }
+    std::cout << "  ----------------\n";
+}
+
 int wmain(int argc, wchar_t* argv[]) {
     SetConsoleCP(CP_UTF8);
     SetConsoleOutputCP(CP_UTF8);
@@ -646,7 +744,9 @@ int wmain(int argc, wchar_t* argv[]) {
     //   <module>#<fnName>    精确匹配模块名 + 函数名
     auto* testCmd = app.add_subcommand("test", "Run #Test functions in *.test.yux files (project mode only)");
     std::string testSelector;
+    bool testVerbose = false;
     testCmd->add_option("selector", testSelector, "Module prefix or `<module>#<fnName>` selector");
+    testCmd->add_flag("-v,--verbose", testVerbose, "Print captured stdout/stderr for every test (default: only on failure)");
     testCmd->fallthrough();
 #ifdef _DEBUG
     testCmd->add_flag("-d,--debug", debug, "Output compilation IR debug information");
@@ -800,7 +900,10 @@ int wmain(int argc, wchar_t* argv[]) {
 
     // ==================== `yux test` 子命令 ====================
     // Phase 2 实现：仅项目模式；递归扫描 src/ 下 *.yux + *.test.yux；codegen 全部模块后
-    // 走 LLJIT，按 selector 过滤 #Test 函数逐个 lookup 调用。崩溃即整体非零退出。
+    // 走 LLJIT，按 selector 过滤 #Test 函数逐个 lookup 调用。
+    // Phase 3：每个测试用 Windows SEH __try/__except 包裹，AV/除零/栈溢出等硬件异常
+    // 单条失败不再终止整个 suite；同时把每个测试的 stdout/stderr 重定向到临时文件，
+    // 默认隐藏成功测试的输出，失败时回放（--verbose 时全部回放）。
     if (testCmd->parsed()) {
         namespace fs = std::filesystem;
         if (!inputFile.empty()) {
@@ -1004,7 +1107,7 @@ int wmain(int argc, wchar_t* argv[]) {
             }
         }
 
-        // 顺序执行，崩溃即整体退出（Phase 2 不做隔离）
+        // 顺序执行：每个测试用 SEH 包裹 + 输出捕获，崩溃单条失败不再终止 suite
         size_t passed = 0, failed = 0;
         for (auto& t : filtered) {
             std::cout << "RUN  " << t.mod << "#" << t.fn << std::endl;
@@ -1018,9 +1121,24 @@ int wmain(int argc, wchar_t* argv[]) {
                 continue;
             }
             auto fn = sym->toPtr<void (*)()>();
-            fn();
-            std::cout << "OK   " << t.mod << "#" << t.fn << std::endl;
-            ++passed;
+
+            TestOutputCapture cap;
+            bool capOk = cap.start();
+            unsigned long code = runTestSEH(fn);
+            std::string out = capOk ? cap.stop() : std::string();
+
+            if (code == 0) {
+                std::cout << "OK   " << t.mod << "#" << t.fn << std::endl;
+                if (testVerbose) printCapturedOutput(out);
+                ++passed;
+            } else {
+                std::cout << "FAIL " << t.mod << "#" << t.fn
+                          << " (SEH " << sehExceptionName(code)
+                          << " 0x" << std::hex << code << std::dec << ")"
+                          << std::endl;
+                printCapturedOutput(out);
+                ++failed;
+            }
         }
         std::cout << "\n" << passed << " passed, " << failed << " failed" << std::endl;
         std::cout.flush();
