@@ -123,12 +123,14 @@ fn: fnHeader fnBody?;
 // retType 仅 #CompilerInner baked builtin 允许含 `&`（spec §8.9 例外、§8.3.5.5 as_ref）；
 // 用户代码 retType 含 `&` 由 semantic 层拒绝
 fnHeader: (buildAnnos+=buildAnno)*
-    Fn genericDef? name=ID ParStart
+    Fn genericDef? name=ID ParStart LineEnd*
     fnParams?
     ParEnd (retType=typeWithRef)?
     ;
 
-fnParams: fnParam (SymbolComma params+=fnParam)* ;
+// 单行 a i32, b i32
+// 多行：每参一行、强制尾随 `,`（由格式化器保证；语法上尾逗号可选）
+fnParams: fnParam (SymbolComma LineEnd* params+=fnParam)* SymbolComma? LineEnd* ;
 
 fnParam: fnParamStd | fnParamGroup;
 
@@ -184,12 +186,13 @@ expr:
     // ( e )
       ParStart expr ParEnd # exprParen
     // &a.b => T&
-    | SymbolAnd obj=(ID|SymbolThis) (SymbolDot subs+=ID)* # exprGetRef
+    | SymbolAnd obj=(ID|SymbolThis) (LineEnd* SymbolDot subs+=ID)* # exprGetRef
     // e[a, b, c] 实际应为成员函数get的快捷调用
     | expr
-        GetStart
+        GetStart LineEnd*
             args+=expr
-            (SymbolComma args+=expr)*
+            (SymbolComma LineEnd* args+=expr)*
+            SymbolComma? LineEnd*
         GetEnd # exprGet
     // if 1 { 1 } else { 2 }
     | If condition=expr BlockStart trueValue=expr BlockEnd
@@ -212,13 +215,15 @@ expr:
     | GetStart value=literal SymbolDot SymbolDot SymbolDot type?  GetEnd # exprArrayInit
     // a.b
     // a?.b
-    | left=expr SymbolQuest? SymbolDot member+=ID # exprDot
+    // 链式：`.` 前允许换行（a\n  .b\n  .c）
+    | left=expr LineEnd* SymbolQuest? SymbolDot member+=ID # exprDot
     // [e1, e2]
-    | GetStart (velues+=expr (SymbolComma velues+=expr)* )? GetEnd # exprArray
+    | GetStart LineEnd* (velues+=expr (SymbolComma LineEnd* velues+=expr)* SymbolComma? LineEnd*)? GetEnd # exprArray
     // e() e(e) e(e,e) e<T>()
-    | left=expr (SymbolColon genericDef)? ParStart
+    | left=expr (SymbolColon genericDef)? ParStart LineEnd*
         ( args+=expr
-          (SymbolComma args+=expr)*
+          (SymbolComma LineEnd* args+=expr)*
+          SymbolComma? LineEnd*
         )?
       ParEnd # exprCall
     // !e ~e -e 没有空格，低于成员访问优先级

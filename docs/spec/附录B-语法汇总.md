@@ -76,11 +76,11 @@ fnClean        ::= 'fn' '~' '(' ')' fnBody
 fn             ::= fnHeader fnBody?
 
 fnHeader       ::= buildAnno*
-                   'fn' genericDef? ID '('
+                   'fn' genericDef? ID '(' LineEnd*
                        fnParams?
                    ')' (retType=type)?
 
-fnParams       ::= fnParam (',' fnParam)*
+fnParams       ::= fnParam (',' LineEnd* fnParam)* ','? LineEnd*
 fnParam        ::= fnParamStd | fnParamGroup
 fnParamStd     ::= ID typeWithRef
 fnParamGroup   ::= (ID ',')* ID typeWithRef
@@ -112,15 +112,16 @@ filedDecl      ::= ID type
 ```
 expr ::=
     '(' expr ')'                                                 # exprParen
-  | '&' (ID | '$') ('.' ID)*                                     # exprGetRef
-  | expr '[' expr (',' expr)* ']'                                # exprGet
+  | '&' (ID | '$') (LineEnd* '.' ID)*                            # exprGetRef
+  | expr '[' LineEnd* expr (',' LineEnd* expr)* ','? LineEnd* ']' # exprGet
   | 'if' expr '{' expr '}' 'else' '{' expr '}'                   # exprOneLineIfElse
   | expr 'if' expr 'else' expr                                   # exprIfElsePreValue
   | 'if' expr statementBlock exprElIf* exprElse?                 # exprIfElse
   | '[' literal '.' '.' '.' type? ']'                            # exprArrayInit
-  | expr '?'? '.' ID                                             # exprDot
-  | '[' (expr (',' expr)*)? ']'                                  # exprArray
-  | expr (':' genericDef)? '(' (expr (',' expr)*)? ')'           # exprCall
+  | expr LineEnd* '?'? '.' ID                                    # exprDot
+  | '[' LineEnd* (expr (',' LineEnd* expr)* ','? LineEnd*)? ']'  # exprArray
+  | expr (':' genericDef)? '(' LineEnd*
+        (expr (',' LineEnd* expr)* ','? LineEnd*)? ')'           # exprCall
   | ('-' | '~' | '!') expr                                       # exprUnary
   | expr opShift expr                                            # exprShift
   | expr ('&' | '|' | '^') expr                                  # exprBinOp

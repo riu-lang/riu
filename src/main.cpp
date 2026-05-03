@@ -37,6 +37,7 @@
 #include "lsp/lsp_server.h"
 
 #include "CLI/CLI.hpp"
+#include <toml.hpp>
 
 LLD_HAS_DRIVER(coff)
 
@@ -556,6 +557,8 @@ int wmain(int argc, wchar_t* argv[]) {
     formatCmd->add_flag("-i,--in-place", formatInPlace, "Edit file in place");
     bool formatStdin = false;
     formatCmd->add_flag("--stdin", formatStdin, "Read from stdin instead of file");
+    int formatLineWidth = 0;  // 0 表示使用默认值或从 yux.toml 读取
+    formatCmd->add_option("--line-width", formatLineWidth, "Line width threshold (default: 120)");
 
     CLI11_PARSE(app, argc, argv);
 
@@ -622,8 +625,51 @@ int wmain(int argc, wchar_t* argv[]) {
             filePath = formatFile;
         }
         
+        // 构建格式化配置
+        yux::FormatConfig config;
+        
+        // 优先使用命令行参数
+        if (formatLineWidth > 0) {
+            config.lineWidth = static_cast<size_t>(formatLineWidth);
+        } else {
+            // 尝试从 yux.toml 读取配置
+            namespace fs = std::filesystem;
+            fs::path searchDir;
+            if (!filePath.empty()) {
+                searchDir = fs::path(filePath).parent_path();
+            } else {
+                searchDir = fs::current_path();
+            }
+            
+            // 向上查找 yux.toml
+            while (!searchDir.empty()) {
+                fs::path tomlPath = searchDir / "yux.toml";
+                if (fs::exists(tomlPath)) {
+                    try {
+                        auto data = toml::parse(tomlPath.string());
+                        if (data.contains("fmt")) {
+                            const auto& fmt = data.at("fmt");
+                            if (fmt.is_table()) {
+                                if (fmt.contains("line_width") && fmt.at("line_width").is_integer()) {
+                                    config.lineWidth = static_cast<size_t>(fmt.at("line_width").as_integer());
+                                }
+                            }
+                        }
+                        break;
+                    } catch (const std::exception& e) {
+                        // 解析失败，使用默认配置
+                    }
+                }
+                if (searchDir.has_parent_path()) {
+                    searchDir = searchDir.parent_path();
+                } else {
+                    break;
+                }
+            }
+        }
+        
         try {
-            Formatter formatter(source);
+            yux::Formatter formatter(source, config);
             std::string formatted = formatter.format();
             
             if (formatInPlace && !filePath.empty()) {
