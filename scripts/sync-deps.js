@@ -120,58 +120,76 @@ async function syncDependency(name, config) {
 
 async function syncSkill(name, config) {
   const { url, commit, flatten } = config;
-  const skillName = `xmake-${name}`;
 
   const targetDirs = [
-    { path: path.join(SKILLS_DIR_TRAE, skillName), label: 'trae' },
-    { path: path.join(SKILLS_DIR_CLAUDE, skillName), label: 'claude' }
+    { path: SKILLS_DIR_TRAE, label: 'trae' },
+    { path: SKILLS_DIR_CLAUDE, label: 'claude' }
   ];
 
-  for (const { path: targetPath, label } of targetDirs) {
-    log(`\n=== Syncing skill ${name} (${label}) ===`, 'cyan');
+  for (const { path: skillsDir, label } of targetDirs) {
+    log(`\n=== Syncing skill collection ${name} (${label}) ===`, 'cyan');
     log(`URL: ${url}`);
     log(`Commit: ${commit.substring(0, 8)}...`);
 
-    const tempPath = `${targetPath}.temp`;
+    const tempPath = path.join(skillsDir, `${name}.temp`);
 
-    if (fs.existsSync(targetPath)) {
-      if (!fs.existsSync(path.join(targetPath, '.git'))) {
-        log(`\n${skillName} exists but is not a git repo, re-cloning...`, 'yellow');
-        fs.rmSync(targetPath, { recursive: true, force: true });
-        await cloneRepo(skillName, url, commit, tempPath);
-        await finalizeSkillClone(tempPath, targetPath, flatten);
-        continue;
-      }
+    await cloneRepo(name, url, commit, tempPath);
 
-      await updateRepo(skillName, url, commit, targetPath);
-      continue;
+    const sourcePath = flatten ? path.join(tempPath, flatten) : tempPath;
+    if (!fs.existsSync(sourcePath)) {
+      log(`Flatten source path does not exist: ${sourcePath}`, 'red');
+      fs.rmSync(tempPath, { recursive: true, force: true });
+      throw new Error(`Flatten path not found: ${flatten}`);
     }
 
-    await cloneRepo(skillName, url, commit, tempPath);
-    await finalizeSkillClone(tempPath, targetPath, flatten);
+    const skillDirs = findSkillDirs(sourcePath);
+    log(`Found ${skillDirs.length} skills to install`);
+
+    for (const skillDir of skillDirs) {
+      const skillName = path.basename(skillDir);
+      const targetPath = path.join(skillsDir, skillName);
+
+      if (fs.existsSync(targetPath)) {
+        fs.rmSync(targetPath, { recursive: true, force: true });
+      }
+
+      fs.mkdirSync(targetPath, { recursive: true });
+
+      const entries = fs.readdirSync(skillDir);
+      for (const entry of entries) {
+        const srcEntry = path.join(skillDir, entry);
+        const destEntry = path.join(targetPath, entry);
+        fs.renameSync(srcEntry, destEntry);
+      }
+
+      log(`  Installed: ${skillName}`, 'green');
+    }
+
+    fs.rmSync(tempPath, { recursive: true, force: true });
   }
 }
 
-async function finalizeSkillClone(tempPath, targetPath, flatten) {
-  const sourcePath = flatten ? path.join(tempPath, flatten) : tempPath;
+function findSkillDirs(dir) {
+  const skillDirs = [];
 
-  if (!fs.existsSync(sourcePath)) {
-    log(`Flatten source path does not exist: ${sourcePath}`, 'red');
-    fs.rmSync(tempPath, { recursive: true, force: true });
-    throw new Error(`Flatten path not found: ${flatten}`);
+  function walk(currentDir) {
+    const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+
+      const subDir = path.join(currentDir, entry.name);
+
+      if (fs.existsSync(path.join(subDir, 'SKILL.md'))) {
+        skillDirs.push(subDir);
+      } else {
+        walk(subDir);
+      }
+    }
   }
 
-  fs.mkdirSync(targetPath, { recursive: true });
-
-  const entries = fs.readdirSync(sourcePath);
-  for (const entry of entries) {
-    const srcEntry = path.join(sourcePath, entry);
-    const destEntry = path.join(targetPath, entry);
-    fs.renameSync(srcEntry, destEntry);
-  }
-
-  fs.rmSync(tempPath, { recursive: true, force: true });
-  log(`Skill flattened to ${targetPath}`, 'green');
+  walk(dir);
+  return skillDirs;
 }
 
 async function downloadFile(url, destPath) {
