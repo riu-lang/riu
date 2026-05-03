@@ -728,6 +728,72 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             }
         }
 
+        // Box<T> 赋值：处理 Box -> Box 复制和 T -> Box<T> 构造
+        // 与 compileDeclareAssignStatement 的 Box 初始化路径保持一致
+        if (assignOp == AssignOp::Eq && sym->type.isBox()) {
+            auto elemType = sym->type.boxElementType();
+            if (!elemType) {
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3056);
+            }
+
+            auto it = _localVarPtrs.find(objName);
+            if (it == _localVarPtrs.end()) {
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E4004, objName);
+            }
+
+            auto exprVal = compileExpr(expr);
+            auto exprType = expr->getType();
+            auto boxStructType = getLLVMType(sym->type);
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto ptrTy = llvm::PointerType::get(_context, 0);
+
+            if (exprType.isBox() && exprType.boxElementType() && *exprType.boxElementType() == *elemType) {
+                // Box -> Box 复制：复制 handle 并 retain
+                // exprVal 是源 Box 的 struct 值，先存 tmp alloca 才能 GEP 取 handle 字段
+                auto tmpAlloca = _builder.CreateAlloca(boxStructType, nullptr, "box_src_tmp");
+                _builder.CreateStore(exprVal, tmpAlloca);
+                auto srcHandleField = _builder.CreateGEP(boxStructType, tmpAlloca, {zero, zero}, "src_handle_field");
+                auto srcHandle = _builder.CreateLoad(ptrTy, srcHandleField, "src_handle");
+
+                // Phase 8b: fresh 来源已在 callee ret 处 move-return retain，跳过
+                // Phase 8d.1: fresh 来源的 +1 转给新 var，从临时帧消费
+                if (!isFreshHandleExpr(expr)) {
+                    auto retainFn = runtime::getBoxRetainFn(_module, _builder);
+                    _builder.CreateCall(retainFn, {srcHandle});
+                } else {
+                    consumeTemp(exprVal);
+                }
+
+                // 释放旧 Box
+                releaseAtPtr(it->second, sym->type);
+
+                // 写入新 Box 的 handle 字段
+                auto handleField = _builder.CreateGEP(boxStructType, it->second, {zero, zero}, "handle_field");
+                _builder.CreateStore(srcHandle, handleField);
+            } else if (exprType == *elemType) {
+                // 由值构造 Box：分配 Block，把 payload 存入 block+8
+                auto elemLLVMType = getLLVMType(*elemType);
+                auto sizeVal = _builder.getInt64(elemLLVMType->getPrimitiveSizeInBits() / 8);
+
+                auto allocFn = runtime::getBoxAllocFn(_module, _builder);
+                auto block = _builder.CreateCall(allocFn, {sizeVal}, "box_block");
+
+                // payload 起始 = block + 8
+                auto payloadPtr = _builder.CreateGEP(_builder.getInt8Ty(), block, {_builder.getInt64(8)}, "box_payload");
+                _builder.CreateStore(exprVal, payloadPtr);
+
+                // 释放旧 Box
+                releaseAtPtr(it->second, sym->type);
+
+                // 写 handle 字段
+                auto handleField = _builder.CreateGEP(boxStructType, it->second, {zero, zero}, "handle_field");
+                _builder.CreateStore(block, handleField);
+            } else {
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, elemType->name, exprType.name);
+            }
+            return;
+        }
+
         // Nullable<T> 赋值：与 compileVarStatement 的初始化路径保持一致
         // 三种 RHS:
         //   1) null 字面量 → { _has=false, _value=zeroinit }
