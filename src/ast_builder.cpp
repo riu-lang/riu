@@ -12,6 +12,14 @@ namespace {
 
 // 已知的构建注解名字白名单；未知注解在 AST 构建期报错
 const set<string>& knownAnnos() {
+    static const set<string> s = {"CompilerInner", "Test"};
+    return s;
+}
+
+// 注解可附着位置的限定集合
+// fn 之外的位置（structDecl / structImpl / extern / globalConst）只接受 #CompilerInner，
+// 不接受 #Test（spec §11.3.1.2）
+const set<string>& nonFnAllowedAnnos() {
     static const set<string> s = {"CompilerInner"};
     return s;
 }
@@ -32,10 +40,29 @@ vector<string> collectAnnos(const AnnoVec& annos) {
     return out;
 }
 
+// 用于非 fn 位置（struct / extern / globalConst）：进一步收紧到 fn-only 注解清单
+template<typename AnnoVec>
+vector<string> collectAnnosNonFn(const AnnoVec& annos) {
+    vector<string> out = collectAnnos(annos);
+    for (size_t i = 0; i < out.size(); ++i) {
+        if (!nonFnAllowedAnnos().contains(out[i])) {
+            // 取对应的 token 用于行列号
+            auto* a = annos[i];
+            throw YuxError(
+                static_cast<int>(a->name->getLine()),
+                static_cast<int>(a->name->getCharPositionInLine()) + 1,
+                ErrorCode::E2011, out[i]);
+        }
+    }
+    return out;
+}
+
 } // namespace
 
-ASTBuilder::ASTBuilder(llvm::LLVMContext& ctx, Yux& yux, const string& moduleName, bool isSdk) :
-    context(ctx), irBuilder(ctx), _yux(yux), _moduleName(moduleName), _isSdk(isSdk) {
+ASTBuilder::ASTBuilder(llvm::LLVMContext& ctx, Yux& yux, const string& moduleName, bool isSdk,
+                       bool isTestFile, const string& sourcePath) :
+    context(ctx), irBuilder(ctx), _yux(yux), _isSdk(isSdk), _isTestFile(isTestFile),
+    _moduleName(moduleName), _sourcePath(sourcePath) {
 }
 
 ASTBuilder::~ASTBuilder() {
@@ -56,11 +83,12 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
     auto file = any_cast_p<FileNode>(stack.back());
 
     // extern 本身和内部 fnHeader 的注解当前仅验证名字（预留未来使用）
-    (void)collectAnnos(ctx->buildAnnos);
+    // extern 块及其内 fnHeader 不接受 #Test（spec §11.3.1.2）
+    (void)collectAnnosNonFn(ctx->buildAnnos);
 
     auto fnHeaders = ctx->fnHeader();
     for (auto header : fnHeaders) {
-        (void)collectAnnos(header->buildAnnos);
+        (void)collectAnnosNonFn(header->buildAnnos);
         auto fnName = header->name->getText();
 
         vector<TypeInfo> paramTypes;
@@ -104,7 +132,8 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
 std::any ASTBuilder::visitGlobalConst(yux::yuxParser::GlobalConstContext* ctx) {
     DEBUG_LOG("Visit: GlobalConst");
     auto file = any_cast_p<FileNode>(stack.back());
-    (void)collectAnnos(ctx->buildAnnos);
+    // globalConst 不接受 #Test（spec §11.3.1.2）
+    (void)collectAnnosNonFn(ctx->buildAnnos);
 
     auto name = ctx->name;
     auto typeNode = any_cast_p<TypeNode>(visit(ctx->type()));
@@ -537,6 +566,35 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
 
     DEBUG_LOG_VAL("Visit: Function", header->name().getText());
 
+    // ==================== #Test 注解校验 (spec §11.3) ====================
+    // 仅 *.test.yux 允许；与 #CompilerInner 互斥；签名 `fn name(): void`、必须有体。
+    if (header->hasAnno("Test")) {
+        // 注意：header->name() 返回 Token 值类型，getText() 返回的 const string& 绑定到临时对象会悬挂；按值拷贝
+        const string fnName = header->name().getText();
+        int annoLine = header->getLineNumber();
+        int annoCol = header->getColumn();
+
+        if (!_isTestFile) {
+            throw YuxError(annoLine, annoCol, ErrorCode::E2014,
+                           _sourcePath.empty() ? _moduleName : _sourcePath);
+        }
+        if (header->hasAnno("CompilerInner")) {
+            throw YuxError(annoLine, annoCol, ErrorCode::E2013, fnName);
+        }
+        bool sigOk = true;
+        // 不允许有参数
+        if (auto fnParamsCtx = ctx->fnHeader()->fnParams()) {
+            if (!fnParamsCtx->fnParam().empty()) sigOk = false;
+        }
+        // 不允许有返回类型标注
+        if (ctx->fnHeader()->retType) sigOk = false;
+        // 必须有函数体
+        if (!ctx->fnBody()) sigOk = false;
+        if (!sigOk) {
+            throw YuxError(annoLine, annoCol, ErrorCode::E2012, fnName, fnName);
+        }
+    }
+
     stack.emplace_back(fn);
     _scopeStack.push_back(fn);
 
@@ -688,7 +746,8 @@ std::any ASTBuilder::visitFnParamGroup(yux::yuxParser::FnParamGroupContext* ctx)
 std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
     auto file = any_cast_p<FileNode>(stack.back());
     auto structDecl = createWithLine<StructDeclNode>(ctx, file, ctx->name);
-    structDecl->setAnnos(collectAnnos(ctx->buildAnnos));
+    // structDecl 不接受 #Test（spec §11.3.1.2）
+    structDecl->setAnnos(collectAnnosNonFn(ctx->buildAnnos));
 
     DEBUG_LOG_VAL("Visit: StructDecl", ctx->name->getText());
 
@@ -722,7 +781,8 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
 std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
     auto file = any_cast_p<FileNode>(stack.back());
     auto structImpl = createWithLine<StructImplNode>(ctx, file, ctx->name);
-    structImpl->setAnnos(collectAnnos(ctx->buildAnnos));
+    // structImpl 块本身不接受 #Test（spec §11.3.1.2）；其内部方法通过 visitFn 处理
+    structImpl->setAnnos(collectAnnosNonFn(ctx->buildAnnos));
 
     DEBUG_LOG_VAL("Visit: StructImpl", ctx->name->getText());
 

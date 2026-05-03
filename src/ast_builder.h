@@ -18,7 +18,9 @@ class ASTBuilder : public yux::yuxBaseVisitor {
     llvm::IRBuilder<> irBuilder;
     Yux& _yux;
     bool _isSdk = false;
+    bool _isTestFile = false;
     string _moduleName;
+    string _sourcePath; // 用于 #Test 在非 *.test.yux 文件中的诊断
 
     vector<std::any> stack;
     vector<p<Node>> _nodes;
@@ -48,8 +50,12 @@ class ASTBuilder : public yux::yuxBaseVisitor {
     p<TypeNode> buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr, p<Node> parent);
 
 public:
-    explicit ASTBuilder(llvm::LLVMContext& ctx, Yux& yux, const string& moduleName = "", bool isSdk = false);
+    explicit ASTBuilder(llvm::LLVMContext& ctx, Yux& yux, const string& moduleName = "", bool isSdk = false,
+                        bool isTestFile = false, const string& sourcePath = "");
     ~ASTBuilder() override;
+
+    [[nodiscard]] bool isTestFile() const { return _isTestFile; }
+    [[nodiscard]] const string& sourcePath() const { return _sourcePath; }
 
     p<FileNode> build(yux::yuxParser::ProgramContext* ctx);
 

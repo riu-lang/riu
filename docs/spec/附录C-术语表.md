@@ -106,6 +106,9 @@
 | `base.yux` | SDK base | §10.4 | 内置类型 / 内置函数声明源 |
 | 构建注解 | build annotation | §11 | `#Name` 形态 |
 | `#CompilerInner` | compiler-internal annotation | §11.2 | 编译器合成实现 |
+| `#Test` | test annotation | §11.3 | 标记单元测试函数；仅 `*.test.yux` 中允许 |
+| 测试文件 | test file | §11.3.3 | 以 `.test.yux` 结尾；`yux test` 专属 |
+| `yux test` | yux test command | §11.3.4 | 收集并执行项目下 `#Test` 函数的子命令 |
 
 ## C.7 编译期 / 实现
 

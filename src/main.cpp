@@ -57,6 +57,7 @@ LLD_HAS_DRIVER(wasm)
 #include "node/fn_node.h"
 #include "node/expr_node.h"
 #include "compiler.h"
+#include "mangler.h"
 #include <llvm/Support/Path.h>
 
 using namespace yux;
@@ -639,6 +640,18 @@ int wmain(int argc, wchar_t* argv[]) {
     buildCmd->add_flag("-d,--debug", debug, "Output compilation IR debug information");
 #endif
 
+    // `yux test [selector]` 子命令（仅项目模式；spec §11.3.4）
+    // selector 形态：
+    //   <prefix>             模块名前缀匹配（例：yux.core 命中 yux.core.*.test）
+    //   <module>#<fnName>    精确匹配模块名 + 函数名
+    auto* testCmd = app.add_subcommand("test", "Run #Test functions in *.test.yux files (project mode only)");
+    std::string testSelector;
+    testCmd->add_option("selector", testSelector, "Module prefix or `<module>#<fnName>` selector");
+    testCmd->fallthrough();
+#ifdef _DEBUG
+    testCmd->add_flag("-d,--debug", debug, "Output compilation IR debug information");
+#endif
+
     auto* lspCmd = app.add_subcommand("lsp", "Run as a Language Server (stdio JSON-RPC)");
 
     auto* formatCmd = app.add_subcommand("format", "Format a .yux source file");
@@ -784,6 +797,236 @@ int wmain(int argc, wchar_t* argv[]) {
     }
 
     std::cout << "Working at: " << std::filesystem::absolute(std::filesystem::current_path()).string() << std::endl;
+
+    // ==================== `yux test` 子命令 ====================
+    // Phase 2 实现：仅项目模式；递归扫描 src/ 下 *.yux + *.test.yux；codegen 全部模块后
+    // 走 LLJIT，按 selector 过滤 #Test 函数逐个 lookup 调用。崩溃即整体非零退出。
+    if (testCmd->parsed()) {
+        namespace fs = std::filesystem;
+        if (!inputFile.empty()) {
+            std::cerr << "Error: `yux test` does not accept positional input file" << std::endl;
+            return 1;
+        }
+        // 解析 selector：形如 `<prefix>` 或 `<module>#<fnName>`
+        std::string selModule, selFn;
+        if (!testSelector.empty()) {
+            auto hash = testSelector.find('#');
+            if (hash == std::string::npos) {
+                selModule = testSelector;
+            } else {
+                selModule = testSelector.substr(0, hash);
+                selFn = testSelector.substr(hash + 1);
+            }
+        }
+
+        Yux yux;
+        std::string cwd = fs::current_path().string();
+        try {
+            yux.initProjectFromDir(cwd);
+        } catch (runtime_error& e) {
+            std::cerr << e.what() << std::endl;
+            return 1;
+        }
+
+        // SDK：与 build 路径共享。需要 sdk obj 给 JIT 加载；如不存在则现编。
+        std::string sdkPath = findSdkPath();
+        std::string sdkObjPath;
+        if (!sdkPath.empty()) {
+            sdkPath = fs::absolute(sdkPath).string();
+            fs::path sdkRoot = fs::path(sdkPath).parent_path().parent_path().parent_path();
+            fs::path sdkBuildDir = sdkRoot / "build" / "yux";
+            fs::create_directories(sdkBuildDir);
+            sdkObjPath = (sdkBuildDir / "core.obj").string();
+
+            bool needCompile = !fs::exists(sdkObjPath) || needRecompileSdkDir(sdkPath, sdkObjPath);
+            if (needCompile) {
+                SdkLock sdkLock;
+                sdkLock.tryLock();
+                needCompile = !fs::exists(sdkObjPath) || needRecompileSdkDir(sdkPath, sdkObjPath);
+                if (needCompile) {
+                    auto sdkIrr = compileSdkDir(sdkPath, yux);
+                    if (!compileIRToObj(sdkIrr.module.get(), sdkObjPath)) {
+                        std::cerr << "Failed to compile SDK to object file" << std::endl;
+                        return 1;
+                    }
+                    std::cout << "Write SDK obj: " << sdkObjPath << std::endl;
+                } else {
+                    parseSdkDir(sdkPath, yux);
+                }
+            } else {
+                parseSdkDir(sdkPath, yux);
+            }
+        }
+
+        // 递归扫 src/ 下所有 .yux（含 .test.yux）
+        fs::path srcDir(yux.sourceRoot());
+        if (!fs::is_directory(srcDir)) {
+            std::cerr << "Error: project missing `src/` directory at " << srcDir.string() << std::endl;
+            return 1;
+        }
+        struct LoadEntry { std::string abs; std::string mod; bool isTest; };
+        std::vector<LoadEntry> entries;
+        std::error_code walkEc;
+        for (auto it = fs::recursive_directory_iterator(srcDir, walkEc);
+             it != fs::recursive_directory_iterator(); ++it) {
+            if (walkEc) break;
+            if (!it->is_regular_file()) continue;
+            const auto& p = it->path();
+            if (p.extension() != ".yux") continue;
+            auto fname = p.filename().string();
+            bool isTest = fname.size() >= 9 &&
+                          fname.compare(fname.size() - 9, 9, ".test.yux") == 0;
+            auto rel = fs::relative(p, srcDir);
+            std::string modName = rel.generic_string();
+            // strip ".yux"（保留 ".test" 段，例如 "yux/core/arithmetic.test.yux" → "yux.core.arithmetic.test"）
+            modName = modName.substr(0, modName.size() - 4);
+            for (auto& c : modName) if (c == '/' || c == '\\') c = '.';
+            entries.push_back({fs::absolute(p).string(), modName, isTest});
+        }
+        std::sort(entries.begin(), entries.end(),
+                  [](const LoadEntry& a, const LoadEntry& b) { return a.mod < b.mod; });
+
+        // 加载所有 AST。若模块名已加载（被 SDK 抢先），跳过避免冲突。
+        // 自维护加载顺序：Yux::loadMainFile 不写 _loadOrder。
+        std::vector<std::string> loadedMods;
+        for (auto& e : entries) {
+            if (yux.module(e.mod)) continue;
+            try {
+                yux.loadMainFile(e.abs, e.mod);
+                loadedMods.push_back(e.mod);
+            } catch (runtime_error& re) {
+                reportRuntimeError(e.abs, re, e.mod + ": ");
+                return 1;
+            }
+        }
+
+        // codegen 每个加载的用户模块为独立 LLVM Module
+        std::vector<std::unique_ptr<llvm::Module>> mods;
+        std::vector<std::unique_ptr<llvm::LLVMContext>> ctxs;
+        // 测试函数收集表：(modName, fnName, mangledSymbol)
+        struct TestEntry { std::string mod; std::string fn; std::string sym; };
+        std::vector<TestEntry> tests;
+        for (auto& modName : loadedMods) {
+            auto file = yux.module(modName);
+            if (!file || file == yux.sdkFile()) continue;
+
+            auto ctx = std::make_unique<llvm::LLVMContext>();
+            auto mod = std::make_unique<llvm::Module>(modName, *ctx);
+            llvm::IRBuilder<> builder(*ctx);
+            try {
+                Compiler compiler(*ctx, builder, mod.get(), file, &yux, false);
+                compiler.compile(file);
+            } catch (runtime_error& re) {
+                std::string mp = yux.modulePath(modName);
+                reportRuntimeError(mp, re, modName + ": ");
+                return 1;
+            }
+
+            // 收集本模块内的 #Test 函数（仅顶层 fn；方法 v1 暂不收集）
+            for (auto& fn : file->getFunctions()) {
+                if (!fn->header()->hasAnno("Test")) continue;
+                std::string fnName = fn->header()->name().getText();
+                // mangler: function(module, name, params=[], isPrivate=false) → "mod_name()"
+                std::string sym = Mangler::function(modName, fnName, {}, false);
+                tests.push_back({modName, fnName, sym});
+            }
+
+            mods.push_back(std::move(mod));
+            ctxs.push_back(std::move(ctx));
+        }
+
+        // selector 过滤
+        auto matchesPrefix = [&](const std::string& m) {
+            if (selModule.empty()) return true;
+            if (m == selModule) return true;
+            return m.size() > selModule.size() + 1 &&
+                   m.compare(0, selModule.size(), selModule) == 0 &&
+                   m[selModule.size()] == '.';
+        };
+        std::vector<TestEntry> filtered;
+        for (auto& t : tests) {
+            if (!matchesPrefix(t.mod)) continue;
+            if (!selFn.empty() && t.fn != selFn) continue;
+            filtered.push_back(t);
+        }
+
+        if (filtered.empty()) {
+            std::cout << "no tests matched";
+            if (!testSelector.empty()) std::cout << " selector `" << testSelector << "`";
+            std::cout << std::endl;
+            std::cout.flush();
+            std::cerr.flush();
+            _exit(0);
+        }
+
+        // 启动 LLJIT，加载 sdk obj + 所有用户模块 IR
+        llvm::InitializeNativeTarget();
+        llvm::InitializeNativeTargetAsmPrinter();
+        llvm::InitializeNativeTargetAsmParser();
+
+        auto jitOrErr = llvm::orc::LLJITBuilder().create();
+        if (!jitOrErr) {
+            llvm::errs() << "[test] LLJIT create failed: "
+                         << llvm::toString(jitOrErr.takeError()) << "\n";
+            return 1;
+        }
+        auto& jit = *jitOrErr;
+        auto& jd = jit->getMainJITDylib();
+
+        auto procGen = llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
+            jit->getDataLayout().getGlobalPrefix());
+        if (!procGen) {
+            llvm::errs() << "[test] process generator failed: "
+                         << llvm::toString(procGen.takeError()) << "\n";
+            return 1;
+        }
+        jd.addGenerator(std::move(*procGen));
+
+        if (!sdkObjPath.empty() && fs::exists(sdkObjPath)) {
+            auto bufOrErr = llvm::MemoryBuffer::getFile(sdkObjPath);
+            if (!bufOrErr) {
+                llvm::errs() << "[test] read sdk obj failed: " << sdkObjPath << "\n";
+                return 1;
+            }
+            if (auto e = jit->addObjectFile(std::move(*bufOrErr))) {
+                llvm::errs() << "[test] addObjectFile(sdk) failed: "
+                             << llvm::toString(std::move(e)) << "\n";
+                return 1;
+            }
+        }
+        for (size_t i = 0; i < mods.size(); ++i) {
+            mods[i]->setDataLayout(jit->getDataLayout());
+            llvm::orc::ThreadSafeModule tsm(std::move(mods[i]), std::move(ctxs[i]));
+            if (auto e = jit->addIRModule(std::move(tsm))) {
+                llvm::errs() << "[test] addIRModule failed: "
+                             << llvm::toString(std::move(e)) << "\n";
+                return 1;
+            }
+        }
+
+        // 顺序执行，崩溃即整体退出（Phase 2 不做隔离）
+        size_t passed = 0, failed = 0;
+        for (auto& t : filtered) {
+            std::cout << "RUN  " << t.mod << "#" << t.fn << std::endl;
+            std::cout.flush();
+            auto sym = jit->lookup(t.sym);
+            if (!sym) {
+                std::cout << "FAIL " << t.mod << "#" << t.fn
+                          << " (lookup failed: " << llvm::toString(sym.takeError()) << ")"
+                          << std::endl;
+                ++failed;
+                continue;
+            }
+            auto fn = sym->toPtr<void (*)()>();
+            fn();
+            std::cout << "OK   " << t.mod << "#" << t.fn << std::endl;
+            ++passed;
+        }
+        std::cout << "\n" << passed << " passed, " << failed << " failed" << std::endl;
+        std::cout.flush();
+        std::cerr.flush();
+        _exit(failed == 0 ? 0 : 1);
+    }
 
     bool projectMode = buildCmd->parsed();
 
@@ -964,6 +1207,13 @@ int wmain(int argc, wchar_t* argv[]) {
             if (!it->is_regular_file()) continue;
             auto& p = it->path();
             if (p.extension() != ".yux") continue;
+            // 跳过 *.test.yux —— 测试文件仅由 `yux test` 子命令处理（spec §11.3.3.2）
+            {
+                auto fname = p.filename().string();
+                if (fname.size() >= 9 && fname.compare(fname.size() - 9, 9, ".test.yux") == 0) {
+                    continue;
+                }
+            }
             auto rel = fs::relative(p, srcDir);
             string modName = rel.generic_string();
             modName = modName.substr(0, modName.size() - 4); // strip .yux

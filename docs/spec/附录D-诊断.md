@@ -83,6 +83,12 @@ N | <源码行原文>
 | E2006 | `Function \`{}\` has no body; only \`#CompilerInner\` functions may omit the body` |
 | E2007 | `Method \`{}.{}\` has no body; only \`#CompilerInner\` methods may omit the body` |
 | E2008 | `wildcard alias \`{}\` is ambiguous, matched {}` |
+| E2009 | `Function \`{}\` cannot return \`T&\`; only \`#CompilerInner\` baked builtins may have a reference return type (spec §8.9)` |
+| E2010 | `Cannot call mutating method \`Array.{}\` on \`{}\`: it has an active borrow (spec §8.4.2.5)` |
+| E2011 | `Build annotation \`#{}\` is not allowed on this declaration (only \`fn\` accepts it)` |
+| E2012 | `\`#Test\` function \`{}\` must have signature \`fn {}(): void\` (no params, no return type, must have body)` |
+| E2013 | `\`#Test\` and \`#CompilerInner\` cannot both be applied to function \`{}\`` |
+| E2014 | `\`#Test\` is only allowed in \`*.test.yux\` files; \`{}\` is not a test file` |
 
 ### D.3.3 E3xxx — 类型
 

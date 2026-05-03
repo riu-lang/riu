@@ -96,6 +96,10 @@ DEF_ERR(2007, "Method `{}.{}` has no body; only `#CompilerInner` methods may omi
 DEF_ERR(2008, "wildcard alias `{}` is ambiguous, matched {}")
 DEF_ERR(2009, "Function `{}` cannot return `T&`; only `#CompilerInner` baked builtins may have a reference return type (spec §8.9)")
 DEF_ERR(2010, "Cannot call mutating method `Array.{}` on `{}`: it has an active borrow (spec §8.4.2.5)")
+DEF_ERR(2011, "Build annotation `#{}` is not allowed on this declaration (only `fn` accepts it)")
+DEF_ERR(2012, "`#Test` function `{}` must have signature `fn {}()` (no params, no return type, must have body)")
+DEF_ERR(2013, "`#Test` and `#CompilerInner` cannot both be applied to function `{}`")
+DEF_ERR(2014, "`#Test` is only allowed in `*.test.yux` files; `{}` is not a test file")
 
 // ── E3xxx 类型 — 类型不匹配 ───────────────────────────────────────────
 DEF_ERR(3001, "Type mismatch in +-/ operation: left is {}, right is {}")

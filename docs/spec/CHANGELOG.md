@@ -15,6 +15,15 @@
 
 ---
 
+## 2026-05-03 —— 新增 `#Test` 注解与 `yux test` 子命令
+
+- **新增**：§11.3 `#Test` 注解条款 —— 仅挂 `fn`；签名等价 `fn name(): void`（无参、无返回类型、必须有函数体）；与 `#CompilerInner` 互斥；仅可出现在 `*.test.yux` 文件中。普通 `yux build` 跳过 `#Test` 函数的 codegen，不进入 `.exe` / `.lib` 产物。
+- **新增**：§11.3.3 测试文件发现规则 —— `*.test.yux` 仅由 `yux test` 在项目 `src/` 下递归发现；模块名取 src 相对路径转点分形式，保留 `.test` 段（例：`src/yux/core/arithmetic.test.yux` → `yux.core.arithmetic.test`）。
+- **新增**：§11.3.4（informative）`yux test` 行为 —— 仅项目模式可用；选择器支持 `<prefix>` 前缀匹配、`<module>#<fnName>` 精确定位；v1 同进程顺序执行，无隔离（崩溃即整体非零退出）。
+- **修改**：原 §11.3「其他注解」与 §11.4「用户自定义注解」整体下移为 §11.4 / §11.5；§11.4.1 注解对照表加入 `#Test` 行。
+- **新增**：附录 C 加入 `#Test` 与 `yux test` 术语条目。
+- **冲突 / 兼容**：纯增量。既有 `#CompilerInner` 条款全部保留；既有 `.yux` 源码无破坏（现有源码均不带 `#Test`，且不存在 `*.test.yux` 文件）。
+
 ## 2026-05-03 —— 诊断列号语义收口 + 多字节插入符对齐
 
 - **修改**：附录 D §D.1.1 —— `col` 字段语义由"1-based 字节列号"更正为"1-based 字符列号"（按 Unicode codepoint 计数，与 ANTLR `getCharPositionInLine() + 1` 同源；纯 ASCII 输入下数值与原文档一致，回归测试 0 改动）。

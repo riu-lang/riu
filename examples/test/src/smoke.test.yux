@@ -1,0 +1,16 @@
+; Phase 2 冒烟测试：仅验证 #Test 收集 + JIT 调用通路
+; 运行：
+;   cd examples/test
+;   yux test smoke
+;   yux test smoke#test_pass
+;   yux test smoke#test_print
+
+#Test
+fn test_pass() {
+    ; 空体即视为通过（Phase 2 无 assert API，崩溃即失败）
+}
+
+#Test
+fn test_print() {
+    println("hello from test_print")
+}

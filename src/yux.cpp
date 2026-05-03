@@ -151,7 +151,11 @@ p<FileNode> Yux::_parseFile(const string& absPath, const string& moduleName, int
         throw YuxError(errorLine, ErrorCode::E5010, absPath);
     }
 
-    auto astBuilder = std::make_unique<ASTBuilder>(_astContext, *this, moduleName, false);
+    // 测试文件按文件名后缀识别（spec §11.3.3.1）
+    bool isTestFile = absPath.size() >= 9 &&
+                      absPath.compare(absPath.size() - 9, 9, ".test.yux") == 0;
+    auto astBuilder = std::make_unique<ASTBuilder>(_astContext, *this, moduleName, false,
+                                                    isTestFile, absPath);
     auto fileNode = astBuilder->build(program);
     _moduleBuilders.push_back(std::move(astBuilder));
     return fileNode;
