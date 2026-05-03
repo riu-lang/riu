@@ -26,6 +26,7 @@
 
 - **接到多步任务**：先在 `CURRENT.md` 写入分阶段计划（参照该文件现有条目），读后开干，阶段完成就地更新；整个任务完成后删除该条目。单步小修不必写。
 - **新发现 bug**：按 `BUGS.md` 模板填写，暂停相关任务向用户说明。**进度→`CURRENT.md`，bug→`BUGS.md`，两者不混用**。
+- **新增测试用例必须沿用已有前缀**：`tests/xmake.lua` 按文件名前缀把用例分到 `yux/<cat>` 分组（`borrow_*` → `yux/borrow`、`diag_*` → `yux/diag` 等，全表见 `yux-lang-dev` 技能的「测试」章节）。落不到任何前缀的用例会进 `yux/misc`，使分组失效。优先用前缀命名；确实没有自然前缀的（算术/类型/控制流家族），把名字加进 `categorize` 中对应的白名单表。
 - **完成一个版本后归档实施记录**：把 `CURRENT.md` 里某个大任务（如所有权 v0.1）的 Phase 列表精简后落到 `docs/dev/<topic>-impl-log.md`。归档时**剔除本地化指代**（人名 / 私人路径 / 邮箱）、剔除测试计数与具体行号（易腐烂），保留：核心决策、Block layout、ABI 协议、关键文件与函数名、跨 Phase 的 TODO 汇总。
 - **实施日志中引用 BUGS.md 的位置改写为 TODO**：`docs/dev/` 入库，`BUGS.md` 不入库，所以日志里"详见 BUGS.md 第 X 条"会变成悬挂引用。改写为该 TODO 本身的简述（如 "TODO：Array 声明拷贝漏 retain"），具体诊断与修复进度仍在本地 `BUGS.md` 维护。
 - **`docs/spec/draft/DRAFT-*.md` 入库，但不等于规范**：草案用来沉淀跨章节设计的讨论与决议，**不一定会实施**；以 `docs/spec/` 正文为准。草案与 spec 冲突时，以 spec + `src/yux.g4` + 编译器源码为准；spec 未收口前，草案仅供参考、不构成实现承诺。新建草案从 `docs/spec/draft/_模板.md` 复制骨架；定型后按模板末尾「定型与归宿」拆分迁入 spec 正文与 CHANGELOG，原 DRAFT 文件删除或在头部标注「已落地，见 §N.M」保留为历史档。

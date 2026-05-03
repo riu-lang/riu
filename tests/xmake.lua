@@ -21,9 +21,67 @@
 --   xmake test -v                           详细日志（失败时打印 stdout / stderr / errors）
 --   xmake test yux_tests/<name>             单独运行（<name> 为用例文件基名）
 --   xmake test "yux_tests/*"                通配符
+--   xmake test -g yux/<cat>                 只跑某一分类（见下方 categorize 函数）
+--
+-- 分类（按用例名前缀；新用例必须沿用已有前缀，否则会落到 yux/misc）：
+--   yux/diag      诊断/错误提示          diag_*
+--   yux/borrow    借用与生命周期         borrow_*
+--   yux/array     数组                    array_*
+--   yux/box       Box 智能指针            box_*
+--   yux/ref       引用                    ref_*、same_ref
+--   yux/weak      Weak 引用               weak_*
+--   yux/nullable  可空类型                nullable_*
+--   yux/rc        引用计数 / 泄漏         rc_*、*_rc、temp_zero_leak、field_reassign_rc
+--   yux/struct    结构体                  struct_*、ctor_*、generic_struct_*
+--   yux/expr      算术 / 逻辑 / 位 / 比较 / 字面量
+--   yux/types     类型系统                basic_types、all_types、type_cast、...
+--   yux/control   控制流 / 函数            if_else、loop_test、functions、...
+--   yux/project   项目模式用例            tests/projects/* (前缀 project_)
+--   yux/misc      其余兜底
 
 local cases_dir = path.join(os.scriptdir(), "cases")
 local projects_dir = path.join(os.scriptdir(), "projects")
+
+-- 用例名 → 分组名。name 为不带 .yux 的基名；项目模式用例形如 "project_<dir>"。
+-- 新增用例时，若命名沿用已有前缀，会自动归入对应分组；否则落入 yux/misc，
+-- 此时应优先重命名用例（保持前缀约定），而不是在这里加白名单。
+local function categorize(name)
+    if name:startswith("project_") then return "yux/project" end
+    if name:startswith("diag_")    then return "yux/diag"    end
+    if name:startswith("borrow_")  then return "yux/borrow"  end
+    if name:startswith("array_")   then return "yux/array"   end
+    if name:startswith("box_")     then return "yux/box"     end
+    if name:startswith("ref_") or name == "same_ref" then return "yux/ref" end
+    if name:startswith("weak_")    then return "yux/weak"    end
+    if name:startswith("nullable_") then return "yux/nullable" end
+    if name:startswith("rc_") or name:endswith("_rc")
+       or name == "temp_zero_leak" or name == "field_reassign_rc" then
+        return "yux/rc"
+    end
+    if name:startswith("struct_") or name:startswith("ctor_")
+       or name:startswith("generic_struct_") then
+        return "yux/struct"
+    end
+    local expr_set = {
+        arithmetic = true, bitwise_ops = true, logical_ops = true,
+        comparison = true, operator_precedence = true, unary_ops = true,
+        compound_assign = true, literals = true, integer_bases = true,
+        float_add = true, math_int = true, u8_overflow = true,
+    }
+    if expr_set[name] then return "yux/expr" end
+    local types_set = {
+        basic_types = true, all_types = true, type_cast = true,
+        type_inference = true, code_point = true,
+    }
+    if types_set[name] then return "yux/types" end
+    local control_set = {
+        if_else = true, inline_if = true, loop_test = true,
+        functions = true, multi_fn = true, return_type_match = true,
+        empty_main = true,
+    }
+    if control_set[name] then return "yux/control" end
+    return "yux/misc"
+end
 
 local function list_case_names()
     local r = {}
@@ -48,7 +106,7 @@ target("yux_tests")
     add_deps("yux")
 
     for name, _ in pairs(list_case_names()) do
-        add_tests(name, {group = "yux"})
+        add_tests(name, {group = categorize(name)})
     end
 
     on_test(function (target, opt)

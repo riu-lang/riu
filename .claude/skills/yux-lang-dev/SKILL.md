@@ -100,14 +100,42 @@ xmake test -v                            ; 失败时打印 stdout / stderr / err
 xmake test yux_tests/basic_types         ; 单个用例（注意：不带 .yux 后缀）
 xmake test yux_tests/project_imports_struct
 xmake test "yux_tests/*"                 ; 通配符
+xmake test -g yux/borrow                 ; 只跑某一分组（见下表）
 ```
+
+### 用例分组（按文件名前缀，避免动辄全量）
+
+`tests/xmake.lua` 的 `categorize(name)` 把每个 `add_tests` 分到 `yux/<cat>` 分组。
+**新增用例必须沿用对应前缀**，否则会落入 `yux/misc`，分组功能就退化了。
+
+| 分组 | 前缀 / 命名规则 | 典型用例 |
+|------|---------------|---------|
+| `yux/diag` | `diag_*.yux` + `*.expected_err` | 诊断 / 错误提示回归 |
+| `yux/borrow` | `borrow_*` | 借用与生命周期 |
+| `yux/array` | `array_*` | 数组 |
+| `yux/box` | `box_*` | Box 智能指针 |
+| `yux/ref` | `ref_*`、`same_ref` | 引用 |
+| `yux/weak` | `weak_*` | Weak 引用 |
+| `yux/nullable` | `nullable_*` | 可空类型 |
+| `yux/rc` | `rc_*`、`*_rc`、`temp_zero_leak`、`field_reassign_rc` | 引用计数 / 泄漏 |
+| `yux/struct` | `struct_*`、`ctor_*`、`generic_struct_*` | 结构体 |
+| `yux/expr` | 显式白名单：`arithmetic`、`bitwise_ops`、`logical_ops`、`comparison`、`operator_precedence`、`unary_ops`、`compound_assign`、`literals`、`integer_bases`、`float_add`、`math_int`、`u8_overflow` | 算术 / 逻辑 / 位 / 比较 / 字面量 |
+| `yux/types` | 显式白名单：`basic_types`、`all_types`、`type_cast`、`type_inference`、`code_point` | 类型系统 |
+| `yux/control` | 显式白名单：`if_else`、`inline_if`、`loop_test`、`functions`、`multi_fn`、`return_type_match`、`empty_main` | 控制流 / 函数 |
+| `yux/project` | `tests/projects/<dir>/`（自动加 `project_` 前缀） | 项目模式 |
+| `yux/misc` | 兜底 | 其余字符串、注释、变量、ptr 等 |
+
+如果新用例确实属于 `yux/expr` / `yux/types` / `yux/control` 这类**没有自然前缀**的家族，
+优先级是：先看能不能起一个带前缀的名字；起不出来时，把名字加进 `tests/xmake.lua`
+对应的白名单表（`expr_set` / `types_set` / `control_set`），不要让它停留在 `misc`。
 
 测试用例与语言规范冲突时，**更新用例**（`src/yux.g4` + 编译器为准）；不要通过修改规范去迁就用例。
 
 开发流程建议：
 
 1. 先改 `examples/test` 或随手建项目做冒烟验证
-2. 冒烟过后 `xmake test` 全量回归
+2. 改某个子系统时优先 `xmake test -g yux/<相关分组>` 局部回归
+3. 提交前再 `xmake test` 全量过一遍
 
 ## 编写 yux 代码
 
