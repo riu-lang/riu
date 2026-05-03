@@ -24,14 +24,20 @@ N | <源码行原文>
 - `file` 为相对或绝对路径，由命令行入口决定；缺失时回退为 `line N` 或省略。
 - `line` 为 1-based 行号；`col` 为 1-based **字节**列号（多字节字符按字节对齐，未来可能改为列宽对齐，*informative*）。
 - `code` 形如 `EXXXX`，与 `ErrorCode::EXXXX.code` 同字面值；占位错误码 `E0000` 表示尚未挂码的位置，迁移完成后**不应**再出现。
-- `severity` 当前实现取 `error`；`note` / `warning` 已在 `DiagSeverity` 中预留，按 v0.3 Phase 4 规划启用。
+- `severity` 取 `note` / `warning` / `error` 之一；每个错误码挂默认严重度，CLI `--warn` / `--allow` / `--deny` / `--Werror` 可在策略允许范围内调整。详见 D.5。
 - `message` 为消息模板用具体参数渲染后的结果，模板见 D.3。
 - 当 `file` + `line` 同时有效时**应当**输出源码片段；`col` 有效时**应当**追加插入符行。
 - 一条诊断**可以**附带 0..N 条 `note` / `help`。
 
 ### D.1.2 多条诊断
 
-当前实现在遇到首个错误时即停止后续阶段（首错即出）。聚合输出（多错合并、`-Werror` 等）由 v0.3 Phase 4 引入；本附录目前**不**约束多条诊断之间的顺序与去重。
+实现采用**文件级聚合**：单个 `.yux` 文件内首次抛出 `YuxError` 仍会终止该文件的后续阶段，但**不会**让整个构建立即退出；驱动层会继续尝试编译其余模块，最后再以非零退出码结束。这样多个文件中的错误可以在一次编译中一起呈现，便于一次性看清问题面。
+
+约束：
+
+- 同一 `.yux` 文件内的多条诊断不强求；首条错误后该文件不再继续。
+- 跨文件的诊断顺序**应当**与 `loadOrder()` 一致（主模块在前，导入模块按拓扑顺序）。
+- 链接阶段在任一模块 codegen 失败时**应当**被跳过。
 
 ## D.2 错误码段位
 
@@ -294,11 +300,33 @@ Array 内置方法（E6040..E6044）：
 | 模块加载            | `Yux::loadModule` 等                | 已接入（E5xxx）       |
 | 入口驱动            | `main.cpp::reportRuntimeError`      | 统一 catch，上诊断    |
 
-## D.5 路线图（*informative*）
+## D.5 严重度策略与 CLI 开关
 
-下列条目延期至短期目标（详见 `TARGETS.md`），落地后**应当**回写本附录：
+### D.5.1 默认严重度
 
-- **诊断分级 / CLI 严重度开关**（原 v0.3 Phase 4）：启用 `DiagSeverity::Warning` 与 `Note`，引入 CLI `--warn` / `--allow` / `--deny` / `-Werror`，由"首错即停"改为聚合输出。注意：将已有 error 降级为 warning 依赖错误恢复机制，未实现前 `--warn` 仅对默认 severity 为 warning 的码生效。
+每个错误码（`ErrorCode::EXXXX`）在 `include/error_code.h` 的 `DEF_ERR` / `DEF_WARN` / `DEF_NOTE` 宏中携带 `defaultSev`。当前所有码段（E1xxx..E6xxx）默认 `Error`；`Warning` / `Note` 段为后续 D.5 规划保留（如未使用变量、可疑类型转换等）。
+
+### D.5.2 CLI 开关
+
+驱动层 `yux` / `yux build` 接受以下选项（每项可重复多次）：
+
+| 选项                 | 语义                                               |
+|----------------------|----------------------------------------------------|
+| `--warn=<code>`      | 把 `<code>` 的有效严重度改为 `warning`             |
+| `--allow=<code>`     | 把 `<code>` 的有效严重度改为 `note`                |
+| `--deny=<code>`      | 把 `<code>` 的有效严重度改为 `error`               |
+| `--Werror`           | 全局把 `warning` 升级为 `error`                    |
+
+应用顺序：默认 → 单码覆盖 → `--Werror` 升级。
+
+### D.5.3 不可降级原则
+
+默认严重度为 `error` 的码**不允许**通过 `--warn` / `--allow` 降级；尝试降级时驱动层**应当**忽略该覆盖并打印 `warning: cannot downgrade error code 'EXXXX' (default severity is error); --allow ignored` 的提示。原因：当前实现在 `Compiler::compile` 中遇到首个 `YuxError` 即抛出退出该文件，没有错误恢复机制；强行把 error 当 warning 会让后续 IR 在不一致状态下继续生成。
+
+未来如果某些码引入错误恢复路径，**可以**把它们从默认 `Error` 重新挂为 `Warning`（在 `DEF_WARN` 中重新声明），从而获得"可降级 / 默认仍报错"的双重特性。
+
+### D.5.4 路线图（*informative*）
+
 - **高频场景 提示/修复建议**（原 v0.3 Phase 5）：类型不匹配修复建议、未声明标识符的拼写近似（Levenshtein ≤ 2）、`T&` 禁止位置、`Weak<T>?` / `Weak ==`、`extern` 签名不匹配等的 `note` / `help`。
 
 ## D.6 诊断回归测试

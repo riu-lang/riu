@@ -15,6 +15,15 @@
 
 ---
 
+## 2026-05-03 —— Phase 4：诊断分级 / CLI 严重度开关 / 文件级聚合
+
+- **新增**：`DiagSeverity { Note, Warning, Error }` 落地，每个错误码（`ErrorCode::EXXXX`）通过 `DEF_ERR` / `DEF_WARN` / `DEF_NOTE` 携带 `defaultSev`；当前所有码默认 `Error`，`Warning` / `Note` 留待 Phase 5 与未来错误恢复后启用。
+- **新增**：CLI `--warn=<code>` / `--allow=<code>` / `--deny=<code>` / `--Werror`；主命令与 `build` 子命令均可使用（subcommand 通过 `fallthrough()` 继承）。
+- **不可降级原则**：默认 `Error` 的码不允许通过 `--warn` / `--allow` 降级；尝试降级时打印 `cannot downgrade ... (default severity is error)` 并忽略，理由是当前 Compiler 在 `YuxError` 抛出后即停，没有错误恢复机制（详见 §D.5.3）。
+- **聚合策略**：从"首错即出"改为**文件级聚合** —— 单文件 codegen 失败不再立即 `exit(1)`；驱动层继续编译其余模块，最后再以非零退出码结束。链接阶段在任一模块失败时跳过。
+- **附录 D**：§D.1.1 严重度叙述更新；§D.1.2 改写为聚合语义；新增 §D.5 严重度策略与 CLI 开关；原"路线图"挪入 §D.5.4。
+- **冲突 / 兼容**：诊断输出格式无变化；既有用例 / `expected_err` 全部沿用。新引入的 `--warn` 等选项不传时行为完全等价于此前。
+
 ## 2026-05-02 —— Phase 6：诊断回归测试
 
 - **新增**：`tests/cases/diag_*.yux` + `*.expected_err` 用例形态，由 `tests/xmake.lua` 识别并走"编译期望失败 + 逐行子串包含 stderr"的判定路径。首批纳入 6 个用例，覆盖 E1001 / E1002 / E5010 / E2001 / E3020 / E3032 / E3093 / E3094。

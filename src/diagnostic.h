@@ -18,11 +18,7 @@
 #include "types.h"
 #include <ostream>
 
-enum class DiagSeverity : u8 {
-    Note,
-    Warning,
-    Error,
-};
+// DiagSeverity 在 error_code.h 中定义（Note < Warning < Error）
 
 struct Diagnostic {
     DiagSeverity severity = DiagSeverity::Error;
@@ -33,6 +29,38 @@ struct Diagnostic {
     string message;
     vector<string> notes;  // Phase 2+ 使用
     vector<string> hints;  // Phase 5 使用
+};
+
+// CLI 严重度覆盖策略（Phase 4）
+//
+// 全局策略表：把单个错误码 / 整体 -Werror 等开关收纳进来，渲染时按"默认 sev → 覆盖 → Werror"的顺序计算最终 sev。
+//
+// 不可降级原则：默认 severity = Error 的错误码不能被 --warn / --allow 降级；尝试降级时
+// setSeverityOverride 返回 false，调用方应打印拒绝信息并保留默认严重度。
+class DiagPolicy {
+public:
+    // 注册对单个错误码的严重度覆盖。defaultSev 由调用方提供（来自 ErrorCodeDef.defaultSev）。
+    // 拒绝条件：默认 sev = Error 但试图改成 Warning/Note；这种情况返回 false，不修改任何状态。
+    // 允许条件：默认 sev <= Warning，可在 Note/Warning/Error 内任意调整；Werror 单独由 setWerror 控制。
+    static bool setSeverityOverride(const string& code, DiagSeverity defaultSev, DiagSeverity newSev);
+
+    // 启用 -Werror：所有最终 severity == Warning 的诊断升级为 Error。
+    static void setWerror(bool on);
+
+    // 是否启用 Werror。
+    static bool werror();
+
+    // 查询某码的覆盖（不存在返回 nullptr）。
+    static const DiagSeverity* findOverride(const string& code);
+
+    // 计算诊断的最终 severity：
+    //   1) 起点 = defaultSev；
+    //   2) 若该 code 有覆盖，使用覆盖值；
+    //   3) 若 -Werror 且当前为 Warning，升级为 Error。
+    static DiagSeverity effectiveSeverity(const string& code, DiagSeverity defaultSev);
+
+    // 重置所有策略（测试 / LSP 重启场景使用）
+    static void reset();
 };
 
 class DiagnosticEngine {

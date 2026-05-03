@@ -516,6 +516,20 @@ int wmain(int argc, wchar_t* argv[]) {
     bool emitIr = false;
     app.add_flag("--emit-ir", emitIr, "Emit LLVM IR to .ll file");
 
+    // 诊断严重度开关：允许在主命令和 build 子命令上都使用
+    // --warn=<code>  把指定 code 视为 warning（仅对默认 sev <= Warning 的码生效；Error 码拒绝降级）
+    // --allow=<code> 把指定 code 视为 note（同上规则）
+    // --deny=<code>  把指定 code 视为 error
+    // -Werror        把所有 warning 视为 error
+    std::vector<std::string> warnCodes, allowCodes, denyCodes;
+    bool werror = false;
+    // 仅在根 app 注册一次；buildCmd 通过 fallthrough() 继承
+    // expected(1) + allow_extra_args(false)：每次出现只吞 1 个值，不吃后续 positional
+    app.add_option("--warn", warnCodes, "Treat code as warning (Exxxx; can repeat)")->expected(1)->allow_extra_args(false);
+    app.add_option("--allow", allowCodes, "Treat code as note (Exxxx; can repeat)")->expected(1)->allow_extra_args(false);
+    app.add_option("--deny", denyCodes, "Treat code as error (Exxxx; can repeat)")->expected(1)->allow_extra_args(false);
+    app.add_flag("--Werror", werror, "Treat all warnings as errors");
+
 #ifdef _DEBUG
     app.add_flag("-d,--debug", debug, "Output compilation IR debug information");
 #endif
@@ -527,6 +541,7 @@ int wmain(int argc, wchar_t* argv[]) {
     std::string buildNameArg;
     buildCmd->add_option("name", buildNameArg, "Project name; must match `name` in yux.toml")->required();
     buildCmd->add_flag("--emit-ir", emitIr, "Emit LLVM IR to .ll file");
+    buildCmd->fallthrough(); // 允许 --warn / --allow / --deny / -Werror 在 build 子命令上使用
 
 #ifdef _DEBUG
     buildCmd->add_flag("-d,--debug", debug, "Output compilation IR debug information");
@@ -543,6 +558,30 @@ int wmain(int argc, wchar_t* argv[]) {
     formatCmd->add_flag("--stdin", formatStdin, "Read from stdin instead of file");
 
     CLI11_PARSE(app, argc, argv);
+
+    // 把诊断 severity 开关下发到 DiagPolicy
+    // applyOverride: 校验 code 已知 + 允许策略；不可降级时打印拒绝信息
+    auto applyOverride = [](const std::vector<std::string>& codes, DiagSeverity newSev,
+                            const char* flagName) {
+        for (const auto& code : codes) {
+            const auto* def = ErrorCode::lookupDefaultSeverity(code);
+            if (!def) {
+                std::cerr << "warning: unknown error code '" << code << "' for " << flagName
+                          << " (ignored)" << std::endl;
+                continue;
+            }
+            if (!DiagPolicy::setSeverityOverride(code, *def, newSev)) {
+                // 默认 Error 的码不允许降级
+                std::cerr << "warning: cannot downgrade error code '" << code
+                          << "' (default severity is error); " << flagName << " ignored"
+                          << std::endl;
+            }
+        }
+    };
+    applyOverride(warnCodes, DiagSeverity::Warning, "--warn");
+    applyOverride(allowCodes, DiagSeverity::Note, "--allow");
+    applyOverride(denyCodes, DiagSeverity::Error, "--deny");
+    DiagPolicy::setWerror(werror);
 
     // 处理 LSP 子命令：进入 stdio JSON-RPC 主循环
     if (lspCmd->parsed()) {
@@ -806,8 +845,9 @@ int wmain(int argc, wchar_t* argv[]) {
             }
         }
 
-        // 各模块 codegen
+        // 各模块 codegen — 文件级聚合：单个文件失败不立即退出，继续编译其余文件，最终再决定是否链接
         vector<std::string> libObjs;
+        bool anyCodegenError = false;
         for (auto& [abs, mn] : libFiles) {
             auto file = yux.module(mn);
             if (!file) continue;
@@ -816,11 +856,17 @@ int wmain(int argc, wchar_t* argv[]) {
             string obj = base + ".obj";
             string ir = base + ".ll";
             if (BuildCache::needRecompile(obj, abs)) {
-                if (!codegenTo(file, mn, obj, ir)) return 1;
+                if (!codegenTo(file, mn, obj, ir)) {
+                    anyCodegenError = true;
+                    continue; // 跳过 cache 更新与 obj 收集；继续下一个模块
+                }
                 BuildCache::updateCache(obj, abs);
                 compiled = true;
             }
             libObjs.push_back(obj);
+        }
+        if (anyCodegenError) {
+            return 1;
         }
 
         // 链接为静态库
@@ -869,15 +915,19 @@ int wmain(int argc, wchar_t* argv[]) {
         return 1;
     }
 
+    // 文件级聚合：主模块与各导入模块逐个 codegen，单文件失败不立即退出，继续编译其余文件
+    bool anyCodegenError = false;
+
     // 主模块
     bool needCompile = BuildCache::needRecompile(objPath, inputFile);
     if (needCompile) {
         std::string irPath = projectBuildDir + "/" + baseName + ".ll";
         if (!codegenTo(mainFile, baseName, objPath, irPath)) {
-            return 1;
+            anyCodegenError = true;
+        } else {
+            BuildCache::updateCache(objPath, inputFile);
+            compiled = true;
         }
-        BuildCache::updateCache(objPath, inputFile);
-        compiled = true;
     }
 
     // 导入的用户模块
@@ -892,12 +942,20 @@ int wmain(int argc, wchar_t* argv[]) {
         std::string modIr = modBase + ".ll";
         if (BuildCache::needRecompile(modObj, modSrc)) {
             if (!codegenTo(modFile, modName, modObj, modIr)) {
-                return 1;
+                anyCodegenError = true;
+                continue; // 继续尝试下一个模块的 codegen
             }
             BuildCache::updateCache(modObj, modSrc);
             compiled = true;
         }
         modObjPaths.push_back(modObj);
+    }
+
+    // 任一模块（含主模块）codegen 失败：跳过链接，统一非零退出
+    if (anyCodegenError) {
+        std::cout.flush();
+        std::cerr.flush();
+        return 1;
     }
 
     // 项目模式 exe 使用 yux.toml 的 name；单文件模式用源文件 basename。

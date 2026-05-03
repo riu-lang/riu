@@ -20,14 +20,63 @@
 #ifndef YUX_LANG_ERROR_CODE_H
 #define YUX_LANG_ERROR_CODE_H
 
+#include <cstdint>
+#include <map>
+#include <string>
+
+// 诊断严重等级
+// Note < Warning < Error；后续 CLI --warn / --allow / --deny 可在不超过该上限范围内调整
+// 默认 Error 的码为"硬错误"，CLI 不允许降级为 Warning/Note（仅允许 -Werror 升级 Warning→Error）
+enum class DiagSeverity : uint8_t {
+    Note,
+    Warning,
+    Error,
+};
+
+// 错误码定义：除 code/message 外携带默认严重等级
+// defaultSev 决定该码在没有 CLI 覆盖时的呈现级别，也决定该码是否可被 CLI 降级
 struct ErrorCodeDef {
     const char* code;
+    DiagSeverity defaultSev;
     const char* message;
 };
 
 namespace ErrorCode {
 
-#define DEF_ERR(code, msg) inline constexpr ErrorCodeDef E##code{"E" #code, msg};
+namespace detail {
+    // 进程级注册表：code 字符串 → 默认严重等级
+    // 每个 DEF_ERR 通过一个 inline const 变量在静态初始化阶段注册。
+    inline std::map<std::string, DiagSeverity>& registry() {
+        static std::map<std::string, DiagSeverity> m;
+        return m;
+    }
+    struct CodeRegistration {
+        CodeRegistration(const char* code, DiagSeverity sev) {
+            registry()[code] = sev;
+        }
+    };
+} // namespace detail
+
+// 按字符串查 code 的默认严重等级；未知 code 返回 nullptr
+inline const DiagSeverity* lookupDefaultSeverity(const std::string& code) {
+    auto& m = detail::registry();
+    auto it = m.find(code);
+    if (it == m.end()) return nullptr;
+    return &it->second;
+}
+
+// 默认 Error 的常用宏
+#define DEF_ERR(code, msg) \
+    inline constexpr ErrorCodeDef E##code{"E" #code, DiagSeverity::Error, msg}; \
+    inline const ::ErrorCode::detail::CodeRegistration _reg_E##code{"E" #code, DiagSeverity::Error};
+// 默认 Warning（当前还没有 Warning 类码，留作 Phase 5 引入未使用变量等场景）
+#define DEF_WARN(code, msg) \
+    inline constexpr ErrorCodeDef E##code{"E" #code, DiagSeverity::Warning, msg}; \
+    inline const ::ErrorCode::detail::CodeRegistration _reg_E##code{"E" #code, DiagSeverity::Warning};
+// 默认 Note（信息性提示）
+#define DEF_NOTE(code, msg) \
+    inline constexpr ErrorCodeDef E##code{"E" #code, DiagSeverity::Note, msg}; \
+    inline const ::ErrorCode::detail::CodeRegistration _reg_E##code{"E" #code, DiagSeverity::Note};
 
 // ── 占位 ──────────────────────────────────────────────────────────────
 DEF_ERR(0000, "")
@@ -205,6 +254,8 @@ DEF_ERR(6044, "push requires 1 argument")
 DEF_ERR(6045, "{} requires 1 argument")
 
 #undef DEF_ERR
+#undef DEF_WARN
+#undef DEF_NOTE
 } // namespace ErrorCode
 
 #endif // YUX_LANG_ERROR_CODE_H

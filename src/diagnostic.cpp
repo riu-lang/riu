@@ -14,6 +14,56 @@
 #include <map>
 #include <sstream>
 
+// ==================== DiagPolicy 全局状态 ====================
+
+namespace {
+    // 单一全局策略；编译器进程内共享。LSP 多 session 用 reset() 清理。
+    std::map<string, DiagSeverity>& policyOverrides() {
+        static std::map<string, DiagSeverity> m;
+        return m;
+    }
+    bool& policyWerrorRef() {
+        static bool w = false;
+        return w;
+    }
+}
+
+bool DiagPolicy::setSeverityOverride(const string& code, DiagSeverity defaultSev, DiagSeverity newSev) {
+    // 不可降级：默认就是 Error 的码不允许通过 --warn / --allow 改成更低
+    if (defaultSev == DiagSeverity::Error && newSev != DiagSeverity::Error) {
+        return false;
+    }
+    policyOverrides()[code] = newSev;
+    return true;
+}
+
+void DiagPolicy::setWerror(bool on) {
+    policyWerrorRef() = on;
+}
+
+bool DiagPolicy::werror() {
+    return policyWerrorRef();
+}
+
+const DiagSeverity* DiagPolicy::findOverride(const string& code) {
+    auto& m = policyOverrides();
+    auto it = m.find(code);
+    if (it == m.end()) return nullptr;
+    return &it->second;
+}
+
+DiagSeverity DiagPolicy::effectiveSeverity(const string& code, DiagSeverity defaultSev) {
+    DiagSeverity sev = defaultSev;
+    if (auto* o = findOverride(code)) sev = *o;
+    if (policyWerrorRef() && sev == DiagSeverity::Warning) sev = DiagSeverity::Error;
+    return sev;
+}
+
+void DiagPolicy::reset() {
+    policyOverrides().clear();
+    policyWerrorRef() = false;
+}
+
 namespace {
 
 // 源文件按路径缓存：路径 → 行内容数组（utf-8 字节）
@@ -56,7 +106,11 @@ const char* severityLabel(DiagSeverity s) {
 
 } // namespace
 
-void DiagnosticEngine::render(std::ostream& out, const Diagnostic& diag) {
+void DiagnosticEngine::render(std::ostream& out, const Diagnostic& diagIn) {
+    // 应用全局 severity 策略（CLI --warn / --allow / --deny / -Werror）
+    Diagnostic diag = diagIn;
+    diag.severity = DiagPolicy::effectiveSeverity(diag.code, diag.severity);
+
     // 头部：file:line:col [code] severity: message
     if (!diag.file.empty()) {
         out << diag.file;
@@ -105,7 +159,7 @@ void DiagnosticEngine::renderYuxError(std::ostream& out,
                                       const string& sourcePath,
                                       const YuxError& err) {
     Diagnostic d;
-    d.severity = DiagSeverity::Error;
+    d.severity = err.getSeverity();
     d.code = err.getCode() ? err.getCode() : "E0000";
     d.file = sourcePath;
     d.line = err.getLineNumber();

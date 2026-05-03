@@ -123,6 +123,7 @@ class YuxError : public std::runtime_error {
     int _line = 0;
     int _col = 0; // 0 表示列未知
     const char* _code = "E0000"; // 指向 ErrorCode 表中的静态字面量
+    DiagSeverity _sev = DiagSeverity::Error; // 默认严重等级（来源于 ErrorCodeDef.defaultSev）
 
 public:
     explicit YuxError(const string& msg, int line) : runtime_error(msg), _line(line) {
@@ -151,7 +152,7 @@ public:
     template <class... _Types>
     explicit YuxError(int line, int col, const ErrorCodeDef& ec, _Types&&... args) : runtime_error(
         std::vformat(std::string_view(ec.message), std::make_format_args(args...))),
-        _line(line), _col(col), _code(ec.code) {
+        _line(line), _col(col), _code(ec.code), _sev(ec.defaultSev) {
         assert(line > 0 && "YuxError line must be > 0");
     }
 
@@ -159,14 +160,14 @@ public:
     template <class... _Types>
     explicit YuxError(int line, const ErrorCodeDef& ec, _Types&&... args) : runtime_error(
         std::vformat(std::string_view(ec.message), std::make_format_args(args...))),
-        _line(line), _col(0), _code(ec.code) {
+        _line(line), _col(0), _code(ec.code), _sev(ec.defaultSev) {
         assert(line > 0 && "YuxError line must be > 0");
     }
 
     template <class... _Types>
     explicit YuxError(SourceLocation loc, const ErrorCodeDef& ec, _Types&&... args) : runtime_error(
         std::vformat(std::string_view(ec.message), std::make_format_args(args...))),
-        _line(loc.line), _col(loc.col), _code(ec.code) {
+        _line(loc.line), _col(loc.col), _code(ec.code), _sev(ec.defaultSev) {
         assert(loc.line > 0 && "YuxError line must be > 0");
     }
 
@@ -186,6 +187,8 @@ public:
     [[nodiscard]] SourceLocation location() const { return {_line, _col}; }
 
     [[nodiscard]] const char* getCode() const { return _code; }
+
+    [[nodiscard]] DiagSeverity getSeverity() const { return _sev; }
 };
 
 template <typename T>
