@@ -1,0 +1,22 @@
+; v0.4 Phase 5：同一 box 的两次 as_ref 借用并存合法（共享借用）
+
+struct Pair {
+  a i32
+  b i32
+}
+
+Pair {
+  fn Pair(a i32, b i32) {
+    $.a = a
+    $.b = b
+  }
+}
+
+fn main() {
+  var b Box<Pair> = Pair(11, 22)
+  val r1 Pair& = as_ref(b)
+  val r2 Pair& = as_ref(b)
+  println(r1.a.to_string())
+  println(r2.b.to_string())
+  ret;
+}

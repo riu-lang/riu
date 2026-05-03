@@ -1019,6 +1019,33 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             // ptr_of
             return extractRawPtr(0, true);
         }
+        if (fnName == "as_ref") {
+            // spec §8.3.5.5：as_ref:<T>(box Box<T>) T&
+            // 返回 box payload 起点的非空指针（跳过 8 字节 RC 头）
+            // 寿命检查在 borrow_checker 处理（识别 ExprCallNode 形如 as_ref(x)）
+            if (typeArgs.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                    ErrorCode::E6026, fnName);
+            }
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                    ErrorCode::E6027, fnName, (size_t)1);
+            }
+            auto& T = typeArgs[0];
+            // 实参必须是 Box<T>（不接受 Box<T>?、Array、String、Weak 等）
+            auto argType = callNode->getArgs()[0]->getType();
+            if (!argType.isBox() || argType.isNullable()) {
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                    ErrorCode::E6029, fnName, argType.getFullName());
+            }
+            // args[0] 为 Box<T> = { ptr handle } 结构体值；ExtractValue 0 取 handle
+            auto handle = _builder.CreateExtractValue(args[0], {0}, "as_ref.handle");
+            // payload 偏移 8（u32 strong + u32 weak）
+            return _builder.CreateInBoundsGEP(
+                _builder.getInt8Ty(), handle,
+                {llvm::ConstantInt::get(_builder.getInt64Ty(), 8)},
+                "as_ref.payload");
+        }
         throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
             ErrorCode::E6017, fnName);
     }

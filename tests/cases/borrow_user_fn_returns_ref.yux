@@ -1,0 +1,11 @@
+; v0.4 Phase 5：用户函数返回 T& 应当报 E2009（仅 #CompilerInner 可返 T&）
+
+fn bad(x i32&) i32& {
+  ret x
+}
+
+fn main() {
+  var c i32 = 1
+  println(c.to_string())
+  ret;
+}

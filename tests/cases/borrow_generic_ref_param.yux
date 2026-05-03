@@ -1,0 +1,11 @@
+; v0.4 Phase 5：§8.6.7.5 类型形参可在签名内组合为 T& —— 合法用例
+
+fn <T> first_byte(p T&) i32 {
+  ret 1
+}
+
+fn main() {
+  var x i32 = 42
+  println(first_byte(&x).to_string())
+  ret;
+}

@@ -1,0 +1,26 @@
+; v0.4 Phase 5：嵌套块借用消亡后允许 box 重赋（Phase 3 块作用域回归保护）
+
+struct Pair {
+  a i32
+  b i32
+}
+
+Pair {
+  fn Pair(a i32, b i32) {
+    $.a = a
+    $.b = b
+  }
+}
+
+fn main() {
+  var b Box<Pair> = Pair(7, 8)
+  var b2 Box<Pair> = Pair(9, 10)
+  loop {
+    val r Pair& = as_ref(b)
+    println(r.a.to_string())
+    break;
+  }
+  b = b2
+  println(b.a.to_string())
+  ret;
+}

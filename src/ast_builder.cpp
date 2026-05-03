@@ -83,7 +83,7 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
         }
         TypeInfo retType;
         if (header->retType) {
-            auto typeNode = any_cast_p<TypeNode>(visit(header->retType));
+            auto typeNode = buildTypeWithRef(header->retType, file);
             retType = typeNode->getType();
         }
 
@@ -447,7 +447,7 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         }
         TypeInfo retType;
         if (header->retType) {
-            auto typeNode = any_cast_p<TypeNode>(visit(header->retType));
+            auto typeNode = buildTypeWithRef(header->retType, file);
             retType = typeNode->getType();
         }
         DEBUG_LOG_VAL("  Register function", fnName);
@@ -600,12 +600,19 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
 
     p<TypeNode> retType = nullptr;
     if (ctx->retType) {
-        retType = any_cast_p<TypeNode>(visit(ctx->retType));
-        DEBUG_LOG_VAL("    Return type", retType->getType().name);
+        retType = buildTypeWithRef(ctx->retType, file);
+        DEBUG_LOG_VAL("    Return type", retType->getType().getFullName());
     }
 
     auto header = createWithLine<FnHeaderNode>(ctx, file, ctx->name, retType);
     header->setAnnos(collectAnnos(ctx->buildAnnos));
+
+    // spec §6.3.1.1 / §8.9：retType 为 T& 仅 #CompilerInner baked builtin 允许；普通函数禁
+    if (retType && retType->getType().isRef() && !header->hasAnno("CompilerInner")) {
+        throw YuxError(ctx->getStart()->getLine(), ctx->getStart()->getCharPositionInLine() + 1,
+                       ErrorCode::E2009, ctx->name->getText())
+            .withHint("如确为编译器内置 baked 函数，请在签名前加 `#CompilerInner`；普通函数返回值不得含 `&`");
+    }
 
     if (auto gd = ctx->genericDef()) {
         vector<string> typeParams;

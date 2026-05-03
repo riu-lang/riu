@@ -277,9 +277,23 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                         .withHint("T& 只能绑定到当前函数内的局部变量；不可绑参数、全局符号或外层闭包变量");
                 }
                 rhsPtr = it->second;
+            } else if (auto callExpr = dynamic_cast<ExprCallNode*>(expr)) {
+                // §8.3.5.5 as_ref(box) 站点：直接消费 baked codegen 的返回值（已是非空 ptr to payload）
+                std::string calleeName;
+                if (auto litCallee = dynamic_cast<ExprLiteralNode*>(callExpr->getCalleeExpr())) {
+                    if (auto obj = dynamic_cast<LiteralObjNode*>(litCallee->literal())) {
+                        calleeName = obj->getValue().getText();
+                    }
+                }
+                if (calleeName != "as_ref") {
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3019)
+                        .withHint("T& 局部初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量），或 `val r T& = as_ref(box)`");
+                }
+                auto callValue = compileExpr(expr);
+                rhsPtr = callValue;
             } else {
                 throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3019)
-                    .withHint("T& 局部初始化形如 `val r T& = &x` 或 `val r2 T& = r1`（拷贝绑定已有 T& 变量）");
+                    .withHint("T& 局部初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量），或 `val r T& = as_ref(box)`");
             }
             _localVarPtrs[varName] = rhsPtr;
             return;

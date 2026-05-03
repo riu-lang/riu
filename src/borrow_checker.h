@@ -6,7 +6,8 @@
 
 #include "node/fn_node.h"
 
-// Phase 4d 寿命检查（O(1) 静态规则）+ 借用期根对象不可重赋。
+// 借用寿命检查（spec §8.6.5 / §8.6.5.8）：块作用域栈，O(1) 局部规则；
+// 借用期内根对象不可重赋（§8.6.5.5）。
 // 在 compileFn / compileMethod 入口处调用一次。
 // selfStructName 非空表示方法（注册 `$` 作为有效根对象名）。
 void checkBorrows(p<FnNode> fn, const std::string& selfStructName = "");

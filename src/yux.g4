@@ -120,10 +120,12 @@ fn: fnHeader fnBody?;
 // fn name() 空返回
 // fn name() type 返回 type
 // fn <T> some() T
+// retType 仅 #CompilerInner baked builtin 允许含 `&`（spec §8.9 例外、§8.3.5.5 as_ref）；
+// 用户代码 retType 含 `&` 由 semantic 层拒绝
 fnHeader: (buildAnnos+=buildAnno)*
     Fn genericDef? name=ID ParStart
     fnParams?
-    ParEnd (retType=type)?
+    ParEnd (retType=typeWithRef)?
     ;
 
 fnParams: fnParam (SymbolComma params+=fnParam)* ;
@@ -378,7 +380,7 @@ SymbolRev: '~';
 SymbolSemicolon: ';';
 SymbolSub: '-';
 SymbolSubEq: '-=';
-// 当前作用域
+// 当前作用域（同级的对象，相当于$所在代码中上一级的对象，像this）
 SymbolThis: '$';
 SymbolXor: '^';
 SymbolXorEq: '^=';

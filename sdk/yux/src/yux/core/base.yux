@@ -1138,6 +1138,13 @@ fn rc_leak_count() i64
 #CompilerInner
 fn <T> ptr_of(obj T) Ptr
 
+; as_ref:<T>(box) T&：显式获取 Box payload 的借用（spec §8.3.5.5）
+; v1 唯一允许"以 T& 形态借用 Box payload 整体"的途径；返回的 T& 根对象
+; 视为传入的 box 句柄本身，受 §8.6.5 一切寿命规则约束
+; T 由实参推断；不接受 Box<T>?
+#CompilerInner
+fn <T> as_ref(box Box<T>) T&
+
 ; Array<T> 实例 layout 由编译器内部管理：{ ptr handle }，handle 指向 Block
 ; （Phase 1b：所有方法编译器特例化，主体不再读 yux 端字段）
 #CompilerInner

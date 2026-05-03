@@ -1,0 +1,9 @@
+; v0.4 Phase 5：Array<T>& 借用期内 push 报错（§8.4.2.5）
+
+fn main() {
+  var a Array<i32> = [1, 2, 3]
+  val r Array<i32>& = &a
+  a.push(4)
+  println(r.len().to_string())
+  ret;
+}

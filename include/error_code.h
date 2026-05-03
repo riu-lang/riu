@@ -94,6 +94,8 @@ DEF_ERR(2005, "Unknown build annotation `#{}`")
 DEF_ERR(2006, "Function `{}` has no body; only `#CompilerInner` functions may omit the body")
 DEF_ERR(2007, "Method `{}.{}` has no body; only `#CompilerInner` methods may omit the body")
 DEF_ERR(2008, "wildcard alias `{}` is ambiguous, matched {}")
+DEF_ERR(2009, "Function `{}` cannot return `T&`; only `#CompilerInner` baked builtins may have a reference return type (spec §8.9)")
+DEF_ERR(2010, "Cannot call mutating method `Array.{}` on `{}`: it has an active borrow (spec §8.4.2.5)")
 
 // ── E3xxx 类型 — 类型不匹配 ───────────────────────────────────────────
 DEF_ERR(3001, "Type mismatch in +-/ operation: left is {}, right is {}")
