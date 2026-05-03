@@ -1,0 +1,31 @@
+; yux SDK - 测试断言 API（spec §11.3.5）
+;
+; 四个 #CompilerInner 占位声明，由编译器在调用点合成 IR：
+;   - assert_eq:<T>(actual, expected)  T ∈ i8..u64 / f32 / f64 / bool（其他类型 E6030）
+;   - assert_true(actual bool)
+;   - assert_false(actual bool)
+;   - fail(msg String)
+;
+; 失败时编译器合成的 IR 调用本文件 _yux_test_assert_failed()，
+; 后者触发自定义 SEH 异常码 0xE0FA17ED；yux test 的 SEH wrapper 翻译为 ASSERT_FAILED。
+
+extern {
+  fn RaiseException(dwExceptionCode u32, dwExceptionFlags u32, nNumberOfArguments u32, lpArguments Ptr)
+}
+
+#CompilerInner
+fn <T> assert_eq(actual T, expected T)
+
+#CompilerInner
+fn assert_true(actual bool)
+
+#CompilerInner
+fn assert_false(actual bool)
+
+#CompilerInner
+fn fail(msg String)
+
+; 0xE0FA17ED：客户位段（高 4 位 0xE）+ "FA17ED" 字面，便于 SEH 串号识别
+fn _yux_test_assert_failed() {
+  RaiseException(0xE0FA17EDu32, 0u32, 0u32, null);
+}

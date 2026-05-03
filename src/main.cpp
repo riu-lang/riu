@@ -35,6 +35,7 @@
 #include "utf8.h"
 #include "yux.h"
 #include "build_cache.h"
+#include "compiler_test_intrinsics.h"
 #include "diagnostic.h"
 #include "syntax_error_listener.h"
 #include "formatter.h"
@@ -605,6 +606,8 @@ extern "C" unsigned long runTestSEH(void (*fn)()) noexcept {
 
 // 把 Win32 SEH 异常码翻译成可读名字
 static const char* sehExceptionName(unsigned long code) {
+    // yux test 自定义码：测试断言失败（spec §11.3.5）
+    if (code == test_intrinsics::ASSERT_FAILED_CODE) return "ASSERT_FAILED";
     switch (code) {
         case EXCEPTION_ACCESS_VIOLATION:      return "ACCESS_VIOLATION";
         case EXCEPTION_INT_DIVIDE_BY_ZERO:    return "INT_DIVIDE_BY_ZERO";

@@ -274,6 +274,19 @@ class Compiler {
         p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
         p<FnNode> genericFn, p<FileNode> fnOwner);                              // 编译泛型函数调用
 
+    // ==================== 测试断言内建（compiler_test_intrinsics.cpp）====================
+    // assert_eq:<T> 失败时合成 stdout 写入 + 调 _yux_test_assert_failed → RaiseException
+    // 详见 docs/spec/11-编译期注解.md §11.3.5
+    llvm::Value* compileTestAssertEq(
+        p<ExprCallNode> callNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
+        const TypeInfo& typeArg);
+    llvm::Value* compileTestAssertTrue(
+        p<ExprCallNode> callNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
+    llvm::Value* compileTestAssertFalse(
+        p<ExprCallNode> callNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
+    llvm::Value* compileTestFail(
+        p<ExprCallNode> callNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
+
 public:
     // ==================== 构造函数 ====================
     // @param context   LLVM 上下文

@@ -15,6 +15,13 @@
 
 ---
 
+## 2026-05-03 —— 新增 `#Test` 测试断言 API（`assert_eq` / `assert_true` / `assert_false` / `fail`）
+
+- **新增**：§11.3.5「测试断言 API」 —— SDK 在 `sdk/yux/src/yux/core/assert.yux`（与 `base.yux` 同属 `yux.core` 平铺）提供 4 个 `#CompilerInner` 断言：泛型 `assert_eq:<T>`（T ∈ i8…u64 / f32 / f64 / bool）、`assert_true(bool)` / `assert_false(bool)`、`fail(String)`。无需 import，全局可用。失败语义（v1）：调 SDK `_yux_test_assert_failed()` → `RaiseException(0xE0FA17ED)` → SEH 显示 `FAIL <module>#<fn> (SEH ASSERT_FAILED 0xe0fa17ed)`。v1 **不**打印断言种类与 `fail(msg)` 的 `msg` 内容（待 String stringify 扩展同期补齐）。
+- **新增**：附录 D §D.3 错误码 E6030 —— `assert_eq:<T>` 类型实参越界（仅数值 + bool）。`E6027 {} expects {} argument(s)` 复用为四个断言的 arity 错误。
+- **修改**：§11 Open Issues 收口"`#Test` assert API 形态"，新增"打印实参值需先引入 `Stringify` 约束"与"`assert_eq` 扩展到 String / 用户结构体"两项后续。
+- **冲突 / 兼容**：纯增量。SDK API 集合扩展，新模块 `yux.test.assert`；既有 `.yux` 源码无破坏。`#Test` 函数体内调用断言与 §11.3.2「无参 / 无返回 / 必须有体」约束相容。
+
 ## 2026-05-03 —— 新增 `#Test` 注解与 `yux test` 子命令
 
 - **新增**：§11.3 `#Test` 注解条款 —— 仅挂 `fn`；签名等价 `fn name(): void`（无参、无返回类型、必须有函数体）；与 `#CompilerInner` 互斥；仅可出现在 `*.test.yux` 文件中。普通 `yux build` 跳过 `#Test` 函数的 codegen，不进入 `.exe` / `.lib` 产物。

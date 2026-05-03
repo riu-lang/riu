@@ -248,6 +248,7 @@ DEF_ERR(6026, "{} expects 1 type argument")
 DEF_ERR(6027, "{} expects {} argument(s)")
 DEF_ERR(6028, "{}:<T&> requires a local var or &expr argument")
 DEF_ERR(6029, "{}:<T> requires T to be Box/Weak/Array/String or U& (got '{}')")
+DEF_ERR(6030, "assert_eq:<T> requires T to be a numeric or bool type (got '{}')")
 
 // Array 内置方法
 DEF_ERR(6040, "at requires 1 argument")

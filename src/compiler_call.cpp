@@ -770,6 +770,21 @@ llvm::Value* Compiler::compileFunctionCall(
         return _builder.CreateGEP(i8Ty, args[0], args[1], "ptr_off");
     }
 
+    // 测试断言内建（spec §11.3.5）：非泛型分支
+    // assert_eq:<T> 走 compileGenericFunctionCall #CompilerInner 分支
+    if (fnName == "assert_true") {
+        DEBUG_LOG("    Expr: assert_true");
+        return compileTestAssertTrue(callNode, args, argTypes);
+    }
+    if (fnName == "assert_false") {
+        DEBUG_LOG("    Expr: assert_false");
+        return compileTestAssertFalse(callNode, args, argTypes);
+    }
+    if (fnName == "fail") {
+        DEBUG_LOG("    Expr: fail");
+        return compileTestFail(callNode, args, argTypes);
+    }
+
     if (fnSymbol) {
         if (fnSymbol->isPrivate && !fnSymbol->moduleName.empty() && fnSymbol->moduleName != _file->moduleName()) {
             throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6006, fnName);
@@ -885,6 +900,14 @@ llvm::Value* Compiler::compileGenericFunctionCall(
     }
 
     if (genericFn->header()->hasAnno("CompilerInner")) {
+        // 测试断言泛型分支（spec §11.3.5）：assert_eq:<T> T ∈ 数值/bool
+        if (fnName == "assert_eq") {
+            if (typeArgs.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                    ErrorCode::E6026, fnName);
+            }
+            return compileTestAssertEq(callNode, args, argTypes, typeArgs[0]);
+        }
         if (fnName == "size_of") {
             if (typeArgs.empty()) {
                 throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6018);
