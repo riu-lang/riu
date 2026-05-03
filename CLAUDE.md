@@ -4,7 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 规则来源
 
-本项目所有通用约定（目录结构、构建命令、测试流程、架构、yux 代码风格等）统一写在 [AGENTS.md](AGENTS.md)，它是唯一事实源。**开始任何任务前先读 AGENTS.md**，不要凭文件名或 README 推测项目约定。
+本项目的事实源拆为两份，开始任何任务前**两份都要读**，不要凭文件名或 README 推测项目约定：
+
+- [AGENTS.md](AGENTS.md) —— **项目规则与目录结构**（任务/bug 记录约定、规范回写流程、目录树）
+- 技能 `yux-lang-dev`（[.claude/skills/yux-lang-dev/SKILL.md](.claude/skills/yux-lang-dev/SKILL.md)）—— **怎么构建、怎么测、怎么写**（环境工具链、命令、架构、构建输出布局、测试流程、yux/C++ 代码风格）。通过 Skill 工具调用 `yux-lang-dev` 加载。
 
 其他参考：
 - [docs/index.md](docs/index.md) — 语言文档索引（中文）

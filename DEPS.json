@@ -36,7 +36,7 @@
     }
   },
   "skills": {
-    "skills": {
+    "xmake": {
       "url": "https://github.com/xmake-io/xmake-skills.git",
       "commit": "96fca61d2dcd314664b212378a57b76a19813ba4",
       "flatten": "skills"

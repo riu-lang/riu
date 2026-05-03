@@ -10,9 +10,8 @@
 /.vscode/
 /bin/
 
-/.trae/skills/xmake*/
-/.claude/skills/xmake-*/
-/.trae/skills/xrepo-*/
+/.trae/skills/*
+/.claude/skills/xmake*
 /.claude/skills/xrepo-*/
 
 .claude/settings.local.json

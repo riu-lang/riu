@@ -11,8 +11,8 @@ const PROJECT_ROOT = path.join(__dirname, '..');
 const DEPS_FILE = path.join(PROJECT_ROOT, 'DEPS.json');
 const THIRD_PARTY_DIR = path.join(PROJECT_ROOT, 'third_party');
 const BIN_DIR = path.join(PROJECT_ROOT, 'bin');
-const SKILLS_DIR_TRAE = path.join(PROJECT_ROOT, '.trae', 'skills');
 const SKILLS_DIR_CLAUDE = path.join(PROJECT_ROOT, '.claude', 'skills');
+const SKILLS_DIR_TRAE = path.join(PROJECT_ROOT, '.trae', 'skills');
 const SDK_SRC_DIR = path.join(PROJECT_ROOT, 'sdk');
 const SDK_LINK_DIR = path.join(PROJECT_ROOT, 'build', 'windows', 'x64', 'sdk');
 
@@ -120,53 +120,95 @@ async function syncDependency(name, config) {
 
 async function syncSkill(name, config) {
   const { url, commit, flatten } = config;
+  const skillsDir = SKILLS_DIR_CLAUDE;
+  // 版本标记：<skillsDir>/<name>.git，内容为已安装的 commit
+  // 命中则整组跳过，不重复 clone / 解包
+  const markerPath = path.join(skillsDir, `${name}.git`);
 
-  const targetDirs = [
-    { path: SKILLS_DIR_TRAE, label: 'trae' },
-    { path: SKILLS_DIR_CLAUDE, label: 'claude' }
-  ];
+  log(`\n=== Syncing skill collection ${name} ===`, 'cyan');
+  log(`URL: ${url}`);
+  log(`Commit: ${commit.substring(0, 8)}...`);
 
-  for (const { path: skillsDir, label } of targetDirs) {
-    log(`\n=== Syncing skill collection ${name} (${label}) ===`, 'cyan');
-    log(`URL: ${url}`);
-    log(`Commit: ${commit.substring(0, 8)}...`);
-
-    const tempPath = path.join(skillsDir, `${name}.temp`);
-
-    await cloneRepo(name, url, commit, tempPath);
-
-    const sourcePath = flatten ? path.join(tempPath, flatten) : tempPath;
-    if (!fs.existsSync(sourcePath)) {
-      log(`Flatten source path does not exist: ${sourcePath}`, 'red');
-      fs.rmSync(tempPath, { recursive: true, force: true });
-      throw new Error(`Flatten path not found: ${flatten}`);
+  if (fs.existsSync(markerPath)) {
+    const installed = fs.readFileSync(markerPath, 'utf8').trim();
+    if (installed === commit) {
+      log(`Already at ${commit.substring(0, 8)} (per ${name}.git), skipping`, 'green');
+      return;
     }
-
-    const skillDirs = findSkillDirs(sourcePath);
-    log(`Found ${skillDirs.length} skills to install`);
-
-    for (const skillDir of skillDirs) {
-      const skillName = path.basename(skillDir);
-      const targetPath = path.join(skillsDir, skillName);
-
-      if (fs.existsSync(targetPath)) {
-        fs.rmSync(targetPath, { recursive: true, force: true });
-      }
-
-      fs.mkdirSync(targetPath, { recursive: true });
-
-      const entries = fs.readdirSync(skillDir);
-      for (const entry of entries) {
-        const srcEntry = path.join(skillDir, entry);
-        const destEntry = path.join(targetPath, entry);
-        fs.renameSync(srcEntry, destEntry);
-      }
-
-      log(`  Installed: ${skillName}`, 'green');
-    }
-
-    fs.rmSync(tempPath, { recursive: true, force: true });
+    log(`Installed: ${installed ? installed.substring(0, 8) : 'unknown'} -> ${commit.substring(0, 8)}`);
   }
+
+  const tempPath = path.join(skillsDir, `${name}.temp`);
+
+  await cloneRepo(name, url, commit, tempPath);
+
+  const sourcePath = flatten ? path.join(tempPath, flatten) : tempPath;
+  if (!fs.existsSync(sourcePath)) {
+    log(`Flatten source path does not exist: ${sourcePath}`, 'red');
+    fs.rmSync(tempPath, { recursive: true, force: true });
+    throw new Error(`Flatten path not found: ${flatten}`);
+  }
+
+  const skillDirs = findSkillDirs(sourcePath);
+  log(`Found ${skillDirs.length} skills to install`);
+
+  for (const skillDir of skillDirs) {
+    const skillName = path.basename(skillDir);
+    const targetPath = path.join(skillsDir, skillName);
+
+    if (fs.existsSync(targetPath)) {
+      fs.rmSync(targetPath, { recursive: true, force: true });
+    }
+
+    fs.mkdirSync(targetPath, { recursive: true });
+
+    const entries = fs.readdirSync(skillDir);
+    for (const entry of entries) {
+      const srcEntry = path.join(skillDir, entry);
+      const destEntry = path.join(targetPath, entry);
+      fs.renameSync(srcEntry, destEntry);
+    }
+
+    log(`  Installed: ${skillName}`, 'green');
+  }
+
+  fs.rmSync(tempPath, { recursive: true, force: true });
+
+  // 写入版本标记，下次同步若 commit 未变即整组跳过
+  fs.writeFileSync(markerPath, commit + '\n', 'utf8');
+}
+
+// 把 .trae/skills 链接到 .claude/skills，让 Trae 与 Claude Code 共享同一份技能
+function syncTraeSkillsLink() {
+  log(`\n=== Linking .trae/skills -> .claude/skills ===`, 'cyan');
+  log(`Source: ${SKILLS_DIR_CLAUDE}`);
+  log(`Link:   ${SKILLS_DIR_TRAE}`);
+
+  fs.mkdirSync(SKILLS_DIR_CLAUDE, { recursive: true });
+  fs.mkdirSync(path.dirname(SKILLS_DIR_TRAE), { recursive: true });
+
+  let st = null;
+  try { st = fs.lstatSync(SKILLS_DIR_TRAE); } catch {}
+  if (st) {
+    if (st.isSymbolicLink()) {
+      try {
+        const cur = fs.readlinkSync(SKILLS_DIR_TRAE);
+        const resolved = path.resolve(path.dirname(SKILLS_DIR_TRAE), cur);
+        if (resolved === SKILLS_DIR_CLAUDE) {
+          log(`Already linked, skipping`, 'green');
+          return;
+        }
+      } catch {}
+      fs.unlinkSync(SKILLS_DIR_TRAE);
+    } else {
+      // 旧的实体目录（历史上 sync 会把技能复制两份），删除以便建立 junction
+      fs.rmSync(SKILLS_DIR_TRAE, { recursive: true, force: true });
+    }
+  }
+
+  const type = process.platform === 'win32' ? 'junction' : 'dir';
+  fs.symlinkSync(SKILLS_DIR_CLAUDE, SKILLS_DIR_TRAE, type);
+  log(`Linked (${type})`, 'green');
 }
 
 function findSkillDirs(dir) {
@@ -309,8 +351,16 @@ async function main() {
 
   fs.mkdirSync(THIRD_PARTY_DIR, { recursive: true });
   fs.mkdirSync(BIN_DIR, { recursive: true });
-  fs.mkdirSync(SKILLS_DIR_TRAE, { recursive: true });
   fs.mkdirSync(SKILLS_DIR_CLAUDE, { recursive: true });
+
+  // 把 .trae/skills 链接到 .claude/skills，二者共享同一份技能；
+  // 即使本次没有要同步的技能也建一次，保证仓库克隆后链接立即生效
+  try {
+    syncTraeSkillsLink();
+  } catch (e) {
+    log(`Failed to link .trae/skills: ${e.message}`, 'red');
+    process.exit(1);
+  }
 
   const binariesToProcess = targetDeps.length > 0
     ? Object.fromEntries(targetDeps.filter(n => binaries[n]).map(n => [n, binaries[n]]))
