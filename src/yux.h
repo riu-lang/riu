@@ -6,7 +6,10 @@
 
 #include "node/file_node.h"
 
+#include <memory>
+
 class ASTBuilder;
+class DraftRegistry;
 
 // pkg 文件导出项
 struct PkgExportItem {
@@ -49,6 +52,11 @@ public:
 
     p<FileNode> sdkFile() const { return _sdkFile; }
     const vector<p<FileNode>>& files() const { return _files; }
+
+    // draft 注册表 (spec §12). 首次访问时按当前已加载的 _files + _sdkFile
+    // 全量索引一次. 后续如新增动态加载模块, 调用 rebuildDraftRegistry().
+    DraftRegistry& draftRegistry();
+    void rebuildDraftRegistry();
 
     // 按模块名加载 `.yux` 文件。首次加载解析并注册，后续命中缓存。
     // errorLine 仅用于错误报告。未找到文件 / 循环依赖时抛 YuxError。
@@ -103,6 +111,8 @@ public:
 private:
     // 底层解析 + ASTBuilder。内部用。
     p<FileNode> _parseFile(const string& absPath, const string& moduleName, int errorLine);
+
+    std::unique_ptr<DraftRegistry> _draftRegistry;
 };
 
 #endif //YUX_LANG_YUX_H

@@ -9,6 +9,7 @@
 #include <toml.hpp>
 
 #include "ast_builder.h"
+#include "draft_registry.h"
 #include "syntax_error_listener.h"
 #include "yux/yuxLexer.h"
 #include "yux/yuxParser.h"
@@ -32,6 +33,21 @@ Yux::~Yux() {
 
 void Yux::addFile(const p<FileNode>& file) {
     _files.push_back(file);
+}
+
+DraftRegistry& Yux::draftRegistry() {
+    if (!_draftRegistry) {
+        _draftRegistry = std::make_unique<DraftRegistry>(this);
+        _draftRegistry->buildFromAllFiles();
+    }
+    return *_draftRegistry;
+}
+
+void Yux::rebuildDraftRegistry() {
+    if (!_draftRegistry) {
+        _draftRegistry = std::make_unique<DraftRegistry>(this);
+    }
+    _draftRegistry->buildFromAllFiles();
 }
 
 p<FileNode> Yux::createFile(const string& moduleName) {

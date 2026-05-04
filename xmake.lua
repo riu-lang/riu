@@ -168,7 +168,9 @@ target("yux_frontend")
         "src/mangler.cpp",
         "src/build_cache.cpp",
         "src/borrow_checker.cpp",
-        "src/symbol_suggest.cpp"
+        "src/symbol_suggest.cpp",
+        "src/draft_registry.cpp",
+        "src/draft_impl_checker.cpp"
     )
     add_files("src/node/*.cpp")
     add_files("gen/yux/*.cpp")
