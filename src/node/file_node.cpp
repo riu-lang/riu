@@ -143,6 +143,17 @@ FnNode* FileNode::getFunction(const string& name) const {
     return nullptr;
 }
 
+// 仅返回 generic 重载：用于 dispatcher 让非泛型 fnSymbol 优先于同名泛型函数
+// （例：`assert_eq:<T>` 与 `assert_eq(String&, String&)` 共存时）
+FnNode* FileNode::getGenericFunction(const string& name) const {
+    for (auto& fn : _functions) {
+        if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
+            return fn;
+        }
+    }
+    return nullptr;
+}
+
 void FileNode::addImport(const string& mod) {
     if (mod.empty() || mod == _moduleName) return;
     for (auto& m : _imports) if (m == mod) return;

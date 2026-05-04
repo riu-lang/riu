@@ -403,20 +403,38 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(
         leftPtr = alloca;
     }
     
-    // 编译右操作数
-    auto rightVal = compileExpr(rightExpr);
     auto rightType = rightExpr->getType();
+    // Phase 4b: 右操作数是 T& 字面变量时，从 _localVarPtrs 直接取裸 ptr，
+    // 避免 compileExpr 对 ref 自动 load 出 struct 值后又 alloca 写回 —— 写回会
+    // 把 struct 看成是 ptr 类型，触发 LLVM 签名校验失败。
+    llvm::Value* rightVal = nullptr;
+    if (rightType.isRef()) {
+        if (auto rl = dynamic_cast<ExprLiteralNode*>(rightExpr)) {
+            if (auto ol = dynamic_cast<LiteralObjNode*>(rl->literal())) {
+                auto vn = ol->getValue().getText();
+                auto rit = _localVarPtrs.find(vn);
+                if (rit != _localVarPtrs.end()) rightVal = rit->second;
+            }
+        }
+    }
+    if (!rightVal) {
+        rightVal = compileExpr(rightExpr);
+    }
 
     // 查找方法（spec §7.2.3.3）：二元运算符方法形参强制 Self&，
     // 因此查表使用 [leftType, Ref<rightType>]，原 eq(other Self) 形态不再被运算符触发。
     // 运算符位置自动取址（spec §7.2.3.6）：右操作数自动包成 Ref，无需用户写 &。
-    string methodFullName = leftType.name + "." + methodName;
+    // Phase 4b: 操作数本身是 T& 时（如 fn 形参 `actual String&`），剥掉一层 Ref
+    // 与方法注册的 [Self, Self&] 对齐；不剥则 lookup 失败导致调用方编译期崩溃。
+    TypeInfo effLeftType = leftType.isRef() ? *leftType.refElementType() : leftType;
+    TypeInfo effRightType = rightType.isRef() ? *rightType.refElementType() : rightType;
+    string methodFullName = effLeftType.name + "." + methodName;
     TypeInfo rightRefType;
     rightRefType.kind = TypeKind::Generic;
     rightRefType.name = "Ref";
-    rightRefType.genericArgs.push_back(make_shared<TypeInfo>(rightType));
+    rightRefType.genericArgs.push_back(make_shared<TypeInfo>(effRightType));
     vector<TypeInfo> methodParamTypes;
-    methodParamTypes.push_back(leftType);
+    methodParamTypes.push_back(effLeftType);
     methodParamTypes.push_back(rightRefType);
 
     auto methodSymbol = _file->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
@@ -449,15 +467,21 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(
     methodArgs.push_back(leftPtr);
     
     // 检查右操作数是否需要通过指针传递
-    auto rightStructDecl = _file->getStructDecl(rightType.name);
+    auto rightStructDecl = _file->getStructDecl(effRightType.name);
     if (!rightStructDecl && _yux && _yux->sdkFile()) {
-        rightStructDecl = _yux->sdkFile()->getStructDecl(rightType.name);
+        rightStructDecl = _yux->sdkFile()->getStructDecl(effRightType.name);
     }
-    if (rightStructDecl && !isBuiltinType(rightType.name)) {
-        auto structType = getLLVMType(rightType);
-        auto alloca = _builder.CreateAlloca(structType, nullptr, "op_rhs_tmp");
-        _builder.CreateStore(rightVal, alloca);
-        methodArgs.push_back(alloca);
+    if (rightStructDecl && !isBuiltinType(effRightType.name)) {
+        // 当右操作数本身是 T&（即 rightVal 已是 ptr）时，直接传 ptr，避免错误的
+        // alloca-then-store-into-Struct 路径（structType=Struct，但 rightVal=ptr，类型不匹配）
+        if (rightType.isRef()) {
+            methodArgs.push_back(rightVal);
+        } else {
+            auto structType = getLLVMType(effRightType);
+            auto alloca = _builder.CreateAlloca(structType, nullptr, "op_rhs_tmp");
+            _builder.CreateStore(rightVal, alloca);
+            methodArgs.push_back(alloca);
+        }
     } else {
         methodArgs.push_back(rightVal);
     }
@@ -470,7 +494,7 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(
     TypeInfo declaredRhsType = methodSymbol->params.size() >= 2 ? methodSymbol->params[1] : rightType;
     vector<TypeInfo> argTypes;
     argTypes.push_back(declaredRhsType);
-    string mangledName = Mangler::method(ownerMod, leftType.name, methodName, argTypes, methPriv);
+    string mangledName = Mangler::method(ownerMod, effLeftType.name, methodName, argTypes, methPriv);
 
     auto fn = _module->getFunction(mangledName);
     if (!fn) {

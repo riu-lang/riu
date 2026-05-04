@@ -729,14 +729,17 @@ llvm::Value* Compiler::compileFunctionCall(
 
     auto fnSymbol = _file->lookupFnSymbolWithParams(fnName, argTypes);
 
-    auto genericFn = _file->getFunction(fnName);
+    // Phase 4b: 当存在同名 generic + 非泛型重载时，参数严格匹配的非泛型优先；
+    // 仅在 fnSymbol 没匹配到时才走泛型路径。这样 `assert_eq(s1 String, s2 String)`
+    // 命中 SDK assert.yux 的 yux 重载，而不会跑到 #CompilerInner 的 compileTestAssertEq。
+    auto genericFn = _file->getGenericFunction(fnName);
     p<FileNode> fnOwner = _file;
     if (!genericFn && _yux && _yux->sdkFile()) {
-        genericFn = _yux->sdkFile()->getFunction(fnName);
+        genericFn = _yux->sdkFile()->getGenericFunction(fnName);
         if (genericFn) fnOwner = _yux->sdkFile();
     }
 
-    if (genericFn && genericFn->header()->isGeneric()) {
+    if (genericFn && !fnSymbol) {
         return compileGenericFunctionCall(callNode, fnName, args, argTypes, genericFn, fnOwner);
     }
 
@@ -1938,6 +1941,17 @@ llvm::Value* Compiler::compileKnownFunctionCall(
                     }
                 }
             }
+            // Phase 4b: 非局部变量（字符串字面量 / 调用结果 / 字段访问等）传给 T& 形参时，
+            // alloca 一个 T 临时存放，再把 alloca 的指针作为 T& 传入。
+            // args[i] 已是 T 值（compileExpr 对 T& 形参会把 ref 自解；对 T 直接给值）。
+            if (args[i]->getType()->isPointerTy()) {
+                callArgs.push_back(args[i]);
+            } else {
+                auto tmpAlloca = _builder.CreateAlloca(args[i]->getType(), nullptr, "ref_arg_tmp");
+                _builder.CreateStore(args[i], tmpAlloca);
+                callArgs.push_back(tmpAlloca);
+            }
+            continue;
         }
 
         if (fnSymbol->params[i].isPtr()) {

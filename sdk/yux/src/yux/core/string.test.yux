@@ -1,0 +1,51 @@
+; SDK dogfood：String 等值 / 子串 / 前缀
+; 失败路径目前阻塞（BUGS.md「yux test JIT SEH 跨帧」），仅覆盖 pass 路径
+
+#Test
+fn test_string_eq_basic() {
+  val a String = "hello"
+  val b String = "hello"
+  assert_eq(a, b)
+}
+
+#Test
+fn test_string_eq_literal() {
+  val s String = "world"
+  assert_eq(s, "world")
+}
+
+#Test
+fn test_string_eq_empty() {
+  val a String = ""
+  val b String = ""
+  assert_eq(a, b)
+}
+
+#Test
+fn test_string_contains_full() {
+  val s String = "hello world"
+  assert_contains(s, "hello")
+  assert_contains(s, "world")
+  assert_contains(s, "o w")
+  assert_contains(s, "d")
+}
+
+#Test
+fn test_string_contains_empty_needle() {
+  val s String = "anything"
+  assert_contains(s, "")
+}
+
+#Test
+fn test_string_starts_with_basic() {
+  val s String = "hello world"
+  assert_starts_with(s, "hello")
+  assert_starts_with(s, "h")
+  assert_starts_with(s, "hello world")
+}
+
+#Test
+fn test_string_starts_with_empty_prefix() {
+  val s String = "x"
+  assert_starts_with(s, "")
+}

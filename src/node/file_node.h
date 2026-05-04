@@ -32,6 +32,8 @@ public:
     StructDeclNode* getStructDecl(const string& name) const;
     StructImplNode* getStructImpl(const string& name) const;
     FnNode* getFunction(const string& name) const;
+    // 仅返回 generic 重载（用于 dispatcher：与 lookupFnSymbolWithParams 命中的非泛型重载竞争优先级时用到）
+    FnNode* getGenericFunction(const string& name) const;
     
     void setModuleName(const string& name) { _moduleName = name; }
     const string& moduleName() const { return _moduleName; }

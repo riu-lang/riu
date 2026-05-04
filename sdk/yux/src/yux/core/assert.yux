@@ -29,3 +29,4 @@ fn fail(msg String)
 fn _yux_test_assert_failed() {
   RaiseException(0xE0FA17EDu32, 0u32, 0u32, null);
 }
+

@@ -15,6 +15,14 @@
 
 ---
 
+## 2026-05-04 —— `assert_eq` 扩展到 String + 新增 `assert_contains` / `assert_starts_with`（Phase 4b）
+
+- **修改**：§11.3.5.2 `assert_eq` 类型分派表加 `String`；分派改由编译器 dispatcher 在「参数严格匹配的非泛型重载存在时优先于泛型」实现（`compiler_call.cpp` 新 `getGenericFunction`），SDK 侧 `base.yux` 末尾追加 `fn assert_eq(actual String&, expected String&)` 等 yux 实现重载。`#CompilerInner` 泛型 `assert_eq:<T>` 仍是 i8..u64 / f32 / f64 / bool 路径，未变。
+- **新增**：§11.3.5.7 `fn assert_contains(haystack String&, needle String&)` / `fn assert_starts_with(s String&, prefix String&)`，纯 yux 实现，分别调用新增的 `String.contains` / `String.starts_with` 方法。
+- **新增**：`String` 加方法 `contains(needle String&) bool` 与 `starts_with(prefix String&) bool`（base.yux）。
+- **新增**：§11.3.5.8 known-issue —— `yux test`（JIT 模式）下，由 yux 助手的失败路径触发的 `_yux_test_assert_failed()` SEH 异常**不**被 wrapper 捕获，runner 直接 abort；v1 用例只覆盖 pass 路径，fail 路径暂由 `#CompilerInner` 数值/`bool`/`fail` 断言覆盖。详见 `BUGS.md`。
+- **冲突 / 兼容**：纯增量；既有 `.yux` 源码无破坏。运算符 dispatcher 副作用：当用户同时定义同名 generic 与非泛型重载时，参数严格匹配的非泛型现在优先（更接近常见语言语义；先前是先到先得）。`compileCustomTypeBinaryOp` 同期加固：操作数本身是 `T&` 时剥一层 ref 后再做方法表查找；`compileKnownFunctionCall` 加固：非局部变量（字面量 / 临时值）作为 `T&` 形参实参时 alloca-store 临时再传 ptr。
+
 ## 2026-05-04 —— 运算符重载形参收口为 `Self&`
 
 - **修改**：§7.2.3.3 二元运算符方法形参从"应当与接收者类型一致"改为"应当为 `Self&`"；形参为 `Self`（按值）等其它类型时该方法只是普通方法，不再被运算符触发。

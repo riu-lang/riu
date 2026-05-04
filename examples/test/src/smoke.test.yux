@@ -55,3 +55,36 @@ fn test_true_fails() {
 fn test_fail_called() {
   fail("explicit fail")
 }
+
+; ==================== Phase 4b：String 断言 ====================
+
+#Test
+fn test_assert_eq_string_pass() {
+  val a String = "hello"
+  val b String = "hello"
+  assert_eq(a, b)
+  assert_eq(a, "hello")
+  val empty1 String = ""
+  val empty2 String = ""
+  assert_eq(empty1, empty2)
+}
+
+#Test
+fn test_assert_contains_pass() {
+  val s String = "hello world"
+  assert_contains(s, "hello")
+  assert_contains(s, "world")
+  assert_contains(s, "o w")
+  assert_contains(s, "")
+}
+
+#Test
+fn test_assert_starts_with_pass() {
+  val s String = "hello world"
+  assert_starts_with(s, "hello")
+  assert_starts_with(s, "")
+  assert_starts_with(s, "hello world")
+}
+
+; 失败用例：v1 留 known-issue（见 BUGS.md「yux test JIT 模式下，SEH 异常穿过 yux 中间帧时 runner 静默崩溃」）
+; v1 只覆盖 pass 路径；fail 路径等 LLJIT SEH unwind 注册修好后再补

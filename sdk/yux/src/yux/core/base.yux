@@ -1274,6 +1274,61 @@ String {
     !$.eq(&other)
   }
 
+  ; 是否以 prefix 开头：长度足够且前 plen 个码点逐位相等
+  fn starts_with(prefix String&) bool {
+    val plen i64 = prefix.data.len()
+    if plen > $.data.len() {
+      ret false
+    }
+    var i i64 = 0
+    loop {
+      if i >= plen {
+        break;
+      }
+      if $.data[i] != prefix.data[i] {
+        ret false
+      }
+      i += 1
+    }
+    true
+  }
+
+  ; 是否包含 needle 子串：朴素 O(n*m) 滑窗匹配
+  ; 空 needle 视为匹配任何字符串（与 starts_with("") 一致）
+  fn contains(needle String&) bool {
+    val nlen i64 = needle.data.len()
+    if nlen == 0 {
+      ret true
+    }
+    val hlen i64 = $.data.len()
+    if nlen > hlen {
+      ret false
+    }
+    var i i64 = 0
+    loop {
+      if i + nlen > hlen {
+        break;
+      }
+      var j i64 = 0
+      var hit bool = true
+      loop {
+        if j >= nlen {
+          break;
+        }
+        if $.data[i + j] != needle.data[j] {
+          hit = false
+          break;
+        }
+        j += 1
+      }
+      if hit {
+        ret true
+      }
+      i += 1
+    }
+    false
+  }
+
   ; 转为 UTF-8 字节数组
   fn to_bytes() Array<u8> {
     var r Array<u8> = []
@@ -1410,4 +1465,33 @@ fn println(s String) {
   print(s)
   val nl [u8 * 1] = [10u8]
   _stdout_write(&nl, 0i64, 1i64)
+}
+
+; ==================== Phase 4b：String 断言（纯 yux）====================
+; 与 assert.yux 中的 #CompilerInner 同名/同失败语义，但走 yux 实现路径。
+; dispatcher（compiler_call.cpp）在参数严格匹配的非泛型重载存在时优先选这里，
+; 绕开 compileTestAssertEq —— 后者仅处理 i8..u64 / f32 / f64 / bool。
+;
+; 形参均为 String&（spec §7.2.3.3）。调用方传 String 由「运算符位置自动取址」
+; （§7.2.3.6）和按 String& 形参的自动转换处理。
+;
+; 放在 base.yux 末尾而不是单独文件：避免 SDK 多文件分开编译时各 Compiler 实例
+; 创建独立 StructType 与已发射的模块声明类型冲突（详见 docs/dev 注释）。
+
+fn assert_eq(actual String&, expected String&) {
+  if actual != expected {
+    _yux_test_assert_failed();
+  }
+}
+
+fn assert_contains(haystack String&, needle String&) {
+  if !haystack.contains(&needle) {
+    _yux_test_assert_failed();
+  }
+}
+
+fn assert_starts_with(s String&, prefix String&) {
+  if !s.starts_with(&prefix) {
+    _yux_test_assert_failed();
+  }
 }
