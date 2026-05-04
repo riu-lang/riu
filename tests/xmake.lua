@@ -25,20 +25,14 @@
 --
 -- 分类（按用例名前缀；新用例必须沿用已有前缀，否则会落到 yux/misc）：
 --   yux/diag      诊断/错误提示          diag_*
---   yux/borrow    借用与生命周期         borrow_*
---   yux/array     数组                    array_*
---   yux/box       Box 智能指针            box_*
---   yux/ref       引用                    ref_*、same_ref
---   yux/weak      Weak 引用               weak_*
---   yux/nullable  可空类型                nullable_*
---   yux/rc        引用计数 / 泄漏         rc_*、*_rc、temp_zero_leak、field_reassign_rc
---   yux/struct    结构体                  struct_*、ctor_*、generic_struct_*
+--   yux/borrow    借用诊断                borrow_*（仅 .expected_err 路径）
+--   yux/extern    extern fn 边界          extern_*、ptr_*
 --   yux/project   项目模式用例            tests/projects/* (前缀 project_)
 --   yux/misc      其余兜底
 --
--- 注：纯逻辑用例（算术/逻辑/位/比较/字面量/类型系统/控制流/函数）已迁到
--- `sdk/yux/src/yux/core/*.test.yux`，由 `yux test` 直接运行。这里仅保留
--- 与 RC/借用/诊断/extern 紧耦合、`#Test` 暂未覆盖的回归。
+-- 注：纯逻辑用例 + 行为类用例（数组/Box/Ref/Weak/Nullable/Struct/RC 临时值清单 /
+-- 借用合法路径）已迁到 `sdk/yux/src/yux/core/*.test.yux`，由 `yux test` 直接运行。
+-- 这里仅保留无法走 JIT 的诊断回归（`.expected_err` 子串匹配）和 extern fn 链接边界用例。
 
 local cases_dir = path.join(os.scriptdir(), "cases")
 local projects_dir = path.join(os.scriptdir(), "projects")
@@ -50,19 +44,6 @@ local function categorize(name)
     if name:startswith("project_") then return "yux/project" end
     if name:startswith("diag_")    then return "yux/diag"    end
     if name:startswith("borrow_")  then return "yux/borrow"  end
-    if name:startswith("array_")   then return "yux/array"   end
-    if name:startswith("box_")     then return "yux/box"     end
-    if name:startswith("ref_") or name == "same_ref" then return "yux/ref" end
-    if name:startswith("weak_")    then return "yux/weak"    end
-    if name:startswith("nullable_") then return "yux/nullable" end
-    if name:startswith("rc_") or name:endswith("_rc")
-       or name == "temp_zero_leak" or name == "field_reassign_rc" then
-        return "yux/rc"
-    end
-    if name:startswith("struct_") or name:startswith("ctor_")
-       or name:startswith("generic_struct_") then
-        return "yux/struct"
-    end
     if name:startswith("ptr_") or name == "extern_ptr_auto" then
         return "yux/extern"
     end

@@ -125,10 +125,10 @@ yux test -v                              ; 详细模式（即便 OK 也回放 st
 xmake build yux                          ; 测试会自动依赖构建，但显式先构建便于定位编译错误
 xmake test                               ; 全部用例
 xmake test -v                            ; 失败时打印 stdout / stderr / errors
-xmake test yux_tests/borrow_as_ref_ok    ; 单个用例（不带 .yux 后缀）
+xmake test yux_tests/diag_undefined_var  ; 单个用例（不带 .yux 后缀）
 xmake test yux_tests/project_imports_struct
 xmake test "yux_tests/*"
-xmake test -g yux/borrow                 ; 只跑某一分组（见下表）
+xmake test -g yux/diag                   ; 只跑某一分组（见下表）
 ```
 
 #### 用例分组（按文件名前缀）
@@ -139,24 +139,16 @@ xmake test -g yux/borrow                 ; 只跑某一分组（见下表）
 | 分组 | 前缀 / 命名规则 | 典型用例 |
 |------|---------------|---------|
 | `yux/diag` | `diag_*.yux` + `*.expected_err` | 诊断 / 错误提示回归 |
-| `yux/borrow` | `borrow_*` | 借用与生命周期 |
-| `yux/array` | `array_*` | 数组 |
-| `yux/box` | `box_*` | Box 智能指针 |
-| `yux/ref` | `ref_*`、`same_ref` | 引用 |
-| `yux/weak` | `weak_*` | Weak 引用 |
-| `yux/nullable` | `nullable_*` | 可空类型 |
-| `yux/rc` | `rc_*`、`*_rc`、`temp_zero_leak`、`field_reassign_rc` | 引用计数 / 泄漏 |
-| `yux/struct` | `struct_*`、`ctor_*`、`generic_struct_*` | 结构体 |
-| `yux/extern` | `ptr_of`、`extern_ptr_auto` | extern fn / Ptr 边界 |
+| `yux/borrow` | `borrow_*` + `.expected_err` | 借用诊断（合法路径已迁 `yux test`） |
+| `yux/extern` | `ptr_of`、`extern_ptr_auto` | extern fn / Ptr 边界（JIT 链接不到） |
 | `yux/project` | `tests/projects/<dir>/`（自动加 `project_` 前缀） | 项目模式 |
 | `yux/misc` | 兜底 | 其余 |
 
-历史上还有 `yux/expr` / `yux/types` / `yux/control` 三个白名单分组；其下的纯逻辑用例已全部迁到 `sdk/yux/src/yux/core/*.test.yux`，分组也随之删除。如果你打算往 `tests/cases/` 里加纯逻辑用例，先停一下：默认应该走 `yux test`，只有以下场景才该留在 `tests/cases/`：诊断（`diag_*` + `expected_err`）、借用 / RC / 弱引用 / 析构次序等内存语义、extern fn 与 Ptr 边界、项目导入语义。
+历史上还有 `yux/array` / `yux/box` / `yux/ref` / `yux/weak` / `yux/nullable` / `yux/rc` / `yux/struct` 等行为分组，已全部迁到 `sdk/yux/src/yux/core/*.test.yux`，由 `yux test` 直接跑。`tests/cases/` 现在只留无法走 JIT 的两类：诊断（`diag_*` / `borrow_* + .expected_err`）和 extern fn 链接边界（`ptr_of` / `extern_ptr_auto`）。新加纯逻辑或行为用例直接写到 `sdk/yux/src/yux/core/<name>.test.yux`。
 
 ### 共同规则
 
 - 测试用例与语言规范冲突时，**更新用例**（`src/yux.g4` + 编译器为准）；不要通过修改规范去迁就用例。
-- 已知 flaky：`tests/cases/rc_leak_baseline`（详见 BUGS.md），偶尔在 `xmake test` 失败，不算回归。
 - 开发流程建议：
   1. 先改 `examples/test` 或随手建项目做冒烟验证。
   2. 改某子系统时优先 `xmake test -g yux/<相关分组>` 或 `yux test <prefix>` 局部回归。

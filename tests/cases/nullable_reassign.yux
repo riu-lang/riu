@@ -1,8 +1,0 @@
-use yux.core.*
-
-fn main() {
-  var x i64? = null
-  x = 0i64
-  println(x.has().to_string())
-  println(x.get().to_string())
-}

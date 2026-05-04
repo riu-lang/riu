@@ -1,0 +1,124 @@
+; 借用合法路径用例（迁自 tests/cases/borrow_*，仅 .expected 路径；.expected_err 路径保留在 tests/cases/）
+; 覆盖：as_ref(box)、Array<T>& 借用块作用域、循环内借用、box 借用结束后可重赋、
+;       拷绑透传根追溯、泛型 T& 形参、用户函数返回 ref。
+
+struct BrPair {
+  a i32
+  b i32
+}
+
+BrPair {
+  fn BrPair(a i32, b i32) {
+    $.a = a
+    $.b = b
+  }
+}
+
+fn br_read_a(p BrPair&) i32 {
+  ret p.a
+}
+
+; ---------- borrow_as_ref_ok：as_ref(b) 取 Box payload 的 T& ----------
+
+#Test
+fn test_borrow_as_ref_box_payload() {
+  var b Box<BrPair> = BrPair(7i32, 8i32)
+  val r BrPair& = as_ref(b)
+  assert_eq(r.a, 7i32)
+  assert_eq(br_read_a(as_ref(b)), 7i32)
+}
+
+; ---------- borrow_as_ref_chain：同一 box 两次 as_ref 共享借用 ----------
+
+#Test
+fn test_borrow_as_ref_two_shared() {
+  var b Box<BrPair> = BrPair(11i32, 22i32)
+  val r1 BrPair& = as_ref(b)
+  val r2 BrPair& = as_ref(b)
+  assert_eq(r1.a, 11i32)
+  assert_eq(r2.b, 22i32)
+}
+
+; ---------- borrow_array_push_after_drop：Array<T>& 借用消亡后 push ----------
+
+#Test
+fn test_borrow_array_push_after_drop() {
+  var a Array<i32> = [1i32, 2i32, 3i32]
+  loop {
+    val r Array<i32>& = &a
+    assert_eq(r.len(), 3i64)
+    break;
+  }
+  a.push(4i32)
+  assert_eq(a.len(), 4i64)
+}
+
+; ---------- borrow_array_ref_in_loop：循环内借用按块作用域，每次迭代消亡 ----------
+
+#Test
+fn test_borrow_array_ref_in_loop() {
+  var a Array<i32> = [10i32, 20i32, 30i32]
+  var i i32 = 0i32
+  loop {
+    val r Array<i32>& = &a
+    assert_eq(r.len(), 3i64)
+    i = i + 1i32
+    if i >= 2i32 {
+      break;
+    }
+  }
+  a.push(40i32)
+  assert_eq(a.len(), 4i64)
+}
+
+; ---------- borrow_array_via_ref_method：通过 ref 读取，原句柄写 ----------
+
+#Test
+fn test_borrow_array_read_via_ref_then_write_origin() {
+  var a Array<i32> = [10i32, 20i32]
+  loop {
+    val r Array<i32>& = &a
+    assert_eq(r.len(), 2i64)
+    break;
+  }
+  a.push(30i32)
+  assert_eq(a.len(), 3i64)
+}
+
+; ---------- borrow_box_reassign_after_drop：嵌套块借用消亡后 box 重赋 ----------
+
+#Test
+fn test_borrow_box_reassign_after_drop() {
+  var b Box<BrPair> = BrPair(7i32, 8i32)
+  var b2 Box<BrPair> = BrPair(9i32, 10i32)
+  loop {
+    val r BrPair& = as_ref(b)
+    assert_eq(r.a, 7i32)
+    break;
+  }
+  b = b2
+  assert_eq(b.a, 9i32)
+}
+
+; ---------- borrow_copy_bind_root：拷贝绑定后根仍是原变量 ----------
+
+#Test
+fn test_borrow_copy_bind_root() {
+  var c i32 = 7i32
+  val r1 i32& = &c
+  val r2 i32& = r1
+  assert_eq(r1, 7i32)
+  assert_eq(r2, 7i32)
+}
+
+; ---------- borrow_generic_ref_param：泛型 T& 形参 ----------
+
+fn <T> br_first_byte(p T&) i32 {
+  ret 1i32
+}
+
+#Test
+fn test_borrow_generic_ref_param() {
+  var x i32 = 42i32
+  assert_eq(br_first_byte(&x), 1i32)
+}

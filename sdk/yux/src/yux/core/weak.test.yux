@@ -1,0 +1,68 @@
+; Weak<T> 用例（迁自 tests/cases/weak_*）
+; 覆盖：Weak 从 Box 构造、upgrade 成功 / 失败、?. 短路、?? fallback。
+
+struct WeakPair {
+  a i32
+  b i32
+}
+
+WeakPair {
+  fn WeakPair(a i32, b i32) {
+    $.a = a
+    $.b = b
+  }
+}
+
+; ---------- weak_basic：Weak 构造 + 析构生命周期 ----------
+
+#Test
+fn test_weak_basic_lifecycle() {
+  var b Box<WeakPair> = WeakPair(42i32, 0i32)
+  var w Weak<WeakPair> = b
+  ; 仅验证构造 / 析构序列不崩；通过 b 字段读触发自动 deref
+  assert_eq(b.a, 42i32)
+}
+
+; ---------- weak_upgrade_ok：box 仍活，upgrade 返回 Some ----------
+
+#Test
+fn test_weak_upgrade_alive_returns_some() {
+  var b Box<WeakPair> = WeakPair(11i32, 22i32)
+  var w Weak<WeakPair> = b
+  var maybe Box<WeakPair>? = upgrade(w)
+  ; 借助 ?. 短路 + ?? fallback 验证 Some 路径取到真值
+  var got i32? = maybe?.a
+  assert_eq(got ?? -1i32, 11i32)
+}
+
+; ---------- weak_upgrade_fail：box 已死，upgrade 返回 null ----------
+
+fn make_dangling_weak() Weak<WeakPair> {
+  var b Box<WeakPair> = WeakPair(11i32, 22i32)
+  var w Weak<WeakPair> = b
+  ret w
+}
+
+#Test
+fn test_weak_upgrade_dangling_returns_null() {
+  var w Weak<WeakPair> = make_dangling_weak()
+  var maybe Box<WeakPair>? = upgrade(w)
+  var v i32? = maybe?.a
+  assert_eq(v ?? -1i32, -1i32)
+}
+
+#Test
+fn test_weak_upgrade_alive_vs_dead_same_test() {
+  ; 失败路径
+  var w Weak<WeakPair> = make_dangling_weak()
+  var maybe Box<WeakPair>? = upgrade(w)
+  var v i32? = maybe?.a
+  assert_eq(v ?? -1i32, -1i32)
+
+  ; 成功路径
+  var b2 Box<WeakPair> = WeakPair(33i32, 44i32)
+  var w2 Weak<WeakPair> = b2
+  var maybe2 Box<WeakPair>? = upgrade(w2)
+  var v2 i32? = maybe2?.a
+  assert_eq(v2 ?? -1i32, 33i32)
+}

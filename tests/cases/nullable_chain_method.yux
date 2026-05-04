@@ -1,6 +1,0 @@
-; 验证 BUGS.md：泛型结构体方法链式调用
-; nx.get() 返回 T(=i32)，再调用 i32 内置方法 .to_string()
-fn main() {
-  var nx i32? = 42i32
-  println(nx.get().to_string())
-}

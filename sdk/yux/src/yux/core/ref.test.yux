@@ -1,0 +1,219 @@
+; T& 借用用例（迁自 tests/cases/ref_*、same_ref）
+; 覆盖：标量借用读 / 写、&box 句柄借用、&p.field / &$.field / &box.field / RC 字段链、
+;       receiver 隐式 Self&、same_ref:<T> 地址相等。
+
+; ---------- ref_basic：T& 读路径 ----------
+
+fn r_add(a i32&, b i32&) i32 {
+  ret a + b
+}
+
+fn r_sum_three(x i32&, y i32&, z i32&) i32 {
+  ret x + y + z
+}
+
+#Test
+fn test_ref_read_paths() {
+  var x i32 = 10i32
+  var y i32 = 20i32
+  var z i32 = 30i32
+
+  assert_eq(r_add(&x, &y), 30i32)
+
+  var rx i32& = &x
+  assert_eq(rx, 10i32)
+
+  var rx2 i32& = rx
+  assert_eq(rx2, 10i32)
+
+  assert_eq(r_sum_three(&x, &y, &z), 60i32)
+}
+
+; ---------- ref_write：T& 赋值落 store-through ----------
+
+fn r_bump(r i32&) {
+  r = r + 1i32
+}
+
+#Test
+fn test_ref_store_through() {
+  var x i32 = 10i32
+  var d i32& = &x
+  d = 99i32
+  assert_eq(x, 99i32)
+  d = d + 1i32
+  assert_eq(x, 100i32)
+  r_bump(&x)
+  assert_eq(x, 101i32)
+  var d2 i32& = d
+  d2 = 7i32
+  assert_eq(x, 7i32)
+}
+
+; ---------- ref_box：&box → Box<T>& 句柄借用 ----------
+
+struct RefPair {
+  a i32
+  b i32
+}
+
+RefPair {
+  fn RefPair(a i32, b i32) {
+    $.a = a
+    $.b = b
+  }
+
+  fn set_a(v i32) {
+    $.a = v
+  }
+
+  fn sum() i32 {
+    ret $.a + $.b
+  }
+}
+
+fn r_box_show_a(b Box<RefPair>&) i32 {
+  ret b.a
+}
+
+fn r_box_bump(b Box<RefPair>&) {
+  b.set_a(99i32)
+}
+
+#Test
+fn test_ref_box_handle_borrow() {
+  var p Box<RefPair> = RefPair(10i32, 20i32)
+  assert_eq(r_box_show_a(&p), 10i32)
+  assert_eq(p.sum(), 30i32)
+  r_box_bump(&p)
+  assert_eq(p.a, 99i32)
+  assert_eq(p.sum(), 119i32)
+}
+
+; ---------- ref_field：&p.field / &box.field / RC 字段链 / &$.field ----------
+
+struct RefP {
+  x i32
+  y i32
+}
+
+RefP {
+  fn RefP(x i32, y i32) {
+    $.x = x
+    $.y = y
+  }
+  fn bump_x() {
+    r_add1(&$.x)
+  }
+}
+
+struct RefHolder {
+  inner Box<RefP>
+}
+
+RefHolder {
+  fn RefHolder(inner Box<RefP>) {
+    $.inner = inner
+  }
+}
+
+fn r_add1(r i32&) {
+  r = r + 1i32
+}
+
+#Test
+fn test_ref_local_field() {
+  var p RefP = RefP(10i32, 20i32)
+  r_add1(&p.x)
+  assert_eq(p.x, 11i32)
+  assert_eq(p.y, 20i32)
+}
+
+#Test
+fn test_ref_box_field() {
+  var b Box<RefP> = RefP(100i32, 200i32)
+  r_add1(&b.x)
+  assert_eq(b.x, 101i32)
+  assert_eq(b.y, 200i32)
+}
+
+#Test
+fn test_ref_rc_field_chain() {
+  var b Box<RefP> = RefP(100i32, 200i32)
+  var h RefHolder = RefHolder(b)
+  r_add1(&h.inner.x)
+  ; b 与 h.inner 共享同一 block
+  assert_eq(b.x, 101i32)
+}
+
+#Test
+fn test_ref_self_field() {
+  var p RefP = RefP(10i32, 20i32)
+  p.bump_x()
+  assert_eq(p.x, 11i32)
+}
+
+; ---------- ref_self：receiver 隐式 Self&（&$ 传给自由函数） ----------
+
+struct RefQ {
+  x i32
+  y i32
+}
+
+RefQ {
+  fn RefQ(x i32, y i32) {
+    $.x = x
+    $.y = y
+  }
+
+  fn show_via_self_ref() i32 {
+    ret r_dump_x(&$)
+  }
+}
+
+fn r_dump_x(p RefQ&) i32 {
+  ret p.x
+}
+
+#Test
+fn test_ref_receiver_self_ref() {
+  var p RefQ = RefQ(10i32, 20i32)
+  assert_eq(p.show_via_self_ref(), 10i32)
+}
+
+; ---------- same_ref:<T>：地址相等 ----------
+
+#Test
+fn test_same_ref_box_shared() {
+  var p Box<RefPair> = RefPair(1i32, 2i32)
+  var q Box<RefPair> = p
+  var r Box<RefPair> = RefPair(1i32, 2i32)
+  assert_true(same_ref:<Box<RefPair>>(p, q))
+  assert_false(same_ref:<Box<RefPair>>(p, r))
+}
+
+#Test
+fn test_same_ref_weak_from_same_box() {
+  var p Box<RefPair> = RefPair(1i32, 2i32)
+  var q Box<RefPair> = p
+  var r Box<RefPair> = RefPair(1i32, 2i32)
+  var w1 Weak<RefPair> = p
+  var w2 Weak<RefPair> = q
+  var w3 Weak<RefPair> = r
+  assert_true(same_ref:<Weak<RefPair>>(w1, w2))
+  assert_false(same_ref:<Weak<RefPair>>(w1, w3))
+}
+
+#Test
+fn test_same_ref_array_self_vs_independent() {
+  var a1 Array<i32> = [1i32, 2i32, 3i32]
+  var a3 Array<i32> = [1i32, 2i32, 3i32]
+  assert_true(same_ref:<Array<i32>>(a1, a1))
+  assert_false(same_ref:<Array<i32>>(a1, a3))
+}
+
+#Test
+fn test_same_ref_string_self() {
+  var s1 String = "hi"
+  assert_true(same_ref:<String>(s1, s1))
+}
