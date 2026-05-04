@@ -15,6 +15,14 @@
 
 ---
 
+## 2026-05-04 —— `yux test --isolate=process` 子进程隔离（Phase 5）
+
+- **新增**：§11.3.4.4 `yux test --isolate=process`：每个 `#Test` 在独立子进程内执行，崩溃 / 内存脏化只影响该测试。`--isolate=none`（默认）保持同进程 SEH wrapper 行为。
+- **新增**：§11.3.4.5 显式记录 `-v / --verbose` 失败时回放 stdout / stderr 的语义（Phase 3 已实现，仅补 spec 层）。
+- **修改**：§11.3.4.3 文本同步——v1 默认同进程 SEH wrapper 已能扛住单条 SEH 异常，不再"任一测试崩溃整体非零退出"。
+- **副作用**：BUGS.md 记录的「yux 助手失败路径触发的 SEH 在 wrapper 内失活」在子进程模式下被自动绕开（子进程崩溃即子进程退出码，父进程翻译），可作为该 known-issue 的临时 workaround。
+- **冲突 / 兼容**：纯增量；默认行为未变；新加的 `--isolate-child` / `--capture` 是 hidden CLI（父子进程协议），不暴露给用户。
+
 ## 2026-05-04 —— `assert_eq` 扩展到 String + 新增 `assert_contains` / `assert_starts_with`（Phase 4b）
 
 - **修改**：§11.3.5.2 `assert_eq` 类型分派表加 `String`；分派改由编译器 dispatcher 在「参数严格匹配的非泛型重载存在时优先于泛型」实现（`compiler_call.cpp` 新 `getGenericFunction`），SDK 侧 `base.yux` 末尾追加 `fn assert_eq(actual String&, expected String&)` 等 yux 实现重载。`#CompilerInner` 泛型 `assert_eq:<T>` 仍是 i8..u64 / f32 / f64 / bool 路径，未变。

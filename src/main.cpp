@@ -12,6 +12,8 @@
 #include <regex>
 #include <csignal>
 #include <fstream>
+#include <sstream>
+#include <atomic>
 #include <io.h>
 
 #include <lld/Common/Driver.h>
@@ -670,6 +672,71 @@ struct TestOutputCapture {
     }
 };
 
+// Phase 5：取当前进程 exe 全路径（用于父进程派发子测试时的 argv[0]）
+static std::string getSelfExePath() {
+    wchar_t buf[MAX_PATH];
+    DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return {};
+    int sz = WideCharToMultiByte(CP_UTF8, 0, buf, (int)n, nullptr, 0, nullptr, nullptr);
+    std::string out(sz, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, buf, (int)n, out.data(), sz, nullptr, nullptr);
+    return out;
+}
+
+static std::wstring toWide(const std::string& s) {
+    if (s.empty()) return {};
+    int sz = MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), nullptr, 0);
+    std::wstring out(sz, 0);
+    MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), out.data(), sz);
+    return out;
+}
+
+// Phase 5：在 isolate=process 模式下，给单个 #Test 起子进程跑。
+// 子进程协议：`<self> test <mod>#<fn> --isolate-child --capture <tmpfile>`
+// 子进程把所有 stdout/stderr 写入 capture 文件；退出码 0=pass / SEH 码=fail / 2=child 自身错误。
+struct IsolatedResult { unsigned long exitCode; std::string capture; bool spawnOk; std::string spawnError; };
+static IsolatedResult spawnIsolatedTest(const std::string& exePath,
+                                         const std::string& mod,
+                                         const std::string& fn) {
+    namespace fs = std::filesystem;
+    static std::atomic<unsigned> seq{0};
+    fs::path capPath = fs::temp_directory_path() /
+        ("yuxtest_" + std::to_string(GetCurrentProcessId()) + "_" + std::to_string(++seq) + ".txt");
+
+    // CreateProcessW 接收单条 cmdline；exe 路径与 capture 路径都用引号包起来防空格。
+    std::string cmd = "\"" + exePath + "\" test \"" + mod + "#" + fn +
+                      "\" --isolate-child --capture \"" + capPath.string() + "\"";
+    std::wstring wcmd = toWide(cmd);
+    std::vector<wchar_t> cmdBuf(wcmd.begin(), wcmd.end());
+    cmdBuf.push_back(0);
+
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi{};
+    BOOL ok = CreateProcessW(nullptr, cmdBuf.data(), nullptr, nullptr, FALSE,
+                              CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+    if (!ok) {
+        return {0, {}, false, "CreateProcess failed (GLE=" + std::to_string(GetLastError()) + ")"};
+    }
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD code = 0;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+
+    std::string capContents;
+    if (fs::exists(capPath)) {
+        std::ifstream f(capPath, std::ios::binary);
+        std::stringstream ss;
+        ss << f.rdbuf();
+        capContents = ss.str();
+        f.close();
+        std::error_code ec;
+        fs::remove(capPath, ec);
+    }
+    return {code, std::move(capContents), true, {}};
+}
+
 // 把捕获到的输出按行缩进打印到 std::cout，便于在 RUN/FAIL 行下视觉归属
 static void printCapturedOutput(const std::string& out) {
     if (out.empty()) return;
@@ -747,6 +814,16 @@ int wmain(int argc, wchar_t* argv[]) {
     bool testVerbose = false;
     testCmd->add_option("selector", testSelector, "Module prefix or `<module>#<fnName>` selector");
     testCmd->add_flag("-v,--verbose", testVerbose, "Print captured stdout/stderr for every test (default: only on failure)");
+    // Phase 5：进程隔离开关
+    std::string testIsolate = "none";
+    testCmd->add_option("--isolate", testIsolate, "Isolation mode: none|process (default: none)")
+           ->check(CLI::IsMember({"none", "process"}));
+    bool testIsolateChild = false;
+    auto* childOpt = testCmd->add_flag("--isolate-child", testIsolateChild, "(internal) child runner for --isolate=process");
+    childOpt->group("");  // 隐藏
+    std::string testCaptureFile;
+    auto* capOpt = testCmd->add_option("--capture", testCaptureFile, "(internal) child capture file path");
+    capOpt->group("");
     testCmd->fallthrough();
 #ifdef _DEBUG
     testCmd->add_flag("-d,--debug", debug, "Output compilation IR debug information");
@@ -763,6 +840,30 @@ int wmain(int argc, wchar_t* argv[]) {
     formatCmd->add_option("--line-width", formatLineWidth, "Line width threshold (default: 120)");
 
     CLI11_PARSE(app, argc, argv);
+
+    // Phase 5：子进程模式 — 在任何输出前把 stdout/stderr 重定向到 capture 文件
+    bool isChildIsolated = testCmd->parsed() && testIsolateChild;
+    if (isChildIsolated) {
+        if (testCaptureFile.empty()) {
+            std::cerr << "Error: --isolate-child requires --capture <path>" << std::endl;
+            return 2;
+        }
+        FILE* cap = std::fopen(testCaptureFile.c_str(), "wb");
+        if (!cap) {
+            std::cerr << "Error: cannot open capture file: " << testCaptureFile << std::endl;
+            return 2;
+        }
+        std::fflush(stdout);
+        std::fflush(stderr);
+        int fd = _fileno(cap);
+        _dup2(fd, _fileno(stdout));
+        _dup2(fd, _fileno(stderr));
+        // 不缓冲：避免子进程异常退出时父进程读到截断输出
+        std::setvbuf(stdout, nullptr, _IONBF, 0);
+        std::setvbuf(stderr, nullptr, _IONBF, 0);
+        std::cout.setf(std::ios::unitbuf);
+        std::cerr.setf(std::ios::unitbuf);
+    }
 
     // 把诊断 severity 开关下发到 DiagPolicy
     // applyOverride: 校验 code 已知 + 允许策略；不可降级时打印拒绝信息
@@ -889,7 +990,9 @@ int wmain(int argc, wchar_t* argv[]) {
         return 0;
     }
 
-    std::cout << "Working at: " << std::filesystem::absolute(std::filesystem::current_path()).string() << std::endl;
+    if (!isChildIsolated) {
+        std::cout << "Working at: " << std::filesystem::absolute(std::filesystem::current_path()).string() << std::endl;
+    }
 
     // ==================== `yux test` 子命令 ====================
     // Phase 2 实现：仅项目模式；递归扫描 src/ 下 *.yux + *.test.yux；codegen 全部模块后
@@ -1065,12 +1168,64 @@ int wmain(int argc, wchar_t* argv[]) {
         }
 
         if (filtered.empty()) {
-            std::cout << "no tests matched";
-            if (!testSelector.empty()) std::cout << " selector `" << testSelector << "`";
-            std::cout << std::endl;
+            if (!isChildIsolated) {
+                std::cout << "no tests matched";
+                if (!testSelector.empty()) std::cout << " selector `" << testSelector << "`";
+                std::cout << std::endl;
+                std::cout.flush();
+                std::cerr.flush();
+            } else {
+                std::cerr << "child: selector `" << testSelector << "` matched no test\n";
+            }
+            _exit(isChildIsolated ? 2 : 0);
+        }
+
+        // Phase 5：子进程模式必须命中且仅命中一个测试（父进程派发时用 `<mod>#<fn>` 形式）
+        if (isChildIsolated && filtered.size() != 1) {
+            std::cerr << "child: --isolate-child expects exactly one test, got "
+                      << filtered.size() << "\n";
+            _exit(2);
+        }
+
+        // Phase 5：父进程在 isolate=process 模式下走子进程派发路径，跳过本进程 JIT。
+        bool useProcessIsolation = !isChildIsolated && testIsolate == "process";
+
+        if (useProcessIsolation) {
+            std::string self = getSelfExePath();
+            if (self.empty()) {
+                std::cerr << "[test] failed to resolve self exe path\n";
+                return 1;
+            }
+            size_t passed = 0, failed = 0;
+            for (auto& t : filtered) {
+                std::cout << "RUN  " << t.mod << "#" << t.fn << std::endl;
+                std::cout.flush();
+                auto r = spawnIsolatedTest(self, t.mod, t.fn);
+                if (!r.spawnOk) {
+                    std::cout << "FAIL " << t.mod << "#" << t.fn << " (" << r.spawnError << ")\n";
+                    ++failed;
+                    continue;
+                }
+                if (r.exitCode == 0) {
+                    std::cout << "OK   " << t.mod << "#" << t.fn << std::endl;
+                    if (testVerbose) printCapturedOutput(r.capture);
+                    ++passed;
+                } else if (r.exitCode == 2) {
+                    std::cout << "FAIL " << t.mod << "#" << t.fn << " (child runner error)\n";
+                    printCapturedOutput(r.capture);
+                    ++failed;
+                } else {
+                    std::cout << "FAIL " << t.mod << "#" << t.fn
+                              << " (SEH " << sehExceptionName(r.exitCode)
+                              << " 0x" << std::hex << r.exitCode << std::dec << ")\n";
+                    printCapturedOutput(r.capture);
+                    ++failed;
+                }
+            }
+            std::cout << "\n" << passed << " passed, " << failed << " failed" << std::endl;
             std::cout.flush();
             std::cerr.flush();
-            _exit(0);
+            _exit(failed == 0 ? 0 : 1);
         }
 
         // 启动 LLJIT，加载 sdk obj + 所有用户模块 IR
@@ -1119,37 +1274,59 @@ int wmain(int argc, wchar_t* argv[]) {
         }
 
         // 顺序执行：每个测试用 SEH 包裹 + 输出捕获，崩溃单条失败不再终止 suite
+        // Phase 5：子进程模式（isChildIsolated）下不打 RUN/OK/FAIL/summary，
+        // 退出码 = SEH 码（0=pass，ASSERT_FAILED/AV/... 透传给父进程翻译）。
+        // 子进程模式也不再用 TestOutputCapture（stdout/stderr 已在入口被重定向到 capture 文件）。
         size_t passed = 0, failed = 0;
+        unsigned long childExitCode = 0;
         for (auto& t : filtered) {
-            std::cout << "RUN  " << t.mod << "#" << t.fn << std::endl;
-            std::cout.flush();
+            if (!isChildIsolated) {
+                std::cout << "RUN  " << t.mod << "#" << t.fn << std::endl;
+                std::cout.flush();
+            }
             auto sym = jit->lookup(t.sym);
             if (!sym) {
-                std::cout << "FAIL " << t.mod << "#" << t.fn
-                          << " (lookup failed: " << llvm::toString(sym.takeError()) << ")"
-                          << std::endl;
-                ++failed;
+                if (isChildIsolated) {
+                    std::cerr << "child: lookup failed: " << llvm::toString(sym.takeError()) << "\n";
+                    childExitCode = 2;
+                } else {
+                    std::cout << "FAIL " << t.mod << "#" << t.fn
+                              << " (lookup failed: " << llvm::toString(sym.takeError()) << ")"
+                              << std::endl;
+                    ++failed;
+                }
                 continue;
             }
             auto fn = sym->toPtr<void (*)()>();
 
-            TestOutputCapture cap;
-            bool capOk = cap.start();
-            unsigned long code = runTestSEH(fn);
-            std::string out = capOk ? cap.stop() : std::string();
-
-            if (code == 0) {
-                std::cout << "OK   " << t.mod << "#" << t.fn << std::endl;
-                if (testVerbose) printCapturedOutput(out);
-                ++passed;
+            unsigned long code;
+            if (isChildIsolated) {
+                code = runTestSEH(fn);
+                childExitCode = code;
             } else {
-                std::cout << "FAIL " << t.mod << "#" << t.fn
-                          << " (SEH " << sehExceptionName(code)
-                          << " 0x" << std::hex << code << std::dec << ")"
-                          << std::endl;
-                printCapturedOutput(out);
-                ++failed;
+                TestOutputCapture cap;
+                bool capOk = cap.start();
+                code = runTestSEH(fn);
+                std::string out = capOk ? cap.stop() : std::string();
+
+                if (code == 0) {
+                    std::cout << "OK   " << t.mod << "#" << t.fn << std::endl;
+                    if (testVerbose) printCapturedOutput(out);
+                    ++passed;
+                } else {
+                    std::cout << "FAIL " << t.mod << "#" << t.fn
+                              << " (SEH " << sehExceptionName(code)
+                              << " 0x" << std::hex << code << std::dec << ")"
+                              << std::endl;
+                    printCapturedOutput(out);
+                    ++failed;
+                }
             }
+        }
+        if (isChildIsolated) {
+            std::fflush(stdout);
+            std::fflush(stderr);
+            _exit(static_cast<int>(childExitCode));
         }
         std::cout << "\n" << passed << " passed, " << failed << " failed" << std::endl;
         std::cout.flush();
