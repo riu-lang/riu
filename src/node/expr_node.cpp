@@ -4,7 +4,59 @@
 #include "expr_node.h"
 #include "fn_node.h"
 #include "file_node.h"
+#include "draft_node.h"
 #include "../symbol_suggest.h"
+
+// §12.4：在生成式 AST 中遇到 `x.m()`（x:T 为泛型形参）时，
+// 用形参声明位的 draft 边界查 m 的返回类型；走包含 SDK 回退的 file 链。
+static TypeInfo lookupDraftBoundMethodRetType(
+    Node* contextParent, const string& typeParamName, const string& methodName) {
+    Node* cur = contextParent;
+    p<FnHeaderNode> header = nullptr;
+    while (cur) {
+        if (auto fn = dynamic_cast<FnNode*>(cur)) {
+            header = fn->header();
+            break;
+        }
+        cur = cur->parent();
+    }
+    if (!header || !header->isGeneric()) return TypeInfo();
+    const auto& tps = header->typeParams();
+    const auto& bounds = header->typeParamBounds();
+    size_t idx = SIZE_MAX;
+    for (size_t i = 0; i < tps.size(); ++i) {
+        if (tps[i] == typeParamName) { idx = i; break; }
+    }
+    if (idx == SIZE_MAX || idx >= bounds.size()) return TypeInfo();
+
+    auto scope = contextParent ? contextParent->findNearestScope() : nullptr;
+    FileNode* file = dynamic_cast<FileNode*>(scope);
+    while (!file && scope) {
+        scope = scope->parentScope();
+        file = dynamic_cast<FileNode*>(scope);
+    }
+    if (!file) return TypeInfo();
+
+    for (auto& dname : bounds[idx]) {
+        DraftDeclNode* draft = file->getDraftDecl(dname);
+        if (!draft) {
+            ScopeNode* p = file->parentScope();
+            while (p && !draft) {
+                if (auto pf = dynamic_cast<FileNode*>(p)) {
+                    draft = pf->getDraftDecl(dname);
+                }
+                p = p->parentScope();
+            }
+        }
+        if (!draft) continue;
+        for (auto& sig : draft->signatures()) {
+            if (sig->name().getText() != methodName) continue;
+            if (sig->retType()) return sig->retType()->getType();
+            return TypeInfo();
+        }
+    }
+    return TypeInfo();
+}
 
 static bool isCompilerInnerMethod(ScopeNode* scope, const string& structName, const string& methodName) {
     if (!scope) return false;
@@ -329,7 +381,10 @@ TypeInfo ExprCallNode::getType() const {
                 return TypeInfo(type.name);
             }
         }
-        if (sym && sym->kind != SymbolKind::Function) {
+        // §6.4.4 / §12.4：泛型形参 T 出现在 callee 路径（如 `x.m()`，x:T）时，
+        // 这里的 type.name 会回落成 "T"。此时不能按非函数符号抛 E3095，
+        // 实例化期 (compileMethodCall) 会用 substStack 把 T 替换成具体类型再分发。
+        if (sym && sym->kind != SymbolKind::Function && sym->kind != SymbolKind::TypeParam) {
             throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3095, sym->name);
         }
         
@@ -710,6 +765,16 @@ TypeInfo ExprDotNode::getType() const {
                 DEBUG_LOG_VAL("ExprDotNode::getType - found method, returning fn()", rt.name);
                 return TypeInfo("fn() " + rt.getFullName());
             }
+        }
+    }
+
+    // §12.4：actualType 为外层泛型形参 T，且 T 有 draft 边界声明 `<T : D>`，
+    // 在 D 的签名表里找 member 的返回类型；命中即返回 fn() ret，
+    // 让 ExprCallNode 在静态阶段算出确切类型，避免下游函数重载查找拿到 T 而失败。
+    if (actualType.kind == TypeKind::Normal && !actualType.isGeneric()) {
+        auto rt = lookupDraftBoundMethodRetType(parent(), actualType.name, member);
+        if (!rt.empty()) {
+            return TypeInfo("fn() " + rt.getFullName());
         }
     }
 

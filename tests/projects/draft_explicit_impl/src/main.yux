@@ -1,0 +1,49 @@
+use yux.core.*
+
+draft Show {
+    fn show() String
+}
+
+struct Counter {
+    n i32
+}
+
+Counter {
+    fn Counter(n i32) {
+        $.n = n
+    }
+}
+
+Counter : Show {
+    fn show() String {
+        $.n.to_string()
+    }
+}
+
+struct Greeter {
+    msg String
+}
+
+Greeter {
+    fn Greeter(msg String) {
+        $.msg = msg
+    }
+}
+
+Greeter : Show {
+    fn show() String {
+        $.msg
+    }
+}
+
+fn say<T : Show>(x T) {
+    val s = x.show()
+    println(s)
+}
+
+fn main() {
+    val c = Counter(42)
+    say(c)
+    val g = Greeter("hi")
+    say(g)
+}

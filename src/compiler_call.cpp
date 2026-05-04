@@ -355,6 +355,10 @@ llvm::Value* Compiler::compileMethodCall(
     }
 
     auto baseType = baseExpr->getType();
+    // §12.4 / §6.4.4：若 baseExpr 类型是当前替换栈中的泛型形参 T，
+    // 应用替换得到具体类型（T -> i32 / Counter / ...），后续按具体类型分发
+    // 边界 (E1106) 已在调用点 compileGenericFunctionCall 校验过。
+    baseType = applySubst(baseType);
 
     // 处理内置类型方法
     if (isBuiltinType(baseType.name)) {
