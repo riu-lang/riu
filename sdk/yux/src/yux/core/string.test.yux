@@ -1,5 +1,4 @@
 ; SDK dogfood：String 等值 / 子串 / 前缀
-; 失败路径目前阻塞（BUGS.md「yux test JIT SEH 跨帧」），仅覆盖 pass 路径
 
 #Test
 fn test_string_eq_basic() {

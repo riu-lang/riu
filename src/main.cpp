@@ -20,7 +20,9 @@
 #include <llvm/CodeGen/CommandFlags.h>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
+#include <llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
+#include <llvm/ExecutionEngine/SectionMemoryManager.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
@@ -152,6 +154,98 @@ bool compileIRToObj(llvm::Module* module, const std::string& outputPath) {
     return true;
 }
 
+// ==================== Win64 SEH 修复: JIT 段 .pdata 注册 ====================
+//
+// 默认 RTDyldMemoryManager::registerEHFramesInProcess 只调用 __register_frame
+// (libgcc DWARF unwind) 不调 RtlAddFunctionTable, 所以 RuntimeDyldCOFFX86_64
+// 收集到的 .pdata 段从来没有真正注册到 OS。结果是 JIT 函数没有 SEH unwind
+// info, RtlVirtualUnwind 跨多个 yux 帧时 RtlLookupFunctionEntry 找不到条目,
+// SEH 派发失败 → 进程静默退出 (BUGS.md "yux test JIT SEH 跨帧" 条)。
+//
+// 修法: 子类化 SectionMemoryManager 覆盖 registerEHFrames/deregisterEHFrames。
+// .pdata 是 RUNTIME_FUNCTION (3 个 DWORD: BeginAddress / EndAddress /
+// UnwindInfoAddress, 全部为相对 ImageBase 的 RVA) 的紧凑数组, 直接交给
+// RtlAddFunctionTable。ImageBase 取本对象内已分配 section 的最低非零地址,
+// 与 RuntimeDyldCOFFX86_64::getImageBase() 一致 (RTDyldObjectLinkingLayer
+// 每次 emit 都会 GetMemoryManager(), 所以一个 MemMgr 实例只服务一个 obj)。
+class YuxSEHMemoryManager : public llvm::SectionMemoryManager {
+public:
+    YuxSEHMemoryManager() = default;
+    ~YuxSEHMemoryManager() override {
+        for (auto* table : registeredTables) {
+            ::RtlDeleteFunctionTable(table);
+        }
+    }
+
+    uint8_t* allocateCodeSection(uintptr_t Size, unsigned Alignment,
+                                 unsigned SectionID,
+                                 llvm::StringRef SectionName) override {
+        auto* p = SectionMemoryManager::allocateCodeSection(
+            Size, Alignment, SectionID, SectionName);
+        if (p) recordSection(p);
+        return p;
+    }
+
+    uint8_t* allocateDataSection(uintptr_t Size, unsigned Alignment,
+                                 unsigned SectionID,
+                                 llvm::StringRef SectionName,
+                                 bool IsReadOnly) override {
+        auto* p = SectionMemoryManager::allocateDataSection(
+            Size, Alignment, SectionID, SectionName, IsReadOnly);
+        if (p) recordSection(p);
+        return p;
+    }
+
+    void registerEHFrames(uint8_t* Addr, uint64_t /*LoadAddr*/,
+                          size_t Size) override {
+        // .pdata 段必须是 RUNTIME_FUNCTION (12 字节) 的紧凑数组
+        constexpr size_t kEntrySize = sizeof(RUNTIME_FUNCTION);
+        if (Size == 0 || Size % kEntrySize != 0) return;
+
+        uint64_t imageBase = std::numeric_limits<uint64_t>::max();
+        for (uint64_t a : sectionAddrs) {
+            if (a != 0) imageBase = std::min(imageBase, a);
+        }
+        if (imageBase == std::numeric_limits<uint64_t>::max()) return;
+
+        auto* table = reinterpret_cast<PRUNTIME_FUNCTION>(Addr);
+        DWORD count = static_cast<DWORD>(Size / kEntrySize);
+        if (::RtlAddFunctionTable(table, count, imageBase)) {
+            registeredTables.push_back(table);
+        }
+    }
+
+    void deregisterEHFrames() override {
+        for (auto* table : registeredTables) {
+            ::RtlDeleteFunctionTable(table);
+        }
+        registeredTables.clear();
+    }
+
+private:
+    std::vector<uint64_t> sectionAddrs;
+    std::vector<PRUNTIME_FUNCTION> registeredTables;
+
+    void recordSection(uint8_t* p) {
+        sectionAddrs.push_back(reinterpret_cast<uint64_t>(p));
+    }
+};
+
+// 给 LLJITBuilder 用: 构造一个 RTDyldObjectLinkingLayer, 每个对象使用一个
+// YuxSEHMemoryManager 实例 (用于 .pdata SEH 注册)。
+static llvm::Expected<std::unique_ptr<llvm::orc::ObjectLayer>>
+makeYuxObjectLinkingLayer(llvm::orc::ExecutionSession& ES) {
+    auto layer = std::make_unique<llvm::orc::RTDyldObjectLinkingLayer>(
+        ES,
+        [](const llvm::MemoryBuffer&) -> std::unique_ptr<llvm::RuntimeDyld::MemoryManager> {
+            return std::make_unique<YuxSEHMemoryManager>();
+        });
+    // 与 LLJIT 默认 COFF 路径一致 (LLJIT.cpp::createObjectLinkingLayer)
+    layer->setOverrideObjectFlagsWithResponsibilityFlags(true);
+    layer->setAutoClaimResponsibilityForObjectSymbols(true);
+    return std::unique_ptr<llvm::orc::ObjectLayer>(std::move(layer));
+}
+
 // Phase 1 spike: build a user IR module and run via in-process LLJIT.
 // 加载预编译 sdk core.obj 作为对象层符号源，再加用户 IR；用 process loader
 // 兜底解析 kernel32 等动态库符号；查 mainStartup 直接调用并返回退出码。
@@ -167,7 +261,9 @@ int runViaJIT(std::unique_ptr<llvm::Module> mod,
     llvm::InitializeNativeTargetAsmPrinter();
     llvm::InitializeNativeTargetAsmParser();
 
-    auto jitOrErr = llvm::orc::LLJITBuilder().create();
+    auto jitOrErr = llvm::orc::LLJITBuilder()
+        .setObjectLinkingLayerCreator(&makeYuxObjectLinkingLayer)
+        .create();
     if (!jitOrErr) {
         llvm::errs() << "[jit] LLJIT create failed: "
                      << llvm::toString(jitOrErr.takeError()) << "\n";
@@ -1233,7 +1329,9 @@ int wmain(int argc, wchar_t* argv[]) {
         llvm::InitializeNativeTargetAsmPrinter();
         llvm::InitializeNativeTargetAsmParser();
 
-        auto jitOrErr = llvm::orc::LLJITBuilder().create();
+        auto jitOrErr = llvm::orc::LLJITBuilder()
+            .setObjectLinkingLayerCreator(&makeYuxObjectLinkingLayer)
+            .create();
         if (!jitOrErr) {
             llvm::errs() << "[test] LLJIT create failed: "
                          << llvm::toString(jitOrErr.takeError()) << "\n";

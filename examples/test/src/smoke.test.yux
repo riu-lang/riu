@@ -86,5 +86,24 @@ fn test_assert_starts_with_pass() {
   assert_starts_with(s, "hello world")
 }
 
-; 失败用例：v1 留 known-issue（见 BUGS.md「yux test JIT 模式下，SEH 异常穿过 yux 中间帧时 runner 静默崩溃」）
-; v1 只覆盖 pass 路径；fail 路径等 LLJIT SEH unwind 注册修好后再补
+; 失败用例：经过 yux 助手帧 (testFn → yux assert_eq → _yux_test_assert_failed)
+; 验证 LLJIT SEH .pdata 注册修复后的跨帧 unwind
+
+#Test
+fn test_assert_eq_string_fails() {
+  val a String = "foo"
+  val b String = "bar"
+  assert_eq(a, b)
+}
+
+#Test
+fn test_assert_contains_fails() {
+  val s String = "hello"
+  assert_contains(s, "world")
+}
+
+#Test
+fn test_assert_starts_with_fails() {
+  val s String = "hello"
+  assert_starts_with(s, "world")
+}

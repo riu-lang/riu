@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-05-04 —— 修复 `yux test` JIT 模式下跨 yux 助手帧 SEH 静默崩溃
+
+- **修改**：§11.3.5.8 known-issue 删除——根因是 LLVM `RTDyldMemoryManager::registerEHFramesInProcess` 在 Win64 COFF 上不调 `RtlAddFunctionTable`，导致 `RuntimeDyldCOFFX86_64` 收集的 `.pdata` 段从未注册到 OS，跨多个 JIT 帧 unwind 时 `RtlVirtualUnwind` 找不到 `RUNTIME_FUNCTION` → 进程静默退出。修法：自定义 `SectionMemoryManager` 子类覆盖 `registerEHFrames`/`deregisterEHFrames`，在 `RtlAddFunctionTable` / `RtlDeleteFunctionTable` 中注册 `.pdata`，ImageBase 取本对象内已分配 section 的最低非零地址。
+- **修改**：§11 Open Issues 同步移除「`yux test` JIT 模式下，从 yux 实现的助手中触发的 SEH 异常未被 wrapper 捕获」条目；JIT 模式下 yux 助手 fail 路径与 `#CompilerInner` fail 路径行为一致，均产出 `FAIL <module>#<fn> (SEH ASSERT_FAILED 0xe0fa17ed)`。
+- **冲突 / 兼容**：纯修复；既有 v1 用例（仅覆盖 pass 路径）继续通过；之前因 known-issue 暂时移除的 fail 用例可重新启用。
+
 ## 2026-05-04 —— `yux test --isolate=process` 子进程隔离（Phase 5）
 
 - **新增**：§11.3.4.4 `yux test --isolate=process`：每个 `#Test` 在独立子进程内执行，崩溃 / 内存脏化只影响该测试。`--isolate=none`（默认）保持同进程 SEH wrapper 行为。
