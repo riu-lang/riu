@@ -4,6 +4,7 @@
 #ifndef YUX_LANG_FILE_NODE_H
 #define YUX_LANG_FILE_NODE_H
 
+#include "draft_node.h"
 #include "fn_node.h"
 #include "global_const_node.h"
 #include "node.h"
@@ -14,6 +15,7 @@ class FileNode : public ScopeNode {
     vector<p<StructDeclNode>> _structDecls;
     vector<p<StructImplNode>> _structImpls;
     vector<p<GlobalConstNode>> _globalConsts;
+    vector<p<DraftDeclNode>> _draftDecls;
     string _moduleName;
 
 public:
@@ -23,11 +25,14 @@ public:
     void addStructDecl(const p<StructDeclNode>& structDecl);
     void addStructImpl(const p<StructImplNode>& structImpl);
     void addGlobalConst(const p<GlobalConstNode>& globalConst);
+    void addDraftDecl(const p<DraftDeclNode>& draftDecl);
 
     const vector<p<FnNode>>& getFunctions() const;
     const vector<p<StructDeclNode>>& getStructDecls() const { return _structDecls; }
     const vector<p<StructImplNode>>& getStructImpls() const { return _structImpls; }
     const vector<p<GlobalConstNode>>& getGlobalConsts() const { return _globalConsts; }
+    const vector<p<DraftDeclNode>>& getDraftDecls() const { return _draftDecls; }
+    DraftDeclNode* getDraftDecl(const string& name) const;
     
     StructDeclNode* getStructDecl(const string& name) const;
     StructImplNode* getStructImpl(const string& name) const;

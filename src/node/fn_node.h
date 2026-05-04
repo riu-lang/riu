@@ -32,6 +32,9 @@ class FnHeaderNode : public Node, public Named, public Typed, public Annotated {
 protected:
     vector<p<FnParamNode>> _params;
     vector<string> _typeParams;
+    // 与 _typeParams 等长；每个槽位的 draft 边界名（如 ["ToString", "Eq"]）。
+    // 空 vector 表示该类型形参无 bound。spec §12 / §6.4.4。
+    vector<vector<string>> _typeParamBounds;
     p<TypeNode> _retType;
 
 public:
@@ -44,6 +47,9 @@ public:
     void setTypeParams(vector<string> params) { _typeParams = std::move(params); }
     [[nodiscard]] const vector<string>& typeParams() const { return _typeParams; }
     [[nodiscard]] bool isGeneric() const { return !_typeParams.empty(); }
+
+    void setTypeParamBounds(vector<vector<string>> bounds) { _typeParamBounds = std::move(bounds); }
+    [[nodiscard]] const vector<vector<string>>& typeParamBounds() const { return _typeParamBounds; }
 
     [[nodiscard]] Token name() const override;
     [[nodiscard]] p<TypeNode> retType() const;

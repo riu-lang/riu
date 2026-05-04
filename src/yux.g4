@@ -15,6 +15,7 @@ program:
     fn
    | externDelc
    | globalConst
+   | draftDecl
    | structDecl
    | structImpl
    | comment
@@ -99,8 +100,13 @@ typeWithRef:
      // [ type * count ]
     | GetStart typeWithRef SymbolMul INT GetEnd SymbolAnd? #typeArrayWithRef;
 
+// typeParam: 单个类型形参 / 类型实参槽位。
+// 仅在**声明位**（fn / struct / draft 的 genericDef 槽位）允许 `:` 边界；
+// 类型引用位（如 Box<T>）与调用点 turbofish 处必须无 bounds，由 semantic 层拒绝。
+typeParam: type (SymbolColon bounds+=type (SymbolAdd bounds+=type)*)?;
+
 // 共享
-genericDef: SymbolLt types+=type (SymbolComma types+=type)* SymbolMt;
+genericDef: SymbolLt params+=typeParam (SymbolComma params+=typeParam)* SymbolMt;
 
 genericDefWithRef: SymbolLt types+=typeWithRef (SymbolComma types+=typeWithRef)* SymbolMt;
 
@@ -150,13 +156,31 @@ fnExprkBody: LineEnd?
 fnBlockBody: statementBlock;
 
 ///////////
+// draft 待中文命名
+///////////
+
+draftType: name=ID (SymbolLt types+=type (SymbolComma types+=type)* SymbolMt)?;
+
+draftDecl: (buildAnnos+=buildAnno)*
+    Draft draftType BlockStart
+    (
+      comment
+      | fnHeader
+      | codeLineEnd
+    )*
+    BlockEnd
+    ;
+
+///////////
 // 结构体
 ///////////
+
+structType: name=ID (SymbolLt types+=type (SymbolComma types+=type)* SymbolMt)?;
 
 // struct A
 // struct A<T1, T2>
 structDecl: (buildAnnos+=buildAnno)*
-   Struct name=ID (SymbolLt types+=type (SymbolComma types+=type)* SymbolMt)? BlockStart
+   Struct structType BlockStart
    (
       (filedDecl codeLineEnd?)
      | comment
@@ -165,7 +189,9 @@ structDecl: (buildAnnos+=buildAnno)*
    BlockEnd
    ;
 
-structImpl: (buildAnnos+=buildAnno)* name=ID (SymbolLt types+=type (SymbolComma types+=type)* SymbolMt)? BlockStart
+structImpl: (buildAnnos+=buildAnno)* structType
+    (SymbolColon (drafts+=draftType (SymbolAdd drafts+=draftType)*)?)?
+    BlockStart
      codeLineEnd
     fnClean?
     (
@@ -343,6 +369,7 @@ EmptyLine : {getCharPositionInLine()==0}? [ \t]*  LineEnd -> channel(HIDDEN);
 
 Break : 'break';
 DeclKey: 'va'[rl] | 'cval';
+Draft: 'draft';
 Elif : 'elif';
 Else : 'else';
 Extern : 'extern';

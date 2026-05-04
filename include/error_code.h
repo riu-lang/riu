@@ -85,6 +85,19 @@ DEF_ERR(0000, "")
 DEF_ERR(1001, "lexer error: {}")
 DEF_ERR(1002, "syntax error: {}")
 
+// ── E11xx draft / 接口（v0.5+） ───────────────────────────────────────
+// 附录 D §D.3.7
+DEF_ERR(1101, "Type '{}' does not implement draft method '{}: {}' (impl block missing)")
+DEF_ERR(1102, "Method '{}' in 'Type {} : D' impl block is not part of D's signature set")
+DEF_ERR(1103, "Duplicate impl block 'Type {} : {}'")
+DEF_ERR(1104, "draft method '{}.{}' must not introduce its own generic parameters")
+DEF_ERR(1105, "Method '{}' on type '{}' is defined in both an ordinary impl block and a 'Type : {}' impl block")
+DEF_ERR(1106, "Type '{}' does not satisfy draft bound '{}' for type parameter '{}'")
+DEF_ERR(1110, "'#DraftLike' annotation is only allowed on 'draft' declarations")
+DEF_ERR(1111, "'#DraftLike' draft '{}' must not declare default method bodies")
+DEF_ERR(1112, "'#DraftLike' draft '{}' must not contain method-local generic parameters")
+DEF_ERR(1120, "Cannot implement draft '{}' for type '{}': both belong to external packages (orphan rule, spec §12.5)")
+
 // ── E2xxx 语法 / AST 结构 ─────────────────────────────────────────────
 DEF_ERR(2001, "Weak<T>? is forbidden: Weak is natively nullable (upgrade returns Box<T>?)")
 DEF_ERR(2002, "buildTypeWithRef: unknown typeWithRef alternative")
@@ -100,6 +113,7 @@ DEF_ERR(2011, "Build annotation `#{}` is not allowed on this declaration (only `
 DEF_ERR(2012, "`#Test` function `{}` must have signature `fn {}()` (no params, no return type, must have body)")
 DEF_ERR(2013, "`#Test` and `#CompilerInner` cannot both be applied to function `{}`")
 DEF_ERR(2014, "`#Test` is only allowed in `*.test.yux` files; `{}` is not a test file")
+DEF_ERR(2015, "draft bounds (`: D`) are only allowed at declaration sites (fn/struct/draft generic params); not at type references or call-point turbofish")
 
 // ── E3xxx 类型 — 类型不匹配 ───────────────────────────────────────────
 DEF_ERR(3001, "Type mismatch in +-/ operation: left is {}, right is {}")

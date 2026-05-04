@@ -12,7 +12,7 @@ namespace {
 
 // 已知的构建注解名字白名单；未知注解在 AST 构建期报错
 const set<string>& knownAnnos() {
-    static const set<string> s = {"CompilerInner", "Test"};
+    static const set<string> s = {"CompilerInner", "Test", "DraftLike"};
     return s;
 }
 
@@ -34,6 +34,37 @@ vector<string> collectAnnos(const AnnoVec& annos) {
                 static_cast<int>(a->name->getLine()),
                 static_cast<int>(a->name->getCharPositionInLine()) + 1,
                 ErrorCode::E2005, name);
+        }
+        // §12.4.1.1：DraftLike 只能标在 draft 声明；其它位置（fn / struct / impl / extern / global）报 E1110
+        if (name == "DraftLike") {
+            throw YuxError(
+                static_cast<int>(a->name->getLine()),
+                static_cast<int>(a->name->getCharPositionInLine()) + 1,
+                ErrorCode::E1110);
+        }
+        out.push_back(std::move(name));
+    }
+    return out;
+}
+
+// 仅 visitDraftDecl 使用：白名单同 collectAnnos，但保留 DraftLike
+template<typename AnnoVec>
+vector<string> collectAnnosForDraft(const AnnoVec& annos) {
+    vector<string> out;
+    for (auto* a : annos) {
+        string name = a->name->getText();
+        if (!knownAnnos().contains(name)) {
+            throw YuxError(
+                static_cast<int>(a->name->getLine()),
+                static_cast<int>(a->name->getCharPositionInLine()) + 1,
+                ErrorCode::E2005, name);
+        }
+        // draft 声明上 #Test 不合法（§11.3.1.2）
+        if (name == "Test") {
+            throw YuxError(
+                static_cast<int>(a->name->getLine()),
+                static_cast<int>(a->name->getCharPositionInLine()) + 1,
+                ErrorCode::E2011, name);
         }
         out.push_back(std::move(name));
     }
@@ -674,15 +705,30 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
 
     if (auto gd = ctx->genericDef()) {
         vector<string> typeParams;
-        for (auto tCtx : gd->types) {
-            // typeNormal 现为 type 的 labeled alternative，需 dynamic_cast 取出
-            if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(tCtx)) {
-                typeParams.push_back(tn->ID()->getText());
+        vector<vector<string>> typeParamBounds;
+        for (auto pCtx : gd->params) {
+            // 形参名：取 typeParam.type 的 typeNormal 分支 ID
+            string paramName;
+            if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(pCtx->type(0))) {
+                paramName = tn->ID()->getText();
             }
+            typeParams.push_back(paramName);
+
+            // 边界：typeParam.bounds 中每个 type → 取名（仅支持 typeNormal / typeGeneric 的基名）
+            vector<string> bounds;
+            for (auto bCtx : pCtx->bounds) {
+                if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(bCtx)) {
+                    bounds.push_back(tn->ID()->getText());
+                } else if (auto tg = dynamic_cast<yux::yuxParser::TypeGenericContext*>(bCtx)) {
+                    bounds.push_back(tg->ID()->getText());
+                }
+            }
+            typeParamBounds.push_back(std::move(bounds));
         }
         header->setTypeParams(typeParams);
-        for (auto& tp : header->typeParams()) {
-            DEBUG_LOG_VAL("    TypeParam", tp);
+        header->setTypeParamBounds(typeParamBounds);
+        for (size_t i = 0; i < header->typeParams().size(); ++i) {
+            DEBUG_LOG_VAL("    TypeParam", header->typeParams()[i]);
         }
     }
 
@@ -745,14 +791,15 @@ std::any ASTBuilder::visitFnParamGroup(yux::yuxParser::FnParamGroupContext* ctx)
 
 std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
     auto file = any_cast_p<FileNode>(stack.back());
-    auto structDecl = createWithLine<StructDeclNode>(ctx, file, ctx->name);
+    auto* stCtx = ctx->structType();
+    auto structDecl = createWithLine<StructDeclNode>(ctx, file, stCtx->name);
     // structDecl 不接受 #Test（spec §11.3.1.2）
     structDecl->setAnnos(collectAnnosNonFn(ctx->buildAnnos));
 
-    DEBUG_LOG_VAL("Visit: StructDecl", ctx->name->getText());
+    DEBUG_LOG_VAL("Visit: StructDecl", stCtx->name->getText());
 
     vector<string> typeParams;
-    for (auto tCtx : ctx->types) {
+    for (auto tCtx : stCtx->types) {
         if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(tCtx)) {
             typeParams.push_back(tn->ID()->getText());
         }
@@ -780,14 +827,15 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
 
 std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
     auto file = any_cast_p<FileNode>(stack.back());
-    auto structImpl = createWithLine<StructImplNode>(ctx, file, ctx->name);
+    auto* stCtx = ctx->structType();
+    auto structImpl = createWithLine<StructImplNode>(ctx, file, stCtx->name);
     // structImpl 块本身不接受 #Test（spec §11.3.1.2）；其内部方法通过 visitFn 处理
     structImpl->setAnnos(collectAnnosNonFn(ctx->buildAnnos));
 
-    DEBUG_LOG_VAL("Visit: StructImpl", ctx->name->getText());
+    DEBUG_LOG_VAL("Visit: StructImpl", stCtx->name->getText());
 
     vector<string> typeParams;
-    for (auto tCtx : ctx->types) {
+    for (auto tCtx : stCtx->types) {
         if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(tCtx)) {
             typeParams.push_back(tn->ID()->getText());
         }
@@ -802,7 +850,26 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
         DEBUG_LOG_VAL("    TypeParam", tp);
     }
 
-    string structName = ctx->name->getText();
+    string structName = stCtx->name->getText();
+
+    // spec §12.2 收集 `Type : D1 + D2` 中的 draft 列表
+    {
+        vector<DraftRef> refs;
+        for (auto* dCtx : ctx->drafts) {
+            DraftRef r;
+            r.name = dCtx->name->getText();
+            for (auto* tCtx : dCtx->types) {
+                auto tn = any_cast_p<TypeNode>(visit(tCtx));
+                r.typeArgs.push_back(tn->getType());
+            }
+            if (auto* st = dCtx->getStart()) {
+                r.line = (int)st->getLine();
+                r.col = static_cast<int>(st->getCharPositionInLine()) + 1;
+            }
+            refs.push_back(std::move(r));
+        }
+        structImpl->setDraftRefs(std::move(refs));
+    }
 
     if (ctx->fnClean()) {
         auto destructor = any_cast_p<FnNode>(visitFnClean(ctx->fnClean()));
@@ -891,6 +958,57 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
     stack.pop_back();
 
     return p<StructImplNode>(structImpl);
+}
+
+std::any ASTBuilder::visitDraftDecl(yux::yuxParser::DraftDeclContext* ctx) {
+    auto file = any_cast_p<FileNode>(stack.back());
+    auto* dt = ctx->draftType();
+    auto draft = createWithLine<DraftDeclNode>(ctx, file, dt->name);
+    // draft 声明位允许 #DraftLike + #CompilerInner（§11.4）；#Test 不合法
+    draft->setAnnos(collectAnnosForDraft(ctx->buildAnnos));
+
+    DEBUG_LOG_VAL("Visit: DraftDecl", dt->name->getText());
+
+    // §12.1.1.3 draft 自身可带泛型形参；体内 fn 不得再有泛型（在 visitFnHeader 后校验）
+    vector<string> typeParams;
+    for (auto* tCtx : dt->types) {
+        if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(tCtx)) {
+            typeParams.push_back(tn->ID()->getText());
+        }
+    }
+    draft->setTypeParams(typeParams);
+
+    stack.emplace_back(draft);
+    _scopeStack.push_back(draft);
+
+    for (auto& tp : draft->typeParams()) {
+        draft->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
+        DEBUG_LOG_VAL("    TypeParam", tp);
+    }
+
+    bool isDraftLike = draft->isDraftLike();
+    string draftName = dt->name->getText();
+
+    for (auto* fnHeaderCtx : ctx->fnHeader()) {
+        auto header = any_cast_p<FnHeaderNode>(visitFnHeader(fnHeaderCtx));
+
+        // §12.3.2 draft 体内单个 fn 不得引入本地泛型；§12.4.2 #DraftLike 也不得共用
+        if (header->isGeneric()) {
+            int line = header->getLineNumber();
+            int col = header->getColumn();
+            if (isDraftLike) {
+                throw YuxError(line, col, ErrorCode::E1112, draftName);
+            }
+            throw YuxError(line, col, ErrorCode::E1104, draftName, header->name().getText());
+        }
+        draft->addSignature(header);
+    }
+
+    _scopeStack.pop_back();
+    stack.pop_back();
+
+    file->addDraftDecl(draft);
+    return p<DraftDeclNode>(draft);
 }
 
 std::any ASTBuilder::visitFnClean(yux::yuxParser::FnCleanContext* ctx) {
@@ -1153,8 +1271,16 @@ std::any ASTBuilder::visitExprCall(yux::yuxParser::ExprCallContext* ctx) {
     }
     if (auto gd = ctx->genericDef()) {
         vector<p<TypeNode>> typeArgs;
-        for (auto tCtx : gd->types) {
-            typeArgs.push_back(any_cast_p<TypeNode>(visit(tCtx)));
+        for (auto pCtx : gd->params) {
+            // turbofish 不允许 bound（spec §6.4.4.3）
+            if (!pCtx->bounds.empty()) {
+                auto* tk = pCtx->SymbolColon();
+                throw YuxError(
+                    tk ? (int)tk->getSymbol()->getLine() : 0,
+                    tk ? static_cast<int>(tk->getSymbol()->getCharPositionInLine()) + 1 : 0,
+                    ErrorCode::E2015);
+            }
+            typeArgs.push_back(any_cast_p<TypeNode>(visit(pCtx->type(0))));
         }
         call->setTypeArgs(std::move(typeArgs));
     }
@@ -1485,8 +1611,16 @@ std::any ASTBuilder::visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) {
     auto baseName = ctx->ID()->getSymbol();
 
     vector<p<TypeNode>> typeArgs;
-    for (auto typeCtx : ctx->genericDef()->types) {
-        typeArgs.push_back(any_cast_p<TypeNode>(visit(typeCtx)));
+    for (auto pCtx : ctx->genericDef()->params) {
+        // 类型引用位不允许 bound（spec §B.2 / §12 仅声明位允许）
+        if (!pCtx->bounds.empty()) {
+            auto* tk = pCtx->SymbolColon();
+            throw YuxError(
+                tk ? (int)tk->getSymbol()->getLine() : 0,
+                tk ? static_cast<int>(tk->getSymbol()->getCharPositionInLine()) + 1 : 0,
+                ErrorCode::E2015);
+        }
+        typeArgs.push_back(any_cast_p<TypeNode>(visit(pCtx->type(0))));
     }
     
     string argsStr;

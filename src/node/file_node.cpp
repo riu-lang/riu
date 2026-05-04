@@ -92,6 +92,29 @@ void FileNode::addStructImpl(const p<StructImplNode>& structImpl) {
     _structImpls.push_back(structImpl);
 }
 
+void FileNode::addDraftDecl(const p<DraftDeclNode>& draftDecl) {
+    _draftDecls.push_back(draftDecl);
+    // draft 名按 §10 共享顶层符号命名空间
+    string n = draftDecl->name().getText();
+    if (!lookupSymbol(n)) {
+        SymbolInfo sym(SymbolKind::Struct, n, TypeInfo(n));
+        sym.moduleName = _moduleName;
+        registerSymbol(n, sym);
+    }
+}
+
+DraftDeclNode* FileNode::getDraftDecl(const string& name) const {
+    for (auto& d : _draftDecls) {
+        if (d->name().getText() == name) return d;
+    }
+    for (auto* imp : _wildcardImports) {
+        for (auto& d : imp->_draftDecls) {
+            if (d->name().getText() == name) return d;
+        }
+    }
+    return nullptr;
+}
+
 void FileNode::addGlobalConst(const p<GlobalConstNode>& globalConst) {
     _globalConsts.push_back(globalConst);
     string name = globalConst->name().getText();

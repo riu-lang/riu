@@ -7,6 +7,7 @@
 #include "node.h"
 #include "type_node.h"
 #include "fn_node.h"
+#include "draft_node.h"
 
 class StructFieldNode : public Node {
     Token _name;
@@ -85,6 +86,14 @@ public:
     void setTypeParams(vector<string> params) { _typeParams = std::move(params); }
     [[nodiscard]] const vector<string>& typeParams() const { return _typeParams; }
     [[nodiscard]] bool isGeneric() const { return !_typeParams.empty(); }
+
+    // spec §12.2 draft 实现约束：`Type : D1 + D2 { ... }`。
+    // v0.5 简化记录：只存 D 的解析名 + 类型实参（文本）+ 源位置。
+    void setDraftRefs(vector<DraftRef> refs) { _draftRefs = std::move(refs); }
+    [[nodiscard]] const vector<DraftRef>& draftRefs() const { return _draftRefs; }
+
+private:
+    vector<DraftRef> _draftRefs;
 };
 
 #endif //YUX_LANG_STRUCT_NODE_H
