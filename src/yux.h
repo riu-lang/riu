@@ -4,8 +4,6 @@
 #ifndef YUX_LANG_YUX_H
 #define YUX_LANG_YUX_H
 
-#include <llvm/IR/LLVMContext.h>
-
 #include "node/file_node.h"
 
 class ASTBuilder;
@@ -26,8 +24,6 @@ class Yux {
     vector<string> _loadOrder;        // 首次加载顺序，用于后续 codegen 与链接
     vector<string> _loadStack;        // 加载栈，用于循环依赖检测
 
-    // AST-only 解析用：为导入模块保留一个长生命周期的 LLVMContext
-    llvm::LLVMContext _astContext;
     // 持有导入模块的 ASTBuilder，使 AST 节点存活至 Yux 析构
     vector<std::unique_ptr<ASTBuilder>> _moduleBuilders;
 

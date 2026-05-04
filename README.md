@@ -71,7 +71,7 @@ yux-lang/
 ├── bin/                  # 二进制工具（antlr4 jar 等）
 ├── build/                # 编译输出
 ├── yux-vscode/           # VSCode 扩展
-└── yux-idea/             # IntelliJ 插件（通过 LSP4IJ 接入 yux lsp）
+└── yux-idea/             # IntelliJ 插件（通过 LSP4IJ 接入 yux-lsp）
 ```
 
 ### 初始化项目
@@ -150,7 +150,7 @@ entry="main.yux"
 ## 编辑器支持
 
 - [`yux-vscode/`](yux-vscode/) —— VSCode 扩展
-- [`yux-idea/`](yux-idea/) —— IntelliJ 系插件，通过 [LSP4IJ](https://github.com/redhat-developer/lsp4ij) 接入 `yux lsp`
+- [`yux-idea/`](yux-idea/) —— IntelliJ 系插件，通过 [LSP4IJ](https://github.com/redhat-developer/lsp4ij) 接入 `yux-lsp`
 
 ## 测试
 

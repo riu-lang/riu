@@ -9,7 +9,7 @@ class YuxLspServer(project: Project) : ProcessStreamConnectionProvider() {
         val settings = YuxSettings.getInstance(project)
         val executable = settings.resolveExecutable()
         val cwd = project.basePath
-        super.setCommands(listOf(executable, "lsp"))
+        super.setCommands(listOf(executable))
         if (cwd != null) {
             super.setWorkingDirectory(cwd)
         }

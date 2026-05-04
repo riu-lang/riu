@@ -36,19 +36,19 @@ class YuxSettings : PersistentStateComponent<YuxSettings.State> {
 
     /**
      * 解析最终用于启动 LSP 的可执行文件路径：
-     * - 配置了 homePath：返回 <home>/bin/yux(.exe)
-     * - 否则：返回 "yux"（依赖 PATH）
+     * - 配置了 homePath：返回 <home>/bin/yux-lsp(.exe)
+     * - 否则：返回 "yux-lsp"（依赖 PATH）
      */
     fun resolveExecutable(): String {
         val home = state.homePath.trim()
         if (home.isNotEmpty()) {
-            val exeName = if (SystemInfo.isWindows) "yux.exe" else "yux"
+            val exeName = if (SystemInfo.isWindows) "yux-lsp.exe" else "yux-lsp"
             val path: Path = Paths.get(home, "bin", exeName)
             if (Files.isRegularFile(path)) {
                 return path.toAbsolutePath().toString()
             }
         }
-        return "yux"
+        return "yux-lsp"
     }
 
     companion object {

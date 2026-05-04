@@ -9,7 +9,7 @@
     <description><![CDATA[
         IntelliJ IDEA support for the <b>yux</b> programming language:
         diagnostics, completion, navigation and hover backed by the
-        official <code>yux lsp</code> server.
+        official <code>yux-lsp</code> server.
         ]]></description>
 
     <depends>com.intellij.modules.platform</depends>

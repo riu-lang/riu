@@ -13,6 +13,13 @@
 #include "yux/yuxLexer.h"
 #include "yux/yuxParser.h"
 
+// 全局调试输出开关（声明于 include/types.h，仅 _DEBUG 构建可用），
+// 由 `yux build -d` / `yux test -d` 在 main.cpp 中翻成 true；
+// 编译器内部多处通过 DEBUG_LOG 宏引用
+#ifdef _DEBUG
+bool debug = false;
+#endif
+
 Yux::Yux() : _sdkFile(nullptr) {}
 
 Yux::~Yux() {
@@ -154,7 +161,7 @@ p<FileNode> Yux::_parseFile(const string& absPath, const string& moduleName, int
     // 测试文件按文件名后缀识别（spec §11.3.3.1）
     bool isTestFile = absPath.size() >= 9 &&
                       absPath.compare(absPath.size() - 9, 9, ".test.yux") == 0;
-    auto astBuilder = std::make_unique<ASTBuilder>(_astContext, *this, moduleName, false,
+    auto astBuilder = std::make_unique<ASTBuilder>(*this, moduleName, false,
                                                     isTestFile, absPath);
     auto fileNode = astBuilder->build(program);
     _moduleBuilders.push_back(std::move(astBuilder));

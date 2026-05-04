@@ -18,15 +18,15 @@ function resolveServerCommand(): string {
     if (configured) {
         return configured;
     }
-    return process.platform === 'win32' ? 'yux.exe' : 'yux';
+    return process.platform === 'win32' ? 'yux-lsp.exe' : 'yux-lsp';
 }
 
 export function activate(_context: vscode.ExtensionContext) {
     const command = resolveServerCommand();
 
     const serverOptions: ServerOptions = {
-        run: { command, args: ['lsp'] },
-        debug: { command, args: ['lsp'] },
+        run: { command, args: [] },
+        debug: { command, args: [] },
     };
 
     const clientOptions: LanguageClientOptions = {

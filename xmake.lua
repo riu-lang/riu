@@ -148,29 +148,57 @@ target("llvm")
         end
     end)
 
-target("yux")
-    set_kind("binary")
-    add_deps("antlr4_static", "zlib", "llvm")
-    add_includedirs("include", "gen")
-    add_includedirs(path.join(third_party, "antlr4/runtime/Cpp/runtime/src"))
-    add_includedirs(path.join(third_party, "utfcpp/source"))
-    add_includedirs(path.join(third_party, "toml11/single_include"))
-    add_includedirs(path.join(third_party, "cli11/include"))
-    add_includedirs(path.join(third_party, "nlohmann_json/single_include"))
-    add_includedirs(path.join(third_party, "llvm/llvm/include"))
-    add_includedirs(path.join(third_party, "llvm/lld/include"))
+-- 前端静态库：词法/语法（ANTLR）+ AST + 格式化器 + 诊断/符号建议 + 模块加载（Yux 类）
+-- 不引用任何 LLVM 头/链接，使 yux-lsp 可以脱离 LLVM 编译链路构建
+target("yux_frontend")
+    set_kind("static")
+    add_deps("antlr4_static")
+    add_includedirs("include", "gen", {public = true})
+    add_includedirs(path.join(third_party, "antlr4/runtime/Cpp/runtime/src"), {public = true})
+    add_includedirs(path.join(third_party, "utfcpp/source"), {public = true})
+    add_includedirs(path.join(third_party, "toml11/single_include"), {public = true})
+    add_includedirs(path.join(third_party, "nlohmann_json/single_include"), {public = true})
 
-    add_files("src/*.cpp")
+    add_files(
+        "src/ast_builder.cpp",
+        "src/yux.cpp",
+        "src/diagnostic.cpp",
+        "src/formatter.cpp",
+        "src/syntax_error_listener.cpp",
+        "src/mangler.cpp",
+        "src/build_cache.cpp",
+        "src/borrow_checker.cpp",
+        "src/symbol_suggest.cpp"
+    )
     add_files("src/node/*.cpp")
-    add_files("src/lsp/*.cpp")
     add_files("gen/yux/*.cpp")
 
-    add_defines("UNICODE", "NOMINMAX", "ANTLR4CPP_STATIC")
+    add_defines("UNICODE", "NOMINMAX", "ANTLR4CPP_STATIC", {public = true})
 
-    add_syslinks("ntdll")
+-- codegen 静态库：所有依赖 LLVM 的实现（compiler*.cpp + ctor_daa.cpp）
+-- yux 主二进制依赖之；yux-lsp 不依赖
+target("yux_codegen")
+    set_kind("static")
+    add_deps("yux_frontend", "zlib", "llvm")
+    add_includedirs(path.join(third_party, "llvm/llvm/include"), {public = true})
+    add_includedirs(path.join(third_party, "llvm/lld/include"), {public = true})
+
+    add_files(
+        "src/compiler.cpp",
+        "src/compiler_call.cpp",
+        "src/compiler_destructor.cpp",
+        "src/compiler_expr.cpp",
+        "src/compiler_runtime.cpp",
+        "src/compiler_stmt.cpp",
+        "src/compiler_test_intrinsics.cpp",
+        "src/compiler_types.cpp",
+        "src/ctor_daa.cpp"
+    )
+
+    add_syslinks("ntdll", {public = true})
 
     for _, lib in ipairs(llvm_libs) do
-        add_links(lib)
+        add_links(lib, {public = true})
     end
 
     after_load(function (target)
@@ -178,10 +206,22 @@ target("yux")
         if llvm_target then
             local llvm_build_dir = path.join(llvm_target:autogendir(), "llvm")
             target:add("includedirs", path.join(llvm_build_dir, "include"), {public = true})
-            target:add("linkdirs", path.join(llvm_build_dir, "lib"))
+            target:add("linkdirs", path.join(llvm_build_dir, "lib"), {public = true})
         end
     end)
 
+target("yux")
+    set_kind("binary")
+    add_deps("yux_codegen")
+    add_includedirs(path.join(third_party, "cli11/include"))
+    add_files("src/main.cpp")
+    set_rundir("$(projectdir)")
+
+target("yux-lsp")
+    set_kind("binary")
+    add_deps("yux_frontend")
+    add_files("src/lsp_main.cpp")
+    add_files("src/lsp/*.cpp")
     set_rundir("$(projectdir)")
 
 includes("tests")
@@ -202,6 +242,7 @@ xpack("yux")
     set_basename("yux-$(version)")
 
     add_installfiles("build/windows/x64/**/yux.exe", {prefixdir = "bin", flat = true})
+    add_installfiles("build/windows/x64/**/yux-lsp.exe", {prefixdir = "bin", flat = true})
     add_installfiles("sdk/(**)", {prefixdir = "sdk"})
     add_installfiles("examples/(**)", {prefixdir = "examples"})
     add_installfiles("README.md", {prefixdir = "."})

@@ -1,6 +1,12 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#undef ERROR
+#endif
+
 #include "workspace.h"
 
 #include "../ast_builder.h"
@@ -10,10 +16,6 @@
 #include "antlr4-runtime.h"
 #include "yux/yuxLexer.h"
 #include "yux/yuxParser.h"
-
-#include <llvm/IR/LLVMContext.h>
-#include <llvm/Support/FileSystem.h>
-#include <llvm/Support/Path.h>
 
 #include <algorithm>
 #include <cctype>
@@ -73,6 +75,18 @@ std::string urlEncodePath(const std::string& s) {
 }
 
 
+// 取当前可执行文件路径（仅 Windows 实现；非 Windows 返回空，依赖前两条兜底）
+std::string getMainExecutablePath() {
+#ifdef _WIN32
+    wchar_t buf[MAX_PATH];
+    DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return {};
+    return fs::path(std::wstring(buf, n)).string();
+#else
+    return {};
+#endif
+}
+
 std::string findSdkPathForLsp() {
     // 1. 显式 env 覆盖（用于 LSP 部署 / 测试）
     if (const char* env = std::getenv("YUX_SDK_PATH")) {
@@ -80,14 +94,12 @@ std::string findSdkPathForLsp() {
     }
     // 2. 仓库内调试：cwd
     if (fs::is_directory("sdk/yux/core")) return "sdk/yux/core";
-    // 3. exe 旁的 ../sdk/yux/core （llvm::sys::fs::getMainExecutable 跨平台）
-    std::string exe = llvm::sys::fs::getMainExecutable(
-        "yux", reinterpret_cast<void*>(&findSdkPathForLsp));
+    // 3. exe 旁的 ../sdk/yux/core
+    std::string exe = getMainExecutablePath();
     if (!exe.empty()) {
-        auto exeDir = llvm::sys::path::parent_path(exe).str();
-        auto rootDir = llvm::sys::path::parent_path(exeDir).str();
-        std::string sdk = rootDir + "/sdk/yux/core";
-        if (fs::is_directory(sdk)) return sdk;
+        fs::path exePath(exe);
+        fs::path sdk = exePath.parent_path().parent_path() / "sdk" / "yux" / "core";
+        if (fs::is_directory(sdk)) return sdk.string();
     }
     return "";
 }
@@ -111,8 +123,7 @@ void parseSdkInto(const std::string& sdkDir, Yux& yux) {
         if (parser.getNumberOfSyntaxErrors()) {
             throw std::runtime_error("SDK syntax error: " + f);
         }
-        llvm::LLVMContext ctx;
-        ASTBuilder ab(ctx, yux, "yux.core", true);
+        ASTBuilder ab(yux, "yux.core", true);
         ab.build(program); // 抛 YuxError 自然向上传
     }
 }
@@ -220,7 +231,7 @@ bool Project::rebuild() {
             }
         }
 
-        std::string baseName = llvm::sys::path::stem(_mainPath).str();
+        std::string baseName = fs::path(_mainPath).stem().string();
         _mainFile = _yux->loadMainFile(_mainPath, baseName);
     } catch (const std::exception& e) {
         if (_buildError.empty()) _buildError = e.what();

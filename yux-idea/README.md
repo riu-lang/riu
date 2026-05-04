@@ -1,7 +1,7 @@
 # Yux Language — IntelliJ Plugin
 
 IntelliJ IDEA / JetBrains 系 IDE 的 [yux](https://github.com/yjl/yux-lang) 语言支持插件。
-通过 [LSP4IJ](https://github.com/redhat-developer/lsp4ij) 接入官方 `yux lsp` 服务，
+通过 [LSP4IJ](https://github.com/redhat-developer/lsp4ij) 接入官方 `yux-lsp` 服务，
 提供诊断、补全、跳转、悬浮提示等能力，并附带原生的语法高亮与代码风格配置。
 
 ## 功能
@@ -9,7 +9,7 @@ IntelliJ IDEA / JetBrains 系 IDE 的 [yux](https://github.com/yjl/yux-lang) 语
 - `.yux` 文件类型识别与图标
 - 语法高亮（关键字 / 字符串 / 数字 / 注释 / 运算符等），并提供 *Settings → Editor → Color Scheme → Yux* 配色页
 - 代码风格设置（缩进、空格等），位于 *Settings → Editor → Code Style → Yux*
-- 通过 LSP4IJ 启动外部 `yux lsp` 进程，提供：
+- 通过 LSP4IJ 启动外部 `yux-lsp` 进程，提供：
   - 诊断（错误/警告下划线）
   - 代码补全
   - 定义跳转、引用查找
@@ -20,7 +20,7 @@ IntelliJ IDEA / JetBrains 系 IDE 的 [yux](https://github.com/yjl/yux-lang) 语
 
 - IntelliJ Platform 兼容版本见 [`build.gradle.kts`](build.gradle.kts) 与 [`gradle.properties`](gradle.properties)
 - 必装插件：[LSP4IJ](https://plugins.jetbrains.com/plugin/23257-lsp4ij)
-- 可执行的 `yux` 编译器（用于以 `yux lsp` 启动语言服务器）
+- 可执行的 `yux-lsp` 语言服务（与 `yux` 编译器同 `bin/` 目录分发）
 
 ## 配置
 
@@ -31,7 +31,8 @@ IntelliJ IDEA / JetBrains 系 IDE 的 [yux](https://github.com/yjl/yux-lang) 语
 ```
 <yux-home>/
 ├── bin/
-│   └── yux(.exe)        # LSP 与编译器二进制
+│   ├── yux(.exe)        # 编译器二进制
+│   └── yux-lsp(.exe)    # 语言服务二进制
 ├── sdk/
 │   └── yux/core/        # 自举运行时（被编译器自动链接）
 └── ...
@@ -40,8 +41,8 @@ IntelliJ IDEA / JetBrains 系 IDE 的 [yux](https://github.com/yjl/yux-lang) 语
 行为：
 
 - 设置页会实时校验 `bin/yux(.exe)` 与 `sdk/` 是否存在
-- 启动 LSP 时使用 `<home>/bin/yux(.exe) lsp`，并把 `YUX_HOME=<home>` 注入子进程环境
-- 未配置时回退到 `PATH` 中的 `yux` 命令
+- 启动 LSP 时使用 `<home>/bin/yux-lsp(.exe)`，并把 `YUX_HOME=<home>` 注入子进程环境
+- 未配置时回退到 `PATH` 中的 `yux-lsp` 命令
 
 设置实现见
 [`YuxSettings.kt`](src/main/kotlin/org/yux/lang/ide/settings/YuxSettings.kt) /

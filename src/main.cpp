@@ -39,7 +39,6 @@
 #include "diagnostic.h"
 #include "syntax_error_listener.h"
 #include "formatter.h"
-#include "lsp/lsp_server.h"
 
 #include "CLI/CLI.hpp"
 #include <toml.hpp>
@@ -63,12 +62,6 @@ LLD_HAS_DRIVER(wasm)
 #include <llvm/Support/Path.h>
 
 using namespace yux;
-
-#ifdef _DEBUG
-
-bool debug = false;
-
-#endif
 
 string getBuildDir(const string& projectRoot) {
     if (projectRoot.empty()) return "build";
@@ -282,8 +275,7 @@ void parseAST(string inputFile, Yux& yux, bool isSdk = false) {
         exit(1);
     }
 
-    llvm::LLVMContext context;
-    ASTBuilder astBuilder(context, yux, "yux.core", true);
+    ASTBuilder astBuilder(yux, "yux.core", true);
 
     try {
         astBuilder.build(program);
@@ -331,7 +323,7 @@ IRResult compileIR(string inputFile, Yux& yux, bool isSdk = false) {
 
     llvm::IRBuilder<> builder(*context);
 
-    ASTBuilder astBuilder(*context, yux, moduleName, isSdk);
+    ASTBuilder astBuilder(yux, moduleName, isSdk);
 
     try {
         auto ast = astBuilder.build(program);
@@ -454,8 +446,7 @@ void parseSdkDir(string sdkDir, Yux& yux) {
             std::cerr << "Syntax errors in SDK file: " << yuxFile << std::endl;
             exit(1);
         }
-        llvm::LLVMContext context;
-        ASTBuilder astBuilder(context, yux, "yux.core", true);
+        ASTBuilder astBuilder(yux, "yux.core", true);
         try {
             astBuilder.build(program);
         } catch (runtime_error& e) {
@@ -532,7 +523,7 @@ IRResult compileSdkDir(string sdkDir, Yux& yux) {
             std::cerr << "Syntax errors in SDK file: " << yuxFile << std::endl;
             exit(1);
         }
-        ASTBuilder astBuilder(*context, yux, "yux.core", true);
+        ASTBuilder astBuilder(yux, "yux.core", true);
         try {
             auto ast = astBuilder.build(program);
             Compiler compiler(*context, builder, module.get(), ast, &yux, true);
@@ -761,8 +752,6 @@ int wmain(int argc, wchar_t* argv[]) {
     testCmd->add_flag("-d,--debug", debug, "Output compilation IR debug information");
 #endif
 
-    auto* lspCmd = app.add_subcommand("lsp", "Run as a Language Server (stdio JSON-RPC)");
-
     auto* formatCmd = app.add_subcommand("format", "Format a .yux source file");
     std::string formatFile;
     formatCmd->add_option("file", formatFile, "Input .yux file to format");
@@ -798,11 +787,6 @@ int wmain(int argc, wchar_t* argv[]) {
     applyOverride(allowCodes, DiagSeverity::Note, "--allow");
     applyOverride(denyCodes, DiagSeverity::Error, "--deny");
     DiagPolicy::setWerror(werror);
-
-    // 处理 LSP 子命令：进入 stdio JSON-RPC 主循环
-    if (lspCmd->parsed()) {
-        return yux::lsp::runServer();
-    }
 
     // 处理格式化命令
     if (formatCmd->parsed()) {

@@ -2,8 +2,9 @@
   "name": "yux-vscode",
   "displayName": "yux-vscode",
   "description": "Yux language support for VS Code (LSP client)",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "author": "yux-lang",
+  "repository": "https://github.com/yux-lang/yux",
   "license": "MIT",
   "engines": {
     "vscode": "^1.107.1"
@@ -23,7 +24,7 @@
         "yux.executablePath": {
           "type": "string",
           "default": "",
-          "description": "yux 编译器可执行文件路径。留空则使用 PATH 中的 `yux`（Windows 为 `yux.exe`）。`yux lsp` 子命令将作为语言服务器启动。"
+          "description": "yux 语言服务可执行文件路径。留空则使用 PATH 中的 `yux-lsp`（Windows 为 `yux-lsp.exe`）。"
         }
       }
     },

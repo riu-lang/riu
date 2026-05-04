@@ -59,9 +59,9 @@ vector<string> collectAnnosNonFn(const AnnoVec& annos) {
 
 } // namespace
 
-ASTBuilder::ASTBuilder(llvm::LLVMContext& ctx, Yux& yux, const string& moduleName, bool isSdk,
+ASTBuilder::ASTBuilder(Yux& yux, const string& moduleName, bool isSdk,
                        bool isTestFile, const string& sourcePath) :
-    context(ctx), irBuilder(ctx), _yux(yux), _isSdk(isSdk), _isTestFile(isTestFile),
+    _yux(yux), _isSdk(isSdk), _isTestFile(isTestFile),
     _moduleName(moduleName), _sourcePath(sourcePath) {
 }
 

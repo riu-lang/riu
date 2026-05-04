@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "org.yux"
-version = "0.1.4-SNAPSHOT"
+version = "0.2.0-SNAPSHOT"
 
 // Set the JVM language level used to build the project.
 kotlin {
@@ -38,7 +38,7 @@ intellijPlatform {
         changeNotes = """
             <h2>yux-lang IntelliJ 插件</h2>
             <ul>
-                <li>通过 LSP4IJ 接入 yux lsp，提供语法高亮</li>
+                <li>通过 LSP4IJ 接入 yux-lsp，提供语法高亮</li>
                 <li>支持 .yux 文件类型识别</li>
                 <li>提供代码配色和代码风格支持</li>
             </ul>

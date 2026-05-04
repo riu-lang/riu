@@ -59,7 +59,7 @@ yux-lang/
 ├── bin/              二进制工具：antlr-4.13.2-complete.jar（由 sync-deps 拉取）
 ├── build/            xmake 与 yux 共用产物目录（布局详见 yux-lang-dev 技能）
 ├── yux-vscode/       VSCode 语法高亮插件
-├── yux-idea/         IntelliJ 插件（通过 LSP4IJ 接入 `yux lsp`，含语法高亮 / 配色 / 代码风格）
+├── yux-idea/         IntelliJ 插件（通过 LSP4IJ 接入 `yux-lsp`，含语法高亮 / 配色 / 代码风格）
 ├── .claude/skills/   本仓库专属 Claude Code 技能（含 yux-lang-dev 上手指南）
 ├── xmake.lua         顶层构建脚本
 ├── yux.toml          仓库自身的 dogfood 项目配置

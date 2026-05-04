@@ -4,9 +4,6 @@
 #ifndef YUX_LANG_AST_BUILDER_H
 #define YUX_LANG_AST_BUILDER_H
 
-#include <llvm/IR/IRBuilder.h>
-#include <llvm/IR/LLVMContext.h>
-
 #include "yux.h"
 #include "node/fn_node.h"
 #include "node/global_const_node.h"
@@ -14,8 +11,6 @@
 #include "yux/yuxVisitor.h"
 
 class ASTBuilder : public yux::yuxBaseVisitor {
-    llvm::LLVMContext& context;
-    llvm::IRBuilder<> irBuilder;
     Yux& _yux;
     bool _isSdk = false;
     bool _isTestFile = false;
@@ -50,7 +45,7 @@ class ASTBuilder : public yux::yuxBaseVisitor {
     p<TypeNode> buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr, p<Node> parent);
 
 public:
-    explicit ASTBuilder(llvm::LLVMContext& ctx, Yux& yux, const string& moduleName = "", bool isSdk = false,
+    explicit ASTBuilder(Yux& yux, const string& moduleName = "", bool isSdk = false,
                         bool isTestFile = false, const string& sourcePath = "");
     ~ASTBuilder() override;
 
