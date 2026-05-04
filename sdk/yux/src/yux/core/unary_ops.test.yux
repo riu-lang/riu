@@ -1,0 +1,31 @@
+; 一元运算符用例
+; 迁自 tests/cases/unary_ops.yux
+
+#Test
+fn test_neg_int() {
+  val a = -10
+  assert_eq(a, -10)
+}
+
+#Test
+fn test_neg_float() {
+  val b = -3.14
+  assert_eq(b, -3.14)
+}
+
+#Test
+fn test_bit_not() {
+  ; ~5 = -6（二补码）
+  val c = ~5
+  assert_eq(c, -6)
+}
+
+#Test
+fn test_logical_not_true() {
+  assert_eq(!true, false)
+}
+
+#Test
+fn test_logical_not_false() {
+  assert_eq(!false, true)
+}

@@ -33,3 +33,34 @@ fn test_if_no_else_taken() {
   }
   assert_eq(hit, 10)
 }
+
+; 迁自 tests/cases/inline_if.yux —— 后缀条件式 `<expr> if <cond> else <expr>`
+
+#Test
+fn test_postfix_if_else_max() {
+  val a = 10
+  val b = 20
+  val m = a if a > b else b
+  assert_eq(m, 20)
+}
+
+#Test
+fn test_postfix_if_else_sign_pos() {
+  val a = 10
+  val sign = 1 if a >= 0 else -1
+  assert_eq(sign, 1)
+}
+
+#Test
+fn test_postfix_if_else_sign_neg() {
+  val a = -3
+  val sign = 1 if a >= 0 else -1
+  assert_eq(sign, -1)
+}
+
+#Test
+fn test_postfix_if_else_string() {
+  val a = 10
+  val msg = "positive" if a > 0 else "non-positive"
+  assert_eq(msg, "positive")
+}

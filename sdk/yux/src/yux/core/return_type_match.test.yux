@@ -1,0 +1,57 @@
+; 返回类型匹配用例
+; 迁自 tests/cases/return_type_match.yux
+
+fn ret_i32() i32 {
+  42
+}
+
+fn ret_i64() i64 {
+  123456789i64
+}
+
+fn ret_f64() f64 {
+  3.14
+}
+
+fn ret_bool() bool {
+  true
+}
+
+fn ret_expr() i32 {
+  val x = 10
+  x + 5
+}
+
+fn ret_inferred() i64 {
+  999i64
+}
+
+#Test
+fn test_ret_i32() {
+  assert_eq(ret_i32(), 42)
+}
+
+#Test
+fn test_ret_i64() {
+  assert_eq(ret_i64(), 123456789i64)
+}
+
+#Test
+fn test_ret_f64() {
+  assert_eq(ret_f64(), 3.14)
+}
+
+#Test
+fn test_ret_bool() {
+  assert_true(ret_bool())
+}
+
+#Test
+fn test_ret_expr() {
+  assert_eq(ret_expr(), 15)
+}
+
+#Test
+fn test_ret_inferred() {
+  assert_eq(ret_inferred(), 999i64)
+}

@@ -1,0 +1,37 @@
+; 类型推断 / 字面量提升用例
+; 迁自 tests/cases/type_inference.yux
+
+fn add_u8(a u8, b u8) u8 = a + b
+
+#Test
+fn test_u8_promote_literal() {
+  val a u8 = 1u8 + 2
+  assert_eq(a, 3u8)
+}
+
+#Test
+fn test_i64_default_int_literal() {
+  val b i64 = 100 + 200
+  assert_eq(b, 300i64)
+}
+
+#Test
+fn test_u32_mixed() {
+  val c u32 = 5u32 * 3 + 1
+  assert_eq(c, 16u32)
+}
+
+#Test
+fn test_u8_var_assign() {
+  var x u8 = 42
+  assert_eq(x, 42u8)
+  x = 10
+  assert_eq(x, 10u8)
+  x += 5
+  assert_eq(x, 15u8)
+}
+
+#Test
+fn test_call_u8() {
+  assert_eq(add_u8(1u8, 2u8), 3u8)
+}

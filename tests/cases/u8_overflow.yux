@@ -1,4 +1,0 @@
-fn main() {
-  val a = 255u8
-  println((a + 1u8).to_string())
-}

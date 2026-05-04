@@ -1,0 +1,9 @@
+; u8 wraparound 用例
+; 迁自 tests/cases/u8_overflow.yux
+
+#Test
+fn test_u8_overflow_wrap() {
+  val a = 255u8
+  ; 255u8 + 1u8 在无 trap 的环境下回绕到 0u8
+  assert_eq(a + 1u8, 0u8)
+}

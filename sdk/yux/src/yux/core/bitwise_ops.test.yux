@@ -1,0 +1,27 @@
+; 位运算用例
+; 迁自 tests/cases/bitwise_ops.yux
+
+#Test
+fn test_bit_and() {
+  assert_eq(5 & 3, 1)
+}
+
+#Test
+fn test_bit_or() {
+  assert_eq(5 | 3, 7)
+}
+
+#Test
+fn test_bit_xor() {
+  assert_eq(5 ^ 3, 6)
+}
+
+#Test
+fn test_shr() {
+  assert_eq(8 >> 2, 2)
+}
+
+#Test
+fn test_shl() {
+  assert_eq(2 << 3, 16)
+}

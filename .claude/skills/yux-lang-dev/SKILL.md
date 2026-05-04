@@ -84,29 +84,57 @@ cd examples/test && yux build test && ./build/test/test.exe
 
 ## 测试
 
-测试运行器：[tests/xmake.lua](../../../tests/xmake.lua) 的 `yux_tests` target，走 xmake 原生 `xmake test`（无 googletest / CMake）。三类用例：
+有两条相互独立的测试通道，**新写测试**默认走 `yux test`，仅当与 RC/借用/诊断/extern 紧耦合或需要 `expected_err` 时才落到 `xmake test`。
 
-| 类别 | 位置 | 对照文件 | 命名要求 | xmake test 名 |
-|------|------|---------|---------|---------------|
-| 单文件成功用例 | `tests/cases/*.yux` | 同名 `.expected` | —— | `yux_tests/<basename>`（不带 `.yux`） |
-| 项目模式用例 | `tests/projects/<case>/` | 同目录 `expected.txt` | 目录内必须有 `yux.toml`、入口源文件、`expected.txt` | `yux_tests/project_<dirname>` |
+### `yux test`（首选）—— `#Test` 函数 + JIT 进程内执行
 
-只测能编译运行的用例（不写错误用例）。单文件用例内部仍以单文件模式调用 `yux <file>`，比较 stdout 与 `.expected`；项目用例以该目录为 CWD 调用 `yux build <case>`，运行 `build/<case>/<case>.exe` 并比对 `expected.txt`（项目用例跑完会清掉 `build/`）。
+由 `yux test` 子命令递归扫描项目下 `*.test.yux`，把每个 `#Test fn` 用 ORC LLJIT 在进程内编译执行。不落 `.obj`/`.exe`、跳过 LLD，单 suite 跑完通常 2–3 秒，适合纯逻辑回归（算术 / 类型 / 控制流 / 字符串等值 / 字面量 / 泛型调用 …）。
+
+- 测试位置：旁置 `<name>.test.yux`（**不能**在普通 `.yux` 里挂 `#Test`）；`yux build` 递归扫描时跳过 `*.test.yux`，不会进 lib/exe。
+- 测试函数：`#Test fn name(): void { ... }` —— 无参、无返回类型；与 `#CompilerInner` 互斥。
+- 断言：`assert_eq(a, b)` / `assert_true(b)` / `assert_false(b)` / `fail(msg)`，支持整型 / 浮点 / bool / String；String 还有 `assert_contains` / `assert_starts_with`（详见 `docs/spec/§11.3.5`）。失败走 SEH `0xE0FA17ED` → runner 翻译为 `(SEH ASSERT_FAILED 0xe0fa17ed)`。
+- 隔离：默认 in-process + Windows SEH 包裹每个测试函数；`--isolate=process` 给每个测试起一个子进程兜底（借用 / RC 类、yux 助手 fail 路径走这条；详见 BUGS.md「yux test JIT SEH 跨帧」known-issue）。
+- 输出：每个测试 `RUN <module>#<fn>` / `OK` 一行；失败时 `FAIL ... (<reason>)` 后面带 `  | ` 缩进的 stdout/stderr 回放（`-v` 时所有测试都回放）；末尾 `<n> passed, <m> failed`。
+
+```powershell
+; 项目模式（必须在含 yux.toml 的目录执行）
+yux test                                 ; 当前项目所有 *.test.yux 中的 #Test
+yux test yux.core                        ; 模块前缀匹配
+yux test yux.core.string.test#test_eq    ; <module>#<fn> 精确匹配
+yux test --isolate=process               ; 每个测试独立子进程
+yux test -v                              ; 详细模式（即便 OK 也回放 stdout/stderr）
+```
+
+主战场：[sdk/yux/src/yux/core/](../../../sdk/yux/src/yux/core/arithmetic.test.yux) 下的 `*.test.yux` —— SDK 自身就是个项目，`cd sdk/yux && yux test` 是当前最大套（121 用例）。新增逻辑用例放这里。
+
+### `xmake test` —— 单文件 `.expected` 用例 + 项目模式回归
+
+走 [tests/xmake.lua](../../../tests/xmake.lua) 的 `yux_tests` target。两类用例：
+
+| 类别 | 位置 | 对照文件 | xmake test 名 |
+|------|------|---------|---------------|
+| 单文件成功用例 | `tests/cases/*.yux` | 同名 `.expected` | `yux_tests/<basename>` |
+| 单文件诊断用例 | `tests/cases/diag_*.yux` | 同名 `.expected_err` | `yux_tests/<basename>` |
+| 项目模式用例 | `tests/projects/<case>/` | 同目录 `expected.txt` | `yux_tests/project_<dirname>` |
+
+单文件成功用例：调用 `yux <file>`、运行产物 exe，比 stdout 与 `.expected`。
+诊断用例：调用 `yux <file>` 必须以非零退出码结束，逐行子串匹配 `.expected_err`（行首 `;` 注释，空行忽略）。
+项目用例：以该目录为 CWD 调用 `yux build <case>`，运行 `build/<case>/<case>.exe` 并比对 `expected.txt`。
 
 ```powershell
 xmake build yux                          ; 测试会自动依赖构建，但显式先构建便于定位编译错误
 xmake test                               ; 全部用例
 xmake test -v                            ; 失败时打印 stdout / stderr / errors
-xmake test yux_tests/basic_types         ; 单个用例（注意：不带 .yux 后缀）
+xmake test yux_tests/borrow_as_ref_ok    ; 单个用例（不带 .yux 后缀）
 xmake test yux_tests/project_imports_struct
-xmake test "yux_tests/*"                 ; 通配符
+xmake test "yux_tests/*"
 xmake test -g yux/borrow                 ; 只跑某一分组（见下表）
 ```
 
-### 用例分组（按文件名前缀，避免动辄全量）
+#### 用例分组（按文件名前缀）
 
 `tests/xmake.lua` 的 `categorize(name)` 把每个 `add_tests` 分到 `yux/<cat>` 分组。
-**新增用例必须沿用对应前缀**，否则会落入 `yux/misc`，分组功能就退化了。
+**新增用例必须沿用对应前缀**，否则会落入 `yux/misc`。
 
 | 分组 | 前缀 / 命名规则 | 典型用例 |
 |------|---------------|---------|
@@ -119,23 +147,20 @@ xmake test -g yux/borrow                 ; 只跑某一分组（见下表）
 | `yux/nullable` | `nullable_*` | 可空类型 |
 | `yux/rc` | `rc_*`、`*_rc`、`temp_zero_leak`、`field_reassign_rc` | 引用计数 / 泄漏 |
 | `yux/struct` | `struct_*`、`ctor_*`、`generic_struct_*` | 结构体 |
-| `yux/expr` | 显式白名单：`arithmetic`、`bitwise_ops`、`logical_ops`、`comparison`、`operator_precedence`、`unary_ops`、`compound_assign`、`literals`、`integer_bases`、`float_add`、`math_int`、`u8_overflow` | 算术 / 逻辑 / 位 / 比较 / 字面量 |
-| `yux/types` | 显式白名单：`basic_types`、`all_types`、`type_cast`、`type_inference`、`code_point` | 类型系统 |
-| `yux/control` | 显式白名单：`if_else`、`inline_if`、`loop_test`、`functions`、`multi_fn`、`return_type_match`、`empty_main` | 控制流 / 函数 |
+| `yux/extern` | `ptr_of`、`extern_ptr_auto` | extern fn / Ptr 边界 |
 | `yux/project` | `tests/projects/<dir>/`（自动加 `project_` 前缀） | 项目模式 |
-| `yux/misc` | 兜底 | 其余字符串、注释、变量、ptr 等 |
+| `yux/misc` | 兜底 | 其余 |
 
-如果新用例确实属于 `yux/expr` / `yux/types` / `yux/control` 这类**没有自然前缀**的家族，
-优先级是：先看能不能起一个带前缀的名字；起不出来时，把名字加进 `tests/xmake.lua`
-对应的白名单表（`expr_set` / `types_set` / `control_set`），不要让它停留在 `misc`。
+历史上还有 `yux/expr` / `yux/types` / `yux/control` 三个白名单分组；其下的纯逻辑用例已全部迁到 `sdk/yux/src/yux/core/*.test.yux`，分组也随之删除。如果你打算往 `tests/cases/` 里加纯逻辑用例，先停一下：默认应该走 `yux test`，只有以下场景才该留在 `tests/cases/`：诊断（`diag_*` + `expected_err`）、借用 / RC / 弱引用 / 析构次序等内存语义、extern fn 与 Ptr 边界、项目导入语义。
 
-测试用例与语言规范冲突时，**更新用例**（`src/yux.g4` + 编译器为准）；不要通过修改规范去迁就用例。
+### 共同规则
 
-开发流程建议：
-
-1. 先改 `examples/test` 或随手建项目做冒烟验证
-2. 改某个子系统时优先 `xmake test -g yux/<相关分组>` 局部回归
-3. 提交前再 `xmake test` 全量过一遍
+- 测试用例与语言规范冲突时，**更新用例**（`src/yux.g4` + 编译器为准）；不要通过修改规范去迁就用例。
+- 已知 flaky：`tests/cases/rc_leak_baseline`（详见 BUGS.md），偶尔在 `xmake test` 失败，不算回归。
+- 开发流程建议：
+  1. 先改 `examples/test` 或随手建项目做冒烟验证。
+  2. 改某子系统时优先 `xmake test -g yux/<相关分组>` 或 `yux test <prefix>` 局部回归。
+  3. 提交前两条全量都过一遍：`cd sdk/yux && yux test` + `xmake test`。
 
 ## 编写 yux 代码
 

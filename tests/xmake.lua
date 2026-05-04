@@ -33,11 +33,12 @@
 --   yux/nullable  可空类型                nullable_*
 --   yux/rc        引用计数 / 泄漏         rc_*、*_rc、temp_zero_leak、field_reassign_rc
 --   yux/struct    结构体                  struct_*、ctor_*、generic_struct_*
---   yux/expr      算术 / 逻辑 / 位 / 比较 / 字面量
---   yux/types     类型系统                basic_types、all_types、type_cast、...
---   yux/control   控制流 / 函数            if_else、loop_test、functions、...
 --   yux/project   项目模式用例            tests/projects/* (前缀 project_)
 --   yux/misc      其余兜底
+--
+-- 注：纯逻辑用例（算术/逻辑/位/比较/字面量/类型系统/控制流/函数）已迁到
+-- `sdk/yux/src/yux/core/*.test.yux`，由 `yux test` 直接运行。这里仅保留
+-- 与 RC/借用/诊断/extern 紧耦合、`#Test` 暂未覆盖的回归。
 
 local cases_dir = path.join(os.scriptdir(), "cases")
 local projects_dir = path.join(os.scriptdir(), "projects")
@@ -62,24 +63,9 @@ local function categorize(name)
        or name:startswith("generic_struct_") then
         return "yux/struct"
     end
-    local expr_set = {
-        arithmetic = true, bitwise_ops = true, logical_ops = true,
-        comparison = true, operator_precedence = true, unary_ops = true,
-        compound_assign = true, literals = true, integer_bases = true,
-        float_add = true, math_int = true, u8_overflow = true,
-    }
-    if expr_set[name] then return "yux/expr" end
-    local types_set = {
-        basic_types = true, all_types = true, type_cast = true,
-        type_inference = true, code_point = true,
-    }
-    if types_set[name] then return "yux/types" end
-    local control_set = {
-        if_else = true, inline_if = true, loop_test = true,
-        functions = true, multi_fn = true, return_type_match = true,
-        empty_main = true,
-    }
-    if control_set[name] then return "yux/control" end
+    if name:startswith("ptr_") or name == "extern_ptr_auto" then
+        return "yux/extern"
+    end
     return "yux/misc"
 end
 

@@ -1,3 +1,0 @@
-fn main() {
-  println(math.abs(0i8 - 5i8).to_string())
-}

@@ -1,0 +1,94 @@
+; 字面量用例
+; 迁自 tests/cases/literals.yux + tests/cases/all_types.yux
+
+#Test
+fn test_int_literal_default() {
+  val a = 42
+  assert_eq(a, 42)
+}
+
+#Test
+fn test_i8_literal() {
+  val e = 42i8
+  assert_eq(e, 42i8)
+}
+
+#Test
+fn test_i8_min_max() {
+  val lo i8 = -128
+  val hi i8 = 127
+  assert_eq(lo, -128i8)
+  assert_eq(hi, 127i8)
+}
+
+#Test
+fn test_u8_max() {
+  val c u8 = 255
+  assert_eq(c, 255u8)
+}
+
+#Test
+fn test_i16_min() {
+  val d i16 = -32768
+  assert_eq(d, -32768i16)
+}
+
+#Test
+fn test_u16_max() {
+  val e u16 = 65535
+  assert_eq(e, 65535u16)
+}
+
+#Test
+fn test_i32_min() {
+  val f i32 = -2147483648
+  assert_eq(f, -2147483648)
+}
+
+#Test
+fn test_u64_literal() {
+  val f = 100u64
+  assert_eq(f, 100u64)
+}
+
+#Test
+fn test_i32_negative_literal() {
+  val g = -123i32
+  assert_eq(g, -123)
+}
+
+#Test
+fn test_i64_min_plus_one() {
+  val g i64 = -9223372036854775807i64
+  assert_eq(g, -9223372036854775807i64)
+}
+
+#Test
+fn test_f64_default() {
+  val h = 3.14
+  assert_eq(h, 3.14)
+}
+
+#Test
+fn test_f32_literal() {
+  val i = 2.5f32
+  assert_eq(i, 2.5f32)
+}
+
+#Test
+fn test_f64_literal_explicit() {
+  val j = 1.0f64
+  assert_eq(j, 1.0f64)
+}
+
+#Test
+fn test_f64_negative() {
+  val k = -0.5
+  assert_eq(k, -0.5)
+}
+
+#Test
+fn test_bool_literals() {
+  assert_eq(true, true)
+  assert_eq(false, false)
+}

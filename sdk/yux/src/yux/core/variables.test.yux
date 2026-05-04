@@ -1,0 +1,34 @@
+; var / val 基础用例
+; 迁自 tests/cases/variables.yux
+
+#Test
+fn test_var_reassign() {
+  var a i32 = 10
+  assert_eq(a, 10)
+  a = 20
+  assert_eq(a, 20)
+}
+
+#Test
+fn test_val_i64() {
+  val b i64 = 100i64
+  assert_eq(b, 100i64)
+}
+
+#Test
+fn test_val_inferred_int() {
+  val c = 123
+  assert_eq(c, 123)
+}
+
+#Test
+fn test_val_inferred_f64() {
+  val d = 3.14
+  assert_eq(d, 3.14)
+}
+
+#Test
+fn test_val_inferred_bool() {
+  val e = true
+  assert_true(e)
+}

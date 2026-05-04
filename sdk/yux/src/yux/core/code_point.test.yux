@@ -1,0 +1,26 @@
+; 字符字面量 / 码点用例
+; 迁自 tests/cases/code_point.yux
+
+#Test
+fn test_code_point_a() {
+  val a u32 = c'A'
+  assert_eq(a, 65u32)
+}
+
+#Test
+fn test_code_point_newline() {
+  val b u32 = c'\n'
+  assert_eq(b, 10u32)
+}
+
+#Test
+fn test_code_point_tab() {
+  val c u32 = c'\t'
+  assert_eq(c, 9u32)
+}
+
+#Test
+fn test_code_point_zero() {
+  val d u32 = c'0'
+  assert_eq(d, 48u32)
+}

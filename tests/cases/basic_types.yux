@@ -1,4 +1,0 @@
-fn main() {
-  val b bool = true
-  println(b.to_string())
-}

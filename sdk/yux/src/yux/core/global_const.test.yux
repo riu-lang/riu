@@ -1,0 +1,21 @@
+; 顶层 cval（全局常量）用例
+; 迁自 tests/cases/global_const.yux
+
+cval TEST_MAX_SIZE i32 = 1024
+cval TEST_PI f64 = 3.14159
+cval _TEST_INTERNAL_CONST i32 = 42
+
+#Test
+fn test_global_const_i32() {
+  assert_eq(TEST_MAX_SIZE, 1024)
+}
+
+#Test
+fn test_global_const_f64() {
+  assert_eq(TEST_PI, 3.14159)
+}
+
+#Test
+fn test_global_const_internal() {
+  assert_eq(_TEST_INTERNAL_CONST, 42)
+}

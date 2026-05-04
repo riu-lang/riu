@@ -1,9 +1,0 @@
-cval MAX_SIZE i32 = 1024
-cval PI f64 = 3.14159
-cval _INTERNAL_CONST i32 = 42
-
-fn main() {
-  println(MAX_SIZE.to_string())
-  println(PI.to_string())
-  println(_INTERNAL_CONST.to_string())
-}

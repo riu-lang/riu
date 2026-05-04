@@ -1,8 +1,0 @@
-fn main() {
-  println("hello world")
-  println("line1\nline2")
-  println("tab\there")
-  println("quote: \"text\"")
-  println(r"C:\path\to\file")
-  println(r"\d+\.\d+")
-}

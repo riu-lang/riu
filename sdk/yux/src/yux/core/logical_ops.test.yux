@@ -1,0 +1,27 @@
+; 逻辑运算用例
+; 迁自 tests/cases/logical_ops.yux
+
+#Test
+fn test_and_tt() {
+  assert_eq(true && true, true)
+}
+
+#Test
+fn test_and_tf() {
+  assert_eq(true && false, false)
+}
+
+#Test
+fn test_or_ft() {
+  assert_eq(false || true, true)
+}
+
+#Test
+fn test_or_ff() {
+  assert_eq(false || false, false)
+}
+
+#Test
+fn test_and_with_not() {
+  assert_eq(true && !false, true)
+}
