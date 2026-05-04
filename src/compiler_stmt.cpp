@@ -342,7 +342,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             } else if (exprType == *elemType) {
                 // 由值构造 Box：分配 Block，把 payload 存入 block+8
                 auto elemLLVMType = getLLVMType(*elemType);
-                auto sizeVal = _builder.getInt64(elemLLVMType->getPrimitiveSizeInBits() / 8);
+                auto sizeVal = _builder.getInt64(_module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
 
                 auto allocFn = runtime::getBoxAllocFn(_module, _builder);
                 auto block = _builder.CreateCall(allocFn, {sizeVal}, "box_block");
@@ -773,7 +773,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             } else if (exprType == *elemType) {
                 // 由值构造 Box：分配 Block，把 payload 存入 block+8
                 auto elemLLVMType = getLLVMType(*elemType);
-                auto sizeVal = _builder.getInt64(elemLLVMType->getPrimitiveSizeInBits() / 8);
+                auto sizeVal = _builder.getInt64(_module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
 
                 auto allocFn = runtime::getBoxAllocFn(_module, _builder);
                 auto block = _builder.CreateCall(allocFn, {sizeVal}, "box_block");
