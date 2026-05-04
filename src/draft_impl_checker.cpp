@@ -308,6 +308,44 @@ bool DraftImplChecker::typeSatisfiesDraft(
     return true;
 }
 
+bool DraftImplChecker::boundSatisfied(
+    const TypeInfo& typeArg,
+    DraftDeclNode* draft,
+    const std::string& draftQualified,
+    const std::vector<TypeInfo>& draftTypeArgs) const {
+    if (!draft) return false;
+
+    // §8.6.7.1: T 形参实参不接 `T&`. 这里只做正常形态; 调用侧若传入 ref,
+    // 视作不满足任何 draft (上层 §6.4 应已拒绝).
+    if (typeArg.isRef()) return false;
+
+    const std::string& typeBare = typeArg.name;
+    const std::string typeOwnerMod = moduleOfType(typeBare);
+    const std::string typeQualified = typeOwnerMod.empty()
+        ? typeBare
+        : (typeOwnerMod + "." + typeBare);
+
+    // 拼 draftKey: 与 validateImpl 写入 _seen 时一致.
+    std::string draftKey = draftQualified;
+    if (!draftTypeArgs.empty()) {
+        draftKey += "<";
+        for (size_t i = 0; i < draftTypeArgs.size(); ++i) {
+            if (i) draftKey += ",";
+            draftKey += draftTypeArgs[i].getFullName();
+        }
+        draftKey += ">";
+    }
+
+    if (_seen.find({typeQualified, draftKey}) != _seen.end()) {
+        return true;
+    }
+
+    if (draft->isDraftLike()) {
+        return typeSatisfiesDraft(typeBare, draft, draftTypeArgs);
+    }
+    return false;
+}
+
 std::string DraftImplChecker::draftTypeArgsSuffix(const DraftRef& ref) {
     if (ref.typeArgs.empty()) return {};
     std::string s = "<";

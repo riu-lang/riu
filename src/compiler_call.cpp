@@ -14,6 +14,8 @@
 #include "node/expr_node.h"
 #include "node/literal_node.h"
 #include "compiler_runtime.h"
+#include "draft_impl_checker.h"
+#include "draft_registry.h"
 #include "mangler.h"
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -1074,6 +1076,39 @@ llvm::Value* Compiler::compileGenericFunctionCall(
         }
         throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
             ErrorCode::E6017, fnName);
+    }
+
+    // §6.4.4.4 / §12.4 边界单态化校验 (Phase 3.3): 对每个 <T : D1 + D2>,
+    // 解析每个 D 的限定名并校验 typeArgs[i] 是否满足 D (显式 impl 或
+    // #DraftLike 结构匹配); 不满足报 E1106. 不影响 ensureFnInstance 的
+    // mangle (单态化静态分发, 边界仅做静态检查).
+    if (_yux) {
+        const auto& bounds = genericFn->header()->typeParamBounds();
+        if (!bounds.empty()) {
+            auto& reg = _yux->draftRegistry();
+            auto& checker = _yux->draftImplChecker();
+            for (size_t i = 0; i < typeParams.size() && i < bounds.size(); ++i) {
+                for (auto& boundName : bounds[i]) {
+                    auto resolved = reg.resolve(boundName, fnOwner);
+                    if (!resolved) {
+                        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                            ErrorCode::E3032, boundName);
+                    }
+                    // v0.5: 函数声明位 draftBound 暂未携带类型实参 (ast_builder
+                    // 仅取基名), draftTypeArgs 传空; 草案 §6.4.4.1 文法允许
+                    // `D<T>` 形态留待后续扩展.
+                    std::vector<TypeInfo> draftTypeArgs;
+                    if (!checker.boundSatisfied(typeArgs[i], resolved->decl,
+                                                 resolved->qualifiedName, draftTypeArgs)) {
+                        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                            ErrorCode::E1106,
+                            typeArgs[i].getFullName(),
+                            resolved->qualifiedName,
+                            typeParams[i]);
+                    }
+                }
+            }
+        }
     }
 
     string mangledName = ensureFnInstance(genericFn, typeArgs, fnOwner, callNode->getLineNumber());

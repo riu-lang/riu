@@ -53,9 +53,16 @@ void Yux::rebuildDraftRegistry() {
 
 void Yux::validateDraftImpls() {
     if (_draftImplValidated) return;
-    DraftImplChecker checker(this);
-    checker.validate();
+    if (!_draftImplChecker) {
+        _draftImplChecker = std::make_unique<DraftImplChecker>(this);
+    }
+    _draftImplChecker->validate();
     _draftImplValidated = true;
+}
+
+DraftImplChecker& Yux::draftImplChecker() {
+    validateDraftImpls();
+    return *_draftImplChecker;
 }
 
 p<FileNode> Yux::createFile(const string& moduleName) {

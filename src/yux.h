@@ -10,6 +10,7 @@
 
 class ASTBuilder;
 class DraftRegistry;
+class DraftImplChecker;
 
 // pkg 文件导出项
 struct PkgExportItem {
@@ -62,6 +63,11 @@ public:
     // 首次调用时构造 DraftImplChecker 跑全套校验, 后续调用直接返回.
     // 由 Compiler::compile() 起始处调用, SDK 与用户文件统一一次.
     void validateDraftImpls();
+
+    // 拿到长生命周期的 DraftImplChecker (Phase 3.3 边界匹配需要复用其
+    // _seen 显式实现表与 typeSatisfiesDraft 结构匹配 helper).
+    // 触发时自动调用 validateDraftImpls() 一次.
+    DraftImplChecker& draftImplChecker();
 
     // 按模块名加载 `.yux` 文件。首次加载解析并注册，后续命中缓存。
     // errorLine 仅用于错误报告。未找到文件 / 循环依赖时抛 YuxError。
@@ -118,6 +124,7 @@ private:
     p<FileNode> _parseFile(const string& absPath, const string& moduleName, int errorLine);
 
     std::unique_ptr<DraftRegistry> _draftRegistry;
+    std::unique_ptr<DraftImplChecker> _draftImplChecker;
     bool _draftImplValidated = false;
 };
 

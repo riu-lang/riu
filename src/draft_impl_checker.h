@@ -55,6 +55,18 @@ public:
                             DraftDeclNode* draft,
                             const std::vector<TypeInfo>& draftTypeArgs) const;
 
+    // §6.4.4.4 / §12.4 泛型边界单态化校验 (Phase 3.3): 给定实参类型 + 一个
+    // 已解析的 draft, 返回 typeArg 是否满足该 draft 边界. 命中条件:
+    //   (a) 已存在显式实现 `Type : D<draftTypeArgs> { ... }` (复用 _seen),
+    //   (b) 或 D 标 `#DraftLike` 且 §12.3.1 结构匹配 (typeSatisfiesDraft).
+    // 仅返回 bool, 由调用方负责把 false 翻成 E1106 诊断.
+    //
+    // 调用前需保证 validate() 已跑过 (Yux::draftImplChecker() 自动触发).
+    bool boundSatisfied(const TypeInfo& typeArg,
+                        DraftDeclNode* draft,
+                        const std::string& draftQualified,
+                        const std::vector<TypeInfo>& draftTypeArgs) const;
+
 private:
     Yux* _yux;
 
