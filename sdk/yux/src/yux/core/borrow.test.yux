@@ -113,7 +113,7 @@ fn test_borrow_copy_bind_root() {
 
 ; ---------- borrow_generic_ref_param：泛型 T& 形参 ----------
 
-fn <T> br_first_byte(p T&) i32 {
+fn br_first_byte<T>(p T&) i32 {
   ret 1i32
 }
 

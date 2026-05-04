@@ -14,7 +14,7 @@ extern {
 }
 
 #CompilerInner
-fn <T> assert_eq(actual T, expected T)
+fn assert_eq<T>(actual T, expected T)
 
 #CompilerInner
 fn assert_true(actual bool)

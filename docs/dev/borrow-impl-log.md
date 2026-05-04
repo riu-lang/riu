@@ -49,7 +49,7 @@
 
 - `src/yux.g4`：`retType=type` → `retType=typeWithRef`；重新生成 ANTLR parser
 - `src/ast_builder.cpp`：3 处 retType 处理切到 `buildTypeWithRef`；新增 E2009 检查（非 `#CompilerInner` 不许 retType 含 `&`）
-- `sdk/yux/src/yux/core/base.yux`：声明 `#CompilerInner fn <T> as_ref(box Box<T>) T&`
+- `sdk/yux/src/yux/core/base.yux`：声明 `#CompilerInner fn as_ref<T>(box Box<T>) T&`
 
 ### 4b — Codegen
 

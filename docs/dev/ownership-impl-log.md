@@ -63,7 +63,7 @@
 **1d.2 Weak 复制 retain + upgrade**
 
 - Weak-to-Weak 赋值 / 初始化：retain weak（同 Box 1a，weak++ 走内联 CFG）
-- `upgrade(w) Box<T>?` builtin：`base.yux` 声明 `#CompilerInner fn <T> upgrade(w Weak<T>) Box<T>?`；`compiler_call.cpp` CompilerInner 分发；运行时 `_box_upgrade(handle)` 实现 "null / strong==0 → null；哨兵 → handle；其他 strong++"
+- `upgrade(w) Box<T>?` builtin：`base.yux` 声明 `#CompilerInner fn upgrade<T>(w Weak<T>) Box<T>?`；`compiler_call.cpp` CompilerInner 分发；运行时 `_box_upgrade(handle)` 实现 "null / strong==0 → null；哨兵 → handle；其他 strong++"
 - `ExprCallNode::getType` 加隐式泛型推断（`unify` 递归 Generic↔Generic）
 - TODO：失败路径 runtime 测试推迟到 Phase 5——当前缺 Nullable 内省手段（无 `.has`、无 Box payload 访问、无 `null ==`），无法差分输出
 
@@ -194,14 +194,14 @@
 
 ### 7a — `same_ref:<T>(a, b) bool` builtin
 
-- `base.yux` 加 `#CompilerInner fn <T> same_ref(a T, b T) bool`
+- `base.yux` 加 `#CompilerInner fn same_ref<T>(a T, b T) bool`
 - `compileGenericFunctionCall` CompilerInner 分支统一处理 `same_ref` + `ptr_of`：lambda `extractRawPtr(i, forPtrOf)`：Box / Weak / Array → `ExtractValue 0` 取 handle；String → `ExtractValue {0,0}` 取 inner Array handle；Ref → 回溯 AST（`LiteralObj` 查 `_localVarPtrs[name]`，`ExprGetRef` 调 `compileGetRefExpr`）
 - `same_ref` 主体：`extractRawPtr(0,false) ICmpEQ extractRawPtr(1,false)`
 - TODO：`T&` 源类型未覆盖——`genericDef` 当前只用 `type` 而非 `typeWithRef`，`same_ref:<i32&>` 不可解析
 
 ### 7b — `ptr_of:<T>(obj) Ptr` builtin
 
-- `base.yux` 加 `#CompilerInner fn <T> ptr_of(obj T) Ptr`
+- `base.yux` 加 `#CompilerInner fn ptr_of<T>(obj T) Ptr`
 - 与 same_ref 共用 `extractRawPtr`；ptr_of 模式下：Box → handle GEP +8 跳过 RC 头到 payload；Array → handle GEP +24 后 load data 字段；String → inner Array handle GEP +24 后 load data；Ref → 同 same_ref Ref 路径
 
 ### 7c — extern fn 边界自动转 Ptr

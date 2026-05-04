@@ -15,6 +15,11 @@
 
 ---
 
+## 2026-05-04 —— 统一函数泛型声明调用
+
+- **修改**：`fn <T> name()` => `fn name<T>()`
+- **冲突 / 兼容**：仅影响sdk
+
 ## 2026-05-04 —— 修复 `yux test` JIT 模式下跨 yux 助手帧 SEH 静默崩溃
 
 - **修改**：§11.3.5.8 known-issue 删除——根因是 LLVM `RTDyldMemoryManager::registerEHFramesInProcess` 在 Win64 COFF 上不调 `RtlAddFunctionTable`，导致 `RuntimeDyldCOFFX86_64` 收集的 `.pdata` 段从未注册到 OS，跨多个 JIT 帧 unwind 时 `RtlVirtualUnwind` 找不到 `RUNTIME_FUNCTION` → 进程静默退出。修法：自定义 `SectionMemoryManager` 子类覆盖 `registerEHFrames`/`deregisterEHFrames`，在 `RtlAddFunctionTable` / `RtlDeleteFunctionTable` 中注册 `.pdata`，ImageBase 取本对象内已分配 section 的最低非零地址。

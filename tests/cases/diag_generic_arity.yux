@@ -1,4 +1,4 @@
-fn <T> id(x T) T {
+fn id<T>(x T) T {
   x
 }
 
