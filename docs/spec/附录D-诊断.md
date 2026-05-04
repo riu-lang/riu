@@ -51,6 +51,7 @@ N | <源码行原文>
 | E4xxx | 所有权 / 借用       | §8     | `T&` 借用合法性、`$` 字段 DA/DAA、构造器返回限制    |
 | E5xxx | 模块 / 包           | §10    | `yux.toml` 解析、模块发现、循环依赖                 |
 | E6xxx | 内置 / 调用         | §6 §9  | 函数 / 方法调用、`#CompilerInner`、内置类型方法     |
+| E11xx | draft / 接口        | §12    | draft 实现穷尽性 / `#DraftLike` 误用 / orphan / 边界 |
 
 段内号**应当**按主题聚类、号段递增；段间**不得**复用号；新增码必须同步更新 D.3。
 
@@ -294,6 +295,23 @@ Array 内置方法（E6040..E6044）：
 | 码     | 模板 |
 |--------|------|
 | E6045 | `{} requires 1 argument`（plus / minus / 等共用此模板，`{}` 为方法名） |
+
+### D.3.7 E11xx — draft / 接口（v0.5+ 占位）
+
+> v0.5 §12 引入；编号在 Phase 3 编译器实现期固化进 `include/error_code.h`。下表为规范层占位，模板文本可在实施期微调。
+
+| 码     | 模板（占位） | 触发 |
+|--------|-------------|------|
+| E1101  | `Type '{}' does not implement draft method '{}: {}' (impl block missing)` | `Type : D` 实现块缺方法（§12.2.2.1） |
+| E1102  | `Method '{}' in 'Type {} : D' impl block is not part of D's signature set` | 实现块多余非 draft 方法（§12.2.2.1） |
+| E1103  | `Duplicate impl block 'Type {} : {}'` | 同 `Type : D` 实现块重复出现（§12.2.2.2） |
+| E1104  | `draft method '{}.{}' must not introduce its own generic parameters` | draft 体内 `fn` 引入本地泛型（§12.3.2） |
+| E1105  | `Method '{}' on type '{}' is defined in both an ordinary impl block and a 'Type : {}' impl block` | 同包显隐共存情形 A（§12.4.2.1） |
+| E1106  | `Type '{}' does not satisfy draft bound '{}' for type parameter '{}'` | `<T : D>` 边界单态化未命中（§6.4.4.4） |
+| E1110  | `'#DraftLike' annotation is only allowed on 'draft' declarations` | `#DraftLike` 标在非 draft（§11.4.2.1） |
+| E1111  | `'#DraftLike' draft '{}' must not declare default method bodies` | `#DraftLike` 与默认体共用（§11.4.2.2） |
+| E1112  | `'#DraftLike' draft '{}' must not contain method-local generic parameters` | `#DraftLike` 与方法本地泛型共用（§11.4.2.3） |
+| E1120  | `Cannot implement draft '{}' for type '{}': both belong to external packages (orphan rule, spec §12.5)` | 跨外部包 orphan（§12.5） |
 
 ## D.4 与编译流程的关系
 

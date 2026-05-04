@@ -12,6 +12,7 @@ program        ::= comment*
                    | globalConst
                    | structDecl
                    | structImpl
+                   | draftDecl
                    | comment
                    | codeLineEnd
                    )*
@@ -44,11 +45,20 @@ typeWithRef    ::= ID '&'?                         # typeNormalWithRef
                  | ID genericDefWithRef '&'?       # typeGenericWithRef
                  | '[' typeWithRef '*' INT ']' '&'?# typeArrayWithRef
 
-genericDef        ::= '<' type        (',' type)*        '>'
-genericDefWithRef ::= '<' typeWithRef (',' typeWithRef)* '>'
+genericDef        ::= '<' typeParam        (',' typeParam)*        '>'
+genericDefWithRef ::= '<' typeParamWithRef (',' typeParamWithRef)* '>'
+
+typeParam         ::= type        (':' draftBound ('+' draftBound)*)?
+typeParamWithRef  ::= typeWithRef (':' draftBound ('+' draftBound)*)?
+draftBound        ::= modulePath? ID genericDef?     # 例：ToString / pkg.Display / To<i32>
 ```
 
-约束：`typeWithRef` 仅出现在函数参数与局部变量声明位置（§3.2 / §8.3.1）；其它位置只能用 `type`。
+约束：
+
+- `typeWithRef` 仅出现在函数参数与局部变量声明位置（§3.2 / §8.3.1）；其它位置只能用 `type`。
+- `typeParam` 的 draft 边界仅出现在**声明位**（`fn` / `struct` / `draft` 头部的 `genericDef` 槽位）；调用点 turbofish `f:<T>(args)` 处**不得**写边界（§6.4.4.3）。
+
+> 上述边界产生式为 §12 引入的形态（v0.5+）；待与用户确认后回写 `src/yux.g4`，按 CLAUDE.md 项目约束。本附录文本与 `.g4` 暂不同步时，以草案 `draft/DRAFT-draft.md` §10.3 为准。
 
 ## B.3 字面量
 
@@ -98,7 +108,8 @@ structDecl     ::= buildAnno*
                        ( filedDecl codeLineEnd? | comment | codeLineEnd )*
                    '}'
 
-structImpl     ::= buildAnno* ID ('<' type (',' type)* '>')? '{'
+structImpl     ::= buildAnno* ID ('<' type (',' type)* '>')?
+                       (':' draftBound ('+' draftBound)*)? '{'
                        codeLineEnd
                        fnClean?
                        ( fn | comment | codeLineEnd )*
@@ -106,6 +117,22 @@ structImpl     ::= buildAnno* ID ('<' type (',' type)* '>')? '{'
 
 filedDecl      ::= ID type
 ```
+
+## B.5a draft（v0.5+）
+
+```
+draftDecl      ::= buildAnno* 'draft' genericDef? ID '{'
+                       ( fnSig | comment | codeLineEnd )*
+                   '}'
+
+fnSig          ::= buildAnno* 'fn' ID '(' fnParams? ')' (retType=type)?
+```
+
+- draft 体内**只允许签名**（`fnSig`），不得带函数体（§12.1.1.1）。
+- 签名集**允许为空**（§12.1.1.2 / §12.7.2 内置 `Any`）。
+- draft 自身可携带 `genericDef`，但 draft 体内单个 `fn` **不得**再引入泛型形参（§12.3.2）。
+
+> 同 §B.2 末尾说明：`draftDecl` 为 §12 引入的形态，回写 `src/yux.g4` 前需用户确认。
 
 ## B.6 表达式（按 `yux.g4` 中 `expr` 的分支顺序，决定优先级）
 

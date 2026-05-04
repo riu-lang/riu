@@ -15,6 +15,15 @@
 
 ---
 
+## 2026-05-04 —— 引入 §12 draft（接口与约束）+ `#DraftLike` + `<T : D>` 边界 + `copy_of`
+
+- **新增**：§12 全章 —— draft 声明 / 显式 `Type : D { ... }` 实现 / `#DraftLike` 结构化匹配 / 跨包 orphan / Box forward 归一 / 内置 `ToString` 与 `Any` / builtin `copy_of:<T>(x T&) T`。决议依据见 `docs/spec/draft/DRAFT-draft.md`。
+- **新增**：§7.8（draft 实现块语法扩展，详见 §12）；§6.4.4（draft 边界声明形态、单态化校验）；§11.4（`#DraftLike` 注解 + 互锁规则 + 风格指引）；§11.5 / §11.6 重编号（原 §11.4 → §11.5，原 §11.5 → §11.6）。
+- **修改**：§6.4.1.2 把"v0.5 引入 draft 后启用 trait bounds"改为正文，明确 v1 支持类型参数 + 可选 draft 边界，无 `where` / 无 or 约束；§11.2.3 builtin 清单追加 `as_ref` / `copy_of`，内置类型 `to_string` 经 `Type : ToString { #CompilerInner ... }` 形式给出。
+- **新增**：附录 A 关键字加 `draft`、注解表加 `#DraftLike`；附录 B 加 `draftDecl` / 扩展 `structImpl` / `genericDef` 引入 `typeParam` + `draftBound`（v0.5+ 形态，回写 `src/yux.g4` 前需用户确认）；附录 C 新增 §C.6a draft 术语 11 项；附录 D 段位表追加 E11xx 段，§D.3.7 列出 E1101–E1106 / E1110–E1112 / E1120 占位（编号在编译器实施期固化）。
+- **冲突 / 兼容**：纯增量（v0.5 新引入）；既有 §6.4 / §7 / §11 / §8.6.7 条款均不破坏，仅追加交叉引用。`#DraftLike` 是 v1 第三种正式注解（继 `#CompilerInner` / `#Test`）。`src/yux.g4` 暂未改（按 CLAUDE.md 项目约束需先与用户确认）；附录 B 文本与 `.g4` 短期内不同步，以草案 `draft/DRAFT-draft.md` §10.3 为准。
+- **后续**：编译器实现详见 CURRENT.md Phase 3；SDK / 测试详见 Phase 4；附录 D 占位错误码在 Phase 3 与 `include/error_code.h` 同步固化。
+
 ## 2026-05-04 —— 统一函数泛型声明调用
 
 - **修改**：`fn <T> name()` => `fn name<T>()`

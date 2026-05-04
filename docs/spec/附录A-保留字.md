@@ -10,6 +10,7 @@
 |---|---|---|---|
 | `break` | `Break` | 跳出 `loop` | §5.5 |
 | `cval` | `DeclKey` 一支 | 全局常量声明 | §5.1 |
+| `draft` | `Draft` | 接口契约声明 | §12 |
 | `elif` | `Elif` | 多分支条件 | §4.9 / §5.4 |
 | `else` | `Else` | 条件分支兜底 | §4.9 / §5.4 |
 | `extern` | `Extern` | 外部声明块 | §6.6 |
@@ -55,8 +56,10 @@
 | 注解 | 用途 | 章节 |
 |---|---|---|
 | `#CompilerInner` | 编译器内部合成实现 | §11.2 |
+| `#Test` | 单元测试函数（仅 `*.test.yux`） | §11.3 |
+| `#DraftLike` | draft 开放结构化匹配 | §11.4 / §12.4 |
 
-§A.3.1 v1 仅 `#CompilerInner` 一种正式注解；其它注解形态属预留（§11.3.2）。
+§A.3.1 v1 三种正式注解：`#CompilerInner` / `#Test` / `#DraftLike`；其它注解形态属预留（§11.5.2）。
 
 ## A.4 运算符与符号 token
 
@@ -128,7 +131,7 @@
 
 - `pub` / `priv` / `private` / `internal`：可见性修饰符（§10.3.1.2 不引入）；
 - `mut` / `const`：可变性修饰符（v1 用 `var` / `val`）；
-- `trait` / `impl` / `where`：v1 无 trait bound（§7.1.2.3）；
+- `trait` / `impl` / `where`：v1 用 `draft` + `:` 实现块替代，无 `where` 子句（§12 / §6.4.4）；
 - `match` / `case`：v1 无模式匹配；
 - `async` / `await`：v1 无并发原语；
 - `for` / `while` / `do`：v1 循环只用 `loop`（§5.5）；

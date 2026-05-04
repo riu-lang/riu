@@ -107,8 +107,25 @@
 | 构建注解 | build annotation | §11 | `#Name` 形态 |
 | `#CompilerInner` | compiler-internal annotation | §11.2 | 编译器合成实现 |
 | `#Test` | test annotation | §11.3 | 标记单元测试函数；仅 `*.test.yux` 中允许 |
+| `#DraftLike` | draft-like annotation | §11.4 / §12.4 | 开放结构化匹配的 draft |
 | 测试文件 | test file | §11.3.3 | 以 `.test.yux` 结尾；`yux test` 专属 |
 | `yux test` | yux test command | §11.3.4 | 收集并执行项目下 `#Test` 函数的子命令 |
+
+## C.6a draft（接口与约束）
+
+| 术语 | 英文 | 出处 | 简述 |
+|---|---|---|---|
+| draft | draft (interface contract) | §12 | 一组方法签名集合；显式 `:` 实现 + 可选 `#DraftLike` 结构化匹配 |
+| 显式实现 | explicit impl | §12.2 | `Type : D1 + D2 { ... }` 块；穷尽且不多余 |
+| 结构化匹配 | structural match | §12.4 | `#DraftLike` draft 按 §12.3 签名等价命中 |
+| draft 边界 | draft bound | §6.4.4 / §12.4 | `<T : D1 + D2>` 内联约束 |
+| 单态化分发 | monomorphized dispatch | §12.4.4.5 / §6.5 | v1 边界泛型的实例化 + 静态分发，无 vtable |
+| orphan 规则 | orphan rule | §12.5 | `Type : D` 实现块只能在 `Type` 包或 `D` 包 |
+| Box forward | box forward | §12.6 | `Box<U>` 上调 D 方法走 §8.6.7.3 自动解引用 + 归一 |
+| `as_ref` | as_ref | §8.3.5.5 | `Box<T> → T&` builtin |
+| `copy_of` | copy_of | §12.7.3 | `T& → T` 显式拷贝 builtin |
+| `Any` | any | §12.7.2 | 空签名集 draft；所有 owned 类型自动满足 |
+| `ToString` | to_string draft | §12.7.1 | 内置 `fn to_string() String` 契约；不标 `#DraftLike` |
 
 ## C.7 编译期 / 实现
 
