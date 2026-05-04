@@ -46,9 +46,10 @@ void DraftImplChecker::buildTypeOwnerMap() {
     auto index = [&](FileNode* file) {
         if (!file) return;
         for (auto& d : file->getStructDecls()) {
-            const std::string& name = d->name().getText();
+            // name() 按值返回临时 Token, 不能 bind 引用 (悬挂).
+            std::string name = d->name().getText();
             // 同名跨文件冲突由其它阶段诊断, 这里取首次登记的 owner.
-            _typeOwnerModule.emplace(name, file->moduleName());
+            _typeOwnerModule.emplace(std::move(name), file->moduleName());
         }
     };
     if (_yux) {
@@ -209,7 +210,10 @@ void DraftImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
         // §12.2.2.1 穷尽性: 对每个 draft 签名, 必须在 impl 中匹配一个同名
         // + 等价签名的方法. 命中位置同步标记 aggMatched.
         for (auto& dsig : draft->signatures()) {
-            const std::string& dname = dsig->name().getText();
+            // 注意: FnHeaderNode::name() 按值返回 Token, getText() 是它的成员引用;
+            // 不能写成 `const std::string& dname = dsig->name().getText();` ——
+            // 临时 Token 在 full-expression 后销毁, dname 立即悬挂.
+            const std::string dname = dsig->name().getText();
             int hit = -1;
             for (size_t i = 0; i < implMethods.size(); ++i) {
                 auto& m = implMethods[i]->header();
@@ -294,7 +298,9 @@ bool DraftImplChecker::typeSatisfiesDraft(
 
     // 每个 draft 签名都要在 methods 中找到 §12.3.1 等价匹配 (受 subst 替换后).
     for (auto& dsig : draft->signatures()) {
-        const std::string& dname = dsig->name().getText();
+        // 同 validateImpl: name() 按值返回临时 Token, getText() 是其成员引用,
+        // 必须 copy 否则悬挂.
+        const std::string dname = dsig->name().getText();
         bool hit = false;
         for (auto* m : methods) {
             if (m->name().getText() != dname) continue;
