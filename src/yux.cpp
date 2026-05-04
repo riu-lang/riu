@@ -9,6 +9,7 @@
 #include <toml.hpp>
 
 #include "ast_builder.h"
+#include "draft_impl_checker.h"
 #include "draft_registry.h"
 #include "syntax_error_listener.h"
 #include "yux/yuxLexer.h"
@@ -48,6 +49,13 @@ void Yux::rebuildDraftRegistry() {
         _draftRegistry = std::make_unique<DraftRegistry>(this);
     }
     _draftRegistry->buildFromAllFiles();
+}
+
+void Yux::validateDraftImpls() {
+    if (_draftImplValidated) return;
+    DraftImplChecker checker(this);
+    checker.validate();
+    _draftImplValidated = true;
 }
 
 p<FileNode> Yux::createFile(const string& moduleName) {

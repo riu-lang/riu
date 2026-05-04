@@ -264,6 +264,50 @@ bool DraftImplChecker::sigEquivalent(
     return ir == drSub;
 }
 
+bool DraftImplChecker::typeSatisfiesDraft(
+    const std::string& typeBareName,
+    DraftDeclNode* draft,
+    const std::vector<TypeInfo>& draftTypeArgs) const {
+    if (!draft || !_yux) return false;
+
+    // draft 自身泛型形参 → 实参替换表; arity 不齐时只覆盖前缀.
+    std::map<std::string, TypeInfo> subst;
+    const auto& dParams = draft->typeParams();
+    size_t n = std::min(dParams.size(), draftTypeArgs.size());
+    for (size_t i = 0; i < n; ++i) {
+        subst[dParams[i]] = draftTypeArgs[i];
+    }
+
+    // 收集该类型在所有文件中的所有方法 (普通方法块 + draft impl 块都计入).
+    std::vector<FnHeaderNode*> methods;
+    auto collect = [&](FileNode* file) {
+        if (!file) return;
+        for (auto& impl : file->getStructImpls()) {
+            if (impl->structName() != typeBareName) continue;
+            for (auto& m : impl->methods()) {
+                methods.push_back(m->header());
+            }
+        }
+    };
+    if (auto sdk = _yux->sdkFile()) collect(sdk);
+    for (auto& f : _yux->files()) collect(f);
+
+    // 每个 draft 签名都要在 methods 中找到 §12.3.1 等价匹配 (受 subst 替换后).
+    for (auto& dsig : draft->signatures()) {
+        const std::string& dname = dsig->name().getText();
+        bool hit = false;
+        for (auto* m : methods) {
+            if (m->name().getText() != dname) continue;
+            if (sigEquivalent(m, dsig, subst)) {
+                hit = true;
+                break;
+            }
+        }
+        if (!hit) return false;
+    }
+    return true;
+}
+
 std::string DraftImplChecker::draftTypeArgsSuffix(const DraftRef& ref) {
     if (ref.typeArgs.empty()) return {};
     std::string s = "<";

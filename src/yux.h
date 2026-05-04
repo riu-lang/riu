@@ -58,6 +58,11 @@ public:
     DraftRegistry& draftRegistry();
     void rebuildDraftRegistry();
 
+    // §12.2 / §12.3 / §12.5 显式 draft 实现校验 (Phase 3.2.e).
+    // 首次调用时构造 DraftImplChecker 跑全套校验, 后续调用直接返回.
+    // 由 Compiler::compile() 起始处调用, SDK 与用户文件统一一次.
+    void validateDraftImpls();
+
     // 按模块名加载 `.yux` 文件。首次加载解析并注册，后续命中缓存。
     // errorLine 仅用于错误报告。未找到文件 / 循环依赖时抛 YuxError。
     p<FileNode> loadModule(const string& moduleName, int errorLine = 0);
@@ -113,6 +118,7 @@ private:
     p<FileNode> _parseFile(const string& absPath, const string& moduleName, int errorLine);
 
     std::unique_ptr<DraftRegistry> _draftRegistry;
+    bool _draftImplValidated = false;
 };
 
 #endif //YUX_LANG_YUX_H

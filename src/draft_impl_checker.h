@@ -32,6 +32,7 @@
 #include <map>
 #include <string>
 #include <utility>
+#include <vector>
 
 class Yux;
 
@@ -41,6 +42,18 @@ public:
 
     // 跑全套显式 draft 实现校验. 命中第一处错误即抛 YuxError.
     void validate();
+
+    // §12.4 `#DraftLike` 结构化匹配 helper (Phase 3.2.d).
+    // 给定类型裸名 + draft 声明 + draft 自身泛型实参, 判定该类型在
+    // 当前 Yux 持有的所有 FileNode 中是否提供了与 draft 每个签名 §12.3.1
+    // 等价的方法 (普通方法块与 draft 实现块的方法都计入). 仅返回 bool,
+    // 不抛错 — 由 Phase 3.3 的边界匹配负责把 false 转成诊断.
+    //
+    // 注: 类型参数为 bare 名 (例如 "Counter"), 与 draft impl 解析使用的
+    // 命名空间一致; 泛型类型实例化场景 (例如 `Counter<i32>`) 留给 3.3.
+    bool typeSatisfiesDraft(const std::string& typeBareName,
+                            DraftDeclNode* draft,
+                            const std::vector<TypeInfo>& draftTypeArgs) const;
 
 private:
     Yux* _yux;

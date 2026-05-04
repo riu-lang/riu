@@ -63,6 +63,12 @@ void Compiler::compile(p<FileNode> file) {
     DEBUG_LOG("=== Starting compilation ===");
     DEBUG_LOG_VAL("  isSdk", _isSdk);
 
+    // §12.2 / §12.3 / §12.5 显式 draft 实现校验 (Phase 3.2.e):
+    // 第一次 compile() 时跑一次, 覆盖 SDK + 所有用户文件; 后续重入空操作.
+    if (_yux) {
+        _yux->validateDraftImpls();
+    }
+
     DEBUG_LOG("Compiling global constants...");
     compileGlobalConsts();
 
