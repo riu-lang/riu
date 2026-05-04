@@ -1,0 +1,27 @@
+; String / StringBuilder 的 ==/!= 运算符（SDK 提供）
+
+fn main() {
+  val a String = "hello"
+  val b String = "hello"
+  val c String = "world"
+  val d String = "hell"
+  val e String = ""
+  val f String = ""
+  println((a == b).to_string())
+  println((a == c).to_string())
+  println((a == d).to_string())
+  println((a != b).to_string())
+  println((a != c).to_string())
+  println((e == f).to_string())
+  println((a == e).to_string())
+
+  var sb1 StringBuilder = StringBuilder()
+  sb1.append("foo")
+  var sb2 StringBuilder = StringBuilder()
+  sb2.append("foo")
+  var sb3 StringBuilder = StringBuilder()
+  sb3.append("bar")
+  println((sb1 == sb2).to_string())
+  println((sb1 == sb3).to_string())
+  println((sb1 != sb3).to_string())
+}

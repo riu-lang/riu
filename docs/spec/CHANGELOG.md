@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-05-04 —— 运算符重载形参收口为 `Self&`
+
+- **修改**：§7.2.3.3 二元运算符方法形参从"应当与接收者类型一致"改为"应当为 `Self&`"；形参为 `Self`（按值）等其它类型时该方法只是普通方法，不再被运算符触发。
+- **新增**：§7.2.3.6 运算符 `a OP b` 在编译期重写为 `a.method(&b)`，右操作数自动取址，是 §6.2 / §8.3 一般规则的运算符位置局部例外。
+- **冲突 / 兼容**：v1 尚未发版，原"形参写 `Self`"是旧设计的不足（按值复制额外成本，且与 `$` 接收者借用形态不一致）；规范层一次性收口。本仓库内仅 `docs/结构体.md` Complex 示例使用旧形态，同步改为 `Self&`；SDK 与 tests/ 中无既有运算符重载实现，无代码迁移。
+
 ## 2026-05-03 —— 新增 `#Test` 测试断言 API（`assert_eq` / `assert_true` / `assert_false` / `fail`）
 
 - **新增**：§11.3.5「测试断言 API」 —— SDK 在 `sdk/yux/src/yux/core/assert.yux`（与 `base.yux` 同属 `yux.core` 平铺）提供 4 个 `#CompilerInner` 断言：泛型 `assert_eq:<T>`（T ∈ i8…u64 / f32 / f64 / bool）、`assert_true(bool)` / `assert_false(bool)`、`fail(String)`。无需 import，全局可用。失败语义（v1）：调 SDK `_yux_test_assert_failed()` → `RaiseException(0xE0FA17ED)` → SEH 显示 `FAIL <module>#<fn> (SEH ASSERT_FAILED 0xe0fa17ed)`。v1 **不**打印断言种类与 `fail(msg)` 的 `msg` 内容（待 String stringify 扩展同期补齐）。

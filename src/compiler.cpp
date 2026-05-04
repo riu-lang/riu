@@ -668,7 +668,12 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
         TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();
         auto llvmType = getLLVMType(paramType);
 
-        if (structParamUsesPointer(paramType.name)) {
+        if (paramType.isRef()) {
+            // 引用类型直接使用传入的指针（与 compileFn 同路径）；
+            // 不另开 alloca，否则 `other.field` 会 GEP 到 alloca 自身而非被引用的 struct
+            _localVarPtrs[paramName] = argIt;
+            DEBUG_LOG_VAL("  Method param (ref)", paramName << " : " << paramType.getFullName());
+        } else if (structParamUsesPointer(paramType.name)) {
             // Phase 3c.1: 非平凡结构体仍走指针 ABI
             _localVarPtrs[paramName] = argIt;
             DEBUG_LOG_VAL("  Param (struct ptr)", paramName << " : " << paramType.name << "*");

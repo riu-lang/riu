@@ -1251,6 +1251,29 @@ String {
     $.data[i]
   }
 
+  ; 等值比较：长度相同且每个码点相同
+  ; 形参为 String&（spec §7.2.3.3），运算符位置自动取址
+  fn eq(other String&) bool {
+    if $.data.len() != other.data.len() {
+      ret false
+    }
+    var i i64 = 0
+    loop {
+      if i >= $.data.len() {
+        break;
+      }
+      if $.data[i] != other.data[i] {
+        ret false
+      }
+      i += 1
+    }
+    true
+  }
+
+  fn ne(other String&) bool {
+    !$.eq(&other)
+  }
+
   ; 转为 UTF-8 字节数组
   fn to_bytes() Array<u8> {
     var r Array<u8> = []
@@ -1322,6 +1345,28 @@ StringBuilder {
   ; 清空缓冲
   fn clear() {
     $.data = []
+  }
+
+  ; 等值比较：长度相同且每个码点相同
+  fn eq(other StringBuilder&) bool {
+    if $.data.len() != other.data.len() {
+      ret false
+    }
+    var i i64 = 0
+    loop {
+      if i >= $.data.len() {
+        break;
+      }
+      if $.data[i] != other.data[i] {
+        ret false
+      }
+      i += 1
+    }
+    true
+  }
+
+  fn ne(other StringBuilder&) bool {
+    !$.eq(&other)
   }
 
   ; 取出缓冲、构造不可变 String、自身重置为空

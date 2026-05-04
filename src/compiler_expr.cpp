@@ -406,13 +406,19 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(
     // 编译右操作数
     auto rightVal = compileExpr(rightExpr);
     auto rightType = rightExpr->getType();
-    
-    // 查找方法
+
+    // 查找方法（spec §7.2.3.3）：二元运算符方法形参强制 Self&，
+    // 因此查表使用 [leftType, Ref<rightType>]，原 eq(other Self) 形态不再被运算符触发。
+    // 运算符位置自动取址（spec §7.2.3.6）：右操作数自动包成 Ref，无需用户写 &。
     string methodFullName = leftType.name + "." + methodName;
+    TypeInfo rightRefType;
+    rightRefType.kind = TypeKind::Generic;
+    rightRefType.name = "Ref";
+    rightRefType.genericArgs.push_back(make_shared<TypeInfo>(rightType));
     vector<TypeInfo> methodParamTypes;
     methodParamTypes.push_back(leftType);
-    methodParamTypes.push_back(rightType);
-    
+    methodParamTypes.push_back(rightRefType);
+
     auto methodSymbol = _file->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
     if (!methodSymbol && _yux && _yux->sdkFile()) {
         methodSymbol = _yux->sdkFile()->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
@@ -457,20 +463,26 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(
     }
     
     // 获取或创建方法函数
+    // mangle 与 LLVM 签名都按 methodSymbol 实际声明的形参类型走（spec §7.2.3.3 后是 Ref<T>），
+    // 与 SDK / 用户代码侧定义的方法符号一一对应。
     string ownerMod = methodSymbol->moduleName.empty() ? _file->moduleName() : methodSymbol->moduleName;
     bool methPriv = !methodName.empty() && methodName[0] == '_';
+    TypeInfo declaredRhsType = methodSymbol->params.size() >= 2 ? methodSymbol->params[1] : rightType;
     vector<TypeInfo> argTypes;
-    argTypes.push_back(rightType);
+    argTypes.push_back(declaredRhsType);
     string mangledName = Mangler::method(ownerMod, leftType.name, methodName, argTypes, methPriv);
-    
+
     auto fn = _module->getFunction(mangledName);
     if (!fn) {
         vector<llvm::Type*> paramTypes;
         paramTypes.push_back(llvm::PointerType::get(_context, 0));
-        if (rightStructDecl && !isBuiltinType(rightType.name)) {
+        // 形参为 Ref<T> / 非 builtin struct 时按 ptr 传，其余按值
+        bool rhsByPtr = declaredRhsType.isRef()
+                        || (rightStructDecl && !isBuiltinType(declaredRhsType.name));
+        if (rhsByPtr) {
             paramTypes.push_back(llvm::PointerType::get(_context, 0));
         } else {
-            paramTypes.push_back(getLLVMType(rightType));
+            paramTypes.push_back(getLLVMType(declaredRhsType));
         }
         auto retType = methodSymbol->retType.empty() ? _builder.getVoidTy() : getLLVMType(methodSymbol->retType);
         auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
