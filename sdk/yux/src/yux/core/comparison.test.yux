@@ -1,0 +1,26 @@
+; comparison 比较运算用例
+; 迁自 tests/cases/comparison.yux
+
+#Test
+fn test_eq_ne() {
+  assert_false(10 == 5)
+  assert_true(10 == 10)
+  assert_true(10 != 5)
+  assert_false(10 != 10)
+}
+
+#Test
+fn test_gt_ge() {
+  assert_true(10 > 5)
+  assert_false(10 > 15)
+  assert_true(10 >= 5)
+  assert_true(10 >= 10)
+}
+
+#Test
+fn test_lt_le() {
+  assert_false(10 < 5)
+  assert_true(10 < 15)
+  assert_false(10 <= 5)
+  assert_true(10 <= 10)
+}

@@ -1,0 +1,27 @@
+; 顶层函数定义/调用用例
+; 迁自 tests/cases/functions.yux
+
+fn fns_add(a i32, b i32) i32 = a + b
+
+fn fns_sub(a i32, b i32) i32 {
+  ret a - b
+}
+
+fn fns_nop() {
+}
+
+#Test
+fn test_call_expr_body() {
+  assert_eq(fns_add(1, 2), 3)
+}
+
+#Test
+fn test_call_block_body() {
+  assert_eq(fns_sub(5, 3), 2)
+}
+
+#Test
+fn test_call_void() {
+  fns_nop()
+  assert_true(true)
+}

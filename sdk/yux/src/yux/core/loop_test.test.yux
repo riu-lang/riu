@@ -1,0 +1,17 @@
+; loop 控制流用例
+; 迁自 tests/cases/loop_test.yux
+
+#Test
+fn test_loop_break() {
+  var i i32 = 0
+  var sum i32 = 0
+  loop {
+    if i >= 5 {
+      break;
+    }
+    sum = sum + i
+    i = i + 1
+  }
+  assert_eq(i, 5)
+  assert_eq(sum, 0 + 1 + 2 + 3 + 4)
+}

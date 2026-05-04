@@ -1,0 +1,32 @@
+; 整数字面量进制用例
+; 迁自 tests/cases/integer_bases.yux
+
+#Test
+fn test_decimal() {
+  assert_eq(42, 42)
+}
+
+#Test
+fn test_binary() {
+  assert_eq(0b1010, 10)
+  assert_eq(0b1111_1111, 255)
+}
+
+#Test
+fn test_octal() {
+  assert_eq(0o755, 493)
+  assert_eq(0o777, 511)
+}
+
+#Test
+fn test_hex() {
+  assert_eq(0xFF, 255)
+  assert_eq(0xFFFF, 65535)
+}
+
+#Test
+fn test_typed_suffix() {
+  assert_eq(0b1010u8, 10u8)
+  assert_eq(0o644i32, 420)
+  assert_eq(0xABCDu64, 43981u64)
+}

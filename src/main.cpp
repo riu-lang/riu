@@ -355,6 +355,8 @@ bool needRecompileSdkDir(const string& sdkDir, const string& sdkObjPath) {
         if (entry.is_regular_file()) {
             string filename = entry.path().filename().string();
             if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".yux") {
+                if (filename.size() >= 9 &&
+                    filename.compare(filename.size() - 9, 9, ".test.yux") == 0) continue;
                 if (std::filesystem::last_write_time(entry.path()) > objTime) {
                     return true;
                 }
@@ -422,6 +424,8 @@ void parseSdkDir(string sdkDir, Yux& yux) {
         if (entry.is_regular_file()) {
             string filename = entry.path().filename().string();
             if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".yux") {
+                if (filename.size() >= 9 &&
+                    filename.compare(filename.size() - 9, 9, ".test.yux") == 0) continue;
                 yuxFiles.push_back(entry.path().string());
             }
         }
@@ -493,6 +497,8 @@ IRResult compileSdkDir(string sdkDir, Yux& yux) {
         if (entry.is_regular_file()) {
             string filename = entry.path().filename().string();
             if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".yux") {
+                if (filename.size() >= 9 &&
+                    filename.compare(filename.size() - 9, 9, ".test.yux") == 0) continue;
                 yuxFiles.push_back(entry.path().string());
             }
         }
@@ -935,7 +941,19 @@ int wmain(int argc, wchar_t* argv[]) {
         }
 
         // SDK：与 build 路径共享。需要 sdk obj 给 JIT 加载；如不存在则现编。
-        std::string sdkPath = findSdkPath();
+        // SDK self-project（yux.toml name="yux"）特殊处理：
+        // findSdkPath() 返回 build 目录下的 SDK 拷贝，与项目源里的原文件不在同一路径，
+        // 这会导致递归扫描误把原 SDK 文件当成用户文件再加载一遍 → 符号重复。
+        // 用项目源里的 SDK 路径覆盖，让 sdkPathAbs 与递归扫描看到的 parent 一致。
+        std::string sdkPath;
+        if (yux.projectName() == "yux") {
+            fs::path candidate = fs::path(yux.sourceRoot()) / "yux" / "core";
+            if (fs::is_directory(candidate)) {
+                sdkPath = candidate.string();
+            }
+        } else {
+            sdkPath = findSdkPath();
+        }
         std::string sdkObjPath;
         if (!sdkPath.empty()) {
             sdkPath = fs::absolute(sdkPath).string();
@@ -972,6 +990,7 @@ int wmain(int argc, wchar_t* argv[]) {
         }
         struct LoadEntry { std::string abs; std::string mod; bool isTest; };
         std::vector<LoadEntry> entries;
+        std::string sdkPathAbs = sdkPath.empty() ? std::string() : fs::absolute(sdkPath).string();
         std::error_code walkEc;
         for (auto it = fs::recursive_directory_iterator(srcDir, walkEc);
              it != fs::recursive_directory_iterator(); ++it) {
@@ -982,12 +1001,17 @@ int wmain(int argc, wchar_t* argv[]) {
             auto fname = p.filename().string();
             bool isTest = fname.size() >= 9 &&
                           fname.compare(fname.size() - 9, 9, ".test.yux") == 0;
+            std::string absPath = fs::absolute(p).string();
+            if (!isTest && !sdkPathAbs.empty() &&
+                fs::path(absPath).parent_path().string() == sdkPathAbs) {
+                continue;  // SDK preload 已处理 sdk 目录下非 test 文件
+            }
             auto rel = fs::relative(p, srcDir);
             std::string modName = rel.generic_string();
             // strip ".yux"（保留 ".test" 段，例如 "yux/core/arithmetic.test.yux" → "yux.core.arithmetic.test"）
             modName = modName.substr(0, modName.size() - 4);
             for (auto& c : modName) if (c == '/' || c == '\\') c = '.';
-            entries.push_back({fs::absolute(p).string(), modName, isTest});
+            entries.push_back({absPath, modName, isTest});
         }
         std::sort(entries.begin(), entries.end(),
                   [](const LoadEntry& a, const LoadEntry& b) { return a.mod < b.mod; });

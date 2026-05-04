@@ -1,0 +1,16 @@
+; 基础类型用例
+; 迁自 tests/cases/basic_types.yux
+
+#Test
+fn test_bool_true() {
+  val b bool = true
+  assert_true(b)
+  assert_eq(b, true)
+}
+
+#Test
+fn test_bool_false() {
+  val b bool = false
+  assert_false(b)
+  assert_eq(b, false)
+}

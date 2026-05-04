@@ -1,0 +1,19 @@
+; 多函数协作用例
+; 迁自 tests/cases/multi_fn.yux
+
+fn mf_helper() i32 = 100
+
+fn mf_main_like() i32 {
+  val h = mf_helper()
+  ret h + 100
+}
+
+#Test
+fn test_helper_only() {
+  assert_eq(mf_helper(), 100)
+}
+
+#Test
+fn test_helper_chain() {
+  assert_eq(mf_main_like(), 200)
+}

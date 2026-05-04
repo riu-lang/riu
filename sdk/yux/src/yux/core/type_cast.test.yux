@@ -1,0 +1,37 @@
+; 数值类型转换用例
+; 迁自 tests/cases/type_cast.yux
+
+#Test
+fn test_i32_to_f64() {
+  val a i32 = 10
+  val b f64 = a.to_f64()
+  assert_eq(b, 10.0f64)
+}
+
+#Test
+fn test_i32_to_i64() {
+  val a i32 = 10
+  val c i64 = a.to_i64()
+  assert_eq(c, 10i64)
+}
+
+#Test
+fn test_u8_to_i32() {
+  val d u8 = 100u8
+  val e i32 = d.to_i32()
+  assert_eq(e, 100)
+}
+
+#Test
+fn test_f64_to_i32_trunc() {
+  val f f64 = 3.7
+  val g i32 = f.to_i32()
+  assert_eq(g, 3)
+}
+
+#Test
+fn test_i64_neg_to_i32() {
+  val h i64 = -123i64
+  val i i32 = h.to_i32()
+  assert_eq(i, -123)
+}

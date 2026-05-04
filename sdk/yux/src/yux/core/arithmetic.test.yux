@@ -1,0 +1,39 @@
+; arithmetic 算术运算用例
+; 迁自 tests/cases/arithmetic.yux —— 旧用例靠 println 比对 .expected，
+; 这里用 assert_eq 直接断言。
+
+#Test
+fn test_int_add() {
+  assert_eq(10 + 5, 15)
+}
+
+#Test
+fn test_int_sub() {
+  assert_eq(10 - 5, 5)
+}
+
+#Test
+fn test_int_mul() {
+  assert_eq(10 * 5, 50)
+}
+
+#Test
+fn test_int_div() {
+  assert_eq(10 / 5, 2)
+}
+
+#Test
+fn test_int_mod() {
+  assert_eq(10 % 3, 1)
+}
+
+#Test
+fn test_float_add() {
+  ; 3.14 + 2.86 在 IEEE-754 下恰好等于 6.0
+  assert_eq(3.14 + 2.86, 6.0)
+}
+
+#Test
+fn test_float_sub() {
+  assert_eq(10.0 - 0.5, 9.5)
+}
