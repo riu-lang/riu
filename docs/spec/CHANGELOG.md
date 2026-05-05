@@ -15,6 +15,11 @@
 
 ---
 
+## 2026-05-05 —— v0.5 内置 `to_string` 迁入 `Type : ToString` 显式实现
+
+- **修改**：§12.7.1.2 措辞调整 —— 内置类型 `to_string` 以 `Type : ToString { ... }` 形态在 `base.yux` 显式实现；方法体可 `#CompilerInner` 或 yux 实现，二者并存；当前 i64/u64/f64/bool/String 走 yux 实现，窄类型委派。
+- **冲突 / 兼容**：`base.yux` 内对应方法从普通方法块迁入 draft 实现块，外部调用面（`x.to_string()`）不变，无破坏。
+
 ## 2026-05-04 —— 引入 §12 draft（接口与约束）+ `#DraftLike` + `<T : D>` 边界 + `copy_of`
 
 - **新增**：§12 全章 —— draft 声明 / 显式 `Type : D { ... }` 实现 / `#DraftLike` 结构化匹配 / 跨包 orphan / Box forward 归一 / 内置 `ToString` 与 `Any` / builtin `copy_of:<T>(x T&) T`。决议依据见 `docs/spec/draft/DRAFT-draft.md`。

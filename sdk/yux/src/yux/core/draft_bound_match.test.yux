@@ -1,0 +1,62 @@
+; Phase 4.2 — draft 泛型边界匹配端到端
+; 覆盖 §6.4.4 + §12.3：fn f<T : ToString>(x T) 在内置类型 / 用户类型上走静态分发
+
+struct Tag {
+  v i64
+}
+
+Tag {
+  fn Tag(v i64) {
+    $.v = v
+  }
+}
+
+Tag : ToString {
+  fn to_string() String {
+    $.v.to_string()
+  }
+}
+
+; 泛型函数 + draft bound：T 必须实现 ToString
+fn show_via_bound<T : ToString>(x T) String {
+  x.to_string()
+}
+
+#Test
+fn test_bound_user_type() {
+  val t Tag = Tag(99i64)
+  assert_eq(show_via_bound(t), "99")
+}
+
+#Test
+fn test_bound_builtin_i64() {
+  assert_eq(show_via_bound(7i64), "7")
+}
+
+#Test
+fn test_bound_builtin_bool() {
+  assert_eq(show_via_bound(true), "true")
+}
+
+#Test
+fn test_bound_builtin_string() {
+  val s String = "world"
+  assert_eq(show_via_bound(s), "world")
+}
+
+; ---------- #DraftLike Any：所有 owned 类型自动满足 ----------
+
+fn accept_any<T : Any>(x T) {
+  ; Any 签名集为空，不调用任何方法；只验证边界匹配通过
+}
+
+#Test
+fn test_any_i64() {
+  accept_any(42i64);
+}
+
+#Test
+fn test_any_user_type() {
+  val t Tag = Tag(1i64)
+  accept_any(t);
+}

@@ -188,14 +188,17 @@ draft ToString {
 
 **不**标 `#DraftLike`（[#D.1]）：`ToString` 是 v0.6 字符串模板 `"$expr"` 的"可插值"约束，属强契约；用户类型必须显式 `Type : ToString { ... }` 才会进入插值路径，避免 debug-string 被误命中显示文本。
 
-§12.7.1.2 各内置类型在 `base.yux` 内显式实现，方法体走 `#CompilerInner`（§11.2）：
+§12.7.1.2 各内置类型在 `base.yux` 内以 `Type : ToString { ... }` 形态显式实现；方法体可走 `#CompilerInner`（§11.2）或直接 yux 实现，二者并存。当前实施：窄整型（i8/u8/i16/u16/i32/u32）/`f32` 委派宽类型 `to_string`；宽类型（i64/u64/f64）/`bool`/`String` 直接 yux 实现：
 
 ```yux
-i32 : ToString {
-  #CompilerInner
-  fn to_string() String
+i64 : ToString {
+  fn to_string() String { ... }   ; yux 实现
 }
-; 同理覆盖 i8 / u8 / i16 / u16 / u32 / i64 / u64 / f32 / f64 / bool / String
+
+String : ToString {
+  fn to_string() String { $ }     ; 恒等返回
+}
+; 同理覆盖 i8 / u8 / i16 / u16 / i32 / u32 / u64 / f32 / f64 / bool
 ```
 
 §12.7.1.3 不引入新注解 `#Builtin`；MILESTONE / TARGETS 中的"`#Builtin`"措辞按 `#CompilerInner` 统一。

@@ -1,0 +1,62 @@
+; Phase 4.2 — draft 显式实现端到端
+; 覆盖 §12.2 显式 Type : D 实现 + §12.7 内置类型 ToString impl
+
+; ---------- 用户类型 Counter : ToString ----------
+
+struct Counter {
+  n i64
+}
+
+Counter {
+  fn Counter(start i64) {
+    $.n = start
+  }
+}
+
+Counter : ToString {
+  fn to_string() String {
+    $.n.to_string()
+  }
+}
+
+#Test
+fn test_counter_explicit_to_string() {
+  val c Counter = Counter(42i64)
+  assert_eq(c.to_string(), "42")
+}
+
+#Test
+fn test_counter_explicit_negative() {
+  val c Counter = Counter(-7i64)
+  assert_eq(c.to_string(), "-7")
+}
+
+; ---------- 内置类型走 i8/i32/i64/... : ToString ----------
+
+#Test
+fn test_builtin_i64_to_string() {
+  assert_eq(123i64.to_string(), "123")
+  assert_eq((-1i64).to_string(), "-1")
+  assert_eq(0i64.to_string(), "0")
+}
+
+#Test
+fn test_builtin_narrow_int_to_string() {
+  ; 窄类型委派宽类型；同样走 Type : ToString 块
+  assert_eq(7i32.to_string(), "7")
+  assert_eq(255u8.to_string(), "255")
+  assert_eq(0i8.to_string(), "0")
+}
+
+#Test
+fn test_builtin_bool_to_string() {
+  assert_eq(true.to_string(), "true")
+  assert_eq(false.to_string(), "false")
+}
+
+#Test
+fn test_builtin_string_to_string() {
+  ; String : ToString —— 共享底层 Array<u32> Block，等值
+  val s String = "hello"
+  assert_eq(s.to_string(), "hello")
+}

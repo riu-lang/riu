@@ -1,0 +1,30 @@
+; Phase 4.2 — Box<T> 自动 forward draft 方法
+; 覆盖 §12.6：box.m() 走 §8.6.7.3 自动解引用 + 方法分发归一，不需独立机制
+
+struct Bag {
+  k i64
+}
+
+Bag {
+  fn Bag(k i64) {
+    $.k = k
+  }
+}
+
+Bag : ToString {
+  fn to_string() String {
+    $.k.to_string()
+  }
+}
+
+#Test
+fn test_box_forward_to_string() {
+  val b Box<Bag> = Bag(31i64)
+  assert_eq(b.to_string(), "31")
+}
+
+#Test
+fn test_box_forward_negative() {
+  val b Box<Bag> = Bag(-9i64)
+  assert_eq(b.to_string(), "-9")
+}
