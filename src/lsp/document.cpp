@@ -105,24 +105,26 @@ void collectSymbols(const std::string& text, ::yux::yuxParser::ProgramContext* p
     }
 
     for (auto* sd : prog->structDecl()) {
-        if (!sd->name) continue;
+        auto* st = sd->structType();
+        if (!st || !st->name) continue;
         DocSymbol s;
-        s.name = sd->name->getText();
+        s.name = st->name->getText();
         s.kind = SymbolKind::Struct;
         contextRange(text, sd, s.rangeStart, s.rangeEnd);
-        s.selStart = tokenStartPos(text, sd->name);
-        s.selEnd = tokenEndPos(text, sd->name);
+        s.selStart = tokenStartPos(text, st->name);
+        s.selEnd = tokenEndPos(text, st->name);
         out.push_back(std::move(s));
     }
 
     for (auto* si : prog->structImpl()) {
-        if (!si->name) continue;
+        auto* st = si->structType();
+        if (!st || !st->name) continue;
         DocSymbol s;
-        s.name = si->name->getText();
+        s.name = st->name->getText();
         s.kind = SymbolKind::Struct;
         contextRange(text, si, s.rangeStart, s.rangeEnd);
-        s.selStart = tokenStartPos(text, si->name);
-        s.selEnd = tokenEndPos(text, si->name);
+        s.selStart = tokenStartPos(text, st->name);
+        s.selEnd = tokenEndPos(text, st->name);
         out.push_back(std::move(s));
     }
 

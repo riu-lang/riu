@@ -120,7 +120,7 @@
         },
         {
           "name": "keyword.other.struct.yux",
-          "match": "\\bstruct\\b"
+          "match": "\\b(struct|draft)\\b"
         },
         {
           "name": "keyword.other.extern.yux",

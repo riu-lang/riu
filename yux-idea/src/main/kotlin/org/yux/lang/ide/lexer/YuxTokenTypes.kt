@@ -16,7 +16,7 @@ object YuxTokenTypes {
     @JvmField val SYMBOL = YuxTokenType("YUX_SYMBOL")
 
     val KEYWORDS = setOf(
-        "break", "cval", "elif", "else", "extern", "false", "fn", "if",
+        "break", "cval", "draft", "elif", "else", "extern", "false", "fn", "if",
         "loop", "null", "ret", "struct", "true", "use", "val", "var"
     )
 }

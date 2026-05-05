@@ -31,11 +31,13 @@ enum class TT : int {
     Parameter = 9,
     Method = 10,
     Metadata = 11,
+    Interface = 12,
 };
 
 const std::vector<std::string> kTypes = {
     "keyword", "operator", "string", "number", "comment",
     "variable", "class", "function", "property", "parameter", "method", "metadata",
+    "interface",
 };
 const std::vector<std::string> kModifiers = {
     "declaration",
@@ -58,7 +60,7 @@ int classify(size_t type) {
 
         // T__0 是匿名字面量 'cval'；其余为命名关键字
         case L::T__0:
-        case L::Break: case L::DeclKey: case L::Elif: case L::Else:
+        case L::Break: case L::DeclKey: case L::Draft: case L::Elif: case L::Else:
         case L::Extern: case L::False: case L::Fn: case L::If:
         case L::Loop: case L::Null: case L::Ret: case L::Struct:
         case L::True: case L::Use:
@@ -135,15 +137,22 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
     auto& out = state.overrides;
 
     if (auto* c = dynamic_cast<P::StructDeclContext*>(node)) {
-        if (c->name) {
-            put(out, c->name, TT::Class, MOD_DECLARATION);
-            state.structNames.insert(c->name->getText());
+        if (auto* st = c->structType(); st && st->name) {
+            put(out, st->name, TT::Class, MOD_DECLARATION);
+            state.structNames.insert(st->name->getText());
         }
+    } else if (auto* c = dynamic_cast<P::DraftDeclContext*>(node)) {
+        if (auto* dt = c->draftType(); dt && dt->name) {
+            put(out, dt->name, TT::Interface, MOD_DECLARATION);
+        }
+    } else if (auto* c = dynamic_cast<P::DraftTypeContext*>(node)) {
+        // 引用位置（structImpl 的实现列表）；声明位置已被 DraftDecl 分支覆盖
+        if (c->name) put(out, c->name, TT::Interface, 0);
     } else if (auto* c = dynamic_cast<P::StructImplContext*>(node)) {
-        if (c->name) {
+        if (auto* st = c->structType(); st && st->name) {
             // structImpl 的名字是对 struct 的引用，不是声明
-            put(out, c->name, TT::Class, 0);
-            state.structNames.insert(c->name->getText());
+            put(out, st->name, TT::Class, 0);
+            state.structNames.insert(st->name->getText());
         }
     } else if (auto* c = dynamic_cast<P::FnHeaderContext*>(node)) {
         put(out, c->name, TT::Function, MOD_DECLARATION);

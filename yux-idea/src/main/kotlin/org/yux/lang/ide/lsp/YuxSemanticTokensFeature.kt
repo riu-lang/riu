@@ -24,6 +24,7 @@ class YuxSemanticTokensFeature : LSPSemanticTokensFeature() {
             "comment"   -> YuxColors.LINE_COMMENT
             "variable"  -> YuxColors.VARIABLE
             "class"     -> YuxColors.CLASS
+            "interface" -> YuxColors.INTERFACE
             "function"  -> if (isDecl) YuxColors.FUNCTION_DECLARATION else YuxColors.FUNCTION_CALL
             "method"    -> if (isDecl) YuxColors.FUNCTION_DECLARATION else YuxColors.FUNCTION_CALL
             "property"  -> YuxColors.PROPERTY

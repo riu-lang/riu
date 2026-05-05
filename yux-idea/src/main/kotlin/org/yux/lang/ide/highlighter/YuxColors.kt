@@ -22,6 +22,7 @@ object YuxColors {
     val PROPERTY      = key("YUX_PROPERTY",     Default.INSTANCE_FIELD)
 
     val CLASS                = key("YUX_CLASS",                Default.CLASS_NAME)
+    val INTERFACE            = key("YUX_INTERFACE",            Default.INTERFACE_NAME)
     val FUNCTION_DECLARATION = key("YUX_FUNCTION_DECLARATION", Default.FUNCTION_DECLARATION)
     val FUNCTION_CALL        = key("YUX_FUNCTION_CALL",        Default.FUNCTION_CALL)
     val METHOD               = key("YUX_METHOD",               Default.INSTANCE_METHOD)
