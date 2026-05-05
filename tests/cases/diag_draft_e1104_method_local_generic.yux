@@ -1,0 +1,7 @@
+; §12.3.2 draft 体内的 fn 不得引入本地泛型
+draft Show {
+    fn show<U>() i32
+}
+
+fn main() {
+}

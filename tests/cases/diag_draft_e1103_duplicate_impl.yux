@@ -1,0 +1,23 @@
+; §12.2.2.2 重复：同 (Type, D) 出现两次实现块
+draft Show {
+    fn show() i32
+}
+
+struct Counter {
+    n i32
+}
+
+Counter : Show {
+    fn show() i32 {
+        $.n
+    }
+}
+
+Counter : Show {
+    fn show() i32 {
+        0i32
+    }
+}
+
+fn main() {
+}

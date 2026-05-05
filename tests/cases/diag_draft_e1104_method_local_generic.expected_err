@@ -1,0 +1,1 @@
+diag_draft_e1104_method_local_generic.yux:3:5 [E1104] error: draft method 'Show.show' must not introduce its own generic parameters

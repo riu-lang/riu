@@ -1,0 +1,20 @@
+; §12.2.2.1 不多余：Type : D 实现块出现 D 签名集之外的方法
+draft Show {
+    fn show() i32
+}
+
+struct Counter {
+    n i32
+}
+
+Counter : Show {
+    fn show() i32 {
+        $.n
+    }
+    fn extra() i32 {
+        0i32
+    }
+}
+
+fn main() {
+}

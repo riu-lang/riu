@@ -1,0 +1,1 @@
+diag_draft_e1103_duplicate_impl.yux:16:1 [E1103] error: Duplicate impl block 'Type diag_draft_e1103_duplicate_impl.Counter : diag_draft_e1103_duplicate_impl.Show'

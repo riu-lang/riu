@@ -1,0 +1,23 @@
+; §6.4.4.4 / §12.4 边界单态化未命中
+draft Show {
+    fn show() i32
+}
+
+struct Counter {
+    n i32
+}
+
+Counter {
+    fn Counter(n i32) {
+        $.n = n
+    }
+}
+
+fn say<T : Show>(x T) {
+    val s = x.show()
+}
+
+fn main() {
+    val c Counter = Counter(0i32)
+    say(c)
+}

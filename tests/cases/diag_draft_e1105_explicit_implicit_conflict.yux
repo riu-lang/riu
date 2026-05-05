@@ -1,0 +1,23 @@
+; §12.4.2.1 同包显隐共存：同名方法既在普通方法块又在 Type : D 实现块出现
+draft Show {
+    fn show() i32
+}
+
+struct Counter {
+    n i32
+}
+
+Counter {
+    fn show() i32 {
+        $.n
+    }
+}
+
+Counter : Show {
+    fn show() i32 {
+        $.n
+    }
+}
+
+fn main() {
+}

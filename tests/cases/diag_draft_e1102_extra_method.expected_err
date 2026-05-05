@@ -1,0 +1,1 @@
+diag_draft_e1102_extra_method.yux:14:5 [E1102] error: Method 'extra' in 'Type diag_draft_e1102_extra_method.Counter : D' impl block is not part of D's signature set
