@@ -222,6 +222,8 @@ class Compiler {
 
     // ==================== 表达式编译 (具体类型) ====================
     llvm::Value* compileLiteralExpr(p<ExprLiteralNode> node);                   // 编译字面量表达式
+    llvm::Value* emitStringLiteralValue(const vector<u32>& codePoints);         // 由码点向量发射 .rodata 哨兵 String 值（StringLiteral / StringTemplate 共用）
+    llvm::Value* compileStringTemplate(StringTemplateNode* node);               // v0.6 Phase 2a：StringTemplateNode → StringBuilder lower
     llvm::Value* compileAddSubExpr(p<ExprAddSubNode> node);                     // 编译加减表达式
     llvm::Value* compileMulDivModExpr(p<ExprMulDivModNode> node);               // 编译乘除取模表达式
     llvm::Value* compileBinOpExpr(p<ExprBinOpNode> node);                       // 编译位运算表达式

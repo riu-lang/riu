@@ -107,3 +107,49 @@ fn test_string_dollar_escape_only() {
   assert_eq(s.len(), 1i64)
   assert_eq(s.at(0i64), 36u32)
 }
+
+; v0.6 Phase 2a：字符串模板 codegen → StringBuilder 链
+; 插值位置 Phase 2a 仅接受 String；非 String 走 .to_string() 待 Phase 2b 自动分发
+
+#Test
+fn test_string_template_dollar_id() {
+  val name String = "yux"
+  val s String = "hello, $name!"
+  assert_eq(s.len(), 11i64)
+  assert_eq(s, "hello, yux!")
+}
+
+#Test
+fn test_string_template_brace_interp() {
+  val a String = "x"
+  val b String = "y"
+  val s String = "${a}=${b}"
+  assert_eq(s, "x=y")
+}
+
+#Test
+fn test_string_template_mixed_text() {
+  val v String = "world"
+  val s String = "hi ${v}, bye"
+  assert_eq(s, "hi world, bye")
+}
+
+#Test
+fn test_string_template_empty_part() {
+  val a String = "ab"
+  val b String = "cd"
+  ; 相邻插值之间没有文本：parts 中含空段，应被跳过
+  val s String = "${a}${b}"
+  assert_eq(s, "abcd")
+}
+
+#Test
+fn test_string_template_utf8_part() {
+  val v String = "中"
+  val s String = "前${v}后"
+  ; 三个码点
+  assert_eq(s.len(), 3i64)
+  assert_eq(s.at(0i64), 21069u32)
+  assert_eq(s.at(1i64), 20013u32)
+  assert_eq(s.at(2i64), 21518u32)
+}

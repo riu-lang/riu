@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-05-05 —— v0.6 Phase 2a 字符串模板 codegen（`StringBuilder` lower）
+
+- **修改**：§4.3.1.7 增 lowering 伪代码与类型规则 —— 含插值的 `StringTemplateNode` lower 为 `sb := StringBuilder() / sb.append(...) / sb.build()`。
+- **新增**：[E3026]`String template interpolation requires String type, got '{}'` —— Phase 2a 期间插值位置只接受 `String`；非 String 显式提示调 `.to_string()`，附录 D §D.3.3 类型不匹配段范围由 E3001..E3025 扩到 E3001..E3026。
+- **冲突 / 兼容**：纯增量。Phase 2b 引入 `ToString` 自动分发后，约束放宽至"实现 `ToString`"；该错误码语义随之改写为"未实现 `ToString`"。
+
 ## 2026-05-05 —— v0.5 内置 `to_string` 迁入 `Type : ToString` 显式实现
 
 - **修改**：§12.7.1.2 措辞调整 —— 内置类型 `to_string` 以 `Type : ToString { ... }` 形态在 `base.yux` 显式实现；方法体可 `#CompilerInner` 或 yux 实现，二者并存；当前 i64/u64/f64/bool/String 走 yux 实现，窄类型委派。

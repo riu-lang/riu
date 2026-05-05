@@ -305,69 +305,168 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
         return llvm::ConstantPointerNull::get(llvm::PointerType::get(_context, 0));
     } else if (auto stringLiteral = dynamic_cast<LiteralStringNode*>(literal)) {
         DEBUG_LOG_VAL("    Expr: StringLiteral", text);
-        auto codePoints = stringLiteral->codePoints();
-        size_t len = codePoints.size();
-
-        // Phase 1c.1：字面量走 .rodata 哨兵 Block，零启动开销。
-        // Block 字节布局匹配 Array<T>（compiler_runtime.cpp）：
-        //   { i32 strong=0xFFFFFFFF, i32 weak=0, i64 len, i64 cap, ptr data }
-        // strong = 0xFFFFFFFF 让 _array_retain / _array_release 直接跳过；
-        // String layout 仍是 { data: Array<u32> } = { { ptr handle } }，handle = &block。
-        auto stringType = getLLVMType(TypeInfo("String"));
-        auto alloca = _builder.CreateAlloca(stringType, nullptr, "str_tmp");
-
-        auto i32Ty = _builder.getInt32Ty();
-        auto i64Ty = _builder.getInt64Ty();
-        auto ptrTy = llvm::PointerType::get(_context, 0);
-        auto sentinel = llvm::ConstantInt::get(i32Ty, 0xFFFFFFFFu);
-        auto i32Zero = llvm::ConstantInt::get(i32Ty, 0);
-
-        // 数据缓冲：len > 0 时铺常量 u32 数组，否则用 null 指针（Block.data）。
-        llvm::Constant* dataConst = llvm::ConstantPointerNull::get(ptrTy);
-        if (len > 0) {
-            auto arrType = llvm::ArrayType::get(i32Ty, len);
-            vector<llvm::Constant*> elements;
-            elements.reserve(len);
-            for (size_t i = 0; i < len; ++i) {
-                elements.push_back(llvm::ConstantInt::get(i32Ty, codePoints[i]));
-            }
-            auto arrInit = llvm::ConstantArray::get(arrType, elements);
-
-            static int strDataCounter = 0;
-            string dataName = ".str.data." + to_string(strDataCounter++);
-            dataConst = new llvm::GlobalVariable(
-                *_module, arrType, /*isConstant=*/true,
-                llvm::GlobalValue::PrivateLinkage, arrInit, dataName);
-        }
-
-        // .rodata Block：32 字节精确匹配 Array Block layout。
-        auto blockTy = llvm::StructType::get(_context, {i32Ty, i32Ty, i64Ty, i64Ty, ptrTy});
-        auto lenC = llvm::ConstantInt::get(i64Ty, len);
-        auto blockInit = llvm::ConstantStruct::get(
-            blockTy, {sentinel, i32Zero, lenC, lenC, dataConst});
-
-        // 空字面量共享同一全局，省 .rodata 体积。
-        llvm::GlobalVariable* blockGlobal = nullptr;
-        if (len == 0) {
-            const char* sharedName = ".str.empty.block";
-            blockGlobal = _module->getNamedGlobal(sharedName);
-            if (!blockGlobal) {
-                blockGlobal = new llvm::GlobalVariable(
-                    *_module, blockTy, /*isConstant=*/true,
-                    llvm::GlobalValue::PrivateLinkage, blockInit, sharedName);
-            }
-        } else {
-            static int strBlockCounter = 0;
-            string blockName = ".str.block." + to_string(strBlockCounter++);
-            blockGlobal = new llvm::GlobalVariable(
-                *_module, blockTy, /*isConstant=*/true,
-                llvm::GlobalValue::PrivateLinkage, blockInit, blockName);
-        }
-
-        storeArrayHandle(alloca, blockGlobal);
-        return _builder.CreateLoad(stringType, alloca, "str_val");
+        return emitStringLiteralValue(stringLiteral->codePoints());
+    } else if (auto tplLiteral = dynamic_cast<StringTemplateNode*>(literal)) {
+        return compileStringTemplate(tplLiteral);
     }
     throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3080);
+}
+
+// 由码点向量发射 .rodata 哨兵 String 值
+//
+// Phase 1c.1：字面量走 .rodata 哨兵 Block，零启动开销。
+// Block 字节布局匹配 Array<T>（compiler_runtime.cpp）：
+//   { i32 strong=0xFFFFFFFF, i32 weak=0, i64 len, i64 cap, ptr data }
+// strong = 0xFFFFFFFF 让 _array_retain / _array_release 直接跳过；
+// String layout 仍是 { data: Array<u32> } = { { ptr handle } }，handle = &block。
+//
+// LiteralStringNode 与 StringTemplateNode（template parts）共用此发射路径。
+llvm::Value* Compiler::emitStringLiteralValue(const vector<u32>& codePoints) {
+    size_t len = codePoints.size();
+
+    auto stringType = getLLVMType(TypeInfo("String"));
+    auto alloca = _builder.CreateAlloca(stringType, nullptr, "str_tmp");
+
+    auto i32Ty = _builder.getInt32Ty();
+    auto i64Ty = _builder.getInt64Ty();
+    auto ptrTy = llvm::PointerType::get(_context, 0);
+    auto sentinel = llvm::ConstantInt::get(i32Ty, 0xFFFFFFFFu);
+    auto i32Zero = llvm::ConstantInt::get(i32Ty, 0);
+
+    // 数据缓冲：len > 0 时铺常量 u32 数组，否则用 null 指针（Block.data）。
+    llvm::Constant* dataConst = llvm::ConstantPointerNull::get(ptrTy);
+    if (len > 0) {
+        auto arrType = llvm::ArrayType::get(i32Ty, len);
+        vector<llvm::Constant*> elements;
+        elements.reserve(len);
+        for (size_t i = 0; i < len; ++i) {
+            elements.push_back(llvm::ConstantInt::get(i32Ty, codePoints[i]));
+        }
+        auto arrInit = llvm::ConstantArray::get(arrType, elements);
+
+        static int strDataCounter = 0;
+        string dataName = ".str.data." + to_string(strDataCounter++);
+        dataConst = new llvm::GlobalVariable(
+            *_module, arrType, /*isConstant=*/true,
+            llvm::GlobalValue::PrivateLinkage, arrInit, dataName);
+    }
+
+    // .rodata Block：32 字节精确匹配 Array Block layout。
+    auto blockTy = llvm::StructType::get(_context, {i32Ty, i32Ty, i64Ty, i64Ty, ptrTy});
+    auto lenC = llvm::ConstantInt::get(i64Ty, len);
+    auto blockInit = llvm::ConstantStruct::get(
+        blockTy, {sentinel, i32Zero, lenC, lenC, dataConst});
+
+    // 空字面量共享同一全局，省 .rodata 体积。
+    llvm::GlobalVariable* blockGlobal = nullptr;
+    if (len == 0) {
+        const char* sharedName = ".str.empty.block";
+        blockGlobal = _module->getNamedGlobal(sharedName);
+        if (!blockGlobal) {
+            blockGlobal = new llvm::GlobalVariable(
+                *_module, blockTy, /*isConstant=*/true,
+                llvm::GlobalValue::PrivateLinkage, blockInit, sharedName);
+        }
+    } else {
+        static int strBlockCounter = 0;
+        string blockName = ".str.block." + to_string(strBlockCounter++);
+        blockGlobal = new llvm::GlobalVariable(
+            *_module, blockTy, /*isConstant=*/true,
+            llvm::GlobalValue::PrivateLinkage, blockInit, blockName);
+    }
+
+    storeArrayHandle(alloca, blockGlobal);
+    return _builder.CreateLoad(stringType, alloca, "str_val");
+}
+
+// 编译字符串模板（v0.6 Phase 2a）
+// 把 StringTemplateNode lower 为：
+//   sb StringBuilder = StringBuilder()
+//   for each non-empty part: sb.append(part_literal)
+//   for each interp:         sb.append(interp_value)   ; 仅 String 类型，否则报 E3026
+//   result = sb.build()
+//   ~sb                     ; 释放 build() 后留下的空 Array<u32>
+//
+// Phase 2b 落地 ToString 自动分发后，非 String 插值会改走 .to_string() 桥接。
+llvm::Value* Compiler::compileStringTemplate(StringTemplateNode* node) {
+    DEBUG_LOG("    Expr: StringTemplate -> StringBuilder lowering");
+    const auto& parts = node->parts();
+    const auto& interps = node->interps();
+
+    // Phase 2a 类型限制：插值位置必须是 String
+    for (size_t i = 0; i < interps.size(); ++i) {
+        auto t = interps[i]->getType();
+        if (t.name != "String") {
+            throw YuxError(
+                interps[i]->getLineNumber(), interps[i]->getColumn(),
+                ErrorCode::E3026, t.name);
+        }
+    }
+
+    // UTF-8 → u32 码点解码（parts 在 ast_builder 已展开转义，仅含原始 UTF-8 字节）
+    auto decodeUtf8 = [](const string& s) -> vector<u32> {
+        vector<u32> out;
+        for (size_t i = 0; i < s.size(); ) {
+            u8 c = static_cast<u8>(s[i]);
+            u32 cp = 0;
+            if (c < 0x80) {
+                cp = c; i += 1;
+            } else if ((c & 0xE0) == 0xC0 && i + 1 < s.size()) {
+                cp = ((c & 0x1F) << 6) | (static_cast<u8>(s[i + 1]) & 0x3F);
+                i += 2;
+            } else if ((c & 0xF0) == 0xE0 && i + 2 < s.size()) {
+                cp = ((c & 0x0F) << 12) | ((static_cast<u8>(s[i + 1]) & 0x3F) << 6)
+                   | (static_cast<u8>(s[i + 2]) & 0x3F);
+                i += 3;
+            } else if ((c & 0xF8) == 0xF0 && i + 3 < s.size()) {
+                cp = ((c & 0x07) << 18) | ((static_cast<u8>(s[i + 1]) & 0x3F) << 12)
+                   | ((static_cast<u8>(s[i + 2]) & 0x3F) << 6) | (static_cast<u8>(s[i + 3]) & 0x3F);
+                i += 4;
+            } else {
+                cp = c; i += 1;
+            }
+            out.push_back(cp);
+        }
+        return out;
+    };
+
+    // 1. alloca StringBuilder + 调构造
+    auto sbType = getLLVMType(TypeInfo("StringBuilder"));
+    auto sbPtr = _builder.CreateAlloca(sbType, nullptr, "tpl_sb");
+    {
+        vector<TypeInfo> noArgs;
+        auto ctorFn = getMethodFunction("StringBuilder", "StringBuilder", noArgs, TypeInfo());
+        _builder.CreateCall(ctorFn, {sbPtr});
+    }
+
+    // 2. emit sb.append(String) 帮手：普通 struct String 走 by-value 调用约定
+    auto emitAppendString = [&](llvm::Value* strVal) {
+        vector<TypeInfo> appendParams = {TypeInfo("String")};
+        auto appendFn = getMethodFunction("StringBuilder", "append", appendParams, TypeInfo());
+        _builder.CreateCall(appendFn, {sbPtr, strVal});
+    };
+
+    // 3. 交错追加 parts[i]、interps[i]
+    for (size_t i = 0; i < parts.size(); ++i) {
+        if (!parts[i].empty()) {
+            auto cps = decodeUtf8(parts[i]);
+            emitAppendString(emitStringLiteralValue(cps));
+        }
+        if (i < interps.size()) {
+            auto v = compileExpr(interps[i]);
+            emitAppendString(v);
+        }
+    }
+
+    // 4. sb.build() → String
+    vector<TypeInfo> noArgs;
+    auto buildFn = getMethodFunction("StringBuilder", "build", noArgs, TypeInfo("String"));
+    auto result = _builder.CreateCall(buildFn, {sbPtr}, "tpl_built");
+
+    // 5. SB 析构：释放 build() 后留下的空 Array<u32>（沿用作用域析构口径）
+    releaseAtPtr(sbPtr, TypeInfo("StringBuilder"));
+
+    return result;
 }
 
 // ==================== 自定义类型运算符方法调用 ====================

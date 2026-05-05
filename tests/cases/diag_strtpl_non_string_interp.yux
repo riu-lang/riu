@@ -1,0 +1,6 @@
+; v0.6 Phase 2a：插值位置仅接受 String，否则报 E3026
+; Phase 2b 自动 ToString 分发后此用例的 i32 路径将被允许
+fn main() {
+  val x i32 = 1
+  val s String = "x=${x}"
+}

@@ -93,7 +93,7 @@ N | <源码行原文>
 
 ### D.3.3 E3xxx — 类型
 
-类型不匹配（E3001..E3025）：
+类型不匹配（E3001..E3026）：
 
 | 码     | 模板 |
 |--------|------|
@@ -122,6 +122,7 @@ N | <源码行原文>
 | E3023 | `` `??` right side type {} doesn't match Nullable inner type {} `` |
 | E3024 | `` Left side of `??` must be Nullable<T>, got {} `` |
 | E3025 | `` `?.` requires Nullable<T> on the left, got {} `` |
+| E3026 | `String template interpolation requires String type, got '{}' (call `.to_string()`; auto-dispatch lands in v0.6 Phase 2b)` |
 
 符号查找（E3030..E3033）：
 

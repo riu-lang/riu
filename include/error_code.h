@@ -141,6 +141,7 @@ DEF_ERR(3022, "Void function cannot return a value of type '{}'")
 DEF_ERR(3023, "`??` right side type {} doesn't match Nullable inner type {}")
 DEF_ERR(3024, "Left side of `??` must be Nullable<T>, got {}")
 DEF_ERR(3025, "`?.` requires Nullable<T> on the left, got {}")
+DEF_ERR(3026, "String template interpolation requires String type, got '{}' (call `.to_string()`; auto-dispatch lands in v0.6 Phase 2b)")
 
 // ── E3xxx 类型 — 符号查找 ─────────────────────────────────────────────
 DEF_ERR(3030, "Undefined variable: {}")
