@@ -72,6 +72,88 @@ static bool overloadMatchesDefault(const vector<p<ExprNode>>& args, const vector
     return true;
 }
 
+// ==================== 构造函数重载解析 ====================
+// 与 resolveFnOverload 同思路，但 ctor 在符号表中以 `S.S` 注册，且 params[0] 是
+// 接收者（结构体类型本身）。匹配时跳过 params[0]，按用户写的实参列表推断未带后缀
+// 的整数字面量类型，避免后续在 LLVM 后端因 i32→i64 形参不匹配而走到外部函数路径
+// 触发 `isSized` 断言（见 BUGS.md「构造函数 i64 形参传 untyped int 字面量」）。
+static void resolveCtorOverload(FileNode* file, const string& structName,
+                                const vector<p<ExprNode>>& args, int line) {
+    string ctorFullName = structName + "." + structName;
+    vector<FnSymbolInfo*> candidates;
+    file->collectFnOverloads(ctorFullName, candidates);
+    if (candidates.empty()) return;
+
+    auto matchesDefault = [&](FnSymbolInfo* c) {
+        if (c->params.size() != args.size() + 1) return false;
+        TypeInfo i32Type("i32");
+        for (size_t i = 0; i < args.size(); ++i) {
+            TypeInfo argType;
+            if (isFlexibleIntExpr(args[i])) {
+                argType = i32Type;
+            } else {
+                try { argType = args[i]->getType(); } catch (...) { return false; }
+            }
+            if (!paramAccepts(c->params[i + 1], argType)) return false;
+        }
+        return true;
+    };
+    auto matchesFlexible = [&](FnSymbolInfo* c) {
+        if (c->params.size() != args.size() + 1) return false;
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (isFlexibleIntExpr(args[i])) {
+                if (isIntTypeName(c->params[i + 1].name)) continue;
+                try {
+                    if (paramAccepts(c->params[i + 1], args[i]->getType())) continue;
+                } catch (...) {}
+                return false;
+            }
+            try {
+                if (!paramAccepts(c->params[i + 1], args[i]->getType())) return false;
+            } catch (...) { return false; }
+        }
+        return true;
+    };
+
+    vector<FnSymbolInfo*> defaultMatches;
+    for (auto c : candidates) if (matchesDefault(c)) defaultMatches.push_back(c);
+
+    vector<FnSymbolInfo*> matches;
+    if (defaultMatches.size() == 1) {
+        matches = defaultMatches;
+    } else if (defaultMatches.empty()) {
+        for (auto c : candidates) if (matchesFlexible(c)) matches.push_back(c);
+    } else {
+        matches = defaultMatches;
+    }
+
+    if (matches.size() == 1) {
+        // 唯一匹配：把每个灵活整数实参推断到对应 ctor 形参类型
+        auto fn = matches[0];
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (isFlexibleIntExpr(args[i]) && isIntTypeName(fn->params[i + 1].name)) {
+                tryInferIntType(args[i], fn->params[i + 1]);
+            }
+        }
+    } else if (matches.size() > 1) {
+        string sigs;
+        for (auto m : matches) {
+            sigs += "\n  " + structName + "(";
+            for (size_t i = 1; i < m->params.size(); ++i) {
+                if (i > 1) sigs += ", ";
+                sigs += m->params[i].name;
+            }
+            sigs += ")";
+        }
+        string argSigs;
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (i) argSigs += ", ";
+            try { argSigs += args[i]->getType().name; } catch(...) { argSigs += "?"; }
+        }
+        throw YuxError(line, ErrorCode::E6014, structName, argSigs, matches.size(), sigs);
+    }
+}
+
 // ==================== 函数重载解析 ====================
 // 解析函数重载，确定应该调用哪个版本
 // 如果有歧义，抛出错误要求用户添加类型后缀
@@ -533,6 +615,14 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                                 }
                             }
                         }
+                    }
+                } else if (structDecl) {
+                    // 非泛型结构体构造函数：按 `S.S` 解析重载，推断未带后缀的整数字面量
+                    // 否则会带着 i32 实参落到下方 lookupFnSymbolWithParams 的严格匹配
+                    // 失败，再退化到 external function call 路径触发 LLVM 断言。
+                    resolveCtorOverload(_file, fnName, node->getArgs(), node->getLineNumber());
+                    if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
+                        resolveCtorOverload(_yux->sdkFile(), fnName, node->getArgs(), node->getLineNumber());
                     }
                 } else {
                     // 解析函数重载

@@ -1,0 +1,19 @@
+use yux.core.*
+
+; 回归：ctor 形参 i64 + 未带后缀的整数字面量
+; 之前会触发 LLVM `isSized` 断言；现在应推断字面量为 i64 并正常构造。
+
+struct S {
+    n i64
+}
+
+S {
+    fn S(n i64) {
+        $.n = n
+    }
+}
+
+fn main() {
+    val p = S(1)
+    println(p.n.to_string())
+}
