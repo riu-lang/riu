@@ -379,24 +379,37 @@ llvm::Value* Compiler::emitStringLiteralValue(const vector<u32>& codePoints) {
     return _builder.CreateLoad(stringType, alloca, "str_val");
 }
 
-// 编译字符串模板（v0.6 Phase 2a）
+// 编译字符串模板（v0.6 Phase 2a / 2b）
 // 把 StringTemplateNode lower 为：
 //   sb StringBuilder = StringBuilder()
 //   for each non-empty part: sb.append(part_literal)
-//   for each interp:         sb.append(interp_value)   ; 仅 String 类型，否则报 E3026
+//   for each interp:         sb.append(interp_value)
 //   result = sb.build()
 //   ~sb                     ; 释放 build() 后留下的空 Array<u32>
 //
-// Phase 2b 落地 ToString 自动分发后，非 String 插值会改走 .to_string() 桥接。
+// Phase 2b：插值非 String 时合成 `interp.to_string()` 走现有方法分发，
+// 类型未实现 ToString 时报 E3026。合成节点用临时 unique_ptr 持有，
+// compileExpr 返回后立即释放。
 llvm::Value* Compiler::compileStringTemplate(StringTemplateNode* node) {
     DEBUG_LOG("    Expr: StringTemplate -> StringBuilder lowering");
     const auto& parts = node->parts();
     const auto& interps = node->interps();
 
-    // Phase 2a 类型限制：插值位置必须是 String
+    // Phase 2b 类型校验：插值类型必须是 String 或在 SDK / 当前文件中可解析到
+    // `<Type>.to_string()` —— 等价于实现了 ToString。
+    auto canToString = [&](const TypeInfo& t) -> bool {
+        if (t.name == "String") return true;
+        string fullName = t.name + ".to_string";
+        if (_yux && _yux->sdkFile()
+            && _yux->sdkFile()->lookupFnSymbol(fullName)) {
+            return true;
+        }
+        if (_file && _file->lookupFnSymbol(fullName)) return true;
+        return false;
+    };
     for (size_t i = 0; i < interps.size(); ++i) {
         auto t = interps[i]->getType();
-        if (t.name != "String") {
+        if (!canToString(t)) {
             throw YuxError(
                 interps[i]->getLineNumber(), interps[i]->getColumn(),
                 ErrorCode::E3026, t.name);
@@ -447,14 +460,29 @@ llvm::Value* Compiler::compileStringTemplate(StringTemplateNode* node) {
     };
 
     // 3. 交错追加 parts[i]、interps[i]
+    //    Phase 2b：interp 非 String 时合成 `interp.to_string()` 节点，复用方法分发。
+    //    合成节点的 _parent 取自 interp（其 parent 是 ScopeNode），保证 findNearestScope 可走到。
+    vector<std::unique_ptr<Node>> synthHolder;
     for (size_t i = 0; i < parts.size(); ++i) {
         if (!parts[i].empty()) {
             auto cps = decodeUtf8(parts[i]);
             emitAppendString(emitStringLiteralValue(cps));
         }
         if (i < interps.size()) {
-            auto v = compileExpr(interps[i]);
-            emitAppendString(v);
+            auto interpExpr = interps[i];
+            llvm::Value* strVal;
+            if (interpExpr->getType().name == "String") {
+                strVal = compileExpr(interpExpr);
+            } else {
+                Token memberTok("to_string", static_cast<size_t>(interpExpr->getLineNumber()));
+                p<Node> synthParent = interpExpr->parent();
+                auto dotNode = new ExprDotNode(synthParent, interpExpr, memberTok);
+                synthHolder.emplace_back(dotNode);
+                auto callNode = new ExprCallNode(synthParent, dotNode);
+                synthHolder.emplace_back(callNode);
+                strVal = compileExpr(callNode);
+            }
+            emitAppendString(strVal);
         }
     }
 

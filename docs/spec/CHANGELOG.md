@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-05-05 —— v0.6 Phase 2b 字符串模板 `ToString` 自动分发
+
+- **修改**：§4.3.1.7 类型规则放宽 —— 插值位置允许任何实现 `ToString` 的类型；非 String 由编译器在插值位置合成 `expr.to_string()` 调用，复用 v0.5 单态化方法分发。
+- **修改**：[E3026] 措辞改为"未实现 `ToString`"，从"插值位置只接受 String"放宽为"插值类型未实现 `ToString`"；命中场景仍为类型不匹配段。
+- **冲突 / 兼容**：纯放宽。Phase 2a 报 E3026 的非 String 内置类型插值（`i32` / `bool` / `f64` 等）现在合法；显式 `Type : ToString { ... }` 用户类型同样可插值。诊断用例 `diag_strtpl_non_string_interp` 改为不实现 `ToString` 的类型（`Array<i32>`）兜底。
+
 ## 2026-05-05 —— v0.6 Phase 2a 字符串模板 codegen（`StringBuilder` lower）
 
 - **修改**：§4.3.1.7 增 lowering 伪代码与类型规则 —— 含插值的 `StringTemplateNode` lower 为 `sb := StringBuilder() / sb.append(...) / sb.build()`。

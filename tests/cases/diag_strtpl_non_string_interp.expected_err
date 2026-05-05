@@ -1,1 +1,1 @@
-[E3026] error: String template interpolation requires String type, got 'i32'
+[E3026] error: String template interpolation requires type implementing ToString, got 'Array'

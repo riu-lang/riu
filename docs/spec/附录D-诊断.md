@@ -122,7 +122,7 @@ N | <源码行原文>
 | E3023 | `` `??` right side type {} doesn't match Nullable inner type {} `` |
 | E3024 | `` Left side of `??` must be Nullable<T>, got {} `` |
 | E3025 | `` `?.` requires Nullable<T> on the left, got {} `` |
-| E3026 | `String template interpolation requires String type, got '{}' (call `.to_string()`; auto-dispatch lands in v0.6 Phase 2b)` |
+| E3026 | `` String template interpolation requires type implementing ToString, got '{}' (impl `Type : ToString { fn to_string() String { ... } }`) `` |
 
 符号查找（E3030..E3033）：
 

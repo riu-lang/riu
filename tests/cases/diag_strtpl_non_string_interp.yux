@@ -1,6 +1,5 @@
-; v0.6 Phase 2a：插值位置仅接受 String，否则报 E3026
-; Phase 2b 自动 ToString 分发后此用例的 i32 路径将被允许
+; v0.6 Phase 2b：插值类型必须实现 ToString，否则报 E3026
 fn main() {
-  val x i32 = 1
-  val s String = "x=${x}"
+  val arr Array<i32> = [1i32, 2i32, 3i32]
+  val s String = "arr=${arr}"
 }
