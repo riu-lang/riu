@@ -425,6 +425,12 @@ const p<ExprNode>& ExprAddSubNode::right() const {
 TypeInfo ExprAddSubNode::getType() const {
     auto leftType = _left->getType();
     auto rightType = _right->getType();
+    // v0.6 Phase 2c：`+` 任一操作数为 String 时整链结果即 String，
+    // codegen 期 lower 为 StringBuilder 累加（详见 spec §4.4.1.4 / §4.3.1.7）。
+    // 仅 Add 适用；Sub 仍按原算术规则。
+    if (_op == Op::Add && (leftType.name == "String" || rightType.name == "String")) {
+        return TypeInfo("String");
+    }
     if (leftType != rightType) {
         if (isFlexibleIntExpr(_right) && tryInferIntType(_right, leftType)) {
             return leftType;

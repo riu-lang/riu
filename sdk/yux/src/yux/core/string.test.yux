@@ -192,3 +192,67 @@ fn test_string_template_mixed_kind_interp() {
   val s String = "$name v${n}"
   assert_eq(s, "yux v7")
 }
+
+; v0.6 Phase 2c：String + 链 lower 为 StringBuilder
+
+#Test
+fn test_string_plus_two() {
+  val a String = "foo"
+  val b String = "bar"
+  val s String = a + b
+  assert_eq(s, "foobar")
+}
+
+#Test
+fn test_string_plus_chain() {
+  val a String = "a"
+  val b String = "b"
+  val c String = "c"
+  val d String = "d"
+  val s String = a + b + c + d
+  assert_eq(s, "abcd")
+}
+
+#Test
+fn test_string_plus_with_literal() {
+  val name String = "yux"
+  val s String = "hello, " + name + "!"
+  assert_eq(s, "hello, yux!")
+}
+
+#Test
+fn test_string_plus_to_string() {
+  val n i32 = 42i32
+  val s String = "n=" + n
+  assert_eq(s, "n=42")
+}
+
+#Test
+fn test_string_plus_left_non_string() {
+  val n i64 = 7i64
+  val s String = n + " items"
+  assert_eq(s, "7 items")
+}
+
+#Test
+fn test_string_plus_mixed_chain() {
+  val name String = "yux"
+  val v i32 = 6i32
+  val ok bool = true
+  val s String = name + " v" + v + " ok=" + ok
+  assert_eq(s, "yux v6 ok=true")
+}
+
+#Test
+fn test_string_plus_empty_left() {
+  val s String = "" + "tail"
+  assert_eq(s, "tail")
+}
+
+#Test
+fn test_string_plus_utf8() {
+  val a String = "你好"
+  val b String = "世界"
+  val s String = a + "，" + b
+  assert_eq(s, "你好，世界")
+}

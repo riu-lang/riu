@@ -497,6 +497,109 @@ llvm::Value* Compiler::compileStringTemplate(StringTemplateNode* node) {
     return result;
 }
 
+// v0.6 Phase 2c：连续 String `+` 链整链 lower。
+//
+// 把左结合 `+` 树扁平化为叶子序列（自顶 right 先压、再沿 left 下钻直到 left 不再是
+// 「结果为 String 的 Add」），然后用单条 StringBuilder 累加：
+//   sb StringBuilder = StringBuilder()
+//   for each leaf:
+//     if leaf : String  -> sb.append(leaf)
+//     else if leaf : ToString -> sb.append(leaf.to_string())
+//     else -> E3026
+//   result = sb.build()
+//   ~sb
+//
+// 设计要点：
+// - 仅扁平化 left spine。`a + (b + c)` 中 `(b + c)` 作为单个右叶子，由 compileExpr 递归
+//   处理（若结果仍是 String，会再次进入本函数，独立开一条 SB；可接受，常见写法是左结合）。
+// - 扁平化判据：内部节点必须是 ExprAddSubNode + Op::Add + getType().name == "String"。
+//   只要任一操作数是 String，ExprAddSubNode::getType() 会返回 String（spec §4.4.1.4）。
+llvm::Value* Compiler::compileStringPlusChain(ExprAddSubNode* node) {
+    DEBUG_LOG("    Expr: String + chain -> StringBuilder lowering");
+
+    // 1. 扁平化左脊：得到从左到右的叶子序列（shared_ptr，复用 AST 持有的所有权）
+    vector<p<ExprNode>> leaves;
+    {
+        ExprAddSubNode* cur = node;
+        while (true) {
+            leaves.push_back(cur->right());
+            auto leftExpr = cur->left();
+            auto* innerAdd = dynamic_cast<ExprAddSubNode*>(leftExpr);
+            bool isStringAdd = innerAdd != nullptr
+                && innerAdd->op() == ExprAddSubNode::Op::Add
+                && innerAdd->getType().name == "String";
+            if (isStringAdd) {
+                cur = innerAdd;
+                continue;
+            }
+            leaves.push_back(leftExpr);
+            break;
+        }
+        std::reverse(leaves.begin(), leaves.end());
+    }
+
+    // 2. 类型校验：每个叶子必须是 String 或实现 ToString
+    auto canToString = [&](const TypeInfo& t) -> bool {
+        if (t.name == "String") return true;
+        string fullName = t.name + ".to_string";
+        if (_yux && _yux->sdkFile()
+            && _yux->sdkFile()->lookupFnSymbol(fullName)) {
+            return true;
+        }
+        if (_file && _file->lookupFnSymbol(fullName)) return true;
+        return false;
+    };
+    for (const auto& leaf : leaves) {
+        auto t = leaf->getType();
+        if (!canToString(t)) {
+            throw YuxError(
+                leaf->getLineNumber(), leaf->getColumn(),
+                ErrorCode::E3026, t.name);
+        }
+    }
+
+    // 3. alloca StringBuilder + 调构造
+    auto sbType = getLLVMType(TypeInfo("StringBuilder"));
+    auto sbPtr = _builder.CreateAlloca(sbType, nullptr, "plus_sb");
+    {
+        vector<TypeInfo> noArgs;
+        auto ctorFn = getMethodFunction("StringBuilder", "StringBuilder", noArgs, TypeInfo());
+        _builder.CreateCall(ctorFn, {sbPtr});
+    }
+
+    // 4. emit sb.append(String) 帮手
+    vector<TypeInfo> appendParams = {TypeInfo("String")};
+    auto appendFn = getMethodFunction("StringBuilder", "append", appendParams, TypeInfo());
+
+    // 5. 逐叶 append；非 String 合成 `leaf.to_string()`（同 Phase 2b 模板）
+    vector<std::unique_ptr<Node>> synthHolder;
+    for (const auto& leaf : leaves) {
+        llvm::Value* strVal;
+        if (leaf->getType().name == "String") {
+            strVal = compileExpr(leaf);
+        } else {
+            Token memberTok("to_string", static_cast<size_t>(leaf->getLineNumber()));
+            p<Node> synthParent = leaf->parent();
+            auto dotNode = new ExprDotNode(synthParent, leaf, memberTok);
+            synthHolder.emplace_back(dotNode);
+            auto callNode = new ExprCallNode(synthParent, dotNode);
+            synthHolder.emplace_back(callNode);
+            strVal = compileExpr(callNode);
+        }
+        _builder.CreateCall(appendFn, {sbPtr, strVal});
+    }
+
+    // 6. sb.build() → String
+    vector<TypeInfo> noArgs;
+    auto buildFn = getMethodFunction("StringBuilder", "build", noArgs, TypeInfo("String"));
+    auto result = _builder.CreateCall(buildFn, {sbPtr}, "plus_built");
+
+    // 7. SB 析构（同模板路径）
+    releaseAtPtr(sbPtr, TypeInfo("StringBuilder"));
+
+    return result;
+}
+
 // ==================== 自定义类型运算符方法调用 ====================
 
 // 编译自定义类型的二元运算符方法调用
@@ -708,10 +811,16 @@ llvm::Value* Compiler::compileCustomTypeUnaryOp(
 llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
     auto type = node->getType();
     auto leftType = node->left()->getType();
-    
+
     string opStr = (node->op() == ExprAddSubNode::Op::Add) ? "+" : "-";
     DEBUG_LOG_VAL("    Expr: AddSub", opStr << " : " << type.name);
-    
+
+    // v0.6 Phase 2c：`+` 表达式整体类型为 String 时，
+    // 走 StringBuilder 整链 lower（多段连续 `+` 合并为单次 builder）。
+    if (node->op() == ExprAddSubNode::Op::Add && type.name == "String") {
+        return compileStringPlusChain(node);
+    }
+
     // 检查是否为自定义类型
     if (!isBuiltinType(leftType.name)) {
         string methodName = (node->op() == ExprAddSubNode::Op::Add) ? "plus" : "minus";
