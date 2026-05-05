@@ -58,8 +58,7 @@ int classify(size_t type) {
         case L::LineEndComment:
             return static_cast<int>(TT::Comment);
 
-        // T__0 是匿名字面量 'cval'；其余为命名关键字
-        case L::T__0:
+        case L::Cval:
         case L::Break: case L::DeclKey: case L::Draft: case L::Elif: case L::Else:
         case L::Extern: case L::False: case L::Fn: case L::If:
         case L::Loop: case L::Null: case L::Ret: case L::Struct:
@@ -84,7 +83,11 @@ int classify(size_t type) {
         case L::NUN_SIGN:
             return static_cast<int>(TT::Number);
 
-        case L::STR_LINE: case L::STR_LINE_RAW: case L::CODE_POINT:
+        // 字符串模板：开/闭引号、文本片段、$ident 一律按字符串高亮；
+        // ${ ... } 内嵌表达式段落由 popMode 后的常规 token 接管，不在此处处理。
+        case L::STR_TPL_OPEN: case L::STR_TPL_CLOSE: case L::STR_TPL_TEXT:
+        case L::STR_TPL_DOLLAR_ID: case L::STR_TPL_INTERP_OPEN:
+        case L::STR_LINE_RAW: case L::CODE_POINT:
             return static_cast<int>(TT::String);
 
         default:

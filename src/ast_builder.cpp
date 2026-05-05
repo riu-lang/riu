@@ -1445,16 +1445,122 @@ std::any ASTBuilder::visitLiteralObj(yux::yuxParser::LiteralObjContext* ctx) {
     return p<LiteralNode>(createWithLine<LiteralObjNode>(ctx, scope, ctx->name));
 }
 
-std::any ASTBuilder::visitLiteralStringLine(yux::yuxParser::LiteralStringLineContext* ctx) {
-    auto token = ctx->STR_LINE()->getSymbol();
-    DEBUG_LOG_VAL("      Literal: String", token->getText());
-    return p<LiteralNode>(createWithLine<LiteralStringNode>(ctx, token));
-}
-
 std::any ASTBuilder::visitLiteralStringLineRaw(yux::yuxParser::LiteralStringLineRawContext* ctx) {
     auto token = ctx->STR_LINE_RAW()->getSymbol();
     DEBUG_LOG_VAL("      Literal: StringRaw", token->getText());
     return p<LiteralNode>(createWithLine<LiteralStringNode>(ctx, token, true));
+}
+
+std::any ASTBuilder::visitLiteralStringTpl(yux::yuxParser::LiteralStringTplContext* ctx) {
+    return visit(ctx->stringTemplate());
+}
+
+namespace {
+
+// 把 code point 编码为 UTF-8 追加到 out
+void appendUtf8(string& out, u32 cp) {
+    if (cp < 0x80) {
+        out += static_cast<char>(cp);
+    } else if (cp < 0x800) {
+        out += static_cast<char>(0xC0 | (cp >> 6));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    } else if (cp < 0x10000) {
+        out += static_cast<char>(0xE0 | (cp >> 12));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    } else {
+        out += static_cast<char>(0xF0 | (cp >> 18));
+        out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    }
+}
+
+// 解码 STR_TPL_TEXT 片段中的转义序列：\n \r \t \0 \\ \" \$ \xNN \uNNNN
+// 其余 \x 形式按字面追加 x
+void decodeTplText(const string& raw, string& out) {
+    for (size_t i = 0; i < raw.size(); ) {
+        if (raw[i] == '\\' && i + 1 < raw.size()) {
+            char esc = raw[i + 1];
+            switch (esc) {
+                case 'n': out += '\n'; i += 2; break;
+                case 'r': out += '\r'; i += 2; break;
+                case 't': out += '\t'; i += 2; break;
+                case '0': out += '\0'; i += 2; break;
+                case '\\': out += '\\'; i += 2; break;
+                case '"': out += '"'; i += 2; break;
+                case '$': out += '$'; i += 2; break;
+                case 'x':
+                    if (i + 3 < raw.size()) {
+                        u8 v = static_cast<u8>(std::stoi(raw.substr(i + 2, 2), nullptr, 16));
+                        out += static_cast<char>(v);
+                        i += 4;
+                    } else { out += raw[i]; ++i; }
+                    break;
+                case 'u':
+                    if (i + 5 < raw.size()) {
+                        u32 cp = static_cast<u32>(std::stoi(raw.substr(i + 2, 4), nullptr, 16));
+                        appendUtf8(out, cp);
+                        i += 6;
+                    } else { out += raw[i]; ++i; }
+                    break;
+                default:
+                    out += raw[i + 1];
+                    i += 2;
+                    break;
+            }
+        } else {
+            out += raw[i++];
+        }
+    }
+}
+
+} // namespace
+
+std::any ASTBuilder::visitStringTemplate(yux::yuxParser::StringTemplateContext* ctx) {
+    DEBUG_LOG("      Literal: StringTemplate");
+    auto openTok = ctx->STR_TPL_OPEN()->getSymbol();
+    auto scope = currentScope();
+
+    vector<string> parts;
+    vector<p<ExprNode>> interps;
+    string current;
+
+    auto flushText = [&]() {
+        parts.push_back(std::move(current));
+        current.clear();
+    };
+
+    for (auto* part : ctx->templatePart()) {
+        if (auto* t = dynamic_cast<yux::yuxParser::TplTextContext*>(part)) {
+            decodeTplText(t->STR_TPL_TEXT()->getText(), current);
+        } else if (auto* d = dynamic_cast<yux::yuxParser::TplDollarIdContext*>(part)) {
+            flushText();
+            auto* tok = d->STR_TPL_DOLLAR_ID()->getSymbol();
+            // 文本形如 "$ident"，截掉首字符 '$'
+            string text = tok->getText();
+            if (!text.empty() && text[0] == '$') text = text.substr(1);
+            Token synTok(text, tok->getLine());
+            auto obj = createWithLine<LiteralObjNode>(part, scope, synTok);
+            auto expr = createWithLine<ExprLiteralNode>(part, scope, p<LiteralNode>(obj));
+            interps.push_back(p<ExprNode>(expr));
+        } else if (auto* in = dynamic_cast<yux::yuxParser::TplInterpContext*>(part)) {
+            flushText();
+            auto e = any_cast_p<ExprNode>(visit(in->expr()));
+            interps.push_back(e);
+        }
+    }
+    flushText();
+
+    // 无插值：降级为 LiteralStringNode（用合成 Token 走 raw 路径，跳过二次转义解析）
+    if (interps.empty()) {
+        const string& body = parts.empty() ? string() : parts[0];
+        Token synTok("\"" + body + "\"", openTok->getLine());
+        return p<LiteralNode>(createWithLine<LiteralStringNode>(ctx, synTok, true));
+    }
+
+    return p<LiteralNode>(createWithLine<StringTemplateNode>(
+        ctx, Token(openTok), std::move(parts), std::move(interps)));
 }
 
 std::any ASTBuilder::visitLiteralCodePoint(yux::yuxParser::LiteralCodePointContext* ctx) {

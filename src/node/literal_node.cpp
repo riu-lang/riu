@@ -203,3 +203,13 @@ LiteralStringNode::LiteralStringNode(Token value, bool raw) : LiteralNode(std::m
 TypeInfo LiteralStringNode::getType() const {
     return TypeInfo("String");
 }
+
+StringTemplateNode::StringTemplateNode(Token openTok, vector<string> parts, vector<p<ExprNode>> interps)
+    : LiteralNode(std::move(openTok)),
+      _parts(std::move(parts)),
+      _interps(std::move(interps)) {
+}
+
+TypeInfo StringTemplateNode::getType() const {
+    return TypeInfo("String");
+}

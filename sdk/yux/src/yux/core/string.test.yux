@@ -90,3 +90,20 @@ fn test_string_raw_path() {
   assert_eq(s.len(), 7i64)
   assert_eq(s.at(2i64), 92u32)
 }
+
+; v0.6 Phase 1b：字符串模板转义 `\$`，无插值时降级回 LiteralStringNode
+
+#Test
+fn test_string_dollar_escape_codepoint() {
+  val s String = "price=\$5"
+  ; 长度 8，第 6 位是字面 '$' (0x24)
+  assert_eq(s.len(), 8i64)
+  assert_eq(s.at(6i64), 36u32)
+}
+
+#Test
+fn test_string_dollar_escape_only() {
+  val s String = "\$"
+  assert_eq(s.len(), 1i64)
+  assert_eq(s.at(0i64), 36u32)
+}

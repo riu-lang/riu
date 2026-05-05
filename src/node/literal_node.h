@@ -8,6 +8,8 @@
 
 #include <utility>
 
+class ExprNode;
+
 class LiteralNode : public Node, public Typed {
 protected:
     Token _value;
@@ -81,6 +83,22 @@ public:
     explicit LiteralStringNode(Token value, bool raw = false);
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] const vector<u32>& codePoints() const { return _codePoints; }
+};
+
+// 字符串模板（Kotlin 风 "$x" / "${expr}"）。
+// 不变量：parts.size() == interps.size() + 1；交替序列为
+// parts[0], interps[0], parts[1], interps[1], ..., parts[N]。
+// parts 中存储的是已解码的 UTF-8 文本片段（单个或多个 \\... 转义已展开）。
+// 空模板 / 无插值在 ast_builder 处直接降级为 LiteralStringNode，故 interps 至少 1 个。
+// TODO: codegen 在 Phase 2 lower 为 StringBuilder 链式 append。
+class StringTemplateNode : public LiteralNode {
+    vector<string> _parts;
+    vector<p<ExprNode>> _interps;
+public:
+    StringTemplateNode(Token openTok, vector<string> parts, vector<p<ExprNode>> interps);
+    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] const vector<string>& parts() const { return _parts; }
+    [[nodiscard]] const vector<p<ExprNode>>& interps() const { return _interps; }
 };
 
 #endif //YUX_LANG_LITERAL_NODE_H
