@@ -114,20 +114,21 @@
 - `String` 方法补全（`to_upper` / `split` / `contains` 等）
 - 基础 IO 改进（行读取、文件 API 雏形）
 - `format` 类格式化（候选 `?` / `{}`，从 v0.6 下放，配合 SDK 一并做）
+- `for in` 迭代（`Iter<T>` draft + Array / 定长数组特例 lowering，v0.6 跳过下放）
 
 **退出标准**：上述模块每条方法配测试与 spec §9 条款。
 
-### v0.6 — 语法/语用可用性
+### v0.6 — 语法/语用可用性 ✅ 已完成（2026-05-05）
 
 **主题**：让"日常代码"少一些不便。
 
-**范围**：
+**范围（达成情况）**：
 
-- 字符串模板（Kotlin 风：`"$ident"` / `"${expr}"`，无前缀）；被插值表达式须满足 v0.5 的 `ToString` draft
-- `for in` 迭代（`Iter<T>` draft + Array / 定长数组特例 lowering）
-- 字符串 `+` 与模板共享 StringBuilder lowering
+- ✅ 字符串模板（Kotlin 风：`"$ident"` / `"${expr}"`，无前缀）；被插值表达式须实现 v0.5 的 `ToString` draft，由编译器在插值位置自动合成 `to_string()` 调用
+- ✅ 字符串 `+` 与模板共享 `StringBuilder` lowering（任一操作数为 `String` 即整条 `+` 链合并为单条 SB 累加）
+- ⏭ `for in` 迭代下放至 v0.7（语法骨架 `statementForIn` 已在 `yuxParser.g4` 落地，但 AST / codegen / `Iter<T>` draft / 借用集成尚未实现）
 
-**退出标准**：以上语法在 spec §4–§5 落规范文字、`docs/*` 教程同步、含示例与测试。
+**退出标准**：✅ 字符串模板与 `+` 链路在 spec §4.3.1.7 / §4.4.1.4 / §9.3.4.1 落规范；`docs/内置类型.md` 教程同步；`xmake test` 40/40 与 `cd sdk/yux && yux test` 222/222 全绿。详见 `docs/spec/CHANGELOG.md` 2026-05-05 v0.6 Phase 1b/2a/2b/2c 条目。
 
 ### v0.5 — `draft`（接口/约束）+ `#DraftLike` ✅ 已完成（2026-05-05）
 
