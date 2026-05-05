@@ -75,6 +75,7 @@ cd examples/test && yux build test && ./build/test/test.exe
 - xmake 输出：`build/windows/x64/{debug,release}/`、以及点开头目录（`.objs/`、`.deps/`、`.build_cache/` 等）
 - yux 单文件模式：`<srcDir>/build/*.exe`、`*.ll`、`*.obj`、`*.obj.cache`；多段模块 `A.B.C` 展开为 `<buildDir>/A/B/C.obj`
 - yux 项目模式：主模块 + 单段导入落在 `<projectRoot>/build/<projectName>/`；多段模块按点分路径在 `build/` 下展开
+- sdk链接：`build/windows/x64/sdk` => `sdk`
 
 清理规则：
 

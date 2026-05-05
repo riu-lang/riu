@@ -57,7 +57,7 @@ yux-lang/
 │   └── xmake.lua     测试运行器（yux_tests target）
 ├── third_party/      依赖：antlr4, cli11, llvm, toml11, utfcpp, zlib（由 sync-deps 拉取）
 ├── bin/              二进制工具：antlr-4.13.2-complete.jar（由 sync-deps 拉取）
-├── build/            xmake 与 yux 共用产物目录（布局详见 yux-lang-dev 技能）
+├── build/            xmake 产物目录（布局详见 yux-lang-dev 技能）
 ├── yux-vscode/       VSCode 语法高亮插件
 ├── yux-idea/         IntelliJ 插件（通过 LSP4IJ 接入 `yux-lsp`，含语法高亮 / 配色 / 代码风格）
 ├── .claude/skills/   本仓库专属 Claude Code 技能（含 yux-lang-dev 上手指南）
