@@ -113,6 +113,7 @@
 - `Map<K, V>`
 - `String` 方法补全（`to_upper` / `split` / `contains` 等）
 - 基础 IO 改进（行读取、文件 API 雏形）
+- `format` 类格式化（候选 `?` / `{}`，从 v0.6 下放，配合 SDK 一并做）
 
 **退出标准**：上述模块每条方法配测试与 spec §9 条款。
 
@@ -122,11 +123,9 @@
 
 **范围**：
 
-- 字符串模板（`$ident` / `${expr}`）；要求被插值表达式实现 v0.5 的 `ToString` draft
-- `for` 迭代（语法选型 + Array / 定长数组特例）
-- `format` 类格式化（候选 `?` / `{}`）
-- 改进的 `if` 表达式语义（如尚未规范化）
-- 字符串+优化为StringBuilder
+- 字符串模板（Kotlin 风：`"$ident"` / `"${expr}"`，无前缀）；被插值表达式须满足 v0.5 的 `ToString` draft
+- `for in` 迭代（`Iter<T>` draft + Array / 定长数组特例 lowering）
+- 字符串 `+` 与模板共享 StringBuilder lowering
 
 **退出标准**：以上语法在 spec §4–§5 落规范文字、`docs/*` 教程同步、含示例与测试。
 

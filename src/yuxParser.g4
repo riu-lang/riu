@@ -1,12 +1,12 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 
-grammar yux;
+parser grammar yuxParser;
 
-// 内涵c++代码，其它目标需转义，重写目标在命令行控制
 options {
-    language=Cpp;
+    tokenVocab=yuxLexer;
 }
+
 
 program:
    comment*
@@ -49,7 +49,7 @@ externDelc: (buildAnnos+=buildAnno)* Extern BlockStart
     ;
 
 // cval a i32 = 1
-globalConst: (buildAnnos+=buildAnno)* 'cval' name=ID type SymbolEq literal;
+globalConst: (buildAnnos+=buildAnno)* Cval name=ID type SymbolEq literal;
 
 //////////////
 // 构建注解
@@ -71,11 +71,23 @@ literal:
     | (True|False) #literalBool
     // 变量等
     | name=ID #literalObj
-    | STR_LINE # literalStringLine
+    | stringTemplate # literalStringTpl
     | STR_LINE_RAW # literalStringLineRaw
     // 编译为u32
     | CODE_POINT # literalCodePoint
     | Null # literalNull
+    ;
+
+// 字符串模板（Kotlin 风，无前缀）。空模板等价于旧 STR_LINE。
+// $ident 复用 ID 字符集；${expr} 内允许任意表达式（含块）。
+stringTemplate
+    : STR_TPL_OPEN templatePart* STR_TPL_CLOSE
+    ;
+
+templatePart
+    : STR_TPL_TEXT                                # tplText
+    | STR_TPL_DOLLAR_ID                           # tplDollarId
+    | STR_TPL_INTERP_OPEN expr BlockEnd           # tplInterp
     ;
 
 number: numInt|numFloat;
@@ -351,104 +363,4 @@ statementBlock:
     BlockStart codeLineEnd
         (statement|comment|codeLineEnd)*
     BlockEnd;
-
-//
-
-LineComment
-    : {getCharPositionInLine()==0}? Space* SymbolSemicolon ~[\r\n]* LineEnd
-    ;
-
-LineEndComment
-    : Space+ SymbolSemicolon ~[\r\n]*
-    ;
-
-Space : ' ' -> channel(HIDDEN);
-LineEnd : '\r'? '\n' | '\n' | EOF;
-EmptyLine : {getCharPositionInLine()==0}? [ \t]*  LineEnd -> channel(HIDDEN);
-//WhiteSpace : ~[\P{White_Space} \t\r\n]+ -> channel(HIDDEN);
-
-Break : 'break';
-DeclKey: 'va'[rl] | 'cval';
-Draft: 'draft';
-Elif : 'elif';
-Else : 'else';
-Extern : 'extern';
-False : 'false';
-Fn : 'fn';
-If : 'if';
-Loop: 'loop';
-Null : 'null';
-Ret : 'ret';
-Struct : 'struct';
-True : 'true';
-Use : 'use';
-
-SymbolAdd: '+';
-SymbolAddEq: '+=';
-SymbolAnd: '&';
-SymbolAndAnd: '&&';
-SymbolColon: ':';
-SymbolComma: ',';
-SymbolDiv: '/';
-SymbolDivEq: '/=';
-SymbolDot: '.';
-SymbolEq: '=';
-SymbolEqEq: '==';
-SymbolExcl: '!';
-SymbolExclEq: '!=';
-SymbolHash: '#';
-SymbolLt: '<';
-SymbolMod: '%';
-SymbolModEq: '%=';
-SymbolMt: '>';
-SymbolMul: '*';
-SymbolMulEq: '*=';
-SymbolOr: '|';
-SymbolOrOr: '||';
-SymbolQuest: '?';
-SymbolQuote2: '"';
-SymbolQuote: ['];
-SymbolRev: '~';
-SymbolSemicolon: ';';
-SymbolSub: '-';
-SymbolSubEq: '-=';
-// 当前作用域（同级的对象，相当于$所在代码中上一级的对象，像this）
-SymbolThis: '$';
-SymbolXor: '^';
-SymbolXorEq: '^=';
-
-ParStart: '(';
-ParEnd: ')';
-GetStart: '[';
-GetEnd: ']';
-BlockStart: '{';
-BlockEnd: '}';
-
-
-ID : ~[\u0021-\u0040\u005B-\u005E\u0060\u007B-\u007F\p{White_Space}] ~[\u0021-\u002F\u003A-\u0040\u005B-\u005E\u0060\u007B-\u007F\p{White_Space}]*;
-INT : NUN_SIGN? (INT_10|INT_2|INT_8|INT_16) INT_SUFFIX?;
-FLOAT : NUN_SIGN? (INT_10|FLOAT_DOT|FLOAT_EXP) FLOAT_SUFFIX?;
-STR_LINE : SymbolQuote2 ('\\'.|~[\r\n\\])*? SymbolQuote2;
-STR_LINE_RAW : 'r' SymbolQuote2 ~[\r\n]*? SymbolQuote2;
-CODE_POINT: 'c' '\''
-    ( '\\' [bnrtv0\\']
-    | ~[\r\n\\']
-    )
-    '\'';
-
-// 低优先级
-
-INT_SUFFIX: [iu]('8'|'16'|'32'|'64')?;
-
-INT_10: [0-9]('_'?[0-9]+)*;
-INT_2: '0b'[01]('_'?[01]+)*;
-INT_8: '0o'[0-7]('_'?[0-7]+)*;
-INT_16: '0x'[0-9a-fA-F]('_'?[0-9a-fA-F]+)*;
-
-FLOAT_SUFFIX: 'f' ('32'|'64');
-FLOAT_DOT: INT_10 '.' INT_10;
-FLOAT_EXP: FLOAT_DOT 'e' '-'? INT_10;
-
-NUN_SIGN: '-'|'+';
-
 

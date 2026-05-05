@@ -7,10 +7,10 @@
 #include "yux.h"
 #include "node/fn_node.h"
 #include "node/global_const_node.h"
-#include "yux/yuxBaseVisitor.h"
-#include "yux/yuxVisitor.h"
+#include "yux/yuxParserBaseVisitor.h"
+#include "yux/yuxParserVisitor.h"
 
-class ASTBuilder : public yux::yuxBaseVisitor {
+class ASTBuilder : public yux::yuxParserBaseVisitor {
     Yux& _yux;
     bool _isSdk = false;
     bool _isTestFile = false;
@@ -122,8 +122,9 @@ public:
     std::any visitLiteralBool(yux::yuxParser::LiteralBoolContext* ctx) override;
     std::any visitLiteralNull(yux::yuxParser::LiteralNullContext* ctx) override;
     std::any visitLiteralObj(yux::yuxParser::LiteralObjContext* ctx) override;
-    std::any visitLiteralStringLine(yux::yuxParser::LiteralStringLineContext* ctx) override;
+    std::any visitLiteralStringTpl(yux::yuxParser::LiteralStringTplContext* ctx) override;
     std::any visitLiteralStringLineRaw(yux::yuxParser::LiteralStringLineRawContext* ctx) override;
+    std::any visitStringTemplate(yux::yuxParser::StringTemplateContext* ctx) override;
     std::any visitLiteralCodePoint(yux::yuxParser::LiteralCodePointContext* ctx) override;
     std::any visitNumInt(yux::yuxParser::NumIntContext* ctx) override;
     std::any visitNumFloat(yux::yuxParser::NumFloatContext* ctx) override;

@@ -57,7 +57,7 @@ LLD_HAS_DRIVER(wasm)
 
 #include "yux/yuxLexer.h"
 #include "yux/yuxParser.h"
-#include "yux/yuxVisitor.h"
+#include "yux/yuxParserVisitor.h"
 
 #include "node/fn_node.h"
 #include "node/expr_node.h"
