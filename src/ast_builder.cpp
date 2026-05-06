@@ -1715,6 +1715,19 @@ std::any ASTBuilder::visitExprArray(yux::yuxParser::ExprArrayContext* ctx) {
     return p<ExprNode>(createWithLine<ExprArrayNode>(ctx, scope, elements));
 }
 
+// 元组构造表达式 (e1, e2, ...)
+// 元素至少 2 个（g4 语法保证）；递归 visit 每个 expr 子节点
+std::any ASTBuilder::visitExprTuple(yux::yuxParser::ExprTupleContext* ctx) {
+    DEBUG_LOG_VAL("    Expr: Tuple", "elements: " << ctx->values.size());
+    auto scope = currentScope();
+    vector<p<ExprNode>> elements;
+    elements.reserve(ctx->values.size());
+    for (auto* eCtx : ctx->values) {
+        elements.push_back(any_cast_p<ExprNode>(visit(eCtx)));
+    }
+    return p<ExprNode>(createWithLine<ExprTupleNode>(ctx, scope, std::move(elements)));
+}
+
 std::any ASTBuilder::visitExprArrayInit(yux::yuxParser::ExprArrayInitContext* ctx) {
     DEBUG_LOG("    Expr: ArrayInit");
     auto scope = currentScope();

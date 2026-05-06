@@ -398,6 +398,23 @@ public:
     [[nodiscard]] int resolveColumn() const override;
 };
 
+// 元组构造表达式 (e1, e2, ...)
+// 至少 2 个元素（g4 保证）；类型由各元素类型组合而成的 Tuple TypeInfo
+class ExprTupleNode : public ExprNode {
+    vector<p<ExprNode>> _elements;
+
+public:
+    ExprTupleNode(const p<Node>& parent, vector<p<ExprNode>> elements) :
+        ExprNode(parent),
+        _elements(std::move(elements)) {
+    }
+
+    [[nodiscard]] const vector<p<ExprNode>>& elements() const { return _elements; }
+    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] int resolveLineNumber() const override;
+    [[nodiscard]] int resolveColumn() const override;
+};
+
 // a ?? b：a 为 Nullable<T> 时，有值取 a.get()，否则取 b
 class ExprNullElseNode : public ExprNode {
     p<ExprNode> _left;

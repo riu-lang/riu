@@ -110,6 +110,7 @@ public:
     std::any visitExprGetRef(yux::yuxParser::ExprGetRefContext* ctx) override;
     std::any visitExprArray(yux::yuxParser::ExprArrayContext* ctx) override;
     std::any visitExprArrayInit(yux::yuxParser::ExprArrayInitContext* ctx) override;
+    std::any visitExprTuple(yux::yuxParser::ExprTupleContext* ctx) override;
     std::any visitExprUnary(yux::yuxParser::ExprUnaryContext* ctx) override;
     std::any visitExprNullElse(yux::yuxParser::ExprNullElseContext* ctx) override;
     std::any visitExprThis(yux::yuxParser::ExprThisContext* ctx) override;

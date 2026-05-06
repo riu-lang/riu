@@ -241,6 +241,7 @@ class Compiler {
     llvm::Value* compileIfElsePreValueExpr(p<ExprIfElsePreValueNode> node);     // 编译前置值 if-else 表达式
     llvm::Value* compileArrayGetExpr(p<ExprGetNode> node);                      // 编译数组索引表达式
     llvm::Value* compileArrayLiteralExpr(p<ExprArrayNode> node);                // 编译数组字面量表达式
+    llvm::Value* compileTupleExpr(p<ExprTupleNode> node);                       // 编译元组构造表达式 (e1, e2, ...)
     llvm::Value* compileGetRefExpr(p<ExprGetRefNode> node);                     // 编译取引用表达式
     llvm::Value* compileUnaryExpr(p<ExprUnaryNode> node);                       // 编译一元表达式
     llvm::Value* compileNullElseExpr(p<ExprNullElseNode> node);                 // 编译 a ?? b：a 持值则取 a.get()，否则取 b

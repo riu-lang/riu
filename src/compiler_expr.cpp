@@ -1332,6 +1332,30 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
     return _builder.CreateLoad(getLLVMType(currentType), currentPtr, "array.load");
 }
 
+// 编译元组构造表达式 (e1, e2, ...)
+// Phase 3：透明 layout，按声明顺序构造一个匿名 struct 值；元素递归编译
+// 实现：从 undef 起，逐个 CreateInsertValue 写入；返回 struct 值（非指针）
+llvm::Value* Compiler::compileTupleExpr(p<ExprTupleNode> node) {
+    auto tupleType = node->getType();
+    auto llvmTy = getLLVMType(tupleType);
+    if (!llvmTy) {
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3098,
+                       tupleType.name, string("(tuple)"), string("(tuple)"));
+    }
+    DEBUG_LOG_VAL("    Expr: Tuple", tupleType.name);
+
+    llvm::Value* aggr = llvm::UndefValue::get(llvmTy);
+    auto& elems = node->elements();
+    for (size_t i = 0; i < elems.size(); ++i) {
+        auto elemVal = compileExpr(elems[i]);
+        if (!elemVal) {
+            throw YuxError(elems[i]->getLineNumber(), elems[i]->getColumn(), ErrorCode::E3091);
+        }
+        aggr = _builder.CreateInsertValue(aggr, elemVal, {static_cast<unsigned>(i)}, "tuple.ins");
+    }
+    return aggr;
+}
+
 llvm::Value* Compiler::compileArrayLiteralExpr(p<ExprArrayNode> node) {
     auto& elements = node->elements();
     auto arrayType = node->getType();
@@ -1878,6 +1902,8 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
             recordTemp(val, type);
         }
         return val;
+    } else if (auto tupleNode = dynamic_cast<ExprTupleNode*>(node)) {
+        return compileTupleExpr(tupleNode);
     } else if (auto getRefNode = dynamic_cast<ExprGetRefNode*>(node)) {
         return compileGetRefExpr(getRefNode);
     } else if (auto unaryNode = dynamic_cast<ExprUnaryNode*>(node)) {

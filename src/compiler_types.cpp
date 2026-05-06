@@ -431,6 +431,21 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         return llvm::PointerType::get(_context, 0);
     }
 
+    // 元组类型 (T1, T2, ...) → 匿名 llvm::StructType（按结构等价）
+    // Phase 3：透明 layout，不带 RC，元素按声明顺序排布
+    if (type.isTuple()) {
+        vector<llvm::Type*> fieldTypes;
+        fieldTypes.reserve(type.tupleElements().size());
+        for (auto& e : type.tupleElements()) {
+            if (!e) return nullptr;
+            auto fty = getLLVMType(*e);
+            if (!fty) return nullptr;
+            fieldTypes.push_back(fty);
+        }
+        DEBUG_LOG_VAL("    -> TupleType (anon struct)", type.name);
+        return llvm::StructType::get(_context, fieldTypes);
+    }
+
     // 泛型类型实例 (如 Box<i32>)
     if (type.isGeneric()) {
         auto baseDecl = _file->getStructDecl(type.name);

@@ -1,0 +1,41 @@
+; 元组构造行为用例（Phase 3）
+; 当前阶段仅校验构造、传参、返回路径能成功编译并执行；
+; .0 成员访问由 Phase 4 接入后再补值断言。
+
+; 以元组为参数（不读取）
+fn take_pair(t (i32, i32)) i32 {
+  ret 1i32
+}
+
+; 返回元组
+fn make_pair() (i32, i32) {
+  ret (1i32, 2i32)
+}
+
+; 嵌套元组
+fn make_nested() ((i32, i32), i32) {
+  ret ((1i32, 2i32), 3i32)
+}
+
+#Test
+fn test_tuple_construct_local() {
+  var t (i32, i32) = (10i32, 20i32)
+  assert_true(true)
+}
+
+#Test
+fn test_tuple_pass_by_value() {
+  assert_eq(take_pair((7i32, 8i32)), 1i32)
+}
+
+#Test
+fn test_tuple_return_value() {
+  var t (i32, i32) = make_pair()
+  assert_true(true)
+}
+
+#Test
+fn test_tuple_nested() {
+  var t ((i32, i32), i32) = make_nested()
+  assert_true(true)
+}

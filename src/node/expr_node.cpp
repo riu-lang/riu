@@ -1016,6 +1016,28 @@ int ExprArrayNode::resolveLineNumber() const {
     return 0;
 }
 
+// 元组构造表达式：把每个元素类型组合为 TupleTag TypeInfo
+TypeInfo ExprTupleNode::getType() const {
+    vector<sp<TypeInfo>> elems;
+    elems.reserve(_elements.size());
+    for (auto& e : _elements) {
+        elems.push_back(make_shared<TypeInfo>(e->getType()));
+    }
+    return TypeInfo(TupleTag{}, std::move(elems));
+}
+
+int ExprTupleNode::resolveLineNumber() const {
+    if (_line > 0) return _line;
+    if (!_elements.empty()) return _elements[0]->resolveLineNumber();
+    return 0;
+}
+
+int ExprTupleNode::resolveColumn() const {
+    if (_line > 0) return _col;
+    if (!_elements.empty()) return _elements[0]->resolveColumn();
+    return 0;
+}
+
 int ExprArrayNode::resolveColumn() const {
     if (_line > 0) return _col;
     if (!_elements.empty()) {
