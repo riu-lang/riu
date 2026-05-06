@@ -15,6 +15,7 @@ program:
     fn
    | externDelc
    | globalConst
+   | aliasDecl
    | draftDecl
    | structDecl
    | structImpl
@@ -49,7 +50,10 @@ externDelc: (buildAnnos+=buildAnno)* Extern BlockStart
     ;
 
 // cval a i32 = 1
-globalConst: (buildAnnos+=buildAnno)* Cval name=ID type SymbolEq literal;
+globalConst: (buildAnnos+=buildAnno)* Cval name=ID type SymbolEq literal codeLineEnd;
+
+// Arr<T> = type
+aliasDecl: ID genericDef? SymbolEq type codeLineEnd;
 
 //////////////
 // 构建注解
@@ -102,7 +106,10 @@ type:
     // A<T> B<T1, T2>
    | ID genericDef #typeGeneric
     // [ type * count ]
-   | GetStart type SymbolMul INT GetEnd #typeArray;
+   | GetStart type SymbolMul INT GetEnd #typeArray
+    // (T1, T2)
+   | ParStart types+=type (SymbolComma types+=type)+ ParEnd #typeTuple
+   ;
 
 typeWithRef:
     ID SymbolAnd? #typeNormalWithRef
@@ -110,7 +117,10 @@ typeWithRef:
      // A<T> B<T1, T2>
     | ID genericDefWithRef SymbolAnd? #typeGenericWithRef
      // [ type * count ]
-    | GetStart typeWithRef SymbolMul INT GetEnd SymbolAnd? #typeArrayWithRef;
+    | GetStart typeWithRef SymbolMul INT GetEnd SymbolAnd? #typeArrayWithRef
+    // (T1, T2)
+   | ParStart types+=typeWithRef (SymbolComma types+=typeWithRef)+ ParEnd #typeTupleWithRef
+    ;
 
 // typeParam: 单个类型形参 / 类型实参槽位。
 // 仅在**声明位**（fn / struct / draft 的 genericDef 槽位）允许 `:` 边界；
@@ -255,6 +265,8 @@ expr:
     // a?.b
     // 链式：`.` 前允许换行（a\n  .b\n  .c）
     | left=expr LineEnd* SymbolQuest? SymbolDot member+=ID # exprDot
+    // a.0
+    | left=expr LineEnd* SymbolDot member+=INT # exprTupleMember
     // [e1, e2]
     | GetStart LineEnd* (velues+=expr (SymbolComma LineEnd* velues+=expr)* SymbolComma? LineEnd*)? GetEnd # exprArray
     // e() e(e) e(e,e) e<T>()
@@ -281,6 +293,8 @@ expr:
     | literal # exprLiteral
     // e ?? e
     | expr SymbolQuest SymbolQuest expr #exprNullElse
+    // (e1, e2)
+    | ParStart values+=expr (SymbolComma values+=expr)+ ParEnd #exprTuple
     | SymbolThis #exprThis
     ;
 
@@ -338,6 +352,9 @@ statement:
     // var name = expr
     // var name type = expr
     | DeclKey name=ID typeWithRef? SymbolEq expr codeLineEnd #statementDeclareAssign
+    // var (a, b) = e
+    | DeclKey ParStart names+=ID (SymbolComma names+=ID)+ ParEnd typeWithRef?
+        SymbolEq expr codeLineEnd #statementDeclareAssignTuple
     // e[a, b, c] = e 实际应为成员函数set的快捷调用
     | obj=expr GetStart
           args+=expr
@@ -346,7 +363,7 @@ statement:
     // 循环
     | Loop statementBlock # statementLoop
     // obj.member = expr
-    | obj=(ID|SymbolThis) (SymbolDot subs+=ID)*
+    | obj=(ID|SymbolThis) (SymbolDot subs+=(ID|INT))*
         opAssign
         expr codeLineEnd #statementAssign
     // 尾随;表示空类型（void）
