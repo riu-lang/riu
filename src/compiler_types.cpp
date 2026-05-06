@@ -12,9 +12,12 @@
 
 #include "compiler.h"
 #include "mangler.h"
+#include "node/alias_node.h"
+#include "node/draft_node.h"
 #include "node/struct_node.h"
 #include "node/fn_node.h"
 #include <llvm/IR/DerivedTypes.h>
+#include <set>
 
 // ==================== 错误报告辅助 ====================
 
@@ -55,19 +58,146 @@ string Compiler::formatInstantiationContext() const {
 // ==================== 类型替换 ====================
 
 // 应用当前类型替换
-// 用于泛型实例化过程中的类型参数替换
+// 用于泛型实例化过程中的类型参数替换；最后再走透明别名解析，使所有
+// 后续 LLVM 类型查找 / 结构体查找看到的都是规范化后的目标类型
 TypeInfo Compiler::applySubst(const TypeInfo& t) const {
-    if (_substStack.empty()) return t;
-    auto& frame = _substStack.back();
-    // 使用 TypeInfo::substitute 进行类型参数替换
-    TypeInfo result = t.substitute(frame.subst);
-    // 特殊处理: 将泛型原名替换为实例名
-    // 例如: Box -> Box$i32
-    if (result.kind == TypeKind::Normal && !frame.baseStructName.empty()
-        && result.name == frame.baseStructName) {
-        result.name = frame.effStructName;
+    TypeInfo result = t;
+    if (!_substStack.empty()) {
+        auto& frame = _substStack.back();
+        // 使用 TypeInfo::substitute 进行类型参数替换
+        result = result.substitute(frame.subst);
+        // 特殊处理: 将泛型原名替换为实例名
+        // 例如: Box -> Box$i32
+        if (result.kind == TypeKind::Normal && !frame.baseStructName.empty()
+            && result.name == frame.baseStructName) {
+            result.name = frame.effStructName;
+        }
     }
-    return result;
+    // 顶层透明类型别名替换：alias 名透明等价于目标类型
+    return resolveAlias(result);
+}
+
+// ==================== 别名解析 ====================
+
+namespace {
+// 内部递归实现：visited 用于环检测
+TypeInfo resolveAliasImpl(const TypeInfo& t, FileNode* file, std::set<std::string>& visited) {
+    if (!file) return t;
+    if (t.kind == TypeKind::Normal) {
+        auto* alias = file->getAliasDecl(t.name);
+        if (!alias) return t;
+        // 别名是泛型而引用位置不带类型实参 → 不替换（让后续 arity 检查报错）
+        if (alias->isGeneric()) return t;
+        if (visited.count(t.name)) {
+            throw YuxError(static_cast<int>(alias->name().getLine()), ErrorCode::E2016, t.name);
+        }
+        visited.insert(t.name);
+        if (!alias->target()) return t;
+        TypeInfo target = alias->target()->getType();
+        return resolveAliasImpl(target, file, visited);
+    }
+    if (t.kind == TypeKind::Generic) {
+        // 泛型别名实例化：Pair<T> = (T, T) 遇 Pair<i32> → (i32, i32)
+        auto* alias = file->getAliasDecl(t.name);
+        if (alias && alias->isGeneric() && alias->typeParams().size() == t.genericArgs.size() && alias->target()) {
+            if (visited.count(t.name)) {
+                throw YuxError(static_cast<int>(alias->name().getLine()), ErrorCode::E2016, t.name);
+            }
+            visited.insert(t.name);
+            std::map<std::string, TypeInfo> subst;
+            for (size_t i = 0; i < alias->typeParams().size(); ++i) {
+                subst[alias->typeParams()[i]] = t.genericArgs[i] ? *t.genericArgs[i] : TypeInfo();
+            }
+            TypeInfo inst = alias->target()->getType().substitute(subst);
+            return resolveAliasImpl(inst, file, visited);
+        }
+        // 普通泛型：递归解析每个实参中的别名
+        vector<sp<TypeInfo>> newArgs;
+        newArgs.reserve(t.genericArgs.size());
+        for (auto& a : t.genericArgs) {
+            if (a) {
+                std::set<std::string> sub = visited;
+                newArgs.push_back(std::make_shared<TypeInfo>(resolveAliasImpl(*a, file, sub)));
+            } else {
+                newArgs.push_back(nullptr);
+            }
+        }
+        return TypeInfo(t.name, std::move(newArgs));
+    }
+    if (t.kind == TypeKind::Array && t.elementType) {
+        std::set<std::string> sub = visited;
+        TypeInfo inner = resolveAliasImpl(*t.elementType, file, sub);
+        return TypeInfo(std::make_shared<TypeInfo>(std::move(inner)), t.arraySize);
+    }
+    if (t.kind == TypeKind::Tuple) {
+        vector<sp<TypeInfo>> newElems;
+        newElems.reserve(t.genericArgs.size());
+        for (auto& a : t.genericArgs) {
+            if (a) {
+                std::set<std::string> sub = visited;
+                newElems.push_back(std::make_shared<TypeInfo>(resolveAliasImpl(*a, file, sub)));
+            } else {
+                newElems.push_back(nullptr);
+            }
+        }
+        return TypeInfo(TupleTag{}, std::move(newElems));
+    }
+    return t;
+}
+} // namespace
+
+TypeInfo Compiler::resolveAlias(const TypeInfo& t) const {
+    std::set<std::string> visited;
+    return resolveAliasImpl(t, _file ? _file : nullptr, visited);
+}
+
+// 编译入口处的别名一次性校验
+// 1. 名称冲突：alias 名 vs 已存在的 struct / draft / 其他 alias
+// 2. 环检测：每个别名 target 走一次 resolveAlias，触发遇环抛 E2016
+void Compiler::validateAliases() {
+    if (!_file) return;
+    auto& aliases = _file->getAliasDecls();
+
+    // 先做名称冲突检查（先于解析）
+    // 注意：a->name() 返回 Token 值类型，绑定 .getText() 的引用会悬空，需复制为 string。
+    for (auto& a : aliases) {
+        string name = a->name().getText();
+        // 与本文件 struct 同名
+        if (auto* s = _file->getStructDecl(name)) {
+            (void)s;
+            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017,
+                           name, string("struct"), name);
+        }
+        // 与本文件 draft 同名
+        if (auto* d = _file->getDraftDecl(name)) {
+            (void)d;
+            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017,
+                           name, string("draft"), name);
+        }
+        // 重复 alias
+        size_t cnt = 0;
+        for (auto& b : aliases) {
+            if (b->name().getText() == name) ++cnt;
+        }
+        if (cnt > 1) {
+            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017,
+                           name, string("type alias"), name);
+        }
+    }
+
+    // 环检测：以每个别名为起点尝试解析
+    for (auto& a : aliases) {
+        if (!a->target()) continue;
+        std::set<std::string> visited;
+        visited.insert(a->name().getText());
+        // 触发递归；若闭合则抛 E2016
+        (void)resolveAliasImpl(a->target()->getType(), _file, visited);
+    }
+
+    // 校验通过后，对函数符号表的 params / retType 做一次性透明别名解析，
+    // 避免后续 lookupFnSymbolWithParams 因 alias 名 vs 目标名的字面差异而错过重载
+    auto resolver = [this](const TypeInfo& t) { return resolveAlias(t); };
+    _file->normalizeFnSymbolTypes(resolver);
 }
 
 // ==================== 泛型结构体实例化 ====================

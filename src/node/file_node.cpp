@@ -105,7 +105,9 @@ void FileNode::addDraftDecl(const p<DraftDeclNode>& draftDecl) {
 
 void FileNode::addAliasDecl(const p<AliasDeclNode>& aliasDecl) {
     _aliasDecls.push_back(aliasDecl);
-    _aliasMap[aliasDecl->name().getText()] = aliasDecl;
+    // 注意：aliasDecl->name() 返回 Token 值类型，需复制为 string，避免 .getText() 引用绑定到临时对象悬空
+    string key = aliasDecl->name().getText();
+    _aliasMap[key] = aliasDecl;
 }
 
 AliasDeclNode* FileNode::getAliasDecl(const string& name) const {

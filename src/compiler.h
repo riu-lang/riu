@@ -97,7 +97,11 @@ class Compiler {
     [[noreturn]] void rethrowWithInstantiationContext(const YuxError& e) const;    // 重新抛出异常并附加实例化上下文
 
     // ==================== 泛型实例化 ====================
-    TypeInfo applySubst(const TypeInfo& t) const;                                  // 应用当前类型替换
+    TypeInfo applySubst(const TypeInfo& t) const;                                  // 应用当前类型替换（含别名透明替换）
+    // 顶层透明类型别名解析；递归把 alias 名替换为目标类型，遇环抛 E2016
+    TypeInfo resolveAlias(const TypeInfo& t) const;
+    // 编译入口处的别名一次性校验：名称冲突 (E2017) + 环检测 (E2016)
+    void validateAliases();
     string ensureStructInstance(p<StructDeclNode> baseDecl, const vector<sp<TypeInfo>>& args, p<FileNode> ownerFile, int sourceLine = 0);  // 确保结构体实例存在
     string ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& typeArgs, p<FileNode> ownerFile, int sourceLine);  // 确保函数实例存在
     void emitInstanceMethods();    // 生成所有泛型结构体实例的方法

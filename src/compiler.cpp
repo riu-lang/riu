@@ -69,6 +69,10 @@ void Compiler::compile(p<FileNode> file) {
         _yux->validateDraftImpls();
     }
 
+    // 透明类型别名的一次性校验：名称冲突 + 环检测
+    DEBUG_LOG("Validating type aliases...");
+    validateAliases();
+
     DEBUG_LOG("Compiling global constants...");
     compileGlobalConsts();
 

@@ -171,6 +171,20 @@ public:
     [[nodiscard]] const map<string, SymbolInfo>& localSymbols() const;
     [[nodiscard]] const map<string, vector<FnSymbolInfo>>& localFnSymbols() const;
     [[nodiscard]] p<ScopeNode> parentScope() const;
+
+    // 用 resolver 把每个 fn 符号的 params / retType 透明替换（v0.6 类型别名落地）
+    template <typename Resolver>
+    void normalizeFnSymbolTypes(Resolver resolver) {
+        for (auto& [name, overloads] : _fnSymbols) {
+            for (auto& fn : overloads) {
+                for (auto& p : fn.params) p = resolver(p);
+                if (!fn.retType.empty()) fn.retType = resolver(fn.retType);
+            }
+        }
+        for (auto& [name, sym] : _symbols) {
+            if (!sym.type.empty()) sym.type = resolver(sym.type);
+        }
+    }
 };
 
 

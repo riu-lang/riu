@@ -1,0 +1,44 @@
+; 顶层透明类型别名 (v0.6 Phase 2b)
+; A = T 时 A 与 T 在赋值 / 算术 / 函数签名 / 比较中等价
+
+A = i32
+
+#Test
+fn test_alias_basic_int() {
+  var x A = 7i32
+  assert_eq(x, 7i32)
+}
+
+#Test
+fn test_alias_in_arith() {
+  var x A = 10i32
+  var y A = 3i32
+  assert_eq(x + y, 13i32)
+}
+
+fn add_alias(x A, y A) A {
+  ret x + y
+}
+
+#Test
+fn test_alias_fn_signature() {
+  assert_eq(add_alias(2i32, 3i32), 5i32)
+}
+
+; 把 alias 类型的局部变量喂给以 alias 声明形参的函数
+#Test
+fn test_alias_var_as_arg() {
+  var a A = 4i32
+  var b A = 6i32
+  assert_eq(add_alias(a, b), 10i32)
+}
+
+; 链式别名 A1 -> A2 -> A -> i32
+A2 = A
+A1 = A2
+
+#Test
+fn test_alias_chain() {
+  var x A1 = 99i32
+  assert_eq(x, 99i32)
+}

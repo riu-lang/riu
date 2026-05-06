@@ -224,10 +224,11 @@ llvm::Function* Compiler::getFunction(p<FnHeaderNode> header) {
         DEBUG_LOG("    -> renamed to yux_main");
     } else {
         // 其他函数使用 mangle 名称
+        // v0.6 Phase 2b: 透明类型别名先解析再 mangle，使声明 / 调用两侧 mangle 名一致
         vector<TypeInfo> paramTypes;
         for (auto param : header->params()) {
             if (param->type()) {
-                paramTypes.push_back(param->type()->getType());
+                paramTypes.push_back(applySubst(param->type()->getType()));
             }
         }
         bool isPriv = !name.empty() && name[0] == '_';
@@ -823,7 +824,12 @@ llvm::Value* Compiler::compileFunctionCall(
         }
     }
 
-    auto fnSymbol = _file->lookupFnSymbolWithParams(fnName, argTypes);
+    // v0.6 Phase 2b: 透明类型别名解析，使 alias 名实参 / 形参在重载查找上视为同一类型
+    // 函数符号表已在 validateAliases 中归一化；这里再把 argTypes 也走一遍，匹配两侧
+    vector<TypeInfo> resolvedArgTypes;
+    resolvedArgTypes.reserve(argTypes.size());
+    for (auto& t : argTypes) resolvedArgTypes.push_back(applySubst(t));
+    auto fnSymbol = _file->lookupFnSymbolWithParams(fnName, resolvedArgTypes);
 
     // Phase 4b: 当存在同名 generic + 非泛型重载时，参数严格匹配的非泛型优先；
     // 仅在 fnSymbol 没匹配到时才走泛型路径。这样 `assert_eq(s1 String, s2 String)`

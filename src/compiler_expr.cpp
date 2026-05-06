@@ -656,8 +656,12 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(
     // 运算符位置自动取址（spec §7.2.3.6）：右操作数自动包成 Ref，无需用户写 &。
     // Phase 4b: 操作数本身是 T& 时（如 fn 形参 `actual String&`），剥掉一层 Ref
     // 与方法注册的 [Self, Self&] 对齐；不剥则 lookup 失败导致调用方编译期崩溃。
+    // v0.6 Phase 2b: 透明类型别名解析，使 `A = i32` 这类别名走到运算符方法时
+    // 仍能匹配到 `i32.plus` 等内置方法。
     TypeInfo effLeftType = leftType.isRef() ? *leftType.refElementType() : leftType;
     TypeInfo effRightType = rightType.isRef() ? *rightType.refElementType() : rightType;
+    effLeftType = applySubst(effLeftType);
+    effRightType = applySubst(effRightType);
     string methodFullName = effLeftType.name + "." + methodName;
     TypeInfo rightRefType;
     rightRefType.kind = TypeKind::Generic;
@@ -809,8 +813,9 @@ llvm::Value* Compiler::compileCustomTypeUnaryOp(
 }
 
 llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
-    auto type = node->getType();
-    auto leftType = node->left()->getType();
+    // v0.6 Phase 2b: 透明别名解析，使 `A = i32` 后 `A + A` 仍走内置算子路径
+    auto type = applySubst(node->getType());
+    auto leftType = applySubst(node->left()->getType());
 
     string opStr = (node->op() == ExprAddSubNode::Op::Add) ? "+" : "-";
     DEBUG_LOG_VAL("    Expr: AddSub", opStr << " : " << type.name);
@@ -846,8 +851,8 @@ llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
 }
 
 llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
-    auto type = node->getType();
-    auto leftType = node->left()->getType();
+    auto type = applySubst(node->getType());
+    auto leftType = applySubst(node->left()->getType());
 
     string opStr;
     switch (node->op()) {
@@ -904,8 +909,8 @@ llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
 }
 
 llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
-    auto type = node->getType();
-    auto leftType = node->left()->getType();
+    auto type = applySubst(node->getType());
+    auto leftType = applySubst(node->left()->getType());
 
     string opStr;
     switch (node->op()) {
@@ -964,8 +969,8 @@ llvm::Value* Compiler::compileParenExpr(p<ExprParenNode> node) {
 
 llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
     (void)node->getType();
-    auto leftType = node->left()->getType();
-    auto rightType = node->right()->getType();
+    auto leftType = applySubst(node->left()->getType());
+    auto rightType = applySubst(node->right()->getType());
 
     if (leftType != rightType) {
         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3004, leftType.name, rightType.name);

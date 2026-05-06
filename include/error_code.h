@@ -114,6 +114,8 @@ DEF_ERR(2012, "`#Test` function `{}` must have signature `fn {}()` (no params, n
 DEF_ERR(2013, "`#Test` and `#CompilerInner` cannot both be applied to function `{}`")
 DEF_ERR(2014, "`#Test` is only allowed in `*.test.yux` files; `{}` is not a test file")
 DEF_ERR(2015, "draft bounds (`: D`) are only allowed at declaration sites (fn/struct/draft generic params); not at type references or call-point turbofish")
+DEF_ERR(2016, "Type alias `{}` forms a cycle (recursive without indirection)")
+DEF_ERR(2017, "Type alias name `{}` conflicts with existing {} `{}`")
 
 // ── E3xxx 类型 — 类型不匹配 ───────────────────────────────────────────
 DEF_ERR(3001, "Type mismatch in +-/ operation: left is {}, right is {}")
