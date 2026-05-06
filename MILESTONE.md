@@ -10,7 +10,7 @@
 ### 语言参考
 
 - `c` `c++` `rust` `kotlin` `java` `python` `go` 不分先后
-- 主要参考 `rust` `c++`
+- 主要参考 `rust` `c++` `kotlin`
 
 ### 特性
 
@@ -63,7 +63,7 @@
 - `base.yux` SDK 公开方法签名稳定
 - 所有 BUGS.md 中的 *blocker* 清零
 
-### v0.11 — 性能与 layout 优化
+### v0.13 — 性能与 layout 优化
 
 **范围**：
 
@@ -73,7 +73,7 @@
 
 **退出标准**：基准测试无回归；新增微基准记录。
 
-### v0.10 — 代码生成代码（实验）
+### v0.12 — 代码生成代码（实验）
 
 **主题**：注解预处理 / 编译期生成。
 
@@ -84,14 +84,14 @@
 
 **退出标准**：派生 `ToString` 等示例可用。
 
-### v0.9 — 条件编译 + 注解可扩展
+### v0.11 — 条件编译 + 注解可扩展
 
 **范围**：
 
 - 条件编译指令
 - 用户自定义注解雏形（仅元数据，尚不允许执行）
 
-### v0.8 — 工具链与编辑器支持
+### v0.10 — 工具链与编辑器支持
 
 **主题**：提升开发体验。
 
@@ -103,7 +103,7 @@
 
 **退出标准**：在示例项目中可用；至少一个编辑器（VSCode 或 IDEA）端到端体验通过。
 
-### v0.7 — SDK 第一轮扩充
+### v0.9 — SDK 第一轮扩充
 
 **主题**：把"能写实际程序"的最小标准库铺齐。
 
@@ -117,6 +117,35 @@
 - `for in` 迭代（`Iter<T>` draft + Array / 定长数组特例 lowering，v0.6 跳过下放）
 
 **退出标准**：上述模块每条方法配测试与 spec §9 条款。
+
+### v0.8 — 异常（throws / try / catch，Swift 风）
+
+**主题**：把"可恢复错误"用统一形态铺到语言面，避免每个库自定义 Error 抽象。
+
+**范围**：
+
+- 待定
+
+**依赖**：v0.7 枚举 + match 必须先落地（`Error.code` 用 enum）。
+
+### v0.7 — 枚举（enum + match）
+
+**主题**：引入代数数据类型与模式匹配；为后续 v0.8 异常的 `Error.code` 提供载体。
+
+**范围**：
+
+- enum 声明（顶层）：`enum E { V Variant Variant(T1, T2) }`，一行一 variant，无 `,`，详 [DRAFT-枚举.md](../docs/spec/draft/DRAFT-枚举.md)
+- 构造表达式：`E::V` / `E::V()` / `E::V(args)`，永远全限定，类型别名透明传递
+- match 表达式：`=>` 箭头、`else` 兜底、必须穷尽、payload 直接绑定（不引入 `_` 通配）
+- 值类型 + 内联 union 布局；含 RC payload 按 tag dispatch retain/release；与 `Box<E>` / `Array<E>` 复用既有 RC 入口
+- **不**包含：泛型 enum、独立 `impl` 块 / 方法、draft 实现、struct-style payload、discriminant 显式赋值、`as i32`、嵌套 / 字面量 / 守卫等高级模式
+
+**退出标准**：
+
+- DRAFT-枚举.md 全节定型并迁入 spec §3 / §4 / §5 / 附录 A B C D 与 CHANGELOG
+- `sdk/yux/src/yux/core/enum.test.yux` 覆盖声明 / 构造 / match / 含 RC payload 析构 / 类型别名透传
+- `tests/cases/diag_enum_*` 覆盖缺失 variant、重复 variant、`else` 非末尾、payload 元数 / 类型不符、裸 variant、`as i32`、`E::V.0` 等高频诊断
+- `xmake test` + `yux test` 全绿
 
 ### v0.6 — 语法/语用可用性 ✅ 已完成（2026-05-05）
 
