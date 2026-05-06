@@ -10,9 +10,10 @@ program        ::= comment*
                    ( fn
                    | externDecl
                    | globalConst
+                   | aliasDecl
+                   | draftDecl
                    | structDecl
                    | structImpl
-                   | draftDecl
                    | comment
                    | codeLineEnd
                    )*
@@ -29,6 +30,8 @@ externDecl     ::= buildAnno* 'extern' '{'
 
 globalConst    ::= buildAnno* 'cval' ID type '=' literal
 
+aliasDecl      ::= ID genericDef? '=' type codeLineEnd
+
 buildAnno      ::= '#' ID codeLineEnd
 ```
 
@@ -39,11 +42,13 @@ type           ::= ID                              # typeNormal
                  | type '?'                        # typeNullable
                  | ID genericDef                   # typeGeneric
                  | '[' type '*' INT ']'            # typeArray
+                 | '(' type (',' type)+ ')'        # typeTuple
 
 typeWithRef    ::= ID '&'?                         # typeNormalWithRef
                  | type '?' '&'?                   # typeNullableWithRef
                  | ID genericDefWithRef '&'?       # typeGenericWithRef
                  | '[' typeWithRef '*' INT ']' '&'?# typeArrayWithRef
+                 | '(' typeWithRef (',' typeWithRef)+ ')' # typeTupleWithRef
 
 genericDef        ::= '<' typeParam        (',' typeParam)*        '>'
 genericDefWithRef ::= '<' typeParamWithRef (',' typeParamWithRef)* '>'
@@ -146,6 +151,8 @@ expr ::=
   | 'if' expr statementBlock exprElIf* exprElse?                 # exprIfElse
   | '[' literal '.' '.' '.' type? ']'                            # exprArrayInit
   | expr LineEnd* '?'? '.' ID                                    # exprDot
+  | expr LineEnd* DOT_NUM                                        # exprTupleMember
+  | '(' expr (',' expr)+ ')'                                     # exprTuple
   | '[' LineEnd* (expr (',' LineEnd* expr)* ','? LineEnd*)? ']'  # exprArray
   | expr (':' genericDef)? '(' LineEnd*
         (expr (',' LineEnd* expr)* ','? LineEnd*)? ')'           # exprCall
@@ -181,9 +188,10 @@ opAssign       ::= '=' | '+=' | '-=' | '*=' | '/=' | '%='
 statement ::=
     'va'[rl] ID type codeLineEnd                                # statementDeclare
   | 'va'[rl] ID typeWithRef? '=' expr codeLineEnd               # statementDeclareAssign
+  | 'va'[rl] '(' ID (',' ID)+ ')' typeWithRef? '=' expr codeLineEnd # statementDeclareAssignTuple
   | expr '[' expr (',' expr)* ']' '=' expr                      # statementSet
   | 'loop' statementBlock                                       # statementLoop
-  | (ID | '$') ('.' ID)* opAssign expr codeLineEnd              # statementAssign
+  | (ID | '$') ('.' ID | DOT_NUM)* opAssign expr codeLineEnd    # statementAssign
   | expr ';'? codeLineEnd                                       # statementExpr
   | 'ret' expr codeLineEnd                                      # statementRet
   | 'ret' ';' LineEnd                                           # statementRetVoid
@@ -205,6 +213,7 @@ statementBlock ::= '{' codeLineEnd
 | `ID` | 见 §1.4，Unicode 标识符 |
 | `INT` | `NUN_SIGN? (INT_10\|INT_2\|INT_8\|INT_16) INT_SUFFIX?` |
 | `FLOAT` | `NUN_SIGN? (INT_10\|FLOAT_DOT\|FLOAT_EXP) FLOAT_SUFFIX?` |
+| `DOT_NUM` | `'.' INT_10` —— 元组成员后缀 token；优先于 `FLOAT_DOT`，使 `t.0.0` 不被切成浮点 |
 | `STR_LINE` | `"..."`，支持 `\<char>` 转义 |
 | `STR_LINE_RAW` | `r"..."`，无转义 |
 | `CODE_POINT` | `c'<char>'`，类型 `u32` |

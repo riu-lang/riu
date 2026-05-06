@@ -15,6 +15,15 @@
 
 ---
 
+## 2026-05-06 —— 元组（tuple）+ 透明类型别名
+
+- **新增**：§3.2.2 复合类型表加入 `(T1, T2, ...)`；§3.8 全节"元组"（形态、构造 / 成员访问 / 解构 / 成员赋值 / 与别名泛型的协作）；§3.9 全节"类型别名"（透明 type alias、`A = T` / `Pair<T> = (T, T)`、解析与禁忌）。
+- **新增**：附录 B 顶层 `aliasDecl`、`type` / `typeWithRef` 加 `typeTuple` / `typeTupleWithRef`；`expr` 加 `exprTuple` / `exprTupleMember`；`statement` 加 `statementDeclareAssignTuple`，`statementAssign` 路径段允许 `DOT_NUM`；词法 token 表追加 `DOT_NUM`。
+- **新增**：附录 D §D.3.2 追加 E2015 / E2016 / E2017；§D.3.3 新增"元组（E3100..E3102）"段。
+- **新增**：用户教程 `docs/类型系统.md` 加"元组类型 `(T1, T2, ...)`"与"类型别名"两节，含构造 / 访问 / 解构 / 成员赋值 / 别名循环 / 名称冲突的示例与错误码引用。
+- **退出验证**：`xmake test` 45/45、`cd sdk/yux && yux test` 247/247。
+- **冲突 / 兼容**：纯增量。元组 LLVM 落地为匿名 `struct`（结构等同），别名为透明 type alias（不引入新类型）；不破坏既有条款。曾经的 `struct A = T` 草稿写法在 g4 层移除（Phase 0 已落，commit 44619fd）；本次仅在 spec 层补全收口。
+
 ## 2026-05-05 —— v0.6 收口（语法/语用可用性）
 
 - **范围回顾**：字符串模板（Phase 1a/1b/2a/2b/2c）+ String `+` 链合并 lowering 落地；`for in` 迭代下放 v0.7。

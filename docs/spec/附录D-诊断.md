@@ -90,6 +90,9 @@ N | <源码行原文>
 | E2012 | `\`#Test\` function \`{}\` must have signature \`fn {}(): void\` (no params, no return type, must have body)` |
 | E2013 | `\`#Test\` and \`#CompilerInner\` cannot both be applied to function \`{}\`` |
 | E2014 | `\`#Test\` is only allowed in \`*.test.yux\` files; \`{}\` is not a test file` |
+| E2015 | `draft bounds (\`: D\`) are only allowed at declaration sites (fn/struct/draft generic params); not at type references or call-point turbofish` |
+| E2016 | `Type alias \`{}\` forms a cycle (recursive without indirection)` |
+| E2017 | `Type alias name \`{}\` conflicts with existing {} \`{}\`` |
 
 ### D.3.3 E3xxx — 类型
 
@@ -208,6 +211,14 @@ N | <源码行原文>
 | E3097 | `Cannot determine type for reference expression: no scope` |
 | E3098 | `Unknown type '{}' for field '{}' of generic struct '{}'` |
 | E3099 | `{}\n  {}`（用于 `compiler_types` 包装上下文：原消息 + 上下文行） |
+
+元组（E3100..E3102）：
+
+| 码     | 模板 |
+|--------|------|
+| E3100 | `Tuple index {} out of range for type '{}' (size {})` |
+| E3101 | `Tuple destructure expects type tuple, got '{}'` |
+| E3102 | `Tuple destructure arity mismatch: {} names vs tuple size {}` |
 
 ### D.3.4 E4xxx — 所有权 / 借用
 
