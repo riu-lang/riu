@@ -556,7 +556,10 @@ const p<ExprNode>& ExprDotNode::baseExpr() const {
 }
 
 string ExprDotNode::member() const {
-    return _member.getText();
+    // 元组成员访问 token 是 DOT_NUM（形如 ".0"），剥掉前导点后下游"全数字 → tuple index"判定继续生效
+    auto text = _member.getText();
+    if (!text.empty() && text.front() == '.') return text.substr(1);
+    return text;
 }
 
 int ExprDotNode::resolveLineNumber() const {
@@ -593,7 +596,7 @@ bool ExprDotNode::parseChain(const ExprDotNode* top, string& aliasName, vector<s
 }
 
 TypeInfo ExprDotNode::getType() const {
-    auto member = _member.getText();
+    auto member = this->member();
     DEBUG_LOG_VAL("ExprDotNode::getType - member", member);
 
     // 安全访问 a?.b：base 必须是 Nullable<T>

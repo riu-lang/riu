@@ -111,7 +111,7 @@ CODE_POINT: 'c' '\''
 
 // 低优先级
 
-INT_SUFFIX: [iu]('8'|'16'|'32'|'64')?;
+INT_SUFFIX: [iu]('8'|'16'|'32'|'64');
 
 INT_10: [0-9]('_'?[0-9]+)*;
 INT_2: '0b'[01]('_'?[01]+)*;
@@ -119,11 +119,12 @@ INT_8: '0o'[0-7]('_'?[0-7]+)*;
 INT_16: '0x'[0-9a-fA-F]('_'?[0-9a-fA-F]+)*;
 
 FLOAT_SUFFIX: 'f' ('32'|'64');
-FLOAT_DOT: INT_10 '.' INT_10;
+FLOAT_DOT: INT_10 DOT_NUM;
 FLOAT_EXP: FLOAT_DOT 'e' '-'? INT_10;
 
 NUN_SIGN: '-'|'+';
 
+DOT_NUM: SymbolDot INT_10 ;
 
 mode StrTpl;
 STR_TPL_INTERP_OPEN : '${' { interp_brace_depth.push_back(0); } -> pushMode(DEFAULT_MODE);

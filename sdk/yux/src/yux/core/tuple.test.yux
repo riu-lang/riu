@@ -43,11 +43,30 @@ fn test_tuple_return_value() {
 #Test
 fn test_tuple_nested() {
   var t ((i32, i32), i32) = make_nested()
-  ; 嵌套需借中间变量；`t.0.0` / `t.0.1` 形式被 lexer 吞成 float 字面量
+  ; 链式 .0.0 / .0.1：lexer DOT_NUM token 让每段 .N 独立成 token
+  assert_eq(t.0.0, 1i32)
+  assert_eq(t.0.1, 2i32)
+  assert_eq(t.1, 3i32)
+  ; 中间变量等价路径
   var inner (i32, i32) = t.0
   assert_eq(inner.0, 1i32)
   assert_eq(inner.1, 2i32)
-  assert_eq(t.1, 3i32)
+}
+
+#Test
+fn test_tuple_nested_three_level() {
+  var t (((i32, i32), i32), i32) = (((10i32, 20i32), 30i32), 40i32)
+  assert_eq(t.0.0.0, 10i32)
+  assert_eq(t.0.0.1, 20i32)
+  assert_eq(t.0.1, 30i32)
+  assert_eq(t.1, 40i32)
+}
+
+#Test
+fn test_tuple_nested_member_on_literal() {
+  ; 直接对元组字面量取嵌套元素
+  assert_eq(((1i32, 2i32), 3i32).0.0, 1i32)
+  assert_eq(((1i32, 2i32), 3i32).0.1, 2i32)
 }
 
 #Test

@@ -266,7 +266,7 @@ expr:
     // 链式：`.` 前允许换行（a\n  .b\n  .c）
     | left=expr LineEnd* SymbolQuest? SymbolDot member+=ID # exprDot
     // a.0
-    | left=expr LineEnd* SymbolDot member+=INT # exprTupleMember
+    | left=expr LineEnd* member=DOT_NUM # exprTupleMember
     // [e1, e2]
     | GetStart LineEnd* (velues+=expr (SymbolComma LineEnd* velues+=expr)* SymbolComma? LineEnd*)? GetEnd # exprArray
     // e() e(e) e(e,e) e<T>()
