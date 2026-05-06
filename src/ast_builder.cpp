@@ -789,6 +789,48 @@ std::any ASTBuilder::visitFnParamGroup(yux::yuxParser::FnParamGroupContext* ctx)
     return params;
 }
 
+// 顶层透明类型别名 `A = T` / `Pair<T> = (T, T)`
+// 注册到 FileNode，目标类型节点保留原貌；透明替换在 Phase 2b 解析层接入
+std::any ASTBuilder::visitAliasDecl(yux::yuxParser::AliasDeclContext* ctx) {
+    auto file = any_cast_p<FileNode>(stack.back());
+    auto nameTok = ctx->ID()->getSymbol();
+
+    vector<string> typeParams;
+    if (auto gd = ctx->genericDef()) {
+        for (auto pCtx : gd->params) {
+            if (!pCtx->bounds.empty()) {
+                auto* tk = pCtx->SymbolColon();
+                throw YuxError(
+                    tk ? (int)tk->getSymbol()->getLine() : 0,
+                    tk ? static_cast<int>(tk->getSymbol()->getCharPositionInLine()) + 1 : 0,
+                    ErrorCode::E2015);
+            }
+            if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(pCtx->type(0))) {
+                typeParams.push_back(tn->ID()->getText());
+            }
+        }
+    }
+
+    auto aliasDecl = createWithLine<AliasDeclNode>(ctx, file, nameTok, p<TypeNode>(nullptr));
+    aliasDecl->setTypeParams(typeParams);
+
+    // 类型形参纳入别名作用域，使 `Pair<T> = (T, T)` 的目标类型解析能识别 T
+    stack.emplace_back(aliasDecl);
+    _scopeStack.push_back(aliasDecl);
+    for (auto& tp : typeParams) {
+        aliasDecl->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
+    }
+    auto target = any_cast_p<TypeNode>(visit(ctx->type()));
+    _scopeStack.pop_back();
+    stack.pop_back();
+
+    aliasDecl->setTarget(target);
+    DEBUG_LOG_VAL("Visit: AliasDecl",
+        nameTok->getText() << " -> " << (target ? target->getType().name : string("?")));
+    file->addAliasDecl(aliasDecl);
+    return p<AliasDeclNode>(aliasDecl);
+}
+
 std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
     auto file = any_cast_p<FileNode>(stack.back());
     auto* stCtx = ctx->structType();

@@ -103,6 +103,21 @@ void FileNode::addDraftDecl(const p<DraftDeclNode>& draftDecl) {
     }
 }
 
+void FileNode::addAliasDecl(const p<AliasDeclNode>& aliasDecl) {
+    _aliasDecls.push_back(aliasDecl);
+    _aliasMap[aliasDecl->name().getText()] = aliasDecl;
+}
+
+AliasDeclNode* FileNode::getAliasDecl(const string& name) const {
+    auto it = _aliasMap.find(name);
+    if (it != _aliasMap.end()) return it->second;
+    for (auto* imp : _wildcardImports) {
+        auto jt = imp->_aliasMap.find(name);
+        if (jt != imp->_aliasMap.end()) return jt->second;
+    }
+    return nullptr;
+}
+
 DraftDeclNode* FileNode::getDraftDecl(const string& name) const {
     for (auto& d : _draftDecls) {
         if (d->name().getText() == name) return d;

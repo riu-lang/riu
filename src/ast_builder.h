@@ -73,6 +73,7 @@ public:
     std::any visitFnParamGroup(yux::yuxParser::FnParamGroupContext* ctx) override;
     std::any visitFnClean(yux::yuxParser::FnCleanContext* ctx) override;
 
+    std::any visitAliasDecl(yux::yuxParser::AliasDeclContext* ctx) override;
     std::any visitStructDecl(yux::yuxParser::StructDeclContext* ctx) override;
     std::any visitStructImpl(yux::yuxParser::StructImplContext* ctx) override;
     std::any visitFiledDecl(yux::yuxParser::FiledDeclContext* ctx) override;

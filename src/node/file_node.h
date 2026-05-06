@@ -4,6 +4,7 @@
 #ifndef YUX_LANG_FILE_NODE_H
 #define YUX_LANG_FILE_NODE_H
 
+#include "alias_node.h"
 #include "draft_node.h"
 #include "fn_node.h"
 #include "global_const_node.h"
@@ -16,6 +17,8 @@ class FileNode : public ScopeNode {
     vector<p<StructImplNode>> _structImpls;
     vector<p<GlobalConstNode>> _globalConsts;
     vector<p<DraftDeclNode>> _draftDecls;
+    vector<p<AliasDeclNode>> _aliasDecls;
+    map<string, p<AliasDeclNode>> _aliasMap;
     string _moduleName;
 
 public:
@@ -26,13 +29,16 @@ public:
     void addStructImpl(const p<StructImplNode>& structImpl);
     void addGlobalConst(const p<GlobalConstNode>& globalConst);
     void addDraftDecl(const p<DraftDeclNode>& draftDecl);
+    void addAliasDecl(const p<AliasDeclNode>& aliasDecl);
 
     const vector<p<FnNode>>& getFunctions() const;
     const vector<p<StructDeclNode>>& getStructDecls() const { return _structDecls; }
     const vector<p<StructImplNode>>& getStructImpls() const { return _structImpls; }
     const vector<p<GlobalConstNode>>& getGlobalConsts() const { return _globalConsts; }
     const vector<p<DraftDeclNode>>& getDraftDecls() const { return _draftDecls; }
+    const vector<p<AliasDeclNode>>& getAliasDecls() const { return _aliasDecls; }
     DraftDeclNode* getDraftDecl(const string& name) const;
+    AliasDeclNode* getAliasDecl(const string& name) const;
     
     StructDeclNode* getStructDecl(const string& name) const;
     StructImplNode* getStructImpl(const string& name) const;
