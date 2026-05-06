@@ -943,6 +943,82 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             }
         }
 
+        // 元组成员赋值: t.0 = e / t.0.1 = e（透明 alias 由 applySubst 兜底）
+        // 仅当顶层就是 tuple 时进此分支；混合路径 struct.field.0 暂未支持
+        // TODO: 支持 struct.field.<N> 混合链路
+        // TODO: 元组元素若为 RC / Box / 含析构 struct 时，需要 retain new + release old；当前仅覆盖值类型
+        {
+            auto resolvedTop = applySubst(actualType);
+            if (resolvedTop.isTuple()) {
+                auto it = _localVarPtrs.find(objName);
+                if (it == _localVarPtrs.end()) {
+                    SymbolSuggest::throwSymbolNotFound(_currentFnNode,
+                        node->getLineNumber(), node->getColumn(), ErrorCode::E3031, objName);
+                }
+                llvm::Value* curPtr = it->second;
+                TypeInfo curType = resolvedTop;
+
+                auto isPureDigits = [](const string& s) {
+                    return !s.empty() && std::all_of(s.begin(), s.end(),
+                                          [](char c){ return c >= '0' && c <= '9'; });
+                };
+
+                DEBUG_LOG_VAL("  Statement: TupleMemberAssign", objName << "." << subs[0].getText());
+
+                for (size_t i = 0; i < subs.size(); ++i) {
+                    auto memberText = subs[i].getText();
+                    if (!isPureDigits(memberText)) {
+                        // 元组段必须是数字索引
+                        throw YuxError(node->getLineNumber(), node->getColumn(),
+                            ErrorCode::E3040, curType.getFullName(), memberText);
+                    }
+                    auto resolvedCur = applySubst(curType);
+                    if (!resolvedCur.isTuple()) {
+                        // 链中段已不是 tuple（嵌套 struct/数组等）暂不支持
+                        throw YuxError(node->getLineNumber(), node->getColumn(),
+                            ErrorCode::E3045, curType.getFullName());
+                    }
+                    auto& elems = resolvedCur.tupleElements();
+                    size_t idx = static_cast<size_t>(std::stoul(memberText));
+                    if (idx >= elems.size()) {
+                        throw YuxError(node->getLineNumber(), node->getColumn(),
+                            ErrorCode::E3100, memberText, curType.getFullName(),
+                            std::to_string(elems.size()));
+                    }
+                    auto elemType = *elems[idx];
+                    auto llvmTupleType = getLLVMType(resolvedCur);
+                    auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+                    auto idxVal = llvm::ConstantInt::get(_builder.getInt32Ty(),
+                                                         static_cast<unsigned>(idx));
+                    auto fieldPtr = _builder.CreateGEP(llvmTupleType, curPtr,
+                                                      {zero, idxVal}, "tuple.field");
+
+                    if (i == subs.size() - 1) {
+                        // 末段：编译 RHS 并写入
+                        if (isIntTypeName(elemType.name) && isFlexibleIntExpr(expr)) {
+                            tryInferIntType(expr, elemType);
+                        }
+                        auto exprVal = compileExpr(expr);
+                        auto exprType = expr->getType();
+                        llvm::Value* valToStore;
+                        if (assignOp != AssignOp::Eq) {
+                            auto curVal = _builder.CreateLoad(getLLVMType(elemType),
+                                                              fieldPtr, "current.load");
+                            auto castedExprVal = createCast(exprVal, exprType, elemType);
+                            valToStore = applyCompoundOp(curVal, castedExprVal, assignOp, elemType);
+                        } else {
+                            valToStore = createCast(exprVal, exprType, elemType);
+                        }
+                        _builder.CreateStore(valToStore, fieldPtr);
+                        return;
+                    }
+                    curPtr = fieldPtr;
+                    curType = elemType;
+                }
+                return;
+            }
+        }
+
         auto structDecl = _file->getStructDecl(actualType.name);
         if (!structDecl && _yux && _yux->sdkFile()) {
             structDecl = _yux->sdkFile()->getStructDecl(actualType.name);

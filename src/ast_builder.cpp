@@ -1244,8 +1244,14 @@ std::any ASTBuilder::visitStatementAssign(yux::yuxParser::StatementAssignContext
     auto scope = currentScope();
     auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
     vector<Token> subs;
+    // DOT_NUM token (如 ".0") 文本带前导 '.'，剥掉以保持 sub 仅是字段名 / 数字
     for (auto sub : ctx->subs) {
-        subs.push_back(sub);
+        auto text = sub->getText();
+        if (!text.empty() && text[0] == '.') {
+            subs.push_back(Token(text.substr(1), sub->getLine()));
+        } else {
+            subs.push_back(Token(sub));
+        }
     }
 
     AssignOp op = AssignOp::Eq;

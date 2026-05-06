@@ -363,7 +363,7 @@ statement:
     // 循环
     | Loop statementBlock # statementLoop
     // obj.member = expr
-    | obj=(ID|SymbolThis) (SymbolDot subs+=(ID|INT))*
+    | obj=(ID|SymbolThis) (SymbolDot subs+=ID | subs+=DOT_NUM)*
         opAssign
         expr codeLineEnd #statementAssign
     // 尾随;表示空类型（void）

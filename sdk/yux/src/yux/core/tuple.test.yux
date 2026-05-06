@@ -118,3 +118,33 @@ fn test_tuple_member_on_literal() {
   assert_eq((100i32, 200i32).0, 100i32)
   assert_eq((100i32, 200i32).1, 200i32)
 }
+
+; ===== Phase 6 — 元组成员赋值 obj.0 = e =====
+
+#Test
+fn test_tuple_member_assign_simple() {
+  var t (i32, i32) = (1i32, 2i32)
+  t.0 = 10i32
+  t.1 = 20i32
+  assert_eq(t.0, 10i32)
+  assert_eq(t.1, 20i32)
+}
+
+#Test
+fn test_tuple_member_assign_nested() {
+  var t ((i32, i32), i32) = ((1i32, 2i32), 3i32)
+  t.0.1 = 99i32
+  t.1 = 7i32
+  assert_eq(t.0.0, 1i32)
+  assert_eq(t.0.1, 99i32)
+  assert_eq(t.1, 7i32)
+}
+
+#Test
+fn test_tuple_member_assign_compound() {
+  var t (i32, i32) = (5i32, 10i32)
+  t.0 += 3i32
+  t.1 *= 2i32
+  assert_eq(t.0, 8i32)
+  assert_eq(t.1, 20i32)
+}
