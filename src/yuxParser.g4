@@ -16,6 +16,7 @@ program:
    | externDelc
    | globalConst
    | aliasDecl
+   | enumDecl
    | draftDecl
    | structDecl
    | structImpl
@@ -131,6 +132,24 @@ typeParam: type (SymbolColon bounds+=type (SymbolAdd bounds+=type)*)?;
 genericDef: SymbolLt params+=typeParam (SymbolComma params+=typeParam)* SymbolMt;
 
 genericDefWithRef: SymbolLt types+=typeWithRef (SymbolComma types+=typeWithRef)* SymbolMt;
+
+///////////
+// 枚举
+///////////
+
+// enum E {
+//   V1
+//   V2(T1, T2)
+//   ...
+// }
+// variant 一行一个，行尾不写 `,`；空 enum 由语义层拒绝
+enumDecl: Enum name=ID BlockStart
+    (comment|codeLineEnd|variants+=enumVariant)*
+    BlockEnd
+    ;
+
+// 短名 + 可选 tuple-style payload；零参 variant 不写括号
+enumVariant: name=ID (ParStart payloads+=type (SymbolComma payloads+=type)* ParEnd)?;
 
 ///////////
 // 函数
@@ -259,6 +278,21 @@ expr:
           statementBlock
           (elifs+=exprElIf)*
              exprElse? # exprIfElse
+    // match e {
+    //   enum => expr
+    //   else => {
+    //    ...
+    //   }
+    // }
+    | Match expr BlockStart codeLineEnd
+        ((arms+=matchArm codeLineEnd)|comment)+
+        BlockEnd #exprMatch
+    // 枚举构造：E::V / E::V() / E::V(a, b, ...)
+    // 零参 variant 写带不带括号等价；类型别名 C 处亦合法（C::V 解析期等价 E::V）
+    | enumName=ID SymbolColonColon variant=ID
+        (ParStart codeLineEnd*
+            (args+=expr (SymbolComma LineEnd* args+=expr)* SymbolComma? codeLineEnd*)?
+         ParEnd)? # exprEnumCtor
     // [0 ...] [1u8 ... u8] 填充数组
     | GetStart value=literal SymbolDot SymbolDot SymbolDot type?  GetEnd # exprArrayInit
     // a.b
@@ -340,6 +374,21 @@ opAssign:
     | SymbolModEq
     | SymbolMt SymbolMt SymbolEq
     | SymbolLt SymbolLt SymbolEq
+    ;
+
+// match arm: 模式 => 单表达式体
+// v1 仅支持单表达式体；多语句体押后（spec §5.5 statement 形态留给后续）
+matchArm: pattern=enumPattern SymbolEqMt body=expr;
+
+// match 模式（v1 子集）：
+//   E::V             零参 variant
+//   E::V()           零参 variant（与上等价）
+//   E::V(a, b, ...)  按位置绑定 payload 元素到不可变名
+//   else             兜底分支，必须出现在最后一条
+enumPattern:
+      enumName=ID SymbolColonColon variant=ID
+        (ParStart binds+=ID (SymbolComma binds+=ID)* ParEnd)? #patternEnum
+    | Else #patternElse
     ;
 
 ///////////

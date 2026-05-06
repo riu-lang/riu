@@ -110,6 +110,28 @@ void FileNode::addAliasDecl(const p<AliasDeclNode>& aliasDecl) {
     _aliasMap[key] = aliasDecl;
 }
 
+void FileNode::addEnumDecl(const p<EnumDeclNode>& enumDecl) {
+    _enumDecls.push_back(enumDecl);
+    string name = enumDecl->name().getText();
+    _enumMap[name] = enumDecl;
+    // enum 名进类型命名空间（与 struct 同等地位）；variant 名不进顶层
+    if (!lookupSymbol(name)) {
+        SymbolInfo sym(SymbolKind::Struct, name, TypeInfo(name));
+        sym.moduleName = _moduleName;
+        registerSymbol(name, sym);
+    }
+}
+
+EnumDeclNode* FileNode::getEnumDecl(const string& name) const {
+    auto it = _enumMap.find(name);
+    if (it != _enumMap.end()) return it->second;
+    for (auto* imp : _wildcardImports) {
+        auto jt = imp->_enumMap.find(name);
+        if (jt != imp->_enumMap.end()) return jt->second;
+    }
+    return nullptr;
+}
+
 AliasDeclNode* FileNode::getAliasDecl(const string& name) const {
     auto it = _aliasMap.find(name);
     if (it != _aliasMap.end()) return it->second;

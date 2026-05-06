@@ -6,6 +6,7 @@
 
 #include "alias_node.h"
 #include "draft_node.h"
+#include "enum_node.h"
 #include "fn_node.h"
 #include "global_const_node.h"
 #include "node.h"
@@ -19,6 +20,8 @@ class FileNode : public ScopeNode {
     vector<p<DraftDeclNode>> _draftDecls;
     vector<p<AliasDeclNode>> _aliasDecls;
     map<string, p<AliasDeclNode>> _aliasMap;
+    vector<p<EnumDeclNode>> _enumDecls;
+    map<string, p<EnumDeclNode>> _enumMap;
     string _moduleName;
 
 public:
@@ -30,6 +33,7 @@ public:
     void addGlobalConst(const p<GlobalConstNode>& globalConst);
     void addDraftDecl(const p<DraftDeclNode>& draftDecl);
     void addAliasDecl(const p<AliasDeclNode>& aliasDecl);
+    void addEnumDecl(const p<EnumDeclNode>& enumDecl);
 
     const vector<p<FnNode>>& getFunctions() const;
     const vector<p<StructDeclNode>>& getStructDecls() const { return _structDecls; }
@@ -37,8 +41,10 @@ public:
     const vector<p<GlobalConstNode>>& getGlobalConsts() const { return _globalConsts; }
     const vector<p<DraftDeclNode>>& getDraftDecls() const { return _draftDecls; }
     const vector<p<AliasDeclNode>>& getAliasDecls() const { return _aliasDecls; }
+    const vector<p<EnumDeclNode>>& getEnumDecls() const { return _enumDecls; }
     DraftDeclNode* getDraftDecl(const string& name) const;
     AliasDeclNode* getAliasDecl(const string& name) const;
+    EnumDeclNode* getEnumDecl(const string& name) const;
     
     StructDeclNode* getStructDecl(const string& name) const;
     StructImplNode* getStructImpl(const string& name) const;
