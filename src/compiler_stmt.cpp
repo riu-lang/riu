@@ -578,6 +578,62 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
     }
 }
 
+// 编译元组解构声明语句：var (a, b, ...) = expr
+// Phase 5：仅支持一层平铺 ID，不支持嵌套和 _
+// 流程：
+//   1. 编译 expr 得 struct value（匿名 tuple struct）
+//   2. applySubst 解析 expr 类型 / 标注类型，要求是 Tuple
+//   3. 元素数与 names 数对齐校验（E3102）
+//   4. 逐元素 alloca + ExtractValue + Store；同步注册 _localVarPtrs / 符号表类型
+void Compiler::compileDeclareAssignTupleStatement(p<StatementDeclareAssignTupleNode> node) {
+    auto expr = node->expr();
+    const auto& names = node->names();
+
+    // 解析期望的元组类型：显式标注优先，其次 expr 推断
+    TypeInfo wholeType;
+    if (node->varType()) {
+        wholeType = node->varType()->getType();
+    } else {
+        wholeType = expr->getType();
+    }
+    auto resolved = applySubst(wholeType);
+    if (!resolved.isTuple()) {
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3101, wholeType.name);
+    }
+    const auto& elems = resolved.tupleElements();
+    if (elems.size() != names.size()) {
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3102,
+                       std::to_string(names.size()), std::to_string(elems.size()));
+    }
+
+    // 编译 expr 得元组 struct value
+    auto exprVal = compileExpr(expr);
+    if (!exprVal) {
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3091);
+    }
+
+    DEBUG_LOG_VAL("  Statement: DeclareTuple", names.size() << " names from " << resolved.name);
+
+    // 逐元素 ExtractValue + alloca + Store；同步刷新符号表类型（visit 阶段 alias 路径用占位）
+    for (size_t i = 0; i < names.size(); ++i) {
+        auto varName = names[i].getText();
+        const auto& elemType = *elems[i];
+
+        auto llvmType = getLLVMType(elemType);
+        auto alloca = _builder.CreateAlloca(llvmType, nullptr, varName);
+        _localVarPtrs[varName] = alloca;
+
+        auto elemVal = _builder.CreateExtractValue(exprVal, {static_cast<unsigned>(i)}, "tuple.bind");
+        _builder.CreateStore(elemVal, alloca);
+
+        // 刷新符号表类型（visit 阶段对 alias 路径登记的是空 TypeInfo）
+        if (auto sym = _currentFnNode->lookupSymbol(varName)) {
+            sym->type = elemType;
+        }
+        // TODO: 元素若为 RC / Box / 含析构 struct，需要在此处 retain；当前 Phase 5 仅覆盖值类型
+    }
+}
+
 // ==================== 赋值语句编译 ====================
 
 // 编译赋值语句
@@ -1239,6 +1295,8 @@ void Compiler::compileStatement(p<StatementNode> node) {
         compileRetVoidStatement(retVoidNode);
     } else if (auto declareNode = dynamic_cast<StatementDeclareNode*>(node)) {
         compileDeclareStatement(declareNode);
+    } else if (auto declareAssignTupleNode = dynamic_cast<StatementDeclareAssignTupleNode*>(node)) {
+        compileDeclareAssignTupleStatement(declareAssignTupleNode);
     } else if (auto declareAssignNode = dynamic_cast<StatementDeclareAssignNode*>(node)) {
         compileDeclareAssignStatement(declareAssignNode);
     } else if (auto assignNode = dynamic_cast<StatementAssignNode*>(node)) {

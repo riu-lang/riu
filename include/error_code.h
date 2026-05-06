@@ -209,6 +209,8 @@ DEF_ERR(3097, "Cannot determine type for reference expression: no scope")
 DEF_ERR(3098, "Unknown type '{}' for field '{}' of generic struct '{}'")
 DEF_ERR(3099, "{}\n  {}") // compiler_types 包装上下文（msg + ctx）
 DEF_ERR(3100, "Tuple index {} out of range for type '{}' (size {})")
+DEF_ERR(3101, "Tuple destructure expects type tuple, got '{}'")
+DEF_ERR(3102, "Tuple destructure arity mismatch: {} names vs tuple size {}")
 
 // ── E4xxx 所有权 / 借用 ───────────────────────────────────────────────
 DEF_ERR(4001, "T& borrow initializer must be &expr or an existing T& variable")

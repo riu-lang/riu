@@ -1183,6 +1183,63 @@ std::any ASTBuilder::visitStatementDeclareAssign(yux::yuxParser::StatementDeclar
     return p<StatementNode>(createWithLine<StatementDeclareAssignNode>(ctx, scope, declType, name, type, expr));
 }
 
+// 元组解构声明：var (a, b, ...) = expr 或 var (a, b) (T1, T2) = expr
+// Phase 5：仅支持一层平铺 ID，不支持嵌套和 _
+std::any ASTBuilder::visitStatementDeclareAssignTuple(yux::yuxParser::StatementDeclareAssignTupleContext* ctx) {
+    auto scope = currentScope();
+    auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
+
+    auto declKey = ctx->DeclKey()->getText();
+    DeclareType declType;
+    if (declKey[2] == 'r') {
+        declType = DeclareType::Var;
+    } else if (declKey[2] == 'l') {
+        declType = DeclareType::Val;
+    } else {
+        declType = DeclareType::CVal;
+    }
+
+    p<TypeNode> type = nullptr;
+    if (auto twr = ctx->typeWithRef(); twr) {
+        type = buildTypeWithRef(twr, scope);
+    }
+
+    // 元组类型来源：显式标注 > expr 推断
+    TypeInfo wholeType;
+    if (type) {
+        wholeType = type->getType();
+    } else {
+        wholeType = expr->getType();
+    }
+
+    vector<Token> names;
+    for (auto idTok : ctx->names) {
+        names.emplace_back(idTok);
+    }
+
+    // 元素数 / 类型校验在 codegen 阶段（compileDeclareAssignTupleStatement）做，
+    // 因为这里 wholeType 可能是 alias 名，未走 applySubst
+    // 提前注册符号：每个 ID 走元组对应位置的元素类型
+    if (scope && wholeType.isTuple() && wholeType.tupleElements().size() == names.size()) {
+        const auto& elems = wholeType.tupleElements();
+        for (size_t i = 0; i < names.size(); ++i) {
+            scope->registerSymbol(names[i].getText(),
+                {SymbolKind::Variable, names[i].getText(), *elems[i], declType == DeclareType::Var});
+        }
+    } else if (scope) {
+        // alias 或非元组：先用 wholeType 占位（codegen 时会再校验），按未知类型挂到符号表
+        // TODO: alias 透明替换的元素类型在 ast_builder 阶段不易解析，留给 compiler 验证 + 报错
+        for (auto& n : names) {
+            scope->registerSymbol(n.getText(),
+                {SymbolKind::Variable, n.getText(), TypeInfo(), declType == DeclareType::Var});
+        }
+    }
+
+    DEBUG_LOG_VAL("  Statement: DeclareTuple", names.size() << " names, expr type=" << wholeType.name);
+
+    return p<StatementNode>(createWithLine<StatementDeclareAssignTupleNode>(ctx, scope, declType, names, type, expr));
+}
+
 std::any ASTBuilder::visitStatementAssign(yux::yuxParser::StatementAssignContext* ctx) {
     auto scope = currentScope();
     auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));

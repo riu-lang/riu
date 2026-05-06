@@ -82,6 +82,26 @@ public:
     [[nodiscard]] p<TypeNode> varType() const;
 };
 
+// 元组解构赋值声明：var (a, b, ...) = expr
+// 平铺一层 ID，不支持嵌套与 _；可选总类型标注 typeWithRef，指代整个元组类型
+class StatementDeclareAssignTupleNode : public StatementExprNode {
+protected:
+    DeclareType _declareType;
+    vector<Token> _names;
+    p<TypeNode> _type; // 可选，整体元组类型（含 typeWithRef）
+
+public:
+    explicit StatementDeclareAssignTupleNode(const p<Node>& parent, DeclareType declType,
+                                             vector<Token> names, p<TypeNode> type, p<ExprNode> expr) :
+        StatementExprNode(parent, std::move(expr)), _declareType(declType),
+        _names(std::move(names)), _type(std::move(type)) {
+    }
+
+    [[nodiscard]] DeclareType declareType() const { return _declareType; }
+    [[nodiscard]] const vector<Token>& names() const { return _names; }
+    [[nodiscard]] p<TypeNode> varType() const { return _type; }
+};
+
 enum class AssignOp {
     Eq,
     AddEq,
