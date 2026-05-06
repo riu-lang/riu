@@ -42,3 +42,23 @@ fn test_alias_chain() {
   var x A1 = 99i32
   assert_eq(x, 99i32)
 }
+
+; 元组别名 + 成员访问（Phase 4 与 alias 的协同）
+IPair = (i32, i32)
+
+#Test
+fn test_alias_tuple_member() {
+  var p IPair = (5i32, 9i32)
+  assert_eq(p.0, 5i32)
+  assert_eq(p.1, 9i32)
+}
+
+; 泛型元组别名实例化后的成员访问
+Pair<T> = (T, T)
+
+#Test
+fn test_alias_generic_tuple_member() {
+  var p Pair<i32> = (40i32, 2i32)
+  assert_eq(p.0, 40i32)
+  assert_eq(p.1, 2i32)
+}

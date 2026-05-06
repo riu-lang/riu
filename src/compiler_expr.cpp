@@ -21,6 +21,7 @@
 #include "compiler_runtime.h"
 #include "mangler.h"
 #include "symbol_suggest.h"
+#include <algorithm>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <regex>
@@ -1562,6 +1563,30 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
     }
     auto baseExpr = node->baseExpr();
     auto member = node->member();
+
+    // 元组成员访问 a.N：member 为纯数字，base 解析后必须是 Tuple
+    // 透明 alias 由 applySubst 兜底（顶层 Normal alias、泛型 alias 实例化均能展开）
+    if (!member.empty() && std::all_of(member.begin(), member.end(),
+                                       [](char c) { return c >= '0' && c <= '9'; })) {
+        auto baseTypeRaw = baseExpr->getType();
+        auto baseTypeResolved = applySubst(baseTypeRaw);
+        if (baseTypeResolved.isTuple()) {
+            auto& elems = baseTypeResolved.tupleElements();
+            size_t idx = static_cast<size_t>(std::stoul(member));
+            if (idx >= elems.size()) {
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3100,
+                               member, baseTypeRaw.getFullName(),
+                               std::to_string(elems.size()));
+            }
+            DEBUG_LOG_VAL("    Expr: TupleMemberAccess", baseTypeResolved.name << "." << member);
+            auto baseVal = compileExpr(baseExpr);
+            if (!baseVal) {
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3091);
+            }
+            return _builder.CreateExtractValue(baseVal, {static_cast<unsigned>(idx)}, "tuple.elem");
+        }
+        // 非 Tuple 的 .N 留给后续逻辑（当前会落到 E3090 报"Unsupported dot expression"）
+    }
 
     if (member.starts_with("to_")) {
         string dstType = member.substr(3);

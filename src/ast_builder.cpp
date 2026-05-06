@@ -1728,6 +1728,20 @@ std::any ASTBuilder::visitExprTuple(yux::yuxParser::ExprTupleContext* ctx) {
     return p<ExprNode>(createWithLine<ExprTupleNode>(ctx, scope, std::move(elements)));
 }
 
+// 元组成员访问 a.0
+// 复用 ExprDotNode（member token 为 INT），不支持 ?. 安全访问
+// 多段 .0.1 由语法 (member+=INT) 聚合到一个节点；这里展开为左结合的 Dot 链
+std::any ASTBuilder::visitExprTupleMember(yux::yuxParser::ExprTupleMemberContext* ctx) {
+    DEBUG_LOG_VAL("    Expr: TupleMember", "members: " << ctx->member.size());
+    auto scope = currentScope();
+    auto base = any_cast_p<ExprNode>(visit(ctx->left));
+    p<ExprNode> cur = base;
+    for (auto* tok : ctx->member) {
+        cur = p<ExprNode>(createWithLine<ExprDotNode>(ctx, scope, cur, tok, false));
+    }
+    return cur;
+}
+
 std::any ASTBuilder::visitExprArrayInit(yux::yuxParser::ExprArrayInitContext* ctx) {
     DEBUG_LOG("    Expr: ArrayInit");
     auto scope = currentScope();

@@ -2,6 +2,10 @@
 // MPL-2.0
 
 #include "expr_node.h"
+
+#include <algorithm>
+#include <set>
+
 #include "fn_node.h"
 #include "file_node.h"
 #include "draft_node.h"
@@ -689,8 +693,43 @@ TypeInfo ExprDotNode::getType() const {
     }
 
     auto baseType = _baseExpr->getType();
+
+    // 元组成员访问 a.N：member 为纯数字，base 为 Tuple（或别名透明展开后的 Tuple）
+    // 透明别名仅做一层手工解析（只处理顶层 Normal alias 名，泛型 alias 留给 Compiler::applySubst 在 codegen 阶段兜底）
+    if (!member.empty() && std::all_of(member.begin(), member.end(),
+                                       [](char c) { return c >= '0' && c <= '9'; })) {
+        TypeInfo resolved = baseType;
+        if (resolved.kind == TypeKind::Normal) {
+            auto scope = findNearestScope();
+            FileNode* file = dynamic_cast<FileNode*>(scope);
+            while (!file && scope) { scope = scope->parentScope(); file = dynamic_cast<FileNode*>(scope); }
+            if (file) {
+                std::set<std::string> visited;
+                auto cur = resolved;
+                while (cur.kind == TypeKind::Normal) {
+                    auto* alias = file->getAliasDecl(cur.name);
+                    if (!alias || alias->isGeneric() || !alias->target()) break;
+                    if (visited.count(cur.name)) break;
+                    visited.insert(cur.name);
+                    cur = alias->target()->getType();
+                }
+                resolved = cur;
+            }
+        }
+        if (resolved.isTuple()) {
+            size_t idx = static_cast<size_t>(std::stoul(member));
+            auto& elems = resolved.tupleElements();
+            if (idx >= elems.size()) {
+                throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3100,
+                               member, baseType.getFullName(),
+                               std::to_string(elems.size()));
+            }
+            return elems[idx] ? *elems[idx] : TypeInfo();
+        }
+    }
+
     TypeInfo actualType = baseType;
-    
+
     if (baseType.isRef()) {
         auto refElemType = baseType.refElementType();
         if (refElemType) {
