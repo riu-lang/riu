@@ -1747,6 +1747,19 @@ std::any ASTBuilder::visitTypeArray(yux::yuxParser::TypeArrayContext* ctx) {
     return p<TypeNode>(createWithLine<TypeArrayNode>(ctx, parent, elementType, count));
 }
 
+// 元组类型 (T1, T2, ...)
+// 元素列表至少 2 个（g4 语法保证），递归 visit 每个 type 子节点
+std::any ASTBuilder::visitTypeTuple(yux::yuxParser::TypeTupleContext* ctx) {
+    p<Node> parent = currentScope();
+    vector<p<TypeNode>> elementTypes;
+    elementTypes.reserve(ctx->types.size());
+    for (auto* tCtx : ctx->types) {
+        elementTypes.push_back(any_cast_p<TypeNode>(visit(tCtx)));
+    }
+    DEBUG_LOG_VAL("    Type: Tuple", "elements=" << elementTypes.size());
+    return p<TypeNode>(createWithLine<TypeTupleNode>(ctx, parent, std::move(elementTypes)));
+}
+
 // Phase 4a: typeWithRef → TypeNode；SymbolAnd 存在则包成 Ref<inner>
 // 语法已改：typeWithRef 现有 4 个分支，与 type 的 4 个分支结构对应，但每个内部位置（generic args / array elem）
 // 也允许带 &，从而支持 Box<i32&> 这类嵌套引用类型作为参数 / 局部 var 类型。
@@ -1786,6 +1799,16 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
         auto count = a->INT()->getSymbol();
         inner = p<TypeNode>(createWithLine<TypeArrayNode>(a, parent, elemType, count));
         andTok = a->SymbolAnd();
+    } else if (auto t = dynamic_cast<yuxParser::TypeTupleWithRefContext*>(twr)) {
+        // 元组 (T1, T2, ...)；每个元素本身可带 & 引用
+        // 元组本身不带尾随 &（g4 中 typeTupleWithRef 没有 SymbolAnd?）
+        vector<p<TypeNode>> elementTypes;
+        elementTypes.reserve(t->types.size());
+        for (auto* eCtx : t->types) {
+            elementTypes.push_back(buildTypeWithRef(eCtx, parent));
+        }
+        inner = p<TypeNode>(createWithLine<TypeTupleNode>(t, parent, std::move(elementTypes)));
+        andTok = nullptr;
     } else {
         throw YuxError(1, ErrorCode::E2002);
     }

@@ -86,4 +86,27 @@ public:
     }
 };
 
+// 元组类型节点 (T1, T2, ...)
+class TypeTupleNode : public TypeNode {
+    vector<p<TypeNode>> _elementTypes;
+
+public:
+    TypeTupleNode(const p<Node>& parent, vector<p<TypeNode>> elementTypes) :
+        TypeNode(parent), _elementTypes(std::move(elementTypes)) {
+    }
+
+    [[nodiscard]] TypeInfo getType() const override {
+        vector<sp<TypeInfo>> elems;
+        elems.reserve(_elementTypes.size());
+        for (auto& e : _elementTypes) {
+            elems.push_back(make_shared<TypeInfo>(e->getType()));
+        }
+        return TypeInfo(TupleTag{}, std::move(elems));
+    }
+
+    [[nodiscard]] const vector<p<TypeNode>>& elementTypes() const {
+        return _elementTypes;
+    }
+};
+
 #endif //YUX_LANG_TYPE_NODE_H

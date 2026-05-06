@@ -215,8 +215,12 @@ T any_cast_v(const std::any& a) {
 enum class TypeKind : u8 {
     Normal,
     Generic,
-    Array
+    Array,
+    Tuple
 };
+
+// 元组类型构造时使用的 tag，用来与 Generic 构造区分
+struct TupleTag {};
 
 struct TypeInfo {
     TypeKind kind = TypeKind::Normal;
@@ -243,11 +247,29 @@ struct TypeInfo {
         name = "[" + elementType->name + " * " + to_string(arraySize) + "]";
     }
 
+    // 元组类型 (T1, T2, ...)
+    // 元素列表复用 genericArgs 存储；name 合成为 "(T1,T2,...)" 形式
+    TypeInfo(TupleTag, vector<sp<TypeInfo>> elements) :
+        kind(TypeKind::Tuple),
+        genericArgs(std::move(elements)) {
+        name = "(";
+        for (size_t i = 0; i < genericArgs.size(); ++i) {
+            if (i > 0) name += ",";
+            name += genericArgs[i] ? genericArgs[i]->name : "?";
+        }
+        name += ")";
+    }
+
     [[nodiscard]] bool isArray() const { return kind == TypeKind::Array; }
 
     [[nodiscard]] bool isNormal() const { return kind == TypeKind::Normal; }
 
     [[nodiscard]] bool isGeneric() const { return kind == TypeKind::Generic; }
+
+    [[nodiscard]] bool isTuple() const { return kind == TypeKind::Tuple; }
+
+    // 元组元素类型列表（仅 isTuple() 时有意义）
+    [[nodiscard]] const vector<sp<TypeInfo>>& tupleElements() const { return genericArgs; }
 
     [[nodiscard]] bool empty() const { return name.empty(); }
 
@@ -345,6 +367,14 @@ struct TypeInfo {
         if (kind == TypeKind::Array && elementType) {
             return "[" + elementType->getGenericMangleName() + "*" + std::to_string(arraySize) + "]";
         }
+        // 元组 mangle：Tuple$T1$T2$...，避免括号 / 逗号污染符号
+        if (kind == TypeKind::Tuple) {
+            string result = "Tuple";
+            for (auto& a : genericArgs) {
+                result += "$" + (a ? a->getGenericMangleName() : string("?"));
+            }
+            return result;
+        }
         return name;
     }
 
@@ -367,6 +397,14 @@ struct TypeInfo {
             auto sub = elementType->substitute(subst);
             return TypeInfo(std::make_shared<TypeInfo>(std::move(sub)), arraySize);
         }
+        if (kind == TypeKind::Tuple) {
+            vector<sp<TypeInfo>> newElems;
+            newElems.reserve(genericArgs.size());
+            for (auto& a : genericArgs) {
+                newElems.push_back(std::make_shared<TypeInfo>(a ? a->substitute(subst) : TypeInfo()));
+            }
+            return TypeInfo(TupleTag{}, std::move(newElems));
+        }
         return *this;
     }
 
@@ -379,7 +417,7 @@ struct TypeInfo {
             if (!elementType || !other.elementType) return false;
             return *elementType == *other.elementType;
         }
-        if (kind == TypeKind::Generic) {
+        if (kind == TypeKind::Generic || kind == TypeKind::Tuple) {
             if (genericArgs.size() != other.genericArgs.size()) return false;
             for (size_t i = 0; i < genericArgs.size(); ++i) {
                 if (!genericArgs[i] && !other.genericArgs[i]) continue;
