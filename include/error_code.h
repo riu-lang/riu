@@ -116,6 +116,7 @@ DEF_ERR(2014, "`#Test` is only allowed in `*.test.yux` files; `{}` is not a test
 DEF_ERR(2015, "draft bounds (`: D`) are only allowed at declaration sites (fn/struct/draft generic params); not at type references or call-point turbofish")
 DEF_ERR(2016, "Type alias `{}` forms a cycle (recursive without indirection)")
 DEF_ERR(2017, "Type alias name `{}` conflicts with existing {} `{}`")
+DEF_ERR(2018, "Duplicate variant `{}` in enum `{}`")
 
 // ── E3xxx 类型 — 类型不匹配 ───────────────────────────────────────────
 DEF_ERR(3001, "Type mismatch in +-/ operation: left is {}, right is {}")

@@ -78,6 +78,8 @@ public:
     std::any visitStructImpl(yux::yuxParser::StructImplContext* ctx) override;
     std::any visitFiledDecl(yux::yuxParser::FiledDeclContext* ctx) override;
     std::any visitDraftDecl(yux::yuxParser::DraftDeclContext* ctx) override;
+    std::any visitEnumDecl(yux::yuxParser::EnumDeclContext* ctx) override;
+    std::any visitEnumVariant(yux::yuxParser::EnumVariantContext* ctx) override;
 
     std::any visitStatementDeclare(yux::yuxParser::StatementDeclareContext* ctx) override;
     std::any visitStatementDeclareAssign(yux::yuxParser::StatementDeclareAssignContext* ctx) override;

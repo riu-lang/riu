@@ -53,7 +53,9 @@ public:
 
     // 返回 false 表示重名 variant，调用方负责报错
     bool addVariant(p<EnumVariantNode> variant) {
-        const string& vn = variant->name().getText();
+        // 注意：name() 按值返回 Token，getText() 引用其内部 string；
+        // 不能用 const string& 否则绑定到临时对象悬空，按值拷贝
+        string vn = variant->name().getText();
         if (_variantIndices.count(vn)) return false;
         _variantIndices[vn] = _variants.size();
         _variants.push_back(variant);

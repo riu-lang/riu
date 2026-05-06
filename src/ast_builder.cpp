@@ -831,6 +831,50 @@ std::any ASTBuilder::visitAliasDecl(yux::yuxParser::AliasDeclContext* ctx) {
     return p<AliasDeclNode>(aliasDecl);
 }
 
+// 顶层 enum 声明：构造 EnumDeclNode，逐个添加 variant，登记到当前 FileNode
+// variant 名重复触发 E2018；零参 variant 的 payloadTypes 为空向量
+std::any ASTBuilder::visitEnumDecl(yux::yuxParser::EnumDeclContext* ctx) {
+    auto file = any_cast_p<FileNode>(stack.back());
+    auto enumDecl = createWithLine<EnumDeclNode>(ctx, file, ctx->name);
+    enumDecl->setParentScope(file);
+
+    DEBUG_LOG_VAL("Visit: EnumDecl", ctx->name->getText());
+
+    stack.emplace_back(enumDecl);
+    _scopeStack.push_back(enumDecl);
+
+    for (auto* vCtx : ctx->variants) {
+        auto variant = any_cast_p<EnumVariantNode>(visit(vCtx));
+        if (!enumDecl->addVariant(variant)) {
+            _scopeStack.pop_back();
+            stack.pop_back();
+            throw YuxError(
+                static_cast<int>(vCtx->name->getLine()),
+                static_cast<int>(vCtx->name->getCharPositionInLine()) + 1,
+                ErrorCode::E2018,
+                variant->name().getText(), ctx->name->getText());
+        }
+    }
+
+    _scopeStack.pop_back();
+    stack.pop_back();
+
+    file->addEnumDecl(enumDecl);
+    return p<EnumDeclNode>(enumDecl);
+}
+
+// 单个 enum variant：短名 + 可选 tuple-style payload 类型列表
+std::any ASTBuilder::visitEnumVariant(yux::yuxParser::EnumVariantContext* ctx) {
+    auto parent = currentScope();
+    auto variant = createWithLine<EnumVariantNode>(ctx, parent, ctx->name);
+    for (auto* tCtx : ctx->payloads) {
+        auto typeNode = any_cast_p<TypeNode>(visit(tCtx));
+        variant->addPayloadType(typeNode);
+    }
+    DEBUG_LOG_VAL("  Variant", ctx->name->getText() << " arity=" << variant->payloadArity());
+    return p<EnumVariantNode>(variant);
+}
+
 std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
     auto file = any_cast_p<FileNode>(stack.back());
     auto* stCtx = ctx->structType();
