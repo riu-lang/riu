@@ -4,6 +4,14 @@ All notable changes to the "yux-vscode" extension will be documented in this fil
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.6.0]
+
+- 元组（tuple）与类型别名（type alias）相关高亮
+  - 元组类型 / 构造表达式 `(T1, T2, ...)` / `(e1, e2, ...)`：复用现有标点与类型规则
+  - 元组成员访问 `a.0` / `a.0.0`：`.N` 整体识别为 `meta.tuple.member.yux`，N 落到 `variable.other.tuple-member.yux`，避免被识别为 float 或纯数字常量
+  - `var (a, b) = e` 解构、`obj.0 = e` 成员赋值：复用 `var` 关键字与上述元组成员规则
+  - 顶层类型别名 `A = T` / `Pair<T> = (T, T)`：通过既有的大写标识符 / 泛型规则正确高亮
+
 ## [0.5.1]
 
 - `draft` 关键字
