@@ -32,6 +32,14 @@
 | 内置泛型 | builtin generic | §3.3 / §9 | `Box` / `Weak` / `Array` / `Nullable` / `Ref` / `Ptr` |
 | 平凡结构体 | trivial struct | §7.4.2 | 不含 RC 字段，按位 memcpy |
 | 非平凡结构体 | non-trivial struct | §7.4.2 | 至少一个 RC 字段，需字段级派生 |
+| 枚举 | enum | §3.10 | 命名变体集合（和类型），值类型，名义判等 |
+| 变体 | variant | §3.10.1 | enum 的命名分支；零参或带 tuple-style payload |
+| payload | payload | §3.10.1 | variant 携带的数据载荷，按位置 tuple 形态 |
+| 标量 | scrutinee | §3.10.7 / 草案 §5 | `match` 求值一次的被匹配对象 |
+| 穷尽性 | exhaustiveness | §3.10.5 / 草案 §5.4 | match 覆盖全部 variant 或带 `else` 兜底 |
+| 绑定 | binding | 草案 §5.2 | match 模式中按位置取出的不可变名 |
+| 兜底分支 | else arm | 草案 §5 | `match` 中 `else` 分支，**应当**为最后一条 |
+| discriminant | discriminant | §3.10.5 | enum 的内部 tag；v1 不暴露给用户代码 |
 
 ## C.3 表达式 / 语句
 

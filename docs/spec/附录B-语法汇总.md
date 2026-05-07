@@ -11,6 +11,7 @@ program        ::= comment*
                    | externDecl
                    | globalConst
                    | aliasDecl
+                   | enumDecl
                    | draftDecl
                    | structDecl
                    | structImpl
@@ -123,6 +124,21 @@ structImpl     ::= buildAnno* ID ('<' type (',' type)* '>')?
 filedDecl      ::= ID type
 ```
 
+## B.5b 枚举（v0.x）
+
+```
+enumDecl       ::= 'enum' ID '{'
+                       ( enumVariant | comment | codeLineEnd )*
+                   '}'
+
+enumVariant    ::= ID ( '(' type (',' type)* ')' )?
+```
+
+- variant 一行一个、行尾**不写** `,`（§3.10.2.2）。
+- payload 类型用 `type`（不接 `typeWithRef`，§3.10.3.2）；零参 variant 不写括号。
+- 空 enum（无 variant）由语义层拒绝（§3.10.2.5）。
+- enum 值的读取仅经 `match`（B.6 `exprMatch`）；构造仅经 B.6 `exprEnumCtor`。
+
 ## B.5a draft（v0.5+）
 
 ```
@@ -149,6 +165,12 @@ expr ::=
   | 'if' expr '{' expr '}' 'else' '{' expr '}'                   # exprOneLineIfElse
   | expr 'if' expr 'else' expr                                   # exprIfElsePreValue
   | 'if' expr statementBlock exprElIf* exprElse?                 # exprIfElse
+  | 'match' expr '{' codeLineEnd
+        ((matchArm codeLineEnd) | comment)+
+    '}'                                                          # exprMatch
+  | ID '::' ID ( '(' codeLineEnd*
+                     (expr (',' LineEnd* expr)* ','? codeLineEnd*)?
+                 ')' )?                                          # exprEnumCtor
   | '[' literal '.' '.' '.' type? ']'                            # exprArrayInit
   | expr LineEnd* '?'? '.' ID                                    # exprDot
   | expr LineEnd* DOT_NUM                                        # exprTupleMember
@@ -178,7 +200,17 @@ opBool         ::= '||' | '&&'
 
 opAssign       ::= '=' | '+=' | '-=' | '*=' | '/=' | '%='
                  | '>' '>' '=' | '<' '<' '='
+
+matchArm       ::= enumPattern '=>' expr
+enumPattern    ::= ID '::' ID ( '(' ID (',' ID)* ')' )?          # patternEnum
+                 | 'else'                                        # patternElse
 ```
+
+`exprMatch` / `exprEnumCtor` / `matchArm` / `enumPattern` 见 §3.10 与草案 [draft/DRAFT-枚举.md](draft/DRAFT-枚举.md) §4 / §5。
+
+- `exprEnumCtor`：`E::V` 与 `E::V()` 等价；类型别名 `C = E` 后 `C::V` 在解析期归一为 `E::V`。
+- `exprMatch`：v1 arm 体仅单表达式（多语句体押后）；arm 顺序对穷尽语义无影响，仅 `else` **应当**为最后一条；穷尽性 / binding arity / 重复 variant 由语义层校验。
+- `enumPattern` 的 binding 位仅接受 ID（不可变值绑定）；不支持 `_` 通配、字面量、嵌套、多模式合并 `|`、守卫 `if`、`@` 绑定（§3.10 / 草案 §5.3）。
 
 > 优先级与结合性由 ANTLR4 在 `expr` 中按分支出现顺序自上而下决定。规范层语义见 §4。
 

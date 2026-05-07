@@ -12,12 +12,14 @@
 | `cval` | `DeclKey` 一支 | 全局常量声明 | §5.1 |
 | `draft` | `Draft` | 接口契约声明 | §12 |
 | `elif` | `Elif` | 多分支条件 | §4.9 / §5.4 |
-| `else` | `Else` | 条件分支兜底 | §4.9 / §5.4 |
+| `else` | `Else` | 条件分支兜底 / `match` 兜底 | §4.9 / §5.4 / §3.10 |
+| `enum` | `Enum` | 枚举声明 | §3.10 |
 | `extern` | `Extern` | 外部声明块 | §6.6 |
 | `false` | `False` | 布尔字面量 | §1.6.4 |
 | `fn` | `Fn` | 函数声明 | §6 |
 | `if` | `If` | 条件表达式 / 语句 | §4.9 / §5.4 |
 | `loop` | `Loop` | 循环 | §5.5 |
+| `match` | `Match` | 模式匹配（仅 enum） | §3.10 / §4 |
 | `null` | `Null` | 空字面量 | §3.6.1.3 / §1.6.7 |
 | `ret` | `Ret` | 返回语句 | §5.6 |
 | `struct` | `Struct` | 结构体声明 | §7.1 |
@@ -72,12 +74,14 @@
 | `&` | `SymbolAnd` |
 | `&&` | `SymbolAndAnd` |
 | `:` | `SymbolColon` |
+| `::` | `SymbolColonColon` |
 | `,` | `SymbolComma` |
 | `/` | `SymbolDiv` |
 | `/=` | `SymbolDivEq` |
 | `.` | `SymbolDot` |
 | `=` | `SymbolEq` |
 | `==` | `SymbolEqEq` |
+| `=>` | `SymbolEqMt` |
 | `!` | `SymbolExcl` |
 | `!=` | `SymbolExclEq` |
 | `#` | `SymbolHash` |
@@ -132,7 +136,7 @@
 - `pub` / `priv` / `private` / `internal`：可见性修饰符（§10.3.1.2 不引入）；
 - `mut` / `const`：可变性修饰符（v1 用 `var` / `val`）；
 - `trait` / `impl` / `where`：v1 用 `draft` + `:` 实现块替代，无 `where` 子句（§12 / §6.4.4）；
-- `match` / `case`：v1 无模式匹配；
+- `case`：v1 `match` 用 `=>` + `else` 兜底，无 `case` 关键字（§3.10）；
 - `async` / `await`：v1 无并发原语；
 - `for` / `while` / `do`：v1 循环只用 `loop`（§5.5）；
 - `continue`：v1 不提供（§A.1.3）。

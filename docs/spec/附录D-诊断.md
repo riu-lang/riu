@@ -93,10 +93,20 @@ N | <源码行原文>
 | E2015 | `draft bounds (\`: D\`) are only allowed at declaration sites (fn/struct/draft generic params); not at type references or call-point turbofish` |
 | E2016 | `Type alias \`{}\` forms a cycle (recursive without indirection)` |
 | E2017 | `Type alias name \`{}\` conflicts with existing {} \`{}\`` |
+| E2018 | `Duplicate variant \`{}\` in enum \`{}\`` |
+| E2019 | `Unknown enum \`{}\` in constructor \`{}::{}\`` |
+| E2020 | `Enum \`{}\` has no variant \`{}\`` |
+| E2021 | `Enum variant \`{}::{}\` expects {} payload arg(s), got {}` |
+| E2022 | `match scrutinee must be an enum type, got \`{}\`` |
+| E2023 | `non-exhaustive match on enum \`{}\`: missing variant(s) {}` |
+| E2024 | `duplicate variant \`{}::{}\` in match arms` |
+| E2025 | `\`else\` arm must be the last arm in match` |
+| E2026 | `match pattern for \`{}::{}\` expects {} binding(s), got {}` |
+| E2027 | `duplicate binding \`{}\` in match pattern \`{}::{}\`` |
 
 ### D.3.3 E3xxx — 类型
 
-类型不匹配（E3001..E3026）：
+类型不匹配（E3001..E3027）：
 
 | 码     | 模板 |
 |--------|------|
@@ -126,6 +136,7 @@ N | <源码行原文>
 | E3024 | `` Left side of `??` must be Nullable<T>, got {} `` |
 | E3025 | `` `?.` requires Nullable<T> on the left, got {} `` |
 | E3026 | `` String template interpolation requires type implementing ToString, got '{}' (impl `Type : ToString { fn to_string() String { ... } }`) `` |
+| E3027 | `Type mismatch in match arms: expected {}, arm produces {}` |
 
 符号查找（E3030..E3033）：
 

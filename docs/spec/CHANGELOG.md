@@ -15,6 +15,21 @@
 
 ---
 
+## 2026-05-07 —— 枚举（enum + match）v1 落地
+
+- **新增**：§3 §3.10 全节"枚举"——形态与档位 / 声明位置与结构约束 / payload 类型限制 / variant 全限定访问 / discriminant 不可观测 / 与既有特性的相容性 / 构造与读取通道。§3.2.2 复合类型表追加"用户 `enum`"。
+- **新增**：§7.9（informative）struct ↔ enum 对照（值类型族邻居）；选用建议。
+- **新增**：§11.5.2.3 明确 enum / match v1 不引入新注解（`__enum_drop_<E>` / `__enum_copy_<E>` 是隐式派生函数，不暴露注解入口）。
+- **新增**：附录 A 关键字 `enum` / `match`；A.4 符号表 `::` (`SymbolColonColon`) / `=>` (`SymbolEqMt`)；A.6.2 移除 `match`（已升格为关键字），保留 `case` 作为不入语言的对照。
+- **新增**：附录 B 顶层加 `enumDecl`；新章节 B.5b 枚举形态；§B.6 表达式追加 `exprMatch` / `exprEnumCtor`，`opAssign` 之后追加 `matchArm` / `enumPattern`。
+- **新增**：附录 C 术语表 §C.2 追加 enum / variant / payload / scrutinee / 穷尽性 / 绑定 / 兜底分支 / discriminant 共 8 项。
+- **新增**：附录 D §D.3.2 追加 E2018–E2027（enum / match 语法 / 语义层）；§D.3.3 追加 E3027（match arm 类型失配）。
+- **新增**：用户教程 `docs/枚举与匹配.md`，加入 `docs/index.md` 索引。
+- **范围**：v1 形态 = 顶层声明 + 全部构造形态（`E::V` / `E::V()` / `E::V(args)`，含 RC payload）+ `match` 最小子集（穷尽 + binding + `else` 兜底）。**不**含：泛型 enum / enum 上方法 / draft 实现 / struct-style payload / 显式 discriminant / `as i32` / `_` 通配 / `|` 多模式 / 字面量模式 / 嵌套模式 / 守卫。形态决议日志见草案 [draft/DRAFT-枚举.md](draft/DRAFT-枚举.md) 决议日志（[#1.A]–[#6.F]）。
+- **退出验证**：`xmake build yux` OK；`cd sdk/yux && yux test` 256/256（含新增 9 个 enum match 用例 `sdk/yux/src/yux/core/enum.test.yux`）；`xmake test` 45/45。
+- **冲突 / 兼容**：纯增量。`enum` / `match` 升格为新关键字，原本可作 `ID` 使用的同名标识符**应当**重命名（仓库内无既存使用）。`::` / `=>` 是新符号 token，不与既有运算符冲突。enum 是新名义类型档，与现有 `struct` / `Box` / `Array` / `Nullable` 等无破坏性交互。
+- **已知小坑**：`var z = NoSuch::A`（无类型注解 + 未知 enum）触发 `declareAssign` 段错；非 enum 特有，留待后续整改。`match` arm body 是借用绑定，把 binding 直接当 match 结果返回时仅 `Box` / `Array` / `Weak` 走归一，其它 RC 类型（含 String）作返回值时**应该**先用 binding 间接计算 POD 再返回。
+
 ## 2026-05-06 —— 元组（tuple）+ 透明类型别名
 
 - **新增**：§3.2.2 复合类型表加入 `(T1, T2, ...)`；§3.8 全节"元组"（形态、构造 / 成员访问 / 解构 / 成员赋值 / 与别名泛型的协作）；§3.9 全节"类型别名"（透明 type alias、`A = T` / `Pair<T> = (T, T)`、解析与禁忌）。
