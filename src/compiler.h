@@ -157,6 +157,11 @@ class Compiler {
     void generateDefaultDestructor(const string& structName);                   // 生成默认析构函数
     bool typeNeedsDestructor(const TypeInfo& type);                             // 检查类型是否需要析构
     bool structNeedsDestructor(const string& structName);                       // 检查结构体是否需要析构
+    bool enumNeedsDestructor(const string& enumName);                           // Phase 5: 任一 variant payload 需析构则枚举需析构
+    bool enumDeclNeedsDestructor(p<EnumDeclNode> decl);                         // Phase 5: 同上，按声明节点
+    llvm::Function* getEnumDestructorFunction(const string& enumName);          // Phase 5: 获取或创建 __enum_drop_<E>
+    void generateEnumDestructor(p<EnumDeclNode> decl, p<FileNode> owner);       // Phase 5: 合成 __enum_drop_<E>(p*) 实现
+    void compileEnumDtors();                                                    // Phase 5: 在主流水线中为本文件 enum 生成 dtor 定义
 
     // Phase 3a: callee-clean 调用约定
     // 给 Box/Array/Weak 实参在传入前 retain；callee 末尾析构 release 抵消

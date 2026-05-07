@@ -1,5 +1,16 @@
 use yux.core.*
 
+enum Shape {
+  Point
+  Circle(f64)
+  Tagged(String, i32)
+}
+
+enum NoPayload {
+  A
+  B
+}
+
 struct N {
   v i32
 }
@@ -41,5 +52,23 @@ fn main() {
   var v2d i32 = v2 ?? -99i32
   println(v2d.to_string())        ; 期望 -99
 
+  println("=== enum Phase 5 烟测 ===")
+  ; 零参 variant（含括号 / 无括号 等价）
+  var s1 Shape = Shape::Point
+  var s2 Shape = Shape::Point()
+  var n1 NoPayload = NoPayload::A
+  var n2 NoPayload = NoPayload::B()
+
+  ; tuple-payload variant：纯 POD
+  var s3 Shape = Shape::Circle(2.5f64)
+
+  ; tuple-payload variant：含 RC 字段 (String)
+  var msg String = "hello"
+  var s4 Shape = Shape::Tagged(msg, 7)
+
+  ; 把 enum 值作为函数实参传递（callee-clean 路径）
+  var s5 Shape = Shape::Tagged("x", 1)
+
+  ; 作用域结束后 s4/s5 内 String 应被正确释放，无泄漏 / 无 double-free
   println("=== 测试完成 ===")
 }

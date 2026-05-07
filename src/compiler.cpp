@@ -82,6 +82,9 @@ void Compiler::compile(p<FileNode> file) {
     DEBUG_LOG("Compiling struct implementations...");
     compileStructImpls();
 
+    DEBUG_LOG("Compiling enum destructors...");
+    compileEnumDtors();
+
     // SDK 需要生成运行时辅助函数
     // 这些函数用于 Box、Array 等类型的内存管理
     if (_isSdk) {

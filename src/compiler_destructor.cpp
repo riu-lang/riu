@@ -49,6 +49,15 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
         return;
     }
 
+    // Phase 5: enum 类型 —— 走合成的 __enum_drop_<E> 按 tag dispatch
+    if (enumNeedsDestructor(type.name)) {
+        auto dtorFn = getEnumDestructorFunction(type.name);
+        if (dtorFn) {
+            _builder.CreateCall(dtorFn, {slotPtr});
+        }
+        return;
+    }
+
     // 结构体：调其析构函数（默认析构按字段逆序 release）
     if (structNeedsDestructor(type.name)) {
         auto dtorFn = getDestructorFunction(type.name);
@@ -206,6 +215,90 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
         retainStructFieldsAtCallSite(argVal, argType.name);
         return true;
     }
+
+    // Phase 5: 含 RC payload 的 enum 按值传参 —— 落 alloca 后调 __enum_retain_<E>?
+    // 当前简化：通过把 argVal 拷到 alloca、按 tag dispatch 出当前 variant 的 payload
+    // 字段 retain。考虑到此路径需要重做一份 switch-on-tag IR，与 dtor 高度对称，
+    // 直接合成 __enum_copy_<E> 比 inline 展开更省 IR；Phase 5 先用 inline 实现，
+    // copy helper 押后到后续优化。
+    if (!isBuiltinType(argType.name) && enumNeedsDestructor(argType.name)) {
+        p<FileNode> owner = nullptr;
+        auto decl = lookupEnumDecl(argType.name, owner);
+        if (!decl) return false;
+
+        auto enumLLVMType = getLLVMType(argType);
+        if (!enumLLVMType) return false;
+
+        // 把 argVal（by-value struct）spill 到 alloca，便于 GEP 取 payload
+        auto* fn = _builder.GetInsertBlock()->getParent();
+        auto& entryBB = fn->getEntryBlock();
+        llvm::IRBuilder<> entryBuilder(&entryBB, entryBB.getFirstInsertionPt());
+        auto slot = entryBuilder.CreateAlloca(enumLLVMType, nullptr, "arg.enum.spill");
+        _builder.CreateStore(argVal, slot);
+
+        auto tagPtr = _builder.CreateStructGEP(enumLLVMType, slot, 0, "arg.enum.tag.ptr");
+        auto tag = _builder.CreateLoad(_builder.getInt32Ty(), tagPtr, "arg.enum.tag");
+
+        auto* mergeBB = llvm::BasicBlock::Create(_context, "arg.enum.cont", fn);
+
+        vector<int> dispatched;
+        for (size_t i = 0; i < decl->variants().size(); ++i) {
+            auto v = decl->variants()[i];
+            if (!v->hasPayload()) continue;
+            bool any = false;
+            for (auto t : v->payloadTypes()) {
+                if (typeNeedsDestructor(t->getType())) { any = true; break; }
+            }
+            if (any) dispatched.push_back(static_cast<int>(i));
+        }
+        auto* sw = _builder.CreateSwitch(tag, mergeBB, dispatched.size());
+
+        for (int idx : dispatched) {
+            auto v = decl->variants()[idx];
+            auto* caseBB = llvm::BasicBlock::Create(_context, "arg.enum.case." + std::to_string(idx), fn);
+            sw->addCase(_builder.getInt32(idx), caseBB);
+            _builder.SetInsertPoint(caseBB);
+
+            vector<llvm::Type*> elemTys;
+            elemTys.reserve(v->payloadTypes().size());
+            for (auto t : v->payloadTypes()) {
+                elemTys.push_back(getLLVMType(t->getType()));
+            }
+            auto payloadStruct = llvm::StructType::get(_context, elemTys);
+            auto payloadBufPtr = _builder.CreateStructGEP(enumLLVMType, slot, 1, "arg.enum.payload.ptr");
+
+            for (size_t i = 0; i < v->payloadTypes().size(); ++i) {
+                auto fieldType = v->payloadTypes()[i]->getType();
+                if (!typeNeedsDestructor(fieldType)) continue;
+                auto fieldPtr = _builder.CreateStructGEP(payloadStruct, payloadBufPtr,
+                    static_cast<unsigned>(i), "arg.enum.payload.elem");
+                // 加载字段并 retain（按字段类型分派；handle 类直接 retain，含 RC 字段 struct 递归）
+                if (fieldType.isBox() || fieldType.isArrayGeneric() || fieldType.isWeak()) {
+                    auto ll = getLLVMType(fieldType);
+                    auto handleField = _builder.CreateStructGEP(ll, fieldPtr, 0, "arg.enum.handle.ptr");
+                    auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "arg.enum.handle");
+                    llvm::Function* retainFn = nullptr;
+                    if (fieldType.isBox()) retainFn = runtime::getBoxRetainFn(_module, _builder);
+                    else if (fieldType.isArrayGeneric()) retainFn = runtime::getArrayRetainFn(_module, _builder);
+                    else retainFn = runtime::getWeakRetainFn(_module, _builder);
+                    _builder.CreateCall(retainFn, {handle});
+                } else if (!isBuiltinType(fieldType.name) && structNeedsDestructor(fieldType.name)) {
+                    auto ll = getLLVMType(fieldType);
+                    auto fieldVal = _builder.CreateLoad(ll, fieldPtr, "arg.enum.struct.val");
+                    retainStructFieldsAtCallSite(fieldVal, fieldType.name);
+                } else if (!isBuiltinType(fieldType.name) && enumNeedsDestructor(fieldType.name)) {
+                    // 嵌套 enum：递归（极少见但形态完整）
+                    auto ll = getLLVMType(fieldType);
+                    auto fieldVal = _builder.CreateLoad(ll, fieldPtr, "arg.enum.nested.val");
+                    retainHandleAtCallSite(fieldVal, fieldType);
+                }
+            }
+            _builder.CreateBr(mergeBB);
+        }
+
+        _builder.SetInsertPoint(mergeBB);
+        return true;
+    }
     return false;
 }
 
@@ -284,9 +377,10 @@ void Compiler::recordTemp(llvm::Value* val, const TypeInfo& type) {
         return;
     }
     // Phase 8d.4: 含 RC 字段的 struct value（如 String）—— 落 entry 块 alloca，由 releaseAtPtr/dtor 释放
+    // Phase 5 扩展：含 RC payload 的 enum 值同样按值持有 RC 句柄，按 tag dispatch dtor
     if (type.isRef() || type.isPtr()) return;
     if (isBuiltinType(type.name)) return;
-    if (!structNeedsDestructor(type.name)) return;
+    if (!structNeedsDestructor(type.name) && !enumNeedsDestructor(type.name)) return;
 
     auto* fn = _builder.GetInsertBlock()->getParent();
     auto& entryBB = fn->getEntryBlock();
@@ -352,6 +446,8 @@ bool Compiler::isFreshHandleExpr(p<ExprNode> expr) {
     if (!expr) return false;
     if (dynamic_cast<ExprCallNode*>(expr)) return true;
     if (dynamic_cast<ExprArrayNode*>(expr)) return true;
+    // Phase 5: enum 构造把实参 +1 句柄收纳到 enum 值，结果是 +1 fresh
+    if (dynamic_cast<ExprEnumCtorNode*>(expr)) return true;
     return false;
 }
 
@@ -370,6 +466,9 @@ bool Compiler::typeNeedsDestructor(const TypeInfo& type) {
 
     // Box / Weak / Array 需要析构
     if (type.isBox() || type.isWeak() || type.isArrayGeneric()) return true;
+
+    // Phase 5: enum 类型若任一 variant 含 RC payload 字段则需析构
+    if (enumNeedsDestructor(type.name)) return true;
 
     // 检查结构体是否需要析构
     return structNeedsDestructor(type.name);
@@ -447,4 +546,134 @@ vector<TypeInfo> Compiler::resolveStructFieldTypes(const string& structName) {
         }
     }
     return out;
+}
+
+// ==================== Phase 5: 枚举析构 ====================
+
+// 任一 variant 的 payload 元素需析构则枚举需析构
+bool Compiler::enumDeclNeedsDestructor(p<EnumDeclNode> decl) {
+    if (!decl) return false;
+    for (auto v : decl->variants()) {
+        if (!v->hasPayload()) continue;
+        for (auto t : v->payloadTypes()) {
+            if (typeNeedsDestructor(t->getType())) return true;
+        }
+    }
+    return false;
+}
+
+// 按名查 enum 决议是否需析构；非 enum 名返回 false
+bool Compiler::enumNeedsDestructor(const string& enumName) {
+    if (enumName.empty()) return false;
+    p<FileNode> owner = nullptr;
+    auto decl = lookupEnumDecl(enumName, owner);
+    if (!decl) return false;
+    return enumDeclNeedsDestructor(decl);
+}
+
+// 获取或创建 __enum_drop_<E> 函数声明（mangled 含 owner 模块名）
+// 与 struct dtor 同模型：定义只在 owner 模块发射，consumer 拿到 extern decl
+llvm::Function* Compiler::getEnumDestructorFunction(const string& enumName) {
+    p<FileNode> owner = nullptr;
+    auto decl = lookupEnumDecl(enumName, owner);
+    if (!decl) return nullptr;
+
+    string ownerModule = owner ? owner->moduleName() : _file->moduleName();
+    // mangling: Enum$<module>$<name>_~()  与 struct dtor 形态一致（仅替换前缀为 Enum$）
+    string mangled = "Enum$" + ownerModule + "$" + enumName + "_~()";
+
+    auto func = _module->getFunction(mangled);
+    if (func) return func;
+
+    vector<llvm::Type*> params;
+    params.push_back(llvm::PointerType::get(_context, 0));
+    auto fnType = llvm::FunctionType::get(_builder.getVoidTy(), params, false);
+    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangled, _module);
+}
+
+// 合成 __enum_drop_<E>(p*) 实现：switch on tag → 各 case 释放对应 variant 的 RC payload 字段
+// 全 POD enum 不会进到这里（compileEnumDtors 提前过滤）
+void Compiler::generateEnumDestructor(p<EnumDeclNode> decl, p<FileNode> owner) {
+    if (!decl) return;
+    string enumName = decl->name().getText();
+    DEBUG_LOG_VAL("  Generating enum dtor for", enumName);
+
+    auto fn = getEnumDestructorFunction(enumName);
+    if (!fn || !fn->empty()) return;     // 已有定义则不重复
+
+    auto enumLLVMType = getLLVMType(TypeInfo(enumName));
+    if (!enumLLVMType) return;
+
+    // 保存当前插入点（compileEnumDtors 在主流水线中可能已设过）
+    auto savedBB = _builder.GetInsertBlock();
+    auto savedIP = _builder.GetInsertPoint();
+
+    auto entry = llvm::BasicBlock::Create(_context, "entry", fn);
+    auto exitBB = llvm::BasicBlock::Create(_context, "exit", fn);
+    _builder.SetInsertPoint(entry);
+
+    auto thisArg = &*fn->arg_begin();
+    auto tagPtr = _builder.CreateStructGEP(enumLLVMType, thisArg, 0, "tag.ptr");
+    auto tag = _builder.CreateLoad(_builder.getInt32Ty(), tagPtr, "tag");
+
+    // 收集所有需析构的 variant；其余 variant（无 payload 或全 POD）不进 switch
+    vector<int> dispatchedIndices;
+    for (size_t i = 0; i < decl->variants().size(); ++i) {
+        auto v = decl->variants()[i];
+        if (!v->hasPayload()) continue;
+        bool any = false;
+        for (auto t : v->payloadTypes()) {
+            if (typeNeedsDestructor(t->getType())) { any = true; break; }
+        }
+        if (any) dispatchedIndices.push_back(static_cast<int>(i));
+    }
+
+    auto sw = _builder.CreateSwitch(tag, exitBB, dispatchedIndices.size());
+
+    for (int idx : dispatchedIndices) {
+        auto v = decl->variants()[idx];
+        auto caseBB = llvm::BasicBlock::Create(_context, "case." + std::to_string(idx), fn);
+        sw->addCase(_builder.getInt32(idx), caseBB);
+        _builder.SetInsertPoint(caseBB);
+
+        // 重建 variant 的 tuple struct 类型（与 ctor 路径一致）
+        vector<llvm::Type*> elemTys;
+        elemTys.reserve(v->payloadTypes().size());
+        for (auto t : v->payloadTypes()) {
+            elemTys.push_back(getLLVMType(t->getType()));
+        }
+        auto payloadStruct = llvm::StructType::get(_context, elemTys);
+        auto payloadBufPtr = _builder.CreateStructGEP(enumLLVMType, thisArg, 1, "payload.ptr");
+
+        // 按声明逆序释放（与 struct 字段释放约定一致）
+        for (size_t k = v->payloadTypes().size(); k > 0; --k) {
+            size_t i = k - 1;
+            auto fieldType = v->payloadTypes()[i]->getType();
+            if (!typeNeedsDestructor(fieldType)) continue;
+            auto fieldPtr = _builder.CreateStructGEP(payloadStruct, payloadBufPtr,
+                static_cast<unsigned>(i), "payload.elem");
+            releaseAtPtr(fieldPtr, fieldType);
+        }
+        _builder.CreateBr(exitBB);
+    }
+
+    _builder.SetInsertPoint(exitBB);
+    _builder.CreateRetVoid();
+
+    // 恢复插入点（避免污染调用方上下文）
+    if (savedBB && !savedBB->getTerminator()) {
+        _builder.SetInsertPoint(savedBB, savedIP);
+    } else if (savedBB) {
+        _builder.SetInsertPoint(savedBB);
+    }
+}
+
+// 主流水线：为本 file 的每个 enum 声明（若需析构）发射 dtor 定义
+void Compiler::compileEnumDtors() {
+    auto& enums = _file->getEnumDecls();
+    DEBUG_LOG_VAL("  compileEnumDtors", enums.size() << " enums");
+    for (auto decl : enums) {
+        if (!enumDeclNeedsDestructor(decl)) continue;
+        generateEnumDestructor(decl, _file);
+    }
 }

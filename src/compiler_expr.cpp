@@ -1931,7 +1931,13 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
     } else if (auto tupleNode = dynamic_cast<ExprTupleNode*>(node)) {
         return compileTupleExpr(tupleNode);
     } else if (auto enumCtorNode = dynamic_cast<ExprEnumCtorNode*>(node)) {
-        return compileEnumCtorExpr(enumCtorNode);
+        // Phase 5: enum ctor 是 +1 fresh：构造时把实参（含 RC payload）写入 enum 槽，
+        // enum 值随后承担释放责任。仅当类型需要析构时才登记到临时帧
+        auto val = compileEnumCtorExpr(enumCtorNode);
+        if (val && typeNeedsDestructor(type)) {
+            recordTemp(val, type);
+        }
+        return val;
     } else if (auto getRefNode = dynamic_cast<ExprGetRefNode*>(node)) {
         return compileGetRefExpr(getRefNode);
     } else if (auto unaryNode = dynamic_cast<ExprUnaryNode*>(node)) {
@@ -1982,14 +1988,18 @@ llvm::Value* Compiler::compileStatementBlockWithResult(
 }
 
 // 编译枚举构造表达式 E::V / E::V() / E::V(args)
-// Phase 4: 仅支持零参 variant；tuple-payload variant 押后到 Phase 5
+// Phase 5: 支持零参 + tuple-payload variant
 //
 // 步骤：
 // 1. 通过 ExprEnumCtorNode::getType() 解析后的 enum 名（已透传别名）查 EnumDecl
 // 2. 验证 variant 存在 / arity 匹配
 // 3. 取 enum 的 LLVM 类型（{ i32 tag } 或 { i32, [N x i8] }）
-// 4. 在栈上 alloca，写入 tag = variant index，加载整体 struct value 返回
-// 5. payload buffer 按"语义上不可观测"留作未初始化（spec §6.5）
+// 4. 在栈上 alloca，写入 tag = variant index
+// 5. tuple-payload variant：把 payload buffer 重解释为 variant 的 tuple struct，
+//    逐元素 store 实参值（实参类型与 payload 元素类型严格匹配；callee-clean
+//    入参规则下，Box/Array/Weak 已是 +1 fresh 句柄，直接交付给 enum 拥有）
+// 6. 零参 variant 不动 payload buffer（spec §6.5）
+// 7. 加载整体 struct value 作为表达式结果返回
 llvm::Value* Compiler::compileEnumCtorExpr(p<ExprEnumCtorNode> node) {
     string enumName = node->getType().name;     // 经别名解析后的真实 enum 名
     string variantName = node->variantName().getText();
@@ -2008,23 +2018,12 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprEnumCtorNode> node) {
         throw YuxError(line, col, ErrorCode::E2020, enumName, variantName);
     }
 
-    // arity 校验：构造侧 E::V 与 E::V() 等价，二者实参均为 0；tuple-payload 必须严格匹配
     size_t givenArity = node->args().size();
     size_t declArity = variant->payloadArity();
-    // 例外：零参 variant 允许 0 实参（覆盖 E::V 与 E::V() 两种形态）
-    if (declArity == 0) {
-        if (givenArity != 0) {
-            throw YuxError(line, col, ErrorCode::E2021,
-                enumName, variantName, declArity, givenArity);
-        }
-    } else {
-        if (givenArity != declArity) {
-            throw YuxError(line, col, ErrorCode::E2021,
-                enumName, variantName, declArity, givenArity);
-        }
-        // TODO(Phase 5): tuple-payload 构造尚未实现 codegen
-        throw YuxError(line, col, ErrorCode::E3091)
-            .withHint("枚举 tuple-payload 构造押后到 Phase 5；当前仅支持零参 variant");
+    // 零参 variant 允许 0 实参（覆盖 E::V 与 E::V() 两种形态），tuple-payload 必须严格匹配
+    if (givenArity != declArity) {
+        throw YuxError(line, col, ErrorCode::E2021,
+            enumName, variantName, declArity, givenArity);
     }
 
     int tagIndex = enumDecl->variantIndex(variantName);
@@ -2033,14 +2032,51 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprEnumCtorNode> node) {
         throw YuxError(line, col, ErrorCode::E3096, enumName);
     }
 
-    // 在栈上 alloca、写入 tag、加载整体值
-    // 用 entry 块的 alloca 习惯（与其他 expr 临时一致）；当前直接当前块插入即可
+    // 在栈上 alloca、写入 tag
     auto alloca = _builder.CreateAlloca(enumLLVMType, nullptr, "enum.ctor");
     auto tagPtr = _builder.CreateStructGEP(enumLLVMType, alloca, 0, "enum.tag.ptr");
     _builder.CreateStore(_builder.getInt32(tagIndex), tagPtr);
+
+    // tuple-payload variant：把 payload buffer 重解释为 variant 自身的 tuple struct，
+    // 按位置写入每个实参；payload 字段（即 enum LLVM type 的第 1 个字段）在 enum 类型有
+    // payload 时一定存在，layout 形如 { i32 tag, [N x i8] payload }
+    if (declArity > 0) {
+        // 收集 variant 的 payload 元素 LLVM 类型，构造 variant tuple struct 类型
+        vector<llvm::Type*> elemTys;
+        elemTys.reserve(declArity);
+        for (auto t : variant->payloadTypes()) {
+            auto ll = getLLVMType(t->getType());
+            if (!ll) {
+                throw YuxError(line, col, ErrorCode::E3096,
+                    enumName + "::" + variantName + " payload");
+            }
+            elemTys.push_back(ll);
+        }
+        auto payloadStruct = llvm::StructType::get(_context, elemTys);
+
+        // payload buffer 字段地址（enum struct 的字段 1）
+        auto payloadBufPtr = _builder.CreateStructGEP(enumLLVMType, alloca, 1, "enum.payload.ptr");
+
+        // 编译实参并按 variant tuple struct 的字段位置 store
+        for (size_t i = 0; i < declArity; ++i) {
+            auto argVal = compileExpr(node->args()[i]);
+            if (!argVal) {
+                throw YuxError(line, col, ErrorCode::E3096,
+                    enumName + "::" + variantName + " arg#" + std::to_string(i));
+            }
+            // TODO: 类型严格匹配检查（Phase 5 暂沿用 compileExpr 自身路径，无隐式转换由更上层把关）
+            auto fieldPtr = _builder.CreateStructGEP(payloadStruct, payloadBufPtr,
+                static_cast<unsigned>(i), "enum.payload.elem");
+            _builder.CreateStore(argVal, fieldPtr);
+            // 实参作为 fresh 临时若已入帧，需消费掉：所有权随构造转交给 enum 值，
+            // 否则帧弹出时会 release 一次导致 use-after-free
+            consumeTemp(argVal);
+        }
+    }
+
     auto loaded = _builder.CreateLoad(enumLLVMType, alloca, "enum.val");
 
     DEBUG_LOG_VAL("    Expr: EnumCtor",
-        enumName << "::" << variantName << " tag=" << tagIndex);
+        enumName << "::" << variantName << " tag=" << tagIndex << " arity=" << declArity);
     return loaded;
 }
