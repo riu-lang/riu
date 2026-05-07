@@ -15,6 +15,7 @@
 #include "node/alias_node.h"
 #include "node/draft_node.h"
 #include "node/struct_node.h"
+#include "node/enum_node.h"
 #include "node/fn_node.h"
 #include <llvm/IR/DerivedTypes.h>
 #include <set>
@@ -509,7 +510,78 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         }
     }
 
+    // 枚举类型：layout = { i32 tag } 或 { i32 tag, [N x i8] payload }
+    // tag 按声明顺序从 0 起编号；payload 缓冲取所有 variant 的 tuple-payload 中最大字节数
+    // 全部零参 variant 时省略 payload 字段（N==0）。详见 docs/spec/draft/DRAFT-枚举.md §6
+    {
+        p<FileNode> enumOwner = nullptr;
+        auto enumDecl = lookupEnumDecl(type.name, enumOwner);
+        if (enumDecl) {
+            string cacheKey = "$enum$" + type.name;
+            auto cit = _structTypes.find(cacheKey);
+            if (cit != _structTypes.end()) {
+                DEBUG_LOG_VAL("    -> Enum (cached)", type.name);
+                return cit->second;
+            }
+            // 计算 max payload 字节数
+            u64 maxPayload = 0;
+            for (auto v : enumDecl->variants()) {
+                if (!v->hasPayload()) continue;
+                vector<llvm::Type*> elemTys;
+                elemTys.reserve(v->payloadTypes().size());
+                for (auto t : v->payloadTypes()) {
+                    auto ll = getLLVMType(t->getType());
+                    if (!ll) {
+                        DEBUG_LOG_VAL("    -> Enum payload type unresolved", t->getType().name);
+                        return nullptr;
+                    }
+                    elemTys.push_back(ll);
+                }
+                auto payloadStruct = llvm::StructType::get(_context, elemTys);
+                auto sz = _module->getDataLayout().getTypeAllocSize(payloadStruct);
+                if (sz.getFixedValue() > maxPayload) maxPayload = sz.getFixedValue();
+            }
+            vector<llvm::Type*> fields;
+            fields.push_back(_builder.getInt32Ty());
+            if (maxPayload > 0) {
+                fields.push_back(llvm::ArrayType::get(_builder.getInt8Ty(), maxPayload));
+            }
+            string mangled = "Enum$" + (enumOwner ? enumOwner->moduleName() : string("")) + "$" + type.name;
+            auto enumType = llvm::StructType::create(_context, fields, mangled);
+            _structTypes[cacheKey] = enumType;
+            DEBUG_LOG_VAL("    -> Enum (created)", mangled << " payload=" << maxPayload);
+            return enumType;
+        }
+    }
+
     DEBUG_LOG_VAL("    -> Unknown type (null)", type.name);
+    return nullptr;
+}
+
+// 查找 enum 声明：本文件 → SDK → wildcard imports
+// outOwner 接收所属 FileNode，用于 mangle 名带模块前缀
+p<EnumDeclNode> Compiler::lookupEnumDecl(const string& name, p<FileNode>& outOwner) {
+    if (!_file) {
+        outOwner = nullptr;
+        return nullptr;
+    }
+    if (auto* d = _file->getEnumDecl(name)) {
+        outOwner = _file;
+        return d;
+    }
+    if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
+        if (auto* d = _yux->sdkFile()->getEnumDecl(name)) {
+            outOwner = _yux->sdkFile();
+            return d;
+        }
+    }
+    for (auto* imp : _file->wildcardImports()) {
+        if (auto* d = imp->getEnumDecl(name)) {
+            outOwner = imp;
+            return d;
+        }
+    }
+    outOwner = nullptr;
     return nullptr;
 }
 

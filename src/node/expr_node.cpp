@@ -1226,3 +1226,29 @@ int ExprNullElseNode::resolveColumn() const {
     if (_line > 0) return _col;
     return _left->resolveColumn();
 }
+
+// 枚举构造表达式：返回 enum 类型 TypeInfo
+// 处理类型别名透传（[#3.F]）：若用户写的名字是别名，沿别名链解析到真正的 enum 名
+// 别名解析失败时（链中出现非 Normal 或解不到底）退回原始名，留给编译期 getLLVMType 报错
+TypeInfo ExprEnumCtorNode::getType() const {
+    string n = _enumName.getText();
+    auto* scope = parent() ? parent()->findNearestScope() : nullptr;
+    FileNode* file = nullptr;
+    while (scope) {
+        if ((file = dynamic_cast<FileNode*>(scope))) break;
+        scope = scope->parentScope();
+    }
+    if (file) {
+        std::set<std::string> visited;
+        while (true) {
+            if (visited.count(n)) break;
+            visited.insert(n);
+            auto* a = file->getAliasDecl(n);
+            if (!a || !a->target()) break;
+            auto t = a->target()->getType();
+            if (t.kind != TypeKind::Normal) break;
+            n = t.name;
+        }
+    }
+    return TypeInfo(n);
+}

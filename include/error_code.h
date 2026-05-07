@@ -117,6 +117,9 @@ DEF_ERR(2015, "draft bounds (`: D`) are only allowed at declaration sites (fn/st
 DEF_ERR(2016, "Type alias `{}` forms a cycle (recursive without indirection)")
 DEF_ERR(2017, "Type alias name `{}` conflicts with existing {} `{}`")
 DEF_ERR(2018, "Duplicate variant `{}` in enum `{}`")
+DEF_ERR(2019, "Unknown enum `{}` in constructor `{}::{}`")
+DEF_ERR(2020, "Enum `{}` has no variant `{}`")
+DEF_ERR(2021, "Enum variant `{}::{}` expects {} payload arg(s), got {}")
 
 // ── E3xxx 类型 — 类型不匹配 ───────────────────────────────────────────
 DEF_ERR(3001, "Type mismatch in +-/ operation: left is {}, right is {}")

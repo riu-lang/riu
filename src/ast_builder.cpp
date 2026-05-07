@@ -1860,6 +1860,20 @@ std::any ASTBuilder::visitExprArrayInit(yux::yuxParser::ExprArrayInitContext* ct
     return p<ExprNode>(createWithLine<ExprArrayInitNode>(ctx, scope, literal, explicitType));
 }
 
+// 枚举构造表达式：E::V / E::V() / E::V(args)
+// AST 不解析 enum 是否存在 / variant 是否合法 / arity 是否匹配；这些都留到编译期
+// 别名透传（C::V => E::V）由 ExprEnumCtorNode::getType 在查询时解析
+std::any ASTBuilder::visitExprEnumCtor(yux::yuxParser::ExprEnumCtorContext* ctx) {
+    DEBUG_LOG_VAL("    Expr: EnumCtor",
+        ctx->enumName->getText() << "::" << ctx->variant->getText());
+    auto scope = currentScope();
+    auto node = createWithLine<ExprEnumCtorNode>(ctx, scope, ctx->enumName, ctx->variant);
+    for (auto* aCtx : ctx->args) {
+        node->addArg(any_cast_p<ExprNode>(visit(aCtx)));
+    }
+    return p<ExprNode>(node);
+}
+
 std::any ASTBuilder::visitExprUnary(yux::yuxParser::ExprUnaryContext* ctx) {
     auto scope = currentScope();
     auto right = any_cast_p<ExprNode>(visit(ctx->right));

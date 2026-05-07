@@ -415,6 +415,28 @@ public:
     [[nodiscard]] int resolveColumn() const override;
 };
 
+// 枚举构造表达式 E::V / E::V() / E::V(args)
+// AST 上零参 variant 与 E::V() 等价；arity 与变体匹配在编译期校验
+class ExprEnumCtorNode : public ExprNode {
+    Token _enumName;
+    Token _variantName;
+    vector<p<ExprNode>> _args;
+
+public:
+    ExprEnumCtorNode(const p<Node>& parent, Token enumName, Token variantName) :
+        ExprNode(parent),
+        _enumName(std::move(enumName)),
+        _variantName(std::move(variantName)) {
+    }
+
+    void addArg(p<ExprNode> a) { _args.push_back(a); }
+
+    [[nodiscard]] const Token& enumName() const { return _enumName; }
+    [[nodiscard]] const Token& variantName() const { return _variantName; }
+    [[nodiscard]] const vector<p<ExprNode>>& args() const { return _args; }
+    [[nodiscard]] TypeInfo getType() const override;
+};
+
 // a ?? b：a 为 Nullable<T> 时，有值取 a.get()，否则取 b
 class ExprNullElseNode : public ExprNode {
     p<ExprNode> _left;

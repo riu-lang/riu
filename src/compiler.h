@@ -243,6 +243,9 @@ class Compiler {
     llvm::Value* compileArrayGetExpr(p<ExprGetNode> node);                      // 编译数组索引表达式
     llvm::Value* compileArrayLiteralExpr(p<ExprArrayNode> node);                // 编译数组字面量表达式
     llvm::Value* compileTupleExpr(p<ExprTupleNode> node);                       // 编译元组构造表达式 (e1, e2, ...)
+    llvm::Value* compileEnumCtorExpr(p<ExprEnumCtorNode> node);                 // 编译枚举构造表达式 E::V / E::V(args)
+    // 查找 enum 声明（本文件 + SDK 回退 + wildcard 导入），未找到返回 nullptr / 空 owner
+    p<EnumDeclNode> lookupEnumDecl(const string& name, p<FileNode>& outOwner);
     llvm::Value* compileGetRefExpr(p<ExprGetRefNode> node);                     // 编译取引用表达式
     llvm::Value* compileUnaryExpr(p<ExprUnaryNode> node);                       // 编译一元表达式
     llvm::Value* compileNullElseExpr(p<ExprNullElseNode> node);                 // 编译 a ?? b：a 持值则取 a.get()，否则取 b

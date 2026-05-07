@@ -117,6 +117,7 @@ public:
     std::any visitExprTupleMember(yux::yuxParser::ExprTupleMemberContext* ctx) override;
     std::any visitExprUnary(yux::yuxParser::ExprUnaryContext* ctx) override;
     std::any visitExprNullElse(yux::yuxParser::ExprNullElseContext* ctx) override;
+    std::any visitExprEnumCtor(yux::yuxParser::ExprEnumCtorContext* ctx) override;
     std::any visitExprThis(yux::yuxParser::ExprThisContext* ctx) override;
 
     std::any visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) override;
