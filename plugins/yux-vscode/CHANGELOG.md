@@ -4,6 +4,10 @@ All notable changes to the "yux-vscode" extension will be documented in this fil
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.6.1]
+
+- 添加`match` `enum` 关键字
+
 ## [0.6.0]
 
 - 元组（tuple）与类型别名（type alias）相关高亮

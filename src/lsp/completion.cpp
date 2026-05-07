@@ -34,6 +34,7 @@ const std::vector<CompletionItem>& buildItems() {
         kw("if", "条件语句");
         kw("elif", "else if 条件");
         kw("else", "else 分支");
+        kw("match", "模式匹配");
         kw("true", "布尔真值");
         kw("false", "布尔假值");
         kw("null", "空值");
@@ -41,6 +42,7 @@ const std::vector<CompletionItem>& buildItems() {
         kw("val", "不可变变量声明");
         kw("cval", "编译时常量声明");
         kw("struct", "结构体声明");
+        kw("enum", "枚举声明");
         kw("draft", "约束/接口声明");
         kw("loop", "循环语句");
         kw("break", "跳出循环");

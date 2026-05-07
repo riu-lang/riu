@@ -60,8 +60,8 @@ int classify(size_t type) {
 
         case L::Cval:
         case L::Break: case L::DeclKey: case L::Draft: case L::Elif: case L::Else:
-        case L::Extern: case L::False: case L::Fn: case L::If:
-        case L::Loop: case L::Null: case L::Ret: case L::Struct:
+        case L::Enum: case L::Extern: case L::False: case L::Fn: case L::If:
+        case L::Loop: case L::Match: case L::Null: case L::Ret: case L::Struct:
         case L::True: case L::Use:
             return static_cast<int>(TT::Keyword);
 

@@ -105,7 +105,7 @@
       "patterns": [
         {
           "name": "keyword.control.conditional.yux",
-          "match": "\\b(if|elif|else)\\b"
+          "match": "\\b(if|elif|else|match)\\b"
         },
         {
           "name": "keyword.control.loop.yux",
@@ -121,7 +121,7 @@
         },
         {
           "name": "keyword.other.struct.yux",
-          "match": "\\b(struct|draft)\\b"
+          "match": "\\b(struct|draft|enum)\\b"
         },
         {
           "name": "keyword.other.extern.yux",
