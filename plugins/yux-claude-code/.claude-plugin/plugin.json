@@ -1,0 +1,12 @@
+{
+  "name": "yux-lang-lsp",
+  "version": "0.1.0",
+  "description": "Yux language support for Claude Code (LSP-backed diagnostics).",
+  "author": {
+    "name": "yux-lang"
+  },
+  "homepage": "https://github.com/yux-lang/yux",
+  "repository": "https://github.com/yux-lang/yux",
+  "license": "MIT",
+  "keywords": ["yux", "lsp", "language-server"]
+}

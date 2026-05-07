@@ -1,0 +1,9 @@
+{
+  "yux": {
+    "command": "yux-lsp-claude",
+    "args": [],
+    "extensionToLanguage": {
+      ".yux": "yux"
+    }
+  }
+}

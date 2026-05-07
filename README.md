@@ -70,9 +70,10 @@ yux-lang/
 ├── third_party/          # 外部依赖
 ├── bin/                  # 二进制工具（antlr4 jar 等）
 ├── build/                # 编译输出
-└── plugins/                 # 编辑器插件
+└── plugins/                 # 编辑器 / 客户端插件（同时是 Claude Code marketplace 根）
     ├── yux-vscode/          # VSCode 扩展
-    └── yux-idea/            # IntelliJ 插件（通过 LSP4IJ 接入 yux-lsp）
+    ├── yux-idea/            # IntelliJ 插件（通过 LSP4IJ 接入 yux-lsp）
+    └── yux-claude-code/     # Claude Code LSP 插件（用独立可执行 yux-lsp-claude 手动复制改名）
 ```
 
 ### 初始化项目
@@ -152,6 +153,14 @@ entry="main.yux"
 
 - [`plugins/yux-vscode/`](plugins/yux-vscode/) —— VSCode 扩展
 - [`plugins/yux-idea/`](plugins/yux-idea/) —— IntelliJ 系插件，通过 [LSP4IJ](https://github.com/redhat-developer/lsp4ij) 接入 `yux-lsp`
+- [`plugins/yux-claude-code/`](plugins/yux-claude-code/) —— Claude Code LSP 插件；`plugins/` 同时是本插件的 marketplace 根，安装：
+
+  ```
+  /plugin marketplace add <repo-or-local-path>/plugins
+  /plugin install yux-lang-lsp@yux-lang
+  ```
+
+  对接独立可执行 `yux-lsp-claude`（与 yux-vscode 共用源码、需手动复制/单独构建一份避免与 vscode 客户端串扰），需在 `PATH` 中
 
 ## 测试
 
