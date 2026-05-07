@@ -152,6 +152,8 @@ public:
     
     void registerSymbol(const string& name, SymbolInfo info);
 
+    void eraseSymbol(const string& name);
+
     void registerFnSymbol(const string& name, FnSymbolInfo info);
 
     void setParentScope(const p<ScopeNode>& scope);

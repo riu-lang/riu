@@ -15,6 +15,10 @@ void ScopeNode::registerSymbol(const string& name, SymbolInfo info) {
     _symbols[name] = std::move(info);
 }
 
+void ScopeNode::eraseSymbol(const string& name) {
+    _symbols.erase(name);
+}
+
 void ScopeNode::registerFnSymbol(const string& name, FnSymbolInfo info) {
     _fnSymbols[name].push_back(std::move(info));
 }

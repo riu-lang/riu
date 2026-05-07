@@ -437,6 +437,67 @@ public:
     [[nodiscard]] TypeInfo getType() const override;
 };
 
+// match arm 模式 v1 子集：
+// - isElse=true：兜底分支 `else`，无 enumName/variantName/binds
+// - isElse=false：`E::V` / `E::V()` / `E::V(b1, b2, ...)`
+class EnumPatternNode : public Node {
+    bool _isElse;
+    Token _enumName;
+    Token _variantName;
+    vector<Token> _binds;
+
+public:
+    // 兜底分支
+    EnumPatternNode(const p<Node>& parent, Token elseTok) :
+        Node(parent), _isElse(true), _enumName(elseTok), _variantName(elseTok) {
+    }
+    // enum 模式
+    EnumPatternNode(const p<Node>& parent, Token enumName, Token variantName, vector<Token> binds) :
+        Node(parent), _isElse(false),
+        _enumName(std::move(enumName)),
+        _variantName(std::move(variantName)),
+        _binds(std::move(binds)) {
+    }
+
+    [[nodiscard]] bool isElse() const { return _isElse; }
+    [[nodiscard]] const Token& enumName() const { return _enumName; }
+    [[nodiscard]] const Token& variantName() const { return _variantName; }
+    [[nodiscard]] const vector<Token>& binds() const { return _binds; }
+};
+
+// match 单条 arm: pattern => body
+// body 为单表达式（v1 不支持多语句体）
+// MatchArm 自身是 ScopeNode，承载 pattern 中的 binding 符号（让 body 内的
+// LiteralObj::getType 能沿 scope 链解析到绑定类型）
+class MatchArmNode : public ScopeNode {
+    p<EnumPatternNode> _pattern;
+    p<ExprNode> _body;
+
+public:
+    MatchArmNode(const p<Node>& parent, p<EnumPatternNode> pattern, p<ExprNode> body) :
+        ScopeNode(parent), _pattern(std::move(pattern)), _body(std::move(body)) {
+    }
+
+    [[nodiscard]] const p<EnumPatternNode>& pattern() const { return _pattern; }
+    [[nodiscard]] const p<ExprNode>& body() const { return _body; }
+};
+
+// match 表达式: match scrutinee { arm1 ... armN }
+// 类型：所有非-else arm body 类型必须严格一致；若全 arm 体均为 void，则 match 类型为 void
+class ExprMatchNode : public ExprNode {
+    p<ExprNode> _scrutinee;
+    vector<p<MatchArmNode>> _arms;
+
+public:
+    ExprMatchNode(const p<Node>& parent, p<ExprNode> scrutinee, vector<p<MatchArmNode>> arms) :
+        ExprNode(parent), _scrutinee(std::move(scrutinee)), _arms(std::move(arms)) {
+    }
+
+    [[nodiscard]] const p<ExprNode>& scrutinee() const { return _scrutinee; }
+    [[nodiscard]] const vector<p<MatchArmNode>>& arms() const { return _arms; }
+    [[nodiscard]] TypeInfo getType() const override;
+};
+
 // a ?? b：a 为 Nullable<T> 时，有值取 a.get()，否则取 b
 class ExprNullElseNode : public ExprNode {
     p<ExprNode> _left;

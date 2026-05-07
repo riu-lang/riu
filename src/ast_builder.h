@@ -118,6 +118,10 @@ public:
     std::any visitExprUnary(yux::yuxParser::ExprUnaryContext* ctx) override;
     std::any visitExprNullElse(yux::yuxParser::ExprNullElseContext* ctx) override;
     std::any visitExprEnumCtor(yux::yuxParser::ExprEnumCtorContext* ctx) override;
+    std::any visitExprMatch(yux::yuxParser::ExprMatchContext* ctx) override;
+    std::any visitMatchArm(yux::yuxParser::MatchArmContext* ctx) override;
+    std::any visitPatternEnum(yux::yuxParser::PatternEnumContext* ctx) override;
+    std::any visitPatternElse(yux::yuxParser::PatternElseContext* ctx) override;
     std::any visitExprThis(yux::yuxParser::ExprThisContext* ctx) override;
 
     std::any visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) override;

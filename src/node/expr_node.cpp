@@ -1230,6 +1230,26 @@ int ExprNullElseNode::resolveColumn() const {
 // 枚举构造表达式：返回 enum 类型 TypeInfo
 // 处理类型别名透传（[#3.F]）：若用户写的名字是别名，沿别名链解析到真正的 enum 名
 // 别名解析失败时（链中出现非 Normal 或解不到底）退回原始名，留给编译期 getLLVMType 报错
+// match 表达式：取所有非-else arm body 的共同类型；任一 arm 为 void 则整体 void
+// 类型不一致抛 E3027（match arm 体类型失配，spec §5.5）
+TypeInfo ExprMatchNode::getType() const {
+    TypeInfo first;
+    bool firstSet = false;
+    for (auto& arm : _arms) {
+        auto t = arm->body()->getType();
+        if (!firstSet) {
+            first = t;
+            firstSet = true;
+            continue;
+        }
+        if (t != first) {
+            // 不在 getType 抛错，留给编译期更稳：返回首个，编译期再校验
+            return first;
+        }
+    }
+    return first;
+}
+
 TypeInfo ExprEnumCtorNode::getType() const {
     string n = _enumName.getText();
     auto* scope = parent() ? parent()->findNearestScope() : nullptr;

@@ -23,6 +23,7 @@
 #include "mangler.h"
 #include "symbol_suggest.h"
 #include <algorithm>
+#include <set>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <regex>
@@ -1938,6 +1939,9 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
             recordTemp(val, type);
         }
         return val;
+    } else if (auto matchNode = dynamic_cast<ExprMatchNode*>(node)) {
+        // Phase 6: match 表达式 — switch on tag + 绑定 + arm 体
+        return compileMatchExpr(matchNode);
     } else if (auto getRefNode = dynamic_cast<ExprGetRefNode*>(node)) {
         return compileGetRefExpr(getRefNode);
     } else if (auto unaryNode = dynamic_cast<ExprUnaryNode*>(node)) {
@@ -2079,4 +2083,334 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprEnumCtorNode> node) {
     DEBUG_LOG_VAL("    Expr: EnumCtor",
         enumName << "::" << variantName << " tag=" << tagIndex << " arity=" << declArity);
     return loaded;
+}
+
+// 编译 match 表达式 (Phase 6)
+// 形态：match scrutinee { (E::V[(b1,..)] | else) => body ... }
+//
+// 流程：
+// 1. 求值 scrutinee，落 alloca；判定是否拥有所有权（fresh 临时）
+// 2. 校验：scrutinee 必须是 enum；arms 穷尽（或带 else）；variant 不重复；
+//    arity 匹配；绑定名 arm 内不重复；else 必须最后；arm 体类型一致
+// 3. 对每个 arm：开 BB，按位置加载 payload 元素到独立 alloca，注册到 _localVarPtrs
+//    + FnNode 符号表 + _scopeVars，编译 body，cleanup（解注册）后跳到 merge
+// 4. switch on tag 把入口块路由到各 arm；缺省走 else（或不可达）
+// 5. 合并块用 phi 取共同结果（若 hasResult）
+// 6. 末了若拥有 scrutinee，调 releaseAtPtr（含 RC 时按 tag dispatch）
+//
+// v1 限制：
+// - 绑定按"借用"语义：不 retain，仅在 scrutinee 存活期间安全使用。要求 scrutinee
+//   在整个 match 期间不被覆盖；arm body 不应让绑定逃逸（赋给变量等需要 +1 时
+//   依赖普通赋值路径自身的 retain，仅 Box/Array/Weak 走 compileBranchResultNormalized
+//   归一）
+// - arm body 仅单表达式（grammar 已限定）；多语句体押后
+llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
+    auto scrutinee = node->scrutinee();
+    auto rawScrutType = scrutinee->getType();
+    auto scrutType = resolveAlias(rawScrutType);
+    int line = node->getLineNumber();
+    int col = node->getColumn();
+
+    // 1. 必须是 enum
+    p<FileNode> enumOwner = nullptr;
+    auto enumDecl = lookupEnumDecl(scrutType.name, enumOwner);
+    if (!enumDecl) {
+        throw YuxError(line, col, ErrorCode::E2022, scrutType.name);
+    }
+    string enumName = scrutType.name;
+
+    auto& arms = node->arms();
+    if (arms.empty()) {
+        // 语法上至少 1 条 arm（g4 用 +），保险一下
+        throw YuxError(line, col, ErrorCode::E2023, enumName, string("(none)"));
+    }
+
+    // 2. 静态校验 arms
+    set<string> seenVariants;
+    bool hasElse = false;
+    for (size_t i = 0; i < arms.size(); ++i) {
+        auto arm = arms[i];
+        auto pat = arm->pattern();
+        if (pat->isElse()) {
+            if (i + 1 != arms.size()) {
+                throw YuxError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2025);
+            }
+            hasElse = true;
+            continue;
+        }
+        // enum 模式：variant 名所属的 enum 必须与 scrutinee 一致（沿别名解析）
+        string patEnumName = pat->enumName().getText();
+        // 通过 ExprEnumCtorNode 同样的别名透传：构造一个临时 ctor 节点不够，
+        // 简单走 alias resolve：若与 scrutinee enumName 不一致再尝试 resolveAlias
+        if (patEnumName != enumName) {
+            TypeInfo aliased = resolveAlias(TypeInfo(patEnumName));
+            if (aliased.name != enumName) {
+                throw YuxError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2019,
+                    patEnumName, patEnumName, pat->variantName().getText());
+            }
+        }
+
+        string vName = pat->variantName().getText();
+        auto* variant = enumDecl->variant(vName);
+        if (!variant) {
+            throw YuxError(pat->getLineNumber(), pat->getColumn(),
+                ErrorCode::E2020, enumName, vName);
+        }
+        if (seenVariants.count(vName)) {
+            throw YuxError(pat->getLineNumber(), pat->getColumn(),
+                ErrorCode::E2024, enumName, vName);
+        }
+        seenVariants.insert(vName);
+
+        size_t bindArity = pat->binds().size();
+        size_t declArity = variant->payloadArity();
+        // 允许 0 binds 匹配零参 variant（E::V 与 E::V() 等价）
+        if (bindArity != declArity && !(bindArity == 0 && declArity == 0)) {
+            throw YuxError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2026,
+                enumName, vName, declArity, bindArity);
+        }
+
+        // 绑定名重复
+        set<string> seenBinds;
+        for (auto& tk : pat->binds()) {
+            const string& bn = tk.getText();
+            if (seenBinds.count(bn)) {
+                throw YuxError(pat->getLineNumber(), pat->getColumn(),
+                    ErrorCode::E2027, bn, enumName, vName);
+            }
+            seenBinds.insert(bn);
+        }
+    }
+
+    // 穷尽性
+    if (!hasElse) {
+        vector<string> missing;
+        for (auto v : enumDecl->variants()) {
+            if (!seenVariants.count(v->name().getText())) {
+                missing.push_back(v->name().getText());
+            }
+        }
+        if (!missing.empty()) {
+            string s;
+            for (size_t i = 0; i < missing.size(); ++i) {
+                if (i) s += ", ";
+                s += enumName + "::" + missing[i];
+            }
+            throw YuxError(line, col, ErrorCode::E2023, enumName, s);
+        }
+    }
+
+    // 3. 结果类型一致性
+    TypeInfo resultType;
+    bool firstSet = false;
+    for (auto& arm : arms) {
+        auto t = arm->body()->getType();
+        if (!firstSet) {
+            resultType = t;
+            firstSet = true;
+            continue;
+        }
+        if (t != resultType) {
+            throw YuxError(arm->body()->resolveLineNumber(), arm->body()->resolveColumn(),
+                ErrorCode::E3027, resultType.name, t.name);
+        }
+    }
+    bool hasResult = !resultType.empty();
+
+    DEBUG_LOG_VAL("    Expr: Match",
+        "enum=" << enumName << " arms=" << arms.size() << " hasResult=" << hasResult
+                << " result=" << (hasResult ? resultType.name : "void"));
+
+    // 4. 求值 scrutinee 并落 alloca；fresh 时 consume 拿走所有权
+    auto enumLLVMType = getLLVMType(scrutType);
+    if (!enumLLVMType) {
+        throw YuxError(line, col, ErrorCode::E3096, enumName);
+    }
+
+    auto scrutVal = compileExpr(scrutinee);
+    if (!scrutVal) {
+        throw YuxError(line, col, ErrorCode::E3091);
+    }
+    auto scrutAlloca = _builder.CreateAlloca(enumLLVMType, nullptr, "match.scrut");
+    _builder.CreateStore(scrutVal, scrutAlloca);
+
+    // 仅当 scrutinee 是 fresh（构造 / 函数返回 / 含 RC 的 enum 临时）我们才需要在 match 末 dtor
+    bool ownsScrut = isFreshHandleExpr(scrutinee);
+    if (ownsScrut) {
+        consumeTemp(scrutVal);
+    }
+    bool needScrutDrop = ownsScrut && enumNeedsDestructor(enumName);
+
+    // 5. 构造基本块
+    llvm::Function* func = _builder.GetInsertBlock()->getParent();
+    auto mergeBB = llvm::BasicBlock::Create(_context, "match.merge");
+
+    // 各 arm BB（与 arm 索引一一对应；else arm 也是其中之一）
+    vector<llvm::BasicBlock*> armBBs;
+    armBBs.reserve(arms.size());
+    for (size_t i = 0; i < arms.size(); ++i) {
+        auto bb = llvm::BasicBlock::Create(_context, "match.arm" + std::to_string(i));
+        armBBs.push_back(bb);
+    }
+
+    // tag load + switch
+    auto tagPtr = _builder.CreateStructGEP(enumLLVMType, scrutAlloca, 0, "match.tag.ptr");
+    auto tag = _builder.CreateLoad(_builder.getInt32Ty(), tagPtr, "match.tag");
+
+    // default 块：若有 else arm 则跳到它；否则跳到 unreachable（穷尽性已保证不会到这里）
+    llvm::BasicBlock* defaultBB = nullptr;
+    if (hasElse) {
+        defaultBB = armBBs.back();
+    } else {
+        defaultBB = llvm::BasicBlock::Create(_context, "match.default");
+    }
+
+    auto sw = _builder.CreateSwitch(tag, defaultBB, static_cast<unsigned>(seenVariants.size()));
+
+    // 把每条非-else arm 的 variant 接进 switch
+    for (size_t i = 0; i < arms.size(); ++i) {
+        auto pat = arms[i]->pattern();
+        if (pat->isElse()) continue;
+        int idx = enumDecl->variantIndex(pat->variantName().getText());
+        sw->addCase(_builder.getInt32(idx), armBBs[i]);
+    }
+
+    // 6. 编译每个 arm
+    llvm::PHINode* phi = nullptr;
+    if (hasResult) {
+        phi = llvm::PHINode::Create(getLLVMType(resultType),
+            static_cast<unsigned>(arms.size()), "match.result", mergeBB);
+    }
+
+    auto resultLLVMType = hasResult ? getLLVMType(resultType) : nullptr;
+
+    for (size_t i = 0; i < arms.size(); ++i) {
+        auto arm = arms[i];
+        auto pat = arm->pattern();
+        func->insert(func->end(), armBBs[i]);
+        _builder.SetInsertPoint(armBBs[i]);
+
+        // 准备绑定（仅非-else arm）
+        struct BindSnap {
+            string name;
+            bool hadSym;
+            SymbolInfo prevSym;
+            bool hadPtr;
+            llvm::Value* prevPtr;
+        };
+        vector<BindSnap> snaps;
+
+        if (!pat->isElse() && !pat->binds().empty()) {
+            string vName = pat->variantName().getText();
+            auto* variant = enumDecl->variant(vName);
+            // 重建 variant payload tuple struct
+            vector<llvm::Type*> elemTys;
+            elemTys.reserve(variant->payloadTypes().size());
+            for (auto t : variant->payloadTypes()) {
+                elemTys.push_back(getLLVMType(t->getType()));
+            }
+            auto payloadStruct = llvm::StructType::get(_context, elemTys);
+            auto payloadBufPtr = _builder.CreateStructGEP(enumLLVMType, scrutAlloca, 1,
+                "match.payload.ptr");
+
+            for (size_t k = 0; k < pat->binds().size(); ++k) {
+                const string& bn = pat->binds()[k].getText();
+                auto bindType = variant->payloadTypes()[k]->getType();
+                auto bindLLVMType = getLLVMType(bindType);
+
+                auto fieldPtr = _builder.CreateStructGEP(payloadStruct, payloadBufPtr,
+                    static_cast<unsigned>(k), "match.bind.field");
+                auto loaded = _builder.CreateLoad(bindLLVMType, fieldPtr,
+                    ("match.bind." + bn).c_str());
+
+                // 独立 alloca，便于 compileLiteralExpr 通过 _localVarPtrs 取出
+                auto bindAlloca = _builder.CreateAlloca(bindLLVMType, nullptr,
+                    ("bind." + bn).c_str());
+                _builder.CreateStore(loaded, bindAlloca);
+
+                BindSnap snap;
+                snap.name = bn;
+                auto* prev = _currentFnNode->lookupSymbol(bn);
+                snap.hadSym = (prev != nullptr);
+                if (prev) snap.prevSym = *prev;
+                auto pit = _localVarPtrs.find(bn);
+                snap.hadPtr = (pit != _localVarPtrs.end());
+                snap.prevPtr = snap.hadPtr ? pit->second : nullptr;
+
+                _currentFnNode->registerSymbol(bn,
+                    {SymbolKind::Variable, bn, bindType, false});
+                _localVarPtrs[bn] = bindAlloca;
+
+                snaps.push_back(snap);
+            }
+        }
+
+        // 编译 body：RC 句柄需归一到 +1 的部分由 compileBranchResultNormalized 处理
+        llvm::Value* bodyVal = nullptr;
+        if (hasResult) {
+            bodyVal = compileBranchResultNormalized(arm->body(), resultType);
+        } else {
+            // 作为语句：仍走 compileExpr，吃掉中间 fresh 临时
+            pushTempFrame();
+            (void)compileExpr(arm->body());
+            popAndReleaseTempFrame();
+        }
+
+        auto armEndBB = _builder.GetInsertBlock();
+
+        // cleanup 绑定（先恢复 _currentFnNode 符号 / _localVarPtrs；
+        // 绑定按借用语义，不在 alloca 上 release）
+        for (auto it = snaps.rbegin(); it != snaps.rend(); ++it) {
+            if (it->hadSym) {
+                _currentFnNode->registerSymbol(it->name, it->prevSym);
+            } else {
+                _currentFnNode->eraseSymbol(it->name);
+            }
+            if (it->hadPtr) {
+                _localVarPtrs[it->name] = it->prevPtr;
+            } else {
+                _localVarPtrs.erase(it->name);
+            }
+        }
+
+        if (hasResult && phi && bodyVal) {
+            // 类型再校验（防御）
+            phi->addIncoming(bodyVal, armEndBB);
+        }
+
+        // 跳到 merge（终结块若已有 terminator 则跳过）
+        if (!_builder.GetInsertBlock()->getTerminator()) {
+            _builder.CreateBr(mergeBB);
+        }
+    }
+
+    // 7. 无 else 时 default 走 unreachable（穷尽性应保证不可达）
+    if (!hasElse) {
+        func->insert(func->end(), defaultBB);
+        _builder.SetInsertPoint(defaultBB);
+        _builder.CreateUnreachable();
+    }
+
+    // 8. merge
+    func->insert(func->end(), mergeBB);
+    _builder.SetInsertPoint(mergeBB);
+
+    // 9. 拥有 scrutinee 且需要 dtor：在 merge 后释放
+    if (needScrutDrop) {
+        releaseAtPtr(scrutAlloca, scrutType);
+    }
+
+    if (hasResult) {
+        // 若 phi 为空（理论不会，arms 至少 1）兜底 undef
+        if (phi->getNumIncomingValues() == 0) {
+            return llvm::UndefValue::get(resultLLVMType);
+        }
+        // RC 句柄结果由 compileBranchResultNormalized 已归一为 fresh +1，
+        // 登记到外层 statement frame
+        if (resultType.isBox() || resultType.isArrayGeneric() || resultType.isWeak()) {
+            recordTemp(phi, resultType);
+        }
+        return phi;
+    }
+    return nullptr;
 }

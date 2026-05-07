@@ -1,0 +1,129 @@
+; 枚举 + match 行为测试 (Phase 6)
+;
+; 覆盖：
+;   - 零参 variant 的构造与 match
+;   - tuple-payload variant 的构造、绑定与 match
+;   - else 兜底
+;   - 含 RC payload (String) variant 的 match 与析构
+;   - 类型别名透传 C::V 路径
+;   - 跨变量传递与作用域结束析构
+
+enum Color {
+  Red
+  Green
+  Blue
+}
+
+enum Shape {
+  Point
+  Circle(f64)
+  Rect(f64, f64)
+}
+
+enum Tagged {
+  Empty
+  Msg(String)
+  Pair(i32, String)
+}
+
+ColorAlias = Color
+
+#Test
+fn test_enum_match_zero_variant() {
+  val c Color = Color::Red
+  val n i32 = match c {
+    Color::Red => 1
+    Color::Green => 2
+    Color::Blue => 3
+  }
+  assert_eq(n, 1)
+}
+
+#Test
+fn test_enum_match_zero_with_paren() {
+  val c Color = Color::Green()
+  val n i32 = match c {
+    Color::Red => 10
+    Color::Green => 20
+    Color::Blue => 30
+  }
+  assert_eq(n, 20)
+}
+
+#Test
+fn test_enum_match_else_branch() {
+  val c Color = Color::Blue
+  val n i32 = match c {
+    Color::Red => 1
+    else => 99
+  }
+  assert_eq(n, 99)
+}
+
+#Test
+fn test_enum_match_tuple_payload_f64() {
+  val s Shape = Shape::Circle(2.0f64)
+  val area f64 = match s {
+    Shape::Point => 0.0f64
+    Shape::Circle(r) => 3.14f64 * r * r
+    Shape::Rect(w, h) => w * h
+  }
+  ; 3.14 * 4.0 = 12.56
+  assert_eq(area, 12.56f64)
+}
+
+#Test
+fn test_enum_match_tuple_payload_rect() {
+  val s Shape = Shape::Rect(3.0f64, 4.0f64)
+  val area f64 = match s {
+    Shape::Point => 0.0f64
+    Shape::Circle(r) => 3.14f64 * r * r
+    Shape::Rect(w, h) => w * h
+  }
+  assert_eq(area, 12.0f64)
+}
+
+#Test
+fn test_enum_match_alias() {
+  val c ColorAlias = ColorAlias::Red
+  val n i32 = match c {
+    ColorAlias::Red => 7
+    ColorAlias::Green => 8
+    ColorAlias::Blue => 9
+  }
+  assert_eq(n, 7)
+}
+
+#Test
+fn test_enum_match_string_payload_check() {
+  val t Tagged = Tagged::Msg("hello")
+  val flag i32 = match t {
+    Tagged::Empty => 0
+    Tagged::Msg(s) => 1
+    Tagged::Pair(n, _unused) => 2
+  }
+  assert_eq(flag, 1)
+}
+
+#Test
+fn test_enum_match_pair_payload_use_first() {
+  val t Tagged = Tagged::Pair(42, "hello world")
+  val n i32 = match t {
+    Tagged::Empty => -1
+    Tagged::Msg(_unused) => -2
+    Tagged::Pair(num, _s) => num
+  }
+  assert_eq(n, 42)
+}
+
+#Test
+fn test_enum_match_drops_owned_payload() {
+  ; 直接 match 一个临时构造的含 String 的 enum：
+  ; 拿 owned scrutinee → arm 取绑定为借用 → match 末按 tag dispatch dtor 释放 String
+  val n i32 = match Tagged::Msg("hi") {
+    Tagged::Empty => 0
+    Tagged::Msg(_s) => 7
+    Tagged::Pair(x, _y) => x
+  }
+  assert_eq(n, 7)
+}

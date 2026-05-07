@@ -120,6 +120,12 @@ DEF_ERR(2018, "Duplicate variant `{}` in enum `{}`")
 DEF_ERR(2019, "Unknown enum `{}` in constructor `{}::{}`")
 DEF_ERR(2020, "Enum `{}` has no variant `{}`")
 DEF_ERR(2021, "Enum variant `{}::{}` expects {} payload arg(s), got {}")
+DEF_ERR(2022, "match scrutinee must be an enum type, got `{}`")
+DEF_ERR(2023, "non-exhaustive match on enum `{}`: missing variant(s) {}")
+DEF_ERR(2024, "duplicate variant `{}::{}` in match arms")
+DEF_ERR(2025, "`else` arm must be the last arm in match")
+DEF_ERR(2026, "match pattern for `{}::{}` expects {} binding(s), got {}")
+DEF_ERR(2027, "duplicate binding `{}` in match pattern `{}::{}`")
 
 // ── E3xxx 类型 — 类型不匹配 ───────────────────────────────────────────
 DEF_ERR(3001, "Type mismatch in +-/ operation: left is {}, right is {}")
@@ -148,6 +154,7 @@ DEF_ERR(3023, "`??` right side type {} doesn't match Nullable inner type {}")
 DEF_ERR(3024, "Left side of `??` must be Nullable<T>, got {}")
 DEF_ERR(3025, "`?.` requires Nullable<T> on the left, got {}")
 DEF_ERR(3026, "String template interpolation requires type implementing ToString, got '{}' (impl `Type : ToString {{ fn to_string() String {{ ... }} }}`)")
+DEF_ERR(3027, "Type mismatch in match arms: expected {}, arm produces {}")
 
 // ── E3xxx 类型 — 符号查找 ─────────────────────────────────────────────
 DEF_ERR(3030, "Undefined variable: {}")

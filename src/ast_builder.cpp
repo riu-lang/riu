@@ -1874,6 +1874,127 @@ std::any ASTBuilder::visitExprEnumCtor(yux::yuxParser::ExprEnumCtorContext* ctx)
     return p<ExprNode>(node);
 }
 
+// match 模式：E::V / E::V() / E::V(b1, b2, ...)
+// 绑定名重复在 ast 阶段不查（v1 留给 codegen 报 E2027）
+std::any ASTBuilder::visitPatternEnum(yux::yuxParser::PatternEnumContext* ctx) {
+    DEBUG_LOG_VAL("    Pattern: Enum",
+        ctx->enumName->getText() << "::" << ctx->variant->getText());
+    auto scope = currentScope();
+    vector<Token> binds;
+    binds.reserve(ctx->binds.size());
+    for (auto* tk : ctx->binds) binds.emplace_back(tk);
+    return p<EnumPatternNode>(createWithLine<EnumPatternNode>(
+        ctx, scope, ctx->enumName, ctx->variant, std::move(binds)));
+}
+
+// match 模式：else 兜底
+std::any ASTBuilder::visitPatternElse(yux::yuxParser::PatternElseContext* ctx) {
+    DEBUG_LOG("    Pattern: Else");
+    auto scope = currentScope();
+    Token elseTok = ctx->Else()->getSymbol();
+    return p<EnumPatternNode>(createWithLine<EnumPatternNode>(ctx, scope, elseTok));
+}
+
+// match arm: pattern => body
+// 先 visit pattern（不依赖 binding），构造 MatchArmNode 作 ScopeNode，
+// 把 pattern 中的 binding 注册到 arm scope（类型暂用占位 enum 名字 — codegen
+// 阶段才能拿到 variant payload 的精确类型）。然后 push arm scope 再 visit body，
+// 让 body 内对 binding 的 ObjLiteral::getType 能解析到 arm scope。
+//
+// 占位类型说明：v1 grammar 没把 binding 携带类型注解；spec §5.5 要求绑定类型
+// 严格等于 payload 元素类型。binding 类型在 codegen 用 EnumDecl 的
+// payloadTypes 拿到；ast 解析期 getType 仅用作"被某表达式引用时的类型推断"，
+// 例如 `r * r` 中 r 的类型决定外层 `*` 的判定。占位空 TypeInfo 会导致
+// `r * r` 类型推不出来。所以 ast_builder 必须填出真实类型 —— 这里通过 enum
+// 声明回查 EnumDecl，找不到则放空 TypeInfo（codegen 仍会报 E2019）。
+std::any ASTBuilder::visitMatchArm(yux::yuxParser::MatchArmContext* ctx) {
+    DEBUG_LOG("    MatchArm");
+    auto outer = currentScope();
+    auto pattern = any_cast_p<EnumPatternNode>(visit(ctx->pattern));
+
+    // 先建空 body 的 arm 节点（body 占位 nullptr 不便），但 createWithLine 要参数齐全；
+    // 改用先 push 临时 arm，然后 visit body 拿到真实 body 节点
+    auto arm = createWithLine<MatchArmNode>(ctx, outer, pattern, p<ExprNode>(nullptr));
+    arm->setParentScope(outer);
+
+    // 给 pattern 的 binding 在 arm scope 上注册符号（按 payload 元素类型）
+    if (!pattern->isElse() && !pattern->binds().empty()) {
+        // 找 enum decl：本文件 -> SDK -> 别名解析后再尝试
+        auto file = _scopeStack.empty() ? nullptr : dynamic_cast<FileNode*>(_scopeStack[0]);
+        EnumDeclNode* enumDecl = nullptr;
+        string enumName = pattern->enumName().getText();
+        auto resolveDecl = [&](const string& nm) -> EnumDeclNode* {
+            if (file) {
+                if (auto* d = file->getEnumDecl(nm)) return d;
+                if (_yux.sdkFile() && _yux.sdkFile() != file) {
+                    if (auto* d = _yux.sdkFile()->getEnumDecl(nm)) return d;
+                }
+                for (auto* imp : file->wildcardImports()) {
+                    if (auto* d = imp->getEnumDecl(nm)) return d;
+                }
+            }
+            return nullptr;
+        };
+        enumDecl = resolveDecl(enumName);
+        if (!enumDecl && file) {
+            // 别名透传：跟随别名链最多一层（Phase 5 ctor 同处理）
+            std::set<std::string> visited;
+            string n = enumName;
+            while (true) {
+                if (visited.count(n)) break;
+                visited.insert(n);
+                auto* a = file->getAliasDecl(n);
+                if (!a || !a->target()) break;
+                auto t = a->target()->getType();
+                if (t.kind != TypeKind::Normal) break;
+                n = t.name;
+            }
+            enumDecl = resolveDecl(n);
+        }
+
+        EnumVariantNode* variant = enumDecl
+            ? enumDecl->variant(pattern->variantName().getText())
+            : nullptr;
+        for (size_t i = 0; i < pattern->binds().size(); ++i) {
+            const string& bn = pattern->binds()[i].getText();
+            TypeInfo bindType;
+            if (variant && i < variant->payloadArity()) {
+                bindType = variant->payloadTypes()[i]->getType();
+            }
+            arm->registerSymbol(bn, {SymbolKind::Variable, bn, bindType, false});
+        }
+    }
+
+    // 在 arm scope 下 visit body，使其内部 binding 引用走 arm scope -> outer 链
+    _scopeStack.push_back(arm);
+    auto body = any_cast_p<ExprNode>(visit(ctx->body));
+    _scopeStack.pop_back();
+
+    // 修正 arm 的 body
+    // MatchArmNode 没暴露 body setter；最简改 ExprNode 字段：直接重建一个新 arm
+    auto fullArm = createWithLine<MatchArmNode>(ctx, outer, pattern, body);
+    fullArm->setParentScope(outer);
+    // 把刚才在 arm scope 注册的 binding 复制过去
+    for (auto& [n, sym] : arm->localSymbols()) {
+        fullArm->registerSymbol(n, sym);
+    }
+    return p<MatchArmNode>(fullArm);
+}
+
+// match 表达式：scrutinee + arms
+// 仅在此处构造 AST 节点；穷尽性 / 类型一致性 / 绑定 RC / arity 校验留给编译期
+std::any ASTBuilder::visitExprMatch(yux::yuxParser::ExprMatchContext* ctx) {
+    DEBUG_LOG("    Expr: Match");
+    auto scope = currentScope();
+    auto scrutinee = any_cast_p<ExprNode>(visit(ctx->expr()));
+    vector<p<MatchArmNode>> arms;
+    arms.reserve(ctx->arms.size());
+    for (auto* armCtx : ctx->arms) {
+        arms.push_back(any_cast_p<MatchArmNode>(visit(armCtx)));
+    }
+    return p<ExprNode>(createWithLine<ExprMatchNode>(ctx, scope, scrutinee, std::move(arms)));
+}
+
 std::any ASTBuilder::visitExprUnary(yux::yuxParser::ExprUnaryContext* ctx) {
     auto scope = currentScope();
     auto right = any_cast_p<ExprNode>(visit(ctx->right));
