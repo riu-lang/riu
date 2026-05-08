@@ -168,6 +168,15 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
         put(out, c->name, TT::Parameter, MOD_DECLARATION);
     } else if (auto* c = dynamic_cast<P::FnParamGroupContext*>(node)) {
         for (auto* tok : c->names) put(out, tok, TT::Parameter, MOD_DECLARATION);
+    } else if (auto* c = dynamic_cast<P::LambdaParamStdContext*>(node)) {
+        put(out, c->name, TT::Parameter, MOD_DECLARATION);
+    } else if (auto* c = dynamic_cast<P::LambdaParamGroupContext*>(node)) {
+        for (auto* tok : c->names) put(out, tok, TT::Parameter, MOD_DECLARATION);
+    } else if (auto* c = dynamic_cast<P::FnTypeParamNamedContext*>(node)) {
+        // fn 类型字面量参数名仅作文档（§3.4），但 IDE 仍按 Parameter 高亮
+        put(out, c->name, TT::Parameter, MOD_DECLARATION);
+    } else if (auto* c = dynamic_cast<P::FnTypeParamGroupContext*>(node)) {
+        for (auto* tok : c->names) put(out, tok, TT::Parameter, MOD_DECLARATION);
     } else if (auto* c = dynamic_cast<P::ExprDotContext*>(node)) {
         // 默认全部当字段；如果整个 dot 是被调用的左部，下面 ExprCall 分支会把最后一个 member 改成 method
         for (auto* tok : c->member) put(out, tok, TT::Property, 0);

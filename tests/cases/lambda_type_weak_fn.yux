@@ -1,5 +1,5 @@
 ; Phase 1 verify：函数值不是堆句柄，无 RC 头，不能 Weak<...> 包裹
-; spec §3.7 / §5.5 / DRAFT-lambda.md [#22] 表
+; spec §3.7 / §5.5 / DRAFT-lambda.md [#22]
 
 fn main() {
   val w Weak<fn()i32>
