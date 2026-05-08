@@ -85,6 +85,17 @@ gen-antlr.cmd        # Windows CMD
 
 此命令使用 `bin/antlr-4.13.2-complete.jar` 从语法文件生成代码到 `gen/yux/` 目录。
 
+### 代码统计
+
+使用 [cloc](https://github.com/AlDanial/cloc) 统计代码行数：
+
+```powershell
+./count-lines           # 统计 HEAD
+./count-lines <commit>  # 统计指定 commit
+```
+
+此命令会自动排除 lock 文件（如 `package-lock.json`），并使用 `yux_lang_def.txt` 配置识别 yux 语言。
+
 ## 构建
 
 ```powershell
@@ -150,7 +161,7 @@ entry="main.yux"
 
 测试运行器当前以单文件模式在内部调用 `yux` 编译每个用例，产物落在 `tests/cases/build/<stem>.exe`（错误用例在 `tests/cases/error/build/`）。单文件模式本身已弃用，这里是最后一处内部使用，未来会替换为每用例一个小项目的 harness。
 
-语法以 [`src/yux.g4`](src/yux.g4) 和 [文档](docs/index.md) 为准，用例需符合这两者；
+语法以 `src/yux*.g4` 和 [文档](docs/index.md) 为准，用例需符合这两者；
 
 **运行方式：**
 

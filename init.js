@@ -12,7 +12,7 @@ const path = require('path');
 const PROJECT_ROOT = __dirname;
 const SCRIPTS_DIR = path.join(__dirname, 'scripts');
 
-const SCRIPTS = ['sync-deps', 'gen-antlr'];
+const SCRIPTS = ['sync-deps', 'gen-antlr', 'count-lines'];
 
 const TEMPLATES = {
   ps1: (name) => `#!/usr/bin/env pwsh
