@@ -13,7 +13,7 @@
 // 并链接到每个 yux 程序中。
 
 #include "compiler_runtime.h"
-#include "yux.h"
+#include "ast/yux.h"
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 

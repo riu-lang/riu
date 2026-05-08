@@ -18,11 +18,11 @@
 #include "semantic_tokens.h"
 #include "workspace.h"
 #include "symbol_lookup.h"
-#include "../formatter.h"
-#include "../node/file_node.h"
-#include "../node/fn_node.h"
-#include "../node/struct_node.h"
-#include "../node/global_const_node.h"
+#include "tools/formatter.h"
+#include "ast/node/file_node.h"
+#include "ast/node/fn_node.h"
+#include "ast/node/struct_node.h"
+#include "ast/node/global_const_node.h"
 #include "utf8.h"
 
 #include <nlohmann/json.hpp>

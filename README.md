@@ -53,29 +53,6 @@ fn main() {
 | utfcpp | UTF-8 编码处理 |
 | zlib | 压缩库 |
 
-### 目录结构
-
-```
-yux-lang/
-├── src/                  # 源代码
-│   ├── yux.g4            # 语法文件
-│   ├── main.cpp          # 程序入口
-│   ├── compiler.*        # LLVM IR 生成
-│   ├── ast_builder.*     # AST 构建
-│   └── node/             # AST 节点定义
-├── include/              # 公共头文件
-├── sdk/                  # 自举运行时库
-├── gen/                  # ANTLR4 生成的代码
-├── tests/                # 测试用例
-├── third_party/          # 外部依赖
-├── bin/                  # 二进制工具（antlr4 jar 等）
-├── build/                # 编译输出
-└── plugins/                 # 编辑器 / 客户端插件（同时是 Claude Code marketplace 根）
-    ├── yux-vscode/          # VSCode 扩展
-    ├── yux-idea/            # IntelliJ 插件（通过 LSP4IJ 接入 yux-lsp）
-    └── yux-claude-code/     # Claude Code LSP 插件（用独立可执行 yux-lsp-claude 手动复制改名）
-```
-
 ### 初始化项目
 
 克隆仓库后，运行初始化脚本生成跨平台包装脚本：

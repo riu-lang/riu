@@ -10,7 +10,7 @@
 // - 检查类型是否需要析构函数
 
 #include "compiler.h"
-#include "mangler.h"
+#include "ast/mangler.h"
 #include <llvm/IR/Instructions.h>
 
 // ==================== 析构函数调用 ====================

@@ -10,7 +10,7 @@
 
 #include "draft_registry.h"
 
-#include "yux.h"
+#include "ast/yux.h"
 
 DraftRegistry::DraftRegistry(Yux* yux) : _yux(yux) {}
 

@@ -9,7 +9,7 @@
 // - 按 (距离, 名称) 排序后取前 k 个
 
 #include "symbol_suggest.h"
-#include "node/node.h"
+#include "ast/node/node.h"
 #include <algorithm>
 #include <set>
 

@@ -12,11 +12,11 @@
 // - 数组元素赋值语句
 
 #include "compiler.h"
-#include "node/statement_node.h"
-#include "node/expr_node.h"
+#include "ast/node/statement_node.h"
+#include "ast/node/expr_node.h"
 #include "compiler_runtime.h"
-#include "mangler.h"
-#include "symbol_suggest.h"
+#include "ast/mangler.h"
+#include "analyzer/symbol_suggest.h"
 #include <algorithm>
 
 // ==================== Return 语句编译 ====================

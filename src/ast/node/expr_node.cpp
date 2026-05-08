@@ -9,7 +9,7 @@
 #include "fn_node.h"
 #include "file_node.h"
 #include "draft_node.h"
-#include "../symbol_suggest.h"
+#include "analyzer/symbol_suggest.h"
 
 // §12.4：在生成式 AST 中遇到 `x.m()`（x:T 为泛型形参）时，
 // 用形参声明位的 draft 边界查 m 的返回类型；走包含 SDK 回退的 file 链。

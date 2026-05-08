@@ -153,26 +153,26 @@ target("llvm")
 target("yux_frontend")
     set_kind("static")
     add_deps("antlr4_static")
-    add_includedirs("include", "gen", {public = true})
+    add_includedirs("include", "src", "gen", {public = true})
     add_includedirs(path.join(third_party, "antlr4/runtime/Cpp/runtime/src"), {public = true})
     add_includedirs(path.join(third_party, "utfcpp/source"), {public = true})
     add_includedirs(path.join(third_party, "toml11/single_include"), {public = true})
     add_includedirs(path.join(third_party, "nlohmann_json/single_include"), {public = true})
 
     add_files(
-        "src/ast_builder.cpp",
-        "src/yux.cpp",
-        "src/diagnostic.cpp",
-        "src/formatter.cpp",
-        "src/syntax_error_listener.cpp",
-        "src/mangler.cpp",
-        "src/build_cache.cpp",
-        "src/borrow_checker.cpp",
-        "src/symbol_suggest.cpp",
-        "src/draft_registry.cpp",
-        "src/draft_impl_checker.cpp"
+        "src/ast/ast_builder.cpp",
+        "src/ast/yux.cpp",
+        "src/tools/diagnostic.cpp",
+        "src/tools/formatter.cpp",
+        "src/tools/syntax_error_listener.cpp",
+        "src/ast/mangler.cpp",
+        "src/tools/build_cache.cpp",
+        "src/analyzer/borrow_checker.cpp",
+        "src/analyzer/symbol_suggest.cpp",
+        "src/analyzer/draft_registry.cpp",
+        "src/analyzer/draft_impl_checker.cpp"
     )
-    add_files("src/node/*.cpp")
+    add_files("src/ast/node/*.cpp")
     add_files("gen/yux/*.cpp")
 
     add_defines("UNICODE", "NOMINMAX", "ANTLR4CPP_STATIC", {public = true})
@@ -182,19 +182,13 @@ target("yux_frontend")
 target("yux_codegen")
     set_kind("static")
     add_deps("yux_frontend", "zlib", "llvm")
+    add_includedirs("src", {public = true})
     add_includedirs(path.join(third_party, "llvm/llvm/include"), {public = true})
     add_includedirs(path.join(third_party, "llvm/lld/include"), {public = true})
 
     add_files(
-        "src/compiler.cpp",
-        "src/compiler_call.cpp",
-        "src/compiler_destructor.cpp",
-        "src/compiler_expr.cpp",
-        "src/compiler_runtime.cpp",
-        "src/compiler_stmt.cpp",
-        "src/compiler_test_intrinsics.cpp",
-        "src/compiler_types.cpp",
-        "src/ctor_daa.cpp"
+        "src/compiler/*.cpp",
+        "src/runtime/ctor_daa.cpp"
     )
 
     add_syslinks("ntdll", {public = true})
@@ -222,7 +216,7 @@ target("yux")
 target("yux-lsp")
     set_kind("binary")
     add_deps("yux_frontend")
-    add_files("src/lsp_main.cpp")
+    add_includedirs("src", {public = true})
     add_files("src/lsp/*.cpp")
     set_rundir("$(projectdir)")
 

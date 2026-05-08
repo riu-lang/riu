@@ -11,12 +11,12 @@
 // - 外部函数调用
 
 #include "compiler.h"
-#include "node/expr_node.h"
-#include "node/literal_node.h"
+#include "ast/node/expr_node.h"
+#include "ast/node/literal_node.h"
 #include "compiler_runtime.h"
-#include "draft_impl_checker.h"
-#include "draft_registry.h"
-#include "mangler.h"
+#include "analyzer/draft_impl_checker.h"
+#include "analyzer/draft_registry.h"
+#include "ast/mangler.h"
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <functional>

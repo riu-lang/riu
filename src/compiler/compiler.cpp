@@ -13,12 +13,12 @@
 // - 泛型单态化相关函数
 
 #include "compiler.h"
-#include "borrow_checker.h"
-#include "ctor_daa.h"
-#include "mangler.h"
-#include "node/fn_node.h"
-#include "node/expr_node.h"
-#include "node/literal_node.h"
+#include "analyzer/borrow_checker.h"
+#include "runtime/ctor_daa.h"
+#include "ast/mangler.h"
+#include "ast/node/fn_node.h"
+#include "ast/node/expr_node.h"
+#include "ast/node/literal_node.h"
 #include "types.h"
 #include "compiler_runtime.h"
 #include <utility>

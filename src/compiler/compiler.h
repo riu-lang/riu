@@ -19,13 +19,13 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
 
-#include "node/file_node.h"
-#include "node/fn_node.h"
-#include "node/global_const_node.h"
-#include "node/statement_node.h"
-#include "node/expr_node.h"
-#include "node/struct_node.h"
-#include "yux.h"
+#include "ast/node/file_node.h"
+#include "ast/node/fn_node.h"
+#include "ast/node/global_const_node.h"
+#include "ast/node/statement_node.h"
+#include "ast/node/expr_node.h"
+#include "ast/node/struct_node.h"
+#include "ast/yux.h"
 #include "compiler_runtime.h"
 
 // 类型转换信息

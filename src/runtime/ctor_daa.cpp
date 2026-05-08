@@ -3,9 +3,9 @@
 
 #include "ctor_daa.h"
 
-#include "node/expr_node.h"
-#include "node/literal_node.h"
-#include "node/statement_node.h"
+#include "ast/node/expr_node.h"
+#include "ast/node/literal_node.h"
+#include "ast/node/statement_node.h"
 
 #include <map>
 #include <string>

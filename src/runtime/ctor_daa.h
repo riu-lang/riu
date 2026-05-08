@@ -4,7 +4,7 @@
 #ifndef YUX_LANG_CTOR_DAA_H
 #define YUX_LANG_CTOR_DAA_H
 
-#include "node/fn_node.h"
+#include "ast/node/fn_node.h"
 
 #include <string>
 #include <vector>

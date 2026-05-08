@@ -60,12 +60,6 @@ cd examples/test && yux build test && ./build/test/test.exe
 源码边界（`src/`）：
 
 - `main.cpp` —— CLI 入口、参数解析
-- `yux.cpp/h` —— 编译器主驱动，编排流水线
-- `ast_builder.cpp/h` —— ANTLR 解析树 → AST 节点
-- `compiler.cpp/h` —— AST → LLVM IR
-- `build_cache.cpp/h` —— 源文件 mtime + size 缓存；缓存写为 `<objPath>.cache`，mtime 和 size 都命中则跳过该文件的重新编译
-- `mangler.cpp/h` —— 名字重整（模块路径、结构体成员等）
-- `node/` —— AST 节点定义：`node`、`file_node`、`expr_node`、`fn_node`、`struct_node`、`statement_node`、`literal_node`、`global_const_node`、`type_node`
 - ANTLR 生成代码在 `gen/`（**不要手改**）
 
 运行时位于 `sdk/yux/`（独立的 yux 项目，`yux.toml` 含 `[lib] type="static"`），源码在 `sdk/yux/src/yux/core/`（`base.yux` / `math.yux` / `pkg` 文件等），由 yux 自身编写并编译为静态库 `sdk/yux/build/yux/yux.lib`，链接进每个 yux 程序。

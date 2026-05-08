@@ -4,11 +4,11 @@
 #include "symbol_lookup.h"
 
 #include "workspace.h"
-#include "../node/file_node.h"
-#include "../node/fn_node.h"
-#include "../node/struct_node.h"
-#include "../node/global_const_node.h"
-#include "../node/type_node.h"
+#include "ast/node/file_node.h"
+#include "ast/node/fn_node.h"
+#include "ast/node/struct_node.h"
+#include "ast/node/global_const_node.h"
+#include "ast/node/type_node.h"
 
 #include "antlr4-runtime.h"
 #include "yux/yuxLexer.h"

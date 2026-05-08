@@ -24,7 +24,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "../yux.h"
+#include "ast/yux.h"
 
 class FileNode;
 

@@ -16,9 +16,8 @@
 
 #include "compiler.h"
 #include "compiler_test_intrinsics.h"
-#include "mangler.h"
-#include "diagnostic.h"
-#include "node/expr_node.h"
+#include "ast/mangler.h"
+#include "ast/node/expr_node.h"
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>

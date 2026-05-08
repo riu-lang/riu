@@ -3,7 +3,7 @@
 
 #include "literal_node.h"
 #include "file_node.h"
-#include "../symbol_suggest.h"
+#include "analyzer/symbol_suggest.h"
 
 #include <utility>
 #include <regex>

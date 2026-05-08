@@ -23,10 +23,10 @@
 #ifndef YUX_LANG_DRAFT_IMPL_CHECKER_H
 #define YUX_LANG_DRAFT_IMPL_CHECKER_H
 
-#include "node/draft_node.h"
-#include "node/file_node.h"
-#include "node/fn_node.h"
-#include "node/struct_node.h"
+#include "ast/node/draft_node.h"
+#include "ast/node/file_node.h"
+#include "ast/node/fn_node.h"
+#include "ast/node/struct_node.h"
 #include "types.h"
 
 #include <map>

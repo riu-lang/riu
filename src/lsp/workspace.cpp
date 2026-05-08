@@ -9,9 +9,9 @@
 
 #include "workspace.h"
 
-#include "../ast_builder.h"
-#include "../node/file_node.h"
-#include "../yux.h"
+#include "ast/ast_builder.h"
+#include "ast/node/file_node.h"
+#include "ast/yux.h"
 
 #include "antlr4-runtime.h"
 #include "yux/yuxLexer.h"

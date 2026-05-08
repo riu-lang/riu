@@ -11,12 +11,12 @@
 // - 类型替换 (泛型参数替换)
 
 #include "compiler.h"
-#include "mangler.h"
-#include "node/alias_node.h"
-#include "node/draft_node.h"
-#include "node/struct_node.h"
-#include "node/enum_node.h"
-#include "node/fn_node.h"
+#include "ast/mangler.h"
+#include "ast/node/alias_node.h"
+#include "ast/node/draft_node.h"
+#include "ast/node/struct_node.h"
+#include "ast/node/enum_node.h"
+#include "ast/node/fn_node.h"
 #include <llvm/IR/DerivedTypes.h>
 #include <set>
 

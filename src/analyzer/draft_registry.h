@@ -18,8 +18,8 @@
 #ifndef YUX_LANG_DRAFT_REGISTRY_H
 #define YUX_LANG_DRAFT_REGISTRY_H
 
-#include "node/draft_node.h"
-#include "node/file_node.h"
+#include "ast/node/draft_node.h"
+#include "ast/node/file_node.h"
 
 #include <map>
 #include <optional>

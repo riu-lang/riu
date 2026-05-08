@@ -15,7 +15,7 @@
 #include "draft_impl_checker.h"
 
 #include "draft_registry.h"
-#include "yux.h"
+#include "ast/yux.h"
 
 #include <set>
 #include <tuple>

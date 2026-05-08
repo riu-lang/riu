@@ -16,12 +16,12 @@
 // - 一元表达式 (取负、取反、取引用)
 
 #include "compiler.h"
-#include "node/expr_node.h"
-#include "node/literal_node.h"
-#include "node/enum_node.h"
+#include "ast/node/expr_node.h"
+#include "ast/node/literal_node.h"
+#include "ast/node/enum_node.h"
 #include "compiler_runtime.h"
-#include "mangler.h"
-#include "symbol_suggest.h"
+#include "ast/mangler.h"
+#include "analyzer/symbol_suggest.h"
 #include <algorithm>
 #include <set>
 #include <llvm/IR/Constants.h>

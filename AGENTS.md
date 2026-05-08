@@ -42,7 +42,15 @@
 ```
 yux-lang/
 ├── src/              编译器 C++ 源码
-│   └── node/         AST 节点
+│   ├── analyzer/     分析器（借用检查、draft实现检查、符号建议）
+│   ├── ast/          AST 相关（ast_builder、mangler、yux 驱动）
+│   │   └── node/     AST 节点定义
+│   ├── compiler/     LLVM IR 生成（compiler 主文件 + 按功能拆分的子模块）
+│   ├── lsp/          LSP 服务器（completion、diagnostics、semantic tokens）
+│   ├── runtime/      运行时支持（构造/析构辅助）
+│   ├── tools/        工具类（build_cache、diagnostic、formatter）
+│   ├── main.cpp      CLI 入口
+│   └── yux*.g4       语法文件（不要手改）
 ├── gen/              ANTLR4 生成代码，不要手改
 ├── include/          公共 C++ 头（types.h）
 ├── sdk/yux/          自举运行时（独立 yux 项目，编为静态库 yux.lib），链接到每个 yux 程序

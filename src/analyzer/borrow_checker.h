@@ -4,7 +4,7 @@
 #ifndef YUX_LANG_BORROW_CHECKER_H
 #define YUX_LANG_BORROW_CHECKER_H
 
-#include "node/fn_node.h"
+#include "ast/node/fn_node.h"
 
 // 借用寿命检查（spec §8.6.5 / §8.6.5.8）：块作用域栈，O(1) 局部规则；
 // 借用期内根对象不可重赋（§8.6.5.5）。

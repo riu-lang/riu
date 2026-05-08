@@ -6,43 +6,50 @@
 #undef ERROR
 
 #include "types.h"
-#include "iostream"
+
+#include <atomic>
+#include <csignal>
 #include <cstdio>
 #include <filesystem>
-#include <regex>
-#include <csignal>
 #include <fstream>
-#include <sstream>
-#include <atomic>
 #include <io.h>
-
+#include <iostream>
 #include <lld/Common/Driver.h>
 #include <llvm/CodeGen/CommandFlags.h>
-#include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
+#include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/ExecutionEngine/SectionMemoryManager.h>
-#include <llvm/Support/MemoryBuffer.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
 #include <llvm/MC/TargetRegistry.h>
+#include <llvm/Support/MemoryBuffer.h>
+#include <llvm/Support/Path.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/TargetParser/Triple.h>
+#include <regex>
+#include <sstream>
 
-#include "ast_builder.h"
+#include "ast/ast_builder.h"
+#include "ast/mangler.h"
+#include "ast/node/expr_node.h"
+#include "ast/node/fn_node.h"
+#include "ast/yux.h"
+#include "compiler/compiler.h"
+#include "compiler/compiler_test_intrinsics.h"
+#include "tools/build_cache.h"
+#include "tools/diagnostic.h"
+#include "tools/formatter.h"
+#include "tools/syntax_error_listener.h"
 #include "utf8.h"
-#include "yux.h"
-#include "build_cache.h"
-#include "compiler_test_intrinsics.h"
-#include "diagnostic.h"
-#include "syntax_error_listener.h"
-#include "formatter.h"
+#include "yux/yuxLexer.h"
+#include "yux/yuxParser.h"
 
 #include "CLI/CLI.hpp"
 #include <toml.hpp>
@@ -54,16 +61,6 @@ LLD_HAS_DRIVER(elf)
 LLD_HAS_DRIVER(macho)
 
 LLD_HAS_DRIVER(wasm)
-
-#include "yux/yuxLexer.h"
-#include "yux/yuxParser.h"
-#include "yux/yuxParserVisitor.h"
-
-#include "node/fn_node.h"
-#include "node/expr_node.h"
-#include "compiler.h"
-#include "mangler.h"
-#include <llvm/Support/Path.h>
 
 using namespace yux;
 

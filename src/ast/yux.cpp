@@ -9,9 +9,9 @@
 #include <toml.hpp>
 
 #include "ast_builder.h"
-#include "draft_impl_checker.h"
-#include "draft_registry.h"
-#include "syntax_error_listener.h"
+#include "analyzer/draft_impl_checker.h"
+#include "analyzer/draft_registry.h"
+#include "tools/syntax_error_listener.h"
 #include "yux/yuxLexer.h"
 #include "yux/yuxParser.h"
 
