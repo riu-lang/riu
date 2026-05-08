@@ -2034,6 +2034,16 @@ std::any ASTBuilder::visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) {
         }
         typeArgs.push_back(any_cast_p<TypeNode>(visit(pCtx->type(0))));
     }
+
+    // Weak<fn(...)> 禁（§3.7 / §5.5）：函数值是值类型，无 RC 头，不能 weak
+    if (baseName->getText() == "Weak" && typeArgs.size() == 1) {
+        if (dynamic_cast<TypeFnNode*>(typeArgs[0])) {
+            throw YuxError((int)baseName->getLine(),
+                (int)baseName->getCharPositionInLine() + 1,
+                ErrorCode::E2001)
+                .withHint("函数值不是堆句柄、无 RC 头，不能用 Weak<...> 包裹（spec §3.7 / §5.5）");
+        }
+    }
     
     string argsStr;
     for (size_t i = 0; i < typeArgs.size(); ++i) {
@@ -2051,6 +2061,39 @@ std::any ASTBuilder::visitTypeArray(yux::yuxParser::TypeArrayContext* ctx) {
     auto count = ctx->INT()->getSymbol();
     DEBUG_LOG_VAL("    Type: Array", "[" << count->getText() << "]");
     return p<TypeNode>(createWithLine<TypeArrayNode>(ctx, parent, elementType, count));
+}
+
+// 函数类型字面量 fn(P1,...) R / fn?(...) R [#16][#23][#24]
+// 形参槽位为 fnTypeParam（名可省 + 组糖），仅类型参与判等（§3.4(4)）
+// retType 可省 → void；fnNullable 由可选 SymbolQuest 决定
+std::any ASTBuilder::visitTypeFn(yux::yuxParser::TypeFnContext* ctx) {
+    p<Node> parent = currentScope();
+    bool nullable = ctx->SymbolQuest() != nullptr;
+
+    vector<p<TypeNode>> paramTypes;
+    if (auto* params = ctx->fnTypeParams()) {
+        for (auto* p : params->fnTypeParam()) {
+            // 三种 fnTypeParam alt 都以 typeWithRef 收尾：组糖 / 命名 / 无名
+            if (auto* g = dynamic_cast<yux::yuxParser::FnTypeParamGroupContext*>(p)) {
+                // a, b T → 展开为 N 份相同类型
+                auto t = buildTypeWithRef(g->typeWithRef(), parent);
+                size_t n = g->names.size();
+                for (size_t i = 0; i < n; ++i) paramTypes.push_back(t);
+            } else if (auto* n = dynamic_cast<yux::yuxParser::FnTypeParamNamedContext*>(p)) {
+                paramTypes.push_back(buildTypeWithRef(n->typeWithRef(), parent));
+            } else if (auto* u = dynamic_cast<yux::yuxParser::FnTypeParamUnnamedContext*>(p)) {
+                paramTypes.push_back(buildTypeWithRef(u->typeWithRef(), parent));
+            }
+        }
+    }
+
+    p<TypeNode> retType = nullptr;
+    if (auto* rt = ctx->retType) {
+        retType = buildTypeWithRef(rt, parent);
+    }
+
+    DEBUG_LOG_VAL("    Type: Fn", (nullable ? "fn?(" : "fn(") << paramTypes.size() << " params)");
+    return p<TypeNode>(createWithLine<TypeFnNode>(ctx, parent, std::move(paramTypes), retType, nullable));
 }
 
 // 元组类型 (T1, T2, ...)
@@ -2098,6 +2141,15 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
         for (auto innerCtx : g->genericDefWithRef()->types) {
             typeArgs.push_back(buildTypeWithRef(innerCtx, parent));
         }
+        // Weak<fn(...)> 禁（§3.7 / §5.5）
+        if (baseName->getText() == "Weak" && typeArgs.size() == 1) {
+            if (dynamic_cast<TypeFnNode*>(typeArgs[0])) {
+                throw YuxError((int)baseName->getLine(),
+                    (int)baseName->getCharPositionInLine() + 1,
+                    ErrorCode::E2001)
+                    .withHint("函数值不是堆句柄、无 RC 头，不能用 Weak<...> 包裹（spec §3.7 / §5.5）");
+            }
+        }
         inner = p<TypeNode>(createWithLine<TypeGenericNode>(g, parent, baseName, typeArgs));
         andTok = g->SymbolAnd();
     } else if (auto a = dynamic_cast<yuxParser::TypeArrayWithRefContext*>(twr)) {
@@ -2115,6 +2167,30 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
         }
         inner = p<TypeNode>(createWithLine<TypeTupleNode>(t, parent, std::move(elementTypes)));
         andTok = nullptr;
+    } else if (auto* fn = dynamic_cast<yuxParser::TypeFnWithRefContext*>(twr)) {
+        // 函数类型字面量在 typeWithRef 位（fn 形参 / 返回值 / 局部 var）
+        // 末尾 & 表借用一个函数值；fnTypeParam 三 alt 同 visitTypeFn 处理
+        bool nullable = fn->SymbolQuest() != nullptr;
+        vector<p<TypeNode>> paramTypes;
+        if (auto* params = fn->fnTypeParams()) {
+            for (auto* fp : params->fnTypeParam()) {
+                if (auto* g = dynamic_cast<yuxParser::FnTypeParamGroupContext*>(fp)) {
+                    auto t2 = buildTypeWithRef(g->typeWithRef(), parent);
+                    size_t n = g->names.size();
+                    for (size_t i = 0; i < n; ++i) paramTypes.push_back(t2);
+                } else if (auto* n2 = dynamic_cast<yuxParser::FnTypeParamNamedContext*>(fp)) {
+                    paramTypes.push_back(buildTypeWithRef(n2->typeWithRef(), parent));
+                } else if (auto* u = dynamic_cast<yuxParser::FnTypeParamUnnamedContext*>(fp)) {
+                    paramTypes.push_back(buildTypeWithRef(u->typeWithRef(), parent));
+                }
+            }
+        }
+        p<TypeNode> retType = nullptr;
+        if (auto* rt = fn->retType) {
+            retType = buildTypeWithRef(rt, parent);
+        }
+        inner = p<TypeNode>(createWithLine<TypeFnNode>(fn, parent, std::move(paramTypes), retType, nullable));
+        andTok = fn->SymbolAnd();
     } else {
         throw YuxError(1, ErrorCode::E2002);
     }

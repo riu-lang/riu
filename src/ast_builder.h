@@ -129,6 +129,7 @@ public:
     std::any visitTypeArray(yux::yuxParser::TypeArrayContext* ctx) override;
     std::any visitTypeNullable(yux::yuxParser::TypeNullableContext* ctx) override;
     std::any visitTypeTuple(yux::yuxParser::TypeTupleContext* ctx) override;
+    std::any visitTypeFn(yux::yuxParser::TypeFnContext* ctx) override;
 
     std::any visitLiteralNumber(yux::yuxParser::LiteralNumberContext* ctx) override;
     std::any visitLiteralBool(yux::yuxParser::LiteralBoolContext* ctx) override;

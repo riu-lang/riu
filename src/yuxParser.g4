@@ -110,17 +110,33 @@ type:
    | GetStart type SymbolMul INT GetEnd #typeArray
     // (T1, T2)
    | ParStart types+=type (SymbolComma types+=type)+ ParEnd #typeTuple
+    // fn(T)R / fn?(T)R / fn() / 名可省 / 组糖 a, b T
+   | Fn SymbolQuest? ParStart fnTypeParams? ParEnd retType=typeWithRef? #typeFn
    ;
 
 typeWithRef:
-    ID SymbolAnd? #typeNormalWithRef
-    | type SymbolQuest SymbolAnd? #typeNullableWithRef
+    // 注意：typeNullableWithRef 必须排在 typeNormalWithRef 前面 ——
+    // 否则 `T?` 会被 typeNormalWithRef 吃掉 `T` 后把 `?` 漏给外层 typeNullable，
+    // 导致 fn 类型字面量的 retType `i32?` 被错切成 `(fn(...)i32)?`（违反 [#24]）
+    type SymbolQuest SymbolAnd? #typeNullableWithRef
+    | ID SymbolAnd? #typeNormalWithRef
      // A<T> B<T1, T2>
     | ID genericDefWithRef SymbolAnd? #typeGenericWithRef
      // [ type * count ]
     | GetStart typeWithRef SymbolMul INT GetEnd SymbolAnd? #typeArrayWithRef
     // (T1, T2)
    | ParStart types+=typeWithRef (SymbolComma types+=typeWithRef)+ ParEnd #typeTupleWithRef
+    // 函数类型出现在 typeWithRef 位（fn 形参 / 返回值）；外层 & 借用一个 fn 值
+   | Fn SymbolQuest? ParStart fnTypeParams? ParEnd retType=typeWithRef? SymbolAnd? #typeFnWithRef
+    ;
+
+// fn 类型字面量参数：名可省（仅文档），允许组糖 a, b T；类型用 typeWithRef（支持 T&）
+fnTypeParams: fnTypeParam (SymbolComma LineEnd* fnTypeParam)* SymbolComma? LineEnd*;
+
+fnTypeParam:
+    (names+=ID SymbolComma LineEnd*)+ names+=ID typeWithRef  # fnTypeParamGroup
+    | name=ID typeWithRef                                    # fnTypeParamNamed
+    | typeWithRef                                            # fnTypeParamUnnamed
     ;
 
 // typeParam: 单个类型形参 / 类型实参槽位。
@@ -188,6 +204,28 @@ fnParamStd: name=ID typeWithRef;
 // a, b, c i32
 fnParamGroup: (names+=ID SymbolComma)* names+=ID typeWithRef;
 
+// lambda 形参：类型可省（由上下文推断）；允许组糖 a, b T
+lambdaParams: lambdaParam (SymbolComma LineEnd* lambdaParam)* SymbolComma? LineEnd*;
+
+lambdaParam:
+    (names+=ID SymbolComma LineEnd*)+ names+=ID typeWithRef?  # lambdaParamGroup
+    | name=ID typeWithRef?                                    # lambdaParamStd
+    ;
+
+// lambda 单表达式体的非左递归包装：迫使内部 expr 以新优先级 0 启动，
+// 否则 `(a, b) => a + b` 会被 ANTLR 切成 `((a, b) => a) + b`
+lambdaBody: expr;
+
+// 尾随 lambda 调用糖（§4.5）：仅块形 lambda 可作尾随
+trailingLambda:
+    BlockStart LineEnd* lambdaParams SymbolEqMt LineEnd*
+        (statement|comment|codeLineEnd)*
+    BlockEnd  # trailingLambdaBlock
+    | BlockStart codeLineEnd
+        (statement|comment|codeLineEnd)*
+    BlockEnd  # trailingLambdaZeroBlock
+    ;
+
 fnBody: fnExprkBody | fnBlockBody;
 
 fnExprkBody: LineEnd?
@@ -250,8 +288,21 @@ filedDecl: name=ID type;
 ///////////
 
 expr:
+    // 单参裸形 lambda: x => expr （单 ID 不与 fn 类型字面量歧义）
+    // body 走 lambdaBody 包装规则：避免 ANTLR4 左递归把 `x => a + b` 误切成 `(x => a) + b`
+      name=ID SymbolEqMt body=lambdaBody  # exprLambdaSingle
+    // 括参形 lambda: (args) RetT? => expr
+    | ParStart lambdaParams? ParEnd retType=typeWithRef? SymbolEqMt body=lambdaBody  # exprLambdaParen
+    // 块形 lambda: { args => stmts }
+    | BlockStart LineEnd* lambdaParams SymbolEqMt LineEnd*
+        (statement|comment|codeLineEnd)*
+      BlockEnd  # exprLambdaBlock
+    // 0 参块 lambda: { stmts } —— 禁写 =>
+    | BlockStart codeLineEnd
+        (statement|comment|codeLineEnd)*
+      BlockEnd  # exprLambdaZeroBlock
     // ( e )
-      ParStart expr ParEnd # exprParen
+    | ParStart expr ParEnd # exprParen
     // &a.b => T&
     | SymbolAnd obj=(ID|SymbolThis) (LineEnd* SymbolDot subs+=ID)* # exprGetRef
     // e[a, b, c] 实际应为成员函数get的快捷调用
@@ -303,13 +354,14 @@ expr:
     | left=expr LineEnd* member=DOT_NUM # exprTupleMember
     // [e1, e2]
     | GetStart LineEnd* (velues+=expr (SymbolComma LineEnd* velues+=expr)* SymbolComma? LineEnd*)? GetEnd # exprArray
-    // e() e(e) e(e,e) e<T>()
+    // e() e(e) e(e,e) e<T>() / 尾随块 lambda： e(args) { ... } 或 e { ... }（唯一实参时省括号）
     | left=expr (SymbolColon genericDef)? ParStart LineEnd*
         ( args+=expr
           (SymbolComma LineEnd* args+=expr)*
           SymbolComma? LineEnd*
         )?
-      ParEnd # exprCall
+      ParEnd trailing=trailingLambda? # exprCall
+    | left=expr (SymbolColon genericDef)? trailing=trailingLambda # exprCallTrailingOnly
     // !e ~e -e 没有空格，低于成员访问优先级
     | op=(SymbolSub|SymbolRev|SymbolExcl) right=expr # exprUnary
     | left=expr opShift right=expr # exprShift

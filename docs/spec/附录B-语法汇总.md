@@ -44,12 +44,19 @@ type           ::= ID                              # typeNormal
                  | ID genericDef                   # typeGeneric
                  | '[' type '*' INT ']'            # typeArray
                  | '(' type (',' type)+ ')'        # typeTuple
+                 | 'fn' '?'? '(' fnTypeParams? ')' (retType=typeWithRef)?  # typeFn
 
-typeWithRef    ::= ID '&'?                         # typeNormalWithRef
-                 | type '?' '&'?                   # typeNullableWithRef
+typeWithRef    ::= type '?' '&'?                   # typeNullableWithRef
+                 | ID '&'?                         # typeNormalWithRef
                  | ID genericDefWithRef '&'?       # typeGenericWithRef
                  | '[' typeWithRef '*' INT ']' '&'?# typeArrayWithRef
                  | '(' typeWithRef (',' typeWithRef)+ ')' # typeTupleWithRef
+                 | 'fn' '?'? '(' fnTypeParams? ')' (retType=typeWithRef)? '&'?  # typeFnWithRef
+
+fnTypeParams   ::= fnTypeParam (',' LineEnd* fnTypeParam)* ','? LineEnd*
+fnTypeParam    ::= (ID ',' LineEnd*)+ ID typeWithRef     # fnTypeParamGroup    ; a, b T
+                 | ID typeWithRef                        # fnTypeParamNamed    ; a T
+                 | typeWithRef                           # fnTypeParamUnnamed  ; T （名可省，§3.2）
 
 genericDef        ::= '<' typeParam        (',' typeParam)*        '>'
 genericDefWithRef ::= '<' typeParamWithRef (',' typeParamWithRef)* '>'
@@ -177,7 +184,17 @@ expr ::=
   | '(' expr (',' expr)+ ')'                                     # exprTuple
   | '[' LineEnd* (expr (',' LineEnd* expr)* ','? LineEnd*)? ']'  # exprArray
   | expr (':' genericDef)? '(' LineEnd*
-        (expr (',' LineEnd* expr)* ','? LineEnd*)? ')'           # exprCall
+        (expr (',' LineEnd* expr)* ','? LineEnd*)? ')'
+        trailingLambda?                                          # exprCall
+  | expr (':' genericDef)? trailingLambda                        # exprCallTrailingOnly
+  | ID '=>' lambdaBody                                           # exprLambdaSingle
+  | '(' lambdaParams? ')' (retType=typeWithRef)? '=>' lambdaBody # exprLambdaParen
+  | '{' LineEnd* lambdaParams '=>' LineEnd*
+        (statement | comment | codeLineEnd)*
+    '}'                                                          # exprLambdaBlock
+  | '{' codeLineEnd
+        (statement | comment | codeLineEnd)*
+    '}'                                                          # exprLambdaZeroBlock
   | ('-' | '~' | '!') expr                                       # exprUnary
   | expr opShift expr                                            # exprShift
   | expr ('&' | '|' | '^') expr                                  # exprBinOp
@@ -202,6 +219,18 @@ opAssign       ::= '=' | '+=' | '-=' | '*=' | '/=' | '%='
                  | '>' '>' '=' | '<' '<' '='
 
 matchArm       ::= enumPattern '=>' expr
+
+lambdaBody     ::= expr                                          ; 非左递归包装：迫使内部 expr 以新优先级启动
+lambdaParams   ::= lambdaParam (',' LineEnd* lambdaParam)* ','? LineEnd*
+lambdaParam    ::= (ID ',' LineEnd*)+ ID typeWithRef?            # lambdaParamGroup
+                 | ID typeWithRef?                               # lambdaParamStd
+
+trailingLambda ::= '{' LineEnd* lambdaParams '=>' LineEnd*
+                       (statement | comment | codeLineEnd)*
+                   '}'                                           # trailingLambdaBlock
+                 | '{' codeLineEnd
+                       (statement | comment | codeLineEnd)*
+                   '}'                                           # trailingLambdaZeroBlock
 enumPattern    ::= ID '::' ID ( '(' ID (',' ID)* ')' )?          # patternEnum
                  | 'else'                                        # patternElse
 ```

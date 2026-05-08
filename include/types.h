@@ -216,18 +216,23 @@ enum class TypeKind : u8 {
     Normal,
     Generic,
     Array,
-    Tuple
+    Tuple,
+    Fn      // 函数类型字面量 fn(P1, ..., Pn) R（结构等同；参数名不参与判等）
 };
 
 // 元组类型构造时使用的 tag，用来与 Generic 构造区分
 struct TupleTag {};
 
+// 函数类型构造 tag；fnRet 为返回类型（void 时传 nullptr 或空 TypeInfo）
+struct FnTag {};
+
 struct TypeInfo {
     TypeKind kind = TypeKind::Normal;
     string name;
     u64 arraySize = 0;
-    sp<TypeInfo> elementType = nullptr;
-    vector<sp<TypeInfo>> genericArgs;
+    sp<TypeInfo> elementType = nullptr;     // Array 元素类型 / Fn 返回类型（void 时为 nullptr）
+    vector<sp<TypeInfo>> genericArgs;       // Generic 实参 / Tuple 元素 / Fn 形参类型列表
+    bool fnNullable = false;                // Fn: fn?(...)R 紧凑形 nullable [#24]
 
     TypeInfo() = default;
 
@@ -260,6 +265,23 @@ struct TypeInfo {
         name += ")";
     }
 
+    // 函数类型 fn(P1,...,Pn) R / fn?(...)R nullable 紧凑形 [#24]
+    // 形参类型列表存 genericArgs；返回类型存 elementType（void 时为 nullptr）
+    // name 合成为 "fn(P1,P2,...)R" / "fn?(P1,P2,...)R"，参数名不参与（§3.4）
+    TypeInfo(FnTag, vector<sp<TypeInfo>> paramTypes, sp<TypeInfo> retType, bool nullable = false) :
+        kind(TypeKind::Fn),
+        elementType(std::move(retType)),
+        genericArgs(std::move(paramTypes)),
+        fnNullable(nullable) {
+        name = nullable ? "fn?(" : "fn(";
+        for (size_t i = 0; i < genericArgs.size(); ++i) {
+            if (i > 0) name += ",";
+            name += genericArgs[i] ? genericArgs[i]->name : "?";
+        }
+        name += ")";
+        if (elementType) name += elementType->name;
+    }
+
     [[nodiscard]] bool isArray() const { return kind == TypeKind::Array; }
 
     [[nodiscard]] bool isNormal() const { return kind == TypeKind::Normal; }
@@ -268,8 +290,16 @@ struct TypeInfo {
 
     [[nodiscard]] bool isTuple() const { return kind == TypeKind::Tuple; }
 
+    [[nodiscard]] bool isFn() const { return kind == TypeKind::Fn; }
+
     // 元组元素类型列表（仅 isTuple() 时有意义）
     [[nodiscard]] const vector<sp<TypeInfo>>& tupleElements() const { return genericArgs; }
+
+    // 函数类型形参列表（仅 isFn() 时有意义）
+    [[nodiscard]] const vector<sp<TypeInfo>>& fnParamTypes() const { return genericArgs; }
+
+    // 函数类型返回值（void 时为 nullptr）
+    [[nodiscard]] sp<TypeInfo> fnReturnType() const { return elementType; }
 
     [[nodiscard]] bool empty() const { return name.empty(); }
 
@@ -352,6 +382,14 @@ struct TypeInfo {
             }
             return result;
         }
+        if (kind == TypeKind::Fn) {
+            string result = fnNullable ? "fnQ" : "fn";
+            for (auto& a : genericArgs) {
+                result += "_" + (a ? a->getFullName() : string("?"));
+            }
+            result += "__" + (elementType ? elementType->getFullName() : string("void"));
+            return result;
+        }
         return name;
     }
 
@@ -373,6 +411,16 @@ struct TypeInfo {
             for (auto& a : genericArgs) {
                 result += "$" + (a ? a->getGenericMangleName() : string("?"));
             }
+            return result;
+        }
+        // 函数 mangle：Fn[N]$P1$P2$...$R / FnQ 表 nullable
+        if (kind == TypeKind::Fn) {
+            string result = fnNullable ? "FnQ" : "Fn";
+            result += std::to_string(genericArgs.size());
+            for (auto& a : genericArgs) {
+                result += "$" + (a ? a->getGenericMangleName() : string("?"));
+            }
+            result += "$" + (elementType ? elementType->getGenericMangleName() : string("void"));
             return result;
         }
         return name;
@@ -405,6 +453,16 @@ struct TypeInfo {
             }
             return TypeInfo(TupleTag{}, std::move(newElems));
         }
+        if (kind == TypeKind::Fn) {
+            vector<sp<TypeInfo>> newParams;
+            newParams.reserve(genericArgs.size());
+            for (auto& a : genericArgs) {
+                newParams.push_back(std::make_shared<TypeInfo>(a ? a->substitute(subst) : TypeInfo()));
+            }
+            sp<TypeInfo> newRet = nullptr;
+            if (elementType) newRet = std::make_shared<TypeInfo>(elementType->substitute(subst));
+            return TypeInfo(FnTag{}, std::move(newParams), newRet, fnNullable);
+        }
         return *this;
     }
 
@@ -424,6 +482,19 @@ struct TypeInfo {
                 if (!genericArgs[i] || !other.genericArgs[i]) return false;
                 if (*genericArgs[i] != *other.genericArgs[i]) return false;
             }
+        }
+        if (kind == TypeKind::Fn) {
+            if (fnNullable != other.fnNullable) return false;
+            if (genericArgs.size() != other.genericArgs.size()) return false;
+            for (size_t i = 0; i < genericArgs.size(); ++i) {
+                if (!genericArgs[i] && !other.genericArgs[i]) continue;
+                if (!genericArgs[i] || !other.genericArgs[i]) return false;
+                if (*genericArgs[i] != *other.genericArgs[i]) return false;
+            }
+            // 返回类型：void（nullptr）也参与判等
+            if (!elementType && !other.elementType) return true;
+            if (!elementType || !other.elementType) return false;
+            return *elementType == *other.elementType;
         }
         return true;
     }

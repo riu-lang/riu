@@ -47,6 +47,7 @@ local function categorize(name)
     if name:startswith("ptr_") or name == "extern_ptr_auto" then
         return "yux/extern"
     end
+    if name:startswith("lambda_") then return "yux/lambda" end
     return "yux/misc"
 end
 

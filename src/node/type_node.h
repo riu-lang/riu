@@ -86,6 +86,38 @@ public:
     }
 };
 
+// 函数类型节点 fn(P1, ..., Pn) R / fn?(...) R 紧凑形 nullable [#24]
+// 形参类型列表 + 可选返回类型（void 时为 nullptr）+ nullable 标志
+// 参数名不参与判等（§3.4）；本节点不存名
+class TypeFnNode : public TypeNode {
+    vector<p<TypeNode>> _paramTypes;
+    p<TypeNode> _retType;       // nullptr → void
+    bool _nullable;             // fn?(...)R
+
+public:
+    TypeFnNode(const p<Node>& parent, vector<p<TypeNode>> paramTypes, p<TypeNode> retType, bool nullable) :
+        TypeNode(parent),
+        _paramTypes(std::move(paramTypes)),
+        _retType(std::move(retType)),
+        _nullable(nullable) {
+    }
+
+    [[nodiscard]] TypeInfo getType() const override {
+        vector<sp<TypeInfo>> params;
+        params.reserve(_paramTypes.size());
+        for (auto& pt : _paramTypes) {
+            params.push_back(make_shared<TypeInfo>(pt->getType()));
+        }
+        sp<TypeInfo> ret = nullptr;
+        if (_retType) ret = make_shared<TypeInfo>(_retType->getType());
+        return TypeInfo(FnTag{}, std::move(params), ret, _nullable);
+    }
+
+    [[nodiscard]] const vector<p<TypeNode>>& paramTypes() const { return _paramTypes; }
+    [[nodiscard]] p<TypeNode> retType() const { return _retType; }
+    [[nodiscard]] bool nullable() const { return _nullable; }
+};
+
 // 元组类型节点 (T1, T2, ...)
 class TypeTupleNode : public TypeNode {
     vector<p<TypeNode>> _elementTypes;
