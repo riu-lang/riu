@@ -243,6 +243,8 @@ N | <源码行原文>
 | E4011 | `field '$.{}' must be initialized before {} (§8.2)` |
 | E4012 | `field '$.{}' is not initialized at constructor exit (§8.2)` |
 | E4013 | `cannot return $ from constructor (§8.3)` |
+| E4020 | `return T& root must be {}, got '{}' (§8.6)` |
+| E4021 | `function returning T& requires exactly one source: \`$\` (method) or a single T& parameter (free fn)` |
 
 ### D.3.5 E5xxx — 模块 / 包
 

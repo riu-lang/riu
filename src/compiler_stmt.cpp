@@ -39,6 +39,80 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
     }
     
     auto retType = node->expr()->getType();
+
+    // 返回 T&（spec §6.3.X / §8.6.X）：表达式上下文 T& 变量会自动解引用为 T，
+    // 这里识别 T& 上下文并按"原始借用"路径取指针，跳过 RC / nullable 包装。
+    if (hasDeclaredRetType && declRetType.isRef()) {
+        // 解析 Self → 实际结构体名（方法上下文）；不动其他类型替换以免影响泛型场景。
+        declRetType = applySubst(declRetType);
+        int lineNum = node->getLineNumber();
+        if (lineNum < 0) lineNum = node->expr()->resolveLineNumber();
+        // 仅校验来源形态合法（borrow_checker 已做溯源）：要求 expr 是
+        //   - LiteralObjNode("$")            —— 方法返回 Self& 直接 ret $
+        //   - LiteralObjNode(name)，sym.type.isRef() —— ret 一个 T& 形参/局部
+        //   - ExprGetRefNode               —— ret &x.f.f...
+        //   - 任何 expr.getType() == declRetType 的形态（如调用返 T&、as_ref(box)）
+        llvm::Value* refPtr = nullptr;
+        TypeInfo srcInner;
+        if (auto litExpr = dynamic_cast<ExprLiteralNode*>(node->expr())) {
+            if (auto objLit = dynamic_cast<LiteralObjNode*>(litExpr->literal())) {
+                auto vname = objLit->getValue().getText();
+                auto sym = _currentFnNode->lookupSymbol(vname);
+                bool isDollar = (vname == "$");
+                bool isRefVar = sym && sym->type.isRef();
+                if ((isDollar || isRefVar) && _localVarPtrs.contains(vname)) {
+                    refPtr = _localVarPtrs[vname];
+                    if (isDollar) {
+                        srcInner = sym ? sym->type : TypeInfo();
+                        if (srcInner.isRef()) {
+                            if (auto in = srcInner.refElementType()) srcInner = *in;
+                        }
+                    } else if (auto in = sym->type.refElementType()) {
+                        srcInner = *in;
+                    }
+                }
+            }
+        }
+        if (!refPtr) {
+            if (auto getRef = dynamic_cast<ExprGetRefNode*>(node->expr())) {
+                refPtr = compileGetRefExpr(p<ExprGetRefNode>(getRef));
+                srcInner = getRef->getType();
+                if (srcInner.isRef()) {
+                    if (auto in = srcInner.refElementType()) srcInner = *in;
+                }
+            }
+        }
+        if (!refPtr) {
+            // 通用路径：表达式自身类型就是 T&（如调用返 T&、as_ref）。compileExpr 在 T& 类型下
+            // 应当返回指针；目前 LiteralObj 路径会自动解引用，不在此分支命中。
+            if (retType.isRef()) {
+                refPtr = compileExpr(node->expr());
+                if (auto in = retType.refElementType()) srcInner = *in;
+            }
+        }
+        if (!refPtr) {
+            throw YuxError(lineNum, ErrorCode::E3020,
+                declRetType.getFullName(), retType.getFullName())
+                .withHint("返回 T& 时，ret 表达式应为 `$` / T& 变量 / `&expr` / 返回 T& 的调用");
+        }
+        // 内层类型校验：declRetType 的 inner 必须等于 srcInner（v1 不做协变）。
+        // 方法上下文中 `Self` 解析为当前结构体名（applySubst 不覆盖该映射）。
+        auto declInner = declRetType.refElementType();
+        TypeInfo declInnerResolved = declInner ? *declInner : TypeInfo();
+        if (!_currentStructName.empty() && declInnerResolved.name == "Self") {
+            declInnerResolved.name = _currentStructName;
+        }
+        if (declInner && !srcInner.empty() && declInnerResolved != srcInner) {
+            throw YuxError(lineNum, ErrorCode::E3020,
+                declRetType.getFullName(), (srcInner.name + "&"));
+        }
+        popAndReleaseTempFrame();
+        pushTempFrame();
+        callDestructorsForScope();
+        _builder.CreateRet(refPtr);
+        DEBUG_LOG("    Created T& return instruction");
+        return;
+    }
     
     // 获取行号 (用于错误报告)
     int lineNum = node->getLineNumber();
@@ -285,9 +359,11 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                         calleeName = obj->getValue().getText();
                     }
                 }
-                if (calleeName != "as_ref") {
+                // §8.3.5.5 as_ref(box) 与 §8.6.X 用户函数返回 T&：调用结果直接是指针。
+                bool callRetIsRef = callExpr->getType().isRef();
+                if (calleeName != "as_ref" && !callRetIsRef) {
                     throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3019)
-                        .withHint("T& 局部初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量），或 `val r T& = as_ref(box)`");
+                        .withHint("T& 局部初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量）、`val r T& = as_ref(box)` 或返回 T& 的方法/函数调用");
                 }
                 auto callValue = compileExpr(expr);
                 rhsPtr = callValue;

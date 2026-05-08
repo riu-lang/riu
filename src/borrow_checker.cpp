@@ -4,6 +4,7 @@
 #include "borrow_checker.h"
 
 #include "node/expr_node.h"
+#include "node/fn_node.h"
 #include "node/literal_node.h"
 #include "node/statement_node.h"
 #include "node/type_node.h"
@@ -36,6 +37,12 @@ class BorrowChecker {
     // 根对象名 → 类型（仅 owned 类型，T& 不在内）。用于 §8.4.2.5 借用期 Array 修改方法检测。
     std::map<std::string, TypeInfo> _rootType;
 
+    // 当前函数返回 T& 时启用：每条 ret expr 的根必须 ∈ _returnAllowedSources。
+    bool _returnsRef = false;
+    std::set<std::string> _returnAllowedSources;
+    // 用于 E4020 错误消息中的人类可读描述（如 "`$`" 或 "T& parameter `p`"）。
+    std::string _returnAllowedDesc;
+
     // §8.4.2.5 Array<T> 借用期不可调用的修改方法名单
     static const std::set<std::string>& arrayMutatingMethods() {
         static const std::set<std::string> s = {"push", "pop", "clear", "set_len", "insert", "remove"};
@@ -45,9 +52,11 @@ class BorrowChecker {
 public:
     void run(p<FnNode> fn, const std::string& selfStructName) {
         pushScope();
-        if (!selfStructName.empty()) {
+        bool isMethod = !selfStructName.empty();
+        if (isMethod) {
             declare("$");
         }
+        std::vector<std::string> refParams;
         for (auto& param : fn->header()->params()) {
             auto pname = param->name().getText();
             declare(pname);
@@ -56,11 +65,31 @@ public:
                 // T& 参数：根对象就是参数自身——参数作用域 ⊇ 函数体内任何借用
                 if (ty.isRef()) {
                     _refToRoot[pname] = pname;
+                    refParams.push_back(pname);
                 } else {
                     _rootType[pname] = ty;
                 }
             }
         }
+
+        // 返回 T& 的溯源约束（spec §8.6.X / E4021）：v1 单源——
+        //   - 方法：源恒为 `$`；T& 形参不允许作为返回根（避免调用点歧义）
+        //   - 自由函数：恰好 1 个 T& 形参，源即该形参
+        if (fn->header()->retType() && fn->header()->retType()->getType().isRef()) {
+            _returnsRef = true;
+            if (isMethod) {
+                _returnAllowedSources.insert("$");
+                _returnAllowedDesc = "`$`";
+            } else {
+                if (refParams.size() != 1) {
+                    int line = fn->header()->getLineNumber();
+                    throw YuxError(line, ErrorCode::E4021);
+                }
+                _returnAllowedSources.insert(refParams[0]);
+                _returnAllowedDesc = "T& parameter `" + refParams[0] + "`";
+            }
+        }
+
         for (auto& s : fn->body()) {
             visitStmt(s);
         }
@@ -117,6 +146,18 @@ private:
         return it != _refToRoot.end() ? it->second : name;
     }
 
+    // ret 表达式溯源：复用借用初始化推根逻辑。
+    // 接受形态：
+    //   - `ret $`               → 根 = "$"（LiteralObj 路径，resolveRoot 兜底）
+    //   - `ret &$.f` / `ret &p.f.f` → 根 = `$` / `p`
+    //   - `ret r`               → r 是 T& 局部 / 形参，解链到根
+    //   - `ret as_ref(box)`     → 根 = box 的根
+    //   - `ret recv.foo(...)` / `ret f(args)` 返 T& → P3 扩展（rootFromRefInit 暂不识别会抛 E4001，
+    //     由 P3 在 ExprCallNode 分支补齐）
+    std::string rootFromRetExpr(p<ExprNode> expr, int line) {
+        return rootFromRefInit(expr, line);
+    }
+
     // 从 `var r T& = expr` 的 RHS 推根对象名。
     // - &x.f.f → 根 = x
     // - 现有 T& 拷绑（LiteralObj 单 ID）→ 根 = 该 ref 的链上根
@@ -146,6 +187,34 @@ private:
                 if (auto litArg = dynamic_cast<ExprLiteralNode*>(arg0)) {
                     if (auto obj = dynamic_cast<LiteralObjNode*>(litArg->literal())) {
                         return resolveRoot(obj->getValue().getText());
+                    }
+                }
+            }
+            // §8.6.X 用户函数返回 T&：v1 单源约束保证唯一来源——
+            //   方法调用 recv.foo(...) → 根 = recv 的根（方法源恒为 $）
+            //   自由函数调用 f(args)   → 根 = 唯一 T& 形参对应实参的根
+            if (callExpr->getType().isRef()) {
+                if (auto dot = dynamic_cast<ExprDotNode*>(callExpr->getCalleeExpr())) {
+                    if (auto litBase = dynamic_cast<ExprLiteralNode*>(dot->baseExpr())) {
+                        if (auto recvObj = dynamic_cast<LiteralObjNode*>(litBase->literal())) {
+                            return resolveRoot(recvObj->getValue().getText());
+                        }
+                    }
+                    // 复杂 receiver（嵌套调用 / 字段链）：v1 不支持，落到错误兜底
+                } else {
+                    // 自由函数：在实参中找形态为 `&x.f...` 或 T& 变量的那个，取根。
+                    for (auto& a : callExpr->getArgs()) {
+                        if (auto getRef = dynamic_cast<ExprGetRefNode*>(a)) {
+                            return resolveRoot(getRef->obj().getText());
+                        }
+                        if (auto litArg = dynamic_cast<ExprLiteralNode*>(a)) {
+                            if (auto obj = dynamic_cast<LiteralObjNode*>(litArg->literal())) {
+                                auto nm = obj->getValue().getText();
+                                if (_refToRoot.find(nm) != _refToRoot.end()) {
+                                    return resolveRoot(nm);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -230,7 +299,16 @@ private:
         }
 
         if (auto ret = dynamic_cast<StatementRetNode*>(s)) {
-            if (ret->expr()) visitExpr(ret->expr());
+            if (ret->expr()) {
+                visitExpr(ret->expr());
+                if (_returnsRef) {
+                    auto root = rootFromRetExpr(ret->expr(), s->getLineNumber());
+                    if (_returnAllowedSources.find(root) == _returnAllowedSources.end()) {
+                        throw YuxError(s->getLineNumber(), ErrorCode::E4020,
+                                       _returnAllowedDesc, root);
+                    }
+                }
+            }
             return;
         }
 

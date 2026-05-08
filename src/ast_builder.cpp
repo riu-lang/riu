@@ -696,12 +696,11 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
     auto header = createWithLine<FnHeaderNode>(ctx, file, ctx->name, retType);
     header->setAnnos(collectAnnos(ctx->buildAnnos));
 
-    // spec §6.3.1.1 / §8.9：retType 为 T& 仅 #CompilerInner baked builtin 允许；普通函数禁
-    if (retType && retType->getType().isRef() && !header->hasAnno("CompilerInner")) {
-        throw YuxError(ctx->getStart()->getLine(), ctx->getStart()->getCharPositionInLine() + 1,
-                       ErrorCode::E2009, ctx->name->getText())
-            .withHint("如确为编译器内置 baked 函数，请在签名前加 `#CompilerInner`；普通函数返回值不得含 `&`");
-    }
+    // spec §6.3.X：返回 T& 受溯源约束（根须为 $ 或某 T& 形参），由 borrow_checker 在
+    // fn body 检查时强制（E4010）；此处只放过 #CompilerInner 与有"潜在源"的用户函数。
+    // 顶层 free fn 的 "无 T& 形参" 这种 0 源情况此处看不到（我们还没解析完形参），
+    // 同样交给 borrow_checker 在拿到完整 fn 后判定。
+    (void)retType; // 闸门已撤；保留语义校验给后续阶段
 
     if (auto gd = ctx->genericDef()) {
         vector<string> typeParams;

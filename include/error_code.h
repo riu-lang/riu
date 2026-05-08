@@ -232,6 +232,8 @@ DEF_ERR(4010, "field '$.{}' {} before initialization (§8.2)")
 DEF_ERR(4011, "field '$.{}' must be initialized before {} (§8.2)")
 DEF_ERR(4012, "field '$.{}' is not initialized at constructor exit (§8.2)")
 DEF_ERR(4013, "cannot return `$` from constructor (§8.3)")
+DEF_ERR(4020, "return T& root must be {}, got '{}' (§8.6)")
+DEF_ERR(4021, "function returning T& requires exactly one source: `$` (method) or a single T& parameter (free fn)")
 
 // ── E5xxx 模块 / 包 ───────────────────────────────────────────────────
 DEF_ERR(5001, "yux.toml not found in {}")

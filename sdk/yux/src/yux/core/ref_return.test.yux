@@ -1,0 +1,44 @@
+; 验证 fn 返回 T&（来源限定 $ 或 T& 形参）
+
+struct P {
+  x i32
+  y i32
+}
+
+P {
+  fn P(x i32, y i32) {
+    $.x = x
+    $.y = y
+  }
+
+  ; 方法返回字段引用（根 = $）
+  fn x_ref() i32& = &$.x
+
+  ; 方法返回 Self&（源 = $）
+  fn me() Self& = $
+}
+
+; 自由函数：单个 T& 形参，透传
+fn alias(p P&) P& = p
+
+#Test
+fn test_method_field_ref() {
+  var a P = P(7i32, 8i32)
+  val rx i32& = a.x_ref()
+  assert_eq(rx, 7i32)
+}
+
+#Test
+fn test_method_self_ref() {
+  var a P = P(1i32, 2i32)
+  val r P& = a.me()
+  assert_eq(r.x, 1i32)
+  assert_eq(r.y, 2i32)
+}
+
+#Test
+fn test_freefn_alias_param() {
+  var a P = P(11i32, 22i32)
+  val r P& = alias(&a)
+  assert_eq(r.x, 11i32)
+}
