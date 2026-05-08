@@ -51,7 +51,6 @@ int classify(size_t type) {
     switch (type) {
         case L::Space:
         case L::LineEnd:
-        case L::EmptyLine:
             return -1;
 
         case L::LineComment:

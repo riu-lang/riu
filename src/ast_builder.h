@@ -59,8 +59,6 @@ public:
     void preloadPackageChildren(FileNode* file, const string& alias, const string& pkgModName,
                                 const string& relPrefix, int errorLine);
 
-    std::any visitComment(yux::yuxParser::CommentContext* ctx) override;
-    std::any visitCodeLineEnd(yux::yuxParser::CodeLineEndContext* ctx) override;
     std::any visitProgram(yux::yuxParser::ProgramContext* ctx) override;
     std::any visitImports(yux::yuxParser::ImportsContext* ctx) override;
     std::any visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) override;

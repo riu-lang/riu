@@ -177,16 +177,6 @@ std::any ASTBuilder::visitGlobalConst(yux::yuxParser::GlobalConstContext* ctx) {
     return p<GlobalConstNode>(globalConst);
 }
 
-std::any ASTBuilder::visitComment(yux::yuxParser::CommentContext* ctx) {
-    DEBUG_LOG("  Visit: Comment");
-    return nullptr;
-}
-
-std::any ASTBuilder::visitCodeLineEnd(yux::yuxParser::CodeLineEndContext* ctx) {
-    DEBUG_LOG("  Visit: CodeLineEnd");
-    return nullptr;
-}
-
 void ASTBuilder::preloadPackageChildren(FileNode* file, const string& alias, const string& pkgModName,
                                          const string& relPrefix, int errorLine) {
     for (auto& child : _yux.listPackageYuxChildren(pkgModName)) {

@@ -16,16 +16,15 @@ public:
 
 
 LineComment
-    : {getCharPositionInLine()==0}? Space* SymbolSemicolon ~[\r\n]* LineEnd
+    : {getCharPositionInLine()==0}? Space* SymbolSemicolon ~[\r\n]* LineEnd -> channel(HIDDEN)
     ;
 
 LineEndComment
-    : Space+ SymbolSemicolon ~[\r\n]*
+    : Space+ SymbolSemicolon ~[\r\n]* -> channel(HIDDEN)
     ;
 
 Space : ' ' -> channel(HIDDEN);
 LineEnd : '\r'? '\n' | '\n' | EOF;
-EmptyLine : {getCharPositionInLine()==0}? [ \t]*  LineEnd -> channel(HIDDEN);
 //WhiteSpace : ~[\P{White_Space} \t\r\n]+ -> channel(HIDDEN);
 
 Break : 'break';
