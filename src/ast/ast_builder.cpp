@@ -1526,17 +1526,43 @@ std::any ASTBuilder::visitExprCallTrailingOnly(yux::yuxParser::ExprCallTrailingO
     return p<ExprNode>(call);
 }
 
+// 创建 lambda body 的内层作用域，登记形参符号；caller 负责 push/pop _scopeStack。
+// 用 LambdaScopeNode 结构区分于普通 ScopeNode，便于未来 sema 区分（如自由变量诊断）。
+namespace {
+class LambdaScopeNode : public ScopeNode {
+public:
+    explicit LambdaScopeNode(const p<Node>& parent) : ScopeNode(parent) {}
+};
+}
+
+static p<ScopeNode> makeLambdaBodyScope(
+    const p<ScopeNode>& parentScope, const vector<LambdaParamSlot>& params) {
+    auto scope = p<LambdaScopeNode>(new LambdaScopeNode(parentScope));
+    scope->setParentScope(parentScope);
+    for (auto& slot : params) {
+        TypeInfo t = slot.type ? slot.type->getType() : TypeInfo();
+        scope->registerSymbol(slot.name.getText(),
+            {SymbolKind::Variable, slot.name.getText(), t});
+    }
+    return scope;
+}
+
 // Lambda 表达式形：x => expr  （裸单参，类型由上下文反推）
 std::any ASTBuilder::visitExprLambdaSingle(yux::yuxParser::ExprLambdaSingleContext* ctx) {
     auto scope = currentScope();
     vector<LambdaParamSlot> params;
     params.push_back(LambdaParamSlot{
         Token(ctx->name->getText(), (int)ctx->name->getLine()), nullptr });
+    auto bodyScope = makeLambdaBodyScope(scope, params);
+    _scopeStack.push_back(bodyScope);
     auto bodyExpr = any_cast_p<ExprNode>(visit(ctx->body->expr()));
+    _scopeStack.pop_back();
     DEBUG_LOG("    Expr: LambdaSingle");
-    return p<ExprNode>(createWithLine<LambdaExprNode>(ctx, scope,
+    auto node = createWithLine<LambdaExprNode>(ctx, scope,
         LambdaExprNode::Form::Single, std::move(params),
-        nullptr, bodyExpr, vector<p<StatementNode>>{}));
+        nullptr, bodyExpr, vector<p<StatementNode>>{});
+    node->setBodyScope(bodyScope);
+    return p<ExprNode>(node);
 }
 
 // Lambda 表达式形：(args) RetT? => expr
@@ -1547,38 +1573,53 @@ std::any ASTBuilder::visitExprLambdaParen(yux::yuxParser::ExprLambdaParenContext
     if (ctx->retType) {
         retType = buildTypeWithRef(ctx->retType, scope);
     }
+    auto bodyScope = makeLambdaBodyScope(scope, params);
+    _scopeStack.push_back(bodyScope);
     auto bodyExpr = any_cast_p<ExprNode>(visit(ctx->body->expr()));
+    _scopeStack.pop_back();
     DEBUG_LOG_VAL("    Expr: LambdaParen", "params=" << params.size());
-    return p<ExprNode>(createWithLine<LambdaExprNode>(ctx, scope,
+    auto node = createWithLine<LambdaExprNode>(ctx, scope,
         LambdaExprNode::Form::Paren, std::move(params),
-        retType, bodyExpr, vector<p<StatementNode>>{}));
+        retType, bodyExpr, vector<p<StatementNode>>{});
+    node->setBodyScope(bodyScope);
+    return p<ExprNode>(node);
 }
 
 // Lambda 块形：{ args => stmts }
 std::any ASTBuilder::visitExprLambdaBlock(yux::yuxParser::ExprLambdaBlockContext* ctx) {
     auto scope = currentScope();
     auto params = collectLambdaParams(this, ctx->lambdaParams(), scope, &ASTBuilder::buildTypeWithRef);
+    auto bodyScope = makeLambdaBodyScope(scope, params);
+    _scopeStack.push_back(bodyScope);
     vector<p<StatementNode>> stmts;
     for (auto* s : ctx->statement()) {
         stmts.push_back(any_cast_p<StatementNode>(visit(s)));
     }
+    _scopeStack.pop_back();
     DEBUG_LOG_VAL("    Expr: LambdaBlock", "params=" << params.size() << " stmts=" << stmts.size());
-    return p<ExprNode>(createWithLine<LambdaExprNode>(ctx, scope,
+    auto node = createWithLine<LambdaExprNode>(ctx, scope,
         LambdaExprNode::Form::Block, std::move(params),
-        nullptr, nullptr, std::move(stmts)));
+        nullptr, nullptr, std::move(stmts));
+    node->setBodyScope(bodyScope);
+    return p<ExprNode>(node);
 }
 
 // Lambda 0 参块形：{ stmts }（禁写 =>）
 std::any ASTBuilder::visitExprLambdaZeroBlock(yux::yuxParser::ExprLambdaZeroBlockContext* ctx) {
     auto scope = currentScope();
+    auto bodyScope = makeLambdaBodyScope(scope, vector<LambdaParamSlot>{});
+    _scopeStack.push_back(bodyScope);
     vector<p<StatementNode>> stmts;
     for (auto* s : ctx->statement()) {
         stmts.push_back(any_cast_p<StatementNode>(visit(s)));
     }
+    _scopeStack.pop_back();
     DEBUG_LOG_VAL("    Expr: LambdaZeroBlock", "stmts=" << stmts.size());
-    return p<ExprNode>(createWithLine<LambdaExprNode>(ctx, scope,
+    auto node = createWithLine<LambdaExprNode>(ctx, scope,
         LambdaExprNode::Form::ZeroBlock, vector<LambdaParamSlot>{},
-        p<TypeNode>(nullptr), p<ExprNode>(nullptr), std::move(stmts)));
+        p<TypeNode>(nullptr), p<ExprNode>(nullptr), std::move(stmts));
+    node->setBodyScope(bodyScope);
+    return p<ExprNode>(node);
 }
 
 std::any ASTBuilder::visitExprAddSub(yux::yuxParser::ExprAddSubContext* ctx) {

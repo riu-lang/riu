@@ -67,3 +67,15 @@ string Mangler::structType(const string& module, const string& structName) {
 string Mangler::global(const string& module, const string& name, bool /*isPrivate*/) {
     return modPrefix(module) + name;
 }
+
+string Mangler::lambda(const string& module, int line, int col) {
+    // 模块名内的 '.' 在 LLVM 符号里没问题，但与 Mangler 其余分隔符的视觉风格不一致
+    // 这里同步替换成 '_'，得到形如 __lambda_yux_core_string_42_7 的名字
+    string sanitized;
+    sanitized.reserve(module.size());
+    for (char c : module) {
+        sanitized += (c == '.') ? '_' : c;
+    }
+    if (sanitized.empty()) sanitized = "anon";
+    return "__lambda_" + sanitized + "_" + std::to_string(line) + "_" + std::to_string(col);
+}

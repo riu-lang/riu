@@ -155,7 +155,14 @@ const std::vector<p<ExprNode>>& ExprCallNode::getArgs() const { return _args; }
 
 TypeInfo ExprCallNode::getType() const {
     auto type = _calleeExpr->getType();
-    
+
+    // Phase 2b: callee 自身就是 Fn 类型值（lambda 字面量 / fn-typed 变量 / 字段）
+    // 调用结果即 fn 返回类型；void 时返回空 TypeInfo
+    if (type.isFn()) {
+        if (auto rt = type.fnReturnType()) return *rt;
+        return TypeInfo();
+    }
+
     DEBUG_LOG_VAL("ExprCallNode::getType - type.name", type.name);
     DEBUG_LOG_VAL("ExprCallNode::getType - starts_with('fn() ')", type.name.starts_with("fn() "));
     DEBUG_LOG_VAL("ExprCallNode::getType - calleeExpr type", typeid(*_calleeExpr).name());
@@ -1061,7 +1068,9 @@ int ExprArrayNode::resolveLineNumber() const {
 // Lambda 字面量类型：Fn TypeInfo（结构等同，§3.4）
 // 形参类型缺失（待上下文反推）→ 槽位放 empty TypeInfo 占位
 // 返回类型：显式标注用之；否则 nullptr 表示"待 §4.2 / 上下文决定"
+// Phase 2b：调用点 / 赋值点反推后 _inferredFnType 持完整类型，优先返回
 TypeInfo LambdaExprNode::getType() const {
+    if (_inferredFnType.isFn()) return _inferredFnType;
     vector<sp<TypeInfo>> ps;
     ps.reserve(_params.size());
     for (auto& slot : _params) {

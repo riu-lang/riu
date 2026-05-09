@@ -428,6 +428,13 @@ private:
     p<TypeNode> _retType;                      // 仅 Paren 显式标注；其余 nullptr
     p<ExprNode> _bodyExpr;                     // Single / Paren
     vector<p<StatementNode>> _bodyStmts;       // Block / ZeroBlock
+    // body 编译用的内层作用域；持有 lambda 形参符号。AST builder 在构建时填充，
+    // 让 body 表达式 / 语句的 parent 链可经此链路向上找到形参（findNearestScope）。
+    // body 内的符号引用在 sema 阶段可识别"形参 vs 自由变量"，闭包来到 Phase 4 之前
+    // 自由变量直接报错（Phase 2c）。
+    p<ScopeNode> _bodyScope;
+    // Phase 2b：调用 / 赋值点反推后的整体 Fn 类型（getType() 优先返回）
+    TypeInfo _inferredFnType;
 
 public:
     LambdaExprNode(const p<Node>& parent, Form form,
@@ -437,6 +444,14 @@ public:
         _params(std::move(params)), _retType(std::move(retType)),
         _bodyExpr(std::move(bodyExpr)), _bodyStmts(std::move(bodyStmts)) {
     }
+
+    void setBodyScope(p<ScopeNode> sc) { _bodyScope = std::move(sc); }
+    [[nodiscard]] p<ScopeNode> bodyScope() const { return _bodyScope; }
+
+    // Phase 2b：调用 / 赋值点反推后的整体 Fn 类型（含已填的 params + retType）。
+    // 不破坏源 _params / _retType（它们是源 AST），只在 getType() / 语义查询里优先返回这个。
+    void setInferredFnType(TypeInfo t) { _inferredFnType = std::move(t); }
+    [[nodiscard]] const TypeInfo& inferredFnType() const { return _inferredFnType; }
 
     [[nodiscard]] Form form() const { return _form; }
     [[nodiscard]] const vector<LambdaParamSlot>& params() const { return _params; }

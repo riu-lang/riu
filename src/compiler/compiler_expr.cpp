@@ -277,7 +277,18 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
         return llvm::ConstantInt::get(getLLVMType(type), boolVal ? 1 : 0, false);
     } else if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literal)) {
         auto varName = text;
-        auto sym = _currentFnNode->lookupSymbol(varName);
+        // Phase 2b：lambda body 编译期 _currentFnNode 为 nullptr，但 body 节点的 parent
+        // 链能经 bodyScope 找到 lambda 形参；fall back 到 findNearestScope 让 lambda 形参
+        // 与外层局部都能查到（外层情况下两者等价）
+        SymbolInfo* sym = nullptr;
+        if (_currentFnNode) {
+            sym = _currentFnNode->lookupSymbol(varName);
+        }
+        if (!sym) {
+            if (auto sc = node->findNearestScope()) {
+                sym = sc->lookupSymbol(varName);
+            }
+        }
 
         if (sym && _localVarPtrs.contains(varName)) {
             DEBUG_LOG_VAL("    Expr: VariableLoad", varName << " : " << sym->type.name);
@@ -298,8 +309,12 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             return _builder.CreateLoad(globalVar->getValueType(), globalVar, "global.load");
         }
 
-        SymbolSuggest::throwSymbolNotFound(_currentFnNode,
-            node->getLineNumber(), node->getColumn(), ErrorCode::E3030, varName);
+        if (_currentFnNode) {
+            SymbolSuggest::throwSymbolNotFound(_currentFnNode,
+                node->getLineNumber(), node->getColumn(), ErrorCode::E3030, varName);
+        }
+        // lambda body：无 FnNode 上下文，兜底直抛 E3030
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, varName);
     } else if (auto cpLiteral = dynamic_cast<LiteralCodePointNode*>(literal)) {
         DEBUG_LOG_VAL("    Expr: CodePointLiteral", text << " : u32");
         return llvm::ConstantInt::get(getLLVMType(type), cpLiteral->codePoint(), false);
@@ -1942,6 +1957,9 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
     } else if (auto matchNode = dynamic_cast<ExprMatchNode*>(node)) {
         // Phase 6: match 表达式 — switch on tag + 绑定 + arm 体
         return compileMatchExpr(matchNode);
+    } else if (auto lambdaNode = dynamic_cast<LambdaExprNode*>(node)) {
+        // Phase 2b: lambda 字面量 → 16 字节 fat-ptr 值 { fn_ptr, captures=null }
+        return compileLambdaExpr(lambdaNode);
     } else if (auto getRefNode = dynamic_cast<ExprGetRefNode*>(node)) {
         return compileGetRefExpr(getRefNode);
     } else if (auto unaryNode = dynamic_cast<ExprUnaryNode*>(node)) {

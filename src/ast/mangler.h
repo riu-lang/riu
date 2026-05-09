@@ -42,6 +42,10 @@ public:
     // 全局常量：mod_name；私有则 mod__name
     static string global(const string& module, const string& name, bool isPrivate);
 
+    // Lambda 顶层匿名 fn：__lambda_<sanitized-mod>_<line>_<col>
+    // module 中的 '.' 替换为 '_'，避免与 Mangler 其他分隔符冲突
+    static string lambda(const string& module, int line, int col);
+
 private:
     static string paramList(const vector<TypeInfo>& params);
     static string modPrefix(const string& module);            // 含尾 "_"

@@ -509,6 +509,18 @@ llvm::Value* Compiler::compileMethodCall(
 llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
     auto calleeExpr = node->getCalleeExpr();
 
+    // Phase 2b: callee 静态类型为 Fn(...)R → 走 fat-ptr 路径
+    // 涵盖：lambda IIFE `((x i32) i32 => ...)(5)`、fn-typed 变量 / 字段 / 调用结果
+    // 普通 ID callee（普通函数名）走 ExprLiteralNode 路径，那里返回 "fn() <ret>" 字符串
+    // 编码（kind=Normal），不会命中 isFn()
+    {
+        TypeInfo calleeStaticType;
+        try { calleeStaticType = calleeExpr->getType(); } catch (...) {}
+        if (calleeStaticType.isFn()) {
+            return compileFnValueCall(node);
+        }
+    }
+
     // 预处理: 类型推断和泛型参数处理
     if (auto calleeLiteral = dynamic_cast<ExprLiteralNode*>(calleeExpr)) {
         if (auto objLiteral = dynamic_cast<LiteralObjNode*>(calleeLiteral->literal())) {
@@ -681,10 +693,55 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
         }
     }
     
+    // Phase 2b：实参位置 lambda 类型反推
+    // 对 ID-callee 的普通函数调用，按 fnName 找匹配 FnSymbol；若 params[i] 是 Fn 类型且
+    // arg[i] 是 LambdaExprNode，则按 params[i] 预先 emit lambda function（mangle 缓存）。
+    // 多重载场景：当前先按 args.size() 唯一匹配；若多匹配，靠后面的 lookupFnSymbolWithParams
+    // 进一步消歧（lambda arg 在重载解析中按 Fn 类型已统一）。
+    if (auto calleeLit = dynamic_cast<ExprLiteralNode*>(calleeExpr)) {
+        if (auto objLit = dynamic_cast<LiteralObjNode*>(calleeLit->literal())) {
+            string fnName = objLit->getValue().getText();
+            vector<FnSymbolInfo*> candidates;
+            _file->collectFnOverloads(fnName, candidates);
+            if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
+                _yux->sdkFile()->collectFnOverloads(fnName, candidates);
+            }
+            // 按实参 arity 过滤
+            vector<FnSymbolInfo*> aritied;
+            for (auto* c : candidates) {
+                if (c->params.size() == node->getArgs().size()) aritied.push_back(c);
+            }
+            if (aritied.size() == 1) {
+                auto* fnSym = aritied[0];
+                for (size_t i = 0; i < node->getArgs().size(); ++i) {
+                    auto lambdaArg = dynamic_cast<LambdaExprNode*>(node->getArgs()[i]);
+                    if (!lambdaArg) continue;
+                    if (i >= fnSym->params.size()) break;
+                    if (!fnSym->params[i].isFn()) continue;
+                    // 设置反推类型，让后续 lambdaArg->getType() 返回完整 Fn TypeInfo
+                    // （影响 argTypes 收集 / lookupFnSymbolWithParams 重载消歧）
+                    lambdaArg->setInferredFnType(fnSym->params[i]);
+                    // 同步刷新 body scope 中形参符号的 type，让 body 内符号查找拿到正确类型
+                    if (auto sc = lambdaArg->bodyScope()) {
+                        const auto& fps = fnSym->params[i].fnParamTypes();
+                        for (size_t k = 0; k < lambdaArg->params().size() && k < fps.size(); ++k) {
+                            if (lambdaArg->params()[k].type) continue;  // 显式标注尊重源
+                            if (auto* psym = sc->lookupSymbol(lambdaArg->params()[k].name.getText())) {
+                                if (fps[k]) psym->type = *fps[k];
+                            }
+                        }
+                    }
+                    // 预 emit；后续 compileLambdaExpr 走 mangle 缓存命中同一 Function*
+                    emitLambdaFunction(lambdaArg, fnSym->params[i]);
+                }
+            }
+        }
+    }
+
     for (auto& arg : node->getArgs()) {
         auto argType = arg->getType();
         argTypes.push_back(argType);
-        
+
         bool passByPtr = false;
         if (isGenericCtorCall && ctorStructImpl) {
             for (auto& method : ctorStructImpl->methods()) {

@@ -250,6 +250,21 @@ class Compiler {
     llvm::Value* compileTupleExpr(p<ExprTupleNode> node);                       // 编译元组构造表达式 (e1, e2, ...)
     llvm::Value* compileEnumCtorExpr(p<ExprEnumCtorNode> node);                 // 编译枚举构造表达式 E::V / E::V(args)
     llvm::Value* compileMatchExpr(p<ExprMatchNode> node);                       // Phase 6: 编译 match 表达式（switch on tag + 绑定 + arm 体）
+
+    // ==================== Lambda（spec §4 / Phase 2b：零捕获） ====================
+    // compileLambdaExpr：把 LambdaExprNode 编译为 16 字节 fat-ptr 值 { fn_ptr, captures }；
+    // captures 永远为 null（捕获留给 Phase 4）。底层 Function 由 emitLambdaFunction 生成。
+    llvm::Value* compileLambdaExpr(p<class LambdaExprNode> node);
+    // emitLambdaFunction：取 LambdaExprNode + 期望 Fn 类型，按 captures-leading ABI
+    // (Ptr captures, P1, ..., Pn) → R 生成顶层 LLVM Function。
+    // expectedFnType 用于回填实例化后的形参类型（lambda 形参可省类型；调用者必须先反推）。
+    // 同 (node, mangledName) 已生成则直接返回缓存。
+    llvm::Function* emitLambdaFunction(p<class LambdaExprNode> node, const TypeInfo& expectedFnType);
+    // 调用 fn-typed 值：从 fat-ptr 提取 fn_ptr / captures，按 ABI 调用
+    llvm::Value* compileFnValueCall(p<ExprCallNode> node);
+    // 实参位置 lambda 类型反推：用 fnParamTypes()[i] 回填 LambdaExprNode 形参缺失类型
+    // 在调用点正式 compileExpr(args) 之前调用
+    void inferLambdaParamsFromFnType(p<class LambdaExprNode> lambda, const TypeInfo& expectedFnType);
     // 查找 enum 声明（本文件 + SDK 回退 + wildcard 导入），未找到返回 nullptr / 空 owner
     p<EnumDeclNode> lookupEnumDecl(const string& name, p<FileNode>& outOwner);
     llvm::Value* compileGetRefExpr(p<ExprGetRefNode> node);                     // 编译取引用表达式

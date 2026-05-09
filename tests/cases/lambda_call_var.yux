@@ -1,0 +1,13 @@
+; Phase 2b §4 / §5：lambda 赋给 fn-typed 变量后再调
+; 形参类型显式标注；fat-ptr ABI
+
+fn main() {
+  var f fn(i32)i32 = (x i32) i32 => x * 2
+  println(f(7).to_string())
+
+  ; 多次调用
+  println(f(0).to_string())
+  println(f(21).to_string())
+
+  ret;
+}
