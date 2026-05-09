@@ -405,6 +405,18 @@ struct LambdaParamSlot {
     p<TypeNode> type;        // nullptr → 待上下文反推
 };
 
+// Lambda 捕获槽位（Phase 4a，spec §6.1 / §6.2）
+// 标识 lambda body 内引用到的外层局部变量；emitLambdaFunction 在 body 编译过程中
+// 增量 append（compileLiteralExpr 命中外层 local → addCapture），compileLambdaExpr
+// 在 fn 回归外层上下文后据此从 _localVarPtrs 加载 + 写入 captures box。
+//
+// Phase 4a 仅支持标量类型；堆句柄 / struct / `T&` 拒入（4a-2 / 4c 接入）。
+struct CaptureSlot {
+    string name;          // 外层变量名
+    TypeInfo type;        // 外层变量类型（值复制语义）
+    u64 byteOffset;       // 在 captures buffer 中的字节偏移（自然对齐）
+};
+
 // Lambda 字面量节点：四种语法形态归一存储（spec §4.0）
 // - Single:    `x => expr`                  （裸单参；params.size()==1，type 必空）
 // - Paren:     `(args) RetT? => expr`       （括参 + 可选返回类型；多参形）
@@ -435,6 +447,9 @@ private:
     p<ScopeNode> _bodyScope;
     // Phase 2b：调用 / 赋值点反推后的整体 Fn 类型（getType() 优先返回）
     TypeInfo _inferredFnType;
+    // Phase 4a：自由变量捕获槽位（emit 期间增量填充）
+    vector<CaptureSlot> _captures;
+    u64 _capturesTotalSize = 0;
 
 public:
     LambdaExprNode(const p<Node>& parent, Form form,
@@ -447,6 +462,23 @@ public:
 
     void setBodyScope(p<ScopeNode> sc) { _bodyScope = std::move(sc); }
     [[nodiscard]] p<ScopeNode> bodyScope() const { return _bodyScope; }
+
+    // Phase 4a：捕获表（emitLambdaFunction 期间增量 append）
+    [[nodiscard]] const vector<CaptureSlot>& captures() const { return _captures; }
+    [[nodiscard]] u64 capturesTotalSize() const { return _capturesTotalSize; }
+    [[nodiscard]] int findCapture(const string& name) const {
+        for (size_t i = 0; i < _captures.size(); ++i)
+            if (_captures[i].name == name) return (int)i;
+        return -1;
+    }
+    // 追加捕获槽位；offset / totalSize 由调用方按对齐规则算好。返回新槽位索引。
+    int addCapture(const string& name, TypeInfo type, u64 offset, u64 totalSize) {
+        _captures.push_back(CaptureSlot{name, std::move(type), offset});
+        _capturesTotalSize = totalSize;
+        return (int)_captures.size() - 1;
+    }
+    // 重置捕获状态（emitLambdaFunction 缓存命中前的清场，避免重复 append）
+    void clearCaptures() { _captures.clear(); _capturesTotalSize = 0; }
 
     // Phase 2b：调用 / 赋值点反推后的整体 Fn 类型（含已填的 params + retType）。
     // 不破坏源 _params / _retType（它们是源 AST），只在 getType() / 语义查询里优先返回这个。

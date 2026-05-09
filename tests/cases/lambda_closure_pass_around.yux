@@ -1,0 +1,24 @@
+; Phase 4a §6.1：捕获 lambda 跨 fn 边界传递 + 调用 (captures box 跟随 fat-ptr 流转)
+
+fn apply(f fn(i32)i32, x i32) i32 {
+  ret f(x)
+}
+
+fn make_adder(n i32) fn(i32)i32 {
+  ret (x i32) i32 => x + n
+}
+
+fn main() {
+  var add10 fn(i32)i32 = make_adder(10)
+  println(apply(add10, 5).to_string())   ; 15
+  println(apply(add10, 100).to_string()) ; 110
+
+  var add42 fn(i32)i32 = make_adder(42)
+  println(add42(8).to_string())          ; 50
+
+  ; 同一 captures box 共享 (fat-ptr 拷贝走 RC retain)
+  var alias fn(i32)i32 = add10
+  println(alias(7).to_string())          ; 17
+
+  ret;
+}

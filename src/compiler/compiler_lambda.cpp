@@ -116,21 +116,30 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     auto savedInsert = _builder.GetInsertBlock();
     auto savedInsertPoint = _builder.GetInsertPoint();
     auto savedLambdaBodyScope = _currentLambdaBodyScope;
+    auto savedLambdaForCapture = _currentLambdaForCapture;
+    auto savedLambdaCapturesArg = _currentLambdaCapturesArg;
 
     _currentFn = func;
-    _currentFnNode = nullptr;     // lambda 无 FnNode；body 引用外层符号需 Phase 4 闭包
+    _currentFnNode = nullptr;     // lambda 无 FnNode；body 引用外层符号走 Phase 4a 捕获通道
     _currentStructName.clear();
     _localVarPtrs.clear();
     _scopeVars.clear();
     _tempStack.clear();
-    _currentLambdaBodyScope = node->bodyScope();   // Phase 2c：启用 FV 校验
+    _currentLambdaBodyScope = node->bodyScope();          // Phase 2c：启用 FV 通路
+    // Phase 4a：启用捕获识别。清空旧 captures（防止重复 emit 累加；缓存命中走早返路径
+    // 不重入此段）。emitLambdaFunction 这一次 body 编译期间，compileLiteralExpr 命中
+    // 外层 local 会 addCapture 并就地 GEP 读 captures buffer。
+    node->clearCaptures();
+    _currentLambdaForCapture = node;
 
     auto entry = llvm::BasicBlock::Create(_context, "entry", func);
     _builder.SetInsertPoint(entry);
 
-    // 形参 alloca + store；首参 captures 跳过（零捕获场景未使用）
+    // 形参 alloca + store；首参 captures 跳过（零捕获场景未使用 / 含捕获走捕获通道）
     auto argIt = func->arg_begin();
     argIt->setName("captures");
+    // Phase 4a：缓存 captures arg（block ptr），compileLiteralExpr 命中捕获时 GEP base
+    _currentLambdaCapturesArg = &*argIt;
     ++argIt;
     for (size_t i = 0; i < paramTypes.size(); ++i, ++argIt) {
         auto paramName = node->params()[i].name.getText();
@@ -183,6 +192,8 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     _scopeVars = std::move(savedScope);
     _tempStack = std::move(savedTempStack);
     _currentLambdaBodyScope = savedLambdaBodyScope;
+    _currentLambdaForCapture = savedLambdaForCapture;
+    _currentLambdaCapturesArg = savedLambdaCapturesArg;
     if (savedInsert) {
         _builder.SetInsertPoint(savedInsert, savedInsertPoint);
     }
@@ -191,8 +202,12 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
 }
 
 // ==================== compileLambdaExpr ====================
-// LambdaExprNode 求值：先 emit 底层 fn，然后构造 fat-ptr struct value。
+// LambdaExprNode 求值：先 emit 底层 fn（期间 emit 通路完成 captures 槽位发现），
+// 回到外层上下文后据 captures 列表分配 Box<CapturesT> + 写入字段；最后构造 fat-ptr。
 // fat-ptr layout：{ ptr fn_ptr, ptr captures }；零捕获 captures = null。
+//
+// Phase 4a：仅支持标量按值复制；非标量在 emitLambdaFunction body 阶段已被
+// compileLiteralExpr 拒（E2029），此处 captures 列表里全是 builtin 标量。
 llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
     // 静态类型即 Fn TypeInfo（lambda 形参类型可能缺）
     auto fnType = node->getType();
@@ -200,13 +215,38 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
 
     auto ptrTy = llvm::PointerType::get(_context, 0);
     auto fatStructTy = llvm::StructType::get(_context, {ptrTy, ptrTy});
-    auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
+
+    // captures：零捕获 → null；含捕获 → 分配 box，从 _localVarPtrs 拷贝外层 local 值
+    llvm::Value* capturesPtr = llvm::ConstantPointerNull::get(ptrTy);
+    const auto& caps = node->captures();
+    if (!caps.empty()) {
+        u64 totalSize = node->capturesTotalSize();
+        auto allocFn = runtime::getBoxAllocFn(_module, _builder);
+        auto blockHandle = _builder.CreateCall(
+            allocFn, {_builder.getInt64((i64)totalSize)}, "captures.block");
+        // 写入各 capture：payload = handle + 8，逐字段从 _localVarPtrs 加载并写
+        auto i8Ty = _builder.getInt8Ty();
+        for (const auto& cap : caps) {
+            auto it = _localVarPtrs.find(cap.name);
+            if (it == _localVarPtrs.end()) {
+                // 不该发生：emit 期已通过 _currentLambdaBodyScope 校验过 sym 来源
+                throw YuxError(node->getLineNumber(), node->getColumn(),
+                               ErrorCode::E3030, cap.name);
+            }
+            auto valLLVMTy = getLLVMType(cap.type);
+            auto srcVal = _builder.CreateLoad(valLLVMTy, it->second, "cap.src");
+            auto offset = _builder.getInt64(8 + (i64)cap.byteOffset);
+            auto dstAddr = _builder.CreateGEP(i8Ty, blockHandle, {offset}, "cap.dst");
+            _builder.CreateStore(srcVal, dstAddr);
+        }
+        capturesPtr = blockHandle;
+    }
 
     // ConstantStruct 不能直接用：Function* 是 Constant 但 fatStructTy 是 anonymous struct，
     // ConstantStruct::get 需要 named struct。统一走 InsertValue 动态构造。
     llvm::Value* fat = llvm::UndefValue::get(fatStructTy);
     fat = _builder.CreateInsertValue(fat, func, {0}, "fn.ptr");
-    fat = _builder.CreateInsertValue(fat, nullPtr, {1}, "fn.captures");
+    fat = _builder.CreateInsertValue(fat, capturesPtr, {1}, "fn.captures");
     return fat;
 }
 

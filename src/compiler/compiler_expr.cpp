@@ -313,10 +313,33 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             SymbolSuggest::throwSymbolNotFound(_currentFnNode,
                 node->getLineNumber(), node->getColumn(), ErrorCode::E3030, varName);
         }
-        // lambda body：FV 校验存根（spec §6.1，闭包待 Phase 4）
-        // - 找到 sym 但不是形参（不在 _localVarPtrs）也不是全局（无 globalVar）
-        //   → 引用了外层局部，报 E2028
-        // - 完全找不到 sym → 普通 E3030
+        // lambda body 内引用外层 local：Phase 4a 闭包识别（spec §6.1 / §6.2）
+        // - 找到 sym 但不在 _localVarPtrs 也无 globalVar → 外层 local
+        // - Phase 4a 仅支持标量按值复制；非标量（堆句柄 / struct / T&）报 E2029
+        // - 命中：addCapture（首次出现）+ 生成 GEP 读 captures buffer
+        if (_currentLambdaForCapture && _currentLambdaBodyScope
+            && sym && sym->kind == SymbolKind::Variable) {
+            // Phase 4a 限制：只接 builtin 标量
+            if (!sym->type.isNormal() || !isBuiltinType(sym->type.name)) {
+                throw YuxError(node->getLineNumber(), node->getColumn(),
+                               ErrorCode::E2029, varName, sym->type.name);
+            }
+            // 已捕获 → 复用槽位；首次 → 追加（8 字节固定槽位，spec 不锁布局）
+            int idx = _currentLambdaForCapture->findCapture(varName);
+            if (idx < 0) {
+                u64 offset = _currentLambdaForCapture->capturesTotalSize();
+                idx = _currentLambdaForCapture->addCapture(varName, sym->type, offset, offset + 8);
+            }
+            const auto& cap = _currentLambdaForCapture->captures()[idx];
+            // captures arg 是 block 句柄（block ptr）；payload = handle + 8（跳过 RC 头）
+            // 然后 +cap.byteOffset 是该 capture 的存储地址
+            auto i8Ty = _builder.getInt8Ty();
+            auto payloadOffset = _builder.getInt64(8 + (i64)cap.byteOffset);
+            auto capAddr = _builder.CreateGEP(i8Ty, _currentLambdaCapturesArg,
+                                              {payloadOffset}, "cap.addr");
+            return _builder.CreateLoad(getLLVMType(sym->type), capAddr, "cap.load");
+        }
+        // 兜底：lambda body 命中 sym 但禁用捕获（_currentLambdaForCapture 未启） → 旧 E2028
         if (_currentLambdaBodyScope && sym && sym->kind == SymbolKind::Variable) {
             throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E2028, varName);
         }

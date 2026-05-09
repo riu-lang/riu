@@ -1,0 +1,19 @@
+; Phase 4a §6.1 / §6.2：多个标量捕获 + 不同 builtin 类型混捕
+
+fn main() {
+  var a i32 = 3
+  var b i32 = 7
+  val sum = (x i32) i32 => a + b + x
+  println(sum(0).to_string())     ; 10
+  println(sum(5).to_string())     ; 15
+
+  var pi f64 = 3.14
+  val pifloor = () i32 => pi.to_i32()
+  println(pifloor().to_string())  ; 3
+
+  var enabled bool = true
+  val pick = (t, f i32) i32 => if enabled { t } else { f }
+  println(pick(1, 2).to_string()) ; 1
+
+  ret;
+}

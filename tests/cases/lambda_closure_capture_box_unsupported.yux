@@ -1,0 +1,8 @@
+; Phase 4a §6.2：捕获堆句柄（Box<T>）当前不支持，留待 Phase 4a-2
+
+fn main() {
+  var b Box<i32> = 42
+  val f = () i32 => b      ; ❌ E2029：标量以外的捕获 Phase 4a 不支持
+  println(f().to_string())
+  ret;
+}
