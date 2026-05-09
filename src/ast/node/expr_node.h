@@ -398,6 +398,64 @@ public:
     [[nodiscard]] int resolveColumn() const override;
 };
 
+// Lambda 形参：name + 可选类型（缺省时 type=nullptr，由调用 / 赋值点的期望
+// 函数类型反推后回填，详见 spec §4.1）
+struct LambdaParamSlot {
+    Token name;
+    p<TypeNode> type;        // nullptr → 待上下文反推
+};
+
+// Lambda 字面量节点：四种语法形态归一存储（spec §4.0）
+// - Single:    `x => expr`                  （裸单参；params.size()==1，type 必空）
+// - Paren:     `(args) RetT? => expr`       （括参 + 可选返回类型；多参形）
+// - Block:     `{ args => stmts }`           （块形 ≥1 参）
+// - ZeroBlock: `{ stmts }`                    （0 参块；params 为空，retType 由上下文推断）
+//
+// body 储存策略：
+// - Single / Paren：bodyExpr 单表达式；bodyStmts 为空
+// - Block / ZeroBlock：bodyStmts 语句序列；bodyExpr 为空（tail 表达式语义由 Phase 2b codegen 决定）
+//
+// retType：
+// - 显式标注（仅 Paren 形态可写）→ 非空 TypeNode
+// - 裸 / 块 → nullptr，待 §4.2 表规则在 Phase 2b/2c 决定（裸 → 推断；括 + 无标 → void）
+class LambdaExprNode : public ExprNode {
+public:
+    enum class Form { Single, Paren, Block, ZeroBlock };
+
+private:
+    Form _form;
+    vector<LambdaParamSlot> _params;
+    p<TypeNode> _retType;                      // 仅 Paren 显式标注；其余 nullptr
+    p<ExprNode> _bodyExpr;                     // Single / Paren
+    vector<p<StatementNode>> _bodyStmts;       // Block / ZeroBlock
+
+public:
+    LambdaExprNode(const p<Node>& parent, Form form,
+                   vector<LambdaParamSlot> params, p<TypeNode> retType,
+                   p<ExprNode> bodyExpr, vector<p<StatementNode>> bodyStmts) :
+        ExprNode(parent), _form(form),
+        _params(std::move(params)), _retType(std::move(retType)),
+        _bodyExpr(std::move(bodyExpr)), _bodyStmts(std::move(bodyStmts)) {
+    }
+
+    [[nodiscard]] Form form() const { return _form; }
+    [[nodiscard]] const vector<LambdaParamSlot>& params() const { return _params; }
+    [[nodiscard]] vector<LambdaParamSlot>& mutableParams() { return _params; }
+    [[nodiscard]] const p<TypeNode>& retType() const { return _retType; }
+    [[nodiscard]] const p<ExprNode>& bodyExpr() const { return _bodyExpr; }
+    [[nodiscard]] const vector<p<StatementNode>>& bodyStmts() const { return _bodyStmts; }
+
+    // 形参 name 可省（裸列单 ID 仅在 Single 形态出现，必有 name；
+    // Paren / Block 的 lambdaParam 也强制 ID，因 g4 lambdaParam 总以 names+= 起头）
+    [[nodiscard]] bool hasAllParamTypes() const {
+        for (auto& s : _params) if (!s.type) return false;
+        return true;
+    }
+
+    // 返回 Fn TypeInfo；缺失槽位用 empty TypeInfo 占位，等 Phase 2b 上下文反推回填
+    [[nodiscard]] TypeInfo getType() const override;
+};
+
 // 元组构造表达式 (e1, e2, ...)
 // 至少 2 个元素（g4 保证）；类型由各元素类型组合而成的 Tuple TypeInfo
 class ExprTupleNode : public ExprNode {

@@ -1396,6 +1396,66 @@ std::any ASTBuilder::visitExprParen(yux::yuxParser::ExprParenContext* ctx) {
     return p<ExprNode>(createWithLine<ExprParenNode>(ctx, scope, inner));
 }
 
+// 收集 lambdaParams 上下文为 LambdaParamSlot 列表
+// g4 lambdaParam 两 alt：
+//   - lambdaParamGroup：names+= ID (',' names+= ID)+ typeWithRef?  → 组糖，N 形参共享同类型
+//   - lambdaParamStd：name=ID typeWithRef?                          → 单形参可省类型
+// 类型省时 type=nullptr，由调用 / 赋值点的 fn 类型反推（Phase 2b）
+static vector<LambdaParamSlot> collectLambdaParams(
+    ASTBuilder* self, yux::yuxParser::LambdaParamsContext* params,
+    p<Node> parent,
+    p<TypeNode> (ASTBuilder::*buildTwr)(yux::yuxParser::TypeWithRefContext*, p<Node>)) {
+    vector<LambdaParamSlot> out;
+    if (!params) return out;
+    for (auto* lp : params->lambdaParam()) {
+        if (auto* g = dynamic_cast<yux::yuxParser::LambdaParamGroupContext*>(lp)) {
+            // a, b T → 展开为 N 份相同类型；类型可省（→ nullptr）
+            p<TypeNode> sharedType = nullptr;
+            if (auto* twr = g->typeWithRef()) {
+                sharedType = (self->*buildTwr)(twr, parent);
+            }
+            for (auto* idTok : g->names) {
+                out.push_back(LambdaParamSlot{Token(idTok->getText(), (int)idTok->getLine()), sharedType});
+            }
+        } else if (auto* s = dynamic_cast<yux::yuxParser::LambdaParamStdContext*>(lp)) {
+            p<TypeNode> ty = nullptr;
+            if (auto* twr = s->typeWithRef()) {
+                ty = (self->*buildTwr)(twr, parent);
+            }
+            out.push_back(LambdaParamSlot{Token(s->name->getText(), (int)s->name->getLine()), ty});
+        }
+    }
+    return out;
+}
+
+// 把 trailingLambda 上下文转为 LambdaExprNode（块形）
+// trailingLambdaBlock：'{' lambdaParams '=>' stmts '}'  → Form::Block
+// trailingLambdaZeroBlock：'{' stmts '}'                → Form::ZeroBlock
+static p<LambdaExprNode> buildTrailingLambda(
+    ASTBuilder* self, yux::yuxParser::TrailingLambdaContext* tl,
+    p<ScopeNode> scope,
+    p<TypeNode> (ASTBuilder::*buildTwr)(yux::yuxParser::TypeWithRefContext*, p<Node>),
+    std::function<p<LambdaExprNode>(yux::yuxParser::TrailingLambdaContext*,
+                                     LambdaExprNode::Form,
+                                     vector<LambdaParamSlot>,
+                                     vector<p<StatementNode>>)> create) {
+    if (auto* b = dynamic_cast<yux::yuxParser::TrailingLambdaBlockContext*>(tl)) {
+        auto params = collectLambdaParams(self, b->lambdaParams(), scope, buildTwr);
+        vector<p<StatementNode>> stmts;
+        for (auto* s : b->statement()) {
+            stmts.push_back(any_cast_p<StatementNode>(self->visit(s)));
+        }
+        return create(b, LambdaExprNode::Form::Block, std::move(params), std::move(stmts));
+    } else if (auto* z = dynamic_cast<yux::yuxParser::TrailingLambdaZeroBlockContext*>(tl)) {
+        vector<p<StatementNode>> stmts;
+        for (auto* s : z->statement()) {
+            stmts.push_back(any_cast_p<StatementNode>(self->visit(s)));
+        }
+        return create(z, LambdaExprNode::Form::ZeroBlock, {}, std::move(stmts));
+    }
+    return nullptr;
+}
+
 std::any ASTBuilder::visitExprCall(yux::yuxParser::ExprCallContext* ctx) {
     auto scope = currentScope();
     DEBUG_LOG_VAL("    Expr: Call - ctx->left type", typeid(*ctx->left).name());
@@ -1422,7 +1482,103 @@ std::any ASTBuilder::visitExprCall(yux::yuxParser::ExprCallContext* ctx) {
         }
         call->setTypeArgs(std::move(typeArgs));
     }
+    // 尾随 lambda 糖 §4.5：f(args) { ... } → 等价 f(args, { ... })
+    if (auto* tl = ctx->trailing) {
+        auto lambda = buildTrailingLambda(this, tl, scope,
+            &ASTBuilder::buildTypeWithRef,
+            [this](auto* tlCtx, LambdaExprNode::Form form,
+                   vector<LambdaParamSlot> params, vector<p<StatementNode>> stmts) {
+                return createWithLine<LambdaExprNode>(tlCtx, currentScope(), form,
+                    std::move(params), nullptr, nullptr, std::move(stmts));
+            });
+        if (lambda) call->addArg(p<ExprNode>(lambda));
+    }
     return p<ExprNode>(call);
+}
+
+// 尾随 lambda 唯一实参糖：f { ... } → f({ ... })
+std::any ASTBuilder::visitExprCallTrailingOnly(yux::yuxParser::ExprCallTrailingOnlyContext* ctx) {
+    auto scope = currentScope();
+    auto callee = any_cast_p<ExprNode>(visit(ctx->left));
+    auto call = createWithLine<ExprCallNode>(ctx, scope, callee);
+    if (auto gd = ctx->genericDef()) {
+        vector<p<TypeNode>> typeArgs;
+        for (auto pCtx : gd->params) {
+            if (!pCtx->bounds.empty()) {
+                auto* tk = pCtx->SymbolColon();
+                throw YuxError(
+                    tk ? (int)tk->getSymbol()->getLine() : 0,
+                    tk ? static_cast<int>(tk->getSymbol()->getCharPositionInLine()) + 1 : 0,
+                    ErrorCode::E2015);
+            }
+            typeArgs.push_back(any_cast_p<TypeNode>(visit(pCtx->type(0))));
+        }
+        call->setTypeArgs(std::move(typeArgs));
+    }
+    auto lambda = buildTrailingLambda(this, ctx->trailing, scope,
+        &ASTBuilder::buildTypeWithRef,
+        [this](auto* tlCtx, LambdaExprNode::Form form,
+               vector<LambdaParamSlot> params, vector<p<StatementNode>> stmts) {
+            return createWithLine<LambdaExprNode>(tlCtx, currentScope(), form,
+                std::move(params), nullptr, nullptr, std::move(stmts));
+        });
+    if (lambda) call->addArg(p<ExprNode>(lambda));
+    return p<ExprNode>(call);
+}
+
+// Lambda 表达式形：x => expr  （裸单参，类型由上下文反推）
+std::any ASTBuilder::visitExprLambdaSingle(yux::yuxParser::ExprLambdaSingleContext* ctx) {
+    auto scope = currentScope();
+    vector<LambdaParamSlot> params;
+    params.push_back(LambdaParamSlot{
+        Token(ctx->name->getText(), (int)ctx->name->getLine()), nullptr });
+    auto bodyExpr = any_cast_p<ExprNode>(visit(ctx->body->expr()));
+    DEBUG_LOG("    Expr: LambdaSingle");
+    return p<ExprNode>(createWithLine<LambdaExprNode>(ctx, scope,
+        LambdaExprNode::Form::Single, std::move(params),
+        nullptr, bodyExpr, vector<p<StatementNode>>{}));
+}
+
+// Lambda 表达式形：(args) RetT? => expr
+std::any ASTBuilder::visitExprLambdaParen(yux::yuxParser::ExprLambdaParenContext* ctx) {
+    auto scope = currentScope();
+    auto params = collectLambdaParams(this, ctx->lambdaParams(), scope, &ASTBuilder::buildTypeWithRef);
+    p<TypeNode> retType = nullptr;
+    if (ctx->retType) {
+        retType = buildTypeWithRef(ctx->retType, scope);
+    }
+    auto bodyExpr = any_cast_p<ExprNode>(visit(ctx->body->expr()));
+    DEBUG_LOG_VAL("    Expr: LambdaParen", "params=" << params.size());
+    return p<ExprNode>(createWithLine<LambdaExprNode>(ctx, scope,
+        LambdaExprNode::Form::Paren, std::move(params),
+        retType, bodyExpr, vector<p<StatementNode>>{}));
+}
+
+// Lambda 块形：{ args => stmts }
+std::any ASTBuilder::visitExprLambdaBlock(yux::yuxParser::ExprLambdaBlockContext* ctx) {
+    auto scope = currentScope();
+    auto params = collectLambdaParams(this, ctx->lambdaParams(), scope, &ASTBuilder::buildTypeWithRef);
+    vector<p<StatementNode>> stmts;
+    for (auto* s : ctx->statement()) {
+        stmts.push_back(any_cast_p<StatementNode>(visit(s)));
+    }
+    DEBUG_LOG_VAL("    Expr: LambdaBlock", "params=" << params.size() << " stmts=" << stmts.size());
+    return p<ExprNode>(createWithLine<LambdaExprNode>(ctx, scope,
+        LambdaExprNode::Form::Block, std::move(params),
+        nullptr, nullptr, std::move(stmts)));
+}
+
+// Lambda 0 参块形：{ stmts }（禁写 =>）
+std::any ASTBuilder::visitExprLambdaZeroBlock(yux::yuxParser::ExprLambdaZeroBlockContext* ctx) {
+    auto scope = currentScope();
+    vector<p<StatementNode>> stmts;
+    for (auto* s : ctx->statement()) {
+        stmts.push_back(any_cast_p<StatementNode>(visit(s)));
+    }
+    DEBUG_LOG_VAL("    Expr: LambdaZeroBlock", "stmts=" << stmts.size());
+    return p<ExprNode>(createWithLine<LambdaExprNode>(ctx, scope,
+        LambdaExprNode::Form::ZeroBlock, vector<LambdaParamSlot>{},
+        p<TypeNode>(nullptr), p<ExprNode>(nullptr), std::move(stmts)));
 }
 
 std::any ASTBuilder::visitExprAddSub(yux::yuxParser::ExprAddSubContext* ctx) {

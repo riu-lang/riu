@@ -1058,6 +1058,22 @@ int ExprArrayNode::resolveLineNumber() const {
     return 0;
 }
 
+// Lambda 字面量类型：Fn TypeInfo（结构等同，§3.4）
+// 形参类型缺失（待上下文反推）→ 槽位放 empty TypeInfo 占位
+// 返回类型：显式标注用之；否则 nullptr 表示"待 §4.2 / 上下文决定"
+TypeInfo LambdaExprNode::getType() const {
+    vector<sp<TypeInfo>> ps;
+    ps.reserve(_params.size());
+    for (auto& slot : _params) {
+        if (slot.type) ps.push_back(make_shared<TypeInfo>(slot.type->getType()));
+        else ps.push_back(make_shared<TypeInfo>());  // 占位，等 Phase 2b 反推回填
+    }
+    sp<TypeInfo> rt = nullptr;
+    if (_retType) rt = make_shared<TypeInfo>(_retType->getType());
+    // nullable=false：lambda 字面量本身永非空（fn?(...)R 是类型层 nullable，与字面量值无关）
+    return TypeInfo(FnTag{}, std::move(ps), rt, false);
+}
+
 // 元组构造表达式：把每个元素类型组合为 TupleTag TypeInfo
 TypeInfo ExprTupleNode::getType() const {
     vector<sp<TypeInfo>> elems;
