@@ -55,7 +55,7 @@
 - 函数形参 / 返回值（任意嵌套）：`fn map(f fn(i32)i32)`、`fn make_counter() fn()i32`
 - 类型别名右侧（§3.9）：`Callback = fn(s String)bool`
 - 元组元素：`(fn()i32, i32)`
-- `T&` 借用：`(fn(A) R)&`（语法允许；用例少，§3.6 复述）
+- ~~`T&` 借用：`(fn(A) R)&`~~（**v1 不支持**：g4 缺"括号包类型"规则，且 `typeFnWithRef` 末尾 `&` 在有非借用 R 时被 retType 贪心吃掉，无语法表达手段；§3.6 复述）
 
 字段位置 / `Box<fn(...)>` / `Array<fn(...)>` / `Weak<fn(...)>` 等容器内层是否合法 → 决于 Phase 3 档位决议（值类型 vs 堆句柄）；本节不收口。
 
@@ -157,7 +157,7 @@ fn each<T>(arr Array<T>, p Predicate<T>) { ... }
 
 **`Ref<T>` 自动取引用**（§9）：调用函数值时，若形参为 `Ref<T>` 而实参为 `T`，自动取引用规则照旧，无差异。
 
-**借用一个函数值** `(fn(A) R)&`：合法（语法层 §3.2.3.1 允许"局部变量类型"借用），实际用例少。具体寿命与传递规则推到 Phase 3 与 §8.5 callee-clean 对接时一并处理。
+**借用一个函数值** `(fn(A) R)&`：**v1 不支持**。g4 当前没有"括号包类型"规则，`typeFnWithRef` 末尾的 `SymbolAnd?` 在有非借用 R 时被 retType=typeWithRef 的贪心 `&` 吃掉（`fn(i32)i32&` → 返回 `i32&`，外层 `&` 永远轮不上），无语法表达手段。Phase 3d 决议直接弃，不改 g4。如未来需求出现，需先在 g4 加 paren-type 规则（或重新设计借用语法）再回填 §5.5 表。
 
 ### 3.7 与 nullable / 容器 / FFI
 
@@ -166,7 +166,7 @@ fn each<T>(arr Array<T>, p Predicate<T>) { ... }
 - `Weak<fn(...)>`：❌ 禁（函数值不是堆句柄无 RC 头，§5.5）。
 - FFI 边界（`extern fn`、`Ptr` 转换）：推到 Phase 5（§7）+ 错误模型 v1 [#7] 合并讨论。
 
-### 3.8 ABI（informative，Phase 3 锁）
+### 3.8 ABI（Phase 3 已落地，2026-05-09）
 
 仅占位记号：函数类型在调用点按 callee-clean §8.5 协议传值；零捕获 vs 含捕获是否走同一 ABI、是否引入 fat-pointer / Box-wrapped 形态，留 Phase 3 决。
 
@@ -302,6 +302,8 @@ f { x => body }              ; 唯一实参 + 省 (...)
 
 ## 5. 函数值 RC / ABI（Phase 3，[#17] C1）
 
+> **状态**：Phase 3 (a/b/c) 已落地（2026-05-09）—— 字段级 RC 接入零捕获骨架、struct fn 字段、`Array<fn>` / `Box<fn>` 容器全部走通，xmake test 65/65 + sdk yux test 259/259 全绿。Phase 3d「`(fn(...) R)&` 借用」**v1 不支持**（详见 §3.6 / §5.5）。Phase 4 闭包未启动，含捕获路径仍为 informative。
+
 ### 5.1 档位归属
 
 函数值 `fn(...) R` 是 **§3.1 值类型**（与元组 / enum 同档），但其内部含一个 `Box<...>?` 字段（捕获包），按 **§7.4 字段级 RC** 处理。
@@ -367,13 +369,13 @@ fn_value_destruct(v: FnValue):
 | `Box<fn(...) R>` | ✅ | 双层句柄；语义合法不专门禁 |
 | `fn?(...)R` | ✅ Nullable 紧凑形 | [#24]；`(fn(...)R)?` 禁 |
 | `Weak<fn(...) R>` | ❌ 禁 | 函数值不是堆句柄，无 RC 头；§8.10 / §3.7 禁忌列表加一条 |
-| `(fn(...) R)&` | ✅ 借用 | §3.2.3.1 既有规则；借用一个函数值，不延寿 captures |
+| ~~`(fn(...) R)&`~~ | ✗ v1 不支持 | g4 缺 paren-type 规则，retType 贪心吞 `&`，无语法表达手段；详见 §3.6 |
 
 ### 5.6 移动 / 复制 / 借用
 
 - **复制**：按值拷贝 fat-ptr 16 bytes；retain captures（若非空）。与 §7.4 字段级复制语义一致。
 - **移动**：通过 §8.5 callee-clean / 移动初始化等"已知所有权转移"路径，可省 retain / release 对消。零捕获场景 captures = null，retain / release 是早返 NOP，移动优化收益不显著但无损。
-- **借用** `(fn(...) R)&`：fat-ptr 的借用，按 §8.6 既有 `T&` 规则；借用期内不影响 captures RC，借用结束即丢弃指针。借用函数值的"调用"形态：通过 `T&` 解引用得到 fat-ptr 副本后调用（具体落到 §8 fnType 借用条款，Phase 3 落地时复核 §8.5 / §8.6.5）。
+- ~~**借用** `(fn(...) R)&`~~：**v1 不支持**，详见 §3.6。函数值借用形态在 v1 缺位。
 
 ### 5.7 Open Issues
 
