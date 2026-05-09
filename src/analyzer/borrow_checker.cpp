@@ -356,8 +356,85 @@ private:
             }
             return;
         }
+        if (auto lam = dynamic_cast<LambdaExprNode*>(e)) {
+            visitLambda(lam);
+            return;
+        }
         // 其余表达式不需深入；本检查不依赖完整数据流。
         // 嵌套 block 只通过 if/else 表达式承载，已上面覆盖。
+    }
+
+    // Phase 4e（spec §6.5）：lambda body 借用检查。
+    // - lambda 的允许源集 = lambda 自身的 T& 形参（捕获来的 T& 不进允许源集，spec §6.5）
+    // - 若 lambda retType 是 T& 而无（或多个）T& 形参 → 单源约束 E4021
+    // - lambda body ret 表达式根 ∉ 允许源集 → E4020
+    void visitLambda(LambdaExprNode* lam) {
+        if (!lam) return;
+        pushScope();
+
+        // 保存外层 ret-ref 状态（避免 lambda 体内 ret 被外层规则误检）
+        bool savedReturnsRef = _returnsRef;
+        auto savedAllowedSources = _returnAllowedSources;
+        auto savedAllowedDesc = _returnAllowedDesc;
+        _returnsRef = false;
+        _returnAllowedSources.clear();
+        _returnAllowedDesc.clear();
+
+        // 注册 lambda 形参：T& 形参参与 refToRoot，与外层 fn 同路径处理
+        std::vector<std::string> lamRefParams;
+        std::vector<std::string> addedRefs; // 待回滚
+        for (auto& slot : lam->params()) {
+            auto pname = slot.name.getText();
+            declare(pname);
+            if (slot.type) {
+                auto ty = slot.type->getType();
+                if (ty.isRef()) {
+                    _refToRoot[pname] = pname;
+                    addedRefs.push_back(pname);
+                    lamRefParams.push_back(pname);
+                } else {
+                    _rootType[pname] = ty;
+                }
+            }
+        }
+
+        bool lamReturnsRef = lam->retType() && lam->retType()->getType().isRef();
+        if (lamReturnsRef) {
+            // 单源约束：恰好 1 个 T& 形参（spec §8.6.10.3 / §6.5）
+            if (lamRefParams.size() != 1) {
+                throw YuxError(lam->getLineNumber(), ErrorCode::E4021);
+            }
+            _returnsRef = true;
+            _returnAllowedSources.insert(lamRefParams[0]);
+            _returnAllowedDesc = "lambda T& parameter `" + lamRefParams[0] + "`";
+        }
+
+        // 遍历 body：Single / Paren 单表达式视作隐式 ret；Block / ZeroBlock 走 stmt 通路
+        if (lam->bodyExpr()) {
+            visitExpr(lam->bodyExpr());
+            if (_returnsRef) {
+                auto root = rootFromRetExpr(lam->bodyExpr(), lam->getLineNumber());
+                if (_returnAllowedSources.find(root) == _returnAllowedSources.end()) {
+                    throw YuxError(lam->getLineNumber(), ErrorCode::E4020,
+                                   _returnAllowedDesc, root);
+                }
+            }
+        } else {
+            for (auto& s : lam->bodyStmts()) {
+                visitStmt(s);
+            }
+        }
+
+        // 摘除 lambda T& 形参 refToRoot 记录
+        for (auto& n : addedRefs) {
+            _refToRoot.erase(n);
+        }
+        // 恢复 ret-ref 状态
+        _returnsRef = savedReturnsRef;
+        _returnAllowedSources = std::move(savedAllowedSources);
+        _returnAllowedDesc = std::move(savedAllowedDesc);
+
+        popScope();
     }
 
     // §8.4.2.5：在某 Array<T> 句柄存在活跃借用时，对其调用修改方法应当编译期报错。

@@ -146,6 +146,19 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
             retType = typeNode->getType();
         }
 
+        // Phase 4f / spec §7：extern fn 形参 / 返回值不得含 fn(...) 类型
+        // （含捕获 lambda 的 fat-ptr 与 C 函数指针 ABI 不兼容；零捕获静态判定推到 v0.x+1）
+        for (auto& pt : paramTypes) {
+            if (pt.isFn()) {
+                throw YuxError(header->getStart()->getLine(), ErrorCode::E2031,
+                               fnName, "parameters");
+            }
+        }
+        if (retType.isFn()) {
+            throw YuxError(header->getStart()->getLine(), ErrorCode::E2031,
+                           fnName, "return type");
+        }
+
         DEBUG_LOG_VAL("  Register external function", fnName);
         SymbolInfo fnSym(SymbolKind::Function, fnName, retType);
         fnSym.moduleName = file->moduleName();

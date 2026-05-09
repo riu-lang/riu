@@ -492,6 +492,8 @@ Counter {
 
 ### 6.5 lambda 返回 `T&` 与 §8.6.10 溯源衔接（[#21]）
 
+> **Phase 4e 已落地（2026-05-09）**：`src/analyzer/borrow_checker.cpp` 在 `visitExpr` 中递归 `LambdaExprNode`：保存外层 ret-ref 状态、push lambda 形参 scope、注册 T& 形参；若 lambda retType 是 T& 且 T& 形参数 ≠ 1 → E4021；body 单表达式视作隐式 ret，根经 `rootFromRetExpr` 推导，∉ 允许源集 → E4020。捕获 T& 在外层 `_refToRoot` 中保留，按外层根名解析，自然不属于 lambda 自身允许源。
+
 由 §3.6（lambda 作 fn 字面量返回 `T&` 沿用 §8.6.10）+ §6.1（捕获是逐变量解析）：
 
 **lambda 的允许源集**（§8.6.10.2 风格）= **形参为 `T&` 者**。
@@ -525,6 +527,8 @@ fn make() ... {
 ---
 
 ## 7. FFI / extern 边界（Phase 5，[#22]）
+
+> **Phase 4f 已落地（2026-05-09）**：`src/ast/ast_builder.cpp visitExternDelc` 在 paramTypes / retType 计算后扫描 Fn 类型，命中即抛 `E2031`。零捕获 / fat-ptr 拆字段 / `ptr_of:<fn>` 等未来路径仍按本节"informative"留 v0.x+1。
 
 **v1 显式不支持**函数类型跨 FFI 边界：
 
