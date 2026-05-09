@@ -268,6 +268,12 @@ void Compiler::compileDeclareStatement(p<StatementDeclareNode> node) {
     auto alloca = _builder.CreateAlloca(llvmType, nullptr, varName);
     _localVarPtrs[varName] = alloca;
 
+    // Phase 3a: fn(...)R 未初始化时零填充 fat-ptr，让析构期 captures 为 null（_box_release 早返）
+    // 否则栈上 captures 字段值为垃圾，析构读到非 null 指针即段错。
+    if (varType.isFn()) {
+        _builder.CreateStore(llvm::Constant::getNullValue(llvmType), alloca);
+    }
+
     // 对于需要析构的类型，加入作用域变量列表
     if (typeNeedsDestructor(varType)) {
         _scopeVars.push_back(varName);

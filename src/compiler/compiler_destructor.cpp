@@ -49,6 +49,18 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
         return;
     }
 
+    // Phase 3a: fn(...)R fat-ptr { fn_ptr, captures Box<CapturesT>? }
+    // captures 字段在 offset 1，按 §5.4 fn_value_release 伪码 release captures
+    if (type.isFn()) {
+        auto ty = getLLVMType(type);
+        auto z = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+        auto capField = _builder.CreateGEP(ty, slotPtr, {z, one}, "old.fn.captures_field");
+        auto cap = _builder.CreateLoad(llvm::PointerType::get(_context, 0), capField, "old.fn.captures");
+        _builder.CreateCall(runtime::getBoxReleaseFn(_module, _builder), {cap});
+        return;
+    }
+
     // Phase 5: enum 类型 —— 走合成的 __enum_drop_<E> 按 tag dispatch
     if (enumNeedsDestructor(type.name)) {
         auto dtorFn = getEnumDestructorFunction(type.name);
@@ -144,6 +156,13 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
 
             auto arrayReleaseFn = runtime::getArrayReleaseFn(_module, _builder);
             _builder.CreateCall(arrayReleaseFn, {handle});
+        } else if (fieldType.isFn()) {
+            // Phase 3a: fn 字段：fat-ptr 的 captures（offset 1）按 §7.4 字段级 release
+            auto fnStructType = getLLVMType(fieldType);
+            auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+            auto capField = _builder.CreateGEP(fnStructType, fieldPtr, {zero, one});
+            auto cap = _builder.CreateLoad(llvm::PointerType::get(_context, 0), capField);
+            _builder.CreateCall(runtime::getBoxReleaseFn(_module, _builder), {cap});
         } else if (!isBuiltinType(fieldType.name)) {
             // 结构体字段: 调用其析构函数
             auto fieldDtorsFn = getDestructorFunction(fieldType.name);
@@ -207,6 +226,23 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
         auto handle = extractHandle("arg.weak.handle");
         auto retainFn = runtime::getWeakRetainFn(_module, _builder);
         _builder.CreateCall(retainFn, {handle});
+        return true;
+    }
+
+    // Phase 3a: fn(...)R fat-ptr：retain captures（offset 1），零捕获时 null no-op
+    // _box_retain 不做 null 检查，需 IR 级 guard
+    if (argType.isFn()) {
+        auto cap = _builder.CreateExtractValue(argVal, {1}, "arg.fn.captures");
+        auto ptrTy = llvm::PointerType::get(_context, 0);
+        auto isNull = _builder.CreateICmpEQ(cap, llvm::ConstantPointerNull::get(ptrTy), "fn.cap.isnull");
+        auto* fn = _builder.GetInsertBlock()->getParent();
+        auto* retainBB = llvm::BasicBlock::Create(_context, "fn.cap.retain", fn);
+        auto* contBB = llvm::BasicBlock::Create(_context, "fn.cap.cont", fn);
+        _builder.CreateCondBr(isNull, contBB, retainBB);
+        _builder.SetInsertPoint(retainBB);
+        _builder.CreateCall(runtime::getBoxRetainFn(_module, _builder), {cap});
+        _builder.CreateBr(contBB);
+        _builder.SetInsertPoint(contBB);
         return true;
     }
 
@@ -320,6 +356,20 @@ void Compiler::retainStructFieldsAtCallSite(llvm::Value* argVal, const string& s
             else if (ft.isArrayGeneric()) retainFn = runtime::getArrayRetainFn(_module, _builder);
             else retainFn = runtime::getWeakRetainFn(_module, _builder);
             _builder.CreateCall(retainFn, {handle});
+        } else if (ft.isFn()) {
+            // Phase 3a: fn 字段 fat-ptr，按 captures 字段 retain（null guard）
+            auto fieldVal = _builder.CreateExtractValue(argVal, {static_cast<unsigned>(i)}, "field.fn");
+            auto cap = _builder.CreateExtractValue(fieldVal, {1}, "field.fn.captures");
+            auto ptrTy = llvm::PointerType::get(_context, 0);
+            auto isNull = _builder.CreateICmpEQ(cap, llvm::ConstantPointerNull::get(ptrTy), "field.fn.isnull");
+            auto* fn = _builder.GetInsertBlock()->getParent();
+            auto* retainBB = llvm::BasicBlock::Create(_context, "field.fn.retain", fn);
+            auto* contBB = llvm::BasicBlock::Create(_context, "field.fn.cont", fn);
+            _builder.CreateCondBr(isNull, contBB, retainBB);
+            _builder.SetInsertPoint(retainBB);
+            _builder.CreateCall(runtime::getBoxRetainFn(_module, _builder), {cap});
+            _builder.CreateBr(contBB);
+            _builder.SetInsertPoint(contBB);
         } else if (!isBuiltinType(ft.name)) {
             // 嵌套 struct 字段：递归
             auto fieldVal = _builder.CreateExtractValue(argVal, {static_cast<unsigned>(i)}, "field.struct");
@@ -466,6 +516,10 @@ bool Compiler::typeNeedsDestructor(const TypeInfo& type) {
 
     // Box / Weak / Array 需要析构
     if (type.isBox() || type.isWeak() || type.isArrayGeneric()) return true;
+
+    // Phase 3a: 函数类型 fn(...)R 的 captures 字段是 Box<CapturesT>?，按 §7.4 字段级 RC
+    // 即使零捕获场景下 captures 永远 null，IR 仍发出 retain/release（runtime null-safe）
+    if (type.isFn()) return true;
 
     // Phase 5: enum 类型若任一 variant 含 RC payload 字段则需析构
     if (enumNeedsDestructor(type.name)) return true;
