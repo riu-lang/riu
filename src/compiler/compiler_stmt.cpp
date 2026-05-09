@@ -726,6 +726,28 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
     auto& subs = node->subs();
     auto assignOp = node->op();
 
+    // Phase 4b §6.2.1：lambda body 内对捕获变量赋值 / 复合赋值 / 句柄重绑全部禁。
+    // 命中条件：身处 lambda body（_currentLambdaForCapture 启用）+ LHS objName 经 scope
+    // 解析为 Variable + 不是 lambda 自己的 local（不在 _localVarPtrs）+ 不是全局 → 外层 local。
+    // 覆盖 `=` / `+= -= *= /= %=` / `<<= >>=`，以及 subs 非空的 `obj.f = ...` / `obj[i] = ...`
+    // （objName 是 LHS 主体）。非标量捕获本身已被 E2029 在 read 路径拒；此处补 write 路径。
+    if (_currentLambdaForCapture && _currentLambdaBodyScope) {
+        SymbolInfo* outerSym = nullptr;
+        if (auto sc = node->findNearestScope()) {
+            outerSym = sc->lookupSymbol(objName);
+        }
+        if (outerSym && outerSym->kind == SymbolKind::Variable
+            && !_localVarPtrs.contains(objName)) {
+            string ownerMod = !outerSym->moduleName.empty() ? outerSym->moduleName : _file->moduleName();
+            bool globPriv = !objName.empty() && objName[0] == '_';
+            string mangledName = Mangler::global(ownerMod, objName, globPriv);
+            if (!_module->getGlobalVariable(mangledName, true)) {
+                throw YuxError(node->getLineNumber(), node->getColumn(),
+                               ErrorCode::E2030, objName);
+            }
+        }
+    }
+
     // 辅助函数: 判断是否为浮点类型
     auto isFloatType = [](const TypeInfo& type) -> bool {
         return type.name == "f32" || type.name == "f64";
