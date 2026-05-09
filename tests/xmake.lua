@@ -123,7 +123,7 @@ target("yux_tests")
             local pdir = entry.project_dir
             local pname = entry.project_name
             local build_dir = path.join(pdir, "build")
-            local exe = path.join(build_dir, pname, pname .. ".exe")
+            local exe = path.join(build_dir, pname .. ".exe")
             os.tryrm(build_dir)
 
             local stdout_data, stderr_data

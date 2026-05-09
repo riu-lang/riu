@@ -167,6 +167,7 @@ target("yux_frontend")
         "src/tools/syntax_error_listener.cpp",
         "src/ast/mangler.cpp",
         "src/tools/build_cache.cpp",
+        "src/tools/pkg_cache.cpp",
         "src/analyzer/borrow_checker.cpp",
         "src/analyzer/symbol_suggest.cpp",
         "src/analyzer/draft_registry.cpp",

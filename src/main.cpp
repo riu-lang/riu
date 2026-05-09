@@ -44,6 +44,7 @@
 #include "compiler/compiler.h"
 #include "compiler/compiler_test_intrinsics.h"
 #include "tools/build_cache.h"
+#include "tools/pkg_cache.h"
 #include "tools/diagnostic.h"
 #include "tools/formatter.h"
 #include "tools/syntax_error_listener.h"
@@ -1468,7 +1469,9 @@ int wmain(int argc, wchar_t* argv[]) {
         }
         projectName = yux.projectName();
         buildDir = getBuildDir(yux.projectRoot());
-        projectBuildDir = buildDir + "/" + projectName;
+        // 项目模式不再用 <projectName>/ 子层隔离；exe / lib 直接落在 build/ 下，
+        // 单文件 obj 镜像 src 相对路径到 build/<rel>.obj。
+        projectBuildDir = buildDir;
     } else {
         if (inputFile.empty()) {
             std::cerr << app.help() << std::endl;
@@ -1489,6 +1492,27 @@ int wmain(int argc, wchar_t* argv[]) {
     std::cout << "Project root: " << yux.projectRoot() << std::endl;
     ensureBuildDir(buildDir);
     ensureBuildDir(projectBuildDir);
+
+    // 单文件模式：obj/ir 写到 pid 隔离的 tmp 目录，避免多进程同时编译同一被 use 的模块时
+    // 互相覆盖中间产物。exe 仍落在 projectBuildDir。链接成功后清理。
+    string intermediateDir = projectBuildDir;
+    string intermediateRoot;
+    bool cleanupIntermediate = false;
+    if (!projectMode) {
+        intermediateRoot = buildDir + "/.tmp";
+        intermediateDir = intermediateRoot + "/yux-" + std::to_string(GetCurrentProcessId());
+        std::error_code _ec;
+        std::filesystem::remove_all(intermediateDir, _ec); // 防御性：清理同 pid 残留
+        ensureBuildDir(intermediateDir);
+        cleanupIntermediate = true;
+    }
+    auto cleanupTmp = [&]() {
+        if (!cleanupIntermediate) return;
+        std::error_code _ec;
+        std::filesystem::remove_all(intermediateDir, _ec);
+        // 若 .tmp 已空，顺手删掉
+        std::filesystem::remove(intermediateRoot, _ec);
+    };
 
     // SDK 自构建（cd sdk/yux && yux build [yux]）：sdkPath 必须指向项目源里的 SDK，
     // 否则会与 findSdkPath() 返回的安装拷贝走两条路径，最终把同一批文件编译两次。
@@ -1660,23 +1684,25 @@ int wmain(int argc, wchar_t* argv[]) {
         // 各模块 codegen — 文件级聚合：单个文件失败不立即退出，继续编译其余文件，最终再决定是否链接
         vector<std::string> libObjs;
         bool anyCodegenError = false;
+        PkgCacheRegistry libCaches(yux.projectRoot(), buildDir);
         for (auto& [abs, mn] : libFiles) {
             auto file = yux.module(mn);
             if (!file) continue;
-            string base = moduleOutputBase(buildDir, projectName, mn);
+            string base = mirroredOutputBase(yux.projectRoot(), buildDir, abs);
             fs::create_directories(fs::path(base).parent_path());
             string obj = base + ".obj";
             string ir = base + ".ll";
-            if (BuildCache::needRecompile(obj, abs)) {
+            if (!libCaches.isFresh(abs, obj)) {
                 if (!codegenTo(file, mn, obj, ir)) {
                     anyCodegenError = true;
                     continue; // 跳过 cache 更新与 obj 收集；继续下一个模块
                 }
-                BuildCache::updateCache(obj, abs);
+                libCaches.mark(abs);
                 compiled = true;
             }
             libObjs.push_back(obj);
         }
+        libCaches.flushAll();
         if (anyCodegenError) {
             return 1;
         }
@@ -1717,7 +1743,14 @@ int wmain(int argc, wchar_t* argv[]) {
 
     // ====== exe 模式：原流程 ======
     std::string baseName = llvm::sys::path::stem(inputFile).str();
-    std::string objPath = projectBuildDir + "/" + baseName + ".obj";
+    // 项目模式：obj 镜像 src 相对路径到 build/<rel>.obj；
+    // 单文件模式：仍走 intermediateDir（pid 隔离的 .tmp，已跳过缓存）。
+    std::string objPath = projectMode
+        ? mirroredOutputBase(yux.projectRoot(), buildDir, std::filesystem::absolute(inputFile).string()) + ".obj"
+        : intermediateDir + "/" + baseName + ".obj";
+    if (projectMode) {
+        std::filesystem::create_directories(std::filesystem::path(objPath).parent_path());
+    }
 
     p<FileNode> mainFile = nullptr;
     try {
@@ -1789,14 +1822,21 @@ int wmain(int argc, wchar_t* argv[]) {
     // 文件级聚合：主模块与各导入模块逐个 codegen，单文件失败不立即退出，继续编译其余文件
     bool anyCodegenError = false;
 
-    // 主模块
-    bool needCompile = BuildCache::needRecompile(objPath, inputFile);
+    // 项目模式：包级缓存（每目录一份 <dirname>.cache，含编译器指纹）。
+    // 单文件模式：不使用缓存（中间产物在 pid tmp 目录，每次重编）。
+    PkgCacheRegistry exeCaches(yux.projectRoot(), buildDir);
+
+    // 主模块。
+    std::string mainAbs = std::filesystem::absolute(inputFile).string();
+    bool needCompile = !projectMode || !exeCaches.isFresh(mainAbs, objPath);
     if (needCompile) {
-        std::string irPath = projectBuildDir + "/" + baseName + ".ll";
+        std::string irPath = projectMode
+            ? mirroredOutputBase(yux.projectRoot(), buildDir, mainAbs) + ".ll"
+            : intermediateDir + "/" + baseName + ".ll";
         if (!codegenTo(mainFile, baseName, objPath, irPath)) {
             anyCodegenError = true;
         } else {
-            BuildCache::updateCache(objPath, inputFile);
+            if (projectMode) exeCaches.mark(mainAbs);
             compiled = true;
         }
     }
@@ -1807,23 +1847,27 @@ int wmain(int argc, wchar_t* argv[]) {
         auto modFile = yux.module(modName);
         if (!modFile || modFile == yux.sdkFile()) continue;
         std::string modSrc = yux.modulePath(modName);
-        std::string modBase = moduleOutputBase(buildDir, projectName, modName);
+        std::string modBase = projectMode
+            ? mirroredOutputBase(yux.projectRoot(), buildDir, modSrc)
+            : moduleOutputBase(intermediateDir, projectName, modName);
         std::filesystem::create_directories(std::filesystem::path(modBase).parent_path());
         std::string modObj = modBase + ".obj";
         std::string modIr = modBase + ".ll";
-        if (BuildCache::needRecompile(modObj, modSrc)) {
+        if (!projectMode || !exeCaches.isFresh(modSrc, modObj)) {
             if (!codegenTo(modFile, modName, modObj, modIr)) {
                 anyCodegenError = true;
                 continue; // 继续尝试下一个模块的 codegen
             }
-            BuildCache::updateCache(modObj, modSrc);
+            if (projectMode) exeCaches.mark(modSrc);
             compiled = true;
         }
         modObjPaths.push_back(modObj);
     }
+    if (projectMode) exeCaches.flushAll();
 
     // 任一模块（含主模块）codegen 失败：跳过链接，统一非零退出
     if (anyCodegenError) {
+        cleanupTmp();
         std::cout.flush();
         std::cerr.flush();
         return 1;
@@ -1833,7 +1877,7 @@ int wmain(int argc, wchar_t* argv[]) {
     std::string exeStem = projectMode ? projectName : baseName;
     std::string exePath = projectBuildDir + "/" + exeStem + ".exe";
 
-    bool needLink = !std::filesystem::exists(exePath);
+    bool needLink = !projectMode || !std::filesystem::exists(exePath);
     if (!needLink) {
         try {
             auto exeTime = std::filesystem::last_write_time(exePath);
@@ -1883,6 +1927,7 @@ int wmain(int argc, wchar_t* argv[]) {
 
         if (result.retCode) {
             llvm::errs() << stderrStr;
+            cleanupTmp();
             return 1;
         }
         compiled = true;
@@ -1892,6 +1937,7 @@ int wmain(int argc, wchar_t* argv[]) {
         std::cout << "no work to do." << std::endl;
     }
 
+    cleanupTmp();
     std::cout.flush();
     std::cerr.flush();
     _exit(0);

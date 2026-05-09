@@ -35,12 +35,14 @@ xmake f -m release && xmake build yux   ; release 构建（-d 调试 IR 输出�
 ; 项目模式：必须在项目根目录（含 yux.toml）执行
 yux build                    ; <name> 可省略，默认取 yux.toml 的 name；入口取 toml 的 entry
 yux build <name>             ; 显式给出时必须与 yux.toml 的 name 一致
-                             ; 产物：<projectRoot>/build/<name>/<name>.exe
+                             ; 最终产物：<projectRoot>/build/<name>.exe（exe）或 .lib（静态库）
+                             ; 中间产物镜像 src 路径：build/<src-rel>.obj
+                             ; 每目录一份 <dirname>.cache（增量缓存，含编译器指纹）
 yux build [<name>] --emit-ir ; 同时生成 .ll
 yux build [<name>] -d        ; 编译期 IR 调试输出（仅 Debug 构建；量大，用 tail 过滤）
 
 ; 冒烟测试（仓库内 examples/test 的 yux.toml 里 name="test"）
-cd examples/test && yux build && ./build/test/test.exe
+cd examples/test && yux build && ./build/test.exe
 ```
 
 `yux.toml` 字段（详见 [docs/模块系统.md](../../../docs/模块系统.md)）：
@@ -68,13 +70,18 @@ cd examples/test && yux build && ./build/test/test.exe
 ## 构建输出布局
 
 - xmake 输出：`build/windows/x64/{debug,release}/`、以及点开头目录（`.objs/`、`.deps/`、`.build_cache/` 等）
-- yux 单文件模式：`<srcDir>/build/*.exe`、`*.ll`、`*.obj`、`*.obj.cache`；多段模块 `A.B.C` 展开为 `<buildDir>/A/B/C.obj`
-- yux 项目模式：主模块 + 单段导入落在 `<projectRoot>/build/<projectName>/`；多段模块按点分路径在 `build/` 下展开
-- sdk链接：`build/windows/x64/sdk` => `sdk`
+- yux 项目模式：
+  - 最终产物：`<projectRoot>/build/<name>.exe` 或 `<name>.lib`（直接落在 `build/` 下，无 `<name>/` 子层）
+  - 中间产物：obj / IR 镜像源文件相对项目根的路径，落在 `<projectRoot>/build/<src-rel>.obj`（典型 `build/src/<rel>.obj`）
+  - 增量缓存：每个目录视为一个**包**，包内所有 `.yux` 的元信息聚合到 `<dir>/<dirname>.cache`；首行存当前 `yux.exe` 的 mtime+size 作为编译器指纹，重编 `yux` 后整 cache 自动失效
+- yux 单文件模式（已弃用）：obj / IR 落在 `<srcDir>/build/.tmp/yux-<pid>/` 临时目录，链接完即清；exe 留在 `<srcDir>/build/<basename>.exe`，**不进缓存**
+- SDK 自构建仍走特例：`sdk/yux/build/yux/{core.obj,yux.lib}`（旧路径，依赖问题以后再说）
+- sdk 链接搜索：`build/windows/x64/sdk` => `sdk`
 
 清理规则：
 
-- 安全清理：`rm build/*.exe build/*.ll build/*.obj build/*.obj.cache`
+- 安全清理：`rm -rf build/<projectName>.exe build/src/`（带走所有 obj + 缓存）
+- 单包清理：删 `build/src/<dir>/` 即可（obj 与该目录的 `<dirname>.cache` 一起没了）
 - 完全清理：`xmake clean -a`
 - **不要 `rm -rf build/`**，会一起干掉 xmake 的工作目录
 
