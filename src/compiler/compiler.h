@@ -266,6 +266,9 @@ class Compiler {
     llvm::Function* emitLambdaFunction(p<class LambdaExprNode> node, const TypeInfo& expectedFnType);
     // 调用 fn-typed 值：从 fat-ptr 提取 fn_ptr / captures，按 ABI 调用
     llvm::Value* compileFnValueCall(p<ExprCallNode> node);
+    // Phase 3c：callee 为 Box<fn(...)R>，从 box payload load fat-ptr 后按同款 ABI 调用
+    // innerFnType 为 box 元素类型（Fn TypeInfo），用于实参反推 / 形参类型 / 返回类型
+    llvm::Value* compileBoxFnValueCall(p<ExprCallNode> node, const TypeInfo& innerFnType);
     // 实参位置 lambda 类型反推：用 fnParamTypes()[i] 回填 LambdaExprNode 形参缺失类型
     // 在调用点正式 compileExpr(args) 之前调用
     void inferLambdaParamsFromFnType(p<class LambdaExprNode> lambda, const TypeInfo& expectedFnType);

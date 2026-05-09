@@ -270,3 +270,68 @@ llvm::Value* Compiler::compileFnValueCall(p<ExprCallNode> node) {
 
     return _builder.CreateCall(llvmFnType, fnPtrVal, callArgs);
 }
+
+// ==================== compileBoxFnValueCall ====================
+// callee 静态类型为 Box<fn(...)R>：自动解引取 fat-ptr 后走 fn-value-call。
+// box payload = handle + 8 字节（跳过 refcount 头），其上存放 16 字节 fat-ptr。
+// 1) 实参 lambda 反推（按 innerFnType.fnParamTypes()）
+// 2) 编译 callee 得到 box 值（{ ptr handle }），extractvalue 取 handle
+// 3) payload_ptr = handle + 8；load fat-ptr 16 字节
+// 4) 走与 compileFnValueCall 相同的 extractvalue + CreateCall 路径
+llvm::Value* Compiler::compileBoxFnValueCall(p<ExprCallNode> node, const TypeInfo& innerFnType) {
+    if (!innerFnType.isFn()) {
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3091);
+    }
+    const auto& expectedParams = innerFnType.fnParamTypes();
+
+    // 实参 lambda 预 emit（与 compileFnValueCall 一致）
+    for (size_t i = 0; i < node->getArgs().size() && i < expectedParams.size(); ++i) {
+        auto arg = node->getArgs()[i];
+        auto lambdaArg = dynamic_cast<LambdaExprNode*>(arg);
+        if (!lambdaArg) continue;
+        if (!expectedParams[i]) continue;
+        emitLambdaFunction(lambdaArg, *expectedParams[i]);
+    }
+
+    // 编译 callee 得到 Box 值（struct { ptr handle }）；extractvalue 取 handle
+    auto boxVal = compileExpr(node->getCalleeExpr());
+    if (!boxVal) {
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3091);
+    }
+    auto ptrTy = llvm::PointerType::get(_context, 0);
+    auto handle = _builder.CreateExtractValue(boxVal, {0}, "box.fn.handle");
+
+    // payload_ptr = handle + 8 bytes（跳过 refcount 头，与 compileExpr Box.field 路径一致）
+    auto payloadPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle,
+        {_builder.getInt64(8)}, "box.fn.payload");
+
+    // load fat-ptr 16 字节 { fn_ptr, captures }
+    auto fatStructTy = llvm::StructType::get(_context, {ptrTy, ptrTy});
+    auto fatPtr = _builder.CreateLoad(fatStructTy, payloadPtr, "box.fn.fatptr");
+    auto fnPtrVal = _builder.CreateExtractValue(fatPtr, {0}, "fn.ptr");
+    auto captures = _builder.CreateExtractValue(fatPtr, {1}, "fn.captures");
+
+    // 构造 LLVM FunctionType：(Ptr captures, P1, ..., Pn) → R
+    vector<llvm::Type*> llvmParamTypes;
+    llvmParamTypes.push_back(ptrTy);
+    for (auto& pt : expectedParams) {
+        if (!pt) {
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3091);
+        }
+        llvmParamTypes.push_back(getLLVMType(*pt));
+    }
+    llvm::Type* llvmRet = _builder.getVoidTy();
+    if (auto rt = innerFnType.fnReturnType()) {
+        llvmRet = getLLVMType(*rt);
+    }
+    auto llvmFnType = llvm::FunctionType::get(llvmRet, llvmParamTypes, false);
+
+    // 编译实参
+    vector<llvm::Value*> callArgs;
+    callArgs.push_back(captures);
+    for (size_t i = 0; i < node->getArgs().size(); ++i) {
+        callArgs.push_back(compileExpr(node->getArgs()[i]));
+    }
+
+    return _builder.CreateCall(llvmFnType, fnPtrVal, callArgs);
+}

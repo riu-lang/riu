@@ -513,11 +513,18 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
     // 涵盖：lambda IIFE `((x i32) i32 => ...)(5)`、fn-typed 变量 / 字段 / 调用结果
     // 普通 ID callee（普通函数名）走 ExprLiteralNode 路径，那里返回 "fn() <ret>" 字符串
     // 编码（kind=Normal），不会命中 isFn()
+    // Phase 3c: callee 为 Box<fn(...)R> → 自动解引取 fat-ptr 后走同款 fn-value-call
     {
         TypeInfo calleeStaticType;
         try { calleeStaticType = calleeExpr->getType(); } catch (...) {}
         if (calleeStaticType.isFn()) {
             return compileFnValueCall(node);
+        }
+        if (calleeStaticType.isBox()) {
+            auto inner = calleeStaticType.boxElementType();
+            if (inner && inner->isFn()) {
+                return compileBoxFnValueCall(node, *inner);
+            }
         }
     }
 

@@ -1,0 +1,30 @@
+; Phase 3c §7.4：Array<fn(...)R> 元素位置 —— push / 索引调用 / 元素重赋 / by-value 传容器
+; 元素 size = 16 字节 fat-ptr；既有 elem-typed RC 钩子（_array_retain / _array_release）
+; 在 Array 析构 / 重赋时按字段级 RC 处理 fn 元素的 captures（零捕获 = null no-op）。
+
+fn make_inc() fn(i32)i32 {
+  ret (x i32) i32 => x + 1
+}
+
+fn run_first(a Array<fn(i32)i32>, x i32) i32 {
+  ret a[0](x)
+}
+
+fn main() {
+  var arr Array<fn(i32)i32> = []
+  arr.push(make_inc())
+  arr.push((x i32) i32 => x * 2)
+  arr.push((x i32) i32 => x - 5)
+  println(arr.len().to_string())          ; 3
+  println(arr[0](10).to_string())         ; 11
+  println(arr[1](10).to_string())         ; 20
+  println(arr[2](10).to_string())         ; 5
+
+  ; 容器 by-value 传参
+  println(run_first(arr, 100).to_string())   ; 101
+
+  ; 元素重赋（旧 fn 字段释放 / 新 fn 字段拷入）
+  arr[0] = (x i32) i32 => x + 1000
+  println(arr[0](1).to_string())          ; 1001
+  ret;
+}

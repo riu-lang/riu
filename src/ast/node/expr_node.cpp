@@ -163,6 +163,14 @@ TypeInfo ExprCallNode::getType() const {
         return TypeInfo();
     }
 
+    // Phase 3c: callee 为 Box<fn(...)R>，自动解引取 fat-ptr 调用，结果同 fn 返回类型
+    if (type.isBox()) {
+        if (auto inner = type.boxElementType(); inner && inner->isFn()) {
+            if (auto rt = inner->fnReturnType()) return *rt;
+            return TypeInfo();
+        }
+    }
+
     DEBUG_LOG_VAL("ExprCallNode::getType - type.name", type.name);
     DEBUG_LOG_VAL("ExprCallNode::getType - starts_with('fn() ')", type.name.starts_with("fn() "));
     DEBUG_LOG_VAL("ExprCallNode::getType - calleeExpr type", typeid(*_calleeExpr).name());
