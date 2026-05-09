@@ -890,7 +890,8 @@ int wmain(int argc, wchar_t* argv[]) {
 
     auto* buildCmd = app.add_subcommand("build", "Build project (must run at project root containing yux.toml)");
     std::string buildNameArg;
-    buildCmd->add_option("name", buildNameArg, "Project name; must match `name` in yux.toml")->required();
+    // name 可省略：当前每个 yux.toml 仅声明一个目标，省略时直接取 toml 的 name；显式给出则必须与之一致。
+    buildCmd->add_option("name", buildNameArg, "Project name (optional; must match `name` in yux.toml when given)");
     buildCmd->add_flag("--emit-ir", emitIr, "Emit LLVM IR to .ll file");
     buildCmd->fallthrough(); // 允许 --warn / --allow / --deny / -Werror 在 build 子命令上使用
 
@@ -1448,7 +1449,7 @@ int wmain(int argc, wchar_t* argv[]) {
             std::cerr << e.what() << std::endl;
             return 1;
         }
-        if (yux.projectName() != buildNameArg) {
+        if (!buildNameArg.empty() && yux.projectName() != buildNameArg) {
             std::cerr << "Error: build target `" << buildNameArg
                       << "` does not match yux.toml name `" << yux.projectName() << "`" << std::endl;
             return 1;
@@ -1489,7 +1490,19 @@ int wmain(int argc, wchar_t* argv[]) {
     ensureBuildDir(buildDir);
     ensureBuildDir(projectBuildDir);
 
-    string sdkPath = findSdkPath();
+    // SDK 自构建（cd sdk/yux && yux build [yux]）：sdkPath 必须指向项目源里的 SDK，
+    // 否则会与 findSdkPath() 返回的安装拷贝走两条路径，最终把同一批文件编译两次。
+    string sdkPath;
+    {
+        namespace fs = std::filesystem;
+        if (projectMode && yux.projectName() == "yux") {
+            fs::path candidate = fs::path(yux.projectRoot()) / "src" / "yux" / "core";
+            if (fs::is_directory(candidate)) {
+                sdkPath = candidate.string();
+            }
+        }
+        if (sdkPath.empty()) sdkPath = findSdkPath();
+    }
     // SDK 静态库路径：放在 sdk 目录下的 build 中（不放用户项目）
     string sdkLibPath;
     bool compiled = false;
@@ -1553,6 +1566,17 @@ int wmain(int argc, wchar_t* argv[]) {
         } else {
             parseSdkDir(sdkPath, yux);
         }
+    }
+
+    // SDK 自构建：上面 compileSdkDir → core.obj → yux.lib 的产物已经就是项目目标 lib，
+    // 路径与 lib 模式下 `<projectRoot>/build/yux/yux.lib` 一致。再走 lib 走法会把同一批
+    // 源文件以 isSdk=false 重新编译一次（且会与已注册到 _sdkFile 的模块名冲突），
+    // 因此这里直接收尾退出。
+    if (projectMode && yux.projectName() == "yux") {
+        if (!compiled) std::cout << "no work to do." << std::endl;
+        std::cout.flush();
+        std::cerr.flush();
+        _exit(0);
     }
 
     auto codegenTo = [&](p<FileNode> file, const std::string& moduleName,

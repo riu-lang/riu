@@ -33,18 +33,19 @@ xmake build yux
 xmake f -m release && xmake build yux   ; release 构建（-d 调试 IR 输出仅 debug 可用）
 
 ; 项目模式：必须在项目根目录（含 yux.toml）执行
-yux build <name>             ; <name> 必须与 yux.toml 的 name 一致；入口取 toml 的 entry
+yux build                    ; <name> 可省略，默认取 yux.toml 的 name；入口取 toml 的 entry
+yux build <name>             ; 显式给出时必须与 yux.toml 的 name 一致
                              ; 产物：<projectRoot>/build/<name>/<name>.exe
-yux build <name> --emit-ir   ; 同时生成 .ll
-yux build <name> -d          ; 编译期 IR 调试输出（仅 Debug 构建；量大，用 tail 过滤）
+yux build [<name>] --emit-ir ; 同时生成 .ll
+yux build [<name>] -d        ; 编译期 IR 调试输出（仅 Debug 构建；量大，用 tail 过滤）
 
 ; 冒烟测试（仓库内 examples/test 的 yux.toml 里 name="test"）
-cd examples/test && yux build test && ./build/test/test.exe
+cd examples/test && yux build && ./build/test/test.exe
 ```
 
 `yux.toml` 字段（详见 [docs/模块系统.md](../../../docs/模块系统.md)）：
 
-- `name` —— 项目 / exe 名。`yux build <name>` 的 `<name>` 必须与之一致
+- `name` —— 项目 / exe 名。`yux build` 默认取它；显式 `yux build <name>` 必须与之一致
 - `entry` —— 入口 `.yux`，相对项目根
 - `version` —— 目前仅记录，编译器不校验
 

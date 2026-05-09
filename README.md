@@ -108,15 +108,16 @@ xmake build yux
 在项目根目录（含 `yux.toml`）执行：
 
 ```powershell
-yux build <name>           # <name> 必须与 yux.toml 的 name 一致，入口取 toml 的 entry
-                           # 产物落在 <projectRoot>/build/<name>/<name>.exe
+yux build                  # 等价于 yux build <toml-name>；当前每个项目仅一个目标
+yux build <name>           # 显式给出时 <name> 必须与 yux.toml 的 name 一致
+                           # 入口取 toml 的 entry，产物落在 <projectRoot>/build/<name>/<name>.exe
 ```
 
 ### yux.toml（项目配置）
 
 | 字段 | 说明 |
 |------|------|
-| `name` | 项目 / 可执行文件名；`yux build <name>` 的 `<name>` 必须与它匹配 |
+| `name` | 项目 / 可执行文件名；`yux build` 默认取它，显式 `yux build <name>` 必须与它匹配 |
 | `entry` | 入口 `.yux`，相对项目根 |
 | `version` | 版本号（当前仅记录） |
 
