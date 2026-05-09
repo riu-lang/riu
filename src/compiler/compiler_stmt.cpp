@@ -25,7 +25,18 @@
 // 检查返回类型是否匹配函数声明，调用析构函数后返回
 void Compiler::compileRetStatement(p<StatementRetNode> node) {
     DEBUG_LOG("  Statement: Return");
-    
+
+    // Phase 4c：lambda 字面量直接作 ret expr 时，预先 emit body 以触发捕获识别；
+    // 若识别出 T& 捕获 → 报 E4022（spec §6.3 不可逃逸）。其他形态（变量名、调用结果）的
+    // ret 在当前阶段不做穿透检测：spec §6.5（ret T& 溯源）属 Phase 4e；本阶段仅拦截直接形。
+    if (auto litLambda = dynamic_cast<LambdaExprNode*>(node->expr())) {
+        // emit body 以填 captures（重复 emit 命中缓存，无副作用）
+        emitLambdaFunction(p<LambdaExprNode>(litLambda), litLambda->getType());
+        if (litLambda->hasRefCapture()) {
+            throw YuxError(litLambda->getLineNumber(), litLambda->getColumn(), ErrorCode::E4022);
+        }
+    }
+
     // 获取函数声明的返回类型
     TypeInfo declRetType;
     bool hasDeclaredRetType = false;
@@ -285,6 +296,15 @@ void Compiler::compileDeclareStatement(p<StatementDeclareNode> node) {
 void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node) {
     auto expr = node->expr();
     auto varName = node->name().getText();
+
+    // Phase 4c：lambda 字面量直接作 var/val 初始化值时，预 emit body 触发捕获识别；
+    // 若识别出 T& 捕获 → E4022（spec §6.3 不可逃逸：fn 值不可被存储到寿命外延的变量）。
+    if (auto litLambda = dynamic_cast<LambdaExprNode*>(expr)) {
+        emitLambdaFunction(p<LambdaExprNode>(litLambda), litLambda->getType());
+        if (litLambda->hasRefCapture()) {
+            throw YuxError(litLambda->getLineNumber(), litLambda->getColumn(), ErrorCode::E4022);
+        }
+    }
 
     // 处理数组填充表达式 ([N; value] 语法)
     if (auto arrayInitNode = dynamic_cast<ExprArrayInitNode*>(expr)) {

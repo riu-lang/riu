@@ -49,17 +49,32 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
         return;
     }
 
-    // Phase 3a / 4a-2: fn(...)R fat-ptr { fn_ptr, captures Box<CapturesT>? }
+    // Phase 3a / 4a-2 / 4c: fn(...)R fat-ptr { fn_ptr, captures Box<CapturesT>? }
     // captures 字段在 offset 1；走 _box_release_dtor 让运行时在 strong 归零时 dispatch
     // payload[0..8] 处的 dtor fn ptr（4a-2）。零捕获 / 全标量场景 dtor 槽存 null，
     // 行为等价于纯 _box_release。
+    // Phase 4c：栈嵌入 captures 把 LSB 标 1（spec §6.3 不可逃逸），release 站点检测后跳过。
     if (type.isFn()) {
         auto ty = getLLVMType(type);
         auto z = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
         auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
         auto capField = _builder.CreateGEP(ty, slotPtr, {z, one}, "old.fn.captures_field");
         auto cap = _builder.CreateLoad(llvm::PointerType::get(_context, 0), capField, "old.fn.captures");
+        // 跳过条件：cap == null（零捕获）或 cap LSB == 1（栈嵌入 4c）
+        auto i64Ty = _builder.getInt64Ty();
+        auto capInt = _builder.CreatePtrToInt(cap, i64Ty, "old.fn.cap.asint");
+        auto isStack = _builder.CreateICmpNE(
+            _builder.CreateAnd(capInt, _builder.getInt64(1)), _builder.getInt64(0), "old.fn.cap.isstack");
+        auto isNull = _builder.CreateICmpEQ(cap, llvm::ConstantPointerNull::get(llvm::PointerType::get(_context, 0)), "old.fn.cap.isnull");
+        auto skip = _builder.CreateOr(isStack, isNull, "old.fn.cap.skip");
+        auto* pf = _builder.GetInsertBlock()->getParent();
+        auto* relBB = llvm::BasicBlock::Create(_context, "old.fn.cap.rel", pf);
+        auto* contBB = llvm::BasicBlock::Create(_context, "old.fn.cap.cont", pf);
+        _builder.CreateCondBr(skip, contBB, relBB);
+        _builder.SetInsertPoint(relBB);
         _builder.CreateCall(runtime::getBoxReleaseDtorFn(_module, _builder), {cap});
+        _builder.CreateBr(contBB);
+        _builder.SetInsertPoint(contBB);
         return;
     }
 
@@ -232,16 +247,22 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
         return true;
     }
 
-    // Phase 3a: fn(...)R fat-ptr：retain captures（offset 1），零捕获时 null no-op
+    // Phase 3a / 4c: fn(...)R fat-ptr：retain captures（offset 1）
+    // 跳过条件：null（零捕获）或 LSB=1（4c 栈嵌入 T& 捕获）
     // _box_retain 不做 null 检查，需 IR 级 guard
     if (argType.isFn()) {
         auto cap = _builder.CreateExtractValue(argVal, {1}, "arg.fn.captures");
         auto ptrTy = llvm::PointerType::get(_context, 0);
+        auto i64Ty = _builder.getInt64Ty();
+        auto capInt = _builder.CreatePtrToInt(cap, i64Ty, "fn.cap.asint");
+        auto isStack = _builder.CreateICmpNE(
+            _builder.CreateAnd(capInt, _builder.getInt64(1)), _builder.getInt64(0), "fn.cap.isstack");
         auto isNull = _builder.CreateICmpEQ(cap, llvm::ConstantPointerNull::get(ptrTy), "fn.cap.isnull");
+        auto skip = _builder.CreateOr(isStack, isNull, "fn.cap.skip");
         auto* fn = _builder.GetInsertBlock()->getParent();
         auto* retainBB = llvm::BasicBlock::Create(_context, "fn.cap.retain", fn);
         auto* contBB = llvm::BasicBlock::Create(_context, "fn.cap.cont", fn);
-        _builder.CreateCondBr(isNull, contBB, retainBB);
+        _builder.CreateCondBr(skip, contBB, retainBB);
         _builder.SetInsertPoint(retainBB);
         _builder.CreateCall(runtime::getBoxRetainFn(_module, _builder), {cap});
         _builder.CreateBr(contBB);

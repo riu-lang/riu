@@ -127,7 +127,7 @@ DEF_ERR(2025, "`else` arm must be the last arm in match")
 DEF_ERR(2026, "match pattern for `{}::{}` expects {} binding(s), got {}")
 DEF_ERR(2027, "duplicate binding `{}` in match pattern `{}::{}`")
 DEF_ERR(2028, "lambda body references outer local `{}`: closures not yet supported (Phase 4)")
-DEF_ERR(2029, "lambda capture of `{}` (type `{}`) not yet supported: Phase 4a / 4a-2 covers scalars + 8-byte heap handles (Box / Weak / Array / String); structs / enums / fn / `T&` arrive in later phases (4c+)")
+DEF_ERR(2029, "lambda capture of `{}` (type `{}`) not yet supported: Phase 4a / 4a-2 / 4c cover scalars / 8-byte heap handles (Box / Weak / Array / String) / `T&`; structs / enums / fn / mixing `T&` with heap handles arrive in later phases")
 DEF_ERR(2030, "lambda body cannot assign to captured variable `{}` (spec §6.2.1: captures are immutable in v1)")
 
 // ── E3xxx 类型 — 类型不匹配 ───────────────────────────────────────────
@@ -237,6 +237,7 @@ DEF_ERR(4012, "field '$.{}' is not initialized at constructor exit (§8.2)")
 DEF_ERR(4013, "cannot return `$` from constructor (§8.3)")
 DEF_ERR(4020, "return T& root must be {}, got '{}' (§8.6)")
 DEF_ERR(4021, "function returning T& requires exactly one source: `$` (method) or a single T& parameter (free fn)")
+DEF_ERR(4022, "lambda value with `T&` capture cannot escape current frame (cannot be returned, stored to var/field/container/Box; only consumable inline as call argument; spec §6.3)")
 
 // ── E5xxx 模块 / 包 ───────────────────────────────────────────────────
 DEF_ERR(5001, "yux.toml not found in {}")

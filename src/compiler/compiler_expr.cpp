@@ -325,7 +325,8 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             bool isScalar = t.isNormal() && isBuiltinType(t.name);
             bool isHandle = t.isBox() || t.isWeak() || t.isArrayGeneric()
                             || (t.isNormal() && t.name == "String");
-            if (!isScalar && !isHandle) {
+            bool isRef = t.isRef();
+            if (!isScalar && !isHandle && !isRef) {
                 throw YuxError(node->getLineNumber(), node->getColumn(),
                                ErrorCode::E2029, varName, t.name);
             }
@@ -334,14 +335,27 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             if (idx < 0) {
                 u64 offset = _currentLambdaForCapture->capturesTotalSize();
                 idx = _currentLambdaForCapture->addCapture(varName, t, offset, offset + 8);
+                if (isRef) {
+                    // Phase 4c：标记 lambda 含 T& 捕获，触发栈嵌入路径 + 不可逃逸约束
+                    _currentLambdaForCapture->setHasRefCapture(true);
+                }
             }
             const auto& cap = _currentLambdaForCapture->captures()[idx];
-            // captures arg = block 句柄；payload = handle+8；首 8 字节是 dtor 槽，
-            // capture 字段从 handle+16 起。byteOffset 自 0 起表示 capture 字段内偏移。
+            // captures arg = block / alloca 句柄；layout 统一保留 16 字节前缀
+            // （Box 形态：[strong/weak 8 字节][dtor 8 字节]；Stack 形态：16 字节占位浪费），
+            // capture 字段从 handle+16 起。这样 GEP offset 不依赖运行时 layout 选择。
             auto i8Ty = _builder.getInt8Ty();
             auto payloadOffset = _builder.getInt64(16 + (i64)cap.byteOffset);
             auto capAddr = _builder.CreateGEP(i8Ty, _currentLambdaCapturesArg,
                                               {payloadOffset}, "cap.addr");
+            if (isRef) {
+                // T& slot 存的是 ptr to inner T；先 load ptr，再 load inner T 实现 auto-deref
+                // （与外层 T& 局部读语义对齐：compiler_expr.cpp:296 同源路径）
+                auto innerType = t.refElementType();
+                auto ptrTy = llvm::PointerType::get(_context, 0);
+                auto refPtr = _builder.CreateLoad(ptrTy, capAddr, "cap.refptr");
+                return _builder.CreateLoad(getLLVMType(*innerType), refPtr, "cap.load");
+            }
             return _builder.CreateLoad(getLLVMType(t), capAddr, "cap.load");
         }
         // 兜底：lambda body 命中 sym 但禁用捕获（_currentLambdaForCapture 未启） → 旧 E2028

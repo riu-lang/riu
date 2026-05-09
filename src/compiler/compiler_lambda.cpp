@@ -138,8 +138,18 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     // 形参 alloca + store；首参 captures 跳过（零捕获场景未使用 / 含捕获走捕获通道）
     auto argIt = func->arg_begin();
     argIt->setName("captures");
-    // Phase 4a：缓存 captures arg（block ptr），compileLiteralExpr 命中捕获时 GEP base
-    _currentLambdaCapturesArg = &*argIt;
+    // Phase 4c：可能传入 LSB 标 1 的栈嵌入指针（compileLambdaExpr 在 hasRefCapture 时
+    // 把 alloca | 1 写入 fat-ptr）。body 内 GEP 必须用未标记的指针；在入口处统一掩 LSB 一次：
+    //   - heap 句柄（_box_alloc 返回）8 字节对齐，LSB=0，掩 LSB 不变；
+    //   - 栈 alloca | 1，掩 LSB 还原为真实 alloca 指针；
+    //   - null（零捕获）保持 null（不会被访问）。
+    // 由此 _currentLambdaCapturesArg 始终是"可直接 GEP 的真实 payload 指针"。
+    auto ptrTyMask = llvm::PointerType::get(_context, 0);
+    auto i64Ty = _builder.getInt64Ty();
+    auto rawAsInt = _builder.CreatePtrToInt(&*argIt, i64Ty, "captures.asint");
+    auto maskedInt = _builder.CreateAnd(rawAsInt, _builder.getInt64(~(u64)1), "captures.untagged.asint");
+    auto maskedPtr = _builder.CreateIntToPtr(maskedInt, ptrTyMask, "captures.untagged");
+    _currentLambdaCapturesArg = maskedPtr;
     ++argIt;
     for (size_t i = 0; i < paramTypes.size(); ++i, ++argIt) {
         auto paramName = node->params()[i].name.getText();
@@ -271,49 +281,95 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
     auto ptrTy = llvm::PointerType::get(_context, 0);
     auto fatStructTy = llvm::StructType::get(_context, {ptrTy, ptrTy});
 
-    // captures：零捕获 → null；含捕获 → 分配 box，从 _localVarPtrs 拷贝外层 local 值
+    // captures：零捕获 → null；含捕获 → 分两条路径
+    //   - hasRefCapture（spec §6.3）：栈嵌入 alloca + 不构造 Box，captures 字段标 LSB=1
+    //   - 否则：堆 _box_alloc + dtor，与 Phase 4a/4a-2 同
+    // layout 统一保留 16 字节前缀（offset 0..16 给 RC 头 / dtor 槽；栈形态浪费），
+    // capture 字段从 +16 起；body GEP base offset 不依赖路径选择。
     llvm::Value* capturesPtr = llvm::ConstantPointerNull::get(ptrTy);
     const auto& caps = node->captures();
     if (!caps.empty()) {
-        // payload = 8（dtor 槽）+ capturesTotalSize（capture 字段总字节）
-        u64 payloadSize = 8 + node->capturesTotalSize();
-        auto allocFn = runtime::getBoxAllocFn(_module, _builder);
-        auto blockHandle = _builder.CreateCall(
-            allocFn, {_builder.getInt64((i64)payloadSize)}, "captures.block");
-
-        // 写 dtor 槽位 @ handle+8
-        string mod = _file ? _file->moduleName() : string();
-        string mangled = Mangler::lambda(mod, node->getLineNumber(), node->getColumn());
-        auto dtorFn = emitCapturesDtorFunction(node, mangled);
         auto i8Ty = _builder.getInt8Ty();
-        auto dtorSlot = _builder.CreateGEP(i8Ty, blockHandle,
-            {_builder.getInt64(8)}, "captures.dtor_slot");
-        if (dtorFn) {
-            _builder.CreateStore(dtorFn, dtorSlot);
-        } else {
-            _builder.CreateStore(llvm::ConstantPointerNull::get(ptrTy), dtorSlot);
+        auto i64Ty = _builder.getInt64Ty();
+        u64 prefixSize = 16;
+        u64 payloadSize = prefixSize + node->capturesTotalSize();
+        bool stackEmbedded = node->hasRefCapture();
+
+        // 4c 限制：栈嵌入路径下不允许混入堆句柄字段（混合释放路径未实现）
+        if (stackEmbedded) {
+            for (const auto& cap : caps) {
+                if (typeNeedsDestructor(cap.type)) {
+                    throw YuxError(node->getLineNumber(), node->getColumn(),
+                                   ErrorCode::E2029, cap.name, cap.type.getFullName());
+                }
+            }
         }
 
-        // 写入各 capture：从 _localVarPtrs 加载，存到 handle+16+byteOffset；
-        // 堆句柄字段额外 retain（captures box 拥有 +1 强引用）
+        llvm::Value* baseHandle;
+        if (stackEmbedded) {
+            // 栈分配 [16 前缀 + 字段]；前缀字节不被读，但保 layout 统一
+            auto* parentFn = _builder.GetInsertBlock()->getParent();
+            auto& entryBB = parentFn->getEntryBlock();
+            llvm::IRBuilder<> entryBuilder(&entryBB, entryBB.getFirstInsertionPt());
+            auto bytesTy = llvm::ArrayType::get(i8Ty, payloadSize);
+            auto allocaPtr = entryBuilder.CreateAlloca(bytesTy, nullptr, "captures.stack");
+            baseHandle = allocaPtr;
+        } else {
+            // payload_size 给 _box_alloc 是不含 RC 头的字节数；前缀里的 dtor 槽（8 字节）算 payload，
+            // RC 头由 _box_alloc 自己加。即 payload = 8（dtor 槽）+ capturesTotalSize。
+            u64 boxPayloadSize = 8 + node->capturesTotalSize();
+            auto allocFn = runtime::getBoxAllocFn(_module, _builder);
+            baseHandle = _builder.CreateCall(
+                allocFn, {_builder.getInt64((i64)boxPayloadSize)}, "captures.block");
+
+            // 写 dtor 槽位 @ handle+8（_box_release_dtor 在 strong 归零时调用）
+            string mod = _file ? _file->moduleName() : string();
+            string mangled = Mangler::lambda(mod, node->getLineNumber(), node->getColumn());
+            auto dtorFn = emitCapturesDtorFunction(node, mangled);
+            auto dtorSlot = _builder.CreateGEP(i8Ty, baseHandle,
+                {_builder.getInt64(8)}, "captures.dtor_slot");
+            if (dtorFn) {
+                _builder.CreateStore(dtorFn, dtorSlot);
+            } else {
+                _builder.CreateStore(llvm::ConstantPointerNull::get(ptrTy), dtorSlot);
+            }
+        }
+
+        // 写入各 capture：从 _localVarPtrs 加载值/取指针，存到 handle+16+byteOffset
         for (const auto& cap : caps) {
             auto it = _localVarPtrs.find(cap.name);
             if (it == _localVarPtrs.end()) {
-                // 不该发生：emit 期已通过 _currentLambdaBodyScope 校验过 sym 来源
                 throw YuxError(node->getLineNumber(), node->getColumn(),
                                ErrorCode::E3030, cap.name);
             }
-            auto valLLVMTy = getLLVMType(cap.type);
-            auto srcVal = _builder.CreateLoad(valLLVMTy, it->second, "cap.src");
             auto offset = _builder.getInt64(16 + (i64)cap.byteOffset);
-            auto dstAddr = _builder.CreateGEP(i8Ty, blockHandle, {offset}, "cap.dst");
-            _builder.CreateStore(srcVal, dstAddr);
-            // 堆句柄按 callee-clean 习惯 retain（与 retainHandleAtCallSite 同款逻辑）
-            if (typeNeedsDestructor(cap.type)) {
-                retainHandleAtCallSite(srcVal, cap.type);
+            auto dstAddr = _builder.CreateGEP(i8Ty, baseHandle, {offset}, "cap.dst");
+            if (cap.type.isRef()) {
+                // T& 捕获：_localVarPtrs[name] 即 inner T 指针（参数/局部统一），
+                // 写 8 字节指针；不 retain（借用语义，无所有权迁移）
+                _builder.CreateStore(it->second, dstAddr);
+            } else {
+                auto valLLVMTy = getLLVMType(cap.type);
+                auto srcVal = _builder.CreateLoad(valLLVMTy, it->second, "cap.src");
+                _builder.CreateStore(srcVal, dstAddr);
+                // 堆句柄按 callee-clean 习惯 retain（与 retainHandleAtCallSite 同款逻辑）
+                // —— 仅 Box 路径需要；栈嵌入路径已在前面拒绝了 needs-dtor 字段
+                if (typeNeedsDestructor(cap.type)) {
+                    retainHandleAtCallSite(srcVal, cap.type);
+                }
             }
         }
-        capturesPtr = blockHandle;
+
+        if (stackEmbedded) {
+            // captures 标 LSB=1，标记"栈嵌入，跳过 RC 操作"。release / retain 站点检测此位即跳过。
+            // body 入口已统一掩 LSB；其余调用路径（compileFnValueCall）只把 captures 透传给 fn，
+            // 不解读其 RC 头，故对 LSB 标记透明。
+            auto baseInt = _builder.CreatePtrToInt(baseHandle, i64Ty, "captures.stack.asint");
+            auto taggedInt = _builder.CreateOr(baseInt, _builder.getInt64(1), "captures.tagged.asint");
+            capturesPtr = _builder.CreateIntToPtr(taggedInt, ptrTy, "captures.tagged");
+        } else {
+            capturesPtr = baseHandle;
+        }
     }
 
     // ConstantStruct 不能直接用：Function* 是 Constant 但 fatStructTy 是 anonymous struct，

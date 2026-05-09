@@ -1,0 +1,13 @@
+; Phase 4c §6.3：含 T& 捕获的 lambda 不可作 ret 表达式（不可逃逸出借用源 scope）
+
+fn make() fn(i32)i32 {
+  var n i32 = 1
+  val r i32& = &n
+  ret (x i32) i32 => r + x   ; ❌ E4022：lambda 含 T& 捕获，不可作 ret
+}
+
+fn main() {
+  var f fn(i32)i32 = make()
+  println(f(5).to_string())
+  ret;
+}

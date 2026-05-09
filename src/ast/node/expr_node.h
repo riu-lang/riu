@@ -450,6 +450,10 @@ private:
     // Phase 4a：自由变量捕获槽位（emit 期间增量填充）
     vector<CaptureSlot> _captures;
     u64 _capturesTotalSize = 0;
+    // Phase 4c：是否含 T& 捕获（spec §6.3）。
+    // 若为 true，captures 走"栈嵌入"路径（alloca + LSB 标 1 标记跳过 RC），lambda 视作"广义 T&"
+    // 不可逃逸（不可作 ret / 不可入 var / 字段 / 容器 / Box）。
+    bool _hasRefCapture = false;
 
 public:
     LambdaExprNode(const p<Node>& parent, Form form,
@@ -478,7 +482,11 @@ public:
         return (int)_captures.size() - 1;
     }
     // 重置捕获状态（emitLambdaFunction 缓存命中前的清场，避免重复 append）
-    void clearCaptures() { _captures.clear(); _capturesTotalSize = 0; }
+    void clearCaptures() { _captures.clear(); _capturesTotalSize = 0; _hasRefCapture = false; }
+
+    // Phase 4c：T& 捕获标记
+    [[nodiscard]] bool hasRefCapture() const { return _hasRefCapture; }
+    void setHasRefCapture(bool v) { _hasRefCapture = v; }
 
     // Phase 2b：调用 / 赋值点反推后的整体 Fn 类型（含已填的 params + retType）。
     // 不破坏源 _params / _retType（它们是源 AST），只在 getType() / 语义查询里优先返回这个。

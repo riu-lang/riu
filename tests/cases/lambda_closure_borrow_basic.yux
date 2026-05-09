@@ -1,0 +1,20 @@
+; Phase 4c §6.3：lambda 捕获 T&（栈嵌入 captures + body 内自动解引）
+; lambda 字面量必须直接作调用实参（不可作 ret / 不可入 var；spec §6.3 不可逃逸）
+
+fn apply(f fn(i32)i32, x i32) i32 {
+  ret f(x)
+}
+
+fn use_borrow(r i32&) i32 {
+  ; 多次直接消费 lambda：每次都是新栈嵌入 captures，body 读 r 自动解引
+  var sum i32 = 0
+  sum = sum + apply((x i32) i32 => r + x, 5)
+  sum = sum + apply((x i32) i32 => r * x, 2)
+  ret sum
+}
+
+fn main() {
+  var n i32 = 100
+  println(use_borrow(&n).to_string())   ; (100+5) + (100*2) = 305
+  ret;
+}
