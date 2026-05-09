@@ -143,6 +143,25 @@ TypeInfo resolveAliasImpl(const TypeInfo& t, FileNode* file, std::set<std::strin
         }
         return TypeInfo(TupleTag{}, std::move(newElems));
     }
+    // 函数类型：递归解析每个形参 / 返回类型中的别名
+    if (t.kind == TypeKind::Fn) {
+        vector<sp<TypeInfo>> newParams;
+        newParams.reserve(t.genericArgs.size());
+        for (auto& a : t.genericArgs) {
+            if (a) {
+                std::set<std::string> sub = visited;
+                newParams.push_back(std::make_shared<TypeInfo>(resolveAliasImpl(*a, file, sub)));
+            } else {
+                newParams.push_back(nullptr);
+            }
+        }
+        sp<TypeInfo> newRet = nullptr;
+        if (t.elementType) {
+            std::set<std::string> sub = visited;
+            newRet = std::make_shared<TypeInfo>(resolveAliasImpl(*t.elementType, file, sub));
+        }
+        return TypeInfo(FnTag{}, std::move(newParams), newRet, t.fnNullable);
+    }
     return t;
 }
 } // namespace
@@ -430,6 +449,17 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             return llvm::StructType::get(_context, arrayFields);
         }
         return llvm::PointerType::get(_context, 0);
+    }
+
+    // 函数类型字面量 fn(P1,...) R / fn?(...) R → 16 字节 fat-ptr 占位（spec §5.2）
+    // layout: { ptr fn_ptr, ptr captures }；captures 为 Box<CapturesT>? handle，
+    // Phase 1 仅占位（不生成调用），调用 / RC / 闭包推迟 Phase 2/3/4
+    if (type.isFn()) {
+        DEBUG_LOG_VAL("    -> FnType (fat-ptr placeholder)", type.name);
+        vector<llvm::Type*> fnFields;
+        fnFields.push_back(llvm::PointerType::get(_context, 0));  // fn_ptr
+        fnFields.push_back(llvm::PointerType::get(_context, 0));  // captures (Box?)
+        return llvm::StructType::get(_context, fnFields);
     }
 
     // 元组类型 (T1, T2, ...) → 匿名 llvm::StructType（按结构等价）

@@ -1,0 +1,28 @@
+; Phase 1 §3.4：函数类型按结构等同
+; 参数名不参与；参数组糖与展开形等同；alias 透明等价
+
+Callback = fn(s String)bool
+
+fn main() {
+  ; 别名透明等同（§3.5）
+  var x fn(s String)bool
+  var c Callback = x
+  var y Callback
+  var z fn(s String)bool = y
+
+  ; 参数名不参与（§3.4(4)）
+  var a fn(a i32, b i32)i32
+  var b fn(x i32, y i32)i32 = a
+  var d fn(i32, i32)i32 = b
+
+  ; 参数组糖与展开形等同（§3.4(5)）
+  var g fn(a, b i32)i32
+  var ge fn(a i32, b i32)i32 = g
+
+  ; 嵌套 fn 类型也按位置 / 返回类型递归等同
+  var n1 fn(f fn(i32)i32)i32
+  var n2 fn(f fn(x i32)i32)i32 = n1
+
+  println("ok")
+  ret;
+}

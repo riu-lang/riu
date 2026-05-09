@@ -1,0 +1,22 @@
+; Phase 1 §3.7 / §5.5：Array<fn> / Box<fn> / 元组 / 借用合法
+; Weak<fn> 禁见 lambda_type_weak_fn
+
+fn main() {
+  ; Array<fn> 合法
+  var arr Array<fn()i32> = []
+
+  ; Box<fn> 合法
+  var b Box<fn()i32>
+
+  ; 元组成员位
+  var p (fn()i32, i32)
+
+  ; 借用一个 fn 值（紧贴 retType 末尾的 &）
+  var fr fn(i32)i32&
+
+  ; 嵌套 Array<fn(...) fn(i32)i32>
+  var nested Array<fn()fn(i32)i32> = []
+
+  println("ok")
+  ret;
+}
