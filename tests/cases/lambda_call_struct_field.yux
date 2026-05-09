@@ -1,0 +1,54 @@
+; Phase 3b §7.4：struct 含 fn 字段 —— 构造 / 调用 / 字段赋值 / 整体赋值 / by-value 传参
+; 零捕获场景下 captures = null，retain/release 走 IR null guard，runtime no-op；
+; 主要验证 callFieldDestructor / retainStructFieldsAtCallSite 的 fn 字段分支配平。
+
+struct Holder {
+  h fn(i32)i32
+  base i32
+}
+
+Holder {
+  fn Holder(h fn(i32)i32, base i32) {
+    $.h = h
+    $.base = base
+  }
+
+  fn run(x i32) i32 {
+    ret $.h(x) + $.base
+  }
+
+  fn set(h fn(i32)i32) {
+    ; 字段重赋：旧值 release，新值 retain 由编译器在 $.h = ... 路径上发出
+    $.h = h
+    ret;
+  }
+}
+
+fn make_inc() fn(i32)i32 {
+  ret (x i32) i32 => x + 1
+}
+
+fn call_h_by_value(s Holder, x i32) i32 {
+  ; struct by-value 形参：调用站点对 fn 字段 captures retain（null guard），callee 出口 release
+  ret s.h(x)
+}
+
+fn main() {
+  ; 构造时把 fn 值搬入 struct 字段
+  var s Holder = Holder(make_inc(), 100)
+  println(s.run(5).to_string())          ; 5+1+100 = 106
+  println(s.h(10).to_string())           ; 11
+
+  ; 方法内 $.h 字段重赋
+  s.set((x i32) i32 => x * 3)
+  println(s.h(4).to_string())            ; 12
+
+  ; struct by-value 跨函数边界
+  println(call_h_by_value(s, 7).to_string())   ; 21
+
+  ; 整 struct 重新赋值：旧 s 的 fn 字段释放，新值字段拷入
+  var s2 Holder = Holder((x i32) i32 => x - 1, 0)
+  s = s2
+  println(s.h(50).to_string())           ; 49
+  ret;
+}
