@@ -1,0 +1,23 @@
+; Phase 4d §6.4：方法体内 lambda 捕获 $ 即"含 T& 捕获"，触发 §6.3 不可逃逸
+; lambda 字面量直接作 ret 应报 E4022
+
+struct Holder {
+  v i32
+}
+
+Holder {
+  fn Holder(v i32) {
+    $.v = v
+  }
+
+  fn make() fn(i32)i32 {
+    ret (x i32) i32 => $.v + x   ; ❌ E4022：含 $ 捕获不可逃逸
+  }
+}
+
+fn main() {
+  var h Holder = Holder(7)
+  var f fn(i32)i32 = h.make()
+  println(f(3).to_string())
+  ret;
+}

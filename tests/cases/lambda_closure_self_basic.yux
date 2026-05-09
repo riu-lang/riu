@@ -1,0 +1,46 @@
+; Phase 4d §6.4：方法体内 lambda 引用 $ / $.field / $.method() —— 隐式 Self& 形参捕获
+; 复用 §6.3 栈嵌入路径：$ 类型为 Ref<Self>（在 ast_builder 处登记），FV 中 isRef → hasRefCapture
+; lambda 字面量必须直接作调用实参（不可 ret / 不可入 var；§6.3 不可逃逸）
+
+fn apply(f fn(i32)i32, x i32) i32 {
+  ret f(x)
+}
+
+fn apply0(f fn()i32) i32 {
+  ret f()
+}
+
+struct Counter {
+  value i32
+}
+
+Counter {
+  fn Counter(v i32) {
+    $.value = v
+  }
+
+  fn double() i32 {
+    ret $.value * 2
+  }
+
+  ; 方法内 lambda 捕获 $ 然后读 $.value
+  fn add_then_apply(x i32) i32 {
+    ret apply((y i32) i32 => $.value + y, x)
+  }
+
+  ; 方法内 lambda 多次捕获 $（每次都是新栈嵌入 captures）
+  fn triple_apply() i32 {
+    var s i32 = 0
+    s = s + apply0(() i32 => $.value)         ; 读字段
+    s = s + apply0(() i32 => $.value * 2)     ; 算子
+    s = s + apply0(() i32 => $.double())      ; 调方法
+    ret s
+  }
+}
+
+fn main() {
+  var c Counter = Counter(10)
+  println(c.add_then_apply(5).to_string())   ; 10 + 5 = 15
+  println(c.triple_apply().to_string())      ; 10 + 20 + 20 = 50
+  ret;
+}
