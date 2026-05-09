@@ -1,0 +1,13 @@
+; Phase 4a-2 §6.2：lambda 捕获 Array<T>（堆句柄）
+
+fn first(a Array<i32>) i32 {
+  ret a[0]
+}
+
+fn main() {
+  var arr Array<i32> = [10, 20, 30]
+  val f = () i32 => first(arr)
+  println(f().to_string())  ; 10
+  println(f().to_string())  ; 10（多次调用共享 captures）
+  ret;
+}

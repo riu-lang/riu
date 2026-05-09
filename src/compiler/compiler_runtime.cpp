@@ -243,6 +243,21 @@ llvm::Function* getBoxReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
+// 获取带 payload 析构 dispatch 的 Box 释放函数（Phase 4a-2）
+// 签名: void _box_release_dtor(ptr block)
+// 见头文件说明。runtime 实现见 emitBoxHelpers。
+llvm::Function* getBoxReleaseDtorFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
+    string fnName = "_box_release_dtor";
+    auto func = module->getFunction(fnName);
+    if (func) return func;
+
+    vector<llvm::Type*> paramTypes;
+    paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0));
+
+    auto fnType = llvm::FunctionType::get(builder.getVoidTy(), paramTypes, false);
+    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
+}
+
 // 获取 Box 升级（Weak→Box）函数（Phase 1d.2）
 // 签名: ptr _box_upgrade(ptr block)
 // null/strong==0 → 返回 null；哨兵 → 直接返回 block；否则 strong++ 并返回 block
@@ -470,6 +485,80 @@ void emitBoxHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm
             // strong 归零：dec weak；weak 也归零时 free
             builder.SetInsertPoint(strongZeroBB);
             auto weakPtr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(4)}, "weak_ptr");
+            auto weak = builder.CreateLoad(i32Ty, weakPtr, "weak");
+            auto newWeak = builder.CreateSub(weak, llvm::ConstantInt::get(i32Ty, 1), "new_weak");
+            builder.CreateStore(newWeak, weakPtr);
+            auto weakIsZero = builder.CreateICmpEQ(newWeak, llvm::ConstantInt::get(i32Ty, 0), "weak_is_zero");
+            builder.CreateCondBr(weakIsZero, freeBB, doneBB);
+
+            builder.SetInsertPoint(freeBB);
+            auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
+            builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), block});
+            emitRcBlockCountAdd(builder, module, -1);
+            builder.CreateBr(doneBB);
+
+            builder.SetInsertPoint(doneBB);
+            builder.CreateRetVoid();
+        }
+    }
+
+    // _box_release_dtor: Phase 4a-2，与 _box_release 同形 + payload 头 8 字节作 dtor fn ptr
+    // null/哨兵跳过；strong--；strong==0 时先 dtor(payload+8)（若 dtor!=null），再 weak-- + free
+    {
+        DEBUG_LOG("  Emitting _box_release_dtor");
+        auto releaseFn = getBoxReleaseDtorFn(module, builder);
+        if (releaseFn->empty()) {
+            auto entry = llvm::BasicBlock::Create(context, "entry", releaseFn);
+            auto checkBB = llvm::BasicBlock::Create(context, "check", releaseFn);
+            auto decBB = llvm::BasicBlock::Create(context, "dec", releaseFn);
+            auto strongZeroBB = llvm::BasicBlock::Create(context, "strong_zero", releaseFn);
+            auto dtorCallBB = llvm::BasicBlock::Create(context, "dtor_call", releaseFn);
+            auto afterDtorBB = llvm::BasicBlock::Create(context, "after_dtor", releaseFn);
+            auto freeBB = llvm::BasicBlock::Create(context, "free", releaseFn);
+            auto doneBB = llvm::BasicBlock::Create(context, "done", releaseFn);
+            builder.SetInsertPoint(entry);
+
+            llvm::Value* block = &*releaseFn->arg_begin();
+            auto nullPtr = llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0));
+            auto isNull = builder.CreateICmpEQ(block, nullPtr, "is_null");
+            builder.CreateCondBr(isNull, doneBB, checkBB);
+
+            builder.SetInsertPoint(checkBB);
+            auto strongPtr = block;
+            auto strong = builder.CreateLoad(i32Ty, strongPtr, "strong");
+            auto isSentinel = builder.CreateICmpEQ(strong, sentinel, "is_sentinel");
+            builder.CreateCondBr(isSentinel, doneBB, decBB);
+
+            builder.SetInsertPoint(decBB);
+            auto newStrong = builder.CreateSub(strong, llvm::ConstantInt::get(i32Ty, 1), "new_strong");
+            builder.CreateStore(newStrong, strongPtr);
+            auto isZero = builder.CreateICmpEQ(newStrong, llvm::ConstantInt::get(i32Ty, 0), "is_zero");
+            builder.CreateCondBr(isZero, strongZeroBB, doneBB);
+
+            // strong 归零：先调 dtor（若有）
+            builder.SetInsertPoint(strongZeroBB);
+            // dtor 槽位 = handle + 8（payload 头 8 字节）
+            auto dtorSlot = builder.CreateGEP(builder.getInt8Ty(), block,
+                {builder.getInt64(8)}, "dtor_slot");
+            auto dtorPtr = builder.CreateLoad(llvm::PointerType::get(context, 0), dtorSlot, "dtor_ptr");
+            auto dtorIsNull = builder.CreateICmpEQ(dtorPtr,
+                llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0)),
+                "dtor_is_null");
+            builder.CreateCondBr(dtorIsNull, afterDtorBB, dtorCallBB);
+
+            builder.SetInsertPoint(dtorCallBB);
+            // dtor 接 capture-fields 区起点：handle + 16（跳过 RC 头 8 + dtor 槽位 8）
+            auto fieldsBase = builder.CreateGEP(builder.getInt8Ty(), block,
+                {builder.getInt64(16)}, "fields_base");
+            auto dtorFnTy = llvm::FunctionType::get(builder.getVoidTy(),
+                {llvm::PointerType::get(context, 0)}, false);
+            builder.CreateCall(dtorFnTy, dtorPtr, {fieldsBase});
+            builder.CreateBr(afterDtorBB);
+
+            builder.SetInsertPoint(afterDtorBB);
+            // 走 weak-- + free 路径（同 _box_release）
+            auto weakPtr = builder.CreateGEP(builder.getInt8Ty(), block,
+                {builder.getInt64(4)}, "weak_ptr");
             auto weak = builder.CreateLoad(i32Ty, weakPtr, "weak");
             auto newWeak = builder.CreateSub(weak, llvm::ConstantInt::get(i32Ty, 1), "new_weak");
             builder.CreateStore(newWeak, weakPtr);

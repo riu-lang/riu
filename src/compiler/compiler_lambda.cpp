@@ -201,13 +201,68 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     return func;
 }
 
+// ==================== emitCapturesDtorFunction ====================
+// Phase 4a-2：合成 lambda captures 的字段级析构。当且仅当 captures 列表里有
+// 至少一个 needs-destructor 字段（堆句柄）时返回非 null Function；全标量场景
+// 返回 nullptr（dtor 槽存 null，_box_release_dtor 跳过 dispatch）。
+//
+// 签名：void __captures_dtor_<lambdaMangle>(ptr fields_base)
+// fields_base 指向 capture 字段区起点（= block handle + 16），逐 capture 调
+// releaseAtPtr 释放槽内的句柄字段。
+llvm::Function* Compiler::emitCapturesDtorFunction(p<LambdaExprNode> node,
+                                                   const string& lambdaMangled) {
+    bool anyNeedsDtor = false;
+    for (const auto& cap : node->captures()) {
+        if (typeNeedsDestructor(cap.type)) { anyNeedsDtor = true; break; }
+    }
+    if (!anyNeedsDtor) return nullptr;
+
+    string fnName = "__captures_dtor_" + lambdaMangled;
+    if (auto existing = _module->getFunction(fnName)) return existing;
+
+    auto ptrTy = llvm::PointerType::get(_context, 0);
+    auto fnTy = llvm::FunctionType::get(_builder.getVoidTy(), {ptrTy}, false);
+    auto func = llvm::Function::Create(
+        fnTy, llvm::Function::InternalLinkage, fnName, _module);
+
+    // 保存 / 恢复构建器状态
+    auto savedInsert = _builder.GetInsertBlock();
+    auto savedInsertPoint = _builder.GetInsertPoint();
+
+    auto entry = llvm::BasicBlock::Create(_context, "entry", func);
+    _builder.SetInsertPoint(entry);
+
+    auto fieldsBase = &*func->arg_begin();
+    fieldsBase->setName("fields_base");
+
+    auto i8Ty = _builder.getInt8Ty();
+    for (const auto& cap : node->captures()) {
+        if (!typeNeedsDestructor(cap.type)) continue;
+        auto offset = _builder.getInt64((i64)cap.byteOffset);
+        auto slotPtr = _builder.CreateGEP(i8Ty, fieldsBase, {offset}, "cap.slot");
+        // captures 槽位存的就是 wrapper struct（{ptr handle} 等），releaseAtPtr 直接走
+        releaseAtPtr(slotPtr, cap.type);
+    }
+    _builder.CreateRetVoid();
+
+    if (savedInsert) {
+        _builder.SetInsertPoint(savedInsert, savedInsertPoint);
+    }
+    return func;
+}
+
 // ==================== compileLambdaExpr ====================
 // LambdaExprNode 求值：先 emit 底层 fn（期间 emit 通路完成 captures 槽位发现），
-// 回到外层上下文后据 captures 列表分配 Box<CapturesT> + 写入字段；最后构造 fat-ptr。
+// 回到外层上下文后据 captures 列表分配 captures box + 写入字段；最后构造 fat-ptr。
 // fat-ptr layout：{ ptr fn_ptr, ptr captures }；零捕获 captures = null。
 //
-// Phase 4a：仅支持标量按值复制；非标量在 emitLambdaFunction body 阶段已被
-// compileLiteralExpr 拒（E2029），此处 captures 列表里全是 builtin 标量。
+// Phase 4a-2 captures box 布局（由 _box_release_dtor 配合）：
+//   [handle+0..8]  RC 头（strong / weak）
+//   [handle+8..16] dtor fn ptr（null 表示无字段需析构）
+//   [handle+16..]  capture 字段区，每槽 8 字节，按 byteOffset 寻址
+//
+// 含堆句柄 captures：调用站点 retain 后写入槽位；strong 归零时 _box_release_dtor
+// 调 dtor 释放每个堆句柄字段，再 free。多 fat-ptr 副本共享 box 时不会过早析构。
 llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
     // 静态类型即 Fn TypeInfo（lambda 形参类型可能缺）
     auto fnType = node->getType();
@@ -220,12 +275,27 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
     llvm::Value* capturesPtr = llvm::ConstantPointerNull::get(ptrTy);
     const auto& caps = node->captures();
     if (!caps.empty()) {
-        u64 totalSize = node->capturesTotalSize();
+        // payload = 8（dtor 槽）+ capturesTotalSize（capture 字段总字节）
+        u64 payloadSize = 8 + node->capturesTotalSize();
         auto allocFn = runtime::getBoxAllocFn(_module, _builder);
         auto blockHandle = _builder.CreateCall(
-            allocFn, {_builder.getInt64((i64)totalSize)}, "captures.block");
-        // 写入各 capture：payload = handle + 8，逐字段从 _localVarPtrs 加载并写
+            allocFn, {_builder.getInt64((i64)payloadSize)}, "captures.block");
+
+        // 写 dtor 槽位 @ handle+8
+        string mod = _file ? _file->moduleName() : string();
+        string mangled = Mangler::lambda(mod, node->getLineNumber(), node->getColumn());
+        auto dtorFn = emitCapturesDtorFunction(node, mangled);
         auto i8Ty = _builder.getInt8Ty();
+        auto dtorSlot = _builder.CreateGEP(i8Ty, blockHandle,
+            {_builder.getInt64(8)}, "captures.dtor_slot");
+        if (dtorFn) {
+            _builder.CreateStore(dtorFn, dtorSlot);
+        } else {
+            _builder.CreateStore(llvm::ConstantPointerNull::get(ptrTy), dtorSlot);
+        }
+
+        // 写入各 capture：从 _localVarPtrs 加载，存到 handle+16+byteOffset；
+        // 堆句柄字段额外 retain（captures box 拥有 +1 强引用）
         for (const auto& cap : caps) {
             auto it = _localVarPtrs.find(cap.name);
             if (it == _localVarPtrs.end()) {
@@ -235,9 +305,13 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
             }
             auto valLLVMTy = getLLVMType(cap.type);
             auto srcVal = _builder.CreateLoad(valLLVMTy, it->second, "cap.src");
-            auto offset = _builder.getInt64(8 + (i64)cap.byteOffset);
+            auto offset = _builder.getInt64(16 + (i64)cap.byteOffset);
             auto dstAddr = _builder.CreateGEP(i8Ty, blockHandle, {offset}, "cap.dst");
             _builder.CreateStore(srcVal, dstAddr);
+            // 堆句柄按 callee-clean 习惯 retain（与 retainHandleAtCallSite 同款逻辑）
+            if (typeNeedsDestructor(cap.type)) {
+                retainHandleAtCallSite(srcVal, cap.type);
+            }
         }
         capturesPtr = blockHandle;
     }

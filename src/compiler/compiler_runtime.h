@@ -49,6 +49,13 @@ llvm::Function* getBoxRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder)
 // upgrade 必须读 strong 来判活而非 payload；Weak 自身仅维护 block 存活
 llvm::Function* getBoxReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 
+// _box_release_dtor(handle) -> void  (Phase 4a-2)
+// 与 _box_release 相同，但 strong 归零时先按 payload[0..8] 处的 dtor fn ptr 调
+// dtor(payload + 8)，再走 weak/free。专为 lambda captures 共享 box 设计：
+// 多个 fat-ptr 副本共享同一 captures box 时，字段级析构必须只在 strong==0 一次性触发。
+// payload 头 8 字节 = dtor fn ptr（null 跳过），其后才是各 capture 字段。
+llvm::Function* getBoxReleaseDtorFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+
 // _box_upgrade(handle) -> handle_or_null
 // Phase 1d.2：Weak→Box 升级；null/strong==0 → null；哨兵 → handle；其他 strong++ 返回 handle
 llvm::Function* getBoxUpgradeFn(llvm::Module* module, llvm::IRBuilder<>& builder);

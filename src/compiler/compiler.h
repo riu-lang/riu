@@ -270,6 +270,10 @@ class Compiler {
     // expectedFnType 用于回填实例化后的形参类型（lambda 形参可省类型；调用者必须先反推）。
     // 同 (node, mangledName) 已生成则直接返回缓存。
     llvm::Function* emitLambdaFunction(p<class LambdaExprNode> node, const TypeInfo& expectedFnType);
+    // Phase 4a-2：为含堆句柄 captures 的 lambda 合成析构函数。
+    // 签名 void __captures_dtor_<mangle>(ptr fields_base)，逐 capture 字段调 releaseAtPtr。
+    // 全标量 captures（无字段需 release）→ 返回 nullptr，调用方在 dtor 槽存 null。
+    llvm::Function* emitCapturesDtorFunction(p<class LambdaExprNode> node, const string& lambdaMangled);
     // 调用 fn-typed 值：从 fat-ptr 提取 fn_ptr / captures，按 ABI 调用
     llvm::Value* compileFnValueCall(p<ExprCallNode> node);
     // Phase 3c：callee 为 Box<fn(...)R>，从 box payload load fat-ptr 后按同款 ABI 调用

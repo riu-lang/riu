@@ -49,15 +49,17 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
         return;
     }
 
-    // Phase 3a: fn(...)R fat-ptr { fn_ptr, captures Box<CapturesT>? }
-    // captures 字段在 offset 1，按 §5.4 fn_value_release 伪码 release captures
+    // Phase 3a / 4a-2: fn(...)R fat-ptr { fn_ptr, captures Box<CapturesT>? }
+    // captures 字段在 offset 1；走 _box_release_dtor 让运行时在 strong 归零时 dispatch
+    // payload[0..8] 处的 dtor fn ptr（4a-2）。零捕获 / 全标量场景 dtor 槽存 null，
+    // 行为等价于纯 _box_release。
     if (type.isFn()) {
         auto ty = getLLVMType(type);
         auto z = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
         auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
         auto capField = _builder.CreateGEP(ty, slotPtr, {z, one}, "old.fn.captures_field");
         auto cap = _builder.CreateLoad(llvm::PointerType::get(_context, 0), capField, "old.fn.captures");
-        _builder.CreateCall(runtime::getBoxReleaseFn(_module, _builder), {cap});
+        _builder.CreateCall(runtime::getBoxReleaseDtorFn(_module, _builder), {cap});
         return;
     }
 
@@ -157,12 +159,13 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
             auto arrayReleaseFn = runtime::getArrayReleaseFn(_module, _builder);
             _builder.CreateCall(arrayReleaseFn, {handle});
         } else if (fieldType.isFn()) {
-            // Phase 3a: fn 字段：fat-ptr 的 captures（offset 1）按 §7.4 字段级 release
+            // Phase 3a / 4a-2: fn 字段：fat-ptr 的 captures（offset 1）走 _box_release_dtor，
+            // 让 strong 归零时 dispatch 到 lambda 自己的 captures 字段析构。
             auto fnStructType = getLLVMType(fieldType);
             auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
             auto capField = _builder.CreateGEP(fnStructType, fieldPtr, {zero, one});
             auto cap = _builder.CreateLoad(llvm::PointerType::get(_context, 0), capField);
-            _builder.CreateCall(runtime::getBoxReleaseFn(_module, _builder), {cap});
+            _builder.CreateCall(runtime::getBoxReleaseDtorFn(_module, _builder), {cap});
         } else if (!isBuiltinType(fieldType.name)) {
             // 结构体字段: 调用其析构函数
             auto fieldDtorsFn = getDestructorFunction(fieldType.name);

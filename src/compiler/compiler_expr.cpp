@@ -313,31 +313,36 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             SymbolSuggest::throwSymbolNotFound(_currentFnNode,
                 node->getLineNumber(), node->getColumn(), ErrorCode::E3030, varName);
         }
-        // lambda body 内引用外层 local：Phase 4a 闭包识别（spec §6.1 / §6.2）
+        // lambda body 内引用外层 local：Phase 4a / 4a-2 闭包识别（spec §6.1 / §6.2）
         // - 找到 sym 但不在 _localVarPtrs 也无 globalVar → 外层 local
-        // - Phase 4a 仅支持标量按值复制；非标量（堆句柄 / struct / T&）报 E2029
+        // - 4a 接收 builtin 标量；4a-2 接收 8-byte 堆句柄包装（Box / Weak / Array<T> / String）
+        // - 其余（struct / enum / Fn fat-ptr / T&）仍报 E2029（4c+ 接入）
         // - 命中：addCapture（首次出现）+ 生成 GEP 读 captures buffer
+        // captures box payload 布局：[0..8] dtor fn ptr，[8..] capture 字段（4a-2 引入 dtor 槽）
         if (_currentLambdaForCapture && _currentLambdaBodyScope
             && sym && sym->kind == SymbolKind::Variable) {
-            // Phase 4a 限制：只接 builtin 标量
-            if (!sym->type.isNormal() || !isBuiltinType(sym->type.name)) {
+            const auto& t = sym->type;
+            bool isScalar = t.isNormal() && isBuiltinType(t.name);
+            bool isHandle = t.isBox() || t.isWeak() || t.isArrayGeneric()
+                            || (t.isNormal() && t.name == "String");
+            if (!isScalar && !isHandle) {
                 throw YuxError(node->getLineNumber(), node->getColumn(),
-                               ErrorCode::E2029, varName, sym->type.name);
+                               ErrorCode::E2029, varName, t.name);
             }
-            // 已捕获 → 复用槽位；首次 → 追加（8 字节固定槽位，spec 不锁布局）
+            // 已捕获 → 复用槽位；首次 → 追加（每 capture 固定 8 字节槽位）
             int idx = _currentLambdaForCapture->findCapture(varName);
             if (idx < 0) {
                 u64 offset = _currentLambdaForCapture->capturesTotalSize();
-                idx = _currentLambdaForCapture->addCapture(varName, sym->type, offset, offset + 8);
+                idx = _currentLambdaForCapture->addCapture(varName, t, offset, offset + 8);
             }
             const auto& cap = _currentLambdaForCapture->captures()[idx];
-            // captures arg 是 block 句柄（block ptr）；payload = handle + 8（跳过 RC 头）
-            // 然后 +cap.byteOffset 是该 capture 的存储地址
+            // captures arg = block 句柄；payload = handle+8；首 8 字节是 dtor 槽，
+            // capture 字段从 handle+16 起。byteOffset 自 0 起表示 capture 字段内偏移。
             auto i8Ty = _builder.getInt8Ty();
-            auto payloadOffset = _builder.getInt64(8 + (i64)cap.byteOffset);
+            auto payloadOffset = _builder.getInt64(16 + (i64)cap.byteOffset);
             auto capAddr = _builder.CreateGEP(i8Ty, _currentLambdaCapturesArg,
                                               {payloadOffset}, "cap.addr");
-            return _builder.CreateLoad(getLLVMType(sym->type), capAddr, "cap.load");
+            return _builder.CreateLoad(getLLVMType(t), capAddr, "cap.load");
         }
         // 兜底：lambda body 命中 sym 但禁用捕获（_currentLambdaForCapture 未启） → 旧 E2028
         if (_currentLambdaBodyScope && sym && sym->kind == SymbolKind::Variable) {
