@@ -126,6 +126,7 @@ DEF_ERR(2024, "duplicate variant `{}::{}` in match arms")
 DEF_ERR(2025, "`else` arm must be the last arm in match")
 DEF_ERR(2026, "match pattern for `{}::{}` expects {} binding(s), got {}")
 DEF_ERR(2027, "duplicate binding `{}` in match pattern `{}::{}`")
+DEF_ERR(2028, "lambda body references outer local `{}`: closures not yet supported (Phase 4)")
 
 // ── E3xxx 类型 — 类型不匹配 ───────────────────────────────────────────
 DEF_ERR(3001, "Type mismatch in +-/ operation: left is {}, right is {}")

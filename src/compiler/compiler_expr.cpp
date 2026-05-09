@@ -313,7 +313,13 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             SymbolSuggest::throwSymbolNotFound(_currentFnNode,
                 node->getLineNumber(), node->getColumn(), ErrorCode::E3030, varName);
         }
-        // lambda body：无 FnNode 上下文，兜底直抛 E3030
+        // lambda body：FV 校验存根（spec §6.1，闭包待 Phase 4）
+        // - 找到 sym 但不是形参（不在 _localVarPtrs）也不是全局（无 globalVar）
+        //   → 引用了外层局部，报 E2028
+        // - 完全找不到 sym → 普通 E3030
+        if (_currentLambdaBodyScope && sym && sym->kind == SymbolKind::Variable) {
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E2028, varName);
+        }
         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, varName);
     } else if (auto cpLiteral = dynamic_cast<LiteralCodePointNode*>(literal)) {
         DEBUG_LOG_VAL("    Expr: CodePointLiteral", text << " : u32");

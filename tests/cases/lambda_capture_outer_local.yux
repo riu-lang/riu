@@ -1,0 +1,8 @@
+; Phase 2c §6.1：lambda body 引用外层局部 → E2028（闭包待 Phase 4）
+
+fn main() {
+  var x i32 = 10
+  val f = (y i32) i32 => y + x
+  println(f(1).to_string())
+  ret;
+}

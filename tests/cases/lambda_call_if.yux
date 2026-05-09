@@ -1,0 +1,17 @@
+; Phase 2c §4.4：lambda 单表达式体可含 if 表达式
+
+fn apply(f fn(i32)i32, x i32) i32 {
+  ret f(x)
+}
+
+fn main() {
+  ; oneLineIfElse 形态
+  val abs1 = (x i32) i32 => if x > 0 { x } else { 0 - x }
+  println(abs1(5).to_string())
+  println(abs1(0 - 7).to_string())
+
+  ; 实参反推 + if 表达式（裸单参形式：返回类型亦由上下文反推）
+  val r1 i32 = apply(x => if x > 10 { x + 1 } else { x }, 20)
+  println(r1.to_string())
+  ret;
+}

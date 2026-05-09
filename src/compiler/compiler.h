@@ -114,6 +114,10 @@ class Compiler {
     llvm::Function* _currentFn = nullptr;       // 当前正在编译的函数
     p<FnNode> _currentFnNode = nullptr;         // 当前函数的 AST 节点
     string _currentStructName;                  // 当前方法所属的结构体名
+    // Phase 2c：当前正在编译的 lambda body 作用域（emitLambdaFunction 期间有效）
+    // 非空时 compileLiteralExpr 的 LiteralObj 路径启用 FV 校验：
+    // 引用了外层局部 → E2028（闭包待 Phase 4）
+    p<ScopeNode> _currentLambdaBodyScope = nullptr;
 
     // ==================== 控制流 ====================
     vector<llvm::BasicBlock*> _loopExitBlocks;  // 循环退出块栈 (用于 break 语句)

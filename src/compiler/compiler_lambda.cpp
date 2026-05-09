@@ -78,11 +78,16 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
         }
     }
 
-    // 解析返回类型：lambda 显式标注优先；否则取 expectedFnType.fnReturnType()；
-    // 都无时按 void 处理（spec §4.2 括无标 → void）
+    // 解析返回类型（spec §4.2）：
+    // - 显式标注（仅 Paren 形态可写）→ 严格用之
+    // - Paren 无标注 → 默认 void（不接受上下文反推；自描述形态）
+    // - 裸形（Single/Block/ZeroBlock）无标注 → 上下文反推；无上下文 → void（兜底）
     TypeInfo retType;
     if (node->retType()) {
         retType = node->retType()->getType();
+    } else if (node->form() == LambdaExprNode::Form::Paren) {
+        // 括 + 无标 → void（spec §4.2 [#14]）
+        // body 表达式被作"语句位置丢弃"
     } else if (expectedFnType.isFn() && expectedFnType.fnReturnType()) {
         retType = *expectedFnType.fnReturnType();
     }
@@ -110,6 +115,7 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     auto savedTempStack = std::move(_tempStack);
     auto savedInsert = _builder.GetInsertBlock();
     auto savedInsertPoint = _builder.GetInsertPoint();
+    auto savedLambdaBodyScope = _currentLambdaBodyScope;
 
     _currentFn = func;
     _currentFnNode = nullptr;     // lambda 无 FnNode；body 引用外层符号需 Phase 4 闭包
@@ -117,6 +123,7 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     _localVarPtrs.clear();
     _scopeVars.clear();
     _tempStack.clear();
+    _currentLambdaBodyScope = node->bodyScope();   // Phase 2c：启用 FV 校验
 
     auto entry = llvm::BasicBlock::Create(_context, "entry", func);
     _builder.SetInsertPoint(entry);
@@ -175,6 +182,7 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     _localVarPtrs = std::move(savedLocals);
     _scopeVars = std::move(savedScope);
     _tempStack = std::move(savedTempStack);
+    _currentLambdaBodyScope = savedLambdaBodyScope;
     if (savedInsert) {
         _builder.SetInsertPoint(savedInsert, savedInsertPoint);
     }
