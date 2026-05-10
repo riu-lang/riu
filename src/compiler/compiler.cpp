@@ -124,9 +124,24 @@ void Compiler::compile(p<FileNode> file) {
 
     // 非 SDK 程序需要生成 main 启动代码
     // main 函数会被重命名为 yux_main，真正的 main 由 mainStartup 提供
-    if (!_isSdk && _file->getFunction("main")) {
-        DEBUG_LOG("Emitting main startup");
-        runtime::emitMainStartup(_context, _builder, _module);
+    if (!_isSdk) {
+        auto mainFn = _file->getFunction("main");
+        if (mainFn) {
+            // 10g-7：main 是否标 #Fallible(E)？
+            string mainFallibleErr;
+            if (mainFn->header()) {
+                if (auto e = mainFn->header()->getAnnoArg("Fallible")) {
+                    mainFallibleErr = *e;
+                }
+            }
+            if (!mainFallibleErr.empty()) {
+                DEBUG_LOG_VAL("Emitting main startup (Fallible)", mainFallibleErr);
+                emitMainStartupFallible(mainFallibleErr);
+            } else {
+                DEBUG_LOG("Emitting main startup");
+                runtime::emitMainStartup(_context, _builder, _module);
+            }
+        }
     }
     DEBUG_LOG("=== Compilation complete ===");
 }

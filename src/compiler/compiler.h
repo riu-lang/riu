@@ -167,6 +167,12 @@ private:
     // DRAFT-错误.md [#10.A]：把 #Fallible(E) 函数的成功返回类型包成
     //   { i1 isErr, T_ok, ErrEnum }（T_ok = void 时退化为 { i1, ErrEnum }）。
     // errTypeName 为空时直接返回 raw return type（成功 / 普通函数同行为）。
+    // 10g-7：main 标 #Fallible(E) 时生成 mainStartup wrapper：
+    //   yux_main 返回 { i1 isErr, EnumLLVM err }；isErr=1 → 解 tag，按 variant
+    //   名往 stderr 写 "error: <module>.<EnumName>::<VariantName>[(...)]\n" 后 ExitProcess(1)；
+    //   isErr=0 → ret 0。spec §6.1。
+    void emitMainStartupFallible(const string& fallibleErrName);
+
     llvm::Type* wrapFallibleRetType(const TypeInfo& retType, const string& errTypeName);
     // 同上，但强制返回 StructType* 用于 ret 路径构造 insertvalue。errTypeName 必须非空。
     llvm::StructType* getFallibleRetStructType(const TypeInfo& retType, const string& errTypeName);

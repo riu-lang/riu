@@ -711,3 +711,145 @@ llvm::StructType* Compiler::getFallibleRetStructType(const TypeInfo& retType, co
     fields.push_back(errLLVMType);                                // 字段 2 (或 1，T=void 时)：ErrEnum
     return llvm::StructType::get(_context, fields);
 }
+
+// ==================== 10g-7：main #Fallible 出口 wrapper ====================
+
+// DRAFT-错误.md §6.1：main 标 #Fallible(E) 的运行期呈现：
+//   - 退出码：固定 _exit(1)
+//   - stderr：`error: <module>.<EnumName>::<VariantName>[(payload.to_string())]\n`
+//
+// v1 实现：variant 名整字符串 .rodata 嵌入；payload 走 §12.7.1 ToString 推后续
+// （含 RC payload 的 variant 当前打 `(...)` 占位，错误码 / 行为不受影响）。
+//
+// 流程：
+//   1. 取 yux_main —— 此时签名已是 { i1 isErr, EnumLLVM err }（因 main 必返 void）
+//   2. 设置控制台代码页（沿用普通 startup）
+//   3. call yux_main → 取 isErr → CondBr ok / err
+//   4. err 分支：extract err 字段 → switch on err.tag → 各 variant BB 写 stderr + ExitProcess(1)
+//   5. ok 分支：ret 0
+void Compiler::emitMainStartupFallible(const string& fallibleErrName) {
+    auto setConsoleOutputCP = runtime::getSetConsoleOutputCPFn(_module, _builder);
+    auto setConsoleCP = runtime::getSetConsoleCPFn(_module, _builder);
+    auto getStdHandle = runtime::getOrCreateWindowsAPI(_module, _builder, "GetStdHandle");
+    auto writeFile = runtime::getOrCreateWindowsAPI(_module, _builder, "WriteFile");
+    auto exitProcess = runtime::getOrCreateWindowsAPI(_module, _builder, "ExitProcess");
+
+    auto yuxMain = _module->getFunction("yux_main");
+    if (!yuxMain) {
+        // 防御：理论 compileFn 已发射 yux_main
+        return;
+    }
+
+    // mainStartup() i32
+    auto mainFnType = llvm::FunctionType::get(_builder.getInt32Ty(), {}, false);
+    auto mainStartup = llvm::Function::Create(
+        mainFnType, llvm::Function::ExternalLinkage, "mainStartup", _module);
+
+    auto entry = llvm::BasicBlock::Create(_context, "entry", mainStartup);
+    _builder.SetInsertPoint(entry);
+
+    // 控制台 UTF-8 代码页
+    auto cpUtf8 = _builder.getInt32(65001);
+    _builder.CreateCall(setConsoleOutputCP, {cpUtf8});
+    _builder.CreateCall(setConsoleCP, {cpUtf8});
+
+    // 调用 yux_main 拿 { i1, EnumLLVM }
+    auto callRet = _builder.CreateCall(yuxMain, {}, "main.ret");
+    auto isErr = _builder.CreateExtractValue(callRet, {0}, "main.isErr");
+
+    auto errBB = llvm::BasicBlock::Create(_context, "main.err", mainStartup);
+    auto okBB = llvm::BasicBlock::Create(_context, "main.ok", mainStartup);
+    _builder.CreateCondBr(isErr, errBB, okBB);
+
+    // ===== err 分支 =====
+    _builder.SetInsertPoint(errBB);
+
+    // 取 stderr 句柄（STD_ERROR_HANDLE = -12）
+    auto stderrHandle = _builder.CreateCall(
+        getStdHandle, {_builder.getInt32(-12)}, "stderr.h");
+
+    // 取 err 字段（字段 1，因 main retType 是 void → struct = { i1, EnumLLVM }）
+    auto errVal = _builder.CreateExtractValue(callRet, {1}, "main.err.val");
+    // err.tag = 字段 0
+    auto tag = _builder.CreateExtractValue(errVal, {0}, "main.err.tag");
+
+    // 查 enum decl 拿 variant 列表（含模块名修饰）
+    p<FileNode> enumOwner = nullptr;
+    auto enumDecl = lookupEnumDecl(fallibleErrName, enumOwner);
+    if (!enumDecl) {
+        // 防御：10e 已校 #Fallible 类型存在；走 unreachable 兜底
+        _builder.CreateCall(exitProcess, {_builder.getInt32(1)});
+        _builder.CreateUnreachable();
+        _builder.SetInsertPoint(okBB);
+        _builder.CreateRet(_builder.getInt32(0));
+        return;
+    }
+
+    string moduleName = enumOwner ? enumOwner->moduleName() : _file->moduleName();
+    string prefix = "error: " + moduleName + "." + fallibleErrName + "::";
+
+    auto i32Ty = _builder.getInt32Ty();
+    auto ptrTy = llvm::PointerType::get(_context, 0);
+
+    // 共享 outWritten alloca（WriteFile 第 4 个参数 lpNumberOfBytesWritten）
+    // 必须在 switch 终结符之前 emit，否则会被插到 switch 之后破坏块结构
+    auto outWritten = _builder.CreateAlloca(i32Ty, nullptr, "out.written");
+
+    // 默认分支：未知 tag（理论不可达）
+    auto defaultBB = llvm::BasicBlock::Create(_context, "main.err.default", mainStartup);
+    auto sw = _builder.CreateSwitch(tag, defaultBB,
+        static_cast<unsigned>(enumDecl->variants().size()));
+
+    auto emitWrite = [&](llvm::Value* msgGlobal, uint32_t len) {
+        _builder.CreateCall(writeFile, {
+            stderrHandle, msgGlobal, _builder.getInt32(len),
+            outWritten, llvm::ConstantPointerNull::get(ptrTy)
+        });
+    };
+
+    for (size_t i = 0; i < enumDecl->variants().size(); ++i) {
+        auto& variant = enumDecl->variants()[i];
+        auto vbb = llvm::BasicBlock::Create(_context, "main.err.v" + std::to_string(i),
+            mainStartup);
+        sw->addCase(_builder.getInt32(static_cast<int>(i)), vbb);
+        _builder.SetInsertPoint(vbb);
+
+        // TODO(10g-7): payload 走 §12.7.1 ToString —— 当前含 payload variant 打 "(...)" 占位
+        string msg = prefix + variant->name().getText();
+        if (variant->hasPayload()) {
+            msg += "(...)";
+        }
+        msg += "\n";
+
+        // .rodata 全局字符串（不带 NUL；len 单独传）
+        auto strConst = llvm::ConstantDataArray::getString(_context, msg, /*addNull*/false);
+        auto strGlobal = new llvm::GlobalVariable(
+            *_module, strConst->getType(), /*isConstant*/true,
+            llvm::GlobalValue::PrivateLinkage, strConst,
+            "main.err.msg." + std::to_string(i));
+        strGlobal->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+
+        emitWrite(strGlobal, static_cast<uint32_t>(msg.size()));
+
+        _builder.CreateCall(exitProcess, {_builder.getInt32(1)});
+        _builder.CreateUnreachable();
+    }
+
+    // default：tag 越界（理论不可达）；写一行 "error: <prefix><invalid tag>\n" 后退
+    _builder.SetInsertPoint(defaultBB);
+    {
+        string msg = prefix + "<invalid tag>\n";
+        auto strConst = llvm::ConstantDataArray::getString(_context, msg, false);
+        auto strGlobal = new llvm::GlobalVariable(
+            *_module, strConst->getType(), true,
+            llvm::GlobalValue::PrivateLinkage, strConst, "main.err.msg.default");
+        strGlobal->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+        emitWrite(strGlobal, static_cast<uint32_t>(msg.size()));
+    }
+    _builder.CreateCall(exitProcess, {_builder.getInt32(1)});
+    _builder.CreateUnreachable();
+
+    // ===== ok 分支 =====
+    _builder.SetInsertPoint(okBB);
+    _builder.CreateRet(_builder.getInt32(0));
+}

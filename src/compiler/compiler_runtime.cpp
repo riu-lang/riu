@@ -102,6 +102,46 @@ llvm::Function* getOrCreateWindowsAPI(
         );
     }
 
+    // GetStdHandle: 取标准 IO 句柄
+    // 签名: ptr GetStdHandle(i32 nStdHandle)
+    if (name == "GetStdHandle") {
+        auto fnType = llvm::FunctionType::get(
+            llvm::PointerType::get(builder.getContext(), 0),
+            {builder.getInt32Ty()},
+            false
+        );
+        return llvm::Function::Create(
+            fnType, llvm::Function::ExternalLinkage, name, module);
+    }
+
+    // WriteFile: 同步写文件 / 句柄
+    // 签名: i32 WriteFile(ptr hFile, ptr lpBuffer, u32 nNumberOfBytesToWrite,
+    //                    ptr lpNumberOfBytesWritten, ptr lpOverlapped)
+    if (name == "WriteFile") {
+        auto ptrTy = llvm::PointerType::get(builder.getContext(), 0);
+        auto fnType = llvm::FunctionType::get(
+            builder.getInt32Ty(),
+            {ptrTy, ptrTy, builder.getInt32Ty(), ptrTy, ptrTy},
+            false
+        );
+        return llvm::Function::Create(
+            fnType, llvm::Function::ExternalLinkage, name, module);
+    }
+
+    // ExitProcess: 终止进程
+    // 签名: void ExitProcess(u32 uExitCode) #NoReturn
+    if (name == "ExitProcess") {
+        auto fnType = llvm::FunctionType::get(
+            builder.getVoidTy(),
+            {builder.getInt32Ty()},
+            false
+        );
+        auto fn = llvm::Function::Create(
+            fnType, llvm::Function::ExternalLinkage, name, module);
+        fn->addFnAttr(llvm::Attribute::NoReturn);
+        return fn;
+    }
+
     // SetConsoleOutputCP / SetConsoleCP: 设置控制台代码页
     // 签名: i1 SetConsoleOutputCP(i32 codePage)
     if (name == "SetConsoleOutputCP" || name == "SetConsoleCP") {
