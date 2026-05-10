@@ -615,12 +615,22 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         file->registerSymbol(fnName, fnSym);
 
         FnSymbolInfo fnFnSym{fnName, moduleName, paramTypes, retType};
-        // 预扫 #NoReturn：避免在头部注册阶段重复 collectAnnos 校验
+        // 预扫 #NoReturn / #Fallible(E)：避免在头部注册阶段重复 collectAnnos 校验
+        // Phase 10e：#Fallible(E) 单参 → 错误 enum 类型名（按字符串存）
         for (auto* a : header->buildAnnos) {
-            if (a->name->getText() == "NoReturn") {
+            string aname = a->name->getText();
+            if (aname == "NoReturn") {
                 fnFnSym.isNoReturn = true;
-                break;
+            } else if (aname == "Fallible" && a->arg) {
+                fnFnSym.fallibleErrType = a->arg->getText();
             }
+        }
+        // E7008：成功值类型 == #Fallible 错误类型（编译器无法分流 `ret` 通道）
+        if (!fnFnSym.fallibleErrType.empty() && retType.name == fnFnSym.fallibleErrType) {
+            throw YuxError(
+                static_cast<int>(header->name->getLine()),
+                static_cast<int>(header->name->getCharPositionInLine()) + 1,
+                ErrorCode::E7008, retType.name, fnFnSym.fallibleErrType);
         }
         file->registerFnSymbol(fnName, fnFnSym);
     }
@@ -670,6 +680,15 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
 
             FnSymbolInfo methodFnSym{fullName, moduleName, paramTypes, retType};
             methodFnSym.isNoReturn = method->header()->hasAnno("NoReturn");
+            // Phase 10e：方法上的 #Fallible(E)（同 fn 路径）
+            if (auto eOpt = method->header()->getAnnoArg("Fallible")) {
+                methodFnSym.fallibleErrType = *eOpt;
+                if (!methodFnSym.fallibleErrType.empty() && retType.name == methodFnSym.fallibleErrType) {
+                    throw YuxError(
+                        method->header()->getLineNumber(), method->header()->getColumn(),
+                        ErrorCode::E7008, retType.name, methodFnSym.fallibleErrType);
+                }
+            }
             file->registerFnSymbol(fullName, methodFnSym);
         }
     }
@@ -1628,6 +1647,8 @@ std::any ASTBuilder::visitExprCall(yux::yuxParser::ExprCallContext* ctx) {
             });
         if (lambda) call->addArg(p<ExprNode>(lambda));
     }
+    // Phase 10e：后缀 `!` 错误传播标记（DRAFT-错误.md [#4.B]）
+    if (ctx->errPropagate) call->setErrPropagate(true);
     return p<ExprNode>(call);
 }
 
@@ -1658,6 +1679,8 @@ std::any ASTBuilder::visitExprCallTrailingOnly(yux::yuxParser::ExprCallTrailingO
                 std::move(params), nullptr, nullptr, std::move(stmts));
         });
     if (lambda) call->addArg(p<ExprNode>(lambda));
+    // Phase 10e：后缀 `!` 错误传播标记（DRAFT-错误.md [#4.B]）
+    if (ctx->errPropagate) call->setErrPropagate(true);
     return p<ExprNode>(call);
 }
 

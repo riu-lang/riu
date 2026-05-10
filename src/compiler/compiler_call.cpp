@@ -506,8 +506,86 @@ llvm::Value* Compiler::compileMethodCall(
 // ==================== 调用表达式编译 ====================
 // 编译函数调用表达式的主入口
 // 处理类型推断、参数编译、分发到具体调用类型
+// Phase 10e：调用点 `!` 错误传播 / 裸调可失败函数的语义校验
+// （DRAFT-错误.md [#4.B]，错误码 E7001 / E7004 / E7006）
+//
+// 仅处理 ID-callee（最常见形态）；方法 / fn-value 路径的 `!` 校验推 10f / 10g（届时
+// try-catch 已加入，路径完整）。
+//
+// caller 的 #Fallible(E) 通过 `_currentFnNode->header()` 取注解；callee 的 #Fallible(E)
+// 从 FnSymbolInfo.fallibleErrType 读出（ast_builder 在 visitProgram 预扫时填好）。
+static void checkErrPropagateForIdCall(
+    p<FnNode> currentFnNode,
+    p<ExprCallNode> node,
+    const string& fnName,
+    const FnSymbolInfo* calleeSym) {
+    bool hasBang = node->errPropagate();
+    string callerErr;
+    if (currentFnNode) {
+        if (auto eOpt = currentFnNode->header()->getAnnoArg("Fallible")) {
+            callerErr = *eOpt;
+        }
+    }
+    string calleeErr = calleeSym ? calleeSym->fallibleErrType : "";
+
+    if (hasBang) {
+        // E7001：caller 不在 #Fallible(E) 函数内（10e 阶段无 try-catch，必然外部）
+        if (callerErr.empty()) {
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E7001);
+        }
+        // E7004：caller / callee 错误类型不一致（同 ! 不可跨类型透传）
+        if (!calleeErr.empty() && calleeErr != callerErr) {
+            // 措辞参数：{callee_err}, {E}, {callee_err}, {E}, {callee_err}
+            throw YuxError(node->getLineNumber(), node->getColumn(),
+                ErrorCode::E7004, calleeErr, callerErr, calleeErr, callerErr, calleeErr);
+        }
+        // callee 不是 #Fallible 但写了 ! ：暂不在 10e 报；保留给后续考虑
+    } else {
+        // E7006：调用 `#Fallible` 函数但未加 `!`（10e 阶段无 try-catch 包围）
+        if (!calleeErr.empty()) {
+            throw YuxError(node->getLineNumber(), node->getColumn(),
+                ErrorCode::E7006, fnName);
+        }
+    }
+}
+
 llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
     auto calleeExpr = node->getCalleeExpr();
+
+    // Phase 10e：错误传播语义校验（仅 ID-callee 路径；方法 / fn-value 推 10f）
+    if (auto litCallee = dynamic_cast<ExprLiteralNode*>(calleeExpr)) {
+        if (auto objLit = dynamic_cast<LiteralObjNode*>(litCallee->literal())) {
+            string fnName = objLit->getValue().getText();
+            vector<FnSymbolInfo*> cands;
+            _file->collectFnOverloads(fnName, cands);
+            if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
+                _yux->sdkFile()->collectFnOverloads(fnName, cands);
+            }
+            // 取第一个候选项的 fallibleErrType；多重载形态在 10e 视为同质（spec 后续收口）
+            const FnSymbolInfo* sym = cands.empty() ? nullptr : cands.front();
+            // 仅当能识别为 fn 调用时校验；构造函数 / 类型构造走 callee 路径，但 FnSymbolInfo 也可能有
+            checkErrPropagateForIdCall(_currentFnNode, node, fnName, sym);
+        } else if (node->errPropagate()) {
+            // 非 ID-literal 但带 `!`：极少见路径（如 nullable 字面量调用），暂统一按 caller 状态判 E7001
+            string callerErr;
+            if (_currentFnNode) {
+                if (auto eOpt = _currentFnNode->header()->getAnnoArg("Fallible")) callerErr = *eOpt;
+            }
+            if (callerErr.empty()) {
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E7001);
+            }
+        }
+    } else if (node->errPropagate() && !dynamic_cast<ExprDotNode*>(calleeExpr)) {
+        // fn-value 调用 + `!`：暂在 10e 拒绝（caller 未 fallible 时报 E7001；fallible 时放过）
+        // 方法路径（Dot）暂跳过 10e 校验，留 10f
+        string callerErr;
+        if (_currentFnNode) {
+            if (auto eOpt = _currentFnNode->header()->getAnnoArg("Fallible")) callerErr = *eOpt;
+        }
+        if (callerErr.empty()) {
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E7001);
+        }
+    }
 
     // Phase 2b: callee 静态类型为 Fn(...)R → 走 fat-ptr 路径
     // 涵盖：lambda IIFE `((x i32) i32 => ...)(5)`、fn-typed 变量 / 字段 / 调用结果

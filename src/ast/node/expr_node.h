@@ -39,6 +39,10 @@ protected:
     p<ExprNode> _calleeExpr;
     vector<p<ExprNode>> _args;
     vector<p<TypeNode>> _typeArgs;
+    // DRAFT-错误.md [#4.B]：调用点是否带后缀 `!`（错误传播）。
+    // 由 ast_builder 从 g4 `errPropagate=SymbolExcl?` 槽位读入。Phase 10e 仅做语义校验
+    // （E7001 / E7004 / E7006），实际错误通道路由 codegen 推 10f / 10g。
+    bool _errPropagate = false;
 
 public:
     ExprCallNode(const p<Node>& parent, p<ExprNode> callee) :
@@ -52,6 +56,9 @@ public:
 
     void setTypeArgs(vector<p<TypeNode>> args) { _typeArgs = std::move(args); }
     [[nodiscard]] const vector<p<TypeNode>>& getTypeArgs() const { return _typeArgs; }
+
+    void setErrPropagate(bool v) { _errPropagate = v; }
+    [[nodiscard]] bool errPropagate() const { return _errPropagate; }
 
     [[nodiscard]] const p<ExprNode>& getCalleeExpr() const;
     [[nodiscard]] const std::vector<p<ExprNode>>& getArgs() const;

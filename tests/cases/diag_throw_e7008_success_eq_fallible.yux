@@ -1,0 +1,13 @@
+; 函数返回类型与 #Fallible 错误类型相等 → E7008（DRAFT-错误.md [#4.A]）
+enum ParseErr {
+  Empty
+}
+
+#Fallible(ParseErr)
+fn parse() ParseErr {
+  ret ParseErr::Empty
+}
+
+fn main() {
+  ret;
+}

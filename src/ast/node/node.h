@@ -46,6 +46,10 @@ struct FnSymbolInfo {
     // DRAFT-错误.md §8.3 / spec §11.5.1：该函数声明带 `#NoReturn` 注解，
     // 调用点视为流终止节点（用于 §4.9.1.4 / §4.9.3.5 arm 排除及 E7014 检查）。
     bool isNoReturn = false;
+    // DRAFT-错误.md [#3.A]：`#Fallible(E)` 的错误 enum 类型名。空字符串表示该函数
+    // 未声明 `#Fallible`（无错误通道）。Phase 10e 仅按字符串比较；后续可扩展为完整
+    // TypeInfo（需要泛型 / 跨模块解析时）。
+    string fallibleErrType;
 
     FnSymbolInfo() = default;
     FnSymbolInfo(string n, string mod, vector<TypeInfo> p, TypeInfo r)
