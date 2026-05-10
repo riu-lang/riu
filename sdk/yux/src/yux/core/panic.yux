@@ -8,13 +8,13 @@
 ; 0xE0FA1750：客户位段（高 4 位 0xE）+ "FA1750" 字面（PANIC 谐音 "FA17(50)" → "P"），
 ; 与 assert 失败码 0xE0FA17ED 区分。
 ;
-; TODO(panic stderr)：spec §8.6 要求 panic 模板写 stderr，当前 SDK 仅有
-; _stdout_write；待 STD_ERROR_HANDLE 通道接通后切走 stdout。
+; stderr 模板（DRAFT-错误.md §8.6）：`panic: <msg>\n` → 走 _stderr_write 通道，
+; 与 stdout 业务输出隔离；用户重定向 `2>` 才能拿到。
 
 #NoReturn
 fn _yux_panic_failed(msg String) {
-  print("panic: ")
-  println(msg)
+  eprint("panic: ")
+  eprintln(msg)
   RaiseException(0xE0FA1750u32, 0u32, 0u32, null);
 }
 

@@ -11,6 +11,7 @@ extern {
 
 ; 全局常量
 cval _STD_OUTPUT_HANDLE i32 = -11
+cval _STD_ERROR_HANDLE i32 = -12
 
 ; 内部：向 stdout 写入
 fn _stdout_write(buf Ptr, off i64, len i64) {
@@ -18,6 +19,14 @@ fn _stdout_write(buf Ptr, off i64, len i64) {
   var bufWithOff Ptr = _ptr_offset(buf, off)
   var written u32 = 0u32
   WriteFile(hStdout, bufWithOff, len.to_u32(), &written, null);
+}
+
+; 内部：向 stderr 写入（panic / eprint* 模板用，DRAFT-错误.md §8.6）
+fn _stderr_write(buf Ptr, off i64, len i64) {
+  var hStderr Ptr = GetStdHandle(_STD_ERROR_HANDLE)
+  var bufWithOff Ptr = _ptr_offset(buf, off)
+  var written u32 = 0u32
+  WriteFile(hStderr, bufWithOff, len.to_u32(), &written, null);
 }
 
 #CompilerInner
@@ -1485,7 +1494,15 @@ bool : ToString {
   }
 }
 
-fn print(s String) {
+; ==================== stdlib I/O ====================
+; v0.6 起 print* / eprint* 三态：
+;   - 非泛型借用 `(s String&)` —— String 实参与字面量走的快路径（owned 实参由 §7.2.3.3 自动取址匹配）
+;   - 泛型 owned `<T : ToString>(x T)` —— 其他实现 ToString 的类型通过单态化分发
+; 选择 String& 而非 String 非泛型形态的原因：避免 owned/borrow 双非泛型时 dispatcher 无法在 String 值参上消歧（[E6014]）；
+; 同时与既有 SDK 约定（assert_eq / starts_with / contains 形参均 String&）一致。
+; 通道：print / println → stdout；eprint / eprintln → stderr（DRAFT-错误.md §8.6 panic 模板沿用此通道）。
+
+fn print(s String&) {
   val bytes Array<u8> = s.to_bytes()
   var i i64 = 0
   loop {
@@ -1498,10 +1515,49 @@ fn print(s String) {
   }
 }
 
-fn println(s String) {
-  print(s)
+fn print<T : ToString>(x T) {
+  val s String = x.to_string()
+  print(&s)
+}
+
+fn println(s String&) {
+  print(&s)
   val nl [u8 * 1] = [10u8]
   _stdout_write(&nl, 0i64, 1i64)
+}
+
+fn println<T : ToString>(x T) {
+  val s String = x.to_string()
+  println(&s)
+}
+
+fn eprint(s String&) {
+  val bytes Array<u8> = s.to_bytes()
+  var i i64 = 0
+  loop {
+    if i >= bytes.len() {
+      break;
+    }
+    val b [u8 * 1] = [bytes[i]]
+    _stderr_write(&b, 0i64, 1i64)
+    i += 1
+  }
+}
+
+fn eprint<T : ToString>(x T) {
+  val s String = x.to_string()
+  eprint(&s)
+}
+
+fn eprintln(s String&) {
+  eprint(&s)
+  val nl [u8 * 1] = [10u8]
+  _stderr_write(&nl, 0i64, 1i64)
+}
+
+fn eprintln<T : ToString>(x T) {
+  val s String = x.to_string()
+  eprintln(&s)
 }
 
 ; ==================== Phase 4b：String 断言（纯 yux）====================

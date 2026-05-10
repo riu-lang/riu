@@ -15,6 +15,13 @@
 
 ---
 
+## 2026-05-10 —— stdlib I/O 泛型化 + panic stderr
+
+- **修改**：SDK `sdk/yux/src/yux/core/base.yux` `print` / `println` 由非泛型 `(s String)` 推广为两态：非泛型借用 `(s String&)` 快路径 + 泛型 `<T : ToString>(x T)`。owned String / 字符串字面量经 §7.2.3.3 自动取址命中快路径，其它实现 `ToString` 的类型走单态化分发。
+- **新增**：SDK 同文件追加 `eprint` / `eprintln`（同样两态 String& + 泛型），写 stderr。
+- **修改**：`sdk/yux/src/yux/core/panic.yux` `_yux_panic_failed` 模板 `panic: <msg>\n` 由 stdout 改写 stderr，与 `docs/spec/draft/DRAFT-错误.md` §8.6（main 退出码 / stderr）对齐；删除 `panic.yux` 中 TODO(panic stderr)。
+- **冲突 / 兼容**：纯放宽。旧 `print(some_string)` / `println(some_string)` 调用无变化；panic 文本现在写 stderr，依赖 `1>` 捕获 panic 信息的脚本需改 `2>`。spec 正文未引入新条款（`print` / `eprint` 为 stdlib，非语言面）；DRAFT-错误.md §8.6 stderr 模板措辞已就位。
+
 ## 2026-05-10 —— 错误处理 v1 草案落地（spec 正文 + 附录）
 
 - **新增**：`docs/spec/04-表达式.md` §4.12 错误处理表达式（`exprErrPropagate` / `exprTry` / `catchClause`）；§4.2.1 优先级表追加 `exprErrPropagate`（与 `exprCall` 同档 lvl 10）；§4.9.1.4 / §4.9.3.5 加注 "`ret` / `#NoReturn` 调用所在 arm 视为流终止，不参与表达式类型合并"。

@@ -1,0 +1,55 @@
+; v0.6 stdlib I/O 泛型化回归
+; print / println / eprint / eprintln 各保留 String 非泛型 + `<T : ToString>(x T&)` 泛型借用
+; 测试目标：泛型重载在 i64 / bool / String / 用户类型上能正确分发并编译链接通过
+; （stdout / stderr 实际字节不易在 in-process JIT 内回采，依赖 -v 时的捕获回放观察。）
+
+struct PrintTag {
+  v i64
+}
+
+PrintTag {
+  fn PrintTag(v i64) {
+    $.v = v
+  }
+}
+
+PrintTag : ToString {
+  fn to_string() String {
+    $.v.to_string()
+  }
+}
+
+#Test
+fn test_print_generic_builtin() {
+  print(42i64)
+  print(true)
+  println(7i64)
+  println(false)
+  ; 走到这里说明各重载都已成功单态化并链接
+  assert_true(true)
+}
+
+#Test
+fn test_print_string_fast_path() {
+  ; String 实参命中非泛型 print(s String) / println(s String) 快路径
+  print("hello ")
+  println("world")
+  assert_true(true)
+}
+
+#Test
+fn test_print_user_type() {
+  val t PrintTag = PrintTag(123i64)
+  println(t)
+  assert_true(true)
+}
+
+#Test
+fn test_eprint_generic() {
+  eprint("err ")
+  eprintln(99i64)
+  eprintln(true)
+  val t PrintTag = PrintTag(7i64)
+  eprintln(t)
+  assert_true(true)
+}
