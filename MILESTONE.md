@@ -66,12 +66,9 @@
 
 下列主题**方向已定但版本号未排**。各自的优先级与依赖关系明朗后再编号。
 
-- **错误模型 v1**：`#Throw(ErrEnum)` 注解 + 表达式后缀 `?` 传播 + main 出口运行时呈现。错误类型 = 普通封闭 enum；跨函数走 enum 嵌套 + 自动包装；本地 catch v1 不做。详见 `CURRENT-错误与异常-v1.md`。
-  - **依赖**：v0.7 enum + match（已落地）；草案落地需附带解禁 §11.1 单参数注解糖。
-  - **不含**：本地 catch、catch-all、unwind、Result<T,E> 内置根类型。
-
-- **错误模型 v2**：在 v1 之上叠加本地 catch（候选 `try { block }.catch(...)` builder 路线 / `Result<T,E>` + match 路线）。详见 `CURRENT-错误与异常-v2-阻塞.md`。
-  - **依赖**：v0.8 lambda 至少 P1 + P3 + P4；可能还需 Self 类型 / generic enum。
+- **错误模型 v2**：在 v0.9 之上叠加更高阶能力。候选方向：跨类型自动包装 / `Result<T,E>` 内置根类型 / 高阶错误适配（map / mapErr 等）。具体形态待 v0.9 落地一段时间后复盘再定。
+  - **依赖**：v0.9 错误模型 v1（已完成）；可能还需泛型 enum / Self 类型 / 函数值的错误通道支持（[#22]）。
+  - **不含**：unwind / SEH / personality（yux 不引入异常机制，永久拒绝）。
 
 - **SDK 第一轮扩充**：
   - `math.*` / `Map<K, V>`
@@ -87,6 +84,30 @@
 - **代码生成代码（实验）**：注解预处理 / 编译期生成；类 Java 注解处理 / 类 Rust 派生宏的最小子集；仅允许产出代码、不允许任意副作用。退出标准示例：派生 `ToString` 可用。
 
 - **性能与 layout 优化**：String 专属 FAM Block（`{strong, weak, len_cps, u32 data[]}`）；Array Block 内联小尺寸优化；内联策略与裁剪；基准测试无回归。
+
+### v0.9 — 错误模型 v1 ✅ 已完成（2026-05-10）
+
+**主题**：把"函数失败"作为一等模型纳入语言：值返回通道 + 注解声明 + 后缀传播 + try-catch 跨类型适配 + panic 终止；不引入异常 / unwind。
+
+**范围（达成情况）**：
+
+- ✅ `#Fallible(E)` 注解（§11 顺带解禁单参数注解糖）：声明函数可能返回错误 enum `E`；fn header 与 struct impl 方法同支持；extern 暂禁
+- ✅ 抛出 = `ret ErrEnumValue`；传播 = 表达式后缀 `!`，仅同类型透传，跨类型必须 `match` / `try-catch`；不做自动包装、不做"错误→null"
+- ✅ `try { ... } catch (e: E) { ... }` 表达式：跨类型错误形态聚合点；catch arm 穷尽性按 try 块内可见错误类型集合
+- ✅ main 出口错误运行时呈现（E7xxx 段位 + 退出码非零 + stderr 错误信息）
+- ✅ `panic(msg)` + `#NoReturn` 注解：abort-only 不可恢复路径；不入错误通道；assert / OOM 走 panic；流终止分析覆盖（E7014）
+- ✅ ABI 形态：anonymous struct `{ i1 isErr, T_ok, ErrEnum }`；错误返回路径 RC 释放与成功路径共享析构序；错误 enum payload move 语义
+- ✅ spec §4.12 / §6.7 / §11 修订；DRAFT-错误.md 起草至定稿；附录 A / B / D 同步；`docs/错误处理.md` 教程；CHANGELOG 收口
+- ✅ SDK：`sdk/yux/src/yux/core/exit.yux`、`sdk/yux/src/yux/core/panic.yux`、`error_model.test.yux` 端到端测试
+
+**不在范围**：
+
+- 本地 catch-all（无 `catch _`）、defer / errdefer / finally
+- extern fn 的 `#Fallible` 支持（依赖 §7 extern 收紧 + fnType 错误承载，推后续）
+- 错误通道在函数值（fn 类型）上的形态（[#22]）
+- panic stderr 通道的 STD_ERROR_HANDLE 接通已完成（2026-05-10 stdlib I/O 泛型化随项落地）
+
+**退出标准**：✅ DRAFT-错误.md 全节迁入 spec；`xmake test` + `yux test` 全绿；实施日志归档于 `docs/dev/error-model-impl-log.md`（Phase 1-10 + 子项 10a-10i）。
 
 ### v0.8 — lambda + 函数类型
 
