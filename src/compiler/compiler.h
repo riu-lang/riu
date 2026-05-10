@@ -159,13 +159,27 @@ private:
     llvm::Value* allocArrayBlock(llvm::Type* elemLLVMType, llvm::Value* initCap, llvm::Value* initLen);  // 调用 _array_alloc 返回 Block*
     void storeArrayHandle(llvm::Value* arrayStructPtr, llvm::Value* handle);    // 把句柄写到 Array<T> 实例（field 0）
     llvm::FunctionType* getLLVMFunctionType(p<FnHeaderNode> header);            // 获取函数的 LLVM 类型
+    // DRAFT-错误.md [#10.A]：把 #Fallible(E) 函数的成功返回类型包成
+    //   { i1 isErr, T_ok, ErrEnum }（T_ok = void 时退化为 { i1, ErrEnum }）。
+    // errTypeName 为空时直接返回 raw return type（成功 / 普通函数同行为）。
+    llvm::Type* wrapFallibleRetType(const TypeInfo& retType, const string& errTypeName);
+    // 同上，但强制返回 StructType* 用于 ret 路径构造 insertvalue。errTypeName 必须非空。
+    llvm::StructType* getFallibleRetStructType(const TypeInfo& retType, const string& errTypeName);
+    // [#10.A] / [#10.C] 调用侧 `!` 透传：callee 是 #Fallible 时，分流 isErr 位 →
+    //   - 错误分支：构外层 fn 错误返回 struct + ret（透传到 caller 的 #Fallible 通道）
+    //   - 成功分支：extract T_ok，caller 在 okBB 继续编译；返回 T_ok（void 时 nullptr）
+    // calleeFallibleErr 空时直接返回 callResult（普通调用同行为）。
+    // 仅 ID-callee 路径调用本 helper（10g-4 范围）；方法 / 泛型 / fn-value 推后续子项。
+    llvm::Value* handleFallibleCallResult(
+        llvm::Value* callResult, const string& calleeFallibleErr,
+        const TypeInfo& calleeRetType, p<ExprCallNode> callNode);
     llvm::StructType* getOrCreateStructType(p<StructDeclNode> structDecl, p<FileNode> sourceFile = nullptr);  // 获取或创建结构体类型
 
     // ==================== 函数获取 ====================
     llvm::Function* getFunction(p<FnHeaderNode> header);                        // 获取或创建函数
     llvm::Function* getMethodFunction(
         const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes,
-        const TypeInfo& retType);                                               // 获取或创建方法函数
+        const TypeInfo& retType, const string& fallibleErrType = "");           // 获取或创建方法函数
     llvm::Function* getDestructorFunction(const string& structName);            // 获取或创建析构函数
 
     // ==================== 表达式编译 ====================

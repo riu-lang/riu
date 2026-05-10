@@ -296,7 +296,9 @@ void Compiler::compileStructImpls() {
             if (method->header()->retType()) {
                 retType = method->header()->retType()->getType();
             }
-            auto func = getMethodFunction(structName, methodName, paramTypes, retType);
+            string mFallibleErr;
+            if (auto e = method->header()->getAnnoArg("Fallible")) mFallibleErr = *e;
+            auto func = getMethodFunction(structName, methodName, paramTypes, retType, mFallibleErr);
             compileMethod(method, func, structName);
         }
     }
@@ -383,7 +385,9 @@ void Compiler::emitInstanceMethods() {
                     }
                     // 构造函数名需要使用实例名
                     string effMethodName = (methodName == baseName) ? structName : methodName;
-                    auto func = getMethodFunction(structName, effMethodName, paramTypes, retType);
+                    string mFallibleErr;
+                    if (auto e = method->header()->getAnnoArg("Fallible")) mFallibleErr = *e;
+                    auto func = getMethodFunction(structName, effMethodName, paramTypes, retType, mFallibleErr);
                     compileMethod(method, func, structName);
                 }
 
@@ -510,7 +514,9 @@ void Compiler::emitFnInstances() {
                             }
                         }
                     }
-                    auto llvmRetType = retType.empty() ? _builder.getVoidTy() : getLLVMType(retType);
+                    string fallibleErr;
+                    if (auto e = baseFn->header()->getAnnoArg("Fallible")) fallibleErr = *e;
+                    auto llvmRetType = wrapFallibleRetType(retType, fallibleErr);
                     auto fnType = llvm::FunctionType::get(llvmRetType, llvmParamTypes, false);
                     fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledFnName, _module);
                 }
@@ -591,7 +597,21 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
     // 如果函数没有显式返回语句，添加隐式 void 返回
     auto fnName = node->header()->name().getText();
     if (!_builder.GetInsertBlock()->getTerminator()) {
-        if (func->getReturnType()->isVoidTy()) {
+        // #Fallible(E) void-return 函数体走到末尾：补隐式成功-void ret struct
+        // （与 compileRetVoidStatement 同形；[#10.A] T_ok=void）
+        string fallibleErrName;
+        if (auto e = node->header()->getAnnoArg("Fallible")) fallibleErrName = *e;
+        bool fnRetVoid = !node->header()->retType();
+        if (!fallibleErrName.empty() && fnRetVoid) {
+            callDestructorsForScope();
+            auto retStructTy = getFallibleRetStructType(TypeInfo(), fallibleErrName);
+            auto errLLVMTy = getLLVMType(TypeInfo(fallibleErrName));
+            llvm::Value* rs = llvm::UndefValue::get(retStructTy);
+            rs = _builder.CreateInsertValue(rs, _builder.getInt1(0), {0});
+            rs = _builder.CreateInsertValue(rs, llvm::Constant::getNullValue(errLLVMTy), {1});
+            _builder.CreateRet(rs);
+            DEBUG_LOG("  Added implicit #Fallible void-success return");
+        } else if (func->getReturnType()->isVoidTy()) {
             callDestructorsForScope();  // 在返回前调用析构函数
             _builder.CreateRetVoid();
             DEBUG_LOG("  Added implicit void return");
@@ -719,7 +739,20 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
 
     // 处理隐式返回
     if (!_builder.GetInsertBlock()->getTerminator()) {
-        if (func->getReturnType()->isVoidTy()) {
+        // 方法上的 #Fallible(E) void：补隐式成功-void ret struct（与 fn 同型）
+        string fallibleErrName;
+        if (auto e = node->header()->getAnnoArg("Fallible")) fallibleErrName = *e;
+        bool methRetVoid = !node->header()->retType();
+        if (!fallibleErrName.empty() && methRetVoid && !isDestructor) {
+            callDestructorsForScope();
+            auto retStructTy = getFallibleRetStructType(TypeInfo(), fallibleErrName);
+            auto errLLVMTy = getLLVMType(TypeInfo(fallibleErrName));
+            llvm::Value* rs = llvm::UndefValue::get(retStructTy);
+            rs = _builder.CreateInsertValue(rs, _builder.getInt1(0), {0});
+            rs = _builder.CreateInsertValue(rs, llvm::Constant::getNullValue(errLLVMTy), {1});
+            _builder.CreateRet(rs);
+            DEBUG_LOG("  Added implicit #Fallible void-success return (method)");
+        } else if (func->getReturnType()->isVoidTy()) {
             callDestructorsForScope();
             // 析构函数需要在返回前调用字段析构函数
             if (isDestructor && thisPtr) {

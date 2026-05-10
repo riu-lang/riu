@@ -250,7 +250,8 @@ llvm::Function* Compiler::getFunction(p<FnHeaderNode> header) {
 // 获取或创建方法函数
 // 方法名包含结构体名，如 "Foo.bar"
 llvm::Function* Compiler::getMethodFunction(
-    const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes, const TypeInfo& retType) {
+    const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes, const TypeInfo& retType,
+    const string& fallibleErrType) {
     DEBUG_LOG_VAL("  getMethodFunction", structName << "." << methodName);
 
     bool isCtor = methodName == structName;  // 构造函数名与结构体名相同
@@ -306,7 +307,7 @@ llvm::Function* Compiler::getMethodFunction(
         }
     }
 
-    auto llvmRetType = retType.empty() ? _builder.getVoidTy() : getLLVMType(retType);
+    auto llvmRetType = wrapFallibleRetType(retType, fallibleErrType);
     DEBUG_LOG_VAL("    -> return type", (retType.empty() ? "void" : retType.name));
     auto fnType = llvm::FunctionType::get(llvmRetType, llvmParamTypes, false);
     DEBUG_LOG("    -> created new function");
@@ -1412,7 +1413,9 @@ llvm::Value* Compiler::compileGenericFunctionCall(
                 paramTypes.push_back(getLLVMType(t));
             }
         }
-        auto retType = instRetType.empty() ? _builder.getVoidTy() : getLLVMType(instRetType);
+        string gFallibleErr;
+        if (auto e = genericFn->header()->getAnnoArg("Fallible")) gFallibleErr = *e;
+        auto retType = wrapFallibleRetType(instRetType, gFallibleErr);
         auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
         fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, cName, _module);
     }
@@ -1925,13 +1928,13 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
             for (auto& t : argTypes) {
                 paramTypes.push_back(getLLVMType(t));
             }
-            auto retType = sdkMethodSymbol->retType.empty() ? _builder.getVoidTy() : getLLVMType(sdkMethodSymbol->retType);
+            auto retType = wrapFallibleRetType(sdkMethodSymbol->retType, sdkMethodSymbol->fallibleErrType);
             auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
             fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
         }
         return _builder.CreateCall(fn, methodArgs);
     }
-    
+
     throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6016, member, baseType.name);
 }
 
@@ -2001,7 +2004,9 @@ llvm::Value* Compiler::compileStructMethodCall(
                         if (chosen->header()->retType()) {
                             retType = chosen->header()->retType()->getType().substitute(subst);
                         }
-                        auto llvmRetType = retType.empty() ? _builder.getVoidTy() : getLLVMType(retType);
+                        string mFallibleErr;
+                        if (auto e = chosen->header()->getAnnoArg("Fallible")) mFallibleErr = *e;
+                        auto llvmRetType = wrapFallibleRetType(retType, mFallibleErr);
                         auto fnType = llvm::FunctionType::get(llvmRetType, paramTypes, false);
                         fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
                     }
@@ -2090,7 +2095,7 @@ llvm::Value* Compiler::compileStructMethodCall(
                     paramTypes.push_back(getLLVMType(t));
                 }
             }
-            auto retType = methodSymbol->retType.empty() ? _builder.getVoidTy() : getLLVMType(methodSymbol->retType);
+            auto retType = wrapFallibleRetType(methodSymbol->retType, methodSymbol->fallibleErrType);
             auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
             fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
         }
@@ -2201,11 +2206,14 @@ llvm::Value* Compiler::compileKnownFunctionCall(
                 paramTypes.push_back(getLLVMType(fnSymbol->params[i]));
             }
         }
-        auto retType = fnSymbol->retType.empty()
-                           ? _builder.getVoidTy()
-                           : (fnSymbol->isExternal && TypeInfo(fnSymbol->retType).isPtr()
-                                  ? llvm::PointerType::get(_context, 0)
-                                  : getLLVMType(TypeInfo(fnSymbol->retType)));
+        // extern fn 禁 #Fallible（[#7]）—— extern 路径走原 isPtr 分支不包装；
+        // 用户 fn 走 wrapFallibleRetType，按 fnSymbol->fallibleErrType 决定是否包成 struct
+        llvm::Type* retType;
+        if (fnSymbol->isExternal && !fnSymbol->retType.empty() && TypeInfo(fnSymbol->retType).isPtr()) {
+            retType = llvm::PointerType::get(_context, 0);
+        } else {
+            retType = wrapFallibleRetType(TypeInfo(fnSymbol->retType), fnSymbol->fallibleErrType);
+        }
         auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
         fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, cName, _module);
     }
@@ -2356,5 +2364,73 @@ llvm::Value* Compiler::compileKnownFunctionCall(
         return callResult;
     }
 
-    return callResult;
+    // [#10.A] / [#10.C]：callee 标 #Fallible 时分流 isErr → 透传 / 提取 T_ok
+    return handleFallibleCallResult(callResult, fnSymbol->fallibleErrType,
+        TypeInfo(fnSymbol->retType), callNode);
+}
+
+// ==================== #Fallible 调用侧分流 ====================
+
+// 处理 #Fallible 调用结果（DRAFT-错误.md [#10.A] / [#10.C]）
+// callee 非 fallible 时直接返回 callResult。否则生成 isErr 分流：
+//   - 错误分支：构外层 fn 错误返回 struct + ret（透传到 caller 的 #Fallible 通道）
+//   - 成功分支：extract T_ok，caller 在 okBB 继续编译；返回 T_ok（void 时 nullptr）
+//
+// 10g-4 仅覆盖 `!` 透传 + ID-callee；try-catch 错误路由推 10g-5（届时根据
+// _tryCatchStack 把 errBB 改为跳到匹配的 catch arm entry block）。
+llvm::Value* Compiler::handleFallibleCallResult(
+    llvm::Value* callResult, const string& calleeFallibleErr,
+    const TypeInfo& calleeRetType, p<ExprCallNode> callNode) {
+    if (calleeFallibleErr.empty()) return callResult;
+
+    auto isErr = _builder.CreateExtractValue(callResult, {0}, "call.isErr");
+    auto curFn = _builder.GetInsertBlock()->getParent();
+    auto errBB = llvm::BasicBlock::Create(_context, "fallible.err", curFn);
+    auto okBB = llvm::BasicBlock::Create(_context, "fallible.ok", curFn);
+    _builder.CreateCondBr(isErr, errBB, okBB);
+
+    // ===== errBB: 透传到外层 fn 错误返回 =====
+    _builder.SetInsertPoint(errBB);
+    string callerErr;
+    TypeInfo callerRetType;
+    if (_currentFnNode && _currentFnNode->header()) {
+        if (auto e = _currentFnNode->header()->getAnnoArg("Fallible")) callerErr = *e;
+        if (_currentFnNode->header()->retType()) {
+            callerRetType = _currentFnNode->header()->retType()->getType();
+        }
+    }
+    // TODO(10g-5): _tryCatchStack 非空时，errBB 应跳到匹配 catch arm entry，
+    // 而不是构外层 fn 错误 ret。当前先按透传处理（10e/10f 已校 ! 与 caller #Fallible 同类型）。
+    if (!callerErr.empty()) {
+        // 取出 callee 的 ErrEnum 字段；T_ok 是否存在决定 idx
+        unsigned errIdx = calleeRetType.empty() ? 1 : 2;
+        auto errVal = _builder.CreateExtractValue(callResult, {errIdx}, "call.err");
+        // 构外层 ret struct
+        auto outerRetTy = getFallibleRetStructType(callerRetType, callerErr);
+        llvm::Value* outerRet = llvm::UndefValue::get(outerRetTy);
+        outerRet = _builder.CreateInsertValue(outerRet, _builder.getInt1(1), {0});
+        unsigned outerErrIdx;
+        if (!callerRetType.empty()) {
+            auto okLLVMTy = getLLVMType(callerRetType);
+            outerRet = _builder.CreateInsertValue(outerRet, llvm::Constant::getNullValue(okLLVMTy), {1});
+            outerErrIdx = 2;
+        } else {
+            outerErrIdx = 1;
+        }
+        outerRet = _builder.CreateInsertValue(outerRet, errVal, {outerErrIdx});
+        // 错误透传 = 提前 ret，必须释放当前作用域局部（[#10.B] U1）
+        callDestructorsForScope();
+        _builder.CreateRet(outerRet);
+    } else {
+        // 兜底：caller 既非 #Fallible 也不在 try 内 —— 实际应被 10e E7001 / E7006 拦下，
+        // 这里 emit unreachable 防 LLVM verifier 报错
+        _builder.CreateUnreachable();
+    }
+
+    // ===== okBB: 提取 T_ok =====
+    _builder.SetInsertPoint(okBB);
+    if (calleeRetType.empty()) {
+        return nullptr;  // void
+    }
+    return _builder.CreateExtractValue(callResult, {1}, "call.ok");
 }

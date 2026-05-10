@@ -51,6 +51,93 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
     
     auto retType = node->expr()->getType();
 
+    // ==================== #Fallible(E) 错误返回路径（DRAFT-错误.md [#10.A] / [#10.B]） ====================
+    // 当前 fn 标 #Fallible(E) 时，函数 LLVM 返回类型已被 wrapFallibleRetType 包成
+    //   { i1 isErr, T_ok?, ErrEnum }（10g-2）。本段处理 ret 的两条分流：
+    //   - ret expr，expr 类型 == declRetType  → 成功路径：构 { false, expr_val, zero(ErrEnum) }
+    //   - ret expr，expr 类型 == fallibleErr  → 错误路径：构 { true,  zero(T_ok), expr_val  }
+    //   - 都不匹配 → 复用既有 E3020
+    // 析构序与成功路径完全一致（[#10.B] U1）：构 retStruct 后调 callDestructorsForScope。
+    string fallibleErrName;
+    if (_currentFnNode && _currentFnNode->header()) {
+        if (auto e = _currentFnNode->header()->getAnnoArg("Fallible")) fallibleErrName = *e;
+    }
+    if (!fallibleErrName.empty()) {
+        // 灵活整数：成功通道按 declRetType 推断（与下方非 Fallible 路径同型）
+        if (hasDeclaredRetType && isIntTypeName(declRetType.name) && isFlexibleIntExpr(node->expr())) {
+            tryInferIntType(node->expr(), declRetType);
+            retType = node->expr()->getType();
+        }
+        bool isSuccess = hasDeclaredRetType && (retType == declRetType);
+        bool isError = (retType.name == fallibleErrName);
+        if (!isSuccess && !isError) {
+            int ln = node->getLineNumber();
+            if (ln < 0) ln = node->expr()->resolveLineNumber();
+            throw YuxError(ln, ErrorCode::E3020,
+                hasDeclaredRetType ? declRetType.getFullName() : string("void"),
+                retType.getFullName());
+        }
+        // 求值表达式（错误 / 成功通道复用现有 enum / value 求值路径）
+        llvm::Value* val = compileExpr(node->expr());
+
+        // Phase 8e: 同既有路径，先释放临时帧再构 retStruct + CreateRet
+        // 注意：成功路径若返回堆句柄，仍需 move-return retain；本段保留同样逻辑
+        bool didMoveRetainHandle = false;
+        if (isSuccess && hasDeclaredRetType) {
+            if (declRetType.isBox() || declRetType.isArrayGeneric() || declRetType.isWeak()) {
+                if (!isFreshHandleExpr(node->expr())) {
+                    retainHandleAtCallSite(val, declRetType);
+                } else {
+                    consumeTemp(val);
+                }
+                didMoveRetainHandle = true;
+            } else if (typeNeedsDestructor(declRetType) && isFreshHandleExpr(node->expr())) {
+                consumeTemp(val);
+            }
+        }
+        // 错误通道：ErrEnum payload 由 enum 构造路径自带 +1（[#10.C]），不重复 retain；
+        // 但 fresh enum value 需要 consumeTemp 避免双析构（与 success 同型）。
+        if (isError) {
+            if (typeNeedsDestructor(retType) && isFreshHandleExpr(node->expr())) {
+                consumeTemp(val);
+            }
+        }
+        if (!didMoveRetainHandle) {
+            if (auto litNode = dynamic_cast<ExprLiteralNode*>(node->expr())) {
+                if (auto objLit = dynamic_cast<LiteralObjNode*>(litNode->literal())) {
+                    auto varName = objLit->getValue().getText();
+                    _scopeVars.erase(std::remove(_scopeVars.begin(), _scopeVars.end(), varName), _scopeVars.end());
+                }
+            }
+        }
+
+        // 构 retStruct
+        TypeInfo successType = hasDeclaredRetType ? declRetType : TypeInfo();
+        auto retStructTy = getFallibleRetStructType(successType, fallibleErrName);
+        auto errLLVMTy = getLLVMType(TypeInfo(fallibleErrName));
+        llvm::Value* retStruct = llvm::UndefValue::get(retStructTy);
+        retStruct = _builder.CreateInsertValue(retStruct, _builder.getInt1(isError ? 1 : 0), {0});
+        unsigned errFieldIdx;
+        if (!successType.empty()) {
+            // T_ok 在字段 1，ErrEnum 在字段 2
+            auto okLLVMTy = getLLVMType(successType);
+            llvm::Value* okSlot = isSuccess ? val : llvm::Constant::getNullValue(okLLVMTy);
+            retStruct = _builder.CreateInsertValue(retStruct, okSlot, {1});
+            errFieldIdx = 2;
+        } else {
+            errFieldIdx = 1;
+        }
+        llvm::Value* errSlot = isError ? val : llvm::Constant::getNullValue(errLLVMTy);
+        retStruct = _builder.CreateInsertValue(retStruct, errSlot, {errFieldIdx});
+
+        popAndReleaseTempFrame();
+        pushTempFrame();
+        callDestructorsForScope();
+        _builder.CreateRet(retStruct);
+        DEBUG_LOG("    Created #Fallible return instruction");
+        return;
+    }
+
     // 返回 T&（spec §6.3.X / §8.6.X）：表达式上下文 T& 变量会自动解引用为 T，
     // 这里识别 T& 上下文并按"原始借用"路径取指针，跳过 RC / nullable 包装。
     if (hasDeclaredRetType && declRetType.isRef()) {
@@ -261,6 +348,22 @@ void Compiler::compileRetVoidStatement(p<StatementRetVoidNode> node) {
     popAndReleaseTempFrame();
     pushTempFrame();
     callDestructorsForScope();
+    // #Fallible(E) 函数体内 `ret;` 表示成功-void 通道（[#10.A] T_ok=void）：
+    // 构 { false, zero(ErrEnum) }（字段 0 = isErr, 字段 1 = ErrEnum）
+    string fallibleErrName;
+    if (_currentFnNode && _currentFnNode->header()) {
+        if (auto e = _currentFnNode->header()->getAnnoArg("Fallible")) fallibleErrName = *e;
+    }
+    if (!fallibleErrName.empty()) {
+        auto retStructTy = getFallibleRetStructType(TypeInfo(), fallibleErrName);
+        auto errLLVMTy = getLLVMType(TypeInfo(fallibleErrName));
+        llvm::Value* retStruct = llvm::UndefValue::get(retStructTy);
+        retStruct = _builder.CreateInsertValue(retStruct, _builder.getInt1(0), {0});
+        retStruct = _builder.CreateInsertValue(retStruct, llvm::Constant::getNullValue(errLLVMTy), {1});
+        _builder.CreateRet(retStruct);
+        DEBUG_LOG("    Created #Fallible void-success return instruction");
+        return;
+    }
     _builder.CreateRetVoid();
     DEBUG_LOG("    Created void return instruction");
 }

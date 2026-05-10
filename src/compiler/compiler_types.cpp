@@ -675,7 +675,39 @@ llvm::FunctionType* Compiler::getLLVMFunctionType(p<FnHeaderNode> header) {
     // 处理返回类型
     auto retType = header->retType();
     TypeInfo retTypeInfo = retType ? retType->getType() : TypeInfo();
-    auto llvmRetType = getLLVMType(retTypeInfo);
-    DEBUG_LOG_VAL("    return type", (retTypeInfo.empty() ? "void" : retTypeInfo.name));
+    // DRAFT-错误.md [#10.A]：#Fallible(E) 函数返回类型包成 { i1, T_ok?, ErrEnum }
+    string fallibleErr;
+    if (auto e = header->getAnnoArg("Fallible")) {
+        fallibleErr = *e;
+    }
+    auto llvmRetType = wrapFallibleRetType(retTypeInfo, fallibleErr);
+    DEBUG_LOG_VAL("    return type", (retTypeInfo.empty() ? "void" : retTypeInfo.name)
+        << (fallibleErr.empty() ? "" : (string(" #Fallible(") + fallibleErr + ")")));
     return llvm::FunctionType::get(llvmRetType, paramTypes, false);
+}
+
+// ==================== #Fallible 返回类型包装 ====================
+
+// 把 #Fallible(E) 函数的返回类型包成 { i1 isErr, T_ok?, ErrEnum }
+// 见 CURRENT.md 决议 [#10.A]：候选 A，anonymous struct 单返回值
+llvm::Type* Compiler::wrapFallibleRetType(const TypeInfo& retType, const string& errTypeName) {
+    if (errTypeName.empty()) {
+        // 普通函数 / 非 Fallible：保持原行为
+        return retType.empty() ? (llvm::Type*)_builder.getVoidTy() : getLLVMType(retType);
+    }
+    return getFallibleRetStructType(retType, errTypeName);
+}
+
+llvm::StructType* Compiler::getFallibleRetStructType(const TypeInfo& retType, const string& errTypeName) {
+    // ErrEnum 必为已声明 enum（10e 静态层已校 + E7011）；通过 TypeInfo 走 getLLVMType
+    auto errLLVMType = getLLVMType(TypeInfo(errTypeName));
+    vector<llvm::Type*> fields;
+    fields.push_back(_builder.getInt1Ty());                      // 字段 0：isErr
+    if (!retType.empty()) {
+        // 字段 1：T_ok（void 时省略，便于 LLVM 寄存器返回 + extractvalue 索引稳定）
+        // 注意：与参数传递不同，此处不做"按指针传"折叠——返回值按值聚合到 struct 内
+        fields.push_back(getLLVMType(retType));
+    }
+    fields.push_back(errLLVMType);                                // 字段 2 (或 1，T=void 时)：ErrEnum
+    return llvm::StructType::get(_context, fields);
 }
