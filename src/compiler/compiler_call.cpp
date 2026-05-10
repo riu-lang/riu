@@ -2389,8 +2389,30 @@ llvm::Value* Compiler::handleFallibleCallResult(
     auto okBB = llvm::BasicBlock::Create(_context, "fallible.ok", curFn);
     _builder.CreateCondBr(isErr, errBB, okBB);
 
-    // ===== errBB: 透传到外层 fn 错误返回 =====
+    // ===== errBB: 路由到 catch arm 或透传到外层 fn 错误返回 =====
     _builder.SetInsertPoint(errBB);
+
+    // 10g-5：try-catch 内调用路由
+    // 在最近一层 try 的 catchTypes 中查找匹配 callee err 的 arm；命中则
+    // 把 ErrEnum store 到该 arm 的 e alloca，跳到 arm entry BB（不退出当前 fn）
+    if (!_tryCatchStack.empty()) {
+        auto& tryCtx = _tryCatchStack.back();
+        for (size_t i = 0; i < tryCtx.catchTypes.size(); ++i) {
+            if (tryCtx.catchTypes[i] == calleeFallibleErr) {
+                unsigned errIdx = calleeRetType.empty() ? 1 : 2;
+                auto errVal = _builder.CreateExtractValue(callResult, {errIdx}, "call.err");
+                _builder.CreateStore(errVal, tryCtx.armEAllocas[i]);
+                _builder.CreateBr(tryCtx.armEntryBBs[i]);
+                // okBB 路径继续：提取 T_ok
+                _builder.SetInsertPoint(okBB);
+                if (calleeRetType.empty()) return nullptr;
+                return _builder.CreateExtractValue(callResult, {1}, "call.ok");
+            }
+        }
+        // 未命中：按 10f 静态校验 E7002，最近 try 必须覆盖；这里 fall-through 到透传
+        // （理论上不应到达；防御性兜底）
+    }
+
     string callerErr;
     TypeInfo callerRetType;
     if (_currentFnNode && _currentFnNode->header()) {
@@ -2399,8 +2421,6 @@ llvm::Value* Compiler::handleFallibleCallResult(
             callerRetType = _currentFnNode->header()->retType()->getType();
         }
     }
-    // TODO(10g-5): _tryCatchStack 非空时，errBB 应跳到匹配 catch arm entry，
-    // 而不是构外层 fn 错误 ret。当前先按透传处理（10e/10f 已校 ! 与 caller #Fallible 同类型）。
     if (!callerErr.empty()) {
         // 取出 callee 的 ErrEnum 字段；T_ok 是否存在决定 idx
         unsigned errIdx = calleeRetType.empty() ? 1 : 2;

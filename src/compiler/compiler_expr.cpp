@@ -2484,23 +2484,21 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
     return nullptr;
 }
 
-// Phase 10f：try-catch 表达式编译（DRAFT-错误.md [#4.H]）
+// Phase 10f / 10g：try-catch 表达式编译（DRAFT-错误.md [#4.H]）
 //
-// 仅做静态语义校验 + 占位 codegen：try block 内可失败调用错误的实际 IR 路由（错误通道
-// 检测 / 跳转到匹配 catch 子句）推 10g，与 #Fallible ABI 一并实施。
-//
-// 当前 codegen 行为（占位）：
-//   - 把 try block 当普通 block 编译，结果作为整体表达式值；
-//   - catch arms 不生成 IR（运行期不可达——错误通道未路由）；
-//   - 若用户在 try block 内对 #Fallible 函数发生实际调用，运行期会沿"成功"路径直走，
-//     错误 variant 写入返回值仍然走当前的成功通道—— 10g 落 IR 后才正确分流。
+// 10g-5/6 实施后，错误通道路由 + 表达式合并已落地：
+//   - 进入 try 前为每个 catch arm 预分配 entry BB + e alloca（类型 = arm errType 的 enum）
+//   - 把这些信息塞进 TryCatchCtx 推入 _tryCatchStack；compileCallExpr 内的
+//     handleFallibleCallResult 在 callee 返回 isErr=1 时按 callee 错误类型查 catchTypes，
+//     命中即 store ErrEnum 到 e alloca 后跳到对应 arm entry（不退出当前 fn）
+//   - try 成功路径末尾跳到 join；每个 arm body 末尾跳到 join（流终止 arm 不参与 phi）
+//   - 表达式结果通过 phi 在 join 合并
 //
 // 静态语义校验（[#4.H] 规则表 + [#5.B] 错误码）：
 //   - E7011：catch 类型必须是已声明 enum；
 //   - E7002：try block 内 callee 错误类型未被任一 catch 子句覆盖（穷尽性）；
 //   - E7010：catch arm body 末表达式类型与 try block 一致（流终止 arm 不参与）；
-//   - E7015 / E7016 / E7017 / E7018：警告类，编译器目前无独立 warning emit 通道，
-//     标 TODO；接入 spec §11 诊断分级落地后切换。
+//   - E7015 / E7016 / E7017 / E7018：警告类，TODO 接入诊断分级。
 //
 // 穷尽性收集策略（[#4.H] "穷尽性不下钻 lambda body"）：
 //   - 编译 try block 时把当前 try ctx 压入 _tryCatchStack；
@@ -2511,10 +2509,15 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
     int line = node->getLineNumber();
     int col = node->getColumn();
 
+    auto func = _builder.GetInsertBlock()->getParent();
+
     // 1) 校验所有 catch 子句的错误类型必须是已声明 enum（E7011）
-    //    收集 catch types 进 ctx.catchTypes 供穷尽性比对
+    //    同时为每个 arm 预分配 entry BB + e alloca
     TryCatchCtx ctx;
     ctx.catchTypes.reserve(node->catches().size());
+    ctx.armEntryBBs.reserve(node->catches().size());
+    ctx.armEAllocas.reserve(node->catches().size());
+
     for (auto& arm : node->catches()) {
         const string& errType = arm->errType();
         p<FileNode> owner = nullptr;
@@ -2526,62 +2529,92 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
                 arm->errName().getText(), errType, errType);
         }
         ctx.catchTypes.push_back(errType);
+
+        // 为 e 绑定分配 alloca（类型 = enum）；命名带 arm 错误名便于 IR 阅读
+        const string& bn = arm->errName().getText();
+        auto eAlloca = _builder.CreateAlloca(getLLVMType(TypeInfo(errType)),
+            nullptr, ("catch.e." + bn).c_str());
+        ctx.armEAllocas.push_back(eAlloca);
+
+        // arm entry BB 暂不插入 func；编译 arm body 时再 insert
+        auto armBB = llvm::BasicBlock::Create(_context, "catch.arm");
+        ctx.armEntryBBs.push_back(armBB);
     }
 
-    // 2) 编译 try block，期间 _tryCatchStack 顶为本 try 的 ctx
-    //    占位 codegen：直接 compileStatementBlock + 取 result expr value（与普通 block 等同）
+    // join BB（try 成功路径 + 各 arm 末尾汇合）
+    auto joinBB = llvm::BasicBlock::Create(_context, "trycatch.join");
+
+    // 2) 编译 try block，_tryCatchStack 顶为本 try 的 ctx
     _tryCatchStack.push_back(ctx);
     auto& tryBlock = node->tryBlock();
     for (auto& stmt : tryBlock->statements()) {
         compileStatement(stmt);
     }
-    llvm::Value* result = nullptr;
+
+    bool hasResult = tryBlock->hasResult();
     TypeInfo resultType;
-    if (tryBlock->hasResult()) {
-        result = compileExpr(tryBlock->resultExpr());
+    llvm::Value* tryResult = nullptr;
+    if (hasResult) {
         try { resultType = tryBlock->resultExpr()->getType(); } catch (...) {}
+        tryResult = compileExpr(tryBlock->resultExpr());
     }
-    // 取出收集到的 seenErrTypes 后再出栈
+
+    auto trySuccessEndBB = _builder.GetInsertBlock();
+
+    // 取出 seenErrTypes 后出栈
     TryCatchCtx finishedCtx = std::move(_tryCatchStack.back());
     _tryCatchStack.pop_back();
 
-    // 3) 穷尽性 E7002：seenErrTypes 中每个类型必须被某个 catch 子句的 errType 覆盖
+    // 3) 穷尽性 E7002
     for (auto& seen : finishedCtx.seenErrTypes) {
         bool covered = false;
         for (auto& ct : ctx.catchTypes) {
             if (ct == seen) { covered = true; break; }
         }
         if (!covered) {
-            // 触发位置：try block 末尾（更精确的 callee 行号需在 compileCallExpr 期间
-            // 记录，10g 实施时改用 per-call 行号）。措辞参数：{E}, {callee}, {E}
-            // callee 名暂取 "<unknown>"（需 compileCallExpr 配合存名字到 ctx，未来补）。
             throw YuxError(line, col, ErrorCode::E7002, seen, string("<unknown>"), seen);
         }
     }
 
-    // 4) E7015 / E7017：catch 子句多余 / try 块无可失败调用（warning，TODO 接入诊断通道）
-    //    E7016：try 内 ! 冗余（warning，已在 checkErrPropagateForIdCall 标 TODO）
-    //    E7018：catch arm 仅 panic（warning，TODO）
+    // 4) E7015 / E7017：警告类，TODO
 
-    // 5) 编译 catch arms（占位 codegen：当前实施层错误通道未路由，arm body 在运行期不可达；
-    //    但仍需编译以触发 body 内的语义检查 + 收集 arm 类型。10g IR 落地后会重写）
-    //    技巧：用 dead block，把 catch body 编译进去然后丢弃；以便：
-    //    - body 内的标识符 / 表达式触发语义检查（绑定符号已在 visitCatchArm 注册到 arm scope）
-    //    - E7010 catch body 末表达式类型对照 try block resultType
-    auto func = _builder.GetInsertBlock()->getParent();
-    auto savedBB = _builder.GetInsertBlock();
-    for (auto& arm : node->catches()) {
-        auto deadBB = llvm::BasicBlock::Create(_context, "catch.dead", func);
-        _builder.SetInsertPoint(deadBB);
-        // 编译 arm body 语句序列；若 body 末有 result expr，按 E7010 校验类型
+    // try 成功路径末尾跳 join（若未被流终止语句抢占 terminator）
+    vector<std::pair<llvm::Value*, llvm::BasicBlock*>> phiIncoming;
+    if (!trySuccessEndBB->getTerminator()) {
+        if (hasResult && tryResult) {
+            phiIncoming.emplace_back(tryResult, trySuccessEndBB);
+        }
+        _builder.SetInsertPoint(trySuccessEndBB);
+        _builder.CreateBr(joinBB);
+    }
+
+    // 5) 编译每个 catch arm
+    auto resultLLVMType = hasResult ? getLLVMType(resultType) : nullptr;
+
+    for (size_t i = 0; i < node->catches().size(); ++i) {
+        auto& arm = node->catches()[i];
+        auto armBB = ctx.armEntryBBs[i];
+        func->insert(func->end(), armBB);
+        _builder.SetInsertPoint(armBB);
+
+        // 注册 e 绑定到 _localVarPtrs（CatchArmNode 在 ast_builder 阶段已注册符号到 ScopeNode）
+        const string& bn = arm->errName().getText();
+        auto pit = _localVarPtrs.find(bn);
+        bool hadPtr = (pit != _localVarPtrs.end());
+        llvm::Value* prevPtr = hadPtr ? pit->second : nullptr;
+        _localVarPtrs[bn] = ctx.armEAllocas[i];
+
+        // 编译 arm body 语句序列
         for (auto& stmt : arm->body()->statements()) {
             compileStatement(stmt);
         }
+
+        llvm::Value* armResult = nullptr;
         if (arm->body()->hasResult()) {
             // E7010：arm result 表达式类型 == try block result 类型
             try {
                 auto armT = arm->body()->resultExpr()->getType();
-                if (tryBlock->hasResult() && armT != resultType) {
+                if (hasResult && armT != resultType) {
                     int aline = arm->getLineNumber() > 0 ? arm->getLineNumber() : line;
                     int acol = arm->getColumn() > 0 ? arm->getColumn() : col;
                     throw YuxError(aline, acol, ErrorCode::E7010,
@@ -2589,12 +2622,41 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
                 }
             } catch (const YuxError&) { throw; }
               catch (...) {}
-            compileExpr(arm->body()->resultExpr());
+            armResult = compileExpr(arm->body()->resultExpr());
         }
-        // 标 unreachable 让 dead block 合法收尾（10g 改为真正的错误路径返回）
-        _builder.CreateUnreachable();
-    }
-    _builder.SetInsertPoint(savedBB);
 
-    return result;
+        auto armEndBB = _builder.GetInsertBlock();
+
+        // 还原 _localVarPtrs（CatchArmNode 自身的符号 entry 由 ScopeNode 持有，无需手动撤）
+        if (hadPtr) _localVarPtrs[bn] = prevPtr;
+        else _localVarPtrs.erase(bn);
+
+        // 跳 join（若未被流终止抢占 terminator）
+        if (!armEndBB->getTerminator()) {
+            if (hasResult && armResult) {
+                phiIncoming.emplace_back(armResult, armEndBB);
+            }
+            _builder.CreateBr(joinBB);
+        }
+    }
+
+    // 6) join BB
+    func->insert(func->end(), joinBB);
+    _builder.SetInsertPoint(joinBB);
+
+    // 表达式合并：若有结果，phi；若所有路径都流终止，joinBB 不可达
+    if (hasResult && !phiIncoming.empty()) {
+        auto phi = _builder.CreatePHI(resultLLVMType,
+            static_cast<unsigned>(phiIncoming.size()), "trycatch.result");
+        for (auto& inc : phiIncoming) {
+            phi->addIncoming(inc.first, inc.second);
+        }
+        return phi;
+    }
+    if (hasResult) {
+        // 所有分支都流终止，joinBB 不可达；emit unreachable 防 verifier
+        _builder.CreateUnreachable();
+        return llvm::UndefValue::get(resultLLVMType);
+    }
+    return nullptr;
 }

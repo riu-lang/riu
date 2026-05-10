@@ -141,6 +141,11 @@ public:
         // try block 内实际遇到的可失败调用的错误类型集合（compileCallExpr 在编译每个
         // 调用时按 callee 的 fallibleErrType 追加；穷尽性 E7002 / 多余 E7015 据此判定）
         vector<string> seenErrTypes;
+        // 10g-5: 路由所需的 per-arm 信息（与 catchTypes 一一对应）
+        // armEntryBBs[i] = 第 i 个 catch 子句的入口 BB（错误命中时跳到此处）
+        // armEAllocas[i] = 第 i 个 catch 子句 e 绑定的 alloca（错误时先 store ErrEnum）
+        vector<llvm::BasicBlock*> armEntryBBs;
+        vector<llvm::Value*> armEAllocas;
     };
     vector<TryCatchCtx> _tryCatchStack;
 
