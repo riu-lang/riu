@@ -620,7 +620,11 @@ IRResult compileSdkDir(string sdkDir, Yux& yux) {
         reportRuntimeError(yuxFile, e, "Error in SDK file " + yuxFile + ": ");
     };
 
-    // 第一遍：平铺文件 → 合并入 _sdkFile，Compiler isSdk=true 顺带发出运行时辅助
+    // 第一遍：平铺文件 → 合并入 _sdkFile。
+    // 先把所有平铺文件的 AST 累加进 _sdkFile，然后再做一次性 IR 编译。
+    // 旧版本是「每文件 parse + compile 一次」：因为 _sdkFile 是单例，每次 compile
+    // 都会把已经处理过的文件的函数再编一遍，触发 LLVM 「bad signature」断言。
+    p<FileNode> sdkAst;
     for (const auto& yuxFile : yuxFiles) {
         string stem = fs::path(yuxFile).stem().string();
         auto it = pkgMap.find(stem);
@@ -645,11 +649,20 @@ IRResult compileSdkDir(string sdkDir, Yux& yux) {
         }
         ASTBuilder astBuilder(yux, "yux.core", true);
         try {
-            auto ast = astBuilder.build(program);
-            Compiler compiler(*context, builder, module.get(), ast, &yux, true);
-            compiler.compile(ast);
+            sdkAst = astBuilder.build(program);  // 始终返回 _sdkFile（单例）
         } catch (runtime_error& e) {
             reportErr(yuxFile, e);
+            exit(1);
+        }
+    }
+
+    // 平铺文件累加完成后，用合并后的 _sdkFile 一次性发射 IR（含运行时辅助）。
+    if (sdkAst) {
+        try {
+            Compiler compiler(*context, builder, module.get(), sdkAst, &yux, true);
+            compiler.compile(sdkAst);
+        } catch (runtime_error& e) {
+            reportErr("(sdk flat compile)", e);
             exit(1);
         }
     }
