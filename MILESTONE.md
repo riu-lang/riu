@@ -85,7 +85,32 @@
 
 - **性能与 layout 优化**：String 专属 FAM Block（`{strong, weak, len_cps, u32 data[]}`）；Array Block 内联小尺寸优化；内联策略与裁剪；基准测试无回归。
 
-### v0.9 — 错误模型 v1 ✅ 已完成（2026-05-10）
+### v0.10 — 工具链：IDE 同步 + Formatter AST 重写 ✅ 已完成（2026-05-10）
+
+**主题**：把 v0.9 落地的语言新形态补齐到所有外围通道（高亮 / 语义 token / 格式化），同时把启发式 token-流 formatter 推倒、换成 AST 驱动的 Doc IR 引擎。这版纯工具链，不动语言面。
+
+**范围（达成情况）**：
+
+- ✅ **IDE / LSP / 高亮同步（v0.9 语法）**：
+  - LSP 关键字与 semantic token：Try / Catch 入关键字集；enum / enumMember 两个 token type；EnumDecl / EnumVariant / ExprEnumCtor / PatternEnum / CatchArm 全覆盖；TypeNormalWithRef / TypeGenericWithRef 显式覆盖
+  - VSCode tmLanguage：try / catch 关键字、`E::V` 模式、`::` accessor、`!` 错误传播
+  - IntelliJ 插件：ENUM / ENUM_MEMBER 颜色键
+- ✅ **Formatter AST 重写**（取代 `src/tools/formatter.cpp` 的 token 流启发式）：
+  - 新引擎 `src/tools/format/{doc,trivia,render,printer}` —— Wadler/Prettier 风简化 best-layout（Group 试 flat / 不 fits 走 break），HIDDEN 通道 trivia 预扫描映射回输出
+  - printer 节点级覆盖：program 顶层（imports / cval / aliasDecl / fn / externDelc）；类型全套（type / typeWithRef × Normal / Generic / Nullable / Array / Tuple / Fn）；fnHeader / fnBody；表达式内联形态（literal / paren / unary / binary 全档 / dot / tupleMember / get / getRef / call / array / tuple / arrayInit / enumCtor / lambdaSingle / lambdaParen / `$`）；语句 9 种全套（Declare / DeclareAssign / DeclareAssignTuple / Set / Loop / Assign / Expr / Ret / RetVoid / Break）；statementBlock 内的空行 / leading / trailing 注释
+  - 多行 / 块形 expr（lambdaBlock / tryCatch / match / ifElse / 尾随 lambda 等）走"按原起始列 → 目标列整体平移"的 raw 回退，正确性优先
+  - CLI `--format-engine` 选项整体下线；`yux::Formatter` 整文件删除；`formatter.h` 仅留 FormatConfig；LSP `handleFormatting` 切到 `yux::format::formatAst`
+  - `tests/cases/format_*.yux` + `.expected_format` 7 个回归用例（basic / generic / fn_type / lambda / enum / tuple / call_chain）；`tests/xmake.lua` 加 `yux/format` 分组
+
+**不在范围**：
+
+- 块形 expr（try-catch / match / if-else / 块 lambda）的"内层结构化"渲染——当前由"语句多行 → raw + reindent"覆盖正确性，但还未按节点细化布局
+- formatter 的 line-width 折行决策（Group 框架已就绪，尚未在节点实装；当前所有结构化输出按单行直出，过宽不主动断行）
+- pretty-print 风的对齐 / 列对齐 / 注释列尾对齐
+
+**退出标准**：✅ 全仓 159 个 .yux ast round-trip 仅剩有意的格式化规则差异（4-space → 2-space、行尾注释空格规整为 2、triple-blank → double-blank）；`xmake test` 98/98（含 7 个新 format 用例）+ `cd sdk/yux && yux test` 274/274 全绿。
+
+
 
 **主题**：把"函数失败"作为一等模型纳入语言：值返回通道 + 注解声明 + 后缀传播 + try-catch 跨类型适配 + panic 终止；不引入异常 / unwind。
 

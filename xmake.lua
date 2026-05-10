@@ -2,7 +2,7 @@
 -- MPL-2.0
 
 set_project("yux-lang")
-set_version("0.9.0")
+set_version("0.10.0")
 set_languages("c++23")
 
 add_rules("mode.debug", "mode.release")
@@ -163,7 +163,10 @@ target("yux_frontend")
         "src/ast/ast_builder.cpp",
         "src/ast/yux.cpp",
         "src/tools/diagnostic.cpp",
-        "src/tools/formatter.cpp",
+        "src/tools/format/doc.cpp",
+        "src/tools/format/trivia.cpp",
+        "src/tools/format/render.cpp",
+        "src/tools/format/printer.cpp",
         "src/tools/syntax_error_listener.cpp",
         "src/ast/mangler.cpp",
         "src/tools/build_cache.cpp",

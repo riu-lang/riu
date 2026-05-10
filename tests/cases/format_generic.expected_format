@@ -1,0 +1,10 @@
+; 泛型形参 / 实参 / 边界规整
+fn make<T : ToString, U>(a Box<T>, b U) i32 {
+  println(a.to_string())
+  1
+}
+
+fn alias<T, U>() i32 {
+  var arr [Box<T> * 4]
+  4
+}

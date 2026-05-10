@@ -32,12 +32,14 @@ enum class TT : int {
     Method = 10,
     Metadata = 11,
     Interface = 12,
+    Enum = 13,
+    EnumMember = 14,
 };
 
 const std::vector<std::string> kTypes = {
     "keyword", "operator", "string", "number", "comment",
     "variable", "class", "function", "property", "parameter", "method", "metadata",
-    "interface",
+    "interface", "enum", "enumMember",
 };
 const std::vector<std::string> kModifiers = {
     "declaration",
@@ -58,10 +60,10 @@ int classify(size_t type) {
             return static_cast<int>(TT::Comment);
 
         case L::Cval:
-        case L::Break: case L::DeclKey: case L::Draft: case L::Elif: case L::Else:
+        case L::Break: case L::Catch: case L::DeclKey: case L::Draft: case L::Elif: case L::Else:
         case L::Enum: case L::Extern: case L::False: case L::Fn: case L::If:
         case L::Loop: case L::Match: case L::Null: case L::Ret: case L::Struct:
-        case L::True: case L::Use:
+        case L::True: case L::Try: case L::Use:
             return static_cast<int>(TT::Keyword);
 
         // 仅着色"真正的运算符"，逗号/分号/点/括号留默认色
@@ -183,6 +185,35 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
         if (auto* term = c->ID()) put(out, term->getSymbol(), TT::Class, 0);
     } else if (auto* c = dynamic_cast<P::TypeGenericContext*>(node)) {
         if (auto* term = c->ID()) put(out, term->getSymbol(), TT::Class, 0);
+    } else if (auto* c = dynamic_cast<P::TypeNormalWithRefContext*>(node)) {
+        // 函数参数 / 返回类型的 typeWithRef 入口；之前漏覆盖导致 i32 等被当 Variable
+        if (auto* term = c->ID()) put(out, term->getSymbol(), TT::Class, 0);
+    } else if (auto* c = dynamic_cast<P::TypeGenericWithRefContext*>(node)) {
+        if (auto* term = c->ID()) put(out, term->getSymbol(), TT::Class, 0);
+    // TypeNullable / TypeArray / TypeTuple / TypeFn 及对应 WithRef 变体本身不持有
+    // 顶层 ID（仅是结构容器），其内部嵌套的 type / typeWithRef 由父级遍历递归覆盖
+    } else if (auto* c = dynamic_cast<P::AliasDeclContext*>(node)) {
+        // 类型别名 `Name = T` / `Pair<T> = (T, T)`：左侧名字按用户类型染色
+        if (auto* term = c->ID()) put(out, term->getSymbol(), TT::Class, MOD_DECLARATION);
+    } else if (auto* c = dynamic_cast<P::EnumDeclContext*>(node)) {
+        // enum E { ... } 的 E 染成枚举名
+        if (c->name) put(out, c->name, TT::Enum, MOD_DECLARATION);
+    } else if (auto* c = dynamic_cast<P::EnumVariantContext*>(node)) {
+        // 一行一个 variant 名，染成 enumMember
+        if (c->name) put(out, c->name, TT::EnumMember, MOD_DECLARATION);
+        // payloads 是 type 列表，递归覆盖
+    } else if (auto* c = dynamic_cast<P::ExprEnumCtorContext*>(node)) {
+        // 引用位 E::V / E::V(args)
+        if (c->enumName) put(out, c->enumName, TT::Enum, 0);
+        if (c->variant) put(out, c->variant, TT::EnumMember, 0);
+    } else if (auto* c = dynamic_cast<P::PatternEnumContext*>(node)) {
+        // match 模式 E::V(a, b)：a/b 是新引入绑定，按 Parameter 染色
+        if (c->enumName) put(out, c->enumName, TT::Enum, 0);
+        if (c->variant) put(out, c->variant, TT::EnumMember, 0);
+        for (auto* tok : c->binds) put(out, tok, TT::Parameter, MOD_DECLARATION);
+    } else if (auto* c = dynamic_cast<P::CatchArmContext*>(node)) {
+        // catch err T { ... } 中的 err 是绑定参数；T 走 type 递归
+        if (c->err) put(out, c->err, TT::Parameter, MOD_DECLARATION);
     } else if (auto* c = dynamic_cast<P::ExprCallContext*>(node)) {
         if (auto* dot = dynamic_cast<P::ExprDotContext*>(c->left)) {
             // x.y() / a.b.c() —— 末尾 member 改 method

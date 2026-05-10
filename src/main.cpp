@@ -47,6 +47,7 @@
 #include "tools/pkg_cache.h"
 #include "tools/diagnostic.h"
 #include "tools/formatter.h"
+#include "tools/format/printer.h"
 #include "tools/syntax_error_listener.h"
 #include "utf8.h"
 #include "yux/yuxLexer.h"
@@ -970,6 +971,7 @@ int wmain(int argc, wchar_t* argv[]) {
     formatCmd->add_flag("--stdin", formatStdin, "Read from stdin instead of file");
     int formatLineWidth = 0;  // 0 表示使用默认值或从 yux.toml 读取
     formatCmd->add_option("--line-width", formatLineWidth, "Line width threshold (default: 120)");
+    // 只剩 ast 引擎；旧 token 流 Formatter 已删除
 
     CLI11_PARSE(app, argc, argv);
 
@@ -1071,7 +1073,8 @@ int wmain(int argc, wchar_t* argv[]) {
                 searchDir = fs::current_path();
             }
             
-            // 向上查找 yux.toml
+            // 向上查找 yux.toml；用 prev 比较防止根目录 parent_path() 等于自身
+            // 时陷入死循环（Windows `C:\` 的 parent_path 在某些实现下仍是 `C:\`）
             while (!searchDir.empty()) {
                 fs::path tomlPath = searchDir / "yux.toml";
                 if (fs::exists(tomlPath)) {
@@ -1090,17 +1093,14 @@ int wmain(int argc, wchar_t* argv[]) {
                         // 解析失败，使用默认配置
                     }
                 }
-                if (searchDir.has_parent_path()) {
-                    searchDir = searchDir.parent_path();
-                } else {
-                    break;
-                }
+                fs::path parent = searchDir.parent_path();
+                if (parent.empty() || parent == searchDir) break;
+                searchDir = parent;
             }
         }
         
         try {
-            yux::Formatter formatter(source, config);
-            std::string formatted = formatter.format();
+            std::string formatted = yux::format::formatAst(source, config);
             
             if (formatInPlace && !filePath.empty()) {
                 std::ofstream outFile(filePath);

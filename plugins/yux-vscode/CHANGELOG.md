@@ -4,6 +4,27 @@ All notable changes to the "yux-vscode" extension will be documented in this fil
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.7.0]
+
+- 同步 v0.9 语法 + 修复参数 / 返回类型颜色丢失
+  - 关键字补 `try` / `catch`
+  - `E::V` 枚举构造 / 模式：左侧识别为枚举名（`entity.name.type.enum`），右侧识别为
+    枚举成员（`variable.other.enummember`）；新增 `::` 路径访问符
+  - 错误传播 `e()!` 单独命名为 `keyword.operator.error-propagate.yux`，便于配色
+- LSP 侧：参数 / 返回 / 字段 / 局部变量声明里的类型（含 `i32` / `Box<T>` / `T?` /
+  `[T*N]` / `(T1, T2)` / `fn(...) R` 各形态）现在能正确染色，不再降级为 variable
+- LSP 侧新增 `enum` / `enumMember` 两个 semantic token type，覆盖 enum 声明、
+  variant、`E::V` 引用与 match 模式
+- LSP：类型别名 `Pair<T> = (T, T)` 左侧名字现在按用户类型染色，不再降级为 variable
+- 编译器附带：formatter `isKeyword` 补齐 `try` / `catch` / `match` / `draft` /
+  `enum` / `cval`，修复这些关键字与后续 token 之间漏空格的问题
+- LSP 补全：补齐 `try` / `catch` 关键字；新增 `try` / `match` / `enum` snippet
+- 编译器附带：formatter 修复
+    - 泛型 `Pair<T>` / `Box<Map<i32, String>>` 不再被改成 `Pair < T >` 这种带空格
+      形态；同时 `a < b` 比较仍正确加空格（按源码里 `<` 是否紧贴前一 token 区分）
+    - `=` / `,` / 关键字 后跟 `(` 现在会补空格：`var a = (1, 2)` 不再被压成 `=(1, 2)`
+    - `yux format <file>` CLI 在向上找 `yux.toml` 时遇到根目录会无限循环，已修
+
 ## [0.6.1]
 
 - 添加`match` `enum` 关键字

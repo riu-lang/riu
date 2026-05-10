@@ -48,6 +48,8 @@ const std::vector<CompletionItem>& buildItems() {
         kw("break", "跳出循环");
         kw("use", "导入模块");
         kw("extern", "外部声明");
+        kw("try", "try 块（错误处理）");
+        kw("catch", "catch 分支（错误处理）");
 
         // TYPES
         ty("i8",  "8位有符号整数");
@@ -129,6 +131,15 @@ const std::vector<CompletionItem>& buildItems() {
         sn("loop", "循环模板",
            "loop {\n\t${1:body}\n\tif ${2:condition} {\n\t\tbreak;\n\t}\n}",
            "创建一个循环");
+        sn("try", "try-catch 模板",
+           "try {\n\t${1:body}\n} catch ${2:e} ${3:Err} {\n\t${4:handler}\n}",
+           "创建一个 try-catch 错误处理块");
+        sn("match", "match 模板",
+           "match ${1:expr} {\n\t${2:Pattern} => ${3:result}\n\telse => ${4:default}\n}",
+           "创建一个 match 模式匹配");
+        sn("enum", "enum 声明模板",
+           "enum ${1:Name} {\n\t${2:Variant1}\n\t${3:Variant2}(${4:T})\n}",
+           "创建一个 enum 声明");
 
         return v;
     }();

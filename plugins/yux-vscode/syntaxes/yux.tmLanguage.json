@@ -9,6 +9,7 @@
     { "include": "#keywords" },
     { "include": "#codepoints" },
     { "include": "#strings" },
+    { "include": "#enum-ctor" },
     { "include": "#tuple-member" },
     { "include": "#numbers" },
     { "include": "#operators" },
@@ -116,6 +117,10 @@
           "match": "\\bret\\b"
         },
         {
+          "name": "keyword.control.exception.yux",
+          "match": "\\b(try|catch)\\b"
+        },
+        {
           "name": "keyword.declaration.yux",
           "match": "\\bfn\\b"
         },
@@ -172,6 +177,20 @@
               "match": "\\\\."
             }
           ]
+        }
+      ]
+    },
+    "enum-ctor": {
+      "patterns": [
+        {
+          "comment": "枚举构造 / 模式：E::V，左侧染枚举名，右侧染 variant",
+          "name": "meta.enum.constructor.yux",
+          "match": "\\b([A-Z][a-zA-Z0-9_]*)(::)([A-Za-z_][A-Za-z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "entity.name.type.enum.yux" },
+            "2": { "name": "punctuation.accessor.path.yux" },
+            "3": { "name": "variable.other.enummember.yux" }
+          }
         }
       ]
     },
@@ -250,6 +269,11 @@
           "match": "\\.\\.\\.|\\.\\."
         },
         {
+          "comment": "错误传播 e()! —— 单独命名以便配色",
+          "name": "keyword.operator.error-propagate.yux",
+          "match": "(?<=[\\w\\)\\]])!"
+        },
+        {
           "name": "keyword.operator.other.yux",
           "match": "[!?]"
         }
@@ -272,6 +296,10 @@
         {
           "name": "punctuation.separator.comma.yux",
           "match": ","
+        },
+        {
+          "name": "punctuation.accessor.path.yux",
+          "match": "::"
         },
         {
           "name": "punctuation.accessor.dot.yux",

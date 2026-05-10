@@ -62,6 +62,8 @@ class YuxColorSettingsPage : ColorSettingsPage {
             AttributesDescriptor("结构体字段", YuxColors.PROPERTY),
             AttributesDescriptor("结构体/类型", YuxColors.CLASS),
             AttributesDescriptor("接口 (draft)", YuxColors.INTERFACE),
+            AttributesDescriptor("枚举",        YuxColors.ENUM),
+            AttributesDescriptor("枚举成员",    YuxColors.ENUM_MEMBER),
             AttributesDescriptor("函数声明",    YuxColors.FUNCTION_DECLARATION),
             AttributesDescriptor("函数调用",    YuxColors.FUNCTION_CALL),
             AttributesDescriptor("方法 / 构造", YuxColors.METHOD),

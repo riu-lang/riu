@@ -18,7 +18,7 @@
 #include "semantic_tokens.h"
 #include "workspace.h"
 #include "symbol_lookup.h"
-#include "tools/formatter.h"
+#include "tools/format/printer.h"
 #include "ast/node/file_node.h"
 #include "ast/node/fn_node.h"
 #include "ast/node/struct_node.h"
@@ -275,8 +275,7 @@ static void handleFormatting(ServerState& st, const json& msg) {
     }
     std::string formatted;
     try {
-        ::yux::Formatter f(doc->text());
-        formatted = f.format();
+        formatted = ::yux::format::formatAst(doc->text(), {});
     } catch (const std::exception& e) {
         sendError(id, -32603, std::string("formatter error: ") + e.what());
         return;

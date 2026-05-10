@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "org.yux"
-version = "0.2.2-SNAPSHOT"
+version = "0.3.0-SNAPSHOT"
 
 // Set the JVM language level used to build the project.
 kotlin {

@@ -1,0 +1,11 @@
+; 调用 / 链式 / 索引
+fn main() i32 {
+  var x i32 = foo(1,2)
+  var y i32 = obj.bar(3,4)
+  var z i32 = arr[0,1]
+  x + y + z
+}
+
+fn foo(a i32, b i32) i32 {
+  a + b
+}

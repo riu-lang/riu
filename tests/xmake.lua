@@ -6,6 +6,8 @@
 -- 每个 tests/cases/*.yux 配对一个 *.expected：
 --   - cases/*.yux            编译应成功；运行产物 .exe，stdout 需与 .expected 完全一致
 --   - cases/diag_*.yux       编译应失败；配对 *.expected_err，逐行子串匹配 stderr
+--   - cases/format_*.yux     格式化用例；配对 *.expected_format，
+--                            `yux format <case>` 的 stdout 需与 expected 完全一致（CRLF 归一）
 --   - cases/error/*.yux      编译应失败；.expected 内容仅作占位（约定 "error"）
 --
 -- 项目级用例：tests/projects/<case>/ 下包含 yux.toml + 入口源文件 + expected.txt。
@@ -42,6 +44,7 @@ local projects_dir = path.join(os.scriptdir(), "projects")
 -- 此时应优先重命名用例（保持前缀约定），而不是在这里加白名单。
 local function categorize(name)
     if name:startswith("project_") then return "yux/project" end
+    if name:startswith("format_")  then return "yux/format"  end
     if name:startswith("diag_")    then return "yux/diag"    end
     if name:startswith("borrow_")  then return "yux/borrow"  end
     if name:startswith("ptr_") or name == "extern_ptr_auto" then
@@ -57,6 +60,8 @@ local function list_case_names()
         if os.isfile((f:gsub("%.yux$", ".expected"))) then
             r[path.basename(f)] = true
         elseif os.isfile((f:gsub("%.yux$", ".expected_err"))) then
+            r[path.basename(f)] = true
+        elseif os.isfile((f:gsub("%.yux$", ".expected_format"))) then
             r[path.basename(f)] = true
         end
     end
@@ -84,6 +89,7 @@ target("yux_tests")
         for _, f in ipairs(os.files(path.join(cd, "*.yux"))) do
             local exp = f:gsub("%.yux$", ".expected")
             local exp_err = f:gsub("%.yux$", ".expected_err")
+            local exp_fmt = f:gsub("%.yux$", ".expected_format")
             if os.isfile(exp) then
                 cases[path.basename(f)] = {file = path.absolute(f)}
             elseif os.isfile(exp_err) then
@@ -91,6 +97,12 @@ target("yux_tests")
                     file = path.absolute(f),
                     expected_err_file = path.absolute(exp_err),
                     is_diag = true,
+                }
+            elseif os.isfile(exp_fmt) then
+                cases[path.basename(f)] = {
+                    file = path.absolute(f),
+                    expected_format_file = path.absolute(exp_fmt),
+                    is_format = true,
                 }
             end
         end
@@ -171,6 +183,41 @@ target("yux_tests")
                 return false
             end
             os.tryrm(build_dir)
+            return true
+        end
+
+        if entry.is_format then
+            -- 格式化用例：调 `yux format <case>`，stdout 与 expected_format 完全一致
+            local stdout_data, stderr_data
+            local ok = try {
+                function ()
+                    stdout_data, stderr_data = os.iorunv(yux_exe, {"format", entry.file})
+                    return true
+                end,
+                catch {
+                    function (errs)
+                        stderr_data = tostring(errs)
+                        return nil
+                    end
+                }
+            }
+            opt.stdout = stdout_data
+            opt.stderr = stderr_data
+            if not ok then
+                opt.errors = "format invocation failed: " .. entry.file .. "\n" .. tostring(stderr_data or "")
+                return false
+            end
+
+            local expected = io.readfile(entry.expected_format_file) or ""
+            -- CRLF 归一：Windows 的 yux 进程 stdout 可能带 \r；expected 文件也可能含 \r
+            local function strip_cr(s) return (s:gsub("\r", "")) end
+            local actual_n = strip_cr(stdout_data or "")
+            local expected_n = strip_cr(expected)
+            if actual_n ~= expected_n then
+                opt.errors = format("format output mismatch for %s\n--- expected ---\n%s\n--- actual ---\n%s",
+                                    entry.file, expected_n, actual_n)
+                return false
+            end
             return true
         end
 
