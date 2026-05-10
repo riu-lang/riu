@@ -43,6 +43,9 @@ struct FnSymbolInfo {
     TypeInfo retType;
     bool isPrivate = false;
     bool isExternal = false;
+    // DRAFT-错误.md §8.3 / spec §11.5.1：该函数声明带 `#NoReturn` 注解，
+    // 调用点视为流终止节点（用于 §4.9.1.4 / §4.9.3.5 arm 排除及 E7014 检查）。
+    bool isNoReturn = false;
 
     FnSymbolInfo() = default;
     FnSymbolInfo(string n, string mod, vector<TypeInfo> p, TypeInfo r)

@@ -14,6 +14,7 @@
 
 #include "compiler.h"
 #include "analyzer/borrow_checker.h"
+#include "analyzer/flow_terminate_checker.h"
 #include "runtime/ctor_daa.h"
 #include "ast/mangler.h"
 #include "ast/node/fn_node.h"
@@ -541,6 +542,9 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
     // Phase 4d: 借用静态检查（寿命 + 根对象重赋禁）
     checkBorrows(node);
 
+    // Phase 10d-2：`#NoReturn` 流终止分析（E7014，DRAFT-错误.md §8.3）
+    checkFlowTerminate(node);
+
     // 创建入口基本块
     llvm::BasicBlock* entry = llvm::BasicBlock::Create(_context, "entry", func);
     _builder.SetInsertPoint(entry);
@@ -610,6 +614,9 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
 
     // Phase 4d: 借用静态检查
     checkBorrows(node, structName);
+
+    // Phase 10d-2：`#NoReturn` 流终止分析（E7014）
+    checkFlowTerminate(node);
 
     DEBUG_LOG_VAL("  Method params count", node->header()->params().size());
     DEBUG_LOG_VAL("  LLVM args count", func->arg_size());

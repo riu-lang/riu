@@ -11,6 +11,7 @@
 ; TODO(panic stderr)：spec §8.6 要求 panic 模板写 stderr，当前 SDK 仅有
 ; _stdout_write；待 STD_ERROR_HANDLE 通道接通后切走 stdout。
 
+#NoReturn
 fn _yux_panic_failed(msg String) {
   print("panic: ")
   println(msg)

@@ -10,6 +10,9 @@
 ; 后者触发自定义 SEH 异常码 0xE0FA17ED；yux test 的 SEH wrapper 翻译为 ASSERT_FAILED。
 
 extern {
+  ; #NoReturn：从 yux 视角控制流不返回——普通 build 由 OS 终止，
+  ; #Test runner 由其 C++ SEH wrapper 接走（不会回到 yux 帧）。
+  #NoReturn
   fn RaiseException(dwExceptionCode u32, dwExceptionFlags u32, nNumberOfArguments u32, lpArguments Ptr)
 }
 

@@ -298,6 +298,13 @@ DEF_ERR(6044, "push requires 1 argument")
 // 内置算子方法 arity（plus / minus / ... 共用同一模板）
 DEF_ERR(6045, "{} requires 1 argument")
 
+// ── E7xxx 错误模型 / panic（DRAFT-错误.md） ─────────────────────────────
+// 附录 D §D.3.7 之后段位；E7001-E7014 默认 Error，E7015-E7018 默认 Warning（Phase 10d+ 启用）
+// E7012 / E7013 / E7014 由 Phase 10d 启用；其余诊断码留 10e / 10f
+DEF_ERR(7012, "`#NoReturn` function `{}` cannot declare a return type — remove the return type or remove `#NoReturn`")
+DEF_ERR(7013, "`#NoReturn` and `#Fallible({})` are mutually exclusive on the same function — a non-returning function cannot also propagate errors")
+DEF_ERR(7014, "`#NoReturn` function `{}` may reach end of body — control flow must terminate via `panic`-class call, another `#NoReturn` call, or unconditional infinite loop")
+
 #undef DEF_ERR
 #undef DEF_WARN
 #undef DEF_NOTE

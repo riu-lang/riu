@@ -5,12 +5,8 @@
 extern {
   fn GetStdHandle(nStdHandle i32) Ptr
   fn WriteFile(hFile Ptr, lpBuffer Ptr, nNumberOfBytesToWrite u32, lpNumberOfBytesWritten Ptr, lpOverlapped Ptr) i32
+  #NoReturn
   fn ExitProcess(uExitCode u32)
-}
-
-; 进程终止：用于 Nullable.get() 等运行时强制检查失败时
-fn _exit(code i32) {
-  ExitProcess(code.to_u32());
 }
 
 ; 全局常量
@@ -1238,10 +1234,10 @@ Nullable<T> {
   ; 是否持有值
   fn has() bool = $._has
 
-  ; 取值。空时调用 _exit(1) 终止进程（语言尚无 panic 设施）
+  ; 取值。空时调用 exit(1) 终止进程（语言尚无 panic 设施）
   fn get() T {
     if !$._has {
-      _exit(1i32);
+      exit(1);
     }
     $._value
   }

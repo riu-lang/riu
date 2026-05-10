@@ -129,6 +129,47 @@ AnnoList collectAnnosNonFn(const AnnoVec& annos) {
     return out;
 }
 
+// 用于 extern 块内 fnHeader：允许 `CompilerInner` 与 `#NoReturn`（DRAFT-错误.md §8.3）。
+// `#Fallible` 在 extern 上仍被推迟（[#7]），不在白名单。
+const set<string>& externFnAllowedAnnos() {
+    static const set<string> s = {"CompilerInner", "NoReturn"};
+    return s;
+}
+
+template<typename AnnoVec>
+AnnoList collectAnnosExternFn(const AnnoVec& annos) {
+    AnnoList out = collectAnnos(annos);
+    for (size_t i = 0; i < out.names.size(); ++i) {
+        if (!externFnAllowedAnnos().contains(out.names[i])) {
+            auto* a = annos[i];
+            throw YuxError(
+                static_cast<int>(a->name->getLine()),
+                static_cast<int>(a->name->getCharPositionInLine()) + 1,
+                ErrorCode::E2011, out.names[i]);
+        }
+    }
+    return out;
+}
+
+// Phase 10d-1：`#NoReturn` 头部级语义校验（E7012 / E7013）
+// 不依赖 fn body，仅看 header 注解 + retType。E7014（流终止）与调用点流终止注册推 10d-2。
+//   E7012 — `#NoReturn` 函数声明带返回类型
+//   E7013 — `#NoReturn` 与 `#Fallible(E)` 互斥
+static void checkNoReturnHeader(p<FnHeaderNode> header) {
+    if (!header->hasAnno("NoReturn")) return;
+    int line = header->getLineNumber();
+    int col = header->getColumn();
+    if (header->retType()) {
+        throw YuxError(line, col, ErrorCode::E7012, header->name().getText());
+    }
+    if (header->hasAnno("Fallible")) {
+        // 取 #Fallible 的单参 E（若解析得到则填，否则空字符串）
+        auto eOpt = header->getAnnoArg("Fallible");
+        string e = eOpt.value_or("");
+        throw YuxError(line, col, ErrorCode::E7013, e);
+    }
+}
+
 } // namespace
 
 ASTBuilder::ASTBuilder(Yux& yux, const string& moduleName, bool isSdk,
@@ -160,7 +201,20 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
 
     auto fnHeaders = ctx->fnHeader();
     for (auto header : fnHeaders) {
-        (void)collectAnnosNonFn(header->buildAnnos);
+        // extern 块内 fnHeader 接受 CompilerInner 与 #NoReturn（spec §11.5.1 / DRAFT-错误.md §8.3）。
+        AnnoList headerAnnos = collectAnnosExternFn(header->buildAnnos);
+        bool externNoReturn = false;
+        for (size_t i = 0; i < headerAnnos.names.size(); ++i) {
+            if (headerAnnos.names[i] == "NoReturn") externNoReturn = true;
+        }
+        // E7012：extern `#NoReturn fn` 不得带 retType（与函数体内 fn 一致）。
+        // E7013（与 #Fallible 互斥）暂不触发——`#Fallible` 不在 extern 白名单。
+        if (externNoReturn && header->retType) {
+            throw YuxError(
+                static_cast<int>(header->name->getLine()),
+                static_cast<int>(header->name->getCharPositionInLine()) + 1,
+                ErrorCode::E7012, header->name->getText());
+        }
         auto fnName = header->name->getText();
 
         vector<TypeInfo> paramTypes;
@@ -208,6 +262,7 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
 
         FnSymbolInfo fnFnSym{fnName, file->moduleName(), paramTypes, retType};
         fnFnSym.isExternal = true;
+        fnFnSym.isNoReturn = externNoReturn;
         file->registerFnSymbol(fnName, fnFnSym);
     }
 
@@ -560,6 +615,13 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         file->registerSymbol(fnName, fnSym);
 
         FnSymbolInfo fnFnSym{fnName, moduleName, paramTypes, retType};
+        // 预扫 #NoReturn：避免在头部注册阶段重复 collectAnnos 校验
+        for (auto* a : header->buildAnnos) {
+            if (a->name->getText() == "NoReturn") {
+                fnFnSym.isNoReturn = true;
+                break;
+            }
+        }
         file->registerFnSymbol(fnName, fnFnSym);
     }
 
@@ -607,6 +669,7 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
             file->registerSymbol(fullName, methodSym);
 
             FnSymbolInfo methodFnSym{fullName, moduleName, paramTypes, retType};
+            methodFnSym.isNoReturn = method->header()->hasAnno("NoReturn");
             file->registerFnSymbol(fullName, methodFnSym);
         }
     }
@@ -640,6 +703,9 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
     file->addFunction(fn);
 
     DEBUG_LOG_VAL("Visit: Function", header->name().getText());
+
+    // ==================== #NoReturn 头部校验 (E7012 / E7013，DRAFT-错误.md §8.3) ====================
+    checkNoReturnHeader(header);
 
     // ==================== #Test 注解校验 (spec §11.3) ====================
     // 仅 *.test.yux 允许；与 #CompilerInner 互斥；签名 `fn name(): void`、必须有体。
@@ -1032,6 +1098,9 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
         auto header = any_cast_p<FnHeaderNode>(visitFnHeader(fnCtx->fnHeader()));
         auto fn = createWithLine<FnNode>(ctx, structImpl, header);
         fn->setParentScope(file);
+
+        // #NoReturn 头部校验（E7012 / E7013）也覆盖 structImpl 内方法
+        checkNoReturnHeader(header);
 
         stack.emplace_back(fn);
         _scopeStack.push_back(fn);
