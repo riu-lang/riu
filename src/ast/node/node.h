@@ -127,16 +127,41 @@ public:
 class Annotated {
 protected:
     vector<string> _annos;
+    // 与 _annos 同长的参数槽：buildAnno 可选单参数糖（spec §11.1.1.1）。
+    // 空字符串表示零参注解。当前仅 #Fallible(E) 使用单参形态。
+    vector<string> _annoArgs;
 
 public:
     virtual ~Annotated() = default;
 
-    void addAnno(const string& name) { _annos.push_back(name); }
-    void setAnnos(vector<string> annos) { _annos = std::move(annos); }
+    void addAnno(const string& name) {
+        _annos.push_back(name);
+        _annoArgs.emplace_back();
+    }
+    void addAnno(const string& name, const string& arg) {
+        _annos.push_back(name);
+        _annoArgs.push_back(arg);
+    }
+    void setAnnos(vector<string> annos) {
+        _annoArgs.assign(annos.size(), "");
+        _annos = std::move(annos);
+    }
+    void setAnnos(vector<string> annos, vector<string> args) {
+        _annos = std::move(annos);
+        _annoArgs = std::move(args);
+    }
     [[nodiscard]] const vector<string>& annos() const { return _annos; }
+    [[nodiscard]] const vector<string>& annoArgs() const { return _annoArgs; }
     [[nodiscard]] bool hasAnno(const string& name) const {
         for (auto& a : _annos) if (a == name) return true;
         return false;
+    }
+    // 返回注解的单参数糖（spec §11.1.1.1）。未找到返回 nullopt；找到但零参返回空字符串包装。
+    [[nodiscard]] std::optional<string> getAnnoArg(const string& name) const {
+        for (size_t i = 0; i < _annos.size(); ++i) {
+            if (_annos[i] == name) return _annoArgs[i];
+        }
+        return std::nullopt;
     }
 };
 

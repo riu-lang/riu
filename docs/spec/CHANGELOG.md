@@ -15,6 +15,25 @@
 
 ---
 
+## 2026-05-10 —— 错误处理 v1 草案落地（spec 正文 + 附录）
+
+- **新增**：`docs/spec/04-表达式.md` §4.12 错误处理表达式（`exprErrPropagate` / `exprTry` / `catchClause`）；§4.2.1 优先级表追加 `exprErrPropagate`（与 `exprCall` 同档 lvl 10）；§4.9.1.4 / §4.9.3.5 加注 "`ret` / `#NoReturn` 调用所在 arm 视为流终止，不参与表达式类型合并"。
+- **新增**：`docs/spec/06-函数.md` §6.7 失败声明 `#Fallible(E)`（声明形态 / 调用约束 / 与 `#NoReturn` 互斥 / extern 限制）。
+- **修改**：`docs/spec/11-编译期注解.md` §11.1.1.1 `buildAnno` 单参数糖解禁（`'(' ID ')'` 可选段，仅 `#Fallible(E)` 用）；§11.1.3.2 同步；§11.5.1 表追加 `#Fallible(E)` / `#NoReturn` 两行；§11.5.1.1 由"三种正式注解"改为"五种"。
+- **不动**：`docs/spec/03-类型系统.md`（**不**引入独立 `Never` / `Bottom` 类型名；`#NoReturn` 函数签名仍写空 retType；"永不返回"是注解层属性、不是类型层属性，控制流分析复用 `ret` arm 的流终止语义）。
+- **修订**：根据 `src/yuxParser.g4` 实际改动同步附录 B 与 §4.12：`!` 是 `exprCall` / `exprCallTrailingOnly` 内嵌后缀槽（`errPropagate=SymbolExcl?`），**不**构成独立 `exprErrPropagate` 产生式；`exprTry` → `exprTryCatch`，`catchClause` → `catchArm`。DRAFT-错误.md §4.4 加入"trailing lambda 协同"小节：`f(...) { lam }!` / `f { lam }!` 合法；lambda body **不**承载 `#Fallible`（与 fn 值类型一致），try 域穷尽性**不下钻 lambda body**。
+- **冲突 / 兼容**：§4.2.1 优先级表 lvl 4 追加 `exprTryCatch`（与 `exprOneLineIfElse` 同档）；引用方注意。其它章节增项纯增、不破坏既有条款引用。
+
+## 2026-05-10 —— 错误处理 v1 草案落地（附录侧）
+
+- **新增**：草案 `docs/spec/draft/DRAFT-错误.md` —— 错误处理 v1（值返回 only / `#Fallible(E)` 注解 / `ret E::V` 抛出 / 后缀 `!` 传播 / `try-catch` 块 / `panic` + `exit` + `#NoReturn`）；明确 yux **不引入异常机制**，无 unwind / SEH personality。
+- **新增**：附录 A 关键字表追加 `try` / `catch`（v1 硬关键字，DRAFT-错误.md §5）；注解表追加 `#Fallible(E)` / `#NoReturn`；`ret` 备注扩"错误抛出"。
+- **新增**：附录 B 语法汇总追加 `exprErrPropagate` / `exprTry` / `catchClause` 产生式；`buildAnno` 同步加单参数糖。
+- **新增**：附录 D 段位表追加 E7xxx 行；新增 D.3.7 E7xxx 表（共 18 条；E7001-E7014 默认 error，E7015-E7018 默认 warning）；原 D.3.7 E11xx 顺移为 D.3.8；D.5.1 默认严重度段更新。
+- **冲突 / 兼容**：附录 D 子节编号 D.3.7 → D.3.8（draft / 接口）需引用方注意；其它纯增。spec 正文 §3 / §4 / §6 / §11 章节同步、`src/yux*.g4` 改动、SDK `panic` / `exit` 实现、`tests/cases/diag_throw_*` 用例为后续阶段，本次仅落附录。
+
+---
+
 ## 2026-05-09 —— `yux build` 的 `<name>` 改为可选
 
 - **修改**：§10.1.2.1 —— `yux build [<name>]`，`<name>` 可省略，省略时驱动取 `yux.toml` 的 `name` 字段；显式给出时仍**应当**与 `name` 一致，不一致驱动以非零退出码报错。当前每个 `yux.toml` 仅声明一个目标，省略形式为推荐写法。

@@ -11,8 +11,17 @@
 namespace {
 
 // 已知的构建注解名字白名单；未知注解在 AST 构建期报错
+// NoReturn / Fallible 由 DRAFT-错误.md 引入（spec §11.5.1）：
+//   #NoReturn        零参；标在 fn / structImpl 内方法上
+//   #Fallible(E)     单参；E 为错误 enum 类型名（语义校验推 10e）
 const set<string>& knownAnnos() {
-    static const set<string> s = {"CompilerInner", "Test", "DraftLike"};
+    static const set<string> s = {"CompilerInner", "Test", "DraftLike", "NoReturn", "Fallible"};
+    return s;
+}
+
+// 单参注解白名单（spec §11.1.1.1）。其它注解出现 (arg) 形式视为非法（E2005 形式错配）。
+const set<string>& argAnnos() {
+    static const set<string> s = {"Fallible"};
     return s;
 }
 
@@ -24,9 +33,33 @@ const set<string>& nonFnAllowedAnnos() {
     return s;
 }
 
+// 注解名 + 单参槽位（与 _annoArgs 对齐）。无参注解的 args[i] 为空字符串。
+struct AnnoList {
+    vector<string> names;
+    vector<string> args;
+};
+
+// 校验单参 / 零参形态：argAnnos() 中的注解必须带 (ID)，否则缺参；其他注解出现 (ID) 视为多余。
+template<typename A>
+static void checkAnnoArity(A* a, const string& name, bool hasArg) {
+    bool needArg = argAnnos().contains(name);
+    if (needArg && !hasArg) {
+        throw YuxError(
+            static_cast<int>(a->name->getLine()),
+            static_cast<int>(a->name->getCharPositionInLine()) + 1,
+            ErrorCode::E2005, name);
+    }
+    if (!needArg && hasArg) {
+        throw YuxError(
+            static_cast<int>(a->name->getLine()),
+            static_cast<int>(a->name->getCharPositionInLine()) + 1,
+            ErrorCode::E2005, name);
+    }
+}
+
 template<typename AnnoVec>
-vector<string> collectAnnos(const AnnoVec& annos) {
-    vector<string> out;
+AnnoList collectAnnos(const AnnoVec& annos) {
+    AnnoList out;
     for (auto* a : annos) {
         string name = a->name->getText();
         if (!knownAnnos().contains(name)) {
@@ -42,15 +75,19 @@ vector<string> collectAnnos(const AnnoVec& annos) {
                 static_cast<int>(a->name->getCharPositionInLine()) + 1,
                 ErrorCode::E1110);
         }
-        out.push_back(std::move(name));
+        string arg;
+        if (a->arg) arg = a->arg->getText();
+        checkAnnoArity(a, name, !arg.empty());
+        out.names.push_back(std::move(name));
+        out.args.push_back(std::move(arg));
     }
     return out;
 }
 
 // 仅 visitDraftDecl 使用：白名单同 collectAnnos，但保留 DraftLike
 template<typename AnnoVec>
-vector<string> collectAnnosForDraft(const AnnoVec& annos) {
-    vector<string> out;
+AnnoList collectAnnosForDraft(const AnnoVec& annos) {
+    AnnoList out;
     for (auto* a : annos) {
         string name = a->name->getText();
         if (!knownAnnos().contains(name)) {
@@ -66,23 +103,27 @@ vector<string> collectAnnosForDraft(const AnnoVec& annos) {
                 static_cast<int>(a->name->getCharPositionInLine()) + 1,
                 ErrorCode::E2011, name);
         }
-        out.push_back(std::move(name));
+        string arg;
+        if (a->arg) arg = a->arg->getText();
+        checkAnnoArity(a, name, !arg.empty());
+        out.names.push_back(std::move(name));
+        out.args.push_back(std::move(arg));
     }
     return out;
 }
 
 // 用于非 fn 位置（struct / extern / globalConst）：进一步收紧到 fn-only 注解清单
 template<typename AnnoVec>
-vector<string> collectAnnosNonFn(const AnnoVec& annos) {
-    vector<string> out = collectAnnos(annos);
-    for (size_t i = 0; i < out.size(); ++i) {
-        if (!nonFnAllowedAnnos().contains(out[i])) {
+AnnoList collectAnnosNonFn(const AnnoVec& annos) {
+    AnnoList out = collectAnnos(annos);
+    for (size_t i = 0; i < out.names.size(); ++i) {
+        if (!nonFnAllowedAnnos().contains(out.names[i])) {
             // 取对应的 token 用于行列号
             auto* a = annos[i];
             throw YuxError(
                 static_cast<int>(a->name->getLine()),
                 static_cast<int>(a->name->getCharPositionInLine()) + 1,
-                ErrorCode::E2011, out[i]);
+                ErrorCode::E2011, out.names[i]);
         }
     }
     return out;
@@ -697,7 +738,10 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
     }
 
     auto header = createWithLine<FnHeaderNode>(ctx, file, ctx->name, retType);
-    header->setAnnos(collectAnnos(ctx->buildAnnos));
+    {
+        auto al = collectAnnos(ctx->buildAnnos);
+        header->setAnnos(std::move(al.names), std::move(al.args));
+    }
 
     // spec §6.3.X：返回 T& 受溯源约束（根须为 $ 或某 T& 形参），由 borrow_checker 在
     // fn body 检查时强制（E4010）；此处只放过 #CompilerInner 与有"潜在源"的用户函数。
@@ -882,7 +926,10 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
     auto* stCtx = ctx->structType();
     auto structDecl = createWithLine<StructDeclNode>(ctx, file, stCtx->name);
     // structDecl 不接受 #Test（spec §11.3.1.2）
-    structDecl->setAnnos(collectAnnosNonFn(ctx->buildAnnos));
+    {
+        auto al = collectAnnosNonFn(ctx->buildAnnos);
+        structDecl->setAnnos(std::move(al.names), std::move(al.args));
+    }
 
     DEBUG_LOG_VAL("Visit: StructDecl", stCtx->name->getText());
 
@@ -918,7 +965,10 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
     auto* stCtx = ctx->structType();
     auto structImpl = createWithLine<StructImplNode>(ctx, file, stCtx->name);
     // structImpl 块本身不接受 #Test（spec §11.3.1.2）；其内部方法通过 visitFn 处理
-    structImpl->setAnnos(collectAnnosNonFn(ctx->buildAnnos));
+    {
+        auto al = collectAnnosNonFn(ctx->buildAnnos);
+        structImpl->setAnnos(std::move(al.names), std::move(al.args));
+    }
 
     DEBUG_LOG_VAL("Visit: StructImpl", stCtx->name->getText());
 
@@ -1053,7 +1103,10 @@ std::any ASTBuilder::visitDraftDecl(yux::yuxParser::DraftDeclContext* ctx) {
     auto* dt = ctx->draftType();
     auto draft = createWithLine<DraftDeclNode>(ctx, file, dt->name);
     // draft 声明位允许 #DraftLike + #CompilerInner（§11.4）；#Test 不合法
-    draft->setAnnos(collectAnnosForDraft(ctx->buildAnnos));
+    {
+        auto al = collectAnnosForDraft(ctx->buildAnnos);
+        draft->setAnnos(std::move(al.names), std::move(al.args));
+    }
 
     DEBUG_LOG_VAL("Visit: DraftDecl", dt->name->getText());
 

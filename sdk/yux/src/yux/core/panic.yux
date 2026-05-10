@@ -1,0 +1,23 @@
+; yux SDK - 公开 panic(msg String) stdlib 函数（DRAFT-错误.md §8.1 / §8.8 / spec §11.5.1）
+;
+; #NoReturn 注解：标注函数永不返回（10d 之前编译器尚未强制语义检查）。
+; 实施层走 SEH RaiseException：
+;   - #Test 模式：runner 的 SEH wrapper 接住，记录失败、继续下个用例；
+;   - 普通 yux build：无 SEH wrapper，OS 直接终止进程 = _exit(1) 等价。
+;
+; 0xE0FA1750：客户位段（高 4 位 0xE）+ "FA1750" 字面（PANIC 谐音 "FA17(50)" → "P"），
+; 与 assert 失败码 0xE0FA17ED 区分。
+;
+; TODO(panic stderr)：spec §8.6 要求 panic 模板写 stderr，当前 SDK 仅有
+; _stdout_write；待 STD_ERROR_HANDLE 通道接通后切走 stdout。
+
+fn _yux_panic_failed(msg String) {
+  print("panic: ")
+  println(msg)
+  RaiseException(0xE0FA1750u32, 0u32, 0u32, null);
+}
+
+#NoReturn
+fn panic(msg String) {
+  _yux_panic_failed(msg);
+}

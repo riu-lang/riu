@@ -33,7 +33,7 @@ globalConst    ::= buildAnno* 'cval' ID type '=' literal
 
 aliasDecl      ::= ID genericDef? '=' type codeLineEnd
 
-buildAnno      ::= '#' ID codeLineEnd
+buildAnno      ::= '#' ID ( '(' ID ')' )? codeLineEnd  ; 单参数糖于 DRAFT-错误.md §3.5 解禁；多参数 / 字面量参数 v1 仍不接受
 ```
 
 ## B.2 类型
@@ -175,6 +175,7 @@ expr ::=
   | 'match' expr '{' codeLineEnd
         ((matchArm codeLineEnd) | comment)+
     '}'                                                          # exprMatch
+  | 'try' statementBlock catchArm+                               # exprTryCatch  ; DRAFT-错误.md §5
   | ID '::' ID ( '(' codeLineEnd*
                      (expr (',' LineEnd* expr)* ','? codeLineEnd*)?
                  ')' )?                                          # exprEnumCtor
@@ -185,8 +186,10 @@ expr ::=
   | '[' LineEnd* (expr (',' LineEnd* expr)* ','? LineEnd*)? ']'  # exprArray
   | expr (':' genericDef)? '(' LineEnd*
         (expr (',' LineEnd* expr)* ','? LineEnd*)? ')'
-        trailingLambda?                                          # exprCall
-  | expr (':' genericDef)? trailingLambda                        # exprCallTrailingOnly
+        trailingLambda?
+        '!'?                                                     # exprCall  ; 末尾 `!` = 错误传播（DRAFT-错误.md §4.2）
+  | expr (':' genericDef)? trailingLambda
+        '!'?                                                     # exprCallTrailingOnly  ; 末尾 `!` 同 `exprCall`
   | ID '=>' lambdaBody                                           # exprLambdaSingle
   | '(' lambdaParams? ')' (retType=typeWithRef)? '=>' lambdaBody # exprLambdaParen
   | '{' LineEnd* lambdaParams '=>' LineEnd*
@@ -209,6 +212,8 @@ expr ::=
 
 exprElIf       ::= 'elif' expr statementBlock
 exprElse       ::= 'else' statementBlock
+
+catchArm       ::= 'catch' ID type statementBlock              ; DRAFT-错误.md §5.1；type 必须是已声明 enum（语义层校验）
 
 opShift        ::= '<' '<' | '>' '>'
 opCompare      ::= '>' | '>' '=' | '<' | '<' '='
@@ -236,6 +241,12 @@ enumPattern    ::= ID '::' ID ( '(' ID (',' ID)* ')' )?          # patternEnum
 ```
 
 `exprMatch` / `exprEnumCtor` / `matchArm` / `enumPattern` 见 §3.10 与草案 [draft/DRAFT-枚举.md](draft/DRAFT-枚举.md) §4 / §5。
+
+`exprTryCatch` / `catchArm`、以及 `exprCall` / `exprCallTrailingOnly` 末尾的 `'!'?` 槽（错误传播）见草案 [draft/DRAFT-错误.md](draft/DRAFT-错误.md) §4 / §5；语义层约束（穷尽性 / 类型一致性 / 跨类型 E7004 / 冗余 E7016）由编译器分析。
+
+- 后缀 `!` **仅**附着在 `exprCall` / `exprCallTrailingOnly` 末尾（产生式内嵌槽 `errPropagate=SymbolExcl?`），不构成独立产生式；非调用位置出现的 `!` 由 `exprUnary` 解析为布尔取反，不进入错误传播路径。
+- `f(a) { x => body }!` 与 `f { x => body }!` 合法（trailing lambda 与 `!` 槽并存于产生式末尾），详见 DRAFT-错误.md §4.4。
+- `!` 与 `=` / `==` 之间需空白或换行（避免被吞为 `SymbolExclEq`）。
 
 - `exprEnumCtor`：`E::V` 与 `E::V()` 等价；类型别名 `C = E` 后 `C::V` 在解析期归一为 `E::V`。
 - `exprMatch`：v1 arm 体仅单表达式（多语句体押后）；arm 顺序对穷尽语义无影响，仅 `else` **应当**为最后一条；穷尽性 / binding arity / 重复 variant 由语义层校验。

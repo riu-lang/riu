@@ -9,6 +9,7 @@
 | 关键字 | g4 token | 说明 | 章节 |
 |---|---|---|---|
 | `break` | `Break` | 跳出 `loop` | §5.5 |
+| `catch` | `Catch` | 错误路由块的捕获子句（草案） | DRAFT-错误.md §5 |
 | `cval` | `DeclKey` 一支 | 全局常量声明 | §5.1 |
 | `draft` | `Draft` | 接口契约声明 | §12 |
 | `elif` | `Elif` | 多分支条件 | §4.9 / §5.4 |
@@ -21,9 +22,10 @@
 | `loop` | `Loop` | 循环 | §5.5 |
 | `match` | `Match` | 模式匹配（仅 enum） | §3.10 / §4 |
 | `null` | `Null` | 空字面量 | §3.6.1.3 / §1.6.7 |
-| `ret` | `Ret` | 返回语句 | §5.6 |
+| `ret` | `Ret` | 返回语句 / 错误抛出（草案） | §5.6 / DRAFT-错误.md §4.1 |
 | `struct` | `Struct` | 结构体声明 | §7.1 |
 | `true` | `True` | 布尔字面量 | §1.6.4 |
+| `try` | `Try` | 错误路由块开始（草案） | DRAFT-错误.md §5 |
 | `use` | `Use` | 模块导入 | §10.2 |
 | `val` | `DeclKey` 一支 | 不可变局部声明 | §5.1 |
 | `var` | `DeclKey` 一支 | 可变局部声明 | §5.1 |
@@ -60,8 +62,10 @@
 | `#CompilerInner` | 编译器内部合成实现 | §11.2 |
 | `#Test` | 单元测试函数（仅 `*.test.yux`） | §11.3 |
 | `#DraftLike` | draft 开放结构化匹配 | §11.4 / §12.4 |
+| `#Fallible(E)` | 失败声明：函数可能以错误 enum `E` 失败（草案，单参数糖） | DRAFT-错误.md §3 |
+| `#NoReturn` | 不返回声明：函数永不正常返回（草案，零参数） | DRAFT-错误.md §8.3 |
 
-§A.3.1 v1 三种正式注解：`#CompilerInner` / `#Test` / `#DraftLike`；其它注解形态属预留（§11.5.2）。
+§A.3.1 v1 三种正式注解：`#CompilerInner` / `#Test` / `#DraftLike`；DRAFT-错误.md 引入 `#Fallible(E)` / `#NoReturn`（草案，单参数糖于 §11.1.1.1 同步解禁）；其它注解形态属预留（§11.5.2）。
 
 ## A.4 运算符与符号 token
 

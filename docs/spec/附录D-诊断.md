@@ -51,6 +51,7 @@ N | <源码行原文>
 | E4xxx | 所有权 / 借用       | §8     | `T&` 借用合法性、`$` 字段 DA/DAA、构造器返回限制    |
 | E5xxx | 模块 / 包           | §10    | `yux.toml` 解析、模块发现、循环依赖                 |
 | E6xxx | 内置 / 调用         | §6 §9  | 函数 / 方法调用、`#CompilerInner`、内置类型方法     |
+| E7xxx | 错误处理 / panic    | §6 §8  | `#Fallible` / `!` / try-catch / `#NoReturn` / `panic` 边界（详见 DRAFT-错误.md / 待 spec 落地后补 §引用） |
 | E11xx | draft / 接口        | §12    | draft 实现穷尽性 / `#DraftLike` 误用 / orphan / 边界 |
 
 段内号**应当**按主题聚类、号段递增；段间**不得**复用号；新增码必须同步更新 D.3。
@@ -321,7 +322,32 @@ Array 内置方法（E6040..E6044）：
 |--------|------|
 | E6045 | `{} requires 1 argument`（plus / minus / 等共用此模板，`{}` 为方法名） |
 
-### D.3.7 E11xx — draft / 接口（v0.5+ 占位）
+### D.3.7 E7xxx — 错误处理 / panic（草案，待 spec 落地）
+
+> 由 `DRAFT-错误.md` 引入；落地章节为 §6 函数（`#Fallible`）、§4 表达式（`!` 后缀 / `tryExpr`）、§8 panic（待新建或并入相关章节）。E7001-E7014 默认严重度 = `error`；E7015-E7018 默认严重度 = `warning`。所有码挂诊断回归用例 `tests/cases/diag_throw_*.yux`（实施期落地）。
+
+| 码     | 模板（占位） | 触发 |
+|--------|-------------|------|
+| E7001  | `` `!` used outside of `#Fallible(E)` function and outside of `try` block — wrap call in `try { ... } catch e E { ... }` or declare the enclosing function with `#Fallible(E)` `` | 表达式后缀 `!` 写在无 `#Fallible` 注解的函数内、且不在 `try` 块内 |
+| E7002  | `` non-exhaustive `try` block: error type `{}` thrown by callee `{}` is not handled by any `catch` clause — add `catch e {} {{ ... }}` `` | `try` 块内调用的可失败函数错误类型未被任一 `catch` 子句覆盖 |
+| E7003  | `` redundant `catch` clause: error type `{}` cannot be thrown by any call in the `try` block — promoted to error if `--strict-catch`，否则同 E7015 `` | 与 E7015 同触发；启用 `--strict-catch` 时升级为 error |
+| E7004  | `` cannot propagate error of type `{}` through `!`: caller declares `#Fallible({})`, types differ — wrap the call in `try { ... } catch e {} {{ ret {}::Variant... }}` `` | `!` 后缀作用于 callee 错误类型与外层 `#Fallible(E)` 不一致的调用，且不在 `try` 域内 |
+| E7005  | `` duplicate `catch` clause: error type `{}` is handled by more than one `catch` in the same `try` — merge into a single `catch e {} {{ match e {{ ... }} }}` `` | 同一 `try` 内多个 `catch` 子句指向同一错误 enum 类型 |
+| E7006  | `` call to fallible function `{}` outside `try` block must propagate via `!` (same error type) — bare call is forbidden outside `try` (inside `try`, bare call is correct; `!` would be redundant) `` | 调用 `#Fallible` 函数但未加 `!` 且不在 `try` 块内 |
+| E7007  | `` `ret` of error type `{}` does not match `#Fallible({})` — wrap the error in a `{}` variant or change the function's `#Fallible` `` | 函数体内 `ret` 表达式类型属于错误通道但与声明 `#Fallible(E)` 的 `E` 不匹配 |
+| E7008  | `` function return type `{}` cannot equal its `#Fallible` type `{}` (the compiler cannot disambiguate `ret` between success and error channels) — split into two enums and rethrow / wrap explicitly `` | 函数成功值类型 `T` 与 `#Fallible(E)` 的 `E` 相等（声明阶段或单态化阶段） |
+| E7009  | `` `try` block must be followed by at least one `catch` clause — bare `try {{ ... }}` is forbidden `` | `try` 块未跟 `catch` 子句 |
+| E7010  | `` `catch` body must end with `ret`, `panic`-class terminator, or an expression of the same type as the `try` block (got `{}` vs `{}`) `` | `catch` body 终结值类型与 `try` block 值类型不一致 |
+| E7011  | `` `catch e {}` type `{}` must be a declared enum; got `{}` `` | `catch` 后置类型不是已声明 enum |
+| E7012  | `` `#NoReturn` function `{}` cannot declare a return type — remove the return type or remove `#NoReturn` `` | `#NoReturn` 函数声明带返回类型 |
+| E7013  | `` `#NoReturn` and `#Fallible({})` are mutually exclusive on the same function — a non-returning function cannot also propagate errors `` | 同一函数同时标 `#NoReturn` 与 `#Fallible(E)` |
+| E7014  | `` `#NoReturn` function `{}` may reach end of body — control flow must terminate via `panic`-class call, another `#NoReturn` call, or unconditional infinite loop `` | `#NoReturn` 函数体可达末尾（控制流分析） |
+| E7015  | `` redundant `catch` clause: no call in `try` block can throw `{}` declared by `catch e {}` — remove this `catch` clause `` | `catch` 子句声明的错误类型不在 `try` 块的调用错误集合内（默认 warning） |
+| E7016  | `` `!` is redundant inside `try` block: bare call to `#Fallible({})` function `{}` already routes to the matching `catch e {}` clause — remove `!` `` | `try` 块内对 `#Fallible` 函数的调用写了 `!`（默认 warning） |
+| E7017  | `` redundant `try-catch`: no call in `try` block can throw any error — remove the entire `try` and use a plain block `` | `try` 块内不含任何 `#Fallible` 调用（默认 warning） |
+| E7018  | `` `panic` in `catch` arm converts a recoverable error to abort — consider `ret` with an error variant or `exit(code)` if termination is intended `` | `catch` arm body 唯一终结操作是 `panic(...)`（默认 warning） |
+
+### D.3.8 E11xx — draft / 接口（v0.5+ 占位）
 
 > v0.5 §12 引入；编号在 Phase 3 编译器实现期固化进 `include/error_code.h`。下表为规范层占位，模板文本可在实施期微调。
 
@@ -355,7 +381,7 @@ Array 内置方法（E6040..E6044）：
 
 ### D.5.1 默认严重度
 
-每个错误码（`ErrorCode::EXXXX`）在 `include/error_code.h` 的 `DEF_ERR` / `DEF_WARN` / `DEF_NOTE` 宏中携带 `defaultSev`。当前所有码段（E1xxx..E6xxx）默认 `Error`；`Warning` / `Note` 段为后续 D.5 规划保留（如未使用变量、可疑类型转换等）。
+每个错误码（`ErrorCode::EXXXX`）在 `include/error_code.h` 的 `DEF_ERR` / `DEF_WARN` / `DEF_NOTE` 宏中携带 `defaultSev`。当前所有码段（E1xxx..E6xxx / E11xx）默认 `Error`；E7xxx 中 E7001-E7014 默认 `Error`、E7015-E7018 默认 `Warning`（DRAFT-错误.md 引入）；其余 `Warning` / `Note` 段为后续 D.5 规划保留（如未使用变量、可疑类型转换等）。
 
 ### D.5.2 CLI 开关
 

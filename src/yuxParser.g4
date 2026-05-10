@@ -71,6 +71,11 @@ aliasDecl:
 buildAnno:
     SymbolHash
     name=ID
+    (
+        ParStart
+          arg=ID
+        ParEnd
+    )?
     LineEnd
     ;
 
@@ -420,6 +425,12 @@ expr:
             (SymbolComma LineEnd* args+=expr)*
             SymbolComma? LineEnd*
         GetEnd                            # exprGet
+    // try {
+    // } catch e E1 {
+    // } catch e E2 {
+    // }
+    | Try tryBlock=statementBlock
+      (catchs+=catchArm)+                 # exprTryCatch
     // if 1 { 1 } else { 2 }
     | If condition=expr
       BlockStart trueValue=expr
@@ -490,10 +501,13 @@ expr:
             (SymbolComma LineEnd* args+=expr)*
             SymbolComma? LineEnd*
         )?
-        ParEnd trailing=trailingLambda?                       # exprCall
+        ParEnd
+        trailing=trailingLambda?
+        errPropagate=SymbolExcl?                              # exprCall
     | left=expr
         (SymbolColon genericDef)?
-      trailing=trailingLambda                                 # exprCallTrailingOnly
+      trailing=trailingLambda
+      errPropagate=SymbolExcl?                                # exprCallTrailingOnly
     // !e ~e -e 没有空格，低于成员访问优先级
     | op=(SymbolSub|SymbolRev|SymbolExcl) right=expr          # exprUnary
     | left=expr opShift right=expr # exprShift
@@ -529,6 +543,12 @@ exprElIf : Elif condition=expr statementBlock;
 // ...
 // }
 exprElse : Else statementBlock;
+
+// catch e T {}
+catchArm:
+    Catch err=ID type
+    statementBlock
+    ;
 
 // 移位操作符: << >>
 opShift:

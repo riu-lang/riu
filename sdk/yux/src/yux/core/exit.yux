@@ -1,0 +1,10 @@
+; yux SDK - 公开 exit(code u32) stdlib 函数（DRAFT-错误.md §8.7 / spec §11.5.1）
+;
+; #NoReturn 注解：标注函数永不返回（10d 之前编译器尚未强制语义检查）。
+; 内部转发到 base.yux 的 _exit(code i32)，最终落到 ExitProcess。
+; TODO 当前平铺，后期完整模块功能
+
+#NoReturn
+fn exit(code u32) {
+  _exit(code.to_i32());
+}

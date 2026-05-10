@@ -28,6 +28,7 @@ LineEnd : '\r'? '\n' | '\n' | EOF;
 //WhiteSpace : ~[\P{White_Space} \t\r\n]+ -> channel(HIDDEN);
 
 Break : 'break';
+Catch: 'catch';
 Cval: 'cval';
 DeclKey: 'va'[rl];
 Draft: 'draft';
@@ -44,6 +45,7 @@ Null : 'null';
 Ret : 'ret';
 Struct : 'struct';
 True : 'true';
+Try: 'try';
 Use : 'use';
 
 SymbolAdd: '+';
