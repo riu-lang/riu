@@ -117,6 +117,8 @@ public:
     std::any visitExprNullElse(yux::yuxParser::ExprNullElseContext* ctx) override;
     std::any visitExprEnumCtor(yux::yuxParser::ExprEnumCtorContext* ctx) override;
     std::any visitExprMatch(yux::yuxParser::ExprMatchContext* ctx) override;
+    std::any visitExprTryCatch(yux::yuxParser::ExprTryCatchContext* ctx) override;
+    std::any visitCatchArm(yux::yuxParser::CatchArmContext* ctx) override;
     std::any visitExprLambdaSingle(yux::yuxParser::ExprLambdaSingleContext* ctx) override;
     std::any visitExprLambdaParen(yux::yuxParser::ExprLambdaParenContext* ctx) override;
     std::any visitExprLambdaBlock(yux::yuxParser::ExprLambdaBlockContext* ctx) override;

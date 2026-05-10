@@ -128,6 +128,24 @@ class Compiler {
     // ==================== 控制流 ====================
     vector<llvm::BasicBlock*> _loopExitBlocks;  // 循环退出块栈 (用于 break 语句)
 
+public:
+    // DRAFT-错误.md [#4.H]：try-catch 块栈
+    // 进入 try block 编译时压栈（入栈对象 = 当前 try 块的所有 catch 类型集合 + 收集到的
+    // 可失败调用的错误类型集合）；退出 try block（catch 子句进入前）出栈。
+    // compileCallExpr 检测到 #Fallible callee 时：栈非空 → 路由到匹配 catch（10g 实施 IR）；
+    // 同时抑制 E7001 / E7006（裸调用合法），但 ! 仍触发 E7016 警告。
+    struct TryCatchCtx {
+        // catch 子句声明的错误类型集合（按 enum 名字符串去重；此处不查重，重复在
+        // visitExprTryCatch 后期校验时报 E7005）
+        vector<string> catchTypes;
+        // try block 内实际遇到的可失败调用的错误类型集合（compileCallExpr 在编译每个
+        // 调用时按 callee 的 fallibleErrType 追加；穷尽性 E7002 / 多余 E7015 据此判定）
+        vector<string> seenErrTypes;
+    };
+    vector<TryCatchCtx> _tryCatchStack;
+
+private:
+
     // ==================== 类型系统 ====================
     llvm::Type* getLLVMType(const TypeInfo& type);                              // 将 TypeInfo 转换为 LLVM 类型
     llvm::StructType* getArrayBlockType();                                      // Phase 1b: { u32 strong, u32 weak, i64 len, i64 cap, ptr data } - Array<T> 的 RC Block 布局，与 T 无关
@@ -260,6 +278,7 @@ class Compiler {
     llvm::Value* compileTupleExpr(p<ExprTupleNode> node);                       // 编译元组构造表达式 (e1, e2, ...)
     llvm::Value* compileEnumCtorExpr(p<ExprEnumCtorNode> node);                 // 编译枚举构造表达式 E::V / E::V(args)
     llvm::Value* compileMatchExpr(p<ExprMatchNode> node);                       // Phase 6: 编译 match 表达式（switch on tag + 绑定 + arm 体）
+    llvm::Value* compileTryCatchExpr(p<ExprTryCatchNode> node);                 // Phase 10f: 编译 try-catch 表达式（10f 仅占位 + 语义校验，IR 路由推 10g）
 
     // ==================== Lambda（spec §4 / Phase 2b：零捕获） ====================
     // compileLambdaExpr：把 LambdaExprNode 编译为 16 字节 fat-ptr 值 { fn_ptr, captures }；

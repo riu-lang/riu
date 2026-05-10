@@ -1283,6 +1283,24 @@ TypeInfo ExprMatchNode::getType() const {
     return first;
 }
 
+// try-catch 表达式：取 try block 末表达式 + 所有 catch arm body 末表达式的共同类型
+// 流终止 arm（body 末以 ret / panic 结尾，hasResult=false）不参与类型合并；
+// 与 if-else / match 同档：若任何参与方为 void 则整体 void，类型不一致返回首个，
+// 编译期再校验（保持与 ExprMatchNode::getType 一致风格）。
+TypeInfo ExprTryCatchNode::getType() const {
+    if (!_tryBlock->hasResult()) {
+        return TypeInfo();
+    }
+    TypeInfo first = _tryBlock->resultExpr()->getType();
+    for (auto& arm : _catches) {
+        // body 无 result（以 ret / panic 终结）→ 流终止 arm，跳过类型合并
+        if (!arm->body()->hasResult()) continue;
+        auto t = arm->body()->resultExpr()->getType();
+        if (t != first) return first;
+    }
+    return first;
+}
+
 TypeInfo ExprEnumCtorNode::getType() const {
     string n = _enumName.getText();
     auto* scope = parent() ? parent()->findNearestScope() : nullptr;

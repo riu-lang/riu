@@ -2339,6 +2339,50 @@ std::any ASTBuilder::visitExprMatch(yux::yuxParser::ExprMatchContext* ctx) {
     return p<ExprNode>(createWithLine<ExprMatchNode>(ctx, scope, scrutinee, std::move(arms)));
 }
 
+// catch arm: `catch <绑定名> <错误 enum 类型> { body }`
+// DRAFT-错误.md [#4.H]：构造 CatchArmNode 并在 arm scope 注册绑定符号；
+// 类型从 g4 typeRef 取（必须是已声明 enum，校验在 visitExprTryCatch 阶段）
+std::any ASTBuilder::visitCatchArm(yux::yuxParser::CatchArmContext* ctx) {
+    DEBUG_LOG("    CatchArm");
+    auto outer = currentScope();
+    auto typeNode = any_cast_p<TypeNode>(visit(ctx->type()));
+    string errType = typeNode->getType().name;
+    Token errName = ctx->err;
+
+    // 先建空 body 的 arm（占位 nullptr 不便），与 visitMatchArm 风格一致：先 push scope visit body
+    auto arm = createWithLine<CatchArmNode>(ctx, outer, errName, errType, p<StatementBlockNode>(nullptr));
+    arm->setParentScope(outer);
+    // 在 arm scope 注册绑定符号（错误值类型 = errType；按已声明 enum 处理）
+    arm->registerSymbol(errName.getText(),
+        {SymbolKind::Variable, errName.getText(), TypeInfo(errType), false});
+
+    _scopeStack.push_back(arm);
+    auto body = any_cast_p<StatementBlockNode>(visit(ctx->statementBlock()));
+    _scopeStack.pop_back();
+
+    auto fullArm = createWithLine<CatchArmNode>(ctx, outer, errName, errType, body);
+    fullArm->setParentScope(outer);
+    for (auto& [n, sym] : arm->localSymbols()) {
+        fullArm->registerSymbol(n, sym);
+    }
+    return p<CatchArmNode>(fullArm);
+}
+
+// try { stmts } catch e1 E1 { ... } catch e2 E2 { ... }
+// DRAFT-错误.md [#4.H]：仅在此处构造 AST 节点；穷尽性 / 类型校验 / E7011 / E7016 等
+// 推到 visitProgram 完成后或编译期统一校验（10f-3 / 10f-4 / 10f-5）
+std::any ASTBuilder::visitExprTryCatch(yux::yuxParser::ExprTryCatchContext* ctx) {
+    DEBUG_LOG("    Expr: TryCatch");
+    auto scope = currentScope();
+    auto tryBlock = any_cast_p<StatementBlockNode>(visit(ctx->tryBlock));
+    vector<p<CatchArmNode>> catches;
+    catches.reserve(ctx->catchs.size());
+    for (auto* armCtx : ctx->catchs) {
+        catches.push_back(any_cast_p<CatchArmNode>(visit(armCtx)));
+    }
+    return p<ExprNode>(createWithLine<ExprTryCatchNode>(ctx, scope, tryBlock, std::move(catches)));
+}
+
 std::any ASTBuilder::visitExprUnary(yux::yuxParser::ExprUnaryContext* ctx) {
     auto scope = currentScope();
     auto right = any_cast_p<ExprNode>(visit(ctx->right));

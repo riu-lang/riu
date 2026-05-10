@@ -2005,6 +2005,9 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
     } else if (auto matchNode = dynamic_cast<ExprMatchNode*>(node)) {
         // Phase 6: match 表达式 — switch on tag + 绑定 + arm 体
         return compileMatchExpr(matchNode);
+    } else if (auto tryCatchNode = dynamic_cast<ExprTryCatchNode*>(node)) {
+        // Phase 10f: try-catch 表达式 — 仅占位 + 语义校验，IR 路由推 10g
+        return compileTryCatchExpr(tryCatchNode);
     } else if (auto lambdaNode = dynamic_cast<LambdaExprNode*>(node)) {
         // Phase 2b: lambda 字面量 → 16 字节 fat-ptr 值 { fn_ptr, captures=null }
         return compileLambdaExpr(lambdaNode);
@@ -2479,4 +2482,119 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
         return phi;
     }
     return nullptr;
+}
+
+// Phase 10f：try-catch 表达式编译（DRAFT-错误.md [#4.H]）
+//
+// 仅做静态语义校验 + 占位 codegen：try block 内可失败调用错误的实际 IR 路由（错误通道
+// 检测 / 跳转到匹配 catch 子句）推 10g，与 #Fallible ABI 一并实施。
+//
+// 当前 codegen 行为（占位）：
+//   - 把 try block 当普通 block 编译，结果作为整体表达式值；
+//   - catch arms 不生成 IR（运行期不可达——错误通道未路由）；
+//   - 若用户在 try block 内对 #Fallible 函数发生实际调用，运行期会沿"成功"路径直走，
+//     错误 variant 写入返回值仍然走当前的成功通道—— 10g 落 IR 后才正确分流。
+//
+// 静态语义校验（[#4.H] 规则表 + [#5.B] 错误码）：
+//   - E7011：catch 类型必须是已声明 enum；
+//   - E7002：try block 内 callee 错误类型未被任一 catch 子句覆盖（穷尽性）；
+//   - E7010：catch arm body 末表达式类型与 try block 一致（流终止 arm 不参与）；
+//   - E7015 / E7016 / E7017 / E7018：警告类，编译器目前无独立 warning emit 通道，
+//     标 TODO；接入 spec §11 诊断分级落地后切换。
+//
+// 穷尽性收集策略（[#4.H] "穷尽性不下钻 lambda body"）：
+//   - 编译 try block 时把当前 try ctx 压入 _tryCatchStack；
+//   - compileCallExpr 检测到 #Fallible callee 时把 callee 错误类型 append 到 ctx.seenErrTypes；
+//   - lambda body 在 emitLambdaFunction 内有独立编译流，与外层 _tryCatchStack 隔离 →
+//     穷尽性自然不下钻 lambda 内部。
+llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
+    int line = node->getLineNumber();
+    int col = node->getColumn();
+
+    // 1) 校验所有 catch 子句的错误类型必须是已声明 enum（E7011）
+    //    收集 catch types 进 ctx.catchTypes 供穷尽性比对
+    TryCatchCtx ctx;
+    ctx.catchTypes.reserve(node->catches().size());
+    for (auto& arm : node->catches()) {
+        const string& errType = arm->errType();
+        p<FileNode> owner = nullptr;
+        auto enumDecl = lookupEnumDecl(errType, owner);
+        if (!enumDecl) {
+            int aline = arm->getLineNumber() > 0 ? arm->getLineNumber() : line;
+            int acol = arm->getColumn() > 0 ? arm->getColumn() : col;
+            throw YuxError(aline, acol, ErrorCode::E7011,
+                arm->errName().getText(), errType, errType);
+        }
+        ctx.catchTypes.push_back(errType);
+    }
+
+    // 2) 编译 try block，期间 _tryCatchStack 顶为本 try 的 ctx
+    //    占位 codegen：直接 compileStatementBlock + 取 result expr value（与普通 block 等同）
+    _tryCatchStack.push_back(ctx);
+    auto& tryBlock = node->tryBlock();
+    for (auto& stmt : tryBlock->statements()) {
+        compileStatement(stmt);
+    }
+    llvm::Value* result = nullptr;
+    TypeInfo resultType;
+    if (tryBlock->hasResult()) {
+        result = compileExpr(tryBlock->resultExpr());
+        try { resultType = tryBlock->resultExpr()->getType(); } catch (...) {}
+    }
+    // 取出收集到的 seenErrTypes 后再出栈
+    TryCatchCtx finishedCtx = std::move(_tryCatchStack.back());
+    _tryCatchStack.pop_back();
+
+    // 3) 穷尽性 E7002：seenErrTypes 中每个类型必须被某个 catch 子句的 errType 覆盖
+    for (auto& seen : finishedCtx.seenErrTypes) {
+        bool covered = false;
+        for (auto& ct : ctx.catchTypes) {
+            if (ct == seen) { covered = true; break; }
+        }
+        if (!covered) {
+            // 触发位置：try block 末尾（更精确的 callee 行号需在 compileCallExpr 期间
+            // 记录，10g 实施时改用 per-call 行号）。措辞参数：{E}, {callee}, {E}
+            // callee 名暂取 "<unknown>"（需 compileCallExpr 配合存名字到 ctx，未来补）。
+            throw YuxError(line, col, ErrorCode::E7002, seen, string("<unknown>"), seen);
+        }
+    }
+
+    // 4) E7015 / E7017：catch 子句多余 / try 块无可失败调用（warning，TODO 接入诊断通道）
+    //    E7016：try 内 ! 冗余（warning，已在 checkErrPropagateForIdCall 标 TODO）
+    //    E7018：catch arm 仅 panic（warning，TODO）
+
+    // 5) 编译 catch arms（占位 codegen：当前实施层错误通道未路由，arm body 在运行期不可达；
+    //    但仍需编译以触发 body 内的语义检查 + 收集 arm 类型。10g IR 落地后会重写）
+    //    技巧：用 dead block，把 catch body 编译进去然后丢弃；以便：
+    //    - body 内的标识符 / 表达式触发语义检查（绑定符号已在 visitCatchArm 注册到 arm scope）
+    //    - E7010 catch body 末表达式类型对照 try block resultType
+    auto func = _builder.GetInsertBlock()->getParent();
+    auto savedBB = _builder.GetInsertBlock();
+    for (auto& arm : node->catches()) {
+        auto deadBB = llvm::BasicBlock::Create(_context, "catch.dead", func);
+        _builder.SetInsertPoint(deadBB);
+        // 编译 arm body 语句序列；若 body 末有 result expr，按 E7010 校验类型
+        for (auto& stmt : arm->body()->statements()) {
+            compileStatement(stmt);
+        }
+        if (arm->body()->hasResult()) {
+            // E7010：arm result 表达式类型 == try block result 类型
+            try {
+                auto armT = arm->body()->resultExpr()->getType();
+                if (tryBlock->hasResult() && armT != resultType) {
+                    int aline = arm->getLineNumber() > 0 ? arm->getLineNumber() : line;
+                    int acol = arm->getColumn() > 0 ? arm->getColumn() : col;
+                    throw YuxError(aline, acol, ErrorCode::E7010,
+                        armT.name, resultType.name);
+                }
+            } catch (const YuxError&) { throw; }
+              catch (...) {}
+            compileExpr(arm->body()->resultExpr());
+        }
+        // 标 unreachable 让 dead block 合法收尾（10g 改为真正的错误路径返回）
+        _builder.CreateUnreachable();
+    }
+    _builder.SetInsertPoint(savedBB);
+
+    return result;
 }

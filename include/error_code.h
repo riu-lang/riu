@@ -308,6 +308,15 @@ DEF_ERR(7008, "function return type `{}` cannot equal its `#Fallible` type `{}` 
 DEF_ERR(7012, "`#NoReturn` function `{}` cannot declare a return type — remove the return type or remove `#NoReturn`")
 DEF_ERR(7013, "`#NoReturn` and `#Fallible({})` are mutually exclusive on the same function — a non-returning function cannot also propagate errors")
 DEF_ERR(7014, "`#NoReturn` function `{}` may reach end of body — control flow must terminate via `panic`-class call, another `#NoReturn` call, or unconditional infinite loop")
+// E7002 / E7009 / E7010 / E7011 / E7015-E7018 由 Phase 10f 启用（try-catch 块）
+DEF_ERR(7002, "non-exhaustive `try` block: error type `{}` thrown by callee `{}` is not handled by any `catch` clause — add `catch e {} {{ ... }}`")
+DEF_ERR(7009, "`try` block must be followed by at least one `catch` clause — bare `try {{ ... }}` is forbidden")
+DEF_ERR(7010, "`catch` body must end with `ret`, `panic`-class terminator, or an expression of the same type as the `try` block (got `{}` vs `{}`)")
+DEF_ERR(7011, "`catch e {}` type `{}` must be a declared enum; got `{}`")
+DEF_WARN(7015, "redundant `catch` clause: no call in `try` block can throw `{}` declared by `catch e {}` — remove this `catch` clause")
+DEF_WARN(7016, "`!` is redundant inside `try` block: bare call to `#Fallible({})` function `{}` already routes to the matching `catch e {}` clause — remove `!`")
+DEF_WARN(7017, "redundant `try-catch`: no call in `try` block can throw any error — remove the entire `try` and use a plain block")
+DEF_WARN(7018, "`panic` in `catch` arm converts a recoverable error to abort — consider `ret` with an error variant or `exit(code)` if termination is intended")
 
 #undef DEF_ERR
 #undef DEF_WARN

@@ -1,0 +1,22 @@
+; try 块内调用 #Fallible(IoErr) 函数，但 catch 子句只声明 ParseErr → E7002
+enum IoErr {
+  NotFound
+}
+
+enum ParseErr {
+  Empty
+}
+
+#Fallible(IoErr)
+fn read() i32 {
+  ret 0i32
+}
+
+fn main() {
+  var x i32 = try {
+    read()
+  } catch e ParseErr {
+    ret;
+  }
+  ret;
+}

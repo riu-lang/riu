@@ -618,6 +618,47 @@ public:
     [[nodiscard]] TypeInfo getType() const override;
 };
 
+// catch arm: `catch <绑定名> <错误 enum 类型> { body }`
+// DRAFT-错误.md [#4.H]：try 块的子句；body 内绑定 `errName` 为捕获的错误值（类型 = errType）
+// CatchArmNode 自身是 ScopeNode：承载绑定符号，使 body 内的 LiteralObj::getType
+// 可沿 scope 链解析到绑定类型（与 MatchArmNode 同档）
+class CatchArmNode : public ScopeNode {
+    Token _errName;
+    string _errType;            // 错误 enum 类型名（按 ID 取，等待 visitProgram 阶段校验为已声明 enum）
+    p<StatementBlockNode> _body;
+public:
+    CatchArmNode(const p<Node>& parent, Token errName, string errType, p<StatementBlockNode> body) :
+        ScopeNode(parent),
+        _errName(std::move(errName)),
+        _errType(std::move(errType)),
+        _body(std::move(body)) {
+    }
+
+    [[nodiscard]] const Token& errName() const { return _errName; }
+    [[nodiscard]] const string& errType() const { return _errType; }
+    [[nodiscard]] const p<StatementBlockNode>& body() const { return _body; }
+};
+
+// try { stmts } catch e1 E1 { ... } catch e2 E2 { ... }
+// DRAFT-错误.md [#4.H]：跨类型错误形态；try block 内可失败调用错误自动路由到匹配 catch 子句。
+// 类型：try block 末表达式类型 + 所有 catch arm body 末表达式类型须一致（流终止 arm 不参与，
+// 与 if-else / match 同档）。10f 仅做语义校验；实际错误通道 IR 路由推 10g。
+class ExprTryCatchNode : public ExprNode {
+    p<StatementBlockNode> _tryBlock;
+    vector<p<CatchArmNode>> _catches;
+
+public:
+    ExprTryCatchNode(const p<Node>& parent, p<StatementBlockNode> tryBlock, vector<p<CatchArmNode>> catches) :
+        ExprNode(parent),
+        _tryBlock(std::move(tryBlock)),
+        _catches(std::move(catches)) {
+    }
+
+    [[nodiscard]] const p<StatementBlockNode>& tryBlock() const { return _tryBlock; }
+    [[nodiscard]] const vector<p<CatchArmNode>>& catches() const { return _catches; }
+    [[nodiscard]] TypeInfo getType() const override;
+};
+
 // a ?? b：a 为 Nullable<T> 时，有值取 a.get()，否则取 b
 class ExprNullElseNode : public ExprNode {
     p<ExprNode> _left;
