@@ -16,12 +16,12 @@ Cell {
 fn main() {
   var b Box<Cell> = Cell(42)
   val f = () i32 => b.get()    ; 捕获 Box<Cell>，body 经 b 自动解引调方法
-  println(f().to_string())     ; 42
-  println(f().to_string())     ; 42（多次调用共享 captures）
+  println(f())     ; 42
+  println(f())     ; 42（多次调用共享 captures）
 
   ; 第二个 lambda 捕获同一个 b → 各自 captures box 各自 retain
   val g = () i32 => b.get()
-  println(g().to_string())     ; 42
+  println(g())     ; 42
 
   ret;
 }

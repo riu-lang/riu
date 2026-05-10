@@ -4,6 +4,6 @@ fn main() {
   var c i32 = 1
   val r i32& = &c
   c = 5
-  println(r.to_string())
+  println(r)
   ret;
 }

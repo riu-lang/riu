@@ -3,5 +3,5 @@ use shapes.*
 
 fn main() {
     val p = Point(3, 4)
-    println(p.sum().to_string())
+    println(p.sum())
 }

@@ -3,12 +3,12 @@
 fn main() {
   var x i32 = 10
   val f = (y i32) i32 => y + x
-  println(f(1).to_string())   ; 11
-  println(f(7).to_string())   ; 17
+  println(f(1))   ; 11
+  println(f(7))   ; 17
 
   ; 修改 x 后调用：captures 是值复制 → 闭包不感知后续 x 的变化
   x = 100
-  println(f(1).to_string())   ; 仍 11（捕获时 x=10）
+  println(f(1))   ; 仍 11（捕获时 x=10）
 
   ret;
 }

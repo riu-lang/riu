@@ -4,6 +4,6 @@ fn main() {
   var a Array<i32> = [1, 2, 3]
   val r Array<i32>& = &a
   a.set_len(2i64)
-  println(r.len().to_string())
+  println(r.len())
   ret;
 }

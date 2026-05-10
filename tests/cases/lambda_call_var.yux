@@ -3,11 +3,11 @@
 
 fn main() {
   var f fn(i32)i32 = (x i32) i32 => x * 2
-  println(f(7).to_string())
+  println(f(7))
 
   ; 多次调用
-  println(f(0).to_string())
-  println(f(21).to_string())
+  println(f(0))
+  println(f(21))
 
   ret;
 }

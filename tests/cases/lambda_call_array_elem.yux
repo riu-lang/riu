@@ -15,16 +15,16 @@ fn main() {
   arr.push(make_inc())
   arr.push((x i32) i32 => x * 2)
   arr.push((x i32) i32 => x - 5)
-  println(arr.len().to_string())          ; 3
-  println(arr[0](10).to_string())         ; 11
-  println(arr[1](10).to_string())         ; 20
-  println(arr[2](10).to_string())         ; 5
+  println(arr.len())          ; 3
+  println(arr[0](10))         ; 11
+  println(arr[1](10))         ; 20
+  println(arr[2](10))         ; 5
 
   ; 容器 by-value 传参
-  println(run_first(arr, 100).to_string())   ; 101
+  println(run_first(arr, 100))   ; 101
 
   ; 元素重赋（旧 fn 字段释放 / 新 fn 字段拷入）
   arr[0] = (x i32) i32 => x + 1000
-  println(arr[0](1).to_string())          ; 1001
+  println(arr[0](1))          ; 1001
   ret;
 }

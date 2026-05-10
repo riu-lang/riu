@@ -15,6 +15,6 @@ fn use_borrow(r i32&) i32 {
 
 fn main() {
   var n i32 = 100
-  println(use_borrow(&n).to_string())   ; (100+5) + (100*2) = 305
+  println(use_borrow(&n))   ; (100+5) + (100*2) = 305
   ret;
 }

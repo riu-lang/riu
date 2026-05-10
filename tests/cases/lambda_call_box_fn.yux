@@ -5,18 +5,18 @@
 fn main() {
   ; 直接构造 + 调用
   var b Box<fn(i32)i32> = (x i32) i32 => x + 100
-  println(b(5).to_string())               ; 105
-  println(b(10).to_string())              ; 110
+  println(b(5))               ; 105
+  println(b(10))              ; 110
 
   ; 句柄复制：b 与 b2 共享同一 box，调用结果相同
   var b2 Box<fn(i32)i32> = b
-  println(b2(7).to_string())              ; 107
+  println(b2(7))              ; 107
 
   ; 重赋：旧 box release，新 box +1
   b = (x i32) i32 => x * 3
-  println(b(4).to_string())               ; 12
+  println(b(4))               ; 12
 
   ; 通过原句柄 b2 仍可调旧 box（共享语义）
-  println(b2(20).to_string())             ; 120
+  println(b2(20))             ; 120
   ret;
 }

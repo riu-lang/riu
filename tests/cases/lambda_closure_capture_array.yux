@@ -7,7 +7,7 @@ fn first(a Array<i32>) i32 {
 fn main() {
   var arr Array<i32> = [10, 20, 30]
   val f = () i32 => first(arr)
-  println(f().to_string())  ; 10
-  println(f().to_string())  ; 10（多次调用共享 captures）
+  println(f())  ; 10
+  println(f())  ; 10（多次调用共享 captures）
   ret;
 }

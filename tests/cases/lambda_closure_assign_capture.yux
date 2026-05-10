@@ -6,6 +6,6 @@ fn main() {
     a = 20    ; ❌ E2030：捕获变量不可赋值
     ret a
   }
-  println(f().to_string())
+  println(f())
   ret;
 }

@@ -11,7 +11,7 @@ fn main() {
   val g = () String => s
   val h = () i32 => n + 1
   println(g())              ; hello
-  println(h().to_string())  ; 8
+  println(h())  ; 8
 
   ret;
 }

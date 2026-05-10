@@ -8,6 +8,6 @@ fn make() fn(i32)i32 {
 
 fn main() {
   var f fn(i32)i32 = make()
-  println(f(5).to_string())
+  println(f(5))
   ret;
 }

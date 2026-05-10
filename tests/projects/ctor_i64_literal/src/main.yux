@@ -15,5 +15,5 @@ S {
 
 fn main() {
     val p = S(1)
-    println(p.n.to_string())
+    println(p.n)
 }

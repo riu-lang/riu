@@ -4,11 +4,11 @@
 fn main() {
   ; IIFE：lambda 字面量括起来后立即调用
   var r1 i32 = ((x i32) i32 => x + 1)(5)
-  println(r1.to_string())
+  println(r1)
 
   ; 多参 + 组糖
   var r2 i32 = ((a, b i32) i32 => a + b)(3, 4)
-  println(r2.to_string())
+  println(r2)
 
   ret;
 }

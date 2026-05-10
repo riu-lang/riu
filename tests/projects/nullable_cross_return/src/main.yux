@@ -3,6 +3,6 @@ use lookup.*
 
 fn main() {
   val r = find_pos(42i64)
-  println(r.has().to_string())
-  println(r.get().to_string())
+  println(r.has())
+  println(r.get())
 }

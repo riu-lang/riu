@@ -6,6 +6,6 @@ fn main() {
     n += 5    ; ❌ E2030：捕获变量不可复合赋值
     ret n
   }
-  println(f().to_string())
+  println(f())
   ret;
 }

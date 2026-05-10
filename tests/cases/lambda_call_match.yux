@@ -16,8 +16,8 @@ fn main() {
     Color::Green => 2
     Color::Blue => 3
   }
-  println(classify(Color::Red).to_string())
-  println(classify(Color::Green).to_string())
+  println(classify(Color::Red))
+  println(classify(Color::Green))
 
   ; 实参反推 + match（裸单参形式：返回类型亦由上下文反推）
   val r1 i32 = apply(c => match c {
@@ -25,6 +25,6 @@ fn main() {
     Color::Green => 20
     Color::Blue => 30
   }, Color::Blue)
-  println(r1.to_string())
+  println(r1)
   ret;
 }

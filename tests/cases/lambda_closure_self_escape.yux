@@ -18,6 +18,6 @@ Holder {
 fn main() {
   var h Holder = Holder(7)
   var f fn(i32)i32 = h.make()
-  println(f(3).to_string())
+  println(f(3))
   ret;
 }

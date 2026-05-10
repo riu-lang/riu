@@ -40,7 +40,7 @@ Counter {
 
 fn main() {
   var c Counter = Counter(10)
-  println(c.add_then_apply(5).to_string())   ; 10 + 5 = 15
-  println(c.triple_apply().to_string())      ; 10 + 20 + 20 = 50
+  println(c.add_then_apply(5))   ; 10 + 5 = 15
+  println(c.triple_apply())      ; 10 + 20 + 20 = 50
   ret;
 }

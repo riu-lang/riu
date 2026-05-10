@@ -36,19 +36,19 @@ fn call_h_by_value(s Holder, x i32) i32 {
 fn main() {
   ; 构造时把 fn 值搬入 struct 字段
   var s Holder = Holder(make_inc(), 100)
-  println(s.run(5).to_string())          ; 5+1+100 = 106
-  println(s.h(10).to_string())           ; 11
+  println(s.run(5))          ; 5+1+100 = 106
+  println(s.h(10))           ; 11
 
   ; 方法内 $.h 字段重赋
   s.set((x i32) i32 => x * 3)
-  println(s.h(4).to_string())            ; 12
+  println(s.h(4))            ; 12
 
   ; struct by-value 跨函数边界
-  println(call_h_by_value(s, 7).to_string())   ; 21
+  println(call_h_by_value(s, 7))   ; 21
 
   ; 整 struct 重新赋值：旧 s 的 fn 字段释放，新值字段拷入
   var s2 Holder = Holder((x i32) i32 => x - 1, 0)
   s = s2
-  println(s.h(50).to_string())           ; 49
+  println(s.h(50))           ; 49
   ret;
 }

@@ -35,22 +35,22 @@ fn main() {
 
   ; ?? 默认值运算符
   var a i32 = nx ?? -1i32
-  println(a.to_string())          ; 期望 42
+  println(a)          ; 期望 42
 
   var b i32 = ny ?? -1i32
-  println(b.to_string())          ; 期望 -1
+  println(b)          ; 期望 -1
 
   ; ?. 安全字段访问 (base 是 Nullable<N>，N 有字段 v)
   var n N = N(7)
   var maybeN N? = n
   var v1 i32? = maybeN?.v         ; 应为持值 7
   var v1d i32 = v1 ?? -1i32
-  println(v1d.to_string())        ; 期望 7
+  println(v1d)        ; 期望 7
 
   var emptyN N? = null
   var v2 i32? = emptyN?.v         ; 应为空
   var v2d i32 = v2 ?? -99i32
-  println(v2d.to_string())        ; 期望 -99
+  println(v2d)        ; 期望 -99
 
   println("=== enum Phase 5 烟测 ===")
   ; 零参 variant（含括号 / 无括号 等价）
