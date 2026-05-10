@@ -432,6 +432,30 @@ IRResult compileIR(string inputFile, Yux& yux, bool isSdk = false) {
     return {std::move(context), std::move(module)};
 }
 
+// SDK 构建路径（新布局，与 aeaefa6 项目模式一致）：
+//   sdkRoot = <sdk-project-root>（含 yux.toml）
+//   .lib    = sdkRoot/build/yux.lib                        （最终产物，去掉 <name>/ 子层）
+//   .obj    = sdkRoot/build/src/yux/core.obj               （中间产物，镜像源相对项目根的路径）
+//   .ll     = sdkRoot/build/src/yux/core.ll
+// sdkPath 形如 .../sdk/yux/src/yux/core，向上 3 级即 sdkRoot。
+struct SdkPaths {
+    std::string objPath;
+    std::string libPath;
+    std::string irPath;
+};
+SdkPaths sdkBuildPaths(const std::string& sdkPathAbs) {
+    namespace fs = std::filesystem;
+    fs::path sdkRoot = fs::path(sdkPathAbs).parent_path().parent_path().parent_path();
+    fs::path build = sdkRoot / "build";
+    fs::path objDir = build / "src" / "yux";
+    fs::create_directories(objDir);
+    return {
+        (objDir / "core.obj").string(),
+        (build / "yux.lib").string(),
+        (objDir / "core.ll").string(),
+    };
+}
+
 bool needRecompileSdkDir(const string& sdkDir, const string& sdkObjPath) {
     if (!std::filesystem::exists(sdkObjPath)) {
         return true;
@@ -1139,10 +1163,7 @@ int wmain(int argc, wchar_t* argv[]) {
         std::string sdkObjPath;
         if (!sdkPath.empty()) {
             sdkPath = fs::absolute(sdkPath).string();
-            fs::path sdkRoot = fs::path(sdkPath).parent_path().parent_path().parent_path();
-            fs::path sdkBuildDir = sdkRoot / "build" / "yux";
-            fs::create_directories(sdkBuildDir);
-            sdkObjPath = (sdkBuildDir / "core.obj").string();
+            sdkObjPath = sdkBuildPaths(sdkPath).objPath;
 
             bool needCompile = !fs::exists(sdkObjPath) || needRecompileSdkDir(sdkPath, sdkObjPath);
             if (needCompile) {
@@ -1534,12 +1555,9 @@ int wmain(int argc, wchar_t* argv[]) {
     if (!sdkPath.empty()) {
         namespace fs = std::filesystem;
         sdkPath = fs::absolute(sdkPath).string();
-        // sdkPath = <sdkRoot>/src/yux/core；3 级 parent 得到 <sdkRoot>
-        fs::path sdkRoot = fs::path(sdkPath).parent_path().parent_path().parent_path();
-        fs::path sdkBuildDir = sdkRoot / "build" / "yux";
-        fs::create_directories(sdkBuildDir);
-        string sdkObjPath = (sdkBuildDir / "core.obj").string();
-        sdkLibPath = (sdkBuildDir / "yux.lib").string();
+        SdkPaths sp = sdkBuildPaths(sdkPath);
+        string sdkObjPath = sp.objPath;
+        sdkLibPath = sp.libPath;
 
         bool libExists = fs::exists(sdkLibPath);
         bool needCompile = !libExists || needRecompileSdkDir(sdkPath, sdkObjPath);
@@ -1552,7 +1570,7 @@ int wmain(int argc, wchar_t* argv[]) {
                 auto sdkModule = sdkIrr.module.get();
 
                 if (emitIr) {
-                    string sdkIrPath = (sdkBuildDir / "core.ll").string();
+                    string sdkIrPath = sp.irPath;
                     std::error_code ec;
                     llvm::raw_fd_ostream irFile(sdkIrPath, ec);
                     if (!ec) {
@@ -1806,9 +1824,7 @@ int wmain(int argc, wchar_t* argv[]) {
 
         std::string sdkObjPath;
         if (!sdkPath.empty()) {
-            namespace fs = std::filesystem;
-            fs::path sdkRoot = fs::path(sdkPath).parent_path().parent_path().parent_path();
-            sdkObjPath = (sdkRoot / "build" / "yux" / "core.obj").string();
+            sdkObjPath = sdkBuildPaths(sdkPath).objPath;
         }
 
         int rc = runViaJIT(std::move(mainMod), std::move(mainCtx),
