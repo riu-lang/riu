@@ -1,7 +1,7 @@
 ; struct 用例（迁自 tests/cases/struct_*、ctor_daa、generic_struct_byval、field_reassign_rc）
 ; 覆盖：基础构造与字段读、==/!= 重载、按值传参（平凡 + 含 RC 字段 + 泛型实例化）、
 ;       含 RC 字段 struct 整体赋值的 retain-then-release、字段重赋走 retain/release、
-;       构造函数定性赋值分析（DAA）。
+;       构造函数定性赋值分析（DAA）、运算符重载、析构函数。
 
 ; ---------- struct_test：基础构造 + 字段读 ----------
 
@@ -267,4 +267,332 @@ fn test_ctor_daa_branch_full_init() {
   val b2 = DaaBranchy(false, 0i32, 50i32)
   assert_eq(b2.v, 50i32)
   assert_eq(b2.w, 49i32)
+}
+
+; ==================== 运算符重载 ====================
+
+; ---------- 算术运算符重载 ----------
+
+struct Vec2 {
+  x i32
+  y i32
+}
+
+Vec2 {
+  fn Vec2(x i32, y i32) {
+    $.x = x
+    $.y = y
+  }
+
+  fn plus(other Vec2&) Vec2 {
+    Vec2($.x + other.x, $.y + other.y)
+  }
+
+  fn minus(other Vec2&) Vec2 {
+    Vec2($.x - other.x, $.y - other.y)
+  }
+
+  fn mul(other Vec2&) Vec2 {
+    Vec2($.x * other.x, $.y * other.y)
+  }
+
+  fn neg() Vec2 {
+    Vec2(-$.x, -$.y)
+  }
+}
+
+#Test
+fn test_op_overload_plus() {
+  val a Vec2 = Vec2(1i32, 2i32)
+  val b Vec2 = Vec2(3i32, 4i32)
+  val c Vec2 = a + b
+  assert_eq(c.x, 4i32)
+  assert_eq(c.y, 6i32)
+}
+
+#Test
+fn test_op_overload_minus() {
+  val a Vec2 = Vec2(10i32, 20i32)
+  val b Vec2 = Vec2(3i32, 4i32)
+  val c Vec2 = a - b
+  assert_eq(c.x, 7i32)
+  assert_eq(c.y, 16i32)
+}
+
+#Test
+fn test_op_overload_mul() {
+  val a Vec2 = Vec2(2i32, 3i32)
+  val b Vec2 = Vec2(4i32, 5i32)
+  val c Vec2 = a * b
+  assert_eq(c.x, 8i32)
+  assert_eq(c.y, 15i32)
+}
+
+#Test
+fn test_op_overload_neg() {
+  val a Vec2 = Vec2(5i32, -3i32)
+  val b Vec2 = -a
+  assert_eq(b.x, -5i32)
+  assert_eq(b.y, 3i32)
+}
+
+#Test
+fn test_op_overload_chain() {
+  val a Vec2 = Vec2(1i32, 2i32)
+  val b Vec2 = Vec2(3i32, 4i32)
+  val c Vec2 = Vec2(5i32, 6i32)
+  val d Vec2 = a + b + c
+  assert_eq(d.x, 9i32)
+  assert_eq(d.y, 12i32)
+}
+
+; ---------- 比较运算符重载 ----------
+
+struct OrderedPoint {
+  x i32
+  y i32
+}
+
+OrderedPoint {
+  fn OrderedPoint(x i32, y i32) {
+    $.x = x
+    $.y = y
+  }
+
+  fn eq(other OrderedPoint&) bool {
+    $.x == other.x && $.y == other.y
+  }
+
+  fn ne(other OrderedPoint&) bool {
+    !$.eq(&other)
+  }
+
+  fn lt(other OrderedPoint&) bool {
+    $.x < other.x || ($.x == other.x && $.y < other.y)
+  }
+
+  fn le(other OrderedPoint&) bool {
+    $.lt(&other) || $.eq(&other)
+  }
+
+  fn gt(other OrderedPoint&) bool {
+    !$.le(&other)
+  }
+
+  fn ge(other OrderedPoint&) bool {
+    !$.lt(&other)
+  }
+}
+
+#Test
+fn test_op_overload_eq_ne() {
+  val a OrderedPoint = OrderedPoint(1i32, 2i32)
+  val b OrderedPoint = OrderedPoint(1i32, 2i32)
+  val c OrderedPoint = OrderedPoint(1i32, 3i32)
+  assert_true(a == b)
+  assert_false(a == c)
+  assert_false(a != b)
+  assert_true(a != c)
+}
+
+#Test
+fn test_op_overload_lt() {
+  val a OrderedPoint = OrderedPoint(1i32, 2i32)
+  val b OrderedPoint = OrderedPoint(2i32, 1i32)
+  val c OrderedPoint = OrderedPoint(1i32, 3i32)
+  assert_true(a < b)
+  assert_true(a < c)
+  assert_false(b < a)
+}
+
+#Test
+fn test_op_overload_le() {
+  val a OrderedPoint = OrderedPoint(1i32, 2i32)
+  val b OrderedPoint = OrderedPoint(1i32, 2i32)
+  val c OrderedPoint = OrderedPoint(2i32, 1i32)
+  assert_true(a <= b)
+  assert_true(a <= c)
+  assert_false(c <= a)
+}
+
+#Test
+fn test_op_overload_gt() {
+  val a OrderedPoint = OrderedPoint(2i32, 1i32)
+  val b OrderedPoint = OrderedPoint(1i32, 2i32)
+  assert_true(a > b)
+  assert_false(b > a)
+}
+
+#Test
+fn test_op_overload_ge() {
+  val a OrderedPoint = OrderedPoint(1i32, 2i32)
+  val b OrderedPoint = OrderedPoint(1i32, 2i32)
+  val c OrderedPoint = OrderedPoint(1i32, 1i32)
+  assert_true(a >= b)
+  assert_true(a >= c)
+  assert_false(c >= a)
+}
+
+; ---------- 位运算符重载 ----------
+
+struct BitFlags {
+  bits u32
+}
+
+BitFlags {
+  fn BitFlags(bits u32) {
+    $.bits = bits
+  }
+
+  fn and(other BitFlags&) BitFlags {
+    BitFlags($.bits & other.bits)
+  }
+
+  fn or(other BitFlags&) BitFlags {
+    BitFlags($.bits | other.bits)
+  }
+
+  fn xor(other BitFlags&) BitFlags {
+    BitFlags($.bits ^ other.bits)
+  }
+
+  fn inv() BitFlags {
+    BitFlags(~$.bits)
+  }
+}
+
+#Test
+fn test_op_overload_bit_and() {
+  val a BitFlags = BitFlags(0xFFu32)
+  val b BitFlags = BitFlags(0x0Fu32)
+  val c BitFlags = a & b
+  assert_eq(c.bits, 0x0Fu32)
+}
+
+#Test
+fn test_op_overload_bit_or() {
+  val a BitFlags = BitFlags(0xF0u32)
+  val b BitFlags = BitFlags(0x0Fu32)
+  val c BitFlags = a | b
+  assert_eq(c.bits, 0xFFu32)
+}
+
+#Test
+fn test_op_overload_bit_xor() {
+  val a BitFlags = BitFlags(0xFFu32)
+  val b BitFlags = BitFlags(0x0Fu32)
+  val c BitFlags = a ^ b
+  assert_eq(c.bits, 0xF0u32)
+}
+
+#Test
+fn test_op_overload_bit_inv() {
+  val a BitFlags = BitFlags(0x00u32)
+  val b BitFlags = ~a
+  assert_eq(b.bits, 0xFFFFFFFFu32)
+}
+
+; ==================== 析构函数 ====================
+; 注：当前编译器限制，无法在析构函数中访问嵌套成员
+; 这里仅测试析构函数的基本定义和调用
+
+struct SimpleDtor {
+  value i32
+}
+
+SimpleDtor {
+  fn ~() {
+    ; 析构函数被调用时执行清理
+    ; 当前仅验证编译通过，运行时不崩溃
+  }
+
+  fn SimpleDtor(value i32) {
+    $.value = value
+  }
+}
+
+#Test
+fn test_dtor_basic() {
+  var d SimpleDtor = SimpleDtor(42)
+  assert_eq(d.value, 42i32)
+  ; d 离开作用域时析构函数自动调用
+}
+
+#Test
+fn test_dtor_multiple() {
+  var d1 SimpleDtor = SimpleDtor(1)
+  var d2 SimpleDtor = SimpleDtor(2)
+  assert_eq(d1.value, 1i32)
+  assert_eq(d2.value, 2i32)
+  ; d1, d2 离开作用域时析构函数依次调用
+}
+
+#Test
+fn test_dtor_nested_scope() {
+  {
+    var d SimpleDtor = SimpleDtor(100)
+    assert_eq(d.value, 100i32)
+  }
+  ; d 在内层作用域结束时析构
+  assert_true(true)
+}
+
+; ==================== 嵌套 struct ====================
+; 注：当前编译器限制，嵌套成员赋值不支持
+
+struct InnerStruct {
+  value i32
+}
+
+InnerStruct {
+  fn InnerStruct(value i32) {
+    $.value = value
+  }
+}
+
+struct OuterStruct {
+  inner InnerStruct
+  tag i32
+}
+
+OuterStruct {
+  fn OuterStruct(value i32, tag i32) {
+    $.inner = InnerStruct(value)
+    $.tag = tag
+  }
+}
+
+#Test
+fn test_nested_struct_access() {
+  val o OuterStruct = OuterStruct(42i32, 7i32)
+  assert_eq(o.inner.value, 42i32)
+  assert_eq(o.tag, 7i32)
+}
+
+; ==================== struct 方法链式调用 ====================
+
+struct FluentBuilder {
+  sum i32
+}
+
+FluentBuilder {
+  fn FluentBuilder() {
+    $.sum = 0i32
+  }
+
+  fn add(n i32) FluentBuilder {
+    $.sum = $.sum + n
+    ret $
+  }
+
+  fn get() i32 {
+    ret $.sum
+  }
+}
+
+#Test
+fn test_method_chain() {
+  val b FluentBuilder = FluentBuilder()
+  val result i32 = b.add(1).add(2).add(3).get()
+  assert_eq(result, 6i32)
 }

@@ -1,5 +1,13 @@
 ; 基础类型用例
 ; 迁自 tests/cases/basic_types.yux
+;
+; 本文件包含基础类型测试:
+; - 布尔类型
+; - 各整数类型
+; - 浮点类型
+; - 整数字面量进制
+
+; ==================== 布尔类型 ====================
 
 #Test
 fn test_bool_true() {
@@ -13,4 +21,108 @@ fn test_bool_false() {
   val b bool = false
   assert_false(b)
   assert_eq(b, false)
+}
+
+; ==================== 整数类型 ====================
+
+#Test
+fn test_i8_type() {
+  val a i8 = 42i8
+  assert_eq(a, 42i8)
+}
+
+#Test
+fn test_u8_type() {
+  val a u8 = 255u8
+  assert_eq(a, 255u8)
+}
+
+#Test
+fn test_i16_type() {
+  val a i16 = 1000i16
+  assert_eq(a, 1000i16)
+}
+
+#Test
+fn test_u16_type() {
+  val a u16 = 65535u16
+  assert_eq(a, 65535u16)
+}
+
+#Test
+fn test_i32_type() {
+  val a i32 = 100000
+  assert_eq(a, 100000)
+}
+
+#Test
+fn test_u32_type() {
+  val a u32 = 4000000000u32
+  assert_eq(a, 4000000000u32)
+}
+
+#Test
+fn test_i64_type() {
+  val a i64 = 1000000000i64
+  assert_eq(a, 1000000000i64)
+}
+
+#Test
+fn test_u64_type() {
+  val a u64 = 1000000000u64
+  assert_eq(a, 1000000000u64)
+}
+
+; ==================== 浮点类型 ====================
+
+#Test
+fn test_f32_type() {
+  val a f32 = 3.14f32
+  assert_eq(a, 3.14f32)
+}
+
+#Test
+fn test_f64_type() {
+  val a f64 = 3.14159265358979
+  assert_eq(a, 3.14159265358979)
+}
+
+; ==================== 整数字面量进制 ====================
+
+#Test
+fn test_binary_literal() {
+  val a i32 = 0b1010
+  assert_eq(a, 10)
+}
+
+#Test
+fn test_octal_literal() {
+  val a i32 = 0o755
+  assert_eq(a, 493)
+}
+
+#Test
+fn test_hex_literal() {
+  val a i32 = 0xFF
+  assert_eq(a, 255)
+}
+
+; ==================== 类型后缀字面量 ====================
+
+#Test
+fn test_i8_suffix() {
+  val a i8 = 127i8
+  assert_eq(a, 127i8)
+}
+
+#Test
+fn test_u64_suffix() {
+  val a u64 = 100u64
+  assert_eq(a, 100u64)
+}
+
+#Test
+fn test_f32_suffix() {
+  val a f32 = 2.5f32
+  assert_eq(a, 2.5f32)
 }

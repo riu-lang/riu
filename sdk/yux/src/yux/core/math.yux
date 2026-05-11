@@ -5,3 +5,91 @@ fn abs(v i8) i8 {
     v
   }
 }
+
+fn abs(v i16) i16 {
+  if v < 0 {
+    -v
+  } else {
+    v
+  }
+}
+
+fn abs(v i32) i32 {
+  if v < 0 {
+    -v
+  } else {
+    v
+  }
+}
+
+fn abs(v i64) i64 {
+  if v < 0 {
+    -v
+  } else {
+    v
+  }
+}
+
+fn min(a i8, b i8) i8 {
+  if a < b {
+    a
+  } else {
+    b
+  }
+}
+
+fn min(a i16, b i16) i16 {
+  if a < b {
+    a
+  } else {
+    b
+  }
+}
+
+fn min(a i32, b i32) i32 {
+  if a < b {
+    a
+  } else {
+    b
+  }
+}
+
+fn min(a i64, b i64) i64 {
+  if a < b {
+    a
+  } else {
+    b
+  }
+}
+
+fn max(a i8, b i8) i8 {
+  if a > b {
+    a
+  } else {
+    b
+  }
+}
+
+fn max(a i16, b i16) i16 {
+  if a > b {
+    a
+  } else {
+    b
+  }
+}
+
+fn max(a i32, b i32) i32 {
+  if a > b {
+    a
+  } else {
+    b
+  }
+}
+
+fn max(a i64, b i64) i64 {
+  if a > b {
+    a
+  } else {
+    b
+  }
+}

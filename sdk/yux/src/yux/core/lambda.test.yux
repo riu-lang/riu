@@ -1,0 +1,437 @@
+; lambda 测试套件
+; 迁自 tests/cases/lambda_call_*.yux, lambda_type_*.yux, lambda_closure_*.yux
+;
+; 本文件包含 lambda 相关测试:
+; - IIFE（立即调用 lambda）
+; - lambda 作实参传给高阶 fn
+; - fn 值作返回类型
+; - struct 含 fn 字段
+; - Array<fn> 元素调用
+; - Box<fn> 调用
+; - fn 类型声明与别名
+; - lambda 闭包捕获
+
+; ==================== 类型别名 ====================
+
+Callback = fn(s String)bool
+Pred<T> = fn(x T)bool
+Op2<A, B> = fn(a A, b B)A
+
+; ==================== 辅助函数 ====================
+
+fn apply(f fn(i32)i32, x i32) i32 {
+  ret f(x)
+}
+
+fn apply0(f fn()i32) i32 {
+  ret f()
+}
+
+fn run_twice(f fn(i32)i32, x i32) i32 {
+  ret f(x) + f(x + 1)
+}
+
+fn forward(g fn(i32)i32, y i32) i32 {
+  ret run_twice(g, y)
+}
+
+fn make_inc() fn(i32)i32 {
+  ret (x i32) i32 => x + 1
+}
+
+fn make_const(v i32) fn(i32)i32 {
+  ret (x i32) i32 => x * 2
+}
+
+fn make_adder(n i32) fn(i32)i32 {
+  ret (x i32) i32 => x + n
+}
+
+fn run_first(a Array<fn(i32)i32>, x i32) i32 {
+  ret a[0](x)
+}
+
+fn first(a Array<i32>) i32 {
+  ret a[0]
+}
+
+; ==================== struct Holder ====================
+
+struct Holder {
+  h fn(i32)i32
+  base i32
+}
+
+Holder {
+  fn Holder(h fn(i32)i32, base i32) {
+    $.h = h
+    $.base = base
+  }
+
+  fn run(x i32) i32 {
+    ret $.h(x) + $.base
+  }
+
+  fn set(h fn(i32)i32) {
+    $.h = h
+    ret;
+  }
+}
+
+fn call_h_by_value(s Holder, x i32) i32 {
+  ret s.h(x)
+}
+
+; ==================== struct Cell ====================
+
+struct Cell {
+  n i32
+}
+
+Cell {
+  fn Cell(n i32) {
+    $.n = n
+  }
+  fn get() i32 {
+    ret $.n
+  }
+}
+
+; ==================== struct Counter ====================
+
+struct Counter {
+  value i32
+}
+
+Counter {
+  fn Counter(v i32) {
+    $.value = v
+  }
+
+  fn double() i32 {
+    ret $.value * 2
+  }
+
+  fn add_then_apply(x i32) i32 {
+    ret apply((y i32) i32 => $.value + y, x)
+  }
+
+  fn triple_apply() i32 {
+    var s i32 = 0
+    s = s + apply0(() i32 => $.value)
+    s = s + apply0(() i32 => $.value * 2)
+    s = s + apply0(() i32 => $.double())
+    ret s
+  }
+}
+
+; ==================== IIFE 测试 ====================
+
+#Test
+fn test_iife_single_param() {
+  val r = ((x i32) i32 => x + 1)(5)
+  assert_eq(r, 6)
+}
+
+#Test
+fn test_iife_multi_param() {
+  val r = ((a, b i32) i32 => a + b)(3, 4)
+  assert_eq(r, 7)
+}
+
+; ==================== lambda 变量调用测试 ====================
+
+#Test
+fn test_lambda_var_call() {
+  var f fn(i32)i32 = (x i32) i32 => x * 2
+  assert_eq(f(7), 14)
+  assert_eq(f(0), 0)
+  assert_eq(f(21), 42)
+}
+
+; ==================== lambda 作实参测试 ====================
+
+#Test
+fn test_lambda_as_arg_explicit() {
+  val r = apply((x i32) i32 => x + 10, 5)
+  assert_eq(r, 15)
+}
+
+#Test
+fn test_lambda_as_arg_inferred() {
+  val r = apply(x => x * x, 6)
+  assert_eq(r, 36)
+}
+
+; ==================== lambda 作返回值测试 ====================
+
+#Test
+fn test_lambda_return() {
+  var f fn(i32)i32 = make_inc()
+  assert_eq(f(10), 11)
+  assert_eq(f(99), 100)
+}
+
+#Test
+fn test_lambda_return_chained() {
+  val r = make_inc()(41)
+  assert_eq(r, 42)
+}
+
+#Test
+fn test_lambda_return_const() {
+  var g fn(i32)i32 = make_const(0)
+  assert_eq(g(7), 14)
+}
+
+; ==================== lambda 参数传递测试 ====================
+
+#Test
+fn test_lambda_param_pass() {
+  var inc fn(i32)i32 = (x i32) i32 => x + 1
+  var r1 = forward(inc, 10)
+  assert_eq(r1, 23)
+
+  var r2 = forward((x i32) i32 => x * 2, 3)
+  assert_eq(r2, 14)
+}
+
+; ==================== struct fn 字段测试 ====================
+
+#Test
+fn test_struct_fn_field() {
+  var s Holder = Holder(make_inc(), 100)
+  assert_eq(s.run(5), 106)
+  assert_eq(s.h(10), 11)
+}
+
+#Test
+fn test_struct_fn_field_reassign() {
+  var s Holder = Holder(make_inc(), 100)
+  s.set((x i32) i32 => x * 3)
+  assert_eq(s.h(4), 12)
+}
+
+#Test
+fn test_struct_fn_field_by_value() {
+  var s Holder = Holder(make_inc(), 100)
+  val r = call_h_by_value(s, 7)
+  assert_eq(r, 8)
+}
+
+#Test
+fn test_struct_fn_field_whole_reassign() {
+  var s Holder = Holder(make_inc(), 100)
+  var s2 Holder = Holder((x i32) i32 => x - 1, 0)
+  s = s2
+  assert_eq(s.h(50), 49)
+}
+
+; ==================== Array<fn> 测试 ====================
+
+#Test
+fn test_array_fn_elem() {
+  var arr Array<fn(i32)i32> = []
+  arr.push(make_inc())
+  arr.push((x i32) i32 => x * 2)
+  arr.push((x i32) i32 => x - 5)
+
+  assert_eq(arr.len(), 3i64)
+  assert_eq(arr[0](10), 11)
+  assert_eq(arr[1](10), 20)
+  assert_eq(arr[2](10), 5)
+}
+
+#Test
+fn test_array_fn_elem_by_value() {
+  var arr Array<fn(i32)i32> = []
+  arr.push(make_inc())
+
+  val r = run_first(arr, 100)
+  assert_eq(r, 101)
+}
+
+#Test
+fn test_array_fn_elem_reassign() {
+  var arr Array<fn(i32)i32> = []
+  arr.push(make_inc())
+
+  arr[0] = (x i32) i32 => x + 1000
+  assert_eq(arr[0](1), 1001)
+}
+
+; ==================== Box<fn> 测试 ====================
+
+#Test
+fn test_box_fn_call() {
+  var b Box<fn(i32)i32> = (x i32) i32 => x + 100
+  assert_eq(b(5), 105)
+  assert_eq(b(10), 110)
+}
+
+#Test
+fn test_box_fn_copy() {
+  var b Box<fn(i32)i32> = (x i32) i32 => x + 100
+  var b2 Box<fn(i32)i32> = b
+  assert_eq(b2(7), 107)
+}
+
+#Test
+fn test_box_fn_reassign() {
+  var b Box<fn(i32)i32> = (x i32) i32 => x + 100
+  var b2 Box<fn(i32)i32> = b
+
+  b = (x i32) i32 => x * 3
+  assert_eq(b(4), 12)
+  assert_eq(b2(20), 120)
+}
+
+; ==================== fn 类型声明测试 ====================
+
+#Test
+fn test_fn_type_decl() {
+  var a fn()
+  var b fn()i32
+  var c fn(i32)i32
+  var d fn(x i32)i32
+  var e fn(a, b i32)i32
+  var f fn(g fn(i32)i32)i32
+  var h fn()fn(i32)i32
+
+  assert_true(true)
+}
+
+#Test
+fn test_fn_type_alias() {
+  var c Callback
+  var pi Pred<i32>
+  var ps Pred<String>
+  var op Op2<i32, i32>
+  var nested Pred<fn()i32>
+
+  assert_true(true)
+}
+
+#Test
+fn test_fn_type_equiv() {
+  var x fn(s String)bool
+  var c Callback = x
+  var y Callback
+  var z fn(s String)bool = y
+
+  var a fn(a i32, b i32)i32
+  var b fn(x i32, y i32)i32 = a
+  var d fn(i32, i32)i32 = b
+
+  var g fn(a, b i32)i32
+  var ge fn(a i32, b i32)i32 = g
+
+  var n1 fn(f fn(i32)i32)i32
+  var n2 fn(f fn(x i32)i32)i32 = n1
+
+  assert_true(true)
+}
+
+#Test
+fn test_fn_type_container() {
+  var arr Array<fn()i32> = []
+  var b Box<fn()i32>
+  var p (fn()i32, i32)
+  var fr fn(i32)i32&
+  var nested Array<fn()fn(i32)i32> = []
+
+  assert_true(true)
+}
+
+#Test
+fn test_fn_type_nullable() {
+  var a fn?()
+  var b fn?(i32)i32
+  var c fn(s String)i32?
+  var d fn?(s String)i32?
+
+  assert_true(true)
+}
+
+; ==================== lambda 闭包捕获测试 ====================
+
+#Test
+fn test_closure_capture_scalar() {
+  var x i32 = 10
+  val f = (y i32) i32 => y + x
+  assert_eq(f(1), 11)
+  assert_eq(f(7), 17)
+
+  x = 100
+  assert_eq(f(1), 11)
+}
+
+#Test
+fn test_closure_capture_multi() {
+  var a i32 = 3
+  var b i32 = 7
+  val sum = (x i32) i32 => a + b + x
+  assert_eq(sum(0), 10)
+  assert_eq(sum(5), 15)
+
+  var pi f64 = 3.14
+  val pifloor = () i32 => pi.to_i32()
+  assert_eq(pifloor(), 3)
+
+  var enabled bool = true
+  val pick = (t, f i32) i32 => if enabled { t } else { f }
+  assert_eq(pick(1, 2), 1)
+}
+
+#Test
+fn test_closure_capture_box() {
+  var b Box<Cell> = Cell(42)
+  val f = () i32 => b.get()
+  assert_eq(f(), 42)
+  assert_eq(f(), 42)
+
+  val g = () i32 => b.get()
+  assert_eq(g(), 42)
+}
+
+#Test
+fn test_closure_capture_string() {
+  var s String = "hello"
+  val f = () String => s
+  assert_eq(f(), "hello")
+  assert_eq(f(), "hello")
+
+  var n i32 = 7
+  val g = () String => s
+  val h = () i32 => n + 1
+  assert_eq(g(), "hello")
+  assert_eq(h(), 8)
+}
+
+#Test
+fn test_closure_capture_array() {
+  var arr Array<i32> = [10, 20, 30]
+  val f = () i32 => first(arr)
+  assert_eq(f(), 10)
+  assert_eq(f(), 10)
+}
+
+#Test
+fn test_closure_pass_around() {
+  var add10 fn(i32)i32 = make_adder(10)
+  assert_eq(apply(add10, 5), 15)
+  assert_eq(apply(add10, 100), 110)
+
+  var add42 fn(i32)i32 = make_adder(42)
+  assert_eq(add42(8), 50)
+
+  var alias fn(i32)i32 = add10
+  assert_eq(alias(7), 17)
+}
+
+#Test
+fn test_closure_self_capture() {
+  var c Counter = Counter(10)
+  assert_eq(c.add_then_apply(5), 15)
+  assert_eq(c.triple_apply(), 50)
+}

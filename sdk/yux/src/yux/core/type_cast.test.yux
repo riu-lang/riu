@@ -1,18 +1,27 @@
 ; 数值类型转换用例
 ; 迁自 tests/cases/type_cast.yux
+;
+; 本文件包含类型转换测试:
+; - 整数类型互转
+; - 浮点类型转换
+; - 整数与浮点互转
+; - to_bool() 转换
+; - to_string() 转换
 
-#Test
-fn test_i32_to_f64() {
-  val a i32 = 10
-  val b f64 = a.to_f64()
-  assert_eq(b, 10.0f64)
-}
+; ==================== 整数类型互转 ====================
 
 #Test
 fn test_i32_to_i64() {
   val a i32 = 10
   val c i64 = a.to_i64()
   assert_eq(c, 10i64)
+}
+
+#Test
+fn test_i64_to_i32() {
+  val h i64 = -123i64
+  val i i32 = h.to_i32()
+  assert_eq(i, -123)
 }
 
 #Test
@@ -23,6 +32,52 @@ fn test_u8_to_i32() {
 }
 
 #Test
+fn test_i32_to_u8() {
+  val a i32 = 200
+  val b u8 = a.to_u8()
+  assert_eq(b, 200u8)
+}
+
+#Test
+fn test_i16_to_i32() {
+  val a i16 = 1000i16
+  val b i32 = a.to_i32()
+  assert_eq(b, 1000)
+}
+
+#Test
+fn test_u32_to_i64() {
+  val a u32 = 4000000000u32
+  val b i64 = a.to_i64()
+  assert_eq(b, 4000000000i64)
+}
+
+; ==================== 浮点类型转换 ====================
+
+#Test
+fn test_f32_to_f64() {
+  val a f32 = 2.5f32
+  val b f64 = a.to_f64()
+  assert_eq(b, 2.5f64)
+}
+
+#Test
+fn test_f64_to_f32() {
+  val a f64 = 2.718
+  val b f32 = a.to_f32()
+  assert_eq(b, 2.718f32)
+}
+
+; ==================== 整数与浮点互转 ====================
+
+#Test
+fn test_i32_to_f64() {
+  val a i32 = 10
+  val b f64 = a.to_f64()
+  assert_eq(b, 10.0f64)
+}
+
+#Test
 fn test_f64_to_i32_trunc() {
   val f f64 = 3.7
   val g i32 = f.to_i32()
@@ -30,8 +85,72 @@ fn test_f64_to_i32_trunc() {
 }
 
 #Test
-fn test_i64_neg_to_i32() {
-  val h i64 = -123i64
-  val i i32 = h.to_i32()
-  assert_eq(i, -123)
+fn test_f64_to_i64() {
+  val a f64 = 12345.6
+  val b i64 = a.to_i64()
+  assert_eq(b, 12345i64)
+}
+
+#Test
+fn test_i64_to_f64() {
+  val a i64 = 1000000000i64
+  val b f64 = a.to_f64()
+  assert_eq(b, 1000000000.0f64)
+}
+
+; ==================== to_bool() 转换 ====================
+
+#Test
+fn test_i32_to_bool_zero() {
+  val a i32 = 0
+  val b bool = a.to_bool()
+  assert_eq(b, false)
+}
+
+#Test
+fn test_i32_to_bool_nonzero() {
+  val a i32 = 1
+  val b bool = a.to_bool()
+  assert_eq(b, true)
+}
+
+#Test
+fn test_i32_to_bool_negative() {
+  val a i32 = -1
+  val b bool = a.to_bool()
+  assert_eq(b, true)
+}
+
+; ==================== to_string() 转换 ====================
+
+#Test
+fn test_i32_to_string() {
+  val a i32 = 42
+  val s String = a.to_string()
+  assert_eq(s, "42")
+}
+
+#Test
+fn test_i64_to_string() {
+  val a i64 = 123456789i64
+  val s String = a.to_string()
+  assert_eq(s, "123456789")
+}
+
+#Test
+fn test_f64_to_string() {
+  val a f64 = 3.14
+  val s String = a.to_string()
+  assert_contains(s, "3")
+}
+
+#Test
+fn test_bool_to_string() {
+  val a bool = true
+  val s String = a.to_string()
+  assert_eq(s, "true")
+  
+  val b bool = false
+  val s2 String = b.to_string()
+  assert_eq(s2, "false")
 }

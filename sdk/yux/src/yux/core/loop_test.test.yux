@@ -1,5 +1,11 @@
 ; loop 控制流用例
 ; 迁自 tests/cases/loop_test.yux
+;
+; 本文件包含 loop 循环测试:
+; - 基本循环与 break
+; - 循环内修改外部变量
+
+; ==================== 基本循环 ====================
 
 #Test
 fn test_loop_break() {
@@ -14,4 +20,32 @@ fn test_loop_break() {
   }
   assert_eq(i, 5)
   assert_eq(sum, 0 + 1 + 2 + 3 + 4)
+}
+
+; ==================== 循环内修改外部变量 ====================
+
+#Test
+fn test_loop_modify_outer() {
+  var counter i32 = 0
+  loop {
+    counter = counter + 1
+    if counter >= 10 {
+      break;
+    }
+  }
+  assert_eq(counter, 10)
+}
+
+#Test
+fn test_loop_accumulate() {
+  var sum i32 = 0
+  var i i32 = 1
+  loop {
+    if i > 10 {
+      break;
+    }
+    sum = sum + i
+    i = i + 1
+  }
+  assert_eq(sum, 55)
 }

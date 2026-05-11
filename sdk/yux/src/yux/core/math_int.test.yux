@@ -1,6 +1,8 @@
 ; math.* 标准库基本用例
 ; 迁自 tests/cases/math_int.yux
 
+; ==================== abs i8 ====================
+
 #Test
 fn test_math_abs_i8_neg() {
   ; 0i8 - 5i8 = -5i8；abs 应得 5i8
@@ -15,4 +17,135 @@ fn test_math_abs_i8_positive() {
 #Test
 fn test_math_abs_i8_zero() {
   assert_eq(math.abs(0i8), 0i8)
+}
+
+; ==================== abs i16 ====================
+
+#Test
+fn test_math_abs_i16_neg() {
+  assert_eq(math.abs(-100i16), 100i16)
+}
+
+#Test
+fn test_math_abs_i16_positive() {
+  assert_eq(math.abs(1000i16), 1000i16)
+}
+
+#Test
+fn test_math_abs_i16_zero() {
+  assert_eq(math.abs(0i16), 0i16)
+}
+
+; ==================== abs i32 ====================
+
+#Test
+fn test_math_abs_i32_neg() {
+  assert_eq(math.abs(-12345i32), 12345i32)
+}
+
+#Test
+fn test_math_abs_i32_positive() {
+  assert_eq(math.abs(67890i32), 67890i32)
+}
+
+#Test
+fn test_math_abs_i32_zero() {
+  assert_eq(math.abs(0i32), 0i32)
+}
+
+; ==================== abs i64 ====================
+
+#Test
+fn test_math_abs_i64_neg() {
+  assert_eq(math.abs(-987654321i64), 987654321i64)
+}
+
+#Test
+fn test_math_abs_i64_positive() {
+  assert_eq(math.abs(123456789i64), 123456789i64)
+}
+
+#Test
+fn test_math_abs_i64_zero() {
+  assert_eq(math.abs(0i64), 0i64)
+}
+
+; ==================== min i8 ====================
+
+#Test
+fn test_math_min_i8() {
+  assert_eq(math.min(10i8, 20i8), 10i8)
+  assert_eq(math.min(20i8, 10i8), 10i8)
+  assert_eq(math.min(-5i8, 5i8), -5i8)
+  assert_eq(math.min(0i8, 0i8), 0i8)
+}
+
+; ==================== min i16 ====================
+
+#Test
+fn test_math_min_i16() {
+  assert_eq(math.min(100i16, 200i16), 100i16)
+  assert_eq(math.min(200i16, 100i16), 100i16)
+  assert_eq(math.min(-100i16, 100i16), -100i16)
+  assert_eq(math.min(0i16, 0i16), 0i16)
+}
+
+; ==================== min i32 ====================
+
+#Test
+fn test_math_min_i32() {
+  assert_eq(math.min(1000i32, 2000i32), 1000i32)
+  assert_eq(math.min(2000i32, 1000i32), 1000i32)
+  assert_eq(math.min(-1000i32, 1000i32), -1000i32)
+  assert_eq(math.min(0i32, 0i32), 0i32)
+}
+
+; ==================== min i64 ====================
+
+#Test
+fn test_math_min_i64() {
+  assert_eq(math.min(10000i64, 20000i64), 10000i64)
+  assert_eq(math.min(20000i64, 10000i64), 10000i64)
+  assert_eq(math.min(-10000i64, 10000i64), -10000i64)
+  assert_eq(math.min(0i64, 0i64), 0i64)
+}
+
+; ==================== max i8 ====================
+
+#Test
+fn test_math_max_i8() {
+  assert_eq(math.max(10i8, 20i8), 20i8)
+  assert_eq(math.max(20i8, 10i8), 20i8)
+  assert_eq(math.max(-5i8, 5i8), 5i8)
+  assert_eq(math.max(0i8, 0i8), 0i8)
+}
+
+; ==================== max i16 ====================
+
+#Test
+fn test_math_max_i16() {
+  assert_eq(math.max(100i16, 200i16), 200i16)
+  assert_eq(math.max(200i16, 100i16), 200i16)
+  assert_eq(math.max(-100i16, 100i16), 100i16)
+  assert_eq(math.max(0i16, 0i16), 0i16)
+}
+
+; ==================== max i32 ====================
+
+#Test
+fn test_math_max_i32() {
+  assert_eq(math.max(1000i32, 2000i32), 2000i32)
+  assert_eq(math.max(2000i32, 1000i32), 2000i32)
+  assert_eq(math.max(-1000i32, 1000i32), 1000i32)
+  assert_eq(math.max(0i32, 0i32), 0i32)
+}
+
+; ==================== max i64 ====================
+
+#Test
+fn test_math_max_i64() {
+  assert_eq(math.max(10000i64, 20000i64), 20000i64)
+  assert_eq(math.max(20000i64, 10000i64), 20000i64)
+  assert_eq(math.max(-10000i64, 10000i64), 10000i64)
+  assert_eq(math.max(0i64, 0i64), 0i64)
 }

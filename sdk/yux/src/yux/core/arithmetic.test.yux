@@ -1,6 +1,14 @@
 ; arithmetic 算术运算用例
 ; 迁自 tests/cases/arithmetic.yux —— 旧用例靠 println 比对 .expected，
 ; 这里用 assert_eq 直接断言。
+;
+; 本文件包含算术运算测试:
+; - 整数加减乘除取模
+; - 浮点数运算
+; - 负数运算
+; - 各整数类型运算
+
+; ==================== 整数基本运算 ====================
 
 #Test
 fn test_int_add() {
@@ -27,6 +35,8 @@ fn test_int_mod() {
   assert_eq(10 % 3, 1)
 }
 
+; ==================== 浮点数运算 ====================
+
 #Test
 fn test_float_add() {
   ; 3.14 + 2.86 在 IEEE-754 下恰好等于 6.0
@@ -36,4 +46,104 @@ fn test_float_add() {
 #Test
 fn test_float_sub() {
   assert_eq(10.0 - 0.5, 9.5)
+}
+
+#Test
+fn test_float_mul() {
+  assert_eq(2.5 * 4.0, 10.0)
+}
+
+#Test
+fn test_float_div() {
+  assert_eq(7.5 / 2.5, 3.0)
+}
+
+; ==================== 负数运算 ====================
+
+#Test
+fn test_neg_add() {
+  assert_eq(-5 + 3, -2)
+}
+
+#Test
+fn test_neg_sub() {
+  assert_eq(-10 - (-5), -5)
+}
+
+#Test
+fn test_neg_mul() {
+  assert_eq(-3 * 4, -12)
+  assert_eq(-3 * (-4), 12)
+}
+
+#Test
+fn test_neg_div() {
+  assert_eq(-12 / 4, -3)
+  assert_eq(-12 / (-4), 3)
+}
+
+; ==================== 各整数类型运算 ====================
+
+#Test
+fn test_i64_add() {
+  val a i64 = 1000000000i64
+  val b i64 = 2000000000i64
+  assert_eq(a + b, 3000000000i64)
+}
+
+#Test
+fn test_u8_add() {
+  val a u8 = 100u8
+  val b u8 = 50u8
+  assert_eq(a + b, 150u8)
+}
+
+#Test
+fn test_u32_mul() {
+  val a u32 = 1000u32
+  val b u32 = 2000u32
+  assert_eq(a * b, 2000000u32)
+}
+
+#Test
+fn test_i16_div() {
+  val a i16 = 1000i16
+  val b i16 = 8i16
+  assert_eq(a / b, 125i16)
+}
+
+; ==================== 运算优先级 ====================
+
+#Test
+fn test_arith_priority() {
+  assert_eq(2 + 3 * 4, 14)
+  assert_eq(10 - 6 / 2, 7)
+  assert_eq((2 + 3) * 4, 20)
+}
+
+#Test
+fn test_arith_chain() {
+  assert_eq(1 + 2 + 3 + 4, 10)
+  assert_eq(100 - 50 - 30, 20)
+  assert_eq(2 * 3 * 4, 24)
+}
+
+; ==================== 零运算 ====================
+
+#Test
+fn test_zero_add() {
+  assert_eq(0 + 0, 0)
+  assert_eq(0 + 5, 5)
+  assert_eq(5 + 0, 5)
+}
+
+#Test
+fn test_zero_mul() {
+  assert_eq(0 * 100, 0)
+  assert_eq(100 * 0, 0)
+}
+
+#Test
+fn test_zero_div() {
+  assert_eq(0 / 5, 0)
 }

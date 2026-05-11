@@ -1,5 +1,16 @@
 ; 顶层函数定义/调用用例
 ; 迁自 tests/cases/functions.yux
+;
+; 本文件包含函数相关测试:
+; - 表达式体函数
+; - 块体函数
+; - void 函数
+; - 参数组语法
+; - 多返回路径
+; - 泛型函数
+; - 提前返回
+
+; ==================== 基础函数定义 ====================
 
 fn fns_add(a i32, b i32) i32 = a + b
 
@@ -24,4 +35,174 @@ fn test_call_block_body() {
 fn test_call_void() {
   fns_nop()
   assert_true(true)
+}
+
+; ==================== 参数组语法 ====================
+
+fn fns_param_group(a, b i32) i32 = a + b
+
+fn fns_param_group_mixed(a, b i32, c f64) f64 = (a + b).to_f64() + c
+
+fn fns_param_group_multi(a, b i32, x, y f64) f64 = (a + b).to_f64() + x + y
+
+#Test
+fn test_param_group_two() {
+  assert_eq(fns_param_group(10, 20), 30)
+}
+
+#Test
+fn test_param_group_mixed() {
+  assert_eq(fns_param_group_mixed(1, 2, 3.0), 6.0)
+}
+
+#Test
+fn test_param_group_multi() {
+  assert_eq(fns_param_group_multi(1, 2, 3.0, 4.0), 10.0)
+}
+
+; ==================== 多返回路径 ====================
+
+fn fns_multi_ret(x i32) i32 {
+  if x < 0 {
+    ret -1
+  }
+  if x == 0 {
+    ret 0
+  }
+  ret 1
+}
+
+fn fns_multi_ret_expr(x i32) i32 {
+  if x > 10 {
+    ret x * 2
+  } elif x > 5 {
+    ret x + 10
+  }
+  ret x
+}
+
+fn fns_early_ret_void(flag bool) {
+  if !flag {
+    ret;
+  }
+  assert_true(flag)
+}
+
+#Test
+fn test_multi_ret_negative() {
+  assert_eq(fns_multi_ret(-5), -1)
+}
+
+#Test
+fn test_multi_ret_zero() {
+  assert_eq(fns_multi_ret(0), 0)
+}
+
+#Test
+fn test_multi_ret_positive() {
+  assert_eq(fns_multi_ret(5), 1)
+}
+
+#Test
+fn test_multi_ret_expr_large() {
+  assert_eq(fns_multi_ret_expr(20), 40)
+}
+
+#Test
+fn test_multi_ret_expr_medium() {
+  assert_eq(fns_multi_ret_expr(7), 17)
+}
+
+#Test
+fn test_multi_ret_expr_small() {
+  assert_eq(fns_multi_ret_expr(3), 3)
+}
+
+#Test
+fn test_early_ret_void_skip() {
+  fns_early_ret_void(false)
+  assert_true(true)
+}
+
+#Test
+fn test_early_ret_void_exec() {
+  fns_early_ret_void(true)
+  assert_true(true)
+}
+
+; ==================== 泛型函数 ====================
+
+fn fns_identity<T>(x T) T = x
+
+fn fns_add_generic<T>(a T, b T) T = a + b
+
+fn fns_pair_first<T>(a T, b T) T = a
+
+#Test
+fn test_generic_identity_i32() {
+  val a i32 = fns_identity:<i32>(42)
+  assert_eq(a, 42)
+}
+
+#Test
+fn test_generic_identity_i64() {
+  val a i64 = fns_identity:<i64>(100i64)
+  assert_eq(a, 100i64)
+}
+
+#Test
+fn test_generic_identity_f64() {
+  val a f64 = fns_identity:<f64>(3.14)
+  assert_eq(a, 3.14)
+}
+
+#Test
+fn test_generic_add_i32() {
+  assert_eq(fns_add_generic:<i32>(10, 20), 30)
+}
+
+#Test
+fn test_generic_add_i64() {
+  assert_eq(fns_add_generic:<i64>(100i64, 200i64), 300i64)
+}
+
+#Test
+fn test_generic_add_f64() {
+  assert_eq(fns_add_generic:<f64>(1.5, 2.5), 4.0)
+}
+
+#Test
+fn test_generic_pair_first() {
+  assert_eq(fns_pair_first:<i32>(1, 2), 1)
+  assert_eq(fns_pair_first:<i64>(100i64, 200i64), 100i64)
+}
+
+; ==================== 类型推断调用 ====================
+
+#Test
+fn test_generic_inferred_i32() {
+  val a i32 = fns_identity(999)
+  assert_eq(a, 999)
+}
+
+#Test
+fn test_generic_inferred_i64() {
+  val a i64 = fns_identity(123456789i64)
+  assert_eq(a, 123456789i64)
+}
+
+; ==================== 嵌套调用 ====================
+
+fn fns_double(x i32) i32 = x * 2
+
+fn fns_triple(x i32) i32 = x * 3
+
+#Test
+fn test_nested_call() {
+  assert_eq(fns_double(fns_triple(5)), 30)
+}
+
+#Test
+fn test_chain_call() {
+  assert_eq(fns_add(fns_double(3), fns_triple(2)), 12)
 }
