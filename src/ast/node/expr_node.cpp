@@ -1301,6 +1301,14 @@ TypeInfo ExprTryCatchNode::getType() const {
     return first;
 }
 
+// Dyn<D>(x) / Dyn<D&>(x) 的整体类型 = `Dyn<D>` 或 `Dyn<D&>`。
+// 内层 TypeNode 已携带借用形态（Ref<D>），这里直接包一层 `Dyn` 即可。
+TypeInfo ExprDynCtorNode::getType() const {
+    if (!_draftType) return TypeInfo();
+    auto inner = make_shared<TypeInfo>(_draftType->getType());
+    return TypeInfo("Dyn", {inner});
+}
+
 TypeInfo ExprEnumCtorNode::getType() const {
     string n = _enumName.getText();
     auto* scope = parent() ? parent()->findNearestScope() : nullptr;

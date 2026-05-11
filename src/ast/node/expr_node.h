@@ -659,6 +659,33 @@ public:
     [[nodiscard]] TypeInfo getType() const override;
 };
 
+// Dyn<D>(x) / Dyn<D&>(x) 构造表达式（DRAFT-dyn-draft / 拟 §12.9）
+// 形式：把 Box<U> / U& 提升为 fat pointer { vtable, data }；vtable 槽 0 = dtor，
+// 槽 1..N = D 方法按声明序。Phase 1c 仅引入节点与占位 codegen（vtable=null），
+// vtable 真值与对象安全检查留 Phase 2 / Phase 3。
+//
+// ast_builder 在 visitExprCall 命中 `Dyn<D>(x)` / `Dyn<D&>(x)` 形态时改产此节点；
+// `_draftType` 持原 turbofish 中的 typeArg（D 或 Ref<D>），用于回算 fat ptr 内层；
+// `_isBorrow` 由内层 TypeNode 是否为 `Ref<...>` 决定。
+class ExprDynCtorNode : public ExprNode {
+    p<TypeNode> _draftType;     // turbofish 内的类型节点（D 或 D&）
+    p<ExprNode> _arg;           // 构造源：Box<U> 或 U&
+    bool _isBorrow;             // true = Dyn<D&>(...), false = Dyn<D>(...)
+
+public:
+    ExprDynCtorNode(const p<Node>& parent, p<TypeNode> draftType, p<ExprNode> arg, bool isBorrow) :
+        ExprNode(parent),
+        _draftType(std::move(draftType)),
+        _arg(std::move(arg)),
+        _isBorrow(isBorrow) {
+    }
+
+    [[nodiscard]] const p<TypeNode>& draftType() const { return _draftType; }
+    [[nodiscard]] const p<ExprNode>& arg() const { return _arg; }
+    [[nodiscard]] bool isBorrow() const { return _isBorrow; }
+    [[nodiscard]] TypeInfo getType() const override;
+};
+
 // a ?? b：a 为 Nullable<T> 时，有值取 a.get()，否则取 b
 class ExprNullElseNode : public ExprNode {
     p<ExprNode> _left;

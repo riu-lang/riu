@@ -363,6 +363,28 @@ struct TypeInfo {
         return nullptr;
     }
 
+    // Dyn<D> / Dyn<D&>：draft 运行时多态形态（DRAFT-dyn-draft / 拟 §12.9）
+    // layout = { vtable_ptr, data_ptr } 16 字节 fat pointer。
+    // 内层若为 Ref<D> 则是借用形态 (Dyn<D&>)，否则 owned。
+    [[nodiscard]] bool isDyn() const {
+        return kind == TypeKind::Generic && name == "Dyn" && genericArgs.size() == 1;
+    }
+
+    [[nodiscard]] bool isDynBorrow() const {
+        return isDyn() && genericArgs[0] && genericArgs[0]->isRef();
+    }
+
+    [[nodiscard]] bool isDynOwned() const {
+        return isDyn() && genericArgs[0] && !genericArgs[0]->isRef();
+    }
+
+    // 拿 D（剥掉借用形态外层的 Ref）。
+    [[nodiscard]] sp<TypeInfo> dynDraftType() const {
+        if (!isDyn() || !genericArgs[0]) return nullptr;
+        if (genericArgs[0]->isRef()) return genericArgs[0]->refElementType();
+        return genericArgs[0];
+    }
+
     // Nullable<T>：T? 解糖后的类型；layout = { bool _has; T _value }
     [[nodiscard]] bool isNullable() const {
         return kind == TypeKind::Generic && name == "Nullable" && genericArgs.size() == 1;

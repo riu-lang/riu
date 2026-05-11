@@ -451,6 +451,18 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         return llvm::PointerType::get(_context, 0);
     }
 
+    // Dyn<D> / Dyn<D&> 类型 (DRAFT-dyn-draft / 拟 §12.9)
+    // 结构: { ptr vtable, ptr data }，16 字节 fat pointer
+    // - vtable: 指向 (具体类型 U, draft D) 静态 vtable，槽 0 = dtor，槽 1..N = D 方法按声明序
+    // - data:   owned 形态指向 [RC head | 实例]；借用形态借自栈或堆
+    if (type.isDyn()) {
+        DEBUG_LOG_VAL("    -> DynType (fat-ptr)", type.name);
+        vector<llvm::Type*> dynFields;
+        dynFields.push_back(llvm::PointerType::get(_context, 0));  // vtable
+        dynFields.push_back(llvm::PointerType::get(_context, 0));  // data
+        return llvm::StructType::get(_context, dynFields);
+    }
+
     // 函数类型字面量 fn(P1,...) R / fn?(...) R → 16 字节 fat-ptr 占位（spec §5.2）
     // layout: { ptr fn_ptr, ptr captures }；captures 为 Box<CapturesT>? handle，
     // Phase 1 仅占位（不生成调用），调用 / RC / 闭包推迟 Phase 2/3/4

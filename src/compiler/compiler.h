@@ -302,6 +302,10 @@ private:
     llvm::Value* compileArrayLiteralExpr(p<ExprArrayNode> node);                // 编译数组字面量表达式
     llvm::Value* compileTupleExpr(p<ExprTupleNode> node);                       // 编译元组构造表达式 (e1, e2, ...)
     llvm::Value* compileEnumCtorExpr(p<ExprEnumCtorNode> node);                 // 编译枚举构造表达式 E::V / E::V(args)
+    // Dyn<D>(x) 构造表达式（DRAFT-dyn-draft / 拟 §12.9）
+    // Phase 1c：仅 emit { vtable=null, data=src.handle } 占位 fat ptr，
+    // 真 vtable 与对象安全检查留 Phase 2/3
+    llvm::Value* compileDynCtorExpr(p<class ExprDynCtorNode> node);
     llvm::Value* compileMatchExpr(p<ExprMatchNode> node);                       // Phase 6: 编译 match 表达式（switch on tag + 绑定 + arm 体）
     llvm::Value* compileTryCatchExpr(p<ExprTryCatchNode> node);                 // Phase 10f: 编译 try-catch 表达式（10f 仅占位 + 语义校验，IR 路由推 10g）
 

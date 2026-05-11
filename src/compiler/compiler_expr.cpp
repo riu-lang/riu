@@ -1994,6 +1994,11 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         return val;
     } else if (auto tupleNode = dynamic_cast<ExprTupleNode*>(node)) {
         return compileTupleExpr(tupleNode);
+    } else if (auto dynCtorNode = dynamic_cast<ExprDynCtorNode*>(node)) {
+        // Dyn<D>(x) 构造表达式（DRAFT-dyn-draft / 拟 §12.9）
+        // Phase 1c：仅 emit 占位 fat ptr { vtable=null, data=src.handle }；
+        // 真 vtable 与 dtor 路由留 Phase 3，对象安全 / E1133 类型检查留 Phase 2。
+        return compileDynCtorExpr(dynCtorNode);
     } else if (auto enumCtorNode = dynamic_cast<ExprEnumCtorNode*>(node)) {
         // Phase 5: enum ctor 是 +1 fresh：构造时把实参（含 RC payload）写入 enum 槽，
         // enum 值随后承担释放责任。仅当类型需要析构时才登记到临时帧
@@ -2152,6 +2157,61 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprEnumCtorNode> node) {
     DEBUG_LOG_VAL("    Expr: EnumCtor",
         enumName << "::" << variantName << " tag=" << tagIndex << " arity=" << declArity);
     return loaded;
+}
+
+// 编译 Dyn<D>(x) 构造表达式（DRAFT-dyn-draft / 拟 §12.9）
+//
+// Phase 1c：仅占位 codegen。目标是让 `Dyn<D>(x)` 在 parse + 类型推导 + IR 生成
+// 全链路走通，落到 16 字节 fat pointer 值；真实 vtable 槽与对象安全检查留 Phase 2/3：
+//   - Phase 2：E1131..E1134 静态检查（draft 名 / 嵌套 / 类型不满足 / 非对象安全）
+//   - Phase 3：vtable 全局发射 + 槽 0 dtor wrapper + 构造时写真 vtable_ptr / 句柄消费
+//
+// 当前 emit 策略：
+//   - vtable 槽：constant null（占位；Phase 3 替换为 `&__yux_vtable_<U>_<D>`）
+//   - data 槽：
+//       * arg.type = Box<U>：从 Box struct 中抽 handle（第 0 字段，指向 [RC head | U]）
+//       * arg.type = U&    ：直接用借用 ptr（Phase 1c 不处理借用所有权，留 Phase 3c）
+//       * 其它形态：暂用 null 占位，留 Phase 2 报 E1133
+//
+// 注：未做 retain / RC 转移。owned 形态意味着接管 Box 的 +1，本应消费临时帧或 retain；
+// 真路由（构造消费 box）随 vtable 落地一起补，所以这里 Box 句柄"裸抽"——Phase 1c
+// 的 smoke 只看编译能否过、IR 是否成型，不验运行时所有权。
+llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
+    auto resultType = node->getType();
+    auto llvmDynTy = getLLVMType(resultType);
+
+    auto ptrTy = llvm::PointerType::get(_context, 0);
+    auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
+
+    auto argExpr = node->arg();
+    auto argType = argExpr->getType();
+    auto argVal = compileExpr(argExpr);
+
+    // 抽取 data 槽（占位实现）：Box<U> 取 handle 字段；U& 直接用；其它形态留 null
+    llvm::Value* dataPtr = nullPtr;
+    if (argType.isBox()) {
+        // Box layout = { ptr handle }；handle 指向 [RC head | payload]
+        auto boxLLVMTy = getLLVMType(argType);
+        auto tmp = _builder.CreateAlloca(boxLLVMTy, nullptr, "dyn.src.box.tmp");
+        _builder.CreateStore(argVal, tmp);
+        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        auto handleField = _builder.CreateGEP(boxLLVMTy, tmp, {zero, zero}, "dyn.src.handle.ptr");
+        dataPtr = _builder.CreateLoad(ptrTy, handleField, "dyn.src.handle");
+    } else if (argType.isRef()) {
+        // U& 已是裸指针类型，直接用
+        dataPtr = argVal;
+    }
+    // TODO: Phase 2 在此处报 E1133（参数形态不是 Box<U> / U&）
+    // TODO: Phase 3 把 null vtable 替换为真 vtable_ptr，并接管 Box 的 +1（消费临时帧 / retain）
+
+    // 组装 fat pointer struct value { vtable=null, data=dataPtr }
+    llvm::Value* fatPtr = llvm::UndefValue::get(llvmDynTy);
+    fatPtr = _builder.CreateInsertValue(fatPtr, nullPtr, {0}, "dyn.vtable");
+    fatPtr = _builder.CreateInsertValue(fatPtr, dataPtr, {1}, "dyn.fat");
+
+    DEBUG_LOG_VAL("    Expr: DynCtor",
+        resultType.getFullName() << " <- " << argType.getFullName());
+    return fatPtr;
 }
 
 // 编译 match 表达式 (Phase 6)

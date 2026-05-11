@@ -1,0 +1,38 @@
+use yux.core.*
+
+; Phase 1b 冒烟：Dyn<D> 在类型位置能否解析
+; 暂不构造、不调用，仅看类型 + 形参语法走通
+
+draft Greet {
+    fn hi()
+}
+
+struct G { }
+
+G {
+    fn G() {
+    }
+}
+
+G : Greet {
+    fn hi() {
+        println("hi")
+    }
+}
+
+fn take(d Dyn<Greet>) {
+}
+
+fn take_ref(d Dyn<Greet&>) {
+}
+
+; Phase 1c：Dyn<D>(box) 构造表达式编译验证（turbofish 形 `T:<...>`）
+; vtable / 对象安全留 Phase 2/3；此处只看类型 + IR 走通
+fn make_dyn(b Box<G>) Dyn<Greet> {
+    ret Dyn:<Greet>(b)
+}
+
+fn main() {
+    val b Box<G> = G()
+    take(Dyn:<Greet>(b))
+}

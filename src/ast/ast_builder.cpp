@@ -1649,6 +1649,24 @@ std::any ASTBuilder::visitExprCall(yux::yuxParser::ExprCallContext* ctx) {
     }
     // Phase 10e：后缀 `!` 错误传播标记（DRAFT-错误.md [#4.B]）
     if (ctx->errPropagate) call->setErrPropagate(true);
+
+    // Dyn<D>(x) 类型构造（DRAFT-dyn-draft / 拟 §12.9）—— 单点拦截 ExprCallNode 重写为 ExprDynCtorNode
+    // 命中条件：callee = LiteralObj("Dyn") + 恰好 1 个 typeArg + 恰好 1 个 arg + 无 errPropagate / 无 trailing lambda
+    // 注：`Dyn<D&>(x)` 因 g4 `genericDef` 实参不允许内嵌 `&` 而无法解析到这里（Phase 1c 仅 owned）
+    if (!call->errPropagate() && call->getArgs().size() == 1 && call->getTypeArgs().size() == 1) {
+        if (auto calleeLit = dynamic_cast<ExprLiteralNode*>(call->getCalleeExpr())) {
+            if (auto obj = dynamic_cast<LiteralObjNode*>(calleeLit->literal())) {
+                if (obj->getValue().getText() == "Dyn") {
+                    auto draftTypeNode = call->getTypeArgs()[0];
+                    auto argExpr = call->getArgs()[0];
+                    bool isBorrow = draftTypeNode->getType().isRef();
+                    auto dyn = createWithLine<ExprDynCtorNode>(
+                        ctx, scope, draftTypeNode, argExpr, isBorrow);
+                    return p<ExprNode>(dyn);
+                }
+            }
+        }
+    }
     return p<ExprNode>(call);
 }
 
