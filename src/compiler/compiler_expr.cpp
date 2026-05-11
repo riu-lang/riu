@@ -2262,7 +2262,10 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
         }
     }
 
-    // ── codegen (占位 vtable, Phase 3 替换) ───────────────────────────
+    // ── codegen ──────────────────────────────────────────────────────
+    // Phase 3a/3c：vtable 由 getOrEmitDynVTable 合成；data 槽按 Box<U> / U& 形态抽取。
+    // 注：Box 的 +1 / 借用 RC 半权交接留 Phase 3c.2（消费临时帧 / retain 抵消），
+    // 本 Phase 仅落 vtable 真值，临时帧路径与原占位等价。
     auto llvmDynTy = getLLVMType(resultType);
 
     auto ptrTy = llvm::PointerType::get(_context, 0);
@@ -2270,7 +2273,12 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
 
     auto argVal = compileExpr(argExpr);
 
-    // 抽取 data 槽（占位实现）：Box<U> 取 handle 字段；U& 直接用
+    // 抽取 data 槽：Box<U> 取 handle 字段；U& 直接用
+    // Phase 3e RC 交接：
+    //   owned (Box<U>) 形态：源 box 若是 fresh 临时（G() 直构），consumeTemp 偷取 +1；
+    //     否则（命名变量 / 字段读出）调 _box_retain 拷一份 +1，源 box 自己照常 release。
+    //     Dyn 在自身 scope 退出时走 _dyn_release 抵消。
+    //   borrow (U&) 形态：data_ptr 借用，不动 RC（由源 owner 维持）。
     llvm::Value* dataPtr = nullPtr;
     if (argType.isBox()) {
         // Box layout = { ptr handle }；handle 指向 [RC head | payload]
@@ -2280,15 +2288,25 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
         auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
         auto handleField = _builder.CreateGEP(boxLLVMTy, tmp, {zero, zero}, "dyn.src.handle.ptr");
         dataPtr = _builder.CreateLoad(ptrTy, handleField, "dyn.src.handle");
+
+        // 偷取 fresh box 的 +1，否则 retain
+        bool consumed = consumeTemp(argVal);
+        if (!consumed) {
+            _builder.CreateCall(runtime::getBoxRetainFn(_module, _builder), {dataPtr});
+        }
     } else if (argType.isRef()) {
         // U& 已是裸指针类型，直接用
         dataPtr = argVal;
     }
-    // TODO: Phase 3 把 null vtable 替换为真 vtable_ptr，并接管 Box 的 +1（消费临时帧 / retain）
 
-    // 组装 fat pointer struct value { vtable=null, data=dataPtr }
+    // vtable 槽：Phase 3a 真值（按 (U, D) 合成 linkonce_odr 全局）
+    TypeInfo concreteTI(concreteBare);
+    llvm::Value* vtablePtr = getOrEmitDynVTable(concreteTI, draftQualified, draftDecl);
+    if (!vtablePtr) vtablePtr = nullPtr;
+
+    // 组装 fat pointer struct value { vtable, data }
     llvm::Value* fatPtr = llvm::UndefValue::get(llvmDynTy);
-    fatPtr = _builder.CreateInsertValue(fatPtr, nullPtr, {0}, "dyn.vtable");
+    fatPtr = _builder.CreateInsertValue(fatPtr, vtablePtr, {0}, "dyn.vtable");
     fatPtr = _builder.CreateInsertValue(fatPtr, dataPtr, {1}, "dyn.fat");
 
     DEBUG_LOG_VAL("    Expr: DynCtor",

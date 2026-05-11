@@ -49,6 +49,13 @@ llvm::Function* getBoxRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder)
 // upgrade 必须读 strong 来判活而非 payload；Weak 自身仅维护 block 存活
 llvm::Function* getBoxReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 
+// _dyn_release(data, vtable) -> void  (Phase 3e, DRAFT-dyn-draft §12.9)
+// owned Dyn<D> 的释放路径：与 _box_release 同形，但 strong==0 时按
+// vtable[0] 间接调用 U 的析构函数（fn(ptr) void，接 payload+8 即实例指针），
+// 再走 weak-- + free。null / 哨兵跳过；vtable[0] = null（U 平凡）时仅释放 RC 块。
+// 借用 Dyn<D&> 不调用本函数（借用不动 RC）。
+llvm::Function* getDynReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+
 // _box_release_dtor(handle) -> void  (Phase 4a-2)
 // 与 _box_release 相同，但 strong 归零时先按 payload[0..8] 处的 dtor fn ptr 调
 // dtor(payload + 8)，再走 weak/free。专为 lambda captures 共享 box 设计：

@@ -32,7 +32,34 @@ fn make_dyn(b Box<G>) Dyn<Greet> {
     ret Dyn:<Greet>(b)
 }
 
+; Phase 3e 冒烟：非平凡 U（含 String 字段，需调 dtor）
+struct H {
+    label String
+}
+
+H {
+    fn H(l String) {
+        $.label = l
+    }
+}
+
+H : Greet {
+    fn hi() {
+        println($.label)
+    }
+}
+
 fn main() {
     val b Box<G> = G()
     take(Dyn:<Greet>(b))
+
+    ; Phase 3d 冒烟：Dyn 方法调用 — 走 vtable 间接调用
+    val b2 Box<G> = G()
+    val d Dyn<Greet> = Dyn:<Greet>(b2)
+    d.hi();
+
+    ; Phase 3e 冒烟：含 RC 字段的 U，dyn release 必须调 H 的 dtor
+    val bh Box<H> = H("from H")
+    val dh Dyn<Greet> = Dyn:<Greet>(bh)
+    dh.hi();
 }

@@ -2123,8 +2123,8 @@ llvm::Value* Compiler::compileStructMethodCall(
 //   5. Phase 2d 不接 codegen: 命中合法调用统一抛 E6015 + hint「Phase 3d pending」.
 //      Phase 3d 把第 5 步替换为 load vtable[i] + indirect call.
 llvm::Value* Compiler::compileDynMethodCall(
-    p<ExprCallNode> callNode, p<ExprNode> /*baseExpr*/, const TypeInfo& baseType,
-    const string& member, vector<llvm::Value*>& /*args*/, vector<TypeInfo>& argTypes) {
+    p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType,
+    const string& member, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
     int line = callNode->getLineNumber();
     int col = callNode->getColumn();
 
@@ -2177,12 +2177,96 @@ llvm::Value* Compiler::compileDynMethodCall(
         }
     }
 
-    // 5. TODO Phase 3d: load fat_ptr.vtable → GEP slot[i] → indirect call
-    //    (data_ptr, args...); 返回值按 sig->retType 投回. 暂以 hint 拦截.
-    throw YuxError(line, col, ErrorCode::E6015)
-        .withHint("Dyn<" + draftQualified + ">." + member
-            + " 的 codegen 在 Phase 3d 接入 (vtable 加载 + indirect call); "
-            + "Phase 2d 仅完成静态检查");
+    // 5. Phase 3d: load fat_ptr.vtable → GEP slot[i+1] → load fn ptr → indirect call.
+    //    receiver:
+    //      - Dyn<D>  (owned)  : data + 8（跳过 Box RC 头，与 compileStructMethodCall 的
+    //                           Box receiver 一致；layout 见 compileDynCtorExpr）
+    //      - Dyn<D&> (借用)   : data 直接是实例指针（裸 ref）
+    //    fn 签名按 D.sig 还原：(ptr receiver, P1, ..., Pn) -> R
+    //    （对象安全确保 sig 不含 Self / 自身名，所以 D.sig 形参/返回类型与 U.impl 一致）
+
+    // 找到方法在 D.signatures() 中的下标（vtable 槽 0 是 dtor，方法从 1 开始）
+    size_t methodIdx = 0;
+    for (size_t i = 0; i < draftDecl->signatures().size(); ++i) {
+        if (draftDecl->signatures()[i] == sig) { methodIdx = i; break; }
+    }
+
+    auto ptrTy = llvm::PointerType::get(_context, 0);
+    auto i32Ty = _builder.getInt32Ty();
+
+    // 5.1 编译 baseExpr → 落到 alloca 以便 GEP 出 vtable / data 字段
+    auto fatStructTy = getLLVMType(baseType);  // { ptr, ptr }
+    llvm::Value* fatAlloca = nullptr;
+    if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
+        if (auto objLiteral = dynamic_cast<LiteralObjNode*>(baseLiteral->literal())) {
+            auto varName = objLiteral->getValue().getText();
+            auto it = _localVarPtrs.find(varName);
+            if (it != _localVarPtrs.end()) fatAlloca = it->second;
+        }
+    }
+    if (!fatAlloca) {
+        auto baseVal = compileExpr(baseExpr);
+        fatAlloca = _builder.CreateAlloca(fatStructTy, nullptr, "dyn.tmp");
+        _builder.CreateStore(baseVal, fatAlloca);
+    }
+
+    auto zero = llvm::ConstantInt::get(i32Ty, 0);
+    auto one = llvm::ConstantInt::get(i32Ty, 1);
+    auto vtableFieldPtr = _builder.CreateGEP(fatStructTy, fatAlloca, {zero, zero}, "dyn.vtable.field");
+    auto vtablePtr = _builder.CreateLoad(ptrTy, vtableFieldPtr, "dyn.vtable.load");
+    auto dataFieldPtr = _builder.CreateGEP(fatStructTy, fatAlloca, {zero, one}, "dyn.data.field");
+    auto dataPtr = _builder.CreateLoad(ptrTy, dataFieldPtr, "dyn.data.load");
+
+    // 5.2 GEP vtable[methodIdx + 1] → load fn ptr
+    // vtable 是 i8* 数组，按 ptr 步长 GEP 即可
+    auto slotIdx = llvm::ConstantInt::get(_builder.getInt64Ty(), (uint64_t)(methodIdx + 1));
+    auto slotPtr = _builder.CreateGEP(ptrTy, vtablePtr, {slotIdx}, "dyn.slot.ptr");
+    auto fnPtr = _builder.CreateLoad(ptrTy, slotPtr, "dyn.fn.ptr");
+
+    // 5.3 receiver：owned → data + 8（跳 RC 头）；borrow → data 直接是实例指针
+    llvm::Value* receiver = dataPtr;
+    if (baseType.isDynOwned()) {
+        receiver = _builder.CreateGEP(_builder.getInt8Ty(), dataPtr,
+                                       {_builder.getInt64(8)}, "dyn.payload");
+    }
+
+    // 5.4 构建 indirect call 的 FunctionType（与 vtable 端 forward-declare 一致）
+    std::vector<llvm::Type*> llvmParamTypes;
+    llvmParamTypes.push_back(ptrTy);  // receiver
+    for (auto& p : sig->params()) {
+        if (!p || !p->type()) continue;
+        auto pt = p->type()->getType();
+        if (pt.isPtr() || pt.isRef()) {
+            llvmParamTypes.push_back(ptrTy);
+        } else {
+            llvmParamTypes.push_back(getLLVMType(pt));
+        }
+    }
+    llvm::Type* llvmRetType = _builder.getVoidTy();
+    TypeInfo retType;
+    if (sig->retType()) {
+        retType = sig->retType()->getType();
+        if (!retType.empty()) llvmRetType = getLLVMType(retType);
+    }
+    auto fnTy = llvm::FunctionType::get(llvmRetType, llvmParamTypes, false);
+
+    // 5.5 组装实参并 indirect call
+    std::vector<llvm::Value*> callArgs;
+    callArgs.push_back(receiver);
+    for (size_t i = 0; i < args.size(); ++i) {
+        auto& at = argTypes[i];
+        if (structParamUsesPointer(at.name)) {
+            auto stTy = getLLVMType(at);
+            auto alloca = _builder.CreateAlloca(stTy, nullptr, "dyn.arg.tmp");
+            _builder.CreateStore(args[i], alloca);
+            callArgs.push_back(alloca);
+        } else {
+            callArgs.push_back(args[i]);
+        }
+    }
+
+    const char* callName = llvmRetType->isVoidTy() ? "" : "dyn.call";
+    return _builder.CreateCall(fnTy, fnPtr, callArgs, callName);
 }
 
 llvm::Value* Compiler::compileConstructorCall(

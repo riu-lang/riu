@@ -298,6 +298,22 @@ llvm::Function* getBoxReleaseDtorFn(llvm::Module* module, llvm::IRBuilder<>& bui
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
+// 获取 owned Dyn<D> 的释放函数（Phase 3e）
+// 签名: void _dyn_release(ptr data, ptr vtable)
+// 见头文件说明。runtime 实现见 emitBoxHelpers。
+llvm::Function* getDynReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
+    string fnName = "_dyn_release";
+    auto func = module->getFunction(fnName);
+    if (func) return func;
+
+    vector<llvm::Type*> paramTypes;
+    paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0));  // data
+    paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0));  // vtable
+
+    auto fnType = llvm::FunctionType::get(builder.getVoidTy(), paramTypes, false);
+    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
+}
+
 // 获取 Box 升级（Weak→Box）函数（Phase 1d.2）
 // 签名: ptr _box_upgrade(ptr block)
 // null/strong==0 → 返回 null；哨兵 → 直接返回 block；否则 strong++ 并返回 block
@@ -608,6 +624,88 @@ void emitBoxHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm
             builder.SetInsertPoint(freeBB);
             auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
             builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), block});
+            emitRcBlockCountAdd(builder, module, -1);
+            builder.CreateBr(doneBB);
+
+            builder.SetInsertPoint(doneBB);
+            builder.CreateRetVoid();
+        }
+    }
+
+    // _dyn_release: Phase 3e，owned Dyn<D> 释放路径
+    // 与 _box_release 同形 + strong==0 时按 vtable[0] dispatch U 的析构（接 data+8）
+    // null/哨兵跳过；vtable[0] = null（U 平凡）时跳过 dtor 直接 weak-- + free
+    {
+        DEBUG_LOG("  Emitting _dyn_release");
+        auto releaseFn = getDynReleaseFn(module, builder);
+        if (releaseFn->empty()) {
+            auto entry = llvm::BasicBlock::Create(context, "entry", releaseFn);
+            auto checkBB = llvm::BasicBlock::Create(context, "check", releaseFn);
+            auto decBB = llvm::BasicBlock::Create(context, "dec", releaseFn);
+            auto strongZeroBB = llvm::BasicBlock::Create(context, "strong_zero", releaseFn);
+            auto dtorCallBB = llvm::BasicBlock::Create(context, "dtor_call", releaseFn);
+            auto afterDtorBB = llvm::BasicBlock::Create(context, "after_dtor", releaseFn);
+            auto freeBB = llvm::BasicBlock::Create(context, "free", releaseFn);
+            auto doneBB = llvm::BasicBlock::Create(context, "done", releaseFn);
+            builder.SetInsertPoint(entry);
+
+            auto argIt = releaseFn->arg_begin();
+            llvm::Value* data = &*argIt++;
+            llvm::Value* vtable = &*argIt;
+            auto nullPtr = llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0));
+            auto isNull = builder.CreateICmpEQ(data, nullPtr, "is_null");
+            builder.CreateCondBr(isNull, doneBB, checkBB);
+
+            builder.SetInsertPoint(checkBB);
+            auto strongPtr = data;
+            auto strong = builder.CreateLoad(i32Ty, strongPtr, "strong");
+            auto isSentinel = builder.CreateICmpEQ(strong, sentinel, "is_sentinel");
+            builder.CreateCondBr(isSentinel, doneBB, decBB);
+
+            builder.SetInsertPoint(decBB);
+            auto newStrong = builder.CreateSub(strong, llvm::ConstantInt::get(i32Ty, 1), "new_strong");
+            builder.CreateStore(newStrong, strongPtr);
+            auto isZero = builder.CreateICmpEQ(newStrong, llvm::ConstantInt::get(i32Ty, 0), "is_zero");
+            builder.CreateCondBr(isZero, strongZeroBB, doneBB);
+
+            // strong 归零：先按 vtable[0] dispatch dtor（若 vtable 非 null 且 vtable[0] 非 null）
+            builder.SetInsertPoint(strongZeroBB);
+            auto vtableIsNull = builder.CreateICmpEQ(vtable, nullPtr, "vtable_is_null");
+            auto* skipDtorBB = llvm::BasicBlock::Create(context, "skip_dtor", releaseFn);
+            auto* loadDtorBB = llvm::BasicBlock::Create(context, "load_dtor", releaseFn);
+            builder.CreateCondBr(vtableIsNull, skipDtorBB, loadDtorBB);
+
+            builder.SetInsertPoint(loadDtorBB);
+            // vtable[0] = U 的析构函数指针（fn(ptr) void）
+            auto dtorPtr = builder.CreateLoad(llvm::PointerType::get(context, 0), vtable, "dtor_ptr");
+            auto dtorIsNull = builder.CreateICmpEQ(dtorPtr, nullPtr, "dtor_is_null");
+            builder.CreateCondBr(dtorIsNull, afterDtorBB, dtorCallBB);
+
+            builder.SetInsertPoint(dtorCallBB);
+            // dtor 接实例指针 = data + 8（跳过 RC 头）
+            auto payload = builder.CreateGEP(builder.getInt8Ty(), data,
+                {builder.getInt64(8)}, "payload");
+            auto dtorFnTy = llvm::FunctionType::get(builder.getVoidTy(),
+                {llvm::PointerType::get(context, 0)}, false);
+            builder.CreateCall(dtorFnTy, dtorPtr, {payload});
+            builder.CreateBr(afterDtorBB);
+
+            builder.SetInsertPoint(skipDtorBB);
+            builder.CreateBr(afterDtorBB);
+
+            builder.SetInsertPoint(afterDtorBB);
+            // 走 weak-- + free 路径（同 _box_release）
+            auto weakPtr = builder.CreateGEP(builder.getInt8Ty(), data,
+                {builder.getInt64(4)}, "weak_ptr");
+            auto weak = builder.CreateLoad(i32Ty, weakPtr, "weak");
+            auto newWeak = builder.CreateSub(weak, llvm::ConstantInt::get(i32Ty, 1), "new_weak");
+            builder.CreateStore(newWeak, weakPtr);
+            auto weakIsZero = builder.CreateICmpEQ(newWeak, llvm::ConstantInt::get(i32Ty, 0), "weak_is_zero");
+            builder.CreateCondBr(weakIsZero, freeBB, doneBB);
+
+            builder.SetInsertPoint(freeBB);
+            auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
+            builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), data});
             emitRcBlockCountAdd(builder, module, -1);
             builder.CreateBr(doneBB);
 

@@ -49,6 +49,26 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
         return;
     }
 
+    // Phase 3e: owned Dyn<D> 释放
+    // layout = { ptr vtable, ptr data }；data 指 [RC head | 实例]
+    // 走 _dyn_release(data, vtable)：strong-- → if 0 then dtor=vtable[0] dispatch(data+8) → weak-- + free
+    // Dyn<D&> 借用形态不动 RC，跳过
+    if (type.isDynOwned()) {
+        auto ty = getLLVMType(type);
+        auto z = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+        auto vtableField = _builder.CreateGEP(ty, slotPtr, {z, z}, "old.dyn.vtable_field");
+        auto vtable = _builder.CreateLoad(llvm::PointerType::get(_context, 0), vtableField, "old.dyn.vtable");
+        auto dataField = _builder.CreateGEP(ty, slotPtr, {z, one}, "old.dyn.data_field");
+        auto data = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataField, "old.dyn.data");
+        _builder.CreateCall(runtime::getDynReleaseFn(_module, _builder), {data, vtable});
+        return;
+    }
+    if (type.isDynBorrow()) {
+        // 借用形态：不动 RC，源 owner 持有；release 等价 no-op
+        return;
+    }
+
     // Phase 3a / 4a-2 / 4c: fn(...)R fat-ptr { fn_ptr, captures Box<CapturesT>? }
     // captures 字段在 offset 1；走 _box_release_dtor 让运行时在 strong 归零时 dispatch
     // payload[0..8] 处的 dtor fn ptr（4a-2）。零捕获 / 全标量场景 dtor 槽存 null，
@@ -544,6 +564,10 @@ bool Compiler::typeNeedsDestructor(const TypeInfo& type) {
     // Phase 3a: 函数类型 fn(...)R 的 captures 字段是 Box<CapturesT>?，按 §7.4 字段级 RC
     // 即使零捕获场景下 captures 永远 null，IR 仍发出 retain/release（runtime null-safe）
     if (type.isFn()) return true;
+
+    // Phase 3e (DRAFT-dyn-draft §12.9): owned Dyn<D> 走 _dyn_release 析构；
+    // Dyn<D&> 借用形态不动 RC，但仍标记需要析构以便走 releaseAtPtr 的 no-op 分支统一帧管理
+    if (type.isDyn()) return true;
 
     // Phase 5: enum 类型若任一 variant 含 RC payload 字段则需析构
     if (enumNeedsDestructor(type.name)) return true;
