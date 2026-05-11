@@ -444,6 +444,11 @@ llvm::Value* Compiler::compileMethodCall(
     // 边界 (E1106) 已在调用点 compileGenericFunctionCall 校验过。
     baseType = applySubst(baseType);
 
+    // Dyn<D> / Dyn<D&> 方法调用 (Phase 2d 静态检查 + Phase 3d vtable codegen)
+    if (baseType.isDyn()) {
+        return compileDynMethodCall(callNode, baseExpr, baseType, member, args, argTypes);
+    }
+
     // 处理内置类型方法
     if (isBuiltinType(baseType.name)) {
         return compileBuiltinTypeMethodCall(callNode, baseExpr, baseType, member, args, argTypes);
@@ -2103,6 +2108,81 @@ llvm::Value* Compiler::compileStructMethodCall(
     }
 
     return nullptr;
+}
+
+// Phase 2d: Dyn<D> / Dyn<D&> 方法调用静态检查 (vtable 间接调用 codegen 推 Phase 3d).
+//
+// 流程:
+//   1. 从 baseType (Dyn<D> / Dyn<D&>) 取 D, 在 draft 注册表按 _file 可见性解析.
+//      解析失败 (理论上 Phase 2b/2c 已拦截) → 直接 throw E1131.
+//   2. 在 D 的 signatures 中按 member 名查找; 失败 → 抛"未定义方法"风格诊断
+//      (沿用 E6016 段位, type = baseType.getFullName(), 与 builtin 未定义方法一致).
+//   3. arity 严格匹配 sig->params().size() 与 argTypes.size(); 不匹配 → E6012.
+//   4. 参数类型按 D 签名 (不是具体实现签名) 逐位比对; 不匹配 → E3001 风格暂复用 E6015
+//      (后续 4c 落 E3xxx 明确码; 此处先用通用 E6015 + hint, 保证 Phase 2d 闭环).
+//   5. Phase 2d 不接 codegen: 命中合法调用统一抛 E6015 + hint「Phase 3d pending」.
+//      Phase 3d 把第 5 步替换为 load vtable[i] + indirect call.
+llvm::Value* Compiler::compileDynMethodCall(
+    p<ExprCallNode> callNode, p<ExprNode> /*baseExpr*/, const TypeInfo& baseType,
+    const string& member, vector<llvm::Value*>& /*args*/, vector<TypeInfo>& argTypes) {
+    int line = callNode->getLineNumber();
+    int col = callNode->getColumn();
+
+    // 1. 取 D 名 (剥 Dyn<D&> 的内层 Ref); 解析为 draft decl.
+    auto draftInner = baseType.dynDraftType();
+    string draftBare = draftInner ? draftInner->name : string();
+    DraftDeclNode* draftDecl = nullptr;
+    string draftQualified;
+    if (_yux && _file && !draftBare.empty()) {
+        auto& reg = _yux->draftRegistry();
+        if (auto resolved = reg.resolve(draftBare, _file)) {
+            draftDecl = resolved->decl;
+            draftQualified = resolved->qualifiedName;
+        }
+    }
+    if (!draftDecl) {
+        throw YuxError(line, col, ErrorCode::E1131,
+            draftBare.empty() ? string("?") : draftBare);
+    }
+
+    // 2. 找方法签名 (按名 + arity 匹配; yux 暂无方法名重载, 第一处即终)
+    FnHeaderNode* sig = nullptr;
+    for (auto& s : draftDecl->signatures()) {
+        if (!s) continue;
+        if (s->name().getText() != member) continue;
+        sig = s;
+        break;
+    }
+    if (!sig) {
+        throw YuxError(line, col, ErrorCode::E6016, member, baseType.getFullName());
+    }
+
+    // 3. arity 校验
+    if (sig->params().size() != argTypes.size()) {
+        throw YuxError(line, col, ErrorCode::E6012, member,
+            (int)sig->params().size(), (int)argTypes.size());
+    }
+
+    // 4. 参数类型按 D 签名比对 (类型名 + 全名相等; 与 yux 名义类型一致)
+    for (size_t i = 0; i < sig->params().size(); ++i) {
+        auto sp = sig->params()[i];
+        if (!sp || !sp->type()) continue;
+        TypeInfo expected = sp->type()->getType();
+        if (expected.getFullName() != argTypes[i].getFullName()) {
+            throw YuxError(line, col, ErrorCode::E6015)
+                .withHint("Dyn<" + draftQualified + ">." + member + " arg#"
+                    + std::to_string(i) + ": 期望 " + expected.getFullName()
+                    + ", 实际 " + argTypes[i].getFullName()
+                    + " (Dyn 方法调用参数类型按 draft 签名静态匹配)");
+        }
+    }
+
+    // 5. TODO Phase 3d: load fat_ptr.vtable → GEP slot[i] → indirect call
+    //    (data_ptr, args...); 返回值按 sig->retType 投回. 暂以 hint 拦截.
+    throw YuxError(line, col, ErrorCode::E6015)
+        .withHint("Dyn<" + draftQualified + ">." + member
+            + " 的 codegen 在 Phase 3d 接入 (vtable 加载 + indirect call); "
+            + "Phase 2d 仅完成静态检查");
 }
 
 llvm::Value* Compiler::compileConstructorCall(

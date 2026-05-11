@@ -368,6 +368,9 @@ private:
     llvm::Value* compileStructMethodCall(
         p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType, const TypeInfo& actualType,
         const string& member, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);  // 编译结构体方法调用
+    llvm::Value* compileDynMethodCall(
+        p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType,
+        const string& member, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);  // Phase 2d/3d: Dyn<D> 方法调用
     llvm::Value* compileGenericFunctionCall(
         p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
         p<FnNode> genericFn, p<FileNode> fnOwner);                              // 编译泛型函数调用

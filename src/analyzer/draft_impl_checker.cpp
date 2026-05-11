@@ -16,7 +16,12 @@
 
 #include "draft_registry.h"
 #include "ast/yux.h"
+#include "ast/node/alias_node.h"
+#include "ast/node/enum_node.h"
+#include "ast/node/type_node.h"
+#include "error_code.h"
 
+#include <functional>
 #include <set>
 #include <tuple>
 #include <vector>
@@ -85,6 +90,9 @@ void DraftImplChecker::validate() {
     // §12.4.2.1 E1105 显隐冲突: 必须等所有显式 impl 全部 §12.2 校验通过
     // 后再做, 避免"穷尽性 / 不多余" 与 显隐冲突 互相覆盖错误位置.
     checkExplicitImplicitConflict();
+
+    // §12.9 Phase 2c: 类型声明位 Dyn 用法静态检查
+    validateDynTypeReferences();
 }
 
 void DraftImplChecker::checkExplicitImplicitConflict() {
@@ -396,6 +404,201 @@ bool DraftImplChecker::draftIsObjectSafe(DraftDeclNode* draft) const {
     }
     _objectSafeCache[draft] = safe;
     return safe;
+}
+
+// §12.9 / DRAFT-dyn-draft Phase 2c: 类型声明位 Dyn 用法静态检查.
+//
+// 遍历入口: SDK + 用户文件; 对每个文件抓取所有"声明位"的 TypeNode 树:
+//   - free fn / impl 方法 / 析构方法 / draft sig 的 params + retType
+//   - struct field 类型
+//   - enum variant payload 类型
+//   - 顶层类型别名 target
+// 每棵 TypeNode 树调 validateDynInTypeNode 递归校验. 命中即抛, 不收集多错.
+//
+// 局部 var 声明位 (fn 体内 declareAssign) 暂不在本 pass 覆盖范围: 形态上
+// 必有初值 (typeWithRef 路径不允许无初值声明 Dyn<D&>; Dyn<D> 走声明位
+// declareAssign 也必然有 Dyn:<D>(x) 初值), 命中后由 compileDynCtorExpr 的
+// 构造检查 (Phase 2b) 接管 E1131..E1134.
+void DraftImplChecker::validateDynTypeReferences() {
+    if (!_yux) return;
+    // 确保 registry 已建好 (validate() 已 buildFromAllFiles 过, 但本方法
+    // 可能在其它入口被独立调用, 这里再触发一次幂等).
+    (void)_yux->draftRegistry();
+
+    auto walkFn = [&](FileNode* file, FnHeaderNode* hdr) {
+        if (!hdr) return;
+        for (auto& param : hdr->params()) {
+            if (param && param->type()) {
+                validateDynInTypeNode(param->type(), file, std::string());
+            }
+        }
+        if (hdr->retType()) {
+            validateDynInTypeNode(hdr->retType(), file, std::string());
+        }
+    };
+
+    auto run = [&](FileNode* file) {
+        if (!file) return;
+        // free fn
+        for (auto& fn : file->getFunctions()) {
+            if (fn) walkFn(file, fn->header());
+        }
+        // struct field
+        for (auto& sd : file->getStructDecls()) {
+            if (!sd) continue;
+            for (auto& f : sd->fields()) {
+                if (f && f->type()) {
+                    validateDynInTypeNode(f->type(), file, std::string());
+                }
+            }
+        }
+        // struct impl methods (含析构)
+        for (auto& impl : file->getStructImpls()) {
+            if (!impl) continue;
+            for (auto& m : impl->methods()) {
+                if (m) walkFn(file, m->header());
+            }
+            if (impl->destructor()) walkFn(file, impl->destructor()->header());
+        }
+        // draft sig
+        for (auto& dd : file->getDraftDecls()) {
+            if (!dd) continue;
+            for (auto& sig : dd->signatures()) {
+                walkFn(file, sig);
+            }
+        }
+        // enum variant payload
+        for (auto& ed : file->getEnumDecls()) {
+            if (!ed) continue;
+            for (auto& v : ed->variants()) {
+                if (!v) continue;
+                for (auto& pt : v->payloadTypes()) {
+                    if (pt) validateDynInTypeNode(pt, file, std::string());
+                }
+            }
+        }
+        // 顶层类型别名 target
+        for (auto& al : file->getAliasDecls()) {
+            if (al && al->target()) {
+                validateDynInTypeNode(al->target(), file, std::string());
+            }
+        }
+    };
+    if (auto sdk = _yux->sdkFile()) run(sdk);
+    for (auto& f : _yux->files()) run(f);
+}
+
+void DraftImplChecker::validateDynInTypeNode(TypeNode* tn, FileNode* file,
+                                             const std::string& outerWrapper) const {
+    if (!tn) return;
+
+    // TypeGenericNode: 处理 Dyn / 容器 / 通用递归
+    if (auto* gen = dynamic_cast<TypeGenericNode*>(tn)) {
+        const std::string baseName = gen->baseName().getText();
+        int line = tn->getLineNumber();
+        int col = tn->getColumn();
+
+        // 命中 Dyn 形态: 先按外层 wrapper 判 E1132 / E1135
+        if (baseName == "Dyn" && gen->typeArgs().size() == 1) {
+            // 外层禁忌: Box<Dyn> / Weak<Dyn> / Dyn<Dyn> → E1132;
+            // Nullable<Dyn> (即 Dyn<D>?) → E1135.
+            if (outerWrapper == "Box" || outerWrapper == "Weak" ||
+                outerWrapper == "Dyn") {
+                throw YuxError(line, col, ErrorCode::E1132,
+                    outerWrapper + "<" + gen->getType().getFullName() + ">");
+            }
+            if (outerWrapper == "Nullable") {
+                throw YuxError(line, col, ErrorCode::E1135);
+            }
+
+            // 取 Dyn 的内层裸 draft 名: 允许 Ref<D> (= D&) 的借用形态.
+            TypeNode* inner = gen->typeArgs()[0];
+            TypeNode* innerStripped = inner;
+            if (auto* refGen = dynamic_cast<TypeGenericNode*>(inner)) {
+                if (refGen->baseName().getText() == "Ref" &&
+                    refGen->typeArgs().size() == 1) {
+                    innerStripped = refGen->typeArgs()[0];
+                }
+            }
+
+            // 内层若仍是 Dyn → E1132
+            if (auto* innerGen = dynamic_cast<TypeGenericNode*>(innerStripped)) {
+                if (innerGen->baseName().getText() == "Dyn") {
+                    throw YuxError(line, col, ErrorCode::E1132,
+                        gen->getType().getFullName());
+                }
+            }
+
+            // 内层必须是 TypeNormalNode(draft 名), 否则 E1131
+            auto* innerNormal = dynamic_cast<TypeNormalNode*>(innerStripped);
+            std::string draftBare = innerNormal ? innerNormal->typeNameToken().getText()
+                                                 : std::string();
+            DraftDeclNode* draftDecl = nullptr;
+            std::string draftQualified;
+            if (_yux && file && !draftBare.empty()) {
+                auto& reg = _yux->draftRegistry();
+                if (auto resolved = reg.resolve(draftBare, file)) {
+                    draftDecl = resolved->decl;
+                    draftQualified = resolved->qualifiedName;
+                }
+            }
+            if (!draftDecl) {
+                throw YuxError(line, col, ErrorCode::E1131,
+                    draftBare.empty() ? std::string("?") : draftBare);
+            }
+
+            // 对象安全 (E1134): 与构造侧一致, 声明位也拒绝 (DRAFT §4)
+            if (!draftIsObjectSafe(draftDecl)) {
+                throw YuxError(line, col, ErrorCode::E1134,
+                    draftQualified, draftQualified, draftQualified);
+            }
+
+            // Dyn 内层为合法 draft, 不再继续递归 (D 名在 draft 命名空间, 不是
+            // 一个会再嵌 Dyn 的类型). Ref 包裹下同理.
+            return;
+        }
+
+        // 非 Dyn 容器: 决定下一层 wrapper 标签, 递归子项.
+        // Array / Ref / Tuple / 用户结构体等不会触发包裹诊断; Box/Weak/Nullable
+        // 会传递给子项, 由子项的 Dyn 分支命中 E1132 / E1135.
+        std::string childWrap;
+        if (baseName == "Box" || baseName == "Weak" || baseName == "Nullable") {
+            childWrap = baseName;
+        }
+        for (auto& arg : gen->typeArgs()) {
+            if (arg) validateDynInTypeNode(arg, file, childWrap);
+        }
+        return;
+    }
+
+    // TypeArrayNode: 定长数组 [T*N], 元素类型继续递归
+    if (auto* arr = dynamic_cast<TypeArrayNode*>(tn)) {
+        if (arr->elementType()) {
+            validateDynInTypeNode(arr->elementType(), file, std::string());
+        }
+        return;
+    }
+
+    // TypeFnNode: fn(P...) R, 参数 / 返回类型继续递归
+    if (auto* fn = dynamic_cast<TypeFnNode*>(tn)) {
+        for (auto& pt : fn->paramTypes()) {
+            if (pt) validateDynInTypeNode(pt, file, std::string());
+        }
+        if (fn->retType()) {
+            validateDynInTypeNode(fn->retType(), file, std::string());
+        }
+        return;
+    }
+
+    // TypeTupleNode: (T1, T2, ...), 各元素继续递归
+    if (auto* tup = dynamic_cast<TypeTupleNode*>(tn)) {
+        for (auto& e : tup->elementTypes()) {
+            if (e) validateDynInTypeNode(e, file, std::string());
+        }
+        return;
+    }
+
+    // TypeNormalNode: 叶子节点, 无 Dyn 可能
 }
 
 std::string DraftImplChecker::draftTypeArgsSuffix(const DraftRef& ref) {

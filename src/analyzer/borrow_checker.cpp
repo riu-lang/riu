@@ -66,6 +66,11 @@ public:
                 if (ty.isRef()) {
                     _refToRoot[pname] = pname;
                     refParams.push_back(pname);
+                } else if (ty.isDynBorrow()) {
+                    // Phase 2e: Dyn<D&> 参数视作借用，根即参数自身.
+                    // 与 T& 不同, Dyn<D&> 不是 Ref<T>, 不能用作 `T&` 返回源,
+                    // 故只登记 refToRoot, 不入 refParams.
+                    _refToRoot[pname] = pname;
                 } else {
                     _rootType[pname] = ty;
                 }
@@ -156,6 +161,37 @@ private:
     //     由 P3 在 ExprCallNode 分支补齐）
     std::string rootFromRetExpr(p<ExprNode> expr, int line) {
         return rootFromRefInit(expr, line);
+    }
+
+    // Phase 2e: `val d Dyn<D&> = Dyn:<D&>(x)` 的根推导.
+    // 期望 RHS 是 ExprDynCtorNode(isBorrow=true); x 形态在 Phase 2b 限定为:
+    //   - U& 形态 (ExprGetRefNode `&y.f` 或 T& 拷绑 `r`) → 根 = y / resolveRoot(r)
+    //   - Box<U> 形态 (LiteralObj 变量名) → 根 = 该 Box 变量自身
+    //   (其它形态构造站已 E1133 拒绝; 这里到不了)
+    // 非 DynCtor RHS (例如 Dyn<D&> 参数 / 局部之间的拷绑) 走 refToRoot 链.
+    std::string rootFromDynBorrowInit(p<ExprNode> expr, int line) {
+        if (auto ctor = dynamic_cast<ExprDynCtorNode*>(expr)) {
+            auto inner = ctor->arg();
+            if (auto getRef = dynamic_cast<ExprGetRefNode*>(inner)) {
+                return resolveRoot(getRef->obj().getText());
+            }
+            if (auto litExpr = dynamic_cast<ExprLiteralNode*>(inner)) {
+                if (auto obj = dynamic_cast<LiteralObjNode*>(litExpr->literal())) {
+                    return resolveRoot(obj->getValue().getText());
+                }
+            }
+            // 兜底: 落到 E4001 (借用初始化形态不被识别)
+            throw YuxError(line, ErrorCode::E4001)
+                .withHint("Dyn<D&>(...) 的参数应为 `&y.f` / T& 变量 / Box<U> 变量名");
+        }
+        // RHS 是已有 Dyn<D&> 变量 (拷绑形态): 顺 refToRoot 链解根
+        if (auto litExpr = dynamic_cast<ExprLiteralNode*>(expr)) {
+            if (auto obj = dynamic_cast<LiteralObjNode*>(litExpr->literal())) {
+                return resolveRoot(obj->getValue().getText());
+            }
+        }
+        throw YuxError(line, ErrorCode::E4001)
+            .withHint("Dyn<D&> 局部应由 `Dyn:<D&>(x)` 构造或从已有 Dyn<D&> 变量 / 形参拷绑");
     }
 
     // 从 `var r T& = expr` 的 RHS 推根对象名。
@@ -271,6 +307,12 @@ private:
             }
             if (varType.isRef() && da->expr()) {
                 auto root = rootFromRefInit(da->expr(), s->getLineNumber());
+                registerBorrow(vname, root, s->getLineNumber());
+            } else if (varType.isDynBorrow() && da->expr()) {
+                // Phase 2e: Dyn<D&> 局部变量是借用形态 (fat ptr 的 data 槽借用源),
+                // 与 T& 同样登记 refToRoot + activeBorrows; 根从 Dyn:<D&>(x) 的
+                // x 反推. x 形态在 Phase 2b 已限定为 U& / Box<U>.
+                auto root = rootFromDynBorrowInit(da->expr(), s->getLineNumber());
                 registerBorrow(vname, root, s->getLineNumber());
             } else if (!varType.empty()) {
                 _rootType[vname] = varType;

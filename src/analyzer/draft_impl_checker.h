@@ -77,6 +77,21 @@ public:
     // 所以这里所有 params + retType 都视为"非 receiver"位.
     bool draftIsObjectSafe(DraftDeclNode* draft) const;
 
+    // §12.9 / DRAFT-dyn-draft 类型声明检查 (Phase 2c).
+    // 遍历 SDK + 用户文件所有声明位的 TypeNode 子树:
+    //   - fn 形参 / 返回类型 (free fn / impl 方法 / draft sig)
+    //   - struct 字段类型
+    //   - enum variant payload 类型
+    //   - 顶层类型别名 target
+    // 对每个 Dyn<X> 形态:
+    //   E1131: X (剥外层 Ref 后) 必须是已知 draft 名
+    //   E1132: X 不能再是 Dyn (Dyn<Dyn<...>>)
+    //   E1132: 容器 Box<Dyn<...>> / Weak<Dyn<...>> 禁
+    //   E1135: Dyn<D>? (Nullable<Dyn<...>>) 不支持
+    //   E1134: 内层 draft 必须对象安全
+    // 命中第一处即抛 YuxError. 与构造表达式 E1131..E1134 的检查互补.
+    void validateDynTypeReferences();
+
 private:
     Yux* _yux;
 
@@ -109,6 +124,14 @@ private:
 
     // 类型 bare 名 → 所属模块. 未登记返回空串.
     std::string moduleOfType(const std::string& typeBareName) const;
+
+    // Phase 2c helper: 递归校验一个 TypeNode 子树中的 Dyn 用法.
+    // file 用于 draft 注册表按可见性解析裸名.
+    // outerWrapper 标识当前 TypeNode 是否被某容器包裹 (空串表示根/允许容器):
+    //   "Box" / "Weak" / "Dyn" / "Nullable" → 命中 Dyn 时报相应错误码.
+    //   "Array" / "Ref" / "" 等不触发包裹诊断 (Array<Dyn<D>> 合法; Dyn<D&> 内部 Ref 合法).
+    void validateDynInTypeNode(TypeNode* tn, FileNode* file,
+                               const std::string& outerWrapper) const;
 };
 
 #endif //YUX_LANG_DRAFT_IMPL_CHECKER_H

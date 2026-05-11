@@ -1,0 +1,23 @@
+; Phase 2d：在 Dyn<D> 上调 D 没有的方法 → 未定义方法错 (E6016)
+draft Greet {
+  fn hi()
+}
+
+struct G { }
+
+G {
+  fn G() {
+  }
+}
+
+G : Greet {
+  fn hi() {
+  }
+}
+
+fn main() {
+  val b Box<G> = G()
+  val d Dyn<Greet> = Dyn:<Greet>(b)
+  d.bye();
+  ret;
+}

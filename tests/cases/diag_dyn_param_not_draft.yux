@@ -1,0 +1,12 @@
+; Phase 2c：Dyn<X> 中 X 非 draft 名 → E1131（类型声明位）
+struct NotDraft {
+  x i32
+}
+
+fn take(d Dyn<NotDraft>) {
+  ret;
+}
+
+fn main() {
+  ret;
+}
