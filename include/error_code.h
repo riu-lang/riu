@@ -97,6 +97,13 @@ DEF_ERR(1110, "'#DraftLike' annotation is only allowed on 'draft' declarations")
 DEF_ERR(1111, "'#DraftLike' draft '{}' must not declare default method bodies")
 DEF_ERR(1112, "'#DraftLike' draft '{}' must not contain method-local generic parameters")
 DEF_ERR(1120, "Cannot implement draft '{}' for type '{}': both belong to external packages (orphan rule, spec §12.5)")
+// ── Dyn<D> / Dyn<D&> 运行时多态 (DRAFT-dyn-draft / 拟 §12.9 — Phase 2) ────
+DEF_ERR(1131, "Type argument of `Dyn<...>` must be a draft name; `{}` is not a draft")
+DEF_ERR(1132, "Nested `Dyn<...>` is not allowed: `{}` cannot wrap another `Dyn` / `Box` of `Dyn`")
+DEF_ERR(1133, "Cannot construct `Dyn<{}>` from `{}`: argument must be `Box<U>` (owned) or `U&` (borrow) where `U` implements `{}`")
+DEF_ERR(1134, "Draft `{}` is not object-safe: signatures contain `Self` or the draft's own name in non-receiver position; `Dyn<{}>` / `Dyn<{}&>` is not allowed")
+DEF_ERR(1135, "`Dyn<D>?` (nullable dyn) is not supported in v1")
+DEF_ERR(1136, "`Dyn<{}>` cannot cross `extern` boundary: vtable layout is internal ABI")
 
 // ── E2xxx 语法 / AST 结构 ─────────────────────────────────────────────
 DEF_ERR(2001, "Weak<T>? is forbidden: Weak is natively nullable (upgrade returns Box<T>?)")

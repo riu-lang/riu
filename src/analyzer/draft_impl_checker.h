@@ -67,11 +67,24 @@ public:
                         const std::string& draftQualified,
                         const std::vector<TypeInfo>& draftTypeArgs) const;
 
+    // §12.9 / DRAFT-dyn-draft §4 对象安全 (Phase 2a):
+    // 给定 draft D, 判定其方法签名是否允许进入 Dyn<D> / Dyn<D&> 形态.
+    // v1 第一轮规则: 任一 fnSig 的"非 receiver"参数类型 / 返回类型 (递归)
+    // 出现 "Self" 字面量名, 或出现 draft 自身名, 均判 not object-safe.
+    // 命中 false 由调用方翻成 E1134 诊断. 结果按 draft 节点指针 memoize.
+    //
+    // 注: yux 当前 fnSig 不显式承载 receiver (struct 上下文由 impl 提供),
+    // 所以这里所有 params + retType 都视为"非 receiver"位.
+    bool draftIsObjectSafe(DraftDeclNode* draft) const;
+
 private:
     Yux* _yux;
 
     // 已登记的 (typeQualified, draftQualifiedWithArgs) → impl, 用于 E1103.
     std::map<std::pair<std::string, std::string>, StructImplNode*> _seen;
+
+    // §12.9 对象安全结果 memo: DraftDeclNode* → object-safe?  Phase 2a.
+    mutable std::map<DraftDeclNode*, bool> _objectSafeCache;
 
     // structName → 所属模块名. 内置类型 (i32 / String / Box ...) 归 "yux.core".
     std::map<std::string, std::string> _typeOwnerModule;

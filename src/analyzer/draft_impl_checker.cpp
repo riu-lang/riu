@@ -352,6 +352,52 @@ bool DraftImplChecker::boundSatisfied(
     return false;
 }
 
+// §12.9 / DRAFT-dyn-draft §4 对象安全 — Phase 2a.
+//
+// 递归扫描 draft 每个 fnSig 的所有参数类型 / 返回类型, 命中以下任一即不安全:
+//   - 类型字面量名 == "Self"  (yux 当前无 Self 关键字, 但保留语义层禁用)
+//   - 类型字面量名 == draft 自身名 (例如 `draft D { fn clone() D }`)
+//
+// "非 receiver" 位: yux fnSig 不显式承载 receiver, 故所有 params + retType
+// 都需扫描. 结果按 draft 节点指针 memoize, 避免对同一 draft 重复遍历.
+//
+// 命中 false 时由 Phase 2b/2c 调用方翻为 E1134.
+bool DraftImplChecker::draftIsObjectSafe(DraftDeclNode* draft) const {
+    if (!draft) return false;
+    auto cached = _objectSafeCache.find(draft);
+    if (cached != _objectSafeCache.end()) return cached->second;
+
+    const std::string draftName = draft->name().getText();
+
+    std::function<bool(const TypeInfo&)> containsBad =
+        [&](const TypeInfo& t) -> bool {
+        // 任一类型字面量名命中 Self / draft 自身名 → 不安全.
+        if (!t.name.empty() && (t.name == "Self" || t.name == draftName)) {
+            return true;
+        }
+        // Generic / Tuple / Fn 实参列表
+        for (auto& a : t.genericArgs) {
+            if (a && containsBad(*a)) return true;
+        }
+        // Array 元素类型 / Fn 返回类型 (kind 共用 elementType 槽)
+        if (t.elementType && containsBad(*t.elementType)) return true;
+        return false;
+    };
+
+    bool safe = true;
+    for (auto& sig : draft->signatures()) {
+        for (auto& p : sig->params()) {
+            TypeInfo pt = p->type() ? p->type()->getType() : TypeInfo();
+            if (containsBad(pt)) { safe = false; break; }
+        }
+        if (!safe) break;
+        TypeInfo rt = sig->retType() ? sig->retType()->getType() : TypeInfo();
+        if (containsBad(rt)) { safe = false; break; }
+    }
+    _objectSafeCache[draft] = safe;
+    return safe;
+}
+
 std::string DraftImplChecker::draftTypeArgsSuffix(const DraftRef& ref) {
     if (ref.typeArgs.empty()) return {};
     std::string s = "<";

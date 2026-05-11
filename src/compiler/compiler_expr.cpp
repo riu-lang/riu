@@ -21,7 +21,10 @@
 #include "ast/node/enum_node.h"
 #include "compiler_runtime.h"
 #include "ast/mangler.h"
+#include "ast/yux.h"
 #include "analyzer/symbol_suggest.h"
+#include "analyzer/draft_impl_checker.h"
+#include "analyzer/draft_registry.h"
 #include <algorithm>
 #include <set>
 #include <llvm/IR/Constants.h>
@@ -2178,16 +2181,96 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprEnumCtorNode> node) {
 // 的 smoke 只看编译能否过、IR 是否成型，不验运行时所有权。
 llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
     auto resultType = node->getType();
+    int line = node->getLineNumber();
+    int col = node->getColumn();
+
+    // ── Phase 2b: Dyn<D>(x) 构造静态检查 ─────────────────────────────────
+    // 顺序: E1131 (D 必须是 draft) → E1132 (嵌套 Dyn) → E1134 (对象安全)
+    // → E1133 (参数形态 Box<U> / U& + U:D)。
+    auto draftInner = resultType.dynDraftType();
+    std::string draftBareName = draftInner ? draftInner->name : std::string();
+
+    auto* scope = node->parent() ? node->parent()->findNearestScope() : nullptr;
+    FileNode* file = nullptr;
+    while (scope) {
+        if ((file = dynamic_cast<FileNode*>(scope))) break;
+        scope = scope->parentScope();
+    }
+
+    DraftDeclNode* draftDecl = nullptr;
+    std::string draftQualified;
+    if (_yux && file && !draftBareName.empty()) {
+        auto& reg = _yux->draftRegistry();
+        if (auto resolved = reg.resolve(draftBareName, file)) {
+            draftDecl = resolved->decl;
+            draftQualified = resolved->qualifiedName;
+        }
+    }
+    if (!draftDecl) {
+        // E1131: 内层不是已知 draft 名 (可能是结构体 / 类型别名 / 不存在符号)
+        throw YuxError(line, col, ErrorCode::E1131,
+            draftBareName.empty() ? std::string("?") : draftBareName);
+    }
+
+    // E1132: Dyn<Dyn<...>> — 内层 draft 位置不能再是 Dyn
+    if (draftInner && draftInner->isDyn()) {
+        throw YuxError(line, col, ErrorCode::E1132, resultType.getFullName());
+    }
+
+    // E1134: 对象安全
+    if (_yux) {
+        auto& checker = _yux->draftImplChecker();
+        if (!checker.draftIsObjectSafe(draftDecl)) {
+            throw YuxError(line, col, ErrorCode::E1134,
+                draftQualified, draftQualified, draftQualified);
+        }
+    }
+
+    // E1133: 参数形态 + U:D 满足
+    auto argExpr = node->arg();
+    auto argType = argExpr->getType();
+    bool isBorrow = node->isBorrow();
+    std::string concreteBare;
+    if (isBorrow) {
+        // Dyn<D&>(x): 接受 U& 或 Box<U>
+        if (argType.isRef()) {
+            auto inner = argType.refElementType();
+            if (inner) concreteBare = inner->name;
+        } else if (argType.isBox()) {
+            auto inner = argType.boxElementType();
+            if (inner) concreteBare = inner->name;
+        }
+    } else {
+        // Dyn<D>(x): 仅接受 Box<U>
+        if (argType.isBox()) {
+            auto inner = argType.boxElementType();
+            if (inner) concreteBare = inner->name;
+        }
+    }
+    if (concreteBare.empty()) {
+        throw YuxError(line, col, ErrorCode::E1133,
+            draftQualified, argType.getFullName(), draftQualified);
+    }
+    if (_yux) {
+        auto& checker = _yux->draftImplChecker();
+        TypeInfo concreteTI(concreteBare);
+        // boundSatisfied 同时覆盖显式 impl (_seen) 与 #DraftLike 结构匹配
+        std::vector<TypeInfo> draftTypeArgs;
+        if (!checker.boundSatisfied(concreteTI, draftDecl, draftQualified, draftTypeArgs)) {
+            throw YuxError(line, col, ErrorCode::E1133,
+                draftQualified, argType.getFullName(), draftQualified);
+        }
+    }
+
+    // ── codegen (占位 vtable, Phase 3 替换) ───────────────────────────
     auto llvmDynTy = getLLVMType(resultType);
 
     auto ptrTy = llvm::PointerType::get(_context, 0);
     auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
 
-    auto argExpr = node->arg();
-    auto argType = argExpr->getType();
     auto argVal = compileExpr(argExpr);
 
-    // 抽取 data 槽（占位实现）：Box<U> 取 handle 字段；U& 直接用；其它形态留 null
+    // 抽取 data 槽（占位实现）：Box<U> 取 handle 字段；U& 直接用
     llvm::Value* dataPtr = nullPtr;
     if (argType.isBox()) {
         // Box layout = { ptr handle }；handle 指向 [RC head | payload]
@@ -2201,7 +2284,6 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
         // U& 已是裸指针类型，直接用
         dataPtr = argVal;
     }
-    // TODO: Phase 2 在此处报 E1133（参数形态不是 Box<U> / U&）
     // TODO: Phase 3 把 null vtable 替换为真 vtable_ptr，并接管 Box 的 +1（消费临时帧 / retain）
 
     // 组装 fat pointer struct value { vtable=null, data=dataPtr }
