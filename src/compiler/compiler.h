@@ -317,6 +317,16 @@ private:
         const TypeInfo& concreteType,
         const std::string& draftQualified,
         class DraftDeclNode* draft);
+
+    // Phase 3d 配套: 为「内置类型 U 在 Dyn<D> 下的方法 m」生成 (ptr) → (by-value) 适配 thunk.
+    // 用于解决 Dyn 调用约定统一为 (ptr receiver, ...) 但 SDK 内置类型方法实际签名是
+    // (<U> by-value, ...) 的 ABI 不匹配。thunk 仅 load 一次 receiver, tail-call 真实 SDK 函数。
+    // 仅在 vtable 槽内调用; 普通直接方法调用走 compileStructMethodCall 的 by-value 分支.
+    llvm::Function* getOrEmitDynPrimitiveThunk(
+        const TypeInfo& concreteType,
+        const std::string& draftQualified,
+        class FnHeaderNode* sig,
+        const std::string& sdkMangled);
     llvm::Value* compileMatchExpr(p<ExprMatchNode> node);                       // Phase 6: 编译 match 表达式（switch on tag + 绑定 + arm 体）
     llvm::Value* compileTryCatchExpr(p<ExprTryCatchNode> node);                 // Phase 10f: 编译 try-catch 表达式（10f 仅占位 + 语义校验，IR 路由推 10g）
 

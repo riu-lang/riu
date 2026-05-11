@@ -5,7 +5,6 @@
 ; 借用调用路径俟构造解锁后再补；本文件只覆盖 owned `Dyn<D>`。
 
 ; ---------- 用户类型走 ToString：Dyn<ToString>(Box<DynCounter>) ----------
-; 注：Box<primitive>.method() 当前有独立 bug（见 BUGS.md），故用包装 struct 而非 Box<i32>。
 
 struct DynCounter {
   n i64
@@ -155,4 +154,29 @@ fn test_dyn_dtor_chain_string_field() {
   assert_eq(d.area(), 9i64)
   assert_eq(d.name(), "triangle")
   ; d 离开 scope 时 _dyn_release → vtable[0] = Labeled.~ → String 字段 release
+}
+
+; ---------- Box<primitive> 走 ToString：Box<i32>/Box<i64>/Box<bool> ----------
+; 回归 BUGS.md「Box<primitive>.method() 调用走错路径」修复后场景：
+; SDK base.yux 已为 i32/i64/bool 提供 ToString impl，vtable 走内置类型 by-value receiver。
+
+#Test
+fn test_dyn_to_string_box_i32() {
+  val b Box<i32> = 42i32
+  val d Dyn<ToString> = Dyn:<ToString>(b)
+  assert_eq(d.to_string(), "42")
+}
+
+#Test
+fn test_dyn_to_string_box_i64() {
+  val b Box<i64> = 123i64
+  val d Dyn<ToString> = Dyn:<ToString>(b)
+  assert_eq(d.to_string(), "123")
+}
+
+#Test
+fn test_dyn_to_string_box_bool() {
+  val b Box<bool> = true
+  val d Dyn<ToString> = Dyn:<ToString>(b)
+  assert_eq(d.to_string(), "true")
 }

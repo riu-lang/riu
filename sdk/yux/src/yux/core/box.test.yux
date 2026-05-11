@@ -104,3 +104,36 @@ fn test_box_var_reassign() {
   b = b
   assert_eq(b.b, 4i32)
 }
+
+; ---------- Box<primitive>.method()：内置类型方法 receiver 走 by-value ABI ----------
+; 回归 BUGS.md「Box<primitive>.method() 调用走错路径 / IR 签名 assert」
+; 单跑会读到栈残值；与直接字面量方法共存会触发 LLVM bad signature。
+
+#Test
+fn test_box_i32_to_string() {
+  val b Box<i32> = 42i32
+  val s String = b.to_string()
+  assert_eq(s, "42")
+}
+
+#Test
+fn test_box_i32_with_literal_method() {
+  val b Box<i32> = 42i32
+  ; 字面量直接调用与 Box 调用并存：曾触发 LLVM "Calling a function with a bad signature!"
+  val s1 String = 7i32.to_string()
+  val s2 String = b.to_string()
+  assert_eq(s1, "7")
+  assert_eq(s2, "42")
+}
+
+#Test
+fn test_box_i64_to_string() {
+  val b Box<i64> = 123i64
+  assert_eq(b.to_string(), "123")
+}
+
+#Test
+fn test_box_bool_to_string() {
+  val b Box<bool> = true
+  assert_eq(b.to_string(), "true")
+}

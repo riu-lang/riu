@@ -23,10 +23,13 @@
 #include "analyzer/draft_impl_checker.h"
 #include "analyzer/draft_registry.h"
 
+#include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/Module.h>
+
+#include "ast/node/fn_node.h"
 
 namespace {
 
@@ -172,33 +175,44 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(
             // findStructOwnerModule 拿到空 uModule 时会错指）。
             std::string mangled = Mangler::method(impl.ownerModule, uStruct, methodName,
                                                   paramTypes, isPriv);
-            auto* fn = _module->getFunction(mangled);
-            if (!fn) {
-                // 跨模块引用：方法定义在 U 的 owner 模块，本模块仅做 forward declare。
-                // 签名按 D 自己的 sig 还原（对象安全确保 D 的 sig 不含 Self / 自身名，
-                // 因此 D.sig 形参/返回类型与 U.impl 一致）：
-                //   (ptr receiver, P1, ..., Pn) -> R
-                std::vector<llvm::Type*> llvmParamTypes;
-                llvmParamTypes.push_back(ptrTy);  // receiver
-                for (auto& p : sig->params()) {
-                    if (!p || !p->type()) continue;
-                    auto pt = p->type()->getType();
-                    if (pt.isPtr() || pt.isRef()) {
-                        llvmParamTypes.push_back(ptrTy);
-                    } else {
-                        llvmParamTypes.push_back(getLLVMType(pt));
+
+            // 内置类型 U（i32 / i64 / bool / ...）的 SDK 方法实际签名是
+            // (<U> by-value, P1, ..., Pn) -> R（见 compileMethod / getMethodFunction 的 builtin 分支）;
+            // 而 Dyn 调用约定统一 (ptr receiver, ...) -> R。vtable 槽必须吃 ptr 接 dyn 派发,
+            // 但又不能直接指向 SDK fn（ABI 不一致）。这里为每个 (U, D, method) 合成一个
+            // linkonce_odr 的适配 thunk：load primitive 后转发到真实 SDK fn。
+            if (isBuiltinType(uStruct)) {
+                slot = getOrEmitDynPrimitiveThunk(concreteType, draftQualified,
+                                                  sig, mangled);
+            } else {
+                auto* fn = _module->getFunction(mangled);
+                if (!fn) {
+                    // 跨模块引用：方法定义在 U 的 owner 模块，本模块仅做 forward declare。
+                    // 签名按 D 自己的 sig 还原（对象安全确保 D 的 sig 不含 Self / 自身名，
+                    // 因此 D.sig 形参/返回类型与 U.impl 一致）：
+                    //   (ptr receiver, P1, ..., Pn) -> R
+                    std::vector<llvm::Type*> llvmParamTypes;
+                    llvmParamTypes.push_back(ptrTy);  // receiver
+                    for (auto& p : sig->params()) {
+                        if (!p || !p->type()) continue;
+                        auto pt = p->type()->getType();
+                        if (pt.isPtr() || pt.isRef()) {
+                            llvmParamTypes.push_back(ptrTy);
+                        } else {
+                            llvmParamTypes.push_back(getLLVMType(pt));
+                        }
                     }
+                    llvm::Type* llvmRetType = _builder.getVoidTy();
+                    if (sig->retType()) {
+                        auto rt = sig->retType()->getType();
+                        if (!rt.empty()) llvmRetType = getLLVMType(rt);
+                    }
+                    auto fnTy = llvm::FunctionType::get(llvmRetType, llvmParamTypes, false);
+                    fn = llvm::Function::Create(fnTy, llvm::Function::ExternalLinkage,
+                                                mangled, _module);
                 }
-                llvm::Type* llvmRetType = _builder.getVoidTy();
-                if (sig->retType()) {
-                    auto rt = sig->retType()->getType();
-                    if (!rt.empty()) llvmRetType = getLLVMType(rt);
-                }
-                auto fnTy = llvm::FunctionType::get(llvmRetType, llvmParamTypes, false);
-                fn = llvm::Function::Create(fnTy, llvm::Function::ExternalLinkage,
-                                            mangled, _module);
+                slot = fn;
             }
-            slot = fn;
         }
         // TODO: implMethod 找不到说明 DraftImplChecker 未拦截的内部不一致；
         // 当前留 null 兜底，调用站点（Phase 3d）会以"加载到 null 函数指针"指示问题。
@@ -216,4 +230,109 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(
         symName);
     gv->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
     return gv;
+}
+
+// Dyn 调用约定下「内置类型 U 的方法」适配 thunk
+//
+// 背景: Dyn<D> 派发统一 (ptr receiver, ...) -> R; 而 SDK 内置类型 (i32/i64/bool/...)
+// 的方法 (例如 yux.core#i32_to_string) 实际签名是 (<U> by-value, ...) -> R, 见
+// compileMethod 的 builtin 分支 (compiler.cpp:672) 与 getMethodFunction 第 1 参 (compiler_call.cpp:292)。
+// 直接把 SDK fn 放进 vtable 槽会出现 ABI 不一致 (LLVM Calling a function with a bad signature)。
+//
+// 这里给每个 (U, D, method) 三元组生成一个 linkonce_odr 包装函数:
+//   __yux_dyn_thunk__<U>__<draftQualified>__<method>(ptr recv, P1, ..., Pn) -> R {
+//     v = load <U>, ptr recv
+//     ret call <sdkMangled>(v, P1, ..., Pn)
+//   }
+// 把 thunk 地址放入 vtable 槽; receiver 由 Dyn 派发侧 (compileDynMethodCall) 传入
+// payload ptr (owned 是 data+8, borrow 是 data). 其它形参按 D 签名透传 —— 对象安全
+// 保证 D.sig 与 impl 的非 receiver 形参形态一致, 不需要做参数 ABI 转换.
+llvm::Function* Compiler::getOrEmitDynPrimitiveThunk(
+    const TypeInfo& concreteType,
+    const std::string& draftQualified,
+    FnHeaderNode* sig,
+    const std::string& sdkMangled) {
+
+    auto ptrTy = llvm::PointerType::get(_context, 0);
+    auto uLLVMTy = getLLVMType(concreteType);
+
+    const std::string methodName = sig->name().getText();
+    std::string thunkName = "__yux_dyn_thunk__";
+    thunkName += sanitizeForSymbol(concreteType.name);
+    thunkName += "__";
+    thunkName += sanitizeForSymbol(draftQualified);
+    thunkName += "__";
+    thunkName += sanitizeForSymbol(methodName);
+
+    if (auto* existing = _module->getFunction(thunkName)) {
+        return existing;
+    }
+
+    // 构造 thunk 形参 / 返回类型 (与 Dyn 调用站构造的 indirect call FnType 对齐)
+    std::vector<llvm::Type*> thunkParamTypes;
+    thunkParamTypes.push_back(ptrTy);  // receiver
+    for (auto& p : sig->params()) {
+        if (!p || !p->type()) continue;
+        auto pt = p->type()->getType();
+        if (pt.isPtr() || pt.isRef()) {
+            thunkParamTypes.push_back(ptrTy);
+        } else {
+            thunkParamTypes.push_back(getLLVMType(pt));
+        }
+    }
+    llvm::Type* retTy = _builder.getVoidTy();
+    if (sig->retType()) {
+        auto rt = sig->retType()->getType();
+        if (!rt.empty()) retTy = getLLVMType(rt);
+    }
+    auto thunkTy = llvm::FunctionType::get(retTy, thunkParamTypes, false);
+    auto thunk = llvm::Function::Create(thunkTy, llvm::Function::LinkOnceODRLinkage,
+                                        thunkName, _module);
+    thunk->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+
+    // vtable 生成可能发生在任意 codegen 时点; 保存 / 恢复 builder 插入点.
+    auto* savedBB = _builder.GetInsertBlock();
+    llvm::BasicBlock::iterator savedIP;
+    if (savedBB) savedIP = _builder.GetInsertPoint();
+
+    auto* entry = llvm::BasicBlock::Create(_context, "entry", thunk);
+    _builder.SetInsertPoint(entry);
+
+    // 真实 SDK fn 的签名: (<U> by-value, ...) -> R
+    std::vector<llvm::Type*> sdkParamTypes;
+    sdkParamTypes.push_back(uLLVMTy);
+    for (size_t i = 1; i < thunkParamTypes.size(); ++i) {
+        sdkParamTypes.push_back(thunkParamTypes[i]);
+    }
+    auto sdkFnTy = llvm::FunctionType::get(retTy, sdkParamTypes, false);
+    auto* sdkFn = _module->getFunction(sdkMangled);
+    if (!sdkFn) {
+        sdkFn = llvm::Function::Create(sdkFnTy, llvm::Function::ExternalLinkage,
+                                       sdkMangled, _module);
+    }
+
+    auto argIt = thunk->arg_begin();
+    llvm::Value* recvPtr = &*argIt++;
+    auto* loadedRecv = _builder.CreateLoad(uLLVMTy, recvPtr, "recv.val");
+
+    std::vector<llvm::Value*> callArgs;
+    callArgs.push_back(loadedRecv);
+    for (; argIt != thunk->arg_end(); ++argIt) {
+        callArgs.push_back(&*argIt);
+    }
+
+    if (retTy->isVoidTy()) {
+        _builder.CreateCall(sdkFnTy, sdkFn, callArgs);
+        _builder.CreateRetVoid();
+    } else {
+        auto* callRet = _builder.CreateCall(sdkFnTy, sdkFn, callArgs, "thunk.ret");
+        _builder.CreateRet(callRet);
+    }
+
+    if (savedBB) {
+        _builder.SetInsertPoint(savedBB, savedIP);
+    } else {
+        _builder.ClearInsertionPoint();
+    }
+    return thunk;
 }

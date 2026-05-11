@@ -2072,8 +2072,22 @@ llvm::Value* Compiler::compileStructMethodCall(
             dataPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "box.payload");
         }
 
+        // Box<primitive> 方法调用：内置类型方法的 receiver 走 by-value ABI
+        // （见 getMethodFunction line 291：isBuiltinType(structName) 时第 0 槽用
+        // getLLVMType(structName)，对应 compileMethod line 672-678 把首参 alloca + store
+        // 作为 `$`）。这里要把 payload load 出来按值传，否则与 callee 签名不一致：
+        // - 单跑 b.to_string()：callee 把 ptr 当 i32 读 → 栈上残值；
+        // - 与 42i32.to_string() 共存：fn 已被前者按 (i32)→T 声明，此处再按 (ptr)→T
+        //   call 触发 LLVM "Calling a function with a bad signature!" assert。
+        bool receiverByValue = isBuiltinType(actualType.name);
+        llvm::Value* receiverArg = dataPtr;
+        if (receiverByValue) {
+            auto receiverTy = getLLVMType(actualType);
+            receiverArg = _builder.CreateLoad(receiverTy, dataPtr, "box.payload.val");
+        }
+
         vector<llvm::Value*> methodArgs;
-        methodArgs.push_back(dataPtr);
+        methodArgs.push_back(receiverArg);
         for (size_t i = 0; i < args.size(); ++i) {
             auto& at = argTypes[i];
             if (structParamUsesPointer(at.name)) {
@@ -2092,7 +2106,11 @@ llvm::Value* Compiler::compileStructMethodCall(
         auto fn = _module->getFunction(mangledName);
         if (!fn) {
             vector<llvm::Type*> paramTypes;
-            paramTypes.push_back(llvm::PointerType::get(_context, 0));
+            if (receiverByValue) {
+                paramTypes.push_back(getLLVMType(actualType));
+            } else {
+                paramTypes.push_back(llvm::PointerType::get(_context, 0));
+            }
             for (auto& t : argTypes) {
                 if (structParamUsesPointer(t.name)) {
                     paramTypes.push_back(llvm::PointerType::get(_context, 0));
