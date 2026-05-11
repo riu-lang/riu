@@ -1,0 +1,55 @@
+; Bug A 回归: struct 字段持 Dyn<D> 在 AOT 下能正确读字段并经 vtable 调度
+; 覆盖：1) Dyn 字段前后有其它字段 2) 直接 h.inner.m() 链式 3) val d = h.inner 拷绑再调
+; 4) Dyn 内部 U 含 String 字段（确保 dtor 链不踩内存）
+
+draft Greet {
+  fn hi() i64
+  fn name() String
+}
+
+struct G {
+  v i64
+  tag String
+}
+
+G {
+  fn G(v i64, t String) {
+    $.v = v
+    $.tag = t
+  }
+}
+
+G : Greet {
+  fn hi() i64 {
+    $.v
+  }
+  fn name() String {
+    $.tag
+  }
+}
+
+struct Holder {
+  before i64
+  inner Dyn<Greet>
+  after i64
+}
+
+Holder {
+  fn Holder(b i64, d Dyn<Greet>, a i64) {
+    $.before = b
+    $.inner = d
+    $.after = a
+  }
+}
+
+fn main() {
+  val bg Box<G> = G(42i64, "ok")
+  val h Holder = Holder(7i64, Dyn:<Greet>(bg), 9i64)
+  println(h.before)
+  println(h.inner.hi())
+  println(h.inner.name())
+  println(h.after)
+  val d Dyn<Greet> = h.inner
+  println(d.hi())
+  println(d.name())
+}

@@ -2190,11 +2190,14 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
     auto draftInner = resultType.dynDraftType();
     std::string draftBareName = draftInner ? draftInner->name : std::string();
 
-    auto* scope = node->parent() ? node->parent()->findNearestScope() : nullptr;
+    // 走 parent() 链而不是 parentScope()：struct 方法的 FnNode 在 AST 构造时
+    // 不一定挂上 parentScope，但 parent() 链一定连到 FileNode
+    // （参考 expr_node.cpp::lookupDynMethodRetType）。
+    Node* cur = node->parent();
     FileNode* file = nullptr;
-    while (scope) {
-        if ((file = dynamic_cast<FileNode*>(scope))) break;
-        scope = scope->parentScope();
+    while (cur) {
+        if (auto f = dynamic_cast<FileNode*>(cur)) { file = f; break; }
+        cur = cur->parent();
     }
 
     DraftDeclNode* draftDecl = nullptr;
