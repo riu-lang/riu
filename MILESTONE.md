@@ -85,6 +85,36 @@
 
 - **性能与 layout 优化**：String 专属 FAM Block（`{strong, weak, len_cps, u32 data[]}`）；Array Block 内联小尺寸优化；内联策略与裁剪；基准测试无回归。
 
+### v0.11.0 — `Dyn<D>` / `Dyn<D&>` 运行时多态 ✅ 已完成（2026-05-11）
+
+**主题**：把 v0.5 之后保留为"不在范围"的 `dyn Draft` 落地为 `Dyn<D>` / `Dyn<D&>` fat pointer 形态，与现有 `<T : D>` 单态化分发并存、互不替代。
+
+**范围（达成情况）**：
+
+- ✅ fat pointer `{ vtable_ptr, data_ptr }` 16 字节 sized 类型，owned `Dyn<D>` 与 `Box<U>` 同源（data 指 `[RC head | 实例]`，标准 RC + vtable[0] dtor）；借用 `Dyn<D&>` 不动 RC，按 §8.6 借用栈追踪
+- ✅ 构造走 turbofish `Dyn:<D>(box_u)` / `Dyn:<D&>(u_ref)` 类型构造形态；不走隐式 coercion / 不引入 `as_dyn` builtin
+- ✅ vtable 模型：per-`(Type, Draft)` 静态 `linkonce_odr` global；槽 0 = `fn(ptr) void` dtor、槽 1..N = D 方法按声明序；符号 `__yux_vtable_<U_mod>_<U_struct>__<D_qualified>`
+- ✅ 对象安全 v1 第一轮：**禁止** `Self` / draft-name 在 receiver 之外的位置（E1134）；自反方法 `fn clone() Self` 走 `<T : D>` 单态化路径替代，thunk 解锁留 v0.X+1
+- ✅ 静态检查：`E1131` 非 draft / `E1132` 嵌套（`Dyn<Dyn>` / `Box<Dyn>` / `Weak<Dyn>`）/ `E1133` 构造源不满足 D / `E1134` 非对象安全 / `E1135` `Dyn<D>?` / `E1136` extern 边界（占位）；方法调用复用 `E6012` / `E6015` / `E6016`
+- ✅ codegen：vtable 生成（`compiler_dyn_vtable.cpp`）+ `compileDynCtorExpr` + `compileDynMethodCall` + `_dyn_release(data, vtable)`（emit 在 `emitBoxHelpers` 末尾）；内置 U（i32/i64/bool 等）走 `__yux_dyn_thunk__<U>__<draftQ>__<method>` 适配 thunk 调和 by-value ↔ ptr ABI
+- ✅ 借用：`Dyn<D&>` 形参 / 局部按 `data_ptr` 视作借用根登记到 `refToRoot`；`rootFromDynBorrowInit` 解根
+- ✅ spec §12.9 全章节落地（§12.9.1..§12.9.11）；§12.8 项 1 由"不在范围"改写为指针；附录 B §B.2a `Dyn` 类型形态；附录 D §D.3.8 追加 E1131..E1136
+- ✅ 草案 `DRAFT-dyn-draft.md` 头部标"已落地，见 §12.9"；实施日志归档 `docs/dev/dyn-draft-impl-log.md`
+- ✅ 测试：`sdk/yux/src/yux/core/dyn.test.yux`（11 用例，含 `Dyn<ToString>(Box<primitive>)`）；`tests/cases/dyn_*`（`array_iterate` / `pass_owned` / `field_owned` / `ctor_in_method`）；`tests/cases/diag_dyn_*`（六个错误码诊断回归）；BUGS.md 同步解决 `Box<primitive>.method()` ABI 不匹配条
+- ✅ 同步修：`compileStructMethodCall` 末段加 `isBuiltinType(actualType.name)` 分支（直接调用路径 by-value 传 primitive receiver）；`ExprDotNode::getType` `baseType.isDyn()` 返回 `fn() <ret>`；`callFieldDestructor` 加 `isDynOwned` / `isDynBorrow` 分支
+
+**不在范围**：
+
+- `Dyn:<D&>(x)` 调用站构造形态（g4 `genericDef` 实参槽不允许 `Type&`；解锁后补 `Dyn<D&>` 端到端用例）
+- 对象安全第二轮：`Self` / draft-name 在返回位置的 thunk 解锁（留 v0.X+1）
+- `Dyn<D>?` nullable 形态、`Dyn<D>` ↔ `Box<U>` 向下转型（需 RTTI）、反射 / `is` / `as`
+- 多线程 vtable 跨线程引用（v1 单线程承诺）
+- 操作符 draft 的 dyn 化（沿用 §12.8 项 6）
+- LSP semantic_tokens / tmLanguage / IntelliJ 的 `Dyn` 特殊高亮（工具链不在本轮）
+- vtable 内联缓存 / devirtualization 性能优化
+
+**退出标准**：✅ `xmake test` 109/109、`yux test` 289/289 全绿；spec §12.9 + 附录 B/D + CHANGELOG + 草案归档 + 实施日志同步；BUGS.md `Box<primitive>.method()` ABI 条已清。
+
 ### v0.10 — 工具链：IDE 同步 + Formatter AST 重写 ✅ 已完成（2026-05-10）
 
 **主题**：把 v0.9 落地的语言新形态补齐到所有外围通道（高亮 / 语义 token / 格式化），同时把启发式 token-流 formatter 推倒、换成 AST 驱动的 Doc IR 引擎。这版纯工具链，不动语言面。

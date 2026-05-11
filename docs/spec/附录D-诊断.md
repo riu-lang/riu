@@ -363,6 +363,12 @@ Array 内置方法（E6040..E6044）：
 | E1111  | `'#DraftLike' draft '{}' must not declare default method bodies` | `#DraftLike` 与默认体共用（§11.4.2.2） |
 | E1112  | `'#DraftLike' draft '{}' must not contain method-local generic parameters` | `#DraftLike` 与方法本地泛型共用（§11.4.2.3） |
 | E1120  | `Cannot implement draft '{}' for type '{}': both belong to external packages (orphan rule, spec §12.5)` | 跨外部包 orphan（§12.5） |
+| E1131  | `` Type argument of `Dyn<...>` must be a draft name; `{}` is not a draft `` | `Dyn<X>` 中 `X` 非 draft（§12.9.3.1） |
+| E1132  | `` Nested `Dyn<...>` is not allowed: `{}` cannot wrap another `Dyn` / `Box` of `Dyn` `` | `Dyn` 嵌套 / `Box<Dyn>` / `Weak<Dyn>`（§12.9.3.2） |
+| E1133  | `` Cannot construct `Dyn<{}>` from `{}`: argument must be `Box<U>` (owned) or `U&` (borrow) where `U` implements `{}` `` | `Dyn:<D>(x)` 构造源不满足 D（§12.9.5.3） |
+| E1134  | `` Draft `{}` is not object-safe: signatures contain `Self` or the draft's own name in non-receiver position; `Dyn<{}>` / `Dyn<{}&>` is not allowed `` | draft 非对象安全（§12.9.4） |
+| E1135  | `` `Dyn<D>?` (nullable dyn) is not supported in v1 `` | `Dyn<D>?` 形态（§12.9.3.3） |
+| E1136  | `` `Dyn<{}>` cannot cross `extern` boundary: vtable layout is internal ABI `` | `Dyn` 跨 `extern` 边界（§12.9.10） |
 
 ## D.4 与编译流程的关系
 

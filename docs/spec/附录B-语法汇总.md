@@ -73,6 +73,15 @@ draftBound        ::= modulePath? ID genericDef?     # 例：ToString / pkg.Disp
 
 > 上述边界产生式为 §12 引入的形态（v0.5+）；待与用户确认后回写 `src/yux.g4`，按 CLAUDE.md 项目约束。本附录文本与 `.g4` 暂不同步时，以草案 `draft/DRAFT-draft.md` §10.3 为准。
 
+## B.2a `Dyn<D>` / `Dyn<D&>`（v0.5+）
+
+`Dyn` 是编译器内置类型名（非关键字）。`Dyn<D>` 与 `Dyn<D&>` 作为 `typeGeneric` / `typeGenericWithRef` 形态出现；语义见 §12.9。约束：
+
+- `Dyn<D&>` 中 `&` 仅在 `genericDefWithRef` 实参槽合法（即 `typeWithRef` 位）；
+- `Dyn<...>` 不得嵌套 `Dyn` / `Box<Dyn>` / `Weak<Dyn>` / `Dyn<D>?`（语义层拒绝，E1132 / E1135）。
+
+构造形态走 `exprCall` 的 turbofish 形：`Dyn:<D>(box_u)` / `Dyn:<D&>(u_ref)`；无 `:` 写法 `Dyn<D>` 仅在类型位有效。
+
 ## B.3 字面量
 
 ```

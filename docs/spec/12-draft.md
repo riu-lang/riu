@@ -247,7 +247,7 @@ fn caller(box Box<MyType>) {
 
 v1 / v0.5 **明确不做**（[#E.1]）：
 
-1. **`dyn Draft` / 运行时多态**（mangling 留位但不实现）。
+1. ~~**`dyn Draft` / 运行时多态**（mangling 留位但不实现）。~~ → v0.5.x **已实现**，见 §12.9。
 2. **draft 默认方法体**。
 3. **draft 体内方法本地泛型**（draft 自身可泛型）。
 4. **关联类型 / 关联常量**。
@@ -261,10 +261,134 @@ v1 / v0.5 **明确不做**（[#E.1]）：
 12. **`#DraftLike` 部分匹配 / 子集匹配**（§12.3.1 必须穷尽匹配 D 全部签名）。
 13. **`where` 子句、`T : D1 | D2` or 约束**（§6.4.4.2）。
 
+## §12.9 `Dyn<D>` / `Dyn<D&>`（运行时多态形态）
+
+§12.9 在 §12.1–§12.7 的**单态化 `<T : D>`** 之外，提供 draft `D` 的**运行时多态**形态：`Dyn<D>`（owned）与 `Dyn<D&>`（借用）。二者并存、互不替代。设计基调与决议详见草案 [`draft/DRAFT-dyn-draft.md`](draft/DRAFT-dyn-draft.md)。
+
+### §12.9.1 类型档位
+
+§12.9.1.1 两种形态均为 **fat pointer**，运行时表示为 `{ vtable_ptr, data_ptr }`（16 字节，sized）：
+
+| 名称 | 写法 | data 端语义 | RC 行为 |
+|---|---|---|---|
+| owned dyn | `Dyn<D>` | 指向 `[RC head \| U 实例]`，与 `Box<U>` 同源 | 标准 RC；强引用为 0 时调 `vtable[0]` 析构 |
+| 借用 dyn | `Dyn<D&>` | 借自栈或堆，不持有所有权 | 不动 RC，按 §8.6 借用栈追踪 |
+
+§12.9.1.2 `Dyn` 是编译器内置类型名（非关键字），**不**写在 `base.yux`；不引入 `dyn` 关键字（沿用 `Dyn<D>` 类型名形态，与 `Box<T>` / `Weak<T>` 一致）。
+
+§12.9.1.3 `Dyn<D>` 与 `Dyn<D&>` 不可互转，与 `T` ↔ `T&` 同理（§8.3）。同一 `U` 对不同 draft `D1` / `D2` 有**独立** vtable，互不复用。
+
+### §12.9.2 出现位置
+
+§12.9.2.1 `Dyn<D>` 可出现在：函数参数 / 返回类型、局部变量类型标注（带 / 不带初值）、结构体字段类型、`Array<Dyn<D>>` 元素类型。
+
+§12.9.2.2 `Dyn<D&>` 仅出现在 `typeWithRef` 位（函数参数 / 返回类型、`val/var ... = ...` 初值形态）；**不**进结构体字段（字段不持借用，§7.4.4）、**不**进 `Array<...>` 元素（Array 为 owned 容器）。
+
+§12.9.2.3 上述限制由现有 `genericDef` / `genericDefWithRef` 实参槽语法自然落实，**不**需要改 g4。
+
+### §12.9.3 静态检查
+
+§12.9.3.1 `Dyn<X>` 中 `X` **应当**解析到 `DraftDeclNode`；否则报 `E1131`。
+
+§12.9.3.2 **不**允许嵌套：`Dyn<Dyn<...>>`、`Box<Dyn<...>>`、`Weak<Dyn<...>>` 报 `E1132`。
+
+§12.9.3.3 **不**允许 `Dyn<D>?`（nullable dyn）报 `E1135`（v1 不引入）。
+
+§12.9.3.4 draft `D` **应当对象安全**（§12.9.4），否则报 `E1134`。
+
+§12.9.3.5 上述规则在所有声明位 `TypeNode` 上检查（free fn / impl 方法 / draft 签名 / struct 字段 / enum payload / 顶层类型别名）。
+
+### §12.9.4 对象安全（object safety）
+
+§12.9.4.1 draft `D` 在以下任一条件成立时**不对象安全**：
+
+- draft 体内**任一**方法签名在 **receiver 之外**的位置出现 `Self` 类型；
+- draft 体内**任一**方法签名在返回位置出现 draft 自身名（如 `draft D { fn clone() D }`）。
+
+§12.9.4.2 v1 第一轮**不**为自反方法（`Self` / draft-name 返回）生成 thunk；用 `<T : D>` 单态化路径替代。Thunk 解锁留 v0.X+1。
+
+§12.9.4.3 §12.3.2 已禁止 draft 方法本地泛型，§12.8 项 4 已禁止关联类型 / 关联常量；二者**自动满足**对象安全无新规则。
+
+### §12.9.5 构造
+
+§12.9.5.1 构造形态走 **turbofish** 类型构造：
+
+```yux
+val b Box<U>     = U(...)
+val d Dyn<D>     = Dyn:<D>(b)        ; Box<U> → Dyn<D>，移交 RC
+val r Dyn<D&>    = Dyn:<D&>(ref)     ; U& 或 Box<U> → Dyn<D&>，借用
+```
+
+§12.9.5.2 调用站语法**应当**带 `:`（`Dyn:<D>(x)`）；无 `:` 写法 `Dyn<D>(x)` 仅在**类型位**有效（§B.2 / §B.2a）。`:` 前缀见 `yuxParser.g4` `exprCall` 形态。
+
+§12.9.5.3 构造检查：
+
+- `Dyn<D>(x)`：`x` **应当**为 `Box<U>` 且 `U` 已满足 `D`（显式 `Type : D { ... }` 或 `#DraftLike` 结构化匹配，与 §12.3.1 等价规则一致）；否则报 `E1133`。
+- `Dyn<D&>(x)`：`x` **应当**为 `U&` 或 `Box<U>`，`U:D`；结果为借用形态，按 §8.6 进借用栈。
+
+§12.9.5.4 **不**走隐式 coercion，**不**引入 `as_dyn` builtin。
+
+> *informative*：当前实施约束 — g4 `genericDef` 实参不允许 `Type&`，故 `Dyn:<D&>(...)` 调用站语法暂不可表达；`Dyn<D&>` 仅在形参 / 返回 / declareAssign 类型位出现。该限制不影响规范正文，待实施期解锁。
+
+### §12.9.6 方法分派
+
+§12.9.6.1 `d.m(args)`（`d : Dyn<D>` 或 `Dyn<D&>`）：
+
+- D 中存在 `m` → 按 D 签名做参数 arity / 类型等价检查（§12.3.1）；缺失方法报 `E6016`，arity 不匹配报 `E6012`，参数类型不匹配报 `E6015`。
+- 间接调用 `(ptr receiver, P1, ..., Pn) → R`，i 为 D 中 `m` 的声明序下标 + 1（跳过槽 0 的 dtor）。
+- receiver：owned `Dyn<D>` 走 `data + sizeof(RCHeader)` 跳 RC 头；借用 `Dyn<D&>` 直接以 `data` 为实例指针。
+
+§12.9.6.2 字段访问 `d.field` 在 dyn 形态下**不**暴露（dyn 不携带具体类型布局）。
+
+§12.9.6.3 `==` / `same_ref` 等结构化相等 v1 **不**提供（用户契约自管）。
+
+### §12.9.7 vtable 模型（*informative*）
+
+§12.9.7.1 每个 `(具体类型 U, draft D)` 对生成一份静态 vtable：
+
+```
+__yux_vtable_<U_mangled>__<D_qualified_mangled>:
+  [0] dtor:        fn(ptr) void          ; U 的类型特定析构
+  [1] D.method_0:  fn(ptr, ...) -> R     ; 按 D 声明序
+  ...
+  [N] D.method_N-1
+```
+
+- 槽 0：`U` 需要析构时取 `~()`；否则 `null`。
+- 槽 1..N：按 D 签名走 `Mangler::method`；找不到 fn 时 emit forward declare 占位。
+- 内置 `U`（`i32` / `i64` / `bool` 等）receiver ABI 为 by-value，与 Dyn 调用站统一 `(ptr,...)` 派发不可调和；vtable 槽插入 `linkonce_odr` 适配 thunk：load primitive 后转发到 SDK fn。
+- vtable 符号 `linkonce_odr`、`unnamed_addr`，每编译单元各发一份。
+
+### §12.9.8 RC / 析构
+
+§12.9.8.1 owned `Dyn<D>` 走 `_dyn_release(data, vtable)`：strong-- → 为 0 时 dispatch `vtable[0](data + sizeof(RCHeader))` → weak-- + free。借用 `Dyn<D&>` 释放 no-op。
+
+§12.9.8.2 构造 `Dyn:<D>(b)` 的 RC 接管：源 `b` 是 fresh 临时（构造表达式直接消费）时偷取 +1；命名变量则 retain 拷 +1，源 `Box` 仍按自身 scope 释放。Dyn 局部变量在 scope 退出走 `_dyn_release` 抵消。
+
+### §12.9.9 调用约定 / ABI
+
+§12.9.9.1 `Dyn<D>` / `Dyn<D&>` 作参数按 16 字节聚合传（与 `Box<U> + ptr` 同形）；作返回值走 sret 形态。
+
+§12.9.9.2 `Dyn<D&>` 借用与原 `U:D` 借用按 `data_ptr` 视作同一借用根，§8.6 借用栈复用。
+
+### §12.9.10 FFI / `extern` 边界
+
+§12.9.10.1 `Dyn<D>` / `Dyn<D&>` **不得**跨 `extern` 边界（vtable 布局是 yux 内部 ABI，不暴露给 C），报 `E1136`。错误码在 v1 已分配；强制点留实施期补足。
+
+### §12.9.11 不在本节范围
+
+承 §12.8：
+
+- `Self` / draft-name 在返回位置的对象安全解锁（thunk 路径，留 v0.X+1）
+- `Dyn<D>?` nullable 形态（§12.9.3.3 / `E1135` 占位）
+- `Dyn<D>` ↔ `Box<U>` 向下转型 / 反射 / `is` / `as`（§12.8 项 7）
+- 多线程 vtable 跨线程引用（v1 单线程）
+- 操作符 draft 的 dyn 化（§12.8 项 6）
+- vtable 内联缓存 / devirtualization（性能任务）
+
 ## Open Issues
 
 - 操作符 draft（`Add` / `Eq` / `Index` …）的引入窗口与现有 §7.2.3 运算符重载的对齐路径。
-- `dyn Draft` fat pointer ABI 与 mangling 留位的最终验证（v0.5 仅承诺不需要 ABI 改造，未做端到端 PoC）。
 - 是否为内置 `#DraftLike Stringify` 引入"断言失败时自动追加 actual / expected" 路径（与 §11.3.5.4 联动）。
 - 用户结构体相等约束 / `Eq` draft 的最小形态（与 §11.3.5 的 `assert_eq` 用户类型扩展联动）。
 - 跨编译单元的边界 IR 共享（v1 与现有 `<T>` 一致：调用方需可见函数体）。

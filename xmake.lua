@@ -2,7 +2,7 @@
 -- MPL-2.0
 
 set_project("yux-lang")
-set_version("0.10.0")
+set_version("0.11.0")
 set_languages("c++23")
 
 add_rules("mode.debug", "mode.release")

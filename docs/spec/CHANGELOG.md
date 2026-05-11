@@ -15,6 +15,13 @@
 
 ---
 
+## 2026-05-11 —— Dyn<D> / Dyn<D&> 运行时多态落地
+
+- **新增**：`docs/spec/12-draft.md` §12.9 `Dyn<D>` / `Dyn<D&>` 全章节（类型档位 / 出现位置 / 静态检查 / 对象安全 v1 第一轮 / 构造 / 方法分派 / vtable 模型 / RC / ABI / FFI 边界 / 不在范围）。fat pointer = `{ vtable_ptr, data_ptr }`，per-(Type, Draft) vtable；owned `Dyn<D>` 与 `Box<U>` 同源，借用 `Dyn<D&>` 按 §8.6 借用栈追踪。构造走 `Dyn:<D>(x)` turbofish，对象安全 v1 禁止 `Self` / draft-name 在非 receiver 位置。
+- **修改**：§12.8 项 1 由"不在范围"改写为"已实现，见 §12.9"，编号保留以维持追溯；Open Issues 删除 `dyn Draft` fat pointer ABI 验证条。
+- **新增**：附录 B 加 §B.2a 小节（`Dyn` 类型形态与构造形态约束）；附录 D §D.3.8 E11xx 表追加 E1131..E1136 六行（与 `include/error_code.h` 现有 `DEF_ERR` 同步）。
+- **冲突 / 兼容**：纯增。§12.8 项编号不变（项 1 保留为指针）；E11xx 段内号纯追加。草案 `docs/spec/draft/DRAFT-dyn-draft.md` 已落地，正文以 §12.9 为准；草案保留以维持决议日志（[#1.A][#1.B][#2.A][#3.A][#4.A][#5.A][#Z][#H]）追溯。
+
 ## 2026-05-10 —— stdlib I/O 泛型化 + panic stderr
 
 - **修改**：SDK `sdk/yux/src/yux/core/base.yux` `print` / `println` 由非泛型 `(s String)` 推广为两态：非泛型借用 `(s String&)` 快路径 + 泛型 `<T : ToString>(x T)`。owned String / 字符串字面量经 §7.2.3.3 自动取址命中快路径，其它实现 `ToString` 的类型走单态化分发。
