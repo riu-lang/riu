@@ -65,39 +65,46 @@ std::string findStructOwnerModule(Yux* yux, const std::string& structName) {
 }
 
 // 跨 SDK / 用户文件，遍历 U 的所有 StructImplNode（普通方法块 + draft 实现块）。
-// 返回第一个名字匹配 methodName 的 FnNode（v1：DraftImplChecker 已确保签名等价，
-// 这里不再二次校验签名，仅按名取首条）。
+// 返回第一个名字匹配 methodName 的 FnNode + 该实现块所在文件的模块名
+// （v1：DraftImplChecker 已确保签名等价，这里不再二次校验签名，仅按名取首条）。
 // 优先匹配带 draftRefs 的实现块（显式 Type:D{}）；找不到再回落到普通方法块。
-p<FnNode> findImplMethod(Yux* yux,
-                        const std::string& structName,
-                        const std::string& methodName) {
-    if (!yux) return nullptr;
+// 内置类型（i32 / bool / ...）的 ToString 等 impl 写在 SDK base.yux 里，
+// 必须用 impl 所在文件的模块名（如 `yux.core`）才能拿到正确的链接符号。
+struct ImplLookup {
+    p<FnNode> method;
+    std::string ownerModule;
+};
 
-    auto scanFile = [&](FileNode* file, bool preferDraftImpl) -> p<FnNode> {
-        if (!file) return nullptr;
+ImplLookup findImplMethod(Yux* yux,
+                         const std::string& structName,
+                         const std::string& methodName) {
+    if (!yux) return {};
+
+    auto scanFile = [&](FileNode* file, bool preferDraftImpl) -> ImplLookup {
+        if (!file) return {};
         for (auto& impl : file->getStructImpls()) {
             if (impl->structName() != structName) continue;
             bool isDraftImpl = !impl->draftRefs().empty();
             if (preferDraftImpl != isDraftImpl) continue;
             for (auto& m : impl->methods()) {
                 if (m->header()->name().getText() == methodName) {
-                    return m;
+                    return {m, file->moduleName()};
                 }
             }
         }
-        return nullptr;
+        return {};
     };
 
     // 两轮：先找 `Type:D { ... }` 块，再回落到 `Type { ... }` 普通方法块。
     for (bool preferDraft : {true, false}) {
         if (auto sdk = yux->sdkFile()) {
-            if (auto m = scanFile(sdk, preferDraft)) return m;
+            if (auto r = scanFile(sdk, preferDraft); r.method) return r;
         }
         for (auto& f : yux->files()) {
-            if (auto m = scanFile(f, preferDraft)) return m;
+            if (auto r = scanFile(f, preferDraft); r.method) return r;
         }
     }
-    return nullptr;
+    return {};
 }
 
 } // namespace
@@ -150,7 +157,8 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(
     // 槽 1..N：D 每个方法 → U 的具体实现 fn ptr
     for (auto& sig : sigs) {
         const std::string methodName = sig->name().getText();
-        auto implMethod = findImplMethod(_yux, uStruct, methodName);
+        auto impl = findImplMethod(_yux, uStruct, methodName);
+        auto implMethod = impl.method;
         llvm::Constant* slot = nullPtr;
         if (implMethod) {
             // 收集 U 的具体形参类型（从 U 自己的 impl 方法 header 取，
@@ -160,7 +168,9 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(
                 paramTypes.push_back(param->type()->getType());
             }
             bool isPriv = !methodName.empty() && methodName[0] == '_';
-            std::string mangled = Mangler::method(uModule, uStruct, methodName,
+            // 用 impl 所在文件的模块名（内置类型的 impl 在 SDK 模块里，
+            // findStructOwnerModule 拿到空 uModule 时会错指）。
+            std::string mangled = Mangler::method(impl.ownerModule, uStruct, methodName,
                                                   paramTypes, isPriv);
             auto* fn = _module->getFunction(mangled);
             if (!fn) {

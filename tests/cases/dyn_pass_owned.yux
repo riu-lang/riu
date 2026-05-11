@@ -1,0 +1,60 @@
+; Phase 4b：Dyn<D> 跨函数 by-value 传递，调用站点 vtable 间接调度
+; （Dyn<D&> 借用形态待 ast_builder 解锁 Dyn:<D&>(...) 后再补）
+
+draft Shape {
+  fn area() i64
+  fn name() String
+}
+
+struct Square {
+  side i64
+}
+
+Square {
+  fn Square(s i64) {
+    $.side = s
+  }
+}
+
+Square : Shape {
+  fn area() i64 {
+    $.side * $.side
+  }
+  fn name() String {
+    "square"
+  }
+}
+
+struct Rect {
+  w i64
+  h i64
+}
+
+Rect {
+  fn Rect(w i64, h i64) {
+    $.w = w
+    $.h = h
+  }
+}
+
+Rect : Shape {
+  fn area() i64 {
+    $.w * $.h
+  }
+  fn name() String {
+    "rect"
+  }
+}
+
+fn describe(d Dyn<Shape>) {
+  println(d.name())
+  println(d.area())
+}
+
+fn main() {
+  val bs Box<Square> = Square(5i64)
+  describe(Dyn:<Shape>(bs))
+
+  val br Box<Rect> = Rect(3i64, 7i64)
+  describe(Dyn:<Shape>(br))
+}

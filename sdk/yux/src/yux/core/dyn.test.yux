@@ -1,0 +1,158 @@
+; Phase 4a — Dyn<D> 运行时多态端到端
+; 覆盖：内置类型 + ToString 走 fat ptr + vtable / 自定义 draft 多方法 / 跨 fn 形参传递 / dtor 路径
+;
+; 注：Dyn<D&> 借用形态目前 ast_builder 仅识别 owned `Dyn:<D>`（g4 `genericDef` 实参槽不允许 `&`），
+; 借用调用路径俟构造解锁后再补；本文件只覆盖 owned `Dyn<D>`。
+
+; ---------- 用户类型走 ToString：Dyn<ToString>(Box<DynCounter>) ----------
+; 注：Box<primitive>.method() 当前有独立 bug（见 BUGS.md），故用包装 struct 而非 Box<i32>。
+
+struct DynCounter {
+  n i64
+}
+
+DynCounter {
+  fn DynCounter(start i64) {
+    $.n = start
+  }
+}
+
+DynCounter : ToString {
+  fn to_string() String {
+    $.n.to_string()
+  }
+}
+
+#Test
+fn test_dyn_to_string_counter_pos() {
+  val b Box<DynCounter> = DynCounter(42i64)
+  val d Dyn<ToString> = Dyn:<ToString>(b)
+  assert_eq(d.to_string(), "42")
+}
+
+#Test
+fn test_dyn_to_string_counter_neg() {
+  val b Box<DynCounter> = DynCounter(-7i64)
+  val d Dyn<ToString> = Dyn:<ToString>(b)
+  assert_eq(d.to_string(), "-7")
+}
+
+#Test
+fn test_dyn_to_string_counter_zero() {
+  val b Box<DynCounter> = DynCounter(0i64)
+  val d Dyn<ToString> = Dyn:<ToString>(b)
+  assert_eq(d.to_string(), "0")
+}
+
+; ---------- 自定义 draft + struct，多方法 ----------
+
+draft Shape {
+  fn area() i64
+  fn name() String
+}
+
+struct Square {
+  side i64
+}
+
+Square {
+  fn Square(s i64) {
+    $.side = s
+  }
+}
+
+Square : Shape {
+  fn area() i64 {
+    $.side * $.side
+  }
+  fn name() String {
+    "square"
+  }
+}
+
+struct Rect {
+  w i64
+  h i64
+}
+
+Rect {
+  fn Rect(w i64, h i64) {
+    $.w = w
+    $.h = h
+  }
+}
+
+Rect : Shape {
+  fn area() i64 {
+    $.w * $.h
+  }
+  fn name() String {
+    "rect"
+  }
+}
+
+#Test
+fn test_dyn_custom_draft_square() {
+  val b Box<Square> = Square(5i64)
+  val d Dyn<Shape> = Dyn:<Shape>(b)
+  assert_eq(d.area(), 25i64)
+  assert_eq(d.name(), "square")
+}
+
+#Test
+fn test_dyn_custom_draft_rect() {
+  val b Box<Rect> = Rect(3i64, 4i64)
+  val d Dyn<Shape> = Dyn:<Shape>(b)
+  assert_eq(d.area(), 12i64)
+  assert_eq(d.name(), "rect")
+}
+
+; ---------- 跨函数传 Dyn<Shape>（owned 移交，调用站消费） ----------
+
+fn shape_area_via_dyn(d Dyn<Shape>) i64 {
+  d.area()
+}
+
+#Test
+fn test_dyn_pass_to_fn_square() {
+  val b Box<Square> = Square(6i64)
+  assert_eq(shape_area_via_dyn(Dyn:<Shape>(b)), 36i64)
+}
+
+#Test
+fn test_dyn_pass_to_fn_rect() {
+  val b Box<Rect> = Rect(7i64, 2i64)
+  assert_eq(shape_area_via_dyn(Dyn:<Shape>(b)), 14i64)
+}
+
+; ---------- 含 RC 字段的 U：dyn release 必须调 U 的 dtor，String 字段被正确释放 ----------
+
+struct Labeled {
+  label String
+  n i64
+}
+
+Labeled {
+  fn Labeled(l String, n i64) {
+    $.label = l
+    $.n = n
+  }
+}
+
+Labeled : Shape {
+  fn area() i64 {
+    $.n
+  }
+  fn name() String {
+    $.label
+  }
+}
+
+#Test
+fn test_dyn_dtor_chain_string_field() {
+  val b Box<Labeled> = Labeled("triangle", 9i64)
+  val d Dyn<Shape> = Dyn:<Shape>(b)
+  assert_eq(d.area(), 9i64)
+  assert_eq(d.name(), "triangle")
+  ; d 离开 scope 时 _dyn_release → vtable[0] = Labeled.~ → String 字段 release
+}

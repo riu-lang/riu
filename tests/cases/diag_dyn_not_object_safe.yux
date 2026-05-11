@@ -1,0 +1,12 @@
+; Phase 4c：draft 签名返回 Self → 非对象安全；Dyn<D> 在类型位 → E1134
+draft Cloneable {
+  fn clone() Self
+}
+
+fn take(d Dyn<Cloneable>) {
+  ret;
+}
+
+fn main() {
+  ret;
+}

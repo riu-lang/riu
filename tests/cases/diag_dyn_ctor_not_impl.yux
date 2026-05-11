@@ -1,0 +1,20 @@
+; Phase 4c：构造 Dyn:<D>(x) 时 x 的内层类型 U 未实现 D → E1133
+draft Greet {
+  fn hi() String
+}
+
+struct Other {
+  n i32
+}
+
+Other {
+  fn Other(n i32) {
+    $.n = n
+  }
+}
+
+fn main() {
+  val b Box<Other> = Other(1i32)
+  val d Dyn<Greet> = Dyn:<Greet>(b)
+  ret;
+}

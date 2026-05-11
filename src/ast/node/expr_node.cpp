@@ -62,6 +62,45 @@ static TypeInfo lookupDraftBoundMethodRetType(
     return TypeInfo();
 }
 
+// Phase 4a：Dyn<D>/Dyn<D&> 上的 `.m` 静态类型查找。
+// 把 dot 表达式的类型表示为 `fn() <ret>`，让外层 ExprCallNode 在静态阶段算出确切返回类型，
+// 避免下游（assert_eq 推断 / implicit ret / 形参匹配）拿到 Dyn 类型而失败。
+static TypeInfo lookupDynMethodRetType(
+    Node* contextParent, const TypeInfo& dynType, const string& methodName) {
+    if (!dynType.isDyn()) return TypeInfo();
+    auto draftTy = dynType.dynDraftType();
+    if (!draftTy) return TypeInfo();
+    const string& draftName = draftTy->name;
+
+    // 走 parent() 链而不是 parentScope()：struct 方法的 FnNode 在 AST 构造时
+    // 不一定挂上 parentScope，但 parent() 链一定连到 FileNode。
+    Node* cur = contextParent;
+    FileNode* file = nullptr;
+    while (cur) {
+        if (auto f = dynamic_cast<FileNode*>(cur)) { file = f; break; }
+        cur = cur->parent();
+    }
+    if (!file) return TypeInfo();
+
+    DraftDeclNode* draft = file->getDraftDecl(draftName);
+    if (!draft) {
+        ScopeNode* p = file->parentScope();
+        while (p && !draft) {
+            if (auto pf = dynamic_cast<FileNode*>(p)) {
+                draft = pf->getDraftDecl(draftName);
+            }
+            p = p->parentScope();
+        }
+    }
+    if (!draft) return TypeInfo();
+    for (auto& sig : draft->signatures()) {
+        if (sig->name().getText() != methodName) continue;
+        if (sig->retType()) return sig->retType()->getType();
+        return TypeInfo();
+    }
+    return TypeInfo();
+}
+
 static bool isCompilerInnerMethod(ScopeNode* scope, const string& structName, const string& methodName) {
     if (!scope) return false;
     
@@ -762,6 +801,16 @@ TypeInfo ExprDotNode::getType() const {
         }
     }
     
+    // Dyn<D> / Dyn<D&> 的 `.m`：用 draft 签名表回填返回类型，包装成 `fn() <ret>`
+    // 让 ExprCallNode 在静态阶段算出确切类型（与 §12.4 draft 边界查找走同形分支）
+    if (baseType.isDyn()) {
+        auto rt = lookupDynMethodRetType(parent(), baseType, member);
+        if (!rt.empty()) {
+            return TypeInfo("fn() " + rt.getFullName());
+        }
+        return TypeInfo("fn() void");
+    }
+
     if (isBuiltinType(actualType.name)) {
         if (member.starts_with("to_")) {
             string dstType = member.substr(3);

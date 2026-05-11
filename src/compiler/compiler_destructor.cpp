@@ -201,6 +201,18 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
             auto capField = _builder.CreateGEP(fnStructType, fieldPtr, {zero, one});
             auto cap = _builder.CreateLoad(llvm::PointerType::get(_context, 0), capField);
             _builder.CreateCall(runtime::getBoxReleaseDtorFn(_module, _builder), {cap});
+        } else if (fieldType.isDynOwned()) {
+            // Phase 4b: owned Dyn<D> 字段 —— { vtable, data } 走 _dyn_release，
+            // 由 vtable[0] dispatch U 的 dtor；与 releaseAtPtr 同形（避免落到下面把 "Dyn" 当 struct 名查 dtor）。
+            auto dynStructType = getLLVMType(fieldType);
+            auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+            auto vtableField = _builder.CreateGEP(dynStructType, fieldPtr, {zero, zero});
+            auto vtable = _builder.CreateLoad(llvm::PointerType::get(_context, 0), vtableField);
+            auto dataField = _builder.CreateGEP(dynStructType, fieldPtr, {zero, one});
+            auto data = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataField);
+            _builder.CreateCall(runtime::getDynReleaseFn(_module, _builder), {data, vtable});
+        } else if (fieldType.isDynBorrow()) {
+            // 借用 Dyn<D&>：不动 RC，等价 no-op
         } else if (!isBuiltinType(fieldType.name)) {
             // 结构体字段: 调用其析构函数
             auto fieldDtorsFn = getDestructorFunction(fieldType.name);
