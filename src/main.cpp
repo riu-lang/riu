@@ -8,6 +8,7 @@
 #include "types.h"
 
 #include <atomic>
+#include <chrono>
 #include <csignal>
 #include <cstdio>
 #include <filesystem>
@@ -1134,6 +1135,7 @@ int wmain(int argc, wchar_t* argv[]) {
     // 默认隐藏成功测试的输出，失败时回放（--verbose 时全部回放）。
     if (testCmd->parsed()) {
         namespace fs = std::filesystem;
+        auto suiteT0 = std::chrono::steady_clock::now();
         if (!inputFile.empty()) {
             std::cerr << "Error: `yux test` does not accept positional input file" << std::endl;
             return 1;
@@ -1149,6 +1151,15 @@ int wmain(int argc, wchar_t* argv[]) {
                 selFn = testSelector.substr(hash + 1);
             }
         }
+        // selector 模块匹配（模块边界感知）：空 selector 全收；否则要求 m == selModule
+        // 或 m 以 `selModule.` 开头。后续既用于扫描期裁剪 *.test.yux，也用于收集后再过滤。
+        auto matchesSelModule = [&](const std::string& m) {
+            if (selModule.empty()) return true;
+            if (m == selModule) return true;
+            return m.size() > selModule.size() + 1 &&
+                   m.compare(0, selModule.size(), selModule) == 0 &&
+                   m[selModule.size()] == '.';
+        };
 
         Yux yux;
         std::string cwd = fs::current_path().string();
@@ -1227,6 +1238,9 @@ int wmain(int argc, wchar_t* argv[]) {
             // strip ".yux"（保留 ".test" 段，例如 "yux/core/arithmetic.test.yux" → "yux.core.arithmetic.test"）
             modName = modName.substr(0, modName.size() - 4);
             for (auto& c : modName) if (c == '/' || c == '\\') c = '.';
+            // selector 扫描期裁剪：不匹配 selModule 的 *.test.yux 直接跳过，避免无谓的解析/codegen。
+            // 普通 .yux 仍保留——它们可能是被选中 test 模块的依赖。
+            if (isTest && !matchesSelModule(modName)) continue;
             entries.push_back({absPath, modName, isTest});
         }
         std::sort(entries.begin(), entries.end(),
@@ -1281,17 +1295,10 @@ int wmain(int argc, wchar_t* argv[]) {
             ctxs.push_back(std::move(ctx));
         }
 
-        // selector 过滤
-        auto matchesPrefix = [&](const std::string& m) {
-            if (selModule.empty()) return true;
-            if (m == selModule) return true;
-            return m.size() > selModule.size() + 1 &&
-                   m.compare(0, selModule.size(), selModule) == 0 &&
-                   m[selModule.size()] == '.';
-        };
+        // selector 过滤（扫描期已裁掉不匹配的 *.test.yux，这里 selFn 维度再过滤一次）
         std::vector<TestEntry> filtered;
         for (auto& t : tests) {
-            if (!matchesPrefix(t.mod)) continue;
+            if (!matchesSelModule(t.mod)) continue;
             if (!selFn.empty() && t.fn != selFn) continue;
             filtered.push_back(t);
         }
@@ -1300,7 +1307,7 @@ int wmain(int argc, wchar_t* argv[]) {
             if (!isChildIsolated) {
                 std::cout << "no tests matched";
                 if (!testSelector.empty()) std::cout << " selector `" << testSelector << "`";
-                std::cout << std::endl;
+                std::cout << "\n";
                 std::cout.flush();
                 std::cerr.flush();
             } else {
@@ -1316,6 +1323,17 @@ int wmain(int argc, wchar_t* argv[]) {
             _exit(2);
         }
 
+        // 每个测试的耗时格式化为 `[s.SSS]`，附在 OK/FAIL 行末
+        auto fmtElapsed = [](std::chrono::steady_clock::time_point t0) {
+            using namespace std::chrono;
+            auto ms = duration_cast<milliseconds>(steady_clock::now() - t0).count();
+            char buf[32];
+            std::snprintf(buf, sizeof(buf), " [%lld.%03llds]",
+                          static_cast<long long>(ms / 1000),
+                          static_cast<long long>(ms % 1000));
+            return std::string(buf);
+        };
+
         // Phase 5：父进程在 isolate=process 模式下走子进程派发路径，跳过本进程 JIT。
         bool useProcessIsolation = !isChildIsolated && testIsolate == "process";
 
@@ -1326,32 +1344,41 @@ int wmain(int argc, wchar_t* argv[]) {
                 return 1;
             }
             size_t passed = 0, failed = 0;
-            for (auto& t : filtered) {
-                std::cout << "RUN  " << t.mod << "#" << t.fn << std::endl;
+            size_t total = filtered.size();
+            for (size_t i = 0; i < filtered.size(); ++i) {
+                auto& t = filtered[i];
+                std::string prog = "[" + std::to_string(i + 1) + "/" + std::to_string(total) + "] ";
+                std::cout << "RUN  " << prog << t.mod << "#" << t.fn << "\n";
                 std::cout.flush();
+                auto t0 = std::chrono::steady_clock::now();
                 auto r = spawnIsolatedTest(self, t.mod, t.fn);
+                std::string elapsed = fmtElapsed(t0);
                 if (!r.spawnOk) {
-                    std::cout << "FAIL " << t.mod << "#" << t.fn << " (" << r.spawnError << ")\n";
+                    std::cout << "FAIL " << prog << t.mod << "#" << t.fn
+                              << " (" << r.spawnError << ")" << elapsed << "\n";
                     ++failed;
                     continue;
                 }
                 if (r.exitCode == 0) {
-                    std::cout << "OK   " << t.mod << "#" << t.fn << std::endl;
+                    std::cout << "OK   " << prog << t.mod << "#" << t.fn << elapsed << "\n";
                     if (testVerbose) printCapturedOutput(r.capture);
                     ++passed;
                 } else if (r.exitCode == 2) {
-                    std::cout << "FAIL " << t.mod << "#" << t.fn << " (child runner error)\n";
+                    std::cout << "FAIL " << prog << t.mod << "#" << t.fn
+                              << " (child runner error)" << elapsed << "\n";
                     printCapturedOutput(r.capture);
                     ++failed;
                 } else {
-                    std::cout << "FAIL " << t.mod << "#" << t.fn
+                    std::cout << "FAIL " << prog << t.mod << "#" << t.fn
                               << " (SEH " << sehExceptionName(r.exitCode)
-                              << " 0x" << std::hex << r.exitCode << std::dec << ")\n";
+                              << " 0x" << std::hex << r.exitCode << std::dec << ")"
+                              << elapsed << "\n";
                     printCapturedOutput(r.capture);
                     ++failed;
                 }
             }
-            std::cout << "\n" << passed << " passed, " << failed << " failed" << std::endl;
+            std::cout << "\n" << passed << " passed, " << failed << " failed,"
+                      << fmtElapsed(suiteT0) << "\n";
             std::cout.flush();
             std::cerr.flush();
             _exit(failed == 0 ? 0 : 1);
@@ -1410,20 +1437,26 @@ int wmain(int argc, wchar_t* argv[]) {
         // 子进程模式也不再用 TestOutputCapture（stdout/stderr 已在入口被重定向到 capture 文件）。
         size_t passed = 0, failed = 0;
         unsigned long childExitCode = 0;
-        for (auto& t : filtered) {
+        size_t total = filtered.size();
+        for (size_t i = 0; i < filtered.size(); ++i) {
+            auto& t = filtered[i];
+            std::string prog = isChildIsolated
+                ? std::string()
+                : "[" + std::to_string(i + 1) + "/" + std::to_string(total) + "] ";
             if (!isChildIsolated) {
-                std::cout << "RUN  " << t.mod << "#" << t.fn << std::endl;
+                std::cout << "RUN  " << prog << t.mod << "#" << t.fn << "\n";
                 std::cout.flush();
             }
+            auto t0 = std::chrono::steady_clock::now();
             auto sym = jit->lookup(t.sym);
             if (!sym) {
                 if (isChildIsolated) {
                     std::cerr << "child: lookup failed: " << llvm::toString(sym.takeError()) << "\n";
                     childExitCode = 2;
                 } else {
-                    std::cout << "FAIL " << t.mod << "#" << t.fn
+                    std::cout << "FAIL " << prog << t.mod << "#" << t.fn
                               << " (lookup failed: " << llvm::toString(sym.takeError()) << ")"
-                              << std::endl;
+                              << fmtElapsed(t0) << "\n";
                     ++failed;
                 }
                 continue;
@@ -1439,16 +1472,17 @@ int wmain(int argc, wchar_t* argv[]) {
                 bool capOk = cap.start();
                 code = runTestSEH(fn);
                 std::string out = capOk ? cap.stop() : std::string();
+                std::string elapsed = fmtElapsed(t0);
 
                 if (code == 0) {
-                    std::cout << "OK   " << t.mod << "#" << t.fn << std::endl;
+                    std::cout << "OK   " << prog << t.mod << "#" << t.fn << elapsed << "\n";
                     if (testVerbose) printCapturedOutput(out);
                     ++passed;
                 } else {
-                    std::cout << "FAIL " << t.mod << "#" << t.fn
+                    std::cout << "FAIL " << prog << t.mod << "#" << t.fn
                               << " (SEH " << sehExceptionName(code)
                               << " 0x" << std::hex << code << std::dec << ")"
-                              << std::endl;
+                              << elapsed << "\n";
                     printCapturedOutput(out);
                     ++failed;
                 }
@@ -1459,7 +1493,8 @@ int wmain(int argc, wchar_t* argv[]) {
             std::fflush(stderr);
             _exit(static_cast<int>(childExitCode));
         }
-        std::cout << "\n" << passed << " passed, " << failed << " failed" << std::endl;
+        std::cout << "\n" << passed << " passed, " << failed << " failed,"
+                  << fmtElapsed(suiteT0) << "\n";
         std::cout.flush();
         std::cerr.flush();
         _exit(failed == 0 ? 0 : 1);
