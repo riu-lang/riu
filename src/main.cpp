@@ -944,9 +944,10 @@ int wmain(int argc, wchar_t* argv[]) {
     //   <prefix>             模块名前缀匹配（例：yux.core 命中 yux.core.*.test）
     //   <module>#<fnName>    精确匹配模块名 + 函数名
     auto* testCmd = app.add_subcommand("test", "Run #Test functions in *.test.yux files (project mode only)");
-    std::string testSelector;
+    std::vector<std::string> testSelectors;
     bool testVerbose = false;
-    testCmd->add_option("selector", testSelector, "Module prefix or `<module>#<fnName>` selector");
+    testCmd->add_option("selector", testSelectors,
+        "One or more module prefixes or `<module>#<fnName>` selectors (test matches any)");
     testCmd->add_flag("-v,--verbose", testVerbose, "Print captured stdout/stderr for every test (default: only on failure)");
     // Phase 5：进程隔离开关
     std::string testIsolate = "none";
@@ -1140,25 +1141,48 @@ int wmain(int argc, wchar_t* argv[]) {
             std::cerr << "Error: `yux test` does not accept positional input file" << std::endl;
             return 1;
         }
-        // 解析 selector：形如 `<prefix>` 或 `<module>#<fnName>`
-        std::string selModule, selFn;
-        if (!testSelector.empty()) {
-            auto hash = testSelector.find('#');
-            if (hash == std::string::npos) {
-                selModule = testSelector;
-            } else {
-                selModule = testSelector.substr(0, hash);
-                selFn = testSelector.substr(hash + 1);
-            }
+        // 解析 selector：每项形如 `<prefix>` 或 `<module>#<fnName>`；
+        // 多个 selector 之间「任一命中即收」。空列表 = 全收。
+        // 子进程模式（--isolate-child）父进程派发时永远只传 1 个 `<mod>#<fn>`，无需特判。
+        struct SelectorPart { std::string mod; std::string fn; };
+        std::vector<SelectorPart> selectors;
+        selectors.reserve(testSelectors.size());
+        for (auto& s : testSelectors) {
+            auto hash = s.find('#');
+            if (hash == std::string::npos) selectors.push_back({s, {}});
+            else selectors.push_back({s.substr(0, hash), s.substr(hash + 1)});
         }
-        // selector 模块匹配（模块边界感知）：空 selector 全收；否则要求 m == selModule
-        // 或 m 以 `selModule.` 开头。后续既用于扫描期裁剪 *.test.yux，也用于收集后再过滤。
+        // 模块边界感知匹配：m == sel.mod 或 m 以 `sel.mod.` 开头。
+        auto modCovers = [](const std::string& m, const std::string& sm) {
+            if (sm.empty()) return true;
+            if (m == sm) return true;
+            return m.size() > sm.size() + 1 &&
+                   m.compare(0, sm.size(), sm) == 0 &&
+                   m[sm.size()] == '.';
+        };
+        // 扫描期 *.test.yux 裁剪：任一 selector 的模块范围覆盖即保留。
         auto matchesSelModule = [&](const std::string& m) {
-            if (selModule.empty()) return true;
-            if (m == selModule) return true;
-            return m.size() > selModule.size() + 1 &&
-                   m.compare(0, selModule.size(), selModule) == 0 &&
-                   m[selModule.size()] == '.';
+            if (selectors.empty()) return true;
+            for (auto& sel : selectors) if (modCovers(m, sel.mod)) return true;
+            return false;
+        };
+        // 函数维度过滤：任一 selector「模块覆盖 + (selFn 空或 fn 相等)」即命中。
+        auto matchesSelFull = [&](const std::string& m, const std::string& fn) {
+            if (selectors.empty()) return true;
+            for (auto& sel : selectors) {
+                if (!modCovers(m, sel.mod)) continue;
+                if (sel.fn.empty() || fn == sel.fn) return true;
+            }
+            return false;
+        };
+        // selector 列表的人类可读串，用于错误/告示输出
+        auto joinSelectors = [&]() {
+            std::string r;
+            for (size_t i = 0; i < testSelectors.size(); ++i) {
+                if (i) r += ", ";
+                r += "`" + testSelectors[i] + "`";
+            }
+            return r;
         };
 
         Yux yux;
@@ -1295,23 +1319,22 @@ int wmain(int argc, wchar_t* argv[]) {
             ctxs.push_back(std::move(ctx));
         }
 
-        // selector 过滤（扫描期已裁掉不匹配的 *.test.yux，这里 selFn 维度再过滤一次）
+        // selector 过滤（扫描期已裁掉不匹配的 *.test.yux，这里再做模块+函数维度过滤）
         std::vector<TestEntry> filtered;
         for (auto& t : tests) {
-            if (!matchesSelModule(t.mod)) continue;
-            if (!selFn.empty() && t.fn != selFn) continue;
+            if (!matchesSelFull(t.mod, t.fn)) continue;
             filtered.push_back(t);
         }
 
         if (filtered.empty()) {
             if (!isChildIsolated) {
                 std::cout << "no tests matched";
-                if (!testSelector.empty()) std::cout << " selector `" << testSelector << "`";
+                if (!testSelectors.empty()) std::cout << " selector(s) " << joinSelectors();
                 std::cout << "\n";
                 std::cout.flush();
                 std::cerr.flush();
             } else {
-                std::cerr << "child: selector `" << testSelector << "` matched no test\n";
+                std::cerr << "child: selector(s) " << joinSelectors() << " matched no test\n";
             }
             _exit(isChildIsolated ? 2 : 0);
         }
