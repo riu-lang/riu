@@ -1,0 +1,12 @@
+; E2018: enum 重复变体
+; enum 中重复定义变体应触发 E2018
+
+enum Color {
+  Red
+  Green
+  Red    ; ❌ E2018: Duplicate variant Red in enum Color
+}
+
+fn main() {
+  val c Color = Color::Red
+}

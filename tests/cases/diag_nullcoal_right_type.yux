@@ -1,0 +1,7 @@
+; E3023: ?? 右侧类型不匹配
+; ?? 右侧类型与 Nullable 内部类型不匹配应触发 E3023
+
+fn main() {
+  var opt i32? = null
+  val result i32 = opt ?? "hello"    ; ❌ E3023: right side type String doesn't match Nullable inner type i32
+}

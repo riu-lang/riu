@@ -1,0 +1,6 @@
+; E3014: Box 类型不匹配
+; Box 构造时类型不匹配应触发 E3014
+
+fn main() {
+  var b Box<i32> = "hello"    ; ❌ E3014: expected Box<i32>, got String
+}
