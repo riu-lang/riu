@@ -295,6 +295,7 @@ DEF_ERR(6028, "{}:<T&> requires a local var or &expr argument")
 DEF_ERR(6029, "{}:<T> requires T to be Box/Weak/Array/String or U& (got '{}')")
 DEF_ERR(6030, "assert_eq:<T> requires T to be a numeric or bool type (got '{}')")
 DEF_ERR(6031, "assert_eq operand type mismatch: actual is '{}', expected is '{}' (yux 不做隐式整型/浮点转换；整型字面量默认 i32，需要时加后缀如 `3i64`/`3u8` 或写 `assert_eq:<T>(...)` 锁定类型)")
+DEF_ERR(6032, "copy_of:<T> cannot copy types containing Ref fields (offending: '{}') — Ref 借的是别人的可写状态，独立 owned 副本与借用语义冲突 [DRAFT-const-mut §5.3]")
 
 // Array 内置方法
 DEF_ERR(6040, "at requires 1 argument")

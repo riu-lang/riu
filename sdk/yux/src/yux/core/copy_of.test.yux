@@ -1,0 +1,94 @@
+; copy_of<T> 用例（DRAFT-const-mut [#1.I] 脱 const 出口）
+; 覆盖：原子 / Box / Array / String / 平凡 struct / 含 Box 字段 struct（字段级 retain）
+
+struct CopyPair {
+  a i32
+  b i32
+}
+
+CopyPair {
+  fn CopyPair(a i32, b i32) {
+    $.a = a
+    $.b = b
+  }
+}
+
+struct Holder {
+  payload Box<CopyPair>
+  tag i32
+}
+
+Holder {
+  fn Holder(p Box<CopyPair>, t i32) {
+    $.payload = p
+    $.tag = t
+  }
+}
+
+; ---------- 原子类型：纯值复制 ----------
+
+#Test
+fn test_copy_of_i32() {
+  var x i32 = 42i32
+  var y i32 = copy_of:<i32>(x)
+  assert_eq(y, 42i32)
+}
+
+; ---------- Box<T>：handle copy + strong++ ----------
+
+#Test
+fn test_copy_of_box_handle() {
+  var b1 Box<CopyPair> = CopyPair(11i32, 22i32)
+  var b2 Box<CopyPair> = copy_of:<Box<CopyPair>>(b1)
+  ; 两个 Box 看到同一份数据（浅拷句柄 + strong++）
+  assert_eq(b1.a, 11i32)
+  assert_eq(b2.a, 11i32)
+  assert_eq(b1.b, 22i32)
+  assert_eq(b2.b, 22i32)
+}
+
+; ---------- Array<T>：handle copy + strong++ ----------
+
+#Test
+fn test_copy_of_array() {
+  var a1 Array<i32> = [10i32, 20i32, 30i32]
+  var a2 Array<i32> = copy_of:<Array<i32>>(a1)
+  assert_eq(a2.len(), 3i64)
+  assert_eq(a1.len(), 3i64)
+  assert_eq(a2[0], 10i32)
+  assert_eq(a2[2], 30i32)
+}
+
+; ---------- String：内含 Array<u32>，递归 retain ----------
+
+#Test
+fn test_copy_of_string() {
+  var s1 String = "hello"
+  var s2 String = copy_of:<String>(s1)
+  assert_eq(s2, "hello")
+  assert_eq(s1, "hello")
+}
+
+; ---------- 平凡 struct（无 RC 字段）：纯 memcpy ----------
+
+#Test
+fn test_copy_of_struct_no_rc_field() {
+  var p1 CopyPair = CopyPair(5i32, 6i32)
+  var p2 CopyPair = copy_of:<CopyPair>(p1)
+  assert_eq(p2.a, 5i32)
+  assert_eq(p2.b, 6i32)
+}
+
+; ---------- 含 Box 字段的 struct：字段级 retain ----------
+
+#Test
+fn test_copy_of_struct_with_box_field() {
+  var p Box<CopyPair> = CopyPair(5i32, 6i32)
+  var h1 Holder = Holder(p, 100i32)
+  var h2 Holder = copy_of:<Holder>(h1)
+  assert_eq(h2.tag, 100i32)
+  assert_eq(h1.tag, 100i32)
+  assert_eq(h2.payload.a, 5i32)
+  assert_eq(h1.payload.a, 5i32)
+  assert_eq(h2.payload.b, 6i32)
+}

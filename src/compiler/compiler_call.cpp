@@ -1345,6 +1345,67 @@ llvm::Value* Compiler::compileGenericFunctionCall(
                 {llvm::ConstantInt::get(_builder.getInt64Ty(), 8)},
                 "as_ref.payload");
         }
+        if (fnName == "copy_of") {
+            // spec §12.7.3 / DRAFT-const-mut [#1.I]：copy_of:<T>(x T&) T
+            // 返回独立 owned T；值类型 memcpy，含 Box / Array / String / Weak 字段时按字段 retain
+            // 含 Ref<U> 字段 → 报 E6032（DRAFT-const-mut §5.3 决议 #2：脱 const 出口不放任 ref）
+            if (typeArgs.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                    ErrorCode::E6026, fnName);
+            }
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                    ErrorCode::E6027, fnName, (size_t)1);
+            }
+            auto& T = typeArgs[0];
+
+            // 递归扫描 T 是否（深度）含 Ref 字段；命中即报 E6032。
+            // 当前 grammar 禁止 Ref 出现在 struct 字段、turbofish 类型实参中
+            // （field 走 `type` 规则、turbofish 走 `genericDef` 都不接 `&`），
+            // 所以这个分支主要是防御性的，承接将来语法放宽 / 中间 TypeInfo 携带 Ref 的场景。
+            // 不展开 Box / Array / Weak / Nullable / Dyn / Ptr / Fn 的类型参数：
+            //   这些是堆句柄包装，copy_of 仅 retain handle，不深拷其内部，
+            //   即便其内部含 Ref，也由那个内部 owned 实例自己承担约束。
+            std::function<bool(const TypeInfo&, string&)> hasRefDeep;
+            hasRefDeep = [&](const TypeInfo& t, string& path) -> bool {
+                if (t.isRef()) { path = t.getFullName(); return true; }
+                if (t.isBox() || t.isArrayGeneric() || t.isWeak() ||
+                    t.isNullable() || t.isDyn() || t.isPtr() || t.isFn()) {
+                    return false;
+                }
+                if (isBuiltinType(t.name)) return false;
+                // 用户 struct：递归走字段
+                auto sd = _file ? _file->getStructDecl(t.name) : nullptr;
+                if (!sd && _yux && _yux->sdkFile()) {
+                    sd = _yux->sdkFile()->getStructDecl(t.name);
+                }
+                if (!sd) return false;  // 找不到声明：保守放过（跨模块 / 类型参数等）
+                for (auto& field : sd->fields()) {
+                    auto ft = field->getType();
+                    string inner;
+                    if (hasRefDeep(ft, inner)) {
+                        path = t.name + "." + field->name().getText() + " : " + inner;
+                        return true;
+                    }
+                }
+                return false;
+            };
+            string refPath;
+            if (hasRefDeep(T, refPath)) {
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                    ErrorCode::E6032, refPath);
+            }
+
+            // args[0] 是 T 的 struct value（来自 compileExpr 自动 deref T&）
+            // 把所有 RC 子结构 +1：Box/Array/Weak 抽 handle 调对应 retain；
+            // struct 走 retainStructFieldsAtCallSite 递归；含 RC enum 走其分支。
+            // 内置 / Ptr / 平凡 struct：no-op，直接返回 args[0]。
+            retainHandleAtCallSite(args[0], T);
+
+            // 登记为 fresh +1 句柄/struct，未被消费时帧弹出自动释放
+            recordTemp(args[0], T);
+            return args[0];
+        }
         if (fnName == "weak") {
             // spec §4.8.3.1 / §9：weak:<T>(box Box<T>?) Weak<T>
             // 接受 Box<T> 或 Box<T>?；null/哨兵输入返回空 Weak（永远 upgrade 失败）
