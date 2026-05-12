@@ -100,10 +100,11 @@ cd examples/test && yux build && ./build/test.exe
 - 输出：每个测试 `RUN <module>#<fn>` / `OK` 一行；失败时 `FAIL ... (<reason>)` 后面带 `  | ` 缩进的 stdout/stderr 回放（`-v` 时所有测试都回放）；末尾 `<n> passed, <m> failed`。
 
 ```powershell
-; 项目模式（必须在含 yux.toml 的目录执行）
+; 项目模式（必须在含 yux.toml 的目录执行；yux.exe 已在 PATH，直接 `yux` 即可，别写 `./build/.../yux.exe`）
 yux test                                 ; 当前项目所有 *.test.yux 中的 #Test
 yux test yux.core                        ; 模块前缀匹配
 yux test yux.core.string.test#test_eq    ; <module>#<fn> 精确匹配
+yux test yux.core.string yux.core.array  ; 多 selector（任一命中即收）；前缀 / <mod>#<fn> 可混用
 yux test --isolate=process               ; 每个测试独立子进程
 yux test -v                              ; 详细模式（即便 OK 也回放 stdout/stderr）
 ```
