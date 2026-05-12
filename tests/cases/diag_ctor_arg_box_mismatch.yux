@@ -1,0 +1,33 @@
+; 构造器形参类型 Box<T>，实参传裸 T(...) 字面 —— 之前会静默回落到
+; ExternalFunctionCall 路径 emit 一个 void 返回的 forward-decl call，
+; 把 void 值丢给外层 recordTemp / store 触发 LLVM `isSized` 断言崩。
+; 现应报 [E6033] 无匹配构造器，并列出已声明的重载。
+; 见 BUGS.md「构造器实参类型不匹配（Box<T> 形参 + 裸 T 实参）」
+
+struct CopyPair {
+  a i32
+  b i32
+}
+
+CopyPair {
+  fn CopyPair(a i32, b i32) {
+    $.a = a
+    $.b = b
+  }
+}
+
+struct Holder {
+  payload Box<CopyPair>
+  tag i32
+}
+
+Holder {
+  fn Holder(p Box<CopyPair>, t i32) {
+    $.payload = p
+    $.tag = t
+  }
+}
+
+fn main() {
+  var h Holder = Holder(CopyPair(5i32, 6i32), 100i32)
+}

@@ -993,6 +993,53 @@ llvm::Value* Compiler::compileFunctionCall(
         if (result) {
             return result;
         }
+        // H3：structDecl 已找到但 ctor 重载没匹配上时，立刻报错，
+        // 不要静默回落到下方 ExternalFunctionCall —— 那会按外部 fn 名 forward-decl
+        // 一个 void 返回的调用，把 void 值丢给外层 recordTemp / store，触发
+        // LLVM `isSized` 断言。见 BUGS.md「构造器实参类型不匹配（Box<T> 形参 + 裸 T 实参）」。
+        string ctorFullName = fnName + "." + fnName;
+        vector<FnSymbolInfo*> ctorCands;
+        _file->collectFnOverloads(ctorFullName, ctorCands);
+        if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
+            _yux->sdkFile()->collectFnOverloads(ctorFullName, ctorCands);
+        }
+        // 把 TypeInfo 渲染成用户友好形式：Box<T>、Array<T>、Fn(P)->R 等
+        std::function<string(const TypeInfo&)> fmtType = [&](const TypeInfo& t) -> string {
+            if (t.kind == TypeKind::Generic && !t.genericArgs.empty()) {
+                string r = t.name + "<";
+                for (size_t i = 0; i < t.genericArgs.size(); ++i) {
+                    if (i) r += ", ";
+                    r += t.genericArgs[i] ? fmtType(*t.genericArgs[i]) : string("?");
+                }
+                r += ">";
+                return r;
+            }
+            if (t.kind == TypeKind::Array && t.elementType) {
+                return "[" + std::to_string(t.arraySize) + "]" + fmtType(*t.elementType);
+            }
+            return t.name;
+        };
+        string ctorSigs;
+        for (auto* c : ctorCands) {
+            ctorSigs += "\n  " + fnName + "(";
+            // params[0] 是接收者本身，跳过
+            for (size_t i = 1; i < c->params.size(); ++i) {
+                if (i > 1) ctorSigs += ", ";
+                ctorSigs += fmtType(c->params[i]);
+            }
+            ctorSigs += ")";
+        }
+        if (ctorCands.empty()) {
+            ctorSigs = " (none declared)";
+        }
+        string argSigs;
+        for (size_t i = 0; i < argTypes.size(); ++i) {
+            if (i) argSigs += ", ";
+            argSigs += fmtType(argTypes[i]);
+        }
+        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                       ErrorCode::E6033, fnName, argSigs, ctorSigs)
+            .withHint("若实参与形参类型仅差 Box<T>，先 `var p Box<T> = T(...)` 落地再传；否则按上方候选签名补齐实参");
     }
 
     // v0.6 Phase 2b: 透明类型别名解析，使 alias 名实参 / 形参在重载查找上视为同一类型
