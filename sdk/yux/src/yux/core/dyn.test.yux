@@ -180,3 +180,102 @@ fn test_dyn_to_string_box_bool() {
   val d Dyn<ToString> = Dyn:<ToString>(b)
   assert_eq(d.to_string(), "true")
 }
+
+; ---------- Array<Dyn<D>> 遍历：收集多个不同 U 的实现，遍历调用同一方法 ----------
+
+#Test
+fn test_dyn_array_iterate() {
+  var arr Array<Dyn<Shape>> = []
+  val b1 Box<Square> = Square(3i64)
+  val b2 Box<Rect> = Rect(4i64, 5i64)
+  val b3 Box<Square> = Square(6i64)
+  arr.push(Dyn:<Shape>(b1))
+  arr.push(Dyn:<Shape>(b2))
+  arr.push(Dyn:<Shape>(b3))
+
+  assert_eq(arr.len(), 3i64)
+  assert_eq(arr[0].area(), 9i64)
+  assert_eq(arr[1].area(), 20i64)
+  assert_eq(arr[2].area(), 36i64)
+}
+
+; ---------- struct 字段持 Dyn<D>：直接访问和拷绑后调用 ----------
+
+draft Greet {
+  fn hi() i64
+  fn name() String
+}
+
+struct G {
+  v i64
+  tag String
+}
+
+G {
+  fn G(v i64, t String) {
+    $.v = v
+    $.tag = t
+  }
+}
+
+G : Greet {
+  fn hi() i64 {
+    $.v
+  }
+  fn name() String {
+    $.tag
+  }
+}
+
+struct DynHolder {
+  before i64
+  inner Dyn<Greet>
+  after i64
+}
+
+DynHolder {
+  fn DynHolder(b i64, d Dyn<Greet>, a i64) {
+    $.before = b
+    $.inner = d
+    $.after = a
+  }
+}
+
+#Test
+fn test_dyn_field_owned() {
+  val bg Box<G> = G(42i64, "ok")
+  val h DynHolder = DynHolder(7i64, Dyn:<Greet>(bg), 9i64)
+
+  assert_eq(h.before, 7i64)
+  assert_eq(h.inner.hi(), 42i64)
+  assert_eq(h.inner.name(), "ok")
+  assert_eq(h.after, 9i64)
+
+  val d Dyn<Greet> = h.inner
+  assert_eq(d.hi(), 42i64)
+  assert_eq(d.name(), "ok")
+}
+
+; ---------- struct 方法体内构造 Dyn ----------
+
+struct DynCaller {
+  base i64
+}
+
+DynCaller {
+  fn DynCaller(b i64) {
+    $.base = b
+  }
+
+  fn run() i64 {
+    val bg Box<G> = G(40i64, "test")
+    val d Dyn<Greet> = Dyn:<Greet>(bg)
+    d.hi() + $.base
+  }
+}
+
+#Test
+fn test_dyn_ctor_in_method() {
+  val c DynCaller = DynCaller(2i64)
+  assert_eq(c.run(), 42i64)
+}
