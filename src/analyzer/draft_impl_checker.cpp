@@ -72,6 +72,13 @@ std::string DraftImplChecker::moduleOfType(const std::string& bareName) const {
 
 void DraftImplChecker::validate() {
     if (!_yux) return;
+    // 每次 validate 都重新构建状态：上次跑过后若有新文件加入 (典型场景:
+    // `yux test` 冷启动 — compileSdkDir 触发第一次 validate, 此时 test 文件还未
+    // loadMainFile; 之后 test 文件加入后 boundSatisfied 需要看到 Tag:ToString
+    // 这类 user-type impl). 不清会让 _seen 把上轮已登记的 (Type, Draft) 误判
+    // 为 E1103 重复.
+    _seen.clear();
+    _objectSafeCache.clear();
     buildTypeOwnerMap();
     // 触发一次 registry 构建 (若未构建)
     (void)_yux->draftRegistry();

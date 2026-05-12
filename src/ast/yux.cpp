@@ -203,6 +203,10 @@ p<FileNode> Yux::loadMainFile(const string& absPath, const string& moduleName) {
     auto fileNode = _parseFile(absPath, moduleName, 1);
     _modules[moduleName] = fileNode;
     _modulePaths[moduleName] = absPath;
+    // 新文件加入后, 旧的 draft impl 校验结果失效: 例如 SDK 预编译触发了一次
+    // validate, 此时 _seen 还没有该文件里的 `Type : Draft` 登记; 后续
+    // boundSatisfied 调用必须重新跑 validate, 否则误判为不满足 → E1106.
+    _draftImplValidated = false;
     return fileNode;
 }
 
