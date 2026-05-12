@@ -90,6 +90,15 @@ llvm::Value* Compiler::compileTestAssertEq(
             ErrorCode::E6030, typeArg.getFullName());
     }
 
+    // 两个实参必须 LLVM 类型一致：unify 漏配 / 显式 turbofish 与字面量不匹配 / 等情况
+    // 这里若不拦，LLVM 的 CreateICmpEQ / CreateFCmpOEQ 会触发 same-type 断言导致编译器崩溃
+    // 典型触发：`assert_eq(arr.len(), 3)` —— len() 返 i64，字面量 3 默认 i32
+    // 用 LLVM 类型比较（而非 TypeInfo），以便类型别名 / 同底层类型不同别名 仍视为相等
+    if (args[0]->getType() != args[1]->getType()) {
+        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+            ErrorCode::E6031, argTypes[0].getFullName(), argTypes[1].getFullName());
+    }
+
     llvm::Value* eq;
     if (isFloat) {
         eq = _builder.CreateFCmpOEQ(args[0], args[1], "assert_eq.cmp");

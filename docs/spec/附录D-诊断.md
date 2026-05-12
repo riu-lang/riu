@@ -305,6 +305,7 @@ builtin 调用 / 类型实参数量（E6020..E6029）：
 | E6028 | `{}:<T&> requires a local var or &expr argument` |
 | E6029 | `{}:<T> requires T to be Box/Weak/Array/String or U& (got '{}')` |
 | E6030 | `assert_eq:<T> requires T to be a numeric or bool type (got '{}')` |
+| E6031 | `assert_eq operand type mismatch: actual is '{}', expected is '{}' ...` |
 
 Array 内置方法（E6040..E6044）：
 
