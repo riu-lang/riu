@@ -1345,6 +1345,65 @@ llvm::Value* Compiler::compileGenericFunctionCall(
                 {llvm::ConstantInt::get(_builder.getInt64Ty(), 8)},
                 "as_ref.payload");
         }
+        if (fnName == "weak") {
+            // spec §4.8.3.1 / §9：weak:<T>(box Box<T>?) Weak<T>
+            // 接受 Box<T> 或 Box<T>?；null/哨兵输入返回空 Weak（永远 upgrade 失败）
+            // 复用 _weak_retain：复制 handle 指针 + weak 计数 +1
+            if (typeArgs.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                    ErrorCode::E6026, fnName);
+            }
+            if (args.size() != 1) {
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                    ErrorCode::E6027, fnName, (size_t)1);
+            }
+            auto& T = typeArgs[0];
+            auto argType = callNode->getArgs()[0]->getType();
+
+            auto ptrTy = llvm::PointerType::get(_context, 0);
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
+
+            // 提取源 handle：
+            //   Box<T>      → args[0] = { ptr handle }，直接抽 field 0
+            //   Box<T>?     → args[0] = Nullable<Box<T>> = { i1 _has, { ptr handle } _value }
+            //                  按 _has 选 inner.handle / null
+            llvm::Value* srcHandle = nullptr;
+            if (argType.isBox() && !argType.isNullable()) {
+                srcHandle = _builder.CreateExtractValue(args[0], {0}, "weak.src.handle");
+            } else if (argType.isNullable()) {
+                auto inner = argType.nullableInnerType();
+                if (!inner || !inner->isBox()) {
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                        ErrorCode::E6029, fnName, argType.getFullName());
+                }
+                auto hasFlag = _builder.CreateExtractValue(args[0], {0}, "weak.has");
+                auto innerHandle = _builder.CreateExtractValue(args[0], {1, 0}, "weak.inner.handle");
+                srcHandle = _builder.CreateSelect(hasFlag, innerHandle, nullPtr, "weak.handle");
+            } else {
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                    ErrorCode::E6029, fnName, argType.getFullName());
+            }
+
+            // _weak_retain(handle)：null / 哨兵跳过；否则 weak++
+            auto weakRetainFn = runtime::getWeakRetainFn(_module, _builder);
+            _builder.CreateCall(weakRetainFn, {srcHandle});
+
+            // 构造 Weak<T> = { ptr handle }
+            auto tShared = make_shared<TypeInfo>(T);
+            TypeInfo weakTy("Weak", {tShared});
+            auto weakStructTy = getLLVMType(weakTy);
+            auto resultAlloca = _builder.CreateAlloca(weakStructTy, nullptr, "weak.result");
+            auto handleField = _builder.CreateGEP(weakStructTy, resultAlloca, {zero, zero},
+                "weak.result.handle_field");
+            _builder.CreateStore(srcHandle, handleField);
+            auto result = _builder.CreateLoad(weakStructTy, resultAlloca, "weak.result.val");
+
+            // Phase 8d.1：fresh +1 weak 句柄，登记到当前语句临时帧，
+            // 未被消费时帧弹出自动 _weak_release。
+            recordTemp(result, weakTy);
+            return result;
+        }
         throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
             ErrorCode::E6017, fnName);
     }

@@ -51,6 +51,36 @@ fn test_weak_upgrade_dangling_returns_null() {
   assert_eq(v ?? -1i32, -1i32)
 }
 
+; ---------- weak(box) builtin：显式 turbofish 形态 ----------
+
+#Test
+fn test_weak_builtin_from_box() {
+  var b Box<WeakPair> = WeakPair(7i32, 8i32)
+  var w Weak<WeakPair> = weak:<WeakPair>(b)
+  var maybe Box<WeakPair>? = upgrade(w)
+  var got i32? = maybe?.a
+  assert_eq(got ?? -1i32, 7i32)
+}
+
+#Test
+fn test_weak_builtin_from_nullable_some() {
+  var b Box<WeakPair> = WeakPair(9i32, 10i32)
+  var bn Box<WeakPair>? = b
+  var w Weak<WeakPair> = weak:<WeakPair>(bn)
+  var maybe Box<WeakPair>? = upgrade(w)
+  var got i32? = maybe?.a
+  assert_eq(got ?? -1i32, 9i32)
+}
+
+#Test
+fn test_weak_builtin_from_nullable_null() {
+  var bn Box<WeakPair>? = null
+  var w Weak<WeakPair> = weak:<WeakPair>(bn)
+  var maybe Box<WeakPair>? = upgrade(w)
+  var got i32? = maybe?.a
+  assert_eq(got ?? -1i32, -1i32)
+}
+
 #Test
 fn test_weak_upgrade_alive_vs_dead_same_test() {
   ; 失败路径

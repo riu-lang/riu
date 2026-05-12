@@ -1182,6 +1182,20 @@ fn ptr_of<T>(obj T) Ptr
 #CompilerInner
 fn as_ref<T>(box Box<T>) T&
 
+; copy_of:<T>(x T&) T：T& → T 显式深拷贝（spec §12.7.3）
+; 返回独立 owned T；值类型 memcpy，含 Box / Array / String / Ref 字段时执行字段级 retain
+; 语义重载（DRAFT-const-mut [#1.I]）：T 同时可由 #Frozen T 实参传入，按 T& 看待，
+;   返回的 owned T 不带 #Frozen 痕迹，作为唯一脱 const 出口
+; T 不接受 owned T 自身（直接复用即可）
+#CompilerInner
+fn copy_of<T>(x T&) T
+
+; weak:<T>(box) Weak<T>：从 Box 构造 Weak（spec §4.8.3.1 / §9）
+; 接受 Box<T> 或 Box<T>?；null 输入返回空 Weak（永远 upgrade 失败）
+; 复制 handle 指针；weak 计数 +1，不影响 strong
+#CompilerInner
+fn weak<T>(box Box<T>?) Weak<T>
+
 ; Array<T> 实例 layout 由编译器内部管理：{ ptr handle }，handle 指向 Block
 ; （Phase 1b：所有方法编译器特例化，主体不再读 yux 端字段）
 #CompilerInner
