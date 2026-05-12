@@ -644,32 +644,9 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             auto elemLLVMType = getLLVMType(*elemType);
             auto ptrTy = llvm::PointerType::get(_context, 0);
 
-            // 处理数组字面量：直接分配 Block + 写入元素 + 把 handle 存进新 alloca
+            // 处理数组字面量：走统一 helper（含嵌套 Array<Array<U>> 字面量递归修复）
             if (auto arrayNode = dynamic_cast<ExprArrayNode*>(expr)) {
-                auto& elements = arrayNode->elements();
-                auto count = elements.size();
-                auto countVal = _builder.getInt64(count);
-
-                auto block = allocArrayBlock(elemLLVMType, countVal, countVal);
-                if (count > 0) {
-                    auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(block), "init.data");
-                    for (size_t i = 0; i < count; ++i) {
-                        auto elemVal = compileExpr(elements[i]);
-                        auto idx = _builder.getInt64(i);
-                        auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {idx}, "init.elem.ptr");
-                        // Phase 3d: RC 元素从已有 var/field 读出 → 复制语义 retain
-                        // Phase 8b: fresh 元素表达式（如 [make_box()]）已 +1，跳过 retain
-                        // Phase 8d.1: fresh 元素从临时帧消费
-                        if (typeNeedsDestructor(*elemType)) {
-                            if (!isFreshHandleExpr(elements[i])) {
-                                retainHandleAtCallSite(elemVal, *elemType);
-                            } else {
-                                consumeTemp(elemVal);
-                            }
-                        }
-                        _builder.CreateStore(elemVal, elemPtr);
-                    }
-                }
+                auto block = buildArrayLiteralBlock(arrayNode, *elemType);
                 storeArrayHandle(alloca, block);
             } else {
                 // 从其他 Array<T> 表达式初始化：句柄复制 + retain
@@ -978,31 +955,10 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             if (auto arrayNode = dynamic_cast<ExprArrayNode*>(expr)) {
                 auto it = _localVarPtrs.find(objName);
                 if (it != _localVarPtrs.end()) {
-                    auto& elements = arrayNode->elements();
-                    auto count = elements.size();
                     auto elemType = sym->type.arrayGenericElementType();
-                    auto elemLLVMType = elemType ? getLLVMType(*elemType) : _builder.getInt8Ty();
-                    auto ptrTy = llvm::PointerType::get(_context, 0);
-
-                    auto block = allocArrayBlock(elemLLVMType, _builder.getInt64(count), _builder.getInt64(count));
-                    if (count > 0) {
-                        auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(block), "assign.data");
-                        for (size_t i = 0; i < count; ++i) {
-                            auto elemVal = compileExpr(elements[i]);
-                            auto idx = _builder.getInt64(i);
-                            auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {idx}, "assign.elem.ptr");
-                            // Phase 8b: fresh 元素表达式跳过 retain
-                            // Phase 8d.1: fresh 元素从临时帧消费
-                            if (typeNeedsDestructor(*elemType)) {
-                                if (!isFreshHandleExpr(elements[i])) {
-                                    retainHandleAtCallSite(elemVal, *elemType);
-                                } else {
-                                    consumeTemp(elemVal);
-                                }
-                            }
-                            _builder.CreateStore(elemVal, elemPtr);
-                        }
-                    }
+                    // 走统一 helper：含嵌套 Array<Array<U>> 字面量按外层 elemType 递归编译
+                    auto block = buildArrayLiteralBlock(arrayNode,
+                        elemType ? *elemType : TypeInfo("i8"));
                     // Phase 3d: 释放旧 handle 后再写入新 handle
                     releaseAtPtr(it->second, sym->type);
                     storeArrayHandle(it->second, block);
@@ -1298,31 +1254,10 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                 // Phase 3d: 新 handle 来自 _array_alloc（strong=1），无需 retain；旧 handle 必须 release
                 if (fieldType.isArrayGeneric()) {
                     if (auto arrayNode = dynamic_cast<ExprArrayNode*>(expr)) {
-                        auto& elements = arrayNode->elements();
-                        auto count = elements.size();
                         auto elemType = fieldType.arrayGenericElementType();
-                        auto elemLLVMType = elemType ? getLLVMType(*elemType) : _builder.getInt8Ty();
-                        auto ptrTy = llvm::PointerType::get(_context, 0);
-
-                        auto block = allocArrayBlock(elemLLVMType, _builder.getInt64(count), _builder.getInt64(count));
-                        if (count > 0) {
-                            auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(block), "field.data");
-                            for (size_t j = 0; j < count; ++j) {
-                                auto elemVal = compileExpr(elements[j]);
-                                auto idx = _builder.getInt64(j);
-                                auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {idx}, "field.elem.ptr");
-                                // Phase 8b: fresh 元素表达式跳过 retain
-                                // Phase 8d.1: fresh 元素从临时帧消费
-                                if (typeNeedsDestructor(*elemType)) {
-                                    if (!isFreshHandleExpr(elements[j])) {
-                                        retainHandleAtCallSite(elemVal, *elemType);
-                                    } else {
-                                        consumeTemp(elemVal);
-                                    }
-                                }
-                                _builder.CreateStore(elemVal, elemPtr);
-                            }
-                        }
+                        // 走统一 helper：含嵌套 Array<Array<U>> 字面量按外层 elemType 递归编译
+                        auto block = buildArrayLiteralBlock(arrayNode,
+                            elemType ? *elemType : TypeInfo("i8"));
                         // Phase 3d: 释放旧 handle 后再写入新 handle
                         releaseAtPtr(fieldPtr, fieldType);
                         // fieldPtr 指向 Array<T> 实例（{ ptr handle }）；handle 在 offset 0

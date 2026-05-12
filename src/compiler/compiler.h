@@ -163,6 +163,12 @@ private:
     llvm::Value* arrayBlockDataFieldPtr(llvm::Value* handle);                   // Block.data 字段地址（ptr*；存放当前数据缓冲指针）
     llvm::Value* allocArrayBlock(llvm::Type* elemLLVMType, llvm::Value* initCap, llvm::Value* initLen);  // 调用 _array_alloc 返回 Block*
     void storeArrayHandle(llvm::Value* arrayStructPtr, llvm::Value* handle);    // 把句柄写到 Array<T> 实例（field 0）
+    // 把 ExprArrayNode 按 Array<elemType> 字面量编译，分配 Block 并写入元素，返回 Block* 句柄（strong=1）。
+    // 调用方收到句柄后通常用 storeArrayHandle 写入目标 Array<T> 实例的句柄槽。
+    // 处理元素 retain / consumeTemp，并在 elemType 自身是 Array<U> 且元素是嵌套字面量时
+    // 递归调用自身（修「嵌套 Array 字面量未按外层元素类型期望泛型形态」：内层若按
+    // ExprArrayNode::getType() 自报为 [N x U] 固定数组，会被外层 store 越界踩坏后续槽）。
+    llvm::Value* buildArrayLiteralBlock(ExprArrayNode* arrayNode, const TypeInfo& elemType);
     llvm::FunctionType* getLLVMFunctionType(p<FnHeaderNode> header);            // 获取函数的 LLVM 类型
     // DRAFT-错误.md [#10.A]：把 #Fallible(E) 函数的成功返回类型包成
     //   { i1 isErr, T_ok, ErrEnum }（T_ok = void 时退化为 { i1, ErrEnum }）。

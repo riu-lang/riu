@@ -120,3 +120,30 @@ fn test_array_elem_box_reassign() {
   assert_eq(p.a, 10i32)
   assert_eq(q.b, 40i32)
 }
+
+; ---------- 嵌套 Array<Array<T>> 字面量：内层按外层 elemType 走 Array<T> 路径 ----------
+
+#Test
+fn test_array_nested_literal_even() {
+  var rows Array<Array<i32>> = [[1i32, 2i32], [3i32, 4i32]]
+  assert_eq(rows.len(), 2i64)
+  var r0 Array<i32> = rows[0]
+  var r1 Array<i32> = rows[1]
+  assert_eq(r0.len(), 2i64)
+  assert_eq(r1.len(), 2i64)
+  assert_eq(r0[0], 1i32)
+  assert_eq(r0[1], 2i32)
+  assert_eq(r1[0], 3i32)
+  assert_eq(r1[1], 4i32)
+}
+
+#Test
+fn test_array_nested_literal_uneven() {
+  var rows Array<Array<i32>> = [[1i32, 2i32], [3i32, 4i32, 5i32]]
+  assert_eq(rows.len(), 2i64)
+  var r0 Array<i32> = rows[0]
+  var r1 Array<i32> = rows[1]
+  assert_eq(r0.len(), 2i64)
+  assert_eq(r1.len(), 3i64)
+  assert_eq(r1[2], 5i32)
+}

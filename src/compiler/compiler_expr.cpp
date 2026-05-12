@@ -1425,6 +1425,53 @@ llvm::Value* Compiler::compileTupleExpr(p<ExprTupleNode> node) {
     return aggr;
 }
 
+// 把 ExprArrayNode 按 Array<elemType> 字面量编译，分配 Block 并写入元素，返回 Block* 句柄。
+// 详见声明处注释；嵌套 Array<Array<U>> 字面量的内层走自递归，避免被自身 getType()
+// 推断为 [N x U] 固定数组后被外层 store 越界踩坏后续槽。
+llvm::Value* Compiler::buildArrayLiteralBlock(ExprArrayNode* arrayNode, const TypeInfo& elemType) {
+    auto& elements = arrayNode->elements();
+    auto count = elements.size();
+    auto elemLLVMType = getLLVMType(elemType);
+    auto countVal = _builder.getInt64(count);
+    auto block = allocArrayBlock(elemLLVMType, countVal, countVal);
+    if (count == 0) return block;
+
+    auto ptrTy = llvm::PointerType::get(_context, 0);
+    auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(block), "lit.data");
+    bool elemIsArrayGeneric = elemType.isArrayGeneric();
+    sp<TypeInfo> innerElemType = elemIsArrayGeneric ? elemType.arrayGenericElementType() : nullptr;
+
+    for (size_t i = 0; i < count; ++i) {
+        llvm::Value* elemVal = nullptr;
+        // 嵌套：内层数组字面量按外层期望的 Array<U> 编译（递归），结果是 Block* 句柄，
+        // 包成 { ptr } 句柄值再写入外层槽。否则会按 getType() 自报的 [N x U] 固定数组
+        // 编译，CreateStore 写 sizeof([N x U]) 字节到 8 字节槽 → 越界。
+        if (elemIsArrayGeneric && innerElemType) {
+            if (auto innerArr = dynamic_cast<ExprArrayNode*>(elements[i])) {
+                auto innerBlock = buildArrayLiteralBlock(innerArr, *innerElemType);
+                auto tmp = _builder.CreateAlloca(elemLLVMType, nullptr, "lit.nested.handle");
+                storeArrayHandle(tmp, innerBlock);
+                elemVal = _builder.CreateLoad(elemLLVMType, tmp, "lit.nested.handle.load");
+            }
+        }
+        if (!elemVal) elemVal = compileExpr(elements[i]);
+
+        auto idx = _builder.getInt64(i);
+        auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {idx}, "lit.elem.ptr");
+        // RC 元素：fresh 来源（call/构造/数组字面量）已 +1，跳过 retain，并尝试从临时帧消费；
+        // 非 fresh（已有 var/field 读出）走复制 retain。
+        if (typeNeedsDestructor(elemType)) {
+            if (!isFreshHandleExpr(elements[i])) {
+                retainHandleAtCallSite(elemVal, elemType);
+            } else {
+                consumeTemp(elemVal);
+            }
+        }
+        _builder.CreateStore(elemVal, elemPtr);
+    }
+    return block;
+}
+
 llvm::Value* Compiler::compileArrayLiteralExpr(p<ExprArrayNode> node) {
     auto& elements = node->elements();
     auto arrayType = node->getType();
@@ -1432,36 +1479,10 @@ llvm::Value* Compiler::compileArrayLiteralExpr(p<ExprArrayNode> node) {
 
     DEBUG_LOG_VAL("    Expr: ArrayLiteral", arrayType.name);
 
-    // Array<T> 字面量（动态数组）：分配 Block，写入元素，返回 { handle } 结构体值
+    // Array<T> 字面量（动态数组）：走统一 helper，结果包装为 { handle } 结构体值返回
     if (arrayType.isArrayGeneric()) {
         auto elemType = arrayType.arrayGenericElementType();
-        auto elemLLVMType = elemType ? getLLVMType(*elemType) : _builder.getInt8Ty();
-        auto count = elements.size();
-        auto countVal = _builder.getInt64(count);
-
-        auto block = allocArrayBlock(elemLLVMType, countVal, countVal);
-
-        if (count > 0) {
-            auto ptrTy = llvm::PointerType::get(_context, 0);
-            auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(block), "lit.data");
-            for (size_t i = 0; i < count; ++i) {
-                auto elemVal = compileExpr(elements[i]);
-                auto idx = _builder.getInt64(i);
-                auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {idx}, "lit.elem.ptr");
-                // Phase 3d: RC 元素从已有 var/field 读出再写入新槽位 → 复制语义 retain
-                // Phase 8b: fresh 元素表达式（如 [make_box()]）已 +1，跳过 retain
-                // Phase 8d.1: fresh 元素从临时帧消费
-                if (elemType && typeNeedsDestructor(*elemType)) {
-                    if (!isFreshHandleExpr(elements[i])) {
-                        retainHandleAtCallSite(elemVal, *elemType);
-                    } else {
-                        consumeTemp(elemVal);
-                    }
-                }
-                _builder.CreateStore(elemVal, elemPtr);
-            }
-        }
-
+        auto block = buildArrayLiteralBlock(node, elemType ? *elemType : TypeInfo("i8"));
         auto alloca = _builder.CreateAlloca(llvmArrayType, nullptr, "array.literal");
         storeArrayHandle(alloca, block);
         return _builder.CreateLoad(llvmArrayType, alloca, "array.literal.load");
