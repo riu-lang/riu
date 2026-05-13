@@ -3,16 +3,76 @@
 
 // SemaPass 实现 —— 详见 sema_pass.h
 //
-// Phase 3.1：骨架 only。walk file→fn→stmt→expr 全树, visitExpr 当前不写
-// 任何标注 —— 待 3.2 接 `setResolvedType(node->getType())` 与
-// compile<Foo>Expr 入口并存校验后, 再把 throw 按桶迁过来。
+// Phase 3.2a：visitExpr 在每个表达式节点上写入 `setResolvedType(getType())`,
+// 覆盖范围扩到 file 顶层 fn body + struct impl 的方法/析构 body。
+// 泛型模板 / #CompilerInner 仍跳过 —— 它们的 codegen 路径会自行写 resolvedType,
+// 留作本步 known-issue (lambda 反推 / 泛型 applySubst 的"运行时再写")。
+//
+// Phase 3.2b 前置 (本步)：将 `getType()` 抛出的"已迁移诊断"从静默吞掉改为
+// 向外抛, 让 SemaPass 实际接管该错误码。当前已迁移清单 (kMigratedCodes)：
+//   C1 算术 / 比较 / 分支结果类型不匹配:
+//     - E3001 / E3002 / E3003: 算术 / 乘除模 / 二元位运算左右类型不匹配
+//     - E3004:                 比较运算左右类型不匹配
+//     - E3005 / E3006:         if-elif / if-else 分支结果类型不匹配
+//     - E3007:                 one-line if-else 真假分支类型不匹配
+//     - E3008:                 if-else 预值表达式真假分支类型不匹配
+//   C1 字段 / 元组访问 / 引用 / 索引 形态:
+//     - E3025: `.?` safe-dot base 不是 Nullable
+//     - E3040: 字段不存在 (struct / nullable struct payload)
+//     - E3041: `&` getRef 时 struct 未找到
+//     - E3043: `&` getRef 时找不到 file 作用域
+//     - E3044: `.?` safe-dot 在 inner struct 上找不到 struct decl
+//     - E3050: Box<T>? 取 inner 时 Box 元素类型缺失
+//     - E3051: `.?` safe-dot 的 nullable inner 类型缺失
+//     - E3057: 数组索引时元素类型缺失 (含 Array 泛型 / 普通数组)
+//     - E3062: 索引目标非数组
+//     - E3097: `&` getRef 时找不到 nearestScope
+//     - E3100: 元组下标越界
+// 其余错误码 (lambda 形参未推断、泛型 arity E3095 等) 仍走原 codegen 路径
+// 报错; 等后续 batch 一并迁过来再扩 kMigratedCodes。
 
 #include "sema/sema_pass.h"
 
+#include <array>
+#include <string_view>
+
 #include "ast/node/expr_node.h"
+#include "ast/node/file_node.h"
 #include "ast/node/fn_node.h"
 #include "ast/node/literal_node.h"
 #include "ast/node/statement_node.h"
+#include "ast/node/struct_node.h"
+
+namespace {
+// Phase 3.2b 已由 SemaPass 接管的错误码白名单。SemaPass 在 visitExpr 中
+// 捕获 YuxError 时, 命中此清单的直接 rethrow, 让 SemaPass 成为该诊断的
+// 实际抛出点。新增迁移码追加到此处即可。
+constexpr std::array<std::string_view, 19> kMigratedCodes = {
+    // 算术 / 比较 / 分支结果
+    "E3001", "E3002", "E3003", "E3004",
+    "E3005", "E3006", "E3007", "E3008",
+    // 数组 / 字段 / 元组 / 引用
+    // E3011 (数组元素类型不一致) 暂不迁移: 嵌套数组字面量 / 目标类型上下文
+    // (`var rows Array<Array<i32>> = [[1,2],[3,4,5]]`) 在 codegen 走 target-type
+    // 驱动路径, 不调用 `ExprArrayNode::getType()`; 但 SemaPass 下钻 visitExpr
+    // 时会触发 E3011, 是假阳性。需把"目标类型上下文"协议建到 SemaPass 里才能
+    // 安全迁; 留作下一批。
+    "E3025",
+    "E3040", "E3041", "E3043", "E3044",
+    "E3050", "E3051", "E3057", "E3062",
+    "E3097",
+    "E3100",
+};
+
+bool isMigratedCode(const char* code) {
+    if (!code) return false;
+    std::string_view sv(code);
+    for (auto c : kMigratedCodes) {
+        if (sv == c) return true;
+    }
+    return false;
+}
+}
 
 SemaPass::SemaPass(p<FileNode> file) : _file(file) {
 }
@@ -25,6 +85,20 @@ void SemaPass::run() {
         if (fn->header()->isGeneric()) continue;
         if (fn->header()->hasAnno("CompilerInner")) continue;
         visitFn(fn);
+    }
+    // struct impl 内的方法 / 析构 body 同样要走 SemaPass —— 它们的 codegen
+    // 入口也是 compile<Foo>Expr, 不覆盖会导致后续 3.2b 把 set 改 assert 时
+    // 方法体内表达式全部 assert 失败。
+    for (auto& impl : _file->getStructImpls()) {
+        if (impl->isGeneric()) continue;
+        for (auto& m : impl->methods()) {
+            if (m->header()->isGeneric()) continue;
+            if (m->header()->hasAnno("CompilerInner")) continue;
+            visitFn(m);
+        }
+        if (impl->hasDestructor()) {
+            visitFn(impl->destructor());
+        }
     }
 }
 
@@ -71,8 +145,26 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
 
 void SemaPass::visitExpr(p<ExprNode> expr) {
     if (!expr) return;
-    // Phase 3.1：visitExpr 暂为空 —— 不写 resolvedType / resolvedSymbol。
-    // 但递归继续往下走, 保证 3.2 接入写入逻辑后所有节点都被访问到。
+    // Phase 3.2a：在每个 expr 节点上写 resolvedType, 与 compile<Foo>Expr 入口
+    // 的同款 set 并存 (值相同, 后者随后变成 no-op)。getType() 是各子类的纯查询,
+    // 不读 resolvedType, 此处先写后递归都安全; 选先写, 让下游若有早读路径也能命中。
+    //
+    // 已知问题: 部分 getType() 在错误形态下会抛 YuxError —— 例如算术节点遇到
+    // lambda 形参未推断 (E3001), 或调用节点遇到泛型 arity 错配 (E3095)。
+    //
+    // Phase 3.2b 起开始按错误码白名单 (kMigratedCodes) 接管诊断: 命中清单的
+    // 重新抛出, 由 SemaPass 实际报错; 其余仍吞掉, 留给 compile<Foo>Expr 的
+    // 原有路径继续报。这样可以一码一码迁, 不必一次性把整个 getType 路径搬空。
+    try {
+        expr->setResolvedType(expr->getType());
+    } catch (const YuxError& e) {
+        if (isMigratedCode(e.getCode())) {
+            throw;
+        }
+        // 未迁移码: 暂留给原 codegen 路径
+    } catch (...) {
+        // 非 YuxError (内部异常) 不该出现; 防御性吞掉以免影响 codegen
+    }
 
     if (auto n = dynamic_cast<p<ExprLiteralNode>>(expr)) {
         // 字符串模板含插值表达式; 其余字面量无子表达式
@@ -139,9 +231,13 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         visitExpr(n->right()); return;
     }
     if (auto n = dynamic_cast<p<LambdaExprNode>>(expr)) {
-        // body 走 bodyExpr (Single/Paren) 或 bodyStmts (Block/ZeroBlock) 二选一
-        if (n->bodyExpr()) visitExpr(n->bodyExpr());
-        for (auto& s : n->bodyStmts()) visitStmt(s);
+        // lambda 体内表达式的类型依赖调用点对形参的反推 / 上下文回填
+        // (典型: `x => x + 1`, 在 `apply(it, 20)` 处才知道 `x : i32`)。
+        // 3.2a 时这条路径靠 catch(...) 吞掉所有错误才没炸;
+        // 3.2b 起 SemaPass 接管已迁移码 (E3001 等), 必须不再下钻 lambda 体,
+        // 留给 codegen 在 compileCallExpr 回填形参类型后再走 compile<Foo>Expr
+        // 入口的 setResolvedType 兜底写入。
+        (void)n;
         return;
     }
     if (auto n = dynamic_cast<p<ExprEnumCtorNode>>(expr)) {
