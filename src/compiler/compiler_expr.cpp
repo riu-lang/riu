@@ -30,8 +30,28 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <regex>
+#include <cassert>
 
 // ==================== 辅助函数 ====================
+
+// Phase 2.4 Sema/Codegen 拆分：codegen 读类型的统一入口。详见 compiler.h 注释。
+// 已切换的调用点（先窄后宽）：
+//   - compileExpr 入口 dispatch 后的 recordTemp / typeNeedsDestructor 三处用例
+//     （call / array literal / enum ctor 分支）。这三个分支的 compile<Foo>Expr
+//     已按 2.2 在入口写过 resolvedType，回到主 switch 时一定可读。
+// 其余 compile<Foo>Expr 内部对 node->getType() 的现地复读保持原样，留待 Phase 3
+// 按子系统迁移到 SemaPass 时统一切换。
+TypeInfo Compiler::resolvedOrInferredType(p<ExprNode> node) const {
+    if (node->hasResolvedType()) {
+#ifndef NDEBUG
+        const auto& resolved = node->resolvedType();
+        auto inferred = node->getType();
+        assert(resolved == inferred && "resolvedType / getType inconsistent");
+#endif
+        return node->resolvedType();
+    }
+    return node->getType();
+}
 
 // 解析整数字面量
 // 支持多种格式: 十进制、二进制 (0b)、八进制 (0o)、十六进制 (0x)
@@ -2064,8 +2084,10 @@ llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
 llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
     auto type = node->getType();
     DEBUG_LOG_VAL("  compileExpr", "type=" << (type.empty() ? "void" : type.name));
-    // Phase 2.2 Sema/Codegen 拆分：resolvedType 由各 compile<Foo>Expr 自行写入，
-    // 入口侧不再统一写。type 仍保留供下方 recordTemp 使用。
+    // Phase 2.2 Sema/Codegen 拆分：resolvedType 由各 compile<Foo>Expr 自行写入。
+    // Phase 2.4：本入口 dispatch 后的 recordTemp / typeNeedsDestructor 改读
+    // resolvedOrInferredType(node)；本地 type 仅给 DEBUG_LOG 用，等 Phase 3
+    // SemaPass 落地后即可整体删除。
 
     if (auto literalNode = dynamic_cast<ExprLiteralNode*>(node)) {
         return compileLiteralExpr(literalNode);
@@ -2081,7 +2103,8 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         // Phase 8d.1: 调用结果若为 fresh RC 句柄（Box/Array/Weak），登记到当前语句临时帧
         auto val = compileCallExpr(callNode);
         if (val) {
-            recordTemp(val, type);
+            // Phase 2.4: compileCallExpr 入口已写 resolvedType，优先读它
+            recordTemp(val, resolvedOrInferredType(node));
         }
         return val;
     } else if (auto dotNode = dynamic_cast<ExprDotNode*>(node)) {
@@ -2100,7 +2123,8 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         // Phase 8d.1: 数组字面量 _array_alloc 给 strong=1，登记为 fresh 临时
         auto val = compileArrayLiteralExpr(arrayNode);
         if (val) {
-            recordTemp(val, type);
+            // Phase 2.4: 同上，优先读 resolvedType
+            recordTemp(val, resolvedOrInferredType(node));
         }
         return val;
     } else if (auto tupleNode = dynamic_cast<ExprTupleNode*>(node)) {
@@ -2114,8 +2138,10 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         // Phase 5: enum ctor 是 +1 fresh：构造时把实参（含 RC payload）写入 enum 槽，
         // enum 值随后承担释放责任。仅当类型需要析构时才登记到临时帧
         auto val = compileEnumCtorExpr(enumCtorNode);
-        if (val && typeNeedsDestructor(type)) {
-            recordTemp(val, type);
+        // Phase 2.4: 同上，优先读 resolvedType
+        auto resType = resolvedOrInferredType(node);
+        if (val && typeNeedsDestructor(resType)) {
+            recordTemp(val, resType);
         }
         return val;
     } else if (auto matchNode = dynamic_cast<ExprMatchNode*>(node)) {
