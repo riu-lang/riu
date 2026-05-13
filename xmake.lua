@@ -175,7 +175,8 @@ target("yux_frontend")
         "src/analyzer/flow_terminate_checker.cpp",
         "src/analyzer/symbol_suggest.cpp",
         "src/analyzer/draft_registry.cpp",
-        "src/analyzer/draft_impl_checker.cpp"
+        "src/analyzer/draft_impl_checker.cpp",
+        "src/sema/sema_pass.cpp"
     )
     add_files("src/ast/node/*.cpp")
     add_files("gen/yux/*.cpp")

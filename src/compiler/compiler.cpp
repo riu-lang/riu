@@ -15,6 +15,7 @@
 #include "compiler.h"
 #include "analyzer/borrow_checker.h"
 #include "analyzer/flow_terminate_checker.h"
+#include "sema/sema_pass.h"
 #include "runtime/ctor_daa.h"
 #include "ast/mangler.h"
 #include "ast/node/fn_node.h"
@@ -73,6 +74,12 @@ void Compiler::compile(p<FileNode> file) {
     // 透明类型别名的一次性校验：名称冲突 + 环检测
     DEBUG_LOG("Validating type aliases...");
     validateAliases();
+
+    // Sema/Codegen 拆分骨架（Phase 3.1）：当前是 no-op, 仅落位走 AST 全树。
+    // 3.2 起 visitExpr 写 resolvedType, 与 compile<Foo>Expr 入口的写并存校验;
+    // 3.3+ 按子系统迁 throw, 让 codegen 不再抛语义错。
+    DEBUG_LOG("Running SemaPass...");
+    SemaPass(_file).run();
 
     DEBUG_LOG("Compiling global constants...");
     compileGlobalConsts();
