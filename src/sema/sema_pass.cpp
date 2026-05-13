@@ -36,6 +36,7 @@
 #include <array>
 #include <string_view>
 
+#include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/file_node.h"
 #include "ast/node/fn_node.h"
@@ -64,6 +65,20 @@ constexpr std::array<std::string_view, 19> kMigratedCodes = {
     "E3097",
     "E3100",
 };
+
+// 与 Compiler::lookupEnumDecl 等价的本地版本: 本文件 → SDK → wildcard imports.
+// SemaPass 不依赖 LLVM, 无法直接调用 Compiler 成员, 这里复制查找规则。
+EnumDeclNode* lookupEnumIn(p<FileNode> file, p<FileNode> sdkFile, const string& name) {
+    if (!file) return nullptr;
+    if (auto* d = file->getEnumDecl(name)) return d;
+    if (sdkFile && sdkFile != file) {
+        if (auto* d = sdkFile->getEnumDecl(name)) return d;
+    }
+    for (auto* imp : file->wildcardImports()) {
+        if (auto* d = imp->getEnumDecl(name)) return d;
+    }
+    return nullptr;
+}
 
 bool isMigratedCode(const char* code) {
     if (!code) return false;
@@ -380,14 +395,50 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         return;
     }
     if (auto n = dynamic_cast<p<ExprTryCatchNode>>(expr)) {
-        // Phase 3.3 前置.4: 进 try block 前 push 新的 seenErrTypes 层,
-        // visitBlock 内的 ID-callee 检查会把 #Fallible callee 的错误类型
-        // append 进栈顶 (供 E7002 穷尽性使用; SemaPass 暂不读, Compiler
-        // 仍走自己的 _tryCatchStack 做 E7002 / E7011). pop 后访问 catch
-        // arms (catches 在外层 try 视野之外, 不属于父 try 栈层).
+        // Phase 3.3 前置.5: SemaPass 接管 E7011 (catch 类型必须是已声明 enum)
+        // 与 E7002 (try block 内 callee 错误类型未被任一 catch 覆盖).
+        //
+        // 顺序:
+        //   1) 逐 arm 校验 errType 为已声明 enum (E7011), 同时收集 catchTypes;
+        //   2) push 新的 seenErrTypes 层, visitBlock(tryBlock) —— 内部 ID-callee
+        //      检查把 #Fallible callee 的错误类型 append 进栈顶;
+        //   3) pop 取出 seenErrTypes, 与 catchTypes 比对穷尽性 (E7002);
+        //   4) 再访问每个 catch arm body (catches 在外层 try 视野之外).
+        //
+        // Compiler 端 compileTryCatchExpr 中相同形态的 E7011 / E7002 throw 保留
+        // 作幂等防御性双跑: SemaPass 已先抛出, Compiler 不会再到达。
+        vector<string> catchTypes;
+        catchTypes.reserve(n->catches().size());
+        int line = n->getLineNumber();
+        int col = n->getColumn();
+        for (auto& arm : n->catches()) {
+            const string& errType = arm->errType();
+            auto* enumDecl = lookupEnumIn(_file, _sdkFile, errType);
+            if (!enumDecl) {
+                int aline = arm->getLineNumber() > 0 ? arm->getLineNumber() : line;
+                int acol = arm->getColumn() > 0 ? arm->getColumn() : col;
+                throw YuxError(aline, acol, ErrorCode::E7011,
+                    arm->errName().getText(), errType, errType);
+            }
+            catchTypes.push_back(errType);
+        }
+
         _tryStack.emplace_back();
         visitBlock(n->tryBlock());
+        vector<string> seenErrTypes = std::move(_tryStack.back());
         _tryStack.pop_back();
+
+        for (auto& seen : seenErrTypes) {
+            bool covered = false;
+            for (auto& ct : catchTypes) {
+                if (ct == seen) { covered = true; break; }
+            }
+            if (!covered) {
+                throw YuxError(line, col, ErrorCode::E7002,
+                    seen, string("<unknown>"), seen);
+            }
+        }
+
         for (auto& c : n->catches()) visitBlock(c->body());
         return;
     }
