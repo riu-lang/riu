@@ -166,9 +166,16 @@ void Compiler::compileGlobalConsts() {
         // 支持类型后缀 (i32, u64 等) 和下划线分隔符
         if (auto intLiteral = dynamic_cast<LiteralIntNode*>(literal)) {
             string numStr = text;
+            // 识别后缀以选 signed/unsigned 解析路径
             static const std::regex suffix_regex(R"([iu](?:8|16|32|64)?$)");
+            std::smatch m;
+            string suffix;
+            if (std::regex_search(numStr, m, suffix_regex)) {
+                suffix = m.str();
+            }
+            bool isUnsigned = !suffix.empty() && suffix[0] == 'u';
             numStr = std::regex_replace(numStr, suffix_regex, "");
-            
+
             int base = 10;
             string parseStr = numStr;
             if (numStr.size() >= 2) {
@@ -184,7 +191,22 @@ void Compiler::compileGlobalConsts() {
                 }
             }
             parseStr.erase(std::remove(parseStr.begin(), parseStr.end(), '_'), parseStr.end());
-            i64 numVal = std::stoll(parseStr, nullptr, base);
+            i64 numVal = 0;
+            try {
+                if (isUnsigned) {
+                    numVal = static_cast<i64>(std::stoull(parseStr, nullptr, base));
+                } else {
+                    numVal = std::stoll(parseStr, nullptr, base);
+                }
+            } catch (const std::out_of_range&) {
+                int line = literal->getLineNumber();
+                throw YuxError(line > 0 ? line : 1, literal->getColumn(),
+                    ErrorCode::E3103, text, suffix.empty() ? string("i64") : suffix);
+            } catch (const std::invalid_argument&) {
+                int line = literal->getLineNumber();
+                throw YuxError(line > 0 ? line : 1, literal->getColumn(),
+                    ErrorCode::E3103, text, suffix.empty() ? string("i64") : suffix);
+            }
             initValue = llvm::ConstantInt::get(llvmType, numVal, true);
         } 
         // 处理浮点数字面量
