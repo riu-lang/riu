@@ -15,9 +15,26 @@ class StatementNode;
 class TypeNode;
 
 class ExprNode : public Node, public Typed {
+protected:
+    // Phase 2 Sema/Codegen 拆分：表达式经语义检查后的解析型类型槽位。
+    // 与 getType() 并行：getType() 仍是各子类自行就地推导的"无副作用"查询，
+    // 用于 ast 层任意时刻调用；resolvedType 是 SemaPass / compileExpr 走过后
+    // 留下的"已确认"类型，供后续 pass（codegen / LSP）直接读取，避免重复计算。
+    //
+    // 当前过渡期：Compiler::compileExpr 在入口写入；行为与 getType() 等价。
+    // 后续把推断从 codegen 抽到独立 SemaPass 时，此槽位由 SemaPass 写入，
+    // codegen 改为读取（并在 debug 构建里 assert 与 getType() 一致）。
+    //
+    // 空 optional = 尚未解析（区别于 TypeInfo::empty() 表示的 void 类型）。
+    std::optional<TypeInfo> _resolvedType;
+
 public:
     ExprNode(const p<Node>& parent) : Node(parent) {
     }
+
+    void setResolvedType(TypeInfo t) { _resolvedType = std::move(t); }
+    [[nodiscard]] bool hasResolvedType() const { return _resolvedType.has_value(); }
+    [[nodiscard]] const TypeInfo& resolvedType() const { return *_resolvedType; }
 };
 
 // 如果表达式是无后缀的整数字面量且其类型可以推断，则返回 true。

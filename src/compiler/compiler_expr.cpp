@@ -2042,6 +2042,9 @@ llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
 llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
     auto type = node->getType();
     DEBUG_LOG_VAL("  compileExpr", "type=" << (type.empty() ? "void" : type.name));
+    // Phase 2 Sema/Codegen 拆分：把当前现场推断结果落到 AST 节点的 resolvedType 槽位。
+    // 当前仍由 codegen 入口写入；后续会被独立 SemaPass 取代（写入点前移到 codegen 之前）。
+    node->setResolvedType(type);
 
     if (auto literalNode = dynamic_cast<ExprLiteralNode*>(node)) {
         return compileLiteralExpr(literalNode);
