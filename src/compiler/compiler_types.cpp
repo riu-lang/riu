@@ -586,15 +586,16 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     // tag 按声明顺序从 0 起编号；payload 缓冲取所有 variant 的 tuple-payload 中最大字节数
     // 全部零参 variant 时省略 payload 字段（N==0）。详见 docs/spec/draft/DRAFT-枚举.md §6
     {
+        string cacheKey = "$enum$" + type.name;
+        // 先查缓存：泛型实例方法 emit 时 _file 会切到 SDK，lookupEnumDecl 找不到用户文件里的 enum，
+        // 但 LLVM 类型其实已经在用户文件 emit 阶段建过缓存，直接返回即可，避免落到 null 上层崩。
+        if (auto cit = _structTypes.find(cacheKey); cit != _structTypes.end()) {
+            DEBUG_LOG_VAL("    -> Enum (cached)", type.name);
+            return cit->second;
+        }
         p<FileNode> enumOwner = nullptr;
         auto enumDecl = lookupEnumDecl(type.name, enumOwner);
         if (enumDecl) {
-            string cacheKey = "$enum$" + type.name;
-            auto cit = _structTypes.find(cacheKey);
-            if (cit != _structTypes.end()) {
-                DEBUG_LOG_VAL("    -> Enum (cached)", type.name);
-                return cit->second;
-            }
             // 计算 max payload 字节数
             u64 maxPayload = 0;
             for (auto v : enumDecl->variants()) {
