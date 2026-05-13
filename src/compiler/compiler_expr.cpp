@@ -769,23 +769,39 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(
     }
     
     if (!methodSymbol) {
-        throw YuxError(lineNum, ErrorCode::E3073,
-                       leftType.name, methodName == "plus" ? "+" :
-                       methodName == "minus" ? "-" :
-                       methodName == "mul" ? "*" :
-                       methodName == "div" ? "/" :
-                       methodName == "mod" ? "%" :
-                       methodName == "and" ? "&" :
-                       methodName == "or" ? "|" :
-                       methodName == "xor" ? "^" :
-                       methodName == "shl" ? "<<" :
-                       methodName == "shr" ? ">>" :
-                       methodName == "eq" ? "==" :
-                       methodName == "ne" ? "!=" :
-                       methodName == "lt" ? "<" :
-                       methodName == "le" ? "<=" :
-                       methodName == "gt" ? ">" :
-                       methodName == "ge" ? ">=" : methodName, methodName);
+        // 二次探测：用户可能把形参写成按值 Self（与文档表格历史措辞一致），运算符不会被触发。
+        // 命中即附 hint，告诉用户改为 Self&。
+        vector<TypeInfo> byvalParamTypes;
+        byvalParamTypes.push_back(effLeftType);
+        byvalParamTypes.push_back(effRightType);
+        auto byvalSym = _file->lookupFnSymbolWithParams(methodFullName, byvalParamTypes);
+        if (!byvalSym && _yux && _yux->sdkFile()) {
+            byvalSym = _yux->sdkFile()->lookupFnSymbolWithParams(methodFullName, byvalParamTypes);
+        }
+        const char* opSym =
+            methodName == "plus" ? "+" :
+            methodName == "minus" ? "-" :
+            methodName == "mul" ? "*" :
+            methodName == "div" ? "/" :
+            methodName == "mod" ? "%" :
+            methodName == "and" ? "&" :
+            methodName == "or" ? "|" :
+            methodName == "xor" ? "^" :
+            methodName == "shl" ? "<<" :
+            methodName == "shr" ? ">>" :
+            methodName == "eq" ? "==" :
+            methodName == "ne" ? "!=" :
+            methodName == "lt" ? "<" :
+            methodName == "le" ? "<=" :
+            methodName == "gt" ? ">" :
+            methodName == "ge" ? ">=" : methodName.c_str();
+        auto err = YuxError(lineNum, ErrorCode::E3073, leftType.name, opSym, methodName);
+        if (byvalSym) {
+            err.withHint("找到同名方法 `" + methodFullName + "(" + effRightType.name
+                         + ")` 但形参按值；运算符重载要求形参类型为 `" + effRightType.name
+                         + "&`（见 docs/结构体.md「运算符重载」注意事项 #2）");
+        }
+        throw err;
     }
     
     // 准备方法参数
