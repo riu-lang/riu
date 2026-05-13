@@ -1,0 +1,7 @@
+fn f(val i32) i32 {
+  ret val
+}
+
+fn main() {
+  println(f(1i32))
+}
