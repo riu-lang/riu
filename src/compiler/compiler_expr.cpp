@@ -2437,6 +2437,26 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
     int line = node->getLineNumber();
     int col = node->getColumn();
 
+    // Box<E> match：自动 deref。仅支持借用语义（不接管 Box 所有权），
+    // 因此要求 scrutinee 不是 fresh 来源（避免 Box 临时立即释放后 enum 悬挂）。
+    bool boxDeref = false;
+    TypeInfo boxOuterType;
+    if (scrutType.isBox()) {
+        auto inner = scrutType.boxElementType();
+        if (inner) {
+            p<FileNode> tmpOwner = nullptr;
+            if (lookupEnumDecl(inner->name, tmpOwner)) {
+                if (isFreshHandleExpr(scrutinee)) {
+                    throw YuxError(line, col, ErrorCode::E2022, scrutType.name)
+                        .withHint("不支持对临时 Box<E> 直接 match；先 `var b Box<E> = ...` 落地再 match b");
+                }
+                boxDeref = true;
+                boxOuterType = scrutType;
+                scrutType = *inner;
+            }
+        }
+    }
+
     // 1. 必须是 enum
     p<FileNode> enumOwner = nullptr;
     auto enumDecl = lookupEnumDecl(scrutType.name, enumOwner);
@@ -2558,10 +2578,27 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
         throw YuxError(line, col, ErrorCode::E3091);
     }
     auto scrutAlloca = _builder.CreateAlloca(enumLLVMType, nullptr, "match.scrut");
-    _builder.CreateStore(scrutVal, scrutAlloca);
+    if (boxDeref) {
+        // scrutVal 是 Box<E>（{ ptr handle }）：取 handle → +8 跳过 RC 头 → 读 enum 值
+        auto boxLLVMType = getLLVMType(boxOuterType);
+        auto boxAlloca = _builder.CreateAlloca(boxLLVMType, nullptr, "match.box");
+        _builder.CreateStore(scrutVal, boxAlloca);
+        auto zero32 = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        auto handleField = _builder.CreateGEP(
+            boxLLVMType, boxAlloca, {zero32, zero32}, "match.box.handle_field");
+        auto handle = _builder.CreateLoad(
+            llvm::PointerType::get(_context, 0), handleField, "match.box.handle");
+        auto payload = _builder.CreateGEP(
+            _builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "match.box.payload");
+        auto enumVal = _builder.CreateLoad(enumLLVMType, payload, "match.box.enum");
+        _builder.CreateStore(enumVal, scrutAlloca);
+    } else {
+        _builder.CreateStore(scrutVal, scrutAlloca);
+    }
 
     // 仅当 scrutinee 是 fresh（构造 / 函数返回 / 含 RC 的 enum 临时）我们才需要在 match 末 dtor
-    bool ownsScrut = isFreshHandleExpr(scrutinee);
+    // Box deref 路径走借用语义，不接管 Box 所有权，故不计 drop
+    bool ownsScrut = !boxDeref && isFreshHandleExpr(scrutinee);
     if (ownsScrut) {
         consumeTemp(scrutVal);
     }

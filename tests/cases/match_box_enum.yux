@@ -1,0 +1,17 @@
+; P2-7 回归：Box<E> 直接做 match scrutinee（借用语义）
+
+enum Color {
+  Red
+  Green
+  Blue
+}
+
+fn main() {
+  var b Box<Color> = Color::Green
+  val s String = match b {
+    Color::Red   => "r"
+    Color::Green => "g"
+    Color::Blue  => "b"
+  }
+  println(s)
+}
