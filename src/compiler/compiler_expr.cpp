@@ -96,6 +96,7 @@ namespace {
 // 编译数组填充表达式 ([value ... Type] 语法)
 // 使用指定值填充整个数组
 llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const TypeInfo& targetType, llvm::Value* destPtr) {
+    node->setResolvedType(node->getType());
     auto literal = node->value();
     auto literalType = literal->getType();
     auto text = literal->getValue().getText();
@@ -276,6 +277,7 @@ llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& srcType, con
 // 编译字面量表达式
 // 处理整数、浮点数、布尔值、对象名等
 llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
+    node->setResolvedType(node->getType());
     auto literal = node->literal();
     auto type = literal->getType();
     auto text = literal->getValue().getText();
@@ -921,6 +923,7 @@ llvm::Value* Compiler::compileCustomTypeUnaryOp(
 }
 
 llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
+    node->setResolvedType(node->getType());
     // v0.6 Phase 2b: 透明别名解析，使 `A = i32` 后 `A + A` 仍走内置算子路径
     auto type = applySubst(node->getType());
     auto leftType = applySubst(node->left()->getType());
@@ -959,6 +962,7 @@ llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
 }
 
 llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
+    node->setResolvedType(node->getType());
     auto type = applySubst(node->getType());
     auto leftType = applySubst(node->left()->getType());
 
@@ -1017,6 +1021,7 @@ llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
 }
 
 llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
+    node->setResolvedType(node->getType());
     auto type = applySubst(node->getType());
     auto leftType = applySubst(node->left()->getType());
 
@@ -1071,11 +1076,13 @@ llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
 }
 
 llvm::Value* Compiler::compileParenExpr(p<ExprParenNode> node) {
+    node->setResolvedType(node->getType());
     DEBUG_LOG("    Expr: Paren");
     return compileExpr(node->expr());
 }
 
 llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
+    node->setResolvedType(node->getType());
     (void)node->getType();
     auto leftType = applySubst(node->left()->getType());
     auto rightType = applySubst(node->right()->getType());
@@ -1223,6 +1230,7 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
 }
 
 llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
+    node->setResolvedType(node->getType());
     auto resultType = node->getType();
     bool hasResult = !resultType.empty();
 
@@ -1305,6 +1313,7 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
 }
 
 llvm::Value* Compiler::compileOneLineIfElseExpr(p<ExprOneLineIfElseNode> node) {
+    node->setResolvedType(node->getType());
     auto resultType = node->getType();
 
     DEBUG_LOG_VAL("    Expr: OneLineIfElse", "type=" << resultType.name);
@@ -1346,6 +1355,7 @@ llvm::Value* Compiler::compileOneLineIfElseExpr(p<ExprOneLineIfElseNode> node) {
 }
 
 llvm::Value* Compiler::compileIfElsePreValueExpr(p<ExprIfElsePreValueNode> node) {
+    node->setResolvedType(node->getType());
     auto resultType = node->getType();
 
     DEBUG_LOG_VAL("    Expr: IfElsePreValue", "type=" << resultType.name);
@@ -1386,6 +1396,7 @@ llvm::Value* Compiler::compileIfElsePreValueExpr(p<ExprIfElsePreValueNode> node)
 }
 
 llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
+    node->setResolvedType(node->getType());
     auto arrayExpr = node->arrayExpr();
     auto arrayType = arrayExpr->getType();
 
@@ -1468,6 +1479,7 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
 // Phase 3：透明 layout，按声明顺序构造一个匿名 struct 值；元素递归编译
 // 实现：从 undef 起，逐个 CreateInsertValue 写入；返回 struct 值（非指针）
 llvm::Value* Compiler::compileTupleExpr(p<ExprTupleNode> node) {
+    node->setResolvedType(node->getType());
     auto tupleType = node->getType();
     auto llvmTy = getLLVMType(tupleType);
     if (!llvmTy) {
@@ -1536,6 +1548,7 @@ llvm::Value* Compiler::buildArrayLiteralBlock(ExprArrayNode* arrayNode, const Ty
 }
 
 llvm::Value* Compiler::compileArrayLiteralExpr(p<ExprArrayNode> node) {
+    node->setResolvedType(node->getType());
     auto& elements = node->elements();
     auto arrayType = node->getType();
     auto llvmArrayType = getLLVMType(arrayType);
@@ -1571,6 +1584,7 @@ llvm::Value* Compiler::compileArrayLiteralExpr(p<ExprArrayNode> node) {
 }
 
 llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
+    node->setResolvedType(node->getType());
     auto objName = node->obj().getText();
     auto& subs = node->subs();
 
@@ -1654,6 +1668,7 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
 }
 
 llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
+    node->setResolvedType(node->getType());
     auto type = node->getType();
     auto rightType = node->right()->getType();
 
@@ -1709,6 +1724,7 @@ llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
 }
 
 llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
+    node->setResolvedType(node->getType());
     // 安全访问 a?.b：单独走分支
     if (node->isSafe()) {
         return compileSafeDotExpr(node);
@@ -1976,6 +1992,7 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
 //   else: %r = compile(b); br merge (carry %r)
 //   merge: phi T [%v, then] [%r, else]
 llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
+    node->setResolvedType(node->getType());
     auto leftType = node->left()->getType();
     if (!leftType.isNullable()) {
         throw YuxError(node->resolveLineNumber(), node->resolveColumn(),
@@ -2042,9 +2059,8 @@ llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
 llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
     auto type = node->getType();
     DEBUG_LOG_VAL("  compileExpr", "type=" << (type.empty() ? "void" : type.name));
-    // Phase 2 Sema/Codegen 拆分：把当前现场推断结果落到 AST 节点的 resolvedType 槽位。
-    // 当前仍由 codegen 入口写入；后续会被独立 SemaPass 取代（写入点前移到 codegen 之前）。
-    node->setResolvedType(type);
+    // Phase 2.2 Sema/Codegen 拆分：resolvedType 由各 compile<Foo>Expr 自行写入，
+    // 入口侧不再统一写。type 仍保留供下方 recordTemp 使用。
 
     if (auto literalNode = dynamic_cast<ExprLiteralNode*>(node)) {
         return compileLiteralExpr(literalNode);
@@ -2169,6 +2185,7 @@ llvm::Value* Compiler::compileStatementBlockWithResult(
 // 6. 零参 variant 不动 payload buffer（spec §6.5）
 // 7. 加载整体 struct value 作为表达式结果返回
 llvm::Value* Compiler::compileEnumCtorExpr(p<ExprEnumCtorNode> node) {
+    node->setResolvedType(node->getType());
     string enumName = node->getType().name;     // 经别名解析后的真实 enum 名
     string variantName = node->variantName().getText();
     int line = node->getLineNumber();
@@ -2293,6 +2310,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprEnumCtorNode> node) {
 // 真路由（构造消费 box）随 vtable 落地一起补，所以这里 Box 句柄"裸抽"——Phase 1c
 // 的 smoke 只看编译能否过、IR 是否成型，不验运行时所有权。
 llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
+    node->setResolvedType(node->getType());
     auto resultType = node->getType();
     int line = node->getLineNumber();
     int col = node->getColumn();
@@ -2450,6 +2468,7 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
 //   归一）
 // - arm body 仅单表达式（grammar 已限定）；多语句体押后
 llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
+    node->setResolvedType(node->getType());
     auto scrutinee = node->scrutinee();
     auto rawScrutType = scrutinee->getType();
     auto scrutType = resolveAlias(rawScrutType);
@@ -2819,6 +2838,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
 //   - lambda body 在 emitLambdaFunction 内有独立编译流，与外层 _tryCatchStack 隔离 →
 //     穷尽性自然不下钻 lambda 内部。
 llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
+    node->setResolvedType(node->getType());
     int line = node->getLineNumber();
     int col = node->getColumn();
 

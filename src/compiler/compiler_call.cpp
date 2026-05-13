@@ -574,6 +574,7 @@ static void checkErrPropagateForIdCall(
 }
 
 llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
+    node->setResolvedType(node->getType());
     auto calleeExpr = node->getCalleeExpr();
 
     // Phase 10e：错误传播语义校验（仅 ID-callee 路径；方法 / fn-value 推 10f）
