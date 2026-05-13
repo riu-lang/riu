@@ -1,0 +1,7 @@
+fn main() {
+  var a Ptr = GetStdHandle(-11i32)
+  var b Ptr = GetStdHandle(-12i32)
+  if a < b {
+    println("lt")
+  }
+}

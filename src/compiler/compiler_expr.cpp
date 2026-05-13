@@ -1076,6 +1076,30 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
         }
     }
 
+    // Ptr：内置 == / !=（用于 `p == null` 等场景）；ordering 不开放
+    if (leftType.isPtr()) {
+        if (node->op() == ExprCompareNode::Op::Eq || node->op() == ExprCompareNode::Op::Ne) {
+            auto left = compileExpr(node->left());
+            auto right = compileExpr(node->right());
+            if (node->op() == ExprCompareNode::Op::Eq) {
+                return _builder.CreateICmpEQ(left, right);
+            }
+            return _builder.CreateICmpNE(left, right);
+        }
+        if (node->op() != ExprCompareNode::Op::AndAnd && node->op() != ExprCompareNode::Op::OrOr) {
+            const char* opSym =
+                node->op() == ExprCompareNode::Op::Lt ? "<" :
+                node->op() == ExprCompareNode::Op::Le ? "<=" :
+                node->op() == ExprCompareNode::Op::Gt ? ">" : ">=";
+            const char* mname =
+                node->op() == ExprCompareNode::Op::Lt ? "lt" :
+                node->op() == ExprCompareNode::Op::Le ? "le" :
+                node->op() == ExprCompareNode::Op::Gt ? "gt" : "ge";
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3073, "Ptr", opSym, mname)
+                .withHint("Ptr 只支持 == / != 比较（与 null 或另一 Ptr）");
+        }
+    }
+
     string opStr;
     switch (node->op()) {
     case ExprCompareNode::Op::Eq: opStr = "==";
