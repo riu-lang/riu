@@ -32,6 +32,13 @@ yux 是自举编译器，单二进制完成 `.yux → ANTLR4 解析 → AST → 
 xmake build yux
 xmake f -m release && xmake build yux   ; release 构建（-d 调试 IR 输出仅 debug 可用）
 
+; 附属二进制（与 yux.exe 同目录, 按需单独构建）
+xmake build yux-lsp                     ; LSP 服务器（编辑器插件用）
+xmake build yux-ast                     ; ANTLR parse tree 转储工具
+                                        ;   yux-ast <file.yux> [-o <out>] [--oneline]
+                                        ;   仅词法 + 语法, 不构造 AST / 不做语义 / 不调 LLVM
+                                        ;   语法错时仍输出含 <error> 节点的树, 适合排查 g4
+
 ; 项目模式：必须在项目根目录（含 yux.toml）执行
 yux build                    ; <name> 可省略，默认取 yux.toml 的 name；入口取 toml 的 entry
 yux build <name>             ; 显式给出时必须与 yux.toml 的 name 一致

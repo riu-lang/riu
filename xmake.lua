@@ -225,6 +225,14 @@ target("yux-lsp")
     add_files("src/lsp/*.cpp")
     set_rundir("$(projectdir)")
 
+-- yux-ast: 独立的 parse tree 转储工具, 仅 ANTLR 词法 + 语法, 不做 AST/语义/codegen
+target("yux-ast")
+    set_kind("binary")
+    add_deps("yux_frontend")
+    add_includedirs(path.join(third_party, "cli11/include"))
+    add_files("src/tools/ast_main.cpp")
+    set_rundir("$(projectdir)")
+
 includes("tests")
 includes("@builtin/xpack")
 

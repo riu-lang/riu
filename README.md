@@ -101,6 +101,10 @@ gen-antlr.cmd        # Windows CMD
 ```powershell
 # 构建 yux 编译器
 xmake build yux
+
+# 可选：附属工具
+xmake build yux-lsp     # LSP 服务器（编辑器插件用）
+xmake build yux-ast     # 仅 ANTLR parse tree 转储工具
 ```
 
 ## 使用
@@ -137,6 +141,13 @@ entry="main.yux"
 | `--emit-ir` | 输出 LLVM IR 到 .ll 文件 |
 | `-d, --debug` | 输出编译 IR 调试信息（仅 Debug 构建） |
 | `lsp` | 以 stdio 启动语言服务器（供 [yux-vscode](plugins/yux-vscode/) / [yux-idea](plugins/yux-idea/) 等编辑器集成使用） |
+
+附属可执行文件（与 `yux.exe` 同目录）：
+
+| 命令 | 说明 |
+|------|------|
+| `yux-ast <input.yux> [-o <file>] [--oneline]` | 转储 ANTLR parse tree；仅词法 + 语法，遇到语法错也输出含 `<error>` 节点的树 |
+| `yux-lsp` | 独立 LSP 服务器二进制 |
 
 ## 编辑器支持
 
