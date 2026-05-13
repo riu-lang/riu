@@ -42,6 +42,7 @@
 #include "ast/node/literal_node.h"
 #include "ast/node/statement_node.h"
 #include "ast/node/struct_node.h"
+#include "sema/call_resolve.h"
 
 namespace {
 // Phase 3.2b 已由 SemaPass 接管的错误码白名单。SemaPass 在 visitExpr 中
@@ -74,7 +75,8 @@ bool isMigratedCode(const char* code) {
 }
 }
 
-SemaPass::SemaPass(p<FileNode> file) : _file(file) {
+SemaPass::SemaPass(p<FileNode> file, p<FileNode> sdkFile)
+    : _file(file), _sdkFile(sdkFile) {
 }
 
 void SemaPass::run() {
@@ -191,6 +193,66 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     if (auto n = dynamic_cast<p<ExprCallNode>>(expr)) {
         visitExpr(n->getCalleeExpr());
         for (auto& a : n->getArgs()) visitExpr(a);
+
+        // Phase 3.3 前置.2：SemaPass 主动驱动重载解析 + 灵活整数推断.
+        // 只接管"纯 ID callee + 无显式类型实参 + 非泛型"的情形, 与
+        // compiler_call.cpp 中 `else if (structDecl)` / `else` 分支的进入条件保持一致;
+        // 其余 (Fn 类型 callee / 泛型 fn 或 ctor / 方法调用) 仍由 codegen 自行处理.
+        //
+        // 副作用幂等性: tryInferIntType 仅在 isFlexibleIntExpr 为真时改写; SemaPass
+        // 跑完后字面量已带类型, Compiler 端再次调用 resolve* 时 isFlexibleIntExpr 返回 false,
+        // 不会重复推断 (见 call_resolve.h 的契约说明).
+        if (auto lit = dynamic_cast<p<ExprLiteralNode>>(n->getCalleeExpr())) {
+            if (auto obj = dynamic_cast<p<LiteralObjNode>>(lit->literal())) {
+                string fnName = obj->getValue().getText();
+                int line = n->getLineNumber();
+                int col = n->getColumn();
+                bool hasTypeArgs = !n->getTypeArgs().empty();
+
+                auto* structDecl = _file->getStructDecl(fnName);
+                if (!structDecl && _sdkFile) structDecl = _sdkFile->getStructDecl(fnName);
+
+                if (structDecl) {
+                    // 形态校验对泛型 / 非泛型 ctor 都适用 (E6008 私有 / E6009 缺 typeArgs)
+                    sema::validateCtorCallShape(structDecl, fnName, hasTypeArgs, line, col);
+                    // 泛型 ctor + 显式 typeArgs 的 arity 校验 (E6010)
+                    if (structDecl->isGeneric() && hasTypeArgs) {
+                        sema::validateGenericTypeArgsArity(fnName,
+                            structDecl->typeParams().size(),
+                            n->getTypeArgs().size(), line, col);
+                    }
+                }
+
+                // 泛型 fn + 显式 typeArgs 的 arity 校验 (E6010, 与 compileCallExpr 入口一致)
+                if (!structDecl && hasTypeArgs) {
+                    auto* genFn2 = _file->getFunction(fnName);
+                    if (!genFn2 && _sdkFile) genFn2 = _sdkFile->getFunction(fnName);
+                    if (genFn2 && genFn2->header()->isGeneric()) {
+                        sema::validateGenericTypeArgsArity(fnName,
+                            genFn2->header()->typeParams().size(),
+                            n->getTypeArgs().size(), line, col);
+                    }
+                }
+
+                // 仅在无显式 typeArgs + 非泛型路径上才驱动重载解析:
+                // 泛型 fn/ctor 走 Compiler 的 substitute 推断, 灵活整数推断由
+                // 那条路径自行完成; SemaPass 暂不接入泛型实例化.
+                if (!hasTypeArgs) {
+                    auto* genFn = _file->getFunction(fnName);
+                    if (!genFn && _sdkFile) genFn = _sdkFile->getFunction(fnName);
+                    if (!genFn || !genFn->header()->isGeneric()) {
+                        if (structDecl && !structDecl->isGeneric()) {
+                            sema::resolveCtorOverload(_file, fnName, n->getArgs(), line);
+                            if (_sdkFile && _sdkFile != _file) {
+                                sema::resolveCtorOverload(_sdkFile, fnName, n->getArgs(), line);
+                            }
+                        } else if (!structDecl) {
+                            sema::resolveFnOverload(_file, _sdkFile, fnName, n->getArgs(), line);
+                        }
+                    }
+                }
+            }
+        }
         return;
     }
     if (auto n = dynamic_cast<p<ExprDotNode>>(expr)) {

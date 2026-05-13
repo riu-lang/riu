@@ -25,12 +25,15 @@ class StatementBlockNode;
 // 不依赖 LLVM, 给 `yux-lsp` / 未来 `yux-check` 共用。
 class SemaPass {
 public:
-    explicit SemaPass(p<FileNode> file);
+    // sdkFile 用于跨文件符号解析 (例如调用 SDK 提供的函数 / 构造器). 单文件 / SDK 自构建
+    // 时可传 nullptr; Compiler 处实际传入 `_yux ? _yux->sdkFile() : nullptr`.
+    explicit SemaPass(p<FileNode> file, p<FileNode> sdkFile = nullptr);
 
     void run();
 
 private:
     p<FileNode> _file;
+    p<FileNode> _sdkFile;
 
     void visitFn(p<FnNode> fn);
     void visitStmt(p<StatementNode> stmt);

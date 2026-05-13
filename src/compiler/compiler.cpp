@@ -79,7 +79,7 @@ void Compiler::compile(p<FileNode> file) {
     // 3.2 起 visitExpr 写 resolvedType, 与 compile<Foo>Expr 入口的写并存校验;
     // 3.3+ 按子系统迁 throw, 让 codegen 不再抛语义错。
     DEBUG_LOG("Running SemaPass...");
-    SemaPass(_file).run();
+    SemaPass(_file, _yux ? _yux->sdkFile() : nullptr).run();
 
     DEBUG_LOG("Compiling global constants...");
     compileGlobalConsts();

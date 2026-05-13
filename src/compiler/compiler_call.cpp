@@ -17,198 +17,13 @@
 #include "analyzer/draft_impl_checker.h"
 #include "analyzer/draft_registry.h"
 #include "ast/mangler.h"
+#include "sema/call_resolve.h"
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <functional>
 
-// ==================== 辅助函数: 参数类型匹配 ====================
-
-// 检查参数类型是否可以接受
-// 支持精确匹配和引用类型匹配
-static bool paramAccepts(const TypeInfo& param, const TypeInfo& argType) {
-    if (param == argType) return true;  // 精确匹配
-    if (param.isRef()) {
-        auto ref = param.refElementType();
-        if (ref && *ref == argType) return true;  // 引用参数接受值类型
-    }
-    if (param.isPtr() && argType.isRef()) return true;  // 指针参数接受引用
-    return false;
-}
-
-// 灵活的函数重载匹配
-// 对灵活整数字面量 (如 42) 允许匹配任何整数类型
-static bool overloadMatchesFlexible(const vector<p<ExprNode>>& args, const vector<TypeInfo>& params) {
-    if (params.size() != args.size()) return false;
-    for (size_t i = 0; i < args.size(); ++i) {
-        if (isFlexibleIntExpr(args[i])) {
-            // 灵活整数可以匹配任何整数类型
-            if (isIntTypeName(params[i].name)) continue;
-            try {
-                if (paramAccepts(params[i], args[i]->getType())) continue;
-            } catch (...) {}
-            return false;
-        }
-        try {
-            if (!paramAccepts(params[i], args[i]->getType())) return false;
-        } catch (...) { return false; }
-    }
-    return true;
-}
-
-// 默认的函数重载匹配
-// 灵活整数字面量默认匹配 i32
-static bool overloadMatchesDefault(const vector<p<ExprNode>>& args, const vector<TypeInfo>& params) {
-    if (params.size() != args.size()) return false;
-    TypeInfo i32Type("i32");
-    for (size_t i = 0; i < args.size(); ++i) {
-        TypeInfo argType;
-        if (isFlexibleIntExpr(args[i])) {
-            argType = i32Type;  // 灵活整数默认为 i32
-        } else {
-            try { argType = args[i]->getType(); } catch (...) { return false; }
-        }
-        if (!paramAccepts(params[i], argType)) return false;
-    }
-    return true;
-}
-
-// ==================== 构造函数重载解析 ====================
-// 与 resolveFnOverload 同思路，但 ctor 在符号表中以 `S.S` 注册，且 params[0] 是
-// 接收者（结构体类型本身）。匹配时跳过 params[0]，按用户写的实参列表推断未带后缀
-// 的整数字面量类型，避免后续在 LLVM 后端因 i32→i64 形参不匹配而走到外部函数路径
-// 触发 `isSized` 断言（见 BUGS.md「构造函数 i64 形参传 untyped int 字面量」）。
-static void resolveCtorOverload(FileNode* file, const string& structName,
-                                const vector<p<ExprNode>>& args, int line) {
-    string ctorFullName = structName + "." + structName;
-    vector<FnSymbolInfo*> candidates;
-    file->collectFnOverloads(ctorFullName, candidates);
-    if (candidates.empty()) return;
-
-    auto matchesDefault = [&](FnSymbolInfo* c) {
-        if (c->params.size() != args.size() + 1) return false;
-        TypeInfo i32Type("i32");
-        for (size_t i = 0; i < args.size(); ++i) {
-            TypeInfo argType;
-            if (isFlexibleIntExpr(args[i])) {
-                argType = i32Type;
-            } else {
-                try { argType = args[i]->getType(); } catch (...) { return false; }
-            }
-            if (!paramAccepts(c->params[i + 1], argType)) return false;
-        }
-        return true;
-    };
-    auto matchesFlexible = [&](FnSymbolInfo* c) {
-        if (c->params.size() != args.size() + 1) return false;
-        for (size_t i = 0; i < args.size(); ++i) {
-            if (isFlexibleIntExpr(args[i])) {
-                if (isIntTypeName(c->params[i + 1].name)) continue;
-                try {
-                    if (paramAccepts(c->params[i + 1], args[i]->getType())) continue;
-                } catch (...) {}
-                return false;
-            }
-            try {
-                if (!paramAccepts(c->params[i + 1], args[i]->getType())) return false;
-            } catch (...) { return false; }
-        }
-        return true;
-    };
-
-    vector<FnSymbolInfo*> defaultMatches;
-    for (auto c : candidates) if (matchesDefault(c)) defaultMatches.push_back(c);
-
-    vector<FnSymbolInfo*> matches;
-    if (defaultMatches.size() == 1) {
-        matches = defaultMatches;
-    } else if (defaultMatches.empty()) {
-        for (auto c : candidates) if (matchesFlexible(c)) matches.push_back(c);
-    } else {
-        matches = defaultMatches;
-    }
-
-    if (matches.size() == 1) {
-        // 唯一匹配：把每个灵活整数实参推断到对应 ctor 形参类型
-        auto fn = matches[0];
-        for (size_t i = 0; i < args.size(); ++i) {
-            if (isFlexibleIntExpr(args[i]) && isIntTypeName(fn->params[i + 1].name)) {
-                tryInferIntType(args[i], fn->params[i + 1]);
-            }
-        }
-    } else if (matches.size() > 1) {
-        string sigs;
-        for (auto m : matches) {
-            sigs += "\n  " + structName + "(";
-            for (size_t i = 1; i < m->params.size(); ++i) {
-                if (i > 1) sigs += ", ";
-                sigs += m->params[i].name;
-            }
-            sigs += ")";
-        }
-        string argSigs;
-        for (size_t i = 0; i < args.size(); ++i) {
-            if (i) argSigs += ", ";
-            try { argSigs += args[i]->getType().name; } catch(...) { argSigs += "?"; }
-        }
-        throw YuxError(line, ErrorCode::E6014, structName, argSigs, matches.size(), sigs);
-    }
-}
-
-// ==================== 函数重载解析 ====================
-// 解析函数重载，确定应该调用哪个版本
-// 如果有歧义，抛出错误要求用户添加类型后缀
-static void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName,
-                              const vector<p<ExprNode>>& args, int line) {
-    (void)sdkFile;
-    vector<FnSymbolInfo*> candidates;
-    file->collectFnOverloads(fnName, candidates);
-    if (candidates.empty()) return;
-
-    // 首先尝试默认匹配 (灵活整数 -> i32)
-    vector<FnSymbolInfo*> defaultMatches;
-    for (auto c : candidates) {
-        if (overloadMatchesDefault(args, c->params)) defaultMatches.push_back(c);
-    }
-
-    vector<FnSymbolInfo*> matches;
-    if (defaultMatches.size() == 1) {
-        matches = defaultMatches;
-    } else if (defaultMatches.empty()) {
-        // 如果默认匹配失败，尝试灵活匹配
-        for (auto c : candidates) {
-            if (overloadMatchesFlexible(args, c->params)) matches.push_back(c);
-        }
-    } else {
-        matches = defaultMatches;
-    }
-
-    if (matches.size() == 1) {
-        // 唯一匹配: 推断灵活整数的类型
-        auto fn = matches[0];
-        for (size_t i = 0; i < args.size(); ++i) {
-            if (isFlexibleIntExpr(args[i]) && isIntTypeName(fn->params[i].name)) {
-                tryInferIntType(args[i], fn->params[i]);
-            }
-        }
-    } else if (matches.size() > 1) {
-        // 多个匹配: 报告歧义错误
-        string sigs;
-        for (auto m : matches) {
-            sigs += "\n  " + fnName + "(";
-            for (size_t i = 0; i < m->params.size(); ++i) {
-                if (i) sigs += ", ";
-                sigs += m->params[i].name;
-            }
-            sigs += ")";
-        }
-        string argSigs;
-        for (size_t i = 0; i < args.size(); ++i) {
-            if (i) argSigs += ", ";
-            try { argSigs += args[i]->getType().name; } catch(...) { argSigs += "?"; }
-        }
-        throw YuxError(line, ErrorCode::E6014, fnName, argSigs, matches.size(), sigs);
-    }
-}
+// 重载解析 / 灵活整数推断 / E6014 歧义诊断已迁至 src/sema/call_resolve.cpp,
+// 由 namespace sema 提供 resolveFnOverload / resolveCtorOverload, 不依赖 LLVM.
 
 // ==================== 函数获取 ====================
 
@@ -526,52 +341,9 @@ llvm::Value* Compiler::compileMethodCall(
 //     不再触发 E7001 / E7006；callee 错误类型记入 try ctx 的 seenErrTypes（穷尽性 / 多余
 //     用，10f-5）；写了 ! 给 E7016 警告（语义不变，编译器视同义）
 //   - inTryBlock=false 时：沿用原 10e 逻辑（E7001 / E7004 / E7006）
-static void checkErrPropagateForIdCall(
-    p<FnNode> currentFnNode,
-    p<ExprCallNode> node,
-    const string& fnName,
-    const FnSymbolInfo* calleeSym,
-    Compiler::TryCatchCtx* tryCtx) {
-    bool hasBang = node->errPropagate();
-    string callerErr;
-    if (currentFnNode) {
-        if (auto eOpt = currentFnNode->header()->getAnnoArg("Fallible")) {
-            callerErr = *eOpt;
-        }
-    }
-    string calleeErr = calleeSym ? calleeSym->fallibleErrType : "";
-
-    // Phase 10f：try block 内的 #Fallible 调用 → 路由到 catch 子句
-    if (tryCtx && !calleeErr.empty()) {
-        tryCtx->seenErrTypes.push_back(calleeErr);
-        if (hasBang) {
-            // E7016：try block 内 ! 冗余（语义不变，警告）
-            // TODO(10f-4): 接入诊断警告通道；当前仅记录注释
-            // 当前编译器无独立 warning 通道，待 spec §11 诊断分级落地时切换；
-            // 这里保持 silent 以不阻塞编译（[#4.H] 表："写出来不会改变语义"）
-        }
-        return;
-    }
-
-    if (hasBang) {
-        // E7001：caller 不在 #Fallible(E) 函数内 + 不在 try block 内
-        if (callerErr.empty()) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E7001);
-        }
-        // E7004：caller / callee 错误类型不一致（同 ! 不可跨类型透传）
-        if (!calleeErr.empty() && calleeErr != callerErr) {
-            throw YuxError(node->getLineNumber(), node->getColumn(),
-                ErrorCode::E7004, calleeErr, callerErr, calleeErr, callerErr, calleeErr);
-        }
-        // callee 不是 #Fallible 但写了 ! ：暂不在 10e/10f 报；保留给后续考虑
-    } else {
-        // E7006：调用 `#Fallible` 函数但未加 `!`（不在 try block 内）
-        if (!calleeErr.empty()) {
-            throw YuxError(node->getLineNumber(), node->getColumn(),
-                ErrorCode::E7006, fnName);
-        }
-    }
-}
+// Phase 10e/10f 的 ID-callee 错误传播校验 (E7001/E7004/E7006/E7016) 已迁至
+// src/sema/call_resolve.cpp 的 sema::checkErrPropagateForIdCall, 形参改成
+// `vector<string>* tryBlockSeenErrs` 解开 Compiler::TryCatchCtx 的 LLVM 耦合.
 
 llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
@@ -590,30 +362,19 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
             const FnSymbolInfo* sym = cands.empty() ? nullptr : cands.front();
             // 仅当能识别为 fn 调用时校验；构造函数 / 类型构造走 callee 路径，但 FnSymbolInfo 也可能有
             TryCatchCtx* tryCtx = _tryCatchStack.empty() ? nullptr : &_tryCatchStack.back();
-            checkErrPropagateForIdCall(_currentFnNode, node, fnName, sym, tryCtx);
+            sema::checkErrPropagateForIdCall(_currentFnNode, node, fnName, sym,
+                                             tryCtx ? &tryCtx->seenErrTypes : nullptr);
         } else if (node->errPropagate()) {
             // 非 ID-literal 但带 `!`：极少见路径（如 nullable 字面量调用），按 caller / try 状态判 E7001
             // 在 try block 内 → 暂放过（路由到 catch 由 10g 实施）
             if (_tryCatchStack.empty()) {
-                string callerErr;
-                if (_currentFnNode) {
-                    if (auto eOpt = _currentFnNode->header()->getAnnoArg("Fallible")) callerErr = *eOpt;
-                }
-                if (callerErr.empty()) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E7001);
-                }
+                sema::checkBangWithoutFallibleCaller(_currentFnNode, node);
             }
         }
     } else if (node->errPropagate() && !dynamic_cast<ExprDotNode*>(calleeExpr)) {
         // fn-value 调用 + `!`：caller 未 fallible 且不在 try 内时报 E7001
         if (_tryCatchStack.empty()) {
-            string callerErr;
-            if (_currentFnNode) {
-                if (auto eOpt = _currentFnNode->header()->getAnnoArg("Fallible")) callerErr = *eOpt;
-            }
-            if (callerErr.empty()) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E7001);
-            }
+            sema::checkBangWithoutFallibleCaller(_currentFnNode, node);
         }
     }
 
@@ -656,15 +417,9 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
 
                 const auto& explicitTypeArgs = node->getTypeArgs();
                 if (!explicitTypeArgs.empty()) {
-                    // 验证类型参数数量
-                    if (explicitTypeArgs.size() != typeParams.size()) {
-                        throw YuxError(node->getLineNumber(), node->getColumn(),
-                            ErrorCode::E6010, fnName, typeParams.size(), explicitTypeArgs.size())
-                            .withHint(std::format("调用处的类型实参个数需与声明匹配；改写为 `{}:<{}>(...)` 形式补齐 {} 个类型",
-                                fnName,
-                                std::string(typeParams.size() == 1 ? "T" : "T1, T2, ..."),
-                                typeParams.size()));
-                    }
+                    // 验证类型参数数量 (E6010 已迁至 sema::validateGenericTypeArgsArity)
+                    sema::validateGenericTypeArgsArity(fnName, typeParams.size(), explicitTypeArgs.size(),
+                                                       node->getLineNumber(), node->getColumn());
                     for (auto& tn : explicitTypeArgs) {
                         typeArgs.push_back(applySubst(tn->getType()));
                     }
@@ -748,14 +503,14 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                     // 非泛型结构体构造函数：按 `S.S` 解析重载，推断未带后缀的整数字面量
                     // 否则会带着 i32 实参落到下方 lookupFnSymbolWithParams 的严格匹配
                     // 失败，再退化到 external function call 路径触发 LLVM 断言。
-                    resolveCtorOverload(_file, fnName, node->getArgs(), node->getLineNumber());
+                    sema::resolveCtorOverload(_file, fnName, node->getArgs(), node->getLineNumber());
                     if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
-                        resolveCtorOverload(_yux->sdkFile(), fnName, node->getArgs(), node->getLineNumber());
+                        sema::resolveCtorOverload(_yux->sdkFile(), fnName, node->getArgs(), node->getLineNumber());
                     }
                 } else {
                     // 解析函数重载
-                    resolveFnOverload(_file, _yux ? _yux->sdkFile() : nullptr, fnName,
-                                      node->getArgs(), node->getLineNumber());
+                    sema::resolveFnOverload(_file, _yux ? _yux->sdkFile() : nullptr, fnName,
+                                            node->getArgs(), node->getLineNumber());
                 }
             }
         }
@@ -930,18 +685,14 @@ llvm::Value* Compiler::compileFunctionCall(
         }
     }
     if (structDecl) {
-        if (structDecl->isPrivate()) {
-            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6008, fnName);
-        }
+        // E6008 / E6009 形态校验已迁至 sema::validateCtorCallShape
+        sema::validateCtorCallShape(structDecl, fnName,
+                                    !callNode->getTypeArgs().empty(),
+                                    callNode->getLineNumber(), callNode->getColumn());
         string effName = fnName;
         bool isGenericCtor = false;
         if (structDecl->isGeneric()) {
             const auto& typeArgs = callNode->getTypeArgs();
-            if (typeArgs.empty()) {
-                throw YuxError(
-                    callNode->getLineNumber(), callNode->getColumn(),
-                    ErrorCode::E6009, fnName);
-            }
             vector<sp<TypeInfo>> instArgs;
             instArgs.reserve(typeArgs.size());
             for (auto& tn : typeArgs) {
@@ -998,49 +749,10 @@ llvm::Value* Compiler::compileFunctionCall(
         // 不要静默回落到下方 ExternalFunctionCall —— 那会按外部 fn 名 forward-decl
         // 一个 void 返回的调用，把 void 值丢给外层 recordTemp / store，触发
         // LLVM `isSized` 断言。见 BUGS.md「构造器实参类型不匹配（Box<T> 形参 + 裸 T 实参）」。
-        string ctorFullName = fnName + "." + fnName;
-        vector<FnSymbolInfo*> ctorCands;
-        _file->collectFnOverloads(ctorFullName, ctorCands);
-        if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
-            _yux->sdkFile()->collectFnOverloads(ctorFullName, ctorCands);
-        }
-        // 把 TypeInfo 渲染成用户友好形式：Box<T>、Array<T>、Fn(P)->R 等
-        std::function<string(const TypeInfo&)> fmtType = [&](const TypeInfo& t) -> string {
-            if (t.kind == TypeKind::Generic && !t.genericArgs.empty()) {
-                string r = t.name + "<";
-                for (size_t i = 0; i < t.genericArgs.size(); ++i) {
-                    if (i) r += ", ";
-                    r += t.genericArgs[i] ? fmtType(*t.genericArgs[i]) : string("?");
-                }
-                r += ">";
-                return r;
-            }
-            if (t.kind == TypeKind::Array && t.elementType) {
-                return "[" + std::to_string(t.arraySize) + "]" + fmtType(*t.elementType);
-            }
-            return t.name;
-        };
-        string ctorSigs;
-        for (auto* c : ctorCands) {
-            ctorSigs += "\n  " + fnName + "(";
-            // params[0] 是接收者本身，跳过
-            for (size_t i = 1; i < c->params.size(); ++i) {
-                if (i > 1) ctorSigs += ", ";
-                ctorSigs += fmtType(c->params[i]);
-            }
-            ctorSigs += ")";
-        }
-        if (ctorCands.empty()) {
-            ctorSigs = " (none declared)";
-        }
-        string argSigs;
-        for (size_t i = 0; i < argTypes.size(); ++i) {
-            if (i) argSigs += ", ";
-            argSigs += fmtType(argTypes[i]);
-        }
-        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                       ErrorCode::E6033, fnName, argSigs, ctorSigs)
-            .withHint("若实参与形参类型仅差 Box<T>，先 `var p Box<T> = T(...)` 落地再传；否则按上方候选签名补齐实参");
+        sema::diagnoseCtorOverloadMismatch(_file,
+            _yux ? _yux->sdkFile() : nullptr,
+            fnName, argTypes,
+            callNode->getLineNumber(), callNode->getColumn());
     }
 
     // v0.6 Phase 2b: 透明类型别名解析，使 alias 名实参 / 形参在重载查找上视为同一类型
@@ -1166,14 +878,9 @@ llvm::Value* Compiler::compileGenericFunctionCall(
 
     const auto& explicitTypeArgs = callNode->getTypeArgs();
     if (!explicitTypeArgs.empty()) {
-        if (explicitTypeArgs.size() != typeParams.size()) {
-            throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                ErrorCode::E6010, fnName, typeParams.size(), explicitTypeArgs.size())
-                .withHint(std::format("调用处的类型实参个数需与声明匹配；改写为 `{}:<{}>(...)` 形式补齐 {} 个类型",
-                    fnName,
-                    std::string(typeParams.size() == 1 ? "T" : "T1, T2, ..."),
-                    typeParams.size()));
-        }
+        // E6010 已迁至 sema::validateGenericTypeArgsArity
+        sema::validateGenericTypeArgsArity(fnName, typeParams.size(), explicitTypeArgs.size(),
+                                           callNode->getLineNumber(), callNode->getColumn());
         for (auto& tn : explicitTypeArgs) {
             typeArgs.push_back(applySubst(tn->getType()));
         }
@@ -2331,37 +2038,9 @@ llvm::Value* Compiler::compileDynMethodCall(
             draftBare.empty() ? string("?") : draftBare);
     }
 
-    // 2. 找方法签名 (按名 + arity 匹配; yux 暂无方法名重载, 第一处即终)
-    FnHeaderNode* sig = nullptr;
-    for (auto& s : draftDecl->signatures()) {
-        if (!s) continue;
-        if (s->name().getText() != member) continue;
-        sig = s;
-        break;
-    }
-    if (!sig) {
-        throw YuxError(line, col, ErrorCode::E6016, member, baseType.getFullName());
-    }
-
-    // 3. arity 校验
-    if (sig->params().size() != argTypes.size()) {
-        throw YuxError(line, col, ErrorCode::E6012, member,
-            (int)sig->params().size(), (int)argTypes.size());
-    }
-
-    // 4. 参数类型按 D 签名比对 (类型名 + 全名相等; 与 yux 名义类型一致)
-    for (size_t i = 0; i < sig->params().size(); ++i) {
-        auto sp = sig->params()[i];
-        if (!sp || !sp->type()) continue;
-        TypeInfo expected = sp->type()->getType();
-        if (expected.getFullName() != argTypes[i].getFullName()) {
-            throw YuxError(line, col, ErrorCode::E6015)
-                .withHint("Dyn<" + draftQualified + ">." + member + " arg#"
-                    + std::to_string(i) + ": 期望 " + expected.getFullName()
-                    + ", 实际 " + argTypes[i].getFullName()
-                    + " (Dyn 方法调用参数类型按 draft 签名静态匹配)");
-        }
-    }
+    // 2-4. sig 查找 / arity / 形参类型 抠到 sema (E6016 / E6012 / E6015).
+    FnHeaderNode* sig = sema::resolveDynMethodSig(
+        draftDecl, draftQualified, baseType, member, argTypes, line, col);
 
     // 5. Phase 3d: load fat_ptr.vtable → GEP slot[i+1] → load fn ptr → indirect call.
     //    receiver:
