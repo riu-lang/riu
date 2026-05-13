@@ -1,0 +1,9 @@
+struct Pair<T, U> {
+  a T
+  b U
+}
+
+fn main() {
+  var p Pair<i32> = Pair:<i32, i32>(1i32, 2i32)
+  ret;
+}

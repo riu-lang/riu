@@ -946,7 +946,7 @@ llvm::Value* Compiler::compileFunctionCall(
             for (auto& tn : typeArgs) {
                 instArgs.push_back(make_shared<TypeInfo>(applySubst(tn->getType())));
             }
-            effName = ensureStructInstance(structDecl, instArgs, structOwner);
+            effName = ensureStructInstance(structDecl, instArgs, structOwner, callNode->getLineNumber());
             isGenericCtor = true;
         }
         if (isGenericCtor) {

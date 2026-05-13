@@ -239,7 +239,10 @@ string Compiler::ensureStructInstance(
 
     // 验证类型参数数量
     if (args.size() != baseDecl->typeParams().size()) {
-        throw YuxError(sourceLine, ErrorCode::E6011,
+        // 调用方未提供位置（getLLVMType 路径常见）时，退回到 struct 声明行，避免 assert(line>0) 触发 abort
+        int errLine = sourceLine > 0 ? sourceLine : (int)baseDecl->name().getLine();
+        if (errLine <= 0) errLine = 1;
+        throw YuxError(errLine, ErrorCode::E6011,
             baseName, baseDecl->typeParams().size(), args.size())
             .withHint(std::format("实例化时的类型实参个数需与声明匹配；改写为 `{}<{}>` 形式补齐 {} 个类型",
                 baseName,
