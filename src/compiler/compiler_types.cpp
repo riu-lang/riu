@@ -380,11 +380,27 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     // 先应用类型替换
     auto type = applySubst(rawType);
     DEBUG_LOG_VAL("  getLLVMType", type.name << " (kind=" << static_cast<int>(type.kind) << ")");
-    
+
     // 空类型返回 void
     if (type.empty()) {
         DEBUG_LOG("    -> Void type");
         return _builder.getVoidTy();
+    }
+
+    // 内建泛型类型（Box/Weak/Array/Nullable）写成 Normal 形式（即不带 `<T>`）：
+    // 这些类型没有 StructDecl 兜底，落到下方各分支也只剩 `Unknown type (null)`，
+    // 返回 null 会让调用方在后续 SEH/段错误时崩。这里早抛 E6011 以给出诊断。
+    if (type.isNormal()) {
+        static const std::pair<const char*, size_t> kBuiltinGenerics[] = {
+            {"Box", 1}, {"Weak", 1}, {"Array", 1}, {"Nullable", 1},
+        };
+        for (auto [bname, arity] : kBuiltinGenerics) {
+            if (type.name == bname) {
+                throw YuxError(1, ErrorCode::E6011, type.name, arity, (size_t)0)
+                    .withHint(std::format("`{}` 是泛型类型，使用时须带类型实参：改写为 `{}<T>`",
+                        type.name, type.name));
+            }
+        }
     }
 
     // 固定大小数组 [N]T
@@ -548,6 +564,17 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     }
     
     if (structDecl) {
+        // 泛型 struct 但用法没带 `<T>`：避免落进 getOrCreateStructType 把未实例化的类型参数当成
+        // 实类型 → 字段类型 null → llvm::StructType::create 段错误
+        if (structDecl->isGeneric()) {
+            int errLine = (int)structDecl->name().getLine();
+            if (errLine <= 0) errLine = 1;
+            throw YuxError(errLine, ErrorCode::E6011,
+                type.name, structDecl->typeParams().size(), (size_t)0)
+                .withHint(std::format("`{}` 是泛型类型，使用时须带类型实参：改写为 `{}<{}>`",
+                    type.name, type.name,
+                    std::string(structDecl->typeParams().size() == 1 ? "T" : "T1, T2, ...")));
+        }
         DEBUG_LOG_VAL("    -> Struct (creating on demand)", type.name);
         auto structType = getOrCreateStructType(structDecl, sourceFile);
         if (structType) {

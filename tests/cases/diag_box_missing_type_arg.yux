@@ -1,0 +1,4 @@
+fn main() {
+  var b Box = 10i32
+  ret;
+}
