@@ -10,6 +10,7 @@
 // 不依赖任何 LLVM 头; 由 yux_frontend 静态库提供, Compiler 与未来的 SemaPass 共享.
 
 #include "sema/call_resolve.h"
+#include "ast/yux.h"
 #include "types.h"
 #include <format>
 
@@ -391,6 +392,156 @@ void checkErrPropagateForIdCall(FnNode* currentFnNode,
             throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
                 ErrorCode::E7006, fnName);
         }
+    }
+}
+
+// ==================== 包/模块别名调用解析 (Phase 3.3.1.a) ====================
+// 原 `compileMethodCall` line 195-254 的两个 inline 块 (包别名 + 模块别名)
+// 抠到 sema 层. 命中其中一种时返回 {matched=true, fnName, fnSym}, 调用方
+// 走 compileKnownFunctionCall; 未命中返回 {matched=false} 由调用方继续.
+// 纯 AST 符号查 + 字符串拼接, 无 LLVM 依赖.
+ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux,
+                                       p<ExprCallNode> callNode,
+                                       p<ExprDotNode> dotNode,
+                                       const vector<TypeInfo>& argTypes) {
+    ModuleFnCallResult result;
+    auto member = dotNode->member();
+
+    // 包别名调用: package.module.fn(args)
+    {
+        string aliasName;
+        vector<string> segs;
+        if (ExprDotNode::parseChain(dotNode, aliasName, segs) && segs.size() >= 2) {
+            auto aliasSym = file->lookupSymbol(aliasName);
+            if (aliasSym && (aliasSym->kind == SymbolKind::Package || aliasSym->kind == SymbolKind::Module)
+                && file->isAmbiguousAlias(aliasName)) {
+                file->throwAmbiguousAlias(aliasName, callNode->getLineNumber());
+            }
+            if (aliasSym && aliasSym->kind == SymbolKind::Package) {
+                string childKey;
+                for (size_t i = 0; i + 1 < segs.size(); ++i) {
+                    if (i) childKey += ".";
+                    childKey += segs[i];
+                }
+                auto* target = file->packageChild(aliasName, childKey);
+                if (!target) {
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                        ErrorCode::E6001, childKey, aliasSym->moduleName);
+                }
+                const string& fnName = segs.back();
+                auto* fnSym = target->lookupFnSymbolWithParams(fnName, argTypes);
+                if (!fnSym) {
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                        ErrorCode::E6002, fnName, aliasSym->moduleName + "." + childKey);
+                }
+                if (fnSym->isPrivate) {
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                        ErrorCode::E6003, fnName);
+                }
+                result.matched = true;
+                result.fnName = fnName;
+                result.fnSym = fnSym;
+                return result;
+            }
+        }
+    }
+
+    // 模块别名调用: module.fn(args)
+    // yux 为 nullptr 时整段路径跳过 (SemaPass 早期可能拿不到 Yux*, 留给 Compiler 兜底).
+    if (auto baseLit = dynamic_cast<ExprLiteralNode*>(dotNode->baseExpr()); yux && baseLit) {
+        if (auto objLit = dynamic_cast<LiteralObjNode*>(baseLit->literal())) {
+            auto aliasName = objLit->getValue().getText();
+            auto aliasSym = file->lookupSymbol(aliasName);
+            if (aliasSym && aliasSym->kind == SymbolKind::Module) {
+                auto targetMod = yux->module(aliasSym->moduleName);
+                if (!targetMod) {
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                        ErrorCode::E6005, aliasSym->moduleName, aliasName);
+                }
+                auto* fnSym = targetMod->lookupFnSymbolWithParams(member, argTypes);
+                if (!fnSym) {
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                        ErrorCode::E6002, member, aliasSym->moduleName);
+                }
+                if (fnSym->isPrivate) {
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                        ErrorCode::E6004, member);
+                }
+                result.matched = true;
+                result.fnName = member;
+                result.fnSym = fnSym;
+                return result;
+            }
+        }
+    }
+
+    return result;
+}
+
+// ==================== 泛型函数 typeArgs 推断 (Phase 3.3.1.b) ====================
+// 原 `compileGenericFunctionCall` 的 else 分支 (无显式 typeArgs 路径) 整体抠出.
+// arity / 推断 / unify 全部纯 TypeInfo, 无 LLVM 依赖.
+void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn,
+                            const string& fnName,
+                            const vector<TypeInfo>& argTypes,
+                            vector<TypeInfo>& outTypeArgs) {
+    const auto& typeParams = genericFn->header()->typeParams();
+    auto params = genericFn->header()->params();
+    if (params.size() != argTypes.size()) {
+        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+            ErrorCode::E6012, fnName, params.size(), argTypes.size());
+    }
+
+    map<string, TypeInfo> inferred;
+    // 递归 unify: 形参 pType 与实参 aType 匹配; 遇到形如 T 的裸类型形参则记录推断
+    std::function<void(const TypeInfo&, const TypeInfo&)> unify =
+        [&](const TypeInfo& pType, const TypeInfo& aType) {
+            if (pType.isNormal() && !isBuiltinType(pType.name)) {
+                for (auto& tp : typeParams) {
+                    if (pType.name == tp) {
+                        inferred[tp] = aType;
+                        return;
+                    }
+                }
+            }
+            // Generic vs Generic: 同名同元数则递归各 typeArg
+            if (pType.kind == TypeKind::Generic && aType.kind == TypeKind::Generic
+                && pType.name == aType.name
+                && pType.genericArgs.size() == aType.genericArgs.size()) {
+                for (size_t i = 0; i < pType.genericArgs.size(); ++i) {
+                    if (pType.genericArgs[i] && aType.genericArgs[i]) {
+                        unify(*pType.genericArgs[i], *aType.genericArgs[i]);
+                    }
+                }
+            }
+        };
+    for (size_t i = 0; i < params.size(); ++i) {
+        auto paramType = params[i]->type();
+        if (!paramType) continue;
+        unify(paramType->getType(), argTypes[i]);
+    }
+
+    for (auto& tp : typeParams) {
+        auto it = inferred.find(tp);
+        if (it == inferred.end()) {
+            throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                ErrorCode::E6013, tp, fnName);
+        }
+        outTypeArgs.push_back(it->second);
+    }
+}
+
+// ==================== 函数符号可见性 (Phase 3.3.1.c) ====================
+// 原 `compileFunctionCall` line 770 的 inline 块, 仅一行条件 + E6006 throw.
+// 抽出供 SemaPass 与 Compiler 共用; 纯字符串比较.
+void validateFnSymbolVisibility(const FnSymbolInfo* fnSymbol,
+                                const string& currentModuleName,
+                                const string& fnName,
+                                int line, int col) {
+    if (!fnSymbol) return;
+    if (fnSymbol->isPrivate && !fnSymbol->moduleName.empty()
+        && fnSymbol->moduleName != currentModuleName) {
+        throw YuxError(line, col, ErrorCode::E6006, fnName);
     }
 }
 

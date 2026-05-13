@@ -192,65 +192,10 @@ llvm::Value* Compiler::compileMethodCall(
     auto baseExpr = dotNode->baseExpr();
     auto member = dotNode->member();
 
-    // 处理包别名调用: package.module.fn(args)
-    {
-        string aliasName;
-        vector<string> segs;
-        if (ExprDotNode::parseChain(dotNode, aliasName, segs) && segs.size() >= 2) {
-            auto aliasSym = _file->lookupSymbol(aliasName);
-            if (aliasSym && (aliasSym->kind == SymbolKind::Package || aliasSym->kind == SymbolKind::Module)
-                && _file->isAmbiguousAlias(aliasName)) {
-                _file->throwAmbiguousAlias(aliasName, callNode->getLineNumber());
-            }
-            if (aliasSym && aliasSym->kind == SymbolKind::Package) {
-                string childKey;
-                for (size_t i = 0; i + 1 < segs.size(); ++i) {
-                    if (i) childKey += ".";
-                    childKey += segs[i];
-                }
-                auto* target = _file->packageChild(aliasName, childKey);
-                if (!target) {
-                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                        ErrorCode::E6001, childKey, aliasSym->moduleName);
-                }
-                const string& fnName = segs.back();
-                auto* fnSym = target->lookupFnSymbolWithParams(fnName, argTypes);
-                if (!fnSym) {
-                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                        ErrorCode::E6002, fnName, aliasSym->moduleName + "." + childKey);
-                }
-                if (fnSym->isPrivate) {
-                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                        ErrorCode::E6003, fnName);
-                }
-                return compileKnownFunctionCall(callNode, fnName, args, argTypes, fnSym);
-            }
-        }
-    }
-
-    // 处理模块别名调用: module.fn(args)
-    if (auto baseLit = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
-        if (auto objLit = dynamic_cast<LiteralObjNode*>(baseLit->literal())) {
-            auto aliasName = objLit->getValue().getText();
-            auto aliasSym = _file->lookupSymbol(aliasName);
-            if (aliasSym && aliasSym->kind == SymbolKind::Module) {
-                auto targetMod = _yux ? _yux->module(aliasSym->moduleName) : nullptr;
-                if (!targetMod) {
-                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                        ErrorCode::E6005, aliasSym->moduleName, aliasName);
-                }
-                auto* fnSym = targetMod->lookupFnSymbolWithParams(member, argTypes);
-                if (!fnSym) {
-                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                        ErrorCode::E6002, member, aliasSym->moduleName);
-                }
-                if (fnSym->isPrivate) {
-                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                        ErrorCode::E6004, member);
-                }
-                return compileKnownFunctionCall(callNode, member, args, argTypes, fnSym);
-            }
-        }
+    // 处理包别名调用 / 模块别名调用 (E6001-E6005 已迁至 sema::resolveModuleFnCall)
+    if (auto modCall = sema::resolveModuleFnCall(_file, _yux, callNode, dotNode, argTypes);
+        modCall.matched) {
+        return compileKnownFunctionCall(callNode, modCall.fnName, args, argTypes, modCall.fnSym);
     }
 
     auto baseType = baseExpr->getType();
@@ -822,9 +767,9 @@ llvm::Value* Compiler::compileFunctionCall(
     }
 
     if (fnSymbol) {
-        if (fnSymbol->isPrivate && !fnSymbol->moduleName.empty() && fnSymbol->moduleName != _file->moduleName()) {
-            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6006, fnName);
-        }
+        // E6006 已迁至 sema::validateFnSymbolVisibility
+        sema::validateFnSymbolVisibility(fnSymbol, _file->moduleName(), fnName,
+                                          callNode->getLineNumber(), callNode->getColumn());
         return compileKnownFunctionCall(callNode, fnName, args, argTypes, fnSymbol);
     }
 
@@ -885,49 +830,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             typeArgs.push_back(applySubst(tn->getType()));
         }
     } else {
-        auto params = genericFn->header()->params();
-        if (params.size() != argTypes.size()) {
-            throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                ErrorCode::E6012, fnName, params.size(), argTypes.size());
-        }
-
-        map<string, TypeInfo> inferred;
-        // 递归 unify：参数 pType 与实参 aType 匹配；遇到形如 T 的裸类型参数则记录推断
-        std::function<void(const TypeInfo&, const TypeInfo&)> unify =
-            [&](const TypeInfo& pType, const TypeInfo& aType) {
-                if (pType.isNormal() && !isBuiltinType(pType.name)) {
-                    for (auto& tp : typeParams) {
-                        if (pType.name == tp) {
-                            inferred[tp] = aType;
-                            return;
-                        }
-                    }
-                }
-                // Generic vs Generic：同名同元数则递归各 typeArg
-                if (pType.kind == TypeKind::Generic && aType.kind == TypeKind::Generic
-                    && pType.name == aType.name
-                    && pType.genericArgs.size() == aType.genericArgs.size()) {
-                    for (size_t i = 0; i < pType.genericArgs.size(); ++i) {
-                        if (pType.genericArgs[i] && aType.genericArgs[i]) {
-                            unify(*pType.genericArgs[i], *aType.genericArgs[i]);
-                        }
-                    }
-                }
-            };
-        for (size_t i = 0; i < params.size(); ++i) {
-            auto paramType = params[i]->type();
-            if (!paramType) continue;
-            unify(paramType->getType(), argTypes[i]);
-        }
-
-        for (auto& tp : typeParams) {
-            auto it = inferred.find(tp);
-            if (it == inferred.end()) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                    ErrorCode::E6013, tp, fnName);
-            }
-            typeArgs.push_back(it->second);
-        }
+        // E6012 / E6013 已迁至 sema::inferGenericFnTypeArgs
+        sema::inferGenericFnTypeArgs(callNode, genericFn, fnName, argTypes, typeArgs);
     }
 
     if (genericFn->header()->hasAnno("CompilerInner")) {

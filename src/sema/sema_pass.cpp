@@ -284,9 +284,41 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                             }
                         } else if (!structDecl) {
                             sema::resolveFnOverload(_file, _sdkFile, fnName, n->getArgs(), line);
+                            // Phase 3.3.1.c: 非泛型 ID-callee 解析到 fnSymbol 后做可见性校验 (E6006).
+                            // argTypes 经 getType() 计算; 若任一实参未推断 (lambda 形参等),
+                            // 跳过并交给 Compiler 兜底.
+                            vector<TypeInfo> argTypes;
+                            bool ok = true;
+                            for (auto& a : n->getArgs()) {
+                                try { argTypes.push_back(a->getType()); }
+                                catch (...) { ok = false; break; }
+                            }
+                            if (ok) {
+                                auto* fnSym = _file->lookupFnSymbolWithParams(fnName, argTypes);
+                                if (!fnSym && _sdkFile && _sdkFile != _file) {
+                                    fnSym = _sdkFile->lookupFnSymbolWithParams(fnName, argTypes);
+                                }
+                                sema::validateFnSymbolVisibility(fnSym, _file->moduleName(),
+                                                                  fnName, line, col);
+                            }
                         }
                     }
                 }
+            }
+        }
+
+        // Phase 3.3.1.a: Dot-callee 包/模块别名调用 (E6001-E6005).
+        // 与 compileMethodCall line 195-254 同款条件; argTypes 经 getType()
+        // 计算, 任一参数未推断时跳过, 交给 Compiler 兜底.
+        if (auto dotCallee = dynamic_cast<p<ExprDotNode>>(n->getCalleeExpr())) {
+            vector<TypeInfo> argTypes;
+            bool ok = true;
+            for (auto& a : n->getArgs()) {
+                try { argTypes.push_back(a->getType()); }
+                catch (...) { ok = false; break; }
+            }
+            if (ok) {
+                sema::resolveModuleFnCall(_file, nullptr, n, dotCallee, argTypes);
             }
         }
         return;

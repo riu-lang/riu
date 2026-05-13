@@ -9,6 +9,8 @@
 #include "ast/node/file_node.h"
 #include "ast/node/fn_node.h"
 
+class Yux;
+
 // 调用重载解析（Sema/Codegen 拆分 Phase 3.3 前置）
 //
 // 从 `src/compiler/compiler_call.cpp` 抠出, 不依赖 LLVM, 用于:
@@ -127,6 +129,70 @@ void checkErrPropagateForIdCall(FnNode* currentFnNode,
                                 const string& fnName,
                                 const FnSymbolInfo* calleeSym,
                                 vector<string>* tryBlockSeenErrs);
+
+// 包/模块别名调用解析 (Phase 3.3.1.a).
+//
+// 识别两种调用形态:
+//   1. 包别名: `pkg.mod.fn(args)` —— ExprDotNode::parseChain 拿到 (aliasName, segs),
+//      segs.size() >= 2, aliasName 在 file 符号表登记为 Package
+//   2. 模块别名: `mod.fn(args)` —— baseExpr 是 ID literal, aliasName 登记为 Module
+//
+// 命中其中一种时返回 `matched = true`, 填充 fnName + fnSym, 调用方据此走
+// compileKnownFunctionCall 路径; 未命中时返回 `matched = false`, 调用方继续后续
+// 内置类型 / 结构体方法分派.
+//
+// 抛错:
+//   - E6001 (包下找不到子模块) / E6002 (模块下找不到 fn) / E6003 (包下 fn 私有)
+//   - E6005 (模块文件 Yux::module 加载失败) / E6004 (模块下 fn 私有)
+//   - 多重别名命中 (Package + Module 同名) 直接走 throwAmbiguousAlias
+//
+// `yux` 参数允许为 nullptr (SemaPass 早期可能拿不到; Compiler 路径恒非空), 此时
+// 模块别名分支整段跳过 (返回 matched=false), 由 Compiler 路径兜底; 不会因 yux 缺
+// 失而误报 E6005.
+//
+// 纯 AST / 纯符号查 + 字符串拼接, 无 LLVM 依赖.
+struct ModuleFnCallResult {
+    bool matched = false;
+    string fnName;
+    FnSymbolInfo* fnSym = nullptr;
+};
+
+ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux,
+                                       p<ExprCallNode> callNode,
+                                       p<ExprDotNode> dotNode,
+                                       const vector<TypeInfo>& argTypes);
+
+// 泛型函数调用的 typeArgs 推断 (Phase 3.3.1.b).
+//
+// 调用前提: callNode->getTypeArgs() 为空 (无显式 typeArgs 路径), genericFn->header()->isGeneric()
+// 已被调用方确认.
+//
+// 抛错:
+//   - E6012: genericFn 的 params arity 与 argTypes.size() 不一致
+//   - E6013: 某 type param 无法从形参 / 实参的 unify 反推 (未出现在裸类型位置或嵌套泛型对位)
+//
+// 输出: outTypeArgs 按 typeParams 顺序追加推断结果 (调用方应保证传入为空 vector).
+// 纯 TypeInfo unify + map 查表, 无 LLVM 依赖.
+void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn,
+                            const string& fnName,
+                            const vector<TypeInfo>& argTypes,
+                            vector<TypeInfo>& outTypeArgs);
+
+// 函数符号可见性检查 (Phase 3.3.1.c, E6006).
+//
+// 当 `fnSymbol` 已解析到一个跨模块的私有函数 (`_`-prefixed) 时, 拒绝调用.
+// 私有函数: `fnSymbol->isPrivate == true` 且 `moduleName` 非空且与当前 file 模块不同.
+// `currentModuleName` 是调用点所在 file 的 moduleName (`file->moduleName()`).
+//
+// 调用方:
+//   - Compiler::compileFunctionCall 在 fnSymbol 命中重载后立即调用
+//   - SemaPass.visitExpr 在 ID-callee 路径解析到 fnSymbol 时调用
+//
+// 纯字符串比较, 无 LLVM 依赖.
+void validateFnSymbolVisibility(const FnSymbolInfo* fnSymbol,
+                                const string& currentModuleName,
+                                const string& fnName,
+                                int line, int col);
 
 } // namespace sema
 
