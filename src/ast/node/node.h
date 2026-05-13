@@ -63,6 +63,24 @@ struct FnSymbolInfo {
     }
 };
 
+// Phase 2.3 Sema/Codegen 拆分：表达式经语义检查后定位到的符号引用。
+// 当前 codegen 在 compileLiteralExpr / compileCallExpr 等处现场 lookupSymbol /
+// lookupFnSymbol，把同一个表达式的符号查表反复跑。SemaPass 抽出后这一步将提前完成，
+// 结果挂在 ExprNode::_resolvedSymbol；codegen 改成直接读，无需再次入 scope。
+//
+// 存放策略：
+// - 只持指针，不复制。ScopeNode 持有的 SymbolInfo / FnSymbolInfo 与 AST 同生命周期，
+//   在编译流程内地址稳定（ScopeNode 用 map 而非 vector，rehash 不影响 value 地址）。
+// - var / fn 互斥：一个表达式要么解析到变量符号，要么解析到函数符号；都为空表示
+//   "尚未解析"（由外层 optional 区分 "未写入" vs "解析为 null"）。
+struct ResolvedSymbol {
+    SymbolInfo*   var = nullptr;
+    FnSymbolInfo* fn  = nullptr;
+
+    [[nodiscard]] bool isVar() const { return var != nullptr; }
+    [[nodiscard]] bool isFn()  const { return fn  != nullptr; }
+};
+
 class ScopeNode;
 
 class Node {

@@ -317,6 +317,11 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
                 sym = sc->lookupSymbol(varName);
             }
         }
+        // Phase 2.3：解析到的变量符号挂回 AST，供后续 pass（codegen/LSP）复用，
+        // 避免 2.4 切读路径前再发生一次 lookupSymbol。
+        if (sym) {
+            node->setResolvedVar(sym);
+        }
 
         if (sym && _localVarPtrs.contains(varName)) {
             DEBUG_LOG_VAL("    Expr: VariableLoad", varName << " : " << sym->type.name);

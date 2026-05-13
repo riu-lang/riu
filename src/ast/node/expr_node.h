@@ -28,6 +28,12 @@ protected:
     // 空 optional = 尚未解析（区别于 TypeInfo::empty() 表示的 void 类型）。
     std::optional<TypeInfo> _resolvedType;
 
+    // Phase 2.3 Sema/Codegen 拆分：表达式解析到的符号（变量符号 / 函数符号 / 空）。
+    // 详见 node.h ResolvedSymbol 注释。当前过渡期：仅在 compile<Foo>Expr 现场已经查到
+    // 符号的位置写入（首批：compileLiteralExpr 的对象字面量分支），其余位置陆续接入；
+    // 暂不强制 codegen 改读，2.4 才统一切换读路径。
+    std::optional<ResolvedSymbol> _resolvedSymbol;
+
 public:
     ExprNode(const p<Node>& parent) : Node(parent) {
     }
@@ -35,6 +41,12 @@ public:
     void setResolvedType(TypeInfo t) { _resolvedType = std::move(t); }
     [[nodiscard]] bool hasResolvedType() const { return _resolvedType.has_value(); }
     [[nodiscard]] const TypeInfo& resolvedType() const { return *_resolvedType; }
+
+    void setResolvedSymbol(ResolvedSymbol s) { _resolvedSymbol = s; }
+    void setResolvedVar(SymbolInfo* v) { _resolvedSymbol = ResolvedSymbol{v, nullptr}; }
+    void setResolvedFn(FnSymbolInfo* f) { _resolvedSymbol = ResolvedSymbol{nullptr, f}; }
+    [[nodiscard]] bool hasResolvedSymbol() const { return _resolvedSymbol.has_value(); }
+    [[nodiscard]] const ResolvedSymbol& resolvedSymbol() const { return *_resolvedSymbol; }
 };
 
 // 如果表达式是无后缀的整数字面量且其类型可以推断，则返回 true。
