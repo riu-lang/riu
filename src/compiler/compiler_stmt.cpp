@@ -1202,6 +1202,20 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             }
         }
 
+        // Phase 4c 对称：Box<T>.field = ... 自动 deref
+        // 读路径已在 compileMemberAccess（compiler_expr.cpp）里对 Box<T> 做了 deref：
+        // load handle，payload = handle + 8，再按内层 T 走字段 GEP。
+        // 写路径之前漏了这一段，命中 Box<T> 会因为 "Box" 没有 StructDecl 抛 E3045。
+        // 这里把同样的处理补齐：先记下 Box 形态，待取到 structPtr 后再做 GEP+load。
+        bool needBoxDeref = false;
+        TypeInfo boxOuterType = actualType;
+        if (actualType.isBox()) {
+            needBoxDeref = true;
+            if (auto inner = actualType.boxElementType()) {
+                actualType = *inner;
+            }
+        }
+
         auto structDecl = _file->getStructDecl(actualType.name);
         if (!structDecl && _yux && _yux->sdkFile()) {
             structDecl = _yux->sdkFile()->getStructDecl(actualType.name);
@@ -1219,6 +1233,18 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         }
 
         llvm::Value* structPtr = it->second;
+
+        // Box<T> 写入：load handle 字段（offset 0），payload 起始 = handle + 8
+        if (needBoxDeref) {
+            auto boxStructType = getLLVMType(boxOuterType);
+            auto zero32 = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto handleField = _builder.CreateGEP(
+                boxStructType, structPtr, {zero32, zero32}, "box.handle_field");
+            auto handle = _builder.CreateLoad(
+                llvm::PointerType::get(_context, 0), handleField, "box.handle");
+            structPtr = _builder.CreateGEP(
+                _builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "box.payload");
+        }
 
         auto structType = getLLVMType(actualType);
 

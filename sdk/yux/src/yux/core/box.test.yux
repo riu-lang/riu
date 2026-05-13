@@ -59,6 +59,27 @@ fn test_box_share_write_through() {
   assert_eq(q.sum(), 120i32)
 }
 
+; ---------- box_field_write：Box<T>.field = ... 自动 deref 写入（与读路径对称） ----------
+; 回归 BUGS.md「Box 成员写入语义层报 E3045」
+
+#Test
+fn test_box_field_write() {
+  var p Box<BoxPair> = BoxPair(1i32, 2i32)
+  p.a = 100i32
+  p.b = 200i32
+  assert_eq(p.a, 100i32)
+  assert_eq(p.b, 200i32)
+
+  ; 复合赋值同样要走 deref
+  p.a += 1i32
+  assert_eq(p.a, 101i32)
+
+  ; 共享句柄：写穿后另一句柄读到新值
+  var q Box<BoxPair> = p
+  q.a = 7i32
+  assert_eq(p.a, 7i32)
+}
+
 ; ---------- box_reassign_ctor：Box 上下文驱动构造 + 顶层重赋 ----------
 
 #Test
