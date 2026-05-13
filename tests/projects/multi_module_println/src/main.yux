@@ -1,0 +1,13 @@
+use yux.core.*
+use sub.*
+use util.*
+
+; 多模块同时调泛型实例 (println$i32 / println$str) 不应在 LLD 时报 duplicate symbol.
+; 见 BUGS.md P1-MMP: 修前 main/sub/util 三方都 println 会触发 lld duplicate.
+
+fn main() {
+    println("main")
+    println(42)
+    sub_say()
+    util_say()
+}

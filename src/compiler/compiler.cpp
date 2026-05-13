@@ -555,8 +555,14 @@ void Compiler::emitFnInstances() {
                     if (auto e = baseFn->header()->getAnnoArg("Fallible")) fallibleErr = *e;
                     auto llvmRetType = wrapFallibleRetType(retType, fallibleErr);
                     auto fnType = llvm::FunctionType::get(llvmRetType, llvmParamTypes, false);
-                    fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledFnName, _module);
+                    fn = llvm::Function::Create(fnType, llvm::Function::LinkOnceODRLinkage, mangledFnName, _module);
                 }
+                // 泛型实例跨 TU 由 mangle 名保证 ODR 等价，定义点统一标 linkonce_odr +
+                // COMDAT，让 LLD 在多模块各自实例化时合并同名定义（修 P1-MMP）。
+                // COFF 平台下 linkonce_odr 必须显式 COMDAT，否则仍按强符号 emit。
+                fn->setLinkage(llvm::Function::LinkOnceODRLinkage);
+                fn->setVisibility(llvm::GlobalValue::DefaultVisibility);
+                fn->setComdat(_module->getOrInsertComdat(mangledFnName));
 
                 DEBUG_LOG_VAL("  Emitting generic function instance", inst.mangledName);
                 compileFn(baseFn, fn);
