@@ -106,9 +106,15 @@ void SemaPass::run() {
 
 void SemaPass::visitFn(p<FnNode> fn) {
     if (!fn) return;
+    // Phase 3.3 前置.4: 进入 fn 时记 _currentFn, 让 visitExpr 里的
+    // checkErrPropagateForIdCall / checkBangWithoutFallibleCaller 能拿到
+    // caller 的 #Fallible(E) 注解.
+    auto savedFn = _currentFn;
+    _currentFn = fn;
     for (auto& stmt : fn->body()) {
         visitStmt(stmt);
     }
+    _currentFn = savedFn;
 }
 
 void SemaPass::visitBlock(p<StatementBlockNode> block) {
@@ -193,6 +199,36 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     if (auto n = dynamic_cast<p<ExprCallNode>>(expr)) {
         visitExpr(n->getCalleeExpr());
         for (auto& a : n->getArgs()) visitExpr(a);
+
+        // Phase 3.3 前置.4: ID-callee / 非-ID-callee 的错误传播校验
+        // (E7001/E7004/E7006/E7016). 协议与 Compiler::compileCallExpr 顶部
+        // 完全一致 —— ID-literal 走 checkErrPropagateForIdCall (按 fnName
+        // 取第一候选, 10e 视多重载为同质); 非 ID-literal + ! + 不在 try 内
+        // 走 checkBangWithoutFallibleCaller. _tryStack 顶端的 vector* 用作
+        // tryBlockSeenErrs (callee 是 #Fallible 时把 errType append 进去,
+        // 供 E7002 穷尽性使用; SemaPass 暂不读它, 由 Compiler 走 E7002).
+        auto calleeExpr = n->getCalleeExpr();
+        if (auto litCallee = dynamic_cast<p<ExprLiteralNode>>(calleeExpr)) {
+            if (auto objLit = dynamic_cast<p<LiteralObjNode>>(litCallee->literal())) {
+                string fnNameProp = objLit->getValue().getText();
+                vector<FnSymbolInfo*> cands;
+                _file->collectFnOverloads(fnNameProp, cands);
+                if (_sdkFile && _sdkFile != _file) {
+                    _sdkFile->collectFnOverloads(fnNameProp, cands);
+                }
+                const FnSymbolInfo* sym = cands.empty() ? nullptr : cands.front();
+                vector<string>* seen = _tryStack.empty() ? nullptr : &_tryStack.back();
+                sema::checkErrPropagateForIdCall(_currentFn, n, fnNameProp, sym, seen);
+            } else if (n->errPropagate()) {
+                if (_tryStack.empty()) {
+                    sema::checkBangWithoutFallibleCaller(_currentFn, n);
+                }
+            }
+        } else if (n->errPropagate() && !dynamic_cast<p<ExprDotNode>>(calleeExpr)) {
+            if (_tryStack.empty()) {
+                sema::checkBangWithoutFallibleCaller(_currentFn, n);
+            }
+        }
 
         // Phase 3.3 前置.2：SemaPass 主动驱动重载解析 + 灵活整数推断.
         // 只接管"纯 ID callee + 无显式类型实参 + 非泛型"的情形, 与
@@ -312,7 +348,14 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         return;
     }
     if (auto n = dynamic_cast<p<ExprTryCatchNode>>(expr)) {
+        // Phase 3.3 前置.4: 进 try block 前 push 新的 seenErrTypes 层,
+        // visitBlock 内的 ID-callee 检查会把 #Fallible callee 的错误类型
+        // append 进栈顶 (供 E7002 穷尽性使用; SemaPass 暂不读, Compiler
+        // 仍走自己的 _tryCatchStack 做 E7002 / E7011). pop 后访问 catch
+        // arms (catches 在外层 try 视野之外, 不属于父 try 栈层).
+        _tryStack.emplace_back();
         visitBlock(n->tryBlock());
+        _tryStack.pop_back();
         for (auto& c : n->catches()) visitBlock(c->body());
         return;
     }

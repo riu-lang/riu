@@ -35,6 +35,14 @@ private:
     p<FileNode> _file;
     p<FileNode> _sdkFile;
 
+    // Phase 3.3 前置.4: 当前所在 fn (用于 caller 的 #Fallible(E) 校验) +
+    // try block 栈 (用于 ID-callee 错误传播 E7001/E7004/E7006/E7016).
+    // 与 Compiler 的 `_currentFnNode` / `_tryCatchStack` 协议同步: 进入
+    // visitFn 时 push, 离开时 pop; 进入 ExprTryCatchNode.tryBlock 时 push
+    // 新的 seenErrTypes 层, visitBlock 完后 pop (catch arms 不在栈内).
+    p<FnNode> _currentFn = nullptr;
+    vector<vector<string>> _tryStack;
+
     void visitFn(p<FnNode> fn);
     void visitStmt(p<StatementNode> stmt);
     void visitBlock(p<StatementBlockNode> block);
