@@ -1,0 +1,26 @@
+; 中段是 Box<T>（含 RC）时拒收并附 hint。
+struct Inner {
+  count i32
+}
+
+Inner {
+  fn Inner(c i32) {
+    $.count = c
+  }
+}
+
+struct Outer {
+  state Box<Inner>
+}
+
+Outer {
+  fn Outer(s Box<Inner>) {
+    $.state = s
+  }
+}
+
+fn main() {
+  var b Box<Inner> = Inner(10i32)
+  var o Outer = Outer(b)
+  o.state.count = 5i32
+}

@@ -1,0 +1,42 @@
+; P2-8 回归：嵌套成员赋值 a.b.c = ...
+; 之前在 compiler_stmt.cpp 中段直接抛 E3046；现支持 RC-free 纯 struct 链。
+
+struct Inner {
+  count i32
+}
+
+Inner {
+  fn Inner(c i32) {
+    $.count = c
+  }
+}
+
+struct Mid {
+  inner Inner
+}
+
+Mid {
+  fn Mid(i Inner) {
+    $.inner = i
+  }
+}
+
+struct Outer {
+  state Mid
+}
+
+Outer {
+  fn Outer(m Mid) {
+    $.state = m
+  }
+}
+
+fn main() {
+  var o Outer = Outer(Mid(Inner(10i32)))
+  ; 两段嵌套写
+  o.state.inner.count = o.state.inner.count + 5i32
+  println(o.state.inner.count)
+  ; 复合赋值
+  o.state.inner.count += 7i32
+  println(o.state.inner.count)
+}

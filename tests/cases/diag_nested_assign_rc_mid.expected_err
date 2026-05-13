@@ -1,0 +1,3 @@
+[E3046]
+Nested member access not yet supported
+嵌套成员赋值中间字段需为纯 struct

@@ -1319,8 +1319,29 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
 
                 _builder.CreateStore(valToStore, fieldPtr);
             } else {
-                // TODO: 支持嵌套成员访问
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3046);
+                // 中间段：当前仅支持纯 struct 嵌套（不含 Box/Array/Ref/Nullable/RC 字段）
+                // 中段若是 RC / Box / Array / Ref / Nullable，自动 deref / 写穿语义未对齐，先拒收。
+                auto interType = field->getType();
+                if (interType.isBox() || interType.isArrayGeneric() || interType.isRef()
+                    || interType.isNullable() || interType.isWeak() || interType.isPtr()
+                    || isBuiltinType(interType.name) || typeNeedsDestructor(interType)) {
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3046)
+                        .withHint("嵌套成员赋值中间字段需为纯 struct（不含 Box/Array/Ref/RC 等）；可拆方法或在中段先 `var t = $.field` 落地后再写");
+                }
+                auto interStructDecl = _file->getStructDecl(interType.name);
+                if (!interStructDecl && _yux && _yux->sdkFile()) {
+                    interStructDecl = _yux->sdkFile()->getStructDecl(interType.name);
+                }
+                if (!interStructDecl) {
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3045, interType.name);
+                }
+                auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+                auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIndex);
+                llvm::Value* indices[] = {zero, idx};
+                structPtr = _builder.CreateGEP(structType, structPtr, indices, "struct.field");
+                actualType = interType;
+                structDecl = interStructDecl;
+                structType = getLLVMType(actualType);
             }
         }
     }
