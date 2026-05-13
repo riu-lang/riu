@@ -337,8 +337,12 @@ fn test_enum_match_return_tuple() {
 }
 
 ; ==================== 更多 payload 类型 ====================
-; TODO: Box<T> 和 Array<T> 作为枚举 payload 时运行时崩溃
-; 暂时注释掉相关测试
+; P1-6（BUGS.md）现状：
+;   - 直接传裸值（如 `Container::Boxed(Point(...))`）：已落 E2032 编译期诊断拒收
+;     （回归: tests/cases/diag_enum_payload_type_mismatch.*）
+;   - 显式 `var bp Box<T> = T(...); Container::Boxed(bp)`：编译能过但运行期
+;     RC 失衡（temp.struct.spill dtor 立即释放 box，导致 match 读到已释放内存），
+;     等 P1-6b 修好后再开下面用例
 
 enum Container {
   Empty
@@ -348,26 +352,28 @@ enum Container {
 
 ; #Test
 ; fn test_enum_payload_box() {
-;   val c Container = Container::Boxed(Point(10.0f64, 20.0f64))
-;   
+;   var bp Box<Point> = Point(10.0f64, 20.0f64)
+;   val c Container = Container::Boxed(bp)
+;
 ;   val result f64 = match c {
 ;     Container::Empty => 0.0f64
 ;     Container::Boxed(p) => p.x + p.y
 ;     Container::Listed(_arr) => -1.0f64
 ;   }
-;   
+;
 ;   assert_eq(result, 30.0f64)
 ; }
 
 ; #Test
 ; fn test_enum_payload_array() {
-;   val c Container = Container::Listed([1, 2, 3, 4, 5])
-;   
+;   var arr Array<i32> = [1, 2, 3, 4, 5]
+;   val c Container = Container::Listed(arr)
+;
 ;   val result i32 = match c {
 ;     Container::Empty => 0
 ;     Container::Boxed(_p) => -1
-;     Container::Listed(arr) => arr.len().to_i32()
+;     Container::Listed(a) => a.len().to_i32()
 ;   }
-;   
+;
 ;   assert_eq(result, 5)
 ; }

@@ -2184,12 +2184,38 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprEnumCtorNode> node) {
 
         // 编译实参并按 variant tuple struct 的字段位置 store
         for (size_t i = 0; i < declArity; ++i) {
-            auto argVal = compileExpr(node->args()[i]);
+            auto argExpr = node->args()[i];
+            // 类型严格匹配：yux 无隐式转换，实参类型必须等于 variant payload 声明类型
+            // 之前缺这步会让如 `Container::Boxed(Point(...))`（应传 `Box<Point>`）静默 miscompile，
+            // 把 16B Point 值塞进 8B Box 句柄槽，写穿邻接 payload 字段导致运行期 SEH（P1-6）
+            auto expectedType = variant->payloadTypes()[i]->getType();
+            auto actualType = argExpr->getType();
+            if (!(expectedType == actualType)) {
+                // 用户友好形式：Box<T> / Array<T> / Generic<A,B>（getFullName 用下划线给 mangling，不适合诊断）
+                std::function<string(const TypeInfo&)> fmtType = [&](const TypeInfo& t) -> string {
+                    if (t.kind == TypeKind::Generic && !t.genericArgs.empty()) {
+                        string r = t.name + "<";
+                        for (size_t j = 0; j < t.genericArgs.size(); ++j) {
+                            if (j) r += ", ";
+                            r += t.genericArgs[j] ? fmtType(*t.genericArgs[j]) : string("?");
+                        }
+                        r += ">";
+                        return r;
+                    }
+                    if (t.kind == TypeKind::Array && t.elementType) {
+                        return "[" + std::to_string(t.arraySize) + "]" + fmtType(*t.elementType);
+                    }
+                    return t.name;
+                };
+                throw YuxError(argExpr->getLineNumber(), argExpr->getColumn(),
+                    ErrorCode::E2032, enumName, variantName, i,
+                    fmtType(expectedType), fmtType(actualType));
+            }
+            auto argVal = compileExpr(argExpr);
             if (!argVal) {
                 throw YuxError(line, col, ErrorCode::E3096,
                     enumName + "::" + variantName + " arg#" + std::to_string(i));
             }
-            // TODO: 类型严格匹配检查（Phase 5 暂沿用 compileExpr 自身路径，无隐式转换由更上层把关）
             auto fieldPtr = _builder.CreateStructGEP(payloadStruct, payloadBufPtr,
                 static_cast<unsigned>(i), "enum.payload.elem");
             _builder.CreateStore(argVal, fieldPtr);

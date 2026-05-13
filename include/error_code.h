@@ -137,6 +137,7 @@ DEF_ERR(2028, "lambda body references outer local `{}`: closures not yet support
 DEF_ERR(2029, "lambda capture of `{}` (type `{}`) not yet supported: Phase 4a / 4a-2 / 4c cover scalars / 8-byte heap handles (Box / Weak / Array / String) / `T&`; structs / enums / fn / mixing `T&` with heap handles arrive in later phases")
 DEF_ERR(2030, "lambda body cannot assign to captured variable `{}` (spec §6.2.1: captures are immutable in v1)")
 DEF_ERR(2031, "extern fn `{}` cannot use fn(...) types in {} (function values are not ABI-compatible with C; spec §7)")
+DEF_ERR(2032, "Enum variant `{}::{}` payload #{} type mismatch: expected `{}`, got `{}` (no implicit conversion; for `Box<T>` payload, bind `var b Box<T> = T(...)` first then pass `b`)")
 
 // ── E3xxx 类型 — 类型不匹配 ───────────────────────────────────────────
 DEF_ERR(3001, "Type mismatch in +-/ operation: left is {}, right is {}")

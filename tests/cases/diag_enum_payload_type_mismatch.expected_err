@@ -1,0 +1,2 @@
+[E2032]
+expected `Box<Point>`, got `Point`

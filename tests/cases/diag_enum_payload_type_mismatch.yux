@@ -1,0 +1,24 @@
+; E2032: enum variant payload 实参类型与声明不匹配
+; 没有隐式转换 / 自动装箱，传裸 T 进 Box<T> payload 应被拒收
+; 复盘 P1-6：原先静默 miscompile（16B Point 值塞进 8B Box 句柄槽 → 运行期 SEH）
+
+struct Point {
+  x f64
+  y f64
+}
+
+Point {
+  fn Point(x f64, y f64) {
+    $.x = x
+    $.y = y
+  }
+}
+
+enum Container {
+  Empty
+  Boxed(Box<Point>)
+}
+
+fn main() {
+  val c Container = Container::Boxed(Point(1.0f64, 2.0f64))  ; ❌ E2032
+}
