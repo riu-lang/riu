@@ -15,7 +15,7 @@ namespace {
 //   #NoReturn        零参；标在 fn / structImpl 内方法上
 //   #Fallible(E)     单参；E 为错误 enum 类型名（语义校验推 10e）
 const set<string>& knownAnnos() {
-    static const set<string> s = {"CompilerInner", "Test", "DraftLike", "NoReturn", "Fallible"};
+    static const set<string> s = {"CompilerInner", "Test", "TestIsolate", "DraftLike", "NoReturn", "Fallible"};
     return s;
 }
 
@@ -753,6 +753,15 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
         if (!sigOk) {
             throw YuxError(annoLine, annoCol, ErrorCode::E2012, fnName, fnName);
         }
+    }
+
+    // ==================== #TestIsolate 注解校验 (spec §11.3.6) ====================
+    // 修饰一个 #Test：命中的测试在默认 isolate=none 模式下也强制走子进程，规避 JIT 跨帧 SEH。
+    // 必须搭配 #Test；其它约束（仅 .test.yux、与 CompilerInner 互斥、签名）由 #Test 那条已经覆盖。
+    if (header->hasAnno("TestIsolate") && !header->hasAnno("Test")) {
+        const string fnName = header->name().getText();
+        throw YuxError(header->getLineNumber(), header->getColumn(),
+                       ErrorCode::E2033, fnName);
     }
 
     stack.emplace_back(fn);

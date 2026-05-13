@@ -138,6 +138,7 @@ DEF_ERR(2029, "lambda capture of `{}` (type `{}`) not yet supported: Phase 4a / 
 DEF_ERR(2030, "lambda body cannot assign to captured variable `{}` (spec §6.2.1: captures are immutable in v1)")
 DEF_ERR(2031, "extern fn `{}` cannot use fn(...) types in {} (function values are not ABI-compatible with C; spec §7)")
 DEF_ERR(2032, "Enum variant `{}::{}` payload #{} type mismatch: expected `{}`, got `{}` (no implicit conversion; for `Box<T>` payload, bind `var b Box<T> = T(...)` first then pass `b`)")
+DEF_ERR(2033, "`#TestIsolate` on `{}` requires a sibling `#Test` annotation (isolation modifies how a `#Test` runs; it is not a standalone marker)")
 
 // ── E3xxx 类型 — 类型不匹配 ───────────────────────────────────────────
 DEF_ERR(3001, "Type mismatch in +-/ operation: left is {}, right is {}")

@@ -104,6 +104,7 @@ N | <源码行原文>
 | E2025 | `\`else\` arm must be the last arm in match` |
 | E2026 | `match pattern for \`{}::{}\` expects {} binding(s), got {}` |
 | E2027 | `duplicate binding \`{}\` in match pattern \`{}::{}\`` |
+| E2033 | `\`#TestIsolate\` on \`{}\` requires a sibling \`#Test\` annotation (isolation modifies how a \`#Test\` runs; it is not a standalone marker)` |
 
 ### D.3.3 E3xxx — 类型
 

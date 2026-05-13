@@ -1288,7 +1288,8 @@ int wmain(int argc, wchar_t* argv[]) {
         std::vector<std::unique_ptr<llvm::Module>> mods;
         std::vector<std::unique_ptr<llvm::LLVMContext>> ctxs;
         // 测试函数收集表：(modName, fnName, mangledSymbol)
-        struct TestEntry { std::string mod; std::string fn; std::string sym; };
+        // isolate=true：函数声明了 `#TestIsolate`，默认模式下也强制走子进程（规避 JIT 跨帧 SEH）。
+        struct TestEntry { std::string mod; std::string fn; std::string sym; bool isolate; };
         std::vector<TestEntry> tests;
         for (auto& modName : loadedMods) {
             auto file = yux.module(modName);
@@ -1312,7 +1313,8 @@ int wmain(int argc, wchar_t* argv[]) {
                 std::string fnName = fn->header()->name().getText();
                 // mangler: function(module, name, params=[], isPrivate=false) → "mod_name()"
                 std::string sym = Mangler::function(modName, fnName, {}, false);
-                tests.push_back({modName, fnName, sym});
+                bool isolate = fn->header()->hasAnno("TestIsolate");
+                tests.push_back({modName, fnName, sym, isolate});
             }
 
             mods.push_back(std::move(mod));
@@ -1461,6 +1463,8 @@ int wmain(int argc, wchar_t* argv[]) {
         size_t passed = 0, failed = 0;
         unsigned long childExitCode = 0;
         size_t total = filtered.size();
+        // `#TestIsolate` 命中的测试在默认模式下也要走子进程，懒解析 self 路径
+        std::string selfExeForIsolate;
         for (size_t i = 0; i < filtered.size(); ++i) {
             auto& t = filtered[i];
             std::string prog = isChildIsolated
@@ -1471,6 +1475,44 @@ int wmain(int argc, wchar_t* argv[]) {
                 std::cout.flush();
             }
             auto t0 = std::chrono::steady_clock::now();
+
+            // 父进程默认模式 + 该测试要求隔离 → fork 子进程跑（与 useProcessIsolation 分支同协议）
+            if (!isChildIsolated && t.isolate) {
+                if (selfExeForIsolate.empty()) selfExeForIsolate = getSelfExePath();
+                if (selfExeForIsolate.empty()) {
+                    std::cout << "FAIL " << prog << t.mod << "#" << t.fn
+                              << " (#TestIsolate: failed to resolve self exe)"
+                              << fmtElapsed(t0) << "\n";
+                    ++failed;
+                    continue;
+                }
+                auto r = spawnIsolatedTest(selfExeForIsolate, t.mod, t.fn);
+                std::string elapsed = fmtElapsed(t0);
+                if (!r.spawnOk) {
+                    std::cout << "FAIL " << prog << t.mod << "#" << t.fn
+                              << " (#TestIsolate: " << r.spawnError << ")" << elapsed << "\n";
+                    ++failed;
+                } else if (r.exitCode == 0) {
+                    std::cout << "OK   " << prog << t.mod << "#" << t.fn
+                              << " (isolated)" << elapsed << "\n";
+                    if (testVerbose) printCapturedOutput(r.capture);
+                    ++passed;
+                } else if (r.exitCode == 2) {
+                    std::cout << "FAIL " << prog << t.mod << "#" << t.fn
+                              << " (#TestIsolate: child runner error)" << elapsed << "\n";
+                    printCapturedOutput(r.capture);
+                    ++failed;
+                } else {
+                    std::cout << "FAIL " << prog << t.mod << "#" << t.fn
+                              << " (SEH " << sehExceptionName(r.exitCode)
+                              << " 0x" << std::hex << r.exitCode << std::dec << ", isolated)"
+                              << elapsed << "\n";
+                    printCapturedOutput(r.capture);
+                    ++failed;
+                }
+                continue;
+            }
+
             auto sym = jit->lookup(t.sym);
             if (!sym) {
                 if (isChildIsolated) {
