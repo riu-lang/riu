@@ -17,6 +17,7 @@
 #include "compiler_runtime.h"
 #include "ast/mangler.h"
 #include "analyzer/symbol_suggest.h"
+#include "sema/call_resolve.h"
 #include <algorithm>
 
 // ==================== Return 语句编译 ====================
@@ -1257,15 +1258,11 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             }
 
             auto field = structDecl->fields()[fieldIndex];
-            // 检查私有字段访问权限
-            if (field->isPrivate()) {
-                string currentBase = _currentStructName;
-                auto dollarPos = currentBase.find('$');
-                if (dollarPos != string::npos) currentBase = currentBase.substr(0, dollarPos);
-                if (currentBase != actualType.name) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3042, memberName, actualType.name);
-                }
-            }
+            // Phase 3.5.a: 私有字段可见性 E3042 整体走 sema::validatePrivateFieldAccess
+            // (helper 内部剥 `$<泛型实例>` 后缀比对 base, 与原 inline 等价).
+            sema::validatePrivateFieldAccess(structDecl, memberName, actualType.name,
+                                             _currentStructName,
+                                             node->getLineNumber(), node->getColumn());
 
             if (i == subs.size() - 1) {
                 // 最后一个成员: 执行赋值
