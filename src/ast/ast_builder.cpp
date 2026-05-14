@@ -1408,6 +1408,25 @@ std::any ASTBuilder::visitStatementDeclareAssignTuple(yux::yuxParser::StatementD
         wholeType = expr->getType();
     }
 
+    // 透明 alias 解析：若 wholeType 是 Normal alias 名（如 `IPair = (i32, i32)`），
+    // 解到目标 tuple 类型，让下面的符号登记拿到正确的元素类型。
+    // 这里只处理非泛型 alias 链；泛型 / 复杂形态仍交给 codegen 阶段 applySubst 校验。
+    // 修复 BUGS.md「tuple destructure 别名右值 SemaPass 缓存空类型」：原来这里给变量登记
+    // 空 TypeInfo，SemaPass.visitExpr 顶部对解构出的 ID 缓存到的就是空 type，codegen 改完
+    // sym->type 后再读触发 resolvedType / getType 不一致断言。
+    if (auto* file = _scopeStack.empty() ? nullptr : dynamic_cast<FileNode*>(_scopeStack[0])) {
+        std::set<std::string> visited;
+        TypeInfo cur = wholeType;
+        while (cur.kind == TypeKind::Normal) {
+            auto* alias = file->getAliasDecl(cur.name);
+            if (!alias || alias->isGeneric() || !alias->target()) break;
+            if (visited.count(cur.name)) break; // 环：交给 codegen E2016
+            visited.insert(cur.name);
+            cur = alias->target()->getType();
+        }
+        wholeType = cur;
+    }
+
     vector<Token> names;
     for (auto idTok : ctx->names) {
         names.emplace_back(idTok);
