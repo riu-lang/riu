@@ -235,6 +235,15 @@ target("yux-ast")
     add_files("src/tools/ast_main.cpp")
     set_rundir("$(projectdir)")
 
+-- yux-check: 单文件快速语义检查 (阶段 0), 0 LLVM 依赖.
+-- 详见 CURRENT.md "yux-check 最小可用 exe" 一节.
+target("yux-check")
+    set_kind("binary")
+    add_deps("yux_frontend")
+    add_includedirs(path.join(third_party, "cli11/include"))
+    add_files("src/tools/check_main.cpp")
+    set_rundir("$(projectdir)")
+
 includes("tests")
 includes("@builtin/xpack")
 
