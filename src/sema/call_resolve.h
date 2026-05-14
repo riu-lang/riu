@@ -472,6 +472,20 @@ void validateDotFieldPrivacy(FileNode* file, FileNode* sdkFile,
                              p<ExprDotNode> node,
                              const string& accessorStructName);
 
+// 整数字面量解析 + 越界校验 (Phase 3.4.f.2).
+//
+// 原位于 compiler_expr.cpp 顶部 anonymous-ns, 现整体抠到 sema 共享.
+// 识别 suffix (i8/i16/i32/i64/u8/u16/u32/u64) → 走 stoll/stoull 路径;
+// 识别 base prefix (0b/0o/0x); 移下划线分隔符; out_of_range / invalid_argument
+// 抛 E3103. `line=0` 时降级到 1, col 透传.
+//
+// 调用方:
+//   - Compiler::compileLiteralExpr / compileArrayInitExpr int 分支
+//   - SemaPass.visitExpr ExprLiteralNode 分支 (LiteralIntNode 命中时)
+//
+// 纯字符串解析, 无 LLVM / AST 依赖.
+i64 parseIntLiteral(const string& text, int line = 0, int col = 0);
+
 } // namespace sema
 
 #endif //YUX_LANG_SEMA_CALL_RESOLVE_H

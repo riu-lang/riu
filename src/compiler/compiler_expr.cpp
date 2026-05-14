@@ -30,7 +30,6 @@
 #include <set>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
-#include <regex>
 #include <cassert>
 
 // ==================== 辅助函数 ====================
@@ -54,63 +53,9 @@ TypeInfo Compiler::resolvedOrInferredType(p<ExprNode> node) const {
     return node->getType();
 }
 
-// 解析整数字面量
-// 支持多种格式: 十进制、二进制 (0b)、八进制 (0o)、十六进制 (0x)
-// 支持类型后缀 (i32, u64 等) 和下划线分隔符
-namespace {
-    // 解析整数字面量并返回 i64 位模式（u64 走 stoull 后按位转 i64，给 LLVM ConstantInt 用）。
-    // 出错时抛 YuxError(E3103) 由调用方补行号；用 nullptr_t 作 sentinel：传 0 表示行号未知。
-    i64 parseIntLiteral(const string& text, int line = 0, int col = 0) {
-        string numStr = text;
-
-        // 识别类型后缀（决定 signed/unsigned 解析路径）
-        static const std::regex suffix_regex(R"([iu](?:8|16|32|64)?$)");
-        std::smatch m;
-        string suffix;
-        if (std::regex_search(numStr, m, suffix_regex)) {
-            suffix = m.str();
-        }
-        bool isUnsigned = !suffix.empty() && suffix[0] == 'u';
-        // 移除后缀
-        numStr = std::regex_replace(numStr, suffix_regex, "");
-
-        int base = 10;
-        string parseStr = numStr;
-
-        // 检测进制前缀
-        if (numStr.size() >= 2) {
-            if (numStr[0] == '0' && (numStr[1] == 'b' || numStr[1] == 'B')) {
-                base = 2;
-                parseStr = numStr.substr(2);
-            } else if (numStr[0] == '0' && (numStr[1] == 'o' || numStr[1] == 'O')) {
-                base = 8;
-                parseStr = numStr.substr(2);
-            } else if (numStr[0] == '0' && (numStr[1] == 'x' || numStr[1] == 'X')) {
-                base = 16;
-                parseStr = numStr.substr(2);
-            }
-        }
-
-        // 移除下划线分隔符
-        parseStr.erase(std::remove(parseStr.begin(), parseStr.end(), '_'), parseStr.end());
-
-        try {
-            if (isUnsigned) {
-                u64 v = std::stoull(parseStr, nullptr, base);
-                return static_cast<i64>(v);
-            }
-            return std::stoll(parseStr, nullptr, base);
-        } catch (const std::out_of_range&) {
-            int errLine = line > 0 ? line : 1;
-            throw YuxError(errLine, col, ErrorCode::E3103,
-                text, suffix.empty() ? string("i64") : suffix);
-        } catch (const std::invalid_argument&) {
-            int errLine = line > 0 ? line : 1;
-            throw YuxError(errLine, col, ErrorCode::E3103,
-                text, suffix.empty() ? string("i64") : suffix);
-        }
-    }
-}
+// Phase 3.4.f.2: parseIntLiteral 已整体迁到 `sema::parseIntLiteral`
+// (src/sema/call_resolve.cpp). E3103 由 sema 抢先抛 (kMigratedCodes 内,
+// SemaPass.visitExpr ExprLiteralNode 分支主动调用), Compiler 端调用是幂等防御性双跑.
 
 // ==================== 数组初始化表达式编译 ====================
 
@@ -158,7 +103,7 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
     f64 floatFillVal = 0.0;
 
     if (auto intLiteral = dynamic_cast<LiteralIntNode*>(literal)) {
-        intFillVal = parseIntLiteral(text, node->getLineNumber(), node->getColumn());
+        intFillVal = sema::parseIntLiteral(text, node->getLineNumber(), node->getColumn());
         fillValue = llvm::ConstantInt::get(getLLVMType(elementType), intFillVal, true);
         isZeroFill = (intFillVal == 0);  // 零值优化
     } else if (auto floatLiteral = dynamic_cast<LiteralFloatNode*>(literal)) {
@@ -306,7 +251,7 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
     auto text = literal->getValue().getText();
 
     if (auto intLiteral = dynamic_cast<LiteralIntNode*>(literal)) {
-        i64 numVal = parseIntLiteral(text, node->getLineNumber(), node->getColumn());
+        i64 numVal = sema::parseIntLiteral(text, node->getLineNumber(), node->getColumn());
         DEBUG_LOG_VAL("    Expr: IntLiteral", text << " : " << type.name);
         return llvm::ConstantInt::get(getLLVMType(type), numVal, true);
     } else if (auto floatLiteral = dynamic_cast<LiteralFloatNode*>(literal)) {

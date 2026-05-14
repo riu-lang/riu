@@ -50,7 +50,7 @@ namespace {
 // Phase 3.2b 已由 SemaPass 接管的错误码白名单。SemaPass 在 visitExpr 中
 // 捕获 YuxError 时, 命中此清单的直接 rethrow, 让 SemaPass 成为该诊断的
 // 实际抛出点。新增迁移码追加到此处即可。
-constexpr std::array<std::string_view, 20> kMigratedCodes = {
+constexpr std::array<std::string_view, 21> kMigratedCodes = {
     // 算术 / 比较 / 分支结果
     "E3001", "E3002", "E3003", "E3004",
     "E3005", "E3006", "E3007", "E3008",
@@ -69,6 +69,8 @@ constexpr std::array<std::string_view, 20> kMigratedCodes = {
     "E3050", "E3051", "E3057", "E3062",
     "E3097",
     "E3100",
+    // Phase 3.4.f.2: 字面量越界
+    "E3103",
 };
 
 // 与 Compiler::lookupEnumDecl 等价的本地版本: 本文件 → SDK → wildcard imports.
@@ -240,6 +242,12 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         // 字符串模板含插值表达式; 其余字面量无子表达式
         if (auto tpl = dynamic_cast<p<StringTemplateNode>>(n->literal())) {
             for (auto& e : tpl->interps()) visitExpr(e);
+        }
+        // Phase 3.4.f.2: int 字面量越界 (E3103) — getType 仅返回类型不解析值,
+        // 这里主动调 sema::parseIntLiteral 触发越界 / 非法格式校验.
+        if (auto intLit = dynamic_cast<p<LiteralIntNode>>(n->literal())) {
+            (void)sema::parseIntLiteral(intLit->getValue().getText(),
+                                        n->getLineNumber(), n->getColumn());
         }
         return;
     }

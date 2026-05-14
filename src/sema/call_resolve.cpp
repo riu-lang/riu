@@ -15,8 +15,10 @@
 #include "ast/node/enum_node.h"
 #include "ast/yux.h"
 #include "types.h"
+#include <algorithm>
 #include <format>
 #include <functional>
+#include <regex>
 
 namespace sema {
 
@@ -1130,6 +1132,58 @@ void validateDotFieldPrivacy(FileNode* file, FileNode* sdkFile,
     validatePrivateFieldAccess(structDecl, node->member(), actualType.name,
                                accessorStructName,
                                node->resolveLineNumber(), node->resolveColumn());
+}
+
+// ==================== 整数字面量解析 (Phase 3.4.f.2) ====================
+
+i64 parseIntLiteral(const string& text, int line, int col) {
+    string numStr = text;
+
+    // 识别类型后缀 (决定 signed/unsigned 解析路径)
+    static const std::regex suffix_regex(R"([iu](?:8|16|32|64)?$)");
+    std::smatch m;
+    string suffix;
+    if (std::regex_search(numStr, m, suffix_regex)) {
+        suffix = m.str();
+    }
+    bool isUnsigned = !suffix.empty() && suffix[0] == 'u';
+    numStr = std::regex_replace(numStr, suffix_regex, "");
+
+    int base = 10;
+    string parseStr = numStr;
+
+    // 进制前缀
+    if (numStr.size() >= 2) {
+        if (numStr[0] == '0' && (numStr[1] == 'b' || numStr[1] == 'B')) {
+            base = 2;
+            parseStr = numStr.substr(2);
+        } else if (numStr[0] == '0' && (numStr[1] == 'o' || numStr[1] == 'O')) {
+            base = 8;
+            parseStr = numStr.substr(2);
+        } else if (numStr[0] == '0' && (numStr[1] == 'x' || numStr[1] == 'X')) {
+            base = 16;
+            parseStr = numStr.substr(2);
+        }
+    }
+
+    // 下划线分隔符
+    parseStr.erase(std::remove(parseStr.begin(), parseStr.end(), '_'), parseStr.end());
+
+    try {
+        if (isUnsigned) {
+            u64 v = std::stoull(parseStr, nullptr, base);
+            return static_cast<i64>(v);
+        }
+        return std::stoll(parseStr, nullptr, base);
+    } catch (const std::out_of_range&) {
+        int errLine = line > 0 ? line : 1;
+        throw YuxError(errLine, col, ErrorCode::E3103,
+            text, suffix.empty() ? string("i64") : suffix);
+    } catch (const std::invalid_argument&) {
+        int errLine = line > 0 ? line : 1;
+        throw YuxError(errLine, col, ErrorCode::E3103,
+            text, suffix.empty() ? string("i64") : suffix);
+    }
 }
 
 } // namespace sema
