@@ -69,8 +69,8 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
             tryInferIntType(node->expr(), declRetType);
             retType = node->expr()->getType();
         }
-        bool isSuccess = hasDeclaredRetType && (retType == declRetType);
-        bool isError = (retType.name == fallibleErrName);
+        bool isSuccess = hasDeclaredRetType && (resolveAlias(retType) == resolveAlias(declRetType));
+        bool isError = (resolveAlias(retType).name == fallibleErrName);
         if (!isSuccess && !isError) {
             int ln = node->getLineNumber();
             if (ln < 0) ln = node->expr()->resolveLineNumber();
@@ -236,7 +236,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
                     tryInferIntType(node->expr(), *innerType);
                     retType = node->expr()->getType();
                 }
-                if (retType == *innerType) {
+                if (resolveAlias(retType) == resolveAlias(*innerType)) {
                     nullableWrap = true;
                 }
             }
@@ -249,7 +249,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
             throw YuxError(lineNum, ErrorCode::E3021,
                 declRetType.getFullName());
         }
-        if (!nullableWrap && retType != declRetType) {
+        if (!nullableWrap && resolveAlias(retType) != resolveAlias(declRetType)) {
             throw YuxError(lineNum, ErrorCode::E3020,
                 declRetType.getFullName(), retType.getFullName());
         }
