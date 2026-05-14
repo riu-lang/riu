@@ -126,7 +126,9 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
     TypeInfo elementType;
     if (node->explicitType()) {
         elementType = node->explicitType()->getType();
-        // 类型检查
+        // Phase 3.4.f.1: E3009 已在 ExprArrayInitNode::getType 抛 (kMigratedCodes
+        // 命中, SemaPass 顶部 setResolvedType 自动重抛), 此处不可达; 保留作幂等
+        // 防御性双跑.
         if (literalType != elementType) {
             throw YuxError(node->getLineNumber(), node->getColumn(),
                 ErrorCode::E3009, literalType.name, elementType.name);

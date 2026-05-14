@@ -1182,10 +1182,18 @@ TypeInfo ExprArrayInitNode::getType() const {
     TypeInfo elementType;
     if (_explicitType) {
         elementType = _explicitType->getType();
+        // Phase 3.4.f.1: explicitType 与 value 字面量类型不匹配抛 E3009.
+        // 不依赖目标 targetType (那条留 E3010 在 codegen 兜底), 可在 AST 层判定;
+        // 进 kMigratedCodes 后由 SemaPass.visitExpr 顶部自动重抛.
+        auto valueType = _value->getType();
+        if (valueType != elementType) {
+            throw YuxError(resolveLineNumber(), resolveColumn(),
+                ErrorCode::E3009, valueType.name, elementType.name);
+        }
     } else {
         elementType = _value->getType();
     }
-    
+
     auto elemShared = make_shared<TypeInfo>(elementType);
     return TypeInfo(elemShared, 0);
 }

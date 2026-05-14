@@ -50,7 +50,7 @@ namespace {
 // Phase 3.2b 已由 SemaPass 接管的错误码白名单。SemaPass 在 visitExpr 中
 // 捕获 YuxError 时, 命中此清单的直接 rethrow, 让 SemaPass 成为该诊断的
 // 实际抛出点。新增迁移码追加到此处即可。
-constexpr std::array<std::string_view, 19> kMigratedCodes = {
+constexpr std::array<std::string_view, 20> kMigratedCodes = {
     // 算术 / 比较 / 分支结果
     "E3001", "E3002", "E3003", "E3004",
     "E3005", "E3006", "E3007", "E3008",
@@ -60,6 +60,10 @@ constexpr std::array<std::string_view, 19> kMigratedCodes = {
     // 驱动路径, 不调用 `ExprArrayNode::getType()`; 但 SemaPass 下钻 visitExpr
     // 时会触发 E3011, 是假阳性。需把"目标类型上下文"协议建到 SemaPass 里才能
     // 安全迁; 留作下一批。
+    // Phase 3.4.f.1: E3009 (ArrayInit explicitType vs value 字面量不匹配) 已迁入
+    // ExprArrayInitNode::getType. 不依赖 targetType, AST 层即可判定. E3010
+    // 依赖 targetType, 留 codegen 兜底.
+    "E3009",
     "E3025",
     "E3040", "E3041", "E3043", "E3044",
     "E3050", "E3051", "E3057", "E3062",
@@ -618,6 +622,14 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         }
         return;
     }
-    // ExprArrayInitNode 无子表达式 (value 是 LiteralNode, 不递归)。
+    // Phase 3.4.f.1: ExprArrayInitNode 显式化 —— 无子表达式可递, 顶部
+    // setResolvedType(getType()) 已经触发 ExprArrayInitNode::getType 抛 E3009
+    // (explicitType vs value 字面量类型不匹配, kMigratedCodes 命中, 自动重抛).
+    // Compiler 端 compileArrayInitExpr 1131-133 内联 throw 在 sema 跑过的正常
+    // codepath 下不可达, 保留作幂等防御性双跑.
+    if (auto n = dynamic_cast<p<ExprArrayInitNode>>(expr)) {
+        (void)n;
+        return;
+    }
     // 其余未识别节点 3.2 起补 assert。
 }
