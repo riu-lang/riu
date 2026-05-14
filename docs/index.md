@@ -73,12 +73,21 @@ fn main() {
 }
 ```
 
+**目录布局**：
+
+```
+myproject/
+├── yux.toml
+└── src/
+    └── main.yux         ; entry 相对源根 src/
+```
+
 编译并运行：
 
 ```powershell
 cd myproject
-yux build hello
-./build/hello/hello.exe
+yux build              ; 等价于 yux build hello（<name> 可省）
+./build/hello.exe
 ```
 
 ## 示例代码
@@ -91,7 +100,7 @@ fn main() {
   val b = a * 2
   val c = b.to_f64() / 3.0
   
-  println(c.to_string())
+  println(c)
 }
 ```
 
@@ -116,7 +125,7 @@ fn main() {
   var c = Counter(0)
   val ref = &c
   ref.increment()
-  println(c.value.to_string())
+  println(c.value)
 }
 ```
 
@@ -129,7 +138,7 @@ struct Data {
 
 fn main() {
   var box Box<Data> = Data(42)
-  println(box.value.to_string())
+  println(box.value)
   
   var box2 Box<Data> = box  ; 引用计数 +1
 } ; 离开作用域时自动释放
@@ -147,7 +156,7 @@ fn main() {
     if i >= arr.len().to_i32() {
       break;
     }
-    println(arr[i].to_string())
+    println(arr[i])
     i += 1
   }
 }

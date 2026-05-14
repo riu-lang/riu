@@ -17,7 +17,7 @@ yux 把"函数"视作一等值：
 ```yux
 ; 变量持有函数值
 var f fn(i32)i32 = (x i32) i32 => x + 1
-println(f(41).to_string()) ; 42
+println(f(41)) ; 42
 
 ; 类型别名（透明 alias）
 Predicate = fn(s String) bool
@@ -62,9 +62,18 @@ val sum = { a i32, b i32 =>
   ret s
 }
 
-; 0 参块（=> 禁写）
-val once = { 42 }
+; 0 参块（无 =>；必须多行真块，单行 { expr } 不是 lambda 而是 expr-lambda 的位置）
+val once fn()i32 = {
+  ret 42
+}
+
+; 0 参块 + 显式返回类型：用 `() T =>` 头
+val once2 = { () i32 =>
+  ret 42
+}
 ```
+
+> ⚠️ v1 impl 缺口：0 参块形当前体内 tail-expr 不作返回值、`expectedFnType` 返回类型也不进 ZeroBlock 推断，目前只能在 fn 返回 `void` 时使用。**有返回值的 0 参 lambda 暂用括参形** `() RetT? => expr`。详见 BUGS.md。
 
 ### 形参类型推断
 
@@ -93,7 +102,8 @@ val f = x => x + 1              ; ❌ 编译错（无上下文）
 | `(x i32) i32 => expr` | 显式 `i32` |
 | `{ a, b => body }` | 上下文推断（裸参） |
 | `{ (a, b) i32 => body }` | 显式 `i32`（括号 + 显式） |
-| `{ body }` | 上下文推断（0 参） |
+| `{ body }` | 0 参块；无 `=>`；多行真块；返回类型上下文推断 |
+| `{ () i32 => body }` | 0 参块 + 显式返回类型（用 `() T =>` 头） |
 
 **裸 vs 括号差异化的理由**：括号形态是"完整声明形"，不写返回类型即视作刻意 void；裸形态是"轻量推断形"，留空让上下文驱动。
 
@@ -131,15 +141,15 @@ fn each<T>(arr Array<T>, body fn(T)) {
 }
 
 ; 标准调用
-each(arr, { x => println(x.to_string()) })
+each(arr, { x => println(x) })
 
 ; 糖：尾随 lambda 移到 (...) 之后
 each(arr) { x =>
-  println(x.to_string())
+  println(x)
 }
 
 ; 糖：唯一实参时省 (...)
-each(arr) { x => println(x.to_string()) }
+each(arr) { x => println(x) }
 ```
 
 详见 spec §4.8.4。
@@ -167,8 +177,8 @@ fn make_adder(n i32) fn(i32)i32 {
 fn main() {
   val add5 = make_adder(5)
   val add10 = make_adder(10)
-  println(add5(1).to_string())   ; 6
-  println(add10(1).to_string())  ; 11
+  println(add5(1))   ; 6
+  println(add10(1))  ; 11
 }
 ```
 
@@ -198,7 +208,7 @@ fn good() {
   val f = () => c.inc()    ; ✅ 走 mutator 方法，外层状态受影响
   f()
   f()
-  println(c.v.to_string()) ; 2
+  println(c.v) ; 2
 }
 ```
 
@@ -213,7 +223,7 @@ fn make_reader(r i32&) fn() i32 {
 
 fn use_reader(r i32&) {
   val read = () i32 => r       ; ✅ 在本 frame 内消费
-  println(read().to_string())
+  println(read())
 }
 ```
 
