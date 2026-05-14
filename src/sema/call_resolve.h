@@ -372,6 +372,28 @@ void validateFnSymbolVisibility(const FnSymbolInfo* fnSymbol,
                                 const string& fnName,
                                 int line, int col);
 
+// 枚举构造表达式形态校验 (Phase 3.4.a, E2019/E2020/E2021/E2032).
+//
+// 入口: `E::V` / `E::V(args)` 构造点. 调用前 node->setResolvedType(getType()) 已写好
+// (Compiler::compileEnumCtorExpr 顶部 / SemaPass.visitExpr 顶部),
+// 因此 helper 直接读 node->getType().name 得到经别名解析后的真实 enum 名.
+//
+// 抛错:
+//   - E2019: enum 名找不到 (用 node->enumName().getText() 即用户写法填 payload)
+//   - E2020: variant 名不在 enum 内
+//   - E2021: arity 不匹配 (零参 / tuple-payload variant 严格相等)
+//   - E2032: tuple-payload variant 第 i 个实参类型 != 声明 payload 类型,
+//            payload 用 Box<T> / Array<T> / [N]T 等用户友好形式渲染
+//
+// 实参类型经 argExpr->getType() 计算; 任一参数 getType 抛错时跳过该参数的 E2032 校验
+// (典型: lambda 形参未推断 → E3001), 留给 codegen 路径继续报.
+//
+// 纯 AST / TypeInfo, 无 LLVM 依赖. 调用方:
+//   - Compiler::compileEnumCtorExpr 在 setResolvedType 后立即调用
+//   - SemaPass.visitExpr ExprEnumCtorNode 分支调用
+void validateEnumCtorShape(FileNode* file, FileNode* sdkFile,
+                           p<ExprEnumCtorNode> node);
+
 } // namespace sema
 
 #endif //YUX_LANG_SEMA_CALL_RESOLVE_H

@@ -497,6 +497,18 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     }
     if (auto n = dynamic_cast<p<ExprEnumCtorNode>>(expr)) {
         for (auto& a : n->args()) visitExpr(a);
+        // Phase 3.4.a: SemaPass 接管 E2019/E2020/E2021/E2032.
+        // node->setResolvedType 已在 visitExpr 顶部写好 (getType 抛错时已在白名单
+        // 重抛, 否则吞掉; 这里能跑到说明 getType 至少没抛已迁移码).
+        // 任一异常被 helper 内部 try/catch (E2032 路径) 吞掉; E2019/E2020/E2021
+        // 由 helper 主动抛出, SemaPass 实际接管.
+        try {
+            sema::validateEnumCtorShape(_file, _sdkFile, n);
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) {
+            // 防御: helper 内部异常 (理论不应出现) 跳过, 留 Compiler 兜底
+        }
         return;
     }
     if (auto n = dynamic_cast<p<ExprMatchNode>>(expr)) {

@@ -12,9 +12,11 @@
 #include "sema/call_resolve.h"
 #include "analyzer/draft_impl_checker.h"
 #include "analyzer/draft_registry.h"
+#include "ast/node/enum_node.h"
 #include "ast/yux.h"
 #include "types.h"
 #include <format>
+#include <functional>
 
 namespace sema {
 
@@ -839,6 +841,90 @@ void validateOperatorMethodCall(const string& member, const TypeInfo& baseType,
         return;
     }
     // neg / not 等其他一元 op 无校验
+}
+
+// ========== Phase 3.4.a: 枚举构造表达式形态校验 ==========
+
+namespace {
+// 等价于 Compiler::lookupEnumDecl: 本文件 → SDK → wildcard imports.
+EnumDeclNode* lookupEnumInFiles(FileNode* file, FileNode* sdkFile, const string& name) {
+    if (!file) return nullptr;
+    if (auto* d = file->getEnumDecl(name)) return d;
+    if (sdkFile && sdkFile != file) {
+        if (auto* d = sdkFile->getEnumDecl(name)) return d;
+    }
+    for (auto* imp : file->wildcardImports()) {
+        if (auto* d = imp->getEnumDecl(name)) return d;
+    }
+    return nullptr;
+}
+
+// 用户友好类型渲染: Box<T> / Array<T> / [N]T / Generic<A,B>
+// 与 compiler_expr.cpp compileEnumCtorExpr 内 fmtType lambda 等价.
+string fmtTypeFriendly(const TypeInfo& t) {
+    if (t.kind == TypeKind::Generic && !t.genericArgs.empty()) {
+        string r = t.name + "<";
+        for (size_t j = 0; j < t.genericArgs.size(); ++j) {
+            if (j) r += ", ";
+            r += t.genericArgs[j] ? fmtTypeFriendly(*t.genericArgs[j]) : string("?");
+        }
+        r += ">";
+        return r;
+    }
+    if (t.kind == TypeKind::Array && t.elementType) {
+        return "[" + std::to_string(t.arraySize) + "]" + fmtTypeFriendly(*t.elementType);
+    }
+    return t.name;
+}
+}
+
+void validateEnumCtorShape(FileNode* file, FileNode* sdkFile,
+                           p<ExprEnumCtorNode> node) {
+    if (!node) return;
+    string enumName = node->getType().name;            // 经别名解析后的真实 enum 名
+    string enumNameRaw = node->enumName().getText();   // 用户写法
+    string variantName = node->variantName().getText();
+    int line = node->getLineNumber();
+    int col = node->getColumn();
+
+    auto* enumDecl = lookupEnumInFiles(file, sdkFile, enumName);
+    if (!enumDecl) {
+        throw YuxError(line, col, ErrorCode::E2019,
+            enumNameRaw, enumNameRaw, variantName);
+    }
+
+    auto* variant = enumDecl->variant(variantName);
+    if (!variant) {
+        throw YuxError(line, col, ErrorCode::E2020, enumName, variantName);
+    }
+
+    size_t givenArity = node->args().size();
+    size_t declArity = variant->payloadArity();
+    if (givenArity != declArity) {
+        throw YuxError(line, col, ErrorCode::E2021,
+            enumName, variantName, declArity, givenArity);
+    }
+
+    // E2032: 实参类型与 variant payload 类型严格匹配.
+    // payload 元素类型从 variant->payloadTypes()[i]->getType() 取;
+    // 实参类型 argExpr->getType() 任一抛错 (lambda 形参未推断 等) 时跳过该参数,
+    // 留 codegen 原路径继续报.
+    for (size_t i = 0; i < declArity; ++i) {
+        auto argExpr = node->args()[i];
+        TypeInfo expectedType;
+        TypeInfo actualType;
+        try {
+            expectedType = variant->payloadTypes()[i]->getType();
+            actualType = argExpr->getType();
+        } catch (...) {
+            continue;
+        }
+        if (!(expectedType == actualType)) {
+            throw YuxError(argExpr->getLineNumber(), argExpr->getColumn(),
+                ErrorCode::E2032, enumName, variantName, i,
+                fmtTypeFriendly(expectedType), fmtTypeFriendly(actualType));
+        }
+    }
 }
 
 } // namespace sema

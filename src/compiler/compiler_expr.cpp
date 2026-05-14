@@ -25,6 +25,7 @@
 #include "analyzer/symbol_suggest.h"
 #include "analyzer/draft_impl_checker.h"
 #include "analyzer/draft_registry.h"
+#include "sema/call_resolve.h"
 #include <algorithm>
 #include <set>
 #include <llvm/IR/Constants.h>
@@ -2222,25 +2223,17 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprEnumCtorNode> node) {
     int line = node->getLineNumber();
     int col = node->getColumn();
 
+    // Phase 3.4.a: enum ctor 形态校验 (E2019/E2020/E2021/E2032) 整体抠到 sema.
+    // SemaPass 已先抛出; 这里是幂等防御性双跑.
+    sema::validateEnumCtorShape(_file, _yux ? _yux->sdkFile() : nullptr, node);
+
     p<FileNode> owner = nullptr;
     auto enumDecl = lookupEnumDecl(enumName, owner);
-    if (!enumDecl) {
-        throw YuxError(line, col, ErrorCode::E2019,
-            node->enumName().getText(), node->enumName().getText(), variantName);
-    }
-
     auto variant = enumDecl->variant(variantName);
-    if (!variant) {
-        throw YuxError(line, col, ErrorCode::E2020, enumName, variantName);
-    }
 
     size_t givenArity = node->args().size();
     size_t declArity = variant->payloadArity();
-    // 零参 variant 允许 0 实参（覆盖 E::V 与 E::V() 两种形态），tuple-payload 必须严格匹配
-    if (givenArity != declArity) {
-        throw YuxError(line, col, ErrorCode::E2021,
-            enumName, variantName, declArity, givenArity);
-    }
+    (void)givenArity; // arity 已由 sema::validateEnumCtorShape 校验
 
     int tagIndex = enumDecl->variantIndex(variantName);
     auto enumLLVMType = getLLVMType(TypeInfo(enumName));
@@ -2273,35 +2266,11 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprEnumCtorNode> node) {
         // payload buffer 字段地址（enum struct 的字段 1）
         auto payloadBufPtr = _builder.CreateStructGEP(enumLLVMType, alloca, 1, "enum.payload.ptr");
 
-        // 编译实参并按 variant tuple struct 的字段位置 store
+        // 编译实参并按 variant tuple struct 的字段位置 store.
+        // 实参类型与 variant payload 类型的严格匹配 (E2032) 已由 sema::validateEnumCtorShape
+        // 接管, 这里只走 IR emit.
         for (size_t i = 0; i < declArity; ++i) {
             auto argExpr = node->args()[i];
-            // 类型严格匹配：yux 无隐式转换，实参类型必须等于 variant payload 声明类型
-            // 之前缺这步会让如 `Container::Boxed(Point(...))`（应传 `Box<Point>`）静默 miscompile，
-            // 把 16B Point 值塞进 8B Box 句柄槽，写穿邻接 payload 字段导致运行期 SEH（P1-6）
-            auto expectedType = variant->payloadTypes()[i]->getType();
-            auto actualType = argExpr->getType();
-            if (!(expectedType == actualType)) {
-                // 用户友好形式：Box<T> / Array<T> / Generic<A,B>（getFullName 用下划线给 mangling，不适合诊断）
-                std::function<string(const TypeInfo&)> fmtType = [&](const TypeInfo& t) -> string {
-                    if (t.kind == TypeKind::Generic && !t.genericArgs.empty()) {
-                        string r = t.name + "<";
-                        for (size_t j = 0; j < t.genericArgs.size(); ++j) {
-                            if (j) r += ", ";
-                            r += t.genericArgs[j] ? fmtType(*t.genericArgs[j]) : string("?");
-                        }
-                        r += ">";
-                        return r;
-                    }
-                    if (t.kind == TypeKind::Array && t.elementType) {
-                        return "[" + std::to_string(t.arraySize) + "]" + fmtType(*t.elementType);
-                    }
-                    return t.name;
-                };
-                throw YuxError(argExpr->getLineNumber(), argExpr->getColumn(),
-                    ErrorCode::E2032, enumName, variantName, i,
-                    fmtType(expectedType), fmtType(actualType));
-            }
             auto argVal = compileExpr(argExpr);
             if (!argVal) {
                 throw YuxError(line, col, ErrorCode::E3096,
