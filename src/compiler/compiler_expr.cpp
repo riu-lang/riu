@@ -1653,11 +1653,15 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
             structDecl = _yux->sdkFile()->getStructDecl(currentType.name);
         }
         if (!structDecl) {
+            // Phase 3.4.d.1: SemaPass.visitExpr ExprGetRefNode 顶部
+            // setResolvedType(getType) 已通过 ExprGetRefNode::getType 抛 E3041
+            // (kMigratedCodes 命中, 自动重抛), 此处不可达; 保留作幂等防御性双跑。
             throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3041, currentType.name);
         }
 
         int fieldIndex = structDecl->fieldIndex(memberName);
         if (fieldIndex < 0) {
+            // Phase 3.4.d.1: 同上, getType 已抛 E3040, 此处不可达; 保留作幂等防御性双跑。
             throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3040, currentType.name, memberName);
         }
 

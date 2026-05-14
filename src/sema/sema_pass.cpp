@@ -589,6 +589,15 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     if (auto n = dynamic_cast<p<ExprNullElseNode>>(expr)) {
         visitExpr(n->left()); visitExpr(n->right()); return;
     }
-    // ExprGetRefNode / ExprArrayInitNode 无子表达式 (ArrayInit 的 value 是
-    // LiteralNode, 不递归)。其余未识别节点 3.2 起补 assert。
+    // Phase 3.4.d.1: ExprGetRefNode 显式化 —— 无子表达式可递, 顶部
+    // setResolvedType(getType()) 已经触发 ExprGetRefNode::getType 抛
+    // E3040/E3041 (kMigratedCodes 命中, 自动重抛), 由此 Compiler 端
+    // compileGetRefExpr 的 1656/1661 内联 throw 在正常 codepath 下不可达,
+    // 保留作幂等防御性双跑。
+    if (auto n = dynamic_cast<p<ExprGetRefNode>>(expr)) {
+        (void)n;
+        return;
+    }
+    // ExprArrayInitNode 无子表达式 (value 是 LiteralNode, 不递归)。
+    // 其余未识别节点 3.2 起补 assert。
 }
