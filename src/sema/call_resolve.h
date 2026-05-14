@@ -166,19 +166,21 @@ void checkBangWithoutFallibleCaller(FnNode* currentFnNode, p<ExprCallNode> callN
 //   - E7001: caller 非 #Fallible 且不在 try block 内, 但调用点写了 `!`
 //   - E7004: caller/callee 错误类型不一致, 同 `!` 不可跨类型透传
 //   - E7006: callee 是 #Fallible 但调用点未加 `!`, 且不在 try block 内
-//   - E7016: try block 内 `!` 冗余 (TODO: 接 warning 通道; 当前 silent)
+//   - E7016: try block 内 `!` 冗余 (warning; 经 DiagnosticEngine::emit 渲染,
+//            不抛出, 除非 -Werror / --deny 把它升级为 error)
 //
 // 副作用: 当 tryBlockSeenErrs != nullptr 且 callee 的 fallibleErrType 非空时,
 // 把 calleeErr 追加进 vector —— 用于 try block 的 E7002/E7015 穷尽性判定.
 //
-// 当前 Compiler 端是唯一调用方 (在 compileCallExpr 入口); SemaPass 暂未跟踪
-// try block 栈, 不能直接调用 (传 nullptr 会对 try 内 `foo()!` 误报 E7001).
-// 等 SemaPass 落 try block visit 后再接入.
+// sourcePath: 仅用于 E7016 warning 渲染时的 file:line:col 前缀; 空串 = 无路径,
+// emit 会按 line:col 形态渲染. Compiler 与 SemaPass 双跑由 emit 内部 (file,
+// code, line, col, message) 5 元组去重.
 void checkErrPropagateForIdCall(FnNode* currentFnNode,
                                 p<ExprCallNode> callNode,
                                 const string& fnName,
                                 const FnSymbolInfo* calleeSym,
-                                vector<string>* tryBlockSeenErrs);
+                                vector<string>* tryBlockSeenErrs,
+                                const string& sourcePath = "");
 
 // 包/模块别名调用解析 (Phase 3.3.1.a).
 //

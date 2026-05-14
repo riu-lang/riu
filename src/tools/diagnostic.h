@@ -74,6 +74,31 @@ public:
 
     // 通用渲染入口
     static void render(std::ostream& out, const Diagnostic& diag);
+
+    // 非抛出发射通道（warning / note）
+    //
+    // 与 renderYuxError 的区别：renderYuxError 由顶层 catch 调用（错误已经把当前文件
+    // 编译截断了），emit 是诊断的**生产者**直接调用 —— 用 YuxError 复用其消息模板
+    // 与 SourceLocation，但**不**抛出（除非 DiagPolicy 把它升级为 Error）。
+    //
+    // 升级规则：当 err 的默认严重度为 Warning 且经 DiagPolicy::effectiveSeverity 计算
+    // 后变为 Error（典型场景：-Werror 或 --deny=<code>），则按 Error 渲染**并**抛出
+    // 同一 YuxError，让调用方走原有"首条 error 终止文件"协议。
+    //
+    // 重入安全：emit 内部对同一进程持有去重 set（path+code+line+col+message），同一
+    // 站点（含 Compiler/SemaPass 双跑）只渲染一次。
+    //
+    // 不应用到 Error 默认严重度的 YuxError —— 那种应当 `throw`，由顶层 catch 走
+    // renderYuxError。emit 内部 assert 默认严重度 ≤ Warning。
+    static void emit(std::ostream& out,
+                     const string& sourcePath,
+                     const YuxError& err);
+
+    // 便利重载：默认 std::cerr
+    static void emit(const string& sourcePath, const YuxError& err);
+
+    // 测试 / LSP 重启场景清理去重 set
+    static void resetEmitDedup();
 };
 
 #endif // YUX_LANG_DIAGNOSTIC_H

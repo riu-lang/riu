@@ -307,8 +307,10 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
             const FnSymbolInfo* sym = cands.empty() ? nullptr : cands.front();
             // 仅当能识别为 fn 调用时校验；构造函数 / 类型构造走 callee 路径，但 FnSymbolInfo 也可能有
             TryCatchCtx* tryCtx = _tryCatchStack.empty() ? nullptr : &_tryCatchStack.back();
+            string srcPath = (_yux && _file) ? _yux->modulePath(_file->moduleName()) : "";
             sema::checkErrPropagateForIdCall(_currentFnNode, node, fnName, sym,
-                                             tryCtx ? &tryCtx->seenErrTypes : nullptr);
+                                             tryCtx ? &tryCtx->seenErrTypes : nullptr,
+                                             srcPath);
         } else if (node->errPropagate()) {
             // 非 ID-literal 但带 `!`：极少见路径（如 nullable 字面量调用），按 caller / try 状态判 E7001
             // 在 try block 内 → 暂放过（路由到 catch 由 10g 实施）

@@ -137,8 +137,8 @@ bool isMigratedCode(const char* code) {
 }
 }
 
-SemaPass::SemaPass(p<FileNode> file, p<FileNode> sdkFile)
-    : _file(file), _sdkFile(sdkFile) {
+SemaPass::SemaPass(p<FileNode> file, p<FileNode> sdkFile, string sourcePath)
+    : _file(file), _sdkFile(sdkFile), _sourcePath(std::move(sourcePath)) {
 }
 
 void SemaPass::run() {
@@ -290,7 +290,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 }
                 const FnSymbolInfo* sym = cands.empty() ? nullptr : cands.front();
                 vector<string>* seen = _tryStack.empty() ? nullptr : &_tryStack.back();
-                sema::checkErrPropagateForIdCall(_currentFn, n, fnNameProp, sym, seen);
+                sema::checkErrPropagateForIdCall(_currentFn, n, fnNameProp, sym, seen, _sourcePath);
             } else if (n->errPropagate()) {
                 if (_tryStack.empty()) {
                     sema::checkBangWithoutFallibleCaller(_currentFn, n);

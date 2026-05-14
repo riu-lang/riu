@@ -14,6 +14,7 @@
 #include "analyzer/draft_registry.h"
 #include "ast/node/enum_node.h"
 #include "ast/yux.h"
+#include "tools/diagnostic.h"
 #include "types.h"
 #include <algorithm>
 #include <format>
@@ -361,7 +362,8 @@ void checkErrPropagateForIdCall(FnNode* currentFnNode,
                                 p<ExprCallNode> callNode,
                                 const string& fnName,
                                 const FnSymbolInfo* calleeSym,
-                                vector<string>* tryBlockSeenErrs) {
+                                vector<string>* tryBlockSeenErrs,
+                                const string& sourcePath) {
     bool hasBang = callNode->errPropagate();
     string callerErr;
     if (currentFnNode) {
@@ -375,8 +377,13 @@ void checkErrPropagateForIdCall(FnNode* currentFnNode,
     if (tryBlockSeenErrs && !calleeErr.empty()) {
         tryBlockSeenErrs->push_back(calleeErr);
         if (hasBang) {
-            // E7016: try block 内 ! 冗余 (语义不变, 警告)
-            // TODO(10f-4): 接入诊断警告通道; 当前仅注释保留
+            // E7016: try block 内 ! 冗余 (语义不变, 警告; 默认 Warning,
+            // -Werror / --deny=E7016 升级为 Error 时 emit 内部会 rethrow).
+            // emit 按 (file, code, line, col, msg) 去重, Compiler / SemaPass
+            // 双跑只渲染一次.
+            DiagnosticEngine::emit(sourcePath,
+                YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                         ErrorCode::E7016, calleeErr, fnName, calleeErr));
         }
         return;
     }

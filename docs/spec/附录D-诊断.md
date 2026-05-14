@@ -264,6 +264,8 @@ N | <源码行原文>
 | E5010 | `syntax errors in {}` |
 | E5011 | `circular module import: {}` |
 | E5012 | `module not found: {} (expected file {})` |
+| E5013 | `yux.toml \`entry\` must be a relative path under \`src/\`, got absolute path: {}` |
+| E5014 | `yux.toml \`entry\` resolves outside \`src/\` (\`{}\`): convention is that all sources live under \`src/\`; obj path layout may also be inconsistent`（默认 warning） |
 
 ### D.3.6 E6xxx — 内置 / 调用
 
@@ -389,7 +391,9 @@ Array 内置方法（E6040..E6044）：
 
 ### D.5.1 默认严重度
 
-每个错误码（`ErrorCode::EXXXX`）在 `include/error_code.h` 的 `DEF_ERR` / `DEF_WARN` / `DEF_NOTE` 宏中携带 `defaultSev`。当前所有码段（E1xxx..E6xxx / E11xx）默认 `Error`；E7xxx 中 E7001-E7014 默认 `Error`、E7015-E7018 默认 `Warning`（DRAFT-错误.md 引入）；其余 `Warning` / `Note` 段为后续 D.5 规划保留（如未使用变量、可疑类型转换等）。
+每个错误码（`ErrorCode::EXXXX`）在 `include/error_code.h` 的 `DEF_ERR` / `DEF_WARN` / `DEF_NOTE` 宏中携带 `defaultSev`。当前所有码段（E1xxx..E6xxx / E11xx）默认 `Error`；E5xxx 中 E5014 默认 `Warning`；E7xxx 中 E7001-E7014 默认 `Error`、E7015-E7018 默认 `Warning`（DRAFT-错误.md 引入）；其余 `Warning` / `Note` 段为后续 D.5 规划保留（如未使用变量、可疑类型转换等）。
+
+默认 `Warning` 的码经 `DiagnosticEngine::emit` 非抛出发射：渲染到 stderr 后继续编译；`-Werror` / `--deny=<code>` 把其升级为 `Error` 时，emit 不重复渲染，直接抛 `YuxError` 走顶层 `renderYuxError` 路径，保持"首条 error 终止当前文件"协议。
 
 ### D.5.2 CLI 开关
 

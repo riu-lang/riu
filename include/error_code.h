@@ -263,6 +263,8 @@ DEF_ERR(5009, "failed to parse yux.toml: {}")
 DEF_ERR(5010, "syntax errors in {}")
 DEF_ERR(5011, "circular module import: {}")
 DEF_ERR(5012, "module not found: {} (expected file {})")
+DEF_ERR(5013, "yux.toml `entry` must be a relative path under `src/`, got absolute path: {}")
+DEF_WARN(5014, "yux.toml `entry` resolves outside `src/` (`{}`): convention is that all sources live under `src/`; obj path layout may also be inconsistent")
 
 // ── E6xxx 内置 / 调用 ─────────────────────────────────────────────────
 DEF_ERR(6001, "module `{}` not found in package `{}`")

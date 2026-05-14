@@ -12,6 +12,7 @@
 
 #include <fstream>
 #include <map>
+#include <set>
 
 #include "utf8.h"
 
@@ -251,6 +252,59 @@ void DiagnosticEngine::render(std::ostream& out, const Diagnostic& diagIn) {
     for (auto& h : diag.hints) {
         out << "  = help: " << h << '\n';
     }
+}
+
+namespace {
+    // emit 去重 set：(file, code, line, col, message)
+    // Compiler / SemaPass 幂等防御性双跑会把同一站点 emit 两次；按 5 元组去重即可
+    using EmitKey = std::tuple<string, string, int, int, string>;
+    std::set<EmitKey>& emitDedup() {
+        static std::set<EmitKey> s;
+        return s;
+    }
+}
+
+void DiagnosticEngine::resetEmitDedup() {
+    emitDedup().clear();
+}
+
+void DiagnosticEngine::emit(std::ostream& out,
+                            const string& sourcePath,
+                            const YuxError& err) {
+    DiagSeverity defaultSev = err.getSeverity();
+    // emit 仅服务 warning / note；默认 Error 的码应当 throw 走 renderYuxError 路径
+    assert(defaultSev != DiagSeverity::Error &&
+           "DiagnosticEngine::emit() called with default-Error code; use throw + renderYuxError instead");
+
+    string code = err.getCode() ? err.getCode() : "E0000";
+    DiagSeverity sev = DiagPolicy::effectiveSeverity(code, defaultSev);
+
+    EmitKey key{sourcePath, code, err.getLineNumber(), err.getColumn(), err.what()};
+    bool firstSeen = emitDedup().insert(key).second;
+
+    // 升级到 Error 时：不在 emit 内渲染, 直接 throw 让顶层 catch 走 renderYuxError
+    // 流, 避免"emit 渲染一次 + 顶层 catch 再渲染一次"的双重输出.
+    if (sev == DiagSeverity::Error) {
+        throw err;
+    }
+
+    // Warning / Note 路径: 仅渲染一次 (Compiler / SemaPass 双跑去重)
+    if (!firstSeen) return;
+
+    Diagnostic d;
+    d.severity = sev;
+    d.code = code;
+    d.file = sourcePath;
+    d.line = err.getLineNumber();
+    d.col = err.getColumn();
+    d.message = err.what();
+    d.notes = err.notes();
+    d.hints = err.hints();
+    render(out, d);
+}
+
+void DiagnosticEngine::emit(const string& sourcePath, const YuxError& err) {
+    emit(std::cerr, sourcePath, err);
 }
 
 void DiagnosticEngine::renderYuxError(std::ostream& out,

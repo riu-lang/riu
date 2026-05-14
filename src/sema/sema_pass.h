@@ -27,13 +27,17 @@ class SemaPass {
 public:
     // sdkFile 用于跨文件符号解析 (例如调用 SDK 提供的函数 / 构造器). 单文件 / SDK 自构建
     // 时可传 nullptr; Compiler 处实际传入 `_yux ? _yux->sdkFile() : nullptr`.
-    explicit SemaPass(p<FileNode> file, p<FileNode> sdkFile = nullptr);
+    // sourcePath：当前文件的绝对路径，仅用于诊断渲染（DiagnosticEngine::emit
+    // 渲染 warning 时要前缀 file:line:col）。空串 = LSP / 单测无路径，按 line:col 渲染。
+    explicit SemaPass(p<FileNode> file, p<FileNode> sdkFile = nullptr,
+                      string sourcePath = "");
 
     void run();
 
 private:
     p<FileNode> _file;
     p<FileNode> _sdkFile;
+    string _sourcePath;
 
     // Phase 3.3 前置.4: 当前所在 fn (用于 caller 的 #Fallible(E) 校验) +
     // try block 栈 (用于 ID-callee 错误传播 E7001/E7004/E7006/E7016).

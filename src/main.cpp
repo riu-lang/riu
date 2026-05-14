@@ -1625,12 +1625,37 @@ int wmain(int argc, wchar_t* argv[]) {
                 std::cerr << "Error: yux.toml is missing `entry`" << std::endl;
                 return 1;
             }
-            inputFile = (std::filesystem::path(yux.sourceRoot()) / yux.projectEntry()).string();
-            if (!std::filesystem::exists(inputFile)) {
-                std::cerr << "Error: entry file not found: " << inputFile << std::endl;
+            // spec §10：entry 必须是 src/ 下的相对路径
+            // E5013：绝对路径 → 直接 error；E5014：解析后逃出 sourceRoot → warning
+            string tomlPath = (std::filesystem::path(yux.projectRoot()) / "yux.toml").string();
+            try {
+                std::filesystem::path entryPath(yux.projectEntry());
+                if (entryPath.is_absolute()) {
+                    throw YuxError(1, ErrorCode::E5013, yux.projectEntry());
+                }
+                inputFile = (std::filesystem::path(yux.sourceRoot()) / yux.projectEntry()).string();
+                if (!std::filesystem::exists(inputFile)) {
+                    std::cerr << "Error: entry file not found: " << inputFile << std::endl;
+                    return 1;
+                }
+                inputFile = std::filesystem::absolute(inputFile).string();
+                // 校验 canonical 解析后仍在 sourceRoot/ 子树
+                std::error_code _cec;
+                auto canonEntry = std::filesystem::canonical(inputFile, _cec);
+                auto canonRoot  = std::filesystem::canonical(yux.sourceRoot(), _cec);
+                if (!_cec) {
+                    auto rel = std::filesystem::relative(canonEntry, canonRoot, _cec);
+                    bool escapes = _cec || rel.empty() || rel.native().substr(0, 2) == L".." ||
+                                   rel.string().substr(0, 2) == "..";
+                    if (escapes) {
+                        DiagnosticEngine::emit(tomlPath,
+                            YuxError(1, ErrorCode::E5014, yux.projectEntry()));
+                    }
+                }
+            } catch (runtime_error& e) {
+                reportRuntimeError(tomlPath, e);
                 return 1;
             }
-            inputFile = std::filesystem::absolute(inputFile).string();
         }
         projectName = yux.projectName();
         buildDir = getBuildDir(yux.projectRoot());

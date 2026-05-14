@@ -15,6 +15,14 @@
 
 ---
 
+## 2026-05-14 —— 警告（warning）通道首批落地：E5013 / E5014 / E7016
+
+- **新增**：`DiagnosticEngine::emit` 非抛出发射通道（附录 D §D.5.1）。默认 Warning 的码渲染到 stderr 后**不**中断编译；`-Werror` / `--deny=<code>` 升级为 Error 时正常抛出 `YuxError`、走顶层 `renderYuxError`（无双重渲染）。
+- **新增 E5013**：`yux.toml` `entry` 为绝对路径 → error（附录 D §D.3.5、§10.1.3.2）。
+- **新增 E5014**：`yux.toml` `entry` 解析后逃出 `<src>/` 子树 → warning（同上）。
+- **激活 E7016**：DRAFT-错误.md §4.2 / spec §4.12.1.4 —— `try` 块内对 `#Fallible` 调用写 `!` 冗余。原 `DEF_WARN` 仅注册未发射，本次接入 `sema::checkErrPropagateForIdCall`，Compiler / SemaPass 双跑由 emit 内部 `(file, code, line, col, msg)` 5 元组去重。
+- **冲突 / 兼容**：纯增。已有项目若 `entry` 是相对路径且解析在 `<src>/` 内（约定形态）行为不变。
+
 ## 2026-05-13 —— `#TestIsolate` per-test 隔离修饰注解
 
 - **新增**：§11.3.6 `#TestIsolate` —— 修饰 `#Test`，命中后即便在默认 `--isolate=none` 模式下也强制走子进程派发，规避 JIT 跨帧 SEH 漏报。必须与 `#Test` 同存，缺失报新增错误码 E2033（附录 D §D.2）。`--isolate=process` 覆盖此修饰（全部子进程）。§11.5.1 注解表 + Open Issues 同步。
