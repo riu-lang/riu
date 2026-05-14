@@ -10,6 +10,8 @@
 // 不依赖任何 LLVM 头; 由 yux_frontend 静态库提供, Compiler 与未来的 SemaPass 共享.
 
 #include "sema/call_resolve.h"
+#include "analyzer/draft_impl_checker.h"
+#include "analyzer/draft_registry.h"
 #include "ast/yux.h"
 #include "types.h"
 #include <format>
@@ -534,6 +536,83 @@ void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn,
 // ==================== 函数符号可见性 (Phase 3.3.1.c) ====================
 // 原 `compileFunctionCall` line 770 的 inline 块, 仅一行条件 + E6006 throw.
 // 抽出供 SemaPass 与 Compiler 共用; 纯字符串比较.
+// ==================== 泛型 typeArgs draft 边界 (Phase 3.3.3.c, E3032 / E1106) ====================
+void validateGenericTypeArgsDraftBound(
+    const DraftRegistry* registry,
+    const DraftImplChecker* checker,
+    FileNode* fnOwner,
+    FnHeaderNode* header,
+    const vector<TypeInfo>& typeArgs,
+    int line, int col) {
+    if (!registry || !checker || !header || !fnOwner) return;
+    const auto& bounds = header->typeParamBounds();
+    if (bounds.empty()) return;
+    const auto& typeParams = header->typeParams();
+    for (size_t i = 0; i < typeParams.size() && i < bounds.size() && i < typeArgs.size(); ++i) {
+        for (auto& boundName : bounds[i]) {
+            auto resolved = registry->resolve(boundName, fnOwner);
+            if (!resolved) {
+                throw YuxError(line, col, ErrorCode::E3032, boundName);
+            }
+            // v0.5: 函数声明位 draftBound 暂未携带类型实参 (ast_builder 仅取基名),
+            // draftTypeArgs 传空; 草案 §6.4.4.1 文法允许 `D<T>` 形态留待扩展.
+            vector<TypeInfo> draftTypeArgs;
+            if (!checker->boundSatisfied(typeArgs[i], resolved->decl,
+                                          resolved->qualifiedName, draftTypeArgs)) {
+                throw YuxError(line, col, ErrorCode::E1106,
+                    typeArgs[i].getFullName(),
+                    resolved->qualifiedName,
+                    typeParams[i]);
+            }
+        }
+    }
+}
+
+// ==================== Dyn callee draft 解析 (Phase 3.3.3.b, E1131) ====================
+DynCalleeResolved resolveDynCalleeDraft(const DraftRegistry* registry,
+                                         FileNode* visibleFrom,
+                                         const TypeInfo& baseType,
+                                         int line, int col) {
+    auto draftInner = baseType.dynDraftType();
+    string draftBare = draftInner ? draftInner->name : string();
+    DynCalleeResolved out;
+    if (registry && visibleFrom && !draftBare.empty()) {
+        if (auto resolved = registry->resolve(draftBare, visibleFrom)) {
+            out.decl = resolved->decl;
+            out.qualified = resolved->qualifiedName;
+            return out;
+        }
+    }
+    throw YuxError(line, col, ErrorCode::E1131,
+        draftBare.empty() ? string("?") : draftBare);
+}
+
+// ==================== _ptr_offset 跨模块私有 (Phase 3.3.3.a, E6023) ====================
+void validatePtrOffsetVisibility(const FnSymbolInfo* fnSymbol,
+                                  const string& currentModuleName,
+                                  int line, int col) {
+    if (!fnSymbol) return;
+    if (fnSymbol->isPrivate && !fnSymbol->moduleName.empty()
+        && fnSymbol->moduleName != currentModuleName) {
+        throw YuxError(line, col, ErrorCode::E6023);
+    }
+}
+
+// ==================== struct method 私有可见性 (Phase 3.3.3.a, E6007) ====================
+void validateStructMethodVisibility(const FnSymbolInfo* methodSymbol,
+                                     const string& currentStructName,
+                                     const string& actualTypeName,
+                                     const string& member,
+                                     int line, int col) {
+    if (!methodSymbol || !methodSymbol->isPrivate) return;
+    string currentBase = currentStructName;
+    auto dollarPos = currentBase.find('$');
+    if (dollarPos != string::npos) currentBase = currentBase.substr(0, dollarPos);
+    if (currentBase != actualTypeName) {
+        throw YuxError(line, col, ErrorCode::E6007, member, actualTypeName);
+    }
+}
+
 void validateFnSymbolVisibility(const FnSymbolInfo* fnSymbol,
                                 const string& currentModuleName,
                                 const string& fnName,

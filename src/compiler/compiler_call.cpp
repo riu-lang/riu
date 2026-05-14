@@ -738,11 +738,10 @@ llvm::Value* Compiler::compileFunctionCall(
 
     if (fnName == "_ptr_offset") {
         DEBUG_LOG("    Expr: _ptr_offset");
-        // E6023: 跨模块私有 (与 E6006 语义重叠但错误码不同), 暂保留 inline
-        if (fnSymbol && fnSymbol->isPrivate && !fnSymbol->moduleName.empty() &&
-            fnSymbol->moduleName != _file->moduleName()) {
-            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6023);
-        }
+        // E6023 (Phase 3.3.3.a): 跨模块私有, 迁至 sema::validatePtrOffsetVisibility.
+        // 与 E6006 (validateFnSymbolVisibility) 重叠但错误码不同.
+        sema::validatePtrOffsetVisibility(fnSymbol, _file->moduleName(),
+                                           callNode->getLineNumber(), callNode->getColumn());
         auto i8Ty = _builder.getInt8Ty();
         return _builder.CreateGEP(i8Ty, args[0], args[1], "ptr_off");
     }
@@ -1065,33 +1064,12 @@ llvm::Value* Compiler::compileGenericFunctionCall(
     // 解析每个 D 的限定名并校验 typeArgs[i] 是否满足 D (显式 impl 或
     // #DraftLike 结构匹配); 不满足报 E1106. 不影响 ensureFnInstance 的
     // mangle (单态化静态分发, 边界仅做静态检查).
+    // E3032 / E1106 (Phase 3.3.3.c): 迁至 sema::validateGenericTypeArgsDraftBound.
     if (_yux) {
-        const auto& bounds = genericFn->header()->typeParamBounds();
-        if (!bounds.empty()) {
-            auto& reg = _yux->draftRegistry();
-            auto& checker = _yux->draftImplChecker();
-            for (size_t i = 0; i < typeParams.size() && i < bounds.size(); ++i) {
-                for (auto& boundName : bounds[i]) {
-                    auto resolved = reg.resolve(boundName, fnOwner);
-                    if (!resolved) {
-                        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                            ErrorCode::E3032, boundName);
-                    }
-                    // v0.5: 函数声明位 draftBound 暂未携带类型实参 (ast_builder
-                    // 仅取基名), draftTypeArgs 传空; 草案 §6.4.4.1 文法允许
-                    // `D<T>` 形态留待后续扩展.
-                    std::vector<TypeInfo> draftTypeArgs;
-                    if (!checker.boundSatisfied(typeArgs[i], resolved->decl,
-                                                 resolved->qualifiedName, draftTypeArgs)) {
-                        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                            ErrorCode::E1106,
-                            typeArgs[i].getFullName(),
-                            resolved->qualifiedName,
-                            typeParams[i]);
-                    }
-                }
-            }
-        }
+        sema::validateGenericTypeArgsDraftBound(
+            &_yux->draftRegistry(), &_yux->draftImplChecker(),
+            fnOwner, genericFn->header(), typeArgs,
+            callNode->getLineNumber(), callNode->getColumn());
     }
 
     string mangledName = ensureFnInstance(genericFn, typeArgs, fnOwner, callNode->getLineNumber());
@@ -1691,14 +1669,10 @@ llvm::Value* Compiler::compileStructMethodCall(
     if (methodSymbol) {
         DEBUG_LOG_VAL("    Expr: MethodCall", methodFullName);
 
-        if (methodSymbol->isPrivate) {
-            string currentBase = _currentStructName;
-            auto dollarPos = currentBase.find('$');
-            if (dollarPos != string::npos) currentBase = currentBase.substr(0, dollarPos);
-            if (currentBase != actualType.name) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6007, member, actualType.name);
-            }
-        }
+        // E6007 (Phase 3.3.3.a): 跨可见性私有方法, 迁至 sema::validateStructMethodVisibility.
+        sema::validateStructMethodVisibility(methodSymbol, _currentStructName,
+                                              actualType.name, member,
+                                              callNode->getLineNumber(), callNode->getColumn());
 
         llvm::Value* basePtr = nullptr;
         if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
@@ -1805,21 +1779,11 @@ llvm::Value* Compiler::compileDynMethodCall(
     int col = callNode->getColumn();
 
     // 1. 取 D 名 (剥 Dyn<D&> 的内层 Ref); 解析为 draft decl.
-    auto draftInner = baseType.dynDraftType();
-    string draftBare = draftInner ? draftInner->name : string();
-    DraftDeclNode* draftDecl = nullptr;
-    string draftQualified;
-    if (_yux && _file && !draftBare.empty()) {
-        auto& reg = _yux->draftRegistry();
-        if (auto resolved = reg.resolve(draftBare, _file)) {
-            draftDecl = resolved->decl;
-            draftQualified = resolved->qualifiedName;
-        }
-    }
-    if (!draftDecl) {
-        throw YuxError(line, col, ErrorCode::E1131,
-            draftBare.empty() ? string("?") : draftBare);
-    }
+    // E1131 (Phase 3.3.3.b): 迁至 sema::resolveDynCalleeDraft.
+    const DraftRegistry* reg = (_yux && _file) ? &_yux->draftRegistry() : nullptr;
+    auto resolved = sema::resolveDynCalleeDraft(reg, _file, baseType, line, col);
+    DraftDeclNode* draftDecl = resolved.decl;
+    const string& draftQualified = resolved.qualified;
 
     // 2-4. sig 查找 / arity / 形参类型 抠到 sema (E6016 / E6012 / E6015).
     FnHeaderNode* sig = sema::resolveDynMethodSig(

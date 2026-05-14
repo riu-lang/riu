@@ -10,6 +10,8 @@
 #include "ast/node/fn_node.h"
 
 class Yux;
+class DraftRegistry;
+class DraftImplChecker;
 
 // 调用重载解析（Sema/Codegen 拆分 Phase 3.3 前置）
 //
@@ -58,6 +60,54 @@ void validateGenericTypeArgsArity(const string& fnName,
                                   size_t expectedCount,
                                   size_t actualCount,
                                   int line, int col);
+
+// 泛型 fn 的 typeArgs 边界校验 (Phase 3.3.3.c, E3032 / E1106).
+//
+// `<T : D1 + D2>` 形态: 对每个 typeParam[i], 在 fnOwner 的可见性下解析每个 bound
+// 名 D (DraftRegistry), 然后用 DraftImplChecker::boundSatisfied 校验 typeArgs[i]
+// 是否满足该 draft. 不满足:
+//   - bound 名 D 无法解析 → E3032 (draft 名未声明)
+//   - 解析成功但 boundSatisfied 返回 false → E1106 (typeArg 不实现 D)
+//
+// `registry` / `checker` 任一为 nullptr 时 helper 直接 no-op (Yux 未就绪时不强制).
+//
+// v0.5: 函数声明位 draftBound 暂未携带类型实参 (ast_builder 仅取基名), 这里始终用
+// 空 vector 传给 boundSatisfied; 草案 §6.4.4.1 文法允许 `D<T>` 形态留待后续扩展.
+//
+// 调用方:
+//   - Compiler::compileGenericFunctionCall 在 typeArgs 解析就绪后调用
+//
+// 纯 AST + Registry 查表 + checker 调用, 无 LLVM 依赖.
+void validateGenericTypeArgsDraftBound(
+    const DraftRegistry* registry,
+    const DraftImplChecker* checker,
+    FileNode* fnOwner,
+    FnHeaderNode* header,
+    const vector<TypeInfo>& typeArgs,
+    int line, int col);
+
+// Dyn<D> callee 的 draft 名字解析 (Phase 3.3.3.b, E1131).
+//
+// 入口: 调用 `someDynVal.foo(...)` 时, 取 baseType (`Dyn<D>` / `Dyn<D&>`) 的内层
+// D 名, 在 visibleFrom 文件的可见性范围内通过 DraftRegistry 解析 → draft decl + 限定名.
+//
+// 解析失败 (Phase 2b/2c 理论已拦截, 这里是 codegen 兜底) 抛 E1131, payload 为裸名
+// (若 baseType 不是 Dyn 形态导致裸名为空, 用 "?" 占位).
+//
+// `registry` 允许为 nullptr (SemaPass 早期未持有 Yux*); 此时直接抛 E1131, 由
+// Compiler 路径覆盖.
+//
+// 返回值: 命中 → 填充 decl + qualified; 未命中 → throw, 不返回.
+//
+// 纯 AST / 字符串查表, 无 LLVM 依赖.
+struct DynCalleeResolved {
+    DraftDeclNode* decl = nullptr;
+    string qualified;
+};
+DynCalleeResolved resolveDynCalleeDraft(const DraftRegistry* registry,
+                                         FileNode* visibleFrom,
+                                         const TypeInfo& baseType,
+                                         int line, int col);
 
 // Dyn<D> 方法调用的静态形态校验 (Phase 3.3 前置.3f).
 //
@@ -275,6 +325,36 @@ void validateFreeIntrinsicArity(const string& fnName, size_t argsCount,
 void validateArrayMethodCall(const TypeInfo& baseType, const string& member,
                              size_t argsCount, bool baseIsLvalue,
                              int line, int col);
+
+// `_ptr_offset` 跨模块私有访问检查 (Phase 3.3.3.a, E6023).
+//
+// 私有 `_`-prefixed 内建 fn 仅允许在声明所在模块内调用. 语义上与 E6006
+// (validateFnSymbolVisibility) 重叠, 但 yux 历史给 `_ptr_offset` 这条单独分配了
+// 错误码 E6023 以便诊断更精确; 这里保留分支以保持错误码不变.
+//
+// 调用方:
+//   - Compiler::compileExternalOrSdkFunctionCall 在 `_ptr_offset` 分支顶部调用
+//
+// 纯字符串比较, 无 LLVM 依赖.
+void validatePtrOffsetVisibility(const FnSymbolInfo* fnSymbol,
+                                  const string& currentModuleName,
+                                  int line, int col);
+
+// struct method 跨可见性调用检查 (Phase 3.3.3.a, E6007).
+//
+// 私有方法 (符号表 `isPrivate=true`, 即 `_` 前缀) 只允许 `self` struct 自身调用.
+// `currentStructName` 是调用方所在 impl 的 struct 名 (可能带 `$<泛型实例后缀>`,
+// 由 helper 内部剥掉); 不在任何 struct 内时传空串, 此时任何私有方法调用都被拒.
+//
+// 调用方:
+//   - Compiler::compileStructMethodCall 在 methodSymbol 命中且 isPrivate 时调用
+//
+// 纯字符串比较, 无 LLVM 依赖.
+void validateStructMethodVisibility(const FnSymbolInfo* methodSymbol,
+                                     const string& currentStructName,
+                                     const string& actualTypeName,
+                                     const string& member,
+                                     int line, int col);
 
 // 函数符号可见性检查 (Phase 3.3.1.c, E6006).
 //
