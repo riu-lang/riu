@@ -1281,7 +1281,19 @@ const p<ExprNode>& ExprUnaryNode::right() const {
 }
 
 TypeInfo ExprUnaryNode::getType() const {
-    return _right->getType();
+    auto rightType = _right->getType();
+    // Phase 3.4.h: 内置类型的一元 op 形态校验 (与 compileUnaryExpr 内置分支同义).
+    // 非 builtin 走自定义方法路径 (customMethodOp), 不在此校验; 与 codegen `if
+    // (!isBuiltinType(rightType.name)) compileCustomTypeUnaryOp(...)` 顺序一致.
+    if (isBuiltinType(rightType.name)) {
+        if (_op == Op::Rev && rightType.startsWith('f')) {
+            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3070, rightType.name);
+        }
+        if (_op == Op::Not && rightType.name != "bool") {
+            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3071, rightType.name);
+        }
+    }
+    return rightType;
 }
 
 int ExprUnaryNode::resolveLineNumber() const {

@@ -1061,6 +1061,8 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
     auto rightType = applySubst(node->right()->getType());
 
     if (leftType != rightType) {
+        // Phase 3.4.g: ExprCompareNode::getType 已抛 E3004 (kMigratedCodes 命中,
+        // SemaPass 顶部 setResolvedType 自动重抛), 此处不可达; 保留作幂等防御性双跑。
         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3004, leftType.name, rightType.name);
     }
 
@@ -1375,6 +1377,7 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
 
     auto& indices = node->indices();
     if (indices.empty()) {
+        // Phase 3.4.g: yux*.g4 强制 indices >= 1, 该分支不可达; 保留作 dead 防御。
         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3060);
     }
 
@@ -1415,6 +1418,8 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
     if (arrayType.isArrayGeneric()) {
         auto elemType = arrayType.arrayGenericElementType();
         if (!elemType) {
+            // Phase 3.4.g: ExprGetNode::getType 已抛 E3057 (同条件, kMigratedCodes 命中);
+            // 这里的 E3055 在 sema 跑过后不可达, 保留作幂等防御性双跑。
             throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3055);
         }
 
@@ -1429,6 +1434,8 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
     }
 
     if (!arrayType.isArray()) {
+        // Phase 3.4.g: ExprGetNode::getType 已抛 E3062 (kMigratedCodes 命中,
+        // SemaPass 自动重抛), 此处不可达; 保留作幂等防御性双跑。
         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3062, arrayType.name);
     }
 
@@ -1685,16 +1692,20 @@ llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
         return _builder.CreateNeg(right, "neg");
     case ExprUnaryNode::Op::Rev:
         if (isFloat) {
+            // Phase 3.4.h: ExprUnaryNode::getType 已抛 E3070 (kMigratedCodes 命中,
+            // SemaPass 自动重抛), 此处不可达; 保留作幂等防御性双跑。
             throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3070, type.name);
         }
         return _builder.CreateNot(right, "not");
     case ExprUnaryNode::Op::Not:
         if (!isBool) {
+            // Phase 3.4.h: 同上, getType 已抛 E3071, 此处不可达; 保留作幂等防御性双跑。
             throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3071, type.name);
         }
         return _builder.CreateNot(right, "lnot");
     }
 
+    // Phase 3.4.h: switch default unreachable, 上面三个 case 已覆盖全部 Op; 兜底。
     throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3072);
 }
 
