@@ -721,31 +721,27 @@ llvm::Value* Compiler::compileFunctionCall(
         return compileGenericFunctionCall(callNode, fnName, args, argTypes, genericFn, fnOwner);
     }
 
+    // Phase 3.3.2.b: 自由 intrinsic arity (E6020/E6021/E6022) 收口到 sema helper
+    sema::validateFreeIntrinsicArity(fnName, args.size(),
+                                      callNode->getLineNumber(), callNode->getColumn());
+
     if (fnName == "ptr_from_addr") {
         DEBUG_LOG("    Expr: PtrFromAddr");
-        if (args.size() != 1) {
-            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6020);
-        }
         return _builder.CreateIntToPtr(args[0], llvm::PointerType::get(_context, 0), "ptr_from_addr");
     }
 
     if (fnName == "rc_leak_count") {
         DEBUG_LOG("    Expr: rc_leak_count");
-        if (!args.empty()) {
-            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6021);
-        }
         auto g = runtime::getRcBlockCountGlobal(_module, _builder);
         return _builder.CreateLoad(_builder.getInt64Ty(), g, "rc_leak");
     }
 
     if (fnName == "_ptr_offset") {
         DEBUG_LOG("    Expr: _ptr_offset");
+        // E6023: 跨模块私有 (与 E6006 语义重叠但错误码不同), 暂保留 inline
         if (fnSymbol && fnSymbol->isPrivate && !fnSymbol->moduleName.empty() &&
             fnSymbol->moduleName != _file->moduleName()) {
             throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6023);
-        }
-        if (args.size() != 2) {
-            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6022);
         }
         auto i8Ty = _builder.getInt8Ty();
         return _builder.CreateGEP(i8Ty, args[0], args[1], "ptr_off");
@@ -835,18 +831,23 @@ llvm::Value* Compiler::compileGenericFunctionCall(
     }
 
     if (genericFn->header()->hasAnno("CompilerInner")) {
+        // Phase 3.3.2.c: CompilerInner intrinsic typeArgs/args arity 校验
+        // 同时覆盖 E6017 (未知 intrinsic) — helper 内部对清单外 fnName 直接抛.
+        sema::validateCompilerInnerIntrinsicShape(fnName, typeArgs.size(), args.size(),
+                                                   callNode->getLineNumber(), callNode->getColumn());
+        // Phase 3.3.2.d: CompilerInner intrinsic 类型形态校验
+        // 覆盖 same_ref / ptr_of (E6028 AST 形态 + E6029 T 必须堆句柄) / as_ref / weak (E6029 argType)
+        // / copy_of (E6032 深度 Ref 扫描).
+        sema::validateCompilerInnerIntrinsicTypeShape(
+            fnName, typeArgs, argTypes, callNode->getArgs(),
+            _file, _yux ? _yux->sdkFile() : nullptr,
+            callNode->getLineNumber(), callNode->getColumn());
+
         // 测试断言泛型分支（spec §11.3.5）：assert_eq:<T> T ∈ 数值/bool
         if (fnName == "assert_eq") {
-            if (typeArgs.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                    ErrorCode::E6026, fnName);
-            }
             return compileTestAssertEq(callNode, args, argTypes, typeArgs[0]);
         }
         if (fnName == "size_of") {
-            if (typeArgs.empty()) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6018);
-            }
             auto llvmType = getLLVMType(typeArgs[0]);
             if (!llvmType) {
                 throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
@@ -857,12 +858,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(
         }
         if (fnName == "upgrade") {
             // Phase 1d.2：Weak<T> → Box<T>?
-            if (typeArgs.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6024);
-            }
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6025);
-            }
+            // E6024 / E6025 已由 sema::validateCompilerInnerIntrinsicShape 校验
             auto& T = typeArgs[0];
             auto tShared = make_shared<TypeInfo>(T);
             TypeInfo weakTy("Weak", {tShared});
@@ -903,16 +899,9 @@ llvm::Value* Compiler::compileGenericFunctionCall(
         if (fnName == "same_ref" || fnName == "ptr_of") {
             // Phase 7：地址相等 / 显式取裸指针 builtin
             // T 必须是堆句柄类型 (Box / Weak / Array / String) 或 T&
-            // 标量 / 用户 struct / Nullable 等其他类型在此报错
-            size_t expectedArgs = (fnName == "same_ref" ? 2 : 1);
-            if (typeArgs.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                    ErrorCode::E6026, fnName);
-            }
-            if (args.size() != expectedArgs) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                    ErrorCode::E6027, fnName, expectedArgs);
-            }
+            // E6028 AST 形态 / E6029 T 必须堆句柄 已由 sema::validateCompilerInnerIntrinsicTypeShape 校验 (3.3.2.d)
+            // 下方 extractRawPtr 内残留的 E6028 / E6029 是兜底防御 (sema 抢先抛, 几乎不可达)
+            // E6026 / E6027 已由 sema::validateCompilerInnerIntrinsicShape 校验
             auto& T = typeArgs[0];
             auto ptrTy = llvm::PointerType::get(_context, 0);
 
@@ -981,14 +970,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             // spec §8.3.5.5：as_ref:<T>(box Box<T>) T&
             // 返回 box payload 起点的非空指针（跳过 8 字节 RC 头）
             // 寿命检查在 borrow_checker 处理（识别 ExprCallNode 形如 as_ref(x)）
-            if (typeArgs.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                    ErrorCode::E6026, fnName);
-            }
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                    ErrorCode::E6027, fnName, (size_t)1);
-            }
+            // E6026 / E6027 已由 sema::validateCompilerInnerIntrinsicShape 校验
             auto& T = typeArgs[0];
             // 实参必须是 Box<T>（不接受 Box<T>?、Array、String、Weak 等）
             auto argType = callNode->getArgs()[0]->getType();
@@ -1007,53 +989,9 @@ llvm::Value* Compiler::compileGenericFunctionCall(
         if (fnName == "copy_of") {
             // spec §12.7.3 / DRAFT-const-mut [#1.I]：copy_of:<T>(x T&) T
             // 返回独立 owned T；值类型 memcpy，含 Box / Array / String / Weak 字段时按字段 retain
-            // 含 Ref<U> 字段 → 报 E6032（DRAFT-const-mut §5.3 决议 #2：脱 const 出口不放任 ref）
-            if (typeArgs.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                    ErrorCode::E6026, fnName);
-            }
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                    ErrorCode::E6027, fnName, (size_t)1);
-            }
+            // 含 Ref<U> 字段 → 报 E6032（已由 sema::validateCompilerInnerIntrinsicTypeShape 校验, 3.3.2.d）
+            // E6026 / E6027 已由 sema::validateCompilerInnerIntrinsicShape 校验
             auto& T = typeArgs[0];
-
-            // 递归扫描 T 是否（深度）含 Ref 字段；命中即报 E6032。
-            // 当前 grammar 禁止 Ref 出现在 struct 字段、turbofish 类型实参中
-            // （field 走 `type` 规则、turbofish 走 `genericDef` 都不接 `&`），
-            // 所以这个分支主要是防御性的，承接将来语法放宽 / 中间 TypeInfo 携带 Ref 的场景。
-            // 不展开 Box / Array / Weak / Nullable / Dyn / Ptr / Fn 的类型参数：
-            //   这些是堆句柄包装，copy_of 仅 retain handle，不深拷其内部，
-            //   即便其内部含 Ref，也由那个内部 owned 实例自己承担约束。
-            std::function<bool(const TypeInfo&, string&)> hasRefDeep;
-            hasRefDeep = [&](const TypeInfo& t, string& path) -> bool {
-                if (t.isRef()) { path = t.getFullName(); return true; }
-                if (t.isBox() || t.isArrayGeneric() || t.isWeak() ||
-                    t.isNullable() || t.isDyn() || t.isPtr() || t.isFn()) {
-                    return false;
-                }
-                if (isBuiltinType(t.name)) return false;
-                // 用户 struct：递归走字段
-                auto sd = _file ? _file->getStructDecl(t.name) : nullptr;
-                if (!sd && _yux && _yux->sdkFile()) {
-                    sd = _yux->sdkFile()->getStructDecl(t.name);
-                }
-                if (!sd) return false;  // 找不到声明：保守放过（跨模块 / 类型参数等）
-                for (auto& field : sd->fields()) {
-                    auto ft = field->getType();
-                    string inner;
-                    if (hasRefDeep(ft, inner)) {
-                        path = t.name + "." + field->name().getText() + " : " + inner;
-                        return true;
-                    }
-                }
-                return false;
-            };
-            string refPath;
-            if (hasRefDeep(T, refPath)) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                    ErrorCode::E6032, refPath);
-            }
 
             // args[0] 是 T 的 struct value（来自 compileExpr 自动 deref T&）
             // 把所有 RC 子结构 +1：Box/Array/Weak 抽 handle 调对应 retain；
@@ -1069,14 +1007,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             // spec §4.8.3.1 / §9：weak:<T>(box Box<T>?) Weak<T>
             // 接受 Box<T> 或 Box<T>?；null/哨兵输入返回空 Weak（永远 upgrade 失败）
             // 复用 _weak_retain：复制 handle 指针 + weak 计数 +1
-            if (typeArgs.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                    ErrorCode::E6026, fnName);
-            }
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                    ErrorCode::E6027, fnName, (size_t)1);
-            }
+            // E6026 / E6027 已由 sema::validateCompilerInnerIntrinsicShape 校验
             auto& T = typeArgs[0];
             auto argType = callNode->getArgs()[0]->getType();
 
@@ -1124,6 +1055,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             recordTemp(result, weakTy);
             return result;
         }
+        // E6017 (未知 CompilerInner intrinsic) 已由 sema::validateCompilerInnerIntrinsicShape
+        // 在分派前抛出, 不会到这里; 留 unreachable assert 防御.
         throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
             ErrorCode::E6017, fnName);
     }
@@ -1317,6 +1250,10 @@ llvm::Value* Compiler::compileArrayMethodCall(
         }
     }
 
+    // Phase 3.3.2.a: Array<T> 方法形态校验 (E3055/E6040-E6044)
+    sema::validateArrayMethodCall(baseType, member, args.size(), arrayPtr != nullptr,
+                                   callNode->getLineNumber(), callNode->getColumn());
+
     auto getReadPtr = [&]() -> llvm::Value* {
         if (arrayPtr) return arrayPtr;
         auto baseVal = compileExpr(baseExpr);
@@ -1340,9 +1277,7 @@ llvm::Value* Compiler::compileArrayMethodCall(
         return _builder.CreateLoad(i64Ty, capField, "array.cap");
     }
 
-    if (!elemType) {
-        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E3055);
-    }
+    // E3055 已由 sema::validateArrayMethodCall 在函数顶部抛出 (顶部 helper 保证 elemType 非空)
     auto elemLLVMType = getLLVMType(*elemType);
 
     if (member == "is_empty") {
@@ -1356,9 +1291,7 @@ llvm::Value* Compiler::compileArrayMethodCall(
 
     if (member == "at") {
         DEBUG_LOG("    Expr: Array.at()");
-        if (args.size() != 1) {
-            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6040);
-        }
+        // E6040 已由 sema::validateArrayMethodCall 保证 args.size() == 1
         auto ptr = getReadPtr();
         auto handle = loadArrayHandle(ptr);
         auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(handle), "a.data");
@@ -1388,9 +1321,7 @@ llvm::Value* Compiler::compileArrayMethodCall(
 
     if (member == "pop") {
         DEBUG_LOG("    Expr: Array.pop()");
-        if (!arrayPtr) {
-            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6041);
-        }
+        // E6041 已由 sema::validateArrayMethodCall 保证 arrayPtr != nullptr
         auto handle = loadArrayHandle(arrayPtr);
         auto lenFieldPtr = arrayBlockLenPtr(handle);
         auto lenVal = _builder.CreateLoad(i64Ty, lenFieldPtr, "a.len");
@@ -1405,10 +1336,7 @@ llvm::Value* Compiler::compileArrayMethodCall(
     }
 
     if (member == "push" || member == "set_len" || member == "clear") {
-        if (!arrayPtr) {
-            throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                ErrorCode::E6042, member);
-        }
+        // E6042 已由 sema::validateArrayMethodCall 保证 arrayPtr != nullptr
         auto handle = loadArrayHandle(arrayPtr);
         auto lenFieldPtr = arrayBlockLenPtr(handle);
         auto capFieldPtr = arrayBlockCapPtr(handle);
@@ -1424,16 +1352,12 @@ llvm::Value* Compiler::compileArrayMethodCall(
         }
         if (member == "set_len") {
             DEBUG_LOG("    Expr: Array.set_len()");
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6043);
-            }
+            // E6043 已由 sema::validateArrayMethodCall 保证 args.size() == 1
             _builder.CreateStore(args[0], lenFieldPtr);
             return voidResult();
         }
         DEBUG_LOG("    Expr: Array.push()");
-        if (args.size() != 1) {
-            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6044);
-        }
+        // E6044 已由 sema::validateArrayMethodCall 保证 args.size() == 1
         auto elemSize = _module->getDataLayout().getTypeAllocSize(elemLLVMType);
         auto elemVal = args[0];
         auto lenVal = _builder.CreateLoad(i64Ty, lenFieldPtr, "a.len");
@@ -1482,16 +1406,18 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
     
     // 处理 #CompilerInner 运算符方法：直接生成 LLVM IR
     if (isCompilerInnerMethod(baseType.name, member)) {
+        // Phase 3.3.2.e: 操作符方法 arity + 类型域校验
+        //   E6045 17 处二元 op arity != 1, E3070 inv-on-float 全部抠到 sema.
+        sema::validateOperatorMethodCall(member, baseType, args.size(),
+            callNode->getLineNumber(), callNode->getColumn());
+
         auto baseVal = compileExpr(baseExpr);
         bool isFloat = baseType.startsWith('f');
         bool isUnsigned = baseType.startsWith('u');
-        
+
         // 算术运算符
         if (member == "plus") {
             DEBUG_LOG_VAL("    Expr: CompilerInner plus", baseType.name);
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "plus");
-            }
             if (isFloat) {
                 return _builder.CreateFAdd(baseVal, args[0], "add");
             }
@@ -1499,9 +1425,6 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         }
         if (member == "minus") {
             DEBUG_LOG_VAL("    Expr: CompilerInner minus", baseType.name);
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "minus");
-            }
             if (isFloat) {
                 return _builder.CreateFSub(baseVal, args[0], "sub");
             }
@@ -1509,9 +1432,6 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         }
         if (member == "mul") {
             DEBUG_LOG_VAL("    Expr: CompilerInner mul", baseType.name);
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "mul");
-            }
             if (isFloat) {
                 return _builder.CreateFMul(baseVal, args[0], "mul");
             }
@@ -1519,9 +1439,6 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         }
         if (member == "div") {
             DEBUG_LOG_VAL("    Expr: CompilerInner div", baseType.name);
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "div");
-            }
             if (isFloat) {
                 return _builder.CreateFDiv(baseVal, args[0], "div");
             }
@@ -1532,9 +1449,6 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         }
         if (member == "mod") {
             DEBUG_LOG_VAL("    Expr: CompilerInner mod", baseType.name);
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "mod");
-            }
             if (isFloat) {
                 return _builder.CreateFRem(baseVal, args[0], "mod");
             }
@@ -1543,13 +1457,10 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
             }
             return _builder.CreateSRem(baseVal, args[0], "mod");
         }
-        
+
         // 比较运算符
         if (member == "eq") {
             DEBUG_LOG_VAL("    Expr: CompilerInner eq", baseType.name);
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "eq");
-            }
             if (isFloat) {
                 return _builder.CreateFCmpOEQ(baseVal, args[0], "eq");
             }
@@ -1557,9 +1468,6 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         }
         if (member == "ne") {
             DEBUG_LOG_VAL("    Expr: CompilerInner ne", baseType.name);
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "ne");
-            }
             if (isFloat) {
                 return _builder.CreateFCmpONE(baseVal, args[0], "ne");
             }
@@ -1567,9 +1475,6 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         }
         if (member == "lt") {
             DEBUG_LOG_VAL("    Expr: CompilerInner lt", baseType.name);
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "lt");
-            }
             if (isFloat) {
                 return _builder.CreateFCmpOLT(baseVal, args[0], "lt");
             }
@@ -1580,9 +1485,6 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         }
         if (member == "le") {
             DEBUG_LOG_VAL("    Expr: CompilerInner le", baseType.name);
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "le");
-            }
             if (isFloat) {
                 return _builder.CreateFCmpOLE(baseVal, args[0], "le");
             }
@@ -1593,9 +1495,6 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         }
         if (member == "gt") {
             DEBUG_LOG_VAL("    Expr: CompilerInner gt", baseType.name);
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "gt");
-            }
             if (isFloat) {
                 return _builder.CreateFCmpOGT(baseVal, args[0], "gt");
             }
@@ -1606,9 +1505,6 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         }
         if (member == "ge") {
             DEBUG_LOG_VAL("    Expr: CompilerInner ge", baseType.name);
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "ge");
-            }
             if (isFloat) {
                 return _builder.CreateFCmpOGE(baseVal, args[0], "ge");
             }
@@ -1617,47 +1513,32 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
             }
             return _builder.CreateICmpSGE(baseVal, args[0], "ge");
         }
-        
+
         // 位运算符
         if (member == "and") {
             DEBUG_LOG_VAL("    Expr: CompilerInner and", baseType.name);
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "and");
-            }
             return _builder.CreateAnd(baseVal, args[0], "and");
         }
         if (member == "or") {
             DEBUG_LOG_VAL("    Expr: CompilerInner or", baseType.name);
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "or");
-            }
             return _builder.CreateOr(baseVal, args[0], "or");
         }
         if (member == "xor") {
             DEBUG_LOG_VAL("    Expr: CompilerInner xor", baseType.name);
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "xor");
-            }
             return _builder.CreateXor(baseVal, args[0], "xor");
         }
         if (member == "shl") {
             DEBUG_LOG_VAL("    Expr: CompilerInner shl", baseType.name);
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "shl");
-            }
             return _builder.CreateShl(baseVal, args[0], "shl");
         }
         if (member == "shr") {
             DEBUG_LOG_VAL("    Expr: CompilerInner shr", baseType.name);
-            if (args.size() != 1) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6045, "shr");
-            }
             if (isUnsigned) {
                 return _builder.CreateLShr(baseVal, args[0], "shr");
             }
             return _builder.CreateAShr(baseVal, args[0], "shr");
         }
-        
+
         // 一元运算符
         if (member == "neg") {
             DEBUG_LOG_VAL("    Expr: CompilerInner neg", baseType.name);
@@ -1668,9 +1549,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
         }
         if (member == "inv") {
             DEBUG_LOG_VAL("    Expr: CompilerInner inv", baseType.name);
-            if (isFloat) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E3070, baseType.name);
-            }
+            // E3070 (inv on float) 已由 sema::validateOperatorMethodCall 校验
             return _builder.CreateNot(baseVal, "inv");
         }
         if (member == "not") {

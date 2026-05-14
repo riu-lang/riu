@@ -545,4 +545,221 @@ void validateFnSymbolVisibility(const FnSymbolInfo* fnSymbol,
     }
 }
 
+// ==================== CompilerInner intrinsic arity (Phase 3.3.2.c) ====================
+// 原 compileGenericFunctionCall 的 #CompilerInner 分支顶部散落的 typeArgs/args
+// 计数检查 (~12 处 throw 跨 7 个 fnName) 收口到单一 helper.
+void validateCompilerInnerIntrinsicShape(const string& fnName,
+                                          size_t typeArgsCount,
+                                          size_t argsCount,
+                                          int line, int col) {
+    if (fnName == "assert_eq") {
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName);
+        return;
+    }
+    if (fnName == "size_of") {
+        if (typeArgsCount == 0) throw YuxError(line, col, ErrorCode::E6018);
+        return;
+    }
+    if (fnName == "upgrade") {
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6024);
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6025);
+        return;
+    }
+    if (fnName == "same_ref" || fnName == "ptr_of") {
+        size_t expectedArgs = (fnName == "same_ref" ? 2u : 1u);
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName);
+        if (argsCount != expectedArgs) {
+            throw YuxError(line, col, ErrorCode::E6027, fnName, expectedArgs);
+        }
+        return;
+    }
+    if (fnName == "as_ref" || fnName == "copy_of" || fnName == "weak") {
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName);
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, (size_t)1);
+        return;
+    }
+    // 未知 CompilerInner intrinsic
+    throw YuxError(line, col, ErrorCode::E6017, fnName);
+}
+
+// ==================== 自由内建 intrinsic arity (Phase 3.3.2.b) ====================
+// 原 `compileExternalOrSdkFunctionCall` 顶部三处 inline 分派 (line 724-752) 收口.
+// 仅命中清单内的 fnName 才校验, 其他 fnName 是 no-op.
+void validateFreeIntrinsicArity(const string& fnName, size_t argsCount,
+                                int line, int col) {
+    if (fnName == "ptr_from_addr") {
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6020);
+        return;
+    }
+    if (fnName == "rc_leak_count") {
+        if (argsCount != 0) throw YuxError(line, col, ErrorCode::E6021);
+        return;
+    }
+    if (fnName == "_ptr_offset") {
+        if (argsCount != 2) throw YuxError(line, col, ErrorCode::E6022);
+        return;
+    }
+}
+
+// ==================== Array<T> 方法形态校验 (Phase 3.3.2.a) ====================
+// 原 `compileArrayMethodCall` 散落的 6 处 throw 收口为一个 helper.
+// 调用方仅需在函数顶部传 (baseType, member, argsCount, baseIsLvalue) 即可一次性校验.
+void validateArrayMethodCall(const TypeInfo& baseType, const string& member,
+                             size_t argsCount, bool baseIsLvalue,
+                             int line, int col) {
+    // len / cap 在 RC 头, 不需要 elemType, 也不需要 lvalue
+    if (member == "len" || member == "cap") return;
+
+    auto elemType = baseType.arrayGenericElementType();
+    if (!elemType) {
+        throw YuxError(line, col, ErrorCode::E3055);
+    }
+
+    if (member == "is_empty" || member == "first" || member == "last") return;
+    if (member == "at") {
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6040);
+        return;
+    }
+    if (member == "pop") {
+        if (!baseIsLvalue) throw YuxError(line, col, ErrorCode::E6041);
+        return;
+    }
+    if (member == "push" || member == "set_len" || member == "clear") {
+        if (!baseIsLvalue) {
+            throw YuxError(line, col, ErrorCode::E6042, member);
+        }
+        if (member == "clear") return;
+        if (member == "set_len") {
+            if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6043);
+            return;
+        }
+        // push
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6044);
+        return;
+    }
+    // 未知 member: 由 Compiler 端返回 nullptr fall-through 到 builtin/sdk 方法路径
+}
+
+// ==================== CompilerInner intrinsic 类型形态校验 (Phase 3.3.2.d) ====================
+// 原 compileGenericFunctionCall 的 #CompilerInner 分支内散落的 E6028 / E6029 / E6032
+// 校验 (跨 same_ref / ptr_of / as_ref / weak / copy_of 五个 fnName) 收口到单一 helper.
+void validateCompilerInnerIntrinsicTypeShape(const string& fnName,
+                                              const vector<TypeInfo>& typeArgs,
+                                              const vector<TypeInfo>& argTypes,
+                                              const vector<p<ExprNode>>& argNodes,
+                                              FileNode* file, FileNode* sdkFile,
+                                              int line, int col) {
+    if (fnName == "same_ref" || fnName == "ptr_of") {
+        // arity / typeArgs 计数已由 validateCompilerInnerIntrinsicShape 保证
+        const auto& T = typeArgs[0];
+        bool isHeapHandle = T.isBox() || T.isWeak() || T.isArrayGeneric()
+                            || (T.name == "String" && T.kind == TypeKind::Normal);
+        if (!isHeapHandle && !T.isRef()) {
+            throw YuxError(line, col, ErrorCode::E6029, fnName, T.getFullName());
+        }
+        if (T.isRef()) {
+            // 取源裸指针仅支持: ID-literal (栈/堆变量) 或 ExprGetRefNode (`&x` 字面)
+            // _localVarPtrs 查不到的 fallback 仍由 Compiler 抛 E6028.
+            size_t expectedArgs = (fnName == "same_ref" ? 2u : 1u);
+            for (size_t i = 0; i < expectedArgs && i < argNodes.size(); ++i) {
+                auto node = argNodes[i];
+                bool ok = false;
+                if (auto lit = dynamic_cast<ExprLiteralNode*>(node)) {
+                    if (dynamic_cast<LiteralObjNode*>(lit->literal())) ok = true;
+                }
+                if (!ok && dynamic_cast<ExprGetRefNode*>(node)) ok = true;
+                if (!ok) {
+                    throw YuxError(line, col, ErrorCode::E6028, fnName);
+                }
+            }
+        }
+        return;
+    }
+    if (fnName == "as_ref") {
+        // 实参必须是 Box<T> (不接受 Box<T>?)
+        if (argTypes.empty()) return;
+        const auto& argType = argTypes[0];
+        if (!argType.isBox() || argType.isNullable()) {
+            throw YuxError(line, col, ErrorCode::E6029, fnName, argType.getFullName());
+        }
+        return;
+    }
+    if (fnName == "weak") {
+        // 实参必须是 Box<T> 或 Box<T>? (Nullable<Box<T>>)
+        if (argTypes.empty()) return;
+        const auto& argType = argTypes[0];
+        if (argType.isBox() && !argType.isNullable()) return;
+        if (argType.isNullable()) {
+            auto inner = argType.nullableInnerType();
+            if (inner && inner->isBox()) return;
+            throw YuxError(line, col, ErrorCode::E6029, fnName, argType.getFullName());
+        }
+        throw YuxError(line, col, ErrorCode::E6029, fnName, argType.getFullName());
+    }
+    if (fnName == "copy_of") {
+        // 递归扫 T 是否 (深度) 含 Ref 字段; 命中即报 E6032.
+        // 不展开 Box / Array / Weak / Nullable / Dyn / Ptr / Fn 的类型参数 —— 它们是堆句柄包装.
+        std::function<bool(const TypeInfo&, string&)> hasRefDeep;
+        hasRefDeep = [&](const TypeInfo& t, string& path) -> bool {
+            if (t.isRef()) { path = t.getFullName(); return true; }
+            if (t.isBox() || t.isArrayGeneric() || t.isWeak()
+                || t.isNullable() || t.isDyn() || t.isPtr() || t.isFn()) {
+                return false;
+            }
+            if (isBuiltinType(t.name)) return false;
+            auto sd = file ? file->getStructDecl(t.name) : nullptr;
+            if (!sd && sdkFile) {
+                sd = sdkFile->getStructDecl(t.name);
+            }
+            if (!sd) return false;
+            for (auto& field : sd->fields()) {
+                auto ft = field->getType();
+                string inner;
+                if (hasRefDeep(ft, inner)) {
+                    path = t.name + "." + field->name().getText() + " : " + inner;
+                    return true;
+                }
+            }
+            return false;
+        };
+        const auto& T = typeArgs[0];
+        string refPath;
+        if (hasRefDeep(T, refPath)) {
+            throw YuxError(line, col, ErrorCode::E6032, refPath);
+        }
+        return;
+    }
+    // 其他 intrinsic (assert_eq / size_of / upgrade) 无类型形态校验, no-op
+}
+
+// ==================== CompilerInner 操作符方法 arity / 类型域 (Phase 3.3.2.e) ====================
+// 覆盖 compileBuiltinTypeMethodCall 内 isCompilerInnerMethod 分支:
+//   - 17 处 E6045 arity != 1 (二元 op)
+//   - 1 处 E3070 inv on float
+void validateOperatorMethodCall(const string& member, const TypeInfo& baseType,
+                                size_t argsCount, int line, int col) {
+    // 二元 op: args.size() 必须为 1
+    static const vector<string> binaryOps = {
+        "plus", "minus", "mul", "div", "mod",
+        "eq", "ne", "lt", "le", "gt", "ge",
+        "and", "or", "xor", "shl", "shr",
+    };
+    for (auto& op : binaryOps) {
+        if (member == op) {
+            if (argsCount != 1) {
+                throw YuxError(line, col, ErrorCode::E6045, member);
+            }
+            return;
+        }
+    }
+    // 一元 inv: 不接受 float
+    if (member == "inv") {
+        if (baseType.startsWith('f')) {
+            throw YuxError(line, col, ErrorCode::E3070, baseType.name);
+        }
+        return;
+    }
+    // neg / not 等其他一元 op 无校验
+}
+
 } // namespace sema

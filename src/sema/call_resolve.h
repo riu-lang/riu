@@ -178,6 +178,104 @@ void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn,
                             const vector<TypeInfo>& argTypes,
                             vector<TypeInfo>& outTypeArgs);
 
+// CompilerInner 泛型 intrinsic 的 typeArgs / args arity 校验 (Phase 3.3.2.c).
+//
+// 覆盖 compileGenericFunctionCall 的 #CompilerInner 分支的纯计数校验:
+//   - E6017: 未知 intrinsic (兜底, 不在清单内的 fnName)
+//   - E6018: size_of typeArgs 为空
+//   - E6024: upgrade typeArgs != 1
+//   - E6025: upgrade args != 1
+//   - E6026: assert_eq / same_ref / ptr_of / as_ref / copy_of / weak typeArgs != 1
+//   - E6027: same_ref args != 2; ptr_of / as_ref / copy_of / weak args != 1
+//
+// 内建清单 (按当前 SDK assert.yux / mem.yux / ref.yux / weak.yux):
+//   assert_eq, size_of, upgrade, same_ref, ptr_of, as_ref, copy_of, weak
+//
+// E6019 (size_of typeArg getLLVMType 失败) 依赖 LLVM, 留在 codegen.
+// E6028 / E6029 / E6032 是类型形态校验, 留给 3.3.2.d.
+//
+// 纯字符串 + size 比较, 无 LLVM 依赖.
+void validateCompilerInnerIntrinsicShape(const string& fnName,
+                                          size_t typeArgsCount,
+                                          size_t argsCount,
+                                          int line, int col);
+
+// CompilerInner 泛型 intrinsic 的类型形态校验 (Phase 3.3.2.d).
+//
+// 在 validateCompilerInnerIntrinsicShape 通过 arity 校验之后调用.
+// 覆盖与类型相关 (typeArg / argType / AST 形态) 的检查:
+//   - same_ref / ptr_of:
+//       * E6029: T 必须是堆句柄 (Box / Weak / Array 泛型 / String Normal) 或 T&
+//       * E6028: T = Ref 时, 每个 arg 的 AST 必须是 ID-literal 或 ExprGetRefNode
+//                (取裸源指针只支持这两种 AST 形态; 其他形态无静态出口)
+//   - as_ref:
+//       * E6029: argType[0] 必须是 Box 且不能是 Nullable
+//   - weak:
+//       * E6029: argType[0] 必须是 Box 或 Box?, 若 Nullable 其 inner 必须是 Box
+//   - copy_of:
+//       * E6032: T 深度含有 Ref<U> 字段, 拒绝 (DRAFT-const-mut §5.3 决议 #2)
+//
+// 不覆盖:
+//   - E6019 (size_of llvm getLLVMType 失败) — 依赖 LLVM, 留 codegen
+//   - extractRawPtr 内 _localVarPtrs 查不到的 E6028 fallback — 依赖 Compiler 局部
+//     变量符号表, 不在 AST 上, 留 inline
+//
+// `file` / `sdkFile` 用于 copy_of 的 struct 字段深度递归; 为 nullptr 时按"找不到声明 → 保守放过"处理.
+void validateCompilerInnerIntrinsicTypeShape(const string& fnName,
+                                              const vector<TypeInfo>& typeArgs,
+                                              const vector<TypeInfo>& argTypes,
+                                              const vector<p<ExprNode>>& argNodes,
+                                              FileNode* file, FileNode* sdkFile,
+                                              int line, int col);
+
+// CompilerInner 操作符方法的 arity / 类型域校验 (Phase 3.3.2.e).
+//
+// 覆盖 `compileBuiltinTypeMethodCall` 内 `isCompilerInnerMethod` 分支的纯校验:
+//   - E6045: 二元 op (plus/minus/mul/div/mod/eq/ne/lt/le/gt/ge/and/or/xor/shl/shr) args.size() != 1
+//   - E3070: 一元 `inv` 不接受 float 类型
+//
+// 不命中 op 清单时 no-op (调用方继续 fall-through 到 IR emit).
+// 纯字符串 + 计数 + baseType.startsWith('f'), 无 LLVM 依赖.
+void validateOperatorMethodCall(const string& member, const TypeInfo& baseType,
+                                size_t argsCount, int line, int col);
+
+// 自由内建 intrinsic 的 arity 校验 (Phase 3.3.2.b).
+//
+// 覆盖 compileExternalOrSdkFunctionCall 顶部的纯 arity 分派:
+//   - E6020: `ptr_from_addr(addr u64)` arity != 1
+//   - E6021: `rc_leak_count()` arity != 0
+//   - E6022: `_ptr_offset(p, off)` arity != 2
+//
+// 命中的 fnName 才会校验, 其他 fnName 是 no-op (调用方继续 fall-through 到
+// fnSymbol / generic / external 路径). E6023 (_ptr_offset 跨模块私有) 与 E6006
+// 语义重叠但错误码不同, 暂留 inline; 等 SemaPass 接管后再统一.
+//
+// 纯字符串 + size 比较, 无 LLVM 依赖.
+void validateFreeIntrinsicArity(const string& fnName, size_t argsCount,
+                                int line, int col);
+
+// Array<T> 方法调用的静态形态校验 (Phase 3.3.2.a).
+//
+// 覆盖 Array<T> 内置方法 (len/cap/is_empty/at/first/last/pop/push/set_len/clear)
+// 的 arity + elemType + lvalue 校验:
+//   - E3055: baseType.arrayGenericElementType() 缺 (除 len/cap 之外都需要)
+//   - E6040: at arity != 1
+//   - E6041: pop 在 rvalue 上 (无法原位修改 len)
+//   - E6042: push/set_len/clear 在 rvalue 上
+//   - E6043: set_len arity != 1
+//   - E6044: push arity != 1
+//
+// `baseIsLvalue` 由调用方算: Compiler 看 arrayPtr != nullptr (即 baseExpr 是
+// 局部变量或 struct 字段链能解析到栈/堆指针); SemaPass 后续 (3.3.2.f) 走镜像逻辑.
+//
+// 未知方法名时不抛错, 调用方 (Compiler::compileArrayMethodCall) 返回 nullptr
+// 让上层 fall-through 到 builtin-type method / sdk method 路径.
+//
+// 纯 TypeInfo / 字符串比较, 无 LLVM 依赖.
+void validateArrayMethodCall(const TypeInfo& baseType, const string& member,
+                             size_t argsCount, bool baseIsLvalue,
+                             int line, int col);
+
 // 函数符号可见性检查 (Phase 3.3.1.c, E6006).
 //
 // 当 `fnSymbol` 已解析到一个跨模块的私有函数 (`_`-prefixed) 时, 拒绝调用.
