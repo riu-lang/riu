@@ -1020,4 +1020,116 @@ void validateMatchArms(EnumDeclNode* enumDecl, const string& enumName,
     }
 }
 
+// ==================== 私有字段可见性 (Phase 3.4.d.2) ====================
+
+namespace {
+// 剥 `$<...>` 后缀, 取 generic 实例化前的 base struct 名.
+string stripGenericSuffix(const string& name) {
+    auto pos = name.find('$');
+    return pos == string::npos ? name : name.substr(0, pos);
+}
+
+// 查 struct decl: file → sdkFile.
+StructDeclNode* lookupStructIn(FileNode* file, FileNode* sdkFile, const string& name) {
+    if (!file) return nullptr;
+    if (auto* d = file->getStructDecl(name)) return d;
+    if (sdkFile && sdkFile != file) {
+        if (auto* d = sdkFile->getStructDecl(name)) return d;
+    }
+    return nullptr;
+}
+} // namespace
+
+void validatePrivateFieldAccess(StructDeclNode* structDecl, const string& fieldName,
+                                const string& baseTypeName,
+                                const string& accessorStructName,
+                                int line, int col) {
+    if (!structDecl) return;
+    int idx = structDecl->fieldIndex(fieldName);
+    if (idx < 0) return;
+    auto field = structDecl->fields()[idx];
+    if (!field->isPrivate()) return;
+    string currentBase = stripGenericSuffix(accessorStructName);
+    if (currentBase == baseTypeName) return;
+    throw YuxError(line, col, ErrorCode::E3042, fieldName, baseTypeName);
+}
+
+void validateGetRefPrivacy(FileNode* file, FileNode* sdkFile,
+                           p<ExprGetRefNode> node,
+                           const string& accessorStructName) {
+    if (!node) return;
+    auto scope = node->findNearestScope();
+    if (!scope) return;
+    auto sym = scope->lookupSymbol(node->obj().getText());
+    if (!sym) return; // E3030 由 getType 抢; 这里静默
+
+    TypeInfo currentType = sym->type;
+    if (currentType.isRef()) {
+        if (auto inner = currentType.refElementType()) currentType = *inner;
+    }
+
+    int line = node->resolveLineNumber();
+    int col = node->resolveColumn();
+
+    for (auto& sub : node->subs()) {
+        // 与 compileGetRefExpr / ExprGetRefNode::getType 同款: Box<T> 自动 deref.
+        TypeInfo lookupType = currentType;
+        if (lookupType.isBox()) {
+            if (auto inner = lookupType.boxElementType()) lookupType = *inner;
+        }
+
+        auto structDecl = lookupStructIn(file, sdkFile, lookupType.name);
+        if (!structDecl) return; // E3041 由 getType 抢
+
+        int idx = structDecl->fieldIndex(sub.getText());
+        if (idx < 0) return; // E3040 由 getType 抢
+
+        validatePrivateFieldAccess(structDecl, sub.getText(), lookupType.name,
+                                   accessorStructName, line, col);
+
+        // 推进 currentType: 取 field type, 含泛型实参替换 (与 getType 同款).
+        TypeInfo fieldType = structDecl->fields()[idx]->getType();
+        if (lookupType.isGeneric() && structDecl->isGeneric()
+            && lookupType.genericArgs.size() == structDecl->typeParams().size()) {
+            std::map<string, TypeInfo> subst;
+            for (size_t i = 0; i < structDecl->typeParams().size(); ++i) {
+                subst[structDecl->typeParams()[i]] =
+                    lookupType.genericArgs[i] ? *lookupType.genericArgs[i] : TypeInfo();
+            }
+            fieldType = fieldType.substitute(subst);
+        }
+        currentType = fieldType;
+    }
+}
+
+void validateDotFieldPrivacy(FileNode* file, FileNode* sdkFile,
+                             p<ExprDotNode> node,
+                             const string& accessorStructName) {
+    if (!node) return;
+    if (node->isSafe()) return; // safe `?.` 走 getType 路径, 不在此处校验
+
+    // baseType 取自 baseExpr; getType 异常时静默跳过 (lambda 形参等).
+    TypeInfo baseType;
+    try {
+        baseType = node->baseExpr()->getType();
+    } catch (...) {
+        return;
+    }
+
+    TypeInfo actualType = baseType;
+    if (actualType.isRef()) {
+        if (auto inner = actualType.refElementType()) actualType = *inner;
+    }
+    if (actualType.isBox()) {
+        if (auto inner = actualType.boxElementType()) actualType = *inner;
+    }
+
+    auto structDecl = lookupStructIn(file, sdkFile, actualType.name);
+    if (!structDecl) return; // 不是 struct 字段访问 (可能 method / 别的形态), 跳过
+
+    validatePrivateFieldAccess(structDecl, node->member(), actualType.name,
+                               accessorStructName,
+                               node->resolveLineNumber(), node->resolveColumn());
+}
+
 } // namespace sema

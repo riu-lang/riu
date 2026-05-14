@@ -1665,16 +1665,14 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
             throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3040, currentType.name, memberName);
         }
 
-        auto field = structDecl->fields()[fieldIndex];
-        if (field->isPrivate()) {
-            string currentBase = _currentStructName;
-            auto dollarPos = currentBase.find('$');
-            if (dollarPos != string::npos) currentBase = currentBase.substr(0, dollarPos);
-            if (currentBase != currentType.name) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3042, memberName, currentType.name);
-            }
-        }
+        // Phase 3.4.d.2: E3042 私有字段可见性 整体抠到 sema::validatePrivateFieldAccess.
+        // SemaPass.visitExpr ExprGetRefNode 分支调用 validateGetRefPrivacy 已沿同链路抢先抛;
+        // 这里保留作幂等防御性双跑.
+        sema::validatePrivateFieldAccess(structDecl, memberName, currentType.name,
+                                         _currentStructName,
+                                         node->getLineNumber(), node->getColumn());
 
+        auto field = structDecl->fields()[fieldIndex];
         auto structType = getLLVMType(currentType);
         auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
         auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIndex);
@@ -1826,15 +1824,13 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
         if (fieldIndex >= 0) {
             DEBUG_LOG_VAL("    Expr: StructFieldAccess", actualType.name << "." << member);
 
+            // Phase 3.4.d.2: E3042 私有字段可见性 整体抠到 sema::validatePrivateFieldAccess.
+            // SemaPass.visitExpr ExprDotNode 分支调用 validateDotFieldPrivacy 已抢先抛;
+            // 这里保留作幂等防御性双跑.
+            sema::validatePrivateFieldAccess(structDecl, member, actualType.name,
+                                             _currentStructName,
+                                             node->getLineNumber(), node->getColumn());
             auto field = structDecl->fields()[fieldIndex];
-            if (field->isPrivate()) {
-                string currentBase = _currentStructName;
-                auto dollarPos = currentBase.find('$');
-                if (dollarPos != string::npos) currentBase = currentBase.substr(0, dollarPos);
-                if (currentBase != actualType.name) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3042, member, actualType.name);
-                }
-            }
 
             if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
                 if (auto objLiteral = dynamic_cast<LiteralObjNode*>(baseLiteral->literal())) {

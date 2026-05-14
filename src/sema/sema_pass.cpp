@@ -147,6 +147,9 @@ void SemaPass::run() {
     // 方法体内表达式全部 assert 失败。
     for (auto& impl : _file->getStructImpls()) {
         if (impl->isGeneric()) continue;
+        // Phase 3.4.d.2: 进入 impl 时记录 currentStructName, 供 visitExpr 走
+        // ExprGetRefNode / ExprDotNode 字段访问时校验 E3042 私有可见性.
+        _currentStructName = impl->structName();
         for (auto& m : impl->methods()) {
             if (m->header()->isGeneric()) continue;
             if (m->header()->hasAnno("CompilerInner")) continue;
@@ -155,6 +158,7 @@ void SemaPass::run() {
         if (impl->hasDestructor()) {
             visitFn(impl->destructor());
         }
+        _currentStructName.clear();
     }
 }
 
@@ -449,7 +453,17 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         return;
     }
     if (auto n = dynamic_cast<p<ExprDotNode>>(expr)) {
-        visitExpr(n->baseExpr()); return;
+        visitExpr(n->baseExpr());
+        // Phase 3.4.d.2: 字段私有可见性 (E3042). safe `?.` 路径在 helper 内
+        // 自跳过 (走 getType, kMigratedCodes 已覆盖). 异常静默吞掉, 留 Compiler.
+        try {
+            sema::validateDotFieldPrivacy(_file, _sdkFile, n, _currentStructName);
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) {
+            // 防御性
+        }
+        return;
     }
     if (auto n = dynamic_cast<p<ExprIfElseNode>>(expr)) {
         visitExpr(n->condition());
@@ -589,13 +603,19 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     if (auto n = dynamic_cast<p<ExprNullElseNode>>(expr)) {
         visitExpr(n->left()); visitExpr(n->right()); return;
     }
-    // Phase 3.4.d.1: ExprGetRefNode 显式化 —— 无子表达式可递, 顶部
+    // Phase 3.4.d.1: ExprGetRefNode —— 无子表达式可递, 顶部
     // setResolvedType(getType()) 已经触发 ExprGetRefNode::getType 抛
     // E3040/E3041 (kMigratedCodes 命中, 自动重抛), 由此 Compiler 端
-    // compileGetRefExpr 的 1656/1661 内联 throw 在正常 codepath 下不可达,
-    // 保留作幂等防御性双跑。
+    // compileGetRefExpr 的 1656/1661 内联 throw 在正常 codepath 下不可达。
+    // Phase 3.4.d.2: 补 E3042 链式私有字段可见性校验.
     if (auto n = dynamic_cast<p<ExprGetRefNode>>(expr)) {
-        (void)n;
+        try {
+            sema::validateGetRefPrivacy(_file, _sdkFile, n, _currentStructName);
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) {
+            // 防御性
+        }
         return;
     }
     // ExprArrayInitNode 无子表达式 (value 是 LiteralNode, 不递归)。

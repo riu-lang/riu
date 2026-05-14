@@ -422,6 +422,56 @@ void validateEnumCtorShape(FileNode* file, FileNode* sdkFile,
 void validateMatchArms(EnumDeclNode* enumDecl, const string& enumName,
                        p<ExprMatchNode> node, FileNode* file);
 
+// 私有字段可见性校验 (Phase 3.4.d.2).
+//
+// 单字段层级的低阶检查: 在调用方已经 resolve 到 structDecl + fieldName 之后调用.
+// 字段非 private 时直接返回; 字段 private 且 accessor 名等于 owner (base) 名时
+// 返回 (允许同 struct 内自访问); 否则抛 E3042.
+//
+// `accessorStructName`: 当前所在 struct impl 名 (Compiler 端可能含 `$<...>` 后缀
+// — 来自 generic 实例化; helper 内部剥 `$` 后比对). SemaPass 端不下钻泛型 impl,
+// 恒为非 `$<...>` 形态. 空串表示自由 fn (任何私有访问都报错).
+//
+// 调用方:
+//   - Compiler::compileGetRefExpr 链式字段访问每段一次 (E3042 单点 throw 处)
+//   - Compiler::compileDotExpr 字段访问命中私有时调用
+//   - SemaPass.visitExpr ExprGetRefNode / ExprDotNode 分支
+//
+// 纯 AST / 字符串, 无 LLVM 依赖.
+void validatePrivateFieldAccess(StructDeclNode* structDecl, const string& fieldName,
+                                const string& baseTypeName,
+                                const string& accessorStructName,
+                                int line, int col);
+
+// ExprGetRefNode 链式字段访问的可见性整桶校验 (Phase 3.4.d.2).
+//
+// 内部走 `compileGetRefExpr` 同款链路: scope.lookupSymbol(obj) → 剥 ref → 逐
+// sub 解析 struct decl (含 box-deref) → fieldIndex → validatePrivateFieldAccess.
+// E3030/E3040/E3041/E3043/E3097 由 ExprGetRefNode::getType() 抛 (均在
+// kMigratedCodes, SemaPass 顶部 setResolvedType 自动重抛), helper 仅补 E3042.
+//
+// scope 取自 node->findNearestScope(); 若拿不到则静默返回 (留 Compiler 兜底).
+// SemaPass 调用时可传当前 `_currentStructName`, Compiler 调用时传当前
+// `_currentStructName` (含 `$<...>` 后缀也行, helper 内部剥).
+//
+// 纯 AST / 字符串, 无 LLVM 依赖.
+void validateGetRefPrivacy(FileNode* file, FileNode* sdkFile,
+                           p<ExprGetRefNode> node,
+                           const string& accessorStructName);
+
+// ExprDotNode 单层字段访问可见性校验 (Phase 3.4.d.2).
+//
+// 仅处理非 safe (`.` 不是 `?.`) 路径的字段访问: 取 baseType (经 ref / box 剥),
+// lookup struct decl, 若 fieldIndex >= 0 且字段 private 时校验. 路径与
+// `compileDotExpr` 内的私有判定块对齐. baseType 取自 node->baseExpr()->getType().
+//
+// SemaPass 调用方传 `_currentStructName`; Compiler 类似.
+//
+// 纯 AST / 字符串, 无 LLVM 依赖.
+void validateDotFieldPrivacy(FileNode* file, FileNode* sdkFile,
+                             p<ExprDotNode> node,
+                             const string& accessorStructName);
+
 } // namespace sema
 
 #endif //YUX_LANG_SEMA_CALL_RESOLVE_H

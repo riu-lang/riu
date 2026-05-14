@@ -43,6 +43,12 @@ private:
     p<FnNode> _currentFn = nullptr;
     vector<vector<string>> _tryStack;
 
+    // Phase 3.4.d.2: 当前所在 struct impl 名 (用于私有字段可见性 E3042).
+    // 与 Compiler 的 `_currentStructName` 同步: 进入 struct impl 方法 visit
+    // 时 set, 离开时 clear; sema 不下钻泛型 impl, 这里恒为非 `$<...>` 形态.
+    // 空串表示自由 fn (任何私有字段访问都报错).
+    string _currentStructName;
+
     void visitFn(p<FnNode> fn);
     void visitStmt(p<StatementNode> stmt);
     void visitBlock(p<StatementBlockNode> block);
