@@ -1285,8 +1285,12 @@ int wmain(int argc, wchar_t* argv[]) {
         }
 
         // codegen 每个加载的用户模块为独立 LLVM Module
-        std::vector<std::unique_ptr<llvm::Module>> mods;
+        // 注意声明顺序：ctxs 先于 mods，析构时 mods 先释放、ctxs 后释放，
+        // 满足 LLVM "Module 必须在其 Context 之前销毁" 的约束。
+        // 正常路径靠 `_exit` 跳过析构，但任一 `return 1` 错误路径会触发栈展开，
+        // 反序销毁会让 Module 落在已释放的 Context 上 → SIGSEGV（BUG#2）。
         std::vector<std::unique_ptr<llvm::LLVMContext>> ctxs;
+        std::vector<std::unique_ptr<llvm::Module>> mods;
         // 测试函数收集表：(modName, fnName, mangledSymbol)
         // isolate=true：函数声明了 `#TestIsolate`，默认模式下也强制走子进程（规避 JIT 跨帧 SEH）。
         struct TestEntry { std::string mod; std::string fn; std::string sym; bool isolate; };
@@ -1908,8 +1912,10 @@ int wmain(int argc, wchar_t* argv[]) {
             return {std::move(mod), std::move(ctx)};
         };
 
-        std::unique_ptr<llvm::Module> mainMod;
+        // ctx 声明在 mod 之前：栈展开时 mod 先析构、ctx 后析构，
+        // 满足 LLVM "Module 必须先于其 Context 销毁" 的约束（BUG#2 同因）。
         std::unique_ptr<llvm::LLVMContext> mainCtx;
+        std::unique_ptr<llvm::Module> mainMod;
         try {
             auto pr = buildIR(mainFile, baseName);
             mainMod = std::move(pr.first);
@@ -1919,8 +1925,8 @@ int wmain(int argc, wchar_t* argv[]) {
             return 1;
         }
 
-        std::vector<std::unique_ptr<llvm::Module>> extraMods;
         std::vector<std::unique_ptr<llvm::LLVMContext>> extraCtxs;
+        std::vector<std::unique_ptr<llvm::Module>> extraMods;
         for (auto& modName : yux.loadOrder()) {
             auto modFile = yux.module(modName);
             if (!modFile || modFile == yux.sdkFile()) continue;
