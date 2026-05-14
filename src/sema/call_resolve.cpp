@@ -927,4 +927,97 @@ void validateEnumCtorShape(FileNode* file, FileNode* sdkFile,
     }
 }
 
+// ========== Phase 3.4.b: match arm 静态校验 ==========
+
+void validateMatchArms(EnumDeclNode* enumDecl, const string& enumName,
+                       p<ExprMatchNode> node, FileNode* file) {
+    if (!enumDecl || !node) return;
+    auto& arms = node->arms();
+    int line = node->getLineNumber();
+    int col = node->getColumn();
+
+    if (arms.empty()) {
+        throw YuxError(line, col, ErrorCode::E2023, enumName, string("(none)"));
+    }
+
+    set<string> seenVariants;
+    bool hasElse = false;
+    for (size_t i = 0; i < arms.size(); ++i) {
+        auto arm = arms[i];
+        auto pat = arm->pattern();
+        if (pat->isElse()) {
+            if (i + 1 != arms.size()) {
+                throw YuxError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2025);
+            }
+            hasElse = true;
+            continue;
+        }
+        string patEnumName = pat->enumName().getText();
+        // 与 Compiler 端等价: 直接相等 OK; 否则尝试 file 上一步 alias 解析.
+        // 多步 alias 链留 Compiler 兜底 (resolveAlias 递归), 此处仅做一步避免假阳性.
+        if (patEnumName != enumName) {
+            bool aliasOk = false;
+            if (file) {
+                if (auto* alias = file->getAliasDecl(patEnumName)) {
+                    if (!alias->isGeneric() && alias->target()) {
+                        try {
+                            if (alias->target()->getType().name == enumName) aliasOk = true;
+                        } catch (...) {}
+                    }
+                }
+            }
+            if (!aliasOk) {
+                throw YuxError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2019,
+                    patEnumName, patEnumName, pat->variantName().getText());
+            }
+        }
+
+        string vName = pat->variantName().getText();
+        auto* variant = enumDecl->variant(vName);
+        if (!variant) {
+            throw YuxError(pat->getLineNumber(), pat->getColumn(),
+                ErrorCode::E2020, enumName, vName);
+        }
+        if (seenVariants.count(vName)) {
+            throw YuxError(pat->getLineNumber(), pat->getColumn(),
+                ErrorCode::E2024, enumName, vName);
+        }
+        seenVariants.insert(vName);
+
+        size_t bindArity = pat->binds().size();
+        size_t declArity = variant->payloadArity();
+        if (bindArity != declArity && !(bindArity == 0 && declArity == 0)) {
+            throw YuxError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2026,
+                enumName, vName, declArity, bindArity);
+        }
+
+        set<string> seenBinds;
+        for (auto& tk : pat->binds()) {
+            const string& bn = tk.getText();
+            if (seenBinds.count(bn)) {
+                throw YuxError(pat->getLineNumber(), pat->getColumn(),
+                    ErrorCode::E2027, bn, enumName, vName);
+            }
+            seenBinds.insert(bn);
+        }
+    }
+
+    if (!hasElse) {
+        vector<string> missing;
+        for (auto v : enumDecl->variants()) {
+            if (!seenVariants.count(v->name().getText())) {
+                missing.push_back(v->name().getText());
+            }
+        }
+        if (!missing.empty()) {
+            string s;
+            for (size_t i = 0; i < missing.size(); ++i) {
+                if (i) s += ", ";
+                s += enumName + "::" + missing[i];
+            }
+            throw YuxError(line, col, ErrorCode::E2023, enumName, s);
+        }
+    }
+}
+
 } // namespace sema

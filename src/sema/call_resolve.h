@@ -394,6 +394,34 @@ void validateFnSymbolVisibility(const FnSymbolInfo* fnSymbol,
 void validateEnumCtorShape(FileNode* file, FileNode* sdkFile,
                            p<ExprEnumCtorNode> node);
 
+// match 表达式 arm 静态校验 (Phase 3.4.b).
+//
+// 在调用方已解析 scrutinee 的 enum 名 (含 box-deref / alias) 并 lookup 到 enumDecl
+// 之后调用. helper 一次性覆盖以下错误码:
+//   - E2023: arms 空 (语法上 +, 防御性) / 不带 else 时穷尽性失败 (列缺失 variant)
+//   - E2025: else arm 不在末位
+//   - E2019: pattern 的 enum 名既不等于 enumName, 也不能经 file 上一步别名解析到 enumName
+//   - E2020: variant 名不在 enumDecl 内
+//   - E2024: 同一 variant 在多个 arm 中重复
+//   - E2026: arm 绑定 arity 与 variant payload 声明 arity 不一致 (零参允许 0 binds)
+//   - E2027: 同一 arm 内绑定名重复
+//
+// 不覆盖:
+//   - E2022 (scrutinee 不是 enum / Box<E> 仅借用语义) —— 调用方 (Compiler) 自身在
+//     lookupEnumDecl 失败时抛, 涉及 box-deref / alias / isFreshHandleExpr; SemaPass 暂跳过
+//   - E3027 (arm body 结果类型不一致) —— 跨 arm body getType 计算, 可能因 lambda
+//     形参未推断而误判, 留 Compiler
+//   - E3091/E3096 —— codegen 兜底
+//
+// 调用方:
+//   - Compiler::compileMatchExpr 在 enumDecl 取到后立即调用
+//   - SemaPass.visitExpr ExprMatchNode 分支主动调用 (scrutType 直接是 enum 名,
+//     非 Box/非 alias 时才接入; 否则跳过, 由 Compiler 兜底)
+//
+// 纯 AST / 字符串, 无 LLVM 依赖.
+void validateMatchArms(EnumDeclNode* enumDecl, const string& enumName,
+                       p<ExprMatchNode> node, FileNode* file);
+
 } // namespace sema
 
 #endif //YUX_LANG_SEMA_CALL_RESOLVE_H

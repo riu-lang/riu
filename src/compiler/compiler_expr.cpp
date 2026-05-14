@@ -2504,84 +2504,21 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
     string enumName = scrutType.name;
 
     auto& arms = node->arms();
-    if (arms.empty()) {
-        // 语法上至少 1 条 arm（g4 用 +），保险一下
-        throw YuxError(line, col, ErrorCode::E2023, enumName, string("(none)"));
-    }
 
-    // 2. 静态校验 arms
+    // Phase 3.4.b: arm 静态校验 (E2019/E2020/E2023/E2024/E2025/E2026/E2027) 整体抠到 sema.
+    // SemaPass 在 scrut 直接是 enum 名 (非 Box/非 alias) 时已先抛; 这里是幂等防御性双跑.
+    sema::validateMatchArms(enumDecl, enumName, node, _file);
+
+    // 重新收集 codegen 需要的状态 (helper 已校验合法性, 这里只做记录)
     set<string> seenVariants;
     bool hasElse = false;
-    for (size_t i = 0; i < arms.size(); ++i) {
-        auto arm = arms[i];
+    for (auto& arm : arms) {
         auto pat = arm->pattern();
         if (pat->isElse()) {
-            if (i + 1 != arms.size()) {
-                throw YuxError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2025);
-            }
             hasElse = true;
             continue;
         }
-        // enum 模式：variant 名所属的 enum 必须与 scrutinee 一致（沿别名解析）
-        string patEnumName = pat->enumName().getText();
-        // 通过 ExprEnumCtorNode 同样的别名透传：构造一个临时 ctor 节点不够，
-        // 简单走 alias resolve：若与 scrutinee enumName 不一致再尝试 resolveAlias
-        if (patEnumName != enumName) {
-            TypeInfo aliased = resolveAlias(TypeInfo(patEnumName));
-            if (aliased.name != enumName) {
-                throw YuxError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2019,
-                    patEnumName, patEnumName, pat->variantName().getText());
-            }
-        }
-
-        string vName = pat->variantName().getText();
-        auto* variant = enumDecl->variant(vName);
-        if (!variant) {
-            throw YuxError(pat->getLineNumber(), pat->getColumn(),
-                ErrorCode::E2020, enumName, vName);
-        }
-        if (seenVariants.count(vName)) {
-            throw YuxError(pat->getLineNumber(), pat->getColumn(),
-                ErrorCode::E2024, enumName, vName);
-        }
-        seenVariants.insert(vName);
-
-        size_t bindArity = pat->binds().size();
-        size_t declArity = variant->payloadArity();
-        // 允许 0 binds 匹配零参 variant（E::V 与 E::V() 等价）
-        if (bindArity != declArity && !(bindArity == 0 && declArity == 0)) {
-            throw YuxError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2026,
-                enumName, vName, declArity, bindArity);
-        }
-
-        // 绑定名重复
-        set<string> seenBinds;
-        for (auto& tk : pat->binds()) {
-            const string& bn = tk.getText();
-            if (seenBinds.count(bn)) {
-                throw YuxError(pat->getLineNumber(), pat->getColumn(),
-                    ErrorCode::E2027, bn, enumName, vName);
-            }
-            seenBinds.insert(bn);
-        }
-    }
-
-    // 穷尽性
-    if (!hasElse) {
-        vector<string> missing;
-        for (auto v : enumDecl->variants()) {
-            if (!seenVariants.count(v->name().getText())) {
-                missing.push_back(v->name().getText());
-            }
-        }
-        if (!missing.empty()) {
-            string s;
-            for (size_t i = 0; i < missing.size(); ++i) {
-                if (i) s += ", ";
-                s += enumName + "::" + missing[i];
-            }
-            throw YuxError(line, col, ErrorCode::E2023, enumName, s);
-        }
+        seenVariants.insert(pat->variantName().getText());
     }
 
     // 3. 结果类型一致性

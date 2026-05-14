@@ -514,6 +514,25 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     if (auto n = dynamic_cast<p<ExprMatchNode>>(expr)) {
         visitExpr(n->scrutinee());
         for (auto& arm : n->arms()) visitExpr(arm->body());
+
+        // Phase 3.4.b: SemaPass 接管 E2019/E2020/E2023/E2024/E2025/E2026/E2027.
+        // 仅在 scrut 直接是 enum 名 (非 Box/E / 非 alias 链) 时接入: 那两条路径
+        // Compiler 端走 isFreshHandleExpr / resolveAlias (递归), SemaPass 暂未镜像,
+        // 跳过留 Compiler 兜底. scrutType getType 抛错 (lambda 形参等) 时也跳过.
+        try {
+            TypeInfo scrutType = n->scrutinee()->getType();
+            // Box<E> 自动 deref 走 Compiler 兜底, 不在此处接入
+            if (!scrutType.isBox()) {
+                auto* enumDecl = lookupEnumIn(_file, _sdkFile, scrutType.name);
+                if (enumDecl) {
+                    sema::validateMatchArms(enumDecl, scrutType.name, n, _file);
+                }
+            }
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) {
+            // getType 等内部异常: 留 Compiler 兜底
+        }
         return;
     }
     if (auto n = dynamic_cast<p<ExprTryCatchNode>>(expr)) {
