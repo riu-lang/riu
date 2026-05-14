@@ -1373,37 +1373,49 @@ int wmain(int argc, wchar_t* argv[]) {
                 return 1;
             }
             size_t passed = 0, failed = 0;
+            // 失败名单：suite 末尾汇报，方便从一屏 OK/FAIL 里直接挑出来 re-run
+            std::vector<std::pair<std::string, std::string>> failures;
             size_t total = filtered.size();
             for (size_t i = 0; i < filtered.size(); ++i) {
                 auto& t = filtered[i];
                 std::string prog = "[" + std::to_string(i + 1) + "/" + std::to_string(total) + "] ";
-                std::cout << "RUN  " << prog << t.mod << "#" << t.fn << "\n";
+                std::string name = t.mod + "#" + t.fn;
+                std::cout << "RUN  " << prog << name << "\n";
                 std::cout.flush();
                 auto t0 = std::chrono::steady_clock::now();
                 auto r = spawnIsolatedTest(self, t.mod, t.fn);
                 std::string elapsed = fmtElapsed(t0);
                 if (!r.spawnOk) {
-                    std::cout << "FAIL " << prog << t.mod << "#" << t.fn
+                    std::cout << "FAIL " << prog << name
                               << " (" << r.spawnError << ")" << elapsed << "\n";
+                    failures.push_back({name, r.spawnError});
                     ++failed;
                     continue;
                 }
                 if (r.exitCode == 0) {
-                    std::cout << "OK   " << prog << t.mod << "#" << t.fn << elapsed << "\n";
+                    std::cout << "OK   " << prog << name << elapsed << "\n";
                     if (testVerbose) printCapturedOutput(r.capture);
                     ++passed;
                 } else if (r.exitCode == 2) {
-                    std::cout << "FAIL " << prog << t.mod << "#" << t.fn
+                    std::cout << "FAIL " << prog << name
                               << " (child runner error)" << elapsed << "\n";
                     printCapturedOutput(r.capture);
+                    failures.push_back({name, "child runner error"});
                     ++failed;
                 } else {
-                    std::cout << "FAIL " << prog << t.mod << "#" << t.fn
+                    std::cout << "FAIL " << prog << name
                               << " (SEH " << sehExceptionName(r.exitCode)
                               << " 0x" << std::hex << r.exitCode << std::dec << ")"
                               << elapsed << "\n";
                     printCapturedOutput(r.capture);
+                    failures.push_back({name, std::string("SEH ") + sehExceptionName(r.exitCode)});
                     ++failed;
+                }
+            }
+            if (!failures.empty()) {
+                std::cout << "\nFailed tests:\n";
+                for (auto& f : failures) {
+                    std::cout << "  - " << f.first << "  (" << f.second << ")\n";
                 }
             }
             std::cout << "\n" << passed << " passed, " << failed << " failed,"
@@ -1465,6 +1477,8 @@ int wmain(int argc, wchar_t* argv[]) {
         // 退出码 = SEH 码（0=pass，ASSERT_FAILED/AV/... 透传给父进程翻译）。
         // 子进程模式也不再用 TestOutputCapture（stdout/stderr 已在入口被重定向到 capture 文件）。
         size_t passed = 0, failed = 0;
+        // 失败名单：suite 末尾汇报，方便从一屏 OK/FAIL 里直接挑出来 re-run
+        std::vector<std::pair<std::string, std::string>> failures;
         unsigned long childExitCode = 0;
         size_t total = filtered.size();
         // `#TestIsolate` 命中的测试在默认模式下也要走子进程，懒解析 self 路径
@@ -1474,8 +1488,9 @@ int wmain(int argc, wchar_t* argv[]) {
             std::string prog = isChildIsolated
                 ? std::string()
                 : "[" + std::to_string(i + 1) + "/" + std::to_string(total) + "] ";
+            std::string name = t.mod + "#" + t.fn;
             if (!isChildIsolated) {
-                std::cout << "RUN  " << prog << t.mod << "#" << t.fn << "\n";
+                std::cout << "RUN  " << prog << name << "\n";
                 std::cout.flush();
             }
             auto t0 = std::chrono::steady_clock::now();
@@ -1484,34 +1499,38 @@ int wmain(int argc, wchar_t* argv[]) {
             if (!isChildIsolated && t.isolate) {
                 if (selfExeForIsolate.empty()) selfExeForIsolate = getSelfExePath();
                 if (selfExeForIsolate.empty()) {
-                    std::cout << "FAIL " << prog << t.mod << "#" << t.fn
+                    std::cout << "FAIL " << prog << name
                               << " (#TestIsolate: failed to resolve self exe)"
                               << fmtElapsed(t0) << "\n";
+                    failures.push_back({name, "#TestIsolate: failed to resolve self exe"});
                     ++failed;
                     continue;
                 }
                 auto r = spawnIsolatedTest(selfExeForIsolate, t.mod, t.fn);
                 std::string elapsed = fmtElapsed(t0);
                 if (!r.spawnOk) {
-                    std::cout << "FAIL " << prog << t.mod << "#" << t.fn
+                    std::cout << "FAIL " << prog << name
                               << " (#TestIsolate: " << r.spawnError << ")" << elapsed << "\n";
+                    failures.push_back({name, "#TestIsolate: " + r.spawnError});
                     ++failed;
                 } else if (r.exitCode == 0) {
-                    std::cout << "OK   " << prog << t.mod << "#" << t.fn
+                    std::cout << "OK   " << prog << name
                               << " (isolated)" << elapsed << "\n";
                     if (testVerbose) printCapturedOutput(r.capture);
                     ++passed;
                 } else if (r.exitCode == 2) {
-                    std::cout << "FAIL " << prog << t.mod << "#" << t.fn
+                    std::cout << "FAIL " << prog << name
                               << " (#TestIsolate: child runner error)" << elapsed << "\n";
                     printCapturedOutput(r.capture);
+                    failures.push_back({name, "#TestIsolate: child runner error"});
                     ++failed;
                 } else {
-                    std::cout << "FAIL " << prog << t.mod << "#" << t.fn
+                    std::cout << "FAIL " << prog << name
                               << " (SEH " << sehExceptionName(r.exitCode)
                               << " 0x" << std::hex << r.exitCode << std::dec << ", isolated)"
                               << elapsed << "\n";
                     printCapturedOutput(r.capture);
+                    failures.push_back({name, std::string("SEH ") + sehExceptionName(r.exitCode) + ", isolated"});
                     ++failed;
                 }
                 continue;
@@ -1523,9 +1542,10 @@ int wmain(int argc, wchar_t* argv[]) {
                     std::cerr << "child: lookup failed: " << llvm::toString(sym.takeError()) << "\n";
                     childExitCode = 2;
                 } else {
-                    std::cout << "FAIL " << prog << t.mod << "#" << t.fn
+                    std::cout << "FAIL " << prog << name
                               << " (lookup failed: " << llvm::toString(sym.takeError()) << ")"
                               << fmtElapsed(t0) << "\n";
+                    failures.push_back({name, "lookup failed"});
                     ++failed;
                 }
                 continue;
@@ -1544,15 +1564,16 @@ int wmain(int argc, wchar_t* argv[]) {
                 std::string elapsed = fmtElapsed(t0);
 
                 if (code == 0) {
-                    std::cout << "OK   " << prog << t.mod << "#" << t.fn << elapsed << "\n";
+                    std::cout << "OK   " << prog << name << elapsed << "\n";
                     if (testVerbose) printCapturedOutput(out);
                     ++passed;
                 } else {
-                    std::cout << "FAIL " << prog << t.mod << "#" << t.fn
+                    std::cout << "FAIL " << prog << name
                               << " (SEH " << sehExceptionName(code)
                               << " 0x" << std::hex << code << std::dec << ")"
                               << elapsed << "\n";
                     printCapturedOutput(out);
+                    failures.push_back({name, std::string("SEH ") + sehExceptionName(code)});
                     ++failed;
                 }
             }
@@ -1561,6 +1582,12 @@ int wmain(int argc, wchar_t* argv[]) {
             std::fflush(stdout);
             std::fflush(stderr);
             _exit(static_cast<int>(childExitCode));
+        }
+        if (!failures.empty()) {
+            std::cout << "\nFailed tests:\n";
+            for (auto& f : failures) {
+                std::cout << "  - " << f.first << "  (" << f.second << ")\n";
+            }
         }
         std::cout << "\n" << passed << " passed, " << failed << " failed,"
                   << fmtElapsed(suiteT0) << "\n";
