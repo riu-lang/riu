@@ -144,7 +144,7 @@ fn main() {
   
   var i i32 = 0
   loop {
-    if i >= arr._len().to_i32() {
+    if i >= arr.len().to_i32() {
       break;
     }
     println(arr[i].to_string())

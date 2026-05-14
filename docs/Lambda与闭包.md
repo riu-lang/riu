@@ -104,9 +104,11 @@ val f = x => x + 1              ; ❌ 编译错（无上下文）
 op({ (a i32, b i32) i32 => a + b })
 op((a, b) => a + b)
 
-; 单参裸 single 仍可
-val arr2 = arr.map(x => x * 2)
+; 单参裸 single 仍可（apply 由用户定义，签名 fn(i32, fn(i32)i32) i32）
+val r = apply(7, x => x * 2)
 ```
+
+> Array v1 暂未提供 `map` / `filter` / `fold` 等高阶方法；上面示例用一个用户自定义 `apply` 演示单参裸 lambda 在实参位置的写法。批量遍历用 `each`（见 §尾随 lambda 调用糖）或 `for ... in arr`。
 
 ### 表达式体可含 `if` / `match`
 
