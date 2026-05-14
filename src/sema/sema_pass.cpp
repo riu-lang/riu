@@ -44,6 +44,7 @@
 #include "ast/node/statement_node.h"
 #include "ast/node/struct_node.h"
 #include "sema/call_resolve.h"
+#include "types.h"
 
 namespace {
 // Phase 3.2b 已由 SemaPass 接管的错误码白名单。SemaPass 在 visitExpr 中
@@ -78,6 +79,44 @@ EnumDeclNode* lookupEnumIn(p<FileNode> file, p<FileNode> sdkFile, const string& 
         if (auto* d = imp->getEnumDecl(name)) return d;
     }
     return nullptr;
+}
+
+// Phase 3.3.2.f: 与 Compiler::isCompilerInnerMethod 等价的本地版本.
+// 仅查 sdkFile 的 struct impl (内建运算符方法都注册在 SDK 上), 不存在
+// 时返回 false. Sema 不依赖 Compiler 成员, 这里复制规则.
+bool isCompilerInnerMethodIn(FileNode* sdkFile,
+                             const string& structName,
+                             const string& methodName) {
+    if (!sdkFile) return false;
+    auto structImpl = sdkFile->getStructImpl(structName);
+    if (!structImpl) return false;
+    for (auto& m : structImpl->methods()) {
+        if (m->header()->name().getText() == methodName) {
+            return m->header()->hasAnno("CompilerInner");
+        }
+    }
+    return false;
+}
+
+// Phase 3.3.2.f: 近似 Compiler 端 compileArrayMethodCall 的 arrayPtr 计算 ——
+// arrayPtr 非空当且仅当 baseExpr AST 形态为:
+//   * ID-literal (栈/堆局部变量)
+//   * ID-literal.<field> ... 的 Dot 链 (struct 字段直接命名)
+// 其余形态 (函数调用、字面量、表达式) 在 Compiler 端 arrayPtr 仍为 nullptr,
+// 视为 rvalue. SemaPass 没有 _localVarPtrs, 改走 AST 形态判定; 与 Compiler
+// 实际语义等价 (Compiler 也只支持这两种 AST 形态查到栈/堆指针).
+bool isLvalueArrayBase(ExprNode* baseExpr) {
+    while (baseExpr) {
+        if (auto lit = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
+            return dynamic_cast<LiteralObjNode*>(lit->literal()) != nullptr;
+        }
+        if (auto dot = dynamic_cast<ExprDotNode*>(baseExpr)) {
+            baseExpr = dot->baseExpr();
+            continue;
+        }
+        return false;
+    }
+    return false;
 }
 
 bool isMigratedCode(const char* code) {
@@ -260,8 +299,52 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 int col = n->getColumn();
                 bool hasTypeArgs = !n->getTypeArgs().empty();
 
+                // Phase 3.3.2.f: 自由 intrinsic arity 校验 (E6020/E6021/E6022).
+                // helper 仅对清单内 fnName 实际校验, 其他 fnName 是 no-op,
+                // 故无条件调用安全; 与 Compiler 端 compileExternalOrSdkFunctionCall
+                // 顶部的 sema::validateFreeIntrinsicArity 互为防御性双跑.
+                sema::validateFreeIntrinsicArity(fnName, n->getArgs().size(), line, col);
+
                 auto* structDecl = _file->getStructDecl(fnName);
                 if (!structDecl && _sdkFile) structDecl = _sdkFile->getStructDecl(fnName);
+
+                // Phase 3.3.2.f: CompilerInner 泛型 intrinsic 的 shape + type-shape 校验.
+                // 接管 E6017/E6018/E6024-E6029/E6032 实际抛出点 (与 Compiler::compileGenericFunctionCall
+                // 的 #CompilerInner 分支镜像).
+                // 限制:
+                //   * 仅在 callee 是 ID-literal 且解析到泛型 fn 且 fn 头部 hasAnno(CompilerInner) 时接管;
+                //   * typeArgs 仅在显式 (`f:<T>(...)`) 时由 SemaPass 取; 无显式 typeArgs (推断路径)
+                //     需要 sema::inferGenericFnTypeArgs, 它会抛 E6012/E6013, 而这两码当前仍归 Compiler
+                //     兜底 (3.3.1.b 未让 SemaPass 接管). 推断路径整体跳过, 留 Compiler 抛.
+                //   * argTypes 经 getType() 计算, 任一 arg 未推断 (lambda 形参) 时跳过.
+                if (!structDecl) {
+                    auto* genFn = _file->getGenericFunction(fnName);
+                    if (!genFn && _sdkFile) genFn = _sdkFile->getGenericFunction(fnName);
+                    if (genFn && genFn->header()->hasAnno("CompilerInner") && hasTypeArgs) {
+                        vector<TypeInfo> typeArgs;
+                        bool typeArgsOk = true;
+                        try {
+                            for (auto& tn : n->getTypeArgs()) typeArgs.push_back(tn->getType());
+                        } catch (...) { typeArgsOk = false; }
+
+                        vector<TypeInfo> argTypes;
+                        bool argTypesOk = true;
+                        for (auto& a : n->getArgs()) {
+                            try { argTypes.push_back(a->getType()); }
+                            catch (...) { argTypesOk = false; break; }
+                        }
+
+                        if (typeArgsOk) {
+                            sema::validateCompilerInnerIntrinsicShape(fnName, typeArgs.size(),
+                                n->getArgs().size(), line, col);
+                            if (argTypesOk) {
+                                sema::validateCompilerInnerIntrinsicTypeShape(
+                                    fnName, typeArgs, argTypes, n->getArgs(),
+                                    _file, _sdkFile, line, col);
+                            }
+                        }
+                    }
+                }
 
                 if (structDecl) {
                     // 形态校验对泛型 / 非泛型 ctor 都适用 (E6008 私有 / E6009 缺 typeArgs)
@@ -333,7 +416,34 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 catch (...) { ok = false; break; }
             }
             if (ok) {
-                sema::resolveModuleFnCall(_file, nullptr, n, dotCallee, argTypes);
+                auto modCall = sema::resolveModuleFnCall(_file, nullptr, n, dotCallee, argTypes);
+                if (!modCall.matched) {
+                    // Phase 3.3.2.f: 镜像 Compiler::compileMethodCall 的 baseType 派发,
+                    // 主动调用 3.3.2.a / 3.3.2.e 抠出的 helper.
+                    //   * baseType.isArrayGeneric() → validateArrayMethodCall (E3055/E6040-E6044)
+                    //   * isBuiltinType + isCompilerInnerMethodIn → validateOperatorMethodCall (E6045/E3070)
+                    // baseType 经 getType() 计算; 任一异常 (lambda 形参等) → 跳过, 交 Compiler 兜底.
+                    // SemaPass 走非泛型 fn / 非泛型 impl 路径, 不需要 applySubst (替换栈为空).
+                    TypeInfo baseType;
+                    bool baseOk = true;
+                    try { baseType = dotCallee->baseExpr()->getType(); }
+                    catch (...) { baseOk = false; }
+                    if (baseOk) {
+                        const string& member = dotCallee->member();
+                        size_t argsCount = n->getArgs().size();
+                        int dline = n->getLineNumber();
+                        int dcol = n->getColumn();
+                        if (baseType.isArrayGeneric()) {
+                            bool baseIsLvalue = isLvalueArrayBase(dotCallee->baseExpr());
+                            sema::validateArrayMethodCall(baseType, member, argsCount,
+                                                          baseIsLvalue, dline, dcol);
+                        } else if (isBuiltinType(baseType.name) &&
+                                   isCompilerInnerMethodIn(_sdkFile, baseType.name, member)) {
+                            sema::validateOperatorMethodCall(member, baseType, argsCount,
+                                                             dline, dcol);
+                        }
+                    }
+                }
             }
         }
         return;
