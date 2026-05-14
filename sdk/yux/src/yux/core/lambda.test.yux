@@ -286,6 +286,34 @@ fn test_box_fn_reassign() {
   assert_eq(b2(20), 120)
 }
 
+; ==================== 0 参块 lambda tail-expr 返回（BUG#0 修复） ====================
+
+#Test
+fn test_zero_block_tail_expr_return() {
+  val once fn()i32 = {
+    42
+  }
+  assert_eq(once(), 42)
+}
+
+#Test
+fn test_zero_block_tail_expr_with_prelude() {
+  val f fn()i32 = {
+    var a = 3
+    var b = 4
+    a + b
+  }
+  assert_eq(f(), 7)
+}
+
+#Test
+fn test_zero_block_propagates_via_arg() {
+  val seven fn()i32 = {
+    7
+  }
+  assert_eq(apply0(seven), 7)
+}
+
 ; ==================== fn 类型声明测试 ====================
 
 #Test

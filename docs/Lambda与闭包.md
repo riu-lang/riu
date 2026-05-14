@@ -63,17 +63,16 @@ val sum = { a i32, b i32 =>
 }
 
 ; 0 参块（无 =>；必须多行真块，单行 { expr } 不是 lambda 而是 expr-lambda 的位置）
+; 体内末位无 `;` 的表达式作 tail-return；返回类型由上下文反推
 val once fn()i32 = {
-  ret 42
+  42
 }
 
 ; 0 参块 + 显式返回类型：用 `() T =>` 头
 val once2 = { () i32 =>
-  ret 42
+  42
 }
 ```
-
-> ⚠️ v1 impl 缺口：0 参块形当前体内 tail-expr 不作返回值、`expectedFnType` 返回类型也不进 ZeroBlock 推断，目前只能在 fn 返回 `void` 时使用。**有返回值的 0 参 lambda 暂用括参形** `() RetT? => expr`。详见 BUGS.md。
 
 ### 形参类型推断
 

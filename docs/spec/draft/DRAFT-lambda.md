@@ -194,8 +194,6 @@ x => expr                          ; 裸参：类型 + 返回类型均从上下�
 { () i32 => body }                 ; 0 参块 + 显式返回类型（用 `() T =>` 头）
 ```
 
-> NOTE (v1 impl 缺口)：0 参块形当前 codegen 不取 tail-expr、不接 expectedFnType 返回类型，仅 fn()void 场景可用；有返回值时暂用括参 0 参 `() RetT? => expr`。详见 BUGS.md。
-
 ### 4.1 形参类型推断（[#10]）
 
 lambda 形参形态：`name` 或 `name type`。**类型可省时由"期望函数类型"反推**：
@@ -660,7 +658,7 @@ try {
 - **2026-05-08 [#4]** 块表达式不另立形态；走 stdlib `fn run<R>(block fn()R) R` + 尾随 lambda 调用（§9）。命名取自 Kotlin `run`（0 参体）；不用 `let`（Kotlin `let` 是带 `it` 的单参体，会误导）。
 - **2026-05-08 [#5]** lambda 形态：表达式 `(args) => expr` / 单参 `x => expr` / 块 `{ args => body }` / 0 参块 `{ body }`（无 `=>`，多行真块；显式返回类型写 `{ () T => body }`）（§4）。
 - **2026-05-08 [#6]** 0 参块 `{ body }` **禁写** `=>`（与 ≥1 参块 `{ args => body }` 用 `=>` 划界）。单行 `{ expr }` 不是 0 参 lambda —— 它是表达式位置的字面块，0 参 expr-lambda 用 `() => expr`（§4）。
-- **2026-05-14 [#6.v1 impl 注]** 0 参块 codegen 当前 tail-expr 不返回、expectedFnType 返回类型不进推断 → 暂仅 `fn()void` 可用，有返回值场景请用括参 `() RetT? => expr`；BUGS.md 记。
+- **2026-05-14 [#6.fix]** 0 参块 tail-expr 返回 + expectedFnType 反推已实现：`val once fn()i32 = { 42 }` 与 `apply0({...})`（apply0 收 fn()i32）均按设计预期工作；末位无 `;` 的表达式作 tail-return，返回类型由上下文反推。
 - **2026-05-08 [#7]** 不引入 `it` 隐式参数名（§9）。
 - **2026-05-08 [#8]** 单参 lambda 可省括号（`x => expr`，§4）。
 - **2026-05-08 [#9]** 闭包 v1 必需（v2 错误模型阻塞依赖；同步解禁 §8.1.2.5；§6）。

@@ -404,6 +404,23 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
     // Phase 4c：lambda 字面量直接作 var/val 初始化值时，预 emit body 触发捕获识别；
     // 若识别出 T& 捕获 → E4022（spec §6.3 不可逃逸：fn 值不可被存储到寿命外延的变量）。
     if (auto litLambda = dynamic_cast<LambdaExprNode*>(expr)) {
+        // BUG#0 修复：显式 fn 类型反推到 lambda，让 0 参块 / 缺标注 lambda 的 retType 走上下文反推。
+        // 镜像 compiler_call.cpp:538 的 setInferredFnType + bodyScope 形参 type 回填路径。
+        if (node->varType()) {
+            auto declType = node->varType()->getType();
+            if (declType.isFn()) {
+                litLambda->setInferredFnType(declType);
+                if (auto sc = litLambda->bodyScope()) {
+                    const auto& fps = declType.fnParamTypes();
+                    for (size_t k = 0; k < litLambda->params().size() && k < fps.size(); ++k) {
+                        if (litLambda->params()[k].type) continue;
+                        if (auto* psym = sc->lookupSymbol(litLambda->params()[k].name.getText())) {
+                            if (fps[k]) psym->type = *fps[k];
+                        }
+                    }
+                }
+            }
+        }
         emitLambdaFunction(p<LambdaExprNode>(litLambda), litLambda->getType());
         if (litLambda->hasRefCapture()) {
             throw YuxError(litLambda->getLineNumber(), litLambda->getColumn(), ErrorCode::E4022);

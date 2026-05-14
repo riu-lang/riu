@@ -14,6 +14,7 @@
 #include "compiler.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/literal_node.h"
+#include "ast/node/statement_node.h"
 #include "ast/mangler.h"
 
 #include <llvm/IR/Constants.h>
@@ -162,7 +163,9 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
 
     // 编译 body
     // - Single / Paren：单表达式 → ret expr（void 返回类型时 ret void）
-    // - Block / ZeroBlock：语句序列 → 顺序编译，末尾走隐式 ret void
+    // - Block / ZeroBlock：语句序列 → 顺序编译；retType 非 void 时若末位是无 `;` 的
+    //   ExprStmt，当 tail-expr 返回值（spec §4.0 "0 参块与 ≥1 参块同构"，BUG#0 修复）；
+    //   否则末尾走隐式 ret void / 缺显式 ret 报错
     pushTempFrame();
     if (node->bodyExpr()) {
         auto val = compileExpr(node->bodyExpr());
@@ -178,15 +181,33 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
             popAndReleaseTempFrame();
         }
     } else {
-        for (auto& s : node->bodyStmts()) {
-            compileStatement(s);
+        const auto& stmts = node->bodyStmts();
+        // BUG#0：peel 末位无 `;` 的 ExprStmt 当 tail-expr return；仅在 retType 非 void 时启用
+        p<ExprNode> tailExpr = nullptr;
+        size_t nStmts = stmts.size();
+        if (!retType.empty() && nStmts > 0) {
+            if (auto exprStmt = dynamic_cast<StatementExprNode*>(stmts.back())) {
+                if (!exprStmt->hasSemicolon()
+                    && !dynamic_cast<StatementRetNode*>(stmts.back())) {
+                    tailExpr = exprStmt->expr();
+                    --nStmts;
+                }
+            }
+        }
+        for (size_t i = 0; i < nStmts; ++i) {
+            compileStatement(stmts[i]);
         }
         if (!_builder.GetInsertBlock()->getTerminator()) {
-            popAndReleaseTempFrame();
-            if (retType.empty()) {
+            if (tailExpr) {
+                auto val = compileExpr(tailExpr);
+                popAndReleaseTempFrame();
+                _builder.CreateRet(val);
+            } else if (retType.empty()) {
+                popAndReleaseTempFrame();
                 _builder.CreateRetVoid();
             } else {
                 // 缺显式 ret 且非 void：报错。Phase 2c 由 sema 更早拒
+                popAndReleaseTempFrame();
                 throw YuxError(line, col, ErrorCode::E3091);
             }
         } else {
