@@ -415,7 +415,7 @@ private:
         if (auto da = dynamic_cast<p<StatementDeclareAssignNode>>(s)) {
             _localNames.insert(da->name().getText());
             auto scope = s->findNearestScope();
-            if (da->declareType() == DeclareType::CVal && da->expr()) {
+            if (da->isConst() && da->expr()) {
                 requireConstExpr(da->expr(), scope);
             } else if (da->expr() && carriesFrozenTopLevel(da->expr(), scope)) {
                 // §5.4：可写局部绑定不可承接 #Frozen 表达式，唯一脱 const 出口是 copy_of。

@@ -44,60 +44,62 @@ public:
     explicit StatementRetVoidNode(const p<Node>& parent) : StatementNode(parent) {}
 };
 
-enum class DeclareType {
-    Var,
-    Val,
-    CVal
-};
-
+// DRAFT-let-unify §3：`let x` 默认浅不可变（isMut=false, isConst=false）；
+// `#Mut let x` → isMut=true；`#Cval let x` → isConst=true（且不可重赋）。
 class StatementDeclareNode : public StatementNode {
 protected:
-    DeclareType _declareType;
+    bool _isMut;
+    bool _isConst;
     Token _name;
     p<TypeNode> _type;
 
 public:
-    explicit StatementDeclareNode(const p<Node>& parent, DeclareType declType, Token name, p<TypeNode> type) :
-        StatementNode(parent), _declareType(declType), _name(name), _type(type) {
+    explicit StatementDeclareNode(const p<Node>& parent, bool isMut, bool isConst, Token name, p<TypeNode> type) :
+        StatementNode(parent), _isMut(isMut), _isConst(isConst), _name(name), _type(type) {
     }
 
-    [[nodiscard]] DeclareType declareType() const;
+    [[nodiscard]] bool isMut() const { return _isMut; }
+    [[nodiscard]] bool isConst() const { return _isConst; }
     [[nodiscard]] Token name() const;
     [[nodiscard]] p<TypeNode> varType() const;
 };
 
 class StatementDeclareAssignNode : public StatementExprNode {
 protected:
-    DeclareType _declareType;
+    bool _isMut;
+    bool _isConst;
     Token _name;
     p<TypeNode> _type;
 
 public:
-    explicit StatementDeclareAssignNode(const p<Node>& parent, DeclareType declType, Token name, p<TypeNode> type, p<ExprNode> expr) :
-        StatementExprNode(parent, std::move(expr)), _declareType(declType), _name(name), _type(type) {
+    explicit StatementDeclareAssignNode(const p<Node>& parent, bool isMut, bool isConst, Token name, p<TypeNode> type, p<ExprNode> expr) :
+        StatementExprNode(parent, std::move(expr)), _isMut(isMut), _isConst(isConst), _name(name), _type(type) {
     }
 
-    [[nodiscard]] DeclareType declareType() const;
+    [[nodiscard]] bool isMut() const { return _isMut; }
+    [[nodiscard]] bool isConst() const { return _isConst; }
     [[nodiscard]] Token name() const;
     [[nodiscard]] p<TypeNode> varType() const;
 };
 
-// 元组解构赋值声明：var (a, b, ...) = expr
+// 元组解构赋值声明：let (a, b, ...) = expr（默认浅不可变；`#Mut let (...)` → isMut=true）
 // 平铺一层 ID，不支持嵌套与 _；可选总类型标注 typeWithRef，指代整个元组类型
 class StatementDeclareAssignTupleNode : public StatementExprNode {
 protected:
-    DeclareType _declareType;
+    bool _isMut;
+    bool _isConst;
     vector<Token> _names;
     p<TypeNode> _type; // 可选，整体元组类型（含 typeWithRef）
 
 public:
-    explicit StatementDeclareAssignTupleNode(const p<Node>& parent, DeclareType declType,
+    explicit StatementDeclareAssignTupleNode(const p<Node>& parent, bool isMut, bool isConst,
                                              vector<Token> names, p<TypeNode> type, p<ExprNode> expr) :
-        StatementExprNode(parent, std::move(expr)), _declareType(declType),
+        StatementExprNode(parent, std::move(expr)), _isMut(isMut), _isConst(isConst),
         _names(std::move(names)), _type(std::move(type)) {
     }
 
-    [[nodiscard]] DeclareType declareType() const { return _declareType; }
+    [[nodiscard]] bool isMut() const { return _isMut; }
+    [[nodiscard]] bool isConst() const { return _isConst; }
     [[nodiscard]] const vector<Token>& names() const { return _names; }
     [[nodiscard]] p<TypeNode> varType() const { return _type; }
 };

@@ -59,9 +59,8 @@ int classify(size_t type) {
         case L::LineEndComment:
             return static_cast<int>(TT::Comment);
 
-        case L::Cval:
-        case L::Break: case L::Catch: case L::DeclKey: case L::Draft: case L::Elif: case L::Else:
-        case L::Enum: case L::Extern: case L::False: case L::Fn: case L::If:
+        case L::Break: case L::Catch: case L::Draft: case L::Elif: case L::Else:
+        case L::Enum: case L::Extern: case L::False: case L::Fn: case L::If: case L::Let:
         case L::Loop: case L::Match: case L::Null: case L::Ret: case L::Struct:
         case L::True: case L::Try: case L::Use:
             return static_cast<int>(TT::Keyword);

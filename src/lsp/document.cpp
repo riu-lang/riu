@@ -128,14 +128,14 @@ void collectSymbols(const std::string& text, ::yux::yuxParser::ProgramContext* p
         out.push_back(std::move(s));
     }
 
-    for (auto* gc : prog->globalConst()) {
-        if (!gc->name) continue;
+    for (auto* lg : prog->letGlobal()) {
+        if (!lg->name) continue;
         DocSymbol s;
-        s.name = gc->name->getText();
+        s.name = lg->name->getText();
         s.kind = SymbolKind::Constant;
-        contextRange(text, gc, s.rangeStart, s.rangeEnd);
-        s.selStart = tokenStartPos(text, gc->name);
-        s.selEnd = tokenEndPos(text, gc->name);
+        contextRange(text, lg, s.rangeStart, s.rangeEnd);
+        s.selStart = tokenStartPos(text, lg->name);
+        s.selEnd = tokenEndPos(text, lg->name);
         out.push_back(std::move(s));
     }
 }

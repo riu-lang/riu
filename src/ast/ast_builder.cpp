@@ -1441,8 +1441,8 @@ std::any ASTBuilder::visitFiledDecl(yux::yuxParser::FiledDeclContext* ctx) {
 }
 
 // DRAFT-let-unify §3：局部 `let` 声明。
-// 注解映射：默认 → Val（不可重赋）；#Mut → Var；#Cval → CVal；#Frozen → Val + frozen 位（语义同 const-mut §5 局部）。
-// 当前 P1.a 阶段：直接映射到现有 DeclareType，frozen 在符号上记位（后续 const-mut checker 接管深不可变传染）。
+// 注解映射：默认 → isMut=false（不可重赋）；#Mut → isMut=true；#Cval → isConst=true；
+// #Frozen → isMut=false + frozen 位（语义同 const-mut §5 局部，深不可变由 checker 传染）。
 // type / init 缺失：缺 type 且缺 init → E3113；有 type 但缺 init → E3114（不引入 #Uninit）。
 std::any ASTBuilder::visitStatementLet(yux::yuxParser::StatementLetContext* ctx) {
     auto scope = currentScope();
@@ -1464,14 +1464,8 @@ std::any ASTBuilder::visitStatementLet(yux::yuxParser::StatementLetContext* ctx)
                        ErrorCode::E3114, name->getText());
     }
 
-    DeclareType declType;
-    if (flags.isCval) {
-        declType = DeclareType::CVal;
-    } else if (flags.isMut) {
-        declType = DeclareType::Var;
-    } else {
-        declType = DeclareType::Val;
-    }
+    bool isMut = flags.isMut;
+    bool isConst = flags.isCval;
 
     p<TypeNode> type = nullptr;
     if (hasType) {
@@ -1486,7 +1480,7 @@ std::any ASTBuilder::visitStatementLet(yux::yuxParser::StatementLetContext* ctx)
             scope->registerSymbol(
                 name->getText(), {SymbolKind::Variable, name->getText(), varType, true});
         }
-        return p<StatementNode>(createWithLine<StatementDeclareNode>(ctx, scope, declType, name, type));
+        return p<StatementNode>(createWithLine<StatementDeclareNode>(ctx, scope, isMut, isConst, name, type));
     }
 
     auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
@@ -1496,29 +1490,23 @@ std::any ASTBuilder::visitStatementLet(yux::yuxParser::StatementLetContext* ctx)
         << (flags.isMut ? " #Mut" : "") << (flags.isFrozen ? " #Frozen" : "") << (flags.isCval ? " #Cval" : ""));
 
     if (scope) {
-        SymbolInfo sym(SymbolKind::Variable, name->getText(), varType, declType == DeclareType::Var);
-        if (declType == DeclareType::CVal) sym.isConst = true;
+        SymbolInfo sym(SymbolKind::Variable, name->getText(), varType, isMut);
+        if (isConst) sym.isConst = true;
         scope->registerSymbol(name->getText(), sym);
     }
 
-    return p<StatementNode>(createWithLine<StatementDeclareAssignNode>(ctx, scope, declType, name, type, expr));
+    return p<StatementNode>(createWithLine<StatementDeclareAssignNode>(ctx, scope, isMut, isConst, name, type, expr));
 }
 
-// DRAFT-let-unify §3：let 元组解构（默认 → val / #Mut → var / #Cval → cval）。
-// 注解 → DeclareType 复用 readLetAnnos；后续 alias / 元素类型登记逻辑与 statementDeclareAssignTuple 同。
+// DRAFT-let-unify §3：let 元组解构（默认 → 不可重赋 / #Mut → isMut=true / #Cval → isConst=true）。
+// 注解 → bool 标志复用 readLetAnnos；后续 alias / 元素类型登记逻辑与 visitStatementLet 同。
 std::any ASTBuilder::visitStatementLetTuple(yux::yuxParser::StatementLetTupleContext* ctx) {
     auto scope = currentScope();
     auto flags = readLetAnnos(ctx->letAnnos);
     auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
 
-    DeclareType declType;
-    if (flags.isCval) {
-        declType = DeclareType::CVal;
-    } else if (flags.isMut) {
-        declType = DeclareType::Var;
-    } else {
-        declType = DeclareType::Val;
-    }
+    bool isMut = flags.isMut;
+    bool isConst = flags.isCval;
 
     p<TypeNode> type = nullptr;
     if (auto twr = ctx->typeWithRef(); twr) {
@@ -1549,17 +1537,17 @@ std::any ASTBuilder::visitStatementLetTuple(yux::yuxParser::StatementLetTupleCon
         const auto& elems = wholeType.tupleElements();
         for (size_t i = 0; i < names.size(); ++i) {
             scope->registerSymbol(names[i].getText(),
-                {SymbolKind::Variable, names[i].getText(), *elems[i], declType == DeclareType::Var});
+                {SymbolKind::Variable, names[i].getText(), *elems[i], isMut});
         }
     } else if (scope) {
         for (auto& n : names) {
             scope->registerSymbol(n.getText(),
-                {SymbolKind::Variable, n.getText(), TypeInfo(), declType == DeclareType::Var});
+                {SymbolKind::Variable, n.getText(), TypeInfo(), isMut});
         }
     }
 
     DEBUG_LOG_VAL("  Statement: LetTuple", names.size() << " names, expr type=" << wholeType.name);
-    return p<StatementNode>(createWithLine<StatementDeclareAssignTupleNode>(ctx, scope, declType, names, type, expr));
+    return p<StatementNode>(createWithLine<StatementDeclareAssignTupleNode>(ctx, scope, isMut, isConst, names, type, expr));
 }
 
 std::any ASTBuilder::visitStatementAssign(yux::yuxParser::StatementAssignContext* ctx) {

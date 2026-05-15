@@ -17,7 +17,9 @@
 //     构成。其他形态（函数调用 / 构造 / 字符串模板 / 数组 / 成员访问 / if-else 等）一律拒绝。
 //
 //   §5.2 `#Frozen` 参数 / §5.4 传染所得 `#Frozen` 本地——
-//     - 重赋（含整体 `=`）共享 E3093 路径（writeable=false，参数默认 val + frozen 标）。
+//     - 重赋（含整体 `=`）共享 E3093 路径（writeable=false，参数默认不可重赋 + frozen 标）。
+//       DRAFT-let-unify §3：`let x` 默认走该路径（writeable=false），`#Mut let x` 才放宽；
+//       因此局部不可重赋的诊断不需要 checker 显式触发，由 compiler_stmt.cpp 兜底。
 //     - 字段写 `s.f = ...` / 数组写 `s[i] = ...` → E3106。
 //     - 任何"可写槽位"承接 `#Frozen` 表达式（局部 var/val 声明 / 已声明可写局部重赋）
 //       → E3107；唯一脱 const 出口为 builtin `copy_of:<T>(...)`，§5.3/§5.4。
