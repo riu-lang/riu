@@ -24,7 +24,7 @@ Counter : Show {
 }
 
 fn main() {
-    var b Rc<Counter> = Counter(7i32)
-    val s = b.show()
+    #Mut let b Rc<Counter> = Counter(7i32)
+    let s = b.show()
     println(s)
 }

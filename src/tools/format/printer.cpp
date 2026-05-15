@@ -93,7 +93,6 @@ private:
 
     Doc importsDoc(yuxParser::ImportsContext* ctx);
     Doc buildAnnoDoc(yuxParser::BuildAnnoContext* ctx);
-    Doc globalConstDoc(yuxParser::GlobalConstContext* ctx);
     Doc letGlobalDoc(yuxParser::LetGlobalContext* ctx);
     Doc aliasDeclDoc(yuxParser::AliasDeclContext* ctx);
     Doc fnDoc(yuxParser::FnContext* ctx);
@@ -160,22 +159,6 @@ Doc Printer::buildAnnoDoc(yuxParser::BuildAnnoContext* ctx) {
         if (ctx->arg != nullptr) parts.push_back(text(ctx->arg->getText()));
         parts.push_back(text(")"));
     }
-    return concat(std::move(parts));
-}
-
-Doc Printer::globalConstDoc(yuxParser::GlobalConstContext* ctx) {
-    std::vector<Doc> parts;
-    for (auto* anno : ctx->buildAnnos) {
-        parts.push_back(buildAnnoDoc(anno));
-        parts.push_back(hardline());
-    }
-    parts.push_back(text("cval "));
-    parts.push_back(text(ctx->name->getText()));
-    parts.push_back(text(" "));
-    // type 还没实装；用原文
-    parts.push_back(text(rawSpan(tokens_, ctx->type())));
-    parts.push_back(text(" = "));
-    parts.push_back(text(rawSpan(tokens_, ctx->literal())));
     return concat(std::move(parts));
 }
 
@@ -736,28 +719,6 @@ Doc Printer::statementDoc(yuxParser::StatementContext* ctx, int indentLevel) {
                                          static_cast<std::size_t>(indentLevel) * 2));
     }
 
-    if (auto* n = dynamic_cast<yuxParser::StatementDeclareContext*>(ctx)) {
-        // val name Type
-        return concat({
-            text(n->DeclKey()->getText()), text(" "),
-            text(n->name->getText()), text(" "),
-            typeDoc(n->type()),
-        });
-    }
-    if (auto* n = dynamic_cast<yuxParser::StatementDeclareAssignContext*>(ctx)) {
-        // var name (Type)? = expr
-        std::vector<Doc> parts;
-        parts.push_back(text(n->DeclKey()->getText()));
-        parts.push_back(text(" "));
-        parts.push_back(text(n->name->getText()));
-        if (n->typeWithRef() != nullptr) {
-            parts.push_back(text(" "));
-            parts.push_back(typeWithRefDoc(n->typeWithRef()));
-        }
-        parts.push_back(text(" = "));
-        parts.push_back(exprDoc(n->expr()));
-        return concat(std::move(parts));
-    }
     if (auto* n = dynamic_cast<yuxParser::StatementLetContext*>(ctx)) {
         // letAnno* let name (Type)? (= expr)?
         std::vector<Doc> parts;
@@ -783,24 +744,6 @@ Doc Printer::statementDoc(yuxParser::StatementContext* ctx, int indentLevel) {
             parts.push_back(text("#" + a->name->getText() + " "));
         }
         parts.push_back(text("let ("));
-        for (std::size_t i = 0; i < n->names.size(); ++i) {
-            if (i > 0) parts.push_back(text(", "));
-            parts.push_back(text(n->names[i]->getText()));
-        }
-        parts.push_back(text(")"));
-        if (n->typeWithRef() != nullptr) {
-            parts.push_back(text(" "));
-            parts.push_back(typeWithRefDoc(n->typeWithRef()));
-        }
-        parts.push_back(text(" = "));
-        parts.push_back(exprDoc(n->expr()));
-        return concat(std::move(parts));
-    }
-    if (auto* n = dynamic_cast<yuxParser::StatementDeclareAssignTupleContext*>(ctx)) {
-        // var (a, b) (Type)? = expr
-        std::vector<Doc> parts;
-        parts.push_back(text(n->DeclKey()->getText()));
-        parts.push_back(text(" ("));
         for (std::size_t i = 0; i < n->names.size(); ++i) {
             if (i > 0) parts.push_back(text(", "));
             parts.push_back(text(n->names[i]->getText()));
@@ -1007,8 +950,6 @@ Printer::Item Printer::visitTopLevel(antlr4::tree::ParseTree* child) {
 
     if (auto* imp = dynamic_cast<yuxParser::ImportsContext*>(ctx)) {
         item.doc = importsDoc(imp);
-    } else if (auto* gc = dynamic_cast<yuxParser::GlobalConstContext*>(ctx)) {
-        item.doc = globalConstDoc(gc);
     } else if (auto* lg = dynamic_cast<yuxParser::LetGlobalContext*>(ctx)) {
         item.doc = letGlobalDoc(lg);
     } else if (auto* al = dynamic_cast<yuxParser::AliasDeclContext*>(ctx)) {

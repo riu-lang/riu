@@ -2,7 +2,7 @@ use yux.core.*
 use lookup.*
 
 fn main() {
-  val r = find_pos(42i64)
+  let r = find_pos(42i64)
   println(r.has())
   println(r.get())
 }

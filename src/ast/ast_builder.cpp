@@ -337,23 +337,6 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
     return p<GlobalConstNode>(globalConst);
 }
 
-std::any ASTBuilder::visitGlobalConst(yux::yuxParser::GlobalConstContext* ctx) {
-    DEBUG_LOG("Visit: GlobalConst");
-    auto file = any_cast_p<FileNode>(stack.back());
-    // globalConst 不接受 #Test（spec §11.3.1.2）
-    (void)collectAnnosNonFn(ctx->buildAnnos);
-
-    auto name = ctx->name;
-    auto typeNode = any_cast_p<TypeNode>(visit(ctx->type()));
-    auto literal = any_cast_p<LiteralNode>(visit(ctx->literal()));
-    
-    auto globalConst = createWithLine<GlobalConstNode>(ctx, file, name, typeNode, literal);
-    file->addGlobalConst(globalConst);
-    
-    DEBUG_LOG_VAL("  GlobalConst", name->getText() << " : " << typeNode->getType().name);
-    return p<GlobalConstNode>(globalConst);
-}
-
 void ASTBuilder::preloadPackageChildren(FileNode* file, const string& alias, const string& pkgModName,
                                          const string& relPrefix, int errorLine) {
     for (auto& child : _yux.listPackageYuxChildren(pkgModName)) {
@@ -764,19 +747,21 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         }
     }
 
-    auto globalConsts = ctx->globalConst();
-    DEBUG_LOG_VAL("  Global constants count", globalConsts.size());
-    for (auto globalConstCtx : globalConsts) {
-        auto name = globalConstCtx->name->getText();
-        auto typeNode = any_cast_p<TypeNode>(visit(globalConstCtx->type()));
+    // DRAFT-let-unify §3：全局 let（仅 #Cval 档）—— 预登记符号，让早引用合法。
+    auto letGlobals = ctx->letGlobal();
+    DEBUG_LOG_VAL("  Global lets count", letGlobals.size());
+    for (auto letGlobalCtx : letGlobals) {
+        if (!letGlobalCtx->type()) continue; // type 缺失走 visitLetGlobal 时由 E3113 拒
+        auto name = letGlobalCtx->name->getText();
+        auto typeNode = any_cast_p<TypeNode>(visit(letGlobalCtx->type()));
         TypeInfo type = typeNode->getType();
-        
+
         SymbolInfo sym(SymbolKind::Variable, name, type, false);
         sym.moduleName = moduleName;
         sym.isConst = true;
         file->registerSymbol(name, sym);
 
-        DEBUG_LOG_VAL("  Register global const", name << " : " << type.name);
+        DEBUG_LOG_VAL("  Register global let", name << " : " << type.name);
     }
 
     visitChildren(ctx);
@@ -1455,92 +1440,6 @@ std::any ASTBuilder::visitFiledDecl(yux::yuxParser::FiledDeclContext* ctx) {
     return p<StructFieldNode>(node);
 }
 
-std::any ASTBuilder::visitStatementDeclare(yux::yuxParser::StatementDeclareContext* ctx) {
-    auto scope = currentScope();
-
-    auto declKey = ctx->DeclKey()->getText();
-    DeclareType declType;
-    if (declKey[2] == 'r') {
-        declType = DeclareType::Var;
-    } else if (declKey[2] == 'l') {
-        declType = DeclareType::Val;
-    } else {
-        declType = DeclareType::CVal;
-    }
-
-    auto name = ctx->name;
-    auto type = any_cast_p<TypeNode>(visit(ctx->type()));
-
-    TypeInfo varType = type->getType();
-
-    DEBUG_LOG_VAL("  Statement: Declare (no init)", name->getText() << " : " << varType.name << " (" << declKey << ")");
-
-    if (scope) {
-        scope->registerSymbol(
-            name->getText(), {SymbolKind::Variable, name->getText(), varType, declType == DeclareType::Var});
-    }
-
-    return p<StatementNode>(createWithLine<StatementDeclareNode>(ctx, scope, declType, name, type));
-}
-
-std::any ASTBuilder::visitStatementDeclareAssign(yux::yuxParser::StatementDeclareAssignContext* ctx) {
-    auto scope = currentScope();
-    auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
-
-    auto declKey = ctx->DeclKey()->getText();
-    DeclareType declType;
-    if (declKey[2] == 'r') {
-        declType = DeclareType::Var;
-    } else if (declKey[2] == 'l') {
-        declType = DeclareType::Val;
-    } else {
-        declType = DeclareType::CVal;
-    }
-
-    auto name = ctx->name;
-    p<TypeNode> type = nullptr;
-    if (auto twr = ctx->typeWithRef(); twr) {
-        type = buildTypeWithRef(twr, scope);
-    }
-
-    TypeInfo varType;
-    if (type) {
-        varType = type->getType();
-    } else {
-        varType = expr->getType();
-    }
-
-    DEBUG_LOG_VAL("  Statement: Declare", name->getText() << " : " << varType.name << " (" << declKey << ")");
-
-    if (scope) {
-        scope->registerSymbol(
-            name->getText(), {SymbolKind::Variable, name->getText(), varType, declType == DeclareType::Var});
-    }
-
-    return p<StatementNode>(createWithLine<StatementDeclareAssignNode>(ctx, scope, declType, name, type, expr));
-}
-
-// 局部 cval 声明：cval name typeWithRef = expr
-// 类型必填（与 globalConst 协议对齐）；§3.3 初值约束由 const-mut checker 后置拒，不在 ast_builder 层做。
-std::any ASTBuilder::visitStatementCvalDeclAssign(yux::yuxParser::StatementCvalDeclAssignContext* ctx) {
-    auto scope = currentScope();
-    auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
-
-    auto name = ctx->name;
-    p<TypeNode> type = buildTypeWithRef(ctx->typeWithRef(), scope);
-    TypeInfo varType = type->getType();
-
-    DEBUG_LOG_VAL("  Statement: Declare", name->getText() << " : " << varType.name << " (cval)");
-
-    if (scope) {
-        SymbolInfo sym(SymbolKind::Variable, name->getText(), varType, false);
-        sym.isConst = true;
-        scope->registerSymbol(name->getText(), sym);
-    }
-
-    return p<StatementNode>(createWithLine<StatementDeclareAssignNode>(ctx, scope, DeclareType::CVal, name, type, expr));
-}
-
 // DRAFT-let-unify §3：局部 `let` 声明。
 // 注解映射：默认 → Val（不可重赋）；#Mut → Var；#Cval → CVal；#Frozen → Val + frozen 位（语义同 const-mut §5 局部）。
 // 当前 P1.a 阶段：直接映射到现有 DeclareType，frozen 在符号上记位（后续 const-mut checker 接管深不可变传染）。
@@ -1603,82 +1502,6 @@ std::any ASTBuilder::visitStatementLet(yux::yuxParser::StatementLetContext* ctx)
     }
 
     return p<StatementNode>(createWithLine<StatementDeclareAssignNode>(ctx, scope, declType, name, type, expr));
-}
-
-// 元组解构声明：var (a, b, ...) = expr 或 var (a, b) (T1, T2) = expr
-// Phase 5：仅支持一层平铺 ID，不支持嵌套和 _
-std::any ASTBuilder::visitStatementDeclareAssignTuple(yux::yuxParser::StatementDeclareAssignTupleContext* ctx) {
-    auto scope = currentScope();
-    auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
-
-    auto declKey = ctx->DeclKey()->getText();
-    DeclareType declType;
-    if (declKey[2] == 'r') {
-        declType = DeclareType::Var;
-    } else if (declKey[2] == 'l') {
-        declType = DeclareType::Val;
-    } else {
-        declType = DeclareType::CVal;
-    }
-
-    p<TypeNode> type = nullptr;
-    if (auto twr = ctx->typeWithRef(); twr) {
-        type = buildTypeWithRef(twr, scope);
-    }
-
-    // 元组类型来源：显式标注 > expr 推断
-    TypeInfo wholeType;
-    if (type) {
-        wholeType = type->getType();
-    } else {
-        wholeType = expr->getType();
-    }
-
-    // 透明 alias 解析：若 wholeType 是 Normal alias 名（如 `IPair = (i32, i32)`），
-    // 解到目标 tuple 类型，让下面的符号登记拿到正确的元素类型。
-    // 这里只处理非泛型 alias 链；泛型 / 复杂形态仍交给 codegen 阶段 applySubst 校验。
-    // 修复 BUGS.md「tuple destructure 别名右值 SemaPass 缓存空类型」：原来这里给变量登记
-    // 空 TypeInfo，SemaPass.visitExpr 顶部对解构出的 ID 缓存到的就是空 type，codegen 改完
-    // sym->type 后再读触发 resolvedType / getType 不一致断言。
-    if (auto* file = _scopeStack.empty() ? nullptr : dynamic_cast<FileNode*>(_scopeStack[0])) {
-        std::set<std::string> visited;
-        TypeInfo cur = wholeType;
-        while (cur.kind == TypeKind::Normal) {
-            auto* alias = file->getAliasDecl(cur.name);
-            if (!alias || alias->isGeneric() || !alias->target()) break;
-            if (visited.count(cur.name)) break; // 环：交给 codegen E2016
-            visited.insert(cur.name);
-            cur = alias->target()->getType();
-        }
-        wholeType = cur;
-    }
-
-    vector<Token> names;
-    for (auto idTok : ctx->names) {
-        names.emplace_back(idTok);
-    }
-
-    // 元素数 / 类型校验在 codegen 阶段（compileDeclareAssignTupleStatement）做，
-    // 因为这里 wholeType 可能是 alias 名，未走 applySubst
-    // 提前注册符号：每个 ID 走元组对应位置的元素类型
-    if (scope && wholeType.isTuple() && wholeType.tupleElements().size() == names.size()) {
-        const auto& elems = wholeType.tupleElements();
-        for (size_t i = 0; i < names.size(); ++i) {
-            scope->registerSymbol(names[i].getText(),
-                {SymbolKind::Variable, names[i].getText(), *elems[i], declType == DeclareType::Var});
-        }
-    } else if (scope) {
-        // alias 或非元组：先用 wholeType 占位（codegen 时会再校验），按未知类型挂到符号表
-        // TODO: alias 透明替换的元素类型在 ast_builder 阶段不易解析，留给 compiler 验证 + 报错
-        for (auto& n : names) {
-            scope->registerSymbol(n.getText(),
-                {SymbolKind::Variable, n.getText(), TypeInfo(), declType == DeclareType::Var});
-        }
-    }
-
-    DEBUG_LOG_VAL("  Statement: DeclareTuple", names.size() << " names, expr type=" << wholeType.name);
-
-    return p<StatementNode>(createWithLine<StatementDeclareAssignTupleNode>(ctx, scope, declType, names, type, expr));
 }
 
 // DRAFT-let-unify §3：let 元组解构（默认 → val / #Mut → var / #Cval → cval）。

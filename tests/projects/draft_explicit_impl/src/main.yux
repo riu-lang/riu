@@ -37,13 +37,13 @@ Greeter : Show {
 }
 
 fn say<T : Show>(x T) {
-    val s = x.show()
+    let s = x.show()
     println(s)
 }
 
 fn main() {
-    val c = Counter(42)
+    let c = Counter(42)
     say(c)
-    val g = Greeter("hi")
+    let g = Greeter("hi")
     say(g)
 }

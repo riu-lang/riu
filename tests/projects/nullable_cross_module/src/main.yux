@@ -3,7 +3,7 @@ use lookup.*
 
 fn main() {
   ; main 模块也独立用 Nullable<i64>
-  var local i64? = 99i64
+  #Mut let local i64? = 99i64
   println(local.has())
   println(local.get())
 

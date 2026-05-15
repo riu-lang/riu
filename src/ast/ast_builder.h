@@ -62,7 +62,6 @@ public:
     std::any visitProgram(yux::yuxParser::ProgramContext* ctx) override;
     std::any visitImports(yux::yuxParser::ImportsContext* ctx) override;
     std::any visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) override;
-    std::any visitGlobalConst(yux::yuxParser::GlobalConstContext* ctx) override;
     std::any visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) override;
     std::any visitFn(yux::yuxParser::FnContext* ctx) override;
     std::any visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) override;
@@ -80,11 +79,7 @@ public:
     std::any visitEnumDecl(yux::yuxParser::EnumDeclContext* ctx) override;
     std::any visitEnumVariant(yux::yuxParser::EnumVariantContext* ctx) override;
 
-    std::any visitStatementDeclare(yux::yuxParser::StatementDeclareContext* ctx) override;
-    std::any visitStatementDeclareAssign(yux::yuxParser::StatementDeclareAssignContext* ctx) override;
-    std::any visitStatementCvalDeclAssign(yux::yuxParser::StatementCvalDeclAssignContext* ctx) override;
     std::any visitStatementLet(yux::yuxParser::StatementLetContext* ctx) override;
-    std::any visitStatementDeclareAssignTuple(yux::yuxParser::StatementDeclareAssignTupleContext* ctx) override;
     std::any visitStatementLetTuple(yux::yuxParser::StatementLetTupleContext* ctx) override;
     std::any visitStatementAssign(yux::yuxParser::StatementAssignContext* ctx) override;
     std::any visitStatementExpr(yux::yuxParser::StatementExprContext* ctx) override;

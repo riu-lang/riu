@@ -14,7 +14,6 @@ program:
     (
           fn
         | externDelc
-        | globalConst
         | letGlobal
         | aliasDecl
         | enumDecl
@@ -49,16 +48,8 @@ externDelc: (buildAnnos+=buildAnno)* Extern BlockStart LineEnd
     BlockEnd LineEnd
     ;
 
-// cval a i32 = 1
-globalConst:
-    (buildAnnos+=buildAnno)*
-    Cval name=ID type SymbolEq literal
-    LineEnd
-    ;
-
-// DRAFT-let-unify §3 全局 let 形态。注解严格 inline（无 LineEnd），由 ast_builder 解析合法档位。
-// 当前仅接受 `#Cval let NAME T = literal`（与 globalConst 同义但形态统一）；其他档位由 ast_builder 拒。
-// type / init 缺失由 ast_builder 报 E3113 / E3114，便于给出友好诊断。
+// DRAFT-let-unify §3 全局 let 形态。当前仅接受 `#Cval let NAME T = literal`；
+// 其他档位由 ast_builder 拒。type / init 缺失由 ast_builder 报 E3113 / E3114，便于友好诊断。
 letGlobal:
     (letAnnos+=letAnno)*
     Let name=ID type? (SymbolEq literal)? LineEnd
@@ -645,25 +636,12 @@ enumPattern:
 ///////////
 
 statement:
-    // val a i32
-      DeclKey name=ID type LineEnd                        #statementDeclare
-    // var name = expr
-    // var name type = expr
-    | DeclKey name=ID typeWithRef? SymbolEq expr LineEnd  #statementDeclareAssign
-    // cval name type = expr （局部编译期常量；类型必填）
-    | Cval name=ID typeWithRef SymbolEq expr LineEnd      #statementCvalDeclAssign
     // DRAFT-let-unify §3：let 局部声明（注解严格 inline）
     // 默认 let → val 语义；#Mut → var；#Cval → cval；#Frozen → val + frozen
     // type / init 同时缺失由 ast_builder 报 E3113；type 在但 init 缺由 E3114
-    | (letAnnos+=letAnno)*
+    // #Mut 例外：允许 `#Mut let x T` 无 init（延后赋值，等价旧 `var x T`）
+      (letAnnos+=letAnno)*
       Let name=ID typeWithRef? (SymbolEq expr)? LineEnd   #statementLet
-    // var (a, b) = e
-    | DeclKey
-      ParStart
-        names+=ID (SymbolComma names+=ID)+
-      ParEnd
-      typeWithRef?
-      SymbolEq expr LineEnd                               #statementDeclareAssignTuple
     // DRAFT-let-unify §3：let 元组解构。注解语义与 statementLet 同（默认→val / #Mut→var / #Cval→cval）。
     | (letAnnos+=letAnno)*
       Let

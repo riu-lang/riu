@@ -2,7 +2,7 @@ use yux.core.*
 
 ; 同一个 Nullable<i64> 在 lookup 模块独立使用一次
 fn lookup_demo(needle i64) i64 {
-  var hit i64? = needle
+  #Mut let hit i64? = needle
   if hit.has() {
     ret hit.get()
   }

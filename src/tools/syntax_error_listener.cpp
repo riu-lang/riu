@@ -17,8 +17,8 @@ SyntaxErrorListener::SyntaxErrorListener(string sourcePath, std::ostream& out)
 namespace {
 bool isYuxKeyword(const std::string& s) {
     static const std::unordered_set<std::string> kws = {
-        "break", "catch", "cval", "var", "val", "draft", "elif", "else",
-        "enum", "extern", "false", "fn", "if", "loop", "match", "null",
+        "break", "catch", "draft", "elif", "else",
+        "enum", "extern", "false", "fn", "if", "let", "loop", "match", "null",
         "ret", "struct", "true", "try", "use",
     };
     return kws.count(s) > 0;
