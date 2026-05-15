@@ -1,5 +1,5 @@
 ; Phase 7c 验证：extern fn 边界自动转 Ptr (DRAFT §9.3)
-; T& / Box / Array / String 作实参传给 Ptr 形参时自动转换；规则与 ptr_of 一致
+; T& / Rc / Array / String 作实参传给 Ptr 形参时自动转换；规则与 ptr_of 一致
 
 extern {
   fn lstrlenA(lpString Ptr) i32
@@ -19,7 +19,7 @@ fn main() {
   var x i32 = 0i32
   println(lstrlenA(&x))
 
-  ; Box<i32> → Ptr：payload = i32 = 0，同上返回 0
-  var b Box<i32> = 0i32
+  ; Rc<i32> → Ptr：payload = i32 = 0，同上返回 0
+  var b Rc<i32> = 0i32
   println(lstrlenA(b))
 }

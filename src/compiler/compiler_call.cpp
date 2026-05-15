@@ -231,11 +231,11 @@ llvm::Value* Compiler::compileMethodCall(
         if (result) return result;
     }
 
-    // 处理 Box 类型: 解包获取实际类型
-    if (baseType.isBox()) {
-        auto boxElemType = baseType.boxElementType();
-        if (boxElemType) {
-            actualType = *boxElemType;
+    // 处理 Rc 类型: 解包获取实际类型
+    if (baseType.isRc()) {
+        auto rcElemType = baseType.rcElementType();
+        if (rcElemType) {
+            actualType = *rcElemType;
         }
     }
 
@@ -329,17 +329,17 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
     // 涵盖：lambda IIFE `((x i32) i32 => ...)(5)`、fn-typed 变量 / 字段 / 调用结果
     // 普通 ID callee（普通函数名）走 ExprLiteralNode 路径，那里返回 "fn() <ret>" 字符串
     // 编码（kind=Normal），不会命中 isFn()
-    // Phase 3c: callee 为 Box<fn(...)R> → 自动解引取 fat-ptr 后走同款 fn-value-call
+    // Phase 3c: callee 为 Rc<fn(...)R> → 自动解引取 fat-ptr 后走同款 fn-value-call
     {
         TypeInfo calleeStaticType;
         try { calleeStaticType = calleeExpr->getType(); } catch (...) {}
         if (calleeStaticType.isFn()) {
             return compileFnValueCall(node);
         }
-        if (calleeStaticType.isBox()) {
-            auto inner = calleeStaticType.boxElementType();
+        if (calleeStaticType.isRc()) {
+            auto inner = calleeStaticType.rcElementType();
             if (inner && inner->isFn()) {
-                return compileBoxFnValueCall(node, *inner);
+                return compileRcFnValueCall(node, *inner);
             }
         }
     }
@@ -695,7 +695,7 @@ llvm::Value* Compiler::compileFunctionCall(
         // H3：structDecl 已找到但 ctor 重载没匹配上时，立刻报错，
         // 不要静默回落到下方 ExternalFunctionCall —— 那会按外部 fn 名 forward-decl
         // 一个 void 返回的调用，把 void 值丢给外层 recordTemp / store，触发
-        // LLVM `isSized` 断言。见 BUGS.md「构造器实参类型不匹配（Box<T> 形参 + 裸 T 实参）」。
+        // LLVM `isSized` 断言。见 BUGS.md「构造器实参类型不匹配（Rc<T> 形参 + 裸 T 实参）」。
         sema::diagnoseCtorOverloadMismatch(_file,
             _yux ? _yux->sdkFile() : nullptr,
             fnName, argTypes,
@@ -858,14 +858,14 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             return _builder.getInt64(size);
         }
         if (fnName == "upgrade") {
-            // Phase 1d.2：Weak<T> → Box<T>?
+            // Phase 1d.2：Weak<T> → Rc<T>?
             // E6024 / E6025 已由 sema::validateCompilerInnerIntrinsicShape 校验
             auto& T = typeArgs[0];
             auto tShared = make_shared<TypeInfo>(T);
             TypeInfo weakTy("Weak", {tShared});
-            TypeInfo boxTy("Box", {tShared});
-            auto boxShared = make_shared<TypeInfo>(boxTy);
-            TypeInfo nullableBoxTy("Nullable", {boxShared});
+            TypeInfo rcTy("Rc", {tShared});
+            auto rcShared = make_shared<TypeInfo>(rcTy);
+            TypeInfo nullableRcTy("Nullable", {rcShared});
 
             auto ptrTy = llvm::PointerType::get(_context, 0);
             auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
@@ -879,27 +879,27 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             auto handle = _builder.CreateLoad(ptrTy, handleField, "upgrade.handle");
 
             // 调 _box_upgrade(handle) → handle_or_null
-            auto upgradeFn = runtime::getBoxUpgradeFn(_module, _builder);
+            auto upgradeFn = runtime::getRcUpgradeFn(_module, _builder);
             auto resultHandle = _builder.CreateCall(upgradeFn, {handle}, "upgrade.result");
 
-            // 构造 Nullable<Box<T>> = { i1 _has, { ptr handle } _value }
-            auto nullableLLVMTy = getLLVMType(nullableBoxTy);
+            // 构造 Nullable<Rc<T>> = { i1 _has, { ptr handle } _value }
+            auto nullableLLVMTy = getLLVMType(nullableRcTy);
             auto resultAlloca = _builder.CreateAlloca(nullableLLVMTy, nullptr, "upgrade.nullable");
             auto hasField = _builder.CreateGEP(nullableLLVMTy, resultAlloca, {zero, zero}, "upgrade.has_field");
             auto valueField = _builder.CreateGEP(nullableLLVMTy, resultAlloca, {zero, one}, "upgrade.value_field");
 
             auto isNotNull = _builder.CreateICmpNE(resultHandle, llvm::ConstantPointerNull::get(ptrTy), "upgrade.has");
             _builder.CreateStore(isNotNull, hasField);
-            // Box<T> = { ptr handle }；不论 has 与否都写 handle（null 时 _has=false 已表示无效）
-            auto boxStructTy = getLLVMType(boxTy);
-            auto innerHandleField = _builder.CreateGEP(boxStructTy, valueField, {zero, zero}, "upgrade.inner_handle");
+            // Rc<T> = { ptr handle }；不论 has 与否都写 handle（null 时 _has=false 已表示无效）
+            auto rcStructTy = getLLVMType(rcTy);
+            auto innerHandleField = _builder.CreateGEP(rcStructTy, valueField, {zero, zero}, "upgrade.inner_handle");
             _builder.CreateStore(resultHandle, innerHandleField);
 
             return _builder.CreateLoad(nullableLLVMTy, resultAlloca, "upgrade.value");
         }
         if (fnName == "same_ref" || fnName == "ptr_of") {
             // Phase 7：地址相等 / 显式取裸指针 builtin
-            // T 必须是堆句柄类型 (Box / Weak / Array / String) 或 T&
+            // T 必须是堆句柄类型 (Rc / Weak / Array / String) 或 T&
             // E6028 AST 形态 / E6029 T 必须堆句柄 已由 sema::validateCompilerInnerIntrinsicTypeShape 校验 (3.3.2.d)
             // 下方 extractRawPtr 内残留的 E6028 / E6029 是兜底防御 (sema 抢先抛, 几乎不可达)
             // E6026 / E6027 已由 sema::validateCompilerInnerIntrinsicShape 校验
@@ -907,18 +907,18 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             auto ptrTy = llvm::PointerType::get(_context, 0);
 
             // 工具：从第 i 个实参提取一个"裸指针"（handle / data / ref-ptr），按 T 的源类型决定如何抽
-            // ptr_of 模式：当 T = Box/Array/String 时，需要进一步跳过 RC 头或读 data 字段；same_ref 不跳头
+            // ptr_of 模式：当 T = Rc/Array/String 时，需要进一步跳过 RC 头或读 data 字段；same_ref 不跳头
             auto extractRawPtr = [&](size_t i, bool forPtrOf) -> llvm::Value* {
-                if (T.isBox() || T.isWeak() || T.isArrayGeneric()) {
+                if (T.isRc() || T.isWeak() || T.isArrayGeneric()) {
                     // args[i] 为 { ptr handle } 结构体值；ExtractValue 0 取 handle
                     auto handle = _builder.CreateExtractValue(args[i], {0}, "handle");
-                    if (!forPtrOf || T.isBox()) {
-                        if (forPtrOf && T.isBox()) {
-                            // Box payload 偏移 8（u32 strong + u32 weak）
+                    if (!forPtrOf || T.isRc()) {
+                        if (forPtrOf && T.isRc()) {
+                            // Rc payload 偏移 8（u32 strong + u32 weak）
                             return _builder.CreateInBoundsGEP(
                                 _builder.getInt8Ty(), handle,
                                 {llvm::ConstantInt::get(_builder.getInt64Ty(), 8)},
-                                "box.payload");
+                                "rc.payload");
                         }
                         return handle;
                     }
@@ -968,18 +968,18 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             return extractRawPtr(0, true);
         }
         if (fnName == "as_ref") {
-            // spec §8.3.5.5：as_ref:<T>(box Box<T>) T&
-            // 返回 box payload 起点的非空指针（跳过 8 字节 RC 头）
+            // spec §8.3.5.5：as_ref:<T>(box Rc<T>) T&
+            // 返回 Rc payload 起点的非空指针（跳过 8 字节 RC 头）
             // 寿命检查在 borrow_checker 处理（识别 ExprCallNode 形如 as_ref(x)）
             // E6026 / E6027 已由 sema::validateCompilerInnerIntrinsicShape 校验
             auto& T = typeArgs[0];
-            // 实参必须是 Box<T>（不接受 Box<T>?、Array、String、Weak 等）
+            // 实参必须是 Rc<T>（不接受 Rc<T>?、Array、String、Weak 等）
             auto argType = callNode->getArgs()[0]->getType();
-            if (!argType.isBox() || argType.isNullable()) {
+            if (!argType.isRc() || argType.isNullable()) {
                 throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
                     ErrorCode::E6029, fnName, argType.getFullName());
             }
-            // args[0] 为 Box<T> = { ptr handle } 结构体值；ExtractValue 0 取 handle
+            // args[0] 为 Rc<T> = { ptr handle } 结构体值；ExtractValue 0 取 handle
             auto handle = _builder.CreateExtractValue(args[0], {0}, "as_ref.handle");
             // payload 偏移 8（u32 strong + u32 weak）
             return _builder.CreateInBoundsGEP(
@@ -989,13 +989,13 @@ llvm::Value* Compiler::compileGenericFunctionCall(
         }
         if (fnName == "copy_of") {
             // spec §12.7.3 / DRAFT-const-mut [#1.I]：copy_of:<T>(x T&) T
-            // 返回独立 owned T；值类型 memcpy，含 Box / Array / String / Weak 字段时按字段 retain
+            // 返回独立 owned T；值类型 memcpy，含 Rc / Array / String / Weak 字段时按字段 retain
             // 含 Ref<U> 字段 → 报 E6032（已由 sema::validateCompilerInnerIntrinsicTypeShape 校验, 3.3.2.d）
             // E6026 / E6027 已由 sema::validateCompilerInnerIntrinsicShape 校验
             auto& T = typeArgs[0];
 
             // args[0] 是 T 的 struct value（来自 compileExpr 自动 deref T&）
-            // 把所有 RC 子结构 +1：Box/Array/Weak 抽 handle 调对应 retain；
+            // 把所有 RC 子结构 +1：Rc/Array/Weak 抽 handle 调对应 retain；
             // struct 走 retainStructFieldsAtCallSite 递归；含 RC enum 走其分支。
             // 内置 / Ptr / 平凡 struct：no-op，直接返回 args[0]。
             retainHandleAtCallSite(args[0], T);
@@ -1005,8 +1005,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             return args[0];
         }
         if (fnName == "weak") {
-            // spec §4.8.3.1 / §9：weak:<T>(box Box<T>?) Weak<T>
-            // 接受 Box<T> 或 Box<T>?；null/哨兵输入返回空 Weak（永远 upgrade 失败）
+            // spec §4.8.3.1 / §9：weak:<T>(box Rc<T>?) Weak<T>
+            // 接受 Rc<T> 或 Rc<T>?；null/哨兵输入返回空 Weak（永远 upgrade 失败）
             // 复用 _weak_retain：复制 handle 指针 + weak 计数 +1
             // E6026 / E6027 已由 sema::validateCompilerInnerIntrinsicShape 校验
             auto& T = typeArgs[0];
@@ -1017,15 +1017,15 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
 
             // 提取源 handle：
-            //   Box<T>      → args[0] = { ptr handle }，直接抽 field 0
-            //   Box<T>?     → args[0] = Nullable<Box<T>> = { i1 _has, { ptr handle } _value }
+            //   Rc<T>      → args[0] = { ptr handle }，直接抽 field 0
+            //   Rc<T>?     → args[0] = Nullable<Rc<T>> = { i1 _has, { ptr handle } _value }
             //                  按 _has 选 inner.handle / null
             llvm::Value* srcHandle = nullptr;
-            if (argType.isBox() && !argType.isNullable()) {
+            if (argType.isRc() && !argType.isNullable()) {
                 srcHandle = _builder.CreateExtractValue(args[0], {0}, "weak.src.handle");
             } else if (argType.isNullable()) {
                 auto inner = argType.nullableInnerType();
-                if (!inner || !inner->isBox()) {
+                if (!inner || !inner->isRc()) {
                     throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
                         ErrorCode::E6029, fnName, argType.getFullName());
                 }
@@ -1124,7 +1124,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             callArgs.push_back(args[i]);
             continue;
         }
-        // Phase 3a: Box/Array/Weak 实参传前 retain（callee-clean）
+        // Phase 3a: Rc/Array/Weak 实参传前 retain（callee-clean）
         // Phase 8c: fresh 实参（call/array literal）已自带 +1，跳过 retain
         // Phase 8d.1: fresh 实参的 +1 移交给 callee，从临时帧消费掉，避免帧末多余 release
         bool isFresh = isFreshHandleExpr(callNode->getArgs()[i]);
@@ -1194,8 +1194,8 @@ llvm::Value* Compiler::compileArrayMethodCall(
             auto t = outerType.refElementType();
             if (t) outerActual = *t;
         }
-        if (outerType.isBox()) {
-            auto t = outerType.boxElementType();
+        if (outerType.isRc()) {
+            auto t = outerType.rcElementType();
             if (t) outerActual = *t;
         }
         llvm::Value* outerPtr = nullptr;
@@ -1215,12 +1215,12 @@ llvm::Value* Compiler::compileArrayMethodCall(
             int fi = outerStructDecl->fieldIndex(dotBase->member());
             if (fi >= 0) {
                 llvm::Value* dataPtr = outerPtr;
-                if (outerType.isBox()) {
-                    // Box.field：load handle，payload = handle + 8
-                    auto boxStructType = getLLVMType(outerType);
-                    auto handleField = _builder.CreateGEP(boxStructType, outerPtr, {zero, zero}, "box.handle_field");
-                    auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "box.handle");
-                    dataPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "box.payload");
+                if (outerType.isRc()) {
+                    // Rc.field：load handle，payload = handle + 8
+                    auto rcStructType = getLLVMType(outerType);
+                    auto handleField = _builder.CreateGEP(rcStructType, outerPtr, {zero, zero}, "rc.handle_field");
+                    auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "rc.handle");
+                    dataPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.payload");
                 }
                 auto outerLLVM = getLLVMType(outerActual);
                 auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fi);
@@ -1697,16 +1697,16 @@ llvm::Value* Compiler::compileStructMethodCall(
 
         llvm::Value* dataPtr = basePtr;
 
-        if (baseType.isBox()) {
-            // Box 方法 receiver：load handle，payload = handle + 8
-            auto boxStructType = getLLVMType(baseType);
+        if (baseType.isRc()) {
+            // Rc 方法 receiver：load handle，payload = handle + 8
+            auto rcStructType = getLLVMType(baseType);
             auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-            auto handleField = _builder.CreateGEP(boxStructType, basePtr, {zero, zero}, "box.handle_field");
-            auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "box.handle");
-            dataPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "box.payload");
+            auto handleField = _builder.CreateGEP(rcStructType, basePtr, {zero, zero}, "rc.handle_field");
+            auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "rc.handle");
+            dataPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.payload");
         }
 
-        // Box<primitive> 方法调用：内置类型方法的 receiver 走 by-value ABI
+        // Rc<primitive> 方法调用：内置类型方法的 receiver 走 by-value ABI
         // （见 getMethodFunction line 291：isBuiltinType(structName) 时第 0 槽用
         // getLLVMType(structName)，对应 compileMethod line 672-678 把首参 alloca + store
         // 作为 `$`）。这里要把 payload load 出来按值传，否则与 callee 签名不一致：
@@ -1717,7 +1717,7 @@ llvm::Value* Compiler::compileStructMethodCall(
         llvm::Value* receiverArg = dataPtr;
         if (receiverByValue) {
             auto receiverTy = getLLVMType(actualType);
-            receiverArg = _builder.CreateLoad(receiverTy, dataPtr, "box.payload.val");
+            receiverArg = _builder.CreateLoad(receiverTy, dataPtr, "rc.payload.val");
         }
 
         vector<llvm::Value*> methodArgs;
@@ -1793,8 +1793,8 @@ llvm::Value* Compiler::compileDynMethodCall(
 
     // 5. Phase 3d: load fat_ptr.vtable → GEP slot[i+1] → load fn ptr → indirect call.
     //    receiver:
-    //      - Dyn<D>  (owned)  : data + 8（跳过 Box RC 头，与 compileStructMethodCall 的
-    //                           Box receiver 一致；layout 见 compileDynCtorExpr）
+    //      - Dyn<D>  (owned)  : data + 8（跳过 Rc RC 头，与 compileStructMethodCall 的
+    //                           Rc receiver 一致；layout 见 compileDynCtorExpr）
     //      - Dyn<D&> (借用)   : data 直接是实例指针（裸 ref）
     //    fn 签名按 D.sig 还原：(ptr receiver, P1, ..., Pn) -> R
     //    （对象安全确保 sig 不含 Self / 自身名，所以 D.sig 形参/返回类型与 U.impl 一致）
@@ -2048,8 +2048,8 @@ llvm::Value* Compiler::compileKnownFunctionCall(
                 continue;
             }
             // Phase 7c (DRAFT §9.3): extern 边界自动转 Ptr
-            // T& / Box<T> / Weak<T> / Array<T> / String 作实参传给 Ptr 形参时自动转换
-            // 转换规则与 ptr_of 一致：Box → payload (跳 RC 头)；Array/String → data 区
+            // T& / Rc<T> / Weak<T> / Array<T> / String 作实参传给 Ptr 形参时自动转换
+            // 转换规则与 ptr_of 一致：Rc → payload (跳 RC 头)；Array/String → data 区
             if (fnSymbol->isExternal) {
                 auto& aType = argTypes[i];
                 auto ptrTy = llvm::PointerType::get(_context, 0);
@@ -2074,18 +2074,18 @@ llvm::Value* Compiler::compileKnownFunctionCall(
                         continue;
                     }
                 }
-                if (aType.isBox() || aType.isWeak() || aType.isArrayGeneric()) {
+                if (aType.isRc() || aType.isWeak() || aType.isArrayGeneric()) {
                     auto handle = _builder.CreateExtractValue(args[i], {0}, "handle");
                     if (aType.isWeak()) {
                         callArgs.push_back(handle);
                         continue;
                     }
-                    if (aType.isBox()) {
-                        // Box payload 偏移 8（跳过 RC 头）
+                    if (aType.isRc()) {
+                        // Rc payload 偏移 8（跳过 RC 头）
                         auto payload = _builder.CreateInBoundsGEP(
                             _builder.getInt8Ty(), handle,
                             {llvm::ConstantInt::get(_builder.getInt64Ty(), 8)},
-                            "box.payload");
+                            "rc.payload");
                         callArgs.push_back(payload);
                         continue;
                     }

@@ -57,7 +57,7 @@
 - 元组元素：`(fn()i32, i32)`
 - ~~`T&` 借用：`(fn(A) R)&`~~（**v1 不支持**：g4 缺"括号包类型"规则，且 `typeFnWithRef` 末尾 `&` 在有非借用 R 时被 retType 贪心吃掉，无语法表达手段；§3.6 复述）
 
-字段位置 / `Box<fn(...)>` / `Array<fn(...)>` / `Weak<fn(...)>` 等容器内层是否合法 → 决于 Phase 3 档位决议（值类型 vs 堆句柄）；本节不收口。
+字段位置 / `Rc<fn(...)>` / `Array<fn(...)>` / `Weak<fn(...)>` 等容器内层是否合法 → 决于 Phase 3 档位决议（值类型 vs 堆句柄）；本节不收口。
 
 ### 3.2 形态
 
@@ -92,7 +92,7 @@ fn(i32)i32
 fn(a i32)i32
 fn(a, b i32)i32                   ; 参数组糖（与 §6 一致）
 fn(s String, n i32)bool
-fn(b Box<T>, r T&)T?              ; T& 形参合法
+fn(b Rc<T>, r T&)T?              ; T& 形参合法
 
 ; 嵌套 / 高阶（紧凑形不再视觉粘连）
 fn op(f fn(a, b i32)i32) i32 = f(1, 2)        ; f 为函数值形参；外层 op 是 fn 声明，按通用规则空格
@@ -151,7 +151,7 @@ fn each<T>(arr Array<T>, p Predicate<T>) { ... }
 
 ### 3.6 与借用 `T&` / `Ref<T>`
 
-**形参位置 `T&`**（§3.2.3.1）：合法。`fn(b Box<T>, r T&)T?` 与 fn 声明同形态。
+**形参位置 `T&`**（§3.2.3.1）：合法。`fn(b Rc<T>, r T&)T?` 与 fn 声明同形态。
 
 **返回值 `T&`**：沿用 §3.2.3.2 + §8.6.10「返回引用的溯源约束」。函数类型字面量本身不重新定义溯源规则；写得出 `fn(r T&)T&` 时，使用点（lambda 字面量 / fn 声明）须满足 §8.6.10 的"允许源集"与"v1 单源"约束（§8.6.10.2 / §8.6.10.3）。lambda 字面量的 `$` 不存在（除非 Phase 4 决议允许 lambda 内 `$` 透传），故 lambda 的允许源集仅靠"`T&` 形参"获得。
 
@@ -162,13 +162,13 @@ fn each<T>(arr Array<T>, p Predicate<T>) { ... }
 ### 3.7 与 nullable / 容器 / FFI
 
 - `fn?(...)R`：nullable 函数值（[#24] 紧凑形，§3.3），✅ 合法（[#17]，§5.5）。`(fn(...)R)?` ❌ 禁（统一紧凑形，§3.3）。
-- `Array<fn(...)>` / `Box<fn(...)>` / 字段位置：✅ 合法（值类型 + 字段级 RC，§5.5）。
+- `Array<fn(...)>` / `Rc<fn(...)>` / 字段位置：✅ 合法（值类型 + 字段级 RC，§5.5）。
 - `Weak<fn(...)>`：❌ 禁（函数值不是堆句柄无 RC 头，§5.5）。
 - FFI 边界（`extern fn`、`Ptr` 转换）：推到 Phase 5（§7）+ 错误模型 v1 [#7] 合并讨论。
 
 ### 3.8 ABI（Phase 3 已落地，2026-05-09）
 
-仅占位记号：函数类型在调用点按 callee-clean §8.5 协议传值；零捕获 vs 含捕获是否走同一 ABI、是否引入 fat-pointer / Box-wrapped 形态，留 Phase 3 决。
+仅占位记号：函数类型在调用点按 callee-clean §8.5 协议传值；零捕获 vs 含捕获是否走同一 ABI、是否引入 fat-pointer / Rc-wrapped 形态，留 Phase 3 决。
 
 ---
 
@@ -303,11 +303,11 @@ f { x => body }              ; 唯一实参 + 省 (...)
 
 ## 5. 函数值 RC / ABI（Phase 3，[#17] C1）
 
-> **状态**：Phase 3 (a/b/c) 已落地（2026-05-09）—— 字段级 RC 接入零捕获骨架、struct fn 字段、`Array<fn>` / `Box<fn>` 容器全部走通，xmake test 65/65 + sdk yux test 259/259 全绿。Phase 3d「`(fn(...) R)&` 借用」**v1 不支持**（详见 §3.6 / §5.5）。Phase 4 闭包未启动，含捕获路径仍为 informative。
+> **状态**：Phase 3 (a/b/c) 已落地（2026-05-09）—— 字段级 RC 接入零捕获骨架、struct fn 字段、`Array<fn>` / `Rc<fn>` 容器全部走通，xmake test 65/65 + sdk yux test 259/259 全绿。Phase 3d「`(fn(...) R)&` 借用」**v1 不支持**（详见 §3.6 / §5.5）。Phase 4 闭包未启动，含捕获路径仍为 informative。
 
 ### 5.1 档位归属
 
-函数值 `fn(...) R` 是 **§3.1 值类型**（与元组 / enum 同档），但其内部含一个 `Box<...>?` 字段（捕获包），按 **§7.4 字段级 RC** 处理。
+函数值 `fn(...) R` 是 **§3.1 值类型**（与元组 / enum 同档），但其内部含一个 `Rc<...>?` 字段（捕获包），按 **§7.4 字段级 RC** 处理。
 
 不新增"堆句柄"档位（§3.1 / §8.1.1.1 封闭集合保持）；零开销路径与含捕获路径在**类型层完全不可见**，仅运行时表示分两条。
 
@@ -318,11 +318,11 @@ f { x => body }              ; 唯一实参 + 省 (...)
 ```
 struct FnValue {
   fn_ptr   : Ptr                ; 8 bytes (LP64)；指向匿名顶层 fn / trampoline
-  captures : Box<CapturesT>?    ; 8 bytes；nullable 堆句柄；零捕获 lambda 为 null
+  captures : Rc<CapturesT>?    ; 8 bytes；nullable 堆句柄；零捕获 lambda 为 null
 }
 ```
 
-总 size = 16 bytes（LP64）。`fn_ptr` 是裸函数指针，不参与 RC。`captures` 是 §3.6 nullable + §3.3 Box 堆句柄，按既有 §8.2 RC 协议管理。
+总 size = 16 bytes（LP64）。`fn_ptr` 是裸函数指针，不参与 RC。`captures` 是 §3.6 nullable + §3.3 Rc 堆句柄，按既有 §8.2 RC 协议管理。
 
 `CapturesT` 是编译期为每个含捕获 lambda 单独合成的匿名 struct，字段为该 lambda 体内引用的非形参 / 非全局标识符（具体收集规则见 §6 闭包）；零捕获 lambda 不分配 `CapturesT`，`captures = null`。
 
@@ -337,10 +337,10 @@ f.fn_ptr(f.captures, args...)
 `captures` 永远作为**隐式首参**传给 fn_ptr 指向的实体。零捕获 lambda 的 fn_ptr 指向一个忽略首参的实现（编译器合成的 trampoline 或直接生成签名忽略首参的 fn）。这避免了"调用点根据 captures 是否 null 分流"的两种调用约定，保证 `fn(...) R` 在 ABI 层是单一类型。
 
 **与 §8.5 callee-clean 对接**：
-- 函数值作实参传递：caller 按值复制 fat-ptr，按 §7.4 字段级 retain（`captures != null` 则 `Box::retain`）；callee 在出口或显式丢弃点按 §7.4 字段级 release。零捕获场景 retain / release 都是 nullable 早返，零开销。
+- 函数值作实参传递：caller 按值复制 fat-ptr，按 §7.4 字段级 retain（`captures != null` 则 `Rc::retain`）；callee 在出口或显式丢弃点按 §7.4 字段级 release。零捕获场景 retain / release 都是 nullable 早返，零开销。
 - 函数值作返回值：callee 在 `ret` 处构造 fat-ptr，retain captures（若非空），按 §8.5 既定方向交出所有权。
 - 函数值作字段：`struct S { handler fn() }` 合法；S 的析构按 §7.4 处理 handler 字段（release captures）。
-- 函数值作元素：`Array<fn(...) R>` / `Box<fn(...) R>` 合法；容器元素 retain / release 走字段级 RC。
+- 函数值作元素：`Array<fn(...) R>` / `Rc<fn(...) R>` 合法；容器元素 retain / release 走字段级 RC。
 
 ### 5.4 RC 操作伪码
 
@@ -356,7 +356,7 @@ fn_value_destruct(v: FnValue):
   fn_value_release(v)
 ```
 
-**`Box<CapturesT>` 析构**：按 §8.2.2.3 + §7.4 字段级 release —— `CapturesT` 字段中的堆句柄 / `T&`（如允许，§6 决）按各自类型协议 release / 丢弃。
+**`Rc<CapturesT>` 析构**：按 §8.2.2.3 + §7.4 字段级 release —— `CapturesT` 字段中的堆句柄 / `T&`（如允许，§6 决）按各自类型协议 release / 丢弃。
 
 ### 5.5 字段位置 / 容器内层 / nullable
 
@@ -367,7 +367,7 @@ fn_value_destruct(v: FnValue):
 | `var f fn(...) R = ...` | ✅ 局部变量 | |
 | `struct S { handler fn(...) }` | ✅ 字段位置 | 字段级 RC 处理 |
 | `Array<fn(...) R>` | ✅ 容器元素 | 元素 size = 16 bytes |
-| `Box<fn(...) R>` | ✅ | 双层句柄；语义合法不专门禁 |
+| `Rc<fn(...) R>` | ✅ | 双层句柄；语义合法不专门禁 |
 | `fn?(...)R` | ✅ Nullable 紧凑形 | [#24]；`(fn(...)R)?` 禁 |
 | `Weak<fn(...) R>` | ❌ 禁 | 函数值不是堆句柄，无 RC 头；§8.10 / §3.7 禁忌列表加一条 |
 | ~~`(fn(...) R)&`~~ | ✗ v1 不支持 | g4 缺 paren-type 规则，retType 贪心吞 `&`，无语法表达手段；详见 §3.6 |
@@ -383,13 +383,13 @@ fn_value_destruct(v: FnValue):
 - **F1**：编译器是否对零捕获 lambda 走"fn_ptr 直指 lambda body 且首参签名带未使用 captures Ptr"形态，还是合成统一 trampoline？两者用户不可见；落实施时择一。
 - **F2**：多个零捕获 lambda 字面量（同一签名）是否共享同一 fn_ptr / 是否做去重？纯优化，不进规范。
 - **F3**：函数值的 `==` 仍按 §8 禁；地址相等不开口子（一致 [#8]）。
-- **F4**：`Box<CapturesT>` 在 captures 含 `T&` 时不可堆化（与 §3.2.3.2 字段位置禁 `T&` 同源）—— 这把"捕获 `T&`"的 lambda 强制为"不可逃逸出借用源 scope"。Phase 4 闭包决议时与 §6 合并表述。
+- **F4**：`Rc<CapturesT>` 在 captures 含 `T&` 时不可堆化（与 §3.2.3.2 字段位置禁 `T&` 同源）—— 这把"捕获 `T&`"的 lambda 强制为"不可逃逸出借用源 scope"。Phase 4 闭包决议时与 §6 合并表述。
 
 ---
 
 ## 6. 闭包（Phase 4，v1 必需）
 
-> **已落地（2026-05-09）**：Phase 4a / 4a-2 / 4b / 4c / 4d / 4e 全部完成。覆盖标量 + 堆句柄（Box / Weak / Array / String）+ `T&` + `$` 捕获，捕获写禁（E2030），栈嵌入 + 不可逃逸（E4022），返回 `T&` 单源溯源（E4020 / E4021）。
+> **已落地（2026-05-09）**：Phase 4a / 4a-2 / 4b / 4c / 4d / 4e 全部完成。覆盖标量 + 堆句柄（Rc / Weak / Array / String）+ `T&` + `$` 捕获，捕获写禁（E2030），栈嵌入 + 不可逃逸（E4022），返回 `T&` 单源溯源（E4020 / E4021）。
 
 闭包是 lambda 字面量的语义升级：lambda 体引用了**非形参 / 非全局**的标识符，编译器自动收集为捕获。v1 落地必含（v2 错误模型 try/catch handler 要访问外层变量），同步**解禁 §8.1.2.5** 中"闭包不在 v1 范围"。
 
@@ -413,25 +413,25 @@ FV(λ) = { 标识符 x 在 λ 体内被引用 } \ ( λ 形参 ∪ 顶层全局 /
 |---|---|---|
 | 标量（`i32` / `bool` / `f64` / 等 §3.2.1） | 同 `Tx`（按值复制） | 一次性复制；闭包后续不感知外层变化 |
 | 用户 struct / 元组（值类型） | 同 `Tx`（字段级复制 + 字段级 retain，§7.4） | 同上 |
-| 堆句柄（`Box<T>` / `Array<T>` / `String` / `StringBuilder` / `Weak<T>`） | 同 `Tx`（句柄复制 + retain） | 共享句柄；与赋值语义一致 |
-| `T&` | 同 `T&`（栈嵌入，**不可** Box 化） | 借用透传，§6.3 |
+| 堆句柄（`Rc<T>` / `Array<T>` / `String` / `StringBuilder` / `Weak<T>`） | 同 `Tx`（句柄复制 + retain） | 共享句柄；与赋值语义一致 |
+| `T&` | 同 `T&`（栈嵌入，**不可** Rc 化） | 借用透传，§6.3 |
 | enum（值类型） | 同 `Tx`（tag dispatch 字段级 retain） | 与 §7.4 一致 |
 
 不引入显式捕获列表语法（如 Rust `move` / C++ `[=]` / `[&]`）。理由：
 
-- 类型即文档：`Box<T>` 必 retain、`T&` 必借用、标量必复制 —— 捕获语义由变量类型唯一确定，无歧义。
+- 类型即文档：`Rc<T>` 必 retain、`T&` 必借用、标量必复制 —— 捕获语义由变量类型唯一确定，无歧义。
 - 显式覆写在多数场景是噪音；少数需要"复制堆句柄给闭包独立持有"的需求可在闭包外手动 `var snap = box` 后捕获 `snap`。
 - 与 §8 整体"无显式 retain / release / move"风格一致。
 
 ### 6.2.1 捕获变量在 lambda 体内只读（[#26]）
 
-lambda 体**不得**对捕获变量赋值（含 `=` / 复合赋值 `+= -= *= /= ...` / 重新绑定 `Box` 句柄等）。违者编译错。
+lambda 体**不得**对捕获变量赋值（含 `=` / 复合赋值 `+= -= *= /= ...` / 重新绑定 `Rc` 句柄等）。违者编译错。
 
 ```yux
 var a i32 = 0
 val f = () => { a = 1 }     ; ❌ 编译错：不可对捕获变量赋值
 
-var b Box<i32> = 0
+var b Rc<i32> = 0
 val g = () => { b = 5 }     ; ❌ 编译错：重新绑定捕获句柄
 ```
 
@@ -449,20 +449,20 @@ val g = () => { b = 5 }     ; ❌ 编译错：重新绑定捕获句柄
 
 ### 6.3 含 `T&` 捕获：captures 栈化 + 不可逃逸（[#19]）
 
-由 §3.2.3.2（字段位置禁 `T&`）+ §5.2（captures 是 `Box<CapturesT>`）推导：
+由 §3.2.3.2（字段位置禁 `T&`）+ §5.2（captures 是 `Rc<CapturesT>`）推导：
 
-`CapturesT` 含 `T&` 字段时，`Box<CapturesT>` **不可构造**（§3.2.3.2 直接拒绝）。因此含 `T&` 捕获的 lambda **不能**走标准 §5.2 形态。
+`CapturesT` 含 `T&` 字段时，`Rc<CapturesT>` **不可构造**（§3.2.3.2 直接拒绝）。因此含 `T&` 捕获的 lambda **不能**走标准 §5.2 形态。
 
 替代落地：
 
-- **栈嵌入**：`CapturesT` 不进 Box，直接在 lambda 字面量出现的 frame 上分配；fat-ptr 的 `captures` 字段改为 `&CapturesT`（栈借用）。
+- **栈嵌入**：`CapturesT` 不进 Rc，直接在 lambda 字面量出现的 frame 上分配；fat-ptr 的 `captures` 字段改为 `&CapturesT`（栈借用）。
 - **不可逃逸**：含 `T&` 捕获的 lambda（即 `CapturesT` 含 `T&` 字段）按"广义 `T&`"处理：
   - 不可作 `ret` 表达式（除非满足 §8.6.10 溯源约束，§6.5）
-  - 不可入字段 / 容器 / `Box<...>`
+  - 不可入字段 / 容器 / `Rc<...>`
   - 不可赋给寿命外延的变量（§8.6.5 既有规则）
 - **类型层不可见**：`fn(...) R` 仍是单一类型；含 `T&` 捕获 vs 不含的差异由 §8.6 借用寿命规则承担，不暴露到类型相等（§3.4）。
 
-实施侧：含 `T&` 捕获的 lambda 在 IR 层走"栈分配 captures + fat-ptr 指向栈"路径；其余走 §5.2 标准 `Box<CapturesT>` 路径。两条路径在 ABI 层（§5.3）一致：fn_ptr 的隐式首参签名都是 `Ptr`（一个指向栈，一个指向堆）。
+实施侧：含 `T&` 捕获的 lambda 在 IR 层走"栈分配 captures + fat-ptr 指向栈"路径；其余走 §5.2 标准 `Rc<CapturesT>` 路径。两条路径在 ABI 层（§5.3）一致：fn_ptr 的隐式首参签名都是 `Ptr`（一个指向栈，一个指向堆）。
 
 **编译期判定 lambda 是否含 `T&` 捕获 = `FV(λ)` 中是否存在 `T&` 类型变量** —— O(1)，无数据流分析。
 
@@ -525,7 +525,7 @@ fn make() ... {
 - **F4'**（继承自 §5.7 F4）：含 `T&` 捕获 lambda 的具体 IR 落地形态（栈分配 + alloca 后地址传 fn_ptr 首参，还是 frame pointer 偏移）—— 实施细节，不进规范。
 - **F5**：嵌套闭包（lambda 体内再写 lambda）的 `FV` 推导是否需要"二级捕获"递推？倾向：是，按词法作用域逐层解析；嵌套 lambda 把内层 `FV` 再展开到外层 `FV`。具体形式 v1 可不写到 spec，留实施。
 - ~~**F6**~~：已收口为 [#26]，lambda 体不可对捕获变量赋值，含 `+= -= ` 等复合赋值与堆句柄重新绑定（§6.2.1）。
-- **F7**：堆句柄 captures 在 lambda 多次调用间是否共享？默认**共享**（`Box<CapturesT>` retain 后多 fat-ptr 指同一 captures）；零拷贝是预期形态。
+- **F7**：堆句柄 captures 在 lambda 多次调用间是否共享？默认**共享**（`Rc<CapturesT>` retain 后多 fat-ptr 指同一 captures）；零拷贝是预期形态。
 
 ---
 
@@ -669,9 +669,9 @@ try {
 - **2026-05-08 [#14]** 返回类型规则：裸参 → 推断；括号参 + 无返回标注 → void；括号参 + 显式标注 → 显式 RetT（§4.2）。
 - **2026-05-08 [#15]** `if` / `match` 是表达式；lambda 单表达式体可直接含（§4.4）。
 - **2026-05-08 [#16]** `fn(...)` 类型字面量中 `fn` 与 `(` 之间不带空格；与 fn 声明"关键字后必须有空格"规则相反，仅本产生式特例。理由：嵌套 fn 类型作实参时空格爆炸（§3.2）。
-- **2026-05-08 [#17]** 函数值 RC / ABI 选 **C1**：永远 fat-ptr `{ fn_ptr, captures Box<CapturesT>? }`，零捕获时 captures = null。函数值是值类型 + 字段级 RC（不进堆句柄档位）；调用约定统一（captures 永远作隐式首参传 fn_ptr）。详见 §5。
+- **2026-05-08 [#17]** 函数值 RC / ABI 选 **C1**：永远 fat-ptr `{ fn_ptr, captures Rc<CapturesT>? }`，零捕获时 captures = null。函数值是值类型 + 字段级 RC（不进堆句柄档位）；调用约定统一（captures 永远作隐式首参传 fn_ptr）。详见 §5。
 - **2026-05-08 [#18]** 闭包捕获模式默认按外层变量类型自动选（§6.2）：标量 / struct 复制；堆句柄 retain；`T&` 借用透传。**不引入**显式捕获列表（如 `[move x]`）。
-- **2026-05-08 [#19]** 含 `T&` 捕获的 lambda：`CapturesT` 不进 `Box`（§3.2.3.2 字段禁 `T&`），改栈嵌入；lambda 自身按"广义 `T&`"处理 —— 不可逃逸出借用源 scope（§6.3）。
+- **2026-05-08 [#19]** 含 `T&` 捕获的 lambda：`CapturesT` 不进 `Rc`（§3.2.3.2 字段禁 `T&`），改栈嵌入；lambda 自身按"广义 `T&`"处理 —— 不可逃逸出借用源 scope（§6.3）。
 - **2026-05-08 [#20]** 方法体内 lambda 引用 `$` 合法，按隐式 `Self&` 形参捕获处理（§6.4）；触发 [#19] 不可逃逸约束。
 - **2026-05-08 [#21]** lambda 返回 `T&` 的允许源集 = 形参为 `T&` 者；**捕获来的 `T&` 不进允许源集**（§6.5）。与 §8.6.10 同构。
 - **2026-05-08 [#22]** v1 显式不支持函数类型跨 FFI 边界：`extern fn` 不接受 `fn(...)`；不提供 `Ptr` ↔ 函数值转换 builtin。理由：含捕获 lambda 与 C 函数指针 ABI 不兼容；零捕获静态判定 + 调用约定差异化实施复杂度与 v1 收益不匹配。推 v0.x+1（§7）。

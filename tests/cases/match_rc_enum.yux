@@ -1,4 +1,4 @@
-; P2-7 回归：Box<E> 直接做 match scrutinee（借用语义）
+; P2-7 回归：Rc<E> 直接做 match scrutinee（借用语义）
 
 enum Color {
   Red
@@ -7,7 +7,7 @@ enum Color {
 }
 
 fn main() {
-  var b Box<Color> = Color::Green
+  var b Rc<Color> = Color::Green
   val s String = match b {
     Color::Red   => "r"
     Color::Green => "g"

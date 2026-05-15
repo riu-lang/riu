@@ -1,4 +1,4 @@
-; 中段是 Box<T>（含 RC）时拒收并附 hint。
+; 中段是 Rc<T>（含 RC）时拒收并附 hint。
 struct Inner {
   count i32
 }
@@ -10,17 +10,17 @@ Inner {
 }
 
 struct Outer {
-  state Box<Inner>
+  state Rc<Inner>
 }
 
 Outer {
-  fn Outer(s Box<Inner>) {
+  fn Outer(s Rc<Inner>) {
     $.state = s
   }
 }
 
 fn main() {
-  var b Box<Inner> = Inner(10i32)
+  var b Rc<Inner> = Inner(10i32)
   var o Outer = Outer(b)
   o.state.count = 5i32
 }

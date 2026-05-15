@@ -318,7 +318,7 @@ private:
         if (auto le = dynamic_cast<p<ExprLiteralNode>>(callee)) {
             if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
                 string fname = obj->getValue().getText();
-                // 若是本地符号引用（Box/Array 等通过变量调用，不在此处覆盖），跳过
+                // 若是本地符号引用（Rc/Array 等通过变量调用，不在此处覆盖），跳过
                 if (_localNames.contains(fname)) return;
                 if (scope) {
                     SymbolInfo* sym = scope->lookupSymbol(fname);

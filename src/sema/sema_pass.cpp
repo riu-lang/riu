@@ -22,7 +22,7 @@
 //     - E3041: `&` getRef 时 struct 未找到
 //     - E3043: `&` getRef 时找不到 file 作用域
 //     - E3044: `.?` safe-dot 在 inner struct 上找不到 struct decl
-//     - E3050: Box<T>? 取 inner 时 Box 元素类型缺失
+//     - E3050: Rc<T>? 取 inner 时 Rc 元素类型缺失
 //     - E3051: `.?` safe-dot 的 nullable inner 类型缺失
 //     - E3057: 数组索引时元素类型缺失 (含 Array 泛型 / 普通数组)
 //     - E3062: 索引目标非数组
@@ -544,13 +544,13 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         for (auto& arm : n->arms()) visitExpr(arm->body());
 
         // Phase 3.4.b: SemaPass 接管 E2019/E2020/E2023/E2024/E2025/E2026/E2027.
-        // 仅在 scrut 直接是 enum 名 (非 Box/E / 非 alias 链) 时接入: 那两条路径
+        // 仅在 scrut 直接是 enum 名 (非 Rc/E / 非 alias 链) 时接入: 那两条路径
         // Compiler 端走 isFreshHandleExpr / resolveAlias (递归), SemaPass 暂未镜像,
         // 跳过留 Compiler 兜底. scrutType getType 抛错 (lambda 形参等) 时也跳过.
         try {
             TypeInfo scrutType = n->scrutinee()->getType();
-            // Box<E> 自动 deref 走 Compiler 兜底, 不在此处接入
-            if (!scrutType.isBox()) {
+            // Rc<E> 自动 deref 走 Compiler 兜底, 不在此处接入
+            if (!scrutType.isRc()) {
                 auto* enumDecl = lookupEnumIn(_file, _sdkFile, scrutType.name);
                 if (enumDecl) {
                     sema::validateMatchArms(enumDecl, scrutType.name, n, _file);

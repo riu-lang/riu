@@ -7,12 +7,12 @@
 ;   - 含 RC payload (String) variant 的 match 与析构
 ;   - 类型别名透传 C::V 路径
 ;   - 跨变量传递与作用域结束析构
-;   - Box<E> 枚举上堆
+;   - Rc<E> 枚举上堆
 ;   - Array<E> 枚举数组
 ;   - E? 可空枚举
 ;   - 嵌套 match 表达式
 ;   - match 返回复杂类型（struct、tuple）
-;   - 更多 payload 类型（Box<T>、Array<T>）
+;   - 更多 payload 类型（Rc<T>、Array<T>）
 
 enum Color {
   Red
@@ -136,13 +136,13 @@ fn test_enum_match_drops_owned_payload() {
   assert_eq(n, 7)
 }
 
-; ==================== Box<E> 枚举上堆 ====================
-; TODO: Box<E> 在 match 中需要显式解引用，当前编译器不支持
+; ==================== Rc<E> 枚举上堆 ====================
+; TODO: Rc<E> 在 match 中需要显式解引用，当前编译器不支持
 ; 暂时注释掉相关测试
 
 ; #Test
 ; fn test_enum_box_basic() {
-;   var b Box<Color> = Color::Red
+;   var b Rc<Color> = Color::Red
 ;   val n i32 = match b {
 ;     Color::Red => 1
 ;     Color::Green => 2
@@ -153,7 +153,7 @@ fn test_enum_match_drops_owned_payload() {
 
 ; #Test
 ; fn test_enum_box_with_payload() {
-;   var b Box<Shape> = Shape::Circle(5.0f64)
+;   var b Rc<Shape> = Shape::Circle(5.0f64)
 ;   val area f64 = match b {
 ;     Shape::Point => 0.0f64
 ;     Shape::Circle(r) => 3.14f64 * r * r
@@ -164,7 +164,7 @@ fn test_enum_match_drops_owned_payload() {
 
 ; #Test
 ; fn test_enum_box_reassign() {
-;   var b Box<Color> = Color::Red
+;   var b Rc<Color> = Color::Red
 ;   b = Color::Blue
 ;   val n i32 = match b {
 ;     Color::Red => 1
@@ -340,19 +340,19 @@ fn test_enum_match_return_tuple() {
 ; P1-6（BUGS.md）现状：
 ;   - 直接传裸值（如 `Container::Boxed(Point(...))`）：已落 E2032 编译期诊断拒收
 ;     （回归: tests/cases/diag_enum_payload_type_mismatch.*）
-;   - 显式 `var bp Box<T> = T(...); Container::Boxed(bp)`：编译能过但运行期
+;   - 显式 `var bp Rc<T> = T(...); Container::Boxed(bp)`：编译能过但运行期
 ;     RC 失衡（temp.struct.spill dtor 立即释放 box，导致 match 读到已释放内存），
 ;     等 P1-6b 修好后再开下面用例
 
 enum Container {
   Empty
-  Boxed(Box<Point>)
+  Boxed(Rc<Point>)
   Listed(Array<i32>)
 }
 
 ; #Test
 ; fn test_enum_payload_box() {
-;   var bp Box<Point> = Point(10.0f64, 20.0f64)
+;   var bp Rc<Point> = Point(10.0f64, 20.0f64)
 ;   val c Container = Container::Boxed(bp)
 ;
 ;   val result f64 = match c {

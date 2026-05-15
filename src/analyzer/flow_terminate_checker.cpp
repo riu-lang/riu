@@ -11,7 +11,7 @@
 namespace {
 
 // 通过 callee 表达式的字面量名查到 FnSymbolInfo，判断是否带 #NoReturn。
-// 简化：只看顶层身份引用（如 `panic("x")`）；方法调用、Box 调用等暂不参与
+// 简化：只看顶层身份引用（如 `panic("x")`）；方法调用、Rc 调用等暂不参与
 // 流终止判定（保守判 false，不错杀但可能漏报）。
 bool callIsNoReturn(p<ScopeNode> scope, p<ExprCallNode> call) {
     if (!scope || !call) return false;

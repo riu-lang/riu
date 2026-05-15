@@ -1141,60 +1141,60 @@ fn ptr_from_addr(addr u64) Ptr
 fn _ptr_offset(p Ptr, off i64) Ptr
 
 #CompilerInner
-struct Box<T> {
+struct Rc<T> {
   ; 内部处理
 }
 
-; Weak<T> 实例 layout = { ptr handle }，与 Box<T> 同形
+; Weak<T> 实例 layout = { ptr handle }，与 Rc<T> 同形
 ; handle 指向同一 Block；weak 计数维护 block 存活；不维护 payload 存活
 #CompilerInner
 struct Weak<T> {
 }
 
-; upgrade(w) Box<T>?：尝试从 Weak 升级到 Box；strong==0 → null；存活 → strong++ 返回 Some(Box{handle})
+; upgrade(w) Rc<T>?：尝试从 Weak 升级到 Rc；strong==0 → null；存活 → strong++ 返回 Some(Rc{handle})
 #CompilerInner
-fn upgrade<T>(w Weak<T>) Box<T>?
+fn upgrade<T>(w Weak<T>) Rc<T>?
 
 ; same_ref:<T>(a, b) bool：地址相等比较（DRAFT §10）
-; T 必须是 Box<U> / Weak<U> / Array<U> / String / U&；标量禁
+; T 必须是 Rc<U> / Weak<U> / Array<U> / String / U&；标量禁
 ; 比对底层 handle 指针；空 Weak 与任何活句柄不等
 #CompilerInner
 fn same_ref<T>(a T, b T) bool
 
-; rc_leak_count() i64：返回当前未释放的 RC Block 数（Box / Array / String / Weak 共用计数）
+; rc_leak_count() i64：返回当前未释放的 RC Block 数（Rc / Array / String / Weak 共用计数）
 ; 仅供测试 / 自检使用；正常程序不应依赖
 #CompilerInner
 fn rc_leak_count() i64
 
 ; ptr_of:<T>(obj) Ptr：显式取裸指针（DRAFT §9.4）
 ; T = U&         → 指向 U 的 Ptr（短生命周期，C 端不可保存超出本次调用）
-; T = Box<U>    → 指向 U payload（跳过 RC 头；C 端只能读写 payload，不能 free）
+; T = Rc<U>    → 指向 U payload（跳过 RC 头；C 端只能读写 payload，不能 free）
 ; T = Array<U>  → 指向元素首地址（同上）
 ; T = String     → 指向 UTF-32 码点首地址（不带 NUL 终止）
 ; T = 标量       → 报错
 #CompilerInner
 fn ptr_of<T>(obj T) Ptr
 
-; as_ref:<T>(box) T&：显式获取 Box payload 的借用（spec §8.3.5.5）
-; v1 唯一允许"以 T& 形态借用 Box payload 整体"的途径；返回的 T& 根对象
+; as_ref:<T>(box) T&：显式获取 Rc payload 的借用（spec §8.3.5.5）
+; v1 唯一允许"以 T& 形态借用 Rc payload 整体"的途径；返回的 T& 根对象
 ; 视为传入的 box 句柄本身，受 §8.6.5 一切寿命规则约束
-; T 由实参推断；不接受 Box<T>?
+; T 由实参推断；不接受 Rc<T>?
 #CompilerInner
-fn as_ref<T>(box Box<T>) T&
+fn as_ref<T>(box Rc<T>) T&
 
 ; copy_of:<T>(x T&) T：T& → T 显式深拷贝（spec §12.7.3）
-; 返回独立 owned T；值类型 memcpy，含 Box / Array / String / Ref 字段时执行字段级 retain
+; 返回独立 owned T；值类型 memcpy，含 Rc / Array / String / Ref 字段时执行字段级 retain
 ; 语义重载（DRAFT-const-mut [#1.I]）：T 同时可由 #Frozen T 实参传入，按 T& 看待，
 ;   返回的 owned T 不带 #Frozen 痕迹，作为唯一脱 const 出口
 ; T 不接受 owned T 自身（直接复用即可）
 #CompilerInner
 fn copy_of<T>(x T&) T
 
-; weak:<T>(box) Weak<T>：从 Box 构造 Weak（spec §4.8.3.1 / §9）
-; 接受 Box<T> 或 Box<T>?；null 输入返回空 Weak（永远 upgrade 失败）
+; weak:<T>(box) Weak<T>：从 Rc 构造 Weak（spec §4.8.3.1 / §9）
+; 接受 Rc<T> 或 Rc<T>?；null 输入返回空 Weak（永远 upgrade 失败）
 ; 复制 handle 指针；weak 计数 +1，不影响 strong
 #CompilerInner
-fn weak<T>(box Box<T>?) Weak<T>
+fn weak<T>(box Rc<T>?) Weak<T>
 
 ; Array<T> 实例 layout 由编译器内部管理：{ ptr handle }，handle 指向 Block
 ; （Phase 1b：所有方法编译器特例化，主体不再读 yux 端字段）

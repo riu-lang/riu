@@ -75,7 +75,7 @@ statement
 
 P1 只允许：基本数值 / `bool` / `null` / 字符串字面量 / 由这些组成的常量表达式（含算术、位运算、比较、逻辑），以及对已声明 `cval` 的引用。
 
-不允许（P1）：`Box` / `Array` / `String` 构造、结构体构造、任何函数调用。
+不允许（P1）：`Rc` / `Array` / `String` 构造、结构体构造、任何函数调用。
 
 P4 放宽：允许调 `#Const fn`，前提是所有实参也是常量。
 
@@ -161,7 +161,7 @@ fn f(#Frozen o Outer) {
 }
 ```
 
-传染只作用于"含可写内部"的类型：`struct` / `Box<T>` / `Array<T>` / `Ref<T>` / `String`。原子类型（`i8`–`u64`、`f32`/`f64`、`bool`、`null`）按值拷出后不挂 #Frozen（标了也无意义）。
+传染只作用于"含可写内部"的类型：`struct` / `Rc<T>` / `Array<T>` / `Ref<T>` / `String`。原子类型（`i8`–`u64`、`f32`/`f64`、`bool`、`null`）按值拷出后不挂 #Frozen（标了也无意义）。
 
 ## 6. 子特性 D — 结构体字段修饰
 
@@ -230,7 +230,7 @@ o.cfg.x = 1          ; ❌ 同上 + 深传染
 - 闭包捕获的可变性传递（lambda 内对外层 var 的写）。
 - 多线程下的 `Frozen` 与不变性约束。
 - `#Const fn` 的自动推断 / 调用图分析。
-- `cval` 中允许堆分配类型（Box/Array/String）的常量求值。
+- `cval` 中允许堆分配类型（Rc/Array/String）的常量求值。
 - 字段层 `#Cval` / 关联常量 / data class 等（独立 `DRAFT-data-struct.md`）。
 
 ## 8. 迁移面（粗估）
@@ -286,7 +286,7 @@ o.cfg.x = 1          ; ❌ 同上 + 深传染
 - **[#1.D]** `#Frozen` 取深不可变语义：禁重绑定 + 禁字段写 + 仅可调 `#Const fn`。
 - **[#1.E]** 修饰一律走 `#` 注解，不引入新关键字。
 - **[#1.F]** `#Const fn` 与 `#Frozen` 有依赖（深不可变要看方法是否纯）；按 P1 → P2 → P3 → P4 顺序实施。
-- **[#1.G]** `#Frozen` 表达式传染到本地绑定时**必须**落在 `#Frozen val` 上：`var tmp = readonly_expr` 语义层报错；`val tmp = readonly_expr` 也报错（要求显式 `#Frozen val`）。`#Frozen var` 组合禁用（语义层报错，不动 g4）。传染只对"含可写内部"的类型生效（struct / Box / Array / Ref / String），原子类型按值拷出脱锁。
+- **[#1.G]** `#Frozen` 表达式传染到本地绑定时**必须**落在 `#Frozen val` 上：`var tmp = readonly_expr` 语义层报错；`val tmp = readonly_expr` 也报错（要求显式 `#Frozen val`）。`#Frozen var` 组合禁用（语义层报错，不动 g4）。传染只对"含可写内部"的类型生效（struct / Rc / Array / Ref / String），原子类型按值拷出脱锁。
 - **[#1.H]** 结构体字段三档：默认 `var`、`#Val`（浅）、`#Frozen`（深）。修饰走注解、写在字段上一行。字段修饰**凌驾**外层声明（外层 `var o` 救不了 #Frozen 字段）。`#Val` / `#Frozen` 字段仅在构造函数内可写，其它成员函数禁写。字段层 `#Cval` / 关联常量 / data class 等推迟到 `DRAFT-data-struct.md`。
 - **[#1.I]** const 传递取 C++ 风格——可加不可去。`#Frozen` 实参不可传给非 #Frozen 参数；唯一脱 const 出口为现成 builtin `copy_of:<T>(x T&) T`（§11.2.3.2 / §12.7.3），无需新 builtin。含 #Frozen 字段的类型自动继承该约束。
 - **[#1.J]** 注解命名最终化：`#Const`（函数，不改外部状态）/ `#Frozen`（参数+字段，深不可变，传染）/ `#Val`（字段，浅不可变，仅禁构造期外重赋）/ `#Pure`（函数，完全独立、零捕获、零外部读，保留名）。`#Frozen` 优于 `#Readonly`：① 字面意思更紧（"冻住"vs"只读"）；② 与 `#Val` 浅深分层清晰；③ 与 `#Const`（函数侧）词不重复，避免"#Const 是浅是深"的歧义；④ 更短，符合 yux 简短明确显式风格。

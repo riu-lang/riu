@@ -45,7 +45,7 @@
 | `i8` `i16` `i32` `i64` `u8` `u16` `u32` `u64` | 内置整数类型名 | §3.2.1 / §9.1.1 |
 | `f32` `f64` | 内置浮点类型名 | §3.2.1 / §9.1.2 |
 | `bool` | 内置布尔类型名 | §3.2.1 / §9.1.3 |
-| `Box` `Weak` `Array` `String` `StringBuilder` `Nullable` `Ref` `Ptr` | 内置泛型 / 堆句柄 / 引用类型 | §3.3 / §9 |
+| `Rc` `Weak` `Array` `String` `StringBuilder` `Nullable` `Ref` `Ptr` | 内置泛型 / 堆句柄 / 引用类型 | §3.3 / §9 |
 | `Self` | 当前结构体类型（隐式） | §7.2.2 |
 | `$` | 方法接收者 / 当前实例 | §7.2.2 / §B.6 `exprThis` |
 

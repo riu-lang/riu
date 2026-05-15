@@ -8,8 +8,8 @@ yux 是一门独立的编译型语言，具有以下特性：
 
 - **静态类型系统**：无隐式类型转换，所有类型转换必须显式进行
 - **自举运行时**：SDK 使用 yux 语言自身编写，提供核心功能
-- **自动内存管理**：`Box<T>` 类型使用引用计数自动管理堆内存
-- **泛型支持**：内置 `Ref<T>`、`Box<T>`、`Ptr<T>`、`Array<T>` 等泛型类型
+- **自动内存管理**：`Rc<T>` 类型使用引用计数自动管理堆内存
+- **泛型支持**：内置 `Ref<T>`、`Rc<T>`、`Ptr<T>`、`Array<T>` 等泛型类型
 - **C/系统互操作**：通过 `extern` 声明调用外部函数，支持 Windows API
 
 空格和换行为语法的一部分，不可省略。
@@ -137,10 +137,10 @@ struct Data {
 }
 
 fn main() {
-  var box Box<Data> = Data(42)
+  var box Rc<Data> = Data(42)
   println(box.value)
   
-  var box2 Box<Data> = box  ; 引用计数 +1
+  var box2 Rc<Data> = box  ; 引用计数 +1
 } ; 离开作用域时自动释放
 ```
 

@@ -10,8 +10,8 @@ yux 是一门自举的编程语言，使用 ANTLR4 解析语法，LLVM 作为编
 
 - 静态类型系统，无隐式类型转换
 - 结构体和成员函数
-- 泛型类型（Ref<T>, Box<T>, Ptr<T>, Array<T>）
-- 自动内存管理（Box<T> 引用计数）
+- 泛型类型（Ref<T>, Rc<T>, Ptr<T>, Array<T>）
+- 自动内存管理（Rc<T> 引用计数）
 - 与 C/Windows API 互操作
 
 ### 示例代码

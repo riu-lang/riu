@@ -96,11 +96,11 @@ void Compiler::compile(p<FileNode> file) {
     compileEnumDtors();
 
     // SDK 需要生成运行时辅助函数
-    // 这些函数用于 Box、Array 等类型的内存管理
+    // 这些函数用于 Rc、Array 等类型的内存管理
     if (_isSdk) {
         DEBUG_LOG("Emitting runtime helpers (yux module)");
         runtime::emitRuntimeHelpers(_builder, _module);
-        runtime::emitBoxHelpers(_context, _builder, _module);
+        runtime::emitRcHelpers(_context, _builder, _module);
         runtime::emitWeakHelpers(_context, _builder, _module);
         runtime::emitArrayHelpers(_context, _builder, _module);
     }
@@ -635,7 +635,7 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
             _localVarPtrs[paramName] = alloca;
             DEBUG_LOG_VAL("  Param", paramName << " : " << paramType.name);
 
-            // Phase 3a: 堆句柄参数（Box/Array/Weak）按 callee-clean 协议
+            // Phase 3a: 堆句柄参数（Rc/Array/Weak）按 callee-clean 协议
             // 在作用域结束时 release，与局部变量同路径
             if (typeNeedsDestructor(paramType)) {
                 _scopeVars.push_back(paramName);
@@ -782,7 +782,7 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
             _localVarPtrs[paramName] = alloca;
             DEBUG_LOG_VAL("  Param", paramName << " : " << paramType.name);
 
-            // Phase 3a: 堆句柄参数（Box/Array/Weak）按 callee-clean 协议在作用域末 release
+            // Phase 3a: 堆句柄参数（Rc/Array/Weak）按 callee-clean 协议在作用域末 release
             if (typeNeedsDestructor(paramType)) {
                 _scopeVars.push_back(paramName);
             }

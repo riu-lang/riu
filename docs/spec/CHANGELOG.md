@@ -15,6 +15,13 @@
 
 ---
 
+## 2026-05-15 —— `Box<T>` → `Rc<T>` 改名（语义不变）+ `Heap` / `Arc` 占名
+
+- **重命名 §9.5**：`Box<T>` 章节全量改为 `Rc<T>`。语义零变化：layout、ABI、retain / release、自动解引用、构造形态、Weak 升级等条款一字不动，仅类型名 `Box` → `Rc`。运行时 Block layout 不变。
+- **新增 §9.5.6**：保留名条款。`Heap` / `Arc` 在 v0.X 期间作为内置类型名保留，未来引入；当前作类型名使用报 `E1132`。
+- **附录 D**：错误码诊断信息中 `Box<T>` → `Rc<T>` 同步（E1132 / E1133 / E2001 / E2029 / E2032 / E3014 / E3016 / E3050 / E3056 / E4022 / E6029）。
+- **冲突 / 兼容**：用户代码中所有 `Box<T>` / `Box(...)` 一次性脚本替换为 `Rc<T>` / `Rc(...)`；无并存期。`docs/dev/*-impl-log.md` 历史日志在文件头加脚注保留旧名 `Box`，正文不动。改名动机见草案 `DRAFT-heap-types.md`：`Box` 名字与 Rust 的"唯一所有 owning box"语义冲突，yux 实际是 RC，统一改 `Rc` 以释放 `Box` 名（未来若做唯一所有堆句柄再考虑是否复用）。
+
 ## 2026-05-15 —— const-mut P1：`cval` 局部 / `#Const` / `#Frozen` / `#Val`
 
 - **新增 §5.1.5**：局部 `cval` 声明（产生式 `statementCvalDeclAssign`）。初值约束限定为字面量 / 已声明 `cval` 引用 / 一元-二元-位-比较-逻辑组合；违反报 `E3104`。顶层 `globalConst` 仍保留 `literal` RHS（保守）。

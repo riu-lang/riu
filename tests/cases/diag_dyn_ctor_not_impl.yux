@@ -14,7 +14,7 @@ Other {
 }
 
 fn main() {
-  val b Box<Other> = Other(1i32)
+  val b Rc<Other> = Other(1i32)
   val d Dyn<Greet> = Dyn:<Greet>(b)
   ret;
 }

@@ -77,7 +77,7 @@ N | <源码行原文>
 
 | 码     | 模板 |
 |--------|------|
-| E2001 | `Weak<T>? is forbidden: Weak is natively nullable (upgrade returns Box<T>?)` |
+| E2001 | `Weak<T>? is forbidden: Weak is natively nullable (upgrade returns Rc<T>?)` |
 | E2002 | `buildTypeWithRef: unknown typeWithRef alternative` |
 | E2003 | `module \`{}\` is ambiguous: both \`{}.yux\` and \`{}/\` exist` |
 | E2004 | `module alias \`{}\` conflicts with existing symbol` |
@@ -125,9 +125,9 @@ N | <源码行原文>
 | E3011 | `Array elements must have the same type: {} vs {}` |
 | E3012 | `Array size mismatch: expected {}, got {}` |
 | E3013 | `Array element type mismatch: expected {}, got {}` |
-| E3014 | `Box type mismatch: expected Box<{}>, got {}` |
+| E3014 | `Rc type mismatch: expected Rc<{}>, got {}` |
 | E3015 | `Cannot assign {} to Nullable<{}>` |
-| E3016 | `Weak<{}> 仅支持从 Box<{}> 或 Weak<{}> 构造` |
+| E3016 | `Weak<{}> 仅支持从 Rc<{}> 或 Weak<{}> 构造` |
 | E3017 | `T& local initializer type mismatch: expected {}&, got {}&` |
 | E3018 | `T& copy-bind source type mismatch: '{}' is not {}&` |
 | E3019 | `T& local initializer must be &expr or copy-bind from a T& variable` |
@@ -165,13 +165,13 @@ N | <源码行原文>
 
 | 码     | 模板 |
 |--------|------|
-| E3050 | `Box<T> missing inner type T` |
+| E3050 | `Rc<T> missing inner type T` |
 | E3051 | `Nullable type requires inner type` |
 | E3052 | `Weak type requires element type` |
 | E3053 | `Ref type requires element type` |
 | E3054 | `Ref type missing inner type` |
 | E3055 | `Array type requires element type` |
-| E3056 | `Box type requires element type` |
+| E3056 | `Rc type requires element type` |
 | E3057 | `Invalid array type: missing element type` |
 
 数组操作（E3060..E3068）：
@@ -319,7 +319,7 @@ builtin 调用 / 类型实参数量（E6020..E6029）：
 | E6026 | `{} expects 1 type argument` |
 | E6027 | `{} expects {} argument(s)` |
 | E6028 | `{}:<T&> requires a local var or &expr argument` |
-| E6029 | `{}:<T> requires T to be Box/Weak/Array/String or U& (got '{}')` |
+| E6029 | `{}:<T> requires T to be Rc/Weak/Array/String or U& (got '{}')` |
 | E6030 | `assert_eq:<T> requires T to be a numeric or bool type (got '{}')` |
 | E6031 | `assert_eq operand type mismatch: actual is '{}', expected is '{}' ...` |
 
@@ -381,8 +381,8 @@ Array 内置方法（E6040..E6044）：
 | E1112  | `'#DraftLike' draft '{}' must not contain method-local generic parameters` | `#DraftLike` 与方法本地泛型共用（§11.4.2.3） |
 | E1120  | `Cannot implement draft '{}' for type '{}': both belong to external packages (orphan rule, spec §12.5)` | 跨外部包 orphan（§12.5） |
 | E1131  | `` Type argument of `Dyn<...>` must be a draft name; `{}` is not a draft `` | `Dyn<X>` 中 `X` 非 draft（§12.9.3.1） |
-| E1132  | `` Nested `Dyn<...>` is not allowed: `{}` cannot wrap another `Dyn` / `Box` of `Dyn` `` | `Dyn` 嵌套 / `Box<Dyn>` / `Weak<Dyn>`（§12.9.3.2） |
-| E1133  | `` Cannot construct `Dyn<{}>` from `{}`: argument must be `Box<U>` (owned) or `U&` (borrow) where `U` implements `{}` `` | `Dyn:<D>(x)` 构造源不满足 D（§12.9.5.3） |
+| E1132  | `` Nested `Dyn<...>` is not allowed: `{}` cannot wrap another `Dyn` / `Rc` of `Dyn` `` | `Dyn` 嵌套 / `Rc<Dyn>` / `Weak<Dyn>`（§12.9.3.2） |
+| E1133  | `` Cannot construct `Dyn<{}>` from `{}`: argument must be `Rc<U>` (owned) or `U&` (borrow) where `U` implements `{}` `` | `Dyn:<D>(x)` 构造源不满足 D（§12.9.5.3） |
 | E1134  | `` Draft `{}` is not object-safe: signatures contain `Self` or the draft's own name in non-receiver position; `Dyn<{}>` / `Dyn<{}&>` is not allowed `` | draft 非对象安全（§12.9.4） |
 | E1135  | `` `Dyn<D>?` (nullable dyn) is not supported in v1 `` | `Dyn<D>?` 形态（§12.9.3.3） |
 | E1136  | `` `Dyn<{}>` cannot cross `extern` boundary: vtable layout is internal ABI `` | `Dyn` 跨 `extern` 边界（§12.9.10） |

@@ -43,7 +43,7 @@ Holder {
 }
 
 fn main() {
-  val bg Box<G> = G(42i64, "ok")
+  val bg Rc<G> = G(42i64, "ok")
   val h Holder = Holder(7i64, Dyn:<Greet>(bg), 9i64)
   println(h.before)
   println(h.inner.hi())

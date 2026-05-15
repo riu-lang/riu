@@ -301,7 +301,7 @@ void diagnoseCtorOverloadMismatch(FileNode* file, FileNode* sdkFile,
     if (sdkFile && sdkFile != file) {
         sdkFile->collectFnOverloads(ctorFullName, ctorCands);
     }
-    // 把 TypeInfo 渲染成用户友好形式: Box<T>、Array<T>、Fn(P)->R 等
+    // 把 TypeInfo 渲染成用户友好形式: Rc<T>、Array<T>、Fn(P)->R 等
     std::function<string(const TypeInfo&)> fmtType = [&](const TypeInfo& t) -> string {
         if (t.kind == TypeKind::Generic && !t.genericArgs.empty()) {
             string r = t.name + "<";
@@ -336,7 +336,7 @@ void diagnoseCtorOverloadMismatch(FileNode* file, FileNode* sdkFile,
         argSigs += fmtType(argTypes[i]);
     }
     throw YuxError(line, col, ErrorCode::E6033, fnName, argSigs, ctorSigs)
-        .withHint("若实参与形参类型仅差 Box<T>，先 `var p Box<T> = T(...)` 落地再传；否则按上方候选签名补齐实参");
+        .withHint("若实参与形参类型仅差 Rc<T>，先 `var p Rc<T> = T(...)` 落地再传；否则按上方候选签名补齐实参");
 }
 
 // ==================== 非-ID callee `!` fallback 校验 (Phase 3.3 前置.3d) ====================
@@ -742,7 +742,7 @@ void validateCompilerInnerIntrinsicTypeShape(const string& fnName,
     if (fnName == "same_ref" || fnName == "ptr_of") {
         // arity / typeArgs 计数已由 validateCompilerInnerIntrinsicShape 保证
         const auto& T = typeArgs[0];
-        bool isHeapHandle = T.isBox() || T.isWeak() || T.isArrayGeneric()
+        bool isHeapHandle = T.isRc() || T.isWeak() || T.isArrayGeneric()
                             || (T.name == "String" && T.kind == TypeKind::Normal);
         if (!isHeapHandle && !T.isRef()) {
             throw YuxError(line, col, ErrorCode::E6029, fnName, T.getFullName());
@@ -766,33 +766,33 @@ void validateCompilerInnerIntrinsicTypeShape(const string& fnName,
         return;
     }
     if (fnName == "as_ref") {
-        // 实参必须是 Box<T> (不接受 Box<T>?)
+        // 实参必须是 Rc<T> (不接受 Rc<T>?)
         if (argTypes.empty()) return;
         const auto& argType = argTypes[0];
-        if (!argType.isBox() || argType.isNullable()) {
+        if (!argType.isRc() || argType.isNullable()) {
             throw YuxError(line, col, ErrorCode::E6029, fnName, argType.getFullName());
         }
         return;
     }
     if (fnName == "weak") {
-        // 实参必须是 Box<T> 或 Box<T>? (Nullable<Box<T>>)
+        // 实参必须是 Rc<T> 或 Rc<T>? (Nullable<Rc<T>>)
         if (argTypes.empty()) return;
         const auto& argType = argTypes[0];
-        if (argType.isBox() && !argType.isNullable()) return;
+        if (argType.isRc() && !argType.isNullable()) return;
         if (argType.isNullable()) {
             auto inner = argType.nullableInnerType();
-            if (inner && inner->isBox()) return;
+            if (inner && inner->isRc()) return;
             throw YuxError(line, col, ErrorCode::E6029, fnName, argType.getFullName());
         }
         throw YuxError(line, col, ErrorCode::E6029, fnName, argType.getFullName());
     }
     if (fnName == "copy_of") {
         // 递归扫 T 是否 (深度) 含 Ref 字段; 命中即报 E6032.
-        // 不展开 Box / Array / Weak / Nullable / Dyn / Ptr / Fn 的类型参数 —— 它们是堆句柄包装.
+        // 不展开 Rc / Array / Weak / Nullable / Dyn / Ptr / Fn 的类型参数 —— 它们是堆句柄包装.
         std::function<bool(const TypeInfo&, string&)> hasRefDeep;
         hasRefDeep = [&](const TypeInfo& t, string& path) -> bool {
             if (t.isRef()) { path = t.getFullName(); return true; }
-            if (t.isBox() || t.isArrayGeneric() || t.isWeak()
+            if (t.isRc() || t.isArrayGeneric() || t.isWeak()
                 || t.isNullable() || t.isDyn() || t.isPtr() || t.isFn()) {
                 return false;
             }
@@ -868,7 +868,7 @@ EnumDeclNode* lookupEnumInFiles(FileNode* file, FileNode* sdkFile, const string&
     return nullptr;
 }
 
-// 用户友好类型渲染: Box<T> / Array<T> / [N]T / Generic<A,B>
+// 用户友好类型渲染: Rc<T> / Array<T> / [N]T / Generic<A,B>
 // 与 compiler_expr.cpp compileEnumCtorExpr 内 fmtType lambda 等价.
 string fmtTypeFriendly(const TypeInfo& t) {
     if (t.kind == TypeKind::Generic && !t.genericArgs.empty()) {
@@ -1081,10 +1081,10 @@ void validateGetRefPrivacy(FileNode* file, FileNode* sdkFile,
     int col = node->resolveColumn();
 
     for (auto& sub : node->subs()) {
-        // 与 compileGetRefExpr / ExprGetRefNode::getType 同款: Box<T> 自动 deref.
+        // 与 compileGetRefExpr / ExprGetRefNode::getType 同款: Rc<T> 自动 deref.
         TypeInfo lookupType = currentType;
-        if (lookupType.isBox()) {
-            if (auto inner = lookupType.boxElementType()) lookupType = *inner;
+        if (lookupType.isRc()) {
+            if (auto inner = lookupType.rcElementType()) lookupType = *inner;
         }
 
         auto structDecl = lookupStructIn(file, sdkFile, lookupType.name);
@@ -1129,8 +1129,8 @@ void validateDotFieldPrivacy(FileNode* file, FileNode* sdkFile,
     if (actualType.isRef()) {
         if (auto inner = actualType.refElementType()) actualType = *inner;
     }
-    if (actualType.isBox()) {
-        if (auto inner = actualType.boxElementType()) actualType = *inner;
+    if (actualType.isRc()) {
+        if (auto inner = actualType.rcElementType()) actualType = *inner;
     }
 
     auto structDecl = lookupStructIn(file, sdkFile, actualType.name);

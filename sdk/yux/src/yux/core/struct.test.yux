@@ -75,12 +75,12 @@ StPair {
 }
 
 struct StHolder {
-  bx Box<StPair>
+  bx Rc<StPair>
   tag i32
 }
 
 StHolder {
-  fn StHolder(bx Box<StPair>, tag i32) {
+  fn StHolder(bx Rc<StPair>, tag i32) {
     $.bx = bx
     $.tag = tag
   }
@@ -122,7 +122,7 @@ fn st_observe_holder(h StHolder) i32 {
 
 #Test
 fn test_struct_byval_with_rc_field() {
-  var p Box<StPair> = StPair(11i32, 22i32)
+  var p Rc<StPair> = StPair(11i32, 22i32)
   var h StHolder = StHolder(p, 7i32)
   ; observe 内对 RC 字段 retain，返回后 caller 仍可读
   assert_eq(st_observe_holder(h), 11i32 + 22i32 + 7i32)
@@ -145,14 +145,14 @@ StGenericHolder<T> {
   }
 }
 
-fn st_observe_generic(h StGenericHolder<Box<StPair>>) i32 {
+fn st_observe_generic(h StGenericHolder<Rc<StPair>>) i32 {
   ret h.payload.a + h.payload.b + h.tag
 }
 
 #Test
 fn test_struct_byval_generic_instance() {
-  var p Box<StPair> = StPair(11i32, 22i32)
-  var h StGenericHolder<Box<StPair>> = StGenericHolder:<Box<StPair>>(p, 7i32)
+  var p Rc<StPair> = StPair(11i32, 22i32)
+  var h StGenericHolder<Rc<StPair>> = StGenericHolder:<Rc<StPair>>(p, 7i32)
   assert_eq(st_observe_generic(h), 11i32 + 22i32 + 7i32)
   assert_eq(h.payload.a, 11i32)
   assert_eq(p.b, 22i32)
@@ -163,8 +163,8 @@ fn test_struct_byval_generic_instance() {
 
 #Test
 fn test_struct_whole_assign_rc() {
-  var p Box<StPair> = StPair(1i32, 2i32)
-  var q Box<StPair> = StPair(3i32, 4i32)
+  var p Rc<StPair> = StPair(1i32, 2i32)
+  var q Rc<StPair> = StPair(3i32, 4i32)
   var h1 StHolder = StHolder(p, 10i32)
   var h3 StHolder = StHolder(q, 30i32)
   var h2 StHolder = h1
@@ -186,8 +186,8 @@ fn test_struct_whole_assign_rc() {
 
 #Test
 fn test_struct_field_reassign_rc() {
-  var p Box<StPair> = StPair(11i32, 22i32)
-  var q Box<StPair> = StPair(33i32, 44i32)
+  var p Rc<StPair> = StPair(11i32, 22i32)
+  var q Rc<StPair> = StPair(33i32, 44i32)
   var h StHolder = StHolder(p, 7i32)
   assert_eq(h.bx.a, 11i32)
   assert_eq(h.bx.b, 22i32)
@@ -216,11 +216,11 @@ DaaPoint {
 
 struct DaaTagged {
   tag i32
-  bx Box<DaaPoint>
+  bx Rc<DaaPoint>
 }
 
 DaaTagged {
-  fn DaaTagged(t i32, p Box<DaaPoint>) {
+  fn DaaTagged(t i32, p Rc<DaaPoint>) {
     $.tag = t
     $.bx = p
   }
@@ -252,7 +252,7 @@ fn test_ctor_daa_rhs_reads_init_field() {
 
 #Test
 fn test_ctor_daa_with_box_field() {
-  var bp Box<DaaPoint> = DaaPoint(100i32, 200i32)
+  var bp Rc<DaaPoint> = DaaPoint(100i32, 200i32)
   val tg = DaaTagged(7i32, bp)
   assert_eq(tg.tag, 7i32)
   assert_eq(tg.bx.x, 100i32)

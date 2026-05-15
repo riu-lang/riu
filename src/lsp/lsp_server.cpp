@@ -480,19 +480,19 @@ static FnNode* findEnclosingFn(FileNode* file, int lspLine0) {
     return best;
 }
 
-// 从 receiver 名解析其结构体类型名（含 "Box<T>"/"T?" 解包到内部 T；
+// 从 receiver 名解析其结构体类型名（含 "Rc<T>"/"T?" 解包到内部 T；
 // 若 T 是结构体则返回 T 名）。失败返回空串。
 static std::string resolveReceiverStructName(FnNode* fn, const std::string& name) {
     if (!fn) return {};
     auto* sym = fn->lookupSymbol(name);
     if (!sym) return {};
     TypeInfo t = sym->type;
-    // 解包常见包装：Box<T>/Nullable<T>/Ref —— 仅对成员补全/跳转一层展开
+    // 解包常见包装：Rc<T>/Nullable<T>/Ref —— 仅对成员补全/跳转一层展开
     if (t.isRef()) {
         if (auto e = t.refElementType()) t = *e;
     }
-    if (t.isBox()) {
-        if (auto e = t.boxElementType()) t = *e;
+    if (t.isRc()) {
+        if (auto e = t.rcElementType()) t = *e;
     }
     return t.name;
 }

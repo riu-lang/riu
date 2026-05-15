@@ -20,12 +20,12 @@ RcPair {
 
 ; ---------- rc_temp_branch：分支表达式 RC 归一 ----------
 
-fn rc_make_box(a i32, b i32) Box<RcPair> {
-  var x Box<RcPair> = RcPair(a, b)
+fn rc_make_box(a i32, b i32) Rc<RcPair> {
+  var x Rc<RcPair> = RcPair(a, b)
   ret x
 }
 
-fn rc_pick_ff(c bool) Box<RcPair> {
+fn rc_pick_ff(c bool) Rc<RcPair> {
   ret if c {
     rc_make_box(1i32, 2i32)
   } else {
@@ -33,7 +33,7 @@ fn rc_pick_ff(c bool) Box<RcPair> {
   }
 }
 
-fn rc_pick_fb(c bool, b Box<RcPair>) Box<RcPair> {
+fn rc_pick_fb(c bool, b Rc<RcPair>) Rc<RcPair> {
   ret if c {
     rc_make_box(7i32, 8i32)
   } else {
@@ -41,7 +41,7 @@ fn rc_pick_fb(c bool, b Box<RcPair>) Box<RcPair> {
   }
 }
 
-fn rc_pick_bb(c bool, b1 Box<RcPair>, b2 Box<RcPair>) Box<RcPair> {
+fn rc_pick_bb(c bool, b1 Rc<RcPair>, b2 Rc<RcPair>) Rc<RcPair> {
   ret if c {
     b1
   } else {
@@ -51,18 +51,18 @@ fn rc_pick_bb(c bool, b1 Box<RcPair>, b2 Box<RcPair>) Box<RcPair> {
 
 #Test
 fn test_rc_branch_fresh_fresh() {
-  var p1 Box<RcPair> = rc_pick_ff(true)
+  var p1 Rc<RcPair> = rc_pick_ff(true)
   assert_eq(p1.a, 1i32)
-  var p2 Box<RcPair> = rc_pick_ff(false)
+  var p2 Rc<RcPair> = rc_pick_ff(false)
   assert_eq(p2.a, 3i32)
 }
 
 #Test
 fn test_rc_branch_fresh_borrow() {
-  var orig Box<RcPair> = RcPair(11i32, 22i32)
-  var p3 Box<RcPair> = rc_pick_fb(true, orig)
+  var orig Rc<RcPair> = RcPair(11i32, 22i32)
+  var p3 Rc<RcPair> = rc_pick_fb(true, orig)
   assert_eq(p3.a, 7i32)
-  var p4 Box<RcPair> = rc_pick_fb(false, orig)
+  var p4 Rc<RcPair> = rc_pick_fb(false, orig)
   assert_eq(p4.a, 11i32)
   ; orig 仍活
   assert_eq(orig.a, 11i32)
@@ -70,11 +70,11 @@ fn test_rc_branch_fresh_borrow() {
 
 #Test
 fn test_rc_branch_borrow_borrow() {
-  var b1 Box<RcPair> = RcPair(33i32, 44i32)
-  var b2 Box<RcPair> = RcPair(55i32, 66i32)
-  var p5 Box<RcPair> = rc_pick_bb(true, b1, b2)
+  var b1 Rc<RcPair> = RcPair(33i32, 44i32)
+  var b2 Rc<RcPair> = RcPair(55i32, 66i32)
+  var p5 Rc<RcPair> = rc_pick_bb(true, b1, b2)
   assert_eq(p5.a, 33i32)
-  var p6 Box<RcPair> = rc_pick_bb(false, b1, b2)
+  var p6 Rc<RcPair> = rc_pick_bb(false, b1, b2)
   assert_eq(p6.a, 55i32)
   ; 借用源仍活
   assert_eq(b1.a, 33i32)
@@ -88,7 +88,7 @@ fn rc_make_array() Array<i32> {
   ret a
 }
 
-fn rc_pass_box(b Box<RcPair>) i32 {
+fn rc_pass_box(b Rc<RcPair>) i32 {
   ret b.a
 }
 
@@ -120,7 +120,7 @@ fn test_rc_drop_array_literal_stmt() {
 #Test
 fn test_rc_chain_method_on_fresh_box() {
   var base i64 = rc_leak_count()
-  ; receiver 是 fresh Box，方法返回后整条语句结束 release
+  ; receiver 是 fresh Rc，方法返回后整条语句结束 release
   rc_make_box(11i32, 22i32).show();
   assert_eq(rc_leak_count() - base, 0i64)
 }

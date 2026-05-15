@@ -1,5 +1,5 @@
 ; copy_of<T> 用例（DRAFT-const-mut [#1.I] 脱 const 出口）
-; 覆盖：原子 / Box / Array / String / 平凡 struct / 含 Box 字段 struct（字段级 retain）
+; 覆盖：原子 / Rc / Array / String / 平凡 struct / 含 Rc 字段 struct（字段级 retain）
 
 struct CopyPair {
   a i32
@@ -14,12 +14,12 @@ CopyPair {
 }
 
 struct Holder {
-  payload Box<CopyPair>
+  payload Rc<CopyPair>
   tag i32
 }
 
 Holder {
-  fn Holder(p Box<CopyPair>, t i32) {
+  fn Holder(p Rc<CopyPair>, t i32) {
     $.payload = p
     $.tag = t
   }
@@ -34,13 +34,13 @@ fn test_copy_of_i32() {
   assert_eq(y, 42i32)
 }
 
-; ---------- Box<T>：handle copy + strong++ ----------
+; ---------- Rc<T>：handle copy + strong++ ----------
 
 #Test
 fn test_copy_of_box_handle() {
-  var b1 Box<CopyPair> = CopyPair(11i32, 22i32)
-  var b2 Box<CopyPair> = copy_of:<Box<CopyPair>>(b1)
-  ; 两个 Box 看到同一份数据（浅拷句柄 + strong++）
+  var b1 Rc<CopyPair> = CopyPair(11i32, 22i32)
+  var b2 Rc<CopyPair> = copy_of:<Rc<CopyPair>>(b1)
+  ; 两个 Rc 看到同一份数据（浅拷句柄 + strong++）
   assert_eq(b1.a, 11i32)
   assert_eq(b2.a, 11i32)
   assert_eq(b1.b, 22i32)
@@ -79,11 +79,11 @@ fn test_copy_of_struct_no_rc_field() {
   assert_eq(p2.b, 6i32)
 }
 
-; ---------- 含 Box 字段的 struct：字段级 retain ----------
+; ---------- 含 Rc 字段的 struct：字段级 retain ----------
 
 #Test
 fn test_copy_of_struct_with_box_field() {
-  var p Box<CopyPair> = CopyPair(5i32, 6i32)
+  var p Rc<CopyPair> = CopyPair(5i32, 6i32)
   var h1 Holder = Holder(p, 100i32)
   var h2 Holder = copy_of:<Holder>(h1)
   assert_eq(h2.tag, 100i32)

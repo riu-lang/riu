@@ -2640,7 +2640,7 @@ std::any ASTBuilder::visitTypeTuple(yux::yuxParser::TypeTupleContext* ctx) {
 
 // Phase 4a: typeWithRef → TypeNode；SymbolAnd 存在则包成 Ref<inner>
 // 语法已改：typeWithRef 现有 4 个分支，与 type 的 4 个分支结构对应，但每个内部位置（generic args / array elem）
-// 也允许带 &，从而支持 Box<i32&> 这类嵌套引用类型作为参数 / 局部 var 类型。
+// 也允许带 &，从而支持 Rc<i32&> 这类嵌套引用类型作为参数 / 局部 var 类型。
 p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr, p<Node> parent) {
     using namespace yux;
     p<TypeNode> inner;
@@ -2657,7 +2657,7 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
             throw YuxError(qt ? (int)qt->getLine() : 0,
                 qt ? static_cast<int>(qt->getCharPositionInLine()) + 1 : 0,
                 ErrorCode::E2001)
-                .withHint("Weak<T> 本身已可空；若需在持有者失效后取值，使用 `upgrade(weak)`，其结果即为 Box<T>?");
+                .withHint("Weak<T> 本身已可空；若需在持有者失效后取值，使用 `upgrade(weak)`，其结果即为 Rc<T>?");
         }
         auto qt = nul->SymbolQuest()->getSymbol();
         Token nullableName(string("Nullable"), qt ? qt->getLine() : 0);
@@ -2750,7 +2750,7 @@ std::any ASTBuilder::visitTypeNullable(yux::yuxParser::TypeNullableContext* ctx)
             int line = questTok ? (int)questTok->getLine() : 0;
             int col  = questTok ? (int)questTok->getCharPositionInLine() + 1 : 0;
             throw YuxError(line, col, ErrorCode::E2001)
-                .withHint("Weak<T> 本身已可空；若需在持有者失效后取值，使用 `upgrade(weak)`，其结果即为 Box<T>?");
+                .withHint("Weak<T> 本身已可空；若需在持有者失效后取值，使用 `upgrade(weak)`，其结果即为 Rc<T>?");
         }
     }
 

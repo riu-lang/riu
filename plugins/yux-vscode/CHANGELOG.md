@@ -11,7 +11,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
   - `E::V` 枚举构造 / 模式：左侧识别为枚举名（`entity.name.type.enum`），右侧识别为
     枚举成员（`variable.other.enummember`）；新增 `::` 路径访问符
   - 错误传播 `e()!` 单独命名为 `keyword.operator.error-propagate.yux`，便于配色
-- LSP 侧：参数 / 返回 / 字段 / 局部变量声明里的类型（含 `i32` / `Box<T>` / `T?` /
+- LSP 侧：参数 / 返回 / 字段 / 局部变量声明里的类型（含 `i32` / `Rc<T>` / `T?` /
   `[T*N]` / `(T1, T2)` / `fn(...) R` 各形态）现在能正确染色，不再降级为 variable
 - LSP 侧新增 `enum` / `enumMember` 两个 semantic token type，覆盖 enum 声明、
   variant、`E::V` 引用与 match 模式
@@ -20,7 +20,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
   `enum` / `cval`，修复这些关键字与后续 token 之间漏空格的问题
 - LSP 补全：补齐 `try` / `catch` 关键字；新增 `try` / `match` / `enum` snippet
 - 编译器附带：formatter 修复
-    - 泛型 `Pair<T>` / `Box<Map<i32, String>>` 不再被改成 `Pair < T >` 这种带空格
+    - 泛型 `Pair<T>` / `Rc<Map<i32, String>>` 不再被改成 `Pair < T >` 这种带空格
       形态；同时 `a < b` 比较仍正确加空格（按源码里 `<` 是否紧贴前一 token 区分）
     - `=` / `,` / 关键字 后跟 `(` 现在会补空格：`var a = (1, 2)` 不再被压成 `=(1, 2)`
     - `yux format <file>` CLI 在向上找 `yux.toml` 时遇到根目录会无限循环，已修
@@ -73,7 +73,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 - 用基于 `src/yux.g4` 生成的 antlr-ng parser（通过 `-D language=TypeScript` 覆盖 .g4 的 Cpp 目标）替换原正则方案
 - 作用域感知：函数参数 / 函数体 / 嵌套 block 三级 scope，定义跳转与变量补全按可见性过滤
-- 一层泛型壳剥离（`Ref<T>` / `Box<T>` / `Ptr<T>` / `Array<T>`），多级点链 `a.b.c.` 按 struct 字段/方法下钻
+- 一层泛型壳剥离（`Ref<T>` / `Rc<T>` / `Ptr<T>` / `Array<T>`），多级点链 `a.b.c.` 按 struct 字段/方法下钻
 - `self` 在 struct impl 方法内解析为当前 struct
 - 跨文件跳转与补全：按 `yux.toml` 定位项目根，展开 `use a.b` / `use a.b.*`；sdk 从 PATH 上 `yux(.exe)` 所在目录的 `../sdk` 回退
 - hover：显示变量 / 函数 / struct / 方法签名

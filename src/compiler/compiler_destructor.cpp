@@ -16,7 +16,7 @@
 // ==================== 析构函数调用 ====================
 
 // Phase 3d: 在槽位地址上释放 RC 值
-// 对 Box/Array/Weak: 从 { ptr handle } 槽 load handle 调对应 release
+// 对 Rc/Array/Weak: 从 { ptr handle } 槽 load handle 调对应 release
 // 含 RC 字段 struct: 调其默认析构（字段逆序 release）；
 // 平凡 / 内置 / 引用 / 指针: no-op
 void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
@@ -24,12 +24,12 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
     if (type.isRef() || type.isPtr()) return;
     if (isBuiltinType(type.name)) return;
 
-    if (type.isBox()) {
+    if (type.isRc()) {
         auto ty = getLLVMType(type);
         auto z = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-        auto handleField = _builder.CreateGEP(ty, slotPtr, {z, z}, "old.box.handle_field");
-        auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "old.box.handle");
-        _builder.CreateCall(runtime::getBoxReleaseFn(_module, _builder), {handle});
+        auto handleField = _builder.CreateGEP(ty, slotPtr, {z, z}, "old.rc.handle_field");
+        auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "old.rc.handle");
+        _builder.CreateCall(runtime::getRcReleaseFn(_module, _builder), {handle});
         return;
     }
     if (type.isWeak()) {
@@ -69,7 +69,7 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
         return;
     }
 
-    // Phase 3a / 4a-2 / 4c: fn(...)R fat-ptr { fn_ptr, captures Box<CapturesT>? }
+    // Phase 3a / 4a-2 / 4c: fn(...)R fat-ptr { fn_ptr, captures Rc<CapturesT>? }
     // captures 字段在 offset 1；走 _box_release_dtor 让运行时在 strong 归零时 dispatch
     // payload[0..8] 处的 dtor fn ptr（4a-2）。零捕获 / 全标量场景 dtor 槽存 null，
     // 行为等价于纯 _box_release。
@@ -92,7 +92,7 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
         auto* contBB = llvm::BasicBlock::Create(_context, "old.fn.cap.cont", pf);
         _builder.CreateCondBr(skip, contBB, relBB);
         _builder.SetInsertPoint(relBB);
-        _builder.CreateCall(runtime::getBoxReleaseDtorFn(_module, _builder), {cap});
+        _builder.CreateCall(runtime::getRcReleaseDtorFn(_module, _builder), {cap});
         _builder.CreateBr(contBB);
         _builder.SetInsertPoint(contBB);
         return;
@@ -169,14 +169,14 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
         auto fieldPtr = _builder.CreateGEP(structType, structPtr, indices, "field.ptr");
 
         // 调用字段析构函数
-        if (fieldType.isBox()) {
-            // Box 字段：load handle，调用 _box_release(handle)
-            auto boxStructType = getLLVMType(fieldType);
-            auto handleField = _builder.CreateGEP(boxStructType, fieldPtr, {zero, zero});
+        if (fieldType.isRc()) {
+            // Rc 字段：load handle，调用 _box_release(handle)
+            auto rcStructType = getLLVMType(fieldType);
+            auto handleField = _builder.CreateGEP(rcStructType, fieldPtr, {zero, zero});
             auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField);
 
-            auto boxReleaseFn = runtime::getBoxReleaseFn(_module, _builder);
-            _builder.CreateCall(boxReleaseFn, {handle});
+            auto rcReleaseFn = runtime::getRcReleaseFn(_module, _builder);
+            _builder.CreateCall(rcReleaseFn, {handle});
         } else if (fieldType.isWeak()) {
             // Weak 字段：load handle，调用 _weak_release(handle)
             auto weakStructType = getLLVMType(fieldType);
@@ -200,7 +200,7 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
             auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
             auto capField = _builder.CreateGEP(fnStructType, fieldPtr, {zero, one});
             auto cap = _builder.CreateLoad(llvm::PointerType::get(_context, 0), capField);
-            _builder.CreateCall(runtime::getBoxReleaseDtorFn(_module, _builder), {cap});
+            _builder.CreateCall(runtime::getRcReleaseDtorFn(_module, _builder), {cap});
         } else if (fieldType.isDynOwned()) {
             // Phase 4b: owned Dyn<D> 字段 —— { vtable, data } 走 _dyn_release，
             // 由 vtable[0] dispatch U 的 dtor；与 releaseAtPtr 同形（避免落到下面把 "Dyn" 当 struct 名查 dtor）。
@@ -260,9 +260,9 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
         return _builder.CreateExtractValue(argVal, {0}, name);
     };
 
-    if (argType.isBox()) {
-        auto handle = extractHandle("arg.box.handle");
-        auto retainFn = runtime::getBoxRetainFn(_module, _builder);
+    if (argType.isRc()) {
+        auto handle = extractHandle("arg.rc.handle");
+        auto retainFn = runtime::getRcRetainFn(_module, _builder);
         _builder.CreateCall(retainFn, {handle});
         return true;
     }
@@ -296,7 +296,7 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
         auto* contBB = llvm::BasicBlock::Create(_context, "fn.cap.cont", fn);
         _builder.CreateCondBr(skip, contBB, retainBB);
         _builder.SetInsertPoint(retainBB);
-        _builder.CreateCall(runtime::getBoxRetainFn(_module, _builder), {cap});
+        _builder.CreateCall(runtime::getRcRetainFn(_module, _builder), {cap});
         _builder.CreateBr(contBB);
         _builder.SetInsertPoint(contBB);
         return true;
@@ -365,12 +365,12 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
                 auto fieldPtr = _builder.CreateStructGEP(payloadStruct, payloadBufPtr,
                     static_cast<unsigned>(i), "arg.enum.payload.elem");
                 // 加载字段并 retain（按字段类型分派；handle 类直接 retain，含 RC 字段 struct 递归）
-                if (fieldType.isBox() || fieldType.isArrayGeneric() || fieldType.isWeak()) {
+                if (fieldType.isRc() || fieldType.isArrayGeneric() || fieldType.isWeak()) {
                     auto ll = getLLVMType(fieldType);
                     auto handleField = _builder.CreateStructGEP(ll, fieldPtr, 0, "arg.enum.handle.ptr");
                     auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "arg.enum.handle");
                     llvm::Function* retainFn = nullptr;
-                    if (fieldType.isBox()) retainFn = runtime::getBoxRetainFn(_module, _builder);
+                    if (fieldType.isRc()) retainFn = runtime::getRcRetainFn(_module, _builder);
                     else if (fieldType.isArrayGeneric()) retainFn = runtime::getArrayRetainFn(_module, _builder);
                     else retainFn = runtime::getWeakRetainFn(_module, _builder);
                     _builder.CreateCall(retainFn, {handle});
@@ -403,12 +403,12 @@ void Compiler::retainStructFieldsAtCallSite(llvm::Value* argVal, const string& s
         const auto& ft = fieldTypes[i];
         if (!typeNeedsDestructor(ft)) continue;
 
-        if (ft.isBox() || ft.isArrayGeneric() || ft.isWeak()) {
+        if (ft.isRc() || ft.isArrayGeneric() || ft.isWeak()) {
             // 取字段值（{ ptr handle } struct），再取 handle
             auto fieldVal = _builder.CreateExtractValue(argVal, {static_cast<unsigned>(i)}, "field.val");
             auto handle = _builder.CreateExtractValue(fieldVal, {0}, "field.handle");
             llvm::Function* retainFn = nullptr;
-            if (ft.isBox()) retainFn = runtime::getBoxRetainFn(_module, _builder);
+            if (ft.isRc()) retainFn = runtime::getRcRetainFn(_module, _builder);
             else if (ft.isArrayGeneric()) retainFn = runtime::getArrayRetainFn(_module, _builder);
             else retainFn = runtime::getWeakRetainFn(_module, _builder);
             _builder.CreateCall(retainFn, {handle});
@@ -423,7 +423,7 @@ void Compiler::retainStructFieldsAtCallSite(llvm::Value* argVal, const string& s
             auto* contBB = llvm::BasicBlock::Create(_context, "field.fn.cont", fn);
             _builder.CreateCondBr(isNull, contBB, retainBB);
             _builder.SetInsertPoint(retainBB);
-            _builder.CreateCall(runtime::getBoxRetainFn(_module, _builder), {cap});
+            _builder.CreateCall(runtime::getRcRetainFn(_module, _builder), {cap});
             _builder.CreateBr(contBB);
             _builder.SetInsertPoint(contBB);
         } else if (!isBuiltinType(ft.name)) {
@@ -442,7 +442,7 @@ void Compiler::pushTempFrame() {
 }
 
 // 弹出顶帧；对其中未消费的 fresh RC 句柄发出 release（顺序无关，统一在帧末尾）
-// 覆盖 Box/Array/Weak（单 handle by-value）+ 含 RC 字段 struct value（Phase 8d.4，靠 spillSlot dtor）。
+// 覆盖 Rc/Array/Weak（单 handle by-value）+ 含 RC 字段 struct value（Phase 8d.4，靠 spillSlot dtor）。
 // 调用前必须保证当前 IR 插入点能 dominate 帧内所有 Value*（线性控制流要求）。
 void Compiler::popAndReleaseTempFrame() {
     if (_tempStack.empty()) return;
@@ -456,9 +456,9 @@ void Compiler::popAndReleaseTempFrame() {
 
     for (auto& t : frame) {
         if (!t.val) continue;
-        if (t.type.isBox()) {
-            auto handle = _builder.CreateExtractValue(t.val, {0}, "temp.box.handle");
-            _builder.CreateCall(runtime::getBoxReleaseFn(_module, _builder), {handle});
+        if (t.type.isRc()) {
+            auto handle = _builder.CreateExtractValue(t.val, {0}, "temp.rc.handle");
+            _builder.CreateCall(runtime::getRcReleaseFn(_module, _builder), {handle});
         } else if (t.type.isArrayGeneric()) {
             auto handle = _builder.CreateExtractValue(t.val, {0}, "temp.array.handle");
             _builder.CreateCall(runtime::getArrayReleaseFn(_module, _builder), {handle});
@@ -473,12 +473,12 @@ void Compiler::popAndReleaseTempFrame() {
 }
 
 // 记录一个 fresh RC 临时到顶帧
-// - Box/Array/Weak: 直接保存 by-value struct {ptr handle}，pop 时 extractValue 取 handle
+// - Rc/Array/Weak: 直接保存 by-value struct {ptr handle}，pop 时 extractValue 取 handle
 // - 含 RC 字段 struct (e.g. String): 入 entry-block alloca 留 dtor 用，pop 时调 releaseAtPtr
 void Compiler::recordTemp(llvm::Value* val, const TypeInfo& type) {
     if (!val) return;
     if (_tempStack.empty()) return;
-    if (type.isBox() || type.isArrayGeneric() || type.isWeak()) {
+    if (type.isRc() || type.isArrayGeneric() || type.isWeak()) {
         _tempStack.back().push_back({val, type, nullptr});
         return;
     }
@@ -514,7 +514,7 @@ bool Compiler::consumeTemp(llvm::Value* val) {
 
 // Phase 8d.3: 编译分支体的结果表达式：用子帧吃掉中间 fresh 临时；非 fresh 结果发 retain 归一
 llvm::Value* Compiler::compileBranchResultNormalized(p<ExprNode> expr, const TypeInfo& expectedType) {
-    bool isRcHandle = expectedType.isBox() || expectedType.isArrayGeneric() || expectedType.isWeak();
+    bool isRcHandle = expectedType.isRc() || expectedType.isArrayGeneric() || expectedType.isWeak();
     if (!isRcHandle) {
         return compileExpr(expr);
     }
@@ -528,13 +528,13 @@ llvm::Value* Compiler::compileBranchResultNormalized(p<ExprNode> expr, const Typ
     return val;
 }
 
-// Phase 8d.3: 对一个已存在的 RC 句柄 by-value（Box/Array/Weak struct value）发 retain。
+// Phase 8d.3: 对一个已存在的 RC 句柄 by-value（Rc/Array/Weak struct value）发 retain。
 // 调用前 IR 插入点必须 dominate val。用于分支汇合时把"借用结果"归一为"fresh +1"。
 void Compiler::emitRetainOnHandleValue(llvm::Value* val, const TypeInfo& type) {
     if (!val) return;
-    if (type.isBox()) {
-        auto handle = _builder.CreateExtractValue(val, {0}, "merge.box.handle");
-        _builder.CreateCall(runtime::getBoxRetainFn(_module, _builder), {handle});
+    if (type.isRc()) {
+        auto handle = _builder.CreateExtractValue(val, {0}, "merge.rc.handle");
+        _builder.CreateCall(runtime::getRcRetainFn(_module, _builder), {handle});
     } else if (type.isArrayGeneric()) {
         auto handle = _builder.CreateExtractValue(val, {0}, "merge.array.handle");
         _builder.CreateCall(runtime::getArrayRetainFn(_module, _builder), {handle});
@@ -570,10 +570,10 @@ bool Compiler::typeNeedsDestructor(const TypeInfo& type) {
     // 指针类型不需要析构 (不拥有数据)
     if (type.isPtr()) return false;
 
-    // Box / Weak / Array 需要析构
-    if (type.isBox() || type.isWeak() || type.isArrayGeneric()) return true;
+    // Rc / Weak / Array 需要析构
+    if (type.isRc() || type.isWeak() || type.isArrayGeneric()) return true;
 
-    // Phase 3a: 函数类型 fn(...)R 的 captures 字段是 Box<CapturesT>?，按 §7.4 字段级 RC
+    // Phase 3a: 函数类型 fn(...)R 的 captures 字段是 Rc<CapturesT>?，按 §7.4 字段级 RC
     // 即使零捕获场景下 captures 永远 null，IR 仍发出 retain/release（runtime null-safe）
     if (type.isFn()) return true;
 

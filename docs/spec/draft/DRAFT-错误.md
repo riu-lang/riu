@@ -371,7 +371,7 @@ panic = "程序碰到 bug / 不变式破坏，无法继续"。**不**走 `#Falli
 | `Array.at(idx)` 越界 | panic（既有） |
 | 整数除零 / 算术溢出（已有运行时检查的） | panic（沿用既有路径） |
 | 用户显式 `panic("...")` | panic（§8.2） |
-| OOM（`Box::new` / `Array` 扩容失败） | panic（§8.5） |
+| OOM（`Rc::new` / `Array` 扩容失败） | panic（§8.5） |
 | 析构函数抛出 | panic（§1 已定，沿用） |
 | `#Fallible(E)` 函数 `ret E::V(...)` | **不是 panic**，是错误通道 |
 
@@ -418,9 +418,9 @@ fn panic(msg String) { ... }    ; stdlib，路径 yux.core.panic
 
 ### 8.5 OOM 决策
 
-`Box::new` / `Array` 扩容 / `String` 扩容等内存分配失败 → **panic**。
+`Rc::new` / `Array` 扩容 / `String` 扩容等内存分配失败 → **panic**。
 
-理由：让每个 `Box::new` 返回 `Box<T>?` 或 `#Fallible(AllocErr)` 会污染**所有**类型签名与所有调用点；大多数业务代码碰到 OOM 无法有意义恢复。需要可恢复 alloc 的场景，stdlib 后续提供 `try_alloc<T>(...) Box<T>?` 类显式 API（v1 不做）。
+理由：让每个 `Rc::new` 返回 `Rc<T>?` 或 `#Fallible(AllocErr)` 会污染**所有**类型签名与所有调用点；大多数业务代码碰到 OOM 无法有意义恢复。需要可恢复 alloc 的场景，stdlib 后续提供 `try_alloc<T>(...) Rc<T>?` 类显式 API（v1 不做）。
 
 ### 8.6 main 退出码 / stderr
 
@@ -474,11 +474,11 @@ panic 实施可复用 §11.3.5.3 SEH RaiseException 机制：
 
 | 场景 | 现状 |
 |---|---|
-| 既存 RC 资源类型释放（File / Mutex / Socket / Box / Array / String） | RC 析构覆盖：作用域结束自动 release，错误路径同样走 RC 释放。`var f = open(...)`，`ret` / `ret Err::X` / catch arm `ret` 三条路径都正确关 |
+| 既存 RC 资源类型释放（File / Mutex / Socket / Rc / Array / String） | RC 析构覆盖：作用域结束自动 release，错误路径同样走 RC 释放。`var f = open(...)`，`ret` / `ret Err::X` / catch arm `ret` 三条路径都正确关 |
 | panic 路径上的清理 | **不**运行 —— panic = abort-only（§8.1）；引入 defer 也救不了，且与"不引入栈展开"基调冲突。析构在 panic 路径同样不执行；defer ≈ 析构在这一点上**等价**，不是 defer 独有缺陷 |
 | Zig 风格 `errdefer`（仅错误路径清理 / 提交-或-回滚事务） | 用 try-catch + 显式 `match` 写：成功路径调 `commit()`，catch arm 调 `rollback()`。代码长一点但**显式** |
 | Java `finally` 释放非 RC 资源 | yux stdlib 立场是所有资源都 RC 化（裸句柄 / FD 由用户 wrap） |
-| 用户自写 RAII Guard（C++ ScopeGuard 模式：捕获局部变量 / 闭包，作用域退出运行任意代码） | v1 写起来不简单：需要自定义 struct + 实现析构 + 把要捕获的局部变量"装进" Guard，牵涉 yux 的栈/堆 + `T&` / `Box` 借用-移动语义。**理论上可写，实务上门槛高**；不是"defer 的天然替代" |
+| 用户自写 RAII Guard（C++ ScopeGuard 模式：捕获局部变量 / 闭包，作用域退出运行任意代码） | v1 写起来不简单：需要自定义 struct + 实现析构 + 把要捕获的局部变量"装进" Guard，牵涉 yux 的栈/堆 + `T&` / `Rc` 借用-移动语义。**理论上可写，实务上门槛高**；不是"defer 的天然替代" |
 | 业务上的 "scope-exit 任意代码"（例：函数退出前打日志 / 累计性能计数器 / 还原全局状态） | v1 无简洁形态；用户在每条退出路径手动重复调用。代码冗余的代价存在 |
 
 ### 9.2 用户面对"清理"场景的 v1 写法

@@ -317,19 +317,19 @@ struct TypeInfo {
         return nullptr;
     }
 
-    [[nodiscard]] bool isBox() const {
-        return kind == TypeKind::Generic && name == "Box" && genericArgs.size() == 1;
+    [[nodiscard]] bool isRc() const {
+        return kind == TypeKind::Generic && name == "Rc" && genericArgs.size() == 1;
     }
 
-    [[nodiscard]] sp<TypeInfo> boxElementType() const {
-        if (isBox() && genericArgs.size() == 1) {
+    [[nodiscard]] sp<TypeInfo> rcElementType() const {
+        if (isRc() && genericArgs.size() == 1) {
             return genericArgs[0];
         }
         return nullptr;
     }
 
-    // Weak<T>：弱引用，layout 与 Box<T> 同形 { ptr handle }
-    // handle 指向 Box 的 Block；weak 计数维护 block 存活，不维护 payload 存活
+    // Weak<T>：弱引用，layout 与 Rc<T> 同形 { ptr handle }
+    // handle 指向 Rc 的 Block；weak 计数维护 block 存活，不维护 payload 存活
     [[nodiscard]] bool isWeak() const {
         return kind == TypeKind::Generic && name == "Weak" && genericArgs.size() == 1;
     }

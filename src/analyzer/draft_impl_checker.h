@@ -86,7 +86,7 @@ public:
     // 对每个 Dyn<X> 形态:
     //   E1131: X (剥外层 Ref 后) 必须是已知 draft 名
     //   E1132: X 不能再是 Dyn (Dyn<Dyn<...>>)
-    //   E1132: 容器 Box<Dyn<...>> / Weak<Dyn<...>> 禁
+    //   E1132: 容器 Rc<Dyn<...>> / Weak<Dyn<...>> 禁
     //   E1135: Dyn<D>? (Nullable<Dyn<...>>) 不支持
     //   E1134: 内层 draft 必须对象安全
     // 命中第一处即抛 YuxError. 与构造表达式 E1131..E1134 的检查互补.
@@ -101,7 +101,7 @@ private:
     // §12.9 对象安全结果 memo: DraftDeclNode* → object-safe?  Phase 2a.
     mutable std::map<DraftDeclNode*, bool> _objectSafeCache;
 
-    // structName → 所属模块名. 内置类型 (i32 / String / Box ...) 归 "yux.core".
+    // structName → 所属模块名. 内置类型 (i32 / String / Rc ...) 归 "yux.core".
     std::map<std::string, std::string> _typeOwnerModule;
 
     void buildTypeOwnerMap();
@@ -128,7 +128,7 @@ private:
     // Phase 2c helper: 递归校验一个 TypeNode 子树中的 Dyn 用法.
     // file 用于 draft 注册表按可见性解析裸名.
     // outerWrapper 标识当前 TypeNode 是否被某容器包裹 (空串表示根/允许容器):
-    //   "Box" / "Weak" / "Dyn" / "Nullable" → 命中 Dyn 时报相应错误码.
+    //   "Rc" / "Weak" / "Dyn" / "Nullable" → 命中 Dyn 时报相应错误码.
     //   "Array" / "Ref" / "" 等不触发包裹诊断 (Array<Dyn<D>> 合法; Dyn<D&> 内部 Ref 合法).
     void validateDynInTypeNode(TypeNode* tn, FileNode* file,
                                const std::string& outerWrapper) const;

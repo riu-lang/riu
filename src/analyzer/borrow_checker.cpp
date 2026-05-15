@@ -166,7 +166,7 @@ private:
     // Phase 2e: `val d Dyn<D&> = Dyn:<D&>(x)` 的根推导.
     // 期望 RHS 是 ExprDynCtorNode(isBorrow=true); x 形态在 Phase 2b 限定为:
     //   - U& 形态 (ExprGetRefNode `&y.f` 或 T& 拷绑 `r`) → 根 = y / resolveRoot(r)
-    //   - Box<U> 形态 (LiteralObj 变量名) → 根 = 该 Box 变量自身
+    //   - Rc<U> 形态 (LiteralObj 变量名) → 根 = 该 Rc 变量自身
     //   (其它形态构造站已 E1133 拒绝; 这里到不了)
     // 非 DynCtor RHS (例如 Dyn<D&> 参数 / 局部之间的拷绑) 走 refToRoot 链.
     std::string rootFromDynBorrowInit(p<ExprNode> expr, int line) {
@@ -182,7 +182,7 @@ private:
             }
             // 兜底: 落到 E4001 (借用初始化形态不被识别)
             throw YuxError(line, ErrorCode::E4001)
-                .withHint("Dyn<D&>(...) 的参数应为 `&y.f` / T& 变量 / Box<U> 变量名");
+                .withHint("Dyn<D&>(...) 的参数应为 `&y.f` / T& 变量 / Rc<U> 变量名");
         }
         // RHS 是已有 Dyn<D&> 变量 (拷绑形态): 顺 refToRoot 链解根
         if (auto litExpr = dynamic_cast<ExprLiteralNode*>(expr)) {
@@ -311,7 +311,7 @@ private:
             } else if (varType.isDynBorrow() && da->expr()) {
                 // Phase 2e: Dyn<D&> 局部变量是借用形态 (fat ptr 的 data 槽借用源),
                 // 与 T& 同样登记 refToRoot + activeBorrows; 根从 Dyn:<D&>(x) 的
-                // x 反推. x 形态在 Phase 2b 已限定为 U& / Box<U>.
+                // x 反推. x 形态在 Phase 2b 已限定为 U& / Rc<U>.
                 auto root = rootFromDynBorrowInit(da->expr(), s->getLineNumber());
                 registerBorrow(vname, root, s->getLineNumber());
             } else if (!varType.empty()) {

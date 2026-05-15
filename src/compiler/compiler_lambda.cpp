@@ -284,16 +284,16 @@ llvm::Function* Compiler::emitCapturesDtorFunction(p<LambdaExprNode> node,
 
 // ==================== compileLambdaExpr ====================
 // LambdaExprNode 求值：先 emit 底层 fn（期间 emit 通路完成 captures 槽位发现），
-// 回到外层上下文后据 captures 列表分配 captures box + 写入字段；最后构造 fat-ptr。
+// 回到外层上下文后据 captures 列表分配 captures Rc + 写入字段；最后构造 fat-ptr。
 // fat-ptr layout：{ ptr fn_ptr, ptr captures }；零捕获 captures = null。
 //
-// Phase 4a-2 captures box 布局（由 _box_release_dtor 配合）：
+// Phase 4a-2 captures Rc 布局（由 _box_release_dtor 配合）：
 //   [handle+0..8]  RC 头（strong / weak）
 //   [handle+8..16] dtor fn ptr（null 表示无字段需析构）
 //   [handle+16..]  capture 字段区，每槽 8 字节，按 byteOffset 寻址
 //
 // 含堆句柄 captures：调用站点 retain 后写入槽位；strong 归零时 _box_release_dtor
-// 调 dtor 释放每个堆句柄字段，再 free。多 fat-ptr 副本共享 box 时不会过早析构。
+// 调 dtor 释放每个堆句柄字段，再 free。多 fat-ptr 副本共享 Rc 时不会过早析构。
 llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     // 静态类型即 Fn TypeInfo（lambda 形参类型可能缺）
@@ -304,7 +304,7 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
     auto fatStructTy = llvm::StructType::get(_context, {ptrTy, ptrTy});
 
     // captures：零捕获 → null；含捕获 → 分两条路径
-    //   - hasRefCapture（spec §6.3）：栈嵌入 alloca + 不构造 Box，captures 字段标 LSB=1
+    //   - hasRefCapture（spec §6.3）：栈嵌入 alloca + 不构造 Rc，captures 字段标 LSB=1
     //   - 否则：堆 _box_alloc + dtor，与 Phase 4a/4a-2 同
     // layout 统一保留 16 字节前缀（offset 0..16 给 RC 头 / dtor 槽；栈形态浪费），
     // capture 字段从 +16 起；body GEP base offset 不依赖路径选择。
@@ -339,10 +339,10 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
         } else {
             // payload_size 给 _box_alloc 是不含 RC 头的字节数；前缀里的 dtor 槽（8 字节）算 payload，
             // RC 头由 _box_alloc 自己加。即 payload = 8（dtor 槽）+ capturesTotalSize。
-            u64 boxPayloadSize = 8 + node->capturesTotalSize();
-            auto allocFn = runtime::getBoxAllocFn(_module, _builder);
+            u64 rcPayloadSize = 8 + node->capturesTotalSize();
+            auto allocFn = runtime::getRcAllocFn(_module, _builder);
             baseHandle = _builder.CreateCall(
-                allocFn, {_builder.getInt64((i64)boxPayloadSize)}, "captures.block");
+                allocFn, {_builder.getInt64((i64)rcPayloadSize)}, "captures.block");
 
             // 写 dtor 槽位 @ handle+8（_box_release_dtor 在 strong 归零时调用）
             string mod = _file ? _file->moduleName() : string();
@@ -375,7 +375,7 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
                 auto srcVal = _builder.CreateLoad(valLLVMTy, it->second, "cap.src");
                 _builder.CreateStore(srcVal, dstAddr);
                 // 堆句柄按 callee-clean 习惯 retain（与 retainHandleAtCallSite 同款逻辑）
-                // —— 仅 Box 路径需要；栈嵌入路径已在前面拒绝了 needs-dtor 字段
+                // —— 仅 Rc 路径需要；栈嵌入路径已在前面拒绝了 needs-dtor 字段
                 if (typeNeedsDestructor(cap.type)) {
                     retainHandleAtCallSite(srcVal, cap.type);
                 }
@@ -463,14 +463,14 @@ llvm::Value* Compiler::compileFnValueCall(p<ExprCallNode> node) {
     return _builder.CreateCall(llvmFnType, fnPtrVal, callArgs);
 }
 
-// ==================== compileBoxFnValueCall ====================
-// callee 静态类型为 Box<fn(...)R>：自动解引取 fat-ptr 后走 fn-value-call。
-// box payload = handle + 8 字节（跳过 refcount 头），其上存放 16 字节 fat-ptr。
+// ==================== compileRcFnValueCall ====================
+// callee 静态类型为 Rc<fn(...)R>：自动解引取 fat-ptr 后走 fn-value-call。
+// Rc payload = handle + 8 字节（跳过 refcount 头），其上存放 16 字节 fat-ptr。
 // 1) 实参 lambda 反推（按 innerFnType.fnParamTypes()）
-// 2) 编译 callee 得到 box 值（{ ptr handle }），extractvalue 取 handle
+// 2) 编译 callee 得到 Rc 值（{ ptr handle }），extractvalue 取 handle
 // 3) payload_ptr = handle + 8；load fat-ptr 16 字节
 // 4) 走与 compileFnValueCall 相同的 extractvalue + CreateCall 路径
-llvm::Value* Compiler::compileBoxFnValueCall(p<ExprCallNode> node, const TypeInfo& innerFnType) {
+llvm::Value* Compiler::compileRcFnValueCall(p<ExprCallNode> node, const TypeInfo& innerFnType) {
     if (!innerFnType.isFn()) {
         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3091);
     }
@@ -485,21 +485,21 @@ llvm::Value* Compiler::compileBoxFnValueCall(p<ExprCallNode> node, const TypeInf
         emitLambdaFunction(lambdaArg, *expectedParams[i]);
     }
 
-    // 编译 callee 得到 Box 值（struct { ptr handle }）；extractvalue 取 handle
-    auto boxVal = compileExpr(node->getCalleeExpr());
-    if (!boxVal) {
+    // 编译 callee 得到 Rc 值（struct { ptr handle }）；extractvalue 取 handle
+    auto rcVal = compileExpr(node->getCalleeExpr());
+    if (!rcVal) {
         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3091);
     }
     auto ptrTy = llvm::PointerType::get(_context, 0);
-    auto handle = _builder.CreateExtractValue(boxVal, {0}, "box.fn.handle");
+    auto handle = _builder.CreateExtractValue(rcVal, {0}, "rc.fn.handle");
 
-    // payload_ptr = handle + 8 bytes（跳过 refcount 头，与 compileExpr Box.field 路径一致）
+    // payload_ptr = handle + 8 bytes（跳过 refcount 头，与 compileExpr Rc.field 路径一致）
     auto payloadPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle,
-        {_builder.getInt64(8)}, "box.fn.payload");
+        {_builder.getInt64(8)}, "rc.fn.payload");
 
     // load fat-ptr 16 字节 { fn_ptr, captures }
     auto fatStructTy = llvm::StructType::get(_context, {ptrTy, ptrTy});
-    auto fatPtr = _builder.CreateLoad(fatStructTy, payloadPtr, "box.fn.fatptr");
+    auto fatPtr = _builder.CreateLoad(fatStructTy, payloadPtr, "rc.fn.fatptr");
     auto fnPtrVal = _builder.CreateExtractValue(fatPtr, {0}, "fn.ptr");
     auto captures = _builder.CreateExtractValue(fatPtr, {1}, "fn.captures");
 

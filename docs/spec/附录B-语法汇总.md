@@ -78,7 +78,7 @@ draftBound        ::= modulePath? ID genericDef?     # 例：ToString / pkg.Disp
 `Dyn` 是编译器内置类型名（非关键字）。`Dyn<D>` 与 `Dyn<D&>` 作为 `typeGeneric` / `typeGenericWithRef` 形态出现；语义见 §12.9。约束：
 
 - `Dyn<D&>` 中 `&` 仅在 `genericDefWithRef` 实参槽合法（即 `typeWithRef` 位）；
-- `Dyn<...>` 不得嵌套 `Dyn` / `Box<Dyn>` / `Weak<Dyn>` / `Dyn<D>?`（语义层拒绝，E1132 / E1135）。
+- `Dyn<...>` 不得嵌套 `Dyn` / `Rc<Dyn>` / `Weak<Dyn>` / `Dyn<D>?`（语义层拒绝，E1132 / E1135）。
 
 构造形态走 `exprCall` 的 turbofish 形：`Dyn:<D>(box_u)` / `Dyn:<D&>(u_ref)`；无 `:` 写法 `Dyn<D>` 仅在类型位有效。
 

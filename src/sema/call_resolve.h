@@ -134,7 +134,7 @@ FnHeaderNode* resolveDynMethodSig(DraftDeclNode* draftDecl,
 // 即 callee 已识别为 structDecl, 但既有 ctor 重载均不接受当前 argTypes.
 // 函数总是抛 E6033, 附带:
 //   - 当前 file + sdkFile 上 `S.S` 的所有重载签名 (跳过 params[0] 接收者), 按
-//     Box<T> / Array<T> / [N]T 等用户友好形式渲染
+//     Rc<T> / Array<T> / [N]T 等用户友好形式渲染
 //   - 实参的同款友好渲染列表
 //   - `.withHint(...)` 提示如何修正
 //
@@ -257,13 +257,13 @@ void validateCompilerInnerIntrinsicShape(const string& fnName,
 // 在 validateCompilerInnerIntrinsicShape 通过 arity 校验之后调用.
 // 覆盖与类型相关 (typeArg / argType / AST 形态) 的检查:
 //   - same_ref / ptr_of:
-//       * E6029: T 必须是堆句柄 (Box / Weak / Array 泛型 / String Normal) 或 T&
+//       * E6029: T 必须是堆句柄 (Rc / Weak / Array 泛型 / String Normal) 或 T&
 //       * E6028: T = Ref 时, 每个 arg 的 AST 必须是 ID-literal 或 ExprGetRefNode
 //                (取裸源指针只支持这两种 AST 形态; 其他形态无静态出口)
 //   - as_ref:
-//       * E6029: argType[0] 必须是 Box 且不能是 Nullable
+//       * E6029: argType[0] 必须是 Rc 且不能是 Nullable
 //   - weak:
-//       * E6029: argType[0] 必须是 Box 或 Box?, 若 Nullable 其 inner 必须是 Box
+//       * E6029: argType[0] 必须是 Rc 或 Rc?, 若 Nullable 其 inner 必须是 Rc
 //   - copy_of:
 //       * E6032: T 深度含有 Ref<U> 字段, 拒绝 (DRAFT-const-mut §5.3 决议 #2)
 //
@@ -385,7 +385,7 @@ void validateFnSymbolVisibility(const FnSymbolInfo* fnSymbol,
 //   - E2020: variant 名不在 enum 内
 //   - E2021: arity 不匹配 (零参 / tuple-payload variant 严格相等)
 //   - E2032: tuple-payload variant 第 i 个实参类型 != 声明 payload 类型,
-//            payload 用 Box<T> / Array<T> / [N]T 等用户友好形式渲染
+//            payload 用 Rc<T> / Array<T> / [N]T 等用户友好形式渲染
 //
 // 实参类型经 argExpr->getType() 计算; 任一参数 getType 抛错时跳过该参数的 E2032 校验
 // (典型: lambda 形参未推断 → E3001), 留给 codegen 路径继续报.
@@ -398,7 +398,7 @@ void validateEnumCtorShape(FileNode* file, FileNode* sdkFile,
 
 // match 表达式 arm 静态校验 (Phase 3.4.b).
 //
-// 在调用方已解析 scrutinee 的 enum 名 (含 box-deref / alias) 并 lookup 到 enumDecl
+// 在调用方已解析 scrutinee 的 enum 名 (含 rc-deref / alias) 并 lookup 到 enumDecl
 // 之后调用. helper 一次性覆盖以下错误码:
 //   - E2023: arms 空 (语法上 +, 防御性) / 不带 else 时穷尽性失败 (列缺失 variant)
 //   - E2025: else arm 不在末位
@@ -409,8 +409,8 @@ void validateEnumCtorShape(FileNode* file, FileNode* sdkFile,
 //   - E2027: 同一 arm 内绑定名重复
 //
 // 不覆盖:
-//   - E2022 (scrutinee 不是 enum / Box<E> 仅借用语义) —— 调用方 (Compiler) 自身在
-//     lookupEnumDecl 失败时抛, 涉及 box-deref / alias / isFreshHandleExpr; SemaPass 暂跳过
+//   - E2022 (scrutinee 不是 enum / Rc<E> 仅借用语义) —— 调用方 (Compiler) 自身在
+//     lookupEnumDecl 失败时抛, 涉及 rc-deref / alias / isFreshHandleExpr; SemaPass 暂跳过
 //   - E3027 (arm body 结果类型不一致) —— 跨 arm body getType 计算, 可能因 lambda
 //     形参未推断而误判, 留 Compiler
 //   - E3091/E3096 —— codegen 兜底
@@ -418,7 +418,7 @@ void validateEnumCtorShape(FileNode* file, FileNode* sdkFile,
 // 调用方:
 //   - Compiler::compileMatchExpr 在 enumDecl 取到后立即调用
 //   - SemaPass.visitExpr ExprMatchNode 分支主动调用 (scrutType 直接是 enum 名,
-//     非 Box/非 alias 时才接入; 否则跳过, 由 Compiler 兜底)
+//     非 Rc/非 alias 时才接入; 否则跳过, 由 Compiler 兜底)
 //
 // 纯 AST / 字符串, 无 LLVM 依赖.
 void validateMatchArms(EnumDeclNode* enumDecl, const string& enumName,
@@ -448,7 +448,7 @@ void validatePrivateFieldAccess(StructDeclNode* structDecl, const string& fieldN
 // ExprGetRefNode 链式字段访问的可见性整桶校验 (Phase 3.4.d.2).
 //
 // 内部走 `compileGetRefExpr` 同款链路: scope.lookupSymbol(obj) → 剥 ref → 逐
-// sub 解析 struct decl (含 box-deref) → fieldIndex → validatePrivateFieldAccess.
+// sub 解析 struct decl (含 rc-deref) → fieldIndex → validatePrivateFieldAccess.
 // E3030/E3040/E3041/E3043/E3097 由 ExprGetRefNode::getType() 抛 (均在
 // kMigratedCodes, SemaPass 顶部 setResolvedType 自动重抛), helper 仅补 E3042.
 //
@@ -463,7 +463,7 @@ void validateGetRefPrivacy(FileNode* file, FileNode* sdkFile,
 
 // ExprDotNode 单层字段访问可见性校验 (Phase 3.4.d.2).
 //
-// 仅处理非 safe (`.` 不是 `?.`) 路径的字段访问: 取 baseType (经 ref / box 剥),
+// 仅处理非 safe (`.` 不是 `?.`) 路径的字段访问: 取 baseType (经 ref / Rc 剥),
 // lookup struct decl, 若 fieldIndex >= 0 且字段 private 时校验. 路径与
 // `compileDotExpr` 内的私有判定块对齐. baseType 取自 node->baseExpr()->getType().
 //

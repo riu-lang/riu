@@ -32,7 +32,7 @@
 --   yux/project   项目模式用例            tests/projects/* (前缀 project_)
 --   yux/misc      其余兜底
 --
--- 注：纯逻辑用例 + 行为类用例（数组/Box/Ref/Weak/Nullable/Struct/RC 临时值清单 /
+-- 注：纯逻辑用例 + 行为类用例（数组/Rc/Ref/Weak/Nullable/Struct/RC 临时值清单 /
 -- 借用合法路径）已迁到 `sdk/yux/src/yux/core/*.test.yux`，由 `yux test` 直接运行。
 -- 这里仅保留无法走 JIT 的诊断回归（`.expected_err` 子串匹配）和 extern fn 链接边界用例。
 

@@ -5,7 +5,7 @@
 // 
 // 本文件声明编译器生成的运行时辅助函数:
 // - 内存分配/释放函数
-// - Box<T> 智能指针支持函数
+// - Rc<T> 智能指针支持函数
 // - Array<T> 动态数组支持函数
 // - 程序启动函数 (main -> yux_main)
 // 
@@ -39,15 +39,15 @@ llvm::Function* getHeapFreeFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 llvm::Function* getSetConsoleOutputCPFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 llvm::Function* getSetConsoleCPFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 
-// ==================== Box<T> 智能指针支持 ====================
+// ==================== Rc<T> 智能指针支持 ====================
 
-llvm::Function* getBoxAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder);
-llvm::Function* getBoxRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+llvm::Function* getRcAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+llvm::Function* getRcRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 // _box_release(handle) -> void
 // Phase 1d.1：strong--；归零时 weak--，weak 也归零时 free 整个 block；null/哨兵跳过
 // payload 析构仍由调用方在 IR 内联（在 _box_release 之前），因此外部 Weak 在 strong=0 后
 // upgrade 必须读 strong 来判活而非 payload；Weak 自身仅维护 block 存活
-llvm::Function* getBoxReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+llvm::Function* getRcReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 
 // _dyn_release(data, vtable) -> void  (Phase 3e, DRAFT-dyn-draft §12.9)
 // owned Dyn<D> 的释放路径：与 _box_release 同形，但 strong==0 时按
@@ -58,14 +58,14 @@ llvm::Function* getDynReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder
 
 // _box_release_dtor(handle) -> void  (Phase 4a-2)
 // 与 _box_release 相同，但 strong 归零时先按 payload[0..8] 处的 dtor fn ptr 调
-// dtor(payload + 8)，再走 weak/free。专为 lambda captures 共享 box 设计：
-// 多个 fat-ptr 副本共享同一 captures box 时，字段级析构必须只在 strong==0 一次性触发。
+// dtor(payload + 8)，再走 weak/free。专为 lambda captures 共享 Rc 设计：
+// 多个 fat-ptr 副本共享同一 captures Rc 时，字段级析构必须只在 strong==0 一次性触发。
 // payload 头 8 字节 = dtor fn ptr（null 跳过），其后才是各 capture 字段。
-llvm::Function* getBoxReleaseDtorFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+llvm::Function* getRcReleaseDtorFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 
 // _box_upgrade(handle) -> handle_or_null
-// Phase 1d.2：Weak→Box 升级；null/strong==0 → null；哨兵 → handle；其他 strong++ 返回 handle
-llvm::Function* getBoxUpgradeFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+// Phase 1d.2：Weak→Rc 升级；null/strong==0 → null；哨兵 → handle；其他 strong++ 返回 handle
+llvm::Function* getRcUpgradeFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 
 // _weak_release(handle) -> void
 // weak--；归零时 free 整个 block（前提：strong 已 0，否则 weak 不可能比 strong 先归零）
@@ -100,7 +100,7 @@ llvm::GlobalVariable* getRcBlockCountGlobal(llvm::Module* module, llvm::IRBuilde
 
 // ==================== 运行时辅助函数生成 ====================
 
-void emitBoxHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module);
+void emitRcHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module);
 void emitWeakHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module);
 void emitArrayHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module);
 void emitMainStartup(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module);

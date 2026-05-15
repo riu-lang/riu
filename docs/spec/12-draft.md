@@ -69,7 +69,7 @@ draft To<T> {                ; 合法：draft 自身泛型
 §12.2.3.1 对 `Type : D` 已实现的方法 `m`：
 
 - `obj.m(args)`（`obj: T` 或 `T&`）按 §8.6.7.3 receiver 归一为 `Self&`，直接静态分发到该实现。
-- `Box<T>` 上 `box.m(args)` 按 §8.6.7.3 自动解引用 + 归一，等价于在 T 上调用，无需独立 forward 机制（[#D.3] / §12.6）。
+- `Rc<T>` 上 `box.m(args)` 按 §8.6.7.3 自动解引用 + 归一，等价于在 T 上调用，无需独立 forward 机制（[#D.3] / §12.6）。
 
 §12.2.3.2 receiver `$` 在 draft 实现块的方法体内的语义与普通方法一致（§7.2.2.1，类型 `Self&`）。
 
@@ -157,20 +157,20 @@ draft Bad {
 
 避免外部库类型被第三方"污染"实现而破坏可推断性；让 §12.4.2 情形 C 不存在；`#DraftLike` 是跨包绑定行为的唯一通道。
 
-## §12.6 `Box<T>` 与 draft
+## §12.6 `Rc<T>` 与 draft
 
-§12.6.1 v1 **不**为 `Box<U>` 引入独立的 forward 机制；草案曾用的"Box 自动 forward"在本规范层等价于 §8.6.7.3 自动解引用 + 方法分发归一（[#D.3]）。
+§12.6.1 v1 **不**为 `Rc<U>` 引入独立的 forward 机制；草案曾用的"Rc 自动 forward"在本规范层等价于 §8.6.7.3 自动解引用 + 方法分发归一（[#D.3]）。
 
-§12.6.2 边界与 Box 实参的关系：
+§12.6.2 边界与 Rc 实参的关系：
 
 | 调用形态 | T 实例化 | 要求 D 实现位点 |
 |---|---|---|
-| `show(box)` 给 `fn show<T : D>(x T)` | T = `Box<U>` | **`Box<U>` 自身**实现 D |
+| `show(box)` 给 `fn show<T : D>(x T)` | T = `Rc<U>` | **`Rc<U>` 自身**实现 D |
 | `show(as_ref(box))` 给 `fn show<T : D>(x T&)` | T = U | U 实现 D（沿用 §8.6.7.4） |
 
 §12.6.3 边界泛型形参的实参档位仍受 §8.6.7.1 限制：T **不得**为 `T&`；调用方需经 `as_ref`（§8.3.5.5）/ `copy_of`（§12.7.3）显式做借用 ↔ owned 转换。
 
-§12.6.4 Box forward **不**绕过 §12.5 orphan：`Box<U>` 能 forward 的方法集 = U 已实现的 D 方法集。
+§12.6.4 Rc forward **不**绕过 §12.5 orphan：`Rc<U>` 能 forward 的方法集 = U 已实现的 D 方法集。
 
 §12.6.5 v1 draft 体内只有实例方法签名（§12.1.1.1），**不**存在关联函数 forward；其它堆句柄（`Array<T>` / `String` / `Weak<T>` / `StringBuilder`）**不**参与"自动解引用调元素方法"。
 
@@ -220,7 +220,7 @@ draft Any { }
 
 | builtin | 签名 | 方向 | 章节 |
 |---|---|---|---|
-| `as_ref` | `as_ref:<T>(box Box<T>) T&` | Box → T& | §8.3.5.5 |
+| `as_ref` | `as_ref:<T>(box Rc<T>) T&` | Rc → T& | §8.3.5.5 |
 | `copy_of` | `copy_of:<T>(x T&) T` | T& → T | §12.7.3（本节） |
 
 §12.7.3.2 `copy_of` 规则（[#D.5]）：
@@ -228,7 +228,7 @@ draft Any { }
 - T 受 §8.6.7.1 owned 限制；`x` 是 T 的借用，结果是 T 的栈上 owned 副本。
 - 复制语义按 T 档位：
   - **值类型**（标量 / 用户 struct / `[T*N]`）：memcpy + 字段级 retain（§7.4.3 / §7.4.4）。
-  - **堆句柄**（`Box<U>` / `Array<U>` / `String` / `Weak<U>` / `StringBuilder`）：句柄复制 + RC retain，沿用 §8.5 callee-clean 协议。
+  - **堆句柄**（`Rc<U>` / `Array<U>` / `String` / `Weak<U>` / `StringBuilder`）：句柄复制 + RC retain，沿用 §8.5 callee-clean 协议。
 - `x` 的借用根（如对应的 `box` / 局部变量）在 `copy_of` 调用语句结束后仍可正常使用（临时借用 + 立即释放，按 §8.8 临时帧）。
 - 与 `as_ref` 不互锁：原 `x` 视图与返回的 owned 副本各自独立析构。
 - **不**接受 `Ptr`；turbofish 可省，T 由实参推断。
@@ -238,7 +238,7 @@ draft Any { }
 ```yux
 fn use_owned<T : D>(x T) { ... }
 
-fn caller(box Box<MyType>) {
+fn caller(box Rc<MyType>) {
   use_owned(copy_of(as_ref(box)))   ; T& → T 显式拷贝后传入 owned 形参
 }
 ```
@@ -271,10 +271,10 @@ v1 / v0.5 **明确不做**（[#E.1]）：
 
 | 名称 | 写法 | data 端语义 | RC 行为 |
 |---|---|---|---|
-| owned dyn | `Dyn<D>` | 指向 `[RC head \| U 实例]`，与 `Box<U>` 同源 | 标准 RC；强引用为 0 时调 `vtable[0]` 析构 |
+| owned dyn | `Dyn<D>` | 指向 `[RC head \| U 实例]`，与 `Rc<U>` 同源 | 标准 RC；强引用为 0 时调 `vtable[0]` 析构 |
 | 借用 dyn | `Dyn<D&>` | 借自栈或堆，不持有所有权 | 不动 RC，按 §8.6 借用栈追踪 |
 
-§12.9.1.2 `Dyn` 是编译器内置类型名（非关键字），**不**写在 `base.yux`；不引入 `dyn` 关键字（沿用 `Dyn<D>` 类型名形态，与 `Box<T>` / `Weak<T>` 一致）。
+§12.9.1.2 `Dyn` 是编译器内置类型名（非关键字），**不**写在 `base.yux`；不引入 `dyn` 关键字（沿用 `Dyn<D>` 类型名形态，与 `Rc<T>` / `Weak<T>` 一致）。
 
 §12.9.1.3 `Dyn<D>` 与 `Dyn<D&>` 不可互转，与 `T` ↔ `T&` 同理（§8.3）。同一 `U` 对不同 draft `D1` / `D2` 有**独立** vtable，互不复用。
 
@@ -290,7 +290,7 @@ v1 / v0.5 **明确不做**（[#E.1]）：
 
 §12.9.3.1 `Dyn<X>` 中 `X` **应当**解析到 `DraftDeclNode`；否则报 `E1131`。
 
-§12.9.3.2 **不**允许嵌套：`Dyn<Dyn<...>>`、`Box<Dyn<...>>`、`Weak<Dyn<...>>` 报 `E1132`。
+§12.9.3.2 **不**允许嵌套：`Dyn<Dyn<...>>`、`Rc<Dyn<...>>`、`Weak<Dyn<...>>` 报 `E1132`。
 
 §12.9.3.3 **不**允许 `Dyn<D>?`（nullable dyn）报 `E1135`（v1 不引入）。
 
@@ -314,17 +314,17 @@ v1 / v0.5 **明确不做**（[#E.1]）：
 §12.9.5.1 构造形态走 **turbofish** 类型构造：
 
 ```yux
-val b Box<U>     = U(...)
-val d Dyn<D>     = Dyn:<D>(b)        ; Box<U> → Dyn<D>，移交 RC
-val r Dyn<D&>    = Dyn:<D&>(ref)     ; U& 或 Box<U> → Dyn<D&>，借用
+val b Rc<U>     = U(...)
+val d Dyn<D>     = Dyn:<D>(b)        ; Rc<U> → Dyn<D>，移交 RC
+val r Dyn<D&>    = Dyn:<D&>(ref)     ; U& 或 Rc<U> → Dyn<D&>，借用
 ```
 
 §12.9.5.2 调用站语法**应当**带 `:`（`Dyn:<D>(x)`）；无 `:` 写法 `Dyn<D>(x)` 仅在**类型位**有效（§B.2 / §B.2a）。`:` 前缀见 `yuxParser.g4` `exprCall` 形态。
 
 §12.9.5.3 构造检查：
 
-- `Dyn<D>(x)`：`x` **应当**为 `Box<U>` 且 `U` 已满足 `D`（显式 `Type : D { ... }` 或 `#DraftLike` 结构化匹配，与 §12.3.1 等价规则一致）；否则报 `E1133`。
-- `Dyn<D&>(x)`：`x` **应当**为 `U&` 或 `Box<U>`，`U:D`；结果为借用形态，按 §8.6 进借用栈。
+- `Dyn<D>(x)`：`x` **应当**为 `Rc<U>` 且 `U` 已满足 `D`（显式 `Type : D { ... }` 或 `#DraftLike` 结构化匹配，与 §12.3.1 等价规则一致）；否则报 `E1133`。
+- `Dyn<D&>(x)`：`x` **应当**为 `U&` 或 `Rc<U>`，`U:D`；结果为借用形态，按 §8.6 进借用栈。
 
 §12.9.5.4 **不**走隐式 coercion，**不**引入 `as_dyn` builtin。
 
@@ -363,11 +363,11 @@ __yux_vtable_<U_mangled>__<D_qualified_mangled>:
 
 §12.9.8.1 owned `Dyn<D>` 走 `_dyn_release(data, vtable)`：strong-- → 为 0 时 dispatch `vtable[0](data + sizeof(RCHeader))` → weak-- + free。借用 `Dyn<D&>` 释放 no-op。
 
-§12.9.8.2 构造 `Dyn:<D>(b)` 的 RC 接管：源 `b` 是 fresh 临时（构造表达式直接消费）时偷取 +1；命名变量则 retain 拷 +1，源 `Box` 仍按自身 scope 释放。Dyn 局部变量在 scope 退出走 `_dyn_release` 抵消。
+§12.9.8.2 构造 `Dyn:<D>(b)` 的 RC 接管：源 `b` 是 fresh 临时（构造表达式直接消费）时偷取 +1；命名变量则 retain 拷 +1，源 `Rc` 仍按自身 scope 释放。Dyn 局部变量在 scope 退出走 `_dyn_release` 抵消。
 
 ### §12.9.9 调用约定 / ABI
 
-§12.9.9.1 `Dyn<D>` / `Dyn<D&>` 作参数按 16 字节聚合传（与 `Box<U> + ptr` 同形）；作返回值走 sret 形态。
+§12.9.9.1 `Dyn<D>` / `Dyn<D&>` 作参数按 16 字节聚合传（与 `Rc<U> + ptr` 同形）；作返回值走 sret 形态。
 
 §12.9.9.2 `Dyn<D&>` 借用与原 `U:D` 借用按 `data_ptr` 视作同一借用根，§8.6 借用栈复用。
 
@@ -381,7 +381,7 @@ __yux_vtable_<U_mangled>__<D_qualified_mangled>:
 
 - `Self` / draft-name 在返回位置的对象安全解锁（thunk 路径，留 v0.X+1）
 - `Dyn<D>?` nullable 形态（§12.9.3.3 / `E1135` 占位）
-- `Dyn<D>` ↔ `Box<U>` 向下转型 / 反射 / `is` / `as`（§12.8 项 7）
+- `Dyn<D>` ↔ `Rc<U>` 向下转型 / 反射 / `is` / `as`（§12.8 项 7）
 - 多线程 vtable 跨线程引用（v1 单线程）
 - 操作符 draft 的 dyn 化（§12.8 项 6）
 - vtable 内联缓存 / devirtualization（性能任务）

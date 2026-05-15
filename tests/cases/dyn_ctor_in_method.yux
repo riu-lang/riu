@@ -30,7 +30,7 @@ Caller {
   }
 
   fn run() {
-    val bg Box<G> = G(40i64)
+    val bg Rc<G> = G(40i64)
     val d Dyn<Greet> = Dyn:<Greet>(bg)
     println(d.hi() + $.base)
   }

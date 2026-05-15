@@ -36,7 +36,7 @@ const std::set<std::string>& builtinTypeNames() {
         "i32", "u32", "i64", "u64",
         "f32", "f64", "bool",
         "String", "StringBuilder",
-        "Box", "Array", "Weak", "Ptr",
+        "Rc", "Array", "Weak", "Ptr",
         "Nullable", "Ref"
     };
     return s;
@@ -507,9 +507,9 @@ void DraftImplChecker::validateDynInTypeNode(TypeNode* tn, FileNode* file,
 
         // 命中 Dyn 形态: 先按外层 wrapper 判 E1132 / E1135
         if (baseName == "Dyn" && gen->typeArgs().size() == 1) {
-            // 外层禁忌: Box<Dyn> / Weak<Dyn> / Dyn<Dyn> → E1132;
+            // 外层禁忌: Rc<Dyn> / Weak<Dyn> / Dyn<Dyn> → E1132;
             // Nullable<Dyn> (即 Dyn<D>?) → E1135.
-            if (outerWrapper == "Box" || outerWrapper == "Weak" ||
+            if (outerWrapper == "Rc" || outerWrapper == "Weak" ||
                 outerWrapper == "Dyn") {
                 throw YuxError(line, col, ErrorCode::E1132,
                     outerWrapper + "<" + gen->getType().getFullName() + ">");
@@ -566,10 +566,10 @@ void DraftImplChecker::validateDynInTypeNode(TypeNode* tn, FileNode* file,
         }
 
         // 非 Dyn 容器: 决定下一层 wrapper 标签, 递归子项.
-        // Array / Ref / Tuple / 用户结构体等不会触发包裹诊断; Box/Weak/Nullable
+        // Array / Ref / Tuple / 用户结构体等不会触发包裹诊断; Rc/Weak/Nullable
         // 会传递给子项, 由子项的 Dyn 分支命中 E1132 / E1135.
         std::string childWrap;
-        if (baseName == "Box" || baseName == "Weak" || baseName == "Nullable") {
+        if (baseName == "Rc" || baseName == "Weak" || baseName == "Nullable") {
             childWrap = baseName;
         }
         for (auto& arg : gen->typeArgs()) {

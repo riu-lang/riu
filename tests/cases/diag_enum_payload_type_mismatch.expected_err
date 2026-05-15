@@ -1,2 +1,2 @@
 [E2032]
-expected `Box<Point>`, got `Point`
+expected `Rc<Point>`, got `Point`

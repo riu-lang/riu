@@ -13,9 +13,9 @@
 
 - 提供"命名变体 + 可选 tuple-style payload"的代数数据类型，覆盖状态机 / 离散选择 / 分类数据建模。
 - 与 `match` 表达式同档落地：enum 的读取通道**只有 match**，不暴露 tag 整数。
-- 与现有结构体路径形态对齐：值类型、栈布局、`Box<E>` 才上堆；payload 含 RC 字段时按 tag 正确析构。
+- 与现有结构体路径形态对齐：值类型、栈布局、`Rc<E>` 才上堆；payload 含 RC 字段时按 tag 正确析构。
 - 保持 v1 范围最小：**不**做泛型 enum、**不**做独立 `impl` 块、**不**做 discriminant 显式赋值、**不**做 struct-style payload。
-- 与既有内置类型并行：不把 `T?` / `Box<T>` / `Array<T>` 重写为 enum；这些是已固化的内置形态。
+- 与既有内置类型并行：不把 `T?` / `Rc<T>` / `Array<T>` 重写为 enum；这些是已固化的内置形态。
 
 ## 2. 核心模型与全景
 
@@ -65,7 +65,7 @@ enum Shape {
 - variant **一行一个**，以换行分隔，**不写 `,`**。多个 variant 写在同一行属语法错误。
 - variant 名采用 PascalCase（与类型名同规约；附录 C 给词法建议，非硬性）。
 - variant 名在同一 enum 内**不得重复**；不同 enum 之间互不干扰。
-- payload 类型与"普通类型出现位置"一致：可以是基础类型、struct、`Box<T>`、`Array<T>`、`String`、`T?`、tuple `(T1, T2)`，以及类型别名。
+- payload 类型与"普通类型出现位置"一致：可以是基础类型、struct、`Rc<T>`、`Array<T>`、`String`、`T?`、tuple `(T1, T2)`，以及类型别名。
 - payload 中**不允许**出现 `T&`（与 struct 字段同规约，§8.6 已禁止 `T&` 进字段）。
 - payload tuple 内部用 `,` 分隔元素（这是 tuple 自身规则，非 variant 分隔符）。
 
@@ -86,7 +86,7 @@ enum Shape {
 
 | 特性 | 行为（v1） |
 |---|---|
-| `Box<E>` | 允许；按现有 Box 协议 retain/release，析构时按 tag dispatch payload 析构 |
+| `Rc<E>` | 允许；按现有 Rc 协议 retain/release，析构时按 tag dispatch payload 析构 |
 | `Array<E>` | 允许；元素按值存储，移动 / 拷贝行为遵循 enum 自身规则 |
 | `E?` | 允许；按现有 Nullable 规则展开 |
 | 泛型 enum `enum E<T> { ... }` | **不允许**（v1 之外） |
@@ -175,7 +175,7 @@ var area = match s {
 
 - 绑定名是普通标识符，遵循变量命名规则；同一模式内**不得重复**。
 - 绑定为不可变值绑定（与 `var` 不同：不允许重新赋值），作用域为该 arm 的体（含其块）。
-- 绑定的类型为对应 payload 元素的类型（按位置）。RC 字段（`String` / `Box<T>` / `Array<T>` 等）按值绑定时遵循现有 retain/move 规则（细节进 §6 ABI）。
+- 绑定的类型为对应 payload 元素的类型（按位置）。RC 字段（`String` / `Rc<T>` / `Array<T>` 等）按值绑定时遵循现有 retain/move 规则（细节进 §6 ABI）。
 - 绑定**未被使用**不产生警告（等同 v1 不实施 `_` 通配）。
 
 ### 5.3 v1 不支持的模式
@@ -250,7 +250,7 @@ struct EnumValue<E> {
     }
   ```
 
-- 全部 variant 都是 POD（无 String / Box / Array / 含 RC 的 struct / `T?` 含 RC 内层）的 enum：**不**合成 drop，按平凡值处理。
+- 全部 variant 都是 POD（无 String / Rc / Array / 含 RC 的 struct / `T?` 含 RC 内层）的 enum：**不**合成 drop，按平凡值处理。
 - drop 触发点与 struct 一致：变量退出作用域、函数返回前的非 returned 值、被覆盖赋值的旧值、复合表达式的临时寿命终点。
 
 ### 6.4 拷贝与移动
@@ -272,9 +272,9 @@ struct EnumValue<E> {
 - match 作为表达式时，所有 arm 体把结果写入统一的 match 结果槽。
 - match 结束后，scrutinee 临时按 §6.3 dispatch drop（未发生整体移动的情形下）。
 
-### 6.7 `Box<E>` 与 `Array<E>`
+### 6.7 `Rc<E>` 与 `Array<E>`
 
-- **`Box<E>`**：复用现有 Block layout `{strong, weak, payload: E}`；Block 的 strong 归零时先调 `__enum_drop_<E>(&payload)`（若有），再走 Block 自身释放路径。等同 `Box<Struct>`，无新协议。
+- **`Rc<E>`**：复用现有 Block layout `{strong, weak, payload: E}`；Block 的 strong 归零时先调 `__enum_drop_<E>(&payload)`（若有），再走 Block 自身释放路径。等同 `Rc<Struct>`，无新协议。
 - **`Array<E>`**：元素按值存储；Array 析构遍历元素 dispatch drop。等同 `Array<Struct>`。
 - 这两条共用一句话：**enum 在 RC 容器中的地位与 struct 完全一致**，不引入新的容器入口。
 
@@ -293,7 +293,7 @@ struct EnumValue<E> {
 
 - v1 **不**承诺跨编译器版本的 enum ABI 稳定（与 struct 一致）。
 - tag 编码顺序、payload 内部布局、niche optimization、是否提取至单独段等均为实现细节。
-- 语言面仅规定：enum 是值类型，含 RC payload 时正确按 tag dispatch retain/release，与 struct / Box / Array 协议一致。
+- 语言面仅规定：enum 是值类型，含 RC payload 时正确按 tag dispatch retain/release，与 struct / Rc / Array 协议一致。
 
 ---
 
@@ -321,7 +321,7 @@ struct EnumValue<E> {
 - `src/ast_builder.cpp`：enum 声明 / 构造 / match 的 ANTLR → AST 路径。
 - `src/compiler.cpp` / `compiler_call.cpp`：构造调用分发；类型检查接入。
 - `src/compiler_match.{cpp,h}`（新增）：match 的 codegen（基于 switch on tag）、绑定槽位生成、穷尽性检查。
-- `src/borrow_checker.cpp`：match arm 中的绑定按值绑定语义对接现有借用规则；payload 含 `Box<T>` / `Array<T>` 等 RC 类型时按 tag dispatch retain/release。
+- `src/borrow_checker.cpp`：match arm 中的绑定按值绑定语义对接现有借用规则；payload 含 `Rc<T>` / `Array<T>` 等 RC 类型时按 tag dispatch retain/release。
 - `src/mangler.cpp`：variant ctor 的 mangling 方案（建议：`<EnumMangled>::V`，与 struct 方法 mangling 同策）。
 
 ### 8.2 SDK / runtime（`sdk/`）
@@ -341,7 +341,7 @@ struct EnumValue<E> {
 
 - `sdk/yux/src/yux/core/enum.test.yux`（新增）：声明 / 构造 / match / 类型别名透传 / 含 RC payload 析构。
 - `tests/cases/diag_enum_*.{yux,expected_err}`：缺失 variant、重复 variant、`else` 非末尾、payload 元数不符、裸 variant、`as i32`、`E::V.0` 等诊断回归。
-- 借用 / 析构相关行为用例（含 `Box<E>`、`String` payload）落到 `sdk/yux/src/yux/core/enum.test.yux`，走 JIT。
+- 借用 / 析构相关行为用例（含 `Rc<E>`、`String` payload）落到 `sdk/yux/src/yux/core/enum.test.yux`，走 JIT。
 
 ### 8.5 规范文档（`docs/spec/`）
 
@@ -383,8 +383,8 @@ struct EnumValue<E> {
 - **[#5.D]** match 是表达式，与 if-else 同档。理由：值导向的"按变体取值"是 enum 最常见用法；作为语句使用时各 arm 走 `;` 路径，无需独立形态。
 - **[#5.E]** 必须穷尽（Kotlin 风）：列全所有 variant 或带 `else` 兜底，二者择一。理由：穷尽性是 ADT 的核心安全保证；让编译器把"忘了一个 variant"挡在编译期。`else` 必须为最后一条，避免不可达分支。
 - **[#6.A]** tag 类型固定 i32。理由：与默认整型对齐友好；i8 / i16 节省的字节通常被 payload 对齐填回去；tag 类型对用户不可观测，未来仍可调整。
-- **[#6.B]** payload 内联为 union，与 tag 同槽存储（值类型）；不做"payload 永远上堆"的间接版。理由：与 struct 值类型族一致；要上堆用 `Box<E>`，与既有协议复用。
+- **[#6.B]** payload 内联为 union，与 tag 同槽存储（值类型）；不做"payload 永远上堆"的间接版。理由：与 struct 值类型族一致；要上堆用 `Rc<E>`，与既有协议复用。
 - **[#6.C]** 析构 / 拷贝 / 移动按 tag dispatch；编译器合成 `__enum_drop_<E>` / `__enum_copy_<E>`。全 POD enum 走平凡 memcpy / 无 drop，避免不必要开销。
-- **[#6.D]** `Box<E>` / `Array<E>` 走与 `Box<Struct>` / `Array<Struct>` 完全相同的 RC 入口，不引入容器级 enum 专用协议。
+- **[#6.D]** `Rc<E>` / `Array<E>` 走与 `Rc<Struct>` / `Array<Struct>` 完全相同的 RC 入口，不引入容器级 enum 专用协议。
 - **[#6.E]** 空 enum `enum E { }` 编译期拒绝；单 variant `enum E { Only }` 合法（占位 / 后续扩展用）。
 - **[#6.F]** v1 不承诺 enum ABI 跨版本稳定，与 struct 同档。在 v1.0 候选档（规范定稿 + ABI 冻结）一并定。

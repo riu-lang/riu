@@ -1,7 +1,7 @@
 use yux.core.*
 
-; §12.6 Box<T> 自动 forward 已实现 draft：等价于 §8.6.7.3 自动解引用 + 方法分发归一。
-; 验证 Box<Counter>.show() 自动解引用到 Counter 的 Show 实现。
+; §12.6 Rc<T> 自动 forward 已实现 draft：等价于 §8.6.7.3 自动解引用 + 方法分发归一。
+; 验证 Rc<Counter>.show() 自动解引用到 Counter 的 Show 实现。
 
 draft Show {
     fn show() String
@@ -24,7 +24,7 @@ Counter : Show {
 }
 
 fn main() {
-    var b Box<Counter> = Counter(7i32)
+    var b Rc<Counter> = Counter(7i32)
     val s = b.show()
     println(s)
 }

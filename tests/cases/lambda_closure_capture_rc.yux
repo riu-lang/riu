@@ -1,4 +1,4 @@
-; Phase 4a-2 §6.2：lambda 捕获 Box<T>（堆句柄）— 共享句柄 + 字段级 release
+; Phase 4a-2 §6.2：lambda 捕获 Rc<T>（堆句柄）— 共享句柄 + 字段级 release
 
 struct Cell {
   n i32
@@ -14,8 +14,8 @@ Cell {
 }
 
 fn main() {
-  var b Box<Cell> = Cell(42)
-  val f = () i32 => b.get()    ; 捕获 Box<Cell>，body 经 b 自动解引调方法
+  var b Rc<Cell> = Cell(42)
+  val f = () i32 => b.get()    ; 捕获 Rc<Cell>，body 经 b 自动解引调方法
   println(f())     ; 42
   println(f())     ; 42（多次调用共享 captures）
 

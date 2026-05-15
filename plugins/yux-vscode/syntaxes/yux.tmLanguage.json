@@ -319,7 +319,7 @@
         },
         {
           "name": "support.type.generic.yux",
-          "match": "\\b(Ref|Box|Ptr|Array|Nullable)\\b"
+          "match": "\\b(Ref|Rc|Heap|Arc|Ptr|Array|Nullable)\\b"
         },
         {
           "name": "support.type.user-defined.yux",

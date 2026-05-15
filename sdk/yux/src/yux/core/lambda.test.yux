@@ -7,7 +7,7 @@
 ; - fn 值作返回类型
 ; - struct 含 fn 字段
 ; - Array<fn> 元素调用
-; - Box<fn> 调用
+; - Rc<fn> 调用
 ; - fn 类型声明与别名
 ; - lambda 闭包捕获
 
@@ -260,26 +260,26 @@ fn test_array_fn_elem_reassign() {
   assert_eq(arr[0](1), 1001)
 }
 
-; ==================== Box<fn> 测试 ====================
+; ==================== Rc<fn> 测试 ====================
 
 #Test
 fn test_box_fn_call() {
-  var b Box<fn(i32)i32> = (x i32) i32 => x + 100
+  var b Rc<fn(i32)i32> = (x i32) i32 => x + 100
   assert_eq(b(5), 105)
   assert_eq(b(10), 110)
 }
 
 #Test
 fn test_box_fn_copy() {
-  var b Box<fn(i32)i32> = (x i32) i32 => x + 100
-  var b2 Box<fn(i32)i32> = b
+  var b Rc<fn(i32)i32> = (x i32) i32 => x + 100
+  var b2 Rc<fn(i32)i32> = b
   assert_eq(b2(7), 107)
 }
 
 #Test
 fn test_box_fn_reassign() {
-  var b Box<fn(i32)i32> = (x i32) i32 => x + 100
-  var b2 Box<fn(i32)i32> = b
+  var b Rc<fn(i32)i32> = (x i32) i32 => x + 100
+  var b2 Rc<fn(i32)i32> = b
 
   b = (x i32) i32 => x * 3
   assert_eq(b(4), 12)
@@ -363,7 +363,7 @@ fn test_fn_type_equiv() {
 #Test
 fn test_fn_type_container() {
   var arr Array<fn()i32> = []
-  var b Box<fn()i32>
+  var b Rc<fn()i32>
   var p (fn()i32, i32)
   var fr fn(i32)i32&
   var nested Array<fn()fn(i32)i32> = []
@@ -413,7 +413,7 @@ fn test_closure_capture_multi() {
 
 #Test
 fn test_closure_capture_box() {
-  var b Box<Cell> = Cell(42)
+  var b Rc<Cell> = Cell(42)
   val f = () i32 => b.get()
   assert_eq(f(), 42)
   assert_eq(f(), 42)

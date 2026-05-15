@@ -50,7 +50,7 @@ fn test_ref_store_through() {
   assert_eq(x, 7i32)
 }
 
-; ---------- ref_box：&box → Box<T>& 句柄借用 ----------
+; ---------- ref_box：&box → Rc<T>& 句柄借用 ----------
 
 struct RefPair {
   a i32
@@ -72,17 +72,17 @@ RefPair {
   }
 }
 
-fn r_box_show_a(b Box<RefPair>&) i32 {
+fn r_box_show_a(b Rc<RefPair>&) i32 {
   ret b.a
 }
 
-fn r_box_bump(b Box<RefPair>&) {
+fn r_box_bump(b Rc<RefPair>&) {
   b.set_a(99i32)
 }
 
 #Test
 fn test_ref_box_handle_borrow() {
-  var p Box<RefPair> = RefPair(10i32, 20i32)
+  var p Rc<RefPair> = RefPair(10i32, 20i32)
   assert_eq(r_box_show_a(&p), 10i32)
   assert_eq(p.sum(), 30i32)
   r_box_bump(&p)
@@ -108,11 +108,11 @@ RefP {
 }
 
 struct RefHolder {
-  inner Box<RefP>
+  inner Rc<RefP>
 }
 
 RefHolder {
-  fn RefHolder(inner Box<RefP>) {
+  fn RefHolder(inner Rc<RefP>) {
     $.inner = inner
   }
 }
@@ -131,7 +131,7 @@ fn test_ref_local_field() {
 
 #Test
 fn test_ref_box_field() {
-  var b Box<RefP> = RefP(100i32, 200i32)
+  var b Rc<RefP> = RefP(100i32, 200i32)
   r_add1(&b.x)
   assert_eq(b.x, 101i32)
   assert_eq(b.y, 200i32)
@@ -139,7 +139,7 @@ fn test_ref_box_field() {
 
 #Test
 fn test_ref_rc_field_chain() {
-  var b Box<RefP> = RefP(100i32, 200i32)
+  var b Rc<RefP> = RefP(100i32, 200i32)
   var h RefHolder = RefHolder(b)
   r_add1(&h.inner.x)
   ; b 与 h.inner 共享同一 block
@@ -185,18 +185,18 @@ fn test_ref_receiver_self_ref() {
 
 #Test
 fn test_same_ref_box_shared() {
-  var p Box<RefPair> = RefPair(1i32, 2i32)
-  var q Box<RefPair> = p
-  var r Box<RefPair> = RefPair(1i32, 2i32)
-  assert_true(same_ref:<Box<RefPair>>(p, q))
-  assert_false(same_ref:<Box<RefPair>>(p, r))
+  var p Rc<RefPair> = RefPair(1i32, 2i32)
+  var q Rc<RefPair> = p
+  var r Rc<RefPair> = RefPair(1i32, 2i32)
+  assert_true(same_ref:<Rc<RefPair>>(p, q))
+  assert_false(same_ref:<Rc<RefPair>>(p, r))
 }
 
 #Test
 fn test_same_ref_weak_from_same_box() {
-  var p Box<RefPair> = RefPair(1i32, 2i32)
-  var q Box<RefPair> = p
-  var r Box<RefPair> = RefPair(1i32, 2i32)
+  var p Rc<RefPair> = RefPair(1i32, 2i32)
+  var q Rc<RefPair> = p
+  var r Rc<RefPair> = RefPair(1i32, 2i32)
   var w1 Weak<RefPair> = p
   var w2 Weak<RefPair> = q
   var w3 Weak<RefPair> = r

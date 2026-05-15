@@ -202,9 +202,9 @@ TypeInfo ExprCallNode::getType() const {
         return TypeInfo();
     }
 
-    // Phase 3c: callee 为 Box<fn(...)R>，自动解引取 fat-ptr 调用，结果同 fn 返回类型
-    if (type.isBox()) {
-        if (auto inner = type.boxElementType(); inner && inner->isFn()) {
+    // Phase 3c: callee 为 Rc<fn(...)R>，自动解引取 fat-ptr 调用，结果同 fn 返回类型
+    if (type.isRc()) {
+        if (auto inner = type.rcElementType(); inner && inner->isFn()) {
             if (auto rt = inner->fnReturnType()) return *rt;
             return TypeInfo();
         }
@@ -295,8 +295,8 @@ TypeInfo ExprCallNode::getType() const {
             TypeInfo actualType = baseType;
             if (baseType.isRef()) {
                 if (auto e = baseType.refElementType()) actualType = *e;
-            } else if (baseType.isBox()) {
-                if (auto e = baseType.boxElementType()) actualType = *e;
+            } else if (baseType.isRc()) {
+                if (auto e = baseType.rcElementType()) actualType = *e;
             }
             auto scope = findNearestScope();
             FileNode* file = dynamic_cast<FileNode*>(scope);
@@ -665,13 +665,13 @@ TypeInfo ExprDotNode::getType() const {
         if (!innerType) {
             throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3051);
         }
-        // Phase 5: Box<T>? 自动 deref —— 把 Box<U> 视为 U 进字段查
-        if (innerType->isBox()) {
-            auto boxInner = innerType->boxElementType();
-            if (!boxInner) {
+        // Phase 5: Rc<T>? 自动 deref —— 把 Rc<U> 视为 U 进字段查
+        if (innerType->isRc()) {
+            auto rcInner = innerType->rcElementType();
+            if (!rcInner) {
                 throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3050);
             }
-            innerType = boxInner;
+            innerType = rcInner;
         }
         auto scope = findNearestScope();
         FileNode* file = dynamic_cast<FileNode*>(scope);
@@ -794,10 +794,10 @@ TypeInfo ExprDotNode::getType() const {
         }
     }
     
-    if (baseType.isBox()) {
-        auto boxElemType = baseType.boxElementType();
-        if (boxElemType) {
-            actualType = *boxElemType;
+    if (baseType.isRc()) {
+        auto rcElemType = baseType.rcElementType();
+        if (rcElemType) {
+            actualType = *rcElemType;
         }
     }
     
@@ -1227,10 +1227,10 @@ TypeInfo ExprGetRefNode::getType() const {
             throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3043);
         }
 
-        // Phase 4c: Box<T>.field 自动解引用到 payload 上找字段（&box.field → field&）
+        // Phase 4c: Rc<T>.field 自动解引用到 payload 上找字段（&rc.field → field&）
         TypeInfo lookupType = baseType;
-        if (lookupType.isBox()) {
-            if (auto inner = lookupType.boxElementType()) lookupType = *inner;
+        if (lookupType.isRc()) {
+            if (auto inner = lookupType.rcElementType()) lookupType = *inner;
         }
 
         auto structDecl = file->getStructDecl(lookupType.name);

@@ -1,6 +1,6 @@
 ; Array<T> 行为用例（迁自 tests/cases/array_*）
 ; 覆盖：基础下标读写、定长数组初始化（fill/列表）、按值传参共享语义、
-;       函数返回 move、Array<Box<T>> 元素重赋值的 retain/release。
+;       函数返回 move、Array<Rc<T>> 元素重赋值的 retain/release。
 
 ; ---------- array_access：下标读写 ----------
 
@@ -94,7 +94,7 @@ fn test_array_passing_share() {
   assert_eq(arr[3], 42i32)
 }
 
-; ---------- array_elem_rc_assign：Array<Box<T>> 元素重赋值 retain-then-release ----------
+; ---------- array_elem_rc_assign：Array<Rc<T>> 元素重赋值 retain-then-release ----------
 
 struct ArrPair {
   a i32
@@ -110,9 +110,9 @@ ArrPair {
 
 #Test
 fn test_array_elem_box_reassign() {
-  var p Box<ArrPair> = ArrPair(10i32, 20i32)
-  var q Box<ArrPair> = ArrPair(30i32, 40i32)
-  var arr Array<Box<ArrPair>> = [p]
+  var p Rc<ArrPair> = ArrPair(10i32, 20i32)
+  var q Rc<ArrPair> = ArrPair(30i32, 40i32)
+  var arr Array<Rc<ArrPair>> = [p]
   assert_eq(arr[0].a, 10i32)
   arr[0] = q
   assert_eq(arr[0].a, 30i32)

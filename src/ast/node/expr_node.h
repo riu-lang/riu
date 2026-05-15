@@ -444,7 +444,7 @@ struct LambdaParamSlot {
 // Lambda 捕获槽位（Phase 4a，spec §6.1 / §6.2）
 // 标识 lambda body 内引用到的外层局部变量；emitLambdaFunction 在 body 编译过程中
 // 增量 append（compileLiteralExpr 命中外层 local → addCapture），compileLambdaExpr
-// 在 fn 回归外层上下文后据此从 _localVarPtrs 加载 + 写入 captures box。
+// 在 fn 回归外层上下文后据此从 _localVarPtrs 加载 + 写入 captures Rc。
 //
 // Phase 4a 仅支持标量类型；堆句柄 / struct / `T&` 拒入（4a-2 / 4c 接入）。
 struct CaptureSlot {
@@ -488,7 +488,7 @@ private:
     u64 _capturesTotalSize = 0;
     // Phase 4c：是否含 T& 捕获（spec §6.3）。
     // 若为 true，captures 走"栈嵌入"路径（alloca + LSB 标 1 标记跳过 RC），lambda 视作"广义 T&"
-    // 不可逃逸（不可作 ret / 不可入 var / 字段 / 容器 / Box）。
+    // 不可逃逸（不可作 ret / 不可入 var / 字段 / 容器 / Rc）。
     bool _hasRefCapture = false;
 
 public:
@@ -689,7 +689,7 @@ public:
 };
 
 // Dyn<D>(x) / Dyn<D&>(x) 构造表达式（DRAFT-dyn-draft / 拟 §12.9）
-// 形式：把 Box<U> / U& 提升为 fat pointer { vtable, data }；vtable 槽 0 = dtor，
+// 形式：把 Rc<U> / U& 提升为 fat pointer { vtable, data }；vtable 槽 0 = dtor，
 // 槽 1..N = D 方法按声明序。Phase 1c 仅引入节点与占位 codegen（vtable=null），
 // vtable 真值与对象安全检查留 Phase 2 / Phase 3。
 //
@@ -698,7 +698,7 @@ public:
 // `_isBorrow` 由内层 TypeNode 是否为 `Ref<...>` 决定。
 class ExprDynCtorNode : public ExprNode {
     p<TypeNode> _draftType;     // turbofish 内的类型节点（D 或 D&）
-    p<ExprNode> _arg;           // 构造源：Box<U> 或 U&
+    p<ExprNode> _arg;           // 构造源：Rc<U> 或 U&
     bool _isBorrow;             // true = Dyn<D&>(...), false = Dyn<D>(...)
 
 public:

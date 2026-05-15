@@ -17,10 +17,10 @@
 
 - **显式优先**：默认 draft 必须由 `Type : D { ... }` 显式实现；结构化匹配仅在 draft 显式 `#DraftLike` 时开放（[#A.3] / [#C.4]）。
 - **零运行时开销**：v0.5 纯单态化静态分发，不引入虚表 / `dyn` / 隐式签名表参数；mangling 与签名为未来 `dyn Draft` 留位（[#B.3]）。
-- **与现有借用模型自然衔接**：复用 §8.6.7 已有规则——T 实参仍 owned，`T&` 自动可调，`Box<U>` 上方法分发归一为 `U&`，不为 Box 引入独立 forward 机制（[#B.2] / [#D.3]）。
+- **与现有借用模型自然衔接**：复用 §8.6.7 已有规则——T 实参仍 owned，`T&` 自动可调，`Rc<U>` 上方法分发归一为 `U&`，不为 Rc 引入独立 forward 机制（[#B.2] / [#D.3]）。
 - **少特例**：实现块仅合并块且穷尽匹配（[#A.2]）；边界仅内联无 `where`（[#B.1]）；签名等价严格不变（[#C.1]）；orphan 同 rust 禁跨外部包实现（[#C.5]）。
 - **为 v0.6 字符串模板提供"可插值"约束**：`ToString` 写在 `base.yux`，**不**标 `#DraftLike`，避免 debug-string 误命中模板（[#D.1]）。
-- **链路自洽**：补齐 `T& → T` 反向口子 `copy_of`（[#D.5]），与现有 `as_ref`（Box → T&）形成对称。
+- **链路自洽**：补齐 `T& → T` 反向口子 `copy_of`（[#D.5]），与现有 `as_ref`（Rc → T&）形成对称。
 
 ## 2. 概念全景
 
@@ -31,7 +31,7 @@
 | `#DraftLike` 开关 | 标注在 draft 声明 | 开放结构化匹配（按签名集相等） | [#A.3] / [#C.1] |
 | 泛型边界 | `<T : D1 + D2>` | 内联在 `genericDef`，无 `where` / 无 or | [#B.1] |
 | 调用 ABI | 单态化静态分发 | `<Type>__<DraftPath>__<method>`，无 vtable | [#B.3] |
-| 借用 ↔ owned | `as_ref` / `copy_of` | Box→T& / T&→T 两个方向显式 builtin | [#D.5] |
+| 借用 ↔ owned | `as_ref` / `copy_of` | Rc→T& / T&→T 两个方向显式 builtin | [#D.5] |
 | 内置 `Any` draft | `#DraftLike draft Any { }` | 所有类型自动满足（∅ 签名集） | [#D.4] |
 | 内置 `ToString` | `base.yux` 显式 `i32 : ToString` 等 | 方法体走 `#CompilerInner`；不标 `#DraftLike` | [#D.1] |
 | orphan 限制 | 实现块只能在 Type 包或 D 包 | 跨外部包绑定走 `#DraftLike` 结构化匹配 | [#C.5] |
@@ -120,7 +120,7 @@ draftBound       ::= modulePath? ID genericDef?    ; 例如 ToString / pkg.Displ
 
 - **Q1 / T 仍须 owned**：`T : D` 不放宽 §8.6.7.1，T 实参仍须为 owned 类型（值类型 / 堆句柄 / `Ptr`），**不接** `T&`。要在借用上调 `D` 的方法，靠 §8.6.7.3 receiver 归一规则。
 - **Q2 / D 实现位点单一**：`D` 的实现绑在 owned 类型 T 上即可；`T&` 不需要单独实现 `D`。`obj: T&` 调 `obj.m()` 与 `obj: T` 调一致（方法分发归一，§8.6.7.3）。
-- **Q3 / Box forward 等价于现有规则**：§8.6.7.3 保证 `Box<U>` 上 `obj.method` receiver 归一为 `U&`，因此 `Box<U>` 调 `D` 方法**不需要新增 forward 机制**；草案 §8 的 "Box 自动 forward" 在 spec 层等价于"自动解引用 + 方法分发归一"。
+- **Q3 / Rc forward 等价于现有规则**：§8.6.7.3 保证 `Rc<U>` 上 `obj.method` receiver 归一为 `U&`，因此 `Rc<U>` 调 `D` 方法**不需要新增 forward 机制**；草案 §8 的 "Rc 自动 forward" 在 spec 层等价于"自动解引用 + 方法分发归一"。
 - **Q4 / 内置堆句柄可作为 T 实参**：`Array<T>` / `String` / `Weak<T>` 是 owned 类型，可作 `<T : D>` 的 T 实参；其 `D` 实现优先放 `base.yux` 走 `#Builtin`，用户不应在同包再次实现（按 [#C.2] 报错）。
 - **Q5 / `T&` 不能写 draft 实现块**：`i32& : ToString { ... }` 之类形态语义层报错；draft 实现绑定到 owned 类型。
 
@@ -130,8 +130,8 @@ fn show<T : ToString>(x T&) String {     ; ✅ T 是 owned；签名内 T& 来自
 }
 
 fn bad<T : ToString>(x T&) ... { ... }
-fn pass(b Box<MyStruct>) {
-  show(as_ref(b))                        ; ✅ Box→T& 走 §8.3.5.5 + §8.6.7.4
+fn pass(b Rc<MyStruct>) {
+  show(as_ref(b))                        ; ✅ Rc→T& 走 §8.3.5.5 + §8.6.7.4
 }
 ```
 
@@ -332,15 +332,15 @@ i32 : ToString {
 
 | builtin | 签名 | 方向 | 语义 | 章节 |
 |---|---|---|---|---|
-| `as_ref` | `as_ref:<T>(box Box<T>) T&` | Box → T& | 零拷贝借用视图；锁住 `box` 在借用期内不可重赋 | §8.3.5.5 |
+| `as_ref` | `as_ref:<T>(box Rc<T>) T&` | Rc → T& | 零拷贝借用视图；锁住 `box` 在借用期内不可重赋 | §8.3.5.5 |
 | `copy_of` | `copy_of:<T>(x T&) T` | T& → T | 显式拷贝；返回栈上 owned 副本，按 T 档位调 RC | §8.附（本节） |
 
 `copy_of` 规则：
 
 - T 受 §8.6.7.1 owned 限制；`x` 是 T 的借用，结果是 T 的栈值。
 - 复制语义按 T 档位：
-  - **值类型**（`i32` / `bool` / 用户 struct）：memcpy + 字段级 RC retain（含 `Box<U>` 字段按 §7.4.4 retain）。
-  - **堆句柄**（`Box<U>` / `Array<U>` / `String` / `Weak<U>`）：句柄复制 + RC retain（同 callee-clean 协议，§8.2）。
+  - **值类型**（`i32` / `bool` / 用户 struct）：memcpy + 字段级 RC retain（含 `Rc<U>` 字段按 §7.4.4 retain）。
+  - **堆句柄**（`Rc<U>` / `Array<U>` / `String` / `Weak<U>`）：句柄复制 + RC retain（同 callee-clean 协议，§8.2）。
 - `x` 的借用根（`box` / `local`）在 `copy_of` 调用语句结束后仍可正常使用（临时借用 + 立即释放，按 §8.6.5 临时消费）。
 - 与 `as_ref` 不互锁：原 `x` 视图与返回的 owned 副本各自独立，析构按 §8.5 各自走。
 - 不接受 `Ptr`、不接受 v0.5 之外的可空形态；turbofish 可省，T 由实参推断。
@@ -348,23 +348,23 @@ i32 : ToString {
 ```yux
 fn use_owned<T : D>(x T) { ... }
 
-fn caller(box Box<MyType>) {
+fn caller(box Rc<MyType>) {
   use_owned(copy_of(as_ref(box)))   ; T& → T 显式拷贝后传入 owned 形参
 }
 ```
 
-## 8. `Box<T>` 自动 forward
+## 8. `Rc<T>` 自动 forward
 
-由 [#D.3] 决议：v0.5 **不为 `Box<U>` 引入独立的 forward 机制**；草案的"Box 自动 forward"在 spec 层等价于 §8.6.7.3 自动解引用 + 方法分发归一，用户视角"`box.method()` 调到 U 上的 D 方法"已自然成立。澄清边界：
+由 [#D.3] 决议：v0.5 **不为 `Rc<U>` 引入独立的 forward 机制**；草案的"Rc 自动 forward"在 spec 层等价于 §8.6.7.3 自动解引用 + 方法分发归一，用户视角"`box.method()` 调到 U 上的 D 方法"已自然成立。澄清边界：
 
-1. **forward 实例方法（自然行为）**：`Box<U>` 上 `box.method(args)` 按 §8.6.7.3 解引用为 `method($: U&, args)`，等价于对 U 调用，无新增机制。
-2. **`<T : D>` 边界与 Box 的关系**：T 实参遵循 §8.6.7.1（必须 owned）。
-   - 把 `Box<U>` 传给 `fn show<T : D>(x T)` → T 实例化为 `Box<U>`，要求 **`Box<U>` 自身**实现 D。U 实现 D 不会自动让 `Box<U>` 实现 D。
+1. **forward 实例方法（自然行为）**：`Rc<U>` 上 `box.method(args)` 按 §8.6.7.3 解引用为 `method($: U&, args)`，等价于对 U 调用，无新增机制。
+2. **`<T : D>` 边界与 Rc 的关系**：T 实参遵循 §8.6.7.1（必须 owned）。
+   - 把 `Rc<U>` 传给 `fn show<T : D>(x T)` → T 实例化为 `Rc<U>`，要求 **`Rc<U>` 自身**实现 D。U 实现 D 不会自动让 `Rc<U>` 实现 D。
    - 把 `as_ref(box)` 传给 `fn show<T : D>(x T&)` → T 实例化为 U，要求 U 实现 D。这是 §8.6.7.4 已有路径，不是新规则。
-   - 当前借用链是单向的：`Box<U> → as_ref → U&`；**没有** `T& → T` 的反向降级（也不应有，借用不能升级为 owned）。
+   - 当前借用链是单向的：`Rc<U> → as_ref → U&`；**没有** `T& → T` 的反向降级（也不应有，借用不能升级为 owned）。
 3. **不 forward 关联函数**：v0.5 draft 体内只有实例方法签名（[#A.1]），不存在关联函数概念。
 4. **不 forward 给其它堆句柄**：`Array<T>` / `String` / `Weak<T>` 不参与"自动解引用调元素方法"，与 §8.4 / §8.5 / §9 一致。
-5. **forward 不绕过 orphan**：`Box<U>` 能 forward 的方法集 = U 已经实现的 D；[#C.5] 限制不被 Box 削弱。
+5. **forward 不绕过 orphan**：`Rc<U>` 能 forward 的方法集 = U 已经实现的 D；[#C.5] 限制不被 Rc 削弱。
 
 ## 9. 不在范围
 
@@ -402,7 +402,7 @@ fn caller(box Box<MyType>) {
   - 同包显隐冲突 / orphan 校验。 [#C.2] / [#C.5]
 - **泛型 / 单态化**（`src/compiler.cpp` 现有泛型路径）
   - 实例化期校验 `<T : D>` 边界；mangle 名 `<TypePath>__<DraftPath>__<method>`。 [#B.3]
-  - 与 §8.6.7.3 receiver 归一复用，无独立 Box forward。 [#B.2] / [#D.3]
+  - 与 §8.6.7.3 receiver 归一复用，无独立 Rc forward。 [#B.2] / [#D.3]
 - **builtin**（`src/compiler.cpp` baked 表）
   - 新增 `copy_of:<T>(x T&) T`：值类型 memcpy + 字段级 retain；堆句柄复制 + retain（按 §8.2 callee-clean）。 [#D.5]
   - 现有 `as_ref` 不变。
@@ -475,7 +475,7 @@ spec 落地后写：
 
 按讨论顺序追加，标 `[#编号]`。每次反复或修订也追加新条目，不要覆盖。
 
-编号约定：A = 基础语法，B = 单态化与边界，C = `#DraftLike` 行为，D = 衍生（内置 / Box forward），E = 不在范围。
+编号约定：A = 基础语法，B = 单态化与边界，C = `#DraftLike` 行为，D = 衍生（内置 / Rc forward），E = 不在范围。
 
 - **[#D.5]** 新增 builtin **`copy_of:<T>(x T&) T`**：补齐 `T& → T` 链路（与 `as_ref` 反向对称）。值类型 memcpy + 字段级 retain；堆句柄复制 + retain。命名沿用 yux 现有 `_of` / `_ref` builtin 格律（避免 `deref_copy` 的 deref 概念，避免 `clone` 的 Rust trait 包袱）。
   - 影响章节：草案 §8.附，未来 spec §8.3.5 / §8.6 / §9.10（builtin 列表）。
@@ -487,8 +487,8 @@ spec 落地后写：
 
 - **[#E.1]** v0.5 不在范围（详见 §9）：`dyn Draft` / 默认方法体 / 方法本地泛型 / 关联类型 / orphan / 操作符 draft / 反射 / draft 继承 / 协变 / 独立可见性修饰 / 调用点回写边界 / `#DraftLike` 部分匹配。`where` 子句、or 约束已在 [#B.1] 说明，不在 §9 重复列出。
 
-- **[#D.3]** `Box<T>` 自动 forward：v0.5 **无独立机制**，等价于 §8.6.7.3 自动解引用 + 方法分发归一。澄清：
-  - `<T : D>` 接 `Box<U>` 实参 → T = `Box<U>`，要求 Box<U> 自身实现 D；不会自动跳到 U（借用链单向：`Box<U> → as_ref → U&`，**无** `T& → T` 反向降级）。
+- **[#D.3]** `Rc<T>` 自动 forward：v0.5 **无独立机制**，等价于 §8.6.7.3 自动解引用 + 方法分发归一。澄清：
+  - `<T : D>` 接 `Rc<U>` 实参 → T = `Rc<U>`，要求 Rc<U> 自身实现 D；不会自动跳到 U（借用链单向：`Rc<U> → as_ref → U&`，**无** `T& → T` 反向降级）。
   - 关联函数不 forward（v0.5 draft 无此概念）；其它堆句柄（Array / String / Weak）不参与；不绕过 [#C.5] orphan。
   - 影响章节：草案 §8，未来 spec §8.6.7（追加交叉引用）/ §12；不改 §8.3.5。
 
@@ -532,7 +532,7 @@ spec 落地后写：
 - **[#B.2]** 边界与 §8.6.7 衔接：
   - T 仍须 owned（沿用 §8.6.7.1，`T&` 不能作 T 实参）；
   - D 实现绑在 owned 类型 T 上，`T&` 自动可调（沿用 §8.6.7.3 方法分发归一）；
-  - `Box<U>` 调 D 方法走自动解引用 + 归一，**无需新增 forward 机制**（草案 §8 与 [#D.3] 直接以此结论收口）；
+  - `Rc<U>` 调 D 方法走自动解引用 + 归一，**无需新增 forward 机制**（草案 §8 与 [#D.3] 直接以此结论收口）；
   - `Array<T>` / `String` / `Weak<T>` 可作 T 实参；`D` 实现优先走 `base.yux` + `#Builtin`，用户同包再次实现按 [#C.2] 报错；
   - `T&` 上**不允许**写 `T& : D { ... }` 实现块。
   - 影响章节：草案 §4.2 / §8，未来 spec §8.6.7（追加交叉引用，不改既有规则）/ §6.4 / §12。

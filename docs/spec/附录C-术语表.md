@@ -23,13 +23,13 @@
 |---|---|---|---|
 | 类型档位 | type tier | §3.1 / §8.1.1 | 值 / 堆句柄 / 借用 / FFI 指针四档 |
 | 值类型 | value type | §3.1 | 标量 / 用户 struct / `[T*N]`，按值复制 |
-| 堆句柄 | heap handle | §3.1 / §8 | `Box<T>` / `Weak<T>` / `Array<T>` / `String` / `StringBuilder` |
+| 堆句柄 | heap handle | §3.1 / §8 | `Rc<T>` / `Weak<T>` / `Array<T>` / `String` / `StringBuilder` |
 | 借用 | borrow | §3.2.3 / §8.6 | `T&`，非空指针，不参与 RC |
 | FFI 指针 | FFI pointer | §3.3 / §9.7 | `Ptr`，等价 C `void*` |
 | 名义类型 | nominal type | §3.4.1 | 用户 struct 按声明源判等 |
 | 可赋值性 | assignability | §3.4.2 | 何种赋值合法（无隐式标量转换） |
 | 隐式包装 | implicit wrapping | §3.6.4 | `T` → `T?` 自动构造 `Nullable<T>` |
-| 内置泛型 | builtin generic | §3.3 / §9 | `Box` / `Weak` / `Array` / `Nullable` / `Ref` / `Ptr` |
+| 内置泛型 | builtin generic | §3.3 / §9 | `Rc` / `Weak` / `Array` / `Nullable` / `Ref` / `Ptr` |
 | 平凡结构体 | trivial struct | §7.4.2 | 不含 RC 字段，按位 memcpy |
 | 非平凡结构体 | non-trivial struct | §7.4.2 | 至少一个 RC 字段，需字段级派生 |
 | 枚举 | enum | §3.10 | 命名变体集合（和类型），值类型，名义判等 |
@@ -82,7 +82,7 @@
 | 弱计数 | weak count | §8.2.2 | 弱引用数 + (1 if strong>0) |
 | retain | retain | §8.2.2 / §8.7.1 | 计数 +1 |
 | release | release | §8.2.2 / §8.7.1 | 计数 -1，归零析构 / free |
-| upgrade | upgrade | §8.2.2.7 / §8.5 | `Weak<T> → Box<T>?` |
+| upgrade | upgrade | §8.2.2.7 / §8.5 | `Weak<T> → Rc<T>?` |
 | 哨兵 | sentinel | §8.2.3 | `0xFFFFFFFF`，retain / release 跳过 |
 | callee-clean | callee-clean | §8.7.1 | 调用方传前 retain，被调方析构 release |
 | 移动返回 | move-return | §8.7.2 | `ret box_expr` 注入 retain |
@@ -129,8 +129,8 @@
 | draft 边界 | draft bound | §6.4.4 / §12.4 | `<T : D1 + D2>` 内联约束 |
 | 单态化分发 | monomorphized dispatch | §12.4.4.5 / §6.5 | v1 边界泛型的实例化 + 静态分发，无 vtable |
 | orphan 规则 | orphan rule | §12.5 | `Type : D` 实现块只能在 `Type` 包或 `D` 包 |
-| Box forward | box forward | §12.6 | `Box<U>` 上调 D 方法走 §8.6.7.3 自动解引用 + 归一 |
-| `as_ref` | as_ref | §8.3.5.5 | `Box<T> → T&` builtin |
+| Rc forward | box forward | §12.6 | `Rc<U>` 上调 D 方法走 §8.6.7.3 自动解引用 + 归一 |
+| `as_ref` | as_ref | §8.3.5.5 | `Rc<T> → T&` builtin |
 | `copy_of` | copy_of | §12.7.3 | `T& → T` 显式拷贝 builtin |
 | `Any` | any | §12.7.2 | 空签名集 draft；所有 owned 类型自动满足 |
 | `ToString` | to_string draft | §12.7.1 | 内置 `fn to_string() String` 契约；不标 `#DraftLike` |

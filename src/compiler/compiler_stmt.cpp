@@ -85,7 +85,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         // 注意：成功路径若返回堆句柄，仍需 move-return retain；本段保留同样逻辑
         bool didMoveRetainHandle = false;
         if (isSuccess && hasDeclaredRetType) {
-            if (declRetType.isBox() || declRetType.isArrayGeneric() || declRetType.isWeak()) {
+            if (declRetType.isRc() || declRetType.isArrayGeneric() || declRetType.isWeak()) {
                 if (!isFreshHandleExpr(node->expr())) {
                     retainHandleAtCallSite(val, declRetType);
                 } else {
@@ -290,14 +290,14 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
     }
     
     // Phase 3b: move-return retain
-    // 堆句柄返回类型（Box / Array / Weak）在返回前 retain 一次，配合 callee-clean
+    // 堆句柄返回类型（Rc / Array / Weak）在返回前 retain 一次，配合 callee-clean
     // 局部变量 release（callDestructorsForScope）让调用方接住净 +1 句柄；
     // 不做 peephole（DRAFT §7.3）——纯局部 var 路径下 retain+release 互抵，函数调用
     // 临时值的多余 retain 由 Phase 8 临时值清单负责。
     // Phase 8c: fresh retVal（call/array literal）已自带 +1，跳过 retain
     bool didMoveRetainHandle = false;
     if (retVal && hasDeclaredRetType && !nullableWrap) {
-        if (declRetType.isBox() || declRetType.isArrayGeneric() || declRetType.isWeak()) {
+        if (declRetType.isRc() || declRetType.isArrayGeneric() || declRetType.isWeak()) {
             if (!isFreshHandleExpr(node->expr())) {
                 retainHandleAtCallSite(retVal, declRetType);
             } else {
@@ -396,7 +396,7 @@ void Compiler::compileDeclareStatement(p<StatementDeclareNode> node) {
 }
 
 // 编译变量声明并赋值语句
-// 处理普通变量、数组初始化、Box 类型、Array<T> 类型
+// 处理普通变量、数组初始化、Rc 类型、Array<T> 类型
 void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node) {
     auto expr = node->expr();
     auto varName = node->name().getText();
@@ -526,10 +526,10 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         auto alloca = _builder.CreateAlloca(llvmType, nullptr, varName);
         _localVarPtrs[varName] = alloca;
 
-        // 处理 Box<T> 类型（Phase 1a 新布局：单 handle 指针 + Block 单分配）
-        // Box 实例 = { handle: Block* }；Block = { u32 strong, u32 weak, payload }
-        if (varType.isBox()) {
-            auto elemType = varType.boxElementType();
+        // 处理 Rc<T> 类型（Phase 1a 新布局：单 handle 指针 + Block 单分配）
+        // Rc 实例 = { handle: Block* }；Block = { u32 strong, u32 weak, payload }
+        if (varType.isRc()) {
+            auto elemType = varType.rcElementType();
             if (!elemType) {
                 throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3056);
             }
@@ -537,45 +537,45 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             auto exprVal = compileExpr(expr);
             auto exprType = expr->getType();
 
-            auto boxStructType = getLLVMType(varType);
+            auto rcStructType = getLLVMType(varType);
             auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
             auto ptrTy = llvm::PointerType::get(_context, 0);
 
-            if (exprType.isBox() && exprType.boxElementType() && *exprType.boxElementType() == *elemType) {
-                // Box -> Box 复制：复制 handle 并 retain（DRAFT §7.3 callee-clean 还在 Phase 3，但句柄共享 retain 必须在 1a 启用）
-                // exprVal 是源 Box 的 struct 值，先存 tmp alloca 才能 GEP 取 handle 字段
-                auto tmpAlloca = _builder.CreateAlloca(boxStructType, nullptr, "box_src_tmp");
+            if (exprType.isRc() && exprType.rcElementType() && *exprType.rcElementType() == *elemType) {
+                // Rc -> Rc 复制：复制 handle 并 retain（DRAFT §7.3 callee-clean 还在 Phase 3，但句柄共享 retain 必须在 1a 启用）
+                // exprVal 是源 Rc 的 struct 值，先存 tmp alloca 才能 GEP 取 handle 字段
+                auto tmpAlloca = _builder.CreateAlloca(rcStructType, nullptr, "rc_src_tmp");
                 _builder.CreateStore(exprVal, tmpAlloca);
-                auto srcHandleField = _builder.CreateGEP(boxStructType, tmpAlloca, {zero, zero}, "src_handle_field");
+                auto srcHandleField = _builder.CreateGEP(rcStructType, tmpAlloca, {zero, zero}, "src_handle_field");
                 auto srcHandle = _builder.CreateLoad(ptrTy, srcHandleField, "src_handle");
 
                 // 句柄复制 = retain（_box_retain 内部哨兵跳过 .rodata 字面量）
                 // Phase 8b: fresh 来源（call/method/ctor 调用）已在 callee ret 处 move-return retain，跳过
                 // Phase 8d.1: fresh 来源的 +1 转给新 var，从临时帧消费
                 if (!isFreshHandleExpr(expr)) {
-                    auto retainFn = runtime::getBoxRetainFn(_module, _builder);
+                    auto retainFn = runtime::getRcRetainFn(_module, _builder);
                     _builder.CreateCall(retainFn, {srcHandle});
                 } else {
                     consumeTemp(exprVal);
                 }
 
-                // 写入新 Box 的 handle 字段
-                auto handleField = _builder.CreateGEP(boxStructType, alloca, {zero, zero}, "handle_field");
+                // 写入新 Rc 的 handle 字段
+                auto handleField = _builder.CreateGEP(rcStructType, alloca, {zero, zero}, "handle_field");
                 _builder.CreateStore(srcHandle, handleField);
             } else if (exprType == *elemType) {
-                // 由值构造 Box：分配 Block，把 payload 存入 block+8
+                // 由值构造 Rc：分配 Block，把 payload 存入 block+8
                 auto elemLLVMType = getLLVMType(*elemType);
                 auto sizeVal = _builder.getInt64(_module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
 
-                auto allocFn = runtime::getBoxAllocFn(_module, _builder);
-                auto block = _builder.CreateCall(allocFn, {sizeVal}, "box_block");
+                auto allocFn = runtime::getRcAllocFn(_module, _builder);
+                auto block = _builder.CreateCall(allocFn, {sizeVal}, "rc_block");
 
                 // payload 起始 = block + 8
-                auto payloadPtr = _builder.CreateGEP(_builder.getInt8Ty(), block, {_builder.getInt64(8)}, "box_payload");
+                auto payloadPtr = _builder.CreateGEP(_builder.getInt8Ty(), block, {_builder.getInt64(8)}, "rc_payload");
                 _builder.CreateStore(exprVal, payloadPtr);
 
                 // 写 handle 字段
-                auto handleField = _builder.CreateGEP(boxStructType, alloca, {zero, zero}, "handle_field");
+                auto handleField = _builder.CreateGEP(rcStructType, alloca, {zero, zero}, "handle_field");
                 _builder.CreateStore(block, handleField);
             } else {
                 throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, elemType->name, exprType.name);
@@ -583,7 +583,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
 
             _scopeVars.push_back(varName);  // 加入作用域变量列表 (需要析构)
         }
-        // 处理 Weak<T> 类型（Phase 1d.2：支持从 Box<T> 或 Weak<T> 构造，weak++）
+        // 处理 Weak<T> 类型（Phase 1d.2：支持从 Rc<T> 或 Weak<T> 构造，weak++）
         else if (varType.isWeak()) {
             auto elemType = varType.weakElementType();
             if (!elemType) {
@@ -593,9 +593,9 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             auto exprVal = compileExpr(expr);
             auto exprType = expr->getType();
 
-            bool fromBox = exprType.isBox() && exprType.boxElementType() && *exprType.boxElementType() == *elemType;
+            bool fromRc = exprType.isRc() && exprType.rcElementType() && *exprType.rcElementType() == *elemType;
             bool fromWeak = exprType.isWeak() && exprType.weakElementType() && *exprType.weakElementType() == *elemType;
-            if (!fromBox && !fromWeak) {
+            if (!fromRc && !fromWeak) {
                 throw YuxError(node->getLineNumber(), node->getColumn(),
                     ErrorCode::E3016, elemType->name, elemType->name, elemType->name);
             }
@@ -607,7 +607,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             auto i32Ty = _builder.getInt32Ty();
             auto i8Ty = _builder.getInt8Ty();
 
-            // 取源 Box/Weak 的 handle（两者 layout 同形 { ptr handle }）
+            // 取源 Rc/Weak 的 handle（两者 layout 同形 { ptr handle }）
             auto tmpAlloca = _builder.CreateAlloca(srcStructType, nullptr, "weak_src_tmp");
             _builder.CreateStore(exprVal, tmpAlloca);
             auto srcHandleField = _builder.CreateGEP(srcStructType, tmpAlloca, {zero, zero}, "src_handle_field");
@@ -615,7 +615,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
 
             // weak++（哨兵 / null 跳过）
             // Phase 8b: Weak-from-Weak fresh 源已 +1 weak（callee move-return retain 用 _weak_retain），跳过；
-            // Box 源始终需要 weak++（不是 retain，是 Weak 句柄首次被引用，与 Box 的 strong 计数无关）
+            // Rc 源始终需要 weak++（不是 retain，是 Weak 句柄首次被引用，与 Rc 的 strong 计数无关）
             bool needWeakInc = !(fromWeak && isFreshHandleExpr(expr));
             // Phase 8d.1: fromWeak fresh 路径直接接 +1 weak，从临时帧消费
             if (fromWeak && isFreshHandleExpr(expr)) {
@@ -668,7 +668,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 storeArrayHandle(alloca, block);
             } else {
                 // 从其他 Array<T> 表达式初始化：句柄复制 + retain
-                // 与 Box 的 var q = p 路径同形（Phase 1a），否则作用域结束 LIFO 双重 release
+                // 与 Rc 的 var q = p 路径同形（Phase 1a），否则作用域结束 LIFO 双重 release
                 // 触发同 handle freed-block read。修复 BUGS.md「Array 声明拷贝漏 retain」。
                 // Phase 8b: fresh 来源（call/method 调用）已 move-return retain，跳过
                 // Phase 8d.1: fresh 来源从临时帧消费
@@ -830,7 +830,7 @@ void Compiler::compileDeclareAssignTupleStatement(p<StatementDeclareAssignTupleN
         if (auto sym = _currentFnNode->lookupSymbol(varName)) {
             sym->type = elemType;
         }
-        // TODO: 元素若为 RC / Box / 含析构 struct，需要在此处 retain；当前 Phase 5 仅覆盖值类型
+        // TODO: 元素若为 RC / Rc / 含析构 struct，需要在此处 retain；当前 Phase 5 仅覆盖值类型
     }
 }
 
@@ -985,10 +985,10 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             }
         }
 
-        // Box<T> 赋值：处理 Box -> Box 复制和 T -> Box<T> 构造
-        // 与 compileDeclareAssignStatement 的 Box 初始化路径保持一致
-        if (assignOp == AssignOp::Eq && sym->type.isBox()) {
-            auto elemType = sym->type.boxElementType();
+        // Rc<T> 赋值：处理 Rc -> Rc 复制和 T -> Rc<T> 构造
+        // 与 compileDeclareAssignStatement 的 Rc 初始化路径保持一致
+        if (assignOp == AssignOp::Eq && sym->type.isRc()) {
+            auto elemType = sym->type.rcElementType();
             if (!elemType) {
                 throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3056);
             }
@@ -1000,50 +1000,50 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
 
             auto exprVal = compileExpr(expr);
             auto exprType = expr->getType();
-            auto boxStructType = getLLVMType(sym->type);
+            auto rcStructType = getLLVMType(sym->type);
             auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
             auto ptrTy = llvm::PointerType::get(_context, 0);
 
-            if (exprType.isBox() && exprType.boxElementType() && *exprType.boxElementType() == *elemType) {
-                // Box -> Box 复制：复制 handle 并 retain
-                // exprVal 是源 Box 的 struct 值，先存 tmp alloca 才能 GEP 取 handle 字段
-                auto tmpAlloca = _builder.CreateAlloca(boxStructType, nullptr, "box_src_tmp");
+            if (exprType.isRc() && exprType.rcElementType() && *exprType.rcElementType() == *elemType) {
+                // Rc -> Rc 复制：复制 handle 并 retain
+                // exprVal 是源 Rc 的 struct 值，先存 tmp alloca 才能 GEP 取 handle 字段
+                auto tmpAlloca = _builder.CreateAlloca(rcStructType, nullptr, "rc_src_tmp");
                 _builder.CreateStore(exprVal, tmpAlloca);
-                auto srcHandleField = _builder.CreateGEP(boxStructType, tmpAlloca, {zero, zero}, "src_handle_field");
+                auto srcHandleField = _builder.CreateGEP(rcStructType, tmpAlloca, {zero, zero}, "src_handle_field");
                 auto srcHandle = _builder.CreateLoad(ptrTy, srcHandleField, "src_handle");
 
                 // Phase 8b: fresh 来源已在 callee ret 处 move-return retain，跳过
                 // Phase 8d.1: fresh 来源的 +1 转给新 var，从临时帧消费
                 if (!isFreshHandleExpr(expr)) {
-                    auto retainFn = runtime::getBoxRetainFn(_module, _builder);
+                    auto retainFn = runtime::getRcRetainFn(_module, _builder);
                     _builder.CreateCall(retainFn, {srcHandle});
                 } else {
                     consumeTemp(exprVal);
                 }
 
-                // 释放旧 Box
+                // 释放旧 Rc
                 releaseAtPtr(it->second, sym->type);
 
-                // 写入新 Box 的 handle 字段
-                auto handleField = _builder.CreateGEP(boxStructType, it->second, {zero, zero}, "handle_field");
+                // 写入新 Rc 的 handle 字段
+                auto handleField = _builder.CreateGEP(rcStructType, it->second, {zero, zero}, "handle_field");
                 _builder.CreateStore(srcHandle, handleField);
             } else if (exprType == *elemType) {
-                // 由值构造 Box：分配 Block，把 payload 存入 block+8
+                // 由值构造 Rc：分配 Block，把 payload 存入 block+8
                 auto elemLLVMType = getLLVMType(*elemType);
                 auto sizeVal = _builder.getInt64(_module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
 
-                auto allocFn = runtime::getBoxAllocFn(_module, _builder);
-                auto block = _builder.CreateCall(allocFn, {sizeVal}, "box_block");
+                auto allocFn = runtime::getRcAllocFn(_module, _builder);
+                auto block = _builder.CreateCall(allocFn, {sizeVal}, "rc_block");
 
                 // payload 起始 = block + 8
-                auto payloadPtr = _builder.CreateGEP(_builder.getInt8Ty(), block, {_builder.getInt64(8)}, "box_payload");
+                auto payloadPtr = _builder.CreateGEP(_builder.getInt8Ty(), block, {_builder.getInt64(8)}, "rc_payload");
                 _builder.CreateStore(exprVal, payloadPtr);
 
-                // 释放旧 Box
+                // 释放旧 Rc
                 releaseAtPtr(it->second, sym->type);
 
                 // 写 handle 字段
-                auto handleField = _builder.CreateGEP(boxStructType, it->second, {zero, zero}, "handle_field");
+                auto handleField = _builder.CreateGEP(rcStructType, it->second, {zero, zero}, "handle_field");
                 _builder.CreateStore(block, handleField);
             } else {
                 throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, elemType->name, exprType.name);
@@ -1147,7 +1147,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         // 元组成员赋值: t.0 = e / t.0.1 = e（透明 alias 由 applySubst 兜底）
         // 仅当顶层就是 tuple 时进此分支；混合路径 struct.field.0 暂未支持
         // TODO: 支持 struct.field.<N> 混合链路
-        // TODO: 元组元素若为 RC / Box / 含析构 struct 时，需要 retain new + release old；当前仅覆盖值类型
+        // TODO: 元组元素若为 RC / Rc / 含析构 struct 时，需要 retain new + release old；当前仅覆盖值类型
         {
             auto resolvedTop = applySubst(actualType);
             if (resolvedTop.isTuple()) {
@@ -1220,16 +1220,16 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             }
         }
 
-        // Phase 4c 对称：Box<T>.field = ... 自动 deref
-        // 读路径已在 compileMemberAccess（compiler_expr.cpp）里对 Box<T> 做了 deref：
+        // Phase 4c 对称：Rc<T>.field = ... 自动 deref
+        // 读路径已在 compileMemberAccess（compiler_expr.cpp）里对 Rc<T> 做了 deref：
         // load handle，payload = handle + 8，再按内层 T 走字段 GEP。
-        // 写路径之前漏了这一段，命中 Box<T> 会因为 "Box" 没有 StructDecl 抛 E3045。
-        // 这里把同样的处理补齐：先记下 Box 形态，待取到 structPtr 后再做 GEP+load。
-        bool needBoxDeref = false;
-        TypeInfo boxOuterType = actualType;
-        if (actualType.isBox()) {
-            needBoxDeref = true;
-            if (auto inner = actualType.boxElementType()) {
+        // 写路径之前漏了这一段，命中 Rc<T> 会因为 "Rc" 没有 StructDecl 抛 E3045。
+        // 这里把同样的处理补齐：先记下 Rc 形态，待取到 structPtr 后再做 GEP+load。
+        bool needRcDeref = false;
+        TypeInfo rcOuterType = actualType;
+        if (actualType.isRc()) {
+            needRcDeref = true;
+            if (auto inner = actualType.rcElementType()) {
                 actualType = *inner;
             }
         }
@@ -1252,16 +1252,16 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
 
         llvm::Value* structPtr = it->second;
 
-        // Box<T> 写入：load handle 字段（offset 0），payload 起始 = handle + 8
-        if (needBoxDeref) {
-            auto boxStructType = getLLVMType(boxOuterType);
+        // Rc<T> 写入：load handle 字段（offset 0），payload 起始 = handle + 8
+        if (needRcDeref) {
+            auto rcStructType = getLLVMType(rcOuterType);
             auto zero32 = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
             auto handleField = _builder.CreateGEP(
-                boxStructType, structPtr, {zero32, zero32}, "box.handle_field");
+                rcStructType, structPtr, {zero32, zero32}, "rc.handle_field");
             auto handle = _builder.CreateLoad(
-                llvm::PointerType::get(_context, 0), handleField, "box.handle");
+                llvm::PointerType::get(_context, 0), handleField, "rc.handle");
             structPtr = _builder.CreateGEP(
-                _builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "box.payload");
+                _builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.payload");
         }
 
         auto structType = getLLVMType(actualType);
@@ -1333,14 +1333,14 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
 
                 _builder.CreateStore(valToStore, fieldPtr);
             } else {
-                // 中间段：当前仅支持纯 struct 嵌套（不含 Box/Array/Ref/Nullable/RC 字段）
-                // 中段若是 RC / Box / Array / Ref / Nullable，自动 deref / 写穿语义未对齐，先拒收。
+                // 中间段：当前仅支持纯 struct 嵌套（不含 Rc/Array/Ref/Nullable/RC 字段）
+                // 中段若是 RC / Rc / Array / Ref / Nullable，自动 deref / 写穿语义未对齐，先拒收。
                 auto interType = field->getType();
-                if (interType.isBox() || interType.isArrayGeneric() || interType.isRef()
+                if (interType.isRc() || interType.isArrayGeneric() || interType.isRef()
                     || interType.isNullable() || interType.isWeak() || interType.isPtr()
                     || isBuiltinType(interType.name) || typeNeedsDestructor(interType)) {
                     throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3046)
-                        .withHint("嵌套成员赋值中间字段需为纯 struct（不含 Box/Array/Ref/RC 等）；可拆方法或在中段先 `var t = $.field` 落地后再写");
+                        .withHint("嵌套成员赋值中间字段需为纯 struct（不含 Rc/Array/Ref/RC 等）；可拆方法或在中段先 `var t = $.field` 落地后再写");
                 }
                 auto interStructDecl = _file->getStructDecl(interType.name);
                 if (!interStructDecl && _yux && _yux->sdkFile()) {
@@ -1476,8 +1476,8 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
             auto t = outerType.refElementType();
             if (t) outerActual = *t;
         }
-        if (outerType.isBox()) {
-            auto t = outerType.boxElementType();
+        if (outerType.isRc()) {
+            auto t = outerType.rcElementType();
             if (t) outerActual = *t;
         }
         
@@ -1502,14 +1502,14 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
                 llvm::Value* dataPtr = outerPtr;
                 auto zeroIdx = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
                 
-                // Box 类型需要先解引用获取数据指针
-                if (outerType.isBox()) {
-                    auto boxStructType = getLLVMType(outerType);
+                // Rc 类型需要先解引用获取数据指针
+                if (outerType.isRc()) {
+                    auto rcStructType = getLLVMType(outerType);
                     llvm::Value* bIndices[] = {zeroIdx, zeroIdx};
                     auto dataPtrField = _builder.CreateGEP(
-                        boxStructType, outerPtr, bIndices, "box.data_ptr_field");
+                        rcStructType, outerPtr, bIndices, "rc.data_ptr_field");
                     dataPtr = _builder.CreateLoad(
-                        llvm::PointerType::get(_context, 0), dataPtrField, "box.data_ptr");
+                        llvm::PointerType::get(_context, 0), dataPtrField, "rc.data_ptr");
                 }
                 
                 auto outerLLVM = getLLVMType(outerActual);

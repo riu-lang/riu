@@ -21,12 +21,12 @@
 
 | 名称 | 写法 | 语义 / 存储 | 备注 |
 |---|---|---|---|
-| owned dyn | `Dyn<D>` | `{ vtable: ptr, data: ptr }`，data 指向 `[RC head \| 实例]` | 与 `Box<U>` 同源；release 走标准 RC，refcount=0 调 `vtable[0]` |
+| owned dyn | `Dyn<D>` | `{ vtable: ptr, data: ptr }`，data 指向 `[RC head \| 实例]` | 与 `Rc<U>` 同源；release 走标准 RC，refcount=0 调 `vtable[0]` |
 | 借用 dyn | `Dyn<D&>` | `{ vtable: ptr, data: ptr }`，data 借自栈或堆 | 不动 RC；不调 vtable[0]；按 §8.6 借用栈追踪 |
 
 要点：
 
-- `Dyn<D>` 与 `Box<U>` 内存布局兼容（data ptr 都指向 `[RC head \| 实例]`）；二者差异仅在 fat pointer 多出 vtable_ptr
+- `Dyn<D>` 与 `Rc<U>` 内存布局兼容（data ptr 都指向 `[RC head \| 实例]`）；二者差异仅在 fat pointer 多出 vtable_ptr
 - `Dyn<D&>` 与 `Dyn<D>` 不可互转（owned ↔ 借用），与 `T` ↔ `T&` 同理
 - 同一具体类型 `U` 对不同 draft `D1` / `D2` 有**独立** vtable，互不复用
 - 不引入 `dyn` 关键字（沿用 `Dyn` 类型名）；`Dyn` 是编译器内置类型，类型表预定义，**不**写在 `base.yux`
@@ -56,15 +56,15 @@
 ### 3.2 出现位置（语法层禁止）
 
 - `Dyn<T>` 中 `T` **应当**为 draft 名（解析后命中 `DraftDeclNode`）；命中类型 / 结构体 / 不存在 → `E1131`
-- `Dyn<D>` / `Dyn<D&>` 不能再被 `Box<>` / `Weak<>` 包裹（`Box<Dyn<D>>` 等价于 `Dyn<D>` 本身，禁止重复包装 → `E1132`）
+- `Dyn<D>` / `Dyn<D&>` 不能再被 `Rc<>` / `Weak<>` 包裹（`Rc<Dyn<D>>` 等价于 `Dyn<D>` 本身，禁止重复包装 → `E1132`）
 
 ### 3.3 绑定 / 赋值 / 初始化
 
-构造形态沿用 `Box` 风：
+构造形态沿用 `Rc` 风：
 
 ```yux
-val b Box<MyType> = MyType(...)        ; Box<T> 隐式从值构造（yux 现行写法，不是 Box<T>(x)）
-val d Dyn<D>      = Dyn:<D>(b)         ; Box<U>(已实现 U:D) → Dyn<D>；turbofish `:` 前缀
+val b Rc<MyType> = MyType(...)        ; Rc<T> 隐式从值构造（yux 现行写法，不是 Rc<T>(x)）
+val d Dyn<D>      = Dyn:<D>(b)         ; Rc<U>(已实现 U:D) → Dyn<D>；turbofish `:` 前缀
 val r Dyn<D&>     = Dyn:<D&>(ref)      ; 取借用 fat pointer（仅当 genericDef 实参支持 `&`）
 ```
 
@@ -74,8 +74,8 @@ val r Dyn<D&>     = Dyn:<D&>(ref)      ; 取借用 fat pointer（仅当 genericD
 
 构造检查（编译期）：
 
-- `Dyn<D>(x)`：`x` 类型 **应当** 为 `Box<U>` 且 `U` 已显式实现 `D`（或 `#DraftLike` 结构匹配 `D`）；否则 `E1133`（"类型不满足 draft，无法构造 Dyn"）
-- `Dyn<D&>(x)`：`x` 类型 **应当** 为 `U&` 或 `Box<U>`，`U:D`；构造结果为借用形态，按 §8.6 进借用栈
+- `Dyn<D>(x)`：`x` 类型 **应当** 为 `Rc<U>` 且 `U` 已显式实现 `D`（或 `#DraftLike` 结构匹配 `D`）；否则 `E1133`（"类型不满足 draft，无法构造 Dyn"）
+- `Dyn<D&>(x)`：`x` 类型 **应当** 为 `U&` 或 `Rc<U>`，`U:D`；构造结果为借用形态，按 §8.6 进借用栈
 
 ### 3.4 配套表达式 / 操作符
 
@@ -96,7 +96,7 @@ val r Dyn<D&>     = Dyn:<D&>(ref)      ; 取借用 fat pointer（仅当 genericD
 
 ### 3.6 调用约定 / ABI
 
-- `Dyn<D>` / `Dyn<D&>` 作参数：按 16 字节聚合（在 x64 Windows ABI 下走两寄存器或栈，与 `Box<U> + ptr` 同形）
+- `Dyn<D>` / `Dyn<D&>` 作参数：按 16 字节聚合（在 x64 Windows ABI 下走两寄存器或栈，与 `Rc<U> + ptr` 同形）
 - `Dyn<D>` 作返回值：sret 形态（16 字节 sret 槽），与现有非平凡返回一致
 - `Dyn<D>` 作字段：内嵌 16 字节
 - `Dyn<D&>` 借用语义：dyn 借用与原 `U:D` 借用按 `data_ptr` 视作同一借用根（§8.6.x 扩展）
@@ -118,7 +118,7 @@ draft `D` **应当对象安全**才能进入 `Dyn<D>` / `Dyn<D&>`，否则 `E113
 
 ### 4.3 第二轮可解锁（**不在本草案范围**）
 
-`Self` 返回 / draft-name 返回 / `Self` 形参的解锁需要为每个 `(U, D, 含 Self 方法)` 生成 thunk（sret 槽 16 字节、内部调具体 impl 得 `U`、`Box+vtable` 包成 `Dyn<D>`），单独 Phase 引入。
+`Self` 返回 / draft-name 返回 / `Self` 形参的解锁需要为每个 `(U, D, 含 Self 方法)` 生成 thunk（sret 槽 16 字节、内部调具体 impl 得 `U`、`Rc+vtable` 包成 `Dyn<D>`），单独 Phase 引入。
 
 ## 5. 运行时 / vtable 模型
 
@@ -147,7 +147,7 @@ vtable_U_D:
 Dyn<D>(box_u):
   result.vtable = &__yux_vtable_<U>_<D>
   result.data   = box_u.data         ; 移交 RC 所有权（句柄复制 + 不 retain，因为 box_u 被消费）
-  ; 单态 Box<U> 析构在调用方：box_u 已被构造站消费
+  ; 单态 Rc<U> 析构在调用方：box_u 已被构造站消费
 
 ; 构造借用 dyn from U&
 Dyn<D&>(u_ref):
@@ -181,7 +181,7 @@ release(Dyn<D&>): no-op
 ### 5.4 边界情况
 
 - **同一 U 多个 D**：每对独立 vtable；切换 dyn 形态需重新 `Dyn<D2>(box)`
-- **`Box<U>` ↔ `Dyn<D>` 互转**：`Box<U>` → `Dyn<D>` 由 `Dyn<D>(box)` 构造（消费 box，移交 RC）；`Dyn<D>` → `Box<U>` v1 **不支持**（向下转型需 RTTI / type id，留 §12.8 反射话题）
+- **`Rc<U>` ↔ `Dyn<D>` 互转**：`Rc<U>` → `Dyn<D>` 由 `Dyn<D>(box)` 构造（消费 box，移交 RC）；`Dyn<D>` → `Rc<U>` v1 **不支持**（向下转型需 RTTI / type id，留 §12.8 反射话题）
 - **空 dyn**：v1 **不引入** `Dyn<D>?`（nullable dyn）；要可空走 `Dyn<D>?` 第二轮（错误码占位 E1135）
 - **循环引用**：`Dyn<D>` 内嵌 RC，沿用 §8 周期问题（用 `Weak`）；v1 **不**为 dyn 引入独立的 Weak 形态
 
@@ -209,7 +209,7 @@ release(Dyn<D&>): no-op
 
 - `Self` / draft-name 在返回位置的对象安全解锁（[#Z]）
 - `Dyn<D>?` nullable 形态
-- `Dyn<D>` ↔ `Box<U>` 向下转型（需 RTTI）
+- `Dyn<D>` ↔ `Rc<U>` 向下转型（需 RTTI）
 - 反射 / `is` / `as` 类型测试（沿用 §12.8 项 7）
 - 多线程下 vtable 跨线程引用（v1 单线程）
 - `Dyn<D>` 作泛型边界（沿用 `<T : D>` 单态化路径；二者并存即可）
@@ -238,7 +238,7 @@ release(Dyn<D&>): no-op
 ### 10.2 SDK / runtime（`sdk/`）
 
 - 本轮**不**为内置类型预绑 `Dyn` 形态；用户写 `Dyn<ToString>(box_i32)` 这种应自然工作（i32:ToString 已存在）
-- 验证用例：构造 `Dyn<ToString>(Box<i32>(42))` 并调 `to_string()`
+- 验证用例：构造 `Dyn<ToString>(Rc<i32>(42))` 并调 `to_string()`
 
 ### 10.3 语法（`src/yux*.g4`）
 
@@ -251,7 +251,7 @@ release(Dyn<D&>): no-op
 ### 10.4 测试（`tests/`）
 
 - `tests/cases/dyn_*.yux`（成功用例）：构造 / 调用 / Array<Dyn<D>> / Dyn<D&> 借用 / 跨函数传 / 字段
-- `tests/cases/diag_dyn_*.yux`（诊断）：非 draft 名作 `Dyn<X>`、`Dyn<Dyn<...>>`、非对象安全 draft、`Box<Dyn<...>>` 重复包装、构造类型不满足 D
+- `tests/cases/diag_dyn_*.yux`（诊断）：非 draft 名作 `Dyn<X>`、`Dyn<Dyn<...>>`、非对象安全 draft、`Rc<Dyn<...>>` 重复包装、构造类型不满足 D
 - `sdk/yux/src/yux/core/dyn.test.yux`：`Dyn<ToString>` 端到端
 
 ### 10.5 规范文档（`docs/spec/`）
@@ -273,11 +273,11 @@ release(Dyn<D&>): no-op
 ## 决议日志
 
 - **[#1.A]** fat pointer 第一槽 = per-(Type, Draft) vtable_ptr（Rust 风格），不引入类型描述符 / Go interface 风格的 type id；零运行时查表与 yux"零运行时开销"基调一致。
-- **[#1.B]** owned `Dyn<D>` 内部模型 = "Box 同源"：data_ptr 指 `[RC head | 实例]`，标准 RC + vtable[0] dtor，二者职责分离。
-- **[#2.A]** 不引入 `dyn` 关键字；沿用 `Dyn<D>` / `Dyn<D&>` 类型名形态，与 `Box<T>` / `Weak<T>` 风格一致。
-- **[#3.A]** 构造形态 = `Dyn<D>(x)` 类型构造，与 `Box<T>(x)` 一致；**不**走隐式 coercion，**不**引入 `as_dyn` builtin。
+- **[#1.B]** owned `Dyn<D>` 内部模型 = "Rc 同源"：data_ptr 指 `[RC head | 实例]`，标准 RC + vtable[0] dtor，二者职责分离。
+- **[#2.A]** 不引入 `dyn` 关键字；沿用 `Dyn<D>` / `Dyn<D&>` 类型名形态，与 `Rc<T>` / `Weak<T>` 风格一致。
+- **[#3.A]** 构造形态 = `Dyn<D>(x)` 类型构造，与 `Rc<T>(x)` 一致；**不**走隐式 coercion，**不**引入 `as_dyn` builtin。
 - **[#4.A]** 第一轮允许 `Array<Dyn<D>>` / 字段，因为 `Dyn<D>` 是 16 字节 sized 类型，自然进入类型档位。
-- **[#5.A]** owned `Dyn<D>` ↔ `Box<U>` 关系：构造接管 RC，析构走标准 RC + vtable[0]；**不**为 dyn 引入独立 release 路径。
+- **[#5.A]** owned `Dyn<D>` ↔ `Rc<U>` 关系：构造接管 RC，析构走标准 RC + vtable[0]；**不**为 dyn 引入独立 release 路径。
 - **[#Z]** 对象安全：v1 第一轮**禁止** `Self` / draft-name 出现在 draft 体的返回位置；解锁需要 per-(U, D, 含 Self 方法) thunk 生成，单独 Phase。**理由**：thunk 路径非平凡，且对 `iter` / `clone` 等自反方法的需求可以先用 `<T : D>` 单态化路径满足；不阻塞 `Dyn<D>` 主线落地。
 - **[#H]** v1 不提供 `Dyn<D>` 的 `==`、`same_ref` 等结构化相等；用户契约自管。
 

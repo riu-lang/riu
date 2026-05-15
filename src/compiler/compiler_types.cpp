@@ -35,7 +35,7 @@ void Compiler::rethrowWithInstantiationContext(const YuxError& e) const {
 }
 
 // 格式化泛型实例化上下文信息
-// 返回类似 "instantiated as 'Box$i32' at module:line" 的字符串
+// 返回类似 "instantiated as 'Rc$i32' at module:line" 的字符串
 string Compiler::formatInstantiationContext() const {
     if (_substStack.empty()) return "";
     string result;
@@ -68,7 +68,7 @@ TypeInfo Compiler::applySubst(const TypeInfo& t) const {
         // 使用 TypeInfo::substitute 进行类型参数替换
         result = result.substitute(frame.subst);
         // 特殊处理: 将泛型原名替换为实例名
-        // 例如: Box -> Box$i32
+        // 例如: Rc -> Rc$i32
         if (result.kind == TypeKind::Normal && !frame.baseStructName.empty()
             && result.name == frame.baseStructName) {
             result.name = frame.effStructName;
@@ -223,7 +223,7 @@ void Compiler::validateAliases() {
 // ==================== 泛型结构体实例化 ====================
 
 // 确保泛型结构体实例存在
-// 返回 mangle 后的实例名 (如 "Box$i32")
+// 返回 mangle 后的实例名 (如 "Rc$i32")
 string Compiler::ensureStructInstance(
     p<StructDeclNode> baseDecl, const vector<sp<TypeInfo>>& args, p<FileNode> ownerFile, int sourceLine) {
     string baseName = baseDecl->name().getText();
@@ -387,12 +387,12 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         return _builder.getVoidTy();
     }
 
-    // 内建泛型类型（Box/Weak/Array/Nullable）写成 Normal 形式（即不带 `<T>`）：
+    // 内建泛型类型（Rc/Weak/Array/Nullable）写成 Normal 形式（即不带 `<T>`）：
     // 这些类型没有 StructDecl 兜底，落到下方各分支也只剩 `Unknown type (null)`，
     // 返回 null 会让调用方在后续 SEH/段错误时崩。这里早抛 E6011 以给出诊断。
     if (type.isNormal()) {
         static const std::pair<const char*, size_t> kBuiltinGenerics[] = {
-            {"Box", 1}, {"Weak", 1}, {"Array", 1}, {"Nullable", 1},
+            {"Rc", 1}, {"Weak", 1}, {"Array", 1}, {"Nullable", 1},
         };
         for (auto [bname, arity] : kBuiltinGenerics) {
             if (type.name == bname) {
@@ -429,22 +429,22 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         return llvm::PointerType::get(_context, 0);
     }
 
-    // Box<T> 类型 (智能指针，Phase 1a 新布局)
+    // Rc<T> 类型 (智能指针，Phase 1a 新布局)
     // 结构: { ptr handle }
     // handle 指向 Block = { u32 strong, u32 weak, payload: T }；payload 始于偏移 8
-    if (type.isBox()) {
-        auto elemType = type.boxElementType();
+    if (type.isRc()) {
+        auto elemType = type.rcElementType();
         if (elemType) {
-            DEBUG_LOG_VAL("    -> BoxType (struct)", "Box<" << elemType->name << ">");
-            vector<llvm::Type*> boxFields;
-            boxFields.push_back(llvm::PointerType::get(_context, 0));  // handle: Block*
-            return llvm::StructType::get(_context, boxFields);
+            DEBUG_LOG_VAL("    -> RcType (struct)", "Rc<" << elemType->name << ">");
+            vector<llvm::Type*> rcFields;
+            rcFields.push_back(llvm::PointerType::get(_context, 0));  // handle: Block*
+            return llvm::StructType::get(_context, rcFields);
         }
         return llvm::PointerType::get(_context, 0);
     }
 
     // Weak<T> 类型 (Phase 1d.1 弱引用)
-    // 结构: { ptr handle }，与 Box<T> 同形；handle 指向同一 Block；只维护 block 存活
+    // 结构: { ptr handle }，与 Rc<T> 同形；handle 指向同一 Block；只维护 block 存活
     if (type.isWeak()) {
         auto elemType = type.weakElementType();
         if (elemType) {
@@ -483,13 +483,13 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     }
 
     // 函数类型字面量 fn(P1,...) R / fn?(...) R → 16 字节 fat-ptr 占位（spec §5.2）
-    // layout: { ptr fn_ptr, ptr captures }；captures 为 Box<CapturesT>? handle，
+    // layout: { ptr fn_ptr, ptr captures }；captures 为 Rc<CapturesT>? handle，
     // Phase 1 仅占位（不生成调用），调用 / RC / 闭包推迟 Phase 2/3/4
     if (type.isFn()) {
         DEBUG_LOG_VAL("    -> FnType (fat-ptr placeholder)", type.name);
         vector<llvm::Type*> fnFields;
         fnFields.push_back(llvm::PointerType::get(_context, 0));  // fn_ptr
-        fnFields.push_back(llvm::PointerType::get(_context, 0));  // captures (Box?)
+        fnFields.push_back(llvm::PointerType::get(_context, 0));  // captures (Rc?)
         return llvm::StructType::get(_context, fnFields);
     }
 
@@ -508,7 +508,7 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         return llvm::StructType::get(_context, fieldTypes);
     }
 
-    // 泛型类型实例 (如 Box<i32>)
+    // 泛型类型实例 (如 Rc<i32>)
     if (type.isGeneric()) {
         auto baseDecl = _file->getStructDecl(type.name);
         p<FileNode> owner = _file;

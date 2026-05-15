@@ -179,7 +179,7 @@ fnTypeParam:
 
 // typeParam: 单个类型形参 / 类型实参槽位。
 // 仅在**声明位**（fn / struct / draft 的 genericDef 槽位）允许 `:` 边界；
-// 类型引用位（如 Box<T>）与调用点 turbofish 处必须无 bounds，由 semantic 层拒绝。
+// 类型引用位（如 Rc<T>）与调用点 turbofish 处必须无 bounds，由 semantic 层拒绝。
 typeParam:
     type
     (

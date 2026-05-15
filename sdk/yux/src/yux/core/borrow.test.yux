@@ -18,11 +18,11 @@ fn br_read_a(p BrPair&) i32 {
   ret p.a
 }
 
-; ---------- borrow_as_ref_ok：as_ref(b) 取 Box payload 的 T& ----------
+; ---------- borrow_as_ref_ok：as_ref(b) 取 Rc payload 的 T& ----------
 
 #Test
 fn test_borrow_as_ref_box_payload() {
-  var b Box<BrPair> = BrPair(7i32, 8i32)
+  var b Rc<BrPair> = BrPair(7i32, 8i32)
   val r BrPair& = as_ref(b)
   assert_eq(r.a, 7i32)
   assert_eq(br_read_a(as_ref(b)), 7i32)
@@ -32,7 +32,7 @@ fn test_borrow_as_ref_box_payload() {
 
 #Test
 fn test_borrow_as_ref_two_shared() {
-  var b Box<BrPair> = BrPair(11i32, 22i32)
+  var b Rc<BrPair> = BrPair(11i32, 22i32)
   val r1 BrPair& = as_ref(b)
   val r2 BrPair& = as_ref(b)
   assert_eq(r1.a, 11i32)
@@ -89,8 +89,8 @@ fn test_borrow_array_read_via_ref_then_write_origin() {
 
 #Test
 fn test_borrow_box_reassign_after_drop() {
-  var b Box<BrPair> = BrPair(7i32, 8i32)
-  var b2 Box<BrPair> = BrPair(9i32, 10i32)
+  var b Rc<BrPair> = BrPair(7i32, 8i32)
+  var b2 Rc<BrPair> = BrPair(9i32, 10i32)
   loop {
     val r BrPair& = as_ref(b)
     assert_eq(r.a, 7i32)

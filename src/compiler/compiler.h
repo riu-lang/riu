@@ -85,8 +85,8 @@ class Compiler {
     // 用于在泛型实例化过程中跟踪类型参数替换
     struct SubstFrame {
         map<string, TypeInfo> subst;    // 类型参数 -> 实际类型 的映射
-        string baseStructName;          // 泛型原名，如 "Box2"
-        string effStructName;           // 实例名，如 "Box2$i32"
+        string baseStructName;          // 泛型原名，如 "Foo2"
+        string effStructName;           // 实例名，如 "Foo2$i32"
         string sourceFile;              // 实例化发生的源文件
         int sourceLine = 0;             // 实例化发生的行号
     };
@@ -228,7 +228,7 @@ private:
     void compileEnumDtors();                                                    // Phase 5: 在主流水线中为本文件 enum 生成 dtor 定义
 
     // Phase 3a: callee-clean 调用约定
-    // 给 Box/Array/Weak 实参在传入前 retain；callee 末尾析构 release 抵消
+    // 给 Rc/Array/Weak 实参在传入前 retain；callee 末尾析构 release 抵消
     // 非堆句柄类型 no-op；返回 true 表示已发出 retain
     bool retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argType);
 
@@ -236,19 +236,19 @@ private:
     void retainStructFieldsAtCallSite(llvm::Value* argVal, const string& structName);
 
     // Phase 3d: 释放槽位（变量 / 字段 / 元素地址）当前持有的 RC 值
-    // Box/Array/Weak: load handle 后调对应 release；含 RC 字段 struct: 调其析构（字段逆序 release）
+    // Rc/Array/Weak: load handle 后调对应 release；含 RC 字段 struct: 调其析构（字段逆序 release）
     // 内置 / 引用 / 指针 / 平凡 struct: no-op
     void releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type);
 
     // Phase 8d.1: per-statement 临时清单
-    // 栈帧式追踪 fresh RC 句柄（Box/Array/Weak）；语句开始 pushTempFrame，
+    // 栈帧式追踪 fresh RC 句柄（Rc/Array/Weak）；语句开始 pushTempFrame，
     // 结束 popAndReleaseTempFrame 对未消费项发出 release 调用。
     // 仅覆盖线性控制流；分支汇合（if-else 表达式作为语句）见 8d.3。
     struct PendingTemp {
         llvm::Value* val;
         TypeInfo type;
         // Phase 8d.4: 含 RC 字段 struct value 临时落 entry 块 alloca；
-        // 帧弹出时调 releaseAtPtr 释放。Box/Array/Weak 不用此字段（直接 extractValue 拿 handle）。
+        // 帧弹出时调 releaseAtPtr 释放。Rc/Array/Weak 不用此字段（直接 extractValue 拿 handle）。
         llvm::Value* spillSlot = nullptr;
     };
     vector<vector<PendingTemp>> _tempStack;
@@ -260,7 +260,7 @@ private:
     // Phase 8d.3: 在指定 BB 末尾对一个 RC 句柄 value 发 retain（用于分支汇合归一为 fresh）
     void emitRetainOnHandleValue(llvm::Value* val, const TypeInfo& type);
     // Phase 8d.3: 编译"分支结果表达式"——push 子帧、compile、consume 结果、pop 释放中间临时；
-    // 若 expectedType 是 RC 句柄（Box/Array/Weak）且结果非 fresh，发 retain 归一为 +1。
+    // 若 expectedType 是 RC 句柄（Rc/Array/Weak）且结果非 fresh，发 retain 归一为 +1。
     // 调用方在 phi 汇合后应 recordTemp(phi, expectedType) 把统一 +1 句柄交给外层 statement frame
     llvm::Value* compileBranchResultNormalized(p<ExprNode> expr, const TypeInfo& expectedType);
 
@@ -356,9 +356,9 @@ private:
     llvm::Function* emitCapturesDtorFunction(p<class LambdaExprNode> node, const string& lambdaMangled);
     // 调用 fn-typed 值：从 fat-ptr 提取 fn_ptr / captures，按 ABI 调用
     llvm::Value* compileFnValueCall(p<ExprCallNode> node);
-    // Phase 3c：callee 为 Box<fn(...)R>，从 box payload load fat-ptr 后按同款 ABI 调用
-    // innerFnType 为 box 元素类型（Fn TypeInfo），用于实参反推 / 形参类型 / 返回类型
-    llvm::Value* compileBoxFnValueCall(p<ExprCallNode> node, const TypeInfo& innerFnType);
+    // Phase 3c：callee 为 Rc<fn(...)R>，从 Rc payload load fat-ptr 后按同款 ABI 调用
+    // innerFnType 为 Rc 元素类型（Fn TypeInfo），用于实参反推 / 形参类型 / 返回类型
+    llvm::Value* compileRcFnValueCall(p<ExprCallNode> node, const TypeInfo& innerFnType);
     // 实参位置 lambda 类型反推：用 fnParamTypes()[i] 回填 LambdaExprNode 形参缺失类型
     // 在调用点正式 compileExpr(args) 之前调用
     void inferLambdaParamsFromFnType(p<class LambdaExprNode> lambda, const TypeInfo& expectedFnType);

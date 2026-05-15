@@ -5,7 +5,7 @@
 // 
 // 本文件实现编译器生成的运行时辅助函数:
 // - Windows API 声明 (GetProcessHeap, HeapAlloc 等)
-// - Box<T> 智能指针的内存管理函数
+// - Rc<T> 智能指针的内存管理函数
 // - Array<T> 动态数组的内存管理函数
 // - 程序启动函数 (设置控制台编码、调用 yux_main)
 // 
@@ -225,18 +225,18 @@ static void emitRcBlockCountAdd(llvm::IRBuilder<>& builder, llvm::Module* module
     builder.CreateStore(next, g);
 }
 
-// ==================== Box<T> 智能指针支持 ====================
+// ==================== Rc<T> 智能指针支持 ====================
 //
 // Phase 1a 新布局（DRAFT §7.1）：
 // Block = { strong: u32, weak: u32, payload: T }，payload 始于偏移 8
-// Box 实例只持有一个 block 指针（handle）；payload 指针 = handle + 8
+// Rc 实例只持有一个 block 指针（handle）；payload 指针 = handle + 8
 // 哨兵 strong == 0xFFFFFFFF 时所有 retain/release 操作 no-op（用于 .rodata 字面量；Phase 1c 启用）
 // Phase 1a 仅维护 strong 计数；weak 字段已写入 layout 但仅初始化为 1，Phase 1d 接入弱引用协议时启用
 
-// 获取 Box 内存分配函数
+// 获取 Rc 内存分配函数
 // 签名: ptr _box_alloc(i64 payload_size)
 // 分配 8 字节 RC 头 + payload_size，初始化 strong=1, weak=1，返回 block 指针
-llvm::Function* getBoxAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
+llvm::Function* getRcAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
     string fnName = "_box_alloc";
     auto func = module->getFunction(fnName);
     if (func) return func;
@@ -252,10 +252,10 @@ llvm::Function* getBoxAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder) 
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
-// 获取 Box 引用计数增加函数
+// 获取 Rc 引用计数增加函数
 // 签名: void _box_retain(ptr block)
 // 哨兵跳过；否则 strong++
-llvm::Function* getBoxRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
+llvm::Function* getRcRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
     string fnName = "_box_retain";
     auto func = module->getFunction(fnName);
     if (func) return func;
@@ -267,11 +267,11 @@ llvm::Function* getBoxRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder)
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
-// 获取 Box 引用计数减少函数
+// 获取 Rc 引用计数减少函数
 // 签名: void _box_release(ptr block)
 // Phase 1d.1：哨兵 / null 跳过；否则 strong--；strong==0 时 weak--，weak 也==0 时 free
 // payload 析构由调用方在 IR 内联（在 _box_release 之前），与 Phase 1a 一致
-llvm::Function* getBoxReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
+llvm::Function* getRcReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
     string fnName = "_box_release";
     auto func = module->getFunction(fnName);
     if (func) return func;
@@ -283,10 +283,10 @@ llvm::Function* getBoxReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
-// 获取带 payload 析构 dispatch 的 Box 释放函数（Phase 4a-2）
+// 获取带 payload 析构 dispatch 的 Rc 释放函数（Phase 4a-2）
 // 签名: void _box_release_dtor(ptr block)
-// 见头文件说明。runtime 实现见 emitBoxHelpers。
-llvm::Function* getBoxReleaseDtorFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
+// 见头文件说明。runtime 实现见 emitRcHelpers。
+llvm::Function* getRcReleaseDtorFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
     string fnName = "_box_release_dtor";
     auto func = module->getFunction(fnName);
     if (func) return func;
@@ -300,7 +300,7 @@ llvm::Function* getBoxReleaseDtorFn(llvm::Module* module, llvm::IRBuilder<>& bui
 
 // 获取 owned Dyn<D> 的释放函数（Phase 3e）
 // 签名: void _dyn_release(ptr data, ptr vtable)
-// 见头文件说明。runtime 实现见 emitBoxHelpers。
+// 见头文件说明。runtime 实现见 emitRcHelpers。
 llvm::Function* getDynReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
     string fnName = "_dyn_release";
     auto func = module->getFunction(fnName);
@@ -314,10 +314,10 @@ llvm::Function* getDynReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
-// 获取 Box 升级（Weak→Box）函数（Phase 1d.2）
+// 获取 Rc 升级（Weak→Rc）函数（Phase 1d.2）
 // 签名: ptr _box_upgrade(ptr block)
 // null/strong==0 → 返回 null；哨兵 → 直接返回 block；否则 strong++ 并返回 block
-llvm::Function* getBoxUpgradeFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
+llvm::Function* getRcUpgradeFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
     string fnName = "_box_upgrade";
     auto func = module->getFunction(fnName);
     if (func) return func;
@@ -429,13 +429,13 @@ llvm::Function* getArrayRetainFn(llvm::Module* module, llvm::IRBuilder<>& builde
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
-// ==================== Box 辅助函数实现 ====================
+// ==================== Rc 辅助函数实现 ====================
 
-// 生成 Box 相关的辅助函数实现（Phase 1a 新布局）
+// 生成 Rc 相关的辅助函数实现（Phase 1a 新布局）
 // Block = { u32 strong, u32 weak, payload... }
 // 哨兵：strong == 0xFFFFFFFF 表示 .rodata 字面量，所有 retain/release 跳过
-void emitBoxHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module) {
-    DEBUG_LOG("Emitting Box helper functions");
+void emitRcHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module) {
+    DEBUG_LOG("Emitting Rc helper functions");
 
     emitRcBlockCountDefinition(module, builder);
 
@@ -451,7 +451,7 @@ void emitBoxHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm
     // _box_alloc: 分配 8 字节 RC 头 + payload_size，初始化 strong=1, weak=1
     {
         DEBUG_LOG("  Emitting _box_alloc");
-        auto allocFn = getBoxAllocFn(module, builder);
+        auto allocFn = getRcAllocFn(module, builder);
         if (allocFn->empty()) {
             auto entry = llvm::BasicBlock::Create(context, "entry", allocFn);
             builder.SetInsertPoint(entry);
@@ -482,7 +482,7 @@ void emitBoxHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm
     // _box_retain: 哨兵跳过；否则 strong++
     {
         DEBUG_LOG("  Emitting _box_retain");
-        auto retainFn = getBoxRetainFn(module, builder);
+        auto retainFn = getRcRetainFn(module, builder);
         if (retainFn->empty()) {
             auto entry = llvm::BasicBlock::Create(context, "entry", retainFn);
             auto incBB = llvm::BasicBlock::Create(context, "inc", retainFn);
@@ -511,7 +511,7 @@ void emitBoxHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm
     // Phase 1d.1：按 weak/strong 双计数协议管理 block 生命周期
     {
         DEBUG_LOG("  Emitting _box_release");
-        auto releaseFn = getBoxReleaseFn(module, builder);
+        auto releaseFn = getRcReleaseFn(module, builder);
         if (releaseFn->empty()) {
             auto entry = llvm::BasicBlock::Create(context, "entry", releaseFn);
             auto checkBB = llvm::BasicBlock::Create(context, "check", releaseFn);
@@ -562,7 +562,7 @@ void emitBoxHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm
     // null/哨兵跳过；strong--；strong==0 时先 dtor(payload+8)（若 dtor!=null），再 weak-- + free
     {
         DEBUG_LOG("  Emitting _box_release_dtor");
-        auto releaseFn = getBoxReleaseDtorFn(module, builder);
+        auto releaseFn = getRcReleaseDtorFn(module, builder);
         if (releaseFn->empty()) {
             auto entry = llvm::BasicBlock::Create(context, "entry", releaseFn);
             auto checkBB = llvm::BasicBlock::Create(context, "check", releaseFn);
@@ -719,7 +719,7 @@ void emitBoxHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm
 }
 
 // ==================== Weak 辅助函数实现（Phase 1d.1） ====================
-// Block 与 Box 共享同一布局：{ u32 strong @0, u32 weak @4, payload }
+// Block 与 Rc 共享同一布局：{ u32 strong @0, u32 weak @4, payload }
 // _weak_release 仅维护 block 存活；payload 已在 strong 归零时被调用方析构
 
 void emitWeakHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module) {
@@ -736,7 +736,7 @@ void emitWeakHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llv
     // _box_upgrade(handle) -> handle_or_null
     // Phase 1d.2：null → null；哨兵 → handle；strong==0 → null；否则 strong++ 返回 handle
     DEBUG_LOG("  Emitting _box_upgrade");
-    auto upgradeFn = getBoxUpgradeFn(module, builder);
+    auto upgradeFn = getRcUpgradeFn(module, builder);
     if (upgradeFn->empty()) {
         auto entry = llvm::BasicBlock::Create(context, "entry", upgradeFn);
         auto checkBB = llvm::BasicBlock::Create(context, "check", upgradeFn);

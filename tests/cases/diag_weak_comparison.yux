@@ -2,8 +2,8 @@
 ; Weak<T> 不支持 == 和 != 比较应触发 E3078
 
 fn main() {
-  var b1 Box<i32> = 10i32
-  var b2 Box<i32> = 20i32
+  var b1 Rc<i32> = 10i32
+  var b2 Rc<i32> = 20i32
   var w1 Weak<i32> = b1
   var w2 Weak<i32> = b2
   val eq bool = w1 == w2    ; ❌ E3078: Weak<T> does not support == / !=

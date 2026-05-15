@@ -65,7 +65,7 @@ const std::vector<CompletionItem>& buildItems() {
         ty("bool", "布尔类型");
         ty("String", "字符串类型");
         ty("Ref",   "引用类型 Ref<T>");
-        ty("Box",   "堆对象类型 Box<T>");
+        ty("Rc",   "堆对象类型 Rc<T>");
         ty("Ptr",   "原始指针类型 Ptr<T>");
         ty("Array", "动态数组类型 Array<T>");
 

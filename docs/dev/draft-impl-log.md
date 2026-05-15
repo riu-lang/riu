@@ -1,5 +1,7 @@
 # draft（接口/约束）v0.5 实施日志
 
+> 注：本日志使用旧名 Box / box；当前等同 Rc<T>。
+
 本文件归档 v0.5 `draft` + `#DraftLike` + `<T : D>` 边界实现的核心决策、ABI、关键代码点。是后续回答"为什么 v1 没有 dyn Draft"、"`#DraftLike` 为何只贴在 draft 声明处"、"Box<T> forward 为什么不需要独立机制"等问题的事实来源。
 
 - 规范条款见 `docs/spec/12-draft.md` §12 全章 + §7.8 / §6.4.4 / §11.4 / 附录 A/B/C/D

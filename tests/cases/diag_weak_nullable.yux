@@ -1,5 +1,5 @@
 fn main() {
-  val a Box<i32> = box(1)
+  val a Rc<i32> = box(1)
   val w Weak<i32>? = weak(a)
   ret;
 }

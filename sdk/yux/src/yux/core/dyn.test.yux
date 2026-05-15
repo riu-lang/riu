@@ -4,7 +4,7 @@
 ; 注：Dyn<D&> 借用形态目前 ast_builder 仅识别 owned `Dyn:<D>`（g4 `genericDef` 实参槽不允许 `&`），
 ; 借用调用路径俟构造解锁后再补；本文件只覆盖 owned `Dyn<D>`。
 
-; ---------- 用户类型走 ToString：Dyn<ToString>(Box<DynCounter>) ----------
+; ---------- 用户类型走 ToString：Dyn<ToString>(Rc<DynCounter>) ----------
 
 struct DynCounter {
   n i64
@@ -24,21 +24,21 @@ DynCounter : ToString {
 
 #Test
 fn test_dyn_to_string_counter_pos() {
-  val b Box<DynCounter> = DynCounter(42i64)
+  val b Rc<DynCounter> = DynCounter(42i64)
   val d Dyn<ToString> = Dyn:<ToString>(b)
   assert_eq(d.to_string(), "42")
 }
 
 #Test
 fn test_dyn_to_string_counter_neg() {
-  val b Box<DynCounter> = DynCounter(-7i64)
+  val b Rc<DynCounter> = DynCounter(-7i64)
   val d Dyn<ToString> = Dyn:<ToString>(b)
   assert_eq(d.to_string(), "-7")
 }
 
 #Test
 fn test_dyn_to_string_counter_zero() {
-  val b Box<DynCounter> = DynCounter(0i64)
+  val b Rc<DynCounter> = DynCounter(0i64)
   val d Dyn<ToString> = Dyn:<ToString>(b)
   assert_eq(d.to_string(), "0")
 }
@@ -92,7 +92,7 @@ Rect : Shape {
 
 #Test
 fn test_dyn_custom_draft_square() {
-  val b Box<Square> = Square(5i64)
+  val b Rc<Square> = Square(5i64)
   val d Dyn<Shape> = Dyn:<Shape>(b)
   assert_eq(d.area(), 25i64)
   assert_eq(d.name(), "square")
@@ -100,7 +100,7 @@ fn test_dyn_custom_draft_square() {
 
 #Test
 fn test_dyn_custom_draft_rect() {
-  val b Box<Rect> = Rect(3i64, 4i64)
+  val b Rc<Rect> = Rect(3i64, 4i64)
   val d Dyn<Shape> = Dyn:<Shape>(b)
   assert_eq(d.area(), 12i64)
   assert_eq(d.name(), "rect")
@@ -114,13 +114,13 @@ fn shape_area_via_dyn(d Dyn<Shape>) i64 {
 
 #Test
 fn test_dyn_pass_to_fn_square() {
-  val b Box<Square> = Square(6i64)
+  val b Rc<Square> = Square(6i64)
   assert_eq(shape_area_via_dyn(Dyn:<Shape>(b)), 36i64)
 }
 
 #Test
 fn test_dyn_pass_to_fn_rect() {
-  val b Box<Rect> = Rect(7i64, 2i64)
+  val b Rc<Rect> = Rect(7i64, 2i64)
   assert_eq(shape_area_via_dyn(Dyn:<Shape>(b)), 14i64)
 }
 
@@ -149,34 +149,34 @@ Labeled : Shape {
 
 #Test
 fn test_dyn_dtor_chain_string_field() {
-  val b Box<Labeled> = Labeled("triangle", 9i64)
+  val b Rc<Labeled> = Labeled("triangle", 9i64)
   val d Dyn<Shape> = Dyn:<Shape>(b)
   assert_eq(d.area(), 9i64)
   assert_eq(d.name(), "triangle")
   ; d 离开 scope 时 _dyn_release → vtable[0] = Labeled.~ → String 字段 release
 }
 
-; ---------- Box<primitive> 走 ToString：Box<i32>/Box<i64>/Box<bool> ----------
-; 回归 BUGS.md「Box<primitive>.method() 调用走错路径」修复后场景：
+; ---------- Rc<primitive> 走 ToString：Rc<i32>/Rc<i64>/Rc<bool> ----------
+; 回归 BUGS.md「Rc<primitive>.method() 调用走错路径」修复后场景：
 ; SDK base.yux 已为 i32/i64/bool 提供 ToString impl，vtable 走内置类型 by-value receiver。
 
 #Test
 fn test_dyn_to_string_box_i32() {
-  val b Box<i32> = 42i32
+  val b Rc<i32> = 42i32
   val d Dyn<ToString> = Dyn:<ToString>(b)
   assert_eq(d.to_string(), "42")
 }
 
 #Test
 fn test_dyn_to_string_box_i64() {
-  val b Box<i64> = 123i64
+  val b Rc<i64> = 123i64
   val d Dyn<ToString> = Dyn:<ToString>(b)
   assert_eq(d.to_string(), "123")
 }
 
 #Test
 fn test_dyn_to_string_box_bool() {
-  val b Box<bool> = true
+  val b Rc<bool> = true
   val d Dyn<ToString> = Dyn:<ToString>(b)
   assert_eq(d.to_string(), "true")
 }
@@ -186,9 +186,9 @@ fn test_dyn_to_string_box_bool() {
 #Test
 fn test_dyn_array_iterate() {
   var arr Array<Dyn<Shape>> = []
-  val b1 Box<Square> = Square(3i64)
-  val b2 Box<Rect> = Rect(4i64, 5i64)
-  val b3 Box<Square> = Square(6i64)
+  val b1 Rc<Square> = Square(3i64)
+  val b2 Rc<Rect> = Rect(4i64, 5i64)
+  val b3 Rc<Square> = Square(6i64)
   arr.push(Dyn:<Shape>(b1))
   arr.push(Dyn:<Shape>(b2))
   arr.push(Dyn:<Shape>(b3))
@@ -243,7 +243,7 @@ DynHolder {
 
 #Test
 fn test_dyn_field_owned() {
-  val bg Box<G> = G(42i64, "ok")
+  val bg Rc<G> = G(42i64, "ok")
   val h DynHolder = DynHolder(7i64, Dyn:<Greet>(bg), 9i64)
 
   assert_eq(h.before, 7i64)
@@ -268,7 +268,7 @@ DynCaller {
   }
 
   fn run() i64 {
-    val bg Box<G> = G(40i64, "test")
+    val bg Rc<G> = G(40i64, "test")
     val d Dyn<Greet> = Dyn:<Greet>(bg)
     d.hi() + $.base
   }
