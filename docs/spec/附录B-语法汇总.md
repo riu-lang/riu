@@ -114,8 +114,9 @@ fnHeader       ::= buildAnno*
 
 fnParams       ::= fnParam (',' LineEnd* fnParam)* ','? LineEnd*
 fnParam        ::= fnParamStd | fnParamGroup
-fnParamStd     ::= ID typeWithRef
-fnParamGroup   ::= (ID ',')* ID typeWithRef
+fnParamStd     ::= paramAnno* ID typeWithRef
+fnParamGroup   ::= paramAnno* (ID ',')* ID typeWithRef
+paramAnno      ::= '#' ID LineEnd?
 
 fnBody         ::= fnExprkBody | fnBlockBody
 fnExprkBody    ::= LineEnd? '=' expr codeLineEnd?
@@ -137,7 +138,7 @@ structImpl     ::= buildAnno* ID ('<' type (',' type)* '>')?
                        ( fn | comment | codeLineEnd )*
                    '}'
 
-filedDecl      ::= ID type
+filedDecl      ::= buildAnno* ID type
 ```
 
 ## B.5b 枚举（v0.x）
@@ -270,6 +271,7 @@ statement ::=
     'va'[rl] ID type codeLineEnd                                # statementDeclare
   | 'va'[rl] ID typeWithRef? '=' expr codeLineEnd               # statementDeclareAssign
   | 'va'[rl] '(' ID (',' ID)+ ')' typeWithRef? '=' expr codeLineEnd # statementDeclareAssignTuple
+  | 'cval' ID typeWithRef '=' expr codeLineEnd                  # statementCvalDeclAssign
   | expr '[' expr (',' expr)* ']' '=' expr                      # statementSet
   | 'loop' statementBlock                                       # statementLoop
   | (ID | '$') ('.' ID | DOT_NUM)* opAssign expr codeLineEnd    # statementAssign
@@ -283,7 +285,7 @@ statementBlock ::= '{' codeLineEnd
                    '}'
 ```
 
-> `'va'[rl]` 是 `DeclKey` 中 `var` / `val` 两支；`globalConst` 单独使用 `'cval'`。
+> `'va'[rl]` 是 `DeclKey` 中 `var` / `val` 两支；顶层 `globalConst` 用 `'cval' ID type '=' literal`（仅 `literal` RHS），局部 `statementCvalDeclAssign` 用 `'cval' ID typeWithRef '=' expr`（任意 const-evaluable `expr`，§5.1.5）。
 
 ## B.8 词法 token（节录）
 

@@ -233,6 +233,19 @@ N | <源码行原文>
 | E3101 | `Tuple destructure expects type tuple, got '{}'` |
 | E3102 | `Tuple destructure arity mismatch: {} names vs tuple size {}` |
 
+const-mut（E3104..E3111；引入自 [draft/DRAFT-const-mut.md](draft/DRAFT-const-mut.md)，落地章节 §5.1.5 / §6.1.2a / §6.2.2a / §7.1.4 / §11.6 / §11.7 / §11.8）：
+
+| 码     | 模板 |
+|--------|------|
+| E3104 | `Local \`cval\` initializer must be a constant expression: {} (DRAFT-const-mut §3.3; allowed: numeric/bool/null/string literals, references to declared \`cval\`, and arithmetic / bitwise / comparison / logical combinations thereof)` |
+| E3105 | `Unknown parameter annotation '#{}' (only '#Frozen' is supported on parameters; DRAFT-const-mut §5.1)` |
+| E3106 | `Cannot write field '{}' of \`#Frozen\` parameter '{}' (DRAFT-const-mut §5.3)` |
+| E3107 | `Cannot pass \`#Frozen\` value '{}' to mutable parameter '{}'; use copy_of to obtain an owned copy (DRAFT-const-mut §5.4)` |
+| E3108 | `Unknown or duplicate field annotation '#{}' (only '#Val' and '#Frozen' are supported on fields, mutually exclusive; DRAFT-const-mut §6.1)` |
+| E3109 | `Cannot write field '{}' marked '#{}' outside the constructor of struct '{}' (DRAFT-const-mut §6.2)` |
+| E3110 | `\`#Const fn\` '{}' cannot {}: {} (DRAFT-const-mut §4.2)` |
+| E3111 | `\`#Const fn\` '{}' cannot call non-\`#Const\` function '{}' (DRAFT-const-mut §4.2.4)` |
+
 ### D.3.4 E4xxx — 所有权 / 借用
 
 | 码     | 模板 |

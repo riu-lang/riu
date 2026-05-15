@@ -15,6 +15,16 @@
 
 ---
 
+## 2026-05-15 —— const-mut P1：`cval` 局部 / `#Const` / `#Frozen` / `#Val`
+
+- **新增 §5.1.5**：局部 `cval` 声明（产生式 `statementCvalDeclAssign`）。初值约束限定为字面量 / 已声明 `cval` 引用 / 一元-二元-位-比较-逻辑组合；违反报 `E3104`。顶层 `globalConst` 仍保留 `literal` RHS（保守）。
+- **新增 §6.1.2a / §11.6**：`#Const` 函数注解，禁写 `$.f` / 参数字段 / 非 `cval` 全局，禁调非 `#Const` 函数；违反报 `E3110` / `E3111`。
+- **新增 §6.2.2a / §11.7**：`#Frozen` 形参注解（深不可变）。配合参数默认 `val` 形成"重赋禁 / 字段写禁 / 不可传可写受方"三段约束，违反报 `E3093` / `E3106` / `E3107`；未知参数注解报 `E3105`。脱 const 出口为 builtin `copy_of:<T>`。
+- **新增 §7.1.4 / §11.8**：字段注解 `#Val`（浅不可变）/ `#Frozen`（深不可变，传染）。构造函数 / 析构函数内放行，其它成员函数写报 `E3109`；非法 / 重复注解报 `E3108`。字段层注解凌驾外层 `var` 声明。
+- **附录 B**：`statement` 加 `statementCvalDeclAssign` 产生式；`filedDecl` 接 `(buildAnno)*`；`fnParamStd` / `fnParamGroup` 前置 `(paramAnno)*`，新增 `paramAnno ::= '#' ID LineEnd?`。
+- **附录 D**：新增错误码段 E3104–E3111。
+- **冲突 / 兼容**：纯增。已有项目代码无 `#Const` / `#Frozen` / `#Val` 注解、不写局部 `cval` 时行为不变。参数默认 `val` 早已落地（`E3093`），本条目仅文档化。Compiler 路径已接入；`yux-check`（SemaPass）镜像本轮**不**做（与 borrow / 错误模型 P 阶段一致）。
+
 ## 2026-05-14 —— 警告（warning）通道首批落地：E5013 / E5014 / E7016
 
 - **新增**：`DiagnosticEngine::emit` 非抛出发射通道（附录 D §D.5.1）。默认 Warning 的码渲染到 stderr 后**不**中断编译；`-Werror` / `--deny=<code>` 升级为 Error 时正常抛出 `YuxError`、走顶层 `renderYuxError`（无双重渲染）。
