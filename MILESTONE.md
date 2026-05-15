@@ -87,6 +87,50 @@
 
 - **性能与 layout 优化**：String 专属 FAM Block（`{strong, weak, len_cps, u32 data[]}`）；Array Block 内联小尺寸优化；内联策略与裁剪；基准测试无回归。
 
+### v0.12.0 — 变量模型整理 + 类型命名 + Sema 拆分前奏 ✅ 已完成（2026-05-15，事后补写）
+
+> 注：本条目为**事后补写**——v0.12 的多个工作项（const-mut / Rc 改名 / let-unify / Sema 拆分 Phase 3.x / yux-check 阶段 0）是逐步推进的，未在开工前先定版本目标。后续版本应回归"先定目标再开工"的流程。
+
+**主题**：把变量可变性模型从隐式约定（旧 `var/val/cval`）整理成显式注解驱动的统一形态；同步把 `Box<T>` 改名为更直观的 `Rc<T>` 并预留 `Heap` / `Arc` 命名；并行推进 Sema/Codegen 两段分离的中段（Phase 3.3-3.5）与 `yux-check` 最小可用 exe。
+
+**范围（达成情况）**：
+
+- ✅ **const-mut P1**（`docs/dev/const-mut-impl-log.md`）：
+  - 局部 `cval x T = expr` 编译期常量（E3104 初值表达式形态约束）
+  - 参数 `#Frozen` 注解（E3105/E3106/E3107 深不可变 + 借用约束）
+  - 字段 `#Val` / `#Frozen` 注解（E3108/E3109 字段层不可变）
+  - `#Const fn` 注解（E3110/E3111 函数体内禁副作用 + 调用方约束）
+  - spec §4.2 / §11.5-§11.8 + 用户教程同步
+- ✅ **`Box<T>` → `Rc<T>` 改名**（`docs/dev/rc-rename-impl-log.md`）：纯改名（语义不变），同时占下 `Heap<T>` / `Arc<T>` 名字为未来堆模型 / 多线程预留；全仓 SDK + tests + docs 同步迁移。
+- ✅ **let-unify P1-P3**（`docs/dev/let-unify-impl-log.md`）：
+  - `var` / `val` / `cval` 三关键字合并为 `let` + `#Mut` / `#Cval` / `#Frozen` 注解（字段段不动）
+  - 全局 `let` 强制 `#Cval`；局部 `#Mut let x T` 允许延后赋值（option A）
+  - g4 `Cval` / `DeclKey` token 删除；ast 节点 `enum class DeclareType` 改 `bool isMut + bool isConst`
+  - spec §5.1 / §11.9 / §11.10 / 附录 A + 用户教程 + LSP + VSCode tmLanguage + IDEA 插件全链路同步
+  - 新错号 E3112-E3116（注解形态错）
+- ✅ **Sema/Codegen 拆分 Phase 3.3-3.5**（持续推进，未完）：
+  - SemaPass 接管 enum / match arm 静态校验（E2019/E2020/E2021/E2023-E2027/E2032）
+  - SemaPass 接管 ArrayInit explicit vs value（E3009）、私有字段可见性（E3042）、ExprGetRef / ExprUnary（E3070/E3071）、int 字面量解析（E3103）、`#CompilerInner` / Array intrinsic、E7002 / E7011
+  - `compileMemberAssignStatement` E3042 路径切走 sema 验证
+- ✅ **`yux-check` 最小可用 exe（阶段 0）**：0 LLVM 依赖的诊断快速通道；CLAUDE.md 新增 Sema/Codegen 协议指南。
+- ✅ **warning 通道首批**：E5013 / E5014 / E7016 走 warning 而非 error。
+- ✅ **工具链 / 小修**：
+  - tuple destructure 别名右值在 ast_builder 透明展开 alias
+  - 类型别名在 fn 签名 / 返回位置透明（spec §3.9.1.2 / §3.9.3.1）
+  - 0 参块 lambda tail-expr 返回 + `expectedFnType` 反推
+  - `yux test` / `--jit-run` 错误路径 SIGSEGV 修复
+  - `yux test` suite 末尾汇报失败名单
+  - `yux-lsp` after_build 自动复制为 `yux-lsp-claude`
+
+**不在范围**：
+
+- 字段段 let-unify（保留 `var/val/cval f T` + `#Val`/`#Frozen` 字段注解，工作量大，留独立草案）
+- `#Const fn` 调用方深度约束（仅声明位禁副作用，传染未做）
+- Sema/Codegen 拆分尾段：泛型 fn / impl 体、lambda 体、statement 层、target-type 上下文驱动的类型检查、`compiler_types.cpp` alias 环检测；这些路径出错时仍由 codegen 兜底
+- `yux-check` 完整覆盖（与 `yux build` 等价）——仍是子集
+
+**退出标准**：✅ `xmake test` 167/167、`sdk/yux` `yux test` 492/492 全绿；DRAFT-const-mut.md / DRAFT-let-unify.md / DRAFT-rc-rename.md 三个草案均标"已落地"并归档实施日志；外围插件（yux-vscode / yux-idea / LSP）同步完毕。
+
 ### v0.11.0 — `Dyn<D>` / `Dyn<D&>` 运行时多态 ✅ 已完成（2026-05-11）
 
 **主题**：把 v0.5 之后保留为"不在范围"的 `dyn Draft` 落地为 `Dyn<D>` / `Dyn<D&>` fat pointer 形态，与现有 `<T : D>` 单态化分发并存、互不替代。
