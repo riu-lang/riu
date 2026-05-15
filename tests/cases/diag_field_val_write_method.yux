@@ -1,0 +1,24 @@
+; P1-4: #Val 字段构造期外禁写 (DRAFT-const-mut §6.2)
+
+struct Outer {
+    #Val
+    tag i32
+    extra i32
+}
+
+Outer {
+    fn Outer(t i32) {
+        $.tag = t
+        $.extra = 0
+    }
+
+    fn rename() {
+        $.tag = 99
+    }
+}
+
+fn main() {
+    var o = Outer(7)
+    o.rename()
+    ret;
+}

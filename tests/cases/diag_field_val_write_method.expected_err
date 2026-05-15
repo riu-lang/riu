@@ -1,0 +1,1 @@
+diag_field_val_write_method.yux:16:9 [E3109] error: Cannot write field 'tag' marked '#Val' outside the constructor of struct 'Outer' (DRAFT-const-mut §6.2)

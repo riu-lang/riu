@@ -1,0 +1,24 @@
+; P1-4: #Frozen 字段构造期外禁写 (DRAFT-const-mut §6.2)
+
+struct Outer {
+    #Frozen
+    name String
+    extra i32
+}
+
+Outer {
+    fn Outer(n String, e i32) {
+        $.name = n
+        $.extra = e
+    }
+
+    fn rename(n String) {
+        $.name = n
+    }
+}
+
+fn main() {
+    var o = Outer("hi", 1)
+    o.rename("ho")
+    ret;
+}

@@ -403,7 +403,10 @@ structImpl:
     BlockEnd
     ;
 
-filedDecl: name=ID type LineEnd;
+filedDecl:
+    (buildAnnos+=buildAnno)*
+    name=ID type LineEnd
+    ;
 
 ///////////
 // 表达式

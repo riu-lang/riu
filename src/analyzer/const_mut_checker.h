@@ -22,10 +22,18 @@
 //     - 任何"可写槽位"承接 `#Frozen` 表达式（局部 var/val 声明 / 已声明可写局部重赋）
 //       → E3107；唯一脱 const 出口为 builtin `copy_of:<T>(...)`，§5.3/§5.4。
 //
-// 暂未覆盖（按 CURRENT.md 阶段表，留 P1-3-followup / P1-4 / P1-5）：
+//   §6.2 / §6.3 字段层 #Val / #Frozen 写白名单 ——
+//     - 字段 #Val 浅、#Frozen 深；构造函数 (`fn StructName(...)`) 内可写，其他成员函数 / 自由函数禁写。
+//     - 析构函数 (`fn ~()`) 不受 const-mut 约束（[#1.L]）。
+//     - 写 `obj.f = ...`：subs.size()==1 时 #Val/#Frozen 均拒；subs.size()>1 时仅 #Frozen 拒（深传染）。
+//     - 跨模块查 struct 走 FileNode::getStructOwner。
+//
+// 暂未覆盖（按 CURRENT.md 阶段表，留 P1-3-followup / P1-4-followup / P1-5）：
 //   §4 #Const fn 体内写操作约束；
 //   §5.2.4 / §5.4 调用点：把 #Frozen 实参传给非 #Frozen 形参的拒收（要 callee 参数表）；
-//   §6 字段 #Val / #Frozen。
+//   §6.4 含 #Frozen 字段类型的传递约束（callsite 检查）；
+//   §6.2 数组写 `obj[i] = ...` 形态（StatementSetNode 含字段链）；
+//   字段深链 `$.f.g = ...` 中第二层及以后字段的 #Val/#Frozen 解析（需逐级类型推断）。
 //
 // 在 compileFn / compileMethod 入口处调用一次，位置与 checkBorrows / checkFlowTerminate 同档。
 void checkConstMut(p<FnNode> fn);

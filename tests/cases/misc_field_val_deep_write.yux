@@ -1,0 +1,40 @@
+; P1-4: #Val 字段深写允许 (浅不可变 — 仅禁字段本身重赋, 子字段可写)
+; 与 diag_field_frozen_deep_write 形成对照: 同样形态 #Frozen 会拒收
+
+struct Config {
+    x i32
+}
+
+Config {
+    fn Config(x i32) {
+        $.x = x
+    }
+}
+
+struct Outer {
+    #Val
+    cfg Config
+}
+
+Outer {
+    fn Outer(c Config) {
+        $.cfg = c
+    }
+
+    fn bump() {
+        $.cfg.x = $.cfg.x + 1
+    }
+
+    fn show() {
+        println($.cfg.x.to_string())
+    }
+}
+
+fn main() {
+    var c = Config(10)
+    var o = Outer(c)
+    o.show()
+    o.bump()
+    o.show()
+    ret;
+}

@@ -4,8 +4,10 @@
 #include "const_mut_checker.h"
 
 #include "ast/node/expr_node.h"
+#include "ast/node/file_node.h"
 #include "ast/node/literal_node.h"
 #include "ast/node/statement_node.h"
+#include "ast/node/struct_node.h"
 #include "error_code.h"
 
 namespace {
@@ -152,15 +154,98 @@ SymbolInfo* lookupLhsSym(p<StatementAssignNode> a, p<ScopeNode> scope) {
     return sc ? sc->lookupSymbol(a->obj().getText()) : nullptr;
 }
 
+// 解析 fn 所在的结构体上下文（用于 §6.2 字段写白名单）。
+// - file:           enclosing FileNode，用于跨模块 getStructOwner 解析字段所属。
+// - implStructName: 若 fn 是某 struct impl 的方法，记录 struct 名；否则空。
+// - isConstructor:  fn 名 == structName（spec §7：构造函数即同名方法）。
+// - isDestructor:   fn 为该 struct impl 的 _destructor（fn ~()）。
+struct FnContext {
+    FileNode*       file = nullptr;
+    StructImplNode* impl = nullptr;
+    string          implStructName;
+    bool            isConstructor = false;
+    bool            isDestructor  = false;
+};
+
+FnContext resolveFnContext(p<FnNode> fn) {
+    FnContext c;
+    p<Node> cur = fn->parent();
+    while (cur) {
+        if (auto* si = dynamic_cast<StructImplNode*>(cur)) {
+            if (!c.impl) c.impl = si;
+        } else if (auto* fl = dynamic_cast<FileNode*>(cur)) {
+            c.file = fl;
+            break;
+        }
+        cur = cur->parent();
+    }
+    if (c.impl) {
+        c.implStructName = c.impl->structName();
+        if (c.impl->hasDestructor() && c.impl->destructor() == fn) {
+            c.isDestructor = true;
+        } else if (fn->header()->name().getText() == c.implStructName) {
+            c.isConstructor = true;
+        }
+    }
+    return c;
+}
+
+// 在 file 与其 wildcardImports 范围内查 typeName 对应的 StructDeclNode。
+StructDeclNode* findStructDecl(FileNode* file, const string& typeName) {
+    if (!file || typeName.empty()) return nullptr;
+    if (auto* owner = file->getStructOwner(typeName)) {
+        if (auto* sd = owner->getStructDecl(typeName)) return sd;
+    }
+    return file->getStructDecl(typeName);
+}
+
 // 遍历整棵 fn body，命中 cval 局部声明就走 §3.3 校验；
-// §5.2 由 writeable=false 默认 E3093 兜底；§5.3 / §5.4 由本 walker 显式抛错。
+// §5.2 由 writeable=false 默认 E3093 兜底；§5.3 / §5.4 由本 walker 显式抛错；
+// §6.2 字段写白名单（非构造函数禁写 #Val/#Frozen 字段）由本 walker 抛 E3109。
 class ConstMutWalker {
 public:
     void run(p<FnNode> fn) {
+        _ctx = resolveFnContext(fn);
         for (auto& s : fn->body()) visitStmt(s);
     }
 
 private:
+    FnContext _ctx;
+
+    // 给 `obj.subs[0] = ...` 形态做 §6.2 + §6.3 字段写校验。
+    // 规则：
+    //   - subs.size() == 1：写的就是字段本身，#Val 或 #Frozen 一律拒（构造期外）。
+    //   - subs.size() >  1：深写，#Frozen 拒（深传染），#Val 放行（浅）。
+    // obj 的类型从 scope 取，跨模块走 getStructOwner。
+    void checkFieldWrite(p<StatementAssignNode> as, p<ScopeNode> scope) {
+        if (_ctx.isDestructor) return;            // 析构不受 const-mut 约束（§6.2 / [#1.L]）
+        if (as->subs().empty()) return;
+        auto sc = scope ? scope : as->findNearestScope();
+        if (!sc) return;
+        SymbolInfo* sym = sc->lookupSymbol(as->obj().getText());
+        if (!sym) return;
+        // `$` 类型为 Ref<StructName>，需要剥一层；其余 obj 直接读 type.name。
+        string typeName = sym->type.isRef() && sym->type.refElementType()
+                            ? sym->type.refElementType()->name
+                            : sym->type.name;
+        StructDeclNode* sd = findStructDecl(_ctx.file, typeName);
+        if (!sd) return;
+        const string& fieldName = as->subs().front().getText();
+        const StructFieldNode* fd = sd->field(fieldName);
+        if (!fd) return;
+        bool deep = as->subs().size() > 1;
+        bool reject = deep ? fd->isFrozen() : (fd->isVal() || fd->isFrozen());
+        if (!reject) return;
+        // 仅当不是该 struct 的构造函数时拒收。
+        // 跨 struct 写入：即使本 fn 是 struct A 的构造函数，也无权写 struct B 的 #Val/#Frozen 字段，
+        // 故只在 implStructName == sd 名 且 isConstructor 时放行。
+        bool inOwnCtor = _ctx.isConstructor && _ctx.implStructName == sd->name().getText();
+        if (inOwnCtor) return;
+        const char* tag = fd->isFrozen() ? "Frozen" : "Val";
+        throw YuxError(as->getLineNumber(), as->getColumn(),
+                       ErrorCode::E3109, fieldName, tag, sd->name().getText());
+    }
+
     void visitBlock(p<StatementBlockNode> blk) {
         if (!blk) return;
         for (auto& s : blk->statements()) visitStmt(s);
@@ -211,6 +296,8 @@ private:
                     throw YuxError(line, col, ErrorCode::E3106,
                                    as->subs().front().getText(), as->obj().getText());
                 }
+                // §6.2 / §6.3：字段层 #Val/#Frozen 在构造期外禁写。
+                checkFieldWrite(as, scope);
             } else {
                 // §5.4：可写槽位重赋承接 #Frozen 表达式 → 拒收；
                 // §5.2 frozen 自身被重赋 → 走 writeable=false / E3093（compiler 端）。

@@ -13,6 +13,10 @@ class StructFieldNode : public Node {
     Token _name;
     p<TypeNode> _type;
     bool _isPrivate;
+    // P1-4 DRAFT-const-mut §6.1：字段三档 (default var / #Val 浅 / #Frozen 深)。
+    // 互斥；同时出现 → ast_builder 抛 E3105。
+    bool _isVal = false;
+    bool _isFrozen = false;
 
 public:
     StructFieldNode(const p<Node>& parent, Token name, p<TypeNode> type) :
@@ -24,6 +28,11 @@ public:
     [[nodiscard]] p<TypeNode> type() const { return _type; }
     [[nodiscard]] TypeInfo getType() const { return _type->getType(); }
     [[nodiscard]] bool isPrivate() const { return _isPrivate; }
+
+    void setVal(bool v) { _isVal = v; }
+    void setFrozen(bool v) { _isFrozen = v; }
+    [[nodiscard]] bool isVal() const { return _isVal; }
+    [[nodiscard]] bool isFrozen() const { return _isFrozen; }
 };
 
 class StructDeclNode : public ScopeNode, public Named, public Annotated {

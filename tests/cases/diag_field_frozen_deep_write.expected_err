@@ -1,0 +1,1 @@
+diag_field_frozen_deep_write.yux:24:9 [E3109] error: Cannot write field 'cfg' marked '#Frozen' outside the constructor of struct 'Outer' (DRAFT-const-mut §6.2)

@@ -1,0 +1,33 @@
+; P1-4: #Frozen 字段深写拒收 (DRAFT-const-mut §6.3 深传染)
+
+struct Config {
+    x i32
+}
+
+Config {
+    fn Config(x i32) {
+        $.x = x
+    }
+}
+
+struct Outer {
+    #Frozen
+    cfg Config
+}
+
+Outer {
+    fn Outer(c Config) {
+        $.cfg = c
+    }
+
+    fn poke() {
+        $.cfg.x = 99
+    }
+}
+
+fn main() {
+    var c = Config(1)
+    var o = Outer(c)
+    o.poke()
+    ret;
+}

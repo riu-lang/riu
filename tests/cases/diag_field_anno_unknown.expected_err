@@ -1,0 +1,1 @@
+diag_field_anno_unknown.yux:4:5 [E3108] error: Unknown or duplicate field annotation '#Cval' (only '#Val' and '#Frozen' are supported on fields, mutually exclusive; DRAFT-const-mut §6.1)

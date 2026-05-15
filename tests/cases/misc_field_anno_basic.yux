@@ -1,0 +1,37 @@
+; P1-4: 字段 #Val / #Frozen 注解 (DRAFT-const-mut §6)
+; - 构造函数内可写 #Val / #Frozen 字段
+; - 读取与默认 var 字段混排
+
+struct Outer {
+    #Val
+    tag i32
+    #Frozen
+    name String
+    extra i32
+}
+
+Outer {
+    fn Outer(t i32, n String, e i32) {
+        $.tag = t
+        $.name = n
+        $.extra = e
+    }
+
+    fn report() {
+        println($.name)
+        println($.tag.to_string())
+        println($.extra.to_string())
+    }
+
+    fn bump() {
+        $.extra = $.extra + 1
+    }
+}
+
+fn main() {
+    var o = Outer(7, "hi", 100)
+    o.report()
+    o.bump()
+    o.report()
+    ret;
+}

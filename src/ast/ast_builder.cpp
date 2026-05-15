@@ -1344,11 +1344,44 @@ std::any ASTBuilder::visitFnClean(yux::yuxParser::FnCleanContext* ctx) {
     return fn;
 }
 
+// P1-4 const-mut §6.1：字段注解只允许 #Val 与 #Frozen，互斥。
+// 其他名字 / 双修饰 → 抛 E3105。返回 (isVal, isFrozen)。
+static std::pair<bool, bool> readFieldAnnos(
+    const std::vector<yux::yuxParser::BuildAnnoContext*>& annos) {
+    bool isVal = false, isFrozen = false;
+    for (auto* a : annos) {
+        const string name = a->name->getText();
+        auto* tk = a->SymbolHash()->getSymbol();
+        int line = (int)tk->getLine();
+        int col = (int)tk->getCharPositionInLine() + 1;
+        if (a->arg != nullptr) {
+            // 字段注解 P1 不接受带实参形态（#Val(x) / #Frozen(x) 无意义）。
+            throw YuxError(line, col, ErrorCode::E3108, name);
+        }
+        if (name == "Val") {
+            if (isFrozen) throw YuxError(line, col, ErrorCode::E3108, name);
+            isVal = true;
+        } else if (name == "Frozen") {
+            if (isVal) throw YuxError(line, col, ErrorCode::E3108, name);
+            isFrozen = true;
+        } else {
+            throw YuxError(line, col, ErrorCode::E3108, name);
+        }
+    }
+    return {isVal, isFrozen};
+}
+
 std::any ASTBuilder::visitFiledDecl(yux::yuxParser::FiledDeclContext* ctx) {
     auto parent = currentScope();
     auto type = any_cast_p<TypeNode>(visit(ctx->type()));
-    DEBUG_LOG_VAL("    Field", ctx->name->getText() << " : " << type->getType().name);
-    return p<StructFieldNode>(createWithLine<StructFieldNode>(ctx, parent, ctx->name, type));
+    auto [isVal, isFrozen] = readFieldAnnos(ctx->buildAnnos);
+    DEBUG_LOG_VAL("    Field", ctx->name->getText() << " : " << type->getType().name
+                                                    << (isVal ? " #Val" : "")
+                                                    << (isFrozen ? " #Frozen" : ""));
+    auto node = createWithLine<StructFieldNode>(ctx, parent, ctx->name, type);
+    node->setVal(isVal);
+    node->setFrozen(isFrozen);
+    return p<StructFieldNode>(node);
 }
 
 std::any ASTBuilder::visitStatementDeclare(yux::yuxParser::StatementDeclareContext* ctx) {
