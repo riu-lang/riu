@@ -87,6 +87,52 @@
 
 - **性能与 layout 优化**：String 专属 FAM Block（`{strong, weak, len_cps, u32 data[]}`）；Array Block 内联小尺寸优化；内联策略与裁剪；基准测试无回归。
 
+### v0.14.0 — 数值语义收口 + 并发 spec 留口 + 文档完善（草稿）
+
+**主题**：把"数字字面量推断 / 整数溢出语义"两件 v1.0 前必锁的事一次定型；同时把"多线程 / async"的 spec 留口写死，防止 v1.x 落地时被现有条款绑死。
+
+**范围（草稿）**：
+
+- 整数溢出语义条款（spec 层为主，必要 codegen 配合）
+- 字面量类型推断规则：**所有逻辑上能推断的无后缀整数**走推断；浮点字面量保持"必须带 `.`、不接受 `1e2` 形态、不自动推断类型"的严格立场
+- 多线程 / async spec 留口：在 §3 / §8 / §9 标注"将重新设计"的具体条款；`Arc<T>` 占名条款细化
+- 数字 / 字面量章节文档完善（推断使用、转换、教程示例）
+- 其他功能预留位（按需补）
+
+**不在范围**：闭包捕获（推后）、`match` 升级（绑 error v2）、RC 原子性（v1.0 ABI 冻结）、调试信息 / PDB（工具链 v1）。
+
+**退出标准**：TODO（功能细节明确后填）。
+
+### v0.13.0 — spec 核心收口 + Heap 完整落地 + 工具链同步（草稿）
+
+**主题**：把仍在 draft/ 的草案推到 spec 正文里归档完毕；同时把"栈 or 堆"语义矩阵补完——`Heap<T>` 非空 / 可空形态、`copy_of` 深拷贝唯一入口、NRVO / lambda 返回路径全套落地。
+
+**范围（草稿）**：
+
+- **Spec 核心收口**：
+  - `docs/spec/draft/` 中已落地的草案（const-mut / dyn-draft / lambda / let-unify / 错误 / draft / 所有权 / 枚举）逐个核对正文章节同步完整，标"已落地"或迁移归档
+  - 仍在草案的 spec-unify 等推到正文或明确推后
+- **`Heap<T>` 完整落地**（`DRAFT-heap-types.md` 子特性 B-F）：
+  - 子特性 B：`Heap<T>` 非空形态（栈作用域绑定、零 RC、不可传不可 move）
+  - 子特性 C：`Heap<T>?` + B 档 move（接管者作用域尾释放、隐式 null 写回）
+  - 子特性 D：A 档 NRVO（fn 返回 `Heap` 触发；不触发条件明确）
+  - 子特性 E：Lambda 返回 `Heap` / 捕获 `Heap<T>?` move-out / 借用捕获 + return-move
+  - 子特性 F：`copy_of:<T>(x T&) T` 深拷贝唯一入口；与 Clone draft 关系定型
+  - 子特性 G：`Arc<T>` 占名条款细化（**仅占名**，真正实现留 v1.x）
+- **LSP / 插件简单更新**：
+  - LSP semantic_tokens / completion：`Heap` / `copy_of` 加入类型 / 内置函数集
+  - yux-vscode tmLanguage：`Heap` 进类型关键字集（`Arc` 已在）
+  - yux-idea：同上
+- **草案归档**：`DRAFT-heap-types.md` 头部标"已落地（B-F）"+ 实施日志 `docs/dev/heap-types-impl-log.md`
+
+**不在范围**：
+
+- `Arc<T>` 真正实现（多线程版 RC，留 v1.x）
+- 数值语义 / 字面量推断 / async 留口（推 v0.14）
+- 闭包捕获（推 v0.15+）
+
+**退出标准**：TODO（功能细节明确后填）。
+
 ### v0.12.0 — 变量模型整理 + 类型命名 + Sema 拆分前奏 ✅ 已完成（2026-05-15，事后补写）
 
 > 注：本条目为**事后补写**——v0.12 的多个工作项（const-mut / Rc 改名 / let-unify / Sema 拆分 Phase 3.x / yux-check 阶段 0）是逐步推进的，未在开工前先定版本目标。后续版本应回归"先定目标再开工"的流程。
