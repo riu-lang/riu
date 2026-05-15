@@ -1,0 +1,9 @@
+fn f(a i32) i32 {
+    a = 10
+    ret a
+}
+
+fn main() {
+    val r = f(1)
+    ret;
+}

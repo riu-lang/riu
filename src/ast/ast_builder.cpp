@@ -1379,6 +1379,26 @@ std::any ASTBuilder::visitStatementDeclareAssign(yux::yuxParser::StatementDeclar
     return p<StatementNode>(createWithLine<StatementDeclareAssignNode>(ctx, scope, declType, name, type, expr));
 }
 
+// 局部 cval 声明：cval name typeWithRef = expr
+// 类型必填（与 globalConst 协议对齐）；§3.3 初值约束由 const-mut checker 后置拒，不在 ast_builder 层做。
+std::any ASTBuilder::visitStatementCvalDeclAssign(yux::yuxParser::StatementCvalDeclAssignContext* ctx) {
+    auto scope = currentScope();
+    auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
+
+    auto name = ctx->name;
+    p<TypeNode> type = buildTypeWithRef(ctx->typeWithRef(), scope);
+    TypeInfo varType = type->getType();
+
+    DEBUG_LOG_VAL("  Statement: Declare", name->getText() << " : " << varType.name << " (cval)");
+
+    if (scope) {
+        scope->registerSymbol(
+            name->getText(), {SymbolKind::Variable, name->getText(), varType, false});
+    }
+
+    return p<StatementNode>(createWithLine<StatementDeclareAssignNode>(ctx, scope, DeclareType::CVal, name, type, expr));
+}
+
 // 元组解构声明：var (a, b, ...) = expr 或 var (a, b) (T1, T2) = expr
 // Phase 5：仅支持一层平铺 ID，不支持嵌套和 _
 std::any ASTBuilder::visitStatementDeclareAssignTuple(yux::yuxParser::StatementDeclareAssignTupleContext* ctx) {

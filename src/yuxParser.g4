@@ -617,6 +617,8 @@ statement:
     // var name = expr
     // var name type = expr
     | DeclKey name=ID typeWithRef? SymbolEq expr LineEnd  #statementDeclareAssign
+    // cval name type = expr （局部编译期常量；类型必填）
+    | Cval name=ID typeWithRef SymbolEq expr LineEnd      #statementCvalDeclAssign
     // var (a, b) = e
     | DeclKey
       ParStart

@@ -1,0 +1,11 @@
+; P1-1: cval 局部声明 (DRAFT-const-mut §3 / §3.1)
+; 类型必填 (typeWithRef); RHS 是 expr。§3.3 初值约束待 P1-2 checker 落地后由 checker 拒。
+; 当前阶段: 与 val 等价 (codegen 不区分 declType), 重赋会被 E3093 拒 (见 diag_const_mut_cval_reassign).
+
+fn main() {
+    cval k i32 = 42
+    cval m i32 = k + 1
+    println(k.to_string())
+    println(m.to_string())
+    ret;
+}
