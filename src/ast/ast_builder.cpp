@@ -170,6 +170,40 @@ static void checkNoReturnHeader(p<FnHeaderNode> header) {
     }
 }
 
+// DRAFT-let-unify §3.4：`let` 注解只允许 #Mut / #Frozen / #Cval，互斥；其他报 E3112。
+struct LetAnnoFlags {
+    bool isMut = false;
+    bool isFrozen = false;
+    bool isCval = false;
+};
+
+template<typename AnnoVec>
+static LetAnnoFlags readLetAnnos(const AnnoVec& annos) {
+    LetAnnoFlags r;
+    for (auto* a : annos) {
+        const string name = a->name->getText();
+        auto* tk = a->name;
+        int line = (int)tk->getLine();
+        int col = (int)tk->getCharPositionInLine() + 1;
+        if (name == "Mut") {
+            if (r.isFrozen) throw YuxError(line, col, ErrorCode::E3115, "Frozen", "Mut");
+            if (r.isCval)   throw YuxError(line, col, ErrorCode::E3115, "Cval", "Mut");
+            r.isMut = true;
+        } else if (name == "Frozen") {
+            if (r.isMut)  throw YuxError(line, col, ErrorCode::E3115, "Mut", "Frozen");
+            if (r.isCval) throw YuxError(line, col, ErrorCode::E3115, "Cval", "Frozen");
+            r.isFrozen = true;
+        } else if (name == "Cval") {
+            if (r.isMut)    throw YuxError(line, col, ErrorCode::E3115, "Mut", "Cval");
+            if (r.isFrozen) throw YuxError(line, col, ErrorCode::E3115, "Frozen", "Cval");
+            r.isCval = true;
+        } else {
+            throw YuxError(line, col, ErrorCode::E3112, name);
+        }
+    }
+    return r;
+}
+
 } // namespace
 
 ASTBuilder::ASTBuilder(Yux& yux, const string& moduleName, bool isSdk,
@@ -267,6 +301,40 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
     }
 
     return nullptr;
+}
+
+// DRAFT-let-unify §3：全局 `let NAME T = literal`。当前仅支持 #Cval 档（与 globalConst 同义）；
+// 其他档位（默认 / #Mut / #Frozen）在全局位由 ast_builder 拒，报 E3116。
+std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
+    DEBUG_LOG("Visit: LetGlobal");
+    auto file = any_cast_p<FileNode>(stack.back());
+    auto flags = readLetAnnos(ctx->letAnnos);
+
+    auto name = ctx->name;
+    if (!flags.isCval) {
+        throw YuxError(static_cast<int>(name->getLine()),
+                       static_cast<int>(name->getCharPositionInLine()) + 1,
+                       ErrorCode::E3116, name->getText());
+    }
+    if (!ctx->type()) {
+        throw YuxError(static_cast<int>(name->getLine()),
+                       static_cast<int>(name->getCharPositionInLine()) + 1,
+                       ErrorCode::E3113, name->getText());
+    }
+    if (!ctx->literal()) {
+        throw YuxError(static_cast<int>(name->getLine()),
+                       static_cast<int>(name->getCharPositionInLine()) + 1,
+                       ErrorCode::E3114, name->getText());
+    }
+
+    auto typeNode = any_cast_p<TypeNode>(visit(ctx->type()));
+    auto literal = any_cast_p<LiteralNode>(visit(ctx->literal()));
+
+    auto globalConst = createWithLine<GlobalConstNode>(ctx, file, name, typeNode, literal);
+    file->addGlobalConst(globalConst);
+
+    DEBUG_LOG_VAL("  LetGlobal #Cval", name->getText() << " : " << typeNode->getType().name);
+    return p<GlobalConstNode>(globalConst);
 }
 
 std::any ASTBuilder::visitGlobalConst(yux::yuxParser::GlobalConstContext* ctx) {
@@ -1471,6 +1539,58 @@ std::any ASTBuilder::visitStatementCvalDeclAssign(yux::yuxParser::StatementCvalD
     }
 
     return p<StatementNode>(createWithLine<StatementDeclareAssignNode>(ctx, scope, DeclareType::CVal, name, type, expr));
+}
+
+// DRAFT-let-unify §3：局部 `let` 声明。
+// 注解映射：默认 → Val（不可重赋）；#Mut → Var；#Cval → CVal；#Frozen → Val + frozen 位（语义同 const-mut §5 局部）。
+// 当前 P1.a 阶段：直接映射到现有 DeclareType，frozen 在符号上记位（后续 const-mut checker 接管深不可变传染）。
+// type / init 缺失：缺 type 且缺 init → E3113；有 type 但缺 init → E3114（不引入 #Uninit）。
+std::any ASTBuilder::visitStatementLet(yux::yuxParser::StatementLetContext* ctx) {
+    auto scope = currentScope();
+    auto name = ctx->name;
+    auto flags = readLetAnnos(ctx->letAnnos);
+
+    bool hasType = ctx->typeWithRef() != nullptr;
+    bool hasInit = ctx->expr() != nullptr;
+
+    if (!hasType && !hasInit) {
+        throw YuxError(static_cast<int>(name->getLine()),
+                       static_cast<int>(name->getCharPositionInLine()) + 1,
+                       ErrorCode::E3113, name->getText());
+    }
+    if (hasType && !hasInit) {
+        throw YuxError(static_cast<int>(name->getLine()),
+                       static_cast<int>(name->getCharPositionInLine()) + 1,
+                       ErrorCode::E3114, name->getText());
+    }
+
+    DeclareType declType;
+    if (flags.isCval) {
+        declType = DeclareType::CVal;
+    } else if (flags.isMut) {
+        declType = DeclareType::Var;
+    } else {
+        declType = DeclareType::Val;
+    }
+
+    auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
+    p<TypeNode> type = nullptr;
+    if (hasType) {
+        type = buildTypeWithRef(ctx->typeWithRef(), scope);
+    }
+
+    TypeInfo varType = type ? type->getType() : expr->getType();
+
+    DEBUG_LOG_VAL("  Statement: Let", name->getText() << " : " << varType.name
+        << (flags.isMut ? " #Mut" : "") << (flags.isFrozen ? " #Frozen" : "") << (flags.isCval ? " #Cval" : ""));
+
+    if (scope) {
+        SymbolInfo sym(SymbolKind::Variable, name->getText(), varType, declType == DeclareType::Var);
+        if (declType == DeclareType::CVal) sym.isConst = true;
+        scope->registerSymbol(name->getText(), sym);
+    }
+
+    return p<StatementNode>(createWithLine<StatementDeclareAssignNode>(ctx, scope, declType, name, type, expr));
 }
 
 // 元组解构声明：var (a, b, ...) = expr 或 var (a, b) (T1, T2) = expr

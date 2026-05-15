@@ -39,6 +39,7 @@ Extern : 'extern';
 False : 'false';
 Fn : 'fn';
 If : 'if';
+Let : 'let';
 Loop: 'loop';
 Match : 'match';
 Null : 'null';

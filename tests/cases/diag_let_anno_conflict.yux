@@ -1,0 +1,6 @@
+; DRAFT-let-unify §3.4: #Mut 与 #Frozen 互斥 → E3115
+
+fn main() {
+  #Mut #Frozen let x i32 = 1
+  println(x.to_string())
+}

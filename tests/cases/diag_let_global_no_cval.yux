@@ -1,0 +1,7 @@
+; DRAFT-let-unify §3: 全局 let 缺 #Cval → E3116
+
+let G i32 = 1
+
+fn main() {
+  println(G.to_string())
+}

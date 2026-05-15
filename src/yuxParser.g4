@@ -15,6 +15,7 @@ program:
           fn
         | externDelc
         | globalConst
+        | letGlobal
         | aliasDecl
         | enumDecl
         | draftDecl
@@ -53,6 +54,21 @@ globalConst:
     (buildAnnos+=buildAnno)*
     Cval name=ID type SymbolEq literal
     LineEnd
+    ;
+
+// DRAFT-let-unify §3 全局 let 形态。注解严格 inline（无 LineEnd），由 ast_builder 解析合法档位。
+// 当前仅接受 `#Cval let NAME T = literal`（与 globalConst 同义但形态统一）；其他档位由 ast_builder 拒。
+// type / init 缺失由 ast_builder 报 E3113 / E3114，便于给出友好诊断。
+letGlobal:
+    (letAnnos+=letAnno)*
+    Let name=ID type? (SymbolEq literal)? LineEnd
+    ;
+
+// let 声明专用注解（无单参槽）：LineEnd 可选——
+// 约定 inline 用于局部 / 参数位、顶行换行用于全局 / 字段 / fn 位，
+// 但语法层接受两种形态；具体场景的形态合法性由格式化器/lint 后置（非 P1.a 范围）。
+letAnno:
+    SymbolHash name=ID LineEnd?
     ;
 
 // Arr<T> = type
@@ -636,6 +652,11 @@ statement:
     | DeclKey name=ID typeWithRef? SymbolEq expr LineEnd  #statementDeclareAssign
     // cval name type = expr （局部编译期常量；类型必填）
     | Cval name=ID typeWithRef SymbolEq expr LineEnd      #statementCvalDeclAssign
+    // DRAFT-let-unify §3：let 局部声明（注解严格 inline）
+    // 默认 let → val 语义；#Mut → var；#Cval → cval；#Frozen → val + frozen
+    // type / init 同时缺失由 ast_builder 报 E3113；type 在但 init 缺由 E3114
+    | (letAnnos+=letAnno)*
+      Let name=ID typeWithRef? (SymbolEq expr)? LineEnd   #statementLet
     // var (a, b) = e
     | DeclKey
       ParStart

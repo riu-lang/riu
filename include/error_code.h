@@ -244,6 +244,11 @@ DEF_ERR(3108, "Unknown or duplicate field annotation '#{}' (only '#Val' and '#Fr
 DEF_ERR(3109, "Cannot write field '{}' marked '#{}' outside the constructor of struct '{}' (DRAFT-const-mut §6.2)")
 DEF_ERR(3110, "`#Const fn` '{}' cannot {}: {} (DRAFT-const-mut §4.2)")
 DEF_ERR(3111, "`#Const fn` '{}' cannot call non-`#Const` function '{}' (DRAFT-const-mut §4.2.4)")
+DEF_ERR(3112, "Unknown `let` annotation '#{}' (only '#Mut', '#Frozen', '#Cval' are supported on `let`; DRAFT-let-unify §3.4)")
+DEF_ERR(3113, "`let {}` requires a type or initializer (DRAFT-let-unify §3.4)")
+DEF_ERR(3114, "`let {} <type>` requires an initializer (DRAFT-let-unify §3.4)")
+DEF_ERR(3115, "Annotations '#{}' and '#{}' are mutually exclusive on `let` (DRAFT-let-unify §3.4)")
+DEF_ERR(3116, "Global `let {}` requires `#Cval`: only compile-time constants are allowed at global scope (DRAFT-let-unify §3)")
 
 // ── E4xxx 所有权 / 借用 ───────────────────────────────────────────────
 DEF_ERR(4001, "T& borrow initializer must be &expr or an existing T& variable")
