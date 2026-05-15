@@ -4,6 +4,13 @@ All notable changes to the "yux-vscode" extension will be documented in this fil
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.8.0]
+
+- 同步 let-unify：`var` / `val` / `cval` 三关键字已并入 `let` + `#Mut` / `#Cval` / `#Frozen` 注解
+  - TextMate：`let` 加入 `keyword.declaration`；删除 `var|val|cval` 的 `storage.modifier` 规则
+  - LSP 补全：去 `var` / `val` / `cval` 关键字与 snippet；新增 `let` 关键字 + `let` / `let-mut` / `let-cval` / `let-global` 四个 snippet
+  - README 关键字 / snippet 表同步
+
 ## [0.7.0]
 
 - 同步 v0.9 语法 + 修复参数 / 返回类型颜色丢失

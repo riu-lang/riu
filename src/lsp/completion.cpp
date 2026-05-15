@@ -38,9 +38,7 @@ const std::vector<CompletionItem>& buildItems() {
         kw("true", "布尔真值");
         kw("false", "布尔假值");
         kw("null", "空值");
-        kw("var", "可变变量声明");
-        kw("val", "不可变变量声明");
-        kw("cval", "编译时常量声明");
+        kw("let", "变量声明（默认浅不可变；加 #Mut 可变）");
         kw("struct", "结构体声明");
         kw("enum", "枚举声明");
         kw("draft", "约束/接口声明");
@@ -110,15 +108,18 @@ const std::vector<CompletionItem>& buildItems() {
         sn("draft-impl", "draft 实现块模板",
            "${1:Type} : ${2:Draft} {\n\tfn ${3:method}(${4:params}) ${5:retType} {\n\t\t${6:body}\n\t}\n}",
            "创建一个 draft 实现块");
-        sn("var", "可变变量声明模板",
-           "var ${1:name} ${2:type} = ${3:value}",
-           "创建一个可变变量声明");
-        sn("val", "不可变变量声明模板",
-           "val ${1:name} ${2:type} = ${3:value}",
-           "创建一个不可变变量声明");
-        sn("cval", "编译时常量声明模板",
-           "cval ${1:name} ${2:type} = ${3:value}",
-           "创建一个编译时常量声明");
+        sn("let", "变量声明模板（默认浅不可变）",
+           "let ${1:name} ${2:type} = ${3:value}",
+           "创建一个不可变变量声明（默认 let）");
+        sn("let-mut", "可变变量声明模板",
+           "#Mut let ${1:name} ${2:type} = ${3:value}",
+           "创建一个可变变量声明（#Mut let）");
+        sn("let-cval", "编译时常量声明模板",
+           "#Cval let ${1:name} ${2:type} = ${3:value}",
+           "创建一个编译时常量声明（#Cval let）");
+        sn("let-global", "全局常量声明模板",
+           "#Cval\nlet ${1:NAME} ${2:type} = ${3:value}",
+           "创建一个全局常量（全局 let 必须 #Cval）");
         sn("ret", "返回语句模板",
            "ret ${1:value}",
            "创建一个返回语句");

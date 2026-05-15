@@ -4,7 +4,7 @@
 // LSP 文档模型
 //
 // 维护 uri -> {version, text}，按需把文本喂给 yuxLexer/yuxParser 产出
-// 诊断（语法错误）与文档符号（fn / struct / globalConst）。
+// 诊断（语法错误）与文档符号（fn / struct / letGlobal）。
 //
 // 设计取舍：
 // - P1 只跑 lexer + parser，不跑 ASTBuilder。原因：ASTBuilder 在 visitImports

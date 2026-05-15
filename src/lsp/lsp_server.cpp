@@ -380,7 +380,7 @@ static void handleCompletion(ServerState& st, const json& msg) {
         items.push_back(std::move(item));
     }
 
-    // 2. 动态项：项目内可见的 fn / struct / cval
+    // 2. 动态项：项目内可见的 fn / struct / let
     const std::string uri = textDocumentUri(params);
     if (!uri.empty()) {
         auto resolved = st.ws.resolveUri(uri);

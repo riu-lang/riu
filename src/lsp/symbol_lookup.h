@@ -3,7 +3,7 @@
 
 // 定位/查找辅助：
 // - 在文档文本里找指定 LSP Position 处的标识符 token
-// - 在 Project FileNode 里按名字查 fn / struct / globalConst → 定位 + 渲染
+// - 在 Project FileNode 里按名字查 fn / struct / letGlobal → 定位 + 渲染
 
 #pragma once
 

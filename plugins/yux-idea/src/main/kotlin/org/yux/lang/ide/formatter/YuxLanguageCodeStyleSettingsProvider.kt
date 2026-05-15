@@ -11,7 +11,7 @@ class YuxLanguageCodeStyleSettingsProvider : LanguageCodeStyleSettingsProvider()
 
     override fun getCodeSample(settingsType: SettingsType): String = """
         fn main() {
-          var n = 1
+          let n = 1
           println(n.to_string())
         }
     """.trimIndent()

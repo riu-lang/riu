@@ -6,7 +6,7 @@
 // 流程:
 //   text -> ANTLRInputStream -> yuxLexer -> CommonTokenStream -> yuxParser
 //   错误监听器收集 syntaxError(line, col, msg) -> Diagnostic
-//   解析成功后遍历 ProgramContext 的 fn / structDecl / structImpl / globalConst
+//   解析成功后遍历 ProgramContext 的 fn / structDecl / structImpl / letGlobal
 //   生成 DocumentSymbol（name + range + selectionRange）
 
 #include "document.h"

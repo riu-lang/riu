@@ -122,7 +122,7 @@
         },
         {
           "name": "keyword.declaration.yux",
-          "match": "\\bfn\\b"
+          "match": "\\b(fn|let)\\b"
         },
         {
           "name": "keyword.other.struct.yux",
@@ -144,10 +144,6 @@
           "name": "variable.language.self.yux",
           "match": "\\$"
         },
-        {
-          "name": "storage.modifier.yux",
-          "match": "\\b(var|val|cval)\\b"
-        }
       ]
     },
     "codepoints": {

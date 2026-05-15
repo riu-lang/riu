@@ -38,9 +38,9 @@ class YuxColorSettingsPage : ColorSettingsPage {
         }
 
         fn main() {
-          var n = N(1)
-          var n2 = N(2)
-          var n3 = n.plus(n2)
+          let n = N(1)
+          let n2 = N(2)
+          let n3 = n.plus(n2)
           println(n3.v.to_string())
         }
     """.trimIndent()

@@ -18,7 +18,7 @@ yux 语言的 Visual Studio Code 扩展，提供语法高亮、代码补全和�
 | `ret` | 返回语句 |
 | `if` / `elif` / `else` | 条件语句 |
 | `true` / `false` / `null` | 布尔值和空值 |
-| `var` / `val` / `cval` | 变量声明 |
+| `let` | 变量声明（默认浅不可变；`#Mut let` 可变；`#Cval let` 编译期常量） |
 | `struct` | 结构体声明 |
 | `loop` / `break` | 循环语句 |
 
@@ -55,7 +55,7 @@ yux 语言的 Visual Studio Code 扩展，提供语法高亮、代码补全和�
 | `if` / `if-else` / `if-elif-else` | 条件语句模板 |
 | `struct` | 结构体声明模板 |
 | `impl` | 结构体实现模板 |
-| `var` / `val` / `cval` | 变量声明模板 |
+| `let` / `let-mut` / `let-cval` / `let-global` | 变量声明模板（默认 / `#Mut` / `#Cval` / 全局常量） |
 | `ret` | 返回语句模板 |
 | `array` / `array-lit` | 数组模板 |
 | `loop` | 循环模板 |
