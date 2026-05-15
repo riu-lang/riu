@@ -1,0 +1,22 @@
+; P1-5 §4.2(1): #Const 方法体内写 $.f → E3110
+
+struct Cell {
+    v i32
+}
+
+Cell {
+    fn Cell(v i32) {
+        $.v = v
+    }
+    #Const
+    fn bump() {
+        $.v = $.v + 1
+        ret;
+    }
+}
+
+fn main() {
+    var c = Cell(0)
+    c.bump()
+    ret;
+}

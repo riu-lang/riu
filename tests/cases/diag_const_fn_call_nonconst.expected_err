@@ -1,0 +1,1 @@
+diag_const_fn_call_nonconst.yux:6:23 [E3111] error: `#Const fn` 'use_h' cannot call non-`#Const` function 'helper' (DRAFT-const-mut §4.2.4)

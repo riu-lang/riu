@@ -10,6 +10,8 @@
 #include "ast/node/struct_node.h"
 #include "error_code.h"
 
+#include <set>
+
 namespace {
 
 // 拿到表达式所属作用域：优先 expr 自身的 findNearestScope，失败则回退到附近 stmt。
@@ -206,11 +208,154 @@ class ConstMutWalker {
 public:
     void run(p<FnNode> fn) {
         _ctx = resolveFnContext(fn);
+        _isConstFn = fn->header()->hasAnno("Const");
+        _fnName = fn->header()->name().getText();
         for (auto& s : fn->body()) visitStmt(s);
     }
 
 private:
     FnContext _ctx;
+    bool _isConstFn = false;
+    string _fnName;
+    // §4.2：函数体内声明过的局部名集合（var/val/cval）；params / `$` / 全局不计入。
+    // 写入操作的 lhs 命中此集合视为"写本地"，放行；命中外则按 §4.2 拒收。
+    std::set<string> _localNames;
+
+    // 在 #Const fn 体内对写操作做 §4.2 (1)/(2)/(3) 校验。
+    // - subs.empty(): rebind 形态。lhs 是 param / $ 时按 yux 规则不可重赋（E3093 已兜底），
+    //   这里只拦"全局变量重赋"——§4.2.3。
+    // - subs.size()>=1: 字段写 / 数组写。lhs 是本地 → 允许；否则按 (1)/(2)/(3) 拒收。
+    void checkConstFnWrite(p<StatementAssignNode> as, p<ScopeNode> scope) {
+        if (!_isConstFn) return;
+        string name = as->obj().getText();
+        if (_localNames.contains(name)) return;
+        auto sc = scope ? scope : as->findNearestScope();
+        SymbolInfo* sym = sc ? sc->lookupSymbol(name) : nullptr;
+        const char* what = nullptr;
+        string detail;
+        if (name == "$") {
+            what = as->subs().empty() ? "rebind `$`" : "write field of `$`";
+            detail = as->subs().empty() ? "$" : ("$." + as->subs().front().getText());
+        } else if (sym && sym->kind == SymbolKind::Variable && !sym->isConst &&
+                   !sym->moduleName.empty()) {
+            // 全局变量（注册时带 moduleName）
+            what = as->subs().empty() ? "rebind global variable" : "write field of global variable";
+            detail = name + (as->subs().empty() ? "" : ("." + as->subs().front().getText()));
+        } else {
+            // 非本地、非 $、非已知全局 —— 视作参数字段写（params 注册无 moduleName）。
+            // 只在有 subs 时拒（rebind 走 E3093）。
+            if (as->subs().empty()) return;
+            what = "write field of parameter";
+            detail = name + "." + as->subs().front().getText();
+        }
+        throw YuxError(as->getLineNumber(), as->getColumn(),
+                       ErrorCode::E3110, _fnName, what, detail);
+    }
+
+    void checkConstFnSet(p<StatementSetNode> st, p<ScopeNode> scope) {
+        if (!_isConstFn) return;
+        // arrayExpr 形态：单 ID 时按上面规则；复杂表达式（链式）按"写非本地"判定
+        p<ExprNode> ae = st->arrayExpr();
+        while (auto paren = dynamic_cast<p<ExprParenNode>>(ae)) ae = paren->expr();
+        string name;
+        if (auto le = dynamic_cast<p<ExprLiteralNode>>(ae)) {
+            if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
+                name = obj->getValue().getText();
+            }
+        }
+        if (!name.empty() && _localNames.contains(name)) return;
+        auto sc = scope ? scope : st->findNearestScope();
+        SymbolInfo* sym = (sc && !name.empty()) ? sc->lookupSymbol(name) : nullptr;
+        const char* what;
+        string detail;
+        if (name == "$") {
+            what = "write element of `$`";
+            detail = "$[i]";
+        } else if (sym && sym->kind == SymbolKind::Variable && !sym->isConst &&
+                   !sym->moduleName.empty()) {
+            what = "write element of global variable";
+            detail = (name.empty() ? "<expr>" : name) + "[i]";
+        } else {
+            what = "write element of parameter";
+            detail = (name.empty() ? "<expr>" : name) + "[i]";
+        }
+        throw YuxError(st->getLineNumber(), st->getColumn(),
+                       ErrorCode::E3110, _fnName, what, detail);
+    }
+
+    // 取 fn 所在 file（沿 parent chain 找 FileNode），用于跨自由函数/方法符号查表。
+    FileNode* fileOf(p<Node> n) const {
+        p<Node> cur = n;
+        while (cur) {
+            if (auto* fl = dynamic_cast<FileNode*>(cur)) return fl;
+            cur = cur->parent();
+        }
+        return _ctx.file;
+    }
+
+    // 在 file 自身 + wildcardImports 中按 fnName 找一个 FnSymbolInfo。
+    FnSymbolInfo* lookupFnSymbolCrossFile(FileNode* file, const string& fnName) const {
+        if (!file) return nullptr;
+        if (auto* fs = file->lookupFnSymbol(fnName)) return fs;
+        for (auto* imp : file->wildcardImports()) {
+            if (auto* fs = imp->lookupFnSymbol(fnName)) return fs;
+        }
+        return nullptr;
+    }
+
+    // §4.2 (4)：识别 callee 的目标函数符号；非 #Const 时抛 E3111。
+    // 仅识别可静态解析的两种形态：
+    //   - 自由函数：callee 是 LiteralObjNode（裸标识符）。
+    //   - 方法：callee 是 ExprDotNode，receiver 是变量字面量；按 receiver 类型查 `Type.method`。
+    // 其他形态（链式 dot、调用结果再调用、enum ctor、lambda 等）暂按"未知" 放行。
+    void checkConstFnCall(p<ExprCallNode> call) {
+        if (!_isConstFn) return;
+        auto callee = call->getCalleeExpr();
+        auto scope = call->findNearestScope();
+        FileNode* file = fileOf(call);
+
+        // 自由函数形态
+        if (auto le = dynamic_cast<p<ExprLiteralNode>>(callee)) {
+            if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
+                string fname = obj->getValue().getText();
+                // 若是本地符号引用（Box/Array 等通过变量调用，不在此处覆盖），跳过
+                if (_localNames.contains(fname)) return;
+                if (scope) {
+                    SymbolInfo* sym = scope->lookupSymbol(fname);
+                    if (sym && sym->kind == SymbolKind::Variable) return; // 变量调用，非自由 fn
+                }
+                FnSymbolInfo* fs = lookupFnSymbolCrossFile(file, fname);
+                if (!fs) return; // 内置 / 编译器合成（如 copy_of / panic / println 等），P1-5 不拦
+                if (fs->isConst) return;
+                throw YuxError(call->resolveLineNumber(), call->resolveColumn(),
+                               ErrorCode::E3111, _fnName, fname);
+            }
+        }
+        // 方法形态：receiver.method(...)
+        if (auto dot = dynamic_cast<p<ExprDotNode>>(callee)) {
+            // receiver 必须是简单变量字面量（包含 `$`），否则跳过
+            auto base = dot->baseExpr();
+            string recvName;
+            if (auto le = dynamic_cast<p<ExprLiteralNode>>(base)) {
+                if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
+                    recvName = obj->getValue().getText();
+                }
+            }
+            if (recvName.empty() || !scope) return;
+            SymbolInfo* sym = scope->lookupSymbol(recvName);
+            if (!sym) return;
+            string typeName = sym->type.isRef() && sym->type.refElementType()
+                                ? sym->type.refElementType()->name
+                                : sym->type.name;
+            if (typeName.empty()) return;
+            string fullName = typeName + "." + dot->member();
+            FnSymbolInfo* fs = lookupFnSymbolCrossFile(file, fullName);
+            if (!fs) return; // builtin 方法（Array/String 等 #CompilerInner）P1-5 不拦，待 SDK 内化
+            if (fs->isConst) return;
+            throw YuxError(call->resolveLineNumber(), call->resolveColumn(),
+                           ErrorCode::E3111, _fnName, fullName);
+        }
+    }
 
     // 给 `obj.subs[0] = ...` 形态做 §6.2 + §6.3 字段写校验。
     // 规则：
@@ -263,7 +408,12 @@ private:
             visitBlock(loop->block());
             return;
         }
+        if (auto dn = dynamic_cast<p<StatementDeclareNode>>(s)) {
+            _localNames.insert(dn->name().getText());
+            return;
+        }
         if (auto da = dynamic_cast<p<StatementDeclareAssignNode>>(s)) {
+            _localNames.insert(da->name().getText());
             auto scope = s->findNearestScope();
             if (da->declareType() == DeclareType::CVal && da->expr()) {
                 requireConstExpr(da->expr(), scope);
@@ -298,7 +448,11 @@ private:
                 }
                 // §6.2 / §6.3：字段层 #Val/#Frozen 在构造期外禁写。
                 checkFieldWrite(as, scope);
+                // §4.2 (1)/(2)/(3)：#Const fn 体内禁写 $/参数/全局字段。
+                checkConstFnWrite(as, scope);
             } else {
+                // §4.2 (3)：#Const fn 体内禁重赋全局变量。
+                checkConstFnWrite(as, scope);
                 // §5.4：可写槽位重赋承接 #Frozen 表达式 → 拒收；
                 // §5.2 frozen 自身被重赋 → 走 writeable=false / E3093（compiler 端）。
                 SymbolInfo* sym = lookupLhsSym(as, scope);
@@ -336,6 +490,8 @@ private:
                 }
                 throw YuxError(line, col, ErrorCode::E3106, "[i]", objName);
             }
+            // §4.2：#Const fn 内禁写 $/参数/全局的数组槽。
+            checkConstFnSet(st, scope);
             visitExpr(st->arrayExpr());
             for (auto& i : st->indices()) visitExpr(i);
             visitExpr(st->valueExpr());
@@ -377,6 +533,7 @@ private:
             return;
         }
         if (auto call = dynamic_cast<p<ExprCallNode>>(e)) {
+            checkConstFnCall(call);
             visitExpr(call->getCalleeExpr());
             for (auto& a : call->getArgs()) visitExpr(a);
             return;

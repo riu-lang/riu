@@ -1,0 +1,11 @@
+; P1-5 §4.2(4): #Const fn 体内调非 #Const fn → E3111
+
+fn helper(a i32) i32 = a * 2
+
+#Const
+fn use_h(a i32) i32 = helper(a)
+
+fn main() {
+    println(use_h(3).to_string())
+    ret;
+}

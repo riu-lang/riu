@@ -15,7 +15,7 @@ namespace {
 //   #NoReturn        零参；标在 fn / structImpl 内方法上
 //   #Fallible(E)     单参；E 为错误 enum 类型名（语义校验推 10e）
 const set<string>& knownAnnos() {
-    static const set<string> s = {"CompilerInner", "Test", "TestIsolate", "DraftLike", "NoReturn", "Fallible"};
+    static const set<string> s = {"CompilerInner", "Test", "TestIsolate", "DraftLike", "NoReturn", "Fallible", "Const"};
     return s;
 }
 
@@ -621,6 +621,8 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
             string aname = a->name->getText();
             if (aname == "NoReturn") {
                 fnFnSym.isNoReturn = true;
+            } else if (aname == "Const") {
+                fnFnSym.isConst = true;
             } else if (aname == "Fallible" && a->arg) {
                 fnFnSym.fallibleErrType = a->arg->getText();
             }
@@ -680,6 +682,7 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
 
             FnSymbolInfo methodFnSym{fullName, moduleName, paramTypes, retType};
             methodFnSym.isNoReturn = method->header()->hasAnno("NoReturn");
+            methodFnSym.isConst = method->header()->hasAnno("Const");
             // Phase 10e：方法上的 #Fallible(E)（同 fn 路径）
             if (auto eOpt = method->header()->getAnnoArg("Fallible")) {
                 methodFnSym.fallibleErrType = *eOpt;

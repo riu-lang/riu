@@ -28,8 +28,21 @@
 //     - 写 `obj.f = ...`：subs.size()==1 时 #Val/#Frozen 均拒；subs.size()>1 时仅 #Frozen 拒（深传染）。
 //     - 跨模块查 struct 走 FileNode::getStructOwner。
 //
-// 暂未覆盖（按 CURRENT.md 阶段表，留 P1-3-followup / P1-4-followup / P1-5）：
-//   §4 #Const fn 体内写操作约束；
+//   §4.2 `#Const fn` 体内写操作 / 调用约束（E3110 / E3111）——
+//     被 #Const 标记的 fn / 方法体内禁止：
+//       1. 写 `$.f` / `$[i]`（成员函数情形）—— E3110；
+//       2. 写参数的字段 `p.f = ...` / `p[i] = ...` —— E3110；
+//       3. 写非 `cval` 的全局符号（rebind 或字段写）—— E3110；
+//       4. 调任何非 `#Const` 的自由函数 / 方法 —— E3111。
+//     允许：读 $/参数/全局 val/cval；声明并写函数体内局部 var/val/cval；
+//     调其它 #Const fn / #Const 方法。本 P1-5 仅识别:
+//       - 自由函数调用 (callee 为简单标识符) → 当前 file 的 fnSymbols 查表;
+//       - 方法调用 (callee 为 ExprDot, receiver 是已知变量) → 解析 receiver 类型,
+//         查 `StructName.methodName`. 跨模块只走 file 自身 + wildcardImports 顺序。
+//     无法解析的复杂 callee（链式调用、lambda 返回、enum ctor 等）暂按"未知"放行，
+//     交由 P1-6+ 继续收紧。
+//
+// 暂未覆盖（按 CURRENT.md 阶段表）：
 //   §5.2.4 / §5.4 调用点：把 #Frozen 实参传给非 #Frozen 形参的拒收（要 callee 参数表）；
 //   §6.4 含 #Frozen 字段类型的传递约束（callsite 检查）；
 //   §6.2 数组写 `obj[i] = ...` 形态（StatementSetNode 含字段链）；
