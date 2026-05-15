@@ -1,0 +1,18 @@
+; P1-3: #Frozen 参数 (DRAFT-const-mut §5)
+; - 读取 frozen 参数与调用方法 (size 是 #Const-like; 当前未强制 #Const fn 校验, P1-5)
+; - 组式 fnParamGroup 共享语义: #Frozen a, b T
+
+fn dump(#Frozen s String) {
+    println(s)
+}
+
+fn pair(#Frozen a, b i32) i32 {
+    ret a + b
+}
+
+fn main() {
+    var s String = "hello"
+    dump(s)
+    println(pair(3, 4).to_string())
+    ret;
+}

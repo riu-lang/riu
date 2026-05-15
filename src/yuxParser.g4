@@ -277,12 +277,26 @@ fnParams:
 
 fnParam: fnParamStd | fnParamGroup;
 
+// 参数注解：#Frozen 等；LineEnd 可选支持 inline 与换行两种形态。
+// 与 buildAnno 分离：参数注解零实参槽，行尾换行非强制。
+paramAnno:
+    SymbolHash
+    name=ID
+    LineEnd?
+    ;
+
+// #Frozen a i32
 // a i32
-fnParamStd: name=ID typeWithRef;
+fnParamStd:
+    (paramAnnos+=paramAnno)*
+    name=ID typeWithRef
+    ;
 
 // a, b i32
 // a, b, c i32
+// #Frozen a, b i32  （注解共享给组内所有名字）
 fnParamGroup:
+    (paramAnnos+=paramAnno)*
     (names+=ID SymbolComma)*
     names+=ID
     typeWithRef

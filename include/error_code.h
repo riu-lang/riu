@@ -237,6 +237,9 @@ DEF_ERR(3101, "Tuple destructure expects type tuple, got '{}'")
 DEF_ERR(3102, "Tuple destructure arity mismatch: {} names vs tuple size {}")
 DEF_ERR(3103, "Integer literal '{}' out of range for type '{}'")
 DEF_ERR(3104, "Local `cval` initializer must be a constant expression: {} (DRAFT-const-mut §3.3; allowed: numeric/bool/null/string literals, references to declared `cval`, and arithmetic / bitwise / comparison / logical combinations thereof)")
+DEF_ERR(3105, "Unknown parameter annotation '#{}' (only '#Frozen' is supported on parameters; DRAFT-const-mut §5.1)")
+DEF_ERR(3106, "Cannot write field '{}' of `#Frozen` parameter '{}' (DRAFT-const-mut §5.3)")
+DEF_ERR(3107, "Cannot pass `#Frozen` value '{}' to mutable parameter '{}'; use copy_of to obtain an owned copy (DRAFT-const-mut §5.4)")
 
 // ── E4xxx 所有权 / 借用 ───────────────────────────────────────────────
 DEF_ERR(4001, "T& borrow initializer must be &expr or an existing T& variable")

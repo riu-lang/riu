@@ -102,7 +102,58 @@ void requireConstExpr(p<ExprNode> e, p<ScopeNode> scope) {
     throwNonConst(e, "unsupported expression");
 }
 
-// 遍历整棵 fn body，命中 cval 局部声明就走 §3.3 校验。
+// ==================== §5 frozen helpers ====================
+// `e` 是否直接引用了 frozen 符号（不展开 dot / get / call 等表达式）。
+// 用于：
+//   §5.3 — 拒收 `s.f = ...` / `s[i] = ...`（s 是 frozen）；
+//   §5.4 — 拒收"可写槽位"承接 frozen 表达式（顶层 ID 形态）。
+// 子表达式（如 `f(frozen)`）暂不深扫，等 callsite 校验上线再补。
+bool isFrozenIdRef(p<ExprNode> e, p<ScopeNode> scope) {
+    if (!e) return false;
+    if (auto paren = dynamic_cast<p<ExprParenNode>>(e)) {
+        return isFrozenIdRef(paren->expr(), scope);
+    }
+    if (auto le = dynamic_cast<p<ExprLiteralNode>>(e)) {
+        if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
+            auto sc = exprScope(e, scope);
+            SymbolInfo* sym = sc ? sc->lookupSymbol(obj->getValue().getText()) : nullptr;
+            return sym && sym->isFrozen;
+        }
+    }
+    return false;
+}
+
+// `e` 是否是 `copy_of:<T>(arg)` 调用（§5.3 唯一脱 const 出口）。
+bool isCopyOfCall(p<ExprNode> e) {
+    auto call = dynamic_cast<p<ExprCallNode>>(e);
+    if (!call) return false;
+    auto callee = call->getCalleeExpr();
+    if (auto le = dynamic_cast<p<ExprLiteralNode>>(callee)) {
+        if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
+            return obj->getValue().getText() == "copy_of";
+        }
+    }
+    return false;
+}
+
+// §5.4：RHS 是否携带 frozen，且不是 copy_of 脱出。
+// P1-3 简化版：仅识别顶层 frozen ID / paren 包裹的 frozen ID；
+// 复杂表达式（含调用、运算、字段访问等）暂按"不携带" —— 留 P1-3-followup。
+bool carriesFrozenTopLevel(p<ExprNode> e, p<ScopeNode> scope) {
+    if (!e) return false;
+    if (isCopyOfCall(e)) return false;
+    return isFrozenIdRef(e, scope);
+}
+
+// 取 LHS（StatementAssignNode）的 SymbolInfo*；找不到返回 nullptr。
+SymbolInfo* lookupLhsSym(p<StatementAssignNode> a, p<ScopeNode> scope) {
+    auto sc = scope;
+    if (!sc) sc = a->findNearestScope();
+    return sc ? sc->lookupSymbol(a->obj().getText()) : nullptr;
+}
+
+// 遍历整棵 fn body，命中 cval 局部声明就走 §3.3 校验；
+// §5.2 由 writeable=false 默认 E3093 兜底；§5.3 / §5.4 由本 walker 显式抛错。
 class ConstMutWalker {
 public:
     void run(p<FnNode> fn) {
@@ -128,19 +179,87 @@ private:
             return;
         }
         if (auto da = dynamic_cast<p<StatementDeclareAssignNode>>(s)) {
+            auto scope = s->findNearestScope();
             if (da->declareType() == DeclareType::CVal && da->expr()) {
-                auto scope = s->findNearestScope();
                 requireConstExpr(da->expr(), scope);
+            } else if (da->expr() && carriesFrozenTopLevel(da->expr(), scope)) {
+                // §5.4：可写局部绑定不可承接 #Frozen 表达式，唯一脱 const 出口是 copy_of。
+                int line = s->getLineNumber();
+                int col = s->getColumn();
+                // RHS 一定是 frozen ID（顶层），取名字塞进消息。
+                p<ExprNode> e = da->expr();
+                while (auto paren = dynamic_cast<p<ExprParenNode>>(e)) e = paren->expr();
+                string srcName = "<frozen>";
+                if (auto le = dynamic_cast<p<ExprLiteralNode>>(e)) {
+                    if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
+                        srcName = obj->getValue().getText();
+                    }
+                }
+                throw YuxError(line, col, ErrorCode::E3107, srcName, da->name().getText());
             }
             if (da->expr()) visitExpr(da->expr());
+            return;
+        }
+        if (auto as = dynamic_cast<p<StatementAssignNode>>(s)) {
+            auto scope = s->findNearestScope();
+            if (!as->subs().empty()) {
+                // §5.3：`obj.f.g = rhs` 或 `obj.f = rhs`；obj 为 frozen 时拒收。
+                SymbolInfo* sym = lookupLhsSym(as, scope);
+                if (sym && sym->isFrozen) {
+                    int line = s->getLineNumber();
+                    int col = s->getColumn();
+                    throw YuxError(line, col, ErrorCode::E3106,
+                                   as->subs().front().getText(), as->obj().getText());
+                }
+            } else {
+                // §5.4：可写槽位重赋承接 #Frozen 表达式 → 拒收；
+                // §5.2 frozen 自身被重赋 → 走 writeable=false / E3093（compiler 端）。
+                SymbolInfo* sym = lookupLhsSym(as, scope);
+                bool lhsFrozen = sym && sym->isFrozen;
+                if (!lhsFrozen && as->expr() && carriesFrozenTopLevel(as->expr(), scope)) {
+                    int line = s->getLineNumber();
+                    int col = s->getColumn();
+                    p<ExprNode> e = as->expr();
+                    while (auto paren = dynamic_cast<p<ExprParenNode>>(e)) e = paren->expr();
+                    string srcName = "<frozen>";
+                    if (auto le = dynamic_cast<p<ExprLiteralNode>>(e)) {
+                        if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
+                            srcName = obj->getValue().getText();
+                        }
+                    }
+                    throw YuxError(line, col, ErrorCode::E3107, srcName, as->obj().getText());
+                }
+            }
+            if (as->expr()) visitExpr(as->expr());
+            return;
+        }
+        if (auto st = dynamic_cast<p<StatementSetNode>>(s)) {
+            // §5.3：`s[i] = X`；arrayExpr 是 frozen ID 时拒收。
+            auto scope = s->findNearestScope();
+            if (isFrozenIdRef(st->arrayExpr(), scope)) {
+                int line = s->getLineNumber();
+                int col = s->getColumn();
+                string objName = "<expr>";
+                p<ExprNode> ae = st->arrayExpr();
+                while (auto paren = dynamic_cast<p<ExprParenNode>>(ae)) ae = paren->expr();
+                if (auto le = dynamic_cast<p<ExprLiteralNode>>(ae)) {
+                    if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
+                        objName = obj->getValue().getText();
+                    }
+                }
+                throw YuxError(line, col, ErrorCode::E3106, "[i]", objName);
+            }
+            visitExpr(st->arrayExpr());
+            for (auto& i : st->indices()) visitExpr(i);
+            visitExpr(st->valueExpr());
             return;
         }
         if (auto se = dynamic_cast<p<StatementExprNode>>(s)) {
             if (se->expr()) visitExpr(se->expr());
             return;
         }
-        // 其他 stmt 类型（Declare 无 init / Assign / Set / Break / Ret / RetVoid）
-        // 没有需要检查的 cval 初值，掠过。
+        // 其他 stmt 类型（Declare 无 init / Break / Ret / RetVoid）
+        // 没有需要检查的 cval / frozen 路径，掠过。
     }
 
     // 表达式遍历仅深入可能嵌套语句块的结构，便于覆盖 if-else / lambda / 调用实参 / 块表达式

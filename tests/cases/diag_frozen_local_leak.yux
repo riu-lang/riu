@@ -1,0 +1,9 @@
+fn bad(#Frozen s String) {
+    var t String = s
+    ret;
+}
+
+fn main() {
+    bad("hi")
+    ret;
+}

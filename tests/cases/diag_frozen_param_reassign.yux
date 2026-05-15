@@ -1,0 +1,9 @@
+fn bad(#Frozen s String) {
+    s = "x"
+    ret;
+}
+
+fn main() {
+    bad("hi")
+    ret;
+}

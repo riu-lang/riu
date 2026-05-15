@@ -18,6 +18,9 @@ class FnParamNode : public Node {
 protected:
     Token _name;
     p<TypeNode> _type;
+    // P1-3 const-mut §5：#Frozen 形参——体内不可重赋 / 不可写字段 / 不可传给可写形参；
+    // 仅 copy_of 可作为脱 const 出口。
+    bool _isFrozen = false;
 
 public:
     explicit FnParamNode(const p<Node>& parent, Token name, p<TypeNode> type) :
@@ -26,6 +29,9 @@ public:
 
     [[nodiscard]] Token name() const;
     [[nodiscard]] p<TypeNode> type() const;
+
+    void setFrozen(bool v) { _isFrozen = v; }
+    [[nodiscard]] bool isFrozen() const { return _isFrozen; }
 };
 
 class FnHeaderNode : public Node, public Named, public Typed, public Annotated {

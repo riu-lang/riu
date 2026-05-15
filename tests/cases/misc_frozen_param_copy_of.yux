@@ -1,0 +1,13 @@
+; P1-3 §5.4：copy_of 是 #Frozen 唯一脱 const 出口；
+; `val t = copy_of:<String>(s)` 让 t 不带 #Frozen 痕迹，可正常使用。
+
+fn relay(#Frozen s String) {
+    val t String = copy_of:<String>(s)
+    println(t)
+    ret;
+}
+
+fn main() {
+    relay("hello")
+    ret;
+}

@@ -775,9 +775,15 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
 
     for (auto param : header->params()) {
         TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();
-        fn->registerSymbol(
-            param->name().getText(), {SymbolKind::Variable, param->name().getText(), paramType});
-        DEBUG_LOG_VAL("  Param", param->name().getText() << " : " << paramType.name);
+        SymbolInfo si{SymbolKind::Variable, param->name().getText(), paramType};
+        // DRAFT-const-mut §5：#Frozen 参数体内不可重赋（writeable=false 默认即可），并打 frozen 标
+        // 让 checker 区分；非 frozen 参数仍走默认 §3.4（参数默认 val）。
+        if (param->isFrozen()) {
+            si.isFrozen = true;
+        }
+        fn->registerSymbol(param->name().getText(), si);
+        DEBUG_LOG_VAL("  Param", param->name().getText() << " : " << paramType.name
+                                                         << (param->isFrozen() ? " #Frozen" : ""));
     }
 
     if (!ctx->fnBody()) {
@@ -908,24 +914,50 @@ std::any ASTBuilder::visitFnParam(yux::yuxParser::FnParamContext* ctx) {
     return vector<p<FnParamNode>>();
 }
 
+// P1-3 const-mut §5.1：参数注解只允许 #Frozen，其他名字报 E3105。
+// 返回是否含 #Frozen；遇未知注解直接抛错。
+static bool readParamAnnos(const std::vector<yux::yuxParser::ParamAnnoContext*>& annos) {
+    bool frozen = false;
+    for (auto* a : annos) {
+        const string name = a->ID()->getText();
+        if (name == "Frozen") {
+            frozen = true;
+        } else {
+            auto* tk = a->SymbolHash()->getSymbol();
+            throw YuxError((int)tk->getLine(),
+                           (int)tk->getCharPositionInLine() + 1,
+                           ErrorCode::E3105, name);
+        }
+    }
+    return frozen;
+}
+
 std::any ASTBuilder::visitFnParamStd(yux::yuxParser::FnParamStdContext* ctx) {
     p<Node> parent = any_cast_p<FnHeaderNode>(stack.back());
     auto type = buildTypeWithRef(ctx->typeWithRef(), parent);
-    DEBUG_LOG_VAL("    Param", ctx->name->getText() << " : " << type->getType().name);
-    
+    bool frozen = readParamAnnos(ctx->paramAnnos);
+    DEBUG_LOG_VAL("    Param", ctx->name->getText() << " : " << type->getType().name
+                                                    << (frozen ? " #Frozen" : ""));
+
     vector<p<FnParamNode>> params;
-    params.push_back(p<FnParamNode>(createWithLine<FnParamNode>(ctx, parent, ctx->name, type)));
+    auto node = p<FnParamNode>(createWithLine<FnParamNode>(ctx, parent, ctx->name, type));
+    node->setFrozen(frozen);
+    params.push_back(node);
     return params;
 }
 
 std::any ASTBuilder::visitFnParamGroup(yux::yuxParser::FnParamGroupContext* ctx) {
     p<Node> parent = any_cast_p<FnHeaderNode>(stack.back());
     auto type = buildTypeWithRef(ctx->typeWithRef(), parent);
-    
+    bool frozen = readParamAnnos(ctx->paramAnnos);
+
     vector<p<FnParamNode>> params;
     for (auto nameToken : ctx->names) {
-        DEBUG_LOG_VAL("    Param (group)", nameToken->getText() << " : " << type->getType().name);
-        params.push_back(p<FnParamNode>(createWithLine<FnParamNode>(ctx, parent, nameToken, type)));
+        DEBUG_LOG_VAL("    Param (group)", nameToken->getText() << " : " << type->getType().name
+                                                                << (frozen ? " #Frozen" : ""));
+        auto node = p<FnParamNode>(createWithLine<FnParamNode>(ctx, parent, nameToken, type));
+        node->setFrozen(frozen);
+        params.push_back(node);
     }
     return params;
 }
@@ -1152,7 +1184,11 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
 
         for (auto param : header->params()) {
             TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();
-            fn->registerSymbol(param->name().getText(), {SymbolKind::Variable, param->name().getText(), paramType});
+            SymbolInfo si{SymbolKind::Variable, param->name().getText(), paramType};
+            if (param->isFrozen()) {
+                si.isFrozen = true;
+            }
+            fn->registerSymbol(param->name().getText(), si);
         }
 
         if (!fnCtx->fnBody()) {

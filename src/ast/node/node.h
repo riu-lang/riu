@@ -26,6 +26,10 @@ struct SymbolInfo {
     // DRAFT-const-mut §3：true 表示该符号是 `cval`（局部或全局编译期常量）。
     // 仅供 const_mut_checker §3.3 区分 cval / val / 参数；codegen 不读。
     bool isConst = false;
+    // DRAFT-const-mut §5：true 表示该符号是 `#Frozen` 参数（或由 §5.4 传染来的本地绑定）。
+    // 重赋走 writeable=false → E3093；字段写 → E3106；传给可写形参 → E3107；
+    // 仅 copy_of 可作为脱 const 出口。
+    bool isFrozen = false;
 
     SymbolInfo() = default;
     SymbolInfo(SymbolKind k, string n, TypeInfo t = TypeInfo(), bool w = false)
