@@ -776,6 +776,26 @@ Doc Printer::statementDoc(yuxParser::StatementContext* ctx, int indentLevel) {
         }
         return concat(std::move(parts));
     }
+    if (auto* n = dynamic_cast<yuxParser::StatementLetTupleContext*>(ctx)) {
+        // letAnno* let (a, b) (Type)? = expr
+        std::vector<Doc> parts;
+        for (auto* a : n->letAnnos) {
+            parts.push_back(text("#" + a->name->getText() + " "));
+        }
+        parts.push_back(text("let ("));
+        for (std::size_t i = 0; i < n->names.size(); ++i) {
+            if (i > 0) parts.push_back(text(", "));
+            parts.push_back(text(n->names[i]->getText()));
+        }
+        parts.push_back(text(")"));
+        if (n->typeWithRef() != nullptr) {
+            parts.push_back(text(" "));
+            parts.push_back(typeWithRefDoc(n->typeWithRef()));
+        }
+        parts.push_back(text(" = "));
+        parts.push_back(exprDoc(n->expr()));
+        return concat(std::move(parts));
+    }
     if (auto* n = dynamic_cast<yuxParser::StatementDeclareAssignTupleContext*>(ctx)) {
         // var (a, b) (Type)? = expr
         std::vector<Doc> parts;

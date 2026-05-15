@@ -1681,6 +1681,64 @@ std::any ASTBuilder::visitStatementDeclareAssignTuple(yux::yuxParser::StatementD
     return p<StatementNode>(createWithLine<StatementDeclareAssignTupleNode>(ctx, scope, declType, names, type, expr));
 }
 
+// DRAFT-let-unify §3：let 元组解构（默认 → val / #Mut → var / #Cval → cval）。
+// 注解 → DeclareType 复用 readLetAnnos；后续 alias / 元素类型登记逻辑与 statementDeclareAssignTuple 同。
+std::any ASTBuilder::visitStatementLetTuple(yux::yuxParser::StatementLetTupleContext* ctx) {
+    auto scope = currentScope();
+    auto flags = readLetAnnos(ctx->letAnnos);
+    auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
+
+    DeclareType declType;
+    if (flags.isCval) {
+        declType = DeclareType::CVal;
+    } else if (flags.isMut) {
+        declType = DeclareType::Var;
+    } else {
+        declType = DeclareType::Val;
+    }
+
+    p<TypeNode> type = nullptr;
+    if (auto twr = ctx->typeWithRef(); twr) {
+        type = buildTypeWithRef(twr, scope);
+    }
+
+    TypeInfo wholeType = type ? type->getType() : expr->getType();
+
+    if (auto* file = _scopeStack.empty() ? nullptr : dynamic_cast<FileNode*>(_scopeStack[0])) {
+        std::set<std::string> visited;
+        TypeInfo cur = wholeType;
+        while (cur.kind == TypeKind::Normal) {
+            auto* alias = file->getAliasDecl(cur.name);
+            if (!alias || alias->isGeneric() || !alias->target()) break;
+            if (visited.count(cur.name)) break;
+            visited.insert(cur.name);
+            cur = alias->target()->getType();
+        }
+        wholeType = cur;
+    }
+
+    vector<Token> names;
+    for (auto idTok : ctx->names) {
+        names.emplace_back(idTok);
+    }
+
+    if (scope && wholeType.isTuple() && wholeType.tupleElements().size() == names.size()) {
+        const auto& elems = wholeType.tupleElements();
+        for (size_t i = 0; i < names.size(); ++i) {
+            scope->registerSymbol(names[i].getText(),
+                {SymbolKind::Variable, names[i].getText(), *elems[i], declType == DeclareType::Var});
+        }
+    } else if (scope) {
+        for (auto& n : names) {
+            scope->registerSymbol(n.getText(),
+                {SymbolKind::Variable, n.getText(), TypeInfo(), declType == DeclareType::Var});
+        }
+    }
+
+    DEBUG_LOG_VAL("  Statement: LetTuple", names.size() << " names, expr type=" << wholeType.name);
+    return p<StatementNode>(createWithLine<StatementDeclareAssignTupleNode>(ctx, scope, declType, names, type, expr));
+}
+
 std::any ASTBuilder::visitStatementAssign(yux::yuxParser::StatementAssignContext* ctx) {
     auto scope = currentScope();
     auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));

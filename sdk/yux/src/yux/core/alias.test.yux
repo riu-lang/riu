@@ -67,7 +67,7 @@ fn test_alias_generic_tuple_member() {
 #Test
 fn test_alias_tuple_destructure() {
   #Mut let p IPair = (11i32, 22i32)
-  var (a, b) IPair = p
+  #Mut let (a, b) IPair = p
   assert_eq(a, 11i32)
   assert_eq(b, 22i32)
 }

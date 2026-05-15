@@ -664,6 +664,14 @@ statement:
       ParEnd
       typeWithRef?
       SymbolEq expr LineEnd                               #statementDeclareAssignTuple
+    // DRAFT-let-unify §3：let 元组解构。注解语义与 statementLet 同（默认→val / #Mut→var / #Cval→cval）。
+    | (letAnnos+=letAnno)*
+      Let
+      ParStart
+        names+=ID (SymbolComma names+=ID)+
+      ParEnd
+      typeWithRef?
+      SymbolEq expr LineEnd                               #statementLetTuple
     // e[a, b, c] = e 实际应为成员函数set的快捷调用
     | obj=expr
       GetStart

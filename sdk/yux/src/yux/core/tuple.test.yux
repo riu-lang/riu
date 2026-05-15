@@ -72,7 +72,7 @@ fn test_tuple_nested_member_on_literal() {
 #Test
 fn test_tuple_destructure_basic() {
   ; var (a, b) = (e1, e2) 平铺解构
-  var (a, b) = (10i32, 20i32)
+  #Mut let (a, b) = (10i32, 20i32)
   assert_eq(a, 10i32)
   assert_eq(b, 20i32)
 }
@@ -80,7 +80,7 @@ fn test_tuple_destructure_basic() {
 #Test
 fn test_tuple_destructure_from_call() {
   ; 解构来自函数返回的元组
-  var (x, y) = make_pair()
+  #Mut let (x, y) = make_pair()
   assert_eq(x, 1i32)
   assert_eq(y, 2i32)
 }
@@ -88,7 +88,7 @@ fn test_tuple_destructure_from_call() {
 #Test
 fn test_tuple_destructure_three() {
   ; 三元元组
-  var (a, b, c) = (1i32, 2i32, 3i32)
+  #Mut let (a, b, c) = (1i32, 2i32, 3i32)
   assert_eq(a, 1i32)
   assert_eq(b, 2i32)
   assert_eq(c, 3i32)
@@ -97,7 +97,7 @@ fn test_tuple_destructure_three() {
 #Test
 fn test_tuple_destructure_with_type_anno() {
   ; 显式标注整体元组类型
-  var (a, b) (i32, i32) = (5i32, 6i32)
+  #Mut let (a, b) (i32, i32) = (5i32, 6i32)
   assert_eq(a, 5i32)
   assert_eq(b, 6i32)
 }
@@ -105,7 +105,7 @@ fn test_tuple_destructure_with_type_anno() {
 #Test
 fn test_tuple_destructure_var_mutable() {
   ; var 解构出来的元素可以再赋值
-  var (a, b) = (1i32, 2i32)
+  #Mut let (a, b) = (1i32, 2i32)
   a = 100i32
   b = 200i32
   assert_eq(a, 100i32)

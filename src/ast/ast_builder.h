@@ -85,6 +85,7 @@ public:
     std::any visitStatementCvalDeclAssign(yux::yuxParser::StatementCvalDeclAssignContext* ctx) override;
     std::any visitStatementLet(yux::yuxParser::StatementLetContext* ctx) override;
     std::any visitStatementDeclareAssignTuple(yux::yuxParser::StatementDeclareAssignTupleContext* ctx) override;
+    std::any visitStatementLetTuple(yux::yuxParser::StatementLetTupleContext* ctx) override;
     std::any visitStatementAssign(yux::yuxParser::StatementAssignContext* ctx) override;
     std::any visitStatementExpr(yux::yuxParser::StatementExprContext* ctx) override;
     std::any visitStatementRet(yux::yuxParser::StatementRetContext* ctx) override;
