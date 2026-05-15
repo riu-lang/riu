@@ -18,7 +18,7 @@ fn ret_bool() bool {
 }
 
 fn ret_expr() i32 {
-  val x = 10
+  let x = 10
   x + 5
 }
 

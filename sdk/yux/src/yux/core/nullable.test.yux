@@ -15,13 +15,13 @@ NN {
 
 #Test
 fn test_nullable_some_or_default() {
-  var nx i32? = 42i32
+  #Mut let nx i32? = 42i32
   assert_eq(nx ?? -1i32, 42i32)
 }
 
 #Test
 fn test_nullable_null_or_default() {
-  var ny i32? = null
+  #Mut let ny i32? = null
   assert_eq(ny ?? -1i32, -1i32)
 }
 
@@ -29,16 +29,16 @@ fn test_nullable_null_or_default() {
 
 #Test
 fn test_nullable_chain_some_field() {
-  var n NN = NN(7i32)
-  var maybeN NN? = n
-  var v1 i32? = maybeN?.v
+  #Mut let n NN = NN(7i32)
+  #Mut let maybeN NN? = n
+  #Mut let v1 i32? = maybeN?.v
   assert_eq(v1 ?? -1i32, 7i32)
 }
 
 #Test
 fn test_nullable_chain_null_field() {
-  var emptyN NN? = null
-  var v2 i32? = emptyN?.v
+  #Mut let emptyN NN? = null
+  #Mut let v2 i32? = emptyN?.v
   assert_eq(v2 ?? -99i32, -99i32)
 }
 
@@ -46,7 +46,7 @@ fn test_nullable_chain_null_field() {
 
 #Test
 fn test_nullable_method_chain_get() {
-  var nx i32? = 42i32
+  #Mut let nx i32? = 42i32
   ; nx.get() 返回 i32，本测里直接断言
   assert_eq(nx.get(), 42i32)
 }
@@ -55,7 +55,7 @@ fn test_nullable_method_chain_get() {
 
 #Test
 fn test_nullable_reassign_from_null() {
-  var x i64? = null
+  #Mut let x i64? = null
   x = 0i64
   assert_true(x.has())
   assert_eq(x.get(), 0i64)

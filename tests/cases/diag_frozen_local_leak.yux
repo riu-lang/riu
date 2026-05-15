@@ -1,5 +1,5 @@
 fn bad(#Frozen s String) {
-    var t String = s
+    #Mut let t String = s
     ret;
 }
 

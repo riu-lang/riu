@@ -7,8 +7,8 @@ fn swap(p IPair) IPair {
 }
 
 fn main() {
-  val pr IPair = (10, 20)
-  val sw IPair = swap(pr)
+  let pr IPair = (10, 20)
+  let sw IPair = swap(pr)
   println(sw.0.to_string())
   println(sw.1.to_string())
   ret;

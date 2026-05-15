@@ -39,10 +39,10 @@ Rect : Shape {
 }
 
 fn main() {
-  var arr Array<Dyn<Shape>> = []
-  val b1 Rc<Square> = Square(3i64)
-  val b2 Rc<Rect> = Rect(4i64, 5i64)
-  val b3 Rc<Square> = Square(6i64)
+  #Mut let arr Array<Dyn<Shape>> = []
+  let b1 Rc<Square> = Square(3i64)
+  let b2 Rc<Rect> = Rect(4i64, 5i64)
+  let b3 Rc<Square> = Square(6i64)
   arr.push(Dyn:<Shape>(b1))
   arr.push(Dyn:<Shape>(b2))
   arr.push(Dyn:<Shape>(b3))

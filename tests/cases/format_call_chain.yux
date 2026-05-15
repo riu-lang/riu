@@ -1,8 +1,8 @@
 ; 调用 / 链式 / 索引
 fn main() i32 {
-  var x i32 = foo(1,2)
-  var y i32 = obj.bar(3,4)
-  var z i32 = arr[0,1]
+  #Mut let x i32 = foo(1,2)
+  #Mut let y i32 = obj.bar(3,4)
+  #Mut let z i32 = arr[0,1]
   x + y + z
 }
 

@@ -16,8 +16,8 @@ G : Greet {
 }
 
 fn main() {
-  val b Rc<G> = G()
-  val d Dyn<Greet> = Dyn:<Greet>(b)
+  let b Rc<G> = G()
+  let d Dyn<Greet> = Dyn:<Greet>(b)
   d.bye();
   ret;
 }

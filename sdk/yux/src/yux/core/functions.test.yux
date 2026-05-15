@@ -140,19 +140,19 @@ fn fns_pair_first<T>(a T, b T) T = a
 
 #Test
 fn test_generic_identity_i32() {
-  val a i32 = fns_identity:<i32>(42)
+  let a i32 = fns_identity:<i32>(42)
   assert_eq(a, 42)
 }
 
 #Test
 fn test_generic_identity_i64() {
-  val a i64 = fns_identity:<i64>(100i64)
+  let a i64 = fns_identity:<i64>(100i64)
   assert_eq(a, 100i64)
 }
 
 #Test
 fn test_generic_identity_f64() {
-  val a f64 = fns_identity:<f64>(3.14)
+  let a f64 = fns_identity:<f64>(3.14)
   assert_eq(a, 3.14)
 }
 
@@ -181,13 +181,13 @@ fn test_generic_pair_first() {
 
 #Test
 fn test_generic_inferred_i32() {
-  val a i32 = fns_identity(999)
+  let a i32 = fns_identity(999)
   assert_eq(a, 999)
 }
 
 #Test
 fn test_generic_inferred_i64() {
-  val a i64 = fns_identity(123456789i64)
+  let a i64 = fns_identity(123456789i64)
   assert_eq(a, 123456789i64)
 }
 

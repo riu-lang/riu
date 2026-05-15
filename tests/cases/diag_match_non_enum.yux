@@ -2,8 +2,8 @@
 ; match 非枚举类型应触发 E2022
 
 fn main() {
-  val x i32 = 10
-  val result i32 = match x {    ; ❌ E2022: match scrutinee must be an enum type
+  let x i32 = 10
+  let result i32 = match x {    ; ❌ E2022: match scrutinee must be an enum type
     else => 0
   }
 }

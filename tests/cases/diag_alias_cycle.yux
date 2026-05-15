@@ -3,6 +3,6 @@ A = B
 B = A
 
 fn main() {
-  var x A = 0i32
+  #Mut let x A = 0i32
   ret;
 }

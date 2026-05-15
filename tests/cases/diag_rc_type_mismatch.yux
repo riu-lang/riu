@@ -2,5 +2,5 @@
 ; Rc 构造时类型不匹配应触发 E3014
 
 fn main() {
-  var b Rc<i32> = "hello"    ; ❌ E3014: expected Rc<i32>, got String
+  #Mut let b Rc<i32> = "hello"    ; ❌ E3014: expected Rc<i32>, got String
 }

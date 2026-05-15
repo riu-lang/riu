@@ -20,7 +20,7 @@ fn shift(p Point) {
 }
 
 fn main() {
-    val q = Point(1, 2)
+    let q = Point(1, 2)
     shift(q)
     ret;
 }

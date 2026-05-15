@@ -4,6 +4,6 @@ fn f(a i32) i32 {
 }
 
 fn main() {
-    val r = f(1)
+    let r = f(1)
     ret;
 }

@@ -1,5 +1,5 @@
 ; v0.6 Phase 2b：插值类型必须实现 ToString，否则报 E3026
 fn main() {
-  val arr Array<i32> = [1i32, 2i32, 3i32]
-  val s String = "arr=${arr}"
+  let arr Array<i32> = [1i32, 2i32, 3i32]
+  let s String = "arr=${arr}"
 }

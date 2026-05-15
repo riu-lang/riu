@@ -117,7 +117,7 @@ Counter {
   }
 
   fn triple_apply() i32 {
-    var s i32 = 0
+    #Mut let s i32 = 0
     s = s + apply0(() i32 => $.value)
     s = s + apply0(() i32 => $.value * 2)
     s = s + apply0(() i32 => $.double())
@@ -129,13 +129,13 @@ Counter {
 
 #Test
 fn test_iife_single_param() {
-  val r = ((x i32) i32 => x + 1)(5)
+  let r = ((x i32) i32 => x + 1)(5)
   assert_eq(r, 6)
 }
 
 #Test
 fn test_iife_multi_param() {
-  val r = ((a, b i32) i32 => a + b)(3, 4)
+  let r = ((a, b i32) i32 => a + b)(3, 4)
   assert_eq(r, 7)
 }
 
@@ -143,7 +143,7 @@ fn test_iife_multi_param() {
 
 #Test
 fn test_lambda_var_call() {
-  var f fn(i32)i32 = (x i32) i32 => x * 2
+  #Mut let f fn(i32)i32 = (x i32) i32 => x * 2
   assert_eq(f(7), 14)
   assert_eq(f(0), 0)
   assert_eq(f(21), 42)
@@ -153,13 +153,13 @@ fn test_lambda_var_call() {
 
 #Test
 fn test_lambda_as_arg_explicit() {
-  val r = apply((x i32) i32 => x + 10, 5)
+  let r = apply((x i32) i32 => x + 10, 5)
   assert_eq(r, 15)
 }
 
 #Test
 fn test_lambda_as_arg_inferred() {
-  val r = apply(x => x * x, 6)
+  let r = apply(x => x * x, 6)
   assert_eq(r, 36)
 }
 
@@ -167,20 +167,20 @@ fn test_lambda_as_arg_inferred() {
 
 #Test
 fn test_lambda_return() {
-  var f fn(i32)i32 = make_inc()
+  #Mut let f fn(i32)i32 = make_inc()
   assert_eq(f(10), 11)
   assert_eq(f(99), 100)
 }
 
 #Test
 fn test_lambda_return_chained() {
-  val r = make_inc()(41)
+  let r = make_inc()(41)
   assert_eq(r, 42)
 }
 
 #Test
 fn test_lambda_return_const() {
-  var g fn(i32)i32 = make_const(0)
+  #Mut let g fn(i32)i32 = make_const(0)
   assert_eq(g(7), 14)
 }
 
@@ -188,11 +188,11 @@ fn test_lambda_return_const() {
 
 #Test
 fn test_lambda_param_pass() {
-  var inc fn(i32)i32 = (x i32) i32 => x + 1
-  var r1 = forward(inc, 10)
+  #Mut let inc fn(i32)i32 = (x i32) i32 => x + 1
+  #Mut let r1 = forward(inc, 10)
   assert_eq(r1, 23)
 
-  var r2 = forward((x i32) i32 => x * 2, 3)
+  #Mut let r2 = forward((x i32) i32 => x * 2, 3)
   assert_eq(r2, 14)
 }
 
@@ -200,29 +200,29 @@ fn test_lambda_param_pass() {
 
 #Test
 fn test_struct_fn_field() {
-  var s Holder = Holder(make_inc(), 100)
+  #Mut let s Holder = Holder(make_inc(), 100)
   assert_eq(s.run(5), 106)
   assert_eq(s.h(10), 11)
 }
 
 #Test
 fn test_struct_fn_field_reassign() {
-  var s Holder = Holder(make_inc(), 100)
+  #Mut let s Holder = Holder(make_inc(), 100)
   s.set((x i32) i32 => x * 3)
   assert_eq(s.h(4), 12)
 }
 
 #Test
 fn test_struct_fn_field_by_value() {
-  var s Holder = Holder(make_inc(), 100)
-  val r = call_h_by_value(s, 7)
+  #Mut let s Holder = Holder(make_inc(), 100)
+  let r = call_h_by_value(s, 7)
   assert_eq(r, 8)
 }
 
 #Test
 fn test_struct_fn_field_whole_reassign() {
-  var s Holder = Holder(make_inc(), 100)
-  var s2 Holder = Holder((x i32) i32 => x - 1, 0)
+  #Mut let s Holder = Holder(make_inc(), 100)
+  #Mut let s2 Holder = Holder((x i32) i32 => x - 1, 0)
   s = s2
   assert_eq(s.h(50), 49)
 }
@@ -231,7 +231,7 @@ fn test_struct_fn_field_whole_reassign() {
 
 #Test
 fn test_array_fn_elem() {
-  var arr Array<fn(i32)i32> = []
+  #Mut let arr Array<fn(i32)i32> = []
   arr.push(make_inc())
   arr.push((x i32) i32 => x * 2)
   arr.push((x i32) i32 => x - 5)
@@ -244,16 +244,16 @@ fn test_array_fn_elem() {
 
 #Test
 fn test_array_fn_elem_by_value() {
-  var arr Array<fn(i32)i32> = []
+  #Mut let arr Array<fn(i32)i32> = []
   arr.push(make_inc())
 
-  val r = run_first(arr, 100)
+  let r = run_first(arr, 100)
   assert_eq(r, 101)
 }
 
 #Test
 fn test_array_fn_elem_reassign() {
-  var arr Array<fn(i32)i32> = []
+  #Mut let arr Array<fn(i32)i32> = []
   arr.push(make_inc())
 
   arr[0] = (x i32) i32 => x + 1000
@@ -264,22 +264,22 @@ fn test_array_fn_elem_reassign() {
 
 #Test
 fn test_box_fn_call() {
-  var b Rc<fn(i32)i32> = (x i32) i32 => x + 100
+  #Mut let b Rc<fn(i32)i32> = (x i32) i32 => x + 100
   assert_eq(b(5), 105)
   assert_eq(b(10), 110)
 }
 
 #Test
 fn test_box_fn_copy() {
-  var b Rc<fn(i32)i32> = (x i32) i32 => x + 100
-  var b2 Rc<fn(i32)i32> = b
+  #Mut let b Rc<fn(i32)i32> = (x i32) i32 => x + 100
+  #Mut let b2 Rc<fn(i32)i32> = b
   assert_eq(b2(7), 107)
 }
 
 #Test
 fn test_box_fn_reassign() {
-  var b Rc<fn(i32)i32> = (x i32) i32 => x + 100
-  var b2 Rc<fn(i32)i32> = b
+  #Mut let b Rc<fn(i32)i32> = (x i32) i32 => x + 100
+  #Mut let b2 Rc<fn(i32)i32> = b
 
   b = (x i32) i32 => x * 3
   assert_eq(b(4), 12)
@@ -290,7 +290,7 @@ fn test_box_fn_reassign() {
 
 #Test
 fn test_zero_block_tail_expr_return() {
-  val once fn()i32 = {
+  let once fn()i32 = {
     42
   }
   assert_eq(once(), 42)
@@ -298,9 +298,9 @@ fn test_zero_block_tail_expr_return() {
 
 #Test
 fn test_zero_block_tail_expr_with_prelude() {
-  val f fn()i32 = {
-    var a = 3
-    var b = 4
+  let f fn()i32 = {
+    #Mut let a = 3
+    #Mut let b = 4
     a + b
   }
   assert_eq(f(), 7)
@@ -308,7 +308,7 @@ fn test_zero_block_tail_expr_with_prelude() {
 
 #Test
 fn test_zero_block_propagates_via_arg() {
-  val seven fn()i32 = {
+  let seven fn()i32 = {
     7
   }
   assert_eq(apply0(seven), 7)
@@ -318,65 +318,65 @@ fn test_zero_block_propagates_via_arg() {
 
 #Test
 fn test_fn_type_decl() {
-  var a fn()
-  var b fn()i32
-  var c fn(i32)i32
-  var d fn(x i32)i32
-  var e fn(a, b i32)i32
-  var f fn(g fn(i32)i32)i32
-  var h fn()fn(i32)i32
+  #Mut let a fn()
+  #Mut let b fn()i32
+  #Mut let c fn(i32)i32
+  #Mut let d fn(x i32)i32
+  #Mut let e fn(a, b i32)i32
+  #Mut let f fn(g fn(i32)i32)i32
+  #Mut let h fn()fn(i32)i32
 
   assert_true(true)
 }
 
 #Test
 fn test_fn_type_alias() {
-  var c Callback
-  var pi Pred<i32>
-  var ps Pred<String>
-  var op Op2<i32, i32>
-  var nested Pred<fn()i32>
+  #Mut let c Callback
+  #Mut let pi Pred<i32>
+  #Mut let ps Pred<String>
+  #Mut let op Op2<i32, i32>
+  #Mut let nested Pred<fn()i32>
 
   assert_true(true)
 }
 
 #Test
 fn test_fn_type_equiv() {
-  var x fn(s String)bool
-  var c Callback = x
-  var y Callback
-  var z fn(s String)bool = y
+  #Mut let x fn(s String)bool
+  #Mut let c Callback = x
+  #Mut let y Callback
+  #Mut let z fn(s String)bool = y
 
-  var a fn(a i32, b i32)i32
-  var b fn(x i32, y i32)i32 = a
-  var d fn(i32, i32)i32 = b
+  #Mut let a fn(a i32, b i32)i32
+  #Mut let b fn(x i32, y i32)i32 = a
+  #Mut let d fn(i32, i32)i32 = b
 
-  var g fn(a, b i32)i32
-  var ge fn(a i32, b i32)i32 = g
+  #Mut let g fn(a, b i32)i32
+  #Mut let ge fn(a i32, b i32)i32 = g
 
-  var n1 fn(f fn(i32)i32)i32
-  var n2 fn(f fn(x i32)i32)i32 = n1
+  #Mut let n1 fn(f fn(i32)i32)i32
+  #Mut let n2 fn(f fn(x i32)i32)i32 = n1
 
   assert_true(true)
 }
 
 #Test
 fn test_fn_type_container() {
-  var arr Array<fn()i32> = []
-  var b Rc<fn()i32>
-  var p (fn()i32, i32)
-  var fr fn(i32)i32&
-  var nested Array<fn()fn(i32)i32> = []
+  #Mut let arr Array<fn()i32> = []
+  #Mut let b Rc<fn()i32>
+  #Mut let p (fn()i32, i32)
+  #Mut let fr fn(i32)i32&
+  #Mut let nested Array<fn()fn(i32)i32> = []
 
   assert_true(true)
 }
 
 #Test
 fn test_fn_type_nullable() {
-  var a fn?()
-  var b fn?(i32)i32
-  var c fn(s String)i32?
-  var d fn?(s String)i32?
+  #Mut let a fn?()
+  #Mut let b fn?(i32)i32
+  #Mut let c fn(s String)i32?
+  #Mut let d fn?(s String)i32?
 
   assert_true(true)
 }
@@ -385,8 +385,8 @@ fn test_fn_type_nullable() {
 
 #Test
 fn test_closure_capture_scalar() {
-  var x i32 = 10
-  val f = (y i32) i32 => y + x
+  #Mut let x i32 = 10
+  let f = (y i32) i32 => y + x
   assert_eq(f(1), 11)
   assert_eq(f(7), 17)
 
@@ -396,70 +396,70 @@ fn test_closure_capture_scalar() {
 
 #Test
 fn test_closure_capture_multi() {
-  var a i32 = 3
-  var b i32 = 7
-  val sum = (x i32) i32 => a + b + x
+  #Mut let a i32 = 3
+  #Mut let b i32 = 7
+  let sum = (x i32) i32 => a + b + x
   assert_eq(sum(0), 10)
   assert_eq(sum(5), 15)
 
-  var pi f64 = 3.14
-  val pifloor = () i32 => pi.to_i32()
+  #Mut let pi f64 = 3.14
+  let pifloor = () i32 => pi.to_i32()
   assert_eq(pifloor(), 3)
 
-  var enabled bool = true
-  val pick = (t, f i32) i32 => if enabled { t } else { f }
+  #Mut let enabled bool = true
+  let pick = (t, f i32) i32 => if enabled { t } else { f }
   assert_eq(pick(1, 2), 1)
 }
 
 #Test
 fn test_closure_capture_box() {
-  var b Rc<Cell> = Cell(42)
-  val f = () i32 => b.get()
+  #Mut let b Rc<Cell> = Cell(42)
+  let f = () i32 => b.get()
   assert_eq(f(), 42)
   assert_eq(f(), 42)
 
-  val g = () i32 => b.get()
+  let g = () i32 => b.get()
   assert_eq(g(), 42)
 }
 
 #Test
 fn test_closure_capture_string() {
-  var s String = "hello"
-  val f = () String => s
+  #Mut let s String = "hello"
+  let f = () String => s
   assert_eq(f(), "hello")
   assert_eq(f(), "hello")
 
-  var n i32 = 7
-  val g = () String => s
-  val h = () i32 => n + 1
+  #Mut let n i32 = 7
+  let g = () String => s
+  let h = () i32 => n + 1
   assert_eq(g(), "hello")
   assert_eq(h(), 8)
 }
 
 #Test
 fn test_closure_capture_array() {
-  var arr Array<i32> = [10, 20, 30]
-  val f = () i32 => first(arr)
+  #Mut let arr Array<i32> = [10, 20, 30]
+  let f = () i32 => first(arr)
   assert_eq(f(), 10)
   assert_eq(f(), 10)
 }
 
 #Test
 fn test_closure_pass_around() {
-  var add10 fn(i32)i32 = make_adder(10)
+  #Mut let add10 fn(i32)i32 = make_adder(10)
   assert_eq(apply(add10, 5), 15)
   assert_eq(apply(add10, 100), 110)
 
-  var add42 fn(i32)i32 = make_adder(42)
+  #Mut let add42 fn(i32)i32 = make_adder(42)
   assert_eq(add42(8), 50)
 
-  var alias fn(i32)i32 = add10
+  #Mut let alias fn(i32)i32 = add10
   assert_eq(alias(7), 17)
 }
 
 #Test
 fn test_closure_self_capture() {
-  var c Counter = Counter(10)
+  #Mut let c Counter = Counter(10)
   assert_eq(c.add_then_apply(5), 15)
   assert_eq(c.triple_apply(), 50)
 }

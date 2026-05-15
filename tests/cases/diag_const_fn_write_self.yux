@@ -16,7 +16,7 @@ Cell {
 }
 
 fn main() {
-    var c = Cell(0)
+    #Mut let c = Cell(0)
     c.bump()
     ret;
 }

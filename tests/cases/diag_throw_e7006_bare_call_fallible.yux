@@ -10,7 +10,7 @@ fn parse() i32 {
 
 #Fallible(ParseErr)
 fn run() i32 {
-  var x i32 = parse()
+  #Mut let x i32 = parse()
   ret x
 }
 

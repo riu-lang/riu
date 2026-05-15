@@ -3,20 +3,20 @@
 
 #Test
 fn test_neg_int() {
-  val a = -10
+  let a = -10
   assert_eq(a, -10)
 }
 
 #Test
 fn test_neg_float() {
-  val b = -3.14
+  let b = -3.14
   assert_eq(b, -3.14)
 }
 
 #Test
 fn test_bit_not() {
   ; ~5 = -6（二补码）
-  val c = ~5
+  let c = ~5
   assert_eq(c, -6)
 }
 

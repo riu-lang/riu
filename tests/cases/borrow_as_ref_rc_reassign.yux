@@ -13,8 +13,8 @@ Pair {
 }
 
 fn main() {
-  var b Rc<Pair> = Pair(7, 8)
-  val r Pair& = as_ref(b)
+  #Mut let b Rc<Pair> = Pair(7, 8)
+  let r Pair& = as_ref(b)
   b = Pair(9, 10)
   println(r.a)
   ret;

@@ -3,14 +3,14 @@
 
 #Test
 fn test_turbofish_nullable_value() {
-  var n i32? = Nullable:<i32>(42i32)
-  val v i32 = n ?? -1i32
+  #Mut let n i32? = Nullable:<i32>(42i32)
+  let v i32 = n ?? -1i32
   assert_eq(v, 42)
 }
 
 #Test
 fn test_turbofish_nullable_empty() {
-  var e i32? = Nullable:<i32>()
-  val ev i32 = e ?? -1i32
+  #Mut let e i32? = Nullable:<i32>()
+  let ev i32 = e ?? -1i32
   assert_eq(ev, -1)
 }

@@ -7,19 +7,19 @@ extern {
 
 fn main() {
   ; Array<u8> → Ptr：data 区首地址；NUL 终止字符串 "hi" 应得到长度 2
-  var a Array<u8> = [104u8, 105u8, 0u8]
+  #Mut let a Array<u8> = [104u8, 105u8, 0u8]
   println(lstrlenA(a))
 
   ; String → Ptr：data 区是 UTF-32 码点 (4 字节/码点)；ASCII 字符的低字节非零、高 3 字节 0
   ; 所以 lstrlenA 读到首字符的低字节即返回 1（'h' = 0x68 0x00 0x00 0x00）
-  var s String = "hi"
+  #Mut let s String = "hi"
   println(lstrlenA(s))
 
   ; T& → Ptr (i32&)：x = 0i32（4 字节全 0），lstrlenA 立即遇 NUL 返回 0
-  var x i32 = 0i32
+  #Mut let x i32 = 0i32
   println(lstrlenA(&x))
 
   ; Rc<i32> → Ptr：payload = i32 = 0，同上返回 0
-  var b Rc<i32> = 0i32
+  #Mut let b Rc<i32> = 0i32
   println(lstrlenA(b))
 }

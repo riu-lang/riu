@@ -23,22 +23,22 @@ fn alias(p P&) P& = p
 
 #Test
 fn test_method_field_ref() {
-  var a P = P(7i32, 8i32)
-  val rx i32& = a.x_ref()
+  #Mut let a P = P(7i32, 8i32)
+  let rx i32& = a.x_ref()
   assert_eq(rx, 7i32)
 }
 
 #Test
 fn test_method_self_ref() {
-  var a P = P(1i32, 2i32)
-  val r P& = a.me()
+  #Mut let a P = P(1i32, 2i32)
+  let r P& = a.me()
   assert_eq(r.x, 1i32)
   assert_eq(r.y, 2i32)
 }
 
 #Test
 fn test_freefn_alias_param() {
-  var a P = P(11i32, 22i32)
-  val r P& = alias(&a)
+  #Mut let a P = P(11i32, 22i32)
+  let r P& = alias(&a)
   assert_eq(r.x, 11i32)
 }

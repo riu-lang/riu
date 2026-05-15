@@ -3,19 +3,19 @@
 
 fn main() {
   ; Array<fn> 合法
-  var arr Array<fn()i32> = []
+  #Mut let arr Array<fn()i32> = []
 
   ; Rc<fn> 合法
-  var b Rc<fn()i32>
+  #Mut let b Rc<fn()i32>
 
   ; 元组成员位
-  var p (fn()i32, i32)
+  #Mut let p (fn()i32, i32)
 
   ; 借用一个 fn 值（紧贴 retType 末尾的 &）
-  var fr fn(i32)i32&
+  #Mut let fr fn(i32)i32&
 
   ; 嵌套 Array<fn(...) fn(i32)i32>
-  var nested Array<fn()fn(i32)i32> = []
+  #Mut let nested Array<fn()fn(i32)i32> = []
 
   println("ok")
   ret;

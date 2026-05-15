@@ -5,14 +5,14 @@ A = i32
 
 #Test
 fn test_alias_basic_int() {
-  var x A = 7i32
+  #Mut let x A = 7i32
   assert_eq(x, 7i32)
 }
 
 #Test
 fn test_alias_in_arith() {
-  var x A = 10i32
-  var y A = 3i32
+  #Mut let x A = 10i32
+  #Mut let y A = 3i32
   assert_eq(x + y, 13i32)
 }
 
@@ -28,8 +28,8 @@ fn test_alias_fn_signature() {
 ; 把 alias 类型的局部变量喂给以 alias 声明形参的函数
 #Test
 fn test_alias_var_as_arg() {
-  var a A = 4i32
-  var b A = 6i32
+  #Mut let a A = 4i32
+  #Mut let b A = 6i32
   assert_eq(add_alias(a, b), 10i32)
 }
 
@@ -39,7 +39,7 @@ A1 = A2
 
 #Test
 fn test_alias_chain() {
-  var x A1 = 99i32
+  #Mut let x A1 = 99i32
   assert_eq(x, 99i32)
 }
 
@@ -48,7 +48,7 @@ IPair = (i32, i32)
 
 #Test
 fn test_alias_tuple_member() {
-  var p IPair = (5i32, 9i32)
+  #Mut let p IPair = (5i32, 9i32)
   assert_eq(p.0, 5i32)
   assert_eq(p.1, 9i32)
 }
@@ -58,7 +58,7 @@ Pair<T> = (T, T)
 
 #Test
 fn test_alias_generic_tuple_member() {
-  var p Pair<i32> = (40i32, 2i32)
+  #Mut let p Pair<i32> = (40i32, 2i32)
   assert_eq(p.0, 40i32)
   assert_eq(p.1, 2i32)
 }
@@ -66,7 +66,7 @@ fn test_alias_generic_tuple_member() {
 ; 解构 alias 类型的元组（Phase 5）
 #Test
 fn test_alias_tuple_destructure() {
-  var p IPair = (11i32, 22i32)
+  #Mut let p IPair = (11i32, 22i32)
   var (a, b) IPair = p
   assert_eq(a, 11i32)
   assert_eq(b, 22i32)
@@ -75,7 +75,7 @@ fn test_alias_tuple_destructure() {
 ; alias 路径上的元组成员赋值（Phase 6）
 #Test
 fn test_alias_tuple_member_assign() {
-  var p IPair = (1i32, 2i32)
+  #Mut let p IPair = (1i32, 2i32)
   p.0 = 100i32
   p.1 = 200i32
   assert_eq(p.0, 100i32)
@@ -84,7 +84,7 @@ fn test_alias_tuple_member_assign() {
 
 #Test
 fn test_alias_generic_tuple_member_assign() {
-  var p Pair<i32> = (3i32, 4i32)
+  #Mut let p Pair<i32> = (3i32, 4i32)
   p.1 = 77i32
   assert_eq(p.0, 3i32)
   assert_eq(p.1, 77i32)

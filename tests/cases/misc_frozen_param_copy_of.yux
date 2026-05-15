@@ -2,7 +2,7 @@
 ; `val t = copy_of:<String>(s)` 让 t 不带 #Frozen 痕迹，可正常使用。
 
 fn relay(#Frozen s String) {
-    val t String = copy_of:<String>(s)
+    let t String = copy_of:<String>(s)
     println(t)
     ret;
 }

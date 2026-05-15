@@ -7,14 +7,14 @@ fn apply(f fn(i32)i32, x i32) i32 {
 
 fn use_borrow(r i32&) i32 {
   ; 多次直接消费 lambda：每次都是新栈嵌入 captures，body 读 r 自动解引
-  var sum i32 = 0
+  #Mut let sum i32 = 0
   sum = sum + apply((x i32) i32 => r + x, 5)
   sum = sum + apply((x i32) i32 => r * x, 2)
   ret sum
 }
 
 fn main() {
-  var n i32 = 100
+  #Mut let n i32 = 100
   println(use_borrow(&n))   ; (100+5) + (100*2) = 305
   ret;
 }

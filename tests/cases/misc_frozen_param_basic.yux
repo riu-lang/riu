@@ -11,7 +11,7 @@ fn pair(#Frozen a, b i32) i32 {
 }
 
 fn main() {
-    var s String = "hello"
+    #Mut let s String = "hello"
     dump(s)
     println(pair(3, 4).to_string())
     ret;

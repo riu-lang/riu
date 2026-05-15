@@ -26,8 +26,8 @@ Outer {
 }
 
 fn main() {
-    var c = Config(1)
-    var o = Outer(c)
+    #Mut let c = Config(1)
+    #Mut let o = Outer(c)
     o.poke()
     ret;
 }

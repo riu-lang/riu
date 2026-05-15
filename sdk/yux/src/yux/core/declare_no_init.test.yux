@@ -3,21 +3,21 @@
 
 #Test
 fn test_declare_then_assign_i32() {
-  var a i32
+  #Mut let a i32
   a = 10
   assert_eq(a, 10)
 }
 
 #Test
 fn test_declare_then_assign_i64() {
-  var b i64
+  #Mut let b i64
   b = 20i64
   assert_eq(b, 20i64)
 }
 
 #Test
 fn test_declare_then_assign_f32() {
-  var c f32
+  #Mut let c f32
   c = 3.14f32
   assert_eq(c, 3.14f32)
 }

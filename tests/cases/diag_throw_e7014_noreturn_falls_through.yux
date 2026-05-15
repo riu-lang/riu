@@ -2,7 +2,7 @@
 ; （DRAFT-错误.md §8.3 / spec §11.5.1）
 #NoReturn
 fn never_terminates() {
-  var x i32 = 1
+  #Mut let x i32 = 1
   x = x + 1
 }
 

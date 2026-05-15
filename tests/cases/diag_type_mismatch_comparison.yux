@@ -2,7 +2,7 @@
 ; 比较左右操作数类型不一致时应触发 E3004
 
 fn main() {
-  val a i32 = 10
-  val b String = "hello"
-  val c bool = a == b    ; ❌ E3004: i32 == String
+  let a i32 = 10
+  let b String = "hello"
+  let c bool = a == b    ; ❌ E3004: i32 == String
 }

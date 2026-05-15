@@ -4,7 +4,7 @@
 fn mf_helper() i32 = 100
 
 fn mf_main_like() i32 {
-  val h = mf_helper()
+  let h = mf_helper()
   ret h + 100
 }
 

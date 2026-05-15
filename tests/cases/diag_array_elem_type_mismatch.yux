@@ -2,5 +2,5 @@
 ; 数组元素类型与声明不一致时应触发 E3013
 
 fn main() {
-  var arr [i32 * 3] = [1, 2, "hello"]    ; ❌ E3013: expected i32, got String
+  #Mut let arr [i32 * 3] = [1, 2, "hello"]    ; ❌ E3013: expected i32, got String
 }

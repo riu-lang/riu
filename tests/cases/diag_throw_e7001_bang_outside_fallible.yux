@@ -10,6 +10,6 @@ fn parse() i32 {
 }
 
 fn main() {
-  var x i32 = parse()!
+  #Mut let x i32 = parse()!
   ret;
 }

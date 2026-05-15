@@ -3,15 +3,16 @@
 ; - #Const fn 可调用其它 #Const fn
 ; - 非 #Const fn 调用 #Const fn 不受限
 
-cval LIMIT i32 = 1000
+#Cval
+let LIMIT i32 = 1000
 
 #Const
 fn add(a i32, b i32) i32 = a + b
 
 #Const
 fn clamp(x i32) i32 {
-    cval base i32 = 0
-    var hi i32 = LIMIT
+    #Cval let base i32 = 0
+    #Mut let hi i32 = LIMIT
     ret add(x, base) + hi - hi
 }
 

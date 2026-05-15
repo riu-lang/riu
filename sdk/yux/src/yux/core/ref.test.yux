@@ -14,16 +14,16 @@ fn r_sum_three(x i32&, y i32&, z i32&) i32 {
 
 #Test
 fn test_ref_read_paths() {
-  var x i32 = 10i32
-  var y i32 = 20i32
-  var z i32 = 30i32
+  #Mut let x i32 = 10i32
+  #Mut let y i32 = 20i32
+  #Mut let z i32 = 30i32
 
   assert_eq(r_add(&x, &y), 30i32)
 
-  var rx i32& = &x
+  #Mut let rx i32& = &x
   assert_eq(rx, 10i32)
 
-  var rx2 i32& = rx
+  #Mut let rx2 i32& = rx
   assert_eq(rx2, 10i32)
 
   assert_eq(r_sum_three(&x, &y, &z), 60i32)
@@ -37,15 +37,15 @@ fn r_bump(r i32&) {
 
 #Test
 fn test_ref_store_through() {
-  var x i32 = 10i32
-  var d i32& = &x
+  #Mut let x i32 = 10i32
+  #Mut let d i32& = &x
   d = 99i32
   assert_eq(x, 99i32)
   d = d + 1i32
   assert_eq(x, 100i32)
   r_bump(&x)
   assert_eq(x, 101i32)
-  var d2 i32& = d
+  #Mut let d2 i32& = d
   d2 = 7i32
   assert_eq(x, 7i32)
 }
@@ -82,7 +82,7 @@ fn r_box_bump(b Rc<RefPair>&) {
 
 #Test
 fn test_ref_box_handle_borrow() {
-  var p Rc<RefPair> = RefPair(10i32, 20i32)
+  #Mut let p Rc<RefPair> = RefPair(10i32, 20i32)
   assert_eq(r_box_show_a(&p), 10i32)
   assert_eq(p.sum(), 30i32)
   r_box_bump(&p)
@@ -123,7 +123,7 @@ fn r_add1(r i32&) {
 
 #Test
 fn test_ref_local_field() {
-  var p RefP = RefP(10i32, 20i32)
+  #Mut let p RefP = RefP(10i32, 20i32)
   r_add1(&p.x)
   assert_eq(p.x, 11i32)
   assert_eq(p.y, 20i32)
@@ -131,7 +131,7 @@ fn test_ref_local_field() {
 
 #Test
 fn test_ref_box_field() {
-  var b Rc<RefP> = RefP(100i32, 200i32)
+  #Mut let b Rc<RefP> = RefP(100i32, 200i32)
   r_add1(&b.x)
   assert_eq(b.x, 101i32)
   assert_eq(b.y, 200i32)
@@ -139,8 +139,8 @@ fn test_ref_box_field() {
 
 #Test
 fn test_ref_rc_field_chain() {
-  var b Rc<RefP> = RefP(100i32, 200i32)
-  var h RefHolder = RefHolder(b)
+  #Mut let b Rc<RefP> = RefP(100i32, 200i32)
+  #Mut let h RefHolder = RefHolder(b)
   r_add1(&h.inner.x)
   ; b 与 h.inner 共享同一 block
   assert_eq(b.x, 101i32)
@@ -148,7 +148,7 @@ fn test_ref_rc_field_chain() {
 
 #Test
 fn test_ref_self_field() {
-  var p RefP = RefP(10i32, 20i32)
+  #Mut let p RefP = RefP(10i32, 20i32)
   p.bump_x()
   assert_eq(p.x, 11i32)
 }
@@ -177,7 +177,7 @@ fn r_dump_x(p RefQ&) i32 {
 
 #Test
 fn test_ref_receiver_self_ref() {
-  var p RefQ = RefQ(10i32, 20i32)
+  #Mut let p RefQ = RefQ(10i32, 20i32)
   assert_eq(p.show_via_self_ref(), 10i32)
 }
 
@@ -185,35 +185,35 @@ fn test_ref_receiver_self_ref() {
 
 #Test
 fn test_same_ref_box_shared() {
-  var p Rc<RefPair> = RefPair(1i32, 2i32)
-  var q Rc<RefPair> = p
-  var r Rc<RefPair> = RefPair(1i32, 2i32)
+  #Mut let p Rc<RefPair> = RefPair(1i32, 2i32)
+  #Mut let q Rc<RefPair> = p
+  #Mut let r Rc<RefPair> = RefPair(1i32, 2i32)
   assert_true(same_ref:<Rc<RefPair>>(p, q))
   assert_false(same_ref:<Rc<RefPair>>(p, r))
 }
 
 #Test
 fn test_same_ref_weak_from_same_box() {
-  var p Rc<RefPair> = RefPair(1i32, 2i32)
-  var q Rc<RefPair> = p
-  var r Rc<RefPair> = RefPair(1i32, 2i32)
-  var w1 Weak<RefPair> = p
-  var w2 Weak<RefPair> = q
-  var w3 Weak<RefPair> = r
+  #Mut let p Rc<RefPair> = RefPair(1i32, 2i32)
+  #Mut let q Rc<RefPair> = p
+  #Mut let r Rc<RefPair> = RefPair(1i32, 2i32)
+  #Mut let w1 Weak<RefPair> = p
+  #Mut let w2 Weak<RefPair> = q
+  #Mut let w3 Weak<RefPair> = r
   assert_true(same_ref:<Weak<RefPair>>(w1, w2))
   assert_false(same_ref:<Weak<RefPair>>(w1, w3))
 }
 
 #Test
 fn test_same_ref_array_self_vs_independent() {
-  var a1 Array<i32> = [1i32, 2i32, 3i32]
-  var a3 Array<i32> = [1i32, 2i32, 3i32]
+  #Mut let a1 Array<i32> = [1i32, 2i32, 3i32]
+  #Mut let a3 Array<i32> = [1i32, 2i32, 3i32]
   assert_true(same_ref:<Array<i32>>(a1, a1))
   assert_false(same_ref:<Array<i32>>(a1, a3))
 }
 
 #Test
 fn test_same_ref_string_self() {
-  var s1 String = "hi"
+  #Mut let s1 String = "hi"
   assert_true(same_ref:<String>(s1, s1))
 }

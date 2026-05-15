@@ -29,5 +29,5 @@ Holder {
 }
 
 fn main() {
-  var h Holder = Holder(CopyPair(5i32, 6i32), 100i32)
+  #Mut let h Holder = Holder(CopyPair(5i32, 6i32), 100i32)
 }

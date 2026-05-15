@@ -2,6 +2,6 @@
 ; 对非数组类型使用索引访问应触发 E3062
 
 fn main() {
-  val x i32 = 10
-  val y i32 = x[0]    ; ❌ E3062: Cannot index non-array type: i32
+  let x i32 = 10
+  let y i32 = x[0]    ; ❌ E3062: Cannot index non-array type: i32
 }

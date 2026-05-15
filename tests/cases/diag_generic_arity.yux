@@ -3,6 +3,6 @@ fn id<T>(x T) T {
 }
 
 fn main() {
-  val r i32 = id:<i32, i64>(1)
+  let r i32 = id:<i32, i64>(1)
   ret;
 }

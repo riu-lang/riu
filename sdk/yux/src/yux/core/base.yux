@@ -10,22 +10,24 @@ extern {
 }
 
 ; 全局常量
-cval _STD_OUTPUT_HANDLE i32 = -11
-cval _STD_ERROR_HANDLE i32 = -12
+#Cval
+let _STD_OUTPUT_HANDLE i32 = -11
+#Cval
+let _STD_ERROR_HANDLE i32 = -12
 
 ; 内部：向 stdout 写入
 fn _stdout_write(buf Ptr, off i64, len i64) {
-  var hStdout Ptr = GetStdHandle(_STD_OUTPUT_HANDLE)
-  var bufWithOff Ptr = _ptr_offset(buf, off)
-  var written u32 = 0u32
+  #Mut let hStdout Ptr = GetStdHandle(_STD_OUTPUT_HANDLE)
+  #Mut let bufWithOff Ptr = _ptr_offset(buf, off)
+  #Mut let written u32 = 0u32
   WriteFile(hStdout, bufWithOff, len.to_u32(), &written, null);
 }
 
 ; 内部：向 stderr 写入（panic / eprint* 模板用，DRAFT-错误.md §8.6）
 fn _stderr_write(buf Ptr, off i64, len i64) {
-  var hStderr Ptr = GetStdHandle(_STD_ERROR_HANDLE)
-  var bufWithOff Ptr = _ptr_offset(buf, off)
-  var written u32 = 0u32
+  #Mut let hStderr Ptr = GetStdHandle(_STD_ERROR_HANDLE)
+  #Mut let bufWithOff Ptr = _ptr_offset(buf, off)
+  #Mut let written u32 = 0u32
   WriteFile(hStderr, bufWithOff, len.to_u32(), &written, null);
 }
 
@@ -754,19 +756,19 @@ i64 {
 
 i64 : ToString {
   fn to_string() String {
-    var out Array<u32> = []
-    var buf [u8 * 21] = [0u8 ...]
-    var is_neg = $ < 0i64
-    var v i64 = $
+    #Mut let out Array<u32> = []
+    #Mut let buf [u8 * 21] = [0u8 ...]
+    #Mut let is_neg = $ < 0i64
+    #Mut let v i64 = $
     if is_neg {
       v = -$
     }
-    var i i64 = 0
+    #Mut let i i64 = 0
     loop {
       if v == 0 {
         break;
       }
-      var digit i64 = v % 10
+      #Mut let digit i64 = v % 10
       buf[20i64 - i] = 48u8 + digit.to_u8()
       v /= 10
       i += 1
@@ -778,8 +780,8 @@ i64 : ToString {
     if is_neg {
       out.push(c'-')
     }
-    var start i64 = 21i64 - i
-    var k i64 = 0
+    #Mut let start i64 = 21i64 - i
+    #Mut let k i64 = 0
     loop {
       if k >= i {
         break;
@@ -888,15 +890,15 @@ u64 {
 
 u64 : ToString {
   fn to_string() String {
-    var out Array<u32> = []
-    var buf [u8 * 21] = [0u8 ...]
-    var v u64 = $
-    var i i64 = 0
+    #Mut let out Array<u32> = []
+    #Mut let buf [u8 * 21] = [0u8 ...]
+    #Mut let v u64 = $
+    #Mut let i i64 = 0
     loop {
       if v == 0u64 {
         break;
       }
-      var digit u64 = v % 10u64
+      #Mut let digit u64 = v % 10u64
       buf[20i64 - i] = 48u8 + digit.to_u8()
       v /= 10u64
       i += 1
@@ -905,8 +907,8 @@ u64 : ToString {
       buf[20i64] = 48u8
       i = 1
     }
-    var start i64 = 21i64 - i
-    var k i64 = 0
+    #Mut let start i64 = 21i64 - i
+    #Mut let k i64 = 0
     loop {
       if k >= i {
         break;
@@ -996,9 +998,9 @@ f64 {
 
 f64 : ToString {
   fn to_string() String {
-    var out Array<u32> = []
-    var is_neg = $ < 0.0f64
-    var v f64 = $
+    #Mut let out Array<u32> = []
+    #Mut let is_neg = $ < 0.0f64
+    #Mut let v f64 = $
     if is_neg {
       v = 0.0f64 - $
     }
@@ -1006,8 +1008,8 @@ f64 : ToString {
       out.push(c'-')
     }
     ; 整数部分：复用 i64.to_string 后逐码点 push
-    val int_part String = v.to_i64().to_string()
-    var ii i64 = 0
+    let int_part String = v.to_i64().to_string()
+    #Mut let ii i64 = 0
     loop {
       if ii >= int_part.len() {
         break;
@@ -1016,14 +1018,14 @@ f64 : ToString {
       ii += 1
     }
     out.push(c'.')
-    var frac f64 = v - v.to_i64().to_f64()
-    var i i64 = 0
+    #Mut let frac f64 = v - v.to_i64().to_f64()
+    #Mut let i i64 = 0
     loop {
       if i == 6 {
         break;
       }
       frac *= 10.0f64
-      var digit i64 = frac.to_i64()
+      #Mut let digit i64 = frac.to_i64()
       out.push((48u8 + digit.to_u8()).to_u32())
       frac -= digit.to_f64()
       i += 1
@@ -1308,7 +1310,7 @@ String {
     if $.data.len() != other.data.len() {
       ret false
     }
-    var i i64 = 0
+    #Mut let i i64 = 0
     loop {
       if i >= $.data.len() {
         break;
@@ -1327,11 +1329,11 @@ String {
 
   ; 是否以 prefix 开头：长度足够且前 plen 个码点逐位相等
   fn starts_with(prefix String&) bool {
-    val plen i64 = prefix.data.len()
+    let plen i64 = prefix.data.len()
     if plen > $.data.len() {
       ret false
     }
-    var i i64 = 0
+    #Mut let i i64 = 0
     loop {
       if i >= plen {
         break;
@@ -1347,21 +1349,21 @@ String {
   ; 是否包含 needle 子串：朴素 O(n*m) 滑窗匹配
   ; 空 needle 视为匹配任何字符串（与 starts_with("") 一致）
   fn contains(needle String&) bool {
-    val nlen i64 = needle.data.len()
+    let nlen i64 = needle.data.len()
     if nlen == 0 {
       ret true
     }
-    val hlen i64 = $.data.len()
+    let hlen i64 = $.data.len()
     if nlen > hlen {
       ret false
     }
-    var i i64 = 0
+    #Mut let i i64 = 0
     loop {
       if i + nlen > hlen {
         break;
       }
-      var j i64 = 0
-      var hit bool = true
+      #Mut let j i64 = 0
+      #Mut let hit bool = true
       loop {
         if j >= nlen {
           break;
@@ -1382,13 +1384,13 @@ String {
 
   ; 转为 UTF-8 字节数组
   fn to_bytes() Array<u8> {
-    var r Array<u8> = []
-    var i i64 = 0
+    #Mut let r Array<u8> = []
+    #Mut let i i64 = 0
     loop {
       if i >= $.data.len() {
         break;
       }
-      val cp u32 = $.data[i]
+      let cp u32 = $.data[i]
       if cp < 128u32 {
         r.push(cp.to_u8());
       } elif cp < 2048u32 {
@@ -1445,7 +1447,7 @@ StringBuilder {
 
   ; 追加另一个字符串的全部码点
   fn append(s String) {
-    var i i64 = 0
+    #Mut let i i64 = 0
     loop {
       if i >= s.len() {
         break;
@@ -1465,7 +1467,7 @@ StringBuilder {
     if $.data.len() != other.data.len() {
       ret false
     }
-    var i i64 = 0
+    #Mut let i i64 = 0
     loop {
       if i >= $.data.len() {
         break;
@@ -1485,7 +1487,7 @@ StringBuilder {
   ; 取出缓冲、构造不可变 String、自身重置为空
   ; 取出后再 append/clear 不会影响已返回的 String（不同 Array<u32> Block）
   fn build() String {
-    val s String = String($.data)
+    let s String = String($.data)
     $.data = []
     s
   }
@@ -1517,60 +1519,60 @@ bool : ToString {
 ; 通道：print / println → stdout；eprint / eprintln → stderr（DRAFT-错误.md §8.6 panic 模板沿用此通道）。
 
 fn print(s String&) {
-  val bytes Array<u8> = s.to_bytes()
-  var i i64 = 0
+  let bytes Array<u8> = s.to_bytes()
+  #Mut let i i64 = 0
   loop {
     if i >= bytes.len() {
       break;
     }
-    val b [u8 * 1] = [bytes[i]]
+    let b [u8 * 1] = [bytes[i]]
     _stdout_write(&b, 0i64, 1i64)
     i += 1
   }
 }
 
 fn print<T : ToString>(x T) {
-  val s String = x.to_string()
+  let s String = x.to_string()
   print(&s)
 }
 
 fn println(s String&) {
   print(&s)
-  val nl [u8 * 1] = [10u8]
+  let nl [u8 * 1] = [10u8]
   _stdout_write(&nl, 0i64, 1i64)
 }
 
 fn println<T : ToString>(x T) {
-  val s String = x.to_string()
+  let s String = x.to_string()
   println(&s)
 }
 
 fn eprint(s String&) {
-  val bytes Array<u8> = s.to_bytes()
-  var i i64 = 0
+  let bytes Array<u8> = s.to_bytes()
+  #Mut let i i64 = 0
   loop {
     if i >= bytes.len() {
       break;
     }
-    val b [u8 * 1] = [bytes[i]]
+    let b [u8 * 1] = [bytes[i]]
     _stderr_write(&b, 0i64, 1i64)
     i += 1
   }
 }
 
 fn eprint<T : ToString>(x T) {
-  val s String = x.to_string()
+  let s String = x.to_string()
   eprint(&s)
 }
 
 fn eprintln(s String&) {
   eprint(&s)
-  val nl [u8 * 1] = [10u8]
+  let nl [u8 * 1] = [10u8]
   _stderr_write(&nl, 0i64, 1i64)
 }
 
 fn eprintln<T : ToString>(x T) {
-  val s String = x.to_string()
+  let s String = x.to_string()
   eprintln(&s)
 }
 

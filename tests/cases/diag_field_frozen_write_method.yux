@@ -18,7 +18,7 @@ Outer {
 }
 
 fn main() {
-    var o = Outer("hi", 1)
+    #Mut let o = Outer("hi", 1)
     o.rename("ho")
     ret;
 }

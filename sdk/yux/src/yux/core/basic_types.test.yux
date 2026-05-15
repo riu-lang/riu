@@ -11,14 +11,14 @@
 
 #Test
 fn test_bool_true() {
-  val b bool = true
+  let b bool = true
   assert_true(b)
   assert_eq(b, true)
 }
 
 #Test
 fn test_bool_false() {
-  val b bool = false
+  let b bool = false
   assert_false(b)
   assert_eq(b, false)
 }
@@ -27,49 +27,49 @@ fn test_bool_false() {
 
 #Test
 fn test_i8_type() {
-  val a i8 = 42i8
+  let a i8 = 42i8
   assert_eq(a, 42i8)
 }
 
 #Test
 fn test_u8_type() {
-  val a u8 = 255u8
+  let a u8 = 255u8
   assert_eq(a, 255u8)
 }
 
 #Test
 fn test_i16_type() {
-  val a i16 = 1000i16
+  let a i16 = 1000i16
   assert_eq(a, 1000i16)
 }
 
 #Test
 fn test_u16_type() {
-  val a u16 = 65535u16
+  let a u16 = 65535u16
   assert_eq(a, 65535u16)
 }
 
 #Test
 fn test_i32_type() {
-  val a i32 = 100000
+  let a i32 = 100000
   assert_eq(a, 100000)
 }
 
 #Test
 fn test_u32_type() {
-  val a u32 = 4000000000u32
+  let a u32 = 4000000000u32
   assert_eq(a, 4000000000u32)
 }
 
 #Test
 fn test_i64_type() {
-  val a i64 = 1000000000i64
+  let a i64 = 1000000000i64
   assert_eq(a, 1000000000i64)
 }
 
 #Test
 fn test_u64_type() {
-  val a u64 = 1000000000u64
+  let a u64 = 1000000000u64
   assert_eq(a, 1000000000u64)
 }
 
@@ -77,13 +77,13 @@ fn test_u64_type() {
 
 #Test
 fn test_f32_type() {
-  val a f32 = 3.14f32
+  let a f32 = 3.14f32
   assert_eq(a, 3.14f32)
 }
 
 #Test
 fn test_f64_type() {
-  val a f64 = 3.14159265358979
+  let a f64 = 3.14159265358979
   assert_eq(a, 3.14159265358979)
 }
 
@@ -91,19 +91,19 @@ fn test_f64_type() {
 
 #Test
 fn test_binary_literal() {
-  val a i32 = 0b1010
+  let a i32 = 0b1010
   assert_eq(a, 10)
 }
 
 #Test
 fn test_octal_literal() {
-  val a i32 = 0o755
+  let a i32 = 0o755
   assert_eq(a, 493)
 }
 
 #Test
 fn test_hex_literal() {
-  val a i32 = 0xFF
+  let a i32 = 0xFF
   assert_eq(a, 255)
 }
 
@@ -111,18 +111,18 @@ fn test_hex_literal() {
 
 #Test
 fn test_i8_suffix() {
-  val a i8 = 127i8
+  let a i8 = 127i8
   assert_eq(a, 127i8)
 }
 
 #Test
 fn test_u64_suffix() {
-  val a u64 = 100u64
+  let a u64 = 100u64
   assert_eq(a, 100u64)
 }
 
 #Test
 fn test_f32_suffix() {
-  val a f32 = 2.5f32
+  let a f32 = 2.5f32
   assert_eq(a, 2.5f32)
 }

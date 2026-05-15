@@ -9,15 +9,15 @@ fn make_adder(n i32) fn(i32)i32 {
 }
 
 fn main() {
-  var add10 fn(i32)i32 = make_adder(10)
+  #Mut let add10 fn(i32)i32 = make_adder(10)
   println(apply(add10, 5))   ; 15
   println(apply(add10, 100)) ; 110
 
-  var add42 fn(i32)i32 = make_adder(42)
+  #Mut let add42 fn(i32)i32 = make_adder(42)
   println(add42(8))          ; 50
 
   ; 同一 captures box 共享 (fat-ptr 拷贝走 RC retain)
-  var alias fn(i32)i32 = add10
+  #Mut let alias fn(i32)i32 = add10
   println(alias(7))          ; 17
 
   ret;

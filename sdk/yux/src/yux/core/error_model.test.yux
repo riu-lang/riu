@@ -50,14 +50,14 @@ fn read_code(code i32) i32 {
 ; `!` 同类型透传：caller 与 callee 同 #Fallible(ParseErr)
 #Fallible(ParseErr)
 fn parse_double(n i32) i32 {
-  val v i32 = parse_pos(n)!
+  let v i32 = parse_pos(n)!
   ret v * 2
 }
 
 #Test
 fn test_fallible_success_path() {
   ; 正常成功值穿越 try block
-  val x i32 = try {
+  let x i32 = try {
     parse_pos(7)
   } catch e ParseErr {
     ret;
@@ -68,7 +68,7 @@ fn test_fallible_success_path() {
 #Test
 fn test_fallible_zero_variant_caught() {
   ; ret ParseErr::Empty → catch arm 命中
-  val x i32 = try {
+  let x i32 = try {
     parse_pos(0)
   } catch e ParseErr {
     -1
@@ -79,7 +79,7 @@ fn test_fallible_zero_variant_caught() {
 #Test
 fn test_fallible_payload_variant_match_in_arm() {
   ; ret ParseErr::Invalid(-5) → arm 内 match e 解构 payload
-  val x i32 = try {
+  let x i32 = try {
     parse_pos(-5)
   } catch e ParseErr {
     match e {
@@ -93,7 +93,7 @@ fn test_fallible_payload_variant_match_in_arm() {
 #Test
 fn test_bang_propagate_same_type() {
   ; parse_double 内部 parse_pos(0)! 透传 ParseErr::Empty
-  val x i32 = try {
+  let x i32 = try {
     parse_double(0)
   } catch e ParseErr {
     99
@@ -104,7 +104,7 @@ fn test_bang_propagate_same_type() {
 #Test
 fn test_bang_propagate_success() {
   ; parse_double(3) 成功路径：parse_pos(3)! 取 3 → 返回 6
-  val x i32 = try {
+  let x i32 = try {
     parse_double(3)
   } catch e ParseErr {
     -1
@@ -115,12 +115,12 @@ fn test_bang_propagate_success() {
 #Test
 fn test_try_phi_merges_success_and_catch() {
   ; try 表达式值合并：成功 → 7；错误 → 11
-  val ok i32 = try {
+  let ok i32 = try {
     parse_pos(7)
   } catch e ParseErr {
     11
   }
-  val err i32 = try {
+  let err i32 = try {
     parse_pos(0)
   } catch e ParseErr {
     11
@@ -132,9 +132,9 @@ fn test_try_phi_merges_success_and_catch() {
 #Test
 fn test_try_multi_catch_routes_by_type() {
   ; 单 try 内不同 #Fallible 类型，各自路由到对应 catch arm
-  val a i32 = try {
-    val p i32 = parse_pos(5)
-    val r i32 = read_code(p)
+  let a i32 = try {
+    let p i32 = parse_pos(5)
+    let r i32 = read_code(p)
     r
   } catch e ParseErr {
     -10
@@ -143,9 +143,9 @@ fn test_try_multi_catch_routes_by_type() {
   }
   assert_eq(a, 5)
 
-  val b i32 = try {
-    val p i32 = parse_pos(0)
-    val r i32 = read_code(p)
+  let b i32 = try {
+    let p i32 = parse_pos(0)
+    let r i32 = read_code(p)
     r
   } catch e ParseErr {
     -10
@@ -154,9 +154,9 @@ fn test_try_multi_catch_routes_by_type() {
   }
   assert_eq(b, -10)
 
-  val c i32 = try {
-    val p i32 = parse_pos(5)
-    val r i32 = read_code(404)
+  let c i32 = try {
+    let p i32 = parse_pos(5)
+    let r i32 = read_code(404)
     r
   } catch e ParseErr {
     -10
@@ -169,12 +169,12 @@ fn test_try_multi_catch_routes_by_type() {
 ; 跨类型错误显式包装：catch arm 把 ParseErr / IoErr 包成 AppErr 透传给外层
 #Fallible(AppErr)
 fn process(n i32) i32 {
-  val p i32 = try {
+  let p i32 = try {
     parse_pos(n)
   } catch e ParseErr {
     ret AppErr::Parse(e)
   }
-  val r i32 = try {
+  let r i32 = try {
     read_code(p)
   } catch e IoErr {
     ret AppErr::Io(e)
@@ -184,7 +184,7 @@ fn process(n i32) i32 {
 
 #Test
 fn test_nested_try_wrap_rethrow_parse() {
-  val tag i32 = try {
+  let tag i32 = try {
     process(0)
   } catch e AppErr {
     match e {
@@ -197,7 +197,7 @@ fn test_nested_try_wrap_rethrow_parse() {
 
 #Test
 fn test_nested_try_wrap_rethrow_io() {
-  val tag i32 = try {
+  let tag i32 = try {
     process(404)
   } catch e AppErr {
     match e {
@@ -210,7 +210,7 @@ fn test_nested_try_wrap_rethrow_io() {
 
 #Test
 fn test_nested_try_wrap_rethrow_success() {
-  val tag i32 = try {
+  let tag i32 = try {
     process(9)
   } catch e AppErr {
     -1
@@ -227,7 +227,7 @@ fn test_catch_arm_terminates_via_outer_ret() {
 }
 
 fn helper_catch_ret(n i32) i32 {
-  val x i32 = try {
+  let x i32 = try {
     parse_pos(n)
   } catch e ParseErr {
     ret -1

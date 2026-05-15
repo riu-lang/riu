@@ -12,11 +12,11 @@ fn forward(g fn(i32)i32, y i32) i32 {
 }
 
 fn main() {
-  var inc fn(i32)i32 = (x i32) i32 => x + 1
-  var r1 i32 = forward(inc, 10)
+  #Mut let inc fn(i32)i32 = (x i32) i32 => x + 1
+  #Mut let r1 i32 = forward(inc, 10)
   println(r1)     ; (10+1) + (11+1) = 23
 
-  var r2 i32 = forward((x i32) i32 => x * 2, 3)
+  #Mut let r2 i32 = forward((x i32) i32 => x * 2, 3)
   println(r2)     ; (3*2) + (4*2) = 14
   ret;
 }

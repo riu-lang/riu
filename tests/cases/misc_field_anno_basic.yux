@@ -29,7 +29,7 @@ Outer {
 }
 
 fn main() {
-    var o = Outer(7, "hi", 100)
+    #Mut let o = Outer(7, "hi", 100)
     o.report()
     o.bump()
     o.report()

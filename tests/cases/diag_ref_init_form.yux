@@ -1,5 +1,5 @@
 fn main() {
-  val x i32 = 1
-  val r i32& = x
+  let x i32 = 1
+  let r i32& = x
   ret;
 }

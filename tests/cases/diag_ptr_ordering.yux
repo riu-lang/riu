@@ -1,6 +1,6 @@
 fn main() {
-  var a Ptr = GetStdHandle(-11i32)
-  var b Ptr = GetStdHandle(-12i32)
+  #Mut let a Ptr = GetStdHandle(-11i32)
+  #Mut let b Ptr = GetStdHandle(-12i32)
   if a < b {
     println("lt")
   }

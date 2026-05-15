@@ -9,8 +9,8 @@
 
 #Test
 fn test_loop_break() {
-  var i i32 = 0
-  var sum i32 = 0
+  #Mut let i i32 = 0
+  #Mut let sum i32 = 0
   loop {
     if i >= 5 {
       break;
@@ -26,7 +26,7 @@ fn test_loop_break() {
 
 #Test
 fn test_loop_modify_outer() {
-  var counter i32 = 0
+  #Mut let counter i32 = 0
   loop {
     counter = counter + 1
     if counter >= 10 {
@@ -38,8 +38,8 @@ fn test_loop_modify_outer() {
 
 #Test
 fn test_loop_accumulate() {
-  var sum i32 = 0
-  var i i32 = 1
+  #Mut let sum i32 = 0
+  #Mut let i i32 = 1
   loop {
     if i > 10 {
       break;

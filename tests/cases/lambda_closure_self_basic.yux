@@ -30,7 +30,7 @@ Counter {
 
   ; 方法内 lambda 多次捕获 $（每次都是新栈嵌入 captures）
   fn triple_apply() i32 {
-    var s i32 = 0
+    #Mut let s i32 = 0
     s = s + apply0(() i32 => $.value)         ; 读字段
     s = s + apply0(() i32 => $.value * 2)     ; 算子
     s = s + apply0(() i32 => $.double())      ; 调方法
@@ -39,7 +39,7 @@ Counter {
 }
 
 fn main() {
-  var c Counter = Counter(10)
+  #Mut let c Counter = Counter(10)
   println(c.add_then_apply(5))   ; 10 + 5 = 15
   println(c.triple_apply())      ; 10 + 20 + 20 = 50
   ret;

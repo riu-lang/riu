@@ -30,13 +30,13 @@ Caller {
   }
 
   fn run() {
-    val bg Rc<G> = G(40i64)
-    val d Dyn<Greet> = Dyn:<Greet>(bg)
+    let bg Rc<G> = G(40i64)
+    let d Dyn<Greet> = Dyn:<Greet>(bg)
     println(d.hi() + $.base)
   }
 }
 
 fn main() {
-  val c Caller = Caller(2i64)
+  let c Caller = Caller(2i64)
   c.run()
 }

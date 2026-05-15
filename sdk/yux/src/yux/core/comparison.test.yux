@@ -60,17 +60,17 @@ fn test_float_le_ge() {
 
 #Test
 fn test_string_eq() {
-  val a String = "hello"
-  val b String = "hello"
-  val c String = "world"
+  let a String = "hello"
+  let b String = "hello"
+  let c String = "world"
   assert_true(a == b)
   assert_false(a == c)
 }
 
 #Test
 fn test_string_ne() {
-  val a String = "hello"
-  val b String = "world"
+  let a String = "hello"
+  let b String = "world"
   assert_true(a != b)
   assert_false(a != a)
 }
@@ -90,8 +90,8 @@ fn test_neg_compare() {
 
 #Test
 fn test_i64_compare() {
-  val a i64 = 1000000000i64
-  val b i64 = 2000000000i64
+  let a i64 = 1000000000i64
+  let b i64 = 2000000000i64
   assert_true(a < b)
   assert_true(b > a)
   assert_true(a <= b)
@@ -100,8 +100,8 @@ fn test_i64_compare() {
 
 #Test
 fn test_u8_compare() {
-  val a u8 = 100u8
-  val b u8 = 200u8
+  let a u8 = 100u8
+  let b u8 = 200u8
   assert_true(a < b)
   assert_true(b > a)
 }

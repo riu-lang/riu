@@ -8,5 +8,5 @@ enum Color {
 }
 
 fn main() {
-  val c Color = Color::Red
+  let c Color = Color::Red
 }

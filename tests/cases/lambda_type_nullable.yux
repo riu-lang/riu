@@ -2,10 +2,10 @@
 ; 与 retType 上的 ? 视觉分立：fn? / R? / fn? + R?
 
 fn main() {
-  var a fn?()             ; 整个 fn 值可空
-  var b fn?(i32)i32       ; 整个 fn 值可空，返回 i32
-  var c fn(s String)i32?  ; fn 值不可空，返回 i32?
-  var d fn?(s String)i32? ; 双层
+  #Mut let a fn?()             ; 整个 fn 值可空
+  #Mut let b fn?(i32)i32       ; 整个 fn 值可空，返回 i32
+  #Mut let c fn(s String)i32?  ; fn 值不可空，返回 i32?
+  #Mut let d fn?(s String)i32? ; 双层
   println("ok")
   ret;
 }

@@ -1,9 +1,12 @@
 ; 顶层 cval（全局常量）用例
 ; 迁自 tests/cases/global_const.yux
 
-cval TEST_MAX_SIZE i32 = 1024
-cval TEST_PI f64 = 3.14159
-cval _TEST_INTERNAL_CONST i32 = 42
+#Cval
+let TEST_MAX_SIZE i32 = 1024
+#Cval
+let TEST_PI f64 = 3.14159
+#Cval
+let _TEST_INTERNAL_CONST i32 = 42
 
 #Test
 fn test_global_const_i32() {

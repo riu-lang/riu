@@ -8,8 +8,8 @@ enum Color {
 }
 
 fn main() {
-  val c Color = Color::Red
-  val result i32 = match c {    ; ❌ E2023: non-exhaustive match
+  let c Color = Color::Red
+  let result i32 = match c {    ; ❌ E2023: non-exhaustive match
     Color::Red => 1
     Color::Green => 2
   }

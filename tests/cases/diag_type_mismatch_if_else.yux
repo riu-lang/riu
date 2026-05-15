@@ -2,8 +2,8 @@
 ; if-else 分支返回类型不一致时应触发 E3006
 
 fn main() {
-  val x bool = true
-  val result i32 = if x {
+  let x bool = true
+  let result i32 = if x {
     10
   } else {
     "hello"    ; ❌ E3006: i32 vs String

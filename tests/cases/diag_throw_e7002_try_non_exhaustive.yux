@@ -13,7 +13,7 @@ fn read() i32 {
 }
 
 fn main() {
-  var x i32 = try {
+  #Mut let x i32 = try {
     read()
   } catch e ParseErr {
     ret;

@@ -1,4 +1,4 @@
 fn main() {
-  val count i32 = 0
+  let count i32 = 0
   println(conut)
 }

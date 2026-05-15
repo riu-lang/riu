@@ -24,7 +24,7 @@ fn show_via_bound<T : ToString>(x T) String {
 
 #Test
 fn test_bound_user_type() {
-  val t Tag = Tag(99i64)
+  let t Tag = Tag(99i64)
   assert_eq(show_via_bound(t), "99")
 }
 
@@ -40,7 +40,7 @@ fn test_bound_builtin_bool() {
 
 #Test
 fn test_bound_builtin_string() {
-  val s String = "world"
+  let s String = "world"
   assert_eq(show_via_bound(s), "world")
 }
 
@@ -57,6 +57,6 @@ fn test_any_i64() {
 
 #Test
 fn test_any_user_type() {
-  val t Tag = Tag(1i64)
+  let t Tag = Tag(1i64)
   accept_any(t);
 }

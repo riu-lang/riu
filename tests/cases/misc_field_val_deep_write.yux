@@ -31,8 +31,8 @@ Outer {
 }
 
 fn main() {
-    var c = Config(10)
-    var o = Outer(c)
+    #Mut let c = Config(10)
+    #Mut let o = Outer(c)
     o.show()
     o.bump()
     o.show()

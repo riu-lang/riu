@@ -52,9 +52,9 @@ fn describe(d Dyn<Shape>) {
 }
 
 fn main() {
-  val bs Rc<Square> = Square(5i64)
+  let bs Rc<Square> = Square(5i64)
   describe(Dyn:<Shape>(bs))
 
-  val br Rc<Rect> = Rect(3i64, 7i64)
+  let br Rc<Rect> = Rect(3i64, 7i64)
   describe(Dyn:<Shape>(br))
 }

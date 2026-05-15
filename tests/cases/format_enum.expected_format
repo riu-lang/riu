@@ -6,9 +6,9 @@ enum Shape {
 }
 
 fn make() i32 {
-  var s1 Shape = Shape::Point
-  var s2 Shape = Shape::Point()
-  var s3 Shape = Shape::Circle(3)
-  var s4 Shape = Shape::Rect(4, 5)
+  #Mut let s1 Shape = Shape::Point
+  #Mut let s2 Shape = Shape::Point()
+  #Mut let s3 Shape = Shape::Circle(3)
+  #Mut let s4 Shape = Shape::Rect(4, 5)
   0
 }

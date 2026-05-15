@@ -1,8 +1,8 @@
 ; v0.4 Phase 5：Array<T>& 借用期 set_len 报错
 
 fn main() {
-  var a Array<i32> = [1, 2, 3]
-  val r Array<i32>& = &a
+  #Mut let a Array<i32> = [1, 2, 3]
+  let r Array<i32>& = &a
   a.set_len(2i64)
   println(r.len())
   ret;

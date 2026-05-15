@@ -1,5 +1,5 @@
 fn main() {
-    cval k i32 = 1
+    #Cval let k i32 = 1
     k = 2
     ret;
 }

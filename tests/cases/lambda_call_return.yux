@@ -11,11 +11,11 @@ fn make_const(v i32) fn(i32)i32 {
 }
 
 fn main() {
-  var f fn(i32)i32 = make_inc()
+  #Mut let f fn(i32)i32 = make_inc()
   println(f(10))   ; 11
   println(f(99))   ; 100
 
-  var g fn(i32)i32 = make_const(0)
+  #Mut let g fn(i32)i32 = make_const(0)
   println(g(7))    ; 14
 
   ; 直接调用返回值（链式）

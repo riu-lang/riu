@@ -16,8 +16,8 @@ Holder {
 }
 
 fn main() {
-  var h Holder = Holder(7)
-  var f fn(i32)i32 = h.make()
+  #Mut let h Holder = Holder(7)
+  #Mut let f fn(i32)i32 = h.make()
   println(f(3))
   ret;
 }

@@ -12,6 +12,6 @@ Outer {
 }
 
 fn main() {
-    var o = Outer(7)
+    #Mut let o = Outer(7)
     ret;
 }

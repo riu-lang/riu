@@ -7,11 +7,11 @@ fn apply(f fn(i32)i32, x i32) i32 {
 
 fn main() {
   ; 显式标注的 lambda
-  var r1 i32 = apply((x i32) i32 => x + 10, 5)
+  #Mut let r1 i32 = apply((x i32) i32 => x + 10, 5)
   println(r1)
 
   ; lambda 形参类型从 callee 反推（裸 Single 形态：返回类型也由上下文反推）
-  var r2 i32 = apply(x => x * x, 6)
+  #Mut let r2 i32 = apply(x => x * x, 6)
   println(r2)
 
   ret;

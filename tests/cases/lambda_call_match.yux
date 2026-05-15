@@ -11,7 +11,7 @@ fn apply(f fn(Color)i32, c Color) i32 {
 }
 
 fn main() {
-  val classify = (c Color) i32 => match c {
+  let classify = (c Color) i32 => match c {
     Color::Red => 1
     Color::Green => 2
     Color::Blue => 3
@@ -20,7 +20,7 @@ fn main() {
   println(classify(Color::Green))
 
   ; 实参反推 + match（裸单参形式：返回类型亦由上下文反推）
-  val r1 i32 = apply(c => match c {
+  let r1 i32 = apply(c => match c {
     Color::Red => 10
     Color::Green => 20
     Color::Blue => 30

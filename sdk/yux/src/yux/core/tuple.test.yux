@@ -22,7 +22,7 @@ fn make_nested() ((i32, i32), i32) {
 
 #Test
 fn test_tuple_construct_local() {
-  var t (i32, i32) = (10i32, 20i32)
+  #Mut let t (i32, i32) = (10i32, 20i32)
   assert_eq(t.0, 10i32)
   assert_eq(t.1, 20i32)
 }
@@ -35,27 +35,27 @@ fn test_tuple_pass_by_value() {
 
 #Test
 fn test_tuple_return_value() {
-  var t (i32, i32) = make_pair()
+  #Mut let t (i32, i32) = make_pair()
   assert_eq(t.0, 1i32)
   assert_eq(t.1, 2i32)
 }
 
 #Test
 fn test_tuple_nested() {
-  var t ((i32, i32), i32) = make_nested()
+  #Mut let t ((i32, i32), i32) = make_nested()
   ; 链式 .0.0 / .0.1：lexer DOT_NUM token 让每段 .N 独立成 token
   assert_eq(t.0.0, 1i32)
   assert_eq(t.0.1, 2i32)
   assert_eq(t.1, 3i32)
   ; 中间变量等价路径
-  var inner (i32, i32) = t.0
+  #Mut let inner (i32, i32) = t.0
   assert_eq(inner.0, 1i32)
   assert_eq(inner.1, 2i32)
 }
 
 #Test
 fn test_tuple_nested_three_level() {
-  var t (((i32, i32), i32), i32) = (((10i32, 20i32), 30i32), 40i32)
+  #Mut let t (((i32, i32), i32), i32) = (((10i32, 20i32), 30i32), 40i32)
   assert_eq(t.0.0.0, 10i32)
   assert_eq(t.0.0.1, 20i32)
   assert_eq(t.0.1, 30i32)
@@ -123,7 +123,7 @@ fn test_tuple_member_on_literal() {
 
 #Test
 fn test_tuple_member_assign_simple() {
-  var t (i32, i32) = (1i32, 2i32)
+  #Mut let t (i32, i32) = (1i32, 2i32)
   t.0 = 10i32
   t.1 = 20i32
   assert_eq(t.0, 10i32)
@@ -132,7 +132,7 @@ fn test_tuple_member_assign_simple() {
 
 #Test
 fn test_tuple_member_assign_nested() {
-  var t ((i32, i32), i32) = ((1i32, 2i32), 3i32)
+  #Mut let t ((i32, i32), i32) = ((1i32, 2i32), 3i32)
   t.0.1 = 99i32
   t.1 = 7i32
   assert_eq(t.0.0, 1i32)
@@ -142,7 +142,7 @@ fn test_tuple_member_assign_nested() {
 
 #Test
 fn test_tuple_member_assign_compound() {
-  var t (i32, i32) = (5i32, 10i32)
+  #Mut let t (i32, i32) = (5i32, 10i32)
   t.0 += 3i32
   t.1 *= 2i32
   assert_eq(t.0, 8i32)

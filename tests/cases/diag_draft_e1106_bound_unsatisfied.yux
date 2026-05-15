@@ -14,10 +14,10 @@ Counter {
 }
 
 fn say<T : Show>(x T) {
-    val s = x.show()
+    let s = x.show()
 }
 
 fn main() {
-    val c Counter = Counter(0i32)
+    let c Counter = Counter(0i32)
     say(c)
 }

@@ -1,6 +1,6 @@
 ; 基础格式化：参数 / 类型 / 二元 / 块体的空格 + 缩进规整
 fn add(a i32, b i32) i32 {
-  var sum i32 = a + b
+  #Mut let sum i32 = a + b
   sum
 }
 

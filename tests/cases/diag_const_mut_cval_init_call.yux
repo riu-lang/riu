@@ -3,6 +3,6 @@
 fn f() i32 = 1
 
 fn main() {
-    cval x i32 = f()
+    #Cval let x i32 = f()
     ret;
 }

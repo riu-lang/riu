@@ -11,7 +11,7 @@ fn run_first(a Array<fn(i32)i32>, x i32) i32 {
 }
 
 fn main() {
-  var arr Array<fn(i32)i32> = []
+  #Mut let arr Array<fn(i32)i32> = []
   arr.push(make_inc())
   arr.push((x i32) i32 => x * 2)
   arr.push((x i32) i32 => x - 5)

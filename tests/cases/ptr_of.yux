@@ -24,21 +24,21 @@ fn yes_no(b bool) String {
 
 fn main() {
   ; Rc<Pair>：同一句柄两次 ptr_of 应得到同一 payload 地址
-  var p Rc<Pair> = Pair(123i32, 456i32)
-  var pp1 Ptr = ptr_of:<Rc<Pair>>(p)
-  var pp2 Ptr = ptr_of:<Rc<Pair>>(p)
+  #Mut let p Rc<Pair> = Pair(123i32, 456i32)
+  #Mut let pp1 Ptr = ptr_of:<Rc<Pair>>(p)
+  #Mut let pp2 Ptr = ptr_of:<Rc<Pair>>(p)
   println(yes_no(pp1.to_int() == pp2.to_int()))
 
   ; Array<i32>：同变量两次 ptr_of 应一致
-  var a Array<i32> = [10i32, 20i32, 30i32]
-  var ap1 Ptr = ptr_of:<Array<i32>>(a)
-  var ap2 Ptr = ptr_of:<Array<i32>>(a)
+  #Mut let a Array<i32> = [10i32, 20i32, 30i32]
+  #Mut let ap1 Ptr = ptr_of:<Array<i32>>(a)
+  #Mut let ap2 Ptr = ptr_of:<Array<i32>>(a)
   println(yes_no(ap1.to_int() == ap2.to_int()))
 
   ; String：同变量两次 ptr_of 应一致
-  var s String = "hi"
-  var sp1 Ptr = ptr_of:<String>(s)
-  var sp2 Ptr = ptr_of:<String>(s)
+  #Mut let s String = "hi"
+  #Mut let sp1 Ptr = ptr_of:<String>(s)
+  #Mut let sp2 Ptr = ptr_of:<String>(s)
   println(yes_no(sp1.to_int() == sp2.to_int()))
 
   ; Rc payload 跳过 RC 头：ptr_of 得到的地址 != Rc handle 起始（差 8 字节）

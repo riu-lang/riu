@@ -10,7 +10,7 @@ fn parse() i32 {
 
 fn main() {
   ; NotAnEnum 不是已声明 enum
-  var x i32 = try {
+  #Mut let x i32 = try {
     parse()
   } catch e NotAnEnum {
     ret;

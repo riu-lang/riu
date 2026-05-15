@@ -20,5 +20,5 @@ enum Container {
 }
 
 fn main() {
-  val c Container = Container::Boxed(Point(1.0f64, 2.0f64))  ; ❌ E2032
+  let c Container = Container::Boxed(Point(1.0f64, 2.0f64))  ; ❌ E2032
 }

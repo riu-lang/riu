@@ -1,8 +1,8 @@
 ; Phase 4a §6.1 / §6.2：lambda 捕获外层标量 local（值复制语义）
 
 fn main() {
-  var x i32 = 10
-  val f = (y i32) i32 => y + x
+  #Mut let x i32 = 10
+  let f = (y i32) i32 => y + x
   println(f(1))   ; 11
   println(f(7))   ; 17
 

@@ -39,7 +39,7 @@ fn test_print_string_fast_path() {
 
 #Test
 fn test_print_user_type() {
-  val t PrintTag = PrintTag(123i64)
+  let t PrintTag = PrintTag(123i64)
   println(t)
   assert_true(true)
 }
@@ -49,7 +49,7 @@ fn test_eprint_generic() {
   eprint("err ")
   eprintln(99i64)
   eprintln(true)
-  val t PrintTag = PrintTag(7i64)
+  let t PrintTag = PrintTag(7i64)
   eprintln(t)
   assert_true(true)
 }

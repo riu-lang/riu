@@ -22,8 +22,8 @@ fn br_read_a(p BrPair&) i32 {
 
 #Test
 fn test_borrow_as_ref_box_payload() {
-  var b Rc<BrPair> = BrPair(7i32, 8i32)
-  val r BrPair& = as_ref(b)
+  #Mut let b Rc<BrPair> = BrPair(7i32, 8i32)
+  let r BrPair& = as_ref(b)
   assert_eq(r.a, 7i32)
   assert_eq(br_read_a(as_ref(b)), 7i32)
 }
@@ -32,9 +32,9 @@ fn test_borrow_as_ref_box_payload() {
 
 #Test
 fn test_borrow_as_ref_two_shared() {
-  var b Rc<BrPair> = BrPair(11i32, 22i32)
-  val r1 BrPair& = as_ref(b)
-  val r2 BrPair& = as_ref(b)
+  #Mut let b Rc<BrPair> = BrPair(11i32, 22i32)
+  let r1 BrPair& = as_ref(b)
+  let r2 BrPair& = as_ref(b)
   assert_eq(r1.a, 11i32)
   assert_eq(r2.b, 22i32)
 }
@@ -43,9 +43,9 @@ fn test_borrow_as_ref_two_shared() {
 
 #Test
 fn test_borrow_array_push_after_drop() {
-  var a Array<i32> = [1i32, 2i32, 3i32]
+  #Mut let a Array<i32> = [1i32, 2i32, 3i32]
   loop {
-    val r Array<i32>& = &a
+    let r Array<i32>& = &a
     assert_eq(r.len(), 3i64)
     break;
   }
@@ -57,10 +57,10 @@ fn test_borrow_array_push_after_drop() {
 
 #Test
 fn test_borrow_array_ref_in_loop() {
-  var a Array<i32> = [10i32, 20i32, 30i32]
-  var i i32 = 0i32
+  #Mut let a Array<i32> = [10i32, 20i32, 30i32]
+  #Mut let i i32 = 0i32
   loop {
-    val r Array<i32>& = &a
+    let r Array<i32>& = &a
     assert_eq(r.len(), 3i64)
     i = i + 1i32
     if i >= 2i32 {
@@ -75,9 +75,9 @@ fn test_borrow_array_ref_in_loop() {
 
 #Test
 fn test_borrow_array_read_via_ref_then_write_origin() {
-  var a Array<i32> = [10i32, 20i32]
+  #Mut let a Array<i32> = [10i32, 20i32]
   loop {
-    val r Array<i32>& = &a
+    let r Array<i32>& = &a
     assert_eq(r.len(), 2i64)
     break;
   }
@@ -89,10 +89,10 @@ fn test_borrow_array_read_via_ref_then_write_origin() {
 
 #Test
 fn test_borrow_box_reassign_after_drop() {
-  var b Rc<BrPair> = BrPair(7i32, 8i32)
-  var b2 Rc<BrPair> = BrPair(9i32, 10i32)
+  #Mut let b Rc<BrPair> = BrPair(7i32, 8i32)
+  #Mut let b2 Rc<BrPair> = BrPair(9i32, 10i32)
   loop {
-    val r BrPair& = as_ref(b)
+    let r BrPair& = as_ref(b)
     assert_eq(r.a, 7i32)
     break;
   }
@@ -104,9 +104,9 @@ fn test_borrow_box_reassign_after_drop() {
 
 #Test
 fn test_borrow_copy_bind_root() {
-  var c i32 = 7i32
-  val r1 i32& = &c
-  val r2 i32& = r1
+  #Mut let c i32 = 7i32
+  let r1 i32& = &c
+  let r2 i32& = r1
   assert_eq(r1, 7i32)
   assert_eq(r2, 7i32)
 }
@@ -119,6 +119,6 @@ fn br_first_byte<T>(p T&) i32 {
 
 #Test
 fn test_borrow_generic_ref_param() {
-  var x i32 = 42i32
+  #Mut let x i32 = 42i32
   assert_eq(br_first_byte(&x), 1i32)
 }

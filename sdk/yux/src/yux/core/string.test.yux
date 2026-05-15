@@ -2,27 +2,27 @@
 
 #Test
 fn test_string_eq_basic() {
-  val a String = "hello"
-  val b String = "hello"
+  let a String = "hello"
+  let b String = "hello"
   assert_eq(a, b)
 }
 
 #Test
 fn test_string_eq_literal() {
-  val s String = "world"
+  let s String = "world"
   assert_eq(s, "world")
 }
 
 #Test
 fn test_string_eq_empty() {
-  val a String = ""
-  val b String = ""
+  let a String = ""
+  let b String = ""
   assert_eq(a, b)
 }
 
 #Test
 fn test_string_contains_full() {
-  val s String = "hello world"
+  let s String = "hello world"
   assert_contains(s, "hello")
   assert_contains(s, "world")
   assert_contains(s, "o w")
@@ -31,13 +31,13 @@ fn test_string_contains_full() {
 
 #Test
 fn test_string_contains_empty_needle() {
-  val s String = "anything"
+  let s String = "anything"
   assert_contains(s, "")
 }
 
 #Test
 fn test_string_starts_with_basic() {
-  val s String = "hello world"
+  let s String = "hello world"
   assert_starts_with(s, "hello")
   assert_starts_with(s, "h")
   assert_starts_with(s, "hello world")
@@ -45,7 +45,7 @@ fn test_string_starts_with_basic() {
 
 #Test
 fn test_string_starts_with_empty_prefix() {
-  val s String = "x"
+  let s String = "x"
   assert_starts_with(s, "")
 }
 
@@ -53,7 +53,7 @@ fn test_string_starts_with_empty_prefix() {
 
 #Test
 fn test_string_escape_newline_codepoint() {
-  val s String = "a\nb"
+  let s String = "a\nb"
   ; 长度 3，中间一位是 LF (0x0A)
   assert_eq(s.len(), 3i64)
   assert_eq(s.at(0i64), 97u32)
@@ -63,21 +63,21 @@ fn test_string_escape_newline_codepoint() {
 
 #Test
 fn test_string_escape_tab_codepoint() {
-  val s String = "x\ty"
+  let s String = "x\ty"
   assert_eq(s.len(), 3i64)
   assert_eq(s.at(1i64), 9u32)
 }
 
 #Test
 fn test_string_escape_quote_codepoint() {
-  val s String = "\""
+  let s String = "\""
   assert_eq(s.len(), 1i64)
   assert_eq(s.at(0i64), 34u32)
 }
 
 #Test
 fn test_string_raw_keeps_backslash() {
-  val s String = r"\n"
+  let s String = r"\n"
   ; raw 字符串：长度 2，第一位是反斜线 (0x5C)、第二位是字面 'n'
   assert_eq(s.len(), 2i64)
   assert_eq(s.at(0i64), 92u32)
@@ -86,7 +86,7 @@ fn test_string_raw_keeps_backslash() {
 
 #Test
 fn test_string_raw_path() {
-  val s String = r"C:\path"
+  let s String = r"C:\path"
   assert_eq(s.len(), 7i64)
   assert_eq(s.at(2i64), 92u32)
 }
@@ -95,7 +95,7 @@ fn test_string_raw_path() {
 
 #Test
 fn test_string_dollar_escape_codepoint() {
-  val s String = "price=\$5"
+  let s String = "price=\$5"
   ; 长度 8，第 6 位是字面 '$' (0x24)
   assert_eq(s.len(), 8i64)
   assert_eq(s.at(6i64), 36u32)
@@ -103,7 +103,7 @@ fn test_string_dollar_escape_codepoint() {
 
 #Test
 fn test_string_dollar_escape_only() {
-  val s String = "\$"
+  let s String = "\$"
   assert_eq(s.len(), 1i64)
   assert_eq(s.at(0i64), 36u32)
 }
@@ -113,40 +113,40 @@ fn test_string_dollar_escape_only() {
 
 #Test
 fn test_string_template_dollar_id() {
-  val name String = "yux"
-  val s String = "hello, $name!"
+  let name String = "yux"
+  let s String = "hello, $name!"
   assert_eq(s.len(), 11i64)
   assert_eq(s, "hello, yux!")
 }
 
 #Test
 fn test_string_template_brace_interp() {
-  val a String = "x"
-  val b String = "y"
-  val s String = "${a}=${b}"
+  let a String = "x"
+  let b String = "y"
+  let s String = "${a}=${b}"
   assert_eq(s, "x=y")
 }
 
 #Test
 fn test_string_template_mixed_text() {
-  val v String = "world"
-  val s String = "hi ${v}, bye"
+  let v String = "world"
+  let s String = "hi ${v}, bye"
   assert_eq(s, "hi world, bye")
 }
 
 #Test
 fn test_string_template_empty_part() {
-  val a String = "ab"
-  val b String = "cd"
+  let a String = "ab"
+  let b String = "cd"
   ; 相邻插值之间没有文本：parts 中含空段，应被跳过
-  val s String = "${a}${b}"
+  let s String = "${a}${b}"
   assert_eq(s, "abcd")
 }
 
 #Test
 fn test_string_template_utf8_part() {
-  val v String = "中"
-  val s String = "前${v}后"
+  let v String = "中"
+  let s String = "前${v}后"
   ; 三个码点
   assert_eq(s.len(), 3i64)
   assert_eq(s.at(0i64), 21069u32)
@@ -158,38 +158,38 @@ fn test_string_template_utf8_part() {
 
 #Test
 fn test_string_template_i32_interp() {
-  val n i32 = 42i32
-  val s String = "n=${n}"
+  let n i32 = 42i32
+  let s String = "n=${n}"
   assert_eq(s, "n=42")
 }
 
 #Test
 fn test_string_template_i64_literal_interp() {
-  val s String = "x=${1234i64}"
+  let s String = "x=${1234i64}"
   assert_eq(s, "x=1234")
 }
 
 #Test
 fn test_string_template_bool_interp() {
-  val b bool = true
-  val s String = "b=${b}"
+  let b bool = true
+  let s String = "b=${b}"
   assert_eq(s, "b=true")
-  val s2 String = "b=${false}"
+  let s2 String = "b=${false}"
   assert_eq(s2, "b=false")
 }
 
 #Test
 fn test_string_template_u64_interp() {
-  val n u64 = 0u64
-  val s String = "n=${n}"
+  let n u64 = 0u64
+  let s String = "n=${n}"
   assert_eq(s, "n=0")
 }
 
 #Test
 fn test_string_template_mixed_kind_interp() {
-  val name String = "yux"
-  val n i32 = 7i32
-  val s String = "$name v${n}"
+  let name String = "yux"
+  let n i32 = 7i32
+  let s String = "$name v${n}"
   assert_eq(s, "yux v7")
 }
 
@@ -197,63 +197,63 @@ fn test_string_template_mixed_kind_interp() {
 
 #Test
 fn test_string_plus_two() {
-  val a String = "foo"
-  val b String = "bar"
-  val s String = a + b
+  let a String = "foo"
+  let b String = "bar"
+  let s String = a + b
   assert_eq(s, "foobar")
 }
 
 #Test
 fn test_string_plus_chain() {
-  val a String = "a"
-  val b String = "b"
-  val c String = "c"
-  val d String = "d"
-  val s String = a + b + c + d
+  let a String = "a"
+  let b String = "b"
+  let c String = "c"
+  let d String = "d"
+  let s String = a + b + c + d
   assert_eq(s, "abcd")
 }
 
 #Test
 fn test_string_plus_with_literal() {
-  val name String = "yux"
-  val s String = "hello, " + name + "!"
+  let name String = "yux"
+  let s String = "hello, " + name + "!"
   assert_eq(s, "hello, yux!")
 }
 
 #Test
 fn test_string_plus_to_string() {
-  val n i32 = 42i32
-  val s String = "n=" + n
+  let n i32 = 42i32
+  let s String = "n=" + n
   assert_eq(s, "n=42")
 }
 
 #Test
 #TestIsolate ; 命中已知 JIT 跨帧 SEH 漏报，强制子进程跑
 fn test_string_plus_left_non_string() {
-  val n i64 = 7i64
-  val s String = n + " items"
+  let n i64 = 7i64
+  let s String = n + " items"
   assert_eq(s, "7 items")
 }
 
 #Test
 fn test_string_plus_mixed_chain() {
-  val name String = "yux"
-  val v i32 = 6i32
-  val ok bool = true
-  val s String = name + " v" + v + " ok=" + ok
+  let name String = "yux"
+  let v i32 = 6i32
+  let ok bool = true
+  let s String = name + " v" + v + " ok=" + ok
   assert_eq(s, "yux v6 ok=true")
 }
 
 #Test
 fn test_string_plus_empty_left() {
-  val s String = "" + "tail"
+  let s String = "" + "tail"
   assert_eq(s, "tail")
 }
 
 #Test
 fn test_string_plus_utf8() {
-  val a String = "你好"
-  val b String = "世界"
-  val s String = a + "，" + b
+  let a String = "你好"
+  let b String = "世界"
+  let s String = a + "，" + b
   assert_eq(s, "你好，世界")
 }

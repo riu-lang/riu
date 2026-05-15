@@ -1,11 +1,11 @@
 fn main() {
-  var h Ptr = GetStdHandle(-11i32)
+  #Mut let h Ptr = GetStdHandle(-11i32)
   if h == null {
     println("null")
   } else {
     println("non-null")
   }
-  var n Ptr = null
+  #Mut let n Ptr = null
   if n == null {
     println("null-literal-eq-null")
   } else {

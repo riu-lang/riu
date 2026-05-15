@@ -38,8 +38,8 @@ ColorAlias = Color
 
 #Test
 fn test_enum_match_zero_variant() {
-  val c Color = Color::Red
-  val n i32 = match c {
+  let c Color = Color::Red
+  let n i32 = match c {
     Color::Red => 1
     Color::Green => 2
     Color::Blue => 3
@@ -49,8 +49,8 @@ fn test_enum_match_zero_variant() {
 
 #Test
 fn test_enum_match_zero_with_paren() {
-  val c Color = Color::Green()
-  val n i32 = match c {
+  let c Color = Color::Green()
+  let n i32 = match c {
     Color::Red => 10
     Color::Green => 20
     Color::Blue => 30
@@ -60,8 +60,8 @@ fn test_enum_match_zero_with_paren() {
 
 #Test
 fn test_enum_match_else_branch() {
-  val c Color = Color::Blue
-  val n i32 = match c {
+  let c Color = Color::Blue
+  let n i32 = match c {
     Color::Red => 1
     else => 99
   }
@@ -70,8 +70,8 @@ fn test_enum_match_else_branch() {
 
 #Test
 fn test_enum_match_tuple_payload_f64() {
-  val s Shape = Shape::Circle(2.0f64)
-  val area f64 = match s {
+  let s Shape = Shape::Circle(2.0f64)
+  let area f64 = match s {
     Shape::Point => 0.0f64
     Shape::Circle(r) => 3.14f64 * r * r
     Shape::Rect(w, h) => w * h
@@ -82,8 +82,8 @@ fn test_enum_match_tuple_payload_f64() {
 
 #Test
 fn test_enum_match_tuple_payload_rect() {
-  val s Shape = Shape::Rect(3.0f64, 4.0f64)
-  val area f64 = match s {
+  let s Shape = Shape::Rect(3.0f64, 4.0f64)
+  let area f64 = match s {
     Shape::Point => 0.0f64
     Shape::Circle(r) => 3.14f64 * r * r
     Shape::Rect(w, h) => w * h
@@ -93,8 +93,8 @@ fn test_enum_match_tuple_payload_rect() {
 
 #Test
 fn test_enum_match_alias() {
-  val c ColorAlias = ColorAlias::Red
-  val n i32 = match c {
+  let c ColorAlias = ColorAlias::Red
+  let n i32 = match c {
     ColorAlias::Red => 7
     ColorAlias::Green => 8
     ColorAlias::Blue => 9
@@ -104,8 +104,8 @@ fn test_enum_match_alias() {
 
 #Test
 fn test_enum_match_string_payload_check() {
-  val t Tagged = Tagged::Msg("hello")
-  val flag i32 = match t {
+  let t Tagged = Tagged::Msg("hello")
+  let flag i32 = match t {
     Tagged::Empty => 0
     Tagged::Msg(s) => 1
     Tagged::Pair(n, _unused) => 2
@@ -115,8 +115,8 @@ fn test_enum_match_string_payload_check() {
 
 #Test
 fn test_enum_match_pair_payload_use_first() {
-  val t Tagged = Tagged::Pair(42, "hello world")
-  val n i32 = match t {
+  let t Tagged = Tagged::Pair(42, "hello world")
+  let n i32 = match t {
     Tagged::Empty => -1
     Tagged::Msg(_unused) => -2
     Tagged::Pair(num, _s) => num
@@ -128,7 +128,7 @@ fn test_enum_match_pair_payload_use_first() {
 fn test_enum_match_drops_owned_payload() {
   ; 直接 match 一个临时构造的含 String 的 enum：
   ; 拿 owned scrutinee → arm 取绑定为借用 → match 末按 tag dispatch dtor 释放 String
-  val n i32 = match Tagged::Msg("hi") {
+  let n i32 = match Tagged::Msg("hi") {
     Tagged::Empty => 0
     Tagged::Msg(_s) => 7
     Tagged::Pair(x, _y) => x
@@ -178,10 +178,10 @@ fn test_enum_match_drops_owned_payload() {
 
 #Test
 fn test_enum_array_basic() {
-  var arr Array<Color> = [Color::Red, Color::Green, Color::Blue]
+  #Mut let arr Array<Color> = [Color::Red, Color::Green, Color::Blue]
   assert_eq(arr.len(), 3i64)
   
-  val n i32 = match arr[0] {
+  let n i32 = match arr[0] {
     Color::Red => 1
     Color::Green => 2
     Color::Blue => 3
@@ -191,10 +191,10 @@ fn test_enum_array_basic() {
 
 #Test
 fn test_enum_array_with_payload() {
-  var arr Array<Shape> = [Shape::Point, Shape::Circle(2.0f64), Shape::Rect(3.0f64, 4.0f64)]
+  #Mut let arr Array<Shape> = [Shape::Point, Shape::Circle(2.0f64), Shape::Rect(3.0f64, 4.0f64)]
   assert_eq(arr.len(), 3i64)
   
-  val area f64 = match arr[1] {
+  let area f64 = match arr[1] {
     Shape::Point => 0.0f64
     Shape::Circle(r) => 3.14f64 * r * r
     Shape::Rect(w, h) => w * h
@@ -204,10 +204,10 @@ fn test_enum_array_with_payload() {
 
 #Test
 fn test_enum_array_modify() {
-  var arr Array<Color> = [Color::Red, Color::Green]
+  #Mut let arr Array<Color> = [Color::Red, Color::Green]
   arr[0] = Color::Blue
   
-  val n i32 = match arr[0] {
+  let n i32 = match arr[0] {
     Color::Red => 1
     Color::Green => 2
     Color::Blue => 3
@@ -219,10 +219,10 @@ fn test_enum_array_modify() {
 
 #Test
 fn test_enum_nullable_has_value() {
-  var opt Color? = Color::Red
+  #Mut let opt Color? = Color::Red
   assert_true(opt.has())
 
-  val n i32 = match opt.get() {
+  let n i32 = match opt.get() {
     Color::Red => 1
     Color::Green => 2
     Color::Blue => 3
@@ -232,16 +232,16 @@ fn test_enum_nullable_has_value() {
 
 #Test
 fn test_enum_nullable_no_value() {
-  var opt Color? = null
+  #Mut let opt Color? = null
   assert_false(opt.has())
 }
 
 #Test
 fn test_enum_nullable_with_payload() {
-  var opt Shape? = Shape::Rect(4.0f64, 5.0f64)
+  #Mut let opt Shape? = Shape::Rect(4.0f64, 5.0f64)
   assert_true(opt.has())
 
-  val area f64 = match opt.get() {
+  let area f64 = match opt.get() {
     Shape::Point => 0.0f64
     Shape::Circle(r) => r * r
     Shape::Rect(w, h) => w * h
@@ -263,9 +263,9 @@ enum Inner {
 
 #Test
 fn test_enum_nested_match() {
-  val o Outer = Outer::B(Color::Green)
+  let o Outer = Outer::B(Color::Green)
   
-  val result i32 = match o {
+  let result i32 = match o {
     Outer::A(n) => n
     Outer::B(c) => match c {
       Color::Red => 10
@@ -278,10 +278,10 @@ fn test_enum_nested_match() {
 
 #Test
 fn test_enum_nested_match_with_payload() {
-  val o Outer = Outer::A(5)
-  val i Inner = Inner::Y(10)
+  let o Outer = Outer::A(5)
+  let i Inner = Inner::Y(10)
   
-  val result i32 = match o {
+  let result i32 = match o {
     Outer::A(n) => match i {
       Inner::X => n
       Inner::Y(m) => n + m
@@ -312,9 +312,9 @@ enum Geometry {
 
 #Test
 fn test_enum_match_return_struct() {
-  val g Geometry = Geometry::Coord(3.0f64, 4.0f64)
+  let g Geometry = Geometry::Coord(3.0f64, 4.0f64)
   
-  val p Point = match g {
+  let p Point = match g {
     Geometry::Origin => Point(0.0f64, 0.0f64)
     Geometry::Coord(x, y) => Point(x, y)
   }
@@ -325,9 +325,9 @@ fn test_enum_match_return_struct() {
 
 #Test
 fn test_enum_match_return_tuple() {
-  val g Geometry = Geometry::Coord(5.0f64, 6.0f64)
+  let g Geometry = Geometry::Coord(5.0f64, 6.0f64)
   
-  val t (f64, f64) = match g {
+  let t (f64, f64) = match g {
     Geometry::Origin => (0.0f64, 0.0f64)
     Geometry::Coord(x, y) => (x, y)
   }

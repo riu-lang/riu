@@ -6,12 +6,12 @@ Pred<T> = fn(x T)bool
 Op2<A, B> = fn(a A, b B)A
 
 fn main() {
-  var c Callback
-  var pi Pred<i32>
-  var ps Pred<String>
-  var op Op2<i32, i32>
+  #Mut let c Callback
+  #Mut let pi Pred<i32>
+  #Mut let ps Pred<String>
+  #Mut let op Op2<i32, i32>
   ; 嵌套：Pred<T> 内 T 替换为 fn 类型
-  var nested Pred<fn()i32>
+  #Mut let nested Pred<fn()i32>
   println("ok")
   ret;
 }

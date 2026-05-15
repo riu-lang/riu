@@ -1,8 +1,8 @@
 ; v0.4 Phase 5：标量根对象在借用期内重赋应当报错（§8.6.5.5）
 
 fn main() {
-  var c i32 = 1
-  val r i32& = &c
+  #Mut let c i32 = 1
+  let r i32& = &c
   c = 5
   println(r)
   ret;

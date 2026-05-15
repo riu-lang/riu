@@ -4,8 +4,8 @@ enum Tag {
 }
 
 fn main() {
-  var b Rc<Tag> = Tag::Val(42i32)
-  val r i32 = match b {
+  #Mut let b Rc<Tag> = Tag::Val(42i32)
+  let r i32 = match b {
     Tag::Empty   => 0i32
     Tag::Val(x)  => x
   }

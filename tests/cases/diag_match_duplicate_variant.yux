@@ -7,8 +7,8 @@ enum Color {
 }
 
 fn main() {
-  val c Color = Color::Red
-  val result i32 = match c {
+  let c Color = Color::Red
+  let result i32 = match c {
     Color::Red => 1
     Color::Green => 2
     Color::Red => 3    ; ❌ E2024: duplicate variant Color::Red in match arms

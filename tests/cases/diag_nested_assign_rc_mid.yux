@@ -20,7 +20,7 @@ Outer {
 }
 
 fn main() {
-  var b Rc<Inner> = Inner(10i32)
-  var o Outer = Outer(b)
+  #Mut let b Rc<Inner> = Inner(10i32)
+  #Mut let o Outer = Outer(b)
   o.state.count = 5i32
 }

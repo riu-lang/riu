@@ -21,13 +21,13 @@ Counter : ToString {
 
 #Test
 fn test_counter_explicit_to_string() {
-  val c Counter = Counter(42i64)
+  let c Counter = Counter(42i64)
   assert_eq(c.to_string(), "42")
 }
 
 #Test
 fn test_counter_explicit_negative() {
-  val c Counter = Counter(-7i64)
+  let c Counter = Counter(-7i64)
   assert_eq(c.to_string(), "-7")
 }
 
@@ -57,6 +57,6 @@ fn test_builtin_bool_to_string() {
 #Test
 fn test_builtin_string_to_string() {
   ; String : ToString —— 共享底层 Array<u32> Block，等值
-  val s String = "hello"
+  let s String = "hello"
   assert_eq(s.to_string(), "hello")
 }

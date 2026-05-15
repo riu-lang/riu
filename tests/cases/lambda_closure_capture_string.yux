@@ -1,15 +1,15 @@
 ; Phase 4a-2 §6.2：lambda 捕获 String
 
 fn main() {
-  var s String = "hello"
-  val f = () String => s    ; 捕获 String 句柄
+  #Mut let s String = "hello"
+  let f = () String => s    ; 捕获 String 句柄
   println(f())              ; hello
   println(f())              ; hello
 
   ; 混合捕获：String + i32
-  var n i32 = 7
-  val g = () String => s
-  val h = () i32 => n + 1
+  #Mut let n i32 = 7
+  let g = () String => s
+  let h = () i32 => n + 1
   println(g())              ; hello
   println(h())  ; 8
 

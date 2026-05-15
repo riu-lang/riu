@@ -7,8 +7,8 @@ enum Color {
 }
 
 fn main() {
-  var b Rc<Color> = Color::Green
-  val s String = match b {
+  #Mut let b Rc<Color> = Color::Green
+  let s String = match b {
     Color::Red   => "r"
     Color::Green => "g"
     Color::Blue  => "b"

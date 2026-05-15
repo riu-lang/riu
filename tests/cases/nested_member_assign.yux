@@ -32,7 +32,7 @@ Outer {
 }
 
 fn main() {
-  var o Outer = Outer(Mid(Inner(10i32)))
+  #Mut let o Outer = Outer(Mid(Inner(10i32)))
   ; 两段嵌套写
   o.state.inner.count = o.state.inner.count + 5i32
   println(o.state.inner.count)

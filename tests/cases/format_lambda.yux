@@ -1,8 +1,8 @@
 ; lambda 各形态：单参 / 括参 / 块（块形仍走 raw + reindent）
 fn each() i32 {
-    var f1 = x => x
-    var f2 = (x i32, y i32) i32 => x + y
-    var f3 = {
+    #Mut let f1 = x => x
+    #Mut let f2 = (x i32, y i32) i32 => x + y
+    #Mut let f3 = {
         x i32 =>
             x
     }

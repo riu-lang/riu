@@ -5,7 +5,7 @@
 
 #Test
 fn test_empty_ctor() {
-  var sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder()
   assert_eq(sb.len(), 0i64)
 }
 
@@ -13,48 +13,48 @@ fn test_empty_ctor() {
 
 #Test
 fn test_append_code_point() {
-  var sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder()
   sb.append(c'H')
   sb.append(c'e')
   sb.append(c'l')
   sb.append(c'l')
   sb.append(c'o')
   assert_eq(sb.len(), 5i64)
-  val s String = sb.build()
+  let s String = sb.build()
   assert_eq(s, "Hello")
 }
 
 #Test
 fn test_append_ascii_byte() {
-  var sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder()
   sb.append(72u8)   ; 'H'
   sb.append(105u8)  ; 'i'
   sb.append(33u8)   ; '!'
   assert_eq(sb.len(), 3i64)
-  val s String = sb.build()
+  let s String = sb.build()
   assert_eq(s, "Hi!")
 }
 
 #Test
 fn test_append_string() {
-  var sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder()
   sb.append("Hello")
   sb.append(" ")
   sb.append("World")
   assert_eq(sb.len(), 11i64)
-  val s String = sb.build()
+  let s String = sb.build()
   assert_eq(s, "Hello World")
 }
 
 #Test
 fn test_append_mixed() {
-  var sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder()
   sb.append(c'H')
   sb.append("ello")
   sb.append(32u8)   ; space
   sb.append("World")
   sb.append(33u8)   ; '!'
-  val s String = sb.build()
+  let s String = sb.build()
   assert_eq(s, "Hello World!")
 }
 
@@ -62,7 +62,7 @@ fn test_append_mixed() {
 
 #Test
 fn test_len_after_append() {
-  var sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder()
   assert_eq(sb.len(), 0i64)
   sb.append("abc")
   assert_eq(sb.len(), 3i64)
@@ -74,25 +74,25 @@ fn test_len_after_append() {
 
 #Test
 fn test_clear() {
-  var sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder()
   sb.append("Hello")
   assert_eq(sb.len(), 5i64)
   sb.clear()
   assert_eq(sb.len(), 0i64)
-  val s String = sb.build()
+  let s String = sb.build()
   assert_eq(s.len(), 0i64)
 }
 
 #Test
 fn test_clear_and_reuse() {
-  var sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder()
   sb.append("First")
-  val s1 String = sb.build()
+  let s1 String = sb.build()
   assert_eq(s1, "First")
   
   sb.clear()
   sb.append("Second")
-  val s2 String = sb.build()
+  let s2 String = sb.build()
   assert_eq(s2, "Second")
 }
 
@@ -100,41 +100,41 @@ fn test_clear_and_reuse() {
 
 #Test
 fn test_build_returns_string() {
-  var sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder()
   sb.append("Test")
-  val s String = sb.build()
+  let s String = sb.build()
   assert_eq(s, "Test")
 }
 
 #Test
 fn test_build_resets_buffer() {
-  var sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder()
   sb.append("Hello")
-  val s1 String = sb.build()
+  let s1 String = sb.build()
   assert_eq(s1, "Hello")
   assert_eq(sb.len(), 0i64)
   
   ; build 后继续 append 不影响已返回的 String
   sb.append("World")
-  val s2 String = sb.build()
+  let s2 String = sb.build()
   assert_eq(s1, "Hello")  ; s1 不受影响
   assert_eq(s2, "World")
 }
 
 #Test
 fn test_multiple_build() {
-  var sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder()
   
   sb.append("A")
-  val s1 String = sb.build()
+  let s1 String = sb.build()
   assert_eq(s1, "A")
   
   sb.append("B")
-  val s2 String = sb.build()
+  let s2 String = sb.build()
   assert_eq(s2, "B")
   
   sb.append("C")
-  val s3 String = sb.build()
+  let s3 String = sb.build()
   assert_eq(s3, "C")
 }
 
@@ -142,21 +142,21 @@ fn test_multiple_build() {
 
 #Test
 fn test_append_unicode() {
-  var sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder()
   ; 追加 Unicode 码点（中文）
   sb.append(20320u32)  ; '你'
   sb.append(22909u32)  ; '好'
-  val s String = sb.build()
+  let s String = sb.build()
   assert_eq(s.len(), 2i64)
 }
 
 #Test
 fn test_append_mixed_unicode() {
-  var sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder()
   sb.append("Hello ")
   sb.append(20320u32)  ; '你'
   sb.append(22909u32)  ; '好'
-  val s String = sb.build()
+  let s String = sb.build()
   assert_eq(s.len(), 8i64)  ; "Hello 你好" = 6 + 2 = 8 个码点
 }
 
@@ -164,16 +164,16 @@ fn test_append_mixed_unicode() {
 
 #Test
 fn test_empty_string_append() {
-  var sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder()
   sb.append("")
   assert_eq(sb.len(), 0i64)
-  val s String = sb.build()
+  let s String = sb.build()
   assert_eq(s.len(), 0i64)
 }
 
 #Test
 fn test_build_empty() {
-  var sb StringBuilder = StringBuilder()
-  val s String = sb.build()
+  #Mut let sb StringBuilder = StringBuilder()
+  let s String = sb.build()
   assert_eq(s.len(), 0i64)
 }

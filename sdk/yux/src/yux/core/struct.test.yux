@@ -19,7 +19,7 @@ StPointF {
 
 #Test
 fn test_struct_basic_fields() {
-  val p = StPointF(1.0, 2.0)
+  let p = StPointF(1.0, 2.0)
   assert_eq(p.x, 1.0)
   assert_eq(p.y, 2.0)
 }
@@ -48,10 +48,10 @@ Pt {
 
 #Test
 fn test_struct_eq_overload() {
-  val a Pt = Pt(1i32, 2i32)
-  val b Pt = Pt(1i32, 2i32)
-  val c Pt = Pt(1i32, 9i32)
-  val d Pt = Pt(9i32, 2i32)
+  let a Pt = Pt(1i32, 2i32)
+  let b Pt = Pt(1i32, 2i32)
+  let c Pt = Pt(1i32, 9i32)
+  let d Pt = Pt(9i32, 2i32)
   assert_true(a == b)
   assert_false(a == c)
   assert_false(a == d)
@@ -107,7 +107,7 @@ fn st_modify_byval(p StPointI) {
 
 #Test
 fn test_struct_byval_trivial_no_caller_change() {
-  var pt StPointI = StPointI(10i32, 20i32)
+  #Mut let pt StPointI = StPointI(10i32, 20i32)
   st_modify_byval(pt)
   ; 调用方原值不受影响
   assert_eq(pt.x, 10i32)
@@ -122,8 +122,8 @@ fn st_observe_holder(h StHolder) i32 {
 
 #Test
 fn test_struct_byval_with_rc_field() {
-  var p Rc<StPair> = StPair(11i32, 22i32)
-  var h StHolder = StHolder(p, 7i32)
+  #Mut let p Rc<StPair> = StPair(11i32, 22i32)
+  #Mut let h StHolder = StHolder(p, 7i32)
   ; observe 内对 RC 字段 retain，返回后 caller 仍可读
   assert_eq(st_observe_holder(h), 11i32 + 22i32 + 7i32)
   assert_eq(h.bx.a, 11i32)
@@ -151,8 +151,8 @@ fn st_observe_generic(h StGenericHolder<Rc<StPair>>) i32 {
 
 #Test
 fn test_struct_byval_generic_instance() {
-  var p Rc<StPair> = StPair(11i32, 22i32)
-  var h StGenericHolder<Rc<StPair>> = StGenericHolder:<Rc<StPair>>(p, 7i32)
+  #Mut let p Rc<StPair> = StPair(11i32, 22i32)
+  #Mut let h StGenericHolder<Rc<StPair>> = StGenericHolder:<Rc<StPair>>(p, 7i32)
   assert_eq(st_observe_generic(h), 11i32 + 22i32 + 7i32)
   assert_eq(h.payload.a, 11i32)
   assert_eq(p.b, 22i32)
@@ -163,11 +163,11 @@ fn test_struct_byval_generic_instance() {
 
 #Test
 fn test_struct_whole_assign_rc() {
-  var p Rc<StPair> = StPair(1i32, 2i32)
-  var q Rc<StPair> = StPair(3i32, 4i32)
-  var h1 StHolder = StHolder(p, 10i32)
-  var h3 StHolder = StHolder(q, 30i32)
-  var h2 StHolder = h1
+  #Mut let p Rc<StPair> = StPair(1i32, 2i32)
+  #Mut let q Rc<StPair> = StPair(3i32, 4i32)
+  #Mut let h1 StHolder = StHolder(p, 10i32)
+  #Mut let h3 StHolder = StHolder(q, 30i32)
+  #Mut let h2 StHolder = h1
   assert_eq(h2.bx.a, 1i32)
   assert_eq(h2.tag, 10i32)
   h2 = h3
@@ -186,9 +186,9 @@ fn test_struct_whole_assign_rc() {
 
 #Test
 fn test_struct_field_reassign_rc() {
-  var p Rc<StPair> = StPair(11i32, 22i32)
-  var q Rc<StPair> = StPair(33i32, 44i32)
-  var h StHolder = StHolder(p, 7i32)
+  #Mut let p Rc<StPair> = StPair(11i32, 22i32)
+  #Mut let q Rc<StPair> = StPair(33i32, 44i32)
+  #Mut let h StHolder = StHolder(p, 7i32)
   assert_eq(h.bx.a, 11i32)
   assert_eq(h.bx.b, 22i32)
   h.bx = q
@@ -245,26 +245,26 @@ DaaBranchy {
 
 #Test
 fn test_ctor_daa_rhs_reads_init_field() {
-  val p = DaaPoint(10i32, 5i32)
+  let p = DaaPoint(10i32, 5i32)
   assert_eq(p.x, 10i32)
   assert_eq(p.y, 15i32)
 }
 
 #Test
 fn test_ctor_daa_with_box_field() {
-  var bp Rc<DaaPoint> = DaaPoint(100i32, 200i32)
-  val tg = DaaTagged(7i32, bp)
+  #Mut let bp Rc<DaaPoint> = DaaPoint(100i32, 200i32)
+  let tg = DaaTagged(7i32, bp)
   assert_eq(tg.tag, 7i32)
   assert_eq(tg.bx.x, 100i32)
 }
 
 #Test
 fn test_ctor_daa_branch_full_init() {
-  val b1 = DaaBranchy(true, 3i32, 0i32)
+  let b1 = DaaBranchy(true, 3i32, 0i32)
   assert_eq(b1.v, 3i32)
   assert_eq(b1.w, 4i32)
 
-  val b2 = DaaBranchy(false, 0i32, 50i32)
+  let b2 = DaaBranchy(false, 0i32, 50i32)
   assert_eq(b2.v, 50i32)
   assert_eq(b2.w, 49i32)
 }
@@ -303,45 +303,45 @@ Vec2 {
 
 #Test
 fn test_op_overload_plus() {
-  val a Vec2 = Vec2(1i32, 2i32)
-  val b Vec2 = Vec2(3i32, 4i32)
-  val c Vec2 = a + b
+  let a Vec2 = Vec2(1i32, 2i32)
+  let b Vec2 = Vec2(3i32, 4i32)
+  let c Vec2 = a + b
   assert_eq(c.x, 4i32)
   assert_eq(c.y, 6i32)
 }
 
 #Test
 fn test_op_overload_minus() {
-  val a Vec2 = Vec2(10i32, 20i32)
-  val b Vec2 = Vec2(3i32, 4i32)
-  val c Vec2 = a - b
+  let a Vec2 = Vec2(10i32, 20i32)
+  let b Vec2 = Vec2(3i32, 4i32)
+  let c Vec2 = a - b
   assert_eq(c.x, 7i32)
   assert_eq(c.y, 16i32)
 }
 
 #Test
 fn test_op_overload_mul() {
-  val a Vec2 = Vec2(2i32, 3i32)
-  val b Vec2 = Vec2(4i32, 5i32)
-  val c Vec2 = a * b
+  let a Vec2 = Vec2(2i32, 3i32)
+  let b Vec2 = Vec2(4i32, 5i32)
+  let c Vec2 = a * b
   assert_eq(c.x, 8i32)
   assert_eq(c.y, 15i32)
 }
 
 #Test
 fn test_op_overload_neg() {
-  val a Vec2 = Vec2(5i32, -3i32)
-  val b Vec2 = -a
+  let a Vec2 = Vec2(5i32, -3i32)
+  let b Vec2 = -a
   assert_eq(b.x, -5i32)
   assert_eq(b.y, 3i32)
 }
 
 #Test
 fn test_op_overload_chain() {
-  val a Vec2 = Vec2(1i32, 2i32)
-  val b Vec2 = Vec2(3i32, 4i32)
-  val c Vec2 = Vec2(5i32, 6i32)
-  val d Vec2 = a + b + c
+  let a Vec2 = Vec2(1i32, 2i32)
+  let b Vec2 = Vec2(3i32, 4i32)
+  let c Vec2 = Vec2(5i32, 6i32)
+  let d Vec2 = a + b + c
   assert_eq(d.x, 9i32)
   assert_eq(d.y, 12i32)
 }
@@ -386,9 +386,9 @@ OrderedPoint {
 
 #Test
 fn test_op_overload_eq_ne() {
-  val a OrderedPoint = OrderedPoint(1i32, 2i32)
-  val b OrderedPoint = OrderedPoint(1i32, 2i32)
-  val c OrderedPoint = OrderedPoint(1i32, 3i32)
+  let a OrderedPoint = OrderedPoint(1i32, 2i32)
+  let b OrderedPoint = OrderedPoint(1i32, 2i32)
+  let c OrderedPoint = OrderedPoint(1i32, 3i32)
   assert_true(a == b)
   assert_false(a == c)
   assert_false(a != b)
@@ -397,9 +397,9 @@ fn test_op_overload_eq_ne() {
 
 #Test
 fn test_op_overload_lt() {
-  val a OrderedPoint = OrderedPoint(1i32, 2i32)
-  val b OrderedPoint = OrderedPoint(2i32, 1i32)
-  val c OrderedPoint = OrderedPoint(1i32, 3i32)
+  let a OrderedPoint = OrderedPoint(1i32, 2i32)
+  let b OrderedPoint = OrderedPoint(2i32, 1i32)
+  let c OrderedPoint = OrderedPoint(1i32, 3i32)
   assert_true(a < b)
   assert_true(a < c)
   assert_false(b < a)
@@ -407,9 +407,9 @@ fn test_op_overload_lt() {
 
 #Test
 fn test_op_overload_le() {
-  val a OrderedPoint = OrderedPoint(1i32, 2i32)
-  val b OrderedPoint = OrderedPoint(1i32, 2i32)
-  val c OrderedPoint = OrderedPoint(2i32, 1i32)
+  let a OrderedPoint = OrderedPoint(1i32, 2i32)
+  let b OrderedPoint = OrderedPoint(1i32, 2i32)
+  let c OrderedPoint = OrderedPoint(2i32, 1i32)
   assert_true(a <= b)
   assert_true(a <= c)
   assert_false(c <= a)
@@ -417,17 +417,17 @@ fn test_op_overload_le() {
 
 #Test
 fn test_op_overload_gt() {
-  val a OrderedPoint = OrderedPoint(2i32, 1i32)
-  val b OrderedPoint = OrderedPoint(1i32, 2i32)
+  let a OrderedPoint = OrderedPoint(2i32, 1i32)
+  let b OrderedPoint = OrderedPoint(1i32, 2i32)
   assert_true(a > b)
   assert_false(b > a)
 }
 
 #Test
 fn test_op_overload_ge() {
-  val a OrderedPoint = OrderedPoint(1i32, 2i32)
-  val b OrderedPoint = OrderedPoint(1i32, 2i32)
-  val c OrderedPoint = OrderedPoint(1i32, 1i32)
+  let a OrderedPoint = OrderedPoint(1i32, 2i32)
+  let b OrderedPoint = OrderedPoint(1i32, 2i32)
+  let c OrderedPoint = OrderedPoint(1i32, 1i32)
   assert_true(a >= b)
   assert_true(a >= c)
   assert_false(c >= a)
@@ -463,32 +463,32 @@ BitFlags {
 
 #Test
 fn test_op_overload_bit_and() {
-  val a BitFlags = BitFlags(0xFFu32)
-  val b BitFlags = BitFlags(0x0Fu32)
-  val c BitFlags = a & b
+  let a BitFlags = BitFlags(0xFFu32)
+  let b BitFlags = BitFlags(0x0Fu32)
+  let c BitFlags = a & b
   assert_eq(c.bits, 0x0Fu32)
 }
 
 #Test
 fn test_op_overload_bit_or() {
-  val a BitFlags = BitFlags(0xF0u32)
-  val b BitFlags = BitFlags(0x0Fu32)
-  val c BitFlags = a | b
+  let a BitFlags = BitFlags(0xF0u32)
+  let b BitFlags = BitFlags(0x0Fu32)
+  let c BitFlags = a | b
   assert_eq(c.bits, 0xFFu32)
 }
 
 #Test
 fn test_op_overload_bit_xor() {
-  val a BitFlags = BitFlags(0xFFu32)
-  val b BitFlags = BitFlags(0x0Fu32)
-  val c BitFlags = a ^ b
+  let a BitFlags = BitFlags(0xFFu32)
+  let b BitFlags = BitFlags(0x0Fu32)
+  let c BitFlags = a ^ b
   assert_eq(c.bits, 0xF0u32)
 }
 
 #Test
 fn test_op_overload_bit_inv() {
-  val a BitFlags = BitFlags(0x00u32)
-  val b BitFlags = ~a
+  let a BitFlags = BitFlags(0x00u32)
+  let b BitFlags = ~a
   assert_eq(b.bits, 0xFFFFFFFFu32)
 }
 
@@ -513,15 +513,15 @@ SimpleDtor {
 
 #Test
 fn test_dtor_basic() {
-  var d SimpleDtor = SimpleDtor(42)
+  #Mut let d SimpleDtor = SimpleDtor(42)
   assert_eq(d.value, 42i32)
   ; d 离开作用域时析构函数自动调用
 }
 
 #Test
 fn test_dtor_multiple() {
-  var d1 SimpleDtor = SimpleDtor(1)
-  var d2 SimpleDtor = SimpleDtor(2)
+  #Mut let d1 SimpleDtor = SimpleDtor(1)
+  #Mut let d2 SimpleDtor = SimpleDtor(2)
   assert_eq(d1.value, 1i32)
   assert_eq(d2.value, 2i32)
   ; d1, d2 离开作用域时析构函数依次调用
@@ -530,7 +530,7 @@ fn test_dtor_multiple() {
 #Test
 fn test_dtor_nested_scope() {
   {
-    var d SimpleDtor = SimpleDtor(100)
+    #Mut let d SimpleDtor = SimpleDtor(100)
     assert_eq(d.value, 100i32)
   }
   ; d 在内层作用域结束时析构
@@ -564,7 +564,7 @@ OuterStruct {
 
 #Test
 fn test_nested_struct_access() {
-  val o OuterStruct = OuterStruct(42i32, 7i32)
+  let o OuterStruct = OuterStruct(42i32, 7i32)
   assert_eq(o.inner.value, 42i32)
   assert_eq(o.tag, 7i32)
 }
@@ -592,7 +592,7 @@ FluentBuilder {
 
 #Test
 fn test_method_chain() {
-  val b FluentBuilder = FluentBuilder()
-  val result i32 = b.add(1).add(2).add(3).get()
+  let b FluentBuilder = FluentBuilder()
+  let result i32 = b.add(1).add(2).add(3).get()
   assert_eq(result, 6i32)
 }

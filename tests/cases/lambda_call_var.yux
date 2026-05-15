@@ -2,7 +2,7 @@
 ; 形参类型显式标注；fat-ptr ABI
 
 fn main() {
-  var f fn(i32)i32 = (x i32) i32 => x * 2
+  #Mut let f fn(i32)i32 = (x i32) i32 => x * 2
   println(f(7))
 
   ; 多次调用

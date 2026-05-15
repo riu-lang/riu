@@ -7,7 +7,7 @@ fn op(f fn(i32)i32) i32 {
 
 fn make_adder(n i32) fn(i32)i32 {
   ; 占位返回——未实现 lambda；用未初始化变量收尾
-  var r fn(i32)i32
+  #Mut let r fn(i32)i32
   ret r
 }
 
