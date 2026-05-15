@@ -246,7 +246,7 @@ DEF_ERR(3110, "`#Const fn` '{}' cannot {}: {} (DRAFT-const-mut §4.2)")
 DEF_ERR(3111, "`#Const fn` '{}' cannot call non-`#Const` function '{}' (DRAFT-const-mut §4.2.4)")
 DEF_ERR(3112, "Unknown `let` annotation '#{}' (only '#Mut', '#Frozen', '#Cval' are supported on `let`; DRAFT-let-unify §3.4)")
 DEF_ERR(3113, "`let {}` requires a type or initializer (DRAFT-let-unify §3.4)")
-DEF_ERR(3114, "`let {} <type>` requires an initializer (DRAFT-let-unify §3.4)")
+DEF_ERR(3114, "`let {} <type>` requires an initializer (use `#Mut let` for deferred assignment; DRAFT-let-unify §3.4)")
 DEF_ERR(3115, "Annotations '#{}' and '#{}' are mutually exclusive on `let` (DRAFT-let-unify §3.4)")
 DEF_ERR(3116, "Global `let {}` requires `#Cval`: only compile-time constants are allowed at global scope (DRAFT-let-unify §3)")
 

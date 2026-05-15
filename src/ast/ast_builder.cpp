@@ -1558,7 +1558,8 @@ std::any ASTBuilder::visitStatementLet(yux::yuxParser::StatementLetContext* ctx)
                        static_cast<int>(name->getCharPositionInLine()) + 1,
                        ErrorCode::E3113, name->getText());
     }
-    if (hasType && !hasInit) {
+    // 仅 #Mut 允许 `let x T`（延后赋值）；默认 val / #Cval / #Frozen 强制 init。
+    if (hasType && !hasInit && !flags.isMut) {
         throw YuxError(static_cast<int>(name->getLine()),
                        static_cast<int>(name->getCharPositionInLine()) + 1,
                        ErrorCode::E3114, name->getText());
@@ -1573,12 +1574,23 @@ std::any ASTBuilder::visitStatementLet(yux::yuxParser::StatementLetContext* ctx)
         declType = DeclareType::Val;
     }
 
-    auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
     p<TypeNode> type = nullptr;
     if (hasType) {
         type = buildTypeWithRef(ctx->typeWithRef(), scope);
     }
 
+    // #Mut 延后赋形态：`#Mut let x T` 走 StatementDeclareNode（无 init）。
+    if (!hasInit) {
+        TypeInfo varType = type->getType();
+        DEBUG_LOG_VAL("  Statement: Let (no init #Mut)", name->getText() << " : " << varType.name);
+        if (scope) {
+            scope->registerSymbol(
+                name->getText(), {SymbolKind::Variable, name->getText(), varType, true});
+        }
+        return p<StatementNode>(createWithLine<StatementDeclareNode>(ctx, scope, declType, name, type));
+    }
+
+    auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
     TypeInfo varType = type ? type->getType() : expr->getType();
 
     DEBUG_LOG_VAL("  Statement: Let", name->getText() << " : " << varType.name

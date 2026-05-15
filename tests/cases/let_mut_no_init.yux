@@ -1,0 +1,10 @@
+; DRAFT-let-unify §3.4 例外：#Mut let x T 允许无 init（延后赋值）
+; 等价于旧 var x T 形态。
+
+fn main() {
+  #Mut let a i32
+  a = 7
+  #Mut let b i64
+  b = 21i64
+  println((a.to_i64() * b).to_string())
+}

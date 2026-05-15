@@ -92,7 +92,7 @@ struct Counter {
 **附加规则**：
 
 - `let x` 缺 type **且**缺 `= expr` → checker 报 **E3113**（"`let` 声明必须提供类型或初值"），不在 g4 层强制，便于给出友好诊断。
-- `let x` 含 type 但缺 `= expr`（如 `let y i32`）→ checker 报 **E3114**（"`let` 声明必须有初值"），不引入 `#Uninit`。
+- `let x` 含 type 但缺 `= expr`（如 `let y i32`）→ checker 报 **E3114**。**例外**：`#Mut let x T` 允许无初值，作为"延后赋值"形态（保留旧 `var x T` 的等价语义；默认 / `#Cval` / `#Frozen` 仍强制 init，因不可变无初值=死代码）。不引入 `#Uninit`。
 
 ## 4. 子特性 B — 注解形态按声明位拆分
 
