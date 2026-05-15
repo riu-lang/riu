@@ -1,0 +1,1 @@
+diag_const_mut_cval_init_ref_val.yux:5:18 [E3104] error: Local `cval` initializer must be a constant expression: reference to non-`cval` symbol `v`

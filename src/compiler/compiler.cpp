@@ -14,6 +14,7 @@
 
 #include "compiler.h"
 #include "analyzer/borrow_checker.h"
+#include "analyzer/const_mut_checker.h"
 #include "analyzer/flow_terminate_checker.h"
 #include "sema/sema_pass.h"
 #include "runtime/ctor_daa.h"
@@ -599,6 +600,9 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
     // Phase 4d: 借用静态检查（寿命 + 根对象重赋禁）
     checkBorrows(node);
 
+    // P1-2: DRAFT-const-mut §3.3 局部 cval 初值约束（E3104）
+    checkConstMut(node);
+
     // Phase 10d-2：`#NoReturn` 流终止分析（E7014，DRAFT-错误.md §8.3）
     checkFlowTerminate(node);
 
@@ -685,6 +689,9 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
 
     // Phase 4d: 借用静态检查
     checkBorrows(node, structName);
+
+    // P1-2: DRAFT-const-mut §3.3 局部 cval 初值约束（E3104）
+    checkConstMut(node);
 
     // Phase 10d-2：`#NoReturn` 流终止分析（E7014）
     checkFlowTerminate(node);

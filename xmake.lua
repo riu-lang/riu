@@ -172,6 +172,7 @@ target("yux_frontend")
         "src/tools/build_cache.cpp",
         "src/tools/pkg_cache.cpp",
         "src/analyzer/borrow_checker.cpp",
+        "src/analyzer/const_mut_checker.cpp",
         "src/analyzer/flow_terminate_checker.cpp",
         "src/analyzer/symbol_suggest.cpp",
         "src/analyzer/draft_registry.cpp",

@@ -23,6 +23,9 @@ struct SymbolInfo {
     bool writeable = false;
     bool isPrivate = false;
     bool isExternal = false;
+    // DRAFT-const-mut §3：true 表示该符号是 `cval`（局部或全局编译期常量）。
+    // 仅供 const_mut_checker §3.3 区分 cval / val / 参数；codegen 不读。
+    bool isConst = false;
 
     SymbolInfo() = default;
     SymbolInfo(SymbolKind k, string n, TypeInfo t = TypeInfo(), bool w = false)

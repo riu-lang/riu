@@ -236,6 +236,7 @@ DEF_ERR(3100, "Tuple index {} out of range for type '{}' (size {})")
 DEF_ERR(3101, "Tuple destructure expects type tuple, got '{}'")
 DEF_ERR(3102, "Tuple destructure arity mismatch: {} names vs tuple size {}")
 DEF_ERR(3103, "Integer literal '{}' out of range for type '{}'")
+DEF_ERR(3104, "Local `cval` initializer must be a constant expression: {} (DRAFT-const-mut §3.3; allowed: numeric/bool/null/string literals, references to declared `cval`, and arithmetic / bitwise / comparison / logical combinations thereof)")
 
 // ── E4xxx 所有权 / 借用 ───────────────────────────────────────────────
 DEF_ERR(4001, "T& borrow initializer must be &expr or an existing T& variable")

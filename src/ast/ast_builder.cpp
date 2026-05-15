@@ -702,8 +702,9 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         
         SymbolInfo sym(SymbolKind::Variable, name, type, false);
         sym.moduleName = moduleName;
+        sym.isConst = true;
         file->registerSymbol(name, sym);
-        
+
         DEBUG_LOG_VAL("  Register global const", name << " : " << type.name);
     }
 
@@ -1392,8 +1393,9 @@ std::any ASTBuilder::visitStatementCvalDeclAssign(yux::yuxParser::StatementCvalD
     DEBUG_LOG_VAL("  Statement: Declare", name->getText() << " : " << varType.name << " (cval)");
 
     if (scope) {
-        scope->registerSymbol(
-            name->getText(), {SymbolKind::Variable, name->getText(), varType, false});
+        SymbolInfo sym(SymbolKind::Variable, name->getText(), varType, false);
+        sym.isConst = true;
+        scope->registerSymbol(name->getText(), sym);
     }
 
     return p<StatementNode>(createWithLine<StatementDeclareAssignNode>(ctx, scope, DeclareType::CVal, name, type, expr));

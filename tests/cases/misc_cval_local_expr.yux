@@ -1,0 +1,15 @@
+; P1-2: cval 局部初值 §3.3 接受形态 —
+;   数值字面量、bool、字符串、对已声明 cval 的引用,
+;   以及由这些组合的算术 / 位 / 比较 / 逻辑表达式.
+
+fn main() {
+    cval a i32 = 6
+    cval b i32 = a * 7 - 1 + (a & 3)
+    cval c bool = a < b && true
+    cval s String = "ok"
+    println(b.to_string())
+    if c {
+        println(s)
+    }
+    ret;
+}

@@ -1,0 +1,1 @@
+diag_const_mut_cval_init_call.yux:6:18 [E3104] error: Local `cval` initializer must be a constant expression: function / method call
