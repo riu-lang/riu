@@ -15,6 +15,15 @@
 
 ---
 
+## 2026-05-15 —— let-unify P1：`var` / `val` / `cval` 统一到 `let` + 注解修饰
+
+- **新增 §5.1.1（重写）**：局部变量声明产生式从 `statementDeclare` / `statementDeclareAssign` / `statementCvalDeclAssign` 三件套合并到单一 `statementLet`，元组解构改 `statementLetTuple`；全局常量 `globalConst` → `letGlobal`。默认 `let x` 浅不可变（重赋报 `E3093`）；`#Mut` 放宽可变；`#Cval` / `#Frozen` 提供编译期常量 / 深不可变档位。三注解互斥，互斥叠加报 `E3115`；未知 let 注解报 `E3112`；缺 type+init 报 `E3113`；有 type 缺 init 报 `E3114`（`#Mut let x T` 例外）；全局缺 `#Cval` 报 `E3116`。
+- **新增 §5.1.2 / §5.1.3 / §5.1.4 / §5.1.5（重写）**：默认 / `#Mut` 差异、`T&` 局部、`#Cval` 全局 / 局部条款重新表达；语义零变化，仅形态改造。
+- **新增 §11.9 / §11.10**：`#Mut`（局部 `let` 可变档位修饰，inline）/ `#Cval`（`let` 编译期常量档位，局部 inline / 全局顶行）两章。`#Frozen` 表自此可挂在局部 `statementLet` 上（§11.7 表更新）。
+- **附录 A**：删 `cval` / `val` / `var` 关键字行，加 `let` 关键字行；注解表加 `#Const` / `#Frozen` / `#Val` / `#Mut` / `#Cval`（前三者补登记，后两者本次新增）；A.6 预留段加 `var/val/cval` 旧关键字归档说明。
+- **附录 B**：（待 §11.10 落地后同步）产生式 `statementLet` / `statementLetTuple` / `letGlobal` / `letAnno` 替代旧四件套，`Cval` / `DeclKey` 词法 token 移除。
+- **冲突 / 兼容**：**破坏性**。SDK + tests + 项目代码已用 `scripts/migrate_let.py` 一次性迁移：局部 `var x ...` → `#Mut let x ...`，`val x ...` → `let x ...`，`cval x ...` → `#Cval let x ...`；全局 `cval NAME T = literal` → `#Cval\nlet NAME T = literal`；元组解构同步。字段段保留现状（`var/val/cval` 字段关键字与 `#Val` / `#Frozen` 字段注解全部不动）。AST 内 `enum class DeclareType` 同步删除，`Statement(Declare|DeclareAssign|DeclareAssignTuple)Node` 改用 `bool isMut + bool isConst` 字段。 实施详见 `docs/dev/let-unify-impl-log.md`。
+
 ## 2026-05-15 —— `Box<T>` → `Rc<T>` 改名（语义不变）+ `Heap` / `Arc` 占名
 
 - **重命名 §9.5**：`Box<T>` 章节全量改为 `Rc<T>`。语义零变化：layout、ABI、retain / release、自动解引用、构造形态、Weak 升级等条款一字不动，仅类型名 `Box` → `Rc`。运行时 Block layout 不变。

@@ -10,7 +10,6 @@
 |---|---|---|---|
 | `break` | `Break` | 跳出 `loop` | §5.5 |
 | `catch` | `Catch` | 错误路由块的捕获子句（草案） | DRAFT-错误.md §5 |
-| `cval` | `DeclKey` 一支 | 全局常量声明 | §5.1 |
 | `draft` | `Draft` | 接口契约声明 | §12 |
 | `elif` | `Elif` | 多分支条件 | §4.9 / §5.4 |
 | `else` | `Else` | 条件分支兜底 / `match` 兜底 | §4.9 / §5.4 / §3.10 |
@@ -19,6 +18,7 @@
 | `false` | `False` | 布尔字面量 | §1.6.4 |
 | `fn` | `Fn` | 函数声明 | §6 |
 | `if` | `If` | 条件表达式 / 语句 | §4.9 / §5.4 |
+| `let` | `Let` | 局部 / 全局变量声明（含 `#Mut` / `#Cval` / `#Frozen` 注解修饰档位） | §5.1 |
 | `loop` | `Loop` | 循环 | §5.5 |
 | `match` | `Match` | 模式匹配（仅 enum） | §3.10 / §4 |
 | `null` | `Null` | 空字面量 | §3.6.1.3 / §1.6.7 |
@@ -27,10 +27,8 @@
 | `true` | `True` | 布尔字面量 | §1.6.4 |
 | `try` | `Try` | 错误路由块开始（草案） | DRAFT-错误.md §5 |
 | `use` | `Use` | 模块导入 | §10.2 |
-| `val` | `DeclKey` 一支 | 不可变局部声明 | §5.1 |
-| `var` | `DeclKey` 一支 | 可变局部声明 | §5.1 |
 
-§A.1.1 `cval` / `val` / `var` 在 lexer 层共用一个 `DeclKey` token（产生式 `'va'[rl] | 'cval'`），在 parser 层按字面值分支。
+§A.1.1 `let` 是局部 / 全局变量声明的唯一引入符（[DRAFT-let-unify](draft/DRAFT-let-unify.md)）；可变性 / 编译期常量 / 深不可变档位由 inline 注解 `#Mut` / `#Cval` / `#Frozen` 修饰，详见 §5.1。旧 `var` / `val` / `cval` 关键字已在 let-unify 落地时从 lexer 移除；字段段保留独立形态（不在 let-unify 范围）。
 
 §A.1.2 关键字**不得**用作 `ID`（标识符）。`yux.g4` 的 lexer 优先级保证关键字命中先于 `ID`。
 
@@ -62,6 +60,11 @@
 | `#CompilerInner` | 编译器内部合成实现 | §11.2 |
 | `#Test` | 单元测试函数（仅 `*.test.yux`） | §11.3 |
 | `#DraftLike` | draft 开放结构化匹配 | §11.4 / §12.4 |
+| `#Const` | `#Const fn`：编译期常量函数（不改外部状态） | §11.6 |
+| `#Frozen` | 参数 / 字段深不可变；局部 `#Frozen let` 同语义 | §11.7 / §5.1.1 |
+| `#Val` | 字段浅不可变 | §11.8 |
+| `#Mut` | 局部 `let` 可变档位修饰；inline 紧贴 `let` | §11.9 / §5.1.1 |
+| `#Cval` | `let` 编译期常量档位修饰（局部 / 全局） | §11.10 / §5.1.4 / §5.1.5 |
 | `#Fallible(E)` | 失败声明：函数可能以错误 enum `E` 失败（草案，单参数糖） | DRAFT-错误.md §3 |
 | `#NoReturn` | 不返回声明：函数永不正常返回（草案，零参数） | DRAFT-错误.md §8.3 |
 
@@ -138,7 +141,8 @@
 §A.6.2 v1 **没有**以下名称对应的 token / 关键字（如有需要由用户自由用作 `ID`）：
 
 - `pub` / `priv` / `private` / `internal`：可见性修饰符（§10.3.1.2 不引入）；
-- `mut` / `const`：可变性修饰符（v1 用 `var` / `val`）；
+- `mut` / `const`：可变性修饰符（v1 用 `let` 默认不可变 + `#Mut` 注解放宽，见 §5.1.1）；
+- `var` / `val` / `cval`：旧声明关键字（已被 let-unify 移除，由 `let` + `#Mut` / `#Cval` 取代）；
 - `trait` / `impl` / `where`：v1 用 `draft` + `:` 实现块替代，无 `where` 子句（§12 / §6.4.4）；
 - `case`：v1 `match` 用 `=>` + `else` 兜底，无 `case` 关键字（§3.10）；
 - `async` / `await`：v1 无并发原语；
