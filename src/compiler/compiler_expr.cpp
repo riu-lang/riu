@@ -2096,6 +2096,11 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         // Phase 1c：仅 emit 占位 fat ptr { vtable=null, data=src.handle }；
         // 真 vtable 与 dtor 路由留 Phase 3，对象安全 / E1133 类型检查留 Phase 2。
         return compileDynCtorExpr(dynCtorNode);
+    } else if (auto heapCtorNode = dynamic_cast<ExprHeapCtorNode*>(node)) {
+        // Heap:<T>(x) 构造表达式（DRAFT-heap-types §8.3a）—— Phase 2.4 实施
+        // 占位：抛"未实现"提示，避免 codegen 走 ExprCallNode 路径产生未定义行为
+        throw YuxError(node->getLineNumber(), node->getColumn(),
+            "Heap:<T>(x) 构造表达式编译器实施未完成（Phase 2.4 在做）");
     } else if (auto enumCtorNode = dynamic_cast<ExprEnumCtorNode*>(node)) {
         // Phase 5: enum ctor 是 +1 fresh：构造时把实参（含 RC payload）写入 enum 槽，
         // enum 值随后承担释放责任。仅当类型需要析构时才登记到临时帧

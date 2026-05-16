@@ -614,6 +614,10 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     if (auto n = dynamic_cast<p<ExprDynCtorNode>>(expr)) {
         visitExpr(n->arg()); return;
     }
+    if (auto n = dynamic_cast<p<ExprHeapCtorNode>>(expr)) {
+        // Phase 2.3 占位：递归 arg 子表达式即可，Heap<T> 形态检查在 Phase 2.4+ 编译期 / 借用检查推进
+        visitExpr(n->arg()); return;
+    }
     if (auto n = dynamic_cast<p<ExprNullElseNode>>(expr)) {
         visitExpr(n->left()); visitExpr(n->right()); return;
     }

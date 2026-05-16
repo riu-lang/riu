@@ -1787,6 +1787,15 @@ std::any ASTBuilder::visitExprCall(yux::yuxParser::ExprCallContext* ctx) {
                         ctx, scope, draftTypeNode, argExpr, isBorrow);
                     return p<ExprNode>(dyn);
                 }
+                // Heap:<T>(x) 类型构造（DRAFT-heap-types §8.3a）—— 单点拦截 ExprCallNode 重写为 ExprHeapCtorNode
+                // 形态与 Dyn 同：单 typeArg + 单 arg；codegen 走 __yux_heap_alloc + 写入 T 值，返回裸 T* 形态的 Heap<T>
+                if (obj->getValue().getText() == "Heap") {
+                    auto innerTypeNode = call->getTypeArgs()[0];
+                    auto argExpr = call->getArgs()[0];
+                    auto heap = createWithLine<ExprHeapCtorNode>(
+                        ctx, scope, innerTypeNode, argExpr);
+                    return p<ExprNode>(heap);
+                }
             }
         }
     }

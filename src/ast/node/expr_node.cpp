@@ -1378,6 +1378,13 @@ TypeInfo ExprDynCtorNode::getType() const {
     return TypeInfo("Dyn", {inner});
 }
 
+// Heap:<T>(arg) 的整体类型 = Heap<T>
+TypeInfo ExprHeapCtorNode::getType() const {
+    if (!_innerType) return TypeInfo();
+    auto inner = make_shared<TypeInfo>(_innerType->getType());
+    return TypeInfo("Heap", {inner});
+}
+
 TypeInfo ExprEnumCtorNode::getType() const {
     string n = _enumName.getText();
     auto* scope = parent() ? parent()->findNearestScope() : nullptr;

@@ -715,6 +715,27 @@ public:
     [[nodiscard]] TypeInfo getType() const override;
 };
 
+// Heap:<T>(arg) 堆作用域句柄构造（DRAFT-heap-types §8.3a）
+//
+// 单参形态：arg 求值为 T 值，编译器分配堆 buffer + 将 T 值 store 入堆 + 返回 Heap<T> 句柄。
+// 与 ExprDynCtorNode 同构（单点 AST 节点便于 NRVO 在 Phase 3 识别）。
+// ast_builder 在 visitExprCall 命中 callee = LiteralObj("Heap") + 单 typeArg + 单 arg 时改产此节点。
+class ExprHeapCtorNode : public ExprNode {
+    p<TypeNode> _innerType;     // turbofish 内的 T
+    p<ExprNode> _arg;           // 构造源：求值为 T 的表达式
+
+public:
+    ExprHeapCtorNode(const p<Node>& parent, p<TypeNode> innerType, p<ExprNode> arg) :
+        ExprNode(parent),
+        _innerType(std::move(innerType)),
+        _arg(std::move(arg)) {
+    }
+
+    [[nodiscard]] const p<TypeNode>& innerType() const { return _innerType; }
+    [[nodiscard]] const p<ExprNode>& arg() const { return _arg; }
+    [[nodiscard]] TypeInfo getType() const override;
+};
+
 // a ?? b：a 为 Nullable<T> 时，有值取 a.get()，否则取 b
 class ExprNullElseNode : public ExprNode {
     p<ExprNode> _left;
