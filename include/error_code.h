@@ -168,6 +168,7 @@ DEF_ERR(3024, "Left side of `??` must be Nullable<T>, got {}")
 DEF_ERR(3025, "`?.` requires Nullable<T> on the left, got {}")
 DEF_ERR(3026, "String template interpolation requires type implementing ToString, got '{}' (impl `Type : ToString {{ fn to_string() String {{ ... }} }}`)")
 DEF_ERR(3027, "Type mismatch in match arms: expected {}, arm produces {}")
+DEF_ERR(3028, "Heap<{}> constructor argument type mismatch: expected {}, got {}")
 
 // ── E3xxx 类型 — 符号查找 ─────────────────────────────────────────────
 DEF_ERR(3030, "Undefined variable: {}")
@@ -262,6 +263,12 @@ DEF_ERR(4013, "cannot return `$` from constructor (§8.3)")
 DEF_ERR(4020, "return T& root must be {}, got '{}' (§8.6)")
 DEF_ERR(4021, "function returning T& requires exactly one source: `$` (method) or a single T& parameter (free fn)")
 DEF_ERR(4022, "lambda value with `T&` capture cannot escape current frame (cannot be returned, stored to var/field/container/Rc; only consumable inline as call argument; spec §6.3)")
+DEF_ERR(4023, "Heap<{}> '{}' escapes its scope: ret position requires NRVO (§8.3a.4.1)")
+DEF_ERR(4024, "Heap<{}> '{}' cannot be moved by value; declare as Heap<{}>? for movable slots (§8.3a.3.2)")
+DEF_ERR(4025, "{}<Heap<{}>> is forbidden: Heap cannot be nested in Rc / Weak / Array containers (§8.3a.5.1)")
+DEF_ERR(4026, "NRVO not applicable for Heap<{}>: multiple ret sources or coexists with outliving borrow (§8.3a.4.1)")
+DEF_ERR(4027, "implicit widen Heap<{}> -> Heap<{}>? is forbidden; restructure source signature (§8.3a.4.3)")
+DEF_ERR(4028, "extern fn parameter / return must not be Heap<{}>; use Ptr at FFI boundary (§8.3a.5.3)")
 
 // ── E5xxx 模块 / 包 ───────────────────────────────────────────────────
 DEF_ERR(5001, "yux.toml not found in {}")

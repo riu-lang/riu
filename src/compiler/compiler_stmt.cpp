@@ -747,13 +747,13 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             auto elemType = varType.heapElementType();
             if (!elemType) {
                 throw YuxError(node->getLineNumber(), node->getColumn(),
-                    ErrorCode::E3014, std::string("Heap<T>"), std::string("Heap<?>"));
+                    ErrorCode::E3028, std::string("?"), std::string("?"), std::string("?"));
             }
             auto exprType = expr->getType();
             if (!exprType.isHeap() || !(*exprType.heapElementType() == *elemType)) {
                 throw YuxError(node->getLineNumber(), node->getColumn(),
-                    ErrorCode::E3014, std::string("Heap<") + elemType->name + ">",
-                    exprType.getFullName());
+                    ErrorCode::E3028, elemType->name,
+                    std::string("Heap<") + elemType->name + ">", exprType.getFullName());
             }
             auto exprVal = compileExpr(expr);
             _builder.CreateStore(exprVal, alloca);

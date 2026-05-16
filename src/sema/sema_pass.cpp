@@ -50,7 +50,7 @@ namespace {
 // Phase 3.2b 已由 SemaPass 接管的错误码白名单。SemaPass 在 visitExpr 中
 // 捕获 YuxError 时, 命中此清单的直接 rethrow, 让 SemaPass 成为该诊断的
 // 实际抛出点。新增迁移码追加到此处即可。
-constexpr std::array<std::string_view, 23> kMigratedCodes = {
+constexpr std::array<std::string_view, 24> kMigratedCodes = {
     // 算术 / 比较 / 分支结果
     "E3001", "E3002", "E3003", "E3004",
     "E3005", "E3006", "E3007", "E3008",
@@ -73,6 +73,8 @@ constexpr std::array<std::string_view, 23> kMigratedCodes = {
     "E3103",
     // Phase 3.4.h: ExprUnaryNode 内置 op 形态校验 (Rev on float / Not on non-bool)
     "E3070", "E3071",
+    // Phase 2.6 (heap-types): Heap:<T>(arg) 形参类型不匹配
+    "E3028",
 };
 
 // 与 Compiler::lookupEnumDecl 等价的本地版本: 本文件 → SDK → wildcard imports.
@@ -615,8 +617,22 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         visitExpr(n->arg()); return;
     }
     if (auto n = dynamic_cast<p<ExprHeapCtorNode>>(expr)) {
-        // Phase 2.3 占位：递归 arg 子表达式即可，Heap<T> 形态检查在 Phase 2.4+ 编译期 / 借用检查推进
-        visitExpr(n->arg()); return;
+        // Phase 2.6: Heap:<T>(x) 形态检查 (DRAFT-heap-types §8.3a)
+        // - 递归 arg
+        // - E3028: arg 类型必须与 turbofish 内层 T 等价；Compiler 端同 throw 留作幂等防御性双跑
+        // - E4025: Rc/Weak/Array<Heap<...>> 在 getLLVMType 容器分支拦截，不在此处
+        visitExpr(n->arg());
+        auto resultType = n->getType();
+        auto innerSp = resultType.heapElementType();
+        if (innerSp) {
+            const auto& innerT = *innerSp;
+            auto argType = n->arg()->getType();
+            if (!(argType == innerT)) {
+                throw YuxError(n->getLineNumber(), n->getColumn(),
+                    ErrorCode::E3028, innerT.name, innerT.name, argType.name);
+            }
+        }
+        return;
     }
     if (auto n = dynamic_cast<p<ExprNullElseNode>>(expr)) {
         visitExpr(n->left()); visitExpr(n->right()); return;

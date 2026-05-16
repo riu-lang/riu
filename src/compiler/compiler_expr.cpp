@@ -2439,7 +2439,9 @@ llvm::Value* Compiler::compileHeapCtorExpr(p<ExprHeapCtorNode> node) {
     }
     auto argType = argExpr->getType();
     if (!(argType == innerType)) {
-        throw YuxError(line, col, ErrorCode::E3014, innerType.name, argType.name);
+        // Sema 已在 visitExpr(ExprHeapCtorNode) 内 shadow 抛 E3028；保留作幂等防御性双跑
+        throw YuxError(line, col, ErrorCode::E3028,
+            innerType.name, innerType.name, argType.name);
     }
 
     auto innerLLVMType = getLLVMType(innerType);
