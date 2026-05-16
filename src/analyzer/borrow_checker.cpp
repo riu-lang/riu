@@ -333,7 +333,15 @@ private:
                 // RHS 必须是 ExprHeapCtorNode（`Heap:<T>(...)` 显式构造）。
                 // Phase 3 引入 Heap<T>? 可移动槽后，由 nullable 路径接管 move。
                 if (varType.isHeap()) {
-                    if (!dynamic_cast<ExprHeapCtorNode*>(da->expr())) {
+                    bool ok = dynamic_cast<ExprHeapCtorNode*>(da->expr()) != nullptr;
+                    // Phase 3c: 函数返回 Heap<T> 走 NRVO 移交，调用结果亦为 fresh handover.
+                    if (!ok) {
+                        if (auto call = dynamic_cast<ExprCallNode*>(da->expr())) {
+                            auto rt = call->getType();
+                            if (rt.isHeap() && rt == varType) ok = true;
+                        }
+                    }
+                    if (!ok) {
                         auto inner = varType.heapElementType();
                         std::string innerName = inner ? inner->name : std::string("?");
                         throw YuxError(s->getLineNumber(), ErrorCode::E4024,
@@ -354,12 +362,20 @@ private:
                 // DRAFT-heap-types §8.3a.3.2 (Phase 2.8)：Heap<T> 局部重赋
                 // RHS 必须是 ExprHeapCtorNode（同 decl-assign 理由）。
                 auto rit = _rootType.find(lhsName);
-                if (rit != _rootType.end() && rit->second.isHeap() && as->expr()
-                    && !dynamic_cast<ExprHeapCtorNode*>(as->expr())) {
-                    auto inner = rit->second.heapElementType();
-                    std::string innerName = inner ? inner->name : std::string("?");
-                    throw YuxError(s->getLineNumber(), ErrorCode::E4024,
-                                   innerName, lhsName, innerName);
+                if (rit != _rootType.end() && rit->second.isHeap() && as->expr()) {
+                    bool ok = dynamic_cast<ExprHeapCtorNode*>(as->expr()) != nullptr;
+                    if (!ok) {
+                        if (auto call = dynamic_cast<ExprCallNode*>(as->expr())) {
+                            auto rt = call->getType();
+                            if (rt.isHeap() && rt == rit->second) ok = true;
+                        }
+                    }
+                    if (!ok) {
+                        auto inner = rit->second.heapElementType();
+                        std::string innerName = inner ? inner->name : std::string("?");
+                        throw YuxError(s->getLineNumber(), ErrorCode::E4024,
+                                       innerName, lhsName, innerName);
+                    }
                 }
             }
             if (as->expr()) visitExpr(as->expr());
@@ -386,18 +402,30 @@ private:
                                        _returnAllowedDesc, root);
                     }
                 }
-                // DRAFT-heap-types §8.3a.4.1 (Phase 2.8)：v1 无 NRVO，
-                // Heap<T> 返回口的 ret <expr> 一律 escape，报 E4023。
-                // Phase 3 NRVO 落地后此处放行 NRVO-eligible 形态。
+                // DRAFT-heap-types §8.3a.4 (Phase 3c)：A 档 NRVO（最小集）。
+                // 仅放行 `ret <ID>`，其中 ID 是匹配返回类型的局部 Heap<T>；
+                // 其他形态（fresh ctor、调用、字段等）仍报 E4023 escape。
+                // 多 ret：每条独立，各自接管自身 slot，无需多源汇合分析。
+                // 外发借用 vs ret：留下一切片（依赖 §8.6.5 借用流分析延伸）。
                 if (_returnsHeap) {
+                    bool nrvoEligible = false;
                     std::string name = "<expr>";
                     if (auto litE = dynamic_cast<ExprLiteralNode*>(ret->expr())) {
                         if (auto obj = dynamic_cast<LiteralObjNode*>(litE->literal())) {
                             name = obj->getValue().getText();
+                            auto it = _rootType.find(name);
+                            if (it != _rootType.end() && it->second.isHeap()) {
+                                auto inner = it->second.heapElementType();
+                                if (inner && inner->name == _returnHeapInnerName) {
+                                    nrvoEligible = true;
+                                }
+                            }
                         }
                     }
-                    throw YuxError(s->getLineNumber(), ErrorCode::E4023,
-                                   _returnHeapInnerName, name);
+                    if (!nrvoEligible) {
+                        throw YuxError(s->getLineNumber(), ErrorCode::E4023,
+                                       _returnHeapInnerName, name);
+                    }
                 }
             }
             return;

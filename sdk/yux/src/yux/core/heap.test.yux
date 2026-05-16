@@ -110,3 +110,40 @@ fn test_heap_field_and_top_heap_coexist() {
   let rh i32& = as_ref(h)
   assert_eq(rh, 60i32)
 }
+
+; ---------- 9. Phase 3c NRVO：return Heap<T> 移交所有权给调用方 ----------
+;   `ret <local Heap>` 走 NRVO（borrow_checker 放行 + codegen 跳 dtor）；
+;   调用方 `let r Heap<T> = call()` 接管 fresh handover（E4024 放行 ExprCallNode 形态）。
+
+fn nrvo_make_h(v i32) Heap<i32> {
+  let h Heap<i32> = Heap:<i32>(v)
+  ret h
+}
+
+#Test
+fn test_heap_nrvo_return_local() {
+  let r Heap<i32> = nrvo_make_h(77i32)
+  let v i32& = as_ref(r)
+  assert_eq(v, 77i32)
+}
+
+; ---------- 10. NRVO 多 ret：同 fn 多分支各自接管自身 slot ----------
+
+fn nrvo_pick(cond bool) Heap<i32> {
+  if cond {
+    let a Heap<i32> = Heap:<i32>(11i32)
+    ret a
+  }
+  let b Heap<i32> = Heap:<i32>(22i32)
+  ret b
+}
+
+#Test
+fn test_heap_nrvo_multi_ret() {
+  let r1 Heap<i32> = nrvo_pick(true)
+  let r2 Heap<i32> = nrvo_pick(false)
+  let v1 i32& = as_ref(r1)
+  let v2 i32& = as_ref(r2)
+  assert_eq(v1, 11i32)
+  assert_eq(v2, 22i32)
+}
