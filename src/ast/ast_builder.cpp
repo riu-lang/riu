@@ -288,6 +288,21 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
                            fnName, "return type");
         }
 
+        // DRAFT-heap-types §8b (Phase 3a): Heap<T> 不是 ABI 稳定形态,
+        // extern fn 形参 / 返回类型禁出现 Heap; 跨 FFI 走 Ptr.
+        for (auto& pt : paramTypes) {
+            if (pt.isHeap()) {
+                auto inner = pt.heapElementType();
+                throw YuxError(header->getStart()->getLine(), ErrorCode::E4028,
+                               inner ? inner->name : std::string("?"));
+            }
+        }
+        if (retType.isHeap()) {
+            auto inner = retType.heapElementType();
+            throw YuxError(header->getStart()->getLine(), ErrorCode::E4028,
+                           inner ? inner->name : std::string("?"));
+        }
+
         DEBUG_LOG_VAL("  Register external function", fnName);
         SymbolInfo fnSym(SymbolKind::Function, fnName, retType);
         fnSym.moduleName = file->moduleName();

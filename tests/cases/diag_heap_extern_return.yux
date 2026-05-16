@@ -1,0 +1,8 @@
+; DRAFT-heap-types §8b：extern fn 返回类型禁 Heap<T>
+
+extern {
+  fn ffi_make() Heap<i32>
+}
+
+fn main() {
+}
