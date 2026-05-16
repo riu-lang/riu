@@ -1181,6 +1181,9 @@ fn ptr_of<T>(obj T) Ptr
 ; v1 唯一允许"以 T& 形态借用 Rc payload 整体"的途径；返回的 T& 根对象
 ; 视为传入的 box 句柄本身，受 §8.6.5 一切寿命规则约束
 ; T 由实参推断；不接受 Rc<T>?
+; DRAFT-heap-types §8.3a.6：同样接受 Heap<T>（句柄即裸 T*，返回的 T& 寿命绑定
+;   到该 Heap 局部的所在作用域；签名仍写 Rc<T> 是因 v1 不支持函数重载，编译器
+;   在 #CompilerInner 分派时对 Heap arg 走 GEP 偏移 0 / 对 Rc arg 走偏移 8）
 #CompilerInner
 fn as_ref<T>(box Rc<T>) T&
 

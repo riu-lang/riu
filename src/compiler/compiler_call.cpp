@@ -826,6 +826,15 @@ llvm::Value* Compiler::compileGenericFunctionCall(
         for (auto& tn : explicitTypeArgs) {
             typeArgs.push_back(applySubst(tn->getType()));
         }
+    } else if (fnName == "as_ref" && !argTypes.empty() && argTypes[0].isHeap()) {
+        // DRAFT-heap-types §8.3a.6 (Phase 2.7): as_ref(Heap<T>) 沿用 Rc 的 SDK 签名,
+        // unify 不能从 Heap<T> arg 反推 T (Rc<T> ≠ Heap<T>), 在此前直接抽 Heap 内层.
+        auto inner = argTypes[0].heapElementType();
+        if (!inner) {
+            throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                ErrorCode::E6029, fnName, argTypes[0].getFullName());
+        }
+        typeArgs.push_back(*inner);
     } else {
         // E6012 / E6013 已迁至 sema::inferGenericFnTypeArgs
         sema::inferGenericFnTypeArgs(callNode, genericFn, fnName, argTypes, typeArgs);
@@ -969,12 +978,18 @@ llvm::Value* Compiler::compileGenericFunctionCall(
         }
         if (fnName == "as_ref") {
             // spec §8.3.5.5：as_ref:<T>(box Rc<T>) T&
-            // 返回 Rc payload 起点的非空指针（跳过 8 字节 RC 头）
+            // DRAFT-heap-types §8.3a.6 (Phase 2.7)：as_ref:<T>(h Heap<T>) T&
+            //   - Rc<T>:  跳过 8 字节 RC 头 (u32 strong + u32 weak) → payload
+            //   - Heap<T>: 句柄 = 裸 T*, 直接返回 (无头, GEP 偏移 0)
             // 寿命检查在 borrow_checker 处理（识别 ExprCallNode 形如 as_ref(x)）
             // E6026 / E6027 已由 sema::validateCompilerInnerIntrinsicShape 校验
             auto& T = typeArgs[0];
-            // 实参必须是 Rc<T>（不接受 Rc<T>?、Array、String、Weak 等）
             auto argType = callNode->getArgs()[0]->getType();
+            if (argType.isHeap()) {
+                // args[0] 即裸 T*；直接作为 T& 返回
+                return args[0];
+            }
+            // 实参必须是 Rc<T>（不接受 Rc<T>?、Array、String、Weak 等）
             if (!argType.isRc() || argType.isNullable()) {
                 throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
                     ErrorCode::E6029, fnName, argType.getFullName());

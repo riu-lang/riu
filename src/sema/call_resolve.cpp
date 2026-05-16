@@ -766,9 +766,10 @@ void validateCompilerInnerIntrinsicTypeShape(const string& fnName,
         return;
     }
     if (fnName == "as_ref") {
-        // 实参必须是 Rc<T> (不接受 Rc<T>?)
+        // 实参必须是 Rc<T> (不接受 Rc<T>?) 或 Heap<T> (DRAFT-heap-types §8.3a.6, Phase 2.7)
         if (argTypes.empty()) return;
         const auto& argType = argTypes[0];
+        if (argType.isHeap()) return;
         if (!argType.isRc() || argType.isNullable()) {
             throw YuxError(line, col, ErrorCode::E6029, fnName, argType.getFullName());
         }
