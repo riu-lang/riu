@@ -1,0 +1,112 @@
+; DRAFT-heap-types §8.3a Heap<T> 行为用例（Phase 2.9）
+; 覆盖：Heap:<T>(...) 构造、as_ref(Heap<T>) 借用、可变 Heap 重赋、
+;       struct 字段 Heap<T> 析构、嵌套 Heap 构造、多次 as_ref 共享借用。
+; 负面诊断（E3028 / E4023 / E4024 / E4025）见 tests/cases/diag_heap_*.
+
+struct HeapBox {
+  k i32
+}
+
+HeapBox {
+  fn HeapBox(k i32) {
+    $.k = k
+  }
+}
+
+struct HeapWrap {
+  inner Heap<i32>
+}
+
+HeapWrap {
+  fn HeapWrap(v i32) {
+    $.inner = Heap:<i32>(v)
+  }
+}
+
+; ---------- 1. 标量 Heap<i32>：ctor + as_ref + 读 ----------
+
+#Test
+fn test_heap_scalar_ctor_and_as_ref() {
+  let h Heap<i32> = Heap:<i32>(42i32)
+  let r i32& = as_ref(h)
+  assert_eq(r, 42i32)
+}
+
+; ---------- 2. Heap<S>：as_ref 解到 S& 后读字段 ----------
+
+#Test
+fn test_heap_struct_ctor_field_read() {
+  let h Heap<HeapBox> = Heap:<HeapBox>(HeapBox(7i32))
+  let r HeapBox& = as_ref(h)
+  assert_eq(r.k, 7i32)
+}
+
+; ---------- 3. #Mut Heap：重赋必须是 Heap:<T>(...) 新构造 ----------
+
+#Test
+fn test_heap_mut_reassign_fresh_ctor() {
+  #Mut let h Heap<i32> = Heap:<i32>(1i32)
+  h = Heap:<i32>(99i32)
+  let r i32& = as_ref(h)
+  assert_eq(r, 99i32)
+}
+
+; ---------- 4. 同一 Heap 句柄两次 as_ref（共享借用） ----------
+
+#Test
+fn test_heap_two_as_ref_shared() {
+  let h Heap<HeapBox> = Heap:<HeapBox>(HeapBox(13i32))
+  let r1 HeapBox& = as_ref(h)
+  let r2 HeapBox& = as_ref(h)
+  assert_eq(r1.k, 13i32)
+  assert_eq(r2.k, 13i32)
+}
+
+; ---------- 5. struct 字段 Heap<T>：构造 + scope-end 走 __yux_heap_free ----------
+;   仅验证编译 + 运行无崩溃（Heap 无 RC 头，精确 leak 检测需 ASan；
+;   此处看 callFieldDestructor 的 Heap 分支是否在出口正确触发）。
+;   注：as_ref 现仅识别 ID 实参根，无法直接借用 w.inner（borrow_checker
+;   E4001 兜底）；这里仅压构造 + scope 析构路径。
+
+#Test
+fn test_heap_inside_struct_field() {
+  let w HeapWrap = HeapWrap(31i32)
+  assert_eq(1i32, 1i32)
+}
+
+; ---------- 6. 同函数多个 Heap 局部：scope 析构顺序 ----------
+
+#Test
+fn test_heap_multi_locals_scope_drop() {
+  let a Heap<i32> = Heap:<i32>(2i32)
+  let b Heap<i32> = Heap:<i32>(4i32)
+  let c Heap<i32> = Heap:<i32>(8i32)
+  let ra i32& = as_ref(a)
+  let rb i32& = as_ref(b)
+  let rc i32& = as_ref(c)
+  assert_eq(ra + rb + rc, 14i32)
+}
+
+; ---------- 7. 嵌套块作用域：内层 Heap 在块尾析构，不影响外层 ----------
+
+#Test
+fn test_heap_nested_block_scope() {
+  let outer Heap<i32> = Heap:<i32>(100i32)
+  {
+    let inner Heap<i32> = Heap:<i32>(200i32)
+    let ri i32& = as_ref(inner)
+    assert_eq(ri, 200i32)
+  }
+  let ro i32& = as_ref(outer)
+  assert_eq(ro, 100i32)
+}
+
+; ---------- 8. Heap 字段 + 顶层 Heap 同时构造（双重析构路径） ----------
+
+#Test
+fn test_heap_field_and_top_heap_coexist() {
+  let w HeapWrap = HeapWrap(50i32)
+  let h Heap<i32> = Heap:<i32>(60i32)
+  let rh i32& = as_ref(h)
+  assert_eq(rh, 60i32)
+}

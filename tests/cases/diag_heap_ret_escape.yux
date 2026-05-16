@@ -1,0 +1,9 @@
+; DRAFT-heap-types §8.3a.4.1：v1 无 NRVO，fn 返回 Heap<T> 时 ret <expr> 一律 E4023
+
+fn make_h() Heap<i32> {
+  let h Heap<i32> = Heap:<i32>(5i32)
+  ret h
+}
+
+fn main() {
+}
