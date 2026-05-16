@@ -15,6 +15,19 @@
 
 ---
 
+## 2026-05-16 —— Heap<T> 类型族（DRAFT-heap-types.md Phase 0 回写）
+
+- **新增 §3.1**：类型档位表追加 "堆作用域句柄" 一档（`Heap<T>`），与堆句柄并列；注脚说明 `Rc<Heap<T>>` / `Array<Heap<T>>` 互斥规则
+- **新增 §3.3**：内置泛型表追加 `Heap<T>` 行；新增 Heap / Rc widen 禁条款
+- **新增 §7.1.3 字段表 + §7.1.3.1 / §7.4.2 / §7.4.6 / §7.4.6.6**：含 `Heap<T>` / `Heap<T>?` 字段的非平凡结构体构造 / 析构 / 字段写规则；复合可空 `S?` 整体 move
+- **新增 §8.3a（新节）**：`Heap<T>` 形态、A 档 NRVO / B 档 nullable move / C 档局部 move、容器规则 + FFI
+- **修改 §8.3.5.5 / §8.6.5.9**：`as_ref` 增加 `Heap<T>` 重载；寿命检查把 `Heap` 句柄登记为根
+- **新增 §9.5a（新节）**：Heap<T> 内置类型节；§9.5.6 改 `Arc` 占名；§9.2.3.4 `Array<Heap<T>>` 例外；§9.7.2.4 `ptr_of` 表加 Heap 行
+- **修改 §11.2.3.2**：`#CompilerInner` 重载清单注明 `as_ref` / `ptr_of` / `copy_of` / `Heap:<T>(Ptr)` 含 Heap 形态
+- **附录 D**：分配 E4023–E4028（Heap escape / move ban / 容器禁 / NRVO 不消解 / widen 禁 / FFI 禁）
+- **附录 C**：新增术语 堆作用域句柄 / Heap<T> / NRVO（A 档）/ nullable move（B 档）/ 复合 move（C 档）/ 生命传染
+- **冲突 / 兼容**：之前 §9.5.6 中 `Heap` 保留名报错 `E1132` 一并撤销（保留名仅留 `Arc`）；DRAFT-heap-types.md 与本次回写对齐后保留作 Phase 2+ 实施期参考
+
 ## 2026-05-15 —— let-unify P1：`var` / `val` / `cval` 统一到 `let` + 注解修饰
 
 - **新增 §5.1.1（重写）**：局部变量声明产生式从 `statementDeclare` / `statementDeclareAssign` / `statementCvalDeclAssign` 三件套合并到单一 `statementLet`，元组解构改 `statementLetTuple`；全局常量 `globalConst` → `letGlobal`。默认 `let x` 浅不可变（重赋报 `E3093`）；`#Mut` 放宽可变；`#Cval` / `#Frozen` 提供编译期常量 / 深不可变档位。三注解互斥，互斥叠加报 `E3115`；未知 let 注解报 `E3112`；缺 type+init 报 `E3113`；有 type 缺 init 报 `E3114`（`#Mut let x T` 例外）；全局缺 `#Cval` 报 `E3116`。

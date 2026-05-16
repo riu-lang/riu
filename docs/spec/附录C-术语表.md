@@ -24,6 +24,12 @@
 | 类型档位 | type tier | §3.1 / §8.1.1 | 值 / 堆句柄 / 借用 / FFI 指针四档 |
 | 值类型 | value type | §3.1 | 标量 / 用户 struct / `[T*N]`，按值复制 |
 | 堆句柄 | heap handle | §3.1 / §8 | `Rc<T>` / `Weak<T>` / `Array<T>` / `String` / `StringBuilder` |
+| 堆作用域句柄 | heap-scope handle | §3.1 / §8.3a / §9.5a | `Heap<T>`，单 owner、零 RC、作用域绑定 free |
+| Heap<T> | heap pointer | §8.3a / §9.5a | 裸 `T*` payload，按值禁 copy / move，`Heap<T>?` 启用 nullable move |
+| NRVO（A 档） | named return value optimization | §8.3a.4.1 | `ret heap_local` 折叠为分配 + 接管 + slot moved_out |
+| nullable move（B 档） | nullable move | §8.3a.4.2 | 调用点把 `Heap<T>?` 实参 slot 改写为 null，避免 owner 复制 |
+| 复合 move / 局部 move（C 档） | local / composite move | §8.3a.4.4 / §7.4.6.6 | `Heap<T>?` 左值赋值搬移；含 Heap 复合可空 slot 按值搬移 |
+| 生命传染 | Heap-life propagation | §9.5a.1.4 | 含 Heap 子项的复合按 Heap 生命计；`Array<Heap<T>>` 不走 retain |
 | 借用 | borrow | §3.2.3 / §8.6 | `T&`，非空指针，不参与 RC |
 | FFI 指针 | FFI pointer | §3.3 / §9.7 | `Ptr`，等价 C `void*` |
 | 名义类型 | nominal type | §3.4.1 | 用户 struct 按声明源判等 |

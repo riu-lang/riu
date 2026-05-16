@@ -260,6 +260,12 @@ const-mut（E3104..E3111；引入自 [draft/DRAFT-const-mut.md](draft/DRAFT-cons
 | E4013 | `cannot return $ from constructor (§8.3)` |
 | E4020 | `return T& root must be {}, got '{}' (§8.6)` |
 | E4021 | `function returning T& requires exactly one source: \`$\` (method) or a single T& parameter (free fn)` |
+| E4023 | `Heap<T> '{}' escapes its scope: ret position requires NRVO (§8.3a.4.1)` |
+| E4024 | `Heap<T> '{}' cannot be moved by value; declare as Heap<T>? for movable slots (§8.3a.3.2)` |
+| E4025 | `Rc<Heap<T>> / Weak<Heap<T>> / Heap<T> as Rc<U> inner field is forbidden (§8.3a.5.1)` |
+| E4026 | `NRVO not applicable: multiple ret sources or coexists with outliving borrow (§8.3a.4.1)` |
+| E4027 | `implicit widen Heap<T> -> Heap<T>? is forbidden; restructure source signature (§8.3a.4.3)` |
+| E4028 | `extern fn parameter / return must not be Heap<T>; use Ptr at FFI boundary (§8.3a.5.3)` |
 
 ### D.3.5 E5xxx — 模块 / 包
 
