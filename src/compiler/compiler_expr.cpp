@@ -2097,10 +2097,8 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         // 真 vtable 与 dtor 路由留 Phase 3，对象安全 / E1133 类型检查留 Phase 2。
         return compileDynCtorExpr(dynCtorNode);
     } else if (auto heapCtorNode = dynamic_cast<ExprHeapCtorNode*>(node)) {
-        // Heap:<T>(x) 构造表达式（DRAFT-heap-types §8.3a）—— Phase 2.4 实施
-        // 占位：抛"未实现"提示，避免 codegen 走 ExprCallNode 路径产生未定义行为
-        throw YuxError(node->getLineNumber(), node->getColumn(),
-            "Heap:<T>(x) 构造表达式编译器实施未完成（Phase 2.4 在做）");
+        // Heap:<T>(x) 构造（DRAFT-heap-types §8.3a）—— Phase 2.4 codegen
+        return compileHeapCtorExpr(heapCtorNode);
     } else if (auto enumCtorNode = dynamic_cast<ExprEnumCtorNode*>(node)) {
         // Phase 5: enum ctor 是 +1 fresh：构造时把实参（含 RC payload）写入 enum 槽，
         // enum 值随后承担释放责任。仅当类型需要析构时才登记到临时帧
@@ -2412,6 +2410,50 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
     DEBUG_LOG_VAL("    Expr: DynCtor",
         resultType.getFullName() << " <- " << argType.getFullName());
     return fatPtr;
+}
+
+// 编译 Heap:<T>(x) 构造表达式（DRAFT-heap-types §8.3a）
+// 形态：单参；arg 求值为 T 值。
+// 流程：
+// 1. 求值 arg → T 值
+// 2. arg 类型必须等于 turbofish 内 T（E3014）
+// 3. __yux_heap_alloc(sizeof T) → ptr
+// 4. store T 值到 ptr
+// 5. 返回 ptr（Heap<T> LLVM 表示 = 裸 T*）
+// 注：作用域析构 / 字段析构 / as_ref / 借用检查留 Phase 2.5+
+llvm::Value* Compiler::compileHeapCtorExpr(p<ExprHeapCtorNode> node) {
+    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
+    int line = node->getLineNumber();
+    int col = node->getColumn();
+
+    auto resultType = node->getType();
+    auto innerSp = resultType.heapElementType();
+    if (!innerSp) {
+        throw YuxError(line, col, "Heap:<T>(x) 缺少类型实参");
+    }
+    auto innerType = *innerSp;
+
+    auto argExpr = node->arg();
+    if (isIntTypeName(innerType.name) && isFlexibleIntExpr(argExpr)) {
+        tryInferIntType(argExpr, innerType);
+    }
+    auto argType = argExpr->getType();
+    if (!(argType == innerType)) {
+        throw YuxError(line, col, ErrorCode::E3014, innerType.name, argType.name);
+    }
+
+    auto innerLLVMType = getLLVMType(innerType);
+    auto argVal = compileExpr(argExpr);
+
+    auto sizeVal = _builder.getInt64(
+        _module->getDataLayout().getTypeAllocSize(innerLLVMType).getFixedValue());
+    auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
+    auto rawPtr = _builder.CreateCall(allocFn, {sizeVal}, "heap_payload");
+    _builder.CreateStore(argVal, rawPtr);
+
+    DEBUG_LOG_VAL("    Expr: HeapCtor",
+        resultType.getFullName() << " <- " << argType.getFullName());
+    return rawPtr;
 }
 
 // 编译 match 表达式 (Phase 6)

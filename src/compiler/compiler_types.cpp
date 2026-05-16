@@ -392,7 +392,7 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     // 返回 null 会让调用方在后续 SEH/段错误时崩。这里早抛 E6011 以给出诊断。
     if (type.isNormal()) {
         static const std::pair<const char*, size_t> kBuiltinGenerics[] = {
-            {"Rc", 1}, {"Weak", 1}, {"Array", 1}, {"Nullable", 1},
+            {"Rc", 1}, {"Weak", 1}, {"Array", 1}, {"Nullable", 1}, {"Heap", 1},
         };
         for (auto [bname, arity] : kBuiltinGenerics) {
             if (type.name == bname) {
@@ -440,6 +440,13 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             rcFields.push_back(llvm::PointerType::get(_context, 0));  // handle: Block*
             return llvm::StructType::get(_context, rcFields);
         }
+        return llvm::PointerType::get(_context, 0);
+    }
+
+    // Heap<T> 类型（DRAFT-heap-types §8.3a 堆作用域句柄）
+    // layout = 裸 T*：单所有权、无 RC 头、作用域绑定析构、不参与 Rc/Weak
+    if (type.isHeap()) {
+        DEBUG_LOG_VAL("    -> HeapType (bare ptr)", "Heap<" << (type.heapElementType() ? type.heapElementType()->name : "?") << ">");
         return llvm::PointerType::get(_context, 0);
     }
 
