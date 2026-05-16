@@ -49,6 +49,20 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
         return;
     }
 
+    // Heap<T>（DRAFT-heap-types §8.3a 单所有权堆作用域句柄）
+    // 槽内 = 裸 T*；释放顺序：1) T 自身析构（按 T 槽=已加载 ptr） 2) __yux_heap_free
+    // 注：__yux_heap_free 对 null 安全（emitHeapHandleHelpers 内 null-check）；
+    // Heap 不参与 RC 计数，无 retain/release 计数语义
+    if (type.isHeap()) {
+        auto elemSp = type.heapElementType();
+        auto ptr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), slotPtr, "old.heap.payload");
+        if (elemSp && typeNeedsDestructor(*elemSp)) {
+            releaseAtPtr(ptr, *elemSp);
+        }
+        _builder.CreateCall(runtime::getHeapHandleFreeFn(_module, _builder), {ptr});
+        return;
+    }
+
     // Phase 3e: owned Dyn<D> 释放
     // layout = { ptr vtable, ptr data }；data 指 [RC head | 实例]
     // 走 _dyn_release(data, vtable)：strong-- → if 0 then dtor=vtable[0] dispatch(data+8) → weak-- + free
@@ -193,6 +207,14 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
 
             auto arrayReleaseFn = runtime::getArrayReleaseFn(_module, _builder);
             _builder.CreateCall(arrayReleaseFn, {handle});
+        } else if (fieldType.isHeap()) {
+            // Heap<T> 字段（DRAFT-heap-types §8.3a）：load 裸 T*，T 自身析构后 __yux_heap_free
+            auto elemSp = fieldType.heapElementType();
+            auto payload = _builder.CreateLoad(llvm::PointerType::get(_context, 0), fieldPtr, "field.heap.payload");
+            if (elemSp && typeNeedsDestructor(*elemSp)) {
+                releaseAtPtr(payload, *elemSp);
+            }
+            _builder.CreateCall(runtime::getHeapHandleFreeFn(_module, _builder), {payload});
         } else if (fieldType.isFn()) {
             // Phase 3a / 4a-2: fn 字段：fat-ptr 的 captures（offset 1）走 _box_release_dtor，
             // 让 strong 归零时 dispatch 到 lambda 自己的 captures 字段析构。
@@ -572,6 +594,9 @@ bool Compiler::typeNeedsDestructor(const TypeInfo& type) {
 
     // Rc / Weak / Array 需要析构
     if (type.isRc() || type.isWeak() || type.isArrayGeneric()) return true;
+
+    // Heap<T>：作用域尾走 __yux_heap_free（DRAFT-heap-types §8.3a）
+    if (type.isHeap()) return true;
 
     // Phase 3a: 函数类型 fn(...)R 的 captures 字段是 Rc<CapturesT>?，按 §7.4 字段级 RC
     // 即使零捕获场景下 captures 永远 null，IR 仍发出 retain/release（runtime null-safe）

@@ -2450,6 +2450,9 @@ llvm::Value* Compiler::compileHeapCtorExpr(p<ExprHeapCtorNode> node) {
     auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
     auto rawPtr = _builder.CreateCall(allocFn, {sizeVal}, "heap_payload");
     _builder.CreateStore(argVal, rawPtr);
+    // fresh 临时 arg 的 +1 / RC 字段所有权转交给 Heap payload；
+    // 否则帧弹出时 dtor 会与作用域尾 __yux_heap_free 前的 inner dtor 双释放（含 RC 字段时 use-after-free）
+    consumeTemp(argVal);
 
     DEBUG_LOG_VAL("    Expr: HeapCtor",
         resultType.getFullName() << " <- " << argType.getFullName());

@@ -740,6 +740,25 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             }
             _scopeVars.push_back(varName);
         }
+        // Heap<T>：单所有权堆作用域句柄（DRAFT-heap-types §8.3a）
+        // Phase 2.5：仅接受 Heap:<T>(...) 等同型 Heap<T> RHS，作用域尾走 __yux_heap_free
+        // 注：Heap-from-Heap 拷贝会双释放 — 借用检查 Phase 2.8 静态拒绝
+        else if (varType.isHeap()) {
+            auto elemType = varType.heapElementType();
+            if (!elemType) {
+                throw YuxError(node->getLineNumber(), node->getColumn(),
+                    ErrorCode::E3014, std::string("Heap<T>"), std::string("Heap<?>"));
+            }
+            auto exprType = expr->getType();
+            if (!exprType.isHeap() || !(*exprType.heapElementType() == *elemType)) {
+                throw YuxError(node->getLineNumber(), node->getColumn(),
+                    ErrorCode::E3014, std::string("Heap<") + elemType->name + ">",
+                    exprType.getFullName());
+            }
+            auto exprVal = compileExpr(expr);
+            _builder.CreateStore(exprVal, alloca);
+            _scopeVars.push_back(varName);
+        }
         else {
             // 普通变量
             auto exprVal = compileExpr(expr);
