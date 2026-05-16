@@ -429,6 +429,92 @@ llvm::Function* getArrayRetainFn(llvm::Module* module, llvm::IRBuilder<>& builde
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
+// ==================== Heap<T> 堆作用域句柄支持（DRAFT-heap-types §8.3a） ====================
+//
+// 与 Rc 的区别：
+//   - 无 RC 头（无 8 字节 strong/weak 前缀），layout = 裸 payload
+//   - 单所有权 + 作用域绑定，alloc/free 一一对应
+//   - 不参与 leak 计数（rc_block_count），不影响现有 _rc_block_count 协议
+
+// __yux_heap_alloc(i64 payloadSize) -> ptr
+llvm::Function* getHeapHandleAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
+    string fnName = "__yux_heap_alloc";
+    auto func = module->getFunction(fnName);
+    if (func) return func;
+
+    vector<llvm::Type*> paramTypes;
+    paramTypes.push_back(builder.getInt64Ty());
+
+    auto fnType = llvm::FunctionType::get(
+        llvm::PointerType::get(builder.getContext(), 0),
+        paramTypes,
+        false
+    );
+    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
+}
+
+// __yux_heap_free(ptr) -> void
+llvm::Function* getHeapHandleFreeFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
+    string fnName = "__yux_heap_free";
+    auto func = module->getFunction(fnName);
+    if (func) return func;
+
+    vector<llvm::Type*> paramTypes;
+    paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0));
+
+    auto fnType = llvm::FunctionType::get(builder.getVoidTy(), paramTypes, false);
+    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
+}
+
+void emitHeapHandleHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module) {
+    DEBUG_LOG("Emitting Heap<T> helper functions");
+
+    auto getProcessHeapFn = runtime::getProcessHeapFn(module, builder);
+    auto heapAllocFn = runtime::getHeapAllocFn(module, builder);
+    auto heapFreeFn = runtime::getHeapFreeFn(module, builder);
+    auto ptrTy = llvm::PointerType::get(context, 0);
+
+    // __yux_heap_alloc: 直接调 HeapAlloc(processHeap, 0, payloadSize)，返回裸 payload 指针
+    {
+        DEBUG_LOG("  Emitting __yux_heap_alloc");
+        auto fn = getHeapHandleAllocFn(module, builder);
+        if (fn->empty()) {
+            auto entry = llvm::BasicBlock::Create(context, "entry", fn);
+            builder.SetInsertPoint(entry);
+
+            llvm::Value* payloadSize = &*fn->arg_begin();
+            auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
+            auto buf = builder.CreateCall(heapAllocFn, {heap, builder.getInt64(0), payloadSize}, "heap_buf");
+            builder.CreateRet(buf);
+        }
+    }
+
+    // __yux_heap_free: null 跳过；非 null 调 HeapFree(processHeap, 0, ptr)
+    {
+        DEBUG_LOG("  Emitting __yux_heap_free");
+        auto fn = getHeapHandleFreeFn(module, builder);
+        if (fn->empty()) {
+            auto entry = llvm::BasicBlock::Create(context, "entry", fn);
+            auto freeBB = llvm::BasicBlock::Create(context, "free", fn);
+            auto doneBB = llvm::BasicBlock::Create(context, "done", fn);
+            builder.SetInsertPoint(entry);
+
+            llvm::Value* ptr = &*fn->arg_begin();
+            auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
+            auto isNull = builder.CreateICmpEQ(ptr, nullPtr, "is_null");
+            builder.CreateCondBr(isNull, doneBB, freeBB);
+
+            builder.SetInsertPoint(freeBB);
+            auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
+            builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), ptr});
+            builder.CreateBr(doneBB);
+
+            builder.SetInsertPoint(doneBB);
+            builder.CreateRetVoid();
+        }
+    }
+}
+
 // ==================== Rc 辅助函数实现 ====================
 
 // 生成 Rc 相关的辅助函数实现（Phase 1a 新布局）

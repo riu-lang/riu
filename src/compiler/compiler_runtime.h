@@ -93,6 +93,20 @@ llvm::Function* getArrayReleaseFn(llvm::Module* module, llvm::IRBuilder<>& build
 //   strong++；null/哨兵跳过
 llvm::Function* getArrayRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 
+// ==================== Heap<T> 堆作用域句柄支持（DRAFT-heap-types §8.3a）====================
+// 单所有权、作用域绑定、无 RC 头，layout = 裸 T*
+// 与 Rc<T> 不同：调用方不维护引用计数；alloc/free 一一对应；析构由编译器在作用域尾内联调用 dtor 后再调 free
+
+// __yux_heap_alloc(payloadSize) -> ptr
+//   分配 payloadSize 字节裸 buffer（无 RC 头），返回指向 payload 的指针
+//   ctor 由编译器在 IR 内联调用；null 不可能（runtime 失败时调用 HeapAlloc 行为）
+llvm::Function* getHeapHandleAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+
+// __yux_heap_free(ptr) -> void
+//   释放 buffer；null 跳过
+//   payload 析构由调用方在 IR 内联（在 __yux_heap_free 之前），与 _box_release 一致
+llvm::Function* getHeapHandleFreeFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+
 // ==================== leak 检测（Phase 8a） ====================
 // 全局 i64 `_rc_block_count`：每次 alloc Block ++，每次实际 free Block --
 // 程序结束时 != 0 表示泄漏。SDK 模块定义；其他模块通过 extern 声明引用
@@ -103,6 +117,7 @@ llvm::GlobalVariable* getRcBlockCountGlobal(llvm::Module* module, llvm::IRBuilde
 void emitRcHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module);
 void emitWeakHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module);
 void emitArrayHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module);
+void emitHeapHandleHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module);
 void emitMainStartup(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module);
 void emitRuntimeHelpers(llvm::IRBuilder<>& builder, llvm::Module* module);
 

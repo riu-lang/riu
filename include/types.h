@@ -328,6 +328,19 @@ struct TypeInfo {
         return nullptr;
     }
 
+    // Heap<T>：堆作用域句柄（DRAFT-heap-types §8.3a），layout = 裸 T*
+    // 与 Rc<T> 不同：无 RC 头、单所有权、作用域绑定析构、不可装入 Rc/Weak（§8.3a.5.1）
+    [[nodiscard]] bool isHeap() const {
+        return kind == TypeKind::Generic && name == "Heap" && genericArgs.size() == 1;
+    }
+
+    [[nodiscard]] sp<TypeInfo> heapElementType() const {
+        if (isHeap() && genericArgs.size() == 1) {
+            return genericArgs[0];
+        }
+        return nullptr;
+    }
+
     // Weak<T>：弱引用，layout 与 Rc<T> 同形 { ptr handle }
     // handle 指向 Rc 的 Block；weak 计数维护 block 存活，不维护 payload 存活
     [[nodiscard]] bool isWeak() const {

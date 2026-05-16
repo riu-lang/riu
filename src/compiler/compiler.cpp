@@ -103,6 +103,7 @@ void Compiler::compile(p<FileNode> file) {
         runtime::emitRcHelpers(_context, _builder, _module);
         runtime::emitWeakHelpers(_context, _builder, _module);
         runtime::emitArrayHelpers(_context, _builder, _module);
+        runtime::emitHeapHandleHelpers(_context, _builder, _module);
     }
 
     // 编译所有非泛型、非 CompilerInner 的函数
