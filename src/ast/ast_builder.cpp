@@ -2568,8 +2568,15 @@ std::any ASTBuilder::visitExprUnary(yux::yuxParser::ExprUnaryContext* ctx) {
 
 std::any ASTBuilder::visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) {
     p<Node> parent = currentScope();
-    DEBUG_LOG_VAL("    Type: Normal", ctx->ID()->getSymbol()->getText());
-    return p<TypeNode>(createWithLine<TypeNormalNode>(ctx, parent, ctx->ID()->getSymbol()));
+    auto* sym = ctx->ID()->getSymbol();
+    // DRAFT-heap-types §9 (Phase 3b): 裸 Arc 形态也走占名拒绝
+    if (sym->getText() == "Arc") {
+        throw YuxError((int)sym->getLine(),
+            (int)sym->getCharPositionInLine() + 1,
+            ErrorCode::E4029, std::string("?"));
+    }
+    DEBUG_LOG_VAL("    Type: Normal", sym->getText());
+    return p<TypeNode>(createWithLine<TypeNormalNode>(ctx, parent, sym));
 }
 
 std::any ASTBuilder::visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) {
@@ -2587,6 +2594,16 @@ std::any ASTBuilder::visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) {
                 ErrorCode::E2015);
         }
         typeArgs.push_back(any_cast_p<TypeNode>(visit(pCtx->type(0))));
+    }
+
+    // DRAFT-heap-types §9 (Phase 3b): Arc<T> 占名，v1.x 多线程主题落地后实装。
+    // 此处先在类型解析点直接拒绝，避免后续路径把 Arc 误当作未知 struct 报泛错。
+    if (baseName->getText() == "Arc") {
+        std::string innerName = typeArgs.empty() ? std::string("?")
+                                                 : typeArgs[0]->getType().name;
+        throw YuxError((int)baseName->getLine(),
+            (int)baseName->getCharPositionInLine() + 1,
+            ErrorCode::E4029, innerName);
     }
 
     // Weak<fn(...)> 禁（§3.7 / §5.5）：函数值是值类型，无 RC 头，不能 weak
@@ -2672,6 +2689,12 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
     antlr4::tree::TerminalNode* andTok = nullptr;
 
     if (auto n = dynamic_cast<yuxParser::TypeNormalWithRefContext*>(twr)) {
+        // DRAFT-heap-types §9 (Phase 3b): Arc 占名（含裸 Arc 形态）
+        if (n->ID()->getSymbol()->getText() == "Arc") {
+            throw YuxError((int)n->ID()->getSymbol()->getLine(),
+                (int)n->ID()->getSymbol()->getCharPositionInLine() + 1,
+                ErrorCode::E4029, std::string("?"));
+        }
         inner = p<TypeNode>(createWithLine<TypeNormalNode>(n, parent, n->ID()->getSymbol()));
         andTok = n->SymbolAnd();
     } else if (auto nul = dynamic_cast<yuxParser::TypeNullableWithRefContext*>(twr)) {
@@ -2694,6 +2717,14 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
         vector<p<TypeNode>> typeArgs;
         for (auto innerCtx : g->genericDefWithRef()->types) {
             typeArgs.push_back(buildTypeWithRef(innerCtx, parent));
+        }
+        // DRAFT-heap-types §9 (Phase 3b): Arc<T> 占名
+        if (baseName->getText() == "Arc") {
+            std::string innerName = typeArgs.empty() ? std::string("?")
+                                                     : typeArgs[0]->getType().name;
+            throw YuxError((int)baseName->getLine(),
+                (int)baseName->getCharPositionInLine() + 1,
+                ErrorCode::E4029, innerName);
         }
         // Weak<fn(...)> 禁（§3.7 / §5.5）
         if (baseName->getText() == "Weak" && typeArgs.size() == 1) {

@@ -269,6 +269,7 @@ DEF_ERR(4025, "{}<Heap<{}>> is forbidden: Heap cannot be nested in Rc / Weak / A
 DEF_ERR(4026, "NRVO not applicable for Heap<{}>: multiple ret sources or coexists with outliving borrow (§8.3a.4.1)")
 DEF_ERR(4027, "implicit widen Heap<{}> -> Heap<{}>? is forbidden; restructure source signature (§8.3a.4.3)")
 DEF_ERR(4028, "extern fn parameter / return must not be Heap<{}>; use Ptr at FFI boundary (§8.3a.5.3)")
+DEF_ERR(4029, "Arc<{}> is reserved for v1.x multi-threading; not yet implemented (DRAFT-heap-types §9)")
 
 // ── E5xxx 模块 / 包 ───────────────────────────────────────────────────
 DEF_ERR(5001, "yux.toml not found in {}")
