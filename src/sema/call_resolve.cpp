@@ -668,6 +668,17 @@ void validateCompilerInnerIntrinsicShape(const string& fnName,
         if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, (size_t)1);
         return;
     }
+    // DRAFT-heap-types §8.3a.4.2 (Phase 3d): Heap<T>? 构造助手
+    if (fnName == "heap_some") {
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName);
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, (size_t)1);
+        return;
+    }
+    if (fnName == "heap_null") {
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName);
+        if (argsCount != 0) throw YuxError(line, col, ErrorCode::E6027, fnName, (size_t)0);
+        return;
+    }
     // 未知 CompilerInner intrinsic
     throw YuxError(line, col, ErrorCode::E6017, fnName);
 }

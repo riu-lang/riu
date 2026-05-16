@@ -127,6 +127,28 @@ fn test_heap_nrvo_return_local() {
   assert_eq(v, 77i32)
 }
 
+; ---------- Phase 3d MVP: heap_some / heap_null 构造 Heap<T>? ----------
+
+#Test
+fn test_heap_some_constructs_nullable_with_value() {
+  let h Heap<i32>? = heap_some(7i32)
+  assert_eq(h.has(), true)
+}
+
+#Test
+fn test_heap_null_constructs_empty_nullable() {
+  let h Heap<i32>? = heap_null:<i32>()
+  assert_eq(h.has(), false)
+}
+
+#Test
+fn test_heap_some_and_null_distinct() {
+  let a Heap<i32>? = heap_some(1i32)
+  let b Heap<i32>? = heap_null:<i32>()
+  assert_eq(a.has(), true)
+  assert_eq(b.has(), false)
+}
+
 ; ---------- 10. NRVO 多 ret：同 fn 多分支各自接管自身 slot ----------
 
 fn nrvo_pick(cond bool) Heap<i32> {

@@ -722,6 +722,12 @@ llvm::Value* Compiler::compileFunctionCall(
     if (genericFn && !fnSymbol) {
         return compileGenericFunctionCall(callNode, fnName, args, argTypes, genericFn, fnOwner);
     }
+    // 0-参泛型 intrinsic（如 size_of<T>() / heap_null<T>()）的 fnSymbol 会与同名空参
+    // 非泛型重载形态相同（params 都是 []），lookupFnSymbolWithParams 误命中泛型自身。
+    // 调用点带显式 turbofish 时强制走泛型分派，避免 mangled extern call。
+    if (genericFn && !callNode->getTypeArgs().empty()) {
+        return compileGenericFunctionCall(callNode, fnName, args, argTypes, genericFn, fnOwner);
+    }
 
     // Phase 3.3.2.b: 自由 intrinsic arity (E6020/E6021/E6022) 收口到 sema helper
     sema::validateFreeIntrinsicArity(fnName, args.size(),
@@ -1069,6 +1075,50 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             // Phase 8d.1：fresh +1 weak 句柄，登记到当前语句临时帧，
             // 未被消费时帧弹出自动 _weak_release。
             recordTemp(result, weakTy);
+            return result;
+        }
+        if (fnName == "heap_some" || fnName == "heap_null") {
+            // DRAFT-heap-types §8.3a.4.2 (Phase 3d)：Heap<T>? 构造助手
+            // heap_some<T>(v T) Heap<T>?  → {_has=true,  _value=__yux_heap_alloc + store v}
+            // heap_null<T>()    Heap<T>?  → {_has=false, _value=null}
+            auto& T = typeArgs[0];
+            auto innerLLVMType = getLLVMType(T);
+            auto ptrTy = llvm::PointerType::get(_context, 0);
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto one  = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+
+            // 结果类型 = Nullable<Heap<T>> = { i1 _has, ptr _value }
+            auto tShared = make_shared<TypeInfo>(T);
+            TypeInfo heapTy("Heap", {tShared});
+            auto heapShared = make_shared<TypeInfo>(heapTy);
+            TypeInfo nullableHeapTy("Nullable", {heapShared});
+            auto nullableLLVMTy = getLLVMType(nullableHeapTy);
+
+            auto resultAlloca = _builder.CreateAlloca(nullableLLVMTy, nullptr,
+                fnName == "heap_some" ? "heap_some.result" : "heap_null.result");
+            auto hasField = _builder.CreateGEP(nullableLLVMTy, resultAlloca, {zero, zero},
+                "heap_opt.has_field");
+            auto valueField = _builder.CreateGEP(nullableLLVMTy, resultAlloca, {zero, one},
+                "heap_opt.value_field");
+
+            if (fnName == "heap_null") {
+                _builder.CreateStore(_builder.getInt1(false), hasField);
+                _builder.CreateStore(llvm::ConstantPointerNull::get(ptrTy), valueField);
+            } else {
+                // heap_some: 分配 + 写 inner，所有权由 arg 转交给 Heap payload
+                auto sizeVal = _builder.getInt64(
+                    _module->getDataLayout().getTypeAllocSize(innerLLVMType).getFixedValue());
+                auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
+                auto rawPtr = _builder.CreateCall(allocFn, {sizeVal}, "heap_some.payload");
+                _builder.CreateStore(args[0], rawPtr);
+                consumeTemp(args[0]);
+                _builder.CreateStore(_builder.getInt1(true), hasField);
+                _builder.CreateStore(rawPtr, valueField);
+            }
+
+            auto result = _builder.CreateLoad(nullableLLVMTy, resultAlloca, "heap_opt.val");
+            // fresh handle：未消费时由作用域尾析构（Nullable<Heap<T>> 的 _has + free 路径）
+            recordTemp(result, nullableHeapTy);
             return result;
         }
         // E6017 (未知 CompilerInner intrinsic) 已由 sema::validateCompilerInnerIntrinsicShape

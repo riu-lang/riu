@@ -1201,6 +1201,17 @@ fn copy_of<T>(x T&) T
 #CompilerInner
 fn weak<T>(box Rc<T>?) Weak<T>
 
+; heap_some:<T>(v T) Heap<T>?：构造 _has=true 的 Heap<T>?（DRAFT-heap-types §8.3a.4.2）
+; 等价于 `Nullable<Heap<T>> { _has=true, _value=Heap:<T>(v) }` 但走 baked intrinsic
+; 是 Heap<T> → Heap<T>? 唯一合法构造路径之一（隐式 widen 由 E4027 禁；详见 §8a.2）
+#CompilerInner
+fn heap_some<T>(v T) Heap<T>?
+
+; heap_null:<T>() Heap<T>?：构造 _has=false 的 Heap<T>?（DRAFT-heap-types §8.3a.4.2）
+; 等价于 `let h Heap<T>? = null` 的显式 turbofish 形态，便于类型推断 / 表达式位置使用
+#CompilerInner
+fn heap_null<T>() Heap<T>?
+
 ; Array<T> 实例 layout 由编译器内部管理：{ ptr handle }，handle 指向 Block
 ; （Phase 1b：所有方法编译器特例化，主体不再读 yux 端字段）
 #CompilerInner
