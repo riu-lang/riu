@@ -1,26 +1,37 @@
-; Phase 6E TODO: 同名 ctor 已废除; 等价错误 (实参类型/数量不匹配 #Static fn make)
-; 当前 codegen 在 #Static fn 形参 mismatch 时直接 LLVM 断言崩, 而非走前端 E6033 路径.
-; 待 sema 接管 #Static fn 调用站点的实参检查后再恢复本用例.
-;
-; 原意: Holder 形参 Rc<CopyPair>, 实参传 CopyPair → 无匹配构造器
-;
-; struct CopyPair { a i32  b i32 }
-; CopyPair {
-;   #Static fn make(a i32, b i32) CopyPair {
-;     ret Self { .a = a  .b = b }
-;   }
-; }
-; struct Holder { payload Rc<CopyPair>  tag i32 }
-; Holder {
-;   #Static fn make(p Rc<CopyPair>, t i32) Holder {
-;     ret Self { .payload = p  .tag = t }
-;   }
-; }
-; fn main() {
-;   #Mut let h Holder = Holder::make(CopyPair::make(5i32, 6i32), 100i32)
-; }
+; #Static fn 调用站点实参类型不匹配 → E3131
+; (Phase 6E 恢复; 6D 删 E6033 ctor 路径后由 #Static fn 调用点接管)
 
-; 占位: 留一个语法层面的错误，使 expected_err 仍能匹配非零退出
+struct CopyPair {
+  a i32
+  b i32
+}
+
+CopyPair {
+  #Static
+  fn make(a i32, b i32) CopyPair {
+    ret Self {
+      .a = a
+      .b = b
+    }
+  }
+}
+
+struct Holder {
+  payload Rc<CopyPair>
+  tag i32
+}
+
+Holder {
+  #Static
+  fn make(p Rc<CopyPair>, t i32) Holder {
+    ret Self {
+      .payload = p
+      .tag = t
+    }
+  }
+}
+
 fn main() {
-  let x i32 = undefined_var
+  ; 实参 CopyPair (栈值) 喂给形参 Rc<CopyPair> (堆句柄) → 类型不匹配
+  #Mut let h Holder = Holder::make(CopyPair::make(5i32, 6i32), 100i32)
 }

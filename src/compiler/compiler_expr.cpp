@@ -2293,6 +2293,45 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                                         mFallibleErr, /*isStatic=*/true);
             vector<llvm::Value*> argVals;
             argVals.reserve(node->args().size());
+            // Phase 6E: 灵活整数字面量按形参类型回填 (如 `S::make(1)` 推 1 为 i64)
+            for (size_t i = 0; i < node->args().size() && i < paramTypes.size(); ++i) {
+                tryInferIntType(node->args()[i], paramTypes[i]);
+            }
+            // Phase 6E: 调用站点实参 arity / 类型校验 (替代 6D 删除的 E6033).
+            // 先抛 E3131 比让 LLVM signature-mismatch 断言崩好得多.
+            if (node->args().size() != paramTypes.size()) {
+                string expected, got;
+                for (size_t i = 0; i < paramTypes.size(); ++i) {
+                    if (i) expected += ", ";
+                    expected += paramTypes[i].getFullName();
+                }
+                for (size_t i = 0; i < node->args().size(); ++i) {
+                    if (i) got += ", ";
+                    got += node->args()[i]->getType().getFullName();
+                }
+                throw YuxError(line, col, ErrorCode::E3131,
+                               lhsRaw, methodName,
+                               paramTypes.size(), expected,
+                               node->args().size(), got);
+            }
+            for (size_t i = 0; i < node->args().size(); ++i) {
+                auto actualTy = node->args()[i]->getType();
+                if (!actualTy.empty() && !(actualTy == paramTypes[i])) {
+                    string expected, got;
+                    for (size_t j = 0; j < paramTypes.size(); ++j) {
+                        if (j) expected += ", ";
+                        expected += paramTypes[j].getFullName();
+                    }
+                    for (size_t j = 0; j < node->args().size(); ++j) {
+                        if (j) got += ", ";
+                        got += node->args()[j]->getType().getFullName();
+                    }
+                    throw YuxError(line, col, ErrorCode::E3131,
+                                   lhsRaw, methodName,
+                                   paramTypes.size(), expected,
+                                   node->args().size(), got);
+                }
+            }
             for (auto& a : node->args()) {
                 argVals.push_back(compileExpr(a));
             }
