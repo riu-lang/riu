@@ -2100,11 +2100,45 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         // Heap:<T>(x) 构造（DRAFT-heap-types §8.3a）—— Phase 2.4 codegen
         return compileHeapCtorExpr(heapCtorNode);
     } else if (auto structLitNode = dynamic_cast<ExprStructLitNode*>(node)) {
-        // Phase 1b：AST 占位；构造模型重构 Phase 3 接管
-        throw YuxError(structLitNode->resolveLineNumber(),
-                       structLitNode->resolveColumn(),
-                       ErrorCode::E0000,
-                       "Self { ... } 结构体字面量未实现 (Phase 3)");
+        // Phase 3b 构造模型重构: `Self { .field = value ... }` codegen.
+        // 仅在 #Static fn 体内合法 (sema Phase 2d 已校验). 流程:
+        //   alloca Self -> 按 fieldIndex 依次 GEP + store -> Load 返回值.
+        // 暂仅覆盖平凡字段; 含 Rc/Array/Weak 等句柄字段的 retain 路径留后续.
+        int line = structLitNode->resolveLineNumber();
+        int col = structLitNode->resolveColumn();
+        const string& structName = _currentStructName;
+        if (structName.empty()) {
+            throw YuxError(line, col, ErrorCode::E0000,
+                           "`Self { ... }` codegen 找不到所属结构体 (sema 应已拦截)");
+        }
+        auto* decl = _file ? _file->getStructDecl(structName) : nullptr;
+        if (!decl && _yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
+            decl = _yux->sdkFile()->getStructDecl(structName);
+        }
+        if (!decl) {
+            throw YuxError(line, col, ErrorCode::E0000,
+                           "`Self { ... }` codegen 找不到 struct decl: " + structName);
+        }
+        auto llvmStructType = getLLVMType(TypeInfo(structName));
+        if (!llvmStructType) {
+            throw YuxError(line, col, ErrorCode::E3096, structName);
+        }
+        auto alloca = _builder.CreateAlloca(llvmStructType, nullptr, structName + ".lit");
+        // 零初始化, 与 ctor 入口保持一致, 避免遗漏字段 (实际上 sema 已强制全列)
+        auto& dl = _module->getDataLayout();
+        auto sizeBytes = dl.getTypeAllocSize(llvmStructType).getFixedValue();
+        _builder.CreateMemSetInline(alloca, llvm::MaybeAlign(1), _builder.getInt8(0),
+                                    _builder.getInt64(sizeBytes));
+        for (auto& fi : structLitNode->fields()) {
+            string fname = fi->name().getText();
+            int idx = decl->fieldIndex(fname);
+            auto fieldPtr = _builder.CreateStructGEP(llvmStructType, alloca,
+                                                     static_cast<unsigned>(idx),
+                                                     structName + "." + fname);
+            auto val = compileExpr(fi->value());
+            _builder.CreateStore(val, fieldPtr);
+        }
+        return _builder.CreateLoad(llvmStructType, alloca, structName + ".lit.load");
     } else if (auto enumCtorNode = dynamic_cast<ExprPathCallNode*>(node)) {
         // Phase 5: enum ctor 是 +1 fresh：构造时把实参（含 RC payload）写入 enum 槽，
         // enum 值随后承担释放责任。仅当类型需要析构时才登记到临时帧
@@ -2193,8 +2227,8 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
     int line = node->getLineNumber();
     int col = node->getColumn();
 
-    // Phase 2c: 构造模型重构 —— 若 LHS 是 struct, 走静态调用路径 (Phase 3 未实现).
-    // sema 已先做形态校验 (#Static 命中 / 缺失), 此处仅作 codegen 兜底.
+    // Phase 3c 构造模型重构: 若 LHS 是 struct, 走 #Static fn 调用路径.
+    // sema 已先做形态校验 (#Static 命中 / 缺失 / 实例方法误用), 这里直接 emit call.
     {
         string lhsRaw = node->enumName().getText();
         auto* structImpl = _file ? _file->getStructImpl(lhsRaw) : nullptr;
@@ -2203,8 +2237,34 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
             structImpl = sdk->getStructImpl(lhsRaw);
         }
         if (structImpl) {
-            throw YuxError(line, col, ErrorCode::E0000,
-                "`Type::name(...)` 静态调用 codegen 未实现 (Phase 3)");
+            string methodName = node->variantName().getText();
+            p<FnHeaderNode> methodHeader = nullptr;
+            for (auto& m : structImpl->methods()) {
+                if (m->header()->name().getText() == methodName) {
+                    methodHeader = m->header(); break;
+                }
+            }
+            // sema Phase 2c 已拦 E3120/E3121; 这里幂等防御性兜底
+            if (!methodHeader || !methodHeader->isStatic()) {
+                throw YuxError(line, col, ErrorCode::E3121, lhsRaw, methodName);
+            }
+            vector<TypeInfo> paramTypes;
+            for (auto p : methodHeader->params()) {
+                if (p->type()) paramTypes.push_back(p->type()->getType());
+            }
+            TypeInfo retType;
+            if (methodHeader->retType()) retType = methodHeader->retType()->getType();
+            string mFallibleErr;
+            if (auto e = methodHeader->getAnnoArg("Fallible")) mFallibleErr = *e;
+            auto fn = getMethodFunction(lhsRaw, methodName, paramTypes, retType,
+                                        mFallibleErr, /*isStatic=*/true);
+            vector<llvm::Value*> argVals;
+            argVals.reserve(node->args().size());
+            for (auto& a : node->args()) {
+                argVals.push_back(compileExpr(a));
+            }
+            return _builder.CreateCall(fn, argVals,
+                                       retType.empty() ? "" : methodName + ".ret");
         }
     }
 

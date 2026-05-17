@@ -609,16 +609,18 @@ public:
 // 类型在 sema 阶段绑定为所属结构体类型；当前 getType() 返回 empty
 class ExprStructLitNode : public ExprNode {
     Token _selfTok;
+    string _structName;       // Phase 3b: ast_builder 扫 _scopeStack 填入 (与 TypeSelfNode 同源)
     vector<p<FieldInitNode>> _fields;
 
 public:
-    ExprStructLitNode(const p<Node>& parent, Token selfTok) :
-        ExprNode(parent), _selfTok(std::move(selfTok)) {
+    ExprStructLitNode(const p<Node>& parent, Token selfTok, string structName) :
+        ExprNode(parent), _selfTok(std::move(selfTok)), _structName(std::move(structName)) {
     }
 
     void addField(p<FieldInitNode> f) { _fields.push_back(std::move(f)); }
 
     [[nodiscard]] const Token& selfToken() const { return _selfTok; }
+    [[nodiscard]] const string& structName() const { return _structName; }
     [[nodiscard]] const vector<p<FieldInitNode>>& fields() const { return _fields; }
     [[nodiscard]] TypeInfo getType() const override;
 };

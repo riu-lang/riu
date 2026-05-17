@@ -2410,7 +2410,8 @@ std::any ASTBuilder::visitExprStructLit(yux::yuxParser::ExprStructLitContext* ct
     DEBUG_LOG("    Expr: StructLit Self { ... }");
     auto scope = currentScope();
     auto* selfTk = ctx->SelfType()->getSymbol();
-    auto node = createWithLine<ExprStructLitNode>(ctx, scope, selfTk);
+    string structName = findEnclosingStructName();
+    auto node = createWithLine<ExprStructLitNode>(ctx, scope, selfTk, structName);
     for (auto* fCtx : ctx->fieldInits) {
         node->addField(any_cast_p<FieldInitNode>(visit(fCtx)));
     }

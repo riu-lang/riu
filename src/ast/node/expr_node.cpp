@@ -1385,10 +1385,9 @@ TypeInfo ExprHeapCtorNode::getType() const {
     return TypeInfo("Heap", {inner});
 }
 
-// Phase 1b：sema 尚未接管，AST 层无法确定所属结构体类型
-// 当前留空；调用 getType() 的旧路径不会触达（sema/codegen 直接报"未实现"）
+// Phase 3b: 类型 = 所属结构体, structName 由 ast_builder 扫 _scopeStack 时填入
 TypeInfo ExprStructLitNode::getType() const {
-    return TypeInfo();
+    return _structName.empty() ? TypeInfo() : TypeInfo(_structName);
 }
 
 
