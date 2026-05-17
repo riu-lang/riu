@@ -51,7 +51,7 @@ namespace {
 // Phase 3.2b 已由 SemaPass 接管的错误码白名单。SemaPass 在 visitExpr 中
 // 捕获 YuxError 时, 命中此清单的直接 rethrow, 让 SemaPass 成为该诊断的
 // 实际抛出点。新增迁移码追加到此处即可。
-constexpr std::array<std::string_view, 24> kMigratedCodes = {
+constexpr std::array<std::string_view, 25> kMigratedCodes = {
     // 算术 / 比较 / 分支结果
     "E3001", "E3002", "E3003", "E3004",
     "E3005", "E3006", "E3007", "E3008",
@@ -76,6 +76,8 @@ constexpr std::array<std::string_view, 24> kMigratedCodes = {
     "E3070", "E3071",
     // Phase 2.6 (heap-types): Heap:<T>(arg) 形参类型不匹配
     "E3028",
+    // Phase 6A: 砍同名 ctor 定义形态
+    "E3130",
 };
 
 // 与 Compiler::lookupEnumDecl 等价的本地版本: 本文件 → SDK → wildcard imports.
@@ -164,6 +166,16 @@ void SemaPass::run() {
         for (auto& m : impl->methods()) {
             if (m->header()->isGeneric()) continue;
             if (m->header()->hasAnno("CompilerInner")) continue;
+            // Phase 6A: 砍同名 ctor —— `fn TypeName(...)` 定义形态废除,
+            // 构造唯一通道收敛到 `#Static fn`. `#Static fn TypeName(...)` 形态
+            // 仍合法 (虽不推荐, 与 `#Static fn make()` 等并行).
+            const auto& mname = m->header()->name();
+            if (mname.getText() == _currentStructName && !m->header()->isStatic()) {
+                throw YuxError(mname.getLine(),
+                               static_cast<int>(mname.getCharPositionInLine()),
+                               ErrorCode::E3130,
+                               _currentStructName, _currentStructName, _currentStructName);
+            }
             visitFn(m);
         }
         if (impl->hasDestructor()) {

@@ -261,6 +261,7 @@ DEF_ERR(3125, "`Self {{ ... }}` for struct `{}` is missing field `.{}` (all fiel
 DEF_ERR(3126, "struct `{}` has no field `.{}` (DRAFT-static-fn)")
 DEF_ERR(3127, "duplicate field `.{}` in `Self {{ ... }}` literal (DRAFT-static-fn)")
 DEF_ERR(3128, "`$` (current instance) cannot be used inside a `#Static fn` body (DRAFT-static-fn)")
+DEF_ERR(3130, "Same-name constructor `fn {}(...)` is no longer supported — define a `#Static fn` (e.g. `#Static fn make(...)` returning `{}` via `Self {{ ... }}`) and call it as `{}::make(...)` (DRAFT-static-fn Phase 6)")
 
 // ── E4xxx 所有权 / 借用 ───────────────────────────────────────────────
 DEF_ERR(4001, "T& borrow initializer must be &expr or an existing T& variable")
