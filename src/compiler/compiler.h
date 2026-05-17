@@ -196,7 +196,8 @@ private:
     llvm::Function* getFunction(p<FnHeaderNode> header);                        // 获取或创建函数
     llvm::Function* getMethodFunction(
         const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes,
-        const TypeInfo& retType, const string& fallibleErrType = "");           // 获取或创建方法函数
+        const TypeInfo& retType, const string& fallibleErrType = "",
+        bool isStatic = false);                                                 // 获取或创建方法函数 (isStatic=true 走 Mangler::staticMethod, 无 receiver 形参)
     llvm::Function* getDestructorFunction(const string& structName);            // 获取或创建析构函数
 
     // ==================== 表达式编译 ====================
@@ -442,7 +443,8 @@ public:
     void compileStructDecls();                          // 编译结构体声明
     void compileStructImpls();                          // 编译结构体实现 (方法、析构函数)
     void compileFn(p<FnNode> node, llvm::Function* func);   // 编译函数
-    void compileMethod(p<FnNode> node, llvm::Function* func, const string& structName, bool isDestructor = false);  // 编译方法
+    void compileMethod(p<FnNode> node, llvm::Function* func, const string& structName,
+                       bool isDestructor = false, bool isStatic = false);  // 编译方法 (isStatic=true 跳过 $ 注入与 ctor 零初始化)
     void compileStatement(p<StatementNode> node);       // 编译语句 (分发函数)
 };
 

@@ -29,6 +29,11 @@ public:
                          const string& methodName, const vector<TypeInfo>& params,
                          bool isPrivate);
 
+    // 静态方法 (DRAFT-static-fn)：mod#Struct::name(params)
+    // 与 instance method (Struct_name) 用 `::` 区分; 无 receiver, 与实例同名不冲突
+    static string staticMethod(const string& module, const string& structName,
+                               const string& methodName, const vector<TypeInfo>& params);
+
     // 构造：mod#Struct(params)
     static string ctor(const string& module, const string& structName,
                        const vector<TypeInfo>& params);

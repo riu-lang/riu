@@ -332,7 +332,8 @@ void Compiler::compileStructImpls() {
                 continue;
             }
             
-            DEBUG_LOG_VAL("        Compiling method", methodName);
+            bool isStatic = method->header()->isStatic();
+            DEBUG_LOG_VAL("        Compiling method", methodName << (isStatic ? " [#Static]" : ""));
             vector<TypeInfo> paramTypes;
             for (auto param : method->header()->params()) {
                 if (param->type()) {
@@ -345,8 +346,8 @@ void Compiler::compileStructImpls() {
             }
             string mFallibleErr;
             if (auto e = method->header()->getAnnoArg("Fallible")) mFallibleErr = *e;
-            auto func = getMethodFunction(structName, methodName, paramTypes, retType, mFallibleErr);
-            compileMethod(method, func, structName);
+            auto func = getMethodFunction(structName, methodName, paramTypes, retType, mFallibleErr, isStatic);
+            compileMethod(method, func, structName, false, isStatic);
         }
     }
 
@@ -430,12 +431,13 @@ void Compiler::emitInstanceMethods() {
                     if (method->header()->retType()) {
                         retType = applySubst(method->header()->retType()->getType());
                     }
-                    // 构造函数名需要使用实例名
-                    string effMethodName = (methodName == baseName) ? structName : methodName;
+                    bool isStatic = method->header()->isStatic();
+                    // 构造函数名需要使用实例名 (#Static 与构造互斥, 不受此影响)
+                    string effMethodName = (!isStatic && methodName == baseName) ? structName : methodName;
                     string mFallibleErr;
                     if (auto e = method->header()->getAnnoArg("Fallible")) mFallibleErr = *e;
-                    auto func = getMethodFunction(structName, effMethodName, paramTypes, retType, mFallibleErr);
-                    compileMethod(method, func, structName);
+                    auto func = getMethodFunction(structName, effMethodName, paramTypes, retType, mFallibleErr, isStatic);
+                    compileMethod(method, func, structName, false, isStatic);
                 }
 
                 // 如果没有显式析构函数但需要，生成默认析构函数
@@ -679,7 +681,7 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
 // ==================== 方法编译 ====================
 // 编译结构体方法
 // 与普通函数类似，但需要处理当前实例参数（`$`）
-void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string& structName, bool isDestructor) {
+void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string& structName, bool isDestructor, bool isStatic) {
     _currentFn = func;
     _currentFnNode = node;
     _currentStructName = structName;
@@ -709,8 +711,9 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
     auto argIt = args.begin();
 
     // 处理当前实例参数（方法的第一个参数，对应用户层 `$`）
+    // DRAFT-static-fn: #Static fn 无 receiver, 整段跳过.
     llvm::Value* thisPtr = nullptr;
-    if (argIt != args.end()) {
+    if (!isStatic && argIt != args.end()) {
         string thisName = "$";
 
         if (isBuiltinType(structName)) {

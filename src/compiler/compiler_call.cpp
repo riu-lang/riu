@@ -66,10 +66,10 @@ llvm::Function* Compiler::getFunction(p<FnHeaderNode> header) {
 // 方法名包含结构体名，如 "Foo.bar"
 llvm::Function* Compiler::getMethodFunction(
     const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes, const TypeInfo& retType,
-    const string& fallibleErrType) {
-    DEBUG_LOG_VAL("  getMethodFunction", structName << "." << methodName);
+    const string& fallibleErrType, bool isStatic) {
+    DEBUG_LOG_VAL("  getMethodFunction", structName << "." << methodName << (isStatic ? " [#Static]" : ""));
 
-    bool isCtor = methodName == structName;  // 构造函数名与结构体名相同
+    bool isCtor = !isStatic && methodName == structName;  // 构造: 与 #Static 互斥
     bool isPriv = !methodName.empty() && methodName[0] == '_';
 
     // 确定方法所属的模块
@@ -88,9 +88,14 @@ llvm::Function* Compiler::getMethodFunction(
         }
     }
     // 生成 mangle 名称
-    string mangledName = isCtor
-        ? Mangler::ctor(ownerModule, structName, paramTypes)
-        : Mangler::method(ownerModule, structName, methodName, paramTypes, isPriv);
+    string mangledName;
+    if (isStatic) {
+        mangledName = Mangler::staticMethod(ownerModule, structName, methodName, paramTypes);
+    } else if (isCtor) {
+        mangledName = Mangler::ctor(ownerModule, structName, paramTypes);
+    } else {
+        mangledName = Mangler::method(ownerModule, structName, methodName, paramTypes, isPriv);
+    }
     DEBUG_LOG_VAL("    -> mangled name", mangledName);
 
     auto func = _module->getFunction(mangledName);
@@ -102,11 +107,13 @@ llvm::Function* Compiler::getMethodFunction(
     // 构建参数类型列表
     vector<llvm::Type*> llvmParamTypes;
 
-    // 第一个参数是当前实例（用户层 `$`）
-    if (isBuiltinType(structName) || TypeInfo(structName).isPtr() || TypeInfo(structName).isRef()) {
-        llvmParamTypes.push_back(getLLVMType(TypeInfo(structName)));
-    } else {
-        llvmParamTypes.push_back(llvm::PointerType::get(_context, 0));  // 结构体通过指针传递
+    // 第一个参数是当前实例（用户层 `$`） —— #Static fn 没有 receiver, 跳过
+    if (!isStatic) {
+        if (isBuiltinType(structName) || TypeInfo(structName).isPtr() || TypeInfo(structName).isRef()) {
+            llvmParamTypes.push_back(getLLVMType(TypeInfo(structName)));
+        } else {
+            llvmParamTypes.push_back(llvm::PointerType::get(_context, 0));  // 结构体通过指针传递
+        }
     }
 
     // 其他参数

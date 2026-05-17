@@ -51,6 +51,13 @@ string Mangler::method(const string& module, const string& structName,
     return modStructPrefix(module, structName) + "_" + methodName + paramList(params);
 }
 
+string Mangler::staticMethod(const string& module, const string& structName,
+                             const string& methodName, const vector<TypeInfo>& params) {
+    // DRAFT-static-fn: `mod#Struct::name(params)`. `::` 分隔避免与实例方法
+    // `mod#Struct_name(params)` 同名冲突, 同时与源码调用语法对齐 (Type::name).
+    return modStructPrefix(module, structName) + "::" + methodName + paramList(params);
+}
+
 string Mangler::ctor(const string& module, const string& structName,
                      const vector<TypeInfo>& params) {
     return modStructPrefix(module, structName) + paramList(params);
