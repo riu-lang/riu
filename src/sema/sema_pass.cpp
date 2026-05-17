@@ -525,6 +525,13 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         (void)n;
         return;
     }
+    if (auto n = dynamic_cast<p<ExprStructLitNode>>(expr)) {
+        // Phase 1b：AST 已构造，sema/codegen 尚未接管
+        // 出现位限制（仅 #Static fn 体内）、字段全列、类型绑定均待 Phase 2
+        throw YuxError(n->resolveLineNumber(), n->resolveColumn(),
+                       ErrorCode::E0000,
+                       "Self { ... } 结构体字面量未实现 (Phase 2)");
+    }
     if (auto n = dynamic_cast<p<ExprEnumCtorNode>>(expr)) {
         for (auto& a : n->args()) visitExpr(a);
         // Phase 3.4.a: SemaPass 接管 E2019/E2020/E2021/E2032.

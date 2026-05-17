@@ -1385,6 +1385,12 @@ TypeInfo ExprHeapCtorNode::getType() const {
     return TypeInfo("Heap", {inner});
 }
 
+// Phase 1b：sema 尚未接管，AST 层无法确定所属结构体类型
+// 当前留空；调用 getType() 的旧路径不会触达（sema/codegen 直接报"未实现"）
+TypeInfo ExprStructLitNode::getType() const {
+    return TypeInfo();
+}
+
 TypeInfo ExprEnumCtorNode::getType() const {
     string n = _enumName.getText();
     auto* scope = parent() ? parent()->findNearestScope() : nullptr;

@@ -2099,6 +2099,12 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
     } else if (auto heapCtorNode = dynamic_cast<ExprHeapCtorNode*>(node)) {
         // Heap:<T>(x) 构造（DRAFT-heap-types §8.3a）—— Phase 2.4 codegen
         return compileHeapCtorExpr(heapCtorNode);
+    } else if (auto structLitNode = dynamic_cast<ExprStructLitNode*>(node)) {
+        // Phase 1b：AST 占位；构造模型重构 Phase 3 接管
+        throw YuxError(structLitNode->resolveLineNumber(),
+                       structLitNode->resolveColumn(),
+                       ErrorCode::E0000,
+                       "Self { ... } 结构体字面量未实现 (Phase 3)");
     } else if (auto enumCtorNode = dynamic_cast<ExprEnumCtorNode*>(node)) {
         // Phase 5: enum ctor 是 +1 fresh：构造时把实参（含 RC payload）写入 enum 槽，
         // enum 值随后承担释放责任。仅当类型需要析构时才登记到临时帧

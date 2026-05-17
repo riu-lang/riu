@@ -42,6 +42,7 @@ Loop: 'loop';
 Match : 'match';
 Null : 'null';
 Ret : 'ret';
+SelfType : 'Self';
 Struct : 'struct';
 True : 'true';
 Try: 'try';

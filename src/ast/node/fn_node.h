@@ -61,6 +61,10 @@ public:
     [[nodiscard]] p<TypeNode> retType() const;
     [[nodiscard]] vector<p<FnParamNode>> params() const;
     [[nodiscard]] TypeInfo getType() const override;
+
+    // 构造模型重构：`#Static fn` 是关联函数（无 receiver $），调用形态 `Type::name(...)`
+    // 仅当出现在 structImpl 体内时有意义；放在其它位置的合法性由 sema 校验（Phase 2）
+    [[nodiscard]] bool isStatic() const { return hasAnno("Static"); }
 };
 
 class FnNode : public ScopeNode, public Typed {

@@ -15,7 +15,7 @@ namespace {
 //   #NoReturn        零参；标在 fn / structImpl 内方法上
 //   #Fallible(E)     单参；E 为错误 enum 类型名（语义校验推 10e）
 const set<string>& knownAnnos() {
-    static const set<string> s = {"CompilerInner", "Test", "TestIsolate", "DraftLike", "NoReturn", "Fallible", "Const"};
+    static const set<string> s = {"CompilerInner", "Test", "TestIsolate", "DraftLike", "NoReturn", "Fallible", "Const", "Static"};
     return s;
 }
 
@@ -2369,10 +2369,31 @@ std::any ASTBuilder::visitExprArrayInit(yux::yuxParser::ExprArrayInitContext* ct
     return p<ExprNode>(createWithLine<ExprArrayInitNode>(ctx, scope, literal, explicitType));
 }
 
-// 枚举构造表达式：E::V / E::V() / E::V(args)
-// AST 不解析 enum 是否存在 / variant 是否合法 / arity 是否匹配；这些都留到编译期
+// 路径调用表达式：承载两条语义，由 sema 按 LHS 类型分流
+//   - 枚举构造：E::V / E::V() / E::V(args)
+//   - 静态函数调用：Type::name(args) / Type:<T>::name:<U>(args) / Self::name(args)
+// AST 阶段仅做形态过滤；枚举 / 静态符号解析、arity 匹配等留到 sema / codegen
 // 别名透传（C::V => E::V）由 ExprEnumCtorNode::getType 在查询时解析
+//
+// Phase 1a：仅放行原 enum 形态；Self LHS / turbofish 形态报"未实现"，待 Phase 2 接管
 std::any ASTBuilder::visitExprEnumCtor(yux::yuxParser::ExprEnumCtorContext* ctx) {
+    // 形态过滤：Self LHS / turbofish 暂不接管
+    if (ctx->selfLhs != nullptr) {
+        throw YuxError(
+            static_cast<int>(ctx->selfLhs->getLine()),
+            static_cast<int>(ctx->selfLhs->getCharPositionInLine()) + 1,
+            ErrorCode::E0000,
+            "Self::name(...) 静态调用未实现 (Phase 2)");
+    }
+    if (ctx->lhsGenerics != nullptr || ctx->rhsGenerics != nullptr) {
+        auto* tk = ctx->enumName != nullptr ? ctx->enumName : ctx->variant;
+        throw YuxError(
+            static_cast<int>(tk->getLine()),
+            static_cast<int>(tk->getCharPositionInLine()) + 1,
+            ErrorCode::E0000,
+            "Type::name 的 turbofish 形态未实现 (Phase 2)");
+    }
+
     DEBUG_LOG_VAL("    Expr: EnumCtor",
         ctx->enumName->getText() << "::" << ctx->variant->getText());
     auto scope = currentScope();
@@ -2381,6 +2402,26 @@ std::any ASTBuilder::visitExprEnumCtor(yux::yuxParser::ExprEnumCtorContext* ctx)
         node->addArg(any_cast_p<ExprNode>(visit(aCtx)));
     }
     return p<ExprNode>(node);
+}
+
+// 结构体字段字面量：Self { \n .field = value \n ... }
+// Phase 1b：AST 仅承载形态；出现位限制（必须在 #Static fn 体内）由 sema 校验
+std::any ASTBuilder::visitExprStructLit(yux::yuxParser::ExprStructLitContext* ctx) {
+    DEBUG_LOG("    Expr: StructLit Self { ... }");
+    auto scope = currentScope();
+    auto* selfTk = ctx->SelfType()->getSymbol();
+    auto node = createWithLine<ExprStructLitNode>(ctx, scope, selfTk);
+    for (auto* fCtx : ctx->fieldInits) {
+        node->addField(any_cast_p<FieldInitNode>(visit(fCtx)));
+    }
+    return p<ExprNode>(node);
+}
+
+// 字段初始化项：.name = value
+std::any ASTBuilder::visitFieldInit(yux::yuxParser::FieldInitContext* ctx) {
+    auto scope = currentScope();
+    auto value = any_cast_p<ExprNode>(visit(ctx->value));
+    return p<FieldInitNode>(createWithLine<FieldInitNode>(ctx, scope, ctx->name, value));
 }
 
 // match 模式：E::V / E::V() / E::V(b1, b2, ...)

@@ -586,6 +586,40 @@ public:
     [[nodiscard]] TypeInfo getType() const override;
 };
 
+// 字段初始化项：.name = value（仅出现在 ExprStructLitNode 内）
+// Phase 1b：AST 占位；sema / codegen 接管在 Phase 2/3
+class FieldInitNode : public Node {
+    Token _name;
+    p<ExprNode> _value;
+
+public:
+    FieldInitNode(const p<Node>& parent, Token name, p<ExprNode> value) :
+        Node(parent), _name(std::move(name)), _value(std::move(value)) {
+    }
+
+    [[nodiscard]] const Token& name() const { return _name; }
+    [[nodiscard]] const p<ExprNode>& value() const { return _value; }
+};
+
+// 结构体字段字面量 `Self { \n .field = value \n ... }`
+// Phase 1b：AST 占位；语义层强制 LHS 为 Self 且出现位限 `#Static fn` 体
+// 类型在 sema 阶段绑定为所属结构体类型；当前 getType() 返回 empty
+class ExprStructLitNode : public ExprNode {
+    Token _selfTok;
+    vector<p<FieldInitNode>> _fields;
+
+public:
+    ExprStructLitNode(const p<Node>& parent, Token selfTok) :
+        ExprNode(parent), _selfTok(std::move(selfTok)) {
+    }
+
+    void addField(p<FieldInitNode> f) { _fields.push_back(std::move(f)); }
+
+    [[nodiscard]] const Token& selfToken() const { return _selfTok; }
+    [[nodiscard]] const vector<p<FieldInitNode>>& fields() const { return _fields; }
+    [[nodiscard]] TypeInfo getType() const override;
+};
+
 // match arm 模式 v1 子集：
 // - isElse=true：兜底分支 `else`，无 enumName/variantName/binds
 // - isElse=false：`E::V` / `E::V()` / `E::V(b1, b2, ...)`

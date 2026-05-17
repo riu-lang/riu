@@ -124,6 +124,8 @@ numFloat: FLOAT;
 
 type:
       ID #typeNormal
+    // [PROBE static-fn] Self 类型字面量；structImpl 体内合法，体外由 sema 拒
+    | SelfType #typeSelf
     | type SymbolQuest        #typeNullable
     // A<T> B<T1, T2>
     | ID genericDef           #typeGeneric
@@ -149,6 +151,8 @@ typeWithRef:
     // 导致 fn 类型字面量的 retType `i32?` 被错切成 `(fn(...)i32)?`（违反 [#24]）
       type SymbolQuest SymbolAnd?       #typeNullableWithRef
     | ID SymbolAnd? #typeNormalWithRef
+    // [PROBE static-fn] Self&
+    | SelfType SymbolAnd? #typeSelfWithRef
     // A<T> B<T1, T2>
     | ID genericDefWithRef SymbolAnd?   #typeGenericWithRef
     // [ type * count ]
@@ -415,6 +419,11 @@ filedDecl:
     name=ID type LineEnd
     ;
 
+// [PROBE static-fn] 字段字面量项：.name = expr LineEnd
+fieldInit:
+    SymbolDot name=ID SymbolEq value=expr LineEnd
+    ;
+
 ///////////
 // 表达式
 ///////////
@@ -437,6 +446,11 @@ expr:
     | BlockStart LineEnd
         (statement|LineEnd)*
       BlockEnd                            # exprLambdaZeroBlock
+    // [PROBE static-fn] 结构体字段字面量：Self { \n .x = e \n .y = e \n }
+    // 多行强制；.field= 前缀消除与 lambda zero-block 的歧义
+    | SelfType BlockStart LineEnd
+        (fieldInits+=fieldInit|LineEnd)*
+      BlockEnd                            # exprStructLit
     // ( e )
     | ParStart expr ParEnd                # exprParen
     // &a.b => T&
@@ -486,9 +500,15 @@ expr:
           |LineEnd
         )+
       BlockEnd                #exprMatch
-    // 枚举构造：E::V / E::V() / E::V(a, b, ...)
+    // 路径调用：承载两种语义，由 sema 按 LHS 类型分流
+    //   - 枚举构造：E::V / E::V() / E::V(args)
+    //   - 静态函数调用：Type::name(args) / Type:<T>::name:<U>(args) / Self::name(args)
     // 零参 variant 写带不带括号等价；类型别名 C 处亦合法（C::V 解析期等价 E::V）
-    | enumName=ID SymbolColonColon variant=ID
+    // [PROBE static-fn] LHS 加 Self 入口；前后各加可选 turbofish
+    | (enumName=ID | selfLhs=SelfType)
+      (SymbolColon lhsGenerics=genericDef)?
+      SymbolColonColon variant=ID
+      (SymbolColon rhsGenerics=genericDef)?
       (
         ParStart LineEnd*
             (
