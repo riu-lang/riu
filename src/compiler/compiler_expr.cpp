@@ -2170,18 +2170,44 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
                     continue;
                 }
             }
+            // Phase 3d.3: B 档 nullable move — 字段类型 `Heap<T>?` 且源是 lvalue
+            // (局部 ID / 局部 struct 字段) 时, 走 move-out: 不 retain, 写入后把源槽
+            // {_has=false, _value=null} 置空. 让源 owner 析构跳 free, 字段独占所有权.
+            llvm::Value* heapBdangSrcSlot = nullptr;
+            llvm::Type* heapBdangSrcTy = nullptr;
+            bool isHeapNullableField = false;
+            if (fieldType.isNullable()) {
+                auto inner = fieldType.nullableInnerType();
+                if (inner && inner->isHeap()) {
+                    isHeapNullableField = true;
+                    tryHeapNullableLvalueSlot(fi->value(), heapBdangSrcSlot, heapBdangSrcTy);
+                }
+            }
+
             auto val = compileExpr(fi->value());
             // Phase 4a: 句柄字段所有权转移 (与 declare-assign 路径对齐, BUGS #4)
             //   - fresh 源 (call / ctor / array-lit): 已 +1, 直接 consume 临时帧, 不重复 retain
             //   - 非 fresh 源 (let / 字段读取等): retain 一次, 让源句柄与字段都各持 +1
+            // Phase 3d.3: Heap<T>? 字段 + lvalue 源 = move-out, 跳过 retain.
             if (fdecl && val && typeNeedsDestructor(fieldType)) {
                 if (isFreshHandleExpr(fi->value())) {
                     consumeTemp(val);
-                } else {
+                } else if (!(isHeapNullableField && heapBdangSrcSlot)) {
                     retainHandleAtCallSite(val, fieldType);
                 }
             }
             _builder.CreateStore(val, fieldPtr);
+            if (heapBdangSrcSlot && heapBdangSrcTy) {
+                auto z0 = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+                auto z1 = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+                auto ptrTy = llvm::PointerType::get(_context, 0);
+                auto hasField = _builder.CreateGEP(heapBdangSrcTy, heapBdangSrcSlot,
+                                                   {z0, z0}, "bdang.field.has");
+                auto valField = _builder.CreateGEP(heapBdangSrcTy, heapBdangSrcSlot,
+                                                   {z0, z1}, "bdang.field.value");
+                _builder.CreateStore(_builder.getInt1(false), hasField);
+                _builder.CreateStore(llvm::ConstantPointerNull::get(ptrTy), valField);
+            }
         }
         return _builder.CreateLoad(llvmStructType, alloca, structName + ".lit.load");
     } else if (auto enumCtorNode = dynamic_cast<ExprPathCallNode*>(node)) {

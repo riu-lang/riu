@@ -241,6 +241,11 @@ private:
     // 内置 / 引用 / 指针 / 平凡 struct: no-op
     void releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type);
 
+    // Phase 3d.3: 若 expr 是 `Heap<T>?` 的 lvalue (局部 ID 或 局部 struct 的字段访问),
+    // 返回其 slot ptr + slot llvm 类型. 供 B 档 nullable move 在调用点 / struct-lit
+    // 把源槽写回 {has=false, value=null} 用. 不支持 Rc / ref base 的字段 (后续切片).
+    bool tryHeapNullableLvalueSlot(ExprNode* expr, llvm::Value*& outSlot, llvm::Type*& outTy);
+
     // Phase 8d.1: per-statement 临时清单
     // 栈帧式追踪 fresh RC 句柄（Rc/Array/Weak）；语句开始 pushTempFrame，
     // 结束 popAndReleaseTempFrame 对未消费项发出 release 调用。

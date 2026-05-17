@@ -11,6 +11,8 @@
 
 #include "compiler.h"
 #include "ast/mangler.h"
+#include "ast/node/expr_node.h"
+#include "ast/node/literal_node.h"
 #include <llvm/IR/Instructions.h>
 
 // ==================== 析构函数调用 ====================
@@ -190,6 +192,76 @@ void Compiler::callDestructorsForScope() {
     }
 }
 
+// Phase 3d.3: 若 expr 是 `Heap<T>?` 的 lvalue, 返回其 slot ptr + slot llvm 类型.
+// 覆盖两种形态:
+//   (a) 局部 ID — `let h Heap<T>? = ...; f(h)` / `Self { .x = h }`
+//   (b) 局部 struct 字段访问 — `let b Foo = ...; f(b.buf)` / `Self { .x = b.buf }`
+// 不支持: Rc / ref base 的字段, 索引 lvalue, 跨函数链式 (后续切片).
+// 用于 B 档 nullable move 把源槽写 {has=false, value=null}, 让作用域尾析构跳 free.
+bool Compiler::tryHeapNullableLvalueSlot(ExprNode* expr, llvm::Value*& outSlot, llvm::Type*& outTy) {
+    outSlot = nullptr;
+    outTy = nullptr;
+    if (!expr) return false;
+    auto isHeapNullable = [](const TypeInfo& t) {
+        if (!t.isNullable()) return false;
+        auto inner = t.nullableInnerType();
+        return inner && inner->isHeap();
+    };
+    // (a) 局部 ID
+    if (auto litE = dynamic_cast<ExprLiteralNode*>(expr)) {
+        if (auto obj = dynamic_cast<LiteralObjNode*>(litE->literal())) {
+            auto name = obj->getValue().getText();
+            auto it = _localVarPtrs.find(name);
+            if (it == _localVarPtrs.end()) return false;
+            auto sym = _currentFnNode ? _currentFnNode->lookupSymbol(name) : nullptr;
+            if (!sym) return false;
+            auto ty = applySubst(sym->type);
+            if (!isHeapNullable(ty)) return false;
+            outSlot = it->second;
+            outTy = getLLVMType(ty);
+            return true;
+        }
+    }
+    // (b) 局部 struct 字段访问 b.field
+    if (auto dotE = dynamic_cast<ExprDotNode*>(expr)) {
+        if (dotE->isSafe()) return false;
+        auto baseE = dotE->baseExpr();
+        auto baseLit = dynamic_cast<ExprLiteralNode*>(baseE);
+        if (!baseLit) return false;
+        auto baseObj = dynamic_cast<LiteralObjNode*>(baseLit->literal());
+        if (!baseObj) return false;
+        auto baseName = baseObj->getValue().getText();
+        auto bit = _localVarPtrs.find(baseName);
+        if (bit == _localVarPtrs.end()) return false;
+        auto baseType = applySubst(baseE->getType());
+        if (baseType.isRef() || baseType.isRc()) return false;
+        StructDeclNode* sd = _file ? _file->getStructDecl(baseType.name) : nullptr;
+        if (!sd && _yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
+            sd = _yux->sdkFile()->getStructDecl(baseType.name);
+        }
+        if (!sd) {
+            auto instIt = _structInstances.find(baseType.name);
+            if (instIt != _structInstances.end()) sd = instIt->second.baseDecl;
+        }
+        if (!sd) return false;
+        auto member = dotE->member();
+        int idx = sd->fieldIndex(member);
+        if (idx < 0) return false;
+        const auto* fd = sd->field(member);
+        if (!fd) return false;
+        auto fieldTy = applySubst(fd->getType());
+        if (!isHeapNullable(fieldTy)) return false;
+        auto structLLVM = getLLVMType(baseType);
+        auto z = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        auto i = llvm::ConstantInt::get(_builder.getInt32Ty(), idx);
+        outSlot = _builder.CreateGEP(structLLVM, bit->second,
+                                     {z, i}, baseName + "." + member + ".slot");
+        outTy = getLLVMType(fieldTy);
+        return true;
+    }
+    return false;
+}
+
 // 调用结构体字段的析构函数
 // 用于结构体析构函数中，递归调用所有字段的析构函数
 void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structName) {
@@ -268,6 +340,12 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
             _builder.CreateCall(runtime::getDynReleaseFn(_module, _builder), {data, vtable});
         } else if (fieldType.isDynBorrow()) {
             // 借用 Dyn<D&>：不动 RC，等价 no-op
+        } else if (fieldType.isNullable()
+                   && fieldType.nullableInnerType()
+                   && fieldType.nullableInnerType()->isHeap()) {
+            // Phase 3d.3: Nullable<Heap<T>> 字段 — 走 releaseAtPtr 内联分支
+            // (与局部 var 析构同款), 避免 fallthrough 误查 bare `Nullable_~()` dtor.
+            releaseAtPtr(fieldPtr, fieldType);
         } else if (!isBuiltinType(fieldType.name)) {
             // 结构体字段: 调用其析构函数
             auto fieldDtorsFn = getDestructorFunction(fieldType.name);

@@ -213,3 +213,87 @@ fn test_heap_bdang_null_arg_passthrough() {
   assert_eq(r, 0i32)
   assert_eq(a.has(), false)
 }
+
+; ---------- Phase 3d.3: 字段 move-out (同函数 struct-lit) + B 档 字段 lvalue 实参 ----------
+
+struct HeapNullableHolder {
+  buf Heap<i32>?
+}
+
+HeapNullableHolder {
+  #Static
+  fn make() HeapNullableHolder {
+    ret Self {
+      .buf = heap_some(123i32)
+    }
+  }
+}
+
+struct HeapNullableTarget {
+  buf Heap<i32>?
+}
+
+HeapNullableTarget {
+  #Static
+  fn from_local_struct_field() HeapNullableTarget {
+    ; 同函数局部 struct 字段 move-out: tmp.buf -> Self.buf, tmp.buf 写 null;
+    ; tmp scope-end dtor 看 _has=false 跳 free, 与新 Target 不冲突.
+    let tmp HeapNullableHolder = HeapNullableHolder::make()
+    ret Self {
+      .buf = tmp.buf
+    }
+  }
+
+  #Static
+  fn from_local_id(h Heap<i32>?) HeapNullableTarget {
+    ; 局部 ID (含 byval 形参) move-out: h -> Self.buf, h alloca 写 null.
+    ret Self {
+      .buf = h
+    }
+  }
+}
+
+#Test
+fn test_heap_3d3_struct_lit_field_moveout() {
+  let t HeapNullableTarget = HeapNullableTarget::from_local_struct_field()
+  assert_eq(t.buf.has(), true)
+}
+
+#Test
+fn test_heap_3d3_struct_lit_local_id_moveout() {
+  let t HeapNullableTarget = HeapNullableTarget::from_local_id(heap_some(7i32))
+  assert_eq(t.buf.has(), true)
+}
+
+#Test
+fn test_heap_3d3_struct_with_heap_nullable_field_no_leak() {
+  ; 含 Heap<T>? 字段的 struct dtor 命中 callFieldDestructor 的新 Nullable<Heap<T>>
+  ; 分支 (走 releaseAtPtr), 避免 fallthrough 误查 bare `Nullable_~()`.
+  let a HeapNullableHolder = HeapNullableHolder::make()
+  let b HeapNullableHolder = HeapNullableHolder::make()
+  assert_eq(a.buf.has(), true)
+  assert_eq(b.buf.has(), true)
+}
+
+fn bdang_field_consume(h Heap<i32>?) bool {
+  ret h.has()
+}
+
+#Test
+fn test_heap_3d3_call_site_field_lvalue_writeback() {
+  ; B 档调用点: 实参形态扩展到 lvalue 字段 (b.field), 调用后源字段 _has=false.
+  let h HeapNullableHolder = HeapNullableHolder::make()
+  assert_eq(h.buf.has(), true)
+  let r bool = bdang_field_consume(h.buf)
+  assert_eq(r, true)
+  assert_eq(h.buf.has(), false)
+}
+
+#Test
+fn test_heap_3d3_call_site_field_no_double_free() {
+  ; move-out 后 h.buf=null, scope-end 跳 free; 再分配新 holder 不应崩.
+  let h HeapNullableHolder = HeapNullableHolder::make()
+  let _ bool = bdang_field_consume(h.buf)
+  let h2 HeapNullableHolder = HeapNullableHolder::make()
+  assert_eq(h2.buf.has(), true)
+}

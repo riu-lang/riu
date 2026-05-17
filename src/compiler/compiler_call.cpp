@@ -1941,9 +1941,9 @@ llvm::Value* Compiler::compileKnownFunctionCall(
         }
     }
 
-    // Phase 3d.2: B 档 nullable move 收集 —— 形参 `Heap<T>?` byval + 实参是
-    // `Heap<T>?` 的局部 lvalue ID 时, 记录调用方 slot, 调用后写回 {has=false, value=null}.
-    // 字段 / 索引 lvalue / lambda 捕获留后续切片.
+    // Phase 3d.2 / 3d.3: B 档 nullable move 收集 —— 形参 `Heap<T>?` byval + 实参是
+    // `Heap<T>?` 的 lvalue (局部 ID 或局部 struct 字段 `b.field`) 时, 记录调用方 slot,
+    // 调用后写回 {has=false, value=null}. 索引 lvalue / lambda 捕获留后续切片.
     struct HeapBdangSlot { llvm::Value* slotPtr; llvm::Type* llvmTy; };
     vector<HeapBdangSlot> heapBdangSlots;
     auto recordBdangIfEligible = [&](size_t i) {
@@ -1953,13 +1953,10 @@ llvm::Value* Compiler::compileKnownFunctionCall(
         if (!p.isNullable()) return;
         auto inner = p.nullableInnerType();
         if (!inner || !inner->isHeap()) return;
-        auto litE = dynamic_cast<ExprLiteralNode*>(callNode->getArgs()[i]);
-        if (!litE) return;
-        auto obj = dynamic_cast<LiteralObjNode*>(litE->literal());
-        if (!obj) return;
-        auto it = _localVarPtrs.find(obj->getValue().getText());
-        if (it == _localVarPtrs.end()) return;
-        heapBdangSlots.push_back({it->second, getLLVMType(p)});
+        llvm::Value* slot = nullptr;
+        llvm::Type* ty = nullptr;
+        if (!tryHeapNullableLvalueSlot(callNode->getArgs()[i], slot, ty)) return;
+        heapBdangSlots.push_back({slot, ty});
     };
 
     vector<llvm::Value*> callArgs;

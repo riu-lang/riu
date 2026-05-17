@@ -15,6 +15,21 @@
 
 ---
 
+## 2026-05-17 —— Heap Phase 3d.3：B 档 nullable move 字段形态扩展
+
+- **行为面新增**（DRAFT-heap-types §5.2 / §5.3，同函数同 scope 内）：
+  - struct-literal 字段 `Heap<T>?` + RHS 是 lvalue（局部 ID 或局部 struct 的字段 `b.field`）时走 move-out：跳 retain、写入后把源槽写回 `{_has=false, _value=null}`。
+  - 调用点 B 档 elligible 实参形态从局部 ID 扩展到局部 struct 字段 `b.field`：调用后源字段被写回 null（与 3d.2 同款写回逻辑）。
+  - `src/compiler/compiler.h` + `src/compiler/compiler_destructor.cpp::tryHeapNullableLvalueSlot`：抽出公共 helper，识别 `Heap<T>?` 的两种 lvalue 形态（局部 ID / 局部 struct 字段），返回 slot ptr + slot llvm 类型。
+  - `src/compiler/compiler_call.cpp::compileKnownFunctionCall`：`recordBdangIfEligible` 改走 helper，自动覆盖字段实参形态。
+  - `src/compiler/compiler_expr.cpp` ExprStructLitNode 分支：字段类型 `Heap<T>?` 时调 helper；命中 lvalue 源 → 跳过 `retainHandleAtCallSite`、写完字段后把源槽写 null。
+  - `src/compiler/compiler_destructor.cpp::callFieldDestructor`：补 `Nullable<Heap<T>>` 字段分支（走 releaseAtPtr 内联），修了 pre-existing pop：之前含 `Heap<T>?` 字段的 user struct 自动 dtor 会 fallthrough 误查 bare `Nullable_~()` → JIT lookup-failed。
+- **不在范围**（拆后续 / 单独 phase）：
+  - §5.3 跨函数形态 `fn build(b Builder) Built { ret Built { buf: b.buf } }`：byval 形参在 callee 端写 null 不会回写到 caller 槽，需要全 struct move-in 语义（更大改 ABI），留待专项。
+  - 索引 lvalue `arr[i]`、if-else flow merge 字段窄化、lambda 捕获 `Heap`（Phase 3e）仍保留。
+- **测试**：`sdk/yux/src/yux/core/heap.test.yux` 新增 5 项 — `test_heap_3d3_struct_lit_field_moveout` / `test_heap_3d3_struct_lit_local_id_moveout` / `test_heap_3d3_struct_with_heap_nullable_field_no_leak` / `test_heap_3d3_call_site_field_lvalue_writeback` / `test_heap_3d3_call_site_field_no_double_free`；SDK 518 → 523 通过。
+- **回归**：`xmake test` 183/183、`yux test`（SDK）523/523 全绿。
+
 ## 2026-05-17 —— Heap Phase 3d.2：B 档 nullable move 调用点写回（最小集）
 
 - **行为面新增**（DRAFT-heap-types §5.2）：形参 `Heap<T>?` 按值 + 实参是 `Heap<T>?` 局部 lvalue ID 的调用点，调用后 caller 槽被自动写回 `{_has=false, _value=null}`。callee 接管所有权（包括 callee 作用域尾的 `__yux_heap_free`），caller 端 `a.has()` 立即变 false，作用域尾析构看到 null 跳过 free，互不冲突。
