@@ -148,31 +148,34 @@ fn test_struct_byval_with_rc_field() {
 
 ; ---------- generic_struct_byval：泛型 struct 实例 by-value 传参 ----------
 
-; TODO(Phase 6E): 泛型 struct + `#Static fn` codegen 配套. 当前 `Type:<T>::name(...)`
-; 路径 codegen 走 lhsRaw 命中 structImpl 的非泛型查找; 泛型实例 + `Self {...}`
-; 字面量 + Self 返回类型都还没接上. 完整 stub 暂停, 等支持后启用.
-;
-; struct StGenericHolder<T> {
-;   payload T
-;   tag i32
-; }
-;
-; StGenericHolder<T> {
-;   #Static
-;   fn make(payload T, tag i32) Self { ... }
-; }
-;
-; fn st_observe_generic(h StGenericHolder<Rc<StPair>>) i32 { ... }
+struct StGenericHolder<T> {
+  payload T
+  tag i32
+}
 
-; #Test
-; fn test_struct_byval_generic_instance() {
-;   #Mut let p Rc<StPair> = StPair::make(11i32, 22i32)
-;   #Mut let h StGenericHolder<Rc<StPair>> = StGenericHolder:<Rc<StPair>>::make(p, 7i32)
-;   assert_eq(st_observe_generic(h), 11i32 + 22i32 + 7i32)
-;   assert_eq(h.payload.a, 11i32)
-;   assert_eq(p.b, 22i32)
-;   assert_eq(h.tag, 7i32)
-; }
+StGenericHolder<T> {
+  #Static
+  fn make(payload T, tag i32) Self {
+    Self {
+      .payload = payload
+      .tag = tag
+    }
+  }
+}
+
+fn st_observe_generic(h StGenericHolder<Rc<StPair>>) i32 {
+  ret h.payload.a + h.payload.b + h.tag
+}
+
+#Test
+fn test_struct_byval_generic_instance() {
+  #Mut let p Rc<StPair> = StPair::make(11i32, 22i32)
+  #Mut let h StGenericHolder<Rc<StPair>> = StGenericHolder:<Rc<StPair>>::make(p, 7i32)
+  assert_eq(st_observe_generic(h), 11i32 + 22i32 + 7i32)
+  assert_eq(h.payload.a, 11i32)
+  assert_eq(p.b, 22i32)
+  assert_eq(h.tag, 7i32)
+}
 
 ; ---------- struct_assign_rc：含 RC 字段 struct 整体赋值 retain-then-release ----------
 

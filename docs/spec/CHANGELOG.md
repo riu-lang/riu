@@ -15,6 +15,15 @@
 
 ---
 
+## 2026-05-17 —— 构造模型重构 Phase 6E.4 B-E：泛型 struct + `#Static fn` + `Self {}` codegen
+
+- **行为面新增**：用户可写 `GenericType:<X>::make(...)` 形式调用泛型 struct 的 `#Static fn`，搭配 `Self { ... }` 字段字面量；之前 codegen 完全不消费 turbofish lhsTypeArgs，调用形态实际不可用，本次接通。
+  - `src/compiler/compiler_expr.cpp`：path-call struct 分支若 `lhsTypeArgs` 非空 → `ensureStructInstance(baseDecl, args, baseOwner, line)` 触发实例化 + 压一帧 `SubstFrame`；paramTypes / retType 走 `applySubst`；`getMethodFunction(effLhs, ...)` 切到 mangled instance 名。异常路径用 try/catch 兜底 pop 帧。
+  - 同文件 `compileLiteralExpr` ExprStructLitNode 分支：`_currentStructName` 是 mangled 时（泛型实例方法体内），通过 `_structInstances` 查 baseDecl；字段类型走 `applySubst`，让 isArrayGeneric / typeNeedsDestructor 识别具体类型。
+  - Self 返回类型由 applySubst 自动处理（TypeSelfNode 返回 bare struct 名 → SubstFrame 替换成 mangled 实例名）；无需写 setResolvedType。
+- **测试恢复**：`sdk/yux/src/yux/core/struct.test.yux::test_struct_byval_generic_instance`（StGenericHolder<Rc<StPair>> + 按值传参）；SDK 由 514 → 515 通过。
+- **回归**：`xmake test` 183/183、`yux test`（SDK）515/515 全绿。BUGS #3 关闭，构造模型重构主线全部收尾。
+
 ## 2026-05-17 —— 构造模型重构 Phase 6D 收尾：C++ 端 ctor 残余清理
 
 - **行为面无变化**：sema E3130 已于 Phase 6A 落地，定义形态 `fn TypeName(...)` 已被拦截；SDK / tests / examples / docs 已于 6B/6C 全量迁完。本次仅清理 C++ 端遗留：

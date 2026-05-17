@@ -2118,9 +2118,18 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
             throw YuxError(line, col, ErrorCode::E0000,
                            "`Self { ... }` codegen 找不到所属结构体 (sema 应已拦截)");
         }
+        // Phase 6E.4-C: 泛型 struct #Static fn 体内 `Self {...}` —
+        // _currentStructName 是 mangled (`GH$i32`), getStructDecl 查不到; 走
+        // _structInstances 拿 baseDecl, llvmStructType 仍按 mangled 名解析.
         auto* decl = _file ? _file->getStructDecl(structName) : nullptr;
         if (!decl && _yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
             decl = _yux->sdkFile()->getStructDecl(structName);
+        }
+        if (!decl) {
+            auto instIt = _structInstances.find(structName);
+            if (instIt != _structInstances.end()) {
+                decl = instIt->second.baseDecl;
+            }
         }
         if (!decl) {
             throw YuxError(line, col, ErrorCode::E0000,
@@ -2143,7 +2152,10 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
                                                      static_cast<unsigned>(idx),
                                                      structName + "." + fname);
             const auto* fdecl = decl->field(fname);
-            const auto fieldType = fdecl ? fdecl->getType() : TypeInfo();
+            // Phase 6E.4-C: 泛型实例 Self {...} — 字段类型 (含 T) 透过当前
+            // SubstFrame 替换为具体类型, 让 isArrayGeneric / typeNeedsDestructor
+            // 识别本应是 Array<i32> 的字段而非 bare T.
+            const auto fieldType = fdecl ? applySubst(fdecl->getType()) : TypeInfo();
             // Phase 4a: Array<T> 字段 + 数组字面量 RHS, 直接走 buildArrayLiteralBlock,
             // 把字段的 element type 透传给 literal, 避免无目标类型语境下默认成定长 [N]T
             // (与 compileDeclareAssignStatement 的 isArrayGeneric 分支对齐, BUGS #4)
@@ -2281,15 +2293,53 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
             if (!methodHeader || !methodHeader->isStatic()) {
                 throw YuxError(line, col, ErrorCode::E3121, lhsRaw, methodName);
             }
+            // Phase 6E.4-B: 泛型 struct turbofish 形态 `Type:<T>::name(...)`
+            // 消费 lhsTypeArgs, 触发 ensureStructInstance, 切到实例 mangled 名;
+            // 同时压一帧 SubstFrame 让 paramTypes / retType 的 T / Self 替换生效.
+            string effLhs = lhsRaw;
+            bool pushedFrame = false;
+            const auto& lhsTArgs = node->lhsTypeArgs();
+            if (!lhsTArgs.empty()) {
+                p<StructDeclNode> baseDecl = _file ? _file->getStructDecl(lhsRaw) : nullptr;
+                p<FileNode> baseOwner = _file;
+                if (!baseDecl && _yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
+                    baseDecl = _yux->sdkFile()->getStructDecl(lhsRaw);
+                    baseOwner = _yux->sdkFile();
+                }
+                if (!baseDecl || !baseDecl->isGeneric()) {
+                    throw YuxError(line, col, ErrorCode::E0000,
+                                   "turbofish 形态需泛型 struct: " + lhsRaw);
+                }
+                if (lhsTArgs.size() != baseDecl->typeParams().size()) {
+                    throw YuxError(line, col, ErrorCode::E6011,
+                                   lhsRaw, baseDecl->typeParams().size(), lhsTArgs.size());
+                }
+                vector<sp<TypeInfo>> instArgs;
+                instArgs.reserve(lhsTArgs.size());
+                for (auto& ta : lhsTArgs) {
+                    instArgs.push_back(std::make_shared<TypeInfo>(applySubst(ta->getType())));
+                }
+                effLhs = ensureStructInstance(baseDecl, instArgs, baseOwner, line);
+                map<string, TypeInfo> subst;
+                for (size_t i = 0; i < instArgs.size(); ++i) {
+                    subst[baseDecl->typeParams()[i]] = instArgs[i] ? *instArgs[i] : TypeInfo();
+                }
+                _substStack.push_back(SubstFrame{
+                    std::move(subst), lhsRaw, effLhs,
+                    _file ? _file->moduleName() : "", line});
+                pushedFrame = true;
+            }
+            // SubstFrame 在异常路径上必须 pop, 否则后续 applySubst 误用本帧 → 类型污染.
+            try {
             vector<TypeInfo> paramTypes;
             for (auto p : methodHeader->params()) {
-                if (p->type()) paramTypes.push_back(p->type()->getType());
+                if (p->type()) paramTypes.push_back(applySubst(p->type()->getType()));
             }
             TypeInfo retType;
-            if (methodHeader->retType()) retType = methodHeader->retType()->getType();
+            if (methodHeader->retType()) retType = applySubst(methodHeader->retType()->getType());
             string mFallibleErr;
             if (auto e = methodHeader->getAnnoArg("Fallible")) mFallibleErr = *e;
-            auto fn = getMethodFunction(lhsRaw, methodName, paramTypes, retType,
+            auto fn = getMethodFunction(effLhs, methodName, paramTypes, retType,
                                         mFallibleErr, /*isStatic=*/true);
             vector<llvm::Value*> argVals;
             argVals.reserve(node->args().size());
@@ -2346,8 +2396,16 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                     consumeTemp(argVals[i]);
                 }
             }
-            return _builder.CreateCall(fn, argVals,
+            auto callResult = _builder.CreateCall(fn, argVals,
                                        retType.empty() ? "" : methodName + ".ret");
+            if (pushedFrame) {
+                _substStack.pop_back();
+            }
+            return callResult;
+            } catch (...) {
+                if (pushedFrame) _substStack.pop_back();
+                throw;
+            }
         }
     }
 
