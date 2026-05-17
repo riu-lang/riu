@@ -384,30 +384,47 @@ bool DraftImplChecker::draftIsObjectSafe(DraftDeclNode* draft) const {
 
     const std::string draftName = draft->name().getText();
 
-    std::function<bool(const TypeInfo&)> containsBad =
-        [&](const TypeInfo& t) -> bool {
-        // 任一类型字面量名命中 Self / draft 自身名 → 不安全.
-        if (!t.name.empty() && (t.name == "Self" || t.name == draftName)) {
-            return true;
+    // 直接遍历 TypeNode AST. 不用 TypeInfo: 在 draft 体内, TypeSelfNode 的
+    // enclosing struct 名为空 (draft 不是 struct impl), TypeInfo.name 会丢
+    // 成空串, 导致 Self 命中失败 (DRAFT-dyn-draft §4 漏判).
+    std::function<bool(TypeNode*)> containsBad = [&](TypeNode* tn) -> bool {
+        if (!tn) return false;
+        if (dynamic_cast<TypeSelfNode*>(tn)) return true;
+        if (auto* nn = dynamic_cast<TypeNormalNode*>(tn)) {
+            return nn->typeNameToken().getText() == draftName;
         }
-        // Generic / Tuple / Fn 实参列表
-        for (auto& a : t.genericArgs) {
-            if (a && containsBad(*a)) return true;
+        if (auto* gn = dynamic_cast<TypeGenericNode*>(tn)) {
+            if (gn->baseName().getText() == draftName) return true;
+            for (auto& a : gn->typeArgs()) {
+                if (containsBad(a)) return true;
+            }
+            return false;
         }
-        // Array 元素类型 / Fn 返回类型 (kind 共用 elementType 槽)
-        if (t.elementType && containsBad(*t.elementType)) return true;
+        if (auto* arr = dynamic_cast<TypeArrayNode*>(tn)) {
+            return containsBad(arr->elementType());
+        }
+        if (auto* fn = dynamic_cast<TypeFnNode*>(tn)) {
+            for (auto& pt : fn->paramTypes()) {
+                if (containsBad(pt)) return true;
+            }
+            return containsBad(fn->retType());
+        }
+        if (auto* tup = dynamic_cast<TypeTupleNode*>(tn)) {
+            for (auto& e : tup->elementTypes()) {
+                if (containsBad(e)) return true;
+            }
+            return false;
+        }
         return false;
     };
 
     bool safe = true;
     for (auto& sig : draft->signatures()) {
         for (auto& p : sig->params()) {
-            TypeInfo pt = p->type() ? p->type()->getType() : TypeInfo();
-            if (containsBad(pt)) { safe = false; break; }
+            if (containsBad(p->type())) { safe = false; break; }
         }
         if (!safe) break;
-        TypeInfo rt = sig->retType() ? sig->retType()->getType() : TypeInfo();
-        if (containsBad(rt)) { safe = false; break; }
+        if (containsBad(sig->retType())) { safe = false; break; }
     }
     _objectSafeCache[draft] = safe;
     return safe;

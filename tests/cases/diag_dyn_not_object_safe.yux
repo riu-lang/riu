@@ -1,8 +1,12 @@
-; Phase 6E TODO 占位: 原 E1134 路径不可达, 临时用 undefined_var 触发非零退出
-; 实测: 单文件模式下 `fn take(d Dyn<Cloneable>)` 的形参 TypeNode 未被
-; DraftImplChecker::validateDynInTypeNode 命中 (推测 Dyn 形态的 AST 落在
-; 不是 TypeGenericNode 的分支); 需要单独调查后再恢复.
+; draft 签名返回 Self → 非对象安全；Dyn<D> 在类型位 → E1134
+draft Cloneable {
+  fn clone() Self
+}
+
+fn take(d Dyn<Cloneable>) {
+  ret;
+}
 
 fn main() {
-  let x i32 = undefined_var
+  ret;
 }

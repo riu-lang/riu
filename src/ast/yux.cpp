@@ -77,6 +77,10 @@ p<FileNode> Yux::createFile(const string& moduleName) {
     }
 
     _files.push_back(file);
+    // 新文件加入后, 之前跑过的 draft 实现校验可能已经漏看新文件里的声明位
+    // (典型: compileSdkDir 在用户文件加载前已经 compile(sdk) → validate,
+    // 之后用户文件 createFile 才进来). 清回 flag, 下次 compile 重新跑全套.
+    _draftImplValidated = false;
     return file;
 }
 
