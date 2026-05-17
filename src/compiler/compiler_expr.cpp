@@ -2105,7 +2105,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
                        structLitNode->resolveColumn(),
                        ErrorCode::E0000,
                        "Self { ... } 结构体字面量未实现 (Phase 3)");
-    } else if (auto enumCtorNode = dynamic_cast<ExprEnumCtorNode*>(node)) {
+    } else if (auto enumCtorNode = dynamic_cast<ExprPathCallNode*>(node)) {
         // Phase 5: enum ctor 是 +1 fresh：构造时把实参（含 RC payload）写入 enum 槽，
         // enum 值随后承担释放责任。仅当类型需要析构时才登记到临时帧
         auto val = compileEnumCtorExpr(enumCtorNode);
@@ -2177,7 +2177,7 @@ llvm::Value* Compiler::compileStatementBlockWithResult(
 // Phase 5: 支持零参 + tuple-payload variant
 //
 // 步骤：
-// 1. 通过 ExprEnumCtorNode::getType() 解析后的 enum 名（已透传别名）查 EnumDecl
+// 1. 通过 ExprPathCallNode::getType() 解析后的 enum 名（已透传别名）查 EnumDecl
 // 2. 验证 variant 存在 / arity 匹配
 // 3. 取 enum 的 LLVM 类型（{ i32 tag } 或 { i32, [N x i8] }）
 // 4. 在栈上 alloca，写入 tag = variant index
@@ -2186,7 +2186,7 @@ llvm::Value* Compiler::compileStatementBlockWithResult(
 //    入参规则下，Rc/Array/Weak 已是 +1 fresh 句柄，直接交付给 enum 拥有）
 // 6. 零参 variant 不动 payload buffer（spec §6.5）
 // 7. 加载整体 struct value 作为表达式结果返回
-llvm::Value* Compiler::compileEnumCtorExpr(p<ExprEnumCtorNode> node) {
+llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     string enumName = node->getType().name;     // 经别名解析后的真实 enum 名
     string variantName = node->variantName().getText();

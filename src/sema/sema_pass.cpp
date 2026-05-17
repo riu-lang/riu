@@ -532,7 +532,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                        ErrorCode::E0000,
                        "Self { ... } 结构体字面量未实现 (Phase 2)");
     }
-    if (auto n = dynamic_cast<p<ExprEnumCtorNode>>(expr)) {
+    if (auto n = dynamic_cast<p<ExprPathCallNode>>(expr)) {
         for (auto& a : n->args()) visitExpr(a);
         // Phase 3.4.a: SemaPass 接管 E2019/E2020/E2021/E2032.
         // node->setResolvedType 已在 visitExpr 顶部写好 (getType 抛错时已在白名单

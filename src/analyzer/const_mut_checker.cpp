@@ -98,7 +98,7 @@ void requireConstExpr(p<ExprNode> e, p<ScopeNode> scope) {
     if (dynamic_cast<p<ExprIfElsePreValueNode>>(e))  throwNonConst(e, "if-else expression");
     if (dynamic_cast<p<ExprMatchNode>>(e))        throwNonConst(e, "match expression");
     if (dynamic_cast<p<ExprTryCatchNode>>(e))     throwNonConst(e, "try-catch expression");
-    if (dynamic_cast<p<ExprEnumCtorNode>>(e))     throwNonConst(e, "enum constructor");
+    if (dynamic_cast<p<ExprPathCallNode>>(e))     throwNonConst(e, "enum constructor");
     if (dynamic_cast<p<ExprDynCtorNode>>(e))      throwNonConst(e, "Dyn<...> construction");
     if (dynamic_cast<p<ExprNullElseNode>>(e))     throwNonConst(e, "`??` expression");
     if (dynamic_cast<p<LambdaExprNode>>(e))       throwNonConst(e, "lambda expression");

@@ -900,7 +900,7 @@ string fmtTypeFriendly(const TypeInfo& t) {
 }
 
 void validateEnumCtorShape(FileNode* file, FileNode* sdkFile,
-                           p<ExprEnumCtorNode> node) {
+                           p<ExprPathCallNode> node) {
     if (!node) return;
     string enumName = node->getType().name;            // 经别名解析后的真实 enum 名
     string enumNameRaw = node->enumName().getText();   // 用户写法

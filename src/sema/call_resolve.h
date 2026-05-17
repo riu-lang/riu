@@ -392,9 +392,9 @@ void validateFnSymbolVisibility(const FnSymbolInfo* fnSymbol,
 //
 // 纯 AST / TypeInfo, 无 LLVM 依赖. 调用方:
 //   - Compiler::compileEnumCtorExpr 在 setResolvedType 后立即调用
-//   - SemaPass.visitExpr ExprEnumCtorNode 分支调用
+//   - SemaPass.visitExpr ExprPathCallNode 分支调用
 void validateEnumCtorShape(FileNode* file, FileNode* sdkFile,
-                           p<ExprEnumCtorNode> node);
+                           p<ExprPathCallNode> node);
 
 // match 表达式 arm 静态校验 (Phase 3.4.b).
 //

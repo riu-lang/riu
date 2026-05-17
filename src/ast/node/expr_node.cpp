@@ -1391,7 +1391,7 @@ TypeInfo ExprStructLitNode::getType() const {
     return TypeInfo();
 }
 
-TypeInfo ExprEnumCtorNode::getType() const {
+TypeInfo ExprPathCallNode::getType() const {
     string n = _enumName.getText();
     auto* scope = parent() ? parent()->findNearestScope() : nullptr;
     FileNode* file = nullptr;

@@ -575,7 +575,7 @@ bool Compiler::isFreshHandleExpr(p<ExprNode> expr) {
     if (dynamic_cast<ExprCallNode*>(expr)) return true;
     if (dynamic_cast<ExprArrayNode*>(expr)) return true;
     // Phase 5: enum 构造把实参 +1 句柄收纳到 enum 值，结果是 +1 fresh
-    if (dynamic_cast<ExprEnumCtorNode*>(expr)) return true;
+    if (dynamic_cast<ExprPathCallNode*>(expr)) return true;
     return false;
 }
 

@@ -564,15 +564,18 @@ public:
     [[nodiscard]] int resolveColumn() const override;
 };
 
-// 枚举构造表达式 E::V / E::V() / E::V(args)
-// AST 上零参 variant 与 E::V() 等价；arity 与变体匹配在编译期校验
-class ExprEnumCtorNode : public ExprNode {
+// 路径调用表达式 `LHS::RHS(...)` —— 承载两条 sema 分流:
+//   1) enum 构造: `E::V` / `E::V()` / `E::V(args)`, 零参 variant 与 E::V() 等价
+//   2) 静态调用: `Type::staticFn(args)` (RHS 标 #Static), Phase 2c 起接入
+// arity / 变体匹配 / 静态分流均在 sema 阶段校验.
+// 访问器名沿用 enumName / variantName, 留待 2c 与 struct 分流一并改名.
+class ExprPathCallNode : public ExprNode {
     Token _enumName;
     Token _variantName;
     vector<p<ExprNode>> _args;
 
 public:
-    ExprEnumCtorNode(const p<Node>& parent, Token enumName, Token variantName) :
+    ExprPathCallNode(const p<Node>& parent, Token enumName, Token variantName) :
         ExprNode(parent),
         _enumName(std::move(enumName)),
         _variantName(std::move(variantName)) {

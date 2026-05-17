@@ -2373,7 +2373,7 @@ std::any ASTBuilder::visitExprArrayInit(yux::yuxParser::ExprArrayInitContext* ct
 //   - 枚举构造：E::V / E::V() / E::V(args)
 //   - 静态函数调用：Type::name(args) / Type:<T>::name:<U>(args) / Self::name(args)
 // AST 阶段仅做形态过滤；枚举 / 静态符号解析、arity 匹配等留到 sema / codegen
-// 别名透传（C::V => E::V）由 ExprEnumCtorNode::getType 在查询时解析
+// 别名透传（C::V => E::V）由 ExprPathCallNode::getType 在查询时解析
 //
 // Phase 1a：仅放行原 enum 形态；Self LHS / turbofish 形态报"未实现"，待 Phase 2 接管
 std::any ASTBuilder::visitExprEnumCtor(yux::yuxParser::ExprEnumCtorContext* ctx) {
@@ -2397,7 +2397,7 @@ std::any ASTBuilder::visitExprEnumCtor(yux::yuxParser::ExprEnumCtorContext* ctx)
     DEBUG_LOG_VAL("    Expr: EnumCtor",
         ctx->enumName->getText() << "::" << ctx->variant->getText());
     auto scope = currentScope();
-    auto node = createWithLine<ExprEnumCtorNode>(ctx, scope, ctx->enumName, ctx->variant);
+    auto node = createWithLine<ExprPathCallNode>(ctx, scope, ctx->enumName, ctx->variant);
     for (auto* aCtx : ctx->args) {
         node->addArg(any_cast_p<ExprNode>(visit(aCtx)));
     }
