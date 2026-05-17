@@ -69,7 +69,7 @@ llvm::Function* Compiler::getMethodFunction(
     const string& fallibleErrType, bool isStatic) {
     DEBUG_LOG_VAL("  getMethodFunction", structName << "." << methodName << (isStatic ? " [#Static]" : ""));
 
-    bool isCtor = !isStatic && methodName == structName;  // 构造: 与 #Static 互斥
+    // Phase 6D: 同名 ctor 已被 sema E3130 拦截在定义点; 这里不再分派构造路径.
     bool isPriv = !methodName.empty() && methodName[0] == '_';
 
     // 确定方法所属的模块
@@ -91,8 +91,6 @@ llvm::Function* Compiler::getMethodFunction(
     string mangledName;
     if (isStatic) {
         mangledName = Mangler::staticMethod(ownerModule, structName, methodName, paramTypes);
-    } else if (isCtor) {
-        mangledName = Mangler::ctor(ownerModule, structName, paramTypes);
     } else {
         mangledName = Mangler::method(ownerModule, structName, methodName, paramTypes, isPriv);
     }
@@ -629,85 +627,9 @@ llvm::Value* Compiler::compileFunctionCall(
         return createCast(castInfo.value, castInfo.srcType, castInfo.dstType);
     }
 
-    auto structDecl = _file->getStructDecl(fnName);
-    p<FileNode> structOwner = _file;
-    if (!structDecl && _yux && _yux->sdkFile()) {
-        auto sdkDecl = _yux->sdkFile()->getStructDecl(fnName);
-        if (sdkDecl) {
-            structDecl = sdkDecl;
-            structOwner = _yux->sdkFile();
-        }
-    }
-    if (structDecl) {
-        // E6008 / E6009 形态校验已迁至 sema::validateCtorCallShape
-        sema::validateCtorCallShape(structDecl, fnName,
-                                    !callNode->getTypeArgs().empty(),
-                                    callNode->getLineNumber(), callNode->getColumn());
-        string effName = fnName;
-        bool isGenericCtor = false;
-        if (structDecl->isGeneric()) {
-            const auto& typeArgs = callNode->getTypeArgs();
-            vector<sp<TypeInfo>> instArgs;
-            instArgs.reserve(typeArgs.size());
-            for (auto& tn : typeArgs) {
-                instArgs.push_back(make_shared<TypeInfo>(applySubst(tn->getType())));
-            }
-            effName = ensureStructInstance(structDecl, instArgs, structOwner, callNode->getLineNumber());
-            isGenericCtor = true;
-        }
-        if (isGenericCtor) {
-            auto structType = _structTypes[effName];
-            auto alloca = _builder.CreateAlloca(structType, nullptr, effName + "_tmp");
-            vector<llvm::Value*> ctorArgs;
-            ctorArgs.push_back(alloca);
-            for (size_t i = 0; i < args.size(); ++i) {
-                // Phase 3c.2.a: 泛型构造器调用点 retain
-                // Phase 8c: fresh 实参（call/array literal）已自带 +1，跳过 retain
-                // Phase 8d.1: fresh 实参从临时帧消费
-                if (!isFreshHandleExpr(callNode->getArgs()[i])) {
-                    retainHandleAtCallSite(args[i], argTypes[i]);
-                } else {
-                    consumeTemp(args[i]);
-                }
-                ctorArgs.push_back(args[i]);
-            }
-            // 泛型实例构造器：用消费方模块作前缀（与 emit / 方法调用一致）
-            string ownerMod = _structInstances[effName].consumerModule;
-            string cName = Mangler::ctor(ownerMod, effName, argTypes);
-            auto fn = _module->getFunction(cName);
-            if (!fn) {
-                vector<llvm::Type*> paramTypes;
-                paramTypes.push_back(llvm::PointerType::get(_context, 0));
-                for (auto& t : argTypes) {
-                    if (structParamUsesPointer(t.name)) {
-                        paramTypes.push_back(llvm::PointerType::get(_context, 0));
-                    } else {
-                        paramTypes.push_back(getLLVMType(t));
-                    }
-                }
-                auto fnType = llvm::FunctionType::get(_builder.getVoidTy(), paramTypes, false);
-                fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, cName, _module);
-            }
-            _builder.CreateCall(fn, ctorArgs);
-            return _builder.CreateLoad(structType, alloca);
-        }
-        // Phase 8c: 计算每个实参的 fresh 标志，传给构造器调用点用于跳过 retain
-        vector<bool> argFresh;
-        argFresh.reserve(callNode->getArgs().size());
-        for (auto& a : callNode->getArgs()) argFresh.push_back(isFreshHandleExpr(a));
-        auto result = compileConstructorCall(fnName, effName, args, argTypes, argFresh);
-        if (result) {
-            return result;
-        }
-        // H3：structDecl 已找到但 ctor 重载没匹配上时，立刻报错，
-        // 不要静默回落到下方 ExternalFunctionCall —— 那会按外部 fn 名 forward-decl
-        // 一个 void 返回的调用，把 void 值丢给外层 recordTemp / store，触发
-        // LLVM `isSized` 断言。见 BUGS.md「构造器实参类型不匹配（Rc<T> 形参 + 裸 T 实参）」。
-        sema::diagnoseCtorOverloadMismatch(_file,
-            _yux ? _yux->sdkFile() : nullptr,
-            fnName, argTypes,
-            callNode->getLineNumber(), callNode->getColumn());
-    }
+    // Phase 6D: 同名 ctor 形态已被 sema E3130 拦截在定义点; 调用点 `Foo(args)`
+    // 不再分派到 ctor 路径, 自然 fall-through 到下方"函数未找到"诊断 (用户应改
+    // 用 `Foo::make(...)` 静态构造).
 
     // v0.6 Phase 2b: 透明类型别名解析，使 alias 名实参 / 形参在重载查找上视为同一类型
     // 函数符号表已在 validateAliases 中归一化；这里再把 argTypes 也走一遍，匹配两侧
@@ -1953,71 +1875,6 @@ llvm::Value* Compiler::compileDynMethodCall(
 
     const char* callName = llvmRetType->isVoidTy() ? "" : "dyn.call";
     return _builder.CreateCall(fnTy, fnPtr, callArgs, callName);
-}
-
-llvm::Value* Compiler::compileConstructorCall(
-    const string& baseName, const string& effName,
-    vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
-    const vector<bool>& argFresh) {
-    string ctorFullName = baseName + "." + baseName;
-
-    vector<TypeInfo> ctorParamTypes;
-    ctorParamTypes.push_back(TypeInfo(baseName));
-    for (auto& t : argTypes) {
-        ctorParamTypes.push_back(t);
-    }
-    auto ctorSymbol = _file->lookupFnSymbolWithParams(ctorFullName, ctorParamTypes);
-
-    if (ctorSymbol) {
-        DEBUG_LOG_VAL("    Expr: ConstructorCall", effName);
-
-        llvm::Type* structType = nullptr;
-        if (auto it = _structTypes.find(effName); it != _structTypes.end()) {
-            structType = it->second;
-        } else {
-            structType = getLLVMType(TypeInfo(effName));
-        }
-        auto alloca = _builder.CreateAlloca(structType, nullptr, effName + "_tmp");
-
-        vector<llvm::Value*> ctorArgs;
-        ctorArgs.push_back(alloca);
-        for (size_t i = 0; i < args.size(); ++i) {
-            // Phase 3c.2.a: 构造器调用点 retain；与函数调用同协议
-            // Phase 8c: fresh 实参跳过 retain
-            // Phase 8d.1: fresh 实参从临时帧消费
-            if (!argFresh.empty() && argFresh[i]) {
-                consumeTemp(args[i]);
-                ctorArgs.push_back(args[i]);
-                continue;
-            }
-            retainHandleAtCallSite(args[i], argTypes[i]);
-            ctorArgs.push_back(args[i]);
-        }
-
-        // 若 effName 是泛型实例，按消费方模块取前缀；否则按 ctorSymbol 的模块。
-        string ownerMod;
-        if (auto instIt = _structInstances.find(effName); instIt != _structInstances.end()) {
-            ownerMod = instIt->second.consumerModule;
-        } else {
-            ownerMod = ctorSymbol->moduleName.empty() ? _file->moduleName() : ctorSymbol->moduleName;
-        }
-        string cName = Mangler::ctor(ownerMod, effName, argTypes);
-        auto fn = _module->getFunction(cName);
-        if (!fn) {
-            vector<llvm::Type*> paramTypes;
-            paramTypes.push_back(llvm::PointerType::get(_context, 0));
-            for (auto& t : argTypes) {
-                paramTypes.push_back(getLLVMType(t));
-            }
-            auto retType = _builder.getVoidTy();
-            auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
-            fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, cName, _module);
-        }
-        _builder.CreateCall(fn, ctorArgs);
-
-        return _builder.CreateLoad(structType, alloca);
-    }
-    return nullptr;
 }
 
 llvm::Value* Compiler::compileKnownFunctionCall(

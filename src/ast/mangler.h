@@ -14,7 +14,6 @@
 //   全局常量     mod_name                    私有：mod__name
 //   结构体类型   mod#Struct
 //   方法         mod#Struct_name(params)     私有：mod#Struct__name(params)
-//   构造函数     mod#Struct(params)
 //   析构函数     mod#Struct_~()
 //
 // 参数列表始终带括号；类型间以 "," 分隔；类型形式取自 TypeInfo::getFullName()。
@@ -33,10 +32,6 @@ public:
     // 与 instance method (Struct_name) 用 `::` 区分; 无 receiver, 与实例同名不冲突
     static string staticMethod(const string& module, const string& structName,
                                const string& methodName, const vector<TypeInfo>& params);
-
-    // 构造：mod#Struct(params)
-    static string ctor(const string& module, const string& structName,
-                       const vector<TypeInfo>& params);
 
     // 析构：mod#Struct_~()
     static string dtor(const string& module, const string& structName);

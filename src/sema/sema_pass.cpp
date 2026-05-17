@@ -401,16 +401,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                     }
                 }
 
-                if (structDecl) {
-                    // 形态校验对泛型 / 非泛型 ctor 都适用 (E6008 私有 / E6009 缺 typeArgs)
-                    sema::validateCtorCallShape(structDecl, fnName, hasTypeArgs, line, col);
-                    // 泛型 ctor + 显式 typeArgs 的 arity 校验 (E6010)
-                    if (structDecl->isGeneric() && hasTypeArgs) {
-                        sema::validateGenericTypeArgsArity(fnName,
-                            structDecl->typeParams().size(),
-                            n->getTypeArgs().size(), line, col);
-                    }
-                }
+                // Phase 6D: 同名 ctor 已被 sema E3130 拦截在定义点; 调用点 `Foo(args)`
+                // 不再分派 ctor, 形态 / arity 校验全部失效, 整段块移除.
 
                 // 泛型 fn + 显式 typeArgs 的 arity 校验 (E6010, 与 compileCallExpr 入口一致)
                 if (!structDecl && hasTypeArgs) {

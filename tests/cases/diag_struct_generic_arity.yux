@@ -4,6 +4,6 @@ struct Pair<T, U> {
 }
 
 fn main() {
-  #Mut let p Pair<i32> = Pair:<i32, i32>(1i32, 2i32)
+  #Mut let p Pair<i32>  ; ❌ E6011: Pair 期望 2 个类型实参，仅给 1
   ret;
 }

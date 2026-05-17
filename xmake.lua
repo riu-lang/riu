@@ -185,7 +185,7 @@ target("yux_frontend")
 
     add_defines("UNICODE", "NOMINMAX", "ANTLR4CPP_STATIC", {public = true})
 
--- codegen 静态库：所有依赖 LLVM 的实现（compiler*.cpp + ctor_daa.cpp）
+-- codegen 静态库：所有依赖 LLVM 的实现（compiler*.cpp）
 -- yux 主二进制依赖之；yux-lsp 不依赖
 target("yux_codegen")
     set_kind("static")
@@ -195,8 +195,7 @@ target("yux_codegen")
     add_includedirs(path.join(third_party, "llvm/lld/include"), {public = true})
 
     add_files(
-        "src/compiler/*.cpp",
-        "src/runtime/ctor_daa.cpp"
+        "src/compiler/*.cpp"
     )
 
     add_syslinks("ntdll", {public = true})

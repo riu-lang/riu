@@ -227,22 +227,6 @@ void validateGenericTypeArgsArity(const string& fnName,
             expectedCount));
 }
 
-// ==================== ctor 调用形态校验 (Phase 3.3 前置.3b) ====================
-// 原为 `compileFunctionCall` 在解析到 structDecl 后的两处内联 throw,
-// 纯类型 / 纯 AST 检查, 无 LLVM 依赖, 抠到 sema 后 SemaPass 也能调.
-void validateCtorCallShape(StructDeclNode* structDecl, const string& fnName,
-                           bool hasTypeArgs, int line, int col) {
-    if (!structDecl) return;
-    // E6008: 私有结构体不允许跨可见性构造
-    if (structDecl->isPrivate()) {
-        throw YuxError(line, col, ErrorCode::E6008, fnName);
-    }
-    // E6009: 泛型结构体调用时未给类型实参
-    if (structDecl->isGeneric() && !hasTypeArgs) {
-        throw YuxError(line, col, ErrorCode::E6009, fnName);
-    }
-}
-
 // ==================== Dyn 方法静态形态校验 (Phase 3.3 前置.3f) ====================
 // 原位于 `compiler/compiler_call.cpp::compileDynMethodCall` 第 2 / 3 / 4 步:
 // 按名查 sig (E6016) → arity (E6012) → 形参类型 (E6015). 纯 AST + TypeInfo,
@@ -285,58 +269,6 @@ FnHeaderNode* resolveDynMethodSig(DraftDeclNode* draftDecl,
         }
     }
     return sig;
-}
-
-// ==================== ctor 重载未匹配诊断 (Phase 3.3 前置.3e) ====================
-// 原 `compileFunctionCall` 在 compileConstructorCall 返回 null 后的 inline 块:
-// 收集 `S.S` 重载 + 用 fmtType 渲染候选签名 / 实参类型 + 抛 E6033 + .withHint.
-// 整体抠到 sema 层; 纯 TypeInfo, 无 LLVM 依赖.
-void diagnoseCtorOverloadMismatch(FileNode* file, FileNode* sdkFile,
-                                  const string& fnName,
-                                  const vector<TypeInfo>& argTypes,
-                                  int line, int col) {
-    string ctorFullName = fnName + "." + fnName;
-    vector<FnSymbolInfo*> ctorCands;
-    if (file) file->collectFnOverloads(ctorFullName, ctorCands);
-    if (sdkFile && sdkFile != file) {
-        sdkFile->collectFnOverloads(ctorFullName, ctorCands);
-    }
-    // 把 TypeInfo 渲染成用户友好形式: Rc<T>、Array<T>、Fn(P)->R 等
-    std::function<string(const TypeInfo&)> fmtType = [&](const TypeInfo& t) -> string {
-        if (t.kind == TypeKind::Generic && !t.genericArgs.empty()) {
-            string r = t.name + "<";
-            for (size_t i = 0; i < t.genericArgs.size(); ++i) {
-                if (i) r += ", ";
-                r += t.genericArgs[i] ? fmtType(*t.genericArgs[i]) : string("?");
-            }
-            r += ">";
-            return r;
-        }
-        if (t.kind == TypeKind::Array && t.elementType) {
-            return "[" + std::to_string(t.arraySize) + "]" + fmtType(*t.elementType);
-        }
-        return t.name;
-    };
-    string ctorSigs;
-    for (auto* c : ctorCands) {
-        ctorSigs += "\n  " + fnName + "(";
-        // params[0] 是接收者本身, 跳过
-        for (size_t i = 1; i < c->params.size(); ++i) {
-            if (i > 1) ctorSigs += ", ";
-            ctorSigs += fmtType(c->params[i]);
-        }
-        ctorSigs += ")";
-    }
-    if (ctorCands.empty()) {
-        ctorSigs = " (none declared)";
-    }
-    string argSigs;
-    for (size_t i = 0; i < argTypes.size(); ++i) {
-        if (i) argSigs += ", ";
-        argSigs += fmtType(argTypes[i]);
-    }
-    throw YuxError(line, col, ErrorCode::E6033, fnName, argSigs, ctorSigs)
-        .withHint("若实参与形参类型仅差 Rc<T>，先 `var p Rc<T> = T(...)` 落地再传；否则按上方候选签名补齐实参");
 }
 
 // ==================== 非-ID callee `!` fallback 校验 (Phase 3.3 前置.3d) ====================

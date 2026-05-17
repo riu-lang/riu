@@ -387,10 +387,6 @@ private:
         p<ExprCallNode> callNode, p<ExprDotNode> dotNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);  // 编译方法调用
     llvm::Value* compileFunctionCall(
         p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);    // 编译函数调用
-    llvm::Value* compileConstructorCall(
-        const string& baseName, const string& effName,
-        vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
-        const vector<bool>& argFresh = {});                                     // 编译构造函数调用
     llvm::Value* compileKnownFunctionCall(
         p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
         FnSymbolInfo* fnSymbol);                                                // 编译已知函数调用

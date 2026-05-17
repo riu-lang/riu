@@ -33,21 +33,6 @@ void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName,
 void resolveCtorOverload(FileNode* file, const string& structName,
                          const vector<p<ExprNode>>& args, int line);
 
-// ctor 调用形态校验 (Phase 3.3 前置.3b).
-//
-// 在 callee 已经解析到一个 structDecl 后, 校验调用形态:
-//   - E6008: 结构体名以 `_` 开头 (私有), 不允许跨可见性构造
-//   - E6009: 泛型结构体调用时未给类型实参
-//
-// `hasTypeArgs` 为调用点是否携带显式类型实参 (`Foo:<i32>(...)` 形态).
-// 非泛型结构体不查 hasTypeArgs (yux 当前不允许给非泛型类型带 typeArgs).
-//
-// 调用方:
-//   - Compiler::compileFunctionCall 在解析 structDecl 后立即调用
-//   - SemaPass::visitExpr 在 ExprCallNode 分支识别 ctor 时调用
-void validateCtorCallShape(StructDeclNode* structDecl, const string& fnName,
-                           bool hasTypeArgs, int line, int col);
-
 // 泛型函数 / 泛型构造器调用点的类型实参 arity 校验 (Phase 3.3 前置.3c).
 //
 // 当调用点写了显式 `:<T1, T2, ...>` 时, 检查 arity 与声明的 typeParams 是否匹配.
@@ -125,22 +110,6 @@ FnHeaderNode* resolveDynMethodSig(DraftDeclNode* draftDecl,
                                   const string& draftQualified,
                                   const TypeInfo& baseType,
                                   const string& member,
-                                  const vector<TypeInfo>& argTypes,
-                                  int line, int col);
-
-// ctor 重载未匹配的诊断 (Phase 3.3 前置.3e).
-//
-// 调用方在 ctor 重载解析路径 (compileConstructorCall) 返回 null 后调用:
-// 即 callee 已识别为 structDecl, 但既有 ctor 重载均不接受当前 argTypes.
-// 函数总是抛 E6033, 附带:
-//   - 当前 file + sdkFile 上 `S.S` 的所有重载签名 (跳过 params[0] 接收者), 按
-//     Rc<T> / Array<T> / [N]T 等用户友好形式渲染
-//   - 实参的同款友好渲染列表
-//   - `.withHint(...)` 提示如何修正
-//
-// 纯类型 / 纯 AST, 无 LLVM 依赖.
-void diagnoseCtorOverloadMismatch(FileNode* file, FileNode* sdkFile,
-                                  const string& fnName,
                                   const vector<TypeInfo>& argTypes,
                                   int line, int col);
 

@@ -8,9 +8,12 @@ struct Point {
 }
 
 Point {
-  fn Point(x f64, y f64) {
-    $.x = x
-    $.y = y
+  #Static
+  fn make(x f64, y f64) Point {
+    ret Self {
+      .x = x
+      .y = y
+    }
   }
 }
 
@@ -20,5 +23,5 @@ enum Container {
 }
 
 fn main() {
-  let c Container = Container::Boxed(Point(1.0f64, 2.0f64))  ; ❌ E2032
+  let c Container = Container::Boxed(Point::make(1.0f64, 2.0f64))  ; ❌ E2032
 }
