@@ -14,6 +14,28 @@ public:
     [[nodiscard]] virtual bool isArray() const { return false; }
 };
 
+// Self 类型字面量 (构造模型重构 Phase 2b)
+// 出现于 structImpl 体内 (含 #Static fn / 实例 fn 的形参 / 返回 / 局部 / turbofish)
+// 构造时由 ast_builder 把 enclosing StructImplNode 的 structName 直接灌入,
+// 避免 getType 走 parent 链 (impl 方法 retType 父指针是 FileNode, 走不到 impl).
+// 体外出现的 Self 由 sema 单独拒收 (Phase 2d 接入), 此时 structName 为空.
+class TypeSelfNode : public TypeNode {
+    Token _selfTok;
+    string _structName;
+
+public:
+    TypeSelfNode(const p<Node>& parent, Token selfTok, string structName) :
+        TypeNode(parent), _selfTok(std::move(selfTok)), _structName(std::move(structName)) {
+    }
+
+    [[nodiscard]] TypeInfo getType() const override {
+        return _structName.empty() ? TypeInfo() : TypeInfo(_structName);
+    }
+
+    [[nodiscard]] const Token& selfToken() const { return _selfTok; }
+    [[nodiscard]] const string& structName() const { return _structName; }
+};
+
 class TypeNormalNode : public TypeNode {
     Token _typeName;
 

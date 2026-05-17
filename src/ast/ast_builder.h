@@ -44,6 +44,10 @@ class ASTBuilder : public yux::yuxParserBaseVisitor {
     // Phase 4a: typeWithRef -> TypeNode；若 SymbolAnd 存在，包成 Ref<inner>
     p<TypeNode> buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr, p<Node> parent);
 
+    // Phase 2b 构造模型重构: 从 _scopeStack 找最内层 StructImplNode 的 structName.
+    // 用于 TypeSelfNode / ExprStructLitNode 构造时锁定所属结构体; 体外返回空串.
+    string findEnclosingStructName() const;
+
 public:
     explicit ASTBuilder(Yux& yux, const string& moduleName = "", bool isSdk = false,
                         bool isTestFile = false, const string& sourcePath = "");
@@ -131,6 +135,7 @@ public:
     std::any visitExprThis(yux::yuxParser::ExprThisContext* ctx) override;
 
     std::any visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) override;
+    std::any visitTypeSelf(yux::yuxParser::TypeSelfContext* ctx) override;
     std::any visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) override;
     std::any visitTypeArray(yux::yuxParser::TypeArrayContext* ctx) override;
     std::any visitTypeNullable(yux::yuxParser::TypeNullableContext* ctx) override;

@@ -2620,6 +2620,27 @@ std::any ASTBuilder::visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) {
     return p<TypeNode>(createWithLine<TypeNormalNode>(ctx, parent, sym));
 }
 
+// Self 类型字面量 (Phase 2b): 构造 TypeSelfNode 占位.
+// 构造时扫 _scopeStack 找 enclosing StructImplNode 灌入 structName;
+// 体外出现时 structName 留空, sema 在 Phase 2d 抛 E3115.
+std::any ASTBuilder::visitTypeSelf(yux::yuxParser::TypeSelfContext* ctx) {
+    p<Node> parent = currentScope();
+    DEBUG_LOG("    Type: Self");
+    auto* tk = ctx->SelfType()->getSymbol();
+    string structName = findEnclosingStructName();
+    return p<TypeNode>(createWithLine<TypeSelfNode>(ctx, parent, tk, structName));
+}
+
+// 扫 _scopeStack 找最内层 StructImplNode 的 structName, 找不到返回空串.
+string ASTBuilder::findEnclosingStructName() const {
+    for (auto it = _scopeStack.rbegin(); it != _scopeStack.rend(); ++it) {
+        if (auto* impl = dynamic_cast<StructImplNode*>(*it)) {
+            return impl->structName();
+        }
+    }
+    return {};
+}
+
 std::any ASTBuilder::visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) {
     p<Node> parent = currentScope();
     auto baseName = ctx->ID()->getSymbol();
@@ -2738,6 +2759,13 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
         }
         inner = p<TypeNode>(createWithLine<TypeNormalNode>(n, parent, n->ID()->getSymbol()));
         andTok = n->SymbolAnd();
+    } else if (auto s = dynamic_cast<yuxParser::TypeSelfWithRefContext*>(twr)) {
+        // Phase 2b: Self& —— 结构体方法返回 / 形参可写 `Self&`.
+        // 出现在 impl 体外由 sema (Phase 2d) 拒收.
+        auto* tk = s->SelfType()->getSymbol();
+        string structName = findEnclosingStructName();
+        inner = p<TypeNode>(createWithLine<TypeSelfNode>(s, parent, tk, structName));
+        andTok = s->SymbolAnd();
     } else if (auto nul = dynamic_cast<yuxParser::TypeNullableWithRefContext*>(twr)) {
         // 内层是 type（不带 &），直接复用 visitType* 通路
         auto innerT = any_cast_p<TypeNode>(visit(nul->type()));
