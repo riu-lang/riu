@@ -260,6 +260,7 @@ DEF_ERR(3124, "`Self {{ ... }}` field literal only allowed inside a `#Static fn`
 DEF_ERR(3125, "`Self {{ ... }}` for struct `{}` is missing field `.{}` (all fields must be listed; DRAFT-static-fn)")
 DEF_ERR(3126, "struct `{}` has no field `.{}` (DRAFT-static-fn)")
 DEF_ERR(3127, "duplicate field `.{}` in `Self {{ ... }}` literal (DRAFT-static-fn)")
+DEF_ERR(3128, "`$` (current instance) cannot be used inside a `#Static fn` body (DRAFT-static-fn)")
 
 // ── E4xxx 所有权 / 借用 ───────────────────────────────────────────────
 DEF_ERR(4001, "T& borrow initializer must be &expr or an existing T& variable")

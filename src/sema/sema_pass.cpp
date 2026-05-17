@@ -211,6 +211,18 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
     if (dynamic_cast<p<StatementBreakNode>>(stmt)) return;
     if (dynamic_cast<p<StatementRetVoidNode>>(stmt)) return;
     if (dynamic_cast<p<StatementDeclareNode>>(stmt)) return; // 无表达式
+    if (auto as = dynamic_cast<p<StatementAssignNode>>(stmt)) {
+        // Phase 2e: `$.field = ...` 在 `#Static fn` 体内禁用 (E3128).
+        // StatementAssign 的 `obj` (LHS 根) 不会被 visitExpr 递归, 这里单独拦截.
+        if (as->obj().getText() == "$" &&
+            _currentFn && _currentFn->header()->isStatic()) {
+            throw YuxError(as->obj().getLine(),
+                           static_cast<int>(as->obj().getCharPositionInLine()),
+                           ErrorCode::E3128);
+        }
+        if (as->expr()) visitExpr(as->expr());
+        return;
+    }
     if (auto se = dynamic_cast<p<StatementExprNode>>(stmt)) {
         // 覆盖 StatementExprNode / Ret / DeclareAssign / DeclareAssignTuple / Assign
         if (se->expr()) visitExpr(se->expr());
@@ -244,6 +256,16 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     }
 
     if (auto n = dynamic_cast<p<ExprLiteralNode>>(expr)) {
+        // Phase 2e 构造模型重构: `#Static fn` 体内禁用 `$` (E3128).
+        // `$` 在 ast_builder 里生成 ExprLiteralNode(LiteralObjNode("$")),
+        // `$.field` / `$.method()` 读路径会递归到此, 一处拦截即覆盖.
+        if (auto obj = dynamic_cast<p<LiteralObjNode>>(n->literal())) {
+            if (obj->getValue().getText() == "$" &&
+                _currentFn && _currentFn->header()->isStatic()) {
+                throw YuxError(n->resolveLineNumber(), n->resolveColumn(),
+                               ErrorCode::E3128);
+            }
+        }
         // 字符串模板含插值表达式; 其余字面量无子表达式
         if (auto tpl = dynamic_cast<p<StringTemplateNode>>(n->literal())) {
             for (auto& e : tpl->interps()) visitExpr(e);
@@ -719,6 +741,12 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     // compileGetRefExpr 的 1656/1661 内联 throw 在正常 codepath 下不可达。
     // Phase 3.4.d.2: 补 E3042 链式私有字段可见性校验.
     if (auto n = dynamic_cast<p<ExprGetRefNode>>(expr)) {
+        // Phase 2e: `&$.x` 在 `#Static fn` 体内禁用 (E3128).
+        if (n->obj().getText() == "$" &&
+            _currentFn && _currentFn->header()->isStatic()) {
+            throw YuxError(n->resolveLineNumber(), n->resolveColumn(),
+                           ErrorCode::E3128);
+        }
         try {
             sema::validateGetRefPrivacy(_file, _sdkFile, n, _currentStructName);
         } catch (const YuxError&) {

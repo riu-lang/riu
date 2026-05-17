@@ -1,0 +1,18 @@
+; Phase 2e: #Static fn 体内读 `$.field` 应报 E3128
+
+struct P {
+  x i32
+}
+
+P {
+  fn P(x i32) {
+    $.x = x
+  }
+
+  #Static
+  fn make() i32 = $.x
+}
+
+fn main() i32 {
+  ret 0i32
+}
