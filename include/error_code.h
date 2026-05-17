@@ -251,6 +251,12 @@ DEF_ERR(3114, "`let {} <type>` requires an initializer (use `#Mut let` for defer
 DEF_ERR(3115, "Annotations '#{}' and '#{}' are mutually exclusive on `let` (DRAFT-let-unify §3.4)")
 DEF_ERR(3116, "Global `let {}` requires `#Cval`: only compile-time constants are allowed at global scope (DRAFT-let-unify §3)")
 
+// ── 构造模型重构: #Static fn / Self / 字段字面量 (DRAFT-static-fn) ────
+DEF_ERR(3120, "`{}::{}` resolves to an instance method, not a `#Static fn`: use `<receiver>.{}(...)` instead (DRAFT-static-fn)")
+DEF_ERR(3121, "struct `{}` has no static fn `{}` (`Type::name(...)` requires a method annotated `#Static`; DRAFT-static-fn)")
+DEF_ERR(3122, "`{}::{}` LHS is neither an enum nor a struct in scope (DRAFT-static-fn)")
+DEF_ERR(3123, "`Self` type only allowed inside a `structImpl` body (DRAFT-static-fn)")
+
 // ── E4xxx 所有权 / 借用 ───────────────────────────────────────────────
 DEF_ERR(4001, "T& borrow initializer must be &expr or an existing T& variable")
 DEF_ERR(4002, "T& '{}' borrows root '{}' whose scope does not cover the borrow")

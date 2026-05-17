@@ -534,6 +534,39 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     }
     if (auto n = dynamic_cast<p<ExprPathCallNode>>(expr)) {
         for (auto& a : n->args()) visitExpr(a);
+
+        // Phase 2c 构造模型重构: `Type::name(...)` 按 LHS 分流.
+        //   * LHS 是 struct -> 必须是 #Static 方法 (E3120/E3121); codegen Phase 3 落地.
+        //   * LHS 是 enum   -> 走原 validateEnumCtorShape 路径 (E2019/E2020/E2021/E2032).
+        // struct/enum 重名在 yux 里非法 (E2017), 此处直接按 lhsName 查 struct 优先.
+        {
+            string lhsName = n->enumName().getText();
+            auto* structImpl = _file ? _file->getStructImpl(lhsName) : nullptr;
+            if (!structImpl && _sdkFile && _sdkFile != _file) {
+                structImpl = _sdkFile->getStructImpl(lhsName);
+            }
+            if (structImpl) {
+                string rhsName = n->variantName().getText();
+                p<FnHeaderNode> methodHeader = nullptr;
+                for (auto& m : structImpl->methods()) {
+                    if (m->header()->name().getText() == rhsName) {
+                        methodHeader = m->header();
+                        break;
+                    }
+                }
+                int line = n->resolveLineNumber();
+                int col = n->resolveColumn();
+                if (!methodHeader) {
+                    throw YuxError(line, col, ErrorCode::E3121, lhsName, rhsName);
+                }
+                if (!methodHeader->isStatic()) {
+                    throw YuxError(line, col, ErrorCode::E3120, lhsName, rhsName, rhsName);
+                }
+                // #Static 命中: sema 形态校验通过; 参数类型 / 返回类型校验留 Phase 3 codegen.
+                return;
+            }
+        }
+
         // Phase 3.4.a: SemaPass 接管 E2019/E2020/E2021/E2032.
         // node->setResolvedType 已在 visitExpr 顶部写好 (getType 抛错时已在白名单
         // 重抛, 否则吞掉; 这里能跑到说明 getType 至少没抛已迁移码).

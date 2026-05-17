@@ -2193,6 +2193,21 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
     int line = node->getLineNumber();
     int col = node->getColumn();
 
+    // Phase 2c: 构造模型重构 —— 若 LHS 是 struct, 走静态调用路径 (Phase 3 未实现).
+    // sema 已先做形态校验 (#Static 命中 / 缺失), 此处仅作 codegen 兜底.
+    {
+        string lhsRaw = node->enumName().getText();
+        auto* structImpl = _file ? _file->getStructImpl(lhsRaw) : nullptr;
+        FileNode* sdk = _yux ? _yux->sdkFile() : nullptr;
+        if (!structImpl && sdk && sdk != _file) {
+            structImpl = sdk->getStructImpl(lhsRaw);
+        }
+        if (structImpl) {
+            throw YuxError(line, col, ErrorCode::E0000,
+                "`Type::name(...)` 静态调用 codegen 未实现 (Phase 3)");
+        }
+    }
+
     // Phase 3.4.a: enum ctor 形态校验 (E2019/E2020/E2021/E2032) 整体抠到 sema.
     // SemaPass 已先抛出; 这里是幂等防御性双跑.
     sema::validateEnumCtorShape(_file, _yux ? _yux->sdkFile() : nullptr, node);

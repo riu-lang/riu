@@ -1,0 +1,18 @@
+; Phase 2c: Type::name 调用未标 #Static 的实例方法应报 E3120
+
+struct P {
+  x i32
+}
+
+P {
+  fn P(x i32) {
+    $.x = x
+  }
+
+  fn get_x() i32 = $.x
+}
+
+fn main() i32 {
+  let v i32 = P::get_x()
+  ret 0i32
+}
