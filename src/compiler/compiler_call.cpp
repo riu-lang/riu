@@ -944,6 +944,79 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             // E6026 / E6027 已由 sema::validateCompilerInnerIntrinsicShape 校验
             auto& T = typeArgs[0];
 
+            // Phase 3f / 6: Heap<U> 深拷 — 新分配 + 写入 inner U + 递归 retain U 的 RC 字段.
+            // 不同于 Rc (shallow handle copy): Heap 是单 owner, 浅拷会 double-free.
+            if (T.isHeap()) {
+                auto innerSp = T.heapElementType();
+                if (!innerSp) {
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                        ErrorCode::E6029, fnName, T.getFullName());
+                }
+                auto innerType = *innerSp;
+                auto innerLLVMType = getLLVMType(innerType);
+                // args[0] = Heap<U> = ptr (raw heap handle, 不是 wrapper struct)
+                auto srcInner = _builder.CreateLoad(innerLLVMType, args[0], "copy_of.heap.src");
+                auto sizeVal = _builder.getInt64(
+                    _module->getDataLayout().getTypeAllocSize(innerLLVMType).getFixedValue());
+                auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
+                auto newPtr = _builder.CreateCall(allocFn, {sizeVal}, "copy_of.heap.new");
+                _builder.CreateStore(srcInner, newPtr);
+                // inner 的 RC 字段 +1 (deep copy 后两个 Heap 各持一份内嵌 Rc 句柄)
+                retainHandleAtCallSite(srcInner, innerType);
+                recordTemp(newPtr, T);
+                return newPtr;
+            }
+
+            // Phase 3f / 6: Heap<U>? 深拷 — null → null, some → 走 Heap 分支同款.
+            if (T.isNullable()) {
+                auto innerNullSp = T.nullableInnerType();
+                if (innerNullSp && innerNullSp->isHeap()) {
+                    auto innerHeapType = *innerNullSp;
+                    auto innerElemSp = innerHeapType.heapElementType();
+                    if (!innerElemSp) {
+                        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                            ErrorCode::E6029, fnName, T.getFullName());
+                    }
+                    auto innerType = *innerElemSp;
+                    auto innerLLVMType = getLLVMType(innerType);
+                    auto ptrTy = llvm::PointerType::get(_context, 0);
+                    auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
+
+                    auto hasFlag = _builder.CreateExtractValue(args[0], {0}, "copy_of.nh.has");
+                    auto srcPtr = _builder.CreateExtractValue(args[0], {1}, "copy_of.nh.src");
+
+                    auto* fn = _builder.GetInsertBlock()->getParent();
+                    auto* startBB = _builder.GetInsertBlock();
+                    auto* allocBB = llvm::BasicBlock::Create(_context, "copy_of.nh.alloc", fn);
+                    auto* contBB = llvm::BasicBlock::Create(_context, "copy_of.nh.cont", fn);
+                    _builder.CreateCondBr(hasFlag, allocBB, contBB);
+
+                    _builder.SetInsertPoint(allocBB);
+                    auto srcInner = _builder.CreateLoad(innerLLVMType, srcPtr, "copy_of.nh.inner");
+                    auto sizeVal = _builder.getInt64(
+                        _module->getDataLayout().getTypeAllocSize(innerLLVMType).getFixedValue());
+                    auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
+                    auto newPtr = _builder.CreateCall(allocFn, {sizeVal}, "copy_of.nh.new");
+                    _builder.CreateStore(srcInner, newPtr);
+                    retainHandleAtCallSite(srcInner, innerType);
+                    auto* afterAllocBB = _builder.GetInsertBlock();
+                    _builder.CreateBr(contBB);
+
+                    _builder.SetInsertPoint(contBB);
+                    auto phi = _builder.CreatePHI(ptrTy, 2, "copy_of.nh.ptr");
+                    phi->addIncoming(nullPtr, startBB);
+                    phi->addIncoming(newPtr, afterAllocBB);
+
+                    auto resultTy = getLLVMType(T);
+                    llvm::Value* result = llvm::UndefValue::get(resultTy);
+                    result = _builder.CreateInsertValue(result, hasFlag, {0}, "copy_of.nh.res.has");
+                    result = _builder.CreateInsertValue(result, phi, {1}, "copy_of.nh.res.val");
+
+                    recordTemp(result, T);
+                    return result;
+                }
+            }
+
             // args[0] 是 T 的 struct value（来自 compileExpr 自动 deref T&）
             // 把所有 RC 子结构 +1：Rc/Array/Weak 抽 handle 调对应 retain；
             // struct 走 retainStructFieldsAtCallSite 递归；含 RC enum 走其分支。

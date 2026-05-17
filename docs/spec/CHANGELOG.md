@@ -15,6 +15,20 @@
 
 ---
 
+## 2026-05-17 —— Heap Phase 3f / 6：copy_of 扩展 Heap
+
+- **行为面新增**（DRAFT-heap-types Phase 6 / `copy_of` baked 扩展）：
+  - `copy_of:<Heap<T>>(x Heap<T>&) Heap<T>`：深拷——`__yux_heap_alloc(sizeof(T))` 分配新句柄 + 把源 inner `T` 写入 + 递归 retain inner 的 Rc / Array / Weak / String 字段。两个 Heap 各持独立 owner，作用域尾各自 free，不会 double-free。
+  - `copy_of:<Heap<T>?>(x Heap<T>?&) Heap<T>?`：源 `_has=false` → `{false, null}`；`_has=true` → 走 Heap 分支同款；以 PHI 选 ptr。
+  - **修正既有 bug**：之前对 `Heap<T>` 走通用 `retainHandleAtCallSite` 路径——Heap 没有 retain 分支，等于 no-op + bitwise return，导致 `let b = copy_of(a)` 让 `a` / `b` 共享同一 ptr → 作用域尾 double-free。现在专门走深拷分支。
+  - `src/compiler/compiler_call.cpp::copy_of`：在通用分派前插入 `T.isHeap()` 与 `T.isNullable() && nullableInner.isHeap()` 两条分支；后者用 cond-br + alloc BB + cont BB + PHI 合并。
+  - `src/sema/call_resolve.cpp::copy_of` `hasRefDeep`：把 `t.isHeap()` 加入"不展开"列表（与 `Rc/Weak/Array/Nullable/Dyn/Ptr/Fn` 同级），把 Heap 当不透明堆句柄。
+- **不在范围**：
+  - **spec Clone 优先级**（草案 Phase 6 第三条）：依赖 DRAFT-spec-unify 至少"Spec 形态可识别"，未到位前留 TODO。
+  - **显式 by-value 拒绝**：草案曾提"`copy_of(rc)` / `copy_of(heap)` 按值禁；引导 `Rc:<T>(copy_of(as_ref(rc)))`"——但 by-value 形态本就走 auto-borrow→T& 等价路径，新深拷分支下也得到正确独立 Heap，无再 broken；不再加显式禁止。
+- **测试**：`sdk/yux/src/yux/core/heap.test.yux` 新增 5 项 — `test_heap_3f_copy_of_owned_scalar` / `_owned_struct` / `_nullable_some` / `_nullable_null` / `_no_double_free`；SDK 526 → 531 通过。
+- **回归**：`xmake test` 184/184、`yux test`（SDK）531/531 全绿。
+
 ## 2026-05-17 —— Heap Phase 3e：Lambda 捕获 Heap
 
 - **行为面新增**（DRAFT-heap-types §5.5 / Phase 5 计划提前）：

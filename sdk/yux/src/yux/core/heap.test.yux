@@ -336,3 +336,67 @@ fn test_heap_3e_lambda_move_capture_no_double_free() {
   let h2 Heap<i32>? = heap_some(11i32)
   assert_eq(h2.has(), true)
 }
+
+; ---------- Phase 3f / 6: copy_of 扩展 Heap ----------
+; copy_of(h Heap<T>&)  → 新分配 + 写入 inner T + 递归 retain T 的 RC 字段
+; copy_of(h Heap<T>?&) → null → null; some → 同 Heap<T>&
+; 与 Rc 浅拷不同: Heap 单 owner, 拷贝必须深; 否则双 owner 同一 ptr → double-free
+
+#Test
+fn test_heap_3f_copy_of_owned_scalar() {
+  let a Heap<i32> = Heap:<i32>(99i32)
+  let b Heap<i32> = copy_of:<Heap<i32>>(a)
+  let ra i32& = as_ref(a)
+  let rb i32& = as_ref(b)
+  assert_eq(ra, 99i32)
+  assert_eq(rb, 99i32)
+}
+
+struct CopyHeapBox {
+  k i32
+}
+
+CopyHeapBox {
+  #Static
+  fn make(k i32) CopyHeapBox {
+    ret Self {
+      .k = k
+    }
+  }
+}
+
+#Test
+fn test_heap_3f_copy_of_owned_struct() {
+  let a Heap<CopyHeapBox> = Heap:<CopyHeapBox>(CopyHeapBox::make(7i32))
+  let b Heap<CopyHeapBox> = copy_of:<Heap<CopyHeapBox>>(a)
+  let ra CopyHeapBox& = as_ref(a)
+  let rb CopyHeapBox& = as_ref(b)
+  assert_eq(ra.k, 7i32)
+  assert_eq(rb.k, 7i32)
+}
+
+#Test
+fn test_heap_3f_copy_of_nullable_some() {
+  let a Heap<i32>? = heap_some(33i32)
+  let b Heap<i32>? = copy_of:<Heap<i32>?>(a)
+  assert_eq(a.has(), true)
+  assert_eq(b.has(), true)
+}
+
+#Test
+fn test_heap_3f_copy_of_nullable_null() {
+  let a Heap<i32>? = heap_null:<i32>()
+  let b Heap<i32>? = copy_of:<Heap<i32>?>(a)
+  assert_eq(a.has(), false)
+  assert_eq(b.has(), false)
+}
+
+#Test
+fn test_heap_3f_copy_of_no_double_free() {
+  ; 两个独立 Heap, 各自作用域尾 __yux_heap_free 不冲突; 再分配应稳定.
+  let a Heap<i32> = Heap:<i32>(1i32)
+  let b Heap<i32> = copy_of:<Heap<i32>>(a)
+  let c Heap<i32> = Heap:<i32>(2i32)
+  let rc i32& = as_ref(c)
+  assert_eq(rc, 2i32)
+}

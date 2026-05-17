@@ -737,7 +737,9 @@ void validateCompilerInnerIntrinsicTypeShape(const string& fnName,
         hasRefDeep = [&](const TypeInfo& t, string& path) -> bool {
             if (t.isRef()) { path = t.getFullName(); return true; }
             if (t.isRc() || t.isArrayGeneric() || t.isWeak()
-                || t.isNullable() || t.isDyn() || t.isPtr() || t.isFn()) {
+                || t.isNullable() || t.isDyn() || t.isPtr() || t.isFn()
+                || t.isHeap()) {
+                // Heap<T> 与其他堆句柄一致, 当作不透明把柄不展开 (Phase 3f / 6)
                 return false;
             }
             if (isBuiltinType(t.name)) return false;
