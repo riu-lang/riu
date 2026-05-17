@@ -431,11 +431,15 @@ void Compiler::emitInstanceMethods() {
                         retType = applySubst(method->header()->retType()->getType());
                     }
                     bool isStatic = method->header()->isStatic();
-                    // 构造函数名需要使用实例名 (#Static 与构造互斥, 不受此影响)
-                    string effMethodName = (!isStatic && methodName == baseName) ? structName : methodName;
+                    // Phase 6D-tail：同名 ctor 已砍 (E3130)；泛型 impl 在实例化时
+                    // 兜底拦截同名非 #Static 方法（sema 跳过 generic impl，故只能在这里抓）。
+                    if (!isStatic && methodName == baseName) {
+                        throw YuxError(method->header()->getLineNumber(),
+                                       ErrorCode::E3130, baseName, baseName, baseName);
+                    }
                     string mFallibleErr;
                     if (auto e = method->header()->getAnnoArg("Fallible")) mFallibleErr = *e;
-                    auto func = getMethodFunction(structName, effMethodName, paramTypes, retType, mFallibleErr, isStatic);
+                    auto func = getMethodFunction(structName, methodName, paramTypes, retType, mFallibleErr, isStatic);
                     compileMethod(method, func, structName, false, isStatic);
                 }
 

@@ -159,13 +159,15 @@ SymbolInfo* lookupLhsSym(p<StatementAssignNode> a, p<ScopeNode> scope) {
 // 解析 fn 所在的结构体上下文（用于 §6.2 字段写白名单）。
 // - file:           enclosing FileNode，用于跨模块 getStructOwner 解析字段所属。
 // - implStructName: 若 fn 是某 struct impl 的方法，记录 struct 名；否则空。
-// - isConstructor:  fn 名 == structName（spec §7：构造函数即同名方法）。
 // - isDestructor:   fn 为该 struct impl 的 _destructor（fn ~()）。
+// Phase 6D: 同名 ctor 已砍 (E3130)，不再需要 isConstructor 标记；
+// `#Val/#Frozen` 字段的"构造期允许写入"语义转为"`#Static fn` 体内通过
+// `Self { .f = v }` 字段字面量产出 `Self`" —— 字段字面量是表达式分支,
+// 不走 StatementAssignNode 路径, 无需在此处放行。
 struct FnContext {
     FileNode*       file = nullptr;
     StructImplNode* impl = nullptr;
     string          implStructName;
-    bool            isConstructor = false;
     bool            isDestructor  = false;
 };
 
@@ -185,8 +187,6 @@ FnContext resolveFnContext(p<FnNode> fn) {
         c.implStructName = c.impl->structName();
         if (c.impl->hasDestructor() && c.impl->destructor() == fn) {
             c.isDestructor = true;
-        } else if (fn->header()->name().getText() == c.implStructName) {
-            c.isConstructor = true;
         }
     }
     return c;
@@ -381,11 +381,9 @@ private:
         bool deep = as->subs().size() > 1;
         bool reject = deep ? fd->isFrozen() : (fd->isVal() || fd->isFrozen());
         if (!reject) return;
-        // 仅当不是该 struct 的构造函数时拒收。
-        // 跨 struct 写入：即使本 fn 是 struct A 的构造函数，也无权写 struct B 的 #Val/#Frozen 字段，
-        // 故只在 implStructName == sd 名 且 isConstructor 时放行。
-        bool inOwnCtor = _ctx.isConstructor && _ctx.implStructName == sd->name().getText();
-        if (inOwnCtor) return;
+        // Phase 6D: 同名 ctor 已砍, 不再有"构造函数体内放行" 路径;
+        // `#Val/#Frozen` 字段的初始化只能走 `#Static fn` 体内 `Self { .f = v }`
+        // 字段字面量 (属表达式分支, 不进 StatementAssignNode), 这里一律拒收。
         const char* tag = fd->isFrozen() ? "Frozen" : "Val";
         throw YuxError(as->getLineNumber(), as->getColumn(),
                        ErrorCode::E3109, fieldName, tag, sd->name().getText());

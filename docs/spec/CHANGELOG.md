@@ -15,6 +15,17 @@
 
 ---
 
+## 2026-05-17 —— 构造模型重构 Phase 6D 收尾：C++ 端 ctor 残余清理
+
+- **行为面无变化**：sema E3130 已于 Phase 6A 落地，定义形态 `fn TypeName(...)` 已被拦截；SDK / tests / examples / docs 已于 6B/6C 全量迁完。本次仅清理 C++ 端遗留：
+  - `src/compiler/compiler.cpp`：泛型 impl 实例化路径补 E3130 兜底（sema 跳过 generic impl，泛型同名 ctor 之前未被拦截），删除 `effMethodName` fallback。
+  - `src/sema/sema_pass.cpp`：去掉多余的"方法 isGeneric 跳过"（line 162 已跳过整个 generic impl）。
+  - `src/lsp/semantic_tokens.cpp`：取消"struct 名作 callee 着色为 Method"特例（Phase 6D 后非法），统一着色 Function；移除 `CollectState::structNames` 字段。
+  - `src/analyzer/const_mut_checker.cpp`：移除 `FnContext::isConstructor` 字段及"构造函数内放行 `#Val`/`#Frozen` 字段写入"分支——构造期写入语义已迁至 `Self { .f = v }` 字段字面量（表达式分支，不走 `StatementAssignNode`）。
+- **DRAFT 收尾**：`docs/spec/draft/DRAFT-static-fn.md` 头部状态升级为 "已落地（P1 + Phase 6A–6D）"。
+- **遗留**：泛型 struct + `#Static fn make` + `Self {}` codegen 路径未通（见 BUGS #3 / Phase 6E.4 B-E），非阻塞主线。
+- **回归**：`xmake test` 183/183、`yux test`（SDK）514/514 全绿。
+
 ## 2026-05-17 —— 构造模型重构 P1：`#Static fn` + `Self` + `Self { ... }` 字段字面量
 
 - **新增 §7.10**：静态函数（关联函数）章节。声明形态 `#Static\nfn name(...) RT { ... }` 挂在 `structImpl` 内，无 `$` 接收者；调用语法 `Type::name(...)`，与 enum 构造共用 parser 节点（`ExprPathCallNode`），sema 按 LHS 类型分流。同结构体内 `#Static fn` 与同名实例 fn 共存允许，与同名 ctor 禁止。`Self` 升格为保留字（lexer token `SelfType`），在 `structImpl` 体内绑定为所属结构体类型；可出现在类型位 / 调用 LHS / 字段字面量 LHS。`Self { .field = expr ... }` 字段字面量仅在 `#Static fn` 体内合法，字段必须列全（DAA 退化），句柄字段 RHS 沿用 §7.4.4 的 retain-then-release / 转移 +1 语义。

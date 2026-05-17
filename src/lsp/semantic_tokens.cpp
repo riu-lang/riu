@@ -117,7 +117,6 @@ using OverrideMap = std::unordered_map<size_t, OverrideEntry>;
 
 struct CollectState {
     OverrideMap overrides;
-    std::unordered_set<std::string> structNames; // 用于识别构造函数 N(...) 这种调用
 };
 
 // 把 token 的索引登记为指定语义类型（只覆盖 ID 类 token，避免误标关键字）。
@@ -127,8 +126,8 @@ void put(OverrideMap& m, antlr4::Token* tok, TT kind, int mods = 0) {
     m[tok->getTokenIndex()] = {static_cast<int>(kind), mods};
 }
 
-// 后序遍历：子节点先处理。利用 program 顶层 structDecl/structImpl 出现在 fn 之前，
-// 单遍即可在访问 ExprCall 时拿到完整的 structNames 集合。
+// 后序遍历：子节点先处理。Phase 6D 后 N(...) 同名 ctor 已被 E3130 拦截,
+// 无需再额外维护 structNames 用于 ExprCall 着色。
 void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
     if (!node) return;
     using P = ::yux::yuxParser;
@@ -142,7 +141,6 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
     if (auto* c = dynamic_cast<P::StructDeclContext*>(node)) {
         if (auto* st = c->structType(); st && st->name) {
             put(out, st->name, TT::Class, MOD_DECLARATION);
-            state.structNames.insert(st->name->getText());
         }
     } else if (auto* c = dynamic_cast<P::DraftDeclContext*>(node)) {
         if (auto* dt = c->draftType(); dt && dt->name) {
@@ -155,7 +153,6 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
         if (auto* st = c->structType(); st && st->name) {
             // structImpl 的名字是对 struct 的引用，不是声明
             put(out, st->name, TT::Class, 0);
-            state.structNames.insert(st->name->getText());
         }
     } else if (auto* c = dynamic_cast<P::FnHeaderContext*>(node)) {
         put(out, c->name, TT::Function, MOD_DECLARATION);
@@ -223,12 +220,11 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
                 }
             }
         } else if (auto* litExpr = dynamic_cast<P::ExprLiteralContext*>(c->left)) {
-            // foo() / N() —— 看 literalObj：若名字是已知 struct 则视为构造函数（method），否则普通函数调用
+            // foo() —— 普通函数调用; Phase 6D 后同名 ctor `Foo(...)` 已被 E3130 拦截,
+            // struct 名作 callee 已非构造形态, 这里一律按 Function 着色.
             if (auto* obj = dynamic_cast<P::LiteralObjContext*>(litExpr->literal())) {
                 if (auto* tok = obj->name) {
-                    bool isCtor = state.structNames.count(tok->getText()) > 0;
-                    TT kind = isCtor ? TT::Method : TT::Function;
-                    out[tok->getTokenIndex()] = {static_cast<int>(kind), 0};
+                    out[tok->getTokenIndex()] = {static_cast<int>(TT::Function), 0};
                 }
             }
         }

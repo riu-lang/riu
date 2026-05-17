@@ -164,7 +164,8 @@ void SemaPass::run() {
         // ExprGetRefNode / ExprDotNode 字段访问时校验 E3042 私有可见性.
         _currentStructName = impl->structName();
         for (auto& m : impl->methods()) {
-            if (m->header()->isGeneric()) continue;
+            // 注：m->header()->isGeneric() 不再单独跳过——line 162 已跳过整个 generic impl,
+            // 单方法泛型形态目前不支持 (Phase 6D-tail 清理)。
             if (m->header()->hasAnno("CompilerInner")) continue;
             // Phase 6A: 砍同名 ctor —— `fn TypeName(...)` 定义形态废除,
             // 构造唯一通道收敛到 `#Static fn`. `#Static fn TypeName(...)` 形态
