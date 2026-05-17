@@ -1309,6 +1309,24 @@ String {
     $.data = buf
   }
 
+  ; 静态工厂：空字符串
+  ; Phase 4b 试点；与同名 ctor `String()` 并存，构造模型重构完成后会砍 ctor
+  #Static
+  fn empty() String {
+    ret Self {
+      .data = []
+    }
+  }
+
+  ; 静态工厂：接管 Array<u32> 码点缓冲
+  ; 句柄共享，调用方仍持原 buf
+  #Static
+  fn from(buf Array<u32>) String {
+    ret Self {
+      .data = buf
+    }
+  }
+
   fn len() i64 {
     $.data.len()
   }
