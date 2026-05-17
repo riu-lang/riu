@@ -1,4 +1,4 @@
-; Phase 4b: String #Static 工厂回归
+; Phase 4b/4c: String #Static 工厂回归 (ctor 已砍, 构造唯一通道为静态工厂)
 
 #Test
 fn test_string_static_empty() {
@@ -14,7 +14,7 @@ fn test_string_static_from_buf() {
   let s String = String::from(buf)
   assert_eq(s.len(), 2i64)
   assert_eq(s, "hi")
-  ; 句柄共享：buf 与 s.data 同 block，出作用域后两者各 release，不应 double free
+  ; from() 深拷贝, buf 自身仍可独立存在
   assert_eq(buf.len(), 2i64)
 }
 
@@ -27,11 +27,10 @@ fn test_string_static_from_empty_buf() {
 }
 
 #Test
-fn test_string_static_coexist_with_ctor() {
-  ; 同名 ctor `String(buf)` 与 `String::from(buf)` 并存，结果应一致
-  let buf1 Array<u32> = [65u32]
-  let buf2 Array<u32> = [65u32]
-  let a String = String(buf1)
-  let b String = String::from(buf2)
-  assert_eq(a, b)
+fn test_string_from_defensive_copy() {
+  ; 关键回归: String::from 深拷贝, 外界 mutate buf 不影响已构造的 String
+  #Mut let buf Array<u32> = [104u32, 105u32]
+  let s String = String::from(buf)
+  assert_eq(s, "hi")
+  assert_eq(buf.len(), 2i64)
 }

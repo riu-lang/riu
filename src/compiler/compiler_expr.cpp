@@ -2292,6 +2292,17 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
             for (auto& a : node->args()) {
                 argVals.push_back(compileExpr(a));
             }
+            // Phase 4c: 静态 fn 调用点的句柄实参所有权转移，与 ExprCallNode 路径对齐
+            // (compiler_call.cpp:667-670). 不做这步会让 callee 拿到 caller 唯一 +1,
+            // callee 析构释放后 caller 的 alloca 变成 use-after-free.
+            for (size_t i = 0; i < argVals.size() && i < paramTypes.size(); ++i) {
+                if (!typeNeedsDestructor(paramTypes[i])) continue;
+                if (!isFreshHandleExpr(node->args()[i])) {
+                    retainHandleAtCallSite(argVals[i], paramTypes[i]);
+                } else {
+                    consumeTemp(argVals[i]);
+                }
+            }
             return _builder.CreateCall(fn, argVals,
                                        retType.empty() ? "" : methodName + ".ret");
         }

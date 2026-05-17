@@ -789,7 +789,7 @@ i64 : ToString {
       out.push(buf[start + k].to_u32())
       k += 1
     }
-    String(out)
+    String::_take_buf(out)
   }
 }
 
@@ -916,7 +916,7 @@ u64 : ToString {
       out.push(buf[start + k].to_u32())
       k += 1
     }
-    String(out)
+    String::_take_buf(out)
   }
 }
 
@@ -1030,7 +1030,7 @@ f64 : ToString {
       frac -= digit.to_f64()
       i += 1
     }
-    String(out)
+    String::_take_buf(out)
   }
 }
 
@@ -1283,7 +1283,7 @@ Nullable<T> {
 }
 
 ; String 类型 - 不可变；内部使用 Array<u32> 存储 Unicode code points
-; v1 mutable 用例走 Array<u32> 缓冲 + String(buf) 构造
+; 构造唯一通道：#Static 工厂 (String::empty / String::from / String::_take_buf)
 struct String {
   data Array<u32>
 }
@@ -1293,24 +1293,7 @@ String {
     ; Array<u32> 会自动释放
   }
 
-  ; 空字符串构造
-  fn String() {
-    $.data = []
-  }
-
-  ; 拷贝构造（句柄共享）
-  fn String(s String) {
-    $.data = s.data
-  }
-
-  ; 接管 Array<u32> 缓冲构造
-  ; 共享 buf 的 Block；调用方仍持原句柄，作用域结束自动 release
-  fn String(buf Array<u32>) {
-    $.data = buf
-  }
-
   ; 静态工厂：空字符串
-  ; Phase 4b 试点；与同名 ctor `String()` 并存，构造模型重构完成后会砍 ctor
   #Static
   fn empty() String {
     ret Self {
@@ -1318,10 +1301,30 @@ String {
     }
   }
 
-  ; 静态工厂：接管 Array<u32> 码点缓冲
-  ; 句柄共享，调用方仍持原 buf
+  ; 静态工厂：从外部 Array<u32> 码点缓冲构造
+  ; **深拷贝**：iterate + push 到新 Block，外界改原 buf 不影响 String
+  ; (公开安全入口；SDK 内部"我自己造的 buf 立即移交"场景用 _take_buf 走零拷贝)
   #Static
   fn from(buf Array<u32>) String {
+    #Mut let copy Array<u32> = []
+    #Mut let i i64 = 0
+    loop {
+      if i >= buf.len() {
+        break;
+      }
+      copy.push(buf[i])
+      i += 1
+    }
+    ret Self {
+      .data = copy
+    }
+  }
+
+  ; SDK 私有：接管 Array<u32> 缓冲（句柄共享）
+  ; 调用方承诺移交后不再 mutate buf 内容；典型场景: i*.to_string() / SB::build()
+  ; `_` 前缀模块私有 (spec §10.4 _ 前缀可见性规则)；外部使用走 String::from
+  #Static
+  fn _take_buf(buf Array<u32>) String {
     ret Self {
       .data = buf
     }
@@ -1447,7 +1450,7 @@ String {
 String : ToString {
   ; String 自身实现 ToString：复用底层 Array<u32> Block，句柄共享
   fn to_string() String {
-    String($.data)
+    String::_take_buf($.data)
   }
 }
 
@@ -1519,7 +1522,7 @@ StringBuilder {
   ; 取出缓冲、构造不可变 String、自身重置为空
   ; 取出后再 append/clear 不会影响已返回的 String（不同 Array<u32> Block）
   fn build() String {
-    let s String = String($.data)
+    let s String = String::_take_buf($.data)
     $.data = []
     s
   }
