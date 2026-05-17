@@ -1,0 +1,22 @@
+; Phase 2d: `Self { ... }` 出现在非 #Static fn 体内应报 E3124
+
+struct P {
+  x i32
+}
+
+P {
+  fn P(x i32) {
+    $.x = x
+  }
+
+  fn rebuild() i32 {
+    let q P = Self {
+      .x = 1i32
+    }
+    ret 0i32
+  }
+}
+
+fn main() i32 {
+  ret 0i32
+}

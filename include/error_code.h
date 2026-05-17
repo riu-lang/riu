@@ -256,6 +256,10 @@ DEF_ERR(3120, "`{}::{}` resolves to an instance method, not a `#Static fn`: use 
 DEF_ERR(3121, "struct `{}` has no static fn `{}` (`Type::name(...)` requires a method annotated `#Static`; DRAFT-static-fn)")
 DEF_ERR(3122, "`{}::{}` LHS is neither an enum nor a struct in scope (DRAFT-static-fn)")
 DEF_ERR(3123, "`Self` type only allowed inside a `structImpl` body (DRAFT-static-fn)")
+DEF_ERR(3124, "`Self {{ ... }}` field literal only allowed inside a `#Static fn` body (DRAFT-static-fn)")
+DEF_ERR(3125, "`Self {{ ... }}` for struct `{}` is missing field `.{}` (all fields must be listed; DRAFT-static-fn)")
+DEF_ERR(3126, "struct `{}` has no field `.{}` (DRAFT-static-fn)")
+DEF_ERR(3127, "duplicate field `.{}` in `Self {{ ... }}` literal (DRAFT-static-fn)")
 
 // ── E4xxx 所有权 / 借用 ───────────────────────────────────────────────
 DEF_ERR(4001, "T& borrow initializer must be &expr or an existing T& variable")

@@ -34,6 +34,7 @@
 #include "sema/sema_pass.h"
 
 #include <array>
+#include <set>
 #include <string_view>
 
 #include "ast/node/enum_node.h"
@@ -526,11 +527,46 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         return;
     }
     if (auto n = dynamic_cast<p<ExprStructLitNode>>(expr)) {
-        // Phase 1b：AST 已构造，sema/codegen 尚未接管
-        // 出现位限制（仅 #Static fn 体内）、字段全列、类型绑定均待 Phase 2
-        throw YuxError(n->resolveLineNumber(), n->resolveColumn(),
-                       ErrorCode::E0000,
-                       "Self { ... } 结构体字面量未实现 (Phase 2)");
+        // Phase 2d 构造模型重构: `Self { ... }` 字段字面量校验.
+        //   * 出现位: 仅 `#Static fn` 体内 (E3124).
+        //   * 完整性: 必须列全所属结构体所有字段 (E3125).
+        //   * 已知字段: `.name` 必须是所属结构体的字段 (E3126).
+        //   * 唯一: 同名 `.field` 出现两次报 (E3127).
+        // codegen 仍走 E0000 占位 (Phase 3 接管).
+        int line = n->resolveLineNumber();
+        int col = n->resolveColumn();
+        if (!_currentFn || !_currentFn->header()->isStatic() || _currentStructName.empty()) {
+            throw YuxError(line, col, ErrorCode::E3124);
+        }
+        StructDeclNode* decl = _file ? _file->getStructDecl(_currentStructName) : nullptr;
+        if (!decl && _sdkFile && _sdkFile != _file) {
+            decl = _sdkFile->getStructDecl(_currentStructName);
+        }
+        if (!decl) {
+            throw YuxError(line, col, ErrorCode::E3124);
+        }
+        std::set<string> seen;
+        for (auto& fi : n->fields()) {
+            string fname = fi->name().getText();
+            int fline = fi->name().getLine();
+            int fcol = static_cast<int>(fi->name().getCharPositionInLine());
+            if (decl->fieldIndex(fname) < 0) {
+                throw YuxError(fline, fcol, ErrorCode::E3126, _currentStructName, fname);
+            }
+            if (!seen.insert(fname).second) {
+                throw YuxError(fline, fcol, ErrorCode::E3127, fname);
+            }
+            visitExpr(fi->value());
+        }
+        if (seen.size() != decl->fields().size()) {
+            for (auto& f : decl->fields()) {
+                if (!seen.count(f->name().getText())) {
+                    throw YuxError(line, col, ErrorCode::E3125,
+                                   _currentStructName, f->name().getText());
+                }
+            }
+        }
+        return;
     }
     if (auto n = dynamic_cast<p<ExprPathCallNode>>(expr)) {
         for (auto& a : n->args()) visitExpr(a);
