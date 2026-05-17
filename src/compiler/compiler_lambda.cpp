@@ -371,12 +371,30 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
                 // 写 8 字节指针；不 retain（借用语义，无所有权迁移）
                 _builder.CreateStore(it->second, dstAddr);
             } else {
+                // Phase 3e: Heap<T>? 捕获走 B 档 move 语义 (草案 §5.5 / Phase 5)
+                // —— 不 retain (retainHandleAtCallSite 本就无 Heap 分支), 写入 env 后
+                // 把 outer slot 写 {_has=false, _value=null}; 让 outer scope 尾 dtor
+                // 看 _has=false 跳 free, env 独占所有权 (与 §5.3 字段 move-out 同款).
+                bool isHeapNullableCap = false;
+                if (cap.type.isNullable()) {
+                    auto inner = cap.type.nullableInnerType();
+                    if (inner && inner->isHeap()) isHeapNullableCap = true;
+                }
                 auto valLLVMTy = getLLVMType(cap.type);
                 auto srcVal = _builder.CreateLoad(valLLVMTy, it->second, "cap.src");
                 _builder.CreateStore(srcVal, dstAddr);
-                // 堆句柄按 callee-clean 习惯 retain（与 retainHandleAtCallSite 同款逻辑）
-                // —— 仅 Rc 路径需要；栈嵌入路径已在前面拒绝了 needs-dtor 字段
-                if (typeNeedsDestructor(cap.type)) {
+                if (isHeapNullableCap) {
+                    auto z0 = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+                    auto z1 = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+                    auto hasField = _builder.CreateGEP(valLLVMTy, it->second,
+                                                       {z0, z0}, "cap.bdang.has");
+                    auto valField = _builder.CreateGEP(valLLVMTy, it->second,
+                                                       {z0, z1}, "cap.bdang.value");
+                    _builder.CreateStore(_builder.getInt1(false), hasField);
+                    _builder.CreateStore(llvm::ConstantPointerNull::get(ptrTy), valField);
+                } else if (typeNeedsDestructor(cap.type)) {
+                    // 堆句柄按 callee-clean 习惯 retain（与 retainHandleAtCallSite 同款逻辑）
+                    // —— 仅 Rc 路径需要；栈嵌入路径已在前面拒绝了 needs-dtor 字段
                     retainHandleAtCallSite(srcVal, cap.type);
                 }
             }

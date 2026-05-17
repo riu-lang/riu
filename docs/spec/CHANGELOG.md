@@ -15,6 +15,20 @@
 
 ---
 
+## 2026-05-17 —— Heap Phase 3e：Lambda 捕获 Heap
+
+- **行为面新增**（DRAFT-heap-types §5.5 / Phase 5 计划提前）：
+  - 接受 `Heap<T>?` 按所有权 move 捕获：lambda 创建点把外层 slot 写 `{_has=false, _value=null}`，env 独占所有权；lambda dtor 既有 `typeNeedsDestructor` / `releaseAtPtr` 路径自动 free。
+  - 非空 `Heap<T>` 按值捕获 → 报 **E4024**（与 §5.2 / §5.3 一致：要求声明为 `Heap<T>?` 用 movable slot）。
+  - `Heap<T>&` / `Heap<T>?&` 借用捕获走既有 `T&` ref 分支，零代码改动；逃逸由既有 **E4022** 兜底。
+  - `src/compiler/compiler_expr.cpp`（capture 识别）：扩接受集为 `isScalar || isHandle || isRef || isHeapNullable`；非空 Heap 显式 throw E4024；槽位字节数从硬编码 8 改为 `DataLayout::getTypeAllocSize` 计算（向下兜底 8），防 `Heap<T>?` = `{i1, ptr}` 实际 16 字节与下一个 capture 槽重叠。
+  - `src/compiler/compiler_lambda.cpp::compileLambdaExpr`：写入 env capture 后，若 `cap.type` 是 `Heap<T>?`，跳 retain（`retainHandleAtCallSite` 本就无 Heap 分支）并对 outer slot 写 `{_has=false, _value=null}`（与 3d.2 / 3d.3 同款 GEP 写回）。
+- **不在范围**（保留供后续）：
+  - 跨 lambda 字段 move-out（仍依 §5.3 跨函数全 struct move-in ABI）。
+  - 索引 lvalue / lambda 内 if-else flow 字段窄化。
+- **测试**：`sdk/yux/src/yux/core/heap.test.yux` 新增 3 项 `test_heap_3e_lambda_move_capture_{nullable,null_source,no_double_free}`；`tests/cases/diag_heap_lambda_capture_non_null.yux` 锁 E4024。SDK 523 → 526 通过，xmake 183 → 184 通过。
+- **回归**：`xmake test` 184/184、`yux test`（SDK）526/526 全绿（pre-existing flaky `test_string_plus_left_non_string` 单独运行 PASS，与本改无关）。
+
 ## 2026-05-17 —— Heap Phase 3d.3：B 档 nullable move 字段形态扩展
 
 - **行为面新增**（DRAFT-heap-types §5.2 / §5.3，同函数同 scope 内）：

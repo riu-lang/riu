@@ -297,3 +297,42 @@ fn test_heap_3d3_call_site_field_no_double_free() {
   let h2 HeapNullableHolder = HeapNullableHolder::make()
   assert_eq(h2.buf.has(), true)
 }
+
+; ---------- Phase 3e: Lambda 捕获 Heap ----------
+; - Heap<T>? 按所有权 move 捕获: outer 写 null, env 持有, lambda 调用后 env 释放
+; - Heap<T>& / Heap<T>?& 走既有 T& 借用透传 (零代码改动)
+; - Heap<T> 非空按值捕获 → E4024 (诊断用例见 tests/cases/diag_heap_lambda_*)
+
+#Test
+fn test_heap_3e_lambda_move_capture_nullable() {
+  ; 捕获 Heap<i32>? 走 B 档 move: outer h 写回 null, 调用 lambda 走 env 内的副本.
+  let h Heap<i32>? = heap_some(33i32)
+  let f fn()bool = {
+    h.has()
+  }
+  assert_eq(h.has(), false)
+  assert_eq(f(), true)
+}
+
+#Test
+fn test_heap_3e_lambda_move_capture_null_source() {
+  ; null 源捕获: outer 写回 null (no-op 等价), env 持 _has=false 副本.
+  let h Heap<i32>? = heap_null:<i32>()
+  let f fn()bool = {
+    h.has()
+  }
+  assert_eq(h.has(), false)
+  assert_eq(f(), false)
+}
+
+#Test
+fn test_heap_3e_lambda_move_capture_no_double_free() {
+  ; 捕获 + lambda dtor 释放 env 内 Heap<i32>?; outer 跳 free; 再分配应稳定.
+  let h Heap<i32>? = heap_some(7i32)
+  let f fn()bool = {
+    h.has()
+  }
+  let _ bool = f()
+  let h2 Heap<i32>? = heap_some(11i32)
+  assert_eq(h2.has(), true)
+}

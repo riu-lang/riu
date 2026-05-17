@@ -330,15 +330,38 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             bool isHandle = t.isRc() || t.isWeak() || t.isArrayGeneric()
                             || (t.isNormal() && t.name == "String");
             bool isRef = t.isRef();
-            if (!isScalar && !isHandle && !isRef) {
+            // Phase 3e: Heap<T>? 接受按所有权 move 捕获 (B 档复用); Heap<T> 非空
+            // 按值捕获 → E4024 (与 §5.2/§5.3 一致, 引导用户声明为可空形态)
+            bool isHeapNullable = false;
+            if (t.isNullable()) {
+                auto inner = t.nullableInnerType();
+                if (inner && inner->isHeap()) isHeapNullable = true;
+            }
+            if (t.isHeap()) {
+                auto elem = t.heapElementType();
+                string elemName = elem ? elem->getFullName() : string("?");
+                throw YuxError(node->getLineNumber(), node->getColumn(),
+                               ErrorCode::E4024, elemName, varName, elemName);
+            }
+            if (!isScalar && !isHandle && !isRef && !isHeapNullable) {
                 throw YuxError(node->getLineNumber(), node->getColumn(),
                                ErrorCode::E2029, varName, t.name);
             }
-            // 已捕获 → 复用槽位；首次 → 追加（每 capture 固定 8 字节槽位）
+            // 已捕获 → 复用槽位；首次 → 追加
+            // 槽位字节数: handle 形态 / 标量 / T& 都是 8; Heap<T>? = {i1, ptr} 实际 16
+            // 按 DataLayout 取真实 allocSize, 至少 8 字节对齐, 防 Heap<T>? 与下一个
+            // capture 槽位重叠覆盖.
             int idx = _currentLambdaForCapture->findCapture(varName);
             if (idx < 0) {
                 u64 offset = _currentLambdaForCapture->capturesTotalSize();
-                idx = _currentLambdaForCapture->addCapture(varName, t, offset, offset + 8);
+                u64 slotSize = 8;
+                if (isHeapNullable) {
+                    auto llvmTy = getLLVMType(t);
+                    auto rawSize = _module->getDataLayout()
+                                       .getTypeAllocSize(llvmTy).getFixedValue();
+                    slotSize = rawSize < 8 ? 8 : rawSize;
+                }
+                idx = _currentLambdaForCapture->addCapture(varName, t, offset, offset + slotSize);
                 if (isRef) {
                     // Phase 4c：标记 lambda 含 T& 捕获，触发栈嵌入路径 + 不可逃逸约束
                     _currentLambdaForCapture->setHasRefCapture(true);
