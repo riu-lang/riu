@@ -2385,19 +2385,34 @@ std::any ASTBuilder::visitExprEnumCtor(yux::yuxParser::ExprEnumCtorContext* ctx)
             ErrorCode::E0000,
             "Self::name(...) 静态调用未实现 (Phase 2)");
     }
-    if (ctx->lhsGenerics != nullptr || ctx->rhsGenerics != nullptr) {
-        auto* tk = ctx->enumName != nullptr ? ctx->enumName : ctx->variant;
-        throw YuxError(
-            static_cast<int>(tk->getLine()),
-            static_cast<int>(tk->getCharPositionInLine()) + 1,
-            ErrorCode::E0000,
-            "Type::name 的 turbofish 形态未实现 (Phase 2)");
-    }
-
     DEBUG_LOG_VAL("    Expr: EnumCtor",
         ctx->enumName->getText() << "::" << ctx->variant->getText());
     auto scope = currentScope();
     auto node = createWithLine<ExprPathCallNode>(ctx, scope, ctx->enumName, ctx->variant);
+
+    // Phase 6E.4: turbofish 形态 `Type:<T>::name:<U>(args)` 解析 LHS / RHS 类型实参.
+    // 类型引用位不允许 bounds (与 visitTypeGeneric 同条款), 命中即 E2015.
+    auto parseTurbofish = [&](yux::yuxParser::GenericDefContext* g) {
+        vector<p<TypeNode>> args;
+        for (auto* pCtx : g->params) {
+            if (!pCtx->bounds.empty()) {
+                auto* tk = pCtx->SymbolColon();
+                throw YuxError(
+                    tk ? (int)tk->getSymbol()->getLine() : 0,
+                    tk ? static_cast<int>(tk->getSymbol()->getCharPositionInLine()) + 1 : 0,
+                    ErrorCode::E2015);
+            }
+            args.push_back(any_cast_p<TypeNode>(visit(pCtx->type(0))));
+        }
+        return args;
+    };
+    if (ctx->lhsGenerics != nullptr) {
+        node->setLhsTypeArgs(parseTurbofish(ctx->lhsGenerics));
+    }
+    if (ctx->rhsGenerics != nullptr) {
+        node->setRhsTypeArgs(parseTurbofish(ctx->rhsGenerics));
+    }
+
     for (auto* aCtx : ctx->args) {
         node->addArg(any_cast_p<ExprNode>(visit(aCtx)));
     }

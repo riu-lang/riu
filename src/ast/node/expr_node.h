@@ -573,6 +573,10 @@ class ExprPathCallNode : public ExprNode {
     Token _enumName;
     Token _variantName;
     vector<p<ExprNode>> _args;
+    // Phase 6E.4: turbofish 形态 `Type:<T>::name:<U>(args)` 的 LHS / RHS 类型实参.
+    // 单 Type 名时为空; 用于驱动 Compiler::ensureStructInstance + applySubst.
+    vector<p<TypeNode>> _lhsTypeArgs;
+    vector<p<TypeNode>> _rhsTypeArgs;
 
 public:
     ExprPathCallNode(const p<Node>& parent, Token enumName, Token variantName) :
@@ -582,10 +586,14 @@ public:
     }
 
     void addArg(p<ExprNode> a) { _args.push_back(a); }
+    void setLhsTypeArgs(vector<p<TypeNode>> a) { _lhsTypeArgs = std::move(a); }
+    void setRhsTypeArgs(vector<p<TypeNode>> a) { _rhsTypeArgs = std::move(a); }
 
     [[nodiscard]] const Token& enumName() const { return _enumName; }
     [[nodiscard]] const Token& variantName() const { return _variantName; }
     [[nodiscard]] const vector<p<ExprNode>>& args() const { return _args; }
+    [[nodiscard]] const vector<p<TypeNode>>& lhsTypeArgs() const { return _lhsTypeArgs; }
+    [[nodiscard]] const vector<p<TypeNode>>& rhsTypeArgs() const { return _rhsTypeArgs; }
     [[nodiscard]] TypeInfo getType() const override;
 };
 
