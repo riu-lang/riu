@@ -8,9 +8,12 @@ struct BrPair {
 }
 
 BrPair {
-  fn BrPair(a i32, b i32) {
-    $.a = a
-    $.b = b
+  #Static
+  fn make(a i32, b i32) BrPair {
+    ret Self {
+      .a = a
+      .b = b
+    }
   }
 }
 
@@ -22,7 +25,7 @@ fn br_read_a(p BrPair&) i32 {
 
 #Test
 fn test_borrow_as_ref_box_payload() {
-  #Mut let b Rc<BrPair> = BrPair(7i32, 8i32)
+  #Mut let b Rc<BrPair> = BrPair::make(7i32, 8i32)
   let r BrPair& = as_ref(b)
   assert_eq(r.a, 7i32)
   assert_eq(br_read_a(as_ref(b)), 7i32)
@@ -32,7 +35,7 @@ fn test_borrow_as_ref_box_payload() {
 
 #Test
 fn test_borrow_as_ref_two_shared() {
-  #Mut let b Rc<BrPair> = BrPair(11i32, 22i32)
+  #Mut let b Rc<BrPair> = BrPair::make(11i32, 22i32)
   let r1 BrPair& = as_ref(b)
   let r2 BrPair& = as_ref(b)
   assert_eq(r1.a, 11i32)
@@ -89,8 +92,8 @@ fn test_borrow_array_read_via_ref_then_write_origin() {
 
 #Test
 fn test_borrow_box_reassign_after_drop() {
-  #Mut let b Rc<BrPair> = BrPair(7i32, 8i32)
-  #Mut let b2 Rc<BrPair> = BrPair(9i32, 10i32)
+  #Mut let b Rc<BrPair> = BrPair::make(7i32, 8i32)
+  #Mut let b2 Rc<BrPair> = BrPair::make(9i32, 10i32)
   loop {
     let r BrPair& = as_ref(b)
     assert_eq(r.a, 7i32)

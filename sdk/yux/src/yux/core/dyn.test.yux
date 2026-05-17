@@ -11,8 +11,11 @@ struct DynCounter {
 }
 
 DynCounter {
-  fn DynCounter(start i64) {
-    $.n = start
+  #Static
+  fn make(start i64) DynCounter {
+    ret Self {
+      .n = start
+    }
   }
 }
 
@@ -24,21 +27,21 @@ DynCounter : ToString {
 
 #Test
 fn test_dyn_to_string_counter_pos() {
-  let b Rc<DynCounter> = DynCounter(42i64)
+  let b Rc<DynCounter> = DynCounter::make(42i64)
   let d Dyn<ToString> = Dyn:<ToString>(b)
   assert_eq(d.to_string(), "42")
 }
 
 #Test
 fn test_dyn_to_string_counter_neg() {
-  let b Rc<DynCounter> = DynCounter(-7i64)
+  let b Rc<DynCounter> = DynCounter::make(-7i64)
   let d Dyn<ToString> = Dyn:<ToString>(b)
   assert_eq(d.to_string(), "-7")
 }
 
 #Test
 fn test_dyn_to_string_counter_zero() {
-  let b Rc<DynCounter> = DynCounter(0i64)
+  let b Rc<DynCounter> = DynCounter::make(0i64)
   let d Dyn<ToString> = Dyn:<ToString>(b)
   assert_eq(d.to_string(), "0")
 }
@@ -55,8 +58,11 @@ struct Square {
 }
 
 Square {
-  fn Square(s i64) {
-    $.side = s
+  #Static
+  fn make(s i64) Square {
+    ret Self {
+      .side = s
+    }
   }
 }
 
@@ -75,9 +81,12 @@ struct Rect {
 }
 
 Rect {
-  fn Rect(w i64, h i64) {
-    $.w = w
-    $.h = h
+  #Static
+  fn make(w i64, h i64) Rect {
+    ret Self {
+      .w = w
+      .h = h
+    }
   }
 }
 
@@ -92,7 +101,7 @@ Rect : Shape {
 
 #Test
 fn test_dyn_custom_draft_square() {
-  let b Rc<Square> = Square(5i64)
+  let b Rc<Square> = Square::make(5i64)
   let d Dyn<Shape> = Dyn:<Shape>(b)
   assert_eq(d.area(), 25i64)
   assert_eq(d.name(), "square")
@@ -100,7 +109,7 @@ fn test_dyn_custom_draft_square() {
 
 #Test
 fn test_dyn_custom_draft_rect() {
-  let b Rc<Rect> = Rect(3i64, 4i64)
+  let b Rc<Rect> = Rect::make(3i64, 4i64)
   let d Dyn<Shape> = Dyn:<Shape>(b)
   assert_eq(d.area(), 12i64)
   assert_eq(d.name(), "rect")
@@ -114,13 +123,13 @@ fn shape_area_via_dyn(d Dyn<Shape>) i64 {
 
 #Test
 fn test_dyn_pass_to_fn_square() {
-  let b Rc<Square> = Square(6i64)
+  let b Rc<Square> = Square::make(6i64)
   assert_eq(shape_area_via_dyn(Dyn:<Shape>(b)), 36i64)
 }
 
 #Test
 fn test_dyn_pass_to_fn_rect() {
-  let b Rc<Rect> = Rect(7i64, 2i64)
+  let b Rc<Rect> = Rect::make(7i64, 2i64)
   assert_eq(shape_area_via_dyn(Dyn:<Shape>(b)), 14i64)
 }
 
@@ -132,9 +141,12 @@ struct Labeled {
 }
 
 Labeled {
-  fn Labeled(l String, n i64) {
-    $.label = l
-    $.n = n
+  #Static
+  fn make(l String, n i64) Labeled {
+    ret Self {
+      .label = l
+      .n = n
+    }
   }
 }
 
@@ -149,7 +161,7 @@ Labeled : Shape {
 
 #Test
 fn test_dyn_dtor_chain_string_field() {
-  let b Rc<Labeled> = Labeled("triangle", 9i64)
+  let b Rc<Labeled> = Labeled::make("triangle", 9i64)
   let d Dyn<Shape> = Dyn:<Shape>(b)
   assert_eq(d.area(), 9i64)
   assert_eq(d.name(), "triangle")
@@ -186,9 +198,9 @@ fn test_dyn_to_string_box_bool() {
 #Test
 fn test_dyn_array_iterate() {
   #Mut let arr Array<Dyn<Shape>> = []
-  let b1 Rc<Square> = Square(3i64)
-  let b2 Rc<Rect> = Rect(4i64, 5i64)
-  let b3 Rc<Square> = Square(6i64)
+  let b1 Rc<Square> = Square::make(3i64)
+  let b2 Rc<Rect> = Rect::make(4i64, 5i64)
+  let b3 Rc<Square> = Square::make(6i64)
   arr.push(Dyn:<Shape>(b1))
   arr.push(Dyn:<Shape>(b2))
   arr.push(Dyn:<Shape>(b3))
@@ -212,9 +224,12 @@ struct G {
 }
 
 G {
-  fn G(v i64, t String) {
-    $.v = v
-    $.tag = t
+  #Static
+  fn make(v i64, t String) G {
+    ret Self {
+      .v = v
+      .tag = t
+    }
   }
 }
 
@@ -234,17 +249,20 @@ struct DynHolder {
 }
 
 DynHolder {
-  fn DynHolder(b i64, d Dyn<Greet>, a i64) {
-    $.before = b
-    $.inner = d
-    $.after = a
+  #Static
+  fn make(b i64, d Dyn<Greet>, a i64) DynHolder {
+    ret Self {
+      .before = b
+      .inner = d
+      .after = a
+    }
   }
 }
 
 #Test
 fn test_dyn_field_owned() {
-  let bg Rc<G> = G(42i64, "ok")
-  let h DynHolder = DynHolder(7i64, Dyn:<Greet>(bg), 9i64)
+  let bg Rc<G> = G::make(42i64, "ok")
+  let h DynHolder = DynHolder::make(7i64, Dyn:<Greet>(bg), 9i64)
 
   assert_eq(h.before, 7i64)
   assert_eq(h.inner.hi(), 42i64)
@@ -263,12 +281,15 @@ struct DynCaller {
 }
 
 DynCaller {
-  fn DynCaller(b i64) {
-    $.base = b
+  #Static
+  fn make(b i64) DynCaller {
+    ret Self {
+      .base = b
+    }
   }
 
   fn run() i64 {
-    let bg Rc<G> = G(40i64, "test")
+    let bg Rc<G> = G::make(40i64, "test")
     let d Dyn<Greet> = Dyn:<Greet>(bg)
     d.hi() + $.base
   }
@@ -276,6 +297,6 @@ DynCaller {
 
 #Test
 fn test_dyn_ctor_in_method() {
-  let c DynCaller = DynCaller(2i64)
+  let c DynCaller = DynCaller::make(2i64)
   assert_eq(c.run(), 42i64)
 }

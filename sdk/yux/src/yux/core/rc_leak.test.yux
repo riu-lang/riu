@@ -8,9 +8,12 @@ struct RcPair {
 }
 
 RcPair {
-  fn RcPair(a i32, b i32) {
-    $.a = a
-    $.b = b
+  #Static
+  fn make(a i32, b i32) RcPair {
+    ret Self {
+      .a = a
+      .b = b
+    }
   }
 
   fn show() i32 {
@@ -21,7 +24,7 @@ RcPair {
 ; ---------- rc_temp_branch：分支表达式 RC 归一 ----------
 
 fn rc_make_box(a i32, b i32) Rc<RcPair> {
-  #Mut let x Rc<RcPair> = RcPair(a, b)
+  #Mut let x Rc<RcPair> = RcPair::make(a, b)
   ret x
 }
 
@@ -59,7 +62,7 @@ fn test_rc_branch_fresh_fresh() {
 
 #Test
 fn test_rc_branch_fresh_borrow() {
-  #Mut let orig Rc<RcPair> = RcPair(11i32, 22i32)
+  #Mut let orig Rc<RcPair> = RcPair::make(11i32, 22i32)
   #Mut let p3 Rc<RcPair> = rc_pick_fb(true, orig)
   assert_eq(p3.a, 7i32)
   #Mut let p4 Rc<RcPair> = rc_pick_fb(false, orig)
@@ -70,8 +73,8 @@ fn test_rc_branch_fresh_borrow() {
 
 #Test
 fn test_rc_branch_borrow_borrow() {
-  #Mut let b1 Rc<RcPair> = RcPair(33i32, 44i32)
-  #Mut let b2 Rc<RcPair> = RcPair(55i32, 66i32)
+  #Mut let b1 Rc<RcPair> = RcPair::make(33i32, 44i32)
+  #Mut let b2 Rc<RcPair> = RcPair::make(55i32, 66i32)
   #Mut let p5 Rc<RcPair> = rc_pick_bb(true, b1, b2)
   assert_eq(p5.a, 33i32)
   #Mut let p6 Rc<RcPair> = rc_pick_bb(false, b1, b2)

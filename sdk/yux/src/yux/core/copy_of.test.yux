@@ -7,9 +7,12 @@ struct CopyPair {
 }
 
 CopyPair {
-  fn CopyPair(a i32, b i32) {
-    $.a = a
-    $.b = b
+  #Static
+  fn make(a i32, b i32) CopyPair {
+    ret Self {
+      .a = a
+      .b = b
+    }
   }
 }
 
@@ -19,9 +22,12 @@ struct Holder {
 }
 
 Holder {
-  fn Holder(p Rc<CopyPair>, t i32) {
-    $.payload = p
-    $.tag = t
+  #Static
+  fn make(p Rc<CopyPair>, t i32) Holder {
+    ret Self {
+      .payload = p
+      .tag = t
+    }
   }
 }
 
@@ -38,7 +44,7 @@ fn test_copy_of_i32() {
 
 #Test
 fn test_copy_of_box_handle() {
-  #Mut let b1 Rc<CopyPair> = CopyPair(11i32, 22i32)
+  #Mut let b1 Rc<CopyPair> = CopyPair::make(11i32, 22i32)
   #Mut let b2 Rc<CopyPair> = copy_of:<Rc<CopyPair>>(b1)
   ; 两个 Rc 看到同一份数据（浅拷句柄 + strong++）
   assert_eq(b1.a, 11i32)
@@ -73,7 +79,7 @@ fn test_copy_of_string() {
 
 #Test
 fn test_copy_of_struct_no_rc_field() {
-  #Mut let p1 CopyPair = CopyPair(5i32, 6i32)
+  #Mut let p1 CopyPair = CopyPair::make(5i32, 6i32)
   #Mut let p2 CopyPair = copy_of:<CopyPair>(p1)
   assert_eq(p2.a, 5i32)
   assert_eq(p2.b, 6i32)
@@ -83,8 +89,8 @@ fn test_copy_of_struct_no_rc_field() {
 
 #Test
 fn test_copy_of_struct_with_box_field() {
-  #Mut let p Rc<CopyPair> = CopyPair(5i32, 6i32)
-  #Mut let h1 Holder = Holder(p, 100i32)
+  #Mut let p Rc<CopyPair> = CopyPair::make(5i32, 6i32)
+  #Mut let h1 Holder = Holder::make(p, 100i32)
   #Mut let h2 Holder = copy_of:<Holder>(h1)
   assert_eq(h2.tag, 100i32)
   assert_eq(h1.tag, 100i32)

@@ -6,9 +6,12 @@ struct P {
 }
 
 P {
-  fn P(x i32, y i32) {
-    $.x = x
-    $.y = y
+  #Static
+  fn make(x i32, y i32) P {
+    ret Self {
+      .x = x
+      .y = y
+    }
   }
 
   ; 方法返回字段引用（根 = $）
@@ -23,14 +26,14 @@ fn alias(p P&) P& = p
 
 #Test
 fn test_method_field_ref() {
-  #Mut let a P = P(7i32, 8i32)
+  #Mut let a P = P::make(7i32, 8i32)
   let rx i32& = a.x_ref()
   assert_eq(rx, 7i32)
 }
 
 #Test
 fn test_method_self_ref() {
-  #Mut let a P = P(1i32, 2i32)
+  #Mut let a P = P::make(1i32, 2i32)
   let r P& = a.me()
   assert_eq(r.x, 1i32)
   assert_eq(r.y, 2i32)
@@ -38,7 +41,7 @@ fn test_method_self_ref() {
 
 #Test
 fn test_freefn_alias_param() {
-  #Mut let a P = P(11i32, 22i32)
+  #Mut let a P = P::make(11i32, 22i32)
   let r P& = alias(&a)
   assert_eq(r.x, 11i32)
 }

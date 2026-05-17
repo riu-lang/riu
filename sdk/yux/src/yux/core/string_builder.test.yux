@@ -5,7 +5,7 @@
 
 #Test
 fn test_empty_ctor() {
-  #Mut let sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder::make()
   assert_eq(sb.len(), 0i64)
 }
 
@@ -13,7 +13,7 @@ fn test_empty_ctor() {
 
 #Test
 fn test_append_code_point() {
-  #Mut let sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder::make()
   sb.append(c'H')
   sb.append(c'e')
   sb.append(c'l')
@@ -26,7 +26,7 @@ fn test_append_code_point() {
 
 #Test
 fn test_append_ascii_byte() {
-  #Mut let sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder::make()
   sb.append(72u8)   ; 'H'
   sb.append(105u8)  ; 'i'
   sb.append(33u8)   ; '!'
@@ -37,7 +37,7 @@ fn test_append_ascii_byte() {
 
 #Test
 fn test_append_string() {
-  #Mut let sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder::make()
   sb.append("Hello")
   sb.append(" ")
   sb.append("World")
@@ -48,7 +48,7 @@ fn test_append_string() {
 
 #Test
 fn test_append_mixed() {
-  #Mut let sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder::make()
   sb.append(c'H')
   sb.append("ello")
   sb.append(32u8)   ; space
@@ -62,7 +62,7 @@ fn test_append_mixed() {
 
 #Test
 fn test_len_after_append() {
-  #Mut let sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder::make()
   assert_eq(sb.len(), 0i64)
   sb.append("abc")
   assert_eq(sb.len(), 3i64)
@@ -74,7 +74,7 @@ fn test_len_after_append() {
 
 #Test
 fn test_clear() {
-  #Mut let sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder::make()
   sb.append("Hello")
   assert_eq(sb.len(), 5i64)
   sb.clear()
@@ -85,7 +85,7 @@ fn test_clear() {
 
 #Test
 fn test_clear_and_reuse() {
-  #Mut let sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder::make()
   sb.append("First")
   let s1 String = sb.build()
   assert_eq(s1, "First")
@@ -100,7 +100,7 @@ fn test_clear_and_reuse() {
 
 #Test
 fn test_build_returns_string() {
-  #Mut let sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder::make()
   sb.append("Test")
   let s String = sb.build()
   assert_eq(s, "Test")
@@ -108,7 +108,7 @@ fn test_build_returns_string() {
 
 #Test
 fn test_build_resets_buffer() {
-  #Mut let sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder::make()
   sb.append("Hello")
   let s1 String = sb.build()
   assert_eq(s1, "Hello")
@@ -123,7 +123,7 @@ fn test_build_resets_buffer() {
 
 #Test
 fn test_multiple_build() {
-  #Mut let sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder::make()
   
   sb.append("A")
   let s1 String = sb.build()
@@ -142,7 +142,7 @@ fn test_multiple_build() {
 
 #Test
 fn test_append_unicode() {
-  #Mut let sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder::make()
   ; 追加 Unicode 码点（中文）
   sb.append(20320u32)  ; '你'
   sb.append(22909u32)  ; '好'
@@ -152,7 +152,7 @@ fn test_append_unicode() {
 
 #Test
 fn test_append_mixed_unicode() {
-  #Mut let sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder::make()
   sb.append("Hello ")
   sb.append(20320u32)  ; '你'
   sb.append(22909u32)  ; '好'
@@ -164,7 +164,7 @@ fn test_append_mixed_unicode() {
 
 #Test
 fn test_empty_string_append() {
-  #Mut let sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder::make()
   sb.append("")
   assert_eq(sb.len(), 0i64)
   let s String = sb.build()
@@ -173,7 +173,7 @@ fn test_empty_string_append() {
 
 #Test
 fn test_build_empty() {
-  #Mut let sb StringBuilder = StringBuilder()
+  #Mut let sb StringBuilder = StringBuilder::make()
   let s String = sb.build()
   assert_eq(s.len(), 0i64)
 }

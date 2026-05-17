@@ -513,13 +513,15 @@ llvm::Value* Compiler::compileStringTemplate(StringTemplateNode* node) {
         return out;
     };
 
-    // 1. alloca StringBuilder + 调构造
+    // 1. alloca StringBuilder + 调静态工厂 (Phase 6: 砍 ctor, 走 StringBuilder::make())
     auto sbType = getLLVMType(TypeInfo("StringBuilder"));
     auto sbPtr = _builder.CreateAlloca(sbType, nullptr, "tpl_sb");
     {
         vector<TypeInfo> noArgs;
-        auto ctorFn = getMethodFunction("StringBuilder", "StringBuilder", noArgs, TypeInfo());
-        _builder.CreateCall(ctorFn, {sbPtr});
+        auto mkFn = getMethodFunction("StringBuilder", "make", noArgs, TypeInfo("StringBuilder"),
+                                      /*fallibleErrType=*/"", /*isStatic=*/true);
+        auto sbVal = _builder.CreateCall(mkFn, {}, "tpl_sb.init");
+        _builder.CreateStore(sbVal, sbPtr);
     }
 
     // 2. emit sb.append(String) 帮手：普通 struct String 走 by-value 调用约定
@@ -628,13 +630,15 @@ llvm::Value* Compiler::compileStringPlusChain(ExprAddSubNode* node) {
         }
     }
 
-    // 3. alloca StringBuilder + 调构造
+    // 3. alloca StringBuilder + 调静态工厂 (Phase 6: 砍 ctor, 走 StringBuilder::make())
     auto sbType = getLLVMType(TypeInfo("StringBuilder"));
     auto sbPtr = _builder.CreateAlloca(sbType, nullptr, "plus_sb");
     {
         vector<TypeInfo> noArgs;
-        auto ctorFn = getMethodFunction("StringBuilder", "StringBuilder", noArgs, TypeInfo());
-        _builder.CreateCall(ctorFn, {sbPtr});
+        auto mkFn = getMethodFunction("StringBuilder", "make", noArgs, TypeInfo("StringBuilder"),
+                                      /*fallibleErrType=*/"", /*isStatic=*/true);
+        auto sbVal = _builder.CreateCall(mkFn, {}, "plus_sb.init");
+        _builder.CreateStore(sbVal, sbPtr);
     }
 
     // 4. emit sb.append(String) 帮手

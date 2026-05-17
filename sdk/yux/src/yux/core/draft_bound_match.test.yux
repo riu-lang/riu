@@ -6,8 +6,11 @@ struct Tag {
 }
 
 Tag {
-  fn Tag(v i64) {
-    $.v = v
+  #Static
+  fn make(v i64) Tag {
+    ret Self {
+      .v = v
+    }
   }
 }
 
@@ -24,7 +27,7 @@ fn show_via_bound<T : ToString>(x T) String {
 
 #Test
 fn test_bound_user_type() {
-  let t Tag = Tag(99i64)
+  let t Tag = Tag::make(99i64)
   assert_eq(show_via_bound(t), "99")
 }
 
@@ -57,6 +60,6 @@ fn test_any_i64() {
 
 #Test
 fn test_any_user_type() {
-  let t Tag = Tag(1i64)
+  let t Tag = Tag::make(1i64)
   accept_any(t);
 }

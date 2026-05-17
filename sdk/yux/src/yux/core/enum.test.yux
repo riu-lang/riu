@@ -299,9 +299,12 @@ struct Point {
 }
 
 Point {
-  fn Point(x f64, y f64) {
-    $.x = x
-    $.y = y
+  #Static
+  fn make(x f64, y f64) Point {
+    ret Self {
+      .x = x
+      .y = y
+    }
   }
 }
 
@@ -315,8 +318,8 @@ fn test_enum_match_return_struct() {
   let g Geometry = Geometry::Coord(3.0f64, 4.0f64)
   
   let p Point = match g {
-    Geometry::Origin => Point(0.0f64, 0.0f64)
-    Geometry::Coord(x, y) => Point(x, y)
+    Geometry::Origin => Point::make(0.0f64, 0.0f64)
+    Geometry::Coord(x, y) => Point::make(x, y)
   }
   
   assert_eq(p.x, 3.0f64)
@@ -352,7 +355,7 @@ enum Container {
 
 ; #Test
 ; fn test_enum_payload_box() {
-;   var bp Rc<Point> = Point(10.0f64, 20.0f64)
+;   var bp Rc<Point> = Point::make(10.0f64, 20.0f64)
 ;   val c Container = Container::Boxed(bp)
 ;
 ;   val result f64 = match c {

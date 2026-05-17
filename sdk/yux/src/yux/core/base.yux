@@ -1259,17 +1259,6 @@ struct Nullable<T> {
 }
 
 Nullable<T> {
-  ; 空构造：未持值
-  fn Nullable() {
-    $._has = false
-  }
-
-  ; 包一个值
-  fn Nullable(v T) {
-    $._has = true
-    $._value = v
-  }
-
   ; 是否持有值
   fn has() bool = $._has
 
@@ -1462,8 +1451,11 @@ struct StringBuilder {
 }
 
 StringBuilder {
-  fn StringBuilder() {
-    $.data = []
+  #Static
+  fn make() StringBuilder {
+    ret Self {
+      .data = []
+    }
   }
 
   fn len() i64 {

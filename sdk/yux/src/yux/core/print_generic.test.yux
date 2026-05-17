@@ -8,8 +8,11 @@ struct PrintTag {
 }
 
 PrintTag {
-  fn PrintTag(v i64) {
-    $.v = v
+  #Static
+  fn make(v i64) PrintTag {
+    ret Self {
+      .v = v
+    }
   }
 }
 
@@ -39,7 +42,7 @@ fn test_print_string_fast_path() {
 
 #Test
 fn test_print_user_type() {
-  let t PrintTag = PrintTag(123i64)
+  let t PrintTag = PrintTag::make(123i64)
   println(t)
   assert_true(true)
 }
@@ -49,7 +52,7 @@ fn test_eprint_generic() {
   eprint("err ")
   eprintln(99i64)
   eprintln(true)
-  let t PrintTag = PrintTag(7i64)
+  let t PrintTag = PrintTag::make(7i64)
   eprintln(t)
   assert_true(true)
 }

@@ -8,8 +8,11 @@ struct Counter {
 }
 
 Counter {
-  fn Counter(start i64) {
-    $.n = start
+  #Static
+  fn make(start i64) Counter {
+    ret Self {
+      .n = start
+    }
   }
 }
 
@@ -21,13 +24,13 @@ Counter : ToString {
 
 #Test
 fn test_counter_explicit_to_string() {
-  let c Counter = Counter(42i64)
+  let c Counter = Counter::make(42i64)
   assert_eq(c.to_string(), "42")
 }
 
 #Test
 fn test_counter_explicit_negative() {
-  let c Counter = Counter(-7i64)
+  let c Counter = Counter::make(-7i64)
   assert_eq(c.to_string(), "-7")
 }
 

@@ -7,9 +7,12 @@ struct WeakPair {
 }
 
 WeakPair {
-  fn WeakPair(a i32, b i32) {
-    $.a = a
-    $.b = b
+  #Static
+  fn make(a i32, b i32) WeakPair {
+    ret Self {
+      .a = a
+      .b = b
+    }
   }
 }
 
@@ -17,7 +20,7 @@ WeakPair {
 
 #Test
 fn test_weak_basic_lifecycle() {
-  #Mut let b Rc<WeakPair> = WeakPair(42i32, 0i32)
+  #Mut let b Rc<WeakPair> = WeakPair::make(42i32, 0i32)
   #Mut let w Weak<WeakPair> = b
   ; 仅验证构造 / 析构序列不崩；通过 b 字段读触发自动 deref
   assert_eq(b.a, 42i32)
@@ -27,7 +30,7 @@ fn test_weak_basic_lifecycle() {
 
 #Test
 fn test_weak_upgrade_alive_returns_some() {
-  #Mut let b Rc<WeakPair> = WeakPair(11i32, 22i32)
+  #Mut let b Rc<WeakPair> = WeakPair::make(11i32, 22i32)
   #Mut let w Weak<WeakPair> = b
   #Mut let maybe Rc<WeakPair>? = upgrade(w)
   ; 借助 ?. 短路 + ?? fallback 验证 Some 路径取到真值
@@ -38,7 +41,7 @@ fn test_weak_upgrade_alive_returns_some() {
 ; ---------- weak_upgrade_fail：box 已死，upgrade 返回 null ----------
 
 fn make_dangling_weak() Weak<WeakPair> {
-  #Mut let b Rc<WeakPair> = WeakPair(11i32, 22i32)
+  #Mut let b Rc<WeakPair> = WeakPair::make(11i32, 22i32)
   #Mut let w Weak<WeakPair> = b
   ret w
 }
@@ -55,7 +58,7 @@ fn test_weak_upgrade_dangling_returns_null() {
 
 #Test
 fn test_weak_builtin_from_box() {
-  #Mut let b Rc<WeakPair> = WeakPair(7i32, 8i32)
+  #Mut let b Rc<WeakPair> = WeakPair::make(7i32, 8i32)
   #Mut let w Weak<WeakPair> = weak:<WeakPair>(b)
   #Mut let maybe Rc<WeakPair>? = upgrade(w)
   #Mut let got i32? = maybe?.a
@@ -64,7 +67,7 @@ fn test_weak_builtin_from_box() {
 
 #Test
 fn test_weak_builtin_from_nullable_some() {
-  #Mut let b Rc<WeakPair> = WeakPair(9i32, 10i32)
+  #Mut let b Rc<WeakPair> = WeakPair::make(9i32, 10i32)
   #Mut let bn Rc<WeakPair>? = b
   #Mut let w Weak<WeakPair> = weak:<WeakPair>(bn)
   #Mut let maybe Rc<WeakPair>? = upgrade(w)
@@ -90,7 +93,7 @@ fn test_weak_upgrade_alive_vs_dead_same_test() {
   assert_eq(v ?? -1i32, -1i32)
 
   ; 成功路径
-  #Mut let b2 Rc<WeakPair> = WeakPair(33i32, 44i32)
+  #Mut let b2 Rc<WeakPair> = WeakPair::make(33i32, 44i32)
   #Mut let w2 Weak<WeakPair> = b2
   #Mut let maybe2 Rc<WeakPair>? = upgrade(w2)
   #Mut let v2 i32? = maybe2?.a

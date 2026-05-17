@@ -6,8 +6,11 @@ struct Bag {
 }
 
 Bag {
-  fn Bag(k i64) {
-    $.k = k
+  #Static
+  fn make(k i64) Bag {
+    ret Self {
+      .k = k
+    }
   }
 }
 
@@ -19,12 +22,12 @@ Bag : ToString {
 
 #Test
 fn test_box_forward_to_string() {
-  let b Rc<Bag> = Bag(31i64)
+  let b Rc<Bag> = Bag::make(31i64)
   assert_eq(b.to_string(), "31")
 }
 
 #Test
 fn test_box_forward_negative() {
-  let b Rc<Bag> = Bag(-9i64)
+  let b Rc<Bag> = Bag::make(-9i64)
   assert_eq(b.to_string(), "-9")
 }

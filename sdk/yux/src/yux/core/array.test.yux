@@ -102,16 +102,19 @@ struct ArrPair {
 }
 
 ArrPair {
-  fn ArrPair(a i32, b i32) {
-    $.a = a
-    $.b = b
+  #Static
+  fn make(a i32, b i32) ArrPair {
+    ret Self {
+      .a = a
+      .b = b
+    }
   }
 }
 
 #Test
 fn test_array_elem_box_reassign() {
-  #Mut let p Rc<ArrPair> = ArrPair(10i32, 20i32)
-  #Mut let q Rc<ArrPair> = ArrPair(30i32, 40i32)
+  #Mut let p Rc<ArrPair> = ArrPair::make(10i32, 20i32)
+  #Mut let q Rc<ArrPair> = ArrPair::make(30i32, 40i32)
   #Mut let arr Array<Rc<ArrPair>> = [p]
   assert_eq(arr[0].a, 10i32)
   arr[0] = q

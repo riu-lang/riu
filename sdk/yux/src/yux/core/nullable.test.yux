@@ -6,8 +6,11 @@ struct NN {
 }
 
 NN {
-  fn NN(v i32) {
-    $.v = v
+  #Static
+  fn make(v i32) NN {
+    ret Self {
+      .v = v
+    }
   }
 }
 
@@ -29,7 +32,7 @@ fn test_nullable_null_or_default() {
 
 #Test
 fn test_nullable_chain_some_field() {
-  #Mut let n NN = NN(7i32)
+  #Mut let n NN = NN::make(7i32)
   #Mut let maybeN NN? = n
   #Mut let v1 i32? = maybeN?.v
   assert_eq(v1 ?? -1i32, 7i32)
