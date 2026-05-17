@@ -6,9 +6,12 @@ struct Point {
 }
 
 Point {
-    fn Point(x i32, y i32) {
-        $.x = x
-        $.y = y
+    #Static
+    fn make(x i32, y i32) Point {
+        ret Self {
+            .x = x
+            .y = y
+        }
     }
 
     fn sum() i32 = $.x + $.y

@@ -3,10 +3,16 @@ draft Greet {
   fn hi()
 }
 
-struct G { }
+struct G {
+  pad i32
+}
 
 G {
-  fn G() {
+  #Static
+  fn make() G {
+    ret Self {
+      .pad = 0i32
+    }
   }
 }
 
@@ -16,7 +22,7 @@ G : Greet {
 }
 
 fn main() {
-  let b Rc<G> = G()
+  let b Rc<G> = G::make()
   let d Dyn<Greet> = Dyn:<Greet>(b)
   d.bye();
   ret;

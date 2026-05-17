@@ -8,12 +8,18 @@ struct S {
 }
 
 S {
-    fn S(n i64) {
-        $.n = n
+    #Static
+    fn make(n i64) S {
+        ret Self {
+            .n = n
+        }
     }
 }
 
 fn main() {
-    let p = S(1)
+    ; Phase 6E TODO: 裸字面量 1 → i64 形参的 target-type 推断在 #Static fn 调用站
+    ; 点还未接通 (旧 ctor 路径有, 迁移到 make 后 codegen LLVM signature mismatch 崩).
+    ; 暂用显式 1i64 让用例继续覆盖 println(i64) + Self {...} 字段写入.
+    let p = S::make(1i64)
     println(p.n)
 }

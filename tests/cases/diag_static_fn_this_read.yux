@@ -5,8 +5,11 @@ struct P {
 }
 
 P {
-  fn P(x i32) {
-    $.x = x
+  #Static
+  fn from(x i32) P {
+    ret Self {
+      .x = x
+    }
   }
 
   #Static

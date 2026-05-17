@@ -9,8 +9,11 @@ struct Counter {
 }
 
 Counter {
-    fn Counter(n i32) {
-        $.n = n
+    #Static
+    fn make(n i32) Counter {
+        ret Self {
+            .n = n
+        }
     }
 }
 
@@ -25,8 +28,11 @@ struct Greeter {
 }
 
 Greeter {
-    fn Greeter(msg String) {
-        $.msg = msg
+    #Static
+    fn make(msg String) Greeter {
+        ret Self {
+            .msg = msg
+        }
     }
 }
 
@@ -42,8 +48,8 @@ fn say<T : Show>(x T) {
 }
 
 fn main() {
-    let c = Counter(42)
+    let c = Counter::make(42)
     say(c)
-    let g = Greeter("hi")
+    let g = Greeter::make("hi")
     say(g)
 }

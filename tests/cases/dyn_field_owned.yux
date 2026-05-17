@@ -13,9 +13,12 @@ struct G {
 }
 
 G {
-  fn G(v i64, t String) {
-    $.v = v
-    $.tag = t
+  #Static
+  fn make(v i64, t String) G {
+    ret Self {
+      .v = v
+      .tag = t
+    }
   }
 }
 
@@ -35,16 +38,19 @@ struct Holder {
 }
 
 Holder {
-  fn Holder(b i64, d Dyn<Greet>, a i64) {
-    $.before = b
-    $.inner = d
-    $.after = a
+  #Static
+  fn make(b i64, d Dyn<Greet>, a i64) Holder {
+    ret Self {
+      .before = b
+      .inner = d
+      .after = a
+    }
   }
 }
 
 fn main() {
-  let bg Rc<G> = G(42i64, "ok")
-  let h Holder = Holder(7i64, Dyn:<Greet>(bg), 9i64)
+  let bg Rc<G> = G::make(42i64, "ok")
+  let h Holder = Holder::make(7i64, Dyn:<Greet>(bg), 9i64)
   println(h.before)
   println(h.inner.hi())
   println(h.inner.name())

@@ -6,8 +6,11 @@ struct Holder {
 }
 
 Holder {
-  fn Holder(v i32) {
-    $.v = v
+  #Static
+  fn build(v i32) Holder {
+    ret Self {
+      .v = v
+    }
   }
 
   fn make() fn(i32)i32 {
@@ -16,7 +19,7 @@ Holder {
 }
 
 fn main() {
-  #Mut let h Holder = Holder(7)
+  #Mut let h Holder = Holder::build(7)
   #Mut let f fn(i32)i32 = h.make()
   println(f(3))
   ret;

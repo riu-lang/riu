@@ -5,8 +5,11 @@ struct Config {
 }
 
 Config {
-    fn Config(x i32) {
-        $.x = x
+    #Static
+    fn make(x i32) Config {
+        ret Self {
+            .x = x
+        }
     }
 }
 
@@ -16,8 +19,11 @@ struct Outer {
 }
 
 Outer {
-    fn Outer(c Config) {
-        $.cfg = c
+    #Static
+    fn make(c Config) Outer {
+        ret Self {
+            .cfg = c
+        }
     }
 
     fn poke() {
@@ -26,8 +32,8 @@ Outer {
 }
 
 fn main() {
-    #Mut let c = Config(1)
-    #Mut let o = Outer(c)
+    #Mut let c = Config::make(1)
+    #Mut let o = Outer::make(c)
     o.poke()
     ret;
 }

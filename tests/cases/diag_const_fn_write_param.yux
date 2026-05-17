@@ -7,9 +7,12 @@ struct Point {
 }
 
 Point {
-    fn Point(x i32, y i32) {
-        $.x = x
-        $.y = y
+    #Static
+    fn make(x i32, y i32) Point {
+        ret Self {
+            .x = x
+            .y = y
+        }
     }
 }
 
@@ -20,7 +23,7 @@ fn shift(p Point) {
 }
 
 fn main() {
-    let q = Point(1, 2)
+    let q = Point::make(1, 2)
     shift(q)
     ret;
 }

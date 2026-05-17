@@ -12,8 +12,11 @@ struct Counter {
 }
 
 Counter {
-    fn Counter(n i32) {
-        $.n = n
+    #Static
+    fn make(n i32) Counter {
+        ret Self {
+            .n = n
+        }
     }
 }
 
@@ -24,7 +27,7 @@ Counter : Show {
 }
 
 fn main() {
-    #Mut let b Rc<Counter> = Counter(7i32)
+    #Mut let b Rc<Counter> = Counter::make(7i32)
     let s = b.show()
     println(s)
 }

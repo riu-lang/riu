@@ -11,8 +11,11 @@ struct Square {
 }
 
 Square {
-  fn Square(s i64) {
-    $.side = s
+  #Static
+  fn make(s i64) Square {
+    ret Self {
+      .side = s
+    }
   }
 }
 
@@ -31,9 +34,12 @@ struct Rect {
 }
 
 Rect {
-  fn Rect(w i64, h i64) {
-    $.w = w
-    $.h = h
+  #Static
+  fn make(w i64, h i64) Rect {
+    ret Self {
+      .w = w
+      .h = h
+    }
   }
 }
 
@@ -52,9 +58,9 @@ fn describe(d Dyn<Shape>) {
 }
 
 fn main() {
-  let bs Rc<Square> = Square(5i64)
+  let bs Rc<Square> = Square::make(5i64)
   describe(Dyn:<Shape>(bs))
 
-  let br Rc<Rect> = Rect(3i64, 7i64)
+  let br Rc<Rect> = Rect::make(3i64, 7i64)
   describe(Dyn:<Shape>(br))
 }

@@ -6,8 +6,11 @@ struct Inner {
 }
 
 Inner {
-  fn Inner(c i32) {
-    $.count = c
+  #Static
+  fn make(c i32) Inner {
+    ret Self {
+      .count = c
+    }
   }
 }
 
@@ -16,8 +19,11 @@ struct Mid {
 }
 
 Mid {
-  fn Mid(i Inner) {
-    $.inner = i
+  #Static
+  fn make(i Inner) Mid {
+    ret Self {
+      .inner = i
+    }
   }
 }
 
@@ -26,13 +32,16 @@ struct Outer {
 }
 
 Outer {
-  fn Outer(m Mid) {
-    $.state = m
+  #Static
+  fn make(m Mid) Outer {
+    ret Self {
+      .state = m
+    }
   }
 }
 
 fn main() {
-  #Mut let o Outer = Outer(Mid(Inner(10i32)))
+  #Mut let o Outer = Outer::make(Mid::make(Inner::make(10i32)))
   ; 两段嵌套写
   o.state.inner.count = o.state.inner.count + 5i32
   println(o.state.inner.count)

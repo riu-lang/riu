@@ -1,1 +1,1 @@
-diag_draft_e1106_bound_unsatisfied.yux:22:5 [E1106] error: Type 'Counter' does not satisfy draft bound 'diag_draft_e1106_bound_unsatisfied.Show' for type parameter 'T'
+diag_draft_e1106_bound_unsatisfied.yux:25:5 [E1106] error: Type 'Counter' does not satisfy draft bound 'diag_draft_e1106_bound_unsatisfied.Show' for type parameter 'T'

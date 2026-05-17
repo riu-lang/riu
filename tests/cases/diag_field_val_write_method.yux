@@ -7,9 +7,12 @@ struct Outer {
 }
 
 Outer {
-    fn Outer(t i32) {
-        $.tag = t
-        $.extra = 0
+    #Static
+    fn make(t i32) Outer {
+        ret Self {
+            .tag = t
+            .extra = 0
+        }
     }
 
     fn rename() {
@@ -18,7 +21,7 @@ Outer {
 }
 
 fn main() {
-    #Mut let o = Outer(7)
+    #Mut let o = Outer::make(7)
     o.rename()
     ret;
 }

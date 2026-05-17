@@ -8,9 +8,12 @@ struct Pair {
 }
 
 Pair {
-  fn Pair(a i32, b i32) {
-    $.a = a
-    $.b = b
+  #Static
+  fn make(a i32, b i32) Pair {
+    ret Self {
+      .a = a
+      .b = b
+    }
   }
 }
 
@@ -24,7 +27,7 @@ fn yes_no(b bool) String {
 
 fn main() {
   ; Rc<Pair>：同一句柄两次 ptr_of 应得到同一 payload 地址
-  #Mut let p Rc<Pair> = Pair(123i32, 456i32)
+  #Mut let p Rc<Pair> = Pair::make(123i32, 456i32)
   #Mut let pp1 Ptr = ptr_of:<Rc<Pair>>(p)
   #Mut let pp2 Ptr = ptr_of:<Rc<Pair>>(p)
   println(yes_no(pp1.to_int() == pp2.to_int()))

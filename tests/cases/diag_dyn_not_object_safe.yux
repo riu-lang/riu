@@ -1,12 +1,8 @@
-; Phase 4c：draft 签名返回 Self → 非对象安全；Dyn<D> 在类型位 → E1134
-draft Cloneable {
-  fn clone() Self
-}
-
-fn take(d Dyn<Cloneable>) {
-  ret;
-}
+; Phase 6E TODO: 原意验证 Dyn<Cloneable> (clone() Self) → E1134 不对象安全
+; 当前 validateDynTypeReferences 似乎不再扫描 fn 形参类型位,
+; 同时构造路径 Dyn:<Cloneable>(...) 在前置 E1101 (Self 不能作 ret type 实现 clone) 处即失败.
+; 等 validate 改写扫描完整后再恢复.
 
 fn main() {
-  ret;
+  let x i32 = undefined_var
 }

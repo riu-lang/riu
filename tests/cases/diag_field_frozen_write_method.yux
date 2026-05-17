@@ -7,9 +7,12 @@ struct Outer {
 }
 
 Outer {
-    fn Outer(n String, e i32) {
-        $.name = n
-        $.extra = e
+    #Static
+    fn make(n String, e i32) Outer {
+        ret Self {
+            .name = n
+            .extra = e
+        }
     }
 
     fn rename(n String) {
@@ -18,7 +21,7 @@ Outer {
 }
 
 fn main() {
-    #Mut let o = Outer("hi", 1)
+    #Mut let o = Outer::make("hi", 1)
     o.rename("ho")
     ret;
 }

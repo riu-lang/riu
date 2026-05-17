@@ -1,1 +1,1 @@
-diag_const_fn_write_param.yux:18:5 [E3110] error: `#Const fn` 'shift' cannot write field of parameter: p.x (DRAFT-const-mut §4.2)
+diag_const_fn_write_param.yux:21:5 [E3110] error: `#Const fn` 'shift' cannot write field of parameter: p.x (DRAFT-const-mut §4.2)

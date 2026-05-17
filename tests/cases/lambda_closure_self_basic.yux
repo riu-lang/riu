@@ -15,8 +15,11 @@ struct Counter {
 }
 
 Counter {
-  fn Counter(v i32) {
-    $.value = v
+  #Static
+  fn make(v i32) Counter {
+    ret Self {
+      .value = v
+    }
   }
 
   fn double() i32 {
@@ -39,7 +42,7 @@ Counter {
 }
 
 fn main() {
-  #Mut let c Counter = Counter(10)
+  #Mut let c Counter = Counter::make(10)
   println(c.add_then_apply(5))   ; 10 + 5 = 15
   println(c.triple_apply())      ; 10 + 20 + 20 = 50
   ret;

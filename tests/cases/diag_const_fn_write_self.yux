@@ -5,8 +5,11 @@ struct Cell {
 }
 
 Cell {
-    fn Cell(v i32) {
-        $.v = v
+    #Static
+    fn make(v i32) Cell {
+        ret Self {
+            .v = v
+        }
     }
     #Const
     fn bump() {
@@ -16,7 +19,7 @@ Cell {
 }
 
 fn main() {
-    #Mut let c = Cell(0)
+    #Mut let c = Cell::make(0)
     c.bump()
     ret;
 }

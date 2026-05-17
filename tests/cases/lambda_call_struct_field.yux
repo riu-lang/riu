@@ -8,9 +8,12 @@ struct Holder {
 }
 
 Holder {
-  fn Holder(h fn(i32)i32, base i32) {
-    $.h = h
-    $.base = base
+  #Static
+  fn make(h fn(i32)i32, base i32) Holder {
+    ret Self {
+      .h = h
+      .base = base
+    }
   }
 
   fn run(x i32) i32 {
@@ -35,7 +38,7 @@ fn call_h_by_value(s Holder, x i32) i32 {
 
 fn main() {
   ; 构造时把 fn 值搬入 struct 字段
-  #Mut let s Holder = Holder(make_inc(), 100)
+  #Mut let s Holder = Holder::make(make_inc(), 100)
   println(s.run(5))          ; 5+1+100 = 106
   println(s.h(10))           ; 11
 
@@ -47,7 +50,7 @@ fn main() {
   println(call_h_by_value(s, 7))   ; 21
 
   ; 整 struct 重新赋值：旧 s 的 fn 字段释放，新值字段拷入
-  #Mut let s2 Holder = Holder((x i32) i32 => x - 1, 0)
+  #Mut let s2 Holder = Holder::make((x i32) i32 => x - 1, 0)
   s = s2
   println(s.h(50))           ; 49
   ret;

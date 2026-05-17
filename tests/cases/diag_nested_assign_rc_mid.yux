@@ -4,8 +4,11 @@ struct Inner {
 }
 
 Inner {
-  fn Inner(c i32) {
-    $.count = c
+  #Static
+  fn make(c i32) Inner {
+    ret Self {
+      .count = c
+    }
   }
 }
 
@@ -14,13 +17,16 @@ struct Outer {
 }
 
 Outer {
-  fn Outer(s Rc<Inner>) {
-    $.state = s
+  #Static
+  fn make(s Rc<Inner>) Outer {
+    ret Self {
+      .state = s
+    }
   }
 }
 
 fn main() {
-  #Mut let b Rc<Inner> = Inner(10i32)
-  #Mut let o Outer = Outer(b)
+  #Mut let b Rc<Inner> = Inner::make(10i32)
+  #Mut let o Outer = Outer::make(b)
   o.state.count = 5i32
 }

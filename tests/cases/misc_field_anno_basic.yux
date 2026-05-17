@@ -11,10 +11,13 @@ struct Outer {
 }
 
 Outer {
-    fn Outer(t i32, n String, e i32) {
-        $.tag = t
-        $.name = n
-        $.extra = e
+    #Static
+    fn make(t i32, n String, e i32) Outer {
+        ret Self {
+            .tag = t
+            .name = n
+            .extra = e
+        }
     }
 
     fn report() {
@@ -29,7 +32,7 @@ Outer {
 }
 
 fn main() {
-    #Mut let o = Outer(7, "hi", 100)
+    #Mut let o = Outer::make(7, "hi", 100)
     o.report()
     o.bump()
     o.report()

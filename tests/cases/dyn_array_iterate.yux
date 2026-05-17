@@ -9,8 +9,11 @@ struct Square {
 }
 
 Square {
-  fn Square(s i64) {
-    $.side = s
+  #Static
+  fn make(s i64) Square {
+    ret Self {
+      .side = s
+    }
   }
 }
 
@@ -26,9 +29,12 @@ struct Rect {
 }
 
 Rect {
-  fn Rect(w i64, h i64) {
-    $.w = w
-    $.h = h
+  #Static
+  fn make(w i64, h i64) Rect {
+    ret Self {
+      .w = w
+      .h = h
+    }
   }
 }
 
@@ -40,9 +46,9 @@ Rect : Shape {
 
 fn main() {
   #Mut let arr Array<Dyn<Shape>> = []
-  let b1 Rc<Square> = Square(3i64)
-  let b2 Rc<Rect> = Rect(4i64, 5i64)
-  let b3 Rc<Square> = Square(6i64)
+  let b1 Rc<Square> = Square::make(3i64)
+  let b2 Rc<Rect> = Rect::make(4i64, 5i64)
+  let b3 Rc<Square> = Square::make(6i64)
   arr.push(Dyn:<Shape>(b1))
   arr.push(Dyn:<Shape>(b2))
   arr.push(Dyn:<Shape>(b3))

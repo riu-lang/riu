@@ -8,8 +8,11 @@ struct Counter {
 }
 
 Counter {
-    fn Counter(n i32) {
-        $.n = n
+    #Static
+    fn make(n i32) Counter {
+        ret Self {
+            .n = n
+        }
     }
 }
 
@@ -18,6 +21,6 @@ fn say<T : Show>(x T) {
 }
 
 fn main() {
-    let c Counter = Counter(0i32)
+    let c Counter = Counter::make(0i32)
     say(c)
 }
