@@ -2103,7 +2103,10 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         // Phase 3b 构造模型重构: `Self { .field = value ... }` codegen.
         // 仅在 #Static fn 体内合法 (sema Phase 2d 已校验). 流程:
         //   alloca Self -> 按 fieldIndex 依次 GEP + store -> Load 返回值.
-        // 暂仅覆盖平凡字段; 含 Rc/Array/Weak 等句柄字段的 retain 路径留后续.
+        // Phase 4a (BUGS #4): 句柄字段 (Rc / Array / Weak / fn-fat-ptr /
+        //   含 RC 字段的非平凡 struct) 在 store 前对非 fresh 源 retain,
+        //   与 `$.field = value` assign 路径行为对齐. fresh 源 (call/ctor/array-lit
+        //   等) 已自带 +1 所有权, 直接 move-in 不再 retain.
         int line = structLitNode->resolveLineNumber();
         int col = structLitNode->resolveColumn();
         const string& structName = _currentStructName;
@@ -2135,7 +2138,33 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
             auto fieldPtr = _builder.CreateStructGEP(llvmStructType, alloca,
                                                      static_cast<unsigned>(idx),
                                                      structName + "." + fname);
+            const auto* fdecl = decl->field(fname);
+            const auto fieldType = fdecl ? fdecl->getType() : TypeInfo();
+            // Phase 4a: Array<T> 字段 + 数组字面量 RHS, 直接走 buildArrayLiteralBlock,
+            // 把字段的 element type 透传给 literal, 避免无目标类型语境下默认成定长 [N]T
+            // (与 compileDeclareAssignStatement 的 isArrayGeneric 分支对齐, BUGS #4)
+            if (fieldType.isArrayGeneric()) {
+                if (auto arrayNode = dynamic_cast<ExprArrayNode*>(fi->value())) {
+                    auto elemType = fieldType.arrayGenericElementType();
+                    if (!elemType) {
+                        throw YuxError(line, col, ErrorCode::E3055);
+                    }
+                    auto block = buildArrayLiteralBlock(arrayNode, *elemType);
+                    storeArrayHandle(fieldPtr, block);
+                    continue;
+                }
+            }
             auto val = compileExpr(fi->value());
+            // Phase 4a: 句柄字段所有权转移 (与 declare-assign 路径对齐, BUGS #4)
+            //   - fresh 源 (call / ctor / array-lit): 已 +1, 直接 consume 临时帧, 不重复 retain
+            //   - 非 fresh 源 (let / 字段读取等): retain 一次, 让源句柄与字段都各持 +1
+            if (fdecl && val && typeNeedsDestructor(fieldType)) {
+                if (isFreshHandleExpr(fi->value())) {
+                    consumeTemp(val);
+                } else {
+                    retainHandleAtCallSite(val, fieldType);
+                }
+            }
             _builder.CreateStore(val, fieldPtr);
         }
         return _builder.CreateLoad(llvmStructType, alloca, structName + ".lit.load");

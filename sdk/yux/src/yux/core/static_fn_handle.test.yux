@@ -1,0 +1,48 @@
+; Phase 4a: Self { ... } 句柄字段 retain 回归 (BUGS #4)
+
+struct Buf {
+  data Array<u32>
+}
+
+Buf {
+  fn ~() {
+    ; Array<u32> 由编译器代析构
+  }
+
+  #Static
+  fn from(arr Array<u32>) Buf {
+    ret Self {
+      .data = arr
+    }
+  }
+
+  #Static
+  fn one() Buf {
+    ret Self {
+      .data = [42u32]
+    }
+  }
+
+  fn len() i64 = $.data.len()
+  fn at(i i64) u32 = $.data[i]
+}
+
+#Test
+fn test_buf_from_existing_array() {
+  ; 非 fresh 源: arr 是 local Array<u32>, 进 Self {...} 需要 retain
+  let arr Array<u32> = [10u32, 20u32, 30u32]
+  let b Buf = Buf::from(arr)
+  assert_eq(b.len(), 3i64)
+  assert_eq(b.at(0i64), 10u32)
+  assert_eq(b.at(2i64), 30u32)
+  ; arr 与 b.data 共享句柄, 出作用域后两者都 release, 不应 double free
+  assert_eq(arr.len(), 3i64)
+}
+
+#Test
+fn test_buf_one_via_array_literal() {
+  ; fresh 源: 数组字面量自带 +1, 不应再 retain
+  let b Buf = Buf::one()
+  assert_eq(b.len(), 1i64)
+  assert_eq(b.at(0i64), 42u32)
+}
