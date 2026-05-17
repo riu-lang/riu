@@ -23,6 +23,13 @@ Buf {
     }
   }
 
+  #Static
+  fn empty() Buf {
+    ret Self {
+      .data = []
+    }
+  }
+
   fn len() i64 = $.data.len()
   fn at(i i64) u32 = $.data[i]
 }
@@ -45,4 +52,11 @@ fn test_buf_one_via_array_literal() {
   let b Buf = Buf::one()
   assert_eq(b.len(), 1i64)
   assert_eq(b.at(0i64), 42u32)
+}
+
+#Test
+fn test_buf_empty_via_empty_literal() {
+  ; BUGS #3 验证: Self {...} 内嵌空数组 [] 既能 parse 也能 codegen
+  let b Buf = Buf::empty()
+  assert_eq(b.len(), 0i64)
 }
