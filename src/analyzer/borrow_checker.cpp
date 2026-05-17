@@ -348,6 +348,34 @@ private:
                                        innerName, vname, innerName);
                     }
                 }
+                // DRAFT-heap-types §8.3a.4.3 (Phase 3d.1)：Heap<T>? 槽的 RHS 形态白名单。
+                // 合法：null 字面量 / 同型 ExprCallNode（heap_some / heap_null / 用户 fn 返回 Heap<T>?）。
+                // 禁止：Heap<T> 隐式 widen（E4027）；Heap<T>? lvalue 按值 move（E4024，B 档落地前一律拦）。
+                else if (varType.isNullable() && da->expr()) {
+                    auto inner = varType.nullableInnerType();
+                    if (inner && inner->isHeap()) {
+                        bool ok = false;
+                        if (auto litWrap = dynamic_cast<ExprLiteralNode*>(da->expr())) {
+                            if (dynamic_cast<LiteralNullNode*>(litWrap->literal())) ok = true;
+                        }
+                        if (!ok) {
+                            if (auto call = dynamic_cast<ExprCallNode*>(da->expr())) {
+                                if (call->getType() == varType) ok = true;
+                            }
+                        }
+                        if (!ok) {
+                            auto heapInner = inner->heapElementType();
+                            std::string innerName = heapInner ? heapInner->name : std::string("?");
+                            auto exprType = da->expr()->getType();
+                            if (exprType.isHeap()) {
+                                throw YuxError(s->getLineNumber(), ErrorCode::E4027,
+                                               innerName, innerName);
+                            }
+                            throw YuxError(s->getLineNumber(), ErrorCode::E4024,
+                                           innerName, vname, innerName);
+                        }
+                    }
+                }
                 _rootType[vname] = varType;
             }
             return;
@@ -375,6 +403,32 @@ private:
                         std::string innerName = inner ? inner->name : std::string("?");
                         throw YuxError(s->getLineNumber(), ErrorCode::E4024,
                                        innerName, lhsName, innerName);
+                    }
+                }
+                // Phase 3d.1：Heap<T>? 顶层重赋同样走白名单（同上）。
+                else if (rit != _rootType.end() && rit->second.isNullable() && as->expr()) {
+                    auto inner = rit->second.nullableInnerType();
+                    if (inner && inner->isHeap()) {
+                        bool ok = false;
+                        if (auto litWrap = dynamic_cast<ExprLiteralNode*>(as->expr())) {
+                            if (dynamic_cast<LiteralNullNode*>(litWrap->literal())) ok = true;
+                        }
+                        if (!ok) {
+                            if (auto call = dynamic_cast<ExprCallNode*>(as->expr())) {
+                                if (call->getType() == rit->second) ok = true;
+                            }
+                        }
+                        if (!ok) {
+                            auto heapInner = inner->heapElementType();
+                            std::string innerName = heapInner ? heapInner->name : std::string("?");
+                            auto exprType = as->expr()->getType();
+                            if (exprType.isHeap()) {
+                                throw YuxError(s->getLineNumber(), ErrorCode::E4027,
+                                               innerName, innerName);
+                            }
+                            throw YuxError(s->getLineNumber(), ErrorCode::E4024,
+                                           innerName, lhsName, innerName);
+                        }
                     }
                 }
             }

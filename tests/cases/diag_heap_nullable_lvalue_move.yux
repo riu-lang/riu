@@ -1,0 +1,6 @@
+; DRAFT-heap-types §8.3a.3.2：Heap<T>? lvalue 按值 move（B 档未落地前）—— E4024
+
+fn main() {
+  let a Heap<i32>? = heap_some(1i32)
+  let b Heap<i32>? = a
+}

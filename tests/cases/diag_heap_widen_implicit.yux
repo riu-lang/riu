@@ -1,0 +1,6 @@
+; DRAFT-heap-types §8.3a.4.3：Heap<T> -> Heap<T>? 隐式 widen 禁，E4027
+
+fn main() {
+  let h Heap<i32> = Heap:<i32>(5i32)
+  let n Heap<i32>? = h
+}
