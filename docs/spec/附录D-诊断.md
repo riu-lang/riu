@@ -246,6 +246,30 @@ const-mut（E3104..E3111；引入自 [draft/DRAFT-const-mut.md](draft/DRAFT-cons
 | E3110 | `\`#Const fn\` '{}' cannot {}: {} (DRAFT-const-mut §4.2)` |
 | E3111 | `\`#Const fn\` '{}' cannot call non-\`#Const\` function '{}' (DRAFT-const-mut §4.2.4)` |
 
+let-unify（E3112..E3116；引入自 [draft/DRAFT-let-unify.md](draft/DRAFT-let-unify.md)，落地章节 §5.1.1 / §11.9 / §11.10）：
+
+| 码     | 模板 |
+|--------|------|
+| E3112 | `Unknown \`let\` annotation '#{}' (only '#Mut', '#Frozen', '#Cval' are supported on \`let\`; DRAFT-let-unify §3.4)` |
+| E3113 | `\`let {}\` requires a type or initializer (DRAFT-let-unify §3.4)` |
+| E3114 | `\`let {} <type>\` requires an initializer (use \`#Mut let\` for deferred assignment; DRAFT-let-unify §3.4)` |
+| E3115 | `Annotations '#{}' and '#{}' are mutually exclusive on \`let\` (DRAFT-let-unify §3.4)` |
+| E3116 | `Global \`let {}\` requires \`#Cval\`: only compile-time constants are allowed at global scope (DRAFT-let-unify §3)` |
+
+构造模型重构（E3120..E3128；引入自 [draft/DRAFT-static-fn.md](draft/DRAFT-static-fn.md)，落地章节 §7.10）：
+
+| 码     | 模板 |
+|--------|------|
+| E3120 | `` `{}::{}` resolves to an instance method, not a `#Static fn`: use `<receiver>.{}(...)` instead (DRAFT-static-fn) `` |
+| E3121 | `` struct `{}` has no static fn `{}` (`Type::name(...)` requires a method annotated `#Static`; DRAFT-static-fn) `` |
+| E3122 | `` `{}::{}` LHS is neither an enum nor a struct in scope (DRAFT-static-fn) `` |
+| E3123 | `` `Self` type only allowed inside a `structImpl` body (DRAFT-static-fn) `` |
+| E3124 | `` `Self {{ ... }}` field literal only allowed inside a `#Static fn` body (DRAFT-static-fn) `` |
+| E3125 | `` `Self {{ ... }}` for struct `{}` is missing field `.{}` (all fields must be listed; DRAFT-static-fn) `` |
+| E3126 | `` struct `{}` has no field `.{}` (DRAFT-static-fn) `` |
+| E3127 | `` duplicate field `.{}` in `Self {{ ... }}` literal (DRAFT-static-fn) `` |
+| E3128 | `` `$` (current instance) cannot be used inside a `#Static fn` body (DRAFT-static-fn) `` |
+
 ### D.3.4 E4xxx — 所有权 / 借用
 
 | 码     | 模板 |

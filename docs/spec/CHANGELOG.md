@@ -15,6 +15,16 @@
 
 ---
 
+## 2026-05-17 —— 构造模型重构 P1：`#Static fn` + `Self` + `Self { ... }` 字段字面量
+
+- **新增 §7.10**：静态函数（关联函数）章节。声明形态 `#Static\nfn name(...) RT { ... }` 挂在 `structImpl` 内，无 `$` 接收者；调用语法 `Type::name(...)`，与 enum 构造共用 parser 节点（`ExprPathCallNode`），sema 按 LHS 类型分流。同结构体内 `#Static fn` 与同名实例 fn 共存允许，与同名 ctor 禁止。`Self` 升格为保留字（lexer token `SelfType`），在 `structImpl` 体内绑定为所属结构体类型；可出现在类型位 / 调用 LHS / 字段字面量 LHS。`Self { .field = expr ... }` 字段字面量仅在 `#Static fn` 体内合法，字段必须列全（DAA 退化），句柄字段 RHS 沿用 §7.4.4 的 retain-then-release / 转移 +1 语义。
+- **新增 §11.11**：`#Static` 注解条款。附着于 `structImpl` 内方法，禁 `$` / `$.field` / `&$`；与 `#Const` 组合允许，与 `#Frozen` 不组合。
+- **修订 §7.3.2**：原"v1 不引入结构体字面量语法"改为"v1 提供受限的 `Self { ... }` 字段字面量，仅 `#Static fn` 体内合法"；普通表达式位 `Foo { ... }` 仍由语法层拒收。
+- **附录 A**：`Self` 从 A.2 上下文标识符提升到 A.1 关键字（lexer token `SelfType`）。
+- **附录 D**：新增错误码段 E3120–E3128（构造模型重构相关）；补登记 E3112–E3116（let-unify 引入但此前未上附录 D）。
+- **SDK 试点**：`sdk/yux/src/yux/core/base.yux` 给 `String` 加 `#Static` 工厂 `String::empty()` / `String::from(buf)`，与同名 ctor 并存。`Array::with_capacity(n)` 因 Array 是 `#CompilerInner` 空结构体、`Self { ... }` 字段字面量不适用，待 `#CompilerInner #Static fn` codegen 路径落地后再补。
+- **冲突 / 兼容**：纯增。已有项目代码无 `#Static` 注解、不写 `Self` / `Self { ... }` / `Type::name(...)` 形态时行为不变；同名 ctor 通道未删。`yux-check`（SemaPass）镜像已接入 E3120 / E3121 / E3122 / E3123 / E3124 / E3128 等；E3125–E3127 仍在 codegen 端兜底。详见 `docs/dev/static-fn-impl-log.md`（实施期归档）。
+
 ## 2026-05-16 —— Heap<T> 类型族（DRAFT-heap-types.md Phase 0 回写）
 
 - **新增 §3.1**：类型档位表追加 "堆作用域句柄" 一档（`Heap<T>`），与堆句柄并列；注脚说明 `Rc<Heap<T>>` / `Array<Heap<T>>` 互斥规则
