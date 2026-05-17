@@ -175,3 +175,41 @@ fn test_heap_nrvo_multi_ret() {
   assert_eq(v1, 11i32)
   assert_eq(v2, 22i32)
 }
+
+; ---------- Phase 3d.2: B 档 nullable move 调用点写回 ----------
+
+fn bdang_consume(h Heap<i32>?) i32 {
+  if h.has() {
+    ret 42i32
+  }
+  ret 0i32
+}
+
+#Test
+fn test_heap_bdang_call_site_writeback() {
+  ; callee 接管 Heap<i32>? 后, 调用方 slot 被写回 {has=false, value=null}
+  let a Heap<i32>? = heap_some(5i32)
+  assert_eq(a.has(), true)
+  let r i32 = bdang_consume(a)
+  assert_eq(r, 42i32)
+  assert_eq(a.has(), false)
+}
+
+#Test
+fn test_heap_bdang_no_double_free() {
+  ; B 档写回后 caller 作用域尾析构应跳过 free (_has=false), 与 callee 析构不冲突.
+  ; 之后再分配一个新 Heap<i32>? 不应触发 double-free / use-after-free.
+  let a Heap<i32>? = heap_some(7i32)
+  let _ i32 = bdang_consume(a)
+  let b Heap<i32>? = heap_some(11i32)
+  assert_eq(b.has(), true)
+}
+
+#Test
+fn test_heap_bdang_null_arg_passthrough() {
+  ; B 档触发条件不依赖 _has=true; null 槽传入照样写回 (no-op 等价).
+  let a Heap<i32>? = heap_null:<i32>()
+  let r i32 = bdang_consume(a)
+  assert_eq(r, 0i32)
+  assert_eq(a.has(), false)
+}

@@ -1941,10 +1941,32 @@ llvm::Value* Compiler::compileKnownFunctionCall(
         }
     }
 
+    // Phase 3d.2: B 档 nullable move 收集 —— 形参 `Heap<T>?` byval + 实参是
+    // `Heap<T>?` 的局部 lvalue ID 时, 记录调用方 slot, 调用后写回 {has=false, value=null}.
+    // 字段 / 索引 lvalue / lambda 捕获留后续切片.
+    struct HeapBdangSlot { llvm::Value* slotPtr; llvm::Type* llvmTy; };
+    vector<HeapBdangSlot> heapBdangSlots;
+    auto recordBdangIfEligible = [&](size_t i) {
+        if (i >= fnSymbol->params.size() || i >= callNode->getArgs().size()) return;
+        const auto& p = fnSymbol->params[i];
+        if (p.isRef() || p.isPtr()) return;
+        if (!p.isNullable()) return;
+        auto inner = p.nullableInnerType();
+        if (!inner || !inner->isHeap()) return;
+        auto litE = dynamic_cast<ExprLiteralNode*>(callNode->getArgs()[i]);
+        if (!litE) return;
+        auto obj = dynamic_cast<LiteralObjNode*>(litE->literal());
+        if (!obj) return;
+        auto it = _localVarPtrs.find(obj->getValue().getText());
+        if (it == _localVarPtrs.end()) return;
+        heapBdangSlots.push_back({it->second, getLLVMType(p)});
+    };
+
     vector<llvm::Value*> callArgs;
     for (size_t i = 0; i < args.size() && i < fnSymbol->params.size(); ++i) {
         DEBUG_LOG_VAL("    Param", i << " argType=" << argTypes[i].name << " paramType=" << fnSymbol->params[i].name);
         DEBUG_LOG_VAL("    Param isPtr", argTypes[i].isPtr() << " paramIsPtr=" << fnSymbol->params[i].isPtr());
+        recordBdangIfEligible(i);
         if (fnSymbol->params[i].isRef() && !fnSymbol->isExternal) {
             if (auto literalNode = dynamic_cast<ExprLiteralNode*>(callNode->getArgs()[i])) {
                 if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literalNode->literal())) {
@@ -2066,6 +2088,20 @@ llvm::Value* Compiler::compileKnownFunctionCall(
     }
 
     auto callResult = _builder.CreateCall(fn, callArgs);
+
+    // Phase 3d.2: B 档 nullable move 写回 —— callee 接管 `Heap<T>?` byval 后,
+    // 调用方 slot 写 {_has=false, _value=null}, 让作用域尾析构 / 后续读都视作 null.
+    if (!heapBdangSlots.empty()) {
+        auto z = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+        auto ptrTy = llvm::PointerType::get(_context, 0);
+        for (auto& s : heapBdangSlots) {
+            auto hasField = _builder.CreateGEP(s.llvmTy, s.slotPtr, {z, z}, "bdang.has");
+            auto valField = _builder.CreateGEP(s.llvmTy, s.slotPtr, {z, one}, "bdang.value");
+            _builder.CreateStore(_builder.getInt1(false), hasField);
+            _builder.CreateStore(llvm::ConstantPointerNull::get(ptrTy), valField);
+        }
+    }
 
     if (fnSymbol->isExternal && !fnSymbol->retType.empty() && TypeInfo(fnSymbol->retType).isPtr()) {
         return callResult;

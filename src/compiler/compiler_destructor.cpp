@@ -63,6 +63,39 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
         return;
     }
 
+    // Phase 3d.2: Nullable<Heap<T>> 即 `Heap<T>?` —— 槽 = { i1 _has, ptr _value }.
+    // _has=false 时直接跳过 (B 档 move 写回 null 后的状态); _has=true 走与 Heap<T>
+    // 相同的释放序: 内层 T 析构 + __yux_heap_free.
+    if (type.isNullable()) {
+        auto inner = type.nullableInnerType();
+        if (inner && inner->isHeap()) {
+            auto ty = getLLVMType(type);
+            auto z = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+            auto ptrTy = llvm::PointerType::get(_context, 0);
+            auto valueField = _builder.CreateGEP(ty, slotPtr, {z, one}, "old.heap_opt.value_field");
+            auto ptr = _builder.CreateLoad(ptrTy, valueField, "old.heap_opt.payload");
+            // __yux_heap_free 对 null 安全, 内层 T 若需析构则按非 null 才调.
+            auto elemSp = inner->heapElementType();
+            if (elemSp && typeNeedsDestructor(*elemSp)) {
+                auto isNull = _builder.CreateICmpEQ(
+                    ptr, llvm::ConstantPointerNull::get(ptrTy), "old.heap_opt.isnull");
+                auto* pf = _builder.GetInsertBlock()->getParent();
+                auto* dropBB = llvm::BasicBlock::Create(_context, "old.heap_opt.drop", pf);
+                auto* contBB = llvm::BasicBlock::Create(_context, "old.heap_opt.cont", pf);
+                _builder.CreateCondBr(isNull, contBB, dropBB);
+                _builder.SetInsertPoint(dropBB);
+                releaseAtPtr(ptr, *elemSp);
+                _builder.CreateCall(runtime::getHeapHandleFreeFn(_module, _builder), {ptr});
+                _builder.CreateBr(contBB);
+                _builder.SetInsertPoint(contBB);
+            } else {
+                _builder.CreateCall(runtime::getHeapHandleFreeFn(_module, _builder), {ptr});
+            }
+            return;
+        }
+    }
+
     // Phase 3e: owned Dyn<D> 释放
     // layout = { ptr vtable, ptr data }；data 指 [RC head | 实例]
     // 走 _dyn_release(data, vtable)：strong-- → if 0 then dtor=vtable[0] dispatch(data+8) → weak-- + free
@@ -597,6 +630,12 @@ bool Compiler::typeNeedsDestructor(const TypeInfo& type) {
 
     // Heap<T>：作用域尾走 __yux_heap_free（DRAFT-heap-types §8.3a）
     if (type.isHeap()) return true;
+
+    // Phase 3d.2: Heap<T>? (Nullable<Heap<T>>) —— _has=true 时同 Heap<T> 释放.
+    if (type.isNullable()) {
+        auto inner = type.nullableInnerType();
+        if (inner && inner->isHeap()) return true;
+    }
 
     // Phase 3a: 函数类型 fn(...)R 的 captures 字段是 Rc<CapturesT>?，按 §7.4 字段级 RC
     // 即使零捕获场景下 captures 永远 null，IR 仍发出 retain/release（runtime null-safe）

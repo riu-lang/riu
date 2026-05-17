@@ -15,6 +15,15 @@
 
 ---
 
+## 2026-05-17 —— Heap Phase 3d.2：B 档 nullable move 调用点写回（最小集）
+
+- **行为面新增**（DRAFT-heap-types §5.2）：形参 `Heap<T>?` 按值 + 实参是 `Heap<T>?` 局部 lvalue ID 的调用点，调用后 caller 槽被自动写回 `{_has=false, _value=null}`。callee 接管所有权（包括 callee 作用域尾的 `__yux_heap_free`），caller 端 `a.has()` 立即变 false，作用域尾析构看到 null 跳过 free，互不冲突。
+  - `src/compiler/compiler_call.cpp::compileKnownFunctionCall`：args 循环里识别 B 档 elligible（formal `Nullable<Heap<T>>` byval + arg 是 `_localVarPtrs` 命中的 ID）→ 记录 caller slot；`CreateCall` 后逐 slot 写 null。
+  - `src/compiler/compiler_destructor.cpp::releaseAtPtr` / `typeNeedsDestructor`：补 `Nullable<Heap<T>>` 分支——之前 `Heap<T>?` 槽根本没析构，是 pre-existing 泄露；现在按 `_value != null` 走 `__yux_heap_free`（heap_free 自身 null-safe；内层 T 需析构时按 null-check 守门）。
+- **不在范围**（拆 3d.3 / 后续）：字段 move-out `Built { buf: b.buf }`（§5.3）；if/else flow merge；lambda 捕获 Heap（Phase 3e）；call site 实参是字段 / 索引等非 ID lvalue。
+- **测试**：`sdk/yux/src/yux/core/heap.test.yux` 新增 `test_heap_bdang_call_site_writeback` / `test_heap_bdang_no_double_free` / `test_heap_bdang_null_arg_passthrough`；SDK 515 → 518 通过。
+- **回归**：`xmake test` 183/183、`yux test`（SDK）518/518 全绿。
+
 ## 2026-05-17 —— 构造模型重构 Phase 6E.4 B-E：泛型 struct + `#Static fn` + `Self {}` codegen
 
 - **行为面新增**：用户可写 `GenericType:<X>::make(...)` 形式调用泛型 struct 的 `#Static fn`，搭配 `Self { ... }` 字段字面量；之前 codegen 完全不消费 turbofish lhsTypeArgs，调用形态实际不可用，本次接通。
