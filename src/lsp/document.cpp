@@ -116,17 +116,7 @@ void collectSymbols(const std::string& text, ::yux::yuxParser::ProgramContext* p
         out.push_back(std::move(s));
     }
 
-    for (auto* si : prog->structImpl()) {
-        auto* st = si->structType();
-        if (!st || !st->name) continue;
-        DocSymbol s;
-        s.name = st->name->getText();
-        s.kind = SymbolKind::Struct;
-        contextRange(text, si, s.rangeStart, s.rangeEnd);
-        s.selStart = tokenStartPos(text, st->name);
-        s.selEnd = tokenEndPos(text, st->name);
-        out.push_back(std::move(s));
-    }
+    // spec-unify v1：structImpl 产生式已删，方法段合并进 structDecl —— 上面的循环已覆盖。
 
     for (auto* lg : prog->letGlobal()) {
         if (!lg->name) continue;

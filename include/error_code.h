@@ -104,6 +104,10 @@ DEF_ERR(1133, "Cannot construct `Dyn<{}>` from `{}`: argument must be `Rc<U>` (o
 DEF_ERR(1134, "Draft `{}` is not object-safe: signatures contain `Self` or the draft's own name in non-receiver position; `Dyn<{}>` / `Dyn<{}&>` is not allowed")
 DEF_ERR(1135, "`Dyn<D>?` (nullable dyn) is not supported in v1")
 DEF_ERR(1136, "`Dyn<{}>` cannot cross `extern` boundary: vtable layout is internal ABI")
+// ── E113x spec-unify v1（[#1.AD] / DRAFT-spec-unify.md）───────────────
+DEF_ERR(1137, "Type `{}` does not implement spec method `{}` (declared in `#Impl({})`)")
+DEF_ERR(1138, "Cannot access static member `{}` on instance of `{}`; use `{}::{}` instead")
+DEF_ERR(1139, "spec `{}` method `{}` cannot have a body (v1 placeholder; default method bodies arrive in DRAFT-spec-default-body)")
 
 // ── E2xxx 语法 / AST 结构 ─────────────────────────────────────────────
 DEF_ERR(2001, "Weak<T>? is forbidden: Weak is natively nullable (upgrade returns Rc<T>?)")

@@ -59,7 +59,7 @@ int classify(size_t type) {
         case L::LineEndComment:
             return static_cast<int>(TT::Comment);
 
-        case L::Break: case L::Catch: case L::Draft: case L::Elif: case L::Else:
+        case L::Break: case L::Catch: case L::Elif: case L::Else:
         case L::Enum: case L::Extern: case L::False: case L::Fn: case L::If: case L::Let:
         case L::Loop: case L::Match: case L::Null: case L::Ret: case L::Struct:
         case L::True: case L::Try: case L::Use:
@@ -140,19 +140,12 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
 
     if (auto* c = dynamic_cast<P::StructDeclContext*>(node)) {
         if (auto* st = c->structType(); st && st->name) {
-            put(out, st->name, TT::Class, MOD_DECLARATION);
-        }
-    } else if (auto* c = dynamic_cast<P::DraftDeclContext*>(node)) {
-        if (auto* dt = c->draftType(); dt && dt->name) {
-            put(out, dt->name, TT::Interface, MOD_DECLARATION);
-        }
-    } else if (auto* c = dynamic_cast<P::DraftTypeContext*>(node)) {
-        // 引用位置（structImpl 的实现列表）；声明位置已被 DraftDecl 分支覆盖
-        if (c->name) put(out, c->name, TT::Interface, 0);
-    } else if (auto* c = dynamic_cast<P::StructImplContext*>(node)) {
-        if (auto* st = c->structType(); st && st->name) {
-            // structImpl 的名字是对 struct 的引用，不是声明
-            put(out, st->name, TT::Class, 0);
+            // spec-unify v1：#Spec 注解的 struct 渲染为 Interface（spec），否则 Class
+            bool isSpec = false;
+            for (auto* a : c->buildAnnos) {
+                if (a->name && a->name->getText() == "Spec") { isSpec = true; break; }
+            }
+            put(out, st->name, isSpec ? TT::Interface : TT::Class, MOD_DECLARATION);
         }
     } else if (auto* c = dynamic_cast<P::FnHeaderContext*>(node)) {
         put(out, c->name, TT::Function, MOD_DECLARATION);

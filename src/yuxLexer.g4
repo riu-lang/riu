@@ -29,7 +29,6 @@ LineEnd : '\r'? '\n' | '\n' | EOF;
 
 Break : 'break';
 Catch: 'catch';
-Draft: 'draft';
 Elif : 'elif';
 Else : 'else';
 Enum : 'enum';

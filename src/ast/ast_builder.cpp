@@ -14,22 +14,26 @@ namespace {
 // NoReturn / Fallible 由 DRAFT-错误.md 引入（spec §11.5.1）：
 //   #NoReturn        零参；标在 fn / structImpl 内方法上
 //   #Fallible(E)     单参；E 为错误 enum 类型名（语义校验推 10e）
+// spec-unify v1（[#1.AD]）新增：
+//   #Spec            零参；标在 struct 上 — 把声明转为 spec（仅签名）
+//   #Impl(SpecName)  单参；标在 struct 上 — 实现关系，替代旧 `: D1 + D2` 头部槽
 const set<string>& knownAnnos() {
-    static const set<string> s = {"CompilerInner", "Test", "TestIsolate", "DraftLike", "NoReturn", "Fallible", "Const", "Static"};
+    static const set<string> s = {"CompilerInner", "Test", "TestIsolate", "DraftLike", "NoReturn", "Fallible", "Const", "Static",
+                                   "Spec", "Impl"};
     return s;
 }
 
 // 单参注解白名单（spec §11.1.1.1）。其它注解出现 (arg) 形式视为非法（E2005 形式错配）。
 const set<string>& argAnnos() {
-    static const set<string> s = {"Fallible"};
+    static const set<string> s = {"Fallible", "Impl"};
     return s;
 }
 
 // 注解可附着位置的限定集合
-// fn 之外的位置（structDecl / structImpl / extern / globalConst）只接受 #CompilerInner，
+// fn 之外的位置（structDecl / extern / globalConst）只接受 #CompilerInner / #Spec / #Impl，
 // 不接受 #Test（spec §11.3.1.2）
 const set<string>& nonFnAllowedAnnos() {
-    static const set<string> s = {"CompilerInner"};
+    static const set<string> s = {"CompilerInner", "Spec", "Impl"};
     return s;
 }
 
@@ -703,63 +707,13 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         file->registerFnSymbol(fnName, fnFnSym);
     }
 
+    // spec-unify v1：所有 struct / spec / impl 走统一 visitStructDecl。
+    // 字段符号 / 方法符号登记由 visitStructDecl 内部完成 (file->addStructDecl /
+    // addStructImpl / addDraftDecl)；这里只需触发遍历。
     auto structDecls = ctx->structDecl();
     DEBUG_LOG_VAL("  Struct declarations count", structDecls.size());
     for (auto structDecl : structDecls) {
-        auto decl = any_cast_p<StructDeclNode>(visit(structDecl));
-        file->addStructDecl(decl);
-
-        for (auto field : decl->fields()) {
-            string methodKey = decl->name().getText() + "." + field->name().getText();
-            SymbolInfo fieldSym(SymbolKind::Variable, field->name().getText(), field->getType());
-            fieldSym.moduleName = moduleName;
-            file->registerSymbol(methodKey, fieldSym);
-        }
-    }
-
-    auto structImpls = ctx->structImpl();
-    DEBUG_LOG_VAL("  Struct implementations count", structImpls.size());
-    for (auto structImpl : structImpls) {
-        auto impl = any_cast_p<StructImplNode>(visit(structImpl));
-        file->addStructImpl(impl);
-
-        string structName = impl->structName();
-        for (auto method : impl->methods()) {
-            string methodName = method->header()->name().getText();
-            string fullName = structName + "." + methodName;
-
-            vector<TypeInfo> paramTypes;
-            paramTypes.push_back(TypeInfo(structName));
-            for (auto param : method->header()->params()) {
-                if (param->type()) {
-                    paramTypes.push_back(param->type()->getType());
-                }
-            }
-
-            TypeInfo retType;
-            if (method->header()->retType()) {
-                retType = method->header()->retType()->getType();
-            }
-
-            DEBUG_LOG_VAL("  Register method", fullName);
-            SymbolInfo methodSym(SymbolKind::Function, methodName, retType);
-            methodSym.moduleName = moduleName;
-            file->registerSymbol(fullName, methodSym);
-
-            FnSymbolInfo methodFnSym{fullName, moduleName, paramTypes, retType};
-            methodFnSym.isNoReturn = method->header()->hasAnno("NoReturn");
-            methodFnSym.isConst = method->header()->hasAnno("Const");
-            // Phase 10e：方法上的 #Fallible(E)（同 fn 路径）
-            if (auto eOpt = method->header()->getAnnoArg("Fallible")) {
-                methodFnSym.fallibleErrType = *eOpt;
-                if (!methodFnSym.fallibleErrType.empty() && retType.name == methodFnSym.fallibleErrType) {
-                    throw YuxError(
-                        method->header()->getLineNumber(), method->header()->getColumn(),
-                        ErrorCode::E7008, retType.name, methodFnSym.fallibleErrType);
-                }
-            }
-            file->registerFnSymbol(fullName, methodFnSym);
-        }
+        visit(structDecl);
     }
 
     // DRAFT-let-unify §3：全局 let（仅 #Cval 档）—— 预登记符号，让早引用合法。
@@ -1119,17 +1073,75 @@ std::any ASTBuilder::visitEnumVariant(yux::yuxParser::EnumVariantContext* ctx) {
     return p<EnumVariantNode>(variant);
 }
 
+// spec-unify v1：声明合一的 visitStructDecl 入口。
+// 分三种形态：
+//   1) `#Spec struct Foo { fn x() i32 }`   → 构造 DraftDeclNode（仅签名）
+//   2) `struct Foo { fields }`             → 构造 StructDeclNode 只
+//   3) `struct Foo { fields; fnClean?; fns }` 或 `#Impl(D) struct ...`
+//                                          → 构造 StructDeclNode + StructImplNode
+// 注解 `#Spec` 走分支 1；`#Impl(D)` 写入 StructImplNode::draftRefs（替代旧 `: D1 + D2`）。
 std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
     auto file = any_cast_p<FileNode>(stack.back());
     auto* stCtx = ctx->structType();
-    auto structDecl = createWithLine<StructDeclNode>(ctx, file, stCtx->name);
-    // structDecl 不接受 #Test（spec §11.3.1.2）
-    {
-        auto al = collectAnnosNonFn(ctx->buildAnnos);
-        structDecl->setAnnos(std::move(al.names), std::move(al.args));
+    string structName = stCtx->name->getText();
+    string moduleName = file->moduleName();
+
+    DEBUG_LOG_VAL("Visit: StructDecl", structName);
+
+    // === Step 1: 注解收集 — 识别 #Spec / #Impl，其它落 annos
+    bool isSpec = false;
+    vector<DraftRef> implRefs;
+    AnnoList annos;
+    for (auto* a : ctx->buildAnnos) {
+        string name = a->name->getText();
+        int line = static_cast<int>(a->name->getLine());
+        int col = static_cast<int>(a->name->getCharPositionInLine()) + 1;
+        if (!knownAnnos().contains(name)) {
+            throw YuxError(line, col, ErrorCode::E2005, name);
+        }
+        string arg = a->arg ? a->arg->getText() : "";
+        checkAnnoArity(a, name, !arg.empty());
+
+        if (name == "DraftLike") {
+            // §12.4.1.1：#DraftLike 只允许在 spec / draft 上（即同时带 #Spec）
+            // 本 v1 暂保留旧 #DraftLike 语义；非 spec 位置抛 E1110。
+        } else if (!nonFnAllowedAnnos().contains(name)) {
+            throw YuxError(line, col, ErrorCode::E2011, name);
+        }
+
+        if (name == "Spec") {
+            isSpec = true;
+        } else if (name == "Impl") {
+            DraftRef r;
+            r.name = arg;
+            // 解析 turbofish 类型实参（若有）
+            if (auto* gd = a->genericDef()) {
+                for (auto* pCtx : gd->params) {
+                    if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(pCtx->type(0))) {
+                        r.typeArgs.push_back(TypeInfo(tn->ID()->getText()));
+                    }
+                    // 复杂泛型实参押后
+                }
+            }
+            r.line = line;
+            r.col = col;
+            implRefs.push_back(std::move(r));
+        }
+        annos.names.push_back(std::move(name));
+        annos.args.push_back(std::move(arg));
     }
 
-    DEBUG_LOG_VAL("Visit: StructDecl", stCtx->name->getText());
+    // 非 spec 位置仍出现 #DraftLike → 维持旧 E1110 诊断（首个 #DraftLike）
+    if (!isSpec) {
+        for (auto* a : ctx->buildAnnos) {
+            if (a->name->getText() == "DraftLike") {
+                throw YuxError(
+                    static_cast<int>(a->name->getLine()),
+                    static_cast<int>(a->name->getCharPositionInLine()) + 1,
+                    ErrorCode::E1110);
+            }
+        }
+    }
 
     vector<string> typeParams;
     for (auto tCtx : stCtx->types) {
@@ -1137,6 +1149,67 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
             typeParams.push_back(tn->ID()->getText());
         }
     }
+
+    // === Step 2: #Spec 分支 — 构造 DraftDeclNode（v1 仅签名）
+    if (isSpec) {
+        if (!ctx->filedDecl().empty()) {
+            auto* f = ctx->filedDecl()[0];
+            throw YuxError(
+                static_cast<int>(f->getStart()->getLine()),
+                static_cast<int>(f->getStart()->getCharPositionInLine()) + 1,
+                ErrorCode::E2011, std::string("field in #Spec body"));
+        }
+        if (ctx->fnClean()) {
+            auto* fc = ctx->fnClean();
+            throw YuxError(
+                static_cast<int>(fc->getStart()->getLine()),
+                static_cast<int>(fc->getStart()->getCharPositionInLine()) + 1,
+                ErrorCode::E2011, std::string("destructor in #Spec body"));
+        }
+
+        auto draft = createWithLine<DraftDeclNode>(ctx, file, stCtx->name);
+        draft->setAnnos(annos.names, annos.args);
+        draft->setTypeParams(typeParams);
+
+        stack.emplace_back(draft);
+        _scopeStack.push_back(draft);
+
+        for (auto& tp : draft->typeParams()) {
+            draft->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
+        }
+
+        bool isDraftLike = draft->isDraftLike();
+        for (auto* fnCtx : ctx->fn()) {
+            auto* fnHeaderCtx = fnCtx->fnHeader();
+            if (fnCtx->fnBody()) {
+                // v1 占位：spec 方法不允许带 body（DRAFT-spec-default-body 落地后取消）
+                throw YuxError(
+                    static_cast<int>(fnHeaderCtx->name->getLine()),
+                    static_cast<int>(fnHeaderCtx->name->getCharPositionInLine()) + 1,
+                    ErrorCode::E1139, structName, fnHeaderCtx->name->getText());
+            }
+            auto header = any_cast_p<FnHeaderNode>(visitFnHeader(fnHeaderCtx));
+            if (header->isGeneric()) {
+                int hLine = header->getLineNumber();
+                int hCol = header->getColumn();
+                if (isDraftLike) {
+                    throw YuxError(hLine, hCol, ErrorCode::E1112, structName);
+                }
+                throw YuxError(hLine, hCol, ErrorCode::E1104, structName, header->name().getText());
+            }
+            draft->addSignature(header);
+        }
+
+        _scopeStack.pop_back();
+        stack.pop_back();
+
+        file->addDraftDecl(draft);
+        return p<DraftDeclNode>(draft);
+    }
+
+    // === Step 3: 普通 struct 分支 — 字段
+    auto structDecl = createWithLine<StructDeclNode>(ctx, file, stCtx->name);
+    structDecl->setAnnos(annos.names, annos.args);
     structDecl->setTypeParams(typeParams);
 
     stack.emplace_back(structDecl);
@@ -1144,7 +1217,6 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
 
     for (auto& tp : structDecl->typeParams()) {
         structDecl->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
-        DEBUG_LOG_VAL("    TypeParam", tp);
     }
 
     for (auto fieldCtx : ctx->filedDecl()) {
@@ -1155,74 +1227,51 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
     _scopeStack.pop_back();
     stack.pop_back();
 
-    return p<StructDeclNode>(structDecl);
-}
+    file->addStructDecl(structDecl);
 
-std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
-    auto file = any_cast_p<FileNode>(stack.back());
-    auto* stCtx = ctx->structType();
+    // 字段符号
+    for (auto field : structDecl->fields()) {
+        string methodKey = structName + "." + field->name().getText();
+        SymbolInfo fieldSym(SymbolKind::Variable, field->name().getText(), field->getType());
+        fieldSym.moduleName = moduleName;
+        file->registerSymbol(methodKey, fieldSym);
+    }
+
+    // === Step 4: 方法段（含析构）— 若任一存在则构 StructImplNode
+    bool hasMethods = !ctx->fn().empty();
+    bool hasDestructor = ctx->fnClean() != nullptr;
+    bool hasImpl = !implRefs.empty();
+
+    if (!(hasMethods || hasDestructor || hasImpl)) {
+        return p<StructDeclNode>(structDecl);
+    }
+
     auto structImpl = createWithLine<StructImplNode>(ctx, file, stCtx->name);
-    // structImpl 块本身不接受 #Test（spec §11.3.1.2）；其内部方法通过 visitFn 处理
-    {
-        auto al = collectAnnosNonFn(ctx->buildAnnos);
-        structImpl->setAnnos(std::move(al.names), std::move(al.args));
-    }
-
-    DEBUG_LOG_VAL("Visit: StructImpl", stCtx->name->getText());
-
-    vector<string> typeParams;
-    for (auto tCtx : stCtx->types) {
-        if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(tCtx)) {
-            typeParams.push_back(tn->ID()->getText());
-        }
-    }
+    structImpl->setAnnos(annos.names, annos.args);
     structImpl->setTypeParams(typeParams);
+    structImpl->setDraftRefs(std::move(implRefs));
 
     stack.emplace_back(structImpl);
     _scopeStack.push_back(structImpl);
 
     for (auto& tp : structImpl->typeParams()) {
         structImpl->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
-        DEBUG_LOG_VAL("    TypeParam", tp);
-    }
-
-    string structName = stCtx->name->getText();
-
-    // spec §12.2 收集 `Type : D1 + D2` 中的 draft 列表
-    {
-        vector<DraftRef> refs;
-        for (auto* dCtx : ctx->drafts) {
-            DraftRef r;
-            r.name = dCtx->name->getText();
-            for (auto* tCtx : dCtx->types) {
-                auto tn = any_cast_p<TypeNode>(visit(tCtx));
-                r.typeArgs.push_back(tn->getType());
-            }
-            if (auto* st = dCtx->getStart()) {
-                r.line = (int)st->getLine();
-                r.col = static_cast<int>(st->getCharPositionInLine()) + 1;
-            }
-            refs.push_back(std::move(r));
-        }
-        structImpl->setDraftRefs(std::move(refs));
     }
 
     if (ctx->fnClean()) {
         auto destructor = any_cast_p<FnNode>(visitFnClean(ctx->fnClean()));
         destructor->setParentScope(file);
         structImpl->setDestructor(destructor);
-        
+
         string destructorName = structName + ".~" + structName;
-        DEBUG_LOG_VAL("  Register destructor", destructorName);
-        
         vector<TypeInfo> paramTypes;
         paramTypes.push_back(TypeInfo(structName));
-        
+
         SymbolInfo destructorSym(SymbolKind::Function, "~" + structName, TypeInfo());
-        destructorSym.moduleName = file->moduleName();
+        destructorSym.moduleName = moduleName;
         file->registerSymbol(destructorName, destructorSym);
-        
-        FnSymbolInfo destructorFnSym{destructorName, file->moduleName(), paramTypes, TypeInfo()};
+
+        FnSymbolInfo destructorFnSym{destructorName, moduleName, paramTypes, TypeInfo()};
         file->registerFnSymbol(destructorName, destructorFnSym);
     }
 
@@ -1230,8 +1279,6 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
         auto header = any_cast_p<FnHeaderNode>(visitFnHeader(fnCtx->fnHeader()));
         auto fn = createWithLine<FnNode>(ctx, structImpl, header);
         fn->setParentScope(file);
-
-        // #NoReturn 头部校验（E7012 / E7013）也覆盖 structImpl 内方法
         checkNoReturnHeader(header);
 
         stack.emplace_back(fn);
@@ -1244,9 +1291,6 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
             fn->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
         }
 
-        // Phase 4e: receiver `$` 类型登记为 Self&（Ref<Self>）。IR 层仍是非空指针；
-        // sym.type 走 Ref 让 §3 借用规则统一适用（&$.field、传 Self& 形参等）。
-        // 字段 / 方法访问点已就位 Ref 自动剥皮（compileDotExpr / compileGetRefExpr / LiteralObjNode::getType）。
         {
             vector<sp<TypeInfo>> selfArgs;
             selfArgs.push_back(make_shared<TypeInfo>(structName));
@@ -1278,11 +1322,9 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
         } else if (fnCtx->fnBody()->fnBlockBody()) {
             auto blockBody = fnCtx->fnBody()->fnBlockBody();
             auto stmtBlockNode = any_cast_p<StatementBlockNode>(visit(blockBody->statementBlock()));
-
             for (auto stmt : stmtBlockNode->statements()) {
                 fn->addStatement(stmt);
             }
-
             if (stmtBlockNode->hasResult()) {
                 auto resultExpr = stmtBlockNode->resultExpr();
                 auto retStmt = createWithLine<StatementRetNode>(ctx, fn, resultExpr);
@@ -1300,62 +1342,47 @@ std::any ASTBuilder::visitStructImpl(yux::yuxParser::StructImplContext* ctx) {
     _scopeStack.pop_back();
     stack.pop_back();
 
-    return p<StructImplNode>(structImpl);
-}
+    file->addStructImpl(structImpl);
 
-std::any ASTBuilder::visitDraftDecl(yux::yuxParser::DraftDeclContext* ctx) {
-    auto file = any_cast_p<FileNode>(stack.back());
-    auto* dt = ctx->draftType();
-    auto draft = createWithLine<DraftDeclNode>(ctx, file, dt->name);
-    // draft 声明位允许 #DraftLike + #CompilerInner（§11.4）；#Test 不合法
-    {
-        auto al = collectAnnosForDraft(ctx->buildAnnos);
-        draft->setAnnos(std::move(al.names), std::move(al.args));
-    }
+    // 方法符号
+    for (auto method : structImpl->methods()) {
+        string methodName = method->header()->name().getText();
+        string fullName = structName + "." + methodName;
 
-    DEBUG_LOG_VAL("Visit: DraftDecl", dt->name->getText());
-
-    // §12.1.1.3 draft 自身可带泛型形参；体内 fn 不得再有泛型（在 visitFnHeader 后校验）
-    vector<string> typeParams;
-    for (auto* tCtx : dt->types) {
-        if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(tCtx)) {
-            typeParams.push_back(tn->ID()->getText());
-        }
-    }
-    draft->setTypeParams(typeParams);
-
-    stack.emplace_back(draft);
-    _scopeStack.push_back(draft);
-
-    for (auto& tp : draft->typeParams()) {
-        draft->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
-        DEBUG_LOG_VAL("    TypeParam", tp);
-    }
-
-    bool isDraftLike = draft->isDraftLike();
-    string draftName = dt->name->getText();
-
-    for (auto* fnHeaderCtx : ctx->fnHeader()) {
-        auto header = any_cast_p<FnHeaderNode>(visitFnHeader(fnHeaderCtx));
-
-        // §12.3.2 draft 体内单个 fn 不得引入本地泛型；§12.4.2 #DraftLike 也不得共用
-        if (header->isGeneric()) {
-            int line = header->getLineNumber();
-            int col = header->getColumn();
-            if (isDraftLike) {
-                throw YuxError(line, col, ErrorCode::E1112, draftName);
+        vector<TypeInfo> paramTypes;
+        paramTypes.push_back(TypeInfo(structName));
+        for (auto param : method->header()->params()) {
+            if (param->type()) {
+                paramTypes.push_back(param->type()->getType());
             }
-            throw YuxError(line, col, ErrorCode::E1104, draftName, header->name().getText());
         }
-        draft->addSignature(header);
+
+        TypeInfo retType;
+        if (method->header()->retType()) {
+            retType = method->header()->retType()->getType();
+        }
+
+        SymbolInfo methodSym(SymbolKind::Function, methodName, retType);
+        methodSym.moduleName = moduleName;
+        file->registerSymbol(fullName, methodSym);
+
+        FnSymbolInfo methodFnSym{fullName, moduleName, paramTypes, retType};
+        methodFnSym.isNoReturn = method->header()->hasAnno("NoReturn");
+        methodFnSym.isConst = method->header()->hasAnno("Const");
+        if (auto eOpt = method->header()->getAnnoArg("Fallible")) {
+            methodFnSym.fallibleErrType = *eOpt;
+            if (!methodFnSym.fallibleErrType.empty() && retType.name == methodFnSym.fallibleErrType) {
+                throw YuxError(
+                    method->header()->getLineNumber(), method->header()->getColumn(),
+                    ErrorCode::E7008, retType.name, methodFnSym.fallibleErrType);
+            }
+        }
+        file->registerFnSymbol(fullName, methodFnSym);
     }
 
-    _scopeStack.pop_back();
-    stack.pop_back();
-
-    file->addDraftDecl(draft);
-    return p<DraftDeclNode>(draft);
+    return p<StructDeclNode>(structDecl);
 }
+
 
 std::any ASTBuilder::visitFnClean(yux::yuxParser::FnCleanContext* ctx) {
     auto parent = currentScope();

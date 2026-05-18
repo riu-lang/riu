@@ -76,10 +76,9 @@ public:
     std::any visitFnClean(yux::yuxParser::FnCleanContext* ctx) override;
 
     std::any visitAliasDecl(yux::yuxParser::AliasDeclContext* ctx) override;
+    // spec-unify v1：声明合一 — 字段段 + fnClean? + fn 段（含 #Spec / #Impl 注解分支）
     std::any visitStructDecl(yux::yuxParser::StructDeclContext* ctx) override;
-    std::any visitStructImpl(yux::yuxParser::StructImplContext* ctx) override;
     std::any visitFiledDecl(yux::yuxParser::FiledDeclContext* ctx) override;
-    std::any visitDraftDecl(yux::yuxParser::DraftDeclContext* ctx) override;
     std::any visitEnumDecl(yux::yuxParser::EnumDeclContext* ctx) override;
     std::any visitEnumVariant(yux::yuxParser::EnumVariantContext* ctx) override;
 

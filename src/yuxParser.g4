@@ -17,9 +17,7 @@ program:
         | letGlobal
         | aliasDecl
         | enumDecl
-        | draftDecl
         | structDecl
-        | structImpl
         | LineEnd
     )* EOF
     ;
@@ -74,13 +72,17 @@ aliasDecl:
 // 构建注解
 //////////////
 
-// #Name
+// #Name / #Name(ID) / #Name(ID<T>)
+// 单参 ID + 可选 turbofish（[#1.O] v1 子集）：
+//   - 裸 ID：兼容 #Fallible(SomeErr) / #Impl(Spec) 等
+//   - ID + genericDef：兼容 #Impl(Spec<T>) 等
+//   - 字面量参数（#Doc("...") 等）押后扩展
 buildAnno:
     SymbolHash
     name=ID
     (
         ParStart
-          arg=ID
+          arg=ID genericDef?
         ParEnd
     )?
     LineEnd
@@ -124,7 +126,7 @@ numFloat: FLOAT;
 
 type:
       ID #typeNormal
-    // [PROBE static-fn] Self 类型字面量；structImpl 体内合法，体外由 sema 拒
+    // [PROBE static-fn] Self 类型字面量；struct / #Spec body 内合法，体外由 sema 拒
     | SelfType #typeSelf
     | type SymbolQuest        #typeNullable
     // A<T> B<T1, T2>
@@ -189,7 +191,7 @@ fnTypeParam:
     ;
 
 // typeParam: 单个类型形参 / 类型实参槽位。
-// 仅在**声明位**（fn / struct / draft 的 genericDef 槽位）允许 `:` 边界；
+// 仅在**声明位**（fn / struct 的 genericDef 槽位）允许 `:` 边界；
 // 类型引用位（如 Rc<T>）与调用点 turbofish 处必须无 bounds，由 semantic 层拒绝。
 typeParam:
     type
@@ -357,32 +359,7 @@ fnExprkBody:
 fnBlockBody: statementBlock;
 
 ///////////
-// draft 待中文命名
-///////////
-
-draftType:
-    name=ID
-    (
-        SymbolLt
-            types+=type
-            (SymbolComma types+=type)*
-        SymbolMt
-    )?
-    ;
-
-draftDecl:
-    (buildAnnos+=buildAnno)*
-    Draft draftType
-    BlockStart
-        (
-            (fnHeader LineEnd)
-          | LineEnd
-        )*
-    BlockEnd
-    ;
-
-///////////
-// 结构体
+// 结构体 待中文命名
 ///////////
 
 structType:
@@ -395,22 +372,17 @@ structType:
     )?
     ;
 
-// struct A
-// struct A<T1, T2>
+// struct A { fields*; fnClean?; fns* }
+// struct A<T1, T2> { ... }
+// 声明合一（spec-unify v1）：字段段在前、fn 段在后；
+// 析构 `fn ~()` 居中；spec 实现关系由顶行 `#Impl(Spec)` 注解承载，不入头部槽。
 structDecl:
     (buildAnnos+=buildAnno)*
     Struct structType
-    BlockStart
-        (filedDecl|LineEnd)*
-    BlockEnd
-    ;
-
-structImpl:
-    (buildAnnos+=buildAnno)* structType
-    (SymbolColon (drafts+=draftType (SymbolAdd drafts+=draftType)*)?)?
     BlockStart LineEnd
-    fnClean?
-    (fn|LineEnd)*
+        (filedDecl|LineEnd)*
+        fnClean?
+        (fn|LineEnd)*
     BlockEnd
     ;
 
