@@ -2,8 +2,11 @@
 
 # 草案：yux 堆类型重组
 
-状态：**草案 / 讨论中**。日期：2026-05-15。
+状态：**已落地（Phase 1-8）**，规范见 [docs/spec/03-类型系统.md §3.3](../03-类型系统.md) / [08-所有权与引用.md §8.3a](../08-所有权与引用.md) / [09-内置类型.md §9.5a](../09-内置类型.md)；实施记录见 [docs/dev/heap-types-impl-log.md](../../dev/heap-types-impl-log.md)（Phase 1 即 Box→Rc 改名独立归档在 [rc-rename-impl-log.md](../../dev/rc-rename-impl-log.md)）。本文件保留作历史档；正文不再变更。
+日期：2026-05-15 起草，2026-05-18 收尾。
 作用：重组 yux 的堆相关类型族——把当前误名为 `Box` 的 RC 形态改名为 `Rc`、引入作用域绑定的 `Heap<T>` 形态作为零 RC 中间档、为多线程主题占名 `Arc<T>`、统一深拷贝入口为 `copy_of`。
+
+> 已知遗留：Phase 8c FFI 上下文门控（仅 extern / `#FFI` 允许 `ptr_of:<Heap>` / `Heap:<T>(Ptr)`）未落，与 FFI 完善合并做；C 档复合 move 待全 struct move-in ABI 改造；Arc<T> 真实实现留 v1.x。
 
 > 当前 `Box<T>` 的语义（Block 含 strong/weak、可多 owner、`var b2 = b` 走 RC+1）一比一对齐 Rust 的 `Rc<T>`，叫 Box 是命名误导。本草案先正名，再补充"堆但无 RC"的中间档。
 

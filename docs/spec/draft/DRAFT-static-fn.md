@@ -2,7 +2,7 @@
 
 # 草案：yux 静态函数（`#Static` + `Type::fn`）
 
-状态：**已落地（P1 + Phase 6A–6D）**，规范见 [docs/spec/07-结构体.md §7.10](../07-结构体.md) 与 [docs/spec/11-编译期注解.md §11.11](../11-编译期注解.md)。日期：2026-05-17。
+状态：**已落地（P1 + Phase 6A–6E）**，规范见 [docs/spec/07-结构体.md §7.10](../07-结构体.md) 与 [docs/spec/11-编译期注解.md §11.11](../11-编译期注解.md)；实施记录见 [docs/dev/static-fn-impl-log.md](../../dev/static-fn-impl-log.md)。日期：2026-05-17 起草，2026-05-18 收尾。
 
 > 范围已扩为"构造模型重构（砍 ctor）"——P1 落静态函数 + `Self` + `Self { ... }` 字段字面量三件套，Phase 6A–6D 砍同名 `fn TypeName(...)` ctor 通道（sema E3130 拦截定义、SDK / tests / examples / docs 全量迁移、C++ 端 ctor 残余清理）。构造唯一通道收敛到 `#Static fn` + `Self { ... }`。本文件保留作历史档；正文不再变更。
 > 已知遗留：泛型 struct + `#Static fn` + `Self { }` codegen 路径未通（BUGS #3 / Phase 6E.4 B-E），非阻塞。

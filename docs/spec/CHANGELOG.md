@@ -15,6 +15,22 @@
 
 ---
 
+## 2026-05-18 —— v0.13.0 收尾：草案归档 + 实施日志 + LSP completion 补全
+
+- **草案归档**：
+  - `docs/spec/draft/DRAFT-heap-types.md` 头部状态升至"已落地（Phase 1-8）"，链接到 spec 正文 + 实施日志；保留作历史档不再变更。
+  - `docs/spec/draft/DRAFT-static-fn.md` 头部状态从"已落地（P1 + Phase 6A-6D）"升至"已落地（P1 + Phase 6A-6E）"，补 codegen 接通泛型 struct + `#Static fn` + `Self {}` 的 6E.4 B-E。
+- **实施日志新增**：
+  - `docs/dev/heap-types-impl-log.md`：Phase 2-8 实施记录（Phase 1 即 Box→Rc 改名独立归档在 `rc-rename-impl-log.md`）。核心决策（Heap 物理形态 = 裸 `T*`、单 owner 不参与 retain、B 档 nullable move、A 档 NRVO、scope-end 释放序）+ 各 Phase 改动面 + 跨 Phase TODO。
+  - `docs/dev/static-fn-impl-log.md`：Phase 0-6E 实施记录。核心决策（`#Static` 注解识别、`Type::name(...)` 调用、`ExprPathCallNode` 复用、`Self` 升关键字、`Self { .field = value }` 仅 `#Static fn` 体内、砍同名 ctor 不留过渡期）+ 各 Phase 改动面 + 未落事项。
+- **LSP completion 补全**（`src/lsp/completion.cpp`）：
+  - 类型补全加入 `Heap` / `Weak` / `Arc`（占名）/ `Dyn` / `Self`；`Rc` 描述细化。
+  - 内置函数补全加入 `copy_of` / `as_ref` / `ptr_of` / `same_ref` / `weak` / `upgrade` / `heap_some` / `heap_null` / `panic`。
+- **清理**：删除已完工的 `CURRENT-remove-ctor.md` 与 `CURRENT.md`（Heap 主线条目）；遗留 `CURRENT-check.md` / `CURRENT-forin.md` 是独立长期任务，保留。
+- **MILESTONE**：v0.13.0 标"已完成（2026-05-18）"，退出标准 ✅。
+
+---
+
 ## 2026-05-18 —— Heap Phase 8：FFI Heap ↔ Ptr 互转
 
 - **行为面新增**（DRAFT-heap-types Phase 8 / FFI handoff）：

@@ -63,13 +63,27 @@ const std::vector<CompletionItem>& buildItems() {
         ty("bool", "布尔类型");
         ty("String", "字符串类型");
         ty("Ref",   "引用类型 Ref<T>");
-        ty("Rc",   "堆对象类型 Rc<T>");
-        ty("Ptr",   "原始指针类型 Ptr<T>");
+        ty("Rc",   "堆对象类型 Rc<T>（多 owner，含 RC 头）");
+        ty("Heap", "堆作用域句柄 Heap<T>（单 owner，零 RC，作用域绑定）");
+        ty("Weak", "弱引用类型 Weak<T>");
+        ty("Arc",  "占名 Arc<T>（v1.x 多线程，当前未实装）");
+        ty("Ptr",   "原始指针类型 Ptr");
         ty("Array", "动态数组类型 Array<T>");
+        ty("Dyn",   "运行时多态 Dyn<D> / Dyn<D&>");
+        ty("Self",  "当前结构体类型（impl 块体内）");
 
         // BUILTIN_FUNCTIONS
         fn("print",   "内置函数：打印输出");
         fn("println", "内置函数：打印输出并换行");
+        fn("copy_of",   "深拷贝 copy_of:<T>(x T&) T —— 含 Rc/Array/String/Weak/Heap 字段按字段深拷");
+        fn("as_ref",    "取 payload 借用 as_ref:<T>(x Rc<T> | Heap<T>) T&");
+        fn("ptr_of",    "取裸指针 ptr_of:<T>(x) Ptr —— T 为堆句柄或 T&；Heap 形态移交所有权 (FFI)");
+        fn("same_ref",  "地址相等 same_ref:<T>(a, b) bool");
+        fn("weak",      "构造弱引用 weak:<T>(rc Rc<T>) Weak<T>");
+        fn("upgrade",   "弱升强 upgrade:<T>(w Weak<T>) Rc<T>?");
+        fn("heap_some", "构造非空可空堆句柄 heap_some:<T>(v T) Heap<T>?");
+        fn("heap_null", "构造空可空堆句柄 heap_null:<T>() Heap<T>?");
+        fn("panic",     "不可恢复终止 panic(msg String) —— 走 abort 通道，不入错误模型");
 
         // TYPE_CONVERSION_FUNCTIONS
         for (const char* t : {"bool","i8","i16","i32","i64","u8","u16","u32","u64","f32","f64"}) {

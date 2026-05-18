@@ -103,7 +103,7 @@
 
 **退出标准**：TODO（功能细节明确后填）。
 
-### v0.13.0 — spec 核心收口 + Heap 完整落地 + 工具链同步（草稿）
+### v0.13.0 — spec 核心收口 + Heap 完整落地 + 构造模型重构 + 工具链同步 ✅ 已完成（2026-05-18）
 
 **主题**：把仍在 draft/ 的草案推到 spec 正文里归档完毕；同时把"栈 or 堆"语义矩阵补完——`Heap<T>` 非空 / 可空形态、`copy_of` 深拷贝唯一入口、NRVO / lambda 返回路径全套落地。
 
@@ -123,15 +123,18 @@
   - LSP semantic_tokens / completion：`Heap` / `copy_of` 加入类型 / 内置函数集
   - yux-vscode tmLanguage：`Heap` 进类型关键字集（`Arc` 已在）
   - yux-idea：同上
-- **草案归档**：`DRAFT-heap-types.md` 头部标"已落地（B-F）"+ 实施日志 `docs/dev/heap-types-impl-log.md`
+- **草案归档**：`DRAFT-heap-types.md` 头部标"已落地（Phase 1-8）"+ 实施日志 `docs/dev/heap-types-impl-log.md`
+- **构造模型重构**（范围扩展，原 `DRAFT-static-fn.md`）：砍同名 ctor，构造唯一通道收敛到 `#Static fn` + `Self { ... }` 字段字面量；引入 `Self` 类型字面量 + `Type::name(...)` 调用语法；19 个 SDK 文件 + 50 个 tests/examples/docs 全量迁；spec §7.10 / §11.11 / 附录 A.1 / 附录 D.3.3 同步；实施日志 `docs/dev/static-fn-impl-log.md`
 
 **不在范围**：
 
 - `Arc<T>` 真正实现（多线程版 RC，留 v1.x）
 - 数值语义 / 字面量推断 / async 留口（推 v0.14）
 - 闭包捕获（推 v0.15+）
+- Phase 8c FFI 上下文门控（与 FFI 完善合并做）
+- Heap C 档复合 move（全 struct move-in ABI 改造，专项）
 
-**退出标准**：TODO（功能细节明确后填）。
+**退出标准**：✅ `xmake test` 184/184、`cd sdk/yux && yux test` 534/534 全绿；`DRAFT-heap-types.md` / `DRAFT-static-fn.md` 头部均标"已落地"并归档实施日志；LSP completion 加 `Heap` / `Weak` / `Arc` / `Dyn` / `Self` 类型 + `copy_of` / `as_ref` / `ptr_of` / `same_ref` / `weak` / `upgrade` / `heap_some` / `heap_null` / `panic` 内置函数；VSCode tmLanguage `Heap` / `Arc` 已在（Phase 1 rc-rename 时占位）。
 
 ### v0.12.0 — 变量模型整理 + 类型命名 + Sema 拆分前奏 ✅ 已完成（2026-05-15，事后补写）
 
