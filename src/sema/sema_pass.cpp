@@ -730,7 +730,10 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         if (innerSp) {
             const auto& innerT = *innerSp;
             auto argType = n->arg()->getType();
-            if (!(argType == innerT)) {
+            // Phase 8b: Heap:<T>(p Ptr) FFI take-over (DRAFT-heap-types §8.3a) —
+            // T != Ptr 时, argType == Ptr 视作合法 (代表接管裸指针所有权).
+            bool takeoverFromPtr = argType.isPtr() && innerT.name != "Ptr";
+            if (!takeoverFromPtr && !(argType == innerT)) {
                 throw YuxError(n->getLineNumber(), n->getColumn(),
                     ErrorCode::E3028, innerT.name, innerT.name, argType.name);
             }

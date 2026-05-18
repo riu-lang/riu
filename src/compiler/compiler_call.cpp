@@ -899,6 +899,11 @@ llvm::Value* Compiler::compileGenericFunctionCall(
                     throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
                         ErrorCode::E6028, fnName);
                 }
+                // Phase 8a: ptr_of:<Heap<U>>(h) FFI handoff (DRAFT-heap-types §8.3a)
+                // args[i] = Heap<U> = 裸 U* (无 wrapper), 直接作为 Ptr 返回; 调用点摘除 source slot.
+                if (T.isHeap()) {
+                    return args[i];
+                }
                 throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
                     ErrorCode::E6029, fnName, T.getFullName());
             };
@@ -909,7 +914,27 @@ llvm::Value* Compiler::compileGenericFunctionCall(
                 return _builder.CreateICmpEQ(p0, p1, "same_ref");
             }
             // ptr_of
-            return extractRawPtr(0, true);
+            auto raw = extractRawPtr(0, true);
+            // Phase 8a: ptr_of:<Heap<U>>(h) move-out — 摘除 source slot 的 _scopeVars,
+            // 并把 slot 写 null (防御性: 若变量名后续仍被引用, 至少不会 double-free).
+            // sema 已强制 arg 是 ID-literal.
+            if (T.isHeap()) {
+                auto argNode = callNode->getArgs()[0];
+                if (auto litE = dynamic_cast<ExprLiteralNode*>(argNode)) {
+                    if (auto objLit = dynamic_cast<LiteralObjNode*>(litE->literal())) {
+                        auto name = objLit->getValue().getText();
+                        _scopeVars.erase(
+                            std::remove(_scopeVars.begin(), _scopeVars.end(), name),
+                            _scopeVars.end());
+                        auto it = _localVarPtrs.find(name);
+                        if (it != _localVarPtrs.end()) {
+                            _builder.CreateStore(
+                                llvm::ConstantPointerNull::get(ptrTy), it->second);
+                        }
+                    }
+                }
+            }
+            return raw;
         }
         if (fnName == "as_ref") {
             // spec §8.3.5.5：as_ref:<T>(box Rc<T>) T&

@@ -400,3 +400,45 @@ fn test_heap_3f_copy_of_no_double_free() {
   let rc i32& = as_ref(c)
   assert_eq(rc, 2i32)
 }
+
+; ---------- Phase 8: FFI Heap ↔ Ptr 互转 ----------
+; ptr_of:<Heap<T>>(h)  → 移交所有权给 Ptr; source slot 写 null 且摘除 _scopeVars
+; Heap:<T>(p Ptr)      → 从 Ptr 接管所有权; 作用域尾走 Heap<T> dtor (free + inner release)
+; 责任方: Ptr 必须指向 __yux_heap_alloc 分配的 T-shape 内存
+; (FFI 上下文门控 8c 延后, 当前不限调用上下文)
+
+#Test
+fn test_heap_8_ffi_ptr_roundtrip_scalar() {
+  let h1 Heap<i32> = Heap:<i32>(123i32)
+  let p Ptr = ptr_of:<Heap<i32>>(h1)
+  ; h1 已 moveout; 后续访问由 borrow_checker 兜底 (本测试不复用)
+  let h2 Heap<i32> = Heap:<i32>(p)
+  let r i32& = as_ref(h2)
+  assert_eq(r, 123i32)
+}
+
+#Test
+fn test_heap_8_ffi_ptr_roundtrip_struct() {
+  let h1 Heap<CopyHeapBox> = Heap:<CopyHeapBox>(CopyHeapBox::make(42i32))
+  let p Ptr = ptr_of:<Heap<CopyHeapBox>>(h1)
+  let h2 Heap<CopyHeapBox> = Heap:<CopyHeapBox>(p)
+  let r CopyHeapBox& = as_ref(h2)
+  assert_eq(r.k, 42i32)
+}
+
+#Test
+fn test_heap_8_ffi_ptr_no_double_free() {
+  ; 两次 roundtrip 各自独立; 末尾无 dangling.
+  let a Heap<i32> = Heap:<i32>(1i32)
+  let pa Ptr = ptr_of:<Heap<i32>>(a)
+  let a2 Heap<i32> = Heap:<i32>(pa)
+
+  let b Heap<i32> = Heap:<i32>(2i32)
+  let pb Ptr = ptr_of:<Heap<i32>>(b)
+  let b2 Heap<i32> = Heap:<i32>(pb)
+
+  let ra i32& = as_ref(a2)
+  let rb i32& = as_ref(b2)
+  assert_eq(ra, 1i32)
+  assert_eq(rb, 2i32)
+}

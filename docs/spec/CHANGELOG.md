@@ -15,6 +15,22 @@
 
 ---
 
+## 2026-05-18 —— Heap Phase 8：FFI Heap ↔ Ptr 互转
+
+- **行为面新增**（DRAFT-heap-types Phase 8 / FFI handoff）：
+  - `ptr_of:<Heap<T>>(h Heap<T>) Ptr`：把 Heap 单所有权交给裸 Ptr——返回 `h` 的裸 `T*`，同时把 source slot 写 null 并从 `_scopeVars` 摘除，避免作用域尾 `__yux_heap_free` 与 FFI 端 free 双释放。sema 只接受 ID-literal 实参 (E6028)；同时把 `T.isHeap()` 加入 `ptr_of` 合法 `T` 集合（`same_ref` 不接受 Heap，单 owner 比较无语义）。
+  - `Heap:<T>(p Ptr) Heap<T>`：从裸 Ptr 接管所有权——跳 `__yux_heap_alloc` + store，直接把 `p` 作为 Heap 句柄；作用域尾走既有 `Heap<T>` dtor（`releaseAtPtr(inner T)` + `__yux_heap_free`）。sema/codegen 在 `ExprHeapCtorNode` 上识别 `argType.isPtr() && innerType.name != "Ptr"` 形态时放宽 E3028。责任方：调用者必须保证 `Ptr` 指向 `__yux_heap_alloc` 分配的 T-shape 内存。
+  - `src/sema/call_resolve.cpp::validateCompilerInnerIntrinsicTypeShape`：`ptr_of` 接受 Heap；强制 Heap 实参为 ID-literal。
+  - `src/compiler/compiler_call.cpp::extractRawPtr` + `ptr_of` 分派点：加 Heap 分支 + move-out。
+  - `src/compiler/compiler_expr.cpp::compileHeapCtorExpr`：加 take-over 分支。
+  - `src/sema/sema_pass.cpp::visitExpr(ExprHeapCtorNode)`：相同的 take-over 形态放宽 E3028。
+- **不在范围**：
+  - **8c FFI 上下文门控**：仅 `extern` / `#FFI` 上下文允许互转的诊断暂未落地，留 TODO，与后续 FFI 完善合并做。当前任何上下文都允许，行为正确但缺误用兜底。
+- **测试**：`sdk/yux/src/yux/core/heap.test.yux` 新增 3 项 — `test_heap_8_ffi_ptr_roundtrip_scalar` / `_roundtrip_struct` / `_no_double_free`；SDK 531 → 534 通过。
+- **回归**：`xmake test` 184/184、`yux test`（SDK）534/534 全绿。
+
+---
+
 ## 2026-05-17 —— Heap Phase 3f / 6：copy_of 扩展 Heap
 
 - **行为面新增**（DRAFT-heap-types Phase 6 / `copy_of` baked 扩展）：

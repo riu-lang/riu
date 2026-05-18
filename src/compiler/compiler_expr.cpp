@@ -2709,15 +2709,27 @@ llvm::Value* Compiler::compileHeapCtorExpr(p<ExprHeapCtorNode> node) {
         tryInferIntType(argExpr, innerType);
     }
     auto argType = argExpr->getType();
-    if (!(argType == innerType)) {
+
+    // Phase 8b: Heap:<T>(p Ptr) FFI take-over (DRAFT-heap-types §8.3a) —
+    // T != Ptr 且 argType == Ptr 时, 直接把 Ptr 作为 Heap<T> 句柄接管,
+    // 作用域尾走既有 Heap<T> dtor (releaseAtPtr(inner) + __yux_heap_free).
+    // 责任方: 调用者必须保证 Ptr 指向 T-shape 有效内存且由 __yux_heap_alloc 分配.
+    bool takeoverFromPtr = argType.isPtr() && innerType.name != "Ptr";
+    if (!takeoverFromPtr && !(argType == innerType)) {
         // Sema 已在 visitExpr(ExprHeapCtorNode) 内 shadow 抛 E3028；保留作幂等防御性双跑
         throw YuxError(line, col, ErrorCode::E3028,
             innerType.name, innerType.name, argType.name);
     }
 
-    auto innerLLVMType = getLLVMType(innerType);
     auto argVal = compileExpr(argExpr);
 
+    if (takeoverFromPtr) {
+        DEBUG_LOG_VAL("    Expr: HeapCtor (FFI take-over)",
+            resultType.getFullName() << " <- Ptr");
+        return argVal;
+    }
+
+    auto innerLLVMType = getLLVMType(innerType);
     auto sizeVal = _builder.getInt64(
         _module->getDataLayout().getTypeAllocSize(innerLLVMType).getFixedValue());
     auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);

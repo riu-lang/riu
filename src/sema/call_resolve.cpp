@@ -687,12 +687,16 @@ void validateCompilerInnerIntrinsicTypeShape(const string& fnName,
         const auto& T = typeArgs[0];
         bool isHeapHandle = T.isRc() || T.isWeak() || T.isArrayGeneric()
                             || (T.name == "String" && T.kind == TypeKind::Normal);
-        if (!isHeapHandle && !T.isRef()) {
+        // Phase 8a: ptr_of:<Heap<T>>(h) move-out FFI handoff (DRAFT-heap-types §8.3a)
+        // same_ref 不接受 Heap (Heap 单所有权, 两个 Heap 不可能指同一块, 比较无意义)
+        bool isHeapForPtrOf = (fnName == "ptr_of" && T.isHeap());
+        if (!isHeapHandle && !T.isRef() && !isHeapForPtrOf) {
             throw YuxError(line, col, ErrorCode::E6029, fnName, T.getFullName());
         }
-        if (T.isRef()) {
+        if (T.isRef() || isHeapForPtrOf) {
             // 取源裸指针仅支持: ID-literal (栈/堆变量) 或 ExprGetRefNode (`&x` 字面)
             // _localVarPtrs 查不到的 fallback 仍由 Compiler 抛 E6028.
+            // Phase 8a: Heap move-out 也只接受 ID-literal (槽要 null 化 / 摘除 _scopeVars).
             size_t expectedArgs = (fnName == "same_ref" ? 2u : 1u);
             for (size_t i = 0; i < expectedArgs && i < argNodes.size(); ++i) {
                 auto node = argNodes[i];
@@ -700,7 +704,7 @@ void validateCompilerInnerIntrinsicTypeShape(const string& fnName,
                 if (auto lit = dynamic_cast<ExprLiteralNode*>(node)) {
                     if (dynamic_cast<LiteralObjNode*>(lit->literal())) ok = true;
                 }
-                if (!ok && dynamic_cast<ExprGetRefNode*>(node)) ok = true;
+                if (!ok && !isHeapForPtrOf && dynamic_cast<ExprGetRefNode*>(node)) ok = true;
                 if (!ok) {
                     throw YuxError(line, col, ErrorCode::E6028, fnName);
                 }
