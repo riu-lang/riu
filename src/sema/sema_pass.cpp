@@ -103,6 +103,28 @@ EnumDeclNode* lookupEnumIn(p<FileNode> file, p<FileNode> sdkFile, const string& 
     return nullptr;
 }
 
+// Bucket 4 (CURRENT-check.md): 与 lookupEnumIn 同款的 struct decl 三段查找.
+// 注: FileNode::getStructDecl 跳过 #CompilerInner (Rc/Ref/Ptr/Array...),
+// 因此为 E6011 arity 校验单独走 _structDecls 直查, 包含 CompilerInner 项.
+StructDeclNode* lookupStructInRaw(p<FileNode> file, const string& name) {
+    if (!file) return nullptr;
+    for (auto* d : file->getStructDecls()) {
+        if (d && d->name().getText() == name) return d;
+    }
+    return nullptr;
+}
+StructDeclNode* lookupStructIn(p<FileNode> file, p<FileNode> sdkFile, const string& name) {
+    if (!file) return nullptr;
+    if (auto* d = lookupStructInRaw(file, name)) return d;
+    if (sdkFile && sdkFile != file) {
+        if (auto* d = lookupStructInRaw(sdkFile, name)) return d;
+    }
+    for (auto* imp : file->wildcardImports()) {
+        if (auto* d = lookupStructInRaw(imp, name)) return d;
+    }
+    return nullptr;
+}
+
 // Phase 3.3.2.f: 与 Compiler::isCompilerInnerMethod 等价的本地版本.
 // 仅查 sdkFile 的 struct impl (内建运算符方法都注册在 SDK 上), 不存在
 // 时返回 false. Sema 不依赖 Compiler 成员, 这里复制规则.
@@ -251,7 +273,35 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         return;
     }
     if (dynamic_cast<p<StatementRetVoidNode>>(stmt)) return;
-    if (dynamic_cast<p<StatementDeclareNode>>(stmt)) return; // 无表达式
+    if (auto d = dynamic_cast<p<StatementDeclareNode>>(stmt)) {
+        // Bucket 4 起步 (CURRENT-check.md): E6011 (泛型 struct arity).
+        // 无 init 形态 (`let p Pair<i32>`), 仅 varType, 同款检查.
+        if (d->varType()) {
+            try {
+                auto vt = d->varType()->getType();
+                if (!vt.name.empty() && !isBuiltinType(vt.name)
+                    && !vt.isRef() && !vt.isFn() && !vt.isTuple()) {
+                    if (auto* sd = lookupStructIn(_file, _sdkFile, vt.name)) {
+                        size_t want = sd->typeParams().size();
+                        size_t got = vt.genericArgs.size();
+                        if (want > 0 && want != got) {
+                            throw YuxError(d->getLineNumber(), d->getColumn(),
+                                ErrorCode::E6011, vt.name, want, got)
+                                .withHint(std::format(
+                                    "实例化时的类型实参个数需与声明匹配；改写为 `{}<{}>` 形式补齐 {} 个类型",
+                                    vt.name,
+                                    std::string(want == 1 ? "T" : "T1, T2, ..."), want));
+                        }
+                    }
+                }
+            } catch (const YuxError&) {
+                throw;
+            } catch (...) {
+                // 留 Compiler 兜底
+            }
+        }
+        return;
+    }
     if (auto as = dynamic_cast<p<StatementAssignNode>>(stmt)) {
         // Phase 2e: `$.field = ...` 在 `#Static fn` 体内禁用 (E3128).
         // StatementAssign 的 `obj` (LHS 根) 不会被 visitExpr 递归, 这里单独拦截.
@@ -440,6 +490,35 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         // 其它形态 (ExprGetRef E3017 / ExprCall as_ref E3019 / 复杂 expr) 留 Compiler 兜底.
         // lambda 体 sema 不下钻 — 这里检查 _currentFn 非空再做.
         // Compiler 端 inline throw 保留作幂等防御性双跑.
+        // Bucket 4 起步 (CURRENT-check.md): E6011 (泛型 struct arity 不匹配).
+        // 不依赖 expr / _currentFn, 仅 varType 形态. varType.name 命中已知 struct decl,
+        // decl.isGeneric() 且 typeParams.size() != genericArgs.size() → 抛 E6011.
+        // 镜像 compiler_types.cpp:241 与 :597 两条路径. Builtin / Ref / Fn / Tuple 跳过.
+        // Compiler 端原 throw 保留作幂等防御性双跑.
+        if (da->varType()) {
+            try {
+                auto vt = da->varType()->getType();
+                if (!vt.name.empty() && !isBuiltinType(vt.name)
+                    && !vt.isRef() && !vt.isFn() && !vt.isTuple()) {
+                    if (auto* sd = lookupStructIn(_file, _sdkFile, vt.name)) {
+                        size_t want = sd->typeParams().size();
+                        size_t got = vt.genericArgs.size();
+                        if (want > 0 && want != got) {
+                            throw YuxError(da->getLineNumber(), da->getColumn(),
+                                ErrorCode::E6011, vt.name, want, got)
+                                .withHint(std::format(
+                                    "实例化时的类型实参个数需与声明匹配；改写为 `{}<{}>` 形式补齐 {} 个类型",
+                                    vt.name,
+                                    std::string(want == 1 ? "T" : "T1, T2, ..."), want));
+                        }
+                    }
+                }
+            } catch (const YuxError&) {
+                throw;
+            } catch (...) {
+                // 留 Compiler 兜底
+            }
+        }
         if (da->varType() && _currentFn && da->expr()) {
             auto varType = da->varType()->getType();
             // Bucket 6 收口+ (CURRENT-check.md): 目标类型驱动的形态校验.
