@@ -14,8 +14,8 @@
 #include "ast/node/expr_node.h"
 #include "ast/node/literal_node.h"
 #include "compiler_runtime.h"
-#include "analyzer/draft_impl_checker.h"
-#include "analyzer/draft_registry.h"
+#include "analyzer/spec_impl_checker.h"
+#include "analyzer/spec_registry.h"
 #include "ast/mangler.h"
 #include "sema/call_resolve.h"
 #include <llvm/IR/Constants.h>
@@ -1158,10 +1158,10 @@ llvm::Value* Compiler::compileGenericFunctionCall(
     // 解析每个 D 的限定名并校验 typeArgs[i] 是否满足 D (显式 impl 或
     // #DraftLike 结构匹配); 不满足报 E1106. 不影响 ensureFnInstance 的
     // mangle (单态化静态分发, 边界仅做静态检查).
-    // E3032 / E1106 (Phase 3.3.3.c): 迁至 sema::validateGenericTypeArgsDraftBound.
+    // E3032 / E1106 (Phase 3.3.3.c): 迁至 sema::validateGenericTypeArgsSpecBound.
     if (_yux) {
-        sema::validateGenericTypeArgsDraftBound(
-            &_yux->draftRegistry(), &_yux->draftImplChecker(),
+        sema::validateGenericTypeArgsSpecBound(
+            &_yux->specRegistry(), &_yux->specImplChecker(),
             fnOwner, genericFn->header(), typeArgs,
             callNode->getLineNumber(), callNode->getColumn());
     }
@@ -1873,15 +1873,15 @@ llvm::Value* Compiler::compileDynMethodCall(
     int col = callNode->getColumn();
 
     // 1. 取 D 名 (剥 Dyn<D&> 的内层 Ref); 解析为 draft decl.
-    // E1131 (Phase 3.3.3.b): 迁至 sema::resolveDynCalleeDraft.
-    const DraftRegistry* reg = (_yux && _file) ? &_yux->draftRegistry() : nullptr;
-    auto resolved = sema::resolveDynCalleeDraft(reg, _file, baseType, line, col);
-    DraftDeclNode* draftDecl = resolved.decl;
-    const string& draftQualified = resolved.qualified;
+    // E1131 (Phase 3.3.3.b): 迁至 sema::resolveDynCalleeSpec.
+    const SpecRegistry* reg = (_yux && _file) ? &_yux->specRegistry() : nullptr;
+    auto resolved = sema::resolveDynCalleeSpec(reg, _file, baseType, line, col);
+    SpecDeclNode* specDecl = resolved.decl;
+    const string& specQualified = resolved.qualified;
 
     // 2-4. sig 查找 / arity / 形参类型 抠到 sema (E6016 / E6012 / E6015).
     FnHeaderNode* sig = sema::resolveDynMethodSig(
-        draftDecl, draftQualified, baseType, member, argTypes, line, col);
+        specDecl, specQualified, baseType, member, argTypes, line, col);
 
     // 5. Phase 3d: load fat_ptr.vtable → GEP slot[i+1] → load fn ptr → indirect call.
     //    receiver:
@@ -1893,8 +1893,8 @@ llvm::Value* Compiler::compileDynMethodCall(
 
     // 找到方法在 D.signatures() 中的下标（vtable 槽 0 是 dtor，方法从 1 开始）
     size_t methodIdx = 0;
-    for (size_t i = 0; i < draftDecl->signatures().size(); ++i) {
-        if (draftDecl->signatures()[i] == sig) { methodIdx = i; break; }
+    for (size_t i = 0; i < specDecl->signatures().size(); ++i) {
+        if (specDecl->signatures()[i] == sig) { methodIdx = i; break; }
     }
 
     auto ptrTy = llvm::PointerType::get(_context, 0);

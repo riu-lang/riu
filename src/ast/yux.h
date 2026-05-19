@@ -9,8 +9,8 @@
 #include <memory>
 
 class ASTBuilder;
-class DraftRegistry;
-class DraftImplChecker;
+class SpecRegistry;
+class SpecImplChecker;
 
 // pkg 文件导出项
 struct PkgExportItem {
@@ -55,19 +55,19 @@ public:
     const vector<p<FileNode>>& files() const { return _files; }
 
     // draft 注册表 (spec §12). 首次访问时按当前已加载的 _files + _sdkFile
-    // 全量索引一次. 后续如新增动态加载模块, 调用 rebuildDraftRegistry().
-    DraftRegistry& draftRegistry();
-    void rebuildDraftRegistry();
+    // 全量索引一次. 后续如新增动态加载模块, 调用 rebuildSpecRegistry().
+    SpecRegistry& specRegistry();
+    void rebuildSpecRegistry();
 
     // §12.2 / §12.3 / §12.5 显式 draft 实现校验 (Phase 3.2.e).
-    // 首次调用时构造 DraftImplChecker 跑全套校验, 后续调用直接返回.
+    // 首次调用时构造 SpecImplChecker 跑全套校验, 后续调用直接返回.
     // 由 Compiler::compile() 起始处调用, SDK 与用户文件统一一次.
-    void validateDraftImpls();
+    void validateSpecImpls();
 
-    // 拿到长生命周期的 DraftImplChecker (Phase 3.3 边界匹配需要复用其
-    // _seen 显式实现表与 typeSatisfiesDraft 结构匹配 helper).
-    // 触发时自动调用 validateDraftImpls() 一次.
-    DraftImplChecker& draftImplChecker();
+    // 拿到长生命周期的 SpecImplChecker (Phase 3.3 边界匹配需要复用其
+    // _seen 显式实现表与 typeSatisfiesSpec 结构匹配 helper).
+    // 触发时自动调用 validateSpecImpls() 一次.
+    SpecImplChecker& specImplChecker();
 
     // 按模块名加载 `.yux` 文件。首次加载解析并注册，后续命中缓存。
     // errorLine 仅用于错误报告。未找到文件 / 循环依赖时抛 YuxError。
@@ -123,9 +123,9 @@ private:
     // 底层解析 + ASTBuilder。内部用。
     p<FileNode> _parseFile(const string& absPath, const string& moduleName, int errorLine);
 
-    std::unique_ptr<DraftRegistry> _draftRegistry;
-    std::unique_ptr<DraftImplChecker> _draftImplChecker;
-    bool _draftImplValidated = false;
+    std::unique_ptr<SpecRegistry> _specRegistry;
+    std::unique_ptr<SpecImplChecker> _specImplChecker;
+    bool _specImplValidated = false;
 };
 
 #endif //YUX_LANG_YUX_H

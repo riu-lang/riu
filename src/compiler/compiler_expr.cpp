@@ -23,8 +23,8 @@
 #include "ast/mangler.h"
 #include "ast/yux.h"
 #include "analyzer/symbol_suggest.h"
-#include "analyzer/draft_impl_checker.h"
-#include "analyzer/draft_registry.h"
+#include "analyzer/spec_impl_checker.h"
+#include "analyzer/spec_registry.h"
 #include "sema/call_resolve.h"
 #include <algorithm>
 #include <set>
@@ -2553,8 +2553,8 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
     // ── Phase 2b: Dyn<D>(x) 构造静态检查 ─────────────────────────────────
     // 顺序: E1131 (D 必须是 draft) → E1132 (嵌套 Dyn) → E1134 (对象安全)
     // → E1133 (参数形态 Rc<U> / U& + U:D)。
-    auto draftInner = resultType.dynDraftType();
-    std::string draftBareName = draftInner ? draftInner->name : std::string();
+    auto specInner = resultType.dynSpecType();
+    std::string specBareName = specInner ? specInner->name : std::string();
 
     // 走 parent() 链而不是 parentScope()：struct 方法的 FnNode 在 AST 构造时
     // 不一定挂上 parentScope，但 parent() 链一定连到 FileNode
@@ -2566,32 +2566,32 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
         cur = cur->parent();
     }
 
-    DraftDeclNode* draftDecl = nullptr;
-    std::string draftQualified;
-    if (_yux && file && !draftBareName.empty()) {
-        auto& reg = _yux->draftRegistry();
-        if (auto resolved = reg.resolve(draftBareName, file)) {
-            draftDecl = resolved->decl;
-            draftQualified = resolved->qualifiedName;
+    SpecDeclNode* specDecl = nullptr;
+    std::string specQualified;
+    if (_yux && file && !specBareName.empty()) {
+        auto& reg = _yux->specRegistry();
+        if (auto resolved = reg.resolve(specBareName, file)) {
+            specDecl = resolved->decl;
+            specQualified = resolved->qualifiedName;
         }
     }
-    if (!draftDecl) {
+    if (!specDecl) {
         // E1131: 内层不是已知 draft 名 (可能是结构体 / 类型别名 / 不存在符号)
         throw YuxError(line, col, ErrorCode::E1131,
-            draftBareName.empty() ? std::string("?") : draftBareName);
+            specBareName.empty() ? std::string("?") : specBareName);
     }
 
     // E1132: Dyn<Dyn<...>> — 内层 draft 位置不能再是 Dyn
-    if (draftInner && draftInner->isDyn()) {
+    if (specInner && specInner->isDyn()) {
         throw YuxError(line, col, ErrorCode::E1132, resultType.getFullName());
     }
 
     // E1134: 对象安全
     if (_yux) {
-        auto& checker = _yux->draftImplChecker();
-        if (!checker.draftIsObjectSafe(draftDecl)) {
+        auto& checker = _yux->specImplChecker();
+        if (!checker.specIsObjectSafe(specDecl)) {
             throw YuxError(line, col, ErrorCode::E1134,
-                draftQualified, draftQualified, draftQualified);
+                specQualified, specQualified, specQualified);
         }
     }
 
@@ -2618,16 +2618,16 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
     }
     if (concreteBare.empty()) {
         throw YuxError(line, col, ErrorCode::E1133,
-            draftQualified, argType.getFullName(), draftQualified);
+            specQualified, argType.getFullName(), specQualified);
     }
     if (_yux) {
-        auto& checker = _yux->draftImplChecker();
+        auto& checker = _yux->specImplChecker();
         TypeInfo concreteTI(concreteBare);
         // boundSatisfied 同时覆盖显式 impl (_seen) 与 #DraftLike 结构匹配
-        std::vector<TypeInfo> draftTypeArgs;
-        if (!checker.boundSatisfied(concreteTI, draftDecl, draftQualified, draftTypeArgs)) {
+        std::vector<TypeInfo> specTypeArgs;
+        if (!checker.boundSatisfied(concreteTI, specDecl, specQualified, specTypeArgs)) {
             throw YuxError(line, col, ErrorCode::E1133,
-                draftQualified, argType.getFullName(), draftQualified);
+                specQualified, argType.getFullName(), specQualified);
         }
     }
 
@@ -2670,7 +2670,7 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
 
     // vtable 槽：Phase 3a 真值（按 (U, D) 合成 linkonce_odr 全局）
     TypeInfo concreteTI(concreteBare);
-    llvm::Value* vtablePtr = getOrEmitDynVTable(concreteTI, draftQualified, draftDecl);
+    llvm::Value* vtablePtr = getOrEmitDynVTable(concreteTI, specQualified, specDecl);
     if (!vtablePtr) vtablePtr = nullPtr;
 
     // 组装 fat pointer struct value { vtable, data }

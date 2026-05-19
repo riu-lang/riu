@@ -13,7 +13,7 @@
 #include "compiler.h"
 #include "ast/mangler.h"
 #include "ast/node/alias_node.h"
-#include "ast/node/draft_node.h"
+#include "ast/node/spec_node.h"
 #include "ast/node/struct_node.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/fn_node.h"
@@ -189,7 +189,7 @@ void Compiler::validateAliases() {
                            name, string("struct"), name);
         }
         // 与本文件 draft 同名
-        if (auto* d = _file->getDraftDecl(name)) {
+        if (auto* d = _file->getSpecDecl(name)) {
             (void)d;
             throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017,
                            name, string("draft"), name);

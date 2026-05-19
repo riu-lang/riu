@@ -4,17 +4,17 @@
 // draft 显式实现校验器 — 实现 (spec §12).
 //
 // 本文件实现:
-//   - DraftImplChecker::validate(): 遍历 SDK + 用户文件中所有
-//     带 draftRefs 的 StructImplNode, 逐一调 validateImpl.
+//   - SpecImplChecker::validate(): 遍历 SDK + 用户文件中所有
+//     带 specRefs 的 StructImplNode, 逐一调 validateImpl.
 //   - validateImpl: 解析每个 D 的 qualifiedName, 顺序做 orphan / 重复 /
 //     穷尽匹配 / 不多余检查; 对多 D 实现块, 不多余检查在所有 D 都比对
 //     完后再统一判定 (任一 D 命中即视为合法).
 //   - sigEquivalent: §12.3.1 等价判定 — 名 / 形参类型 / 返回类型;
 //     先对 draft 侧应用 typeParam → impl 块给出的类型实参替换.
 
-#include "draft_impl_checker.h"
+#include "spec_impl_checker.h"
 
-#include "draft_registry.h"
+#include "spec_registry.h"
 #include "ast/yux.h"
 #include "ast/node/alias_node.h"
 #include "ast/node/enum_node.h"
@@ -44,9 +44,9 @@ const std::set<std::string>& builtinTypeNames() {
 
 } // namespace
 
-DraftImplChecker::DraftImplChecker(Yux* yux) : _yux(yux) {}
+SpecImplChecker::SpecImplChecker(Yux* yux) : _yux(yux) {}
 
-void DraftImplChecker::buildTypeOwnerMap() {
+void SpecImplChecker::buildTypeOwnerMap() {
     _typeOwnerModule.clear();
     auto index = [&](FileNode* file) {
         if (!file) return;
@@ -63,14 +63,14 @@ void DraftImplChecker::buildTypeOwnerMap() {
     }
 }
 
-std::string DraftImplChecker::moduleOfType(const std::string& bareName) const {
+std::string SpecImplChecker::moduleOfType(const std::string& bareName) const {
     auto it = _typeOwnerModule.find(bareName);
     if (it != _typeOwnerModule.end()) return it->second;
     if (builtinTypeNames().count(bareName)) return "yux.core";
     return {};
 }
 
-void DraftImplChecker::validate() {
+void SpecImplChecker::validate() {
     if (!_yux) return;
     // 每次 validate 都重新构建状态：上次跑过后若有新文件加入 (典型场景:
     // `yux test` 冷启动 — compileSdkDir 触发第一次 validate, 此时 test 文件还未
@@ -81,13 +81,13 @@ void DraftImplChecker::validate() {
     _objectSafeCache.clear();
     buildTypeOwnerMap();
     // 触发一次 registry 构建 (若未构建)
-    (void)_yux->draftRegistry();
+    (void)_yux->specRegistry();
 
     auto run = [&](FileNode* file) {
         if (!file) return;
         for (auto& impl : file->getStructImpls()) {
             // 普通方法块 (不带 `: D`) 不在本 checker 范围.
-            if (impl->draftRefs().empty()) continue;
+            if (impl->specRefs().empty()) continue;
             validateImpl(file, impl);
         }
     };
@@ -102,7 +102,7 @@ void DraftImplChecker::validate() {
     validateDynTypeReferences();
 }
 
-void DraftImplChecker::checkExplicitImplicitConflict() {
+void SpecImplChecker::checkExplicitImplicitConflict() {
     // 每个 Type 收集普通方法块与 draft 实现块的方法; 配对比对签名等价.
     // 跨包条款 (§12.4.2.2 / §12.4.2.3) 已由 #DraftLike 路径与 §12.5
     // orphan 处理: 这里所见的"普通方法块 + draft 实现块共存"场景, 都是
@@ -110,15 +110,15 @@ void DraftImplChecker::checkExplicitImplicitConflict() {
     struct PerType {
         // (impl 块所在文件, 方法 header)
         std::vector<std::pair<FileNode*, FnHeaderNode*>> plain;
-        // (impl 块所在文件, 方法 header, 该 impl 块首个 draftRef 的限定名 — 仅用于错误信息)
+        // (impl 块所在文件, 方法 header, 该 impl 块首个 specRef 的限定名 — 仅用于错误信息)
         std::vector<std::tuple<FileNode*, FnHeaderNode*, std::string>> draft;
     };
     std::map<std::string, PerType> table;
 
-    auto draftQualifiedFor = [&](FileNode* file, StructImplNode* impl) -> std::string {
-        if (impl->draftRefs().empty()) return {};
-        auto& reg = _yux->draftRegistry();
-        const auto& dref = impl->draftRefs().front();
+    auto specQualifiedFor = [&](FileNode* file, StructImplNode* impl) -> std::string {
+        if (impl->specRefs().empty()) return {};
+        auto& reg = _yux->specRegistry();
+        const auto& dref = impl->specRefs().front();
         if (auto r = reg.resolve(dref.name, file)) return r->qualifiedName;
         return dref.name;
     };
@@ -132,12 +132,12 @@ void DraftImplChecker::checkExplicitImplicitConflict() {
                 ? typeBare
                 : (ownerMod + "." + typeBare);
             auto& slot = table[typeQualified];
-            if (impl->draftRefs().empty()) {
+            if (impl->specRefs().empty()) {
                 for (auto& m : impl->methods()) {
                     slot.plain.emplace_back(file, m->header());
                 }
             } else {
-                std::string dq = draftQualifiedFor(file, impl);
+                std::string dq = specQualifiedFor(file, impl);
                 for (auto& m : impl->methods()) {
                     slot.draft.emplace_back(file, m->header(), dq);
                 }
@@ -167,8 +167,8 @@ void DraftImplChecker::checkExplicitImplicitConflict() {
     }
 }
 
-void DraftImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
-    auto& reg = _yux->draftRegistry();
+void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
+    auto& reg = _yux->specRegistry();
     const std::string typeBare = impl->structName();
     const std::string typeOwnerMod = moduleOfType(typeBare);
     const std::string typeQualified = typeOwnerMod.empty()
@@ -180,36 +180,45 @@ void DraftImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
     // 多 D impl 块的"不多余"聚合命中表 (任一 D 命中即视为合法).
     std::vector<bool> aggMatched(implMethods.size(), false);
 
-    for (auto& dref : impl->draftRefs()) {
+    for (auto& dref : impl->specRefs()) {
         auto resolved = reg.resolve(dref.name, implFile);
         if (!resolved) {
             // §10 名字解析失败. 复用 E3032 (未来可专门给一个 E11xx 码).
             throw YuxError(dref.line, dref.col, ErrorCode::E3032, dref.name);
         }
-        DraftDeclNode* draft = resolved->decl;
-        const std::string& draftQualified = resolved->qualifiedName;
-        const std::string draftKey = draftQualified + draftTypeArgsSuffix(dref);
+        SpecDeclNode* draft = resolved->decl;
+        const std::string& specQualified = resolved->qualifiedName;
+        const std::string specKey = specQualified + specTypeArgsSuffix(dref);
 
         // §12.2.2.2 重复
-        auto key = std::make_pair(typeQualified, draftKey);
+        auto key = std::make_pair(typeQualified, specKey);
         auto seenIt = _seen.find(key);
         if (seenIt != _seen.end()) {
             throw YuxError(impl->getLineNumber(), impl->getColumn(),
-                           ErrorCode::E1103, typeQualified, draftKey);
+                           ErrorCode::E1103, typeQualified, specKey);
         }
         _seen.emplace(key, impl);
 
-        // §12.5 orphan: implMod ∈ {typeOwnerMod, draftOwnerMod} 之一即合法.
-        const std::string draftOwnerMod = resolved->ownerFile
+        // §12.5 orphan: implMod ∈ {typeOwnerMod, specOwnerMod} 之一即合法.
+        // spec-unify v1: #Impl(D) struct X 解出的 StructImplNode 必与 struct X
+        // 同 FileNode, 故只需检查 implFile 本地是否声明同名 struct, 即可绕过
+        // _typeOwnerModule 全局 bareName 折叠 (跨 test 文件同名 struct 时
+        // 首登记 wins → 错认 owner module, 详 BUGS.md#4).
+        bool typeLocalToImplFile = false;
+        for (auto& d : implFile->getStructDecls()) {
+            if (d->name().getText() == typeBare) { typeLocalToImplFile = true; break; }
+        }
+        const std::string specOwnerMod = resolved->ownerFile
             ? resolved->ownerFile->moduleName()
             : std::string();
         const std::string& implMod = implFile->moduleName();
         // implMod 为空 (单文件主入口未登记模块名) 时, 跳过 orphan 检查避免误报.
         if (!implMod.empty()
+            && !typeLocalToImplFile
             && implMod != typeOwnerMod
-            && implMod != draftOwnerMod) {
+            && implMod != specOwnerMod) {
             throw YuxError(impl->getLineNumber(), impl->getColumn(),
-                           ErrorCode::E1120, draftQualified, typeQualified);
+                           ErrorCode::E1120, specQualified, typeQualified);
         }
 
         // 构造 draft 自身泛型形参 → 实参替换表.
@@ -243,7 +252,7 @@ void DraftImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
                 std::string sigDesc = dname;
                 throw YuxError(impl->getLineNumber(), impl->getColumn(),
                                ErrorCode::E1101, typeQualified,
-                               draftQualified, sigDesc);
+                               specQualified, sigDesc);
             }
             aggMatched[hit] = true;
         }
@@ -256,40 +265,40 @@ void DraftImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
     (void)aggMatched;
 }
 
-bool DraftImplChecker::sigEquivalent(
+bool SpecImplChecker::sigEquivalent(
     FnHeaderNode* implMethod,
-    FnHeaderNode* draftSig,
+    FnHeaderNode* specSig,
     const std::map<std::string, TypeInfo>& subst) const {
 
     auto implParams = implMethod->params();
-    auto draftParams = draftSig->params();
-    if (implParams.size() != draftParams.size()) return false;
+    auto specParams = specSig->params();
+    if (implParams.size() != specParams.size()) return false;
 
     for (size_t i = 0; i < implParams.size(); ++i) {
         TypeInfo ip = implParams[i]->type() ? implParams[i]->type()->getType() : TypeInfo();
-        TypeInfo dp = draftParams[i]->type() ? draftParams[i]->type()->getType() : TypeInfo();
+        TypeInfo dp = specParams[i]->type() ? specParams[i]->type()->getType() : TypeInfo();
         TypeInfo dpSub = dp.substitute(subst);
         if (!(ip == dpSub)) return false;
     }
 
     TypeInfo ir = implMethod->retType() ? implMethod->retType()->getType() : TypeInfo();
-    TypeInfo dr = draftSig->retType() ? draftSig->retType()->getType() : TypeInfo();
+    TypeInfo dr = specSig->retType() ? specSig->retType()->getType() : TypeInfo();
     TypeInfo drSub = dr.substitute(subst);
     return ir == drSub;
 }
 
-bool DraftImplChecker::typeSatisfiesDraft(
+bool SpecImplChecker::typeSatisfiesSpec(
     const std::string& typeBareName,
-    DraftDeclNode* draft,
-    const std::vector<TypeInfo>& draftTypeArgs) const {
+    SpecDeclNode* draft,
+    const std::vector<TypeInfo>& specTypeArgs) const {
     if (!draft || !_yux) return false;
 
     // draft 自身泛型形参 → 实参替换表; arity 不齐时只覆盖前缀.
     std::map<std::string, TypeInfo> subst;
     const auto& dParams = draft->typeParams();
-    size_t n = std::min(dParams.size(), draftTypeArgs.size());
+    size_t n = std::min(dParams.size(), specTypeArgs.size());
     for (size_t i = 0; i < n; ++i) {
-        subst[dParams[i]] = draftTypeArgs[i];
+        subst[dParams[i]] = specTypeArgs[i];
     }
 
     // 收集该类型在所有文件中的所有方法 (普通方法块 + draft impl 块都计入).
@@ -324,11 +333,11 @@ bool DraftImplChecker::typeSatisfiesDraft(
     return true;
 }
 
-bool DraftImplChecker::boundSatisfied(
+bool SpecImplChecker::boundSatisfied(
     const TypeInfo& typeArg,
-    DraftDeclNode* draft,
-    const std::string& draftQualified,
-    const std::vector<TypeInfo>& draftTypeArgs) const {
+    SpecDeclNode* draft,
+    const std::string& specQualified,
+    const std::vector<TypeInfo>& specTypeArgs) const {
     if (!draft) return false;
 
     // §8.6.7.1: T 形参实参不接 `T&`. 这里只做正常形态; 调用侧若传入 ref,
@@ -341,23 +350,23 @@ bool DraftImplChecker::boundSatisfied(
         ? typeBare
         : (typeOwnerMod + "." + typeBare);
 
-    // 拼 draftKey: 与 validateImpl 写入 _seen 时一致.
-    std::string draftKey = draftQualified;
-    if (!draftTypeArgs.empty()) {
-        draftKey += "<";
-        for (size_t i = 0; i < draftTypeArgs.size(); ++i) {
-            if (i) draftKey += ",";
-            draftKey += draftTypeArgs[i].getFullName();
+    // 拼 specKey: 与 validateImpl 写入 _seen 时一致.
+    std::string specKey = specQualified;
+    if (!specTypeArgs.empty()) {
+        specKey += "<";
+        for (size_t i = 0; i < specTypeArgs.size(); ++i) {
+            if (i) specKey += ",";
+            specKey += specTypeArgs[i].getFullName();
         }
-        draftKey += ">";
+        specKey += ">";
     }
 
-    if (_seen.find({typeQualified, draftKey}) != _seen.end()) {
+    if (_seen.find({typeQualified, specKey}) != _seen.end()) {
         return true;
     }
 
     if (draft->isDraftLike()) {
-        return typeSatisfiesDraft(typeBare, draft, draftTypeArgs);
+        return typeSatisfiesSpec(typeBare, draft, specTypeArgs);
     }
     return false;
 }
@@ -372,12 +381,12 @@ bool DraftImplChecker::boundSatisfied(
 // 都需扫描. 结果按 draft 节点指针 memoize, 避免对同一 draft 重复遍历.
 //
 // 命中 false 时由 Phase 2b/2c 调用方翻为 E1134.
-bool DraftImplChecker::draftIsObjectSafe(DraftDeclNode* draft) const {
+bool SpecImplChecker::specIsObjectSafe(SpecDeclNode* draft) const {
     if (!draft) return false;
     auto cached = _objectSafeCache.find(draft);
     if (cached != _objectSafeCache.end()) return cached->second;
 
-    const std::string draftName = draft->name().getText();
+    const std::string specName = draft->name().getText();
 
     // 直接遍历 TypeNode AST. 不用 TypeInfo: 在 draft 体内, TypeSelfNode 的
     // enclosing struct 名为空 (draft 不是 struct impl), TypeInfo.name 会丢
@@ -386,10 +395,10 @@ bool DraftImplChecker::draftIsObjectSafe(DraftDeclNode* draft) const {
         if (!tn) return false;
         if (dynamic_cast<TypeSelfNode*>(tn)) return true;
         if (auto* nn = dynamic_cast<TypeNormalNode*>(tn)) {
-            return nn->typeNameToken().getText() == draftName;
+            return nn->typeNameToken().getText() == specName;
         }
         if (auto* gn = dynamic_cast<TypeGenericNode*>(tn)) {
-            if (gn->baseName().getText() == draftName) return true;
+            if (gn->baseName().getText() == specName) return true;
             for (auto& a : gn->typeArgs()) {
                 if (containsBad(a)) return true;
             }
@@ -438,11 +447,11 @@ bool DraftImplChecker::draftIsObjectSafe(DraftDeclNode* draft) const {
 // 必有初值 (typeWithRef 路径不允许无初值声明 Dyn<D&>; Dyn<D> 走声明位
 // declareAssign 也必然有 Dyn:<D>(x) 初值), 命中后由 compileDynCtorExpr 的
 // 构造检查 (Phase 2b) 接管 E1131..E1134.
-void DraftImplChecker::validateDynTypeReferences() {
+void SpecImplChecker::validateDynTypeReferences() {
     if (!_yux) return;
     // 确保 registry 已建好 (validate() 已 buildFromAllFiles 过, 但本方法
     // 可能在其它入口被独立调用, 这里再触发一次幂等).
-    (void)_yux->draftRegistry();
+    (void)_yux->specRegistry();
 
     auto walkFn = [&](FileNode* file, FnHeaderNode* hdr) {
         if (!hdr) return;
@@ -480,7 +489,7 @@ void DraftImplChecker::validateDynTypeReferences() {
             if (impl->destructor()) walkFn(file, impl->destructor()->header());
         }
         // draft sig
-        for (auto& dd : file->getDraftDecls()) {
+        for (auto& dd : file->getSpecDecls()) {
             if (!dd) continue;
             for (auto& sig : dd->signatures()) {
                 walkFn(file, sig);
@@ -507,7 +516,7 @@ void DraftImplChecker::validateDynTypeReferences() {
     for (auto& f : _yux->files()) run(f);
 }
 
-void DraftImplChecker::validateDynInTypeNode(TypeNode* tn, FileNode* file,
+void SpecImplChecker::validateDynInTypeNode(TypeNode* tn, FileNode* file,
                                              const std::string& outerWrapper) const {
     if (!tn) return;
 
@@ -550,26 +559,26 @@ void DraftImplChecker::validateDynInTypeNode(TypeNode* tn, FileNode* file,
 
             // 内层必须是 TypeNormalNode(draft 名), 否则 E1131
             auto* innerNormal = dynamic_cast<TypeNormalNode*>(innerStripped);
-            std::string draftBare = innerNormal ? innerNormal->typeNameToken().getText()
+            std::string specBare = innerNormal ? innerNormal->typeNameToken().getText()
                                                  : std::string();
-            DraftDeclNode* draftDecl = nullptr;
-            std::string draftQualified;
-            if (_yux && file && !draftBare.empty()) {
-                auto& reg = _yux->draftRegistry();
-                if (auto resolved = reg.resolve(draftBare, file)) {
-                    draftDecl = resolved->decl;
-                    draftQualified = resolved->qualifiedName;
+            SpecDeclNode* specDecl = nullptr;
+            std::string specQualified;
+            if (_yux && file && !specBare.empty()) {
+                auto& reg = _yux->specRegistry();
+                if (auto resolved = reg.resolve(specBare, file)) {
+                    specDecl = resolved->decl;
+                    specQualified = resolved->qualifiedName;
                 }
             }
-            if (!draftDecl) {
+            if (!specDecl) {
                 throw YuxError(line, col, ErrorCode::E1131,
-                    draftBare.empty() ? std::string("?") : draftBare);
+                    specBare.empty() ? std::string("?") : specBare);
             }
 
             // 对象安全 (E1134): 与构造侧一致, 声明位也拒绝 (DRAFT §4)
-            if (!draftIsObjectSafe(draftDecl)) {
+            if (!specIsObjectSafe(specDecl)) {
                 throw YuxError(line, col, ErrorCode::E1134,
-                    draftQualified, draftQualified, draftQualified);
+                    specQualified, specQualified, specQualified);
             }
 
             // Dyn 内层为合法 draft, 不再继续递归 (D 名在 draft 命名空间, 不是
@@ -620,7 +629,7 @@ void DraftImplChecker::validateDynInTypeNode(TypeNode* tn, FileNode* file,
     // TypeNormalNode: 叶子节点, 无 Dyn 可能
 }
 
-std::string DraftImplChecker::draftTypeArgsSuffix(const DraftRef& ref) {
+std::string SpecImplChecker::specTypeArgsSuffix(const SpecRef& ref) {
     if (ref.typeArgs.empty()) return {};
     std::string s = "<";
     for (size_t i = 0; i < ref.typeArgs.size(); ++i) {

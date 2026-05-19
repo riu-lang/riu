@@ -14,14 +14,14 @@
 // 符号：`__yux_vtable_<U_module>_<U_struct>__<D_qualified>`，
 //       linkonce_odr，允许多 TU 共享去重。
 //
-// 调用方先经 DraftImplChecker 的 boundSatisfied / E1133 校验，
+// 调用方先经 SpecImplChecker 的 boundSatisfied / E1133 校验，
 // 这里假定 U 满足 D 的全部签名；找不到方法实现视为编译器内部一致性失败。
 
 #include "compiler.h"
 #include "ast/mangler.h"
 #include "ast/yux.h"
-#include "analyzer/draft_impl_checker.h"
-#include "analyzer/draft_registry.h"
+#include "analyzer/spec_impl_checker.h"
+#include "analyzer/spec_registry.h"
 
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
@@ -69,8 +69,8 @@ std::string findStructOwnerModule(Yux* yux, const std::string& structName) {
 
 // 跨 SDK / 用户文件，遍历 U 的所有 StructImplNode（普通方法块 + draft 实现块）。
 // 返回第一个名字匹配 methodName 的 FnNode + 该实现块所在文件的模块名
-// （v1：DraftImplChecker 已确保签名等价，这里不再二次校验签名，仅按名取首条）。
-// 优先匹配带 draftRefs 的实现块（显式 Type:D{}）；找不到再回落到普通方法块。
+// （v1：SpecImplChecker 已确保签名等价，这里不再二次校验签名，仅按名取首条）。
+// 优先匹配带 specRefs 的实现块（显式 Type:D{}）；找不到再回落到普通方法块。
 // 内置类型（i32 / bool / ...）的 ToString 等 impl 写在 SDK base.yux 里，
 // 必须用 impl 所在文件的模块名（如 `yux.core`）才能拿到正确的链接符号。
 struct ImplLookup {
@@ -83,12 +83,12 @@ ImplLookup findImplMethod(Yux* yux,
                          const std::string& methodName) {
     if (!yux) return {};
 
-    auto scanFile = [&](FileNode* file, bool preferDraftImpl) -> ImplLookup {
+    auto scanFile = [&](FileNode* file, bool preferSpecImpl) -> ImplLookup {
         if (!file) return {};
         for (auto& impl : file->getStructImpls()) {
             if (impl->structName() != structName) continue;
-            bool isDraftImpl = !impl->draftRefs().empty();
-            if (preferDraftImpl != isDraftImpl) continue;
+            bool isSpecImpl = !impl->specRefs().empty();
+            if (preferSpecImpl != isSpecImpl) continue;
             for (auto& m : impl->methods()) {
                 if (m->header()->name().getText() == methodName) {
                     return {m, file->moduleName()};
@@ -99,12 +99,12 @@ ImplLookup findImplMethod(Yux* yux,
     };
 
     // 两轮：先找 `Type:D { ... }` 块，再回落到 `Type { ... }` 普通方法块。
-    for (bool preferDraft : {true, false}) {
+    for (bool preferSpec : {true, false}) {
         if (auto sdk = yux->sdkFile()) {
-            if (auto r = scanFile(sdk, preferDraft); r.method) return r;
+            if (auto r = scanFile(sdk, preferSpec); r.method) return r;
         }
         for (auto& f : yux->files()) {
-            if (auto r = scanFile(f, preferDraft); r.method) return r;
+            if (auto r = scanFile(f, preferSpec); r.method) return r;
         }
     }
     return {};
@@ -114,8 +114,8 @@ ImplLookup findImplMethod(Yux* yux,
 
 llvm::GlobalVariable* Compiler::getOrEmitDynVTable(
     const TypeInfo& concreteType,
-    const std::string& draftQualified,
-    DraftDeclNode* draft) {
+    const std::string& specQualified,
+    SpecDeclNode* draft) {
     if (!draft) return nullptr;
 
     const std::string& uStruct = concreteType.name;
@@ -130,7 +130,7 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(
     }
     symName += sanitizeForSymbol(uStruct);
     symName += "__";
-    symName += sanitizeForSymbol(draftQualified);
+    symName += sanitizeForSymbol(specQualified);
 
     if (auto* existing = _module->getNamedGlobal(symName)) {
         return existing;
@@ -182,7 +182,7 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(
             // 但又不能直接指向 SDK fn（ABI 不一致）。这里为每个 (U, D, method) 合成一个
             // linkonce_odr 的适配 thunk：load primitive 后转发到真实 SDK fn。
             if (isBuiltinType(uStruct)) {
-                slot = getOrEmitDynPrimitiveThunk(concreteType, draftQualified,
+                slot = getOrEmitDynPrimitiveThunk(concreteType, specQualified,
                                                   sig, mangled);
             } else {
                 auto* fn = _module->getFunction(mangled);
@@ -214,7 +214,7 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(
                 slot = fn;
             }
         }
-        // TODO: implMethod 找不到说明 DraftImplChecker 未拦截的内部不一致；
+        // TODO: implMethod 找不到说明 SpecImplChecker 未拦截的内部不一致；
         // 当前留 null 兜底，调用站点（Phase 3d）会以"加载到 null 函数指针"指示问题。
         slots.push_back(slot);
     }
@@ -240,7 +240,7 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(
 // 直接把 SDK fn 放进 vtable 槽会出现 ABI 不一致 (LLVM Calling a function with a bad signature)。
 //
 // 这里给每个 (U, D, method) 三元组生成一个 linkonce_odr 包装函数:
-//   __yux_dyn_thunk__<U>__<draftQualified>__<method>(ptr recv, P1, ..., Pn) -> R {
+//   __yux_dyn_thunk__<U>__<specQualified>__<method>(ptr recv, P1, ..., Pn) -> R {
 //     v = load <U>, ptr recv
 //     ret call <sdkMangled>(v, P1, ..., Pn)
 //   }
@@ -249,7 +249,7 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(
 // 保证 D.sig 与 impl 的非 receiver 形参形态一致, 不需要做参数 ABI 转换.
 llvm::Function* Compiler::getOrEmitDynPrimitiveThunk(
     const TypeInfo& concreteType,
-    const std::string& draftQualified,
+    const std::string& specQualified,
     FnHeaderNode* sig,
     const std::string& sdkMangled) {
 
@@ -260,7 +260,7 @@ llvm::Function* Compiler::getOrEmitDynPrimitiveThunk(
     std::string thunkName = "__yux_dyn_thunk__";
     thunkName += sanitizeForSymbol(concreteType.name);
     thunkName += "__";
-    thunkName += sanitizeForSymbol(draftQualified);
+    thunkName += sanitizeForSymbol(specQualified);
     thunkName += "__";
     thunkName += sanitizeForSymbol(methodName);
 

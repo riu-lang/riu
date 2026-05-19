@@ -8,12 +8,12 @@
 
 #include "fn_node.h"
 #include "file_node.h"
-#include "draft_node.h"
+#include "spec_node.h"
 #include "analyzer/symbol_suggest.h"
 
 // §12.4：在生成式 AST 中遇到 `x.m()`（x:T 为泛型形参）时，
 // 用形参声明位的 draft 边界查 m 的返回类型；走包含 SDK 回退的 file 链。
-static TypeInfo lookupDraftBoundMethodRetType(
+static TypeInfo lookupSpecBoundMethodRetType(
     Node* contextParent, const string& typeParamName, const string& methodName) {
     Node* cur = contextParent;
     p<FnHeaderNode> header = nullptr;
@@ -42,12 +42,12 @@ static TypeInfo lookupDraftBoundMethodRetType(
     if (!file) return TypeInfo();
 
     for (auto& dname : bounds[idx]) {
-        DraftDeclNode* draft = file->getDraftDecl(dname);
+        SpecDeclNode* draft = file->getSpecDecl(dname);
         if (!draft) {
             ScopeNode* p = file->parentScope();
             while (p && !draft) {
                 if (auto pf = dynamic_cast<FileNode*>(p)) {
-                    draft = pf->getDraftDecl(dname);
+                    draft = pf->getSpecDecl(dname);
                 }
                 p = p->parentScope();
             }
@@ -68,9 +68,9 @@ static TypeInfo lookupDraftBoundMethodRetType(
 static TypeInfo lookupDynMethodRetType(
     Node* contextParent, const TypeInfo& dynType, const string& methodName) {
     if (!dynType.isDyn()) return TypeInfo();
-    auto draftTy = dynType.dynDraftType();
-    if (!draftTy) return TypeInfo();
-    const string& draftName = draftTy->name;
+    auto specTy = dynType.dynSpecType();
+    if (!specTy) return TypeInfo();
+    const string& specName = specTy->name;
 
     // 走 parent() 链而不是 parentScope()：struct 方法的 FnNode 在 AST 构造时
     // 不一定挂上 parentScope，但 parent() 链一定连到 FileNode。
@@ -82,12 +82,12 @@ static TypeInfo lookupDynMethodRetType(
     }
     if (!file) return TypeInfo();
 
-    DraftDeclNode* draft = file->getDraftDecl(draftName);
+    SpecDeclNode* draft = file->getSpecDecl(specName);
     if (!draft) {
         ScopeNode* p = file->parentScope();
         while (p && !draft) {
             if (auto pf = dynamic_cast<FileNode*>(p)) {
-                draft = pf->getDraftDecl(draftName);
+                draft = pf->getSpecDecl(specName);
             }
             p = p->parentScope();
         }
@@ -884,7 +884,7 @@ TypeInfo ExprDotNode::getType() const {
     // 在 D 的签名表里找 member 的返回类型；命中即返回 fn() ret，
     // 让 ExprCallNode 在静态阶段算出确切类型，避免下游函数重载查找拿到 T 而失败。
     if (actualType.kind == TypeKind::Normal && !actualType.isGeneric()) {
-        auto rt = lookupDraftBoundMethodRetType(parent(), actualType.name, member);
+        auto rt = lookupSpecBoundMethodRetType(parent(), actualType.name, member);
         if (!rt.empty()) {
             return TypeInfo("fn() " + rt.getFullName());
         }
@@ -1373,8 +1373,8 @@ TypeInfo ExprTryCatchNode::getType() const {
 // Dyn<D>(x) / Dyn<D&>(x) 的整体类型 = `Dyn<D>` 或 `Dyn<D&>`。
 // 内层 TypeNode 已携带借用形态（Ref<D>），这里直接包一层 `Dyn` 即可。
 TypeInfo ExprDynCtorNode::getType() const {
-    if (!_draftType) return TypeInfo();
-    auto inner = make_shared<TypeInfo>(_draftType->getType());
+    if (!_specType) return TypeInfo();
+    auto inner = make_shared<TypeInfo>(_specType->getType());
     return TypeInfo("Dyn", {inner});
 }
 

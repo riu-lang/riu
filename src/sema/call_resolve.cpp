@@ -10,8 +10,8 @@
 // 不依赖任何 LLVM 头; 由 yux_frontend 静态库提供, Compiler 与未来的 SemaPass 共享.
 
 #include "sema/call_resolve.h"
-#include "analyzer/draft_impl_checker.h"
-#include "analyzer/draft_registry.h"
+#include "analyzer/spec_impl_checker.h"
+#include "analyzer/spec_registry.h"
 #include "ast/node/enum_node.h"
 #include "ast/yux.h"
 #include "tools/diagnostic.h"
@@ -231,15 +231,15 @@ void validateGenericTypeArgsArity(const string& fnName,
 // 原位于 `compiler/compiler_call.cpp::compileDynMethodCall` 第 2 / 3 / 4 步:
 // 按名查 sig (E6016) → arity (E6012) → 形参类型 (E6015). 纯 AST + TypeInfo,
 // 抠到 sema 层后 Compiler 继续走 codegen, SemaPass 后续可在 Dyn 调用点提前调.
-FnHeaderNode* resolveDynMethodSig(DraftDeclNode* draftDecl,
-                                  const string& draftQualified,
+FnHeaderNode* resolveDynMethodSig(SpecDeclNode* specDecl,
+                                  const string& specQualified,
                                   const TypeInfo& baseType,
                                   const string& member,
                                   const vector<TypeInfo>& argTypes,
                                   int line, int col) {
     // 2. 找方法签名 (按名匹配; yux 暂无方法名重载, 第一处即终)
     FnHeaderNode* sig = nullptr;
-    for (auto& s : draftDecl->signatures()) {
+    for (auto& s : specDecl->signatures()) {
         if (!s) continue;
         if (s->name().getText() != member) continue;
         sig = s;
@@ -262,7 +262,7 @@ FnHeaderNode* resolveDynMethodSig(DraftDeclNode* draftDecl,
         TypeInfo expected = sp->type()->getType();
         if (expected.getFullName() != argTypes[i].getFullName()) {
             throw YuxError(line, col, ErrorCode::E6015)
-                .withHint("Dyn<" + draftQualified + ">." + member + " arg#"
+                .withHint("Dyn<" + specQualified + ">." + member + " arg#"
                     + std::to_string(i) + ": 期望 " + expected.getFullName()
                     + ", 实际 " + argTypes[i].getFullName()
                     + " (Dyn 方法调用参数类型按 draft 签名静态匹配)");
@@ -480,9 +480,9 @@ void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn,
 // 原 `compileFunctionCall` line 770 的 inline 块, 仅一行条件 + E6006 throw.
 // 抽出供 SemaPass 与 Compiler 共用; 纯字符串比较.
 // ==================== 泛型 typeArgs draft 边界 (Phase 3.3.3.c, E3032 / E1106) ====================
-void validateGenericTypeArgsDraftBound(
-    const DraftRegistry* registry,
-    const DraftImplChecker* checker,
+void validateGenericTypeArgsSpecBound(
+    const SpecRegistry* registry,
+    const SpecImplChecker* checker,
     FileNode* fnOwner,
     FnHeaderNode* header,
     const vector<TypeInfo>& typeArgs,
@@ -497,11 +497,11 @@ void validateGenericTypeArgsDraftBound(
             if (!resolved) {
                 throw YuxError(line, col, ErrorCode::E3032, boundName);
             }
-            // v0.5: 函数声明位 draftBound 暂未携带类型实参 (ast_builder 仅取基名),
-            // draftTypeArgs 传空; 草案 §6.4.4.1 文法允许 `D<T>` 形态留待扩展.
-            vector<TypeInfo> draftTypeArgs;
+            // v0.5: 函数声明位 specBound 暂未携带类型实参 (ast_builder 仅取基名),
+            // specTypeArgs 传空; 草案 §6.4.4.1 文法允许 `D<T>` 形态留待扩展.
+            vector<TypeInfo> specTypeArgs;
             if (!checker->boundSatisfied(typeArgs[i], resolved->decl,
-                                          resolved->qualifiedName, draftTypeArgs)) {
+                                          resolved->qualifiedName, specTypeArgs)) {
                 throw YuxError(line, col, ErrorCode::E1106,
                     typeArgs[i].getFullName(),
                     resolved->qualifiedName,
@@ -512,22 +512,22 @@ void validateGenericTypeArgsDraftBound(
 }
 
 // ==================== Dyn callee draft 解析 (Phase 3.3.3.b, E1131) ====================
-DynCalleeResolved resolveDynCalleeDraft(const DraftRegistry* registry,
+DynCalleeResolved resolveDynCalleeSpec(const SpecRegistry* registry,
                                          FileNode* visibleFrom,
                                          const TypeInfo& baseType,
                                          int line, int col) {
-    auto draftInner = baseType.dynDraftType();
-    string draftBare = draftInner ? draftInner->name : string();
+    auto specInner = baseType.dynSpecType();
+    string specBare = specInner ? specInner->name : string();
     DynCalleeResolved out;
-    if (registry && visibleFrom && !draftBare.empty()) {
-        if (auto resolved = registry->resolve(draftBare, visibleFrom)) {
+    if (registry && visibleFrom && !specBare.empty()) {
+        if (auto resolved = registry->resolve(specBare, visibleFrom)) {
             out.decl = resolved->decl;
             out.qualified = resolved->qualifiedName;
             return out;
         }
     }
     throw YuxError(line, col, ErrorCode::E1131,
-        draftBare.empty() ? string("?") : draftBare);
+        specBare.empty() ? string("?") : specBare);
 }
 
 // ==================== _ptr_offset 跨模块私有 (Phase 3.3.3.a, E6023) ====================

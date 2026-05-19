@@ -96,7 +96,7 @@ int main(int argc, char* argv[]) {
         // loadMainFile 会触发 ASTBuilder.build, 含 import 解析.
         // 若 import 失败 (找不到 SDK / 模块), 这里抛 YuxError, 直接报.
         auto file = yux.loadMainFile(absPath, moduleName);
-        yux.validateDraftImpls();
+        yux.validateSpecImpls();
         SemaPass(file, yux.sdkFile()).run();
     } catch (const std::runtime_error& e) {
         if (auto* yuxErr = dynamic_cast<const YuxError*>(&e)) {

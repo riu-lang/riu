@@ -392,7 +392,7 @@ struct TypeInfo {
     }
 
     // 拿 D（剥掉借用形态外层的 Ref）。
-    [[nodiscard]] sp<TypeInfo> dynDraftType() const {
+    [[nodiscard]] sp<TypeInfo> dynSpecType() const {
         if (!isDyn() || !genericArgs[0]) return nullptr;
         if (genericArgs[0]->isRef()) return genericArgs[0]->refElementType();
         return genericArgs[0];

@@ -5,7 +5,7 @@
 #define YUX_LANG_FILE_NODE_H
 
 #include "alias_node.h"
-#include "draft_node.h"
+#include "spec_node.h"
 #include "enum_node.h"
 #include "fn_node.h"
 #include "global_const_node.h"
@@ -17,7 +17,7 @@ class FileNode : public ScopeNode {
     vector<p<StructDeclNode>> _structDecls;
     vector<p<StructImplNode>> _structImpls;
     vector<p<GlobalConstNode>> _globalConsts;
-    vector<p<DraftDeclNode>> _draftDecls;
+    vector<p<SpecDeclNode>> _specDecls;
     vector<p<AliasDeclNode>> _aliasDecls;
     map<string, p<AliasDeclNode>> _aliasMap;
     vector<p<EnumDeclNode>> _enumDecls;
@@ -31,7 +31,7 @@ public:
     void addStructDecl(const p<StructDeclNode>& structDecl);
     void addStructImpl(const p<StructImplNode>& structImpl);
     void addGlobalConst(const p<GlobalConstNode>& globalConst);
-    void addDraftDecl(const p<DraftDeclNode>& draftDecl);
+    void addSpecDecl(const p<SpecDeclNode>& specDecl);
     void addAliasDecl(const p<AliasDeclNode>& aliasDecl);
     void addEnumDecl(const p<EnumDeclNode>& enumDecl);
 
@@ -39,10 +39,10 @@ public:
     const vector<p<StructDeclNode>>& getStructDecls() const { return _structDecls; }
     const vector<p<StructImplNode>>& getStructImpls() const { return _structImpls; }
     const vector<p<GlobalConstNode>>& getGlobalConsts() const { return _globalConsts; }
-    const vector<p<DraftDeclNode>>& getDraftDecls() const { return _draftDecls; }
+    const vector<p<SpecDeclNode>>& getSpecDecls() const { return _specDecls; }
     const vector<p<AliasDeclNode>>& getAliasDecls() const { return _aliasDecls; }
     const vector<p<EnumDeclNode>>& getEnumDecls() const { return _enumDecls; }
-    DraftDeclNode* getDraftDecl(const string& name) const;
+    SpecDeclNode* getSpecDecl(const string& name) const;
     AliasDeclNode* getAliasDecl(const string& name) const;
     EnumDeclNode* getEnumDecl(const string& name) const;
     

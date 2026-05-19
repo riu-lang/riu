@@ -68,7 +68,7 @@ void Compiler::compile(p<FileNode> file) {
     // §12.2 / §12.3 / §12.5 显式 draft 实现校验 (Phase 3.2.e):
     // 第一次 compile() 时跑一次, 覆盖 SDK + 所有用户文件; 后续重入空操作.
     if (_yux) {
-        _yux->validateDraftImpls();
+        _yux->validateSpecImpls();
     }
 
     // 透明类型别名的一次性校验：名称冲突 + 环检测

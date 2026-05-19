@@ -175,8 +175,8 @@ target("yux_frontend")
         "src/analyzer/const_mut_checker.cpp",
         "src/analyzer/flow_terminate_checker.cpp",
         "src/analyzer/symbol_suggest.cpp",
-        "src/analyzer/draft_registry.cpp",
-        "src/analyzer/draft_impl_checker.cpp",
+        "src/analyzer/spec_registry.cpp",
+        "src/analyzer/spec_impl_checker.cpp",
         "src/sema/sema_pass.cpp",
         "src/sema/call_resolve.cpp"
     )

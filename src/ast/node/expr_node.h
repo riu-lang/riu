@@ -741,22 +741,22 @@ public:
 // vtable 真值与对象安全检查留 Phase 2 / Phase 3。
 //
 // ast_builder 在 visitExprCall 命中 `Dyn<D>(x)` / `Dyn<D&>(x)` 形态时改产此节点；
-// `_draftType` 持原 turbofish 中的 typeArg（D 或 Ref<D>），用于回算 fat ptr 内层；
+// `_specType` 持原 turbofish 中的 typeArg（D 或 Ref<D>），用于回算 fat ptr 内层；
 // `_isBorrow` 由内层 TypeNode 是否为 `Ref<...>` 决定。
 class ExprDynCtorNode : public ExprNode {
-    p<TypeNode> _draftType;     // turbofish 内的类型节点（D 或 D&）
+    p<TypeNode> _specType;     // turbofish 内的类型节点（D 或 D&）
     p<ExprNode> _arg;           // 构造源：Rc<U> 或 U&
     bool _isBorrow;             // true = Dyn<D&>(...), false = Dyn<D>(...)
 
 public:
-    ExprDynCtorNode(const p<Node>& parent, p<TypeNode> draftType, p<ExprNode> arg, bool isBorrow) :
+    ExprDynCtorNode(const p<Node>& parent, p<TypeNode> specType, p<ExprNode> arg, bool isBorrow) :
         ExprNode(parent),
-        _draftType(std::move(draftType)),
+        _specType(std::move(specType)),
         _arg(std::move(arg)),
         _isBorrow(isBorrow) {
     }
 
-    [[nodiscard]] const p<TypeNode>& draftType() const { return _draftType; }
+    [[nodiscard]] const p<TypeNode>& specType() const { return _specType; }
     [[nodiscard]] const p<ExprNode>& arg() const { return _arg; }
     [[nodiscard]] bool isBorrow() const { return _isBorrow; }
     [[nodiscard]] TypeInfo getType() const override;

@@ -92,10 +92,10 @@ void FileNode::addStructImpl(const p<StructImplNode>& structImpl) {
     _structImpls.push_back(structImpl);
 }
 
-void FileNode::addDraftDecl(const p<DraftDeclNode>& draftDecl) {
-    _draftDecls.push_back(draftDecl);
+void FileNode::addSpecDecl(const p<SpecDeclNode>& specDecl) {
+    _specDecls.push_back(specDecl);
     // draft 名按 §10 共享顶层符号命名空间
-    string n = draftDecl->name().getText();
+    string n = specDecl->name().getText();
     if (!lookupSymbol(n)) {
         SymbolInfo sym(SymbolKind::Struct, n, TypeInfo(n));
         sym.moduleName = _moduleName;
@@ -142,12 +142,12 @@ AliasDeclNode* FileNode::getAliasDecl(const string& name) const {
     return nullptr;
 }
 
-DraftDeclNode* FileNode::getDraftDecl(const string& name) const {
-    for (auto& d : _draftDecls) {
+SpecDeclNode* FileNode::getSpecDecl(const string& name) const {
+    for (auto& d : _specDecls) {
         if (d->name().getText() == name) return d;
     }
     for (auto* imp : _wildcardImports) {
-        for (auto& d : imp->_draftDecls) {
+        for (auto& d : imp->_specDecls) {
             if (d->name().getText() == name) return d;
         }
     }

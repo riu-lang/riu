@@ -957,7 +957,7 @@ Printer::Item Printer::visitTopLevel(antlr4::tree::ParseTree* child) {
     } else if (auto* fn = dynamic_cast<yuxParser::FnContext*>(ctx)) {
         item.doc = fnDoc(fn);
     } else {
-        // 未实装：enumDecl / structDecl / structImpl / draftDecl
+        // 未实装：enumDecl / structDecl / structImpl / specDecl
         // 直接落原文。trim 末尾 LineEnd 让顶层间换行由 program 控制
         item.raw = trimRightLineEnds(rawSpan(tokens_, ctx));
     }
@@ -985,7 +985,7 @@ Printer::Item Printer::visitTopLevel(antlr4::tree::ParseTree* child) {
 
 Doc Printer::programDoc(yuxParser::ProgramContext* ctx) {
     // program 由 imports* (fn|externDelc|globalConst|aliasDecl|enumDecl|
-    // draftDecl|structDecl|structImpl|LineEnd)* 组成。
+    // specDecl|structDecl|structImpl|LineEnd)* 组成。
     // 我们只取 ParserRuleContext 子节点（即跳过裸 LineEnd token）。
     std::vector<Item> items;
     for (auto* ch : ctx->children) {

@@ -1,25 +1,25 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 
-// draft 注册表实现 (spec §12).
+// spec 注册表实现 (spec §12).
 //
 // 本文件实现:
-// - DraftRegistry 构造与全量索引;
+// - SpecRegistry 构造与全量索引;
 // - resolve(bareName, visibleFrom): 按 §10 可见性链解析裸 D 名;
-// - 内部辅助: 单文件内查 draft / 拼完全限定名.
+// - 内部辅助: 单文件内查 spec / 拼完全限定名.
 
-#include "draft_registry.h"
+#include "spec_registry.h"
 
 #include "ast/yux.h"
 
-DraftRegistry::DraftRegistry(Yux* yux) : _yux(yux) {}
+SpecRegistry::SpecRegistry(Yux* yux) : _yux(yux) {}
 
-void DraftRegistry::buildFromAllFiles() {
+void SpecRegistry::buildFromAllFiles() {
     _byQualified.clear();
 
     auto indexFile = [&](FileNode* file) {
         if (!file) return;
-        for (auto& d : file->getDraftDecls()) {
+        for (auto& d : file->getSpecDecls()) {
             string qn = makeQualified(file->moduleName(), d->name().getText());
             // 同一 qualified name 在多次 build 或 sdk 与 _files 重叠时可能重复; 取首次登记.
             if (_byQualified.find(qn) == _byQualified.end()) {
@@ -34,8 +34,8 @@ void DraftRegistry::buildFromAllFiles() {
     }
 }
 
-std::optional<DraftRegistry::Resolved>
-DraftRegistry::resolve(const string& bareName, FileNode* visibleFrom) const {
+std::optional<SpecRegistry::Resolved>
+SpecRegistry::resolve(const string& bareName, FileNode* visibleFrom) const {
     if (!visibleFrom) return std::nullopt;
 
     // 1. 当前文件本地
@@ -67,15 +67,15 @@ DraftRegistry::resolve(const string& bareName, FileNode* visibleFrom) const {
     return std::nullopt;
 }
 
-DraftDeclNode* DraftRegistry::lookupLocal(FileNode* file, const string& name) {
+SpecDeclNode* SpecRegistry::lookupLocal(FileNode* file, const string& name) {
     if (!file) return nullptr;
-    for (auto& d : file->getDraftDecls()) {
+    for (auto& d : file->getSpecDecls()) {
         if (d->name().getText() == name) return d;
     }
     return nullptr;
 }
 
-string DraftRegistry::makeQualified(const string& moduleName, const string& draftName) {
-    if (moduleName.empty()) return draftName;
-    return moduleName + "." + draftName;
+string SpecRegistry::makeQualified(const string& moduleName, const string& specName) {
+    if (moduleName.empty()) return specName;
+    return moduleName + "." + specName;
 }

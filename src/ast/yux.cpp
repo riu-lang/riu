@@ -9,8 +9,8 @@
 #include <toml.hpp>
 
 #include "ast_builder.h"
-#include "analyzer/draft_impl_checker.h"
-#include "analyzer/draft_registry.h"
+#include "analyzer/spec_impl_checker.h"
+#include "analyzer/spec_registry.h"
 #include "tools/syntax_error_listener.h"
 #include "yux/yuxLexer.h"
 #include "yux/yuxParser.h"
@@ -36,33 +36,33 @@ void Yux::addFile(const p<FileNode>& file) {
     _files.push_back(file);
 }
 
-DraftRegistry& Yux::draftRegistry() {
-    if (!_draftRegistry) {
-        _draftRegistry = std::make_unique<DraftRegistry>(this);
-        _draftRegistry->buildFromAllFiles();
+SpecRegistry& Yux::specRegistry() {
+    if (!_specRegistry) {
+        _specRegistry = std::make_unique<SpecRegistry>(this);
+        _specRegistry->buildFromAllFiles();
     }
-    return *_draftRegistry;
+    return *_specRegistry;
 }
 
-void Yux::rebuildDraftRegistry() {
-    if (!_draftRegistry) {
-        _draftRegistry = std::make_unique<DraftRegistry>(this);
+void Yux::rebuildSpecRegistry() {
+    if (!_specRegistry) {
+        _specRegistry = std::make_unique<SpecRegistry>(this);
     }
-    _draftRegistry->buildFromAllFiles();
+    _specRegistry->buildFromAllFiles();
 }
 
-void Yux::validateDraftImpls() {
-    if (_draftImplValidated) return;
-    if (!_draftImplChecker) {
-        _draftImplChecker = std::make_unique<DraftImplChecker>(this);
+void Yux::validateSpecImpls() {
+    if (_specImplValidated) return;
+    if (!_specImplChecker) {
+        _specImplChecker = std::make_unique<SpecImplChecker>(this);
     }
-    _draftImplChecker->validate();
-    _draftImplValidated = true;
+    _specImplChecker->validate();
+    _specImplValidated = true;
 }
 
-DraftImplChecker& Yux::draftImplChecker() {
-    validateDraftImpls();
-    return *_draftImplChecker;
+SpecImplChecker& Yux::specImplChecker() {
+    validateSpecImpls();
+    return *_specImplChecker;
 }
 
 p<FileNode> Yux::createFile(const string& moduleName) {
@@ -80,7 +80,7 @@ p<FileNode> Yux::createFile(const string& moduleName) {
     // 新文件加入后, 之前跑过的 draft 实现校验可能已经漏看新文件里的声明位
     // (典型: compileSdkDir 在用户文件加载前已经 compile(sdk) → validate,
     // 之后用户文件 createFile 才进来). 清回 flag, 下次 compile 重新跑全套.
-    _draftImplValidated = false;
+    _specImplValidated = false;
     return file;
 }
 
@@ -210,7 +210,7 @@ p<FileNode> Yux::loadMainFile(const string& absPath, const string& moduleName) {
     // 新文件加入后, 旧的 draft impl 校验结果失效: 例如 SDK 预编译触发了一次
     // validate, 此时 _seen 还没有该文件里的 `Type : Draft` 登记; 后续
     // boundSatisfied 调用必须重新跑 validate, 否则误判为不满足 → E1106.
-    _draftImplValidated = false;
+    _specImplValidated = false;
     return fileNode;
 }
 

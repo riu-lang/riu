@@ -88,9 +88,9 @@ AnnoList collectAnnos(const AnnoVec& annos) {
     return out;
 }
 
-// 仅 visitDraftDecl 使用：白名单同 collectAnnos，但保留 DraftLike
+// 仅 visitSpecDecl 使用：白名单同 collectAnnos，但保留 DraftLike
 template<typename AnnoVec>
-AnnoList collectAnnosForDraft(const AnnoVec& annos) {
+AnnoList collectAnnosForSpec(const AnnoVec& annos) {
     AnnoList out;
     for (auto* a : annos) {
         string name = a->name->getText();
@@ -709,7 +709,7 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
 
     // spec-unify v1：所有 struct / spec / impl 走统一 visitStructDecl，由
     // visitChildren(ctx) 在源码顺序下触发；addStructDecl / addStructImpl /
-    // addDraftDecl 在 visitStructDecl 内部已完成，不要在此处再显式 visit
+    // addSpecDecl 在 visitStructDecl 内部已完成，不要在此处再显式 visit
     // 以免与 visitChildren 重复导致 E1103。
 
     // DRAFT-let-unify §3：全局 let（仅 #Cval 档）—— 预登记符号，让早引用合法。
@@ -1086,7 +1086,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
 
     // === Step 1: 注解收集 — 识别 #Spec / #Impl，其它落 annos
     bool isSpec = false;
-    vector<DraftRef> implRefs;
+    vector<SpecRef> implRefs;
     AnnoList annos;
     for (auto* a : ctx->buildAnnos) {
         string name = a->name->getText();
@@ -1108,7 +1108,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
         if (name == "Spec") {
             isSpec = true;
         } else if (name == "Impl") {
-            DraftRef r;
+            SpecRef r;
             r.name = arg;
             // 解析 turbofish 类型实参（若有）
             if (auto* gd = a->genericDef()) {
@@ -1163,7 +1163,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
                 ErrorCode::E2011, std::string("destructor in #Spec body"));
         }
 
-        auto draft = createWithLine<DraftDeclNode>(ctx, file, stCtx->name);
+        auto draft = createWithLine<SpecDeclNode>(ctx, file, stCtx->name);
         draft->setAnnos(annos.names, annos.args);
         draft->setTypeParams(typeParams);
 
@@ -1199,8 +1199,8 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
         _scopeStack.pop_back();
         stack.pop_back();
 
-        file->addDraftDecl(draft);
-        return p<DraftDeclNode>(draft);
+        file->addSpecDecl(draft);
+        return p<SpecDeclNode>(draft);
     }
 
     // === Step 3: 普通 struct 分支 — 字段
@@ -1245,7 +1245,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
     auto structImpl = createWithLine<StructImplNode>(ctx, file, stCtx->name);
     structImpl->setAnnos(annos.names, annos.args);
     structImpl->setTypeParams(typeParams);
-    structImpl->setDraftRefs(std::move(implRefs));
+    structImpl->setSpecRefs(std::move(implRefs));
 
     stack.emplace_back(structImpl);
     _scopeStack.push_back(structImpl);
@@ -1818,11 +1818,11 @@ std::any ASTBuilder::visitExprCall(yux::yuxParser::ExprCallContext* ctx) {
         if (auto calleeLit = dynamic_cast<ExprLiteralNode*>(call->getCalleeExpr())) {
             if (auto obj = dynamic_cast<LiteralObjNode*>(calleeLit->literal())) {
                 if (obj->getValue().getText() == "Dyn") {
-                    auto draftTypeNode = call->getTypeArgs()[0];
+                    auto specTypeNode = call->getTypeArgs()[0];
                     auto argExpr = call->getArgs()[0];
-                    bool isBorrow = draftTypeNode->getType().isRef();
+                    bool isBorrow = specTypeNode->getType().isRef();
                     auto dyn = createWithLine<ExprDynCtorNode>(
-                        ctx, scope, draftTypeNode, argExpr, isBorrow);
+                        ctx, scope, specTypeNode, argExpr, isBorrow);
                     return p<ExprNode>(dyn);
                 }
                 // Heap:<T>(x) 类型构造（DRAFT-heap-types §8.3a）—— 单点拦截 ExprCallNode 重写为 ExprHeapCtorNode
