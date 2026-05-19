@@ -462,6 +462,39 @@ i64 parseIntLiteral(const string& text, int line = 0, int col = 0);
 // SemaPass::run 起始处调一次; Compiler 端原 validateAliases 保留作幂等防御性双跑.
 void validateAliases(p<FileNode> file);
 
+// Bucket 6 单点 (CURRENT-check.md): 比较表达式 leftType 形态校验.
+//
+// 覆盖:
+//   - E3078: Weak<T> 不支持 == / != (DRAFT §5 v1 不暴露 handle 比较)
+//   - E3073: Ptr 不支持 < / <= / > / >= (仅开放 == / !=)
+//
+// rightType 与 leftType 类型不匹配 (E3004) 已由 ExprCompareNode::getType 抢先抛
+// (kMigratedCodes 命中), 这里仅做 leftType 单边形态校验.
+//
+// 调用方:
+//   - Compiler::compileCompareExpr 在 leftType / rightType 计算后调用
+//   - SemaPass.visitExpr ExprCompareNode 分支 (leftType getType 抛错时跳过)
+//
+// 纯 TypeInfo / 枚举判定, 无 LLVM 依赖.
+void validateCompareOpForm(const TypeInfo& leftType,
+                            ExprCompareNode::Op op,
+                            int line, int col);
+
+// Bucket 6 单点 (CURRENT-check.md): 字符串模板插值类型校验 (E3026).
+//
+// 对每个 interp 计算 getType(), 若不是 String 且既不在 file 也不在 sdkFile
+// 注册到 `<TypeName>.to_string` 自由函数 → 抛 E3026 (要求实现 ToString).
+//
+// interp getType 抛错时跳过该 interp (lambda 形参等), 留 Compiler 兜底.
+//
+// 调用方:
+//   - Compiler::compileStringTemplate 顶部
+//   - SemaPass.visitExpr ExprLiteralNode/StringTemplate 分支
+//
+// 纯 AST / 字符串查表, 无 LLVM 依赖.
+void validateStringTemplateInterps(FileNode* file, FileNode* sdkFile,
+                                    StringTemplateNode* tpl);
+
 } // namespace sema
 
 #endif //YUX_LANG_SEMA_CALL_RESOLVE_H

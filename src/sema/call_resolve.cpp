@@ -1218,4 +1218,55 @@ void validateAliases(p<FileNode> file) {
     }
 }
 
+// Bucket 6 单点: 比较表达式 leftType 形态校验.
+void validateCompareOpForm(const TypeInfo& leftType,
+                            ExprCompareNode::Op op,
+                            int line, int col) {
+    if (leftType.isWeak()) {
+        if (op == ExprCompareNode::Op::Eq || op == ExprCompareNode::Op::Ne) {
+            throw YuxError(line, col, ErrorCode::E3078)
+                .withHint("先 `upgrade(weak)` 取得 Rc<T>?，再用 `?.` / `??` / 相等比较判定目标对象");
+        }
+    }
+    if (leftType.isPtr()) {
+        if (op == ExprCompareNode::Op::Eq || op == ExprCompareNode::Op::Ne) return;
+        if (op == ExprCompareNode::Op::AndAnd || op == ExprCompareNode::Op::OrOr) return;
+        const char* opSym =
+            op == ExprCompareNode::Op::Lt ? "<" :
+            op == ExprCompareNode::Op::Le ? "<=" :
+            op == ExprCompareNode::Op::Gt ? ">" : ">=";
+        const char* mname =
+            op == ExprCompareNode::Op::Lt ? "lt" :
+            op == ExprCompareNode::Op::Le ? "le" :
+            op == ExprCompareNode::Op::Gt ? "gt" : "ge";
+        throw YuxError(line, col, ErrorCode::E3073, "Ptr", opSym, mname)
+            .withHint("Ptr 只支持 == / != 比较（与 null 或另一 Ptr）");
+    }
+}
+
+// Bucket 6 单点: 字符串模板插值 ToString 校验 (E3026).
+void validateStringTemplateInterps(FileNode* file, FileNode* sdkFile,
+                                    StringTemplateNode* tpl) {
+    if (!tpl) return;
+    auto canToString = [&](const TypeInfo& t) -> bool {
+        if (t.name == "String") return true;
+        string fullName = t.name + ".to_string";
+        if (sdkFile && sdkFile->lookupFnSymbol(fullName)) return true;
+        if (file && file->lookupFnSymbol(fullName)) return true;
+        return false;
+    };
+    for (auto& e : tpl->interps()) {
+        TypeInfo t;
+        try {
+            t = e->getType();
+        } catch (...) {
+            continue;  // lambda 形参等未推断, 留 Compiler 兜底
+        }
+        if (!canToString(t)) {
+            throw YuxError(e->getLineNumber(), e->getColumn(),
+                            ErrorCode::E3026, t.name);
+        }
+    }
+}
+
 } // namespace sema

@@ -488,26 +488,12 @@ llvm::Value* Compiler::compileStringTemplate(StringTemplateNode* node) {
     const auto& parts = node->parts();
     const auto& interps = node->interps();
 
-    // Phase 2b 类型校验：插值类型必须是 String 或在 SDK / 当前文件中可解析到
-    // `<Type>.to_string()` —— 等价于实现了 ToString。
-    auto canToString = [&](const TypeInfo& t) -> bool {
-        if (t.name == "String") return true;
-        string fullName = t.name + ".to_string";
-        if (_yux && _yux->sdkFile()
-            && _yux->sdkFile()->lookupFnSymbol(fullName)) {
-            return true;
-        }
-        if (_file && _file->lookupFnSymbol(fullName)) return true;
-        return false;
-    };
-    for (size_t i = 0; i < interps.size(); ++i) {
-        auto t = interps[i]->getType();
-        if (!canToString(t)) {
-            throw YuxError(
-                interps[i]->getLineNumber(), interps[i]->getColumn(),
-                ErrorCode::E3026, t.name);
-        }
-    }
+    // Phase 2b 类型校验：插值类型必须是 String 或实现 ToString.
+    // Bucket 6 (CURRENT-check.md): 抠到 sema::validateStringTemplateInterps;
+    // SemaPass 已接管 E3026 实际抛出点, 此处幂等防御性双跑.
+    sema::validateStringTemplateInterps(_file,
+                                         _yux ? _yux->sdkFile() : nullptr,
+                                         node);
 
     // UTF-8 → u32 码点解码（parts 在 ast_builder 已展开转义，仅含原始 UTF-8 字节）
     auto decodeUtf8 = [](const string& s) -> vector<u32> {
@@ -1096,15 +1082,11 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3004, leftType.name, rightType.name);
     }
 
-    // Phase 1d.3：禁 Weak == / !=（DRAFT §5：v1 不暴露 handle 比较语义）
-    if (leftType.isWeak()) {
-        if (node->op() == ExprCompareNode::Op::Eq || node->op() == ExprCompareNode::Op::Ne) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3078)
-                .withHint("先 `upgrade(weak)` 取得 Rc<T>?，再用 `?.` / `??` / 相等比较判定目标对象");
-        }
-    }
+    // Bucket 6 (CURRENT-check.md): E3078 (Weak ==/!=) + E3073 (Ptr ordering) 形态校验
+    // 抠到 sema::validateCompareOpForm; SemaPass 已接管实际抛出点, 此处幂等防御性双跑.
+    sema::validateCompareOpForm(leftType, node->op(), node->getLineNumber(), node->getColumn());
 
-    // Ptr：内置 == / !=（用于 `p == null` 等场景）；ordering 不开放
+    // Ptr：内置 == / !=（用于 `p == null` 等场景）
     if (leftType.isPtr()) {
         if (node->op() == ExprCompareNode::Op::Eq || node->op() == ExprCompareNode::Op::Ne) {
             auto left = compileExpr(node->left());
@@ -1113,18 +1095,6 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
                 return _builder.CreateICmpEQ(left, right);
             }
             return _builder.CreateICmpNE(left, right);
-        }
-        if (node->op() != ExprCompareNode::Op::AndAnd && node->op() != ExprCompareNode::Op::OrOr) {
-            const char* opSym =
-                node->op() == ExprCompareNode::Op::Lt ? "<" :
-                node->op() == ExprCompareNode::Op::Le ? "<=" :
-                node->op() == ExprCompareNode::Op::Gt ? ">" : ">=";
-            const char* mname =
-                node->op() == ExprCompareNode::Op::Lt ? "lt" :
-                node->op() == ExprCompareNode::Op::Le ? "le" :
-                node->op() == ExprCompareNode::Op::Gt ? "gt" : "ge";
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3073, "Ptr", opSym, mname)
-                .withHint("Ptr 只支持 == / != 比较（与 null 或另一 Ptr）");
         }
     }
 

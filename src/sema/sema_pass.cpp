@@ -478,6 +478,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         // 字符串模板含插值表达式; 其余字面量无子表达式
         if (auto tpl = dynamic_cast<p<StringTemplateNode>>(n->literal())) {
             for (auto& e : tpl->interps()) visitExpr(e);
+            // Bucket 6 (CURRENT-check.md): E3026 插值类型必须实现 ToString.
+            sema::validateStringTemplateInterps(_file, _sdkFile, tpl);
         }
         // Phase 3.4.f.2: int 字面量越界 (E3103) — getType 仅返回类型不解析值,
         // 这里主动调 sema::parseIntLiteral 触发越界 / 非法格式校验.
@@ -497,7 +499,19 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         visitExpr(n->left()); visitExpr(n->right()); return;
     }
     if (auto n = dynamic_cast<p<ExprCompareNode>>(expr)) {
-        visitExpr(n->left()); visitExpr(n->right()); return;
+        visitExpr(n->left()); visitExpr(n->right());
+        // Bucket 6 (CURRENT-check.md): leftType 形态校验 (E3078 Weak ==/!= /
+        // E3073 Ptr ordering). leftType getType 抛错 (lambda 形参等) 跳过.
+        try {
+            TypeInfo leftType = n->left()->getType();
+            sema::validateCompareOpForm(leftType, n->op(),
+                                          n->getLineNumber(), n->getColumn());
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) {
+            // getType 内部异常: 留 Compiler 兜底
+        }
+        return;
     }
     if (auto n = dynamic_cast<p<ExprParenNode>>(expr)) {
         visitExpr(n->expr()); return;
@@ -855,6 +869,13 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 auto* enumDecl = lookupEnumIn(_file, _sdkFile, scrutType.name);
                 if (enumDecl) {
                     sema::validateMatchArms(enumDecl, scrutType.name, n, _file);
+                } else if (isBuiltinType(scrutType.name) || scrutType.name == "String") {
+                    // Bucket 6 (CURRENT-check.md): E2022 scrutinee 非 enum.
+                    // 仅在 builtin 原型 / String 时接管 — 复杂路径 (alias 链 /
+                    // Box<E> / fresh Rc) 留 Compiler 兜底.
+                    int line = n->getLineNumber();
+                    int col = n->getColumn();
+                    throw YuxError(line, col, ErrorCode::E2022, scrutType.name);
                 }
             }
         } catch (const YuxError&) {
