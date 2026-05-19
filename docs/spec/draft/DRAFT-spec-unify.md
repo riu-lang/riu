@@ -101,6 +101,10 @@ struct Counter {
   step i32
 
   ; ===== 方法段 =====
+  fn ~() {
+    ; ...
+  }
+
   #Static
   fn make(v i32) Self {
     Self {
@@ -121,9 +125,6 @@ struct Counter {
     ; ...
   }
 
-  fn ~() {
-    ; ...
-  }
 }
 ```
 

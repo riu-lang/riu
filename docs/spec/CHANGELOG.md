@@ -15,6 +15,47 @@
 
 ---
 
+## 2026-05-19 —— spec-unify v1：替代 `draft` 关键字
+
+- **章节重命名**：`12-draft.md` → `12-spec.md`（同步 [`docs/spec/index.md`](index.md)）。
+- **新增 / 修改**：
+  - **§12 整章重写**：以 `#Spec struct D { fnSig* }` 替代旧 `draft D { ... }`；以 `#Impl(D)` 顶行注解替代旧 `Type : D { ... }` 外置实现块。struct 声明与方法 / 析构 / 构造合一到单一 `structDecl` body（字段段 → `fnClean?` → `fn` 段）。
+  - **§7.1 / §7.2 / §7.8**：`structDecl` 形态合一；删除独立 `structImpl` 节；§7.8 改写为"`#Impl(D)` 顶行注解 + 共享方法 namespace"。`structImpl` 字样在 §7.10 等节迁为"struct body"。
+  - **§11.4**：删除 `#DraftLike`（已废弃，v1 视为 noop）；新增 `#Spec` / `#Impl(D)` 章节及互锁规则。`#Impl(D)` 用单参数糖 `(ID genericDef?)`。
+  - **§11.5.1 表格 / §A.3 表格**：`#DraftLike` → `#Spec` / `#Impl(D)`。
+  - **附录 A**：删除 `draft` 关键字行（A.1）；A.6 预留区记 `draft` 已废弃。
+  - **附录 B**：删除 `draftDecl` 产生式；`structDecl` 形态更新为合一形态；§B.5a 改为 spec 形态说明（共用 `structDecl`）。
+- **诊断变更**：
+  - `E1102`（实现块多余方法）**废弃**：声明合一后，未命中任何 `#Impl(D)` 的方法视为该 struct 普通方法，照常存在并参与方法分发。
+  - `E1137` = 实现者漏 spec 方法（替代旧 E1101 在新形态下的语义点）。
+  - `E1138` = 实例形访问 `#Static` / 关联成员（误用拦截）。
+  - `E1139` = `#Spec` body 内方法带 body。
+  - `E2011` = `#Spec` body 内出现字段 / 析构（spec body 非签名形态）。
+  - `E1103` = 同一 struct 上重复宣告同一 spec（同名 `#Impl(D)`）。
+  - `E1110` = `#Spec` / `#Impl` 标在非 struct 声明位 / `#Spec` 与 `#Impl` 共存。
+- **删除诊断**（旧形态独有）：E1102（已废弃，见上）/ E1105（显隐冲突）/ E1110 旧含义 / E1112（`#DraftLike` + 方法本地泛型）已不适用；其它 diag 行号刷新。
+- **删除 spec**：内置 `Any` 删除（[§12.7.2](12-spec.md#1272-any已删除)）。universal bound 留待 [`draft/DRAFT-spec-default-body.md`](draft/DRAFT-spec-default-body.md) / [`draft/DRAFT-spec-reflect.md`](draft/DRAFT-spec-reflect.md) §8a（类型擦除 + Any downcast）承接。
+- **g4 改动反映**：`structDecl` body = `(filedDecl|LineEnd)* fnClean? (fn LineEnd | LineEnd)*`；删 `Draft` token / `draftDecl` / `draftType` / `structImpl` 产生式；`buildAnno` 单参 arg 升级 `literal | ID genericDef`。详见 commit 726931b / 512624e。
+- **冲突 / 兼容**：
+  - 旧 `draft D { ... }` 声明、`Type : D { ... }` 外置实现块、`#DraftLike` 注解形态**不再被解析**；用户代码需迁移到 `#Spec struct` + 顶行 `#Impl(D)` 形态。SDK / 测试已一次性迁移（commit 512624e）。
+  - `Any` 形态的代码（如 `accept_any<T : Any>`）须替换为具体边界或留待 reflect / default-body 草案承接。
+- **测试**：`yux test` SDK 532/532、`xmake test` 179/179 全绿（commit 512624e）。
+
+### 配套：构造函数形态删除（与 DRAFT-static-fn 落地协同）
+
+- **§7.3 整章改写**：删除"构造函数（与结构体同名的 `fn StructName(...)`）"形态。构造唯一通道：`#Static fn` 工厂 + `Self { ... }` 字段字面量（§7.3.2 / §7.10.3）。DAA 退化为"`Self { ... }` 全字段覆盖" 规则（§7.3.2.2 / §7.3.3）。
+- **§7.2.1.2**：明确 struct body 顺序：字段段 → `fnClean?`（析构）→ 实例方法 / `#Static fn` 段。析构函数若声明，**位于其它方法之前**。
+- **§7.4.1.1 / §7.4.1.3 / §7.4.6.1**：析构 / 字段级语义文本去构造函数 DAA 依赖，改引 `Self { ... }` 全字段覆盖。
+- **§7.5.1**：变量绑定可变性用语从 `var` / `val` 迁到 `let` 默认 / `#Mut let`（与 let-unify 同期）。
+- **§7.10.1.4 / §7.10.4.2 / §7.10.6**：原"`#Static fn` 与 ctor 并存"试点说明删除；记 ctor 通道已删除，SDK 形态全部走 `#Static fn`。
+- **§4.3.2 / §4.1.3.1 / §4.10.3**：表达式章关于 `$` / 副作用点 / 用户结构体构造的描述同步——`$` 在 `#Static fn` 体内禁用；副作用点改 `Self { ... }` 字段写入；用户结构体构造唯一通道改为 `Type::factory(...)`。
+- **§8.6.6.3**：构造期 DAA 文本改为 `#Static fn` + `Self { ... }` 一次性 init。
+- **§8.6.7.3**：方法分发归一示例从 `U : DraftX { ... }` 迁到 `#Impl(D) struct U { ... }`。
+- **§11.4.1 / §11.11.2.2**：`#Spec` body 禁项列表去构造函数项；`#Static fn` 与结构体同名禁忌降级为"不推荐"。
+- **附录 B / 附录 C**：`structDecl` 形态说明 / 术语表"构造函数" → "静态工厂"。
+
+---
+
 ## 2026-05-18 —— v0.13.0 收尾：草案归档 + 实施日志 + LSP completion 补全
 
 - **草案归档**：

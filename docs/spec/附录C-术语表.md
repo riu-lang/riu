@@ -68,8 +68,8 @@
 |---|---|---|---|
 | 函数体 | function body | §6.1 | `fnExprkBody` / `fnBlockBody` |
 | 表达式体 | expression body | §6.1 / `fnExprkBody` | `= expr` 形态 |
-| 析构函数 | destructor | §6.1 / §7.4 / `fnClean` | `fn ~()` |
-| 构造函数 | constructor | §7.3 | 与结构体同名的方法 |
+| 析构函数 | destructor | §6.1 / §7.4 / `fnClean` | `fn ~()`，位于字段段之后、其它 `fn` 之前 |
+| 静态工厂 | static factory | §7.3 / §7.10 | `#Static fn` 返回 `Self`，构造唯一通道（v1 已删除构造函数形态） |
 | 接收者 | receiver | §7.2.2 / §8.6.6 | `$`，隐式 `Self&` |
 | 形参组 | param group | §6.2 / `fnParamGroup` | `a, b, c i32` 共享类型 |
 | Turbofish | turbofish | §6.4 / §4.8 | `name:<T>(args)` 显式泛型 |
@@ -98,7 +98,7 @@
 | RC leak 检测 | RC leak counter | §8.8.4 | `_rc_block_count` / `rc_leak_count()` |
 | retain-then-release | retain-then-release | §7.4.4 / §8.3.3.1 | 赋值的 RC 序，自赋值安全 |
 | 字段级派生 | field-level derive | §7.4 | 按字段 retain / release |
-| DAA | definite assignment analysis | §7.3.3 | 构造函数定性赋值分析 |
+| DAA | definite assignment analysis | §7.3.3 | 字段定性赋值分析（v1 退化为 `Self { ... }` 全字段覆盖规则） |
 | same_ref | same_ref | §8.7.5.2 / §10 | 地址相等 builtin |
 | ptr_of | ptr_of | §8.7.4.4 / §9.7.2.4 | 显式转 `Ptr` builtin |
 

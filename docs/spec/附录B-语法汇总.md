@@ -12,9 +12,7 @@ program        ::= comment*
                    | globalConst
                    | aliasDecl
                    | enumDecl
-                   | draftDecl
                    | structDecl
-                   | structImpl
                    | comment
                    | codeLineEnd
                    )*
@@ -69,9 +67,9 @@ draftBound        ::= modulePath? ID genericDef?     # 例：ToString / pkg.Disp
 约束：
 
 - `typeWithRef` 仅出现在函数参数与局部变量声明位置（§3.2 / §8.3.1）；其它位置只能用 `type`。
-- `typeParam` 的 draft 边界仅出现在**声明位**（`fn` / `struct` / `draft` 头部的 `genericDef` 槽位）；调用点 turbofish `f:<T>(args)` 处**不得**写边界（§6.4.4.3）。
+- `typeParam` 的 spec 边界仅出现在**声明位**（`fn` / `struct` / `#Spec struct` 头部的 `genericDef` 槽位）；调用点 turbofish `f:<T>(args)` 处**不得**写边界（§6.4.4.3）。
 
-> 上述边界产生式为 §12 引入的形态（v0.5+）；待与用户确认后回写 `src/yux.g4`，按 CLAUDE.md 项目约束。本附录文本与 `.g4` 暂不同步时，以草案 `draft/DRAFT-draft.md` §10.3 为准。
+> 上述边界产生式 spec-unify v1 已落地 `src/yux.g4`；`draftBound` 产生式名沿用历史 token 名，语义为"spec 边界"（§12）。
 
 ## B.2a `Dyn<D>` / `Dyn<D&>`（v0.5+）
 
@@ -125,21 +123,24 @@ fnBlockBody   ::= statementBlock
 
 ## B.5 结构体
 
+spec-unify v1（2026-05-19）将 struct 声明与方法块合一为单一 `structDecl`；spec（接口契约）由 `#Spec` 顶行注解承载；spec 实现关系由 `#Impl(D)` 顶行注解承载（§12.1 / §12.2）。
+
 ```
-structDecl     ::= buildAnno*
+structDecl     ::= buildAnno*                              ; 顶行可含 #Spec / #Impl(D) / #CompilerInner 等
                    'struct' ID ('<' type (',' type)* '>')? '{'
-                       ( filedDecl codeLineEnd? | comment | codeLineEnd )*
-                   '}'
-
-structImpl     ::= buildAnno* ID ('<' type (',' type)* '>')?
-                       (':' draftBound ('+' draftBound)*)? '{'
-                       codeLineEnd
+                       ( filedDecl | LineEnd )*
                        fnClean?
-                       ( fn | comment | codeLineEnd )*
+                       ( fn LineEnd | LineEnd )*
                    '}'
 
-filedDecl      ::= buildAnno* ID type
+filedDecl      ::= buildAnno* ID type LineEnd
 ```
+
+约束（语义层）：
+
+- `#Spec` 形态下 body 内只允许 `fn` 签名（无 body），不允许 `filedDecl` / `fnClean`（§12.1.1.1 / §11.4.1）。
+- 非 spec 形态可含字段、`fnClean`（析构 `fn ~()`，居于字段之后、其它 `fn` 之前）、实例方法 / 静态工厂（`#Static fn`）；构造函数形态已删除（§7.3.1.1），构造唯一通道为 `#Static fn` + `Self { ... }` 字段字面量。
+- `#Impl(D)` 接受单参数糖 `(ID genericDef?)`，可重复出现，宣告该 struct 实现 D。
 
 ## B.5b 枚举（v0.x）
 
@@ -156,21 +157,27 @@ enumVariant    ::= ID ( '(' type (',' type)* ')' )?
 - 空 enum（无 variant）由语义层拒绝（§3.10.2.5）。
 - enum 值的读取仅经 `match`（B.6 `exprMatch`）；构造仅经 B.6 `exprEnumCtor`。
 
-## B.5a draft（v0.5+）
+## B.5a spec（v0.5+）
 
+spec 声明形态共用 §B.5 `structDecl`，由 `#Spec` 顶行注解切换：
+
+```yux
+#Spec
+struct D {
+  fn m1(...) R
+  fn m2(...) R
+  ; ...
+}
 ```
-draftDecl      ::= buildAnno* 'draft' genericDef? ID '{'
-                       ( fnSig | comment | codeLineEnd )*
-                   '}'
 
-fnSig          ::= buildAnno* 'fn' ID '(' fnParams? ')' (retType=type)?
-```
+约束：
 
-- draft 体内**只允许签名**（`fnSig`），不得带函数体（§12.1.1.1）。
-- 签名集**允许为空**（§12.1.1.2 / §12.7.2 内置 `Any`）。
-- draft 自身可携带 `genericDef`，但 draft 体内单个 `fn` **不得**再引入泛型形参（§12.3.2）。
+- spec body 内**只允许 `fn` 签名**（不带函数体），违反报 `E1139`；字段 / 析构 `fn ~()` 禁用，违反报 `E2011`；详见 §12.1.1.1。
+- spec 签名集**允许为空**（§12.1.1.2）。
+- spec 自身可携带 `genericDef`，但 spec 体内单个 `fn` **不得**再引入泛型形参（§12.3.2 / `E1104`）。
+- spec 声明上**禁带** `#Impl(D)`（§11.4.1.4）。
 
-> 同 §B.2 末尾说明：`draftDecl` 为 §12 引入的形态，回写 `src/yux.g4` 前需用户确认。
+历史 `draftDecl` 产生式 spec-unify v1 已删除（参 [CHANGELOG 2026-05-19](CHANGELOG.md)）。
 
 ## B.6 表达式（按 `yux.g4` 中 `expr` 的分支顺序，决定优先级）
 

@@ -10,7 +10,6 @@
 |---|---|---|---|
 | `break` | `Break` | 跳出 `loop` | §5.5 |
 | `catch` | `Catch` | 错误路由块的捕获子句（草案） | DRAFT-错误.md §5 |
-| `draft` | `Draft` | 接口契约声明 | §12 |
 | `elif` | `Elif` | 多分支条件 | §4.9 / §5.4 |
 | `else` | `Else` | 条件分支兜底 / `match` 兜底 | §4.9 / §5.4 / §3.10 |
 | `enum` | `Enum` | 枚举声明 | §3.10 |
@@ -59,7 +58,8 @@
 |---|---|---|
 | `#CompilerInner` | 编译器内部合成实现 | §11.2 |
 | `#Test` | 单元测试函数（仅 `*.test.yux`） | §11.3 |
-| `#DraftLike` | draft 开放结构化匹配 | §11.4 / §12.4 |
+| `#Spec` | 把 struct 声明转为 spec（仅签名集合） | §11.4 / §12.1 |
+| `#Impl(D)` | 宣告 struct 实现 spec `D`（单参数糖） | §11.4 / §12.2 |
 | `#Const` | `#Const fn`：编译期常量函数（不改外部状态） | §11.6 |
 | `#Frozen` | 参数 / 字段深不可变；局部 `#Frozen let` 同语义 | §11.7 / §5.1.1 |
 | `#Val` | 字段浅不可变 | §11.8 |
@@ -68,7 +68,7 @@
 | `#Fallible(E)` | 失败声明：函数可能以错误 enum `E` 失败（草案，单参数糖） | DRAFT-错误.md §3 |
 | `#NoReturn` | 不返回声明：函数永不正常返回（草案，零参数） | DRAFT-错误.md §8.3 |
 
-§A.3.1 v1 三种正式注解：`#CompilerInner` / `#Test` / `#DraftLike`；DRAFT-错误.md 引入 `#Fallible(E)` / `#NoReturn`（草案，单参数糖于 §11.1.1.1 同步解禁）；其它注解形态属预留（§11.5.2）。
+§A.3.1 v1 正式注解：`#CompilerInner` / `#Test` / `#TestIsolate` / `#Spec` / `#Impl(D)` 已落地；DRAFT-错误.md 引入 `#Fallible(E)` / `#NoReturn`（草案，单参数糖于 §11.1.1.1 同步解禁）；其它注解形态属预留（§11.5.2）。早期 `#DraftLike` 已废弃（§11.4.3）。
 
 ## A.4 运算符与符号 token
 
@@ -143,7 +143,8 @@
 - `pub` / `priv` / `private` / `internal`：可见性修饰符（§10.3.1.2 不引入）；
 - `mut` / `const`：可变性修饰符（v1 用 `let` 默认不可变 + `#Mut` 注解放宽，见 §5.1.1）；
 - `var` / `val` / `cval`：旧声明关键字（已被 let-unify 移除，由 `let` + `#Mut` / `#Cval` 取代）；
-- `trait` / `impl` / `where`：v1 用 `draft` + `:` 实现块替代，无 `where` 子句（§12 / §6.4.4）；
+- `trait` / `impl` / `where`：v1 用 `#Spec struct` + `#Impl(D)` 顶行注解替代，无 `where` 子句（§12 / §6.4.4）；
+- `draft`：v0.x 接口契约关键字，spec-unify v1（2026-05-19）删除；由 `#Spec` 注解承载（§12.1）；
 - `case`：v1 `match` 用 `=>` + `else` 兜底，无 `case` 关键字（§3.10）；
 - `async` / `await`：v1 无并发原语；
 - `for` / `while` / `do`：v1 循环只用 `loop`（§5.5）；
