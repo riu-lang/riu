@@ -1143,4 +1143,79 @@ i64 parseIntLiteral(const string& text, int line, int col) {
     }
 }
 
+// ==================== Bucket 3: 类型别名一次性校验 ====================
+// 镜像 Compiler::validateAliases (compiler_types.cpp). 0 LLVM, 由 SemaPass 起调.
+
+namespace {
+
+TypeInfo resolveAliasImpl(const TypeInfo& t, FileNode* file, std::set<std::string>& visited) {
+    if (!file) return t;
+    if (t.kind == TypeKind::Normal) {
+        auto* alias = file->getAliasDecl(t.name);
+        if (!alias) return t;
+        if (alias->isGeneric()) return t;
+        if (visited.count(t.name)) {
+            throw YuxError(static_cast<int>(alias->name().getLine()), ErrorCode::E2016, t.name);
+        }
+        visited.insert(t.name);
+        if (!alias->target()) return t;
+        TypeInfo target = alias->target()->getType();
+        return resolveAliasImpl(target, file, visited);
+    }
+    if (t.kind == TypeKind::Generic) {
+        auto* alias = file->getAliasDecl(t.name);
+        if (alias && alias->isGeneric() && alias->typeParams().size() == t.genericArgs.size() && alias->target()) {
+            if (visited.count(t.name)) {
+                throw YuxError(static_cast<int>(alias->name().getLine()), ErrorCode::E2016, t.name);
+            }
+            visited.insert(t.name);
+            std::map<std::string, TypeInfo> subst;
+            for (size_t i = 0; i < alias->typeParams().size(); ++i) {
+                subst[alias->typeParams()[i]] = t.genericArgs[i] ? *t.genericArgs[i] : TypeInfo();
+            }
+            TypeInfo inst = alias->target()->getType().substitute(subst);
+            return resolveAliasImpl(inst, file, visited);
+        }
+        // 普通泛型不递归到 args (sema 仅做环检测起点, 简化处理)
+        return t;
+    }
+    return t;
+}
+
+} // anon namespace
+
+void validateAliases(p<FileNode> file) {
+    if (!file) return;
+    auto& aliases = file->getAliasDecls();
+
+    for (auto& a : aliases) {
+        string name = a->name().getText();
+        if (auto* s = file->getStructDecl(name)) {
+            (void)s;
+            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017,
+                           name, string("struct"), name);
+        }
+        if (auto* d = file->getSpecDecl(name)) {
+            (void)d;
+            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017,
+                           name, string("draft"), name);
+        }
+        size_t cnt = 0;
+        for (auto& b : aliases) {
+            if (b->name().getText() == name) ++cnt;
+        }
+        if (cnt > 1) {
+            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017,
+                           name, string("type alias"), name);
+        }
+    }
+
+    for (auto& a : aliases) {
+        if (!a->target()) continue;
+        std::set<std::string> visited;
+        visited.insert(a->name().getText());
+        (void)resolveAliasImpl(a->target()->getType(), file, visited);
+    }
+}
+
 } // namespace sema

@@ -457,6 +457,11 @@ void validateDotFieldPrivacy(FileNode* file, FileNode* sdkFile,
 // 纯字符串解析, 无 LLVM / AST 依赖.
 i64 parseIntLiteral(const string& text, int line = 0, int col = 0);
 
+// Bucket 3 (CURRENT-check.md): 顶层类型别名一次性校验 (E2017 名字冲突 + E2016 环).
+// 镜像 Compiler::validateAliases 但 0 LLVM 依赖, 仅查 FileNode AST. 在
+// SemaPass::run 起始处调一次; Compiler 端原 validateAliases 保留作幂等防御性双跑.
+void validateAliases(p<FileNode> file);
+
 } // namespace sema
 
 #endif //YUX_LANG_SEMA_CALL_RESOLVE_H

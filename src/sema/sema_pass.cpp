@@ -157,6 +157,10 @@ SemaPass::SemaPass(p<FileNode> file, p<FileNode> sdkFile, string sourcePath)
 
 void SemaPass::run() {
     if (!_file) return;
+    // Bucket 3: 顶层类型别名一次性校验 (E2017 名字冲突 + E2016 环).
+    // 必须在遍历 fn 之前: 一旦命中, 直接抛错; Compiler::validateAliases 会在
+    // codegen 阶段再跑一次作幂等防御性双跑.
+    sema::validateAliases(_file);
     for (auto& fn : _file->getFunctions()) {
         // 泛型模板 / #CompilerInner 不走常规 codegen, 在 Compiler::compile 里也
         // 是被跳过的; SemaPass 这里同步跳过, 保持与 codegen 覆盖一致。
