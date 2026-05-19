@@ -37,6 +37,9 @@
 #include <set>
 #include <string_view>
 
+#include "analyzer/borrow_checker.h"
+#include "analyzer/const_mut_checker.h"
+#include "analyzer/flow_terminate_checker.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/file_node.h"
@@ -193,6 +196,14 @@ void SemaPass::visitFn(p<FnNode> fn) {
     // caller 的 #Fallible(E) 注解.
     auto savedFn = _currentFn;
     _currentFn = fn;
+
+    // Bucket 1 (CURRENT-check.md): 把 0-LLVM analyzer 接入 sema, 让 yux-check
+    // 也能覆盖 borrow / const-mut / NoReturn 流终止 检查. Compiler::compileFn /
+    // compileMethod 仍调一份, 作幂等防御性双跑 (sema 先抛, Compiler 不会再到达).
+    checkBorrows(fn, _currentStructName);
+    checkConstMut(fn);
+    checkFlowTerminate(fn);
+
     for (auto& stmt : fn->body()) {
         visitStmt(stmt);
     }
