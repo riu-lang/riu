@@ -11,6 +11,7 @@
 /bin/
 
 /.trae/skills/*
+/.trae/rules/*
 /.claude/skills/xmake*
 /.claude/skills/xrepo-*/
 
