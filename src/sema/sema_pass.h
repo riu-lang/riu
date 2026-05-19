@@ -9,6 +9,7 @@
 class ExprNode;
 class StatementNode;
 class StatementBlockNode;
+class Yux;
 
 // SemaPass —— Sema/Codegen 拆分骨架（Phase 3.1）
 //
@@ -25,17 +26,20 @@ class StatementBlockNode;
 // 不依赖 LLVM, 给 `yux-lsp` / 未来 `yux-check` 共用。
 class SemaPass {
 public:
-    // sdkFile 用于跨文件符号解析 (例如调用 SDK 提供的函数 / 构造器). 单文件 / SDK 自构建
-    // 时可传 nullptr; Compiler 处实际传入 `_yux ? _yux->sdkFile() : nullptr`.
-    // sourcePath：当前文件的绝对路径，仅用于诊断渲染（DiagnosticEngine::emit
-    // 渲染 warning 时要前缀 file:line:col）。空串 = LSP / 单测无路径，按 line:col 渲染。
-    explicit SemaPass(p<FileNode> file, p<FileNode> sdkFile = nullptr,
-                      string sourcePath = "");
+    // yux：前端环境句柄，提供 sdkFile / modulePath / specRegistry / specImplChecker
+    // 等长期生存的服务。单文件 / SDK 自构建场景可传 nullptr（_sdkFile 与 _sourcePath
+    // 退化为空, sema 仅做 builtin 范围内的检查, 不抛跨文件符号错）。
+    // 改造前 ctor 形如 SemaPass(file, sdkFile, sourcePath) —— sdkFile / sourcePath
+    // 都从 Yux 派生, 没必要让 caller 各算一遍。两个真实 caller (Compiler / yux-check)
+    // 都有 Yux 实例, 这里统一从 Yux 拿。
+    explicit SemaPass(p<FileNode> file, Yux* yux = nullptr);
 
     void run();
 
 private:
     p<FileNode> _file;
+    Yux* _yux;
+    // 派生缓存: 进 ctor 时从 _yux 一次性算出, 避免后续 visit* 反复调用 yux 接口。
     p<FileNode> _sdkFile;
     string _sourcePath;
 

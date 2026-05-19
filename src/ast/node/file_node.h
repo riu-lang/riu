@@ -46,7 +46,11 @@ public:
     AliasDeclNode* getAliasDecl(const string& name) const;
     EnumDeclNode* getEnumDecl(const string& name) const;
     
-    StructDeclNode* getStructDecl(const string& name) const;
+    // includeCompilerInner: 是否把 `#CompilerInner` 占位 (Rc/Ref/Ptr/Array 等内建容器
+     // + i8..f64 等基本类型) 也算上。默认 false —— Compiler 端只关心用户结构体, 内建
+     // 占位由编译器合成不需要走 decl 查找。SemaPass 做泛型 arity 校验 (E6011) 等仅需
+     // 看到声明形态的场景要显式传 true, 否则 Rc<T> 查不到, arity 校验静默漏报。
+    StructDeclNode* getStructDecl(const string& name, bool includeCompilerInner = false) const;
     StructImplNode* getStructImpl(const string& name) const;
     FnNode* getFunction(const string& name) const;
     // 仅返回 generic 重载（用于 dispatcher：与 lookupFnSymbolWithParams 命中的非泛型重载竞争优先级时用到）

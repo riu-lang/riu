@@ -47,6 +47,7 @@
 #include "ast/node/literal_node.h"
 #include "ast/node/statement_node.h"
 #include "ast/node/struct_node.h"
+#include "ast/yux.h"
 #include "sema/call_resolve.h"
 #include "types.h"
 
@@ -104,23 +105,14 @@ EnumDeclNode* lookupEnumIn(p<FileNode> file, p<FileNode> sdkFile, const string& 
 }
 
 // Bucket 4 (CURRENT-check.md): 与 lookupEnumIn 同款的 struct decl 三段查找.
-// 注: FileNode::getStructDecl 跳过 #CompilerInner (Rc/Ref/Ptr/Array...),
-// 因此为 E6011 arity 校验单独走 _structDecls 直查, 包含 CompilerInner 项.
-StructDeclNode* lookupStructInRaw(p<FileNode> file, const string& name) {
-    if (!file) return nullptr;
-    for (auto* d : file->getStructDecls()) {
-        if (d && d->name().getText() == name) return d;
-    }
-    return nullptr;
-}
+// FileNode::getStructDecl 默认过滤 #CompilerInner (Rc/Ref/Ptr/Array...) ——
+// SemaPass 走 E6011 arity 校验等需要看到这些占位, 这里统一传 true。
+// wildcardImports 已在 getStructDecl 内部覆盖, 只需再补 sdkFile 一档。
 StructDeclNode* lookupStructIn(p<FileNode> file, p<FileNode> sdkFile, const string& name) {
     if (!file) return nullptr;
-    if (auto* d = lookupStructInRaw(file, name)) return d;
+    if (auto* d = file->getStructDecl(name, /*includeCompilerInner=*/true)) return d;
     if (sdkFile && sdkFile != file) {
-        if (auto* d = lookupStructInRaw(sdkFile, name)) return d;
-    }
-    for (auto* imp : file->wildcardImports()) {
-        if (auto* d = lookupStructInRaw(imp, name)) return d;
+        if (auto* d = sdkFile->getStructDecl(name, /*includeCompilerInner=*/true)) return d;
     }
     return nullptr;
 }
@@ -173,8 +165,10 @@ bool isMigratedCode(const char* code) {
 }
 }
 
-SemaPass::SemaPass(p<FileNode> file, p<FileNode> sdkFile, string sourcePath)
-    : _file(file), _sdkFile(sdkFile), _sourcePath(std::move(sourcePath)) {
+SemaPass::SemaPass(p<FileNode> file, Yux* yux)
+    : _file(file), _yux(yux),
+      _sdkFile(yux ? yux->sdkFile() : nullptr),
+      _sourcePath((yux && file) ? yux->modulePath(file->moduleName()) : "") {
 }
 
 void SemaPass::run() {

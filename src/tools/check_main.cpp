@@ -109,7 +109,7 @@ int main(int argc, char* argv[]) {
         // 若 import 失败 (找不到 SDK / 模块), 这里抛 YuxError, 直接报.
         auto file = yux.loadMainFile(absPath, moduleName);
         yux.validateSpecImpls();
-        SemaPass(file, yux.sdkFile()).run();
+        SemaPass(file, &yux).run();
     } catch (const std::runtime_error& e) {
         if (auto* yuxErr = dynamic_cast<const YuxError*>(&e)) {
             DiagnosticEngine::renderYuxError(std::cerr, absPath, *yuxErr);
