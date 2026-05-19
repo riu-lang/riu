@@ -32,6 +32,7 @@
 #include "ast/yux.h"
 #include "sema/sema_pass.h"
 #include "tools/diagnostic.h"
+#include "tools/sdk_loader.h"
 #include "tools/syntax_error_listener.h"
 
 #include <CLI/CLI.hpp>
@@ -93,6 +94,17 @@ int main(int argc, char* argv[]) {
     yux.initSingleFileRoot(absPath);
 
     try {
+        // 先加载 SDK (yux.core), 让用户文件经父作用域看到 String / ToString /
+        // StringBuilder 等; sdk_loader::parseSdkDir 0 LLVM, 失败抛 YuxError.
+        // SDK 找不到时不致命 —— 仅打印警告并继续 (退化为 yux-check 阶段 0 行为).
+        std::string sdkPath = sdk_loader::findSdkPath();
+        if (sdkPath.empty()) {
+            std::cerr << "warning: SDK not found (yux.core 未加载); 仅做 builtin 范围内的 sema 检查"
+                      << std::endl;
+        } else {
+            sdk_loader::parseSdkDir(sdkPath, yux);
+        }
+
         // loadMainFile 会触发 ASTBuilder.build, 含 import 解析.
         // 若 import 失败 (找不到 SDK / 模块), 这里抛 YuxError, 直接报.
         auto file = yux.loadMainFile(absPath, moduleName);

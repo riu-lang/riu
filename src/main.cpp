@@ -49,6 +49,7 @@
 #include "tools/diagnostic.h"
 #include "tools/formatter.h"
 #include "tools/format/printer.h"
+#include "tools/sdk_loader.h"
 #include "tools/syntax_error_listener.h"
 #include "utf8.h"
 #include "yux/yuxLexer.h"
@@ -481,118 +482,20 @@ bool needRecompileSdkDir(const string& sdkDir, const string& sdkObjPath) {
     return false;
 }
 
-// pkg 文件解析：filename(去 .yux) → {moduleName, isFlat}
-// `name.*` → 平铺到 yux.core；`name` → 命名空间 yux.core.<name>
-struct SdkPkgEntry {
-    string moduleName;
-    bool isFlat;
-};
+// SdkPkgEntry / readSdkPkg / registerSdkPkgAliases / parseSdkDir 已抠到
+// `src/tools/sdk_loader.{h,cpp}` (0 LLVM 依赖, 主二进制与 yux-check 共用)。
+// 出错语义改为 throw YuxError; 此处 caller 用 try/catch + reportRuntimeError 包住。
 
-static std::map<string, SdkPkgEntry> readSdkPkg(const string& sdkDir) {
-    namespace fs = std::filesystem;
-    std::map<string, SdkPkgEntry> r;
-    fs::path pkgPath = fs::path(sdkDir) / "pkg";
-    if (!fs::exists(pkgPath)) return r;
-    std::ifstream f(pkgPath);
-    string line;
-    while (std::getline(f, line)) {
-        size_t s = line.find_first_not_of(" \t\r\n");
-        if (s == string::npos) continue;
-        size_t e = line.find_last_not_of(" \t\r\n");
-        line = line.substr(s, e - s + 1);
-        if (line.empty() || line[0] == ';') continue;
-        bool wild = false;
-        string name = line;
-        if (name.size() >= 2 && name.substr(name.size() - 2) == ".*") {
-            wild = true;
-            name = name.substr(0, name.size() - 2);
-        }
-        if (name.empty()) continue;
-        r[name] = {wild ? string("yux.core") : ("yux.core." + name), wild};
+// parseSdkDir 的薄壳：捕获 YuxError 并按原行为 reportRuntimeError + exit(1)。
+static void parseSdkDirOrExit(const string& sdkDir, Yux& yux) {
+    try {
+        sdk_loader::parseSdkDir(sdkDir, yux);
+    } catch (runtime_error& e) {
+        // sdk_loader 抛 YuxError 时 .what() 已是格式化串, 但缺 sourcePath context;
+        // 退到 SDK 目录维度报, 与旧版 "Error in SDK file <dir>: " 等价的可读性。
+        reportRuntimeError(sdkDir, e, "Error in SDK: ");
+        exit(1);
     }
-    return r;
-}
-
-// 在 _sdkFile 上为每个非平铺导出登记模块别名，使用户文件经父作用域可访问 `<name>.fn(...)`
-static void registerSdkPkgAliases(Yux& yux, const std::map<string, SdkPkgEntry>& pkgMap) {
-    auto sdk = yux.sdkFile();
-    if (!sdk) return;
-    for (auto& [stem, info] : pkgMap) {
-        if (info.isFlat) continue;
-        auto target = yux.module(info.moduleName);
-        if (!target) continue;
-        if (sdk->lookupSymbol(stem)) continue;
-        SymbolInfo aliasSym(SymbolKind::Module, stem, TypeInfo());
-        aliasSym.moduleName = info.moduleName;
-        sdk->registerSymbol(stem, aliasSym);
-        sdk->addModuleAlias(stem, target);
-    }
-}
-
-void parseSdkDir(string sdkDir, Yux& yux) {
-    namespace fs = std::filesystem;
-    auto pkgMap = readSdkPkg(sdkDir);
-
-    vector<string> yuxFiles;
-    for (const auto& entry : fs::directory_iterator(sdkDir)) {
-        if (entry.is_regular_file()) {
-            string filename = entry.path().filename().string();
-            if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".yux") {
-                if (filename.size() >= 9 &&
-                    filename.compare(filename.size() - 9, 9, ".test.yux") == 0) continue;
-                yuxFiles.push_back(entry.path().string());
-            }
-        }
-    }
-    std::sort(yuxFiles.begin(), yuxFiles.end());
-
-    // 第一遍：平铺（base.*）；先建好 _sdkFile 以便后续命名空间文件的父作用域有效
-    for (const auto& yuxFile : yuxFiles) {
-        string stem = fs::path(yuxFile).stem().string();
-        auto it = pkgMap.find(stem);
-        bool isFlat = (it == pkgMap.end()) || it->second.isFlat;
-        if (!isFlat) continue;
-
-        antlr4::ANTLRFileStream file;
-        file.loadFromFile(yuxFile);
-        yuxLexer lexer(&file);
-        SyntaxErrorListener errListener(yuxFile, std::cerr);
-        lexer.removeErrorListeners();
-        lexer.addErrorListener(&errListener);
-        antlr4::CommonTokenStream tokenStream(&lexer);
-        yuxParser parser(&tokenStream);
-        parser.removeErrorListeners();
-        parser.addErrorListener(&errListener);
-        auto program = parser.program();
-        if (errListener.hasErrors() || parser.getNumberOfSyntaxErrors()) {
-            std::cerr << "Syntax errors in SDK file: " << yuxFile << std::endl;
-            exit(1);
-        }
-        ASTBuilder astBuilder(yux, "yux.core", true);
-        try {
-            astBuilder.build(program);
-        } catch (runtime_error& e) {
-            reportRuntimeError(yuxFile, e, "Error in SDK file " + yuxFile + ": ");
-            exit(1);
-        }
-    }
-
-    // 第二遍：命名空间（math 等）→ 独立 FileNode 注册到 _modules
-    for (const auto& yuxFile : yuxFiles) {
-        string stem = fs::path(yuxFile).stem().string();
-        auto it = pkgMap.find(stem);
-        if (it == pkgMap.end() || it->second.isFlat) continue;
-
-        try {
-            yux.loadMainFile(fs::absolute(yuxFile).string(), it->second.moduleName);
-        } catch (runtime_error& e) {
-            reportRuntimeError(fs::absolute(yuxFile).string(), e,
-                "Error in SDK file " + yuxFile + ": ");
-            exit(1);
-        }
-    }
-
-    registerSdkPkgAliases(yux, pkgMap);
 }
 
 IRResult compileSdkDir(string sdkDir, Yux& yux) {
@@ -603,7 +506,7 @@ IRResult compileSdkDir(string sdkDir, Yux& yux) {
     auto module = make_unique<llvm::Module>("yux.core", *context);
     llvm::IRBuilder<> builder(*context);
 
-    auto pkgMap = readSdkPkg(sdkDir);
+    auto pkgMap = sdk_loader::readSdkPkg(sdkDir);
 
     vector<string> yuxFiles;
     for (const auto& entry : fs::directory_iterator(sdkDir)) {
@@ -687,36 +590,14 @@ IRResult compileSdkDir(string sdkDir, Yux& yux) {
         }
     }
 
-    registerSdkPkgAliases(yux, pkgMap);
+    sdk_loader::registerSdkPkgAliases(yux, pkgMap);
 
     return {std::move(context), std::move(module)};
 }
 
-// 当前 SDK 源目录，content = sdk/yux/src/yux/core/。
-// TODO(phase-C)：SDK 改用 lib 链路后，此函数返回 SDK 项目根（含 yux.toml），不再直接给 core 目录
-string findSdkPath() {
-    namespace fs = std::filesystem;
-#ifdef _DEBUG
-    if (fs::is_directory("sdk/yux/src/yux/core")) {
-        return "sdk/yux/src/yux/core";
-    }
-#endif
-    char exePath[MAX_PATH];
-    GetModuleFileNameA(nullptr, exePath, MAX_PATH);
-    auto exeDir = llvm::sys::path::parent_path(exePath).str();
-    auto rootDir = llvm::sys::path::parent_path(exeDir).str();
-    // 优先新布局：<rootDir>/sdk/yux/src/yux/core
-    string newSdkPath = rootDir + "/sdk/yux/src/yux/core";
-    if (fs::is_directory(newSdkPath)) {
-        return newSdkPath;
-    }
-    // 回退到旧布局
-    string oldSdkPath = rootDir + "/sdk/yux/core";
-    if (fs::is_directory(oldSdkPath)) {
-        return oldSdkPath;
-    }
-    return "";
-}
+// findSdkPath() 已抠到 sdk_loader::findSdkPath (src/tools/sdk_loader.{h,cpp})。
+// 历史 TODO(phase-C): SDK 改用 lib 链路后, 该函数应返回 SDK 项目根 (含 yux.toml),
+// 而非直接给 core 目录。
 
 void handleCrash(int signal) {
     std::cerr << "\nProgram crashed! Signal: " << signal << std::endl;
@@ -1206,7 +1087,7 @@ int wmain(int argc, wchar_t* argv[]) {
                 sdkPath = candidate.string();
             }
         } else {
-            sdkPath = findSdkPath();
+            sdkPath = sdk_loader::findSdkPath();
         }
         std::string sdkObjPath;
         if (!sdkPath.empty()) {
@@ -1226,10 +1107,10 @@ int wmain(int argc, wchar_t* argv[]) {
                     }
                     std::cout << "Write SDK obj: " << sdkObjPath << std::endl;
                 } else {
-                    parseSdkDir(sdkPath, yux);
+                    parseSdkDirOrExit(sdkPath, yux);
                 }
             } else {
-                parseSdkDir(sdkPath, yux);
+                parseSdkDirOrExit(sdkPath, yux);
             }
         }
 
@@ -1715,7 +1596,7 @@ int wmain(int argc, wchar_t* argv[]) {
                 sdkPath = candidate.string();
             }
         }
-        if (sdkPath.empty()) sdkPath = findSdkPath();
+        if (sdkPath.empty()) sdkPath = sdk_loader::findSdkPath();
     }
     // SDK 静态库路径：放在 sdk 目录下的 build 中（不放用户项目）
     string sdkLibPath;
@@ -1772,10 +1653,10 @@ int wmain(int argc, wchar_t* argv[]) {
                 std::cout << "Write SDK lib: " << sdkLibPath << std::endl;
                 compiled = true;
             } else {
-                parseSdkDir(sdkPath, yux);
+                parseSdkDirOrExit(sdkPath, yux);
             }
         } else {
-            parseSdkDir(sdkPath, yux);
+            parseSdkDirOrExit(sdkPath, yux);
         }
     }
 

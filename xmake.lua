@@ -171,6 +171,7 @@ target("yux_frontend")
         "src/ast/mangler.cpp",
         "src/tools/build_cache.cpp",
         "src/tools/pkg_cache.cpp",
+        "src/tools/sdk_loader.cpp",
         "src/analyzer/borrow_checker.cpp",
         "src/analyzer/const_mut_checker.cpp",
         "src/analyzer/flow_terminate_checker.cpp",
