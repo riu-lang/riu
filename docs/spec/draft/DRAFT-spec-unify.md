@@ -2,7 +2,7 @@
 
 # 草案：yux spec 形态、声明合一、编译期反射
 
-状态：**草案 / 讨论中**。日期：2026-05-18（基于 2026-05-15 初稿刷新；v1 范围收紧见 [#1.AD]）。
+状态：**v1 已落地（2026-05-19）**。权威规范见 `docs/spec/12-spec.md`；实施记录见 `docs/dev/spec-unify-impl-log.md`。本草案保留为历史档 + 占位章节随各独立草案（`DRAFT-spec-default-body.md` / `DRAFT-spec-reflect.md` / `DRAFT-spec-fields.md`）落地后逐步处置。原始日期：2026-05-18（基于 2026-05-15 初稿刷新；v1 范围收紧见 [#1.AD]）。
 作用（**v1 收紧**）：**替代 `draft` 关键字**——用 `#Spec` 注解的 struct 描述接口、用 `#Impl(Spec)` 顶行注解声明实现、把方法体并入 struct 声明体（取消独立 impl 块）、删 `#DraftLike` / spec 体内追加 `Self` 抽象变量语义。**默认方法体 / 反射 / `#Reflect` / `#Impl` fall-through 全部形态占位、不实施**，分别独立草案落地（[#1.AD]）。
 
 > 本草案是 v0.5 `draft` + v0.11 `Dyn<D>` 的**重新组织**，**不取消语义**：现有"显式 `: Draft` 实现、单态化分发 + Dyn fat pointer"两条路径全部保留，只重写声明形态。
