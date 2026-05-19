@@ -54,7 +54,7 @@ namespace {
 // Phase 3.2b 已由 SemaPass 接管的错误码白名单。SemaPass 在 visitExpr 中
 // 捕获 YuxError 时, 命中此清单的直接 rethrow, 让 SemaPass 成为该诊断的
 // 实际抛出点。新增迁移码追加到此处即可。
-constexpr std::array<std::string_view, 25> kMigratedCodes = {
+constexpr std::array<std::string_view, 26> kMigratedCodes = {
     // 算术 / 比较 / 分支结果
     "E3001", "E3002", "E3003", "E3004",
     "E3005", "E3006", "E3007", "E3008",
@@ -81,6 +81,12 @@ constexpr std::array<std::string_view, 25> kMigratedCodes = {
     "E3028",
     // Phase 6A: 砍同名 ctor 定义形态
     "E3130",
+    // Bucket 2 (CURRENT-check.md): LiteralObjNode::getType 已通过
+    // SymbolSuggest::throwSymbolNotFound 抛 E3032; sema 视为已迁移即可一次性
+    // 覆盖 diag_undefined_var / diag_suggest_var / diag_undefined_variable /
+    // diag_multibyte_caret 4 例. Compiler 端不再单独 throw E3032 (走的就是
+    // literal getType), 不需要"防御性双跑".
+    "E3032",
 };
 
 // 与 Compiler::lookupEnumDecl 等价的本地版本: 本文件 → SDK → wildcard imports.
@@ -223,7 +229,9 @@ void SemaPass::visitBlock(p<StatementBlockNode> block) {
 void SemaPass::visitStmt(p<StatementNode> stmt) {
     if (!stmt) return;
     if (auto loop = dynamic_cast<p<StatementLoopNode>>(stmt)) {
+        ++_loopDepth;
         visitBlock(loop->block());
+        --_loopDepth;
         return;
     }
     if (auto set = dynamic_cast<p<StatementSetNode>>(stmt)) {
@@ -232,7 +240,12 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         visitExpr(set->valueExpr());
         return;
     }
-    if (dynamic_cast<p<StatementBreakNode>>(stmt)) return;
+    if (auto br = dynamic_cast<p<StatementBreakNode>>(stmt)) {
+        if (_loopDepth == 0) {
+            throw YuxError(br->getLineNumber(), br->getColumn(), ErrorCode::E3094);
+        }
+        return;
+    }
     if (dynamic_cast<p<StatementRetVoidNode>>(stmt)) return;
     if (dynamic_cast<p<StatementDeclareNode>>(stmt)) return; // 无表达式
     if (auto as = dynamic_cast<p<StatementAssignNode>>(stmt)) {
@@ -245,6 +258,25 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                            ErrorCode::E3128);
         }
         if (as->expr()) visitExpr(as->expr());
+        return;
+    }
+    if (auto tup = dynamic_cast<p<StatementDeclareAssignTupleNode>>(stmt)) {
+        // Bucket 2: 元组解构 LHS 数量 vs RHS 元组实际元素数 (E3102).
+        // 简化策略 —— 仅在 RHS 直接是 ExprTupleNode 字面量时校验, 因为此时元素
+        // 数从 AST 直接可得, 无需走 applySubst. 类型标注路径 (varType) 留 Compiler.
+        // Compiler 端 compileDeclareAssignTupleStatement 仍保留 inline throw 作
+        // 幂等防御性双跑.
+        if (tup->expr()) {
+            if (auto tn = dynamic_cast<p<ExprTupleNode>>(tup->expr())) {
+                if (tn->elements().size() != tup->names().size()) {
+                    throw YuxError(tup->getLineNumber(), tup->getColumn(),
+                                   ErrorCode::E3102,
+                                   std::to_string(tup->names().size()),
+                                   std::to_string(tn->elements().size()));
+                }
+            }
+            visitExpr(tup->expr());
+        }
         return;
     }
     if (auto se = dynamic_cast<p<StatementExprNode>>(stmt)) {
