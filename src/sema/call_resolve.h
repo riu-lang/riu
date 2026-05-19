@@ -480,6 +480,28 @@ void validateCompareOpForm(const TypeInfo& leftType,
                             ExprCompareNode::Op op,
                             int line, int col);
 
+// Bucket 6 单点 (CURRENT-check.md): 二元运算符方法解析 (E3073 + byval hint).
+//
+// 镜像 compiler_expr.cpp::compileCustomTypeBinaryOp 内的 method lookup + 二次探测.
+// 在调用方已剥 Ref / applySubst 得到 `leftType` / `rightType` 之后调用 (即 eff* 形态);
+// 形参名 `methodName` 是底层名 (plus/minus/mul/div/mod/eq/ne/lt/le/gt/ge/and/or/xor/shl/shr).
+//
+// 行为:
+//   - 优先按 `[leftType, Ref<rightType>]` 查 `<leftType>.<methodName>`; 命中 → 直接返回, 不抛.
+//   - 命中失败时再试 `[leftType, rightType]` 二次探测:
+//       * 命中 → 抛 E3073 + byval hint (告知用户应把形参改为 Self&).
+//       * 仍不命中 → 抛 E3073 普通版.
+//
+// 调用方:
+//   - Compiler::compileCustomTypeBinaryOp 在二次探测点幂等防御性双跑 (sema 已抛, 到不了).
+//   - SemaPass.visitExpr ExprAddSubNode / ExprMulDivModNode / ExprBinOpNode /
+//     ExprCompareNode 分支, 仅在 leftType 为非 builtin / 非 Ref / 非容器 / 非泛型实例时调用.
+//
+// `sdkFile` 允许为 nullptr (无 SDK 上下文). 纯 AST 查表, 无 LLVM 依赖.
+void validateBinOpMethodResolution(FileNode* file, FileNode* sdkFile,
+                                   const TypeInfo& leftType, const TypeInfo& rightType,
+                                   const string& methodName, int line, int col);
+
 // Bucket 6 单点 (CURRENT-check.md): 字符串模板插值类型校验 (E3026).
 //
 // 对每个 interp 计算 getType(), 若不是 String 且既不在 file 也不在 sdkFile

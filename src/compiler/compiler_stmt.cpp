@@ -485,6 +485,9 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 auto litObj = dynamic_cast<LiteralObjNode*>(litExpr->literal());
                 auto srcName = litObj->getValue().getText();
                 auto sym = _currentFnNode->lookupSymbol(srcName);
+                // Bucket 6 (CURRENT-check.md): 该 E3018 已被 SemaPass 接管
+                // (sema_pass.cpp 的 StatementDeclareAssignNode 分支), 这里保留作
+                // 幂等防御性双跑 — sema 跑通后正常 codepath 不会到达.
                 if (!sym || !sym->type.isRef() || !sym->type.refElementType()
                     || *sym->type.refElementType() != *innerType) {
                     throw YuxError(node->getLineNumber(), node->getColumn(),

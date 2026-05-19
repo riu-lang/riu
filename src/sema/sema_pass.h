@@ -63,6 +63,17 @@ private:
     void visitStmt(p<StatementNode> stmt);
     void visitBlock(p<StatementBlockNode> block);
     void visitExpr(p<ExprNode> expr);
+
+    // Bucket 6 单点 (CURRENT-check.md): 二元运算符方法解析的 SemaPass 入口
+    // (E3073 + byval hint). 把"算 leftType / rightType + 形态 gate + 调
+    // sema::validateBinOpMethodResolution"封进来, 给 ExprAddSub /
+    // ExprMulDivMod / ExprBinOp / ExprCompare 四个 visit 分支共用.
+    //
+    // 仅在 leftType 是非 builtin / 非 Ref/Rc/Array/Heap/Weak/Nullable/Ptr/Tuple
+    // 容器 / 已知非泛型 struct 时调用; 泛型 struct / 模板形参 / lambda 形参 (getType
+    // 抛错) 一律跳过, 留 Compiler 兜底. methodName 由调用方按 op 映射 (plus/minus/...).
+    void tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExpr,
+                                 const string& methodName, int line, int col);
 };
 
 #endif //YUX_LANG_SEMA_PASS_H

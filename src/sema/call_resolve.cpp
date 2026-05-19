@@ -1244,6 +1244,61 @@ void validateCompareOpForm(const TypeInfo& leftType,
     }
 }
 
+// Bucket 6 单点: 二元运算符方法解析 (E3073 + byval hint).
+//
+// 镜像 compiler_expr.cpp::compileCustomTypeBinaryOp 的 lookup + 二次探测;
+// 调用方负责事先剥 Ref / applySubst (Compiler) 或保证 leftType 为非泛型 struct (SemaPass).
+void validateBinOpMethodResolution(FileNode* file, FileNode* sdkFile,
+                                   const TypeInfo& leftType, const TypeInfo& rightType,
+                                   const string& methodName, int line, int col) {
+    string methodFullName = leftType.name + "." + methodName;
+
+    // 优先签名: [leftType, Ref<rightType>]
+    TypeInfo rightRefType;
+    rightRefType.kind = TypeKind::Generic;
+    rightRefType.name = "Ref";
+    rightRefType.genericArgs.push_back(make_shared<TypeInfo>(rightType));
+    vector<TypeInfo> refParams{leftType, rightRefType};
+
+    FnSymbolInfo* sym = file ? file->lookupFnSymbolWithParams(methodFullName, refParams) : nullptr;
+    if (!sym && sdkFile) {
+        sym = sdkFile->lookupFnSymbolWithParams(methodFullName, refParams);
+    }
+    if (sym) return;  // 命中正常签名 → 由 codegen 继续 emit, 不抛.
+
+    // 二次探测: 按值签名 [leftType, rightType]
+    vector<TypeInfo> byvalParams{leftType, rightType};
+    FnSymbolInfo* byvalSym = file ? file->lookupFnSymbolWithParams(methodFullName, byvalParams) : nullptr;
+    if (!byvalSym && sdkFile) {
+        byvalSym = sdkFile->lookupFnSymbolWithParams(methodFullName, byvalParams);
+    }
+
+    const char* opSym =
+        methodName == "plus" ? "+" :
+        methodName == "minus" ? "-" :
+        methodName == "mul" ? "*" :
+        methodName == "div" ? "/" :
+        methodName == "mod" ? "%" :
+        methodName == "and" ? "&" :
+        methodName == "or" ? "|" :
+        methodName == "xor" ? "^" :
+        methodName == "shl" ? "<<" :
+        methodName == "shr" ? ">>" :
+        methodName == "eq" ? "==" :
+        methodName == "ne" ? "!=" :
+        methodName == "lt" ? "<" :
+        methodName == "le" ? "<=" :
+        methodName == "gt" ? ">" :
+        methodName == "ge" ? ">=" : methodName.c_str();
+    auto err = YuxError(line, col, ErrorCode::E3073, leftType.name, opSym, methodName);
+    if (byvalSym) {
+        err.withHint("找到同名方法 `" + methodFullName + "(" + rightType.name
+                     + ")` 但形参按值；运算符重载要求形参类型为 `" + rightType.name
+                     + "&`（见 docs/结构体.md「运算符重载」注意事项 #2）");
+    }
+    throw err;
+}
+
 // Bucket 6 单点: 字符串模板插值 ToString 校验 (E3026).
 void validateStringTemplateInterps(FileNode* file, FileNode* sdkFile,
                                     StringTemplateNode* tpl) {

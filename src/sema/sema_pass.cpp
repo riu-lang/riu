@@ -432,6 +432,81 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         if (ret->expr()) visitExpr(ret->expr());
         return;
     }
+    if (auto da = dynamic_cast<p<StatementDeclareAssignNode>>(stmt)) {
+        // Bucket 6 (CURRENT-check.md): T& 局部声明初始化形态校验 (E3018).
+        // 只接管"低风险"分支: expr 是 ID-literal (LiteralObjNode) 且 varType 为 ref —
+        //   srcName 必须查到符号, 且符号本身是 T&, refElementType 与声明 inner 一致.
+        //   不满足 → 抛 E3018 (与 compiler_stmt.cpp:484-499 同款 hint).
+        // 其它形态 (ExprGetRef E3017 / ExprCall as_ref E3019 / 复杂 expr) 留 Compiler 兜底.
+        // lambda 体 sema 不下钻 — 这里检查 _currentFn 非空再做.
+        // Compiler 端 inline throw 保留作幂等防御性双跑.
+        if (da->varType() && _currentFn && da->expr()) {
+            auto varType = da->varType()->getType();
+            // Bucket 6 收口+ (CURRENT-check.md): 目标类型驱动的形态校验.
+            // E3012 (fixed-array 大小不匹配) / E3015 (Nullable 内部类型不匹配).
+            // 镜像 compiler_stmt.cpp:773 / 740. 复杂路径 (alias / 嵌套数组目标类型)
+            // 留 Compiler 兜底. lambda 体 sema 不下钻.
+            try {
+                if (varType.isArray()) {
+                    auto exprType = da->expr()->getType();
+                    // exprType.arraySize == 0 → ExprArrayInit fill 形态 (`[v ...]`),
+                    // 实际大小靠 target-type 推断, 跳过比较留 Compiler 兜底.
+                    if (exprType.isArray() && exprType.arraySize > 0
+                        && varType.arraySize != exprType.arraySize) {
+                        throw YuxError(da->getLineNumber(), da->getColumn(),
+                            ErrorCode::E3012, varType.arraySize, exprType.arraySize);
+                    }
+                } else if (varType.isNullable()) {
+                    auto innerType = varType.nullableInnerType();
+                    if (innerType) {
+                        // null 字面量直通
+                        bool isNullLit = false;
+                        if (auto litWrap = dynamic_cast<p<ExprLiteralNode>>(da->expr())) {
+                            if (dynamic_cast<p<LiteralNullNode>>(litWrap->literal())) {
+                                isNullLit = true;
+                            }
+                        }
+                        if (!isNullLit) {
+                            if (isIntTypeName(innerType->name) && isFlexibleIntExpr(da->expr())) {
+                                tryInferIntType(da->expr(), *innerType);
+                            }
+                            auto exprType = da->expr()->getType();
+                            bool wholeCopy = exprType.isNullable() && exprType == varType;
+                            bool wrap = exprType == *innerType;
+                            if (!wholeCopy && !wrap) {
+                                throw YuxError(da->getLineNumber(), da->getColumn(),
+                                    ErrorCode::E3015, exprType.name, innerType->name);
+                            }
+                        }
+                    }
+                }
+            } catch (const YuxError&) {
+                throw;
+            } catch (...) {
+                // getType 失败: 留 Compiler 兜底
+            }
+            if (varType.isRef()) {
+                auto innerType = varType.refElementType();
+                if (innerType) {
+                    if (auto litExpr = dynamic_cast<p<ExprLiteralNode>>(da->expr())) {
+                        if (auto litObj = dynamic_cast<p<LiteralObjNode>>(litExpr->literal())) {
+                            string srcName = litObj->getValue().getText();
+                            auto sym = _currentFn->lookupSymbol(srcName);
+                            if (!sym || !sym->type.isRef() || !sym->type.refElementType()
+                                || *sym->type.refElementType() != *innerType) {
+                                throw YuxError(da->getLineNumber(), da->getColumn(),
+                                    ErrorCode::E3018, srcName, innerType->name)
+                                    .withHint(std::format("`{}` 不是 {}& 类型，无法 copy-bind 到此声明；改写为 `&<expr-of-{}>` 或先声明同类型 T&",
+                                        srcName, innerType->name, innerType->name));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (da->expr()) visitExpr(da->expr());
+        return;
+    }
     if (auto se = dynamic_cast<p<StatementExprNode>>(stmt)) {
         // 覆盖 StatementExprNode / Ret / DeclareAssign / DeclareAssignTuple / Assign
         if (se->expr()) visitExpr(se->expr());
@@ -490,13 +565,38 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         return;
     }
     if (auto n = dynamic_cast<p<ExprAddSubNode>>(expr)) {
-        visitExpr(n->left()); visitExpr(n->right()); return;
+        visitExpr(n->left()); visitExpr(n->right());
+        // Bucket 6 单点: 自定义 struct 二元运算符方法解析 (E3073 + byval hint).
+        string m = (n->op() == ExprAddSubNode::Op::Add) ? "plus" : "minus";
+        tryValidateBinOpMethod(n->left(), n->right(), m,
+                                n->getLineNumber(), n->getColumn());
+        return;
     }
     if (auto n = dynamic_cast<p<ExprMulDivModNode>>(expr)) {
-        visitExpr(n->left()); visitExpr(n->right()); return;
+        visitExpr(n->left()); visitExpr(n->right());
+        string m;
+        switch (n->op()) {
+            case ExprMulDivModNode::Op::Mul: m = "mul"; break;
+            case ExprMulDivModNode::Op::Div: m = "div"; break;
+            case ExprMulDivModNode::Op::Mod: m = "mod"; break;
+        }
+        tryValidateBinOpMethod(n->left(), n->right(), m,
+                                n->getLineNumber(), n->getColumn());
+        return;
     }
     if (auto n = dynamic_cast<p<ExprBinOpNode>>(expr)) {
-        visitExpr(n->left()); visitExpr(n->right()); return;
+        visitExpr(n->left()); visitExpr(n->right());
+        string m;
+        switch (n->op()) {
+            case ExprBinOpNode::Op::And: m = "and"; break;
+            case ExprBinOpNode::Op::Or:  m = "or";  break;
+            case ExprBinOpNode::Op::Xor: m = "xor"; break;
+            case ExprBinOpNode::Op::Shl: m = "shl"; break;
+            case ExprBinOpNode::Op::Shr: m = "shr"; break;
+        }
+        tryValidateBinOpMethod(n->left(), n->right(), m,
+                                n->getLineNumber(), n->getColumn());
+        return;
     }
     if (auto n = dynamic_cast<p<ExprCompareNode>>(expr)) {
         visitExpr(n->left()); visitExpr(n->right());
@@ -510,6 +610,22 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             throw;
         } catch (...) {
             // getType 内部异常: 留 Compiler 兜底
+        }
+        // Bucket 6 单点: 自定义 struct 比较运算符方法解析 (E3073 + byval hint).
+        // AndAnd / OrOr 是逻辑短路, 无方法名映射, 跳过.
+        string m;
+        switch (n->op()) {
+            case ExprCompareNode::Op::Eq: m = "eq"; break;
+            case ExprCompareNode::Op::Ne: m = "ne"; break;
+            case ExprCompareNode::Op::Lt: m = "lt"; break;
+            case ExprCompareNode::Op::Le: m = "le"; break;
+            case ExprCompareNode::Op::Gt: m = "gt"; break;
+            case ExprCompareNode::Op::Ge: m = "ge"; break;
+            default: break;
+        }
+        if (!m.empty()) {
+            tryValidateBinOpMethod(n->left(), n->right(), m,
+                                    n->getLineNumber(), n->getColumn());
         }
         return;
     }
@@ -931,6 +1047,33 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         }
 
         for (auto& c : n->catches()) visitBlock(c->body());
+
+        // Bucket 6 (CURRENT-check.md): SemaPass 接管 E7010 (catch arm body 末
+        // 表达式类型必须与 try block 末表达式类型一致).
+        //
+        // 仅在 try block hasResult 且 result expr getType 成功时启用; 任一 arm
+        // 的 getType 抛错 (lambda 形参等) 跳过该 arm, 留 Compiler 兜底. 流终止
+        // arm 自然 hasResult=false, 此处略过. 与 Compiler 端 (compiler_expr.cpp
+        // E7010 throw) 同语义按 .name 比对; 该 throw 保留作幂等防御性双跑.
+        if (n->tryBlock()->hasResult() && n->tryBlock()->resultExpr()) {
+            try {
+                auto resultType = n->tryBlock()->resultExpr()->getType();
+                for (auto& arm : n->catches()) {
+                    if (!arm->body()->hasResult() || !arm->body()->resultExpr()) continue;
+                    try {
+                        auto armT = arm->body()->resultExpr()->getType();
+                        if (armT.name != resultType.name) {
+                            int aline = arm->getLineNumber() > 0 ? arm->getLineNumber() : line;
+                            int acol = arm->getColumn() > 0 ? arm->getColumn() : col;
+                            throw YuxError(aline, acol, ErrorCode::E7010,
+                                armT.name, resultType.name);
+                        }
+                    } catch (const YuxError&) { throw; }
+                      catch (...) { /* arm getType 失败: 留 Compiler 兜底 */ }
+                }
+            } catch (const YuxError&) { throw; }
+              catch (...) { /* try result getType 失败: 留 Compiler 兜底 */ }
+        }
         return;
     }
     if (auto n = dynamic_cast<p<ExprDynCtorNode>>(expr)) {
@@ -958,7 +1101,32 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         return;
     }
     if (auto n = dynamic_cast<p<ExprNullElseNode>>(expr)) {
-        visitExpr(n->left()); visitExpr(n->right()); return;
+        visitExpr(n->left()); visitExpr(n->right());
+        // Bucket 6 收口+ (CURRENT-check.md): E3024 (左侧非 Nullable) + E3023 (右侧
+        // 类型不匹配). 镜像 compiler_expr.cpp:1955-2000. 复杂路径 (alias / Self) 由
+        // getType 抛错时跳过, 留 Compiler 兜底.
+        try {
+            auto leftType = n->left()->getType();
+            if (!leftType.isNullable()) {
+                throw YuxError(n->resolveLineNumber(), n->resolveColumn(),
+                               ErrorCode::E3024, leftType.name);
+            }
+            auto innerType = leftType.nullableInnerType();
+            if (!innerType) return;
+            if (isIntTypeName(innerType->name) && isFlexibleIntExpr(n->right())) {
+                tryInferIntType(n->right(), *innerType);
+            }
+            auto rightType = n->right()->getType();
+            if (!(rightType == *innerType)) {
+                throw YuxError(n->resolveLineNumber(), n->resolveColumn(),
+                               ErrorCode::E3023, rightType.name, innerType->name);
+            }
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) {
+            // getType 抛 std::runtime_error 等: 留 Compiler 兜底
+        }
+        return;
     }
     // Phase 3.4.d.1: ExprGetRefNode —— 无子表达式可递, 顶部
     // setResolvedType(getType()) 已经触发 ExprGetRefNode::getType 抛
@@ -991,4 +1159,38 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         return;
     }
     // 其余未识别节点 3.2 起补 assert。
+}
+
+void SemaPass::tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExpr,
+                                       const string& methodName, int line, int col) {
+    // gate 与 Compiler::compileAddSubExpr / MulDivMod / BinOp / Compare 内
+    // `!isBuiltinType(leftType.name) → compileCustomTypeBinaryOp` 一致, 但
+    // 进一步把容器类排除 (容器走专属 codegen / sema 路径, 不该走到 method 解析):
+    //   * Ref / Rc / Array / Heap / Weak / Nullable / Ptr / Tuple
+    // 进而要求 struct decl 实际存在且非泛型 — 泛型 struct 需 applySubst, 留
+    // Compiler; 模板形参 T 自然 getStructDecl 不到, 也被排除.
+    // leftType / rightType getType 抛错 (lambda 形参等) 跳过, 留 Compiler 兜底.
+    if (methodName.empty()) return;
+    try {
+        TypeInfo leftType = leftExpr->getType();
+        TypeInfo rightType = rightExpr->getType();
+        if (leftType.name.empty() || isBuiltinType(leftType.name)) return;
+        // String 走 StringBuilder 特殊 lowering / 其它 builtin-handled 路径,
+        // 没有用户可见的 plus/eq/... 方法签名, 不能走 customBinaryOp 解析.
+        if (leftType.name == "String") return;
+        if (leftType.isRef() || leftType.isRc() || leftType.isArrayGeneric()
+            || leftType.isHeap() || leftType.isWeak() || leftType.isNullable()
+            || leftType.isPtr() || leftType.isTuple()) return;
+        StructDeclNode* decl = _file ? _file->getStructDecl(leftType.name) : nullptr;
+        if (!decl && _sdkFile) decl = _sdkFile->getStructDecl(leftType.name);
+        if (!decl || decl->isGeneric()) return;
+        TypeInfo effRightType = (rightType.isRef() && rightType.refElementType())
+                                 ? *rightType.refElementType() : rightType;
+        sema::validateBinOpMethodResolution(_file, _sdkFile, leftType, effRightType,
+                                              methodName, line, col);
+    } catch (const YuxError&) {
+        throw;
+    } catch (...) {
+        // getType 内部异常: 留 Compiler 兜底
+    }
 }

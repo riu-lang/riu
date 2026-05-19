@@ -760,39 +760,13 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(
     }
     
     if (!methodSymbol) {
-        // 二次探测：用户可能把形参写成按值 Self（与文档表格历史措辞一致），运算符不会被触发。
-        // 命中即附 hint，告诉用户改为 Self&。
-        vector<TypeInfo> byvalParamTypes;
-        byvalParamTypes.push_back(effLeftType);
-        byvalParamTypes.push_back(effRightType);
-        auto byvalSym = _file->lookupFnSymbolWithParams(methodFullName, byvalParamTypes);
-        if (!byvalSym && _yux && _yux->sdkFile()) {
-            byvalSym = _yux->sdkFile()->lookupFnSymbolWithParams(methodFullName, byvalParamTypes);
-        }
-        const char* opSym =
-            methodName == "plus" ? "+" :
-            methodName == "minus" ? "-" :
-            methodName == "mul" ? "*" :
-            methodName == "div" ? "/" :
-            methodName == "mod" ? "%" :
-            methodName == "and" ? "&" :
-            methodName == "or" ? "|" :
-            methodName == "xor" ? "^" :
-            methodName == "shl" ? "<<" :
-            methodName == "shr" ? ">>" :
-            methodName == "eq" ? "==" :
-            methodName == "ne" ? "!=" :
-            methodName == "lt" ? "<" :
-            methodName == "le" ? "<=" :
-            methodName == "gt" ? ">" :
-            methodName == "ge" ? ">=" : methodName.c_str();
-        auto err = YuxError(lineNum, ErrorCode::E3073, leftType.name, opSym, methodName);
-        if (byvalSym) {
-            err.withHint("找到同名方法 `" + methodFullName + "(" + effRightType.name
-                         + ")` 但形参按值；运算符重载要求形参类型为 `" + effRightType.name
-                         + "&`（见 docs/结构体.md「运算符重载」注意事项 #2）");
-        }
-        throw err;
+        // Bucket 6 (CURRENT-check.md): E3073 + byval hint 已由 SemaPass 接管,
+        // 这里保留作幂等防御性双跑 (sema 已抛, 正常情况到不了).
+        FileNode* sdkFilePtr = (_yux && _yux->sdkFile()) ? _yux->sdkFile() : nullptr;
+        sema::validateBinOpMethodResolution(_file, sdkFilePtr,
+                                            effLeftType, effRightType, methodName,
+                                            lineNum, 0);
+        // unreachable: helper 内必抛
     }
     
     // 准备方法参数
@@ -3148,6 +3122,8 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
         llvm::Value* armResult = nullptr;
         if (arm->body()->hasResult()) {
             // E7010：arm result 表达式类型 == try block result 类型
+            // Bucket 6: SemaPass (sema_pass.cpp ExprTryCatchNode 分支) 已先抛出,
+            // 此处保留作幂等防御性双跑 (sema getType 失败路径兜底).
             try {
                 auto armT = arm->body()->resultExpr()->getType();
                 if (hasResult && armT != resultType) {
