@@ -261,6 +261,22 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                            static_cast<int>(as->obj().getCharPositionInLine()),
                            ErrorCode::E3128);
         }
+        // Bucket 2 收口 (CURRENT-check.md): 简单变量赋值 (subs 为空) 的写可见性校验
+        // (E3093). 与 compiler_stmt.cpp:952 同款条件: !writeable && !type.isRef().
+        // T& 形参 / val 局部 T& 的 writeable=false 不影响"写被引", 由 borrow 检查
+        // 在 4d 校验. lambda 体 sema 不下钻, lambda 内 E2030 / E3093 仍走 Compiler.
+        // Compiler 端 inline throw 保留作幂等防御性双跑.
+        if (as->subs().empty() && _currentFn) {
+            string objName = as->obj().getText();
+            if (objName != "$") {
+                if (auto sym = _currentFn->lookupSymbol(objName)) {
+                    if (!sym->writeable && !sym->type.isRef()) {
+                        throw YuxError(as->getLineNumber(), as->getColumn(),
+                                       ErrorCode::E3093, objName);
+                    }
+                }
+            }
+        }
         if (as->expr()) visitExpr(as->expr());
         return;
     }
@@ -281,6 +297,65 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             }
             visitExpr(tup->expr());
         }
+        return;
+    }
+    if (auto ret = dynamic_cast<p<StatementRetNode>>(stmt)) {
+        // Bucket 2 收口 (CURRENT-check.md): E3020 / E3022 return 类型校验.
+        // 只覆盖"简单形态" —— 跳过以下复杂路径, 交 Compiler 兜底:
+        //   * declRetType.isRef()       —— T& 返回, 走 borrow 溯源 + getRef compile
+        //   * Fallible(E) 注解          —— 成功 / 错误双通道, 复用 E3020 但多分支
+        //   * declRetType.isNullable()  —— null 字面量 / T 值自动 wrap
+        //   * isFlexibleIntExpr(expr)   —— 灵活整数推断后再比, sema 不改写 expr 类型
+        //   * declRetType.name == "Self" —— 方法上下文 Self 解析需 currentStructName 替换
+        // 普通 case: `fn add() i32 { ret true }` (E3020) /
+        //           `fn foo() { ret 42 }` (E3022).
+        // Compiler 端 inline throw 保留作幂等防御性双跑.
+        if (_currentFn && ret->expr()) {
+            auto header = _currentFn->header();
+            bool hasFallible = header && header->getAnnoArg("Fallible").has_value();
+            bool hasDeclRet = header && header->retType();
+            TypeInfo declRetType;
+            if (hasDeclRet) declRetType = header->retType()->getType();
+            // 灵活整数推断仅在有 declRetType 时影响匹配 (Compiler 会先 tryInferIntType
+             // 改写 expr 类型再比); 无 decl 时 (E3022 路径) 不构成 skip 理由.
+            // alias 形态 (`IPair = (i32, i32)` 等) 名称直比会假阳性 (`IPair` vs `(i32,i32)`),
+             // sema 暂未做 resolveAlias 递归比对, 任一侧名称命中 alias 即 skip 留 Compiler 兜底.
+            auto isAliased = [&](const string& n) -> bool {
+                if (!_file) return false;
+                return _file->getAliasDecl(n) != nullptr;
+            };
+            bool skip = hasFallible
+                     || (hasDeclRet && (declRetType.isRef() || declRetType.isNullable()))
+                     || (hasDeclRet && declRetType.name == "Self")
+                     || (hasDeclRet && isFlexibleIntExpr(ret->expr()))
+                     || (hasDeclRet && isAliased(declRetType.name));
+            if (!skip) {
+                TypeInfo retType;
+                bool gotType = true;
+                try { retType = ret->expr()->getType(); }
+                catch (...) { gotType = false; }
+                if (gotType && !(hasDeclRet && isAliased(retType.name))) {
+                    int line = ret->getLineNumber();
+                    if (line < 0) line = ret->expr()->resolveLineNumber();
+                    if (hasDeclRet) {
+                        if (retType.empty()) {
+                            throw YuxError(line, ErrorCode::E3021, declRetType.getFullName());
+                        }
+                        // 名称直比 —— 不做 resolveAlias (sema 暂无该 helper);
+                        // alias 形态 / Self 已在 skip 排除, 这里假阴性可接受 (Compiler 兜底).
+                        if (retType.getFullName() != declRetType.getFullName()) {
+                            throw YuxError(line, ErrorCode::E3020,
+                                           declRetType.getFullName(), retType.getFullName());
+                        }
+                    } else {
+                        if (!retType.empty()) {
+                            throw YuxError(line, ErrorCode::E3022, retType.getFullName());
+                        }
+                    }
+                }
+            }
+        }
+        if (ret->expr()) visitExpr(ret->expr());
         return;
     }
     if (auto se = dynamic_cast<p<StatementExprNode>>(stmt)) {
