@@ -1,20 +1,17 @@
 ; Phase 4.2 — Rc<T> 自动 forward draft 方法
 ; 覆盖 §12.6：box.m() 走 §8.6.7.3 自动解引用 + 方法分发归一，不需独立机制
 
+#Impl(ToString)
 struct Bag {
   k i64
-}
 
-Bag {
   #Static
   fn make(k i64) Bag {
     ret Self {
       .k = k
     }
   }
-}
 
-Bag : ToString {
   fn to_string() String {
     $.k.to_string()
   }

@@ -1,23 +1,21 @@
 ; Bug B 回归: struct 方法体内构造 Dyn:<D>(...) 应正确解析 draft（之前 E1131）
 
-draft Greet {
+#Spec
+struct Greet {
   fn hi() i64
 }
 
+#Impl(Greet)
 struct G {
   v i64
-}
 
-G {
   #Static
   fn make(v i64) G {
     ret Self {
       .v = v
     }
   }
-}
 
-G : Greet {
   fn hi() i64 {
     $.v
   }
@@ -25,9 +23,7 @@ G : Greet {
 
 struct Caller {
   base i64
-}
 
-Caller {
   #Static
   fn make(b i64) Caller {
     ret Self {

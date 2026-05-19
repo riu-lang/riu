@@ -3,20 +3,17 @@
 ; 测试目标：泛型重载在 i64 / bool / String / 用户类型上能正确分发并编译链接通过
 ; （stdout / stderr 实际字节不易在 in-process JIT 内回采，依赖 -v 时的捕获回放观察。）
 
+#Impl(ToString)
 struct PrintTag {
   v i64
-}
 
-PrintTag {
   #Static
   fn make(v i64) PrintTag {
     ret Self {
       .v = v
     }
   }
-}
 
-PrintTag : ToString {
   fn to_string() String {
     $.v.to_string()
   }

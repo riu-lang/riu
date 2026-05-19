@@ -3,9 +3,7 @@
 struct Point {
     x i32
     y i32
-}
 
-Point {
     #Static
     fn make(x i32, y i32) Point {
         ret Self {

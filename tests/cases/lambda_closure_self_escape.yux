@@ -3,9 +3,7 @@
 
 struct Holder {
   v i32
-}
 
-Holder {
   #Static
   fn build(v i32) Holder {
     ret Self {

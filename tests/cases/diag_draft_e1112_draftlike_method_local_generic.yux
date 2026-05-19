@@ -1,8 +1,0 @@
-; §11.4.2.3 #DraftLike draft 不允许方法本地泛型
-#DraftLike
-draft Show {
-    fn show<U>() i32
-}
-
-fn main() {
-}

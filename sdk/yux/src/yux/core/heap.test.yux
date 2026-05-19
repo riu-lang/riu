@@ -5,9 +5,7 @@
 
 struct HeapBox {
   k i32
-}
 
-HeapBox {
   #Static
   fn make(k i32) HeapBox {
     ret Self {
@@ -18,9 +16,7 @@ HeapBox {
 
 struct HeapWrap {
   inner Heap<i32>
-}
 
-HeapWrap {
   #Static
   fn make(v i32) HeapWrap {
     ret Self {
@@ -218,9 +214,7 @@ fn test_heap_bdang_null_arg_passthrough() {
 
 struct HeapNullableHolder {
   buf Heap<i32>?
-}
 
-HeapNullableHolder {
   #Static
   fn make() HeapNullableHolder {
     ret Self {
@@ -231,9 +225,7 @@ HeapNullableHolder {
 
 struct HeapNullableTarget {
   buf Heap<i32>?
-}
 
-HeapNullableTarget {
   #Static
   fn from_local_struct_field() HeapNullableTarget {
     ; 同函数局部 struct 字段 move-out: tmp.buf -> Self.buf, tmp.buf 写 null;
@@ -354,9 +346,7 @@ fn test_heap_3f_copy_of_owned_scalar() {
 
 struct CopyHeapBox {
   k i32
-}
 
-CopyHeapBox {
   #Static
   fn make(k i32) CopyHeapBox {
     ret Self {

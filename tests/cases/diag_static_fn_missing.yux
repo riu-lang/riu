@@ -2,9 +2,7 @@
 
 struct P {
   x i32
-}
 
-P {
   fn P(x i32) {
     $.x = x
   }

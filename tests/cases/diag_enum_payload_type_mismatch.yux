@@ -5,9 +5,7 @@
 struct Point {
   x f64
   y f64
-}
 
-Point {
   #Static
   fn make(x f64, y f64) Point {
     ret Self {

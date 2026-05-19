@@ -3,24 +3,22 @@ use yux.core.*
 ; §12.6 Rc<T> 自动 forward 已实现 draft：等价于 §8.6.7.3 自动解引用 + 方法分发归一。
 ; 验证 Rc<Counter>.show() 自动解引用到 Counter 的 Show 实现。
 
-draft Show {
+#Spec
+struct Show {
     fn show() String
 }
 
+#Impl(Show)
 struct Counter {
     n i32
-}
 
-Counter {
     #Static
     fn make(n i32) Counter {
         ret Self {
             .n = n
         }
     }
-}
 
-Counter : Show {
     fn show() String {
         $.n.to_string()
     }

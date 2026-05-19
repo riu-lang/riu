@@ -12,9 +12,7 @@ fn apply0(f fn()i32) i32 {
 
 struct Counter {
   value i32
-}
 
-Counter {
   #Static
   fn make(v i32) Counter {
     ret Self {

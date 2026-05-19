@@ -1,5 +1,6 @@
 ; Phase 2c：Rc<Dyn<D>> 字段类型 → E1132（类型声明位）
-draft Greet {
+#Spec
+struct Greet {
   fn hi()
 }
 

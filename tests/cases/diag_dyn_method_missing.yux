@@ -1,22 +1,20 @@
 ; Phase 2d：在 Dyn<D> 上调 D 没有的方法 → 未定义方法错 (E6016)
-draft Greet {
+#Spec
+struct Greet {
   fn hi()
 }
 
+#Impl(Greet)
 struct G {
   pad i32
-}
 
-G {
   #Static
   fn make() G {
     ret Self {
       .pad = 0i32
     }
   }
-}
 
-G : Greet {
   fn hi() {
   }
 }

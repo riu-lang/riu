@@ -2,9 +2,7 @@
 
 struct Buf {
   data Array<u32>
-}
 
-Buf {
   fn ~() {
     ; Array<u32> 由编译器代析构
   }

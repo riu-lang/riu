@@ -2,9 +2,7 @@
 
 struct Cell {
   n i32
-}
 
-Cell {
   fn Cell(n i32) {
     $.n = n
   }

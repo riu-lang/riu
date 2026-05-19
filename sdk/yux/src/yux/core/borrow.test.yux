@@ -5,9 +5,7 @@
 struct BrPair {
   a i32
   b i32
-}
 
-BrPair {
   #Static
   fn make(a i32, b i32) BrPair {
     ret Self {

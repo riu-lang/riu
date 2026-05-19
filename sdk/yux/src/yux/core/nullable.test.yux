@@ -3,9 +3,7 @@
 
 struct NN {
   v i32
-}
 
-NN {
   #Static
   fn make(v i32) NN {
     ret Self {

@@ -1,1 +1,1 @@
-diag_frozen_param_field_write.yux:17:5 [E3106] error: Cannot write field 'x' of `#Frozen` parameter 'p' (DRAFT-const-mut §5.3)
+diag_frozen_param_field_write.yux:15:5 [E3106] error: Cannot write field 'x' of `#Frozen` parameter 'p' (DRAFT-const-mut §5.3)

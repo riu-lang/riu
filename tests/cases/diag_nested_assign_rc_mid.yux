@@ -1,9 +1,7 @@
 ; 中段是 Rc<T>（含 RC）时拒收并附 hint。
 struct Inner {
   count i32
-}
 
-Inner {
   #Static
   fn make(c i32) Inner {
     ret Self {
@@ -14,9 +12,7 @@ Inner {
 
 struct Outer {
   state Rc<Inner>
-}
 
-Outer {
   #Static
   fn make(s Rc<Inner>) Outer {
     ret Self {

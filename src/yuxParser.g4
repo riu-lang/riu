@@ -382,7 +382,7 @@ structDecl:
     BlockStart LineEnd
         (filedDecl|LineEnd)*
         fnClean?
-        (fn|LineEnd)*
+        (fn LineEnd | LineEnd)*
     BlockEnd
     ;
 

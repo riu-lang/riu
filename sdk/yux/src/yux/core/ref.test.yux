@@ -55,9 +55,7 @@ fn test_ref_store_through() {
 struct RefPair {
   a i32
   b i32
-}
 
-RefPair {
   #Static
   fn make(a i32, b i32) RefPair {
     ret Self {
@@ -98,9 +96,7 @@ fn test_ref_box_handle_borrow() {
 struct RefP {
   x i32
   y i32
-}
 
-RefP {
   #Static
   fn make(x i32, y i32) RefP {
     ret Self {
@@ -115,9 +111,7 @@ RefP {
 
 struct RefHolder {
   inner Rc<RefP>
-}
 
-RefHolder {
   #Static
   fn make(inner Rc<RefP>) RefHolder {
     ret Self {
@@ -167,9 +161,7 @@ fn test_ref_self_field() {
 struct RefQ {
   x i32
   y i32
-}
 
-RefQ {
   #Static
   fn make(x i32, y i32) RefQ {
     ret Self {

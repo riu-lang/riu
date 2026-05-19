@@ -3,9 +3,7 @@
 struct Pair {
   a i32
   b i32
-}
 
-Pair {
   fn Pair(a i32, b i32) {
     $.a = a
     $.b = b

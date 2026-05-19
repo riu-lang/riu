@@ -3,20 +3,17 @@
 
 ; ---------- 用户类型 Counter : ToString ----------
 
+#Impl(ToString)
 struct Counter {
   n i64
-}
 
-Counter {
   #Static
   fn make(start i64) Counter {
     ret Self {
       .n = start
     }
   }
-}
 
-Counter : ToString {
   fn to_string() String {
     $.n.to_string()
   }

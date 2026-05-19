@@ -13,9 +13,7 @@ enum NoPayload {
 
 struct N {
   v i32
-}
 
-N {
 
   fn N(v i32) {
     $.v = v

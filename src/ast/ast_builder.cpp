@@ -707,14 +707,10 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         file->registerFnSymbol(fnName, fnFnSym);
     }
 
-    // spec-unify v1：所有 struct / spec / impl 走统一 visitStructDecl。
-    // 字段符号 / 方法符号登记由 visitStructDecl 内部完成 (file->addStructDecl /
-    // addStructImpl / addDraftDecl)；这里只需触发遍历。
-    auto structDecls = ctx->structDecl();
-    DEBUG_LOG_VAL("  Struct declarations count", structDecls.size());
-    for (auto structDecl : structDecls) {
-        visit(structDecl);
-    }
+    // spec-unify v1：所有 struct / spec / impl 走统一 visitStructDecl，由
+    // visitChildren(ctx) 在源码顺序下触发；addStructDecl / addStructImpl /
+    // addDraftDecl 在 visitStructDecl 内部已完成，不要在此处再显式 visit
+    // 以免与 visitChildren 重复导致 E1103。
 
     // DRAFT-let-unify §3：全局 let（仅 #Cval 档）—— 预登记符号，让早引用合法。
     auto letGlobals = ctx->letGlobal();

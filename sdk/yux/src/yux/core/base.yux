@@ -34,28 +34,23 @@ fn _stderr_write(buf Ptr, off i64, len i64) {
 #CompilerInner
 fn size_of<T>() u64
 
-; ==================== 内置 draft（spec §12.7） ====================
+; ==================== 内置 spec（spec §12.7） ====================
+; spec-unify v1：以 #Spec / #Impl(...) 替代 draft 关键字与 `: Spec` 头部槽
+; v1 规则：spec body 仅签名，方法不允许带 body（DRAFT-spec-default-body 落地后取消）
+; #DraftLike 不进 v1；Any 已删（无 #DraftLike 自动派生时无意义）
 
-; ToString：v0.5 引入；不标 #DraftLike，强契约（用户类型必须显式 Type : ToString { ... }）
-draft ToString {
+#Spec
+struct ToString {
   fn to_string() String
-}
-
-; Any：空签名集；标 #DraftLike，所有 owned 类型自动满足
-#DraftLike
-draft Any {
 }
 
 ; 内置类型
 ; 结构体仅占位，实际类型由编译器处理
 ; to_<数字/bool> 方法由编译器合成，通过 #CompilerInner 标注
 
+#Impl(ToString)
 #CompilerInner
 struct i8 {
-  ; 内部处理
-}
-
-i8 {
   #CompilerInner
   fn to_i8() i8
 
@@ -146,20 +141,15 @@ i8 {
 
   #CompilerInner
   fn inv() i8
-}
 
-i8 : ToString {
   fn to_string() String {
     $.to_i64().to_string()
   }
 }
 
+#Impl(ToString)
 #CompilerInner
 struct u8 {
-  ; 内部处理
-}
-
-u8 {
   #CompilerInner
   fn to_i8() i8
 
@@ -247,20 +237,15 @@ u8 {
 
   #CompilerInner
   fn inv() u8
-}
 
-u8 : ToString {
   fn to_string() String {
     $.to_u64().to_string()
   }
 }
 
+#Impl(ToString)
 #CompilerInner
 struct i16 {
-  ; 内部处理
-}
-
-i16 {
   #CompilerInner
   fn to_i8() i8
 
@@ -348,20 +333,15 @@ i16 {
 
   #CompilerInner
   fn inv() i16
-}
 
-i16 : ToString {
   fn to_string() String {
     $.to_i64().to_string()
   }
 }
 
+#Impl(ToString)
 #CompilerInner
 struct u16 {
-  ; 内部处理
-}
-
-u16 {
   #CompilerInner
   fn to_i8() i8
 
@@ -449,20 +429,15 @@ u16 {
 
   #CompilerInner
   fn inv() u16
-}
 
-u16 : ToString {
   fn to_string() String {
     $.to_u64().to_string()
   }
 }
 
+#Impl(ToString)
 #CompilerInner
 struct i32 {
-  ; 内部处理
-}
-
-i32 {
   #CompilerInner
   fn to_i8() i8
 
@@ -550,20 +525,15 @@ i32 {
 
   #CompilerInner
   fn inv() i32
-}
 
-i32 : ToString {
   fn to_string() String {
     $.to_i64().to_string()
   }
 }
 
+#Impl(ToString)
 #CompilerInner
 struct u32 {
-  ; 内部处理
-}
-
-u32 {
   #CompilerInner
   fn to_i8() i8
 
@@ -651,20 +621,15 @@ u32 {
 
   #CompilerInner
   fn inv() u32
-}
 
-u32 : ToString {
   fn to_string() String {
     $.to_u64().to_string()
   }
 }
 
+#Impl(ToString)
 #CompilerInner
 struct i64 {
-  ; 内部处理
-}
-
-i64 {
   #CompilerInner
   fn to_i8() i8
 
@@ -752,9 +717,7 @@ i64 {
 
   #CompilerInner
   fn inv() i64
-}
 
-i64 : ToString {
   fn to_string() String {
     #Mut let out Array<u32> = []
     #Mut let buf [u8 * 21] = [0u8 ...]
@@ -793,12 +756,9 @@ i64 : ToString {
   }
 }
 
+#Impl(ToString)
 #CompilerInner
 struct u64 {
-  ; 内部处理
-}
-
-u64 {
   #CompilerInner
   fn to_i8() i8
 
@@ -886,9 +846,7 @@ u64 {
 
   #CompilerInner
   fn inv() u64
-}
 
-u64 : ToString {
   fn to_string() String {
     #Mut let out Array<u32> = []
     #Mut let buf [u8 * 21] = [0u8 ...]
@@ -920,12 +878,9 @@ u64 : ToString {
   }
 }
 
+#Impl(ToString)
 #CompilerInner
 struct f64 {
-  ; 内部处理
-}
-
-f64 {
   #CompilerInner
   fn to_i8() i8
 
@@ -994,9 +949,7 @@ f64 {
   ; 一元运算符
   #CompilerInner
   fn neg() f64
-}
 
-f64 : ToString {
   fn to_string() String {
     #Mut let out Array<u32> = []
     #Mut let is_neg = $ < 0.0f64
@@ -1034,12 +987,9 @@ f64 : ToString {
   }
 }
 
+#Impl(ToString)
 #CompilerInner
 struct f32 {
-  ; 内部处理
-}
-
-f32 {
   #CompilerInner
   fn to_i8() i8
 
@@ -1108,9 +1058,7 @@ f32 {
   ; 一元运算符
   #CompilerInner
   fn neg() f32
-}
 
-f32 : ToString {
   fn to_string() String {
     $.to_f64().to_string()
   }
@@ -1127,9 +1075,6 @@ struct Ref<T> {
 #CompilerInner
 struct Ptr {
   ; 编译为 C void*
-}
-
-Ptr {
   #CompilerInner
   fn to_int() u64
 }
@@ -1216,9 +1161,6 @@ fn heap_null<T>() Heap<T>?
 ; （Phase 1b：所有方法编译器特例化，主体不再读 yux 端字段）
 #CompilerInner
 struct Array<T> {
-}
-
-Array<T> {
   #CompilerInner
   fn len() i64
 
@@ -1256,9 +1198,7 @@ Array<T> {
 struct Nullable<T> {
   _has bool
   _value T
-}
 
-Nullable<T> {
   ; 是否持有值
   fn has() bool = $._has
 
@@ -1273,11 +1213,10 @@ Nullable<T> {
 
 ; String 类型 - 不可变；内部使用 Array<u32> 存储 Unicode code points
 ; 构造唯一通道：#Static 工厂 (String::empty / String::from / String::_take_buf)
+#Impl(ToString)
 struct String {
   data Array<u32>
-}
 
-String {
   fn ~() {
     ; Array<u32> 会自动释放
   }
@@ -1434,9 +1373,7 @@ String {
     }
     r
   }
-}
 
-String : ToString {
   ; String 自身实现 ToString：复用底层 Array<u32> Block，句柄共享
   fn to_string() String {
     String::_take_buf($.data)
@@ -1448,9 +1385,7 @@ String : ToString {
 ; 推荐用法：本地短生命周期累积 → build() 一次产出 String；不要在 build() 之后继续写入并对外暴露同一 String
 struct StringBuilder {
   data Array<u32>
-}
 
-StringBuilder {
   #Static
   fn make() StringBuilder {
     ret Self {
@@ -1520,18 +1455,13 @@ StringBuilder {
   }
 }
 
+#Impl(ToString)
 #CompilerInner
 struct bool {
-  ; 内部处理
-}
-
-bool {
   ; 一元运算符
   #CompilerInner
   fn not() bool
-}
 
-bool : ToString {
   fn to_string() String {
     if $ { "true" } else { "false" }
   }

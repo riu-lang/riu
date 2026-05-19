@@ -5,9 +5,7 @@ use yux.core.*
 
 struct S {
     n i64
-}
 
-S {
     #Static
     fn make(n i64) S {
         ret Self {

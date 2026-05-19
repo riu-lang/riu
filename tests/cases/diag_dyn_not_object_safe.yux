@@ -1,5 +1,6 @@
 ; draft 签名返回 Self → 非对象安全；Dyn<D> 在类型位 → E1134
-draft Cloneable {
+#Spec
+struct Cloneable {
   fn clone() Self
 }
 

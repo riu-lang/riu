@@ -3,9 +3,7 @@
 
 struct Config {
     x i32
-}
 
-Config {
     #Static
     fn make(x i32) Config {
         ret Self {
@@ -17,9 +15,7 @@ Config {
 struct Outer {
     #Val
     cfg Config
-}
 
-Outer {
     #Static
     fn make(c Config) Outer {
         ret Self {

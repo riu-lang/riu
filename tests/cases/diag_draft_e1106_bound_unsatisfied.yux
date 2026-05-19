@@ -1,13 +1,12 @@
 ; §6.4.4.4 / §12.4 边界单态化未命中
-draft Show {
+#Spec
+struct Show {
     fn show() i32
 }
 
 struct Counter {
     n i32
-}
 
-Counter {
     #Static
     fn make(n i32) Counter {
         ret Self {

@@ -1,8 +1,0 @@
-; §11.4.2.1 #DraftLike 仅允许标在 draft 声明上
-#DraftLike
-struct Counter {
-    n i32
-}
-
-fn main() {
-}

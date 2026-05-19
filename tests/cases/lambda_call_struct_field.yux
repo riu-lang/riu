@@ -5,9 +5,7 @@
 struct Holder {
   h fn(i32)i32
   base i32
-}
 
-Holder {
   #Static
   fn make(h fn(i32)i32, base i32) Holder {
     ret Self {

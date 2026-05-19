@@ -8,9 +8,7 @@ struct Outer {
     #Frozen
     name String
     extra i32
-}
 
-Outer {
     #Static
     fn make(t i32, n String, e i32) Outer {
         ret Self {

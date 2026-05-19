@@ -3,9 +3,7 @@
 struct Outer {
     #Cval
     tag i32
-}
 
-Outer {
     fn Outer(t i32) {
         $.tag = t
     }

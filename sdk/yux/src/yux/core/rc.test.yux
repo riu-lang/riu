@@ -5,9 +5,7 @@
 struct BoxPair {
   a i32
   b i32
-}
 
-BoxPair {
   #Static
   fn make(a i32, b i32) BoxPair {
     ret Self {
@@ -27,9 +25,7 @@ BoxPair {
 
 struct BoxCell {
   n i32
-}
 
-BoxCell {
   #Static
   fn make(n i32) BoxCell {
     ret Self {

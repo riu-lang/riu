@@ -8,9 +8,7 @@
 struct StPointF {
   x f64
   y f64
-}
 
-StPointF {
   #Static
   fn make(x f64, y f64) StPointF {
     ret Self {
@@ -32,9 +30,7 @@ fn test_struct_basic_fields() {
 struct Pt {
   x i32
   y i32
-}
 
-Pt {
   #Static
   fn make(x i32, y i32) Pt {
     ret Self {
@@ -71,9 +67,7 @@ fn test_struct_eq_overload() {
 struct StPair {
   a i32
   b i32
-}
 
-StPair {
   #Static
   fn make(a i32, b i32) StPair {
     ret Self {
@@ -86,9 +80,7 @@ StPair {
 struct StHolder {
   bx Rc<StPair>
   tag i32
-}
 
-StHolder {
   #Static
   fn make(bx Rc<StPair>, tag i32) StHolder {
     ret Self {
@@ -103,9 +95,7 @@ StHolder {
 struct StPointI {
   x i32
   y i32
-}
 
-StPointI {
   #Static
   fn make(x i32, y i32) StPointI {
     ret Self {
@@ -151,9 +141,7 @@ fn test_struct_byval_with_rc_field() {
 struct StGenericHolder<T> {
   payload T
   tag i32
-}
 
-StGenericHolder<T> {
   #Static
   fn make(payload T, tag i32) Self {
     Self {
@@ -222,9 +210,7 @@ fn test_struct_field_reassign_rc() {
 struct DaaPoint {
   x i32
   y i32
-}
 
-DaaPoint {
   #Static
   fn make(x i32, y i32) DaaPoint {
     ret Self {
@@ -238,9 +224,7 @@ DaaPoint {
 struct DaaTagged {
   tag i32
   bx Rc<DaaPoint>
-}
 
-DaaTagged {
   #Static
   fn make(t i32, p Rc<DaaPoint>) DaaTagged {
     ret Self {
@@ -253,9 +237,7 @@ DaaTagged {
 struct DaaBranchy {
   v i32
   w i32
-}
 
-DaaBranchy {
   #Static
   fn make(c bool, a i32, b i32) DaaBranchy {
     if c {
@@ -304,9 +286,7 @@ fn test_ctor_daa_branch_full_init() {
 struct Vec2 {
   x i32
   y i32
-}
 
-Vec2 {
   #Static
   fn make(x i32, y i32) Vec2 {
     ret Self {
@@ -382,9 +362,7 @@ fn test_op_overload_chain() {
 struct OrderedPoint {
   x i32
   y i32
-}
 
-OrderedPoint {
   #Static
   fn make(x i32, y i32) OrderedPoint {
     ret Self {
@@ -471,9 +449,7 @@ fn test_op_overload_ge() {
 
 struct BitFlags {
   bits u32
-}
 
-BitFlags {
   #Static
   fn make(bits u32) BitFlags {
     ret Self {
@@ -535,9 +511,7 @@ fn test_op_overload_bit_inv() {
 
 struct SimpleDtor {
   value i32
-}
 
-SimpleDtor {
   fn ~() {
     ; 析构函数被调用时执行清理
     ; 当前仅验证编译通过，运行时不崩溃
@@ -582,9 +556,7 @@ fn test_dtor_nested_scope() {
 
 struct InnerStruct {
   value i32
-}
 
-InnerStruct {
   #Static
   fn make(value i32) InnerStruct {
     ret Self {
@@ -596,9 +568,7 @@ InnerStruct {
 struct OuterStruct {
   inner InnerStruct
   tag i32
-}
 
-OuterStruct {
   #Static
   fn make(value i32, tag i32) OuterStruct {
     ret Self {
@@ -619,9 +589,7 @@ fn test_nested_struct_access() {
 
 struct FluentBuilder {
   sum i32
-}
 
-FluentBuilder {
   #Static
   fn make() FluentBuilder {
     ret Self {

@@ -4,9 +4,7 @@ struct Outer {
     #Val
     tag i32
     extra i32
-}
 
-Outer {
     #Static
     fn make(t i32) Outer {
         ret Self {

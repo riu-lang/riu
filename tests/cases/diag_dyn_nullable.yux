@@ -1,5 +1,6 @@
 ; Phase 4c：Dyn<D>? 在 v1 不支持 → E1135
-draft Greet {
+#Spec
+struct Greet {
   fn hi() String
 }
 

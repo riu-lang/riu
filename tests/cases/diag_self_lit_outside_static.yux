@@ -2,9 +2,7 @@
 
 struct P {
   x i32
-}
 
-P {
   #Static
   fn make(x i32) P {
     ret Self {

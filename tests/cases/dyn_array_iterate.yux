@@ -1,34 +1,31 @@
 ; Phase 4b：Array<Dyn<D>> 收集多个不同 U 的实现，遍历调用同一方法
 
-draft Shape {
+#Spec
+struct Shape {
   fn area() i64
 }
 
+#Impl(Shape)
 struct Square {
   side i64
-}
 
-Square {
   #Static
   fn make(s i64) Square {
     ret Self {
       .side = s
     }
   }
-}
 
-Square : Shape {
   fn area() i64 {
     $.side * $.side
   }
 }
 
+#Impl(Shape)
 struct Rect {
   w i64
   h i64
-}
 
-Rect {
   #Static
   fn make(w i64, h i64) Rect {
     ret Self {
@@ -36,9 +33,7 @@ Rect {
       .h = h
     }
   }
-}
 
-Rect : Shape {
   fn area() i64 {
     $.w * $.h
   }

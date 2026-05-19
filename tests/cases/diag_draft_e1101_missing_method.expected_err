@@ -1,1 +1,1 @@
-diag_draft_e1101_missing_method.yux:10:1 [E1101] error: Type 'diag_draft_e1101_missing_method.Counter' does not implement draft method 'diag_draft_e1101_missing_method.Show: show'
+diag_draft_e1101_missing_method.yux:7:1 [E1101] error: Type 'diag_draft_e1101_missing_method.Counter' does not implement draft method 'diag_draft_e1101_missing_method.Show: show' (impl block missing)

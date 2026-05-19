@@ -1,25 +1,23 @@
 ; Phase 4b：Dyn<D> 跨函数 by-value 传递，调用站点 vtable 间接调度
 ; （Dyn<D&> 借用形态待 ast_builder 解锁 Dyn:<D&>(...) 后再补）
 
-draft Shape {
+#Spec
+struct Shape {
   fn area() i64
   fn name() String
 }
 
+#Impl(Shape)
 struct Square {
   side i64
-}
 
-Square {
   #Static
   fn make(s i64) Square {
     ret Self {
       .side = s
     }
   }
-}
 
-Square : Shape {
   fn area() i64 {
     $.side * $.side
   }
@@ -28,12 +26,11 @@ Square : Shape {
   }
 }
 
+#Impl(Shape)
 struct Rect {
   w i64
   h i64
-}
 
-Rect {
   #Static
   fn make(w i64, h i64) Rect {
     ret Self {
@@ -41,9 +38,7 @@ Rect {
       .h = h
     }
   }
-}
 
-Rect : Shape {
   fn area() i64 {
     $.w * $.h
   }

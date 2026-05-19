@@ -4,9 +4,7 @@
 struct CopyPair {
   a i32
   b i32
-}
 
-CopyPair {
   #Static
   fn make(a i32, b i32) CopyPair {
     ret Self {
@@ -19,9 +17,7 @@ CopyPair {
 struct Holder {
   payload Rc<CopyPair>
   tag i32
-}
 
-Holder {
   #Static
   fn make(p Rc<CopyPair>, t i32) Holder {
     ret Self {

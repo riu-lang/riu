@@ -1,20 +1,17 @@
 ; Phase 4.2 — draft 泛型边界匹配端到端
 ; 覆盖 §6.4.4 + §12.3：fn f<T : ToString>(x T) 在内置类型 / 用户类型上走静态分发
 
+#Impl(ToString)
 struct Tag {
   v i64
-}
 
-Tag {
   #Static
   fn make(v i64) Tag {
     ret Self {
       .v = v
     }
   }
-}
 
-Tag : ToString {
   fn to_string() String {
     $.v.to_string()
   }
@@ -47,19 +44,6 @@ fn test_bound_builtin_string() {
   assert_eq(show_via_bound(s), "world")
 }
 
-; ---------- #DraftLike Any：所有 owned 类型自动满足 ----------
-
-fn accept_any<T : Any>(x T) {
-  ; Any 签名集为空，不调用任何方法；只验证边界匹配通过
-}
-
-#Test
-fn test_any_i64() {
-  accept_any(42i64);
-}
-
-#Test
-fn test_any_user_type() {
-  let t Tag = Tag::make(1i64)
-  accept_any(t);
-}
+; spec-unify v1: Any spec 已删（无 #DraftLike 自动派生时无意义；显式 #Impl(Any)
+; 不实际）。相关用例归档；如需"universal bound"待 DRAFT-spec-default-body /
+; reflect 落地后由具体方案承接。

@@ -2,9 +2,7 @@
 
 struct Cell {
     v i32
-}
 
-Cell {
     #Static
     fn make(v i32) Cell {
         ret Self {

@@ -1,13 +1,13 @@
 ; §12.2.2.1 穷尽性：Type : D 实现块缺少 D 中的方法
-draft Show {
+#Spec
+struct Show {
     fn show() i32
 }
 
+#Impl(Show)
 struct Counter {
     n i32
-}
 
-Counter : Show {
 }
 
 fn main() {

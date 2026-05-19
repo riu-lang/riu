@@ -1,13 +1,12 @@
 ; Phase 4c：构造 Dyn:<D>(x) 时 x 的内层类型 U 未实现 D → E1133
-draft Greet {
+#Spec
+struct Greet {
   fn hi() String
 }
 
 struct Other {
   n i32
-}
 
-Other {
   #Static
   fn make(n i32) Other {
     ret Self {

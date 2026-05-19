@@ -1,5 +1,6 @@
 ; Phase 2c：Dyn<Dyn<D>> 嵌套 → E1132（类型声明位）
-draft Greet {
+#Spec
+struct Greet {
   fn hi()
 }
 

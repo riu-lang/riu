@@ -6,20 +6,17 @@
 
 ; ---------- 用户类型走 ToString：Dyn<ToString>(Rc<DynCounter>) ----------
 
+#Impl(ToString)
 struct DynCounter {
   n i64
-}
 
-DynCounter {
   #Static
   fn make(start i64) DynCounter {
     ret Self {
       .n = start
     }
   }
-}
 
-DynCounter : ToString {
   fn to_string() String {
     $.n.to_string()
   }
@@ -48,25 +45,23 @@ fn test_dyn_to_string_counter_zero() {
 
 ; ---------- 自定义 draft + struct，多方法 ----------
 
-draft Shape {
+#Spec
+struct Shape {
   fn area() i64
   fn name() String
 }
 
+#Impl(Shape)
 struct Square {
   side i64
-}
 
-Square {
   #Static
   fn make(s i64) Square {
     ret Self {
       .side = s
     }
   }
-}
 
-Square : Shape {
   fn area() i64 {
     $.side * $.side
   }
@@ -75,12 +70,11 @@ Square : Shape {
   }
 }
 
+#Impl(Shape)
 struct Rect {
   w i64
   h i64
-}
 
-Rect {
   #Static
   fn make(w i64, h i64) Rect {
     ret Self {
@@ -88,9 +82,7 @@ Rect {
       .h = h
     }
   }
-}
 
-Rect : Shape {
   fn area() i64 {
     $.w * $.h
   }
@@ -135,12 +127,11 @@ fn test_dyn_pass_to_fn_rect() {
 
 ; ---------- 含 RC 字段的 U：dyn release 必须调 U 的 dtor，String 字段被正确释放 ----------
 
+#Impl(Shape)
 struct Labeled {
   label String
   n i64
-}
 
-Labeled {
   #Static
   fn make(l String, n i64) Labeled {
     ret Self {
@@ -148,9 +139,7 @@ Labeled {
       .n = n
     }
   }
-}
 
-Labeled : Shape {
   fn area() i64 {
     $.n
   }
@@ -213,17 +202,17 @@ fn test_dyn_array_iterate() {
 
 ; ---------- struct 字段持 Dyn<D>：直接访问和拷绑后调用 ----------
 
-draft Greet {
+#Spec
+struct Greet {
   fn hi() i64
   fn name() String
 }
 
+#Impl(Greet)
 struct G {
   v i64
   tag String
-}
 
-G {
   #Static
   fn make(v i64, t String) G {
     ret Self {
@@ -231,9 +220,7 @@ G {
       .tag = t
     }
   }
-}
 
-G : Greet {
   fn hi() i64 {
     $.v
   }
@@ -246,9 +233,7 @@ struct DynHolder {
   before i64
   inner Dyn<Greet>
   after i64
-}
 
-DynHolder {
   #Static
   fn make(b i64, d Dyn<Greet>, a i64) DynHolder {
     ret Self {
@@ -278,9 +263,7 @@ fn test_dyn_field_owned() {
 
 struct DynCaller {
   base i64
-}
 
-DynCaller {
   #Static
   fn make(b i64) DynCaller {
     ret Self {

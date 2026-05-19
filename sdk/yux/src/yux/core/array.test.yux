@@ -99,9 +99,7 @@ fn test_array_passing_share() {
 struct ArrPair {
   a i32
   b i32
-}
 
-ArrPair {
   #Static
   fn make(a i32, b i32) ArrPair {
     ret Self {

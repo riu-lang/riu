@@ -4,9 +4,7 @@
 struct WeakPair {
   a i32
   b i32
-}
 
-WeakPair {
   #Static
   fn make(a i32, b i32) WeakPair {
     ret Self {

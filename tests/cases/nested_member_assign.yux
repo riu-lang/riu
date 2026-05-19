@@ -3,9 +3,7 @@
 
 struct Inner {
   count i32
-}
 
-Inner {
   #Static
   fn make(c i32) Inner {
     ret Self {
@@ -16,9 +14,7 @@ Inner {
 
 struct Mid {
   inner Inner
-}
 
-Mid {
   #Static
   fn make(i Inner) Mid {
     ret Self {
@@ -29,9 +25,7 @@ Mid {
 
 struct Outer {
   state Mid
-}
 
-Outer {
   #Static
   fn make(m Mid) Outer {
     ret Self {

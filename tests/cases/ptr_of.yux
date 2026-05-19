@@ -5,9 +5,7 @@
 struct Pair {
   a i32
   b i32
-}
 
-Pair {
   #Static
   fn make(a i32, b i32) Pair {
     ret Self {

@@ -4,9 +4,7 @@ struct Outer {
     #Frozen
     name String
     extra i32
-}
 
-Outer {
     #Static
     fn make(n String, e i32) Outer {
         ret Self {

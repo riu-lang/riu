@@ -3,9 +3,7 @@
 struct P {
   x i32
   y i32
-}
 
-P {
   #Static
   fn make() P {
     ret Self {

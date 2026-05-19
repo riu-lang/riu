@@ -1,42 +1,37 @@
 use yux.core.*
 
-draft Show {
+#Spec
+struct Show {
     fn show() String
 }
 
+#Impl(Show)
 struct Counter {
     n i32
-}
 
-Counter {
     #Static
     fn make(n i32) Counter {
         ret Self {
             .n = n
         }
     }
-}
 
-Counter : Show {
     fn show() String {
         $.n.to_string()
     }
 }
 
+#Impl(Show)
 struct Greeter {
     msg String
-}
 
-Greeter {
     #Static
     fn make(msg String) Greeter {
         ret Self {
             .msg = msg
         }
     }
-}
 
-Greeter : Show {
     fn show() String {
         $.msg
     }

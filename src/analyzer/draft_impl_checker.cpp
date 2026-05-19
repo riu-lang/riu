@@ -249,16 +249,11 @@ void DraftImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
         }
     }
 
-    // §12.2.2.1 不多余: 任一 D 都未命中的 impl 方法报 E1102.
-    // 析构 / 关联函数等辅助按 §7.8 走单独 fnClean / 普通方法块,
-    // 不会落到 draft impl 块的 _methods 里, 故这里不需特殊放行.
-    for (size_t i = 0; i < implMethods.size(); ++i) {
-        if (!aggMatched[i]) {
-            auto& m = implMethods[i]->header();
-            throw YuxError(m->getLineNumber(), m->getColumn(),
-                           ErrorCode::E1102, m->name().getText(), typeQualified);
-        }
-    }
+    // spec-unify v1: 声明合一后, struct body 内的方法既可能是 #Impl(Spec) 的契约
+    // 实现, 也可能是该类型自身的普通方法. 任一 D 未命中的方法不再视为"多余",
+    // 当作普通方法放行. (E1102 旧形态废弃 -- 严格的 spec impl 隔离待 extension
+    // blocks 草案落地后回归.)
+    (void)aggMatched;
 }
 
 bool DraftImplChecker::sigEquivalent(
