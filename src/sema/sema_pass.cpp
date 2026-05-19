@@ -277,6 +277,80 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                 }
             }
         }
+        // Bucket 5 起步: 成员链赋值的两条简单形态诊断 (与 compiler_stmt.cpp 1188-1207
+        // tuple 越界 / 1361 中段拒收 镜像).
+        //   * E3100 元组下标越界: actualType.isTuple() + memberText 为纯数字 + idx 越界
+        //   * E3046 中段非纯 struct:  walk 到非末段, interType 命中
+        //                          Rc/Array/Ref/Nullable/Weak/Ptr/builtin
+        // 跳过策略 (留 Compiler 兜底):
+        //   * objName == "$" (sema 不跟踪 $)
+        //   * lookupSymbol 失败 (E3031 Compiler 抢先)
+        //   * 起点 / 中段是泛型 struct (Compiler applySubst, sema 不替换泛型实参)
+        //   * 中段 typeNeedsDestructor (递归 RC 字段扫描, 复杂, 留 Compiler)
+        //   * 非纯数字下标命中 tuple 形态 (Compiler 抛 E3040 抢先)
+        // Compiler 端 inline throw 保留作幂等防御性双跑.
+        if (!as->subs().empty() && _currentFn) {
+            string objName = as->obj().getText();
+            if (objName != "$") {
+                if (auto sym = _currentFn->lookupSymbol(objName)) {
+                    TypeInfo curType = sym->type;
+                    if (curType.isRef()) {
+                        if (auto inner = curType.refElementType()) curType = *inner;
+                    }
+                    if (curType.isRc()) {
+                        if (auto inner = curType.rcElementType()) curType = *inner;
+                    }
+                    const auto& subs = as->subs();
+                    auto isPureDigits = [](const string& s) {
+                        return !s.empty() && std::all_of(s.begin(), s.end(),
+                            [](char c){ return c >= '0' && c <= '9'; });
+                    };
+                    if (curType.isTuple()) {
+                        // tuple 链: 仅 OOB (E3100), 中段非 tuple / 非纯数字 留 Compiler
+                        bool stop = false;
+                        for (size_t i = 0; i < subs.size() && !stop; ++i) {
+                            string memberText = subs[i].getText();
+                            if (!isPureDigits(memberText)) { stop = true; break; }
+                            if (!curType.isTuple()) { stop = true; break; }
+                            const auto& elems = curType.tupleElements();
+                            size_t idx = static_cast<size_t>(std::stoul(memberText));
+                            if (idx >= elems.size()) {
+                                throw YuxError(as->getLineNumber(), as->getColumn(),
+                                               ErrorCode::E3100, memberText,
+                                               curType.getFullName(),
+                                               std::to_string(elems.size()));
+                            }
+                            if (i + 1 < subs.size()) curType = *elems[idx];
+                        }
+                    } else if (!curType.name.empty() && !isBuiltinType(curType.name)) {
+                        // struct 链: 中段 E3046 (Rc/Array/Ref/Nullable/Weak/Ptr/builtin)
+                        StructDeclNode* decl = _file ? _file->getStructDecl(curType.name) : nullptr;
+                        if (!decl && _sdkFile) decl = _sdkFile->getStructDecl(curType.name);
+                        // 泛型 struct 留 Compiler (applySubst)
+                        if (decl && !decl->isGeneric()) {
+                            for (size_t i = 0; i + 1 < subs.size(); ++i) {
+                                string memberText = subs[i].getText();
+                                int fi = decl->fieldIndex(memberText);
+                                if (fi < 0) break; // E3040 Compiler 抢先
+                                auto interType = decl->fields()[fi]->getType();
+                                if (interType.isRc() || interType.isArrayGeneric()
+                                    || interType.isRef() || interType.isNullable()
+                                    || interType.isWeak() || interType.isPtr()
+                                    || isBuiltinType(interType.name)) {
+                                    throw YuxError(as->getLineNumber(), as->getColumn(),
+                                                   ErrorCode::E3046)
+                                        .withHint("嵌套成员赋值中间字段需为纯 struct（不含 Rc/Array/Ref/RC 等）；可拆方法或在中段先 `var t = $.field` 落地后再写");
+                                }
+                                StructDeclNode* nextDecl = _file ? _file->getStructDecl(interType.name) : nullptr;
+                                if (!nextDecl && _sdkFile) nextDecl = _sdkFile->getStructDecl(interType.name);
+                                if (!nextDecl || nextDecl->isGeneric()) break;
+                                decl = nextDecl;
+                            }
+                        }
+                    }
+                }
+            }
+        }
         if (as->expr()) visitExpr(as->expr());
         return;
     }
