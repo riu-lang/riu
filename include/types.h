@@ -201,6 +201,13 @@ public:
 
     [[nodiscard]] const vector<string>& hints() const { return _hints; }
     [[nodiscard]] const vector<string>& notes() const { return _notes; }
+
+    // 显式声明拷贝 / 移动构造 noexcept：throw YuxError 在抛出栈展开期间不允许再次抛异常；
+    // 真正的 OOM 走 std::terminate（语义上等价于 runtime_error 自身的承诺）
+    YuxError(const YuxError&) noexcept = default;
+    YuxError(YuxError&&) noexcept = default;
+    YuxError& operator=(const YuxError&) noexcept = default;
+    YuxError& operator=(YuxError&&) noexcept = default;
 };
 
 template <typename T>
