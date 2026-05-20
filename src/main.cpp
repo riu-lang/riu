@@ -37,6 +37,8 @@
 #include <regex>
 #include <sstream>
 
+#include "jit/lljit_runner.h"
+
 #include "ast/ast_builder.h"
 #include "ast/mangler.h"
 #include "ast/node/expr_node.h"
@@ -155,181 +157,6 @@ bool compileIRToObj(llvm::Module* module, const std::string& outputPath) {
     return true;
 }
 
-// ==================== Win64 SEH 修复: JIT 段 .pdata 注册 ====================
-//
-// 默认 RTDyldMemoryManager::registerEHFramesInProcess 只调用 __register_frame
-// (libgcc DWARF unwind) 不调 RtlAddFunctionTable, 所以 RuntimeDyldCOFFX86_64
-// 收集到的 .pdata 段从来没有真正注册到 OS。结果是 JIT 函数没有 SEH unwind
-// info, RtlVirtualUnwind 跨多个 yux 帧时 RtlLookupFunctionEntry 找不到条目,
-// SEH 派发失败 → 进程静默退出 (BUGS.md "yux test JIT SEH 跨帧" 条)。
-//
-// 修法: 子类化 SectionMemoryManager 覆盖 registerEHFrames/deregisterEHFrames。
-// .pdata 是 RUNTIME_FUNCTION (3 个 DWORD: BeginAddress / EndAddress /
-// UnwindInfoAddress, 全部为相对 ImageBase 的 RVA) 的紧凑数组, 直接交给
-// RtlAddFunctionTable。ImageBase 取本对象内已分配 section 的最低非零地址,
-// 与 RuntimeDyldCOFFX86_64::getImageBase() 一致 (RTDyldObjectLinkingLayer
-// 每次 emit 都会 GetMemoryManager(), 所以一个 MemMgr 实例只服务一个 obj)。
-class YuxSEHMemoryManager : public llvm::SectionMemoryManager {
-public:
-    YuxSEHMemoryManager() = default;
-    ~YuxSEHMemoryManager() override {
-        for (auto* table : registeredTables) {
-            ::RtlDeleteFunctionTable(table);
-        }
-    }
-
-    uint8_t* allocateCodeSection(uintptr_t Size, unsigned Alignment,
-                                 unsigned SectionID,
-                                 llvm::StringRef SectionName) override {
-        auto* p = SectionMemoryManager::allocateCodeSection(
-            Size, Alignment, SectionID, SectionName);
-        if (p) recordSection(p);
-        return p;
-    }
-
-    uint8_t* allocateDataSection(uintptr_t Size, unsigned Alignment,
-                                 unsigned SectionID,
-                                 llvm::StringRef SectionName,
-                                 bool IsReadOnly) override {
-        auto* p = SectionMemoryManager::allocateDataSection(
-            Size, Alignment, SectionID, SectionName, IsReadOnly);
-        if (p) recordSection(p);
-        return p;
-    }
-
-    void registerEHFrames(uint8_t* Addr, uint64_t /*LoadAddr*/,
-                          size_t Size) override {
-        // .pdata 段必须是 RUNTIME_FUNCTION (12 字节) 的紧凑数组
-        constexpr size_t kEntrySize = sizeof(RUNTIME_FUNCTION);
-        if (Size == 0 || Size % kEntrySize != 0) return;
-
-        uint64_t imageBase = std::numeric_limits<uint64_t>::max();
-        for (uint64_t a : sectionAddrs) {
-            if (a != 0) imageBase = std::min(imageBase, a);
-        }
-        if (imageBase == std::numeric_limits<uint64_t>::max()) return;
-
-        auto* table = reinterpret_cast<PRUNTIME_FUNCTION>(Addr);
-        DWORD count = static_cast<DWORD>(Size / kEntrySize);
-        if (::RtlAddFunctionTable(table, count, imageBase)) {
-            registeredTables.push_back(table);
-        }
-    }
-
-    void deregisterEHFrames() override {
-        for (auto* table : registeredTables) {
-            ::RtlDeleteFunctionTable(table);
-        }
-        registeredTables.clear();
-    }
-
-private:
-    std::vector<uint64_t> sectionAddrs;
-    std::vector<PRUNTIME_FUNCTION> registeredTables;
-
-    void recordSection(uint8_t* p) {
-        sectionAddrs.push_back(reinterpret_cast<uint64_t>(p));
-    }
-};
-
-// 给 LLJITBuilder 用: 构造一个 RTDyldObjectLinkingLayer, 每个对象使用一个
-// YuxSEHMemoryManager 实例 (用于 .pdata SEH 注册)。
-static llvm::Expected<std::unique_ptr<llvm::orc::ObjectLayer>>
-makeYuxObjectLinkingLayer(llvm::orc::ExecutionSession& ES) {
-    auto layer = std::make_unique<llvm::orc::RTDyldObjectLinkingLayer>(
-        ES,
-        [](const llvm::MemoryBuffer&) -> std::unique_ptr<llvm::RuntimeDyld::MemoryManager> {
-            return std::make_unique<YuxSEHMemoryManager>();
-        });
-    // 与 LLJIT 默认 COFF 路径一致 (LLJIT.cpp::createObjectLinkingLayer)
-    layer->setOverrideObjectFlagsWithResponsibilityFlags(true);
-    layer->setAutoClaimResponsibilityForObjectSymbols(true);
-    return std::unique_ptr<llvm::orc::ObjectLayer>(std::move(layer));
-}
-
-// Phase 1 spike: build a user IR module and run via in-process LLJIT.
-// 加载预编译 sdk core.obj 作为对象层符号源，再加用户 IR；用 process loader
-// 兜底解析 kernel32 等动态库符号；查 mainStartup 直接调用并返回退出码。
-//
-// 该路径绕过 obj 写盘 + LLD 链接，单次成功用例从 ~2.1s 降到 IR 生成 + JIT 装载耗时。
-// 仅供 Phase 1 验证；Phase 2 起会被 `yux test` 子命令收编。
-int runViaJIT(std::unique_ptr<llvm::Module> mod,
-              std::unique_ptr<llvm::LLVMContext> ctx,
-              const std::vector<std::unique_ptr<llvm::Module>>& extraMods,
-              std::vector<std::unique_ptr<llvm::LLVMContext>>& extraCtxs,
-              const std::string& sdkObjPath) {
-    llvm::InitializeNativeTarget();
-    llvm::InitializeNativeTargetAsmPrinter();
-    llvm::InitializeNativeTargetAsmParser();
-
-    auto jitOrErr = llvm::orc::LLJITBuilder()
-        .setObjectLinkingLayerCreator(&makeYuxObjectLinkingLayer)
-        .create();
-    if (!jitOrErr) {
-        llvm::errs() << "[jit] LLJIT create failed: "
-                     << llvm::toString(jitOrErr.takeError()) << "\n";
-        return 1;
-    }
-    auto& jit = *jitOrErr;
-    auto& jd = jit->getMainJITDylib();
-
-    // 进程内符号兜底（kernel32: HeapAlloc, GetStdHandle, WriteFile, ...）
-    auto procGen = llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
-        jit->getDataLayout().getGlobalPrefix());
-    if (!procGen) {
-        llvm::errs() << "[jit] process generator failed: "
-                     << llvm::toString(procGen.takeError()) << "\n";
-        return 1;
-    }
-    jd.addGenerator(std::move(*procGen));
-
-    // 加载 sdk core.obj
-    if (!sdkObjPath.empty() && std::filesystem::exists(sdkObjPath)) {
-        auto bufOrErr = llvm::MemoryBuffer::getFile(sdkObjPath);
-        if (!bufOrErr) {
-            llvm::errs() << "[jit] read sdk obj failed: " << sdkObjPath << "\n";
-            return 1;
-        }
-        if (auto e = jit->addObjectFile(std::move(*bufOrErr))) {
-            llvm::errs() << "[jit] addObjectFile failed: "
-                         << llvm::toString(std::move(e)) << "\n";
-            return 1;
-        }
-    } else {
-        llvm::errs() << "[jit] warning: sdk obj not found at " << sdkObjPath << "\n";
-    }
-
-    // 用户主模块
-    mod->setDataLayout(jit->getDataLayout());
-    llvm::orc::ThreadSafeModule mainTsm(std::move(mod), std::move(ctx));
-    if (auto e = jit->addIRModule(std::move(mainTsm))) {
-        llvm::errs() << "[jit] addIRModule(main) failed: "
-                     << llvm::toString(std::move(e)) << "\n";
-        return 1;
-    }
-
-    // 用户导入模块
-    for (size_t i = 0; i < extraMods.size(); ++i) {
-        auto& m = const_cast<std::unique_ptr<llvm::Module>&>(extraMods[i]);
-        if (!m) continue;
-        m->setDataLayout(jit->getDataLayout());
-        llvm::orc::ThreadSafeModule tsm(std::move(m), std::move(extraCtxs[i]));
-        if (auto e = jit->addIRModule(std::move(tsm))) {
-            llvm::errs() << "[jit] addIRModule(extra) failed: "
-                         << llvm::toString(std::move(e)) << "\n";
-            return 1;
-        }
-    }
-
-    auto sym = jit->lookup("mainStartup");
-    if (!sym) {
-        llvm::errs() << "[jit] lookup mainStartup failed: "
-                     << llvm::toString(sym.takeError()) << "\n";
-        return 1;
-    }
-    auto fn = sym->toPtr<int (*)()>();
-    return fn();
-}
 
 std::string wstr2str(const std::wstring& wstr) {
     std::u16string u16((char16_t*)wstr.c_str());
@@ -1312,7 +1139,7 @@ int wmain(int argc, wchar_t* argv[]) {
         llvm::InitializeNativeTargetAsmParser();
 
         auto jitOrErr = llvm::orc::LLJITBuilder()
-            .setObjectLinkingLayerCreator(&makeYuxObjectLinkingLayer)
+            .setObjectLinkingLayerCreator(&jit::makeYuxObjectLinkingLayer)
             .create();
         if (!jitOrErr) {
             llvm::errs() << "[test] LLJIT create failed: "
@@ -1879,7 +1706,7 @@ int wmain(int argc, wchar_t* argv[]) {
             sdkObjPath = sdkBuildPaths(sdkPath).objPath;
         }
 
-        int rc = runViaJIT(std::move(mainMod), std::move(mainCtx),
+        int rc = jit::runViaJIT(std::move(mainMod), std::move(mainCtx),
                            extraMods, extraCtxs, sdkObjPath);
         std::cout << "[jit-run] exit code = " << rc << std::endl;
         std::cout.flush();

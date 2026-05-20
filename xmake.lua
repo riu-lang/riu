@@ -219,6 +219,7 @@ target("yux")
     add_deps("yux_codegen")
     add_includedirs(path.join(third_party, "cli11/include"))
     add_files("src/main.cpp")
+    add_files("src/jit/*.cpp")
     set_rundir("$(projectdir)")
 
 target("yux-lsp")
