@@ -19,6 +19,8 @@
 #include "tools/sdk_loader.h"
 #include "types.h"
 
+#include <array>
+
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
@@ -128,12 +130,12 @@ struct TestOutputCapture {
 
 // Phase 5: 取当前进程 exe 全路径 (用于父进程派发子测试时的 argv[0])
 std::string getSelfExePath() {
-    wchar_t buf[MAX_PATH];
-    DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+    std::array<wchar_t, MAX_PATH> buf{};
+    DWORD n = GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
     if (n == 0 || n >= MAX_PATH) return {};
-    int sz = WideCharToMultiByte(CP_UTF8, 0, buf, static_cast<int>(n), nullptr, 0, nullptr, nullptr);
+    int sz = WideCharToMultiByte(CP_UTF8, 0, buf.data(), static_cast<int>(n), nullptr, 0, nullptr, nullptr);
     std::string out(sz, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, buf, static_cast<int>(n), out.data(), sz, nullptr, nullptr);
+    WideCharToMultiByte(CP_UTF8, 0, buf.data(), static_cast<int>(n), out.data(), sz, nullptr, nullptr);
     return out;
 }
 
@@ -459,11 +461,11 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
     auto fmtElapsed = [](std::chrono::steady_clock::time_point t0) {
         using namespace std::chrono;
         auto ms = duration_cast<milliseconds>(steady_clock::now() - t0).count();
-        char buf[32];
-        std::snprintf(buf, sizeof(buf), " [%lld.%03llds]",
+        std::array<char, 32> buf{};
+        std::snprintf(buf.data(), buf.size(), " [%lld.%03llds]",
                       static_cast<long long>(ms / 1000),
                       static_cast<long long>(ms % 1000));
-        return std::string(buf);
+        return std::string(buf.data());
     };
 
     // Phase 5: 父进程在 isolate=process 模式下走子进程派发路径, 跳过本进程 JIT。

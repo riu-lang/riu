@@ -158,7 +158,7 @@ llvm::Value* Compiler::compileArrayMethodCall(
                 }
                 auto outerLLVM = getLLVMType(outerActual);
                 auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fi);
-                llvm::Value* indices[] = {zero, idx};
+                std::array<llvm::Value*, 2> indices{zero, idx};
                 arrayPtr = _builder.CreateGEP(outerLLVM, dataPtr, indices, "array.field.ptr");
             }
         }

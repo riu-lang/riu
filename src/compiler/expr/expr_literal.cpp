@@ -107,7 +107,7 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
         for (u64 i = 0; i < targetType.arraySize; ++i) {
             auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
             auto index = llvm::ConstantInt::get(_builder.getInt32Ty(), i);
-            llvm::Value* indices[] = {zero, index};
+            std::array<llvm::Value*, 2> indices{zero, index};
             auto elemPtr = _builder.CreateGEP(llvmArrayType, destPtr, indices, "array.elem.ptr");
             _builder.CreateStore(fillValue, elemPtr);
         }
@@ -660,7 +660,7 @@ llvm::Value* Compiler::compileArrayLiteralExpr(p<ExprArrayNode> node) {
         auto elemVal = compileExpr(elements[i]);
         auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
         auto index = llvm::ConstantInt::get(_builder.getInt32Ty(), i);
-        llvm::Value* indices[] = {zero, index};
+        std::array<llvm::Value*, 2> indices{zero, index};
         auto elemPtr = _builder.CreateGEP(llvmArrayType, alloca, indices, "array.elem.ptr");
         _builder.CreateStore(elemVal, elemPtr);
     }

@@ -391,9 +391,9 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     // 这些类型没有 StructDecl 兜底，落到下方各分支也只剩 `Unknown type (null)`，
     // 返回 null 会让调用方在后续 SEH/段错误时崩。这里早抛 E6011 以给出诊断。
     if (type.isNormal()) {
-        static const std::pair<const char*, size_t> kBuiltinGenerics[] = {
+        static constexpr std::array<std::pair<const char*, size_t>, 5> kBuiltinGenerics{{
             {"Rc", 1}, {"Weak", 1}, {"Array", 1}, {"Nullable", 1}, {"Heap", 1},
-        };
+        }};
         for (auto [bname, arity] : kBuiltinGenerics) {
             if (type.name == bname) {
                 throw YuxError(1, ErrorCode::E6011, type.name, arity, static_cast<size_t>(0))

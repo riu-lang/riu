@@ -41,7 +41,7 @@ void handleCrash(int signal) {
     _exit(1);
 }
 
-int wmain(int argc, wchar_t* argv[]) {
+int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windows wmain signature
     SetConsoleCP(CP_UTF8);
     SetConsoleOutputCP(CP_UTF8);
 

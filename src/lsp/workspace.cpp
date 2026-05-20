@@ -18,6 +18,7 @@
 #include "yux/yuxParser.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
@@ -51,8 +52,10 @@ std::string urlDecode(const std::string& s) {
                 continue;
             }
         }
-        if (s[i] == '+') out.push_back(' ');
-        else out.push_back(s[i]);
+        if (s[i] == '+')
+            out.push_back(' ');
+        else
+            out.push_back(s[i]);
     }
     return out;
 }
@@ -64,9 +67,9 @@ std::string urlEncodePath(const std::string& s) {
     out.reserve(s.size());
     for (unsigned char c : s) {
         if (c <= 0x20 || c == '#' || c == '?') {
-            char buf[4];
-            std::snprintf(buf, sizeof(buf), "%%%02X", c);
-            out.append(buf);
+            std::array<char, 4> buf{};
+            std::snprintf(buf.data(), buf.size(), "%%%02X", c);
+            out.append(buf.data());
         } else {
             out.push_back(static_cast<char>(c));
         }
@@ -74,14 +77,13 @@ std::string urlEncodePath(const std::string& s) {
     return out;
 }
 
-
 // 取当前可执行文件路径（仅 Windows 实现；非 Windows 返回空，依赖前两条兜底）
 std::string getMainExecutablePath() {
 #ifdef _WIN32
-    wchar_t buf[MAX_PATH];
-    DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+    std::array<wchar_t, MAX_PATH> buf{};
+    DWORD n = GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
     if (n == 0 || n >= MAX_PATH) return {};
-    return fs::path(std::wstring(buf, n)).string();
+    return fs::path(std::wstring(buf.data(), n)).string();
 #else
     return {};
 #endif
@@ -156,7 +158,8 @@ std::string pathToUri(const std::string& absPath) {
 
 std::string normalizePath(const std::string& p) {
     std::string s = p;
-    for (auto& c : s) if (c == '\\') c = '/';
+    for (auto& c : s)
+        if (c == '\\') c = '/';
 #ifdef _WIN32
     if (s.size() >= 2 && s[1] == ':') {
         s[0] = static_cast<char>(std::tolower(static_cast<unsigned char>(s[0])));
@@ -165,7 +168,8 @@ std::string normalizePath(const std::string& p) {
     // 清理 ./ 与 ../
     try {
         auto canon = fs::weakly_canonical(s).string();
-        for (auto& c : canon) if (c == '\\') c = '/';
+        for (auto& c : canon)
+            if (c == '\\') c = '/';
 #ifdef _WIN32
         if (canon.size() >= 2 && canon[1] == ':') {
             canon[0] = static_cast<char>(std::tolower(static_cast<unsigned char>(canon[0])));
@@ -234,8 +238,10 @@ bool Project::rebuild() {
         std::string baseName = fs::path(_mainPath).stem().string();
         _mainFile = _yux->loadMainFile(_mainPath, baseName);
     } catch (const std::exception& e) {
-        if (_buildError.empty()) _buildError = e.what();
-        else _buildError += "; " + std::string(e.what());
+        if (_buildError.empty())
+            _buildError = e.what();
+        else
+            _buildError += "; " + std::string(e.what());
         return false;
     }
 

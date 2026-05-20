@@ -11,6 +11,8 @@
 
 #include "tools/sdk_loader.h"
 
+#include <array>
+
 #include "ast/ast_builder.h"
 #include "ast/node/file_node.h"
 #include "ast/node/node.h"
@@ -36,9 +38,9 @@ std::string findSdkPath() {
     }
 #endif
 #ifdef _WIN32
-    char exePath[MAX_PATH];
-    GetModuleFileNameA(nullptr, exePath, MAX_PATH);
-    fs::path exe(exePath);
+    std::array<char, MAX_PATH> exePath{};
+    GetModuleFileNameA(nullptr, exePath.data(), static_cast<DWORD>(exePath.size()));
+    fs::path exe(exePath.data());
     fs::path root = exe.parent_path().parent_path();
     fs::path newSdk = root / "sdk" / "yux" / "src" / "yux" / "core";
     if (fs::is_directory(newSdk)) return newSdk.string();
@@ -67,7 +69,7 @@ std::map<std::string, SdkPkgEntry> readSdkPkg(const std::string& sdkDir) {
             name = name.substr(0, name.size() - 2);
         }
         if (name.empty()) continue;
-        r[name] = {.moduleName=wild ? std::string("yux.core") : ("yux.core." + name), .isFlat=wild};
+        r[name] = {.moduleName = wild ? std::string("yux.core") : ("yux.core." + name), .isFlat = wild};
     }
     return r;
 }
@@ -95,8 +97,7 @@ void parseSdkDir(const std::string& sdkDir, Yux& yux) {
         if (!entry.is_regular_file()) continue;
         std::string filename = entry.path().filename().string();
         if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".yux") {
-            if (filename.size() >= 9 &&
-                filename.ends_with(".test.yux")) continue;
+            if (filename.size() >= 9 && filename.ends_with(".test.yux")) continue;
             yuxFiles.push_back(entry.path().string());
         }
     }
@@ -139,4 +140,4 @@ void parseSdkDir(const std::string& sdkDir, Yux& yux) {
     registerSdkPkgAliases(yux, pkgMap);
 }
 
-}  // namespace sdk_loader
+} // namespace sdk_loader

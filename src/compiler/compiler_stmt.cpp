@@ -1307,7 +1307,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                 // 最后一个成员: 执行赋值
                 auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
                 auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIndex);
-                llvm::Value* indices[] = {zero, idx};
+                std::array<llvm::Value*, 2> indices{zero, idx};
 
                 auto fieldPtr = _builder.CreateGEP(structType, structPtr, indices, "struct.field");
                 auto fieldType = field->getType();
@@ -1373,7 +1373,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                 }
                 auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
                 auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIndex);
-                llvm::Value* indices[] = {zero, idx};
+                std::array<llvm::Value*, 2> indices{zero, idx};
                 structPtr = _builder.CreateGEP(structType, structPtr, indices, "struct.field");
                 actualType = interType;
                 structDecl = interStructDecl;
@@ -1527,7 +1527,7 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
                 // Rc 类型需要先解引用获取数据指针
                 if (outerType.isRc()) {
                     auto rcStructType = getLLVMType(outerType);
-                    llvm::Value* bIndices[] = {zeroIdx, zeroIdx};
+                    std::array<llvm::Value*, 2> bIndices{zeroIdx, zeroIdx};
                     auto dataPtrField = _builder.CreateGEP(
                         rcStructType, outerPtr, bIndices, "rc.data_ptr_field");
                     dataPtr = _builder.CreateLoad(
@@ -1536,7 +1536,7 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
                 
                 auto outerLLVM = getLLVMType(outerActual);
                 auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fi);
-                llvm::Value* indicesF[] = {zeroIdx, idx};
+                std::array<llvm::Value*, 2> indicesF{zeroIdx, idx};
                 currentPtr = _builder.CreateGEP(outerLLVM, dataPtr, indicesF, "array.field.ptr");
             }
         }
@@ -1588,7 +1588,7 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
     for (auto& indexExpr : indices) {
         auto indexVal = compileExpr(indexExpr);
         auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-        llvm::Value* gepIndices[] = {zero, indexVal};
+        std::array<llvm::Value*, 2> gepIndices{zero, indexVal};
 
         auto llvmArrayType = getLLVMType(currentType);
         currentPtr = _builder.CreateGEP(llvmArrayType, currentPtr, gepIndices, "array.element");

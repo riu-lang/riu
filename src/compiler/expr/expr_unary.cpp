@@ -159,7 +159,7 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
         auto structType = getLLVMType(currentType);
         auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
         auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIndex);
-        llvm::Value* indices[] = {zero, idx};
+        std::array<llvm::Value*, 2> indices{zero, idx};
 
         currentPtr = _builder.CreateGEP(structType, currentPtr, indices, "struct.field.ptr");
         TypeInfo fieldType = field->getType();

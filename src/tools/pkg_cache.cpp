@@ -12,6 +12,7 @@
 
 #include "pkg_cache.h"
 
+#include <array>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -36,8 +37,7 @@ static int64_t mtimeNs(const std::string& path) {
     if (!fs::exists(path, ec)) return 0;
     auto ftime = fs::last_write_time(path, ec);
     if (ec) return 0;
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(
-        ftime.time_since_epoch()).count();
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(ftime.time_since_epoch()).count();
 }
 
 static uintmax_t fsize(const std::string& path) {
@@ -55,16 +55,14 @@ static std::string entryValue(int64_t ns, uintmax_t sz) {
 // ==================== 公共 API ====================
 
 std::string computeYuxFingerprint() {
-    char buf[MAX_PATH];
-    DWORD n = GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    std::array<char, MAX_PATH> buf{};
+    DWORD n = GetModuleFileNameA(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
     if (n == 0 || n >= MAX_PATH) return "";
-    std::string exePath(buf, n);
+    std::string exePath(buf.data(), n);
     return entryValue(mtimeNs(exePath), fsize(exePath));
 }
 
-std::string mirroredOutputBase(const std::string& projectRoot,
-                               const std::string& buildDir,
-                               const std::string& srcAbs) {
+std::string mirroredOutputBase(const std::string& projectRoot, const std::string& buildDir, const std::string& srcAbs) {
     std::error_code ec;
     fs::path rel = fs::relative(srcAbs, projectRoot, ec);
     if (ec || rel.empty()) {
@@ -157,9 +155,7 @@ bool PkgCache::flush(const std::string& fingerprint) {
 // ==================== PkgCacheRegistry ====================
 
 PkgCacheRegistry::PkgCacheRegistry(std::string projectRoot, std::string buildDir)
-    : _projectRoot(std::move(projectRoot)),
-      _buildDir(std::move(buildDir)),
-      _fingerprint(computeYuxFingerprint()) {}
+    : _projectRoot(std::move(projectRoot)), _buildDir(std::move(buildDir)), _fingerprint(computeYuxFingerprint()) {}
 
 std::string PkgCacheRegistry::cachePathFor(const std::string& srcAbs) const {
     // 镜像得到 obj base，取其父目录作为包目录；包名 = 该目录的 filename

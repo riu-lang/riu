@@ -94,7 +94,7 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
     for (auto& indexExpr : indices) {
         auto indexVal = compileExpr(indexExpr);
         auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-        llvm::Value* gepIndices[] = {zero, indexVal};
+        std::array<llvm::Value*, 2> gepIndices{zero, indexVal};
 
         auto llvmArrayType = getLLVMType(currentType);
         currentPtr = _builder.CreateGEP(llvmArrayType, currentPtr, gepIndices, "array.element");
@@ -220,7 +220,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
             auto structType = getLLVMType(actualType);
             auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
             auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIndex);
-            llvm::Value* indices[] = {zero, idx};
+            std::array<llvm::Value*, 2> indices{zero, idx};
 
             auto fieldPtr = _builder.CreateGEP(structType, dataPtr, indices, "struct.field");
             auto fieldType = field->getType();

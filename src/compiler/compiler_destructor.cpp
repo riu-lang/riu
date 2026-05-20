@@ -284,7 +284,7 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
 
         // 获取字段指针
         auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), i);
-        llvm::Value* indices[] = {zero, idx};
+        std::array<llvm::Value*, 2> indices{zero, idx};
         auto fieldPtr = _builder.CreateGEP(structType, structPtr, indices, "field.ptr");
 
         // 调用字段析构函数
