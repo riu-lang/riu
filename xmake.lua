@@ -220,6 +220,7 @@ target("yux")
     add_includedirs(path.join(third_party, "cli11/include"))
     add_files("src/main.cpp")
     add_files("src/jit/*.cpp")
+    add_files("src/cli/*.cpp")
     set_rundir("$(projectdir)")
 
 target("yux-lsp")
