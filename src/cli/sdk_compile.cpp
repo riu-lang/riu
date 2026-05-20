@@ -81,7 +81,7 @@ bool compileIRToObj(llvm::Module* module, const std::string& outputPath) {
     llvm::Triple triple("x86_64-pc-windows-msvc");
     auto* target = llvm::TargetRegistry::lookupTarget(triple, error);
     if (!target) {
-        std::cerr << "Error finding target: " << error << std::endl;
+        std::cerr << "Error finding target: " << error << '\n';
         return false;
     }
 
@@ -94,7 +94,7 @@ bool compileIRToObj(llvm::Module* module, const std::string& outputPath) {
         target->createTargetMachine(triple, "x86-64", "", options, relocModel, codeModel, optLevel);
 
     if (!targetMachine) {
-        std::cerr << "Error creating target machine" << std::endl;
+        std::cerr << "Error creating target machine" << '\n';
         return false;
     }
 
@@ -103,14 +103,14 @@ bool compileIRToObj(llvm::Module* module, const std::string& outputPath) {
     std::error_code ec;
     llvm::raw_fd_ostream objFile(outputPath, ec);
     if (ec) {
-        std::cerr << "Error opening output file: " << ec.message() << std::endl;
+        std::cerr << "Error opening output file: " << ec.message() << '\n';
         delete targetMachine;
         return false;
     }
 
     llvm::legacy::PassManager pm;
     if (targetMachine->addPassesToEmitFile(pm, objFile, nullptr, llvm::CodeGenFileType::ObjectFile)) {
-        std::cerr << "Error emitting object file" << std::endl;
+        std::cerr << "Error emitting object file" << '\n';
         delete targetMachine;
         return false;
     }
@@ -127,7 +127,7 @@ void reportRuntimeError(const std::string& sourcePath, const std::runtime_error&
         if (!prefix.empty()) std::cerr << prefix;
         DiagnosticEngine::renderYuxError(std::cerr, sourcePath, *yuxErr);
     } else {
-        std::cerr << prefix << e.what() << std::endl;
+        std::cerr << prefix << e.what() << '\n';
     }
 }
 
@@ -192,7 +192,7 @@ IRResult compileIR(std::string inputFile, Yux& yux, bool isSdk) {
         moduleName = "yux.core";
     }
 
-    std::cout << "Compile IR... (module: " << moduleName << ")" << std::endl;
+    std::cout << "Compile IR... (module: " << moduleName << ")" << '\n';
     auto context = std::make_unique<llvm::LLVMContext>();
     auto module = std::make_unique<llvm::Module>(moduleName, *context);
 
@@ -260,7 +260,7 @@ void parseSdkDirOrExit(const std::string& sdkDir, Yux& yux) {
 
 IRResult compileSdkDir(std::string sdkDir, Yux& yux) {
     namespace fs = std::filesystem;
-    std::cout << "Compiling SDK from directory: " << sdkDir << std::endl;
+    std::cout << "Compiling SDK from directory: " << sdkDir << '\n';
 
     auto context = std::make_unique<llvm::LLVMContext>();
     auto module = std::make_unique<llvm::Module>("yux.core", *context);
@@ -295,7 +295,7 @@ IRResult compileSdkDir(std::string sdkDir, Yux& yux) {
         bool isFlat = (it == pkgMap.end()) || it->second.isFlat;
         if (!isFlat) continue;
 
-        std::cout << "  Processing: " << yuxFile << std::endl;
+        std::cout << "  Processing: " << yuxFile << '\n';
         antlr4::ANTLRFileStream file;
         file.loadFromFile(yuxFile);
         yuxLexer lexer(&file);
@@ -308,7 +308,7 @@ IRResult compileSdkDir(std::string sdkDir, Yux& yux) {
         parser.addErrorListener(&errListener);
         auto program = parser.program();
         if (errListener.hasErrors() || parser.getNumberOfSyntaxErrors()) {
-            std::cerr << "Syntax errors in SDK file: " << yuxFile << std::endl;
+            std::cerr << "Syntax errors in SDK file: " << yuxFile << '\n';
             exit(1);
         }
         ASTBuilder astBuilder(yux, "yux.core", true);
@@ -338,7 +338,7 @@ IRResult compileSdkDir(std::string sdkDir, Yux& yux) {
         if (it == pkgMap.end() || it->second.isFlat) continue;
         const std::string& mn = it->second.moduleName;
 
-        std::cout << "  Processing: " << yuxFile << " (module: " << mn << ")" << std::endl;
+        std::cout << "  Processing: " << yuxFile << " (module: " << mn << ")" << '\n';
         try {
             auto fileNode = yux.loadMainFile(fs::absolute(yuxFile).string(), mn);
             Compiler compiler(*context, builder, module.get(), fileNode, &yux, false);

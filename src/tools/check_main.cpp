@@ -55,7 +55,7 @@ int main(int argc, char* argv[]) {
     CLI11_PARSE(app, argc, argv);
 
     if (!std::filesystem::exists(inputFile)) {
-        std::cerr << "Error: input file not found: " << inputFile << std::endl;
+        std::cerr << "Error: input file not found: " << inputFile << '\n';
         return 1;
     }
 
@@ -66,7 +66,7 @@ int main(int argc, char* argv[]) {
     try {
         stream.loadFromFile(absPath);
     } catch (const std::exception& e) {
-        std::cerr << "Error: cannot load file " << absPath << ": " << e.what() << std::endl;
+        std::cerr << "Error: cannot load file " << absPath << ": " << e.what() << '\n';
         return 1;
     }
 
@@ -100,7 +100,7 @@ int main(int argc, char* argv[]) {
         std::string sdkPath = sdk_loader::findSdkPath();
         if (sdkPath.empty()) {
             std::cerr << "warning: SDK not found (yux.core 未加载); 仅做 builtin 范围内的 sema 检查"
-                      << std::endl;
+                      << '\n';
         } else {
             sdk_loader::parseSdkDir(sdkPath, yux);
         }
@@ -114,7 +114,7 @@ int main(int argc, char* argv[]) {
         if (auto* yuxErr = dynamic_cast<const YuxError*>(&e)) {
             DiagnosticEngine::renderYuxError(std::cerr, absPath, *yuxErr);
         } else {
-            std::cerr << e.what() << std::endl;
+            std::cerr << e.what() << '\n';
         }
         return 1;
     }

@@ -37,7 +37,7 @@ std::string wstr2str(const std::wstring& wstr) {
 // 而非直接给 core 目录。
 
 void handleCrash(int signal) {
-    std::cerr << "\nProgram crashed! Signal: " << signal << std::endl;
+    std::cerr << "\nProgram crashed! Signal: " << signal << '\n';
     _exit(1);
 }
 
@@ -148,13 +148,13 @@ int wmain(int argc, wchar_t* argv[]) {
             const auto* def = ErrorCode::lookupDefaultSeverity(code);
             if (!def) {
                 std::cerr << "warning: unknown error code '" << code << "' for " << flagName << " (ignored)"
-                          << std::endl;
+                          << '\n';
                 continue;
             }
             if (!DiagPolicy::setSeverityOverride(code, *def, newSev)) {
                 // 默认 Error 的码不允许降级
                 std::cerr << "warning: cannot downgrade error code '" << code << "' (default severity is error); "
-                          << flagName << " ignored" << std::endl;
+                          << flagName << " ignored" << '\n';
             }
         }
     };
@@ -174,7 +174,7 @@ int wmain(int argc, wchar_t* argv[]) {
     }
 
     if (!isChildIsolated) {
-        std::cout << "Working at: " << std::filesystem::absolute(std::filesystem::current_path()).string() << std::endl;
+        std::cout << "Working at: " << std::filesystem::absolute(std::filesystem::current_path()).string() << '\n';
     }
 
     // `yux test` 子命令：项目模式 #Test 收集 + LLJIT 装载 + SEH 包裹 + 子进程隔离。

@@ -48,7 +48,7 @@ int main(int argc, char* argv[]) {
     CLI11_PARSE(app, argc, argv);
 
     if (!std::filesystem::exists(inputFile)) {
-        std::cerr << "Error: input file not found: " << inputFile << std::endl;
+        std::cerr << "Error: input file not found: " << inputFile << '\n';
         return 1;
     }
 
@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
     try {
         stream.loadFromFile(inputFile);
     } catch (const std::exception& e) {
-        std::cerr << "Error: cannot load file " << inputFile << ": " << e.what() << std::endl;
+        std::cerr << "Error: cannot load file " << inputFile << ": " << e.what() << '\n';
         return 1;
     }
 
@@ -76,12 +76,12 @@ int main(int argc, char* argv[]) {
     } else {
         std::ofstream of(outputFile, std::ios::binary);
         if (!of) {
-            std::cerr << "Error: cannot open output file: " << outputFile << std::endl;
+            std::cerr << "Error: cannot open output file: " << outputFile << '\n';
             return 1;
         }
         of << out << "\n";
         if (!of) {
-            std::cerr << "Error: failed to write output file: " << outputFile << std::endl;
+            std::cerr << "Error: failed to write output file: " << outputFile << '\n';
             return 1;
         }
     }

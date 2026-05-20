@@ -214,12 +214,12 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
     bool isChildIsolated = testCmdParsed && isolateChild;
     if (!isChildIsolated) return false;
     if (captureFile.empty()) {
-        std::cerr << "Error: --isolate-child requires --capture <path>" << std::endl;
+        std::cerr << "Error: --isolate-child requires --capture <path>" << '\n';
         std::exit(2);
     }
     FILE* cap = std::fopen(captureFile.c_str(), "wb");
     if (!cap) {
-        std::cerr << "Error: cannot open capture file: " << captureFile << std::endl;
+        std::cerr << "Error: cannot open capture file: " << captureFile << '\n';
         std::exit(2);
     }
     std::fflush(stdout);
@@ -239,7 +239,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
     namespace fs = std::filesystem;
     auto suiteT0 = std::chrono::steady_clock::now();
     if (opts.hasPositionalInput) {
-        std::cerr << "Error: `yux test` does not accept positional input file" << std::endl;
+        std::cerr << "Error: `yux test` does not accept positional input file" << '\n';
         std::exit(1);
     }
     // 解析 selector: 每项形如 `<prefix>` 或 `<module>#<fnName>`;
@@ -292,7 +292,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
     try {
         yux.initProjectFromDir(cwd);
     } catch (runtime_error& e) {
-        std::cerr << e.what() << std::endl;
+        std::cerr << e.what() << '\n';
         std::exit(1);
     }
 
@@ -323,10 +323,10 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
             if (needCompile) {
                 auto sdkIrr = compileSdkDir(sdkPath, yux);
                 if (!compileIRToObj(sdkIrr.module.get(), sdkObjPath)) {
-                    std::cerr << "Failed to compile SDK to object file" << std::endl;
+                    std::cerr << "Failed to compile SDK to object file" << '\n';
                     std::exit(1);
                 }
-                std::cout << "Write SDK obj: " << sdkObjPath << std::endl;
+                std::cout << "Write SDK obj: " << sdkObjPath << '\n';
             } else {
                 parseSdkDirOrExit(sdkPath, yux);
             }
@@ -338,7 +338,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
     // 递归扫 src/ 下所有 .yux (含 .test.yux)
     fs::path srcDir(yux.sourceRoot());
     if (!fs::is_directory(srcDir)) {
-        std::cerr << "Error: project missing `src/` directory at " << srcDir.string() << std::endl;
+        std::cerr << "Error: project missing `src/` directory at " << srcDir.string() << '\n';
         std::exit(1);
     }
     struct LoadEntry { std::string abs; std::string mod; bool isTest; };

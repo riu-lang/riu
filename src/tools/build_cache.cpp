@@ -95,7 +95,7 @@ bool SdkLock::tryLock() {
     }
     
     if (result == WAIT_TIMEOUT) {
-        std::cout << "Waiting for another SDK compilation to complete..." << std::endl;
+        std::cout << "Waiting for another SDK compilation to complete..." << '\n';
         std::cout.flush();
         
         result = WaitForSingleObject(mutex, INFINITE);
