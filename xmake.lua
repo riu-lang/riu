@@ -203,7 +203,8 @@ target("yux_codegen")
 
     add_files(
         "src/compiler/*.cpp",
-        "src/compiler/call/*.cpp"
+        "src/compiler/call/*.cpp",
+        "src/compiler/expr/*.cpp"
     )
 
     add_syslinks("ntdll", {public = true})
