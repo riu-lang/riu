@@ -40,6 +40,8 @@
 #include "analyzer/borrow_checker.h"
 #include "analyzer/const_mut_checker.h"
 #include "analyzer/flow_terminate_checker.h"
+#include "analyzer/spec_impl_checker.h"
+#include "analyzer/spec_registry.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/file_node.h"
@@ -815,6 +817,55 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                     }
                 }
 
+                // Bucket 4 收口 (CURRENT-check.md): 泛型 fn typeArgs 的 spec bound
+                // 校验 (E1106, E3032 由 helper 内部抛 draft 名未声明). 显式 typeArgs
+                // 直接收取; 隐式 typeArgs 走 sema::inferGenericFnTypeArgs (它抛
+                // E6012/E6013, 由内部 try/catch 吞掉留 Compiler 兜底 — 这两码当前
+                // 仍归 Compiler, 接管会破坏既有协议).
+                if (_yux && !structDecl) {
+                    auto* genericFn = _file->getGenericFunction(fnName);
+                    p<FileNode> fnOwner = _file;
+                    if (!genericFn && _sdkFile) {
+                        genericFn = _sdkFile->getGenericFunction(fnName);
+                        if (genericFn) fnOwner = _sdkFile;
+                    }
+                    if (genericFn && genericFn->header()->isGeneric()
+                        && !genericFn->header()->hasAnno("CompilerInner")) {
+                        vector<TypeInfo> typeArgs;
+                        bool argTypesOk = true;
+                        vector<TypeInfo> argTypes;
+                        for (auto& a : n->getArgs()) {
+                            try { argTypes.push_back(a->getType()); }
+                            catch (...) { argTypesOk = false; break; }
+                        }
+                        bool typeArgsOk = true;
+                        if (hasTypeArgs) {
+                            try {
+                                for (auto& tn : n->getTypeArgs()) {
+                                    typeArgs.push_back(tn->getType());
+                                }
+                            } catch (...) { typeArgsOk = false; }
+                        } else if (argTypesOk) {
+                            try {
+                                sema::inferGenericFnTypeArgs(n, genericFn, fnName,
+                                                              argTypes, typeArgs);
+                            } catch (const YuxError&) {
+                                // E6012/E6013 留 Compiler 兜底 (3.3.1.b 未让 SemaPass 接管)
+                                typeArgsOk = false;
+                            } catch (...) { typeArgsOk = false; }
+                        } else {
+                            typeArgsOk = false;
+                        }
+                        if (typeArgsOk
+                            && typeArgs.size() == genericFn->header()->typeParams().size()) {
+                            sema::validateGenericTypeArgsSpecBound(
+                                &_yux->specRegistry(), &_yux->specImplChecker(),
+                                fnOwner, genericFn->header(),
+                                typeArgs, line, col);
+                        }
+                    }
+                }
+
                 // 仅在无显式 typeArgs + 非泛型路径上才驱动重载解析:
                 // 泛型 fn/ctor 走 Compiler 的 substitute 推断, 灵活整数推断由
                 // 那条路径自行完成; SemaPass 暂不接入泛型实例化.
@@ -888,6 +939,17 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                                    isCompilerInnerMethodIn(_sdkFile, baseType.name, member)) {
                             sema::validateOperatorMethodCall(member, baseType, argsCount,
                                                              dline, dcol);
+                        } else if (baseType.isDyn() && _yux) {
+                            // Bucket 4 收口 (CURRENT-check.md): Dyn<D> 方法调用 (E1131/E6016/
+                            // E6012/E6015). 镜像 Compiler::compileDynMethodCall 顶部 — 通过
+                            // resolveDynCalleeSpec 拿 specDecl, 再 resolveDynMethodSig 校验
+                            // member 存在 + arity + 形参类型. Compiler 端 inline throw 保留
+                            // 作幂等防御性双跑.
+                            const SpecRegistry* reg = &_yux->specRegistry();
+                            auto resolved = sema::resolveDynCalleeSpec(reg, _file,
+                                                                       baseType, dline, dcol);
+                            sema::resolveDynMethodSig(resolved.decl, resolved.qualified,
+                                                      baseType, member, argTypes, dline, dcol);
                         }
                     }
                 }
@@ -1024,7 +1086,77 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 if (!methodHeader->isStatic()) {
                     throw YuxError(line, col, ErrorCode::E3120, lhsName, rhsName, rhsName);
                 }
-                // #Static 命中: sema 形态校验通过; 参数类型 / 返回类型校验留 Phase 3 codegen.
+                // Bucket 4 收口 (CURRENT-check.md): #Static fn 调用站点的 arity +
+                // 类型校验 (E3131). 镜像 compiler_expr.cpp::compileEnumCtorExpr 的
+                // #Static fn 分派 (2343-2377). 仅在非泛型 struct + 无 turbofish 时接管;
+                // 泛型 struct 的 applySubst 留 Compiler 兜底 (sema 无替换栈).
+                // Compiler 端 inline throw 保留作幂等防御性双跑.
+                bool skipTypeCheck = !n->lhsTypeArgs().empty();
+                if (!skipTypeCheck) {
+                    auto* structDecl = _file ? _file->getStructDecl(lhsName) : nullptr;
+                    if (!structDecl && _sdkFile && _sdkFile != _file) {
+                        structDecl = _sdkFile->getStructDecl(lhsName);
+                    }
+                    if (structDecl && structDecl->isGeneric()) skipTypeCheck = true;
+                }
+                if (!skipTypeCheck) {
+                    vector<TypeInfo> paramTypes;
+                    bool paramTypesOk = true;
+                    for (auto p : methodHeader->params()) {
+                        if (p->type()) {
+                            try { paramTypes.push_back(p->type()->getType()); }
+                            catch (...) { paramTypesOk = false; break; }
+                        } else { paramTypesOk = false; break; }
+                    }
+                    if (paramTypesOk) {
+                        // 灵活整数实参按形参类型回填 (与 Compiler 端 2340 一致)
+                        for (size_t i = 0; i < n->args().size() && i < paramTypes.size(); ++i) {
+                            tryInferIntType(n->args()[i], paramTypes[i]);
+                        }
+                        auto renderTypes = [](const vector<TypeInfo>& ts) {
+                            string s;
+                            for (size_t i = 0; i < ts.size(); ++i) {
+                                if (i) s += ", ";
+                                s += ts[i].getFullName();
+                            }
+                            return s;
+                        };
+                        // arity 校验
+                        if (n->args().size() != paramTypes.size()) {
+                            string expected = renderTypes(paramTypes);
+                            vector<TypeInfo> argTypesRaw;
+                            bool ok = true;
+                            for (auto& a : n->args()) {
+                                try { argTypesRaw.push_back(a->getType()); }
+                                catch (...) { ok = false; break; }
+                            }
+                            string got = ok ? renderTypes(argTypesRaw)
+                                            : string("<unresolved>");
+                            throw YuxError(line, col, ErrorCode::E3131,
+                                lhsName, rhsName,
+                                paramTypes.size(), expected,
+                                n->args().size(), got);
+                        }
+                        // 类型逐位比对
+                        vector<TypeInfo> argTypes;
+                        bool argOk = true;
+                        for (auto& a : n->args()) {
+                            try { argTypes.push_back(a->getType()); }
+                            catch (...) { argOk = false; break; }
+                        }
+                        if (argOk) {
+                            for (size_t i = 0; i < argTypes.size(); ++i) {
+                                if (argTypes[i].empty()) continue;
+                                if (!(argTypes[i] == paramTypes[i])) {
+                                    throw YuxError(line, col, ErrorCode::E3131,
+                                        lhsName, rhsName,
+                                        paramTypes.size(), renderTypes(paramTypes),
+                                        argTypes.size(), renderTypes(argTypes));
+                                }
+                            }
+                        }
+                    }
+                }
                 return;
             }
         }
@@ -1150,7 +1282,72 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         return;
     }
     if (auto n = dynamic_cast<p<ExprDynCtorNode>>(expr)) {
-        visitExpr(n->arg()); return;
+        visitExpr(n->arg());
+        // Bucket 4 收口 (CURRENT-check.md): Dyn<D>(x) 构造的 E1131/E1132/E1134/E1133
+        // 接管. 镜像 compiler_expr.cpp::compileDynCtorExpr 顶部 (line 2497-2576).
+        // 仅在 _yux 就绪时校验 (spec 注册表 + impl 检查器都从 Yux 取); SDK 自构建
+        // 等无 Yux 场景 skip, 留 Compiler 兜底. Compiler 端 inline throw 保留作
+        // 幂等防御性双跑.
+        if (!_yux) return;
+        try {
+            auto resultType = n->getType();
+            int line = n->getLineNumber();
+            int col = n->getColumn();
+            auto specInner = resultType.dynSpecType();
+            string specBareName = specInner ? specInner->name : string();
+
+            auto& reg = _yux->specRegistry();
+            SpecDeclNode* specDecl = nullptr;
+            string specQualified;
+            if (!specBareName.empty()) {
+                if (auto resolved = reg.resolve(specBareName, _file)) {
+                    specDecl = resolved->decl;
+                    specQualified = resolved->qualifiedName;
+                }
+            }
+            if (!specDecl) {
+                throw YuxError(line, col, ErrorCode::E1131,
+                    specBareName.empty() ? string("?") : specBareName);
+            }
+            if (specInner && specInner->isDyn()) {
+                throw YuxError(line, col, ErrorCode::E1132, resultType.getFullName());
+            }
+            auto& checker = _yux->specImplChecker();
+            if (!checker.specIsObjectSafe(specDecl)) {
+                throw YuxError(line, col, ErrorCode::E1134,
+                    specQualified, specQualified, specQualified);
+            }
+
+            auto argType = n->arg()->getType();
+            bool isBorrow = n->isBorrow();
+            string concreteBare;
+            if (isBorrow) {
+                if (argType.isRef()) {
+                    if (auto inner = argType.refElementType()) concreteBare = inner->name;
+                } else if (argType.isRc()) {
+                    if (auto inner = argType.rcElementType()) concreteBare = inner->name;
+                }
+            } else {
+                if (argType.isRc()) {
+                    if (auto inner = argType.rcElementType()) concreteBare = inner->name;
+                }
+            }
+            if (concreteBare.empty()) {
+                throw YuxError(line, col, ErrorCode::E1133,
+                    specQualified, argType.getFullName(), specQualified);
+            }
+            TypeInfo concreteTI(concreteBare);
+            vector<TypeInfo> specTypeArgs;
+            if (!checker.boundSatisfied(concreteTI, specDecl, specQualified, specTypeArgs)) {
+                throw YuxError(line, col, ErrorCode::E1133,
+                    specQualified, argType.getFullName(), specQualified);
+            }
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) {
+            // getType 等内部异常 (lambda 形参未推断等): 留 Compiler 兜底
+        }
+        return;
     }
     if (auto n = dynamic_cast<p<ExprHeapCtorNode>>(expr)) {
         // Phase 2.6: Heap:<T>(x) 形态检查 (DRAFT-heap-types §8.3a)
