@@ -1,0 +1,4 @@
+# ANTLR4 生成代码，不手改 —— 关掉所有 clang-tidy 检查。
+---
+Checks: '-*'
+WarningsAsErrors: ''
