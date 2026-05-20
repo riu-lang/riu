@@ -492,7 +492,7 @@ llvm::Value* Compiler::compileStringPlusChain(ExprAddSubNode* node) {
             leaves.push_back(leftExpr);
             break;
         }
-        std::reverse(leaves.begin(), leaves.end());
+        std::ranges::reverse(leaves);
     }
 
     // 2. 类型校验：每个叶子必须是 String 或实现 ToString

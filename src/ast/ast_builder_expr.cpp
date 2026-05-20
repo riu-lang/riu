@@ -47,14 +47,14 @@ vector<LambdaParamSlot> collectLambdaParams(
                 sharedType = (self->*buildTwr)(twr, parent);
             }
             for (auto* idTok : g->names) {
-                out.push_back(LambdaParamSlot{Token(idTok->getText(), static_cast<int>(idTok->getLine())), sharedType});
+                out.push_back(LambdaParamSlot{.name=Token(idTok->getText(), static_cast<int>(idTok->getLine())), .type=sharedType});
             }
         } else if (auto* s = dynamic_cast<yux::yuxParser::LambdaParamStdContext*>(lp)) {
             p<TypeNode> ty = nullptr;
             if (auto* twr = s->typeWithRef()) {
                 ty = (self->*buildTwr)(twr, parent);
             }
-            out.push_back(LambdaParamSlot{Token(s->name->getText(), static_cast<int>(s->name->getLine())), ty});
+            out.push_back(LambdaParamSlot{.name=Token(s->name->getText(), static_cast<int>(s->name->getLine())), .type=ty});
         }
     }
     return out;
@@ -67,10 +67,10 @@ p<LambdaExprNode> buildTrailingLambda(
     ASTBuilder* self, yux::yuxParser::TrailingLambdaContext* tl,
     p<ScopeNode> scope,
     p<TypeNode> (ASTBuilder::*buildTwr)(yux::yuxParser::TypeWithRefContext*, p<Node>),
-    std::function<p<LambdaExprNode>(yux::yuxParser::TrailingLambdaContext*,
+    const std::function<p<LambdaExprNode>(yux::yuxParser::TrailingLambdaContext*,
                                      LambdaExprNode::Form,
                                      vector<LambdaParamSlot>,
-                                     vector<p<StatementNode>>)> create) {
+                                     vector<p<StatementNode>>)>& create) {
     if (auto* b = dynamic_cast<yux::yuxParser::TrailingLambdaBlockContext*>(tl)) {
         auto params = collectLambdaParams(self, b->lambdaParams(), scope, buildTwr);
         vector<p<StatementNode>> stmts;
@@ -217,7 +217,7 @@ std::any ASTBuilder::visitExprLambdaSingle(yux::yuxParser::ExprLambdaSingleConte
     auto scope = currentScope();
     vector<LambdaParamSlot> params;
     params.push_back(LambdaParamSlot{
-        Token(ctx->name->getText(), static_cast<int>(ctx->name->getLine())), nullptr });
+        .name=Token(ctx->name->getText(), static_cast<int>(ctx->name->getLine())), .type=nullptr });
     auto bodyScope = makeLambdaBodyScope(scope, params);
     _scopeStack.push_back(bodyScope);
     auto bodyExpr = any_cast_p<ExprNode>(visit(ctx->body->expr()));
@@ -654,8 +654,9 @@ std::any ASTBuilder::visitExprGetRef(yux::yuxParser::ExprGetRefContext* ctx) {
 
     auto obj = ctx->obj;
     vector<Token> subs;
-    for (auto sub : ctx->subs) {
-        subs.push_back(sub);
+    subs.reserve(ctx->subs.size());
+for (auto sub : ctx->subs) {
+        subs.emplace_back(sub);
     }
 
     return p<ExprNode>(createWithLine<ExprGetRefNode>(ctx, scope, obj, subs));
@@ -666,7 +667,8 @@ std::any ASTBuilder::visitExprArray(yux::yuxParser::ExprArrayContext* ctx) {
     auto scope = currentScope();
     vector<p<ExprNode>> elements;
 
-    for (auto elemCtx : ctx->velues) {
+    elements.reserve(ctx->velues.size());
+for (auto elemCtx : ctx->velues) {
         elements.push_back(any_cast_p<ExprNode>(visit(elemCtx)));
     }
 

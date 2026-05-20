@@ -96,8 +96,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 auto canonRoot  = std::filesystem::canonical(yux.sourceRoot(), _cec);
                 if (!_cec) {
                     auto rel = std::filesystem::relative(canonEntry, canonRoot, _cec);
-                    bool escapes = _cec || rel.empty() || rel.native().substr(0, 2) == L".." ||
-                                   rel.string().substr(0, 2) == "..";
+                    bool escapes = _cec || rel.empty() || rel.native().starts_with(L"..") ||
+                                   rel.string().starts_with("..");
                     if (escapes) {
                         DiagnosticEngine::emit(tomlPath,
                             YuxError(1, ErrorCode::E5014, yux.projectEntry()));
@@ -213,7 +213,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 };
                 std::string libOutStr, libErrStr;
                 llvm::raw_string_ostream libOOS(libOutStr), libEOS(libErrStr);
-                lld::DriverDef libDD = {lld::WinLink, &lld::coff::link};
+                lld::DriverDef libDD = {.f=lld::WinLink, .d=&lld::coff::link};
                 auto libR = lldMain(libArgs, libOOS, libEOS, llvm::ArrayRef{libDD});
                 if (libR.retCode) {
                     llvm::errs() << libErrStr;
@@ -297,7 +297,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             // 跳过 *.test.yux —— 测试文件仅由 `yux test` 子命令处理（spec §11.3.3.2）
             {
                 auto fname = p.filename().string();
-                if (fname.size() >= 9 && fname.compare(fname.size() - 9, 9, ".test.yux") == 0) {
+                if (fname.size() >= 9 && fname.ends_with(".test.yux")) {
                     continue;
                 }
             }
@@ -307,7 +307,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             for (auto& c : modName) if (c == '/' || c == '\\') c = '.';
             libFiles.emplace_back(fs::absolute(p).string(), modName);
         }
-        std::sort(libFiles.begin(), libFiles.end());
+        std::ranges::sort(libFiles);
 
         // 加载所有 AST
         for (auto& [abs, mn] : libFiles) {
@@ -364,7 +364,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             std::string outStr, errStr;
             llvm::raw_string_ostream oOS(outStr), eOS(errStr);
             std::cout << "Static lib: " << libPath << '\n';
-            lld::DriverDef dd = {lld::WinLink, &lld::coff::link};
+            lld::DriverDef dd = {.f=lld::WinLink, .d=&lld::coff::link};
             lld::Result r = lldMain(args, oOS, eOS, llvm::ArrayRef{dd});
             if (r.retCode) {
                 llvm::errs() << errStr;
@@ -560,7 +560,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         llvm::raw_string_ostream stdoutOS(stdoutStr), stderrOS(stderrStr);
 
         std::cout << "Link obj: " << exePath << '\n';
-        lld::DriverDef driverDef = {lld::WinLink, &lld::coff::link};
+        lld::DriverDef driverDef = {.f=lld::WinLink, .d=&lld::coff::link};
         lld::Result result = lldMain(args, stdoutOS, stderrOS, llvm::ArrayRef{driverDef});
 
         if (result.retCode) {

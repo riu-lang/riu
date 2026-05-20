@@ -174,8 +174,8 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
         }
         header->setTypeParams(typeParams);
         header->setTypeParamBounds(typeParamBounds);
-        for (size_t i = 0; i < header->typeParams().size(); ++i) {
-            DEBUG_LOG_VAL("    TypeParam", header->typeParams()[i]);
+        for (const auto & i : header->typeParams()) {
+            DEBUG_LOG_VAL("    TypeParam", i);
         }
     }
 

@@ -119,13 +119,13 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
 
     // 元组成员访问 a.N：member 为纯数字，base 解析后必须是 Tuple
     // 透明 alias 由 applySubst 兜底（顶层 Normal alias、泛型 alias 实例化均能展开）
-    if (!member.empty() && std::all_of(member.begin(), member.end(),
+    if (!member.empty() && std::ranges::all_of(member,
                                        [](char c) { return c >= '0' && c <= '9'; })) {
         auto baseTypeRaw = baseExpr->getType();
         auto baseTypeResolved = applySubst(baseTypeRaw);
         if (baseTypeResolved.isTuple()) {
             auto& elems = baseTypeResolved.tupleElements();
-            size_t idx = static_cast<size_t>(std::stoul(member));
+            auto idx = static_cast<size_t>(std::stoul(member));
             if (idx >= elems.size()) {
                 throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3100,
                                member, baseTypeRaw.getFullName(),
@@ -148,7 +148,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
         auto srcType = baseExpr->getType();
 
         string castFnName = "__cast_" + to_string(_castCounter++);
-        _castFunctions[castFnName] = {baseVal, srcType, TypeInfo(dstType)};
+        _castFunctions[castFnName] = {.value=baseVal, .srcType=srcType, .dstType=TypeInfo(dstType)};
 
         return llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
     }

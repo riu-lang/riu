@@ -14,6 +14,7 @@
 #include "sema/call_resolve.h"
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
+#include <algorithm>
 #include <functional>
 
 llvm::Value* Compiler::compileFunctionCall(
@@ -320,9 +321,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(
                 if (auto litE = dynamic_cast<ExprLiteralNode*>(argNode)) {
                     if (auto objLit = dynamic_cast<LiteralObjNode*>(litE->literal())) {
                         auto name = objLit->getValue().getText();
-                        _scopeVars.erase(
-                            std::remove(_scopeVars.begin(), _scopeVars.end(), name),
-                            _scopeVars.end());
+                        std::erase(_scopeVars, name);
                         auto it = _localVarPtrs.find(name);
                         if (it != _localVarPtrs.end()) {
                             _builder.CreateStore(
@@ -374,7 +373,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(
                     throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
                         ErrorCode::E6029, fnName, T.getFullName());
                 }
-                auto innerType = *innerSp;
+                const auto& innerType = *innerSp;
                 auto innerLLVMType = getLLVMType(innerType);
                 // args[0] = Heap<U> = ptr (raw heap handle, 不是 wrapper struct)
                 auto srcInner = _builder.CreateLoad(innerLLVMType, args[0], "copy_of.heap.src");
@@ -393,13 +392,13 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             if (T.isNullable()) {
                 auto innerNullSp = T.nullableInnerType();
                 if (innerNullSp && innerNullSp->isHeap()) {
-                    auto innerHeapType = *innerNullSp;
+                    const auto& innerHeapType = *innerNullSp;
                     auto innerElemSp = innerHeapType.heapElementType();
                     if (!innerElemSp) {
                         throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
                             ErrorCode::E6029, fnName, T.getFullName());
                     }
-                    auto innerType = *innerElemSp;
+                    const auto& innerType = *innerElemSp;
                     auto innerLLVMType = getLLVMType(innerType);
                     auto ptrTy = llvm::PointerType::get(_context, 0);
                     auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
@@ -569,7 +568,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(
     for (size_t i = 0; i < typeParams.size(); ++i) {
         subst[typeParams[i]] = typeArgs[i];
     }
-    _substStack.push_back(SubstFrame{subst, "", ""});
+    _substStack.push_back(SubstFrame{.subst=subst, .baseStructName="", .effStructName=""});
 
     vector<TypeInfo> instParamTypes;
     for (auto param : genericFn->header()->params()) {
@@ -684,13 +683,13 @@ llvm::Value* Compiler::compileKnownFunctionCall(
 
     if (!fn) {
         vector<llvm::Type*> paramTypes;
-        for (size_t i = 0; i < fnSymbol->params.size(); ++i) {
-            if (fnSymbol->params[i].isPtr() || fnSymbol->params[i].isRef()) {
+        for (auto & param : fnSymbol->params) {
+            if (param.isPtr() || param.isRef()) {
                 paramTypes.push_back(llvm::PointerType::get(_context, 0));
-            } else if (structParamUsesPointer(fnSymbol->params[i].name)) {
+            } else if (structParamUsesPointer(param.name)) {
                 paramTypes.push_back(llvm::PointerType::get(_context, 0));
             } else {
-                paramTypes.push_back(getLLVMType(fnSymbol->params[i]));
+                paramTypes.push_back(getLLVMType(param));
             }
         }
         // extern fn 禁 #Fallible（[#7]）—— extern 路径走原 isPtr 分支不包装；
@@ -736,7 +735,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(
         llvm::Value* slot = nullptr;
         llvm::Type* ty = nullptr;
         if (!tryHeapNullableLvalueSlot(callNode->getArgs()[i], slot, ty)) return;
-        heapBdangSlots.push_back({slot, ty});
+        heapBdangSlots.push_back({.slotPtr=slot, .llvmTy=ty});
     };
 
     vector<llvm::Value*> callArgs;

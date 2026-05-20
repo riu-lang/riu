@@ -88,7 +88,8 @@ llvm::Value* Compiler::compileMethodCall(
                 auto fn = _module->getFunction(cName);
                 if (!fn) {
                     vector<llvm::Type*> paramTypes;
-                    for (auto& t : argTypes) {
+                    paramTypes.reserve(argTypes.size());
+for (auto& t : argTypes) {
                         paramTypes.push_back(getLLVMType(t));
                     }
                     auto fnType = llvm::FunctionType::get(_builder.getVoidTy(), paramTypes, false);

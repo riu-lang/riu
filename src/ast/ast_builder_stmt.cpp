@@ -103,7 +103,8 @@ std::any ASTBuilder::visitStatementLetTuple(yux::yuxParser::StatementLetTupleCon
     }
 
     vector<Token> names;
-    for (auto idTok : ctx->names) {
+    names.reserve(ctx->names.size());
+for (auto idTok : ctx->names) {
         names.emplace_back(idTok);
     }
 
@@ -131,9 +132,9 @@ std::any ASTBuilder::visitStatementAssign(yux::yuxParser::StatementAssignContext
     for (auto sub : ctx->subs) {
         auto text = sub->getText();
         if (!text.empty() && text[0] == '.') {
-            subs.push_back(Token(text.substr(1), sub->getLine()));
+            subs.emplace_back(text.substr(1), sub->getLine());
         } else {
-            subs.push_back(Token(sub));
+            subs.emplace_back(sub);
         }
     }
 
@@ -206,7 +207,8 @@ std::any ASTBuilder::visitStatementSet(yux::yuxParser::StatementSetContext* ctx)
     auto arrayExpr = any_cast_p<ExprNode>(visit(ctx->obj));
 
     vector<p<ExprNode>> indices;
-    for (auto arg : ctx->args) {
+    indices.reserve(ctx->args.size());
+for (auto arg : ctx->args) {
         indices.push_back(any_cast_p<ExprNode>(visit(arg)));
     }
 

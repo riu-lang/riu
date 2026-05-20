@@ -95,8 +95,8 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                     subst[baseDecl->typeParams()[i]] = instArgs[i] ? *instArgs[i] : TypeInfo();
                 }
                 _substStack.push_back(SubstFrame{
-                    std::move(subst), lhsRaw, effLhs,
-                    _file ? _file->moduleName() : "", line});
+                    .subst=std::move(subst), .baseStructName=lhsRaw, .effStructName=effLhs,
+                    .sourceFile=_file ? _file->moduleName() : "", .sourceLine=line});
                 pushedFrame = true;
             }
             // SubstFrame 在异常路径上必须 pop, 否则后续 applySubst 误用本帧 → 类型污染.

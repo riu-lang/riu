@@ -24,7 +24,7 @@ public:
 
 class LiteralNumberNode : public LiteralNode {
 public:
-    explicit LiteralNumberNode(Token value);
+    explicit LiteralNumberNode(const Token& value);
 };
 
 class LiteralIntNode : public LiteralNumberNode {
@@ -52,7 +52,7 @@ public:
 
 class LiteralBoolNode : public LiteralNode {
 public:
-    explicit LiteralBoolNode(Token value);
+    explicit LiteralBoolNode(const Token& value);
     [[nodiscard]] TypeInfo getType() const override;
 };
 
@@ -65,14 +65,14 @@ public:
 
 class LiteralNullNode : public LiteralNode {
 public:
-    explicit LiteralNullNode(Token value);
+    explicit LiteralNullNode(const Token& value);
     [[nodiscard]] TypeInfo getType() const override;
 };
 
 class LiteralCodePointNode : public LiteralNode {
     u32 _codePoint = 0;
 public:
-    explicit LiteralCodePointNode(Token value);
+    explicit LiteralCodePointNode(const Token& value);
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] u32 codePoint() const { return _codePoint; }
 };
@@ -80,7 +80,7 @@ public:
 class LiteralStringNode : public LiteralNode {
     vector<u32> _codePoints;
 public:
-    explicit LiteralStringNode(Token value, bool raw = false);
+    explicit LiteralStringNode(const Token& value, bool raw = false);
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] const vector<u32>& codePoints() const { return _codePoints; }
 };
@@ -95,7 +95,7 @@ class StringTemplateNode : public LiteralNode {
     vector<string> _parts;
     vector<p<ExprNode>> _interps;
 public:
-    StringTemplateNode(Token openTok, vector<string> parts, vector<p<ExprNode>> interps);
+    StringTemplateNode(const Token& openTok, vector<string> parts, vector<p<ExprNode>> interps);
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] const vector<string>& parts() const { return _parts; }
     [[nodiscard]] const vector<p<ExprNode>>& interps() const { return _interps; }

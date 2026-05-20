@@ -60,7 +60,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
             if (auto* gd = a->genericDef()) {
                 for (auto* pCtx : gd->params) {
                     if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(pCtx->type(0))) {
-                        r.typeArgs.push_back(TypeInfo(tn->ID()->getText()));
+                        r.typeArgs.emplace_back(tn->ID()->getText());
                     }
                     // 复杂泛型实参押后
                 }
@@ -202,7 +202,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
 
         string destructorName = structName + ".~" + structName;
         vector<TypeInfo> paramTypes;
-        paramTypes.push_back(TypeInfo(structName));
+        paramTypes.emplace_back(structName);
 
         SymbolInfo destructorSym(SymbolKind::Function, "~" + structName, TypeInfo());
         destructorSym.moduleName = moduleName;
@@ -287,7 +287,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
         string fullName = structName + "." + methodName;
 
         vector<TypeInfo> paramTypes;
-        paramTypes.push_back(TypeInfo(structName));
+        paramTypes.emplace_back(structName);
         for (auto param : method->header()->params()) {
             if (param->type()) {
                 paramTypes.push_back(param->type()->getType());

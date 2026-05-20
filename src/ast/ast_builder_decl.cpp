@@ -27,8 +27,8 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
         // extern 块内 fnHeader 接受 CompilerInner 与 #NoReturn（spec §11.5.1 / DRAFT-错误.md §8.3）。
         AnnoList headerAnnos = collectAnnosExternFn(header->buildAnnos);
         bool externNoReturn = false;
-        for (size_t i = 0; i < headerAnnos.names.size(); ++i) {
-            if (headerAnnos.names[i] == "NoReturn") externNoReturn = true;
+        for (const auto & name : headerAnnos.names) {
+            if (name == "NoReturn") externNoReturn = true;
         }
         // E7012：extern `#NoReturn fn` 不得带 retType（与函数体内 fn 一致）。
         // E7013（与 #Fallible 互斥）暂不触发——`#Fallible` 不在 extern 白名单。

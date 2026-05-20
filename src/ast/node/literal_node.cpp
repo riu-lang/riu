@@ -21,7 +21,7 @@ string LiteralNode::getLocation() const {
     return _value.getText();
 }
 
-LiteralNumberNode::LiteralNumberNode(Token value) : LiteralNode(std::move(value)) {
+LiteralNumberNode::LiteralNumberNode(const Token& value) : LiteralNode(value) {
 }
 
 LiteralIntNode::LiteralIntNode(const Token& value) : LiteralNumberNode(value) {
@@ -54,7 +54,7 @@ TypeInfo LiteralFloatNode::getType() const {
     return _type;
 }
 
-LiteralBoolNode::LiteralBoolNode(Token value) : LiteralNode(std::move(value)) {
+LiteralBoolNode::LiteralBoolNode(const Token& value) : LiteralNode(value) {
 }
 
 TypeInfo LiteralBoolNode::getType() const {
@@ -98,14 +98,14 @@ string LiteralObjNode::getLocation() const {
     return _parent->getLocation() + "." + _value.getText();
 }
 
-LiteralNullNode::LiteralNullNode(Token value) : LiteralNode(std::move(value)) {
+LiteralNullNode::LiteralNullNode(const Token& value) : LiteralNode(value) {
 }
 
 TypeInfo LiteralNullNode::getType() const {
     return TypeInfo("Ptr");
 }
 
-LiteralCodePointNode::LiteralCodePointNode(Token value) : LiteralNode(std::move(value)) {
+LiteralCodePointNode::LiteralCodePointNode(const Token& value) : LiteralNode(value) {
     auto text = _value.getText();
     // text: c'...'
     if (text.size() < 4) return;
@@ -143,7 +143,7 @@ TypeInfo LiteralCodePointNode::getType() const {
     return TypeInfo("u32");
 }
 
-LiteralStringNode::LiteralStringNode(Token value, bool raw) : LiteralNode(std::move(value)) {
+LiteralStringNode::LiteralStringNode(const Token& value, bool raw) : LiteralNode(value) {
     auto text = _value.getText();
     if (raw && text.size() >= 3 && text.front() == 'r') {
         text = text.substr(1);
@@ -204,8 +204,8 @@ TypeInfo LiteralStringNode::getType() const {
     return TypeInfo("String");
 }
 
-StringTemplateNode::StringTemplateNode(Token openTok, vector<string> parts, vector<p<ExprNode>> interps)
-    : LiteralNode(std::move(openTok)),
+StringTemplateNode::StringTemplateNode(const Token& openTok, vector<string> parts, vector<p<ExprNode>> interps)
+    : LiteralNode(openTok),
       _parts(std::move(parts)),
       _interps(std::move(interps)) {
 }
