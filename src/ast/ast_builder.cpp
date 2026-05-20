@@ -23,11 +23,8 @@
 #include <algorithm>
 #include "types.h"
 
-ASTBuilder::ASTBuilder(Yux& yux, const string& moduleName, bool isSdk,
-                       bool isTestFile, const string& sourcePath) :
-    _yux(yux), _isSdk(isSdk), _isTestFile(isTestFile),
-    _moduleName(moduleName), _sourcePath(sourcePath) {
-}
+ASTBuilder::ASTBuilder(Yux& yux, const string& moduleName, bool isSdk, bool isTestFile, const string& sourcePath)
+    : _yux(yux), _isSdk(isSdk), _isTestFile(isTestFile), _moduleName(moduleName), _sourcePath(sourcePath) {}
 
 ASTBuilder::~ASTBuilder() {
     if (_isSdk) {
@@ -43,17 +40,35 @@ p<FileNode> ASTBuilder::build(yux::yuxParser::ProgramContext* ctx) {
 }
 
 void ASTBuilder::preloadPackageChildren(FileNode* file, const string& alias, const string& pkgModName,
-                                         const string& relPrefix, int errorLine) {
+                                        const string& relPrefix, int errorLine) {
     for (auto& child : _yux.listPackageYuxChildren(pkgModName)) {
-        string childMod = pkgModName + "." + child;
+        string childMod = pkgModName;
+        childMod += '.';
+        childMod += child;
         auto childFile = _yux.loadModule(childMod, errorLine);
-        string key = relPrefix.empty() ? child : (relPrefix + "." + child);
+        string key;
+        if (relPrefix.empty()) {
+            key = child;
+        } else {
+            key = relPrefix;
+            key += '.';
+            key += child;
+        }
         file->addPackageChild(alias, key, childFile);
         DEBUG_LOG_VAL("    register package child", alias << "." << key << " -> " << childMod);
     }
     for (auto& sub : _yux.listPackageSubdirs(pkgModName)) {
-        string subMod = pkgModName + "." + sub;
-        string nextPrefix = relPrefix.empty() ? sub : (relPrefix + "." + sub);
+        string subMod = pkgModName;
+        subMod += '.';
+        subMod += sub;
+        string nextPrefix;
+        if (relPrefix.empty()) {
+            nextPrefix = sub;
+        } else {
+            nextPrefix = relPrefix;
+            nextPrefix += '.';
+            nextPrefix += sub;
+        }
         preloadPackageChildren(file, alias, subMod, nextPrefix, errorLine);
     }
 }
@@ -121,10 +136,9 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         }
         // E7008：成功值类型 == #Fallible 错误类型（编译器无法分流 `ret` 通道）
         if (!fnFnSym.fallibleErrType.empty() && retType.name == fnFnSym.fallibleErrType) {
-            throw YuxError(
-                static_cast<int>(header->name->getLine()),
-                static_cast<int>(header->name->getCharPositionInLine()) + 1,
-                ErrorCode::E7008, retType.name, fnFnSym.fallibleErrType);
+            throw YuxError(static_cast<int>(header->name->getLine()),
+                           static_cast<int>(header->name->getCharPositionInLine()) + 1, ErrorCode::E7008, retType.name,
+                           fnFnSym.fallibleErrType);
         }
         file->registerFnSymbol(fnName, fnFnSym);
     }

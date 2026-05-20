@@ -261,11 +261,18 @@ FnHeaderNode* resolveDynMethodSig(SpecDeclNode* specDecl,
         if (!sp || !sp->type()) continue;
         TypeInfo expected = sp->type()->getType();
         if (expected.getFullName() != argTypes[i].getFullName()) {
-            throw YuxError(line, col, ErrorCode::E6015)
-                .withHint("Dyn<" + specQualified + ">." + member + " arg#"
-                    + std::to_string(i) + ": 期望 " + expected.getFullName()
-                    + ", 实际 " + argTypes[i].getFullName()
-                    + " (Dyn 方法调用参数类型按 draft 签名静态匹配)");
+            std::string hint = "Dyn<";
+            hint += specQualified;
+            hint += ">.";
+            hint += member;
+            hint += " arg#";
+            hint += std::to_string(i);
+            hint += ": 期望 ";
+            hint += expected.getFullName();
+            hint += ", 实际 ";
+            hint += argTypes[i].getFullName();
+            hint += " (Dyn 方法调用参数类型按 draft 签名静态匹配)";
+            throw YuxError(line, col, ErrorCode::E6015).withHint(hint);
         }
     }
     return sig;

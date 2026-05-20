@@ -2,7 +2,7 @@
 // MPL-2.0
 
 // 表达式编译实现
-// 
+//
 // 本文件包含所有表达式类型的编译逻辑:
 // - 字面量表达式 (整数、浮点数、布尔值、字符串)
 // - 算术表达式 (加减乘除取模)
@@ -55,7 +55,6 @@ TypeInfo Compiler::resolvedOrInferredType(p<ExprNode> node) const {
     }
     return node->getType();
 }
-
 
 // ==================== 类型转换 ====================
 
@@ -142,7 +141,6 @@ llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& srcType, con
     }
 }
 
-
 llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
     auto type = node->getType();
     DEBUG_LOG_VAL("  compileExpr", "type=" << (type.empty() ? "void" : type.name));
@@ -211,8 +209,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         int col = structLitNode->resolveColumn();
         const string& structName = _currentStructName;
         if (structName.empty()) {
-            throw YuxError(line, col, ErrorCode::E0000,
-                           "`Self { ... }` codegen 找不到所属结构体 (sema 应已拦截)");
+            throw YuxError(line, col, ErrorCode::E0000, "`Self { ... }` codegen 找不到所属结构体 (sema 应已拦截)");
         }
         // Phase 6E.4-C: 泛型 struct #Static fn 体内 `Self {...}` —
         // _currentStructName 是 mangled (`GH$i32`), getStructDecl 查不到; 走
@@ -228,8 +225,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
             }
         }
         if (!decl) {
-            throw YuxError(line, col, ErrorCode::E0000,
-                           "`Self { ... }` codegen 找不到 struct decl: " + structName);
+            throw YuxError(line, col, ErrorCode::E0000, "`Self { ... }` codegen 找不到 struct decl: " + structName);
         }
         auto llvmStructType = getLLVMType(TypeInfo(structName));
         if (!llvmStructType) {
@@ -239,14 +235,14 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         // 零初始化, 与 ctor 入口保持一致, 避免遗漏字段 (实际上 sema 已强制全列)
         auto& dl = _module->getDataLayout();
         auto sizeBytes = dl.getTypeAllocSize(llvmStructType).getFixedValue();
-        _builder.CreateMemSetInline(alloca, llvm::MaybeAlign(1), _builder.getInt8(0),
-                                    _builder.getInt64(sizeBytes));
+        _builder.CreateMemSetInline(alloca, llvm::MaybeAlign(1), _builder.getInt8(0), _builder.getInt64(sizeBytes));
         for (auto& fi : structLitNode->fields()) {
             string fname = fi->name().getText();
             int idx = decl->fieldIndex(fname);
-            auto fieldPtr = _builder.CreateStructGEP(llvmStructType, alloca,
-                                                     static_cast<unsigned>(idx),
-                                                     structName + "." + fname);
+            string gepName = structName;
+            gepName += '.';
+            gepName += fname;
+            auto fieldPtr = _builder.CreateStructGEP(llvmStructType, alloca, static_cast<unsigned>(idx), gepName);
             const auto* fdecl = decl->field(fname);
             // Phase 6E.4-C: 泛型实例 Self {...} — 字段类型 (含 T) 透过当前
             // SubstFrame 替换为具体类型, 让 isArrayGeneric / typeNeedsDestructor
@@ -297,10 +293,8 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
                 auto z0 = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
                 auto z1 = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
                 auto ptrTy = llvm::PointerType::get(_context, 0);
-                auto hasField = _builder.CreateGEP(heapBdangSrcTy, heapBdangSrcSlot,
-                                                   {z0, z0}, "bdang.field.has");
-                auto valField = _builder.CreateGEP(heapBdangSrcTy, heapBdangSrcSlot,
-                                                   {z0, z1}, "bdang.field.value");
+                auto hasField = _builder.CreateGEP(heapBdangSrcTy, heapBdangSrcSlot, {z0, z0}, "bdang.field.has");
+                auto valField = _builder.CreateGEP(heapBdangSrcTy, heapBdangSrcSlot, {z0, z1}, "bdang.field.value");
                 _builder.CreateStore(_builder.getInt1(false), hasField);
                 _builder.CreateStore(llvm::ConstantPointerNull::get(ptrTy), valField);
             }
@@ -341,8 +335,8 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
 }
 
 void Compiler::compileStatementBlock(p<StatementBlockNode> block) {
-    DEBUG_LOG_VAL(
-        "  compileStatementBlock", block->statements().size() << " statements, hasResult=" << block->hasResult());
+    DEBUG_LOG_VAL("  compileStatementBlock", block->statements().size()
+                                                 << " statements, hasResult=" << block->hasResult());
     for (auto& stmt : block->statements()) {
         compileStatement(stmt);
     }
@@ -352,8 +346,8 @@ void Compiler::compileStatementBlock(p<StatementBlockNode> block) {
     }
 }
 
-llvm::Value* Compiler::compileStatementBlockWithResult(
-    p<StatementBlockNode> block, llvm::BasicBlock* continueBlock, llvm::PHINode* phi, const TypeInfo& resultType) {
+llvm::Value* Compiler::compileStatementBlockWithResult(p<StatementBlockNode> block, llvm::BasicBlock* continueBlock,
+                                                       llvm::PHINode* phi, const TypeInfo& resultType) {
     for (auto& stmt : block->statements()) {
         compileStatement(stmt);
     }

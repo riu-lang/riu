@@ -128,9 +128,14 @@ void SpecImplChecker::checkExplicitImplicitConflict() {
         for (auto& impl : file->getStructImpls()) {
             const std::string& typeBare = impl->structName();
             const std::string ownerMod = moduleOfType(typeBare);
-            const std::string typeQualified = ownerMod.empty()
-                ? typeBare
-                : (ownerMod + "." + typeBare);
+            std::string typeQualified;
+            if (ownerMod.empty()) {
+                typeQualified = typeBare;
+            } else {
+                typeQualified = ownerMod;
+                typeQualified += '.';
+                typeQualified += typeBare;
+            }
             auto& slot = table[typeQualified];
             if (impl->specRefs().empty()) {
                 for (auto& m : impl->methods()) {

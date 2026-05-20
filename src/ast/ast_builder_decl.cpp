@@ -27,7 +27,7 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
         // extern 块内 fnHeader 接受 CompilerInner 与 #NoReturn（spec §11.5.1 / DRAFT-错误.md §8.3）。
         AnnoList headerAnnos = collectAnnosExternFn(header->buildAnnos);
         bool externNoReturn = false;
-        for (const auto & name : headerAnnos.names) {
+        for (const auto& name : headerAnnos.names) {
             if (name == "NoReturn") externNoReturn = true;
         }
         // E7012：extern `#NoReturn fn` 不得带 retType（与函数体内 fn 一致）。
@@ -244,7 +244,9 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
                     } else if (pathKind == Yux::ModulePathKind::Package) {
                         // 子包通配导出：递归导出子包的所有成员
                         for (auto& child : _yux.listPackageYuxChildren(childMod)) {
-                            string grandchildMod = childMod + "." + child;
+                            string grandchildMod = childMod;
+                            grandchildMod += '.';
+                            grandchildMod += child;
                             bool alreadyWildcard = file->wildcardAliasSources(child) != nullptr;
                             if (!alreadyWildcard && file->hasSymbol(child)) continue;
                             if (!alreadyWildcard) {
@@ -259,7 +261,9 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
                             file->addWildcardAliasSource(child, grandchildMod);
                         }
                         for (auto& sub : _yux.listPackageSubdirs(childMod)) {
-                            string subsubMod = childMod + "." + sub;
+                            string subsubMod = childMod;
+                            subsubMod += '.';
+                            subsubMod += sub;
                             bool alreadyWildcard = file->wildcardAliasSources(sub) != nullptr;
                             if (!alreadyWildcard && file->hasSymbol(sub)) continue;
                             if (!alreadyWildcard) {
@@ -314,7 +318,9 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
             // 通配注入的别名在 _wildcardAliasSources 中记录来源；已注入过的同名别名不
             // 立即报错，而是追加来源，留到使用点检查歧义（Phase 5）。
             for (auto& child : _yux.listPackageYuxChildren(modName)) {
-                string childMod = modName + "." + child;
+                string childMod = modName;
+                childMod += '.';
+                childMod += child;
                 bool alreadyWildcard = file->wildcardAliasSources(child) != nullptr;
                 // 检查现有符号的类型
                 auto existingSym = file->lookupSymbol(child);
@@ -341,7 +347,9 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
                 file->addWildcardAliasSource(child, childMod);
             }
             for (auto& sub : _yux.listPackageSubdirs(modName)) {
-                string subMod = modName + "." + sub;
+                string subMod = modName;
+                subMod += '.';
+                subMod += sub;
                 bool alreadyWildcard = file->wildcardAliasSources(sub) != nullptr;
                 if (!alreadyWildcard && file->hasSymbol(sub)) continue;
                 if (!alreadyWildcard) {

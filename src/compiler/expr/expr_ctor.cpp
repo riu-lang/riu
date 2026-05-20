@@ -21,7 +21,6 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <cassert>
 
-
 // 编译枚举构造表达式 E::V / E::V() / E::V(args)
 // Phase 5: 支持零参 + tuple-payload variant
 //
@@ -37,7 +36,7 @@
 // 7. 加载整体 struct value 作为表达式结果返回
 llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
-    string enumName = node->getType().name;     // 经别名解析后的真实 enum 名
+    string enumName = node->getType().name; // 经别名解析后的真实 enum 名
     string variantName = node->variantName().getText();
     int line = node->getLineNumber();
     int col = node->getColumn();
@@ -56,7 +55,8 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
             p<FnHeaderNode> methodHeader = nullptr;
             for (auto& m : structImpl->methods()) {
                 if (m->header()->name().getText() == methodName) {
-                    methodHeader = m->header(); break;
+                    methodHeader = m->header();
+                    break;
                 }
             }
             // sema Phase 2c 已拦 E3120/E3121; 这里幂等防御性兜底
@@ -77,12 +77,10 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                     baseOwner = _yux->sdkFile();
                 }
                 if (!baseDecl || !baseDecl->isGeneric()) {
-                    throw YuxError(line, col, ErrorCode::E0000,
-                                   "turbofish 形态需泛型 struct: " + lhsRaw);
+                    throw YuxError(line, col, ErrorCode::E0000, "turbofish 形态需泛型 struct: " + lhsRaw);
                 }
                 if (lhsTArgs.size() != baseDecl->typeParams().size()) {
-                    throw YuxError(line, col, ErrorCode::E6011,
-                                   lhsRaw, baseDecl->typeParams().size(), lhsTArgs.size());
+                    throw YuxError(line, col, ErrorCode::E6011, lhsRaw, baseDecl->typeParams().size(), lhsTArgs.size());
                 }
                 vector<sp<TypeInfo>> instArgs;
                 instArgs.reserve(lhsTArgs.size());
@@ -94,84 +92,80 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                 for (size_t i = 0; i < instArgs.size(); ++i) {
                     subst[baseDecl->typeParams()[i]] = instArgs[i] ? *instArgs[i] : TypeInfo();
                 }
-                _substStack.push_back(SubstFrame{
-                    .subst=std::move(subst), .baseStructName=lhsRaw, .effStructName=effLhs,
-                    .sourceFile=_file ? _file->moduleName() : "", .sourceLine=line});
+                _substStack.push_back(SubstFrame{.subst = std::move(subst),
+                                                 .baseStructName = lhsRaw,
+                                                 .effStructName = effLhs,
+                                                 .sourceFile = _file ? _file->moduleName() : "",
+                                                 .sourceLine = line});
                 pushedFrame = true;
             }
             // SubstFrame 在异常路径上必须 pop, 否则后续 applySubst 误用本帧 → 类型污染.
             try {
-            vector<TypeInfo> paramTypes;
-            for (auto p : methodHeader->params()) {
-                if (p->type()) paramTypes.push_back(applySubst(p->type()->getType()));
-            }
-            TypeInfo retType;
-            if (methodHeader->retType()) retType = applySubst(methodHeader->retType()->getType());
-            string mFallibleErr;
-            if (auto e = methodHeader->getAnnoArg("Fallible")) mFallibleErr = *e;
-            auto fn = getMethodFunction(effLhs, methodName, paramTypes, retType,
-                                        mFallibleErr, /*isStatic=*/true);
-            vector<llvm::Value*> argVals;
-            argVals.reserve(node->args().size());
-            // Phase 6E: 灵活整数字面量按形参类型回填 (如 `S::make(1)` 推 1 为 i64)
-            for (size_t i = 0; i < node->args().size() && i < paramTypes.size(); ++i) {
-                tryInferIntType(node->args()[i], paramTypes[i]);
-            }
-            // Phase 6E: 调用站点实参 arity / 类型校验 (替代 6D 删除的 E6033).
-            // 先抛 E3131 比让 LLVM signature-mismatch 断言崩好得多.
-            if (node->args().size() != paramTypes.size()) {
-                string expected, got;
-                for (size_t i = 0; i < paramTypes.size(); ++i) {
-                    if (i) expected += ", ";
-                    expected += paramTypes[i].getFullName();
+                vector<TypeInfo> paramTypes;
+                for (auto p : methodHeader->params()) {
+                    if (p->type()) paramTypes.push_back(applySubst(p->type()->getType()));
                 }
-                for (size_t i = 0; i < node->args().size(); ++i) {
-                    if (i) got += ", ";
-                    got += node->args()[i]->getType().getFullName();
+                TypeInfo retType;
+                if (methodHeader->retType()) retType = applySubst(methodHeader->retType()->getType());
+                string mFallibleErr;
+                if (auto e = methodHeader->getAnnoArg("Fallible")) mFallibleErr = *e;
+                auto fn = getMethodFunction(effLhs, methodName, paramTypes, retType, mFallibleErr, /*isStatic=*/true);
+                vector<llvm::Value*> argVals;
+                argVals.reserve(node->args().size());
+                // Phase 6E: 灵活整数字面量按形参类型回填 (如 `S::make(1)` 推 1 为 i64)
+                for (size_t i = 0; i < node->args().size() && i < paramTypes.size(); ++i) {
+                    tryInferIntType(node->args()[i], paramTypes[i]);
                 }
-                throw YuxError(line, col, ErrorCode::E3131,
-                               lhsRaw, methodName,
-                               paramTypes.size(), expected,
-                               node->args().size(), got);
-            }
-            for (size_t i = 0; i < node->args().size(); ++i) {
-                auto actualTy = node->args()[i]->getType();
-                if (!actualTy.empty() && !(actualTy == paramTypes[i])) {
+                // Phase 6E: 调用站点实参 arity / 类型校验 (替代 6D 删除的 E6033).
+                // 先抛 E3131 比让 LLVM signature-mismatch 断言崩好得多.
+                if (node->args().size() != paramTypes.size()) {
                     string expected, got;
-                    for (size_t j = 0; j < paramTypes.size(); ++j) {
-                        if (j) expected += ", ";
-                        expected += paramTypes[j].getFullName();
+                    for (size_t i = 0; i < paramTypes.size(); ++i) {
+                        if (i) expected += ", ";
+                        expected += paramTypes[i].getFullName();
                     }
-                    for (size_t j = 0; j < node->args().size(); ++j) {
-                        if (j) got += ", ";
-                        got += node->args()[j]->getType().getFullName();
+                    for (size_t i = 0; i < node->args().size(); ++i) {
+                        if (i) got += ", ";
+                        got += node->args()[i]->getType().getFullName();
                     }
-                    throw YuxError(line, col, ErrorCode::E3131,
-                                   lhsRaw, methodName,
-                                   paramTypes.size(), expected,
+                    throw YuxError(line, col, ErrorCode::E3131, lhsRaw, methodName, paramTypes.size(), expected,
                                    node->args().size(), got);
                 }
-            }
-            for (auto& a : node->args()) {
-                argVals.push_back(compileExpr(a));
-            }
-            // Phase 4c: 静态 fn 调用点的句柄实参所有权转移，与 ExprCallNode 路径对齐
-            // (compiler_call.cpp:667-670). 不做这步会让 callee 拿到 caller 唯一 +1,
-            // callee 析构释放后 caller 的 alloca 变成 use-after-free.
-            for (size_t i = 0; i < argVals.size() && i < paramTypes.size(); ++i) {
-                if (!typeNeedsDestructor(paramTypes[i])) continue;
-                if (!isFreshHandleExpr(node->args()[i])) {
-                    retainHandleAtCallSite(argVals[i], paramTypes[i]);
-                } else {
-                    consumeTemp(argVals[i]);
+                for (size_t i = 0; i < node->args().size(); ++i) {
+                    auto actualTy = node->args()[i]->getType();
+                    if (!actualTy.empty() && !(actualTy == paramTypes[i])) {
+                        string expected, got;
+                        for (size_t j = 0; j < paramTypes.size(); ++j) {
+                            if (j) expected += ", ";
+                            expected += paramTypes[j].getFullName();
+                        }
+                        for (size_t j = 0; j < node->args().size(); ++j) {
+                            if (j) got += ", ";
+                            got += node->args()[j]->getType().getFullName();
+                        }
+                        throw YuxError(line, col, ErrorCode::E3131, lhsRaw, methodName, paramTypes.size(), expected,
+                                       node->args().size(), got);
+                    }
                 }
-            }
-            auto callResult = _builder.CreateCall(fn, argVals,
-                                       retType.empty() ? "" : methodName + ".ret");
-            if (pushedFrame) {
-                _substStack.pop_back();
-            }
-            return callResult;
+                for (auto& a : node->args()) {
+                    argVals.push_back(compileExpr(a));
+                }
+                // Phase 4c: 静态 fn 调用点的句柄实参所有权转移，与 ExprCallNode 路径对齐
+                // (compiler_call.cpp:667-670). 不做这步会让 callee 拿到 caller 唯一 +1,
+                // callee 析构释放后 caller 的 alloca 变成 use-after-free.
+                for (size_t i = 0; i < argVals.size() && i < paramTypes.size(); ++i) {
+                    if (!typeNeedsDestructor(paramTypes[i])) continue;
+                    if (!isFreshHandleExpr(node->args()[i])) {
+                        retainHandleAtCallSite(argVals[i], paramTypes[i]);
+                    } else {
+                        consumeTemp(argVals[i]);
+                    }
+                }
+                auto callResult = _builder.CreateCall(fn, argVals, retType.empty() ? "" : methodName + ".ret");
+                if (pushedFrame) {
+                    _substStack.pop_back();
+                }
+                return callResult;
             } catch (...) {
                 if (pushedFrame) _substStack.pop_back();
                 throw;
@@ -212,8 +206,11 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
         for (auto t : variant->payloadTypes()) {
             auto ll = getLLVMType(t->getType());
             if (!ll) {
-                throw YuxError(line, col, ErrorCode::E3096,
-                    enumName + "::" + variantName + " payload");
+                std::string msg = enumName;
+                msg += "::";
+                msg += variantName;
+                msg += " payload";
+                throw YuxError(line, col, ErrorCode::E3096, msg);
             }
             elemTys.push_back(ll);
         }
@@ -229,11 +226,15 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
             auto argExpr = node->args()[i];
             auto argVal = compileExpr(argExpr);
             if (!argVal) {
-                throw YuxError(line, col, ErrorCode::E3096,
-                    enumName + "::" + variantName + " arg#" + std::to_string(i));
+                std::string msg = enumName;
+                msg += "::";
+                msg += variantName;
+                msg += " arg#";
+                msg += std::to_string(i);
+                throw YuxError(line, col, ErrorCode::E3096, msg);
             }
-            auto fieldPtr = _builder.CreateStructGEP(payloadStruct, payloadBufPtr,
-                static_cast<unsigned>(i), "enum.payload.elem");
+            auto fieldPtr =
+                _builder.CreateStructGEP(payloadStruct, payloadBufPtr, static_cast<unsigned>(i), "enum.payload.elem");
             _builder.CreateStore(argVal, fieldPtr);
             // 实参作为 fresh 临时若已入帧，需消费掉：所有权随构造转交给 enum 值，
             // 否则帧弹出时会 release 一次导致 use-after-free
@@ -244,10 +245,9 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
     auto loaded = _builder.CreateLoad(enumLLVMType, alloca, "enum.val");
 
     DEBUG_LOG_VAL("    Expr: EnumCtor",
-        enumName << "::" << variantName << " tag=" << tagIndex << " arity=" << declArity);
+                  enumName << "::" << variantName << " tag=" << tagIndex << " arity=" << declArity);
     return loaded;
 }
-
 
 // 编译 Dyn<D>(x) 构造表达式（DRAFT-dyn-draft / 拟 §12.9）
 //
@@ -284,7 +284,10 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
     Node* cur = node->parent();
     FileNode* file = nullptr;
     while (cur) {
-        if (auto f = dynamic_cast<FileNode*>(cur)) { file = f; break; }
+        if (auto f = dynamic_cast<FileNode*>(cur)) {
+            file = f;
+            break;
+        }
         cur = cur->parent();
     }
 
@@ -299,8 +302,7 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
     }
     if (!specDecl) {
         // E1131: 内层不是已知 draft 名 (可能是结构体 / 类型别名 / 不存在符号)
-        throw YuxError(line, col, ErrorCode::E1131,
-            specBareName.empty() ? std::string("?") : specBareName);
+        throw YuxError(line, col, ErrorCode::E1131, specBareName.empty() ? std::string("?") : specBareName);
     }
 
     // E1132: Dyn<Dyn<...>> — 内层 draft 位置不能再是 Dyn
@@ -312,8 +314,7 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
     if (_yux) {
         auto& checker = _yux->specImplChecker();
         if (!checker.specIsObjectSafe(specDecl)) {
-            throw YuxError(line, col, ErrorCode::E1134,
-                specQualified, specQualified, specQualified);
+            throw YuxError(line, col, ErrorCode::E1134, specQualified, specQualified, specQualified);
         }
     }
 
@@ -339,8 +340,7 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
         }
     }
     if (concreteBare.empty()) {
-        throw YuxError(line, col, ErrorCode::E1133,
-            specQualified, argType.getFullName(), specQualified);
+        throw YuxError(line, col, ErrorCode::E1133, specQualified, argType.getFullName(), specQualified);
     }
     if (_yux) {
         auto& checker = _yux->specImplChecker();
@@ -348,8 +348,7 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
         // boundSatisfied 同时覆盖显式 impl (_seen) 与 #DraftLike 结构匹配
         std::vector<TypeInfo> specTypeArgs;
         if (!checker.boundSatisfied(concreteTI, specDecl, specQualified, specTypeArgs)) {
-            throw YuxError(line, col, ErrorCode::E1133,
-                specQualified, argType.getFullName(), specQualified);
+            throw YuxError(line, col, ErrorCode::E1133, specQualified, argType.getFullName(), specQualified);
         }
     }
 
@@ -400,11 +399,9 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
     fatPtr = _builder.CreateInsertValue(fatPtr, vtablePtr, {0}, "dyn.vtable");
     fatPtr = _builder.CreateInsertValue(fatPtr, dataPtr, {1}, "dyn.fat");
 
-    DEBUG_LOG_VAL("    Expr: DynCtor",
-        resultType.getFullName() << " <- " << argType.getFullName());
+    DEBUG_LOG_VAL("    Expr: DynCtor", resultType.getFullName() << " <- " << argType.getFullName());
     return fatPtr;
 }
-
 
 // 编译 Heap:<T>(x) 构造表达式（DRAFT-heap-types §8.3a）
 // 形态：单参；arg 求值为 T 值。
@@ -440,21 +437,18 @@ llvm::Value* Compiler::compileHeapCtorExpr(p<ExprHeapCtorNode> node) {
     bool takeoverFromPtr = argType.isPtr() && innerType.name != "Ptr";
     if (!takeoverFromPtr && !(argType == innerType)) {
         // Sema 已在 visitExpr(ExprHeapCtorNode) 内 shadow 抛 E3028；保留作幂等防御性双跑
-        throw YuxError(line, col, ErrorCode::E3028,
-            innerType.name, innerType.name, argType.name);
+        throw YuxError(line, col, ErrorCode::E3028, innerType.name, innerType.name, argType.name);
     }
 
     auto argVal = compileExpr(argExpr);
 
     if (takeoverFromPtr) {
-        DEBUG_LOG_VAL("    Expr: HeapCtor (FFI take-over)",
-            resultType.getFullName() << " <- Ptr");
+        DEBUG_LOG_VAL("    Expr: HeapCtor (FFI take-over)", resultType.getFullName() << " <- Ptr");
         return argVal;
     }
 
     auto innerLLVMType = getLLVMType(innerType);
-    auto sizeVal = _builder.getInt64(
-        _module->getDataLayout().getTypeAllocSize(innerLLVMType).getFixedValue());
+    auto sizeVal = _builder.getInt64(_module->getDataLayout().getTypeAllocSize(innerLLVMType).getFixedValue());
     auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
     auto rawPtr = _builder.CreateCall(allocFn, {sizeVal}, "heap_payload");
     _builder.CreateStore(argVal, rawPtr);
@@ -462,7 +456,6 @@ llvm::Value* Compiler::compileHeapCtorExpr(p<ExprHeapCtorNode> node) {
     // 否则帧弹出时 dtor 会与作用域尾 __yux_heap_free 前的 inner dtor 双释放（含 RC 字段时 use-after-free）
     consumeTemp(argVal);
 
-    DEBUG_LOG_VAL("    Expr: HeapCtor",
-        resultType.getFullName() << " <- " << argType.getFullName());
+    DEBUG_LOG_VAL("    Expr: HeapCtor", resultType.getFullName() << " <- " << argType.getFullName());
     return rawPtr;
 }

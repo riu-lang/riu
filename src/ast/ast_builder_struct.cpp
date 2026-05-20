@@ -284,7 +284,9 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
     // 方法符号
     for (auto method : structImpl->methods()) {
         string methodName = method->header()->name().getText();
-        string fullName = structName + "." + methodName;
+        string fullName = structName;
+        fullName += '.';
+        fullName += methodName;
 
         vector<TypeInfo> paramTypes;
         paramTypes.emplace_back(structName);

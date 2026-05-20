@@ -8,19 +8,22 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
     const initializer_list<string> TYPES = {"bool", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64"};
     const initializer_list<string> INT_TYPES = {"i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"};
     const initializer_list<string> FLOAT_TYPES = {"f32", "f64"};
-    
+
     for (const auto& t : TYPES) {
         registerSymbol(t, {SymbolKind::Struct, t, TypeInfo(t)});
 
         // 类型转换方法
         for (const auto& f : TYPES) {
-            string fnName = "to_" + f;
-            string fullName = t + "." + fnName;
+            string fnName = "to_";
+            fnName += f;
+            string fullName = t;
+            fullName += '.';
+            fullName += fnName;
             registerSymbol(fullName, {SymbolKind::Function, fnName, TypeInfo(f)});
             registerFnSymbol(fullName, {fnName, "", {}, TypeInfo(f)});
         }
     }
-    
+
     // 整数类型运算符方法
     for (const auto& t : INT_TYPES) {
         // 算术运算符: plus, minus, mul, div, mod
@@ -48,7 +51,7 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
             registerFnSymbol(fullName, {op, "", {}, TypeInfo(t)});
         }
     }
-    
+
     // 浮点类型运算符方法
     for (const auto& t : FLOAT_TYPES) {
         // 算术运算符: plus, minus, mul, div, mod
@@ -70,7 +73,7 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
             registerFnSymbol(fullName, {"neg", "", {}, TypeInfo(t)});
         }
     }
-    
+
     // bool 类型运算符方法
     {
         string fullName = "bool.not";
@@ -85,7 +88,8 @@ void FileNode::addFunction(const p<FnNode>& function) {
 
 void FileNode::addStructDecl(const p<StructDeclNode>& structDecl) {
     _structDecls.push_back(structDecl);
-    registerSymbol(structDecl->name().getText(), {SymbolKind::Struct, structDecl->name().getText(), TypeInfo(structDecl->name().getText())});
+    registerSymbol(structDecl->name().getText(),
+                   {SymbolKind::Struct, structDecl->name().getText(), TypeInfo(structDecl->name().getText())});
 }
 
 void FileNode::addStructImpl(const p<StructImplNode>& structImpl) {
@@ -222,7 +226,8 @@ FnNode* FileNode::getGenericFunction(const string& name) const {
 
 void FileNode::addImport(const string& mod) {
     if (mod.empty() || mod == _moduleName) return;
-    for (auto& m : _imports) if (m == mod) return;
+    for (auto& m : _imports)
+        if (m == mod) return;
     _imports.push_back(mod);
 }
 
@@ -301,7 +306,8 @@ void FileNode::throwAmbiguousAlias(const string& alias, int line) const {
 
 void FileNode::addWildcardImport(FileNode* file) {
     if (!file || file == this) return;
-    for (auto* f : _wildcardImports) if (f == file) return;
+    for (auto* f : _wildcardImports)
+        if (f == file) return;
     _wildcardImports.push_back(file);
 }
 
