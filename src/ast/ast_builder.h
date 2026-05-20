@@ -21,7 +21,7 @@ class ASTBuilder : public yux::yuxParserBaseVisitor {
     vector<p<Node>> _nodes;
     vector<p<ScopeNode>> _scopeStack;
 
-    template<typename T, typename Ctx, typename... Args>
+    template <typename T, typename Ctx, typename... Args>
     p<T> createWithLine(Ctx ctx, Args&&... args) {
         auto node = new T(std::forward<Args>(args)...);
         _nodes.push_back(node);
@@ -35,7 +35,7 @@ class ASTBuilder : public yux::yuxParserBaseVisitor {
         }
         return node;
     }
-    
+
     p<ScopeNode> currentScope() const {
         if (_scopeStack.empty()) return nullptr;
         return _scopeStack.back();
@@ -49,8 +49,8 @@ class ASTBuilder : public yux::yuxParserBaseVisitor {
     string findEnclosingStructName() const;
 
 public:
-    explicit ASTBuilder(Yux& yux, const string& moduleName = "", bool isSdk = false,
-                        bool isTestFile = false, const string& sourcePath = "");
+    explicit ASTBuilder(Yux& yux, string moduleName = "", bool isSdk = false, bool isTestFile = false,
+                        string sourcePath = "");
     ~ASTBuilder() override;
 
     [[nodiscard]] bool isTestFile() const { return _isTestFile; }
@@ -60,8 +60,8 @@ public:
 
     // 递归预加载包 `pkgModName` 下的所有 .yux 后代模块，按点分相对路径（相对于 pkgModName）
     // 注册到 `file` 的 packageChild 表下（键形如 "a.b.inner"）。中间子目录不单独注册。
-    void preloadPackageChildren(FileNode* file, const string& alias, const string& pkgModName,
-                                const string& relPrefix, int errorLine);
+    void preloadPackageChildren(FileNode* file, const string& alias, const string& pkgModName, const string& relPrefix,
+                                int errorLine);
 
     std::any visitProgram(yux::yuxParser::ProgramContext* ctx) override;
     std::any visitImports(yux::yuxParser::ImportsContext* ctx) override;
@@ -153,4 +153,4 @@ public:
     std::any visitNumFloat(yux::yuxParser::NumFloatContext* ctx) override;
 };
 
-#endif //YUX_LANG_AST_BUILDER_H
+#endif // YUX_LANG_AST_BUILDER_H

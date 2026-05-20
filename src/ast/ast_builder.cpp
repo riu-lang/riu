@@ -23,8 +23,9 @@
 #include <algorithm>
 #include "types.h"
 
-ASTBuilder::ASTBuilder(Yux& yux, const string& moduleName, bool isSdk, bool isTestFile, const string& sourcePath)
-    : _yux(yux), _isSdk(isSdk), _isTestFile(isTestFile), _moduleName(moduleName), _sourcePath(sourcePath) {}
+ASTBuilder::ASTBuilder(Yux& yux, string moduleName, bool isSdk, bool isTestFile, string sourcePath)
+    : _yux(yux), _isSdk(isSdk), _isTestFile(isTestFile), _moduleName(std::move(moduleName)),
+      _sourcePath(std::move(sourcePath)) {}
 
 ASTBuilder::~ASTBuilder() {
     if (_isSdk) {
