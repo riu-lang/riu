@@ -157,6 +157,54 @@ bool isLvalueArrayBase(ExprNode* baseExpr) {
     return false;
 }
 
+// E4025 (DRAFT-heap-types §8.3a.5.1): Rc/Weak/Array 容器禁止内嵌 Heap.
+// 递归扫描 TypeInfo: 若任一 Rc/Weak/Array 直接 elem 是 Heap, 抛 E4025;
+// 否则继续下钻 (覆盖 `Rc<Rc<Heap<T>>>` / `Array<Rc<Heap<T>>>` 等).
+// Compiler::getLLVMType 在容器分支同 throw 留作幂等防御性双跑.
+void validateNoNestedHeap(const TypeInfo& t, int line, int col) {
+    if (t.isRc()) {
+        if (auto e = t.rcElementType()) {
+            if (e->isHeap()) {
+                auto inner = e->heapElementType();
+                throw YuxError(line, col, ErrorCode::E4025, std::string("Rc"),
+                    inner ? inner->name : std::string("?"));
+            }
+            validateNoNestedHeap(*e, line, col);
+        }
+        return;
+    }
+    if (t.isWeak()) {
+        if (auto e = t.weakElementType()) {
+            if (e->isHeap()) {
+                auto inner = e->heapElementType();
+                throw YuxError(line, col, ErrorCode::E4025, std::string("Weak"),
+                    inner ? inner->name : std::string("?"));
+            }
+            validateNoNestedHeap(*e, line, col);
+        }
+        return;
+    }
+    if (t.isArrayGeneric()) {
+        if (auto e = t.arrayGenericElementType()) {
+            if (e->isHeap()) {
+                auto inner = e->heapElementType();
+                throw YuxError(line, col, ErrorCode::E4025, std::string("Array"),
+                    inner ? inner->name : std::string("?"));
+            }
+            validateNoNestedHeap(*e, line, col);
+        }
+        return;
+    }
+    if (t.isHeap()) {
+        if (auto e = t.heapElementType()) validateNoNestedHeap(*e, line, col);
+        return;
+    }
+    // 其余形态 (struct / tuple / nullable / ref / ptr / dyn ...) 递归 genericArgs.
+    for (const auto& g : t.genericArgs) {
+        if (g) validateNoNestedHeap(*g, line, col);
+    }
+}
+
 bool isMigratedCode(const char* code) {
     if (!code) return false;
     std::string_view sv(code);
@@ -710,6 +758,36 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     if (auto n = dynamic_cast<p<ExprCallNode>>(expr)) {
         visitExpr(n->getCalleeExpr());
         for (auto& a : n->getArgs()) visitExpr(a);
+
+        // E4025 (DRAFT-heap-types §8.3a.5.1): 容器构造 turbofish 内嵌 Heap 拦截.
+        // 形态: `Rc:<Heap<T>>(...)` / `Weak:<Heap<T>>(...)` / `Array:<Heap<T>>(...)`
+        // 以及任意 call 的 turbofish 内出现 `Rc<Heap<T>>` / `Weak<...>` / `Array<...>` 嵌套.
+        // 与 compiler_types.cpp:438/464/484 镜像; Compiler 端 throw 保留作幂等防御性双跑.
+        if (!n->getTypeArgs().empty()) {
+            int eline = n->getLineNumber();
+            int ecol = n->getColumn();
+            string calleeName;
+            if (auto lit = dynamic_cast<p<ExprLiteralNode>>(n->getCalleeExpr())) {
+                if (auto obj = dynamic_cast<p<LiteralObjNode>>(lit->literal())) {
+                    calleeName = obj->getValue().getText();
+                }
+            }
+            try {
+                auto t0 = n->getTypeArgs()[0]->getType();
+                if ((calleeName == "Rc" || calleeName == "Weak" || calleeName == "Array")
+                    && t0.isHeap()) {
+                    auto inner = t0.heapElementType();
+                    throw YuxError(eline, ecol, ErrorCode::E4025, calleeName,
+                        inner ? inner->name : std::string("?"));
+                }
+                for (auto& tn : n->getTypeArgs()) {
+                    try { validateNoNestedHeap(tn->getType(), eline, ecol); }
+                    catch (const YuxError&) { throw; }
+                    catch (...) {}
+                }
+            } catch (const YuxError&) { throw; }
+            catch (...) {}
+        }
 
         // Phase 3.3 前置.4: ID-callee / 非-ID-callee 的错误传播校验
         // (E7001/E7004/E7006/E7016). 协议与 Compiler::compileCallExpr 顶部
