@@ -168,8 +168,8 @@ bool Document::parseIfDirty() {
         Diagnostic d;
         d.severity = Severity::Error;
         d.message = std::string("internal parse error: ") + e.what();
-        d.start = {0, 0};
-        d.end = {0, 1};
+        d.start = {.line=0, .character=0};
+        d.end = {.line=0, .character=1};
         _diagnostics.push_back(std::move(d));
     }
     return true;

@@ -184,7 +184,7 @@ void Compiler::callDestructor(const string& varName, const TypeInfo& varType) {
 void Compiler::callDestructorsForScope() {
     // 逆序遍历作用域变量列表
     for (auto it = _scopeVars.rbegin(); it != _scopeVars.rend(); ++it) {
-        auto varName = *it;
+        const auto& varName = *it;
         auto sym = _currentFnNode->lookupSymbol(varName);
         if (sym) {
             callDestructor(varName, sym->type);
@@ -612,7 +612,7 @@ void Compiler::recordTemp(llvm::Value* val, const TypeInfo& type) {
     if (!val) return;
     if (_tempStack.empty()) return;
     if (type.isRc() || type.isArrayGeneric() || type.isWeak()) {
-        _tempStack.back().push_back({val, type, nullptr});
+        _tempStack.back().push_back({.val=val, .type=type, .spillSlot=nullptr});
         return;
     }
     // Phase 8d.4: 含 RC 字段的 struct value（如 String）—— 落 entry 块 alloca，由 releaseAtPtr/dtor 释放
@@ -626,7 +626,7 @@ void Compiler::recordTemp(llvm::Value* val, const TypeInfo& type) {
     llvm::IRBuilder<> entryBuilder(&entryBB, entryBB.getFirstInsertionPt());
     auto slot = entryBuilder.CreateAlloca(getLLVMType(type), nullptr, "temp.struct.spill");
     _builder.CreateStore(val, slot);
-    _tempStack.back().push_back({val, type, slot});
+    _tempStack.back().push_back({.val=val, .type=type, .spillSlot=slot});
 }
 
 // 消费顶帧中匹配的 Value*（用于 declare-assign / assign / ret / fresh-arg-callsite 路径）

@@ -107,7 +107,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
             if (auto litNode = dynamic_cast<ExprLiteralNode*>(node->expr())) {
                 if (auto objLit = dynamic_cast<LiteralObjNode*>(litNode->literal())) {
                     auto varName = objLit->getValue().getText();
-                    _scopeVars.erase(std::remove(_scopeVars.begin(), _scopeVars.end(), varName), _scopeVars.end());
+                    std::erase(_scopeVars, varName);
                 }
             }
         }
@@ -318,7 +318,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         if (auto litNode = dynamic_cast<ExprLiteralNode*>(node->expr())) {
             if (auto objLit = dynamic_cast<LiteralObjNode*>(litNode->literal())) {
                 auto varName = objLit->getValue().getText();
-                _scopeVars.erase(std::remove(_scopeVars.begin(), _scopeVars.end(), varName), _scopeVars.end());
+                std::erase(_scopeVars, varName);
             }
         }
     }
@@ -1182,7 +1182,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                 TypeInfo curType = resolvedTop;
 
                 auto isPureDigits = [](const string& s) {
-                    return !s.empty() && std::all_of(s.begin(), s.end(),
+                    return !s.empty() && std::ranges::all_of(s,
                                           [](char c){ return c >= '0' && c <= '9'; });
                 };
 

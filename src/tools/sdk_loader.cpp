@@ -67,7 +67,7 @@ std::map<std::string, SdkPkgEntry> readSdkPkg(const std::string& sdkDir) {
             name = name.substr(0, name.size() - 2);
         }
         if (name.empty()) continue;
-        r[name] = {wild ? std::string("yux.core") : ("yux.core." + name), wild};
+        r[name] = {.moduleName=wild ? std::string("yux.core") : ("yux.core." + name), .isFlat=wild};
     }
     return r;
 }
@@ -100,7 +100,7 @@ void parseSdkDir(const std::string& sdkDir, Yux& yux) {
             yuxFiles.push_back(entry.path().string());
         }
     }
-    std::sort(yuxFiles.begin(), yuxFiles.end());
+    std::ranges::sort(yuxFiles);
 
     // 第一遍：平铺（base.*）；先建好 _sdkFile 以便后续命名空间文件的父作用域有效
     for (const auto& yuxFile : yuxFiles) {

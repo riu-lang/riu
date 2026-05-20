@@ -91,7 +91,7 @@ ImplLookup findImplMethod(Yux* yux,
             if (preferSpecImpl != isSpecImpl) continue;
             for (auto& m : impl->methods()) {
                 if (m->header()->name().getText() == methodName) {
-                    return {m, file->moduleName()};
+                    return {.method=m, .ownerModule=file->moduleName()};
                 }
             }
         }

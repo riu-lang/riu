@@ -1124,7 +1124,7 @@ i64 parseIntLiteral(const string& text, int line, int col) {
     }
 
     // 下划线分隔符
-    parseStr.erase(std::remove(parseStr.begin(), parseStr.end(), '_'), parseStr.end());
+    std::erase(parseStr, '_');
 
     try {
         if (isUnsigned) {

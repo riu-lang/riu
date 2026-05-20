@@ -16,16 +16,16 @@ const std::vector<CompletionItem>& buildItems() {
     static const std::vector<CompletionItem> items = [] {
         std::vector<CompletionItem> v;
         auto kw = [&](std::string label, std::string detail) {
-            v.push_back({std::move(label), CompletionKind::Keyword, std::move(detail), {}, InsertFormat::PlainText, {}});
+            v.push_back({.label=std::move(label), .kind=CompletionKind::Keyword, .detail=std::move(detail), .insertText={}, .format=InsertFormat::PlainText, .documentation={}});
         };
         auto ty = [&](std::string label, std::string detail) {
-            v.push_back({std::move(label), CompletionKind::Class, std::move(detail), {}, InsertFormat::PlainText, {}});
+            v.push_back({.label=std::move(label), .kind=CompletionKind::Class, .detail=std::move(detail), .insertText={}, .format=InsertFormat::PlainText, .documentation={}});
         };
         auto fn = [&](std::string label, std::string detail) {
-            v.push_back({std::move(label), CompletionKind::Function, std::move(detail), {}, InsertFormat::PlainText, {}});
+            v.push_back({.label=std::move(label), .kind=CompletionKind::Function, .detail=std::move(detail), .insertText={}, .format=InsertFormat::PlainText, .documentation={}});
         };
         auto sn = [&](std::string label, std::string detail, std::string insert, std::string doc) {
-            v.push_back({std::move(label), CompletionKind::Snippet, std::move(detail), std::move(insert), InsertFormat::Snippet, std::move(doc)});
+            v.push_back({.label=std::move(label), .kind=CompletionKind::Snippet, .detail=std::move(detail), .insertText=std::move(insert), .format=InsertFormat::Snippet, .documentation=std::move(doc)});
         };
 
         // KEYWORDS

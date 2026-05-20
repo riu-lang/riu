@@ -126,7 +126,7 @@ void SpecImplChecker::checkExplicitImplicitConflict() {
     auto collect = [&](FileNode* file) {
         if (!file) return;
         for (auto& impl : file->getStructImpls()) {
-            const std::string typeBare = impl->structName();
+            const std::string& typeBare = impl->structName();
             const std::string ownerMod = moduleOfType(typeBare);
             const std::string typeQualified = ownerMod.empty()
                 ? typeBare

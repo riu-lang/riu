@@ -287,7 +287,7 @@ static void handleFormatting(ServerState& st, const json& msg) {
     LspPosition end = documentEndPos(doc->text());
     json edits = json::array();
     edits.push_back({
-        {"range", rangeToJson({0, 0}, end)},
+        {"range", rangeToJson({.line=0, .character=0}, end)},
         {"newText", std::move(formatted)},
     });
     sendResult(id, std::move(edits));

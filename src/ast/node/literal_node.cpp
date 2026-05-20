@@ -8,7 +8,7 @@
 #include <utility>
 #include <regex>
 
-LiteralNode::LiteralNode(Token value) :
+LiteralNode::LiteralNode(const Token& value) :
     Node(nullptr), _value(value) {
     _line = static_cast<int>(value.getLine());
 }
@@ -21,11 +21,11 @@ string LiteralNode::getLocation() const {
     return _value.getText();
 }
 
-LiteralNumberNode::LiteralNumberNode(Token value) : LiteralNode(value) {
+LiteralNumberNode::LiteralNumberNode(Token value) : LiteralNode(std::move(value)) {
 }
 
-LiteralIntNode::LiteralIntNode(Token value) : LiteralNumberNode(value) {
-    const auto v = value.getText();
+LiteralIntNode::LiteralIntNode(const Token& value) : LiteralNumberNode(value) {
+    const auto& v = value.getText();
     // language=RegExp
     static const std::regex type_regex(R"([ui](\d+)$)");
     if (std::smatch match; std::regex_search(v, match, type_regex)) {
@@ -40,7 +40,7 @@ TypeInfo LiteralIntNode::getType() const {
 }
 
 LiteralFloatNode::LiteralFloatNode(const Token& value) : LiteralNumberNode(value) {
-    const auto v = value.getText();
+    const auto& v = value.getText();
     // language=RegExp
     static const std::regex type_regex(R"(f(\d+)$)");
     if (std::smatch match; std::regex_search(v, match, type_regex)) {

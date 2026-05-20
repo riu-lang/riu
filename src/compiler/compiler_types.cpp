@@ -123,12 +123,12 @@ TypeInfo resolveAliasImpl(const TypeInfo& t, FileNode* file, std::set<std::strin
                 newArgs.push_back(nullptr);
             }
         }
-        return TypeInfo(t.name, std::move(newArgs));
+        return {t.name, std::move(newArgs)};
     }
     if (t.kind == TypeKind::Array && t.elementType) {
         std::set<std::string> sub = visited;
         TypeInfo inner = resolveAliasImpl(*t.elementType, file, sub);
-        return TypeInfo(std::make_shared<TypeInfo>(std::move(inner)), t.arraySize);
+        return {std::make_shared<TypeInfo>(std::move(inner)), t.arraySize};
     }
     if (t.kind == TypeKind::Tuple) {
         vector<sp<TypeInfo>> newElems;
@@ -276,7 +276,7 @@ string Compiler::ensureStructInstance(
     }
 
     // 压入替换栈帧
-    _substStack.push_back(SubstFrame{subst, baseName, mangledName, inst.sourceFile, inst.sourceLine});
+    _substStack.push_back(SubstFrame{.subst=subst, .baseStructName=baseName, .effStructName=mangledName, .sourceFile=inst.sourceFile, .sourceLine=inst.sourceLine});
 
     // 计算实例化后的字段类型
     vector<llvm::Type*> fieldTypes;

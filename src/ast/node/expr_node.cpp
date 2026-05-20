@@ -24,14 +24,14 @@ static TypeInfo lookupSpecBoundMethodRetType(
         }
         cur = cur->parent();
     }
-    if (!header || !header->isGeneric()) return TypeInfo();
+    if (!header || !header->isGeneric()) return {};
     const auto& tps = header->typeParams();
     const auto& bounds = header->typeParamBounds();
     size_t idx = SIZE_MAX;
     for (size_t i = 0; i < tps.size(); ++i) {
         if (tps[i] == typeParamName) { idx = i; break; }
     }
-    if (idx == SIZE_MAX || idx >= bounds.size()) return TypeInfo();
+    if (idx == SIZE_MAX || idx >= bounds.size()) return {};
 
     auto scope = contextParent ? contextParent->findNearestScope() : nullptr;
     auto* file = dynamic_cast<FileNode*>(scope);
@@ -39,7 +39,7 @@ static TypeInfo lookupSpecBoundMethodRetType(
         scope = scope->parentScope();
         file = dynamic_cast<FileNode*>(scope);
     }
-    if (!file) return TypeInfo();
+    if (!file) return {};
 
     for (auto& dname : bounds[idx]) {
         SpecDeclNode* draft = file->getSpecDecl(dname);
@@ -56,10 +56,10 @@ static TypeInfo lookupSpecBoundMethodRetType(
         for (auto& sig : draft->signatures()) {
             if (sig->name().getText() != methodName) continue;
             if (sig->retType()) return sig->retType()->getType();
-            return TypeInfo();
+            return {};
         }
     }
-    return TypeInfo();
+    return {};
 }
 
 // Phase 4a：Dyn<D>/Dyn<D&> 上的 `.m` 静态类型查找。
@@ -67,9 +67,9 @@ static TypeInfo lookupSpecBoundMethodRetType(
 // 避免下游（assert_eq 推断 / implicit ret / 形参匹配）拿到 Dyn 类型而失败。
 static TypeInfo lookupDynMethodRetType(
     Node* contextParent, const TypeInfo& dynType, const string& methodName) {
-    if (!dynType.isDyn()) return TypeInfo();
+    if (!dynType.isDyn()) return {};
     auto specTy = dynType.dynSpecType();
-    if (!specTy) return TypeInfo();
+    if (!specTy) return {};
     const string& specName = specTy->name;
 
     // 走 parent() 链而不是 parentScope()：struct 方法的 FnNode 在 AST 构造时
@@ -80,7 +80,7 @@ static TypeInfo lookupDynMethodRetType(
         if (auto f = dynamic_cast<FileNode*>(cur)) { file = f; break; }
         cur = cur->parent();
     }
-    if (!file) return TypeInfo();
+    if (!file) return {};
 
     SpecDeclNode* draft = file->getSpecDecl(specName);
     if (!draft) {
@@ -92,13 +92,13 @@ static TypeInfo lookupDynMethodRetType(
             p = p->parentScope();
         }
     }
-    if (!draft) return TypeInfo();
+    if (!draft) return {};
     for (auto& sig : draft->signatures()) {
         if (sig->name().getText() != methodName) continue;
         if (sig->retType()) return sig->retType()->getType();
-        return TypeInfo();
+        return {};
     }
-    return TypeInfo();
+    return {};
 }
 
 static bool isCompilerInnerMethod(ScopeNode* scope, const string& structName, const string& methodName) {
@@ -199,14 +199,14 @@ TypeInfo ExprCallNode::getType() const {
     // 调用结果即 fn 返回类型；void 时返回空 TypeInfo
     if (type.isFn()) {
         if (auto rt = type.fnReturnType()) return *rt;
-        return TypeInfo();
+        return {};
     }
 
     // Phase 3c: callee 为 Rc<fn(...)R>，自动解引取 fat-ptr 调用，结果同 fn 返回类型
     if (type.isRc()) {
         if (auto inner = type.rcElementType(); inner && inner->isFn()) {
             if (auto rt = inner->fnReturnType()) return *rt;
-            return TypeInfo();
+            return {};
         }
     }
 
@@ -221,7 +221,8 @@ TypeInfo ExprCallNode::getType() const {
                 auto scope = findNearestScope();
                 if (scope) {
                     vector<TypeInfo> argTypes;
-                    for (auto& arg : _args) {
+                    argTypes.reserve(_args.size());
+for (auto& arg : _args) {
                         argTypes.push_back(arg->getType());
                     }
                     auto fn = scope->lookupFnSymbolWithParams(fnName, argTypes);
@@ -252,7 +253,8 @@ TypeInfo ExprCallNode::getType() const {
                         }
                         if (auto* target = file->packageChild(aliasName, childKey)) {
                             vector<TypeInfo> argTypes;
-                            for (auto& arg : _args) argTypes.push_back(arg->getType());
+                            argTypes.reserve(_args.size());
+for (auto& arg : _args) argTypes.push_back(arg->getType());
                             auto* fn = target->lookupFnSymbolWithParams(segs.back(), argTypes);
                             if (fn) return fn->retType;
                         }
@@ -274,7 +276,8 @@ TypeInfo ExprCallNode::getType() const {
                     if (file) {
                         if (auto* target = file->moduleAlias(aliasName)) {
                             vector<TypeInfo> argTypes;
-                            for (auto& arg : _args) {
+                            argTypes.reserve(_args.size());
+for (auto& arg : _args) {
                                 argTypes.push_back(arg->getType());
                             }
                             auto* fn = target->lookupFnSymbolWithParams(dotNode->member(), argTypes);
@@ -284,7 +287,7 @@ TypeInfo ExprCallNode::getType() const {
                 }
             }
         }
-        return TypeInfo();
+        return {};
     }
 
     // 方法调用（callee 为 ExprDotNode）：直接查方法符号，拿到完整 retType（含泛型 typeArgs）。
@@ -346,7 +349,8 @@ TypeInfo ExprCallNode::getType() const {
                 auto scope = findNearestScope();
                 if (scope) {
                     vector<TypeInfo> argTypes;
-                    for (auto& arg : _args) argTypes.push_back(arg->getType());
+                    argTypes.reserve(_args.size());
+for (auto& arg : _args) argTypes.push_back(arg->getType());
                     auto fn = scope->lookupFnSymbolWithParams(fnName, argTypes);
                     if (!fn) fn = scope->lookupFnSymbol(fnName);
                     if (fn) retType = fn->retType;
@@ -434,7 +438,7 @@ TypeInfo ExprCallNode::getType() const {
                     for (auto& tn : _typeArgs) {
                         genericArgs.push_back(make_shared<TypeInfo>(tn->getType()));
                     }
-                    return TypeInfo(type.name, genericArgs);
+                    return {type.name, genericArgs};
                 }
                 return TypeInfo(type.name);
             }
@@ -447,7 +451,8 @@ TypeInfo ExprCallNode::getType() const {
         }
         
         vector<TypeInfo> argTypes;
-        for (auto& arg : _args) {
+        argTypes.reserve(_args.size());
+for (auto& arg : _args) {
             argTypes.push_back(arg->getType());
         }
         
@@ -645,7 +650,7 @@ bool ExprDotNode::parseChain(const ExprDotNode* top, string& aliasName, vector<s
     auto* objLit = dynamic_cast<LiteralObjNode*>(baseLit->literal());
     if (!objLit) return false;
     aliasName = objLit->getValue().getText();
-    std::reverse(segments.begin(), segments.end());
+    std::ranges::reverse(segments);
     return true;
 }
 
@@ -680,7 +685,7 @@ TypeInfo ExprDotNode::getType() const {
             file = dynamic_cast<FileNode*>(scope);
         }
         if (!file) {
-            return TypeInfo();
+            return {};
         }
         auto sd = file->getStructDecl(innerType->name);
         if (!sd) {
@@ -704,7 +709,7 @@ TypeInfo ExprDotNode::getType() const {
         // 包装为 Nullable<U>
         std::vector<sp<TypeInfo>> args;
         args.push_back(make_shared<TypeInfo>(fieldType));
-        return TypeInfo("Nullable", args);
+        return {"Nullable", args};
     }
 
     // 链式 Dot 访问 alias-rooted：
@@ -753,7 +758,7 @@ TypeInfo ExprDotNode::getType() const {
 
     // 元组成员访问 a.N：member 为纯数字，base 为 Tuple（或别名透明展开后的 Tuple）
     // 透明别名仅做一层手工解析（只处理顶层 Normal alias 名，泛型 alias 留给 Compiler::applySubst 在 codegen 阶段兜底）
-    if (!member.empty() && std::all_of(member.begin(), member.end(),
+    if (!member.empty() && std::ranges::all_of(member,
                                        [](char c) { return c >= '0' && c <= '9'; })) {
         TypeInfo resolved = baseType;
         if (resolved.kind == TypeKind::Normal) {
@@ -979,13 +984,13 @@ const p<StatementBlockNode>& ExprIfElseNode::elseBlock() const {
 
 TypeInfo ExprIfElseNode::getType() const {
     if (!_thenBlock->hasResult()) {
-        return TypeInfo();
+        return {};
     }
     TypeInfo resultType = _thenBlock->resultExpr()->getType();
 
     for (auto& elif : _elifs) {
         if (!elif->block()->hasResult()) {
-            return TypeInfo();
+            return {};
         }
         auto elifType = elif->block()->resultExpr()->getType();
         if (elifType != resultType) {
@@ -999,7 +1004,7 @@ TypeInfo ExprIfElseNode::getType() const {
             throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3006, resultType.name, elseType.name);
         }
     } else if (!_elseBlock || !_elseBlock->hasResult()) {
-        return TypeInfo();
+        return {};
     }
 
     return resultType;
@@ -1099,7 +1104,7 @@ const vector<p<ExprNode>>& ExprArrayNode::elements() const {
 
 TypeInfo ExprArrayNode::getType() const {
     if (_elements.empty()) {
-        return TypeInfo(make_shared<TypeInfo>("__empty"), 0);
+        return {make_shared<TypeInfo>("__empty"), 0};
     }
 
     TypeInfo elementType = _elements[0]->getType();
@@ -1111,7 +1116,7 @@ TypeInfo ExprArrayNode::getType() const {
     }
 
     auto elemShared = make_shared<TypeInfo>(elementType);
-    return TypeInfo(elemShared, _elements.size());
+    return {elemShared, _elements.size()};
 }
 
 int ExprArrayNode::resolveLineNumber() const {
@@ -1195,7 +1200,7 @@ TypeInfo ExprArrayInitNode::getType() const {
     }
 
     auto elemShared = make_shared<TypeInfo>(elementType);
-    return TypeInfo(elemShared, 0);
+    return {elemShared, 0};
 }
 
 TypeInfo ExprGetRefNode::getType() const {
@@ -1259,7 +1264,7 @@ TypeInfo ExprGetRefNode::getType() const {
 
     vector<sp<TypeInfo>> genericArgs;
     genericArgs.push_back(make_shared<TypeInfo>(baseType));
-    return TypeInfo("Ref", genericArgs);
+    return {"Ref", genericArgs};
 }
 
 int ExprGetRefNode::resolveLineNumber() const {
@@ -1358,7 +1363,7 @@ TypeInfo ExprMatchNode::getType() const {
 // 编译期再校验（保持与 ExprMatchNode::getType 一致风格）。
 TypeInfo ExprTryCatchNode::getType() const {
     if (!_tryBlock->hasResult()) {
-        return TypeInfo();
+        return {};
     }
     TypeInfo first = _tryBlock->resultExpr()->getType();
     for (auto& arm : _catches) {
@@ -1373,14 +1378,14 @@ TypeInfo ExprTryCatchNode::getType() const {
 // Dyn<D>(x) / Dyn<D&>(x) 的整体类型 = `Dyn<D>` 或 `Dyn<D&>`。
 // 内层 TypeNode 已携带借用形态（Ref<D>），这里直接包一层 `Dyn` 即可。
 TypeInfo ExprDynCtorNode::getType() const {
-    if (!_specType) return TypeInfo();
+    if (!_specType) return {};
     auto inner = make_shared<TypeInfo>(_specType->getType());
     return TypeInfo("Dyn", {inner});
 }
 
 // Heap:<T>(arg) 的整体类型 = Heap<T>
 TypeInfo ExprHeapCtorNode::getType() const {
-    if (!_innerType) return TypeInfo();
+    if (!_innerType) return {};
     auto inner = make_shared<TypeInfo>(_innerType->getType());
     return TypeInfo("Heap", {inner});
 }

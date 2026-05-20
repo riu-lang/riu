@@ -23,7 +23,7 @@ void SpecRegistry::buildFromAllFiles() {
             string qn = makeQualified(file->moduleName(), d->name().getText());
             // 同一 qualified name 在多次 build 或 sdk 与 _files 重叠时可能重复; 取首次登记.
             if (_byQualified.find(qn) == _byQualified.end()) {
-                _byQualified.emplace(qn, Resolved{qn, d, file});
+                _byQualified.emplace(qn, Resolved{.qualifiedName=qn, .decl=d, .ownerFile=file});
             }
         }
     };
@@ -40,15 +40,15 @@ SpecRegistry::resolve(const string& bareName, FileNode* visibleFrom) const {
 
     // 1. 当前文件本地
     if (auto* d = lookupLocal(visibleFrom, bareName)) {
-        return Resolved{makeQualified(visibleFrom->moduleName(), d->name().getText()),
-                        d, visibleFrom};
+        return Resolved{.qualifiedName=makeQualified(visibleFrom->moduleName(), d->name().getText()),
+                        .decl=d, .ownerFile=visibleFrom};
     }
 
     // 2. wildcard 导入 (use a.b.*)
     for (auto* imp : visibleFrom->wildcardImports()) {
         if (auto* d = lookupLocal(imp, bareName)) {
-            return Resolved{makeQualified(imp->moduleName(), d->name().getText()),
-                            d, imp};
+            return Resolved{.qualifiedName=makeQualified(imp->moduleName(), d->name().getText()),
+                            .decl=d, .ownerFile=imp};
         }
     }
 
@@ -57,8 +57,8 @@ SpecRegistry::resolve(const string& bareName, FileNode* visibleFrom) const {
     while (parent) {
         if (auto* pf = dynamic_cast<FileNode*>(parent)) {
             if (auto* d = lookupLocal(pf, bareName)) {
-                return Resolved{makeQualified(pf->moduleName(), d->name().getText()),
-                                d, pf};
+                return Resolved{.qualifiedName=makeQualified(pf->moduleName(), d->name().getText()),
+                                .decl=d, .ownerFile=pf};
             }
         }
         parent = parent->parentScope();

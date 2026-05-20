@@ -9,11 +9,11 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
     const initializer_list<string> INT_TYPES = {"i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"};
     const initializer_list<string> FLOAT_TYPES = {"f32", "f64"};
     
-    for (auto t : TYPES) {
+    for (const auto& t : TYPES) {
         registerSymbol(t, {SymbolKind::Struct, t, TypeInfo(t)});
 
         // 类型转换方法
-        for (auto f : TYPES) {
+        for (const auto& f : TYPES) {
             string fnName = "to_" + f;
             string fullName = t + "." + fnName;
             registerSymbol(fullName, {SymbolKind::Function, fnName, TypeInfo(f)});
@@ -22,7 +22,7 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
     }
     
     // 整数类型运算符方法
-    for (auto t : INT_TYPES) {
+    for (const auto& t : INT_TYPES) {
         // 算术运算符: plus, minus, mul, div, mod
         for (auto op : {"plus", "minus", "mul", "div", "mod"}) {
             string fullName = string(t) + "." + op;
@@ -50,7 +50,7 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
     }
     
     // 浮点类型运算符方法
-    for (auto t : FLOAT_TYPES) {
+    for (const auto& t : FLOAT_TYPES) {
         // 算术运算符: plus, minus, mul, div, mod
         for (auto op : {"plus", "minus", "mul", "div", "mod"}) {
             string fullName = string(t) + "." + op;

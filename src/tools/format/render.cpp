@@ -44,17 +44,17 @@ bool fits(std::vector<Frame> frames, int remaining) {
                 break;
             case DocKind::Concat:
                 for (auto it = n.children.rbegin(); it != n.children.rend(); ++it) {
-                    frames.push_back({f.mode, f.indent, *it});
+                    frames.push_back({.mode=f.mode, .indent=f.indent, .doc=*it});
                 }
                 break;
             case DocKind::Indent:
                 if (!n.children.empty()) {
-                    frames.push_back({f.mode, f.indent + n.indent, n.children[0]});
+                    frames.push_back({.mode=f.mode, .indent=f.indent + n.indent, .doc=n.children[0]});
                 }
                 break;
             case DocKind::Group:
                 if (!n.children.empty()) {
-                    frames.push_back({Mode::Flat, f.indent, n.children[0]});
+                    frames.push_back({.mode=Mode::Flat, .indent=f.indent, .doc=n.children[0]});
                 }
                 break;
             case DocKind::Line:
@@ -77,7 +77,7 @@ std::string render(const Doc& doc, const RenderOptions& opt) {
     std::string out;
     int column = 0;
     std::vector<Frame> stack;
-    stack.push_back({Mode::Break, 0, doc});
+    stack.push_back({.mode=Mode::Break, .indent=0, .doc=doc});
 
     auto emitNewline = [&](int indent) {
         out.push_back('\n');
@@ -96,21 +96,21 @@ std::string render(const Doc& doc, const RenderOptions& opt) {
                 break;
             case DocKind::Concat:
                 for (auto it = n.children.rbegin(); it != n.children.rend(); ++it) {
-                    stack.push_back({f.mode, f.indent, *it});
+                    stack.push_back({.mode=f.mode, .indent=f.indent, .doc=*it});
                 }
                 break;
             case DocKind::Indent:
                 if (!n.children.empty()) {
-                    stack.push_back({f.mode, f.indent + n.indent, n.children[0]});
+                    stack.push_back({.mode=f.mode, .indent=f.indent + n.indent, .doc=n.children[0]});
                 }
                 break;
             case DocKind::Group: {
                 if (n.children.empty()) break;
                 std::vector<Frame> probe;
-                probe.push_back({Mode::Flat, f.indent, n.children[0]});
+                probe.push_back({.mode=Mode::Flat, .indent=f.indent, .doc=n.children[0]});
                 int remaining = static_cast<int>(opt.lineWidth) - column;
                 Mode chosen = fits(probe, remaining) ? Mode::Flat : Mode::Break;
-                stack.push_back({chosen, f.indent, n.children[0]});
+                stack.push_back({.mode=chosen, .indent=f.indent, .doc=n.children[0]});
                 break;
             }
             case DocKind::Line:

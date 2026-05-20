@@ -41,8 +41,8 @@ struct IRResult {
 // prefix 为可选前缀, 写在诊断头之前; 对非 YuxError 异常仅打印 prefix + msg。
 void reportRuntimeError(const std::string& sourcePath, const std::runtime_error& e, const std::string& prefix = "");
 
-void parseAST(std::string inputFile, Yux& yux, bool isSdk = false);
-IRResult compileIR(std::string inputFile, Yux& yux, bool isSdk = false);
+void parseAST(const std::string& inputFile, Yux& yux, bool isSdk = false);
+IRResult compileIR(const std::string& inputFile, Yux& yux, bool isSdk = false);
 
 // SDK 构建路径 (与项目模式一致):
 //   sdkRoot = <sdk-project-root> (含 yux.toml)
@@ -62,6 +62,6 @@ bool needRecompileSdkDir(const std::string& sdkDir, const std::string& sdkObjPat
 // 薄壳: 捕获 sdk_loader::parseSdkDir 的 YuxError 并 reportRuntimeError + exit(1)。
 void parseSdkDirOrExit(const std::string& sdkDir, Yux& yux);
 
-IRResult compileSdkDir(std::string sdkDir, Yux& yux);
+IRResult compileSdkDir(const std::string& sdkDir, Yux& yux);
 
 } // namespace yux::cli

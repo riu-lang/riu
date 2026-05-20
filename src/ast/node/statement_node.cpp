@@ -30,7 +30,7 @@ p<TypeNode> StatementDeclareAssignNode::varType() const {
 
 StatementLoopNode::StatementLoopNode(const p<Node>& parent, p<StatementBlockNode> block) :
     StatementNode(parent),
-    _block(std::move(block)) {
+    _block(block) {
 }
 
 const p<StatementBlockNode>& StatementLoopNode::block() const {

@@ -29,6 +29,7 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/raw_ostream.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -169,7 +170,7 @@ IsolatedResult spawnIsolatedTest(const std::string& exePath,
     BOOL ok = CreateProcessW(nullptr, cmdBuf.data(), nullptr, nullptr, FALSE,
                               CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
     if (!ok) {
-        return {0, {}, false, "CreateProcess failed (GLE=" + std::to_string(GetLastError()) + ")"};
+        return {.exitCode=0, .capture={}, .spawnOk=false, .spawnError="CreateProcess failed (GLE=" + std::to_string(GetLastError()) + ")"};
     }
     WaitForSingleObject(pi.hProcess, INFINITE);
     DWORD code = 0;
@@ -187,7 +188,7 @@ IsolatedResult spawnIsolatedTest(const std::string& exePath,
         std::error_code ec;
         fs::remove(capPath, ec);
     }
-    return {code, std::move(capContents), true, {}};
+    return {.exitCode=code, .capture=std::move(capContents), .spawnOk=true, .spawnError={}};
 }
 
 // 把捕获到的输出按行缩进打印到 std::cout, 便于在 RUN/FAIL 行下视觉归属
@@ -251,8 +252,8 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
     selectors.reserve(testSelectors.size());
     for (auto& s : testSelectors) {
         auto hash = s.find('#');
-        if (hash == std::string::npos) selectors.push_back({s, {}});
-        else selectors.push_back({s.substr(0, hash), s.substr(hash + 1)});
+        if (hash == std::string::npos) selectors.push_back({.mod=s, .fn={}});
+        else selectors.push_back({.mod=s.substr(0, hash), .fn=s.substr(hash + 1)});
     }
     // 模块边界感知匹配: m == sel.mod 或 m 以 `sel.mod.` 开头。
     auto modCovers = [](const std::string& m, const std::string& sm) {
@@ -367,9 +368,9 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
         // selector 扫描期裁剪: 不匹配 selModule 的 *.test.yux 直接跳过, 避免无谓的解析/codegen。
         // 普通 .yux 仍保留 —— 它们可能是被选中 test 模块的依赖。
         if (isTest && !matchesSelModule(modName)) continue;
-        entries.push_back({absPath, modName, isTest});
+        entries.push_back({.abs=absPath, .mod=modName, .isTest=isTest});
     }
-    std::sort(entries.begin(), entries.end(),
+    std::ranges::sort(entries,
               [](const LoadEntry& a, const LoadEntry& b) { return a.mod < b.mod; });
 
     // 加载所有 AST。若模块名已加载 (被 SDK 抢先), 跳过避免冲突。
@@ -420,7 +421,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
             // mangler: function(module, name, params=[], isPrivate=false) → "mod_name()"
             std::string sym = Mangler::function(modName, fnName, {}, false);
             bool isolate = fn->header()->hasAnno("TestIsolate");
-            tests.push_back({modName, fnName, sym, isolate});
+            tests.push_back({.mod=modName, .fn=fnName, .sym=sym, .isolate=isolate});
         }
 
         mods.push_back(std::move(mod));

@@ -73,7 +73,7 @@ vector<string> SymbolSuggest::nearby(ScopeNode* scope, const string& target,
         }
     }
 
-    std::sort(scored.begin(), scored.end(),
+    std::ranges::sort(scored,
               [](const pair<int, string>& a, const pair<int, string>& b) {
                   if (a.first != b.first) return a.first < b.first;
                   return a.second < b.second;

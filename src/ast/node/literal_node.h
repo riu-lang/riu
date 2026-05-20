@@ -15,7 +15,7 @@ protected:
     Token _value;
 
 public:
-    explicit LiteralNode(Token value);
+    explicit LiteralNode(const Token& value);
 
     [[nodiscard]] Token getValue() const;
 
@@ -33,7 +33,7 @@ protected:
     bool _hasSuffix = false;
 
 public:
-    explicit LiteralIntNode(Token value);
+    explicit LiteralIntNode(const Token& value);
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] bool hasSuffix() const { return _hasSuffix; }
     void setType(TypeInfo t) { _type = std::move(t); }

@@ -33,6 +33,7 @@
 
 #include "sema/sema_pass.h"
 
+#include <algorithm>
 #include <array>
 #include <set>
 #include <string_view>
@@ -396,7 +397,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                     }
                     const auto& subs = as->subs();
                     auto isPureDigits = [](const string& s) {
-                        return !s.empty() && std::all_of(s.begin(), s.end(),
+                        return !s.empty() && std::ranges::all_of(s,
                             [](char c){ return c >= '0' && c <= '9'; });
                     };
                     if (curType.isTuple()) {

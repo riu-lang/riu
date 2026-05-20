@@ -2,7 +2,7 @@
 // MPL-2.0
 
 // 编译器核心实现
-// 
+//
 // 本文件包含 Compiler 类的主要实现:
 // - 构造函数: 初始化基本类型映射
 // - compile(): 编译主入口，编排整个编译流程
@@ -23,32 +23,32 @@
 #include "ast/node/literal_node.h"
 #include "types.h"
 #include "compiler_runtime.h"
+#include <algorithm>
 #include <utility>
 #include <algorithm>
 #include <regex>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 
-
 // ==================== 构造函数 ====================
 // 初始化编译器，建立基本类型到 LLVM 类型的映射
-Compiler::Compiler(
-    llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, p<FileNode> file, Yux* yux, bool isSdk) :
-    _context(context), _builder(builder), _module(mod), _file(file), _yux(yux), _isSdk(isSdk) {
+Compiler::Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, p<FileNode> file,
+                   Yux* yux, bool isSdk)
+    : _context(context), _builder(builder), _module(mod), _file(file), _yux(yux), _isSdk(isSdk) {
     // 初始化基本类型映射表
     // 注意: i8/u8, i16/u16 等使用相同的 LLVM 类型，语义区分在 TypeInfo 中
-    _typeMap.insert({"", _builder.getVoidTy()});        // void 类型
-    _typeMap.insert({"bool", _builder.getInt1Ty()});    // 布尔类型 (1 bit)
-    _typeMap.insert({"i8", _builder.getInt8Ty()});      // 有符号 8 位整数
-    _typeMap.insert({"u8", _builder.getInt8Ty()});      // 无符号 8 位整数
-    _typeMap.insert({"i16", _builder.getInt16Ty()});    // 有符号 16 位整数
-    _typeMap.insert({"u16", _builder.getInt16Ty()});    // 无符号 16 位整数
-    _typeMap.insert({"i32", _builder.getInt32Ty()});    // 有符号 32 位整数
-    _typeMap.insert({"u32", _builder.getInt32Ty()});    // 无符号 32 位整数
-    _typeMap.insert({"i64", _builder.getInt64Ty()});    // 有符号 64 位整数
-    _typeMap.insert({"u64", _builder.getInt64Ty()});    // 无符号 64 位整数
-    _typeMap.insert({"f32", _builder.getFloatTy()});    // 32 位浮点数
-    _typeMap.insert({"f64", _builder.getDoubleTy()});   // 64 位浮点数
+    _typeMap.insert({"", _builder.getVoidTy()});      // void 类型
+    _typeMap.insert({"bool", _builder.getInt1Ty()});  // 布尔类型 (1 bit)
+    _typeMap.insert({"i8", _builder.getInt8Ty()});    // 有符号 8 位整数
+    _typeMap.insert({"u8", _builder.getInt8Ty()});    // 无符号 8 位整数
+    _typeMap.insert({"i16", _builder.getInt16Ty()});  // 有符号 16 位整数
+    _typeMap.insert({"u16", _builder.getInt16Ty()});  // 无符号 16 位整数
+    _typeMap.insert({"i32", _builder.getInt32Ty()});  // 有符号 32 位整数
+    _typeMap.insert({"u32", _builder.getInt32Ty()});  // 无符号 32 位整数
+    _typeMap.insert({"i64", _builder.getInt64Ty()});  // 有符号 64 位整数
+    _typeMap.insert({"u64", _builder.getInt64Ty()});  // 无符号 64 位整数
+    _typeMap.insert({"f32", _builder.getFloatTy()});  // 32 位浮点数
+    _typeMap.insert({"f64", _builder.getDoubleTy()}); // 64 位浮点数
 }
 
 // ==================== 编译主入口 ====================
@@ -160,7 +160,7 @@ void Compiler::compile(p<FileNode> file) {
 void Compiler::compileGlobalConsts() {
     for (auto globalConst : _file->getGlobalConsts()) {
         string name = globalConst->name().getText();
-        bool isPriv = !name.empty() && name[0] == '_';  // 以下划线开头的是私有常量
+        bool isPriv = !name.empty() && name[0] == '_'; // 以下划线开头的是私有常量
         string mangledName = Mangler::global(_file->moduleName(), name, isPriv);
         TypeInfo type = globalConst->getType();
         auto llvmType = getLLVMType(type);
@@ -198,7 +198,7 @@ void Compiler::compileGlobalConsts() {
                     parseStr = numStr.substr(2);
                 }
             }
-            parseStr.erase(std::remove(parseStr.begin(), parseStr.end(), '_'), parseStr.end());
+            std::erase(parseStr, '_');
             i64 numVal = 0;
             try {
                 if (isUnsigned) {
@@ -208,15 +208,15 @@ void Compiler::compileGlobalConsts() {
                 }
             } catch (const std::out_of_range&) {
                 int line = literal->getLineNumber();
-                throw YuxError(line > 0 ? line : 1, literal->getColumn(),
-                    ErrorCode::E3103, text, suffix.empty() ? string("i64") : suffix);
+                throw YuxError(line > 0 ? line : 1, literal->getColumn(), ErrorCode::E3103, text,
+                               suffix.empty() ? string("i64") : suffix);
             } catch (const std::invalid_argument&) {
                 int line = literal->getLineNumber();
-                throw YuxError(line > 0 ? line : 1, literal->getColumn(),
-                    ErrorCode::E3103, text, suffix.empty() ? string("i64") : suffix);
+                throw YuxError(line > 0 ? line : 1, literal->getColumn(), ErrorCode::E3103, text,
+                               suffix.empty() ? string("i64") : suffix);
             }
             initValue = llvm::ConstantInt::get(llvmType, numVal, true);
-        } 
+        }
         // 处理浮点数字面量
         // FLOAT 词法形如: [-]?(INT_10|INT.INT|INT.INT 'e' '-'? INT) ('f32'|'f64')?
         // 需保留科学计数法 (e[-]?\d+)，仅剥掉类型后缀 f32/f64
@@ -240,18 +240,12 @@ void Compiler::compileGlobalConsts() {
         }
 
         // 设置链接类型: 私有常量使用内部链接，公开常量使用外部链接
-        auto linkage = globalConst->isPrivate()
-                           ? llvm::GlobalValue::InternalLinkage
-                           : llvm::GlobalValue::ExternalLinkage;
+        auto linkage =
+            globalConst->isPrivate() ? llvm::GlobalValue::InternalLinkage : llvm::GlobalValue::ExternalLinkage;
 
-        new llvm::GlobalVariable(
-            *_module,
-            llvmType,
-            true,           // isConstant = true
-            linkage,
-            initValue,
-            mangledName
-        );
+        new llvm::GlobalVariable(*_module, llvmType,
+                                 true, // isConstant = true
+                                 linkage, initValue, mangledName);
 
         DEBUG_LOG_VAL("Created global constant", mangledName << " : " << type.name);
     }
@@ -266,14 +260,14 @@ void Compiler::compileStructDecls() {
     if (_yux && _yux->sdkFile() && _file != _yux->sdkFile()) {
         DEBUG_LOG_VAL("Compiling SDK struct declarations", _yux->sdkFile()->getStructDecls().size());
         for (auto structDecl : _yux->sdkFile()->getStructDecls()) {
-            if (structDecl->isGeneric()) continue;  // 跳过泛型结构体，它们会在使用时单态化
+            if (structDecl->isGeneric()) continue; // 跳过泛型结构体，它们会在使用时单态化
             DEBUG_LOG_VAL("  SDK struct", structDecl->name().getText());
             getOrCreateStructType(structDecl, _yux->sdkFile());
         }
     }
     // 编译通配符导入的结构体
     for (auto* imp : _file->wildcardImports()) {
-        if (imp == _yux->sdkFile()) continue;  // 避免重复处理 SDK
+        if (imp == _yux->sdkFile()) continue; // 避免重复处理 SDK
         DEBUG_LOG_VAL("Compiling imported struct declarations from", imp->moduleName());
         for (auto structDecl : imp->getStructDecls()) {
             if (structDecl->isGeneric()) continue;
@@ -297,11 +291,11 @@ void Compiler::compileStructImpls() {
     auto& impls = _file->getStructImpls();
     DEBUG_LOG_VAL("  compileStructImpls", impls.size() << " implementations");
 
-    set<string> processedStructs;       // 已处理的结构体
-    set<string> hasExplicitDestructor;  // 有显式析构函数的结构体
+    set<string> processedStructs;      // 已处理的结构体
+    set<string> hasExplicitDestructor; // 有显式析构函数的结构体
 
     for (auto structImpl : impls) {
-        if (structImpl->isGeneric()) continue;  // 泛型结构体在实例化时处理
+        if (structImpl->isGeneric()) continue; // 泛型结构体在实例化时处理
         string structName = structImpl->structName();
         processedStructs.insert(structName);
         DEBUG_LOG_VAL("    Processing struct impl", structName);
@@ -323,13 +317,14 @@ void Compiler::compileStructImpls() {
         DEBUG_LOG_VAL("      Methods count", methods.size());
         for (auto method : methods) {
             string methodName = method->header()->name().getText();
-            
+
             // CompilerInner 方法由编译器特殊处理，不生成 IR
             if (method->header()->hasAnno("CompilerInner")) {
-                DEBUG_LOG_VAL("        Skipping #CompilerInner method (compiler handles)", structName << "." << methodName);
+                DEBUG_LOG_VAL("        Skipping #CompilerInner method (compiler handles)",
+                              structName << "." << methodName);
                 continue;
             }
-            
+
             bool isStatic = method->header()->isStatic();
             DEBUG_LOG_VAL("        Compiling method", methodName << (isStatic ? " [#Static]" : ""));
             vector<TypeInfo> paramTypes;
@@ -373,15 +368,16 @@ void Compiler::emitInstanceMethods() {
         // 收集所有键，避免在迭代时修改 map
         vector<string> keys;
         keys.reserve(_structInstances.size());
-        for (auto& [k, _] : _structInstances) keys.push_back(k);
+        for (auto& [k, _] : _structInstances)
+            keys.push_back(k);
 
         for (auto& key : keys) {
             auto& inst = _structInstances[key];
-            if (inst.methodsEmitted) continue;  // 已处理
+            if (inst.methodsEmitted) continue; // 已处理
             inst.methodsEmitted = true;
             progress = true;
 
-            if (!inst.baseImpl) continue;  // 没有实现则跳过
+            if (!inst.baseImpl) continue; // 没有实现则跳过
 
             // 建立类型参数替换映射
             map<string, TypeInfo> subst;
@@ -389,7 +385,11 @@ void Compiler::emitInstanceMethods() {
                 subst[inst.baseDecl->typeParams()[i]] = inst.args[i];
             }
             string baseName = inst.baseDecl->name().getText();
-            _substStack.push_back(SubstFrame{subst, baseName, inst.mangledName, inst.sourceFile, inst.sourceLine});
+            _substStack.push_back(SubstFrame{.subst = subst,
+                                             .baseStructName = baseName,
+                                             .effStructName = inst.mangledName,
+                                             .sourceFile = inst.sourceFile,
+                                             .sourceLine = inst.sourceLine});
 
             string structName = inst.mangledName;
             DEBUG_LOG_VAL("  Emitting generic instance methods", structName);
@@ -414,7 +414,8 @@ void Compiler::emitInstanceMethods() {
                 for (auto method : inst.baseImpl->methods()) {
                     // 跳过 CompilerInner 方法
                     if (method->header()->hasAnno("CompilerInner")) {
-                        DEBUG_LOG_VAL("        Skipping #CompilerInner method (compiler handles)", baseName << "." << method->header()->name().getText());
+                        DEBUG_LOG_VAL("        Skipping #CompilerInner method (compiler handles)",
+                                      baseName << "." << method->header()->name().getText());
                         continue;
                     }
 
@@ -433,8 +434,8 @@ void Compiler::emitInstanceMethods() {
                     // Phase 6D-tail：同名 ctor 已砍 (E3130)；泛型 impl 在实例化时
                     // 兜底拦截同名非 #Static 方法（sema 跳过 generic impl，故只能在这里抓）。
                     if (!isStatic && methodName == baseName) {
-                        throw YuxError(method->header()->getLineNumber(),
-                                       ErrorCode::E3130, baseName, baseName, baseName);
+                        throw YuxError(method->header()->getLineNumber(), ErrorCode::E3130, baseName, baseName,
+                                       baseName);
                     }
                     string mFallibleErr;
                     if (auto e = method->header()->getAnnoArg("Fallible")) mFallibleErr = *e;
@@ -449,7 +450,7 @@ void Compiler::emitInstanceMethods() {
             } catch (const YuxError& e) {
                 _file = savedFile;
                 _substStack.pop_back();
-                rethrowWithInstantiationContext(e);  // 附加实例化上下文后重新抛出
+                rethrowWithInstantiationContext(e); // 附加实例化上下文后重新抛出
             }
 
             _file = savedFile;
@@ -461,7 +462,8 @@ void Compiler::emitInstanceMethods() {
 // ==================== 泛型函数实例管理 ====================
 // 确保泛型函数实例存在，返回 mangle 后的名称
 // 如果实例不存在，创建一个新的实例记录
-string Compiler::ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& typeArgs, p<FileNode> ownerFile, int sourceLine) {
+string Compiler::ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& typeArgs, p<FileNode> ownerFile,
+                                  int sourceLine) {
     string baseName = baseFn->header()->name().getText();
     // 生成 mangle 名称: foo$i32$i64
     string mangledName = baseName;
@@ -476,11 +478,9 @@ string Compiler::ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& type
     // 验证类型参数数量
     auto& typeParams = baseFn->header()->typeParams();
     if (typeArgs.size() != typeParams.size()) {
-        throw YuxError(sourceLine, ErrorCode::E6010,
-            baseName, typeParams.size(), typeArgs.size())
-            .withHint(std::format("实例化时的类型实参个数需与声明匹配；调用处补齐 {} 个类型 `:<{}>`",
-                typeParams.size(),
-                std::string(typeParams.size() == 1 ? "T" : "T1, T2, ...")));
+        throw YuxError(sourceLine, ErrorCode::E6010, baseName, typeParams.size(), typeArgs.size())
+            .withHint(std::format("实例化时的类型实参个数需与声明匹配；调用处补齐 {} 个类型 `:<{}>`", typeParams.size(),
+                                  std::string(typeParams.size() == 1 ? "T" : "T1, T2, ...")));
     }
 
     // 创建实例记录
@@ -505,11 +505,12 @@ void Compiler::emitFnInstances() {
         // 收集所有键，避免在迭代时修改 map
         vector<string> keys;
         keys.reserve(_fnInstances.size());
-        for (auto& [k, _] : _fnInstances) keys.push_back(k);
+        for (auto& [k, _] : _fnInstances)
+            keys.push_back(k);
 
         for (auto& key : keys) {
             auto& inst = _fnInstances[key];
-            if (inst.emitted) continue;  // 已处理
+            if (inst.emitted) continue; // 已处理
             inst.emitted = true;
             progress = true;
 
@@ -523,7 +524,11 @@ void Compiler::emitFnInstances() {
             }
 
             string srcFile = _file ? _file->moduleName() : "";
-            _substStack.push_back(SubstFrame{subst, "", inst.mangledName, srcFile, 0});
+            _substStack.push_back(SubstFrame{.subst = subst,
+                                             .baseStructName = "",
+                                             .effStructName = inst.mangledName,
+                                             .sourceFile = srcFile,
+                                             .sourceLine = 0});
 
             try {
                 // 计算实例化后的参数类型
@@ -542,8 +547,8 @@ void Compiler::emitFnInstances() {
 
                 // 生成 mangle 后的函数名
                 bool isPrivate = !inst.mangledName.empty() && inst.mangledName[0] == '_';
-                string mangledFnName = Mangler::function(
-                    inst.ownerFile->moduleName(), inst.mangledName, paramTypes, isPrivate);
+                string mangledFnName =
+                    Mangler::function(inst.ownerFile->moduleName(), inst.mangledName, paramTypes, isPrivate);
 
                 // 获取或创建 LLVM 函数
                 auto fn = _module->getFunction(mangledFnName);
@@ -672,7 +677,7 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
             _builder.CreateRet(rs);
             DEBUG_LOG("  Added implicit #Fallible void-success return");
         } else if (func->getReturnType()->isVoidTy()) {
-            callDestructorsForScope();  // 在返回前调用析构函数
+            callDestructorsForScope(); // 在返回前调用析构函数
             _builder.CreateRetVoid();
             DEBUG_LOG("  Added implicit void return");
         }
@@ -683,7 +688,8 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
 // ==================== 方法编译 ====================
 // 编译结构体方法
 // 与普通函数类似，但需要处理当前实例参数（`$`）
-void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string& structName, bool isDestructor, bool isStatic) {
+void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string& structName, bool isDestructor,
+                             bool isStatic) {
     _currentFn = func;
     _currentFnNode = node;
     _currentStructName = structName;

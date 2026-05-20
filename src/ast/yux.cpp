@@ -3,6 +3,7 @@
 
 #include "yux.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 
@@ -240,11 +241,11 @@ vector<string> Yux::listPackageYuxChildren(const string& moduleName) const {
     if (!fs::exists(dirPath) || !fs::is_directory(dirPath)) return out;
     for (auto& entry : fs::directory_iterator(dirPath)) {
         if (!entry.is_regular_file()) continue;
-        auto p = entry.path();
+        const auto& p = entry.path();
         if (p.extension() != ".yux") continue;
         out.push_back(p.stem().string());
     }
-    std::sort(out.begin(), out.end());
+    std::ranges::sort(out);
     return out;
 }
 
@@ -260,7 +261,7 @@ vector<string> Yux::listPackageSubdirs(const string& moduleName) const {
         if (!entry.is_directory()) continue;
         out.push_back(entry.path().filename().string());
     }
-    std::sort(out.begin(), out.end());
+    std::ranges::sort(out);
     return out;
 }
 

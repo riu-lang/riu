@@ -87,7 +87,7 @@ TriviaMap buildTrivia(antlr4::CommonTokenStream& stream) {
             // 行尾注释：挂到上一个 default token 的 trailing
             if (std::cmp_not_equal(lastDefault ,-1) && tk->getLine() == lastDefaultLine) {
                 map.trailingByTokenIndex[lastDefault].push_back(
-                    {trimCommentText(rawText), true, tk->getLine(), false});
+                    {.text=trimCommentText(rawText), .isLineComment=true, .line=tk->getLine(), .blankBefore=false});
             } else {
                 std::size_t prevLine = pendingLeading.empty()
                     ? lastDefaultLine
@@ -95,7 +95,7 @@ TriviaMap buildTrivia(antlr4::CommonTokenStream& stream) {
                 bool blank = (std::cmp_not_equal(lastDefault ,-1)
                               || !pendingLeading.empty())
                              && tk->getLine() > prevLine + 1;
-                pendingLeading.push_back({trimCommentText(rawText), true, tk->getLine(), blank});
+                pendingLeading.push_back({.text=trimCommentText(rawText), .isLineComment=true, .line=tk->getLine(), .blankBefore=blank});
             }
         } else if (type == yuxLexer::LineComment) {
             std::size_t prevLine = pendingLeading.empty()
@@ -104,7 +104,7 @@ TriviaMap buildTrivia(antlr4::CommonTokenStream& stream) {
             bool blank = (std::cmp_not_equal(lastDefault ,-1)
                           || !pendingLeading.empty())
                          && tk->getLine() > prevLine + 1;
-            pendingLeading.push_back({trimCommentText(rawText), true, tk->getLine(), blank});
+            pendingLeading.push_back({.text=trimCommentText(rawText), .isLineComment=true, .line=tk->getLine(), .blankBefore=blank});
         }
         // 其它 hidden token (Space 等) 当前不需要记录
     }

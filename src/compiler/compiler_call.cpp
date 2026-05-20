@@ -296,7 +296,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                     for (size_t i = 0; i < typeParams.size(); ++i) {
                         subst[typeParams[i]] = typeArgs[i];
                     }
-                    _substStack.push_back(SubstFrame{subst, "", ""});
+                    _substStack.push_back(SubstFrame{.subst=subst, .baseStructName="", .effStructName=""});
 
                     auto params = genericFn->header()->params();
                     for (size_t i = 0; i < params.size(); ++i) {

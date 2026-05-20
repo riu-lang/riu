@@ -131,7 +131,7 @@ void reportRuntimeError(const std::string& sourcePath, const std::runtime_error&
     }
 }
 
-void parseAST(std::string inputFile, Yux& yux, bool isSdk) {
+void parseAST(const std::string& inputFile, Yux& yux, bool isSdk) {
     antlr4::ANTLRFileStream file;
     file.loadFromFile(inputFile);
     yuxLexer lexer(&file);
@@ -160,7 +160,7 @@ void parseAST(std::string inputFile, Yux& yux, bool isSdk) {
     }
 }
 
-IRResult compileIR(std::string inputFile, Yux& yux, bool isSdk) {
+IRResult compileIR(const std::string& inputFile, Yux& yux, bool isSdk) {
     antlr4::ANTLRFileStream file;
     file.loadFromFile(inputFile);
     yuxLexer lexer(&file);
@@ -208,7 +208,7 @@ IRResult compileIR(std::string inputFile, Yux& yux, bool isSdk) {
         reportRuntimeError(inputFile, e);
         exit(1);
     }
-    return {std::move(context), std::move(module)};
+    return {.context=std::move(context), .module=std::move(module)};
 }
 
 SdkPaths sdkBuildPaths(const std::string& sdkPathAbs) {
@@ -218,9 +218,9 @@ SdkPaths sdkBuildPaths(const std::string& sdkPathAbs) {
     fs::path objDir = build / "src" / "yux";
     fs::create_directories(objDir);
     return {
-        (objDir / "core.obj").string(),
-        (build / "yux.lib").string(),
-        (objDir / "core.ll").string(),
+        .objPath=(objDir / "core.obj").string(),
+        .libPath=(build / "yux.lib").string(),
+        .irPath=(objDir / "core.ll").string(),
     };
 }
 
@@ -258,7 +258,7 @@ void parseSdkDirOrExit(const std::string& sdkDir, Yux& yux) {
     }
 }
 
-IRResult compileSdkDir(std::string sdkDir, Yux& yux) {
+IRResult compileSdkDir(const std::string& sdkDir, Yux& yux) {
     namespace fs = std::filesystem;
     std::cout << "Compiling SDK from directory: " << sdkDir << '\n';
 
@@ -278,7 +278,7 @@ IRResult compileSdkDir(std::string sdkDir, Yux& yux) {
             }
         }
     }
-    std::sort(yuxFiles.begin(), yuxFiles.end());
+    std::ranges::sort(yuxFiles);
 
     auto reportErr = [&](const std::string& yuxFile, std::runtime_error& e) {
         reportRuntimeError(yuxFile, e, "Error in SDK file " + yuxFile + ": ");
@@ -351,7 +351,7 @@ IRResult compileSdkDir(std::string sdkDir, Yux& yux) {
 
     sdk_loader::registerSdkPkgAliases(yux, pkgMap);
 
-    return {std::move(context), std::move(module)};
+    return {.context=std::move(context), .module=std::move(module)};
 }
 
 } // namespace yux::cli

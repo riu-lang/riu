@@ -112,7 +112,7 @@ void parseSdkInto(const std::string& sdkDir, Yux& yux) {
         auto p = e.path().string();
         if (p.size() > 4 && p.substr(p.size() - 4) == ".yux") files.push_back(p);
     }
-    std::sort(files.begin(), files.end());
+    std::ranges::sort(files);
     for (const auto& f : files) {
         antlr4::ANTLRFileStream stream;
         stream.loadFromFile(f);

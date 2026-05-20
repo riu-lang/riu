@@ -31,7 +31,7 @@ TypeInfo FnHeaderNode::getType() const {
     if (_retType) {
         return _retType->getType();
     }
-    return TypeInfo();
+    return {};
 }
 
 FnNode::FnNode(const p<Node>& parent, p<FnHeaderNode> header) :
