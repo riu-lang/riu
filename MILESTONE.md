@@ -138,53 +138,53 @@ Phase B（编译期反射，依赖 Phase A）：
 
 **退出标准**：两个 DRAFT 全节迁入 spec §12.x（或反射另起 §13）；CHANGELOG 收口；附录 D 新错码登记（E3132 等）；端到端示例（反射驱动 `to_string` / spec 默认体被实现者覆盖）；`xmake test` + `yux test` 全绿；实施日志 `docs/dev/spec-default-body-impl-log.md` + `docs/dev/spec-reflect-impl-log.md`。
 
-### v0.14.0 — 数值语义收口 + 工程优化 + 并发 spec 留口 ✅ 已完成（2026-05-20）
+### v0.14.0 — 工程优化 + 工具链整顿 + yux-check 收尾 ✅ 已完成（2026-05-20）
 
-**主题**：把"数字字面量推断 / 整数溢出语义"两件 v1.0 前必锁的事一次定型；同时把"多线程 / async"的 spec 留口写死，防止 v1.x 落地时被现有条款绑死。**并行**把编译器内部代码组织按 SRP 整理一遍（main.cpp 拆分、大文件按类别再切、流程小修），让 v0.15 / v0.16 的特性手术在更干净的代码上做。
+**主题**：把编译器内部代码组织按 SRP 拆一遍，给 v0.15 / v0.16 的特性手术铺路；同步把 clang-format / clang-tidy / lint+format 包装器全部落地为标准动作；顺带把 yux-check 的本版可关项（Bucket 4）收完。
 
-> 工程优化按"单一职责 + 给后续版本铺路"为准，不动语义、不动 ABI，仅文件级 split + 模块边界清理；外部贡献开放推迟到 v1.0 稳定后再考虑。
+> 原计划的"数值语义收口 + 并发 spec 留口（§3 / §8 / §9）"未实际落地，整段推后到后续版本；本版聚焦工程交付。
 
-**范围（草稿）**：
-
-数值 / 文档面：
-
-- 整数溢出语义条款（spec 层为主，必要 codegen 配合）
-- 字面量类型推断规则：**所有逻辑上能推断的无后缀整数**走推断；浮点字面量保持"必须带 `.`、不接受 `1e2` 形态、不自动推断类型"的严格立场
-- 多线程 / async spec 留口：在 §3 / §8 / §9 标注"将重新设计"的具体条款；`Arc<T>` 占名条款细化
-- 数字 / 字面量章节文档完善（推断使用、转换、教程示例）
-- 其他功能预留位（按需补）
+**实际交付**：
 
 工程优化（SRP 拆分，纯文件级、不动语义 / ABI）：
 
-- `src/main.cpp` (2012 LOC) 按子命令拆：`src/cli/{main,build_cmd,test_cmd,format_cmd}.cpp` + `src/jit/{lljit_runner,seh_memory_manager}.cpp`（SEH MM 现埋 main.cpp 172-233）
-- `src/compiler/compiler_expr.cpp` (3174) / `compiler_call.cpp` (2294) / `src/ast/ast_builder.cpp` (2948) 按节点类别二次拆分（literal / member / binary / unary / enum / generic / lambda 等各一文件），让"按节点找代码"成立
-- `tests/xmake.lua` 的 `categorize` 在 CI 化之前先加构建期警告：新用例落入 `yux/misc` 时打 `warning`
-- `README.md` 顶部加"项目规则索引"段，指向 `.claude/rules/README.md`
-- 顺手：`AGENTS.md` → `.claude/rules/` 链接清理（已完成）
+- `src/main.cpp` 从 2012 LOC 砍到 204；按子命令 / 共享件抽出 `src/cli/{build_cmd,test_cmd,format_cmd,sdk_compile}.{h,cpp}` + `src/jit/{lljit_runner,seh_memory_manager}.{h,cpp}`
+- `src/ast/ast_builder.cpp` 从 2948 砍到 174；按 visitor 区域拆 `ast_builder_{decl,struct,fn,stmt,expr,type}.cpp` + `ast_builder_helpers.h`
+- `src/compiler/compiler_call.cpp` 从 2294 砍到 621；按调用类拆 `compiler/call/{call_fn,call_method,call_lambda,...}.cpp`
+- `src/compiler/compiler_expr.cpp` 从 3174 砍到 369；按节点类拆 `compiler/expr/{expr_literal,expr_access,expr_binop,expr_unary,expr_ctor,expr_ctrl}.cpp`
+- 全程 `xmake test` 181/181 + `cd sdk/yux && yux test` 全绿无回归
 
-yux-check 收尾：
+工具链整顿：
 
-- 残留 5 例（全部 lambda 体相关，BUGS #3）明确推 v0.16 与闭包主题合并；本版只在 BUGS.md / CURRENT-check-sema-gap.md 标"待 v0.16"
-- 当前覆盖率 ~96% 维持，不再单独推进
+- `.clang-format` 落地（LLVM 22 风格，`SortIncludes: Never` + `IncludeBlocks: Preserve` 守住 `main.cpp` 的 `windows.h → #undef ERROR → types.h` 形态）；Claude Code PostToolUse hook 自动跑
+- `.clang-tidy` 落地，镜像 `.clangd` 的 `modernize-* / bugprone-* / performance-*`（排除 `-modernize-use-trailing-return-type` 与 `-bugprone-easily-swappable-parameters`）；`gen/.clang-tidy` 顶替关掉 ANTLR 生成代码
+- 多轮 `clang-tidy --fix` + 手工批：c-style cast 全转 `static_cast`/`reinterpret_cast`、`endl → "\n"`、c-array → `std::array`、空 catch 加 NOLINT、`YuxError` 拷贝/移动 noexcept、`bugprone-narrowing-conversions` + `branch-clone` 全清；最终 `yux_frontend` / `yux_codegen` / `yux` 三个 target **0 警告**
+- 新增 `scripts/{lint,format}.js` + `node init.js` 生成 `./lint.{ps1,cmd,sh}` / `./format.{ps1,cmd,sh}` 本地包装器；默认仅作用于 git 变动 / 未跟踪文件，`--all` / 位置参数切作用域，`--check` 只查不改；`./format` 是块内 `#include` 排序器（不破坏 `main.cpp` 头序）
+- `.claude/rules/behavior.md` 加「改完 C++ 必须 lint + format，提交 0 警告」条目；`SKILL.md` / `README.md` 同步替换说明
 
-**不在范围**：
+yux-check 收尾（Bucket 4）：
 
-- `match` 升级（绑 error v2）
-- RC 原子性（v1.0 ABI 冻结）
-- 调试信息 / PDB（工具链 v1）
+- E6011 泛型 arity / E1133 / E6016 / E1106 / E3131 / E4025 进 sema（`SemaPass` + `Yux*` 注入，`getStructDecl` 隐式过滤显式化）
+- 残留 5 例（全部 lambda 体相关，BUGS #3）明确推 v0.16 与闭包主题合并；覆盖率 ~96% 维持
+
+诊断小修：
+
+- 抑制 lexer 困入非默认 mode 后 `\n` 噪声 E1001
+
+工具链 / 文档周边：
+
+- `AGENTS.md` 链接清理 → `.claude/rules/`；MILESTONE 草案 v0.14 / v0.15 / v0.16 写定
+
+**推后**：
+
+- 数值语义条款（整数溢出 / 字面量推断）→ 未编号专项
+- 多线程 / async spec 留口 → 未编号专项
+- 数字 / 字面量章节文档完善 → 未编号专项
 - 闭包捕获 → v0.16
-- spec 默认方法体 / 反射 → v0.15（spec-unify v1 剥离的独立草案，本版不动）
-- Sema/Codegen 拆分尾段（lambda body 由 v0.16 顺带做；其余 statement 层 / target-type 上下文 / alias 环留独立专项）
-- 引入 HIR 中间层（不打算近期加新 backend / async 之前不上）
-- CI / 外部贡献基础设施（开放推迟到 v1.0 后）
-
-**退出标准**：
-
-- 数值 / async 留口条款定稿，附录 A / B / D 同步
-- 工程优化：拆完后 `main.cpp` < 300 LOC、`compiler_expr.cpp` 单文件 < 1000 LOC、`ast_builder.cpp` 同；`xmake test` + `cd sdk/yux && yux test` 全绿无回归
-- BUGS.md #3 条注明"等 v0.16 闭包"
-- CHANGELOG 收口
-- 实施日志归档于 `docs/dev/v0.14-impl-log.md`（数值条款 + 工程优化两段）
+- spec 默认方法体 / 反射 → v0.15
+- Sema/Codegen 拆分尾段（lambda body / statement 层 / target-type / alias 环）→ 各自独立专项
+- 未使用 include 清理（clangd `unused-includes` / IWYU）→ 独立专项
+- CI / 外部贡献基础设施 → v1.0 后
 
 ### v0.13.0 — spec 核心收口 + Heap 完整落地 + 构造模型重构 + 工具链同步 ✅ 已完成（2026-05-18）
 
