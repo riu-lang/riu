@@ -26,17 +26,17 @@ int runFormatCommand(const FormatCmdOptions& opts) {
         source = buffer.str();
     } else {
         if (opts.file.empty()) {
-            std::cerr << "Error: No input file specified" << std::endl;
+            std::cerr << "Error: No input file specified" << '\n';
             return 1;
         }
         if (!std::filesystem::exists(opts.file)) {
-            std::cerr << "Error: Input file not found: " << opts.file << std::endl;
+            std::cerr << "Error: Input file not found: " << opts.file << '\n';
             return 1;
         }
 
         std::ifstream inFile(opts.file);
         if (!inFile) {
-            std::cerr << "Error: Cannot open file: " << opts.file << std::endl;
+            std::cerr << "Error: Cannot open file: " << opts.file << '\n';
             return 1;
         }
 
@@ -93,17 +93,17 @@ int runFormatCommand(const FormatCmdOptions& opts) {
         if (opts.inPlace && !filePath.empty()) {
             std::ofstream outFile(filePath);
             if (!outFile) {
-                std::cerr << "Error: Cannot write to file: " << filePath << std::endl;
+                std::cerr << "Error: Cannot write to file: " << filePath << '\n';
                 return 1;
             }
             outFile << formatted;
             outFile.close();
-            std::cout << "Formatted: " << filePath << std::endl;
+            std::cout << "Formatted: " << filePath << '\n';
         } else {
             std::cout << formatted;
         }
     } catch (const std::exception& e) {
-        std::cerr << "Format error: " << e.what() << std::endl;
+        std::cerr << "Format error: " << e.what() << '\n';
         return 1;
     }
 

@@ -141,7 +141,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
         stack.pop_back();
 
         file->addSpecDecl(draft);
-        return static_cast<p<SpecDeclNode>>(draft);
+        return draft;
     }
 
     // === Step 3: 普通 struct 分支 — 字段
@@ -180,7 +180,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
     bool hasImpl = !implRefs.empty();
 
     if (!(hasMethods || hasDestructor || hasImpl)) {
-        return static_cast<p<StructDeclNode>>(structDecl);
+        return structDecl;
     }
 
     auto structImpl = createWithLine<StructImplNode>(ctx, file, stCtx->name);
@@ -316,7 +316,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
         file->registerFnSymbol(fullName, methodFnSym);
     }
 
-    return static_cast<p<StructDeclNode>>(structDecl);
+    return structDecl;
 }
 
 std::any ASTBuilder::visitFnClean(yux::yuxParser::FnCleanContext* ctx) {
@@ -416,5 +416,5 @@ std::any ASTBuilder::visitFiledDecl(yux::yuxParser::FiledDeclContext* ctx) {
     auto node = createWithLine<StructFieldNode>(ctx, parent, ctx->name, type);
     node->setVal(isVal);
     node->setFrozen(isFrozen);
-    return static_cast<p<StructFieldNode>>(node);
+    return node;
 }

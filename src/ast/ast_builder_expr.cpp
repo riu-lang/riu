@@ -886,7 +886,7 @@ std::any ASTBuilder::visitMatchArm(yux::yuxParser::MatchArmContext* ctx) {
     for (auto& [n, sym] : arm->localSymbols()) {
         fullArm->registerSymbol(n, sym);
     }
-    return static_cast<p<MatchArmNode>>(fullArm);
+    return fullArm;
 }
 
 // match 表达式：scrutinee + arms
@@ -929,7 +929,7 @@ std::any ASTBuilder::visitCatchArm(yux::yuxParser::CatchArmContext* ctx) {
     for (auto& [n, sym] : arm->localSymbols()) {
         fullArm->registerSymbol(n, sym);
     }
-    return static_cast<p<CatchArmNode>>(fullArm);
+    return fullArm;
 }
 
 // try { stmts } catch e1 E1 { ... } catch e2 E2 { ... }

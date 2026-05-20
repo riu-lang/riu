@@ -130,7 +130,7 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
     file->addGlobalConst(globalConst);
 
     DEBUG_LOG_VAL("  LetGlobal #Cval", name->getText() << " : " << typeNode->getType().name);
-    return static_cast<p<GlobalConstNode>>(globalConst);
+    return globalConst;
 }
 
 std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
@@ -436,7 +436,7 @@ std::any ASTBuilder::visitAliasDecl(yux::yuxParser::AliasDeclContext* ctx) {
     aliasDecl->setTarget(target);
     DEBUG_LOG_VAL("Visit: AliasDecl", nameTok->getText() << " -> " << (target ? target->getType().name : string("?")));
     file->addAliasDecl(aliasDecl);
-    return static_cast<p<AliasDeclNode>>(aliasDecl);
+    return aliasDecl;
 }
 
 // 顶层 enum 声明：构造 EnumDeclNode，逐个添加 variant，登记到当前 FileNode
@@ -466,7 +466,7 @@ std::any ASTBuilder::visitEnumDecl(yux::yuxParser::EnumDeclContext* ctx) {
     stack.pop_back();
 
     file->addEnumDecl(enumDecl);
-    return static_cast<p<EnumDeclNode>>(enumDecl);
+    return enumDecl;
 }
 
 // 单个 enum variant：短名 + 可选 tuple-style payload 类型列表
@@ -478,5 +478,5 @@ std::any ASTBuilder::visitEnumVariant(yux::yuxParser::EnumVariantContext* ctx) {
         variant->addPayloadType(typeNode);
     }
     DEBUG_LOG_VAL("  Variant", ctx->name->getText() << " arity=" << variant->payloadArity());
-    return static_cast<p<EnumVariantNode>>(variant);
+    return variant;
 }

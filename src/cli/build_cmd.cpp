@@ -56,24 +56,24 @@ int runBuildCommand(const BuildCmdOptions& opts) {
 
     if (projectMode) {
         if (!inputFile.empty()) {
-            std::cerr << "Error: cannot combine `build` subcommand with an input file positional" << std::endl;
+            std::cerr << "Error: cannot combine `build` subcommand with an input file positional" << '\n';
             return 1;
         }
         string cwd = std::filesystem::current_path().string();
         try {
             yux.initProjectFromDir(cwd);
         } catch (runtime_error& e) {
-            std::cerr << e.what() << std::endl;
+            std::cerr << e.what() << '\n';
             return 1;
         }
         if (!buildNameArg.empty() && yux.projectName() != buildNameArg) {
             std::cerr << "Error: build target `" << buildNameArg
-                      << "` does not match yux.toml name `" << yux.projectName() << "`" << std::endl;
+                      << "` does not match yux.toml name `" << yux.projectName() << "`" << '\n';
             return 1;
         }
         if (!yux.isLibProject()) {
             if (yux.projectEntry().empty()) {
-                std::cerr << "Error: yux.toml is missing `entry`" << std::endl;
+                std::cerr << "Error: yux.toml is missing `entry`" << '\n';
                 return 1;
             }
             // spec §10：entry 必须是 src/ 下的相对路径
@@ -86,7 +86,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 }
                 inputFile = (std::filesystem::path(yux.sourceRoot()) / yux.projectEntry()).string();
                 if (!std::filesystem::exists(inputFile)) {
-                    std::cerr << "Error: entry file not found: " << inputFile << std::endl;
+                    std::cerr << "Error: entry file not found: " << inputFile << '\n';
                     return 1;
                 }
                 inputFile = std::filesystem::absolute(inputFile).string();
@@ -115,11 +115,11 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         projectBuildDir = buildDir;
     } else {
         if (inputFile.empty()) {
-            std::cerr << opts.helpText << std::endl;
+            std::cerr << opts.helpText << '\n';
             return 1;
         }
         if (!std::filesystem::exists(inputFile)) {
-            std::cerr << "Error: Input file not found: " << inputFile << std::endl;
+            std::cerr << "Error: Input file not found: " << inputFile << '\n';
             return 1;
         }
         inputFile = std::filesystem::absolute(inputFile).string();
@@ -130,7 +130,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         projectBuildDir = buildDir;
     }
 
-    std::cout << "Project root: " << yux.projectRoot() << std::endl;
+    std::cout << "Project root: " << yux.projectRoot() << '\n';
     ensureBuildDir(buildDir);
     ensureBuildDir(projectBuildDir);
 
@@ -196,15 +196,15 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                     if (!ec) {
                         sdkModule->print(irFile, nullptr);
                         irFile.flush();
-                        std::cout << "Write SDK IR: " << sdkIrPath << std::endl;
+                        std::cout << "Write SDK IR: " << sdkIrPath << '\n';
                     }
                 }
 
                 if (!compileIRToObj(sdkModule, sdkObjPath)) {
-                    std::cerr << "Failed to compile SDK to object file" << std::endl;
+                    std::cerr << "Failed to compile SDK to object file" << '\n';
                     return 1;
                 }
-                std::cout << "Write SDK obj: " << sdkObjPath << std::endl;
+                std::cout << "Write SDK obj: " << sdkObjPath << '\n';
 
                 // 用 lld-link /lib 打包 obj 为静态库
                 string libOutArg = "/out:" + sdkLibPath;
@@ -217,10 +217,10 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 auto libR = lldMain(libArgs, libOOS, libEOS, llvm::ArrayRef{libDD});
                 if (libR.retCode) {
                     llvm::errs() << libErrStr;
-                    std::cerr << "Failed to archive SDK lib" << std::endl;
+                    std::cerr << "Failed to archive SDK lib" << '\n';
                     return 1;
                 }
-                std::cout << "Write SDK lib: " << sdkLibPath << std::endl;
+                std::cout << "Write SDK lib: " << sdkLibPath << '\n';
                 compiled = true;
             } else {
                 parseSdkDirOrExit(sdkPath, yux);
@@ -235,7 +235,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
     // 源文件以 isSdk=false 重新编译一次（且会与已注册到 _sdkFile 的模块名冲突），
     // 因此这里直接收尾退出。
     if (projectMode && yux.projectName() == "yux") {
-        if (!compiled) std::cout << "no work to do." << std::endl;
+        if (!compiled) std::cout << "no work to do." << '\n';
         std::cout.flush();
         std::cerr.flush();
         _exit(0);
@@ -243,7 +243,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
 
     auto codegenTo = [&](p<FileNode> file, const std::string& moduleName,
                          const std::string& objOut, const std::string& irOut) -> bool {
-        std::cout << "Compile IR... (module: " << moduleName << ")" << std::endl;
+        std::cout << "Compile IR... (module: " << moduleName << ")" << '\n';
         auto ctx = std::make_unique<llvm::LLVMContext>();
         auto mod = std::make_unique<llvm::Module>(moduleName, *ctx);
         llvm::IRBuilder<> builder(*ctx);
@@ -261,19 +261,19 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             std::error_code ec;
             llvm::raw_fd_ostream irFile(irOut, ec);
             if (ec) {
-                std::cerr << "Error opening IR file: " << ec.message() << std::endl;
+                std::cerr << "Error opening IR file: " << ec.message() << '\n';
             } else {
                 mod->print(irFile, nullptr);
                 irFile.flush();
-                std::cout << "Write IR ok: " << irOut << std::endl;
+                std::cout << "Write IR ok: " << irOut << '\n';
             }
         }
 
         if (!compileIRToObj(mod.get(), objOut)) {
-            std::cerr << "Failed to compile IR to object file: " << objOut << std::endl;
+            std::cerr << "Failed to compile IR to object file: " << objOut << '\n';
             return false;
         }
-        std::cout << "Write obj: " << objOut << std::endl;
+        std::cout << "Write obj: " << objOut << '\n';
         return true;
     };
 
@@ -282,7 +282,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         namespace fs = std::filesystem;
         fs::path srcDir(yux.sourceRoot());
         if (!fs::is_directory(srcDir)) {
-            std::cerr << "Error: lib project missing `src/` directory at " << srcDir.string() << std::endl;
+            std::cerr << "Error: lib project missing `src/` directory at " << srcDir.string() << '\n';
             return 1;
         }
         // 递归扫 src/ 下 .yux；模块名 = src 下相对路径，点分（不加项目名前缀）
@@ -363,7 +363,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
 
             std::string outStr, errStr;
             llvm::raw_string_ostream oOS(outStr), eOS(errStr);
-            std::cout << "Static lib: " << libPath << std::endl;
+            std::cout << "Static lib: " << libPath << '\n';
             lld::DriverDef dd = {lld::WinLink, &lld::coff::link};
             lld::Result r = lldMain(args, oOS, eOS, llvm::ArrayRef{dd});
             if (r.retCode) {
@@ -373,7 +373,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             compiled = true;
         }
 
-        if (!compiled) std::cout << "no work to do." << std::endl;
+        if (!compiled) std::cout << "no work to do." << '\n';
         std::cout.flush();
         std::cerr.flush();
         _exit(0);
@@ -451,7 +451,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
 
         int rc = jit::runViaJIT(std::move(mainMod), std::move(mainCtx),
                            extraMods, extraCtxs, sdkObjPath);
-        std::cout << "[jit-run] exit code = " << rc << std::endl;
+        std::cout << "[jit-run] exit code = " << rc << '\n';
         std::cout.flush();
         std::cerr.flush();
         _exit(rc);
@@ -559,7 +559,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         std::string stdoutStr, stderrStr;
         llvm::raw_string_ostream stdoutOS(stdoutStr), stderrOS(stderrStr);
 
-        std::cout << "Link obj: " << exePath << std::endl;
+        std::cout << "Link obj: " << exePath << '\n';
         lld::DriverDef driverDef = {lld::WinLink, &lld::coff::link};
         lld::Result result = lldMain(args, stdoutOS, stderrOS, llvm::ArrayRef{driverDef});
 
@@ -572,7 +572,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
     }
 
     if (!compiled) {
-        std::cout << "no work to do." << std::endl;
+        std::cout << "no work to do." << '\n';
     }
 
     cleanupTmp();
