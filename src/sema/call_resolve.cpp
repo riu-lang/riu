@@ -121,9 +121,7 @@ void resolveCtorOverload(FileNode* file, const string& structName,
     for (auto c : candidates) if (matchesDefault(c)) defaultMatches.push_back(c);
 
     vector<FnSymbolInfo*> matches;
-    if (defaultMatches.size() == 1) {
-        matches = defaultMatches;
-    } else if (defaultMatches.empty()) {
+    if (defaultMatches.empty()) {
         for (auto c : candidates) if (matchesFlexible(c)) matches.push_back(c);
     } else {
         matches = defaultMatches;
@@ -173,9 +171,7 @@ void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName,
     }
 
     vector<FnSymbolInfo*> matches;
-    if (defaultMatches.size() == 1) {
-        matches = defaultMatches;
-    } else if (defaultMatches.empty()) {
+    if (defaultMatches.empty()) {
         // 如果默认匹配失败，尝试灵活匹配
         for (auto c : candidates) {
             if (overloadMatchesFlexible(args, c->params)) matches.push_back(c);

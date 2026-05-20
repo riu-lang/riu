@@ -684,9 +684,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(
     if (!fn) {
         vector<llvm::Type*> paramTypes;
         for (auto & param : fnSymbol->params) {
-            if (param.isPtr() || param.isRef()) {
-                paramTypes.push_back(llvm::PointerType::get(_context, 0));
-            } else if (structParamUsesPointer(param.name)) {
+            if (param.isPtr() || param.isRef() || structParamUsesPointer(param.name)) {
                 paramTypes.push_back(llvm::PointerType::get(_context, 0));
             } else {
                 paramTypes.push_back(getLLVMType(param));

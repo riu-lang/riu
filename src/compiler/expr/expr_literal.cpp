@@ -25,7 +25,8 @@
 
 // 编译数组填充表达式 ([value ... Type] 语法)
 // 使用指定值填充整个数组
-llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const TypeInfo& targetType, llvm::Value* destPtr) {
+llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const TypeInfo& targetType,
+                                            llvm::Value* destPtr) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto literal = node->value();
     auto literalType = literal->getType();
@@ -39,8 +40,8 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
         // 命中, SemaPass 顶部 setResolvedType 自动重抛), 此处不可达; 保留作幂等
         // 防御性双跑.
         if (literalType != elementType) {
-            throw YuxError(node->getLineNumber(), node->getColumn(),
-                ErrorCode::E3009, literalType.name, elementType.name);
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3009, literalType.name,
+                           elementType.name);
         }
     } else {
         elementType = literalType;
@@ -48,8 +49,8 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
 
     // 验证元素类型与目标数组类型匹配
     if (targetType.elementType && *targetType.elementType != elementType) {
-        throw YuxError(node->getLineNumber(), node->getColumn(),
-            ErrorCode::E3010, targetType.elementType->name, elementType.name);
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3010, targetType.elementType->name,
+                       elementType.name);
     }
 
     DEBUG_LOG_VAL("    Expr: ArrayInit", targetType.name);
@@ -69,7 +70,7 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
     if (auto intLiteral = dynamic_cast<LiteralIntNode*>(literal)) {
         intFillVal = sema::parseIntLiteral(text, node->getLineNumber(), node->getColumn());
         fillValue = llvm::ConstantInt::get(getLLVMType(elementType), intFillVal, true);
-        isZeroFill = (intFillVal == 0);  // 零值优化
+        isZeroFill = (intFillVal == 0); // 零值优化
     } else if (auto floatLiteral = dynamic_cast<LiteralFloatNode*>(literal)) {
         // FLOAT 词法可能含科学计数法 (e[-]?\d+) 与类型后缀 f32/f64
         // 仅剥掉后缀，其余交给 stod
@@ -82,12 +83,12 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
         }
         floatFillVal = stod(numStr);
         fillValue = llvm::ConstantFP::get(getLLVMType(elementType), floatFillVal);
-        isZeroFill = (floatFillVal == 0.0);  // 零值优化
+        isZeroFill = (floatFillVal == 0.0); // 零值优化
     } else if (auto boolLiteral = dynamic_cast<LiteralBoolNode*>(literal)) {
         bool boolVal = (text == "true");
         intFillVal = boolVal ? 1 : 0;
         fillValue = llvm::ConstantInt::get(getLLVMType(elementType), intFillVal, false);
-        isZeroFill = !boolVal;  // false 值优化
+        isZeroFill = !boolVal; // false 值优化
     } else {
         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3081);
     }
@@ -190,8 +191,8 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
         }
 
         if (_currentFnNode) {
-            SymbolSuggest::throwSymbolNotFound(_currentFnNode,
-                node->getLineNumber(), node->getColumn(), ErrorCode::E3030, varName);
+            SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
+                                               ErrorCode::E3030, varName);
         }
         // lambda body 内引用外层 local：Phase 4a / 4a-2 闭包识别（spec §6.1 / §6.2）
         // - 找到 sym 但不在 _localVarPtrs 也无 globalVar → 外层 local
@@ -199,12 +200,10 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
         // - 其余（struct / enum / Fn fat-ptr / T&）仍报 E2029（4c+ 接入）
         // - 命中：addCapture（首次出现）+ 生成 GEP 读 captures buffer
         // captures Rc payload 布局：[0..8] dtor fn ptr，[8..] capture 字段（4a-2 引入 dtor 槽）
-        if (_currentLambdaForCapture && _currentLambdaBodyScope
-            && sym && sym->kind == SymbolKind::Variable) {
+        if (_currentLambdaForCapture && _currentLambdaBodyScope && sym && sym->kind == SymbolKind::Variable) {
             const auto& t = sym->type;
             bool isScalar = t.isNormal() && isBuiltinType(t.name);
-            bool isHandle = t.isRc() || t.isWeak() || t.isArrayGeneric()
-                            || (t.isNormal() && t.name == "String");
+            bool isHandle = t.isRc() || t.isWeak() || t.isArrayGeneric() || (t.isNormal() && t.name == "String");
             bool isRef = t.isRef();
             // Phase 3e: Heap<T>? 接受按所有权 move 捕获 (B 档复用); Heap<T> 非空
             // 按值捕获 → E4024 (与 §5.2/§5.3 一致, 引导用户声明为可空形态)
@@ -216,12 +215,10 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             if (t.isHeap()) {
                 auto elem = t.heapElementType();
                 string elemName = elem ? elem->getFullName() : string("?");
-                throw YuxError(node->getLineNumber(), node->getColumn(),
-                               ErrorCode::E4024, elemName, varName, elemName);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E4024, elemName, varName, elemName);
             }
             if (!isScalar && !isHandle && !isRef && !isHeapNullable) {
-                throw YuxError(node->getLineNumber(), node->getColumn(),
-                               ErrorCode::E2029, varName, t.name);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E2029, varName, t.name);
             }
             // 已捕获 → 复用槽位；首次 → 追加
             // 槽位字节数: handle 形态 / 标量 / T& 都是 8; Heap<T>? = {i1, ptr} 实际 16
@@ -233,8 +230,7 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
                 u64 slotSize = 8;
                 if (isHeapNullable) {
                     auto llvmTy = getLLVMType(t);
-                    auto rawSize = _module->getDataLayout()
-                                       .getTypeAllocSize(llvmTy).getFixedValue();
+                    auto rawSize = _module->getDataLayout().getTypeAllocSize(llvmTy).getFixedValue();
                     slotSize = rawSize < 8 ? 8 : rawSize;
                 }
                 idx = _currentLambdaForCapture->addCapture(varName, t, offset, offset + slotSize);
@@ -249,8 +245,7 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             // capture 字段从 handle+16 起。这样 GEP offset 不依赖运行时 layout 选择。
             auto i8Ty = _builder.getInt8Ty();
             auto payloadOffset = _builder.getInt64(16 + static_cast<i64>(cap.byteOffset));
-            auto capAddr = _builder.CreateGEP(i8Ty, _currentLambdaCapturesArg,
-                                              {payloadOffset}, "cap.addr");
+            auto capAddr = _builder.CreateGEP(i8Ty, _currentLambdaCapturesArg, {payloadOffset}, "cap.addr");
             if (isRef) {
                 // T& slot 存的是 ptr to inner T；先 load ptr，再 load inner T 实现 auto-deref
                 // （与外层 T& 局部读语义对齐：compiler_expr.cpp:296 同源路径）
@@ -315,16 +310,14 @@ llvm::Value* Compiler::emitStringLiteralValue(const vector<u32>& codePoints) {
 
         static int strDataCounter = 0;
         string dataName = ".str.data." + to_string(strDataCounter++);
-        dataConst = new llvm::GlobalVariable(
-            *_module, arrType, /*isConstant=*/true,
-            llvm::GlobalValue::PrivateLinkage, arrInit, dataName);
+        dataConst = new llvm::GlobalVariable(*_module, arrType, /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage,
+                                             arrInit, dataName);
     }
 
     // .rodata Block：32 字节精确匹配 Array Block layout。
     auto blockTy = llvm::StructType::get(_context, {i32Ty, i32Ty, i64Ty, i64Ty, ptrTy});
     auto lenC = llvm::ConstantInt::get(i64Ty, len);
-    auto blockInit = llvm::ConstantStruct::get(
-        blockTy, {sentinel, i32Zero, lenC, lenC, dataConst});
+    auto blockInit = llvm::ConstantStruct::get(blockTy, {sentinel, i32Zero, lenC, lenC, dataConst});
 
     // 空字面量共享同一全局，省 .rodata 体积。
     llvm::GlobalVariable* blockGlobal = nullptr;
@@ -332,16 +325,14 @@ llvm::Value* Compiler::emitStringLiteralValue(const vector<u32>& codePoints) {
         const char* sharedName = ".str.empty.block";
         blockGlobal = _module->getNamedGlobal(sharedName);
         if (!blockGlobal) {
-            blockGlobal = new llvm::GlobalVariable(
-                *_module, blockTy, /*isConstant=*/true,
-                llvm::GlobalValue::PrivateLinkage, blockInit, sharedName);
+            blockGlobal = new llvm::GlobalVariable(*_module, blockTy, /*isConstant=*/true,
+                                                   llvm::GlobalValue::PrivateLinkage, blockInit, sharedName);
         }
     } else {
         static int strBlockCounter = 0;
         string blockName = ".str.block." + to_string(strBlockCounter++);
-        blockGlobal = new llvm::GlobalVariable(
-            *_module, blockTy, /*isConstant=*/true,
-            llvm::GlobalValue::PrivateLinkage, blockInit, blockName);
+        blockGlobal = new llvm::GlobalVariable(*_module, blockTy, /*isConstant=*/true,
+                                               llvm::GlobalValue::PrivateLinkage, blockInit, blockName);
     }
 
     storeArrayHandle(alloca, blockGlobal);
@@ -367,31 +358,29 @@ llvm::Value* Compiler::compileStringTemplate(StringTemplateNode* node) {
     // Phase 2b 类型校验：插值类型必须是 String 或实现 ToString.
     // Bucket 6 (CURRENT-check.md): 抠到 sema::validateStringTemplateInterps;
     // SemaPass 已接管 E3026 实际抛出点, 此处幂等防御性双跑.
-    sema::validateStringTemplateInterps(_file,
-                                         _yux ? _yux->sdkFile() : nullptr,
-                                         node);
+    sema::validateStringTemplateInterps(_file, _yux ? _yux->sdkFile() : nullptr, node);
 
     // UTF-8 → u32 码点解码（parts 在 ast_builder 已展开转义，仅含原始 UTF-8 字节）
     auto decodeUtf8 = [](const string& s) -> vector<u32> {
         vector<u32> out;
-        for (size_t i = 0; i < s.size(); ) {
+        for (size_t i = 0; i < s.size();) {
             u8 c = static_cast<u8>(s[i]);
             u32 cp = 0;
-            if (c < 0x80) {
-                cp = c; i += 1;
-            } else if ((c & 0xE0) == 0xC0 && i + 1 < s.size()) {
+            if ((c & 0xE0) == 0xC0 && i + 1 < s.size()) {
                 cp = ((c & 0x1F) << 6) | (static_cast<u8>(s[i + 1]) & 0x3F);
                 i += 2;
             } else if ((c & 0xF0) == 0xE0 && i + 2 < s.size()) {
-                cp = ((c & 0x0F) << 12) | ((static_cast<u8>(s[i + 1]) & 0x3F) << 6)
-                   | (static_cast<u8>(s[i + 2]) & 0x3F);
+                cp =
+                    ((c & 0x0F) << 12) | ((static_cast<u8>(s[i + 1]) & 0x3F) << 6) | (static_cast<u8>(s[i + 2]) & 0x3F);
                 i += 3;
             } else if ((c & 0xF8) == 0xF0 && i + 3 < s.size()) {
-                cp = ((c & 0x07) << 18) | ((static_cast<u8>(s[i + 1]) & 0x3F) << 12)
-                   | ((static_cast<u8>(s[i + 2]) & 0x3F) << 6) | (static_cast<u8>(s[i + 3]) & 0x3F);
+                cp = ((c & 0x07) << 18) | ((static_cast<u8>(s[i + 1]) & 0x3F) << 12) |
+                     ((static_cast<u8>(s[i + 2]) & 0x3F) << 6) | (static_cast<u8>(s[i + 3]) & 0x3F);
                 i += 4;
             } else {
-                cp = c; i += 1;
+                // 单字节 ASCII 或非法 utf-8 起始字节兜底
+                cp = c;
+                i += 1;
             }
             out.push_back(cp);
         }
@@ -482,9 +471,8 @@ llvm::Value* Compiler::compileStringPlusChain(ExprAddSubNode* node) {
             leaves.push_back(cur->right());
             auto leftExpr = cur->left();
             auto* innerAdd = dynamic_cast<ExprAddSubNode*>(leftExpr);
-            bool isStringAdd = innerAdd != nullptr
-                && innerAdd->op() == ExprAddSubNode::Op::Add
-                && innerAdd->getType().name == "String";
+            bool isStringAdd = innerAdd != nullptr && innerAdd->op() == ExprAddSubNode::Op::Add &&
+                               innerAdd->getType().name == "String";
             if (isStringAdd) {
                 cur = innerAdd;
                 continue;
@@ -499,8 +487,7 @@ llvm::Value* Compiler::compileStringPlusChain(ExprAddSubNode* node) {
     auto canToString = [&](const TypeInfo& t) -> bool {
         if (t.name == "String") return true;
         string fullName = t.name + ".to_string";
-        if (_yux && _yux->sdkFile()
-            && _yux->sdkFile()->lookupFnSymbol(fullName)) {
+        if (_yux && _yux->sdkFile() && _yux->sdkFile()->lookupFnSymbol(fullName)) {
             return true;
         }
         if (_file && _file->lookupFnSymbol(fullName)) return true;
@@ -509,9 +496,7 @@ llvm::Value* Compiler::compileStringPlusChain(ExprAddSubNode* node) {
     for (const auto& leaf : leaves) {
         auto t = leaf->getType();
         if (!canToString(t)) {
-            throw YuxError(
-                leaf->getLineNumber(), leaf->getColumn(),
-                ErrorCode::E3026, t.name);
+            throw YuxError(leaf->getLineNumber(), leaf->getColumn(), ErrorCode::E3026, t.name);
         }
     }
 
@@ -559,7 +544,6 @@ llvm::Value* Compiler::compileStringPlusChain(ExprAddSubNode* node) {
     return result;
 }
 
-
 // 编译元组构造表达式 (e1, e2, ...)
 // Phase 3：透明 layout，按声明顺序构造一个匿名 struct 值；元素递归编译
 // 实现：从 undef 起，逐个 CreateInsertValue 写入；返回 struct 值（非指针）
@@ -568,8 +552,8 @@ llvm::Value* Compiler::compileTupleExpr(p<ExprTupleNode> node) {
     auto tupleType = node->getType();
     auto llvmTy = getLLVMType(tupleType);
     if (!llvmTy) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3098,
-                       tupleType.name, string("(tuple)"), string("(tuple)"));
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3098, tupleType.name, string("(tuple)"),
+                       string("(tuple)"));
     }
     DEBUG_LOG_VAL("    Expr: Tuple", tupleType.name);
 

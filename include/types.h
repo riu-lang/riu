@@ -121,7 +121,7 @@ struct SourceLocation {
 };
 
 class YuxError : public std::runtime_error {
-    int _line = 0;
+    size_t _line = 0;
     int _col = 0; // 0 表示列未知
     const char* _code = "E0000"; // 指向 ErrorCode 表中的静态字面量
     DiagSeverity _sev = DiagSeverity::Error; // 默认严重等级（来源于 ErrorCodeDef.defaultSev）
@@ -129,18 +129,18 @@ class YuxError : public std::runtime_error {
     vector<string> _notes; // 附加说明（"= note: ..."），可链式 withNote 追加
 
 public:
-    explicit YuxError(const string& msg, int line) : runtime_error(msg), _line(line) {
+    explicit YuxError(const string& msg, size_t line) : runtime_error(msg), _line(line) {
         assert(line > 0 && "YuxError line must be > 0");
     }
 
     template <class... _Types>
-    explicit YuxError(int line, const format_string<_Types...> format, _Types&&... args) : runtime_error(
+    explicit YuxError(size_t line, const format_string<_Types...> format, _Types&&... args) : runtime_error(
         std::vformat(format.get(), std::make_format_args(args...))), _line(line) {
         assert(line > 0 && "YuxError line must be > 0");
     }
 
     template <class... _Types>
-    explicit YuxError(int line, int col, const format_string<_Types...> format, _Types&&... args) : runtime_error(
+    explicit YuxError(size_t line, int col, const format_string<_Types...> format, _Types&&... args) : runtime_error(
         std::vformat(format.get(), std::make_format_args(args...))), _line(line), _col(col) {
         assert(line > 0 && "YuxError line must be > 0");
     }
@@ -153,7 +153,7 @@ public:
 
     // ErrorCode 路径：模板取自 ec.message，code 取自 ec.code
     template <class... _Types>
-    explicit YuxError(int line, int col, const ErrorCodeDef& ec, _Types&&... args) : runtime_error(
+    explicit YuxError(size_t line, int col, const ErrorCodeDef& ec, _Types&&... args) : runtime_error(
         std::vformat(std::string_view(ec.message), std::make_format_args(args...))),
         _line(line), _col(col), _code(ec.code), _sev(ec.defaultSev) {
         assert(line > 0 && "YuxError line must be > 0");
@@ -161,7 +161,7 @@ public:
 
     // 列未知场景的便利重载（驱动层 / 模块层 errorLine）
     template <class... _Types>
-    explicit YuxError(int line, const ErrorCodeDef& ec, _Types&&... args) : runtime_error(
+    explicit YuxError(size_t line, const ErrorCodeDef& ec, _Types&&... args) : runtime_error(
         std::vformat(std::string_view(ec.message), std::make_format_args(args...))),
         _line(line), _col(0), _code(ec.code), _sev(ec.defaultSev) {
         assert(line > 0 && "YuxError line must be > 0");
@@ -174,20 +174,20 @@ public:
         assert(loc.line > 0 && "YuxError line must be > 0");
     }
 
-    void setLineNumber(int line) {
+    void setLineNumber(size_t line) {
         assert(line > 0 && "YuxError line must be > 0");
         _line = line;
     }
 
     void setColumn(int col) { _col = col; }
 
-    [[nodiscard]] int getLineNumber() const {
+    [[nodiscard]] size_t getLineNumber() const {
         return _line;
     }
 
     [[nodiscard]] int getColumn() const { return _col; }
 
-    [[nodiscard]] SourceLocation location() const { return {_line, _col}; }
+    [[nodiscard]] SourceLocation location() const { return {static_cast<int>(_line), _col}; }
 
     [[nodiscard]] const char* getCode() const { return _code; }
 

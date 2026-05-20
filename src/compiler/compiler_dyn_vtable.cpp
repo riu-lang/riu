@@ -39,14 +39,9 @@ std::string sanitizeForSymbol(const std::string& s) {
     std::string out;
     out.reserve(s.size());
     for (char c : s) {
-        if (c == '.') {
-            out += '_';
-        } else if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                   (c >= '0' && c <= '9') || c == '_') {
-            out += c;
-        } else {
-            out += '_';
-        }
+        bool keep = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                    (c >= '0' && c <= '9') || c == '_';
+        out += keep ? c : '_';
     }
     return out;
 }

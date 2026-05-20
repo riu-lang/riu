@@ -1115,7 +1115,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         std::set<string> seen;
         for (auto& fi : n->fields()) {
             string fname = fi->name().getText();
-            int fline = fi->name().getLine();
+            size_t fline = fi->name().getLine();
             int fcol = static_cast<int>(fi->name().getCharPositionInLine());
             if (decl->fieldIndex(fname) < 0) {
                 throw YuxError(fline, fcol, ErrorCode::E3126, _currentStructName, fname);

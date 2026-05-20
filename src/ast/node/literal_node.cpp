@@ -8,8 +8,7 @@
 #include <utility>
 #include <regex>
 
-LiteralNode::LiteralNode(const Token& value) :
-    Node(nullptr), _value(value) {
+LiteralNode::LiteralNode(const Token& value) : Node(nullptr), _value(value) {
     _line = static_cast<int>(value.getLine());
 }
 
@@ -21,8 +20,7 @@ string LiteralNode::getLocation() const {
     return _value.getText();
 }
 
-LiteralNumberNode::LiteralNumberNode(const Token& value) : LiteralNode(value) {
-}
+LiteralNumberNode::LiteralNumberNode(const Token& value) : LiteralNode(value) {}
 
 LiteralIntNode::LiteralIntNode(const Token& value) : LiteralNumberNode(value) {
     const auto& v = value.getText();
@@ -54,8 +52,7 @@ TypeInfo LiteralFloatNode::getType() const {
     return _type;
 }
 
-LiteralBoolNode::LiteralBoolNode(const Token& value) : LiteralNode(value) {
-}
+LiteralBoolNode::LiteralBoolNode(const Token& value) : LiteralNode(value) {}
 
 TypeInfo LiteralBoolNode::getType() const {
     return TypeInfo("bool");
@@ -83,23 +80,20 @@ TypeInfo LiteralObjNode::getType() const {
             return sym->type;
         }
     }
-    
+
     if (name == "_stdout_write") {
         return TypeInfo("fn() ");
     }
-    
-    SymbolSuggest::throwSymbolNotFound(scope,
-        static_cast<int>(_value.getLine()),
-        static_cast<int>(_value.getCharPositionInLine()) + 1,
-        ErrorCode::E3032, name);
+
+    SymbolSuggest::throwSymbolNotFound(scope, static_cast<int>(_value.getLine()),
+                                       static_cast<int>(_value.getCharPositionInLine()) + 1, ErrorCode::E3032, name);
 }
 
 string LiteralObjNode::getLocation() const {
     return _parent->getLocation() + "." + _value.getText();
 }
 
-LiteralNullNode::LiteralNullNode(const Token& value) : LiteralNode(value) {
-}
+LiteralNullNode::LiteralNullNode(const Token& value) : LiteralNode(value) {}
 
 TypeInfo LiteralNullNode::getType() const {
     return TypeInfo("Ptr");
@@ -113,27 +107,46 @@ LiteralCodePointNode::LiteralCodePointNode(const Token& value) : LiteralNode(val
     if (content.empty()) return;
     if (content[0] == '\\' && content.size() >= 2) {
         switch (content[1]) {
-            case 'n': _codePoint = '\n'; break;
-            case 'r': _codePoint = '\r'; break;
-            case 't': _codePoint = '\t'; break;
-            case 'v': _codePoint = '\v'; break;
-            case 'b': _codePoint = '\b'; break;
-            case '0': _codePoint = '\0'; break;
-            case '\\': _codePoint = '\\'; break;
-            case '\'': _codePoint = '\''; break;
-            default: _codePoint = static_cast<u8>(content[1]); break;
+        case 'n':
+            _codePoint = '\n';
+            break;
+        case 'r':
+            _codePoint = '\r';
+            break;
+        case 't':
+            _codePoint = '\t';
+            break;
+        case 'v':
+            _codePoint = '\v';
+            break;
+        case 'b':
+            _codePoint = '\b';
+            break;
+        case '0':
+            _codePoint = '\0';
+            break;
+        case '\\':
+            _codePoint = '\\';
+            break;
+        case '\'':
+            _codePoint = '\'';
+            break;
+        default:
+            _codePoint = static_cast<u8>(content[1]);
+            break;
         }
     } else {
         u8 c = static_cast<u8>(content[0]);
-        if (c < 0x80) {
-            _codePoint = c;
-        } else if ((c & 0xE0) == 0xC0 && content.size() >= 2) {
+        if ((c & 0xE0) == 0xC0 && content.size() >= 2) {
             _codePoint = ((c & 0x1F) << 6) | (static_cast<u8>(content[1]) & 0x3F);
         } else if ((c & 0xF0) == 0xE0 && content.size() >= 3) {
-            _codePoint = ((c & 0x0F) << 12) | ((static_cast<u8>(content[1]) & 0x3F) << 6) | (static_cast<u8>(content[2]) & 0x3F);
+            _codePoint =
+                ((c & 0x0F) << 12) | ((static_cast<u8>(content[1]) & 0x3F) << 6) | (static_cast<u8>(content[2]) & 0x3F);
         } else if ((c & 0xF8) == 0xF0 && content.size() >= 4) {
-            _codePoint = ((c & 0x07) << 18) | ((static_cast<u8>(content[1]) & 0x3F) << 12) | ((static_cast<u8>(content[2]) & 0x3F) << 6) | (static_cast<u8>(content[3]) & 0x3F);
+            _codePoint = ((c & 0x07) << 18) | ((static_cast<u8>(content[1]) & 0x3F) << 12) |
+                         ((static_cast<u8>(content[2]) & 0x3F) << 6) | (static_cast<u8>(content[3]) & 0x3F);
         } else {
+            // 单字节 ASCII 或非法 utf-8 起始字节兜底
             _codePoint = c;
         }
     }
@@ -150,47 +163,61 @@ LiteralStringNode::LiteralStringNode(const Token& value, bool raw) : LiteralNode
     }
     if (text.size() >= 2 && text.front() == '"' && text.back() == '"') {
         string content = text.substr(1, text.size() - 2);
-        for (size_t i = 0; i < content.size(); ) {
+        for (size_t i = 0; i < content.size();) {
             u32 cp = 0;
             if (!raw && content[i] == '\\' && i + 1 < content.size()) {
                 i++;
                 switch (content[i]) {
-                    case 'n': cp = '\n'; break;
-                    case 'r': cp = '\r'; break;
-                    case 't': cp = '\t'; break;
-                    case '\\': cp = '\\'; break;
-                    case '"': cp = '"'; break;
-                    case '0': cp = '\0'; break;
-                    case 'x':
-                        if (i + 2 < content.size()) {
-                            cp = static_cast<u32>(stoi(content.substr(i + 1, 2), nullptr, 16));
-                            i += 2;
-                        }
-                        break;
-                    case 'u':
-                        if (i + 4 < content.size()) {
-                            cp = static_cast<u32>(stoi(content.substr(i + 1, 4), nullptr, 16));
-                            i += 4;
-                        }
-                        break;
-                    default: cp = static_cast<u8>(content[i]); break;
+                case 'n':
+                    cp = '\n';
+                    break;
+                case 'r':
+                    cp = '\r';
+                    break;
+                case 't':
+                    cp = '\t';
+                    break;
+                case '\\':
+                    cp = '\\';
+                    break;
+                case '"':
+                    cp = '"';
+                    break;
+                case '0':
+                    cp = '\0';
+                    break;
+                case 'x':
+                    if (i + 2 < content.size()) {
+                        cp = static_cast<u32>(stoi(content.substr(i + 1, 2), nullptr, 16));
+                        i += 2;
+                    }
+                    break;
+                case 'u':
+                    if (i + 4 < content.size()) {
+                        cp = static_cast<u32>(stoi(content.substr(i + 1, 4), nullptr, 16));
+                        i += 4;
+                    }
+                    break;
+                default:
+                    cp = static_cast<u8>(content[i]);
+                    break;
                 }
                 i++;
             } else {
                 u8 c = static_cast<u8>(content[i]);
-                if (c < 0x80) {
-                    cp = c;
-                    i++;
-                } else if ((c & 0xE0) == 0xC0 && i + 1 < content.size()) {
+                if ((c & 0xE0) == 0xC0 && i + 1 < content.size()) {
                     cp = ((c & 0x1F) << 6) | (static_cast<u8>(content[i + 1]) & 0x3F);
                     i += 2;
                 } else if ((c & 0xF0) == 0xE0 && i + 2 < content.size()) {
-                    cp = ((c & 0x0F) << 12) | ((static_cast<u8>(content[i + 1]) & 0x3F) << 6) | (static_cast<u8>(content[i + 2]) & 0x3F);
+                    cp = ((c & 0x0F) << 12) | ((static_cast<u8>(content[i + 1]) & 0x3F) << 6) |
+                         (static_cast<u8>(content[i + 2]) & 0x3F);
                     i += 3;
                 } else if ((c & 0xF8) == 0xF0 && i + 3 < content.size()) {
-                    cp = ((c & 0x07) << 18) | ((static_cast<u8>(content[i + 1]) & 0x3F) << 12) | ((static_cast<u8>(content[i + 2]) & 0x3F) << 6) | (static_cast<u8>(content[i + 3]) & 0x3F);
+                    cp = ((c & 0x07) << 18) | ((static_cast<u8>(content[i + 1]) & 0x3F) << 12) |
+                         ((static_cast<u8>(content[i + 2]) & 0x3F) << 6) | (static_cast<u8>(content[i + 3]) & 0x3F);
                     i += 4;
                 } else {
+                    // 单字节 ASCII 或非法 utf-8 起始字节兜底
                     cp = c;
                     i++;
                 }
@@ -205,10 +232,7 @@ TypeInfo LiteralStringNode::getType() const {
 }
 
 StringTemplateNode::StringTemplateNode(const Token& openTok, vector<string> parts, vector<p<ExprNode>> interps)
-    : LiteralNode(openTok),
-      _parts(std::move(parts)),
-      _interps(std::move(interps)) {
-}
+    : LiteralNode(openTok), _parts(std::move(parts)), _interps(std::move(interps)) {}
 
 TypeInfo StringTemplateNode::getType() const {
     return TypeInfo("String");

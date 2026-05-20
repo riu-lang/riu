@@ -79,12 +79,14 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
         for (auto& pt : paramTypes) {
             if (pt.isHeap()) {
                 auto inner = pt.heapElementType();
-                throw YuxError(header->getStart()->getLine(), ErrorCode::E4028, inner ? inner->name : std::string("?"));
+                throw YuxError(header->getStart()->getLine(), ErrorCode::E4028,
+                               inner ? inner->name : std::string("?"));
             }
         }
         if (retType.isHeap()) {
             auto inner = retType.heapElementType();
-            throw YuxError(header->getStart()->getLine(), ErrorCode::E4028, inner ? inner->name : std::string("?"));
+            throw YuxError(header->getStart()->getLine(), ErrorCode::E4028,
+                           inner ? inner->name : std::string("?"));
         }
 
         DEBUG_LOG_VAL("  Register external function", fnName);

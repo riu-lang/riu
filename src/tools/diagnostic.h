@@ -24,7 +24,7 @@ struct Diagnostic {
     DiagSeverity severity = DiagSeverity::Error;
     string code = "E0000"; // Phase 2 起按类别分配
     string file;           // 源文件绝对/相对路径，可空
-    int line = 0;          // 1-based；0 = 未知
+    size_t line = 0;       // 1-based；0 = 未知
     int col = 0;           // 1-based；0 = 未知
     string message;
     vector<string> notes;  // Phase 2+ 使用
