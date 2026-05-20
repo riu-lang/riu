@@ -14,8 +14,8 @@
 #include <llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/Support/MemoryBuffer.h>
-#include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Support/TargetSelect.h>
 
 #include <filesystem>
 

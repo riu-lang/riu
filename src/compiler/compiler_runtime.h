@@ -15,10 +15,10 @@
 #ifndef YUX_LANG_COMPILER_RUNTIME_H
 #define YUX_LANG_COMPILER_RUNTIME_H
 
-#include <llvm/IR/LLVMContext.h>
-#include <llvm/IR/IRBuilder.h>
-#include <llvm/IR/Module.h>
 #include <llvm/IR/GlobalVariable.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Module.h>
 #include "types.h"
 
 class Compiler;

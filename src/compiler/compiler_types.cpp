@@ -10,13 +10,13 @@
 // - 泛型结构体实例化
 // - 类型替换 (泛型参数替换)
 
-#include "compiler.h"
 #include "ast/mangler.h"
 #include "ast/node/alias_node.h"
-#include "ast/node/spec_node.h"
-#include "ast/node/struct_node.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/fn_node.h"
+#include "ast/node/spec_node.h"
+#include "ast/node/struct_node.h"
+#include "compiler.h"
 #include <llvm/IR/DerivedTypes.h>
 #include <set>
 

@@ -4,9 +4,9 @@
 #ifndef YUX_LANG_AST_BUILDER_H
 #define YUX_LANG_AST_BUILDER_H
 
-#include "yux.h"
 #include "node/fn_node.h"
 #include "node/global_const_node.h"
+#include "yux.h"
 #include "yux/yuxParserBaseVisitor.h"
 #include "yux/yuxParserVisitor.h"
 

@@ -14,10 +14,10 @@
 // → 由 yux test 的 SEH wrapper 翻译为 ASSERT_FAILED 显示。
 // v1 不在 IR 中打印断言种类 / 实参值 / msg 文本，待 String stringify 扩展同期补齐。
 
-#include "compiler.h"
-#include "compiler_test_intrinsics.h"
 #include "ast/mangler.h"
 #include "ast/node/expr_node.h"
+#include "compiler_test_intrinsics.h"
+#include "compiler.h"
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>

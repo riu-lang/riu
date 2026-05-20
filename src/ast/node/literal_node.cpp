@@ -1,12 +1,12 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 
-#include "literal_node.h"
-#include "file_node.h"
 #include "analyzer/symbol_suggest.h"
+#include "file_node.h"
+#include "literal_node.h"
 
-#include <utility>
 #include <regex>
+#include <utility>
 
 LiteralNode::LiteralNode(const Token& value) : Node(nullptr), _value(value) {
     _line = static_cast<int>(value.getLine());

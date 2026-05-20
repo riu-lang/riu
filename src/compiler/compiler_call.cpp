@@ -10,17 +10,17 @@
 // - 泛型函数调用
 // - 外部函数调用
 
-#include "compiler.h"
-#include "ast/node/expr_node.h"
-#include "ast/node/literal_node.h"
-#include "compiler_runtime.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
 #include "ast/mangler.h"
-#include "sema/call_resolve.h"
+#include "ast/node/expr_node.h"
+#include "ast/node/literal_node.h"
+#include "compiler_runtime.h"
+#include "compiler.h"
+#include <functional>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
-#include <functional>
+#include "sema/call_resolve.h"
 
 // 重载解析 / 灵活整数推断 / E6014 歧义诊断已迁至 src/sema/call_resolve.cpp,
 // 由 namespace sema 提供 resolveFnOverload / resolveCtorOverload, 不依赖 LLVM.

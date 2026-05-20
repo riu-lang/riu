@@ -3,16 +3,16 @@
 
 #include "symbol_lookup.h"
 
-#include "workspace.h"
 #include "ast/node/file_node.h"
 #include "ast/node/fn_node.h"
-#include "ast/node/struct_node.h"
 #include "ast/node/global_const_node.h"
+#include "ast/node/struct_node.h"
 #include "ast/node/type_node.h"
+#include "workspace.h"
 
 #include "antlr4-runtime.h"
-#include "yux/yuxLexer.h"
 #include "utf8.h"
+#include "yux/yuxLexer.h"
 
 #include <algorithm>
 #include <set>

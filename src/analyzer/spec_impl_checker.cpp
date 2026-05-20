@@ -14,12 +14,12 @@
 
 #include "spec_impl_checker.h"
 
-#include "spec_registry.h"
-#include "ast/yux.h"
 #include "ast/node/alias_node.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/type_node.h"
+#include "ast/yux.h"
 #include "error_code.h"
+#include "spec_registry.h"
 
 #include <functional>
 #include <set>

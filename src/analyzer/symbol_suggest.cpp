@@ -8,10 +8,10 @@
 // - 沿 ScopeNode 父链汇总可见变量与函数名
 // - 按 (距离, 名称) 排序后取前 k 个
 
-#include "symbol_suggest.h"
-#include "ast/node/node.h"
 #include <algorithm>
+#include "ast/node/node.h"
 #include <set>
+#include "symbol_suggest.h"
 #include <utility>
 
 namespace {

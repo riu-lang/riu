@@ -17,8 +17,8 @@
 #define YUX_LANG_AST_BUILDER_HELPERS_H
 
 #include "node/fn_node.h"
-#include "yux/yuxParser.h"
 #include "types.h"
+#include "yux/yuxParser.h"
 
 namespace {
 

@@ -7,12 +7,12 @@
 //   - buildTypeWithRef / findEnclosingStructName
 // 拆自原 ast_builder.cpp（P1 Phase 2），方法体一字不动。
 
-#include "ast_builder.h"
-#include "ast_builder_helpers.h"
-#include "node/expr_node.h"
-#include "node/statement_node.h"
-#include "node/literal_node.h"
 #include <algorithm>
+#include "ast_builder_helpers.h"
+#include "ast_builder.h"
+#include "node/expr_node.h"
+#include "node/literal_node.h"
+#include "node/statement_node.h"
 #include "types.h"
 
 std::any ASTBuilder::visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) {

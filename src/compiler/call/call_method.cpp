@@ -4,17 +4,17 @@
 // 方法调用编译：从 compiler_call.cpp 拆出 (P1 Phase 3)
 // 覆盖 compileMethodCall + 数组 / 内置 / 结构体 / Dyn 子分发。
 
-#include "../compiler.h"
-#include "ast/node/expr_node.h"
-#include "ast/node/literal_node.h"
 #include "../compiler_runtime.h"
+#include "../compiler.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
 #include "ast/mangler.h"
-#include "sema/call_resolve.h"
+#include "ast/node/expr_node.h"
+#include "ast/node/literal_node.h"
+#include <functional>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
-#include <functional>
+#include "sema/call_resolve.h"
 
 // ==================== 方法调用编译 ====================
 // 编译方法调用表达式 (obj.method(args))

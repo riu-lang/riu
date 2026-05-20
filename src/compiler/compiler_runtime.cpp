@@ -12,8 +12,8 @@
 // 注意: 这些函数在编译 SDK (core.yux) 时生成，
 // 并链接到每个 yux 程序中。
 
-#include "compiler_runtime.h"
 #include "ast/yux.h"
+#include "compiler_runtime.h"
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 

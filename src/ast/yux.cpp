@@ -9,9 +9,9 @@
 
 #include <toml.hpp>
 
-#include "ast_builder.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
+#include "ast_builder.h"
 #include "tools/syntax_error_listener.h"
 #include "yux/yuxLexer.h"
 #include "yux/yuxParser.h"

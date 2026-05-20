@@ -16,9 +16,9 @@
 #ifndef YUX_LANG_PKG_CACHE_H
 #define YUX_LANG_PKG_CACHE_H
 
+#include <cstdint>
 #include <string>
 #include <unordered_map>
-#include <cstdint>
 
 class PkgCache {
 public:

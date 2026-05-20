@@ -7,14 +7,14 @@
 
 #include "test_cmd.h"
 
-#include "sdk_compile.h"
 #include "jit/lljit_runner.h"
+#include "sdk_compile.h"
 
 #include "ast/mangler.h"
 #include "ast/node/fn_node.h"
 #include "ast/yux.h"
-#include "compiler/compiler.h"
 #include "compiler/compiler_test_intrinsics.h"
+#include "compiler/compiler.h"
 #include "tools/build_cache.h"
 #include "tools/sdk_loader.h"
 #include "types.h"
@@ -28,8 +28,8 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/MemoryBuffer.h>
-#include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Support/TargetSelect.h>
 
 #include <algorithm>
 #include <atomic>

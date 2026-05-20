@@ -10,20 +10,20 @@
 // - P0 阶段：能力声明只开 textDocumentSync.full，其它 provider 留给 P1+
 // - 错误处理：JSON 解析失败回 -32700；未知请求回 -32601；未初始化回 -32002
 
-#include "lsp_server.h"
-#include "lsp_io.h"
-#include "document.h"
-#include "position.h"
-#include "completion.h"
-#include "semantic_tokens.h"
-#include "workspace.h"
-#include "symbol_lookup.h"
-#include "tools/format/printer.h"
 #include "ast/node/file_node.h"
 #include "ast/node/fn_node.h"
-#include "ast/node/struct_node.h"
 #include "ast/node/global_const_node.h"
+#include "ast/node/struct_node.h"
+#include "completion.h"
+#include "document.h"
+#include "lsp_io.h"
+#include "lsp_server.h"
+#include "position.h"
+#include "semantic_tokens.h"
+#include "symbol_lookup.h"
+#include "tools/format/printer.h"
 #include "utf8.h"
+#include "workspace.h"
 
 #include <nlohmann/json.hpp>
 

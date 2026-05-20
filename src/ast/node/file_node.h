@@ -5,11 +5,11 @@
 #define YUX_LANG_FILE_NODE_H
 
 #include "alias_node.h"
-#include "spec_node.h"
 #include "enum_node.h"
 #include "fn_node.h"
 #include "global_const_node.h"
 #include "node.h"
+#include "spec_node.h"
 #include "struct_node.h"
 
 class FileNode : public ScopeNode {

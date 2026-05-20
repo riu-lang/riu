@@ -4,10 +4,10 @@
 #ifndef YUX_LANG_SEMA_CALL_RESOLVE_H
 #define YUX_LANG_SEMA_CALL_RESOLVE_H
 
-#include "ast/node/spec_node.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/file_node.h"
 #include "ast/node/fn_node.h"
+#include "ast/node/spec_node.h"
 
 class Yux;
 class SpecRegistry;

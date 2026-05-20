@@ -4,9 +4,9 @@
 #ifndef YUX_LANG_GLOBAL_CONST_NODE_H
 #define YUX_LANG_GLOBAL_CONST_NODE_H
 
+#include "literal_node.h"
 #include "node.h"
 #include "type_node.h"
-#include "literal_node.h"
 
 class GlobalConstNode : public Node, public Named, public Typed {
     p<TypeNode> _type;

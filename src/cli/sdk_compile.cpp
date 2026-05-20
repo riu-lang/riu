@@ -9,13 +9,13 @@
 #include "sdk_compile.h"
 
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/LegacyPassManager.h>
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/Path.h>
-#include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Support/TargetSelect.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/TargetParser/Triple.h>
-#include <llvm/IR/LegacyPassManager.h>
 
 #include <algorithm>
 #include <filesystem>

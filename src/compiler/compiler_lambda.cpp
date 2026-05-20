@@ -11,11 +11,11 @@
 //   fn_ptr / captures，按 ABI 调用
 // - inferLambdaParamsFromFnType：实参位置 lambda 形参缺类型时按 callee fnParamTypes 回填
 
-#include "compiler.h"
+#include "ast/mangler.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/literal_node.h"
 #include "ast/node/statement_node.h"
-#include "ast/mangler.h"
+#include "compiler.h"
 
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>

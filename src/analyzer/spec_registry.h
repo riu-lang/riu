@@ -18,8 +18,8 @@
 #ifndef YUX_LANG_SPEC_REGISTRY_H
 #define YUX_LANG_SPEC_REGISTRY_H
 
-#include "ast/node/spec_node.h"
 #include "ast/node/file_node.h"
+#include "ast/node/spec_node.h"
 
 #include <map>
 #include <optional>

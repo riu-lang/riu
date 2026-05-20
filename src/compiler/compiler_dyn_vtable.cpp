@@ -17,11 +17,11 @@
 // 调用方先经 SpecImplChecker 的 boundSatisfied / E1133 校验，
 // 这里假定 U 满足 D 的全部签名；找不到方法实现视为编译器内部一致性失败。
 
-#include "compiler.h"
-#include "ast/mangler.h"
-#include "ast/yux.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
+#include "ast/mangler.h"
+#include "ast/yux.h"
+#include "compiler.h"
 
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>

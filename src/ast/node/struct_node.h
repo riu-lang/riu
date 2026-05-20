@@ -4,10 +4,10 @@
 #ifndef YUX_LANG_STRUCT_NODE_H
 #define YUX_LANG_STRUCT_NODE_H
 
-#include "node.h"
-#include "type_node.h"
 #include "fn_node.h"
+#include "node.h"
 #include "spec_node.h"
+#include "type_node.h"
 
 class StructFieldNode : public Node {
     Token _name;

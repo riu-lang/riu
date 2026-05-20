@@ -7,8 +7,8 @@
 
 #include "build_cmd.h"
 
-#include "sdk_compile.h"
 #include "jit/lljit_runner.h"
+#include "sdk_compile.h"
 
 #include "ast/node/expr_node.h"
 #include "ast/node/fn_node.h"
