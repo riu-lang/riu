@@ -161,6 +161,12 @@ target("yux_frontend")
 
     add_files(
         "src/ast/ast_builder.cpp",
+        "src/ast/ast_builder_decl.cpp",
+        "src/ast/ast_builder_struct.cpp",
+        "src/ast/ast_builder_fn.cpp",
+        "src/ast/ast_builder_stmt.cpp",
+        "src/ast/ast_builder_expr.cpp",
+        "src/ast/ast_builder_type.cpp",
         "src/ast/yux.cpp",
         "src/tools/diagnostic.cpp",
         "src/tools/format/doc.cpp",
