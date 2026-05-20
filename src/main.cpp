@@ -27,7 +27,7 @@ using namespace yux;
 using namespace yux::cli;
 
 std::string wstr2str(const std::wstring& wstr) {
-    std::u16string u16((char16_t*)wstr.c_str());
+    std::u16string u16(reinterpret_cast<const char16_t*>(wstr.c_str()));
     auto u8 = utf8::utf16tou8(u16);
     return {u8.begin(), u8.end()};
 }
@@ -147,8 +147,7 @@ int wmain(int argc, wchar_t* argv[]) {
         for (const auto& code : codes) {
             const auto* def = ErrorCode::lookupDefaultSeverity(code);
             if (!def) {
-                std::cerr << "warning: unknown error code '" << code << "' for " << flagName << " (ignored)"
-                          << '\n';
+                std::cerr << "warning: unknown error code '" << code << "' for " << flagName << " (ignored)" << '\n';
                 continue;
             }
             if (!DiagPolicy::setSeverityOverride(code, *def, newSev)) {

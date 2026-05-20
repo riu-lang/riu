@@ -420,7 +420,7 @@ std::any ASTBuilder::visitAliasDecl(yux::yuxParser::AliasDeclContext* ctx) {
         }
     }
 
-    auto aliasDecl = createWithLine<AliasDeclNode>(ctx, file, nameTok, p<TypeNode>(nullptr));
+    auto aliasDecl = createWithLine<AliasDeclNode>(ctx, file, nameTok, static_cast<p<TypeNode>>(nullptr));
     aliasDecl->setTypeParams(typeParams);
 
     // 类型形参纳入别名作用域，使 `Pair<T> = (T, T)` 的目标类型解析能识别 T

@@ -25,7 +25,7 @@ std::any ASTBuilder::visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) {
             ErrorCode::E4029, std::string("?"));
     }
     DEBUG_LOG_VAL("    Type: Normal", sym->getText());
-    return p<TypeNode>(createWithLine<TypeNormalNode>(ctx, parent, sym));
+    return static_cast<p<TypeNode>>(createWithLine<TypeNormalNode>(ctx, parent, sym));
 }
 
 // Self 类型字面量 (Phase 2b): 构造 TypeSelfNode 占位.
@@ -36,7 +36,7 @@ std::any ASTBuilder::visitTypeSelf(yux::yuxParser::TypeSelfContext* ctx) {
     DEBUG_LOG("    Type: Self");
     auto* tk = ctx->SelfType()->getSymbol();
     string structName = findEnclosingStructName();
-    return p<TypeNode>(createWithLine<TypeSelfNode>(ctx, parent, tk, structName));
+    return static_cast<p<TypeNode>>(createWithLine<TypeSelfNode>(ctx, parent, tk, structName));
 }
 
 // 扫 _scopeStack 找最内层 StructImplNode 的 structName, 找不到返回空串.
@@ -93,7 +93,7 @@ std::any ASTBuilder::visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) {
     }
     DEBUG_LOG_VAL("    Type: Generic", baseName->getText() << "<" << argsStr << ">");
 
-    return p<TypeNode>(createWithLine<TypeGenericNode>(ctx, parent, baseName, typeArgs));
+    return static_cast<p<TypeNode>>(createWithLine<TypeGenericNode>(ctx, parent, baseName, typeArgs));
 }
 
 std::any ASTBuilder::visitTypeArray(yux::yuxParser::TypeArrayContext* ctx) {
@@ -101,7 +101,7 @@ std::any ASTBuilder::visitTypeArray(yux::yuxParser::TypeArrayContext* ctx) {
     auto elementType = any_cast_p<TypeNode>(visit(ctx->type()));
     auto count = ctx->INT()->getSymbol();
     DEBUG_LOG_VAL("    Type: Array", "[" << count->getText() << "]");
-    return p<TypeNode>(createWithLine<TypeArrayNode>(ctx, parent, elementType, count));
+    return static_cast<p<TypeNode>>(createWithLine<TypeArrayNode>(ctx, parent, elementType, count));
 }
 
 // 函数类型字面量 fn(P1,...) R / fn?(...) R [#16][#23][#24]
@@ -134,7 +134,7 @@ std::any ASTBuilder::visitTypeFn(yux::yuxParser::TypeFnContext* ctx) {
     }
 
     DEBUG_LOG_VAL("    Type: Fn", (nullable ? "fn?(" : "fn(") << paramTypes.size() << " params)");
-    return p<TypeNode>(createWithLine<TypeFnNode>(ctx, parent, std::move(paramTypes), retType, nullable));
+    return static_cast<p<TypeNode>>(createWithLine<TypeFnNode>(ctx, parent, std::move(paramTypes), retType, nullable));
 }
 
 // 元组类型 (T1, T2, ...)
@@ -147,7 +147,7 @@ std::any ASTBuilder::visitTypeTuple(yux::yuxParser::TypeTupleContext* ctx) {
         elementTypes.push_back(any_cast_p<TypeNode>(visit(tCtx)));
     }
     DEBUG_LOG_VAL("    Type: Tuple", "elements=" << elementTypes.size());
-    return p<TypeNode>(createWithLine<TypeTupleNode>(ctx, parent, std::move(elementTypes)));
+    return static_cast<p<TypeNode>>(createWithLine<TypeTupleNode>(ctx, parent, std::move(elementTypes)));
 }
 
 // Phase 4a: typeWithRef → TypeNode；SymbolAnd 存在则包成 Ref<inner>
@@ -165,14 +165,14 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
                 static_cast<int>(n->ID()->getSymbol()->getCharPositionInLine()) + 1,
                 ErrorCode::E4029, std::string("?"));
         }
-        inner = p<TypeNode>(createWithLine<TypeNormalNode>(n, parent, n->ID()->getSymbol()));
+        inner = static_cast<p<TypeNode>>(createWithLine<TypeNormalNode>(n, parent, n->ID()->getSymbol()));
         andTok = n->SymbolAnd();
     } else if (auto s = dynamic_cast<yuxParser::TypeSelfWithRefContext*>(twr)) {
         // Phase 2b: Self& —— 结构体方法返回 / 形参可写 `Self&`.
         // 出现在 impl 体外由 sema (Phase 2d) 拒收.
         auto* tk = s->SelfType()->getSymbol();
         string structName = findEnclosingStructName();
-        inner = p<TypeNode>(createWithLine<TypeSelfNode>(s, parent, tk, structName));
+        inner = static_cast<p<TypeNode>>(createWithLine<TypeSelfNode>(s, parent, tk, structName));
         andTok = s->SymbolAnd();
     } else if (auto nul = dynamic_cast<yuxParser::TypeNullableWithRefContext*>(twr)) {
         // 内层是 type（不带 &），直接复用 visitType* 通路
@@ -187,7 +187,7 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
         auto qt = nul->SymbolQuest()->getSymbol();
         Token nullableName(string("Nullable"), qt ? qt->getLine() : 0);
         vector<p<TypeNode>> args; args.push_back(innerT);
-        inner = p<TypeNode>(createWithLine<TypeGenericNode>(nul, parent, nullableName, args));
+        inner = static_cast<p<TypeNode>>(createWithLine<TypeGenericNode>(nul, parent, nullableName, args));
         andTok = nul->SymbolAnd();
     } else if (auto g = dynamic_cast<yuxParser::TypeGenericWithRefContext*>(twr)) {
         auto baseName = g->ID()->getSymbol();
@@ -212,12 +212,12 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
                     .withHint("函数值不是堆句柄、无 RC 头，不能用 Weak<...> 包裹（spec §3.7 / §5.5）");
             }
         }
-        inner = p<TypeNode>(createWithLine<TypeGenericNode>(g, parent, baseName, typeArgs));
+        inner = static_cast<p<TypeNode>>(createWithLine<TypeGenericNode>(g, parent, baseName, typeArgs));
         andTok = g->SymbolAnd();
     } else if (auto a = dynamic_cast<yuxParser::TypeArrayWithRefContext*>(twr)) {
         auto elemType = buildTypeWithRef(a->typeWithRef(), parent);
         auto count = a->INT()->getSymbol();
-        inner = p<TypeNode>(createWithLine<TypeArrayNode>(a, parent, elemType, count));
+        inner = static_cast<p<TypeNode>>(createWithLine<TypeArrayNode>(a, parent, elemType, count));
         andTok = a->SymbolAnd();
     } else if (auto t = dynamic_cast<yuxParser::TypeTupleWithRefContext*>(twr)) {
         // 元组 (T1, T2, ...)；每个元素本身可带 & 引用
@@ -227,7 +227,7 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
         for (auto* eCtx : t->types) {
             elementTypes.push_back(buildTypeWithRef(eCtx, parent));
         }
-        inner = p<TypeNode>(createWithLine<TypeTupleNode>(t, parent, std::move(elementTypes)));
+        inner = static_cast<p<TypeNode>>(createWithLine<TypeTupleNode>(t, parent, std::move(elementTypes)));
         andTok = nullptr;
     } else if (auto* fn = dynamic_cast<yuxParser::TypeFnWithRefContext*>(twr)) {
         // 函数类型字面量在 typeWithRef 位（fn 形参 / 返回值 / 局部 var）
@@ -251,7 +251,7 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
         if (auto* rt = fn->retType) {
             retType = buildTypeWithRef(rt, parent);
         }
-        inner = p<TypeNode>(createWithLine<TypeFnNode>(fn, parent, std::move(paramTypes), retType, nullable));
+        inner = static_cast<p<TypeNode>>(createWithLine<TypeFnNode>(fn, parent, std::move(paramTypes), retType, nullable));
         andTok = fn->SymbolAnd();
     } else {
         throw YuxError(1, ErrorCode::E2002);
@@ -262,7 +262,7 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
         Token refName(string("Ref"), sym ? sym->getLine() : 0);
         vector<p<TypeNode>> args;
         args.push_back(inner);
-        return p<TypeNode>(createWithLine<TypeGenericNode>(twr, parent, refName, args));
+        return static_cast<p<TypeNode>>(createWithLine<TypeGenericNode>(twr, parent, refName, args));
     }
     return inner;
 }
@@ -293,5 +293,5 @@ std::any ASTBuilder::visitTypeNullable(yux::yuxParser::TypeNullableContext* ctx)
     args.push_back(inner);
 
     DEBUG_LOG_VAL("    Type: Nullable", inner->getType().name << "?");
-    return p<TypeNode>(createWithLine<TypeGenericNode>(ctx, parent, nullableName, args));
+    return static_cast<p<TypeNode>>(createWithLine<TypeGenericNode>(ctx, parent, nullableName, args));
 }

@@ -53,7 +53,7 @@ std::any ASTBuilder::visitStatementLet(yux::yuxParser::StatementLetContext* ctx)
         if (scope) {
             scope->registerSymbol(name->getText(), {SymbolKind::Variable, name->getText(), varType, true});
         }
-        return p<StatementNode>(createWithLine<StatementDeclareNode>(ctx, scope, isMut, isConst, name, type));
+        return static_cast<p<StatementNode>>(createWithLine<StatementDeclareNode>(ctx, scope, isMut, isConst, name, type));
     }
 
     auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
@@ -69,7 +69,7 @@ std::any ASTBuilder::visitStatementLet(yux::yuxParser::StatementLetContext* ctx)
         scope->registerSymbol(name->getText(), sym);
     }
 
-    return p<StatementNode>(createWithLine<StatementDeclareAssignNode>(ctx, scope, isMut, isConst, name, type, expr));
+    return static_cast<p<StatementNode>>(createWithLine<StatementDeclareAssignNode>(ctx, scope, isMut, isConst, name, type, expr));
 }
 
 // DRAFT-let-unify §3：let 元组解构（默认 → 不可重赋 / #Mut → isMut=true / #Cval → isConst=true）。
@@ -120,7 +120,7 @@ for (auto idTok : ctx->names) {
     }
 
     DEBUG_LOG_VAL("  Statement: LetTuple", names.size() << " names, expr type=" << wholeType.name);
-    return p<StatementNode>(
+    return static_cast<p<StatementNode>>(
         createWithLine<StatementDeclareAssignTupleNode>(ctx, scope, isMut, isConst, names, type, expr));
 }
 
@@ -161,7 +161,7 @@ std::any ASTBuilder::visitStatementAssign(yux::yuxParser::StatementAssignContext
         (ctx->obj->getType() == yux::yuxParser::SymbolThis) ? Token("$", ctx->obj->getLine()) : Token(ctx->obj);
 
     DEBUG_LOG_VAL("  Statement: Assign", objToken.getText() << (subs.empty() ? "" : "." + subs[0].getText()));
-    return p<StatementNode>(createWithLine<StatementAssignNode>(ctx, scope, objToken, subs, expr, op));
+    return static_cast<p<StatementNode>>(createWithLine<StatementAssignNode>(ctx, scope, objToken, subs, expr, op));
 }
 
 std::any ASTBuilder::visitStatementExpr(yux::yuxParser::StatementExprContext* ctx) {
@@ -169,7 +169,7 @@ std::any ASTBuilder::visitStatementExpr(yux::yuxParser::StatementExprContext* ct
     auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
     bool hasSemicolon = ctx->SymbolSemicolon() != nullptr;
     DEBUG_LOG_VAL("  Statement: Expression", (hasSemicolon ? "with semicolon" : "without semicolon"));
-    return p<StatementNode>(createWithLine<StatementExprNode>(ctx, scope, expr, hasSemicolon));
+    return static_cast<p<StatementNode>>(createWithLine<StatementExprNode>(ctx, scope, expr, hasSemicolon));
 }
 
 std::any ASTBuilder::visitStatementRet(yux::yuxParser::StatementRetContext* ctx) {
@@ -178,26 +178,26 @@ std::any ASTBuilder::visitStatementRet(yux::yuxParser::StatementRetContext* ctx)
     DEBUG_LOG("  Statement: Return");
     auto retStmt = createWithLine<StatementRetNode>(ctx, scope, expr);
     retStmt->setLocation(expr->resolveLineNumber(), expr->resolveColumn());
-    return p<StatementNode>(retStmt);
+    return static_cast<p<StatementNode>>(retStmt);
 }
 
 std::any ASTBuilder::visitStatementRetVoid(yux::yuxParser::StatementRetVoidContext* ctx) {
     auto scope = currentScope();
     DEBUG_LOG("  Statement: Return Void");
-    return p<StatementNode>(createWithLine<StatementRetVoidNode>(ctx, scope));
+    return static_cast<p<StatementNode>>(createWithLine<StatementRetVoidNode>(ctx, scope));
 }
 
 std::any ASTBuilder::visitStatementLoop(yux::yuxParser::StatementLoopContext* ctx) {
     auto scope = currentScope();
     auto block = any_cast_p<StatementBlockNode>(visit(ctx->statementBlock()));
     DEBUG_LOG("  Statement: Loop");
-    return p<StatementNode>(createWithLine<StatementLoopNode>(ctx, scope, block));
+    return static_cast<p<StatementNode>>(createWithLine<StatementLoopNode>(ctx, scope, block));
 }
 
 std::any ASTBuilder::visitStatementBreak(yux::yuxParser::StatementBreakContext* ctx) {
     auto scope = currentScope();
     DEBUG_LOG("  Statement: Break");
-    return p<StatementNode>(createWithLine<StatementBreakNode>(ctx, scope));
+    return static_cast<p<StatementNode>>(createWithLine<StatementBreakNode>(ctx, scope));
 }
 
 std::any ASTBuilder::visitStatementSet(yux::yuxParser::StatementSetContext* ctx) {
@@ -214,7 +214,7 @@ for (auto arg : ctx->args) {
 
     auto valueExpr = any_cast_p<ExprNode>(visit(ctx->value));
 
-    return p<StatementNode>(createWithLine<StatementSetNode>(ctx, scope, arrayExpr, indices, valueExpr));
+    return static_cast<p<StatementNode>>(createWithLine<StatementSetNode>(ctx, scope, arrayExpr, indices, valueExpr));
 }
 
 std::any ASTBuilder::visitStatementBlock(yux::yuxParser::StatementBlockContext* ctx) {
