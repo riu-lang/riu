@@ -202,7 +202,8 @@ target("yux_codegen")
     add_includedirs(path.join(third_party, "llvm/lld/include"), {public = true})
 
     add_files(
-        "src/compiler/*.cpp"
+        "src/compiler/*.cpp",
+        "src/compiler/call/*.cpp"
     )
 
     add_syslinks("ntdll", {public = true})
