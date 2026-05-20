@@ -252,7 +252,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
     // Phase 3c: callee 为 Rc<fn(...)R> → 自动解引取 fat-ptr 后走同款 fn-value-call
     {
         TypeInfo calleeStaticType;
-        try { calleeStaticType = calleeExpr->getType(); } catch (...) {}
+        try { calleeStaticType = calleeExpr->getType(); } catch (...) {} // NOLINT(bugprone-empty-catch)
         if (calleeStaticType.isFn()) {
             return compileFnValueCall(node);
         }

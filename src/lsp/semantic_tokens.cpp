@@ -247,7 +247,7 @@ std::vector<int> computeSemanticTokens(std::string_view text) {
         parser.removeErrorListeners();
         auto* tree = parser.program();
         collectOverrides(tree, state);
-    } catch (...) {
+    } catch (...) { // NOLINT(bugprone-empty-catch)
         // 解析失败，沿用 lexer 默认着色
     }
     auto& overrides = state.overrides;

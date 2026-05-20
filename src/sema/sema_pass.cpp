@@ -341,7 +341,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                 }
             } catch (const YuxError&) {
                 throw;
-            } catch (...) {
+            } catch (...) { // NOLINT(bugprone-empty-catch)
                 // 留 Compiler 兜底
             }
         }
@@ -560,7 +560,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                 }
             } catch (const YuxError&) {
                 throw;
-            } catch (...) {
+            } catch (...) { // NOLINT(bugprone-empty-catch)
                 // 留 Compiler 兜底
             }
         }
@@ -606,7 +606,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                 }
             } catch (const YuxError&) {
                 throw;
-            } catch (...) {
+            } catch (...) { // NOLINT(bugprone-empty-catch)
                 // getType 失败: 留 Compiler 兜底
             }
             if (varType.isRef()) {
@@ -659,7 +659,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             throw;
         }
         // 未迁移码: 暂留给原 codegen 路径
-    } catch (...) {
+    } catch (...) { // NOLINT(bugprone-empty-catch)
         // 非 YuxError (内部异常) 不该出现; 防御性吞掉以免影响 codegen
     }
 
@@ -732,7 +732,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                                           n->getLineNumber(), n->getColumn());
         } catch (const YuxError&) {
             throw;
-        } catch (...) {
+        } catch (...) { // NOLINT(bugprone-empty-catch)
             // getType 内部异常: 留 Compiler 兜底
         }
         // Bucket 6 单点: 自定义 struct 比较运算符方法解析 (E3073 + byval hint).
@@ -784,10 +784,10 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 for (auto& tn : n->getTypeArgs()) {
                     try { validateNoNestedHeap(tn->getType(), eline, ecol); }
                     catch (const YuxError&) { throw; }
-                    catch (...) {}
+                    catch (...) {} // NOLINT(bugprone-empty-catch)
                 }
             } catch (const YuxError&) { throw; }
-            catch (...) {}
+            catch (...) {} // NOLINT(bugprone-empty-catch)
         }
 
         // Phase 3.3 前置.4: ID-callee / 非-ID-callee 的错误传播校验
@@ -1044,7 +1044,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             sema::validateDotFieldPrivacy(_file, _sdkFile, n, _currentStructName);
         } catch (const YuxError&) {
             throw;
-        } catch (...) {
+        } catch (...) { // NOLINT(bugprone-empty-catch)
             // 防御性
         }
         return;
@@ -1249,7 +1249,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             sema::validateEnumCtorShape(_file, _sdkFile, n);
         } catch (const YuxError&) {
             throw;
-        } catch (...) {
+        } catch (...) { // NOLINT(bugprone-empty-catch)
             // 防御: helper 内部异常 (理论不应出现) 跳过, 留 Compiler 兜底
         }
         return;
@@ -1280,7 +1280,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             }
         } catch (const YuxError&) {
             throw;
-        } catch (...) {
+        } catch (...) { // NOLINT(bugprone-empty-catch)
             // getType 等内部异常: 留 Compiler 兜底
         }
         return;
@@ -1353,10 +1353,10 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                                 armT.name, resultType.name);
                         }
                     } catch (const YuxError&) { throw; }
-                      catch (...) { /* arm getType 失败: 留 Compiler 兜底 */ }
+                      catch (...) { /* arm getType 失败: 留 Compiler 兜底 */ } // NOLINT(bugprone-empty-catch)
                 }
             } catch (const YuxError&) { throw; }
-              catch (...) { /* try result getType 失败: 留 Compiler 兜底 */ }
+              catch (...) { /* try result getType 失败: 留 Compiler 兜底 */ } // NOLINT(bugprone-empty-catch)
         }
         return;
     }
@@ -1423,7 +1423,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             }
         } catch (const YuxError&) {
             throw;
-        } catch (...) {
+        } catch (...) { // NOLINT(bugprone-empty-catch)
             // getType 等内部异常 (lambda 形参未推断等): 留 Compiler 兜底
         }
         return;
@@ -1472,7 +1472,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             }
         } catch (const YuxError&) {
             throw;
-        } catch (...) {
+        } catch (...) { // NOLINT(bugprone-empty-catch)
             // getType 抛 std::runtime_error 等: 留 Compiler 兜底
         }
         return;
@@ -1493,7 +1493,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             sema::validateGetRefPrivacy(_file, _sdkFile, n, _currentStructName);
         } catch (const YuxError&) {
             throw;
-        } catch (...) {
+        } catch (...) { // NOLINT(bugprone-empty-catch)
             // 防御性
         }
         return;
@@ -1539,7 +1539,7 @@ void SemaPass::tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExp
                                               methodName, line, col);
     } catch (const YuxError&) {
         throw;
-    } catch (...) {
+    } catch (...) { // NOLINT(bugprone-empty-catch)
         // getType 内部异常: 留 Compiler 兜底
     }
 }

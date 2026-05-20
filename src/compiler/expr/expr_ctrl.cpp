@@ -567,7 +567,7 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
     TypeInfo resultType;
     llvm::Value* tryResult = nullptr;
     if (hasResult) {
-        try { resultType = tryBlock->resultExpr()->getType(); } catch (...) {}
+        try { resultType = tryBlock->resultExpr()->getType(); } catch (...) {} // NOLINT(bugprone-empty-catch)
         tryResult = compileExpr(tryBlock->resultExpr());
     }
 
@@ -635,7 +635,7 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
                         armT.name, resultType.name);
                 }
             } catch (const YuxError&) { throw; }
-              catch (...) {}
+              catch (...) {} // NOLINT(bugprone-empty-catch)
             armResult = compileExpr(arm->body()->resultExpr());
         }
 

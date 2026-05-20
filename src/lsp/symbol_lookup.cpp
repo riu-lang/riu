@@ -311,7 +311,7 @@ static size_t lspPosToByteOffset(const std::string& docText, LspPosition pos) {
             char32_t cp = utf8::next(it, end);
             utf16 += (cp <= 0xFFFF ? 1 : 2);
         }
-    } catch (...) {
+    } catch (...) { // NOLINT(bugprone-empty-catch)
         // 残缺 UTF-8 → it 已停在出错处
     }
     return static_cast<size_t>(it - docText.begin());
@@ -342,7 +342,7 @@ static LspPosition byteOffsetToLsp(const std::string& docText, size_t byteOff) {
             char32_t cp = utf8::next(it, end);
             utf16 += (cp <= 0xFFFF ? 1 : 2);
         }
-    } catch (...) { /* 残缺 UTF-8：保持 utf16 当前值 */ }
+    } catch (...) { /* 残缺 UTF-8：保持 utf16 当前值 */ } // NOLINT(bugprone-empty-catch)
     p.character = utf16;
     return p;
 }
@@ -489,7 +489,7 @@ CallContext findEnclosingCall(const std::string& docText, LspPosition pos) {
             char32_t cp = utf8::next(it, end);
             utf16 += (cp <= 0xFFFF ? 1 : 2);
         }
-    } catch (...) {
+    } catch (...) { // NOLINT(bugprone-empty-catch)
         // 残缺 UTF-8 → 用当前 it 已走到的位置兜底
     }
     byteOff = static_cast<size_t>(it - docText.begin());

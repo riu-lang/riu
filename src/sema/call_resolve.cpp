@@ -47,7 +47,7 @@ static bool overloadMatchesFlexible(const vector<p<ExprNode>>& args, const vecto
             if (isIntTypeName(params[i].name)) continue;
             try {
                 if (paramAccepts(params[i], args[i]->getType())) continue;
-            } catch (...) {}
+            } catch (...) {} // NOLINT(bugprone-empty-catch)
             return false;
         }
         try {
@@ -107,7 +107,7 @@ void resolveCtorOverload(FileNode* file, const string& structName,
                 if (isIntTypeName(c->params[i + 1].name)) continue;
                 try {
                     if (paramAccepts(c->params[i + 1], args[i]->getType())) continue;
-                } catch (...) {}
+                } catch (...) {} // NOLINT(bugprone-empty-catch)
                 return false;
             }
             try {
@@ -921,7 +921,7 @@ void validateMatchArms(EnumDeclNode* enumDecl, const string& enumName,
                     if (!alias->isGeneric() && alias->target()) {
                         try {
                             if (alias->target()->getType().name == enumName) aliasOk = true;
-                        } catch (...) {}
+                        } catch (...) {} // NOLINT(bugprone-empty-catch)
                     }
                 }
             }

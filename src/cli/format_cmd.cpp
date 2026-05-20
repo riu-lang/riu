@@ -77,7 +77,7 @@ int runFormatCommand(const FormatCmdOptions& opts) {
                         }
                     }
                     break;
-                } catch (const std::exception& e) {
+                } catch (const std::exception& e) { // NOLINT(bugprone-empty-catch)
                     // 解析失败，使用默认配置
                 }
             }
