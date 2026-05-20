@@ -63,7 +63,7 @@ fn main() {
 node init.js
 ```
 
-此命令会在项目根目录生成 `sync-deps` 和 `gen-antlr` 的跨平台包装脚本（`.ps1`、`.sh`、`.cmd`）。
+此命令会在项目根目录生成 `sync-deps`、`gen-antlr`、`count-lines`、`lint`、`format` 的跨平台包装脚本（`.ps1`、`.sh`、`.cmd`）。
 
 ### 同步依赖
 
@@ -97,6 +97,19 @@ gen-antlr.cmd        # Windows CMD
 ```
 
 此命令会自动排除 lock 文件（如 `package-lock.json`），并使用 `yux_lang_def.txt` 配置识别 yux 语言。
+
+### Lint / Format
+
+`lint` 跑 clang-tidy，`format` 排 `#include` 块；默认只作用于 git 已变动 / 未跟踪文件，加 `--all` 切全仓，加位置参数指定文件：
+
+```powershell
+./lint.ps1                 # lint git 已变动文件
+./lint.ps1 --all           # 三个 target 全量
+./lint.ps1 src/foo.cpp     # 指定文件
+./format.ps1               # 排 git 已变动文件 #include 块
+./format.ps1 --all         # 全仓
+./format.ps1 --check       # 只检查不改, 有差异退出码 1
+```
 
 ## 构建
 

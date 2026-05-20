@@ -16,8 +16,11 @@ yux 是自举编译器，单二进制完成 `.yux → ANTLR4 解析 → AST → 
 - 构建：xmake
 - LLVM 工具链在 `PATH`（`llvm/bin`）
 - `build/windows/x64/debug` 在 `PATH`，构建后可直接 `yux ...`
-- 已配 clang-tidy（根 `.clang-tidy` + `gen/.clang-tidy` 关掉 ANTLR 生成代码），跑法：`xmake check clang.tidy yux_frontend yux_codegen yux`；**每次提交必须 0 警告**（细则与例外见 [behavior.md](../../rules/behavior.md)）
-- 未配 formatter；不要假设存在 `npm run lint` / `make fmt` 之类命令
+- 改完 C++ 跑两条本地包装器（`init.js` 生成的 `./lint.cmd|sh|ps1`、`./format.cmd|sh|ps1`，不在 PATH 故必须带 `./`）；默认只作用于 git 已变动 / 未跟踪文件，加 `--all` 切全仓，加位置参数指定文件，`--check`（仅 format）只检查不改
+  - `./format.cmd` —— #include 块内排序（基于空行 / 注释分块，不会破坏 `main.cpp` 的 windows.h 顺序）
+  - `./lint.cmd` —— clang-tidy（包根 `.clang-tidy` + `gen/.clang-tidy` 关掉 ANTLR 生成代码）；**提交时必须 0 警告**（细则与例外见 [behavior.md](../../rules/behavior.md)）
+- 包装器属于"克隆即用"集合，由 `node init.js` 重新生成；新增脚本要同步加进 `init.js` 的 `SCRIPTS`
+- 没配项目级 C++ formatter（只用 `.clang-format` 给 IDE 作风格参考）；不要假设存在 `npm run lint` / `make fmt` 之类命令
 - 会话 shell 可能是 bash 或 PowerShell；下方命令示例按 PowerShell 写，bash 下将 `./sync-deps.ps1` 换成 `./sync-deps.sh`、路径用正斜杠
 
 ## 常用命令
