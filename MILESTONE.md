@@ -57,12 +57,16 @@
 
 ### v1.0 候选 — 规范定稿 + ABI 冻结
 
+> **现状提示**：v1.0 仍远（v0.14 起步阶段）。spec 仍有较多遗留 Open Issues、潜在 bug 待挖；本节标准是终态门槛，不是近期目标。下方"后续主题"里的待编号工作要先落，才进 v1.0 候选。
+
 **退出标准**：
 
-- spec 全部章节 *Open Issues* 清空或转入 v1.x
+- spec 全部章节 *Open Issues* 清空或显式转入 v1.x
 - 调用 ABI / 内存模型在该版本内冻结
 - `base.yux` SDK 公开方法签名稳定
 - 所有 BUGS.md 中的 *blocker* 清零
+- spec-unify v1 剥离的两个独立草案（`spec-default-body` / `spec-reflect`）已落地（v0.15）或显式推 v1.x
+- 闭包捕获已落地（v0.16）—— v0.8 lambda 留口收口
 
 ### 后续主题（暂不编号，顺序未定）
 
@@ -87,11 +91,62 @@
 
 - **性能与 layout 优化**：String 专属 FAM Block（`{strong, weak, len_cps, u32 data[]}`）；Array Block 内联小尺寸优化；内联策略与裁剪；基准测试无回归。
 
-### v0.14.0 — 数值语义收口 + 并发 spec 留口 + 文档完善（草稿）
+### v0.16.0 — 闭包捕获 + yux-check 闭环（草稿）
 
-**主题**：把"数字字面量推断 / 整数溢出语义"两件 v1.0 前必锁的事一次定型；同时把"多线程 / async"的 spec 留口写死，防止 v1.x 落地时被现有条款绑死。
+**主题**：v0.8 lambda 留下的"零捕获"限制收口；同步把 `yux-check` 残留 5 例（全部 lambda 体相关）关掉，让 `yux-check` 与 `yux build` 错误覆盖在常规路径上等价。
 
 **范围（草稿）**：
+
+- 闭包捕获模型：move / retain / 借用 三档显式声明形态；捕获包 layout 与 RC 协议
+- lambda body sema 下钻：`SemaPass::visitExpr` 解锁 lambda 体（当前 `src/sema/sema_pass.cpp:1007-1015` 显式 skip）；自然关掉 BUGS #3 的 5 例漏报（E2030 ×2 / E4022 ×2 / E4024）
+- 借用 / `$` 逃逸检查在 lambda 体内生效
+- Heap by-value 捕获禁止（E4024 在 lambda 体内）
+- 与 v0.10 错误模型 v1 的交互：`#Fallible` lambda 形态（若需要）
+
+**不在范围**：高阶函数库化（map/filter/fold —— SDK 扩充时再做）、`dyn fn` 运行时多态、async lambda。
+
+**退出标准**：草案 `DRAFT-closure-capture.md` 全节定型并迁入 spec；`yux-check` 漏报清零（5 例自动关闭）；BUGS.md #3 删条；`xmake test` + `yux test` 全绿；实施日志归档 `docs/dev/closure-capture-impl-log.md`。
+
+### v0.15.0 — spec 收尾：默认方法体 + 编译期反射（草稿）
+
+**主题**：把 `spec-unify v1` 落地时主动剥离的两个独立草案（`DRAFT-spec-default-body.md` + `DRAFT-spec-reflect.md`）按既定顺序实施完毕。**形态已锁**——本版只做落地，不再开形态决议。
+
+> 范围限定：仅指 spec-unify v1 剥离出来的 2 个独立草案。不等同 v1.0 退出标准里的"spec 全部 Open Issues 清空"——其余遗留另排。
+
+**范围（草稿）**：
+
+Phase A（spec 默认方法体）：
+
+- spec body 内方法可带 body：`#Spec struct ToString { fn to_string() String { ... } }`
+- 实现者未覆盖 = fall-through 默认体；覆盖 = 自身 body 替代
+- 仅签名 + 实现者没写 → E1136 维持；带默认体 + 实现者没写 → 通过
+- 多 spec 默认体冲突 → E3132 必须显式覆盖消歧
+- 内置类型 `#Impl(ToString)` 的 `#CompilerInner` 是否迁默认体（二选一定下来）
+- **永久决议**：不引入 `#Derive` 独立注解
+
+Phase B（编译期反射，依赖 Phase A）：
+
+- 内置 spec `Reflect`：编译器隐式 `#Impl(Reflect)`，依赖 Phase A 默认体机制
+- `#Static #Frozen` 字段子集：`type` / `fields` / `methods` / `variants`，仅类型形访问（`Counter::type` / `Self::fields`）
+- 元数据 emit 到 `.rodata`；`#Reflect` 注解防 DCE 误删
+- `Field` 类型为唯一编译器内置；`Field.value` 走 sema 期改名（**无** `#Inline for` / **无** IR-before pass）
+- 反射数据走 runtime 数组（`Self::fields` 是 `[Field& * N]&`，可 `for` 遍历）
+- 实例不能调静态成员
+- 二进制尺寸基线：典型 yux 程序加入反射元数据后 .exe 增量 < TODO%；超阈值改 opt-in
+
+**不在范围**：`is` / `as` 运行时反查、跨模块字段重命名兼容、反射驱动序列化（SDK 扩充再做）、`Arc<T>` 真正实现（留 v1.x）、闭包（v0.16）。
+
+**退出标准**：两个 DRAFT 全节迁入 spec §12.x（或反射另起 §13）；CHANGELOG 收口；附录 D 新错码登记（E3132 等）；端到端示例（反射驱动 `to_string` / spec 默认体被实现者覆盖）；`xmake test` + `yux test` 全绿；实施日志 `docs/dev/spec-default-body-impl-log.md` + `docs/dev/spec-reflect-impl-log.md`。
+
+### v0.14.0 — 数值语义收口 + 工程优化 + 并发 spec 留口（草稿）
+
+**主题**：把"数字字面量推断 / 整数溢出语义"两件 v1.0 前必锁的事一次定型；同时把"多线程 / async"的 spec 留口写死，防止 v1.x 落地时被现有条款绑死。**并行**把编译器内部代码组织按 SRP 整理一遍（main.cpp 拆分、大文件按类别再切、流程小修），让 v0.15 / v0.16 的特性手术在更干净的代码上做。
+
+> 工程优化按"单一职责 + 给后续版本铺路"为准，不动语义、不动 ABI，仅文件级 split + 模块边界清理；外部贡献开放推迟到 v1.0 稳定后再考虑。
+
+**范围（草稿）**：
+
+数值 / 文档面：
 
 - 整数溢出语义条款（spec 层为主，必要 codegen 配合）
 - 字面量类型推断规则：**所有逻辑上能推断的无后缀整数**走推断；浮点字面量保持"必须带 `.`、不接受 `1e2` 形态、不自动推断类型"的严格立场
@@ -99,9 +154,37 @@
 - 数字 / 字面量章节文档完善（推断使用、转换、教程示例）
 - 其他功能预留位（按需补）
 
-**不在范围**：闭包捕获（推后）、`match` 升级（绑 error v2）、RC 原子性（v1.0 ABI 冻结）、调试信息 / PDB（工具链 v1）。
+工程优化（SRP 拆分，纯文件级、不动语义 / ABI）：
 
-**退出标准**：TODO（功能细节明确后填）。
+- `src/main.cpp` (2012 LOC) 按子命令拆：`src/cli/{main,build_cmd,test_cmd,format_cmd}.cpp` + `src/jit/{lljit_runner,seh_memory_manager}.cpp`（SEH MM 现埋 main.cpp 172-233）
+- `src/compiler/compiler_expr.cpp` (3174) / `compiler_call.cpp` (2294) / `src/ast/ast_builder.cpp` (2948) 按节点类别二次拆分（literal / member / binary / unary / enum / generic / lambda 等各一文件），让"按节点找代码"成立
+- `tests/xmake.lua` 的 `categorize` 在 CI 化之前先加构建期警告：新用例落入 `yux/misc` 时打 `warning`
+- `README.md` 顶部加"项目规则索引"段，指向 `.claude/rules/README.md`
+- 顺手：`AGENTS.md` → `.claude/rules/` 链接清理（已完成）
+
+yux-check 收尾：
+
+- 残留 5 例（全部 lambda 体相关，BUGS #3）明确推 v0.16 与闭包主题合并；本版只在 BUGS.md / CURRENT-check-sema-gap.md 标"待 v0.16"
+- 当前覆盖率 ~96% 维持，不再单独推进
+
+**不在范围**：
+
+- `match` 升级（绑 error v2）
+- RC 原子性（v1.0 ABI 冻结）
+- 调试信息 / PDB（工具链 v1）
+- 闭包捕获 → v0.16
+- spec 默认方法体 / 反射 → v0.15（spec-unify v1 剥离的独立草案，本版不动）
+- Sema/Codegen 拆分尾段（lambda body 由 v0.16 顺带做；其余 statement 层 / target-type 上下文 / alias 环留独立专项）
+- 引入 HIR 中间层（不打算近期加新 backend / async 之前不上）
+- CI / 外部贡献基础设施（开放推迟到 v1.0 后）
+
+**退出标准**：
+
+- 数值 / async 留口条款定稿，附录 A / B / D 同步
+- 工程优化：拆完后 `main.cpp` < 300 LOC、`compiler_expr.cpp` 单文件 < 1000 LOC、`ast_builder.cpp` 同；`xmake test` + `cd sdk/yux && yux test` 全绿无回归
+- BUGS.md #3 条注明"等 v0.16 闭包"
+- CHANGELOG 收口
+- 实施日志归档于 `docs/dev/v0.14-impl-log.md`（数值条款 + 工程优化两段）
 
 ### v0.13.0 — spec 核心收口 + Heap 完整落地 + 构造模型重构 + 工具链同步 ✅ 已完成（2026-05-18）
 
