@@ -252,7 +252,7 @@ FnHeaderNode* resolveDynMethodSig(SpecDeclNode* specDecl,
     // 3. arity 校验
     if (sig->params().size() != argTypes.size()) {
         throw YuxError(line, col, ErrorCode::E6012, member,
-            (int)sig->params().size(), (int)argTypes.size());
+            static_cast<int>(sig->params().size()), static_cast<int>(argTypes.size()));
     }
 
     // 4. 参数类型按 D 签名比对 (类型名 + 全名相等; 与 yux 名义类型一致)
@@ -597,18 +597,18 @@ void validateCompilerInnerIntrinsicShape(const string& fnName,
     }
     if (fnName == "as_ref" || fnName == "copy_of" || fnName == "weak") {
         if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName);
-        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, (size_t)1);
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
         return;
     }
     // DRAFT-heap-types §8.3a.4.2 (Phase 3d): Heap<T>? 构造助手
     if (fnName == "heap_some") {
         if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName);
-        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, (size_t)1);
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
         return;
     }
     if (fnName == "heap_null") {
         if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName);
-        if (argsCount != 0) throw YuxError(line, col, ErrorCode::E6027, fnName, (size_t)0);
+        if (argsCount != 0) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(0));
         return;
     }
     // 未知 CompilerInner intrinsic

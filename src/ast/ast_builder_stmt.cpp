@@ -242,5 +242,5 @@ std::any ASTBuilder::visitStatementBlock(yux::yuxParser::StatementBlockContext* 
     DEBUG_LOG_VAL("    Statements count", statements.size());
     auto block = createWithLine<StatementBlockNode>(ctx, parentScope, statements, resultExpr, hasResult);
     block->setParentScope(parentScope);
-    return p<StatementBlockNode>(block);
+    return static_cast<p<StatementBlockNode>>(block);
 }

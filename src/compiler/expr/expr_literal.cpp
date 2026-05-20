@@ -248,7 +248,7 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             // （Rc 形态：[strong/weak 8 字节][dtor 8 字节]；Stack 形态：16 字节占位浪费），
             // capture 字段从 handle+16 起。这样 GEP offset 不依赖运行时 layout 选择。
             auto i8Ty = _builder.getInt8Ty();
-            auto payloadOffset = _builder.getInt64(16 + (i64)cap.byteOffset);
+            auto payloadOffset = _builder.getInt64(16 + static_cast<i64>(cap.byteOffset));
             auto capAddr = _builder.CreateGEP(i8Ty, _currentLambdaCapturesArg,
                                               {payloadOffset}, "cap.addr");
             if (isRef) {

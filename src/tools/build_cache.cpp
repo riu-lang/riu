@@ -112,8 +112,8 @@ bool SdkLock::tryLock() {
 
 void SdkLock::unlock() {
     if (_locked && _handle) {
-        ReleaseMutex((HANDLE)_handle);
-        CloseHandle((HANDLE)_handle);
+        ReleaseMutex(static_cast<HANDLE>(_handle));
+        CloseHandle(static_cast<HANDLE>(_handle));
         _handle = nullptr;
         _locked = false;
     }

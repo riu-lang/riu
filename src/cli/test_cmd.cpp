@@ -131,17 +131,17 @@ std::string getSelfExePath() {
     wchar_t buf[MAX_PATH];
     DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
     if (n == 0 || n >= MAX_PATH) return {};
-    int sz = WideCharToMultiByte(CP_UTF8, 0, buf, (int)n, nullptr, 0, nullptr, nullptr);
+    int sz = WideCharToMultiByte(CP_UTF8, 0, buf, static_cast<int>(n), nullptr, 0, nullptr, nullptr);
     std::string out(sz, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, buf, (int)n, out.data(), sz, nullptr, nullptr);
+    WideCharToMultiByte(CP_UTF8, 0, buf, static_cast<int>(n), out.data(), sz, nullptr, nullptr);
     return out;
 }
 
 std::wstring toWide(const std::string& s) {
     if (s.empty()) return {};
-    int sz = MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), nullptr, 0);
+    int sz = MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0);
     std::wstring out(sz, 0);
-    MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), out.data(), sz);
+    MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), out.data(), sz);
     return out;
 }
 

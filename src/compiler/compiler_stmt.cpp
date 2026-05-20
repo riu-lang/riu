@@ -32,7 +32,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
     // ret 在当前阶段不做穿透检测：spec §6.5（ret T& 溯源）属 Phase 4e；本阶段仅拦截直接形。
     if (auto litLambda = dynamic_cast<LambdaExprNode*>(node->expr())) {
         // emit body 以填 captures（重复 emit 命中缓存，无副作用）
-        emitLambdaFunction(p<LambdaExprNode>(litLambda), litLambda->getType());
+        emitLambdaFunction(static_cast<p<LambdaExprNode>>(litLambda), litLambda->getType());
         if (litLambda->hasRefCapture()) {
             throw YuxError(litLambda->getLineNumber(), litLambda->getColumn(), ErrorCode::E4022);
         }
@@ -174,7 +174,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         }
         if (!refPtr) {
             if (auto getRef = dynamic_cast<ExprGetRefNode*>(node->expr())) {
-                refPtr = compileGetRefExpr(p<ExprGetRefNode>(getRef));
+                refPtr = compileGetRefExpr(static_cast<p<ExprGetRefNode>>(getRef));
                 srcInner = getRef->getType();
                 if (srcInner.isRef()) {
                     if (auto in = srcInner.refElementType()) srcInner = *in;
@@ -421,7 +421,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 }
             }
         }
-        emitLambdaFunction(p<LambdaExprNode>(litLambda), litLambda->getType());
+        emitLambdaFunction(static_cast<p<LambdaExprNode>>(litLambda), litLambda->getType());
         if (litLambda->hasRefCapture()) {
             throw YuxError(litLambda->getLineNumber(), litLambda->getColumn(), ErrorCode::E4022);
         }

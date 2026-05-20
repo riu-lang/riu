@@ -290,7 +290,7 @@ private:
         if (!s) return;
 
         if (auto blk = dynamic_cast<StatementBlockNode*>(s)) {
-            visitBlock(p<StatementBlockNode>(blk));
+            visitBlock(static_cast<p<StatementBlockNode>>(blk));
             return;
         }
 

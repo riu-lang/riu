@@ -20,8 +20,8 @@ std::any ASTBuilder::visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) {
     auto* sym = ctx->ID()->getSymbol();
     // DRAFT-heap-types §9 (Phase 3b): 裸 Arc 形态也走占名拒绝
     if (sym->getText() == "Arc") {
-        throw YuxError((int)sym->getLine(),
-            (int)sym->getCharPositionInLine() + 1,
+        throw YuxError(static_cast<int>(sym->getLine()),
+            static_cast<int>(sym->getCharPositionInLine()) + 1,
             ErrorCode::E4029, std::string("?"));
     }
     DEBUG_LOG_VAL("    Type: Normal", sym->getText());
@@ -59,7 +59,7 @@ std::any ASTBuilder::visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) {
         if (!pCtx->bounds.empty()) {
             auto* tk = pCtx->SymbolColon();
             throw YuxError(
-                tk ? (int)tk->getSymbol()->getLine() : 0,
+                tk ? static_cast<int>(tk->getSymbol()->getLine()) : 0,
                 tk ? static_cast<int>(tk->getSymbol()->getCharPositionInLine()) + 1 : 0,
                 ErrorCode::E2015);
         }
@@ -71,16 +71,16 @@ std::any ASTBuilder::visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) {
     if (baseName->getText() == "Arc") {
         std::string innerName = typeArgs.empty() ? std::string("?")
                                                  : typeArgs[0]->getType().name;
-        throw YuxError((int)baseName->getLine(),
-            (int)baseName->getCharPositionInLine() + 1,
+        throw YuxError(static_cast<int>(baseName->getLine()),
+            static_cast<int>(baseName->getCharPositionInLine()) + 1,
             ErrorCode::E4029, innerName);
     }
 
     // Weak<fn(...)> 禁（§3.7 / §5.5）：函数值是值类型，无 RC 头，不能 weak
     if (baseName->getText() == "Weak" && typeArgs.size() == 1) {
         if (dynamic_cast<TypeFnNode*>(typeArgs[0])) {
-            throw YuxError((int)baseName->getLine(),
-                (int)baseName->getCharPositionInLine() + 1,
+            throw YuxError(static_cast<int>(baseName->getLine()),
+                static_cast<int>(baseName->getCharPositionInLine()) + 1,
                 ErrorCode::E2001)
                 .withHint("函数值不是堆句柄、无 RC 头，不能用 Weak<...> 包裹（spec §3.7 / §5.5）");
         }
@@ -161,8 +161,8 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
     if (auto n = dynamic_cast<yuxParser::TypeNormalWithRefContext*>(twr)) {
         // DRAFT-heap-types §9 (Phase 3b): Arc 占名（含裸 Arc 形态）
         if (n->ID()->getSymbol()->getText() == "Arc") {
-            throw YuxError((int)n->ID()->getSymbol()->getLine(),
-                (int)n->ID()->getSymbol()->getCharPositionInLine() + 1,
+            throw YuxError(static_cast<int>(n->ID()->getSymbol()->getLine()),
+                static_cast<int>(n->ID()->getSymbol()->getCharPositionInLine()) + 1,
                 ErrorCode::E4029, std::string("?"));
         }
         inner = p<TypeNode>(createWithLine<TypeNormalNode>(n, parent, n->ID()->getSymbol()));
@@ -179,7 +179,7 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
         auto innerT = any_cast_p<TypeNode>(visit(nul->type()));
         if (innerT->getType().kind == TypeKind::Generic && innerT->getType().name == "Weak") {
             auto qt = nul->SymbolQuest()->getSymbol();
-            throw YuxError(qt ? (int)qt->getLine() : 0,
+            throw YuxError(qt ? static_cast<int>(qt->getLine()) : 0,
                 qt ? static_cast<int>(qt->getCharPositionInLine()) + 1 : 0,
                 ErrorCode::E2001)
                 .withHint("Weak<T> 本身已可空；若需在持有者失效后取值，使用 `upgrade(weak)`，其结果即为 Rc<T>?");
@@ -199,15 +199,15 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
         if (baseName->getText() == "Arc") {
             std::string innerName = typeArgs.empty() ? std::string("?")
                                                      : typeArgs[0]->getType().name;
-            throw YuxError((int)baseName->getLine(),
-                (int)baseName->getCharPositionInLine() + 1,
+            throw YuxError(static_cast<int>(baseName->getLine()),
+                static_cast<int>(baseName->getCharPositionInLine()) + 1,
                 ErrorCode::E4029, innerName);
         }
         // Weak<fn(...)> 禁（§3.7 / §5.5）
         if (baseName->getText() == "Weak" && typeArgs.size() == 1) {
             if (dynamic_cast<TypeFnNode*>(typeArgs[0])) {
-                throw YuxError((int)baseName->getLine(),
-                    (int)baseName->getCharPositionInLine() + 1,
+                throw YuxError(static_cast<int>(baseName->getLine()),
+                    static_cast<int>(baseName->getCharPositionInLine()) + 1,
                     ErrorCode::E2001)
                     .withHint("函数值不是堆句柄、无 RC 头，不能用 Weak<...> 包裹（spec §3.7 / §5.5）");
             }
@@ -280,8 +280,8 @@ std::any ASTBuilder::visitTypeNullable(yux::yuxParser::TypeNullableContext* ctx)
     {
         auto innerTI = inner->getType();
         if (innerTI.kind == TypeKind::Generic && innerTI.name == "Weak") {
-            int line = questTok ? (int)questTok->getLine() : 0;
-            int col  = questTok ? (int)questTok->getCharPositionInLine() + 1 : 0;
+            int line = questTok ? static_cast<int>(questTok->getLine()) : 0;
+            int col  = questTok ? static_cast<int>(questTok->getCharPositionInLine()) + 1 : 0;
             throw YuxError(line, col, ErrorCode::E2001)
                 .withHint("Weak<T> 本身已可空；若需在持有者失效后取值，使用 `upgrade(weak)`，其结果即为 Rc<T>?");
         }

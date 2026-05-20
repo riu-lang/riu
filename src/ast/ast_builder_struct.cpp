@@ -141,7 +141,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
         stack.pop_back();
 
         file->addSpecDecl(draft);
-        return p<SpecDeclNode>(draft);
+        return static_cast<p<SpecDeclNode>>(draft);
     }
 
     // === Step 3: 普通 struct 分支 — 字段
@@ -180,7 +180,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
     bool hasImpl = !implRefs.empty();
 
     if (!(hasMethods || hasDestructor || hasImpl)) {
-        return p<StructDeclNode>(structDecl);
+        return static_cast<p<StructDeclNode>>(structDecl);
     }
 
     auto structImpl = createWithLine<StructImplNode>(ctx, file, stCtx->name);
@@ -316,7 +316,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
         file->registerFnSymbol(fullName, methodFnSym);
     }
 
-    return p<StructDeclNode>(structDecl);
+    return static_cast<p<StructDeclNode>>(structDecl);
 }
 
 std::any ASTBuilder::visitFnClean(yux::yuxParser::FnCleanContext* ctx) {
@@ -386,8 +386,8 @@ std::pair<bool, bool> readFieldAnnos(const std::vector<yux::yuxParser::BuildAnno
     for (auto* a : annos) {
         const string name = a->name->getText();
         auto* tk = a->SymbolHash()->getSymbol();
-        int line = (int)tk->getLine();
-        int col = (int)tk->getCharPositionInLine() + 1;
+        int line = static_cast<int>(tk->getLine());
+        int col = static_cast<int>(tk->getCharPositionInLine()) + 1;
         if (a->arg != nullptr) {
             // 字段注解 P1 不接受带实参形态（#Val(x) / #Frozen(x) 无意义）。
             throw YuxError(line, col, ErrorCode::E3108, name);
@@ -416,5 +416,5 @@ std::any ASTBuilder::visitFiledDecl(yux::yuxParser::FiledDeclContext* ctx) {
     auto node = createWithLine<StructFieldNode>(ctx, parent, ctx->name, type);
     node->setVal(isVal);
     node->setFrozen(isFrozen);
-    return p<StructFieldNode>(node);
+    return static_cast<p<StructFieldNode>>(node);
 }

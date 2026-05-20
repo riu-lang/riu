@@ -226,8 +226,8 @@ bool readParamAnnos(const std::vector<yux::yuxParser::ParamAnnoContext*>& annos)
             frozen = true;
         } else {
             auto* tk = a->SymbolHash()->getSymbol();
-            throw YuxError((int)tk->getLine(),
-                           (int)tk->getCharPositionInLine() + 1,
+            throw YuxError(static_cast<int>(tk->getLine()),
+                           static_cast<int>(tk->getCharPositionInLine()) + 1,
                            ErrorCode::E3105, name);
         }
     }
@@ -244,7 +244,7 @@ std::any ASTBuilder::visitFnParamStd(yux::yuxParser::FnParamStdContext* ctx) {
                                                     << (frozen ? " #Frozen" : ""));
 
     vector<p<FnParamNode>> params;
-    auto node = p<FnParamNode>(createWithLine<FnParamNode>(ctx, parent, ctx->name, type));
+    auto node = (createWithLine<FnParamNode>(ctx, parent, ctx->name, type));
     node->setFrozen(frozen);
     params.push_back(node);
     return params;
@@ -259,7 +259,7 @@ std::any ASTBuilder::visitFnParamGroup(yux::yuxParser::FnParamGroupContext* ctx)
     for (auto nameToken : ctx->names) {
         DEBUG_LOG_VAL("    Param (group)", nameToken->getText() << " : " << type->getType().name
                                                                 << (frozen ? " #Frozen" : ""));
-        auto node = p<FnParamNode>(createWithLine<FnParamNode>(ctx, parent, nameToken, type));
+        auto node = (createWithLine<FnParamNode>(ctx, parent, nameToken, type));
         node->setFrozen(frozen);
         params.push_back(node);
     }

@@ -766,7 +766,7 @@ llvm::Value* Compiler::compileDynMethodCall(
 
     // 5.2 GEP vtable[methodIdx + 1] → load fn ptr
     // vtable 是 i8* 数组，按 ptr 步长 GEP 即可
-    auto slotIdx = llvm::ConstantInt::get(_builder.getInt64Ty(), (uint64_t)(methodIdx + 1));
+    auto slotIdx = llvm::ConstantInt::get(_builder.getInt64Ty(), static_cast<uint64_t>(methodIdx + 1));
     auto slotPtr = _builder.CreateGEP(ptrTy, vtablePtr, {slotIdx}, "dyn.slot.ptr");
     auto fnPtr = _builder.CreateLoad(ptrTy, slotPtr, "dyn.fn.ptr");
 

@@ -130,7 +130,7 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
     file->addGlobalConst(globalConst);
 
     DEBUG_LOG_VAL("  LetGlobal #Cval", name->getText() << " : " << typeNode->getType().name);
-    return p<GlobalConstNode>(globalConst);
+    return static_cast<p<GlobalConstNode>>(globalConst);
 }
 
 std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
@@ -142,7 +142,7 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
         modName += ctx->pkgs[i]->getText();
     }
     bool wildcard = ctx->useAll != nullptr;
-    int line = ctx->getStart() ? (int)ctx->getStart()->getLine() : 0;
+    int line = ctx->getStart() ? static_cast<int>(ctx->getStart()->getLine()) : 0;
 
     string alias;
     if (!wildcard && !ctx->pkgs.empty()) {
@@ -410,7 +410,7 @@ std::any ASTBuilder::visitAliasDecl(yux::yuxParser::AliasDeclContext* ctx) {
         for (auto pCtx : gd->params) {
             if (!pCtx->bounds.empty()) {
                 auto* tk = pCtx->SymbolColon();
-                throw YuxError(tk ? (int)tk->getSymbol()->getLine() : 0,
+                throw YuxError(tk ? static_cast<int>(tk->getSymbol()->getLine()) : 0,
                                tk ? static_cast<int>(tk->getSymbol()->getCharPositionInLine()) + 1 : 0,
                                ErrorCode::E2015);
             }
@@ -436,7 +436,7 @@ std::any ASTBuilder::visitAliasDecl(yux::yuxParser::AliasDeclContext* ctx) {
     aliasDecl->setTarget(target);
     DEBUG_LOG_VAL("Visit: AliasDecl", nameTok->getText() << " -> " << (target ? target->getType().name : string("?")));
     file->addAliasDecl(aliasDecl);
-    return p<AliasDeclNode>(aliasDecl);
+    return static_cast<p<AliasDeclNode>>(aliasDecl);
 }
 
 // 顶层 enum 声明：构造 EnumDeclNode，逐个添加 variant，登记到当前 FileNode
@@ -466,7 +466,7 @@ std::any ASTBuilder::visitEnumDecl(yux::yuxParser::EnumDeclContext* ctx) {
     stack.pop_back();
 
     file->addEnumDecl(enumDecl);
-    return p<EnumDeclNode>(enumDecl);
+    return static_cast<p<EnumDeclNode>>(enumDecl);
 }
 
 // 单个 enum variant：短名 + 可选 tuple-style payload 类型列表
@@ -478,5 +478,5 @@ std::any ASTBuilder::visitEnumVariant(yux::yuxParser::EnumVariantContext* ctx) {
         variant->addPayloadType(typeNode);
     }
     DEBUG_LOG_VAL("  Variant", ctx->name->getText() << " arity=" << variant->payloadArity());
-    return p<EnumVariantNode>(variant);
+    return static_cast<p<EnumVariantNode>>(variant);
 }

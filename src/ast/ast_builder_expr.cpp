@@ -47,14 +47,14 @@ vector<LambdaParamSlot> collectLambdaParams(
                 sharedType = (self->*buildTwr)(twr, parent);
             }
             for (auto* idTok : g->names) {
-                out.push_back(LambdaParamSlot{Token(idTok->getText(), (int)idTok->getLine()), sharedType});
+                out.push_back(LambdaParamSlot{Token(idTok->getText(), static_cast<int>(idTok->getLine())), sharedType});
             }
         } else if (auto* s = dynamic_cast<yux::yuxParser::LambdaParamStdContext*>(lp)) {
             p<TypeNode> ty = nullptr;
             if (auto* twr = s->typeWithRef()) {
                 ty = (self->*buildTwr)(twr, parent);
             }
-            out.push_back(LambdaParamSlot{Token(s->name->getText(), (int)s->name->getLine()), ty});
+            out.push_back(LambdaParamSlot{Token(s->name->getText(), static_cast<int>(s->name->getLine())), ty});
         }
     }
     return out;
@@ -108,7 +108,7 @@ std::any ASTBuilder::visitExprCall(yux::yuxParser::ExprCallContext* ctx) {
             if (!pCtx->bounds.empty()) {
                 auto* tk = pCtx->SymbolColon();
                 throw YuxError(
-                    tk ? (int)tk->getSymbol()->getLine() : 0,
+                    tk ? static_cast<int>(tk->getSymbol()->getLine()) : 0,
                     tk ? static_cast<int>(tk->getSymbol()->getCharPositionInLine()) + 1 : 0,
                     ErrorCode::E2015);
             }
@@ -170,7 +170,7 @@ std::any ASTBuilder::visitExprCallTrailingOnly(yux::yuxParser::ExprCallTrailingO
             if (!pCtx->bounds.empty()) {
                 auto* tk = pCtx->SymbolColon();
                 throw YuxError(
-                    tk ? (int)tk->getSymbol()->getLine() : 0,
+                    tk ? static_cast<int>(tk->getSymbol()->getLine()) : 0,
                     tk ? static_cast<int>(tk->getSymbol()->getCharPositionInLine()) + 1 : 0,
                     ErrorCode::E2015);
             }
@@ -201,7 +201,7 @@ public:
 
 p<ScopeNode> makeLambdaBodyScope(
     const p<ScopeNode>& parentScope, const vector<LambdaParamSlot>& params) {
-    auto scope = p<LambdaScopeNode>(new LambdaScopeNode(parentScope));
+    auto scope = static_cast<p<LambdaScopeNode>>(new LambdaScopeNode(parentScope));
     scope->setParentScope(parentScope);
     for (auto& slot : params) {
         TypeInfo t = slot.type ? slot.type->getType() : TypeInfo();
@@ -217,7 +217,7 @@ std::any ASTBuilder::visitExprLambdaSingle(yux::yuxParser::ExprLambdaSingleConte
     auto scope = currentScope();
     vector<LambdaParamSlot> params;
     params.push_back(LambdaParamSlot{
-        Token(ctx->name->getText(), (int)ctx->name->getLine()), nullptr });
+        Token(ctx->name->getText(), static_cast<int>(ctx->name->getLine())), nullptr });
     auto bodyScope = makeLambdaBodyScope(scope, params);
     _scopeStack.push_back(bodyScope);
     auto bodyExpr = any_cast_p<ExprNode>(visit(ctx->body->expr()));
@@ -425,7 +425,7 @@ std::any ASTBuilder::visitExprBool(yux::yuxParser::ExprBoolContext* ctx) {
 
 std::any ASTBuilder::visitLiteralNumber(yux::yuxParser::LiteralNumberContext* ctx) {
     DEBUG_LOG("      Literal: Number");
-    return p<LiteralNode>(any_cast_p<LiteralNode>(visit(ctx->num)));
+    return (any_cast_p<LiteralNode>(visit(ctx->num)));
 }
 
 std::any ASTBuilder::visitLiteralBool(yux::yuxParser::LiteralBoolContext* ctx) {
@@ -626,7 +626,7 @@ std::any ASTBuilder::visitExprElIf(yux::yuxParser::ExprElIfContext* ctx) {
     auto scope = currentScope();
     auto condition = any_cast_p<ExprNode>(visit(ctx->condition));
     auto block = any_cast_p<StatementBlockNode>(visit(ctx->statementBlock()));
-    return p<ExprElIfNode>(createWithLine<ExprElIfNode>(ctx, scope, condition, block));
+    return (createWithLine<ExprElIfNode>(ctx, scope, condition, block));
 }
 
 std::any ASTBuilder::visitExprElse(yux::yuxParser::ExprElseContext* ctx) {
@@ -740,7 +740,7 @@ std::any ASTBuilder::visitExprEnumCtor(yux::yuxParser::ExprEnumCtorContext* ctx)
             if (!pCtx->bounds.empty()) {
                 auto* tk = pCtx->SymbolColon();
                 throw YuxError(
-                    tk ? (int)tk->getSymbol()->getLine() : 0,
+                    tk ? static_cast<int>(tk->getSymbol()->getLine()) : 0,
                     tk ? static_cast<int>(tk->getSymbol()->getCharPositionInLine()) + 1 : 0,
                     ErrorCode::E2015);
             }
@@ -779,7 +779,7 @@ std::any ASTBuilder::visitExprStructLit(yux::yuxParser::ExprStructLitContext* ct
 std::any ASTBuilder::visitFieldInit(yux::yuxParser::FieldInitContext* ctx) {
     auto scope = currentScope();
     auto value = any_cast_p<ExprNode>(visit(ctx->value));
-    return p<FieldInitNode>(createWithLine<FieldInitNode>(ctx, scope, ctx->name, value));
+    return (createWithLine<FieldInitNode>(ctx, scope, ctx->name, value));
 }
 
 // match 模式：E::V / E::V() / E::V(b1, b2, ...)
@@ -791,7 +791,7 @@ std::any ASTBuilder::visitPatternEnum(yux::yuxParser::PatternEnumContext* ctx) {
     vector<Token> binds;
     binds.reserve(ctx->binds.size());
     for (auto* tk : ctx->binds) binds.emplace_back(tk);
-    return p<EnumPatternNode>(createWithLine<EnumPatternNode>(
+    return (createWithLine<EnumPatternNode>(
         ctx, scope, ctx->enumName, ctx->variant, std::move(binds)));
 }
 
@@ -800,7 +800,7 @@ std::any ASTBuilder::visitPatternElse(yux::yuxParser::PatternElseContext* ctx) {
     DEBUG_LOG("    Pattern: Else");
     auto scope = currentScope();
     Token elseTok = ctx->Else()->getSymbol();
-    return p<EnumPatternNode>(createWithLine<EnumPatternNode>(ctx, scope, elseTok));
+    return (createWithLine<EnumPatternNode>(ctx, scope, elseTok));
 }
 
 // match arm: pattern => body
@@ -886,7 +886,7 @@ std::any ASTBuilder::visitMatchArm(yux::yuxParser::MatchArmContext* ctx) {
     for (auto& [n, sym] : arm->localSymbols()) {
         fullArm->registerSymbol(n, sym);
     }
-    return p<MatchArmNode>(fullArm);
+    return static_cast<p<MatchArmNode>>(fullArm);
 }
 
 // match 表达式：scrutinee + arms
@@ -929,7 +929,7 @@ std::any ASTBuilder::visitCatchArm(yux::yuxParser::CatchArmContext* ctx) {
     for (auto& [n, sym] : arm->localSymbols()) {
         fullArm->registerSymbol(n, sym);
     }
-    return p<CatchArmNode>(fullArm);
+    return static_cast<p<CatchArmNode>>(fullArm);
 }
 
 // try { stmts } catch e1 E1 { ... } catch e2 E2 { ... }

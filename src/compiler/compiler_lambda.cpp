@@ -148,7 +148,7 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     auto ptrTyMask = llvm::PointerType::get(_context, 0);
     auto i64Ty = _builder.getInt64Ty();
     auto rawAsInt = _builder.CreatePtrToInt(&*argIt, i64Ty, "captures.asint");
-    auto maskedInt = _builder.CreateAnd(rawAsInt, _builder.getInt64(~(u64)1), "captures.untagged.asint");
+    auto maskedInt = _builder.CreateAnd(rawAsInt, _builder.getInt64(~static_cast<u64>(1)), "captures.untagged.asint");
     auto maskedPtr = _builder.CreateIntToPtr(maskedInt, ptrTyMask, "captures.untagged");
     _currentLambdaCapturesArg = maskedPtr;
     ++argIt;
@@ -269,7 +269,7 @@ llvm::Function* Compiler::emitCapturesDtorFunction(p<LambdaExprNode> node,
     auto i8Ty = _builder.getInt8Ty();
     for (const auto& cap : node->captures()) {
         if (!typeNeedsDestructor(cap.type)) continue;
-        auto offset = _builder.getInt64((i64)cap.byteOffset);
+        auto offset = _builder.getInt64(static_cast<i64>(cap.byteOffset));
         auto slotPtr = _builder.CreateGEP(i8Ty, fieldsBase, {offset}, "cap.slot");
         // captures 槽位存的就是 wrapper struct（{ptr handle} 等），releaseAtPtr 直接走
         releaseAtPtr(slotPtr, cap.type);
@@ -342,7 +342,7 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
             u64 rcPayloadSize = 8 + node->capturesTotalSize();
             auto allocFn = runtime::getRcAllocFn(_module, _builder);
             baseHandle = _builder.CreateCall(
-                allocFn, {_builder.getInt64((i64)rcPayloadSize)}, "captures.block");
+                allocFn, {_builder.getInt64(static_cast<i64>(rcPayloadSize))}, "captures.block");
 
             // 写 dtor 槽位 @ handle+8（_box_release_dtor 在 strong 归零时调用）
             string mod = _file ? _file->moduleName() : string();
@@ -364,7 +364,7 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
                 throw YuxError(node->getLineNumber(), node->getColumn(),
                                ErrorCode::E3030, cap.name);
             }
-            auto offset = _builder.getInt64(16 + (i64)cap.byteOffset);
+            auto offset = _builder.getInt64(16 + static_cast<i64>(cap.byteOffset));
             auto dstAddr = _builder.CreateGEP(i8Ty, baseHandle, {offset}, "cap.dst");
             if (cap.type.isRef()) {
                 // T& 捕获：_localVarPtrs[name] 即 inner T 指针（参数/局部统一），

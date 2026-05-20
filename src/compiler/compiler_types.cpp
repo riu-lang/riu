@@ -240,7 +240,7 @@ string Compiler::ensureStructInstance(
     // 验证类型参数数量
     if (args.size() != baseDecl->typeParams().size()) {
         // 调用方未提供位置（getLLVMType 路径常见）时，退回到 struct 声明行，避免 assert(line>0) 触发 abort
-        int errLine = sourceLine > 0 ? sourceLine : (int)baseDecl->name().getLine();
+        int errLine = sourceLine > 0 ? sourceLine : static_cast<int>(baseDecl->name().getLine());
         if (errLine <= 0) errLine = 1;
         throw YuxError(errLine, ErrorCode::E6011,
             baseName, baseDecl->typeParams().size(), args.size())
@@ -396,7 +396,7 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         };
         for (auto [bname, arity] : kBuiltinGenerics) {
             if (type.name == bname) {
-                throw YuxError(1, ErrorCode::E6011, type.name, arity, (size_t)0)
+                throw YuxError(1, ErrorCode::E6011, type.name, arity, static_cast<size_t>(0))
                     .withHint(std::format("`{}` 是泛型类型，使用时须带类型实参：改写为 `{}<T>`",
                         type.name, type.name));
             }
@@ -592,10 +592,10 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         // 泛型 struct 但用法没带 `<T>`：避免落进 getOrCreateStructType 把未实例化的类型参数当成
         // 实类型 → 字段类型 null → llvm::StructType::create 段错误
         if (structDecl->isGeneric()) {
-            int errLine = (int)structDecl->name().getLine();
+            int errLine = static_cast<int>(structDecl->name().getLine());
             if (errLine <= 0) errLine = 1;
             throw YuxError(errLine, ErrorCode::E6011,
-                type.name, structDecl->typeParams().size(), (size_t)0)
+                type.name, structDecl->typeParams().size(), static_cast<size_t>(0))
                 .withHint(std::format("`{}` 是泛型类型，使用时须带类型实参：改写为 `{}<{}>`",
                     type.name, type.name,
                     std::string(structDecl->typeParams().size() == 1 ? "T" : "T1, T2, ...")));
@@ -761,7 +761,7 @@ llvm::FunctionType* Compiler::getLLVMFunctionType(p<FnHeaderNode> header) {
 llvm::Type* Compiler::wrapFallibleRetType(const TypeInfo& retType, const string& errTypeName) {
     if (errTypeName.empty()) {
         // 普通函数 / 非 Fallible：保持原行为
-        return retType.empty() ? (llvm::Type*)_builder.getVoidTy() : getLLVMType(retType);
+        return retType.empty() ? _builder.getVoidTy() : getLLVMType(retType);
     }
     return getFallibleRetStructType(retType, errTypeName);
 }
