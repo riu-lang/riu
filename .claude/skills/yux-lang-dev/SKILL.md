@@ -1,11 +1,11 @@
 ---
 name: yux-lang-dev
-description: Use at the start of any task in the yux-lang compiler repo (E:\yux-lang) — quick onboarding for build commands, test workflow, compiler architecture, build output layout, and the mandatory yux / C++ code style. Read this together with AGENTS.md (which holds the project rules and directory structure).
+description: Use at the start of any task in the yux-lang compiler repo — quick onboarding for build commands, test workflow, compiler architecture, build output layout, and the mandatory yux / C++ code style. Read this together with .claude/rules/ (which holds the project rules and directory structure).
 ---
 
 # yux-lang 开发上手
 
-yux 是自举编译器，单二进制完成 `.yux → ANTLR4 解析 → AST → LLVM IR → LLD → exe` 全流程。本技能覆盖**怎么构建、怎么测、怎么写**；**项目规则和目录结构在 [AGENTS.md](../../../AGENTS.md)**，开任务前两份都要看。
+yux 是自举编译器，单二进制完成 `.yux → ANTLR4 解析 → AST → LLVM IR → LLD → exe` 全流程。本技能覆盖**怎么构建、怎么测、怎么写**；**项目规则和目录结构在 [`.claude/rules/`](../../rules/README.md)**（索引在 `README.md`，至少看 `behavior.md` + `tasks-and-bugs.md` + `directory.md`），开任务前两份都要看。
 
 ## 环境与工具链
 
