@@ -1,0 +1,12 @@
+# 镜像 .clangd 的 ClangTidy.Add / Remove；HeaderFilterRegex 限定到 src/，过滤 third_party / gen。
+# 仅在 .clang-tidy 启用 clang-tidy 自己的 checks；UnusedIncludes/MissingIncludes 是 clangd 的 IWYU 特性，不在此文件管。
+---
+Checks: >
+  -*,
+  modernize-*,
+  bugprone-*,
+  performance-*,
+  -modernize-use-trailing-return-type
+HeaderFilterRegex: '^(?!.*[\\/](third_party|gen|build)[\\/]).*\.(h|hpp)$'
+WarningsAsErrors: ''
+FormatStyle: none
