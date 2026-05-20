@@ -6,7 +6,8 @@ Checks: >
   modernize-*,
   bugprone-*,
   performance-*,
-  -modernize-use-trailing-return-type
+  -modernize-use-trailing-return-type,
+  -bugprone-easily-swappable-parameters
 HeaderFilterRegex: '^(?!.*[\\/](third_party|gen|build)[\\/]).*\.(h|hpp)$'
 WarningsAsErrors: ''
 FormatStyle: none

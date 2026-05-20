@@ -14,6 +14,7 @@ Diagnostics:
       - performance*
     Remove:
       - modernize-use-trailing-return-type
+      - bugprone-easily-swappable-parameters
   UnusedIncludes: Strict
   MissingIncludes: Strict
 
