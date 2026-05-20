@@ -34,6 +34,31 @@ void SyntaxErrorListener::syntaxError(antlr4::Recognizer* recognizer,
 
     // recognizer 是 Lexer → 词法（E1001）；否则视为文法（E1002）。
     bool isLexer = dynamic_cast<antlr4::Lexer*>(recognizer) != nullptr;
+
+    // 抑制：lexer 被困在非默认 mode（如字符串插值未闭合）后, 对 '\n' '\r'
+    // 触发的 "token recognition error" 几乎全是噪声 —— 真正的错误已由
+    // E1002 报出. 仅在 offending 是纯空白/换行时跳过渲染.
+    if (isLexer) {
+        auto pos = msg.find("token recognition error at: '");
+        if (pos != std::string::npos) {
+            std::string at = msg.substr(pos + sizeof("token recognition error at: '") - 1);
+            if (!at.empty() && at.back() == '\'') at.pop_back();
+            // 转义 '\n' / '\r' / '\t' 文本形态 + 真实白空格
+            bool whitespaceOnly = !at.empty();
+            for (size_t i = 0; i < at.size(); ) {
+                if (at[i] == '\\' && i + 1 < at.size()
+                    && (at[i+1] == 'n' || at[i+1] == 'r' || at[i+1] == 't')) {
+                    i += 2; continue;
+                }
+                if (at[i] == ' ' || at[i] == '\t' || at[i] == '\n' || at[i] == '\r') {
+                    ++i; continue;
+                }
+                whitespaceOnly = false; break;
+            }
+            if (whitespaceOnly) return;
+        }
+    }
+
     const ErrorCodeDef& ec = isLexer ? ErrorCode::E1001 : ErrorCode::E1002;
 
     Diagnostic d;
