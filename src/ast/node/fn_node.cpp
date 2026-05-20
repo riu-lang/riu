@@ -34,18 +34,19 @@ TypeInfo FnHeaderNode::getType() const {
     return {};
 }
 
-FnNode::FnNode(const p<Node>& parent, p<FnHeaderNode> header) :
-    ScopeNode(parent),
-    _header(header) {
-}
+FnNode::FnNode(const p<Node>& parent, p<FnHeaderNode> header) : ScopeNode(parent), _header(header) {}
 
 void FnNode::addStatement(p<StatementNode> stmt) {
-    _body.push_back(std::move(stmt));
+    _body.push_back(stmt);
 }
 
-const vector<p<StatementNode>>& FnNode::body() const { return _body; }
+const vector<p<StatementNode>>& FnNode::body() const {
+    return _body;
+}
 
-const p<FnHeaderNode>& FnNode::header() const { return _header; }
+const p<FnHeaderNode>& FnNode::header() const {
+    return _header;
+}
 
 TypeInfo FnNode::getType() const {
     return _header->getType();

@@ -660,7 +660,6 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
 
     // 处理隐式返回
     // 如果函数没有显式返回语句，添加隐式 void 返回
-    auto fnName = node->header()->name().getText();
     if (!_builder.GetInsertBlock()->getTerminator()) {
         // #Fallible(E) void-return 函数体走到末尾：补隐式成功-void ret struct
         // （与 compileRetVoidStatement 同形；[#10.A] T_ok=void）

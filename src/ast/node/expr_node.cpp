@@ -1401,7 +1401,8 @@ TypeInfo ExprPathCallNode::getType() const {
     auto* scope = parent() ? parent()->findNearestScope() : nullptr;
     FileNode* file = nullptr;
     while (scope) {
-        if ((file = dynamic_cast<FileNode*>(scope))) break;
+        file = dynamic_cast<FileNode*>(scope);
+        if (file) break;
         scope = scope->parentScope();
     }
     if (file) {

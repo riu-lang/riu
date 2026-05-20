@@ -159,7 +159,7 @@ private:
         }
     }
 
-    std::string resolveRoot(const std::string& name) const {
+    [[nodiscard]] std::string resolveRoot(const std::string& name) const {
         auto it = _refToRoot.find(name);
         return it != _refToRoot.end() ? it->second : name;
     }
