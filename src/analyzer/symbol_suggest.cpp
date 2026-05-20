@@ -12,6 +12,7 @@
 #include "ast/node/node.h"
 #include <algorithm>
 #include <set>
+#include <utility>
 
 namespace {
 
@@ -80,7 +81,7 @@ vector<string> SymbolSuggest::nearby(ScopeNode* scope, const string& target,
 
     vector<string> result;
     for (auto& p : scored) {
-        if (static_cast<int>(result.size()) >= k) break;
+        if (std::cmp_greater_equal(result.size(), k)) break;
         result.push_back(p.second);
     }
     return result;

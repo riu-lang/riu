@@ -235,7 +235,7 @@ bool needRecompileSdkDir(const std::string& sdkDir, const std::string& sdkObjPat
         if (entry.is_regular_file()) {
             std::string filename = entry.path().filename().string();
             if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".yux") {
-                if (filename.size() >= 9 && filename.compare(filename.size() - 9, 9, ".test.yux") == 0) continue;
+                if (filename.size() >= 9 && filename.ends_with(".test.yux")) continue;
                 if (std::filesystem::last_write_time(entry.path()) > objTime) {
                     return true;
                 }
@@ -273,7 +273,7 @@ IRResult compileSdkDir(std::string sdkDir, Yux& yux) {
         if (entry.is_regular_file()) {
             std::string filename = entry.path().filename().string();
             if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".yux") {
-                if (filename.size() >= 9 && filename.compare(filename.size() - 9, 9, ".test.yux") == 0) continue;
+                if (filename.size() >= 9 && filename.ends_with(".test.yux")) continue;
                 yuxFiles.push_back(entry.path().string());
             }
         }

@@ -593,7 +593,7 @@ llvm::Value* Compiler::handleFallibleCallResult(
         // 构外层 ret struct
         auto outerRetTy = getFallibleRetStructType(callerRetType, callerErr);
         llvm::Value* outerRet = llvm::UndefValue::get(outerRetTy);
-        outerRet = _builder.CreateInsertValue(outerRet, _builder.getInt1(1), {0});
+        outerRet = _builder.CreateInsertValue(outerRet, _builder.getInt1(true), {0});
         unsigned outerErrIdx;
         if (!callerRetType.empty()) {
             auto okLLVMTy = getLLVMType(callerRetType);

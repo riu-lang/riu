@@ -44,7 +44,7 @@ void YuxSEHMemoryManager::registerEHFrames(uint8_t* Addr, uint64_t /*LoadAddr*/,
     if (imageBase == std::numeric_limits<uint64_t>::max()) return;
 
     auto* table = reinterpret_cast<PRUNTIME_FUNCTION>(Addr);
-    DWORD count = static_cast<DWORD>(Size / kEntrySize);
+    auto count = static_cast<DWORD>(Size / kEntrySize);
     if (::RtlAddFunctionTable(table, count, imageBase)) {
         registeredTables.push_back(table);
     }

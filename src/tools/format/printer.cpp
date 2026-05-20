@@ -876,10 +876,10 @@ Doc Printer::statementBlockDoc(yuxParser::StatementBlockContext* ctx, int indent
         auto leadIt = trivia_.leadingByTokenIndex.find(endIdx);
         if (leadIt != trivia_.leadingByTokenIndex.end()) {
             const auto& cs = leadIt->second;
-            for (std::size_t k = 0; k < cs.size(); ++k) {
+            for (const auto & c : cs) {
                 inner.push_back(hardline());
-                if (cs[k].blankBefore) inner.push_back(hardline());
-                inner.push_back(text(cs[k].text));
+                if (c.blankBefore) inner.push_back(hardline());
+                inner.push_back(text(c.text));
             }
         }
         auto blankIt = trivia_.blankBefore.find(endIdx);

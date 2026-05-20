@@ -117,7 +117,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         auto retStructTy = getFallibleRetStructType(successType, fallibleErrName);
         auto errLLVMTy = getLLVMType(TypeInfo(fallibleErrName));
         llvm::Value* retStruct = llvm::UndefValue::get(retStructTy);
-        retStruct = _builder.CreateInsertValue(retStruct, _builder.getInt1(isError ? 1 : 0), {0});
+        retStruct = _builder.CreateInsertValue(retStruct, _builder.getInt1(isError ? true : false), {0});
         unsigned errFieldIdx;
         if (!successType.empty()) {
             // T_ok 在字段 1，ErrEnum 在字段 2
@@ -359,7 +359,7 @@ void Compiler::compileRetVoidStatement(p<StatementRetVoidNode> node) {
         auto retStructTy = getFallibleRetStructType(TypeInfo(), fallibleErrName);
         auto errLLVMTy = getLLVMType(TypeInfo(fallibleErrName));
         llvm::Value* retStruct = llvm::UndefValue::get(retStructTy);
-        retStruct = _builder.CreateInsertValue(retStruct, _builder.getInt1(0), {0});
+        retStruct = _builder.CreateInsertValue(retStruct, _builder.getInt1(false), {0});
         retStruct = _builder.CreateInsertValue(retStruct, llvm::Constant::getNullValue(errLLVMTy), {1});
         _builder.CreateRet(retStruct);
         DEBUG_LOG("    Created #Fallible void-success return instruction");
@@ -1202,7 +1202,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                             ErrorCode::E3045, curType.getFullName());
                     }
                     auto& elems = resolvedCur.tupleElements();
-                    size_t idx = static_cast<size_t>(std::stoul(memberText));
+                    auto idx = static_cast<size_t>(std::stoul(memberText));
                     if (idx >= elems.size()) {
                         throw YuxError(node->getLineNumber(), node->getColumn(),
                             ErrorCode::E3100, memberText, curType.getFullName(),

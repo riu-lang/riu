@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <set>
 #include <sstream>
+#include <utility>
 
 namespace yux::lsp {
 
@@ -354,7 +355,7 @@ ReceiverCtx receiverContextAt(const std::string& docText, LspPosition pos) {
     long mStart = static_cast<long>(cursor);
     while (mStart > 0 && isIdentChar(docText[mStart - 1])) --mStart;
     long mEnd = static_cast<long>(cursor);
-    while (mEnd < static_cast<long>(docText.size()) && isIdentChar(docText[mEnd])) ++mEnd;
+    while (std::cmp_less(mEnd ,docText.size()) && isIdentChar(docText[mEnd])) ++mEnd;
     // 如果开头是数字（处于数字字面量内），不算 IDENT
     if (mStart < mEnd && !isIdentStart(docText[mStart])) {
         mStart = mEnd; // 视为 member 为空

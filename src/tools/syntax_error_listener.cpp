@@ -79,11 +79,11 @@ void SyntaxErrorListener::syntaxError(antlr4::Recognizer* recognizer,
         if (keywordAsId) {
             d.hints.push_back("`" + offText + "` 是 yux 关键字，不能用作标识符；换一个名字（如 `" + offText + "_`）");
         } else if (msg.find("';'") != std::string::npos || msg.find("missing ';'") != std::string::npos) {
-            d.hints.push_back("语句末尾需要 `;`；表达式带 `;` 表示舍弃返回值，不带 `;` 才会作为返回值（参见 docs/基础语法.md）");
+            d.hints.emplace_back("语句末尾需要 `;`；表达式带 `;` 表示舍弃返回值，不带 `;` 才会作为返回值（参见 docs/基础语法.md）");
         } else if (msg.find("extraneous input") != std::string::npos
                    || msg.find("mismatched input") != std::string::npos
                    || msg.find("no viable alternative") != std::string::npos) {
-            d.hints.push_back("检查空格规则：关键字后、二元运算符两侧、`,` 后必须有空格；`()` `[]` 内部不留空格");
+            d.hints.emplace_back("检查空格规则：关键字后、二元运算符两侧、`,` 后必须有空格；`()` `[]` 内部不留空格");
         }
     }
 

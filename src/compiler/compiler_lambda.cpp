@@ -474,8 +474,8 @@ llvm::Value* Compiler::compileFnValueCall(p<ExprCallNode> node) {
     // 编译实参（含 lambda → 构造 fat-ptr）
     vector<llvm::Value*> callArgs;
     callArgs.push_back(captures);
-    for (size_t i = 0; i < node->getArgs().size(); ++i) {
-        callArgs.push_back(compileExpr(node->getArgs()[i]));
+    for (auto i : node->getArgs()) {
+        callArgs.push_back(compileExpr(i));
     }
 
     return _builder.CreateCall(llvmFnType, fnPtrVal, callArgs);
@@ -539,8 +539,8 @@ llvm::Value* Compiler::compileRcFnValueCall(p<ExprCallNode> node, const TypeInfo
     // 编译实参
     vector<llvm::Value*> callArgs;
     callArgs.push_back(captures);
-    for (size_t i = 0; i < node->getArgs().size(); ++i) {
-        callArgs.push_back(compileExpr(node->getArgs()[i]));
+    for (auto i : node->getArgs()) {
+        callArgs.push_back(compileExpr(i));
     }
 
     return _builder.CreateCall(llvmFnType, fnPtrVal, callArgs);

@@ -667,7 +667,7 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
             auto retStructTy = getFallibleRetStructType(TypeInfo(), fallibleErrName);
             auto errLLVMTy = getLLVMType(TypeInfo(fallibleErrName));
             llvm::Value* rs = llvm::UndefValue::get(retStructTy);
-            rs = _builder.CreateInsertValue(rs, _builder.getInt1(0), {0});
+            rs = _builder.CreateInsertValue(rs, _builder.getInt1(false), {0});
             rs = _builder.CreateInsertValue(rs, llvm::Constant::getNullValue(errLLVMTy), {1});
             _builder.CreateRet(rs);
             DEBUG_LOG("  Added implicit #Fallible void-success return");
@@ -782,7 +782,7 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
             auto retStructTy = getFallibleRetStructType(TypeInfo(), fallibleErrName);
             auto errLLVMTy = getLLVMType(TypeInfo(fallibleErrName));
             llvm::Value* rs = llvm::UndefValue::get(retStructTy);
-            rs = _builder.CreateInsertValue(rs, _builder.getInt1(0), {0});
+            rs = _builder.CreateInsertValue(rs, _builder.getInt1(false), {0});
             rs = _builder.CreateInsertValue(rs, llvm::Constant::getNullValue(errLLVMTy), {1});
             _builder.CreateRet(rs);
             DEBUG_LOG("  Added implicit #Fallible void-success return (method)");

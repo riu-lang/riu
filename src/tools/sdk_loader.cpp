@@ -96,7 +96,7 @@ void parseSdkDir(const std::string& sdkDir, Yux& yux) {
         std::string filename = entry.path().filename().string();
         if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".yux") {
             if (filename.size() >= 9 &&
-                filename.compare(filename.size() - 9, 9, ".test.yux") == 0) continue;
+                filename.ends_with(".test.yux")) continue;
             yuxFiles.push_back(entry.path().string());
         }
     }

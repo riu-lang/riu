@@ -259,7 +259,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
         if (sm.empty()) return true;
         if (m == sm) return true;
         return m.size() > sm.size() + 1 &&
-               m.compare(0, sm.size(), sm) == 0 &&
+               m.starts_with(sm) &&
                m[sm.size()] == '.';
     };
     // 扫描期 *.test.yux 裁剪: 任一 selector 的模块范围覆盖即保留。
@@ -353,7 +353,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
         if (p.extension() != ".yux") continue;
         auto fname = p.filename().string();
         bool isTest = fname.size() >= 9 &&
-                      fname.compare(fname.size() - 9, 9, ".test.yux") == 0;
+                      fname.ends_with(".test.yux");
         std::string absPath = fs::absolute(p).string();
         if (!isTest && !sdkPathAbs.empty() &&
             fs::path(absPath).parent_path().string() == sdkPathAbs) {
@@ -490,7 +490,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
             if (!r.spawnOk) {
                 std::cout << "FAIL " << prog << name
                           << " (" << r.spawnError << ")" << elapsed << "\n";
-                failures.push_back({name, r.spawnError});
+                failures.emplace_back(name, r.spawnError);
                 ++failed;
                 continue;
             }
@@ -502,7 +502,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
                 std::cout << "FAIL " << prog << name
                           << " (child runner error)" << elapsed << "\n";
                 printCapturedOutput(r.capture);
-                failures.push_back({name, "child runner error"});
+                failures.emplace_back(name, "child runner error");
                 ++failed;
             } else {
                 std::cout << "FAIL " << prog << name
@@ -510,7 +510,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
                           << " 0x" << std::hex << r.exitCode << std::dec << ")"
                           << elapsed << "\n";
                 printCapturedOutput(r.capture);
-                failures.push_back({name, std::string("SEH ") + sehExceptionName(r.exitCode)});
+                failures.emplace_back(name, std::string("SEH ") + sehExceptionName(r.exitCode));
                 ++failed;
             }
         }
@@ -604,7 +604,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
                 std::cout << "FAIL " << prog << name
                           << " (#TestIsolate: failed to resolve self exe)"
                           << fmtElapsed(t0) << "\n";
-                failures.push_back({name, "#TestIsolate: failed to resolve self exe"});
+                failures.emplace_back(name, "#TestIsolate: failed to resolve self exe");
                 ++failed;
                 continue;
             }
@@ -613,7 +613,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
             if (!r.spawnOk) {
                 std::cout << "FAIL " << prog << name
                           << " (#TestIsolate: " << r.spawnError << ")" << elapsed << "\n";
-                failures.push_back({name, "#TestIsolate: " + r.spawnError});
+                failures.emplace_back(name, "#TestIsolate: " + r.spawnError);
                 ++failed;
             } else if (r.exitCode == 0) {
                 std::cout << "OK   " << prog << name
@@ -624,7 +624,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
                 std::cout << "FAIL " << prog << name
                           << " (#TestIsolate: child runner error)" << elapsed << "\n";
                 printCapturedOutput(r.capture);
-                failures.push_back({name, "#TestIsolate: child runner error"});
+                failures.emplace_back(name, "#TestIsolate: child runner error");
                 ++failed;
             } else {
                 std::cout << "FAIL " << prog << name
@@ -632,7 +632,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
                           << " 0x" << std::hex << r.exitCode << std::dec << ", isolated)"
                           << elapsed << "\n";
                 printCapturedOutput(r.capture);
-                failures.push_back({name, std::string("SEH ") + sehExceptionName(r.exitCode) + ", isolated"});
+                failures.emplace_back(name, std::string("SEH ") + sehExceptionName(r.exitCode) + ", isolated");
                 ++failed;
             }
             continue;
@@ -647,7 +647,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
                 std::cout << "FAIL " << prog << name
                           << " (lookup failed: " << llvm::toString(sym.takeError()) << ")"
                           << fmtElapsed(t0) << "\n";
-                failures.push_back({name, "lookup failed"});
+                failures.emplace_back(name, "lookup failed");
                 ++failed;
             }
             continue;
@@ -675,7 +675,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
                           << " 0x" << std::hex << code << std::dec << ")"
                           << elapsed << "\n";
                 printCapturedOutput(out);
-                failures.push_back({name, std::string("SEH ") + sehExceptionName(code)});
+                failures.emplace_back(name, std::string("SEH ") + sehExceptionName(code));
                 ++failed;
             }
         }

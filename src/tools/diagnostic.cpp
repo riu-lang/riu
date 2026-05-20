@@ -13,6 +13,7 @@
 #include <fstream>
 #include <map>
 #include <set>
+#include <utility>
 
 #include "utf8.h"
 
@@ -165,7 +166,7 @@ int displayWidthOfCodepoint(char32_t cp) {
 string caretPaddingFromCol(const string& srcLine, int col) {
     string out;
     if (col <= 1) return out;
-    size_t targetCp = static_cast<size_t>(col - 1);
+    auto targetCp = static_cast<size_t>(col - 1);
 
     const char* it = srcLine.data();
     const char* end = it + srcLine.size();
@@ -229,7 +230,7 @@ void DiagnosticEngine::render(std::ostream& out, const Diagnostic& diagIn) {
     // 源码片段（仅在 file + line + col 都有效时显示）
     if (!diag.file.empty() && diag.line > 0) {
         const auto* lines = loadSource(diag.file);
-        if (lines && diag.line <= static_cast<int>(lines->size())) {
+        if (lines && std::cmp_less_equal(diag.line ,lines->size())) {
             const string& srcLine = (*lines)[diag.line - 1];
             string lineNoStr = std::to_string(diag.line);
             string gutter(lineNoStr.size(), ' ');

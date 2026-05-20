@@ -132,7 +132,7 @@ void parseSdkInto(const std::string& sdkDir, Yux& yux) {
 
 std::string uriToPath(const std::string& uri) {
     constexpr const char* kPrefix = "file://";
-    if (uri.rfind(kPrefix, 0) != 0) return {};
+    if (!uri.starts_with(kPrefix)) return {};
     std::string body = uri.substr(std::strlen(kPrefix));
     body = urlDecode(body);
 #ifdef _WIN32

@@ -407,7 +407,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                             if (!isPureDigits(memberText)) { stop = true; break; }
                             if (!curType.isTuple()) { stop = true; break; }
                             const auto& elems = curType.tupleElements();
-                            size_t idx = static_cast<size_t>(std::stoul(memberText));
+                            auto idx = static_cast<size_t>(std::stoul(memberText));
                             if (idx >= elems.size()) {
                                 throw YuxError(as->getLineNumber(), as->getColumn(),
                                                ErrorCode::E3100, memberText,

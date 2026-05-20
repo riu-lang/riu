@@ -34,7 +34,7 @@ static TypeInfo lookupSpecBoundMethodRetType(
     if (idx == SIZE_MAX || idx >= bounds.size()) return TypeInfo();
 
     auto scope = contextParent ? contextParent->findNearestScope() : nullptr;
-    FileNode* file = dynamic_cast<FileNode*>(scope);
+    auto* file = dynamic_cast<FileNode*>(scope);
     while (!file && scope) {
         scope = scope->parentScope();
         file = dynamic_cast<FileNode*>(scope);
@@ -104,7 +104,7 @@ static TypeInfo lookupDynMethodRetType(
 static bool isCompilerInnerMethod(ScopeNode* scope, const string& structName, const string& methodName) {
     if (!scope) return false;
     
-    FileNode* file = dynamic_cast<FileNode*>(scope);
+    auto* file = dynamic_cast<FileNode*>(scope);
     auto s = scope;
     while (!file && s) {
         s = s->parentScope();
@@ -237,7 +237,7 @@ TypeInfo ExprCallNode::getType() const {
             vector<string> segs;
             if (ExprDotNode::parseChain(dotNode, aliasName, segs) && segs.size() >= 2) {
                 auto scope = findNearestScope();
-                FileNode* file = dynamic_cast<FileNode*>(scope);
+                auto* file = dynamic_cast<FileNode*>(scope);
                 while (!file && scope) {
                     scope = scope->parentScope();
                     file = dynamic_cast<FileNode*>(scope);
@@ -266,7 +266,7 @@ TypeInfo ExprCallNode::getType() const {
                 if (auto objLit = dynamic_cast<LiteralObjNode*>(baseLit->literal())) {
                     auto aliasName = objLit->getValue().getText();
                     auto scope = findNearestScope();
-                    FileNode* file = dynamic_cast<FileNode*>(scope);
+                    auto* file = dynamic_cast<FileNode*>(scope);
                     while (!file && scope) {
                         scope = scope->parentScope();
                         file = dynamic_cast<FileNode*>(scope);
@@ -299,7 +299,7 @@ TypeInfo ExprCallNode::getType() const {
                 if (auto e = baseType.rcElementType()) actualType = *e;
             }
             auto scope = findNearestScope();
-            FileNode* file = dynamic_cast<FileNode*>(scope);
+            auto* file = dynamic_cast<FileNode*>(scope);
             while (!file && scope) {
                 scope = scope->parentScope();
                 file = dynamic_cast<FileNode*>(scope);
@@ -674,7 +674,7 @@ TypeInfo ExprDotNode::getType() const {
             innerType = rcInner;
         }
         auto scope = findNearestScope();
-        FileNode* file = dynamic_cast<FileNode*>(scope);
+        auto* file = dynamic_cast<FileNode*>(scope);
         while (!file && scope) {
             scope = scope->parentScope();
             file = dynamic_cast<FileNode*>(scope);
@@ -719,7 +719,7 @@ TypeInfo ExprDotNode::getType() const {
             if (scope) {
                 auto sym = scope->lookupSymbol(aliasName);
                 if (sym && (sym->kind == SymbolKind::Module || sym->kind == SymbolKind::Package)) {
-                    FileNode* f = dynamic_cast<FileNode*>(scope);
+                    auto* f = dynamic_cast<FileNode*>(scope);
                     auto s = scope;
                     while (!f && s) { s = s->parentScope(); f = dynamic_cast<FileNode*>(s); }
                     if (f && f->isAmbiguousAlias(aliasName)) {
@@ -730,7 +730,7 @@ TypeInfo ExprDotNode::getType() const {
                     return TypeInfo("fn_overload");
                 }
                 if (sym && sym->kind == SymbolKind::Package) {
-                    FileNode* file = dynamic_cast<FileNode*>(scope);
+                    auto* file = dynamic_cast<FileNode*>(scope);
                     auto s = scope;
                     while (!file && s) { s = s->parentScope(); file = dynamic_cast<FileNode*>(s); }
                     if (file && segs.size() >= 2) {
@@ -758,7 +758,7 @@ TypeInfo ExprDotNode::getType() const {
         TypeInfo resolved = baseType;
         if (resolved.kind == TypeKind::Normal) {
             auto scope = findNearestScope();
-            FileNode* file = dynamic_cast<FileNode*>(scope);
+            auto* file = dynamic_cast<FileNode*>(scope);
             while (!file && scope) { scope = scope->parentScope(); file = dynamic_cast<FileNode*>(scope); }
             if (file) {
                 std::set<std::string> visited;
@@ -774,7 +774,7 @@ TypeInfo ExprDotNode::getType() const {
             }
         }
         if (resolved.isTuple()) {
-            size_t idx = static_cast<size_t>(std::stoul(member));
+            auto idx = static_cast<size_t>(std::stoul(member));
             auto& elems = resolved.tupleElements();
             if (idx >= elems.size()) {
                 throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3100,

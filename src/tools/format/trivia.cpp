@@ -14,6 +14,7 @@
 
 #include <cstddef>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "antlr4-runtime.h"
@@ -41,7 +42,7 @@ TriviaMap buildTrivia(antlr4::CommonTokenStream& stream) {
     stream.fill();
     const auto& toks = stream.getTokens();
 
-    std::size_t lastDefault = static_cast<std::size_t>(-1);
+    auto lastDefault = static_cast<std::size_t>(-1);
     std::size_t lastDefaultLine = 0;
     std::vector<TriviaComment> pendingLeading;
 
@@ -64,7 +65,7 @@ TriviaMap buildTrivia(antlr4::CommonTokenStream& stream) {
             std::size_t prevLine = pendingLeading.empty()
                 ? lastDefaultLine
                 : pendingLeading.back().line;
-            if (lastDefault != static_cast<std::size_t>(-1)
+            if (std::cmp_not_equal(lastDefault ,-1)
                 && tk->getLine() > prevLine + 1) {
                 map.blankBefore[idx] = true;
             }
@@ -84,14 +85,14 @@ TriviaMap buildTrivia(antlr4::CommonTokenStream& stream) {
         // HIDDEN 通道：注释 / 空白
         if (type == yuxLexer::LineEndComment) {
             // 行尾注释：挂到上一个 default token 的 trailing
-            if (lastDefault != static_cast<std::size_t>(-1) && tk->getLine() == lastDefaultLine) {
+            if (std::cmp_not_equal(lastDefault ,-1) && tk->getLine() == lastDefaultLine) {
                 map.trailingByTokenIndex[lastDefault].push_back(
                     {trimCommentText(rawText), true, tk->getLine(), false});
             } else {
                 std::size_t prevLine = pendingLeading.empty()
                     ? lastDefaultLine
                     : pendingLeading.back().line;
-                bool blank = (lastDefault != static_cast<std::size_t>(-1)
+                bool blank = (std::cmp_not_equal(lastDefault ,-1)
                               || !pendingLeading.empty())
                              && tk->getLine() > prevLine + 1;
                 pendingLeading.push_back({trimCommentText(rawText), true, tk->getLine(), blank});
@@ -100,7 +101,7 @@ TriviaMap buildTrivia(antlr4::CommonTokenStream& stream) {
             std::size_t prevLine = pendingLeading.empty()
                 ? lastDefaultLine
                 : pendingLeading.back().line;
-            bool blank = (lastDefault != static_cast<std::size_t>(-1)
+            bool blank = (std::cmp_not_equal(lastDefault ,-1)
                           || !pendingLeading.empty())
                          && tk->getLine() > prevLine + 1;
             pendingLeading.push_back({trimCommentText(rawText), true, tk->getLine(), blank});
