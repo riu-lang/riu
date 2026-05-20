@@ -34,6 +34,20 @@
 
 **不要拿 Rust / C++ / Go 的语义去套 yux**。
 
+## 每次提交都必须 0 clang-tidy 警告
+
+仓库已配 clang-tidy（根 `.clang-tidy` + `gen/.clang-tidy` 关闭生成代码）。**提交前必跑**：
+
+```powershell
+xmake check clang.tidy yux_frontend yux_codegen yux
+```
+
+输出必须 `0 warnings`。**唯一例外**：一次清理任务需要拆成多个提交按主题逐批落地时，中间提交可以保留尚未处理的剩余警告，但主题工作完成后的**收尾提交必须归零**。
+
+例外不适用于功能 / bug fix 提交。这类提交本身就不该引入新警告，撞到非自身代码的旧警告时，与用户对齐后再决定单独清还是顺手带。
+
+> 已知尚未处理：根 `.clang-tidy` 未启用 include 排序（`llvm-include-order`）与未使用 include 清理（clangd `unused-includes` / IWYU），后续单独排专项再开。
+
 ## 改语言面必须回写规范
 
 凡是新增 / 修改 / 删除语言特性、语法形态、用法语义、ABI 协议、内置类型行为等"涉及标准"的变更，落地前**先与用户确认条款措辞**，确认后同步更新 `docs/spec/` 与 CHANGELOG。详见 [spec-writeback.md](spec-writeback.md)。

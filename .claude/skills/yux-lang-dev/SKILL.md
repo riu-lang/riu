@@ -16,7 +16,8 @@ yux 是自举编译器，单二进制完成 `.yux → ANTLR4 解析 → AST → 
 - 构建：xmake
 - LLVM 工具链在 `PATH`（`llvm/bin`）
 - `build/windows/x64/debug` 在 `PATH`，构建后可直接 `yux ...`
-- 当前未配置 lint / formatter / clang-tidy，不要假设存在 `npm run lint` / `make fmt` 之类命令
+- 已配 clang-tidy（根 `.clang-tidy` + `gen/.clang-tidy` 关掉 ANTLR 生成代码），跑法：`xmake check clang.tidy yux_frontend yux_codegen yux`；**每次提交必须 0 警告**（细则与例外见 [behavior.md](../../rules/behavior.md)）
+- 未配 formatter；不要假设存在 `npm run lint` / `make fmt` 之类命令
 - 会话 shell 可能是 bash 或 PowerShell；下方命令示例按 PowerShell 写，bash 下将 `./sync-deps.ps1` 换成 `./sync-deps.sh`、路径用正斜杠
 
 ## 常用命令
