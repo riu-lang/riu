@@ -32,7 +32,7 @@
 
 ### 完成一个版本后归档实施记录
 
-把 `CURRENT.md` 里某个大任务（如所有权 v0.1）的 Phase 列表精简后落到 `docs/dev/<topic>-impl-log.md`。
+`docs/dev/<topic>-impl-log.md` 只用于**标准 / 语言面变更**（spec 条款、AST 节点 / 注解形态、ABI 协议、内置类型语义等触发 `spec-writeback.md` 的工作）。纯工程交付（文件级拆分、工具链整顿、clang-tidy 警告清理之类）**不写 impl-log**，进度归到 `MILESTONE.md` 对应版本条目里即可。
 
 归档时**剔除本地化指代**（人名 / 私人路径 / 邮箱）、剔除测试计数与具体行号（易腐烂），保留：
 
