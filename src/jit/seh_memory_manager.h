@@ -29,13 +29,10 @@ public:
     YuxSEHMemoryManager() = default;
     ~YuxSEHMemoryManager() override;
 
-    uint8_t* allocateCodeSection(uintptr_t Size, unsigned Alignment,
-                                 unsigned SectionID,
+    uint8_t* allocateCodeSection(uintptr_t Size, unsigned Alignment, unsigned SectionID,
                                  llvm::StringRef SectionName) override;
 
-    uint8_t* allocateDataSection(uintptr_t Size, unsigned Alignment,
-                                 unsigned SectionID,
-                                 llvm::StringRef SectionName,
+    uint8_t* allocateDataSection(uintptr_t Size, unsigned Alignment, unsigned SectionID, llvm::StringRef SectionName,
                                  bool IsReadOnly) override;
 
     void registerEHFrames(uint8_t* Addr, uint64_t LoadAddr, size_t Size) override;

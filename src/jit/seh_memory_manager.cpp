@@ -18,27 +18,21 @@ YuxSEHMemoryManager::~YuxSEHMemoryManager() {
     }
 }
 
-uint8_t* YuxSEHMemoryManager::allocateCodeSection(uintptr_t Size, unsigned Alignment,
-                                                  unsigned SectionID,
+uint8_t* YuxSEHMemoryManager::allocateCodeSection(uintptr_t Size, unsigned Alignment, unsigned SectionID,
                                                   llvm::StringRef SectionName) {
-    auto* p = SectionMemoryManager::allocateCodeSection(
-        Size, Alignment, SectionID, SectionName);
+    auto* p = SectionMemoryManager::allocateCodeSection(Size, Alignment, SectionID, SectionName);
     if (p) recordSection(p);
     return p;
 }
 
-uint8_t* YuxSEHMemoryManager::allocateDataSection(uintptr_t Size, unsigned Alignment,
-                                                  unsigned SectionID,
-                                                  llvm::StringRef SectionName,
-                                                  bool IsReadOnly) {
-    auto* p = SectionMemoryManager::allocateDataSection(
-        Size, Alignment, SectionID, SectionName, IsReadOnly);
+uint8_t* YuxSEHMemoryManager::allocateDataSection(uintptr_t Size, unsigned Alignment, unsigned SectionID,
+                                                  llvm::StringRef SectionName, bool IsReadOnly) {
+    auto* p = SectionMemoryManager::allocateDataSection(Size, Alignment, SectionID, SectionName, IsReadOnly);
     if (p) recordSection(p);
     return p;
 }
 
-void YuxSEHMemoryManager::registerEHFrames(uint8_t* Addr, uint64_t /*LoadAddr*/,
-                                            size_t Size) {
+void YuxSEHMemoryManager::registerEHFrames(uint8_t* Addr, uint64_t /*LoadAddr*/, size_t Size) {
     // .pdata 段必须是 RUNTIME_FUNCTION (12 字节) 的紧凑数组
     constexpr size_t kEntrySize = sizeof(RUNTIME_FUNCTION);
     if (Size == 0 || Size % kEntrySize != 0) return;
