@@ -29,11 +29,20 @@ public:
     }
 
     [[nodiscard]] TypeInfo getType() const override {
-        return _structName.empty() ? TypeInfo() : TypeInfo(_structName);
+        // structName 为空 (typically spec 体内): 返回名为 "Self" 的占位 TypeInfo,
+        // 由 SpecImplChecker::sigEquivalent 通过 subst["Self"] 替换为 impl 具体类型;
+        // 默认体 fall-through 编译时由 Compiler::compileInheritedDefaults 临时
+        // setStructName 走真实 codegen.
+        return _structName.empty() ? TypeInfo("Self") : TypeInfo(_structName);
     }
 
     [[nodiscard]] const Token& selfToken() const { return _selfTok; }
     [[nodiscard]] const string& structName() const { return _structName; }
+
+    // DRAFT-spec-default-body Phase 3：spec 默认体 fall-through 编译时, 把
+    // spec 体内"无归属"的 TypeSelfNode 临时改写到具体实现类型, 编完再还原.
+    // 不要在常规路径使用 — 仅供 compiler 的 fall-through 临时 patch.
+    void setStructName(string s) { _structName = std::move(s); }
 };
 
 class TypeNormalNode : public TypeNode {

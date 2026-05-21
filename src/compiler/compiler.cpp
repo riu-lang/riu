@@ -21,6 +21,8 @@
 #include "ast/node/expr_node.h"
 #include "ast/node/fn_node.h"
 #include "ast/node/literal_node.h"
+#include "ast/node/spec_node.h"
+#include "ast/node/type_node.h"
 #include "compiler_runtime.h"
 #include "compiler.h"
 #include <llvm/IR/Constants.h>
@@ -288,6 +290,13 @@ void Compiler::compileStructDecls() {
 // 编译所有结构体实现 (方法和析构函数)
 // 同时为需要析构函数但没有显式定义的结构体生成默认析构函数
 void Compiler::compileStructImpls() {
+    // DRAFT-spec-default-body Phase 3: 在编 impl 前显式触发一次 SpecImplChecker.validate(),
+    // 让 fall-through 记录 (StructImplNode::inheritedDefaults) 在本轮 codegen 前就绪.
+    // (validate 也由其它 sema / expr 路径懒触发, 这里只是保证 codegen 入口前一定有.)
+    if (_yux) {
+        (void)_yux->specImplChecker();
+    }
+
     auto& impls = _file->getStructImpls();
     DEBUG_LOG_VAL("  compileStructImpls", impls.size() << " implementations");
 
@@ -342,6 +351,12 @@ void Compiler::compileStructImpls() {
             auto func = getMethodFunction(structName, methodName, paramTypes, retType, mFallibleErr, isStatic);
             compileMethod(method, func, structName, false, isStatic);
         }
+
+        // DRAFT-spec-default-body Phase 3: spec 默认体 fall-through.
+        // 对每条 SpecImplChecker 登记的 InheritedDefault, 用 spec 的默认体 FnNode
+        // (parent=spec scope, 不重 parent) 走常规 compileMethod, 但临时把签名 / body
+        // 符号表里挂的 Self 形态改写到本 impl structName. 编完再原样还原.
+        compileInheritedDefaults(structImpl, structName);
     }
 
     // 为需要析构函数但没有显式定义的结构体生成默认析构函数
@@ -354,6 +369,148 @@ void Compiler::compileStructImpls() {
                 DEBUG_LOG_VAL("  Generating default destructor for struct", structName);
                 generateDefaultDestructor(structName);
             }
+        }
+    }
+}
+
+// ==================== Spec 默认体 fall-through 编译 ====================
+// DRAFT-spec-default-body Phase 3 (方案 B): 不真克隆 AST, 而是把 spec 默认体 FnNode
+// 临时 patch 成"属于 impl structName"再走常规 compileMethod, 编完原样还原.
+//
+// patch 范围:
+//   1. 默认体 header 的 params + retType 中所有 TypeSelfNode 的 structName.
+//   2. defaultBody scope 内 `$` 符号: Ref<Self> → Ref<structName>.
+//   3. Self& 形参符号同理.
+//
+// 限制: 默认体内部 (statement / expr 局部) 的 TypeSelfNode 不在 patch 范围 — 写
+// `let x Self = ...` 等形态会在 codegen 期失败. Phase 5 base.yux 5 件套默认体均为
+// 简表达式 `$.cmp(other) <op> 0` 与 `!$.eq(other)`, 不触发该限制; 后续若需扩展再
+// 写递归 TypeNode 收集器.
+namespace {
+void collectSelfTypesInTypeNode(TypeNode* tn, vector<TypeSelfNode*>& out) {
+    if (!tn) return;
+    if (auto* self = dynamic_cast<TypeSelfNode*>(tn)) { out.push_back(self); return; }
+    if (auto* gen = dynamic_cast<TypeGenericNode*>(tn)) {
+        for (auto& a : gen->typeArgs()) collectSelfTypesInTypeNode(a, out);
+        return;
+    }
+    if (auto* arr = dynamic_cast<TypeArrayNode*>(tn)) {
+        collectSelfTypesInTypeNode(arr->elementType(), out);
+        return;
+    }
+    if (auto* fn = dynamic_cast<TypeFnNode*>(tn)) {
+        for (auto& pt : fn->paramTypes()) collectSelfTypesInTypeNode(pt, out);
+        collectSelfTypesInTypeNode(fn->retType(), out);
+        return;
+    }
+    if (auto* tup = dynamic_cast<TypeTupleNode*>(tn)) {
+        for (auto& e : tup->elementTypes()) collectSelfTypesInTypeNode(e, out);
+        return;
+    }
+}
+} // namespace
+
+void Compiler::compileInheritedDefaults(StructImplNode* impl, const string& structName) {
+    if (!impl) return;
+    const auto& records = impl->inheritedDefaults();
+    if (records.empty()) return;
+
+    DEBUG_LOG_VAL("    Compiling spec default fall-throughs", records.size() << " methods on " << structName);
+
+    for (const auto& rec : records) {
+        if (!rec.spec) continue;
+        auto body = rec.spec->defaultBody(rec.sigIdx);
+        if (!body) continue;
+        auto header = body->header();
+        if (!header) continue;
+
+        const string methodName = header->name().getText();
+        DEBUG_LOG_VAL("      fall-through", structName << "." << methodName
+                      << " (from " << rec.spec->name().getText() << ")");
+
+        // === 1) 收集 + patch TypeSelfNode (header params + retType) ===
+        vector<TypeSelfNode*> selfNodes;
+        for (auto& param : header->params()) {
+            collectSelfTypesInTypeNode(param->type(), selfNodes);
+        }
+        collectSelfTypesInTypeNode(header->retType(), selfNodes);
+
+        vector<string> savedSelfNames;
+        savedSelfNames.reserve(selfNodes.size());
+        for (auto* s : selfNodes) {
+            savedSelfNames.push_back(s->structName());
+            s->setStructName(structName);
+        }
+
+        // === 2) patch defaultBody scope 的 $ 与 Self 形参符号表项 ===
+        // (lookupSymbol 走当前 scope → parent, 仅改本 scope 即可)
+        SymbolInfo savedDollar;
+        bool hadDollar = false;
+        if (auto* dollar = body->lookupSymbol("$")) {
+            savedDollar = *dollar;
+            hadDollar = true;
+            vector<sp<TypeInfo>> args;
+            args.push_back(make_shared<TypeInfo>(structName));
+            *dollar = SymbolInfo{SymbolKind::Variable, "$", TypeInfo("Ref", args)};
+        }
+
+        struct ParamPatch { string name; SymbolInfo saved; bool had = false; };
+        vector<ParamPatch> paramPatches;
+        for (auto& param : header->params()) {
+            string pname = param->name().getText();
+            if (auto* sym = body->lookupSymbol(pname)) {
+                paramPatches.push_back({.name = pname, .saved = *sym, .had = true});
+                // 用 patch 后的 TypeNode 重新求一遍 TypeInfo
+                TypeInfo newType = param->type() ? param->type()->getType() : TypeInfo();
+                SymbolInfo si{SymbolKind::Variable, pname, newType};
+                if (param->isFrozen()) si.isFrozen = true;
+                *sym = si;
+            }
+        }
+
+        // === 3) 取 patch 后的 paramTypes / retType, 准备 LLVM 函数 ===
+        vector<TypeInfo> paramTypes;
+        for (auto& param : header->params()) {
+            if (param->type()) paramTypes.push_back(param->type()->getType());
+        }
+        TypeInfo retType;
+        if (header->retType()) retType = header->retType()->getType();
+        string mFallibleErr;
+        if (auto e = header->getAnnoArg("Fallible")) mFallibleErr = *e;
+        bool isStatic = header->isStatic();
+
+        // === 4) compileMethod (按常规路径走 borrow / const-mut / 流终止 + IR) ===
+        // 用 try/catch 包裹保证 restore 不会被诊断异常跳过.
+        bool emitOk = false;
+        try {
+            auto func = getMethodFunction(structName, methodName, paramTypes, retType,
+                                          mFallibleErr, isStatic);
+            compileMethod(body, func, structName, false, isStatic);
+            emitOk = true;
+        } catch (...) {
+            // === 5a) 异常路径: 先 restore 再 rethrow ===
+            for (size_t i = 0; i < selfNodes.size(); ++i) {
+                selfNodes[i]->setStructName(savedSelfNames[i]);
+            }
+            if (hadDollar) {
+                if (auto* dollar = body->lookupSymbol("$")) *dollar = savedDollar;
+            }
+            for (auto& pp : paramPatches) {
+                if (auto* sym = body->lookupSymbol(pp.name)) *sym = pp.saved;
+            }
+            throw;
+        }
+
+        // === 5b) 正常路径: restore ===
+        (void)emitOk;
+        for (size_t i = 0; i < selfNodes.size(); ++i) {
+            selfNodes[i]->setStructName(savedSelfNames[i]);
+        }
+        if (hadDollar) {
+            if (auto* dollar = body->lookupSymbol("$")) *dollar = savedDollar;
+        }
+        for (auto& pp : paramPatches) {
+            if (auto* sym = body->lookupSymbol(pp.name)) *sym = pp.saved;
         }
     }
 }

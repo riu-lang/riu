@@ -101,8 +101,24 @@ public:
     void setSpecRefs(vector<SpecRef> refs) { _specRefs = std::move(refs); }
     [[nodiscard]] const vector<SpecRef>& specRefs() const { return _specRefs; }
 
+    // DRAFT-spec-default-body Phase 3: 该 impl 通过 spec 默认体 fall-through 拿到的方法
+    // (实现者未显式写, spec 提供了默认体). 由 SpecImplChecker::validateImpl 登记, 由
+    // Compiler::compileStructImpls 在常规方法编完后再编译 (用 spec 默认体 FnNode +
+    // Self patch 到本 impl 的 structName).
+    struct InheritedDefault {
+        SpecDeclNode* spec = nullptr;
+        size_t sigIdx = 0;
+        // spec 自身泛型形参 → impl 块给出的类型实参替换表 (与 sigEquivalent 同源).
+        // v1 codegen 暂未消费 (Phase 5 base.yux 5-set 全部非泛型 spec), 留位备用.
+        map<string, TypeInfo> subst;
+    };
+    void addInheritedDefault(InheritedDefault d) { _inheritedDefaults.push_back(std::move(d)); }
+    void clearInheritedDefaults() { _inheritedDefaults.clear(); }
+    [[nodiscard]] const vector<InheritedDefault>& inheritedDefaults() const { return _inheritedDefaults; }
+
 private:
     vector<SpecRef> _specRefs;
+    vector<InheritedDefault> _inheritedDefaults;
 };
 
 #endif //YUX_LANG_STRUCT_NODE_H

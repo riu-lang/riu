@@ -269,6 +269,9 @@ DEF_ERR(3128, "`$` (current instance) cannot be used inside a `#Static fn` body 
 DEF_ERR(3130, "Same-name constructor `fn {}(...)` is no longer supported — define a `#Static fn` (e.g. `#Static fn make(...)` returning `{}` via `Self {{ ... }}`) and call it as `{}::make(...)` (DRAFT-static-fn Phase 6)")
 DEF_ERR(3131, "`{}::{}(...)` argument count/type mismatch: expected {} args ({}), got {} args ({}) (DRAFT-static-fn)")
 
+// ── 组合 spec 默认体冲突 (DRAFT-spec-default-body Phase 4) ────────────
+DEF_ERR(3132, "Type `{}` inherits conflicting default bodies for method `{}` from specs {}; implementer must provide an explicit override")
+
 // ── E4xxx 所有权 / 借用 ───────────────────────────────────────────────
 DEF_ERR(4001, "T& borrow initializer must be &expr or an existing T& variable")
 DEF_ERR(4002, "T& '{}' borrows root '{}' whose scope does not cover the borrow")

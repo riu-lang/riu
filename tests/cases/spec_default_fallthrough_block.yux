@@ -1,0 +1,33 @@
+; DRAFT-spec-default-body Phase 3: 块形态默认体 fall-through.
+
+#Spec
+struct Cmp {
+  fn cmp(other Self&) i32
+  fn ge(other Self&) bool {
+    $.cmp(&other) >= 0
+  }
+}
+
+#Impl(Cmp)
+struct K {
+  v i32
+
+  #Static
+  fn make(v i32) K {
+    ret Self {
+      .v = v
+    }
+  }
+
+  fn cmp(other K&) i32 {
+    $.v - other.v
+  }
+}
+
+fn main() {
+  let a K = K::make(5)
+  let b K = K::make(5)
+  if a.ge(&b) {
+    println("ok")
+  }
+}

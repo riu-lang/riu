@@ -182,8 +182,20 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
 
     const auto& implMethods = impl->methods();
 
-    // 多 D impl 块的"不多余"聚合命中表 (任一 D 命中即视为合法).
-    std::vector<bool> aggMatched(implMethods.size(), false);
+    // DRAFT-spec-default-body Phase 3: 每次 validateImpl 都清一遍, 否则
+    // 多次 validate (例: 冷启动 SDK 跑一次 → loadMainFile 后再跑一次) 会累积重复.
+    impl->clearInheritedDefaults();
+
+    // DRAFT-spec-default-body Phase 4: 跨 spec 聚合每个 (name, arity) 组的
+    // 所有签名条目, 二轮处理: 实现命中→OK; 全无默认体→E1101;
+    // 多个默认体→E3132; 单一默认体→fall-through.
+    struct SigEntry {
+        SpecDeclNode* spec;
+        size_t sigIdx;
+        std::map<std::string, TypeInfo> subst;
+        std::string specQualified;
+    };
+    std::map<std::pair<std::string, size_t>, std::vector<SigEntry>> sigGroups;
 
     for (auto& dref : impl->specRefs()) {
         auto resolved = reg.resolve(dref.name, implFile);
@@ -235,39 +247,107 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
         for (size_t i = 0; i < n; ++i) {
             subst[dParams[i]] = dref.typeArgs[i];
         }
+        // spec 体内 `Self` 占位符号 (TypeSelfNode 在 spec scope 内 structName 为空,
+        // getType 返回空 TypeInfo, 名字为 "Self" — 用此映射让 sigEquivalent 把
+        // spec `Self&` 与 impl `Type&` 视为同型). Phase 3 Spec 默认体 fall-through
+        // 也共用同一签名等价规则.
+        subst["Self"] = TypeInfo(typeBare);
 
-        // §12.2.2.1 穷尽性: 对每个 draft 签名, 必须在 impl 中匹配一个同名
-        // + 等价签名的方法. 命中位置同步标记 aggMatched.
-        for (auto& dsig : draft->signatures()) {
-            // 注意: FnHeaderNode::name() 按值返回 Token, getText() 是它的成员引用;
+        // Phase 4: 收集本 spec 的所有签名条目到 sigGroups; 实际处理放二轮.
+        const auto& dsigs = draft->signatures();
+        for (size_t sigIdx = 0; sigIdx < dsigs.size(); ++sigIdx) {
+            auto& dsig = dsigs[sigIdx];
+            // 注意: FnHeaderNode::name() 按值返回 Token, getText() 是其成员引用;
             // 不能写成 `const std::string& dname = dsig->name().getText();` ——
             // 临时 Token 在 full-expression 后销毁, dname 立即悬挂.
             const std::string dname = dsig->name().getText();
-            int hit = -1;
-            for (size_t i = 0; i < implMethods.size(); ++i) {
-                auto& m = implMethods[i]->header();
-                if (m->name().getText() != dname) continue;
-                if (sigEquivalent(m, dsig, subst)) {
-                    hit = static_cast<int>(i);
-                    break;
-                }
-            }
-            if (hit < 0) {
-                // E1101: "Type '{}' does not implement draft method '{}: {}'"
-                std::string sigDesc = dname;
-                throw YuxError(impl->getLineNumber(), impl->getColumn(),
-                               ErrorCode::E1101, typeQualified,
-                               specQualified, sigDesc);
-            }
-            aggMatched[hit] = true;
+            size_t arity = dsig->params().size();
+            sigGroups[{dname, arity}].push_back({.spec = draft, .sigIdx = sigIdx,
+                                                  .subst = subst,
+                                                  .specQualified = specQualified});
         }
     }
 
-    // spec-unify v1: 声明合一后, struct body 内的方法既可能是 #Impl(Spec) 的契约
-    // 实现, 也可能是该类型自身的普通方法. 任一 D 未命中的方法不再视为"多余",
-    // 当作普通方法放行. (E1102 旧形态废弃 -- 严格的 spec impl 隔离待 extension
-    // blocks 草案落地后回归.)
-    (void)aggMatched;
+    // Phase 4 二轮: 对每个 (name, arity) 组做命中 / fall-through / 冲突判定.
+    // spec-unify v1: 同 struct body 内未命中任一 spec sig 的方法视为普通方法
+    // 放行 (E1102 已废, 严格隔离待 extension blocks 草案).
+    for (auto& [groupKey, entries] : sigGroups) {
+        const std::string& name = groupKey.first;
+
+        // 实现命中: 任一 impl 方法与该组任一 entry §12.3.1 等价 → 视为已实现.
+        bool implemented = false;
+        for (size_t i = 0; i < implMethods.size() && !implemented; ++i) {
+            auto& m = implMethods[i]->header();
+            if (m->name().getText() != name) continue;
+            for (auto& e : entries) {
+                auto& sig = e.spec->signatures()[e.sigIdx];
+                if (sigEquivalent(m, sig, e.subst)) {
+                    implemented = true;
+                    break;
+                }
+            }
+        }
+        if (implemented) continue;
+
+        // 未实现: 看默认体情况.
+        std::vector<SigEntry*> withDefault;
+        for (auto& e : entries) {
+            if (e.spec->hasDefaultBody(e.sigIdx)) withDefault.push_back(&e);
+        }
+
+        if (withDefault.empty()) {
+            // E1101: 取首条 entry 做诊断 (合并掉草案中的 E1136).
+            auto& e = entries.front();
+            throw YuxError(impl->getLineNumber(), impl->getColumn(),
+                           ErrorCode::E1101, typeQualified,
+                           e.specQualified, name);
+        }
+
+        if (withDefault.size() >= 2) {
+            // E3132: 组合冲突, 实现者必须显式覆盖. 一种默认体 + 一种纯抽象
+            // 的情形被上面 withDefault.size() == 1 分支放行 (默认体顶上).
+            std::string specList;
+            for (size_t i = 0; i < withDefault.size(); ++i) {
+                if (i) specList += ", ";
+                specList += '`';
+                specList += withDefault[i]->specQualified;
+                specList += '`';
+            }
+            throw YuxError(impl->getLineNumber(), impl->getColumn(),
+                           ErrorCode::E3132, typeQualified, name, specList);
+        }
+
+        // 恰好一条默认体: 注册 fall-through (覆盖本组所有 spec).
+        // 同名但与 spec 签名不等价的实现方法当作"另一个方法"看待, 仍可触发 fall-through.
+        SigEntry* picked = withDefault[0];
+        auto& dsig = picked->spec->signatures()[picked->sigIdx];
+        impl->addInheritedDefault({.spec = picked->spec, .sigIdx = picked->sigIdx,
+                                   .subst = picked->subst});
+
+        // 同步把 fall-through 方法注册到 impl 所在 file 的 fnSymbol 表,
+        // 让 ExprCallNode::getType 能解析 `obj.lt(...)`.
+        std::string fullName = typeBare;
+        fullName += '.';
+        fullName += name;
+        std::vector<TypeInfo> paramTypes;
+        paramTypes.emplace_back(typeBare);
+        for (auto& sp : dsig->params()) {
+            TypeInfo pt = sp->type() ? sp->type()->getType() : TypeInfo();
+            paramTypes.push_back(pt.substitute(picked->subst));
+        }
+        TypeInfo retType = dsig->retType() ? dsig->retType()->getType() : TypeInfo();
+        retType = retType.substitute(picked->subst);
+        SymbolInfo methodSym(SymbolKind::Function, name, retType);
+        methodSym.moduleName = implFile->moduleName();
+        implFile->registerSymbol(fullName, methodSym);
+        FnSymbolInfo methodFnSym{fullName, implFile->moduleName(), paramTypes, retType};
+        methodFnSym.isNoReturn = dsig->hasAnno("NoReturn");
+        methodFnSym.isConst = dsig->hasAnno("Const");
+        if (auto eOpt = dsig->getAnnoArg("Fallible")) {
+            methodFnSym.fallibleErrType = *eOpt;
+        }
+        implFile->registerFnSymbol(fullName, methodFnSym);
+    }
 }
 
 bool SpecImplChecker::sigEquivalent(

@@ -446,6 +446,10 @@ public:
     void compileFn(p<FnNode> node, llvm::Function* func);   // 编译函数
     void compileMethod(p<FnNode> node, llvm::Function* func, const string& structName,
                        bool isDestructor = false, bool isStatic = false);  // 编译方法 (isStatic=true 跳过 $ 注入与 ctor 零初始化)
+    // DRAFT-spec-default-body Phase 3: 把该 impl 登记的 InheritedDefault 按 spec 默认体编出来.
+    // 用 spec 默认体 FnNode 直接走 compileMethod, 期间临时 patch TypeSelfNode 与 $/形参符号表
+    // 到 structName, 编完原样还原.
+    void compileInheritedDefaults(StructImplNode* impl, const string& structName);
     void compileStatement(p<StatementNode> node);       // 编译语句 (分发函数)
 };
 

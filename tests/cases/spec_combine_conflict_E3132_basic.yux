@@ -1,0 +1,39 @@
+; DRAFT-spec-default-body Phase 4: 两个 spec 同名同 arity 都带默认体, 实现者未覆盖 → E3132.
+
+#Spec
+struct A {
+  fn act() i32
+  fn run() i32 = 1
+}
+
+#Spec
+struct B {
+  fn other() i32
+  fn run() i32 = 2
+}
+
+#Impl(A)
+#Impl(B)
+struct K {
+  v i32
+
+  #Static
+  fn make(v i32) K {
+    ret Self {
+      .v = v
+    }
+  }
+
+  fn act() i32 {
+    $.v
+  }
+
+  fn other() i32 {
+    $.v + 1
+  }
+}
+
+fn main() {
+  let k K = K::make(7)
+  println(k.run())
+}
