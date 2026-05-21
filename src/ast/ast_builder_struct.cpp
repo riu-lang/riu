@@ -131,7 +131,8 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
 
             // DRAFT-spec-default-body Phase 1：spec body 内方法可带可选默认体；
             // 体内 `$` 绑 Self 抽象类型变量（Phase 2 sema 完成占位符号校验）。
-            p<FnNode> defaultBody;
+            // 注: p<T> = T* 裸指针, 必须显式 nullptr 初始化, 否则上传垃圾。
+            p<FnNode> defaultBody = nullptr;
             if (fnCtx->fnBody()) {
                 defaultBody = createWithLine<FnNode>(fnCtx, draft, header);
                 defaultBody->setParentScope(file);

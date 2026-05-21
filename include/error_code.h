@@ -108,6 +108,7 @@ DEF_ERR(1136, "`Dyn<{}>` cannot cross `extern` boundary: vtable layout is intern
 DEF_ERR(1137, "Type `{}` does not implement spec method `{}` (declared in `#Impl({})`)")
 DEF_ERR(1138, "Cannot access static member `{}` on instance of `{}`; use `{}::{}` instead")
 // E1139 已退役（DRAFT-spec-default-body Phase 1 解锁 spec 默认体）
+DEF_ERR(1140, "spec `{}` default body references unknown method `$.{}`; must appear in this spec's signatures")
 
 // ── E2xxx 语法 / AST 结构 ─────────────────────────────────────────────
 DEF_ERR(2001, "Weak<T>? is forbidden: Weak is natively nullable (upgrade returns Rc<T>?)")

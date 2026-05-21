@@ -264,6 +264,127 @@ void SemaPass::run() {
         }
         _currentStructName.clear();
     }
+
+    // DRAFT-spec-default-body Phase 2: spec 默认体占位符号校验
+    // (sema 期不下钻完整 typecheck; 仅识别 `$.method(...)` 形态)
+    visitSpecDefaults();
+}
+
+namespace {
+// 判定 e 是不是字面量 `$`（spec 默认体里 self 句柄, ast_builder 构成
+// ExprLiteralNode(LiteralObjNode("$")))。
+bool isBareSelf(const p<ExprNode>& e) {
+    auto lit = dynamic_cast<p<ExprLiteralNode>>(e);
+    if (!lit) return false;
+    auto obj = dynamic_cast<p<LiteralObjNode>>(lit->literal());
+    return obj && obj->getValue().getText() == "$";
+}
+
+// DRAFT-spec-default-body Phase 2: 递归扫描 expr 树寻找 `$.method(args)`
+// 形态调用; 命中则验证 method 是否在 spec 自身签名集内, 不在则抛 E1140。
+// 仅覆盖常见表达式形态; lambda / try-catch / match 等复杂形态在 Phase 2
+// 主动 skip (留待 Phase 3 单态化时机的完整 typecheck)。
+void walkExprForSpecDefault(const p<ExprNode>& e, SpecDeclNode* spec) {
+    if (!e) return;
+    if (auto n = dynamic_cast<p<ExprCallNode>>(e)) {
+        if (auto dot = dynamic_cast<p<ExprDotNode>>(n->getCalleeExpr())) {
+            if (isBareSelf(dot->baseExpr())) {
+                const std::string m = dot->member();
+                bool found = false;
+                for (auto& sig : spec->signatures()) {
+                    if (sig->name().getText() == m) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    throw YuxError(dot->resolveLineNumber(), dot->resolveColumn(),
+                                   ErrorCode::E1140,
+                                   spec->name().getText(), m);
+                }
+            }
+        }
+        walkExprForSpecDefault(n->getCalleeExpr(), spec);
+        for (auto& a : n->getArgs()) walkExprForSpecDefault(a, spec);
+        return;
+    }
+    if (auto n = dynamic_cast<p<ExprDotNode>>(e)) {
+        walkExprForSpecDefault(n->baseExpr(), spec);
+        return;
+    }
+    if (auto n = dynamic_cast<p<ExprAddSubNode>>(e)) {
+        walkExprForSpecDefault(n->left(), spec);
+        walkExprForSpecDefault(n->right(), spec);
+        return;
+    }
+    if (auto n = dynamic_cast<p<ExprMulDivModNode>>(e)) {
+        walkExprForSpecDefault(n->left(), spec);
+        walkExprForSpecDefault(n->right(), spec);
+        return;
+    }
+    if (auto n = dynamic_cast<p<ExprBinOpNode>>(e)) {
+        walkExprForSpecDefault(n->left(), spec);
+        walkExprForSpecDefault(n->right(), spec);
+        return;
+    }
+    if (auto n = dynamic_cast<p<ExprCompareNode>>(e)) {
+        walkExprForSpecDefault(n->left(), spec);
+        walkExprForSpecDefault(n->right(), spec);
+        return;
+    }
+    if (auto n = dynamic_cast<p<ExprParenNode>>(e)) {
+        walkExprForSpecDefault(n->expr(), spec);
+        return;
+    }
+    if (auto n = dynamic_cast<p<ExprUnaryNode>>(e)) {
+        walkExprForSpecDefault(n->right(), spec);
+        return;
+    }
+    // 其它形态 (lambda / try-catch / match / struct lit / array / 索引 / 元组 ...)
+    // Phase 2 不下钻; Phase 3 克隆 + 真实 typecheck 会兜底。
+}
+
+// 递归扫描 stmt 中的所有表达式入口。
+void walkStmtForSpecDefault(const p<StatementNode>& s, SpecDeclNode* spec) {
+    if (!s) return;
+    if (auto n = dynamic_cast<p<StatementRetNode>>(s)) {
+        walkExprForSpecDefault(n->expr(), spec);
+        return;
+    }
+    if (auto n = dynamic_cast<p<StatementAssignNode>>(s)) {
+        walkExprForSpecDefault(n->expr(), spec);
+        return;
+    }
+    if (auto n = dynamic_cast<p<StatementSetNode>>(s)) {
+        walkExprForSpecDefault(n->arrayExpr(), spec);
+        for (auto& idx : n->indices()) walkExprForSpecDefault(idx, spec);
+        walkExprForSpecDefault(n->valueExpr(), spec);
+        return;
+    }
+    if (auto n = dynamic_cast<p<StatementDeclareAssignNode>>(s)) {
+        walkExprForSpecDefault(n->expr(), spec);
+        return;
+    }
+    if (auto n = dynamic_cast<p<StatementExprNode>>(s)) {
+        walkExprForSpecDefault(n->expr(), spec);
+        return;
+    }
+    // StatementLoopNode / Block / Declare(无 init) / RetVoid / Break 等 Phase 2 不处理
+}
+}  // namespace
+
+void SemaPass::visitSpecDefaults() {
+    if (!_file) return;
+    for (auto& spec : _file->getSpecDecls()) {
+        if (!spec) continue;
+        const auto& bodies = spec->defaultBodies();
+        for (auto& body : bodies) {
+            if (!body) continue;
+            for (auto& stmt : body->body()) {
+                walkStmtForSpecDefault(stmt, spec);
+            }
+        }
+    }
 }
 
 void SemaPass::visitFn(p<FnNode> fn) {

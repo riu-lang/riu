@@ -68,6 +68,12 @@ private:
     void visitBlock(p<StatementBlockNode> block);
     void visitExpr(p<ExprNode> expr);
 
+    // DRAFT-spec-default-body Phase 2：spec 默认体占位符号校验
+    // ([#1.S])。仅识别 `$.method(args)` 形态, 验证 method 在 spec 自身签名集
+    // 内（不验类型 / 不查跨 spec / 不下钻 lambda 等复杂形态）; 完整 typecheck
+    // 推迟到 Phase 3 单态化时机克隆 + 真实 typecheck。
+    void visitSpecDefaults();
+
     // Bucket 6 单点 (CURRENT-check.md): 二元运算符方法解析的 SemaPass 入口
     // (E3073 + byval hint). 把"算 leftType / rightType + 形态 gate + 调
     // sema::validateBinOpMethodResolution"封进来, 给 ExprAddSub /

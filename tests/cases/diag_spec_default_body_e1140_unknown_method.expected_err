@@ -1,0 +1,2 @@
+E1140
+spec `Ord` default body references unknown method `$.nonexistent`
