@@ -119,12 +119,6 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
         bool isDraftLike = draft->isDraftLike();
         for (auto* fnCtx : ctx->fn()) {
             auto* fnHeaderCtx = fnCtx->fnHeader();
-            if (fnCtx->fnBody()) {
-                // v1 占位：spec 方法不允许带 body（DRAFT-spec-default-body 落地后取消）
-                throw YuxError(static_cast<int>(fnHeaderCtx->name->getLine()),
-                               static_cast<int>(fnHeaderCtx->name->getCharPositionInLine()) + 1, ErrorCode::E1139,
-                               structName, fnHeaderCtx->name->getText());
-            }
             auto header = any_cast_p<FnHeaderNode>(visitFnHeader(fnHeaderCtx));
             if (header->isGeneric()) {
                 int hLine = header->getLineNumber();
@@ -134,7 +128,63 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
                 }
                 throw YuxError(hLine, hCol, ErrorCode::E1104, structName, header->name().getText());
             }
-            draft->addSignature(header);
+
+            // DRAFT-spec-default-body Phase 1：spec body 内方法可带可选默认体；
+            // 体内 `$` 绑 Self 抽象类型变量（Phase 2 sema 完成占位符号校验）。
+            p<FnNode> defaultBody;
+            if (fnCtx->fnBody()) {
+                defaultBody = createWithLine<FnNode>(fnCtx, draft, header);
+                defaultBody->setParentScope(file);
+
+                stack.emplace_back(defaultBody);
+                _scopeStack.push_back(defaultBody);
+
+                for (auto& tp : draft->typeParams()) {
+                    defaultBody->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
+                }
+
+                {
+                    vector<sp<TypeInfo>> selfArgs;
+                    selfArgs.push_back(make_shared<TypeInfo>("Self"));
+                    defaultBody->registerSymbol(
+                        "$", {SymbolKind::Variable, "$", TypeInfo("Ref", selfArgs)});
+                }
+
+                for (auto param : header->params()) {
+                    TypeInfo paramType = param->type() ? param->type()->getType() : TypeInfo();
+                    SymbolInfo si{SymbolKind::Variable, param->name().getText(), paramType};
+                    if (param->isFrozen()) {
+                        si.isFrozen = true;
+                    }
+                    defaultBody->registerSymbol(param->name().getText(), si);
+                }
+
+                if (auto exprBody = fnCtx->fnBody()->fnExprkBody()) {
+                    auto expr = any_cast_p<ExprNode>(visit(exprBody->expr()));
+                    auto retStmt = createWithLine<StatementRetNode>(fnCtx, defaultBody, expr);
+                    retStmt->setLocation(expr->resolveLineNumber(), expr->resolveColumn());
+                    defaultBody->addStatement(retStmt);
+                } else if (auto blockBody = fnCtx->fnBody()->fnBlockBody()) {
+                    auto stmtBlockNode =
+                        any_cast_p<StatementBlockNode>(visit(blockBody->statementBlock()));
+                    for (auto stmt : stmtBlockNode->statements()) {
+                        defaultBody->addStatement(stmt);
+                    }
+                    if (stmtBlockNode->hasResult()) {
+                        auto resultExpr = stmtBlockNode->resultExpr();
+                        auto retStmt =
+                            createWithLine<StatementRetNode>(fnCtx, defaultBody, resultExpr);
+                        retStmt->setLocation(resultExpr->resolveLineNumber(),
+                                             resultExpr->resolveColumn());
+                        defaultBody->addStatement(retStmt);
+                    }
+                }
+
+                _scopeStack.pop_back();
+                stack.pop_back();
+            }
+
+            draft->addSignature(header, defaultBody);
         }
 
         _scopeStack.pop_back();

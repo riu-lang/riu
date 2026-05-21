@@ -1,0 +1,15 @@
+; DRAFT-spec-default-body Phase 1：spec body 内方法可携带默认体（块形 / 单表达式形）
+; 都应被 AST 接受（不再抛 E1139）。本用例不 #Impl 该 spec，仅验 parse + AST 不拒收。
+
+#Spec
+struct Ord {
+  fn cmp(other Self&) i32
+  fn lt(other Self&) bool = $.cmp(other) < 0
+  fn le(other Self&) bool {
+    $.cmp(other) <= 0
+  }
+}
+
+fn main() {
+  println("ok")
+}

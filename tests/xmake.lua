@@ -52,6 +52,7 @@ local function categorize(name)
     end
     if name:startswith("lambda_") then return "yux/lambda" end
     if name:startswith("alias_")  then return "yux/alias"  end
+    if name:startswith("spec_")   then return "yux/spec"   end
     return "yux/misc"
 end
 
