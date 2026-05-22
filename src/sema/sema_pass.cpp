@@ -1038,6 +1038,30 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                             try { argTypes.push_back(a->getType()); }
                             catch (...) { argTypesOk = false; break; }
                         }
+                        // BUG5: 非泛型重载优先 (call_fn.cpp Phase 4b)；
+                        // 同名存在严格匹配的非泛型时，spec-bound 校验不应越过重载消歧
+                        // 触发 E1106。命中非泛型即跳过整段校验。
+                        if (argTypesOk && !hasTypeArgs) {
+                            auto* nonGen = _file->lookupFnSymbolWithParams(fnName, argTypes);
+                            if (!nonGen && _sdkFile && _sdkFile != _file) {
+                                nonGen = _sdkFile->lookupFnSymbolWithParams(fnName, argTypes);
+                            }
+                            if (nonGen) {
+                                bool isGenericSym = false;
+                                for (auto& tp : genericFn->header()->typeParams()) {
+                                    for (auto& p : nonGen->params) {
+                                        if (p.name == tp) {
+                                            isGenericSym = true;
+                                            break;
+                                        }
+                                    }
+                                    if (isGenericSym) break;
+                                }
+                                if (!isGenericSym) {
+                                    argTypesOk = false;  // 触发跳过下方校验
+                                }
+                            }
+                        }
                         bool typeArgsOk = true;
                         if (hasTypeArgs) {
                             try {
