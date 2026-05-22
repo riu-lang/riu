@@ -1,0 +1,30 @@
+; DRAFT-spec-default-body Phase 5: SDK 内置 Eq spec 的默认体 fall-through.
+; 实现者仅写 eq; ne 由默认体推.
+
+#Impl(Eq)
+struct N {
+  v i32
+
+  #Static
+  fn make(v i32) N {
+    ret Self {
+      .v = v
+    }
+  }
+
+  fn eq(other N&) bool {
+    $.v == other.v
+  }
+}
+
+fn main() {
+  let a N = N::make(3)
+  let b N = N::make(3)
+  let c N = N::make(7)
+  if a.eq(&b) {
+    println("eq-ok")
+  }
+  if a.ne(&c) {
+    println("ne-ok")
+  }
+}

@@ -442,7 +442,16 @@ void Compiler::compileInheritedDefaults(StructImplNode* impl, const string& stru
             s->setStructName(structName);
         }
 
-        // === 2) patch defaultBody scope 的 $ 与 Self 形参符号表项 ===
+        // === 2a) 临时把 body 的 parentScope 换成 user FileNode (_file) ===
+        // 原因: body AST 隶属于 spec 所在 file (可能是 SDK base.yux); 默认体内调用
+        // `$.method(...)` 的方法名解析走 findNearestScope→walk parentScope, 走到 spec
+        // 的 file 自然找不到本 impl 所在 file 的方法符号 (例如 `N.cmp`). 临时把 body 的
+        // parentScope 重指向 _file, 编完原样还原. Self/spec 方法名走 patched TypeSelfNode
+        // 与 instance 方法表, 不依赖 spec scope 链.
+        auto savedBodyParent = body->parentScope();
+        body->setParentScope(_file);
+
+        // === 2b) patch defaultBody scope 的 $ 与 Self 形参符号表项 ===
         // (lookupSymbol 走当前 scope → parent, 仅改本 scope 即可)
         SymbolInfo savedDollar;
         bool hadDollar = false;
@@ -498,6 +507,7 @@ void Compiler::compileInheritedDefaults(StructImplNode* impl, const string& stru
             for (auto& pp : paramPatches) {
                 if (auto* sym = body->lookupSymbol(pp.name)) *sym = pp.saved;
             }
+            body->setParentScope(savedBodyParent);
             throw;
         }
 
@@ -512,6 +522,7 @@ void Compiler::compileInheritedDefaults(StructImplNode* impl, const string& stru
         for (auto& pp : paramPatches) {
             if (auto* sym = body->lookupSymbol(pp.name)) *sym = pp.saved;
         }
+        body->setParentScope(savedBodyParent);
     }
 }
 

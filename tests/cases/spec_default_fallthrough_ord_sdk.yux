@@ -1,0 +1,36 @@
+; DRAFT-spec-default-body Phase 5: SDK 内置 Ord spec 的默认体 fall-through.
+; 实现者仅写 cmp; lt / le / gt / ge 由默认体推.
+
+#Impl(Ord)
+struct N {
+  v i32
+
+  #Static
+  fn make(v i32) N {
+    ret Self {
+      .v = v
+    }
+  }
+
+  fn cmp(other N&) i32 {
+    $.v - other.v
+  }
+}
+
+fn main() {
+  let a N = N::make(3)
+  let b N = N::make(7)
+  let c N = N::make(3)
+  if a.lt(&b) {
+    println("lt-ok")
+  }
+  if a.le(&c) {
+    println("le-ok")
+  }
+  if b.gt(&a) {
+    println("gt-ok")
+  }
+  if c.ge(&a) {
+    println("ge-ok")
+  }
+}

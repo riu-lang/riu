@@ -36,12 +36,39 @@ fn size_of<T>() u64
 
 ; ==================== 内置 spec（spec §12.7） ====================
 ; spec-unify v1：以 #Spec / #Impl(...) 替代 draft 关键字与 `: Spec` 头部槽
-; v1 规则：spec body 仅签名，方法不允许带 body（DRAFT-spec-default-body 落地后取消）
+; DRAFT-spec-default-body 落地：spec body 内方法允许带默认体；实现者未覆盖即 fall-through
 ; #DraftLike 不进 v1；Any 已删（无 #DraftLike 自动派生时无意义）
 
 #Spec
 struct ToString {
   fn to_string() String
+}
+
+; Eq / Ord：实现者仅写 eq / cmp，剩余比较方法由默认体推导（DRAFT-spec-default-body §5）
+#Spec
+struct Eq {
+  fn eq(other Self&) bool
+  fn ne(other Self&) bool = !$.eq(&other)
+}
+
+#Spec
+struct Ord {
+  fn cmp(other Self&) i32
+  fn lt(other Self&) bool = $.cmp(&other) < 0
+  fn le(other Self&) bool = $.cmp(&other) <= 0
+  fn gt(other Self&) bool = $.cmp(&other) > 0
+  fn ge(other Self&) bool = $.cmp(&other) >= 0
+}
+
+; Clone / ToJson：纯抽象签名；按字段递归 derive 永不引入（DRAFT [#1.AE]）
+#Spec
+struct Clone {
+  fn clone() Self
+}
+
+#Spec
+struct ToJson {
+  fn to_json() String
 }
 
 ; 内置类型
