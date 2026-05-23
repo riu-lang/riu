@@ -39,22 +39,22 @@
 仓库根有两个**本地包装器**（不在 PATH，需带 `./` 前缀）；都是 `init.js` 生成、各平台一份（`.cmd` / `.sh` / `.ps1`）。**改完 C++ 别手敲 `xmake check clang.tidy ...`，跑包装器即可**：
 
 ```powershell
-./format.cmd            ; 仅排 git 已变动 / 未跟踪 C++ 文件的 #include 块
+./format.cmd            ; clang-format -i 给 git 已变动 / 未跟踪的 C++ 文件
 ./lint.cmd              ; 仅 lint git 已变动 / 未跟踪文件
 ./format.cmd --all      ; 全仓
 ./lint.cmd --all        ; 三个 target 全量
 ./format.cmd src/x.cpp  ; 指定文件
 ./lint.cmd src/x.cpp    ; 指定文件
-./format.cmd --check    ; 只检查不改, 有差异退出码 1
+./format.cmd --check    ; clang-format --dry-run -Werror, 有差异退出码 1
 ```
 
-包装器内部仍走 `xmake check clang.tidy` + JS 包内 #include 排序器；默认增量便于 agent 在每次改完后无脑跑。
+包装器内部：`./lint.cmd` 走 `xmake check clang.tidy`，`./format.cmd` 走 `clang-format -i`（含 #include 块内排序，规则在仓库根 `.clang-format`）；默认增量便于 agent 在每次改完后无脑跑。
 
 **提交门槛**：`./lint.cmd` 输出必须 `0 warnings`。**唯一例外**：一次清理任务需要拆成多个提交按主题逐批落地时，中间提交可以保留尚未处理的剩余警告，但主题工作完成后的**收尾提交必须归零**。
 
 例外不适用于功能 / bug fix 提交。这类提交本身就不该引入新警告，撞到非自身代码的旧警告时，与用户对齐后再决定单独清还是顺手带。
 
-#include 块以"连续 `#include` 行"为单位，空行 / 注释 / 其他行打断块；排序仅在块内进行，不会破坏 `main.cpp` 的 `windows.h → #undef ERROR → types.h` 形态。新加 include 时直接放进对应块尾，下次 `./format.cmd` 会就地排好。
+PostToolUse hook (`.claude/hooks/format-cpp.ps1`) 每次 Edit/Write C++ 文件时自动调 `clang-format -i`，无需手动跑；`./format.cmd` 主要用于批量场景（`--all` / 多文件 / pre-commit `--check`）。
 
 > 已知尚未处理：未使用 include 清理（clangd `unused-includes` / IWYU），后续单独排专项再开。
 
