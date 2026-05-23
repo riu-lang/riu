@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/format-cpp.ps1"
+            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File \"$CLAUDE_PROJECT_DIR/.claude/hooks/format-cpp.ps1\""
           }
         ]
       }
