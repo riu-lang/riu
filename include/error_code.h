@@ -44,17 +44,15 @@ struct ErrorCodeDef {
 namespace ErrorCode {
 
 namespace detail {
-    // 进程级注册表：code 字符串 → 默认严重等级
-    // 每个 DEF_ERR 通过一个 inline const 变量在静态初始化阶段注册。
-    inline std::map<std::string, DiagSeverity>& registry() {
-        static std::map<std::string, DiagSeverity> m;
-        return m;
-    }
-    struct CodeRegistration {
-        CodeRegistration(const char* code, DiagSeverity sev) {
-            registry()[code] = sev;
-        }
-    };
+// 进程级注册表：code 字符串 → 默认严重等级
+// 每个 DEF_ERR 通过一个 inline const 变量在静态初始化阶段注册。
+inline std::map<std::string, DiagSeverity>& registry() {
+    static std::map<std::string, DiagSeverity> m;
+    return m;
+}
+struct CodeRegistration {
+    CodeRegistration(const char* code, DiagSeverity sev) { registry()[code] = sev; }
+};
 } // namespace detail
 
 // 按字符串查 code 的默认严重等级；未知 code 返回 nullptr
@@ -66,16 +64,16 @@ inline const DiagSeverity* lookupDefaultSeverity(const std::string& code) {
 }
 
 // 默认 Error 的常用宏
-#define DEF_ERR(code, msg) \
-    inline constexpr ErrorCodeDef E##code{"E" #code, DiagSeverity::Error, msg}; \
+#define DEF_ERR(code, msg)                                                                                             \
+    inline constexpr ErrorCodeDef E##code{"E" #code, DiagSeverity::Error, msg};                                        \
     inline const ::ErrorCode::detail::CodeRegistration _reg_E##code{"E" #code, DiagSeverity::Error};
 // 默认 Warning（当前还没有 Warning 类码，留作 Phase 5 引入未使用变量等场景）
-#define DEF_WARN(code, msg) \
-    inline constexpr ErrorCodeDef E##code{"E" #code, DiagSeverity::Warning, msg}; \
+#define DEF_WARN(code, msg)                                                                                            \
+    inline constexpr ErrorCodeDef E##code{"E" #code, DiagSeverity::Warning, msg};                                      \
     inline const ::ErrorCode::detail::CodeRegistration _reg_E##code{"E" #code, DiagSeverity::Warning};
 // 默认 Note（信息性提示）
-#define DEF_NOTE(code, msg) \
-    inline constexpr ErrorCodeDef E##code{"E" #code, DiagSeverity::Note, msg}; \
+#define DEF_NOTE(code, msg)                                                                                            \
+    inline constexpr ErrorCodeDef E##code{"E" #code, DiagSeverity::Note, msg};                                         \
     inline const ::ErrorCode::detail::CodeRegistration _reg_E##code{"E" #code, DiagSeverity::Note};
 
 // ── 占位 ──────────────────────────────────────────────────────────────
@@ -100,15 +98,18 @@ DEF_ERR(1120, "Cannot implement spec '{}' for type '{}': both belong to external
 // ── Dyn<D> / Dyn<D&> 运行时多态 (DRAFT-dyn-draft / 拟 §12.9 — Phase 2) ────
 DEF_ERR(1131, "Type argument of `Dyn<...>` must be a spec name; `{}` is not a spec")
 DEF_ERR(1132, "Nested `Dyn<...>` is not allowed: `{}` cannot wrap another `Dyn` / `Rc` of `Dyn`")
-DEF_ERR(1133, "Cannot construct `Dyn<{}>` from `{}`: argument must be `Rc<U>` (owned) or `U&` (borrow) where `U` implements `{}`")
-DEF_ERR(1134, "Spec `{}` is not object-safe: signatures contain `Self` or the spec's own name in non-receiver position; `Dyn<{}>` / `Dyn<{}&>` is not allowed")
+DEF_ERR(
+    1133,
+    "Cannot construct `Dyn<{}>` from `{}`: argument must be `Rc<U>` (owned) or `U&` (borrow) where `U` implements `{}`")
+DEF_ERR(1134, "Spec `{}` is not object-safe: signatures contain `Self` or the spec's own name in non-receiver "
+              "position; `Dyn<{}>` / `Dyn<{}&>` is not allowed")
 DEF_ERR(1135, "`Dyn<D>?` (nullable dyn) is not supported in v1")
 DEF_ERR(1136, "`Dyn<{}>` cannot cross `extern` boundary: vtable layout is internal ABI")
 // ── E113x spec-unify v1（[#1.AD] / DRAFT-spec-unify.md）───────────────
 DEF_ERR(1137, "Type `{}` does not implement spec method `{}` (declared in `#Impl({})`)")
 DEF_ERR(1138, "Cannot access static member `{}` on instance of `{}`; use `{}::{}` instead")
 // E1139 已退役（DRAFT-spec-default-body Phase 1 解锁 spec 默认体）
-DEF_ERR(1140, "spec `{}` default body references unknown method `$.{}`; must appear in this spec's signatures")
+DEF_ERR(1140, "spec `{}` has no method `{}`{}")
 
 // ── E2xxx 语法 / AST 结构 ─────────────────────────────────────────────
 DEF_ERR(2001, "Weak<T>? is forbidden: Weak is natively nullable (upgrade returns Rc<T>?)")
@@ -119,13 +120,15 @@ DEF_ERR(2005, "Unknown build annotation `#{}`")
 DEF_ERR(2006, "Function `{}` has no body; only `#CompilerInner` functions may omit the body")
 DEF_ERR(2007, "Method `{}.{}` has no body; only `#CompilerInner` methods may omit the body")
 DEF_ERR(2008, "wildcard alias `{}` is ambiguous, matched {}")
-DEF_ERR(2009, "Function `{}` cannot return `T&`; only `#CompilerInner` baked builtins may have a reference return type (spec §8.9)")
+DEF_ERR(2009, "Function `{}` cannot return `T&`; only `#CompilerInner` baked builtins may have a reference return type "
+              "(spec §8.9)")
 DEF_ERR(2010, "Cannot call mutating method `Array.{}` on `{}`: it has an active borrow (spec §8.4.2.5)")
 DEF_ERR(2011, "Build annotation `#{}` is not allowed on this declaration (only `fn` accepts it)")
 DEF_ERR(2012, "`#Test` function `{}` must have signature `fn {}()` (no params, no return type, must have body)")
 DEF_ERR(2013, "`#Test` and `#CompilerInner` cannot both be applied to function `{}`")
 DEF_ERR(2014, "`#Test` is only allowed in `*.test.yux` files; `{}` is not a test file")
-DEF_ERR(2015, "spec bounds (`: D`) are only allowed at declaration sites (fn/struct/spec generic params); not at type references or call-point turbofish")
+DEF_ERR(2015, "spec bounds (`: D`) are only allowed at declaration sites (fn/struct/spec generic params); not at type "
+              "references or call-point turbofish")
 DEF_ERR(2016, "Type alias `{}` forms a cycle (recursive without indirection)")
 DEF_ERR(2017, "Type alias name `{}` conflicts with existing {} `{}`")
 DEF_ERR(2018, "Duplicate variant `{}` in enum `{}`")
@@ -139,11 +142,16 @@ DEF_ERR(2025, "`else` arm must be the last arm in match")
 DEF_ERR(2026, "match pattern for `{}::{}` expects {} binding(s), got {}")
 DEF_ERR(2027, "duplicate binding `{}` in match pattern `{}::{}`")
 DEF_ERR(2028, "lambda body references outer local `{}`: closures not yet supported (Phase 4)")
-DEF_ERR(2029, "lambda capture of `{}` (type `{}`) not yet supported: Phase 4a / 4a-2 / 4c cover scalars / 8-byte heap handles (Rc / Weak / Array / String) / `T&`; structs / enums / fn / mixing `T&` with heap handles arrive in later phases")
+DEF_ERR(
+    2029,
+    "lambda capture of `{}` (type `{}`) not yet supported: Phase 4a / 4a-2 / 4c cover scalars / 8-byte heap handles "
+    "(Rc / Weak / Array / String) / `T&`; structs / enums / fn / mixing `T&` with heap handles arrive in later phases")
 DEF_ERR(2030, "lambda body cannot assign to captured variable `{}` (spec §6.2.1: captures are immutable in v1)")
 DEF_ERR(2031, "extern fn `{}` cannot use fn(...) types in {} (function values are not ABI-compatible with C; spec §7)")
-DEF_ERR(2032, "Enum variant `{}::{}` payload #{} type mismatch: expected `{}`, got `{}` (no implicit conversion; for `Rc<T>` payload, bind `var b Rc<T> = T(...)` first then pass `b`)")
-DEF_ERR(2033, "`#TestIsolate` on `{}` requires a sibling `#Test` annotation (isolation modifies how a `#Test` runs; it is not a standalone marker)")
+DEF_ERR(2032, "Enum variant `{}::{}` payload #{} type mismatch: expected `{}`, got `{}` (no implicit conversion; for "
+              "`Rc<T>` payload, bind `var b Rc<T> = T(...)` first then pass `b`)")
+DEF_ERR(2033, "`#TestIsolate` on `{}` requires a sibling `#Test` annotation (isolation modifies how a `#Test` runs; it "
+              "is not a standalone marker)")
 
 // ── E3xxx 类型 — 类型不匹配 ───────────────────────────────────────────
 DEF_ERR(3001, "Type mismatch in +-/ operation: left is {}, right is {}")
@@ -171,7 +179,8 @@ DEF_ERR(3022, "Void function cannot return a value of type '{}'")
 DEF_ERR(3023, "`??` right side type {} doesn't match Nullable inner type {}")
 DEF_ERR(3024, "Left side of `??` must be Nullable<T>, got {}")
 DEF_ERR(3025, "`?.` requires Nullable<T> on the left, got {}")
-DEF_ERR(3026, "String template interpolation requires type implementing ToString, got '{}' (impl `Type : ToString {{ fn to_string() String {{ ... }} }}`)")
+DEF_ERR(3026, "String template interpolation requires type implementing ToString, got '{}' (impl `Type : ToString {{ "
+              "fn to_string() String {{ ... }} }}`)")
 DEF_ERR(3027, "Type mismatch in match arms: expected {}, arm produces {}")
 DEF_ERR(3028, "Heap<{}> constructor argument type mismatch: expected {}, got {}")
 
@@ -242,23 +251,33 @@ DEF_ERR(3100, "Tuple index {} out of range for type '{}' (size {})")
 DEF_ERR(3101, "Tuple destructure expects type tuple, got '{}'")
 DEF_ERR(3102, "Tuple destructure arity mismatch: {} names vs tuple size {}")
 DEF_ERR(3103, "Integer literal '{}' out of range for type '{}'")
-DEF_ERR(3104, "Local `cval` initializer must be a constant expression: {} (DRAFT-const-mut §3.3; allowed: numeric/bool/null/string literals, references to declared `cval`, and arithmetic / bitwise / comparison / logical combinations thereof)")
+DEF_ERR(3104, "Local `cval` initializer must be a constant expression: {} (DRAFT-const-mut §3.3; allowed: "
+              "numeric/bool/null/string literals, references to declared `cval`, and arithmetic / bitwise / comparison "
+              "/ logical combinations thereof)")
 DEF_ERR(3105, "Unknown parameter annotation '#{}' (only '#Frozen' is supported on parameters; DRAFT-const-mut §5.1)")
 DEF_ERR(3106, "Cannot write field '{}' of `#Frozen` parameter '{}' (DRAFT-const-mut §5.3)")
-DEF_ERR(3107, "Cannot pass `#Frozen` value '{}' to mutable parameter '{}'; use copy_of to obtain an owned copy (DRAFT-const-mut §5.4)")
-DEF_ERR(3108, "Unknown or duplicate field annotation '#{}' (only '#Val' and '#Frozen' are supported on fields, mutually exclusive; DRAFT-const-mut §6.1)")
+DEF_ERR(3107, "Cannot pass `#Frozen` value '{}' to mutable parameter '{}'; use copy_of to obtain an owned copy "
+              "(DRAFT-const-mut §5.4)")
+DEF_ERR(3108, "Unknown or duplicate field annotation '#{}' (only '#Val' and '#Frozen' are supported on fields, "
+              "mutually exclusive; DRAFT-const-mut §6.1)")
 DEF_ERR(3109, "Cannot write field '{}' marked '#{}' outside the constructor of struct '{}' (DRAFT-const-mut §6.2)")
 DEF_ERR(3110, "`#Const fn` '{}' cannot {}: {} (DRAFT-const-mut §4.2)")
 DEF_ERR(3111, "`#Const fn` '{}' cannot call non-`#Const` function '{}' (DRAFT-const-mut §4.2.4)")
-DEF_ERR(3112, "Unknown `let` annotation '#{}' (only '#Mut', '#Frozen', '#Cval' are supported on `let`; DRAFT-let-unify §3.4)")
+DEF_ERR(3112,
+        "Unknown `let` annotation '#{}' (only '#Mut', '#Frozen', '#Cval' are supported on `let`; DRAFT-let-unify §3.4)")
 DEF_ERR(3113, "`let {}` requires a type or initializer (DRAFT-let-unify §3.4)")
 DEF_ERR(3114, "`let {} <type>` requires an initializer (use `#Mut let` for deferred assignment; DRAFT-let-unify §3.4)")
 DEF_ERR(3115, "Annotations '#{}' and '#{}' are mutually exclusive on `let` (DRAFT-let-unify §3.4)")
-DEF_ERR(3116, "Global `let {}` requires `#Cval`: only compile-time constants are allowed at global scope (DRAFT-let-unify §3)")
+DEF_ERR(
+    3116,
+    "Global `let {}` requires `#Cval`: only compile-time constants are allowed at global scope (DRAFT-let-unify §3)")
 
 // ── 构造模型重构: #Static fn / Self / 字段字面量 (DRAFT-static-fn) ────
-DEF_ERR(3120, "`{}::{}` resolves to an instance method, not a `#Static fn`: use `<receiver>.{}(...)` instead (DRAFT-static-fn)")
-DEF_ERR(3121, "struct `{}` has no static fn `{}` (`Type::name(...)` requires a method annotated `#Static`; DRAFT-static-fn)")
+DEF_ERR(
+    3120,
+    "`{}::{}` resolves to an instance method, not a `#Static fn`: use `<receiver>.{}(...)` instead (DRAFT-static-fn)")
+DEF_ERR(3121,
+        "struct `{}` has no static fn `{}` (`Type::name(...)` requires a method annotated `#Static`; DRAFT-static-fn)")
 DEF_ERR(3122, "`{}::{}` LHS is neither an enum nor a struct in scope (DRAFT-static-fn)")
 DEF_ERR(3123, "`Self` type only allowed inside a `structImpl` body (DRAFT-static-fn)")
 DEF_ERR(3124, "`Self {{ ... }}` field literal only allowed inside a `#Static fn` body (DRAFT-static-fn)")
@@ -266,11 +285,14 @@ DEF_ERR(3125, "`Self {{ ... }}` for struct `{}` is missing field `.{}` (all fiel
 DEF_ERR(3126, "struct `{}` has no field `.{}` (DRAFT-static-fn)")
 DEF_ERR(3127, "duplicate field `.{}` in `Self {{ ... }}` literal (DRAFT-static-fn)")
 DEF_ERR(3128, "`$` (current instance) cannot be used inside a `#Static fn` body (DRAFT-static-fn)")
-DEF_ERR(3130, "Same-name constructor `fn {}(...)` is no longer supported — define a `#Static fn` (e.g. `#Static fn make(...)` returning `{}` via `Self {{ ... }}`) and call it as `{}::make(...)` (DRAFT-static-fn Phase 6)")
+DEF_ERR(3130,
+        "Same-name constructor `fn {}(...)` is no longer supported — define a `#Static fn` (e.g. `#Static fn "
+        "make(...)` returning `{}` via `Self {{ ... }}`) and call it as `{}::make(...)` (DRAFT-static-fn Phase 6)")
 DEF_ERR(3131, "`{}::{}(...)` argument count/type mismatch: expected {} args ({}), got {} args ({}) (DRAFT-static-fn)")
 
 // ── 组合 spec 默认体冲突 (DRAFT-spec-default-body Phase 4) ────────────
-DEF_ERR(3132, "Type `{}` inherits conflicting default bodies for method `{}` from specs {}; implementer must provide an explicit override")
+DEF_ERR(3132, "Type `{}` inherits conflicting default bodies for method `{}` from specs {}; implementer must provide "
+              "an explicit override")
 
 // ── E4xxx 所有权 / 借用 ───────────────────────────────────────────────
 DEF_ERR(4001, "T& borrow initializer must be &expr or an existing T& variable")
@@ -283,7 +305,8 @@ DEF_ERR(4012, "field '$.{}' is not initialized at constructor exit (§8.2)")
 DEF_ERR(4013, "cannot return `$` from constructor (§8.3)")
 DEF_ERR(4020, "return T& root must be {}, got '{}' (§8.6)")
 DEF_ERR(4021, "function returning T& requires exactly one source: `$` (method) or a single T& parameter (free fn)")
-DEF_ERR(4022, "lambda value with `T&` capture cannot escape current frame (cannot be returned, stored to var/field/container/Rc; only consumable inline as call argument; spec §6.3)")
+DEF_ERR(4022, "lambda value with `T&` capture cannot escape current frame (cannot be returned, stored to "
+              "var/field/container/Rc; only consumable inline as call argument; spec §6.3)")
 DEF_ERR(4023, "Heap<{}> '{}' escapes its scope: ret position requires NRVO (§8.3a.4.1)")
 DEF_ERR(4024, "Heap<{}> '{}' cannot be moved by value; declare as Heap<{}>? for movable slots (§8.3a.3.2)")
 DEF_ERR(4025, "{}<Heap<{}>> is forbidden: Heap cannot be nested in Rc / Weak / Array containers (§8.3a.5.1)")
@@ -306,7 +329,8 @@ DEF_ERR(5010, "syntax errors in {}")
 DEF_ERR(5011, "circular module import: {}")
 DEF_ERR(5012, "module not found: {} (expected file {})")
 DEF_ERR(5013, "yux.toml `entry` must be a relative path under `src/`, got absolute path: {}")
-DEF_WARN(5014, "yux.toml `entry` resolves outside `src/` (`{}`): convention is that all sources live under `src/`; obj path layout may also be inconsistent")
+DEF_WARN(5014, "yux.toml `entry` resolves outside `src/` (`{}`): convention is that all sources live under `src/`; obj "
+               "path layout may also be inconsistent")
 
 // ── E6xxx 内置 / 调用 ─────────────────────────────────────────────────
 DEF_ERR(6001, "module `{}` not found in package `{}`")
@@ -341,8 +365,11 @@ DEF_ERR(6027, "{} expects {} argument(s)")
 DEF_ERR(6028, "{}:<T&> requires a local var or &expr argument")
 DEF_ERR(6029, "{}:<T> requires T to be Rc/Weak/Array/String or U& (got '{}')")
 DEF_ERR(6030, "assert_eq:<T> requires T to be a numeric or bool type (got '{}')")
-DEF_ERR(6031, "assert_eq operand type mismatch: actual is '{}', expected is '{}' (yux 不做隐式整型/浮点转换；整型字面量默认 i32，需要时加后缀如 `3i64`/`3u8` 或写 `assert_eq:<T>(...)` 锁定类型)")
-DEF_ERR(6032, "copy_of:<T> cannot copy types containing Ref fields (offending: '{}') — Ref 借的是别人的可写状态，独立 owned 副本与借用语义冲突 [DRAFT-const-mut §5.3]")
+DEF_ERR(6031,
+        "assert_eq operand type mismatch: actual is '{}', expected is '{}' (yux 不做隐式整型/浮点转换；整型字面量默认 "
+        "i32，需要时加后缀如 `3i64`/`3u8` 或写 `assert_eq:<T>(...)` 锁定类型)")
+DEF_ERR(6032, "copy_of:<T> cannot copy types containing Ref fields (offending: '{}') — Ref 借的是别人的可写状态，独立 "
+              "owned 副本与借用语义冲突 [DRAFT-const-mut §5.3]")
 DEF_ERR(6033, "No matching constructor for '{}({})'; declared overloads:{}")
 
 // Array 内置方法
@@ -358,22 +385,38 @@ DEF_ERR(6045, "{} requires 1 argument")
 // ── E7xxx 错误模型 / panic（DRAFT-错误.md） ─────────────────────────────
 // 附录 D §D.3.7 之后段位；E7001-E7014 默认 Error，E7015-E7018 默认 Warning（Phase 10d+ 启用）
 // E7012 / E7013 / E7014 由 Phase 10d 启用；E7001 / E7004 / E7006 / E7008 由 Phase 10e 启用；其余诊断码留 10f
-DEF_ERR(7001, "`!` used outside of `#Fallible(E)` function and outside of `try` block — wrap call in `try {{ ... }} catch e E {{ ... }}` or declare the enclosing function with `#Fallible(E)`")
-DEF_ERR(7004, "cannot propagate error of type `{}` through `!`: caller declares `#Fallible({})`, types differ — wrap the call in `try {{ ... }} catch e {} {{ ret {}::Variant... }}`, or wrap in a function whose `#Fallible` matches `{}`")
-DEF_ERR(7006, "call to fallible function `{}` outside `try` block must propagate via `!` (same error type) — bare call is forbidden outside `try` (inside `try`, bare call is correct; `!` would be redundant)")
-DEF_ERR(7008, "function return type `{}` cannot equal its `#Fallible` type `{}` (the compiler cannot disambiguate `ret` between success and error channels) — split into two enums (one for the success result type, one for the error type) and rethrow / wrap explicitly")
+DEF_ERR(7001, "`!` used outside of `#Fallible(E)` function and outside of `try` block — wrap call in `try {{ ... }} "
+              "catch e E {{ ... }}` or declare the enclosing function with `#Fallible(E)`")
+DEF_ERR(
+    7004,
+    "cannot propagate error of type `{}` through `!`: caller declares `#Fallible({})`, types differ — wrap the call in "
+    "`try {{ ... }} catch e {} {{ ret {}::Variant... }}`, or wrap in a function whose `#Fallible` matches `{}`")
+DEF_ERR(7006, "call to fallible function `{}` outside `try` block must propagate via `!` (same error type) — bare call "
+              "is forbidden outside `try` (inside `try`, bare call is correct; `!` would be redundant)")
+DEF_ERR(7008, "function return type `{}` cannot equal its `#Fallible` type `{}` (the compiler cannot disambiguate "
+              "`ret` between success and error channels) — split into two enums (one for the success result type, one "
+              "for the error type) and rethrow / wrap explicitly")
 DEF_ERR(7012, "`#NoReturn` function `{}` cannot declare a return type — remove the return type or remove `#NoReturn`")
-DEF_ERR(7013, "`#NoReturn` and `#Fallible({})` are mutually exclusive on the same function — a non-returning function cannot also propagate errors")
-DEF_ERR(7014, "`#NoReturn` function `{}` may reach end of body — control flow must terminate via `panic`-class call, another `#NoReturn` call, or unconditional infinite loop")
+DEF_ERR(7013, "`#NoReturn` and `#Fallible({})` are mutually exclusive on the same function — a non-returning function "
+              "cannot also propagate errors")
+DEF_ERR(7014, "`#NoReturn` function `{}` may reach end of body — control flow must terminate via `panic`-class call, "
+              "another `#NoReturn` call, or unconditional infinite loop")
 // E7002 / E7009 / E7010 / E7011 / E7015-E7018 由 Phase 10f 启用（try-catch 块）
-DEF_ERR(7002, "non-exhaustive `try` block: error type `{}` thrown by callee `{}` is not handled by any `catch` clause — add `catch e {} {{ ... }}`")
+DEF_ERR(7002, "non-exhaustive `try` block: error type `{}` thrown by callee `{}` is not handled by any `catch` clause "
+              "— add `catch e {} {{ ... }}`")
 DEF_ERR(7009, "`try` block must be followed by at least one `catch` clause — bare `try {{ ... }}` is forbidden")
-DEF_ERR(7010, "`catch` body must end with `ret`, `panic`-class terminator, or an expression of the same type as the `try` block (got `{}` vs `{}`)")
+DEF_ERR(7010, "`catch` body must end with `ret`, `panic`-class terminator, or an expression of the same type as the "
+              "`try` block (got `{}` vs `{}`)")
 DEF_ERR(7011, "`catch e {}` type `{}` must be a declared enum; got `{}`")
-DEF_WARN(7015, "redundant `catch` clause: no call in `try` block can throw `{}` declared by `catch e {}` — remove this `catch` clause")
-DEF_WARN(7016, "`!` is redundant inside `try` block: bare call to `#Fallible({})` function `{}` already routes to the matching `catch e {}` clause — remove `!`")
-DEF_WARN(7017, "redundant `try-catch`: no call in `try` block can throw any error — remove the entire `try` and use a plain block")
-DEF_WARN(7018, "`panic` in `catch` arm converts a recoverable error to abort — consider `ret` with an error variant or `exit(code)` if termination is intended")
+DEF_WARN(7015, "redundant `catch` clause: no call in `try` block can throw `{}` declared by `catch e {}` — remove this "
+               "`catch` clause")
+DEF_WARN(7016, "`!` is redundant inside `try` block: bare call to `#Fallible({})` function `{}` already routes to the "
+               "matching `catch e {}` clause — remove `!`")
+DEF_WARN(
+    7017,
+    "redundant `try-catch`: no call in `try` block can throw any error — remove the entire `try` and use a plain block")
+DEF_WARN(7018, "`panic` in `catch` arm converts a recoverable error to abort — consider `ret` with an error variant or "
+               "`exit(code)` if termination is intended")
 
 #undef DEF_ERR
 #undef DEF_WARN

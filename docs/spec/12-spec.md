@@ -22,7 +22,7 @@ specDecl  ::= '#' 'Spec' codeLineEnd
 fnSig     ::= buildAnno* 'fn' ID '(' fnParams? ')' (retType=type)?
 ```
 
-§12.1.1.1 `#Spec` 顶行注解把一个 `structDecl` 转为一个 **spec**：一组方法签名集合。spec body 内**只允许方法签名**，**不得**出现字段、`#Static fn`、析构函数 `fn ~()`、或带函数体的方法。违反报 **E1139**（spec body 内方法带 body）/ **E2011**（spec body 含字段或析构）。
+§12.1.1.1 `#Spec` 顶行注解把一个 `structDecl` 转为一个 **spec**：一组方法签名集合（每个签名可选附带"默认方法体"，见 §12.10）。spec body 内**不得**出现字段、`#Static fn`、或析构函数 `fn ~()`；违反报 **E2011**（spec body 含字段或析构）。
 
 §12.1.1.2 签名集**允许为空**（无方法的 spec 合法，但 v1 不再内置 `Any`——见 §12.7.2）。
 
@@ -140,7 +140,7 @@ struct Bad {
 
 §12.4.1.2 `#Spec` 不接受参数；与 `#Impl(...)` **不得**在同一声明上共存（spec 自身不实现别的 spec；继承 / super-trait 由 §12.8 项 8 禁止）。
 
-§12.4.1.3 `#Spec struct` body 内的方法**禁止**带函数体（违反报 **E1139**）。`fnExprkBody`（`= expr` 单表达式形）与 `fnBlockBody`（`{ ... }` 块形）均按"带 body" 看待。
+§12.4.1.3 `#Spec struct` body 内的方法**允许**带函数体；带体的方法成为**默认方法体**，由 §12.10 定义 fall-through 与组合冲突规则。`fnExprBody`（`= expr` 单表达式形）与 `fnBlockBody`（`{ ... }` 块形）均合法承载默认体。默认体内的占位符号校验（`$` / `$.method` 等）见 §12.10.3。
 
 §12.4.1.4 `#Spec struct` body 内**禁止**字段 / 析构 `fn ~()`（违反报 **E2011**）。
 
@@ -273,7 +273,7 @@ fn caller(box Rc<MyType>) {
 v1 / v0.5 **明确不做**：
 
 1. ~~**`dyn Draft` / 运行时多态**（mangling 留位但不实现）。~~ → v0.5.x **已实现**，见 §12.9。
-2. **spec 默认方法体**（占位 → [`draft/DRAFT-spec-default-body.md`](draft/DRAFT-spec-default-body.md)）。
+2. ~~**spec 默认方法体**（占位 → [`draft/DRAFT-spec-default-body.md`](draft/DRAFT-spec-default-body.md)）。~~ → 2026-05-22 **已落地**，见 §12.10。
 3. **spec 体内方法本地泛型**（spec 自身可泛型）。
 4. **关联类型 / 关联常量**（占位 → [`draft/DRAFT-assoc-types.md`](draft/DRAFT-assoc-types.md)）。
 5. **跨外部包为外部类型实现外部 spec**（§12.5；语法层自然落实）。
@@ -414,12 +414,108 @@ __yux_vtable_<U_mangled>__<D_qualified_mangled>:
 - 操作符 spec 的 dyn 化（§12.8 项 6）
 - vtable 内联缓存 / devirtualization（性能任务）
 
+## §12.10 默认方法体（默认实现 + fall-through）
+
+§12.10 在 §12.1–§12.4 单态化 spec 体系之上，允许 spec body 内单个方法签名附带**默认方法体**：实现方未覆盖该方法时，由 spec 提供的默认体 fall-through 进入实现类型；多 spec 提供同名默认体冲突时，实现方**必须**显式覆盖以消歧。设计基调与决议详见草案 [`draft/DRAFT-spec-default-body.md`](draft/DRAFT-spec-default-body.md)（已落地）。
+
+### §12.10.1 形态
+
+§12.10.1.1 spec body 内每条方法签名**可选**附带函数体；带体即为该签名的"默认方法体"：
+
+```yux
+#Spec
+struct Ord {
+  fn cmp(other Self&) i32                             ; 仅签名 — 必须实现
+  fn lt(other Self&) bool = $.cmp(other) < 0          ; fnExprBody 默认体
+  fn le(other Self&) bool {                           ; fnBlockBody 默认体
+    $.cmp(other) <= 0
+  }
+}
+```
+
+§12.10.1.2 默认体合法形态：
+
+| 形态 | 例 | 备注 |
+|---|---|---|
+| 仅签名 | `fn cmp(other Self&) i32` | 必须由实现者写体 |
+| `= expr` 单表达式体 | `fn lt(other Self&) bool = $.cmp(other) < 0` | 与 fn 通用 `fnExprBody` 一致 |
+| `{ ... }` 块体 | `fn le(other Self&) bool { $.cmp(other) <= 0 }` | 多行强制换行（§4 块体） |
+
+§12.10.1.3 默认体内 `Self` 视为**抽象类型变量**（具体化推迟到 §12.10.4 单态化时机）；`$` 在默认体内类型为 `Self&`（与 §12.2.3.2 一致）。
+
+§12.10.1.4 默认体内**不得**引入方法本地泛型形参（沿用 §12.3.2 限制；违反报 **E1104**）。
+
+### §12.10.2 不引入 `#Derive`
+
+§12.10.2.1 v0.X **不引入** `#Derive(Spec)` 独立注解。`#Impl(D) struct S { ... }` 不写 `D` 的某方法即视为采用默认体（若该方法在 D 内有默认体）；该形态足够覆盖 SDK 5 件套（§12.10.5）与用户场景。
+
+§12.10.2.2 永远**不引入**"按字段递归自动 derive 默认体"（如 `ToJson.to_json` 自动遍历字段填 JSON）。这类需求由实现者手写体、或通过 §12.8 项 7 落地后的反射 API 显式展开。
+
+### §12.10.3 sema 期占位校验
+
+§12.10.3.1 默认体在 sema 期**仅做占位符号校验**，**不做完整 typecheck**（与 v1 泛型函数体"未实例化前不报体内类型错"的处理一致）：
+
+- `$` 绑到 Self 抽象类型变量；
+- `$.foo(args)` / 裸 `foo(args)` 中 `foo` **应当**为本 spec 内的某条签名（含本签名递归调用合法）；
+- 引用 spec 外部符号（fn / 类型 / 常量）按 §10 名字解析正常查找。
+
+§12.10.3.2 默认体引用本 spec 不存在的方法名 → 报 **E1140**（"spec `{}` default body references unknown method `$.{}`; must appear in this spec's signatures"）。
+
+§12.10.3.3 默认体内类型不匹配 / 借用错误等深度检查推迟到 §12.10.4 单态化时机；无人实现的 spec 默认体错误**不报**（与"无人调用的泛型函数体不报错"现状对齐）。
+
+### §12.10.4 fall-through 与单态化
+
+§12.10.4.1 对 `#Impl(D) struct S { ... }`：S body 内方法集 + D 中**带默认体**的方法集合并后，**应当**覆盖 D 的全部签名。具体：
+
+- 该方法在 S body 内已实现 → 实现覆盖默认体（默认体不参与单态化）；
+- 该方法在 S body 内未实现 + D 中有默认体 → 默认体**fall-through**到 S，编译期合成一份属于 S 的方法实现；
+- 该方法在 S body 内未实现 + D 中**无**默认体 → 报 **E1101**（"未实现 spec 方法"）。
+
+§12.10.4.2 fall-through 实现的合成时机为类型层"实现宣告校验"通过后；其 typecheck / 借用检查 / IR 生成与实现者手写方法等价。
+
+§12.10.4.3 默认体内 `Self` 在单态化时点替换为具体类型 `S`；`$` 类型固化为 `S&`。
+
+### §12.10.5 组合冲突 E3132
+
+§12.10.5.1 同一 `S` 上多条 `#Impl(D1) #Impl(D2) ...` 时，对每个 (方法名, arity) 二元组聚合各 spec 提供的签名条目，按下表判定：
+
+| S body 实现 | 各 spec 默认体数 | 处理 |
+|---|---|---|
+| 已实现 | 任意 | 实现覆盖，OK |
+| 未实现 | 0 | **E1101** 未实现 spec 方法 |
+| 未实现 | 1 | 该默认体 fall-through 到 S |
+| 未实现 | ≥2 | **E3132** 组合冲突，实现者必须显式覆盖以消歧 |
+
+§12.10.5.2 "一种 spec 默认体 + 另一种纯抽象签名"**不**触发 E3132；默认体直接 fall-through，覆盖另一 spec 的抽象签名要求。
+
+§12.10.5.3 v0.X **不引入**隐式优先级 / 顺序 / `use SpecA::method` 机制；冲突一律由实现者写显式覆盖解决。`a.SpecA::m()` 形态的方法消歧调用语法留 v0.X+1（与现有 `Type::m()` 静态调用通道协同设计）。
+
+§12.10.5.4 E3132 消息：`Type `{}` inherits conflicting default bodies for method `{}` from specs {}; implementer must provide an explicit override`。
+
+### §12.10.6 SDK 内置 spec
+
+§12.10.6.1 `sdk/yux/src/yux/core/base.yux` 中 5 件套（`ToString` / `ToJson` / `Eq` / `Ord` / `Clone`）按本节落地：
+
+- `Ord.lt` / `Ord.le` / `Ord.gt` / `Ord.ge` 由 `Ord.cmp` 默认体推导；
+- `Eq.ne` 由 `Eq.eq` 默认体推导；
+- `ToJson.to_json` / `Eq.eq` / `Clone.clone` / `Ord.cmp` / `ToString.to_string` 维持**纯抽象签名**（按 §12.10.2.2 永不按字段递归自动 derive）。
+
+§12.10.6.2 用户类型只需写 `#Impl(Ord) struct N { ... fn cmp(...) i32 { ... } }`，`lt/le/gt/ge` 自动 fall-through，无需重复实现。
+
+### §12.10.7 不在本节范围
+
+承 §12.8：
+
+- 显式消歧调用语法（`a.SpecA::m(args)`）—— 留 v0.X+1。
+- 按字段递归自动 derive 默认体（如 `ToJson.to_json` 字段遍历）—— §12.10.2.2 永不引入。
+- `#Inline for` 编译期循环 unroll —— §12.8 项 16 永不引入。
+- spec 体内字段 / `#Static fn` / 关联类型 / 关联常量 —— §12.1.1.1 / §12.8 项 4 / §12.8 项 14。
+
 ## Open Issues
 
 - 操作符 spec（`Add` / `Eq` / `Index` …）的引入窗口与现有 §7.2.3 运算符重载的对齐路径。
 - 是否为内置 `Stringify` 引入"断言失败时自动追加 actual / expected"路径（与 §11.3.5.4 联动）。
 - 用户结构体相等约束 / `Eq` spec 的最小形态（与 §11.3.5 的 `assert_eq` 用户类型扩展联动）。
 - 跨编译单元的边界 IR 共享（v1 与现有 `<T>` 一致：调用方需可见函数体）。
-- spec 默认方法体 + fall-through 路径（[`draft/DRAFT-spec-default-body.md`](draft/DRAFT-spec-default-body.md)）。
 - 内置 spec `Reflect`（runtime 反射数组）+ 类型擦除 / `AnyRef` downcast 扩展（[`draft/DRAFT-spec-reflect.md`](draft/DRAFT-spec-reflect.md) / §8a）。
 - 扩展实现块（同包内多 struct 共享 impl / 第三方包友好 impl 形态，[`draft/DRAFT-extension-blocks.md`](draft/DRAFT-extension-blocks.md)）。

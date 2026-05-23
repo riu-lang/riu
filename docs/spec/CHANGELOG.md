@@ -15,6 +15,29 @@
 
 ---
 
+## 2026-05-22 —— spec 默认方法体 + fall-through（DRAFT-spec-default-body 落地）
+
+- **新增章节**：[§12.10](12-spec.md#1210-默认方法体默认实现--fall-through)「默认方法体（默认实现 + fall-through）」。允许 `#Spec struct D { ... }` 体内方法签名附带函数体（`fnExprBody` 或 `fnBlockBody`）作"默认方法体"；`#Impl(D) struct S { ... }` 未覆盖该方法时默认体 fall-through 到 S。
+- **修改 §12.1.1.1**：spec body 内允许"签名 + 可选默认体"形态；删除"带函数体的方法"禁项与 E1139 引用，保留 §12.10 交叉引用。
+- **修改 §12.4.1.3**：`#Spec` 体内允许方法带体；条款语义从"拒收"翻转为"承载默认体"，删除 E1139 引用。
+- **修改 §12.8 不在范围 item 2**：原"spec 默认方法体（占位）"删除线 + 标"已落地，见 §12.10"，与 §12.9 Dyn item 1 同款。
+- **修改 Open Issues**：删除"spec 默认方法体 + fall-through 路径"条目（已闭环）。
+- **诊断变更**：
+  - `E1139` 退役（附录 D 标注，编号不复用）。spec body 方法带 body 不再是错误。
+  - `E1140` 新增（§12.10.3.2）：spec 默认体引用本 spec 不存在的方法名（sema 占位校验阶段）。
+  - `E3132` 新增（§12.10.5）：多 spec 默认体组合冲突未消歧。
+  - `E1101` 复用为"实现者未实现 + 默认体不可用"的统一诊断（与 §12.2.2.1 既有 missing-impl 语义并轨；未引入草案曾估的 E1136 新码）。
+- **永久决议**（承 DRAFT-spec-unify [#1.AA] / [#1.AE]）：
+  - **不引入** `#Derive(Spec)` 独立注解 —— `#Impl(D) + 不写体` 即 fall-through。
+  - **不引入** 按字段递归自动 derive 默认体（`ToJson.to_json` / `Eq.eq` / `Clone.clone` 字段遍历形态永不引入）。
+- **SDK 形态**（§12.10.6）：`base.yux` 5 件套补默认体可落地部分 —— `Ord.{lt,le,gt,ge}` 由 `cmp` 推、`Eq.ne` 由 `eq` 推；其余维持纯抽象签名。
+- **g4**：未动。spec-unify v1 阶段已铺 `fnDecl` body 可选形态，本次仅放开 ast_builder 拒收。
+- **测试**：`spec_default_body_parse_*` / `spec_default_body_sema_*` / `spec_default_fallthrough_{basic,block,ord_sdk,eq_sdk}` / `spec_combine_{conflict_E3132_basic,default_plus_abstract}` 端到端 + 占位校验全绿；全量回归 SDK / `xmake test` 通过（详 `docs/dev/spec-default-body-impl-log.md`）。
+- **冲突 / 兼容**：仅向后兼容扩展。既有 spec（仅签名）行为不变；既有 `#Impl(D)` 实现若已写全部方法，新默认体被覆盖不触发回归。早期"spec body 方法带 body → E1139"形态升级为合法默认体，不破坏既有用户代码。
+- **未尽事项**：显式消歧调用语法 `a.SpecA::m(args)` 留 v0.X+1（§12.10.5.3 / §12.10.7）。
+
+---
+
 ## 2026-05-19 —— spec-unify v1：替代 `draft` 关键字
 
 - **章节重命名**：`12-draft.md` → `12-spec.md`（同步 [`docs/spec/index.md`](index.md)）。

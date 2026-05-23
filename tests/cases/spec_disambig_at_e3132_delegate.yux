@@ -1,0 +1,42 @@
+; DRAFT-spec-disambig-at: E3132 组合冲突场景下, 实现者写覆盖时通过 `$.m@SpecA()`
+; / `$.m@SpecB()` 分别 delegate 到两条 spec 默认体, 验证选边正确.
+
+#Spec
+struct A {
+  fn tag() i32 = 1
+}
+
+#Spec
+struct B {
+  fn tag() i32 = 2
+}
+
+#Impl(A)
+#Impl(B)
+struct S {
+  v i32
+
+  #Static
+  fn make() S {
+    ret Self {
+      .v = 0
+    }
+  }
+
+  fn tag() i32 = 99
+
+  fn pick_a() i32 {
+    $.tag@A()
+  }
+
+  fn pick_b() i32 {
+    $.tag@B()
+  }
+}
+
+fn main() {
+  let s S = S::make()
+  println(s.tag())
+  println(s.pick_a())
+  println(s.pick_b())
+}

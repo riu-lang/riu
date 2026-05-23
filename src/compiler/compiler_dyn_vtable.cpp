@@ -39,8 +39,7 @@ std::string sanitizeForSymbol(const std::string& s) {
     std::string out;
     out.reserve(s.size());
     for (char c : s) {
-        bool keep = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                    (c >= '0' && c <= '9') || c == '_';
+        bool keep = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
         out += keep ? c : '_';
     }
     return out;
@@ -73,9 +72,7 @@ struct ImplLookup {
     std::string ownerModule;
 };
 
-ImplLookup findImplMethod(Yux* yux,
-                         const std::string& structName,
-                         const std::string& methodName) {
+ImplLookup findImplMethod(Yux* yux, const std::string& structName, const std::string& methodName) {
     if (!yux) return {};
 
     auto scanFile = [&](FileNode* file, bool preferSpecImpl) -> ImplLookup {
@@ -86,7 +83,7 @@ ImplLookup findImplMethod(Yux* yux,
             if (preferSpecImpl != isSpecImpl) continue;
             for (auto& m : impl->methods()) {
                 if (m->header()->name().getText() == methodName) {
-                    return {.method=m, .ownerModule=file->moduleName()};
+                    return {.method = m, .ownerModule = file->moduleName()};
                 }
             }
         }
@@ -107,10 +104,8 @@ ImplLookup findImplMethod(Yux* yux,
 
 } // namespace
 
-llvm::GlobalVariable* Compiler::getOrEmitDynVTable(
-    const TypeInfo& concreteType,
-    const std::string& specQualified,
-    SpecDeclNode* draft) {
+llvm::GlobalVariable* Compiler::getOrEmitDynVTable(const TypeInfo& concreteType, const std::string& specQualified,
+                                                   SpecDeclNode* draft) {
     if (!draft) return nullptr;
 
     const std::string& uStruct = concreteType.name;
@@ -153,7 +148,8 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(
     slots.push_back(dtorSlot);
 
     // 槽 1..N：D 每个方法 → U 的具体实现 fn ptr
-    for (auto& sig : sigs) {
+    for (size_t sigIdx = 0; sigIdx < sigs.size(); ++sigIdx) {
+        auto& sig = sigs[sigIdx];
         const std::string methodName = sig->name().getText();
         auto impl = findImplMethod(_yux, uStruct, methodName);
         auto implMethod = impl.method;
@@ -168,8 +164,7 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(
             bool isPriv = !methodName.empty() && methodName[0] == '_';
             // 用 impl 所在文件的模块名（内置类型的 impl 在 SDK 模块里，
             // findStructOwnerModule 拿到空 uModule 时会错指）。
-            std::string mangled = Mangler::method(impl.ownerModule, uStruct, methodName,
-                                                  paramTypes, isPriv);
+            std::string mangled = Mangler::method(impl.ownerModule, uStruct, methodName, paramTypes, isPriv);
 
             // 内置类型 U（i32 / i64 / bool / ...）的 SDK 方法实际签名是
             // (<U> by-value, P1, ..., Pn) -> R（见 compileMethod / getMethodFunction 的 builtin 分支）;
@@ -177,8 +172,7 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(
             // 但又不能直接指向 SDK fn（ABI 不一致）。这里为每个 (U, D, method) 合成一个
             // linkonce_odr 的适配 thunk：load primitive 后转发到真实 SDK fn。
             if (isBuiltinType(uStruct)) {
-                slot = getOrEmitDynPrimitiveThunk(concreteType, specQualified,
-                                                  sig, mangled);
+                slot = getOrEmitDynPrimitiveThunk(concreteType, specQualified, sig, mangled);
             } else {
                 auto* fn = _module->getFunction(mangled);
                 if (!fn) {
@@ -187,7 +181,7 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(
                     // 因此 D.sig 形参/返回类型与 U.impl 一致）：
                     //   (ptr receiver, P1, ..., Pn) -> R
                     std::vector<llvm::Type*> llvmParamTypes;
-                    llvmParamTypes.push_back(ptrTy);  // receiver
+                    llvmParamTypes.push_back(ptrTy); // receiver
                     for (auto& p : sig->params()) {
                         if (!p || !p->type()) continue;
                         auto pt = p->type()->getType();
@@ -203,26 +197,58 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(
                         if (!rt.empty()) llvmRetType = getLLVMType(rt);
                     }
                     auto fnTy = llvm::FunctionType::get(llvmRetType, llvmParamTypes, false);
-                    fn = llvm::Function::Create(fnTy, llvm::Function::ExternalLinkage,
-                                                mangled, _module);
+                    fn = llvm::Function::Create(fnTy, llvm::Function::ExternalLinkage, mangled, _module);
                 }
                 slot = fn;
             }
+        } else if (draft->hasDefaultBody(sigIdx)) {
+            // DRAFT-spec-default-body fall-through: U 未显式实现 m, 但 D 提供默认体,
+            // SpecImplChecker 已登记 InheritedDefault, compileInheritedDefaults 会按
+            // `getMethodFunction(structName=U, methodName=m, ...)` 合成 U.m, mangling 与
+            // 普通方法一致 (ownerModule = U 的 owner 模块). vtable 槽对齐到该合成函数,
+            // 调用约定 (ptr receiver, P1, ..., Pn) -> R 与 Dyn 调用站匹配.
+            //
+            // 注: 内置类型 U 的 fall-through 不会走这里 —— SpecImplChecker 对 builtin
+            // 不登记 InheritedDefault (无 StructImplNode), 此路径仅对用户 struct 生效.
+            std::vector<TypeInfo> paramTypes;
+            for (auto& p : sig->params()) {
+                if (!p || !p->type()) continue;
+                paramTypes.push_back(p->type()->getType());
+            }
+            bool isPriv = !methodName.empty() && methodName[0] == '_';
+            std::string mangled = Mangler::method(uModule, uStruct, methodName, paramTypes, isPriv);
+            auto* fn = _module->getFunction(mangled);
+            if (!fn) {
+                std::vector<llvm::Type*> llvmParamTypes;
+                llvmParamTypes.push_back(ptrTy);
+                for (auto& p : sig->params()) {
+                    if (!p || !p->type()) continue;
+                    auto pt = p->type()->getType();
+                    if (pt.isPtr() || pt.isRef()) {
+                        llvmParamTypes.push_back(ptrTy);
+                    } else {
+                        llvmParamTypes.push_back(getLLVMType(pt));
+                    }
+                }
+                llvm::Type* llvmRetType = _builder.getVoidTy();
+                if (sig->retType()) {
+                    auto rt = sig->retType()->getType();
+                    if (!rt.empty()) llvmRetType = getLLVMType(rt);
+                }
+                auto fnTy = llvm::FunctionType::get(llvmRetType, llvmParamTypes, false);
+                fn = llvm::Function::Create(fnTy, llvm::Function::ExternalLinkage, mangled, _module);
+            }
+            slot = fn;
         }
-        // TODO: implMethod 找不到说明 SpecImplChecker 未拦截的内部不一致；
-        // 当前留 null 兜底，调用站点（Phase 3d）会以"加载到 null 函数指针"指示问题。
+        // TODO: 既无 impl 也无默认体说明 SpecImplChecker 未拦截的内部不一致;
+        // 留 null 兜底, 调用站点会以"加载到 null 函数指针"指示问题.
         slots.push_back(slot);
     }
 
     auto* init = llvm::ConstantArray::get(arrTy, slots);
 
-    auto* gv = new llvm::GlobalVariable(
-        *_module,
-        arrTy,
-        /*isConstant=*/true,
-        llvm::GlobalValue::LinkOnceODRLinkage,
-        init,
-        symName);
+    auto* gv = new llvm::GlobalVariable(*_module, arrTy,
+                                        /*isConstant=*/true, llvm::GlobalValue::LinkOnceODRLinkage, init, symName);
     gv->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
     return gv;
 }
@@ -242,11 +268,8 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(
 // 把 thunk 地址放入 vtable 槽; receiver 由 Dyn 派发侧 (compileDynMethodCall) 传入
 // payload ptr (owned 是 data+8, borrow 是 data). 其它形参按 D 签名透传 —— 对象安全
 // 保证 D.sig 与 impl 的非 receiver 形参形态一致, 不需要做参数 ABI 转换.
-llvm::Function* Compiler::getOrEmitDynPrimitiveThunk(
-    const TypeInfo& concreteType,
-    const std::string& specQualified,
-    FnHeaderNode* sig,
-    const std::string& sdkMangled) {
+llvm::Function* Compiler::getOrEmitDynPrimitiveThunk(const TypeInfo& concreteType, const std::string& specQualified,
+                                                     FnHeaderNode* sig, const std::string& sdkMangled) {
 
     auto ptrTy = llvm::PointerType::get(_context, 0);
     auto uLLVMTy = getLLVMType(concreteType);
@@ -265,7 +288,7 @@ llvm::Function* Compiler::getOrEmitDynPrimitiveThunk(
 
     // 构造 thunk 形参 / 返回类型 (与 Dyn 调用站构造的 indirect call FnType 对齐)
     std::vector<llvm::Type*> thunkParamTypes;
-    thunkParamTypes.push_back(ptrTy);  // receiver
+    thunkParamTypes.push_back(ptrTy); // receiver
     for (auto& p : sig->params()) {
         if (!p || !p->type()) continue;
         auto pt = p->type()->getType();
@@ -281,8 +304,7 @@ llvm::Function* Compiler::getOrEmitDynPrimitiveThunk(
         if (!rt.empty()) retTy = getLLVMType(rt);
     }
     auto thunkTy = llvm::FunctionType::get(retTy, thunkParamTypes, false);
-    auto thunk = llvm::Function::Create(thunkTy, llvm::Function::LinkOnceODRLinkage,
-                                        thunkName, _module);
+    auto thunk = llvm::Function::Create(thunkTy, llvm::Function::LinkOnceODRLinkage, thunkName, _module);
     thunk->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
 
     // vtable 生成可能发生在任意 codegen 时点; 保存 / 恢复 builder 插入点.
@@ -302,8 +324,7 @@ llvm::Function* Compiler::getOrEmitDynPrimitiveThunk(
     auto sdkFnTy = llvm::FunctionType::get(retTy, sdkParamTypes, false);
     auto* sdkFn = _module->getFunction(sdkMangled);
     if (!sdkFn) {
-        sdkFn = llvm::Function::Create(sdkFnTy, llvm::Function::ExternalLinkage,
-                                       sdkMangled, _module);
+        sdkFn = llvm::Function::Create(sdkFnTy, llvm::Function::ExternalLinkage, sdkMangled, _module);
     }
 
     auto argIt = thunk->arg_begin();

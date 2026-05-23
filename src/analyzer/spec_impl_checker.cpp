@@ -31,14 +31,9 @@ namespace {
 // 内置类型按 yux.core 归属 (§12.5 orphan 用; SDK base.yux 内为这些类型
 // 实现 ToString 等内置 draft 视为合法).
 const std::set<std::string>& builtinTypeNames() {
-    static const std::set<std::string> s = {
-        "i8", "u8", "i16", "u16",
-        "i32", "u32", "i64", "u64",
-        "f32", "f64", "bool",
-        "String", "StringBuilder",
-        "Rc", "Array", "Weak", "Ptr",
-        "Nullable", "Ref"
-    };
+    static const std::set<std::string> s = {"i8",    "u8",   "i16", "u16",      "i32",    "u32",           "i64",
+                                            "u64",   "f32",  "f64", "bool",     "String", "StringBuilder", "Rc",
+                                            "Array", "Weak", "Ptr", "Nullable", "Ref"};
     return s;
 }
 
@@ -59,7 +54,8 @@ void SpecImplChecker::buildTypeOwnerMap() {
     };
     if (_yux) {
         if (auto sdk = _yux->sdkFile()) index(sdk);
-        for (auto& f : _yux->files()) index(f);
+        for (auto& f : _yux->files())
+            index(f);
     }
 }
 
@@ -92,7 +88,8 @@ void SpecImplChecker::validate() {
         }
     };
     if (auto sdk = _yux->sdkFile()) run(sdk);
-    for (auto& f : _yux->files()) run(f);
+    for (auto& f : _yux->files())
+        run(f);
 
     // §12.4.2.1 E1105 显隐冲突: 必须等所有显式 impl 全部 §12.2 校验通过
     // 后再做, 避免"穷尽性 / 不多余" 与 显隐冲突 互相覆盖错误位置.
@@ -150,7 +147,8 @@ void SpecImplChecker::checkExplicitImplicitConflict() {
         }
     };
     if (auto sdk = _yux->sdkFile()) collect(sdk);
-    for (auto& f : _yux->files()) collect(f);
+    for (auto& f : _yux->files())
+        collect(f);
 
     // 对每个 Type, 若任一 (plain 方法, draft 方法) 同名 + §12.3.1 签名等价
     // 则报 E1105. 错误位点取 plain 一侧 — 通常这是用户已有的"普通定义",
@@ -163,9 +161,8 @@ void SpecImplChecker::checkExplicitImplicitConflict() {
                 // 两侧均为已写出的具体方法, draft 自身泛型替换不需要
                 // (draft 方法已按 §12.2.2 校验为 D 签名集的实现).
                 if (sigEquivalent(pm, dm, {})) {
-                    throw YuxError(pm->getLineNumber(), pm->getColumn(),
-                                   ErrorCode::E1105,
-                                   pm->name().getText(), typeQualified, dq);
+                    throw YuxError(pm->getLineNumber(), pm->getColumn(), ErrorCode::E1105, pm->name().getText(),
+                                   typeQualified, dq);
                 }
             }
         }
@@ -176,9 +173,7 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
     auto& reg = _yux->specRegistry();
     const std::string typeBare = impl->structName();
     const std::string typeOwnerMod = moduleOfType(typeBare);
-    const std::string typeQualified = typeOwnerMod.empty()
-        ? typeBare
-        : (typeOwnerMod + "." + typeBare);
+    const std::string typeQualified = typeOwnerMod.empty() ? typeBare : (typeOwnerMod + "." + typeBare);
 
     const auto& implMethods = impl->methods();
 
@@ -211,8 +206,7 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
         auto key = std::make_pair(typeQualified, specKey);
         auto seenIt = _seen.find(key);
         if (seenIt != _seen.end()) {
-            throw YuxError(impl->getLineNumber(), impl->getColumn(),
-                           ErrorCode::E1103, typeQualified, specKey);
+            throw YuxError(impl->getLineNumber(), impl->getColumn(), ErrorCode::E1103, typeQualified, specKey);
         }
         _seen.emplace(key, impl);
 
@@ -223,19 +217,16 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
         // 首登记 wins → 错认 owner module, 详 BUGS.md#4).
         bool typeLocalToImplFile = false;
         for (auto& d : implFile->getStructDecls()) {
-            if (d->name().getText() == typeBare) { typeLocalToImplFile = true; break; }
+            if (d->name().getText() == typeBare) {
+                typeLocalToImplFile = true;
+                break;
+            }
         }
-        const std::string specOwnerMod = resolved->ownerFile
-            ? resolved->ownerFile->moduleName()
-            : std::string();
+        const std::string specOwnerMod = resolved->ownerFile ? resolved->ownerFile->moduleName() : std::string();
         const std::string& implMod = implFile->moduleName();
         // implMod 为空 (单文件主入口未登记模块名) 时, 跳过 orphan 检查避免误报.
-        if (!implMod.empty()
-            && !typeLocalToImplFile
-            && implMod != typeOwnerMod
-            && implMod != specOwnerMod) {
-            throw YuxError(impl->getLineNumber(), impl->getColumn(),
-                           ErrorCode::E1120, specQualified, typeQualified);
+        if (!implMod.empty() && !typeLocalToImplFile && implMod != typeOwnerMod && implMod != specOwnerMod) {
+            throw YuxError(impl->getLineNumber(), impl->getColumn(), ErrorCode::E1120, specQualified, typeQualified);
         }
 
         // 构造 draft 自身泛型形参 → 实参替换表.
@@ -262,9 +253,8 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
             // 临时 Token 在 full-expression 后销毁, dname 立即悬挂.
             const std::string dname = dsig->name().getText();
             size_t arity = dsig->params().size();
-            sigGroups[{dname, arity}].push_back({.spec = draft, .sigIdx = sigIdx,
-                                                  .subst = subst,
-                                                  .specQualified = specQualified});
+            sigGroups[{dname, arity}].push_back(
+                {.spec = draft, .sigIdx = sigIdx, .subst = subst, .specQualified = specQualified});
         }
     }
 
@@ -298,9 +288,8 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
         if (withDefault.empty()) {
             // E1101: 取首条 entry 做诊断 (合并掉草案中的 E1136).
             auto& e = entries.front();
-            throw YuxError(impl->getLineNumber(), impl->getColumn(),
-                           ErrorCode::E1101, typeQualified,
-                           e.specQualified, name);
+            throw YuxError(impl->getLineNumber(), impl->getColumn(), ErrorCode::E1101, typeQualified, e.specQualified,
+                           name);
         }
 
         if (withDefault.size() >= 2) {
@@ -313,16 +302,14 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
                 specList += withDefault[i]->specQualified;
                 specList += '`';
             }
-            throw YuxError(impl->getLineNumber(), impl->getColumn(),
-                           ErrorCode::E3132, typeQualified, name, specList);
+            throw YuxError(impl->getLineNumber(), impl->getColumn(), ErrorCode::E3132, typeQualified, name, specList);
         }
 
         // 恰好一条默认体: 注册 fall-through (覆盖本组所有 spec).
         // 同名但与 spec 签名不等价的实现方法当作"另一个方法"看待, 仍可触发 fall-through.
         SigEntry* picked = withDefault[0];
         auto& dsig = picked->spec->signatures()[picked->sigIdx];
-        impl->addInheritedDefault({.spec = picked->spec, .sigIdx = picked->sigIdx,
-                                   .subst = picked->subst});
+        impl->addInheritedDefault({.spec = picked->spec, .sigIdx = picked->sigIdx, .subst = picked->subst});
 
         // 同步把 fall-through 方法注册到 impl 所在 file 的 fnSymbol 表,
         // 让 ExprCallNode::getType 能解析 `obj.lt(...)`.
@@ -348,12 +335,63 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
         }
         implFile->registerFnSymbol(fullName, methodFnSym);
     }
+
+    // DRAFT-spec-disambig-at: 为每个 (spec, 默认体 method) 预登记 @-tagged 发射点.
+    // 即便 impl 覆盖了同名方法 (escape hatch), `$.m@SpecA()` 也直接命中此符号 -> spec 默认体.
+    // emitMethodName = origName + "__at__" + dref.name (单名, 与 g4 `@ID` 单名约束对齐).
+    impl->clearSpecDisambigEmits();
+    for (auto& dref : impl->specRefs()) {
+        auto resolved = reg.resolve(dref.name, implFile);
+        if (!resolved) continue;
+        SpecDeclNode* spec = resolved->decl;
+
+        std::map<std::string, TypeInfo> subst;
+        const auto& dParams = spec->typeParams();
+        size_t pn = std::min(dParams.size(), dref.typeArgs.size());
+        for (size_t i = 0; i < pn; ++i) {
+            subst[dParams[i]] = dref.typeArgs[i];
+        }
+        subst["Self"] = TypeInfo(typeBare);
+
+        const auto& dsigs = spec->signatures();
+        for (size_t sigIdx = 0; sigIdx < dsigs.size(); ++sigIdx) {
+            if (!spec->hasDefaultBody(sigIdx)) continue;
+            auto& dsig = dsigs[sigIdx];
+            std::string origName = dsig->name().getText();
+            std::string emitName = origName;
+            origName += "__at__";
+            origName += dref.name;
+            std::string fullName2 = typeBare;
+            fullName2 += ".";
+            fullName2 += emitName;
+
+            std::vector<TypeInfo> paramTypes2;
+            paramTypes2.emplace_back(typeBare);
+            for (auto& sp : dsig->params()) {
+                TypeInfo pt = sp->type() ? sp->type()->getType() : TypeInfo();
+                paramTypes2.push_back(pt.substitute(subst));
+            }
+            TypeInfo retType2 = dsig->retType() ? dsig->retType()->getType() : TypeInfo();
+            retType2 = retType2.substitute(subst);
+
+            SymbolInfo methodSym2(SymbolKind::Function, emitName, retType2);
+            methodSym2.moduleName = implFile->moduleName();
+            implFile->registerSymbol(fullName2, methodSym2);
+            FnSymbolInfo methodFnSym2{fullName2, implFile->moduleName(), paramTypes2, retType2};
+            methodFnSym2.isNoReturn = dsig->hasAnno("NoReturn");
+            methodFnSym2.isConst = dsig->hasAnno("Const");
+            if (auto eOpt = dsig->getAnnoArg("Fallible")) {
+                methodFnSym2.fallibleErrType = *eOpt;
+            }
+            implFile->registerFnSymbol(fullName2, methodFnSym2);
+
+            impl->addSpecDisambigEmit({.spec = spec, .sigIdx = sigIdx, .subst = subst, .emitMethodName = emitName});
+        }
+    }
 }
 
-bool SpecImplChecker::sigEquivalent(
-    FnHeaderNode* implMethod,
-    FnHeaderNode* specSig,
-    const std::map<std::string, TypeInfo>& subst) const {
+bool SpecImplChecker::sigEquivalent(FnHeaderNode* implMethod, FnHeaderNode* specSig,
+                                    const std::map<std::string, TypeInfo>& subst) const {
 
     auto implParams = implMethod->params();
     auto specParams = specSig->params();
@@ -372,10 +410,8 @@ bool SpecImplChecker::sigEquivalent(
     return ir == drSub;
 }
 
-bool SpecImplChecker::typeSatisfiesSpec(
-    const std::string& typeBareName,
-    SpecDeclNode* draft,
-    const std::vector<TypeInfo>& specTypeArgs) const {
+bool SpecImplChecker::typeSatisfiesSpec(const std::string& typeBareName, SpecDeclNode* draft,
+                                        const std::vector<TypeInfo>& specTypeArgs) const {
     if (!draft || !_yux) return false;
 
     // draft 自身泛型形参 → 实参替换表; arity 不齐时只覆盖前缀.
@@ -398,7 +434,8 @@ bool SpecImplChecker::typeSatisfiesSpec(
         }
     };
     if (auto sdk = _yux->sdkFile()) collect(sdk);
-    for (auto& f : _yux->files()) collect(f);
+    for (auto& f : _yux->files())
+        collect(f);
 
     // 每个 draft 签名都要在 methods 中找到 §12.3.1 等价匹配 (受 subst 替换后).
     for (auto& dsig : draft->signatures()) {
@@ -418,11 +455,8 @@ bool SpecImplChecker::typeSatisfiesSpec(
     return true;
 }
 
-bool SpecImplChecker::boundSatisfied(
-    const TypeInfo& typeArg,
-    SpecDeclNode* draft,
-    const std::string& specQualified,
-    const std::vector<TypeInfo>& specTypeArgs) const {
+bool SpecImplChecker::boundSatisfied(const TypeInfo& typeArg, SpecDeclNode* draft, const std::string& specQualified,
+                                     const std::vector<TypeInfo>& specTypeArgs) const {
     if (!draft) return false;
 
     // §8.6.7.1: T 形参实参不接 `T&`. 这里只做正常形态; 调用侧若传入 ref,
@@ -431,9 +465,7 @@ bool SpecImplChecker::boundSatisfied(
 
     const std::string& typeBare = typeArg.name;
     const std::string typeOwnerMod = moduleOfType(typeBare);
-    const std::string typeQualified = typeOwnerMod.empty()
-        ? typeBare
-        : (typeOwnerMod + "." + typeBare);
+    const std::string typeQualified = typeOwnerMod.empty() ? typeBare : (typeOwnerMod + "." + typeBare);
 
     // 拼 specKey: 与 validateImpl 写入 _seen 时一致.
     std::string specKey = specQualified;
@@ -510,10 +542,16 @@ bool SpecImplChecker::specIsObjectSafe(SpecDeclNode* draft) const {
     bool safe = true;
     for (auto& sig : draft->signatures()) {
         for (auto& p : sig->params()) {
-            if (containsBad(p->type())) { safe = false; break; }
+            if (containsBad(p->type())) {
+                safe = false;
+                break;
+            }
         }
         if (!safe) break;
-        if (containsBad(sig->retType())) { safe = false; break; }
+        if (containsBad(sig->retType())) {
+            safe = false;
+            break;
+        }
     }
     _objectSafeCache[draft] = safe;
     return safe;
@@ -598,11 +636,11 @@ void SpecImplChecker::validateDynTypeReferences() {
         }
     };
     if (auto sdk = _yux->sdkFile()) run(sdk);
-    for (auto& f : _yux->files()) run(f);
+    for (auto& f : _yux->files())
+        run(f);
 }
 
-void SpecImplChecker::validateDynInTypeNode(TypeNode* tn, FileNode* file,
-                                             const std::string& outerWrapper) const {
+void SpecImplChecker::validateDynInTypeNode(TypeNode* tn, FileNode* file, const std::string& outerWrapper) const {
     if (!tn) return;
 
     // TypeGenericNode: 处理 Dyn / 容器 / 通用递归
@@ -615,10 +653,8 @@ void SpecImplChecker::validateDynInTypeNode(TypeNode* tn, FileNode* file,
         if (baseName == "Dyn" && gen->typeArgs().size() == 1) {
             // 外层禁忌: Rc<Dyn> / Weak<Dyn> / Dyn<Dyn> → E1132;
             // Nullable<Dyn> (即 Dyn<D>?) → E1135.
-            if (outerWrapper == "Rc" || outerWrapper == "Weak" ||
-                outerWrapper == "Dyn") {
-                throw YuxError(line, col, ErrorCode::E1132,
-                    outerWrapper + "<" + gen->getType().getFullName() + ">");
+            if (outerWrapper == "Rc" || outerWrapper == "Weak" || outerWrapper == "Dyn") {
+                throw YuxError(line, col, ErrorCode::E1132, outerWrapper + "<" + gen->getType().getFullName() + ">");
             }
             if (outerWrapper == "Nullable") {
                 throw YuxError(line, col, ErrorCode::E1135);
@@ -628,8 +664,7 @@ void SpecImplChecker::validateDynInTypeNode(TypeNode* tn, FileNode* file,
             TypeNode* inner = gen->typeArgs()[0];
             TypeNode* innerStripped = inner;
             if (auto* refGen = dynamic_cast<TypeGenericNode*>(inner)) {
-                if (refGen->baseName().getText() == "Ref" &&
-                    refGen->typeArgs().size() == 1) {
+                if (refGen->baseName().getText() == "Ref" && refGen->typeArgs().size() == 1) {
                     innerStripped = refGen->typeArgs()[0];
                 }
             }
@@ -637,15 +672,13 @@ void SpecImplChecker::validateDynInTypeNode(TypeNode* tn, FileNode* file,
             // 内层若仍是 Dyn → E1132
             if (auto* innerGen = dynamic_cast<TypeGenericNode*>(innerStripped)) {
                 if (innerGen->baseName().getText() == "Dyn") {
-                    throw YuxError(line, col, ErrorCode::E1132,
-                        gen->getType().getFullName());
+                    throw YuxError(line, col, ErrorCode::E1132, gen->getType().getFullName());
                 }
             }
 
             // 内层必须是 TypeNormalNode(draft 名), 否则 E1131
             auto* innerNormal = dynamic_cast<TypeNormalNode*>(innerStripped);
-            std::string specBare = innerNormal ? innerNormal->typeNameToken().getText()
-                                                 : std::string();
+            std::string specBare = innerNormal ? innerNormal->typeNameToken().getText() : std::string();
             SpecDeclNode* specDecl = nullptr;
             std::string specQualified;
             if (_yux && file && !specBare.empty()) {
@@ -656,14 +689,12 @@ void SpecImplChecker::validateDynInTypeNode(TypeNode* tn, FileNode* file,
                 }
             }
             if (!specDecl) {
-                throw YuxError(line, col, ErrorCode::E1131,
-                    specBare.empty() ? std::string("?") : specBare);
+                throw YuxError(line, col, ErrorCode::E1131, specBare.empty() ? std::string("?") : specBare);
             }
 
             // 对象安全 (E1134): 与构造侧一致, 声明位也拒绝 (DRAFT §4)
             if (!specIsObjectSafe(specDecl)) {
-                throw YuxError(line, col, ErrorCode::E1134,
-                    specQualified, specQualified, specQualified);
+                throw YuxError(line, col, ErrorCode::E1134, specQualified, specQualified, specQualified);
             }
 
             // Dyn 内层为合法 draft, 不再继续递归 (D 名在 draft 命名空间, 不是

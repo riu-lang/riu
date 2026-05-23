@@ -416,6 +416,11 @@ Array 内置方法（E6040..E6044）：
 | E1134  | `` Draft `{}` is not object-safe: signatures contain `Self` or the draft's own name in non-receiver position; `Dyn<{}>` / `Dyn<{}&>` is not allowed `` | draft 非对象安全（§12.9.4） |
 | E1135  | `` `Dyn<D>?` (nullable dyn) is not supported in v1 `` | `Dyn<D>?` 形态（§12.9.3.3） |
 | E1136  | `` `Dyn<{}>` cannot cross `extern` boundary: vtable layout is internal ABI `` | `Dyn` 跨 `extern` 边界（§12.9.10） |
+| E1137  | `` Type `{}` does not implement spec method `{}` (declared in `#Impl({})`) `` | `#Impl(D)` 缺方法且 D 中无默认体（spec-unify v1，与 E1101 同语义类） |
+| E1138  | `` Cannot access static member `{}` on instance of `{}`; use `{}::{}` instead `` | 实例形访问 `#Static fn`（§12.2.4.1） |
+| E1139  | *（已退役）* | DRAFT-spec-default-body 落地（§12.10）解锁 spec body 方法带 body，编号保留不复用 |
+| E1140  | `` spec `{}` default body references unknown method `$.{}`; must appear in this spec's signatures `` | spec 默认体 sema 占位校验失败（§12.10.3.2） |
+| E3132  | `` Type `{}` inherits conflicting default bodies for method `{}` from specs {}; implementer must provide an explicit override `` | 多 spec 默认体组合冲突未消歧（§12.10.5） |
 
 ## D.4 与编译流程的关系
 

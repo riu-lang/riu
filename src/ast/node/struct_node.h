@@ -19,8 +19,7 @@ class StructFieldNode : public Node {
     bool _isFrozen = false;
 
 public:
-    StructFieldNode(const p<Node>& parent, Token name, p<TypeNode> type) :
-        Node(parent), _name(name), _type(type) {
+    StructFieldNode(const p<Node>& parent, Token name, p<TypeNode> type) : Node(parent), _name(name), _type(type) {
         _isPrivate = !name.getText().empty() && name.getText()[0] == '_';
     }
 
@@ -42,8 +41,7 @@ class StructDeclNode : public ScopeNode, public Named, public Annotated {
     bool _isPrivate;
 
 public:
-    StructDeclNode(const p<Node>& parent, Token name) :
-        ScopeNode(parent), Named(name) {
+    StructDeclNode(const p<Node>& parent, Token name) : ScopeNode(parent), Named(name) {
         _isPrivate = !name.getText().empty() && name.getText()[0] == '_';
     }
 
@@ -75,17 +73,12 @@ class StructImplNode : public ScopeNode, public Named, public Annotated {
     string _structName;
 
 public:
-    StructImplNode(const p<Node>& parent, Token structName) :
-        ScopeNode(parent), Named(structName), _destructor(nullptr), _structName(structName.getText()) {
-    }
+    StructImplNode(const p<Node>& parent, Token structName)
+        : ScopeNode(parent), Named(structName), _destructor(nullptr), _structName(structName.getText()) {}
 
-    void addMethod(p<FnNode> method) {
-        _methods.push_back(method);
-    }
+    void addMethod(p<FnNode> method) { _methods.push_back(method); }
 
-    void setDestructor(p<FnNode> destructor) {
-        _destructor = destructor;
-    }
+    void setDestructor(p<FnNode> destructor) { _destructor = destructor; }
 
     [[nodiscard]] const vector<p<FnNode>>& methods() const { return _methods; }
     [[nodiscard]] const p<FnNode>& destructor() const { return _destructor; }
@@ -116,9 +109,25 @@ public:
     void clearInheritedDefaults() { _inheritedDefaults.clear(); }
     [[nodiscard]] const vector<InheritedDefault>& inheritedDefaults() const { return _inheritedDefaults; }
 
+    // DRAFT-spec-disambig-at: 为 `$.m@SpecA()` 形态 (即便 S 覆盖了 m, 也走 spec 默认体)
+    // 预登记的"@-tagged" 方法发射点. 每个 (spec, sigIdx with default body) 一条;
+    // emitMethodName = origName + "__at__" + specShortName, 与 fall-through 的同名 fnSymbol
+    // 共存. 由 SpecImplChecker::validateImpl 登记; 由 Compiler::compileSpecDisambigEmits
+    // 在常规方法 + fall-through 编完后逐条 emit.
+    struct SpecDisambigEmit {
+        SpecDeclNode* spec = nullptr;
+        size_t sigIdx = 0;
+        map<string, TypeInfo> subst;
+        string emitMethodName;
+    };
+    void addSpecDisambigEmit(SpecDisambigEmit d) { _specDisambigEmits.push_back(std::move(d)); }
+    void clearSpecDisambigEmits() { _specDisambigEmits.clear(); }
+    [[nodiscard]] const vector<SpecDisambigEmit>& specDisambigEmits() const { return _specDisambigEmits; }
+
 private:
     vector<SpecRef> _specRefs;
     vector<InheritedDefault> _inheritedDefaults;
+    vector<SpecDisambigEmit> _specDisambigEmits;
 };
 
-#endif //YUX_LANG_STRUCT_NODE_H
+#endif // YUX_LANG_STRUCT_NODE_H

@@ -51,6 +51,7 @@ SymbolAdd: '+';
 SymbolAddEq: '+=';
 SymbolAnd: '&';
 SymbolAndAnd: '&&';
+SymbolAt: '@';
 SymbolColon: ':';
 // 静态成员也考虑用此
 SymbolColonColon: '::';

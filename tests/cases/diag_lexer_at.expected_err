@@ -1,3 +1,0 @@
-diag_lexer_at.yux:2:7 [E1001] error: lexer error: token recognition error at: '@'
-[E1002] error: syntax error
-[E5010] error: syntax errors in

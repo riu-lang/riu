@@ -500,7 +500,8 @@ expr:
     // a.b
     // a?.b
     // 链式：`.` 前允许换行（a\n  .b\n  .c）
-    | left=expr LineEnd* SymbolQuest? SymbolDot member+=ID    # exprDot
+    | left=expr LineEnd* SymbolQuest? SymbolDot member+=ID
+        (SymbolAt specQual=ID)?                               # exprDot
     // a.0
     | left=expr LineEnd* member=DOT_NUM                       # exprTupleMember
     // [e1, e2]

@@ -19,14 +19,22 @@
 // ==================== 方法调用编译 ====================
 // 编译方法调用表达式 (obj.method(args))
 // 处理多种情况: 包别名调用、模块别名调用、内置类型方法、数组方法、结构体方法
-llvm::Value* Compiler::compileMethodCall(
-    p<ExprCallNode> callNode, p<ExprDotNode> dotNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
+llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode> dotNode, vector<llvm::Value*>& args,
+                                         vector<TypeInfo>& argTypes) {
     auto baseExpr = dotNode->baseExpr();
     auto member = dotNode->member();
+    // DRAFT-spec-disambig-at: `$.m@SpecA()` / `obj.m@SpecA()` 把 member 重写为
+    // `m__at__<specShort>`, 由 spec_impl_checker 预登记的 @-tagged fnSymbol 命中.
+    // 例外: Dyn<D> 上 `d.m@D()` 走 vtable dispatch (sema 已校验 @D 匹配), 不重写.
+    if (dotNode->hasSpecQualifier()) {
+        auto bt = baseExpr->getType();
+        if (!bt.isDyn()) {
+            member = member + "__at__" + dotNode->specQualifier();
+        }
+    }
 
     // 处理包别名调用 / 模块别名调用 (E6001-E6005 已迁至 sema::resolveModuleFnCall)
-    if (auto modCall = sema::resolveModuleFnCall(_file, _yux, callNode, dotNode, argTypes);
-        modCall.matched) {
+    if (auto modCall = sema::resolveModuleFnCall(_file, _yux, callNode, dotNode, argTypes); modCall.matched) {
         return compileKnownFunctionCall(callNode, modCall.fnName, args, argTypes, modCall.fnSym);
     }
 
@@ -89,7 +97,7 @@ llvm::Value* Compiler::compileMethodCall(
                 if (!fn) {
                     vector<llvm::Type*> paramTypes;
                     paramTypes.reserve(argTypes.size());
-for (auto& t : argTypes) {
+                    for (auto& t : argTypes) {
                         paramTypes.push_back(getLLVMType(t));
                     }
                     auto fnType = llvm::FunctionType::get(_builder.getVoidTy(), paramTypes, false);
@@ -102,10 +110,10 @@ for (auto& t : argTypes) {
     return nullptr;
 }
 
-llvm::Value* Compiler::compileArrayMethodCall(
-    p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType,
-    const string& member, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
-    
+llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType,
+                                              const string& member, vector<llvm::Value*>& args,
+                                              vector<TypeInfo>& argTypes) {
+
     auto elemType = baseType.arrayGenericElementType();
     auto arrayStructType = getLLVMType(baseType);
     auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
@@ -165,8 +173,8 @@ llvm::Value* Compiler::compileArrayMethodCall(
     }
 
     // Phase 3.3.2.a: Array<T> 方法形态校验 (E3055/E6040-E6044)
-    sema::validateArrayMethodCall(baseType, member, args.size(), arrayPtr != nullptr,
-                                   callNode->getLineNumber(), callNode->getColumn());
+    sema::validateArrayMethodCall(baseType, member, args.size(), arrayPtr != nullptr, callNode->getLineNumber(),
+                                  callNode->getColumn());
 
     auto getReadPtr = [&]() -> llvm::Value* {
         if (arrayPtr) return arrayPtr;
@@ -255,9 +263,7 @@ llvm::Value* Compiler::compileArrayMethodCall(
         auto lenFieldPtr = arrayBlockLenPtr(handle);
         auto capFieldPtr = arrayBlockCapPtr(handle);
 
-        auto voidResult = [&]() -> llvm::Value* {
-            return llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-        };
+        auto voidResult = [&]() -> llvm::Value* { return llvm::ConstantInt::get(_builder.getInt32Ty(), 0); };
 
         if (member == "clear") {
             DEBUG_LOG("    Expr: Array.clear()");
@@ -304,10 +310,10 @@ llvm::Value* Compiler::compileArrayMethodCall(
     return nullptr;
 }
 
-llvm::Value* Compiler::compileBuiltinTypeMethodCall(
-    p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType,
-    const string& member, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
-    
+llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<ExprNode> baseExpr,
+                                                    const TypeInfo& baseType, const string& member,
+                                                    vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
+
     if (member.starts_with("to_")) {
         string dstType = member.substr(3);
         if (isBuiltinType(dstType)) {
@@ -317,13 +323,13 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
             return createCast(baseVal, srcType, TypeInfo(dstType));
         }
     }
-    
+
     // 处理 #CompilerInner 运算符方法：直接生成 LLVM IR
     if (isCompilerInnerMethod(baseType.name, member)) {
         // Phase 3.3.2.e: 操作符方法 arity + 类型域校验
         //   E6045 17 处二元 op arity != 1, E3070 inv-on-float 全部抠到 sema.
-        sema::validateOperatorMethodCall(member, baseType, args.size(),
-            callNode->getLineNumber(), callNode->getColumn());
+        sema::validateOperatorMethodCall(member, baseType, args.size(), callNode->getLineNumber(),
+                                         callNode->getColumn());
 
         auto baseVal = compileExpr(baseExpr);
         bool isFloat = baseType.startsWith('f');
@@ -471,30 +477,30 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
             return _builder.CreateNot(baseVal, "not");
         }
     }
-    
+
     vector<TypeInfo> methodParamTypes;
     methodParamTypes.push_back(baseType);
     for (auto& t : argTypes) {
         methodParamTypes.push_back(t);
     }
-    
+
     string methodFullName = baseType.name + "." + member;
     FnSymbolInfo* sdkMethodSymbol = nullptr;
     if (_yux && _yux->sdkFile()) {
         sdkMethodSymbol = _yux->sdkFile()->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
     }
-    
+
     if (sdkMethodSymbol) {
         DEBUG_LOG_VAL("    Expr: BuiltinTypeMethodCall (SDK)", methodFullName);
-        
+
         auto baseVal = compileExpr(baseExpr);
-        
+
         vector<llvm::Value*> methodArgs;
         methodArgs.push_back(baseVal);
         for (auto& arg : args) {
             methodArgs.push_back(arg);
         }
-        
+
         string ownerMod = _yux->sdkFile()->moduleName();
         bool methPriv = !member.empty() && member[0] == '_';
         string mangledName = Mangler::method(ownerMod, baseType.name, member, argTypes, methPriv);
@@ -515,10 +521,10 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(
     throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6016, member, baseType.name);
 }
 
-llvm::Value* Compiler::compileStructMethodCall(
-    p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType, const TypeInfo& actualType,
-    const string& member, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
-    
+llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType,
+                                               const TypeInfo& actualType, const string& member,
+                                               vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
+
     if (actualType.isGeneric()) {
         auto baseDecl = _file->getStructDecl(actualType.name);
         p<FileNode> owner = _file;
@@ -556,7 +562,8 @@ llvm::Value* Compiler::compileStructMethodCall(
 
                     vector<llvm::Value*> methodArgs;
                     methodArgs.push_back(basePtr);
-                    for (auto& a : args) methodArgs.push_back(a);
+                    for (auto& a : args)
+                        methodArgs.push_back(a);
 
                     // 泛型实例方法：用消费方模块作为前缀（与 emit 端一致）
                     string ownerMod = inst.consumerModule;
@@ -606,9 +613,8 @@ llvm::Value* Compiler::compileStructMethodCall(
         DEBUG_LOG_VAL("    Expr: MethodCall", methodFullName);
 
         // E6007 (Phase 3.3.3.a): 跨可见性私有方法, 迁至 sema::validateStructMethodVisibility.
-        sema::validateStructMethodVisibility(methodSymbol, _currentStructName,
-                                              actualType.name, member,
-                                              callNode->getLineNumber(), callNode->getColumn());
+        sema::validateStructMethodVisibility(methodSymbol, _currentStructName, actualType.name, member,
+                                             callNode->getLineNumber(), callNode->getColumn());
 
         llvm::Value* basePtr = nullptr;
         if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
@@ -708,9 +714,9 @@ llvm::Value* Compiler::compileStructMethodCall(
 //      (后续 4c 落 E3xxx 明确码; 此处先用通用 E6015 + hint, 保证 Phase 2d 闭环).
 //   5. Phase 2d 不接 codegen: 命中合法调用统一抛 E6015 + hint「Phase 3d pending」.
 //      Phase 3d 把第 5 步替换为 load vtable[i] + indirect call.
-llvm::Value* Compiler::compileDynMethodCall(
-    p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType,
-    const string& member, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
+llvm::Value* Compiler::compileDynMethodCall(p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType,
+                                            const string& member, vector<llvm::Value*>& args,
+                                            vector<TypeInfo>& argTypes) {
     int line = callNode->getLineNumber();
     int col = callNode->getColumn();
 
@@ -722,8 +728,7 @@ llvm::Value* Compiler::compileDynMethodCall(
     const string& specQualified = resolved.qualified;
 
     // 2-4. sig 查找 / arity / 形参类型 抠到 sema (E6016 / E6012 / E6015).
-    FnHeaderNode* sig = sema::resolveDynMethodSig(
-        specDecl, specQualified, baseType, member, argTypes, line, col);
+    FnHeaderNode* sig = sema::resolveDynMethodSig(specDecl, specQualified, baseType, member, argTypes, line, col);
 
     // 5. Phase 3d: load fat_ptr.vtable → GEP slot[i+1] → load fn ptr → indirect call.
     //    receiver:
@@ -736,14 +741,17 @@ llvm::Value* Compiler::compileDynMethodCall(
     // 找到方法在 D.signatures() 中的下标（vtable 槽 0 是 dtor，方法从 1 开始）
     size_t methodIdx = 0;
     for (size_t i = 0; i < specDecl->signatures().size(); ++i) {
-        if (specDecl->signatures()[i] == sig) { methodIdx = i; break; }
+        if (specDecl->signatures()[i] == sig) {
+            methodIdx = i;
+            break;
+        }
     }
 
     auto ptrTy = llvm::PointerType::get(_context, 0);
     auto i32Ty = _builder.getInt32Ty();
 
     // 5.1 编译 baseExpr → 落到 alloca 以便 GEP 出 vtable / data 字段
-    auto fatStructTy = getLLVMType(baseType);  // { ptr, ptr }
+    auto fatStructTy = getLLVMType(baseType); // { ptr, ptr }
     llvm::Value* fatAlloca = nullptr;
     if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
         if (auto objLiteral = dynamic_cast<LiteralObjNode*>(baseLiteral->literal())) {
@@ -774,13 +782,12 @@ llvm::Value* Compiler::compileDynMethodCall(
     // 5.3 receiver：owned → data + 8（跳 RC 头）；borrow → data 直接是实例指针
     llvm::Value* receiver = dataPtr;
     if (baseType.isDynOwned()) {
-        receiver = _builder.CreateGEP(_builder.getInt8Ty(), dataPtr,
-                                       {_builder.getInt64(8)}, "dyn.payload");
+        receiver = _builder.CreateGEP(_builder.getInt8Ty(), dataPtr, {_builder.getInt64(8)}, "dyn.payload");
     }
 
     // 5.4 构建 indirect call 的 FunctionType（与 vtable 端 forward-declare 一致）
     std::vector<llvm::Type*> llvmParamTypes;
-    llvmParamTypes.push_back(ptrTy);  // receiver
+    llvmParamTypes.push_back(ptrTy); // receiver
     for (auto& p : sig->params()) {
         if (!p || !p->type()) continue;
         auto pt = p->type()->getType();

@@ -60,8 +60,14 @@ namespace {
 // 实际抛出点。新增迁移码追加到此处即可。
 constexpr std::array<std::string_view, 26> kMigratedCodes = {
     // 算术 / 比较 / 分支结果
-    "E3001", "E3002", "E3003", "E3004",
-    "E3005", "E3006", "E3007", "E3008",
+    "E3001",
+    "E3002",
+    "E3003",
+    "E3004",
+    "E3005",
+    "E3006",
+    "E3007",
+    "E3008",
     // 数组 / 字段 / 元组 / 引用
     // E3011 (数组元素类型不一致) 暂不迁移: 嵌套数组字面量 / 目标类型上下文
     // (`var rows Array<Array<i32>> = [[1,2],[3,4,5]]`) 在 codegen 走 target-type
@@ -73,14 +79,21 @@ constexpr std::array<std::string_view, 26> kMigratedCodes = {
     // 依赖 targetType, 留 codegen 兜底.
     "E3009",
     "E3025",
-    "E3040", "E3041", "E3043", "E3044",
-    "E3050", "E3051", "E3057", "E3062",
+    "E3040",
+    "E3041",
+    "E3043",
+    "E3044",
+    "E3050",
+    "E3051",
+    "E3057",
+    "E3062",
     "E3097",
     "E3100",
     // Phase 3.4.f.2: 字面量越界
     "E3103",
     // Phase 3.4.h: ExprUnaryNode 内置 op 形态校验 (Rev on float / Not on non-bool)
-    "E3070", "E3071",
+    "E3070",
+    "E3071",
     // Phase 2.6 (heap-types): Heap:<T>(arg) 形参类型不匹配
     "E3028",
     // Phase 6A: 砍同名 ctor 定义形态
@@ -123,9 +136,7 @@ StructDeclNode* lookupStructIn(p<FileNode> file, p<FileNode> sdkFile, const stri
 // Phase 3.3.2.f: 与 Compiler::isCompilerInnerMethod 等价的本地版本.
 // 仅查 sdkFile 的 struct impl (内建运算符方法都注册在 SDK 上), 不存在
 // 时返回 false. Sema 不依赖 Compiler 成员, 这里复制规则.
-bool isCompilerInnerMethodIn(FileNode* sdkFile,
-                             const string& structName,
-                             const string& methodName) {
+bool isCompilerInnerMethodIn(FileNode* sdkFile, const string& structName, const string& methodName) {
     if (!sdkFile) return false;
     auto structImpl = sdkFile->getStructImpl(structName);
     if (!structImpl) return false;
@@ -167,8 +178,7 @@ void validateNoNestedHeap(const TypeInfo& t, int line, int col) {
         if (auto e = t.rcElementType()) {
             if (e->isHeap()) {
                 auto inner = e->heapElementType();
-                throw YuxError(line, col, ErrorCode::E4025, std::string("Rc"),
-                    inner ? inner->name : std::string("?"));
+                throw YuxError(line, col, ErrorCode::E4025, std::string("Rc"), inner ? inner->name : std::string("?"));
             }
             validateNoNestedHeap(*e, line, col);
         }
@@ -179,7 +189,7 @@ void validateNoNestedHeap(const TypeInfo& t, int line, int col) {
             if (e->isHeap()) {
                 auto inner = e->heapElementType();
                 throw YuxError(line, col, ErrorCode::E4025, std::string("Weak"),
-                    inner ? inner->name : std::string("?"));
+                               inner ? inner->name : std::string("?"));
             }
             validateNoNestedHeap(*e, line, col);
         }
@@ -190,7 +200,7 @@ void validateNoNestedHeap(const TypeInfo& t, int line, int col) {
             if (e->isHeap()) {
                 auto inner = e->heapElementType();
                 throw YuxError(line, col, ErrorCode::E4025, std::string("Array"),
-                    inner ? inner->name : std::string("?"));
+                               inner ? inner->name : std::string("?"));
             }
             validateNoNestedHeap(*e, line, col);
         }
@@ -214,13 +224,11 @@ bool isMigratedCode(const char* code) {
     }
     return false;
 }
-}
+} // namespace
 
 SemaPass::SemaPass(p<FileNode> file, Yux* yux)
-    : _file(file), _yux(yux),
-      _sdkFile(yux ? yux->sdkFile() : nullptr),
-      _sourcePath((yux && file) ? yux->modulePath(file->moduleName()) : "") {
-}
+    : _file(file), _yux(yux), _sdkFile(yux ? yux->sdkFile() : nullptr),
+      _sourcePath((yux && file) ? yux->modulePath(file->moduleName()) : "") {}
 
 void SemaPass::run() {
     if (!_file) return;
@@ -252,9 +260,7 @@ void SemaPass::run() {
             // 仍合法 (虽不推荐, 与 `#Static fn make()` 等并行).
             const auto& mname = m->header()->name();
             if (mname.getText() == _currentStructName && !m->header()->isStatic()) {
-                throw YuxError(mname.getLine(),
-                               static_cast<int>(mname.getCharPositionInLine()),
-                               ErrorCode::E3130,
+                throw YuxError(mname.getLine(), static_cast<int>(mname.getCharPositionInLine()), ErrorCode::E3130,
                                _currentStructName, _currentStructName, _currentStructName);
             }
             visitFn(m);
@@ -298,14 +304,15 @@ void walkExprForSpecDefault(const p<ExprNode>& e, SpecDeclNode* spec) {
                     }
                 }
                 if (!found) {
-                    throw YuxError(dot->resolveLineNumber(), dot->resolveColumn(),
-                                   ErrorCode::E1140,
-                                   spec->name().getText(), m);
+                    throw YuxError(dot->resolveLineNumber(), dot->resolveColumn(), ErrorCode::E1140,
+                                   spec->name().getText(), m,
+                                   " (referenced from default body — must appear in this spec's signatures)");
                 }
             }
         }
         walkExprForSpecDefault(n->getCalleeExpr(), spec);
-        for (auto& a : n->getArgs()) walkExprForSpecDefault(a, spec);
+        for (auto& a : n->getArgs())
+            walkExprForSpecDefault(a, spec);
         return;
     }
     if (auto n = dynamic_cast<p<ExprDotNode>>(e)) {
@@ -357,7 +364,8 @@ void walkStmtForSpecDefault(const p<StatementNode>& s, SpecDeclNode* spec) {
     }
     if (auto n = dynamic_cast<p<StatementSetNode>>(s)) {
         walkExprForSpecDefault(n->arrayExpr(), spec);
-        for (auto& idx : n->indices()) walkExprForSpecDefault(idx, spec);
+        for (auto& idx : n->indices())
+            walkExprForSpecDefault(idx, spec);
         walkExprForSpecDefault(n->valueExpr(), spec);
         return;
     }
@@ -371,7 +379,7 @@ void walkStmtForSpecDefault(const p<StatementNode>& s, SpecDeclNode* spec) {
     }
     // StatementLoopNode / Block / Declare(无 init) / RetVoid / Break 等 Phase 2 不处理
 }
-}  // namespace
+} // namespace
 
 void SemaPass::visitSpecDefaults() {
     if (!_file) return;
@@ -428,7 +436,8 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
     }
     if (auto set = dynamic_cast<p<StatementSetNode>>(stmt)) {
         visitExpr(set->arrayExpr());
-        for (auto& idx : set->indices()) visitExpr(idx);
+        for (auto& idx : set->indices())
+            visitExpr(idx);
         visitExpr(set->valueExpr());
         return;
     }
@@ -445,17 +454,14 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         if (d->varType()) {
             try {
                 auto vt = d->varType()->getType();
-                if (!vt.name.empty() && !isBuiltinType(vt.name)
-                    && !vt.isRef() && !vt.isFn() && !vt.isTuple()) {
+                if (!vt.name.empty() && !isBuiltinType(vt.name) && !vt.isRef() && !vt.isFn() && !vt.isTuple()) {
                     if (auto* sd = lookupStructIn(_file, _sdkFile, vt.name)) {
                         size_t want = sd->typeParams().size();
                         size_t got = vt.genericArgs.size();
                         if (want > 0 && want != got) {
-                            throw YuxError(d->getLineNumber(), d->getColumn(),
-                                ErrorCode::E6011, vt.name, want, got)
+                            throw YuxError(d->getLineNumber(), d->getColumn(), ErrorCode::E6011, vt.name, want, got)
                                 .withHint(std::format(
-                                    "实例化时的类型实参个数需与声明匹配；改写为 `{}<{}>` 形式补齐 {} 个类型",
-                                    vt.name,
+                                    "实例化时的类型实参个数需与声明匹配；改写为 `{}<{}>` 形式补齐 {} 个类型", vt.name,
                                     std::string(want == 1 ? "T" : "T1, T2, ..."), want));
                         }
                     }
@@ -471,11 +477,8 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
     if (auto as = dynamic_cast<p<StatementAssignNode>>(stmt)) {
         // Phase 2e: `$.field = ...` 在 `#Static fn` 体内禁用 (E3128).
         // StatementAssign 的 `obj` (LHS 根) 不会被 visitExpr 递归, 这里单独拦截.
-        if (as->obj().getText() == "$" &&
-            _currentFn && _currentFn->header()->isStatic()) {
-            throw YuxError(as->obj().getLine(),
-                           static_cast<int>(as->obj().getCharPositionInLine()),
-                           ErrorCode::E3128);
+        if (as->obj().getText() == "$" && _currentFn && _currentFn->header()->isStatic()) {
+            throw YuxError(as->obj().getLine(), static_cast<int>(as->obj().getCharPositionInLine()), ErrorCode::E3128);
         }
         // Bucket 2 收口 (CURRENT-check.md): 简单变量赋值 (subs 为空) 的写可见性校验
         // (E3093). 与 compiler_stmt.cpp:952 同款条件: !writeable && !type.isRef().
@@ -487,8 +490,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             if (objName != "$") {
                 if (auto sym = _currentFn->lookupSymbol(objName)) {
                     if (!sym->writeable && !sym->type.isRef()) {
-                        throw YuxError(as->getLineNumber(), as->getColumn(),
-                                       ErrorCode::E3093, objName);
+                        throw YuxError(as->getLineNumber(), as->getColumn(), ErrorCode::E3093, objName);
                     }
                 }
             }
@@ -518,23 +520,26 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                     }
                     const auto& subs = as->subs();
                     auto isPureDigits = [](const string& s) {
-                        return !s.empty() && std::ranges::all_of(s,
-                            [](char c){ return c >= '0' && c <= '9'; });
+                        return !s.empty() && std::ranges::all_of(s, [](char c) { return c >= '0' && c <= '9'; });
                     };
                     if (curType.isTuple()) {
                         // tuple 链: 仅 OOB (E3100), 中段非 tuple / 非纯数字 留 Compiler
                         bool stop = false;
                         for (size_t i = 0; i < subs.size() && !stop; ++i) {
                             string memberText = subs[i].getText();
-                            if (!isPureDigits(memberText)) { stop = true; break; }
-                            if (!curType.isTuple()) { stop = true; break; }
+                            if (!isPureDigits(memberText)) {
+                                stop = true;
+                                break;
+                            }
+                            if (!curType.isTuple()) {
+                                stop = true;
+                                break;
+                            }
                             const auto& elems = curType.tupleElements();
                             auto idx = static_cast<size_t>(std::stoul(memberText));
                             if (idx >= elems.size()) {
-                                throw YuxError(as->getLineNumber(), as->getColumn(),
-                                               ErrorCode::E3100, memberText,
-                                               curType.getFullName(),
-                                               std::to_string(elems.size()));
+                                throw YuxError(as->getLineNumber(), as->getColumn(), ErrorCode::E3100, memberText,
+                                               curType.getFullName(), std::to_string(elems.size()));
                             }
                             if (i + 1 < subs.size()) curType = *elems[idx];
                         }
@@ -549,13 +554,12 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                                 int fi = decl->fieldIndex(memberText);
                                 if (fi < 0) break; // E3040 Compiler 抢先
                                 auto interType = decl->fields()[fi]->getType();
-                                if (interType.isRc() || interType.isArrayGeneric()
-                                    || interType.isRef() || interType.isNullable()
-                                    || interType.isWeak() || interType.isPtr()
-                                    || isBuiltinType(interType.name)) {
-                                    throw YuxError(as->getLineNumber(), as->getColumn(),
-                                                   ErrorCode::E3046)
-                                        .withHint("嵌套成员赋值中间字段需为纯 struct（不含 Rc/Array/Ref/RC 等）；可拆方法或在中段先 `var t = $.field` 落地后再写");
+                                if (interType.isRc() || interType.isArrayGeneric() || interType.isRef() ||
+                                    interType.isNullable() || interType.isWeak() || interType.isPtr() ||
+                                    isBuiltinType(interType.name)) {
+                                    throw YuxError(as->getLineNumber(), as->getColumn(), ErrorCode::E3046)
+                                        .withHint("嵌套成员赋值中间字段需为纯 struct（不含 Rc/Array/Ref/RC "
+                                                  "等）；可拆方法或在中段先 `var t = $.field` 落地后再写");
                                 }
                                 StructDeclNode* nextDecl = _file ? _file->getStructDecl(interType.name) : nullptr;
                                 if (!nextDecl && _sdkFile) nextDecl = _sdkFile->getStructDecl(interType.name);
@@ -579,10 +583,8 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         if (tup->expr()) {
             if (auto tn = dynamic_cast<p<ExprTupleNode>>(tup->expr())) {
                 if (tn->elements().size() != tup->names().size()) {
-                    throw YuxError(tup->getLineNumber(), tup->getColumn(),
-                                   ErrorCode::E3102,
-                                   std::to_string(tup->names().size()),
-                                   std::to_string(tn->elements().size()));
+                    throw YuxError(tup->getLineNumber(), tup->getColumn(), ErrorCode::E3102,
+                                   std::to_string(tup->names().size()), std::to_string(tn->elements().size()));
                 }
             }
             visitExpr(tup->expr());
@@ -607,23 +609,24 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             TypeInfo declRetType;
             if (hasDeclRet) declRetType = header->retType()->getType();
             // 灵活整数推断仅在有 declRetType 时影响匹配 (Compiler 会先 tryInferIntType
-             // 改写 expr 类型再比); 无 decl 时 (E3022 路径) 不构成 skip 理由.
+            // 改写 expr 类型再比); 无 decl 时 (E3022 路径) 不构成 skip 理由.
             // alias 形态 (`IPair = (i32, i32)` 等) 名称直比会假阳性 (`IPair` vs `(i32,i32)`),
-             // sema 暂未做 resolveAlias 递归比对, 任一侧名称命中 alias 即 skip 留 Compiler 兜底.
+            // sema 暂未做 resolveAlias 递归比对, 任一侧名称命中 alias 即 skip 留 Compiler 兜底.
             auto isAliased = [&](const string& n) -> bool {
                 if (!_file) return false;
                 return _file->getAliasDecl(n) != nullptr;
             };
-            bool skip = hasFallible
-                     || (hasDeclRet && (declRetType.isRef() || declRetType.isNullable()))
-                     || (hasDeclRet && declRetType.name == "Self")
-                     || (hasDeclRet && isFlexibleIntExpr(ret->expr()))
-                     || (hasDeclRet && isAliased(declRetType.name));
+            bool skip = hasFallible || (hasDeclRet && (declRetType.isRef() || declRetType.isNullable())) ||
+                        (hasDeclRet && declRetType.name == "Self") || (hasDeclRet && isFlexibleIntExpr(ret->expr())) ||
+                        (hasDeclRet && isAliased(declRetType.name));
             if (!skip) {
                 TypeInfo retType;
                 bool gotType = true;
-                try { retType = ret->expr()->getType(); }
-                catch (...) { gotType = false; }
+                try {
+                    retType = ret->expr()->getType();
+                } catch (...) {
+                    gotType = false;
+                }
                 if (gotType && !(hasDeclRet && isAliased(retType.name))) {
                     int line = ret->getLineNumber();
                     if (line < 0) line = ret->expr()->resolveLineNumber();
@@ -634,8 +637,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                         // 名称直比 —— 不做 resolveAlias (sema 暂无该 helper);
                         // alias 形态 / Self 已在 skip 排除, 这里假阴性可接受 (Compiler 兜底).
                         if (retType.getFullName() != declRetType.getFullName()) {
-                            throw YuxError(line, ErrorCode::E3020,
-                                           declRetType.getFullName(), retType.getFullName());
+                            throw YuxError(line, ErrorCode::E3020, declRetType.getFullName(), retType.getFullName());
                         }
                     } else {
                         if (!retType.empty()) {
@@ -664,17 +666,14 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         if (da->varType()) {
             try {
                 auto vt = da->varType()->getType();
-                if (!vt.name.empty() && !isBuiltinType(vt.name)
-                    && !vt.isRef() && !vt.isFn() && !vt.isTuple()) {
+                if (!vt.name.empty() && !isBuiltinType(vt.name) && !vt.isRef() && !vt.isFn() && !vt.isTuple()) {
                     if (auto* sd = lookupStructIn(_file, _sdkFile, vt.name)) {
                         size_t want = sd->typeParams().size();
                         size_t got = vt.genericArgs.size();
                         if (want > 0 && want != got) {
-                            throw YuxError(da->getLineNumber(), da->getColumn(),
-                                ErrorCode::E6011, vt.name, want, got)
+                            throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E6011, vt.name, want, got)
                                 .withHint(std::format(
-                                    "实例化时的类型实参个数需与声明匹配；改写为 `{}<{}>` 形式补齐 {} 个类型",
-                                    vt.name,
+                                    "实例化时的类型实参个数需与声明匹配；改写为 `{}<{}>` 形式补齐 {} 个类型", vt.name,
                                     std::string(want == 1 ? "T" : "T1, T2, ..."), want));
                         }
                     }
@@ -696,10 +695,9 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                     auto exprType = da->expr()->getType();
                     // exprType.arraySize == 0 → ExprArrayInit fill 形态 (`[v ...]`),
                     // 实际大小靠 target-type 推断, 跳过比较留 Compiler 兜底.
-                    if (exprType.isArray() && exprType.arraySize > 0
-                        && varType.arraySize != exprType.arraySize) {
-                        throw YuxError(da->getLineNumber(), da->getColumn(),
-                            ErrorCode::E3012, varType.arraySize, exprType.arraySize);
+                    if (exprType.isArray() && exprType.arraySize > 0 && varType.arraySize != exprType.arraySize) {
+                        throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3012, varType.arraySize,
+                                       exprType.arraySize);
                     }
                 } else if (varType.isNullable()) {
                     auto innerType = varType.nullableInnerType();
@@ -719,8 +717,8 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                             bool wholeCopy = exprType.isNullable() && exprType == varType;
                             bool wrap = exprType == *innerType;
                             if (!wholeCopy && !wrap) {
-                                throw YuxError(da->getLineNumber(), da->getColumn(),
-                                    ErrorCode::E3015, exprType.name, innerType->name);
+                                throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3015, exprType.name,
+                                               innerType->name);
                             }
                         }
                     }
@@ -737,12 +735,13 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                         if (auto litObj = dynamic_cast<p<LiteralObjNode>>(litExpr->literal())) {
                             string srcName = litObj->getValue().getText();
                             auto sym = _currentFn->lookupSymbol(srcName);
-                            if (!sym || !sym->type.isRef() || !sym->type.refElementType()
-                                || *sym->type.refElementType() != *innerType) {
-                                throw YuxError(da->getLineNumber(), da->getColumn(),
-                                    ErrorCode::E3018, srcName, innerType->name)
-                                    .withHint(std::format("`{}` 不是 {}& 类型，无法 copy-bind 到此声明；改写为 `&<expr-of-{}>` 或先声明同类型 T&",
-                                        srcName, innerType->name, innerType->name));
+                            if (!sym || !sym->type.isRef() || !sym->type.refElementType() ||
+                                *sym->type.refElementType() != *innerType) {
+                                throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3018, srcName,
+                                               innerType->name)
+                                    .withHint(std::format("`{}` 不是 {}& 类型，无法 copy-bind 到此声明；改写为 "
+                                                          "`&<expr-of-{}>` 或先声明同类型 T&",
+                                                          srcName, innerType->name, innerType->name));
                             }
                         }
                     }
@@ -789,68 +788,82 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         // `$` 在 ast_builder 里生成 ExprLiteralNode(LiteralObjNode("$")),
         // `$.field` / `$.method()` 读路径会递归到此, 一处拦截即覆盖.
         if (auto obj = dynamic_cast<p<LiteralObjNode>>(n->literal())) {
-            if (obj->getValue().getText() == "$" &&
-                _currentFn && _currentFn->header()->isStatic()) {
-                throw YuxError(n->resolveLineNumber(), n->resolveColumn(),
-                               ErrorCode::E3128);
+            if (obj->getValue().getText() == "$" && _currentFn && _currentFn->header()->isStatic()) {
+                throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3128);
             }
         }
         // 字符串模板含插值表达式; 其余字面量无子表达式
         if (auto tpl = dynamic_cast<p<StringTemplateNode>>(n->literal())) {
-            for (auto& e : tpl->interps()) visitExpr(e);
+            for (auto& e : tpl->interps())
+                visitExpr(e);
             // Bucket 6 (CURRENT-check.md): E3026 插值类型必须实现 ToString.
             sema::validateStringTemplateInterps(_file, _sdkFile, tpl);
         }
         // Phase 3.4.f.2: int 字面量越界 (E3103) — getType 仅返回类型不解析值,
         // 这里主动调 sema::parseIntLiteral 触发越界 / 非法格式校验.
         if (auto intLit = dynamic_cast<p<LiteralIntNode>>(n->literal())) {
-            (void)sema::parseIntLiteral(intLit->getValue().getText(),
-                                        n->getLineNumber(), n->getColumn());
+            (void)sema::parseIntLiteral(intLit->getValue().getText(), n->getLineNumber(), n->getColumn());
         }
         return;
     }
     if (auto n = dynamic_cast<p<ExprAddSubNode>>(expr)) {
-        visitExpr(n->left()); visitExpr(n->right());
+        visitExpr(n->left());
+        visitExpr(n->right());
         // Bucket 6 单点: 自定义 struct 二元运算符方法解析 (E3073 + byval hint).
         string m = (n->op() == ExprAddSubNode::Op::Add) ? "plus" : "minus";
-        tryValidateBinOpMethod(n->left(), n->right(), m,
-                                n->getLineNumber(), n->getColumn());
+        tryValidateBinOpMethod(n->left(), n->right(), m, n->getLineNumber(), n->getColumn());
         return;
     }
     if (auto n = dynamic_cast<p<ExprMulDivModNode>>(expr)) {
-        visitExpr(n->left()); visitExpr(n->right());
+        visitExpr(n->left());
+        visitExpr(n->right());
         string m;
         switch (n->op()) {
-            case ExprMulDivModNode::Op::Mul: m = "mul"; break;
-            case ExprMulDivModNode::Op::Div: m = "div"; break;
-            case ExprMulDivModNode::Op::Mod: m = "mod"; break;
+        case ExprMulDivModNode::Op::Mul:
+            m = "mul";
+            break;
+        case ExprMulDivModNode::Op::Div:
+            m = "div";
+            break;
+        case ExprMulDivModNode::Op::Mod:
+            m = "mod";
+            break;
         }
-        tryValidateBinOpMethod(n->left(), n->right(), m,
-                                n->getLineNumber(), n->getColumn());
+        tryValidateBinOpMethod(n->left(), n->right(), m, n->getLineNumber(), n->getColumn());
         return;
     }
     if (auto n = dynamic_cast<p<ExprBinOpNode>>(expr)) {
-        visitExpr(n->left()); visitExpr(n->right());
+        visitExpr(n->left());
+        visitExpr(n->right());
         string m;
         switch (n->op()) {
-            case ExprBinOpNode::Op::And: m = "and"; break;
-            case ExprBinOpNode::Op::Or:  m = "or";  break;
-            case ExprBinOpNode::Op::Xor: m = "xor"; break;
-            case ExprBinOpNode::Op::Shl: m = "shl"; break;
-            case ExprBinOpNode::Op::Shr: m = "shr"; break;
+        case ExprBinOpNode::Op::And:
+            m = "and";
+            break;
+        case ExprBinOpNode::Op::Or:
+            m = "or";
+            break;
+        case ExprBinOpNode::Op::Xor:
+            m = "xor";
+            break;
+        case ExprBinOpNode::Op::Shl:
+            m = "shl";
+            break;
+        case ExprBinOpNode::Op::Shr:
+            m = "shr";
+            break;
         }
-        tryValidateBinOpMethod(n->left(), n->right(), m,
-                                n->getLineNumber(), n->getColumn());
+        tryValidateBinOpMethod(n->left(), n->right(), m, n->getLineNumber(), n->getColumn());
         return;
     }
     if (auto n = dynamic_cast<p<ExprCompareNode>>(expr)) {
-        visitExpr(n->left()); visitExpr(n->right());
+        visitExpr(n->left());
+        visitExpr(n->right());
         // Bucket 6 (CURRENT-check.md): leftType 形态校验 (E3078 Weak ==/!= /
         // E3073 Ptr ordering). leftType getType 抛错 (lambda 形参等) 跳过.
         try {
             TypeInfo leftType = n->left()->getType();
-            sema::validateCompareOpForm(leftType, n->op(),
-                                          n->getLineNumber(), n->getColumn());
+            sema::validateCompareOpForm(leftType, n->op(), n->getLineNumber(), n->getColumn());
         } catch (const YuxError&) {
             throw;
         } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -860,26 +873,40 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         // AndAnd / OrOr 是逻辑短路, 无方法名映射, 跳过.
         string m;
         switch (n->op()) {
-            case ExprCompareNode::Op::Eq: m = "eq"; break;
-            case ExprCompareNode::Op::Ne: m = "ne"; break;
-            case ExprCompareNode::Op::Lt: m = "lt"; break;
-            case ExprCompareNode::Op::Le: m = "le"; break;
-            case ExprCompareNode::Op::Gt: m = "gt"; break;
-            case ExprCompareNode::Op::Ge: m = "ge"; break;
-            default: break;
+        case ExprCompareNode::Op::Eq:
+            m = "eq";
+            break;
+        case ExprCompareNode::Op::Ne:
+            m = "ne";
+            break;
+        case ExprCompareNode::Op::Lt:
+            m = "lt";
+            break;
+        case ExprCompareNode::Op::Le:
+            m = "le";
+            break;
+        case ExprCompareNode::Op::Gt:
+            m = "gt";
+            break;
+        case ExprCompareNode::Op::Ge:
+            m = "ge";
+            break;
+        default:
+            break;
         }
         if (!m.empty()) {
-            tryValidateBinOpMethod(n->left(), n->right(), m,
-                                    n->getLineNumber(), n->getColumn());
+            tryValidateBinOpMethod(n->left(), n->right(), m, n->getLineNumber(), n->getColumn());
         }
         return;
     }
     if (auto n = dynamic_cast<p<ExprParenNode>>(expr)) {
-        visitExpr(n->expr()); return;
+        visitExpr(n->expr());
+        return;
     }
     if (auto n = dynamic_cast<p<ExprCallNode>>(expr)) {
         visitExpr(n->getCalleeExpr());
-        for (auto& a : n->getArgs()) visitExpr(a);
+        for (auto& a : n->getArgs())
+            visitExpr(a);
 
         // E4025 (DRAFT-heap-types §8.3a.5.1): 容器构造 turbofish 内嵌 Heap 拦截.
         // 形态: `Rc:<Heap<T>>(...)` / `Weak:<Heap<T>>(...)` / `Array:<Heap<T>>(...)`
@@ -896,19 +923,22 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             }
             try {
                 auto t0 = n->getTypeArgs()[0]->getType();
-                if ((calleeName == "Rc" || calleeName == "Weak" || calleeName == "Array")
-                    && t0.isHeap()) {
+                if ((calleeName == "Rc" || calleeName == "Weak" || calleeName == "Array") && t0.isHeap()) {
                     auto inner = t0.heapElementType();
-                    throw YuxError(eline, ecol, ErrorCode::E4025, calleeName,
-                        inner ? inner->name : std::string("?"));
+                    throw YuxError(eline, ecol, ErrorCode::E4025, calleeName, inner ? inner->name : std::string("?"));
                 }
                 for (auto& tn : n->getTypeArgs()) {
-                    try { validateNoNestedHeap(tn->getType(), eline, ecol); }
-                    catch (const YuxError&) { throw; }
-                    catch (...) {} // NOLINT(bugprone-empty-catch)
+                    try {
+                        validateNoNestedHeap(tn->getType(), eline, ecol);
+                    } catch (const YuxError&) {
+                        throw;
+                    } catch (...) {
+                    } // NOLINT(bugprone-empty-catch)
                 }
-            } catch (const YuxError&) { throw; }
-            catch (...) {} // NOLINT(bugprone-empty-catch)
+            } catch (const YuxError&) {
+                throw;
+            } catch (...) {
+            } // NOLINT(bugprone-empty-catch)
         }
 
         // Phase 3.3 前置.4: ID-callee / 非-ID-callee 的错误传播校验
@@ -981,23 +1011,29 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                         vector<TypeInfo> typeArgs;
                         bool typeArgsOk = true;
                         try {
-                            for (auto& tn : n->getTypeArgs()) typeArgs.push_back(tn->getType());
-                        } catch (...) { typeArgsOk = false; }
+                            for (auto& tn : n->getTypeArgs())
+                                typeArgs.push_back(tn->getType());
+                        } catch (...) {
+                            typeArgsOk = false;
+                        }
 
                         vector<TypeInfo> argTypes;
                         bool argTypesOk = true;
                         for (auto& a : n->getArgs()) {
-                            try { argTypes.push_back(a->getType()); }
-                            catch (...) { argTypesOk = false; break; }
+                            try {
+                                argTypes.push_back(a->getType());
+                            } catch (...) {
+                                argTypesOk = false;
+                                break;
+                            }
                         }
 
                         if (typeArgsOk) {
-                            sema::validateCompilerInnerIntrinsicShape(fnName, typeArgs.size(),
-                                n->getArgs().size(), line, col);
+                            sema::validateCompilerInnerIntrinsicShape(fnName, typeArgs.size(), n->getArgs().size(),
+                                                                      line, col);
                             if (argTypesOk) {
-                                sema::validateCompilerInnerIntrinsicTypeShape(
-                                    fnName, typeArgs, argTypes, n->getArgs(),
-                                    _file, _sdkFile, line, col);
+                                sema::validateCompilerInnerIntrinsicTypeShape(fnName, typeArgs, argTypes, n->getArgs(),
+                                                                              _file, _sdkFile, line, col);
                             }
                         }
                     }
@@ -1011,9 +1047,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                     auto* genFn2 = _file->getFunction(fnName);
                     if (!genFn2 && _sdkFile) genFn2 = _sdkFile->getFunction(fnName);
                     if (genFn2 && genFn2->header()->isGeneric()) {
-                        sema::validateGenericTypeArgsArity(fnName,
-                            genFn2->header()->typeParams().size(),
-                            n->getTypeArgs().size(), line, col);
+                        sema::validateGenericTypeArgsArity(fnName, genFn2->header()->typeParams().size(),
+                                                           n->getTypeArgs().size(), line, col);
                     }
                 }
 
@@ -1029,14 +1064,18 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                         genericFn = _sdkFile->getGenericFunction(fnName);
                         if (genericFn) fnOwner = _sdkFile;
                     }
-                    if (genericFn && genericFn->header()->isGeneric()
-                        && !genericFn->header()->hasAnno("CompilerInner")) {
+                    if (genericFn && genericFn->header()->isGeneric() &&
+                        !genericFn->header()->hasAnno("CompilerInner")) {
                         vector<TypeInfo> typeArgs;
                         bool argTypesOk = true;
                         vector<TypeInfo> argTypes;
                         for (auto& a : n->getArgs()) {
-                            try { argTypes.push_back(a->getType()); }
-                            catch (...) { argTypesOk = false; break; }
+                            try {
+                                argTypes.push_back(a->getType());
+                            } catch (...) {
+                                argTypesOk = false;
+                                break;
+                            }
                         }
                         // BUG5: 非泛型重载优先 (call_fn.cpp Phase 4b)；
                         // 同名存在严格匹配的非泛型时，spec-bound 校验不应越过重载消歧
@@ -1058,7 +1097,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                                     if (isGenericSym) break;
                                 }
                                 if (!isGenericSym) {
-                                    argTypesOk = false;  // 触发跳过下方校验
+                                    argTypesOk = false; // 触发跳过下方校验
                                 }
                             }
                         }
@@ -1068,24 +1107,24 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                                 for (auto& tn : n->getTypeArgs()) {
                                     typeArgs.push_back(tn->getType());
                                 }
-                            } catch (...) { typeArgsOk = false; }
+                            } catch (...) {
+                                typeArgsOk = false;
+                            }
                         } else if (argTypesOk) {
                             try {
-                                sema::inferGenericFnTypeArgs(n, genericFn, fnName,
-                                                              argTypes, typeArgs);
+                                sema::inferGenericFnTypeArgs(n, genericFn, fnName, argTypes, typeArgs);
                             } catch (const YuxError&) {
                                 // E6012/E6013 留 Compiler 兜底 (3.3.1.b 未让 SemaPass 接管)
                                 typeArgsOk = false;
-                            } catch (...) { typeArgsOk = false; }
+                            } catch (...) {
+                                typeArgsOk = false;
+                            }
                         } else {
                             typeArgsOk = false;
                         }
-                        if (typeArgsOk
-                            && typeArgs.size() == genericFn->header()->typeParams().size()) {
-                            sema::validateGenericTypeArgsSpecBound(
-                                &_yux->specRegistry(), &_yux->specImplChecker(),
-                                fnOwner, genericFn->header(),
-                                typeArgs, line, col);
+                        if (typeArgsOk && typeArgs.size() == genericFn->header()->typeParams().size()) {
+                            sema::validateGenericTypeArgsSpecBound(&_yux->specRegistry(), &_yux->specImplChecker(),
+                                                                   fnOwner, genericFn->header(), typeArgs, line, col);
                         }
                     }
                 }
@@ -1110,16 +1149,19 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                             vector<TypeInfo> argTypes;
                             bool ok = true;
                             for (auto& a : n->getArgs()) {
-                                try { argTypes.push_back(a->getType()); }
-                                catch (...) { ok = false; break; }
+                                try {
+                                    argTypes.push_back(a->getType());
+                                } catch (...) {
+                                    ok = false;
+                                    break;
+                                }
                             }
                             if (ok) {
                                 auto* fnSym = _file->lookupFnSymbolWithParams(fnName, argTypes);
                                 if (!fnSym && _sdkFile && _sdkFile != _file) {
                                     fnSym = _sdkFile->lookupFnSymbolWithParams(fnName, argTypes);
                                 }
-                                sema::validateFnSymbolVisibility(fnSym, _file->moduleName(),
-                                                                  fnName, line, col);
+                                sema::validateFnSymbolVisibility(fnSym, _file->moduleName(), fnName, line, col);
                             }
                         }
                     }
@@ -1131,11 +1173,86 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         // 与 compileMethodCall line 195-254 同款条件; argTypes 经 getType()
         // 计算, 任一参数未推断时跳过, 交给 Compiler 兜底.
         if (auto dotCallee = dynamic_cast<p<ExprDotNode>>(n->getCalleeExpr())) {
+            // DRAFT-spec-disambig-at §3.3: `$.m@SpecA()` / `obj.m@SpecA()` 显式消歧.
+            // 校验三件: (1) baseType T 必须在 #Impl 列表里出现 SpecA; (2) SpecA 必须
+            // 含名为 m 的签名; (3) SpecA.m 必须带默认体 (纯抽象签名无法 disambiguate).
+            if (dotCallee->hasSpecQualifier()) {
+                TypeInfo baseType;
+                bool baseOk = true;
+                try {
+                    baseType = dotCallee->baseExpr()->getType();
+                } catch (...) {
+                    baseOk = false;
+                }
+                if (baseOk && !baseType.name.empty()) {
+                    const string& specName = dotCallee->specQualifier();
+                    const string memberName = dotCallee->member();
+                    int dline = dotCallee->resolveLineNumber();
+                    int dcol = dotCallee->resolveColumn();
+                    // Dyn<D> / Dyn<D&> 上 `d.m@SpecA()`: SpecA 必须等于 D (vtable 只
+                    // 携带 D 的槽位, 无法 dispatch 到其它 spec). 等于 D 时直接走常规
+                    // Dyn dispatch (codegen 不重写 member).
+                    if (baseType.isDyn()) {
+                        if (_yux) {
+                            const SpecRegistry* reg = &_yux->specRegistry();
+                            auto resolvedDyn = sema::resolveDynCalleeSpec(reg, _file, baseType, dline, dcol);
+                            if (resolvedDyn.decl && resolvedDyn.decl->name().getText() != specName) {
+                                throw YuxError(dline, dcol, ErrorCode::E1101, baseType.name, specName, memberName);
+                            }
+                        }
+                        // OK: 等价于 d.m(); 走 Dyn dispatch
+                    } else {
+                        auto* implNode = _file->getStructImpl(baseType.name);
+                        if (!implNode && _sdkFile) {
+                            implNode = _sdkFile->getStructImpl(baseType.name);
+                        }
+                        bool inImplList = false;
+                        if (implNode) {
+                            for (const auto& ref : implNode->specRefs()) {
+                                if (ref.name == specName) {
+                                    inImplList = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!inImplList) {
+                            throw YuxError(dline, dcol, ErrorCode::E1101, baseType.name, specName, memberName);
+                        }
+                        SpecDeclNode* specDecl = nullptr;
+                        if (_yux) {
+                            auto resolved = _yux->specRegistry().resolve(specName, _file);
+                            if (resolved) specDecl = resolved->decl;
+                        }
+                        if (specDecl) {
+                            size_t sigIdx = static_cast<size_t>(-1);
+                            for (size_t i = 0; i < specDecl->signatures().size(); ++i) {
+                                if (specDecl->signatures()[i]->name().getText() == memberName) {
+                                    sigIdx = i;
+                                    break;
+                                }
+                            }
+                            if (sigIdx == static_cast<size_t>(-1)) {
+                                throw YuxError(dline, dcol, ErrorCode::E1140, specName, memberName,
+                                               " (referenced via `@" + specName + "` — method missing in spec)");
+                            }
+                            if (!specDecl->hasDefaultBody(sigIdx)) {
+                                throw YuxError(dline, dcol, ErrorCode::E1140, specName, memberName,
+                                               " with a default body (`@" + specName +
+                                                   "` disambiguation requires a default-body method)");
+                            }
+                        }
+                    } // end else (non-Dyn)
+                }
+            }
             vector<TypeInfo> argTypes;
             bool ok = true;
             for (auto& a : n->getArgs()) {
-                try { argTypes.push_back(a->getType()); }
-                catch (...) { ok = false; break; }
+                try {
+                    argTypes.push_back(a->getType());
+                } catch (...) {
+                    ok = false;
+                    break;
+                }
             }
             if (ok) {
                 auto modCall = sema::resolveModuleFnCall(_file, nullptr, n, dotCallee, argTypes);
@@ -1148,8 +1265,11 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                     // SemaPass 走非泛型 fn / 非泛型 impl 路径, 不需要 applySubst (替换栈为空).
                     TypeInfo baseType;
                     bool baseOk = true;
-                    try { baseType = dotCallee->baseExpr()->getType(); }
-                    catch (...) { baseOk = false; }
+                    try {
+                        baseType = dotCallee->baseExpr()->getType();
+                    } catch (...) {
+                        baseOk = false;
+                    }
                     if (baseOk) {
                         const string& member = dotCallee->member();
                         size_t argsCount = n->getArgs().size();
@@ -1157,12 +1277,10 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                         int dcol = n->getColumn();
                         if (baseType.isArrayGeneric()) {
                             bool baseIsLvalue = isLvalueArrayBase(dotCallee->baseExpr());
-                            sema::validateArrayMethodCall(baseType, member, argsCount,
-                                                          baseIsLvalue, dline, dcol);
+                            sema::validateArrayMethodCall(baseType, member, argsCount, baseIsLvalue, dline, dcol);
                         } else if (isBuiltinType(baseType.name) &&
                                    isCompilerInnerMethodIn(_sdkFile, baseType.name, member)) {
-                            sema::validateOperatorMethodCall(member, baseType, argsCount,
-                                                             dline, dcol);
+                            sema::validateOperatorMethodCall(member, baseType, argsCount, dline, dcol);
                         } else if (baseType.isDyn() && _yux) {
                             // Bucket 4 收口 (CURRENT-check.md): Dyn<D> 方法调用 (E1131/E6016/
                             // E6012/E6015). 镜像 Compiler::compileDynMethodCall 顶部 — 通过
@@ -1170,10 +1288,9 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                             // member 存在 + arity + 形参类型. Compiler 端 inline throw 保留
                             // 作幂等防御性双跑.
                             const SpecRegistry* reg = &_yux->specRegistry();
-                            auto resolved = sema::resolveDynCalleeSpec(reg, _file,
-                                                                       baseType, dline, dcol);
-                            sema::resolveDynMethodSig(resolved.decl, resolved.qualified,
-                                                      baseType, member, argTypes, dline, dcol);
+                            auto resolved = sema::resolveDynCalleeSpec(reg, _file, baseType, dline, dcol);
+                            sema::resolveDynMethodSig(resolved.decl, resolved.qualified, baseType, member, argTypes,
+                                                      dline, dcol);
                         }
                     }
                 }
@@ -1205,28 +1322,36 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         return;
     }
     if (auto n = dynamic_cast<p<ExprOneLineIfElseNode>>(expr)) {
-        visitExpr(n->condition()); visitExpr(n->trueValue()); visitExpr(n->falseValue());
+        visitExpr(n->condition());
+        visitExpr(n->trueValue());
+        visitExpr(n->falseValue());
         return;
     }
     if (auto n = dynamic_cast<p<ExprIfElsePreValueNode>>(expr)) {
-        visitExpr(n->condition()); visitExpr(n->trueValue()); visitExpr(n->falseValue());
+        visitExpr(n->condition());
+        visitExpr(n->trueValue());
+        visitExpr(n->falseValue());
         return;
     }
     if (auto n = dynamic_cast<p<ExprGetNode>>(expr)) {
         visitExpr(n->arrayExpr());
-        for (auto& i : n->indices()) visitExpr(i);
+        for (auto& i : n->indices())
+            visitExpr(i);
         return;
     }
     if (auto n = dynamic_cast<p<ExprArrayNode>>(expr)) {
-        for (auto& e : n->elements()) visitExpr(e);
+        for (auto& e : n->elements())
+            visitExpr(e);
         return;
     }
     if (auto n = dynamic_cast<p<ExprTupleNode>>(expr)) {
-        for (auto& e : n->elements()) visitExpr(e);
+        for (auto& e : n->elements())
+            visitExpr(e);
         return;
     }
     if (auto n = dynamic_cast<p<ExprUnaryNode>>(expr)) {
-        visitExpr(n->right()); return;
+        visitExpr(n->right());
+        return;
     }
     if (auto n = dynamic_cast<p<LambdaExprNode>>(expr)) {
         // lambda 体内表达式的类型依赖调用点对形参的反推 / 上下文回填
@@ -1273,15 +1398,15 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         if (seen.size() != decl->fields().size()) {
             for (auto& f : decl->fields()) {
                 if (!seen.count(f->name().getText())) {
-                    throw YuxError(line, col, ErrorCode::E3125,
-                                   _currentStructName, f->name().getText());
+                    throw YuxError(line, col, ErrorCode::E3125, _currentStructName, f->name().getText());
                 }
             }
         }
         return;
     }
     if (auto n = dynamic_cast<p<ExprPathCallNode>>(expr)) {
-        for (auto& a : n->args()) visitExpr(a);
+        for (auto& a : n->args())
+            visitExpr(a);
 
         // Phase 2c 构造模型重构: `Type::name(...)` 按 LHS 分流.
         //   * LHS 是 struct -> 必须是 #Static 方法 (E3120/E3121); codegen Phase 3 落地.
@@ -1328,9 +1453,16 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                     bool paramTypesOk = true;
                     for (auto p : methodHeader->params()) {
                         if (p->type()) {
-                            try { paramTypes.push_back(p->type()->getType()); }
-                            catch (...) { paramTypesOk = false; break; }
-                        } else { paramTypesOk = false; break; }
+                            try {
+                                paramTypes.push_back(p->type()->getType());
+                            } catch (...) {
+                                paramTypesOk = false;
+                                break;
+                            }
+                        } else {
+                            paramTypesOk = false;
+                            break;
+                        }
                     }
                     if (paramTypesOk) {
                         // 灵活整数实参按形参类型回填 (与 Compiler 端 2340 一致)
@@ -1351,31 +1483,34 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                             vector<TypeInfo> argTypesRaw;
                             bool ok = true;
                             for (auto& a : n->args()) {
-                                try { argTypesRaw.push_back(a->getType()); }
-                                catch (...) { ok = false; break; }
+                                try {
+                                    argTypesRaw.push_back(a->getType());
+                                } catch (...) {
+                                    ok = false;
+                                    break;
+                                }
                             }
-                            string got = ok ? renderTypes(argTypesRaw)
-                                            : string("<unresolved>");
-                            throw YuxError(line, col, ErrorCode::E3131,
-                                lhsName, rhsName,
-                                paramTypes.size(), expected,
-                                n->args().size(), got);
+                            string got = ok ? renderTypes(argTypesRaw) : string("<unresolved>");
+                            throw YuxError(line, col, ErrorCode::E3131, lhsName, rhsName, paramTypes.size(), expected,
+                                           n->args().size(), got);
                         }
                         // 类型逐位比对
                         vector<TypeInfo> argTypes;
                         bool argOk = true;
                         for (auto& a : n->args()) {
-                            try { argTypes.push_back(a->getType()); }
-                            catch (...) { argOk = false; break; }
+                            try {
+                                argTypes.push_back(a->getType());
+                            } catch (...) {
+                                argOk = false;
+                                break;
+                            }
                         }
                         if (argOk) {
                             for (size_t i = 0; i < argTypes.size(); ++i) {
                                 if (argTypes[i].empty()) continue;
                                 if (!(argTypes[i] == paramTypes[i])) {
-                                    throw YuxError(line, col, ErrorCode::E3131,
-                                        lhsName, rhsName,
-                                        paramTypes.size(), renderTypes(paramTypes),
-                                        argTypes.size(), renderTypes(argTypes));
+                                    throw YuxError(line, col, ErrorCode::E3131, lhsName, rhsName, paramTypes.size(),
+                                                   renderTypes(paramTypes), argTypes.size(), renderTypes(argTypes));
                                 }
                             }
                         }
@@ -1401,7 +1536,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     }
     if (auto n = dynamic_cast<p<ExprMatchNode>>(expr)) {
         visitExpr(n->scrutinee());
-        for (auto& arm : n->arms()) visitExpr(arm->body());
+        for (auto& arm : n->arms())
+            visitExpr(arm->body());
 
         // Phase 3.4.b: SemaPass 接管 E2019/E2020/E2023/E2024/E2025/E2026/E2027.
         // 仅在 scrut 直接是 enum 名 (非 Rc/E / 非 alias 链) 时接入: 那两条路径
@@ -1453,8 +1589,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             if (!enumDecl) {
                 int aline = arm->getLineNumber() > 0 ? arm->getLineNumber() : line;
                 int acol = arm->getColumn() > 0 ? arm->getColumn() : col;
-                throw YuxError(aline, acol, ErrorCode::E7011,
-                    arm->errName().getText(), errType, errType);
+                throw YuxError(aline, acol, ErrorCode::E7011, arm->errName().getText(), errType, errType);
             }
             catchTypes.push_back(errType);
         }
@@ -1467,15 +1602,18 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         for (auto& seen : seenErrTypes) {
             bool covered = false;
             for (auto& ct : catchTypes) {
-                if (ct == seen) { covered = true; break; }
+                if (ct == seen) {
+                    covered = true;
+                    break;
+                }
             }
             if (!covered) {
-                throw YuxError(line, col, ErrorCode::E7002,
-                    seen, string("<unknown>"), seen);
+                throw YuxError(line, col, ErrorCode::E7002, seen, string("<unknown>"), seen);
             }
         }
 
-        for (auto& c : n->catches()) visitBlock(c->body());
+        for (auto& c : n->catches())
+            visitBlock(c->body());
 
         // Bucket 6 (CURRENT-check.md): SemaPass 接管 E7010 (catch arm body 末
         // 表达式类型必须与 try block 末表达式类型一致).
@@ -1494,14 +1632,17 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                         if (armT.name != resultType.name) {
                             int aline = arm->getLineNumber() > 0 ? arm->getLineNumber() : line;
                             int acol = arm->getColumn() > 0 ? arm->getColumn() : col;
-                            throw YuxError(aline, acol, ErrorCode::E7010,
-                                armT.name, resultType.name);
+                            throw YuxError(aline, acol, ErrorCode::E7010, armT.name, resultType.name);
                         }
-                    } catch (const YuxError&) { throw; }
-                      catch (...) { /* arm getType 失败: 留 Compiler 兜底 */ } // NOLINT(bugprone-empty-catch)
+                    } catch (const YuxError&) {
+                        throw;
+                    } catch (...) { /* arm getType 失败: 留 Compiler 兜底 */
+                    }               // NOLINT(bugprone-empty-catch)
                 }
-            } catch (const YuxError&) { throw; }
-              catch (...) { /* try result getType 失败: 留 Compiler 兜底 */ } // NOLINT(bugprone-empty-catch)
+            } catch (const YuxError&) {
+                throw;
+            } catch (...) { /* try result getType 失败: 留 Compiler 兜底 */
+            }               // NOLINT(bugprone-empty-catch)
         }
         return;
     }
@@ -1530,16 +1671,14 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 }
             }
             if (!specDecl) {
-                throw YuxError(line, col, ErrorCode::E1131,
-                    specBareName.empty() ? string("?") : specBareName);
+                throw YuxError(line, col, ErrorCode::E1131, specBareName.empty() ? string("?") : specBareName);
             }
             if (specInner && specInner->isDyn()) {
                 throw YuxError(line, col, ErrorCode::E1132, resultType.getFullName());
             }
             auto& checker = _yux->specImplChecker();
             if (!checker.specIsObjectSafe(specDecl)) {
-                throw YuxError(line, col, ErrorCode::E1134,
-                    specQualified, specQualified, specQualified);
+                throw YuxError(line, col, ErrorCode::E1134, specQualified, specQualified, specQualified);
             }
 
             auto argType = n->arg()->getType();
@@ -1557,14 +1696,12 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 }
             }
             if (concreteBare.empty()) {
-                throw YuxError(line, col, ErrorCode::E1133,
-                    specQualified, argType.getFullName(), specQualified);
+                throw YuxError(line, col, ErrorCode::E1133, specQualified, argType.getFullName(), specQualified);
             }
             TypeInfo concreteTI(concreteBare);
             vector<TypeInfo> specTypeArgs;
             if (!checker.boundSatisfied(concreteTI, specDecl, specQualified, specTypeArgs)) {
-                throw YuxError(line, col, ErrorCode::E1133,
-                    specQualified, argType.getFullName(), specQualified);
+                throw YuxError(line, col, ErrorCode::E1133, specQualified, argType.getFullName(), specQualified);
             }
         } catch (const YuxError&) {
             throw;
@@ -1588,22 +1725,22 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             // T != Ptr 时, argType == Ptr 视作合法 (代表接管裸指针所有权).
             bool takeoverFromPtr = argType.isPtr() && innerT.name != "Ptr";
             if (!takeoverFromPtr && !(argType == innerT)) {
-                throw YuxError(n->getLineNumber(), n->getColumn(),
-                    ErrorCode::E3028, innerT.name, innerT.name, argType.name);
+                throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3028, innerT.name, innerT.name,
+                               argType.name);
             }
         }
         return;
     }
     if (auto n = dynamic_cast<p<ExprNullElseNode>>(expr)) {
-        visitExpr(n->left()); visitExpr(n->right());
+        visitExpr(n->left());
+        visitExpr(n->right());
         // Bucket 6 收口+ (CURRENT-check.md): E3024 (左侧非 Nullable) + E3023 (右侧
         // 类型不匹配). 镜像 compiler_expr.cpp:1955-2000. 复杂路径 (alias / Self) 由
         // getType 抛错时跳过, 留 Compiler 兜底.
         try {
             auto leftType = n->left()->getType();
             if (!leftType.isNullable()) {
-                throw YuxError(n->resolveLineNumber(), n->resolveColumn(),
-                               ErrorCode::E3024, leftType.name);
+                throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3024, leftType.name);
             }
             auto innerType = leftType.nullableInnerType();
             if (!innerType) return;
@@ -1612,8 +1749,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             }
             auto rightType = n->right()->getType();
             if (!(rightType == *innerType)) {
-                throw YuxError(n->resolveLineNumber(), n->resolveColumn(),
-                               ErrorCode::E3023, rightType.name, innerType->name);
+                throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3023, rightType.name,
+                               innerType->name);
             }
         } catch (const YuxError&) {
             throw;
@@ -1629,10 +1766,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     // Phase 3.4.d.2: 补 E3042 链式私有字段可见性校验.
     if (auto n = dynamic_cast<p<ExprGetRefNode>>(expr)) {
         // Phase 2e: `&$.x` 在 `#Static fn` 体内禁用 (E3128).
-        if (n->obj().getText() == "$" &&
-            _currentFn && _currentFn->header()->isStatic()) {
-            throw YuxError(n->resolveLineNumber(), n->resolveColumn(),
-                           ErrorCode::E3128);
+        if (n->obj().getText() == "$" && _currentFn && _currentFn->header()->isStatic()) {
+            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3128);
         }
         try {
             sema::validateGetRefPrivacy(_file, _sdkFile, n, _currentStructName);
@@ -1655,8 +1790,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     // 其余未识别节点 3.2 起补 assert。
 }
 
-void SemaPass::tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExpr,
-                                       const string& methodName, int line, int col) {
+void SemaPass::tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExpr, const string& methodName, int line,
+                                      int col) {
     // gate 与 Compiler::compileAddSubExpr / MulDivMod / BinOp / Compare 内
     // `!isBuiltinType(leftType.name) → compileCustomTypeBinaryOp` 一致, 但
     // 进一步把容器类排除 (容器走专属 codegen / sema 路径, 不该走到 method 解析):
@@ -1672,16 +1807,15 @@ void SemaPass::tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExp
         // String 走 StringBuilder 特殊 lowering / 其它 builtin-handled 路径,
         // 没有用户可见的 plus/eq/... 方法签名, 不能走 customBinaryOp 解析.
         if (leftType.name == "String") return;
-        if (leftType.isRef() || leftType.isRc() || leftType.isArrayGeneric()
-            || leftType.isHeap() || leftType.isWeak() || leftType.isNullable()
-            || leftType.isPtr() || leftType.isTuple()) return;
+        if (leftType.isRef() || leftType.isRc() || leftType.isArrayGeneric() || leftType.isHeap() ||
+            leftType.isWeak() || leftType.isNullable() || leftType.isPtr() || leftType.isTuple())
+            return;
         StructDeclNode* decl = _file ? _file->getStructDecl(leftType.name) : nullptr;
         if (!decl && _sdkFile) decl = _sdkFile->getStructDecl(leftType.name);
         if (!decl || decl->isGeneric()) return;
-        TypeInfo effRightType = (rightType.isRef() && rightType.refElementType())
-                                 ? *rightType.refElementType() : rightType;
-        sema::validateBinOpMethodResolution(_file, _sdkFile, leftType, effRightType,
-                                              methodName, line, col);
+        TypeInfo effRightType =
+            (rightType.isRef() && rightType.refElementType()) ? *rightType.refElementType() : rightType;
+        sema::validateBinOpMethodResolution(_file, _sdkFile, leftType, effRightType, methodName, line, col);
     } catch (const YuxError&) {
         throw;
     } catch (...) { // NOLINT(bugprone-empty-catch)

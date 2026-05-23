@@ -35,8 +35,7 @@ protected:
     std::optional<ResolvedSymbol> _resolvedSymbol;
 
 public:
-    ExprNode(const p<Node>& parent) : Node(parent) {
-    }
+    ExprNode(const p<Node>& parent) : Node(parent) {}
 
     void setResolvedType(TypeInfo t) { _resolvedType = std::move(t); }
     [[nodiscard]] bool hasResolvedType() const { return _resolvedType.has_value(); }
@@ -59,8 +58,7 @@ bool isFlexibleIntExpr(p<ExprNode> expr);
 bool tryInferIntType(p<ExprNode> expr, const TypeInfo& target);
 
 inline bool isIntTypeName(const string& n) {
-    return n == "i8" || n == "i16" || n == "i32" || n == "i64" ||
-           n == "u8" || n == "u16" || n == "u32" || n == "u64";
+    return n == "i8" || n == "i16" || n == "i32" || n == "i64" || n == "u8" || n == "u16" || n == "u32" || n == "u64";
 }
 
 class ExprCallNode : public ExprNode {
@@ -74,14 +72,9 @@ protected:
     bool _errPropagate = false;
 
 public:
-    ExprCallNode(const p<Node>& parent, p<ExprNode> callee) :
-        ExprNode(parent),
-        _calleeExpr(callee) {
-    }
+    ExprCallNode(const p<Node>& parent, p<ExprNode> callee) : ExprNode(parent), _calleeExpr(callee) {}
 
-    void addArg(p<ExprNode> arg) {
-        _args.push_back(arg);
-    }
+    void addArg(p<ExprNode> arg) { _args.push_back(arg); }
 
     void setTypeArgs(vector<p<TypeNode>> args) { _typeArgs = std::move(args); }
     [[nodiscard]] const vector<p<TypeNode>>& getTypeArgs() const { return _typeArgs; }
@@ -100,9 +93,7 @@ protected:
     p<LiteralNode> _literal;
 
 public:
-    explicit ExprLiteralNode(const p<Node>& parent, p<LiteralNode> literal) :
-        ExprNode(parent),
-        _literal(literal) {
+    explicit ExprLiteralNode(const p<Node>& parent, p<LiteralNode> literal) : ExprNode(parent), _literal(literal) {
         _line = literal->getLineNumber();
     }
 
@@ -120,11 +111,8 @@ protected:
     p<ExprNode> _right;
 
 public:
-    ExprAddSubNode(const p<Node>& parent, Op op, p<ExprNode> left, p<ExprNode> right) :
-        ExprNode(parent),
-        _op(op), _left(left),
-        _right(right) {
-    }
+    ExprAddSubNode(const p<Node>& parent, Op op, p<ExprNode> left, p<ExprNode> right)
+        : ExprNode(parent), _op(op), _left(left), _right(right) {}
 
     [[nodiscard]] Op op() const;
     [[nodiscard]] const p<ExprNode>& left() const;
@@ -144,11 +132,8 @@ protected:
     p<ExprNode> _right;
 
 public:
-    ExprMulDivModNode(const p<Node>& parent, Op op, p<ExprNode> left, p<ExprNode> right) :
-        ExprNode(parent),
-        _op(op), _left(left),
-        _right(right) {
-    }
+    ExprMulDivModNode(const p<Node>& parent, Op op, p<ExprNode> left, p<ExprNode> right)
+        : ExprNode(parent), _op(op), _left(left), _right(right) {}
 
     [[nodiscard]] Op op() const;
     [[nodiscard]] const p<ExprNode>& left() const;
@@ -168,11 +153,8 @@ protected:
     p<ExprNode> _right;
 
 public:
-    ExprBinOpNode(const p<Node>& parent, Op op, p<ExprNode> left, p<ExprNode> right) :
-        ExprNode(parent),
-        _op(op), _left(left),
-        _right(right) {
-    }
+    ExprBinOpNode(const p<Node>& parent, Op op, p<ExprNode> left, p<ExprNode> right)
+        : ExprNode(parent), _op(op), _left(left), _right(right) {}
 
     [[nodiscard]] Op op() const;
     [[nodiscard]] const p<ExprNode>& left() const;
@@ -186,10 +168,7 @@ class ExprParenNode : public ExprNode {
     p<ExprNode> _inner;
 
 public:
-    ExprParenNode(const p<Node>& parent, p<ExprNode> inner) :
-        ExprNode(parent),
-        _inner(inner) {
-    }
+    ExprParenNode(const p<Node>& parent, p<ExprNode> inner) : ExprNode(parent), _inner(inner) {}
 
     [[nodiscard]] const p<ExprNode>& expr() const;
     [[nodiscard]] TypeInfo getType() const override;
@@ -201,21 +180,25 @@ protected:
     Token _member;
     // 安全访问标志：true 表示 a?.b（base 为 Nullable<T>，空时整体取 null）
     bool _safe = false;
+    // spec 默认体消歧后缀（§12.10 续节 / DRAFT-spec-disambig-at）：a.m@SpecA(...) 中的 SpecA；空表示无后缀
+    string _specQualifier;
 
 public:
-    ExprDotNode(const p<Node>& parent, p<ExprNode> baseExpr, Token member) :
-        ExprNode(parent),
-        _baseExpr(baseExpr), _member(member) {
-    }
+    ExprDotNode(const p<Node>& parent, p<ExprNode> baseExpr, Token member)
+        : ExprNode(parent), _baseExpr(baseExpr), _member(member) {}
 
-    ExprDotNode(const p<Node>& parent, p<ExprNode> baseExpr, Token member, bool safe) :
-        ExprNode(parent),
-        _baseExpr(baseExpr), _member(member), _safe(safe) {
-    }
+    ExprDotNode(const p<Node>& parent, p<ExprNode> baseExpr, Token member, bool safe)
+        : ExprNode(parent), _baseExpr(baseExpr), _member(member), _safe(safe) {}
+
+    ExprDotNode(const p<Node>& parent, p<ExprNode> baseExpr, Token member, bool safe, string specQualifier)
+        : ExprNode(parent), _baseExpr(baseExpr), _member(member), _safe(safe),
+          _specQualifier(std::move(specQualifier)) {}
 
     [[nodiscard]] const p<ExprNode>& baseExpr() const;
     [[nodiscard]] string member() const;
     [[nodiscard]] bool isSafe() const { return _safe; }
+    [[nodiscard]] const string& specQualifier() const { return _specQualifier; }
+    [[nodiscard]] bool hasSpecQualifier() const { return !_specQualifier.empty(); }
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
@@ -236,11 +219,8 @@ protected:
     p<ExprNode> _right;
 
 public:
-    ExprCompareNode(const p<Node>& parent, Op op, p<ExprNode> left, p<ExprNode> right) :
-        ExprNode(parent),
-        _op(op), _left(left),
-        _right(right) {
-    }
+    ExprCompareNode(const p<Node>& parent, Op op, p<ExprNode> left, p<ExprNode> right)
+        : ExprNode(parent), _op(op), _left(left), _right(right) {}
 
     [[nodiscard]] Op op() const;
     [[nodiscard]] const p<ExprNode>& left() const;
@@ -256,7 +236,8 @@ class StatementBlockNode : public ScopeNode {
     bool _hasResult;
 
 public:
-    StatementBlockNode(const p<Node>& parent, vector<p<StatementNode>> statements, p<ExprNode> resultExpr, bool hasResult);
+    StatementBlockNode(const p<Node>& parent, vector<p<StatementNode>> statements, p<ExprNode> resultExpr,
+                       bool hasResult);
 
     [[nodiscard]] const vector<p<StatementNode>>& statements() const;
     [[nodiscard]] const p<ExprNode>& resultExpr() const;
@@ -268,11 +249,8 @@ class ExprElIfNode : public Node {
     p<StatementBlockNode> _block;
 
 public:
-    ExprElIfNode(const p<Node>& parent, p<ExprNode> condition, p<StatementBlockNode> block) :
-        Node(parent),
-        _condition(condition),
-        _block(block) {
-    }
+    ExprElIfNode(const p<Node>& parent, p<ExprNode> condition, p<StatementBlockNode> block)
+        : Node(parent), _condition(condition), _block(block) {}
 
     [[nodiscard]] const p<ExprNode>& condition() const;
     [[nodiscard]] const p<StatementBlockNode>& block() const;
@@ -286,13 +264,9 @@ class ExprIfElseNode : public ExprNode {
 
 public:
     ExprIfElseNode(const p<Node>& parent, p<ExprNode> condition, p<StatementBlockNode> thenBlock,
-                   vector<p<ExprElIfNode>> elifs, p<StatementBlockNode> elseBlock) :
-        ExprNode(parent),
-        _condition(condition),
-        _thenBlock(thenBlock),
-        _elifs(std::move(elifs)),
-        _elseBlock(elseBlock) {
-    }
+                   vector<p<ExprElIfNode>> elifs, p<StatementBlockNode> elseBlock)
+        : ExprNode(parent), _condition(condition), _thenBlock(thenBlock), _elifs(std::move(elifs)),
+          _elseBlock(elseBlock) {}
 
     [[nodiscard]] const p<ExprNode>& condition() const;
     [[nodiscard]] const p<StatementBlockNode>& thenBlock() const;
@@ -309,12 +283,8 @@ class ExprOneLineIfElseNode : public ExprNode {
     p<ExprNode> _falseValue;
 
 public:
-    ExprOneLineIfElseNode(const p<Node>& parent, p<ExprNode> condition, p<ExprNode> trueValue, p<ExprNode> falseValue) :
-        ExprNode(parent),
-        _condition(condition),
-        _trueValue(trueValue),
-        _falseValue(falseValue) {
-    }
+    ExprOneLineIfElseNode(const p<Node>& parent, p<ExprNode> condition, p<ExprNode> trueValue, p<ExprNode> falseValue)
+        : ExprNode(parent), _condition(condition), _trueValue(trueValue), _falseValue(falseValue) {}
 
     [[nodiscard]] const p<ExprNode>& condition() const { return _condition; }
     [[nodiscard]] const p<ExprNode>& trueValue() const { return _trueValue; }
@@ -330,12 +300,8 @@ class ExprIfElsePreValueNode : public ExprNode {
     p<ExprNode> _falseValue;
 
 public:
-    ExprIfElsePreValueNode(const p<Node>& parent, p<ExprNode> condition, p<ExprNode> trueValue, p<ExprNode> falseValue) :
-        ExprNode(parent),
-        _condition(condition),
-        _trueValue(trueValue),
-        _falseValue(falseValue) {
-    }
+    ExprIfElsePreValueNode(const p<Node>& parent, p<ExprNode> condition, p<ExprNode> trueValue, p<ExprNode> falseValue)
+        : ExprNode(parent), _condition(condition), _trueValue(trueValue), _falseValue(falseValue) {}
 
     [[nodiscard]] const p<ExprNode>& condition() const { return _condition; }
     [[nodiscard]] const p<ExprNode>& trueValue() const { return _trueValue; }
@@ -350,11 +316,8 @@ class ExprGetNode : public ExprNode {
     vector<p<ExprNode>> _indices;
 
 public:
-    ExprGetNode(const p<Node>& parent, p<ExprNode> arrayExpr, vector<p<ExprNode>> indices) :
-        ExprNode(parent),
-        _arrayExpr(arrayExpr),
-        _indices(std::move(indices)) {
-    }
+    ExprGetNode(const p<Node>& parent, p<ExprNode> arrayExpr, vector<p<ExprNode>> indices)
+        : ExprNode(parent), _arrayExpr(arrayExpr), _indices(std::move(indices)) {}
 
     [[nodiscard]] const p<ExprNode>& arrayExpr() const;
     [[nodiscard]] const vector<p<ExprNode>>& indices() const;
@@ -367,10 +330,8 @@ class ExprArrayNode : public ExprNode {
     vector<p<ExprNode>> _elements;
 
 public:
-    ExprArrayNode(const p<Node>& parent, vector<p<ExprNode>> elements) :
-        ExprNode(parent),
-        _elements(std::move(elements)) {
-    }
+    ExprArrayNode(const p<Node>& parent, vector<p<ExprNode>> elements)
+        : ExprNode(parent), _elements(std::move(elements)) {}
 
     [[nodiscard]] const vector<p<ExprNode>>& elements() const;
     [[nodiscard]] TypeInfo getType() const override;
@@ -383,11 +344,8 @@ class ExprArrayInitNode : public ExprNode {
     p<TypeNode> _explicitType;
 
 public:
-    ExprArrayInitNode(const p<Node>& parent, p<LiteralNode> value, p<TypeNode> explicitType) :
-        ExprNode(parent),
-        _value(value),
-        _explicitType(explicitType) {
-    }
+    ExprArrayInitNode(const p<Node>& parent, p<LiteralNode> value, p<TypeNode> explicitType)
+        : ExprNode(parent), _value(value), _explicitType(explicitType) {}
 
     [[nodiscard]] const p<LiteralNode>& value() const;
     [[nodiscard]] const p<TypeNode>& explicitType() const;
@@ -399,11 +357,8 @@ class ExprGetRefNode : public ExprNode {
     vector<Token> _subs;
 
 public:
-    ExprGetRefNode(const p<Node>& parent, Token obj, vector<Token> subs) :
-        ExprNode(parent),
-        _obj(obj),
-        _subs(std::move(subs)) {
-    }
+    ExprGetRefNode(const p<Node>& parent, Token obj, vector<Token> subs)
+        : ExprNode(parent), _obj(obj), _subs(std::move(subs)) {}
 
     [[nodiscard]] Token obj() const { return _obj; }
     [[nodiscard]] const vector<Token>& subs() const { return _subs; }
@@ -421,11 +376,7 @@ protected:
     p<ExprNode> _right;
 
 public:
-    ExprUnaryNode(const p<Node>& parent, Op op, p<ExprNode> right) :
-        ExprNode(parent),
-        _op(op),
-        _right(right) {
-    }
+    ExprUnaryNode(const p<Node>& parent, Op op, p<ExprNode> right) : ExprNode(parent), _op(op), _right(right) {}
 
     [[nodiscard]] Op op() const;
     [[nodiscard]] const p<ExprNode>& right() const;
@@ -438,7 +389,7 @@ public:
 // 函数类型反推后回填，详见 spec §4.1）
 struct LambdaParamSlot {
     Token name;
-    p<TypeNode> type;        // nullptr → 待上下文反推
+    p<TypeNode> type; // nullptr → 待上下文反推
 };
 
 // Lambda 捕获槽位（Phase 4a，spec §6.1 / §6.2）
@@ -448,9 +399,9 @@ struct LambdaParamSlot {
 //
 // Phase 4a 仅支持标量类型；堆句柄 / struct / `T&` 拒入（4a-2 / 4c 接入）。
 struct CaptureSlot {
-    string name;          // 外层变量名
-    TypeInfo type;        // 外层变量类型（值复制语义）
-    u64 byteOffset;       // 在 captures buffer 中的字节偏移（自然对齐）
+    string name;    // 外层变量名
+    TypeInfo type;  // 外层变量类型（值复制语义）
+    u64 byteOffset; // 在 captures buffer 中的字节偏移（自然对齐）
 };
 
 // Lambda 字面量节点：四种语法形态归一存储（spec §4.0）
@@ -473,9 +424,9 @@ public:
 private:
     Form _form;
     vector<LambdaParamSlot> _params;
-    p<TypeNode> _retType;                      // 仅 Paren 显式标注；其余 nullptr
-    p<ExprNode> _bodyExpr;                     // Single / Paren
-    vector<p<StatementNode>> _bodyStmts;       // Block / ZeroBlock
+    p<TypeNode> _retType;                // 仅 Paren 显式标注；其余 nullptr
+    p<ExprNode> _bodyExpr;               // Single / Paren
+    vector<p<StatementNode>> _bodyStmts; // Block / ZeroBlock
     // body 编译用的内层作用域；持有 lambda 形参符号。AST builder 在构建时填充，
     // 让 body 表达式 / 语句的 parent 链可经此链路向上找到形参（findNearestScope）。
     // body 内的符号引用在 sema 阶段可识别"形参 vs 自由变量"，闭包来到 Phase 4 之前
@@ -492,13 +443,10 @@ private:
     bool _hasRefCapture = false;
 
 public:
-    LambdaExprNode(const p<Node>& parent, Form form,
-                   vector<LambdaParamSlot> params, p<TypeNode> retType,
-                   p<ExprNode> bodyExpr, vector<p<StatementNode>> bodyStmts) :
-        ExprNode(parent), _form(form),
-        _params(std::move(params)), _retType(std::move(retType)),
-        _bodyExpr(std::move(bodyExpr)), _bodyStmts(std::move(bodyStmts)) {
-    }
+    LambdaExprNode(const p<Node>& parent, Form form, vector<LambdaParamSlot> params, p<TypeNode> retType,
+                   p<ExprNode> bodyExpr, vector<p<StatementNode>> bodyStmts)
+        : ExprNode(parent), _form(form), _params(std::move(params)), _retType(std::move(retType)),
+          _bodyExpr(std::move(bodyExpr)), _bodyStmts(std::move(bodyStmts)) {}
 
     void setBodyScope(p<ScopeNode> sc) { _bodyScope = std::move(sc); }
     [[nodiscard]] p<ScopeNode> bodyScope() const { return _bodyScope; }
@@ -518,7 +466,11 @@ public:
         return (int)_captures.size() - 1;
     }
     // 重置捕获状态（emitLambdaFunction 缓存命中前的清场，避免重复 append）
-    void clearCaptures() { _captures.clear(); _capturesTotalSize = 0; _hasRefCapture = false; }
+    void clearCaptures() {
+        _captures.clear();
+        _capturesTotalSize = 0;
+        _hasRefCapture = false;
+    }
 
     // Phase 4c：T& 捕获标记
     [[nodiscard]] bool hasRefCapture() const { return _hasRefCapture; }
@@ -539,7 +491,8 @@ public:
     // 形参 name 可省（裸列单 ID 仅在 Single 形态出现，必有 name；
     // Paren / Block 的 lambdaParam 也强制 ID，因 g4 lambdaParam 总以 names+= 起头）
     [[nodiscard]] bool hasAllParamTypes() const {
-        for (auto& s : _params) if (!s.type) return false;
+        for (auto& s : _params)
+            if (!s.type) return false;
         return true;
     }
 
@@ -553,10 +506,8 @@ class ExprTupleNode : public ExprNode {
     vector<p<ExprNode>> _elements;
 
 public:
-    ExprTupleNode(const p<Node>& parent, vector<p<ExprNode>> elements) :
-        ExprNode(parent),
-        _elements(std::move(elements)) {
-    }
+    ExprTupleNode(const p<Node>& parent, vector<p<ExprNode>> elements)
+        : ExprNode(parent), _elements(std::move(elements)) {}
 
     [[nodiscard]] const vector<p<ExprNode>>& elements() const { return _elements; }
     [[nodiscard]] TypeInfo getType() const override;
@@ -579,11 +530,8 @@ class ExprPathCallNode : public ExprNode {
     vector<p<TypeNode>> _rhsTypeArgs;
 
 public:
-    ExprPathCallNode(const p<Node>& parent, Token enumName, Token variantName) :
-        ExprNode(parent),
-        _enumName(std::move(enumName)),
-        _variantName(std::move(variantName)) {
-    }
+    ExprPathCallNode(const p<Node>& parent, Token enumName, Token variantName)
+        : ExprNode(parent), _enumName(std::move(enumName)), _variantName(std::move(variantName)) {}
 
     void addArg(p<ExprNode> a) { _args.push_back(a); }
     void setLhsTypeArgs(vector<p<TypeNode>> a) { _lhsTypeArgs = std::move(a); }
@@ -604,9 +552,8 @@ class FieldInitNode : public Node {
     p<ExprNode> _value;
 
 public:
-    FieldInitNode(const p<Node>& parent, Token name, p<ExprNode> value) :
-        Node(parent), _name(std::move(name)), _value(std::move(value)) {
-    }
+    FieldInitNode(const p<Node>& parent, Token name, p<ExprNode> value)
+        : Node(parent), _name(std::move(name)), _value(std::move(value)) {}
 
     [[nodiscard]] const Token& name() const { return _name; }
     [[nodiscard]] const p<ExprNode>& value() const { return _value; }
@@ -617,13 +564,12 @@ public:
 // 类型在 sema 阶段绑定为所属结构体类型；当前 getType() 返回 empty
 class ExprStructLitNode : public ExprNode {
     Token _selfTok;
-    string _structName;       // Phase 3b: ast_builder 扫 _scopeStack 填入 (与 TypeSelfNode 同源)
+    string _structName; // Phase 3b: ast_builder 扫 _scopeStack 填入 (与 TypeSelfNode 同源)
     vector<p<FieldInitNode>> _fields;
 
 public:
-    ExprStructLitNode(const p<Node>& parent, Token selfTok, string structName) :
-        ExprNode(parent), _selfTok(std::move(selfTok)), _structName(std::move(structName)) {
-    }
+    ExprStructLitNode(const p<Node>& parent, Token selfTok, string structName)
+        : ExprNode(parent), _selfTok(std::move(selfTok)), _structName(std::move(structName)) {}
 
     void addField(p<FieldInitNode> f) { _fields.push_back(std::move(f)); }
 
@@ -644,16 +590,12 @@ class EnumPatternNode : public Node {
 
 public:
     // 兜底分支
-    EnumPatternNode(const p<Node>& parent, Token elseTok) :
-        Node(parent), _isElse(true), _enumName(elseTok), _variantName(elseTok) {
-    }
+    EnumPatternNode(const p<Node>& parent, Token elseTok)
+        : Node(parent), _isElse(true), _enumName(elseTok), _variantName(elseTok) {}
     // enum 模式
-    EnumPatternNode(const p<Node>& parent, Token enumName, Token variantName, vector<Token> binds) :
-        Node(parent), _isElse(false),
-        _enumName(std::move(enumName)),
-        _variantName(std::move(variantName)),
-        _binds(std::move(binds)) {
-    }
+    EnumPatternNode(const p<Node>& parent, Token enumName, Token variantName, vector<Token> binds)
+        : Node(parent), _isElse(false), _enumName(std::move(enumName)), _variantName(std::move(variantName)),
+          _binds(std::move(binds)) {}
 
     [[nodiscard]] bool isElse() const { return _isElse; }
     [[nodiscard]] const Token& enumName() const { return _enumName; }
@@ -670,9 +612,8 @@ class MatchArmNode : public ScopeNode {
     p<ExprNode> _body;
 
 public:
-    MatchArmNode(const p<Node>& parent, p<EnumPatternNode> pattern, p<ExprNode> body) :
-        ScopeNode(parent), _pattern(std::move(pattern)), _body(std::move(body)) {
-    }
+    MatchArmNode(const p<Node>& parent, p<EnumPatternNode> pattern, p<ExprNode> body)
+        : ScopeNode(parent), _pattern(std::move(pattern)), _body(std::move(body)) {}
 
     [[nodiscard]] const p<EnumPatternNode>& pattern() const { return _pattern; }
     [[nodiscard]] const p<ExprNode>& body() const { return _body; }
@@ -685,9 +626,8 @@ class ExprMatchNode : public ExprNode {
     vector<p<MatchArmNode>> _arms;
 
 public:
-    ExprMatchNode(const p<Node>& parent, p<ExprNode> scrutinee, vector<p<MatchArmNode>> arms) :
-        ExprNode(parent), _scrutinee(std::move(scrutinee)), _arms(std::move(arms)) {
-    }
+    ExprMatchNode(const p<Node>& parent, p<ExprNode> scrutinee, vector<p<MatchArmNode>> arms)
+        : ExprNode(parent), _scrutinee(std::move(scrutinee)), _arms(std::move(arms)) {}
 
     [[nodiscard]] const p<ExprNode>& scrutinee() const { return _scrutinee; }
     [[nodiscard]] const vector<p<MatchArmNode>>& arms() const { return _arms; }
@@ -700,15 +640,12 @@ public:
 // 可沿 scope 链解析到绑定类型（与 MatchArmNode 同档）
 class CatchArmNode : public ScopeNode {
     Token _errName;
-    string _errType;            // 错误 enum 类型名（按 ID 取，等待 visitProgram 阶段校验为已声明 enum）
+    string _errType; // 错误 enum 类型名（按 ID 取，等待 visitProgram 阶段校验为已声明 enum）
     p<StatementBlockNode> _body;
+
 public:
-    CatchArmNode(const p<Node>& parent, Token errName, string errType, p<StatementBlockNode> body) :
-        ScopeNode(parent),
-        _errName(std::move(errName)),
-        _errType(std::move(errType)),
-        _body(std::move(body)) {
-    }
+    CatchArmNode(const p<Node>& parent, Token errName, string errType, p<StatementBlockNode> body)
+        : ScopeNode(parent), _errName(std::move(errName)), _errType(std::move(errType)), _body(std::move(body)) {}
 
     [[nodiscard]] const Token& errName() const { return _errName; }
     [[nodiscard]] const string& errType() const { return _errType; }
@@ -724,11 +661,8 @@ class ExprTryCatchNode : public ExprNode {
     vector<p<CatchArmNode>> _catches;
 
 public:
-    ExprTryCatchNode(const p<Node>& parent, p<StatementBlockNode> tryBlock, vector<p<CatchArmNode>> catches) :
-        ExprNode(parent),
-        _tryBlock(std::move(tryBlock)),
-        _catches(std::move(catches)) {
-    }
+    ExprTryCatchNode(const p<Node>& parent, p<StatementBlockNode> tryBlock, vector<p<CatchArmNode>> catches)
+        : ExprNode(parent), _tryBlock(std::move(tryBlock)), _catches(std::move(catches)) {}
 
     [[nodiscard]] const p<StatementBlockNode>& tryBlock() const { return _tryBlock; }
     [[nodiscard]] const vector<p<CatchArmNode>>& catches() const { return _catches; }
@@ -744,17 +678,13 @@ public:
 // `_specType` 持原 turbofish 中的 typeArg（D 或 Ref<D>），用于回算 fat ptr 内层；
 // `_isBorrow` 由内层 TypeNode 是否为 `Ref<...>` 决定。
 class ExprDynCtorNode : public ExprNode {
-    p<TypeNode> _specType;     // turbofish 内的类型节点（D 或 D&）
-    p<ExprNode> _arg;           // 构造源：Rc<U> 或 U&
-    bool _isBorrow;             // true = Dyn<D&>(...), false = Dyn<D>(...)
+    p<TypeNode> _specType; // turbofish 内的类型节点（D 或 D&）
+    p<ExprNode> _arg;      // 构造源：Rc<U> 或 U&
+    bool _isBorrow;        // true = Dyn<D&>(...), false = Dyn<D>(...)
 
 public:
-    ExprDynCtorNode(const p<Node>& parent, p<TypeNode> specType, p<ExprNode> arg, bool isBorrow) :
-        ExprNode(parent),
-        _specType(std::move(specType)),
-        _arg(std::move(arg)),
-        _isBorrow(isBorrow) {
-    }
+    ExprDynCtorNode(const p<Node>& parent, p<TypeNode> specType, p<ExprNode> arg, bool isBorrow)
+        : ExprNode(parent), _specType(std::move(specType)), _arg(std::move(arg)), _isBorrow(isBorrow) {}
 
     [[nodiscard]] const p<TypeNode>& specType() const { return _specType; }
     [[nodiscard]] const p<ExprNode>& arg() const { return _arg; }
@@ -768,15 +698,12 @@ public:
 // 与 ExprDynCtorNode 同构（单点 AST 节点便于 NRVO 在 Phase 3 识别）。
 // ast_builder 在 visitExprCall 命中 callee = LiteralObj("Heap") + 单 typeArg + 单 arg 时改产此节点。
 class ExprHeapCtorNode : public ExprNode {
-    p<TypeNode> _innerType;     // turbofish 内的 T
-    p<ExprNode> _arg;           // 构造源：求值为 T 的表达式
+    p<TypeNode> _innerType; // turbofish 内的 T
+    p<ExprNode> _arg;       // 构造源：求值为 T 的表达式
 
 public:
-    ExprHeapCtorNode(const p<Node>& parent, p<TypeNode> innerType, p<ExprNode> arg) :
-        ExprNode(parent),
-        _innerType(std::move(innerType)),
-        _arg(std::move(arg)) {
-    }
+    ExprHeapCtorNode(const p<Node>& parent, p<TypeNode> innerType, p<ExprNode> arg)
+        : ExprNode(parent), _innerType(std::move(innerType)), _arg(std::move(arg)) {}
 
     [[nodiscard]] const p<TypeNode>& innerType() const { return _innerType; }
     [[nodiscard]] const p<ExprNode>& arg() const { return _arg; }
@@ -789,11 +716,8 @@ class ExprNullElseNode : public ExprNode {
     p<ExprNode> _right;
 
 public:
-    ExprNullElseNode(const p<Node>& parent, p<ExprNode> left, p<ExprNode> right) :
-        ExprNode(parent),
-        _left(std::move(left)),
-        _right(std::move(right)) {
-    }
+    ExprNullElseNode(const p<Node>& parent, p<ExprNode> left, p<ExprNode> right)
+        : ExprNode(parent), _left(std::move(left)), _right(std::move(right)) {}
 
     [[nodiscard]] const p<ExprNode>& left() const { return _left; }
     [[nodiscard]] const p<ExprNode>& right() const { return _right; }
@@ -802,4 +726,4 @@ public:
     [[nodiscard]] int resolveColumn() const override;
 };
 
-#endif //YUX_LANG_EXPR_NODE_H
+#endif // YUX_LANG_EXPR_NODE_H

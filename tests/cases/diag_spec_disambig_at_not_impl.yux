@@ -1,0 +1,17 @@
+; DRAFT-spec-disambig-at: T 未 #Impl(SpecA) 时使用 `@SpecA` -> E1101.
+
+#Spec
+struct A {
+  fn m() i32 = 1
+}
+
+struct S {
+  v i32
+  fn n() i32 {
+    $.m@A()
+  }
+}
+
+fn main() {
+  println(0)
+}

@@ -1,5 +1,7 @@
 ; 草案：yux spec 默认方法体 + 实现者 fall-through
 
+> **已落地**（2026-05-22）：本草案条款已迁入 [§12.10](../12-spec.md#1210-默认方法体默认实现--fall-through) 与 [CHANGELOG 2026-05-22](../CHANGELOG.md)；附录 D 同步 `E1140` / `E3132`、`E1139` 退役。本文件保留为历史草案档，正文以 spec 为准。实施日志见 [`docs/dev/spec-default-body-impl-log.md`](../../dev/spec-default-body-impl-log.md)。
+
 # 草案：yux spec 默认方法体
 
 状态：**草案 / 占位（形态已锁，待 spec-unify v1 落地后启动）**。日期：2026-05-18。

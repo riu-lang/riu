@@ -389,9 +389,13 @@ void Compiler::compileStructImpls() {
 namespace {
 void collectSelfTypesInTypeNode(TypeNode* tn, vector<TypeSelfNode*>& out) {
     if (!tn) return;
-    if (auto* self = dynamic_cast<TypeSelfNode*>(tn)) { out.push_back(self); return; }
+    if (auto* self = dynamic_cast<TypeSelfNode*>(tn)) {
+        out.push_back(self);
+        return;
+    }
     if (auto* gen = dynamic_cast<TypeGenericNode*>(tn)) {
-        for (auto& a : gen->typeArgs()) collectSelfTypesInTypeNode(a, out);
+        for (auto& a : gen->typeArgs())
+            collectSelfTypesInTypeNode(a, out);
         return;
     }
     if (auto* arr = dynamic_cast<TypeArrayNode*>(tn)) {
@@ -399,120 +403,97 @@ void collectSelfTypesInTypeNode(TypeNode* tn, vector<TypeSelfNode*>& out) {
         return;
     }
     if (auto* fn = dynamic_cast<TypeFnNode*>(tn)) {
-        for (auto& pt : fn->paramTypes()) collectSelfTypesInTypeNode(pt, out);
+        for (auto& pt : fn->paramTypes())
+            collectSelfTypesInTypeNode(pt, out);
         collectSelfTypesInTypeNode(fn->retType(), out);
         return;
     }
     if (auto* tup = dynamic_cast<TypeTupleNode*>(tn)) {
-        for (auto& e : tup->elementTypes()) collectSelfTypesInTypeNode(e, out);
+        for (auto& e : tup->elementTypes())
+            collectSelfTypesInTypeNode(e, out);
         return;
     }
 }
 } // namespace
 
-void Compiler::compileInheritedDefaults(StructImplNode* impl, const string& structName) {
-    if (!impl) return;
-    const auto& records = impl->inheritedDefaults();
-    if (records.empty()) return;
+// 抽取 compileInheritedDefaults 单条记录的 emit 逻辑, 与 compileSpecDisambigEmits 共用.
+// emitMethodName 决定 LLVM 函数符号 + fnSymbol 表 key; 默认 = header 上的方法名 (fall-through),
+// 也可传入 "m__at__SpecA" 形态 (DRAFT-spec-disambig-at escape hatch).
+void Compiler::emitSpecDefaultBodyMethod(SpecDeclNode* spec, size_t sigIdx, const string& structName,
+                                         const string& emitMethodName) {
+    if (!spec) return;
+    auto body = spec->defaultBody(sigIdx);
+    if (!body) return;
+    auto header = body->header();
+    if (!header) return;
 
-    DEBUG_LOG_VAL("    Compiling spec default fall-throughs", records.size() << " methods on " << structName);
+    DEBUG_LOG_VAL("      emit spec-default",
+                  structName << "." << emitMethodName << " (from " << spec->name().getText() << ")");
 
-    for (const auto& rec : records) {
-        if (!rec.spec) continue;
-        auto body = rec.spec->defaultBody(rec.sigIdx);
-        if (!body) continue;
-        auto header = body->header();
-        if (!header) continue;
+    // === 1) 收集 + patch TypeSelfNode (header params + retType) ===
+    vector<TypeSelfNode*> selfNodes;
+    for (auto& param : header->params()) {
+        collectSelfTypesInTypeNode(param->type(), selfNodes);
+    }
+    collectSelfTypesInTypeNode(header->retType(), selfNodes);
 
-        const string methodName = header->name().getText();
-        DEBUG_LOG_VAL("      fall-through", structName << "." << methodName
-                      << " (from " << rec.spec->name().getText() << ")");
+    vector<string> savedSelfNames;
+    savedSelfNames.reserve(selfNodes.size());
+    for (auto* s : selfNodes) {
+        savedSelfNames.push_back(s->structName());
+        s->setStructName(structName);
+    }
 
-        // === 1) 收集 + patch TypeSelfNode (header params + retType) ===
-        vector<TypeSelfNode*> selfNodes;
-        for (auto& param : header->params()) {
-            collectSelfTypesInTypeNode(param->type(), selfNodes);
+    // === 2a) 临时把 body 的 parentScope 换成 user FileNode (_file) ===
+    auto savedBodyParent = body->parentScope();
+    body->setParentScope(_file);
+
+    // === 2b) patch defaultBody scope 的 $ 与 Self 形参符号表项 ===
+    SymbolInfo savedDollar;
+    bool hadDollar = false;
+    if (auto* dollar = body->lookupSymbol("$")) {
+        savedDollar = *dollar;
+        hadDollar = true;
+        vector<sp<TypeInfo>> args;
+        args.push_back(make_shared<TypeInfo>(structName));
+        *dollar = SymbolInfo{SymbolKind::Variable, "$", TypeInfo("Ref", args)};
+    }
+
+    struct ParamPatch {
+        string name;
+        SymbolInfo saved;
+        bool had = false;
+    };
+    vector<ParamPatch> paramPatches;
+    for (auto& param : header->params()) {
+        string pname = param->name().getText();
+        if (auto* sym = body->lookupSymbol(pname)) {
+            paramPatches.push_back({.name = pname, .saved = *sym, .had = true});
+            TypeInfo newType = param->type() ? param->type()->getType() : TypeInfo();
+            SymbolInfo si{SymbolKind::Variable, pname, newType};
+            if (param->isFrozen()) si.isFrozen = true;
+            *sym = si;
         }
-        collectSelfTypesInTypeNode(header->retType(), selfNodes);
+    }
 
-        vector<string> savedSelfNames;
-        savedSelfNames.reserve(selfNodes.size());
-        for (auto* s : selfNodes) {
-            savedSelfNames.push_back(s->structName());
-            s->setStructName(structName);
-        }
+    // === 3) 取 patch 后的 paramTypes / retType, 准备 LLVM 函数 ===
+    vector<TypeInfo> paramTypes;
+    for (auto& param : header->params()) {
+        if (param->type()) paramTypes.push_back(param->type()->getType());
+    }
+    TypeInfo retType;
+    if (header->retType()) retType = header->retType()->getType();
+    string mFallibleErr;
+    if (auto e = header->getAnnoArg("Fallible")) mFallibleErr = *e;
+    bool isStatic = header->isStatic();
 
-        // === 2a) 临时把 body 的 parentScope 换成 user FileNode (_file) ===
-        // 原因: body AST 隶属于 spec 所在 file (可能是 SDK base.yux); 默认体内调用
-        // `$.method(...)` 的方法名解析走 findNearestScope→walk parentScope, 走到 spec
-        // 的 file 自然找不到本 impl 所在 file 的方法符号 (例如 `N.cmp`). 临时把 body 的
-        // parentScope 重指向 _file, 编完原样还原. Self/spec 方法名走 patched TypeSelfNode
-        // 与 instance 方法表, 不依赖 spec scope 链.
-        auto savedBodyParent = body->parentScope();
-        body->setParentScope(_file);
-
-        // === 2b) patch defaultBody scope 的 $ 与 Self 形参符号表项 ===
-        // (lookupSymbol 走当前 scope → parent, 仅改本 scope 即可)
-        SymbolInfo savedDollar;
-        bool hadDollar = false;
-        if (auto* dollar = body->lookupSymbol("$")) {
-            savedDollar = *dollar;
-            hadDollar = true;
-            vector<sp<TypeInfo>> args;
-            args.push_back(make_shared<TypeInfo>(structName));
-            *dollar = SymbolInfo{SymbolKind::Variable, "$", TypeInfo("Ref", args)};
-        }
-
-        struct ParamPatch { string name; SymbolInfo saved; bool had = false; };
-        vector<ParamPatch> paramPatches;
-        for (auto& param : header->params()) {
-            string pname = param->name().getText();
-            if (auto* sym = body->lookupSymbol(pname)) {
-                paramPatches.push_back({.name = pname, .saved = *sym, .had = true});
-                // 用 patch 后的 TypeNode 重新求一遍 TypeInfo
-                TypeInfo newType = param->type() ? param->type()->getType() : TypeInfo();
-                SymbolInfo si{SymbolKind::Variable, pname, newType};
-                if (param->isFrozen()) si.isFrozen = true;
-                *sym = si;
-            }
-        }
-
-        // === 3) 取 patch 后的 paramTypes / retType, 准备 LLVM 函数 ===
-        vector<TypeInfo> paramTypes;
-        for (auto& param : header->params()) {
-            if (param->type()) paramTypes.push_back(param->type()->getType());
-        }
-        TypeInfo retType;
-        if (header->retType()) retType = header->retType()->getType();
-        string mFallibleErr;
-        if (auto e = header->getAnnoArg("Fallible")) mFallibleErr = *e;
-        bool isStatic = header->isStatic();
-
-        // === 4) compileMethod (按常规路径走 borrow / const-mut / 流终止 + IR) ===
-        // 用 try/catch 包裹保证 restore 不会被诊断异常跳过.
-        bool emitOk = false;
-        try {
-            auto func = getMethodFunction(structName, methodName, paramTypes, retType,
-                                          mFallibleErr, isStatic);
-            compileMethod(body, func, structName, false, isStatic);
-            emitOk = true;
-        } catch (...) {
-            // === 5a) 异常路径: 先 restore 再 rethrow ===
-            for (size_t i = 0; i < selfNodes.size(); ++i) {
-                selfNodes[i]->setStructName(savedSelfNames[i]);
-            }
-            if (hadDollar) {
-                if (auto* dollar = body->lookupSymbol("$")) *dollar = savedDollar;
-            }
-            for (auto& pp : paramPatches) {
-                if (auto* sym = body->lookupSymbol(pp.name)) *sym = pp.saved;
-            }
-            body->setParentScope(savedBodyParent);
-            throw;
-        }
-
-        // === 5b) 正常路径: restore ===
-        (void)emitOk;
+    // === 4) compileMethod ===
+    bool emitOk = false;
+    try {
+        auto func = getMethodFunction(structName, emitMethodName, paramTypes, retType, mFallibleErr, isStatic);
+        compileMethod(body, func, structName, false, isStatic);
+        emitOk = true;
+    } catch (...) {
         for (size_t i = 0; i < selfNodes.size(); ++i) {
             selfNodes[i]->setStructName(savedSelfNames[i]);
         }
@@ -523,6 +504,45 @@ void Compiler::compileInheritedDefaults(StructImplNode* impl, const string& stru
             if (auto* sym = body->lookupSymbol(pp.name)) *sym = pp.saved;
         }
         body->setParentScope(savedBodyParent);
+        throw;
+    }
+
+    // === 5) 正常路径: restore ===
+    (void)emitOk;
+    for (size_t i = 0; i < selfNodes.size(); ++i) {
+        selfNodes[i]->setStructName(savedSelfNames[i]);
+    }
+    if (hadDollar) {
+        if (auto* dollar = body->lookupSymbol("$")) *dollar = savedDollar;
+    }
+    for (auto& pp : paramPatches) {
+        if (auto* sym = body->lookupSymbol(pp.name)) *sym = pp.saved;
+    }
+    body->setParentScope(savedBodyParent);
+}
+
+void Compiler::compileInheritedDefaults(StructImplNode* impl, const string& structName) {
+    if (!impl) return;
+    const auto& records = impl->inheritedDefaults();
+    if (!records.empty()) {
+        DEBUG_LOG_VAL("    Compiling spec default fall-throughs", records.size() << " methods on " << structName);
+    }
+    for (const auto& rec : records) {
+        if (!rec.spec) continue;
+        auto body = rec.spec->defaultBody(rec.sigIdx);
+        if (!body || !body->header()) continue;
+        const string methodName = body->header()->name().getText();
+        emitSpecDefaultBodyMethod(rec.spec, rec.sigIdx, structName, methodName);
+    }
+
+    // DRAFT-spec-disambig-at: 同步发射每条 @-tagged 副本 (即便 impl 覆盖了 m, escape hatch
+    // 走 `S.m__at__SpecA`).
+    const auto& disambigs = impl->specDisambigEmits();
+    if (!disambigs.empty()) {
+        DEBUG_LOG_VAL("    Compiling spec @-disambig emits", disambigs.size() << " methods on " << structName);
+    }
+    for (const auto& rec : disambigs) {
+        emitSpecDefaultBodyMethod(rec.spec, rec.sigIdx, structName, rec.emitMethodName);
     }
 }
 

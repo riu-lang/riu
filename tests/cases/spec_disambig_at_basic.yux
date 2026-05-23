@@ -1,0 +1,32 @@
+; DRAFT-spec-disambig-at: `$.m@SpecA()` 在 S 未覆盖 m 时, 与 `$.m()` 行为一致.
+
+#Spec
+struct A {
+  fn m() i32 = 1
+}
+
+#Impl(A)
+struct S {
+  v i32
+
+  #Static
+  fn make() S {
+    ret Self {
+      .v = 0
+    }
+  }
+
+  fn call_default() i32 {
+    $.m()
+  }
+
+  fn call_at() i32 {
+    $.m@A()
+  }
+}
+
+fn main() {
+  let s S = S::make()
+  println(s.call_default())
+  println(s.call_at())
+}
