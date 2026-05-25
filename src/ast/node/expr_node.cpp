@@ -853,7 +853,19 @@ TypeInfo ExprDotNode::getType() const {
             file = dynamic_cast<FileNode*>(scope);
         }
         if (file) {
+            // file 自身找不到时走父 FileNode (SDK) 链, 与 lookupSpecBoundMethodRetType
+            // 同款; 不打通会导致 t.<SdkStructField> getType 回落到 baseExpr type
+            // (sema 不知道字段实类型, 重载解析挑错).
             auto structDecl = file->getStructDecl(actualType.name);
+            if (!structDecl) {
+                ScopeNode* p = file->parentScope();
+                while (p && !structDecl) {
+                    if (auto pf = dynamic_cast<FileNode*>(p)) {
+                        structDecl = pf->getStructDecl(actualType.name);
+                    }
+                    p = p->parentScope();
+                }
+            }
 
             // 若 actualType 是泛型实例，构造 T→具体 的替换表
             map<string, TypeInfo> genSubst;
@@ -876,6 +888,15 @@ TypeInfo ExprDotNode::getType() const {
 
             string methodFullName = actualType.name + "." + member;
             auto methodSym = file->lookupFnSymbol(methodFullName);
+            if (!methodSym) {
+                ScopeNode* p = file->parentScope();
+                while (p && !methodSym) {
+                    if (auto pf = dynamic_cast<FileNode*>(p)) {
+                        methodSym = pf->lookupFnSymbol(methodFullName);
+                    }
+                    p = p->parentScope();
+                }
+            }
             if (methodSym) {
                 auto rt = methodSym->retType;
                 if (!genSubst.empty()) rt = rt.substitute(genSubst);

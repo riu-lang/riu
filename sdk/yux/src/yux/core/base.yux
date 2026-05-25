@@ -1604,12 +1604,12 @@ fn assert_starts_with(s String&, prefix String&) {
 
 ; reflect rodata 节点的 String 字段指向 immortal Block (strong=0xFFFFFFFF);
 ; 显式 destructor 空体 - 迫使 SDK TU emit 之, 字段级 release 走 immortal no-op.
-struct Type {
+; Field 先于 Type 声明 (Type.fields 引用 Field, 避免前向引用).
+struct Field {
   #Frozen
   name String
 
   fn ~() {
-    ; String 字段自动释放; immortal block 触发跳过
   }
 }
 
@@ -1629,8 +1629,13 @@ struct Variant {
   }
 }
 
-#CompilerInner
-struct Field {
+struct Type {
   #Frozen
   name String
+  #Frozen
+  fields Array<Field>
+
+  fn ~() {
+    ; String / Array<Field> 字段自动释放; immortal block 触发跳过
+  }
 }

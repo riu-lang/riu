@@ -1,14 +1,17 @@
-; DRAFT-spec-reflect Phase 3a (捷径 A): __yux_reflect_type:<T>() intrinsic
+; DRAFT-spec-reflect Phase 3a/3b (捷径 A): __yux_reflect_type:<T>() intrinsic
 ; 端到端跑通 — Type 反射节点 emit 到 .rodata, name 字段读到类型名字符串.
-; 草案 §2 的 `Counter::type` path 形态留 Phase 4 接入完整 spec 链,
-; 这里走 #CompilerInner fn 形态作为过渡.
+; Phase 3b: Type.fields 暴露 Array<Field>; Field.name 读到声明顺序的字段名.
 
 struct Counter {
   n i32
+  total i32
 }
 
 fn main() {
   let t Type = __yux_reflect_type:<Counter>()
-  let n String = t.name
-  println(n)
+  println(t.name)
+  let f0 Field = t.fields.at(0)
+  println(f0.name)
+  let f1 Field = t.fields.at(1)
+  println(f1.name)
 }

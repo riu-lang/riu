@@ -1035,23 +1035,69 @@ llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t) {
 
     if (auto* existing = _module->getNamedGlobal(symName)) return existing;
 
-    // Type 嵌套布局
+    // Type 嵌套布局: { String name, Array<Field> fields }
     auto* typeStructTy = llvm::dyn_cast_or_null<llvm::StructType>(getLLVMType(TypeInfo("Type")));
-    if (!typeStructTy || typeStructTy->getNumElements() < 1) return nullptr;
+    if (!typeStructTy || typeStructTy->getNumElements() < 2) return nullptr;
     auto* stringStructTy = llvm::dyn_cast<llvm::StructType>(typeStructTy->getElementType(0));
     if (!stringStructTy || stringStructTy->getNumElements() < 1) return nullptr;
     auto* arrayStructTy = llvm::dyn_cast<llvm::StructType>(stringStructTy->getElementType(0));
     if (!arrayStructTy || arrayStructTy->getNumElements() < 1) return nullptr;
+    auto* arrFieldHandleTy = llvm::dyn_cast<llvm::StructType>(typeStructTy->getElementType(1));
+    if (!arrFieldHandleTy || arrFieldHandleTy->getNumElements() < 1) return nullptr;
+    auto* fieldStructTy = llvm::dyn_cast_or_null<llvm::StructType>(getLLVMType(TypeInfo("Field")));
+    if (!fieldStructTy || fieldStructTy->getNumElements() < 1) return nullptr;
 
-    // name 码点 (ASCII 子集; Phase 3a struct 名都是 ASCII 标识符)
-    vector<uint32_t> nameCps;
-    nameCps.reserve(t.name.size());
-    for (unsigned char c : t.name) nameCps.push_back(static_cast<uint32_t>(c));
+    auto i32Ty = llvm::Type::getInt32Ty(_context);
+    auto i64Ty = llvm::Type::getInt64Ty(_context);
+    auto ptrTy = llvm::PointerType::get(_context, 0);
+    auto sentinel = llvm::ConstantInt::get(i32Ty, 0xFFFFFFFFu);
+    auto i32Zero = llvm::ConstantInt::get(i32Ty, 0);
 
-    auto* nameBlock = emitStringConstBlock(nameCps);
-    auto* arrayInit = llvm::ConstantStruct::get(arrayStructTy, {nameBlock});
-    auto* stringInit = llvm::ConstantStruct::get(stringStructTy, {arrayInit});
-    auto* typeInit = llvm::ConstantStruct::get(typeStructTy, {stringInit});
+    auto cpsOf = [](const std::string& s) {
+        vector<uint32_t> out;
+        out.reserve(s.size());
+        for (unsigned char c : s) out.push_back(static_cast<uint32_t>(c));
+        return out;
+    };
+
+    // name string init
+    auto* nameBlock = emitStringConstBlock(cpsOf(t.name));
+    auto* nameArrayInit = llvm::ConstantStruct::get(arrayStructTy, {nameBlock});
+    auto* nameStringInit = llvm::ConstantStruct::get(stringStructTy, {nameArrayInit});
+
+    // fields: 收集 instance 字段 (不含 #Static)
+    p<StructDeclNode> decl = ownerFile->getStructDecl(t.name);
+    vector<llvm::Constant*> fieldConsts;
+    if (decl) {
+        for (auto& f : decl->fields()) {
+            if (f->isStatic()) continue;
+            auto* fNameBlock = emitStringConstBlock(cpsOf(f->name().getText()));
+            auto* fArrInit = llvm::ConstantStruct::get(arrayStructTy, {fNameBlock});
+            auto* fStrInit = llvm::ConstantStruct::get(stringStructTy, {fArrInit});
+            auto* fInit = llvm::ConstantStruct::get(fieldStructTy, {fStrInit});
+            fieldConsts.push_back(fInit);
+        }
+    }
+    size_t N = fieldConsts.size();
+
+    llvm::Constant* fieldsDataPtr = llvm::ConstantPointerNull::get(ptrTy);
+    if (N > 0) {
+        auto* arrTy = llvm::ArrayType::get(fieldStructTy, N);
+        auto* arrInit = llvm::ConstantArray::get(arrTy, fieldConsts);
+        fieldsDataPtr = new llvm::GlobalVariable(*_module, arrTy, /*isConstant=*/true,
+                                                 llvm::GlobalValue::PrivateLinkage, arrInit,
+                                                 symName + ".fields.data");
+    }
+
+    auto* blockTy = llvm::StructType::get(_context, {i32Ty, i32Ty, i64Ty, i64Ty, ptrTy});
+    auto lenC = llvm::ConstantInt::get(i64Ty, N);
+    auto* fieldsBlockInit = llvm::ConstantStruct::get(blockTy, {sentinel, i32Zero, lenC, lenC, fieldsDataPtr});
+    auto* fieldsBlockGV = new llvm::GlobalVariable(*_module, blockTy, /*isConstant=*/true,
+                                                   llvm::GlobalValue::PrivateLinkage, fieldsBlockInit,
+                                                   symName + ".fields.block");
+    auto* fieldsHandleInit = llvm::ConstantStruct::get(arrFieldHandleTy, {fieldsBlockGV});
+
+    auto* typeInit = llvm::ConstantStruct::get(typeStructTy, {nameStringInit, fieldsHandleInit});
 
     auto* gv = new llvm::GlobalVariable(*_module, typeStructTy, /*isConstant=*/true,
                                         llvm::GlobalValue::LinkOnceODRLinkage, typeInit, symName);
