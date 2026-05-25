@@ -4,9 +4,8 @@
 // 构造表达式编译 (Enum / Dyn / Heap ctor)：从 compiler_expr.cpp 拆出 (P1 Phase 4)。
 // 方法体一字不动。
 
-#include "../compiler_runtime.h"
 #include "../compiler.h"
-#include <algorithm>
+#include "../compiler_runtime.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
 #include "analyzer/symbol_suggest.h"
@@ -15,10 +14,11 @@
 #include "ast/node/expr_node.h"
 #include "ast/node/literal_node.h"
 #include "ast/yux.h"
+#include "sema/call_resolve.h"
+#include <algorithm>
 #include <cassert>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
-#include "sema/call_resolve.h"
 #include <set>
 
 // 编译枚举构造表达式 E::V / E::V() / E::V(args)
@@ -40,6 +40,41 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
     string variantName = node->variantName().getText();
     int line = node->getLineNumber();
     int col = node->getColumn();
+
+    // DRAFT-spec-reflect Phase 4: `<Struct>::type` / `<Struct>::fields`
+    //   * type   → 整个 reflect Type 全局值 (by-value 拷贝; immortal block, retain no-op)
+    //   * fields → Type 的第 1 槽 (Array<Field> handle)
+    // sema 已校验 LHS 是已知 struct, 这里直接 emit load.
+    {
+        string lhsRaw = node->enumName().getText();
+        string rhsName = node->variantName().getText();
+        if (node->args().empty() && (rhsName == "type" || rhsName == "fields")) {
+            FileNode* sdkF = _yux ? _yux->sdkFile() : nullptr;
+            auto* sd = _file ? _file->getStructDecl(lhsRaw) : nullptr;
+            if (!sd && sdkF && sdkF != _file) sd = sdkF->getStructDecl(lhsRaw);
+            if (sd) {
+                auto* gv = ensureReflectTypeGlobal(TypeInfo(lhsRaw));
+                if (!gv) {
+                    throw YuxError(line, col, ErrorCode::E6019, lhsRaw);
+                }
+                auto typeStructTy = getLLVMType(TypeInfo("Type"));
+                if (rhsName == "type") {
+                    return _builder.CreateLoad(typeStructTy, gv, "reflect.type");
+                }
+                // fields: GEP into Type's slot 1 (Array<Field> handle struct)
+                auto* tyStructTy = llvm::dyn_cast<llvm::StructType>(typeStructTy);
+                if (!tyStructTy || tyStructTy->getNumElements() < 2) {
+                    throw YuxError(line, col, ErrorCode::E6019, string("Type.fields layout"));
+                }
+                auto* fieldsTy = tyStructTy->getElementType(1);
+                auto i32Ty = _builder.getInt32Ty();
+                auto z = llvm::ConstantInt::get(i32Ty, 0);
+                auto one = llvm::ConstantInt::get(i32Ty, 1);
+                auto fp = _builder.CreateGEP(tyStructTy, gv, {z, one}, "reflect.fields.ptr");
+                return _builder.CreateLoad(fieldsTy, fp, "reflect.fields");
+            }
+        }
+    }
 
     // Phase 3c 构造模型重构: 若 LHS 是 struct, 走 #Static fn 调用路径.
     // sema 已先做形态校验 (#Static 命中 / 缺失 / 实例方法误用), 这里直接 emit call.

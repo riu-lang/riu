@@ -1,0 +1,17 @@
+; DRAFT-spec-reflect Phase 4: `<Struct>::type` / `<Struct>::fields` 静态路径访问.
+; 等价 Phase 3a/3b 的 __yux_reflect_type:<T>() intrinsic, 但走草案 §2 的公开形态.
+
+struct Counter {
+  n i32
+  total i32
+}
+
+fn main() {
+  let t Type = Counter::type
+  println(t.name)
+  let fs Array<Field> = Counter::fields
+  let f0 Field = fs.at(0)
+  println(f0.name)
+  let f1 Field = fs.at(1)
+  println(f1.name)
+}

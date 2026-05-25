@@ -1300,6 +1300,33 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     }
     if (auto n = dynamic_cast<p<ExprDotNode>>(expr)) {
         visitExpr(n->baseExpr());
+
+        // DRAFT-spec-reflect Phase 4: 实例形访问 `c.type` / `c.fields` / `$.type` /
+        // `$.fields` 拦截 (草案 §5 / [#1.AB]); 提示用 `<Type>::field` / `Self::field`.
+        // 仅当 base 是已知 struct 且不含同名 instance 字段时触发 (用户若自己声明
+        // `type` 字段, 走常规字段访问).
+        {
+            string mem = n->member();
+            if (mem == "type" || mem == "fields") {
+                TypeInfo bt;
+                try { bt = n->baseExpr()->getType(); } catch (...) { bt = TypeInfo(); }
+                if (bt.isRef()) {
+                    if (auto inner = bt.refElementType()) bt = *inner;
+                }
+                if (bt.isRc()) {
+                    if (auto inner = bt.rcElementType()) bt = *inner;
+                }
+                if (bt.kind == TypeKind::Normal && !bt.name.empty()) {
+                    auto* sd = _file ? _file->getStructDecl(bt.name) : nullptr;
+                    if (!sd && _sdkFile && _sdkFile != _file) sd = _sdkFile->getStructDecl(bt.name);
+                    if (sd && sd->fieldIndex(mem) < 0) {
+                        throw YuxError(n->resolveLineNumber(), n->resolveColumn(),
+                                       ErrorCode::E1138, mem, bt.name, bt.name, mem);
+                    }
+                }
+            }
+        }
+
         // Phase 3.4.d.2: 字段私有可见性 (E3042). safe `?.` 路径在 helper 内
         // 自跳过 (走 getType, kMigratedCodes 已覆盖). 异常静默吞掉, 留 Compiler.
         try {
@@ -1407,6 +1434,18 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     if (auto n = dynamic_cast<p<ExprPathCallNode>>(expr)) {
         for (auto& a : n->args())
             visitExpr(a);
+
+        // DRAFT-spec-reflect Phase 4: `<Struct>::type` / `<Struct>::fields` reflect 静态访问.
+        // 优先于 impl-method / enum-ctor 分流 (struct 无需 impl 也能取反射元数据).
+        {
+            string lhsName = n->enumName().getText();
+            string rhsName = n->variantName().getText();
+            if (n->args().empty() && (rhsName == "type" || rhsName == "fields")) {
+                auto* sd = _file ? _file->getStructDecl(lhsName) : nullptr;
+                if (!sd && _sdkFile && _sdkFile != _file) sd = _sdkFile->getStructDecl(lhsName);
+                if (sd) return;
+            }
+        }
 
         // Phase 2c 构造模型重构: `Type::name(...)` 按 LHS 分流.
         //   * LHS 是 struct -> 必须是 #Static 方法 (E3120/E3121); codegen Phase 3 落地.

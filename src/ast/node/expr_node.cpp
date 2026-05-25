@@ -1438,5 +1438,32 @@ TypeInfo ExprPathCallNode::getType() const {
             n = t.name;
         }
     }
+
+    // DRAFT-spec-reflect Phase 4: `<Struct>::type` / `<Struct>::fields` 走 reflect
+    // 静态路径; getType 返回对应 SDK 类型供下游 (assignment / call) 推断.
+    // LHS 必须是 struct (有 StructDecl), 才能区分于 enum::variant.
+    string rhs = _variantName.getText();
+    if (_args.empty() && (rhs == "type" || rhs == "fields")) {
+        auto findStruct = [&](const string& sn) -> StructDeclNode* {
+            if (!file) return nullptr;
+            if (auto* sd = file->getStructDecl(sn)) return sd;
+            ScopeNode* p = file->parentScope();
+            while (p) {
+                if (auto* pf = dynamic_cast<FileNode*>(p)) {
+                    if (auto* sd = pf->getStructDecl(sn)) return sd;
+                }
+                p = p->parentScope();
+            }
+            return nullptr;
+        };
+        if (findStruct(n)) {
+            if (rhs == "type") return TypeInfo("Type");
+            // fields → Array<Field>
+            vector<sp<TypeInfo>> ga;
+            ga.push_back(std::make_shared<TypeInfo>("Field"));
+            return {"Array", ga};
+        }
+    }
+
     return TypeInfo(n);
 }
