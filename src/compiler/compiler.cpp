@@ -991,3 +991,70 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
     }
     DEBUG_LOG_VAL("Finished compiling method", structName << "." << node->header()->name().getText());
 }
+
+// ==================== DRAFT-spec-reflect Phase 3a (捷径 A) ====================
+// Reflect Type 节点 lazy emit, 由 `__yux_reflect_type:<T>()` intrinsic 调用站调用.
+// 符号: __yux_reflect_<sanitized-mod>_<typename>__type, linkonce_odr rodata.
+//
+// 节点 layout: %Type = { %String } = { { %Array_u32 } } = { { { ptr handle } } }
+// handle -> emitStringConstBlock(typename) 产出的 .rodata Block (immortal, strong=0xFFFFFFFF).
+//
+// 仅对 Normal 用户 / SDK / wildcard-imported struct 类型 emit; 找不到 owner 或类型为
+// 泛型形参 / 内置标量 / Rc / Array 等返回 nullptr (调用站抛 E?).
+llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t) {
+    if (t.kind != TypeKind::Normal || t.name.empty()) return nullptr;
+
+    // 找声明 struct 的 file (决定 mod)
+    p<FileNode> ownerFile = nullptr;
+    if (_file && _file->getStructDecl(t.name)) {
+        ownerFile = _file;
+    } else if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file
+               && _yux->sdkFile()->getStructDecl(t.name)) {
+        ownerFile = _yux->sdkFile();
+    } else if (_file) {
+        for (auto* imp : _file->wildcardImports()) {
+            if (imp && imp->getStructDecl(t.name)) {
+                ownerFile = imp;
+                break;
+            }
+        }
+    }
+    if (!ownerFile) return nullptr; // builtin / unknown - Phase 3a 不发射
+
+    // 符号名: mod 里 '.' / 其它非标识符字符 → '_'
+    auto sanitize = [](const std::string& s) {
+        std::string out;
+        out.reserve(s.size());
+        for (char c : s) {
+            bool keep = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+            out += keep ? c : '_';
+        }
+        return out;
+    };
+    std::string symName = "__yux_reflect_" + sanitize(ownerFile->moduleName()) + "_" + t.name + "__type";
+
+    if (auto* existing = _module->getNamedGlobal(symName)) return existing;
+
+    // Type 嵌套布局
+    auto* typeStructTy = llvm::dyn_cast_or_null<llvm::StructType>(getLLVMType(TypeInfo("Type")));
+    if (!typeStructTy || typeStructTy->getNumElements() < 1) return nullptr;
+    auto* stringStructTy = llvm::dyn_cast<llvm::StructType>(typeStructTy->getElementType(0));
+    if (!stringStructTy || stringStructTy->getNumElements() < 1) return nullptr;
+    auto* arrayStructTy = llvm::dyn_cast<llvm::StructType>(stringStructTy->getElementType(0));
+    if (!arrayStructTy || arrayStructTy->getNumElements() < 1) return nullptr;
+
+    // name 码点 (ASCII 子集; Phase 3a struct 名都是 ASCII 标识符)
+    vector<uint32_t> nameCps;
+    nameCps.reserve(t.name.size());
+    for (unsigned char c : t.name) nameCps.push_back(static_cast<uint32_t>(c));
+
+    auto* nameBlock = emitStringConstBlock(nameCps);
+    auto* arrayInit = llvm::ConstantStruct::get(arrayStructTy, {nameBlock});
+    auto* stringInit = llvm::ConstantStruct::get(stringStructTy, {arrayInit});
+    auto* typeInit = llvm::ConstantStruct::get(typeStructTy, {stringInit});
+
+    auto* gv = new llvm::GlobalVariable(*_module, typeStructTy, /*isConstant=*/true,
+                                        llvm::GlobalValue::LinkOnceODRLinkage, typeInit, symName);
+    gv->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+    return gv;
+}

@@ -199,6 +199,19 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             auto size = _module->getDataLayout().getTypeAllocSize(llvmType);
             return _builder.getInt64(size);
         }
+        // DRAFT-spec-reflect Phase 3a (捷径 A): __yux_reflect_type:<T>() 拿 Type 反射节点.
+        // lazy emit linkonce_odr rodata 全局 + load by value.
+        if (fnName == "__yux_reflect_type") {
+            auto* gv = ensureReflectTypeGlobal(typeArgs[0]);
+            if (!gv) {
+                // Phase 3a 仅放行 Normal 用户 / SDK / wildcard-imported struct;
+                // 复用 E6019 (intrinsic 类型形态错) 占位, Phase 4+ 接 spec 链时换专属错码.
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                    ErrorCode::E6019, typeArgs[0].getFullName());
+            }
+            auto typeStructTy = getLLVMType(TypeInfo("Type"));
+            return _builder.CreateLoad(typeStructTy, gv, "reflect.type");
+        }
         if (fnName == "upgrade") {
             // Phase 1d.2：Weak<T> → Rc<T>?
             // E6024 / E6025 已由 sema::validateCompilerInnerIntrinsicShape 校验

@@ -313,6 +313,10 @@ private:
     // Block layout 与 Array<T> 一致: { i32 strong=0xFFFFFFFF, i32 weak=0, i64 len, i64 cap, ptr data }.
     // 不需 _builder, 可在 builder 未设当前 BB 时调用 (供 reflect rodata 节点 emit 复用).
     llvm::Constant* emitStringConstBlock(const vector<u32>& codePoints);
+    // DRAFT-spec-reflect Phase 3a (捷径 A): lazy emit `__yux_reflect_<mod>_<typename>__type`,
+    // linkonce_odr rodata, 多 TU 共享. 由 `__yux_reflect_type:<T>()` intrinsic 调用站调用.
+    // 仅对 Normal 用户 / SDK struct 类型 emit; 找不到 owner 返回 nullptr.
+    llvm::GlobalVariable* ensureReflectTypeGlobal(const TypeInfo& t);
     llvm::Value*
     compileStringTemplate(StringTemplateNode* node); // v0.6 Phase 2a：StringTemplateNode → StringBuilder lower
     llvm::Value* compileStringPlusChain(

@@ -614,6 +614,12 @@ void validateCompilerInnerIntrinsicShape(const string& fnName,
         if (argsCount != 0) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(0));
         return;
     }
+    // DRAFT-spec-reflect Phase 3a (捷径 A): __yux_reflect_type:<T>() 拿反射 Type 节点
+    if (fnName == "__yux_reflect_type") {
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName);
+        if (argsCount != 0) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(0));
+        return;
+    }
     // 未知 CompilerInner intrinsic
     throw YuxError(line, col, ErrorCode::E6017, fnName);
 }
