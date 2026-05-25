@@ -96,9 +96,9 @@ class Compiler {
     [[noreturn]] void rethrowWithInstantiationContext(const YuxError& e) const; // 重新抛出异常并附加实例化上下文
 
     // ==================== 泛型实例化 ====================
-    TypeInfo applySubst(const TypeInfo& t) const; // 应用当前类型替换（含别名透明替换）
+    [[nodiscard]] TypeInfo applySubst(const TypeInfo& t) const; // 应用当前类型替换（含别名透明替换）
     // 顶层透明类型别名解析；递归把 alias 名替换为目标类型，遇环抛 E2016
-    TypeInfo resolveAlias(const TypeInfo& t) const;
+    [[nodiscard]] TypeInfo resolveAlias(const TypeInfo& t) const;
     // 编译入口处的别名一次性校验：名称冲突 (E2017) + 环检测 (E2016)
     void validateAliases();
     string ensureStructInstance(p<StructDeclNode> baseDecl, const vector<sp<TypeInfo>>& args, p<FileNode> ownerFile,
@@ -309,6 +309,10 @@ private:
     llvm::Value* compileLiteralExpr(p<ExprLiteralNode> node); // 编译字面量表达式
     llvm::Value* emitStringLiteralValue(
         const vector<u32>& codePoints); // 由码点向量发射 .rodata 哨兵 String 值（StringLiteral / StringTemplate 共用）
+    // 由码点向量发射 .rodata 哨兵 Array<u32> Block, 返回 PrivateLinkage 全局指针 (handle).
+    // Block layout 与 Array<T> 一致: { i32 strong=0xFFFFFFFF, i32 weak=0, i64 len, i64 cap, ptr data }.
+    // 不需 _builder, 可在 builder 未设当前 BB 时调用 (供 reflect rodata 节点 emit 复用).
+    llvm::Constant* emitStringConstBlock(const vector<u32>& codePoints);
     llvm::Value*
     compileStringTemplate(StringTemplateNode* node); // v0.6 Phase 2a：StringTemplateNode → StringBuilder lower
     llvm::Value* compileStringPlusChain(

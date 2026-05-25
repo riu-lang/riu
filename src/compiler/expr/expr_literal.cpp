@@ -276,7 +276,7 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
     throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3080);
 }
 
-// 由码点向量发射 .rodata 哨兵 String 值
+// 由码点向量发射 .rodata 哨兵 Array<u32> Block, 返回 PrivateLinkage 全局指针 (handle).
 //
 // Phase 1c.1：字面量走 .rodata 哨兵 Block，零启动开销。
 // Block 字节布局匹配 Array<T>（compiler_runtime.cpp）：
@@ -284,15 +284,13 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
 // strong = 0xFFFFFFFF 让 _array_retain / _array_release 直接跳过；
 // String layout 仍是 { data: Array<u32> } = { { ptr handle } }，handle = &block。
 //
-// LiteralStringNode 与 StringTemplateNode（template parts）共用此发射路径。
-llvm::Value* Compiler::emitStringLiteralValue(const vector<u32>& codePoints) {
+// DRAFT-spec-reflect Phase 3a: 拆出 Block emit 部分供 reflect 节点 emit 复用,
+// 不依赖 _builder 当前 BB, 仅操作 module 全局.
+llvm::Constant* Compiler::emitStringConstBlock(const vector<u32>& codePoints) {
     size_t len = codePoints.size();
 
-    auto stringType = getLLVMType(TypeInfo("String"));
-    auto alloca = _builder.CreateAlloca(stringType, nullptr, "str_tmp");
-
-    auto i32Ty = _builder.getInt32Ty();
-    auto i64Ty = _builder.getInt64Ty();
+    auto i32Ty = llvm::Type::getInt32Ty(_context);
+    auto i64Ty = llvm::Type::getInt64Ty(_context);
     auto ptrTy = llvm::PointerType::get(_context, 0);
     auto sentinel = llvm::ConstantInt::get(i32Ty, 0xFFFFFFFFu);
     auto i32Zero = llvm::ConstantInt::get(i32Ty, 0);
@@ -320,21 +318,26 @@ llvm::Value* Compiler::emitStringLiteralValue(const vector<u32>& codePoints) {
     auto blockInit = llvm::ConstantStruct::get(blockTy, {sentinel, i32Zero, lenC, lenC, dataConst});
 
     // 空字面量共享同一全局，省 .rodata 体积。
-    llvm::GlobalVariable* blockGlobal = nullptr;
     if (len == 0) {
         const char* sharedName = ".str.empty.block";
-        blockGlobal = _module->getNamedGlobal(sharedName);
-        if (!blockGlobal) {
-            blockGlobal = new llvm::GlobalVariable(*_module, blockTy, /*isConstant=*/true,
-                                                   llvm::GlobalValue::PrivateLinkage, blockInit, sharedName);
-        }
-    } else {
-        static int strBlockCounter = 0;
-        string blockName = ".str.block." + to_string(strBlockCounter++);
-        blockGlobal = new llvm::GlobalVariable(*_module, blockTy, /*isConstant=*/true,
-                                               llvm::GlobalValue::PrivateLinkage, blockInit, blockName);
+        auto* existing = _module->getNamedGlobal(sharedName);
+        if (existing) return existing;
+        return new llvm::GlobalVariable(*_module, blockTy, /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage,
+                                        blockInit, sharedName);
     }
+    static int strBlockCounter = 0;
+    string blockName = ".str.block." + to_string(strBlockCounter++);
+    return new llvm::GlobalVariable(*_module, blockTy, /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage,
+                                    blockInit, blockName);
+}
 
+// 由码点向量发射 .rodata 哨兵 String 值
+//
+// LiteralStringNode 与 StringTemplateNode（template parts）共用此发射路径。
+llvm::Value* Compiler::emitStringLiteralValue(const vector<u32>& codePoints) {
+    auto stringType = getLLVMType(TypeInfo("String"));
+    auto alloca = _builder.CreateAlloca(stringType, nullptr, "str_tmp");
+    auto blockGlobal = emitStringConstBlock(codePoints);
     storeArrayHandle(alloca, blockGlobal);
     return _builder.CreateLoad(stringType, alloca, "str_val");
 }
