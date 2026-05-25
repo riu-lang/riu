@@ -15,6 +15,28 @@
 
 ---
 
+## 2026-05-23 —— spec 默认体消歧调用 `@SpecA` 后缀（DRAFT-spec-disambig-at 落地）
+
+- **新增章节**：[§12.10.8](12-spec.md#12108-消歧调用-speca-后缀)「消歧调用 `@SpecA` 后缀」。dot-call 方法名后可选附加 `@ID` 后缀，显式指向某 spec 的默认方法体；填补 §12.10.5 E3132 消歧覆盖体内 delegate 到 spec 默认体的形态空缺。
+- **修改 §12.10.5.3**：删除"`a.SpecA::m()` 形态留 v0.X+1"措辞，改为指向 §12.10.8 的 `$.m@SpecA()` 形态。
+- **修改 §12.10.7 不在范围**：原"显式消歧调用语法"条目标删除线 + "已落地，见 §12.10.8"（形态从草案预估的 `Type::m()` UFCS 改为 dot-call `@` 后缀）。
+- **g4 变动**：`src/yuxParser.g4` `exprDot` 在 `member+=ID` 后加可选 `(SymbolAt specQual=ID)`；`src/yuxLexer.g4` 新增 `SymbolAt: '@';` token。附录 B `exprDot` 产生式同步。改 g4 经用户口头确认，按 `behavior.md` 例外照常走。
+- **诊断变更**：
+  - `E1101` 触发面追加："`$.m@SpecA()` 中 T 未 `#Impl(SpecA)`" / "`Dyn<D>` 上 `@OtherSpec`"，统一进 missing-impl 语义类。
+  - `E1140` 触发面追加："`$.m@SpecA()` 中 SpecA 无该方法 / 默认体"；模板升级为 3 参数 `(specName, methodName, contextSuffix)`，消息按上下文区分"unknown method" vs "no default body"。
+  - 不引入新错误码。
+- **永久决议**（承 DRAFT-spec-disambig-at [#1.A]–[#1.H]）：
+  - `@` 仅出现在 dot-call；free fn / `Type::factory` / 构造调用**不**接受 `@` 后缀。
+  - `@` 后**单名**；跨包 / 全限定形态留"统一路径形态"专项。
+  - `$.m@SpecA()` 永远指向 SpecA 默认方法体（escape hatch 语义）；fall-through 等价场景与 `$.m()` 行为一致。
+  - `@label` 用于 `break` / `ret` 与本节同源 `@` 形态但分草案承担，本次不绑死 label 语义。
+- **codegen 协议**：实现者类型 S 对每条 (spec, 带默认体签名) 在 fall-through 之外**额外合成** `S.m__at__<spec>` 符号；调用点 codegen 期把 member 重写为 `m__at__<spec>` 走常规 dispatch；mangler 不引入新规则。
+- **Dyn 整合**：sema 端 `d.m@D()` 接受（走 vtable）/ `d.m@OtherSpec()` 拒（复用 E1101）。codegen 在 `baseType.isDyn()` 时跳过 member 重写。Dyn 上调用 spec 默认体 fall-through 方法本身的 LLVM assert（与 `@` 形态无关，见 `BUGS.md`）阻塞了端到端测试，sema 形态校验已完整。
+- **测试**：`diag_spec_disambig_at_{not_impl,unknown_method,no_default_body}` / `spec_disambig_at_{basic,override_delegate,e3132_delegate}` 全过；Dyn 端到端推迟（实施日志 + BUG 记录）。
+- **冲突 / 兼容**：仅向后兼容扩展。既有 dot-call（`a.b`）行为不变；既有 `m` 标识符不受影响（`@` token 仅在 ID 后位置作消歧后缀槽位生效）。
+
+---
+
 ## 2026-05-22 —— spec 默认方法体 + fall-through（DRAFT-spec-default-body 落地）
 
 - **新增章节**：[§12.10](12-spec.md#1210-默认方法体默认实现--fall-through)「默认方法体（默认实现 + fall-through）」。允许 `#Spec struct D { ... }` 体内方法签名附带函数体（`fnExprBody` 或 `fnBlockBody`）作"默认方法体"；`#Impl(D) struct S { ... }` 未覆盖该方法时默认体 fall-through 到 S。

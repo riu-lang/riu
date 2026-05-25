@@ -197,7 +197,7 @@ expr ::=
                      (expr (',' LineEnd* expr)* ','? codeLineEnd*)?
                  ')' )?                                          # exprEnumCtor
   | '[' literal '.' '.' '.' type? ']'                            # exprArrayInit
-  | expr LineEnd* '?'? '.' ID                                    # exprDot
+  | expr LineEnd* '?'? '.' ID ('@' ID)?                          # exprDot  ; `@ID` = spec 默认体消歧后缀（§12.10.8）
   | expr LineEnd* DOT_NUM                                        # exprTupleMember
   | '(' expr (',' expr)+ ')'                                     # exprTuple
   | '[' LineEnd* (expr (',' LineEnd* expr)* ','? LineEnd*)? ']'  # exprArray

@@ -488,7 +488,7 @@ struct Ord {
 
 §12.10.5.2 "一种 spec 默认体 + 另一种纯抽象签名"**不**触发 E3132；默认体直接 fall-through，覆盖另一 spec 的抽象签名要求。
 
-§12.10.5.3 v0.X **不引入**隐式优先级 / 顺序 / `use SpecA::method` 机制；冲突一律由实现者写显式覆盖解决。`a.SpecA::m()` 形态的方法消歧调用语法留 v0.X+1（与现有 `Type::m()` 静态调用通道协同设计）。
+§12.10.5.3 v0.X **不引入**隐式优先级 / 顺序 / `use SpecA::method` 机制；冲突一律由实现者写显式覆盖解决。实现者写覆盖时如需 delegate 到任一 spec 的默认体，使用 `$.m@SpecA()` 形态的消歧调用语法（详见 §12.10.8）。
 
 §12.10.5.4 E3132 消息：`Type `{}` inherits conflicting default bodies for method `{}` from specs {}; implementer must provide an explicit override`。
 
@@ -506,10 +506,61 @@ struct Ord {
 
 承 §12.8：
 
-- 显式消歧调用语法（`a.SpecA::m(args)`）—— 留 v0.X+1。
+- ~~显式消歧调用语法（`a.SpecA::m(args)`）—— 留 v0.X+1。~~ → 2026-05-23 **已落地**（形态改为 `$.m@SpecA()` dot-call 后缀），见 §12.10.8。
 - 按字段递归自动 derive 默认体（如 `ToJson.to_json` 字段遍历）—— §12.10.2.2 永不引入。
 - `#Inline for` 编译期循环 unroll —— §12.8 项 16 永不引入。
 - spec 体内字段 / `#Static fn` / 关联类型 / 关联常量 —— §12.1.1.1 / §12.8 项 4 / §12.8 项 14。
+
+### §12.10.8 消歧调用 `@SpecA` 后缀
+
+§12.10.8.1 在 dot-call 的方法名后**可选**附加 `@ID` 后缀，显式指向某 spec 的默认方法体：
+
+```
+exprDot ::= expr LineEnd* '?'? '.' ID ('@' ID)? ...
+```
+
+调用形态：
+
+| 写法 | 含义 |
+|---|---|
+| `$.m()` / `obj.m()` | 常规方法调用，dispatch 走 receiver 类型的方法表（spec 默认体已 fall-through） |
+| `$.m@SpecA()` / `obj.m@SpecA()` | 显式指向 SpecA 的默认方法体 `m`；即便 receiver 类型覆盖了 `m`，仍走 spec 默认体 |
+
+`@SpecA` 是**方法名上的标签**，`m@SpecA` 整体作为一个 callable name 解析，不是新的调用入口。`@` 后只接 spec 单名（按 §10 名字解析），**不**接路径前缀。
+
+§12.10.8.2 sema 期判定（按序）：
+
+1. SpecA 必须是 receiver 类型 `T` 自身 `#Impl` 列表里的 spec —— 若 T 未 `#Impl(SpecA)` → 报 **E1101**（与 §12.2.2.1 missing-impl 同语义类）。
+2. SpecA 必须含名为 `m` 的签名 —— 否则报 **E1140**（消息按上下文区分"unknown method"）。
+3. SpecA 中 `m` 必须带默认体 —— 纯抽象签名无法 disambiguate，报 **E1140**（消息按上下文区分"no default body"）。
+
+§12.10.8.3 `@SpecA` 是 escape hatch：即便 T 覆盖了 `m`，`$.m@SpecA()` 仍指向 SpecA 的默认方法体。典型用法是在 §12.10.5 E3132 消歧覆盖体内 delegate 到 spec 默认体：
+
+```yux
+#Impl(A)
+#Impl(B)
+struct S {
+  fn m() {                  ; 显式覆盖以消歧 E3132
+    $.m@A()                 ; delegate 到 A 的默认体
+    $.m@B()                 ; 再 delegate 到 B 的默认体
+  }
+}
+```
+
+若 T 未覆盖 `m` 且已 fall-through SpecA 的默认体，`$.m@SpecA()` 与 `$.m()` 行为一致（前者显式、后者由 fall-through 隐式选择）。
+
+§12.10.8.4 `Dyn<D>` 上的形态：
+
+- `d.m@D()` 合法且等价于 `d.m()`（dyn 携带 D 的 vtable，`@D` 仅作显式标注，仍按 vtable dispatch）。
+- `d.m@OtherSpec()` 拒（dyn 只携带 D 的 vtable，无法 dispatch 到其它 spec）；复用 **E1101** 语义类（"Type 'Dyn' does not implement spec method"）。
+
+§12.10.8.5 codegen：实现者类型 `S` 对每条 (spec, 带默认体的签名) 在 §12.10.4 fall-through 路径之外**额外合成一份** `S.m__at__<spec>` 符号；`$.m@SpecA()` / `obj.m@SpecA()` 调用点 codegen 期把 member 名重写为 `m__at__<spec>` 后走常规 dispatch。该额外符号仅在 `S` 实际参与 spec 实现宣告校验时合成，调用约定 / 借用语义与常规方法 + fall-through 等价（§8.6 / §8.5）。Mangler 不引入新规则——`__at__` 是合法 identifier 字串，沿用 `Mangler::method`。
+
+§12.10.8.6 不在本节范围：
+
+- `@` 后路径前缀 / 全限定形态（`@pkg.SpecA`）—— 留"统一路径形态"专项（与同期 `pkg.X<...>` turbofish / `#Impl(pkg.Spec)` 一并设计）。
+- free fn / `Type::factory` / 构造调用上的 `@` 后缀 —— **不引入**；`@` 仅在 dot-call 出现。
+- `@label` 用于 `break` / `ret` —— 同源 `@` 形态但分草案承担（`DRAFT-label-break.md` 或类似）；本节不绑死 label 语义。
 
 ## Open Issues
 

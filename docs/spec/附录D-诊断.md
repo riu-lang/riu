@@ -400,7 +400,7 @@ Array 内置方法（E6040..E6044）：
 
 | 码     | 模板（占位） | 触发 |
 |--------|-------------|------|
-| E1101  | `Type '{}' does not implement draft method '{}: {}' (impl block missing)` | `Type : D` 实现块缺方法（§12.2.2.1） |
+| E1101  | `Type '{}' does not implement draft method '{}: {}' (impl block missing)` | `Type : D` 实现块缺方法（§12.2.2.1）；spec-default-body 落地后复用为"未实现 + 无默认体"统一诊断；`$.m@SpecA()` 中 T 未 `#Impl(SpecA)` 或 `Dyn<D>` 上 `@OtherSpec` 复用本码（§12.10.8.2 / §12.10.8.4） |
 | E1102  | `Method '{}' in 'Type {} : D' impl block is not part of D's signature set` | 实现块多余非 draft 方法（§12.2.2.1） |
 | E1103  | `Duplicate impl block 'Type {} : {}'` | 同 `Type : D` 实现块重复出现（§12.2.2.2） |
 | E1104  | `draft method '{}.{}' must not introduce its own generic parameters` | draft 体内 `fn` 引入本地泛型（§12.3.2） |
@@ -419,7 +419,7 @@ Array 内置方法（E6040..E6044）：
 | E1137  | `` Type `{}` does not implement spec method `{}` (declared in `#Impl({})`) `` | `#Impl(D)` 缺方法且 D 中无默认体（spec-unify v1，与 E1101 同语义类） |
 | E1138  | `` Cannot access static member `{}` on instance of `{}`; use `{}::{}` instead `` | 实例形访问 `#Static fn`（§12.2.4.1） |
 | E1139  | *（已退役）* | DRAFT-spec-default-body 落地（§12.10）解锁 spec body 方法带 body，编号保留不复用 |
-| E1140  | `` spec `{}` default body references unknown method `$.{}`; must appear in this spec's signatures `` | spec 默认体 sema 占位校验失败（§12.10.3.2） |
+| E1140  | `` spec `{}` default body references unknown method `$.{}`; must appear in this spec's signatures `` | spec 默认体 sema 占位校验失败（§12.10.3.2）；`$.m@SpecA()` 中 SpecA 无该方法 / 默认体（§12.10.8.2，消息按上下文区分"unknown method" vs "no default body"） |
 | E3132  | `` Type `{}` inherits conflicting default bodies for method `{}` from specs {}; implementer must provide an explicit override `` | 多 spec 默认体组合冲突未消歧（§12.10.5） |
 
 ## D.4 与编译流程的关系
