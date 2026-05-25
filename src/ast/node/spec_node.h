@@ -10,10 +10,15 @@
 // spec 声明节点（spec §12.1.1）：承载方法签名集；签名可附带可选默认体
 // （DRAFT-spec-default-body）。`_defaultBodies` 与 `_signatures` 等长并按 index
 // 对齐：无默认体处放 nullptr。
+class StructFieldNode;
+
 class SpecDeclNode : public ScopeNode, public Named, public Annotated {
     vector<p<FnHeaderNode>> _signatures;
     vector<p<FnNode>> _defaultBodies;
     vector<string> _typeParams;
+    // DRAFT-spec-reflect Phase 1: spec body 内允许的 `#Static` 字段段
+    // (type-bound 契约, [#1.Q] 例外 / [#1.Z]). instance 字段段仍拒 (E2011).
+    vector<p<StructFieldNode>> _staticFields;
     bool _isPrivate;
 
 public:
@@ -37,6 +42,11 @@ public:
     void setTypeParams(vector<string> params) { _typeParams = std::move(params); }
     [[nodiscard]] const vector<string>& typeParams() const { return _typeParams; }
     [[nodiscard]] bool isGeneric() const { return !_typeParams.empty(); }
+
+    // DRAFT-spec-reflect Phase 1: `#Static` 字段段承载 (Phase 3 起填充 Reflect spec 的
+    // type/fields/methods/variants 4 个字段; 用户 spec 亦可用作 type-bound 契约).
+    void addStaticField(p<StructFieldNode> field) { _staticFields.push_back(field); }
+    [[nodiscard]] const vector<p<StructFieldNode>>& staticFields() const { return _staticFields; }
 
     [[nodiscard]] bool isPrivate() const { return _isPrivate; }
     [[nodiscard]] bool isDraftLike() const { return hasAnno("DraftLike"); }

@@ -1588,3 +1588,30 @@ fn assert_starts_with(s String&, prefix String&) {
     _yux_test_assert_failed();
   }
 }
+
+; ==================== DRAFT-spec-reflect Phase 2：反射 metadata 数据类型 ====================
+; Type / Method / Variant：普通数据 struct，反射节点的 owned 容器（Phase 3 codegen 发射 .rodata）
+; Field：#CompilerInner stub，Phase 5 才落地 `Field.value` sema 重写；Phase 2 仅占位 `name`
+; 完整 layout（offset / type 等）留到 Phase 3 codegen 实发射节点时再补齐（涉及 Type↔Field
+; 互递归引用 / 占位数组语法 / usize 等需先在 spec 收口）
+
+struct Type {
+  #Frozen
+  name String
+}
+
+struct Method {
+  #Frozen
+  name String
+}
+
+struct Variant {
+  #Frozen
+  name String
+}
+
+#CompilerInner
+struct Field {
+  #Frozen
+  name String
+}

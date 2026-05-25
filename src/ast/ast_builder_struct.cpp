@@ -7,13 +7,13 @@
 //   - visitFiledDecl   (字段)
 // 拆自原 ast_builder.cpp（P1 Phase 2），方法体一字不动。
 
-#include <algorithm>
-#include "ast_builder_helpers.h"
 #include "ast_builder.h"
+#include "ast_builder_helpers.h"
 #include "node/expr_node.h"
 #include "node/literal_node.h"
 #include "node/statement_node.h"
 #include "types.h"
+#include <algorithm>
 
 // spec-unify v1：声明合一的 visitStructDecl 入口。
 // 分三种形态：
@@ -90,14 +90,8 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
         }
     }
 
-    // === Step 2: #Spec 分支 — 构造 DraftDeclNode（v1 仅签名）
+    // === Step 2: #Spec 分支 — 构造 DraftDeclNode（v1 仅签名 + Phase 1 起 #Static 字段段）
     if (isSpec) {
-        if (!ctx->filedDecl().empty()) {
-            auto* f = ctx->filedDecl()[0];
-            throw YuxError(static_cast<int>(f->getStart()->getLine()),
-                           static_cast<int>(f->getStart()->getCharPositionInLine()) + 1, ErrorCode::E2011,
-                           std::string("field in #Spec body"));
-        }
         if (ctx->fnClean()) {
             auto* fc = ctx->fnClean();
             throw YuxError(static_cast<int>(fc->getStart()->getLine()),
@@ -114,6 +108,18 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
 
         for (auto& tp : draft->typeParams()) {
             draft->registerSymbol(tp, {SymbolKind::TypeParam, tp, TypeInfo(tp)});
+        }
+
+        // DRAFT-spec-reflect Phase 1: spec body 内仅允许 `#Static` 字段段 (type-bound 契约,
+        // [#1.Q] 例外 / [#1.Z]); instance 字段段仍拒 (E2011)。
+        for (auto* fieldCtx : ctx->filedDecl()) {
+            auto field = any_cast_p<StructFieldNode>(visit(fieldCtx));
+            if (!field->isStatic()) {
+                throw YuxError(static_cast<int>(fieldCtx->getStart()->getLine()),
+                               static_cast<int>(fieldCtx->getStart()->getCharPositionInLine()) + 1, ErrorCode::E2011,
+                               std::string("instance field in #Spec body (only `#Static` fields allowed)"));
+            }
+            draft->addStaticField(field);
         }
 
         bool isDraftLike = draft->isDraftLike();
@@ -147,8 +153,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
                 {
                     vector<sp<TypeInfo>> selfArgs;
                     selfArgs.push_back(make_shared<TypeInfo>("Self"));
-                    defaultBody->registerSymbol(
-                        "$", {SymbolKind::Variable, "$", TypeInfo("Ref", selfArgs)});
+                    defaultBody->registerSymbol("$", {SymbolKind::Variable, "$", TypeInfo("Ref", selfArgs)});
                 }
 
                 for (auto param : header->params()) {
@@ -166,17 +171,14 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
                     retStmt->setLocation(expr->resolveLineNumber(), expr->resolveColumn());
                     defaultBody->addStatement(retStmt);
                 } else if (auto blockBody = fnCtx->fnBody()->fnBlockBody()) {
-                    auto stmtBlockNode =
-                        any_cast_p<StatementBlockNode>(visit(blockBody->statementBlock()));
+                    auto stmtBlockNode = any_cast_p<StatementBlockNode>(visit(blockBody->statementBlock()));
                     for (auto stmt : stmtBlockNode->statements()) {
                         defaultBody->addStatement(stmt);
                     }
                     if (stmtBlockNode->hasResult()) {
                         auto resultExpr = stmtBlockNode->resultExpr();
-                        auto retStmt =
-                            createWithLine<StatementRetNode>(fnCtx, defaultBody, resultExpr);
-                        retStmt->setLocation(resultExpr->resolveLineNumber(),
-                                             resultExpr->resolveColumn());
+                        auto retStmt = createWithLine<StatementRetNode>(fnCtx, defaultBody, resultExpr);
+                        retStmt->setLocation(resultExpr->resolveLineNumber(), resultExpr->resolveColumn());
                         defaultBody->addStatement(retStmt);
                     }
                 }
@@ -432,30 +434,41 @@ std::any ASTBuilder::visitFnClean(yux::yuxParser::FnCleanContext* ctx) {
 
 namespace {
 
-// P1-4 const-mut §6.1：字段注解只允许 #Val 与 #Frozen，互斥。
-// 其他名字 / 双修饰 → 抛 E3105。返回 (isVal, isFrozen)。
-std::pair<bool, bool> readFieldAnnos(const std::vector<yux::yuxParser::BuildAnnoContext*>& annos) {
-    bool isVal = false, isFrozen = false;
+// P1-4 const-mut §6.1：字段注解允许 #Val / #Frozen / #Static。
+// #Val 与 #Frozen 互斥; #Static 可与 #Frozen 组合 (DRAFT-spec-reflect Phase 1
+// 的 `#Static #Frozen type Type&` 形态), 不与 #Val 组合.
+// 其他名字 / 非法组合 → 抛 E3108。返回 (isVal, isFrozen, isStatic)。
+struct FieldAnnoFlags {
+    bool isVal = false;
+    bool isFrozen = false;
+    bool isStatic = false;
+};
+FieldAnnoFlags readFieldAnnos(const std::vector<yux::yuxParser::BuildAnnoContext*>& annos) {
+    FieldAnnoFlags r;
     for (auto* a : annos) {
         const string name = a->name->getText();
         auto* tk = a->SymbolHash()->getSymbol();
         int line = static_cast<int>(tk->getLine());
         int col = static_cast<int>(tk->getCharPositionInLine()) + 1;
         if (a->arg != nullptr) {
-            // 字段注解 P1 不接受带实参形态（#Val(x) / #Frozen(x) 无意义）。
+            // 字段注解 P1 不接受带实参形态（#Val(x) / #Frozen(x) / #Static(x) 无意义）。
             throw YuxError(line, col, ErrorCode::E3108, name);
         }
         if (name == "Val") {
-            if (isFrozen) throw YuxError(line, col, ErrorCode::E3108, name);
-            isVal = true;
+            if (r.isFrozen) throw YuxError(line, col, ErrorCode::E3108, name);
+            r.isVal = true;
         } else if (name == "Frozen") {
-            if (isVal) throw YuxError(line, col, ErrorCode::E3108, name);
-            isFrozen = true;
+            if (r.isVal) throw YuxError(line, col, ErrorCode::E3108, name);
+            r.isFrozen = true;
+        } else if (name == "Static") {
+            // DRAFT-spec-reflect Phase 1: `#Static` 字段段; 与 #Frozen 可组合, 与 #Val 互斥.
+            if (r.isVal) throw YuxError(line, col, ErrorCode::E3108, name);
+            r.isStatic = true;
         } else {
             throw YuxError(line, col, ErrorCode::E3108, name);
         }
     }
-    return {isVal, isFrozen};
+    return r;
 }
 
 } // namespace
@@ -463,11 +476,13 @@ std::pair<bool, bool> readFieldAnnos(const std::vector<yux::yuxParser::BuildAnno
 std::any ASTBuilder::visitFiledDecl(yux::yuxParser::FiledDeclContext* ctx) {
     auto parent = currentScope();
     auto type = any_cast_p<TypeNode>(visit(ctx->type()));
-    auto [isVal, isFrozen] = readFieldAnnos(ctx->buildAnnos);
-    DEBUG_LOG_VAL("    Field", ctx->name->getText() << " : " << type->getType().name << (isVal ? " #Val" : "")
-                                                    << (isFrozen ? " #Frozen" : ""));
+    auto flags = readFieldAnnos(ctx->buildAnnos);
+    DEBUG_LOG_VAL("    Field", ctx->name->getText()
+                                   << " : " << type->getType().name << (flags.isVal ? " #Val" : "")
+                                   << (flags.isFrozen ? " #Frozen" : "") << (flags.isStatic ? " #Static" : ""));
     auto node = createWithLine<StructFieldNode>(ctx, parent, ctx->name, type);
-    node->setVal(isVal);
-    node->setFrozen(isFrozen);
+    node->setVal(flags.isVal);
+    node->setFrozen(flags.isFrozen);
+    node->setStatic(flags.isStatic);
     return node;
 }

@@ -17,9 +17,13 @@ class StructFieldNode : public Node {
     // 互斥；同时出现 → ast_builder 抛 E3105。
     bool _isVal = false;
     bool _isFrozen = false;
+    // DRAFT-spec-reflect Phase 1: `#Static` 字段段 (type-bound 契约;
+    // spec body 内允许, 普通 struct 内待 data-struct 全集启用).
+    bool _isStatic = false;
 
 public:
-    StructFieldNode(const p<Node>& parent, Token name, p<TypeNode> type) : Node(parent), _name(name), _type(type) {
+    StructFieldNode(const p<Node>& parent, const Token& name, p<TypeNode> type)
+        : Node(parent), _name(name), _type(type) {
         _isPrivate = !name.getText().empty() && name.getText()[0] == '_';
     }
 
@@ -30,8 +34,10 @@ public:
 
     void setVal(bool v) { _isVal = v; }
     void setFrozen(bool v) { _isFrozen = v; }
+    void setStatic(bool v) { _isStatic = v; }
     [[nodiscard]] bool isVal() const { return _isVal; }
     [[nodiscard]] bool isFrozen() const { return _isFrozen; }
+    [[nodiscard]] bool isStatic() const { return _isStatic; }
 };
 
 class StructDeclNode : public ScopeNode, public Named, public Annotated {
@@ -41,7 +47,7 @@ class StructDeclNode : public ScopeNode, public Named, public Annotated {
     bool _isPrivate;
 
 public:
-    StructDeclNode(const p<Node>& parent, Token name) : ScopeNode(parent), Named(name) {
+    StructDeclNode(const p<Node>& parent, const Token& name) : ScopeNode(parent), Named(name) {
         _isPrivate = !name.getText().empty() && name.getText()[0] == '_';
     }
 
@@ -68,13 +74,13 @@ public:
 
 class StructImplNode : public ScopeNode, public Named, public Annotated {
     vector<p<FnNode>> _methods;
-    p<FnNode> _destructor;
+    p<FnNode> _destructor = nullptr;
     vector<string> _typeParams;
     string _structName;
 
 public:
-    StructImplNode(const p<Node>& parent, Token structName)
-        : ScopeNode(parent), Named(structName), _destructor(nullptr), _structName(structName.getText()) {}
+    StructImplNode(const p<Node>& parent, const Token& structName)
+        : ScopeNode(parent), Named(structName), _structName(structName.getText()) {}
 
     void addMethod(p<FnNode> method) { _methods.push_back(method); }
 
@@ -98,6 +104,9 @@ public:
     // (实现者未显式写, spec 提供了默认体). 由 SpecImplChecker::validateImpl 登记, 由
     // Compiler::compileStructImpls 在常规方法编完后再编译 (用 spec 默认体 FnNode +
     // Self patch 到本 impl 的 structName).
+    // 隐式拷贝/移动经 map<string,TypeInfo> 可能抛 std::bad_alloc; 仅在分配失败下触发,
+    // 本进程 OOM 即 panic, 无 unwind 需求.
+    // NOLINTNEXTLINE(bugprone-exception-escape)
     struct InheritedDefault {
         SpecDeclNode* spec = nullptr;
         size_t sigIdx = 0;
@@ -114,6 +123,7 @@ public:
     // emitMethodName = origName + "__at__" + specShortName, 与 fall-through 的同名 fnSymbol
     // 共存. 由 SpecImplChecker::validateImpl 登记; 由 Compiler::compileSpecDisambigEmits
     // 在常规方法 + fall-through 编完后逐条 emit.
+    // NOLINTNEXTLINE(bugprone-exception-escape) — 同 InheritedDefault, 经 map / string 可能 bad_alloc.
     struct SpecDisambigEmit {
         SpecDeclNode* spec = nullptr;
         size_t sigIdx = 0;
