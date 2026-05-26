@@ -395,8 +395,46 @@ private:
         if (blk->hasResult() && blk->resultExpr()) visitExpr(blk->resultExpr());
     }
 
+    // Phase 3 (DRAFT-const-eval §3): #Const fn body 控制流白名单。
+    // 命中非白名单形态时抛 E3141；允许形态返回后落入现有 dispatch。
+    // 允许：StatementRetNode / StatementRetVoidNode / `#Cval` StatementDeclareAssignNode /
+    //       StatementDeclareNode(isConst) （后者罕见，留作 defensive）
+    // 拒收：loop / break / 局部 mutate / 普通 expr-stmt / nested block / match / try-catch /
+    //       非 #Cval 局部 let / 元组解构 let / array set
+    void rejectIfDisallowedInConstFn(p<StatementNode> s) {
+        if (!_isConstFn) return;
+        auto throwE = [&](const char* what) {
+            throw YuxError(s->getLineNumber(), s->getColumn(), ErrorCode::E3141, _fnName, what);
+        };
+        if (dynamic_cast<p<StatementLoopNode>>(s))               throwE("loop");
+        if (dynamic_cast<p<StatementBreakNode>>(s))              throwE("break");
+        // StatementAssignNode / StatementSetNode 写本地 cval = E3093 (compiler 端);
+        // 写参数 / $ / 全局 = E3110 (checkConstFnWrite/Set). 不在此层抢报, 让既有错码生效.
+        if (dynamic_cast<p<StatementAssignNode>>(s)) return;
+        if (dynamic_cast<p<StatementSetNode>>(s))    return;
+        if (auto da = dynamic_cast<p<StatementDeclareAssignNode>>(s)) {
+            if (!da->isConst()) throwE("non-`#Cval` local `let`");
+            return;
+        }
+        if (dynamic_cast<p<StatementDeclareAssignTupleNode>>(s)) throwE("tuple destructure `let`");
+        if (auto dn = dynamic_cast<p<StatementDeclareNode>>(s)) {
+            if (!dn->isConst()) throwE("uninitialized local `let`");
+            return;
+        }
+        if (auto se = dynamic_cast<p<StatementExprNode>>(s)) {
+            if (dynamic_cast<p<StatementRetNode>>(s)) return; // ret 允许
+            p<ExprNode> e = se->expr();
+            if (dynamic_cast<p<ExprMatchNode>>(e))    throwE("match expression");
+            if (dynamic_cast<p<ExprTryCatchNode>>(e)) throwE("try-catch expression");
+            throwE("expression statement");
+        }
+        if (dynamic_cast<p<StatementBlockNode>>(s))              throwE("nested block statement");
+    }
+
     void visitStmt(p<StatementNode> s) {
         if (!s) return;
+
+        rejectIfDisallowedInConstFn(s);
 
         if (auto blk = dynamic_cast<p<StatementBlockNode>>(s)) {
             visitBlock(blk);

@@ -12,7 +12,7 @@ fn add(a i32, b i32) i32 = a + b
 #Const
 fn clamp(x i32) i32 {
     #Cval let base i32 = 0
-    #Mut let hi i32 = LIMIT
+    #Cval let hi i32 = LIMIT
     ret add(x, base) + hi - hi
 }
 

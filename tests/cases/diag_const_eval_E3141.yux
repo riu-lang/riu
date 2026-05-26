@@ -1,0 +1,13 @@
+; DRAFT-const-eval Phase 3: #Const fn body 控制流白名单
+; #Mut let 不在白名单 (仅允许 #Cval 局部 let) → E3141
+
+#Const
+fn bad(n i32) i32 {
+    #Mut let acc i32 = 0
+    acc = acc + n
+    ret acc
+}
+
+fn main() {
+  println(bad(3).to_string())
+}

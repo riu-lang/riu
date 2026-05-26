@@ -279,6 +279,11 @@ DEF_ERR(3140, "Global `let {}` initializer is not a constant expression (DRAFT-c
 DEF_ERR(3143, "Constant expression evaluation error in global `let {}` (overflow, division by zero, or unsupported "
               "operation; DRAFT-const-eval §4.7)")
 
+// ── DRAFT-const-eval Phase 3: #Const fn body 控制流白名单 ─────────────
+DEF_ERR(3141, "`#Const fn` '{}' body contains disallowed control-flow form: {} (DRAFT-const-eval §3; allowed: "
+              "`= expr`, `{{ ret expr }}`, sequential `#Cval let`, `exprOneLineIfElse` / `exprIfElsePreValue`, "
+              "if-statement with `ret` in both branches)")
+
 // ── 构造模型重构: #Static fn / Self / 字段字面量 (DRAFT-static-fn) ────
 DEF_ERR(
     3120,
