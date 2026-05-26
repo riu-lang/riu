@@ -3,7 +3,11 @@
 
 #include "const_eval.h"
 
+#include "ast/node/file_node.h"
+#include "ast/node/fn_node.h"
+#include "ast/node/statement_node.h"
 #include "call_resolve.h"
+#include "error_code.h"
 
 // DRAFT-const-eval Phase 1. 详 const_eval.h 注释。本文件只负责"叶节点 + 算术"
 // 求值, 不接 ast_builder, 不抛错码。
@@ -106,8 +110,12 @@ std::optional<ConstantValue> ConstEvaluator::eval(const p<ExprNode>& expr) {
     if (auto c = dynamic_cast<ExprCompareNode*>(expr)) {
         return evalCompare(c);
     }
+    // Phase 4: #Const fn 调用
+    if (auto call = dynamic_cast<ExprCallNode*>(expr)) {
+        return evalCall(call);
+    }
 
-    // 其它节点（call / struct lit / if-else / dot / get / ...）—— Phase 1 不支持
+    // 其它节点（struct lit / if-else / dot / get / ...）—— Phase 5+ 不支持
     return std::nullopt;
 }
 
@@ -299,6 +307,107 @@ std::optional<ConstantValue> ConstEvaluator::evalBinOp(const p<ExprBinOpNode>& n
     default: return std::nullopt;
     }
     return ConstantValue::makeInt(truncateBits(res, *t), *t);
+}
+
+// Phase 4: #Const fn 调用求值。
+// - callee 必须是裸 LiteralObj 形态（自由函数；方法/路径调用 Phase 5+）。
+// - 通过 _file 解析 FnNode；callee 必须有 #Const 注解，否则 nullopt → caller 抛 E3140。
+// - 形参 / 返回类型必须在白名单（标量整 / 浮点 / bool），违反抛 E3144。
+// - 递归调用同名 fn 即返 nullopt（不含递归 #Const fn，§范围口径）。
+// - body 仅识别 #Cval StatementDeclareAssignNode + StatementRetNode；其它统一 nullopt。
+//   （此约束由 Phase 3 E3141 在 fn 定义点保障）。
+// - 参数 / 局部绑定注入 _env，调用结束完整恢复。
+std::optional<ConstantValue> ConstEvaluator::evalCall(const p<ExprCallNode>& call) {
+    if (!_file || !call) return std::nullopt;
+
+    // callee 形态：仅 LiteralObj（裸自由 fn 名）
+    auto le = dynamic_cast<ExprLiteralNode*>(call->getCalleeExpr());
+    if (!le) return std::nullopt;
+    auto obj = dynamic_cast<LiteralObjNode*>(le->literal());
+    if (!obj) return std::nullopt;
+    string fname = obj->getValue().getText();
+
+    // 递归保护
+    if (_callStack.contains(fname)) return std::nullopt;
+
+    FnNode* fn = _file->getFunction(fname);
+    if (!fn) return std::nullopt;
+    auto header = fn->header();
+    if (!header || !header->hasAnno("Const")) return std::nullopt;
+
+    // 类型白名单
+    auto isWhitelisted = [](const TypeInfo& t) {
+        return t.name == "bool" || t.name == "i8"  || t.name == "i16" || t.name == "i32" || t.name == "i64" ||
+               t.name == "u8"   || t.name == "u16" || t.name == "u32" || t.name == "u64" ||
+               t.name == "f32"  || t.name == "f64";
+    };
+    TypeInfo retT = header->retType() ? header->retType()->getType() : TypeInfo();
+    if (!isWhitelisted(retT)) {
+        throw YuxError(call->resolveLineNumber(), call->resolveColumn(),
+                       ErrorCode::E3144, fname, "return", retT.name);
+    }
+    auto params = header->params();
+    for (auto& pn : params) {
+        TypeInfo pt = pn->type() ? pn->type()->getType() : TypeInfo();
+        if (!isWhitelisted(pt)) {
+            throw YuxError(call->resolveLineNumber(), call->resolveColumn(),
+                           ErrorCode::E3144, fname, "parameter", pt.name);
+        }
+    }
+
+    // arity 校验：args 数必须与 params 数一致（Phase 4 不接默认参 / variadic）
+    auto& args = call->getArgs();
+    if (args.size() != params.size()) return std::nullopt;
+
+    // arg 求值 + 类型对齐到形参类型（按 truncate / cast 走整数；浮点不强制转换）
+    vector<ConstantValue> argVals;
+    argVals.reserve(args.size());
+    for (auto& a : args) {
+        auto v = eval(a);
+        if (!v) return std::nullopt;
+        argVals.push_back(*v);
+    }
+
+    // 保护当前 _env：snapshot 仅被覆盖 / 新增的 key
+    std::map<string, std::optional<ConstantValue>> savedEnv;
+    auto saveAndSet = [&](const string& name, ConstantValue val) {
+        auto it = _env.find(name);
+        savedEnv.emplace(name, it != _env.end() ? std::optional<ConstantValue>(it->second) : std::nullopt);
+        _env[name] = std::move(val);
+    };
+    auto restoreEnv = [&]() {
+        for (auto& [n, prev] : savedEnv) {
+            if (prev) _env[n] = *prev;
+            else _env.erase(n);
+        }
+    };
+
+    for (size_t i = 0; i < params.size(); ++i) {
+        saveAndSet(params[i]->name().getText(), argVals[i]);
+    }
+    _callStack.insert(fname);
+
+    std::optional<ConstantValue> result;
+    for (auto& s : fn->body()) {
+        if (auto da = dynamic_cast<StatementDeclareAssignNode*>(s)) {
+            if (!da->isConst()) { result.reset(); break; }
+            auto v = eval(da->expr());
+            if (!v) { result.reset(); break; }
+            saveAndSet(da->name().getText(), *v);
+            continue;
+        }
+        if (auto ret = dynamic_cast<StatementRetNode*>(s)) {
+            result = eval(ret->expr());
+            break;
+        }
+        // 其它形态 —— Phase 3 已禁；保险起见走 nullopt
+        result.reset();
+        break;
+    }
+
+    _callStack.erase(fname);
+    restoreEnv();
+    return result;
 }
 
 std::optional<ConstantValue> ConstEvaluator::evalCompare(const p<ExprCompareNode>& node) {

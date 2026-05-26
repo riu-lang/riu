@@ -1,0 +1,22 @@
+; DRAFT-const-eval Phase 4: 全局 #Cval RHS 调 #Const fn
+
+#Const
+fn add(a i32, b i32) i32 = a + b
+
+#Const
+fn square(x i32) i32 = x * x
+
+#Cval
+let SUM i32 = add(3, 4)
+
+#Cval
+let SQ i32 = square(5)
+
+#Cval
+let MIX i32 = add(SUM, SQ) * 2
+
+fn main() {
+  println(SUM.to_string())
+  println(SQ.to_string())
+  println(MIX.to_string())
+}

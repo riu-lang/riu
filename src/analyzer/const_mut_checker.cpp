@@ -78,6 +78,17 @@ void requireConstExpr(p<ExprNode> e, p<ScopeNode> scope) {
             auto sc = exprScope(e, scope);
             SymbolInfo* sym = sc ? sc->lookupSymbol(name) : nullptr;
             if (sym && sym->isConst) return;
+            // Phase 4 (DRAFT-const-eval §4): #Const fn 体内, 参数与默认 (non-cval) 局部
+            // 也可作 const 表达式的子项 —— 实际值绑定由 ConstEvaluator 在调用点注入 _env。
+            // 这里只放行符号查找; const-evaluability 由后续 eval 真正判定。
+            p<Node> cur = e;
+            while (cur) {
+                if (auto* fn = dynamic_cast<FnNode*>(cur)) {
+                    if (fn->header() && fn->header()->hasAnno("Const")) return;
+                    break;
+                }
+                cur = cur->parent();
+            }
             throwNonConst(e, "reference to non-`cval` symbol `" + name + "`");
         }
         if (dynamic_cast<p<StringTemplateNode>>(lit)) {
@@ -86,7 +97,37 @@ void requireConstExpr(p<ExprNode> e, p<ScopeNode> scope) {
         throwNonConst(e, "unsupported literal");
     }
 
-    if (dynamic_cast<p<ExprCallNode>>(e))         throwNonConst(e, "function / method call");
+    if (auto call = dynamic_cast<p<ExprCallNode>>(e)) {
+        // Phase 4 (DRAFT-const-eval §4): #Const fn 调用允许进入 const 表达式。
+        // 仅识别裸自由函数形态：callee = LiteralObj("name")。其它形态（方法 / 路径 /
+        // lambda）当前不接 const-eval，仍按 E3104 拒。
+        bool ok = false;
+        if (auto cle = dynamic_cast<p<ExprLiteralNode>>(call->getCalleeExpr())) {
+            if (auto obj = dynamic_cast<p<LiteralObjNode>>(cle->literal())) {
+                string fname = obj->getValue().getText();
+                // 沿 scope 链向上找 FileNode → 查 #Const fn 符号
+                p<Node> cur = e;
+                FileNode* file = nullptr;
+                while (cur) {
+                    if (auto* fl = dynamic_cast<FileNode*>(cur)) { file = fl; break; }
+                    cur = cur->parent();
+                }
+                if (file) {
+                    FnSymbolInfo* fs = file->lookupFnSymbol(fname);
+                    if (!fs) {
+                        for (auto* imp : file->wildcardImports()) {
+                            fs = imp->lookupFnSymbol(fname);
+                            if (fs) break;
+                        }
+                    }
+                    if (fs && fs->isConst) ok = true;
+                }
+            }
+        }
+        if (!ok) throwNonConst(e, "function / method call");
+        for (auto& a : call->getArgs()) requireConstExpr(a, scope);
+        return;
+    }
     if (dynamic_cast<p<ExprDotNode>>(e))          throwNonConst(e, "member access");
     if (dynamic_cast<p<ExprGetNode>>(e))          throwNonConst(e, "array indexing");
     if (dynamic_cast<p<ExprGetRefNode>>(e))       throwNonConst(e, "address-of (&) expression");

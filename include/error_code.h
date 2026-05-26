@@ -284,6 +284,10 @@ DEF_ERR(3141, "`#Const fn` '{}' body contains disallowed control-flow form: {} (
               "`= expr`, `{{ ret expr }}`, sequential `#Cval let`, `exprOneLineIfElse` / `exprIfElsePreValue`, "
               "if-statement with `ret` in both branches)")
 
+// ── DRAFT-const-eval Phase 4: #Const fn 调用纳入 const-eval ───────────
+DEF_ERR(3144, "`#Const fn` '{}' cannot be invoked in a constant expression: {} type '{}' is not in the const-eval "
+              "whitelist (DRAFT-const-eval §4; allowed: scalar integer / float / bool)")
+
 // ── 构造模型重构: #Static fn / Self / 字段字面量 (DRAFT-static-fn) ────
 DEF_ERR(
     3120,

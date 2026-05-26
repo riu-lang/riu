@@ -1,0 +1,21 @@
+; DRAFT-const-eval Phase 4: #Const fn 调 #Const fn (含 #Cval 局部 + ret)
+
+#Const
+fn dbl(x i32) i32 = x + x
+
+#Const
+fn quad(x i32) i32 {
+    #Cval let m i32 = dbl(x)
+    ret dbl(m)
+}
+
+#Cval
+let A i32 = quad(3)
+
+#Cval
+let B i32 = quad(quad(2))
+
+fn main() {
+  println(A.to_string())
+  println(B.to_string())
+}

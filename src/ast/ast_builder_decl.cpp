@@ -130,6 +130,7 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
     // DRAFT-const-eval Phase 2: RHS 必须 const-evaluable。失败抛 E3140；溢出 / 除 0 抛 E3143。
     // env 注入：已定义的 #Cval 全局（按声明序前向可见）。
     ConstEvaluator ev;
+    ev.setFile(file);
     for (const auto& prior : file->getGlobalConsts()) {
         auto v = ev.eval(prior->value());
         if (v) ev.setNamedConst(prior->name().getText(), *v);

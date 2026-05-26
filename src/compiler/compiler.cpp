@@ -165,6 +165,7 @@ void Compiler::compile(p<FileNode> file) {
 // ast_builder 已先行验证 const-evaluable 并报 E3140；此处理论上不应失败，作防御性兜底。
 void Compiler::compileGlobalConsts() {
     ConstEvaluator ev;
+    ev.setFile(_file);
     for (auto globalConst : _file->getGlobalConsts()) {
         string name = globalConst->name().getText();
         bool isPriv = !name.empty() && name[0] == '_';

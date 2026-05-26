@@ -8,7 +8,10 @@
 
 #include <map>
 #include <optional>
+#include <set>
 #include <vector>
+
+class FileNode;
 
 // DRAFT-const-eval Phase 1 —— sema 期常量求值器骨架（0 LLVM 依赖）。
 //
@@ -118,6 +121,9 @@ public:
 
     void setNamedConst(const string& name, ConstantValue value);
 
+    // Phase 4: 注入文件上下文以解析 #Const fn 调用。未注入时 ExprCallNode 直接 nullopt。
+    void setFile(FileNode* file) { _file = file; }
+
     // 主入口：对任意 ExprNode 试求值。失败返回 nullopt（含：不支持的节点 / 名字
     // 查不到 / 类型不匹配 / 溢出等运行期错形态）。本 Phase 不区分原因；Phase 2
     // 接入后由 caller 据失败点抛错码。
@@ -125,6 +131,9 @@ public:
 
 private:
     std::map<string, ConstantValue> _env;
+    FileNode* _file = nullptr;
+    // Phase 4: 递归调用栈防自环；同名 #Const fn 进入即返 nullopt。
+    std::set<string> _callStack;
 
     // 分支调度（按 expr_node.h 中的具体类型）。
     std::optional<ConstantValue> evalLiteral(const p<LiteralNode>& lit);
@@ -134,6 +143,7 @@ private:
     std::optional<ConstantValue> evalMulDivMod(const p<ExprMulDivModNode>& node);
     std::optional<ConstantValue> evalBinOp(const p<ExprBinOpNode>& node);
     std::optional<ConstantValue> evalCompare(const p<ExprCompareNode>& node);
+    std::optional<ConstantValue> evalCall(const p<ExprCallNode>& call);
 };
 
 #endif //YUX_LANG_CONST_EVAL_H

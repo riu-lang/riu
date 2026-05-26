@@ -1,0 +1,12 @@
+; DRAFT-const-eval Phase 4: #Const fn 参数 / 返回类型违反白名单 → E3144
+; String 形参不在 const-eval 白名单
+
+#Const
+fn len_of(s String) i32 = 0
+
+#Cval
+let L i32 = len_of("hi")
+
+fn main() {
+  println(L.to_string())
+}
