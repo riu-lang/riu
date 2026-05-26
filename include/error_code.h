@@ -272,6 +272,13 @@ DEF_ERR(
     3116,
     "Global `let {}` requires `#Cval`: only compile-time constants are allowed at global scope (DRAFT-let-unify §3)")
 
+// ── DRAFT-const-eval Phase 2: 全局 const-eval ─────────────────────────
+DEF_ERR(3140, "Global `let {}` initializer is not a constant expression (DRAFT-const-eval §2; allowed: literals, "
+              "references to declared `#Cval` globals, and arithmetic / bitwise / comparison / logical combinations "
+              "thereof)")
+DEF_ERR(3143, "Constant expression evaluation error in global `let {}` (overflow, division by zero, or unsupported "
+              "operation; DRAFT-const-eval §4.7)")
+
 // ── 构造模型重构: #Static fn / Self / 字段字面量 (DRAFT-static-fn) ────
 DEF_ERR(
     3120,

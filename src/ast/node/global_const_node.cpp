@@ -3,11 +3,17 @@
 
 #include "global_const_node.h"
 
-p<TypeNode> GlobalConstNode::typeNode() const { return _type; }
+p<TypeNode> GlobalConstNode::typeNode() const {
+    return _type;
+}
 
-p<LiteralNode> GlobalConstNode::value() const { return _value; }
+p<ExprNode> GlobalConstNode::value() const {
+    return _value;
+}
 
-bool GlobalConstNode::isPrivate() const { return _isPrivate; }
+bool GlobalConstNode::isPrivate() const {
+    return _isPrivate;
+}
 
 TypeInfo GlobalConstNode::getType() const {
     return _type ? _type->getType() : _value->getType();

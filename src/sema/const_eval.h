@@ -31,6 +31,10 @@
 // 错误处理：本 Phase **不抛错码**；失败统一返回 nullopt。Phase 2 caller 在
 // visitLetGlobal 内据 nullopt 抛 E3140（非 const 子表达式）。
 //
+// TODO: 区分 E3140（非 const）与 E3143（算术错：溢出 / 除 0）。当前所有失败统一
+// 报 E3140；E3143 已在 error_code.h 注册，未触发；引入 lastError 字段或 result
+// 类型分流后启用 diag_const_eval_E3143 测试。
+//
 // [#4.8.A] 浮点：v1 走 host double 简化（draft 写"严格对齐目标三元组"是长期目标；
 // 实际依赖 llvm::APFloat 与 sema 0-LLVM 协议冲突，待真触发跨平台差异再改）。
 // f32 通过 static_cast<float> 模拟收敛。

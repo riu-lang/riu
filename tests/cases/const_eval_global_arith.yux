@@ -1,0 +1,20 @@
+; DRAFT-const-eval Phase 2: 全局 #Cval 接 const-evaluable expr
+
+#Cval
+let A i32 = 10
+
+#Cval
+let B i32 = A + 5
+
+#Cval
+let C i32 = (A * 2) - B
+
+#Cval
+let MASK u32 = 0xFFu32 & 0x0Fu32
+
+fn main() {
+  println(A.to_string())
+  println(B.to_string())
+  println(C.to_string())
+  println(MASK.to_string())
+}

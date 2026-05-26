@@ -175,9 +175,9 @@ Doc Printer::letGlobalDoc(yuxParser::LetGlobalContext* ctx) {
         parts.push_back(text(" "));
         parts.push_back(typeDoc(ctx->type()));
     }
-    if (ctx->literal() != nullptr) {
+    if (ctx->expr() != nullptr) {
         parts.push_back(text(" = "));
-        parts.push_back(text(rawSpan(tokens_, ctx->literal())));
+        parts.push_back(text(rawSpan(tokens_, ctx->expr())));
     }
     return concat(std::move(parts));
 }

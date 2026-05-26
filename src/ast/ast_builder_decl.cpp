@@ -6,13 +6,14 @@
 //   - visitAliasDecl / visitEnumDecl / visitEnumVariant
 // 拆自原 ast_builder.cpp（P1 Phase 2），方法体一字不动。
 
-#include <algorithm>
-#include "ast_builder_helpers.h"
 #include "ast_builder.h"
+#include "ast_builder_helpers.h"
 #include "node/expr_node.h"
 #include "node/literal_node.h"
 #include "node/statement_node.h"
+#include "sema/const_eval.h"
 #include "types.h"
+#include <algorithm>
 
 std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
     DEBUG_LOG("Visit: ExternDelc");
@@ -79,14 +80,12 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
         for (auto& pt : paramTypes) {
             if (pt.isHeap()) {
                 auto inner = pt.heapElementType();
-                throw YuxError(header->getStart()->getLine(), ErrorCode::E4028,
-                               inner ? inner->name : std::string("?"));
+                throw YuxError(header->getStart()->getLine(), ErrorCode::E4028, inner ? inner->name : std::string("?"));
             }
         }
         if (retType.isHeap()) {
             auto inner = retType.heapElementType();
-            throw YuxError(header->getStart()->getLine(), ErrorCode::E4028,
-                           inner ? inner->name : std::string("?"));
+            throw YuxError(header->getStart()->getLine(), ErrorCode::E4028, inner ? inner->name : std::string("?"));
         }
 
         DEBUG_LOG_VAL("  Register external function", fnName);
@@ -120,15 +119,28 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
         throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
                        ErrorCode::E3113, name->getText());
     }
-    if (!ctx->literal()) {
+    if (!ctx->expr()) {
         throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
                        ErrorCode::E3114, name->getText());
     }
 
     auto typeNode = any_cast_p<TypeNode>(visit(ctx->type()));
-    auto literal = any_cast_p<LiteralNode>(visit(ctx->literal()));
+    auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
 
-    auto globalConst = createWithLine<GlobalConstNode>(ctx, file, name, typeNode, literal);
+    // DRAFT-const-eval Phase 2: RHS 必须 const-evaluable。失败抛 E3140；溢出 / 除 0 抛 E3143。
+    // env 注入：已定义的 #Cval 全局（按声明序前向可见）。
+    ConstEvaluator ev;
+    for (const auto& prior : file->getGlobalConsts()) {
+        auto v = ev.eval(prior->value());
+        if (v) ev.setNamedConst(prior->name().getText(), *v);
+    }
+    auto value = ev.eval(expr);
+    if (!value) {
+        throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
+                       ErrorCode::E3140, name->getText());
+    }
+
+    auto globalConst = createWithLine<GlobalConstNode>(ctx, file, name, typeNode, expr);
     file->addGlobalConst(globalConst);
 
     DEBUG_LOG_VAL("  LetGlobal #Cval", name->getText() << " : " << typeNode->getType().name);

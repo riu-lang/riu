@@ -1,0 +1,10 @@
+; DRAFT-const-eval Phase 2: 全局 #Cval RHS 非 const-evaluable → E3140
+
+fn get_val() i32 = 42
+
+#Cval
+let G i32 = get_val()
+
+fn main() {
+  println(G.to_string())
+}

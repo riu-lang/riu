@@ -28,6 +28,7 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <regex>
+#include "sema/const_eval.h"
 #include "sema/sema_pass.h"
 #include "types.h"
 #include <utility>
@@ -159,89 +160,41 @@ void Compiler::compile(p<FileNode> file) {
 // ==================== 全局常量编译 ====================
 // 编译文件中的所有全局常量
 // 全局常量在编译时确定值，存储在模块的全局变量表中
+//
+// DRAFT-const-eval Phase 2: RHS 已升 expr。复用 ConstEvaluator 求值后映射到 llvm::Constant。
+// ast_builder 已先行验证 const-evaluable 并报 E3140；此处理论上不应失败，作防御性兜底。
 void Compiler::compileGlobalConsts() {
+    ConstEvaluator ev;
     for (auto globalConst : _file->getGlobalConsts()) {
         string name = globalConst->name().getText();
-        bool isPriv = !name.empty() && name[0] == '_'; // 以下划线开头的是私有常量
+        bool isPriv = !name.empty() && name[0] == '_';
         string mangledName = Mangler::global(_file->moduleName(), name, isPriv);
         TypeInfo type = globalConst->getType();
         auto llvmType = getLLVMType(type);
 
+        auto value = ev.eval(globalConst->value());
+        if (!value) {
+            throw YuxError(globalConst->getLineNumber(), globalConst->getColumn(), ErrorCode::E3140, name);
+        }
+        // 后续 globals 可引用本 const
+        ev.setNamedConst(name, *value);
+
         llvm::Constant* initValue = nullptr;
-        auto literal = globalConst->value();
-        auto text = literal->getValue().getText();
-
-        // 处理整数字面量
-        // 支持多种格式: 十进制、二进制 (0b)、八进制 (0o)、十六进制 (0x)
-        // 支持类型后缀 (i32, u64 等) 和下划线分隔符
-        if (auto intLiteral = dynamic_cast<LiteralIntNode*>(literal)) {
-            string numStr = text;
-            // 识别后缀以选 signed/unsigned 解析路径
-            static const std::regex suffix_regex(R"([iu](?:8|16|32|64)?$)");
-            std::smatch m;
-            string suffix;
-            if (std::regex_search(numStr, m, suffix_regex)) {
-                suffix = m.str();
-            }
-            bool isUnsigned = !suffix.empty() && suffix[0] == 'u';
-            numStr = std::regex_replace(numStr, suffix_regex, "");
-
-            int base = 10;
-            string parseStr = numStr;
-            if (numStr.size() >= 2) {
-                if (numStr[0] == '0' && (numStr[1] == 'b' || numStr[1] == 'B')) {
-                    base = 2;
-                    parseStr = numStr.substr(2);
-                } else if (numStr[0] == '0' && (numStr[1] == 'o' || numStr[1] == 'O')) {
-                    base = 8;
-                    parseStr = numStr.substr(2);
-                } else if (numStr[0] == '0' && (numStr[1] == 'x' || numStr[1] == 'X')) {
-                    base = 16;
-                    parseStr = numStr.substr(2);
-                }
-            }
-            std::erase(parseStr, '_');
-            i64 numVal = 0;
-            try {
-                if (isUnsigned) {
-                    numVal = static_cast<i64>(std::stoull(parseStr, nullptr, base));
-                } else {
-                    numVal = std::stoll(parseStr, nullptr, base);
-                }
-            } catch (const std::out_of_range&) {
-                int line = literal->getLineNumber();
-                throw YuxError(line > 0 ? line : 1, literal->getColumn(), ErrorCode::E3103, text,
-                               suffix.empty() ? string("i64") : suffix);
-            } catch (const std::invalid_argument&) {
-                int line = literal->getLineNumber();
-                throw YuxError(line > 0 ? line : 1, literal->getColumn(), ErrorCode::E3103, text,
-                               suffix.empty() ? string("i64") : suffix);
-            }
-            initValue = llvm::ConstantInt::get(llvmType, numVal, true);
-        }
-        // 处理浮点数字面量
-        // FLOAT 词法形如: [-]?(INT_10|INT.INT|INT.INT 'e' '-'? INT) ('f32'|'f64')?
-        // 需保留科学计数法 (e[-]?\d+)，仅剥掉类型后缀 f32/f64
-        else if (auto floatLiteral = dynamic_cast<LiteralFloatNode*>(literal)) {
-            string numStr = text;
-            if (numStr.size() >= 3) {
-                string suf = numStr.substr(numStr.size() - 3);
-                if (suf == "f32" || suf == "f64") {
-                    numStr = numStr.substr(0, numStr.size() - 3);
-                }
-            }
-            f64 numVal = stod(numStr);
-            initValue = llvm::ConstantFP::get(llvmType, numVal);
-        }
-        // 处理布尔字面量
-        else if (auto boolLiteral = dynamic_cast<LiteralBoolNode*>(literal)) {
-            bool boolVal = (text == "true");
-            initValue = llvm::ConstantInt::get(llvmType, boolVal ? 1 : 0, false);
-        } else {
-            throw YuxError(globalConst->getLineNumber(), globalConst->getColumn(), ErrorCode::E3082, type.name);
+        switch (value->kind) {
+            case ConstantValue::Kind::Int:
+                initValue = llvm::ConstantInt::get(llvmType, value->intBits, false);
+                break;
+            case ConstantValue::Kind::Float:
+                initValue = llvm::ConstantFP::get(llvmType, value->floatVal);
+                break;
+            case ConstantValue::Kind::Bool:
+                initValue = llvm::ConstantInt::get(llvmType, value->boolVal ? 1 : 0, false);
+                break;
+            case ConstantValue::Kind::Null:
+            case ConstantValue::Kind::Struct:
+                throw YuxError(globalConst->getLineNumber(), globalConst->getColumn(), ErrorCode::E3082, type.name);
         }
 
-        // 设置链接类型: 私有常量使用内部链接，公开常量使用外部链接
         auto linkage =
             globalConst->isPrivate() ? llvm::GlobalValue::InternalLinkage : llvm::GlobalValue::ExternalLinkage;
 

@@ -46,11 +46,12 @@ externDelc: (buildAnnos+=buildAnno)* Extern BlockStart LineEnd
     BlockEnd LineEnd
     ;
 
-// DRAFT-let-unify §3 全局 let 形态。当前仅接受 `#Cval let NAME T = literal`；
-// 其他档位由 ast_builder 拒。type / init 缺失由 ast_builder 报 E3113 / E3114，便于友好诊断。
+// DRAFT-let-unify §3 全局 let 形态。RHS 接 expr 以支持 const-eval（DRAFT-const-eval Phase 2）
+// 与 static-vars（DRAFT-static-vars Phase 1）；非 const-evaluable 在 sema 期由 ConstEvaluator
+// 判定后报 E3140。其他档位由 ast_builder 拒。type / init 缺失由 ast_builder 报 E3113 / E3114。
 letGlobal:
     (letAnnos+=letAnno)*
-    Let name=ID type? (SymbolEq literal)? LineEnd
+    Let name=ID type? (SymbolEq expr)? LineEnd
     ;
 
 // let 声明专用注解（无单参槽）：LineEnd 可选——
