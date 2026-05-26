@@ -1,0 +1,377 @@
+// Copyright (c) 2026. Yin-Jinlong@github
+// MPL-2.0
+
+#include "const_eval.h"
+
+#include "call_resolve.h"
+
+// DRAFT-const-eval Phase 1. 详 const_eval.h 注释。本文件只负责"叶节点 + 算术"
+// 求值, 不接 ast_builder, 不抛错码。
+
+namespace {
+
+// ---- 类型工具 -------------------------------------------------------------
+
+bool isSignedIntType(const TypeInfo& t) {
+    return t.name == "i8" || t.name == "i16" || t.name == "i32" || t.name == "i64";
+}
+
+bool isUnsignedIntType(const TypeInfo& t) {
+    return t.name == "u8" || t.name == "u16" || t.name == "u32" || t.name == "u64";
+}
+
+bool isIntType(const TypeInfo& t) {
+    return isSignedIntType(t) || isUnsignedIntType(t);
+}
+
+bool isFloatType(const TypeInfo& t) {
+    return t.name == "f32" || t.name == "f64";
+}
+
+int intBitWidth(const TypeInfo& t) {
+    if (t.name == "i8"  || t.name == "u8")  return 8;
+    if (t.name == "i16" || t.name == "u16") return 16;
+    if (t.name == "i32" || t.name == "u32") return 32;
+    if (t.name == "i64" || t.name == "u64") return 64;
+    return 0;
+}
+
+u64 intMask(int width) {
+    if (width >= 64) return ~static_cast<u64>(0);
+    return (static_cast<u64>(1) << width) - 1;
+}
+
+// 按 type 把 bits 解释为有符号 i64（符号扩展）。
+i64 signExtend(u64 bits, const TypeInfo& t) {
+    int w = intBitWidth(t);
+    if (w >= 64) return static_cast<i64>(bits);
+    u64 signBit = static_cast<u64>(1) << (w - 1);
+    if (bits & signBit) {
+        // 设置高位 1
+        return static_cast<i64>(bits | ~intMask(w));
+    }
+    return static_cast<i64>(bits);
+}
+
+// 截断 / 规整 bits 到 type 宽度。
+u64 truncateBits(u64 bits, const TypeInfo& t) {
+    return bits & intMask(intBitWidth(t));
+}
+
+// 二元算术 / 位运算的类型合一规则（Phase 1 极简）：
+// - 两侧同名 → 取该名
+// - 一侧 i*, 一侧 u* → 失败（要求显式同名, 与既有 compile 期约束对齐, 避免隐式签名扩）
+// - 浮点类似
+// - 否则失败
+std::optional<TypeInfo> unifyArith(const TypeInfo& a, const TypeInfo& b) {
+    if (a.name == b.name && !a.name.empty()) return a;
+    return std::nullopt;
+}
+
+} // namespace
+
+i64 ConstantValue::asSigned() const {
+    return signExtend(intBits, type);
+}
+
+void ConstEvaluator::setNamedConst(const string& name, ConstantValue value) {
+    _env[name] = std::move(value);
+}
+
+std::optional<ConstantValue> ConstEvaluator::eval(const p<ExprNode>& expr) {
+    if (!expr) return std::nullopt;
+
+    // 叶 ——
+    if (auto lit = dynamic_cast<ExprLiteralNode*>(expr)) {
+        return evalLiteral(lit->literal());
+    }
+    // ExprParenNode —— 透明
+    if (auto paren = dynamic_cast<ExprParenNode*>(expr)) {
+        return eval(paren->expr());
+    }
+    // 一元
+    if (auto u = dynamic_cast<ExprUnaryNode*>(expr)) {
+        return evalUnary(u);
+    }
+    // 二元算术
+    if (auto a = dynamic_cast<ExprAddSubNode*>(expr)) {
+        return evalAddSub(a);
+    }
+    if (auto m = dynamic_cast<ExprMulDivModNode*>(expr)) {
+        return evalMulDivMod(m);
+    }
+    if (auto b = dynamic_cast<ExprBinOpNode*>(expr)) {
+        return evalBinOp(b);
+    }
+    if (auto c = dynamic_cast<ExprCompareNode*>(expr)) {
+        return evalCompare(c);
+    }
+
+    // 其它节点（call / struct lit / if-else / dot / get / ...）—— Phase 1 不支持
+    return std::nullopt;
+}
+
+std::optional<ConstantValue> ConstEvaluator::evalLiteral(const p<LiteralNode>& lit) {
+    if (!lit) return std::nullopt;
+
+    if (auto i = dynamic_cast<LiteralIntNode*>(lit)) {
+        try {
+            i64 v = sema::parseIntLiteral(i->getValue().getText(), i->getLineNumber(), 0);
+            return ConstantValue::makeInt(truncateBits(static_cast<u64>(v), i->getType()), i->getType());
+        } catch (...) {
+            // 越界 / 非法形式 —— Phase 1 静默失败（caller 会先走 sema 校验）
+            return std::nullopt;
+        }
+    }
+    if (auto f = dynamic_cast<LiteralFloatNode*>(lit)) {
+        // [#4.8.A] host double 简化求值
+        string s = f->getValue().getText();
+        if (s.size() >= 3) {
+            string suf = s.substr(s.size() - 3);
+            if (suf == "f32" || suf == "f64") s = s.substr(0, s.size() - 3);
+        }
+        try {
+            f64 v = std::stod(s);
+            if (f->getType().name == "f32") v = static_cast<f32>(v);
+            return ConstantValue::makeFloat(v, f->getType());
+        } catch (...) {
+            return std::nullopt;
+        }
+    }
+    if (auto bo = dynamic_cast<LiteralBoolNode*>(lit)) {
+        return ConstantValue::makeBool(bo->getValue().getText() == "true");
+    }
+    if (dynamic_cast<LiteralNullNode*>(lit)) {
+        return ConstantValue::makeNull();
+    }
+    if (auto obj = dynamic_cast<LiteralObjNode*>(lit)) {
+        return evalLiteralObj(obj);
+    }
+    // LiteralCodePoint / LiteralString / StringTemplate —— Phase 1 不支持
+    // (String 长期解见 DRAFT §4.6)
+    return std::nullopt;
+}
+
+std::optional<ConstantValue> ConstEvaluator::evalLiteralObj(const p<LiteralObjNode>& obj) {
+    string name = obj->getValue().getText();
+    if (auto it = _env.find(name); it != _env.end()) {
+        return it->second;
+    }
+    // Phase 1 standalone: 不接 GlobalConstNode 表。Phase 2 接 visitLetGlobal 时
+    // caller 负责把 #Cval 全局先注入 _env 再 eval。
+    return std::nullopt;
+}
+
+std::optional<ConstantValue> ConstEvaluator::evalUnary(const p<ExprUnaryNode>& node) {
+    auto inner = eval(node->right());
+    if (!inner) return std::nullopt;
+
+    switch (node->op()) {
+    case ExprUnaryNode::Op::Neg: {
+        if (inner->isInt()) {
+            // -x: 取补码后截断
+            u64 bits = (~inner->intBits + 1) & intMask(intBitWidth(inner->type));
+            return ConstantValue::makeInt(bits, inner->type);
+        }
+        if (inner->isFloat()) return ConstantValue::makeFloat(-inner->floatVal, inner->type);
+        return std::nullopt;
+    }
+    case ExprUnaryNode::Op::Rev: {
+        // 按位取反 ~x
+        if (inner->isInt()) {
+            u64 bits = (~inner->intBits) & intMask(intBitWidth(inner->type));
+            return ConstantValue::makeInt(bits, inner->type);
+        }
+        return std::nullopt;
+    }
+    case ExprUnaryNode::Op::Not: {
+        // 逻辑非 !x
+        if (inner->isBool()) return ConstantValue::makeBool(!inner->boolVal);
+        return std::nullopt;
+    }
+    }
+    return std::nullopt;
+}
+
+std::optional<ConstantValue> ConstEvaluator::evalAddSub(const p<ExprAddSubNode>& node) {
+    auto l = eval(node->left());
+    auto r = eval(node->right());
+    if (!l || !r) return std::nullopt;
+    auto t = unifyArith(l->type, r->type);
+    if (!t) return std::nullopt;
+
+    if (isIntType(*t)) {
+        u64 lb = l->intBits, rb = r->intBits;
+        u64 res = node->op() == ExprAddSubNode::Op::Add ? (lb + rb) : (lb - rb);
+        // Phase 1 不抛 E3143; 仅截断。溢出检测留 Phase 2 接入时按 §4.7 决议加。
+        return ConstantValue::makeInt(truncateBits(res, *t), *t);
+    }
+    if (isFloatType(*t)) {
+        f64 res = node->op() == ExprAddSubNode::Op::Add ? (l->floatVal + r->floatVal)
+                                                       : (l->floatVal - r->floatVal);
+        if (t->name == "f32") res = static_cast<f32>(res);
+        return ConstantValue::makeFloat(res, *t);
+    }
+    return std::nullopt;
+}
+
+std::optional<ConstantValue> ConstEvaluator::evalMulDivMod(const p<ExprMulDivModNode>& node) {
+    auto l = eval(node->left());
+    auto r = eval(node->right());
+    if (!l || !r) return std::nullopt;
+    auto t = unifyArith(l->type, r->type);
+    if (!t) return std::nullopt;
+
+    if (isIntType(*t)) {
+        u64 res = 0;
+        switch (node->op()) {
+        case ExprMulDivModNode::Op::Mul:
+            res = l->intBits * r->intBits;
+            break;
+        case ExprMulDivModNode::Op::Div:
+            if (r->intBits == 0) return std::nullopt; // 除 0 —— Phase 2 接错码 E3143
+            if (isSignedIntType(*t)) {
+                i64 a = signExtend(l->intBits, *t);
+                i64 b = signExtend(r->intBits, *t);
+                res = static_cast<u64>(a / b);
+            } else {
+                res = l->intBits / r->intBits;
+            }
+            break;
+        case ExprMulDivModNode::Op::Mod:
+            if (r->intBits == 0) return std::nullopt;
+            if (isSignedIntType(*t)) {
+                i64 a = signExtend(l->intBits, *t);
+                i64 b = signExtend(r->intBits, *t);
+                res = static_cast<u64>(a % b);
+            } else {
+                res = l->intBits % r->intBits;
+            }
+            break;
+        }
+        return ConstantValue::makeInt(truncateBits(res, *t), *t);
+    }
+    if (isFloatType(*t)) {
+        f64 res = 0;
+        switch (node->op()) {
+        case ExprMulDivModNode::Op::Mul: res = l->floatVal * r->floatVal; break;
+        case ExprMulDivModNode::Op::Div: res = l->floatVal / r->floatVal; break;
+        case ExprMulDivModNode::Op::Mod: return std::nullopt; // 浮点 % 非常量友好
+        }
+        if (t->name == "f32") res = static_cast<f32>(res);
+        return ConstantValue::makeFloat(res, *t);
+    }
+    return std::nullopt;
+}
+
+std::optional<ConstantValue> ConstEvaluator::evalBinOp(const p<ExprBinOpNode>& node) {
+    auto l = eval(node->left());
+    auto r = eval(node->right());
+    if (!l || !r) return std::nullopt;
+
+    // 移位允许 RHS 为任意整型, LHS 决定结果类型
+    if (node->op() == ExprBinOpNode::Op::Shl || node->op() == ExprBinOpNode::Op::Shr) {
+        if (!l->isInt() || !r->isInt()) return std::nullopt;
+        u64 shift = r->intBits & 0x3F; // 截 6 bit
+        u64 res = 0;
+        if (node->op() == ExprBinOpNode::Op::Shl) {
+            res = l->intBits << shift;
+        } else {
+            // 右移：unsigned → 逻辑右移; signed → 算术右移
+            if (isSignedIntType(l->type)) {
+                i64 v = signExtend(l->intBits, l->type);
+                res = static_cast<u64>(v >> shift);
+            } else {
+                res = l->intBits >> shift;
+            }
+        }
+        return ConstantValue::makeInt(truncateBits(res, l->type), l->type);
+    }
+
+    auto t = unifyArith(l->type, r->type);
+    if (!t || !isIntType(*t)) return std::nullopt;
+
+    u64 res = 0;
+    switch (node->op()) {
+    case ExprBinOpNode::Op::And: res = l->intBits & r->intBits; break;
+    case ExprBinOpNode::Op::Or:  res = l->intBits | r->intBits; break;
+    case ExprBinOpNode::Op::Xor: res = l->intBits ^ r->intBits; break;
+    default: return std::nullopt;
+    }
+    return ConstantValue::makeInt(truncateBits(res, *t), *t);
+}
+
+std::optional<ConstantValue> ConstEvaluator::evalCompare(const p<ExprCompareNode>& node) {
+    using Op = ExprCompareNode::Op;
+    Op op = node->op();
+
+    // 短路 AndAnd / OrOr —— 仅 bool
+    if (op == Op::AndAnd || op == Op::OrOr) {
+        auto l = eval(node->left());
+        if (!l || !l->isBool()) return std::nullopt;
+        // 短路
+        if (op == Op::AndAnd && !l->boolVal) return ConstantValue::makeBool(false);
+        if (op == Op::OrOr  &&  l->boolVal) return ConstantValue::makeBool(true);
+        auto r = eval(node->right());
+        if (!r || !r->isBool()) return std::nullopt;
+        return ConstantValue::makeBool(r->boolVal);
+    }
+
+    auto l = eval(node->left());
+    auto r = eval(node->right());
+    if (!l || !r) return std::nullopt;
+
+    // 类型对齐: 双 null → 仅 Eq/Ne 有意义
+    if (l->isNull() && r->isNull()) {
+        if (op == Op::Eq) return ConstantValue::makeBool(true);
+        if (op == Op::Ne) return ConstantValue::makeBool(false);
+        return std::nullopt;
+    }
+    if (l->isBool() && r->isBool()) {
+        if (op == Op::Eq) return ConstantValue::makeBool(l->boolVal == r->boolVal);
+        if (op == Op::Ne) return ConstantValue::makeBool(l->boolVal != r->boolVal);
+        return std::nullopt;
+    }
+
+    auto t = unifyArith(l->type, r->type);
+    if (!t) return std::nullopt;
+
+    if (isIntType(*t)) {
+        if (isSignedIntType(*t)) {
+            i64 a = signExtend(l->intBits, *t);
+            i64 b = signExtend(r->intBits, *t);
+            switch (op) {
+            case Op::Eq: return ConstantValue::makeBool(a == b);
+            case Op::Ne: return ConstantValue::makeBool(a != b);
+            case Op::Lt: return ConstantValue::makeBool(a <  b);
+            case Op::Le: return ConstantValue::makeBool(a <= b);
+            case Op::Gt: return ConstantValue::makeBool(a >  b);
+            case Op::Ge: return ConstantValue::makeBool(a >= b);
+            default: return std::nullopt;
+            }
+        }
+        u64 a = l->intBits, b = r->intBits;
+        switch (op) {
+        case Op::Eq: return ConstantValue::makeBool(a == b);
+        case Op::Ne: return ConstantValue::makeBool(a != b);
+        case Op::Lt: return ConstantValue::makeBool(a <  b);
+        case Op::Le: return ConstantValue::makeBool(a <= b);
+        case Op::Gt: return ConstantValue::makeBool(a >  b);
+        case Op::Ge: return ConstantValue::makeBool(a >= b);
+        default: return std::nullopt;
+        }
+    }
+    if (isFloatType(*t)) {
+        f64 a = l->floatVal, b = r->floatVal;
+        switch (op) {
+        case Op::Eq: return ConstantValue::makeBool(a == b);
+        case Op::Ne: return ConstantValue::makeBool(a != b);
+        case Op::Lt: return ConstantValue::makeBool(a <  b);
+        case Op::Le: return ConstantValue::makeBool(a <= b);
+        case Op::Gt: return ConstantValue::makeBool(a >  b);
+        case Op::Ge: return ConstantValue::makeBool(a >= b);
+        default: return std::nullopt;
+        }
+    }
+    return std::nullopt;
+}
