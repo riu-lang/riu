@@ -786,11 +786,20 @@ std::any ASTBuilder::visitExprEnumCtor(yux::yuxParser::ExprEnumCtorContext* ctx)
 // 结构体字段字面量：Self { \n .field = value \n ... }
 // Phase 1b：AST 仅承载形态；出现位限制（必须在 #Static fn 体内）由 sema 校验
 std::any ASTBuilder::visitExprStructLit(yux::yuxParser::ExprStructLitContext* ctx) {
-    DEBUG_LOG("    Expr: StructLit Self { ... }");
+    DEBUG_LOG("    Expr: StructLit { ... }");
     auto scope = currentScope();
-    auto* selfTk = ctx->SelfType()->getSymbol();
-    string structName = findEnclosingStructName();
-    auto node = createWithLine<ExprStructLitNode>(ctx, scope, selfTk, structName);
+    // DRAFT-const-eval Phase 5: LHS 可为 Self 或通用 ID (typeName)
+    bool isSelfForm = ctx->selfLhs != nullptr;
+    Token leadTk;
+    string structName;
+    if (isSelfForm) {
+        leadTk = ctx->selfLhs;
+        structName = findEnclosingStructName();
+    } else {
+        leadTk = ctx->typeName;
+        structName = ctx->typeName->getText();
+    }
+    auto node = createWithLine<ExprStructLitNode>(ctx, scope, leadTk, structName, isSelfForm);
     for (auto* fCtx : ctx->fieldInits) {
         node->addField(any_cast_p<FieldInitNode>(visit(fCtx)));
     }

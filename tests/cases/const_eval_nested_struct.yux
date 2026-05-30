@@ -1,0 +1,30 @@
+; DRAFT-const-eval Phase 5: 嵌套 struct 字面量 (const 上下文)
+
+struct Point {
+  x i32
+  y i32
+}
+
+struct Rect {
+  tl Point
+  br Point
+}
+
+#Cval
+let R Rect = Rect {
+  .tl = Point {
+    .x = 1
+    .y = 2
+  }
+  .br = Point {
+    .x = 10
+    .y = 20
+  }
+}
+
+fn main() {
+  println(R.tl.x.to_string())
+  println(R.tl.y.to_string())
+  println(R.br.x.to_string())
+  println(R.br.y.to_string())
+}

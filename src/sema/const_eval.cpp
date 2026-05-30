@@ -6,6 +6,7 @@
 #include "ast/node/file_node.h"
 #include "ast/node/fn_node.h"
 #include "ast/node/statement_node.h"
+#include "ast/node/struct_node.h"
 #include "call_resolve.h"
 #include "error_code.h"
 
@@ -114,8 +115,12 @@ std::optional<ConstantValue> ConstEvaluator::eval(const p<ExprNode>& expr) {
     if (auto call = dynamic_cast<ExprCallNode*>(expr)) {
         return evalCall(call);
     }
+    // Phase 5: struct 字面量 (Self{...} 与 TypeName{...} 同走)
+    if (auto sl = dynamic_cast<ExprStructLitNode*>(expr)) {
+        return evalStructLit(sl);
+    }
 
-    // 其它节点（struct lit / if-else / dot / get / ...）—— Phase 5+ 不支持
+    // 其它节点（if-else / dot / get / ...）—— Phase 6+ 不支持
     return std::nullopt;
 }
 
@@ -408,6 +413,38 @@ std::optional<ConstantValue> ConstEvaluator::evalCall(const p<ExprCallNode>& cal
     _callStack.erase(fname);
     restoreEnv();
     return result;
+}
+
+// DRAFT-const-eval Phase 5: struct 字面量求值.
+// - 找到 StructDeclNode (本文件 / sdk 兜底); 失败 nullopt (sema 应已拦截)
+// - 按声明序填字段 -> ConstantValue::Struct; sema 已保证字段全列 / 无重复 / 无未知,
+//   这里再做一次字段名 → 索引映射 (保险)
+// - 任一字段子表达式 const 求值失败 -> 整体 nullopt
+std::optional<ConstantValue> ConstEvaluator::evalStructLit(const p<ExprStructLitNode>& node) {
+    if (!node || !_file) return std::nullopt;
+    const string& sName = node->structName();
+    if (sName.empty()) return std::nullopt;
+
+    StructDeclNode* decl = _file->getStructDecl(sName);
+    if (!decl) return std::nullopt;
+
+    const auto& declFields = decl->fields();
+    vector<ConstantValue> vals;
+    vals.resize(declFields.size());
+    vector<bool> filled(declFields.size(), false);
+
+    for (auto& fi : node->fields()) {
+        int idx = decl->fieldIndex(fi->name().getText());
+        if (idx < 0) return std::nullopt;
+        auto v = eval(fi->value());
+        if (!v) return std::nullopt;
+        vals[static_cast<size_t>(idx)] = std::move(*v);
+        filled[static_cast<size_t>(idx)] = true;
+    }
+    for (bool f : filled) {
+        if (!f) return std::nullopt;
+    }
+    return ConstantValue::makeStruct(std::move(vals), TypeInfo(sName));
 }
 
 std::optional<ConstantValue> ConstEvaluator::evalCompare(const p<ExprCompareNode>& node) {

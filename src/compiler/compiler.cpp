@@ -84,11 +84,13 @@ void Compiler::compile(p<FileNode> file) {
     DEBUG_LOG("Running SemaPass...");
     SemaPass(_file, _yux).run();
 
-    DEBUG_LOG("Compiling global constants...");
-    compileGlobalConsts();
-
+    // DRAFT-const-eval Phase 5: 全局常量初始化器可含 struct 字面量,
+    // 须先 compileStructDecls 让 LLVM 结构体类型可用.
     DEBUG_LOG("Compiling struct declarations...");
     compileStructDecls();
+
+    DEBUG_LOG("Compiling global constants...");
+    compileGlobalConsts();
 
     DEBUG_LOG("Compiling struct implementations...");
     compileStructImpls();
@@ -191,8 +193,17 @@ void Compiler::compileGlobalConsts() {
             case ConstantValue::Kind::Bool:
                 initValue = llvm::ConstantInt::get(llvmType, value->boolVal ? 1 : 0, false);
                 break;
+            case ConstantValue::Kind::Struct: {
+                // DRAFT-const-eval Phase 5: ConstantValue::Struct -> llvm::ConstantStruct
+                // 字段按 StructDeclNode 声明序排列, 元素类型从 LLVM struct type 取
+                initValue = buildLLVMConstantFromValue(*value, llvmType);
+                if (!initValue) {
+                    throw YuxError(globalConst->getLineNumber(), globalConst->getColumn(),
+                                   ErrorCode::E3082, type.name);
+                }
+                break;
+            }
             case ConstantValue::Kind::Null:
-            case ConstantValue::Kind::Struct:
                 throw YuxError(globalConst->getLineNumber(), globalConst->getColumn(), ErrorCode::E3082, type.name);
         }
 
@@ -205,6 +216,39 @@ void Compiler::compileGlobalConsts() {
 
         DEBUG_LOG_VAL("Created global constant", mangledName << " : " << type.name);
     }
+}
+
+// DRAFT-const-eval Phase 5: ConstantValue -> llvm::Constant 递归翻译.
+// 支持 Int / Float / Bool / Struct (含嵌套); Null 不在常量初始化器场景出现.
+// expectedTy 用于驱动 Int/Bool 的位宽以及 Struct 字段类型校验.
+llvm::Constant* Compiler::buildLLVMConstantFromValue(const ConstantValue& v, llvm::Type* expectedTy) {
+    switch (v.kind) {
+        case ConstantValue::Kind::Int:
+            if (!expectedTy || !expectedTy->isIntegerTy()) return nullptr;
+            return llvm::ConstantInt::get(expectedTy, v.intBits, false);
+        case ConstantValue::Kind::Float:
+            if (!expectedTy || !expectedTy->isFloatingPointTy()) return nullptr;
+            return llvm::ConstantFP::get(expectedTy, v.floatVal);
+        case ConstantValue::Kind::Bool:
+            if (!expectedTy || !expectedTy->isIntegerTy()) return nullptr;
+            return llvm::ConstantInt::get(expectedTy, v.boolVal ? 1 : 0, false);
+        case ConstantValue::Kind::Struct: {
+            auto* st = llvm::dyn_cast_or_null<llvm::StructType>(expectedTy);
+            if (!st) return nullptr;
+            if (st->getNumElements() != v.structFields.size()) return nullptr;
+            vector<llvm::Constant*> elems;
+            elems.reserve(v.structFields.size());
+            for (size_t i = 0; i < v.structFields.size(); ++i) {
+                auto* c = buildLLVMConstantFromValue(v.structFields[i], st->getElementType(i));
+                if (!c) return nullptr;
+                elems.push_back(c);
+            }
+            return llvm::ConstantStruct::get(st, elems);
+        }
+        case ConstantValue::Kind::Null:
+            return nullptr;
+    }
+    return nullptr;
 }
 
 // ==================== 结构体声明编译 ====================

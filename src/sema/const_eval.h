@@ -94,6 +94,14 @@ struct ConstantValue {
         v.type = TypeInfo("Ptr");
         return v;
     }
+    // DRAFT-const-eval Phase 5: struct 字面量值. fields 按结构体声明序排列.
+    static ConstantValue makeStruct(vector<ConstantValue> fields, TypeInfo t) {
+        ConstantValue v;
+        v.kind = Kind::Struct;
+        v.type = std::move(t);
+        v.structFields = std::move(fields);
+        return v;
+    }
 
     [[nodiscard]] bool isInt()    const { return kind == Kind::Int;    }
     [[nodiscard]] bool isFloat()  const { return kind == Kind::Float;  }
@@ -144,6 +152,8 @@ private:
     std::optional<ConstantValue> evalBinOp(const p<ExprBinOpNode>& node);
     std::optional<ConstantValue> evalCompare(const p<ExprCompareNode>& node);
     std::optional<ConstantValue> evalCall(const p<ExprCallNode>& call);
+    // DRAFT-const-eval Phase 5: struct 字面量.
+    std::optional<ConstantValue> evalStructLit(const p<ExprStructLitNode>& node);
 };
 
 #endif //YUX_LANG_CONST_EVAL_H

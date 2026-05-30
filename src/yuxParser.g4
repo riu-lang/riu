@@ -420,8 +420,9 @@ expr:
         (statement|LineEnd)*
       BlockEnd                            # exprLambdaZeroBlock
     // [PROBE static-fn] 结构体字段字面量：Self { \n .x = e \n .y = e \n }
+    // DRAFT-const-eval Phase 5: LHS 放宽到通用 ID（如 Point { .x = 1 .y = 2 }）
     // 多行强制；.field= 前缀消除与 lambda zero-block 的歧义
-    | SelfType BlockStart LineEnd
+    | (selfLhs=SelfType | typeName=ID) BlockStart LineEnd
         (fieldInits+=fieldInit|LineEnd)*
       BlockEnd                            # exprStructLit
     // ( e )

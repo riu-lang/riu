@@ -565,16 +565,21 @@ public:
 class ExprStructLitNode : public ExprNode {
     Token _selfTok;
     string _structName; // Phase 3b: ast_builder 扫 _scopeStack 填入 (与 TypeSelfNode 同源)
+    // DRAFT-const-eval Phase 5: true=Self{...} (受 #Static fn 限制),
+    // false=TypeName{...} (任意 expr 位, 含全局 #Cval 初始化器)
+    bool _isSelfForm;
     vector<p<FieldInitNode>> _fields;
 
 public:
-    ExprStructLitNode(const p<Node>& parent, Token selfTok, string structName)
-        : ExprNode(parent), _selfTok(std::move(selfTok)), _structName(std::move(structName)) {}
+    ExprStructLitNode(const p<Node>& parent, Token selfTok, string structName, bool isSelfForm = true)
+        : ExprNode(parent), _selfTok(std::move(selfTok)), _structName(std::move(structName)),
+          _isSelfForm(isSelfForm) {}
 
     void addField(p<FieldInitNode> f) { _fields.push_back(std::move(f)); }
 
     [[nodiscard]] const Token& selfToken() const { return _selfTok; }
     [[nodiscard]] const string& structName() const { return _structName; }
+    [[nodiscard]] bool isSelfForm() const { return _isSelfForm; }
     [[nodiscard]] const vector<p<FieldInitNode>>& fields() const { return _fields; }
     [[nodiscard]] TypeInfo getType() const override;
 };

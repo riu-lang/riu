@@ -1,0 +1,26 @@
+; DRAFT-const-eval Phase 5: TypeName{...} 字面量在普通 fn body 内 (运行期 ctx)
+
+struct Point {
+  x i32
+  y i32
+}
+
+fn make_point(a i32, b i32) Point {
+  ret Point {
+    .x = a
+    .y = b
+  }
+}
+
+fn main() {
+  let p Point = Point {
+    .x = 5
+    .y = 7
+  }
+  println(p.x.to_string())
+  println(p.y.to_string())
+
+  let q Point = make_point(11, 22)
+  println(q.x.to_string())
+  println(q.y.to_string())
+}
