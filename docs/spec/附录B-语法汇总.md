@@ -27,7 +27,8 @@ externDecl     ::= buildAnno* 'extern' '{'
                        ( fnHeader | comment | codeLineEnd )*
                    '}'
 
-globalConst    ::= buildAnno* 'cval' ID type '=' literal
+globalConst    ::= buildAnno* 'let' ID typeWithRef? '=' expr codeLineEnd
+                   ; buildAnno 必须含 '#Cval'（缺则 E3116）；RHS expr 为常量表达式（§5.1.4.3）
 
 aliasDecl      ::= ID genericDef? '=' type codeLineEnd
 
@@ -200,6 +201,7 @@ expr ::=
   | expr LineEnd* '?'? '.' ID ('@' ID)?                          # exprDot  ; `@ID` = spec 默认体消歧后缀（§12.10.8）
   | expr LineEnd* DOT_NUM                                        # exprTupleMember
   | '(' expr (',' expr)+ ')'                                     # exprTuple
+  | typeName '{' LineEnd ( fieldInit | LineEnd )* '}'            # exprStructLit
   | '[' LineEnd* (expr (',' LineEnd* expr)* ','? LineEnd*)? ']'  # exprArray
   | expr (':' genericDef)? '(' LineEnd*
         (expr (',' LineEnd* expr)* ','? LineEnd*)? ')'
@@ -292,7 +294,7 @@ statementBlock ::= '{' codeLineEnd
                    '}'
 ```
 
-> `'va'[rl]` 是 `DeclKey` 中 `var` / `val` 两支；顶层 `globalConst` 用 `'cval' ID type '=' literal`（仅 `literal` RHS），局部 `statementCvalDeclAssign` 用 `'cval' ID typeWithRef '=' expr`（任意 const-evaluable `expr`，§5.1.5）。
+> `'va'[rl]` 是 `DeclKey` 中 `var` / `val` 两支；`'cval'` 形态在 let-unify 后已由 `#Cval let` 替代（§5.1.4 / §5.1.5）。顶层 `globalConst` RHS 从 `literal` 升为 `expr`（常量表达式，const-eval 落地，§5.1.4.3）。
 
 ## B.8 词法 token（节录）
 

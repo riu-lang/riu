@@ -15,6 +15,25 @@
 
 ---
 
+---
+
+## 2026-05-30 —— const-eval 落地：全局 `#Cval` 初始化器升常量表达式 + struct 字面量 LHS/位置放宽 + `#Const fn` 编译期求值（DRAFT-const-eval Phase 1–5）
+
+- **修改 §5.1.4.1 / §5.1.4.3**（全局 `#Cval let`）：初始值从 `literal` 升为**常量表达式**，接受字面量、`#Cval` 引用、算术/位/比较/逻辑运算、`#Const fn` 调用、struct 字面量 `<Type> { ... }`。非 const 子表达式 → E3140；算术溢出/除零/越界 → E3143。
+- **修改 §5.1.5.3 / §5.1.5.4**（局部 `#Cval let`）：初值集合同步扩展到含 `#Const fn` 调用 + struct 字面量；删除"`#Const fn` 调用不纳入"的 informative 备注。
+- **修改 §7.3.2.1**（struct 字面量）：LHS 从 `Self` 放宽到任意类型名 `<TypeName> { ... }`；出现位置从 `#Static fn` 体内放宽到任意 expr 位置。
+- **修改 §7.10.3.4**：`exprStructLit` LHS 从 `'Self'` 改为 `typeName`。
+- **修改 §7.10.3.5**：单一位置约束（仅 `#Static fn` 体内）替换为**出现位置矩阵**（5 种位置 × 字段初值要求）。
+- **修改 §11.6**（`#Const`）：新增 §11.6.4「const-eval 通路」——自由/静态成员位的 `#Const fn` 在 sema 期可被递归求值（body 形态白名单 + 形参/返回类型白名单）；成员位语义不变。错误码 E3141（控制流越白名单）/ E3144（形参/返回类型不在白名单）。
+- **修改 §11.10.1.1 / §11.10.2.2**（`#Cval`）：初值约束措辞同步扩展（含 `#Const fn` 调用 + struct 字面量）；全局注解示例从 `let NAME T = literal` 改为 `let NAME T = expr`。
+- **修改附录 B §B.1**：`globalConst` 产生式从 `'cval' ID type '=' literal` 更新为 `'let' ID typeWithRef? '=' expr`；脚注同步。
+- **修改附录 B §B.6**：表达式段追加 `exprStructLit ::= typeName '{' LineEnd ( fieldInit | LineEnd )* '}'`。
+- **修改附录 D §D.3.3**：新增 const-eval 错误码段 E3140–E3144。
+- **g4 变动**（Phase 2 / Phase 5，commit c74d243 / 0b3385c）：`letGlobal` RHS `literal` → `expr`；struct 字面量 LHS `Self` → `typeName`。经用户确认后改。
+- **冲突 / 兼容**：向后兼容扩展。既有全局 `#Cval let X T = literal` 形态不变；全局/局部 `#Cval let` 初值集合扩大（纯放宽）。`E3104`（局部 `#Cval` 初值非 const）与 `E3140`（全局 `#Cval` 初值非 const）语义重叠但独立编号保留；新 struct 字面量 `<Type> { ... }` 形态不影响既有 `Self { ... }`。既有 `#Const` 注解成员位语义零变化。
+- **决议依据**：[DRAFT-const-eval.md](draft/DRAFT-const-eval.md) 决议日志 [#1.A]–[#1.I]；实施记录见 [`docs/dev/const-eval-impl-log.md`](../dev/const-eval-impl-log.md)。
+- **测试**：`xmake test yux_tests/const_eval_*` 6/6 + `diag_const_eval_*` 3/3 全绿。
+
 ## 2026-05-23 —— spec 默认体消歧调用 `@SpecA` 后缀（DRAFT-spec-disambig-at 落地）
 
 - **新增章节**：[§12.10.8](12-spec.md#12108-消歧调用-speca-后缀)「消歧调用 `@SpecA` 后缀」。dot-call 方法名后可选附加 `@ID` 后缀，显式指向某 spec 的默认方法体；填补 §12.10.5 E3132 消歧覆盖体内 delegate 到 spec 默认体的形态空缺。

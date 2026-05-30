@@ -256,6 +256,16 @@ let-unify（E3112..E3116；引入自 [draft/DRAFT-let-unify.md](draft/DRAFT-let-
 | E3115 | `Annotations '#{}' and '#{}' are mutually exclusive on \`let\` (DRAFT-let-unify §3.4)` |
 | E3116 | `Global \`let {}\` requires \`#Cval\`: only compile-time constants are allowed at global scope (DRAFT-let-unify §3)` |
 
+const-eval（E3140..E3144；引入自 [draft/DRAFT-const-eval.md](draft/DRAFT-const-eval.md)，落地章节 §5.1.4 / §5.1.5 / §7.3.2 / §7.10.3 / §11.6.4）：
+
+| 码 | 模板 |
+|---|---|
+| E3140 | `Global \`let {}\` initializer is not a constant expression (DRAFT-const-eval §2; allowed: literals, references to declared \`#Cval\` globals, and arithmetic / bitwise / comparison / logical combinations thereof)` |
+| E3141 | `` \`#Const fn\` '{}' body contains disallowed control-flow form: {} (DRAFT-const-eval §3; allowed: \`= expr\`, \`{{ ret expr }}\`, sequential \`#Cval let\`, \`exprOneLineIfElse\` / \`exprIfElsePreValue\`, if-statement with \`ret\` in both branches) `` |
+| E3142 | `struct literal for '{}' requires all-public fields (DRAFT-const-eval §5.4; v1 placeholder — no \`#Private\` modifier exists yet)` |
+| E3143 | `Constant expression evaluation error in global \`let {}\` (overflow, division by zero, or unsupported operation; DRAFT-const-eval §4.7)` |
+| E3144 | `` \`#Const fn\` '{}' cannot be invoked in a constant expression: {} type '{}' is not in the const-eval whitelist (DRAFT-const-eval §4; allowed: scalar integer / float / bool) `` |
+
 构造模型重构（E3120..E3128；引入自 [draft/DRAFT-static-fn.md](draft/DRAFT-static-fn.md)，落地章节 §7.10）：
 
 | 码     | 模板 |
