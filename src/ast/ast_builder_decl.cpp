@@ -9,6 +9,7 @@
 #include "ast_builder.h"
 #include "ast_builder_helpers.h"
 #include "node/expr_node.h"
+#include "node/global_var_node.h"
 #include "node/literal_node.h"
 #include "node/statement_node.h"
 #include "sema/const_eval.h"
@@ -103,49 +104,81 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
     return nullptr;
 }
 
-// DRAFT-let-unify §3：全局 `let NAME T = literal`。当前仅支持 #Cval 档（与 globalConst 同义）；
-// 其他档位（默认 / #Mut / #Frozen）在全局位由 ast_builder 拒，报 E3116。
+// DRAFT-let-unify §3 + DRAFT-static-vars Phase 1：全局 `let NAME T = expr`。
+// 三档：无注解（val，运行期 init） / #Cval（编译期常量） / #Mut（可变，Phase 2）。
+// #Frozen 在全局位拒（E3116 既有语义——全局 #Frozen 无意义，用 #Cval 替代）。
 std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
     DEBUG_LOG("Visit: LetGlobal");
     auto file = any_cast_p<FileNode>(stack.back());
     auto flags = readLetAnnos(ctx->letAnnos);
 
     auto name = ctx->name;
-    if (!flags.isCval) {
+
+    // #Frozen 在全局位拒（和 #Mut 一样先报 E3116）
+    if (!flags.isCval && !flags.isMut && flags.isFrozen) {
         throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
                        ErrorCode::E3116, name->getText());
     }
+
+    // Phase 2: #Mut 全局（当前拒，Phase 2 放开）
+    if (flags.isMut) {
+        throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
+                       ErrorCode::E3116, name->getText());
+    }
+
+    // #Cval 档：走既有 const-eval 通路
+    if (flags.isCval) {
+        if (!ctx->type()) {
+            throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
+                           ErrorCode::E3113, name->getText());
+        }
+        if (!ctx->expr()) {
+            throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
+                           ErrorCode::E3114, name->getText());
+        }
+
+        auto typeNode = any_cast_p<TypeNode>(visit(ctx->type()));
+        auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
+
+        // DRAFT-const-eval Phase 2: RHS 必须 const-evaluable。失败抛 E3140；溢出 / 除 0 抛 E3143。
+        ConstEvaluator ev;
+        ev.setFile(file);
+        for (const auto& prior : file->getGlobalConsts()) {
+            auto v = ev.eval(prior->value());
+            if (v) ev.setNamedConst(prior->name().getText(), *v);
+        }
+        auto value = ev.eval(expr);
+        if (!value) {
+            throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
+                           ErrorCode::E3140, name->getText());
+        }
+
+        auto globalConst = createWithLine<GlobalConstNode>(ctx, file, name, typeNode, expr);
+        file->addGlobalConst(globalConst);
+
+        DEBUG_LOG_VAL("  LetGlobal #Cval", name->getText() << " : " << typeNode->getType().name);
+        return globalConst;
+    }
+
+    // DRAFT-static-vars Phase 1：默认 val 档 —— 运行期初始化全局变量
     if (!ctx->type()) {
         throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
                        ErrorCode::E3113, name->getText());
     }
+    // E3154: 全局 val 必须有 init
     if (!ctx->expr()) {
         throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
-                       ErrorCode::E3114, name->getText());
+                       ErrorCode::E3154, name->getText());
     }
 
     auto typeNode = any_cast_p<TypeNode>(visit(ctx->type()));
     auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
 
-    // DRAFT-const-eval Phase 2: RHS 必须 const-evaluable。失败抛 E3140；溢出 / 除 0 抛 E3143。
-    // env 注入：已定义的 #Cval 全局（按声明序前向可见）。
-    ConstEvaluator ev;
-    ev.setFile(file);
-    for (const auto& prior : file->getGlobalConsts()) {
-        auto v = ev.eval(prior->value());
-        if (v) ev.setNamedConst(prior->name().getText(), *v);
-    }
-    auto value = ev.eval(expr);
-    if (!value) {
-        throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
-                       ErrorCode::E3140, name->getText());
-    }
+    auto globalVar = createWithLine<GlobalVarNode>(ctx, file, name, typeNode, expr);
+    file->addGlobalVar(globalVar);
 
-    auto globalConst = createWithLine<GlobalConstNode>(ctx, file, name, typeNode, expr);
-    file->addGlobalConst(globalConst);
-
-    DEBUG_LOG_VAL("  LetGlobal #Cval", name->getText() << " : " << typeNode->getType().name);
-    return globalConst;
+    DEBUG_LOG_VAL("  LetGlobal val", name->getText() << " : " << typeNode->getType().name);
+    return globalVar;
 }
 
 std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {

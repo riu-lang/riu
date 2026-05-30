@@ -8,6 +8,7 @@
 #include "enum_node.h"
 #include "fn_node.h"
 #include "global_const_node.h"
+#include "global_var_node.h"
 #include "node.h"
 #include "spec_node.h"
 #include "struct_node.h"
@@ -17,6 +18,7 @@ class FileNode : public ScopeNode {
     vector<p<StructDeclNode>> _structDecls;
     vector<p<StructImplNode>> _structImpls;
     vector<p<GlobalConstNode>> _globalConsts;
+    vector<p<GlobalVarNode>> _globalVars; // DRAFT-static-vars Phase 1: 运行期初始化全局变量
     vector<p<SpecDeclNode>> _specDecls;
     vector<p<AliasDeclNode>> _aliasDecls;
     map<string, p<AliasDeclNode>> _aliasMap;
@@ -31,6 +33,7 @@ public:
     void addStructDecl(const p<StructDeclNode>& structDecl);
     void addStructImpl(const p<StructImplNode>& structImpl);
     void addGlobalConst(const p<GlobalConstNode>& globalConst);
+    void addGlobalVar(const p<GlobalVarNode>& globalVar); // DRAFT-static-vars Phase 1
     void addSpecDecl(const p<SpecDeclNode>& specDecl);
     void addAliasDecl(const p<AliasDeclNode>& aliasDecl);
     void addEnumDecl(const p<EnumDeclNode>& enumDecl);
@@ -39,6 +42,7 @@ public:
     const vector<p<StructDeclNode>>& getStructDecls() const { return _structDecls; }
     const vector<p<StructImplNode>>& getStructImpls() const { return _structImpls; }
     const vector<p<GlobalConstNode>>& getGlobalConsts() const { return _globalConsts; }
+    const vector<p<GlobalVarNode>>& getGlobalVars() const { return _globalVars; } // DRAFT-static-vars Phase 1
     const vector<p<SpecDeclNode>>& getSpecDecls() const { return _specDecls; }
     const vector<p<AliasDeclNode>>& getAliasDecls() const { return _aliasDecls; }
     const vector<p<EnumDeclNode>>& getEnumDecls() const { return _enumDecls; }

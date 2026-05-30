@@ -821,6 +821,14 @@ void Compiler::emitMainStartupFallible(const string& fallibleErrName) {
     _builder.CreateCall(setConsoleOutputCP, {cpUtf8});
     _builder.CreateCall(setConsoleCP, {cpUtf8});
 
+    // DRAFT-static-vars Phase 1: 调用 _yux_global_init_<Mod>()
+    for (auto& func : _module->getFunctionList()) {
+        auto funcName = func.getName();
+        if (funcName.starts_with("_yux_global_init_")) {
+            _builder.CreateCall(&func, {});
+        }
+    }
+
     // 调用 yux_main 拿 { i1, EnumLLVM }
     auto callRet = _builder.CreateCall(yuxMain, {}, "main.ret");
     auto isErr = _builder.CreateExtractValue(callRet, {0}, "main.isErr");

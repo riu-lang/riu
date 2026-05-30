@@ -1,0 +1,9 @@
+; DRAFT-static-vars Phase 1: 全局 val 调用 fn 进行初始化
+
+fn get_default_port() i32 = 8080
+
+let PORT i32 = get_default_port()
+
+fn main() {
+  println(PORT.to_string())
+}

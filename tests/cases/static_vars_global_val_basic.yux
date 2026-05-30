@@ -1,0 +1,7 @@
+; DRAFT-static-vars Phase 1: 基本全局 val（运行期初始化）
+
+let ANSWER i32 = 42
+
+fn main() {
+  println(ANSWER.to_string())
+}

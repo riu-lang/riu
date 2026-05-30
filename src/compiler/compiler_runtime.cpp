@@ -1153,6 +1153,17 @@ void emitMainStartup(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llv
     builder.CreateCall(setConsoleCP, {cpUtf8});
     DEBUG_LOG("  Set console code page to UTF-8");
 
+    // DRAFT-static-vars Phase 1: 调用 _yux_global_init_<Mod>() 运行期初始化全局变量
+    // 查找当前模块的 init 函数（编译器生成的模块名可能含 '.'，函数名中已替换为 '_'）
+    // 遍历所有 _yux_global_init_ 前缀的函数并调用
+    for (auto& func : module->getFunctionList()) {
+        auto funcName = func.getName();
+        if (funcName.starts_with("_yux_global_init_")) {
+            builder.CreateCall(&func, {});
+            DEBUG_LOG_VAL("  Called global init", funcName.str());
+        }
+    }
+
     // 调用 yux_main
     auto yuxMain = module->getFunction("yux_main");
     if (yuxMain) {

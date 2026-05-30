@@ -450,6 +450,7 @@ public:
     // ==================== 编译入口 ====================
     void compile(p<FileNode> file);                       // 编译文件 (主入口)
     void compileGlobalConsts();                           // 编译全局常量
+    void compileGlobalVars();                             // 编译全局变量（DRAFT-static-vars Phase 1）
     // DRAFT-const-eval Phase 5: ConstantValue -> llvm::Constant 翻译 (递归; 支持 Struct 嵌套).
     // 失败 (含未支持的 kind / 字段类型不匹配) 返回 nullptr, 调用方报错.
     llvm::Constant* buildLLVMConstantFromValue(const ConstantValue& v, llvm::Type* expectedTy);

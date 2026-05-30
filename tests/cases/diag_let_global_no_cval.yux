@@ -1,7 +1,8 @@
-; DRAFT-let-unify §3: 全局 let 缺 #Cval → E3116
+; DRAFT-static-vars Phase 1: 全局 val 缺 init → E3154
+; （无注解 let 现在合法，但必须带 init）
 
-let G i32 = 1
+let G i32
 
 fn main() {
-  println(G.to_string())
+  println("hi")
 }

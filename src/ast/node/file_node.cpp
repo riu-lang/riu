@@ -166,6 +166,16 @@ void FileNode::addGlobalConst(const p<GlobalConstNode>& globalConst) {
     }
 }
 
+// DRAFT-static-vars Phase 1: 运行期初始化全局变量
+void FileNode::addGlobalVar(const p<GlobalVarNode>& globalVar) {
+    _globalVars.push_back(globalVar);
+    string name = globalVar->name().getText();
+    if (!lookupSymbol(name)) {
+        bool isMutable = globalVar->isMutable();
+        registerSymbol(name, {SymbolKind::Variable, name, globalVar->getType(), isMutable});
+    }
+}
+
 const vector<p<FnNode>>& FileNode::getFunctions() const {
     return _functions;
 }

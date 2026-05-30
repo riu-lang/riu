@@ -92,6 +92,9 @@ void Compiler::compile(p<FileNode> file) {
     DEBUG_LOG("Compiling global constants...");
     compileGlobalConsts();
 
+    DEBUG_LOG("Compiling global variables...");
+    compileGlobalVars();
+
     DEBUG_LOG("Compiling struct implementations...");
     compileStructImpls();
 

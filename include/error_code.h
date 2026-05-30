@@ -288,6 +288,10 @@ DEF_ERR(3141, "`#Const fn` '{}' body contains disallowed control-flow form: {} (
 DEF_ERR(3144, "`#Const fn` '{}' cannot be invoked in a constant expression: {} type '{}' is not in the const-eval "
               "whitelist (DRAFT-const-eval §4; allowed: scalar integer / float / bool)")
 
+// ── DRAFT-static-vars Phase 1: 全局 val 缺 init ─────────────────────
+DEF_ERR(3154, "Global `let {}` requires an initializer (DRAFT-static-vars §3.3; non-#Cval globals must be initialized at "
+              "declaration; omit init only with `#Mut` which is not yet supported at global scope)")
+
 // ── 构造模型重构: #Static fn / Self / 字段字面量 (DRAFT-static-fn) ────
 DEF_ERR(
     3120,
