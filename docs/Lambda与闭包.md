@@ -16,7 +16,7 @@ yux 把"函数"视作一等值：
 
 ```yux
 ; 变量持有函数值
-var f fn(i32)i32 = (x i32) i32 => x + 1
+#Mut let f fn(i32)i32 = (x i32) i32 => x + 1
 println(f(41)) ; 42
 
 ; 类型别名（透明 alias）
@@ -50,26 +50,26 @@ fn(a, b i32) i32
 
 ```yux
 ; 表达式形（多参，需括号）
-val add = (a i32, b i32) i32 => a + b
+let add = (a i32, b i32) i32 => a + b
 
 ; 单参省括号（裸 single）
-val inc = (x i32) i32 => x + 1   ; 完整形
-val f fn(i32)i32 = x => x + 1     ; 裸 single，类型由上下文反推
+let inc = (x i32) i32 => x + 1   ; 完整形
+let f fn(i32)i32 = x => x + 1     ; 裸 single，类型由上下文反推
 
 ; 块形（≥ 1 参，=> 分隔参列与体）
-val sum = { a i32, b i32 =>
-  val s = a + b
+let sum = { a i32, b i32 =>
+  let s = a + b
   ret s
 }
 
 ; 0 参块（无 =>；必须多行真块，单行 { expr } 不是 lambda 而是 expr-lambda 的位置）
 ; 体内末位无 `;` 的表达式作 tail-return；返回类型由上下文反推
-val once fn()i32 = {
+let once fn()i32 = {
   42
 }
 
 ; 0 参块 + 显式返回类型：用 `() T =>` 头
-val once2 = { () i32 =>
+let once2 = { () i32 =>
   42
 }
 ```
@@ -82,14 +82,14 @@ val once2 = { () i32 =>
 fn op(f fn(a, b i32) i32) i32 = f(1, 2)
 
 ; { ... } 内的 a / b 由 op 的形参类型反推为 i32
-val r = op({ a, b => a + b })
+let r = op({ a, b => a + b })
 ```
 
 无上下文则需显式标注：
 
 ```yux
-val f = (x i32) i32 => x + 1   ; ✅ 显式
-val f = x => x + 1              ; ❌ 编译错（无上下文）
+let f = (x i32) i32 => x + 1   ; ✅ 显式
+let f = x => x + 1              ; ❌ 编译错（无上下文）
 ```
 
 ### 返回类型规则（spec §4.11.3）
@@ -114,7 +114,7 @@ op({ (a i32, b i32) i32 => a + b })
 op((a, b) => a + b)
 
 ; 单参裸 single 仍可（apply 由用户定义，签名 fn(i32, fn(i32)i32) i32）
-val r = apply(7, x => x * 2)
+let r = apply(7, x => x * 2)
 ```
 
 > Array v1 暂未提供 `map` / `filter` / `fold` 等高阶方法；上面示例用一个用户自定义 `apply` 演示单参裸 lambda 在实参位置的写法。批量遍历用 `each`（见 §尾随 lambda 调用糖）或 `for ... in arr`。
@@ -122,9 +122,9 @@ val r = apply(7, x => x * 2)
 ### 表达式体可含 `if` / `match`
 
 ```yux
-val abs = (x i32) i32 => if x < 0 { -x } else { x }
+let abs = (x i32) i32 => if x < 0 { -x } else { x }
 
-val name = (k Kind) String => match k {
+let name = (k Kind) String => match k {
   Kind.A => "a"
   Kind.B => "b"
 }
@@ -174,8 +174,8 @@ fn make_adder(n i32) fn(i32)i32 {
 }
 
 fn main() {
-  val add5 = make_adder(5)
-  val add10 = make_adder(10)
+  let add5 = make_adder(5)
+  let add10 = make_adder(10)
   println(add5(1))   ; 6
   println(add10(1))  ; 11
 }
@@ -185,8 +185,8 @@ fn main() {
 
 ```yux
 fn bad() {
-  var n = 0
-  val f = () => n = n + 1   ; ❌ 编译错 E2030：lambda 不可对捕获变量赋值
+  #Mut let n = 0
+  let f = () => n = n + 1   ; ❌ 编译错 E2030：lambda 不可对捕获变量赋值
 }
 ```
 
@@ -203,8 +203,8 @@ Counter {
 }
 
 fn good() {
-  var c = Rc(Counter())
-  val f = () => c.inc()    ; ✅ 走 mutator 方法，外层状态受影响
+  #Mut let c = Rc:<Counter>(Counter::make())
+  let f = () => c.inc()    ; ✅ 走 mutator 方法，外层状态受影响
   f()
   f()
   println(c.v) ; 2
@@ -221,7 +221,7 @@ fn make_reader(r i32&) fn() i32 {
 }
 
 fn use_reader(r i32&) {
-  val read = () i32 => r       ; ✅ 在本 frame 内消费
+  let read = () i32 => r       ; ✅ 在本 frame 内消费
   println(read())
 }
 ```
@@ -249,10 +249,10 @@ Greeter {
 lambda 返回 `T&` 时，允许源集 = lambda 自身**形参**为 `T&` 者；**捕获来的 `T&` 不进允许源集**：
 
 ```yux
-val pick = (a i32&, b i32&) i32& => a   ; ✅ a 是形参 T&
+let pick = (a i32&, b i32&) i32& => a   ; ✅ a 是形参 T&
 
 fn outer(c i32&) {
-  val bad = () i32& => c   ; ❌ E4020：c 是捕获，不在允许源
+  let bad = () i32& => c   ; ❌ E4020：c 是捕获，不在允许源
 }
 ```
 
@@ -275,7 +275,7 @@ extern {
 - 泛型 lambda 字面量（`<T>(x T) => x`）：v1 不支持，推 v0.x+1。多数泛型需求由"外层泛型 fn + 内层单态 lambda" + 泛型类型别名 `Predicate<T> = fn(x T)bool` 已覆盖。
 - `it` 隐式参数名。
 - 函数值 `==` / 地址相等比较。
-- `#Inline` / `#CallOnce` 注解：v1 不引入；上线后将解锁 lambda 内对外层 `var` 的赋值直通。
+- `#Inline` / `#CallOnce` 注解：v1 不引入；上线后将解锁 lambda 内对外层 `#Mut let` 变量的赋值直通。
 
 ## 交叉引用
 
