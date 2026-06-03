@@ -9,6 +9,7 @@
 
 #include "antlr4-runtime.h"
 #include "position.h"
+#include "types.h"
 #include "utf8.h"
 #include "yux/yuxLexer.h"
 #include "yux/yuxParser.h"
@@ -18,7 +19,7 @@ namespace yux::lsp {
 namespace {
 
 // 与 semanticTokenTypes() 数组顺序对应；改动需同步两边。
-enum class TT : int {
+enum class TT : u8 {
     Keyword = 0,
     Operator = 1,
     String = 2,
@@ -34,15 +35,6 @@ enum class TT : int {
     Interface = 12,
     Enum = 13,
     EnumMember = 14,
-};
-
-const std::vector<std::string> kTypes = {
-    "keyword", "operator", "string", "number", "comment",
-    "variable", "class", "function", "property", "parameter", "method", "metadata",
-    "interface", "enum", "enumMember",
-};
-const std::vector<std::string> kModifiers = {
-    "declaration",
 };
 
 constexpr int MOD_DECLARATION = 1 << 0;
@@ -61,12 +53,12 @@ int classify(size_t type) {
 
         case L::Break: case L::Catch: case L::Elif: case L::Else:
         case L::Enum: case L::Extern: case L::False: case L::Fn: case L::If: case L::Let:
-        case L::Loop: case L::Match: case L::Null: case L::Ret: case L::Struct:
-        case L::True: case L::Try: case L::Use:
+        case L::Loop: case L::Match: case L::Null: case L::Ret: case L::SelfType:
+        case L::Struct: case L::True: case L::Try: case L::Use:
             return static_cast<int>(TT::Keyword);
 
         // 仅着色"真正的运算符"，逗号/分号/点/括号留默认色
-        case L::SymbolAdd: case L::SymbolAnd: case L::SymbolDiv:
+        case L::SymbolAdd: case L::SymbolAnd: case L::SymbolAt: case L::SymbolDiv:
         case L::SymbolEq: case L::SymbolExcl: case L::SymbolLt:
         case L::SymbolMod: case L::SymbolMt: case L::SymbolMul:
         case L::SymbolOr: case L::SymbolQuest: case L::SymbolRev:
@@ -150,7 +142,10 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
     } else if (auto* c = dynamic_cast<P::FnHeaderContext*>(node)) {
         put(out, c->name, TT::Function, MOD_DECLARATION);
     } else if (auto* c = dynamic_cast<P::BuildAnnoContext*>(node)) {
-        // 构建注解 #Name
+        // 构建注解 #Name（顶行堆叠：fn/struct/extern 上）
+        if (c->name) put(out, c->name, TT::Metadata, 0);
+    } else if (auto* c = dynamic_cast<P::LetAnnoContext*>(node)) {
+        // let 行内注解 #Mut / #Cval / #Frozen
         if (c->name) put(out, c->name, TT::Metadata, 0);
     } else if (auto* c = dynamic_cast<P::FiledDeclContext*>(node)) {
         put(out, c->name, TT::Property, MOD_DECLARATION);
@@ -226,8 +221,18 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
 
 } // namespace
 
-const std::vector<std::string>& semanticTokenTypes() { return kTypes; }
-const std::vector<std::string>& semanticTokenModifiers() { return kModifiers; }
+const std::vector<std::string>& semanticTokenTypes() {
+    static const std::vector<std::string> types = {
+        "keyword", "operator", "string", "number", "comment",
+        "variable", "class", "function", "property", "parameter", "method", "metadata",
+        "interface", "enum", "enumMember",
+    };
+    return types;
+}
+const std::vector<std::string>& semanticTokenModifiers() {
+    static const std::vector<std::string> modifiers = {"declaration"};
+    return modifiers;
+}
 
 std::vector<int> computeSemanticTokens(std::string_view text) {
     std::vector<int> data;

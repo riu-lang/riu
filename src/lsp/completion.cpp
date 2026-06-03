@@ -41,11 +41,13 @@ const std::vector<CompletionItem>& buildItems() {
         kw("let", "变量声明（默认浅不可变；加 #Mut 可变）");
         kw("struct", "结构体声明");
         kw("enum", "枚举声明");
-        kw("draft", "约束/接口声明");
         kw("loop", "循环语句");
         kw("break", "跳出循环");
         kw("use", "导入模块");
         kw("extern", "外部声明");
+        kw("Impl", "#Impl(Spec) 注解 — 标记 struct 实现某个 spec");
+        kw("Spec", "#Spec 注解 — 标记 struct 为 spec 声明（仅签名）");
+        kw("Static", "#Static 注解 — 静态方法/字段（无 receiver $）");
         kw("try", "try 块（错误处理）");
         kw("catch", "catch 分支（错误处理）");
 
@@ -62,7 +64,6 @@ const std::vector<CompletionItem>& buildItems() {
         ty("f64", "64位浮点数");
         ty("bool", "布尔类型");
         ty("String", "字符串类型");
-        ty("Ref",   "引用类型 Ref<T>");
         ty("Rc",   "堆对象类型 Rc<T>（多 owner，含 RC 头）");
         ty("Heap", "堆作用域句柄 Heap<T>（单 owner，零 RC，作用域绑定）");
         ty("Weak", "弱引用类型 Weak<T>");
@@ -116,12 +117,12 @@ const std::vector<CompletionItem>& buildItems() {
         sn("impl", "结构体实现模板",
            "${1:Name} {\n\tfn ${2:method}(${3:params}) {\n\t\t${4:body}\n\t}\n}",
            "创建一个结构体实现块");
-        sn("draft", "draft 声明模板",
-           "draft ${1:Name} {\n\tfn ${2:method}(${3:params}) ${4:retType}\n}",
-           "创建一个 draft 声明");
-        sn("draft-impl", "draft 实现块模板",
-           "${1:Type} : ${2:Draft} {\n\tfn ${3:method}(${4:params}) ${5:retType} {\n\t\t${6:body}\n\t}\n}",
-           "创建一个 draft 实现块");
+        sn("spec-struct", "#Spec struct 声明模板",
+           "#Spec struct ${1:Name} {\n\tfn ${2:method}(${3:params}) ${4:retType}\n}",
+           "创建一个 spec 声明（仅签名，替代旧 draft 关键字）");
+        sn("spec-impl", "#Impl 实现块模板",
+           "#Impl(${1:SpecName})\n${2:Type} {\n\tfn ${3:method}(${4:params}) ${5:retType} {\n\t\t${6:body}\n\t}\n}",
+           "创建一个 spec 实现块（替代旧 `: Draft` 头部槽）");
         sn("let", "变量声明模板（默认浅不可变）",
            "let ${1:name} ${2:type} = ${3:value}",
            "创建一个不可变变量声明（默认 let）");

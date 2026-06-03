@@ -85,8 +85,7 @@ std::string typeInfoDisplay(const TypeInfo& info) {
         return s;
     }
     if (info.kind == TypeKind::Array && info.elementType) {
-        return "[" + typeInfoDisplay(*info.elementType) + " * " +
-               std::to_string(info.arraySize) + "]";
+        return "[" + typeInfoDisplay(*info.elementType) + " * " + std::to_string(info.arraySize) + "]";
     }
     return info.name;
 }
@@ -192,7 +191,7 @@ LocatedRange locateNamedSymbol(FileNode* file, const std::string& name) {
     // FileNode 不直接持文件路径；我们通过 Project::allFiles() 反查会更稳，但
     // 这里假定 caller 已知 file 的归一化路径并自己拼 URI。本函数只产 (line/col) 范围。
     // 行号 ANTLR 1-based → LSP 0-based；列 ANTLR 0-based 代码点 → 等价 0-based UTF-16
-    //（标识符全 ASCII，不会有 UTF-16 surrogate）
+    // （标识符全 ASCII，不会有 UTF-16 surrogate）
     out.start.line = static_cast<int>(tok.getLine() > 0 ? tok.getLine() - 1 : 0);
     out.start.character = static_cast<int>(tok.getCharPositionInLine());
     out.end.line = out.start.line;
@@ -234,7 +233,7 @@ std::string renderStructHover(StructDeclNode* sd) {
 std::string renderConstHover(GlobalConstNode* gc) {
     if (!gc) return {};
     std::ostringstream ss;
-    ss << "```yux\ncval " << gc->name().getText() << " " << typeInfoDisplay(gc->getType()) << "\n```";
+    ss << "```yux\n#Cval\nlet " << gc->name().getText() << " " << typeInfoDisplay(gc->getType()) << "\n```";
     return ss.str();
 }
 
@@ -286,7 +285,8 @@ CompletionVisible collectVisible(Project& project, FileNode* fromFile) {
     };
     if (fromFile) {
         pushFile(fromFile);
-        for (auto* w : fromFile->wildcardImports()) pushFile(w);
+        for (auto* w : fromFile->wildcardImports())
+            pushFile(w);
     }
     // 项目内其它文件作为补充（不严格按 use 可见性，宽松一些方便编辑）
     for (const auto& kv : project.allFiles()) {
@@ -318,8 +318,7 @@ static size_t lspPosToByteOffset(const std::string& docText, LspPosition pos) {
 }
 
 static bool isIdentChar(char c) {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-           (c >= '0' && c <= '9') || c == '_';
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
 }
 static bool isIdentStart(char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
@@ -331,7 +330,10 @@ static LspPosition byteOffsetToLsp(const std::string& docText, size_t byteOff) {
     size_t lineStart = 0;
     int line = 0;
     for (size_t i = 0; i < byteOff && i < docText.size(); ++i) {
-        if (docText[i] == '\n') { ++line; lineStart = i + 1; }
+        if (docText[i] == '\n') {
+            ++line;
+            lineStart = i + 1;
+        }
     }
     p.line = line;
     int utf16 = 0;
@@ -342,7 +344,8 @@ static LspPosition byteOffsetToLsp(const std::string& docText, size_t byteOff) {
             char32_t cp = utf8::next(it, end);
             utf16 += (cp <= 0xFFFF ? 1 : 2);
         }
-    } catch (...) { /* 残缺 UTF-8：保持 utf16 当前值 */ } // NOLINT(bugprone-empty-catch)
+    } catch (...) { /* 残缺 UTF-8：保持 utf16 当前值 */
+    }               // NOLINT(bugprone-empty-catch)
     p.character = utf16;
     return p;
 }
@@ -353,9 +356,11 @@ ReceiverCtx receiverContextAt(const std::string& docText, LspPosition pos) {
 
     // 找到 cursor 所在/紧邻的 IDENT（member）：先向前扩，再向后扩
     long mStart = static_cast<long>(cursor);
-    while (mStart > 0 && isIdentChar(docText[mStart - 1])) --mStart;
+    while (mStart > 0 && isIdentChar(docText[mStart - 1]))
+        --mStart;
     long mEnd = static_cast<long>(cursor);
-    while (std::cmp_less(mEnd ,docText.size()) && isIdentChar(docText[mEnd])) ++mEnd;
+    while (std::cmp_less(mEnd, docText.size()) && isIdentChar(docText[mEnd]))
+        ++mEnd;
     // 如果开头是数字（处于数字字面量内），不算 IDENT
     if (mStart < mEnd && !isIdentStart(docText[mStart])) {
         mStart = mEnd; // 视为 member 为空
@@ -363,26 +368,28 @@ ReceiverCtx receiverContextAt(const std::string& docText, LspPosition pos) {
 
     // 检查 mStart 之前是否为 `\s*\.\s*IDENT`
     long o = mStart;
-    while (o > 0 && (docText[o-1]==' '||docText[o-1]=='\t')) --o;
-    if (o == 0 || docText[o-1] != '.') return out;
+    while (o > 0 && (docText[o - 1] == ' ' || docText[o - 1] == '\t'))
+        --o;
+    if (o == 0 || docText[o - 1] != '.') return out;
     --o;
-    while (o > 0 && (docText[o-1]==' '||docText[o-1]=='\t')) --o;
+    while (o > 0 && (docText[o - 1] == ' ' || docText[o - 1] == '\t'))
+        --o;
     long rEnd = o;
     long rStart = rEnd;
-    while (rStart > 0 && isIdentChar(docText[rStart-1])) --rStart;
+    while (rStart > 0 && isIdentChar(docText[rStart - 1]))
+        --rStart;
     if (rStart >= rEnd) return out;
     if (!isIdentStart(docText[rStart])) return out;
     // 拒绝链式 receiver（receiver 自己前面是 `.`），保持最小修复
     long pre = rStart;
-    while (pre > 0 && (docText[pre-1]==' '||docText[pre-1]=='\t')) --pre;
-    if (pre > 0 && docText[pre-1] == '.') return out;
+    while (pre > 0 && (docText[pre - 1] == ' ' || docText[pre - 1] == '\t'))
+        --pre;
+    if (pre > 0 && docText[pre - 1] == '.') return out;
 
     out.found = true;
-    out.receiver = docText.substr(static_cast<size_t>(rStart),
-                                   static_cast<size_t>(rEnd - rStart));
+    out.receiver = docText.substr(static_cast<size_t>(rStart), static_cast<size_t>(rEnd - rStart));
     if (mStart < mEnd) {
-        out.member = docText.substr(static_cast<size_t>(mStart),
-                                     static_cast<size_t>(mEnd - mStart));
+        out.member = docText.substr(static_cast<size_t>(mStart), static_cast<size_t>(mEnd - mStart));
         out.memberStart = byteOffsetToLsp(docText, static_cast<size_t>(mStart));
         out.memberEnd = byteOffsetToLsp(docText, static_cast<size_t>(mEnd));
     } else {
@@ -396,8 +403,7 @@ ReceiverCtx receiverContextAt(const std::string& docText, LspPosition pos) {
 
 namespace {
 // 在 fromFile + wildcardImports 中找指定 struct 的 decl 与 impl，统一收集
-void collectStructInScope(Project& project, FileNode* fromFile,
-                          const std::string& structName,
+void collectStructInScope(Project& project, FileNode* fromFile, const std::string& structName,
                           std::vector<std::pair<FileNode*, StructDeclNode*>>& decls,
                           std::vector<std::pair<FileNode*, StructImplNode*>>& impls) {
     auto visit = [&](FileNode* f) {
@@ -406,7 +412,9 @@ void collectStructInScope(Project& project, FileNode* fromFile,
         if (auto* si = f->getStructImpl(structName)) impls.emplace_back(f, si);
     };
     visit(fromFile);
-    if (fromFile) for (auto* w : fromFile->wildcardImports()) visit(w);
+    if (fromFile)
+        for (auto* w : fromFile->wildcardImports())
+            visit(w);
     // 兜底：项目内所有文件（与 lookupName 同样宽松）
     for (const auto& kv : project.allFiles()) {
         if (kv.second != fromFile) visit(kv.second);
@@ -414,9 +422,8 @@ void collectStructInScope(Project& project, FileNode* fromFile,
 }
 } // namespace
 
-MemberHit lookupStructMember(Project& project, FileNode* fromFile,
-                              const std::string& structName,
-                              const std::string& memberName) {
+MemberHit lookupStructMember(Project& project, FileNode* fromFile, const std::string& structName,
+                             const std::string& memberName) {
     MemberHit h;
     if (structName.empty() || memberName.empty()) return h;
     std::vector<std::pair<FileNode*, StructDeclNode*>> decls;
@@ -448,8 +455,7 @@ MemberHit lookupStructMember(Project& project, FileNode* fromFile,
     return h;
 }
 
-StructMembers collectStructMembers(Project& project, FileNode* fromFile,
-                                    const std::string& structName) {
+StructMembers collectStructMembers(Project& project, FileNode* fromFile, const std::string& structName) {
     StructMembers out;
     if (structName.empty()) return out;
     std::vector<std::pair<FileNode*, StructDeclNode*>> decls;
@@ -519,21 +525,22 @@ CallContext findEnclosingCall(const std::string& docText, LspPosition pos) {
     long j = openParen - 1;
     while (j >= 0) {
         char c = docText[static_cast<size_t>(j)];
-        if (c == ' ' || c == '\t' || c == '\n' || c == '\r') --j;
-        else break;
+        if (c == ' ' || c == '\t' || c == '\n' || c == '\r')
+            --j;
+        else
+            break;
     }
     long nameEnd = j + 1;
     while (j >= 0) {
         char c = docText[static_cast<size_t>(j)];
-        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-            (c >= '0' && c <= '9') || c == '_') {
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
             --j;
-        } else break;
+        } else
+            break;
     }
     long nameStart = j + 1;
     if (nameEnd <= nameStart) return ctx;
-    ctx.callee = docText.substr(static_cast<size_t>(nameStart),
-                                 static_cast<size_t>(nameEnd - nameStart));
+    ctx.callee = docText.substr(static_cast<size_t>(nameStart), static_cast<size_t>(nameEnd - nameStart));
     if (ctx.callee.empty() || (ctx.callee[0] >= '0' && ctx.callee[0] <= '9')) {
         ctx.callee.clear();
         return ctx;

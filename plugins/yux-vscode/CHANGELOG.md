@@ -4,6 +4,10 @@ All notable changes to the "yux-vscode" extension will be documented in this fil
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.9.0]
+
+- 移除 `draft`（struct 关键字组）、`Ref`（泛型类型组）
+
 ## [0.8.0]
 
 - 同步 let-unify：`var` / `val` / `cval` 三关键字已并入 `let` + `#Mut` / `#Cval` / `#Frozen` 注解
