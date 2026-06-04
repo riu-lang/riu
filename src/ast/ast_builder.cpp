@@ -149,7 +149,8 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
     // addSpecDecl 在 visitStructDecl 内部已完成，不要在此处再显式 visit
     // 以免与 visitChildren 重复导致 E1103。
 
-    // DRAFT-let-unify §3：全局 let（仅 #Cval 档）—— 预登记符号，让早引用合法。
+    // DRAFT-let-unify §3 + DRAFT-static-vars Phase 2：全局 let 预登记符号，让早引用合法。
+    // 根据注解分三档：#Cval（不可写，编译期常量）/ #Mut（可写）/ 默认 val（不可写，运行期初始化）。
     auto letGlobals = ctx->letGlobal();
     DEBUG_LOG_VAL("  Global lets count", letGlobals.size());
     for (auto letGlobalCtx : letGlobals) {
@@ -158,12 +159,18 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         auto typeNode = any_cast_p<TypeNode>(visit(letGlobalCtx->type()));
         TypeInfo type = typeNode->getType();
 
-        SymbolInfo sym(SymbolKind::Variable, name, type, false);
+        auto flags = readLetAnnos(letGlobalCtx->letAnnos);
+        bool writeable = flags.isMut;
+        bool isConst = flags.isCval;
+
+        SymbolInfo sym(SymbolKind::Variable, name, type, writeable);
         sym.moduleName = moduleName;
-        sym.isConst = true;
+        sym.isConst = isConst;
         file->registerSymbol(name, sym);
 
-        DEBUG_LOG_VAL("  Register global let", name << " : " << type.name);
+        DEBUG_LOG_VAL("  Register global let", name << " : " << type.name
+                                              << (flags.isMut ? " #Mut" : "")
+                                              << (flags.isCval ? " #Cval" : ""));
     }
 
     visitChildren(ctx);

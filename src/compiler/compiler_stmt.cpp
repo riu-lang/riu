@@ -949,6 +949,32 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                 node->getLineNumber(), node->getColumn(), ErrorCode::E3030, objName);
         }
 
+        // DRAFT-static-vars Phase 2: 全局变量 —— 先于 _localVarPtrs 路径独立处理。
+        // 全局变量不在 _localVarPtrs 中，通过 Mangler 找 LLVM GlobalVariable。
+        {
+            string ownerMod = (!sym->moduleName.empty()) ? sym->moduleName : _file->moduleName();
+            bool globPriv = !objName.empty() && objName[0] == '_';
+            string mangledName = Mangler::global(ownerMod, objName, globPriv);
+            if (auto globalVar = _module->getGlobalVariable(mangledName, true)) {
+                if (!sym->writeable) {
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3151, objName);
+                }
+                auto exprVal = compileExpr(expr);
+                auto exprType = expr->getType();
+                llvm::Value* valToStore;
+                if (assignOp != AssignOp::Eq) {
+                    auto currentVal =
+                        _builder.CreateLoad(globalVar->getValueType(), globalVar, "global.current.load");
+                    auto castedExprVal = createCast(exprVal, exprType, sym->type);
+                    valToStore = applyCompoundOp(currentVal, castedExprVal, assignOp, sym->type);
+                } else {
+                    valToStore = createCast(exprVal, exprType, sym->type);
+                }
+                _builder.CreateStore(valToStore, globalVar);
+                return;
+            }
+        }
+
         // Phase 4b: T& 赋值是 store-through（改被引对象），不是 rebind；
         // T& 形参 / val 局部 T& 的 writeable=false 不影响"写被引"，写权由源对象决定（4d 校验）
         if (!sym->writeable && !sym->type.isRef()) {

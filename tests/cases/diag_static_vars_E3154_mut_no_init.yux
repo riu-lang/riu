@@ -1,0 +1,8 @@
+; DRAFT-static-vars Phase 2: #Mut 全局缺 init → E3154
+
+#Mut
+let G i32
+
+fn main() {
+  println("hi")
+}

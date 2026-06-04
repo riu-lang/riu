@@ -120,10 +120,26 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
                        ErrorCode::E3116, name->getText());
     }
 
-    // Phase 2: #Mut 全局（当前拒，Phase 2 放开）
+    // Phase 2: #Mut 全局 —— 运行期初始化，可变
     if (flags.isMut) {
-        throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
-                       ErrorCode::E3116, name->getText());
+        if (!ctx->type()) {
+            throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
+                           ErrorCode::E3113, name->getText());
+        }
+        // 决议 [#1.A]: #Mut 全局无 init → E3154（v1 禁）
+        if (!ctx->expr()) {
+            throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
+                           ErrorCode::E3154, name->getText());
+        }
+
+        auto typeNode = any_cast_p<TypeNode>(visit(ctx->type()));
+        auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
+
+        auto globalVar = createWithLine<GlobalVarNode>(ctx, file, name, typeNode, expr, /*isMutable=*/true);
+        file->addGlobalVar(globalVar);
+
+        DEBUG_LOG_VAL("  LetGlobal #Mut", name->getText() << " : " << typeNode->getType().name);
+        return globalVar;
     }
 
     // #Cval 档：走既有 const-eval 通路

@@ -1,0 +1,7 @@
+; DRAFT-static-vars Phase 2: 写入非 #Mut 全局 → E3151
+
+let G i32 = 0
+
+fn main() {
+  G = 1
+}

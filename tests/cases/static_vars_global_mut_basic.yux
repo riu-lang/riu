@@ -1,0 +1,8 @@
+; DRAFT-static-vars Phase 2: 基本 #Mut 全局（运行期初始化 + 读）
+
+#Mut
+let COUNTER i32 = 0
+
+fn main() {
+  println(COUNTER.to_string())
+}
