@@ -299,6 +299,13 @@ DEF_ERR(3154, "Global `let {}` requires an initializer (DRAFT-static-vars §3.3;
 DEF_ERR(3157, "#Static field '{}' on generic struct '{}' is not allowed (DRAFT-static-vars §4.3; v1 prohibits static "
               "fields on generic structs)")
 
+// ── E315x DRAFT-static-vars Phase 6（跨模块 init 顺序） ──────────────────
+DEF_ERR(3153, "Circular module dependency detected involving '{}'; cannot determine global init order "
+              "(DRAFT-static-vars §5.5; break the cycle or use lazy init)")
+DEF_ERR(3155, "Global/static initializer for '{}' must not contain try-catch; init must be infallible "
+              "(DRAFT-static-vars §6)")
+DEF_ERR(3156, "Cross-module access to private static '{}' is not allowed (DRAFT-static-vars §4.4; v1 placeholder)")
+
 // ── 构造模型重构: #Static fn / Self / 字段字面量 (DRAFT-static-fn) ────
 DEF_ERR(
     3120,

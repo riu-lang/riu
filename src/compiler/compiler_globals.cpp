@@ -73,9 +73,13 @@ void Compiler::compileGlobalVars() {
         }
     }
 
-    if (globalVars.empty() && staticFieldSources.empty()) return;
+    // Phase 6: 始终生成 _yux_global_init_<Mod>() 桩 —— 即使本模块无全局/静态字段，
+    // 跨模块 main shim 也会按 loadOrder 调用它。无字段时函数体仅一条 ret。
+    bool hasItems = !globalVars.empty() || !staticFieldSources.empty();
 
-    DEBUG_LOG("Compiling global variables and static fields...");
+    if (hasItems) {
+        DEBUG_LOG("Compiling global variables and static fields...");
+    }
 
     std::vector<RuntimeItem> runtimeItems;
 
@@ -144,20 +148,17 @@ void Compiler::compileGlobalVars() {
         }
     }
 
-    // 无需 runtime init → 跳过 _yux_global_init 生成
-    if (runtimeItems.empty()) {
-        DEBUG_LOG("  All items const-evaluated, skipping _yux_global_init");
-        return;
-    }
-
-    // 生成 _yux_global_init_<Mod>() 函数
+    // Phase 6: 始终生成 _yux_global_init_<Mod>() —— 即使无 runtime init item，
+    // 跨模块 main shim 也会按拓扑序调用它；空函数开销为一条 ret。
+    // 函数名中 '.' 替换为 '_' 以符合 LLVM 标识符规则。
     auto fnName = "_yux_global_init_" + _file->moduleName();
     for (auto& c : fnName) {
         if (c == '.') c = '_';
     }
 
+    // Phase 6: ExternalLinkage 以便跨模块 main shim 调用（DRAFT-static-vars §5.5）
     auto fnType = llvm::FunctionType::get(_builder.getVoidTy(), {}, false);
-    auto func = llvm::Function::Create(fnType, llvm::Function::InternalLinkage, fnName, _module);
+    auto func = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, _module);
 
     auto entryBB = llvm::BasicBlock::Create(_context, "entry", func);
     _builder.SetInsertPoint(entryBB);
@@ -169,10 +170,12 @@ void Compiler::compileGlobalVars() {
 
     pushTempFrame();
 
-    for (auto& item : runtimeItems) {
-        auto* value = compileExpr(item.initExpr);
-        if (value) {
-            _builder.CreateStore(value, item.gv);
+    if (!runtimeItems.empty()) {
+        for (auto& item : runtimeItems) {
+            auto* value = compileExpr(item.initExpr);
+            if (value) {
+                _builder.CreateStore(value, item.gv);
+            }
         }
     }
 

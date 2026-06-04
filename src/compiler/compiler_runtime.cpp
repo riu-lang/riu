@@ -2,18 +2,18 @@
 // MPL-2.0
 
 // 运行时辅助函数实现
-// 
+//
 // 本文件实现编译器生成的运行时辅助函数:
 // - Windows API 声明 (GetProcessHeap, HeapAlloc 等)
 // - Rc<T> 智能指针的内存管理函数
 // - Array<T> 动态数组的内存管理函数
 // - 程序启动函数 (设置控制台编码、调用 yux_main)
-// 
+//
 // 注意: 这些函数在编译 SDK (core.yux) 时生成，
 // 并链接到每个 yux 程序中。
 
-#include "ast/yux.h"
 #include "compiler_runtime.h"
+#include "ast/yux.h"
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 
@@ -23,11 +23,7 @@ namespace runtime {
 
 // 获取或创建 Windows API 函数声明
 // 这些是外部函数，链接时由 Windows 系统提供
-llvm::Function* getOrCreateWindowsAPI(
-    llvm::Module* module,
-    llvm::IRBuilder<>& builder,
-    const string& name)
-{
+llvm::Function* getOrCreateWindowsAPI(llvm::Module* module, llvm::IRBuilder<>& builder, const string& name) {
     // 检查是否已存在
     auto func = module->getFunction(name);
     if (func) return func;
@@ -35,17 +31,8 @@ llvm::Function* getOrCreateWindowsAPI(
     // GetProcessHeap: 获取进程默认堆
     // 签名: ptr GetProcessHeap()
     if (name == "GetProcessHeap") {
-        auto fnType = llvm::FunctionType::get(
-            llvm::PointerType::get(builder.getContext(), 0),
-            {},
-            false
-        );
-        return llvm::Function::Create(
-            fnType,
-            llvm::Function::ExternalLinkage,
-            name,
-            module
-        );
+        auto fnType = llvm::FunctionType::get(llvm::PointerType::get(builder.getContext(), 0), {}, false);
+        return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, name, module);
     }
 
     // HeapAlloc: 从堆分配内存
@@ -53,65 +40,36 @@ llvm::Function* getOrCreateWindowsAPI(
     if (name == "HeapAlloc") {
         auto fnType = llvm::FunctionType::get(
             llvm::PointerType::get(builder.getContext(), 0),
-            {llvm::PointerType::get(builder.getContext(), 0), builder.getInt64Ty(), builder.getInt64Ty()},
-            false
-        );
-        return llvm::Function::Create(
-            fnType,
-            llvm::Function::ExternalLinkage,
-            name,
-            module
-        );
+            {llvm::PointerType::get(builder.getContext(), 0), builder.getInt64Ty(), builder.getInt64Ty()}, false);
+        return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, name, module);
     }
 
     // HeapReAlloc: 重新分配堆内存
     // 签名: ptr HeapReAlloc(ptr heap, i64 flags, ptr mem, i64 size)
     if (name == "HeapReAlloc") {
-        auto fnType = llvm::FunctionType::get(
-            llvm::PointerType::get(builder.getContext(), 0),
-            {
-                llvm::PointerType::get(builder.getContext(), 0), builder.getInt64Ty(),
-                llvm::PointerType::get(builder.getContext(), 0), builder.getInt64Ty()
-            },
-            false
-        );
-        return llvm::Function::Create(
-            fnType,
-            llvm::Function::ExternalLinkage,
-            name,
-            module
-        );
+        auto fnType = llvm::FunctionType::get(llvm::PointerType::get(builder.getContext(), 0),
+                                              {llvm::PointerType::get(builder.getContext(), 0), builder.getInt64Ty(),
+                                               llvm::PointerType::get(builder.getContext(), 0), builder.getInt64Ty()},
+                                              false);
+        return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, name, module);
     }
 
     // HeapFree: 释放堆内存
     // 签名: i32 HeapFree(ptr heap, i64 flags, ptr mem)
     if (name == "HeapFree") {
-        auto fnType = llvm::FunctionType::get(
-            builder.getInt32Ty(),
-            {
-                llvm::PointerType::get(builder.getContext(), 0), builder.getInt64Ty(),
-                llvm::PointerType::get(builder.getContext(), 0)
-            },
-            false
-        );
-        return llvm::Function::Create(
-            fnType,
-            llvm::Function::ExternalLinkage,
-            name,
-            module
-        );
+        auto fnType = llvm::FunctionType::get(builder.getInt32Ty(),
+                                              {llvm::PointerType::get(builder.getContext(), 0), builder.getInt64Ty(),
+                                               llvm::PointerType::get(builder.getContext(), 0)},
+                                              false);
+        return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, name, module);
     }
 
     // GetStdHandle: 取标准 IO 句柄
     // 签名: ptr GetStdHandle(i32 nStdHandle)
     if (name == "GetStdHandle") {
-        auto fnType = llvm::FunctionType::get(
-            llvm::PointerType::get(builder.getContext(), 0),
-            {builder.getInt32Ty()},
-            false
-        );
-        return llvm::Function::Create(
-            fnType, llvm::Function::ExternalLinkage, name, module);
+        auto fnType =
+            llvm::FunctionType::get(llvm::PointerType::get(builder.getContext(), 0), {builder.getInt32Ty()}, false);
+        return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, name, module);
     }
 
     // WriteFile: 同步写文件 / 句柄
@@ -119,25 +77,16 @@ llvm::Function* getOrCreateWindowsAPI(
     //                    ptr lpNumberOfBytesWritten, ptr lpOverlapped)
     if (name == "WriteFile") {
         auto ptrTy = llvm::PointerType::get(builder.getContext(), 0);
-        auto fnType = llvm::FunctionType::get(
-            builder.getInt32Ty(),
-            {ptrTy, ptrTy, builder.getInt32Ty(), ptrTy, ptrTy},
-            false
-        );
-        return llvm::Function::Create(
-            fnType, llvm::Function::ExternalLinkage, name, module);
+        auto fnType =
+            llvm::FunctionType::get(builder.getInt32Ty(), {ptrTy, ptrTy, builder.getInt32Ty(), ptrTy, ptrTy}, false);
+        return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, name, module);
     }
 
     // ExitProcess: 终止进程
     // 签名: void ExitProcess(u32 uExitCode) #NoReturn
     if (name == "ExitProcess") {
-        auto fnType = llvm::FunctionType::get(
-            builder.getVoidTy(),
-            {builder.getInt32Ty()},
-            false
-        );
-        auto fn = llvm::Function::Create(
-            fnType, llvm::Function::ExternalLinkage, name, module);
+        auto fnType = llvm::FunctionType::get(builder.getVoidTy(), {builder.getInt32Ty()}, false);
+        auto fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, name, module);
         fn->addFnAttr(llvm::Attribute::NoReturn);
         return fn;
     }
@@ -145,17 +94,8 @@ llvm::Function* getOrCreateWindowsAPI(
     // SetConsoleOutputCP / SetConsoleCP: 设置控制台代码页
     // 签名: i1 SetConsoleOutputCP(i32 codePage)
     if (name == "SetConsoleOutputCP" || name == "SetConsoleCP") {
-        auto fnType = llvm::FunctionType::get(
-            builder.getInt1Ty(),
-            {builder.getInt32Ty()},
-            false
-        );
-        return llvm::Function::Create(
-            fnType,
-            llvm::Function::ExternalLinkage,
-            name,
-            module
-        );
+        auto fnType = llvm::FunctionType::get(builder.getInt1Ty(), {builder.getInt32Ty()}, false);
+        return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, name, module);
     }
 
     return nullptr;
@@ -199,14 +139,10 @@ llvm::GlobalVariable* getRcBlockCountGlobal(llvm::Module* module, llvm::IRBuilde
     const string name = "_rc_block_count";
     if (auto g = module->getGlobalVariable(name)) return g;
     auto i64Ty = builder.getInt64Ty();
-    return new llvm::GlobalVariable(
-        *module,
-        i64Ty,
-        /*isConstant*/false,
-        llvm::GlobalValue::ExternalLinkage,
-        /*init*/nullptr,  // extern 声明
-        name
-    );
+    return new llvm::GlobalVariable(*module, i64Ty,
+                                    /*isConstant*/ false, llvm::GlobalValue::ExternalLinkage,
+                                    /*init*/ nullptr, // extern 声明
+                                    name);
 }
 
 // SDK 端：把 _rc_block_count 由 extern 声明升级为带 init 0 的定义
@@ -244,11 +180,7 @@ llvm::Function* getRcAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
     vector<llvm::Type*> paramTypes;
     paramTypes.push_back(builder.getInt64Ty());
 
-    auto fnType = llvm::FunctionType::get(
-        llvm::PointerType::get(builder.getContext(), 0),
-        paramTypes,
-        false
-    );
+    auto fnType = llvm::FunctionType::get(llvm::PointerType::get(builder.getContext(), 0), paramTypes, false);
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
@@ -307,8 +239,8 @@ llvm::Function* getDynReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder
     if (func) return func;
 
     vector<llvm::Type*> paramTypes;
-    paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0));  // data
-    paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0));  // vtable
+    paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0)); // data
+    paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0)); // vtable
 
     auto fnType = llvm::FunctionType::get(builder.getVoidTy(), paramTypes, false);
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
@@ -325,11 +257,7 @@ llvm::Function* getRcUpgradeFn(llvm::Module* module, llvm::IRBuilder<>& builder)
     vector<llvm::Type*> paramTypes;
     paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0));
 
-    auto fnType = llvm::FunctionType::get(
-        llvm::PointerType::get(builder.getContext(), 0),
-        paramTypes,
-        false
-    );
+    auto fnType = llvm::FunctionType::get(llvm::PointerType::get(builder.getContext(), 0), paramTypes, false);
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
@@ -373,15 +301,11 @@ llvm::Function* getArrayAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder
     if (func) return func;
 
     vector<llvm::Type*> paramTypes;
-    paramTypes.push_back(builder.getInt64Ty());  // elemSize
-    paramTypes.push_back(builder.getInt64Ty());  // initCap
-    paramTypes.push_back(builder.getInt64Ty());  // initLen
+    paramTypes.push_back(builder.getInt64Ty()); // elemSize
+    paramTypes.push_back(builder.getInt64Ty()); // initCap
+    paramTypes.push_back(builder.getInt64Ty()); // initLen
 
-    auto fnType = llvm::FunctionType::get(
-        llvm::PointerType::get(builder.getContext(), 0),
-        paramTypes,
-        false
-    );
+    auto fnType = llvm::FunctionType::get(llvm::PointerType::get(builder.getContext(), 0), paramTypes, false);
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
@@ -393,9 +317,9 @@ llvm::Function* getArrayGrowFn(llvm::Module* module, llvm::IRBuilder<>& builder)
     if (func) return func;
 
     vector<llvm::Type*> paramTypes;
-    paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0));  // handle
-    paramTypes.push_back(builder.getInt64Ty());  // elemSize
-    paramTypes.push_back(builder.getInt64Ty());  // newCap
+    paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0)); // handle
+    paramTypes.push_back(builder.getInt64Ty());                            // elemSize
+    paramTypes.push_back(builder.getInt64Ty());                            // newCap
 
     auto fnType = llvm::FunctionType::get(builder.getVoidTy(), paramTypes, false);
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
@@ -445,11 +369,7 @@ llvm::Function* getHeapHandleAllocFn(llvm::Module* module, llvm::IRBuilder<>& bu
     vector<llvm::Type*> paramTypes;
     paramTypes.push_back(builder.getInt64Ty());
 
-    auto fnType = llvm::FunctionType::get(
-        llvm::PointerType::get(builder.getContext(), 0),
-        paramTypes,
-        false
-    );
+    auto fnType = llvm::FunctionType::get(llvm::PointerType::get(builder.getContext(), 0), paramTypes, false);
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
@@ -680,27 +600,22 @@ void emitRcHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm:
             // strong 归零：先调 dtor（若有）
             builder.SetInsertPoint(strongZeroBB);
             // dtor 槽位 = handle + 8（payload 头 8 字节）
-            auto dtorSlot = builder.CreateGEP(builder.getInt8Ty(), block,
-                {builder.getInt64(8)}, "dtor_slot");
+            auto dtorSlot = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(8)}, "dtor_slot");
             auto dtorPtr = builder.CreateLoad(llvm::PointerType::get(context, 0), dtorSlot, "dtor_ptr");
-            auto dtorIsNull = builder.CreateICmpEQ(dtorPtr,
-                llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0)),
-                "dtor_is_null");
+            auto dtorIsNull = builder.CreateICmpEQ(
+                dtorPtr, llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0)), "dtor_is_null");
             builder.CreateCondBr(dtorIsNull, afterDtorBB, dtorCallBB);
 
             builder.SetInsertPoint(dtorCallBB);
             // dtor 接 capture-fields 区起点：handle + 16（跳过 RC 头 8 + dtor 槽位 8）
-            auto fieldsBase = builder.CreateGEP(builder.getInt8Ty(), block,
-                {builder.getInt64(16)}, "fields_base");
-            auto dtorFnTy = llvm::FunctionType::get(builder.getVoidTy(),
-                {llvm::PointerType::get(context, 0)}, false);
+            auto fieldsBase = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(16)}, "fields_base");
+            auto dtorFnTy = llvm::FunctionType::get(builder.getVoidTy(), {llvm::PointerType::get(context, 0)}, false);
             builder.CreateCall(dtorFnTy, dtorPtr, {fieldsBase});
             builder.CreateBr(afterDtorBB);
 
             builder.SetInsertPoint(afterDtorBB);
             // 走 weak-- + free 路径（同 _box_release）
-            auto weakPtr = builder.CreateGEP(builder.getInt8Ty(), block,
-                {builder.getInt64(4)}, "weak_ptr");
+            auto weakPtr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(4)}, "weak_ptr");
             auto weak = builder.CreateLoad(i32Ty, weakPtr, "weak");
             auto newWeak = builder.CreateSub(weak, llvm::ConstantInt::get(i32Ty, 1), "new_weak");
             builder.CreateStore(newWeak, weakPtr);
@@ -769,10 +684,8 @@ void emitRcHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm:
 
             builder.SetInsertPoint(dtorCallBB);
             // dtor 接实例指针 = data + 8（跳过 RC 头）
-            auto payload = builder.CreateGEP(builder.getInt8Ty(), data,
-                {builder.getInt64(8)}, "payload");
-            auto dtorFnTy = llvm::FunctionType::get(builder.getVoidTy(),
-                {llvm::PointerType::get(context, 0)}, false);
+            auto payload = builder.CreateGEP(builder.getInt8Ty(), data, {builder.getInt64(8)}, "payload");
+            auto dtorFnTy = llvm::FunctionType::get(builder.getVoidTy(), {llvm::PointerType::get(context, 0)}, false);
             builder.CreateCall(dtorFnTy, dtorPtr, {payload});
             builder.CreateBr(afterDtorBB);
 
@@ -781,8 +694,7 @@ void emitRcHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm:
 
             builder.SetInsertPoint(afterDtorBB);
             // 走 weak-- + free 路径（同 _box_release）
-            auto weakPtr = builder.CreateGEP(builder.getInt8Ty(), data,
-                {builder.getInt64(4)}, "weak_ptr");
+            auto weakPtr = builder.CreateGEP(builder.getInt8Ty(), data, {builder.getInt64(4)}, "weak_ptr");
             auto weak = builder.CreateLoad(i32Ty, weakPtr, "weak");
             auto newWeak = builder.CreateSub(weak, llvm::ConstantInt::get(i32Ty, 1), "new_weak");
             builder.CreateStore(newWeak, weakPtr);
@@ -960,24 +872,29 @@ void emitArrayHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, ll
             builder.SetInsertPoint(entry);
 
             auto argIt = allocFn->args().begin();
-            llvm::Value* elemSize = argIt; elemSize->setName("elem_size"); ++argIt;
-            llvm::Value* initCap = argIt; initCap->setName("init_cap"); ++argIt;
-            llvm::Value* initLen = argIt; initLen->setName("init_len");
+            llvm::Value* elemSize = argIt;
+            elemSize->setName("elem_size");
+            ++argIt;
+            llvm::Value* initCap = argIt;
+            initCap->setName("init_cap");
+            ++argIt;
+            llvm::Value* initLen = argIt;
+            initLen->setName("init_len");
 
             auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
             auto block = builder.CreateCall(heapAllocFn, {heap, i64C(0), i64C(32)}, "block");
 
             emitRcBlockCountAdd(builder, module, +1);
 
-            builder.CreateStore(llvm::ConstantInt::get(i32Ty, 1), block);                              // strong @0
+            builder.CreateStore(llvm::ConstantInt::get(i32Ty, 1), block); // strong @0
             auto weakPtr = builder.CreateGEP(i8Ty, block, {i64C(4)}, "weak_ptr");
-            builder.CreateStore(llvm::ConstantInt::get(i32Ty, 1), weakPtr);                            // weak @4
+            builder.CreateStore(llvm::ConstantInt::get(i32Ty, 1), weakPtr); // weak @4
             auto lenPtr = builder.CreateGEP(i8Ty, block, {i64C(8)}, "len_ptr");
-            builder.CreateStore(initLen, lenPtr);                                                       // len @8
+            builder.CreateStore(initLen, lenPtr); // len @8
             auto capPtr = builder.CreateGEP(i8Ty, block, {i64C(16)}, "cap_ptr");
-            builder.CreateStore(initCap, capPtr);                                                       // cap @16
+            builder.CreateStore(initCap, capPtr); // cap @16
             auto dataFieldPtr = builder.CreateGEP(i8Ty, block, {i64C(24)}, "data_field_ptr");
-            builder.CreateStore(nullPtr, dataFieldPtr);                                                 // data @24 = null（默认）
+            builder.CreateStore(nullPtr, dataFieldPtr); // data @24 = null（默认）
 
             auto needData = builder.CreateICmpSGT(initCap, i64C(0), "need_data");
             builder.CreateCondBr(needData, allocDataBB, doneBB);
@@ -1006,9 +923,14 @@ void emitArrayHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, ll
             builder.SetInsertPoint(entry);
 
             auto argIt = growFn->args().begin();
-            llvm::Value* handle = argIt; handle->setName("handle"); ++argIt;
-            llvm::Value* elemSize = argIt; elemSize->setName("elem_size"); ++argIt;
-            llvm::Value* newCap = argIt; newCap->setName("new_cap");
+            llvm::Value* handle = argIt;
+            handle->setName("handle");
+            ++argIt;
+            llvm::Value* elemSize = argIt;
+            elemSize->setName("elem_size");
+            ++argIt;
+            llvm::Value* newCap = argIt;
+            newCap->setName("new_cap");
 
             auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
 
@@ -1128,20 +1050,17 @@ void emitArrayHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, ll
 // ==================== 程序启动 ====================
 
 // 生成 main 启动函数
-// 设置控制台编码为 UTF-8，然后调用 yux_main
-void emitMainStartup(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module) {
+// 设置控制台编码为 UTF-8，然后按拓扑序调用各模块 _yux_global_init_<Mod>()
+// 最后调用 yux_main
+void emitMainStartup(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
+                     const std::vector<std::string>& initModuleNames) {
     DEBUG_LOG("Emitting main startup function");
 
     auto setConsoleOutputCP = getSetConsoleOutputCPFn(module, builder);
     auto setConsoleCP = getSetConsoleCPFn(module, builder);
 
     auto fnType = llvm::FunctionType::get(builder.getInt32Ty(), {}, false);
-    auto mainStartup = llvm::Function::Create(
-        fnType,
-        llvm::Function::ExternalLinkage,
-        "mainStartup",
-        module
-    );
+    auto mainStartup = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, "mainStartup", module);
     DEBUG_LOG("  Created mainStartup function");
 
     auto entry = llvm::BasicBlock::Create(context, "entry", mainStartup);
@@ -1153,14 +1072,28 @@ void emitMainStartup(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llv
     builder.CreateCall(setConsoleCP, {cpUtf8});
     DEBUG_LOG("  Set console code page to UTF-8");
 
-    // DRAFT-static-vars Phase 1: 调用 _yux_global_init_<Mod>() 运行期初始化全局变量
-    // 查找当前模块的 init 函数（编译器生成的模块名可能含 '.'，函数名中已替换为 '_'）
-    // 遍历所有 _yux_global_init_ 前缀的函数并调用
-    for (auto& func : module->getFunctionList()) {
-        auto funcName = func.getName();
-        if (funcName.starts_with("_yux_global_init_")) {
-            builder.CreateCall(&func, {});
-            DEBUG_LOG_VAL("  Called global init", funcName.str());
+    // DRAFT-static-vars Phase 6: 按模块拓扑序调用 _yux_global_init_<Mod>()
+    // initModuleNames 由 Compiler 端传入（Yux::loadOrder），已按导入依赖的拓扑序排列。
+    // 模块名中的 '.' 在函数名中替换为 '_'。
+    auto voidFnType = llvm::FunctionType::get(builder.getVoidTy(), {}, false);
+    if (!initModuleNames.empty()) {
+        for (auto& modName : initModuleNames) {
+            string fnName = "_yux_global_init_" + modName;
+            for (auto& c : fnName) {
+                if (c == '.') c = '_';
+            }
+            auto callee = module->getOrInsertFunction(fnName, voidFnType);
+            builder.CreateCall(callee, {});
+            DEBUG_LOG_VAL("  Called global init (topo order)", fnName);
+        }
+    } else {
+        // 兼容旧路径（单文件模式 / 无 Yux 驱动）：遍历当前 Module 内所有 init 函数
+        for (auto& func : module->getFunctionList()) {
+            auto funcName = func.getName();
+            if (funcName.starts_with("_yux_global_init_")) {
+                builder.CreateCall(&func, {});
+                DEBUG_LOG_VAL("  Called global init (legacy)", funcName.str());
+            }
         }
     }
 
@@ -1184,12 +1117,7 @@ void emitRuntimeHelpers(llvm::IRBuilder<>& builder, llvm::Module* module) {
     // __chkstk: 栈检查函数 (Windows 要求)
     // 这是一个空实现，实际栈检查由链接器提供
     auto chkstkFnType = llvm::FunctionType::get(builder.getVoidTy(), {}, false);
-    auto chkstk = llvm::Function::Create(
-        chkstkFnType,
-        llvm::Function::ExternalLinkage,
-        "__chkstk",
-        module
-    );
+    auto chkstk = llvm::Function::Create(chkstkFnType, llvm::Function::ExternalLinkage, "__chkstk", module);
     auto chkstkEntry = llvm::BasicBlock::Create(builder.getContext(), "entry", chkstk);
     builder.SetInsertPoint(chkstkEntry);
     builder.CreateRetVoid();
@@ -1197,15 +1125,9 @@ void emitRuntimeHelpers(llvm::IRBuilder<>& builder, llvm::Module* module) {
 
     // _fltused: 浮点数使用标志 (Windows 要求)
     // 指示程序使用了浮点运算
-    new llvm::GlobalVariable(
-        *module,
-        builder.getInt32Ty(),
-        true,
-        llvm::GlobalValue::ExternalLinkage,
-        builder.getInt32(0),
-        "_fltused"
-    );
+    new llvm::GlobalVariable(*module, builder.getInt32Ty(), true, llvm::GlobalValue::ExternalLinkage,
+                             builder.getInt32(0), "_fltused");
     DEBUG_LOG("  Created _fltused global");
 }
 
-}
+} // namespace runtime

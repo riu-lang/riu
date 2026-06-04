@@ -1,0 +1,18 @@
+; DRAFT-static-vars Phase 6: cross-module globals
+
+; 全局 #Mut 变量（需 runtime init，调 fn 不可 const-eval）
+#Mut
+let GLOBAL_COUNTER i32 = make_initial_value()
+
+; 全局 val（const-eval 优先）
+let ANSWER i32 = 42
+
+fn make_initial_value() i32 = 100
+
+fn get_counter() i32 {
+  ret GLOBAL_COUNTER
+}
+
+fn get_answer() i32 {
+  ret ANSWER
+}

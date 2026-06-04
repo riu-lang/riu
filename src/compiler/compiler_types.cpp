@@ -821,11 +821,24 @@ void Compiler::emitMainStartupFallible(const string& fallibleErrName) {
     _builder.CreateCall(setConsoleOutputCP, {cpUtf8});
     _builder.CreateCall(setConsoleCP, {cpUtf8});
 
-    // DRAFT-static-vars Phase 1: 调用 _yux_global_init_<Mod>()
-    for (auto& func : _module->getFunctionList()) {
-        auto funcName = func.getName();
-        if (funcName.starts_with("_yux_global_init_")) {
-            _builder.CreateCall(&func, {});
+    // DRAFT-static-vars Phase 6: 按模块拓扑序调用 _yux_global_init_<Mod>()
+    auto voidFnType = llvm::FunctionType::get(_builder.getVoidTy(), {}, false);
+    if (_yux && !_yux->loadOrder().empty()) {
+        for (auto& modName : _yux->loadOrder()) {
+            string fnName = "_yux_global_init_" + modName;
+            for (auto& c : fnName) {
+                if (c == '.') c = '_';
+            }
+            auto callee = _module->getOrInsertFunction(fnName, voidFnType);
+            _builder.CreateCall(callee, {});
+        }
+    } else {
+        // 兼容旧路径（单文件模式）：遍历当前 Module 内所有 init 函数
+        for (auto& func : _module->getFunctionList()) {
+            auto funcName = func.getName();
+            if (funcName.starts_with("_yux_global_init_")) {
+                _builder.CreateCall(&func, {});
+            }
         }
     }
 

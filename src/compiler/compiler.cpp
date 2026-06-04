@@ -155,7 +155,10 @@ void Compiler::compile(p<FileNode> file) {
                 emitMainStartupFallible(mainFallibleErr);
             } else {
                 DEBUG_LOG("Emitting main startup");
-                runtime::emitMainStartup(_context, _builder, _module);
+                // Phase 6: 传入模块加载顺序（拓扑序，依赖在前）
+                vector<string> loadOrder;
+                if (_yux) loadOrder = _yux->loadOrder();
+                runtime::emitMainStartup(_context, _builder, _module, loadOrder);
             }
         }
     }

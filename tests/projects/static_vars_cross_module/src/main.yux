@@ -1,0 +1,10 @@
+use yux.core.*
+use counter.*
+
+fn main() {
+  ; 跨模块：读取导入模块的全局变量（通过访问函数间接验证 init 顺序）
+  println(get_counter())
+  println(get_answer())
+  ; 验证 init 只跑一次：再次读取应不变
+  println(get_counter())
+}

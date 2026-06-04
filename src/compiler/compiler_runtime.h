@@ -2,13 +2,13 @@
 // MPL-2.0
 
 // 运行时辅助函数声明
-// 
+//
 // 本文件声明编译器生成的运行时辅助函数:
 // - 内存分配/释放函数
 // - Rc<T> 智能指针支持函数
 // - Array<T> 动态数组支持函数
 // - 程序启动函数 (main -> yux_main)
-// 
+//
 // 这些函数由编译器在编译 SDK (core.yux) 时生成，
 // 并链接到每个 yux 程序中。
 
@@ -18,8 +18,11 @@
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
-#include <llvm/IR/Module.h>
+
 #include "types.h"
+#include <llvm/IR/Module.h>
+#include <string>
+#include <vector>
 
 class Compiler;
 
@@ -27,10 +30,7 @@ namespace runtime {
 
 // ==================== Windows API 辅助 ====================
 
-llvm::Function* getOrCreateWindowsAPI(
-    llvm::Module* module,
-    llvm::IRBuilder<>& builder,
-    const string& name);
+llvm::Function* getOrCreateWindowsAPI(llvm::Module* module, llvm::IRBuilder<>& builder, const string& name);
 
 llvm::Function* getProcessHeapFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 llvm::Function* getHeapAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder);
@@ -118,9 +118,10 @@ void emitRcHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm:
 void emitWeakHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module);
 void emitArrayHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module);
 void emitHeapHandleHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module);
-void emitMainStartup(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module);
+void emitMainStartup(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
+                     const std::vector<std::string>& initModuleNames = {});
 void emitRuntimeHelpers(llvm::IRBuilder<>& builder, llvm::Module* module);
 
-}
+} // namespace runtime
 
-#endif //YUX_LANG_COMPILER_RUNTIME_H
+#endif // YUX_LANG_COMPILER_RUNTIME_H
