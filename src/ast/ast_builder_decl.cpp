@@ -136,6 +136,20 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
         auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
 
         auto globalVar = createWithLine<GlobalVarNode>(ctx, file, name, typeNode, expr, /*isMutable=*/true);
+
+        // Phase 3: const-eval 优先分流 —— #Mut 初始化器也试 const-eval
+        // 成功 → ConstantInitializer（零运行期开销）；失败 → 降级 runtime init
+        ConstEvaluator ev;
+        ev.setFile(file);
+        for (const auto& prior : file->getGlobalConsts()) {
+            auto v = ev.eval(prior->value());
+            if (v) ev.setNamedConst(prior->name().getText(), *v);
+        }
+        if (auto cv = ev.eval(expr)) {
+            globalVar->setConstValue(std::move(*cv));
+            DEBUG_LOG_VAL("  LetGlobal #Mut (const-eval)", name->getText());
+        }
+
         file->addGlobalVar(globalVar);
 
         DEBUG_LOG_VAL("  LetGlobal #Mut", name->getText() << " : " << typeNode->getType().name);
@@ -191,6 +205,21 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
     auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
 
     auto globalVar = createWithLine<GlobalVarNode>(ctx, file, name, typeNode, expr);
+
+    // Phase 3: const-eval 优先分流 —— 先试 ConstEvaluator
+    // 成功 → ConstantInitializer（零运行期开销，不进 _yux_global_init）；
+    // 失败 → 降级 runtime init（Phase 1 路径）
+    ConstEvaluator ev;
+    ev.setFile(file);
+    for (const auto& prior : file->getGlobalConsts()) {
+        auto v = ev.eval(prior->value());
+        if (v) ev.setNamedConst(prior->name().getText(), *v);
+    }
+    if (auto cv = ev.eval(expr)) {
+        globalVar->setConstValue(std::move(*cv));
+        DEBUG_LOG_VAL("  LetGlobal val (const-eval)", name->getText());
+    }
+
     file->addGlobalVar(globalVar);
 
     DEBUG_LOG_VAL("  LetGlobal val", name->getText() << " : " << typeNode->getType().name);
