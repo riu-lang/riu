@@ -12,6 +12,7 @@
 #include "node/expr_node.h"
 #include "node/literal_node.h"
 #include "node/statement_node.h"
+#include "sema/const_eval.h"
 #include "types.h"
 #include <algorithm>
 
@@ -210,6 +211,57 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
     }
 
     for (auto fieldCtx : ctx->filedDecl()) {
+        // DRAFT-static-vars Phase 4: 检测 #Static 注解，分流静态 / 实例字段
+        bool isStatic = false;
+        bool isMut = false;
+        for (auto* a : fieldCtx->buildAnnos) {
+            string annoName = a->name->getText();
+            if (annoName == "Static") isStatic = true;
+            if (annoName == "Mut") isMut = true;
+        }
+
+        if (isStatic) {
+            // 静态字段：仅接受 #Static 和 #Mut（栈叠），其余注解拒
+            for (auto* a : fieldCtx->buildAnnos) {
+                string annoName = a->name->getText();
+                if (annoName != "Static" && annoName != "Mut") {
+                    auto* tk = a->SymbolHash()->getSymbol();
+                    throw YuxError(static_cast<int>(tk->getLine()),
+                                   static_cast<int>(tk->getCharPositionInLine()) + 1, ErrorCode::E3108,
+                                   annoName);
+                }
+            }
+
+            // 决议 [#1.F]: v1 禁泛型 struct 上的 #Static FIELD
+            if (!typeParams.empty()) {
+                throw YuxError(static_cast<int>(fieldCtx->name->getLine()),
+                               static_cast<int>(fieldCtx->name->getCharPositionInLine()) + 1,
+                               ErrorCode::E3157, structName);
+            }
+
+            // E3150: v1 静态字段必须有 init
+            if (!fieldCtx->init) {
+                throw YuxError(static_cast<int>(fieldCtx->name->getLine()),
+                               static_cast<int>(fieldCtx->name->getCharPositionInLine()) + 1,
+                               ErrorCode::E3150, fieldCtx->name->getText());
+            }
+
+            auto typeNode = any_cast_p<TypeNode>(visit(fieldCtx->type()));
+            auto initExpr = any_cast_p<ExprNode>(visit(fieldCtx->init));
+
+            StructDeclNode::StaticFieldEntry sf;
+            sf.name = Token(fieldCtx->name);
+            sf.type = typeNode;
+            sf.init = initExpr;
+            sf.isMutable = isMut;
+            sf.isPrivate = !sf.name.getText().empty() && sf.name.getText()[0] == '_';
+            structDecl->addStaticField(std::move(sf));
+
+            DEBUG_LOG_VAL("    StaticField", sf.name.getText() << " : " << typeNode->getType().name
+                                                               << (isMut ? " #Mut" : ""));
+            continue;
+        }
+
         auto field = any_cast_p<StructFieldNode>(visit(fieldCtx));
         structDecl->addField(field);
     }

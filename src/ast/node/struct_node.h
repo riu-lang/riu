@@ -41,10 +41,23 @@ public:
 };
 
 class StructDeclNode : public ScopeNode, public Named, public Annotated {
+public:
+    // DRAFT-static-vars Phase 4: struct 命名空间内静态字段条目
+    struct StaticFieldEntry {
+        Token name;
+        p<TypeNode> type;
+        p<ExprNode> init;       // v1 必须非空（E3150）
+        bool isMutable = false; // #Mut 叠加
+        bool isPrivate = false;
+    };
+
+private:
     vector<p<StructFieldNode>> _fields;
     map<string, size_t> _fieldIndices;
     vector<string> _typeParams;
     bool _isPrivate;
+    // DRAFT-static-vars Phase 4: 静态字段（命名空间内，与实例字段独立）
+    vector<StaticFieldEntry> _staticFields;
 
 public:
     StructDeclNode(const p<Node>& parent, const Token& name) : ScopeNode(parent), Named(name) {
@@ -70,6 +83,16 @@ public:
     void setTypeParams(vector<string> params) { _typeParams = std::move(params); }
     [[nodiscard]] const vector<string>& typeParams() const { return _typeParams; }
     [[nodiscard]] bool isGeneric() const { return !_typeParams.empty(); }
+
+    // DRAFT-static-vars Phase 4: 静态字段
+    void addStaticField(StaticFieldEntry sf) { _staticFields.push_back(std::move(sf)); }
+    [[nodiscard]] const vector<StaticFieldEntry>& staticFields() const { return _staticFields; }
+    [[nodiscard]] const StaticFieldEntry* staticField(const string& name) const {
+        for (auto& sf : _staticFields) {
+            if (sf.name.getText() == name) return &sf;
+        }
+        return nullptr;
+    }
 };
 
 class StructImplNode : public ScopeNode, public Named, public Annotated {

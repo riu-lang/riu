@@ -387,9 +387,11 @@ structDecl:
     BlockEnd
     ;
 
+// DRAFT-static-vars Phase 4: 静态字段通过 #Static 注解 + 可选 init 表达。
+// 语法层统一走 filedDecl（实例字段 / 静态字段共用），sema 层按注解分流。
 filedDecl:
     (buildAnnos+=buildAnno)*
-    name=ID type LineEnd
+    name=ID type (SymbolEq init=expr)? LineEnd
     ;
 
 // [PROBE static-fn] 字段字面量项：.name = expr LineEnd

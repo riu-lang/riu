@@ -33,6 +33,11 @@ public:
     static string staticMethod(const string& module, const string& structName,
                                const string& methodName, const vector<TypeInfo>& params);
 
+    // 静态字段 (DRAFT-static-vars Phase 4)：mod#Struct::FIELD
+    // 与 staticMethod 同用 `::` 分隔，与实例字段 mod#Struct.FIELD 不冲突
+    static string staticField(const string& module, const string& structName,
+                              const string& fieldName);
+
     // 析构：mod#Struct_~()
     static string dtor(const string& module, const string& structName);
 

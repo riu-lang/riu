@@ -1,0 +1,13 @@
+; DRAFT-static-vars Phase 4: struct 静态 #Mut 字段
+
+struct Counter {
+  value i32
+
+  #Mut
+  #Static
+  TOTAL i64 = 10
+}
+
+fn main() {
+  println(Counter::TOTAL)
+}

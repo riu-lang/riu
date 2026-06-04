@@ -1460,12 +1460,40 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         // struct/enum 重名在 yux 里非法 (E2017), 此处直接按 lhsName 查 struct 优先.
         {
             string lhsName = n->enumName().getText();
+
+            // DRAFT-static-vars Phase 4: 零参且 LHS 是 struct 且 RHS 是静态字段 → 放行
+            if (n->args().empty()) {
+                auto* structDecl = _file ? _file->getStructDecl(lhsName) : nullptr;
+                if (!structDecl && _sdkFile && _sdkFile != _file) {
+                    structDecl = _sdkFile->getStructDecl(lhsName);
+                }
+                if (structDecl) {
+                    if (auto* sf = structDecl->staticField(n->variantName().getText())) {
+                        // 设置正确类型（字段类型而非 struct 类型）
+                        n->setResolvedType(sf->type->getType());
+                        return;
+                    }
+                }
+            }
+
             auto* structImpl = _file ? _file->getStructImpl(lhsName) : nullptr;
             if (!structImpl && _sdkFile && _sdkFile != _file) {
                 structImpl = _sdkFile->getStructImpl(lhsName);
             }
             if (structImpl) {
                 string rhsName = n->variantName().getText();
+
+                // DRAFT-static-vars Phase 4: 若零参且 RHS 是静态字段名 → 放行
+                if (n->args().empty()) {
+                    auto* structDecl = _file ? _file->getStructDecl(lhsName) : nullptr;
+                    if (!structDecl && _sdkFile && _sdkFile != _file) {
+                        structDecl = _sdkFile->getStructDecl(lhsName);
+                    }
+                    if (structDecl && structDecl->staticField(rhsName)) {
+                        return; // 静态字段读，放行
+                    }
+                }
+
                 p<FnHeaderNode> methodHeader = nullptr;
                 for (auto& m : structImpl->methods()) {
                     if (m->header()->name().getText() == rhsName) {

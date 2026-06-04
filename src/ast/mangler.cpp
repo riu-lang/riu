@@ -36,25 +36,28 @@ string Mangler::privInfix(bool isPrivate) {
     return isPrivate ? "_" : "";
 }
 
-string Mangler::function(const string& module, const string& name,
-                         const vector<TypeInfo>& params, bool isPrivate) {
+string Mangler::function(const string& module, const string& name, const vector<TypeInfo>& params, bool isPrivate) {
     // 私有符号源名通常已带前导 "_"；这里不再额外添加，
     // 由源名的前导下划线与模块分隔符 "_" 自然形成 "mod__name"
     return modPrefix(module) + name + paramList(params);
 }
 
-string Mangler::method(const string& module, const string& structName,
-                       const string& methodName, const vector<TypeInfo>& params,
-                       bool /*isPrivate*/) {
+string Mangler::method(const string& module, const string& structName, const string& methodName,
+                       const vector<TypeInfo>& params, bool /*isPrivate*/) {
     // 同 function：私有方法的 "_" 来自源名前导下划线
     return modStructPrefix(module, structName) + "_" + methodName + paramList(params);
 }
 
-string Mangler::staticMethod(const string& module, const string& structName,
-                             const string& methodName, const vector<TypeInfo>& params) {
+string Mangler::staticMethod(const string& module, const string& structName, const string& methodName,
+                             const vector<TypeInfo>& params) {
     // DRAFT-static-fn: `mod#Struct::name(params)`. `::` 分隔避免与实例方法
     // `mod#Struct_name(params)` 同名冲突, 同时与源码调用语法对齐 (Type::name).
     return modStructPrefix(module, structName) + "::" + methodName + paramList(params);
+}
+
+string Mangler::staticField(const string& module, const string& structName, const string& fieldName) {
+    // DRAFT-static-vars Phase 4: mod#Struct::FIELD
+    return modStructPrefix(module, structName) + "::" + fieldName;
 }
 
 string Mangler::dtor(const string& module, const string& structName) {

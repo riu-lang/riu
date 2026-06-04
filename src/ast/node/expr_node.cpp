@@ -8,6 +8,7 @@
 
 #include "analyzer/symbol_suggest.h"
 #include "file_node.h"
+#include "struct_node.h"
 #include "fn_node.h"
 #include "spec_node.h"
 
@@ -1436,6 +1437,16 @@ TypeInfo ExprPathCallNode::getType() const {
             auto t = a->target()->getType();
             if (t.kind != TypeKind::Normal) break;
             n = t.name;
+        }
+
+        // DRAFT-static-vars Phase 4: 若零参且 RHS 是 struct 静态字段，返回字段类型
+        if (_args.empty()) {
+            auto* structDecl = file->getStructDecl(n);
+            if (structDecl) {
+                if (auto* sf = structDecl->staticField(_variantName.getText())) {
+                    return sf->type->getType();
+                }
+            }
         }
     }
 

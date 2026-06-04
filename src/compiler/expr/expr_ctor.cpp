@@ -85,6 +85,32 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
         if (!structImpl && sdk && sdk != _file) {
             structImpl = sdk->getStructImpl(lhsRaw);
         }
+
+        // DRAFT-static-vars Phase 4: 静态字段读路径
+        // 若 LHS 是 struct 且 RHS 无 args（零参无括号），先查静态字段
+        if (node->args().empty()) {
+            string fieldName = node->variantName().getText();
+            auto* structDecl = _file ? _file->getStructDecl(lhsRaw) : nullptr;
+            if (!structDecl && sdk && sdk != _file) {
+                structDecl = sdk->getStructDecl(lhsRaw);
+            }
+            if (structDecl) {
+                if (auto* sf = structDecl->staticField(fieldName)) {
+                    string ownerMod = _file ? _file->moduleName() : "";
+                    auto mangledName = Mangler::staticField(ownerMod, lhsRaw, fieldName);
+                    auto* gv = _module->getGlobalVariable(mangledName, true);
+                    if (!gv && sdk) {
+                        // 静态字段可能在 SDK 模块中（跨模块访问）
+                        // TODO: 跨模块静态字段访问（Phase 6）
+                        (void)sdk;
+                    }
+                    if (gv) {
+                        return _builder.CreateLoad(gv->getValueType(), gv, "static.field.load");
+                    }
+                }
+            }
+        }
+
         if (structImpl) {
             string methodName = node->variantName().getText();
             p<FnHeaderNode> methodHeader = nullptr;

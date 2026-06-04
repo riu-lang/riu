@@ -1,0 +1,12 @@
+; DRAFT-static-vars Phase 4: struct 静态 val 字段基本读写
+
+struct Counter {
+  value i32
+
+  #Static
+  DEFAULT i32 = 42
+}
+
+fn main() {
+  println(Counter::DEFAULT)
+}
