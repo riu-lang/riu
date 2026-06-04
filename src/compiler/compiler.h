@@ -305,6 +305,7 @@ private:
     void compileLoopStatement(p<StatementLoopNode> node);                             // 编译 loop 语句
     void compileBreakStatement(p<StatementBreakNode> node);                           // 编译 break 语句
     void compileArraySetStatement(p<StatementSetNode> node);                          // 编译数组元素赋值语句
+    void compileStaticFieldSetStatement(p<StatementStaticFieldSetNode> node);          // 编译静态字段写语句 (Phase 5)
 
     // ==================== 表达式编译 (具体类型) ====================
     llvm::Value* compileLiteralExpr(p<ExprLiteralNode> node); // 编译字面量表达式

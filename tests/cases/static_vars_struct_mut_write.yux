@@ -1,0 +1,17 @@
+; DRAFT-static-vars Phase 5: #Mut 静态字段写路径
+
+struct Counter {
+  value i32
+
+  #Mut
+  #Static
+  TOTAL i64 = 0
+}
+
+fn main() {
+  println(Counter::TOTAL)
+  Counter::TOTAL = 42
+  println(Counter::TOTAL)
+  Counter::TOTAL = Counter::TOTAL + 58
+  println(Counter::TOTAL)
+}

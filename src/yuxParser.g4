@@ -656,6 +656,11 @@ statement:
       SymbolEq
       value=expr
       LineEnd                         # statementSet
+    // Type::FIELD = expr 静态字段写（DRAFT-static-vars Phase 5）
+    | typeName=ID SymbolColonColon fieldName=ID
+      SymbolEq
+      value=expr
+      LineEnd                         # statementStaticFieldSet
     // 循环
     | Loop statementBlock LineEnd     # statementLoop
     // obj.member = expr

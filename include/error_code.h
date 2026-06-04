@@ -291,8 +291,9 @@ DEF_ERR(3144, "`#Const fn` '{}' cannot be invoked in a constant expression: {} t
 // ── DRAFT-static-vars Phase 1–4: 全局变量 / 静态字段 ──────────────────────────
 DEF_ERR(3150, "#Static field '{}' requires an initializer (DRAFT-static-vars §4.3; v1 static fields must be initialized "
               "at declaration)")
-DEF_ERR(3151, "Cannot write to non-#Mut global variable '{}' (DRAFT-static-vars §4; globals default to `val`; "
-              "use `#Mut let` to declare a mutable global)")
+DEF_ERR(3151, "Cannot write to non-#Mut global/static '{}' (DRAFT-static-vars §4/§7; "
+              "globals and static fields default to `val`; "
+              "use `#Mut let` for globals or `#Mut\\n#Static` for static fields)")
 DEF_ERR(3154, "Global `let {}` requires an initializer (DRAFT-static-vars §3.3; non-#Cval globals must be initialized at "
               "declaration)")
 DEF_ERR(3157, "#Static field '{}' on generic struct '{}' is not allowed (DRAFT-static-vars §4.3; v1 prohibits static "

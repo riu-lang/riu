@@ -217,6 +217,19 @@ for (auto arg : ctx->args) {
     return static_cast<p<StatementNode>>(createWithLine<StatementSetNode>(ctx, scope, arrayExpr, indices, valueExpr));
 }
 
+// DRAFT-static-vars Phase 5：静态字段写语句（Type::FIELD = expr）
+std::any ASTBuilder::visitStatementStaticFieldSet(yux::yuxParser::StatementStaticFieldSetContext* ctx) {
+    auto scope = currentScope();
+    Token typeName(ctx->typeName);
+    Token fieldName(ctx->fieldName);
+    auto valueExpr = any_cast_p<ExprNode>(visit(ctx->value));
+
+    DEBUG_LOG_VAL("  Statement: StaticFieldSet",
+                  typeName.getText() << "::" << fieldName.getText() << " = ...");
+    return static_cast<p<StatementNode>>(
+        createWithLine<StatementStaticFieldSetNode>(ctx, scope, typeName, fieldName, valueExpr));
+}
+
 std::any ASTBuilder::visitStatementBlock(yux::yuxParser::StatementBlockContext* ctx) {
     DEBUG_LOG("  Visit: StatementBlock");
     auto parentScope = currentScope();

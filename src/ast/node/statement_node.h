@@ -151,6 +151,28 @@ public:
     explicit StatementBreakNode(const p<Node>& parent) : StatementNode(parent) {}
 };
 
+// DRAFT-static-vars Phase 5：静态字段写语句（Type::FIELD = expr）
+// 语法形态 `TypeName::fieldName = value`，仅当字段为 #Mut 时合法；
+// 非 #Mut 写由 codegen 抛 E3151。
+class StatementStaticFieldSetNode : public StatementNode {
+protected:
+    Token _typeName;
+    Token _fieldName;
+    p<ExprNode> _valueExpr;
+
+public:
+    StatementStaticFieldSetNode(const p<Node>& parent, Token typeName, Token fieldName, p<ExprNode> valueExpr) :
+        StatementNode(parent),
+        _typeName(std::move(typeName)),
+        _fieldName(std::move(fieldName)),
+        _valueExpr(std::move(valueExpr)) {
+    }
+
+    [[nodiscard]] Token typeName() const { return _typeName; }
+    [[nodiscard]] Token fieldName() const { return _fieldName; }
+    [[nodiscard]] const p<ExprNode>& valueExpr() const { return _valueExpr; }
+};
+
 class StatementSetNode : public StatementNode {
     p<ExprNode> _arrayExpr;
     vector<p<ExprNode>> _indices;

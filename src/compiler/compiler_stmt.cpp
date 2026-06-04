@@ -1628,6 +1628,58 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
     _builder.CreateStore(valueVal, currentPtr);
 }
 
+// ==================== 静态字段写语句 ====================
+
+// 编译静态字段写语句（DRAFT-static-vars Phase 5）
+// 语法形态: Type::FIELD = expr
+// 查找对应 struct 的静态字段 GlobalVariable，check #Mut 位后 emit StoreInst
+void Compiler::compileStaticFieldSetStatement(p<StatementStaticFieldSetNode> node) {
+    auto typeName = node->typeName().getText();
+    auto fieldName = node->fieldName().getText();
+
+    // 跨模块查 struct（含 wildcard imports）
+    StructDeclNode* structDecl = _file->getStructDecl(typeName);
+    if (!structDecl) {
+        // TODO: 支持跨模块路径（如 mod.Type::FIELD），当前仅限本模块 + wildcard imports
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, typeName);
+    }
+
+    const auto* sf = structDecl->staticField(fieldName);
+    if (!sf) {
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030,
+                       typeName + "::" + fieldName);
+    }
+
+    // 查 #Mut 位：非 #Mut 静态字段禁写
+    if (!sf->isMutable) {
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3151,
+                       typeName + "::" + fieldName);
+    }
+
+    string ownerMod = _file->moduleName();
+    // 跨模块：若 struct 由 wildcard import 引入，取其归属模块
+    if (auto* owner = _file->getStructOwner(typeName)) {
+        if (owner != _file) {
+            ownerMod = owner->moduleName();
+        }
+    }
+
+    auto mangledName = Mangler::staticField(ownerMod, typeName, fieldName);
+    auto* gv = _module->getGlobalVariable(mangledName, true);
+    if (!gv) {
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030,
+                       typeName + "::" + fieldName);
+    }
+
+    auto exprVal = compileExpr(node->valueExpr());
+    auto exprType = node->valueExpr()->getType();
+    auto targetType = sf->type->getType();
+    auto valToStore = createCast(exprVal, exprType, targetType);
+    _builder.CreateStore(valToStore, gv);
+
+    DEBUG_LOG_VAL("  StaticFieldSet", typeName << "::" << fieldName << " = ...");
+}
+
 // ==================== 语句分发 ====================
 
 // 编译语句的主入口
@@ -1658,6 +1710,8 @@ void Compiler::compileStatement(p<StatementNode> node) {
         compileBreakStatement(breakNode);
     } else if (auto setNode = dynamic_cast<StatementSetNode*>(node)) {
         compileArraySetStatement(setNode);
+    } else if (auto staticFieldSetNode = dynamic_cast<StatementStaticFieldSetNode*>(node)) {
+        compileStaticFieldSetStatement(staticFieldSetNode);
     } else {
         popAndReleaseTempFrame();
         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3092);

@@ -1,0 +1,12 @@
+; DRAFT-static-vars Phase 5: 写非 #Mut 静态字段 → E3151
+
+struct Foo {
+  ; 默认 val 静态字段（非 #Mut）
+  #Static
+  BAR i32 = 100
+}
+
+fn main() {
+  ; 尝试写入非 #Mut 静态字段 → 应报 E3151
+  Foo::BAR = 200
+}

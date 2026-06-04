@@ -551,6 +551,17 @@ private:
             if (as->expr()) visitExpr(as->expr());
             return;
         }
+        if (auto sfs = dynamic_cast<p<StatementStaticFieldSetNode>>(s)) {
+            // DRAFT-static-vars Phase 5：静态字段写 Type::FIELD = expr
+            // §4.2：#Const fn 体内禁写静态字段
+            if (_isConstFn) {
+                throw YuxError(s->getLineNumber(), s->getColumn(), ErrorCode::E3110,
+                               _fnName, "write static field",
+                               sfs->typeName().getText() + "::" + sfs->fieldName().getText());
+            }
+            visitExpr(sfs->valueExpr());
+            return;
+        }
         if (auto st = dynamic_cast<p<StatementSetNode>>(s)) {
             // §5.3：`s[i] = X`；arrayExpr 是 frozen ID 时拒收。
             auto scope = s->findNearestScope();
