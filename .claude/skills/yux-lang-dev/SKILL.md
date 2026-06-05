@@ -13,7 +13,7 @@ yux 是自举编译器，单二进制完成 `.yux → ANTLR4 解析 → AST → 
 
 - 操作系统：Windows
 - 编译器：**Clang（无 MSVC 环境变量）**
-- 构建：xmake
+- 构建：xmake（API 文档索引见 [`AGENT-XMAKE.md`](../../../AGENT-XMAKE.md)）
 - LLVM 工具链在 `PATH`（`llvm/bin`）
 - `build/windows/x64/debug` 在 `PATH`，构建后可直接 `yux ...`
 - 改完 C++ 跑两条本地包装器（`init.js` 生成的 `./lint.cmd|sh|ps1`、`./format.cmd|sh|ps1`，不在 PATH 故必须带 `./`）；默认只作用于 git 已变动 / 未跟踪文件，加 `--all` 切全仓，加位置参数指定文件，`--check`（仅 format）只检查不改

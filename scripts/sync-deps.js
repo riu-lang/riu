@@ -120,65 +120,6 @@ async function syncDependency(name, config) {
   await updateRepo(name, url, commit, targetPath);
 }
 
-async function syncSkill(name, config) {
-  const { url, commit, flatten } = config;
-  const skillsDir = SKILLS_DIR_CLAUDE;
-  // 版本标记：<skillsDir>/<name>.git，内容为已安装的 commit
-  // 命中则整组跳过，不重复 clone / 解包
-  const markerPath = path.join(skillsDir, `${name}.git`);
-
-  log(`\n=== Syncing skill collection ${name} ===`, 'cyan');
-  log(`URL: ${url}`);
-  log(`Commit: ${commit.substring(0, 8)}...`);
-
-  if (fs.existsSync(markerPath)) {
-    const installed = fs.readFileSync(markerPath, 'utf8').trim();
-    if (installed === commit) {
-      log(`Already at ${commit.substring(0, 8)} (per ${name}.git), skipping`, 'green');
-      return;
-    }
-    log(`Installed: ${installed ? installed.substring(0, 8) : 'unknown'} -> ${commit.substring(0, 8)}`);
-  }
-
-  const tempPath = path.join(skillsDir, `${name}.temp`);
-
-  await cloneRepo(name, url, commit, tempPath);
-
-  const sourcePath = flatten ? path.join(tempPath, flatten) : tempPath;
-  if (!fs.existsSync(sourcePath)) {
-    log(`Flatten source path does not exist: ${sourcePath}`, 'red');
-    fs.rmSync(tempPath, { recursive: true, force: true });
-    throw new Error(`Flatten path not found: ${flatten}`);
-  }
-
-  const skillDirs = findSkillDirs(sourcePath);
-  log(`Found ${skillDirs.length} skills to install`);
-
-  for (const skillDir of skillDirs) {
-    const skillName = path.basename(skillDir);
-    const targetPath = path.join(skillsDir, skillName);
-
-    if (fs.existsSync(targetPath)) {
-      fs.rmSync(targetPath, { recursive: true, force: true });
-    }
-
-    fs.mkdirSync(targetPath, { recursive: true });
-
-    const entries = fs.readdirSync(skillDir);
-    for (const entry of entries) {
-      const srcEntry = path.join(skillDir, entry);
-      const destEntry = path.join(targetPath, entry);
-      fs.renameSync(srcEntry, destEntry);
-    }
-
-    log(`  Installed: ${skillName}`, 'green');
-  }
-
-  fs.rmSync(tempPath, { recursive: true, force: true });
-
-  // 写入版本标记，下次同步若 commit 未变即整组跳过
-  fs.writeFileSync(markerPath, commit + '\n', 'utf8');
-}
 
 // 把 .trae/<sub> 链接到 .claude/<sub>，让 Trae 与 Claude Code 共享同一份内容
 function syncTraeLink(source, link) {
@@ -213,28 +154,6 @@ function syncTraeLink(source, link) {
   log(`Linked (${type})`, 'green');
 }
 
-function findSkillDirs(dir) {
-  const skillDirs = [];
-
-  function walk(currentDir) {
-    const entries = fs.readdirSync(currentDir, { withFileTypes: true });
-
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-
-      const subDir = path.join(currentDir, entry.name);
-
-      if (fs.existsSync(path.join(subDir, 'SKILL.md'))) {
-        skillDirs.push(subDir);
-      } else {
-        walk(subDir);
-      }
-    }
-  }
-
-  walk(dir);
-  return skillDirs;
-}
 
 async function downloadFile(url, destPath) {
   const https = require('https');
@@ -349,7 +268,6 @@ async function main() {
   const deps = JSON.parse(fs.readFileSync(DEPS_FILE, 'utf8'));
   const binaries = deps.binaries || {};
   const dependencies = deps.dependencies || {};
-  const skills = deps.skills || {};
 
   fs.mkdirSync(THIRD_PARTY_DIR, { recursive: true });
   fs.mkdirSync(BIN_DIR, { recursive: true });
@@ -370,21 +288,16 @@ async function main() {
     : binaries;
 
   const toProcess = targetDeps.length > 0
-    ? Object.fromEntries(targetDeps.filter(n => dependencies[n] && !skills[n]).map(n => [n, dependencies[n]]))
-    : Object.fromEntries(Object.entries(dependencies).filter(([n]) => !skills[n]));
+    ? Object.fromEntries(targetDeps.filter(n => dependencies[n]).map(n => [n, dependencies[n]]))
+    : Object.fromEntries(Object.entries(dependencies));
 
-  const skillsToProcess = targetDeps.length > 0
-    ? Object.fromEntries(targetDeps.filter(n => skills[n]).map(n => [n, skills[n]]))
-    : skills;
-
-  if (Object.keys(binariesToProcess).length === 0 && Object.keys(toProcess).length === 0 && Object.keys(skillsToProcess).length === 0) {
+  if (Object.keys(binariesToProcess).length === 0 && Object.keys(toProcess).length === 0) {
     log('No dependencies to process', 'yellow');
     return;
   }
 
   log(`\nSyncing ${Object.keys(binariesToProcess).length} binaries...`, 'cyan');
   log(`Syncing ${Object.keys(toProcess).length} dependencies...`, 'cyan');
-  log(`Syncing ${Object.keys(skillsToProcess).length} skills...`, 'cyan');
 
   if (dryRun) {
     log('(dry run)', 'yellow');
@@ -393,9 +306,6 @@ async function main() {
     }
     for (const [name, config] of Object.entries(toProcess)) {
       log(`\n  ${name}: ${config.commit.substring(0, 8)}`);
-    }
-    for (const [name, config] of Object.entries(skillsToProcess)) {
-      log(`\n  skill/${name}: ${config.commit.substring(0, 8)}`);
     }
     return;
   }
@@ -418,14 +328,6 @@ async function main() {
     }
   }
 
-  for (const [name, config] of Object.entries(skillsToProcess)) {
-    try {
-      await syncSkill(name, config);
-    } catch (e) {
-      log(`Failed to sync skill ${name}: ${e.message}`, 'red');
-      process.exit(1);
-    }
-  }
 
   if (targetDeps.length === 0) {
     try {
