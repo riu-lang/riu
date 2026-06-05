@@ -13,6 +13,7 @@
 
 class StatementNode;
 class TypeNode;
+class StructDeclNode;
 
 class ExprNode : public Node, public Typed {
 protected:
@@ -182,6 +183,10 @@ protected:
     bool _safe = false;
     // spec 默认体消歧后缀（§12.10 续节 / DRAFT-spec-disambig-at）：a.m@SpecA(...) 中的 SpecA；空表示无后缀
     string _specQualifier;
+    // DRAFT-spec-reflect §6: Field.value 编译期解析结果
+    mutable bool _reflectFieldResolved = false;
+    mutable const StructDeclNode* _reflectStructDecl = nullptr;
+    mutable int _reflectFieldIndex = -1;
 
 public:
     ExprDotNode(const p<Node>& parent, p<ExprNode> baseExpr, Token member)
@@ -202,6 +207,11 @@ public:
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] int resolveLineNumber() const override;
     [[nodiscard]] int resolveColumn() const override;
+
+    // DRAFT-spec-reflect §6: Field.value 编译期解析
+    [[nodiscard]] bool isReflectFieldValue() const { return _reflectFieldResolved; }
+    [[nodiscard]] const StructDeclNode* reflectStructDecl() const { return _reflectStructDecl; }
+    [[nodiscard]] int reflectFieldIndex() const { return _reflectFieldIndex; }
 
     // 解析形如 `aliasLit.s1.s2...sN` 的 Dot 链。
     // 成功时：aliasName 置为根字面量；segments 按顺序存放 [s1, ..., sN]（不含 alias）。

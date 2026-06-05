@@ -1,0 +1,17 @@
+; DRAFT-spec-reflect §6: E3134 — Field.value without $ receiver
+; 在 #Static fn 中没有 $ 实例，无法绑定 receiver
+
+struct Point {
+  x i32
+  y i32
+
+  #Static
+  fn test_static() i32 {
+    ; 静态方法中没有 $ receiver → E3134
+    ret Point::fields.at(0).value
+  }
+}
+
+fn main() {
+  println("ok")
+}

@@ -21,7 +21,6 @@
 #include "sema/call_resolve.h"
 #include <set>
 
-
 llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto arrayExpr = node->arrayExpr();
@@ -151,6 +150,33 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
         _castFunctions[castFnName] = {.value=baseVal, .srcType=srcType, .dstType=TypeInfo(dstType)};
 
         return llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+    }
+
+    // DRAFT-spec-reflect §6: Field.value → compile-time field name rewrite.
+    // Resolution happens in ExprDotNode::getType() which caches {structDecl, fieldIndex}.
+    // Here we just check the cached result and emit $.field_name.
+    // Trigger getType() to populate the cached metadata (mirrors compileEnumCtorExpr L38).
+    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
+    if (node->isReflectFieldValue()) {
+        auto* sd = node->reflectStructDecl();
+        int fieldIdx = node->reflectFieldIndex();
+        if (!sd || fieldIdx < 0) {
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3133);
+        }
+        if (_currentStructName.empty()) {
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3134);
+        }
+        auto selfIt = _localVarPtrs.find("$");
+        if (selfIt == _localVarPtrs.end()) {
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3134);
+        }
+        auto structType = getLLVMType(TypeInfo(_currentStructName));
+        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        auto fIdx = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIdx);
+        std::array<llvm::Value*, 2> indices{zero, fIdx};
+        auto fieldPtr = _builder.CreateGEP(structType, selfIt->second, indices, "reflect.field");
+        auto fieldType = sd->fields()[fieldIdx]->getType();
+        return _builder.CreateLoad(getLLVMType(fieldType), fieldPtr, "reflect.field.load");
     }
 
     auto baseType = baseExpr->getType();

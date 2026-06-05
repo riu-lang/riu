@@ -298,6 +298,10 @@ DEF_ERR(3154, "Global `let {}` requires an initializer (DRAFT-static-vars §3.3;
               "declaration)")
 DEF_ERR(3157, "#Static field '{}' on generic struct '{}' is not allowed (DRAFT-static-vars §4.3; v1 prohibits static "
               "fields on generic structs)")
+DEF_ERR(3152, "Cannot access static field '{}' through an instance of '{}'; use `{}::{}` instead "
+              "(DRAFT-static-vars §4.4)")
+DEF_ERR(3158, "Cannot read uninitialized #Mut global '{}' (DRAFT-static-vars §6; #Mut globals must be initialized "
+              "before first read)")
 
 // ── E315x DRAFT-static-vars Phase 6（跨模块 init 顺序） ──────────────────
 DEF_ERR(3153, "Circular module dependency detected involving '{}'; cannot determine global init order "
@@ -327,6 +331,15 @@ DEF_ERR(3131, "`{}::{}(...)` argument count/type mismatch: expected {} args ({})
 // ── 组合 spec 默认体冲突 (DRAFT-spec-default-body Phase 4) ────────────
 DEF_ERR(3132, "Type `{}` inherits conflicting default bodies for method `{}` from specs {}; implementer must provide "
               "an explicit override")
+
+// ── DRAFT-spec-reflect Phase 4+: Field.value / 反射诊断 ───────────────
+DEF_ERR(3133, "`Field.value` requires a compile-time-known Field reference (e.g. `Counter::fields.at(0).value`); "
+              "runtime Field variables are not supported (DRAFT-spec-reflect §6)")
+DEF_ERR(3134, "`Field.value` has no receiver to bind to; use `.value` inside a method body where `$` is available "
+              "(DRAFT-spec-reflect §6)")
+DEF_ERR(3135, "`variants` is only accessible on enum types; `{}` is not an enum (DRAFT-spec-reflect §2)")
+DEF_ERR(3136, "Cannot take `{}::type` by value; use a reference or pointer to the rodata singleton "
+              "(DRAFT-spec-reflect §8)")
 
 // ── E4xxx 所有权 / 借用 ───────────────────────────────────────────────
 DEF_ERR(4001, "T& borrow initializer must be &expr or an existing T& variable")

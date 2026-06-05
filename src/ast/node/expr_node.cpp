@@ -11,6 +11,8 @@
 #include "struct_node.h"
 #include "fn_node.h"
 #include "spec_node.h"
+#include "statement_node.h"
+#include "sema/call_resolve.h"
 
 // §12.4：在生成式 AST 中遇到 `x.m()`（x:T 为泛型形参）时，
 // 用形参声明位的 draft 边界查 m 的返回类型；走包含 SDK 回退的 file 链。
@@ -711,6 +713,130 @@ TypeInfo ExprDotNode::getType() const {
         std::vector<sp<TypeInfo>> args;
         args.push_back(make_shared<TypeInfo>(fieldType));
         return {"Nullable", args};
+    }
+
+    // DRAFT-spec-reflect §6: Field.value → compile-time field name rewrite.
+    // When .value is accessed on a Field-typed expression, attempt to statically resolve
+    // which concrete struct field is referenced.
+    // Resolution is done via AST pattern matching first (independent of type resolution,
+    // which may fail due to scope chain issues in nested contexts),
+    // then falls back to type-based check for non-compile-time-known Field references.
+    if (member == "value") {
+        // Helper: trace an expression to {structDecl, fieldIndex}.
+        std::function<std::pair<const StructDeclNode*, int>(const p<ExprNode>&)> tryResolve;
+        tryResolve = [&](const p<ExprNode>& expr) -> std::pair<const StructDeclNode*, int> {
+            // Case 1: Direct .at(N) call on a static fields array
+            if (auto* call = dynamic_cast<ExprCallNode*>(expr)) {
+                auto& callee = call->getCalleeExpr();
+                auto* dot = dynamic_cast<ExprDotNode*>(callee);
+                if (dot && dot->member() == "at" && call->getArgs().size() == 1) {
+                    auto* base = dot->baseExpr();
+                    auto* path = dynamic_cast<ExprPathCallNode*>(base);
+                    if (path && path->variantName().getText() == "fields") {
+                        std::string sn = path->enumName().getText();
+                        // Resolve "Self" by walking up to enclosing StructDeclNode
+                        if (sn == "Self") {
+                            auto* s = expr->findNearestScope();
+                            while (s) {
+                                if (auto* sd = dynamic_cast<StructDeclNode*>(s)) {
+                                    sn = sd->name().getText();
+                                    break;
+                                }
+                                s = s->parentScope();
+                            }
+                            if (sn == "Self") return {nullptr, -1};
+                        }
+                        // Evaluate the index argument as a compile-time integer
+                        auto* idxExpr = call->getArgs()[0];
+                        if (auto* idxLit = dynamic_cast<ExprLiteralNode*>(idxExpr)) {
+                            if (auto* intLit = dynamic_cast<LiteralIntNode*>(idxLit->literal())) {
+                                Token tok = intLit->getValue();
+                                i64 idx = sema::parseIntLiteral(tok.getText(),
+                                    static_cast<int>(tok.getLine()),
+                                    static_cast<int>(tok.getCharPositionInLine()) + 1);
+                                if (idx >= 0) {
+                                    // Look up struct declaration from scope
+                                    auto* s = expr->findNearestScope();
+                                    FileNode* file = dynamic_cast<FileNode*>(s);
+                                    while (!file && s) {
+                                        s = s->parentScope();
+                                        file = dynamic_cast<FileNode*>(s);
+                                    }
+                                    StructDeclNode* sd = nullptr;
+                                    if (file) {
+                                        sd = file->getStructDecl(sn);
+                                        if (!sd) {
+                                            auto* p = dynamic_cast<ScopeNode*>(file);
+                                            while (p) {
+                                                p = dynamic_cast<ScopeNode*>(p->parentScope());
+                                                if (auto* pf = dynamic_cast<FileNode*>(p)) {
+                                                    sd = pf->getStructDecl(sn);
+                                                    if (sd) break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (sd) {
+                                        int nonStaticCount = 0;
+                                        for (auto& f : sd->fields()) {
+                                            if (f->isStatic()) continue;
+                                            if (nonStaticCount == idx) {
+                                                return {sd, sd->fieldIndex(f->name().getText())};
+                                            }
+                                            ++nonStaticCount;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // Case 2: Variable reference — trace through let definition
+            if (auto* exLit = dynamic_cast<ExprLiteralNode*>(expr)) {
+                if (auto* objLit = dynamic_cast<LiteralObjNode*>(exLit->literal())) {
+                    std::string varName = objLit->getValue().getText();
+                    auto* s = expr->findNearestScope();
+                    while (s) {
+                        if (auto* fn = dynamic_cast<FnNode*>(s)) {
+                            for (auto& stmt : fn->body()) {
+                                if (auto* letStmt = dynamic_cast<StatementDeclareAssignNode*>(stmt)) {
+                                    if (letStmt->name().getText() == varName) {
+                                        return tryResolve(letStmt->expr());
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                        s = s->parentScope();
+                    }
+                }
+            }
+            return {nullptr, -1};
+        };
+
+        // Try AST pattern matching first (works even when type resolution is
+        // incomplete due to scope chain issues in nested expression contexts).
+        auto [sd, fieldIdx] = tryResolve(_baseExpr);
+        if (sd && fieldIdx >= 0) {
+            _reflectFieldResolved = true;
+            _reflectStructDecl = sd;
+            _reflectFieldIndex = fieldIdx;
+            return sd->fields()[fieldIdx]->getType();
+        }
+
+        // Pattern matching failed — check if the base type indicates a
+        // non-compile-time-known Field reference (e.g. for-loop variable).
+        TypeInfo baseT = _baseExpr->getType();
+        if (baseT.isRef()) {
+            auto refElem = baseT.refElementType();
+            if (refElem) baseT = *refElem;
+        }
+        if (baseT.name == "Field") {
+            // Non-compile-time-known Field reference → E3133
+            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3133);
+        }
+        // Not a Field reference — fall through to normal dot resolution.
     }
 
     // 链式 Dot 访问 alias-rooted：

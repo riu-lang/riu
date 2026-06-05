@@ -1,0 +1,25 @@
+; DRAFT-spec-reflect §6: Field.value sema 期改名 — 基本用例
+; Point::fields.at(N).value 在方法体内改写为 $.x / $.y
+
+struct Point {
+  x i32
+  y i32
+
+  #Static
+  fn make(x i32, y i32) Point {
+    ret Self {
+      .x = x
+      .y = y
+    }
+  }
+
+  fn sum() i32 {
+    ; 通过 Field.value 访问字段值（sema 期改写为 $.x + $.y）
+    ret Point::fields.at(0).value + Point::fields.at(1).value
+  }
+}
+
+fn main() {
+  let p Point = Point::make(3, 5)
+  println(p.sum().to_string())
+}

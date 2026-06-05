@@ -226,24 +226,23 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
                 string annoName = a->name->getText();
                 if (annoName != "Static" && annoName != "Mut") {
                     auto* tk = a->SymbolHash()->getSymbol();
-                    throw YuxError(static_cast<int>(tk->getLine()),
-                                   static_cast<int>(tk->getCharPositionInLine()) + 1, ErrorCode::E3108,
-                                   annoName);
+                    throw YuxError(static_cast<int>(tk->getLine()), static_cast<int>(tk->getCharPositionInLine()) + 1,
+                                   ErrorCode::E3108, annoName);
                 }
             }
 
             // 决议 [#1.F]: v1 禁泛型 struct 上的 #Static FIELD
             if (!typeParams.empty()) {
                 throw YuxError(static_cast<int>(fieldCtx->name->getLine()),
-                               static_cast<int>(fieldCtx->name->getCharPositionInLine()) + 1,
-                               ErrorCode::E3157, structName);
+                               static_cast<int>(fieldCtx->name->getCharPositionInLine()) + 1, ErrorCode::E3157,
+                               structName);
             }
 
             // E3150: v1 静态字段必须有 init
             if (!fieldCtx->init) {
                 throw YuxError(static_cast<int>(fieldCtx->name->getLine()),
-                               static_cast<int>(fieldCtx->name->getCharPositionInLine()) + 1,
-                               ErrorCode::E3150, fieldCtx->name->getText());
+                               static_cast<int>(fieldCtx->name->getCharPositionInLine()) + 1, ErrorCode::E3150,
+                               fieldCtx->name->getText());
             }
 
             auto typeNode = any_cast_p<TypeNode>(visit(fieldCtx->type()));
@@ -257,8 +256,8 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
             sf.isPrivate = !sf.name.getText().empty() && sf.name.getText()[0] == '_';
             structDecl->addStaticField(std::move(sf));
 
-            DEBUG_LOG_VAL("    StaticField", sf.name.getText() << " : " << typeNode->getType().name
-                                                               << (isMut ? " #Mut" : ""));
+            DEBUG_LOG_VAL("    StaticField", sf.name.getText()
+                                                 << " : " << typeNode->getType().name << (isMut ? " #Mut" : ""));
             continue;
         }
 
@@ -292,6 +291,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
     structImpl->setAnnos(annos.names, annos.args);
     structImpl->setTypeParams(typeParams);
     structImpl->setSpecRefs(std::move(implRefs));
+    structImpl->setParentScope(file);
 
     stack.emplace_back(structImpl);
     _scopeStack.push_back(structImpl);
