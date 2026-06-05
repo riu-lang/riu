@@ -41,37 +41,42 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
     int line = node->getLineNumber();
     int col = node->getColumn();
 
-    // DRAFT-spec-reflect Phase 4: `<Struct>::type` / `<Struct>::fields`
-    //   * type   → 整个 reflect Type 全局值 (by-value 拷贝; immortal block, retain no-op)
-    //   * fields → Type 的第 1 槽 (Array<Field> handle)
+    // DRAFT-spec-reflect Phase 4: `<Struct>::type` / `<Struct>::fields` /
+    // `<Struct>::methods` / `<Struct>::variants`
+    //   * type     → 整个 reflect Type 全局值 (by-value 拷贝)
+    //   * fields   → Type 的第 1 槽 ([Field& * N]& = ptr to [N x ptr])
+    //   * methods  → Type 的第 2 槽 ([Method& * 0]&, 当前 null)
+    //   * variants → Type 的第 3 槽 ([Variant& * 0]&, 当前 null)
     // sema 已校验 LHS 是已知 struct, 这里直接 emit load.
     {
         string lhsRaw = node->enumName().getText();
         string rhsName = node->variantName().getText();
-        if (node->args().empty() && (rhsName == "type" || rhsName == "fields")) {
+        if (node->args().empty() &&
+            (rhsName == "type" || rhsName == "fields" || rhsName == "methods" || rhsName == "variants")) {
             FileNode* sdkF = _yux ? _yux->sdkFile() : nullptr;
             auto* sd = _file ? _file->getStructDecl(lhsRaw) : nullptr;
             if (!sd && sdkF && sdkF != _file) sd = sdkF->getStructDecl(lhsRaw);
             if (sd) {
-                auto* gv = ensureReflectTypeGlobal(TypeInfo(lhsRaw));
+                llvm::GlobalVariable* fieldsRefGV = nullptr;
+                auto* gv = ensureReflectTypeGlobal(TypeInfo(lhsRaw), &fieldsRefGV);
                 if (!gv) {
                     throw YuxError(line, col, ErrorCode::E6019, lhsRaw);
                 }
-                auto typeStructTy = getLLVMType(TypeInfo("Type"));
                 if (rhsName == "type") {
+                    auto typeStructTy = getLLVMType(TypeInfo("Type"));
                     return _builder.CreateLoad(typeStructTy, gv, "reflect.type");
                 }
-                // fields: GEP into Type's slot 1 (Array<Field> handle struct)
-                auto* tyStructTy = llvm::dyn_cast<llvm::StructType>(typeStructTy);
-                if (!tyStructTy || tyStructTy->getNumElements() < 2) {
-                    throw YuxError(line, col, ErrorCode::E6019, string("Type.fields layout"));
+                // fields: 返回 [N x ptr] ref 数组的指针 ([Field& * N]&).
+                // fieldsRefGV 是 [N x ptr] 全局常量, 其地址即为数组引用.
+                if (rhsName == "fields") {
+                    if (!fieldsRefGV) {
+                        throw YuxError(line, col, ErrorCode::E6019, lhsRaw + ".fields (no instance fields)");
+                    }
+                    return fieldsRefGV;
                 }
-                auto* fieldsTy = tyStructTy->getElementType(1);
-                auto i32Ty = _builder.getInt32Ty();
-                auto z = llvm::ConstantInt::get(i32Ty, 0);
-                auto one = llvm::ConstantInt::get(i32Ty, 1);
-                auto fp = _builder.CreateGEP(tyStructTy, gv, {z, one}, "reflect.fields.ptr");
-                return _builder.CreateLoad(fieldsTy, fp, "reflect.fields");
+                // methods / variants: not yet populated → null reference
+                auto ptrTy = llvm::PointerType::get(_context, 0);
+                return llvm::ConstantPointerNull::get(ptrTy);
             }
         }
     }

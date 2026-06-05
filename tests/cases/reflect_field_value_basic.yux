@@ -1,4 +1,5 @@
 ; DRAFT-spec-reflect §6: Field.value 读路径回归
+; 使用 [N] 索引 (新 [Field& * N]& 类型)
 
 struct Point {
   x i32
@@ -13,7 +14,7 @@ struct Point {
   }
 
   fn sum() i32 {
-    ret Point::fields.at(0).value + Point::fields.at(1).value
+    ret Point::fields[0].value + Point::fields[1].value
   }
 }
 

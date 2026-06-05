@@ -1000,12 +1000,16 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
 // Reflect Type 节点 lazy emit, 由 `__yux_reflect_type:<T>()` intrinsic 调用站调用.
 // 符号: __yux_reflect_<sanitized-mod>_<typename>__type, linkonce_odr rodata.
 //
-// 节点 layout: %Type = { %String } = { { %Array_u32 } } = { { { ptr handle } } }
-// handle -> emitStringConstBlock(typename) 产出的 .rodata Block (immortal, strong=0xFFFFFFFF).
+// Type layout (compiler 硬编码): { String name, ptr fields_ref, ptr methods_ref, ptr variants_ref }
+//   fields_ref → [N x ptr]  (每个 ptr 通过 constexpr GEP 指向 data 数组中的 Field)
+//   methods_ref → null (未填充)
+//   variants_ref → null (未填充)
+// Field layout: { String name }
 //
 // 仅对 Normal 用户 / SDK / wildcard-imported struct 类型 emit; 找不到 owner 或类型为
 // 泛型形参 / 内置标量 / Rc / Array 等返回 nullptr (调用站抛 E?).
-llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t) {
+llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t,
+    llvm::GlobalVariable** outFieldsRefs) {
     if (t.kind != TypeKind::Normal || t.name.empty()) return nullptr;
 
     // 找声明 struct 的 file (决定 mod)
@@ -1037,25 +1041,27 @@ llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t) {
     };
     std::string symName = "__yux_reflect_" + sanitize(ownerFile->moduleName()) + "_" + t.name + "__type";
 
-    if (auto* existing = _module->getNamedGlobal(symName)) return existing;
+    if (auto* existing = _module->getNamedGlobal(symName)) {
+        if (outFieldsRefs) {
+            auto* refsGV = _module->getNamedGlobal(symName + ".fields.refs");
+            *outFieldsRefs = refsGV;
+        }
+        return existing;
+    }
 
-    // Type 嵌套布局: { String name, Array<Field> fields }
+    // Type layout: { String name } — 仅 name 字段; fields/methods/variants ref 为独立全局.
+    // SDK 声明: struct Type { #Frozen name String } （#CompilerInner, 编译器硬编码布局）.
     auto* typeStructTy = llvm::dyn_cast_or_null<llvm::StructType>(getLLVMType(TypeInfo("Type")));
-    if (!typeStructTy || typeStructTy->getNumElements() < 2) return nullptr;
+    if (!typeStructTy || typeStructTy->getNumElements() < 1) return nullptr;
     auto* stringStructTy = llvm::dyn_cast<llvm::StructType>(typeStructTy->getElementType(0));
     if (!stringStructTy || stringStructTy->getNumElements() < 1) return nullptr;
     auto* arrayStructTy = llvm::dyn_cast<llvm::StructType>(stringStructTy->getElementType(0));
     if (!arrayStructTy || arrayStructTy->getNumElements() < 1) return nullptr;
-    auto* arrFieldHandleTy = llvm::dyn_cast<llvm::StructType>(typeStructTy->getElementType(1));
-    if (!arrFieldHandleTy || arrFieldHandleTy->getNumElements() < 1) return nullptr;
     auto* fieldStructTy = llvm::dyn_cast_or_null<llvm::StructType>(getLLVMType(TypeInfo("Field")));
     if (!fieldStructTy || fieldStructTy->getNumElements() < 1) return nullptr;
 
     auto i32Ty = llvm::Type::getInt32Ty(_context);
-    auto i64Ty = llvm::Type::getInt64Ty(_context);
     auto ptrTy = llvm::PointerType::get(_context, 0);
-    auto sentinel = llvm::ConstantInt::get(i32Ty, 0xFFFFFFFFu);
-    auto i32Zero = llvm::ConstantInt::get(i32Ty, 0);
 
     auto cpsOf = [](const std::string& s) {
         vector<uint32_t> out;
@@ -1064,12 +1070,18 @@ llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t) {
         return out;
     };
 
-    // name string init
+    // name string init (immortal Block, strong=0xFFFFFFFF)
     auto* nameBlock = emitStringConstBlock(cpsOf(t.name));
     auto* nameArrayInit = llvm::ConstantStruct::get(arrayStructTy, {nameBlock});
     auto* nameStringInit = llvm::ConstantStruct::get(stringStructTy, {nameArrayInit});
 
-    // fields: 收集 instance 字段 (不含 #Static)
+    // Type global: { String name }
+    auto* typeInit = llvm::ConstantStruct::get(typeStructTy, {nameStringInit});
+    auto* gv = new llvm::GlobalVariable(*_module, typeStructTy, /*isConstant=*/true,
+                                        llvm::GlobalValue::LinkOnceODRLinkage, typeInit, symName);
+    gv->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+
+    // fields: 收集 instance 字段 (不含 #Static), 创建 [N x ptr] ref 数组全局 (独立于 Type)
     p<StructDeclNode> decl = ownerFile->getStructDecl(t.name);
     vector<llvm::Constant*> fieldConsts;
     if (decl) {
@@ -1084,27 +1096,35 @@ llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t) {
     }
     size_t N = fieldConsts.size();
 
-    llvm::Constant* fieldsDataPtr = llvm::ConstantPointerNull::get(ptrTy);
+    llvm::GlobalVariable* fieldsRefGV = nullptr;
     if (N > 0) {
-        auto* arrTy = llvm::ArrayType::get(fieldStructTy, N);
-        auto* arrInit = llvm::ConstantArray::get(arrTy, fieldConsts);
-        fieldsDataPtr = new llvm::GlobalVariable(*_module, arrTy, /*isConstant=*/true,
-                                                 llvm::GlobalValue::PrivateLinkage, arrInit,
-                                                 symName + ".fields.data");
+        // [N x Field] data 数组
+        auto* dataArrTy = llvm::ArrayType::get(fieldStructTy, N);
+        auto* dataArrInit = llvm::ConstantArray::get(dataArrTy, fieldConsts);
+        auto* dataArrGV = new llvm::GlobalVariable(*_module, dataArrTy, /*isConstant=*/true,
+                                                    llvm::GlobalValue::PrivateLinkage, dataArrInit,
+                                                    symName + ".fields.data");
+
+        // [N x ptr] 引用数组: 每个元素 = constexpr GEP(dataArrGV, {0, i})
+        vector<llvm::Constant*> refPtrs;
+        auto i32Zero = llvm::ConstantInt::get(i32Ty, 0);
+        for (size_t i = 0; i < N; ++i) {
+            auto idxC = llvm::ConstantInt::get(i32Ty, static_cast<uint32_t>(i));
+            llvm::Constant* gepIndicesArr[2] = {i32Zero, idxC};
+            auto* gep = llvm::ConstantExpr::getGetElementPtr(dataArrTy, dataArrGV,
+                llvm::ArrayRef<llvm::Constant*>(gepIndicesArr));
+            refPtrs.push_back(gep);
+        }
+        auto* refArrTy = llvm::ArrayType::get(ptrTy, N);
+        auto* refArrInit = llvm::ConstantArray::get(refArrTy, refPtrs);
+        fieldsRefGV = new llvm::GlobalVariable(*_module, refArrTy, /*isConstant=*/true,
+                                                llvm::GlobalValue::PrivateLinkage, refArrInit,
+                                                symName + ".fields.refs");
     }
 
-    auto* blockTy = llvm::StructType::get(_context, {i32Ty, i32Ty, i64Ty, i64Ty, ptrTy});
-    auto lenC = llvm::ConstantInt::get(i64Ty, N);
-    auto* fieldsBlockInit = llvm::ConstantStruct::get(blockTy, {sentinel, i32Zero, lenC, lenC, fieldsDataPtr});
-    auto* fieldsBlockGV = new llvm::GlobalVariable(*_module, blockTy, /*isConstant=*/true,
-                                                   llvm::GlobalValue::PrivateLinkage, fieldsBlockInit,
-                                                   symName + ".fields.block");
-    auto* fieldsHandleInit = llvm::ConstantStruct::get(arrFieldHandleTy, {fieldsBlockGV});
+    if (outFieldsRefs) *outFieldsRefs = fieldsRefGV;
 
-    auto* typeInit = llvm::ConstantStruct::get(typeStructTy, {nameStringInit, fieldsHandleInit});
+    // methods / variants: N=0 for now, no ref arrays emitted
 
-    auto* gv = new llvm::GlobalVariable(*_module, typeStructTy, /*isConstant=*/true,
-                                        llvm::GlobalValue::LinkOnceODRLinkage, typeInit, symName);
-    gv->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
     return gv;
 }

@@ -792,6 +792,69 @@ TypeInfo ExprDotNode::getType() const {
                     }
                 }
             }
+            // Case 1b: Direct [N] indexing on a static fields array (ExprGetNode)
+            //   e.g. `Point::fields[0].value`
+            //   ExprGetNode with base ExprPathCallNode("fields") and literal int index.
+            if (auto* get = dynamic_cast<ExprGetNode*>(expr)) {
+                if (get->indices().size() == 1) {
+                    auto* path = dynamic_cast<ExprPathCallNode*>(get->arrayExpr());
+                    if (path && path->variantName().getText() == "fields") {
+                        std::string sn = path->enumName().getText();
+                        if (sn == "Self") {
+                            auto* s = expr->findNearestScope();
+                            while (s) {
+                                if (auto* sd2 = dynamic_cast<StructDeclNode*>(s)) {
+                                    sn = sd2->name().getText();
+                                    break;
+                                }
+                                s = s->parentScope();
+                            }
+                            if (sn == "Self") return {nullptr, -1};
+                        }
+                        auto* idxExpr = get->indices()[0];
+                        if (auto* idxLit = dynamic_cast<ExprLiteralNode*>(idxExpr)) {
+                            if (auto* intLit = dynamic_cast<LiteralIntNode*>(idxLit->literal())) {
+                                Token tok = intLit->getValue();
+                                i64 idx = sema::parseIntLiteral(tok.getText(),
+                                    static_cast<int>(tok.getLine()),
+                                    static_cast<int>(tok.getCharPositionInLine()) + 1);
+                                if (idx >= 0) {
+                                    auto* s = expr->findNearestScope();
+                                    FileNode* file = dynamic_cast<FileNode*>(s);
+                                    while (!file && s) {
+                                        s = s->parentScope();
+                                        file = dynamic_cast<FileNode*>(s);
+                                    }
+                                    StructDeclNode* sd = nullptr;
+                                    if (file) {
+                                        sd = file->getStructDecl(sn);
+                                        if (!sd) {
+                                            auto* p = dynamic_cast<ScopeNode*>(file);
+                                            while (p) {
+                                                p = dynamic_cast<ScopeNode*>(p->parentScope());
+                                                if (auto* pf = dynamic_cast<FileNode*>(p)) {
+                                                    sd = pf->getStructDecl(sn);
+                                                    if (sd) break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (sd) {
+                                        int nonStaticCount = 0;
+                                        for (auto& f : sd->fields()) {
+                                            if (f->isStatic()) continue;
+                                            if (nonStaticCount == idx) {
+                                                return {sd, sd->fieldIndex(f->name().getText())};
+                                            }
+                                            ++nonStaticCount;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             // Case 2: Variable reference — trace through let definition
             if (auto* exLit = dynamic_cast<ExprLiteralNode*>(expr)) {
                 if (auto* objLit = dynamic_cast<LiteralObjNode*>(exLit->literal())) {
@@ -983,12 +1046,12 @@ TypeInfo ExprDotNode::getType() const {
             // file 自身找不到时走父 FileNode (SDK) 链, 与 lookupSpecBoundMethodRetType
             // 同款; 不打通会导致 t.<SdkStructField> getType 回落到 baseExpr type
             // (sema 不知道字段实类型, 重载解析挑错).
-            auto structDecl = file->getStructDecl(actualType.name);
+            auto structDecl = file->getStructDecl(actualType.name, /*includeCompilerInner=*/true);
             if (!structDecl) {
                 ScopeNode* p = file->parentScope();
                 while (p && !structDecl) {
                     if (auto pf = dynamic_cast<FileNode*>(p)) {
-                        structDecl = pf->getStructDecl(actualType.name);
+                        structDecl = pf->getStructDecl(actualType.name, /*includeCompilerInner=*/true);
                     }
                     p = p->parentScope();
                 }
@@ -1216,7 +1279,13 @@ const vector<p<ExprNode>>& ExprGetNode::indices() const {
 
 TypeInfo ExprGetNode::getType() const {
     auto arrayType = _arrayExpr->getType();
-    
+
+    // Auto-deref: [T * N]& → [T * N] (Ref<Array<...>>)
+    if (arrayType.isRef()) {
+        auto inner = arrayType.refElementType();
+        if (inner) arrayType = *inner;
+    }
+
     if (arrayType.isArrayGeneric()) {
         auto elemType = arrayType.arrayGenericElementType();
         if (!elemType) {
@@ -1580,7 +1649,7 @@ TypeInfo ExprPathCallNode::getType() const {
     // 静态路径; getType 返回对应 SDK 类型供下游 (assignment / call) 推断.
     // LHS 必须是 struct (有 StructDecl), 才能区分于 enum::variant.
     string rhs = _variantName.getText();
-    if (_args.empty() && (rhs == "type" || rhs == "fields")) {
+    if (_args.empty() && (rhs == "type" || rhs == "fields" || rhs == "methods" || rhs == "variants")) {
         auto findStruct = [&](const string& sn) -> StructDeclNode* {
             if (!file) return nullptr;
             if (auto* sd = file->getStructDecl(sn)) return sd;
@@ -1593,12 +1662,25 @@ TypeInfo ExprPathCallNode::getType() const {
             }
             return nullptr;
         };
-        if (findStruct(n)) {
+        if (auto* sd = findStruct(n)) {
             if (rhs == "type") return TypeInfo("Type");
-            // fields → Array<Field>
-            vector<sp<TypeInfo>> ga;
-            ga.push_back(std::make_shared<TypeInfo>("Field"));
-            return {"Array", ga};
+            // fields / methods / variants → [T& * N]&
+            auto withArrayRef = [&](const string& elemTypeName) -> TypeInfo {
+                auto elemType = std::make_shared<TypeInfo>(elemTypeName);
+                auto elemRef = std::make_shared<TypeInfo>("Ref", vector<sp<TypeInfo>>{elemType});
+                u64 N = 0;
+                if (rhs == "fields" && sd) {
+                    for (auto& f : sd->fields()) {
+                        if (!f->isStatic()) ++N;
+                    }
+                }
+                // methods / variants: N=0 for now (not yet populated)
+                auto arr = std::make_shared<TypeInfo>(elemRef, N);
+                return {"Ref", {arr}};
+            };
+            if (rhs == "fields")  return withArrayRef("Field");
+            if (rhs == "methods") return withArrayRef("Method");
+            if (rhs == "variants") return withArrayRef("Variant");
         }
     }
 

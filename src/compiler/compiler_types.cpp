@@ -571,6 +571,40 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         return it->second;
     }
 
+    // DRAFT-spec-reflect: Type / Field / Method / Variant — #CompilerInner struct,
+    // LLVM layout 由编译器硬编码 (SDK 声明仅 name String 字段可见, 其余 slot 隐藏).
+    {
+        auto* ptrTy = llvm::PointerType::get(_context, 0);
+        // Resolve String LLVM type: try cache first, then getLLVMType, then build directly.
+        // String = { Array_u32 } = { { ptr } } (Array_u32 is a single-ptr struct).
+        auto* stringTy = [&]() -> llvm::Type* {
+            auto cit = _structTypes.find("String");
+            if (cit != _structTypes.end()) return cit->second;
+            auto* resolved = getLLVMType(TypeInfo("String"));
+            if (resolved) return resolved;
+            // Fallback: build String type directly (test context, SDK not yet loaded)
+            vector<llvm::Type*> arrFields = {ptrTy};
+            auto* arrU32 = llvm::StructType::get(_context, arrFields);
+            vector<llvm::Type*> strFields = {arrU32};
+            return llvm::StructType::get(_context, strFields);
+        }();
+        if (type.name == "Field" || type.name == "Method" || type.name == "Variant") {
+            vector<llvm::Type*> fields = {stringTy};
+            auto* st = llvm::StructType::create(_context, fields, "reflect." + type.name);
+            _structTypes[type.name] = st;
+            DEBUG_LOG_VAL("    -> Reflect struct (builtin)", type.name);
+            return st;
+        }
+        if (type.name == "Type") {
+            // layout: { String name } — fields/methods/variants refs 为独立全局
+            vector<llvm::Type*> fields = {stringTy};
+            auto* st = llvm::StructType::create(_context, fields, "reflect.Type");
+            _structTypes[type.name] = st;
+            DEBUG_LOG_VAL("    -> Reflect Type struct (builtin)", "Type");
+            return st;
+        }
+    }
+
     // 尝试查找并创建结构体类型
     auto structDecl = _file->getStructDecl(type.name);
     p<FileNode> sourceFile = _file;

@@ -517,6 +517,22 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 }
                 auto callValue = compileExpr(expr);
                 rhsPtr = callValue;
+            } else if (auto pathCall = dynamic_cast<ExprPathCallNode*>(expr)) {
+                // Static path returning T& (e.g. Counter::fields → [Field& * N]&)
+                if (!pathCall->getType().isRef()) {
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3019)
+                        .withHint("静态路径不返回 T& 类型，无法初始化 T& 局部");
+                }
+                auto pathValue = compileExpr(expr);
+                rhsPtr = pathValue;
+            } else if (auto getNode = dynamic_cast<ExprGetNode*>(expr)) {
+                // Array indexing returning T& (e.g. fs[0] where fs: [T& * N]&)
+                if (!getNode->getType().isRef()) {
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3019)
+                        .withHint("数组索引不返回 T& 类型，无法初始化 T& 局部");
+                }
+                auto getValue = compileExpr(expr);
+                rhsPtr = getValue;
             } else {
                 throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3019)
                     .withHint("T& 局部初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量），或 `val r T& = as_ref(box)`");
@@ -1282,16 +1298,14 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             for (auto& stmt : _currentFnNode->body()) {
                 if (auto* letStmt = dynamic_cast<StatementDeclareAssignNode*>(stmt)) {
                     if (letStmt->name().getText() == objName) {
-                        // 追踪 init 表达式: 期望 Point::fields.at(N) 形态
+                        // 追踪 init 表达式: 期望 Point::fields.at(N) 或 Point::fields[N] 形态
                         auto* init = letStmt->expr();
+                        // Pattern A: .at(N) call (legacy Array<Field>)
                         if (auto* call = dynamic_cast<ExprCallNode*>(init)) {
-                            // call = .at(N) on fields
                             if (call->getArgs().size() == 1) {
                                 if (auto* pc = dynamic_cast<ExprPathCallNode*>(call->getCalleeExpr())) {
-                                    // pc = Type::fields(.at)
                                     if (pc->variantName().getText() == "at" && pc->enumName().getText() != "") {
                                         string structName = pc->enumName().getText();
-                                        // 找出 N（字段索引）
                                         auto* idxExpr = call->getArgs()[0];
                                         if (auto* idxLit = dynamic_cast<ExprLiteralNode*>(idxExpr)) {
                                             if (auto* intLit = dynamic_cast<LiteralIntNode*>(idxLit->literal())) {
@@ -1305,7 +1319,42 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                                                         sd = _yux->sdkFile()->getStructDecl(structName);
                                                     }
                                                     if (sd) {
-                                                        // 按非静态字段序找 idx 对应的字段
+                                                        int nonStaticCount = 0;
+                                                        for (auto& f : sd->fields()) {
+                                                            if (f->isStatic()) continue;
+                                                            if (nonStaticCount == static_cast<int>(idx)) {
+                                                                fieldIdx = sd->fieldIndex(f->name().getText());
+                                                                break;
+                                                            }
+                                                            ++nonStaticCount;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // Pattern B: [N] indexing (new [Field& * N]&)
+                        if (!sd) if (auto* getNode = dynamic_cast<ExprGetNode*>(init)) {
+                            if (getNode->indices().size() == 1) {
+                                if (auto* pc = dynamic_cast<ExprPathCallNode*>(getNode->arrayExpr())) {
+                                    if (pc->variantName().getText() == "fields" && pc->enumName().getText() != "") {
+                                        string structName = pc->enumName().getText();
+                                        auto* idxExpr = getNode->indices()[0];
+                                        if (auto* idxLit = dynamic_cast<ExprLiteralNode*>(idxExpr)) {
+                                            if (auto* intLit = dynamic_cast<LiteralIntNode*>(idxLit->literal())) {
+                                                i64 idx = sema::parseIntLiteral(intLit->getValue().getText(),
+                                                    static_cast<int>(intLit->getValue().getLine()),
+                                                    static_cast<int>(intLit->getValue().getCharPositionInLine()) + 1);
+                                                if (idx >= 0) {
+                                                    auto* file = _file;
+                                                    sd = file->getStructDecl(structName);
+                                                    if (!sd && _yux && _yux->sdkFile()) {
+                                                        sd = _yux->sdkFile()->getStructDecl(structName);
+                                                    }
+                                                    if (sd) {
                                                         int nonStaticCount = 0;
                                                         for (auto& f : sd->fields()) {
                                                             if (f->isStatic()) continue;

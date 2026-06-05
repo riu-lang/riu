@@ -143,6 +143,12 @@ private:
     }
 
     void registerBorrow(const std::string& refName, const std::string& rootName, int line) {
+        // $rodata: immortal root (reflect rodata / static data), never goes out of scope
+        if (rootName == "$rodata") {
+            _refToRoot[refName] = rootName;
+            _scopes.back().borrows.push_back(refName);
+            return;
+        }
         if (_declared.find(rootName) == _declared.end()) {
             // 根对象不在当前活跃作用域链中：§8.6.5.1 违规
             throw YuxError(line, ErrorCode::E4002, refName, rootName);
@@ -221,6 +227,30 @@ private:
                 auto name = obj->getValue().getText();
                 // 拷绑：name 必定是 T&，refToRoot 应有记录。退路：当作 name 自己。
                 return resolveRoot(name);
+            }
+        }
+        // [T& * N] 索引返回 T&: arr[i] → 通过 arr 追根
+        if (auto getNode = dynamic_cast<ExprGetNode*>(expr)) {
+            if (getNode->getType().isRef()) {
+                auto* arrExpr = getNode->arrayExpr();
+                // 变量数组: fs[0] 其中 fs 是 T& 局部变量
+                if (auto litArr = dynamic_cast<ExprLiteralNode*>(arrExpr)) {
+                    if (auto obj = dynamic_cast<LiteralObjNode*>(litArr->literal())) {
+                        return resolveRoot(obj->getValue().getText());
+                    }
+                }
+                // 静态路径: Counter::fields[0] → rodata, 使用 immortal sentinel
+                if (dynamic_cast<ExprPathCallNode*>(arrExpr)) {
+                    return "$rodata";
+                }
+                // 链式索引: arr[i][j]
+                return rootFromRefInit(arrExpr, line);
+            }
+        }
+        // 静态路径返回 T&: Counter::fields / Counter::type → rodata reference
+        if (auto path = dynamic_cast<ExprPathCallNode*>(expr)) {
+            if (path->getType().isRef()) {
+                return "$rodata";
             }
         }
         // §8.6.5.7 as_ref(box) 站点根追溯：根 = box 的根

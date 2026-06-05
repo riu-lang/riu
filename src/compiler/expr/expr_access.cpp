@@ -34,8 +34,19 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
 
     DEBUG_LOG_VAL("    Expr: ArrayGet", arrayType.name);
 
+    // Auto-deref: [T * N]& → [T * N] (Ref<Array<...>>)
+    TypeInfo derefArrayType = arrayType;
+    bool isRefArray = false;
+    if (arrayType.isRef()) {
+        auto inner = arrayType.refElementType();
+        if (inner) {
+            derefArrayType = *inner;
+            isRefArray = true;
+        }
+    }
+
     llvm::Value* currentPtr = nullptr;
-    TypeInfo currentType = arrayType;
+    TypeInfo currentType = derefArrayType;
 
     if (auto literalNode = dynamic_cast<ExprLiteralNode*>(arrayExpr)) {
         if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literalNode->literal())) {
@@ -62,12 +73,28 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
         }
     }
 
+    // General fallback: compile the base expression to get the array value/ref
     if (!currentPtr) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3061);
+        auto baseVal = compileExpr(arrayExpr);
+        if (!baseVal) {
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3061);
+        }
+        auto valTy = getLLVMType(arrayType);
+        auto alloca = _builder.CreateAlloca(valTy, nullptr, "array.base");
+        _builder.CreateStore(baseVal, alloca);
+        currentPtr = alloca;
+        // If the array was accessed via reference (e.g. [T * N]&), load the array pointer
+        if (isRefArray) {
+            currentPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), currentPtr, "array.ref.load");
+        }
     }
+    // Note: for variable lookups, currentPtr from _localVarPtrs is already usable directly:
+    //   - T& variables: currentPtr is the reference value (ptr to array)
+    //   - non-T& variables: currentPtr is the alloca
+    // No isRefArray load needed in that path.
 
-    if (arrayType.isArrayGeneric()) {
-        auto elemType = arrayType.arrayGenericElementType();
+    if (derefArrayType.isArrayGeneric()) {
+        auto elemType = derefArrayType.arrayGenericElementType();
         if (!elemType) {
             // Phase 3.4.g: ExprGetNode::getType 已抛 E3057 (同条件, kMigratedCodes 命中);
             // 这里的 E3055 在 sema 跑过后不可达, 保留作幂等防御性双跑。
@@ -84,7 +111,7 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
         return _builder.CreateLoad(elemLLVMType, elemPtr, "array.elem.load");
     }
 
-    if (!arrayType.isArray()) {
+    if (!derefArrayType.isArray()) {
         // Phase 3.4.g: ExprGetNode::getType 已抛 E3062 (kMigratedCodes 命中,
         // SemaPass 自动重抛), 此处不可达; 保留作幂等防御性双跑。
         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3062, arrayType.name);
@@ -197,9 +224,9 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
         }
     }
 
-    auto structDecl = _file->getStructDecl(actualType.name);
+    auto structDecl = _file->getStructDecl(actualType.name, /*includeCompilerInner=*/true);
     if (!structDecl && _yux && _yux->sdkFile()) {
-        structDecl = _yux->sdkFile()->getStructDecl(actualType.name);
+        structDecl = _yux->sdkFile()->getStructDecl(actualType.name, /*includeCompilerInner=*/true);
     }
 
     if (structDecl) {
@@ -312,7 +339,7 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
     }
     auto innerStructDecl = _file->getStructDecl(innerType->name);
     if (!innerStructDecl && _yux && _yux->sdkFile()) {
-        innerStructDecl = _yux->sdkFile()->getStructDecl(innerType->name);
+        innerStructDecl = _yux->sdkFile()->getStructDecl(innerType->name, /*includeCompilerInner=*/true);
     }
     if (!innerStructDecl) {
         throw YuxError(node->resolveLineNumber(), node->resolveColumn(),

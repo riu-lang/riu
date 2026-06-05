@@ -1597,45 +1597,37 @@ fn assert_starts_with(s String&, prefix String&) {
 }
 
 ; ==================== DRAFT-spec-reflect Phase 2：反射 metadata 数据类型 ====================
-; Type / Method / Variant：普通数据 struct，反射节点的 owned 容器（Phase 3 codegen 发射 .rodata）
-; Field：#CompilerInner stub，Phase 5 才落地 `Field.value` sema 重写；Phase 2 仅占位 `name`
-; 完整 layout（offset / type 等）留到 Phase 3 codegen 实发射节点时再补齐（涉及 Type↔Field
-; 互递归引用 / 占位数组语法 / usize 等需先在 spec 收口）
-
-; reflect rodata 节点的 String 字段指向 immortal Block (strong=0xFFFFFFFF);
-; 显式 destructor 空体 - 迫使 SDK TU emit 之, 字段级 release 走 immortal no-op.
+; Type / Field / Method / Variant: #CompilerInner struct, 布局由编译器硬编码.
+; SDK 仅声明 user-visible 字段 (name String), fields/methods/variants 隐藏 slot
+; 由 ensureReflectTypeGlobal codegen 直接写入, 用户通过 Counter::fields 静态路径访问.
 ; Field 先于 Type 声明 (Type.fields 引用 Field, 避免前向引用).
+; layout (编译器硬编码):
+;   Field   = { String name }
+;   Method  = { String name }
+;   Variant = { String name }
+;   Type    = { String name, ptr fields_ref, ptr methods_ref, ptr variants_ref }
+;   fields_ref → [N x ptr]  (每个 ptr 通过 constexpr GEP 指向 data 数组中的 Field)
+
+#CompilerInner
 struct Field {
   #Frozen
   name String
-
-  fn ~() {
-  }
 }
 
+#CompilerInner
 struct Method {
   #Frozen
   name String
-
-  fn ~() {
-  }
 }
 
+#CompilerInner
 struct Variant {
   #Frozen
   name String
-
-  fn ~() {
-  }
 }
 
+#CompilerInner
 struct Type {
   #Frozen
   name String
-  #Frozen
-  fields Array<Field>
-
-  fn ~() {
-    ; String / Array<Field> 字段自动释放; immortal block 触发跳过
-  }
 }
