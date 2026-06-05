@@ -4,9 +4,8 @@
 // 二元 / 算术 / 比较表达式编译：从 compiler_expr.cpp 拆出 (P1 Phase 4)。
 // 方法体一字不动。
 
-#include "../compiler_runtime.h"
 #include "../compiler.h"
-#include <algorithm>
+#include "../compiler_runtime.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
 #include "analyzer/symbol_suggest.h"
@@ -15,22 +14,22 @@
 #include "ast/node/expr_node.h"
 #include "ast/node/literal_node.h"
 #include "ast/yux.h"
+#include "sema/call_resolve.h"
+#include <algorithm>
 #include <cassert>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
-#include "sema/call_resolve.h"
 #include <set>
 
 // ==================== 自定义类型运算符方法调用 ====================
 
 // 编译自定义类型的二元运算符方法调用
 // 将运算符表达式转换为方法调用，如 a + b -> a.plus(b)
-llvm::Value* Compiler::compileCustomTypeBinaryOp(
-    p<ExprNode> leftExpr, p<ExprNode> rightExpr, const TypeInfo& leftType,
-    const string& methodName, int lineNum) {
-    
+llvm::Value* Compiler::compileCustomTypeBinaryOp(p<ExprNode> leftExpr, p<ExprNode> rightExpr, const TypeInfo& leftType,
+                                                 const string& methodName, int lineNum) {
+
     DEBUG_LOG_VAL("    Expr: CustomTypeBinaryOp", leftType.name << "." << methodName);
-    
+
     // 获取左操作数的指针
     llvm::Value* leftPtr = nullptr;
     if (auto leftLiteral = dynamic_cast<ExprLiteralNode*>(leftExpr)) {
@@ -42,7 +41,7 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(
             }
         }
     }
-    
+
     if (!leftPtr) {
         auto leftVal = compileExpr(leftExpr);
         auto structType = getLLVMType(leftType);
@@ -53,7 +52,7 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(
         _builder.CreateStore(leftVal, alloca);
         leftPtr = alloca;
     }
-    
+
     auto rightType = rightExpr->getType();
     // Phase 4b: 右操作数是 T& 字面变量时，从 _localVarPtrs 直接取裸 ptr，
     // 避免 compileExpr 对 ref 自动 load 出 struct 值后又 alloca 写回 —— 写回会
@@ -72,9 +71,6 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(
         rightVal = compileExpr(rightExpr);
     }
 
-    // 查找方法（spec §7.2.3.3）：二元运算符方法形参强制 Self&，
-    // 因此查表使用 [leftType, Ref<rightType>]，原 eq(other Self) 形态不再被运算符触发。
-    // 运算符位置自动取址（spec §7.2.3.6）：右操作数自动包成 Ref，无需用户写 &。
     // Phase 4b: 操作数本身是 T& 时（如 fn 形参 `actual String&`），剥掉一层 Ref
     // 与方法注册的 [Self, Self&] 对齐；不剥则 lookup 失败导致调用方编译期崩溃。
     // v0.6 Phase 2b: 透明类型别名解析，使 `A = i32` 这类别名走到运算符方法时
@@ -84,59 +80,108 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(
     effLeftType = applySubst(effLeftType);
     effRightType = applySubst(effRightType);
     string methodFullName = effLeftType.name + "." + methodName;
-    TypeInfo rightRefType;
-    rightRefType.kind = TypeKind::Generic;
-    rightRefType.name = "Ref";
-    rightRefType.genericArgs.push_back(make_shared<TypeInfo>(effRightType));
-    vector<TypeInfo> methodParamTypes;
-    methodParamTypes.push_back(effLeftType);
-    methodParamTypes.push_back(rightRefType);
 
-    auto methodSymbol = _file->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
-    if (!methodSymbol && _yux && _yux->sdkFile()) {
-        methodSymbol = _yux->sdkFile()->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
+    // 查找方法（spec §7.2.3.3）：二元运算符方法形参可为任意类型，
+    // 编译器遍历 leftType 的全部同名方法候选，按优先级匹配右操作数类型：
+    //   1. 精确匹配：形参非 Ref，类型一致，无需自动取址
+    //   2. 自动取址匹配：形参为 Ref<T>，T 与右操作数类型一致（§7.2.3.6）
+    // 同一优先级内多个候选歧义 → E6014；无匹配 → E3073。
+    vector<FnSymbolInfo*> candidates;
+    _file->collectFnOverloads(methodFullName, candidates);
+    if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
+        _yux->sdkFile()->collectFnOverloads(methodFullName, candidates);
     }
-    
-    if (!methodSymbol) {
-        // Bucket 6 (CURRENT-check.md): E3073 + byval hint 已由 SemaPass 接管,
+    // 去重：_parentScope 递归 + SDK 直查可能返回同一 FnSymbolInfo*
+    std::ranges::sort(candidates);
+    auto [dupFirst, dupLast] = std::ranges::unique(candidates);
+    candidates.erase(dupFirst, dupLast);
+
+    FnSymbolInfo* methodSymbol = nullptr;
+    vector<FnSymbolInfo*> exactMatches;
+    vector<FnSymbolInfo*> refMatches;
+
+    for (auto* cand : candidates) {
+        // 二元运算符方法签名：params[0] = 接收者, params[1] = 右操作数
+        if (cand->params.size() != 2) continue;
+        const TypeInfo& candParam = cand->params[1];
+
+        if (!candParam.isRef() && candParam == effRightType) {
+            exactMatches.push_back(cand);
+        } else if (candParam.isRef()) {
+            auto refElem = candParam.refElementType();
+            if (refElem && *refElem == effRightType) {
+                refMatches.push_back(cand);
+            }
+        }
+    }
+
+    if (exactMatches.size() > 1) {
+        string sigs;
+        for (auto* m : exactMatches) {
+            if (!sigs.empty()) sigs += " | ";
+            sigs += effLeftType.name + "." + methodName + "(" + m->params[1].name + ")";
+        }
+        throw YuxError(lineNum, ErrorCode::E6014, methodFullName, effRightType.name, exactMatches.size(), sigs);
+    }
+    if (exactMatches.size() == 1) {
+        methodSymbol = exactMatches[0];
+    } else if (refMatches.size() > 1) {
+        string sigs;
+        for (auto* m : refMatches) {
+            if (!sigs.empty()) sigs += " | ";
+            sigs += effLeftType.name + "." + methodName + "(" + m->params[1].name + ")";
+        }
+        throw YuxError(lineNum, ErrorCode::E6014, methodFullName, effRightType.name, refMatches.size(), sigs);
+    } else if (refMatches.size() == 1) {
+        methodSymbol = refMatches[0];
+    } else {
+        // Bucket 6 (CURRENT-check.md): E3073 无匹配候选,
         // 这里保留作幂等防御性双跑 (sema 已抛, 正常情况到不了).
         FileNode* sdkFilePtr = (_yux && _yux->sdkFile()) ? _yux->sdkFile() : nullptr;
-        sema::validateBinOpMethodResolution(_file, sdkFilePtr,
-                                            effLeftType, effRightType, methodName,
-                                            lineNum, 0);
+        sema::validateBinOpMethodResolution(_file, sdkFilePtr, effLeftType, effRightType, methodName, lineNum, 0);
         // unreachable: helper 内必抛
     }
-    
+
     // 准备方法参数
     vector<llvm::Value*> methodArgs;
     methodArgs.push_back(leftPtr);
-    
-    // 检查右操作数是否需要通过指针传递
-    auto rightStructDecl = _file->getStructDecl(effRightType.name);
-    if (!rightStructDecl && _yux && _yux->sdkFile()) {
-        rightStructDecl = _yux->sdkFile()->getStructDecl(effRightType.name);
-    }
-    if (rightStructDecl && !isBuiltinType(effRightType.name)) {
-        // 当右操作数本身是 T&（即 rightVal 已是 ptr）时，直接传 ptr，避免错误的
-        // alloca-then-store-into-Struct 路径（structType=Struct，但 rightVal=ptr，类型不匹配）
+
+    // 确定右操作数的 ABI 传递方式（spec §7.2.3.3）：
+    // 形参为 Ref<T> 或 structParamUsesPointer → 传指针；其余按值。
+    // 与 getLLVMFunctionType / compileFn 的方法形参 ABI 保持一致。
+    TypeInfo declaredRhsType = methodSymbol->params.size() >= 2 ? methodSymbol->params[1] : rightType;
+    bool rhsByPtr = declaredRhsType.isRef() || structParamUsesPointer(declaredRhsType.name);
+
+    if (rhsByPtr) {
+        // 形参期望指针
         if (rightType.isRef()) {
+            // 右操作数本身是引用，rightVal 已是指针，直接传
             methodArgs.push_back(rightVal);
         } else {
+            // 右操作数是值，取址后传递
             auto structType = getLLVMType(effRightType);
             auto alloca = _builder.CreateAlloca(structType, nullptr, "op_rhs_tmp");
             _builder.CreateStore(rightVal, alloca);
             methodArgs.push_back(alloca);
         }
     } else {
-        methodArgs.push_back(rightVal);
+        // 形参期望值（内置标量 / 平凡结构体）
+        if (rightType.isRef()) {
+            // 右操作数是引用，需要 load 后按值传递
+            auto structType = getLLVMType(effRightType);
+            auto loaded = _builder.CreateLoad(structType, rightVal, "op_rhs_val");
+            methodArgs.push_back(loaded);
+        } else {
+            // 右操作数是值，直接传递
+            methodArgs.push_back(rightVal);
+        }
     }
-    
+
     // 获取或创建方法函数
-    // mangle 与 LLVM 签名都按 methodSymbol 实际声明的形参类型走（spec §7.2.3.3 后是 Ref<T>），
-    // 与 SDK / 用户代码侧定义的方法符号一一对应。
+    // mangle 与 LLVM 签名都按 methodSymbol 实际声明的形参类型走
+    // （可为任意类型，spec §7.2.3.3），与 SDK / 用户代码侧定义的方法符号一一对应。
     string ownerMod = methodSymbol->moduleName.empty() ? _file->moduleName() : methodSymbol->moduleName;
     bool methPriv = !methodName.empty() && methodName[0] == '_';
-    TypeInfo declaredRhsType = methodSymbol->params.size() >= 2 ? methodSymbol->params[1] : rightType;
     vector<TypeInfo> argTypes;
     argTypes.push_back(declaredRhsType);
     string mangledName = Mangler::method(ownerMod, effLeftType.name, methodName, argTypes, methPriv);
@@ -145,9 +190,6 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(
     if (!fn) {
         vector<llvm::Type*> paramTypes;
         paramTypes.push_back(llvm::PointerType::get(_context, 0));
-        // 形参为 Ref<T> / 非 builtin struct 时按 ptr 传，其余按值
-        bool rhsByPtr = declaredRhsType.isRef()
-                        || (rightStructDecl && !isBuiltinType(declaredRhsType.name));
         if (rhsByPtr) {
             paramTypes.push_back(llvm::PointerType::get(_context, 0));
         } else {
@@ -157,10 +199,9 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(
         auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
         fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
     }
-    
+
     return _builder.CreateCall(fn, methodArgs);
 }
-
 
 llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
@@ -182,7 +223,7 @@ llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
         string methodName = (node->op() == ExprAddSubNode::Op::Add) ? "plus" : "minus";
         return compileCustomTypeBinaryOp(node->left(), node->right(), leftType, methodName, node->getLineNumber());
     }
-    
+
     // 内置类型：直接生成 LLVM IR
     auto left = compileExpr(node->left());
     auto right = compileExpr(node->right());
@@ -208,11 +249,14 @@ llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
 
     string opStr;
     switch (node->op()) {
-    case ExprMulDivModNode::Op::Mul: opStr = "*";
+    case ExprMulDivModNode::Op::Mul:
+        opStr = "*";
         break;
-    case ExprMulDivModNode::Op::Div: opStr = "/";
+    case ExprMulDivModNode::Op::Div:
+        opStr = "/";
         break;
-    case ExprMulDivModNode::Op::Mod: opStr = "%";
+    case ExprMulDivModNode::Op::Mod:
+        opStr = "%";
         break;
     }
     DEBUG_LOG_VAL("    Expr: MulDivMod", opStr << " : " << type.name);
@@ -221,9 +265,15 @@ llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
     if (!isBuiltinType(leftType.name)) {
         string methodName;
         switch (node->op()) {
-        case ExprMulDivModNode::Op::Mul: methodName = "mul"; break;
-        case ExprMulDivModNode::Op::Div: methodName = "div"; break;
-        case ExprMulDivModNode::Op::Mod: methodName = "mod"; break;
+        case ExprMulDivModNode::Op::Mul:
+            methodName = "mul";
+            break;
+        case ExprMulDivModNode::Op::Div:
+            methodName = "div";
+            break;
+        case ExprMulDivModNode::Op::Mod:
+            methodName = "mod";
+            break;
         }
         return compileCustomTypeBinaryOp(node->left(), node->right(), leftType, methodName, node->getLineNumber());
     }
@@ -267,15 +317,20 @@ llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
 
     string opStr;
     switch (node->op()) {
-    case ExprBinOpNode::Op::And: opStr = "&";
+    case ExprBinOpNode::Op::And:
+        opStr = "&";
         break;
-    case ExprBinOpNode::Op::Or: opStr = "|";
+    case ExprBinOpNode::Op::Or:
+        opStr = "|";
         break;
-    case ExprBinOpNode::Op::Xor: opStr = "^";
+    case ExprBinOpNode::Op::Xor:
+        opStr = "^";
         break;
-    case ExprBinOpNode::Op::Shl: opStr = "<<";
+    case ExprBinOpNode::Op::Shl:
+        opStr = "<<";
         break;
-    case ExprBinOpNode::Op::Shr: opStr = ">>";
+    case ExprBinOpNode::Op::Shr:
+        opStr = ">>";
         break;
     }
     DEBUG_LOG_VAL("    Expr: BinOp", opStr << " : " << type.name);
@@ -284,11 +339,21 @@ llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
     if (!isBuiltinType(leftType.name)) {
         string methodName;
         switch (node->op()) {
-        case ExprBinOpNode::Op::And: methodName = "and"; break;
-        case ExprBinOpNode::Op::Or: methodName = "or"; break;
-        case ExprBinOpNode::Op::Xor: methodName = "xor"; break;
-        case ExprBinOpNode::Op::Shl: methodName = "shl"; break;
-        case ExprBinOpNode::Op::Shr: methodName = "shr"; break;
+        case ExprBinOpNode::Op::And:
+            methodName = "and";
+            break;
+        case ExprBinOpNode::Op::Or:
+            methodName = "or";
+            break;
+        case ExprBinOpNode::Op::Xor:
+            methodName = "xor";
+            break;
+        case ExprBinOpNode::Op::Shl:
+            methodName = "shl";
+            break;
+        case ExprBinOpNode::Op::Shr:
+            methodName = "shr";
+            break;
         }
         return compileCustomTypeBinaryOp(node->left(), node->right(), leftType, methodName, node->getLineNumber());
     }
@@ -315,7 +380,6 @@ llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
     throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3075);
 }
 
-
 llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     (void)node->getType();
@@ -323,9 +387,11 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
     auto rightType = applySubst(node->right()->getType());
 
     if (leftType != rightType) {
-        // Phase 3.4.g: ExprCompareNode::getType 已抛 E3004 (kMigratedCodes 命中,
-        // SemaPass 顶部 setResolvedType 自动重抛), 此处不可达; 保留作幂等防御性双跑。
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3004, leftType.name, rightType.name);
+        // spec §7.2.3.3: 非内置类型允许跨类型比较，类型匹配由方法解析完成；
+        // 内置类型跨类型时 getType 已抛 E3004 (kMigratedCodes)，此处不可达。
+        if (isBuiltinType(leftType.name)) {
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3004, leftType.name, rightType.name);
+        }
     }
 
     // Bucket 6 (CURRENT-check.md): E3078 (Weak ==/!=) + E3073 (Ptr ordering) 形态校验
@@ -346,21 +412,29 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
 
     string opStr;
     switch (node->op()) {
-    case ExprCompareNode::Op::Eq: opStr = "==";
+    case ExprCompareNode::Op::Eq:
+        opStr = "==";
         break;
-    case ExprCompareNode::Op::Ne: opStr = "!=";
+    case ExprCompareNode::Op::Ne:
+        opStr = "!=";
         break;
-    case ExprCompareNode::Op::Lt: opStr = "<";
+    case ExprCompareNode::Op::Lt:
+        opStr = "<";
         break;
-    case ExprCompareNode::Op::Le: opStr = "<=";
+    case ExprCompareNode::Op::Le:
+        opStr = "<=";
         break;
-    case ExprCompareNode::Op::Gt: opStr = ">";
+    case ExprCompareNode::Op::Gt:
+        opStr = ">";
         break;
-    case ExprCompareNode::Op::Ge: opStr = ">=";
+    case ExprCompareNode::Op::Ge:
+        opStr = ">=";
         break;
-    case ExprCompareNode::Op::AndAnd: opStr = "&&";
+    case ExprCompareNode::Op::AndAnd:
+        opStr = "&&";
         break;
-    case ExprCompareNode::Op::OrOr: opStr = "||";
+    case ExprCompareNode::Op::OrOr:
+        opStr = "||";
         break;
     }
     DEBUG_LOG_VAL("    Expr: Compare", opStr << " : " << leftType.name);
@@ -384,13 +458,26 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
     if (!isBuiltinType(leftType.name)) {
         string methodName;
         switch (node->op()) {
-        case ExprCompareNode::Op::Eq: methodName = "eq"; break;
-        case ExprCompareNode::Op::Ne: methodName = "ne"; break;
-        case ExprCompareNode::Op::Lt: methodName = "lt"; break;
-        case ExprCompareNode::Op::Le: methodName = "le"; break;
-        case ExprCompareNode::Op::Gt: methodName = "gt"; break;
-        case ExprCompareNode::Op::Ge: methodName = "ge"; break;
-        default: break;
+        case ExprCompareNode::Op::Eq:
+            methodName = "eq";
+            break;
+        case ExprCompareNode::Op::Ne:
+            methodName = "ne";
+            break;
+        case ExprCompareNode::Op::Lt:
+            methodName = "lt";
+            break;
+        case ExprCompareNode::Op::Le:
+            methodName = "le";
+            break;
+        case ExprCompareNode::Op::Gt:
+            methodName = "gt";
+            break;
+        case ExprCompareNode::Op::Ge:
+            methodName = "ge";
+            break;
+        default:
+            break;
         }
         return compileCustomTypeBinaryOp(node->left(), node->right(), leftType, methodName, node->getLineNumber());
     }

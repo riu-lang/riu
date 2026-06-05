@@ -1,0 +1,2 @@
+[E6014]
+Ambiguous call to 'Vec2.mul(f64)': 2 overloads match

@@ -1,4 +1,0 @@
-[E3073]
-Type 'Point' does not support operator '+' (method 'plus' not found)
-找到同名方法 `Point.plus(Point)` 但形参按值
-运算符重载要求形参类型为 `Point&`

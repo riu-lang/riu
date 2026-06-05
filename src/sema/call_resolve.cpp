@@ -1253,35 +1253,67 @@ void validateCompareOpForm(const TypeInfo& leftType,
     }
 }
 
-// Bucket 6 单点: 二元运算符方法解析 (E3073 + byval hint).
+// Bucket 6 单点: 二元运算符方法解析 (E3073 / E6014).
 //
-// 镜像 compiler_expr.cpp::compileCustomTypeBinaryOp 的 lookup + 二次探测;
+// spec §7.2.3.3: 遍历 leftType 的全部同名方法候选，
+// 精确匹配（形参非 Ref，类型一致）优先，其次自动取址（形参 Ref<T>，T 一致）。
+// 同优先级多候选歧义 → E6014；无匹配 → E3073。
 // 调用方负责事先剥 Ref / applySubst (Compiler) 或保证 leftType 为非泛型 struct (SemaPass).
 void validateBinOpMethodResolution(FileNode* file, FileNode* sdkFile,
                                    const TypeInfo& leftType, const TypeInfo& rightType,
                                    const string& methodName, int line, int col) {
     string methodFullName = leftType.name + "." + methodName;
 
-    // 优先签名: [leftType, Ref<rightType>]
-    TypeInfo rightRefType;
-    rightRefType.kind = TypeKind::Generic;
-    rightRefType.name = "Ref";
-    rightRefType.genericArgs.push_back(make_shared<TypeInfo>(rightType));
-    vector<TypeInfo> refParams{leftType, rightRefType};
-
-    FnSymbolInfo* sym = file ? file->lookupFnSymbolWithParams(methodFullName, refParams) : nullptr;
-    if (!sym && sdkFile) {
-        sym = sdkFile->lookupFnSymbolWithParams(methodFullName, refParams);
+    // 收集全部候选
+    vector<FnSymbolInfo*> candidates;
+    if (file) file->collectFnOverloads(methodFullName, candidates);
+    if (sdkFile && sdkFile != file) {
+        sdkFile->collectFnOverloads(methodFullName, candidates);
     }
-    if (sym) return;  // 命中正常签名 → 由 codegen 继续 emit, 不抛.
+    // 去重：_parentScope 递归 + SDK 直查可能返回同一 FnSymbolInfo*
+    // NOLINTBEGIN(modernize-use-ranges)
+    sort(candidates.begin(), candidates.end());
+    candidates.erase(unique(candidates.begin(), candidates.end()), candidates.end());
+    // NOLINTEND(modernize-use-ranges)
 
-    // 二次探测: 按值签名 [leftType, rightType]
-    vector<TypeInfo> byvalParams{leftType, rightType};
-    FnSymbolInfo* byvalSym = file ? file->lookupFnSymbolWithParams(methodFullName, byvalParams) : nullptr;
-    if (!byvalSym && sdkFile) {
-        byvalSym = sdkFile->lookupFnSymbolWithParams(methodFullName, byvalParams);
+    // 按优先级分类
+    int exactCount = 0;
+    int refCount = 0;
+    for (auto* cand : candidates) {
+        if (cand->params.size() != 2) continue;  // 二元运算符：接收者 + 1 形参
+        const TypeInfo& candParam = cand->params[1];
+
+        if (!candParam.isRef() && candParam == rightType) {
+            exactCount++;
+        } else if (candParam.isRef()) {
+            auto refElem = candParam.refElementType();
+            if (refElem && *refElem == rightType) {
+                refCount++;
+            }
+        }
     }
 
+    // E6014: 同优先级多候选歧义
+    if (exactCount > 1 || refCount > 1) {
+        string sigs;
+        for (auto* cand : candidates) {
+            if (cand->params.size() != 2) continue;
+            const TypeInfo& cp = cand->params[1];
+            bool matches = (!cp.isRef() && cp == rightType)
+                        || (cp.isRef() && cp.refElementType()
+                            && *cp.refElementType() == rightType);
+            if (!matches) continue;
+            if (!sigs.empty()) sigs += " | ";
+            sigs += leftType.name + "." + methodName + "(" + cp.name + ")";
+        }
+        int matchCount = exactCount + refCount;
+        throw YuxError(line, col, ErrorCode::E6014, methodFullName,
+                       rightType.name, matchCount, sigs);
+    }
+
+    if (exactCount == 1 || refCount == 1) return;  // 命中 → codegen 继续
+
+    // 无匹配 → E3073
     const char* opSym =
         methodName == "plus" ? "+" :
         methodName == "minus" ? "-" :
@@ -1299,13 +1331,7 @@ void validateBinOpMethodResolution(FileNode* file, FileNode* sdkFile,
         methodName == "le" ? "<=" :
         methodName == "gt" ? ">" :
         methodName == "ge" ? ">=" : methodName.c_str();
-    auto err = YuxError(line, col, ErrorCode::E3073, leftType.name, opSym, methodName);
-    if (byvalSym) {
-        err.withHint("找到同名方法 `" + methodFullName + "(" + rightType.name
-                     + ")` 但形参按值；运算符重载要求形参类型为 `" + rightType.name
-                     + "&`（见 docs/结构体.md「运算符重载」注意事项 #2）");
-    }
-    throw err;
+    throw YuxError(line, col, ErrorCode::E3073, leftType.name, opSym, methodName);
 }
 
 // Bucket 6 单点: 字符串模板插值 ToString 校验 (E3026).

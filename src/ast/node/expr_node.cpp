@@ -8,6 +8,7 @@
 
 #include "analyzer/symbol_suggest.h"
 #include "file_node.h"
+#include "types.h"
 #include "struct_node.h"
 #include "fn_node.h"
 #include "spec_node.h"
@@ -504,6 +505,10 @@ TypeInfo ExprAddSubNode::getType() const {
         if (isFlexibleIntExpr(_left) && tryInferIntType(_left, rightType)) {
             return rightType;
         }
+        // spec §7.2.3.3: 非内置类型允许跨类型形参，类型匹配由 codegen 方法解析完成
+        if (!isBuiltinType(leftType.name)) {
+            return leftType;
+        }
         throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3001, leftType.name, rightType.name);
     }
     return leftType;
@@ -545,6 +550,10 @@ TypeInfo ExprMulDivModNode::getType() const {
         if (isFlexibleIntExpr(_left) && tryInferIntType(_left, rightType)) {
             return rightType;
         }
+        // spec §7.2.3.3: 非内置类型允许跨类型形参，类型匹配由 codegen 方法解析完成
+        if (!isBuiltinType(leftType.name)) {
+            return leftType;
+        }
         throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3002, leftType.name, rightType.name);
     }
     return leftType;
@@ -585,6 +594,10 @@ TypeInfo ExprBinOpNode::getType() const {
         }
         if (isFlexibleIntExpr(_left) && tryInferIntType(_left, rightType)) {
             return rightType;
+        }
+        // spec §7.2.3.3: 非内置类型允许跨类型形参，类型匹配由 codegen 方法解析完成
+        if (!isBuiltinType(leftType.name)) {
+            return leftType;
         }
         throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3003, leftType.name, rightType.name);
     }
@@ -1129,6 +1142,10 @@ TypeInfo ExprCompareNode::getType() const {
             return TypeInfo("bool");
         }
         if (isFlexibleIntExpr(_left) && tryInferIntType(_left, rightType)) {
+            return TypeInfo("bool");
+        }
+        // spec §7.2.3.3: 非内置类型允许跨类型形参，类型匹配由 codegen 方法解析完成
+        if (!isBuiltinType(leftType.name)) {
             return TypeInfo("bool");
         }
         throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3004, leftType.name, rightType.name);
