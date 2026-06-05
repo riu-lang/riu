@@ -1,10 +1,3 @@
----
-description: yux 语法速查；编辑 *.yux 时自动附加
-globs:
-  - "**/*.yux"
-alwaysApply: false
----
-
 # yux 语法速查（简版）
 
 写 `*.yux` 时**必看**。这里只列容易踩坑、与 C++/Rust/Go 不同的点；语义细节查 `docs/`（每条末尾给了入口）。

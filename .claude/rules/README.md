@@ -6,14 +6,21 @@
 
 ## 模块
 
+### 自动加载（每次会话）
+
 | 文件 | 内容 |
 |------|------|
 | [behavior.md](behavior.md) | Claude / agent 通用行为约束（不改 g4、信息查证、写 yux 顺序、多步任务） |
 | [tasks-and-bugs.md](tasks-and-bugs.md) | `CURRENT.md` / `BUGS.md` 约定、测试前缀分组、实施日志归档 |
-| [spec-writeback.md](spec-writeback.md) | 语言面变更回写流程、`docs/spec/` 与 `docs/spec/draft/` 处理 |
-| [sema-codegen.md](sema-codegen.md) | Sema / Codegen 两段分离协议（写 C++ 时遵守） |
-| [yux-syntax.md](yux-syntax.md) | yux 语法速查（简版），编辑 `*.yux` 时自动附加；细节去 `docs/` 搜 |
 | [directory.md](directory.md) | 仓库目录结构 |
+
+### 按需手动读（`rules/` 目录，不自动加载）
+
+| 文件 | 内容 | 何时读 |
+|------|------|--------|
+| [yux-syntax.md](../../rules/yux-syntax.md) | yux 语法速查（简版） | 编辑 `*.yux` 时 |
+| [sema-codegen.md](../../rules/sema-codegen.md) | Sema / Codegen 两段分离协议 | 改 `src/sema/` 或 `src/compiler/` 时 |
+| [spec-writeback.md](../../rules/spec-writeback.md) | 语言面变更回写流程 | 改语言特性/语法/spec 时 |
 
 ## 怎么用
 

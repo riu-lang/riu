@@ -26,7 +26,7 @@
 
 ## 写 yux 代码前先看速查 + 按顺序读文档
 
-写 `*.yux` 时先翻 [yux-syntax.md](yux-syntax.md)（简版速查，列易踩坑点），再按需要往下查：
+写 `*.yux` 时先翻 [`rules/yux-syntax.md`](../../rules/yux-syntax.md)（简版速查，列易踩坑点），再按需要往下查：
 
 1. `docs/*.md`（中文教程）
 2. `src/yux*.g4`（权威语法）
@@ -60,4 +60,4 @@ PostToolUse hook (`.claude/hooks/format-cpp.ps1`) 每次 Edit/Write C++ 文件�
 
 ## 改语言面必须回写规范
 
-凡是新增 / 修改 / 删除语言特性、语法形态、用法语义、ABI 协议、内置类型行为等"涉及标准"的变更，落地前**先与用户确认条款措辞**，确认后同步更新 `docs/spec/` 与 CHANGELOG。详见 [spec-writeback.md](spec-writeback.md)。
+凡是新增 / 修改 / 删除语言特性、语法形态、用法语义、ABI 协议、内置类型行为等"涉及标准"的变更，落地前**先与用户确认条款措辞**，确认后同步更新 `docs/spec/` 与 CHANGELOG。详见 [`rules/spec-writeback.md`](../../rules/spec-writeback.md)（按需手动读）。

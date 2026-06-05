@@ -32,14 +32,19 @@ yux-lang/
 │   ├── yux-vscode/       VSCode 语法高亮插件（LSP 客户端走 `yux-lsp`）
 │   ├── yux-idea/         IntelliJ 插件（通过 LSP4IJ 接入 `yux-lsp`，含语法高亮 / 配色 / 代码风格）
 │   └── yux-claude-code/  Claude Code LSP 插件（marketplace 名 `yux-lang-lsp@yux-lang`，对接独立可执行 `yux-lsp-claude`）
+├── scripts/          构建/同步辅助脚本
+│   └── sync-deps.js     sync-deps 核心逻辑（读取 DEPS.json）
 ├── .claude/
-│   ├── rules/        本仓库专属规则模块（即本目录），`.trae/rules` 通过 sync-deps junction 到这里
-│   └── skills/       本仓库专属 Claude Code 技能（含 yux-lang-dev 上手指南）
+│   ├── rules/        自动加载的项目规则（behavior、tasks-and-bugs、directory），`.trae/rules` junction 到这里
+│   └── skills/       项目技能（仅 yux-lang-dev）
 ├── .trae/
 │   ├── rules         junction → ../.claude/rules
 │   └── skills        junction → ../.claude/skills
+├── rules/            按需手动读的规则（不自动加载）：yux-syntax、sema-codegen、spec-writeback
 ├── xmake.lua         顶层构建脚本
 ├── yux.toml          仓库自身的 dogfood 项目配置
+├── AGENT-XMAKE.md    xmake API 文档索引导航
+├── DEPS.json         第三方依赖声明
 ├── CURRENT.md        当前多步任务追踪，本地（不入 git）
 ├── CURRENT-*.md      其它任务，本地（不入 git）
 ├── BUGS.md           新发现的 bug 清单，本地（不入 git）

@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 最低限度先看 [`.claude/rules/behavior.md`](.claude/rules/behavior.md) 与 [`.claude/rules/tasks-and-bugs.md`](.claude/rules/tasks-and-bugs.md)；按任务性质再翻其余模块（[索引](.claude/rules/README.md)）。
 
-**编辑 `*.yux` 时**：自动附加 [`.claude/rules/yux-syntax.md`](.claude/rules/yux-syntax.md)（简版速查），细节去 `docs/` 搜。
+**编辑 `*.yux` 时**：手动读 [`rules/yux-syntax.md`](rules/yux-syntax.md)（简版速查），细节去 `docs/` 搜。
 
 其他参考：
 - [docs/index.md](docs/index.md) — 语言文档索引（中文）
