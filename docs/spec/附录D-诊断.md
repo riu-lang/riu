@@ -266,6 +266,20 @@ const-eval（E3140..E3144；引入自 [draft/DRAFT-const-eval.md](draft/DRAFT-co
 | E3143 | `Constant expression evaluation error in global \`let {}\` (overflow, division by zero, or unsupported operation; DRAFT-const-eval §4.7)` |
 | E3144 | `` \`#Const fn\` '{}' cannot be invoked in a constant expression: {} type '{}' is not in the const-eval whitelist (DRAFT-const-eval §4; allowed: scalar integer / float / bool) `` |
 
+static-vars（E3150..E3157；引入自 [draft/DRAFT-static-vars.md](draft/DRAFT-static-vars.md)，落地章节 §5.1.4 / §7.11 / §11.9 / §11.11）：
+
+| 码 | 模板 |
+|---|---|
+| E3150 | `#Static field '{}' requires an initializer (DRAFT-static-vars §4.3; v1 static fields must be initialized at declaration)` |
+| E3151 | `Cannot write to non-#Mut global/static '{}' (DRAFT-static-vars §4/§7; globals and static fields default to \`val\`; use \`#Mut let\` for globals or \`#Mut\\n#Static\` for static fields)` |
+| E3153 | `Circular module dependency detected involving '{}'; cannot determine global init order (DRAFT-static-vars §5.5; break the cycle or use lazy init)` |
+| E3154 | `Global \`let {}\` requires an initializer (DRAFT-static-vars §3.3; non-#Cval globals must be initialized at declaration)` |
+| E3155 | `Global/static initializer for '{}' must not contain try-catch; init must be infallible (DRAFT-static-vars §6)` |
+| E3156 | `Cross-module access to private static '{}' is not allowed (DRAFT-static-vars §4.4; v1 placeholder)` |
+| E3157 | `#Static field '{}' on generic struct '{}' is not allowed (DRAFT-static-vars §4.3; v1 prohibits static fields on generic structs)` |
+
+> E3152（实例访问静态字段 `obj.FIELD`）与 E3158（读未初始化的 `#Mut` 全局）在 v1 占位未启用；当前实例走静态字段时由既有字段查找路径报 `E3040`。
+
 构造模型重构（E3120..E3128；引入自 [draft/DRAFT-static-fn.md](draft/DRAFT-static-fn.md)，落地章节 §7.10）：
 
 | 码     | 模板 |

@@ -15,9 +15,23 @@
 
 ---
 
----
+## 2026-05-30 —— const-eval 落地
 
-## 2026-05-30 —— const-eval 落地：全局 `#Cval` 初始化器升常量表达式 + struct 字面量 LHS/位置放宽 + `#Const fn` 编译期求值（DRAFT-const-eval Phase 1–5）
+## 2026-06-05 —— static-vars 落地：全局 let 三档放开 + struct 静态字段（DRAFT-static-vars Phase 1–6）
+
+- **修改 §5.1.4**（全局 `let` 声明）：从"仅 `#Cval`"放宽为三档——无注解 val（运行期 init，浅不可变）/ `#Mut`（运行期 init，可变）/ `#Cval`（编译期求值，不可变）。三者互斥；非 `#Cval` 档 v1 必须 init（`E3154`）；写入非 `#Mut` 全局 → `E3151`。RHS 接受任意 `expr`；非 const-evaluable init 进入 `_yux_global_init` ABI（按模块拓扑序在 main 前执行）；const-evaluable 走 const-eval 优先分流 emit LLVM Constant。
+- **新增 §7.11**（静态字段）：struct body 内 `#Static FIELD T = expr` 静态字段声明 + `Type::FIELD` 读 / `Type::FIELD = v` 写（仅 `#Mut`）语义。与 `#Static fn` 共用 `ExprPathCallNode` parser 路径、sema 分流。向 §7.1.1 / §7.2.1.2 追加 `staticFieldDecl` 产生式；翻转 §7.1.4.7（静态成员从"不在 v1 范围"移除）。
+- **修改 §11.9.2.1**（`#Mut` 可附着位置）：从仅局部 `let` 扩展为局部 `let` + 全局 `let` + struct 静态字段（与 `#Static` 组合）。
+- **修改 §11.11.2.1**（`#Static` 可附着位置）：从仅 struct body 内方法 `fn` 扩展为方法 `fn` + 字段 `staticFieldDecl`。
+- **修改 §11.5.1 / 附录 A §A.3**：注解表 `#Mut` / `#Static` 行同步更新附着位置与章节引用。
+- **修改 附录 B**：`globalConst` 注释更新为三档分流说明；`structDecl` body 加入 `staticFieldDecl`；新增 `staticFieldDecl` 产生式；`statement` 加入 `statementStaticFieldSet`。
+- **修改 附录 D §D.3.3**：新增 static-vars 段 E3150 / E3151 / E3153 / E3154 / E3155 / E3156 / E3157（E3152 / E3158 v1 占位未启用）。
+- **冲突 / 兼容**：向后兼容扩展。既有全局 `#Cval let X T = expr` 形态不变（原 §5.1.4.2 条款并入 §5.1.4.1 子节）；既有 `#Mut` 局部行为不变；既有 `#Static fn` 行为不变。新引入的 `_yux_global_init` ABI 对无全局变量的项目不产出额外代码。`E3116`（全局缺 `#Cval`）由 `E3154` / `E3114` 按档位替代。
+- **g4 改动**（Phase 4/5）：`structDecl` body 增 `staticFieldDecl`；`statement` 增 `statementStaticFieldSet`。经用户确认后改。
+- **决议依据**：[DRAFT-static-vars.md](draft/DRAFT-static-vars.md) 决议日志 [#1.A]–[#1.H]；实施记录见 [`docs/dev/static-vars-impl-log.md`](../dev/static-vars-impl-log.md)。
+- **测试**：`xmake test yux_tests/static_vars_*` 10/10 + `diag_static_vars_*` 6/6 全绿；`yux test`（SDK）全量通过。
+
+---：全局 `#Cval` 初始化器升常量表达式 + struct 字面量 LHS/位置放宽 + `#Const fn` 编译期求值（DRAFT-const-eval Phase 1–5）
 
 - **修改 §5.1.4.1 / §5.1.4.3**（全局 `#Cval let`）：初始值从 `literal` 升为**常量表达式**，接受字面量、`#Cval` 引用、算术/位/比较/逻辑运算、`#Const fn` 调用、struct 字面量 `<Type> { ... }`。非 const 子表达式 → E3140；算术溢出/除零/越界 → E3143。
 - **修改 §5.1.5.3 / §5.1.5.4**（局部 `#Cval let`）：初值集合同步扩展到含 `#Const fn` 调用 + struct 字面量；删除"`#Const fn` 调用不纳入"的 informative 备注。
