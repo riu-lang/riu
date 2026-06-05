@@ -154,6 +154,7 @@ entry="main.yux"
 |------|------|
 | `build <name>` | 项目构建子命令 |
 | `--emit-ir` | 输出 LLVM IR 到 .ll 文件 |
+| `--emit-ir-dir <dir>` | 指定 .ll 输出目录（默认 build/） |
 | `-d, --debug` | 输出编译 IR 调试信息（仅 Debug 构建） |
 | `lsp` | 以 stdio 启动语言服务器（供 [yux-vscode](plugins/yux-vscode/) / [yux-idea](plugins/yux-idea/) 等编辑器集成使用） |
 

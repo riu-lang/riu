@@ -20,6 +20,7 @@ struct BuildCmdOptions {
     bool projectMode = false; // buildCmd->parsed()
     bool emitIr = false;      // --emit-ir
     bool jitRun = false;      // --jit-run (spike, 仅单文件)
+    std::string emitIrDir;    // --emit-ir-dir (IR 输出目录, 默认 build/)
     std::string buildNameArg; // `yux build <name>` 可选名 (与 yux.toml.name 校验)
     std::string inputFile;    // positional input (单文件路径; 项目模式应空)
     std::string helpText;     // app.help() 文本, 单文件模式缺参时打印

@@ -49,8 +49,9 @@ yux build <name>             ; 显式给出时必须与 yux.toml 的 name 一致
                              ; 最终产物：<projectRoot>/build/<name>.exe（exe）或 .lib（静态库）
                              ; 中间产物镜像 src 路径：build/<src-rel>.obj
                              ; 每目录一份 <dirname>.cache（增量缓存，含编译器指纹）
-yux build [<name>] --emit-ir ; 同时生成 .ll
-yux build [<name>] -d        ; 编译期 IR 调试输出（仅 Debug 构建；量大，用 tail 过滤）
+yux build [<name>] --emit-ir            ; 同时生成 .ll
+yux build [<name>] --emit-ir-dir <dir> ; IR 输出到指定目录（默认 build/）
+yux build [<name>] -d                  ; 编译期 IR 调试输出（仅 Debug 构建；量大，用 tail 过滤）
 
 ; 冒烟测试（仓库内 examples/test 的 yux.toml 里 name="test"）
 cd examples/test && yux build && ./build/test.exe
@@ -83,9 +84,9 @@ cd examples/test && yux build && ./build/test.exe
 - xmake 输出：`build/windows/x64/{debug,release}/`、以及点开头目录（`.objs/`、`.deps/`、`.build_cache/` 等）
 - yux 项目模式：
   - 最终产物：`<projectRoot>/build/<name>.exe` 或 `<name>.lib`（直接落在 `build/` 下，无 `<name>/` 子层）
-  - 中间产物：obj / IR 镜像源文件相对项目根的路径，落在 `<projectRoot>/build/<src-rel>.obj`（典型 `build/src/<rel>.obj`）
+  - 中间产物：obj / IR 镜像源文件相对项目根的路径，落在 `<projectRoot>/build/<src-rel>.obj` / `.ll`（典型 `build/src/<rel>.obj`）
   - 增量缓存：每个目录视为一个**包**，包内所有 `.yux` 的元信息聚合到 `<dir>/<dirname>.cache`；首行存当前 `yux.exe` 的 mtime+size 作为编译器指纹，重编 `yux` 后整 cache 自动失效
-- yux 单文件模式（已弃用）：obj / IR 落在 `<srcDir>/build/.tmp/yux-<pid>/` 临时目录，链接完即清；exe 留在 `<srcDir>/build/<basename>.exe`，**不进缓存**
+- yux 单文件模式（已弃用）：obj 落在 `<srcDir>/build/.tmp/yux-<pid>/` 临时目录，链接完即清；IR 落在 `<srcDir>/build/<basename>.ll`；exe 留在 `<srcDir>/build/<basename>.exe`，**不进缓存**
 - SDK 自构建仍走特例：`sdk/yux/build/yux/{core.obj,yux.lib}`（旧路径，依赖问题以后再说）
 - sdk 链接搜索：`build/windows/x64/sdk` => `sdk`
 

@@ -55,6 +55,9 @@ int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windo
     bool emitIr = false;
     app.add_flag("--emit-ir", emitIr, "Emit LLVM IR to .ll file");
 
+    std::string emitIrDir;
+    app.add_option("--emit-ir-dir", emitIrDir, "Output directory for .ll files (default: build/)");
+
     // [Phase 1 spike] 在进程内 JIT 跑入口模块，绕开 obj 写盘 + LLD 链接。
     // 仅单文件模式生效；正式 `yux test` 子命令会替代它。
     bool jitRun = false;
@@ -92,6 +95,7 @@ int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windo
     // name 可省略：当前每个 yux.toml 仅声明一个目标，省略时直接取 toml 的 name；显式给出则必须与之一致。
     buildCmd->add_option("name", buildNameArg, "Project name (optional; must match `name` in yux.toml when given)");
     buildCmd->add_flag("--emit-ir", emitIr, "Emit LLVM IR to .ll file");
+    buildCmd->add_option("--emit-ir-dir", emitIrDir, "Output directory for .ll files (default: build/)");
     buildCmd->fallthrough(); // 允许 --warn / --allow / --deny / -Werror 在 build 子命令上使用
 
 #ifdef _DEBUG
@@ -192,6 +196,7 @@ int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windo
     BuildCmdOptions bopts;
     bopts.projectMode = buildCmd->parsed();
     bopts.emitIr = emitIr;
+    bopts.emitIrDir = emitIrDir;
     bopts.jitRun = jitRun;
     bopts.buildNameArg = buildNameArg;
     bopts.inputFile = inputFile;

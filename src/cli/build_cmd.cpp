@@ -47,6 +47,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
     bool emitIr = opts.emitIr;
     bool jitRun = opts.jitRun;
     const std::string& buildNameArg = opts.buildNameArg;
+    const std::string& emitIrDir = opts.emitIrDir;
     std::string inputFile = opts.inputFile;
 
     Yux yux;
@@ -133,6 +134,10 @@ int runBuildCommand(const BuildCmdOptions& opts) {
     std::cout << "Project root: " << yux.projectRoot() << '\n';
     ensureBuildDir(buildDir);
     ensureBuildDir(projectBuildDir);
+
+    // IR 输出目录：默认 build/，可通过 --emit-ir-dir 覆盖
+    std::string irDir = emitIrDir.empty() ? buildDir : emitIrDir;
+    if (emitIr) ensureBuildDir(irDir);
 
     // 单文件模式：obj/ir 写到 pid 隔离的 tmp 目录，避免多进程同时编译同一被 use 的模块时
     // 互相覆盖中间产物。exe 仍落在 projectBuildDir。链接成功后清理。
@@ -329,7 +334,10 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             string base = mirroredOutputBase(yux.projectRoot(), buildDir, abs);
             fs::create_directories(fs::path(base).parent_path());
             string obj = base + ".obj";
-            string ir = base + ".ll";
+            string ir = mirroredOutputBase(yux.projectRoot(), irDir, abs) + ".ll";
+            if (emitIr) {
+                fs::create_directories(fs::path(ir).parent_path());
+            }
             if (!libCaches.isFresh(abs, obj)) {
                 if (!codegenTo(file, mn, obj, ir)) {
                     anyCodegenError = true;
@@ -469,8 +477,11 @@ int runBuildCommand(const BuildCmdOptions& opts) {
     bool needCompile = !projectMode || !exeCaches.isFresh(mainAbs, objPath);
     if (needCompile) {
         std::string irPath = projectMode
-            ? mirroredOutputBase(yux.projectRoot(), buildDir, mainAbs) + ".ll"
-            : intermediateDir + "/" + baseName + ".ll";
+            ? mirroredOutputBase(yux.projectRoot(), irDir, mainAbs) + ".ll"
+            : irDir + "/" + baseName + ".ll";
+        if (emitIr && projectMode) {
+            std::filesystem::create_directories(std::filesystem::path(irPath).parent_path());
+        }
         if (!codegenTo(mainFile, baseName, objPath, irPath)) {
             anyCodegenError = true;
         } else {
@@ -490,7 +501,12 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             : moduleOutputBase(intermediateDir, projectName, modName);
         std::filesystem::create_directories(std::filesystem::path(modBase).parent_path());
         std::string modObj = modBase + ".obj";
-        std::string modIr = modBase + ".ll";
+        std::string modIr = projectMode
+            ? mirroredOutputBase(yux.projectRoot(), irDir, modSrc) + ".ll"
+            : moduleOutputBase(irDir, projectName, modName) + ".ll";
+        if (emitIr) {
+            std::filesystem::create_directories(std::filesystem::path(modIr).parent_path());
+        }
         if (!projectMode || !exeCaches.isFresh(modSrc, modObj)) {
             if (!codegenTo(modFile, modName, modObj, modIr)) {
                 anyCodegenError = true;
