@@ -263,6 +263,12 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
 
             return _builder.CreateLoad(getLLVMType(fieldType), fieldPtr, "field.load");
         }
+        // E3152: 实例访问静态字段 (DRAFT-static-vars §4.4)
+        // obj.FIELD 形态 —— FIELD 是 #Static 字段，不挂在实例上
+        if (structDecl->staticField(member)) {
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3152,
+                           member, actualType.name, actualType.name, member);
+        }
     }
 
     if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {

@@ -248,6 +248,13 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
             auto typeNode = any_cast_p<TypeNode>(visit(fieldCtx->type()));
             auto initExpr = any_cast_p<ExprNode>(visit(fieldCtx->init));
 
+            // E3155: 静态字段 init 内禁 try/catch (DRAFT-static-vars §6)
+            if (ASTBuilder::exprContainsTryCatch(initExpr)) {
+                throw YuxError(static_cast<int>(fieldCtx->name->getLine()),
+                               static_cast<int>(fieldCtx->name->getCharPositionInLine()) + 1, ErrorCode::E3155,
+                               fieldCtx->name->getText());
+            }
+
             StructDeclNode::StaticFieldEntry sf;
             sf.name = Token(fieldCtx->name);
             sf.type = typeNode;

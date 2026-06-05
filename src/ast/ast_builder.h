@@ -56,6 +56,9 @@ public:
     [[nodiscard]] bool isTestFile() const { return _isTestFile; }
     [[nodiscard]] const string& sourcePath() const { return _sourcePath; }
 
+    // 递归检查表达式树是否包含 try/catch 节点（E3155 校验用）
+    static bool exprContainsTryCatch(p<ExprNode> expr);
+
     p<FileNode> build(yux::yuxParser::ProgramContext* ctx);
 
     // 递归预加载包 `pkgModName` 下的所有 .yux 后代模块，按点分相对路径（相对于 pkgModName）

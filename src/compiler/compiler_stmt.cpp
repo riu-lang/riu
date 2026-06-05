@@ -1268,6 +1268,96 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             }
         }
 
+        // DRAFT-spec-reflect §6: Field.value 写路径
+        // 检测 f.value = expr 形态，其中 f 是 Field 类型（反射字段句柄）
+        // 直接追踪 let 绑定链路，避免构建临时 AST 节点
+        if (actualType.name == "Field" && subs.size() == 1 && subs[0].getText() == "value") {
+            if (!_currentFnNode) {
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3134);
+            }
+            // 追踪变量 f 的 let 定义，提取 struct 名和字段索引
+            const StructDeclNode* sd = nullptr;
+            int fieldIdx = -1;
+            // 在 FnNode body 中查找 let 语句，追索 init 表达式
+            for (auto& stmt : _currentFnNode->body()) {
+                if (auto* letStmt = dynamic_cast<StatementDeclareAssignNode*>(stmt)) {
+                    if (letStmt->name().getText() == objName) {
+                        // 追踪 init 表达式: 期望 Point::fields.at(N) 形态
+                        auto* init = letStmt->expr();
+                        if (auto* call = dynamic_cast<ExprCallNode*>(init)) {
+                            // call = .at(N) on fields
+                            if (call->getArgs().size() == 1) {
+                                if (auto* pc = dynamic_cast<ExprPathCallNode*>(call->getCalleeExpr())) {
+                                    // pc = Type::fields(.at)
+                                    if (pc->variantName().getText() == "at" && pc->enumName().getText() != "") {
+                                        string structName = pc->enumName().getText();
+                                        // 找出 N（字段索引）
+                                        auto* idxExpr = call->getArgs()[0];
+                                        if (auto* idxLit = dynamic_cast<ExprLiteralNode*>(idxExpr)) {
+                                            if (auto* intLit = dynamic_cast<LiteralIntNode*>(idxLit->literal())) {
+                                                i64 idx = sema::parseIntLiteral(intLit->getValue().getText(),
+                                                    static_cast<int>(intLit->getValue().getLine()),
+                                                    static_cast<int>(intLit->getValue().getCharPositionInLine()) + 1);
+                                                if (idx >= 0) {
+                                                    auto* file = _file;
+                                                    sd = file->getStructDecl(structName);
+                                                    if (!sd && _yux && _yux->sdkFile()) {
+                                                        sd = _yux->sdkFile()->getStructDecl(structName);
+                                                    }
+                                                    if (sd) {
+                                                        // 按非静态字段序找 idx 对应的字段
+                                                        int nonStaticCount = 0;
+                                                        for (auto& f : sd->fields()) {
+                                                            if (f->isStatic()) continue;
+                                                            if (nonStaticCount == static_cast<int>(idx)) {
+                                                                fieldIdx = sd->fieldIndex(f->name().getText());
+                                                                break;
+                                                            }
+                                                            ++nonStaticCount;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+            if (!sd || fieldIdx < 0) {
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3133);
+            }
+            if (_currentStructName.empty()) {
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3134);
+            }
+            auto selfIt = _localVarPtrs.find("$");
+            if (selfIt == _localVarPtrs.end()) {
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3134);
+            }
+            auto structType = getLLVMType(TypeInfo(_currentStructName));
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto fIdxVal = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIdx);
+            std::array<llvm::Value*, 2> indices{zero, fIdxVal};
+            auto fieldPtr = _builder.CreateGEP(structType, selfIt->second, indices, "reflect.field");
+            auto fieldType = sd->fields()[fieldIdx]->getType();
+
+            auto exprVal = compileExpr(expr);
+            auto exprType = expr->getType();
+            llvm::Value* valToStore;
+            if (assignOp != AssignOp::Eq) {
+                auto currentVal = _builder.CreateLoad(getLLVMType(fieldType), fieldPtr, "current.load");
+                auto castedExprVal = createCast(exprVal, exprType, fieldType);
+                valToStore = applyCompoundOp(currentVal, castedExprVal, assignOp, fieldType);
+            } else {
+                valToStore = createCast(exprVal, exprType, fieldType);
+            }
+            _builder.CreateStore(valToStore, fieldPtr);
+            return;
+        }
+
         // Phase 4c 对称：Rc<T>.field = ... 自动 deref
         // 读路径已在 compileMemberAccess（compiler_expr.cpp）里对 Rc<T> 做了 deref：
         // load handle，payload = handle + 8，再按内层 T 走字段 GEP。
@@ -1319,6 +1409,11 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             auto memberName = subs[i].getText();
             int fieldIndex = structDecl->fieldIndex(memberName);
             if (fieldIndex < 0) {
+                // E3152: 实例写静态字段 (DRAFT-static-vars §4.4)
+                if (structDecl->staticField(memberName)) {
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3152,
+                                   memberName, actualType.name, actualType.name, memberName);
+                }
                 throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3040, actualType.name, memberName);
             }
 
@@ -1549,7 +1644,7 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
             if (fi >= 0) {
                 llvm::Value* dataPtr = outerPtr;
                 auto zeroIdx = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-                
+
                 // Rc 类型需要先解引用获取数据指针
                 if (outerType.isRc()) {
                     auto rcStructType = getLLVMType(outerType);
@@ -1559,11 +1654,15 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
                     dataPtr = _builder.CreateLoad(
                         llvm::PointerType::get(_context, 0), dataPtrField, "rc.data_ptr");
                 }
-                
+
                 auto outerLLVM = getLLVMType(outerActual);
                 auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fi);
                 std::array<llvm::Value*, 2> indicesF{zeroIdx, idx};
                 currentPtr = _builder.CreateGEP(outerLLVM, dataPtr, indicesF, "array.field.ptr");
+            } else if (outerStructDecl->staticField(dotExpr->member())) {
+                // E3152: 实例写静态字段 (DRAFT-static-vars §4.4)
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3152,
+                               dotExpr->member(), outerActual.name, outerActual.name, dotExpr->member());
             }
         }
     }

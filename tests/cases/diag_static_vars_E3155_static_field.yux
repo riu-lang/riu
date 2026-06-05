@@ -1,0 +1,18 @@
+; DRAFT-static-vars §6: 静态字段 init 含 try/catch → E3155
+
+enum E {
+  Oops
+}
+
+struct Foo {
+  x i32
+
+  #Static
+  BAR i32 = try {
+    1
+  } catch e E {
+    0
+  }
+}
+
+fn main() {}

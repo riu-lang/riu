@@ -135,6 +135,12 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
         auto typeNode = any_cast_p<TypeNode>(visit(ctx->type()));
         auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
 
+        // E3155: 全局 init 内禁 try/catch (DRAFT-static-vars §6)
+        if (exprContainsTryCatch(expr)) {
+            throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
+                           ErrorCode::E3155, name->getText());
+        }
+
         auto globalVar = createWithLine<GlobalVarNode>(ctx, file, name, typeNode, expr, /*isMutable=*/true);
 
         // Phase 3: const-eval 优先分流 —— #Mut 初始化器也试 const-eval
@@ -203,6 +209,12 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
 
     auto typeNode = any_cast_p<TypeNode>(visit(ctx->type()));
     auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
+
+    // E3155: 全局 init 内禁 try/catch (DRAFT-static-vars §6)
+    if (exprContainsTryCatch(expr)) {
+        throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
+                       ErrorCode::E3155, name->getText());
+    }
 
     auto globalVar = createWithLine<GlobalVarNode>(ctx, file, name, typeNode, expr);
 
@@ -580,4 +592,122 @@ std::any ASTBuilder::visitEnumVariant(yux::yuxParser::EnumVariantContext* ctx) {
     }
     DEBUG_LOG_VAL("  Variant", ctx->name->getText() << " arity=" << variant->payloadArity());
     return variant;
+}
+
+// ==================== E3155 辅助函数 ====================
+
+// 递归检查表达式树中是否包含 try/catch 节点
+// 用于全局 let 和 #Static 字段 init 表达式校验（DRAFT-static-vars §6）
+bool ASTBuilder::exprContainsTryCatch(p<ExprNode> expr) {
+    if (!expr) return false;
+
+    // 直接命中 try/catch
+    if (dynamic_cast<ExprTryCatchNode*>(expr)) return true;
+
+    // 二元运算族（AddSub / MulDivMod / Shift / Compare / Eq / Bool / BinOp）
+    if (auto* bin = dynamic_cast<ExprBinOpNode*>(expr)) {
+        return exprContainsTryCatch(bin->left()) || exprContainsTryCatch(bin->right());
+    }
+
+    // a ?? b（Nullable 回退，不继承 ExprBinOpNode）
+    if (auto* ne = dynamic_cast<ExprNullElseNode*>(expr)) {
+        return exprContainsTryCatch(ne->left()) || exprContainsTryCatch(ne->right());
+    }
+
+    // 一元运算
+    if (auto* un = dynamic_cast<ExprUnaryNode*>(expr)) {
+        return exprContainsTryCatch(un->right());
+    }
+
+    // 函数调用
+    if (auto* call = dynamic_cast<ExprCallNode*>(expr)) {
+        if (exprContainsTryCatch(call->getCalleeExpr())) return true;
+        for (auto& a : call->getArgs()) {
+            if (exprContainsTryCatch(a)) return true;
+        }
+        return false;
+    }
+
+    // 成员访问
+    if (auto* dot = dynamic_cast<ExprDotNode*>(expr)) {
+        return exprContainsTryCatch(dot->baseExpr());
+    }
+
+    // if-else 表达式 —— condition / 单行分支直接是 ExprNode 可递归
+    // 多行块 if-else 的分支是 StatementBlockNode，其内部 try/catch 暂不递归
+    // （全局 init 中直接写块式 if-else 已属罕见，嵌套 try/catch 更是边缘）
+    if (auto* ol = dynamic_cast<ExprOneLineIfElseNode*>(expr)) {
+        if (exprContainsTryCatch(ol->condition())) return true;
+        if (exprContainsTryCatch(ol->trueValue())) return true;
+        if (exprContainsTryCatch(ol->falseValue())) return true;
+        return false;
+    }
+    if (auto* pv = dynamic_cast<ExprIfElsePreValueNode*>(expr)) {
+        if (exprContainsTryCatch(pv->condition())) return true;
+        if (exprContainsTryCatch(pv->trueValue())) return true;
+        if (exprContainsTryCatch(pv->falseValue())) return true;
+        return false;
+    }
+
+    // 括号
+    if (auto* paren = dynamic_cast<ExprParenNode*>(expr)) {
+        return exprContainsTryCatch(paren->expr());
+    }
+
+    // 数组字面量（ArrayInitNode 的 value 是 LiteralNode，不含 try/catch，跳过）
+    if (auto* arr = dynamic_cast<ExprArrayNode*>(expr)) {
+        for (auto& e : arr->elements()) {
+            if (exprContainsTryCatch(e)) return true;
+        }
+        return false;
+    }
+
+    // match 表达式
+    if (auto* m = dynamic_cast<ExprMatchNode*>(expr)) {
+        if (exprContainsTryCatch(m->scrutinee())) return true;
+        for (auto& arm : m->arms()) {
+            if (exprContainsTryCatch(arm->body())) return true;
+        }
+        return false;
+    }
+
+    // 构造器形态
+    if (auto* sl = dynamic_cast<ExprStructLitNode*>(expr)) {
+        for (auto& fi : sl->fields()) {
+            if (exprContainsTryCatch(fi->value())) return true;
+        }
+        return false;
+    }
+    if (auto* dynCtor = dynamic_cast<ExprDynCtorNode*>(expr)) {
+        return exprContainsTryCatch(dynCtor->arg());
+    }
+    if (auto* heap = dynamic_cast<ExprHeapCtorNode*>(expr)) {
+        return exprContainsTryCatch(heap->arg());
+    }
+    if (auto* pc = dynamic_cast<ExprPathCallNode*>(expr)) {
+        for (auto& a : pc->args()) {
+            if (exprContainsTryCatch(a)) return true;
+        }
+        return false;
+    }
+
+    // 下标 / 取值（a[i] / &a / *a）
+    if (auto* g = dynamic_cast<ExprGetNode*>(expr)) {
+        if (exprContainsTryCatch(g->arrayExpr())) return true;
+        for (auto& idx : g->indices()) {
+            if (exprContainsTryCatch(idx)) return true;
+        }
+        return false;
+    }
+
+    // 元组
+    if (auto* tup = dynamic_cast<ExprTupleNode*>(expr)) {
+        for (auto& e : tup->elements()) {
+            if (exprContainsTryCatch(e)) return true;
+        }
+        return false;
+    }
+
+    // 字面量 / 变量引用 / ExprGetRefNode / lambda 等 → 叶子，不含 try/catch
+    return false;
 }

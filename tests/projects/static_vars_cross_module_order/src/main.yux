@@ -1,0 +1,15 @@
+use yux.core.*
+use base.*
+use transform.*
+
+fn main() {
+  ; 验证 base 的全局变量先于 transform 初始化
+  ; BASE_VAL=10, BASE_MULT=5 → DERIVED_VAL=50, DERIVED_OFFSET=150
+  println(get_base_val())
+  println(get_base_mult())
+  println(get_derived_val())
+  println(get_derived_offset())
+
+  ; 验证 init 只跑一次
+  println(get_derived_val())
+}
