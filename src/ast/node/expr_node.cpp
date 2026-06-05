@@ -770,7 +770,7 @@ TypeInfo ExprDotNode::getType() const {
                                 if (idx >= 0) {
                                     // Look up struct declaration from scope
                                     auto* s = expr->findNearestScope();
-                                    FileNode* file = dynamic_cast<FileNode*>(s);
+                                    auto* file = dynamic_cast<FileNode*>(s);
                                     while (!file && s) {
                                         s = s->parentScope();
                                         file = dynamic_cast<FileNode*>(s);
@@ -833,7 +833,7 @@ TypeInfo ExprDotNode::getType() const {
                                     static_cast<int>(tok.getCharPositionInLine()) + 1);
                                 if (idx >= 0) {
                                     auto* s = expr->findNearestScope();
-                                    FileNode* file = dynamic_cast<FileNode*>(s);
+                                    auto* file = dynamic_cast<FileNode*>(s);
                                     while (!file && s) {
                                         s = s->parentScope();
                                         file = dynamic_cast<FileNode*>(s);

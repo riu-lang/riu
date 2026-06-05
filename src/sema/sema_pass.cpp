@@ -932,13 +932,13 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                         validateNoNestedHeap(tn->getType(), eline, ecol);
                     } catch (const YuxError&) {
                         throw;
-                    } catch (...) {
-                    } // NOLINT(bugprone-empty-catch)
+                    } catch (...) {  // NOLINT(bugprone-empty-catch) — sema 非 YuxError 异常留 Compiler 兜底
+                    }
                 }
             } catch (const YuxError&) {
                 throw;
-            } catch (...) {
-            } // NOLINT(bugprone-empty-catch)
+            } catch (...) {  // NOLINT(bugprone-empty-catch) — sema 非 YuxError 异常留 Compiler 兜底
+            }
         }
 
         // Phase 3.3 前置.4: ID-callee / 非-ID-callee 的错误传播校验
@@ -1224,14 +1224,15 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                             if (resolved) specDecl = resolved->decl;
                         }
                         if (specDecl) {
-                            size_t sigIdx = static_cast<size_t>(-1);
+                            constexpr size_t kNoIdx = ~size_t{0};
+                            auto sigIdx = kNoIdx;
                             for (size_t i = 0; i < specDecl->signatures().size(); ++i) {
                                 if (specDecl->signatures()[i]->name().getText() == memberName) {
                                     sigIdx = i;
                                     break;
                                 }
                             }
-                            if (sigIdx == static_cast<size_t>(-1)) {
+                            if (sigIdx == kNoIdx) {
                                 throw YuxError(dline, dcol, ErrorCode::E1140, specName, memberName,
                                                " (referenced via `@" + specName + "` — method missing in spec)");
                             }
@@ -1712,13 +1713,13 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                         }
                     } catch (const YuxError&) {
                         throw;
-                    } catch (...) { /* arm getType 失败: 留 Compiler 兜底 */
-                    }               // NOLINT(bugprone-empty-catch)
+                    } catch (...) {  // NOLINT(bugprone-empty-catch) — arm getType 失败: 留 Compiler 兜底
+                    }
                 }
             } catch (const YuxError&) {
                 throw;
-            } catch (...) { /* try result getType 失败: 留 Compiler 兜底 */
-            }               // NOLINT(bugprone-empty-catch)
+            } catch (...) {  // NOLINT(bugprone-empty-catch) — try result getType 失败: 留 Compiler 兜底
+            }
         }
         return;
     }

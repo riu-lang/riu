@@ -13,6 +13,7 @@
 // - 泛型单态化相关函数
 
 #include <algorithm>
+#include <array>
 #include <algorithm>
 #include "analyzer/borrow_checker.h"
 #include "analyzer/const_mut_checker.h"
@@ -1110,7 +1111,7 @@ llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t,
         auto i32Zero = llvm::ConstantInt::get(i32Ty, 0);
         for (size_t i = 0; i < N; ++i) {
             auto idxC = llvm::ConstantInt::get(i32Ty, static_cast<uint32_t>(i));
-            llvm::Constant* gepIndicesArr[2] = {i32Zero, idxC};
+            std::array<llvm::Constant*, 2> gepIndicesArr{i32Zero, idxC};
             auto* gep = llvm::ConstantExpr::getGetElementPtr(dataArrTy, dataArrGV,
                 llvm::ArrayRef<llvm::Constant*>(gepIndicesArr));
             refPtrs.push_back(gep);

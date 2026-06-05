@@ -21,6 +21,7 @@
 #define YUX_LANG_ERROR_CODE_H
 
 #include <cstdint>
+#include <exception>
 #include <map>
 #include <string>
 
@@ -51,7 +52,13 @@ inline std::map<std::string, DiagSeverity>& registry() {
     return m;
 }
 struct CodeRegistration {
-    CodeRegistration(const char* code, DiagSeverity sev) { registry()[code] = sev; }
+    CodeRegistration(const char* code, DiagSeverity sev) noexcept {
+        try {
+            registry()[code] = sev;
+        } catch (...) {
+            std::terminate();
+        }
+    }
 };
 } // namespace detail
 

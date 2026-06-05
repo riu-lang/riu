@@ -184,6 +184,7 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
     // DRAFT-spec-default-body Phase 4: 跨 spec 聚合每个 (name, arity) 组的
     // 所有签名条目, 二轮处理: 实现命中→OK; 全无默认体→E1101;
     // 多个默认体→E3132; 单一默认体→fall-through.
+    // NOLINTNEXTLINE(bugprone-exception-escape) — std::map member may throw on copy; intentional
     struct SigEntry {
         SpecDeclNode* spec;
         size_t sigIdx;

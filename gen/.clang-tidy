@@ -1,4 +1,2 @@
-# ANTLR4 生成代码，不手改 —— 关掉所有 clang-tidy 检查。
----
-Checks: '-*'
-WarningsAsErrors: ''
+# ANTLR4 generated code — disable all checks except one harmless check to avoid "no checks enabled" error.
+Checks: '-*,bugprone-integer-division'

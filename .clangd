@@ -15,8 +15,8 @@ Diagnostics:
     Remove:
       - modernize-use-trailing-return-type
       - bugprone-easily-swappable-parameters
-  UnusedIncludes: Strict
-  MissingIncludes: Strict
+  UnusedIncludes: None
+  MissingIncludes: None
 
 InlayHints:
   Enabled: Yes

@@ -261,10 +261,10 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
             sf.init = initExpr;
             sf.isMutable = isMut;
             sf.isPrivate = !sf.name.getText().empty() && sf.name.getText()[0] == '_';
+            std::string sfName = sf.name.getText(); // 在 move 前保存，避免 use-after-move
             structDecl->addStaticField(std::move(sf));
 
-            DEBUG_LOG_VAL("    StaticField", sf.name.getText()
-                                                 << " : " << typeNode->getType().name << (isMut ? " #Mut" : ""));
+            DEBUG_LOG_VAL("    StaticField", sfName << " : " << typeNode->getType().name << (isMut ? " #Mut" : ""));
             continue;
         }
 
