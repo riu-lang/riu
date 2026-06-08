@@ -1,72 +1,258 @@
+; main.yux — yux 语言特性综合示例（反射除外）
+; 运行：cd examples/test && yux build && build/example.exe
+
 use yux.core.*
 
+; ==================== 类型定义 ====================
+
+; ---- 枚举：形状 ----
 enum Shape {
   Point
   Circle(f64)
-  Tagged(String, i32)
+  Rect(f64, f64)
 }
 
-enum NoPayload {
-  A
-  B
-}
+; ---- 结构体：二维向量（演示运算符重载） ----
+struct Vec2 {
+  x f64
+  y f64
 
-struct N {
-  v i32
-
-
-  fn N(v i32) {
-    $.v = v
+  #Static
+  fn make(x f64, y f64) Vec2 {
+    ret Self {
+      .x = x
+      .y = y
+    }
   }
 
-  ; 算术运算符
-  fn plus(other N) N {
-    N($.v + other.v)
+  ; 加法：Vec2 + Vec2（推荐 Self& 形参，调用点自动取址）
+  fn plus(other Vec2&) Vec2 {
+    Vec2::make($.x + other.x, $.y + other.y)
+  }
+
+  ; 减法
+  fn minus(other Vec2&) Vec2 {
+    Vec2::make($.x - other.x, $.y - other.y)
+  }
+
+  ; 标量乘法：Vec2 * f64（跨类型重载）
+  fn mul(scalar f64) Vec2 {
+    Vec2::make($.x * scalar, $.y * scalar)
+  }
+
+  ; 比较
+  fn eq(other Vec2&) bool {
+    $.x == other.x && $.y == other.y
+  }
+
+  fn ne(other Vec2&) bool {
+    !$.eq(&other)
   }
 }
 
+; ---- 带静态计数器的标签 ----
+struct Label {
+  name String
+
+  #Mut
+  #Static
+  COUNT i64 = 0
+
+  #Static
+  fn make(name String) Label {
+    Label::COUNT = Label::COUNT + 1
+    ret Self {
+      .name = name
+    }
+  }
+}
+
+; ---- 含 Nullable 字段 ----
+struct Contact {
+  name  String
+  email String?
+
+  #Static
+  fn make(name String) Contact {
+    ret Self {
+      .name = name
+      .email = null
+    }
+  }
+}
+
+; ==================== 主入口 ====================
 
 fn main() {
-  println("=== Nullable 烟测 ===")
-  var nx i32? = 42i32
-  var ny i32? = null
+  ; ========== 1. 运算符重载 ==========
+  println("=== 1. 运算符重载（Vec2） ===")
+  let v1 Vec2 = Vec2::make(3.0, 4.0)
+  let v2 Vec2 = Vec2::make(1.0, 2.0)
 
-  ; ?? 默认值运算符
-  var a i32 = nx ?? -1i32
-  println(a)          ; 期望 42
+  let sum  Vec2 = v1 + v2       ; plus(Self&)
+  let diff Vec2 = v1 - v2       ; minus(Self&)
+  let scaled Vec2 = v1 * 2.0    ; mul(f64) → 跨类型按值
 
-  var b i32 = ny ?? -1i32
-  println(b)          ; 期望 -1
+  let sx_str String = sum.x.to_string()
+  println("sum.x: ")
+  println(sx_str)
+  let scx_str String = scaled.x.to_string()
+  println("scaled.x: ")
+  println(scx_str)
 
-  ; ?. 安全字段访问 (base 是 Nullable<N>，N 有字段 v)
-  var n N = N(7)
-  var maybeN N? = n
-  var v1 i32? = maybeN?.v         ; 应为持值 7
-  var v1d i32 = v1 ?? -1i32
-  println(v1d)        ; 期望 7
+  let eq_val bool = v1 == v2
+  let ne_val bool = v1 != v2
+  let eq_msg String = eq_val.to_string()
+  let ne_msg String = ne_val.to_string()
+  println("v1==v2: ")
+  println(eq_msg)
+  println("v1!=v2: ")
+  println(ne_msg)
 
-  var emptyN N? = null
-  var v2 i32? = emptyN?.v         ; 应为空
-  var v2d i32 = v2 ?? -99i32
-  println(v2d)        ; 期望 -99
+  ; ========== 2. 枚举 + match ==========
+  println("=== 2. 枚举 + match ===")
+  let point Shape = Shape::Point
+  let circ  Shape = Shape::Circle(5.0)
+  let rect  Shape = Shape::Rect(3.0, 4.0)
 
-  println("=== enum Phase 5 烟测 ===")
-  ; 零参 variant（含括号 / 无括号 等价）
-  var s1 Shape = Shape::Point
-  var s2 Shape = Shape::Point()
-  var n1 NoPayload = NoPayload::A
-  var n2 NoPayload = NoPayload::B()
+  println(describe(point))
+  println(describe(circ))
+  println(describe(rect))
 
-  ; tuple-payload variant：纯 POD
-  var s3 Shape = Shape::Circle(2.5f64)
+  ; ========== 3. Array<T> 操作 ==========
+  println("=== 3. Array<i32> 操作 ===")
+  #Mut let xs Array<i32> = []
+  xs.push(10)
+  xs.push(20)
+  xs.push(30)
 
-  ; tuple-payload variant：含 RC 字段 (String)
-  var msg String = "hello"
-  var s4 Shape = Shape::Tagged(msg, 7)
+  let n i64 = xs.len()
+  let n_str String = n.to_string()
+  println("len: ")
+  println(n_str)
+  let v0 i32 = xs.at(0)
+  let v0_str String = v0.to_string()
+  println("at(0): ")
+  println(v0_str)
+  let idx1 i32 = xs[1]
+  let idx1_str String = idx1.to_string()
+  println("xs[1]: ")
+  println(idx1_str)
 
-  ; 把 enum 值作为函数实参传递（callee-clean 路径）
-  var s5 Shape = Shape::Tagged("x", 1)
+  ; ========== 4. Nullable：?? 与 ?. ==========
+  println("=== 4. Nullable ===")
 
-  ; 作用域结束后 s4/s5 内 String 应被正确释放，无泄漏 / 无 double-free
-  println("=== 测试完成 ===")
+  let some_name String? = "Alice"
+  let no_name String? = null
+  println("some: ")
+  println(some_name ?? "no name")
+  println("null: ")
+  println(no_name ?? "no name")
+
+  ; ?. 安全字段访问
+  let c1 Contact = Contact::make("Alice")
+  let maybe Contact? = c1
+  let name1 String? = maybe?.name
+  println("field from some: ")
+  println(name1 ?? "null")
+  let none Contact? = null
+  let name2 String? = none?.name
+  println("field from null: ")
+  println(name2 ?? "null")
+
+  ; ========== 5. Move 语义 a <- b ==========
+  println("=== 5. Move 语义 ===")
+  #Mut let a String = "hello"
+  #Mut let b String = "world"
+  ; a <- b：a 旧值移出返回，b 移入 a；零 RC 开销
+  let old String = a <- b
+  println("old(a): ")
+  println(old)
+  println("new(a): ")
+  println(a)
+
+  ; ========== 6. StringBuilder ==========
+  println("=== 6. StringBuilder ===")
+  #Mut let sb StringBuilder = StringBuilder::make()
+  sb.append(72u32)       ; 'H'
+  sb.append(105u32)      ; 'i'
+  sb.append(33u32)       ; '!'
+  sb.append(32u32)       ; ' '
+  sb.append("yux")
+  let msg String = sb.build()
+  println(msg)
+
+  ; ========== 7. 静态可变字段 ==========
+  println("=== 7. 静态可变字段 ===")
+  let c0_str String = Label::COUNT.to_string()
+  println("初始 COUNT: ")
+  println(c0_str)
+  let l1 Label = Label::make("A")
+  let l2 Label = Label::make("B")
+  let c2_str String = Label::COUNT.to_string()
+  println("构造 2 个后: ")
+  println(c2_str)
+
+  ; ========== 8. Lambda / 闭包 ==========
+  println("=== 8. Lambda ===")
+  let square = (x i32) i32 => x * x
+  let sq3 i32 = square(3)
+  let sq3_str String = sq3.to_string()
+  println("square(3): ")
+  println(sq3_str)
+
+  ; 高阶函数：Array<i32> 逐元素 * 2
+  let doubled Array<i32> = map_i32(xs, (x i32) i32 => x * 2)
+  let d0 i32 = doubled.at(0)
+  let d0_str String = d0.to_string()
+  println("map *2 at(0): ")
+  println(d0_str)
+
+  ; ========== 9. loop + break ==========
+  println("=== 9. loop + break ===")
+  let f5 i64 = factorial(5)
+  let f5_str String = f5.to_string()
+  println("5! = ")
+  println(f5_str)
+
+  println("=== 全部 9 节完成 ===")
+}
+
+; ==================== 辅助函数 ====================
+
+; match 描述形状（保持简单，只用字面量）
+fn describe(s Shape) String {
+  match s {
+    Shape::Point        => "a point"
+    Shape::Circle(r)    => "a circle"
+    Shape::Rect(w, h)   => "a rect"
+  }
+}
+
+; 阶乘
+fn factorial(n i64) i64 {
+  #Mut let result i64 = 1
+  #Mut let i i64 = n
+  loop {
+    if i <= 1 {
+      break;
+    }
+    result = result * i
+    i = i - 1
+  }
+  result
+}
+
+; 高阶函数：Array<i32> 逐元素变换
+fn map_i32(xs Array<i32>, f fn(i32)i32) Array<i32> {
+  #Mut let r Array<i32> = []
+  #Mut let i i64 = 0
+  loop {
+    if i >= xs.len() {
+      break;
+    }
+    r.push(f(xs.at(i)))
+    i = i + 1
+  }
+  r
 }
