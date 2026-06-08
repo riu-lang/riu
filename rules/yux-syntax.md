@@ -58,13 +58,13 @@ let p = Heap:<Point>(1, 2)
 let r = Rc:<String>("hi")
 ```
 
-详见 [docs/内置类型.md](../../docs/内置类型.md)、[docs/类型系统.md](../../docs/类型系统.md)。
+详见 [docs/内置类型.md](../../docs/内置类型.md)、[docs/类型系统.md](../docs/类型系统.md)。
 
 ## 6. 数组类型 `[T * N]`
 
 - `N` **必须 INT 字面量**，不能是 `#Cval`、表达式或泛型参数。
 - 占位 / 待定写 `[T * 0]` 并加注释。
-- 详见 [docs/类型系统.md](../../docs/类型系统.md)、[docs/内置类型.md](../../docs/内置类型.md)。
+- 详见 [docs/类型系统.md](../../docs/类型系统.md)、[docs/内置类型.md](../docs/内置类型.md)。
 
 ## 7. 块体强制换行
 
@@ -79,14 +79,14 @@ let r = Rc:<String>("hi")
   }
   ```
 
-- 详见 [docs/基础语法.md](../../docs/基础语法.md)、[docs/函数.md](../../docs/函数.md)。
+- 详见 [docs/基础语法.md](../../docs/基础语法.md)、[docs/函数.md](../docs/函数.md)。
 
 ## 8. 不要碰语法文件
 
-写 yux 时如果觉得语法不顺，**先暂停**告诉用户。`src/yux*.g4` 只读，详见 [behavior.md](behavior.md)。
+写 yux 时如果觉得语法不顺，**先暂停**告诉用户。`src/yux*.g4` 只读，详见 [behavior.md](../.claude/rules/behavior.md)。
 
 ## 想看完整语法
 
-- [docs/index.md](../../docs/index.md) — 教程入口（中文）
-- [docs/spec/index.md](../../docs/spec/index.md) — 规范（草案）
-- [src/yuxParser.g4](../../src/yuxParser.g4) / [src/yuxLexer.g4](../../src/yuxLexer.g4) — 权威语法
+- [docs/index.md](../docs/index.md) — 教程入口（中文）
+- [docs/spec/index.md](../docs/spec/index.md) — 规范（草案）
+- [src/yuxParser.g4](../src/yuxParser.g4) / [src/yuxLexer.g4](../src/yuxLexer.g4) — 权威语法
