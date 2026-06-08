@@ -92,6 +92,7 @@
 | 哨兵 | sentinel | §8.2.3 | `0xFFFFFFFF`，retain / release 跳过 |
 | callee-clean | callee-clean | §8.7.1 | 调用方传前 retain，被调方析构 release |
 | 移动返回 | move-return | §8.7.2 | `ret box_expr` 注入 retain |
+| 移入赋值 | move-assign | §4.13 / §8.7.7 | `a <- b` 表达式：移出旧值、写入新值、返回旧值 |
 | fresh 句柄 | fresh handle | §8.3.3.2 / §8.8.2 | 已携带 +1 的临时，跳过 retain |
 | 临时值 | temporary | §8.8 | 表达式 / 语句边界的未消费句柄 |
 | 临时清单 | temp frame | §8.8.1 | 边界处释放未消费临时 |

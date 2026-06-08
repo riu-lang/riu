@@ -233,6 +233,7 @@ expr ::=
   | expr opBool expr                                             # exprBool
   | literal                                                      # exprLiteral
   | expr '?' '?' expr                                            # exprNullElse
+  | expr '<' '-' expr                                            # exprMoveAssign
   | '$'                                                          # exprThis
 
 exprElIf       ::= 'elif' expr statementBlock
@@ -246,6 +247,7 @@ opEq           ::= '==' | '!='
 opBool         ::= '||' | '&&'
 
 opAssign       ::= '=' | '+=' | '-=' | '*=' | '/=' | '%='
+moveAssign     ::= '<-'                                          ; 表达式级移入赋值（§4.13），不在 opAssign 中
                  | '>' '>' '=' | '<' '<' '='
 
 matchArm       ::= enumPattern '=>' expr
