@@ -52,6 +52,7 @@
 #include "ast/node/struct_node.h"
 #include "ast/yux.h"
 #include "sema/call_resolve.h"
+#include "tools/diagnostic.h"
 #include "types.h"
 
 namespace {
@@ -753,6 +754,11 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
     }
     if (auto se = dynamic_cast<p<StatementExprNode>>(stmt)) {
         // 覆盖 StatementExprNode / Ret / DeclareAssign / DeclareAssignTuple / Assign
+        // E4030: `a <- b` 作为表达式语句时结果被丢弃，建议改用 `a = b`
+        if (auto ma = dynamic_cast<p<ExprMoveAssignNode>>(se->expr())) {
+            DiagnosticEngine::emit(_sourcePath,
+                YuxError(ma->resolveLineNumber(), ma->resolveColumn(), ErrorCode::E4030));
+        }
         if (se->expr()) visitExpr(se->expr());
         return;
     }

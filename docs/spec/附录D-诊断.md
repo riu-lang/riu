@@ -314,6 +314,7 @@ static-vars（E3150..E3157；引入自 [draft/DRAFT-static-vars.md](draft/DRAFT-
 | E4026 | `NRVO not applicable: multiple ret sources or coexists with outliving borrow (§8.3a.4.1)` |
 | E4027 | `implicit widen Heap<T> -> Heap<T>? is forbidden; restructure source signature (§8.3a.4.3)` |
 | E4028 | `extern fn parameter / return must not be Heap<T>; use Ptr at FFI boundary (§8.3a.5.3)` |
+| E4030 | `` result of `<-` move-assign is discarded; the old value will be immediately released — use `a = b` if you don't need the old value `` |
 
 ### D.3.5 E5xxx — 模块 / 包
 
