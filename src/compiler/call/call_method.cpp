@@ -562,8 +562,25 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
 
                     vector<llvm::Value*> methodArgs;
                     methodArgs.push_back(basePtr);
-                    for (auto& a : args)
-                        methodArgs.push_back(a);
+                    for (size_t i = 0; i < args.size(); ++i) {
+                        auto& at = argTypes[i];
+                        // Phase 3a/8c/8d.1: callee-clean 调用约定
+                        if (typeNeedsDestructor(at)) {
+                            if (i < callNode->getArgs().size() && !isFreshHandleExpr(callNode->getArgs()[i])) {
+                                retainHandleAtCallSite(args[i], at);
+                            } else if (i < callNode->getArgs().size()) {
+                                consumeTemp(args[i]);
+                            }
+                        }
+                        if (structParamUsesPointer(at.name)) {
+                            auto structType = getLLVMType(at);
+                            auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");
+                            _builder.CreateStore(args[i], alloca);
+                            methodArgs.push_back(alloca);
+                        } else {
+                            methodArgs.push_back(args[i]);
+                        }
+                    }
 
                     // 泛型实例方法：用消费方模块作为前缀（与 emit 端一致）
                     string ownerMod = inst.consumerModule;
@@ -664,6 +681,15 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
         methodArgs.push_back(receiverArg);
         for (size_t i = 0; i < args.size(); ++i) {
             auto& at = argTypes[i];
+            // Phase 3a/8c/8d.1: callee-clean 调用约定 —— fresh 实参消费临时帧所有权转移，
+            // 非 fresh 实参 retain 后传参。对齐 compileKnownFunctionCall。
+            if (typeNeedsDestructor(at)) {
+                if (i < callNode->getArgs().size() && !isFreshHandleExpr(callNode->getArgs()[i])) {
+                    retainHandleAtCallSite(args[i], at);
+                } else if (i < callNode->getArgs().size()) {
+                    consumeTemp(args[i]);
+                }
+            }
             if (structParamUsesPointer(at.name)) {
                 auto structType = getLLVMType(at);
                 auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");

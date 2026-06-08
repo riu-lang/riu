@@ -48,6 +48,17 @@ struct Vec2 {
   fn ne(other Vec2&) bool {
     !$.eq(&other)
   }
+
+  ; to_string（直接传 .to_string() 给 append）
+  fn to_string() String {
+    #Mut let sb StringBuilder = StringBuilder::make()
+    sb.append("Vec2(")
+    sb.append($.x.to_string())
+    sb.append(", ")
+    sb.append($.y.to_string())
+    sb.append(")")
+    sb.build()
+  }
 }
 
 ; ---- 带静态计数器的标签 ----
@@ -93,21 +104,19 @@ fn main() {
   let diff Vec2 = v1 - v2       ; minus(Self&)
   let scaled Vec2 = v1 * 2.0    ; mul(f64) → 跨类型按值
 
-  let sx_str String = sum.x.to_string()
   println("sum.x: ")
-  println(sx_str)
-  let scx_str String = scaled.x.to_string()
+  println(sum.x)
   println("scaled.x: ")
-  println(scx_str)
+  println(scaled.x)
+  println("Vec2: ")
+  println(sum.to_string())
 
   let eq_val bool = v1 == v2
   let ne_val bool = v1 != v2
-  let eq_msg String = eq_val.to_string()
-  let ne_msg String = ne_val.to_string()
   println("v1==v2: ")
-  println(eq_msg)
+  println(eq_val)
   println("v1!=v2: ")
-  println(ne_msg)
+  println(ne_val)
 
   ; ========== 2. 枚举 + match ==========
   println("=== 2. 枚举 + match ===")
@@ -127,17 +136,14 @@ fn main() {
   xs.push(30)
 
   let n i64 = xs.len()
-  let n_str String = n.to_string()
   println("len: ")
-  println(n_str)
+  println(n)
   let v0 i32 = xs.at(0)
-  let v0_str String = v0.to_string()
   println("at(0): ")
-  println(v0_str)
+  println(v0)
   let idx1 i32 = xs[1]
-  let idx1_str String = idx1.to_string()
   println("xs[1]: ")
-  println(idx1_str)
+  println(idx1)
 
   ; ========== 4. Nullable：?? 与 ?. ==========
   println("=== 4. Nullable ===")
@@ -179,17 +185,19 @@ fn main() {
   sb.append(33u32)       ; '!'
   sb.append(32u32)       ; ' '
   sb.append("yux")
+  ; 测试直接传  给 append（不通过 let 暂存）
+  sb.append(scaled.x.to_string())
   let msg String = sb.build()
   println(msg)
 
   ; ========== 7. 静态可变字段 ==========
   println("=== 7. 静态可变字段 ===")
-  let c0_str String = Label::COUNT.to_string()
+  let c0_str String = Label::COUNT
   println("初始 COUNT: ")
   println(c0_str)
   let l1 Label = Label::make("A")
   let l2 Label = Label::make("B")
-  let c2_str String = Label::COUNT.to_string()
+  let c2_str String = Label::COUNT
   println("构造 2 个后: ")
   println(c2_str)
 
@@ -197,21 +205,21 @@ fn main() {
   println("=== 8. Lambda ===")
   let square = (x i32) i32 => x * x
   let sq3 i32 = square(3)
-  let sq3_str String = sq3.to_string()
+  let sq3_str String = sq3
   println("square(3): ")
   println(sq3_str)
 
   ; 高阶函数：Array<i32> 逐元素 * 2
   let doubled Array<i32> = map_i32(xs, (x i32) i32 => x * 2)
   let d0 i32 = doubled.at(0)
-  let d0_str String = d0.to_string()
+  let d0_str String = d0
   println("map *2 at(0): ")
   println(d0_str)
 
   ; ========== 9. loop + break ==========
   println("=== 9. loop + break ===")
   let f5 i64 = factorial(5)
-  let f5_str String = f5.to_string()
+  let f5_str String = f5
   println("5! = ")
   println(f5_str)
 
