@@ -121,6 +121,7 @@ public:
     std::any visitExprTupleMember(yux::yuxParser::ExprTupleMemberContext* ctx) override;
     std::any visitExprUnary(yux::yuxParser::ExprUnaryContext* ctx) override;
     std::any visitExprNullElse(yux::yuxParser::ExprNullElseContext* ctx) override;
+    std::any visitExprMoveAssign(yux::yuxParser::ExprMoveAssignContext* ctx) override;
     std::any visitExprEnumCtor(yux::yuxParser::ExprEnumCtorContext* ctx) override;
     std::any visitExprStructLit(yux::yuxParser::ExprStructLitContext* ctx) override;
     std::any visitFieldInit(yux::yuxParser::FieldInitContext* ctx) override;

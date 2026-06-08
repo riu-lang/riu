@@ -15,7 +15,6 @@
 // - 数组表达式
 // - 一元表达式 (取负、取反、取引用)
 
-#include <algorithm>
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
 #include "analyzer/symbol_suggest.h"
@@ -24,12 +23,13 @@
 #include "ast/node/expr_node.h"
 #include "ast/node/literal_node.h"
 #include "ast/yux.h"
-#include <cassert>
-#include "compiler_runtime.h"
 #include "compiler.h"
+#include "compiler_runtime.h"
+#include "sema/call_resolve.h"
+#include <algorithm>
+#include <cassert>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
-#include "sema/call_resolve.h"
 #include <set>
 
 // ==================== 辅助函数 ====================
@@ -214,7 +214,8 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
             structName = _currentStructName;
         }
         if (structName.empty()) {
-            throw YuxError(line, col, ErrorCode::E0000, "`{ ... }` 字段字面量 codegen 找不到所属结构体 (sema 应已拦截)");
+            throw YuxError(line, col, ErrorCode::E0000,
+                           "`{ ... }` 字段字面量 codegen 找不到所属结构体 (sema 应已拦截)");
         }
         // Phase 6E.4-C: 泛型 struct #Static fn 体内 `Self {...}` —
         // _currentStructName 是 mangled (`GH$i32`), getStructDecl 查不到; 走
@@ -330,6 +331,8 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         return compileUnaryExpr(unaryNode);
     } else if (auto nullElseNode = dynamic_cast<ExprNullElseNode*>(node)) {
         return compileNullElseExpr(nullElseNode);
+    } else if (auto moveAssignNode = dynamic_cast<ExprMoveAssignNode*>(node)) {
+        return compileMoveAssignExpr(moveAssignNode);
     } else if (auto arrayInitNode = dynamic_cast<ExprArrayInitNode*>(node)) {
         // 数组填充表达式需要类型注解，这里返回 nullptr
         // 实际处理在 compileDeclareAssignStatement 中
@@ -371,4 +374,142 @@ llvm::Value* Compiler::compileStatementBlockWithResult(p<StatementBlockNode> blo
 
     _builder.CreateBr(continueBlock);
     return nullptr;
+}
+
+// ==================== a <- b : move-assign 表达式 ====================
+
+// 取 lvalue 表达式的地址（alloca / GEP）。
+// 仅支持简单变量、$、$.field / a.b 链式字段访问。
+llvm::Value* Compiler::compileLvalueAddr(p<ExprNode> node) {
+    auto line = node->resolveLineNumber();
+    auto col = node->resolveColumn();
+
+    // 简单变量引用: ExprLiteralNode(LiteralObjNode("name"))
+    if (auto lit = dynamic_cast<ExprLiteralNode*>(node)) {
+        if (auto obj = dynamic_cast<LiteralObjNode*>(lit->literal())) {
+            auto name = obj->getValue().getText();
+            // 当前实例 $ —— 存在 _localVarPtrs["$"] 中
+            if (name == "$") {
+                auto it = _localVarPtrs.find("$");
+                if (it == _localVarPtrs.end()) {
+                    throw YuxError(line, col, ErrorCode::E3128);
+                }
+                return it->second;
+            }
+            // 局部变量
+            auto it = _localVarPtrs.find(name);
+            if (it != _localVarPtrs.end()) {
+                return it->second;
+            }
+            // 全局变量
+            string ownerMod = _file ? _file->moduleName() : "";
+            bool globPriv = !name.empty() && name[0] == '_';
+            string mangledName = Mangler::global(ownerMod, name, globPriv);
+            if (auto gv = _module->getGlobalVariable(mangledName, true)) {
+                return gv;
+            }
+            throw YuxError(line, col, ErrorCode::E3030, name);
+        }
+        throw YuxError(line, col, ErrorCode::E0000, "<- 左侧不是有效 lvalue（字面量不可赋值）");
+    }
+
+    // 字段访问: ExprDotNode(base, member)
+    if (auto dot = dynamic_cast<ExprDotNode*>(node)) {
+        auto baseAddr = compileLvalueAddr(dot->baseExpr());
+        auto baseType = dot->baseExpr()->getType();
+        // 剥 Ref<T> → T
+        if (baseType.isRef()) {
+            auto inner = baseType.refElementType();
+            if (inner) baseType = *inner;
+        }
+        // 剥 Rc<T> → T
+        if (baseType.isRc()) {
+            auto inner = baseType.rcElementType();
+            if (inner) baseType = *inner;
+        }
+        string member = dot->member();
+        auto structType = getLLVMType(baseType);
+        if (!structType) {
+            throw YuxError(line, col, ErrorCode::E3042, baseType.name, member);
+        }
+        // 找字段索引
+        auto* decl = _file ? _file->getStructDecl(baseType.name) : nullptr;
+        if (!decl && _yux && _yux->sdkFile()) {
+            decl = _yux->sdkFile()->getStructDecl(baseType.name);
+        }
+        if (!decl) {
+            throw YuxError(line, col, ErrorCode::E0000, "<- 左侧字段访问找不到 struct decl: " + baseType.name);
+        }
+        int idx = decl->fieldIndex(member);
+        if (idx < 0) {
+            throw YuxError(line, col, ErrorCode::E3040, baseType.name, member);
+        }
+        return _builder.CreateStructGEP(structType, baseAddr, static_cast<unsigned>(idx), "move.lhs.gep");
+    }
+
+    throw YuxError(line, col, ErrorCode::E0000, "<- 左侧仅支持变量、$、字段访问（暂不支持索引/元组成员）");
+}
+
+// 编译 a <- b：移出旧值、替换新值、返回旧值
+// 1. 取 LHS 地址 → load 旧值
+// 2. 编译 RHS (新值)
+// 3. RC 所有权管理：旧值不移 retain（ownership 转给结果），新值 retain（多一个 owner）
+// 4. Store 新值到 LHS 地址
+// 5. 返回旧值；若含 RC 字段则 recordTemp（结果持 ownership +1）
+llvm::Value* Compiler::compileMoveAssignExpr(p<ExprMoveAssignNode> node) {
+    int line = node->resolveLineNumber();
+    int col = node->resolveColumn();
+
+    auto leftNode = node->left();
+    auto rightNode = node->right();
+    auto leftType = leftNode->getType();
+
+    // 1. 取 LHS 地址 + 读取旧值
+    auto addr = compileLvalueAddr(leftNode);
+    auto llvmType = getLLVMType(leftType);
+    if (!llvmType) {
+        throw YuxError(line, col, ErrorCode::E3096, leftType.name);
+    }
+    auto oldVal = _builder.CreateLoad(llvmType, addr, "move.old");
+
+    // 2. 类型推断 + 编译 RHS
+    //    空数组 [] 需用 leftType 的 elem type 走 buildArrayLiteralBlock（否则 getLLVMType("__empty") 炸）
+    if (isIntTypeName(leftType.name) && isFlexibleIntExpr(rightNode)) {
+        tryInferIntType(rightNode, leftType);
+    }
+    llvm::Value* valToStore;
+    if (leftType.isArrayGeneric() && dynamic_cast<ExprArrayNode*>(rightNode)) {
+        auto arrNode = static_cast<ExprArrayNode*>(rightNode);
+        auto elemType = leftType.arrayGenericElementType();
+        valToStore = buildArrayLiteralBlock(arrNode, elemType ? *elemType : TypeInfo("i8"));
+        // buildArrayLiteralBlock 已按 leftType 构建，无需 createCast
+    } else {
+        auto rightVal = compileExpr(rightNode);
+        auto rightType = rightNode->getType();
+        valToStore = createCast(rightVal, rightType, leftType);
+    }
+
+    // 3. RC 所有权管理
+    //    RHS 新值即将存入 LHS 槽位 → LHS 成为一个新 owner → 需 retain（或 consume fresh temp）。
+    //    空数组 [] 走 buildArrayLiteralBlock，返回值自带 +1，不在 temp frame 中，无需 consume。
+    if (typeNeedsDestructor(leftType)) {
+        bool isArrayLiteral = leftType.isArrayGeneric() && dynamic_cast<ExprArrayNode*>(rightNode);
+        if (!isArrayLiteral) {
+            if (isFreshHandleExpr(rightNode)) {
+                consumeTemp(valToStore);
+            } else {
+                retainHandleAtCallSite(valToStore, leftType);
+            }
+        }
+    }
+
+    // 4. 写入新值
+    _builder.CreateStore(valToStore, addr);
+
+    // 5. 旧值返回（不含 retain：ownership 从 LHS 移交给结果）
+    if (typeNeedsDestructor(leftType)) {
+        recordTemp(oldVal, leftType);
+    }
+
+    return oldVal;
 }

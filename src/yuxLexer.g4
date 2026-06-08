@@ -67,6 +67,7 @@ SymbolExcl: '!';
 SymbolExclEq: '!=';
 SymbolHash: '#';
 SymbolLt: '<';
+SymbolLtSub: '<-';
 SymbolMod: '%';
 SymbolModEq: '%=';
 SymbolMt: '>';

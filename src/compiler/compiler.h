@@ -305,7 +305,7 @@ private:
     void compileLoopStatement(p<StatementLoopNode> node);                             // 编译 loop 语句
     void compileBreakStatement(p<StatementBreakNode> node);                           // 编译 break 语句
     void compileArraySetStatement(p<StatementSetNode> node);                          // 编译数组元素赋值语句
-    void compileStaticFieldSetStatement(p<StatementStaticFieldSetNode> node);          // 编译静态字段写语句 (Phase 5)
+    void compileStaticFieldSetStatement(p<StatementStaticFieldSetNode> node);         // 编译静态字段写语句 (Phase 5)
 
     // ==================== 表达式编译 (具体类型) ====================
     llvm::Value* compileLiteralExpr(p<ExprLiteralNode> node); // 编译字面量表达式
@@ -319,8 +319,7 @@ private:
     // Returns the Type global; optionally returns the [N x ptr] fields ref array via outFieldsRefs.
     // 由 `__yux_reflect_type:<T>()` intrinsic 与 `<Struct>::fields` 调用站调用.
     // 仅对 Normal 用户 / SDK struct 类型 emit; 找不到 owner 返回 nullptr.
-    llvm::GlobalVariable* ensureReflectTypeGlobal(const TypeInfo& t,
-        llvm::GlobalVariable** outFieldsRefs = nullptr);
+    llvm::GlobalVariable* ensureReflectTypeGlobal(const TypeInfo& t, llvm::GlobalVariable** outFieldsRefs = nullptr);
     llvm::Value*
     compileStringTemplate(StringTemplateNode* node); // v0.6 Phase 2a：StringTemplateNode → StringBuilder lower
     llvm::Value* compileStringPlusChain(
@@ -390,10 +389,12 @@ private:
     void inferLambdaParamsFromFnType(p<class LambdaExprNode> lambda, const TypeInfo& expectedFnType);
     // 查找 enum 声明（本文件 + SDK 回退 + wildcard 导入），未找到返回 nullptr / 空 owner
     p<EnumDeclNode> lookupEnumDecl(const string& name, p<FileNode>& outOwner);
-    llvm::Value* compileGetRefExpr(p<ExprGetRefNode> node);     // 编译取引用表达式
-    llvm::Value* compileUnaryExpr(p<ExprUnaryNode> node);       // 编译一元表达式
-    llvm::Value* compileNullElseExpr(p<ExprNullElseNode> node); // 编译 a ?? b：a 持值则取 a.get()，否则取 b
-    llvm::Value* compileSafeDotExpr(p<ExprDotNode> node);       // 编译 a?.b：a 持值则包一层 Nullable<a.get().b>，否则空
+    llvm::Value* compileGetRefExpr(p<ExprGetRefNode> node);         // 编译取引用表达式
+    llvm::Value* compileUnaryExpr(p<ExprUnaryNode> node);           // 编译一元表达式
+    llvm::Value* compileNullElseExpr(p<ExprNullElseNode> node);     // 编译 a ?? b：a 持值则取 a.get()，否则取 b
+    llvm::Value* compileMoveAssignExpr(p<ExprMoveAssignNode> node); // 编译 a <- b：移出旧值、替换新值、返回旧值
+    llvm::Value* compileLvalueAddr(p<ExprNode> node);               // 取 lvalue 表达式的地址 (alloca/GEP)
+    llvm::Value* compileSafeDotExpr(p<ExprDotNode> node); // 编译 a?.b：a 持值则包一层 Nullable<a.get().b>，否则空
 
     // ==================== 自定义类型运算符方法调用 ====================
     llvm::Value* compileCustomTypeBinaryOp(p<ExprNode> leftExpr, p<ExprNode> rightExpr, const TypeInfo& leftType,
@@ -451,9 +452,9 @@ public:
              Yux* yux = nullptr, bool isSdk = false);
 
     // ==================== 编译入口 ====================
-    void compile(p<FileNode> file);                       // 编译文件 (主入口)
-    void compileGlobalConsts();                           // 编译全局常量
-    void compileGlobalVars();                             // 编译全局变量（DRAFT-static-vars Phase 1）
+    void compile(p<FileNode> file); // 编译文件 (主入口)
+    void compileGlobalConsts();     // 编译全局常量
+    void compileGlobalVars();       // 编译全局变量（DRAFT-static-vars Phase 1）
     // DRAFT-const-eval Phase 5: ConstantValue -> llvm::Constant 翻译 (递归; 支持 Struct 嵌套).
     // 失败 (含未支持的 kind / 字段类型不匹配) 返回 nullptr, 调用方报错.
     llvm::Constant* buildLLVMConstantFromValue(const ConstantValue& v, llvm::Type* expectedTy);

@@ -582,8 +582,7 @@ class ExprStructLitNode : public ExprNode {
 
 public:
     ExprStructLitNode(const p<Node>& parent, Token selfTok, string structName, bool isSelfForm = true)
-        : ExprNode(parent), _selfTok(std::move(selfTok)), _structName(std::move(structName)),
-          _isSelfForm(isSelfForm) {}
+        : ExprNode(parent), _selfTok(std::move(selfTok)), _structName(std::move(structName)), _isSelfForm(isSelfForm) {}
 
     void addField(p<FieldInitNode> f) { _fields.push_back(std::move(f)); }
 
@@ -723,6 +722,22 @@ public:
     [[nodiscard]] const p<TypeNode>& innerType() const { return _innerType; }
     [[nodiscard]] const p<ExprNode>& arg() const { return _arg; }
     [[nodiscard]] TypeInfo getType() const override;
+};
+
+// a <- b：移出旧值、替换新值、返回旧值（表达式，右结合，最低优先级）
+class ExprMoveAssignNode : public ExprNode {
+    p<ExprNode> _left;
+    p<ExprNode> _right;
+
+public:
+    ExprMoveAssignNode(const p<Node>& parent, p<ExprNode> left, p<ExprNode> right)
+        : ExprNode(parent), _left(std::move(left)), _right(std::move(right)) {}
+
+    [[nodiscard]] const p<ExprNode>& left() const { return _left; }
+    [[nodiscard]] const p<ExprNode>& right() const { return _right; }
+    [[nodiscard]] TypeInfo getType() const override;
+    [[nodiscard]] int resolveLineNumber() const override;
+    [[nodiscard]] int resolveColumn() const override;
 };
 
 // a ?? b：a 为 Nullable<T> 时，有值取 a.get()，否则取 b

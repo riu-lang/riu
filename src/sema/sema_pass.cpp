@@ -932,12 +932,12 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                         validateNoNestedHeap(tn->getType(), eline, ecol);
                     } catch (const YuxError&) {
                         throw;
-                    } catch (...) {  // NOLINT(bugprone-empty-catch) — sema 非 YuxError 异常留 Compiler 兜底
+                    } catch (...) { // NOLINT(bugprone-empty-catch) — sema 非 YuxError 异常留 Compiler 兜底
                     }
                 }
             } catch (const YuxError&) {
                 throw;
-            } catch (...) {  // NOLINT(bugprone-empty-catch) — sema 非 YuxError 异常留 Compiler 兜底
+            } catch (...) { // NOLINT(bugprone-empty-catch) — sema 非 YuxError 异常留 Compiler 兜底
             }
         }
 
@@ -1311,7 +1311,11 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             string mem = n->member();
             if (mem == "type" || mem == "fields" || mem == "methods" || mem == "variants") {
                 TypeInfo bt;
-                try { bt = n->baseExpr()->getType(); } catch (...) { bt = TypeInfo(); }
+                try {
+                    bt = n->baseExpr()->getType();
+                } catch (...) {
+                    bt = TypeInfo();
+                }
                 if (bt.isRef()) {
                     if (auto inner = bt.refElementType()) bt = *inner;
                 }
@@ -1322,8 +1326,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                     auto* sd = _file ? _file->getStructDecl(bt.name) : nullptr;
                     if (!sd && _sdkFile && _sdkFile != _file) sd = _sdkFile->getStructDecl(bt.name);
                     if (sd && sd->fieldIndex(mem) < 0) {
-                        throw YuxError(n->resolveLineNumber(), n->resolveColumn(),
-                                       ErrorCode::E1138, mem, bt.name, bt.name, mem);
+                        throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E1138, mem, bt.name,
+                                       bt.name, mem);
                     }
                 }
             }
@@ -1450,7 +1454,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         {
             string lhsName = n->enumName().getText();
             string rhsName = n->variantName().getText();
-            if (n->args().empty() && (rhsName == "type" || rhsName == "fields" || rhsName == "methods" || rhsName == "variants")) {
+            if (n->args().empty() &&
+                (rhsName == "type" || rhsName == "fields" || rhsName == "methods" || rhsName == "variants")) {
                 auto* sd = _file ? _file->getStructDecl(lhsName) : nullptr;
                 if (!sd && _sdkFile && _sdkFile != _file) sd = _sdkFile->getStructDecl(lhsName);
                 if (sd) return;
@@ -1713,12 +1718,12 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                         }
                     } catch (const YuxError&) {
                         throw;
-                    } catch (...) {  // NOLINT(bugprone-empty-catch) — arm getType 失败: 留 Compiler 兜底
+                    } catch (...) { // NOLINT(bugprone-empty-catch) — arm getType 失败: 留 Compiler 兜底
                     }
                 }
             } catch (const YuxError&) {
                 throw;
-            } catch (...) {  // NOLINT(bugprone-empty-catch) — try result getType 失败: 留 Compiler 兜底
+            } catch (...) { // NOLINT(bugprone-empty-catch) — try result getType 失败: 留 Compiler 兜底
             }
         }
         return;
@@ -1833,6 +1838,32 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             throw;
         } catch (...) { // NOLINT(bugprone-empty-catch)
             // getType 抛 std::runtime_error 等: 留 Compiler 兜底
+        }
+        return;
+    }
+    if (auto n = dynamic_cast<p<ExprMoveAssignNode>>(expr)) {
+        visitExpr(n->left());
+        visitExpr(n->right());
+        // 校验 left 为合法 lvalue + 类型兼容。
+        // left 必须是变量引用 ($ / a.b / a[ ... ]) 等可赋值表达式。
+        // right 类型必须能与 left 类型兼容（相同或灵活整数字面量）。
+        try {
+            auto leftType = n->left()->getType();
+            if (isIntTypeName(leftType.name) && isFlexibleIntExpr(n->right())) {
+                tryInferIntType(n->right(), leftType);
+            }
+            auto rightType = n->right()->getType();
+            if (leftType != rightType) {
+                // 非内置类型允许跨类型形参 (§7.2.3.3)
+                if (isBuiltinType(leftType.name)) {
+                    throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3001, leftType.name,
+                                   rightType.name);
+                }
+            }
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+            // getType 异常, 留 codegen 兜底
         }
         return;
     }

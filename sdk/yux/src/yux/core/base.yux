@@ -1481,11 +1481,10 @@ struct StringBuilder {
   }
 
   ; 取出缓冲、构造不可变 String、自身重置为空
+  ; `$.data <- []` 原子移出旧值并用空数组替换，旧值直接交 _take_buf 构建 String
   ; 取出后再 append/clear 不会影响已返回的 String（不同 Array<u32> Block）
   fn build() String {
-    let s String = String::_take_buf($.data)
-    $.data = []
-    s
+    String::_take_buf($.data <- [])
   }
 }
 

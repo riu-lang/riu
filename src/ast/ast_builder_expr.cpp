@@ -10,14 +10,14 @@
 //   - match / catch arm 与 Pattern
 // 拆自原 ast_builder.cpp（P1 Phase 2），方法体一字不动。
 
-#include <algorithm>
-#include "ast_builder_helpers.h"
 #include "ast_builder.h"
-#include <functional>
+#include "ast_builder_helpers.h"
 #include "node/expr_node.h"
 #include "node/literal_node.h"
 #include "node/statement_node.h"
 #include "types.h"
+#include <algorithm>
+#include <functional>
 
 std::any ASTBuilder::visitExprParen(yux::yuxParser::ExprParenContext* ctx) {
     DEBUG_LOG("    Expr: Paren");
@@ -1000,6 +1000,17 @@ std::any ASTBuilder::visitExprNullElse(yux::yuxParser::ExprNullElseContext* ctx)
     auto right = any_cast_p<ExprNode>(visit(exprs[1]));
     DEBUG_LOG("    Expr: NullElse a??b");
     return static_cast<p<ExprNode>>(createWithLine<ExprNullElseNode>(ctx, scope, left, right));
+}
+
+// a <- b：移出旧值、替换新值、返回旧值
+// 语义：left 必须为 lvalue（由 sema/codegen 校验），right 为替换值
+std::any ASTBuilder::visitExprMoveAssign(yux::yuxParser::ExprMoveAssignContext* ctx) {
+    auto scope = currentScope();
+    auto exprs = ctx->expr();
+    auto left = any_cast_p<ExprNode>(visit(exprs[0]));
+    auto right = any_cast_p<ExprNode>(visit(exprs[1]));
+    DEBUG_LOG("    Expr: MoveAssign a <- b");
+    return static_cast<p<ExprNode>>(createWithLine<ExprMoveAssignNode>(ctx, scope, left, right));
 }
 
 // `$` 单独表达式：当前实例引用
