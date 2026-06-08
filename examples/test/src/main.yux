@@ -138,7 +138,7 @@ fn main() {
   let n i64 = xs.len()
   println("len: ")
   println(n)
-  let v0 i32 = xs.at(0)
+  let v0 i32 = xs[0]
   println("at(0): ")
   println(v0)
   let idx1 i32 = xs[1]
@@ -211,7 +211,7 @@ fn main() {
 
   ; 高阶函数：Array<i32> 逐元素 * 2
   let doubled Array<i32> = map_i32(xs, (x i32) i32 => x * 2)
-  let d0 i32 = doubled.at(0)
+  let d0 i32 = doubled[0]
   let d0_str String = d0
   println("map *2 at(0): ")
   println(d0_str)
@@ -259,7 +259,7 @@ fn map_i32(xs Array<i32>, f fn(i32)i32) Array<i32> {
     if i >= xs.len() {
       break;
     }
-    r.push(f(xs.at(i)))
+    r.push(f(xs[i]))
     i = i + 1
   }
   r

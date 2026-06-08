@@ -752,11 +752,11 @@ TypeInfo ExprDotNode::getType() const {
         // Helper: trace an expression to {structDecl, fieldIndex}.
         std::function<std::pair<const StructDeclNode*, int>(const p<ExprNode>&)> tryResolve;
         tryResolve = [&](const p<ExprNode>& expr) -> std::pair<const StructDeclNode*, int> {
-            // Case 1: Direct .at(N) call on a static fields array
+            // Case 1: Direct .get(N) call on a static fields array
             if (auto* call = dynamic_cast<ExprCallNode*>(expr)) {
                 auto& callee = call->getCalleeExpr();
                 auto* dot = dynamic_cast<ExprDotNode*>(callee);
-                if (dot && dot->member() == "at" && call->getArgs().size() == 1) {
+                if (dot && dot->member() == "get" && call->getArgs().size() == 1) {
                     auto* base = dot->baseExpr();
                     auto* path = dynamic_cast<ExprPathCallNode*>(base);
                     if (path && path->variantName().getText() == "fields") {
@@ -1021,8 +1021,8 @@ TypeInfo ExprDotNode::getType() const {
         }
     }
 
-    if (baseType.isRc()) {
-        auto rcElemType = baseType.rcElementType();
+    if (actualType.isRc()) {
+        auto rcElemType = actualType.rcElementType();
         if (rcElemType) {
             actualType = *rcElemType;
         }

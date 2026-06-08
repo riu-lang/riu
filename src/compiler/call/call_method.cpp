@@ -4,17 +4,17 @@
 // 方法调用编译：从 compiler_call.cpp 拆出 (P1 Phase 3)
 // 覆盖 compileMethodCall + 数组 / 内置 / 结构体 / Dyn 子分发。
 
-#include "../compiler_runtime.h"
 #include "../compiler.h"
+#include "../compiler_runtime.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
 #include "ast/mangler.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/literal_node.h"
+#include "sema/call_resolve.h"
 #include <functional>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
-#include "sema/call_resolve.h"
 
 // ==================== 方法调用编译 ====================
 // 编译方法调用表达式 (obj.method(args))
@@ -211,14 +211,15 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         return _builder.CreateICmpEQ(lenVal, _builder.getInt64(0), "array.is_empty");
     }
 
-    if (member == "at") {
-        DEBUG_LOG("    Expr: Array.at()");
+    if (member == "get") {
+        DEBUG_LOG("    Expr: Array.get() → T&");
         // E6040 已由 sema::validateArrayMethodCall 保证 args.size() == 1
         auto ptr = getReadPtr();
         auto handle = loadArrayHandle(ptr);
         auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(handle), "a.data");
-        auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {args[0]}, "at.elem.ptr");
-        return _builder.CreateLoad(elemLLVMType, elemPtr, "at.elem");
+        auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {args[0]}, "get.elem.ptr");
+        // 返回 T&：不 load，直接返回元素地址指针
+        return elemPtr;
     }
 
     if (member == "first") {
@@ -335,128 +336,140 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
         bool isFloat = baseType.startsWith('f');
         bool isUnsigned = baseType.startsWith('u');
 
+        // T& 实参自动 load：形参声明为 T& 时 args[0] 是指针，load 出值参与 LLVM 运算
+        auto loadScalarArg = [&](size_t idx) -> llvm::Value* {
+            if (idx < argTypes.size() && argTypes[idx].isRef()) {
+                auto inner = argTypes[idx].refElementType();
+                if (inner) {
+                    return _builder.CreateLoad(getLLVMType(*inner), args[idx], "scalar.ref.load");
+                }
+            }
+            return args[idx];
+        };
+        auto rhs = loadScalarArg(0);
+
         // 算术运算符
         if (member == "plus") {
             DEBUG_LOG_VAL("    Expr: CompilerInner plus", baseType.name);
             if (isFloat) {
-                return _builder.CreateFAdd(baseVal, args[0], "add");
+                return _builder.CreateFAdd(baseVal, rhs, "add");
             }
-            return _builder.CreateAdd(baseVal, args[0], "add");
+            return _builder.CreateAdd(baseVal, rhs, "add");
         }
         if (member == "minus") {
             DEBUG_LOG_VAL("    Expr: CompilerInner minus", baseType.name);
             if (isFloat) {
-                return _builder.CreateFSub(baseVal, args[0], "sub");
+                return _builder.CreateFSub(baseVal, rhs, "sub");
             }
-            return _builder.CreateSub(baseVal, args[0], "sub");
+            return _builder.CreateSub(baseVal, rhs, "sub");
         }
         if (member == "mul") {
             DEBUG_LOG_VAL("    Expr: CompilerInner mul", baseType.name);
             if (isFloat) {
-                return _builder.CreateFMul(baseVal, args[0], "mul");
+                return _builder.CreateFMul(baseVal, rhs, "mul");
             }
-            return _builder.CreateMul(baseVal, args[0], "mul");
+            return _builder.CreateMul(baseVal, rhs, "mul");
         }
         if (member == "div") {
             DEBUG_LOG_VAL("    Expr: CompilerInner div", baseType.name);
             if (isFloat) {
-                return _builder.CreateFDiv(baseVal, args[0], "div");
+                return _builder.CreateFDiv(baseVal, rhs, "div");
             }
             if (isUnsigned) {
-                return _builder.CreateUDiv(baseVal, args[0], "div");
+                return _builder.CreateUDiv(baseVal, rhs, "div");
             }
-            return _builder.CreateSDiv(baseVal, args[0], "div");
+            return _builder.CreateSDiv(baseVal, rhs, "div");
         }
         if (member == "mod") {
             DEBUG_LOG_VAL("    Expr: CompilerInner mod", baseType.name);
             if (isFloat) {
-                return _builder.CreateFRem(baseVal, args[0], "mod");
+                return _builder.CreateFRem(baseVal, rhs, "mod");
             }
             if (isUnsigned) {
-                return _builder.CreateURem(baseVal, args[0], "mod");
+                return _builder.CreateURem(baseVal, rhs, "mod");
             }
-            return _builder.CreateSRem(baseVal, args[0], "mod");
+            return _builder.CreateSRem(baseVal, rhs, "mod");
         }
 
         // 比较运算符
         if (member == "eq") {
             DEBUG_LOG_VAL("    Expr: CompilerInner eq", baseType.name);
             if (isFloat) {
-                return _builder.CreateFCmpOEQ(baseVal, args[0], "eq");
+                return _builder.CreateFCmpOEQ(baseVal, rhs, "eq");
             }
-            return _builder.CreateICmpEQ(baseVal, args[0], "eq");
+            return _builder.CreateICmpEQ(baseVal, rhs, "eq");
         }
         if (member == "ne") {
             DEBUG_LOG_VAL("    Expr: CompilerInner ne", baseType.name);
             if (isFloat) {
-                return _builder.CreateFCmpONE(baseVal, args[0], "ne");
+                return _builder.CreateFCmpONE(baseVal, rhs, "ne");
             }
-            return _builder.CreateICmpNE(baseVal, args[0], "ne");
+            return _builder.CreateICmpNE(baseVal, rhs, "ne");
         }
         if (member == "lt") {
             DEBUG_LOG_VAL("    Expr: CompilerInner lt", baseType.name);
             if (isFloat) {
-                return _builder.CreateFCmpOLT(baseVal, args[0], "lt");
+                return _builder.CreateFCmpOLT(baseVal, rhs, "lt");
             }
             if (isUnsigned) {
-                return _builder.CreateICmpULT(baseVal, args[0], "lt");
+                return _builder.CreateICmpULT(baseVal, rhs, "lt");
             }
-            return _builder.CreateICmpSLT(baseVal, args[0], "lt");
+            return _builder.CreateICmpSLT(baseVal, rhs, "lt");
         }
         if (member == "le") {
             DEBUG_LOG_VAL("    Expr: CompilerInner le", baseType.name);
             if (isFloat) {
-                return _builder.CreateFCmpOLE(baseVal, args[0], "le");
+                return _builder.CreateFCmpOLE(baseVal, rhs, "le");
             }
             if (isUnsigned) {
-                return _builder.CreateICmpULE(baseVal, args[0], "le");
+                return _builder.CreateICmpULE(baseVal, rhs, "le");
             }
-            return _builder.CreateICmpSLE(baseVal, args[0], "le");
+            return _builder.CreateICmpSLE(baseVal, rhs, "le");
         }
         if (member == "gt") {
             DEBUG_LOG_VAL("    Expr: CompilerInner gt", baseType.name);
             if (isFloat) {
-                return _builder.CreateFCmpOGT(baseVal, args[0], "gt");
+                return _builder.CreateFCmpOGT(baseVal, rhs, "gt");
             }
             if (isUnsigned) {
-                return _builder.CreateICmpUGT(baseVal, args[0], "gt");
+                return _builder.CreateICmpUGT(baseVal, rhs, "gt");
             }
-            return _builder.CreateICmpSGT(baseVal, args[0], "gt");
+            return _builder.CreateICmpSGT(baseVal, rhs, "gt");
         }
         if (member == "ge") {
             DEBUG_LOG_VAL("    Expr: CompilerInner ge", baseType.name);
             if (isFloat) {
-                return _builder.CreateFCmpOGE(baseVal, args[0], "ge");
+                return _builder.CreateFCmpOGE(baseVal, rhs, "ge");
             }
             if (isUnsigned) {
-                return _builder.CreateICmpUGE(baseVal, args[0], "ge");
+                return _builder.CreateICmpUGE(baseVal, rhs, "ge");
             }
-            return _builder.CreateICmpSGE(baseVal, args[0], "ge");
+            return _builder.CreateICmpSGE(baseVal, rhs, "ge");
         }
 
         // 位运算符
         if (member == "and") {
             DEBUG_LOG_VAL("    Expr: CompilerInner and", baseType.name);
-            return _builder.CreateAnd(baseVal, args[0], "and");
+            return _builder.CreateAnd(baseVal, rhs, "and");
         }
         if (member == "or") {
             DEBUG_LOG_VAL("    Expr: CompilerInner or", baseType.name);
-            return _builder.CreateOr(baseVal, args[0], "or");
+            return _builder.CreateOr(baseVal, rhs, "or");
         }
         if (member == "xor") {
             DEBUG_LOG_VAL("    Expr: CompilerInner xor", baseType.name);
-            return _builder.CreateXor(baseVal, args[0], "xor");
+            return _builder.CreateXor(baseVal, rhs, "xor");
         }
         if (member == "shl") {
             DEBUG_LOG_VAL("    Expr: CompilerInner shl", baseType.name);
-            return _builder.CreateShl(baseVal, args[0], "shl");
+            return _builder.CreateShl(baseVal, rhs, "shl");
         }
         if (member == "shr") {
             DEBUG_LOG_VAL("    Expr: CompilerInner shr", baseType.name);
             if (isUnsigned) {
-                return _builder.CreateLShr(baseVal, args[0], "shr");
+                return _builder.CreateLShr(baseVal, rhs, "shr");
             }
-            return _builder.CreateAShr(baseVal, args[0], "shr");
+            return _builder.CreateAShr(baseVal, rhs, "shr");
         }
 
         // 一元运算符

@@ -148,3 +148,33 @@ fn test_array_nested_literal_uneven() {
   assert_eq(r1.len(), 3i64)
   assert_eq(r1[2], 5i32)
 }
+
+; ---------- array_get：T& 引用访问 ----------
+
+#Test
+fn test_array_get_tref_bind() {
+  #Mut let a Array<i32> = [100, 200]
+  ; get 返回 T&，可绑定到 T& 局部
+  let r i32& = a.get(0i64)
+  assert_eq(r, 100)
+}
+
+#Test
+fn test_array_get_copy_of() {
+  #Mut let a Array<i32> = [10, 20, 30]
+  ; get 返回 T&，通过 copy_of 显式转换为 T 值
+  let v i32 = copy_of:<i32>(a.get(0i64))
+  assert_eq(v, 10i32)
+  assert_eq(copy_of:<i32>(a.get(2i64)), 30i32)
+}
+
+#Test
+fn test_array_get_write_through() {
+  #Mut let a Array<i32> = [5, 10, 15]
+  ; 通过 T& 写穿元素
+  #Mut let w i32& = a.get(1i64)
+  w = 42
+  ; 验证原数组元素被修改
+  assert_eq(a[1], 42)
+  assert_eq(a[1], 42)
+}

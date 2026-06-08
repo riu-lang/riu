@@ -8,7 +8,7 @@ struct Point {
   #Static
   fn test_static() i32 {
     ; 静态方法中没有 $ receiver → E3134
-    ret Point::fields.at(0).value
+    ret Point::fields.get(0).value
   }
 }
 

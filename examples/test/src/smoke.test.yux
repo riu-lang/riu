@@ -125,9 +125,9 @@ fn test_array_push_len() {
 #Test
 fn test_array_at() {
   #Mut let a Array<i32> = [10, 20, 30]
-  assert_eq(a.at(0), 10)
-  assert_eq(a.at(1), 20)
-  assert_eq(a.at(2), 30)
+  assert_eq(a.get(0), 10)
+  assert_eq(a.get(1), 20)
+  assert_eq(a.get(2), 30)
 }
 
 #Test

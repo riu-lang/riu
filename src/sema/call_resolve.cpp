@@ -9,17 +9,17 @@
 //
 // 不依赖任何 LLVM 头; 由 yux_frontend 静态库提供, Compiler 与未来的 SemaPass 共享.
 
-#include <algorithm>
+#include "sema/call_resolve.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
 #include "ast/node/enum_node.h"
 #include "ast/yux.h"
+#include "tools/diagnostic.h"
+#include "types.h"
+#include <algorithm>
 #include <format>
 #include <functional>
 #include <regex>
-#include "sema/call_resolve.h"
-#include "tools/diagnostic.h"
-#include "types.h"
 
 namespace sema {
 
@@ -28,12 +28,12 @@ namespace sema {
 // 检查参数类型是否可以接受
 // 支持精确匹配和引用类型匹配
 static bool paramAccepts(const TypeInfo& param, const TypeInfo& argType) {
-    if (param == argType) return true;  // 精确匹配
+    if (param == argType) return true; // 精确匹配
     if (param.isRef()) {
         auto ref = param.refElementType();
-        if (ref && *ref == argType) return true;  // 引用参数接受值类型
+        if (ref && *ref == argType) return true; // 引用参数接受值类型
     }
-    if (param.isPtr() && argType.isRef()) return true;  // 指针参数接受引用
+    if (param.isPtr() && argType.isRef()) return true; // 指针参数接受引用
     return false;
 }
 
@@ -47,12 +47,15 @@ static bool overloadMatchesFlexible(const vector<p<ExprNode>>& args, const vecto
             if (isIntTypeName(params[i].name)) continue;
             try {
                 if (paramAccepts(params[i], args[i]->getType())) continue;
-            } catch (...) {} // NOLINT(bugprone-empty-catch)
+            } catch (...) {
+            } // NOLINT(bugprone-empty-catch)
             return false;
         }
         try {
             if (!paramAccepts(params[i], args[i]->getType())) return false;
-        } catch (...) { return false; }
+        } catch (...) {
+            return false;
+        }
     }
     return true;
 }
@@ -65,9 +68,13 @@ static bool overloadMatchesDefault(const vector<p<ExprNode>>& args, const vector
     for (size_t i = 0; i < args.size(); ++i) {
         TypeInfo argType;
         if (isFlexibleIntExpr(args[i])) {
-            argType = i32Type;  // 灵活整数默认为 i32
+            argType = i32Type; // 灵活整数默认为 i32
         } else {
-            try { argType = args[i]->getType(); } catch (...) { return false; }
+            try {
+                argType = args[i]->getType();
+            } catch (...) {
+                return false;
+            }
         }
         if (!paramAccepts(params[i], argType)) return false;
     }
@@ -79,8 +86,7 @@ static bool overloadMatchesDefault(const vector<p<ExprNode>>& args, const vector
 // 接收者（结构体类型本身）。匹配时跳过 params[0]，按用户写的实参列表推断未带后缀
 // 的整数字面量类型，避免后续在 LLVM 后端因 i32→i64 形参不匹配而走到外部函数路径
 // 触发 `isSized` 断言（见 BUGS.md「构造函数 i64 形参传 untyped int 字面量」）。
-void resolveCtorOverload(FileNode* file, const string& structName,
-                         const vector<p<ExprNode>>& args, int line) {
+void resolveCtorOverload(FileNode* file, const string& structName, const vector<p<ExprNode>>& args, int line) {
     string ctorFullName = structName + "." + structName;
     vector<FnSymbolInfo*> candidates;
     file->collectFnOverloads(ctorFullName, candidates);
@@ -94,7 +100,11 @@ void resolveCtorOverload(FileNode* file, const string& structName,
             if (isFlexibleIntExpr(args[i])) {
                 argType = i32Type;
             } else {
-                try { argType = args[i]->getType(); } catch (...) { return false; }
+                try {
+                    argType = args[i]->getType();
+                } catch (...) {
+                    return false;
+                }
             }
             if (!paramAccepts(c->params[i + 1], argType)) return false;
         }
@@ -107,22 +117,27 @@ void resolveCtorOverload(FileNode* file, const string& structName,
                 if (isIntTypeName(c->params[i + 1].name)) continue;
                 try {
                     if (paramAccepts(c->params[i + 1], args[i]->getType())) continue;
-                } catch (...) {} // NOLINT(bugprone-empty-catch)
+                } catch (...) {
+                } // NOLINT(bugprone-empty-catch)
                 return false;
             }
             try {
                 if (!paramAccepts(c->params[i + 1], args[i]->getType())) return false;
-            } catch (...) { return false; }
+            } catch (...) {
+                return false;
+            }
         }
         return true;
     };
 
     vector<FnSymbolInfo*> defaultMatches;
-    for (auto c : candidates) if (matchesDefault(c)) defaultMatches.push_back(c);
+    for (auto c : candidates)
+        if (matchesDefault(c)) defaultMatches.push_back(c);
 
     vector<FnSymbolInfo*> matches;
     if (defaultMatches.empty()) {
-        for (auto c : candidates) if (matchesFlexible(c)) matches.push_back(c);
+        for (auto c : candidates)
+            if (matchesFlexible(c)) matches.push_back(c);
     } else {
         matches = defaultMatches;
     }
@@ -148,7 +163,11 @@ void resolveCtorOverload(FileNode* file, const string& structName,
         string argSigs;
         for (size_t i = 0; i < args.size(); ++i) {
             if (i) argSigs += ", ";
-            try { argSigs += args[i]->getType().name; } catch(...) { argSigs += "?"; }
+            try {
+                argSigs += args[i]->getType().name;
+            } catch (...) {
+                argSigs += "?";
+            }
         }
         throw YuxError(line, ErrorCode::E6014, structName, argSigs, matches.size(), sigs);
     }
@@ -157,8 +176,8 @@ void resolveCtorOverload(FileNode* file, const string& structName,
 // ==================== 函数重载解析 ====================
 // 解析函数重载，确定应该调用哪个版本
 // 如果有歧义，抛出错误要求用户添加类型后缀
-void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName,
-                       const vector<p<ExprNode>>& args, int line) {
+void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName, const vector<p<ExprNode>>& args,
+                       int line) {
     (void)sdkFile;
     vector<FnSymbolInfo*> candidates;
     file->collectFnOverloads(fnName, candidates);
@@ -202,7 +221,11 @@ void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName,
         string argSigs;
         for (size_t i = 0; i < args.size(); ++i) {
             if (i) argSigs += ", ";
-            try { argSigs += args[i]->getType().name; } catch(...) { argSigs += "?"; }
+            try {
+                argSigs += args[i]->getType().name;
+            } catch (...) {
+                argSigs += "?";
+            }
         }
         throw YuxError(line, ErrorCode::E6014, fnName, argSigs, matches.size(), sigs);
     }
@@ -211,28 +234,19 @@ void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName,
 // ==================== 泛型类型实参 arity 校验 (Phase 3.3 前置.3c) ====================
 // 原 compileCallExpr (line 434) 与 compileGenericFunctionCall (line 938) 两处重复的
 // E6010 throw + .withHint 抠成 sema 共享; SemaPass 同步接入.
-void validateGenericTypeArgsArity(const string& fnName,
-                                  size_t expectedCount,
-                                  size_t actualCount,
-                                  int line, int col) {
+void validateGenericTypeArgsArity(const string& fnName, size_t expectedCount, size_t actualCount, int line, int col) {
     if (expectedCount == actualCount) return;
     throw YuxError(line, col, ErrorCode::E6010, fnName, expectedCount, actualCount)
-        .withHint(std::format("调用处的类型实参个数需与声明匹配；改写为 `{}:<{}>(...)` 形式补齐 {} 个类型",
-            fnName,
-            std::string(expectedCount == 1 ? "T" : "T1, T2, ..."),
-            expectedCount));
+        .withHint(std::format("调用处的类型实参个数需与声明匹配；改写为 `{}:<{}>(...)` 形式补齐 {} 个类型", fnName,
+                              std::string(expectedCount == 1 ? "T" : "T1, T2, ..."), expectedCount));
 }
 
 // ==================== Dyn 方法静态形态校验 (Phase 3.3 前置.3f) ====================
 // 原位于 `compiler/compiler_call.cpp::compileDynMethodCall` 第 2 / 3 / 4 步:
 // 按名查 sig (E6016) → arity (E6012) → 形参类型 (E6015). 纯 AST + TypeInfo,
 // 抠到 sema 层后 Compiler 继续走 codegen, SemaPass 后续可在 Dyn 调用点提前调.
-FnHeaderNode* resolveDynMethodSig(SpecDeclNode* specDecl,
-                                  const string& specQualified,
-                                  const TypeInfo& baseType,
-                                  const string& member,
-                                  const vector<TypeInfo>& argTypes,
-                                  int line, int col) {
+FnHeaderNode* resolveDynMethodSig(SpecDeclNode* specDecl, const string& specQualified, const TypeInfo& baseType,
+                                  const string& member, const vector<TypeInfo>& argTypes, int line, int col) {
     // 2. 找方法签名 (按名匹配; yux 暂无方法名重载, 第一处即终)
     FnHeaderNode* sig = nullptr;
     for (auto& s : specDecl->signatures()) {
@@ -247,8 +261,8 @@ FnHeaderNode* resolveDynMethodSig(SpecDeclNode* specDecl,
 
     // 3. arity 校验
     if (sig->params().size() != argTypes.size()) {
-        throw YuxError(line, col, ErrorCode::E6012, member,
-            static_cast<int>(sig->params().size()), static_cast<int>(argTypes.size()));
+        throw YuxError(line, col, ErrorCode::E6012, member, static_cast<int>(sig->params().size()),
+                       static_cast<int>(argTypes.size()));
     }
 
     // 4. 参数类型按 D 签名比对 (类型名 + 全名相等; 与 yux 名义类型一致)
@@ -293,11 +307,8 @@ void checkBangWithoutFallibleCaller(FnNode* currentFnNode, p<ExprCallNode> callN
 // 原位于 `src/compiler/compiler_call.cpp` 的 static 自由函数, 形参从
 // `Compiler::TryCatchCtx*` 改成 `vector<string>* tryBlockSeenErrs` 以解开 LLVM 耦合
 // (原 TryCatchCtx 内含 llvm::BasicBlock*, 函数体只读 seenErrTypes).
-void checkErrPropagateForIdCall(FnNode* currentFnNode,
-                                p<ExprCallNode> callNode,
-                                const string& fnName,
-                                const FnSymbolInfo* calleeSym,
-                                vector<string>* tryBlockSeenErrs,
+void checkErrPropagateForIdCall(FnNode* currentFnNode, p<ExprCallNode> callNode, const string& fnName,
+                                const FnSymbolInfo* calleeSym, vector<string>* tryBlockSeenErrs,
                                 const string& sourcePath) {
     bool hasBang = callNode->errPropagate();
     string callerErr;
@@ -316,9 +327,8 @@ void checkErrPropagateForIdCall(FnNode* currentFnNode,
             // -Werror / --deny=E7016 升级为 Error 时 emit 内部会 rethrow).
             // emit 按 (file, code, line, col, msg) 去重, Compiler / SemaPass
             // 双跑只渲染一次.
-            DiagnosticEngine::emit(sourcePath,
-                YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                         ErrorCode::E7016, calleeErr, fnName, calleeErr));
+            DiagnosticEngine::emit(sourcePath, YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                                                        ErrorCode::E7016, calleeErr, fnName, calleeErr));
         }
         return;
     }
@@ -330,15 +340,14 @@ void checkErrPropagateForIdCall(FnNode* currentFnNode,
         }
         // E7004: caller / callee 错误类型不一致 (同 ! 不可跨类型透传)
         if (!calleeErr.empty() && calleeErr != callerErr) {
-            throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                ErrorCode::E7004, calleeErr, callerErr, calleeErr, callerErr, calleeErr);
+            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E7004, calleeErr, callerErr,
+                           calleeErr, callerErr, calleeErr);
         }
         // callee 不是 #Fallible 但写了 ! : 暂不在 10e/10f 报; 保留给后续考虑
     } else {
         // E7006: 调用 #Fallible 函数但未加 ! (不在 try block 内)
         if (!calleeErr.empty()) {
-            throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                ErrorCode::E7006, fnName);
+            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E7006, fnName);
         }
     }
 }
@@ -348,9 +357,7 @@ void checkErrPropagateForIdCall(FnNode* currentFnNode,
 // 抠到 sema 层. 命中其中一种时返回 {matched=true, fnName, fnSym}, 调用方
 // 走 compileKnownFunctionCall; 未命中返回 {matched=false} 由调用方继续.
 // 纯 AST 符号查 + 字符串拼接, 无 LLVM 依赖.
-ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux,
-                                       p<ExprCallNode> callNode,
-                                       p<ExprDotNode> dotNode,
+ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux, p<ExprCallNode> callNode, p<ExprDotNode> dotNode,
                                        const vector<TypeInfo>& argTypes) {
     ModuleFnCallResult result;
     auto member = dotNode->member();
@@ -361,8 +368,8 @@ ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux,
         vector<string> segs;
         if (ExprDotNode::parseChain(dotNode, aliasName, segs) && segs.size() >= 2) {
             auto aliasSym = file->lookupSymbol(aliasName);
-            if (aliasSym && (aliasSym->kind == SymbolKind::Package || aliasSym->kind == SymbolKind::Module)
-                && file->isAmbiguousAlias(aliasName)) {
+            if (aliasSym && (aliasSym->kind == SymbolKind::Package || aliasSym->kind == SymbolKind::Module) &&
+                file->isAmbiguousAlias(aliasName)) {
                 file->throwAmbiguousAlias(aliasName, callNode->getLineNumber());
             }
             if (aliasSym && aliasSym->kind == SymbolKind::Package) {
@@ -373,18 +380,17 @@ ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux,
                 }
                 auto* target = file->packageChild(aliasName, childKey);
                 if (!target) {
-                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                        ErrorCode::E6001, childKey, aliasSym->moduleName);
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6001, childKey,
+                                   aliasSym->moduleName);
                 }
                 const string& fnName = segs.back();
                 auto* fnSym = target->lookupFnSymbolWithParams(fnName, argTypes);
                 if (!fnSym) {
-                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                        ErrorCode::E6002, fnName, aliasSym->moduleName + "." + childKey);
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6002, fnName,
+                                   aliasSym->moduleName + "." + childKey);
                 }
                 if (fnSym->isPrivate) {
-                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                        ErrorCode::E6003, fnName);
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6003, fnName);
                 }
                 result.matched = true;
                 result.fnName = fnName;
@@ -403,17 +409,16 @@ ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux,
             if (aliasSym && aliasSym->kind == SymbolKind::Module) {
                 auto targetMod = yux->module(aliasSym->moduleName);
                 if (!targetMod) {
-                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                        ErrorCode::E6005, aliasSym->moduleName, aliasName);
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6005,
+                                   aliasSym->moduleName, aliasName);
                 }
                 auto* fnSym = targetMod->lookupFnSymbolWithParams(member, argTypes);
                 if (!fnSym) {
-                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                        ErrorCode::E6002, member, aliasSym->moduleName);
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6002, member,
+                                   aliasSym->moduleName);
                 }
                 if (fnSym->isPrivate) {
-                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                        ErrorCode::E6004, member);
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6004, member);
                 }
                 result.matched = true;
                 result.fnName = member;
@@ -429,40 +434,36 @@ ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux,
 // ==================== 泛型函数 typeArgs 推断 (Phase 3.3.1.b) ====================
 // 原 `compileGenericFunctionCall` 的 else 分支 (无显式 typeArgs 路径) 整体抠出.
 // arity / 推断 / unify 全部纯 TypeInfo, 无 LLVM 依赖.
-void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn,
-                            const string& fnName,
-                            const vector<TypeInfo>& argTypes,
-                            vector<TypeInfo>& outTypeArgs) {
+void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn, const string& fnName,
+                            const vector<TypeInfo>& argTypes, vector<TypeInfo>& outTypeArgs) {
     const auto& typeParams = genericFn->header()->typeParams();
     auto params = genericFn->header()->params();
     if (params.size() != argTypes.size()) {
-        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-            ErrorCode::E6012, fnName, params.size(), argTypes.size());
+        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6012, fnName, params.size(),
+                       argTypes.size());
     }
 
     map<string, TypeInfo> inferred;
     // 递归 unify: 形参 pType 与实参 aType 匹配; 遇到形如 T 的裸类型形参则记录推断
-    std::function<void(const TypeInfo&, const TypeInfo&)> unify =
-        [&](const TypeInfo& pType, const TypeInfo& aType) {
-            if (pType.isNormal() && !isBuiltinType(pType.name)) {
-                for (auto& tp : typeParams) {
-                    if (pType.name == tp) {
-                        inferred[tp] = aType;
-                        return;
-                    }
+    std::function<void(const TypeInfo&, const TypeInfo&)> unify = [&](const TypeInfo& pType, const TypeInfo& aType) {
+        if (pType.isNormal() && !isBuiltinType(pType.name)) {
+            for (auto& tp : typeParams) {
+                if (pType.name == tp) {
+                    inferred[tp] = aType;
+                    return;
                 }
             }
-            // Generic vs Generic: 同名同元数则递归各 typeArg
-            if (pType.kind == TypeKind::Generic && aType.kind == TypeKind::Generic
-                && pType.name == aType.name
-                && pType.genericArgs.size() == aType.genericArgs.size()) {
-                for (size_t i = 0; i < pType.genericArgs.size(); ++i) {
-                    if (pType.genericArgs[i] && aType.genericArgs[i]) {
-                        unify(*pType.genericArgs[i], *aType.genericArgs[i]);
-                    }
+        }
+        // Generic vs Generic: 同名同元数则递归各 typeArg
+        if (pType.kind == TypeKind::Generic && aType.kind == TypeKind::Generic && pType.name == aType.name &&
+            pType.genericArgs.size() == aType.genericArgs.size()) {
+            for (size_t i = 0; i < pType.genericArgs.size(); ++i) {
+                if (pType.genericArgs[i] && aType.genericArgs[i]) {
+                    unify(*pType.genericArgs[i], *aType.genericArgs[i]);
                 }
             }
-        };
+        }
+    };
     for (size_t i = 0; i < params.size(); ++i) {
         auto paramType = params[i]->type();
         if (!paramType) continue;
@@ -472,8 +473,7 @@ void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn,
     for (auto& tp : typeParams) {
         auto it = inferred.find(tp);
         if (it == inferred.end()) {
-            throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                ErrorCode::E6013, tp, fnName);
+            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6013, tp, fnName);
         }
         outTypeArgs.push_back(it->second);
     }
@@ -483,13 +483,8 @@ void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn,
 // 原 `compileFunctionCall` line 770 的 inline 块, 仅一行条件 + E6006 throw.
 // 抽出供 SemaPass 与 Compiler 共用; 纯字符串比较.
 // ==================== 泛型 typeArgs draft 边界 (Phase 3.3.3.c, E3032 / E1106) ====================
-void validateGenericTypeArgsSpecBound(
-    const SpecRegistry* registry,
-    const SpecImplChecker* checker,
-    FileNode* fnOwner,
-    FnHeaderNode* header,
-    const vector<TypeInfo>& typeArgs,
-    int line, int col) {
+void validateGenericTypeArgsSpecBound(const SpecRegistry* registry, const SpecImplChecker* checker, FileNode* fnOwner,
+                                      FnHeaderNode* header, const vector<TypeInfo>& typeArgs, int line, int col) {
     if (!registry || !checker || !header || !fnOwner) return;
     const auto& bounds = header->typeParamBounds();
     if (bounds.empty()) return;
@@ -503,22 +498,17 @@ void validateGenericTypeArgsSpecBound(
             // v0.5: 函数声明位 specBound 暂未携带类型实参 (ast_builder 仅取基名),
             // specTypeArgs 传空; 草案 §6.4.4.1 文法允许 `D<T>` 形态留待扩展.
             vector<TypeInfo> specTypeArgs;
-            if (!checker->boundSatisfied(typeArgs[i], resolved->decl,
-                                          resolved->qualifiedName, specTypeArgs)) {
-                throw YuxError(line, col, ErrorCode::E1106,
-                    typeArgs[i].getFullName(),
-                    resolved->qualifiedName,
-                    typeParams[i]);
+            if (!checker->boundSatisfied(typeArgs[i], resolved->decl, resolved->qualifiedName, specTypeArgs)) {
+                throw YuxError(line, col, ErrorCode::E1106, typeArgs[i].getFullName(), resolved->qualifiedName,
+                               typeParams[i]);
             }
         }
     }
 }
 
 // ==================== Dyn callee draft 解析 (Phase 3.3.3.b, E1131) ====================
-DynCalleeResolved resolveDynCalleeSpec(const SpecRegistry* registry,
-                                         FileNode* visibleFrom,
-                                         const TypeInfo& baseType,
-                                         int line, int col) {
+DynCalleeResolved resolveDynCalleeSpec(const SpecRegistry* registry, FileNode* visibleFrom, const TypeInfo& baseType,
+                                       int line, int col) {
     auto specInner = baseType.dynSpecType();
     string specBare = specInner ? specInner->name : string();
     DynCalleeResolved out;
@@ -529,27 +519,20 @@ DynCalleeResolved resolveDynCalleeSpec(const SpecRegistry* registry,
             return out;
         }
     }
-    throw YuxError(line, col, ErrorCode::E1131,
-        specBare.empty() ? string("?") : specBare);
+    throw YuxError(line, col, ErrorCode::E1131, specBare.empty() ? string("?") : specBare);
 }
 
 // ==================== _ptr_offset 跨模块私有 (Phase 3.3.3.a, E6023) ====================
-void validatePtrOffsetVisibility(const FnSymbolInfo* fnSymbol,
-                                  const string& currentModuleName,
-                                  int line, int col) {
+void validatePtrOffsetVisibility(const FnSymbolInfo* fnSymbol, const string& currentModuleName, int line, int col) {
     if (!fnSymbol) return;
-    if (fnSymbol->isPrivate && !fnSymbol->moduleName.empty()
-        && fnSymbol->moduleName != currentModuleName) {
+    if (fnSymbol->isPrivate && !fnSymbol->moduleName.empty() && fnSymbol->moduleName != currentModuleName) {
         throw YuxError(line, col, ErrorCode::E6023);
     }
 }
 
 // ==================== struct method 私有可见性 (Phase 3.3.3.a, E6007) ====================
-void validateStructMethodVisibility(const FnSymbolInfo* methodSymbol,
-                                     const string& currentStructName,
-                                     const string& actualTypeName,
-                                     const string& member,
-                                     int line, int col) {
+void validateStructMethodVisibility(const FnSymbolInfo* methodSymbol, const string& currentStructName,
+                                    const string& actualTypeName, const string& member, int line, int col) {
     if (!methodSymbol || !methodSymbol->isPrivate) return;
     string currentBase = currentStructName;
     auto dollarPos = currentBase.find('$');
@@ -559,13 +542,10 @@ void validateStructMethodVisibility(const FnSymbolInfo* methodSymbol,
     }
 }
 
-void validateFnSymbolVisibility(const FnSymbolInfo* fnSymbol,
-                                const string& currentModuleName,
-                                const string& fnName,
+void validateFnSymbolVisibility(const FnSymbolInfo* fnSymbol, const string& currentModuleName, const string& fnName,
                                 int line, int col) {
     if (!fnSymbol) return;
-    if (fnSymbol->isPrivate && !fnSymbol->moduleName.empty()
-        && fnSymbol->moduleName != currentModuleName) {
+    if (fnSymbol->isPrivate && !fnSymbol->moduleName.empty() && fnSymbol->moduleName != currentModuleName) {
         throw YuxError(line, col, ErrorCode::E6006, fnName);
     }
 }
@@ -573,10 +553,8 @@ void validateFnSymbolVisibility(const FnSymbolInfo* fnSymbol,
 // ==================== CompilerInner intrinsic arity (Phase 3.3.2.c) ====================
 // 原 compileGenericFunctionCall 的 #CompilerInner 分支顶部散落的 typeArgs/args
 // 计数检查 (~12 处 throw 跨 7 个 fnName) 收口到单一 helper.
-void validateCompilerInnerIntrinsicShape(const string& fnName,
-                                          size_t typeArgsCount,
-                                          size_t argsCount,
-                                          int line, int col) {
+void validateCompilerInnerIntrinsicShape(const string& fnName, size_t typeArgsCount, size_t argsCount, int line,
+                                         int col) {
     if (fnName == "assert_eq") {
         if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName);
         return;
@@ -627,8 +605,7 @@ void validateCompilerInnerIntrinsicShape(const string& fnName,
 // ==================== 自由内建 intrinsic arity (Phase 3.3.2.b) ====================
 // 原 `compileExternalOrSdkFunctionCall` 顶部三处 inline 分派 (line 724-752) 收口.
 // 仅命中清单内的 fnName 才校验, 其他 fnName 是 no-op.
-void validateFreeIntrinsicArity(const string& fnName, size_t argsCount,
-                                int line, int col) {
+void validateFreeIntrinsicArity(const string& fnName, size_t argsCount, int line, int col) {
     if (fnName == "ptr_from_addr") {
         if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6020);
         return;
@@ -646,8 +623,7 @@ void validateFreeIntrinsicArity(const string& fnName, size_t argsCount,
 // ==================== Array<T> 方法形态校验 (Phase 3.3.2.a) ====================
 // 原 `compileArrayMethodCall` 散落的 6 处 throw 收口为一个 helper.
 // 调用方仅需在函数顶部传 (baseType, member, argsCount, baseIsLvalue) 即可一次性校验.
-void validateArrayMethodCall(const TypeInfo& baseType, const string& member,
-                             size_t argsCount, bool baseIsLvalue,
+void validateArrayMethodCall(const TypeInfo& baseType, const string& member, size_t argsCount, bool baseIsLvalue,
                              int line, int col) {
     // len / cap 在 RC 头, 不需要 elemType, 也不需要 lvalue
     if (member == "len" || member == "cap") return;
@@ -658,7 +634,7 @@ void validateArrayMethodCall(const TypeInfo& baseType, const string& member,
     }
 
     if (member == "is_empty" || member == "first" || member == "last") return;
-    if (member == "at") {
+    if (member == "get") {
         if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6040);
         return;
     }
@@ -685,17 +661,14 @@ void validateArrayMethodCall(const TypeInfo& baseType, const string& member,
 // ==================== CompilerInner intrinsic 类型形态校验 (Phase 3.3.2.d) ====================
 // 原 compileGenericFunctionCall 的 #CompilerInner 分支内散落的 E6028 / E6029 / E6032
 // 校验 (跨 same_ref / ptr_of / as_ref / weak / copy_of 五个 fnName) 收口到单一 helper.
-void validateCompilerInnerIntrinsicTypeShape(const string& fnName,
-                                              const vector<TypeInfo>& typeArgs,
-                                              const vector<TypeInfo>& argTypes,
-                                              const vector<p<ExprNode>>& argNodes,
-                                              FileNode* file, FileNode* sdkFile,
-                                              int line, int col) {
+void validateCompilerInnerIntrinsicTypeShape(const string& fnName, const vector<TypeInfo>& typeArgs,
+                                             const vector<TypeInfo>& argTypes, const vector<p<ExprNode>>& argNodes,
+                                             FileNode* file, FileNode* sdkFile, int line, int col) {
     if (fnName == "same_ref" || fnName == "ptr_of") {
         // arity / typeArgs 计数已由 validateCompilerInnerIntrinsicShape 保证
         const auto& T = typeArgs[0];
-        bool isHeapHandle = T.isRc() || T.isWeak() || T.isArrayGeneric()
-                            || (T.name == "String" && T.kind == TypeKind::Normal);
+        bool isHeapHandle =
+            T.isRc() || T.isWeak() || T.isArrayGeneric() || (T.name == "String" && T.kind == TypeKind::Normal);
         // Phase 8a: ptr_of:<Heap<T>>(h) move-out FFI handoff (DRAFT-heap-types §8.3a)
         // same_ref 不接受 Heap (Heap 单所有权, 两个 Heap 不可能指同一块, 比较无意义)
         bool isHeapForPtrOf = (fnName == "ptr_of" && T.isHeap());
@@ -748,10 +721,12 @@ void validateCompilerInnerIntrinsicTypeShape(const string& fnName,
         // 不展开 Rc / Array / Weak / Nullable / Dyn / Ptr / Fn 的类型参数 —— 它们是堆句柄包装.
         std::function<bool(const TypeInfo&, string&)> hasRefDeep;
         hasRefDeep = [&](const TypeInfo& t, string& path) -> bool {
-            if (t.isRef()) { path = t.getFullName(); return true; }
-            if (t.isRc() || t.isArrayGeneric() || t.isWeak()
-                || t.isNullable() || t.isDyn() || t.isPtr() || t.isFn()
-                || t.isHeap()) {
+            if (t.isRef()) {
+                path = t.getFullName();
+                return true;
+            }
+            if (t.isRc() || t.isArrayGeneric() || t.isWeak() || t.isNullable() || t.isDyn() || t.isPtr() || t.isFn() ||
+                t.isHeap()) {
                 // Heap<T> 与其他堆句柄一致, 当作不透明把柄不展开 (Phase 3f / 6)
                 return false;
             }
@@ -785,13 +760,10 @@ void validateCompilerInnerIntrinsicTypeShape(const string& fnName,
 // 覆盖 compileBuiltinTypeMethodCall 内 isCompilerInnerMethod 分支:
 //   - 17 处 E6045 arity != 1 (二元 op)
 //   - 1 处 E3070 inv on float
-void validateOperatorMethodCall(const string& member, const TypeInfo& baseType,
-                                size_t argsCount, int line, int col) {
+void validateOperatorMethodCall(const string& member, const TypeInfo& baseType, size_t argsCount, int line, int col) {
     // 二元 op: args.size() 必须为 1
     static const vector<string> binaryOps = {
-        "plus", "minus", "mul", "div", "mod",
-        "eq", "ne", "lt", "le", "gt", "ge",
-        "and", "or", "xor", "shl", "shr",
+        "plus", "minus", "mul", "div", "mod", "eq", "ne", "lt", "le", "gt", "ge", "and", "or", "xor", "shl", "shr",
     };
     for (auto& op : binaryOps) {
         if (member == op) {
@@ -844,21 +816,19 @@ string fmtTypeFriendly(const TypeInfo& t) {
     }
     return t.name;
 }
-}
+} // namespace
 
-void validateEnumCtorShape(FileNode* file, FileNode* sdkFile,
-                           p<ExprPathCallNode> node) {
+void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, p<ExprPathCallNode> node) {
     if (!node) return;
-    string enumName = node->getType().name;            // 经别名解析后的真实 enum 名
-    string enumNameRaw = node->enumName().getText();   // 用户写法
+    string enumName = node->getType().name;          // 经别名解析后的真实 enum 名
+    string enumNameRaw = node->enumName().getText(); // 用户写法
     string variantName = node->variantName().getText();
     int line = node->getLineNumber();
     int col = node->getColumn();
 
     auto* enumDecl = lookupEnumInFiles(file, sdkFile, enumName);
     if (!enumDecl) {
-        throw YuxError(line, col, ErrorCode::E2019,
-            enumNameRaw, enumNameRaw, variantName);
+        throw YuxError(line, col, ErrorCode::E2019, enumNameRaw, enumNameRaw, variantName);
     }
 
     auto* variant = enumDecl->variant(variantName);
@@ -869,8 +839,7 @@ void validateEnumCtorShape(FileNode* file, FileNode* sdkFile,
     size_t givenArity = node->args().size();
     size_t declArity = variant->payloadArity();
     if (givenArity != declArity) {
-        throw YuxError(line, col, ErrorCode::E2021,
-            enumName, variantName, declArity, givenArity);
+        throw YuxError(line, col, ErrorCode::E2021, enumName, variantName, declArity, givenArity);
     }
 
     // E2032: 实参类型与 variant payload 类型严格匹配.
@@ -888,17 +857,15 @@ void validateEnumCtorShape(FileNode* file, FileNode* sdkFile,
             continue;
         }
         if (!(expectedType == actualType)) {
-            throw YuxError(argExpr->getLineNumber(), argExpr->getColumn(),
-                ErrorCode::E2032, enumName, variantName, i,
-                fmtTypeFriendly(expectedType), fmtTypeFriendly(actualType));
+            throw YuxError(argExpr->getLineNumber(), argExpr->getColumn(), ErrorCode::E2032, enumName, variantName, i,
+                           fmtTypeFriendly(expectedType), fmtTypeFriendly(actualType));
         }
     }
 }
 
 // ========== Phase 3.4.b: match arm 静态校验 ==========
 
-void validateMatchArms(EnumDeclNode* enumDecl, const string& enumName,
-                       p<ExprMatchNode> node, FileNode* file) {
+void validateMatchArms(EnumDeclNode* enumDecl, const string& enumName, p<ExprMatchNode> node, FileNode* file) {
     if (!enumDecl || !node) return;
     auto& arms = node->arms();
     int line = node->getLineNumber();
@@ -930,41 +897,39 @@ void validateMatchArms(EnumDeclNode* enumDecl, const string& enumName,
                     if (!alias->isGeneric() && alias->target()) {
                         try {
                             if (alias->target()->getType().name == enumName) aliasOk = true;
-                        } catch (...) {} // NOLINT(bugprone-empty-catch)
+                        } catch (...) {
+                        } // NOLINT(bugprone-empty-catch)
                     }
                 }
             }
             if (!aliasOk) {
-                throw YuxError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2019,
-                    patEnumName, patEnumName, pat->variantName().getText());
+                throw YuxError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2019, patEnumName, patEnumName,
+                               pat->variantName().getText());
             }
         }
 
         string vName = pat->variantName().getText();
         auto* variant = enumDecl->variant(vName);
         if (!variant) {
-            throw YuxError(pat->getLineNumber(), pat->getColumn(),
-                ErrorCode::E2020, enumName, vName);
+            throw YuxError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2020, enumName, vName);
         }
         if (seenVariants.count(vName)) {
-            throw YuxError(pat->getLineNumber(), pat->getColumn(),
-                ErrorCode::E2024, enumName, vName);
+            throw YuxError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2024, enumName, vName);
         }
         seenVariants.insert(vName);
 
         size_t bindArity = pat->binds().size();
         size_t declArity = variant->payloadArity();
         if (bindArity != declArity && !(bindArity == 0 && declArity == 0)) {
-            throw YuxError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2026,
-                enumName, vName, declArity, bindArity);
+            throw YuxError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2026, enumName, vName, declArity,
+                           bindArity);
         }
 
         set<string> seenBinds;
         for (auto& tk : pat->binds()) {
             const string& bn = tk.getText();
             if (seenBinds.count(bn)) {
-                throw YuxError(pat->getLineNumber(), pat->getColumn(),
-                    ErrorCode::E2027, bn, enumName, vName);
+                throw YuxError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2027, bn, enumName, vName);
             }
             seenBinds.insert(bn);
         }
@@ -1008,10 +973,8 @@ StructDeclNode* lookupStructIn(FileNode* file, FileNode* sdkFile, const string& 
 }
 } // namespace
 
-void validatePrivateFieldAccess(StructDeclNode* structDecl, const string& fieldName,
-                                const string& baseTypeName,
-                                const string& accessorStructName,
-                                int line, int col) {
+void validatePrivateFieldAccess(StructDeclNode* structDecl, const string& fieldName, const string& baseTypeName,
+                                const string& accessorStructName, int line, int col) {
     if (!structDecl) return;
     int idx = structDecl->fieldIndex(fieldName);
     if (idx < 0) return;
@@ -1022,8 +985,7 @@ void validatePrivateFieldAccess(StructDeclNode* structDecl, const string& fieldN
     throw YuxError(line, col, ErrorCode::E3042, fieldName, baseTypeName);
 }
 
-void validateGetRefPrivacy(FileNode* file, FileNode* sdkFile,
-                           p<ExprGetRefNode> node,
+void validateGetRefPrivacy(FileNode* file, FileNode* sdkFile, p<ExprGetRefNode> node,
                            const string& accessorStructName) {
     if (!node) return;
     auto scope = node->findNearestScope();
@@ -1052,13 +1014,12 @@ void validateGetRefPrivacy(FileNode* file, FileNode* sdkFile,
         int idx = structDecl->fieldIndex(sub.getText());
         if (idx < 0) return; // E3040 由 getType 抢
 
-        validatePrivateFieldAccess(structDecl, sub.getText(), lookupType.name,
-                                   accessorStructName, line, col);
+        validatePrivateFieldAccess(structDecl, sub.getText(), lookupType.name, accessorStructName, line, col);
 
         // 推进 currentType: 取 field type, 含泛型实参替换 (与 getType 同款).
         TypeInfo fieldType = structDecl->fields()[idx]->getType();
-        if (lookupType.isGeneric() && structDecl->isGeneric()
-            && lookupType.genericArgs.size() == structDecl->typeParams().size()) {
+        if (lookupType.isGeneric() && structDecl->isGeneric() &&
+            lookupType.genericArgs.size() == structDecl->typeParams().size()) {
             std::map<string, TypeInfo> subst;
             for (size_t i = 0; i < structDecl->typeParams().size(); ++i) {
                 subst[structDecl->typeParams()[i]] =
@@ -1070,9 +1031,7 @@ void validateGetRefPrivacy(FileNode* file, FileNode* sdkFile,
     }
 }
 
-void validateDotFieldPrivacy(FileNode* file, FileNode* sdkFile,
-                             p<ExprDotNode> node,
-                             const string& accessorStructName) {
+void validateDotFieldPrivacy(FileNode* file, FileNode* sdkFile, p<ExprDotNode> node, const string& accessorStructName) {
     if (!node) return;
     if (node->isSafe()) return; // safe `?.` 走 getType 路径, 不在此处校验
 
@@ -1095,8 +1054,7 @@ void validateDotFieldPrivacy(FileNode* file, FileNode* sdkFile,
     auto structDecl = lookupStructIn(file, sdkFile, actualType.name);
     if (!structDecl) return; // 不是 struct 字段访问 (可能 method / 别的形态), 跳过
 
-    validatePrivateFieldAccess(structDecl, node->member(), actualType.name,
-                               accessorStructName,
+    validatePrivateFieldAccess(structDecl, node->member(), actualType.name, accessorStructName,
                                node->resolveLineNumber(), node->resolveColumn());
 }
 
@@ -1143,12 +1101,10 @@ i64 parseIntLiteral(const string& text, int line, int col) {
         return std::stoll(parseStr, nullptr, base);
     } catch (const std::out_of_range&) {
         int errLine = line > 0 ? line : 1;
-        throw YuxError(errLine, col, ErrorCode::E3103,
-            text, suffix.empty() ? string("i64") : suffix);
+        throw YuxError(errLine, col, ErrorCode::E3103, text, suffix.empty() ? string("i64") : suffix);
     } catch (const std::invalid_argument&) {
         int errLine = line > 0 ? line : 1;
-        throw YuxError(errLine, col, ErrorCode::E3103,
-            text, suffix.empty() ? string("i64") : suffix);
+        throw YuxError(errLine, col, ErrorCode::E3103, text, suffix.empty() ? string("i64") : suffix);
     }
 }
 
@@ -1191,7 +1147,7 @@ TypeInfo resolveAliasImpl(const TypeInfo& t, FileNode* file, std::set<std::strin
     return t;
 }
 
-} // anon namespace
+} // namespace
 
 void validateAliases(p<FileNode> file) {
     if (!file) return;
@@ -1201,21 +1157,18 @@ void validateAliases(p<FileNode> file) {
         string name = a->name().getText();
         if (auto* s = file->getStructDecl(name)) {
             (void)s;
-            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017,
-                           name, string("struct"), name);
+            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017, name, string("struct"), name);
         }
         if (auto* d = file->getSpecDecl(name)) {
             (void)d;
-            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017,
-                           name, string("draft"), name);
+            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017, name, string("draft"), name);
         }
         size_t cnt = 0;
         for (auto& b : aliases) {
             if (b->name().getText() == name) ++cnt;
         }
         if (cnt > 1) {
-            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017,
-                           name, string("type alias"), name);
+            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017, name, string("type alias"), name);
         }
     }
 
@@ -1228,9 +1181,7 @@ void validateAliases(p<FileNode> file) {
 }
 
 // Bucket 6 单点: 比较表达式 leftType 形态校验.
-void validateCompareOpForm(const TypeInfo& leftType,
-                            ExprCompareNode::Op op,
-                            int line, int col) {
+void validateCompareOpForm(const TypeInfo& leftType, ExprCompareNode::Op op, int line, int col) {
     if (leftType.isWeak()) {
         if (op == ExprCompareNode::Op::Eq || op == ExprCompareNode::Op::Ne) {
             throw YuxError(line, col, ErrorCode::E3078)
@@ -1240,14 +1191,14 @@ void validateCompareOpForm(const TypeInfo& leftType,
     if (leftType.isPtr()) {
         if (op == ExprCompareNode::Op::Eq || op == ExprCompareNode::Op::Ne) return;
         if (op == ExprCompareNode::Op::AndAnd || op == ExprCompareNode::Op::OrOr) return;
-        const char* opSym =
-            op == ExprCompareNode::Op::Lt ? "<" :
-            op == ExprCompareNode::Op::Le ? "<=" :
-            op == ExprCompareNode::Op::Gt ? ">" : ">=";
-        const char* mname =
-            op == ExprCompareNode::Op::Lt ? "lt" :
-            op == ExprCompareNode::Op::Le ? "le" :
-            op == ExprCompareNode::Op::Gt ? "gt" : "ge";
+        const char* opSym = op == ExprCompareNode::Op::Lt   ? "<"
+                            : op == ExprCompareNode::Op::Le ? "<="
+                            : op == ExprCompareNode::Op::Gt ? ">"
+                                                            : ">=";
+        const char* mname = op == ExprCompareNode::Op::Lt   ? "lt"
+                            : op == ExprCompareNode::Op::Le ? "le"
+                            : op == ExprCompareNode::Op::Gt ? "gt"
+                                                            : "ge";
         throw YuxError(line, col, ErrorCode::E3073, "Ptr", opSym, mname)
             .withHint("Ptr 只支持 == / != 比较（与 null 或另一 Ptr）");
     }
@@ -1259,9 +1210,8 @@ void validateCompareOpForm(const TypeInfo& leftType,
 // 精确匹配（形参非 Ref，类型一致）优先，其次自动取址（形参 Ref<T>，T 一致）。
 // 同优先级多候选歧义 → E6014；无匹配 → E3073。
 // 调用方负责事先剥 Ref / applySubst (Compiler) 或保证 leftType 为非泛型 struct (SemaPass).
-void validateBinOpMethodResolution(FileNode* file, FileNode* sdkFile,
-                                   const TypeInfo& leftType, const TypeInfo& rightType,
-                                   const string& methodName, int line, int col) {
+void validateBinOpMethodResolution(FileNode* file, FileNode* sdkFile, const TypeInfo& leftType,
+                                   const TypeInfo& rightType, const string& methodName, int line, int col) {
     string methodFullName = leftType.name + "." + methodName;
 
     // 收集全部候选
@@ -1280,7 +1230,7 @@ void validateBinOpMethodResolution(FileNode* file, FileNode* sdkFile,
     int exactCount = 0;
     int refCount = 0;
     for (auto* cand : candidates) {
-        if (cand->params.size() != 2) continue;  // 二元运算符：接收者 + 1 形参
+        if (cand->params.size() != 2) continue; // 二元运算符：接收者 + 1 形参
         const TypeInfo& candParam = cand->params[1];
 
         if (!candParam.isRef() && candParam == rightType) {
@@ -1299,44 +1249,41 @@ void validateBinOpMethodResolution(FileNode* file, FileNode* sdkFile,
         for (auto* cand : candidates) {
             if (cand->params.size() != 2) continue;
             const TypeInfo& cp = cand->params[1];
-            bool matches = (!cp.isRef() && cp == rightType)
-                        || (cp.isRef() && cp.refElementType()
-                            && *cp.refElementType() == rightType);
+            bool matches = (!cp.isRef() && cp == rightType) ||
+                           (cp.isRef() && cp.refElementType() && *cp.refElementType() == rightType);
             if (!matches) continue;
             if (!sigs.empty()) sigs += " | ";
             sigs += leftType.name + "." + methodName + "(" + cp.name + ")";
         }
         int matchCount = exactCount + refCount;
-        throw YuxError(line, col, ErrorCode::E6014, methodFullName,
-                       rightType.name, matchCount, sigs);
+        throw YuxError(line, col, ErrorCode::E6014, methodFullName, rightType.name, matchCount, sigs);
     }
 
-    if (exactCount == 1 || refCount == 1) return;  // 命中 → codegen 继续
+    if (exactCount == 1 || refCount == 1) return; // 命中 → codegen 继续
 
     // 无匹配 → E3073
-    const char* opSym =
-        methodName == "plus" ? "+" :
-        methodName == "minus" ? "-" :
-        methodName == "mul" ? "*" :
-        methodName == "div" ? "/" :
-        methodName == "mod" ? "%" :
-        methodName == "and" ? "&" :
-        methodName == "or" ? "|" :
-        methodName == "xor" ? "^" :
-        methodName == "shl" ? "<<" :
-        methodName == "shr" ? ">>" :
-        methodName == "eq" ? "==" :
-        methodName == "ne" ? "!=" :
-        methodName == "lt" ? "<" :
-        methodName == "le" ? "<=" :
-        methodName == "gt" ? ">" :
-        methodName == "ge" ? ">=" : methodName.c_str();
+    const char* opSym = methodName == "plus"    ? "+"
+                        : methodName == "minus" ? "-"
+                        : methodName == "mul"   ? "*"
+                        : methodName == "div"   ? "/"
+                        : methodName == "mod"   ? "%"
+                        : methodName == "and"   ? "&"
+                        : methodName == "or"    ? "|"
+                        : methodName == "xor"   ? "^"
+                        : methodName == "shl"   ? "<<"
+                        : methodName == "shr"   ? ">>"
+                        : methodName == "eq"    ? "=="
+                        : methodName == "ne"    ? "!="
+                        : methodName == "lt"    ? "<"
+                        : methodName == "le"    ? "<="
+                        : methodName == "gt"    ? ">"
+                        : methodName == "ge"    ? ">="
+                                                : methodName.c_str();
     throw YuxError(line, col, ErrorCode::E3073, leftType.name, opSym, methodName);
 }
 
 // Bucket 6 单点: 字符串模板插值 ToString 校验 (E3026).
-void validateStringTemplateInterps(FileNode* file, FileNode* sdkFile,
-                                    StringTemplateNode* tpl) {
+void validateStringTemplateInterps(FileNode* file, FileNode* sdkFile, StringTemplateNode* tpl) {
     if (!tpl) return;
     auto canToString = [&](const TypeInfo& t) -> bool {
         if (t.name == "String") return true;
@@ -1350,11 +1297,10 @@ void validateStringTemplateInterps(FileNode* file, FileNode* sdkFile,
         try {
             t = e->getType();
         } catch (...) {
-            continue;  // lambda 形参等未推断, 留 Compiler 兜底
+            continue; // lambda 形参等未推断, 留 Compiler 兜底
         }
         if (!canToString(t)) {
-            throw YuxError(e->getLineNumber(), e->getColumn(),
-                            ErrorCode::E3026, t.name);
+            throw YuxError(e->getLineNumber(), e->getColumn(), ErrorCode::E3026, t.name);
         }
     }
 }

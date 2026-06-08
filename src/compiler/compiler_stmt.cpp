@@ -2,7 +2,7 @@
 // MPL-2.0
 
 // 语句编译实现
-// 
+//
 // 本文件包含所有语句类型的编译逻辑:
 // - return 语句 (有返回值和无返回值)
 // - 变量声明语句
@@ -11,14 +11,14 @@
 // - break 语句
 // - 数组元素赋值语句
 
-#include <algorithm>
 #include "analyzer/symbol_suggest.h"
 #include "ast/mangler.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/statement_node.h"
-#include "compiler_runtime.h"
 #include "compiler.h"
+#include "compiler_runtime.h"
 #include "sema/call_resolve.h"
+#include <algorithm>
 
 // ==================== Return 语句编译 ====================
 
@@ -49,7 +49,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
             tryInferIntType(node->expr(), declRetType);
         }
     }
-    
+
     auto retType = node->expr()->getType();
 
     // ==================== #Fallible(E) 错误返回路径（DRAFT-错误.md [#10.A] / [#10.B]） ====================
@@ -74,9 +74,8 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         if (!isSuccess && !isError) {
             int ln = node->getLineNumber();
             if (ln < 0) ln = node->expr()->resolveLineNumber();
-            throw YuxError(ln, ErrorCode::E3020,
-                hasDeclaredRetType ? declRetType.getFullName() : string("void"),
-                retType.getFullName());
+            throw YuxError(ln, ErrorCode::E3020, hasDeclaredRetType ? declRetType.getFullName() : string("void"),
+                           retType.getFullName());
         }
         // 求值表达式（错误 / 成功通道复用现有 enum / value 求值路径）
         llvm::Value* val = compileExpr(node->expr());
@@ -190,8 +189,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
             }
         }
         if (!refPtr) {
-            throw YuxError(lineNum, ErrorCode::E3020,
-                declRetType.getFullName(), retType.getFullName())
+            throw YuxError(lineNum, ErrorCode::E3020, declRetType.getFullName(), retType.getFullName())
                 .withHint("返回 T& 时，ret 表达式应为 `$` / T& 变量 / `&expr` / 返回 T& 的调用");
         }
         // 内层类型校验：declRetType 的 inner 必须等于 srcInner（v1 不做协变）。
@@ -202,8 +200,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
             declInnerResolved.name = _currentStructName;
         }
         if (declInner && !srcInner.empty() && declInnerResolved != srcInner) {
-            throw YuxError(lineNum, ErrorCode::E3020,
-                declRetType.getFullName(), (srcInner.name + "&"));
+            throw YuxError(lineNum, ErrorCode::E3020, declRetType.getFullName(), (srcInner.name + "&"));
         }
         popAndReleaseTempFrame();
         pushTempFrame();
@@ -212,13 +209,13 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         DEBUG_LOG("    Created T& return instruction");
         return;
     }
-    
+
     // 获取行号 (用于错误报告)
     int lineNum = node->getLineNumber();
     if (lineNum < 0) {
         lineNum = node->expr()->resolveLineNumber();
     }
-    
+
     // 返回 Nullable<T>：允许 null 字面量或 T 值，自动包装
     bool nullableWrap = false;
     bool nullableWrapNullLit = false;
@@ -246,17 +243,14 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
     // 类型检查
     if (hasDeclaredRetType) {
         if (retType.empty()) {
-            throw YuxError(lineNum, ErrorCode::E3021,
-                declRetType.getFullName());
+            throw YuxError(lineNum, ErrorCode::E3021, declRetType.getFullName());
         }
         if (!nullableWrap && resolveAlias(retType) != resolveAlias(declRetType)) {
-            throw YuxError(lineNum, ErrorCode::E3020,
-                declRetType.getFullName(), retType.getFullName());
+            throw YuxError(lineNum, ErrorCode::E3020, declRetType.getFullName(), retType.getFullName());
         }
     } else {
         if (!retType.empty()) {
-            throw YuxError(lineNum, ErrorCode::E3022,
-                retType.getFullName());
+            throw YuxError(lineNum, ErrorCode::E3022, retType.getFullName());
         }
     }
 
@@ -288,7 +282,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         retVal = compileExpr(node->expr());
         DEBUG_LOG("    Created return value");
     }
-    
+
     // Phase 3b: move-return retain
     // 堆句柄返回类型（Rc / Array / Weak）在返回前 retain 一次，配合 callee-clean
     // 局部变量 release（callDestructorsForScope）让调用方接住净 +1 句柄；
@@ -473,26 +467,24 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 // 校验 &expr 内层类型与声明 inner 一致
                 auto innerOfGetRef = getRefNode->getType().refElementType();
                 if (!innerOfGetRef || *innerOfGetRef != *innerType) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(),
-                        ErrorCode::E3017,
-                        innerType->name,
-                        innerOfGetRef ? innerOfGetRef->name : "?")
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3017, innerType->name,
+                                   innerOfGetRef ? innerOfGetRef->name : "?")
                         .withHint(std::format("&expr 的内层类型必须与声明一致；预期 `&<{}>`，源表达式给出 `&<{}>`",
-                            innerType->name,
-                            innerOfGetRef ? innerOfGetRef->name : "?"));
+                                              innerType->name, innerOfGetRef ? innerOfGetRef->name : "?"));
                 }
-            } else if (auto litExpr = dynamic_cast<ExprLiteralNode*>(expr); litExpr && dynamic_cast<LiteralObjNode*>(litExpr->literal())) {
+            } else if (auto litExpr = dynamic_cast<ExprLiteralNode*>(expr);
+                       litExpr && dynamic_cast<LiteralObjNode*>(litExpr->literal())) {
                 auto litObj = dynamic_cast<LiteralObjNode*>(litExpr->literal());
                 auto srcName = litObj->getValue().getText();
                 auto sym = _currentFnNode->lookupSymbol(srcName);
                 // Bucket 6 (CURRENT-check.md): 该 E3018 已被 SemaPass 接管
                 // (sema_pass.cpp 的 StatementDeclareAssignNode 分支), 这里保留作
                 // 幂等防御性双跑 — sema 跑通后正常 codepath 不会到达.
-                if (!sym || !sym->type.isRef() || !sym->type.refElementType()
-                    || *sym->type.refElementType() != *innerType) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(),
-                        ErrorCode::E3018, srcName, innerType->name)
-                        .withHint(std::format("`{}` 不是 {}& 类型，无法 copy-bind 到此声明；改写为 `&<expr-of-{}>` 或先声明同类型 T&",
+                if (!sym || !sym->type.isRef() || !sym->type.refElementType() ||
+                    *sym->type.refElementType() != *innerType) {
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3018, srcName, innerType->name)
+                        .withHint(std::format(
+                            "`{}` 不是 {}& 类型，无法 copy-bind 到此声明；改写为 `&<expr-of-{}>` 或先声明同类型 T&",
                             srcName, innerType->name, innerType->name));
                 }
                 auto it = _localVarPtrs.find(srcName);
@@ -513,7 +505,8 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 bool callRetIsRef = callExpr->getType().isRef();
                 if (calleeName != "as_ref" && !callRetIsRef) {
                     throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3019)
-                        .withHint("T& 局部初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量）、`val r T& = as_ref(box)` 或返回 T& 的方法/函数调用");
+                        .withHint("T& 局部初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量）、`val r T& "
+                                  "= as_ref(box)` 或返回 T& 的方法/函数调用");
                 }
                 auto callValue = compileExpr(expr);
                 rhsPtr = callValue;
@@ -535,7 +528,8 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 rhsPtr = getValue;
             } else {
                 throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3019)
-                    .withHint("T& 局部初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量），或 `val r T& = as_ref(box)`");
+                    .withHint("T& 局部初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量），或 `val r T& = "
+                              "as_ref(box)`");
             }
             _localVarPtrs[varName] = rhsPtr;
             return;
@@ -561,8 +555,8 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             auto ptrTy = llvm::PointerType::get(_context, 0);
 
             if (exprType.isRc() && exprType.rcElementType() && *exprType.rcElementType() == *elemType) {
-                // Rc -> Rc 复制：复制 handle 并 retain（DRAFT §7.3 callee-clean 还在 Phase 3，但句柄共享 retain 必须在 1a 启用）
-                // exprVal 是源 Rc 的 struct 值，先存 tmp alloca 才能 GEP 取 handle 字段
+                // Rc -> Rc 复制：复制 handle 并 retain（DRAFT §7.3 callee-clean 还在 Phase 3，但句柄共享 retain 必须在
+                // 1a 启用） exprVal 是源 Rc 的 struct 值，先存 tmp alloca 才能 GEP 取 handle 字段
                 auto tmpAlloca = _builder.CreateAlloca(rcStructType, nullptr, "rc_src_tmp");
                 _builder.CreateStore(exprVal, tmpAlloca);
                 auto srcHandleField = _builder.CreateGEP(rcStructType, tmpAlloca, {zero, zero}, "src_handle_field");
@@ -584,7 +578,8 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             } else if (exprType == *elemType) {
                 // 由值构造 Rc：分配 Block，把 payload 存入 block+8
                 auto elemLLVMType = getLLVMType(*elemType);
-                auto sizeVal = _builder.getInt64(_module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
+                auto sizeVal =
+                    _builder.getInt64(_module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
 
                 auto allocFn = runtime::getRcAllocFn(_module, _builder);
                 auto block = _builder.CreateCall(allocFn, {sizeVal}, "rc_block");
@@ -597,10 +592,11 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 auto handleField = _builder.CreateGEP(rcStructType, alloca, {zero, zero}, "handle_field");
                 _builder.CreateStore(block, handleField);
             } else {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, elemType->name, exprType.name);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, elemType->name,
+                               exprType.name);
             }
 
-            _scopeVars.push_back(varName);  // 加入作用域变量列表 (需要析构)
+            _scopeVars.push_back(varName); // 加入作用域变量列表 (需要析构)
         }
         // 处理 Weak<T> 类型（Phase 1d.2：支持从 Rc<T> 或 Weak<T> 构造，weak++）
         else if (varType.isWeak()) {
@@ -615,8 +611,8 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             bool fromRc = exprType.isRc() && exprType.rcElementType() && *exprType.rcElementType() == *elemType;
             bool fromWeak = exprType.isWeak() && exprType.weakElementType() && *exprType.weakElementType() == *elemType;
             if (!fromRc && !fromWeak) {
-                throw YuxError(node->getLineNumber(), node->getColumn(),
-                    ErrorCode::E3016, elemType->name, elemType->name, elemType->name);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3016, elemType->name,
+                               elemType->name, elemType->name);
             }
 
             auto srcStructType = getLLVMType(exprType);
@@ -641,28 +637,29 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 consumeTemp(exprVal);
             }
             if (needWeakInc) {
-            auto incBB = llvm::BasicBlock::Create(_context, "weak_inc", _builder.GetInsertBlock()->getParent());
-            auto checkBB = llvm::BasicBlock::Create(_context, "weak_check", _builder.GetInsertBlock()->getParent());
-            auto doneBB = llvm::BasicBlock::Create(_context, "weak_inc_done", _builder.GetInsertBlock()->getParent());
-            auto sentinel = llvm::ConstantInt::get(i32Ty, 0xFFFFFFFFu);
-            auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
+                auto incBB = llvm::BasicBlock::Create(_context, "weak_inc", _builder.GetInsertBlock()->getParent());
+                auto checkBB = llvm::BasicBlock::Create(_context, "weak_check", _builder.GetInsertBlock()->getParent());
+                auto doneBB =
+                    llvm::BasicBlock::Create(_context, "weak_inc_done", _builder.GetInsertBlock()->getParent());
+                auto sentinel = llvm::ConstantInt::get(i32Ty, 0xFFFFFFFFu);
+                auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
 
-            auto isNull = _builder.CreateICmpEQ(srcHandle, nullPtr, "is_null");
-            _builder.CreateCondBr(isNull, doneBB, checkBB);
+                auto isNull = _builder.CreateICmpEQ(srcHandle, nullPtr, "is_null");
+                _builder.CreateCondBr(isNull, doneBB, checkBB);
 
-            _builder.SetInsertPoint(checkBB);
-            auto strong = _builder.CreateLoad(i32Ty, srcHandle, "strong");
-            auto isSentinel = _builder.CreateICmpEQ(strong, sentinel, "is_sentinel");
-            _builder.CreateCondBr(isSentinel, doneBB, incBB);
+                _builder.SetInsertPoint(checkBB);
+                auto strong = _builder.CreateLoad(i32Ty, srcHandle, "strong");
+                auto isSentinel = _builder.CreateICmpEQ(strong, sentinel, "is_sentinel");
+                _builder.CreateCondBr(isSentinel, doneBB, incBB);
 
-            _builder.SetInsertPoint(incBB);
-            auto weakPtr = _builder.CreateGEP(i8Ty, srcHandle, {_builder.getInt64(4)}, "weak_ptr");
-            auto weak = _builder.CreateLoad(i32Ty, weakPtr, "weak");
-            auto newWeak = _builder.CreateAdd(weak, llvm::ConstantInt::get(i32Ty, 1), "new_weak");
-            _builder.CreateStore(newWeak, weakPtr);
-            _builder.CreateBr(doneBB);
+                _builder.SetInsertPoint(incBB);
+                auto weakPtr = _builder.CreateGEP(i8Ty, srcHandle, {_builder.getInt64(4)}, "weak_ptr");
+                auto weak = _builder.CreateLoad(i32Ty, weakPtr, "weak");
+                auto newWeak = _builder.CreateAdd(weak, llvm::ConstantInt::get(i32Ty, 1), "new_weak");
+                _builder.CreateStore(newWeak, weakPtr);
+                _builder.CreateBr(doneBB);
 
-            _builder.SetInsertPoint(doneBB);
+                _builder.SetInsertPoint(doneBB);
             }
 
             // 写 Weak.handle 字段
@@ -704,7 +701,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 _builder.CreateStore(exprVal, alloca);
             }
 
-            _scopeVars.push_back(varName);  // 加入作用域变量列表 (需要析构)
+            _scopeVars.push_back(varName); // 加入作用域变量列表 (需要析构)
         }
         // 处理 Nullable<T> 类型 (T? 的解糖)
         // 三种 RHS:
@@ -753,8 +750,8 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                     _builder.CreateStore(_builder.getInt1(true), hasField);
                     _builder.CreateStore(exprVal, valueField);
                 } else {
-                    throw YuxError(node->getLineNumber(), node->getColumn(),
-                        ErrorCode::E3015, exprType.name, innerType->name);
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3015, exprType.name,
+                                   innerType->name);
                 }
             }
             _scopeVars.push_back(varName);
@@ -765,20 +762,18 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         else if (varType.isHeap()) {
             auto elemType = varType.heapElementType();
             if (!elemType) {
-                throw YuxError(node->getLineNumber(), node->getColumn(),
-                    ErrorCode::E3028, std::string("?"), std::string("?"), std::string("?"));
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3028, std::string("?"),
+                               std::string("?"), std::string("?"));
             }
             auto exprType = expr->getType();
             if (!exprType.isHeap() || !(*exprType.heapElementType() == *elemType)) {
-                throw YuxError(node->getLineNumber(), node->getColumn(),
-                    ErrorCode::E3028, elemType->name,
-                    std::string("Heap<") + elemType->name + ">", exprType.getFullName());
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3028, elemType->name,
+                               std::string("Heap<") + elemType->name + ">", exprType.getFullName());
             }
             auto exprVal = compileExpr(expr);
             _builder.CreateStore(exprVal, alloca);
             _scopeVars.push_back(varName);
-        }
-        else {
+        } else {
             // 普通变量
             auto exprVal = compileExpr(expr);
             auto exprType = expr->getType();
@@ -786,13 +781,13 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             // 数组类型检查
             if (varType.isArray() && exprType.isArray()) {
                 if (varType.arraySize != exprType.arraySize) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3012, varType.arraySize, exprType.arraySize);
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3012, varType.arraySize,
+                                   exprType.arraySize);
                 }
                 if (varType.elementType && exprType.elementType) {
                     if (*varType.elementType != *exprType.elementType) {
-                        throw YuxError(node->getLineNumber(), node->getColumn(),
-                            ErrorCode::E3013, varType.elementType->name,
-                            exprType.elementType->name);
+                        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3013,
+                                       varType.elementType->name, exprType.elementType->name);
                     }
                 }
             }
@@ -840,8 +835,8 @@ void Compiler::compileDeclareAssignTupleStatement(p<StatementDeclareAssignTupleN
     }
     const auto& elems = resolved.tupleElements();
     if (elems.size() != names.size()) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3102,
-                       std::to_string(names.size()), std::to_string(elems.size()));
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3102, std::to_string(names.size()),
+                       std::to_string(elems.size()));
     }
 
     // 编译 expr 得元组 struct value
@@ -892,22 +887,18 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         if (auto sc = node->findNearestScope()) {
             outerSym = sc->lookupSymbol(objName);
         }
-        if (outerSym && outerSym->kind == SymbolKind::Variable
-            && !_localVarPtrs.contains(objName)) {
+        if (outerSym && outerSym->kind == SymbolKind::Variable && !_localVarPtrs.contains(objName)) {
             string ownerMod = !outerSym->moduleName.empty() ? outerSym->moduleName : _file->moduleName();
             bool globPriv = !objName.empty() && objName[0] == '_';
             string mangledName = Mangler::global(ownerMod, objName, globPriv);
             if (!_module->getGlobalVariable(mangledName, true)) {
-                throw YuxError(node->getLineNumber(), node->getColumn(),
-                               ErrorCode::E2030, objName);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E2030, objName);
             }
         }
     }
 
     // 辅助函数: 判断是否为浮点类型
-    auto isFloatType = [](const TypeInfo& type) -> bool {
-        return type.name == "f32" || type.name == "f64";
-    };
+    auto isFloatType = [](const TypeInfo& type) -> bool { return type.name == "f32" || type.name == "f64"; };
 
     // 辅助函数: 判断是否为无符号类型
     auto isUnsignedType = [](const TypeInfo& type) -> bool {
@@ -915,45 +906,46 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
     };
 
     // 辅助函数: 应用复合赋值运算符
-    auto applyCompoundOp = [this, isFloatType, isUnsignedType](llvm::Value* currentVal, llvm::Value* exprVal, AssignOp op, const TypeInfo& type) -> llvm::Value* {
+    auto applyCompoundOp = [this, isFloatType, isUnsignedType](llvm::Value* currentVal, llvm::Value* exprVal,
+                                                               AssignOp op, const TypeInfo& type) -> llvm::Value* {
         switch (op) {
-            case AssignOp::AddEq:
-                if (isFloatType(type)) {
-                    return _builder.CreateFAdd(currentVal, exprVal, "addtmp");
-                }
-                return _builder.CreateAdd(currentVal, exprVal, "addtmp");
-            case AssignOp::SubEq:
-                if (isFloatType(type)) {
-                    return _builder.CreateFSub(currentVal, exprVal, "subtmp");
-                }
-                return _builder.CreateSub(currentVal, exprVal, "subtmp");
-            case AssignOp::MulEq:
-                if (isFloatType(type)) {
-                    return _builder.CreateFMul(currentVal, exprVal, "multmp");
-                }
-                return _builder.CreateMul(currentVal, exprVal, "multmp");
-            case AssignOp::DivEq:
-                if (isFloatType(type)) {
-                    return _builder.CreateFDiv(currentVal, exprVal, "divtmp");
-                }
-                if (isUnsignedType(type)) {
-                    return _builder.CreateUDiv(currentVal, exprVal, "divtmp");
-                }
-                return _builder.CreateSDiv(currentVal, exprVal, "divtmp");
-            case AssignOp::ModEq:
-                if (isFloatType(type)) {
-                    return _builder.CreateFRem(currentVal, exprVal, "modtmp");
-                }
-                if (isUnsignedType(type)) {
-                    return _builder.CreateURem(currentVal, exprVal, "modtmp");
-                }
-                return _builder.CreateSRem(currentVal, exprVal, "modtmp");
-            case AssignOp::MtMtEq:  // >>=
-                return _builder.CreateAShr(currentVal, exprVal, "shrtmp");
-            case AssignOp::LtLtEq:  // <<=
-                return _builder.CreateShl(currentVal, exprVal, "shltmp");
-            default:
-                return exprVal;
+        case AssignOp::AddEq:
+            if (isFloatType(type)) {
+                return _builder.CreateFAdd(currentVal, exprVal, "addtmp");
+            }
+            return _builder.CreateAdd(currentVal, exprVal, "addtmp");
+        case AssignOp::SubEq:
+            if (isFloatType(type)) {
+                return _builder.CreateFSub(currentVal, exprVal, "subtmp");
+            }
+            return _builder.CreateSub(currentVal, exprVal, "subtmp");
+        case AssignOp::MulEq:
+            if (isFloatType(type)) {
+                return _builder.CreateFMul(currentVal, exprVal, "multmp");
+            }
+            return _builder.CreateMul(currentVal, exprVal, "multmp");
+        case AssignOp::DivEq:
+            if (isFloatType(type)) {
+                return _builder.CreateFDiv(currentVal, exprVal, "divtmp");
+            }
+            if (isUnsignedType(type)) {
+                return _builder.CreateUDiv(currentVal, exprVal, "divtmp");
+            }
+            return _builder.CreateSDiv(currentVal, exprVal, "divtmp");
+        case AssignOp::ModEq:
+            if (isFloatType(type)) {
+                return _builder.CreateFRem(currentVal, exprVal, "modtmp");
+            }
+            if (isUnsignedType(type)) {
+                return _builder.CreateURem(currentVal, exprVal, "modtmp");
+            }
+            return _builder.CreateSRem(currentVal, exprVal, "modtmp");
+        case AssignOp::MtMtEq: // >>=
+            return _builder.CreateAShr(currentVal, exprVal, "shrtmp");
+        case AssignOp::LtLtEq: // <<=
+            return _builder.CreateShl(currentVal, exprVal, "shltmp");
+        default:
+            return exprVal;
         }
     };
 
@@ -961,8 +953,8 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
     if (subs.empty()) {
         auto sym = _currentFnNode->lookupSymbol(objName);
         if (!sym) {
-            SymbolSuggest::throwSymbolNotFound(_currentFnNode,
-                node->getLineNumber(), node->getColumn(), ErrorCode::E3030, objName);
+            SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
+                                               ErrorCode::E3030, objName);
         }
 
         // DRAFT-static-vars Phase 2: 全局变量 —— 先于 _localVarPtrs 路径独立处理。
@@ -979,8 +971,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                 auto exprType = expr->getType();
                 llvm::Value* valToStore;
                 if (assignOp != AssignOp::Eq) {
-                    auto currentVal =
-                        _builder.CreateLoad(globalVar->getValueType(), globalVar, "global.current.load");
+                    auto currentVal = _builder.CreateLoad(globalVar->getValueType(), globalVar, "global.current.load");
                     auto castedExprVal = createCast(exprVal, exprType, sym->type);
                     valToStore = applyCompoundOp(currentVal, castedExprVal, assignOp, sym->type);
                 } else {
@@ -1039,8 +1030,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                 if (it != _localVarPtrs.end()) {
                     auto elemType = sym->type.arrayGenericElementType();
                     // 走统一 helper：含嵌套 Array<Array<U>> 字面量按外层 elemType 递归编译
-                    auto block = buildArrayLiteralBlock(arrayNode,
-                        elemType ? *elemType : TypeInfo("i8"));
+                    auto block = buildArrayLiteralBlock(arrayNode, elemType ? *elemType : TypeInfo("i8"));
                     // Phase 3d: 释放旧 handle 后再写入新 handle
                     releaseAtPtr(it->second, sym->type);
                     storeArrayHandle(it->second, block);
@@ -1094,7 +1084,8 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             } else if (exprType == *elemType) {
                 // 由值构造 Rc：分配 Block，把 payload 存入 block+8
                 auto elemLLVMType = getLLVMType(*elemType);
-                auto sizeVal = _builder.getInt64(_module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
+                auto sizeVal =
+                    _builder.getInt64(_module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
 
                 auto allocFn = runtime::getRcAllocFn(_module, _builder);
                 auto block = _builder.CreateCall(allocFn, {sizeVal}, "rc_block");
@@ -1110,7 +1101,8 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                 auto handleField = _builder.CreateGEP(rcStructType, it->second, {zero, zero}, "handle_field");
                 _builder.CreateStore(block, handleField);
             } else {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, elemType->name, exprType.name);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, elemType->name,
+                               exprType.name);
             }
             return;
         }
@@ -1158,8 +1150,8 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                     _builder.CreateStore(_builder.getInt1(true), hasField);
                     _builder.CreateStore(exprVal, valueField);
                 } else {
-                    throw YuxError(node->getLineNumber(), node->getColumn(),
-                        ErrorCode::E3015, exprType.name, innerType->name);
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3015, exprType.name,
+                                   innerType->name);
                 }
             }
             return;
@@ -1196,8 +1188,8 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         // 处理成员访问赋值 (obj.field = value)
         auto sym = _currentFnNode->lookupSymbol(objName);
         if (!sym) {
-            SymbolSuggest::throwSymbolNotFound(_currentFnNode,
-                node->getLineNumber(), node->getColumn(), ErrorCode::E3030, objName);
+            SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
+                                               ErrorCode::E3030, objName);
         }
 
         TypeInfo actualType = sym->type;
@@ -1217,15 +1209,14 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             if (resolvedTop.isTuple()) {
                 auto it = _localVarPtrs.find(objName);
                 if (it == _localVarPtrs.end()) {
-                    SymbolSuggest::throwSymbolNotFound(_currentFnNode,
-                        node->getLineNumber(), node->getColumn(), ErrorCode::E3031, objName);
+                    SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
+                                                       ErrorCode::E3031, objName);
                 }
                 llvm::Value* curPtr = it->second;
                 TypeInfo curType = resolvedTop;
 
                 auto isPureDigits = [](const string& s) {
-                    return !s.empty() && std::ranges::all_of(s,
-                                          [](char c){ return c >= '0' && c <= '9'; });
+                    return !s.empty() && std::ranges::all_of(s, [](char c) { return c >= '0' && c <= '9'; });
                 };
 
                 DEBUG_LOG_VAL("  Statement: TupleMemberAssign", objName << "." << subs[0].getText());
@@ -1234,29 +1225,26 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                     auto memberText = subs[i].getText();
                     if (!isPureDigits(memberText)) {
                         // 元组段必须是数字索引
-                        throw YuxError(node->getLineNumber(), node->getColumn(),
-                            ErrorCode::E3040, curType.getFullName(), memberText);
+                        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3040,
+                                       curType.getFullName(), memberText);
                     }
                     auto resolvedCur = applySubst(curType);
                     if (!resolvedCur.isTuple()) {
                         // 链中段已不是 tuple（嵌套 struct/数组等）暂不支持
-                        throw YuxError(node->getLineNumber(), node->getColumn(),
-                            ErrorCode::E3045, curType.getFullName());
+                        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3045,
+                                       curType.getFullName());
                     }
                     auto& elems = resolvedCur.tupleElements();
                     auto idx = static_cast<size_t>(std::stoul(memberText));
                     if (idx >= elems.size()) {
-                        throw YuxError(node->getLineNumber(), node->getColumn(),
-                            ErrorCode::E3100, memberText, curType.getFullName(),
-                            std::to_string(elems.size()));
+                        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3100, memberText,
+                                       curType.getFullName(), std::to_string(elems.size()));
                     }
                     auto elemType = *elems[idx];
                     auto llvmTupleType = getLLVMType(resolvedCur);
                     auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-                    auto idxVal = llvm::ConstantInt::get(_builder.getInt32Ty(),
-                                                         static_cast<unsigned>(idx));
-                    auto fieldPtr = _builder.CreateGEP(llvmTupleType, curPtr,
-                                                      {zero, idxVal}, "tuple.field");
+                    auto idxVal = llvm::ConstantInt::get(_builder.getInt32Ty(), static_cast<unsigned>(idx));
+                    auto fieldPtr = _builder.CreateGEP(llvmTupleType, curPtr, {zero, idxVal}, "tuple.field");
 
                     if (i == subs.size() - 1) {
                         // 末段：编译 RHS 并写入
@@ -1267,8 +1255,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                         auto exprType = expr->getType();
                         llvm::Value* valToStore;
                         if (assignOp != AssignOp::Eq) {
-                            auto curVal = _builder.CreateLoad(getLLVMType(elemType),
-                                                              fieldPtr, "current.load");
+                            auto curVal = _builder.CreateLoad(getLLVMType(elemType), fieldPtr, "current.load");
                             auto castedExprVal = createCast(exprVal, exprType, elemType);
                             valToStore = applyCompoundOp(curVal, castedExprVal, assignOp, elemType);
                         } else {
@@ -1298,18 +1285,19 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             for (auto& stmt : _currentFnNode->body()) {
                 if (auto* letStmt = dynamic_cast<StatementDeclareAssignNode*>(stmt)) {
                     if (letStmt->name().getText() == objName) {
-                        // 追踪 init 表达式: 期望 Point::fields.at(N) 或 Point::fields[N] 形态
+                        // 追踪 init 表达式: 期望 Point::fields.get(N) 或 Point::fields[N] 形态
                         auto* init = letStmt->expr();
-                        // Pattern A: .at(N) call (legacy Array<Field>)
+                        // Pattern A: .get(N) call
                         if (auto* call = dynamic_cast<ExprCallNode*>(init)) {
                             if (call->getArgs().size() == 1) {
                                 if (auto* pc = dynamic_cast<ExprPathCallNode*>(call->getCalleeExpr())) {
-                                    if (pc->variantName().getText() == "at" && pc->enumName().getText() != "") {
+                                    if (pc->variantName().getText() == "get" && pc->enumName().getText() != "") {
                                         string structName = pc->enumName().getText();
                                         auto* idxExpr = call->getArgs()[0];
                                         if (auto* idxLit = dynamic_cast<ExprLiteralNode*>(idxExpr)) {
                                             if (auto* intLit = dynamic_cast<LiteralIntNode*>(idxLit->literal())) {
-                                                i64 idx = sema::parseIntLiteral(intLit->getValue().getText(),
+                                                i64 idx = sema::parseIntLiteral(
+                                                    intLit->getValue().getText(),
                                                     static_cast<int>(intLit->getValue().getLine()),
                                                     static_cast<int>(intLit->getValue().getCharPositionInLine()) + 1);
                                                 if (idx >= 0) {
@@ -1337,32 +1325,36 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                             }
                         }
                         // Pattern B: [N] indexing (new [Field& * N]&)
-                        if (!sd) if (auto* getNode = dynamic_cast<ExprGetNode*>(init)) {
-                            if (getNode->indices().size() == 1) {
-                                if (auto* pc = dynamic_cast<ExprPathCallNode*>(getNode->arrayExpr())) {
-                                    if (pc->variantName().getText() == "fields" && pc->enumName().getText() != "") {
-                                        string structName = pc->enumName().getText();
-                                        auto* idxExpr = getNode->indices()[0];
-                                        if (auto* idxLit = dynamic_cast<ExprLiteralNode*>(idxExpr)) {
-                                            if (auto* intLit = dynamic_cast<LiteralIntNode*>(idxLit->literal())) {
-                                                i64 idx = sema::parseIntLiteral(intLit->getValue().getText(),
-                                                    static_cast<int>(intLit->getValue().getLine()),
-                                                    static_cast<int>(intLit->getValue().getCharPositionInLine()) + 1);
-                                                if (idx >= 0) {
-                                                    auto* file = _file;
-                                                    sd = file->getStructDecl(structName);
-                                                    if (!sd && _yux && _yux->sdkFile()) {
-                                                        sd = _yux->sdkFile()->getStructDecl(structName);
-                                                    }
-                                                    if (sd) {
-                                                        int nonStaticCount = 0;
-                                                        for (auto& f : sd->fields()) {
-                                                            if (f->isStatic()) continue;
-                                                            if (nonStaticCount == static_cast<int>(idx)) {
-                                                                fieldIdx = sd->fieldIndex(f->name().getText());
-                                                                break;
+                        if (!sd)
+                            if (auto* getNode = dynamic_cast<ExprGetNode*>(init)) {
+                                if (getNode->indices().size() == 1) {
+                                    if (auto* pc = dynamic_cast<ExprPathCallNode*>(getNode->arrayExpr())) {
+                                        if (pc->variantName().getText() == "fields" && pc->enumName().getText() != "") {
+                                            string structName = pc->enumName().getText();
+                                            auto* idxExpr = getNode->indices()[0];
+                                            if (auto* idxLit = dynamic_cast<ExprLiteralNode*>(idxExpr)) {
+                                                if (auto* intLit = dynamic_cast<LiteralIntNode*>(idxLit->literal())) {
+                                                    i64 idx = sema::parseIntLiteral(
+                                                        intLit->getValue().getText(),
+                                                        static_cast<int>(intLit->getValue().getLine()),
+                                                        static_cast<int>(intLit->getValue().getCharPositionInLine()) +
+                                                            1);
+                                                    if (idx >= 0) {
+                                                        auto* file = _file;
+                                                        sd = file->getStructDecl(structName);
+                                                        if (!sd && _yux && _yux->sdkFile()) {
+                                                            sd = _yux->sdkFile()->getStructDecl(structName);
+                                                        }
+                                                        if (sd) {
+                                                            int nonStaticCount = 0;
+                                                            for (auto& f : sd->fields()) {
+                                                                if (f->isStatic()) continue;
+                                                                if (nonStaticCount == static_cast<int>(idx)) {
+                                                                    fieldIdx = sd->fieldIndex(f->name().getText());
+                                                                    break;
+                                                                }
+                                                                ++nonStaticCount;
                                                             }
-                                                            ++nonStaticCount;
                                                         }
                                                     }
                                                 }
@@ -1371,7 +1363,6 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                                     }
                                 }
                             }
-                        }
                         break;
                     }
                 }
@@ -1433,8 +1424,8 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
 
         auto it = _localVarPtrs.find(objName);
         if (it == _localVarPtrs.end()) {
-            SymbolSuggest::throwSymbolNotFound(_currentFnNode,
-                node->getLineNumber(), node->getColumn(), ErrorCode::E3031, objName);
+            SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
+                                               ErrorCode::E3031, objName);
         }
 
         llvm::Value* structPtr = it->second;
@@ -1443,12 +1434,9 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         if (needRcDeref) {
             auto rcStructType = getLLVMType(rcOuterType);
             auto zero32 = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-            auto handleField = _builder.CreateGEP(
-                rcStructType, structPtr, {zero32, zero32}, "rc.handle_field");
-            auto handle = _builder.CreateLoad(
-                llvm::PointerType::get(_context, 0), handleField, "rc.handle");
-            structPtr = _builder.CreateGEP(
-                _builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.payload");
+            auto handleField = _builder.CreateGEP(rcStructType, structPtr, {zero32, zero32}, "rc.handle_field");
+            auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "rc.handle");
+            structPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.payload");
         }
 
         auto structType = getLLVMType(actualType);
@@ -1460,8 +1448,8 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             if (fieldIndex < 0) {
                 // E3152: 实例写静态字段 (DRAFT-static-vars §4.4)
                 if (structDecl->staticField(memberName)) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3152,
-                                   memberName, actualType.name, actualType.name, memberName);
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3152, memberName,
+                                   actualType.name, actualType.name, memberName);
                 }
                 throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3040, actualType.name, memberName);
             }
@@ -1469,8 +1457,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             auto field = structDecl->fields()[fieldIndex];
             // Phase 3.5.a: 私有字段可见性 E3042 整体走 sema::validatePrivateFieldAccess
             // (helper 内部剥 `$<泛型实例>` 后缀比对 base, 与原 inline 等价).
-            sema::validatePrivateFieldAccess(structDecl, memberName, actualType.name,
-                                             _currentStructName,
+            sema::validatePrivateFieldAccess(structDecl, memberName, actualType.name, _currentStructName,
                                              node->getLineNumber(), node->getColumn());
 
             if (i == subs.size() - 1) {
@@ -1488,8 +1475,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                     if (auto arrayNode = dynamic_cast<ExprArrayNode*>(expr)) {
                         auto elemType = fieldType.arrayGenericElementType();
                         // 走统一 helper：含嵌套 Array<Array<U>> 字面量按外层 elemType 递归编译
-                        auto block = buildArrayLiteralBlock(arrayNode,
-                            elemType ? *elemType : TypeInfo("i8"));
+                        auto block = buildArrayLiteralBlock(arrayNode, elemType ? *elemType : TypeInfo("i8"));
                         // Phase 3d: 释放旧 handle 后再写入新 handle
                         releaseAtPtr(fieldPtr, fieldType);
                         // fieldPtr 指向 Array<T> 实例（{ ptr handle }）；handle 在 offset 0
@@ -1528,11 +1514,12 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                 // 中间段：当前仅支持纯 struct 嵌套（不含 Rc/Array/Ref/Nullable/RC 字段）
                 // 中段若是 RC / Rc / Array / Ref / Nullable，自动 deref / 写穿语义未对齐，先拒收。
                 auto interType = field->getType();
-                if (interType.isRc() || interType.isArrayGeneric() || interType.isRef()
-                    || interType.isNullable() || interType.isWeak() || interType.isPtr()
-                    || isBuiltinType(interType.name) || typeNeedsDestructor(interType)) {
+                if (interType.isRc() || interType.isArrayGeneric() || interType.isRef() || interType.isNullable() ||
+                    interType.isWeak() || interType.isPtr() || isBuiltinType(interType.name) ||
+                    typeNeedsDestructor(interType)) {
                     throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3046)
-                        .withHint("嵌套成员赋值中间字段需为纯 struct（不含 Rc/Array/Ref/RC 等）；可拆方法或在中段先 `var t = $.field` 落地后再写");
+                        .withHint("嵌套成员赋值中间字段需为纯 struct（不含 Rc/Array/Ref/RC 等）；可拆方法或在中段先 "
+                                  "`var t = $.field` 落地后再写");
                 }
                 auto interStructDecl = _file->getStructDecl(interType.name);
                 if (!interStructDecl && _yux && _yux->sdkFile()) {
@@ -1656,13 +1643,13 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
             }
             currentPtr = it->second;
         }
-    } 
+    }
     // 处理成员访问 (obj.field[idx] = value)
     else if (auto dotExpr = dynamic_cast<ExprDotNode*>(arrayExpr)) {
         auto outerBase = dotExpr->baseExpr();
         auto outerType = outerBase->getType();
         TypeInfo outerActual = outerType;
-        
+
         // 解引用类型
         if (outerType.isRef()) {
             auto t = outerType.refElementType();
@@ -1672,7 +1659,7 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
             auto t = outerType.rcElementType();
             if (t) outerActual = *t;
         }
-        
+
         llvm::Value* outerPtr = nullptr;
         if (auto ol = dynamic_cast<ExprLiteralNode*>(outerBase)) {
             if (auto oobj = dynamic_cast<LiteralObjNode*>(ol->literal())) {
@@ -1682,12 +1669,12 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
                 }
             }
         }
-        
+
         auto outerStructDecl = _file->getStructDecl(outerActual.name);
         if (!outerStructDecl && _yux && _yux->sdkFile()) {
             outerStructDecl = _yux->sdkFile()->getStructDecl(outerActual.name);
         }
-        
+
         if (outerPtr && outerStructDecl) {
             int fi = outerStructDecl->fieldIndex(dotExpr->member());
             if (fi >= 0) {
@@ -1698,10 +1685,8 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
                 if (outerType.isRc()) {
                     auto rcStructType = getLLVMType(outerType);
                     std::array<llvm::Value*, 2> bIndices{zeroIdx, zeroIdx};
-                    auto dataPtrField = _builder.CreateGEP(
-                        rcStructType, outerPtr, bIndices, "rc.data_ptr_field");
-                    dataPtr = _builder.CreateLoad(
-                        llvm::PointerType::get(_context, 0), dataPtrField, "rc.data_ptr");
+                    auto dataPtrField = _builder.CreateGEP(rcStructType, outerPtr, bIndices, "rc.data_ptr_field");
+                    dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataPtrField, "rc.data_ptr");
                 }
 
                 auto outerLLVM = getLLVMType(outerActual);
@@ -1710,8 +1695,8 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
                 currentPtr = _builder.CreateGEP(outerLLVM, dataPtr, indicesF, "array.field.ptr");
             } else if (outerStructDecl->staticField(dotExpr->member())) {
                 // E3152: 实例写静态字段 (DRAFT-static-vars §4.4)
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3152,
-                               dotExpr->member(), outerActual.name, outerActual.name, dotExpr->member());
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3152, dotExpr->member(),
+                               outerActual.name, outerActual.name, dotExpr->member());
             }
         }
     }
@@ -1729,8 +1714,8 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
 
         auto elemLLVMType = getLLVMType(*elemType);
         auto handle = loadArrayHandle(currentPtr);
-        auto dataPtr = _builder.CreateLoad(
-            llvm::PointerType::get(_context, 0), arrayBlockDataFieldPtr(handle), "array.data.ptr");
+        auto dataPtr =
+            _builder.CreateLoad(llvm::PointerType::get(_context, 0), arrayBlockDataFieldPtr(handle), "array.data.ptr");
 
         auto indexVal = compileExpr(indices[0]);
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {indexVal}, "array.elem.ptr");
@@ -1794,14 +1779,12 @@ void Compiler::compileStaticFieldSetStatement(p<StatementStaticFieldSetNode> nod
 
     const auto* sf = structDecl->staticField(fieldName);
     if (!sf) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030,
-                       typeName + "::" + fieldName);
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, typeName + "::" + fieldName);
     }
 
     // 查 #Mut 位：非 #Mut 静态字段禁写
     if (!sf->isMutable) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3151,
-                       typeName + "::" + fieldName);
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3151, typeName + "::" + fieldName);
     }
 
     string ownerMod = _file->moduleName();
@@ -1815,8 +1798,7 @@ void Compiler::compileStaticFieldSetStatement(p<StatementStaticFieldSetNode> nod
     auto mangledName = Mangler::staticField(ownerMod, typeName, fieldName);
     auto* gv = _module->getGlobalVariable(mangledName, true);
     if (!gv) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030,
-                       typeName + "::" + fieldName);
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, typeName + "::" + fieldName);
     }
 
     auto exprVal = compileExpr(node->valueExpr());

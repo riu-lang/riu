@@ -4,21 +4,21 @@
 // 函数调用编译：从 compiler_call.cpp 拆出 (P1 Phase 3)
 // 覆盖 compileFunctionCall / compileGenericFunctionCall / compileKnownFunctionCall。
 
-#include "../compiler_runtime.h"
 #include "../compiler.h"
-#include <algorithm>
+#include "../compiler_runtime.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
 #include "ast/mangler.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/literal_node.h"
+#include "sema/call_resolve.h"
+#include <algorithm>
 #include <functional>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
-#include "sema/call_resolve.h"
 
-llvm::Value* Compiler::compileFunctionCall(
-    p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
+llvm::Value* Compiler::compileFunctionCall(p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args,
+                                           vector<TypeInfo>& argTypes) {
     if (_castFunctions.contains(fnName)) {
         DEBUG_LOG_VAL("    Expr: CastFunction", fnName);
         auto& castInfo = _castFunctions[fnName];
@@ -33,7 +33,8 @@ llvm::Value* Compiler::compileFunctionCall(
     // 函数符号表已在 validateAliases 中归一化；这里再把 argTypes 也走一遍，匹配两侧
     vector<TypeInfo> resolvedArgTypes;
     resolvedArgTypes.reserve(argTypes.size());
-    for (auto& t : argTypes) resolvedArgTypes.push_back(applySubst(t));
+    for (auto& t : argTypes)
+        resolvedArgTypes.push_back(applySubst(t));
     auto fnSymbol = _file->lookupFnSymbolWithParams(fnName, resolvedArgTypes);
 
     // Phase 4b: 当存在同名 generic + 非泛型重载时，参数严格匹配的非泛型优先；
@@ -57,8 +58,7 @@ llvm::Value* Compiler::compileFunctionCall(
     }
 
     // Phase 3.3.2.b: 自由 intrinsic arity (E6020/E6021/E6022) 收口到 sema helper
-    sema::validateFreeIntrinsicArity(fnName, args.size(),
-                                      callNode->getLineNumber(), callNode->getColumn());
+    sema::validateFreeIntrinsicArity(fnName, args.size(), callNode->getLineNumber(), callNode->getColumn());
 
     if (fnName == "ptr_from_addr") {
         DEBUG_LOG("    Expr: PtrFromAddr");
@@ -75,8 +75,8 @@ llvm::Value* Compiler::compileFunctionCall(
         DEBUG_LOG("    Expr: _ptr_offset");
         // E6023 (Phase 3.3.3.a): 跨模块私有, 迁至 sema::validatePtrOffsetVisibility.
         // 与 E6006 (validateFnSymbolVisibility) 重叠但错误码不同.
-        sema::validatePtrOffsetVisibility(fnSymbol, _file->moduleName(),
-                                           callNode->getLineNumber(), callNode->getColumn());
+        sema::validatePtrOffsetVisibility(fnSymbol, _file->moduleName(), callNode->getLineNumber(),
+                                          callNode->getColumn());
         auto i8Ty = _builder.getInt8Ty();
         return _builder.CreateGEP(i8Ty, args[0], args[1], "ptr_off");
     }
@@ -98,8 +98,8 @@ llvm::Value* Compiler::compileFunctionCall(
 
     if (fnSymbol) {
         // E6006 已迁至 sema::validateFnSymbolVisibility
-        sema::validateFnSymbolVisibility(fnSymbol, _file->moduleName(), fnName,
-                                          callNode->getLineNumber(), callNode->getColumn());
+        sema::validateFnSymbolVisibility(fnSymbol, _file->moduleName(), fnName, callNode->getLineNumber(),
+                                         callNode->getColumn());
         return compileKnownFunctionCall(callNode, fnName, args, argTypes, fnSymbol);
     }
 
@@ -124,12 +124,11 @@ llvm::Value* Compiler::compileFunctionCall(
 
     vector<llvm::Value*> callArgs;
     for (size_t i = 0; i < args.size(); ++i) {
-        bool paramIsPtrInSignature = (i < fn->getFunctionType()->getNumParams()) &&
-            fn->getFunctionType()->getParamType(i)->isPointerTy();
+        bool paramIsPtrInSignature =
+            (i < fn->getFunctionType()->getNumParams()) && fn->getFunctionType()->getParamType(i)->isPointerTy();
 
         if (paramIsPtrInSignature && args[i]->getType()->isPointerTy()) {
-            callArgs.push_back(_builder.CreateBitCast(
-                args[i], llvm::PointerType::get(_context, 0), "ptr_cast"));
+            callArgs.push_back(_builder.CreateBitCast(args[i], llvm::PointerType::get(_context, 0), "ptr_cast"));
         } else {
             callArgs.push_back(args[i]);
         }
@@ -144,10 +143,10 @@ llvm::Value* Compiler::compileFunctionCall(
     return callResult;
 }
 
-llvm::Value* Compiler::compileGenericFunctionCall(
-    p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
-    p<FnNode> genericFn, p<FileNode> fnOwner) {
-    
+llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, const string& fnName,
+                                                  vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
+                                                  p<FnNode> genericFn, p<FileNode> fnOwner) {
+
     const auto& typeParams = genericFn->header()->typeParams();
     vector<TypeInfo> typeArgs;
 
@@ -164,8 +163,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(
         // unify 不能从 Heap<T> arg 反推 T (Rc<T> ≠ Heap<T>), 在此前直接抽 Heap 内层.
         auto inner = argTypes[0].heapElementType();
         if (!inner) {
-            throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                ErrorCode::E6029, fnName, argTypes[0].getFullName());
+            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6029, fnName,
+                           argTypes[0].getFullName());
         }
         typeArgs.push_back(*inner);
     } else {
@@ -176,15 +175,14 @@ llvm::Value* Compiler::compileGenericFunctionCall(
     if (genericFn->header()->hasAnno("CompilerInner")) {
         // Phase 3.3.2.c: CompilerInner intrinsic typeArgs/args arity 校验
         // 同时覆盖 E6017 (未知 intrinsic) — helper 内部对清单外 fnName 直接抛.
-        sema::validateCompilerInnerIntrinsicShape(fnName, typeArgs.size(), args.size(),
-                                                   callNode->getLineNumber(), callNode->getColumn());
+        sema::validateCompilerInnerIntrinsicShape(fnName, typeArgs.size(), args.size(), callNode->getLineNumber(),
+                                                  callNode->getColumn());
         // Phase 3.3.2.d: CompilerInner intrinsic 类型形态校验
         // 覆盖 same_ref / ptr_of (E6028 AST 形态 + E6029 T 必须堆句柄) / as_ref / weak (E6029 argType)
         // / copy_of (E6032 深度 Ref 扫描).
-        sema::validateCompilerInnerIntrinsicTypeShape(
-            fnName, typeArgs, argTypes, callNode->getArgs(),
-            _file, _yux ? _yux->sdkFile() : nullptr,
-            callNode->getLineNumber(), callNode->getColumn());
+        sema::validateCompilerInnerIntrinsicTypeShape(fnName, typeArgs, argTypes, callNode->getArgs(), _file,
+                                                      _yux ? _yux->sdkFile() : nullptr, callNode->getLineNumber(),
+                                                      callNode->getColumn());
 
         // 测试断言泛型分支（spec §11.3.5）：assert_eq:<T> T ∈ 数值/bool
         if (fnName == "assert_eq") {
@@ -193,8 +191,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(
         if (fnName == "size_of") {
             auto llvmType = getLLVMType(typeArgs[0]);
             if (!llvmType) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                    ErrorCode::E6019, typeArgs[0].getFullName());
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6019,
+                               typeArgs[0].getFullName());
             }
             auto size = _module->getDataLayout().getTypeAllocSize(llvmType);
             return _builder.getInt64(size);
@@ -206,8 +204,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             if (!gv) {
                 // Phase 3a 仅放行 Normal 用户 / SDK / wildcard-imported struct;
                 // 复用 E6019 (intrinsic 类型形态错) 占位, Phase 4+ 接 spec 链时换专属错码.
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                    ErrorCode::E6019, typeArgs[0].getFullName());
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6019,
+                               typeArgs[0].getFullName());
             }
             auto typeStructTy = getLLVMType(TypeInfo("Type"));
             return _builder.CreateLoad(typeStructTy, gv, "reflect.type");
@@ -270,28 +268,25 @@ llvm::Value* Compiler::compileGenericFunctionCall(
                     if (!forPtrOf || T.isRc()) {
                         if (forPtrOf && T.isRc()) {
                             // Rc payload 偏移 8（u32 strong + u32 weak）
-                            return _builder.CreateInBoundsGEP(
-                                _builder.getInt8Ty(), handle,
-                                {llvm::ConstantInt::get(_builder.getInt64Ty(), 8)},
-                                "rc.payload");
+                            return _builder.CreateInBoundsGEP(_builder.getInt8Ty(), handle,
+                                                              {llvm::ConstantInt::get(_builder.getInt64Ty(), 8)},
+                                                              "rc.payload");
                         }
                         return handle;
                     }
                     // Array<U>：读 Block.data（offset 24：8 字节 RC 头 + 16 字节 len/cap）
-                    auto dataAddr = _builder.CreateInBoundsGEP(
-                        _builder.getInt8Ty(), handle,
-                        {llvm::ConstantInt::get(_builder.getInt64Ty(), 24)},
-                        "array.data.addr");
+                    auto dataAddr = _builder.CreateInBoundsGEP(_builder.getInt8Ty(), handle,
+                                                               {llvm::ConstantInt::get(_builder.getInt64Ty(), 24)},
+                                                               "array.data.addr");
                     return _builder.CreateLoad(ptrTy, dataAddr, "array.data");
                 }
                 if (T.name == "String" && T.kind == TypeKind::Normal) {
                     // String layout = { data: Array<u32> } = { { ptr handle } }
                     auto handle = _builder.CreateExtractValue(args[i], {0, 0}, "string.handle");
                     if (!forPtrOf) return handle;
-                    auto dataAddr = _builder.CreateInBoundsGEP(
-                        _builder.getInt8Ty(), handle,
-                        {llvm::ConstantInt::get(_builder.getInt64Ty(), 24)},
-                        "string.data.addr");
+                    auto dataAddr = _builder.CreateInBoundsGEP(_builder.getInt8Ty(), handle,
+                                                               {llvm::ConstantInt::get(_builder.getInt64Ty(), 24)},
+                                                               "string.data.addr");
                     return _builder.CreateLoad(ptrTy, dataAddr, "string.data");
                 }
                 if (T.isRef()) {
@@ -307,16 +302,15 @@ llvm::Value* Compiler::compileGenericFunctionCall(
                     if (auto refExpr = dynamic_cast<ExprGetRefNode*>(argNode)) {
                         return compileGetRefExpr(refExpr);
                     }
-                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                        ErrorCode::E6028, fnName);
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6028, fnName);
                 }
                 // Phase 8a: ptr_of:<Heap<U>>(h) FFI handoff (DRAFT-heap-types §8.3a)
                 // args[i] = Heap<U> = 裸 U* (无 wrapper), 直接作为 Ptr 返回; 调用点摘除 source slot.
                 if (T.isHeap()) {
                     return args[i];
                 }
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                    ErrorCode::E6029, fnName, T.getFullName());
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6029, fnName,
+                               T.getFullName());
             };
 
             if (fnName == "same_ref") {
@@ -337,8 +331,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(
                         std::erase(_scopeVars, name);
                         auto it = _localVarPtrs.find(name);
                         if (it != _localVarPtrs.end()) {
-                            _builder.CreateStore(
-                                llvm::ConstantPointerNull::get(ptrTy), it->second);
+                            _builder.CreateStore(llvm::ConstantPointerNull::get(ptrTy), it->second);
                         }
                     }
                 }
@@ -360,16 +353,14 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             }
             // 实参必须是 Rc<T>（不接受 Rc<T>?、Array、String、Weak 等）
             if (!argType.isRc() || argType.isNullable()) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                    ErrorCode::E6029, fnName, argType.getFullName());
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6029, fnName,
+                               argType.getFullName());
             }
             // args[0] 为 Rc<T> = { ptr handle } 结构体值；ExtractValue 0 取 handle
             auto handle = _builder.CreateExtractValue(args[0], {0}, "as_ref.handle");
             // payload 偏移 8（u32 strong + u32 weak）
-            return _builder.CreateInBoundsGEP(
-                _builder.getInt8Ty(), handle,
-                {llvm::ConstantInt::get(_builder.getInt64Ty(), 8)},
-                "as_ref.payload");
+            return _builder.CreateInBoundsGEP(_builder.getInt8Ty(), handle,
+                                              {llvm::ConstantInt::get(_builder.getInt64Ty(), 8)}, "as_ref.payload");
         }
         if (fnName == "copy_of") {
             // spec §12.7.3 / DRAFT-const-mut [#1.I]：copy_of:<T>(x T&) T
@@ -383,15 +374,15 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             if (T.isHeap()) {
                 auto innerSp = T.heapElementType();
                 if (!innerSp) {
-                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                        ErrorCode::E6029, fnName, T.getFullName());
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6029, fnName,
+                                   T.getFullName());
                 }
                 const auto& innerType = *innerSp;
                 auto innerLLVMType = getLLVMType(innerType);
                 // args[0] = Heap<U> = ptr (raw heap handle, 不是 wrapper struct)
                 auto srcInner = _builder.CreateLoad(innerLLVMType, args[0], "copy_of.heap.src");
-                auto sizeVal = _builder.getInt64(
-                    _module->getDataLayout().getTypeAllocSize(innerLLVMType).getFixedValue());
+                auto sizeVal =
+                    _builder.getInt64(_module->getDataLayout().getTypeAllocSize(innerLLVMType).getFixedValue());
                 auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
                 auto newPtr = _builder.CreateCall(allocFn, {sizeVal}, "copy_of.heap.new");
                 _builder.CreateStore(srcInner, newPtr);
@@ -408,8 +399,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(
                     const auto& innerHeapType = *innerNullSp;
                     auto innerElemSp = innerHeapType.heapElementType();
                     if (!innerElemSp) {
-                        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                            ErrorCode::E6029, fnName, T.getFullName());
+                        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6029, fnName,
+                                       T.getFullName());
                     }
                     const auto& innerType = *innerElemSp;
                     auto innerLLVMType = getLLVMType(innerType);
@@ -427,8 +418,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(
 
                     _builder.SetInsertPoint(allocBB);
                     auto srcInner = _builder.CreateLoad(innerLLVMType, srcPtr, "copy_of.nh.inner");
-                    auto sizeVal = _builder.getInt64(
-                        _module->getDataLayout().getTypeAllocSize(innerLLVMType).getFixedValue());
+                    auto sizeVal =
+                        _builder.getInt64(_module->getDataLayout().getTypeAllocSize(innerLLVMType).getFixedValue());
                     auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
                     auto newPtr = _builder.CreateCall(allocFn, {sizeVal}, "copy_of.nh.new");
                     _builder.CreateStore(srcInner, newPtr);
@@ -451,15 +442,19 @@ llvm::Value* Compiler::compileGenericFunctionCall(
                 }
             }
 
-            // args[0] 是 T 的 struct value（来自 compileExpr 自动 deref T&）
+            // args[0] 是 T& (ptr) 或 T 值：若 LLVM 类型为 ptr 则 load 出 T 值
+            llvm::Value* copied = args[0];
+            if (args[0]->getType()->isPointerTy()) {
+                copied = _builder.CreateLoad(getLLVMType(T), args[0], "copy_of.load");
+            }
             // 把所有 RC 子结构 +1：Rc/Array/Weak 抽 handle 调对应 retain；
             // struct 走 retainStructFieldsAtCallSite 递归；含 RC enum 走其分支。
-            // 内置 / Ptr / 平凡 struct：no-op，直接返回 args[0]。
-            retainHandleAtCallSite(args[0], T);
+            // 内置 / Ptr / 平凡 struct：no-op。
+            retainHandleAtCallSite(copied, T);
 
             // 登记为 fresh +1 句柄/struct，未被消费时帧弹出自动释放
-            recordTemp(args[0], T);
-            return args[0];
+            recordTemp(copied, T);
+            return copied;
         }
         if (fnName == "weak") {
             // spec §4.8.3.1 / §9：weak:<T>(box Rc<T>?) Weak<T>
@@ -483,15 +478,15 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             } else if (argType.isNullable()) {
                 auto inner = argType.nullableInnerType();
                 if (!inner || !inner->isRc()) {
-                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                        ErrorCode::E6029, fnName, argType.getFullName());
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6029, fnName,
+                                   argType.getFullName());
                 }
                 auto hasFlag = _builder.CreateExtractValue(args[0], {0}, "weak.has");
                 auto innerHandle = _builder.CreateExtractValue(args[0], {1, 0}, "weak.inner.handle");
                 srcHandle = _builder.CreateSelect(hasFlag, innerHandle, nullPtr, "weak.handle");
             } else {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                    ErrorCode::E6029, fnName, argType.getFullName());
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6029, fnName,
+                               argType.getFullName());
             }
 
             // _weak_retain(handle)：null / 哨兵跳过；否则 weak++
@@ -503,8 +498,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             TypeInfo weakTy("Weak", {tShared});
             auto weakStructTy = getLLVMType(weakTy);
             auto resultAlloca = _builder.CreateAlloca(weakStructTy, nullptr, "weak.result");
-            auto handleField = _builder.CreateGEP(weakStructTy, resultAlloca, {zero, zero},
-                "weak.result.handle_field");
+            auto handleField = _builder.CreateGEP(weakStructTy, resultAlloca, {zero, zero}, "weak.result.handle_field");
             _builder.CreateStore(srcHandle, handleField);
             auto result = _builder.CreateLoad(weakStructTy, resultAlloca, "weak.result.val");
 
@@ -521,7 +515,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             auto innerLLVMType = getLLVMType(T);
             auto ptrTy = llvm::PointerType::get(_context, 0);
             auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-            auto one  = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+            auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
 
             // 结果类型 = Nullable<Heap<T>> = { i1 _has, ptr _value }
             auto tShared = make_shared<TypeInfo>(T);
@@ -531,19 +525,17 @@ llvm::Value* Compiler::compileGenericFunctionCall(
             auto nullableLLVMTy = getLLVMType(nullableHeapTy);
 
             auto resultAlloca = _builder.CreateAlloca(nullableLLVMTy, nullptr,
-                fnName == "heap_some" ? "heap_some.result" : "heap_null.result");
-            auto hasField = _builder.CreateGEP(nullableLLVMTy, resultAlloca, {zero, zero},
-                "heap_opt.has_field");
-            auto valueField = _builder.CreateGEP(nullableLLVMTy, resultAlloca, {zero, one},
-                "heap_opt.value_field");
+                                                      fnName == "heap_some" ? "heap_some.result" : "heap_null.result");
+            auto hasField = _builder.CreateGEP(nullableLLVMTy, resultAlloca, {zero, zero}, "heap_opt.has_field");
+            auto valueField = _builder.CreateGEP(nullableLLVMTy, resultAlloca, {zero, one}, "heap_opt.value_field");
 
             if (fnName == "heap_null") {
                 _builder.CreateStore(_builder.getInt1(false), hasField);
                 _builder.CreateStore(llvm::ConstantPointerNull::get(ptrTy), valueField);
             } else {
                 // heap_some: 分配 + 写 inner，所有权由 arg 转交给 Heap payload
-                auto sizeVal = _builder.getInt64(
-                    _module->getDataLayout().getTypeAllocSize(innerLLVMType).getFixedValue());
+                auto sizeVal =
+                    _builder.getInt64(_module->getDataLayout().getTypeAllocSize(innerLLVMType).getFixedValue());
                 auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
                 auto rawPtr = _builder.CreateCall(allocFn, {sizeVal}, "heap_some.payload");
                 _builder.CreateStore(args[0], rawPtr);
@@ -559,8 +551,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(
         }
         // E6017 (未知 CompilerInner intrinsic) 已由 sema::validateCompilerInnerIntrinsicShape
         // 在分派前抛出, 不会到这里; 留 unreachable assert 防御.
-        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-            ErrorCode::E6017, fnName);
+        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6017, fnName);
     }
 
     // §6.4.4.4 / §12.4 边界单态化校验 (Phase 3.3): 对每个 <T : D1 + D2>,
@@ -569,10 +560,9 @@ llvm::Value* Compiler::compileGenericFunctionCall(
     // mangle (单态化静态分发, 边界仅做静态检查).
     // E3032 / E1106 (Phase 3.3.3.c): 迁至 sema::validateGenericTypeArgsSpecBound.
     if (_yux) {
-        sema::validateGenericTypeArgsSpecBound(
-            &_yux->specRegistry(), &_yux->specImplChecker(),
-            fnOwner, genericFn->header(), typeArgs,
-            callNode->getLineNumber(), callNode->getColumn());
+        sema::validateGenericTypeArgsSpecBound(&_yux->specRegistry(), &_yux->specImplChecker(), fnOwner,
+                                               genericFn->header(), typeArgs, callNode->getLineNumber(),
+                                               callNode->getColumn());
     }
 
     string mangledName = ensureFnInstance(genericFn, typeArgs, fnOwner, callNode->getLineNumber());
@@ -581,7 +571,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(
     for (size_t i = 0; i < typeParams.size(); ++i) {
         subst[typeParams[i]] = typeArgs[i];
     }
-    _substStack.push_back(SubstFrame{.subst=subst, .baseStructName="", .effStructName=""});
+    _substStack.push_back(SubstFrame{.subst = subst, .baseStructName = "", .effStructName = ""});
 
     vector<TypeInfo> instParamTypes;
     for (auto param : genericFn->header()->params()) {
@@ -669,9 +659,9 @@ llvm::Value* Compiler::compileGenericFunctionCall(
     return callResult;
 }
 
-llvm::Value* Compiler::compileKnownFunctionCall(
-    p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
-    FnSymbolInfo* fnSymbol) {
+llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const string& fnName,
+                                                vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
+                                                FnSymbolInfo* fnSymbol) {
     string cName;
     if (fnSymbol->isExternal) {
         cName = fnName;
@@ -696,7 +686,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(
 
     if (!fn) {
         vector<llvm::Type*> paramTypes;
-        for (auto & param : fnSymbol->params) {
+        for (auto& param : fnSymbol->params) {
             if (param.isPtr() || param.isRef() || structParamUsesPointer(param.name)) {
                 paramTypes.push_back(llvm::PointerType::get(_context, 0));
             } else {
@@ -719,12 +709,11 @@ llvm::Value* Compiler::compileKnownFunctionCall(
     for (size_t i = 0; i < fn->getFunctionType()->getNumParams() && i < args.size(); ++i) {
         auto expectedType = fn->getFunctionType()->getParamType(i);
         auto actualType = args[i]->getType();
-        DEBUG_LOG_VAL(
-            "    Param type", i << " expected=" << expectedType->getTypeID() << " actual=" << actualType->getTypeID());
+        DEBUG_LOG_VAL("    Param type",
+                      i << " expected=" << expectedType->getTypeID() << " actual=" << actualType->getTypeID());
         if (expectedType->isIntegerTy() && actualType->isIntegerTy()) {
-            DEBUG_LOG_VAL(
-                "    Integer bit width",
-                "expected=" << expectedType->getIntegerBitWidth() << " actual=" << actualType->getIntegerBitWidth());
+            DEBUG_LOG_VAL("    Integer bit width", "expected=" << expectedType->getIntegerBitWidth()
+                                                               << " actual=" << actualType->getIntegerBitWidth());
         }
         if (expectedType != actualType) {
             DEBUG_LOG_VAL("    TYPE MISMATCH", "need conversion");
@@ -734,7 +723,10 @@ llvm::Value* Compiler::compileKnownFunctionCall(
     // Phase 3d.2 / 3d.3: B 档 nullable move 收集 —— 形参 `Heap<T>?` byval + 实参是
     // `Heap<T>?` 的 lvalue (局部 ID 或局部 struct 字段 `b.field`) 时, 记录调用方 slot,
     // 调用后写回 {has=false, value=null}. 索引 lvalue / lambda 捕获留后续切片.
-    struct HeapBdangSlot { llvm::Value* slotPtr; llvm::Type* llvmTy; };
+    struct HeapBdangSlot {
+        llvm::Value* slotPtr;
+        llvm::Type* llvmTy;
+    };
     vector<HeapBdangSlot> heapBdangSlots;
     auto recordBdangIfEligible = [&](size_t i) {
         if (i >= fnSymbol->params.size() || i >= callNode->getArgs().size()) return;
@@ -746,7 +738,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(
         llvm::Value* slot = nullptr;
         llvm::Type* ty = nullptr;
         if (!tryHeapNullableLvalueSlot(callNode->getArgs()[i], slot, ty)) return;
-        heapBdangSlots.push_back({.slotPtr=slot, .llvmTy=ty});
+        heapBdangSlots.push_back({.slotPtr = slot, .llvmTy = ty});
     };
 
     vector<llvm::Value*> callArgs;
@@ -780,8 +772,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(
 
         if (fnSymbol->params[i].isPtr()) {
             if (args[i]->getType()->isPointerTy()) {
-                auto ptrVal = _builder.CreateBitCast(
-                    args[i], llvm::PointerType::get(_context, 0), "ptr_cast");
+                auto ptrVal = _builder.CreateBitCast(args[i], llvm::PointerType::get(_context, 0), "ptr_cast");
                 callArgs.push_back(ptrVal);
                 continue;
             }
@@ -820,28 +811,25 @@ llvm::Value* Compiler::compileKnownFunctionCall(
                     }
                     if (aType.isRc()) {
                         // Rc payload 偏移 8（跳过 RC 头）
-                        auto payload = _builder.CreateInBoundsGEP(
-                            _builder.getInt8Ty(), handle,
-                            {llvm::ConstantInt::get(_builder.getInt64Ty(), 8)},
-                            "rc.payload");
+                        auto payload = _builder.CreateInBoundsGEP(_builder.getInt8Ty(), handle,
+                                                                  {llvm::ConstantInt::get(_builder.getInt64Ty(), 8)},
+                                                                  "rc.payload");
                         callArgs.push_back(payload);
                         continue;
                     }
                     // Array：读 Block.data (offset 24)
-                    auto dataAddr = _builder.CreateInBoundsGEP(
-                        _builder.getInt8Ty(), handle,
-                        {llvm::ConstantInt::get(_builder.getInt64Ty(), 24)},
-                        "array.data.addr");
+                    auto dataAddr = _builder.CreateInBoundsGEP(_builder.getInt8Ty(), handle,
+                                                               {llvm::ConstantInt::get(_builder.getInt64Ty(), 24)},
+                                                               "array.data.addr");
                     auto dataPtr = _builder.CreateLoad(ptrTy, dataAddr, "array.data");
                     callArgs.push_back(dataPtr);
                     continue;
                 }
                 if (aType.name == "String" && aType.kind == TypeKind::Normal) {
                     auto handle = _builder.CreateExtractValue(args[i], {0, 0}, "string.handle");
-                    auto dataAddr = _builder.CreateInBoundsGEP(
-                        _builder.getInt8Ty(), handle,
-                        {llvm::ConstantInt::get(_builder.getInt64Ty(), 24)},
-                        "string.data.addr");
+                    auto dataAddr = _builder.CreateInBoundsGEP(_builder.getInt8Ty(), handle,
+                                                               {llvm::ConstantInt::get(_builder.getInt64Ty(), 24)},
+                                                               "string.data.addr");
                     auto dataPtr = _builder.CreateLoad(ptrTy, dataAddr, "string.data");
                     callArgs.push_back(dataPtr);
                     continue;
@@ -895,6 +883,5 @@ llvm::Value* Compiler::compileKnownFunctionCall(
     }
 
     // [#10.A] / [#10.C]：callee 标 #Fallible 时分流 isErr → 透传 / 提取 T_ok
-    return handleFallibleCallResult(callResult, fnSymbol->fallibleErrType,
-        TypeInfo(fnSymbol->retType), callNode);
+    return handleFallibleCallResult(callResult, fnSymbol->fallibleErrType, TypeInfo(fnSymbol->retType), callNode);
 }

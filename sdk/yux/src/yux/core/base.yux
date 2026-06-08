@@ -123,51 +123,99 @@ struct i8 {
   fn plus(other i8) i8
 
   #CompilerInner
+  fn plus(other i8&) i8
+
+  #CompilerInner
   fn minus(other i8) i8
+
+  #CompilerInner
+  fn minus(other i8&) i8
 
   #CompilerInner
   fn mul(other i8) i8
 
   #CompilerInner
+  fn mul(other i8&) i8
+
+  #CompilerInner
   fn div(other i8) i8
 
   #CompilerInner
+  fn div(other i8&) i8
+
+  #CompilerInner
   fn mod(other i8) i8
+
+  #CompilerInner
+  fn mod(other i8&) i8
 
   ; 比较运算符
   #CompilerInner
   fn eq(other i8) bool
 
   #CompilerInner
+  fn eq(other i8&) bool
+
+  #CompilerInner
   fn ne(other i8) bool
+
+  #CompilerInner
+  fn ne(other i8&) bool
 
   #CompilerInner
   fn lt(other i8) bool
 
   #CompilerInner
+  fn lt(other i8&) bool
+
+  #CompilerInner
   fn le(other i8) bool
+
+  #CompilerInner
+  fn le(other i8&) bool
 
   #CompilerInner
   fn gt(other i8) bool
 
   #CompilerInner
+  fn gt(other i8&) bool
+
+  #CompilerInner
   fn ge(other i8) bool
+
+  #CompilerInner
+  fn ge(other i8&) bool
 
   ; 位运算符
   #CompilerInner
   fn and(other i8) i8
 
   #CompilerInner
+  fn and(other i8&) i8
+
+  #CompilerInner
   fn or(other i8) i8
+
+  #CompilerInner
+  fn or(other i8&) i8
 
   #CompilerInner
   fn xor(other i8) i8
 
   #CompilerInner
+  fn xor(other i8&) i8
+
+  #CompilerInner
   fn shl(other i8) i8
 
   #CompilerInner
+  fn shl(other i8&) i8
+
+  #CompilerInner
   fn shr(other i8) i8
+
+  #CompilerInner
+  fn shr(other i8&) i8
 
   ; 一元运算符
   #CompilerInner
@@ -219,51 +267,99 @@ struct u8 {
   fn plus(other u8) u8
 
   #CompilerInner
+  fn plus(other u8&) u8
+
+  #CompilerInner
   fn minus(other u8) u8
+
+  #CompilerInner
+  fn minus(other u8&) u8
 
   #CompilerInner
   fn mul(other u8) u8
 
   #CompilerInner
+  fn mul(other u8&) u8
+
+  #CompilerInner
   fn div(other u8) u8
 
   #CompilerInner
+  fn div(other u8&) u8
+
+  #CompilerInner
   fn mod(other u8) u8
+
+  #CompilerInner
+  fn mod(other u8&) u8
 
   ; 比较运算符
   #CompilerInner
   fn eq(other u8) bool
 
   #CompilerInner
+  fn eq(other u8&) bool
+
+  #CompilerInner
   fn ne(other u8) bool
+
+  #CompilerInner
+  fn ne(other u8&) bool
 
   #CompilerInner
   fn lt(other u8) bool
 
   #CompilerInner
+  fn lt(other u8&) bool
+
+  #CompilerInner
   fn le(other u8) bool
+
+  #CompilerInner
+  fn le(other u8&) bool
 
   #CompilerInner
   fn gt(other u8) bool
 
   #CompilerInner
+  fn gt(other u8&) bool
+
+  #CompilerInner
   fn ge(other u8) bool
+
+  #CompilerInner
+  fn ge(other u8&) bool
 
   ; 位运算符
   #CompilerInner
   fn and(other u8) u8
 
   #CompilerInner
+  fn and(other u8&) u8
+
+  #CompilerInner
   fn or(other u8) u8
+
+  #CompilerInner
+  fn or(other u8&) u8
 
   #CompilerInner
   fn xor(other u8) u8
 
   #CompilerInner
+  fn xor(other u8&) u8
+
+  #CompilerInner
   fn shl(other u8) u8
 
   #CompilerInner
+  fn shl(other u8&) u8
+
+  #CompilerInner
   fn shr(other u8) u8
+
+  #CompilerInner
+  fn shr(other u8&) u8
 
   ; 一元运算符
   #CompilerInner
@@ -315,51 +411,99 @@ struct i16 {
   fn plus(other i16) i16
 
   #CompilerInner
+  fn plus(other i16&) i16
+
+  #CompilerInner
   fn minus(other i16) i16
+
+  #CompilerInner
+  fn minus(other i16&) i16
 
   #CompilerInner
   fn mul(other i16) i16
 
   #CompilerInner
+  fn mul(other i16&) i16
+
+  #CompilerInner
   fn div(other i16) i16
 
   #CompilerInner
+  fn div(other i16&) i16
+
+  #CompilerInner
   fn mod(other i16) i16
+
+  #CompilerInner
+  fn mod(other i16&) i16
 
   ; 比较运算符
   #CompilerInner
   fn eq(other i16) bool
 
   #CompilerInner
+  fn eq(other i16&) bool
+
+  #CompilerInner
   fn ne(other i16) bool
+
+  #CompilerInner
+  fn ne(other i16&) bool
 
   #CompilerInner
   fn lt(other i16) bool
 
   #CompilerInner
+  fn lt(other i16&) bool
+
+  #CompilerInner
   fn le(other i16) bool
+
+  #CompilerInner
+  fn le(other i16&) bool
 
   #CompilerInner
   fn gt(other i16) bool
 
   #CompilerInner
+  fn gt(other i16&) bool
+
+  #CompilerInner
   fn ge(other i16) bool
+
+  #CompilerInner
+  fn ge(other i16&) bool
 
   ; 位运算符
   #CompilerInner
   fn and(other i16) i16
 
   #CompilerInner
+  fn and(other i16&) i16
+
+  #CompilerInner
   fn or(other i16) i16
+
+  #CompilerInner
+  fn or(other i16&) i16
 
   #CompilerInner
   fn xor(other i16) i16
 
   #CompilerInner
+  fn xor(other i16&) i16
+
+  #CompilerInner
   fn shl(other i16) i16
 
   #CompilerInner
+  fn shl(other i16&) i16
+
+  #CompilerInner
   fn shr(other i16) i16
+
+  #CompilerInner
+  fn shr(other i16&) i16
 
   ; 一元运算符
   #CompilerInner
@@ -411,51 +555,99 @@ struct u16 {
   fn plus(other u16) u16
 
   #CompilerInner
+  fn plus(other u16&) u16
+
+  #CompilerInner
   fn minus(other u16) u16
+
+  #CompilerInner
+  fn minus(other u16&) u16
 
   #CompilerInner
   fn mul(other u16) u16
 
   #CompilerInner
+  fn mul(other u16&) u16
+
+  #CompilerInner
   fn div(other u16) u16
 
   #CompilerInner
+  fn div(other u16&) u16
+
+  #CompilerInner
   fn mod(other u16) u16
+
+  #CompilerInner
+  fn mod(other u16&) u16
 
   ; 比较运算符
   #CompilerInner
   fn eq(other u16) bool
 
   #CompilerInner
+  fn eq(other u16&) bool
+
+  #CompilerInner
   fn ne(other u16) bool
+
+  #CompilerInner
+  fn ne(other u16&) bool
 
   #CompilerInner
   fn lt(other u16) bool
 
   #CompilerInner
+  fn lt(other u16&) bool
+
+  #CompilerInner
   fn le(other u16) bool
+
+  #CompilerInner
+  fn le(other u16&) bool
 
   #CompilerInner
   fn gt(other u16) bool
 
   #CompilerInner
+  fn gt(other u16&) bool
+
+  #CompilerInner
   fn ge(other u16) bool
+
+  #CompilerInner
+  fn ge(other u16&) bool
 
   ; 位运算符
   #CompilerInner
   fn and(other u16) u16
 
   #CompilerInner
+  fn and(other u16&) u16
+
+  #CompilerInner
   fn or(other u16) u16
+
+  #CompilerInner
+  fn or(other u16&) u16
 
   #CompilerInner
   fn xor(other u16) u16
 
   #CompilerInner
+  fn xor(other u16&) u16
+
+  #CompilerInner
   fn shl(other u16) u16
 
   #CompilerInner
+  fn shl(other u16&) u16
+
+  #CompilerInner
   fn shr(other u16) u16
+
+  #CompilerInner
+  fn shr(other u16&) u16
 
   ; 一元运算符
   #CompilerInner
@@ -507,51 +699,99 @@ struct i32 {
   fn plus(other i32) i32
 
   #CompilerInner
+  fn plus(other i32&) i32
+
+  #CompilerInner
   fn minus(other i32) i32
+
+  #CompilerInner
+  fn minus(other i32&) i32
 
   #CompilerInner
   fn mul(other i32) i32
 
   #CompilerInner
+  fn mul(other i32&) i32
+
+  #CompilerInner
   fn div(other i32) i32
 
   #CompilerInner
+  fn div(other i32&) i32
+
+  #CompilerInner
   fn mod(other i32) i32
+
+  #CompilerInner
+  fn mod(other i32&) i32
 
   ; 比较运算符
   #CompilerInner
   fn eq(other i32) bool
 
   #CompilerInner
+  fn eq(other i32&) bool
+
+  #CompilerInner
   fn ne(other i32) bool
+
+  #CompilerInner
+  fn ne(other i32&) bool
 
   #CompilerInner
   fn lt(other i32) bool
 
   #CompilerInner
+  fn lt(other i32&) bool
+
+  #CompilerInner
   fn le(other i32) bool
+
+  #CompilerInner
+  fn le(other i32&) bool
 
   #CompilerInner
   fn gt(other i32) bool
 
   #CompilerInner
+  fn gt(other i32&) bool
+
+  #CompilerInner
   fn ge(other i32) bool
+
+  #CompilerInner
+  fn ge(other i32&) bool
 
   ; 位运算符
   #CompilerInner
   fn and(other i32) i32
 
   #CompilerInner
+  fn and(other i32&) i32
+
+  #CompilerInner
   fn or(other i32) i32
+
+  #CompilerInner
+  fn or(other i32&) i32
 
   #CompilerInner
   fn xor(other i32) i32
 
   #CompilerInner
+  fn xor(other i32&) i32
+
+  #CompilerInner
   fn shl(other i32) i32
 
   #CompilerInner
+  fn shl(other i32&) i32
+
+  #CompilerInner
   fn shr(other i32) i32
+
+  #CompilerInner
+  fn shr(other i32&) i32
 
   ; 一元运算符
   #CompilerInner
@@ -603,51 +843,99 @@ struct u32 {
   fn plus(other u32) u32
 
   #CompilerInner
+  fn plus(other u32&) u32
+
+  #CompilerInner
   fn minus(other u32) u32
+
+  #CompilerInner
+  fn minus(other u32&) u32
 
   #CompilerInner
   fn mul(other u32) u32
 
   #CompilerInner
+  fn mul(other u32&) u32
+
+  #CompilerInner
   fn div(other u32) u32
 
   #CompilerInner
+  fn div(other u32&) u32
+
+  #CompilerInner
   fn mod(other u32) u32
+
+  #CompilerInner
+  fn mod(other u32&) u32
 
   ; 比较运算符
   #CompilerInner
   fn eq(other u32) bool
 
   #CompilerInner
+  fn eq(other u32&) bool
+
+  #CompilerInner
   fn ne(other u32) bool
+
+  #CompilerInner
+  fn ne(other u32&) bool
 
   #CompilerInner
   fn lt(other u32) bool
 
   #CompilerInner
+  fn lt(other u32&) bool
+
+  #CompilerInner
   fn le(other u32) bool
+
+  #CompilerInner
+  fn le(other u32&) bool
 
   #CompilerInner
   fn gt(other u32) bool
 
   #CompilerInner
+  fn gt(other u32&) bool
+
+  #CompilerInner
   fn ge(other u32) bool
+
+  #CompilerInner
+  fn ge(other u32&) bool
 
   ; 位运算符
   #CompilerInner
   fn and(other u32) u32
 
   #CompilerInner
+  fn and(other u32&) u32
+
+  #CompilerInner
   fn or(other u32) u32
+
+  #CompilerInner
+  fn or(other u32&) u32
 
   #CompilerInner
   fn xor(other u32) u32
 
   #CompilerInner
+  fn xor(other u32&) u32
+
+  #CompilerInner
   fn shl(other u32) u32
 
   #CompilerInner
+  fn shl(other u32&) u32
+
+  #CompilerInner
   fn shr(other u32) u32
+
+  #CompilerInner
+  fn shr(other u32&) u32
 
   ; 一元运算符
   #CompilerInner
@@ -699,51 +987,99 @@ struct i64 {
   fn plus(other i64) i64
 
   #CompilerInner
+  fn plus(other i64&) i64
+
+  #CompilerInner
   fn minus(other i64) i64
+
+  #CompilerInner
+  fn minus(other i64&) i64
 
   #CompilerInner
   fn mul(other i64) i64
 
   #CompilerInner
+  fn mul(other i64&) i64
+
+  #CompilerInner
   fn div(other i64) i64
 
   #CompilerInner
+  fn div(other i64&) i64
+
+  #CompilerInner
   fn mod(other i64) i64
+
+  #CompilerInner
+  fn mod(other i64&) i64
 
   ; 比较运算符
   #CompilerInner
   fn eq(other i64) bool
 
   #CompilerInner
+  fn eq(other i64&) bool
+
+  #CompilerInner
   fn ne(other i64) bool
+
+  #CompilerInner
+  fn ne(other i64&) bool
 
   #CompilerInner
   fn lt(other i64) bool
 
   #CompilerInner
+  fn lt(other i64&) bool
+
+  #CompilerInner
   fn le(other i64) bool
+
+  #CompilerInner
+  fn le(other i64&) bool
 
   #CompilerInner
   fn gt(other i64) bool
 
   #CompilerInner
+  fn gt(other i64&) bool
+
+  #CompilerInner
   fn ge(other i64) bool
+
+  #CompilerInner
+  fn ge(other i64&) bool
 
   ; 位运算符
   #CompilerInner
   fn and(other i64) i64
 
   #CompilerInner
+  fn and(other i64&) i64
+
+  #CompilerInner
   fn or(other i64) i64
+
+  #CompilerInner
+  fn or(other i64&) i64
 
   #CompilerInner
   fn xor(other i64) i64
 
   #CompilerInner
+  fn xor(other i64&) i64
+
+  #CompilerInner
   fn shl(other i64) i64
 
   #CompilerInner
+  fn shl(other i64&) i64
+
+  #CompilerInner
   fn shr(other i64) i64
+
+  #CompilerInner
+  fn shr(other i64&) i64
 
   ; 一元运算符
   #CompilerInner
@@ -828,51 +1164,99 @@ struct u64 {
   fn plus(other u64) u64
 
   #CompilerInner
+  fn plus(other u64&) u64
+
+  #CompilerInner
   fn minus(other u64) u64
+
+  #CompilerInner
+  fn minus(other u64&) u64
 
   #CompilerInner
   fn mul(other u64) u64
 
   #CompilerInner
+  fn mul(other u64&) u64
+
+  #CompilerInner
   fn div(other u64) u64
 
   #CompilerInner
+  fn div(other u64&) u64
+
+  #CompilerInner
   fn mod(other u64) u64
+
+  #CompilerInner
+  fn mod(other u64&) u64
 
   ; 比较运算符
   #CompilerInner
   fn eq(other u64) bool
 
   #CompilerInner
+  fn eq(other u64&) bool
+
+  #CompilerInner
   fn ne(other u64) bool
+
+  #CompilerInner
+  fn ne(other u64&) bool
 
   #CompilerInner
   fn lt(other u64) bool
 
   #CompilerInner
+  fn lt(other u64&) bool
+
+  #CompilerInner
   fn le(other u64) bool
+
+  #CompilerInner
+  fn le(other u64&) bool
 
   #CompilerInner
   fn gt(other u64) bool
 
   #CompilerInner
+  fn gt(other u64&) bool
+
+  #CompilerInner
   fn ge(other u64) bool
+
+  #CompilerInner
+  fn ge(other u64&) bool
 
   ; 位运算符
   #CompilerInner
   fn and(other u64) u64
 
   #CompilerInner
+  fn and(other u64&) u64
+
+  #CompilerInner
   fn or(other u64) u64
+
+  #CompilerInner
+  fn or(other u64&) u64
 
   #CompilerInner
   fn xor(other u64) u64
 
   #CompilerInner
+  fn xor(other u64&) u64
+
+  #CompilerInner
   fn shl(other u64) u64
 
   #CompilerInner
+  fn shl(other u64&) u64
+
+  #CompilerInner
   fn shr(other u64) u64
+
+  #CompilerInner
+  fn shr(other u64&) u64
 
   ; 一元运算符
   #CompilerInner
@@ -950,35 +1334,68 @@ struct f64 {
   fn plus(other f64) f64
 
   #CompilerInner
+  fn plus(other f64&) f64
+
+  #CompilerInner
   fn minus(other f64) f64
+
+  #CompilerInner
+  fn minus(other f64&) f64
 
   #CompilerInner
   fn mul(other f64) f64
 
   #CompilerInner
+  fn mul(other f64&) f64
+
+  #CompilerInner
   fn div(other f64) f64
 
   #CompilerInner
+  fn div(other f64&) f64
+
+  #CompilerInner
   fn mod(other f64) f64
+
+  #CompilerInner
+  fn mod(other f64&) f64
 
   ; 比较运算符
   #CompilerInner
   fn eq(other f64) bool
 
   #CompilerInner
+  fn eq(other f64&) bool
+
+  #CompilerInner
   fn ne(other f64) bool
+
+  #CompilerInner
+  fn ne(other f64&) bool
 
   #CompilerInner
   fn lt(other f64) bool
 
   #CompilerInner
+  fn lt(other f64&) bool
+
+  #CompilerInner
   fn le(other f64) bool
+
+  #CompilerInner
+  fn le(other f64&) bool
 
   #CompilerInner
   fn gt(other f64) bool
 
   #CompilerInner
+  fn gt(other f64&) bool
+
+  #CompilerInner
   fn ge(other f64) bool
+
+  #CompilerInner
+  fn ge(other f64&) bool
 
   ; 一元运算符
   #CompilerInner
@@ -1001,7 +1418,7 @@ struct f64 {
       if ii >= int_part.len() {
         break;
       }
-      out.push(int_part.at(ii))
+      out.push(int_part.get(ii))
       ii += 1
     }
     out.push(c'.')
@@ -1059,35 +1476,68 @@ struct f32 {
   fn plus(other f32) f32
 
   #CompilerInner
+  fn plus(other f32&) f32
+
+  #CompilerInner
   fn minus(other f32) f32
+
+  #CompilerInner
+  fn minus(other f32&) f32
 
   #CompilerInner
   fn mul(other f32) f32
 
   #CompilerInner
+  fn mul(other f32&) f32
+
+  #CompilerInner
   fn div(other f32) f32
 
   #CompilerInner
+  fn div(other f32&) f32
+
+  #CompilerInner
   fn mod(other f32) f32
+
+  #CompilerInner
+  fn mod(other f32&) f32
 
   ; 比较运算符
   #CompilerInner
   fn eq(other f32) bool
 
   #CompilerInner
+  fn eq(other f32&) bool
+
+  #CompilerInner
   fn ne(other f32) bool
+
+  #CompilerInner
+  fn ne(other f32&) bool
 
   #CompilerInner
   fn lt(other f32) bool
 
   #CompilerInner
+  fn lt(other f32&) bool
+
+  #CompilerInner
   fn le(other f32) bool
+
+  #CompilerInner
+  fn le(other f32&) bool
 
   #CompilerInner
   fn gt(other f32) bool
 
   #CompilerInner
+  fn gt(other f32&) bool
+
+  #CompilerInner
   fn ge(other f32) bool
+
+  #CompilerInner
+  fn ge(other f32&) bool
 
   ; 一元运算符
   #CompilerInner
@@ -1097,7 +1547,6 @@ struct f32 {
     $.to_f64().to_string()
   }
 }
-
 
 ; 内置泛型类型占位：实际布局与方法（_push/_len/... 等）由编译器合成
 
@@ -1214,7 +1663,7 @@ struct Array<T> {
   fn push(value T)
 
   #CompilerInner
-  fn at(i i64) T
+  fn get(i i64) T&
 
   #CompilerInner
   fn first() T
@@ -1297,7 +1746,7 @@ struct String {
   }
 
   ; 取码点
-  fn at(i i64) u32 {
+  fn get(i i64) u32 {
     $.data[i]
   }
 
@@ -1448,7 +1897,7 @@ struct StringBuilder {
       if i >= s.len() {
         break;
       }
-      $.data.push(s.at(i))
+      $.data.push(s.get(i))
       i += 1
     }
   }

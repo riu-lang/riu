@@ -147,3 +147,33 @@ fn test_zero_mul() {
 fn test_zero_div() {
   assert_eq(0 / 5, 0)
 }
+
+; ==================== T& 形参方法调用 ====================
+
+#Test
+fn test_scalar_plus_ref() {
+  ; 显式调用 plus 方法，传入 T& 实参
+  let x i32 = 10
+  let y i32 = 3
+  let r i32& = &y
+  let z i32 = x.plus(r)
+  assert_eq(z, 13)
+}
+
+#Test
+fn test_scalar_eq_ref() {
+  ; 显式调用 eq 方法，传入 T& 实参
+  let a i32 = 5
+  let b i32 = 5
+  let rb i32& = &b
+  assert_eq(a.eq(rb), true)
+}
+
+#Test
+fn test_scalar_plus_ref_literal() {
+  ; 直接传 &y 不用中间变量
+  let x i32 = 7
+  let y i32 = 8
+  let z i32 = x.plus(&y)
+  assert_eq(z, 15)
+}

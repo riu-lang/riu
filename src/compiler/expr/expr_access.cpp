@@ -4,9 +4,8 @@
 // 成员 / 索引 / 安全访问表达式编译：从 compiler_expr.cpp 拆出 (P1 Phase 4)。
 // 方法体一字不动。
 
-#include "../compiler_runtime.h"
 #include "../compiler.h"
-#include <algorithm>
+#include "../compiler_runtime.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
 #include "analyzer/symbol_suggest.h"
@@ -15,10 +14,11 @@
 #include "ast/node/expr_node.h"
 #include "ast/node/literal_node.h"
 #include "ast/yux.h"
+#include "sema/call_resolve.h"
+#include <algorithm>
 #include <cassert>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
-#include "sema/call_resolve.h"
 #include <set>
 
 llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
@@ -103,7 +103,8 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
 
         auto elemLLVMType = getLLVMType(*elemType);
         auto handle = loadArrayHandle(currentPtr);
-        auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), arrayBlockDataFieldPtr(handle), "array.data.ptr");
+        auto dataPtr =
+            _builder.CreateLoad(llvm::PointerType::get(_context, 0), arrayBlockDataFieldPtr(handle), "array.data.ptr");
 
         auto indexVal = compileExpr(indices[0]);
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {indexVal}, "array.elem.ptr");
@@ -133,7 +134,6 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
     return _builder.CreateLoad(getLLVMType(currentType), currentPtr, "array.load");
 }
 
-
 llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     // 安全访问 a?.b：单独走分支
@@ -145,17 +145,15 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
 
     // 元组成员访问 a.N：member 为纯数字，base 解析后必须是 Tuple
     // 透明 alias 由 applySubst 兜底（顶层 Normal alias、泛型 alias 实例化均能展开）
-    if (!member.empty() && std::ranges::all_of(member,
-                                       [](char c) { return c >= '0' && c <= '9'; })) {
+    if (!member.empty() && std::ranges::all_of(member, [](char c) { return c >= '0' && c <= '9'; })) {
         auto baseTypeRaw = baseExpr->getType();
         auto baseTypeResolved = applySubst(baseTypeRaw);
         if (baseTypeResolved.isTuple()) {
             auto& elems = baseTypeResolved.tupleElements();
             auto idx = static_cast<size_t>(std::stoul(member));
             if (idx >= elems.size()) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3100,
-                               member, baseTypeRaw.getFullName(),
-                               std::to_string(elems.size()));
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3100, member,
+                               baseTypeRaw.getFullName(), std::to_string(elems.size()));
             }
             DEBUG_LOG_VAL("    Expr: TupleMemberAccess", baseTypeResolved.name << "." << member);
             auto baseVal = compileExpr(baseExpr);
@@ -174,7 +172,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
         auto srcType = baseExpr->getType();
 
         string castFnName = "__cast_" + to_string(_castCounter++);
-        _castFunctions[castFnName] = {.value=baseVal, .srcType=srcType, .dstType=TypeInfo(dstType)};
+        _castFunctions[castFnName] = {.value = baseVal, .srcType = srcType, .dstType = TypeInfo(dstType)};
 
         return llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
     }
@@ -217,8 +215,8 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
         }
     }
 
-    if (baseType.isRc()) {
-        auto rcElemType = baseType.rcElementType();
+    if (actualType.isRc()) {
+        auto rcElemType = actualType.rcElementType();
         if (rcElemType) {
             actualType = *rcElemType;
         }
@@ -237,8 +235,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
             // Phase 3.4.d.2: E3042 私有字段可见性 整体抠到 sema::validatePrivateFieldAccess.
             // SemaPass.visitExpr ExprDotNode 分支调用 validateDotFieldPrivacy 已抢先抛;
             // 这里保留作幂等防御性双跑.
-            sema::validatePrivateFieldAccess(structDecl, member, actualType.name,
-                                             _currentStructName,
+            sema::validatePrivateFieldAccess(structDecl, member, actualType.name, _currentStructName,
                                              node->getLineNumber(), node->getColumn());
             auto field = structDecl->fields()[fieldIndex];
 
@@ -261,7 +258,8 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
 
             llvm::Value* dataPtr = structPtr;
 
-            if (baseType.isRc()) {
+            if ((baseType.isRc() ||
+                 (baseType.isRef() && baseType.refElementType() && baseType.refElementType()->isRc()))) {
                 // Rc.field：load handle，payload = handle + 8
                 auto rcStructType = getLLVMType(baseType);
                 auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
@@ -278,8 +276,8 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
             auto fieldPtr = _builder.CreateGEP(structType, dataPtr, indices, "struct.field");
             auto fieldType = field->getType();
 
-            if (actualType.isGeneric() && structDecl->isGeneric()
-                && actualType.genericArgs.size() == structDecl->typeParams().size()) {
+            if (actualType.isGeneric() && structDecl->isGeneric() &&
+                actualType.genericArgs.size() == structDecl->typeParams().size()) {
                 map<string, TypeInfo> subst;
                 for (size_t i = 0; i < structDecl->typeParams().size(); ++i) {
                     subst[structDecl->typeParams()[i]] =
@@ -293,8 +291,8 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
         // E3152: 实例访问静态字段 (DRAFT-static-vars §4.4)
         // obj.FIELD 形态 —— FIELD 是 #Static 字段，不挂在实例上
         if (structDecl->staticField(member)) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3152,
-                           member, actualType.name, actualType.name, member);
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3152, member, actualType.name,
+                           actualType.name, member);
         }
     }
 
@@ -323,13 +321,12 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
     auto baseType = baseExpr->getType();
 
     if (!baseType.isNullable()) {
-        throw YuxError(node->resolveLineNumber(), node->resolveColumn(),
-            ErrorCode::E3025, baseType.name);
+        throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3025, baseType.name);
     }
     auto innerType = baseType.nullableInnerType();
     // Phase 5: Rc<T>? 自动 deref —— 把 Rc<U> 视为 U 进字段查
     bool innerIsRc = innerType->isRc();
-    auto rawInnerType = innerType;  // Rc<U>（用于 LLVM 类型 = { ptr handle }）
+    auto rawInnerType = innerType; // Rc<U>（用于 LLVM 类型 = { ptr handle }）
     if (innerIsRc) {
         auto rcInner = innerType->rcElementType();
         if (!rcInner) {
@@ -342,17 +339,15 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
         innerStructDecl = _yux->sdkFile()->getStructDecl(innerType->name, /*includeCompilerInner=*/true);
     }
     if (!innerStructDecl) {
-        throw YuxError(node->resolveLineNumber(), node->resolveColumn(),
-            ErrorCode::E3044, innerType->name);
+        throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3044, innerType->name);
     }
     int fieldIdx = innerStructDecl->fieldIndex(member);
     if (fieldIdx < 0) {
-        throw YuxError(node->resolveLineNumber(), node->resolveColumn(),
-            ErrorCode::E3040, innerType->name, member);
+        throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3040, innerType->name, member);
     }
     auto fieldType = innerStructDecl->fields()[fieldIdx]->getType();
-    if (innerType->isGeneric() && innerStructDecl->isGeneric()
-        && innerType->genericArgs.size() == innerStructDecl->typeParams().size()) {
+    if (innerType->isGeneric() && innerStructDecl->isGeneric() &&
+        innerType->genericArgs.size() == innerStructDecl->typeParams().size()) {
         map<string, TypeInfo> subst;
         for (size_t i = 0; i < innerStructDecl->typeParams().size(); ++i) {
             subst[innerStructDecl->typeParams()[i]] =
@@ -394,7 +389,7 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
     auto fieldIdxConst = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIdx);
     if (innerIsRc) {
         // Rc<U>: 提取 handle，payload = handle + 8，GEP 到字段
-        auto rawInnerLLVMTy = getLLVMType(*rawInnerType);  // Rc struct { ptr handle }
+        auto rawInnerLLVMTy = getLLVMType(*rawInnerType); // Rc struct { ptr handle }
         auto rcAlloca = _builder.CreateAlloca(rawInnerLLVMTy, nullptr, "sd.rc.tmp");
         _builder.CreateStore(innerVal, rcAlloca);
         auto handleField = _builder.CreateGEP(rawInnerLLVMTy, rcAlloca, {zero32, zero32}, "sd.rc.handle_field");
@@ -424,7 +419,6 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
     return _builder.CreateLoad(resultLLVMType, resultAlloca, "sd.result.load");
 }
 
-
 // 编译 a ?? b 表达式
 // 语义：a 是 Nullable<T>。a 持值则结果取 a._value，否则取 b（b 必须可转 T）
 // IR 形态：
@@ -438,8 +432,7 @@ llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto leftType = node->left()->getType();
     if (!leftType.isNullable()) {
-        throw YuxError(node->resolveLineNumber(), node->resolveColumn(),
-            ErrorCode::E3024, leftType.name);
+        throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3024, leftType.name);
     }
     auto innerType = leftType.nullableInnerType();
     if (!innerType) {
@@ -480,8 +473,8 @@ llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
     auto rightType = node->right()->getType();
     auto rightVal = compileBranchResultNormalized(node->right(), *innerType);
     if (rightType != *innerType) {
-        throw YuxError(node->resolveLineNumber(), node->resolveColumn(),
-            ErrorCode::E3023, rightType.name, innerType->name);
+        throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3023, rightType.name,
+                       innerType->name);
     }
     auto elseEndBB = _builder.GetInsertBlock();
     _builder.CreateBr(mergeBB);

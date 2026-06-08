@@ -296,13 +296,15 @@ DEF_ERR(3144, "`#Const fn` '{}' cannot be invoked in a constant expression: {} t
               "whitelist (DRAFT-const-eval §4; allowed: scalar integer / float / bool)")
 
 // ── DRAFT-static-vars Phase 1–4: 全局变量 / 静态字段 ──────────────────────────
-DEF_ERR(3150, "#Static field '{}' requires an initializer (DRAFT-static-vars §4.3; v1 static fields must be initialized "
-              "at declaration)")
+DEF_ERR(3150,
+        "#Static field '{}' requires an initializer (DRAFT-static-vars §4.3; v1 static fields must be initialized "
+        "at declaration)")
 DEF_ERR(3151, "Cannot write to non-#Mut global/static '{}' (DRAFT-static-vars §4/§7; "
               "globals and static fields default to `val`; "
               "use `#Mut let` for globals or `#Mut\\n#Static` for static fields)")
-DEF_ERR(3154, "Global `let {}` requires an initializer (DRAFT-static-vars §3.3; non-#Cval globals must be initialized at "
-              "declaration)")
+DEF_ERR(3154,
+        "Global `let {}` requires an initializer (DRAFT-static-vars §3.3; non-#Cval globals must be initialized at "
+        "declaration)")
 DEF_ERR(3157, "#Static field '{}' on generic struct '{}' is not allowed (DRAFT-static-vars §4.3; v1 prohibits static "
               "fields on generic structs)")
 DEF_ERR(3152, "Cannot access static field '{}' through an instance of '{}'; use `{}::{}` instead "
@@ -340,7 +342,7 @@ DEF_ERR(3132, "Type `{}` inherits conflicting default bodies for method `{}` fro
               "an explicit override")
 
 // ── DRAFT-spec-reflect Phase 4+: Field.value / 反射诊断 ───────────────
-DEF_ERR(3133, "`Field.value` requires a compile-time-known Field reference (e.g. `Counter::fields.at(0).value`); "
+DEF_ERR(3133, "`Field.value` requires a compile-time-known Field reference (e.g. `Counter::fields.get(0).value`); "
               "runtime Field variables are not supported (DRAFT-spec-reflect §6)")
 DEF_ERR(3134, "`Field.value` has no receiver to bind to; use `.value` inside a method body where `$` is available "
               "(DRAFT-spec-reflect §6)")
@@ -369,7 +371,7 @@ DEF_ERR(4027, "implicit widen Heap<{}> -> Heap<{}>? is forbidden; restructure so
 DEF_ERR(4028, "extern fn parameter / return must not be Heap<{}>; use Ptr at FFI boundary (§8.3a.5.3)")
 DEF_ERR(4029, "Arc<{}> is reserved for v1.x multi-threading; not yet implemented (DRAFT-heap-types §9)")
 DEF_WARN(4030, "result of `<-` move-assign is discarded; the old value will be immediately released "
-              "— use `a = b` if you don't need the old value (§4.13)")
+               "— use `a = b` if you don't need the old value (§4.13)")
 
 // ── E5xxx 模块 / 包 ───────────────────────────────────────────────────
 DEF_ERR(5001, "yux.toml not found in {}")

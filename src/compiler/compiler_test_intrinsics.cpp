@@ -14,9 +14,9 @@
 // → 由 yux test 的 SEH wrapper 翻译为 ASSERT_FAILED 显示。
 // v1 不在 IR 中打印断言种类 / 实参值 / msg 文本，待 String stringify 扩展同期补齐。
 
+#include "compiler_test_intrinsics.h"
 #include "ast/mangler.h"
 #include "ast/node/expr_node.h"
-#include "compiler_test_intrinsics.h"
 #include "compiler.h"
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
@@ -32,19 +32,15 @@ llvm::Function* getAssertFailedFn(llvm::Module* module) {
     string name = Mangler::function("yux.core", "_yux_test_assert_failed", {}, true);
     auto fn = module->getFunction(name);
     if (fn) return fn;
-    auto fnTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(module->getContext()), {}, false);
-    return llvm::Function::Create(
-        fnTy, llvm::Function::ExternalLinkage, name, module);
+    auto fnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), {}, false);
+    return llvm::Function::Create(fnTy, llvm::Function::ExternalLinkage, name, module);
 }
 
 // 在 cond 为真（"失败"）时跳转到失败块：调 _yux_test_assert_failed() → unreachable
 // cond 为假时继续 fallthrough 到 contBB
 // fnCtx 为当前正在编译的 LLVM 函数（用于附加新 BasicBlock）
-void emitAssertFailureBranch(
-    llvm::IRBuilder<>& builder, llvm::Module* module,
-    llvm::Value* failCond, const string& siteName)
-{
+void emitAssertFailureBranch(llvm::IRBuilder<>& builder, llvm::Module* module, llvm::Value* failCond,
+                             const string& siteName) {
     auto& ctx = module->getContext();
     auto fnCtx = builder.GetInsertBlock()->getParent();
     auto failBB = llvm::BasicBlock::Create(ctx, siteName + ".fail", fnCtx);
@@ -61,7 +57,7 @@ void emitAssertFailureBranch(
     builder.SetInsertPoint(contBB);
 }
 
-}
+} // namespace
 
 // ==================== assert_eq:<T> ====================
 //
@@ -70,24 +66,30 @@ void emitAssertFailureBranch(
 // bool: ICmpEQ on i1
 // 其他: E6030
 
-llvm::Value* Compiler::compileTestAssertEq(
-    p<ExprCallNode> callNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
-    const TypeInfo& typeArg)
-{
+llvm::Value* Compiler::compileTestAssertEq(p<ExprCallNode> callNode, vector<llvm::Value*>& args,
+                                           vector<TypeInfo>& argTypes, const TypeInfo& typeArg) {
     if (args.size() != 2) {
-        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-            ErrorCode::E6027, "assert_eq", 2);
+        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6027, "assert_eq", 2);
     }
 
-    const string& tname = typeArg.name;
-    bool isInt = (tname == "i8" || tname == "u8" || tname == "i16" || tname == "u16" ||
-                  tname == "i32" || tname == "u32" || tname == "i64" || tname == "u64");
+    TypeInfo actualTypeArg = typeArg;
+    if (actualTypeArg.isRef() && actualTypeArg.refElementType()) actualTypeArg = *actualTypeArg.refElementType();
+    // Auto-load T& arguments ([] returns T&, assert_eq needs T values)
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (argTypes[i].isRef() && args[i]->getType()->isPointerTy()) {
+            auto inner = *argTypes[i].refElementType();
+            args[i] = _builder.CreateLoad(getLLVMType(inner), args[i], "assert.load");
+            argTypes[i] = inner;
+        }
+    }
+    const string& tname = actualTypeArg.name;
+    bool isInt = (tname == "i8" || tname == "u8" || tname == "i16" || tname == "u16" || tname == "i32" ||
+                  tname == "u32" || tname == "i64" || tname == "u64");
     bool isBool = (tname == "bool");
     bool isFloat = (tname == "f32" || tname == "f64");
 
     if (!(isInt || isBool || isFloat)) {
-        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-            ErrorCode::E6030, typeArg.getFullName());
+        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6030, actualTypeArg.getFullName());
     }
 
     // 两个实参必须 LLVM 类型一致：unify 漏配 / 显式 turbofish 与字面量不匹配 / 等情况
@@ -95,8 +97,8 @@ llvm::Value* Compiler::compileTestAssertEq(
     // 典型触发：`assert_eq(arr.len(), 3)` —— len() 返 i64，字面量 3 默认 i32
     // 用 LLVM 类型比较（而非 TypeInfo），以便类型别名 / 同底层类型不同别名 仍视为相等
     if (args[0]->getType() != args[1]->getType()) {
-        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-            ErrorCode::E6031, argTypes[0].getFullName(), argTypes[1].getFullName());
+        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6031, argTypes[0].getFullName(),
+                       argTypes[1].getFullName());
     }
 
     llvm::Value* eq;
@@ -112,13 +114,12 @@ llvm::Value* Compiler::compileTestAssertEq(
 
 // ==================== assert_true(bool) ====================
 
-llvm::Value* Compiler::compileTestAssertTrue(
-    p<ExprCallNode> callNode, vector<llvm::Value*>& args, vector<TypeInfo>& /*argTypes*/)
-{
+llvm::Value* Compiler::compileTestAssertTrue(p<ExprCallNode> callNode, vector<llvm::Value*>& args,
+                                             vector<TypeInfo>& /*argTypes*/) {
     if (args.size() != 1) {
-        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-            ErrorCode::E6027, "assert_true", 1);
+        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6027, "assert_true", 1);
     }
+    if (args[0]->getType()->isPointerTy()) args[0] = _builder.CreateLoad(_builder.getInt1Ty(), args[0], "assert.load");
     auto failCond = _builder.CreateNot(args[0], "assert_true.neg");
     emitAssertFailureBranch(_builder, _module, failCond, "assert_true");
     return llvm::UndefValue::get(_builder.getVoidTy());
@@ -126,14 +127,12 @@ llvm::Value* Compiler::compileTestAssertTrue(
 
 // ==================== assert_false(bool) ====================
 
-llvm::Value* Compiler::compileTestAssertFalse(
-    p<ExprCallNode> callNode, vector<llvm::Value*>& args, vector<TypeInfo>& /*argTypes*/)
-{
+llvm::Value* Compiler::compileTestAssertFalse(p<ExprCallNode> callNode, vector<llvm::Value*>& args,
+                                              vector<TypeInfo>& /*argTypes*/) {
     if (args.size() != 1) {
-        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-            ErrorCode::E6027, "assert_false", 1);
+        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6027, "assert_false", 1);
     }
-    // 失败 = actual 为真 → 直接用 args[0] 作 cond
+    if (args[0]->getType()->isPointerTy()) args[0] = _builder.CreateLoad(_builder.getInt1Ty(), args[0], "assert.load");
     emitAssertFailureBranch(_builder, _module, args[0], "assert_false");
     return llvm::UndefValue::get(_builder.getVoidTy());
 }
@@ -146,12 +145,10 @@ llvm::Value* Compiler::compileTestAssertFalse(
 // 简化处理：args[0] 是栈上结构体值，无显式释放需求；fail 触发 RaiseException 后
 // 该测试函数被 SEH 拆栈，本就没有正常的析构机会（与崩溃测试一致）。
 
-llvm::Value* Compiler::compileTestFail(
-    p<ExprCallNode> callNode, vector<llvm::Value*>& args, vector<TypeInfo>& /*argTypes*/)
-{
+llvm::Value* Compiler::compileTestFail(p<ExprCallNode> callNode, vector<llvm::Value*>& args,
+                                       vector<TypeInfo>& /*argTypes*/) {
     if (args.size() != 1) {
-        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-            ErrorCode::E6027, "fail", 1);
+        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6027, "fail", 1);
     }
     // 直接走失败路径：恒真条件
     auto trueCond = llvm::ConstantInt::getTrue(_context);

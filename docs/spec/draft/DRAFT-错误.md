@@ -307,7 +307,7 @@ verbosity 是有意代价（避 Java `throws E1, E2, E3` 爆炸）。**未来 ge
 
 main 标 `#Fallible(E)` 且未在 main 内处理：
 
-- 退出码：固定 `_exit(1)`。理由：与 yux 既有"不可恢复终止"路径（`Nullable<T>.get()`、`Array.at()` 越界）一致；不引入"错误 variant → exit code"映射（顺序耦合、ABI 漂移）。用户要区分错误码 → 在更外层 `#Fallible(E_outer)` 函数自行 `match` 后调 stdlib `exit(code)`；main 不再 `#Fallible`。
+- 退出码：固定 `_exit(1)`。理由：与 yux 既有"不可恢复终止"路径（`Nullable<T>.get()`、`Array.get()` 越界）一致；不引入"错误 variant → exit code"映射（顺序耦合、ABI 漂移）。用户要区分错误码 → 在更外层 `#Fallible(E_outer)` 函数自行 `match` 后调 stdlib `exit(code)`；main 不再 `#Fallible`。
 - stderr 输出：`error: <enum 限定名>::<variant>[(<payload.to_string()>)]\n`
   - 限定名：跟随 §10 模块路径（`.`） + §3.10.4.1 enum variant 限定（`::`）。例：`mymath.ParseErr::Empty`、`app.io.IoErr::NotFound("path")`。
   - payload 走 §12.7.1 `ToString`：实现 → 打 `(payload.to_string())`；未实现 → 省略括号部分。
@@ -368,7 +368,7 @@ panic = "程序碰到 bug / 不变式破坏，无法继续"。**不**走 `#Falli
 | 触发源 | 路径 |
 |---|---|
 | `Nullable<T>.get()` 在 `null` 上 | panic（既有，§3.10.2） |
-| `Array.at(idx)` 越界 | panic（既有） |
+| `Array.get(idx)` 越界 | panic（既有） |
 | 整数除零 / 算术溢出（已有运行时检查的） | panic（沿用既有路径） |
 | 用户显式 `panic("...")` | panic（§8.2） |
 | OOM（`Rc::new` / `Array` 扩容失败） | panic（§8.5） |
@@ -380,7 +380,7 @@ panic = "程序碰到 bug / 不变式破坏，无法继续"。**不**走 `#Falli
 ```yux
 try {
   some_fn()         ; 正常错误：可被 catch 接住
-  arr.at(999)       ; panic：穿透 try-catch，直接 _exit(1)
+  arr.get(999)       ; panic：穿透 try-catch，直接 _exit(1)
   panic("bug")      ; panic：穿透 try-catch
 } catch e SomeErr {
   ...               ; 永远接不到 panic
