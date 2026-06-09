@@ -359,9 +359,9 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
             if (!spec->hasDefaultBody(sigIdx)) continue;
             auto& dsig = dsigs[sigIdx];
             std::string origName = dsig->name().getText();
-            std::string emitName = origName;
             origName += "__at__";
             origName += dref.name;
+            std::string emitName = origName;
             std::string fullName2 = typeBare;
             fullName2 += ".";
             fullName2 += emitName;

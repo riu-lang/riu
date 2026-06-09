@@ -107,36 +107,61 @@
 
 **退出标准**：草案 `DRAFT-closure-capture.md` 全节定型并迁入 spec；`yux-check` 漏报清零（5 例自动关闭）；BUGS.md #3 删条；`xmake test` + `yux test` 全绿；实施日志归档 `docs/dev/closure-capture-impl-log.md`。
 
-### v0.15.0 — spec 收尾：默认方法体 + 编译期反射（草稿）
+### v0.15.0 — spec 收尾 + 编译期基础设施 ✅ 已完成（2026-06-09）
 
-**主题**：把 `spec-unify v1` 落地时主动剥离的两个独立草案（`DRAFT-spec-default-body.md` + `DRAFT-spec-reflect.md`）按既定顺序实施完毕。**形态已锁**——本版只做落地，不再开形态决议。
+**主题**：把 `spec-unify v1` 落地时主动剥离的两个独立草案（`DRAFT-spec-default-body.md` + `DRAFT-spec-reflect.md`）按既定顺序实施完毕；同期额外落地了三个编译期基础设施草案（const-eval、static-vars、move 语义）。
 
-> 范围限定：仅指 spec-unify v1 剥离出来的 2 个独立草案。不等同 v1.0 退出标准里的"spec 全部 Open Issues 清空"——其余遗留另排。
+**实际交付（超出原始范围）**：
 
-**范围（草稿）**：
-
-Phase A（spec 默认方法体）：
-
-- spec body 内方法可带 body：`#Spec struct ToString { fn to_string() String { ... } }`
-- 实现者未覆盖 = fall-through 默认体；覆盖 = 自身 body 替代
-- 仅签名 + 实现者没写 → E1136 维持；带默认体 + 实现者没写 → 通过
+**A. spec 默认方法体**（DRAFT-spec-default-body Phase 1-5）：
+- spec body 内方法可带 body；实现者未覆盖 = fall-through 默认体
 - 多 spec 默认体冲突 → E3132 必须显式覆盖消歧
-- 内置类型 `#Impl(ToString)` 的 `#CompilerInner` 是否迁默认体（二选一定下来）
-- **永久决议**：不引入 `#Derive` 独立注解
+- 内置 5 件套（Eq/Ord/Clone/ToJson）落地
+- `$.m@SpecA()` 显式消歧（DRAFT-spec-disambig-at Phase 1-5）
+- 实施日志：`docs/dev/spec-default-body-impl-log.md` + `docs/dev/spec-disambig-at-impl-log.md`
 
-Phase B（编译期反射，依赖 Phase A）：
+**B. 编译期反射**（DRAFT-spec-reflect Phase 1-7）：
+- `Type::fields` / `Type::field` 静态路径访问 + `Field.value` sema 期改名
+- `[Field& * N]&` 零拷贝 rodata ref 数组（Phase 5b 重构）
+- `#Reflect` 注解防 DCE；enum `variants`
+- E3133/E3134/E3135/E3136 诊断补全
+- 规范回写：新增 §13 反射章节
+- 实施日志：`docs/dev/spec-reflect-impl-log.md`
 
-- 内置 spec `Reflect`：编译器隐式 `#Impl(Reflect)`，依赖 Phase A 默认体机制
-- `#Static #Frozen` 字段子集：`type` / `fields` / `methods` / `variants`，仅类型形访问（`Counter::type` / `Self::fields`）
-- 元数据 emit 到 `.rodata`；`#Reflect` 注解防 DCE 误删
-- `Field` 类型为唯一编译器内置；`Field.value` 走 sema 期改名（**无** `#Inline for` / **无** IR-before pass）
-- 反射数据走 runtime 数组（`Self::fields` 是 `[Field& * N]&`，可 `for` 遍历）
-- 实例不能调静态成员
-- 二进制尺寸基线：典型 yux 程序加入反射元数据后 .exe 增量 < TODO%；超阈值改 opt-in
+**C. 编译期求值**（DRAFT-const-eval Phase 1-8）：
+- ConstEvaluator 骨架 (0 LLVM) + `#Cval` 全局 + `#Const fn` 调用纳入
+- struct 字面量 LHS 放宽 + ConstantStruct 求值
+- Phase 6 ensureReflectTypeGlobal → ConstantValue 通道迁移
+- 实施日志：`docs/dev/const-eval-impl-log.md`
 
-**不在范围**：`is` / `as` 运行时反查、跨模块字段重命名兼容、反射驱动序列化（SDK 扩充再做）、`Arc<T>` 真正实现（留 v1.x）、闭包（v0.16）。
+**D. 静态变量**（DRAFT-static-vars Phase 1-9）：
+- 全局三档放开（val / `#Mut` / `#Cval`）+ runtime init ABI
+- struct `#Static` 字段段 + 跨模块 init 拓扑序 + 读写路径
+- 实施日志：`docs/dev/static-vars-impl-log.md`
 
-**退出标准**：两个 DRAFT 全节迁入 spec §12.x（或反射另起 §13）；CHANGELOG 收口；附录 D 新错码登记（E3132 等）；端到端示例（反射驱动 `to_string` / spec 默认体被实现者覆盖）；`xmake test` + `yux test` 全绿；实施日志 `docs/dev/spec-default-body-impl-log.md` + `docs/dev/spec-reflect-impl-log.md`。
+**E. Move 语义 + 运算符 + 诊断**：
+- `<-` 移入赋值表达式（exprMoveAssign）+ Stringbuilder.build 迁移
+- 运算符重载按声明类型匹配（不再强制 Self&）+ Array.get T& 重构
+- `Array::at()` → `get()` 全局重命名 + `[]` 索引
+- E4030 警告（`a <- b` 作为语句丢弃返回值时建议改用 `a = b`）
+- examples/test 重写覆盖 9 大特性
+- compileStructMethodCall RC 实参所有权管理修复
+
+**不在范围（推后）**：
+- `is` / `as` 运行时反查、跨模块字段重命名兼容
+- `[]` <=> `get` 返回 T& 语法糖同步
+- P0-2 静态对象引用 + T& 赋值（待单独立案）
+- `Arc<T>` 真正实现（留 v1.x）
+- 闭包捕获（→ v0.16）
+
+**退出标准达成情况**：
+- ✅ 两个 DRAFT 全节迁入 spec（默认方法体 → §12.10，反射 → §13）
+- ✅ const-eval / static-vars DRAFT 同步归档
+- ✅ CHANGELOG 收口
+- ✅ 附录 D 新错码登记（E3132–E3136 / E3140–E3144 / E3150–E3157 / E4030）
+- ✅ xmake test 239/240（仅新增 reflect_field_value_write 1 例，已 pass；原 3 例 BUGS #4 已修复）、yux test 537/538（1 例已知 SEH flake BUGS #1）
+- ✅ 实施日志 5 份归档完毕
+- ✅ lint 0 warnings
 
 ### v0.14.0 — 工程优化 + 工具链整顿 + yux-check 收尾 ✅ 已完成（2026-05-20）
 

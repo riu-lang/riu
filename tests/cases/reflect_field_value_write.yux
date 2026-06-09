@@ -1,0 +1,36 @@
+; Field.value 写路径回归测试 (原 BUGS #5 阻塞)
+; 验证 let f = fields[N] → f.value = expr 写穿链路
+
+struct Counter {
+  n i32
+  total i32
+
+  #Static
+  fn make(n i32, total i32) Counter {
+    ret Self {
+      .n = n
+      .total = total
+    }
+  }
+
+  ; 通过反射写字段
+  fn set_n(val i32) {
+    let f = Counter::fields[0]
+    f.value = val
+  }
+
+  fn set_total(val i32) {
+    let f = Counter::fields[1]
+    f.value = val
+  }
+}
+
+fn main() {
+  let c Counter = Counter::make(10, 100)
+  println(c.n.to_string())
+  println(c.total.to_string())
+  c.set_n(42)
+  c.set_total(99)
+  println(c.n.to_string())
+  println(c.total.to_string())
+}
