@@ -22,7 +22,7 @@ specDecl  ::= '#' 'Spec' codeLineEnd
 fnSig     ::= buildAnno* 'fn' ID '(' fnParams? ')' (retType=type)?
 ```
 
-§12.1.1.1 `#Spec` 顶行注解把一个 `structDecl` 转为一个 **spec**：一组方法签名集合（每个签名可选附带"默认方法体"，见 §12.10）。spec body 内**不得**出现字段、`#Static fn`、或析构函数 `fn ~()`；违反报 **E2011**（spec body 含字段或析构）。
+§12.1.1.1 `#Spec` 顶行注解把一个 `structDecl` 转为一个 **spec**：一组方法签名集合（每个签名可选附带"默认方法体"，见 §12.10）。spec body 内**不得**出现实例字段、`#Static fn`、或析构函数 `fn ~()`；违反报 **E2011**（spec body 含字段或析构）。例外：`#Static #Frozen` 字段段**允许**（§11.11 / §11.7），用于承载编译期常量（内置 spec `Reflect` 的 `type` / `fields` / `methods` / `variants` 即以此形态声明，见 §13）。
 
 §12.1.1.2 签名集**允许为空**（无方法的 spec 合法，但 v1 不再内置 `Any`——见 §12.7.2）。
 
@@ -285,7 +285,7 @@ v1 / v0.5 **明确不做**：
 11. **`<T : D>` 在调用点 turbofish 处回写边界**（仅声明位允许）。
 12. **结构化匹配 / `#DraftLike`**（§12.4.3 已废弃；所有满足关系均显式 `#Impl(D)`）。
 13. **`where` 子句、`T : D1 | D2` or 约束**（§6.4.4.2）。
-14. **spec body 内字段 / 静态成员 / 关联常量**（占位 → [`draft/DRAFT-spec-fields.md`](draft/DRAFT-spec-fields.md) / [`draft/DRAFT-anno-struct.md`](draft/DRAFT-anno-struct.md)）。
+14. ~~**spec body 内字段 / 静态成员 / 关联常量**（占位）~~ → `#Static #Frozen` 字段段（仅编译期常量，不含 `#Static fn` / 实例字段）已在 §13 反射（内置 spec `Reflect`）中落地；关联常量仍留 `DRAFT-data-struct.md`。
 15. **按字段递归的自动 derive 默认体**（如 `ToJson.to_json` 自动遍历字段）—— spec-unify v1 明确**永不引入**。
 16. **`#Inline for` 编译期循环 unroll / IR-before unroll pass** —— spec-unify v1 明确**永不引入**。
 

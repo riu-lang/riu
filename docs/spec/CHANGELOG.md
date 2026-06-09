@@ -15,6 +15,16 @@
 
 ---
 
+---
+
+## 2026-06-09 —— 编译期反射（内置 spec Reflect）落地（8edfeee）
+
+- **新增 §13**（反射）：内置 spec `Reflect` + 编译器隐式 `#Impl(Reflect)`、反射数据类型 `Type` / `Field` / `Method` / `Variant`（`#CompilerInner`）、`#Static #Frozen` 字段段（`type` / `fields` / `methods` / `variants`）仅类型形访问、`Field.value` sema 期改名、`.rodata` emit 与 `--gc-sections` DCE、`#Reflect` 注解防 DCE。
+- **修改 §11**（编译期注解）：新增 §11.12 `#Reflect` 注解（零参，仅附着 structDecl）+ 更新 §11.5.1 注解表。
+- **修改 §12.1.1.1 / §12.8 项 14**：spec body 内 `#Static #Frozen` 字段段**允许**（Reflect spec 的 type/fields/methods/variants 即以此形态声明）；关联常量仍留 `DRAFT-data-struct.md`。
+- **修改 附录 D**：新增 E3133 / E3134 / E3135 / E3136（E3136 设计消解，未触发）。
+- **冲突 / 兼容**：无破坏性变更。反射数据默认 emit + `--gc-sections` 自动回收；`#Reflect` 仅用于外部工具防 DCE 场景。`Field.value` 仅支持 `$` receiver（方法体内），显式 receiver 留后续扩展。
+
 ## 2026-06-08 —— `<-` 移入赋值表达式落地（983cf7a）
 
 - **新增 §4.13**（移入赋值表达式 `a <- b`，`exprMoveAssign`）：形态、优先级（最低，右结合）、求值顺序（LHS 先于 RHS）、左值约束、类型规则、RC 所有权协议。与语句级赋值 `a = b` 分工（`=` 不产生值，`<-` 返回旧值）。

@@ -446,6 +446,10 @@ Array 内置方法（E6040..E6044）：
 | E1139  | *（已退役）* | DRAFT-spec-default-body 落地（§12.10）解锁 spec body 方法带 body，编号保留不复用 |
 | E1140  | `` spec `{}` default body references unknown method `$.{}`; must appear in this spec's signatures `` | spec 默认体 sema 占位校验失败（§12.10.3.2）；`$.m@SpecA()` 中 SpecA 无该方法 / 默认体（§12.10.8.2，消息按上下文区分"unknown method" vs "no default body"） |
 | E3132  | `` Type `{}` inherits conflicting default bodies for method `{}` from specs {}; implementer must provide an explicit override `` | 多 spec 默认体组合冲突未消歧（§12.10.5） |
+| E3133  | `` `Field.value` requires `f` to be compile-time determinable; `{}` is a runtime variable — cannot rewrite to field access `` | `Field.value` sema 改名时 f 非编译期可定（§13.5.2） |
+| E3134  | `` `Field.value` rewrite has no receiver binding in this context (must be inside a struct method with `$`) `` | `Field.value` 改名无 `$` receiver 绑定（§13.5.2） |
+| E3135  | `` `{}::variants` is only valid on enum types; `{}` is not an enum `` | 非 enum 访问 `variants` 静态字段（§13.2.1） |
+| E3136  | （已消解，未触发）按值取 rodata 单例 `Counter::type` 等——设计决议：反射元数据统一按值 copy（rodata → stack），不引入 E3136 | §13.1.3 |
 
 ## D.4 与编译流程的关系
 

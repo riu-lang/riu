@@ -1,8 +1,8 @@
-; 草案：yux 编译期反射（内置 spec Reflect + 静态字段）
+; 草案：yux 编译期反射（内置 spec Reflect + 静态字段）—— 已落地，见 §13
 
 # 草案：yux 编译期反射
 
-状态：**草案 / 占位（形态已锁，待 spec-unify v1 + spec-default-body 落地后启动）**。日期：2026-05-18。
+状态：**已落地（2026-06-09，见 [`../13-反射.md`](../13-反射.md)）**。日期：2026-05-18（草案）、2026-06-09（落地）。
 作用：在 `DRAFT-spec-unify.md` v1 之上引入**内置 spec `Reflect`**——编译器隐式为每个类型 `#Impl(Reflect)`，通过 `#Static #Frozen` 字段（仅类型形访问）暴露类型 / 字段 / 方法 / 变体元数据；反射数据走 **runtime 数组**（普通 `for` 遍历）；`Field.value` 走 sema 期纯改名（编译期可定的具体 Field 引用），**无 `#Inline for` / 无 IR-before pass**（[#1.AE]）；`#Reflect` 注解控制 emit 强度防 DCE。
 
 > 本草案从 `DRAFT-spec-unify.md` v1 收紧后剥离（[#1.AD]）。形态决议已在母草案锁住：[#1.G] 反射动机、[#1.H] runtime emit、[#1.W] `f.value` 字段访问形态、[#1.X] Field 唯一编译器内置、[#1.Y] Reflect spec 形态、[#1.Z] `#Static #Frozen` 字段子集、[#1.AB] 实例不能调静态成员、[#1.AE] 永不引入 inline-for / `Field.value` 走 sema 改名。本草案承接实施。
