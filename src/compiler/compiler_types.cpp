@@ -2,7 +2,7 @@
 // MPL-2.0
 
 // 类型系统编译实现
-// 
+//
 // 本文件包含类型系统相关的编译逻辑:
 // - TypeInfo 到 LLVM 类型的映射
 // - 函数类型生成
@@ -69,8 +69,7 @@ TypeInfo Compiler::applySubst(const TypeInfo& t) const {
         result = result.substitute(frame.subst);
         // 特殊处理: 将泛型原名替换为实例名
         // 例如: Rc -> Rc$i32
-        if (result.kind == TypeKind::Normal && !frame.baseStructName.empty()
-            && result.name == frame.baseStructName) {
+        if (result.kind == TypeKind::Normal && !frame.baseStructName.empty() && result.name == frame.baseStructName) {
             result.name = frame.effStructName;
         }
     }
@@ -185,14 +184,12 @@ void Compiler::validateAliases() {
         // 与本文件 struct 同名
         if (auto* s = _file->getStructDecl(name)) {
             (void)s;
-            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017,
-                           name, string("struct"), name);
+            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017, name, string("struct"), name);
         }
         // 与本文件 draft 同名
         if (auto* d = _file->getSpecDecl(name)) {
             (void)d;
-            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017,
-                           name, string("draft"), name);
+            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017, name, string("draft"), name);
         }
         // 重复 alias
         size_t cnt = 0;
@@ -200,8 +197,7 @@ void Compiler::validateAliases() {
             if (b->name().getText() == name) ++cnt;
         }
         if (cnt > 1) {
-            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017,
-                           name, string("type alias"), name);
+            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017, name, string("type alias"), name);
         }
     }
 
@@ -224,8 +220,8 @@ void Compiler::validateAliases() {
 
 // 确保泛型结构体实例存在
 // 返回 mangle 后的实例名 (如 "Rc$i32")
-string Compiler::ensureStructInstance(
-    p<StructDeclNode> baseDecl, const vector<sp<TypeInfo>>& args, p<FileNode> ownerFile, int sourceLine) {
+string Compiler::ensureStructInstance(p<StructDeclNode> baseDecl, const vector<sp<TypeInfo>>& args,
+                                      p<FileNode> ownerFile, int sourceLine) {
     string baseName = baseDecl->name().getText();
     // 生成 mangle 名称: StructName$T1$T2...
     string mangledName = baseName;
@@ -242,12 +238,10 @@ string Compiler::ensureStructInstance(
         // 调用方未提供位置（getLLVMType 路径常见）时，退回到 struct 声明行，避免 assert(line>0) 触发 abort
         int errLine = sourceLine > 0 ? sourceLine : static_cast<int>(baseDecl->name().getLine());
         if (errLine <= 0) errLine = 1;
-        throw YuxError(errLine, ErrorCode::E6011,
-            baseName, baseDecl->typeParams().size(), args.size())
-            .withHint(std::format("实例化时的类型实参个数需与声明匹配；改写为 `{}<{}>` 形式补齐 {} 个类型",
-                baseName,
-                std::string(baseDecl->typeParams().size() == 1 ? "T" : "T1, T2, ..."),
-                baseDecl->typeParams().size()));
+        throw YuxError(errLine, ErrorCode::E6011, baseName, baseDecl->typeParams().size(), args.size())
+            .withHint(std::format("实例化时的类型实参个数需与声明匹配；改写为 `{}<{}>` 形式补齐 {} 个类型", baseName,
+                                  std::string(baseDecl->typeParams().size() == 1 ? "T" : "T1, T2, ..."),
+                                  baseDecl->typeParams().size()));
     }
 
     // 创建实例记录
@@ -261,7 +255,8 @@ string Compiler::ensureStructInstance(
         inst.baseImpl = _yux->sdkFile()->getStructImpl(baseName);
     }
     inst.args.reserve(args.size());
-    for (auto& a : args) inst.args.push_back(a ? *a : TypeInfo());
+    for (auto& a : args)
+        inst.args.push_back(a ? *a : TypeInfo());
     inst.sourceFile = _file ? _file->moduleName() : "";
     inst.sourceLine = sourceLine;
     // 关键：把当前编译模块记下来，作为本实例 IR 的符号前缀。
@@ -276,7 +271,11 @@ string Compiler::ensureStructInstance(
     }
 
     // 压入替换栈帧
-    _substStack.push_back(SubstFrame{.subst=subst, .baseStructName=baseName, .effStructName=mangledName, .sourceFile=inst.sourceFile, .sourceLine=inst.sourceLine});
+    _substStack.push_back(SubstFrame{.subst = subst,
+                                     .baseStructName = baseName,
+                                     .effStructName = mangledName,
+                                     .sourceFile = inst.sourceFile,
+                                     .sourceLine = inst.sourceLine});
 
     // 计算实例化后的字段类型
     vector<llvm::Type*> fieldTypes;
@@ -286,9 +285,8 @@ string Compiler::ensureStructInstance(
             auto llvmTy = getLLVMType(fieldType);
             if (!llvmTy) {
                 auto substituted = applySubst(fieldType);
-                throw YuxError(
-                    static_cast<int>(field->name().getLine()), ErrorCode::E3098,
-                    substituted.getFullName(), field->name().getText(), baseName);
+                throw YuxError(static_cast<int>(field->name().getLine()), ErrorCode::E3098, substituted.getFullName(),
+                               field->name().getText(), baseName);
             }
             fieldTypes.push_back(llvmTy);
         }
@@ -325,11 +323,11 @@ llvm::StructType* Compiler::getArrayBlockType() {
         return existing;
     }
     vector<llvm::Type*> fields;
-    fields.push_back(_builder.getInt32Ty());                       // strong
-    fields.push_back(_builder.getInt32Ty());                       // weak
-    fields.push_back(_builder.getInt64Ty());                       // len
-    fields.push_back(_builder.getInt64Ty());                       // cap
-    fields.push_back(llvm::PointerType::get(_context, 0));         // data
+    fields.push_back(_builder.getInt32Ty());               // strong
+    fields.push_back(_builder.getInt32Ty());               // weak
+    fields.push_back(_builder.getInt64Ty());               // len
+    fields.push_back(_builder.getInt64Ty());               // cap
+    fields.push_back(llvm::PointerType::get(_context, 0)); // data
     return llvm::StructType::create(_context, fields, kName);
 }
 
@@ -392,13 +390,16 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     // 返回 null 会让调用方在后续 SEH/段错误时崩。这里早抛 E6011 以给出诊断。
     if (type.isNormal()) {
         static constexpr std::array<std::pair<const char*, size_t>, 5> kBuiltinGenerics{{
-            {"Rc", 1}, {"Weak", 1}, {"Array", 1}, {"Nullable", 1}, {"Heap", 1},
+            {"Rc", 1},
+            {"Weak", 1},
+            {"Array", 1},
+            {"Nullable", 1},
+            {"Heap", 1},
         }};
         for (auto [bname, arity] : kBuiltinGenerics) {
             if (type.name == bname) {
                 throw YuxError(1, ErrorCode::E6011, type.name, arity, static_cast<size_t>(0))
-                    .withHint(std::format("`{}` 是泛型类型，使用时须带类型实参：改写为 `{}<T>`",
-                        type.name, type.name));
+                    .withHint(std::format("`{}` 是泛型类型，使用时须带类型实参：改写为 `{}<T>`", type.name, type.name));
             }
         }
     }
@@ -438,12 +439,11 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             // E4025: Rc<Heap<T>> 禁止 (DRAFT-heap-types §8.3a.5.1)
             if (elemType->isHeap()) {
                 auto innerSp = elemType->heapElementType();
-                throw YuxError(1, ErrorCode::E4025, std::string("Rc"),
-                    innerSp ? innerSp->name : std::string("?"));
+                throw YuxError(1, ErrorCode::E4025, std::string("Rc"), innerSp ? innerSp->name : std::string("?"));
             }
             DEBUG_LOG_VAL("    -> RcType (struct)", "Rc<" << elemType->name << ">");
             vector<llvm::Type*> rcFields;
-            rcFields.push_back(llvm::PointerType::get(_context, 0));  // handle: Block*
+            rcFields.push_back(llvm::PointerType::get(_context, 0)); // handle: Block*
             return llvm::StructType::get(_context, rcFields);
         }
         return llvm::PointerType::get(_context, 0);
@@ -452,7 +452,8 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     // Heap<T> 类型（DRAFT-heap-types §8.3a 堆作用域句柄）
     // layout = 裸 T*：单所有权、无 RC 头、作用域绑定析构、不参与 Rc/Weak
     if (type.isHeap()) {
-        DEBUG_LOG_VAL("    -> HeapType (bare ptr)", "Heap<" << (type.heapElementType() ? type.heapElementType()->name : "?") << ">");
+        DEBUG_LOG_VAL("    -> HeapType (bare ptr)",
+                      "Heap<" << (type.heapElementType() ? type.heapElementType()->name : "?") << ">");
         return llvm::PointerType::get(_context, 0);
     }
 
@@ -464,12 +465,11 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             // E4025: Weak<Heap<T>> 禁止 (DRAFT-heap-types §8.3a.5.1)
             if (elemType->isHeap()) {
                 auto innerSp = elemType->heapElementType();
-                throw YuxError(1, ErrorCode::E4025, std::string("Weak"),
-                    innerSp ? innerSp->name : std::string("?"));
+                throw YuxError(1, ErrorCode::E4025, std::string("Weak"), innerSp ? innerSp->name : std::string("?"));
             }
             DEBUG_LOG_VAL("    -> WeakType (struct)", "Weak<" << elemType->name << ">");
             vector<llvm::Type*> weakFields;
-            weakFields.push_back(llvm::PointerType::get(_context, 0));  // handle: Block*
+            weakFields.push_back(llvm::PointerType::get(_context, 0)); // handle: Block*
             return llvm::StructType::get(_context, weakFields);
         }
         return llvm::PointerType::get(_context, 0);
@@ -484,12 +484,11 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             // E4025: Array<Heap<T>> 禁止 (DRAFT-heap-types §8.3a.5.1)
             if (elemType->isHeap()) {
                 auto innerSp = elemType->heapElementType();
-                throw YuxError(1, ErrorCode::E4025, std::string("Array"),
-                    innerSp ? innerSp->name : std::string("?"));
+                throw YuxError(1, ErrorCode::E4025, std::string("Array"), innerSp ? innerSp->name : std::string("?"));
             }
             DEBUG_LOG_VAL("    -> ArrayGeneric (struct)", "Array<" << elemType->name << ">");
             vector<llvm::Type*> arrayFields;
-            arrayFields.push_back(llvm::PointerType::get(_context, 0));  // handle: Block*
+            arrayFields.push_back(llvm::PointerType::get(_context, 0)); // handle: Block*
             return llvm::StructType::get(_context, arrayFields);
         }
         return llvm::PointerType::get(_context, 0);
@@ -502,8 +501,8 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     if (type.isDyn()) {
         DEBUG_LOG_VAL("    -> DynType (fat-ptr)", type.name);
         vector<llvm::Type*> dynFields;
-        dynFields.push_back(llvm::PointerType::get(_context, 0));  // vtable
-        dynFields.push_back(llvm::PointerType::get(_context, 0));  // data
+        dynFields.push_back(llvm::PointerType::get(_context, 0)); // vtable
+        dynFields.push_back(llvm::PointerType::get(_context, 0)); // data
         return llvm::StructType::get(_context, dynFields);
     }
 
@@ -513,8 +512,8 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     if (type.isFn()) {
         DEBUG_LOG_VAL("    -> FnType (fat-ptr placeholder)", type.name);
         vector<llvm::Type*> fnFields;
-        fnFields.push_back(llvm::PointerType::get(_context, 0));  // fn_ptr
-        fnFields.push_back(llvm::PointerType::get(_context, 0));  // captures (Rc?)
+        fnFields.push_back(llvm::PointerType::get(_context, 0)); // fn_ptr
+        fnFields.push_back(llvm::PointerType::get(_context, 0)); // captures (Rc?)
         return llvm::StructType::get(_context, fnFields);
     }
 
@@ -621,18 +620,17 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             }
         }
     }
-    
+
     if (structDecl) {
         // 泛型 struct 但用法没带 `<T>`：避免落进 getOrCreateStructType 把未实例化的类型参数当成
         // 实类型 → 字段类型 null → llvm::StructType::create 段错误
         if (structDecl->isGeneric()) {
             int errLine = static_cast<int>(structDecl->name().getLine());
             if (errLine <= 0) errLine = 1;
-            throw YuxError(errLine, ErrorCode::E6011,
-                type.name, structDecl->typeParams().size(), static_cast<size_t>(0))
-                .withHint(std::format("`{}` 是泛型类型，使用时须带类型实参：改写为 `{}<{}>`",
-                    type.name, type.name,
-                    std::string(structDecl->typeParams().size() == 1 ? "T" : "T1, T2, ...")));
+            throw YuxError(errLine, ErrorCode::E6011, type.name, structDecl->typeParams().size(),
+                           static_cast<size_t>(0))
+                .withHint(std::format("`{}` 是泛型类型，使用时须带类型实参：改写为 `{}<{}>`", type.name, type.name,
+                                      std::string(structDecl->typeParams().size() == 1 ? "T" : "T1, T2, ...")));
         }
         DEBUG_LOG_VAL("    -> Struct (creating on demand)", type.name);
         auto structType = getOrCreateStructType(structDecl, sourceFile);
@@ -728,6 +726,12 @@ llvm::StructType* Compiler::getOrCreateStructType(p<StructDeclNode> structDecl, 
         DEBUG_LOG_VAL("Skipping builtin type struct declaration", name);
         return nullptr;
     }
+    // DRAFT-spec-reflect: Field/Type/Method/Variant 的 LLVM 布局由编译器硬编码,
+    // 不从 yux 声明构建, 避免 getOrCreateStructType 缓存旧布局覆盖硬编码版本.
+    if (name == "Field" || name == "Type" || name == "Method" || name == "Variant") {
+        DEBUG_LOG_VAL("Skipping reflect #CompilerInner struct (hardcoded layout)", name);
+        return nullptr;
+    }
 
     auto file = sourceFile ? sourceFile : _file;
     string mangledName = Mangler::structType(file->moduleName(), name);
@@ -784,7 +788,7 @@ llvm::FunctionType* Compiler::getLLVMFunctionType(p<FnHeaderNode> header) {
     }
     auto llvmRetType = wrapFallibleRetType(retTypeInfo, fallibleErr);
     DEBUG_LOG_VAL("    return type", (retTypeInfo.empty() ? "void" : retTypeInfo.name)
-        << (fallibleErr.empty() ? "" : (string(" #Fallible(") + fallibleErr + ")")));
+                                         << (fallibleErr.empty() ? "" : (string(" #Fallible(") + fallibleErr + ")")));
     return llvm::FunctionType::get(llvmRetType, paramTypes, false);
 }
 
@@ -804,13 +808,13 @@ llvm::StructType* Compiler::getFallibleRetStructType(const TypeInfo& retType, co
     // ErrEnum 必为已声明 enum（10e 静态层已校 + E7011）；通过 TypeInfo 走 getLLVMType
     auto errLLVMType = getLLVMType(TypeInfo(errTypeName));
     vector<llvm::Type*> fields;
-    fields.push_back(_builder.getInt1Ty());                      // 字段 0：isErr
+    fields.push_back(_builder.getInt1Ty()); // 字段 0：isErr
     if (!retType.empty()) {
         // 字段 1：T_ok（void 时省略，便于 LLVM 寄存器返回 + extractvalue 索引稳定）
         // 注意：与参数传递不同，此处不做"按指针传"折叠——返回值按值聚合到 struct 内
         fields.push_back(getLLVMType(retType));
     }
-    fields.push_back(errLLVMType);                                // 字段 2 (或 1，T=void 时)：ErrEnum
+    fields.push_back(errLLVMType); // 字段 2 (或 1，T=void 时)：ErrEnum
     return llvm::StructType::get(_context, fields);
 }
 
@@ -844,8 +848,7 @@ void Compiler::emitMainStartupFallible(const string& fallibleErrName) {
 
     // mainStartup() i32
     auto mainFnType = llvm::FunctionType::get(_builder.getInt32Ty(), {}, false);
-    auto mainStartup = llvm::Function::Create(
-        mainFnType, llvm::Function::ExternalLinkage, "mainStartup", _module);
+    auto mainStartup = llvm::Function::Create(mainFnType, llvm::Function::ExternalLinkage, "mainStartup", _module);
 
     auto entry = llvm::BasicBlock::Create(_context, "entry", mainStartup);
     _builder.SetInsertPoint(entry);
@@ -888,8 +891,7 @@ void Compiler::emitMainStartupFallible(const string& fallibleErrName) {
     _builder.SetInsertPoint(errBB);
 
     // 取 stderr 句柄（STD_ERROR_HANDLE = -12）
-    auto stderrHandle = _builder.CreateCall(
-        getStdHandle, {_builder.getInt32(-12)}, "stderr.h");
+    auto stderrHandle = _builder.CreateCall(getStdHandle, {_builder.getInt32(-12)}, "stderr.h");
 
     // 取 err 字段（字段 1，因 main retType 是 void → struct = { i1, EnumLLVM }）
     auto errVal = _builder.CreateExtractValue(callRet, {1}, "main.err.val");
@@ -920,20 +922,16 @@ void Compiler::emitMainStartupFallible(const string& fallibleErrName) {
 
     // 默认分支：未知 tag（理论不可达）
     auto defaultBB = llvm::BasicBlock::Create(_context, "main.err.default", mainStartup);
-    auto sw = _builder.CreateSwitch(tag, defaultBB,
-        static_cast<unsigned>(enumDecl->variants().size()));
+    auto sw = _builder.CreateSwitch(tag, defaultBB, static_cast<unsigned>(enumDecl->variants().size()));
 
     auto emitWrite = [&](llvm::Value* msgGlobal, uint32_t len) {
-        _builder.CreateCall(writeFile, {
-            stderrHandle, msgGlobal, _builder.getInt32(len),
-            outWritten, llvm::ConstantPointerNull::get(ptrTy)
-        });
+        _builder.CreateCall(writeFile, {stderrHandle, msgGlobal, _builder.getInt32(len), outWritten,
+                                        llvm::ConstantPointerNull::get(ptrTy)});
     };
 
     for (size_t i = 0; i < enumDecl->variants().size(); ++i) {
         auto& variant = enumDecl->variants()[i];
-        auto vbb = llvm::BasicBlock::Create(_context, "main.err.v" + std::to_string(i),
-            mainStartup);
+        auto vbb = llvm::BasicBlock::Create(_context, "main.err.v" + std::to_string(i), mainStartup);
         sw->addCase(_builder.getInt32(static_cast<int>(i)), vbb);
         _builder.SetInsertPoint(vbb);
 
@@ -945,11 +943,10 @@ void Compiler::emitMainStartupFallible(const string& fallibleErrName) {
         msg += "\n";
 
         // .rodata 全局字符串（不带 NUL；len 单独传）
-        auto strConst = llvm::ConstantDataArray::getString(_context, msg, /*addNull*/false);
-        auto strGlobal = new llvm::GlobalVariable(
-            *_module, strConst->getType(), /*isConstant*/true,
-            llvm::GlobalValue::PrivateLinkage, strConst,
-            "main.err.msg." + std::to_string(i));
+        auto strConst = llvm::ConstantDataArray::getString(_context, msg, /*addNull*/ false);
+        auto strGlobal =
+            new llvm::GlobalVariable(*_module, strConst->getType(), /*isConstant*/ true,
+                                     llvm::GlobalValue::PrivateLinkage, strConst, "main.err.msg." + std::to_string(i));
         strGlobal->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
 
         emitWrite(strGlobal, static_cast<uint32_t>(msg.size()));
@@ -963,9 +960,8 @@ void Compiler::emitMainStartupFallible(const string& fallibleErrName) {
     {
         string msg = prefix + "<invalid tag>\n";
         auto strConst = llvm::ConstantDataArray::getString(_context, msg, false);
-        auto strGlobal = new llvm::GlobalVariable(
-            *_module, strConst->getType(), true,
-            llvm::GlobalValue::PrivateLinkage, strConst, "main.err.msg.default");
+        auto strGlobal = new llvm::GlobalVariable(*_module, strConst->getType(), true,
+                                                  llvm::GlobalValue::PrivateLinkage, strConst, "main.err.msg.default");
         strGlobal->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
         emitWrite(strGlobal, static_cast<uint32_t>(msg.size()));
     }

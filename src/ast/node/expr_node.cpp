@@ -723,6 +723,7 @@ TypeInfo ExprDotNode::getType() const {
         if (!sd) {
             throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3044, innerType->name);
         }
+
         int idx = sd->fieldIndex(member);
         if (idx < 0) {
             throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3040, innerType->name, member);

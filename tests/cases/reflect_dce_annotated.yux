@@ -1,0 +1,12 @@
+; DRAFT-spec-reflect §4: #Reflect 注解防 DCE 冒烟测试
+; 验证 #Reflect 标的 struct 能正常编译和反射
+
+#Reflect
+struct Tagged {
+  value i32
+}
+
+fn main() {
+  let t Type = Tagged::type
+  println(t.name)
+}

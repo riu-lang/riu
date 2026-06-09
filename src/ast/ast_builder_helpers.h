@@ -30,8 +30,8 @@ namespace {
 //   #Spec            零参；标在 struct 上 — 把声明转为 spec（仅签名）
 //   #Impl(SpecName)  单参；标在 struct 上 — 实现关系，替代旧 `: D1 + D2` 头部槽
 inline const set<string>& knownAnnos() {
-    static const set<string> s = {"CompilerInner", "Test",  "TestIsolate", "DraftLike", "NoReturn",
-                                  "Fallible",      "Const", "Static",      "Spec",      "Impl"};
+    static const set<string> s = {"CompilerInner", "Test",   "TestIsolate", "DraftLike", "NoReturn", "Fallible",
+                                  "Const",         "Static", "Spec",        "Impl",      "Reflect"};
     return s;
 }
 
@@ -45,7 +45,7 @@ inline const set<string>& argAnnos() {
 // fn 之外的位置（structDecl / extern / globalConst）只接受 #CompilerInner / #Spec / #Impl，
 // 不接受 #Test（spec §11.3.1.2）
 inline const set<string>& nonFnAllowedAnnos() {
-    static const set<string> s = {"CompilerInner", "Spec", "Impl"};
+    static const set<string> s = {"CompilerInner", "Spec", "Impl", "Reflect"};
     return s;
 }
 

@@ -228,6 +228,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
     }
 
     if (structDecl) {
+
         int fieldIndex = structDecl->fieldIndex(member);
         if (fieldIndex >= 0) {
             DEBUG_LOG_VAL("    Expr: StructFieldAccess", actualType.name << "." << member);
@@ -266,6 +267,10 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
                 auto handleField = _builder.CreateGEP(rcStructType, structPtr, {zero, zero}, "rc.handle_field");
                 auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "rc.handle");
                 dataPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.payload");
+            } else if (baseType.isRef()) {
+                // T& (non-Rc): baseVal 是指针, 被存到了 alloca 里 (structPtr 指向栈槽).
+                // GEP 之前必须先 load 出指针值, 否则 GEP 会索引到栈槽上而非 struct 上.
+                dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataPtr, "ref.deref");
             }
 
             auto structType = getLLVMType(actualType);

@@ -12,9 +12,7 @@
 // - compileFn()/compileMethod(): 编译函数和方法
 // - 泛型单态化相关函数
 
-#include <algorithm>
-#include <array>
-#include <algorithm>
+#include "compiler.h"
 #include "analyzer/borrow_checker.h"
 #include "analyzer/const_mut_checker.h"
 #include "analyzer/flow_terminate_checker.h"
@@ -25,13 +23,14 @@
 #include "ast/node/spec_node.h"
 #include "ast/node/type_node.h"
 #include "compiler_runtime.h"
-#include "compiler.h"
-#include <llvm/IR/Constants.h>
-#include <llvm/IR/DerivedTypes.h>
-#include <regex>
 #include "sema/const_eval.h"
 #include "sema/sema_pass.h"
 #include "types.h"
+#include <algorithm>
+#include <array>
+#include <llvm/IR/Constants.h>
+#include <llvm/IR/DerivedTypes.h>
+#include <regex>
 #include <utility>
 
 // ==================== 构造函数 ====================
@@ -191,27 +190,26 @@ void Compiler::compileGlobalConsts() {
 
         llvm::Constant* initValue = nullptr;
         switch (value->kind) {
-            case ConstantValue::Kind::Int:
-                initValue = llvm::ConstantInt::get(llvmType, value->intBits, false);
-                break;
-            case ConstantValue::Kind::Float:
-                initValue = llvm::ConstantFP::get(llvmType, value->floatVal);
-                break;
-            case ConstantValue::Kind::Bool:
-                initValue = llvm::ConstantInt::get(llvmType, value->boolVal ? 1 : 0, false);
-                break;
-            case ConstantValue::Kind::Struct: {
-                // DRAFT-const-eval Phase 5: ConstantValue::Struct -> llvm::ConstantStruct
-                // 字段按 StructDeclNode 声明序排列, 元素类型从 LLVM struct type 取
-                initValue = buildLLVMConstantFromValue(*value, llvmType);
-                if (!initValue) {
-                    throw YuxError(globalConst->getLineNumber(), globalConst->getColumn(),
-                                   ErrorCode::E3082, type.name);
-                }
-                break;
-            }
-            case ConstantValue::Kind::Null:
+        case ConstantValue::Kind::Int:
+            initValue = llvm::ConstantInt::get(llvmType, value->intBits, false);
+            break;
+        case ConstantValue::Kind::Float:
+            initValue = llvm::ConstantFP::get(llvmType, value->floatVal);
+            break;
+        case ConstantValue::Kind::Bool:
+            initValue = llvm::ConstantInt::get(llvmType, value->boolVal ? 1 : 0, false);
+            break;
+        case ConstantValue::Kind::Struct: {
+            // DRAFT-const-eval Phase 5: ConstantValue::Struct -> llvm::ConstantStruct
+            // 字段按 StructDeclNode 声明序排列, 元素类型从 LLVM struct type 取
+            initValue = buildLLVMConstantFromValue(*value, llvmType);
+            if (!initValue) {
                 throw YuxError(globalConst->getLineNumber(), globalConst->getColumn(), ErrorCode::E3082, type.name);
+            }
+            break;
+        }
+        case ConstantValue::Kind::Null:
+            throw YuxError(globalConst->getLineNumber(), globalConst->getColumn(), ErrorCode::E3082, type.name);
         }
 
         auto linkage =
@@ -230,30 +228,30 @@ void Compiler::compileGlobalConsts() {
 // expectedTy 用于驱动 Int/Bool 的位宽以及 Struct 字段类型校验.
 llvm::Constant* Compiler::buildLLVMConstantFromValue(const ConstantValue& v, llvm::Type* expectedTy) {
     switch (v.kind) {
-        case ConstantValue::Kind::Int:
-            if (!expectedTy || !expectedTy->isIntegerTy()) return nullptr;
-            return llvm::ConstantInt::get(expectedTy, v.intBits, false);
-        case ConstantValue::Kind::Float:
-            if (!expectedTy || !expectedTy->isFloatingPointTy()) return nullptr;
-            return llvm::ConstantFP::get(expectedTy, v.floatVal);
-        case ConstantValue::Kind::Bool:
-            if (!expectedTy || !expectedTy->isIntegerTy()) return nullptr;
-            return llvm::ConstantInt::get(expectedTy, v.boolVal ? 1 : 0, false);
-        case ConstantValue::Kind::Struct: {
-            auto* st = llvm::dyn_cast_or_null<llvm::StructType>(expectedTy);
-            if (!st) return nullptr;
-            if (st->getNumElements() != v.structFields.size()) return nullptr;
-            vector<llvm::Constant*> elems;
-            elems.reserve(v.structFields.size());
-            for (size_t i = 0; i < v.structFields.size(); ++i) {
-                auto* c = buildLLVMConstantFromValue(v.structFields[i], st->getElementType(i));
-                if (!c) return nullptr;
-                elems.push_back(c);
-            }
-            return llvm::ConstantStruct::get(st, elems);
+    case ConstantValue::Kind::Int:
+        if (!expectedTy || !expectedTy->isIntegerTy()) return nullptr;
+        return llvm::ConstantInt::get(expectedTy, v.intBits, false);
+    case ConstantValue::Kind::Float:
+        if (!expectedTy || !expectedTy->isFloatingPointTy()) return nullptr;
+        return llvm::ConstantFP::get(expectedTy, v.floatVal);
+    case ConstantValue::Kind::Bool:
+        if (!expectedTy || !expectedTy->isIntegerTy()) return nullptr;
+        return llvm::ConstantInt::get(expectedTy, v.boolVal ? 1 : 0, false);
+    case ConstantValue::Kind::Struct: {
+        auto* st = llvm::dyn_cast_or_null<llvm::StructType>(expectedTy);
+        if (!st) return nullptr;
+        if (st->getNumElements() != v.structFields.size()) return nullptr;
+        vector<llvm::Constant*> elems;
+        elems.reserve(v.structFields.size());
+        for (size_t i = 0; i < v.structFields.size(); ++i) {
+            auto* c = buildLLVMConstantFromValue(v.structFields[i], st->getElementType(i));
+            if (!c) return nullptr;
+            elems.push_back(c);
         }
-        case ConstantValue::Kind::Null:
-            return nullptr;
+        return llvm::ConstantStruct::get(st, elems);
+    }
+    case ConstantValue::Kind::Null:
+        return nullptr;
     }
     return nullptr;
 }
@@ -288,6 +286,41 @@ void Compiler::compileStructDecls() {
         if (structDecl->isGeneric()) continue;
         DEBUG_LOG_VAL("  struct", structDecl->name().getText());
         getOrCreateStructType(structDecl);
+    }
+
+    // DRAFT-spec-reflect §4: #Reflect 注解 DCE 防护
+    // 被 #Reflect 标的 struct 即便源码未显式引用反射数据, 也强制 emit Type 全局
+    // 并加入 llvm.compiler.used 防止 --gc-sections 误删.
+    for (auto structDecl : _file->getStructDecls()) {
+        if (structDecl->isGeneric()) continue;
+        if (structDecl->hasAnno("Reflect")) {
+            auto* typeGV = ensureReflectTypeGlobal(TypeInfo(structDecl->name().getText()));
+            if (typeGV) {
+                std::string usedName = "llvm.compiler.used";
+                auto* usedGV = _module->getGlobalVariable(usedName, true);
+                if (!usedGV) {
+                    auto* arrTy = llvm::ArrayType::get(llvm::PointerType::get(_context, 0), 0);
+                    usedGV = new llvm::GlobalVariable(*_module, arrTy, false, llvm::GlobalValue::AppendingLinkage,
+                                                      llvm::ConstantArray::getNullValue(arrTy), usedName);
+                    usedGV->setSection("llvm.metadata");
+                }
+                // 将 typeGV 追加到 llvm.compiler.used 数组
+                auto ptrTy = llvm::PointerType::get(_context, 0);
+                auto* elem = llvm::ConstantExpr::getBitCast(typeGV, ptrTy);
+                if (auto* existingArr = llvm::dyn_cast<llvm::ConstantArray>(usedGV->getInitializer())) {
+                    std::vector<llvm::Constant*> newElems;
+                    newElems.reserve(existingArr->getNumOperands() + 1);
+                    for (unsigned i = 0; i < existingArr->getNumOperands(); ++i) {
+                        newElems.push_back(existingArr->getOperand(i));
+                    }
+                    newElems.push_back(elem);
+                    auto* newArrTy = llvm::ArrayType::get(ptrTy, newElems.size());
+                    auto* newInit = llvm::ConstantArray::get(newArrTy, newElems);
+                    usedGV->setInitializer(newInit);
+                }
+                DEBUG_LOG_VAL("  #Reflect DCE guard", structDecl->name().getText());
+            }
+        }
     }
 }
 
@@ -1009,16 +1042,14 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
 //
 // 仅对 Normal 用户 / SDK / wildcard-imported struct 类型 emit; 找不到 owner 或类型为
 // 泛型形参 / 内置标量 / Rc / Array 等返回 nullptr (调用站抛 E?).
-llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t,
-    llvm::GlobalVariable** outFieldsRefs) {
+llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t, llvm::GlobalVariable** outFieldsRefs) {
     if (t.kind != TypeKind::Normal || t.name.empty()) return nullptr;
 
     // 找声明 struct 的 file (决定 mod)
     p<FileNode> ownerFile = nullptr;
     if (_file && _file->getStructDecl(t.name)) {
         ownerFile = _file;
-    } else if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file
-               && _yux->sdkFile()->getStructDecl(t.name)) {
+    } else if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file && _yux->sdkFile()->getStructDecl(t.name)) {
         ownerFile = _yux->sdkFile();
     } else if (_file) {
         for (auto* imp : _file->wildcardImports()) {
@@ -1067,7 +1098,8 @@ llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t,
     auto cpsOf = [](const std::string& s) {
         vector<uint32_t> out;
         out.reserve(s.size());
-        for (unsigned char c : s) out.push_back(static_cast<uint32_t>(c));
+        for (unsigned char c : s)
+            out.push_back(static_cast<uint32_t>(c));
         return out;
     };
 
@@ -1088,9 +1120,12 @@ llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t,
     if (decl) {
         for (auto& f : decl->fields()) {
             if (f->isStatic()) continue;
+
+            // Field layout: { String name } — 仅 name 字段.
             auto* fNameBlock = emitStringConstBlock(cpsOf(f->name().getText()));
             auto* fArrInit = llvm::ConstantStruct::get(arrayStructTy, {fNameBlock});
             auto* fStrInit = llvm::ConstantStruct::get(stringStructTy, {fArrInit});
+
             auto* fInit = llvm::ConstantStruct::get(fieldStructTy, {fStrInit});
             fieldConsts.push_back(fInit);
         }
@@ -1102,9 +1137,9 @@ llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t,
         // [N x Field] data 数组
         auto* dataArrTy = llvm::ArrayType::get(fieldStructTy, N);
         auto* dataArrInit = llvm::ConstantArray::get(dataArrTy, fieldConsts);
-        auto* dataArrGV = new llvm::GlobalVariable(*_module, dataArrTy, /*isConstant=*/true,
-                                                    llvm::GlobalValue::PrivateLinkage, dataArrInit,
-                                                    symName + ".fields.data");
+        auto* dataArrGV =
+            new llvm::GlobalVariable(*_module, dataArrTy, /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage,
+                                     dataArrInit, symName + ".fields.data");
 
         // [N x ptr] 引用数组: 每个元素 = constexpr GEP(dataArrGV, {0, i})
         vector<llvm::Constant*> refPtrs;
@@ -1113,14 +1148,13 @@ llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t,
             auto idxC = llvm::ConstantInt::get(i32Ty, static_cast<uint32_t>(i));
             std::array<llvm::Constant*, 2> gepIndicesArr{i32Zero, idxC};
             auto* gep = llvm::ConstantExpr::getGetElementPtr(dataArrTy, dataArrGV,
-                llvm::ArrayRef<llvm::Constant*>(gepIndicesArr));
+                                                             llvm::ArrayRef<llvm::Constant*>(gepIndicesArr));
             refPtrs.push_back(gep);
         }
         auto* refArrTy = llvm::ArrayType::get(ptrTy, N);
         auto* refArrInit = llvm::ConstantArray::get(refArrTy, refPtrs);
         fieldsRefGV = new llvm::GlobalVariable(*_module, refArrTy, /*isConstant=*/true,
-                                                llvm::GlobalValue::PrivateLinkage, refArrInit,
-                                                symName + ".fields.refs");
+                                               llvm::GlobalValue::PrivateLinkage, refArrInit, symName + ".fields.refs");
     }
 
     if (outFieldsRefs) *outFieldsRefs = fieldsRefGV;

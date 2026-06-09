@@ -57,6 +57,11 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
             auto* sd = _file ? _file->getStructDecl(lhsRaw) : nullptr;
             if (!sd && sdkF && sdkF != _file) sd = sdkF->getStructDecl(lhsRaw);
             if (sd) {
+                // DRAFT-spec-reflect §2: variants 仅 enum 可访问; struct 上访问 → E3135.
+                if (rhsName == "variants") {
+                    throw YuxError(line, col, ErrorCode::E3135, lhsRaw);
+                }
+
                 llvm::GlobalVariable* fieldsRefGV = nullptr;
                 auto* gv = ensureReflectTypeGlobal(TypeInfo(lhsRaw), &fieldsRefGV);
                 if (!gv) {
@@ -74,9 +79,20 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                     }
                     return fieldsRefGV;
                 }
-                // methods / variants: not yet populated → null reference
+                // methods: not yet populated → null reference
                 auto ptrTy = llvm::PointerType::get(_context, 0);
                 return llvm::ConstantPointerNull::get(ptrTy);
+            }
+            // LHS 是 enum: variants 放行（v1 尚未填充 variants 数据, 返回 null）
+            if (rhsName == "variants") {
+                auto* enumDecl = _file ? _file->getEnumDecl(lhsRaw) : nullptr;
+                if (!enumDecl && sdkF && sdkF != _file) enumDecl = sdkF->getEnumDecl(lhsRaw);
+                if (enumDecl) {
+                    // v1: variants data 尚未实现, 返回 null
+                    auto ptrTy = llvm::PointerType::get(_context, 0);
+                    return llvm::ConstantPointerNull::get(ptrTy);
+                }
+                // 既不是 struct 也不是 enum → fallthrough
             }
         }
     }

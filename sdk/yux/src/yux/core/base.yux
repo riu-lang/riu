@@ -2046,15 +2046,23 @@ fn assert_starts_with(s String&, prefix String&) {
 
 ; ==================== DRAFT-spec-reflect Phase 2：反射 metadata 数据类型 ====================
 ; Type / Field / Method / Variant: #CompilerInner struct, 布局由编译器硬编码.
-; SDK 仅声明 user-visible 字段 (name String), fields/methods/variants 隐藏 slot
+; SDK 仅声明 user-visible 字段; fields/methods/variants 隐藏 slot
 ; 由 ensureReflectTypeGlobal codegen 直接写入, 用户通过 Counter::fields 静态路径访问.
-; Field 先于 Type 声明 (Type.fields 引用 Field, 避免前向引用).
 ; layout (编译器硬编码):
+;   Type    = { String name }
 ;   Field   = { String name }
 ;   Method  = { String name }
 ;   Variant = { String name }
-;   Type    = { String name, ptr fields_ref, ptr methods_ref, ptr variants_ref }
 ;   fields_ref → [N x ptr]  (每个 ptr 通过 constexpr GEP 指向 data 数组中的 Field)
+; 注：getOrCreateStructType 跳过这四种 struct（LLVM 布局硬编码）.
+;     反射元数据类型均为纯值 copy（rodata → stack），不含 T&，避免引用语义复杂性.
+;     Field 目前仅含 name；type/offset 待后续有需求时再加.
+
+#CompilerInner
+struct Type {
+  #Frozen
+  name String
+}
 
 #CompilerInner
 struct Field {
@@ -2070,12 +2078,6 @@ struct Method {
 
 #CompilerInner
 struct Variant {
-  #Frozen
-  name String
-}
-
-#CompilerInner
-struct Type {
   #Frozen
   name String
 }
