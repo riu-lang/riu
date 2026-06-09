@@ -1,6 +1,10 @@
 -- Copyright (c) 2026. Yin-Jinlong@github
 -- MPL-2.0
 
+-- 版本号
+-- 正在开发的v...-alpha
+-- 已完成v...
+
 set_project("yux-lang")
 set_version("0.15.0")
 set_languages("c++23")

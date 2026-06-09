@@ -1,7 +1,11 @@
 # 里程碑规划
 
 > 内容多、短期难完，版本号从 **v0.x** 起步推进，**v1.0** 定义为"语言核心稳定 + 规范定稿 + 基础 SDK 可用"的状态，不设硬性日期。
-> 当前条目仅为方向规划，不是承诺；具体实施进度看 `CURRENT.md`，已完成实现细节归档到对应 `*-实现.md`。
+> 当前条目仅为方向规划，不是承诺；已完成版本的实现细节归档到对应 `docs/dev/*-impl-log.md`。
+>
+> **版本号**以 `xmake.lua` 的 `set_version()` 为准，本文件镜像之。开发中版本标 `-alpha`（如 `set_version("0.17.0-alpha")`），完成后去掉。
+>
+> **本文档不引用未跟踪的本地文件**（如 `BUGS.md` / `CURRENT.md`），只描述问题或修复本身。
 >
 > 注：本文档历史条目使用旧名 `Box<T>`，等同当前的 `Rc<T>`（详见 `docs/dev/rc-rename-impl-log.md`）。
 
@@ -64,7 +68,7 @@
 - spec 全部章节 *Open Issues* 清空或显式转入 v1.x
 - 调用 ABI / 内存模型在该版本内冻结
 - `base.yux` SDK 公开方法签名稳定
-- 所有 BUGS.md 中的 *blocker* 清零
+- 所有已知 blocker 清零
 - spec-unify v1 剥离的两个独立草案（`spec-default-body` / `spec-reflect`）已落地（v0.15）或显式推 v1.x
 - 闭包捕获已落地（v0.16）—— v0.8 lambda 留口收口
 
@@ -98,14 +102,14 @@
 **范围（草稿）**：
 
 - 闭包捕获模型：move / retain / 借用 三档显式声明形态；捕获包 layout 与 RC 协议
-- lambda body sema 下钻：`SemaPass::visitExpr` 解锁 lambda 体（当前 `src/sema/sema_pass.cpp:1007-1015` 显式 skip）；自然关掉 BUGS #3 的 5 例漏报（E2030 ×2 / E4022 ×2 / E4024）
+- lambda body sema 下钻：`SemaPass::visitExpr` 解锁 lambda 体（当前 `src/sema/sema_pass.cpp:1007-1015` 显式 skip）；自然关掉 lambda 体内 5 例漏报（E2030 ×2 / E4022 ×2 / E4024）
 - 借用 / `$` 逃逸检查在 lambda 体内生效
 - Heap by-value 捕获禁止（E4024 在 lambda 体内）
 - 与 v0.10 错误模型 v1 的交互：`#Fallible` lambda 形态（若需要）
 
 **不在范围**：高阶函数库化（map/filter/fold —— SDK 扩充时再做）、`dyn fn` 运行时多态、async lambda。
 
-**退出标准**：草案 `DRAFT-closure-capture.md` 全节定型并迁入 spec；`yux-check` 漏报清零（5 例自动关闭）；BUGS.md #3 删条；`xmake test` + `yux test` 全绿；实施日志归档 `docs/dev/closure-capture-impl-log.md`。
+**退出标准**：草案 `DRAFT-closure-capture.md` 全节定型并迁入 spec；`yux-check` 漏报清零（lambda 体内 5 例自动关闭）；`xmake test` + `yux test` 全绿；实施日志归档 `docs/dev/closure-capture-impl-log.md`。
 
 ### v0.15.0 — spec 收尾 + 编译期基础设施 ✅ 已完成（2026-06-09）
 
@@ -159,7 +163,7 @@
 - ✅ const-eval / static-vars DRAFT 同步归档
 - ✅ CHANGELOG 收口
 - ✅ 附录 D 新错码登记（E3132–E3136 / E3140–E3144 / E3150–E3157 / E4030）
-- ✅ xmake test 239/240（仅新增 reflect_field_value_write 1 例，已 pass；原 3 例 BUGS #4 已修复）、yux test 537/538（1 例已知 SEH flake BUGS #1）
+- ✅ xmake test 239/240（仅新增 reflect_field_value_write 1 例，已 pass；原 spec_disambig_at emitName 顺序 3 例已修复）、yux test 537/538（1 例已知 SEH flake，JIT 跨帧 unwind 不稳定）
 - ✅ 实施日志 5 份归档完毕
 - ✅ lint 0 warnings
 
@@ -190,7 +194,7 @@
 yux-check 收尾（Bucket 4）：
 
 - E6011 泛型 arity / E1133 / E6016 / E1106 / E3131 / E4025 进 sema（`SemaPass` + `Yux*` 注入，`getStructDecl` 隐式过滤显式化）
-- 残留 5 例（全部 lambda 体相关，BUGS #3）明确推 v0.16 与闭包主题合并；覆盖率 ~96% 维持
+- 残留 5 例（全部 lambda 体相关）明确推 v0.16 与闭包主题合并；覆盖率 ~96% 维持
 
 诊断小修：
 
@@ -303,7 +307,7 @@ yux-check 收尾（Bucket 4）：
 - ✅ 借用：`Dyn<D&>` 形参 / 局部按 `data_ptr` 视作借用根登记到 `refToRoot`；`rootFromDynBorrowInit` 解根
 - ✅ spec §12.9 全章节落地（§12.9.1..§12.9.11）；§12.8 项 1 由"不在范围"改写为指针；附录 B §B.2a `Dyn` 类型形态；附录 D §D.3.8 追加 E1131..E1136
 - ✅ 草案 `DRAFT-dyn-draft.md` 头部标"已落地，见 §12.9"；实施日志归档 `docs/dev/dyn-draft-impl-log.md`
-- ✅ 测试：`sdk/yux/src/yux/core/dyn.test.yux`（11 用例，含 `Dyn<ToString>(Box<primitive>)`）；`tests/cases/dyn_*`（`array_iterate` / `pass_owned` / `field_owned` / `ctor_in_method`）；`tests/cases/diag_dyn_*`（六个错误码诊断回归）；BUGS.md 同步解决 `Box<primitive>.method()` ABI 不匹配条
+- ✅ 测试：`sdk/yux/src/yux/core/dyn.test.yux`（11 用例，含 `Dyn<ToString>(Box<primitive>)`）；`tests/cases/dyn_*`（`array_iterate` / `pass_owned` / `field_owned` / `ctor_in_method`）；`tests/cases/diag_dyn_*`（六个错误码诊断回归）；同步修复 `Box<primitive>.method()` ABI 不匹配问题
 - ✅ 同步修：`compileStructMethodCall` 末段加 `isBuiltinType(actualType.name)` 分支（直接调用路径 by-value 传 primitive receiver）；`ExprDotNode::getType` `baseType.isDyn()` 返回 `fn() <ret>`；`callFieldDestructor` 加 `isDynOwned` / `isDynBorrow` 分支
 
 **不在范围**：
@@ -316,7 +320,7 @@ yux-check 收尾（Bucket 4）：
 - LSP semantic_tokens / tmLanguage / IntelliJ 的 `Dyn` 特殊高亮（工具链不在本轮）
 - vtable 内联缓存 / devirtualization 性能优化
 
-**退出标准**：✅ `xmake test` 109/109、`yux test` 289/289 全绿；spec §12.9 + 附录 B/D + CHANGELOG + 草案归档 + 实施日志同步；BUGS.md `Box<primitive>.method()` ABI 条已清。
+**退出标准**：✅ `xmake test` 109/109、`yux test` 289/289 全绿；spec §12.9 + 附录 B/D + CHANGELOG + 草案归档 + 实施日志同步；`Box<primitive>.method()` ABI 不匹配问题已修复。
 
 ### v0.10 — 工具链：IDE 同步 + Formatter AST 重写 ✅ 已完成（2026-05-10）
 

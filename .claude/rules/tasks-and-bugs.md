@@ -30,6 +30,26 @@
 
 落不到任何前缀的用例会进 `yux/misc`，**使分组失效**。优先用前缀命名；确实没有自然前缀的（算术 / 类型 / 控制流家族），把名字加进 `categorize` 中对应的白名单表。
 
+### 测试命令速查
+
+新测试默认 `yux test`（JIT 进程内，快）。仅诊断/借用/extern 等需独立进程隔离的用例用 `xmake test`。
+
+```powershell
+# yux test（项目内，*.test.yux 的 #Test）
+yux test                          ; 当前项目所有 #Test
+yux test yux.core                 ; 前缀匹配筛选用例
+yux test -v                       ; 详细输出
+yux test --isolate=process        ; 全部子进程隔离（排查 SEH flake），非常慢 500+ x 2~3s 单线程
+cd sdk/yux && yux test            ; 主测试集
+
+# xmake test（tests/cases/ + tests/projects/）
+xmake test -g yux/diag            ; 按分组筛（diag_* / borrow_* / format_* 等）
+xmake test -g yux/borrow          ; 借用检查用例
+xmake test yux_tests/diag_undefined_var  ; 跑单个用例
+```
+
+分组名由 `tests/xmake.lua` 的 `categorize()` 按文件名前缀决定，`xmake test -g <group>` 可快速只跑某一类。
+
 ### 完成一个版本后归档实施记录
 
 `docs/dev/<topic>-impl-log.md` 只用于**标准 / 语言面变更**（spec 条款、AST 节点 / 注解形态、ABI 协议、内置类型语义等触发 `spec-writeback.md` 的工作）。纯工程交付（文件级拆分、工具链整顿、clang-tidy 警告清理之类）**不写 impl-log**，进度归到 `MILESTONE.md` 对应版本条目里即可。
