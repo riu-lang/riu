@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+不要擅自决定/改动任务方向，遇到问题停下来。
+
 ## 规则来源
 
 本项目的事实源拆为两类，开始任何任务前**都要看**，不要凭文件名或 README 推测项目约定：

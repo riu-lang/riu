@@ -32,23 +32,34 @@
 
 ### 测试命令速查
 
-新测试默认 `yux test`（JIT 进程内，快）。仅诊断/借用/extern 等需独立进程隔离的用例用 `xmake test`。
+新测试默认 `yux test`（JIT 进程内，快）。仅诊断/借用/extern 等位于 `tests/cases/` 旧体系的用例用 `xmake test`。
 
 ```powershell
 # yux test（项目内，*.test.yux 的 #Test）
 yux test                          ; 当前项目所有 #Test
-yux test yux.core                 ; 前缀匹配筛选用例
-yux test -v                       ; 详细输出
-yux test --isolate=process        ; 全部子进程隔离（排查 SEH flake），非常慢 500+ x 2~3s 单线程
+yux test yux.core                 ; 模块前缀筛选用例
+yux test -d                       ; 打印ast ir编译过程参数信息
+yux test --isolate process        ; 全部子进程隔离（排查 SEH flake）
 cd sdk/yux && yux test            ; 主测试集
 
+# IR 调试（yux test / yux build 通用）
+yux test --emit-ir                ; 输出 .ll 文件到 build/
+yux test --emit-ir --emit-ir-dir ir_out  ; 指定 .ll 输出目录
+yux test -d                       ; 打印ast ir编译过程参数信息
+yux build --emit-ir               ; 构建同时输出 .ll
+
 # xmake test（tests/cases/ + tests/projects/）
-xmake test -g yux/diag            ; 按分组筛（diag_* / borrow_* / format_* 等）
-xmake test -g yux/borrow          ; 借用检查用例
+xmake test -g yux/diag            ; 诊断回归（diag_*）
+xmake test -g yux/borrow          ; 借用检查（borrow_*）
+xmake test -g yux/extern          ; extern 边界（extern_* / ptr_*）
+xmake test -g yux/format          ; 格式化（format_*）
+xmake test -g yux/lambda          ; lambda（lambda_*）
+xmake test -g yux/const-eval      ; 常量求值（const_eval_*）
+xmake test -g yux/reflect         ; 反射（reflect_*）
 xmake test yux_tests/diag_undefined_var  ; 跑单个用例
 ```
 
-分组名由 `tests/xmake.lua` 的 `categorize()` 按文件名前缀决定，`xmake test -g <group>` 可快速只跑某一类。
+分组名由 `tests/xmake.lua` 的 `categorize()` 按文件名前缀决定，`xmake test -g <group>` 可快速只跑某一类。全部分组见 `tests/xmake.lua` 注释。
 
 ### 完成一个版本后归档实施记录
 
