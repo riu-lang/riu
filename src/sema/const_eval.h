@@ -51,7 +51,8 @@ struct ConstantValue {
         Float,  // 浮点：floatVal 持 host double, type 决定 f32 / f64
         Bool,   // bool: boolVal
         Null,   // null: 无 payload
-        Struct  // 结构体字段值: structFields（Phase 5 启用）
+        Struct, // 结构体字段值: structFields（Phase 5 启用）
+        String  // 编译期字符串：stringCodePoints 持 u32 码点向量（Phase 6 reflect 反哺）
     };
 
     Kind kind = Kind::Null;
@@ -66,6 +67,9 @@ struct ConstantValue {
 
     // Kind = Struct 时持有字段值（顺序与声明序一致）。Phase 1 留空。
     vector<ConstantValue> structFields;
+
+    // Kind = String 时持有 u32 码点（不可变 rodata 字符串内容）。
+    vector<u32> stringCodePoints;
 
     static ConstantValue makeInt(u64 bits, TypeInfo t) {
         ConstantValue v;
@@ -102,12 +106,21 @@ struct ConstantValue {
         v.structFields = std::move(fields);
         return v;
     }
+    // Phase 6: 编译期字符串（rodata 不可变码点序列）。codePoints 为 u32 码点。
+    static ConstantValue makeString(vector<u32> codePoints) {
+        ConstantValue v;
+        v.kind = Kind::String;
+        v.type = TypeInfo("String");
+        v.stringCodePoints = std::move(codePoints);
+        return v;
+    }
 
     [[nodiscard]] bool isInt()    const { return kind == Kind::Int;    }
     [[nodiscard]] bool isFloat()  const { return kind == Kind::Float;  }
     [[nodiscard]] bool isBool()   const { return kind == Kind::Bool;   }
     [[nodiscard]] bool isNull()   const { return kind == Kind::Null;   }
     [[nodiscard]] bool isStruct() const { return kind == Kind::Struct; }
+    [[nodiscard]] bool isString() const { return kind == Kind::String; }
 
     // 整数按 type 中的符号位解释为 i64（仅 isInt() 时有意义）。
     [[nodiscard]] i64 asSigned() const;

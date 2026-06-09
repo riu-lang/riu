@@ -17,7 +17,7 @@
 - `#Static #Frozen` 字段子集：`type` / `fields` / `methods` / `variants`，仅类型形访问（`Counter::type` / `Self::fields`，[#1.AB]）
 - 数据 emit 到 `.rodata`，默认 emit + `--gc-sections` DCE 兜底
 - `#Reflect` 标的类型防 DCE 误删
-- 反射数据走 **runtime 数组**：`Self::fields` 是普通 `[Field& * N]&`，可索引 / 取 len / `for` 遍历
+- 反射数据走 **runtime 数组**：`Self::fields` 是普通 `[Field * N]` 定长值数组，可索引 / 取 len / `for` 遍历
 - **`Field.value` sema 期改名**：当 `f` 是编译期可确定的具体 Field 引用（`Counter::fields[0]` / `Self::fields[N]` 下标位字面量）时，`f.value` 改写为 `<receiver>.<f.name>`；非编译期可定 → E3133
 - **不引入** `#Inline for` / IR-before unroll pass / 异构按字段递归自动 derive（[#1.AE]）
 
@@ -29,16 +29,16 @@
 struct Reflect {                          ; 编译器隐式为每个类型 #Impl(Reflect)，自动填充
   #Static
   #Frozen
-  type Type&
+  type Type                               ; 值拷贝，仅含全限定类型名
   #Static
   #Frozen
-  fields [Field& * 0]&                    ; 0 = 编译期占位，按 implementer 自动填长度
+  fields [Field * 0]                      ; 0 = 编译期占位，按 implementer 自动填长度
   #Static
   #Frozen
-  methods [Method& * 0]&
+  methods [Method * 0]                    ; 值数组，无 &
   #Static
   #Frozen
-  variants [Variant& * 0]&                ; 仅 enum；非 enum 访问 → E3135
+  variants [Variant * 0]                  ; 仅 enum；非 enum 访问 → E3135
 }
 ```
 
@@ -52,13 +52,28 @@ struct Reflect {                          ; 编译器隐式为每个类型 #Impl
 
 ## 3. `Type` / `Field` / `Method` / `Variant` 数据类型
 
-普通 struct（不是 `#Spec`），可纯 yux 写在 base.yux，除 `Field` 外：
+全部为 `#CompilerInner` struct，LLVM 布局由编译器硬编码。
 
 ```yux
+#CompilerInner
 struct Type {
-  #Frozen name String
-  #Frozen fields [Field& * 0]&
-  #Frozen methods [Method& * 0]&
+  #Frozen
+  name String                          ; 全限定类型名（如 "yux.core.Counter"）
+  ; fields / methods / variants 不作为 Type 成员，通过 T::fields / T::methods /
+  ; T::variants 独立静态路径访问（Reflect spec 上的 #Static 字段）。
+  ; 全部按值 copy（rodata → stack），不引入 T&。
+}
+
+#CompilerInner
+struct Method {
+  #Frozen
+  name String
+}
+
+#CompilerInner
+struct Variant {
+  #Frozen
+  name String
 }
 ```
 
@@ -67,12 +82,12 @@ struct Type {
 ```yux
 #CompilerInner
 struct Field {
-  #Frozen name String
-  #Frozen type Type&
-  #Frozen offset usize
+  #Frozen
+  name String
   ; value <field 实际类型>             ; phantom：sema 期改名为 <receiver>.<f.name>
   ;                                    ; 仅当 f 编译期可定时可用（`Counter::fields[0].value` 等）
   ;                                    ; 详见 §6 / [#1.W] / [#1.AE]
+  ; type / offset 暂不包含：使用时上下文已知遍历哪个 struct 的 fields，有需求时再加。
 }
 ```
 
@@ -136,7 +151,7 @@ sema 规则：
 | E3133 | `Field.value` 改名时 f 非编译期可定（[#1.W] / [#1.AE]）|
 | E3134 | `Field.value` 改名无 receiver 绑定（[#1.W] / [#1.AE]）|
 | E3135 | `Reflect::variants` 在非 enum 上访问（[#1.Y]）|
-| E3136 | 按值取 `Counter::type` 等 rodata 单例（[#1.Y]）|
+| E3136 | ~~按值取 `Counter::type` 等 rodata 单例~~ — 设计消解：反射元数据统一按值 copy（rodata→stack），`Field` 不再含 `type`/`offset`（避免 T&），E3136 无需引入（[#1.Y]）|
 
 ## 9. 不在范围
 

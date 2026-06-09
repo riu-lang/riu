@@ -209,6 +209,9 @@ void Compiler::compileGlobalConsts() {
             break;
         }
         case ConstantValue::Kind::Null:
+        case ConstantValue::Kind::String:
+            // Phase 6: String 常量仅通过 ensureReflectTypeGlobal / buildLLVMConstantFromValue 间接使用;
+            // 全局 #Cval let 暂不支持 String 类型.
             throw YuxError(globalConst->getLineNumber(), globalConst->getColumn(), ErrorCode::E3082, type.name);
         }
 
@@ -252,6 +255,18 @@ llvm::Constant* Compiler::buildLLVMConstantFromValue(const ConstantValue& v, llv
     }
     case ConstantValue::Kind::Null:
         return nullptr;
+    case ConstantValue::Kind::String: {
+        // Phase 6 reflect 反哺: String ConstantValue → immortal Block + Array<u32> + String struct.
+        // String LLVM layout: { Array<u32> data } = { { ptr handle } }
+        // handle → Block { u32 strong=0xFFFFFFFF, u32 weak=0, i64 len, i64 cap, ptr data }
+        auto* st = llvm::dyn_cast_or_null<llvm::StructType>(expectedTy);
+        if (!st || st->getNumElements() < 1) return nullptr;
+        auto* arrayTy = llvm::dyn_cast_or_null<llvm::StructType>(st->getElementType(0));
+        if (!arrayTy || arrayTy->getNumElements() < 1) return nullptr;
+        auto* block = emitStringConstBlock(v.stringCodePoints);
+        auto* arrayInit = llvm::ConstantStruct::get(arrayTy, {block});
+        return llvm::ConstantStruct::get(st, {arrayInit});
+    }
     }
     return nullptr;
 }
@@ -1034,11 +1049,10 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
 // Reflect Type 节点 lazy emit, 由 `__yux_reflect_type:<T>()` intrinsic 调用站调用.
 // 符号: __yux_reflect_<sanitized-mod>_<typename>__type, linkonce_odr rodata.
 //
-// Type layout (compiler 硬编码): { String name, ptr fields_ref, ptr methods_ref, ptr variants_ref }
-//   fields_ref → [N x ptr]  (每个 ptr 通过 constexpr GEP 指向 data 数组中的 Field)
-//   methods_ref → null (未填充)
-//   variants_ref → null (未填充)
-// Field layout: { String name }
+// Type layout (由 base.yux struct Type 定义驱动): { String name }
+// Field layout (由 base.yux struct Field 定义驱动): { String name }
+// String → immortal Block (strong=0xFFFFFFFF) → Array<u32> → ptr handle 链由
+// buildLLVMConstantFromValue 统一处理 (const-eval Phase 6 reflect 反哺).
 //
 // 仅对 Normal 用户 / SDK / wildcard-imported struct 类型 emit; 找不到 owner 或类型为
 // 泛型形参 / 内置标量 / Rc / Array 等返回 nullptr (调用站抛 E?).
@@ -1059,7 +1073,7 @@ llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t, llvm:
             }
         }
     }
-    if (!ownerFile) return nullptr; // builtin / unknown - Phase 3a 不发射
+    if (!ownerFile) return nullptr; // builtin / unknown - 不发射
 
     // 符号名: mod 里 '.' / 其它非标识符字符 → '_'
     auto sanitize = [](const std::string& s) {
@@ -1081,14 +1095,9 @@ llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t, llvm:
         return existing;
     }
 
-    // Type layout: { String name } — 仅 name 字段; fields/methods/variants ref 为独立全局.
-    // SDK 声明: struct Type { #Frozen name String } （#CompilerInner, 编译器硬编码布局）.
+    // LLVM 类型（仅取一次用于全局创建；String/Array 内链由 buildLLVMConstantFromValue 自行 resolve）
     auto* typeStructTy = llvm::dyn_cast_or_null<llvm::StructType>(getLLVMType(TypeInfo("Type")));
     if (!typeStructTy || typeStructTy->getNumElements() < 1) return nullptr;
-    auto* stringStructTy = llvm::dyn_cast<llvm::StructType>(typeStructTy->getElementType(0));
-    if (!stringStructTy || stringStructTy->getNumElements() < 1) return nullptr;
-    auto* arrayStructTy = llvm::dyn_cast<llvm::StructType>(stringStructTy->getElementType(0));
-    if (!arrayStructTy || arrayStructTy->getNumElements() < 1) return nullptr;
     auto* fieldStructTy = llvm::dyn_cast_or_null<llvm::StructType>(getLLVMType(TypeInfo("Field")));
     if (!fieldStructTy || fieldStructTy->getNumElements() < 1) return nullptr;
 
@@ -1103,35 +1112,35 @@ llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t, llvm:
         return out;
     };
 
-    // name string init (immortal Block, strong=0xFFFFFFFF)
-    auto* nameBlock = emitStringConstBlock(cpsOf(t.name));
-    auto* nameArrayInit = llvm::ConstantStruct::get(arrayStructTy, {nameBlock});
-    auto* nameStringInit = llvm::ConstantStruct::get(stringStructTy, {nameArrayInit});
+    // ==== Type global: const-eval Phase 6 —— ConstantValue 构建 + buildLLVMConstantFromValue ====
+    // Type { .name = "<t.name>" }
+    auto typeNameCV = ConstantValue::makeString(cpsOf(t.name));
+    auto typeCV = ConstantValue::makeStruct({typeNameCV}, TypeInfo("Type"));
+    auto* typeInit = buildLLVMConstantFromValue(typeCV, typeStructTy);
+    if (!typeInit) return nullptr;
 
-    // Type global: { String name }
-    auto* typeInit = llvm::ConstantStruct::get(typeStructTy, {nameStringInit});
     auto* gv = new llvm::GlobalVariable(*_module, typeStructTy, /*isConstant=*/true,
                                         llvm::GlobalValue::LinkOnceODRLinkage, typeInit, symName);
     gv->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
 
-    // fields: 收集 instance 字段 (不含 #Static), 创建 [N x ptr] ref 数组全局 (独立于 Type)
+    // ==== Fields: 收集 instance 字段 (不含 #Static) ====
     p<StructDeclNode> decl = ownerFile->getStructDecl(t.name);
     vector<llvm::Constant*> fieldConsts;
     if (decl) {
         for (auto& f : decl->fields()) {
             if (f->isStatic()) continue;
 
-            // Field layout: { String name } — 仅 name 字段.
-            auto* fNameBlock = emitStringConstBlock(cpsOf(f->name().getText()));
-            auto* fArrInit = llvm::ConstantStruct::get(arrayStructTy, {fNameBlock});
-            auto* fStrInit = llvm::ConstantStruct::get(stringStructTy, {fArrInit});
-
-            auto* fInit = llvm::ConstantStruct::get(fieldStructTy, {fStrInit});
+            // Field { .name = "<f.name>" }
+            auto fNameCV = ConstantValue::makeString(cpsOf(f->name().getText()));
+            auto fCV = ConstantValue::makeStruct({fNameCV}, TypeInfo("Field"));
+            auto* fInit = buildLLVMConstantFromValue(fCV, fieldStructTy);
+            if (!fInit) continue;
             fieldConsts.push_back(fInit);
         }
     }
     size_t N = fieldConsts.size();
 
+    // ==== Fields refs 数组（GEP 指针 —— 不可简化为 yux 类型表达，保留手搓 LLVM）====
     llvm::GlobalVariable* fieldsRefGV = nullptr;
     if (N > 0) {
         // [N x Field] data 数组
