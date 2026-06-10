@@ -7,6 +7,7 @@
 #include "error_code.h"
 
 #include "Lexer.h"
+#include "TokenStream.h"
 
 #include <unordered_set>
 #include <utility>
@@ -85,8 +86,31 @@ void SyntaxErrorListener::syntaxError(antlr4::Recognizer* recognizer,
                            && msg.find("ID") != std::string::npos;
         if (keywordAsId) {
             d.hints.push_back("`" + offText + "` 是 yux 关键字，不能用作标识符；换一个名字（如 `" + offText + "_`）");
+        } else if (offText == "ret" || msg.find("'ret") != std::string::npos) {
+            d.hints.emplace_back("空返回 `ret;` 必须带 `;`（void 返回）；如需返回值，使用 `ret 表达式`");
+        } else if (offText == "break" || msg.find("'break") != std::string::npos) {
+            d.hints.emplace_back("`break;` 必须带 `;`");
         } else if (msg.find("';'") != std::string::npos || msg.find("missing ';'") != std::string::npos) {
-            d.hints.emplace_back("语句末尾需要 `;`；表达式带 `;` 表示舍弃返回值，不带 `;` 才会作为返回值（参见 docs/基础语法.md）");
+            // 尝试从 token 流回溯前一个非隐藏 token，判断是否为 ret / break
+            std::string prevText;
+            auto* ts = dynamic_cast<antlr4::TokenStream*>(recognizer->getInputStream());
+            if (ts && offending) {
+                auto idx = offending->getTokenIndex();
+                for (int i = 1; i <= 5 && idx >= i; ++i) {
+                    auto* tok = ts->get(idx - i);
+                    if (tok && tok->getChannel() == antlr4::Token::DEFAULT_CHANNEL) {
+                        prevText = tok->getText();
+                        break;
+                    }
+                }
+            }
+            if (prevText == "ret") {
+                d.hints.emplace_back("空返回 `ret;` 必须带 `;`（void 返回）；如需返回值，使用 `ret 表达式`");
+            } else if (prevText == "break") {
+                d.hints.emplace_back("`break;` 必须带 `;`");
+            } else {
+                d.hints.emplace_back("语句末尾需要 `;`；表达式带 `;` 表示舍弃返回值，不带 `;` 才会作为返回值（参见 docs/基础语法.md）");
+            }
         } else if (msg.find("extraneous input") != std::string::npos
                    || msg.find("mismatched input") != std::string::npos
                    || msg.find("no viable alternative") != std::string::npos) {
