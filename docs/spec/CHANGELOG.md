@@ -17,6 +17,15 @@
 
 ---
 
+## 2026-06-10 —— 闭包捕获 sema 解锁 + yux-check 漏报清零（c90064d）
+
+- **修改 §4.11.6**：新增 §4.11.6.5 `Heap<T>` 非空形态闭包捕获条款；顶部加注引用 `DRAFT-closure-capture.md`。
+- **修改 §8.7.6**：顶部加注引用 `DRAFT-closure-capture.md`（三档捕获模式、捕获包 layout、RC 协议均已定型）。
+- **新增草案**：`DRAFT-closure-capture.md` 从 `DRAFT-lambda.md` §5–§6 提炼为独立规范，定型 move / retain / borrow 三档模式、捕获包 layout、`Heap<T>` B 档 move 捕获、静态检查规则。状态：已落地（v0.16）。
+- **sema 解锁**：`SemaPass::visitExpr` 移除 lambda body skip，yux-check 覆盖 lambda 体内 E2030（捕获写禁）×2、E4022（T& 捕获逃逸）×2、E4024（Heap 非空捕获）×1，共关闭 5 例漏报。
+- **借用检查**：`BorrowChecker::visitLambda` 递归进入 lambda body，lambda T& 形参注册为借用根，ret T& 溯源（E4020/E4021）在 lambda 体内生效。
+- **冲突 / 兼容**：无破坏性变更。sema 接管后 Compiler 端原 throw 保留作幂等防御性双跑（加 `// sema shadow` 注释）。yux-check 覆盖率从 ~96% 提升至与 yux build 等价（lambda 体路径）。
+
 ## 2026-06-10 —— `[]` ⇔ `get` 语法糖语义同步（arr[i] 返回 T&）
 
 - **修改 §4.7.1.2**：`&arr[i]` 不合法理由从"`[]` 结果是右值"更新为"`[]` 返回 `T&`，`&T&` 形成 `T&&` 被 §2.6.1 拒绝"。

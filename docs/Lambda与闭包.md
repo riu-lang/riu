@@ -2,7 +2,7 @@
 
 本文档介绍 yux 中的函数类型字面量、lambda 字面量与闭包。
 
-> 规范层条款见 `docs/spec/03-类型系统.md` §3.11、`docs/spec/04-表达式.md` §4.11、`docs/spec/06-函数.md` §6.5.5、`docs/spec/08-所有权与引用.md` §8.7.6。
+> 规范层条款见 `docs/spec/03-类型系统.md` §3.11、`docs/spec/04-表达式.md` §4.11、`docs/spec/06-函数.md` §6.5.5、`docs/spec/08-所有权与引用.md` §8.7.6。闭包捕获模型的完整决议见 `docs/spec/draft/DRAFT-closure-capture.md`（v0.16 已落地）。
 
 ## 概览
 
@@ -167,6 +167,8 @@ lambda 体引用了**非形参 / 非全局**的标识符，编译器自动收集
 | `Rc<T>` / `Weak<T>` / `Array<T>` / `String` | **句柄复制 + retain**（共享底层对象） |
 | `T&`（借用） | **借用透传** |
 | `$`（方法体内） | 视作隐式 `Self&` 形参，按 `T&` 处理 |
+| `Heap<T>?`（可空堆） | **B 档 move**：outer slot 写 null，env 独占所有权 |
+| `Heap<T>`（非空堆） | **禁止捕获** → E4024（非空不可 move） |
 
 ```yux
 fn make_adder(n i32) fn(i32)i32 {
@@ -258,6 +260,21 @@ fn outer(c i32&) {
 
 与 spec §8.6.10 fn 返回 `T&` 溯源规则同构。
 
+### Heap 捕获
+
+`Heap<T>?`（可空堆）捕获时走 **B 档 move**：outer slot 写 null，env 独占所有权，lambda 析构时释放。
+
+```yux
+fn make_handler(h Heap<Data>?) fn() {
+  ret () => {
+    ; h 被捕获，outer slot 变 null
+    ; lambda 析构时释放 env 中的 Heap 句柄
+  }
+}
+```
+
+非空 `Heap<T>` **禁止**捕获（E4024）——非空形态不可 move，lambda 创建即"取走 outer 所有权"违反约束。改用 `Heap<T>?` 声明。
+
 ## FFI 边界
 
 v1 显式不支持函数类型跨 FFI 边界：
@@ -283,3 +300,4 @@ extern {
 - [docs/spec/03-类型系统.md §3.11](spec/03-类型系统.md)：函数类型字面量规范。
 - [docs/spec/04-表达式.md §4.11](spec/04-表达式.md)：lambda 字面量规范。
 - [docs/spec/08-所有权与引用.md §8.7.6](spec/08-所有权与引用.md)：闭包捕获与所有权规则。
+- [docs/spec/draft/DRAFT-closure-capture.md](spec/draft/DRAFT-closure-capture.md)：闭包捕获完整决议草案（三档模式、layout、RC 协议、静态检查）。
