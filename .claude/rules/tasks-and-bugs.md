@@ -32,7 +32,7 @@
 
 ### 测试命令速查
 
-新测试默认 `yux test`（JIT 进程内，快）。仅诊断/借用/extern 等位于 `tests/cases/` 旧体系的用例用 `xmake test`。
+新测试默认 `yux test`（JIT 进程内，快）。诊断用 `yux-check test`，借用/extern 等用 `xmake test`。
 
 ```powershell
 # yux test（项目内，*.test.yux 的 #Test）
@@ -48,15 +48,19 @@ yux test --emit-ir --emit-ir-dir ir_out  ; 指定 .ll 输出目录
 yux test -d                       ; 打印ast ir编译过程参数信息
 yux build --emit-ir               ; 构建同时输出 .ll
 
+# yux-check test（诊断回归，; check: EXXXX 注解）
+yux-check test tests/check-cases/   ; 批量诊断测试
+yux-check test tests/check-cases/ -r ; 递归子目录
+yux-check <file>                    ; 单文件诊断（输出 file:line:col [EXXXX]）
+
 # xmake test（tests/cases/ + tests/projects/）
-xmake test -g yux/diag            ; 诊断回归（diag_*）
 xmake test -g yux/borrow          ; 借用检查（borrow_*）
 xmake test -g yux/extern          ; extern 边界（extern_* / ptr_*）
 xmake test -g yux/format          ; 格式化（format_*）
 xmake test -g yux/lambda          ; lambda（lambda_*）
 xmake test -g yux/const-eval      ; 常量求值（const_eval_*）
 xmake test -g yux/reflect         ; 反射（reflect_*）
-xmake test yux_tests/diag_undefined_var  ; 跑单个用例
+xmake test yux_tests/<name>       ; 跑单个用例
 ```
 
 分组名由 `tests/xmake.lua` 的 `categorize()` 按文件名前缀决定，`xmake test -g <group>` 可快速只跑某一类。全部分组见 `tests/xmake.lua` 注释。

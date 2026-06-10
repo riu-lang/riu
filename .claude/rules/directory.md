@@ -22,7 +22,8 @@ yux-lang/
 │   └── dev/          已完成版本的实施日志归档（如 ownership-impl-log.md），内容为重大 / 重要变更实现，其它在 git 提交记录
 ├── examples/test/    示例项目，用作快速冒烟测试
 ├── tests/
-│   ├── cases/        单文件用例 + .expected（仅成功用例）
+│   ├── cases/        单文件用例（borrow_* / format_* / lambda_* 等）
+│   ├── check-cases/  诊断用例（diag_*.yux，; check: EXXXX 注解，由 yux-check test 运行）
 │   ├── projects/     项目模式用例（每目录一个 yux.toml + expected.txt）
 │   └── xmake.lua     测试运行器（yux_tests target）
 ├── third_party/      依赖：antlr4, cli11, llvm, toml11, utfcpp, zlib（由 sync-deps 拉取）

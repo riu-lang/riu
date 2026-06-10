@@ -29,20 +29,30 @@ yux build --emit-ir          ; 同时输出 .ll
 
 ## 测试
 
-**新测试默认 `yux test`**（JIT 进程内，快）。仅诊断/借用/extern 用 `xmake test`。
+**新测试默认 `yux test`**（JIT 进程内，快）。诊断用 `yux-check test`，借用/extern 用 `xmake test`。
 
 ```powershell
-yux test                     ; 项目下所有 *.test.yux 的 #Test
+# yux test（项目内，*.test.yux 的 #Test）
+yux test                     ; 当前项目所有 #Test
 yux test yux.core            ; 前缀匹配
 yux test -v                  ; 详细输出
 cd sdk/yux && yux test       ; 主测试集
 
-xmake test -g yux/diag       ; 诊断回归（.expected_err）
-xmake test yux_tests/diag_undefined_var
+# yux-check test（诊断回归，; check: EXXXX 注解）
+yux-check test tests/check-cases/   ; 批量测试
+yux-check test tests/check-cases/ -r ; 递归子目录
+
+# xmake test（借用/extern/format/lambda 等，tests/cases/ + tests/projects/）
+xmake test -g yux/borrow      ; 借用检查（borrow_*）
+xmake test -g yux/extern      ; extern 边界（extern_* / ptr_*）
+xmake test -g yux/format      ; 格式化（format_*）
+xmake test -g yux/lambda      ; lambda（lambda_*）
+xmake test yux_tests/<name>   ; 跑单个用例
 ```
 
 - `yux test`：测试写在 `*.test.yux`（**不能**挂在普通 `.yux`），断言 `assert_eq`/`assert_true`/`fail`
-- `xmake test`：用例在 `tests/cases/`（`diag_*` + `.expected_err`、`borrow_*`）和 `tests/projects/`（`expected.txt`）
+- `yux-check test`：诊断用例在 `tests/check-cases/`，行尾 `; check: EXXXX` 注解，错误码 + 行号精确匹配
+- `xmake test`：用例在 `tests/cases/`（`borrow_*`、`format_*`、`lambda_*` 等）和 `tests/projects/`（`expected.txt`）；diag 用例已迁出
 - 新增用例**必须用对前缀**，否则落入 `yux/misc`
 
 ## 写 yux（易错）
