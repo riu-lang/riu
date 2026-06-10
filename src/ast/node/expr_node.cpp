@@ -223,6 +223,14 @@ TypeInfo ExprCallNode::getType() const {
         }
     }
 
+    // v0.16: [] 返回 T&——callee 为 Ref<fn(...)R> 时自动解引用，取 fn 返回类型
+    if (type.isRef()) {
+        if (auto inner = type.refElementType(); inner && inner->isFn()) {
+            if (auto rt = inner->fnReturnType()) return *rt;
+            return {};
+        }
+    }
+
     DEBUG_LOG_VAL("ExprCallNode::getType - type.name", type.name);
     DEBUG_LOG_VAL("ExprCallNode::getType - starts_with('fn() ')", type.name.starts_with("fn() "));
     DEBUG_LOG_VAL("ExprCallNode::getType - calleeExpr type", typeid(*_calleeExpr).name());
@@ -1031,8 +1039,9 @@ TypeInfo ExprDotNode::getType() const {
 
     // Dyn<D> / Dyn<D&> 的 `.m`：用 draft 签名表回填返回类型，包装成 `fn() <ret>`
     // 让 ExprCallNode 在静态阶段算出确切类型（与 §12.4 draft 边界查找走同形分支）
-    if (baseType.isDyn()) {
-        auto rt = lookupDynMethodRetType(parent(), baseType, member);
+    // v0.16: [] 返回 T&——baseType 可能是 Dyn<Shape>&，用剥 Ref 后的 actualType 做 Dyn 判断
+    if (actualType.isDyn()) {
+        auto rt = lookupDynMethodRetType(parent(), actualType, member);
         if (!rt.empty()) {
             return TypeInfo("fn() " + rt.getFullName());
         }
@@ -1321,12 +1330,19 @@ TypeInfo ExprGetNode::getType() const {
         if (inner) arrayType = *inner;
     }
 
+    // v0.16: [] 语法糖同步——arr[i] 返回 T&，与 arr.get(i) 一致。
+    // Array<T> 不可含 T&（§3.2.3.2），无需防双重包装；[T * N] 仅 reflect [Field& * N] 的 elem 已是 Ref，保留不包。
+    auto wrapRef = [](const TypeInfo& elem) -> TypeInfo {
+        if (elem.isRef()) return elem;  // [T& * N] 的 elem 已是 T&，不双重包
+        return {"Ref", {std::make_shared<TypeInfo>(elem)}};
+    };
+
     if (arrayType.isArrayGeneric()) {
         auto elemType = arrayType.arrayGenericElementType();
         if (!elemType) {
             throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3057);
         }
-        return *elemType;
+        return wrapRef(*elemType);
     }
 
     if (!arrayType.isArray()) {
@@ -1337,7 +1353,7 @@ TypeInfo ExprGetNode::getType() const {
         throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3057);
     }
 
-    return *arrayType.elementType;
+    return wrapRef(*arrayType.elementType);
 }
 
 int ExprGetNode::resolveLineNumber() const {

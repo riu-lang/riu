@@ -1723,7 +1723,7 @@ struct String {
       if i >= buf.len() {
         break;
       }
-      copy.push(buf[i])
+      copy.push(copy_of:<u32>(buf[i]))
       i += 1
     }
     ret Self {
@@ -1747,7 +1747,7 @@ struct String {
 
   ; 取码点
   fn get(i i64) u32 {
-    $.data[i]
+    copy_of:<u32>($.data[i])
   }
 
   ; 等值比较：长度相同且每个码点相同
@@ -1836,7 +1836,7 @@ struct String {
       if i >= $.data.len() {
         break;
       }
-      let cp u32 = $.data[i]
+      let cp u32 = copy_of:<u32>($.data[i])
       if cp < 128u32 {
         r.push(cp.to_u8());
       } elif cp < 2048u32 {
@@ -1964,7 +1964,7 @@ fn print(s String&) {
     if i >= bytes.len() {
       break;
     }
-    let b [u8 * 1] = [bytes[i]]
+    let b [u8 * 1] = [copy_of:<u8>(bytes[i])]
     _stdout_write(&b, 0i64, 1i64)
     i += 1
   }
@@ -1993,7 +1993,7 @@ fn eprint(s String&) {
     if i >= bytes.len() {
       break;
     }
-    let b [u8 * 1] = [bytes[i]]
+    let b [u8 * 1] = [copy_of:<u8>(bytes[i])]
     _stderr_write(&b, 0i64, 1i64)
     i += 1
   }

@@ -236,6 +236,20 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
         }
     }
 
+    // v0.16: T& match（如 match arr[i]）——自动 Load 引用以检查 enum discriminant。
+    // arr[i] 返回 T&（指针），match 需要读枚举值来判断变体。
+    bool refDeref = false;
+    if (scrutType.isRef()) {
+        auto inner = scrutType.refElementType();
+        if (inner) {
+            p<FileNode> tmpOwner = nullptr;
+            if (lookupEnumDecl(inner->name, tmpOwner)) {
+                refDeref = true;
+                scrutType = *inner;
+            }
+        }
+    }
+
     // 1. 必须是 enum
     p<FileNode> enumOwner = nullptr;
     auto enumDecl = lookupEnumDecl(scrutType.name, enumOwner);
@@ -308,13 +322,17 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
             _builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "match.rc.payload");
         auto enumVal = _builder.CreateLoad(enumLLVMType, payload, "match.rc.enum");
         _builder.CreateStore(enumVal, scrutAlloca);
+    } else if (refDeref) {
+        // v0.16: scrutVal 是 T& 指针（如 arr[i] 返回），Load 出枚举值再存入 alloca
+        auto enumVal = _builder.CreateLoad(enumLLVMType, scrutVal, "match.ref.enum");
+        _builder.CreateStore(enumVal, scrutAlloca);
     } else {
         _builder.CreateStore(scrutVal, scrutAlloca);
     }
 
     // 仅当 scrutinee 是 fresh（构造 / 函数返回 / 含 RC 的 enum 临时）我们才需要在 match 末 dtor
-    // Rc deref 路径走借用语义，不接管 Rc 所有权，故不计 drop
-    bool ownsScrut = !rcDeref && isFreshHandleExpr(scrutinee);
+    // Rc deref / Ref deref 路径走借用语义，不接管所有权，故不计 drop
+    bool ownsScrut = !rcDeref && !refDeref && isFreshHandleExpr(scrutinee);
     if (ownsScrut) {
         consumeTemp(scrutVal);
     }

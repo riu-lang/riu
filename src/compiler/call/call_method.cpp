@@ -44,6 +44,13 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
     // 边界 (E1106) 已在调用点 compileGenericFunctionCall 校验过。
     baseType = applySubst(baseType);
 
+    // v0.16: [] 返回 T&——方法分派前剥 & 以便方法查找（效果等同二元运算的 effType）
+    // Dyn<D&> 在剥 & 前先走 isDyn 分支；此处不干扰。
+    if (baseType.isRef()) {
+        auto inner = baseType.refElementType();
+        if (inner) baseType = *inner;
+    }
+
     // Dyn<D> / Dyn<D&> 方法调用 (Phase 2d 静态检查 + Phase 3d vtable codegen)
     if (baseType.isDyn()) {
         return compileDynMethodCall(callNode, baseExpr, baseType, member, args, argTypes);
@@ -320,7 +327,15 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
         if (isBuiltinType(dstType)) {
             DEBUG_LOG_VAL("    Expr: CastCall (to_)", dstType);
             auto baseVal = compileExpr(baseExpr);
+            // v0.16: [] 返回 T&——若 baseExpr 是 Ref，Load 出值后用内层类型做 cast
             auto srcType = baseExpr->getType();
+            if (srcType.isRef() && baseVal->getType()->isPointerTy()) {
+                auto inner = srcType.refElementType();
+                if (inner) {
+                    baseVal = _builder.CreateLoad(getLLVMType(*inner), baseVal, "cast.load");
+                    srcType = *inner;
+                }
+            }
             return createCast(baseVal, srcType, TypeInfo(dstType));
         }
     }
@@ -801,6 +816,14 @@ llvm::Value* Compiler::compileDynMethodCall(p<ExprCallNode> callNode, p<ExprNode
     }
     if (!fatAlloca) {
         auto baseVal = compileExpr(baseExpr);
+        // v0.16: [] 返回 T&（指针）；若 base 是引用，先 load 出 struct 值再存到 alloca
+        auto baseExprType = baseExpr->getType();
+        if (baseExprType.isRef()) {
+            auto inner = baseExprType.refElementType();
+            if (inner) {
+                baseVal = _builder.CreateLoad(fatStructTy, baseVal, "dyn.ref.load");
+            }
+        }
         fatAlloca = _builder.CreateAlloca(fatStructTy, nullptr, "dyn.tmp");
         _builder.CreateStore(baseVal, fatAlloca);
     }

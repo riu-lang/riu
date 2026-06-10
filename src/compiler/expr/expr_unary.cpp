@@ -4,9 +4,8 @@
 // 一元 / 取引用 / 括号表达式编译：从 compiler_expr.cpp 拆出 (P1 Phase 4)。
 // 方法体一字不动。
 
-#include "../compiler_runtime.h"
 #include "../compiler.h"
-#include <algorithm>
+#include "../compiler_runtime.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
 #include "analyzer/symbol_suggest.h"
@@ -15,63 +14,73 @@
 #include "ast/node/expr_node.h"
 #include "ast/node/literal_node.h"
 #include "ast/yux.h"
+#include "sema/call_resolve.h"
+#include <algorithm>
 #include <cassert>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
-#include "sema/call_resolve.h"
 #include <set>
-
 
 // 编译自定义类型的一元运算符方法调用
 // 将运算符表达式转换为方法调用，如 -a -> a.neg()
-llvm::Value* Compiler::compileCustomTypeUnaryOp(
-    p<ExprNode> expr, const TypeInfo& type, const string& methodName, int lineNum) {
-    
-    DEBUG_LOG_VAL("    Expr: CustomTypeUnaryOp", type.name << "." << methodName);
-    
+llvm::Value* Compiler::compileCustomTypeUnaryOp(p<ExprNode> expr, const TypeInfo& type, const string& methodName,
+                                                int lineNum) {
+
+    // v0.16: [] 返回 T&——剥 Ref 用于方法名查找
+    auto effType = type.isRef() ? *type.refElementType() : type;
+
+    DEBUG_LOG_VAL("    Expr: CustomTypeUnaryOp", effType.name << "." << methodName);
+
     // 获取操作数的指针
     llvm::Value* ptr = nullptr;
-    if (auto literal = dynamic_cast<ExprLiteralNode*>(expr)) {
-        if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literal->literal())) {
-            auto varName = objLiteral->getValue().getText();
-            auto it = _localVarPtrs.find(varName);
-            if (it != _localVarPtrs.end()) {
-                ptr = it->second;
+    if (type.isRef()) {
+        // v0.16: [] 返回 T&——compileExpr 已返回指针，直接用作 self ptr
+        ptr = compileExpr(expr);
+    } else {
+        if (auto literal = dynamic_cast<ExprLiteralNode*>(expr)) {
+            if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literal->literal())) {
+                auto varName = objLiteral->getValue().getText();
+                auto it = _localVarPtrs.find(varName);
+                if (it != _localVarPtrs.end()) {
+                    ptr = it->second;
+                }
             }
         }
+
+        if (!ptr) {
+            auto val = compileExpr(expr);
+            auto structType = getLLVMType(effType);
+            auto alloca = _builder.CreateAlloca(structType, nullptr, "op_tmp");
+            _builder.CreateStore(val, alloca);
+            ptr = alloca;
+        }
     }
-    
-    if (!ptr) {
-        auto val = compileExpr(expr);
-        auto structType = getLLVMType(type);
-        auto alloca = _builder.CreateAlloca(structType, nullptr, "op_tmp");
-        _builder.CreateStore(val, alloca);
-        ptr = alloca;
-    }
-    
+
     // 查找方法
-    string methodFullName = type.name + "." + methodName;
+    string methodFullName = effType.name + "." + methodName;
     vector<TypeInfo> methodParamTypes;
-    methodParamTypes.push_back(type);
-    
+    methodParamTypes.push_back(effType);
+
     auto methodSymbol = _file->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
     if (!methodSymbol && _yux && _yux->sdkFile()) {
         methodSymbol = _yux->sdkFile()->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
     }
-    
+
     if (!methodSymbol) {
-        throw YuxError(lineNum, ErrorCode::E3074,
-                       type.name, methodName == "neg" ? "-" :
-                       methodName == "inv" ? "~" :
-                       methodName == "not" ? "!" : methodName, methodName);
+        throw YuxError(lineNum, ErrorCode::E3074, effType.name,
+                       methodName == "neg"   ? "-"
+                       : methodName == "inv" ? "~"
+                       : methodName == "not" ? "!"
+                                             : methodName,
+                       methodName);
     }
-    
+
     // 获取或创建方法函数
     string ownerMod = methodSymbol->moduleName.empty() ? _file->moduleName() : methodSymbol->moduleName;
     bool methPriv = !methodName.empty() && methodName[0] == '_';
     vector<TypeInfo> argTypes;
-    string mangledName = Mangler::method(ownerMod, type.name, methodName, argTypes, methPriv);
-    
+    string mangledName = Mangler::method(ownerMod, effType.name, methodName, argTypes, methPriv);
+
     auto fn = _module->getFunction(mangledName);
     if (!fn) {
         vector<llvm::Type*> paramTypes;
@@ -80,17 +89,15 @@ llvm::Value* Compiler::compileCustomTypeUnaryOp(
         auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
         fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
     }
-    
+
     return _builder.CreateCall(fn, {ptr});
 }
-
 
 llvm::Value* Compiler::compileParenExpr(p<ExprParenNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     DEBUG_LOG("    Expr: Paren");
     return compileExpr(node->expr());
 }
-
 
 llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
@@ -101,15 +108,15 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
 
     auto it = _localVarPtrs.find(objName);
     if (it == _localVarPtrs.end()) {
-        SymbolSuggest::throwSymbolNotFound(_currentFnNode,
-            node->getLineNumber(), node->getColumn(), ErrorCode::E3031, objName);
+        SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(), ErrorCode::E3031,
+                                           objName);
     }
 
     llvm::Value* currentPtr = it->second;
     auto sym = _currentFnNode->lookupSymbol(objName);
     if (!sym) {
-        SymbolSuggest::throwSymbolNotFound(_currentFnNode,
-            node->getLineNumber(), node->getColumn(), ErrorCode::E3030, objName);
+        SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(), ErrorCode::E3030,
+                                           objName);
     }
 
     TypeInfo currentType = sym->type;
@@ -151,8 +158,7 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
         // Phase 3.4.d.2: E3042 私有字段可见性 整体抠到 sema::validatePrivateFieldAccess.
         // SemaPass.visitExpr ExprGetRefNode 分支调用 validateGetRefPrivacy 已沿同链路抢先抛;
         // 这里保留作幂等防御性双跑.
-        sema::validatePrivateFieldAccess(structDecl, memberName, currentType.name,
-                                         _currentStructName,
+        sema::validatePrivateFieldAccess(structDecl, memberName, currentType.name, _currentStructName,
                                          node->getLineNumber(), node->getColumn());
 
         auto field = structDecl->fields()[fieldIndex];
@@ -163,8 +169,8 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
 
         currentPtr = _builder.CreateGEP(structType, currentPtr, indices, "struct.field.ptr");
         TypeInfo fieldType = field->getType();
-        if (currentType.isGeneric() && structDecl->isGeneric()
-            && currentType.genericArgs.size() == structDecl->typeParams().size()) {
+        if (currentType.isGeneric() && structDecl->isGeneric() &&
+            currentType.genericArgs.size() == structDecl->typeParams().size()) {
             map<string, TypeInfo> subst;
             for (size_t i = 0; i < structDecl->typeParams().size(); ++i) {
                 subst[structDecl->typeParams()[i]] =
@@ -182,6 +188,8 @@ llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto type = node->getType();
     auto rightType = node->right()->getType();
+    // v0.16: [] 返回 T&——标量操作符自动剥 Ref
+    auto effRightType = rightType.isRef() ? *rightType.refElementType() : rightType;
 
     string opStr;
     switch (node->op()) {
@@ -197,13 +205,19 @@ llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
     }
     DEBUG_LOG_VAL("    Expr: Unary", opStr << " : " << type.name);
 
-    // 检查是否为自定义类型
-    if (!isBuiltinType(rightType.name)) {
+    // 检查是否为自定义类型（用剥 Ref 后的标量名）
+    if (!isBuiltinType(effRightType.name)) {
         string methodName;
         switch (node->op()) {
-        case ExprUnaryNode::Op::Neg: methodName = "neg"; break;
-        case ExprUnaryNode::Op::Rev: methodName = "inv"; break;
-        case ExprUnaryNode::Op::Not: methodName = "not"; break;
+        case ExprUnaryNode::Op::Neg:
+            methodName = "neg";
+            break;
+        case ExprUnaryNode::Op::Rev:
+            methodName = "inv";
+            break;
+        case ExprUnaryNode::Op::Not:
+            methodName = "not";
+            break;
         }
         return compileCustomTypeUnaryOp(node->right(), rightType, methodName, node->getLineNumber());
     }
@@ -212,6 +226,11 @@ llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
     auto right = compileExpr(node->right());
     bool isFloat = type.startsWith('f');
     bool isBool = type.name == "bool";
+
+    // v0.16: 操作数若是 T& 则 load 出值
+    if (rightType.isRef()) {
+        right = _builder.CreateLoad(getLLVMType(effRightType), right, "unary_op");
+    }
 
     switch (node->op()) {
     case ExprUnaryNode::Op::Neg:

@@ -43,14 +43,19 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(p<ExprNode> leftExpr, p<ExprNod
     }
 
     if (!leftPtr) {
-        auto leftVal = compileExpr(leftExpr);
-        auto structType = getLLVMType(leftType);
-        if (!structType) {
-            throw YuxError(lineNum, ErrorCode::E3096, leftType.name);
+        // v0.16: [] 返回 T&——leftVal 已是指针，直接用作 leftPtr，不再包一层 alloca
+        if (leftType.isRef()) {
+            leftPtr = compileExpr(leftExpr);
+        } else {
+            auto leftVal = compileExpr(leftExpr);
+            auto structType = getLLVMType(leftType);
+            if (!structType) {
+                throw YuxError(lineNum, ErrorCode::E3096, leftType.name);
+            }
+            auto alloca = _builder.CreateAlloca(structType, nullptr, "op_lhs_tmp");
+            _builder.CreateStore(leftVal, alloca);
+            leftPtr = alloca;
         }
-        auto alloca = _builder.CreateAlloca(structType, nullptr, "op_lhs_tmp");
-        _builder.CreateStore(leftVal, alloca);
-        leftPtr = alloca;
     }
 
     auto rightType = rightExpr->getType();
@@ -208,6 +213,8 @@ llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
     // v0.6 Phase 2b: 透明别名解析，使 `A = i32` 后 `A + A` 仍走内置算子路径
     auto type = applySubst(node->getType());
     auto leftType = applySubst(node->left()->getType());
+    // v0.16: [] 返回 T&——标量操作符自动剥 Ref，使内置类型检查落在标量名上
+    auto effLeftType = leftType.isRef() ? *leftType.refElementType() : leftType;
 
     string opStr = (node->op() == ExprAddSubNode::Op::Add) ? "+" : "-";
     DEBUG_LOG_VAL("    Expr: AddSub", opStr << " : " << type.name);
@@ -218,8 +225,8 @@ llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
         return compileStringPlusChain(node);
     }
 
-    // 检查是否为自定义类型
-    if (!isBuiltinType(leftType.name)) {
+    // 检查是否为自定义类型（用剥 Ref 后的标量名）
+    if (!isBuiltinType(effLeftType.name)) {
         string methodName = (node->op() == ExprAddSubNode::Op::Add) ? "plus" : "minus";
         return compileCustomTypeBinaryOp(node->left(), node->right(), leftType, methodName, node->getLineNumber());
     }
@@ -227,7 +234,16 @@ llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
     // 内置类型：直接生成 LLVM IR
     auto left = compileExpr(node->left());
     auto right = compileExpr(node->right());
-    bool isFloat = type.startsWith('f');
+    bool isFloat = effLeftType.startsWith('f');
+
+    // v0.16: 操作数若是 T&（如 arr[i]）则 load 出值
+    if (leftType.isRef()) {
+        left = _builder.CreateLoad(getLLVMType(effLeftType), left, "add_lhs");
+    }
+    auto rightType = applySubst(node->right()->getType());
+    if (rightType.isRef()) {
+        right = _builder.CreateLoad(getLLVMType(effLeftType), right, "add_rhs");
+    }
 
     if (node->op() == ExprAddSubNode::Op::Add) {
         if (isFloat) {
@@ -246,6 +262,8 @@ llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto type = applySubst(node->getType());
     auto leftType = applySubst(node->left()->getType());
+    // v0.16: [] 返回 T&——标量操作符自动剥 Ref
+    auto effLeftType = leftType.isRef() ? *leftType.refElementType() : leftType;
 
     string opStr;
     switch (node->op()) {
@@ -261,8 +279,8 @@ llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
     }
     DEBUG_LOG_VAL("    Expr: MulDivMod", opStr << " : " << type.name);
 
-    // 检查是否为自定义类型
-    if (!isBuiltinType(leftType.name)) {
+    // 检查是否为自定义类型（用剥 Ref 后的标量名）
+    if (!isBuiltinType(effLeftType.name)) {
         string methodName;
         switch (node->op()) {
         case ExprMulDivModNode::Op::Mul:
@@ -281,8 +299,17 @@ llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
     // 内置类型：直接生成 LLVM IR
     auto left = compileExpr(node->left());
     auto right = compileExpr(node->right());
-    bool isFloat = type.startsWith('f');
-    bool isUnsigned = type.startsWith('u');
+    bool isFloat = effLeftType.startsWith('f');
+    bool isUnsigned = effLeftType.startsWith('u');
+
+    // v0.16: 操作数若是 T& 则 load 出值
+    if (leftType.isRef()) {
+        left = _builder.CreateLoad(getLLVMType(effLeftType), left, "mul_lhs");
+    }
+    auto rightType = applySubst(node->right()->getType());
+    if (rightType.isRef()) {
+        right = _builder.CreateLoad(getLLVMType(effLeftType), right, "mul_rhs");
+    }
 
     switch (node->op()) {
     case ExprMulDivModNode::Op::Mul:
@@ -314,6 +341,8 @@ llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto type = applySubst(node->getType());
     auto leftType = applySubst(node->left()->getType());
+    // v0.16: [] 返回 T&——标量操作符自动剥 Ref
+    auto effLeftType = leftType.isRef() ? *leftType.refElementType() : leftType;
 
     string opStr;
     switch (node->op()) {
@@ -335,8 +364,8 @@ llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
     }
     DEBUG_LOG_VAL("    Expr: BinOp", opStr << " : " << type.name);
 
-    // 检查是否为自定义类型
-    if (!isBuiltinType(leftType.name)) {
+    // 检查是否为自定义类型（用剥 Ref 后的标量名）
+    if (!isBuiltinType(effLeftType.name)) {
         string methodName;
         switch (node->op()) {
         case ExprBinOpNode::Op::And:
@@ -362,6 +391,15 @@ llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
     auto left = compileExpr(node->left());
     auto right = compileExpr(node->right());
 
+    // v0.16: 操作数若是 T& 则 load 出值
+    if (leftType.isRef()) {
+        left = _builder.CreateLoad(getLLVMType(effLeftType), left, "binop_lhs");
+    }
+    auto rightType = applySubst(node->right()->getType());
+    if (rightType.isRef()) {
+        right = _builder.CreateLoad(getLLVMType(effLeftType), right, "binop_rhs");
+    }
+
     switch (node->op()) {
     case ExprBinOpNode::Op::And:
         return _builder.CreateAnd(left, right);
@@ -385,24 +423,34 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
     (void)node->getType();
     auto leftType = applySubst(node->left()->getType());
     auto rightType = applySubst(node->right()->getType());
+    // v0.16: [] 返回 T&——标量操作符自动剥 Ref 用于类型匹配
+    auto effLeftType = leftType.isRef() ? *leftType.refElementType() : leftType;
+    auto effRightType = rightType.isRef() ? *rightType.refElementType() : rightType;
 
-    if (leftType != rightType) {
+    if (effLeftType != effRightType) {
         // spec §7.2.3.3: 非内置类型允许跨类型比较，类型匹配由方法解析完成；
         // 内置类型跨类型时 getType 已抛 E3004 (kMigratedCodes)，此处不可达。
-        if (isBuiltinType(leftType.name)) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3004, leftType.name, rightType.name);
+        if (isBuiltinType(effLeftType.name)) {
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3004, effLeftType.name, effRightType.name);
         }
     }
 
     // Bucket 6 (CURRENT-check.md): E3078 (Weak ==/!=) + E3073 (Ptr ordering) 形态校验
     // 抠到 sema::validateCompareOpForm; SemaPass 已接管实际抛出点, 此处幂等防御性双跑.
-    sema::validateCompareOpForm(leftType, node->op(), node->getLineNumber(), node->getColumn());
+    sema::validateCompareOpForm(effLeftType, node->op(), node->getLineNumber(), node->getColumn());
 
     // Ptr：内置 == / !=（用于 `p == null` 等场景）
-    if (leftType.isPtr()) {
+    if (effLeftType.isPtr()) {
         if (node->op() == ExprCompareNode::Op::Eq || node->op() == ExprCompareNode::Op::Ne) {
             auto left = compileExpr(node->left());
             auto right = compileExpr(node->right());
+            // v0.16: Ptr& 需 load 后比较
+            if (leftType.isRef()) {
+                left = _builder.CreateLoad(getLLVMType(effLeftType), left, "ptr_cmp_lhs");
+            }
+            if (rightType.isRef()) {
+                right = _builder.CreateLoad(getLLVMType(effRightType), right, "ptr_cmp_rhs");
+            }
             if (node->op() == ExprCompareNode::Op::Eq) {
                 return _builder.CreateICmpEQ(left, right);
             }
@@ -437,12 +485,19 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
         opStr = "||";
         break;
     }
-    DEBUG_LOG_VAL("    Expr: Compare", opStr << " : " << leftType.name);
+    DEBUG_LOG_VAL("    Expr: Compare", opStr << " : " << effLeftType.name);
 
     // && 和 || 是逻辑运算符，不转换为方法调用
     if (node->op() == ExprCompareNode::Op::AndAnd || node->op() == ExprCompareNode::Op::OrOr) {
         auto left = compileExpr(node->left());
         auto right = compileExpr(node->right());
+        // v0.16: bool& 自动 load
+        if (leftType.isRef()) {
+            left = _builder.CreateLoad(getLLVMType(effLeftType), left, "logical_lhs");
+        }
+        if (rightType.isRef()) {
+            right = _builder.CreateLoad(getLLVMType(effRightType), right, "logical_rhs");
+        }
         if (node->op() == ExprCompareNode::Op::AndAnd) {
             auto leftBool = _builder.CreateICmpNE(left, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "and.lhs");
             auto rightBool = _builder.CreateICmpNE(right, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "and.rhs");
@@ -454,8 +509,8 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
         }
     }
 
-    // 检查是否为自定义类型
-    if (!isBuiltinType(leftType.name)) {
+    // 检查是否为自定义类型（用剥 Ref 后的标量名）
+    if (!isBuiltinType(effLeftType.name)) {
         string methodName;
         switch (node->op()) {
         case ExprCompareNode::Op::Eq:
@@ -485,8 +540,16 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
     // 内置类型：直接生成 LLVM IR
     auto left = compileExpr(node->left());
     auto right = compileExpr(node->right());
-    bool isFloat = leftType.startsWith('f');
-    bool isUnsigned = leftType.startsWith('u');
+    bool isFloat = effLeftType.startsWith('f');
+    bool isUnsigned = effLeftType.startsWith('u');
+
+    // v0.16: 操作数若是 T&（如 arr[i]）则 load 出值
+    if (leftType.isRef()) {
+        left = _builder.CreateLoad(getLLVMType(effLeftType), left, "cmp_lhs");
+    }
+    if (rightType.isRef()) {
+        right = _builder.CreateLoad(getLLVMType(effRightType), right, "cmp_rhs");
+    }
 
     switch (node->op()) {
     case ExprCompareNode::Op::Eq:

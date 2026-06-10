@@ -1,7 +1,7 @@
 ; Phase 4a-2 §6.2：lambda 捕获 Array<T>（堆句柄）
 
 fn first(a Array<i32>) i32 {
-  ret a[0]
+  ret copy_of:<i32>(a[0])
 }
 
 fn main() {

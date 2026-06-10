@@ -109,7 +109,8 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
         auto indexVal = compileExpr(indices[0]);
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {indexVal}, "array.elem.ptr");
 
-        return _builder.CreateLoad(elemLLVMType, elemPtr, "array.elem.load");
+        // v0.16: [] 返回 T&，与 .get() 一致；返回指针，不 Load
+        return elemPtr;
     }
 
     if (!derefArrayType.isArray()) {
@@ -131,7 +132,12 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
         }
     }
 
-    return _builder.CreateLoad(getLLVMType(currentType), currentPtr, "array.load");
+    // v0.16: [] 返回 T&，与 .get() 一致；返回指针，不 Load
+    // 特例：[T& * N] 的元素已是 Ref，GEP 到的是引用槽（ptr-to-ptr），需 Load 取引用值
+    if (currentType.isRef()) {
+        return _builder.CreateLoad(getLLVMType(currentType), currentPtr, "array.elem.ref.load");
+    }
+    return currentPtr;
 }
 
 llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
@@ -261,10 +267,16 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
 
             if ((baseType.isRc() ||
                  (baseType.isRef() && baseType.refElementType() && baseType.refElementType()->isRc()))) {
+                // Ref<Rc<...>>：先 deref 拿到指向 Rc struct 的指针，再提取 handle
+                if (baseType.isRef()) {
+                    dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataPtr, "ref.deref");
+                }
                 // Rc.field：load handle，payload = handle + 8
-                auto rcStructType = getLLVMType(baseType);
+                // 用剥掉 Ref 后的 Rc 类型取 struct layout（Ref 的 LLVM 类型是 ptr，不是 Rc struct）
+                TypeInfo rcType = baseType.isRef() ? *baseType.refElementType() : baseType;
+                auto rcStructType = getLLVMType(rcType);
                 auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-                auto handleField = _builder.CreateGEP(rcStructType, structPtr, {zero, zero}, "rc.handle_field");
+                auto handleField = _builder.CreateGEP(rcStructType, dataPtr, {zero, zero}, "rc.handle_field");
                 auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "rc.handle");
                 dataPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.payload");
             } else if (baseType.isRef()) {

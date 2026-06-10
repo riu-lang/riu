@@ -250,6 +250,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
     // 普通 ID callee（普通函数名）走 ExprLiteralNode 路径，那里返回 "fn() <ret>" 字符串
     // 编码（kind=Normal），不会命中 isFn()
     // Phase 3c: callee 为 Rc<fn(...)R> → 自动解引取 fat-ptr 后走同款 fn-value-call
+    // v0.16: callee 为 Ref<fn(...)R>（如 arr[i] 返回 fn&）→ Load 引用得 fat-ptr 后调用
     {
         TypeInfo calleeStaticType;
         try { calleeStaticType = calleeExpr->getType(); } catch (...) {} // NOLINT(bugprone-empty-catch)
@@ -260,6 +261,12 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
             auto inner = calleeStaticType.rcElementType();
             if (inner && inner->isFn()) {
                 return compileRcFnValueCall(node, *inner);
+            }
+        }
+        if (calleeStaticType.isRef()) {
+            auto inner = calleeStaticType.refElementType();
+            if (inner && inner->isFn()) {
+                return compileRefFnValueCall(node, *inner);
             }
         }
     }

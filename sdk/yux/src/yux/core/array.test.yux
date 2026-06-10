@@ -128,8 +128,8 @@ fn test_array_elem_box_reassign() {
 fn test_array_nested_literal_even() {
   #Mut let rows Array<Array<i32>> = [[1i32, 2i32], [3i32, 4i32]]
   assert_eq(rows.len(), 2i64)
-  #Mut let r0 Array<i32> = rows[0]
-  #Mut let r1 Array<i32> = rows[1]
+  #Mut let r0 Array<i32> = copy_of:<Array<i32>>(rows[0])
+  #Mut let r1 Array<i32> = copy_of:<Array<i32>>(rows[1])
   assert_eq(r0.len(), 2i64)
   assert_eq(r1.len(), 2i64)
   assert_eq(r0[0], 1i32)
@@ -142,8 +142,8 @@ fn test_array_nested_literal_even() {
 fn test_array_nested_literal_uneven() {
   #Mut let rows Array<Array<i32>> = [[1i32, 2i32], [3i32, 4i32, 5i32]]
   assert_eq(rows.len(), 2i64)
-  #Mut let r0 Array<i32> = rows[0]
-  #Mut let r1 Array<i32> = rows[1]
+  #Mut let r0 Array<i32> = copy_of:<Array<i32>>(rows[0])
+  #Mut let r1 Array<i32> = copy_of:<Array<i32>>(rows[1])
   assert_eq(r0.len(), 2i64)
   assert_eq(r1.len(), 3i64)
   assert_eq(r1[2], 5i32)
@@ -177,4 +177,84 @@ fn test_array_get_write_through() {
   ; 验证原数组元素被修改
   assert_eq(a[1], 42)
   assert_eq(a[1], 42)
+}
+
+; ---------- v0.16 [] → T& 新增用例 ----------
+
+; D.1: T& 绑定 + 读 + 写穿（let r T& = arr[i]）
+#Test
+fn test_array_index_ref_bind() {
+  #Mut let arr Array<i32> = [100, 200, 300]
+  ; 绑定到 T& 局部
+  let r i32& = arr[0]
+  assert_eq(r, 100)
+  ; 写穿：通过 T& 修改引用
+  #Mut let w i32& = arr[1]
+  w = 42
+  assert_eq(arr[1], 42)
+  assert_eq(w, 42)
+}
+
+; D.2: 操作符自动解包（arr[i] + arr[j] / arr[i] == arr[j]）
+#Test
+fn test_array_index_ref_ops() {
+  let arr Array<i32> = [10, 20, 30]
+  ; 加法：两边 T& 自动剥 & + Load
+  assert_eq(arr[0] + arr[1], 30i32)
+  ; 乘法
+  assert_eq(arr[1] * arr[2], 600i32)
+  ; 比较：T& == T&
+  assert_true(arr[0] == arr[0])
+  assert_false(arr[0] == arr[1])
+  ; 比较：T& == 字面量
+  assert_eq(arr[0], 10i32)
+  assert_true(arr[1] > arr[0])
+  assert_true(arr[0] < arr[2])
+}
+
+; D.3: copy_of 取值（copy_of:<i32>(arr[i])）
+#Test
+fn test_array_index_copy_of() {
+  #Mut let arr Array<i32> = [5, 10, 15]
+  ; copy_of 从 T& 取出 T 值
+  let x i32 = copy_of:<i32>(arr[0])
+  assert_eq(x, 5i32)
+  ; copy_of 的值与原数组独立（值语义）
+  let y i32 = copy_of:<i32>(arr[1])
+  arr[1] = 99
+  assert_eq(y, 10i32)
+  assert_eq(arr[1], 99)
+  ; copy_of 的值可赋给不同类型宽度的变量
+  let z i64 = copy_of:<i32>(arr[2]).to_i64()
+  assert_eq(z, 15i64)
+}
+
+; D.1b: [T * N] 固定数组 T& 绑定 + 读 + 写穿
+#Test
+fn test_fixed_array_index_ref_bind() {
+  #Mut let buf [i32 * 3] = [1i32, 2i32, 3i32]
+  let r i32& = buf[0]
+  assert_eq(r, 1i32)
+  #Mut let w i32& = buf[2]
+  w = 99
+  assert_eq(buf[2], 99i32)
+}
+
+; D.2b: [T * N] 操作符自动解包
+#Test
+fn test_fixed_array_index_ref_ops() {
+  let buf [i32 * 3] = [5i32, 10i32, 15i32]
+  assert_eq(buf[0] + buf[1], 15i32)
+  assert_eq(buf[2] - buf[1], 5i32)
+  assert_true(buf[0] < buf[2])
+}
+
+; D.3b: [T * N] 用 copy_of 取值
+#Test
+fn test_fixed_array_index_copy_of() {
+  let buf [i32 * 3] = [7i32, 14i32, 21i32]
+  let x i32 = copy_of:<i32>(buf[0])
+  assert_eq(x, 7i32)
+  let y i64 = copy_of:<i32>(buf[2]).to_i64()
+  assert_eq(y, 21i64)
 }

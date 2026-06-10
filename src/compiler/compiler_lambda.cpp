@@ -545,3 +545,62 @@ llvm::Value* Compiler::compileRcFnValueCall(p<ExprCallNode> node, const TypeInfo
 
     return _builder.CreateCall(llvmFnType, fnPtrVal, callArgs);
 }
+
+// v0.16: callee 为 Ref<fn(...)R>（如 arr[i] 返回 fn&）的调用站点：
+// 1) 实参位置 lambda 走 inferLambdaParamsFromFnType 反推（如有）
+// 2) compileExpr 得到 T& 指针（指向 fat-ptr）
+// 3) Load fat-ptr 16 字节 { fn_ptr, captures }
+// 4) extractvalue 取 fn_ptr / captures
+// 5) 编译实参 + CreateCall(fnType, fn_ptr, [captures, args...])
+llvm::Value* Compiler::compileRefFnValueCall(p<ExprCallNode> node, const TypeInfo& innerFnType) {
+    if (!innerFnType.isFn()) {
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3091);
+    }
+    const auto& expectedParams = innerFnType.fnParamTypes();
+
+    // 实参 lambda 预 emit（与 compileFnValueCall 一致）
+    for (size_t i = 0; i < node->getArgs().size() && i < expectedParams.size(); ++i) {
+        auto arg = node->getArgs()[i];
+        auto lambdaArg = dynamic_cast<LambdaExprNode*>(arg);
+        if (!lambdaArg) continue;
+        if (!expectedParams[i]) continue;
+        emitLambdaFunction(lambdaArg, *expectedParams[i]);
+    }
+
+    // compileExpr 得到 T& 指针（arr[i] 返回 Ref<fn> = 指向 fat-ptr 的指针）
+    auto refPtr = compileExpr(node->getCalleeExpr());
+    if (!refPtr) {
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3091);
+    }
+    auto ptrTy = llvm::PointerType::get(_context, 0);
+
+    // Load fat-ptr { fn_ptr, captures } 从 T& 指针
+    auto fatStructTy2 = llvm::StructType::get(_context, {ptrTy, ptrTy});
+    auto fatPtr2 = _builder.CreateLoad(fatStructTy2, refPtr, "ref.fn.fatptr");
+    auto fnPtrVal2 = _builder.CreateExtractValue(fatPtr2, {0}, "fn.ptr");
+    auto captures2 = _builder.CreateExtractValue(fatPtr2, {1}, "fn.captures");
+
+    // 构造 LLVM FunctionType：(Ptr captures, P1, ..., Pn) → R
+    vector<llvm::Type*> llvmParamTypes2;
+    llvmParamTypes2.push_back(ptrTy);
+    for (auto& pt : expectedParams) {
+        if (!pt) {
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3091);
+        }
+        llvmParamTypes2.push_back(getLLVMType(*pt));
+    }
+    llvm::Type* llvmRet2 = _builder.getVoidTy();
+    if (auto rt = innerFnType.fnReturnType()) {
+        llvmRet2 = getLLVMType(*rt);
+    }
+    auto llvmFnType2 = llvm::FunctionType::get(llvmRet2, llvmParamTypes2, false);
+
+    // 编译实参
+    vector<llvm::Value*> callArgs2;
+    callArgs2.push_back(captures2);
+    for (auto i : node->getArgs()) {
+        callArgs2.push_back(compileExpr(i));
+    }
+
+    return _builder.CreateCall(llvmFnType2, fnPtrVal2, callArgs2);
+}

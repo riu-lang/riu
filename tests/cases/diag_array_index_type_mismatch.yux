@@ -1,0 +1,27 @@
+; D.4: [] 返回 T&，类型不匹配应报错
+
+struct Point {
+  x i32
+  y i32
+}
+
+fn take_i32(v i32) {
+  println(v)
+}
+
+fn take_point(v Point) {
+  println(v.x)
+}
+
+fn main() {
+  ; ---- Array<T> 场景 ----
+  let arr Array<i32> = [10, 20, 30]
+  let x i32 = arr[0]    ; E: i32& ≠ i32
+  take_i32(arr[0])       ; E: i32& ≠ i32
+
+  ; ---- [T * N] 固定数组场景 ----
+  let buf [i32 * 3] = [1i32, 2i32, 3i32]
+  let y i32 = buf[0]     ; E: i32& ≠ i32
+  take_i32(buf[0])        ; E: i32& ≠ i32
+  ret;
+}

@@ -1633,18 +1633,22 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         // 跳过留 Compiler 兜底. scrutType getType 抛错 (lambda 形参等) 时也跳过.
         try {
             TypeInfo scrutType = n->scrutinee()->getType();
+            // v0.16: [] 返回 T&——match scrutinee 自动剥 Ref 检查底层 enum 类型
+            TypeInfo checkType = scrutType.isRef() && scrutType.refElementType()
+                                     ? *scrutType.refElementType()
+                                     : scrutType;
             // Rc<E> 自动 deref 走 Compiler 兜底, 不在此处接入
-            if (!scrutType.isRc()) {
-                auto* enumDecl = lookupEnumIn(_file, _sdkFile, scrutType.name);
+            if (!checkType.isRc()) {
+                auto* enumDecl = lookupEnumIn(_file, _sdkFile, checkType.name);
                 if (enumDecl) {
-                    sema::validateMatchArms(enumDecl, scrutType.name, n, _file);
-                } else if (isBuiltinType(scrutType.name) || scrutType.name == "String") {
+                    sema::validateMatchArms(enumDecl, checkType.name, n, _file);
+                } else if (isBuiltinType(checkType.name) || checkType.name == "String") {
                     // Bucket 6 (CURRENT-check.md): E2022 scrutinee 非 enum.
                     // 仅在 builtin 原型 / String 时接管 — 复杂路径 (alias 链 /
                     // Box<E> / fresh Rc) 留 Compiler 兜底.
                     int line = n->getLineNumber();
                     int col = n->getColumn();
-                    throw YuxError(line, col, ErrorCode::E2022, scrutType.name);
+                    throw YuxError(line, col, ErrorCode::E2022, checkType.name);
                 }
             }
         } catch (const YuxError&) {
