@@ -1,0 +1,4 @@
+fn main() {
+  #Mut let b Rc = 10i32  ; check: E6011
+  ret;
+}

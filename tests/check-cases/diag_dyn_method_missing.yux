@@ -1,0 +1,27 @@
+; Phase 2d：在 Dyn<D> 上调 D 没有的方法 → 未定义方法错 (E6016)
+#Spec
+struct Greet {
+  fn hi()
+}
+
+#Impl(Greet)
+struct G {
+  pad i32
+
+  #Static
+  fn make() G {
+    ret Self {
+      .pad = 0i32
+    }
+  }
+
+  fn hi() {
+  }
+}
+
+fn main() {
+  let b Rc<G> = G::make()
+  let d Dyn<Greet> = Dyn:<Greet>(b)
+  d.bye()  ; check: E6016
+  ret;
+}

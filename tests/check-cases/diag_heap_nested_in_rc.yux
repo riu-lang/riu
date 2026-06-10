@@ -1,0 +1,5 @@
+; DRAFT-heap-types §8.3a.5.1：Heap 不可嵌套进 Rc / Weak / Array 容器
+
+fn main() {
+  let bad Rc<Heap<i32>> = Rc:<Heap<i32>>(Heap:<i32>(1i32))  ; check: E4025
+}

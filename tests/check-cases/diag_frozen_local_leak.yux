@@ -1,0 +1,9 @@
+fn bad(#Frozen s String) {
+    #Mut let t String = s  ; check: E3107
+    ret;
+}
+
+fn main() {
+    bad("hi")
+    ret;
+}

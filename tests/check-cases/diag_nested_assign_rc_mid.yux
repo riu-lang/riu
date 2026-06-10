@@ -1,0 +1,28 @@
+; 中段是 Rc<T>（含 RC）时拒收并附 hint。
+struct Inner {
+  count i32
+
+  #Static
+  fn make(c i32) Inner {
+    ret Self {
+      .count = c
+    }
+  }
+}
+
+struct Outer {
+  state Rc<Inner>
+
+  #Static
+  fn make(s Rc<Inner>) Outer {
+    ret Self {
+      .state = s
+    }
+  }
+}
+
+fn main() {
+  #Mut let b Rc<Inner> = Inner::make(10i32)
+  #Mut let o Outer = Outer::make(b)
+  o.state.count = 5i32  ; check: E3046
+}

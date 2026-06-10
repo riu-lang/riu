@@ -1,0 +1,9 @@
+struct Pair<T, U> {
+  a T
+  b U
+}
+
+fn main() {
+  #Mut let p Pair<i32>  ; check: E6011
+  ret;
+}

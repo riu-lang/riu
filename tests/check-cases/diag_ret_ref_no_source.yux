@@ -1,0 +1,10 @@
+; 自由函数返回 T& 但无 T& 形参 → E4021（无来源源）
+
+fn bad() i32& {  ; check: E4021
+  #Mut let x i32 = 1
+  ret &x
+}
+
+fn main() {
+  ret;
+}

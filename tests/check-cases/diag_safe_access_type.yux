@@ -1,0 +1,7 @@
+; E3025: ?. 左侧必须是 Nullable
+; ?. 左侧不是 Nullable 应触发 E3025
+
+fn main() {
+  let x i32 = 10
+  let y i32? = x?.foo  ; check: E3025
+}

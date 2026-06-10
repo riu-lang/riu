@@ -1,0 +1,10 @@
+; E3078: Weak 不支持 ==
+; Weak<T> 不支持 == 和 != 比较应触发 E3078
+
+fn main() {
+  #Mut let b1 Rc<i32> = 10i32
+  #Mut let b2 Rc<i32> = 20i32
+  #Mut let w1 Weak<i32> = b1
+  #Mut let w2 Weak<i32> = b2
+  let eq bool = w1 == w2  ; check: E3078
+}

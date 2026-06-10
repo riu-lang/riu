@@ -1,0 +1,10 @@
+; 返回引用根为本地变量 → E4020（根不在允许源集）
+
+fn bad(p i32&) i32& {
+  #Mut let x i32 = 1
+  ret &x  ; check: E4020
+}
+
+fn main() {
+  ret;
+}

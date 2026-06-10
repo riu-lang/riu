@@ -1,0 +1,5 @@
+; DRAFT-let-unify §3.4: let 缺初值由 checker 拒（E3113 / E3114）
+
+fn main() {
+  let x i32  ; check: E3114
+}

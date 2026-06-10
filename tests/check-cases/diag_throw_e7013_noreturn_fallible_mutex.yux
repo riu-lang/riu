@@ -1,0 +1,14 @@
+; #NoReturn 与 #Fallible(E) 互斥 → E7013（DRAFT-错误.md §8.3）
+enum AppErr {
+  Bad
+}
+
+#NoReturn  ; check: E7013
+#Fallible(AppErr)
+fn die() {
+  ret AppErr::Bad
+}
+
+fn main() {
+  ret;
+}

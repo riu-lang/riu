@@ -1,0 +1,16 @@
+; Phase 2d: `Self { ... }` 写未知字段应报 E3126
+
+struct P {
+  x i32
+
+  #Static
+  fn make() P {
+    ret Self {
+      .z = 1i32  ; check: E3126
+    }
+  }
+}
+
+fn main() i32 {
+  ret 0i32
+}

@@ -1,0 +1,8 @@
+; E3004: 比较运算类型不匹配
+; 比较左右操作数类型不一致时应触发 E3004
+
+fn main() {
+  let a i32 = 10
+  let b String = "hello"
+  let c bool = a == b  ; check: E3004
+}

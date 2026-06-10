@@ -1,0 +1,13 @@
+; Phase 2c：Rc<Dyn<D>> 字段类型 → E1132（类型声明位）
+#Spec
+struct Greet {
+  fn hi()
+}
+
+struct Holder {
+  d Rc<Dyn<Greet>>  ; check: E1132
+}
+
+fn main() {
+  ret;
+}

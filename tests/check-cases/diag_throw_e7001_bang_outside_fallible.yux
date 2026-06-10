@@ -1,0 +1,15 @@
+; `!` 出现在非 #Fallible 函数内 → E7001（DRAFT-错误.md [#4.B]）
+enum ParseErr {
+  Empty
+}
+
+; [#3.F]：允许声明 #Fallible 但 body 不实际抛错（接口先行）
+#Fallible(ParseErr)
+fn parse() i32 {
+  ret 0i32
+}
+
+fn main() {
+  #Mut let x i32 = parse()!  ; check: E7001
+  ret;
+}

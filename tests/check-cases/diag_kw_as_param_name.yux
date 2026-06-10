@@ -1,0 +1,7 @@
+fn f(let i32) i32 {  ; check: E1002
+  ret let
+}
+
+fn main() {
+  println(f(1i32))
+}

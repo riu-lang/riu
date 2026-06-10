@@ -1,0 +1,23 @@
+struct Point {
+    x i32
+    y i32
+
+    #Static
+    fn make(x i32, y i32) Point {
+        ret Self {
+            .x = x
+            .y = y
+        }
+    }
+}
+
+fn shift(#Frozen p Point) {
+    p.x = 99  ; check: E3106
+    ret;
+}
+
+fn main() {
+    let q = Point::make(1, 2)
+    shift(q)
+    ret;
+}

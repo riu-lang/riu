@@ -1,0 +1,14 @@
+; Phase 2c: 调用未存在的静态 fn 应报 E3121
+
+struct P {
+  x i32
+
+  fn P(x i32) {
+    $.x = x
+  }
+}
+
+fn main() i32 {
+  let p P = P::make(7i32)  ; check: E3121
+  ret 0i32
+}

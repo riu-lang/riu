@@ -1,0 +1,9 @@
+; #NoReturn 函数禁带返回类型 → E7012（DRAFT-错误.md §8.3 / spec §11.5.1）
+#NoReturn  ; check: E7012
+fn die() i32 {
+  ret 0i32
+}
+
+fn main() {
+  ret;
+}

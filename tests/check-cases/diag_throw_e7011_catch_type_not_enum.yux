@@ -1,0 +1,19 @@
+; catch 类型必须是已声明 enum → E7011（DRAFT-错误.md [#4.H] / [#5.B]）
+enum ParseErr {
+  Empty
+}
+
+#Fallible(ParseErr)
+fn parse() i32 {
+  ret 0i32
+}
+
+fn main() {
+  ; NotAnEnum 不是已声明 enum
+  #Mut let x i32 = try {
+    parse()
+  } catch e NotAnEnum {  ; check: E7011
+    ret;
+  }
+  ret;
+}

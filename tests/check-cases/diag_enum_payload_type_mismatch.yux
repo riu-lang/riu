@@ -1,0 +1,25 @@
+; E2032: enum variant payload 实参类型与声明不匹配
+; 没有隐式转换 / 自动装箱，传裸 T 进 Rc<T> payload 应被拒收
+; 复盘 P1-6：原先静默 miscompile（16B Point 值塞进 8B Rc 句柄槽 → 运行期 SEH）
+
+struct Point {
+  x f64
+  y f64
+
+  #Static
+  fn make(x f64, y f64) Point {
+    ret Self {
+      .x = x
+      .y = y
+    }
+  }
+}
+
+enum Container {
+  Empty
+  Boxed(Rc<Point>)
+}
+
+fn main() {
+  let c Container = Container::Boxed(Point::make(1.0f64, 2.0f64))  ; check: E2032
+}

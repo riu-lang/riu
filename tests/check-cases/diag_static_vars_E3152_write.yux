@@ -1,0 +1,15 @@
+; DRAFT-static-vars §4.4: 实例写静态字段 → E3152
+
+struct Foo {
+  x i32
+
+  #Static
+  BAR i32 = 42
+}
+
+fn main() {
+  let obj = Foo(1)  ; check: E3095
+
+  ; 通过实例写入静态字段 → 应报 E3152
+  obj.BAR = 10
+}

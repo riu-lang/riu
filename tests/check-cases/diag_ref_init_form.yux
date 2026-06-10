@@ -1,0 +1,5 @@
+fn main() {
+  let x i32 = 1
+  let r i32& = x  ; check: E3018
+  ret;
+}

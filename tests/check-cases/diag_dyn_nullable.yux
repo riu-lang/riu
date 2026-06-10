@@ -1,0 +1,13 @@
+; Phase 4c：Dyn<D>? 在 v1 不支持 → E1135
+#Spec
+struct Greet {
+  fn hi() String
+}
+
+fn take(d Dyn<Greet>?) {  ; check: E1135
+  ret;
+}
+
+fn main() {
+  ret;
+}

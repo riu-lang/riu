@@ -1,0 +1,35 @@
+; P1-4: #Frozen 字段深写拒收 (DRAFT-const-mut §6.3 深传染)
+
+struct Config {
+    x i32
+
+    #Static
+    fn make(x i32) Config {
+        ret Self {
+            .x = x
+        }
+    }
+}
+
+struct Outer {
+    #Frozen
+    cfg Config
+
+    #Static
+    fn make(c Config) Outer {
+        ret Self {
+            .cfg = c
+        }
+    }
+
+    fn poke() {
+        $.cfg.x = 99  ; check: E3109
+    }
+}
+
+fn main() {
+    #Mut let c = Config::make(1)
+    #Mut let o = Outer::make(c)
+    o.poke()
+    ret;
+}

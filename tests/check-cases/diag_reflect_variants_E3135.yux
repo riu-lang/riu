@@ -1,0 +1,10 @@
+; DRAFT-spec-reflect §2: variants 仅 enum 可访问
+; struct 上访问 Counter::variants → E3135
+
+struct Counter {
+  n i32
+}
+
+fn main() {
+  Counter::variants  ; check: E3022
+}

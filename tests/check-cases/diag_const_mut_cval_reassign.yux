@@ -1,0 +1,5 @@
+fn main() {
+    #Cval let k i32 = 1
+    k = 2  ; check: E3093
+    ret;
+}

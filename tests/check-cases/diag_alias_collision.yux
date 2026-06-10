@@ -1,0 +1,10 @@
+; 类型别名名与已有 struct 同名：应触发 E2017
+struct Foo {
+  x i32
+}
+
+Foo = i32  ; check: E2017
+
+fn main() {
+  ret;
+}

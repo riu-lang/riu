@@ -1,0 +1,18 @@
+; DRAFT-spec-disambig-at: SpecA 内不存在该方法 -> E1140.
+
+#Spec
+struct A {
+  fn m() i32 = 1
+}
+
+#Impl(A)
+struct S {
+  v i32
+  fn n() i32 {
+    $.zzz@A()  ; check: E1140
+  }
+}
+
+fn main() {
+  println(0)
+}

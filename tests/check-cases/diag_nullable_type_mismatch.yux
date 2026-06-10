@@ -1,0 +1,6 @@
+; E3015: Nullable 赋值类型不匹配
+; Nullable 赋值时内部类型不匹配应触发 E3015
+
+fn main() {
+  #Mut let opt i32? = "hello"  ; check: E3015
+}

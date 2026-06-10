@@ -1,0 +1,23 @@
+; `!` 透传时 caller / callee 错误类型不一致 → E7004（DRAFT-错误.md [#4.B]）
+enum ParseErr {
+  Empty
+}
+
+enum AppErr {
+  Bad
+}
+
+#Fallible(ParseErr)
+fn parse() i32 {
+  ret 0i32
+}
+
+#Fallible(AppErr)
+fn run() i32 {
+  #Mut let x i32 = parse()!  ; check: E7004
+  ret x
+}
+
+fn main() {
+  ret;
+}

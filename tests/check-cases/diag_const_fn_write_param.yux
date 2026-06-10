@@ -1,0 +1,27 @@
+; P1-5 §4.2(2): #Const fn 体内写参数字段 → E3110
+; param 默认 val + 不可重赋（E3093），field 写走 E3110
+
+struct Point {
+    x i32
+    y i32
+
+    #Static
+    fn make(x i32, y i32) Point {
+        ret Self {
+            .x = x
+            .y = y
+        }
+    }
+}
+
+#Const
+fn shift(p Point) {
+    p.x = 99  ; check: E3110
+    ret;
+}
+
+fn main() {
+    let q = Point::make(1, 2)
+    shift(q)
+    ret;
+}

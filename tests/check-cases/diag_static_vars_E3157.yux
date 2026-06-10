@@ -1,0 +1,8 @@
+; DRAFT-static-vars Phase 4: 泛型 struct + #Static → E3157
+
+struct Container<T> {
+  #Static
+  DEFAULT T = ???  ; check: E1002
+}
+
+fn main() {}

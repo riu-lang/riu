@@ -1,0 +1,8 @@
+fn bad(#Bogus s String) {  ; check: E3105
+    ret;
+}
+
+fn main() {
+    bad("hi")
+    ret;
+}

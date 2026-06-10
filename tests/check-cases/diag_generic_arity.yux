@@ -1,0 +1,8 @@
+fn id<T>(x T) T {
+  x
+}
+
+fn main() {
+  let r i32 = id:<i32, i64>(1)  ; check: E6010
+  ret;
+}

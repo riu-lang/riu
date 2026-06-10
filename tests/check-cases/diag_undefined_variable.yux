@@ -1,0 +1,6 @@
+; E3030: 未定义变量
+; 使用未声明的变量应触发 E3030
+
+fn main() {
+  let x i32 = undefined_var  ; check: E3032
+}

@@ -1,0 +1,9 @@
+fn bad(#Frozen s String) {
+    s = "x"  ; check: E3093
+    ret;
+}
+
+fn main() {
+    bad("hi")
+    ret;
+}

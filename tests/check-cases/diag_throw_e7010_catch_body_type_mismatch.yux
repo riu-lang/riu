@@ -1,0 +1,19 @@
+; catch arm body 末表达式类型与 try block 不一致 → E7010
+enum IoErr {
+  NotFound
+}
+
+#Fallible(IoErr)
+fn read() i32 {
+  ret 0i32
+}
+
+fn main() {
+  ; try block 末为 i32；catch arm 末为 String → E7010
+  #Mut let x i32 = try {
+    read()
+  } catch e IoErr {  ; check: E7010
+    "fail"
+  }
+  ret;
+}

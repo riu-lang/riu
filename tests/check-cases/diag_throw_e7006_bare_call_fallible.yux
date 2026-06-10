@@ -1,0 +1,19 @@
+; 调用 #Fallible 函数但未加 `!` → E7006（DRAFT-错误.md [#4.B]）
+enum ParseErr {
+  Empty
+}
+
+#Fallible(ParseErr)
+fn parse() i32 {
+  ret 0i32
+}
+
+#Fallible(ParseErr)
+fn run() i32 {
+  #Mut let x i32 = parse()  ; check: E7006
+  ret x
+}
+
+fn main() {
+  ret;
+}
