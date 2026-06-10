@@ -1,0 +1,40 @@
+; 快速验证静态引用
+let G_VAL i32 = 42
+
+#Mut
+let G_MUT i32 = 100
+
+struct Point {
+  x i32
+  y i32
+}
+let ORIGIN Point = Point {
+  .x = 0
+  .y = 0
+}
+
+#Test
+fn test_ref_global_val() {
+  let r i32& = &G_VAL
+  assert_eq(r, 42)
+}
+
+#Test
+fn test_ref_global_mut() {
+  let r i32& = &G_MUT
+  assert_eq(r, 100)
+}
+
+#Test
+fn test_ref_global_struct_field() {
+  let rx i32& = &ORIGIN.x
+  assert_eq(rx, 0)
+}
+
+#Test
+fn test_return_ref_global() {
+  let r i32& = get_g_val_ref()
+  assert_eq(r, 42)
+}
+
+fn get_g_val_ref() i32& = &G_VAL

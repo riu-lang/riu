@@ -54,8 +54,12 @@ class BorrowChecker {
         return s;
     }
 
+    // DRAFT-static-ref: 持有当前函数节点，用于 lookupSymbol 判断名字是否文件级全局
+    p<FnNode> _fn = nullptr;
+
 public:
     void run(p<FnNode> fn, const std::string& selfStructName) {
+        _fn = fn;
         pushScope();
         bool isMethod = !selfStructName.empty();
         if (isMethod) {
@@ -99,13 +103,20 @@ public:
                 _returnAllowedSources.insert("$");
                 _returnAllowedDesc = "`$`";
             } else {
-                if (refParams.size() != 1) {
+                // DRAFT-static-ref: 放宽单源约束——0 或 1 个 T& 形参均可（$rodata 永不过期）
+                if (refParams.size() > 1) {
                     int line = fn->header()->getLineNumber();
                     throw YuxError(line, ErrorCode::E4021);
                 }
-                _returnAllowedSources.insert(refParams[0]);
-                _returnAllowedDesc = "T& parameter `" + refParams[0] + "`";
+                if (refParams.size() == 1) {
+                    _returnAllowedSources.insert(refParams[0]);
+                    _returnAllowedDesc = "T& parameter `" + refParams[0] + "`";
+                } else {
+                    _returnAllowedDesc = "global/static reference";
+                }
             }
+            // DRAFT-static-ref: $rodata (全局/静态引用) 永不过期，始终允许作为 T& 返回源
+            _returnAllowedSources.insert("$rodata");
         }
 
         for (auto& s : fn->body()) {
@@ -220,7 +231,14 @@ private:
     std::string rootFromRefInit(p<ExprNode> expr, int line) {
         if (auto getRef = dynamic_cast<ExprGetRefNode*>(expr)) {
             auto name = getRef->obj().getText();
-            return resolveRoot(name);
+            auto resolved = resolveRoot(name);
+            // DRAFT-static-ref: 若 name 非局部/非 T& 但文件级符号存在 → 全局变量 → immortal
+            if (resolved == name && _declared.find(name) == _declared.end()) {
+                if (_fn && _fn->lookupSymbol(name)) {
+                    return "$rodata";
+                }
+            }
+            return resolved;
         }
         if (auto litExpr = dynamic_cast<ExprLiteralNode*>(expr)) {
             if (auto obj = dynamic_cast<LiteralObjNode*>(litExpr->literal())) {
@@ -296,6 +314,9 @@ private:
                         }
                     }
                 }
+                // DRAFT-static-ref: 自由函数返回 T& 且无显式 T& 实参可溯源 → 源必为 $rodata
+                // （函数定义侧 E4020 已确保 ret expr 根 ∈ allowed sources）
+                return "$rodata";
             }
         }
         throw YuxError(line, ErrorCode::E4001)
@@ -603,13 +624,20 @@ private:
 
         bool lamReturnsRef = lam->retType() && lam->retType()->getType().isRef();
         if (lamReturnsRef) {
-            // 单源约束：恰好 1 个 T& 形参（spec §8.6.10.3 / §6.5）
-            if (lamRefParams.size() != 1) {
+            // DRAFT-static-ref: 放宽单源约束——0 或 1 个 T& 形参均可（$rodata 全局引用永不过期）
+            // >1 仍拒绝（歧义源）
+            if (lamRefParams.size() > 1) {
                 throw YuxError(lam->getLineNumber(), ErrorCode::E4021);
             }
             _returnsRef = true;
-            _returnAllowedSources.insert(lamRefParams[0]);
-            _returnAllowedDesc = "lambda T& parameter `" + lamRefParams[0] + "`";
+            if (lamRefParams.size() == 1) {
+                _returnAllowedSources.insert(lamRefParams[0]);
+                _returnAllowedDesc = "lambda T& parameter `" + lamRefParams[0] + "`";
+            } else {
+                _returnAllowedDesc = "global/static reference";
+            }
+            // DRAFT-static-ref: $rodata 永不过期，始终允许
+            _returnAllowedSources.insert("$rodata");
         }
 
         // 遍历 body：Single / Paren 单表达式视作隐式 ret；Block / ZeroBlock 走 stmt 通路

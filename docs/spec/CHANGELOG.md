@@ -34,6 +34,16 @@
 - **修改 §9.9.3**：`[T * N]` 索引同步为返回 `T&`，与 `Array<T>` 一致。
 - **冲突 / 兼容**：破坏性变更。`arr[i]` 从返回 `T` 变为返回 `T&`，直接赋值给 `T` 类型变量、传给 `T` 形参将产生类型错误。迁移：用 `copy_of:<T>(arr[i])` 显式取值；操作符（`+ - * / == != < >` 等）自动解包 `T&`，无需改动。
 
+## 2026-06-10 —— 静态引用（`&global_var` / T& 返回全局引用）
+
+- **修改 §8.6（借用 T&）**：新增静态借用子条款——根为全局变量 / `#Static FIELD` / `#Cval` 时寿命自动通过（全局作用域 ⊇ 任何局部）。
+- **修改 §8.6.10（返回引用的溯源约束）**：允许源集修订——从「仅 T& 形参（或方法的 `$`）」扩为「T& 形参（或 `$`）∪ 全局/静态/cval」；0 T& 形参 + 仅静态借用合法（E4021 放宽为"最多 1 个 T& 形参"）。
+- **修改 §8.9（禁忌一览）**：删除"函数返回值 T&"条目——E2009 已在 v0.15 移除，本版收口。
+- **新增草案**：`DRAFT-static-ref.md` 入库并标注"已落地（Phase 1–2，2026-06-10）"；实施日志 `docs/dev/static-ref-impl-log.md`。
+- **codegen**：`compileGetRefExpr` 全局变量 fallback（`_localVarPtrs` → `_module->getGlobalVariable`）。
+- **借用检查**：`rootFromRefInit` 识全局根 → `$rodata`（immortal 哨兵）；`_returnAllowedSources` 始终含 `$rodata`；调用站零参 T& 函数溯源到 `$rodata`。
+- **冲突 / 兼容**：无破坏性变更。`&global_var` / `&cval` 从编译错误变为合法；存量代码不受影响。
+
 ## 2026-06-09 —— 编译期反射（内置 spec Reflect）落地（8edfeee）
 
 - **新增 §13**（反射）：内置 spec `Reflect` + 编译器隐式 `#Impl(Reflect)`、反射数据类型 `Type` / `Field` / `Method` / `Variant`（`#CompilerInner`）、`#Static #Frozen` 字段段（`type` / `fields` / `methods` / `variants`）仅类型形访问、`Field.value` sema 期改名、`.rodata` emit 与 `--gc-sections` DCE、`#Reflect` 注解防 DCE。

@@ -106,17 +106,37 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
 
     DEBUG_LOG_VAL("    Expr: GetRef", objName);
 
-    auto it = _localVarPtrs.find(objName);
-    if (it == _localVarPtrs.end()) {
-        SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(), ErrorCode::E3031,
-                                           objName);
-    }
+    // 先查局部变量（_localVarPtrs），不在则 fallback 到全局变量（LLVM GlobalVariable）
+    llvm::Value* currentPtr = nullptr;
+    SymbolInfo* sym = nullptr;
 
-    llvm::Value* currentPtr = it->second;
-    auto sym = _currentFnNode->lookupSymbol(objName);
-    if (!sym) {
-        SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(), ErrorCode::E3030,
-                                           objName);
+    auto it = _localVarPtrs.find(objName);
+    if (it != _localVarPtrs.end()) {
+        // —— 局部变量路径 ——
+        currentPtr = it->second;
+        sym = _currentFnNode->lookupSymbol(objName);
+        if (!sym) {
+            SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
+                                               ErrorCode::E3030, objName);
+        }
+    } else {
+        // —— 全局变量路径（DRAFT-static-ref） ——
+        // 全局变量不在 _localVarPtrs 中，通过文件级符号表查找，再走 Mangler 获取 LLVM GlobalVariable
+        sym = _currentFnNode->lookupSymbol(objName);
+        if (!sym) {
+            SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
+                                               ErrorCode::E3030, objName);
+        }
+        string ownerMod = (!sym->moduleName.empty()) ? sym->moduleName : _file->moduleName();
+        bool globPriv = !objName.empty() && objName[0] == '_';
+        string mangledName = Mangler::global(ownerMod, objName, globPriv);
+        auto globalVar = _module->getGlobalVariable(mangledName, true);
+        if (!globalVar) {
+            // 非全局变量也非局部变量（如闭包外层变量）→ 保留原有 E3031 语义
+            SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
+                                               ErrorCode::E3031, objName);
+        }
+        currentPtr = globalVar;
     }
 
     TypeInfo currentType = sym->type;
@@ -126,7 +146,7 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
     }
 
     for (auto& sub : subs) {
-        auto memberName = sub.getText();
+        const auto& memberName = sub.getText();
 
         // Phase 4c: Rc<T>.field —— 自动 deref：load handle，payload = handle + 8
         if (currentType.isRc()) {
