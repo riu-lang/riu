@@ -63,6 +63,15 @@ private:
     // 空串表示自由 fn (任何私有字段访问都报错).
     string _currentStructName;
 
+    // v0.16 闭包捕获: 当前正在遍历的 lambda 节点 (非空 = 在 lambda body 内).
+    // 与 Compiler 的 `_currentLambdaForCapture` 功能对等但 0 LLVM 依赖.
+    // visitExpr 进入 LambdaExprNode 时 push, 离开时 pop; 支持嵌套闭包.
+    p<class LambdaExprNode> _currentLambda = nullptr;
+    // 当前 lambda body 遍历期间是否发现了 T& 捕获 (E4022 判定依据).
+    // visitExpr 遇 LambdaExprNode 时重置为 false, body 遍历过程中由
+    // ExprLiteralNode handler 置 true; 退出 lambda 后据此写 hasRefCapture.
+    bool _currentLambdaHasRefCapture = false;
+
     void visitFn(p<FnNode> fn);
     void visitStmt(p<StatementNode> stmt);
     void visitBlock(p<StatementBlockNode> block);

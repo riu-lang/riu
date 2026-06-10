@@ -440,6 +440,28 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         for (auto& idx : set->indices())
             visitExpr(idx);
         visitExpr(set->valueExpr());
+        // v0.16 闭包捕获: lambda body 内对捕获变量赋值 → E2030。
+        // StatementSetNode 覆盖简单变量 `a = 20` / 复合赋值 `a += 1` / 索引赋值 `a[i] = x`。
+        // LHS arrayExpr 抽取变量名后按 StatementAssignNode 同款规则判定。
+        // Compiler 端 compiler_stmt.cpp:885-898 同款检查保留作幂等防御性双跑。
+        if (_currentLambda && _currentFn && set->indices().empty()) {
+            auto lhsLit = dynamic_cast<p<ExprLiteralNode>>(set->arrayExpr());
+            if (lhsLit) {
+                auto lhsObj = dynamic_cast<p<LiteralObjNode>>(lhsLit->literal());
+                if (lhsObj) {
+                    string objName = lhsObj->getValue().getText();
+                    if (objName != "$") {
+                        bool isParam = false;
+                        for (auto& p : _currentLambda->params()) {
+                            if (p.name.getText() == objName) { isParam = true; break; }
+                        }
+                        if (!isParam && _currentFn->lookupSymbol(objName)) {
+                            throw YuxError(set->getLineNumber(), set->getColumn(), ErrorCode::E2030, objName);
+                        }
+                    }
+                }
+            }
+        }
         return;
     }
     if (auto br = dynamic_cast<p<StatementBreakNode>>(stmt)) {
@@ -493,6 +515,24 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                     if (!sym->writeable && !sym->type.isRef()) {
                         throw YuxError(as->getLineNumber(), as->getColumn(), ErrorCode::E3093, objName);
                     }
+                }
+            }
+        }
+        // v0.16 闭包捕获: lambda body 内对捕获变量赋值 / 成员链写 → E2030.
+        // 覆盖 `=` / `+= -= *= /= %=` / `<<= >>=` 及 `obj.f = ...` / `obj[i] = ...`
+        // (obj 为捕获变量)。
+        // 判定: objName 不在 lambda 自身的形参列表 → 外层变量 → 捕获 → 禁写.
+        // 不能用 bodyScope->lookupSymbol(), 因其沿父链查找到外层 fn 作用域.
+        // Compiler 端 compiler_stmt.cpp:885-898 同款检查保留作幂等防御性双跑。
+        if (_currentLambda && _currentFn) {
+            string objName = as->obj().getText();
+            if (objName != "$") {
+                bool isParam = false;
+                for (auto& p : _currentLambda->params()) {
+                    if (p.name.getText() == objName) { isParam = true; break; }
+                }
+                if (!isParam && _currentFn->lookupSymbol(objName)) {
+                    throw YuxError(as->getLineNumber(), as->getColumn(), ErrorCode::E2030, objName);
                 }
             }
         }
@@ -603,6 +643,14 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         // 普通 case: `fn add() i32 { ret true }` (E3020) /
         //           `fn foo() { ret 42 }` (E3022).
         // Compiler 端 inline throw 保留作幂等防御性双跑.
+        // v0.16: lambda body 内 ret 的返回类型校验依赖 lambda 自身的 retType,
+        // 但 lambda 形参 / retType 可能在调用点才反推; sema 阶段 _currentFn 仍是
+        // 外层 fn, E3020/E3022 以 _currentFn 的 retType 为准会误报。整个 check
+        // skip, 留 codegen 在 emitLambdaFunction 内兜底。
+        if (_currentLambda) {
+            if (ret->expr()) visitExpr(ret->expr());
+            return;
+        }
         if (_currentFn && ret->expr()) {
             auto header = _currentFn->header();
             bool hasFallible = header && header->getAnnoArg("Fallible").has_value();
@@ -649,6 +697,17 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             }
         }
         if (ret->expr()) visitExpr(ret->expr());
+        // v0.16 闭包捕获: lambda 字面量直接作 ret expr 且含 T& 捕获 → E4022
+        // (spec §8.7.6.5 不可逃逸)。仅拦截直接形 (lambda 字面量), 穿透检测
+        // (ret 变量名 / 调用结果含 lambda) 留 codegen 兜底。
+        // Compiler 端 compiler_stmt.cpp:33-38 同款检查保留作幂等防御性双跑。
+        if (ret->expr()) {
+            if (auto litLambda = dynamic_cast<p<LambdaExprNode>>(ret->expr())) {
+                if (litLambda->hasRefCapture()) {
+                    throw YuxError(litLambda->getLineNumber(), litLambda->getColumn(), ErrorCode::E4022);
+                }
+            }
+        }
         return;
     }
     if (auto da = dynamic_cast<p<StatementDeclareAssignNode>>(stmt)) {
@@ -750,6 +809,17 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             }
         }
         if (da->expr()) visitExpr(da->expr());
+        // v0.16 闭包捕获: lambda 字面量直接作 var/val 初始化值且含 T& 捕获 → E4022
+        // (spec §8.7.6.5 不可逃逸：fn 值不可被存储到寿命外延的变量)。
+        // 仅拦截直接形 (lambda 字面量), 穿透检测 (右值 wrapper 调用结果等) 留 codegen 兜底。
+        // Compiler 端 compiler_stmt.cpp:419-421 同款检查保留作幂等防御性双跑。
+        if (da->expr()) {
+            if (auto litLambda = dynamic_cast<p<LambdaExprNode>>(da->expr())) {
+                if (litLambda->hasRefCapture()) {
+                    throw YuxError(litLambda->getLineNumber(), litLambda->getColumn(), ErrorCode::E4022);
+                }
+            }
+        }
         return;
     }
     if (auto se = dynamic_cast<p<StatementExprNode>>(stmt)) {
@@ -804,6 +874,38 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 visitExpr(e);
             // Bucket 6 (CURRENT-check.md): E3026 插值类型必须实现 ToString.
             sema::validateStringTemplateInterps(_file, _sdkFile, tpl);
+        }
+        // v0.16 闭包捕获: lambda body 内标识符引用检查。
+        // - 引用外层 Heap<T> (非空) 变量 → E4024 (Heap 按值捕获禁止, §7.3 / [#18])
+        // - 引用外层 T& 变量 → 标记 hasRefCapture (E4022 数据收集)
+        // 非 ID-obj / 全局 / template 插值等其它字面量形态不触发捕获, 跳过。
+        // $ 在方法体内 lambda 是 Self&, 同样标记 hasRefCapture。
+        // Compiler 端 compiler/expr/expr_literal.cpp:203-222 同款检查保留作幂等防御性双跑。
+        if (_currentLambda && _currentFn) {
+            auto obj2 = dynamic_cast<p<LiteralObjNode>>(n->literal());
+            if (obj2) {
+                string varName = obj2->getValue().getText();
+                // 检查标识符是否为 lambda 形参 (不在形参列表 → 外层变量 → 捕获).
+                // 不能用 bodyScope->lookupSymbol, 因其沿父链查找.
+                bool isParam = false;
+                for (auto& p : _currentLambda->params()) {
+                    if (p.name.getText() == varName) { isParam = true; break; }
+                }
+                if (!isParam) {
+                    if (auto sym = _currentFn->lookupSymbol(varName)) {
+                        const auto& t = sym->type;
+                        if (t.isHeap()) {
+                            auto elem = t.heapElementType();
+                            string elemName = elem ? elem->getFullName() : string("?");
+                            throw YuxError(n->resolveLineNumber(), n->resolveColumn(),
+                                           ErrorCode::E4024, elemName, varName, elemName);
+                        }
+                        if (t.isRef()) {
+                            _currentLambdaHasRefCapture = true;
+                        }
+                    }
+                }
+            }
         }
         // Phase 3.4.f.2: int 字面量越界 (E3103) — getType 仅返回类型不解析值,
         // 这里主动调 sema::parseIntLiteral 触发越界 / 非法格式校验.
@@ -1393,13 +1495,32 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         return;
     }
     if (auto n = dynamic_cast<p<LambdaExprNode>>(expr)) {
-        // lambda 体内表达式的类型依赖调用点对形参的反推 / 上下文回填
-        // (典型: `x => x + 1`, 在 `apply(it, 20)` 处才知道 `x : i32`)。
-        // 3.2a 时这条路径靠 catch(...) 吞掉所有错误才没炸;
-        // 3.2b 起 SemaPass 接管已迁移码 (E3001 等), 必须不再下钻 lambda 体,
-        // 留给 codegen 在 compileCallExpr 回填形参类型后再走 compile<Foo>Expr
-        // 入口的 setResolvedType 兜底写入。
-        (void)n;
+        // v0.16 闭包捕获: sema 下钻 lambda body (策略 2b 宽松模式)。
+        // - 形参类型可能缺 (由调用点反推), 不依赖形参类型的检查 deferred 给 codegen。
+        // - 不依赖形参类型的检查在此完成: E2030 (捕获写禁) / E4024 (Heap 非空捕获禁) /
+        //   E4022 数据收集 (hasRefCapture)。
+        // - 下钻前保存外层 lambda 状态, 支持嵌套闭包。
+        auto savedLambda = _currentLambda;
+        auto savedHasRef = _currentLambdaHasRefCapture;
+        _currentLambda = n;
+        _currentLambdaHasRefCapture = false;
+
+        if (n->bodyExpr()) {
+            visitExpr(n->bodyExpr());
+        } else {
+            for (auto& stmt : n->bodyStmts()) {
+                visitStmt(stmt);
+            }
+        }
+
+        // 将 hasRefCapture 写回 LambdaExprNode, 供 E4022 检查 (StatementRetNode /
+        // StatementDeclareAssignNode) 读取。
+        if (_currentLambdaHasRefCapture) {
+            n->setHasRefCapture(true);
+        }
+
+        _currentLambda = savedLambda;
+        _currentLambdaHasRefCapture = savedHasRef;
         return;
     }
     if (auto n = dynamic_cast<p<ExprStructLitNode>>(expr)) {

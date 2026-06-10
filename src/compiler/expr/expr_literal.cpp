@@ -4,9 +4,8 @@
 // 字面量 / 数组 / 元组表达式编译：从 compiler_expr.cpp 拆出 (P1 Phase 4)。
 // 方法体一字不动。
 
-#include "../compiler_runtime.h"
 #include "../compiler.h"
-#include <algorithm>
+#include "../compiler_runtime.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
 #include "analyzer/symbol_suggest.h"
@@ -15,10 +14,11 @@
 #include "ast/node/expr_node.h"
 #include "ast/node/literal_node.h"
 #include "ast/yux.h"
+#include "sema/call_resolve.h"
+#include <algorithm>
 #include <cassert>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
-#include "sema/call_resolve.h"
 #include <set>
 
 // ==================== 数组初始化表达式编译 ====================
@@ -215,6 +215,7 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             if (t.isHeap()) {
                 auto elem = t.heapElementType();
                 string elemName = elem ? elem->getFullName() : string("?");
+                // v0.16: sema shadow — SemaPass (ExprLiteralNode in lambda body) 已提前抛 E4024
                 throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E4024, elemName, varName, elemName);
             }
             if (!isScalar && !isHandle && !isRef && !isHeapNullable) {

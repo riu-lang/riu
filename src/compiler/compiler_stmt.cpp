@@ -34,6 +34,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         // emit body 以填 captures（重复 emit 命中缓存，无副作用）
         emitLambdaFunction(static_cast<p<LambdaExprNode>>(litLambda), litLambda->getType());
         if (litLambda->hasRefCapture()) {
+            // v0.16: sema shadow — SemaPass (StatementRetNode) 已提前抛 E4022
             throw YuxError(litLambda->getLineNumber(), litLambda->getColumn(), ErrorCode::E4022);
         }
     }
@@ -417,6 +418,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         }
         emitLambdaFunction(static_cast<p<LambdaExprNode>>(litLambda), litLambda->getType());
         if (litLambda->hasRefCapture()) {
+            // v0.16: sema shadow — SemaPass (StatementDeclareAssignNode) 已提前抛 E4022
             throw YuxError(litLambda->getLineNumber(), litLambda->getColumn(), ErrorCode::E4022);
         }
     }
@@ -892,6 +894,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             bool globPriv = !objName.empty() && objName[0] == '_';
             string mangledName = Mangler::global(ownerMod, objName, globPriv);
             if (!_module->getGlobalVariable(mangledName, true)) {
+                // v0.16: sema shadow — SemaPass (StatementAssignNode/StatementSetNode) 已提前抛 E2030
                 throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E2030, objName);
             }
         }
