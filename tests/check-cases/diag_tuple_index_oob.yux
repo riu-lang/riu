@@ -1,0 +1,4 @@
+fn main() {
+  #Mut let t (i32, i32) = (1i32, 2i32)
+  #Mut let x i32 = t.2  ; check: E3100
+}

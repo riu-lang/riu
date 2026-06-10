@@ -1,0 +1,3 @@
+fn main() {
+  break;  ; check: E3094
+}

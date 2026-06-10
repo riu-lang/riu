@@ -1,0 +1,5 @@
+fn main() {
+  let a i32 = 10
+  let b f64 = 3.14
+  let c i32 = a + b  ; check: E3001
+}

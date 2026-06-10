@@ -1,0 +1,7 @@
+fn foo() {
+  ret 42  ; check: E3022
+}
+
+fn main() {
+  foo()
+}
