@@ -133,6 +133,10 @@
           "match": "\\bextern\\b"
         },
         {
+          "name": "keyword.other.self-type.yux",
+          "match": "\\bSelf\\b"
+        },
+        {
           "name": "constant.language.boolean.yux",
           "match": "\\b(true|false)\\b"
         },
@@ -143,7 +147,7 @@
         {
           "name": "variable.language.self.yux",
           "match": "\\$"
-        },
+        }
       ]
     },
     "codepoints": {
@@ -237,6 +241,14 @@
           "match": "\\?\\."
         },
         {
+          "name": "keyword.operator.move-assign.yux",
+          "match": "<-"
+        },
+        {
+          "name": "keyword.operator.match-arrow.yux",
+          "match": "=>"
+        },
+        {
           "name": "keyword.operator.comparison.yux",
           "match": "(==|!=|<=|>=|<|>)"
         },
@@ -255,14 +267,6 @@
         {
           "name": "keyword.operator.assignment.yux",
           "match": "="
-        },
-        {
-          "name": "keyword.operator.arrow.yux",
-          "match": "->"
-        },
-        {
-          "name": "keyword.operator.range.yux",
-          "match": "\\.\\.\\.|\\.\\."
         },
         {
           "comment": "错误传播 e()! —— 单独命名以便配色",
@@ -315,7 +319,7 @@
         },
         {
           "name": "support.type.generic.yux",
-          "match": "\\b(Rc|Heap|Arc|Ptr|Array|Nullable)\\b"
+          "match": "\\b(Rc|Heap|Arc|Ptr|Array|Weak|Dyn|String|Self)\\b"
         },
         {
           "name": "support.type.user-defined.yux",

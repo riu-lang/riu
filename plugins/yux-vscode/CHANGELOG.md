@@ -4,6 +4,23 @@ All notable changes to the "yux-vscode" extension will be documented in this fil
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.9.1]
+
+- 语法同步：跟随 yux 语言最新变化
+  - TextMate：新增 `Self` 关键字高亮；补充 `String` / `Weak` / `Dyn` / `Self` 内置类型
+  - TextMate 运算符修正：移除不存在的 `->`（箭头）、`..` / `...`（范围）运算符；
+    新增 `<-`（移出赋值）、`=>`（match 分支箭头）
+- LSP 语义着色扩展：
+  - `&a.b` 取引用链上各字段名正确按 Property 着色
+  - 结构体字面量 `Self { .x = 1 }` / `Name { .x = 1 }` 内字段名按 Property、
+    类型名按 Class 着色
+  - 类型字段名静态写 `T::FIELD = expr` 的字段名按 Property 着色
+  - `T::foo` 调用站：variant 名按首字母大小写启发式分流 — 小写→Function/Method、
+    大写→EnumMember（`E::V` 枚举构造不变）
+- LSP 补全：新增 `Self` 关键字
+- IntelliJ 插件：新增 `Self` 关键字识别
+- 版本：yux-lsp → 0.1.1、yux-vscode → 0.9.1、yux-idea → 0.5.1-SNAPSHOT、yux-lang-lsp → 0.1.1
+
 ## [0.9.0]
 
 - 移除 `draft`（struct 关键字组）、`Ref`（泛型类型组）

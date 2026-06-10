@@ -48,6 +48,7 @@ const std::vector<CompletionItem>& buildItems() {
         kw("Impl", "#Impl(Spec) 注解 — 标记 struct 实现某个 spec");
         kw("Spec", "#Spec 注解 — 标记 struct 为 spec 声明（仅签名）");
         kw("Static", "#Static 注解 — 静态方法/字段（无 receiver $）");
+        kw("Self", "当前结构体类型（仅 struct / #Spec / #Impl 体内合法）");
         kw("try", "try 块（错误处理）");
         kw("catch", "catch 分支（错误处理）");
 

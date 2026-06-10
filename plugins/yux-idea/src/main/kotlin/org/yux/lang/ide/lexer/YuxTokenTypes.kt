@@ -17,6 +17,6 @@ object YuxTokenTypes {
 
     val KEYWORDS = setOf(
         "break", "catch", "elif", "else", "enum", "extern", "false", "fn", "if", "let",
-        "loop", "match", "null", "ret", "struct", "true", "try", "use"
+        "loop", "match", "null", "ret", "Self", "struct", "true", "try", "use"
     )
 }

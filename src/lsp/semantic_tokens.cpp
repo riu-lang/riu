@@ -165,6 +165,19 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
     } else if (auto* c = dynamic_cast<P::ExprDotContext*>(node)) {
         // 默认全部当字段；如果整个 dot 是被调用的左部，下面 ExprCall 分支会把最后一个 member 改成 method
         for (auto* tok : c->member) put(out, tok, TT::Property, 0);
+    } else if (auto* c = dynamic_cast<P::ExprGetRefContext*>(node)) {
+        // &a.b.c —— subs 链上每个 ID 均为字段名
+        for (auto* tok : c->subs) put(out, tok, TT::Property, 0);
+    } else if (auto* c = dynamic_cast<P::ExprStructLitContext*>(node)) {
+        // Self { .x = 1 .y = 2 } 或 Name { .x = 1 } —— 类型名按 Class，字段名按 Property
+        if (c->typeName) put(out, c->typeName, TT::Class, 0);
+        for (auto* fi : c->fieldInits) {
+            if (fi && fi->name) put(out, fi->name, TT::Property, 0);
+        }
+    } else if (auto* c = dynamic_cast<P::StatementStaticFieldSetContext*>(node)) {
+        // Type::FIELD = expr —— 类型名按 Class，字段名按 Property
+        if (c->typeName) put(out, c->typeName, TT::Class, 0);
+        if (c->fieldName) put(out, c->fieldName, TT::Property, 0);
     } else if (auto* c = dynamic_cast<P::TypeNormalContext*>(node)) {
         if (auto* term = c->ID()) put(out, term->getSymbol(), TT::Class, 0);
     } else if (auto* c = dynamic_cast<P::TypeGenericContext*>(node)) {
@@ -187,9 +200,15 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
         if (c->name) put(out, c->name, TT::EnumMember, MOD_DECLARATION);
         // payloads 是 type 列表，递归覆盖
     } else if (auto* c = dynamic_cast<P::ExprEnumCtorContext*>(node)) {
-        // 引用位 E::V / E::V(args)
+        // E::V / T::foo：枚举构造与静态函数调用共用此节点。
+        // 枚举 variant 按惯例大写开头（PascalCase），函数/方法小写开头（camelCase）；
+        // 语法层以此启发式分流着色。
         if (c->enumName) put(out, c->enumName, TT::Enum, 0);
-        if (c->variant) put(out, c->variant, TT::EnumMember, 0);
+        if (c->variant) {
+            std::string vName = c->variant->getText();
+            bool isUpper = !vName.empty() && (vName[0] >= 'A' && vName[0] <= 'Z');
+            put(out, c->variant, isUpper ? TT::EnumMember : TT::Function, 0);
+        }
     } else if (auto* c = dynamic_cast<P::PatternEnumContext*>(node)) {
         // match 模式 E::V(a, b)：a/b 是新引入绑定，按 Parameter 染色
         if (c->enumName) put(out, c->enumName, TT::Enum, 0);
@@ -214,6 +233,15 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
                 if (auto* tok = obj->name) {
                     out[tok->getTokenIndex()] = {static_cast<int>(TT::Function), 0};
                 }
+            }
+        } else if (auto* enumCtor = dynamic_cast<P::ExprEnumCtorContext*>(c->left)) {
+            // T::foo() 静态函数/方法调用 —— variant 覆盖为 Method；
+            // 仅当首字母大写时才认定为枚举构造，已由 ExprEnumCtor 分支着色
+            if (enumCtor->variant) {
+                std::string vName = enumCtor->variant->getText();
+                bool isUpper = !vName.empty() && (vName[0] >= 'A' && vName[0] <= 'Z');
+                out[enumCtor->variant->getTokenIndex()] = {
+                    static_cast<int>(isUpper ? TT::EnumMember : TT::Method), 0};
             }
         }
     }

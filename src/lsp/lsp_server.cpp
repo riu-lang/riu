@@ -10,6 +10,7 @@
 // - P0 阶段：能力声明只开 textDocumentSync.full，其它 provider 留给 P1+
 // - 错误处理：JSON 解析失败回 -32700；未知请求回 -32601；未初始化回 -32002
 
+#include "lsp_server.h"
 #include "ast/node/file_node.h"
 #include "ast/node/fn_node.h"
 #include "ast/node/global_const_node.h"
@@ -17,7 +18,6 @@
 #include "completion.h"
 #include "document.h"
 #include "lsp_io.h"
-#include "lsp_server.h"
 #include "position.h"
 #include "semantic_tokens.h"
 #include "symbol_lookup.h"
@@ -80,29 +80,34 @@ static void sendError(const json& id, int code, const std::string& message) {
 static json buildCapabilities() {
     return {
         // textDocumentSync: 1 = Full（每次 didChange 推送完整文本）
-        {"textDocumentSync", {
-            {"openClose", true},
-            {"change", 1},
-            // P2 Plan A：保存时重建 Project 索引
-            {"save", json::object({{"includeText", false}})},
-        }},
+        {"textDocumentSync",
+         {
+             {"openClose", true},
+             {"change", 1},
+             // P2 Plan A：保存时重建 Project 索引
+             {"save", json::object({{"includeText", false}})},
+         }},
         {"documentSymbolProvider", true},
         {"documentFormattingProvider", true},
-        {"completionProvider", {
-            {"triggerCharacters", json::array({" ", ".", "(", "{", "["})},
-        }},
+        {"completionProvider",
+         {
+             {"triggerCharacters", json::array({" ", ".", "(", "{", "["})},
+         }},
         {"definitionProvider", true},
         {"hoverProvider", true},
-        {"signatureHelpProvider", {
-            {"triggerCharacters", json::array({"(", ","})},
-        }},
-        {"semanticTokensProvider", {
-            {"legend", {
-                {"tokenTypes", json(semanticTokenTypes())},
-                {"tokenModifiers", json(semanticTokenModifiers())},
-            }},
-            {"full", true},
-        }},
+        {"signatureHelpProvider",
+         {
+             {"triggerCharacters", json::array({"(", ","})},
+         }},
+        {"semanticTokensProvider",
+         {
+             {"legend",
+              {
+                  {"tokenTypes", json(semanticTokenTypes())},
+                  {"tokenModifiers", json(semanticTokenModifiers())},
+              }},
+             {"full", true},
+         }},
     };
 }
 
@@ -129,11 +134,12 @@ static void publishDiagnostics(Document& doc) {
     json msg = {
         {"jsonrpc", "2.0"},
         {"method", "textDocument/publishDiagnostics"},
-        {"params", {
-            {"uri", doc.uri()},
-            {"version", doc.version()},
-            {"diagnostics", std::move(diags)},
-        }},
+        {"params",
+         {
+             {"uri", doc.uri()},
+             {"version", doc.version()},
+             {"diagnostics", std::move(diags)},
+         }},
     };
     writeMessage(msg.dump());
 }
@@ -149,7 +155,7 @@ static void handleInitialize(ServerState& st, const json& msg) {
     const json id = extractId(msg);
     json result = {
         {"capabilities", buildCapabilities()},
-        {"serverInfo", {{"name", "yux-lsp"}, {"version", "0.1.0"}}},
+        {"serverInfo", {{"name", "yux-lsp"}, {"version", "0.1.1"}}},
     };
     sendResult(id, std::move(result));
     (void)st;
@@ -222,7 +228,9 @@ static void handleDidClose(ServerState& st, const json& params) {
 }
 
 // LSP SymbolKind: 我们的枚举已经是协议数值
-static int symbolKindToInt(SymbolKind k) { return static_cast<int>(k); }
+static int symbolKindToInt(SymbolKind k) {
+    return static_cast<int>(k);
+}
 
 static json symbolToJson(const DocSymbol& s) {
     return {
@@ -287,7 +295,7 @@ static void handleFormatting(ServerState& st, const json& msg) {
     LspPosition end = documentEndPos(doc->text());
     json edits = json::array();
     edits.push_back({
-        {"range", rangeToJson({.line=0, .character=0}, end)},
+        {"range", rangeToJson({.line = 0, .character = 0}, end)},
         {"newText", std::move(formatted)},
     });
     sendResult(id, std::move(edits));
@@ -349,17 +357,17 @@ static void handleCompletion(ServerState& st, const json& msg) {
                             });
                         }
                         sendResult(id, json{
-                            {"isIncomplete", false},
-                            {"items", std::move(items)},
-                        });
+                                           {"isIncomplete", false},
+                                           {"items", std::move(items)},
+                                       });
                         return;
                     }
                 }
                 // receiver 解析失败 → 仍返回空成员列表，避免误展示全局名
                 sendResult(id, json{
-                    {"isIncomplete", false},
-                    {"items", json::array()},
-                });
+                                   {"isIncomplete", false},
+                                   {"items", json::array()},
+                               });
                 return;
             }
         }
@@ -420,30 +428,33 @@ static void handleCompletion(ServerState& st, const json& msg) {
 
 // 把 LookupResult 中的目标名定位到具体文件 → URI + Range
 // 优先使用 ownerFile；从 Workspace 反查 owner 的归一化路径（再转 URI）
-static std::optional<std::pair<std::string, std::pair<LspPosition, LspPosition>>>
-locateLookup(Project& project, const LookupResult& r) {
+static std::optional<std::pair<std::string, std::pair<LspPosition, LspPosition>>> locateLookup(Project& project,
+                                                                                               const LookupResult& r) {
     if (r.kind == LookupResult::Kind::None || !r.ownerFile) return std::nullopt;
     std::string ownerPath;
     for (const auto& kv : project.allFiles()) {
-        if (kv.second == r.ownerFile) { ownerPath = kv.first; break; }
+        if (kv.second == r.ownerFile) {
+            ownerPath = kv.first;
+            break;
+        }
     }
     if (ownerPath.empty()) return std::nullopt;
     Token tok;
     switch (r.kind) {
-        case LookupResult::Kind::Function:
-            if (!r.fn) return std::nullopt;
-            tok = r.fn->header()->name();
-            break;
-        case LookupResult::Kind::Struct:
-            if (!r.sd) return std::nullopt;
-            tok = r.sd->name();
-            break;
-        case LookupResult::Kind::GlobalConst:
-            if (!r.gc) return std::nullopt;
-            tok = r.gc->name();
-            break;
-        default:
-            return std::nullopt;
+    case LookupResult::Kind::Function:
+        if (!r.fn) return std::nullopt;
+        tok = r.fn->header()->name();
+        break;
+    case LookupResult::Kind::Struct:
+        if (!r.sd) return std::nullopt;
+        tok = r.sd->name();
+        break;
+    case LookupResult::Kind::GlobalConst:
+        if (!r.gc) return std::nullopt;
+        tok = r.gc->name();
+        break;
+    default:
+        return std::nullopt;
     }
     LspPosition s, e;
     s.line = static_cast<int>(tok.getLine() > 0 ? tok.getLine() - 1 : 0);
@@ -452,8 +463,11 @@ locateLookup(Project& project, const LookupResult& r) {
     // 名字 token 不含换行；用 codepoint 计长度，与 character（codepoint 列）一致
     const std::string& tn = tok.getText();
     int cpLen = 0;
-    try { cpLen = static_cast<int>(utf8::distance(tn.begin(), tn.end())); }
-    catch (...) { cpLen = static_cast<int>(tn.size()); }
+    try {
+        cpLen = static_cast<int>(utf8::distance(tn.begin(), tn.end()));
+    } catch (...) {
+        cpLen = static_cast<int>(tn.size());
+    }
     e.character = s.character + cpLen;
     return std::make_pair(pathToUri(ownerPath), std::make_pair(s, e));
 }
@@ -473,9 +487,11 @@ static FnNode* findEnclosingFn(FileNode* file, int lspLine0) {
             bestLine = ln;
         }
     };
-    for (const auto& fn : file->getFunctions()) consider(fn);
+    for (const auto& fn : file->getFunctions())
+        consider(fn);
     for (const auto& si : file->getStructImpls()) {
-        for (const auto& m : si->methods()) consider(m);
+        for (const auto& m : si->methods())
+            consider(m);
     }
     return best;
 }
@@ -507,13 +523,14 @@ static std::optional<LspPosition> jsonToPos(const json& params) {
 }
 
 // 把 (token, ownerFile) 转 LSP Location 链接 JSON
-static std::optional<json> tokenLocLink(Project& project, FileNode* ownerFile,
-                                         const Token& tok,
-                                         const LspPosition& origStart,
-                                         const LspPosition& origEnd) {
+static std::optional<json> tokenLocLink(Project& project, FileNode* ownerFile, const Token& tok,
+                                        const LspPosition& origStart, const LspPosition& origEnd) {
     std::string ownerPath;
     for (const auto& kv : project.allFiles()) {
-        if (kv.second == ownerFile) { ownerPath = kv.first; break; }
+        if (kv.second == ownerFile) {
+            ownerPath = kv.first;
+            break;
+        }
     }
     if (ownerPath.empty()) return std::nullopt;
     LspPosition s, e;
@@ -521,8 +538,11 @@ static std::optional<json> tokenLocLink(Project& project, FileNode* ownerFile,
     s.character = static_cast<int>(tok.getCharPositionInLine());
     e.line = s.line;
     int cpLen = 0;
-    try { cpLen = static_cast<int>(utf8::distance(tok.getText().begin(), tok.getText().end())); }
-    catch (...) { cpLen = static_cast<int>(tok.getText().size()); }
+    try {
+        cpLen = static_cast<int>(utf8::distance(tok.getText().begin(), tok.getText().end()));
+    } catch (...) {
+        cpLen = static_cast<int>(tok.getText().size());
+    }
     e.character = s.character + cpLen;
     return json{
         {"originSelectionRange", rangeToJson(origStart, origEnd)},
@@ -538,11 +558,20 @@ static void handleDefinition(ServerState& st, const json& msg) {
     const std::string uri = textDocumentUri(params);
     Document* doc = uri.empty() ? nullptr : st.docs.get(uri);
     auto pos = jsonToPos(params);
-    if (!doc || !pos) { sendResult(id, nullptr); return; }
+    if (!doc || !pos) {
+        sendResult(id, nullptr);
+        return;
+    }
     auto hit = identifierAt(doc->text(), *pos);
-    if (!hit.found) { sendResult(id, nullptr); return; }
+    if (!hit.found) {
+        sendResult(id, nullptr);
+        return;
+    }
     auto resolved = st.ws.resolveUri(uri);
-    if (!resolved.project || !resolved.file) { sendResult(id, nullptr); return; }
+    if (!resolved.project || !resolved.file) {
+        sendResult(id, nullptr);
+        return;
+    }
 
     // receiver.member 优先：仅当 hit IDENT 紧邻在 `IDENT . ` 之后才走成员路径
     auto rc = receiverContextAt(doc->text(), *pos);
@@ -555,8 +584,7 @@ static void handleDefinition(ServerState& st, const json& msg) {
             if (mh.kind == MemberHit::Kind::Field && mh.field) {
                 link = tokenLocLink(*resolved.project, mh.ownerFile, mh.field->name(), hit.start, hit.end);
             } else if (mh.kind == MemberHit::Kind::Method && mh.method) {
-                link = tokenLocLink(*resolved.project, mh.ownerFile,
-                                     mh.method->header()->name(), hit.start, hit.end);
+                link = tokenLocLink(*resolved.project, mh.ownerFile, mh.method->header()->name(), hit.start, hit.end);
             }
             if (link) {
                 sendResult(id, json::array({*link}));
@@ -571,7 +599,10 @@ static void handleDefinition(ServerState& st, const json& msg) {
 
     auto lk = lookupName(*resolved.project, resolved.file, hit.text);
     auto loc = locateLookup(*resolved.project, lk);
-    if (!loc) { sendResult(id, nullptr); return; }
+    if (!loc) {
+        sendResult(id, nullptr);
+        return;
+    }
     // 始终返回 LocationLink：originSelectionRange 限制 ctrl-hover 时
     // 客户端显示的可点击下划线范围（否则没有 PSI 的客户端会按整行兜底）。
     // LSP4IJ 等现代客户端均支持 LocationLink；不支持的客户端会忽略。
@@ -590,20 +621,39 @@ static void handleHover(ServerState& st, const json& msg) {
     const std::string uri = textDocumentUri(params);
     Document* doc = uri.empty() ? nullptr : st.docs.get(uri);
     auto pos = jsonToPos(params);
-    if (!doc || !pos) { sendResult(id, nullptr); return; }
+    if (!doc || !pos) {
+        sendResult(id, nullptr);
+        return;
+    }
     auto hit = identifierAt(doc->text(), *pos);
-    if (!hit.found) { sendResult(id, nullptr); return; }
+    if (!hit.found) {
+        sendResult(id, nullptr);
+        return;
+    }
     auto resolved = st.ws.resolveUri(uri);
-    if (!resolved.project || !resolved.file) { sendResult(id, nullptr); return; }
+    if (!resolved.project || !resolved.file) {
+        sendResult(id, nullptr);
+        return;
+    }
     auto lk = lookupName(*resolved.project, resolved.file, hit.text);
     std::string md;
     switch (lk.kind) {
-        case LookupResult::Kind::Function: md = renderFnHover(lk.fn); break;
-        case LookupResult::Kind::Struct:   md = renderStructHover(lk.sd); break;
-        case LookupResult::Kind::GlobalConst: md = renderConstHover(lk.gc); break;
-        default: break;
+    case LookupResult::Kind::Function:
+        md = renderFnHover(lk.fn);
+        break;
+    case LookupResult::Kind::Struct:
+        md = renderStructHover(lk.sd);
+        break;
+    case LookupResult::Kind::GlobalConst:
+        md = renderConstHover(lk.gc);
+        break;
+    default:
+        break;
     }
-    if (md.empty()) { sendResult(id, nullptr); return; }
+    if (md.empty()) {
+        sendResult(id, nullptr);
+        return;
+    }
     json result = {
         {"contents", {{"kind", "markdown"}, {"value", md}}},
         {"range", rangeToJson(hit.start, hit.end)},
@@ -617,14 +667,24 @@ static void handleSignatureHelp(ServerState& st, const json& msg) {
     const std::string uri = textDocumentUri(params);
     Document* doc = uri.empty() ? nullptr : st.docs.get(uri);
     auto pos = jsonToPos(params);
-    if (!doc || !pos) { sendResult(id, nullptr); return; }
+    if (!doc || !pos) {
+        sendResult(id, nullptr);
+        return;
+    }
     auto cc = findEnclosingCall(doc->text(), *pos);
-    if (!cc.found) { sendResult(id, nullptr); return; }
+    if (!cc.found) {
+        sendResult(id, nullptr);
+        return;
+    }
     auto resolved = st.ws.resolveUri(uri);
-    if (!resolved.project || !resolved.file) { sendResult(id, nullptr); return; }
+    if (!resolved.project || !resolved.file) {
+        sendResult(id, nullptr);
+        return;
+    }
     auto lk = lookupName(*resolved.project, resolved.file, cc.callee);
     if (lk.kind != LookupResult::Kind::Function || lk.overloads.empty()) {
-        sendResult(id, nullptr); return;
+        sendResult(id, nullptr);
+        return;
     }
     json sigs = json::array();
     for (auto* fn : lk.overloads) {
@@ -654,7 +714,8 @@ static void handleSemanticTokensFull(ServerState& st, const json& msg) {
     json data = json::array();
     if (doc) {
         auto encoded = computeSemanticTokens(doc->text());
-        for (int v : encoded) data.push_back(v);
+        for (int v : encoded)
+            data.push_back(v);
     }
     sendResult(id, json{{"data", std::move(data)}});
 }
@@ -670,7 +731,8 @@ static void handleDocumentSymbol(ServerState& st, const json& msg) {
     }
     doc->parseIfDirty();
     json arr = json::array();
-    for (const auto& s : doc->symbols()) arr.push_back(symbolToJson(s));
+    for (const auto& s : doc->symbols())
+        arr.push_back(symbolToJson(s));
     sendResult(id, std::move(arr));
 }
 
@@ -678,9 +740,8 @@ static void handleDocumentSymbol(ServerState& st, const json& msg) {
 static bool dispatch(ServerState& st, const json& msg) {
     const auto methodIt = msg.find("method");
     const bool isRequest = msg.contains("id");
-    const std::string method = (methodIt != msg.end() && methodIt->is_string())
-                                   ? methodIt->get<std::string>()
-                                   : std::string{};
+    const std::string method =
+        (methodIt != msg.end() && methodIt->is_string()) ? methodIt->get<std::string>() : std::string{};
 
     // exit 通知：必须立即退出
     if (method == "exit") {
