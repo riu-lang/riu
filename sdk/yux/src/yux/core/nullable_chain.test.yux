@@ -1,0 +1,101 @@
+; Nullable 链式操作扩展：嵌套 ?. 链、?? 链、Nullable<String>、混合场景
+
+struct InnerVal {
+  v i32
+
+  #Static
+  fn make(v i32) InnerVal {
+    ret Self {
+      .v = v
+    }
+  }
+}
+
+struct MidVal {
+  inner InnerVal
+
+  #Static
+  fn make(inner InnerVal) MidVal {
+    ret Self {
+      .inner = inner
+    }
+  }
+}
+
+struct OuterVal {
+  mid MidVal
+
+  #Static
+  fn make(mid MidVal) OuterVal {
+    ret Self {
+      .mid = mid
+    }
+  }
+}
+
+; ==================== 嵌套 ?. 链式 ====================
+
+#Test
+fn test_nullable_chain_two_level_some() {
+  #Mut let inner InnerVal = InnerVal::make(42)
+  #Mut let mid MidVal = MidVal::make(inner)
+  #Mut let outer OuterVal = OuterVal::make(mid)
+  #Mut let maybe OuterVal? = outer
+  ; 两层 ?. 链式
+  #Mut let v i32? = maybe?.mid?.inner?.v
+  assert_eq(v ?? -1, 42)
+}
+
+#Test
+fn test_nullable_chain_two_level_null_mid() {
+  #Mut let outerMid OuterVal? = null
+  ; 第一层为空 → 短路返回 null
+  #Mut let v i32? = outerMid?.mid?.inner?.v
+  assert_eq(v ?? -99, -99)
+}
+
+; ==================== Nullable<String> ====================
+
+#Test
+fn test_nullable_string_some() {
+  #Mut let s String? = "hello"
+  assert_true(s.has())
+  assert_eq(s ?? "fallback", "hello")
+}
+
+#Test
+fn test_nullable_string_null() {
+  #Mut let s String? = null
+  assert_false(s.has())
+  assert_eq(s ?? "fallback", "fallback")
+}
+
+; ==================== 混合类型 ?? ====================
+
+#Test
+fn test_nullable_coalesce_some() {
+  #Mut let x i32? = 7
+  ; x ?? -1 返回 7（非 null）
+  let r i32 = x ?? -1
+  assert_eq(r, 7)
+}
+
+#Test
+fn test_nullable_coalesce_null() {
+  #Mut let y i32? = null
+  ; y ?? -1 返回 fallback
+  let r i32 = y ?? -1
+  assert_eq(r, -1)
+}
+
+; ==================== Nullable reassign with ?? ====================
+
+#Test
+fn test_nullable_reassign_coalesce() {
+  #Mut let x i64? = null
+  let v i64 = x ?? 100i64
+  assert_eq(v, 100i64)
+  x = 50i64
+  let w i64 = x ?? 0i64
+  assert_eq(w, 50i64)
+}
