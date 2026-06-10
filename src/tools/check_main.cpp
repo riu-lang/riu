@@ -232,15 +232,37 @@ struct TestFileResult {
     map<size_t, vector<string>> annotations; // 解析出的注解
 };
 
-// 单文件结果评估：parse ; check: 注解 → run sema → 匹配
-static TestFileResult evaluateOneFile(const string& absPath, const string& sdkPath) {
+// 对单个 .yux 文件执行 sema 检查, 复用已有 Yux 实例 (SDK 已预加载).
+// 与 runSemaOnFile 的区别: 不创建新 Yux、不加载 SDK、不重复做 ANTLR 解析
+// (loadMainFile → _parseFile 内部已包含 lex/parse/syntax check).
+static CheckResult runSemaOnFileWithYux(const string& absPath, Yux& yux) {
+    CheckResult cr;
+    string moduleName = filesystem::path(absPath).stem().string();
+
+    try {
+        auto file = yux.loadMainFile(absPath, moduleName);
+        yux.validateSpecImpls();
+        SemaPass(file, &yux).run();
+    } catch (const YuxError& e) {
+        cr.ok = false;
+        cr.semaError = e;
+    } catch (const runtime_error& e) {
+        cr.ok = false;
+        cr.otherError = e.what();
+    }
+
+    return cr;
+}
+
+// 单文件结果评估，复用已有 Yux (SDK 已预加载)
+static TestFileResult evaluateOneFileWithYux(const string& absPath, Yux& yux) {
     namespace fs = filesystem;
 
     TestFileResult tfr;
     tfr.filename = fs::path(absPath).filename().string();
     tfr.annotations = parseCheckAnnotations(absPath);
 
-    auto cr = runSemaOnFile(absPath, sdkPath);
+    auto cr = runSemaOnFileWithYux(absPath, yux);
 
     if (!cr.otherError.empty()) {
         tfr.passed = false;
@@ -252,10 +274,8 @@ static TestFileResult evaluateOneFile(const string& absPath, const string& sdkPa
     bool hasSemaError = cr.semaError.has_value();
 
     if (!hasAnnotations && !hasSemaError) {
-        // 情况 A: pass-through 模式, 无注解, 无错误 → PASS
         tfr.passed = true;
     } else if (!hasAnnotations && hasSemaError) {
-        // 情况 B: pass-through 模式, 无注解, 有错误 → FAIL (意外错误)
         tfr.passed = false;
         ostringstream oss;
         oss << "  unexpected " << cr.semaError->getCode()
@@ -263,7 +283,6 @@ static TestFileResult evaluateOneFile(const string& absPath, const string& sdkPa
             << ": " << cr.semaError->what() << '\n';
         tfr.failReason = oss.str();
     } else if (hasAnnotations && !hasSemaError) {
-        // 情况 C: 有注解, 但 SemaPass 无错误 → FAIL (期望错误未触发)
         tfr.passed = false;
         ostringstream oss;
         for (auto& [line, codes] : tfr.annotations) {
@@ -272,7 +291,6 @@ static TestFileResult evaluateOneFile(const string& absPath, const string& sdkPa
         }
         tfr.failReason = oss.str();
     } else {
-        // 情况 D: 有注解, 有错误 → 匹配行号与错误码
         auto& err = *cr.semaError;
         size_t errLine = err.getLineNumber();
         string errCode = err.getCode();
@@ -320,8 +338,8 @@ static int runCheckTest(const string& dir, bool recursive) {
         return 1;
     }
 
-    // 预查 SDK 路径 (找不到不致命)
-    string sdkPath = sdk_loader::findSdkPath();
+    // diag 文件不依赖 SDK 类型，跳过 SDK 加载消除 ~4s/线程 启动开销。
+    // 对确实需要 SDK 的用例，后续可通过文件头注解（如 ; require-sdk）按需加载。
 
     auto files = scanYuxFiles(dir, recursive);
     if (files.empty()) {
@@ -329,7 +347,7 @@ static int runCheckTest(const string& dir, bool recursive) {
         return 0;
     }
 
-    // 多线程处理：用原子索引分派工作，每线程独立 Yux 实例
+    // 多线程处理：每线程一个 Yux，原子索引无锁分派工作
     size_t fileCount = files.size();
     vector<TestFileResult> results(fileCount);
 
@@ -343,10 +361,14 @@ static int runCheckTest(const string& dir, bool recursive) {
 
     for (unsigned int t = 0; t < numThreads; ++t) {
         workers.emplace_back([&]() {
+            // 每线程创建独立 Yux。diag 文件不依赖 SDK，跳过 SDK 加载。
+            Yux yux;
+            yux.initSingleFileRoot(files[0]);
+
             while (true) {
                 size_t i = nextIndex.fetch_add(1);
                 if (i >= fileCount) break;
-                results[i] = evaluateOneFile(files[i], sdkPath);
+                results[i] = evaluateOneFileWithYux(files[i], yux);
             }
         });
     }
