@@ -427,8 +427,6 @@ expr:
     | (selfLhs=SelfType | typeName=ID) BlockStart LineEnd
         (fieldInits+=fieldInit|LineEnd)*
       BlockEnd                            # exprStructLit
-    // a <- b  —— 移出旧值、替换新值、返回旧值（表达式，右结合，最低优先级）
-    | <assoc=right> left=expr SymbolLtSub right=expr  # exprMoveAssign
     // ( e )
     | ParStart expr ParEnd                # exprParen
     // &a.b => T&
@@ -545,6 +543,8 @@ expr:
     | left=expr opEq right=expr      # exprEq
     // 布尔
     | left=expr opBool right=expr    # exprBool
+    // a <- b  —— 移出旧值、替换新值、返回旧值（表达式，右结合，最低优先级）
+    | <assoc=right> left=expr SymbolLtSub right=expr  # exprMoveAssign
     | literal                        # exprLiteral
     // e ?? e
     | expr

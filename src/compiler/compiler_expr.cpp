@@ -418,9 +418,10 @@ llvm::Value* Compiler::compileLvalueAddr(p<ExprNode> node) {
         auto baseAddr = compileLvalueAddr(dot->baseExpr());
         auto baseType = dot->baseExpr()->getType();
         // 剥 Ref<T> → T
+        bool wasRef = false;
         if (baseType.isRef()) {
             auto inner = baseType.refElementType();
-            if (inner) baseType = *inner;
+            if (inner) { baseType = *inner; wasRef = true; }
         }
         // 剥 Rc<T> → T
         if (baseType.isRc()) {
@@ -428,6 +429,30 @@ llvm::Value* Compiler::compileLvalueAddr(p<ExprNode> node) {
             if (inner) baseType = *inner;
         }
         string member = dot->member();
+
+        // 元组成员访问: member 为纯数字，base 解析后为 Tuple
+        // 透明 alias 由 applySubst 兜底（与 compileDotExpr 一致）
+        if (!member.empty() && std::ranges::all_of(member, [](char c) { return c >= '0' && c <= '9'; })) {
+            auto resolved = applySubst(baseType);
+            if (resolved.isTuple()) {
+                auto& elems = resolved.tupleElements();
+                auto idx = static_cast<size_t>(std::stoul(member));
+                if (idx >= elems.size()) {
+                    throw YuxError(line, col, ErrorCode::E3100, member,
+                                   baseType.getFullName(), std::to_string(elems.size()));
+                }
+                // Ref<T> 的 lvalue addr 存的是引用值（ptr），需先 Load 再 GEP 到元组元素
+                if (wasRef) {
+                    baseAddr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), baseAddr, "tuple.ref.deref");
+                }
+                auto llvmTupleType = getLLVMType(resolved);
+                auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+                auto idxVal = llvm::ConstantInt::get(_builder.getInt32Ty(), static_cast<unsigned>(idx));
+                return _builder.CreateGEP(llvmTupleType, baseAddr, {zero, idxVal}, "move.lhs.tuple.gep");
+            }
+            // 非 Tuple 的 .N 留给后续 struct 逻辑（会落到 E3040 报字段不存在）
+        }
+
         auto structType = getLLVMType(baseType);
         if (!structType) {
             throw YuxError(line, col, ErrorCode::E3042, baseType.name, member);
@@ -447,7 +472,7 @@ llvm::Value* Compiler::compileLvalueAddr(p<ExprNode> node) {
         return _builder.CreateStructGEP(structType, baseAddr, static_cast<unsigned>(idx), "move.lhs.gep");
     }
 
-    throw YuxError(line, col, ErrorCode::E0000, "<- 左侧仅支持变量、$、字段访问（暂不支持索引/元组成员）");
+    throw YuxError(line, col, ErrorCode::E0000, "<- 左侧仅支持变量、$、字段访问（暂不支持索引）");
 }
 
 // 编译 a <- b：移出旧值、替换新值、返回旧值

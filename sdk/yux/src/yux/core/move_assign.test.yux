@@ -196,3 +196,26 @@ fn test_move_assign_field_twice() {
   assert_eq(old1.b, 2)
   assert_eq(old2.b, 4)
 }
+
+; ==================== 元组成员移入赋值 ====================
+
+#Test
+fn test_move_assign_tuple_member_scalar() {
+  #Mut let t (i32, i32) = (10, 20)
+  let old = t.0 <- 99
+  ; old = 旧值 10, t.0 = 99, t.1 不变
+  assert_eq(old, 10)
+  assert_eq(t.0, 99)
+  assert_eq(t.1, 20)
+}
+
+#Test
+fn test_move_assign_tuple_member_swap() {
+  #Mut let a (i32, i32) = (1, 2)
+  #Mut let b (i32, i32) = (3, 4)
+  let old_a0 = a.0 <- b.0
+  assert_eq(old_a0, 1)
+  assert_eq(a.0, 3)
+  assert_eq(a.1, 2)
+  assert_eq(b.0, 3)  ; b 不变
+}
