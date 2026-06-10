@@ -1,0 +1,120 @@
+; reflect 测试套件
+; 迁自 tests/cases/reflect_*.yux
+; 覆盖: Type 反射、Field name/value 读写、#Reflect 注解、静态字段访问
+
+; ==================== 测试用类型 ====================
+
+struct Point {
+  x i32
+  y i32
+
+  #Static
+  fn make(x i32, y i32) Point {
+    ret Self {
+      .x = x
+      .y = y
+    }
+  }
+
+  fn sum() i32 {
+    ret Point::fields[0].value + Point::fields[1].value
+  }
+}
+
+struct Rect {
+  top_left Point
+  size i32
+}
+
+struct Counter {
+  n i32
+  total i32
+
+  #Static
+  fn make(n i32, total i32) Counter {
+    ret Self {
+      .n = n
+      .total = total
+    }
+  }
+
+  fn set_n(val i32) {
+    let f = Counter::fields[0]
+    f.value = val
+  }
+
+  fn set_total(val i32) {
+    let f = Counter::fields[1]
+    f.value = val
+  }
+}
+
+#Reflect
+struct Tagged {
+  value i32
+}
+
+; ==================== Type 反射基本 ====================
+
+#Test
+fn test_reflect_type_basic() {
+  let t Type = __yux_reflect_type:<Counter>()
+  assert_eq(t.name, "Counter")
+  let f0 Field& = Counter::fields[0]
+  assert_eq(f0.name, "n")
+  let f1 Field& = Counter::fields[1]
+  assert_eq(f1.name, "total")
+}
+
+; ==================== 静态路径访问 Type::type / ::fields ====================
+
+#Test
+fn test_reflect_static_access() {
+  let t Type = Counter::type
+  assert_eq(t.name, "Counter")
+  let fs [Field& * 2]& = Counter::fields
+  let f0 Field& = fs[0]
+  assert_eq(f0.name, "n")
+  let f1 Field& = fs[1]
+  assert_eq(f1.name, "total")
+}
+
+; ==================== Field 名称遍历 ====================
+
+#Test
+fn test_reflect_field_type_offset() {
+  let fs [Field& * 2]& = Rect::fields
+  let f0 Field& = fs[0]
+  assert_eq(f0.name, "top_left")
+  let f1 Field& = fs[1]
+  assert_eq(f1.name, "size")
+}
+
+; ==================== Field.value 读 ====================
+
+#Test
+fn test_reflect_field_value_basic() {
+  let p Point = Point::make(3, 5)
+  assert_eq(p.sum(), 8)
+}
+
+; ==================== Field.value 写 ====================
+
+#Test
+fn test_reflect_field_value_write() {
+  let c Counter = Counter::make(10, 100)
+  assert_eq(c.n, 10)
+  assert_eq(c.total, 100)
+  c.set_n(42)
+  c.set_total(99)
+  assert_eq(c.n, 42)
+  assert_eq(c.total, 99)
+}
+
+; ==================== #Reflect 防 DCE ====================
+
+#Test
+fn test_reflect_dce_annotated() {
+  let t Type = Tagged::type
+  assert_eq(t.name, "Tagged")
+}

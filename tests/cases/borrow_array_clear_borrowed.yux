@@ -1,9 +1,0 @@
-; v0.4 Phase 5：Array<T>& 借用期 clear 报错
-
-fn main() {
-  #Mut let a Array<i32> = [1, 2, 3]
-  let r Array<i32>& = &a
-  a.clear()
-  println(r.len())
-  ret;
-}

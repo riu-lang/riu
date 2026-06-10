@@ -1,9 +1,0 @@
-; v0.4 Phase 5：as_ref 借用期内 Heap box 重赋应当报错（§8.6.5.5）
-
-fn main() {
-  #Mut let b Heap<i32> = Heap:<i32>(7i32)
-  let r i32& = as_ref(b)
-  b = Heap:<i32>(9i32)
-  println(r)
-  ret;
-}

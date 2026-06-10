@@ -3,18 +3,14 @@
 
 -- yux 语言测试：使用 xmake 原生测试机制（xmake test）
 --
--- 每个 tests/cases/*.yux 配对一个 *.expected：
---   - cases/*.yux            编译应成功；运行产物 .exe，stdout 需与 .expected 完全一致
---   - cases/format_*.yux     格式化用例；配对 *.expected_format，
---                            `yux format <case>` 的 stdout 需与 expected 完全一致（CRLF 归一）
---   - cases/error/*.yux      编译应失败；.expected 内容仅作占位（约定 "error"）
---
--- 项目级用例：tests/projects/<case>/ 下包含 yux.toml + 入口源文件 + expected.txt。
--- 以该目录为 CWD 调用 `yux build <case>`，运行 build/<case>/<case>.exe 并比对 expected.txt。
---
--- 诊断回归用例 (diag_*) 已迁移到 yux-check test：
---   - 用例位于 tests/check-cases/diag_*.yux，使用 ; check: EXXXX 行尾注解
---   - 运行：yux-check test tests/check-cases/
+-- 用例分布（截至 v0.16）：
+--   - tests/cases/format_*.yux        格式化用例；配对 *.expected_format，
+--                                    `yux format <case>` 的 stdout 需与 expected 完全一致（CRLF 归一）
+--   - tests/cases/extern_ptr_*.yux / ptr_*.yux  extern fn 边界用例；配对 *.expected，
+--                                    编译+运行 stdout 需与 expected 完全一致
+--   - tests/projects/<case>/          项目模式用例；包含 yux.toml + 入口源文件 + expected.txt
+--   - tests/check-cases/diag_*.yux   诊断回归用例（; check: EXXXX 注解），由 `yux-check test` 运行
+--   - sdk/yux/src/yux/core/*.test.yux  纯逻辑 + 行为用例（#Test 注解），由 `yux test` 运行
 --
 -- 运行：
 --   xmake build yux                         先构建编译器
@@ -24,37 +20,21 @@
 --   xmake test "yux_tests/*"                通配符
 --   xmake test -g yux/<cat>                 只跑某一分类（见下方 categorize 函数）
 --
--- 分类（按用例名前缀；新用例必须沿用已有前缀，否则会落到 yux/misc）：
---   yux/borrow    借用诊断                borrow_*（仅 .expected_err 路径）
---   yux/extern    extern fn 边界          extern_*、ptr_*
+-- 分类：
 --   yux/project   项目模式用例            tests/projects/* (前缀 project_)
 --   yux/format    格式化用例              format_*
---   yux/misc      其余兜底
---
--- 注：纯逻辑用例 + 行为类用例（数组/Rc/Ref/Weak/Nullable/Struct/RC 临时值清单 /
--- 借用合法路径）已迁到 `sdk/yux/src/yux/core/*.test.yux`，由 `yux test` 直接运行。
--- 诊断用例 (diag_*) 已迁到 tests/check-cases/，由 `yux-check test` 运行。
--- 这里仅保留 borrow 借用诊断和 extern fn 链接边界用例。
+--   yux/extern    extern fn 边界          extern_*、ptr_*
 
 local cases_dir = path.join(os.scriptdir(), "cases")
 local projects_dir = path.join(os.scriptdir(), "projects")
 
 -- 用例名 → 分组名。name 为不带 .yux 的基名；项目模式用例形如 "project_<dir>"。
--- 新增用例时，若命名沿用已有前缀，会自动归入对应分组；否则落入 yux/misc，
--- 此时应优先重命名用例（保持前缀约定），而不是在这里加白名单。
 local function categorize(name)
     if name:startswith("project_") then return "yux/project" end
     if name:startswith("format_")  then return "yux/format"  end
-    if name:startswith("borrow_")  then return "yux/borrow"  end
     if name:startswith("ptr_") or name == "extern_ptr_auto" then
         return "yux/extern"
     end
-    if name:startswith("lambda_") then return "yux/lambda" end
-    if name:startswith("alias_")  then return "yux/alias"  end
-    if name:startswith("spec_")   then return "yux/spec"   end
-    if name:startswith("const_eval_") then return "yux/const-eval" end
-    if name:startswith("static_vars_") then return "yux/static-vars" end
-    if name:startswith("reflect_") then return "yux/reflect" end
     return "yux/misc"
 end
 
@@ -62,8 +42,6 @@ local function list_case_names()
     local r = {}
     for _, f in ipairs(os.files(path.join(cases_dir, "*.yux"))) do
         if os.isfile((f:gsub("%.yux$", ".expected"))) then
-            r[path.basename(f)] = true
-        elseif os.isfile((f:gsub("%.yux$", ".expected_err"))) then
             r[path.basename(f)] = true
         elseif os.isfile((f:gsub("%.yux$", ".expected_format"))) then
             r[path.basename(f)] = true
@@ -92,16 +70,9 @@ target("yux_tests")
         local cases = {}
         for _, f in ipairs(os.files(path.join(cd, "*.yux"))) do
             local exp = f:gsub("%.yux$", ".expected")
-            local exp_err = f:gsub("%.yux$", ".expected_err")
             local exp_fmt = f:gsub("%.yux$", ".expected_format")
             if os.isfile(exp) then
                 cases[path.basename(f)] = {file = path.absolute(f)}
-            elseif os.isfile(exp_err) then
-                cases[path.basename(f)] = {
-                    file = path.absolute(f),
-                    expected_err_file = path.absolute(exp_err),
-                    is_diag = true,
-                }
             elseif os.isfile(exp_fmt) then
                 cases[path.basename(f)] = {
                     file = path.absolute(f),
@@ -225,12 +196,12 @@ target("yux_tests")
             return true
         end
 
+        -- extern/ptr 用例：编译 + 运行，stdout 与 .expected 完全一致
         local case = entry.file
         local expected_file = case:gsub("%.yux$", ".expected")
         local workdir = path.directory(case)
         local stem = path.basename(case)
         local project_root = path.directory(target:scriptdir())
-        -- 单文件模式：产物扁平放在源文件同级的 `build/` 下。
         local build_root = path.join(workdir, "build")
         local exe = path.join(build_root, stem .. ".exe")
         local obj = path.join(build_root, stem .. ".obj")
@@ -238,50 +209,6 @@ target("yux_tests")
         os.tryrm(exe)
         os.tryrm(obj)
         os.tryrm(cache)
-
-        if entry.is_diag then
-            -- 诊断回归：编译应失败；逐行子串匹配 expected_err
-            local stdout_data, stderr_data
-            local compile_ok = try {
-                function ()
-                    stdout_data, stderr_data = os.iorunv(yux_exe, {case}, {curdir = project_root})
-                    return true
-                end,
-                catch {
-                    function (errs)
-                        stderr_data = tostring(errs)
-                        return nil
-                    end
-                }
-            }
-            opt.stdout = stdout_data
-            opt.stderr = stderr_data
-
-            if compile_ok and os.isfile(exe) then
-                opt.errors = "diag case unexpectedly compiled: " .. case
-                os.tryrm(exe); os.tryrm(obj); os.tryrm(cache)
-                return false
-            end
-
-            local expected_err = io.readfile(entry.expected_err_file) or ""
-            local haystack = (stderr_data or "") .. "\n" .. (stdout_data or "")
-            local missing = {}
-            for line in expected_err:gmatch("[^\r\n]+") do
-                local trimmed = line:match("^%s*(.-)%s*$")
-                if trimmed ~= "" and trimmed:sub(1, 1) ~= ";" then
-                    if not haystack:find(trimmed, 1, true) then
-                        table.insert(missing, trimmed)
-                    end
-                end
-            end
-            os.tryrm(exe); os.tryrm(obj); os.tryrm(cache)
-            if #missing > 0 then
-                opt.errors = format("diag mismatch for %s\n--- missing lines ---\n%s\n--- stderr ---\n%s",
-                                    case, table.concat(missing, "\n"), stderr_data or "")
-                return false
-            end
-            return true
-        end
 
         local stdout_data, stderr_data
         local ok = try {

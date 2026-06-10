@@ -1,0 +1,10 @@
+; require-sdk
+; v0.4 Phase 5：Array<T>& 借用期内 push 报错（§8.4.2.5）
+
+fn main() {
+  #Mut let a Array<i32> = [1, 2, 3]
+  let r Array<i32>& = &a
+  a.push(4)  ; check: E2010
+  println(r.len())
+  ret;
+}

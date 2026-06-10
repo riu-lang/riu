@@ -24,15 +24,13 @@
 
 按 `BUGS.md` 模板填写，暂停相关任务向用户说明。**进度→`CURRENT.md`，bug→`BUGS.md`，两者不混用**。
 
-### 测试用例命名必须沿用已有前缀
+### 测试用例命名
 
-`tests/xmake.lua` 按文件名前缀把用例分到 `yux/<cat>` 分组（`borrow_*` → `yux/borrow`、`diag_*` → `yux/diag` 等，全表见 `yux-lang-dev` 技能的「测试」章节）。
-
-落不到任何前缀的用例会进 `yux/misc`，**使分组失效**。优先用前缀命名；确实没有自然前缀的（算术 / 类型 / 控制流家族），把名字加进 `categorize` 中对应的白名单表。
+SDK 测试（`sdk/yux/src/yux/core/*.test.yux`）按主题建文件，内部 `#Test fn` 名自由但必须 `test_` 前缀。`tests/cases/` 仅剩 `format_*` / `extern_*` / `ptr_*` 三个前缀，`tests/xmake.lua` 的 `categorize()` 按前缀自动分到 `yux/format`、`yux/extern` 分组。
 
 ### 测试命令速查
 
-新测试默认 `yux test`（JIT 进程内，快）。诊断用 `yux-check test`，借用/extern 等用 `xmake test`。
+新测试默认 `yux test`（JIT 进程内，快）。诊断用 `yux-check test`，格式化/extern/项目输出用 `xmake test`。
 
 ```powershell
 # yux test（项目内，*.test.yux 的 #Test）
@@ -53,17 +51,14 @@ yux-check test tests/check-cases/   ; 批量诊断测试
 yux-check test tests/check-cases/ -r ; 递归子目录
 yux-check <file>                    ; 单文件诊断（输出 file:line:col [EXXXX]）
 
-# xmake test（tests/cases/ + tests/projects/）
-xmake test -g yux/borrow          ; 借用检查（borrow_*）
-xmake test -g yux/extern          ; extern 边界（extern_* / ptr_*）
+# xmake test（仅 format / extern / 项目输出）
 xmake test -g yux/format          ; 格式化（format_*）
-xmake test -g yux/lambda          ; lambda（lambda_*）
-xmake test -g yux/const-eval      ; 常量求值（const_eval_*）
-xmake test -g yux/reflect         ; 反射（reflect_*）
+xmake test -g yux/extern          ; extern 边界（extern_* / ptr_*）
+xmake test -g yux/project         ; 项目模式用例（tests/projects/）
 xmake test yux_tests/<name>       ; 跑单个用例
 ```
 
-分组名由 `tests/xmake.lua` 的 `categorize()` 按文件名前缀决定，`xmake test -g <group>` 可快速只跑某一类。全部分组见 `tests/xmake.lua` 注释。
+分组名由 `tests/xmake.lua` 的 `categorize()` 按文件名前缀决定。当前仅三组：`yux/project`、`yux/format`、`yux/extern`。
 
 ### 完成一个版本后归档实施记录
 

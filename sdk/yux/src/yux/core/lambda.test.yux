@@ -466,3 +466,80 @@ fn test_closure_self_capture() {
   assert_eq(c.add_then_apply(5), 15)
   assert_eq(c.triple_apply(), 50)
 }
+
+; ==================== lambda if 表达式体 ====================
+
+#Test
+fn test_lambda_if_expr_body() {
+  let abs1 = (x i32) i32 => if x > 0 { x } else { 0 - x }
+  assert_eq(abs1(5), 5)
+  assert_eq(abs1(0 - 7), 7)
+
+  let r1 = apply(x => if x > 10 { x + 1 } else { x }, 20)
+  assert_eq(r1, 21)
+}
+
+; ==================== lambda match 表达式体 ====================
+
+enum Color {
+  Red
+  Green
+  Blue
+}
+
+fn classify(c Color) i32 {
+  match c {
+    Color::Red   => 1
+    Color::Green => 2
+    Color::Blue  => 3
+  }
+}
+
+fn apply_color(f fn(Color)i32, c Color) i32 {
+  ret f(c)
+}
+
+#Test
+fn test_lambda_match_expr_body() {
+  let cl = (c Color) i32 => match c {
+    Color::Red   => 1
+    Color::Green => 2
+    Color::Blue  => 3
+  }
+  assert_eq(cl(Color::Red), 1)
+  assert_eq(cl(Color::Green), 2)
+
+  let r1 = apply_color(c => match c {
+    Color::Red   => 10
+    Color::Green => 20
+    Color::Blue  => 30
+  }, Color::Blue)
+  assert_eq(r1, 30)
+}
+
+; ==================== lambda T& 捕获作为调用实参 ====================
+
+fn use_borrow_capture(r i32&) i32 {
+  #Mut let sum i32 = 0
+  sum = sum + apply((x i32) i32 => r + x, 5)
+  sum = sum + apply((x i32) i32 => r * x, 2)
+  ret sum
+}
+
+#Test
+fn test_closure_borrow_capture_call_arg() {
+  #Mut let n i32 = 100
+  assert_eq(use_borrow_capture(&n), 305)
+}
+
+; ==================== lambda T& 形参返回 T&（合法路径） ====================
+
+fn use_lambda_borrow_ret(f fn(i32&)i32&) {
+  ; 不调用 f，仅验证 borrow checker 接受此形态
+}
+
+#Test
+fn test_closure_ret_borrow_param() {
+  use_lambda_borrow_ret((r i32&) i32& => r)
+  assert_true(true)
+}

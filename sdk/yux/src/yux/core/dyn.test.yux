@@ -283,3 +283,42 @@ fn test_dyn_ctor_in_method() {
   let c DynCaller = DynCaller::make(2i64)
   assert_eq(c.run(), 42i64)
 }
+
+; ==================== spec 默认体 fall-through 经 Dyn<D> vtable ====================
+
+#Spec
+struct Sign {
+  fn raw() i32
+  fn is_pos() bool = $.raw() > 0
+}
+
+#Impl(Sign)
+struct N2 {
+  v i32
+
+  #Static
+  fn make(v i32) N2 {
+    ret Self {
+      .v = v
+    }
+  }
+
+  fn raw() i32 {
+    $.v
+  }
+}
+
+#Test
+fn test_dyn_default_fallthrough() {
+  let ra Rc<N2> = N2::make(3)
+  let da Dyn<Sign> = Dyn:<Sign>(ra)
+  assert_true(da.is_pos())
+
+  let rb Rc<N2> = N2::make(0)
+  let db Dyn<Sign> = Dyn:<Sign>(rb)
+  assert_false(db.is_pos())
+
+  let rc Rc<N2> = N2::make(-5)
+  let dc Dyn<Sign> = Dyn:<Sign>(rc)
+  assert_false(dc.is_pos())
+}

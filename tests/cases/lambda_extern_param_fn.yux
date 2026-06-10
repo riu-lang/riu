@@ -1,9 +1,0 @@
-; Phase 4f §7：extern fn 形参不得含 fn(...) 类型 → E2031
-
-extern {
-  fn cb_register(cb fn(i32)i32)
-}
-
-fn main() {
-  ret;
-}

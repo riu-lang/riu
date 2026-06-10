@@ -1,0 +1,10 @@
+; require-sdk
+; v0.4 Phase 5：Array<T>& 借用期 pop 报错
+
+fn main() {
+  #Mut let a Array<i32> = [1, 2, 3]
+  let r Array<i32>& = &a
+  a.pop()  ; check: E2010
+  println(r.len())
+  ret;
+}

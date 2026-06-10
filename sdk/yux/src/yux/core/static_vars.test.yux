@@ -1,0 +1,113 @@
+; static_vars 测试套件
+; 迁自 tests/cases/static_vars_*.yux
+; 覆盖: 全局 val/#Mut、const-eval 优化、struct 静态字段
+
+; ==================== 测试用全局变量 ====================
+
+let ANSWER i32 = 42
+
+#Mut
+let COUNTER i32 = 0
+
+#Mut
+let MUT_COUNTER i32 = 100 + 50
+
+let ARITH_VAL i32 = 10 + 20 * 3
+
+struct Point {
+  x i32
+  y i32
+}
+
+let ORIGIN Point = Point {
+  .x = 0
+  .y = 0
+}
+
+#Const
+fn get_default_port() i32 = 8080
+
+#Cval
+let PORT i32 = get_default_port()
+
+struct Counter {
+  value i32
+
+  #Static
+  DEFAULT i32 = 42
+
+  #Mut
+  #Static
+  TOTAL i64 = 10
+}
+
+; ==================== 全局 val 基本 ====================
+
+#Test
+fn test_global_val_basic() {
+  assert_eq(ANSWER, 42)
+}
+
+#Test
+fn test_global_val_calls_fn() {
+  assert_eq(PORT, 8080)
+}
+
+; ==================== 全局 #Mut 读写 ====================
+
+#Test
+fn test_global_mut_read() {
+  assert_eq(COUNTER, 0)
+}
+
+#Test
+fn test_global_mut_write() {
+  COUNTER = 42
+  assert_eq(COUNTER, 42)
+  COUNTER = 0
+}
+
+; ==================== 全局 const-eval ====================
+
+#Test
+fn test_const_eval_val_arith() {
+  assert_eq(ARITH_VAL, 70)
+}
+
+#Test
+fn test_const_eval_mut_arith() {
+  assert_eq(MUT_COUNTER, 150)
+  MUT_COUNTER = MUT_COUNTER + 1
+  assert_eq(MUT_COUNTER, 151)
+  MUT_COUNTER = 150
+}
+
+#Test
+fn test_const_eval_val_struct() {
+  assert_eq(ORIGIN.x, 0)
+  assert_eq(ORIGIN.y, 0)
+}
+
+; ==================== struct 静态字段 ====================
+
+#Test
+fn test_struct_static_val_field() {
+  assert_eq(Counter::DEFAULT, 42)
+}
+
+#Test
+fn test_struct_static_mut_field_read() {
+  assert_eq(Counter::TOTAL, 10i64)
+}
+
+#Test
+fn test_struct_static_mut_field_write() {
+  Counter::TOTAL = 0i64
+  assert_eq(Counter::TOTAL, 0i64)
+  Counter::TOTAL = 42i64
+  assert_eq(Counter::TOTAL, 42i64)
+  Counter::TOTAL = Counter::TOTAL + 58i64
+  assert_eq(Counter::TOTAL, 100i64)
+  ; 恢复初始值，避免跨测试状态污染
+  Counter::TOTAL = 10i64
+}

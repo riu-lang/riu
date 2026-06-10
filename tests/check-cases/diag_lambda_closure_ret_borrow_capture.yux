@@ -1,0 +1,17 @@
+; Phase 4e §6.5：lambda 返回 T& 的允许源集 = 自身 T& 形参；
+; 捕获来的 T& 不进允许源集 → E4020
+
+fn use_lambda(f fn(i32&)i32&) {
+  ; 不调用 f
+}
+
+fn outer(c i32&) {
+  ; lambda 形参 r 不被使用；ret 捕获 c → E4020
+  use_lambda((r i32&) i32& => c)  ; check: E4020
+}
+
+fn main() {
+  #Mut let n i32 = 1
+  outer(&n)
+  ret;
+}

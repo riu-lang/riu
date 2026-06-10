@@ -1,9 +1,0 @@
-; Phase 4f §7：extern fn 返回值不得是 fn(...) 类型 → E2031
-
-extern {
-  fn cb_get() fn(i32)i32
-}
-
-fn main() {
-  ret;
-}

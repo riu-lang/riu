@@ -1,9 +1,0 @@
-; DRAFT-static-vars Phase 2: #Mut 全局读写
-
-#Mut
-let COUNTER i32 = 0
-
-fn main() {
-  COUNTER = 42
-  println(COUNTER.to_string())
-}

@@ -16,13 +16,14 @@ yux-lang/
 ├── gen/              ANTLR4 生成代码，不要手改
 ├── include/          公共 C++ 头（types.h）
 ├── sdk/yux/          自举运行时（独立 yux 项目，编为静态库 yux.lib），链接到每个 yux 程序
+│   └── src/yux/core/  SDK 源码 + *.test.yux 测试（#Test 注解，yux test 运行）
 ├── docs/             语言参考文档（中文）；入口 docs/index.md
 │   ├── spec/         语言规范（草案中）
 │   │   └── draft/    跨章节设计草案（`DRAFT-<特性>.md` + `_模板.md`），入库但不等同规范
 │   └── dev/          已完成版本的实施日志归档（如 ownership-impl-log.md），内容为重大 / 重要变更实现，其它在 git 提交记录
 ├── examples/test/    示例项目，用作快速冒烟测试
 ├── tests/
-│   ├── cases/        单文件用例（borrow_* / format_* / lambda_* 等）
+│   ├── cases/        单文件用例（format_* / extern_* / ptr_*，xmake test）
 │   ├── check-cases/  诊断用例（diag_*.yux，; check: EXXXX 注解，由 yux-check test 运行）
 │   ├── projects/     项目模式用例（每目录一个 yux.toml + expected.txt）
 │   └── xmake.lua     测试运行器（yux_tests target）

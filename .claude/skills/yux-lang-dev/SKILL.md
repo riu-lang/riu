@@ -29,7 +29,7 @@ yux build --emit-ir          ; 同时输出 .ll
 
 ## 测试
 
-**新测试默认 `yux test`**（JIT 进程内，快）。诊断用 `yux-check test`，借用/extern 用 `xmake test`。
+**新测试默认 `yux test`**（JIT 进程内，快）。诊断用 `yux-check test`，格式化/extern/项目输出用 `xmake test`。
 
 ```powershell
 # yux test（项目内，*.test.yux 的 #Test）
@@ -42,18 +42,17 @@ cd sdk/yux && yux test       ; 主测试集
 yux-check test tests/check-cases/   ; 批量测试
 yux-check test tests/check-cases/ -r ; 递归子目录
 
-# xmake test（借用/extern/format/lambda 等，tests/cases/ + tests/projects/）
-xmake test -g yux/borrow      ; 借用检查（borrow_*）
-xmake test -g yux/extern      ; extern 边界（extern_* / ptr_*）
+# xmake test（format / extern / 项目输出，tests/cases/ + tests/projects/）
 xmake test -g yux/format      ; 格式化（format_*）
-xmake test -g yux/lambda      ; lambda（lambda_*）
+xmake test -g yux/extern      ; extern 边界（extern_* / ptr_*）
+xmake test -g yux/project     ; 项目模式用例（tests/projects/）
 xmake test yux_tests/<name>   ; 跑单个用例
 ```
 
-- `yux test`：测试写在 `*.test.yux`（**不能**挂在普通 `.yux`），断言 `assert_eq`/`assert_true`/`fail`
+- `yux test`：测试写在 `*.test.yux`（**不能**挂在普通 `.yux`），断言 `assert_eq`/`assert_true`/`fail`。SDK 测试集在 `sdk/yux/src/yux/core/*.test.yux`
 - `yux-check test`：诊断用例在 `tests/check-cases/`，行尾 `; check: EXXXX` 注解，错误码 + 行号精确匹配
-- `xmake test`：用例在 `tests/cases/`（`borrow_*`、`format_*`、`lambda_*` 等）和 `tests/projects/`（`expected.txt`）；diag 用例已迁出
-- 新增用例**必须用对前缀**，否则落入 `yux/misc`
+- `xmake test`：仅保留三组 — `tests/cases/format_*`（格式化）、`tests/cases/extern_*`/`ptr_*`（extern 边界）、`tests/projects/`（项目输出 + expected.txt）。其余编译+运行用例已全量迁到 SDK `yux test`，诊断用例已全量迁到 `yux-check test`
+- 新增 SDK 测试**新建或追加**对应主题的 `.test.yux` 文件，不加到 `xmake test`
 
 ## 写 yux（易错）
 

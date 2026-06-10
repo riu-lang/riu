@@ -1,0 +1,24 @@
+; require-sdk
+; Phase 4d §6.4：方法体内 lambda 捕获 $ 即"含 T& 捕获"，触发 §6.3 不可逃逸
+
+struct Holder {
+  v i32
+
+  #Static
+  fn build(v i32) Holder {
+    ret Self {
+      .v = v
+    }
+  }
+
+  fn make() fn(i32)i32 {
+    ret (x i32) i32 => $.v + x  ; check: E4022
+  }
+}
+
+fn main() {
+  #Mut let h Holder = Holder::build(7)
+  #Mut let f fn(i32)i32 = h.make()
+  println(f(3))
+  ret;
+}

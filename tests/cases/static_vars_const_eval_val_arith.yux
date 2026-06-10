@@ -1,8 +1,0 @@
-; DRAFT-static-vars Phase 3: 全局 val 算术 const-eval
-; sema 期求值 10 + 20 * 3 = 70 → ConstantInitializer
-
-let ANSWER i32 = 10 + 20 * 3
-
-fn main() {
-  println(ANSWER)
-}

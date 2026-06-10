@@ -1,4 +1,0 @@
-[E3132]
-inherits conflicting default bodies for method `run`
-spec_combine_conflict_E3132_basic.A
-spec_combine_conflict_E3132_basic.B
