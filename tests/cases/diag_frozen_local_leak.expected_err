@@ -1,1 +1,0 @@
-diag_frozen_local_leak.yux:2:5 [E3107] error: Cannot pass `#Frozen` value 's' to mutable parameter 't'; use copy_of to obtain an owned copy (DRAFT-const-mut §5.4)

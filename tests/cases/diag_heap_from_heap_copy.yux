@@ -1,6 +1,0 @@
-; DRAFT-heap-types §8.3a.3.2：Heap<T> 单所有权，禁 by-value move (let h2 = h1)
-
-fn main() {
-  let h1 Heap<i32> = Heap:<i32>(5i32)
-  let h2 Heap<i32> = h1
-}

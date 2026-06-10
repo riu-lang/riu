@@ -1,5 +1,0 @@
-; DRAFT-heap-types §9：Arc<T> 占名，v1.x 多线程主题落地后实装
-
-fn main() {
-  let x Arc<i32> = 0
-}

@@ -1,8 +1,0 @@
-; DRAFT-static-vars Phase 4: #Static 字段缺 init → E3150
-
-struct Foo {
-  #Static
-  BAR i32
-}
-
-fn main() {}

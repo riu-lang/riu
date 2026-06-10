@@ -5,7 +5,6 @@
 --
 -- 每个 tests/cases/*.yux 配对一个 *.expected：
 --   - cases/*.yux            编译应成功；运行产物 .exe，stdout 需与 .expected 完全一致
---   - cases/diag_*.yux       编译应失败；配对 *.expected_err，逐行子串匹配 stderr
 --   - cases/format_*.yux     格式化用例；配对 *.expected_format，
 --                            `yux format <case>` 的 stdout 需与 expected 完全一致（CRLF 归一）
 --   - cases/error/*.yux      编译应失败；.expected 内容仅作占位（约定 "error"）
@@ -13,9 +12,9 @@
 -- 项目级用例：tests/projects/<case>/ 下包含 yux.toml + 入口源文件 + expected.txt。
 -- 以该目录为 CWD 调用 `yux build <case>`，运行 build/<case>/<case>.exe 并比对 expected.txt。
 --
--- 诊断回归用例 (cases/diag_*.yux + *.expected_err)：
---   - expected_err 中每一非空、非 `;` 开头行视为子串断言，必须在 stderr 中出现
---   - 编译必须以非零退出码结束（否则即使 stderr 含期望内容也算失败）
+-- 诊断回归用例 (diag_*) 已迁移到 yux-check test：
+--   - 用例位于 tests/check-cases/diag_*.yux，使用 ; check: EXXXX 行尾注解
+--   - 运行：yux-check test tests/check-cases/
 --
 -- 运行：
 --   xmake build yux                         先构建编译器
@@ -26,15 +25,16 @@
 --   xmake test -g yux/<cat>                 只跑某一分类（见下方 categorize 函数）
 --
 -- 分类（按用例名前缀；新用例必须沿用已有前缀，否则会落到 yux/misc）：
---   yux/diag      诊断/错误提示          diag_*
 --   yux/borrow    借用诊断                borrow_*（仅 .expected_err 路径）
 --   yux/extern    extern fn 边界          extern_*、ptr_*
 --   yux/project   项目模式用例            tests/projects/* (前缀 project_)
+--   yux/format    格式化用例              format_*
 --   yux/misc      其余兜底
 --
 -- 注：纯逻辑用例 + 行为类用例（数组/Rc/Ref/Weak/Nullable/Struct/RC 临时值清单 /
 -- 借用合法路径）已迁到 `sdk/yux/src/yux/core/*.test.yux`，由 `yux test` 直接运行。
--- 这里仅保留无法走 JIT 的诊断回归（`.expected_err` 子串匹配）和 extern fn 链接边界用例。
+-- 诊断用例 (diag_*) 已迁到 tests/check-cases/，由 `yux-check test` 运行。
+-- 这里仅保留 borrow 借用诊断和 extern fn 链接边界用例。
 
 local cases_dir = path.join(os.scriptdir(), "cases")
 local projects_dir = path.join(os.scriptdir(), "projects")
@@ -45,7 +45,6 @@ local projects_dir = path.join(os.scriptdir(), "projects")
 local function categorize(name)
     if name:startswith("project_") then return "yux/project" end
     if name:startswith("format_")  then return "yux/format"  end
-    if name:startswith("diag_")    then return "yux/diag"    end
     if name:startswith("borrow_")  then return "yux/borrow"  end
     if name:startswith("ptr_") or name == "extern_ptr_auto" then
         return "yux/extern"

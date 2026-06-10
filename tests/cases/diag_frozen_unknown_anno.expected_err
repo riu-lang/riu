@@ -1,1 +1,0 @@
-diag_frozen_unknown_anno.yux:1:8 [E3105] error: Unknown parameter annotation '#Bogus' (only '#Frozen' is supported on parameters; DRAFT-const-mut §5.1)

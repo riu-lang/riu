@@ -1,1 +1,0 @@
-diag_const_mut_cval_reassign.yux:3:5 [E3093] error: Cannot assign to immutable variable: k

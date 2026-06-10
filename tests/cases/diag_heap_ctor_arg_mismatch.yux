@@ -1,5 +1,0 @@
-; DRAFT-heap-types §8.3a.3.1：Heap:<T>(x) 中 x 类型必须 == T，否则报 E3028
-
-fn main() {
-  let h Heap<i32> = Heap:<i32>(3.14f32)
-}

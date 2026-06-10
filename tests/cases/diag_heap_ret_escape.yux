@@ -1,9 +1,0 @@
-; DRAFT-heap-types §8.3a.4.1：A 档 NRVO 仅放行 `ret <local Heap ID>`；
-; fresh Heap:<T>(...) ctor 形态非 NRVO-eligible，仍报 E4023 escape。
-
-fn make_h() Heap<i32> {
-  ret Heap:<i32>(5i32)
-}
-
-fn main() {
-}

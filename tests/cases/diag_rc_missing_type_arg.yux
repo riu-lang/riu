@@ -1,4 +1,0 @@
-fn main() {
-  #Mut let b Rc = 10i32
-  ret;
-}

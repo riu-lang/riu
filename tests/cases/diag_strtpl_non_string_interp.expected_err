@@ -1,1 +1,0 @@
-[E3026] error: String template interpolation requires type implementing ToString, got 'Array'

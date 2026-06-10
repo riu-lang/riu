@@ -1,5 +1,0 @@
-; DRAFT-let-unify §3.4: let 缺 type 缺 init → E3113
-
-fn main() {
-  let x
-}

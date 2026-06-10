@@ -1,3 +1,0 @@
-[E1002]
-extraneous input 'let'
-`let` 是 yux 关键字，不能用作标识符

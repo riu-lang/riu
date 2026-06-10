@@ -1,8 +1,0 @@
-; DRAFT-heap-types §8b：extern fn 形参禁 Heap<T>，跨 FFI 走 Ptr
-
-extern {
-  fn ffi_take(h Heap<i32>) i32
-}
-
-fn main() {
-}

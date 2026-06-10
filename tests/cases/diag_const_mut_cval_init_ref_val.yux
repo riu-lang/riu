@@ -1,7 +1,0 @@
-; P1-2: cval 初值 §3.3 — 引用一个 `val` (非 cval) 不算常量表达式.
-
-fn main() {
-    let v i32 = 7
-    #Cval let c i32 = v + 1
-    ret;
-}

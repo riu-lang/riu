@@ -1,1 +1,0 @@
-diag_const_fn_write_self.yux:14:9 [E3110] error: `#Const fn` 'bump' cannot write field of `$`: $.v (DRAFT-const-mut §4.2)

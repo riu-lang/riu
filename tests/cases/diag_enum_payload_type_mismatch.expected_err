@@ -1,2 +1,0 @@
-[E2032]
-expected `Rc<Point>`, got `Point`

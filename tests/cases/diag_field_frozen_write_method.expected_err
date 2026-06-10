@@ -1,1 +1,0 @@
-diag_field_frozen_write_method.yux:17:9 [E3109] error: Cannot write field 'name' marked '#Frozen' outside the constructor of struct 'Outer' (DRAFT-const-mut §6.2)

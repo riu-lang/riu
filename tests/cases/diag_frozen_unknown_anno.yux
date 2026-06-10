@@ -1,8 +1,0 @@
-fn bad(#Bogus s String) {
-    ret;
-}
-
-fn main() {
-    bad("hi")
-    ret;
-}

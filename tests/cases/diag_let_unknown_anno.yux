@@ -1,6 +1,0 @@
-; DRAFT-let-unify §3.4: let 不接受未知注解 → E3112
-
-fn main() {
-  #Foo let x i32 = 1
-  println(x.to_string())
-}

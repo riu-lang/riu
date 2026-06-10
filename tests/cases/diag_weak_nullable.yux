@@ -1,5 +1,0 @@
-fn main() {
-  let a Rc<i32> = box(1)
-  let w Weak<i32>? = weak(a)
-  ret;
-}

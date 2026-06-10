@@ -1,9 +1,0 @@
-fn bad(#Frozen s String) {
-    #Mut let t String = s
-    ret;
-}
-
-fn main() {
-    bad("hi")
-    ret;
-}
