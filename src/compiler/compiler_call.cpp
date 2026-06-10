@@ -2,7 +2,7 @@
 // MPL-2.0
 
 // 函数调用编译实现
-// 
+//
 // 本文件包含所有与函数/方法调用相关的编译逻辑:
 // - 函数重载解析
 // - 方法调用编译 (结构体方法、内置类型方法、数组方法)
@@ -15,12 +15,12 @@
 #include "ast/mangler.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/literal_node.h"
-#include "compiler_runtime.h"
 #include "compiler.h"
+#include "compiler_runtime.h"
+#include "sema/call_resolve.h"
 #include <functional>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
-#include "sema/call_resolve.h"
 
 // 重载解析 / 灵活整数推断 / E6014 歧义诊断已迁至 src/sema/call_resolve.cpp,
 // 由 namespace sema 提供 resolveFnOverload / resolveCtorOverload, 不依赖 LLVM.
@@ -64,12 +64,11 @@ llvm::Function* Compiler::getFunction(p<FnHeaderNode> header) {
 
 // 获取或创建方法函数
 // 方法名包含结构体名，如 "Foo.bar"
-llvm::Function* Compiler::getMethodFunction(
-    const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes, const TypeInfo& retType,
-    const string& fallibleErrType, bool isStatic) {
+llvm::Function* Compiler::getMethodFunction(const string& structName, const string& methodName,
+                                            const vector<TypeInfo>& paramTypes, const TypeInfo& retType,
+                                            const string& fallibleErrType, bool isStatic) {
     DEBUG_LOG_VAL("  getMethodFunction", structName << "." << methodName << (isStatic ? " [#Static]" : ""));
 
-    // Phase 6D: 同名 ctor 已被 sema E3130 拦截在定义点; 这里不再分派构造路径.
     bool isPriv = !methodName.empty() && methodName[0] == '_';
 
     // 确定方法所属的模块
@@ -82,8 +81,8 @@ llvm::Function* Compiler::getMethodFunction(
         auto* owner = _file->getStructOwner(structName);
         if (owner && owner != _file) {
             ownerModule = owner->moduleName();
-        } else if (!owner && _yux && _yux->sdkFile() && _yux->sdkFile() != _file
-                   && _yux->sdkFile()->getStructDecl(structName)) {
+        } else if (!owner && _yux && _yux->sdkFile() && _yux->sdkFile() != _file &&
+                   _yux->sdkFile()->getStructDecl(structName)) {
             ownerModule = _yux->sdkFile()->moduleName();
         }
     }
@@ -110,7 +109,7 @@ llvm::Function* Compiler::getMethodFunction(
         if (isBuiltinType(structName) || TypeInfo(structName).isPtr() || TypeInfo(structName).isRef()) {
             llvmParamTypes.push_back(getLLVMType(TypeInfo(structName)));
         } else {
-            llvmParamTypes.push_back(llvm::PointerType::get(_context, 0));  // 结构体通过指针传递
+            llvmParamTypes.push_back(llvm::PointerType::get(_context, 0)); // 结构体通过指针传递
         }
     }
 
@@ -148,8 +147,7 @@ llvm::Function* Compiler::getDestructorFunction(const string& structName) {
         auto* owner = _file->getStructOwner(structName);
         if (owner && owner != _file) {
             ownerModule = owner->moduleName();
-        } else if (!owner && _yux && _yux->sdkFile()
-                   && _yux->sdkFile()->getStructDecl(structName)) {
+        } else if (!owner && _yux && _yux->sdkFile() && _yux->sdkFile()->getStructDecl(structName)) {
             ownerModule = _yux->sdkFile()->moduleName();
         }
     }
@@ -176,16 +174,16 @@ llvm::Function* Compiler::getDestructorFunction(const string& structName) {
 // CompilerInner 方法由编译器特殊处理，不生成普通 IR
 bool Compiler::isCompilerInnerMethod(const string& structName, const string& methodName) {
     if (!_yux || !_yux->sdkFile()) return false;
-    
+
     auto structImpl = _yux->sdkFile()->getStructImpl(structName);
     if (!structImpl) return false;
-    
+
     for (auto& method : structImpl->methods()) {
         if (method->header()->name().getText() == methodName) {
             return method->header()->hasAnno("CompilerInner");
         }
     }
-    
+
     return false;
 }
 
@@ -229,8 +227,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
             TryCatchCtx* tryCtx = _tryCatchStack.empty() ? nullptr : &_tryCatchStack.back();
             string srcPath = (_yux && _file) ? _yux->modulePath(_file->moduleName()) : "";
             sema::checkErrPropagateForIdCall(_currentFnNode, node, fnName, sym,
-                                             tryCtx ? &tryCtx->seenErrTypes : nullptr,
-                                             srcPath);
+                                             tryCtx ? &tryCtx->seenErrTypes : nullptr, srcPath);
         } else if (node->errPropagate()) {
             // 非 ID-literal 但带 `!`：极少见路径（如 nullable 字面量调用），按 caller / try 状态判 E7001
             // 在 try block 内 → 暂放过（路由到 catch 由 10g 实施）
@@ -253,7 +250,10 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
     // v0.16: callee 为 Ref<fn(...)R>（如 arr[i] 返回 fn&）→ Load 引用得 fat-ptr 后调用
     {
         TypeInfo calleeStaticType;
-        try { calleeStaticType = calleeExpr->getType(); } catch (...) {} // NOLINT(bugprone-empty-catch)
+        try {
+            calleeStaticType = calleeExpr->getType();
+        } catch (...) {
+        } // NOLINT(bugprone-empty-catch)
         if (calleeStaticType.isFn()) {
             return compileFnValueCall(node);
         }
@@ -275,7 +275,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
     if (auto calleeLiteral = dynamic_cast<ExprLiteralNode*>(calleeExpr)) {
         if (auto objLiteral = dynamic_cast<LiteralObjNode*>(calleeLiteral->literal())) {
             string fnName = objLiteral->getValue().getText();
-            
+
             // 检查是否为泛型函数
             auto genericFn = _file->getFunction(fnName);
             p<FileNode> fnOwner = _file;
@@ -303,7 +303,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                     for (size_t i = 0; i < typeParams.size(); ++i) {
                         subst[typeParams[i]] = typeArgs[i];
                     }
-                    _substStack.push_back(SubstFrame{.subst=subst, .baseStructName="", .effStructName=""});
+                    _substStack.push_back(SubstFrame{.subst = subst, .baseStructName = "", .effStructName = ""});
 
                     auto params = genericFn->header()->params();
                     for (size_t i = 0; i < params.size(); ++i) {
@@ -343,17 +343,17 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                         for (auto& a : instArgs) {
                             effName += "$" + a->getGenericMangleName();
                         }
-                        
+
                         map<string, TypeInfo> subst;
                         for (size_t i = 0; i < structDecl->typeParams().size(); ++i) {
                             subst[structDecl->typeParams()[i]] = *instArgs[i];
                         }
-                        
+
                         auto structImpl = structOwner->getStructImpl(fnName);
                         if (!structImpl && _yux && _yux->sdkFile() && _yux->sdkFile() != structOwner) {
                             structImpl = _yux->sdkFile()->getStructImpl(fnName);
                         }
-                        
+
                         // 推断构造函数参数类型
                         if (structImpl) {
                             for (auto& method : structImpl->methods()) {
@@ -383,8 +383,8 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                     }
                 } else {
                     // 解析函数重载
-                    sema::resolveFnOverload(_file, _yux ? _yux->sdkFile() : nullptr, fnName,
-                                            node->getArgs(), node->getLineNumber());
+                    sema::resolveFnOverload(_file, _yux ? _yux->sdkFile() : nullptr, fnName, node->getArgs(),
+                                            node->getLineNumber());
                 }
             }
         }
@@ -393,13 +393,13 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
     // 编译参数
     vector<llvm::Value*> args;
     vector<TypeInfo> argTypes;
-    
+
     bool isGenericCtorCall = false;
     map<string, TypeInfo> ctorSubst;
     p<StructImplNode> ctorStructImpl;
     p<FileNode> ctorStructOwner;
     string ctorFnName;
-    
+
     if (auto calleeLiteral = dynamic_cast<ExprLiteralNode*>(calleeExpr)) {
         if (auto objLiteral = dynamic_cast<LiteralObjNode*>(calleeLiteral->literal())) {
             ctorFnName = objLiteral->getValue().getText();
@@ -417,17 +417,17 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                 if (explicitTypeArgs.size() == structDecl->typeParams().size()) {
                     isGenericCtorCall = true;
                     ctorStructOwner = structOwner;
-                    
+
                     vector<sp<TypeInfo>> instArgs;
                     instArgs.reserve(explicitTypeArgs.size());
                     for (auto& tn : explicitTypeArgs) {
                         instArgs.push_back(make_shared<TypeInfo>(applySubst(tn->getType())));
                     }
-                    
+
                     for (size_t i = 0; i < structDecl->typeParams().size(); ++i) {
                         ctorSubst[structDecl->typeParams()[i]] = *instArgs[i];
                     }
-                    
+
                     ctorStructImpl = structOwner->getStructImpl(ctorFnName);
                     if (!ctorStructImpl && _yux && _yux->sdkFile() && _yux->sdkFile() != structOwner) {
                         ctorStructImpl = _yux->sdkFile()->getStructImpl(ctorFnName);
@@ -436,7 +436,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
             }
         }
     }
-    
+
     // Phase 2b：实参位置 lambda 类型反推
     // 对 ID-callee 的普通函数调用，按 fnName 找匹配 FnSymbol；若 params[i] 是 Fn 类型且
     // arg[i] 是 LambdaExprNode，则按 params[i] 预先 emit lambda function（mangle 缓存）。
@@ -469,7 +469,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                     if (auto sc = lambdaArg->bodyScope()) {
                         const auto& fps = fnSym->params[i].fnParamTypes();
                         for (size_t k = 0; k < lambdaArg->params().size() && k < fps.size(); ++k) {
-                            if (lambdaArg->params()[k].type) continue;  // 显式标注尊重源
+                            if (lambdaArg->params()[k].type) continue; // 显式标注尊重源
                             if (auto* psym = sc->lookupSymbol(lambdaArg->params()[k].name.getText())) {
                                 if (fps[k]) psym->type = *fps[k];
                             }
@@ -505,7 +505,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                 }
             }
         }
-        
+
         if (passByPtr) {
             if (auto litExpr = dynamic_cast<ExprLiteralNode*>(arg)) {
                 if (auto objLit = dynamic_cast<LiteralObjNode*>(litExpr->literal())) {
@@ -550,9 +550,8 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
 //
 // 10g-4 仅覆盖 `!` 透传 + ID-callee；try-catch 错误路由推 10g-5（届时根据
 // _tryCatchStack 把 errBB 改为跳到匹配的 catch arm entry block）。
-llvm::Value* Compiler::handleFallibleCallResult(
-    llvm::Value* callResult, const string& calleeFallibleErr,
-    const TypeInfo& calleeRetType, p<ExprCallNode> callNode) {
+llvm::Value* Compiler::handleFallibleCallResult(llvm::Value* callResult, const string& calleeFallibleErr,
+                                                const TypeInfo& calleeRetType, p<ExprCallNode> callNode) {
     if (calleeFallibleErr.empty()) return callResult;
 
     auto isErr = _builder.CreateExtractValue(callResult, {0}, "call.isErr");
@@ -622,7 +621,7 @@ llvm::Value* Compiler::handleFallibleCallResult(
     // ===== okBB: 提取 T_ok =====
     _builder.SetInsertPoint(okBB);
     if (calleeRetType.empty()) {
-        return nullptr;  // void
+        return nullptr; // void
     }
     return _builder.CreateExtractValue(callResult, {1}, "call.ok");
 }

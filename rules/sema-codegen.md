@@ -13,7 +13,7 @@ sema 相关代码进 `src/sema/sema_pass.{h,cpp}` 与 `src/sema/call_resolve.{h,
 - 默认**不强求** sema 镜像；写在 `src/compiler/compiler_*.cpp` 里照常即可。
 - 若顺手让 sema 接管（推荐对纯静态形态检查这么做），**必须同步更新 `src/sema/sema_pass.cpp` 顶部的 `kMigratedCodes` 白名单**。
   - 漏更新 = sema 抛了又被自身的 try/catch 吞掉，**无测试能捕获**。
-- sema 接管后 Compiler 端的原 inline throw **保留作"幂等防御性双跑"**（不要删），加注释说明已被 sema shadow。
+- sema 接管后 Compiler 端的原 inline throw / validate 调用**直接删除**（sema 已覆盖，codegen 正常路径不可达）；不再保留防御性双跑。
 
 ## 新加 AST 节点 / 表达式类
 
@@ -22,8 +22,7 @@ sema 相关代码进 `src/sema/sema_pass.{h,cpp}` 与 `src/sema/call_resolve.{h,
 ## sema 当前缺口（出错时不报，靠 codegen 兜底）
 
 - 泛型 fn / impl 体
-- lambda 体
-- 所有 statement
+- 所有 statement（lambda body 内 statement 已解锁 v0.16）
 - target-type 上下文驱动的类型检查
 - `compiler_types.cpp` 的 alias 环检测
 
@@ -33,4 +32,4 @@ sema 相关代码进 `src/sema/sema_pass.{h,cpp}` 与 `src/sema/call_resolve.{h,
 
 本地写 demo / 改代码后想快速跑诊断，用 `yux-check <file.yux>`（0 LLVM，编译几秒）；要完整覆盖才走 `yux build`。
 
-**`yux-check` 报错是 `yux build` 报错的子集，不报错不代表无错**。
+**`yux-check` 报错是 `yux build` 报错的子集，不报错不代表无错**（缺口见上）。

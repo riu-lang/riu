@@ -142,25 +142,7 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
         if (!structDecl && _yux && _yux->sdkFile()) {
             structDecl = _yux->sdkFile()->getStructDecl(currentType.name);
         }
-        if (!structDecl) {
-            // Phase 3.4.d.1: SemaPass.visitExpr ExprGetRefNode 顶部
-            // setResolvedType(getType) 已通过 ExprGetRefNode::getType 抛 E3041
-            // (kMigratedCodes 命中, 自动重抛), 此处不可达; 保留作幂等防御性双跑。
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3041, currentType.name);
-        }
-
         int fieldIndex = structDecl->fieldIndex(memberName);
-        if (fieldIndex < 0) {
-            // Phase 3.4.d.1: 同上, getType 已抛 E3040, 此处不可达; 保留作幂等防御性双跑。
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3040, currentType.name, memberName);
-        }
-
-        // Phase 3.4.d.2: E3042 私有字段可见性 整体抠到 sema::validatePrivateFieldAccess.
-        // SemaPass.visitExpr ExprGetRefNode 分支调用 validateGetRefPrivacy 已沿同链路抢先抛;
-        // 这里保留作幂等防御性双跑.
-        sema::validatePrivateFieldAccess(structDecl, memberName, currentType.name, _currentStructName,
-                                         node->getLineNumber(), node->getColumn());
-
         auto field = structDecl->fields()[fieldIndex];
         auto structType = getLLVMType(currentType);
         auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
@@ -239,17 +221,8 @@ llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
         }
         return _builder.CreateNeg(right, "neg");
     case ExprUnaryNode::Op::Rev:
-        if (isFloat) {
-            // Phase 3.4.h: ExprUnaryNode::getType 已抛 E3070 (kMigratedCodes 命中,
-            // SemaPass 自动重抛), 此处不可达; 保留作幂等防御性双跑。
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3070, type.name);
-        }
         return _builder.CreateNot(right, "not");
     case ExprUnaryNode::Op::Not:
-        if (!isBool) {
-            // Phase 3.4.h: 同上, getType 已抛 E3071, 此处不可达; 保留作幂等防御性双跑。
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3071, type.name);
-        }
         return _builder.CreateNot(right, "lnot");
     }
 

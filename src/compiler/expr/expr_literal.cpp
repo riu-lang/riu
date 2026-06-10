@@ -36,13 +36,6 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
     TypeInfo elementType;
     if (node->explicitType()) {
         elementType = node->explicitType()->getType();
-        // Phase 3.4.f.1: E3009 已在 ExprArrayInitNode::getType 抛 (kMigratedCodes
-        // 命中, SemaPass 顶部 setResolvedType 自动重抛), 此处不可达; 保留作幂等
-        // 防御性双跑.
-        if (literalType != elementType) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3009, literalType.name,
-                           elementType.name);
-        }
     } else {
         elementType = literalType;
     }
@@ -205,18 +198,10 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             bool isScalar = t.isNormal() && isBuiltinType(t.name);
             bool isHandle = t.isRc() || t.isWeak() || t.isArrayGeneric() || (t.isNormal() && t.name == "String");
             bool isRef = t.isRef();
-            // Phase 3e: Heap<T>? 接受按所有权 move 捕获 (B 档复用); Heap<T> 非空
-            // 按值捕获 → E4024 (与 §5.2/§5.3 一致, 引导用户声明为可空形态)
             bool isHeapNullable = false;
             if (t.isNullable()) {
                 auto inner = t.nullableInnerType();
                 if (inner && inner->isHeap()) isHeapNullable = true;
-            }
-            if (t.isHeap()) {
-                auto elem = t.heapElementType();
-                string elemName = elem ? elem->getFullName() : string("?");
-                // v0.16: sema shadow — SemaPass (ExprLiteralNode in lambda body) 已提前抛 E4024
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E4024, elemName, varName, elemName);
             }
             if (!isScalar && !isHandle && !isRef && !isHeapNullable) {
                 throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E2029, varName, t.name);
@@ -358,11 +343,6 @@ llvm::Value* Compiler::compileStringTemplate(StringTemplateNode* node) {
     DEBUG_LOG("    Expr: StringTemplate -> StringBuilder lowering");
     const auto& parts = node->parts();
     const auto& interps = node->interps();
-
-    // Phase 2b 类型校验：插值类型必须是 String 或实现 ToString.
-    // Bucket 6 (CURRENT-check.md): 抠到 sema::validateStringTemplateInterps;
-    // SemaPass 已接管 E3026 实际抛出点, 此处幂等防御性双跑.
-    sema::validateStringTemplateInterps(_file, _yux ? _yux->sdkFile() : nullptr, node);
 
     // UTF-8 → u32 码点解码（parts 在 ast_builder 已展开转义，仅含原始 UTF-8 字节）
     auto decodeUtf8 = [](const string& s) -> vector<u32> {

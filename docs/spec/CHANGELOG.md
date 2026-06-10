@@ -24,7 +24,7 @@
 - **新增草案**：`DRAFT-closure-capture.md` 从 `DRAFT-lambda.md` §5–§6 提炼为独立规范，定型 move / retain / borrow 三档模式、捕获包 layout、`Heap<T>` B 档 move 捕获、静态检查规则。状态：已落地（v0.16）。
 - **sema 解锁**：`SemaPass::visitExpr` 移除 lambda body skip，yux-check 覆盖 lambda 体内 E2030（捕获写禁）×2、E4022（T& 捕获逃逸）×2、E4024（Heap 非空捕获）×1，共关闭 5 例漏报。
 - **借用检查**：`BorrowChecker::visitLambda` 递归进入 lambda body，lambda T& 形参注册为借用根，ret T& 溯源（E4020/E4021）在 lambda 体内生效。
-- **冲突 / 兼容**：无破坏性变更。sema 接管后 Compiler 端原 throw 保留作幂等防御性双跑（加 `// sema shadow` 注释）。yux-check 覆盖率从 ~96% 提升至与 yux build 等价（lambda 体路径）。
+- **冲突 / 兼容**：无破坏性变更。sema 接管后 Compiler 端原 throw 已删除（v0.16 收尾）。yux-check 覆盖率从 ~96% 提升至与 yux build 等价（lambda 体路径）。
 
 ## 2026-06-10 —— `[]` ⇔ `get` 语法糖语义同步（arr[i] 返回 T&）
 

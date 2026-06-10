@@ -257,7 +257,7 @@ void DiagnosticEngine::render(std::ostream& out, const Diagnostic& diagIn) {
 
 namespace {
     // emit 去重 set：(file, code, line, col, message)
-    // Compiler / SemaPass 幂等防御性双跑会把同一站点 emit 两次；按 5 元组去重即可
+    // 同一站点可能从不同路径 emit；按 5 元组去重即可
     using EmitKey = std::tuple<string, string, size_t, int, string>;
     std::set<EmitKey>& emitDedup() {
         static std::set<EmitKey> s;
@@ -289,7 +289,7 @@ void DiagnosticEngine::emit(std::ostream& out,
         throw err;
     }
 
-    // Warning / Note 路径: 仅渲染一次 (Compiler / SemaPass 双跑去重)
+    // Warning / Note 路径: 仅渲染一次 (按 5 元组去重)
     if (!firstSeen) return;
 
     Diagnostic d;

@@ -325,8 +325,7 @@ void checkErrPropagateForIdCall(FnNode* currentFnNode, p<ExprCallNode> callNode,
         if (hasBang) {
             // E7016: try block 内 ! 冗余 (语义不变, 警告; 默认 Warning,
             // -Werror / --deny=E7016 升级为 Error 时 emit 内部会 rethrow).
-            // emit 按 (file, code, line, col, msg) 去重, Compiler / SemaPass
-            // 双跑只渲染一次.
+            // emit 按 (file, code, line, col, msg) 去重.
             DiagnosticEngine::emit(sourcePath, YuxError(callNode->getLineNumber(), callNode->getColumn(),
                                                         ErrorCode::E7016, calleeErr, fnName, calleeErr));
         }

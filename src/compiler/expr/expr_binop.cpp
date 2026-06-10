@@ -137,14 +137,9 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(p<ExprNode> leftExpr, p<ExprNod
             sigs += effLeftType.name + "." + methodName + "(" + m->params[1].name + ")";
         }
         throw YuxError(lineNum, ErrorCode::E6014, methodFullName, effRightType.name, refMatches.size(), sigs);
-    } else if (refMatches.size() == 1) {
-        methodSymbol = refMatches[0];
     } else {
-        // Bucket 6 (CURRENT-check.md): E3073 无匹配候选,
-        // 这里保留作幂等防御性双跑 (sema 已抛, 正常情况到不了).
-        FileNode* sdkFilePtr = (_yux && _yux->sdkFile()) ? _yux->sdkFile() : nullptr;
-        sema::validateBinOpMethodResolution(_file, sdkFilePtr, effLeftType, effRightType, methodName, lineNum, 0);
-        // unreachable: helper 内必抛
+        // refMatches.size() == 1 (sema 已保证至少一个匹配)
+        methodSymbol = refMatches[0];
     }
 
     // 准备方法参数
@@ -434,10 +429,6 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
             throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3004, effLeftType.name, effRightType.name);
         }
     }
-
-    // Bucket 6 (CURRENT-check.md): E3078 (Weak ==/!=) + E3073 (Ptr ordering) 形态校验
-    // 抠到 sema::validateCompareOpForm; SemaPass 已接管实际抛出点, 此处幂等防御性双跑.
-    sema::validateCompareOpForm(effLeftType, node->op(), node->getLineNumber(), node->getColumn());
 
     // Ptr：内置 == / !=（用于 `p == null` 等场景）
     if (effLeftType.isPtr()) {

@@ -102,8 +102,7 @@ constexpr std::array<std::string_view, 26> kMigratedCodes = {
     // Bucket 2 (CURRENT-check.md): LiteralObjNode::getType 已通过
     // SymbolSuggest::throwSymbolNotFound 抛 E3032; sema 视为已迁移即可一次性
     // 覆盖 diag_undefined_var / diag_suggest_var / diag_undefined_variable /
-    // diag_multibyte_caret 4 例. Compiler 端不再单独 throw E3032 (走的就是
-    // literal getType), 不需要"防御性双跑".
+    // diag_multibyte_caret 4 例.
     "E3032",
 };
 
@@ -173,7 +172,6 @@ bool isLvalueArrayBase(ExprNode* baseExpr) {
 // E4025 (DRAFT-heap-types §8.3a.5.1): Rc/Weak/Array 容器禁止内嵌 Heap.
 // 递归扫描 TypeInfo: 若任一 Rc/Weak/Array 直接 elem 是 Heap, 抛 E4025;
 // 否则继续下钻 (覆盖 `Rc<Rc<Heap<T>>>` / `Array<Rc<Heap<T>>>` 等).
-// Compiler::getLLVMType 在容器分支同 throw 留作幂等防御性双跑.
 void validateNoNestedHeap(const TypeInfo& t, int line, int col) {
     if (t.isRc()) {
         if (auto e = t.rcElementType()) {
@@ -234,8 +232,7 @@ SemaPass::SemaPass(p<FileNode> file, Yux* yux)
 void SemaPass::run() {
     if (!_file) return;
     // Bucket 3: 顶层类型别名一次性校验 (E2017 名字冲突 + E2016 环).
-    // 必须在遍历 fn 之前: 一旦命中, 直接抛错; Compiler::validateAliases 会在
-    // codegen 阶段再跑一次作幂等防御性双跑.
+    // 必须在遍历 fn 之前: 一旦命中, 直接抛错.
     sema::validateAliases(_file);
     for (auto& fn : _file->getFunctions()) {
         // 泛型模板 / #CompilerInner 不走常规 codegen, 在 Compiler::compile 里也
@@ -405,8 +402,7 @@ void SemaPass::visitFn(p<FnNode> fn) {
     _currentFn = fn;
 
     // Bucket 1 (CURRENT-check.md): 把 0-LLVM analyzer 接入 sema, 让 yux-check
-    // 也能覆盖 borrow / const-mut / NoReturn 流终止 检查. Compiler::compileFn /
-    // compileMethod 仍调一份, 作幂等防御性双跑 (sema 先抛, Compiler 不会再到达).
+    // 也能覆盖 borrow / const-mut / NoReturn 流终止 检查.
     checkBorrows(fn, _currentStructName);
     checkConstMut(fn);
     checkFlowTerminate(fn);
@@ -443,7 +439,6 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         // v0.16 闭包捕获: lambda body 内对捕获变量赋值 → E2030。
         // StatementSetNode 覆盖简单变量 `a = 20` / 复合赋值 `a += 1` / 索引赋值 `a[i] = x`。
         // LHS arrayExpr 抽取变量名后按 StatementAssignNode 同款规则判定。
-        // Compiler 端 compiler_stmt.cpp:885-898 同款检查保留作幂等防御性双跑。
         if (_currentLambda && _currentFn && set->indices().empty()) {
             auto lhsLit = dynamic_cast<p<ExprLiteralNode>>(set->arrayExpr());
             if (lhsLit) {
@@ -506,8 +501,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         // Bucket 2 收口 (CURRENT-check.md): 简单变量赋值 (subs 为空) 的写可见性校验
         // (E3093). 与 compiler_stmt.cpp:952 同款条件: !writeable && !type.isRef().
         // T& 形参 / val 局部 T& 的 writeable=false 不影响"写被引", 由 borrow 检查
-        // 在 4d 校验. lambda 体 sema 不下钻, lambda 内 E2030 / E3093 仍走 Compiler.
-        // Compiler 端 inline throw 保留作幂等防御性双跑.
+        // 在 4d 校验.
         if (as->subs().empty() && _currentFn) {
             string objName = as->obj().getText();
             if (objName != "$") {
@@ -523,7 +517,6 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         // (obj 为捕获变量)。
         // 判定: objName 不在 lambda 自身的形参列表 → 外层变量 → 捕获 → 禁写.
         // 不能用 bodyScope->lookupSymbol(), 因其沿父链查找到外层 fn 作用域.
-        // Compiler 端 compiler_stmt.cpp:885-898 同款检查保留作幂等防御性双跑。
         if (_currentLambda && _currentFn) {
             string objName = as->obj().getText();
             if (objName != "$") {
@@ -546,8 +539,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         //   * lookupSymbol 失败 (E3031 Compiler 抢先)
         //   * 起点 / 中段是泛型 struct (Compiler applySubst, sema 不替换泛型实参)
         //   * 中段 typeNeedsDestructor (递归 RC 字段扫描, 复杂, 留 Compiler)
-        //   * 非纯数字下标命中 tuple 形态 (Compiler 抛 E3040 抢先)
-        // Compiler 端 inline throw 保留作幂等防御性双跑.
+        //   * 非纯数字下标命中 tuple 形态.
         if (!as->subs().empty() && _currentFn) {
             string objName = as->obj().getText();
             if (objName != "$") {
@@ -619,8 +611,6 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         // Bucket 2: 元组解构 LHS 数量 vs RHS 元组实际元素数 (E3102).
         // 简化策略 —— 仅在 RHS 直接是 ExprTupleNode 字面量时校验, 因为此时元素
         // 数从 AST 直接可得, 无需走 applySubst. 类型标注路径 (varType) 留 Compiler.
-        // Compiler 端 compileDeclareAssignTupleStatement 仍保留 inline throw 作
-        // 幂等防御性双跑.
         if (tup->expr()) {
             if (auto tn = dynamic_cast<p<ExprTupleNode>>(tup->expr())) {
                 if (tn->elements().size() != tup->names().size()) {
@@ -642,7 +632,6 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         //   * declRetType.name == "Self" —— 方法上下文 Self 解析需 currentStructName 替换
         // 普通 case: `fn add() i32 { ret true }` (E3020) /
         //           `fn foo() { ret 42 }` (E3022).
-        // Compiler 端 inline throw 保留作幂等防御性双跑.
         // v0.16: lambda body 内 ret 的返回类型校验依赖 lambda 自身的 retType,
         // 但 lambda 形参 / retType 可能在调用点才反推; sema 阶段 _currentFn 仍是
         // 外层 fn, E3020/E3022 以 _currentFn 的 retType 为准会误报。整个 check
@@ -700,7 +689,6 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         // v0.16 闭包捕获: lambda 字面量直接作 ret expr 且含 T& 捕获 → E4022
         // (spec §8.7.6.5 不可逃逸)。仅拦截直接形 (lambda 字面量), 穿透检测
         // (ret 变量名 / 调用结果含 lambda) 留 codegen 兜底。
-        // Compiler 端 compiler_stmt.cpp:33-38 同款检查保留作幂等防御性双跑。
         if (ret->expr()) {
             if (auto litLambda = dynamic_cast<p<LambdaExprNode>>(ret->expr())) {
                 if (litLambda->hasRefCapture()) {
@@ -717,12 +705,10 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         //   不满足 → 抛 E3018 (与 compiler_stmt.cpp:484-499 同款 hint).
         // 其它形态 (ExprGetRef E3017 / ExprCall as_ref E3019 / 复杂 expr) 留 Compiler 兜底.
         // lambda 体 sema 不下钻 — 这里检查 _currentFn 非空再做.
-        // Compiler 端 inline throw 保留作幂等防御性双跑.
         // Bucket 4 起步 (CURRENT-check.md): E6011 (泛型 struct arity 不匹配).
         // 不依赖 expr / _currentFn, 仅 varType 形态. varType.name 命中已知 struct decl,
         // decl.isGeneric() 且 typeParams.size() != genericArgs.size() → 抛 E6011.
         // 镜像 compiler_types.cpp:241 与 :597 两条路径. Builtin / Ref / Fn / Tuple 跳过.
-        // Compiler 端原 throw 保留作幂等防御性双跑.
         if (da->varType()) {
             try {
                 auto vt = da->varType()->getType();
@@ -812,7 +798,6 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         // v0.16 闭包捕获: lambda 字面量直接作 var/val 初始化值且含 T& 捕获 → E4022
         // (spec §8.7.6.5 不可逃逸：fn 值不可被存储到寿命外延的变量)。
         // 仅拦截直接形 (lambda 字面量), 穿透检测 (右值 wrapper 调用结果等) 留 codegen 兜底。
-        // Compiler 端 compiler_stmt.cpp:419-421 同款检查保留作幂等防御性双跑。
         if (da->expr()) {
             if (auto litLambda = dynamic_cast<p<LambdaExprNode>>(da->expr())) {
                 if (litLambda->hasRefCapture()) {
@@ -880,7 +865,6 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         // - 引用外层 T& 变量 → 标记 hasRefCapture (E4022 数据收集)
         // 非 ID-obj / 全局 / template 插值等其它字面量形态不触发捕获, 跳过。
         // $ 在方法体内 lambda 是 Self&, 同样标记 hasRefCapture。
-        // Compiler 端 compiler/expr/expr_literal.cpp:203-222 同款检查保留作幂等防御性双跑。
         if (_currentLambda && _currentFn) {
             auto obj2 = dynamic_cast<p<LiteralObjNode>>(n->literal());
             if (obj2) {
@@ -1019,7 +1003,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         // E4025 (DRAFT-heap-types §8.3a.5.1): 容器构造 turbofish 内嵌 Heap 拦截.
         // 形态: `Rc:<Heap<T>>(...)` / `Weak:<Heap<T>>(...)` / `Array:<Heap<T>>(...)`
         // 以及任意 call 的 turbofish 内出现 `Rc<Heap<T>>` / `Weak<...>` / `Array<...>` 嵌套.
-        // 与 compiler_types.cpp:438/464/484 镜像; Compiler 端 throw 保留作幂等防御性双跑.
+        // 与 compiler_types.cpp:438/464/484 镜像.
         if (!n->getTypeArgs().empty()) {
             int eline = n->getLineNumber();
             int ecol = n->getColumn();
@@ -1097,7 +1081,6 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 // Phase 3.3.2.f: 自由 intrinsic arity 校验 (E6020/E6021/E6022).
                 // helper 仅对清单内 fnName 实际校验, 其他 fnName 是 no-op,
                 // 故无条件调用安全; 与 Compiler 端 compileExternalOrSdkFunctionCall
-                // 顶部的 sema::validateFreeIntrinsicArity 互为防御性双跑.
                 sema::validateFreeIntrinsicArity(fnName, n->getArgs().size(), line, col);
 
                 auto* structDecl = _file->getStructDecl(fnName);
@@ -1394,8 +1377,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                             // Bucket 4 收口 (CURRENT-check.md): Dyn<D> 方法调用 (E1131/E6016/
                             // E6012/E6015). 镜像 Compiler::compileDynMethodCall 顶部 — 通过
                             // resolveDynCalleeSpec 拿 specDecl, 再 resolveDynMethodSig 校验
-                            // member 存在 + arity + 形参类型. Compiler 端 inline throw 保留
-                            // 作幂等防御性双跑.
+                            // member 存在 + arity + 形参类型.
                             const SpecRegistry* reg = &_yux->specRegistry();
                             auto resolved = sema::resolveDynCalleeSpec(reg, _file, baseType, dline, dcol);
                             sema::resolveDynMethodSig(resolved.decl, resolved.qualified, baseType, member, argTypes,
@@ -1648,7 +1630,6 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 // 类型校验 (E3131). 镜像 compiler_expr.cpp::compileEnumCtorExpr 的
                 // #Static fn 分派 (2343-2377). 仅在非泛型 struct + 无 turbofish 时接管;
                 // 泛型 struct 的 applySubst 留 Compiler 兜底 (sema 无替换栈).
-                // Compiler 端 inline throw 保留作幂等防御性双跑.
                 bool skipTypeCheck = !n->lhsTypeArgs().empty();
                 if (!skipTypeCheck) {
                     auto* structDecl = _file ? _file->getStructDecl(lhsName) : nullptr;
@@ -1789,9 +1770,6 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         //      检查把 #Fallible callee 的错误类型 append 进栈顶;
         //   3) pop 取出 seenErrTypes, 与 catchTypes 比对穷尽性 (E7002);
         //   4) 再访问每个 catch arm body (catches 在外层 try 视野之外).
-        //
-        // Compiler 端 compileTryCatchExpr 中相同形态的 E7011 / E7002 throw 保留
-        // 作幂等防御性双跑: SemaPass 已先抛出, Compiler 不会再到达。
         vector<string> catchTypes;
         catchTypes.reserve(n->catches().size());
         int line = n->getLineNumber();
@@ -1834,7 +1812,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         // 仅在 try block hasResult 且 result expr getType 成功时启用; 任一 arm
         // 的 getType 抛错 (lambda 形参等) 跳过该 arm, 留 Compiler 兜底. 流终止
         // arm 自然 hasResult=false, 此处略过. 与 Compiler 端 (compiler_expr.cpp
-        // E7010 throw) 同语义按 .name 比对; 该 throw 保留作幂等防御性双跑.
+        // E7010 throw) 同语义按 .name 比对.
         if (n->tryBlock()->hasResult() && n->tryBlock()->resultExpr()) {
             try {
                 auto resultType = n->tryBlock()->resultExpr()->getType();
@@ -1864,8 +1842,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         // Bucket 4 收口 (CURRENT-check.md): Dyn<D>(x) 构造的 E1131/E1132/E1134/E1133
         // 接管. 镜像 compiler_expr.cpp::compileDynCtorExpr 顶部 (line 2497-2576).
         // 仅在 _yux 就绪时校验 (spec 注册表 + impl 检查器都从 Yux 取); SDK 自构建
-        // 等无 Yux 场景 skip, 留 Compiler 兜底. Compiler 端 inline throw 保留作
-        // 幂等防御性双跑.
+        // 等无 Yux 场景 skip, 留 Compiler 兜底.
         if (!_yux) return;
         try {
             auto resultType = n->getType();
@@ -1926,7 +1903,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     if (auto n = dynamic_cast<p<ExprHeapCtorNode>>(expr)) {
         // Phase 2.6: Heap:<T>(x) 形态检查 (DRAFT-heap-types §8.3a)
         // - 递归 arg
-        // - E3028: arg 类型必须与 turbofish 内层 T 等价；Compiler 端同 throw 留作幂等防御性双跑
+        // - E3028: arg 类型必须与 turbofish 内层 T 等价
         // - E4025: Rc/Weak/Array<Heap<...>> 在 getLLVMType 容器分支拦截，不在此处
         visitExpr(n->arg());
         auto resultType = n->getType();
@@ -2020,8 +1997,6 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     // Phase 3.4.f.1: ExprArrayInitNode 显式化 —— 无子表达式可递, 顶部
     // setResolvedType(getType()) 已经触发 ExprArrayInitNode::getType 抛 E3009
     // (explicitType vs value 字面量类型不匹配, kMigratedCodes 命中, 自动重抛).
-    // Compiler 端 compileArrayInitExpr 1131-133 内联 throw 在 sema 跑过的正常
-    // codepath 下不可达, 保留作幂等防御性双跑.
     if (auto n = dynamic_cast<p<ExprArrayInitNode>>(expr)) {
         (void)n;
         return;

@@ -25,10 +25,6 @@ llvm::Value* Compiler::compileFunctionCall(p<ExprCallNode> callNode, const strin
         return createCast(castInfo.value, castInfo.srcType, castInfo.dstType);
     }
 
-    // Phase 6D: 同名 ctor 形态已被 sema E3130 拦截在定义点; 调用点 `Foo(args)`
-    // 不再分派到 ctor 路径, 自然 fall-through 到下方"函数未找到"诊断 (用户应改
-    // 用 `Foo::make(...)` 静态构造).
-
     // v0.6 Phase 2b: 透明类型别名解析，使 alias 名实参 / 形参在重载查找上视为同一类型
     // 函数符号表已在 validateAliases 中归一化；这里再把 argTypes 也走一遍，匹配两侧
     vector<TypeInfo> resolvedArgTypes;

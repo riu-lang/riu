@@ -260,11 +260,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
 
     auto& arms = node->arms();
 
-    // Phase 3.4.b: arm 静态校验 (E2019/E2020/E2023/E2024/E2025/E2026/E2027) 整体抠到 sema.
-    // SemaPass 在 scrut 直接是 enum 名 (非 Rc/非 alias) 时已先抛; 这里是幂等防御性双跑.
-    sema::validateMatchArms(enumDecl, enumName, node, _file);
-
-    // 重新收集 codegen 需要的状态 (helper 已校验合法性, 这里只做记录)
+    // 重新收集 codegen 需要的状态
     set<string> seenVariants;
     bool hasElse = false;
     for (auto& arm : arms) {
@@ -641,19 +637,6 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
 
         llvm::Value* armResult = nullptr;
         if (arm->body()->hasResult()) {
-            // E7010：arm result 表达式类型 == try block result 类型
-            // Bucket 6: SemaPass (sema_pass.cpp ExprTryCatchNode 分支) 已先抛出,
-            // 此处保留作幂等防御性双跑 (sema getType 失败路径兜底).
-            try {
-                auto armT = arm->body()->resultExpr()->getType();
-                if (hasResult && armT != resultType) {
-                    int aline = arm->getLineNumber() > 0 ? arm->getLineNumber() : line;
-                    int acol = arm->getColumn() > 0 ? arm->getColumn() : col;
-                    throw YuxError(aline, acol, ErrorCode::E7010,
-                        armT.name, resultType.name);
-                }
-            } catch (const YuxError&) { throw; }
-              catch (...) {} // NOLINT(bugprone-empty-catch)
             armResult = compileExpr(arm->body()->resultExpr());
         }
 

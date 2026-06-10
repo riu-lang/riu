@@ -86,7 +86,7 @@ public:
     // 同一 YuxError，让调用方走原有"首条 error 终止文件"协议。
     //
     // 重入安全：emit 内部对同一进程持有去重 set（path+code+line+col+message），同一
-    // 站点（含 Compiler/SemaPass 双跑）只渲染一次。
+    // 站点只渲染一次。
     //
     // 不应用到 Error 默认严重度的 YuxError —— 那种应当 `throw`，由顶层 catch 走
     // renderYuxError。emit 内部 assert 默认严重度 ≤ Warning。

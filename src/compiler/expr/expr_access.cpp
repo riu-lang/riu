@@ -95,12 +95,6 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
 
     if (derefArrayType.isArrayGeneric()) {
         auto elemType = derefArrayType.arrayGenericElementType();
-        if (!elemType) {
-            // Phase 3.4.g: ExprGetNode::getType 已抛 E3057 (同条件, kMigratedCodes 命中);
-            // 这里的 E3055 在 sema 跑过后不可达, 保留作幂等防御性双跑。
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3055);
-        }
-
         auto elemLLVMType = getLLVMType(*elemType);
         auto handle = loadArrayHandle(currentPtr);
         auto dataPtr =
@@ -111,12 +105,6 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
 
         // v0.16: [] 返回 T&，与 .get() 一致；返回指针，不 Load
         return elemPtr;
-    }
-
-    if (!derefArrayType.isArray()) {
-        // Phase 3.4.g: ExprGetNode::getType 已抛 E3062 (kMigratedCodes 命中,
-        // SemaPass 自动重抛), 此处不可达; 保留作幂等防御性双跑。
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3062, arrayType.name);
     }
 
     for (auto& indexExpr : indices) {
@@ -239,11 +227,6 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
         if (fieldIndex >= 0) {
             DEBUG_LOG_VAL("    Expr: StructFieldAccess", actualType.name << "." << member);
 
-            // Phase 3.4.d.2: E3042 私有字段可见性 整体抠到 sema::validatePrivateFieldAccess.
-            // SemaPass.visitExpr ExprDotNode 分支调用 validateDotFieldPrivacy 已抢先抛;
-            // 这里保留作幂等防御性双跑.
-            sema::validatePrivateFieldAccess(structDecl, member, actualType.name, _currentStructName,
-                                             node->getLineNumber(), node->getColumn());
             auto field = structDecl->fields()[fieldIndex];
 
             if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {

@@ -53,8 +53,7 @@ private:
 
     // Bucket 2 (CURRENT-check.md): break outside loop (E3094) 校验. visitStmt
     // 进入 StatementLoopNode 时 ++, 离开时 --; StatementBreakNode 命中且 depth=0
-    // 时抛 E3094. Compiler 端 compileBreakStatement 内 inline throw 保留作幂等
-    // 防御性双跑.
+    // 时抛 E3094.
     int _loopDepth = 0;
 
     // Phase 3.4.d.2: 当前所在 struct impl 名 (用于私有字段可见性 E3042).

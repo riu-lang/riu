@@ -27,18 +27,6 @@
 void Compiler::compileRetStatement(p<StatementRetNode> node) {
     DEBUG_LOG("  Statement: Return");
 
-    // Phase 4c：lambda 字面量直接作 ret expr 时，预先 emit body 以触发捕获识别；
-    // 若识别出 T& 捕获 → 报 E4022（spec §6.3 不可逃逸）。其他形态（变量名、调用结果）的
-    // ret 在当前阶段不做穿透检测：spec §6.5（ret T& 溯源）属 Phase 4e；本阶段仅拦截直接形。
-    if (auto litLambda = dynamic_cast<LambdaExprNode*>(node->expr())) {
-        // emit body 以填 captures（重复 emit 命中缓存，无副作用）
-        emitLambdaFunction(static_cast<p<LambdaExprNode>>(litLambda), litLambda->getType());
-        if (litLambda->hasRefCapture()) {
-            // v0.16: sema shadow — SemaPass (StatementRetNode) 已提前抛 E4022
-            throw YuxError(litLambda->getLineNumber(), litLambda->getColumn(), ErrorCode::E4022);
-        }
-    }
-
     // 获取函数声明的返回类型
     TypeInfo declRetType;
     bool hasDeclaredRetType = false;
@@ -396,8 +384,8 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
     auto expr = node->expr();
     auto varName = node->name().getText();
 
-    // Phase 4c：lambda 字面量直接作 var/val 初始化值时，预 emit body 触发捕获识别；
-    // 若识别出 T& 捕获 → E4022（spec §6.3 不可逃逸：fn 值不可被存储到寿命外延的变量）。
+    // Phase 4c：lambda 字面量直接作 var/val 初始化值时，反推 fn 类型到 lambda
+    // 以支持 0 参块 / 缺标注 lambda 的 retType 上下文反推。
     if (auto litLambda = dynamic_cast<LambdaExprNode*>(expr)) {
         // BUG#0 修复：显式 fn 类型反推到 lambda，让 0 参块 / 缺标注 lambda 的 retType 走上下文反推。
         // 镜像 compiler_call.cpp:538 的 setInferredFnType + bodyScope 形参 type 回填路径。
@@ -417,10 +405,6 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             }
         }
         emitLambdaFunction(static_cast<p<LambdaExprNode>>(litLambda), litLambda->getType());
-        if (litLambda->hasRefCapture()) {
-            // v0.16: sema shadow — SemaPass (StatementDeclareAssignNode) 已提前抛 E4022
-            throw YuxError(litLambda->getLineNumber(), litLambda->getColumn(), ErrorCode::E4022);
-        }
     }
 
     // 处理数组填充表达式 ([N; value] 语法)
@@ -478,17 +462,6 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                        litExpr && dynamic_cast<LiteralObjNode*>(litExpr->literal())) {
                 auto litObj = dynamic_cast<LiteralObjNode*>(litExpr->literal());
                 auto srcName = litObj->getValue().getText();
-                auto sym = _currentFnNode->lookupSymbol(srcName);
-                // Bucket 6 (CURRENT-check.md): 该 E3018 已被 SemaPass 接管
-                // (sema_pass.cpp 的 StatementDeclareAssignNode 分支), 这里保留作
-                // 幂等防御性双跑 — sema 跑通后正常 codepath 不会到达.
-                if (!sym || !sym->type.isRef() || !sym->type.refElementType() ||
-                    *sym->type.refElementType() != *innerType) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3018, srcName, innerType->name)
-                        .withHint(std::format(
-                            "`{}` 不是 {}& 类型，无法 copy-bind 到此声明；改写为 `&<expr-of-{}>` 或先声明同类型 T&",
-                            srcName, innerType->name, innerType->name));
-                }
                 auto it = _localVarPtrs.find(srcName);
                 if (it == _localVarPtrs.end()) {
                     throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E4004, srcName)
@@ -878,27 +851,6 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
     auto expr = node->expr();
     auto& subs = node->subs();
     auto assignOp = node->op();
-
-    // Phase 4b §6.2.1：lambda body 内对捕获变量赋值 / 复合赋值 / 句柄重绑全部禁。
-    // 命中条件：身处 lambda body（_currentLambdaForCapture 启用）+ LHS objName 经 scope
-    // 解析为 Variable + 不是 lambda 自己的 local（不在 _localVarPtrs）+ 不是全局 → 外层 local。
-    // 覆盖 `=` / `+= -= *= /= %=` / `<<= >>=`，以及 subs 非空的 `obj.f = ...` / `obj[i] = ...`
-    // （objName 是 LHS 主体）。非标量捕获本身已被 E2029 在 read 路径拒；此处补 write 路径。
-    if (_currentLambdaForCapture && _currentLambdaBodyScope) {
-        SymbolInfo* outerSym = nullptr;
-        if (auto sc = node->findNearestScope()) {
-            outerSym = sc->lookupSymbol(objName);
-        }
-        if (outerSym && outerSym->kind == SymbolKind::Variable && !_localVarPtrs.contains(objName)) {
-            string ownerMod = !outerSym->moduleName.empty() ? outerSym->moduleName : _file->moduleName();
-            bool globPriv = !objName.empty() && objName[0] == '_';
-            string mangledName = Mangler::global(ownerMod, objName, globPriv);
-            if (!_module->getGlobalVariable(mangledName, true)) {
-                // v0.16: sema shadow — SemaPass (StatementAssignNode/StatementSetNode) 已提前抛 E2030
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E2030, objName);
-            }
-        }
-    }
 
     // 辅助函数: 判断是否为浮点类型
     auto isFloatType = [](const TypeInfo& type) -> bool { return type.name == "f32" || type.name == "f64"; };

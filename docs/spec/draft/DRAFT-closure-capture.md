@@ -268,9 +268,9 @@ lambda 字面量自身不携带 `#Fallible` 注解。lambda body 内的错误行
 
 - `src/sema/sema_pass.cpp`：解锁 lambda body 下钻；新增 E2030/E4022/E4024 静态判定；更新 `kMigratedCodes`。
 - `src/analyzer/borrow_checker.cpp`：递归进入 lambda body；注册 lambda 形参 T& 根；ret T& 溯源。
-- `src/compiler/compiler_lambda.cpp`：E2030/E4022/E4024 原 throw 加 "sema shadow" 注释。
-- `src/compiler/compiler_stmt.cpp`：E2030/E4022 原 throw 加 "sema shadow" 注释。
-- `src/compiler/expr/expr_literal.cpp`：E4024 原 throw 加 "sema shadow" 注释。
+- `src/compiler/compiler_lambda.cpp`：E2030/E4022/E4024 原 throw 已移除（v0.16 收尾）。
+- `src/compiler/compiler_stmt.cpp`：E2030/E4022 原 throw 已移除（v0.16 收尾）。
+- `src/compiler/expr/expr_literal.cpp`：E4024 原 throw 已移除（v0.16 收尾）。
 
 ### 11.2 测试（`tests/`）
 

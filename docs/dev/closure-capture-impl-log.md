@@ -52,7 +52,7 @@ DRAFT-lambda.md Phase 4a–4e（v0.8，2026-05-09）已交付捕获的**完整 c
 - **修复**：`bodyScope->lookupSymbol` 沿父链误判 → 改用形参列表直判
 - **修复**：`StatementSetNode` vs `StatementAssignNode` 两路径均覆盖
 - **修复**：lambda 体内 ret 语句 E3020/E3022 用外层 `_currentFn` 误报 → 加 `_currentLambda` guard skip
-- **Compiler 端**：原 throw 保留作幂等防御性双跑，每条加 `// sema shadow` 注释
+- **Compiler 端**：原 throw 保留作幂等防御性双跑，每条加 `// sema shadow` 注释（v0.16 收尾时已全部移除）
 
 ### 验证（yux-check 5 例全部正确报错）
 
@@ -148,9 +148,9 @@ DRAFT-closure-capture.md O2：`#Fallible` lambda 形态的规范定型。待 v0.
 | Sema | `src/sema/sema_pass.cpp` | P2 解锁 + E2030/E4022/E4024 |
 | Sema | `src/sema/sema_pass.h` | P2 `_currentLambda` guard |
 | 借用 | `src/analyzer/borrow_checker.cpp` | P3 `visitLambda`（v0.8 已完成） |
-| Codegen | `src/compiler/compiler_lambda.cpp` | P2 加 sema shadow 注释 |
-| Codegen | `src/compiler/compiler_stmt.cpp` | P2 加 sema shadow 注释 |
-| Codegen | `src/compiler/expr/expr_literal.cpp` | P2 加 sema shadow 注释 |
+| Codegen | `src/compiler/compiler_lambda.cpp` | P2 加 sema shadow 注释（v0.16 收尾移除） |
+| Codegen | `src/compiler/compiler_stmt.cpp` | P2 加 sema shadow 注释（v0.16 收尾移除） |
+| Codegen | `src/compiler/expr/expr_literal.cpp` | P2 加 sema shadow 注释（v0.16 收尾移除） |
 | 规范 | `docs/spec/04-表达式.md` | P5 §4.11.6 修订 |
 | 规范 | `docs/spec/08-所有权与引用.md` | P5 §8.7.6 修订 |
 | 规范 | `docs/spec/CHANGELOG.md` | P5 追加 |

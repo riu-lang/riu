@@ -255,10 +255,6 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
         }
     }
 
-    // Phase 3.4.a: enum ctor 形态校验 (E2019/E2020/E2021/E2032) 整体抠到 sema.
-    // SemaPass 已先抛出; 这里是幂等防御性双跑.
-    sema::validateEnumCtorShape(_file, _yux ? _yux->sdkFile() : nullptr, node);
-
     p<FileNode> owner = nullptr;
     auto enumDecl = lookupEnumDecl(enumName, owner);
     auto variant = enumDecl->variant(variantName);
@@ -517,11 +513,6 @@ llvm::Value* Compiler::compileHeapCtorExpr(p<ExprHeapCtorNode> node) {
     // 作用域尾走既有 Heap<T> dtor (releaseAtPtr(inner) + __yux_heap_free).
     // 责任方: 调用者必须保证 Ptr 指向 T-shape 有效内存且由 __yux_heap_alloc 分配.
     bool takeoverFromPtr = argType.isPtr() && innerType.name != "Ptr";
-    if (!takeoverFromPtr && !(argType == innerType)) {
-        // Sema 已在 visitExpr(ExprHeapCtorNode) 内 shadow 抛 E3028；保留作幂等防御性双跑
-        throw YuxError(line, col, ErrorCode::E3028, innerType.name, innerType.name, argType.name);
-    }
-
     auto argVal = compileExpr(argExpr);
 
     if (takeoverFromPtr) {

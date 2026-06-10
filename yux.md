@@ -118,8 +118,6 @@ flowchart TB
     throwSema --> userErr[(诊断输出)]
     skip --> compiler[Compiler<br/>compiler_*.cpp]
 
-    sema -. "已被 sema shadow 的<br/>inline throw 保留作幂等防御" .-> compiler
-
     compiler -- "兜底 throw YuxError" --> userErr
     compiler --> ir[LLVM IR]
 
@@ -134,7 +132,7 @@ flowchart TB
 - `src/sema/` 禁止 `#include "llvm/..."`，禁止访问 `IRBuilder` / `_module`。
 - 让 sema 接管某错误码 → **必须同步更新 `kMigratedCodes` 白名单**，否则 sema 自身 try/catch 吞错、无测试能捕获。
 - 新增 AST / 表达式类 → 在 `SemaPass::visitExpr` 加 dispatch 分支（即使是空占位），否则 sema 静默 skip 整个子树。
-- Compiler 端原有 inline throw 保留作"幂等防御性双跑"，**不要删**。
+- sema 接管后 Compiler 端原 inline throw / validate 调用直接删除（v0.16 收尾）。
 
 ---
 
