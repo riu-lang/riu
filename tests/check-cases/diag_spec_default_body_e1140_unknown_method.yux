@@ -1,3 +1,4 @@
+; require-sdk
 ; DRAFT-spec-default-body Phase 2：spec 默认体内调用不在签名集内的方法
 ; 应被 sema 占位符号校验 (E1140) 命中。lt 调用了 nonexistent，spec 内没有声明。
 

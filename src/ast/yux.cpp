@@ -191,7 +191,10 @@ p<FileNode> Yux::_parseFile(const string& absPath, const string& moduleName, int
     parser.addErrorListener(&errListener);
     auto program = parser.program();
     if (errListener.hasErrors() || parser.getNumberOfSyntaxErrors()) {
-        throw YuxError(errorLine, ErrorCode::E5010, absPath);
+        // 用首个语法错误的实际错误码（E1001/E1002）+ 行号替代通用 E5010，
+        // 使 yux-check test 的 ; check: 注解能精确匹配。
+        throw YuxError(errListener.firstErrorLine(), errListener.firstErrorCol(),
+                       *errListener.firstErrorCodeDef(), absPath);
     }
 
     // 测试文件按文件名后缀识别（spec §11.3.3.1）

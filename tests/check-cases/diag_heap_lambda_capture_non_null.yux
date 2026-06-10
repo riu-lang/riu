@@ -1,3 +1,4 @@
+; require-sdk
 ; DRAFT-heap-types §5.5 / Phase 3e: Heap<T> 非空按值捕获禁, E4024
 ; 引导用户改写为 Heap<T>?（B 档 move 捕获）或 Heap<T>&（借用捕获）
 

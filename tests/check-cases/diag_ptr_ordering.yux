@@ -1,3 +1,4 @@
+; require-sdk
 fn main() {
   #Mut let a Ptr = GetStdHandle(-11i32)
   #Mut let b Ptr = GetStdHandle(-12i32)

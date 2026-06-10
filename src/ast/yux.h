@@ -52,6 +52,10 @@ public:
     p<FileNode> createSdkFile();
 
     p<FileNode> sdkFile() const { return _sdkFile; }
+    // 设置外部 SDK 文件（不转移所有权）。用于批量测试中多文件共享一次 SDK 加载。
+    // 调用方负责保证 sdkFile 在 Yux 使用期间存活，并在 Yux 析构前调用
+    // setSdkFile(nullptr) 避免 double-free。
+    void setSdkFile(p<FileNode> sdkFile) { _sdkFile = sdkFile; }
     const vector<p<FileNode>>& files() const { return _files; }
 
     // draft 注册表 (spec §12). 首次访问时按当前已加载的 _files + _sdkFile

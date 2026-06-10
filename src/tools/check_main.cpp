@@ -40,7 +40,6 @@
 #include <CLI/CLI.hpp>
 
 #include <algorithm>
-#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -49,7 +48,6 @@
 #include <optional>
 #include <sstream>
 #include <string>
-#include <thread>
 #include <vector>
 
 using namespace yux;
@@ -329,6 +327,22 @@ static TestFileResult evaluateOneFileWithYux(const string& absPath, Yux& yux) {
     return tfr;
 }
 
+// 检查文件是否包含 "; require-sdk" 注解（文件头几行）。
+// 有此注解的文件依赖 SDK 类型（Heap/Rc/Weak/String 等），需要在 test 模式下加载 SDK。
+static bool fileRequiresSdk(const string& filePath) {
+    ifstream in(filePath);
+    if (!in.is_open()) return false;
+
+    string line;
+    // 仅检查前 10 行，避免扫描整个文件
+    for (int i = 0; i < 10 && getline(in, line); ++i) {
+        if (line.find("; require-sdk") != string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static int runCheckTest(const string& dir, bool recursive) {
     namespace fs = filesystem;
     auto t0 = chrono::steady_clock::now();
@@ -347,33 +361,45 @@ static int runCheckTest(const string& dir, bool recursive) {
         return 0;
     }
 
-    // 多线程处理：每线程一个 Yux，原子索引无锁分派工作
+    // 单线程处理，每文件独立 Yux 实例，避免跨文件状态累积（BUG#3）。
+    // 对标注了 "; require-sdk" 的文件，SDK 只加载一次到模板 Yux，
+    // 各文件通过共享 _sdkFile 指针获得 SDK 符号可见性。
     size_t fileCount = files.size();
     vector<TestFileResult> results(fileCount);
 
-    unsigned int numThreads = thread::hardware_concurrency();
-    if (numThreads == 0) numThreads = 4;
-    if (numThreads > fileCount) numThreads = static_cast<unsigned int>(fileCount);
-
-    atomic<size_t> nextIndex{0};
-    vector<thread> workers;
-    workers.reserve(numThreads);
-
-    for (unsigned int t = 0; t < numThreads; ++t) {
-        workers.emplace_back([&]() {
-            // 每线程创建独立 Yux。diag 文件不依赖 SDK，跳过 SDK 加载。
-            Yux yux;
-            yux.initSingleFileRoot(files[0]);
-
-            while (true) {
-                size_t i = nextIndex.fetch_add(1);
-                if (i >= fileCount) break;
-                results[i] = evaluateOneFileWithYux(files[i], yux);
+    // 预加载 SDK（一次性），后续各文件共享其 _sdkFile
+    Yux sdkYux;
+    bool sdkLoaded = false;
+    {
+        string sdkPath;
+        for (size_t i = 0; i < fileCount && !sdkLoaded; ++i) {
+            if (fileRequiresSdk(files[i])) {
+                sdkPath = sdk_loader::findSdkPath();
+                if (!sdkPath.empty()) {
+                    sdkYux.initSingleFileRoot(files[0]);
+                    sdk_loader::parseSdkDir(sdkPath, sdkYux);
+                    sdkLoaded = true;
+                }
+                break;
             }
-        });
+        }
     }
 
-    for (auto& w : workers) w.join();
+    for (size_t i = 0; i < fileCount; ++i) {
+        Yux yux;
+        yux.initSingleFileRoot(files[i]);
+
+        if (fileRequiresSdk(files[i]) && sdkLoaded) {
+            yux.setSdkFile(sdkYux.sdkFile());
+        }
+
+        results[i] = evaluateOneFileWithYux(files[i], yux);
+
+        // 解除共享引用，避免 Yux 析构时 delete 不属于它的 SDK FileNode
+        if (fileRequiresSdk(files[i]) && sdkLoaded) {
+            yux.setSdkFile(nullptr);
+        }
+    }
 
     // 统计 (results 已按 files 的序号排列, 即按文件名排序)
     size_t passed = 0;

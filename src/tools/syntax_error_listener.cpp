@@ -35,6 +35,13 @@ void SyntaxErrorListener::syntaxError(antlr4::Recognizer* recognizer,
     // recognizer 是 Lexer → 词法（E1001）；否则视为文法（E1002）。
     bool isLexer = dynamic_cast<antlr4::Lexer*>(recognizer) != nullptr;
 
+    // 记录首个错误码与位置，供调用方（如 _parseFile）构造 YuxError
+    if (_errorCount == 1) {
+        _firstErrorCodeDef = isLexer ? &ErrorCode::E1001 : &ErrorCode::E1002;
+        _firstErrorLine = static_cast<int>(line);
+        _firstErrorCol = static_cast<int>(charPositionInLine) + 1;
+    }
+
     // 抑制：lexer 被困在非默认 mode（如字符串插值未闭合）后, 对 '\n' '\r'
     // 触发的 "token recognition error" 几乎全是噪声 —— 真正的错误已由
     // E1002 报出. 仅在 offending 是纯空白/换行时跳过渲染.

@@ -1,3 +1,4 @@
+; require-sdk
 ; DRAFT-spec-disambig-at: T 未 #Impl(SpecA) 时使用 `@SpecA` -> E1101.
 
 #Spec

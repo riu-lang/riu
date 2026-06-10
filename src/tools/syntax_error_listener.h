@@ -11,6 +11,7 @@
 #define YUX_LANG_SYNTAX_ERROR_LISTENER_H
 
 #include "BaseErrorListener.h"
+#include "error_code.h"
 #include "types.h"
 
 #include <ostream>
@@ -19,17 +20,25 @@ class SyntaxErrorListener : public antlr4::BaseErrorListener {
 public:
     SyntaxErrorListener(string sourcePath, std::ostream& out);
 
-    void syntaxError(antlr4::Recognizer* recognizer, antlr4::Token* offending,
-                     size_t line, size_t charPositionInLine,
+    void syntaxError(antlr4::Recognizer* recognizer, antlr4::Token* offending, size_t line, size_t charPositionInLine,
                      const std::string& msg, std::exception_ptr e) override;
 
-    bool hasErrors() const { return _errorCount > 0; }
-    int  errorCount() const { return _errorCount; }
+    [[nodiscard]] bool hasErrors() const { return _errorCount > 0; }
+    [[nodiscard]] int  errorCount() const { return _errorCount; }
+
+    // 首个错误的 ErrorCodeDef 指针与位置；仅 syntaxError 至少调用一次后有效。
+    // 用于调用方构造 YuxError 时复现正确的错误码与行号（而非万能 E5010）。
+    [[nodiscard]] const ErrorCodeDef* firstErrorCodeDef() const { return _firstErrorCodeDef; }
+    [[nodiscard]] int firstErrorLine() const { return _firstErrorLine; }
+    [[nodiscard]] int firstErrorCol() const { return _firstErrorCol; }
 
 private:
-    string        _sourcePath;
+    string _sourcePath;
     std::ostream& _out;
-    int           _errorCount = 0;
+    int _errorCount = 0;
+    const ErrorCodeDef* _firstErrorCodeDef = &ErrorCode::E1002;
+    int _firstErrorLine = 1;
+    int _firstErrorCol = 1;
 };
 
 #endif // YUX_LANG_SYNTAX_ERROR_LISTENER_H
