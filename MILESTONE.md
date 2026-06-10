@@ -95,9 +95,9 @@
 
 - **性能与 layout 优化**：String 专属 FAM Block（`{strong, weak, len_cps, u32 data[]}`）；Array Block 内联小尺寸优化；内联策略与裁剪；基准测试无回归。
 
-### v0.16.0-alpha — 闭包捕获 + yux-check 闭环 + []语法糖 + 静态引用
+### v0.16.0-alpha — 闭包捕获 + yux-check 闭环 + []语法糖 + 静态引用 + LSP/插件同步
 
-**主题**：v0.8 lambda 留下的"零捕获"限制收口；同步把 `yux-check` 残留 5 例关掉；补齐两件 v0.15 推后项——`[]` 语法糖同步为 T& 返回 + 静态变量/全局变量 T& 引用。
+**主题**：v0.8 lambda 留下的"零捕获"限制收口；同步把 `yux-check` 残留 5 例关掉；补齐两件 v0.15 推后项——`[]` 语法糖同步为 T& 返回 + 静态变量/全局变量 T& 引用；外围 LSP / 三插件随语言面变更同步。
 
 **范围（草稿）**：
 
@@ -108,10 +108,12 @@
 - 与 v0.10 错误模型 v1 的交互：`#Fallible` lambda 形态（若需要）
 - `[]` <=> `get` 语法糖同步：`a[i]` 返回 T&（与 `Array::get()` 一致）；Array 当前绕过操作符重载规则需补
 - 静态变量 T& / 静态引用：扩展 T& 可指向静态/全局变量；`&global_var` 合法性、`T&` 跨函数返回评估
+- **LSP 同步**：semantic_tokens 新增闭包捕获关键字 / 静态引用相关 token；completion 适配捕获上下文；diagnostics 覆盖捕获相关错误码
+- **插件同步**：yux-vscode tmLanguage / yux-idea 高亮 新增闭包捕获语法形态；yux-claude-code LSP 客户端无额外改动（协议兼容）
 
 **不在范围**：高阶函数库化（map/filter/fold —— SDK 扩充时再做）、`dyn fn` 运行时多态、async lambda。
 
-**退出标准**：草案 `DRAFT-closure-capture.md` 全节定型并迁入 spec；`yux-check` 漏报清零（lambda 体内 5 例自动关闭）；`xmake test` + `yux test` 全绿；实施日志归档 `docs/dev/closure-capture-impl-log.md`。
+**退出标准**：草案 `DRAFT-closure-capture.md` 全节定型并迁入 spec；`yux-check` 漏报清零（lambda 体内 5 例自动关闭）；`xmake test` + `yux test` 全绿；LSP semantic_tokens / completion 覆盖本轮新语法形态；三插件高亮同步完毕；实施日志归档 `docs/dev/closure-capture-impl-log.md`。
 
 ### v0.15.0 — spec 收尾 + 编译期基础设施 ✅ 已完成（2026-06-09）
 
