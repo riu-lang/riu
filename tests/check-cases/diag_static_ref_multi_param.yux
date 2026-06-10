@@ -1,0 +1,13 @@
+; require-sdk
+; DRAFT-static-ref: ≥2 T& 形参 → E4021（单源约束保留）
+
+fn pick(a i32&, b i32&) i32& = a  ; check: E4021
+
+fn main() {
+  let r i32& = &_VAL
+  let r2 i32& = pick(r, r2)
+  println(r2)
+  ret;
+}
+
+let _VAL i32 = 1

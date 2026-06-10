@@ -1,0 +1,14 @@
+; require-sdk
+; DRAFT-static-ref: 0 T& 形参函数返回局部引用 → E4020
+; 函数定义侧溯源检查: 根 ∉ {$rodata} → E4020
+
+fn bad_return_local() i32& {
+  #Mut let x i32 = 1
+  ret &x  ; check: E4020
+}
+
+fn main() {
+  let r i32& = bad_return_local()
+  println(r)
+  ret;
+}

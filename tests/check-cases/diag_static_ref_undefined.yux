@@ -1,0 +1,8 @@
+; require-sdk
+; DRAFT-static-ref: &undefined_global → E4002（borrow_checker: 根不在任何作用域）
+
+fn main() {
+  let r i32& = &UNDEFINED_GLOBAL  ; check: E4002
+  println(r)
+  ret;
+}

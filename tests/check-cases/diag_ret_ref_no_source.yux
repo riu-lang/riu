@@ -1,8 +1,9 @@
-; 自由函数返回 T& 但无 T& 形参 → E4021（无来源源）
+; 自由函数返回 T& 但无 T& 形参 → ret &local 报 E4020（源不在允许集 {$rodata}）
+; 原为 E4021（0 T& 形参直接拒绝），DRAFT-static-ref 放宽后改在 ret 站点检测
 
-fn bad() i32& {  ; check: E4021
+fn bad() i32& {
   #Mut let x i32 = 1
-  ret &x
+  ret &x  ; check: E4020
 }
 
 fn main() {

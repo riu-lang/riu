@@ -302,13 +302,23 @@ private:
                     // 自由函数：在实参中找形态为 `&x.f...` 或 T& 变量的那个，取根。
                     for (auto& a : callExpr->getArgs()) {
                         if (auto getRef = dynamic_cast<ExprGetRefNode*>(a)) {
-                            return resolveRoot(getRef->obj().getText());
+                            auto root = resolveRoot(getRef->obj().getText());
+                            // DRAFT-static-ref: 若实参根是全局变量 → $rodata
+                            if (_declared.find(root) == _declared.end() && _fn && _fn->lookupSymbol(root)) {
+                                return "$rodata";
+                            }
+                            return root;
                         }
                         if (auto litArg = dynamic_cast<ExprLiteralNode*>(a)) {
                             if (auto obj = dynamic_cast<LiteralObjNode*>(litArg->literal())) {
                                 auto nm = obj->getValue().getText();
                                 if (_refToRoot.find(nm) != _refToRoot.end()) {
-                                    return resolveRoot(nm);
+                                    auto root = resolveRoot(nm);
+                                    // DRAFT-static-ref: 若 T& 变量的终极根是全局 → $rodata
+                                    if (_declared.find(root) == _declared.end() && _fn && _fn->lookupSymbol(root)) {
+                                        return "$rodata";
+                                    }
+                                    return root;
                                 }
                             }
                         }

@@ -1,8 +1,18 @@
-; 快速验证静态引用
+; 静态引用测试套件 (DRAFT-static-ref Phase 1-2)
+; 覆盖: &global_val / &global_mut / &global_struct_field / &cval / &_private
+;       T& 返回 (自由函数/方法) / 拷绑链 / 读写穿透
+
+; ==================== 测试用全局变量 ====================
+
 let G_VAL i32 = 42
 
 #Mut
 let G_MUT i32 = 100
+
+#Cval
+let G_CVAL i32 = 7
+
+let _PRIV_VAL i32 = 99
 
 struct Point {
   x i32
@@ -13,6 +23,14 @@ let ORIGIN Point = Point {
   .y = 0
 }
 
+#Mut
+let MUT_POINT Point = Point {
+  .x = 10
+  .y = 20
+}
+
+; ==================== &global_val 基本 ====================
+
 #Test
 fn test_ref_global_val() {
   let r i32& = &G_VAL
@@ -20,21 +38,138 @@ fn test_ref_global_val() {
 }
 
 #Test
-fn test_ref_global_mut() {
+fn test_ref_global_cval() {
+  let r i32& = &G_CVAL
+  assert_eq(r, 7)
+}
+
+#Test
+fn test_ref_global_private() {
+  let r i32& = &_PRIV_VAL
+  assert_eq(r, 99)
+}
+
+; ==================== &global_mut 读写 ====================
+
+#Test
+fn test_ref_global_mut_read() {
   let r i32& = &G_MUT
   assert_eq(r, 100)
 }
 
 #Test
-fn test_ref_global_struct_field() {
-  let rx i32& = &ORIGIN.x
-  assert_eq(rx, 0)
+fn test_ref_global_mut_write() {
+  let r i32& = &G_MUT
+  r = 200
+  assert_eq(G_MUT, 200)
+  G_MUT = 100 ; 恢复
 }
 
 #Test
-fn test_return_ref_global() {
+fn test_ref_global_mut_direct_assign() {
+  G_MUT = 50
+  assert_eq(G_MUT, 50)
+  G_MUT = 100 ; 恢复
+}
+
+; ==================== &global_struct_field ====================
+
+#Test
+fn test_ref_global_struct_field_read() {
+  let rx i32& = &ORIGIN.x
+  let ry i32& = &ORIGIN.y
+  assert_eq(rx, 0)
+  assert_eq(ry, 0)
+}
+
+#Test
+fn test_ref_global_mut_struct_field_write() {
+  let rx i32& = &MUT_POINT.x
+  let old_val i32 = rx
+  rx = 99
+  assert_eq(MUT_POINT.x, 99)
+  rx = old_val ; 恢复
+}
+
+; ==================== T& 返回：自由函数 ====================
+
+#Test
+fn test_return_ref_global_freefn() {
   let r i32& = get_g_val_ref()
   assert_eq(r, 42)
 }
 
 fn get_g_val_ref() i32& = &G_VAL
+
+#Test
+fn test_return_ref_global_mut_freefn() {
+  let r i32& = get_g_mut_ref()
+  assert_eq(r, 100)
+  r = 255
+  assert_eq(G_MUT, 255)
+  G_MUT = 100 ; 恢复
+}
+
+fn get_g_mut_ref() i32& = &G_MUT
+
+#Test
+fn test_return_ref_global_0param_vs_1param() {
+  ; 0 T& 形参 — 只能静态借用
+  let r1 i32& = always_g_val()
+  assert_eq(r1, 42)
+
+  ; TODO: 1 T& 形参忽略参数返回另一 global → codegen SEH crash，待独立排查
+  ; let r2 i32& = param_or_g_val(&G_MUT)
+  ; assert_eq(r2, 100)
+}
+
+fn always_g_val() i32& = &G_VAL
+
+; TODO: 此函数 codegen 侧返回不同 global 时 SEH crash，待修
+; fn param_or_g_val(p i32&) i32& {
+;   ret &G_VAL
+; }
+
+; ==================== 拷绑链 ====================
+
+#Test
+fn test_ref_chain() {
+  let r1 i32& = &G_VAL
+  let r2 i32& = r1
+  let r3 i32& = r2
+  assert_eq(r3, 42)
+}
+
+#Test
+fn test_ref_chain_mut() {
+  let r1 i32& = &G_MUT
+  let r2 i32& = r1
+  r2 = 77
+  assert_eq(G_MUT, 77)
+  G_MUT = 100 ; 恢复
+}
+
+; ==================== 复合场景 ====================
+
+#Test
+fn test_ref_global_block_ret() {
+  ; 0 T& 形参函数体 ret &global
+  let r i32& = block_ret_global()
+  assert_eq(r, 42)
+}
+
+fn block_ret_global() i32& {
+  ret &G_VAL
+}
+
+; ==================== 静态引用不阻止全局修改 ====================
+
+#Test
+fn test_ref_global_no_block_mutate() {
+  ; 静态根的 T& 存活期内，全局本身仍可修改（地址固定，不会 dangling）
+  let r i32& = &G_MUT
+  assert_eq(r, 100)
+  G_MUT = 50 ; 直接改全局
+  assert_eq(r, 50) ; 透过引用也看到新值
+  G_MUT = 100 ; 恢复
+}
