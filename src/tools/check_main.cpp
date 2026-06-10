@@ -1,7 +1,7 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 
-// yux-check: 单文件快速语义检查 (阶段 0)
+// yux-check: 单文件快速语义检查 (阶段 0) + 批量诊断测试 (阶段 1)
 //
 // 与 yux 主二进制不同, 本工具:
 // - 0 LLVM 依赖, 只链 yux_frontend
@@ -15,7 +15,9 @@
 // 详见 CURRENT.md "yux-check 最小可用 exe" 一节.
 //
 // 用法:
-//   yux-check <input.yux>   ; 退出码: 0 = 无错, 1 = 文件 / 语法 / 语义错
+//   yux-check <input.yux>           ; 退出码: 0 = 无错, 1 = 文件 / 语法 / 语义错
+//   yux-check test <dir>            ; 批量测试目录下所有 .yux (非递归)
+//   yux-check test <dir> -r         ; 递归子目录
 
 // windows.h 必须在拉入 yux frontend (经由 include/types.h 做了 `using namespace
 // std`) 之前 #include, 否则 std::byte 与 winapi byte 冲突 (rpcndr.h).
@@ -37,41 +39,403 @@
 
 #include <CLI/CLI.hpp>
 
+#include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <map>
+#include <optional>
+#include <sstream>
 #include <string>
+#include <thread>
+#include <vector>
 
-int main(int argc, char* argv[]) {
+using namespace yux;
+using namespace std;
+
+// ============================================================================
+// "; check:" 注解解析 —— 读源文件文本行做字符串匹配, 不走 ANTLR token 通道
+// ============================================================================
+
+// 从源文件文本中解析 "; check:" 行尾注解。
+// 返回 map: 行号 → 期望错误码集合 (按行号排序)。
+// "; check: none" 表示显式标记该行无期望错误, 不计入。
+static map<size_t, vector<string>> parseCheckAnnotations(const string& filePath) {
+    map<size_t, vector<string>> result;
+    ifstream in(filePath);
+    if (!in.is_open()) return result;
+
+    string line;
+    size_t lineNum = 0;
+    while (getline(in, line)) {
+        ++lineNum;
+        size_t pos = line.find("; check:");
+        if (pos == string::npos) continue;
+
+        // 提取空格分隔的错误码 (例: "E4024" 或 "E2030 E4022")
+        string codesStr = line.substr(pos + 9); // skip "; check:"
+        istringstream iss(codesStr);
+        vector<string> codes;
+        string code;
+        while (iss >> code) {
+            if (code == "none") continue; // "; check: none" → 显式标记无期望
+            codes.push_back(code);
+        }
+        if (!codes.empty()) {
+            result[lineNum] = std::move(codes);
+        }
+    }
+    return result;
+}
+
+// 将错误码 vector 格式化为空格分隔的字符串 ("E4024" 或 "E2030 E4022")
+static string formatCodes(const vector<string>& codes) {
+    if (codes.empty()) return "(none)";
+    ostringstream oss;
+    for (size_t i = 0; i < codes.size(); ++i) {
+        if (i > 0) oss << ' ';
+        oss << codes[i];
+    }
+    return oss.str();
+}
+
+// 将错误码 vector 格式化为逗号分隔的字符串 ("E4024" 或 "E2030, E4022")
+static string formatCodesComma(const vector<string>& codes) {
+    if (codes.empty()) return "(none)";
+    ostringstream oss;
+    for (size_t i = 0; i < codes.size(); ++i) {
+        if (i > 0) oss << ", ";
+        oss << codes[i];
+    }
+    return oss.str();
+}
+
+// ============================================================================
+// 目录扫描
+// ============================================================================
+
+// 扫描目录下的 .yux 文件。
+// recursive=false: 仅当前目录; recursive=true: 递归子目录。
+// 结果按文件名排序, 保证输出确定性。
+static vector<string> scanYuxFiles(const string& dir, bool recursive) {
+    vector<string> result;
+    error_code ec;
+
+    if (recursive) {
+        for (auto it = filesystem::recursive_directory_iterator(dir, ec);
+             it != filesystem::recursive_directory_iterator(); ++it) {
+            if (ec) break;
+            if (it->is_regular_file() && it->path().extension() == ".yux") {
+                result.push_back(filesystem::absolute(it->path()).string());
+            }
+        }
+    } else {
+        for (auto it = filesystem::directory_iterator(dir, ec);
+             it != filesystem::directory_iterator(); ++it) {
+            if (ec) break;
+            if (it->is_regular_file() && it->path().extension() == ".yux") {
+                result.push_back(filesystem::absolute(it->path()).string());
+            }
+        }
+    }
+
+    ranges::sort(result);
+    return result;
+}
+
+// ============================================================================
+// 单文件 sema 执行 —— parse → AST → SemaPass, 收集抛出的错误
+// ============================================================================
+
+struct CheckResult {
+    bool ok = true;                  // false = 有错误 (semaError 或 otherError)
+    optional<YuxError> semaError;    // SemaPass 抛出的 YuxError
+    string otherError;               // 非 YuxError 的错误信息 (parse / AST 阶段失败)
+};
+
+// 对单个 .yux 文件执行完整检查流水线。
+// sdkPath 为空时跳过 SDK 加载 (退化为 builtin 范围检查)。
+static CheckResult runSemaOnFile(const string& absPath, const string& sdkPath) {
+    CheckResult cr;
+
+    // 1. 词法 + 语法 (ANTLR)
+    antlr4::ANTLRFileStream stream;
+    try {
+        stream.loadFromFile(absPath);
+    } catch (const exception& e) {
+        cr.ok = false;
+        cr.otherError = string("cannot load file: ") + e.what();
+        return cr;
+    }
+
+    ostringstream syntaxErrStream;
+    SyntaxErrorListener errListener(absPath, syntaxErrStream);
+
+    yux::yuxLexer lexer(&stream);
+    lexer.removeErrorListeners();
+    lexer.addErrorListener(&errListener);
+
+    antlr4::CommonTokenStream tokens(&lexer);
+    yux::yuxParser parser(&tokens);
+    parser.removeErrorListeners();
+    parser.addErrorListener(&errListener);
+
+    auto* program = parser.program();
+    if (errListener.hasErrors() || parser.getNumberOfSyntaxErrors()) {
+        cr.ok = false;
+        cr.otherError = syntaxErrStream.str();
+        // 去除末尾换行, 保持输出整洁
+        if (!cr.otherError.empty() && cr.otherError.back() == '\n') {
+            cr.otherError.pop_back();
+        }
+        return cr;
+    }
+
+    // 2. AST 构建 + SemaPass
+    string moduleName = filesystem::path(absPath).stem().string();
+
+    Yux yux;
+    yux.initSingleFileRoot(absPath);
+
+    try {
+        // 加载 SDK (找不到不致命)
+        if (!sdkPath.empty()) {
+            sdk_loader::parseSdkDir(sdkPath, yux);
+        }
+
+        auto file = yux.loadMainFile(absPath, moduleName);
+        yux.validateSpecImpls();
+        SemaPass(file, &yux).run();
+    } catch (const YuxError& e) {
+        cr.ok = false;
+        cr.semaError = e;
+    } catch (const runtime_error& e) {
+        cr.ok = false;
+        cr.otherError = e.what();
+    }
+
+    return cr;
+}
+
+// ============================================================================
+// test 子命令: 批量诊断测试
+// ============================================================================
+
+// 单文件测试结果
+// NOLINTNEXTLINE(bugprone-exception-escape) — map 成员可能导致移动/拷贝抛异常, 但本 struct 仅作本地数据容器
+struct TestFileResult {
+    string filename;                     // 仅文件名 (用于显示)
+    bool passed = false;
+    string failReason;                   // 失败原因 (可能多行)
+    map<size_t, vector<string>> annotations; // 解析出的注解
+};
+
+// 单文件结果评估：parse ; check: 注解 → run sema → 匹配
+static TestFileResult evaluateOneFile(const string& absPath, const string& sdkPath) {
+    namespace fs = filesystem;
+
+    TestFileResult tfr;
+    tfr.filename = fs::path(absPath).filename().string();
+    tfr.annotations = parseCheckAnnotations(absPath);
+
+    auto cr = runSemaOnFile(absPath, sdkPath);
+
+    if (!cr.otherError.empty()) {
+        tfr.passed = false;
+        tfr.failReason = "  parse/AST error: " + cr.otherError + "\n";
+        return tfr;
+    }
+
+    bool hasAnnotations = !tfr.annotations.empty();
+    bool hasSemaError = cr.semaError.has_value();
+
+    if (!hasAnnotations && !hasSemaError) {
+        // 情况 A: pass-through 模式, 无注解, 无错误 → PASS
+        tfr.passed = true;
+    } else if (!hasAnnotations && hasSemaError) {
+        // 情况 B: pass-through 模式, 无注解, 有错误 → FAIL (意外错误)
+        tfr.passed = false;
+        ostringstream oss;
+        oss << "  unexpected " << cr.semaError->getCode()
+            << " at line " << cr.semaError->getLineNumber()
+            << ": " << cr.semaError->what() << '\n';
+        tfr.failReason = oss.str();
+    } else if (hasAnnotations && !hasSemaError) {
+        // 情况 C: 有注解, 但 SemaPass 无错误 → FAIL (期望错误未触发)
+        tfr.passed = false;
+        ostringstream oss;
+        for (auto& [line, codes] : tfr.annotations) {
+            oss << "  line " << line << ": expected "
+                << formatCodesComma(codes) << ", got no error\n";
+        }
+        tfr.failReason = oss.str();
+    } else {
+        // 情况 D: 有注解, 有错误 → 匹配行号与错误码
+        auto& err = *cr.semaError;
+        size_t errLine = err.getLineNumber();
+        string errCode = err.getCode();
+
+        auto it = tfr.annotations.find(errLine);
+        if (it != tfr.annotations.end()) {
+            auto& expected = it->second;
+            bool matched = false;
+            for (auto& ec : expected) {
+                if (ec == errCode) { matched = true; break; }
+            }
+
+            if (matched) {
+                tfr.passed = true;
+            } else {
+                tfr.passed = false;
+                ostringstream oss;
+                oss << "  line " << errLine << ": expected "
+                    << formatCodesComma(expected) << ", got " << errCode << '\n';
+                tfr.failReason = oss.str();
+            }
+        } else {
+            tfr.passed = false;
+            ostringstream oss;
+            oss << "  line " << errLine << ": unexpected " << errCode
+                << " (" << err.what() << ")";
+            if (tfr.annotations.size() == 1) {
+                auto& [line, codes] = *tfr.annotations.begin();
+                oss << ", expected " << formatCodesComma(codes) << " at line " << line;
+            }
+            oss << '\n';
+            tfr.failReason = oss.str();
+        }
+    }
+
+    return tfr;
+}
+
+static int runCheckTest(const string& dir, bool recursive) {
+    namespace fs = filesystem;
+    auto t0 = chrono::steady_clock::now();
+
+    if (!fs::is_directory(dir)) {
+        cerr << "Error: not a directory: " << dir << '\n';
+        return 1;
+    }
+
+    // 预查 SDK 路径 (找不到不致命)
+    string sdkPath = sdk_loader::findSdkPath();
+
+    auto files = scanYuxFiles(dir, recursive);
+    if (files.empty()) {
+        cout << "No .yux files found in " << fs::absolute(dir).string() << '\n';
+        return 0;
+    }
+
+    // 多线程处理：用原子索引分派工作，每线程独立 Yux 实例
+    size_t fileCount = files.size();
+    vector<TestFileResult> results(fileCount);
+
+    unsigned int numThreads = thread::hardware_concurrency();
+    if (numThreads == 0) numThreads = 4;
+    if (numThreads > fileCount) numThreads = static_cast<unsigned int>(fileCount);
+
+    atomic<size_t> nextIndex{0};
+    vector<thread> workers;
+    workers.reserve(numThreads);
+
+    for (unsigned int t = 0; t < numThreads; ++t) {
+        workers.emplace_back([&]() {
+            while (true) {
+                size_t i = nextIndex.fetch_add(1);
+                if (i >= fileCount) break;
+                results[i] = evaluateOneFile(files[i], sdkPath);
+            }
+        });
+    }
+
+    for (auto& w : workers) w.join();
+
+    // 统计 (results 已按 files 的序号排列, 即按文件名排序)
+    size_t passed = 0;
+    size_t failed = 0;
+    for (auto& r : results) {
+        if (r.passed) ++passed;
+        else ++failed;
+    }
+
+    // 输出结果
+    for (auto& r : results) {
+        if (r.passed) {
+            cout << "  [PASS] " << r.filename << '\n';
+        } else {
+            cout << "  [FAIL] " << r.filename << '\n';
+            cout << r.failReason;
+        }
+    }
+
+    // 总耗时
+    auto elapsed = chrono::duration_cast<chrono::milliseconds>(
+        chrono::steady_clock::now() - t0).count();
+    auto sec = elapsed / 1000;
+    auto ms = elapsed % 1000;
+
+    cout << '\n';
+    cout << "  Summary: " << passed << " passed, " << failed << " failed, "
+         << results.size() << " total"
+         << " [" << sec << '.' << (ms / 100) % 10 << (ms / 10) % 10 << ms % 10 << "s]\n";
+
+    return failed == 0 ? 0 : 1;
+}
+
+// ============================================================================
+// main
+// ============================================================================
+
+int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape) — main 入口点, filesystem API 可能抛 system_error
 #ifdef _WIN32
     SetConsoleCP(CP_UTF8);
     SetConsoleOutputCP(CP_UTF8);
 #endif
 
     CLI::App app{"yux-check: fast standalone semantic check (no LLVM)"};
+    app.require_subcommand(0, 1);
 
-    std::string inputFile;
-    app.add_option("input", inputFile, "Input .yux file")->required();
+    // ---- 单文件模式 (保持现有行为) ----
+    string inputFile;
+    app.add_option("input", inputFile, "Input .yux file");
+
+    // ---- test 子命令 ----
+    auto* testCmd = app.add_subcommand("test", "Batch test .yux files with ; check: annotations");
+    string testDir;
+    testCmd->add_option("dir", testDir, "Directory containing .yux test files")->required();
+    bool testRecursive = false;
+    testCmd->add_flag("-r,--recursive", testRecursive, "Scan subdirectories recursively");
 
     CLI11_PARSE(app, argc, argv);
 
-    if (!std::filesystem::exists(inputFile)) {
-        std::cerr << "Error: input file not found: " << inputFile << '\n';
+    // ---- test 子命令分支 ----
+    if (testCmd->parsed()) {
+        return runCheckTest(testDir, testRecursive);
+    }
+
+    // ==== 单文件模式 (原逻辑) ====
+
+    if (!filesystem::exists(inputFile)) {
+        cerr << "Error: input file not found: " << inputFile << '\n';
         return 1;
     }
 
-    std::string absPath = std::filesystem::absolute(inputFile).string();
+    string absPath = filesystem::absolute(inputFile).string();
 
     // 1. 词法 + 语法
     antlr4::ANTLRFileStream stream;
     try {
         stream.loadFromFile(absPath);
-    } catch (const std::exception& e) {
-        std::cerr << "Error: cannot load file " << absPath << ": " << e.what() << '\n';
+    } catch (const exception& e) {
+        cerr << "Error: cannot load file " << absPath << ": " << e.what() << '\n';
         return 1;
     }
 
     yux::yuxLexer lexer(&stream);
-    SyntaxErrorListener errListener(absPath, std::cerr);
+    SyntaxErrorListener errListener(absPath, cerr);
     lexer.removeErrorListeners();
     lexer.addErrorListener(&errListener);
 
@@ -88,7 +452,7 @@ int main(int argc, char* argv[]) {
     // 2. AST + SemaPass. 单文件模式, 不加载 SDK / 不解析 import 链.
     //    使用文件名 stem 作为 module name. 与 yux 主二进制行为不一致, 阶段 0
     //    可接受 —— 后续阶段补 SDK / 模块依赖时再对齐.
-    std::string moduleName = std::filesystem::path(absPath).stem().string();
+    string moduleName = filesystem::path(absPath).stem().string();
 
     Yux yux;
     yux.initSingleFileRoot(absPath);
@@ -97,9 +461,9 @@ int main(int argc, char* argv[]) {
         // 先加载 SDK (yux.core), 让用户文件经父作用域看到 String / ToString /
         // StringBuilder 等; sdk_loader::parseSdkDir 0 LLVM, 失败抛 YuxError.
         // SDK 找不到时不致命 —— 仅打印警告并继续 (退化为 yux-check 阶段 0 行为).
-        std::string sdkPath = sdk_loader::findSdkPath();
+        string sdkPath = sdk_loader::findSdkPath();
         if (sdkPath.empty()) {
-            std::cerr << "warning: SDK not found (yux.core 未加载); 仅做 builtin 范围内的 sema 检查"
+            cerr << "warning: SDK not found (yux.core 未加载); 仅做 builtin 范围内的 sema 检查"
                       << '\n';
         } else {
             sdk_loader::parseSdkDir(sdkPath, yux);
@@ -110,11 +474,11 @@ int main(int argc, char* argv[]) {
         auto file = yux.loadMainFile(absPath, moduleName);
         yux.validateSpecImpls();
         SemaPass(file, &yux).run();
-    } catch (const std::runtime_error& e) {
+    } catch (const runtime_error& e) {
         if (auto* yuxErr = dynamic_cast<const YuxError*>(&e)) {
-            DiagnosticEngine::renderYuxError(std::cerr, absPath, *yuxErr);
+            DiagnosticEngine::renderYuxError(cerr, absPath, *yuxErr);
         } else {
-            std::cerr << e.what() << '\n';
+            cerr << e.what() << '\n';
         }
         return 1;
     }
