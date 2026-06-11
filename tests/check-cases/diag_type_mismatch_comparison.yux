@@ -4,5 +4,5 @@
 fn main() {
   let a i32 = 10
   let b String = "hello"
-  let c bool = a == b  ; check: E3004
+  let c bool = a == b  ; check: E3001
 }

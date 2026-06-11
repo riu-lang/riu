@@ -533,7 +533,7 @@ TypeInfo ExprAddSubNode::getType() const {
         if (!isBuiltinType(leftType.name)) {
             return leftType;
         }
-        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3001, leftType.name, rightType.name);
+        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3001, "arithmetic", leftType.name, rightType.name);
     }
     return leftType;
 }
@@ -578,7 +578,7 @@ TypeInfo ExprMulDivModNode::getType() const {
         if (!isBuiltinType(leftType.name)) {
             return leftType;
         }
-        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3002, leftType.name, rightType.name);
+        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3001, "mul/div/mod", leftType.name, rightType.name);
     }
     return leftType;
 }
@@ -623,7 +623,7 @@ TypeInfo ExprBinOpNode::getType() const {
         if (!isBuiltinType(leftType.name)) {
             return leftType;
         }
-        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3003, leftType.name, rightType.name);
+        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3001, "bitwise", leftType.name, rightType.name);
     }
     return leftType;
 }
@@ -704,11 +704,11 @@ TypeInfo ExprDotNode::getType() const {
     if (_safe) {
         auto baseT = _baseExpr->getType();
         if (!baseT.isNullable()) {
-            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3025, baseT.name);
+            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3024, baseT.name);
         }
         auto innerType = baseT.nullableInnerType();
         if (!innerType) {
-            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3051);
+            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3050);
         }
         // Phase 5: Rc<T>? 自动 deref —— 把 Rc<U> 视为 U 进字段查
         if (innerType->isRc()) {
@@ -1178,7 +1178,7 @@ TypeInfo ExprCompareNode::getType() const {
         if (!isBuiltinType(leftType.name)) {
             return TypeInfo("bool");
         }
-        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3004, leftType.name, rightType.name);
+        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3001, "comparison", leftType.name, rightType.name);
     }
     return TypeInfo("bool");
 }
@@ -1256,7 +1256,7 @@ TypeInfo ExprIfElseNode::getType() const {
     if (_elseBlock && _elseBlock->hasResult()) {
         auto elseType = _elseBlock->resultExpr()->getType();
         if (elseType != resultType) {
-            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3006, resultType.name, elseType.name);
+            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3005, resultType.name, elseType.name);
         }
     } else if (!_elseBlock || !_elseBlock->hasResult()) {
         return {};
@@ -1279,7 +1279,7 @@ TypeInfo ExprOneLineIfElseNode::getType() const {
     auto trueType = _trueValue->getType();
     auto falseType = _falseValue->getType();
     if (trueType != falseType) {
-        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3007, trueType.name, falseType.name);
+        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3005, trueType.name, falseType.name);
     }
     return trueType;
 }
@@ -1298,7 +1298,7 @@ TypeInfo ExprIfElsePreValueNode::getType() const {
     auto trueType = _trueValue->getType();
     auto falseType = _falseValue->getType();
     if (trueType != falseType) {
-        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3008, trueType.name, falseType.name);
+        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3005, trueType.name, falseType.name);
     }
     return trueType;
 }
@@ -1340,7 +1340,7 @@ TypeInfo ExprGetNode::getType() const {
     if (arrayType.isArrayGeneric()) {
         auto elemType = arrayType.arrayGenericElementType();
         if (!elemType) {
-            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3057);
+            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3050);
         }
         return wrapRef(*elemType);
     }
@@ -1350,7 +1350,7 @@ TypeInfo ExprGetNode::getType() const {
     }
 
     if (!arrayType.elementType) {
-        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3057);
+        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3050);
     }
 
     return wrapRef(*arrayType.elementType);
@@ -1379,7 +1379,7 @@ TypeInfo ExprArrayNode::getType() const {
     for (size_t i = 1; i < _elements.size(); ++i) {
         auto elemType = _elements[i]->getType();
         if (elemType != elementType) {
-            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3011, elementType.name, elemType.name);
+            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3009, elementType.name, elemType.name);
         }
     }
 

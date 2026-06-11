@@ -63,8 +63,9 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         if (!isSuccess && !isError) {
             int ln = node->getLineNumber();
             if (ln < 0) ln = node->expr()->resolveLineNumber();
-            throw YuxError(ln, ErrorCode::E3020, hasDeclaredRetType ? declRetType.getFullName() : string("void"),
-                           retType.getFullName());
+            throw YuxError(ln, ErrorCode::E3014,
+                               hasDeclaredRetType ? declRetType.getFullName() : string("void"),
+                               retType.getFullName());
         }
         // 求值表达式（错误 / 成功通道复用现有 enum / value 求值路径）
         llvm::Value* val = compileExpr(node->expr());
@@ -178,7 +179,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
             }
         }
         if (!refPtr) {
-            throw YuxError(lineNum, ErrorCode::E3020, declRetType.getFullName(), retType.getFullName())
+            throw YuxError(lineNum, ErrorCode::E3014, declRetType.getFullName(), retType.getFullName())
                 .withHint("返回 T& 时，ret 表达式应为 `$` / T& 变量 / `&expr` / 返回 T& 的调用");
         }
         // 内层类型校验：declRetType 的 inner 必须等于 srcInner（v1 不做协变）。
@@ -189,7 +190,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
             declInnerResolved.name = _currentStructName;
         }
         if (declInner && !srcInner.empty() && declInnerResolved != srcInner) {
-            throw YuxError(lineNum, ErrorCode::E3020, declRetType.getFullName(), (srcInner.name + "&"));
+            throw YuxError(lineNum, ErrorCode::E3014, declRetType.getFullName(), (srcInner.name + "&"));
         }
         popAndReleaseTempFrame();
         pushTempFrame();
@@ -232,14 +233,14 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
     // 类型检查
     if (hasDeclaredRetType) {
         if (retType.empty()) {
-            throw YuxError(lineNum, ErrorCode::E3021, declRetType.getFullName());
+            throw YuxError(lineNum, ErrorCode::E3014, declRetType.getFullName(), "void");
         }
         if (!nullableWrap && resolveAlias(retType) != resolveAlias(declRetType)) {
-            throw YuxError(lineNum, ErrorCode::E3020, declRetType.getFullName(), retType.getFullName());
+            throw YuxError(lineNum, ErrorCode::E3014, declRetType.getFullName(), retType.getFullName());
         }
     } else {
         if (!retType.empty()) {
-            throw YuxError(lineNum, ErrorCode::E3022, retType.getFullName());
+            throw YuxError(lineNum, ErrorCode::E3014, "void", retType.getFullName());
         }
     }
 
@@ -410,12 +411,12 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
     // 处理数组填充表达式 ([N; value] 语法)
     if (auto arrayInitNode = dynamic_cast<ExprArrayInitNode*>(expr)) {
         if (!node->varType()) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3067);
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3067, " with size");
         }
 
         TypeInfo varType = node->varType()->getType();
         if (!varType.isArray()) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3068);
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3067, "");
         }
 
         DEBUG_LOG_VAL("  Statement: Declare (ArrayFill)", varName << " : " << varType.name);
@@ -445,7 +446,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         if (varType.isRef()) {
             auto innerType = varType.refElementType();
             if (!innerType) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3053);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3050);
             }
             llvm::Value* rhsPtr = nullptr;
             if (auto getRefNode = dynamic_cast<ExprGetRefNode*>(expr)) {
@@ -453,7 +454,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 // 校验 &expr 内层类型与声明 inner 一致
                 auto innerOfGetRef = getRefNode->getType().refElementType();
                 if (!innerOfGetRef || *innerOfGetRef != *innerType) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3017, innerType->name,
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, innerType->name,
                                    innerOfGetRef ? innerOfGetRef->name : "?")
                         .withHint(std::format("&expr 的内层类型必须与声明一致；预期 `&<{}>`，源表达式给出 `&<{}>`",
                                               innerType->name, innerOfGetRef ? innerOfGetRef->name : "?"));
@@ -519,7 +520,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         if (varType.isRc()) {
             auto elemType = varType.rcElementType();
             if (!elemType) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3056);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3050);
             }
 
             auto exprVal = compileExpr(expr);
@@ -577,7 +578,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         else if (varType.isWeak()) {
             auto elemType = varType.weakElementType();
             if (!elemType) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3052);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3050);
             }
 
             auto exprVal = compileExpr(expr);
@@ -647,7 +648,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         else if (varType.isArrayGeneric()) {
             auto elemType = varType.arrayGenericElementType();
             if (!elemType) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3055);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3050);
             }
 
             auto elemLLVMType = getLLVMType(*elemType);
@@ -686,7 +687,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         else if (varType.isNullable()) {
             auto innerType = varType.nullableInnerType();
             if (!innerType) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3051);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3050);
             }
 
             auto nullableStructType = getLLVMType(varType);
@@ -725,7 +726,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                     _builder.CreateStore(_builder.getInt1(true), hasField);
                     _builder.CreateStore(exprVal, valueField);
                 } else {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3015, exprType.name,
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, exprType.name,
                                    innerType->name);
                 }
             }
@@ -737,12 +738,12 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         else if (varType.isHeap()) {
             auto elemType = varType.heapElementType();
             if (!elemType) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3028, std::string("?"),
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, std::string("?"),
                                std::string("?"), std::string("?"));
             }
             auto exprType = expr->getType();
             if (!exprType.isHeap() || !(*exprType.heapElementType() == *elemType)) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3028, elemType->name,
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, elemType->name,
                                std::string("Heap<") + elemType->name + ">", exprType.getFullName());
             }
             auto exprVal = compileExpr(expr);
@@ -758,7 +759,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             if (exprType.isRef() && !varType.isRef()) {
                 auto inner = exprType.refElementType();
                 auto innerName = inner ? inner->name : "?";
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3020,
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014,
                                varType.name, exprType.getFullName())
                     .withHint(std::format("表达式类型为 `{}&`（借用），不能隐式转为 `{}`；"
                                           "若需绑定引用请写 `let r {}& = ...`，"
@@ -775,7 +776,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 }
                 if (varType.elementType && exprType.elementType) {
                     if (*varType.elementType != *exprType.elementType) {
-                        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3013,
+                        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3009,
                                        varType.elementType->name, exprType.elementType->name);
                     }
                 }
@@ -964,7 +965,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         if (sym->type.isRef()) {
             auto innerType = sym->type.refElementType();
             if (!innerType) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3054);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3050);
             }
             llvm::Value* targetPtr = _localVarPtrs[objName];
             auto innerLLVMType = getLLVMType(*innerType);
@@ -1013,7 +1014,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         if (assignOp == AssignOp::Eq && sym->type.isRc()) {
             auto elemType = sym->type.rcElementType();
             if (!elemType) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3056);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3050);
             }
 
             auto it = _localVarPtrs.find(objName);
@@ -1084,7 +1085,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         if (assignOp == AssignOp::Eq && sym->type.isNullable()) {
             auto innerType = sym->type.nullableInnerType();
             if (!innerType) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3051);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3050);
             }
 
             auto nullableStructType = getLLVMType(sym->type);
@@ -1119,7 +1120,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                     _builder.CreateStore(_builder.getInt1(true), hasField);
                     _builder.CreateStore(exprVal, valueField);
                 } else {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3015, exprType.name,
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, exprType.name,
                                    innerType->name);
                 }
             }
@@ -1179,7 +1180,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                 auto it = _localVarPtrs.find(objName);
                 if (it == _localVarPtrs.end()) {
                     SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
-                                                       ErrorCode::E3031, objName);
+                                                       ErrorCode::E3030, objName);
                 }
                 llvm::Value* curPtr = it->second;
                 TypeInfo curType = resolvedTop;
@@ -1200,7 +1201,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                     auto resolvedCur = applySubst(curType);
                     if (!resolvedCur.isTuple()) {
                         // 链中段已不是 tuple（嵌套 struct/数组等）暂不支持
-                        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3045,
+                        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3041,
                                        curType.getFullName());
                     }
                     auto& elems = resolvedCur.tupleElements();
@@ -1386,7 +1387,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             structDecl = _yux->sdkFile()->getStructDecl(actualType.name);
         }
         if (!structDecl) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3045, actualType.name);
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3041, actualType.name);
         }
 
         DEBUG_LOG_VAL("  Statement: MemberAssign", objName << "." << subs[0].getText());
@@ -1394,7 +1395,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         auto it = _localVarPtrs.find(objName);
         if (it == _localVarPtrs.end()) {
             SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
-                                               ErrorCode::E3031, objName);
+                                               ErrorCode::E3030, objName);
         }
 
         llvm::Value* structPtr = it->second;
@@ -1495,7 +1496,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                     interStructDecl = _yux->sdkFile()->getStructDecl(interType.name);
                 }
                 if (!interStructDecl) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3045, interType.name);
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3041, interType.name);
                 }
                 auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
                 auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIndex);
@@ -1599,7 +1600,7 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
 
     auto& indices = node->indices();
     if (indices.empty()) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3065);
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3060, "assignment");
     }
 
     DEBUG_LOG_VAL("  Statement: ArraySet", arrayType.name);
@@ -1614,7 +1615,7 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
             auto varName = objLiteral->getValue().getText();
             auto it = _localVarPtrs.find(varName);
             if (it == _localVarPtrs.end()) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3033, varName);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, varName);
             }
             currentPtr = it->second;
         }
@@ -1677,14 +1678,14 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
     }
 
     if (!currentPtr) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3066);
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3061, "assignment");
     }
 
     // 处理动态数组 Array<T>（Phase 1b：经由 handle 间接访问 Block.data）
     if (arrayType.isArrayGeneric()) {
         auto elemType = arrayType.arrayGenericElementType();
         if (!elemType) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3055);
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3050);
         }
 
         auto elemLLVMType = getLLVMType(*elemType);

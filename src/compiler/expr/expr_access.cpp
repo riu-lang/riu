@@ -29,7 +29,7 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
     auto& indices = node->indices();
     if (indices.empty()) {
         // Phase 3.4.g: yux*.g4 强制 indices >= 1, 该分支不可达; 保留作 dead 防御。
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3060);
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3060, "access");
     }
 
     DEBUG_LOG_VAL("    Expr: ArrayGet", arrayType.name);
@@ -53,7 +53,7 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
             auto varName = objLiteral->getValue().getText();
             auto it = _localVarPtrs.find(varName);
             if (it == _localVarPtrs.end()) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3033, varName);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, varName);
             }
             currentPtr = it->second;
         }
@@ -77,7 +77,7 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
     if (!currentPtr) {
         auto baseVal = compileExpr(arrayExpr);
         if (!baseVal) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3061);
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3061, "access");
         }
         auto valTy = getLLVMType(arrayType);
         auto alloca = _builder.CreateAlloca(valTy, nullptr, "array.base");
@@ -321,7 +321,7 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
     auto baseType = baseExpr->getType();
 
     if (!baseType.isNullable()) {
-        throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3025, baseType.name);
+        throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3024, baseType.name);
     }
     auto innerType = baseType.nullableInnerType();
     // Phase 5: Rc<T>? 自动 deref —— 把 Rc<U> 视为 U 进字段查
@@ -436,7 +436,7 @@ llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
     }
     auto innerType = leftType.nullableInnerType();
     if (!innerType) {
-        throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3051);
+        throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3050);
     }
     auto innerLLVMType = getLLVMType(*innerType);
 
@@ -473,8 +473,8 @@ llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
     auto rightType = node->right()->getType();
     auto rightVal = compileBranchResultNormalized(node->right(), *innerType);
     if (rightType != *innerType) {
-        throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3023, rightType.name,
-                       innerType->name);
+        throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3014,
+                               innerType->name, rightType.name);
     }
     auto elseEndBB = _builder.GetInsertBlock();
     _builder.CreateBr(mergeBB);

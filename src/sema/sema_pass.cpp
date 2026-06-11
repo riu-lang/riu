@@ -59,34 +59,19 @@ namespace {
 // Phase 3.2b 已由 SemaPass 接管的错误码白名单。SemaPass 在 visitExpr 中
 // 捕获 YuxError 时, 命中此清单的直接 rethrow, 让 SemaPass 成为该诊断的
 // 实际抛出点。新增迁移码追加到此处即可。
-constexpr std::array<std::string_view, 26> kMigratedCodes = {
-    // 算术 / 比较 / 分支结果
+constexpr std::array<std::string_view, 16> kMigratedCodes = {
+    // 算术 / 比较 / 分支结果（E3001-E3004 → E3001, E3005-E3008 → E3005）
     "E3001",
-    "E3002",
-    "E3003",
-    "E3004",
     "E3005",
-    "E3006",
-    "E3007",
-    "E3008",
     // 数组 / 字段 / 元组 / 引用
-    // E3011 (数组元素类型不一致) 暂不迁移: 嵌套数组字面量 / 目标类型上下文
-    // (`var rows Array<Array<i32>> = [[1,2],[3,4,5]]`) 在 codegen 走 target-type
-    // 驱动路径, 不调用 `ExprArrayNode::getType()`; 但 SemaPass 下钻 visitExpr
-    // 时会触发 E3011, 是假阳性。需把"目标类型上下文"协议建到 SemaPass 里才能
-    // 安全迁; 留作下一批。
-    // Phase 3.4.f.1: E3009 (ArrayInit explicitType vs value 字面量不匹配) 已迁入
-    // ExprArrayInitNode::getType. 不依赖 targetType, AST 层即可判定. E3010
-    // 依赖 targetType, 留 codegen 兜底.
-    "E3009",
-    "E3025",
+    // E3009 已移除 kMigratedCodes: 合并 E3011 后 SemaPass 对嵌套数组字面量
+    // 产生假阳性（缺少 target-type 上下文），交回 Compiler 端兜底。
+    "E3024", // 原 E3025 (Nullable 操作符左侧类型要求)
     "E3040",
     "E3041",
     "E3043",
     "E3044",
-    "E3050",
-    "E3051",
-    "E3057",
+    "E3050", // 原 E3050-E3057 合并
     "E3062",
     "E3097",
     "E3100",
@@ -95,15 +80,10 @@ constexpr std::array<std::string_view, 26> kMigratedCodes = {
     // Phase 3.4.h: ExprUnaryNode 内置 op 形态校验 (Rev on float / Not on non-bool)
     "E3070",
     "E3071",
-    // Phase 2.6 (heap-types): Heap:<T>(arg) 形参类型不匹配
-    "E3028",
     // Phase 6A: 砍同名 ctor 定义形态
     "E3130",
-    // Bucket 2 (CURRENT-check.md): LiteralObjNode::getType 已通过
-    // SymbolSuggest::throwSymbolNotFound 抛 E3032; sema 视为已迁移即可一次性
-    // 覆盖 diag_undefined_var / diag_suggest_var / diag_undefined_variable /
-    // diag_multibyte_caret 4 例.
-    "E3032",
+    // Bucket 2: LiteralObjNode::getType 抛 undefined symbol (原 E3032 → E3030)
+    "E3030",
 };
 
 // 与 Compiler::lookupEnumDecl 等价的本地版本: 本文件 → SDK → wildcard imports.
@@ -670,16 +650,16 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                     if (line < 0) line = ret->expr()->resolveLineNumber();
                     if (hasDeclRet) {
                         if (retType.empty()) {
-                            throw YuxError(line, ErrorCode::E3021, declRetType.getFullName());
+                            throw YuxError(line, ErrorCode::E3014, declRetType.getFullName(), "void");
                         }
                         // 名称直比 —— 不做 resolveAlias (sema 暂无该 helper);
                         // alias 形态 / Self 已在 skip 排除, 这里假阴性可接受 (Compiler 兜底).
                         if (retType.getFullName() != declRetType.getFullName()) {
-                            throw YuxError(line, ErrorCode::E3020, declRetType.getFullName(), retType.getFullName());
+                            throw YuxError(line, ErrorCode::E3014, declRetType.getFullName(), retType.getFullName());
                         }
                     } else {
                         if (!retType.empty()) {
-                            throw YuxError(line, ErrorCode::E3022, retType.getFullName());
+                            throw YuxError(line, ErrorCode::E3014, "void", retType.getFullName());
                         }
                     }
                 }
@@ -763,7 +743,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                             bool wholeCopy = exprType.isNullable() && exprType == varType;
                             bool wrap = exprType == *innerType;
                             if (!wholeCopy && !wrap) {
-                                throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3015, exprType.name,
+                                throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3014, exprType.name,
                                                innerType->name);
                             }
                         }
@@ -1915,7 +1895,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             // T != Ptr 时, argType == Ptr 视作合法 (代表接管裸指针所有权).
             bool takeoverFromPtr = argType.isPtr() && innerT.name != "Ptr";
             if (!takeoverFromPtr && !(argType == innerT)) {
-                throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3028, innerT.name, innerT.name,
+                throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3014, innerT.name, innerT.name,
                                argType.name);
             }
         }
@@ -1939,8 +1919,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             }
             auto rightType = n->right()->getType();
             if (!(rightType == *innerType)) {
-                throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3023, rightType.name,
-                               innerType->name);
+                throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3014,
+                               innerType->name, rightType.name);
             }
         } catch (const YuxError&) {
             throw;
@@ -1964,8 +1944,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             if (leftType != rightType) {
                 // 非内置类型允许跨类型形参 (§7.2.3.3)
                 if (isBuiltinType(leftType.name)) {
-                    throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3001, leftType.name,
-                                   rightType.name);
+                    throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3001, "arithmetic",
+                                   leftType.name, rightType.name);
                 }
             }
         } catch (const YuxError&) {

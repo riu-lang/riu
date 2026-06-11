@@ -492,7 +492,7 @@ void validateGenericTypeArgsSpecBound(const SpecRegistry* registry, const SpecIm
         for (auto& boundName : bounds[i]) {
             auto resolved = registry->resolve(boundName, fnOwner);
             if (!resolved) {
-                throw YuxError(line, col, ErrorCode::E3032, boundName);
+                throw YuxError(line, col, ErrorCode::E3030, boundName);
             }
             // v0.5: 函数声明位 specBound 暂未携带类型实参 (ast_builder 仅取基名),
             // specTypeArgs 传空; 草案 §6.4.4.1 文法允许 `D<T>` 形态留待扩展.
@@ -629,7 +629,7 @@ void validateArrayMethodCall(const TypeInfo& baseType, const string& member, siz
 
     auto elemType = baseType.arrayGenericElementType();
     if (!elemType) {
-        throw YuxError(line, col, ErrorCode::E3055);
+        throw YuxError(line, col, ErrorCode::E3050);
     }
 
     if (member == "is_empty" || member == "first" || member == "last") return;

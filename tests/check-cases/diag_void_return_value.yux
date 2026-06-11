@@ -1,5 +1,5 @@
 fn foo() {
-  ret 42  ; check: E3022
+  ret 42  ; check: E3014
 }
 
 fn main() {

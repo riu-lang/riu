@@ -284,7 +284,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
         }
         if (t != resultType) {
             throw YuxError(arm->body()->resolveLineNumber(), arm->body()->resolveColumn(),
-                ErrorCode::E3027, resultType.name, t.name);
+                ErrorCode::E3014, resultType.name, t.name);
         }
     }
     bool hasResult = !resultType.empty();

@@ -3,5 +3,5 @@
 
 fn main() {
   #Mut let opt i32? = null
-  let result i32 = opt ?? "hello"  ; check: E3023
+  let result i32 = opt ?? "hello"  ; check: E3014
 }

@@ -161,71 +161,53 @@ DEF_ERR(2033, "`#TestIsolate` on `{}` requires a sibling `#Test` annotation (iso
               "is not a standalone marker)")
 
 // ── E3xxx 类型 — 类型不匹配 ───────────────────────────────────────────
-DEF_ERR(3001, "Type mismatch in +-/ operation: left is {}, right is {}")
-DEF_ERR(3002, "Type mismatch in */% operation: left is {}, right is {}")
-DEF_ERR(3003, "Type mismatch in &|^ operation: left is {}, right is {}")
-DEF_ERR(3004, "Type mismatch in comparison: left is {}, right is {}")
-DEF_ERR(3005, "Type mismatch in if-elif branches: {} vs {}")
-DEF_ERR(3006, "Type mismatch in if-else branches: {} vs {}")
-DEF_ERR(3007, "Type mismatch in one-line if-else: true branch is {}, false branch is {}")
-DEF_ERR(3008, "Type mismatch in if-else expression: true branch is {}, false branch is {}")
-DEF_ERR(3009, "Array fill literal type mismatch: literal is {}, but explicit type is {}")
-DEF_ERR(3010, "Array fill element type mismatch: expected {}, got {}")
-DEF_ERR(3011, "Array elements must have the same type: {} vs {}")
+// E3001: 统一二元运算类型不匹配（原 E3001-E3004, E3075-E3077 合并）
+DEF_ERR(3001, "Type mismatch in {} operation: left is {}, right is {}")
+// E3005: 统一 if-else 分支类型不匹配（原 E3005-E3008 合并）
+DEF_ERR(3005, "Type mismatch in if-else branches: {} vs {}")
+// E3009: 统一数组类型不匹配（原 E3009-E3011, E3013 合并）
+DEF_ERR(3009, "Array type mismatch: expected {}, got {}")
 DEF_ERR(3012, "Array size mismatch: expected {}, got {}")
-DEF_ERR(3013, "Array element type mismatch: expected {}, got {}")
-DEF_ERR(3014, "Rc type mismatch: expected Rc<{}>, got {}")
-DEF_ERR(3015, "Cannot assign {} to Nullable<{}>")
+// E3014: 统一赋值/初始化类型不匹配（原 E3014-E3015, E3017, E3027-E3028 合并）
+DEF_ERR(3014, "Type mismatch: expected {}, got {}")
 DEF_ERR(3016, "Weak<{}> 仅支持从 Rc<{}> 或 Weak<{}> 构造")
-DEF_ERR(3017, "T& local initializer type mismatch: expected {}&, got {}&")
 DEF_ERR(3018, "T& copy-bind source type mismatch: '{}' is not {}&")
 DEF_ERR(3019, "T& local initializer must be &expr or copy-bind from a T& variable")
-DEF_ERR(3020, "Return type mismatch: function declares '{}', but expression has type '{}'")
-DEF_ERR(3021, "Function declares return type '{}', but returns void")
-DEF_ERR(3022, "Void function cannot return a value of type '{}'")
-DEF_ERR(3023, "`??` right side type {} doesn't match Nullable inner type {}")
-DEF_ERR(3024, "Left side of `??` must be Nullable<T>, got {}")
-DEF_ERR(3025, "`?.` requires Nullable<T> on the left, got {}")
+// E3020 已退役 → E3014
+// E3024: 统一 Nullable 操作符左侧类型要求（原 E3024 + E3025 合并）
+DEF_ERR(3024, "Operator requires Nullable<T> on the left, got {}")
 DEF_ERR(3026, "String template interpolation requires type implementing ToString, got '{}' (impl `Type : ToString {{ "
               "fn to_string() String {{ ... }} }}`)")
 DEF_ERR(3027, "Type mismatch in match arms: expected {}, arm produces {}")
 DEF_ERR(3028, "Heap<{}> constructor argument type mismatch: expected {}, got {}")
 
 // ── E3xxx 类型 — 符号查找 ─────────────────────────────────────────────
-DEF_ERR(3030, "Undefined variable: {}")
-DEF_ERR(3031, "Variable not found: {}")
-DEF_ERR(3032, "Symbol {} not found")
-DEF_ERR(3033, "Array variable not found: {}")
+// E3030: 统一符号查找（原 E3030-E3033 合并）
+DEF_ERR(3030, "'{}' not found")
 
 // ── E3xxx 类型 — 字段 / 结构体访问 ────────────────────────────────────
 DEF_ERR(3040, "Struct {} has no field: {}")
-DEF_ERR(3041, "Cannot access field on non-struct type: {}")
+// E3041: 统一字段/成员访问（原 E3041 + E3045 合并）
+DEF_ERR(3041, "Cannot access field or member on non-struct type: {}")
 DEF_ERR(3042, "Cannot access private field '{}' of struct '{}'")
 DEF_ERR(3043, "Cannot find struct declaration for field access")
 DEF_ERR(3044, "`?.` inner type {} has no struct decl")
-DEF_ERR(3045, "Cannot access member on non-struct type: {}")
 DEF_ERR(3046, "Nested member access not yet supported")
 
 // ── E3xxx 类型 — 泛型参数缺失 ─────────────────────────────────────────
-DEF_ERR(3050, "Rc<T> missing inner type T")
-DEF_ERR(3051, "Nullable type requires inner type")
-DEF_ERR(3052, "Weak type requires element type")
-DEF_ERR(3053, "Ref type requires element type")
-DEF_ERR(3054, "Ref type missing inner type")
-DEF_ERR(3055, "Array type requires element type")
-DEF_ERR(3056, "Rc type requires element type")
-DEF_ERR(3057, "Invalid array type: missing element type")
+// E3050: 统一泛型参数缺失（原 E3050-E3057 合并）
+DEF_ERR(3050, "{} type requires element type")
 
 // ── E3xxx 类型 — 数组操作 ─────────────────────────────────────────────
-DEF_ERR(3060, "Array access requires at least one index")
-DEF_ERR(3061, "Array access requires a variable")
+// E3060: 统一数组索引（原 E3060 + E3065 合并）
+DEF_ERR(3060, "Array {} requires at least one index")
+// E3061: 统一数组变量（原 E3061 + E3066 合并）
+DEF_ERR(3061, "Array {} requires a variable")
 DEF_ERR(3062, "Cannot index non-array type: {}")
 DEF_ERR(3063, "Empty array literal not supported")
 DEF_ERR(3064, "Array<T> initialization requires Array<T> expression or array literal")
-DEF_ERR(3065, "Array assignment requires at least one index")
-DEF_ERR(3066, "Array assignment requires a variable")
-DEF_ERR(3067, "Array fill expression requires array type annotation with size")
-DEF_ERR(3068, "Array fill expression requires array type annotation")
+// E3067: 统一数组填充注解（原 E3067 + E3068 合并）
+DEF_ERR(3067, "Array fill expression requires array type annotation{}")
 
 // ── E3xxx 类型 — 运算符 ───────────────────────────────────────────────
 DEF_ERR(3070, "Cannot apply bitwise NOT to float type: {}")
@@ -233,15 +215,12 @@ DEF_ERR(3071, "Cannot apply logical NOT to non-bool type: {}")
 DEF_ERR(3072, "Unknown unary operator")
 DEF_ERR(3073, "Type '{}' does not support operator '{}' (method '{}' not found)")
 DEF_ERR(3074, "Type '{}' does not support unary operator '{}' (method '{}' not found)")
-DEF_ERR(3075, "Unsupported binary operation")
-DEF_ERR(3076, "Unsupported comparison operation")
-DEF_ERR(3077, "Unsupported mul/div/mod operation")
+// E3075-E3077 已退役 → E3001
 DEF_ERR(3078, "Weak<T> does not support == / != (v1 does not expose handle comparison)")
 
 // ── E3xxx 类型 — 字面量 ───────────────────────────────────────────────
+// E3080: 统一不支持的 literal 类型（原 E3080-E3082 合并）
 DEF_ERR(3080, "Unsupported literal type")
-DEF_ERR(3081, "Unsupported literal type for array fill")
-DEF_ERR(3082, "Unsupported literal type for global constant: {}")
 
 // ── E3xxx 类型 — 其他 ─────────────────────────────────────────────────
 DEF_ERR(3090, "Unsupported dot expression")

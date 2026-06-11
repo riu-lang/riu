@@ -204,7 +204,7 @@ void Compiler::compileGlobalConsts() {
             // 字段按 StructDeclNode 声明序排列, 元素类型从 LLVM struct type 取
             initValue = buildLLVMConstantFromValue(*value, llvmType);
             if (!initValue) {
-                throw YuxError(globalConst->getLineNumber(), globalConst->getColumn(), ErrorCode::E3082, type.name);
+                throw YuxError(globalConst->getLineNumber(), globalConst->getColumn(), ErrorCode::E3080);
             }
             break;
         }
@@ -212,7 +212,7 @@ void Compiler::compileGlobalConsts() {
         case ConstantValue::Kind::String:
             // Phase 6: String 常量仅通过 ensureReflectTypeGlobal / buildLLVMConstantFromValue 间接使用;
             // 全局 #Cval let 暂不支持 String 类型.
-            throw YuxError(globalConst->getLineNumber(), globalConst->getColumn(), ErrorCode::E3082, type.name);
+            throw YuxError(globalConst->getLineNumber(), globalConst->getColumn(), ErrorCode::E3080);
         }
 
         auto linkage =

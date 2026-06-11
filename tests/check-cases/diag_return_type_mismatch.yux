@@ -1,5 +1,5 @@
 fn add() i32 {
-  ret true  ; check: E3020
+  ret true  ; check: E3014
 }
 
 fn main() {

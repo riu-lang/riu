@@ -2,5 +2,5 @@
 ; 数组元素类型与声明不一致时应触发 E3013
 
 fn main() {
-  #Mut let arr [i32 * 3] = [1, 2, "hello"]  ; check: E3011
+  #Mut let arr [i32 * 3] = [1, 2, "hello"]  ; check: E3009
 }

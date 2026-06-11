@@ -329,7 +329,8 @@ llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
         }
         return _builder.CreateSRem(left, right);
     }
-    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3077);
+    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3001, "mul/div/mod", effLeftType.name,
+                   applySubst(node->right()->getType()).name);
 }
 
 llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
@@ -410,7 +411,8 @@ llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
         }
         return _builder.CreateAShr(left, right);
     }
-    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3075);
+    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3001, opStr, effLeftType.name,
+                   applySubst(node->right()->getType()).name);
 }
 
 llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
@@ -426,7 +428,8 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
         // spec §7.2.3.3: 非内置类型允许跨类型比较，类型匹配由方法解析完成；
         // 内置类型跨类型时 getType 已抛 E3004 (kMigratedCodes)，此处不可达。
         if (isBuiltinType(effLeftType.name)) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3004, effLeftType.name, effRightType.name);
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3001, "comparison",
+                               effLeftType.name, effRightType.name);
         }
     }
 
@@ -488,16 +491,14 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
         if (leftType.isRef()) {
             left = _builder.CreateLoad(getLLVMType(effLeftType), left, "logical_lhs");
         }
-        auto leftBool = _builder.CreateICmpNE(
-            left, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), isAnd ? "and.lhs" : "or.lhs");
+        auto leftBool =
+            _builder.CreateICmpNE(left, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), isAnd ? "and.lhs" : "or.lhs");
 
         llvm::Function* func = _builder.GetInsertBlock()->getParent();
         auto entryBB = _builder.GetInsertBlock();
 
-        llvm::BasicBlock* rightBB = llvm::BasicBlock::Create(
-            _context, isAnd ? "and.right" : "or.right", func);
-        llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(
-            _context, isAnd ? "and.merge" : "or.merge");
+        llvm::BasicBlock* rightBB = llvm::BasicBlock::Create(_context, isAnd ? "and.right" : "or.right", func);
+        llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(_context, isAnd ? "and.merge" : "or.merge");
 
         // &&：leftBool==false → 短路到 merge（结果 false）；leftBool==true → 进入 rightBB
         // ||：leftBool==true  → 短路到 merge（结果 true）； leftBool==false → 进入 rightBB
@@ -513,8 +514,8 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
         if (rightType.isRef()) {
             right = _builder.CreateLoad(getLLVMType(effRightType), right, "logical_rhs");
         }
-        auto rightBool = _builder.CreateICmpNE(
-            right, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), isAnd ? "and.rhs" : "or.rhs");
+        auto rightBool =
+            _builder.CreateICmpNE(right, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), isAnd ? "and.rhs" : "or.rhs");
         _builder.CreateBr(mergeBB);
         auto rightEndBB = _builder.GetInsertBlock();
 
@@ -525,8 +526,7 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
         auto phi = _builder.CreatePHI(_builder.getInt1Ty(), 2, isAnd ? "and.result" : "or.result");
         phi->addIncoming(rightBool, rightEndBB);
         // 短路路径的常量结果：&& 短路 → false; || 短路 → true
-        phi->addIncoming(
-            llvm::ConstantInt::get(_builder.getInt1Ty(), isAnd ? 0 : 1), entryBB);
+        phi->addIncoming(llvm::ConstantInt::get(_builder.getInt1Ty(), isAnd ? 0 : 1), entryBB);
 
         return phi;
     }
@@ -619,5 +619,6 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
     default:
         break;
     }
-    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3076);
+    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3001, "comparison", effLeftType.name,
+                   applySubst(node->right()->getType()).name);
 }

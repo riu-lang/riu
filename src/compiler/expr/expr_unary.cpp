@@ -134,7 +134,7 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
         if (!globalVar) {
             // 非全局变量也非局部变量（如闭包外层变量）→ 保留原有 E3031 语义
             SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
-                                               ErrorCode::E3031, objName);
+                                               ErrorCode::E3030, objName);
         }
         currentPtr = globalVar;
     }

@@ -1,4 +1,4 @@
 fn main() {
   let count i32 = 0
-  println(conut)  ; check: E3032
+  println(conut)  ; check: E3030
 }

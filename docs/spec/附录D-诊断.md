@@ -108,85 +108,54 @@ N | <源码行原文>
 
 ### D.3.3 E3xxx — 类型
 
-类型不匹配（E3001..E3027）：
+类型不匹配（E3001..E3026）：
 
-| 码     | 模板 |
-|--------|------|
-| E3001 | `Type mismatch in +-/ operation: left is {}, right is {}` |
-| E3002 | `Type mismatch in */% operation: left is {}, right is {}` |
-| E3003 | `Type mismatch in &|^ operation: left is {}, right is {}` |
-| E3004 | `Type mismatch in comparison: left is {}, right is {}` |
-| E3005 | `Type mismatch in if-elif branches: {} vs {}` |
-| E3006 | `Type mismatch in if-else branches: {} vs {}` |
-| E3007 | `Type mismatch in one-line if-else: true branch is {}, false branch is {}` |
-| E3008 | `Type mismatch in if-else expression: true branch is {}, false branch is {}` |
-| E3009 | `Array fill literal type mismatch: literal is {}, but explicit type is {}` |
-| E3010 | `Array fill element type mismatch: expected {}, got {}` |
-| E3011 | `Array elements must have the same type: {} vs {}` |
-| E3012 | `Array size mismatch: expected {}, got {}` |
-| E3013 | `Array element type mismatch: expected {}, got {}` |
-| E3014 | `Rc type mismatch: expected Rc<{}>, got {}` |
-| E3015 | `Cannot assign {} to Nullable<{}>` |
-| E3016 | `Weak<{}> 仅支持从 Rc<{}> 或 Weak<{}> 构造` |
-| E3017 | `T& local initializer type mismatch: expected {}&, got {}&` |
-| E3018 | `T& copy-bind source type mismatch: '{}' is not {}&` |
-| E3019 | `T& local initializer must be &expr or copy-bind from a T& variable` |
-| E3020 | `Return type mismatch: function declares '{}', but expression has type '{}'` |
-| E3021 | `Function declares return type '{}', but returns void` |
-| E3022 | `Void function cannot return a value of type '{}'` |
-| E3023 | `` `??` right side type {} doesn't match Nullable inner type {} `` |
-| E3024 | `` Left side of `??` must be Nullable<T>, got {} `` |
-| E3025 | `` `?.` requires Nullable<T> on the left, got {} `` |
-| E3026 | `` String template interpolation requires type implementing ToString, got '{}' (impl `Type : ToString { fn to_string() String { ... } }`) `` |
-| E3027 | `Type mismatch in match arms: expected {}, arm produces {}` |
+| 码     | 模板 | 备注 |
+|--------|------|------|
+| E3001 | `Type mismatch in {} operation: left is {}, right is {}` | 原 E3001-E3004, E3075-E3077 合并 |
+| E3005 | `Type mismatch in if-else branches: {} vs {}` | 原 E3005-E3008 合并 |
+| E3009 | `Array type mismatch: expected {}, got {}` | 原 E3009-E3011, E3013 合并 |
+| E3012 | `Array size mismatch: expected {}, got {}` | |
+| E3014 | `Type mismatch: expected {}, got {}` | 原 E3014-E3015, E3017, E3020-E3023, E3027-E3028 合并 |
+| E3016 | `Weak<{}> 仅支持从 Rc<{}> 或 Weak<{}> 构造` | |
+| E3018 | `T& copy-bind source type mismatch: '{}' is not {}&` | |
+| E3019 | `T& local initializer must be &expr or copy-bind from a T& variable` | |
+| E3024 | `Operator requires Nullable<T> on the left, got {}` | 原 E3024-E3025 合并 |
+| E3026 | `` String template interpolation requires type implementing ToString, got '{}' `` | |
 
-符号查找（E3030..E3033）：
+符号查找：
 
-| 码     | 模板 |
-|--------|------|
-| E3030 | `Undefined variable: {}` |
-| E3031 | `Variable not found: {}` |
-| E3032 | `Symbol {} not found` |
-| E3033 | `Array variable not found: {}` |
+| 码     | 模板 | 备注 |
+|--------|------|------|
+| E3030 | `'{}' not found` | 原 E3030-E3033 合并 |
 
 字段 / 结构体访问（E3040..E3046）：
 
-| 码     | 模板 |
-|--------|------|
-| E3040 | `Struct {} has no field: {}` |
-| E3041 | `Cannot access field on non-struct type: {}` |
-| E3042 | `Cannot access private field '{}' of struct '{}'` |
-| E3043 | `Cannot find struct declaration for field access` |
-| E3044 | `` `?.` inner type {} has no struct decl `` |
-| E3045 | `Cannot access member on non-struct type: {}` |
-| E3046 | `Nested member access not yet supported` |
+| 码     | 模板 | 备注 |
+|--------|------|------|
+| E3040 | `Struct {} has no field: {}` | |
+| E3041 | `Cannot access field or member on non-struct type: {}` | 原 E3041 + E3045 合并 |
+| E3042 | `Cannot access private field '{}' of struct '{}'` | |
+| E3043 | `Cannot find struct declaration for field access` | |
+| E3044 | `` `?.` inner type {} has no struct decl `` | |
+| E3046 | `Nested member access not yet supported` | |
 
-泛型参数缺失（E3050..E3057）：
+泛型参数缺失：
 
-| 码     | 模板 |
-|--------|------|
-| E3050 | `Rc<T> missing inner type T` |
-| E3051 | `Nullable type requires inner type` |
-| E3052 | `Weak type requires element type` |
-| E3053 | `Ref type requires element type` |
-| E3054 | `Ref type missing inner type` |
-| E3055 | `Array type requires element type` |
-| E3056 | `Rc type requires element type` |
-| E3057 | `Invalid array type: missing element type` |
+| 码     | 模板 | 备注 |
+|--------|------|------|
+| E3050 | `{} type requires element type` | 原 E3050-E3057 合并 |
 
-数组操作（E3060..E3068）：
+数组操作（E3060..E3067）：
 
-| 码     | 模板 |
-|--------|------|
-| E3060 | `Array access requires at least one index` |
-| E3061 | `Array access requires a variable` |
-| E3062 | `Cannot index non-array type: {}` |
-| E3063 | `Empty array literal not supported` |
-| E3064 | `Array<T> initialization requires Array<T> expression or array literal` |
-| E3065 | `Array assignment requires at least one index` |
-| E3066 | `Array assignment requires a variable` |
-| E3067 | `Array fill expression requires array type annotation with size` |
-| E3068 | `Array fill expression requires array type annotation` |
+| 码     | 模板 | 备注 |
+|--------|------|------|
+| E3060 | `Array {} requires at least one index` | 原 E3060 + E3065 合并 |
+| E3061 | `Array {} requires a variable` | 原 E3061 + E3066 合并 |
+| E3062 | `Cannot index non-array type: {}` | |
+| E3063 | `Empty array literal not supported` | |
+| E3064 | `Array<T> initialization requires Array<T> expression or array literal` | |
+| E3067 | `Array fill expression requires array type annotation{}` | 原 E3067 + E3068 合并 |
 
 运算符（E3070..E3078）：
 
@@ -197,18 +166,15 @@ N | <源码行原文>
 | E3072 | `Unknown unary operator` |
 | E3073 | `Type '{}' does not support operator '{}' (method '{}' not found)` |
 | E3074 | `Type '{}' does not support unary operator '{}' (method '{}' not found)` |
-| E3075 | `Unsupported binary operation` |
-| E3076 | `Unsupported comparison operation` |
-| E3077 | `Unsupported mul/div/mod operation` |
 | E3078 | `Weak<T> does not support == / != (v1 does not expose handle comparison)` |
 
-字面量（E3080..E3082）：
+> E3075-E3077 已退役，合并入 E3001。
 
-| 码     | 模板 |
-|--------|------|
-| E3080 | `Unsupported literal type` |
-| E3081 | `Unsupported literal type for array fill` |
-| E3082 | `Unsupported literal type for global constant: {}` |
+字面量：
+
+| 码     | 模板 | 备注 |
+|--------|------|------|
+| E3080 | `Unsupported literal type` | 原 E3080-E3082 合并 |
 
 其他类型相关（E3090..E3099）：
 

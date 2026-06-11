@@ -261,7 +261,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
                 if (auto arrayNode = dynamic_cast<ExprArrayNode*>(fi->value())) {
                     auto elemType = fieldType.arrayGenericElementType();
                     if (!elemType) {
-                        throw YuxError(line, col, ErrorCode::E3055);
+                        throw YuxError(line, col, ErrorCode::E3050);
                     }
                     auto block = buildArrayLiteralBlock(arrayNode, *elemType);
                     storeArrayHandle(fieldPtr, block);

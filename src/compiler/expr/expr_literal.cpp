@@ -42,7 +42,7 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
 
     // 验证元素类型与目标数组类型匹配
     if (targetType.elementType && *targetType.elementType != elementType) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3010, targetType.elementType->name,
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3009, targetType.elementType->name,
                        elementType.name);
     }
 
@@ -83,7 +83,7 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
         fillValue = llvm::ConstantInt::get(getLLVMType(elementType), intFillVal, false);
         isZeroFill = !boolVal; // false 值优化
     } else {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3081);
+        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3080);
     }
 
     // 填充数组

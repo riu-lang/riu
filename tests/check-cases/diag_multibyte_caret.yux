@@ -3,5 +3,5 @@
 ; 未定义变量 `未定义` 触发 E3030
 fn main() {
   let 值 i32 = 1
-  let r i32 = 值 + 未定义  ; check: E3032
+  let r i32 = 值 + 未定义  ; check: E3030
 }

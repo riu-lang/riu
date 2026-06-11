@@ -197,7 +197,7 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
         auto resolved = reg.resolve(dref.name, implFile);
         if (!resolved) {
             // §10 名字解析失败. 复用 E3032 (未来可专门给一个 E11xx 码).
-            throw YuxError(dref.line, dref.col, ErrorCode::E3032, dref.name);
+            throw YuxError(dref.line, dref.col, ErrorCode::E3030, dref.name);
         }
         SpecDeclNode* draft = resolved->decl;
         const std::string& specQualified = resolved->qualifiedName;

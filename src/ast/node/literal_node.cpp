@@ -1,9 +1,9 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 
+#include "literal_node.h"
 #include "analyzer/symbol_suggest.h"
 #include "file_node.h"
-#include "literal_node.h"
 
 #include <regex>
 #include <utility>
@@ -86,7 +86,7 @@ TypeInfo LiteralObjNode::getType() const {
     }
 
     SymbolSuggest::throwSymbolNotFound(scope, static_cast<int>(_value.getLine()),
-                                       static_cast<int>(_value.getCharPositionInLine()) + 1, ErrorCode::E3032, name);
+                                       static_cast<int>(_value.getCharPositionInLine()) + 1, ErrorCode::E3030, name);
 }
 
 string LiteralObjNode::getLocation() const {

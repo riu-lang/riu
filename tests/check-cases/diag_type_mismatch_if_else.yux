@@ -3,7 +3,7 @@
 
 fn main() {
   let x bool = true
-  let result i32 = if x {  ; check: E3006
+  let result i32 = if x {  ; check: E3005
     10
   } else {
     "hello"    ; ❌ E3006: i32 vs String
