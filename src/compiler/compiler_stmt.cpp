@@ -63,9 +63,8 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         if (!isSuccess && !isError) {
             int ln = node->getLineNumber();
             if (ln < 0) ln = node->expr()->resolveLineNumber();
-            throw YuxError(ln, ErrorCode::E3014,
-                               hasDeclaredRetType ? declRetType.getFullName() : string("void"),
-                               retType.getFullName());
+            throw YuxError(ln, ErrorCode::E3014, hasDeclaredRetType ? declRetType.getFullName() : string("void"),
+                           retType.getFullName());
         }
         // 求值表达式（错误 / 成功通道复用现有 enum / value 求值路径）
         llvm::Value* val = compileExpr(node->expr());
@@ -759,13 +758,12 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             if (exprType.isRef() && !varType.isRef()) {
                 auto inner = exprType.refElementType();
                 auto innerName = inner ? inner->name : "?";
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014,
-                               varType.name, exprType.getFullName())
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, varType.name,
+                               exprType.getFullName())
                     .withHint(std::format("表达式类型为 `{}&`（借用），不能隐式转为 `{}`；"
                                           "若需绑定引用请写 `let r {}& = ...`，"
                                           "若需取值请用 `copy_of:<{}>(...)`",
-                                          innerName, varType.name,
-                                          innerName, innerName));
+                                          innerName, varType.name, innerName, innerName));
             }
 
             // 数组类型检查
@@ -779,6 +777,34 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3009,
                                        varType.elementType->name, exprType.elementType->name);
                     }
+                }
+            }
+
+            // 通用类型匹配检查：声明类型与表达式类型必须严格一致
+            // 先经 applySubst 解析透明类型别名（如 `type A = i32`），避免别名名与目标类型名假阳性
+            // 跳过 Self（TypeInfo("Self") 由 substStack 替换，此时比较无意义）
+            // 跳过空类型名（getType 未完全解析的退化情况）
+            // 跳过灵活整数字面量（类型会由 tryInferIntType 按目标类型推断）
+            auto cmpVarType = applySubst(varType);
+            auto cmpExprType = applySubst(exprType);
+            // 跳过含泛型形参的类型（此时尚未实例化，比较会产生假阳性）
+            // 也跳过非已知类型名（如 T, U 等泛型形参，applySubst 未覆盖时仍是占位名）
+            auto isKnownTypeName = [&](const string& n) -> bool {
+                if (isBuiltinType(n)) return true;
+                if (_file->getStructDecl(n)) return true;
+                if (_yux && _yux->sdkFile() && _yux->sdkFile()->getStructDecl(n)) return true;
+                return false;
+            };
+            if (!cmpVarType.name.empty() && !cmpExprType.name.empty() && cmpVarType.name != "Self" &&
+                cmpExprType.name != "Self" && !cmpVarType.isRef() && !cmpExprType.isRef() &&
+                cmpVarType.genericArgs.empty() && cmpExprType.genericArgs.empty() && isKnownTypeName(cmpVarType.name) &&
+                isKnownTypeName(cmpExprType.name) && !isFlexibleIntExpr(expr)) {
+                if (cmpVarType != cmpExprType) {
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, varType.getFullName(),
+                                   exprType.getFullName())
+                        .withHint(
+                            std::format("声明类型为 `{}`，但表达式类型为 `{}`；yux 无隐式类型转换，类型必须严格匹配",
+                                        varType.getFullName(), exprType.getFullName()));
                 }
             }
 

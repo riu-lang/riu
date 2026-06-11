@@ -138,10 +138,10 @@ fn main() {
   let n i64 = xs.len()
   println("len: ")
   println(n)
-  let v0 i32 = xs[0]
+  let v0 i32 = copy_of:<i32>(xs[0])
   println("at(0): ")
   println(v0)
-  let idx1 i32 = xs[1]
+  let idx1 i32 = copy_of:<i32>(xs[1])
   println("xs[1]: ")
   println(idx1)
 
@@ -192,34 +192,34 @@ fn main() {
 
   ; ========== 7. 静态可变字段 ==========
   println("=== 7. 静态可变字段 ===")
-  let c0_str String = Label::COUNT
+  let c0_i64 i64 = Label::COUNT
   println("初始 COUNT: ")
-  println(c0_str)
+  println(c0_i64)
   let l1 Label = Label::make("A")
   let l2 Label = Label::make("B")
-  let c2_str String = Label::COUNT
+  let c2_i64 i64 = Label::COUNT
   println("构造 2 个后: ")
-  println(c2_str)
+  println(c2_i64)
 
   ; ========== 8. Lambda / 闭包 ==========
   println("=== 8. Lambda ===")
   let square = (x i32) i32 => x * x
   let sq3 i32 = square(3)
-  let sq3_str String = sq3
+  let sq3_str String = sq3.to_string()
   println("square(3): ")
   println(sq3_str)
 
   ; 高阶函数：Array<i32> 逐元素 * 2
   let doubled Array<i32> = map_i32(xs, (x i32) i32 => x * 2)
-  let d0 i32 = doubled[0]
-  let d0_str String = d0
+  let d0 i32 = copy_of:<i32>(doubled[0])
+  let d0_str String = d0.to_string()
   println("map *2 at(0): ")
   println(d0_str)
 
   ; ========== 9. loop + break ==========
   println("=== 9. loop + break ===")
   let f5 i64 = factorial(5)
-  let f5_str String = f5
+  let f5_str String = f5.to_string()
   println("5! = ")
   println(f5_str)
 
@@ -259,7 +259,7 @@ fn map_i32(xs Array<i32>, f fn(i32)i32) Array<i32> {
     if i >= xs.len() {
       break;
     }
-    r.push(f(xs[i]))
+    r.push(f(copy_of:<i32>(xs[i])))
     i = i + 1
   }
   r

@@ -32,14 +32,14 @@ void Compiler::inferLambdaParamsFromFnType(p<LambdaExprNode> lambda, const TypeI
     // arity 不一致由 sema 报错（Phase 2c），这里仅按位置回填能填的部分
     size_t n = std::min(slots.size(), expectedParams.size());
     for (size_t i = 0; i < n; ++i) {
-        if (slots[i].type) continue;        // 已标注：尊重源
-        if (!expectedParams[i]) continue;   // 期望也是空：不回填
+        if (slots[i].type) continue;      // 已标注：尊重源
+        if (!expectedParams[i]) continue; // 期望也是空：不回填
         // 把 TypeInfo 包成 TypeNormalNode 占位（codegen 仅取 getType()，name 即可定位 LLVM 类型）
         // 注意：复杂类型（Generic/Array/Tuple/Fn）经 getFullName 后字符串无法被 TypeNormalNode
         // 还原；Phase 2b 仅覆盖 Normal/Generic 通过名称还原的常见情形。
         // TODO: 引入"已解析 TypeInfo 直挂载"的 TypeNode 变体，让任意 TypeInfo 都能反推
         Token tok = lambda->params()[i].name;
-        tok = Token(tok);  // 复制，作为占位
+        tok = Token(tok); // 复制，作为占位
         // 直接重写 token 文本为期望类型 name
         // 这里用字符串名能覆盖 i32/u32/bool/String/struct 等 Normal 类型；
         // 对 Generic/Array/Fn 形参当前无法精确还原，留 TODO
@@ -70,8 +70,8 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
         const auto& slot = node->params()[i];
         if (slot.type) {
             paramTypes.push_back(slot.type->getType());
-        } else if (expectedFnType.isFn() && i < expectedFnType.fnParamTypes().size()
-                   && expectedFnType.fnParamTypes()[i]) {
+        } else if (expectedFnType.isFn() && i < expectedFnType.fnParamTypes().size() &&
+                   expectedFnType.fnParamTypes()[i]) {
             paramTypes.push_back(*expectedFnType.fnParamTypes()[i]);
         } else {
             // 缺类型且无上下文 → 报错；Phase 2c 由 sema 更早拒
@@ -97,15 +97,14 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     // 构造 LLVM 函数签名：(Ptr captures, P1, ..., Pn) → R
     auto ptrTy = llvm::PointerType::get(_context, 0);
     vector<llvm::Type*> llvmParamTypes;
-    llvmParamTypes.push_back(ptrTy);  // captures（零捕获场景未使用）
+    llvmParamTypes.push_back(ptrTy); // captures（零捕获场景未使用）
     for (auto& pt : paramTypes) {
         llvmParamTypes.push_back(getLLVMType(pt));
     }
     auto llvmRet = retType.empty() ? _builder.getVoidTy() : getLLVMType(retType);
     auto fnType = llvm::FunctionType::get(llvmRet, llvmParamTypes, false);
 
-    auto func = llvm::Function::Create(
-        fnType, llvm::Function::InternalLinkage, mangled, _module);
+    auto func = llvm::Function::Create(fnType, llvm::Function::InternalLinkage, mangled, _module);
 
     // 保存当前编译状态；lambda 是顶层 fn，不复用外层 _localVarPtrs / _scopeVars
     auto savedFn = _currentFn;
@@ -121,12 +120,12 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     auto savedLambdaCapturesArg = _currentLambdaCapturesArg;
 
     _currentFn = func;
-    _currentFnNode = nullptr;     // lambda 无 FnNode；body 引用外层符号走 Phase 4a 捕获通道
+    _currentFnNode = nullptr; // lambda 无 FnNode；body 引用外层符号走 Phase 4a 捕获通道
     _currentStructName.clear();
     _localVarPtrs.clear();
     _scopeVars.clear();
     _tempStack.clear();
-    _currentLambdaBodyScope = node->bodyScope();          // Phase 2c：启用 FV 通路
+    _currentLambdaBodyScope = node->bodyScope(); // Phase 2c：启用 FV 通路
     // Phase 4a：启用捕获识别。清空旧 captures（防止重复 emit 累加；缓存命中走早返路径
     // 不重入此段）。emitLambdaFunction 这一次 body 编译期间，compileLiteralExpr 命中
     // 外层 local 会 addCapture 并就地 GEP 读 captures buffer。
@@ -187,8 +186,7 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
         size_t nStmts = stmts.size();
         if (!retType.empty() && nStmts > 0) {
             if (auto exprStmt = dynamic_cast<StatementExprNode*>(stmts.back())) {
-                if (!exprStmt->hasSemicolon()
-                    && !dynamic_cast<StatementRetNode*>(stmts.back())) {
+                if (!exprStmt->hasSemicolon() && !dynamic_cast<StatementRetNode*>(stmts.back())) {
                     tailExpr = exprStmt->expr();
                     --nStmts;
                 }
@@ -240,11 +238,13 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
 // 签名：void __captures_dtor_<lambdaMangle>(ptr fields_base)
 // fields_base 指向 capture 字段区起点（= block handle + 16），逐 capture 调
 // releaseAtPtr 释放槽内的句柄字段。
-llvm::Function* Compiler::emitCapturesDtorFunction(p<LambdaExprNode> node,
-                                                   const string& lambdaMangled) {
+llvm::Function* Compiler::emitCapturesDtorFunction(p<LambdaExprNode> node, const string& lambdaMangled) {
     bool anyNeedsDtor = false;
     for (const auto& cap : node->captures()) {
-        if (typeNeedsDestructor(cap.type)) { anyNeedsDtor = true; break; }
+        if (typeNeedsDestructor(cap.type)) {
+            anyNeedsDtor = true;
+            break;
+        }
     }
     if (!anyNeedsDtor) return nullptr;
 
@@ -253,8 +253,7 @@ llvm::Function* Compiler::emitCapturesDtorFunction(p<LambdaExprNode> node,
 
     auto ptrTy = llvm::PointerType::get(_context, 0);
     auto fnTy = llvm::FunctionType::get(_builder.getVoidTy(), {ptrTy}, false);
-    auto func = llvm::Function::Create(
-        fnTy, llvm::Function::InternalLinkage, fnName, _module);
+    auto func = llvm::Function::Create(fnTy, llvm::Function::InternalLinkage, fnName, _module);
 
     // 保存 / 恢复构建器状态
     auto savedInsert = _builder.GetInsertBlock();
@@ -321,8 +320,8 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
         if (stackEmbedded) {
             for (const auto& cap : caps) {
                 if (typeNeedsDestructor(cap.type)) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(),
-                                   ErrorCode::E2029, cap.name, cap.type.getFullName());
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E2029, cap.name,
+                                   cap.type.getFullName());
                 }
             }
         }
@@ -341,15 +340,14 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
             // RC 头由 _box_alloc 自己加。即 payload = 8（dtor 槽）+ capturesTotalSize。
             u64 rcPayloadSize = 8 + node->capturesTotalSize();
             auto allocFn = runtime::getRcAllocFn(_module, _builder);
-            baseHandle = _builder.CreateCall(
-                allocFn, {_builder.getInt64(static_cast<i64>(rcPayloadSize))}, "captures.block");
+            baseHandle =
+                _builder.CreateCall(allocFn, {_builder.getInt64(static_cast<i64>(rcPayloadSize))}, "captures.block");
 
             // 写 dtor 槽位 @ handle+8（_box_release_dtor 在 strong 归零时调用）
             string mod = _file ? _file->moduleName() : string();
             string mangled = Mangler::lambda(mod, node->getLineNumber(), node->getColumn());
             auto dtorFn = emitCapturesDtorFunction(node, mangled);
-            auto dtorSlot = _builder.CreateGEP(i8Ty, baseHandle,
-                {_builder.getInt64(8)}, "captures.dtor_slot");
+            auto dtorSlot = _builder.CreateGEP(i8Ty, baseHandle, {_builder.getInt64(8)}, "captures.dtor_slot");
             if (dtorFn) {
                 _builder.CreateStore(dtorFn, dtorSlot);
             } else {
@@ -361,8 +359,7 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
         for (const auto& cap : caps) {
             auto it = _localVarPtrs.find(cap.name);
             if (it == _localVarPtrs.end()) {
-                throw YuxError(node->getLineNumber(), node->getColumn(),
-                               ErrorCode::E3030, cap.name);
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, cap.name);
             }
             auto offset = _builder.getInt64(16 + static_cast<i64>(cap.byteOffset));
             auto dstAddr = _builder.CreateGEP(i8Ty, baseHandle, {offset}, "cap.dst");
@@ -386,10 +383,8 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
                 if (isHeapNullableCap) {
                     auto z0 = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
                     auto z1 = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
-                    auto hasField = _builder.CreateGEP(valLLVMTy, it->second,
-                                                       {z0, z0}, "cap.bdang.has");
-                    auto valField = _builder.CreateGEP(valLLVMTy, it->second,
-                                                       {z0, z1}, "cap.bdang.value");
+                    auto hasField = _builder.CreateGEP(valLLVMTy, it->second, {z0, z0}, "cap.bdang.has");
+                    auto valField = _builder.CreateGEP(valLLVMTy, it->second, {z0, z1}, "cap.bdang.value");
                     _builder.CreateStore(_builder.getInt1(false), hasField);
                     _builder.CreateStore(llvm::ConstantPointerNull::get(ptrTy), valField);
                 } else if (typeNeedsDestructor(cap.type)) {
@@ -471,6 +466,38 @@ llvm::Value* Compiler::compileFnValueCall(p<ExprCallNode> node) {
     }
     auto llvmFnType = llvm::FunctionType::get(llvmRet, llvmParamTypes, false);
 
+    // 实参类型校验：实参类型必须与形参类型严格匹配
+    // Ref<T> 不能隐式转为 T，需手动 copy_of 或 let 暂存后取值
+    for (size_t idx = 0; idx < node->getArgs().size() && idx < expectedParams.size(); ++idx) {
+        try {
+            auto argType = node->getArgs()[idx]->getType();
+            if (expectedParams[idx] && !argType.name.empty() && argType.name != "Self" &&
+                expectedParams[idx]->name != "Self") {
+                // Ref<T> 实参传给值类型形参 T：类型不匹配
+                if (argType.isRef() && !expectedParams[idx]->isRef()) {
+                    auto inner = argType.refElementType();
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014,
+                                   expectedParams[idx]->getFullName(), argType.getFullName())
+                        .withHint(std::format("实参类型为 `{}&`（借用），形参期望 `{}`；"
+                                              "若需取值请用 `copy_of:<{}>(...)` 或先 `let tmp {} = expr`",
+                                              inner ? inner->name : "?", expectedParams[idx]->getFullName(),
+                                              inner ? inner->name : "?", inner ? inner->name : "?"));
+                }
+                // 值类型实参与值类型形参不匹配
+                if (!argType.isRef() && !expectedParams[idx]->isRef() && argType != *expectedParams[idx]) {
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014,
+                                   expectedParams[idx]->getFullName(), argType.getFullName())
+                        .withHint(std::format("实参类型 `{}` 与形参类型 `{}` 不匹配", argType.getFullName(),
+                                              expectedParams[idx]->getFullName()));
+                }
+            }
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+            // getType 失败 (lambda 形参未推断等)：留后续 codegen 兜底
+        }
+    }
+
     // 编译实参（含 lambda → 构造 fat-ptr）
     vector<llvm::Value*> callArgs;
     callArgs.push_back(captures);
@@ -512,8 +539,7 @@ llvm::Value* Compiler::compileRcFnValueCall(p<ExprCallNode> node, const TypeInfo
     auto handle = _builder.CreateExtractValue(rcVal, {0}, "rc.fn.handle");
 
     // payload_ptr = handle + 8 bytes（跳过 refcount 头，与 compileExpr Rc.field 路径一致）
-    auto payloadPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle,
-        {_builder.getInt64(8)}, "rc.fn.payload");
+    auto payloadPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.fn.payload");
 
     // load fat-ptr 16 字节 { fn_ptr, captures }
     auto fatStructTy = llvm::StructType::get(_context, {ptrTy, ptrTy});
@@ -535,6 +561,35 @@ llvm::Value* Compiler::compileRcFnValueCall(p<ExprCallNode> node, const TypeInfo
         llvmRet = getLLVMType(*rt);
     }
     auto llvmFnType = llvm::FunctionType::get(llvmRet, llvmParamTypes, false);
+
+    // 实参类型校验（与 compileFnValueCall 同款检查）
+    for (size_t idx = 0; idx < node->getArgs().size() && idx < expectedParams.size(); ++idx) {
+        try {
+            auto argType = node->getArgs()[idx]->getType();
+            if (expectedParams[idx] && !argType.name.empty() && argType.name != "Self" &&
+                expectedParams[idx]->name != "Self") {
+                if (argType.isRef() && !expectedParams[idx]->isRef()) {
+                    auto inner = argType.refElementType();
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014,
+                                   expectedParams[idx]->getFullName(), argType.getFullName())
+                        .withHint(std::format("实参类型为 `{}&`（借用），形参期望 `{}`；"
+                                              "若需取值请用 `copy_of:<{}>(...)` 或先 `let tmp {} = expr`",
+                                              inner ? inner->name : "?", expectedParams[idx]->getFullName(),
+                                              inner ? inner->name : "?", inner ? inner->name : "?"));
+                }
+                if (!argType.isRef() && !expectedParams[idx]->isRef() && argType != *expectedParams[idx]) {
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014,
+                                   expectedParams[idx]->getFullName(), argType.getFullName())
+                        .withHint(std::format("实参类型 `{}` 与形参类型 `{}` 不匹配", argType.getFullName(),
+                                              expectedParams[idx]->getFullName()));
+                }
+            }
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+            // getType 失败: 留后续 codegen 兜底
+        }
+    }
 
     // 编译实参
     vector<llvm::Value*> callArgs;
@@ -594,6 +649,35 @@ llvm::Value* Compiler::compileRefFnValueCall(p<ExprCallNode> node, const TypeInf
         llvmRet2 = getLLVMType(*rt);
     }
     auto llvmFnType2 = llvm::FunctionType::get(llvmRet2, llvmParamTypes2, false);
+
+    // 实参类型校验（与 compileFnValueCall 同款检查）
+    for (size_t idx = 0; idx < node->getArgs().size() && idx < expectedParams.size(); ++idx) {
+        try {
+            auto argType = node->getArgs()[idx]->getType();
+            if (expectedParams[idx] && !argType.name.empty() && argType.name != "Self" &&
+                expectedParams[idx]->name != "Self") {
+                if (argType.isRef() && !expectedParams[idx]->isRef()) {
+                    auto inner = argType.refElementType();
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014,
+                                   expectedParams[idx]->getFullName(), argType.getFullName())
+                        .withHint(std::format("实参类型为 `{}&`（借用），形参期望 `{}`；"
+                                              "若需取值请用 `copy_of:<{}>(...)` 或先 `let tmp {} = expr`",
+                                              inner ? inner->name : "?", expectedParams[idx]->getFullName(),
+                                              inner ? inner->name : "?", inner ? inner->name : "?"));
+                }
+                if (!argType.isRef() && !expectedParams[idx]->isRef() && argType != *expectedParams[idx]) {
+                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014,
+                                   expectedParams[idx]->getFullName(), argType.getFullName())
+                        .withHint(std::format("实参类型 `{}` 与形参类型 `{}` 不匹配", argType.getFullName(),
+                                              expectedParams[idx]->getFullName()));
+                }
+            }
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+            // getType 失败: 留后续 codegen 兜底
+        }
+    }
 
     // 编译实参
     vector<llvm::Value*> callArgs2;
