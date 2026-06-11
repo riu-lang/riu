@@ -17,6 +17,7 @@
 #include "ast/node/spec_node.h"
 #include "ast/node/struct_node.h"
 #include "compiler.h"
+#include <array>
 #include <llvm/IR/DerivedTypes.h>
 #include <set>
 
@@ -336,15 +337,28 @@ llvm::StructType* Compiler::getArrayBlockType() {
 // Block layout：{ u32 strong @0, u32 weak @4, i64 len @8, i64 cap @16, ptr data @24 }
 
 // 从 Array<T> 实例（栈上 alloca）加载句柄
-// arrayStructPtr 指向 { ptr handle }，handle 字段在 offset 0，直接 load 即可
+// Array<T> 实例 layout = { ptr handle }
+// 先 GEP 到 field 0 再 Load，避免 load ptr from { ptr }* 的 LLVM IR 类型不匹配。
+// 直接 load 在 AOT 全优化管线中可能导致 SROA/TBAA 误判为未初始化内存（BUG 4）。
 llvm::Value* Compiler::loadArrayHandle(llvm::Value* arrayStructPtr, const string& name) {
     auto ptrTy = llvm::PointerType::get(_context, 0);
-    return _builder.CreateLoad(ptrTy, arrayStructPtr, name);
+    // 构造与 Array<T> 相同的匿名 struct { ptr }，LLVM 自动去重返回同一类型
+    std::array<llvm::Type*, 1> fields = {ptrTy};
+    auto arrayStructTy = llvm::StructType::get(_context, llvm::ArrayRef(fields.data(), fields.size()));
+    auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+    auto handleFieldPtr = _builder.CreateGEP(arrayStructTy, arrayStructPtr, {zero, zero}, name + ".field");
+    return _builder.CreateLoad(ptrTy, handleFieldPtr, name);
 }
 
 // 把句柄写回 Array<T> 实例
+// Array<T> 实例 layout = { ptr handle }；先 GEP 到 field 0 再 Store，与 loadArrayHandle 对应。
 void Compiler::storeArrayHandle(llvm::Value* arrayStructPtr, llvm::Value* handle) {
-    _builder.CreateStore(handle, arrayStructPtr);
+    auto ptrTy = llvm::PointerType::get(_context, 0);
+    std::array<llvm::Type*, 1> fields = {ptrTy};
+    auto arrayStructTy = llvm::StructType::get(_context, llvm::ArrayRef(fields.data(), fields.size()));
+    auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+    auto handleFieldPtr = _builder.CreateGEP(arrayStructTy, arrayStructPtr, {zero, zero}, "array.handle.field");
+    _builder.CreateStore(handle, handleFieldPtr);
 }
 
 // Block.len 字段指针（offset 8）
