@@ -67,10 +67,10 @@ fn test_loop_nested_break() {
   assert_eq(inner, 3)
 }
 
-; ==================== loop 中用 ret 替代 break 退函数 ====================
+; ==================== loop 中用 ret 直接退出函数 ====================
 
-; BUG#6: loop 内 ret 会 crash，改用 break + 外部 ret
-fn loop_ret_sum(n i32) i32 {
+; 原 BUG workaround: break + 外部 ret（仍保留作为基础测试）
+fn loop_ret_sum_break(n i32) i32 {
   #Mut let sum i32 = 0
   #Mut let i i32 = 1
   loop {
@@ -83,10 +83,55 @@ fn loop_ret_sum(n i32) i32 {
   ret sum
 }
 
+; loop 内直接 ret
+fn loop_ret_sum(n i32) i32 {
+  #Mut let sum i32 = 0
+  #Mut let i i32 = 1
+  loop {
+    if i > n {
+      ret sum
+    }
+    sum = sum + i
+    i = i + 1
+  }
+}
+
 #Test
 fn test_loop_early_ret() {
   assert_eq(loop_ret_sum(5), 15)
   assert_eq(loop_ret_sum(10), 55)
+}
+
+; 最简单的 loop { ret } 形态
+fn simple_loop_ret() i32 {
+  loop {
+    ret 42
+  }
+}
+
+#Test
+fn test_simple_loop_ret() {
+  assert_eq(simple_loop_ret(), 42)
+}
+
+; loop 内多层 if-else 嵌套 ret
+fn nested_if_ret(x i32) i32 {
+  loop {
+    if x > 0 {
+      if x > 10 {
+        ret 100
+      }
+      ret x
+    }
+    ret 0
+  }
+}
+
+#Test
+fn test_nested_loop_ret() {
+  assert_eq(nested_if_ret(5), 5)
+  assert_eq(nested_if_ret(15), 100)
+  assert_eq(nested_if_ret(0), 0)
 }
 
 ; ==================== match 含 RC payload（String）绑定为借用 ====================

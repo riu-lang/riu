@@ -1545,6 +1545,12 @@ void Compiler::compileLoopStatement(p<StatementLoopNode> node) {
     // 设置退出块
     func->insert(func->end(), exitBB);
     _builder.SetInsertPoint(exitBB);
+
+    // 若 exitBB 没有前驱（没有 break 指向它），说明循环体以内置终结指令（ret 等）结束，
+    // exitBB 不可达，需 unreachable 收尾；否则空块无 terminator 会导致 LLVM ilist assertion。
+    if (!exitBB->hasNPredecessorsOrMore(1)) {
+        _builder.CreateUnreachable();
+    }
 }
 
 // ==================== Break 语句编译 ====================
