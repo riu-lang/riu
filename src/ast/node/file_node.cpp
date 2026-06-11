@@ -180,14 +180,14 @@ const vector<p<FnNode>>& FileNode::getFunctions() const {
     return _functions;
 }
 
-StructDeclNode* FileNode::getStructDecl(const string& name, bool includeCompilerInner) const {
-    // `#CompilerInner` 声明仅作语言层占位（如 Rc/Ref/Ptr/Array 及 i8..f64），
+StructDeclNode* FileNode::getStructDecl(const string& name, bool includeBuiltin) const {
+    // `#Builtin` 声明仅作语言层占位（如 Rc/Ref/Ptr/Array 及 i8..f64），
     // 它们的布局与方法由编译器合成，对用户结构体逻辑不可见。默认过滤掉它们 ——
     // Compiler 端用户结构体查找不应命中。SemaPass 走 arity / 形态校验时需要看到
-    // 这些占位 (否则 Rc/Ref 查不到), 显式传 includeCompilerInner=true。
+    // 这些占位 (否则 Rc/Ref 查不到), 显式传 includeBuiltin=true。
     auto matches = [&](const p<StructDeclNode>& decl) {
         if (decl->name().getText() != name) return false;
-        return includeCompilerInner || !decl->hasAnno("CompilerInner");
+        return includeBuiltin || !decl->hasAnno("Builtin");
     };
     for (auto& decl : _structDecls) {
         if (matches(decl)) return decl;

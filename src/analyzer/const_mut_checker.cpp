@@ -391,7 +391,7 @@ private:
             if (typeName.empty()) return;
             string fullName = typeName + "." + dot->member();
             FnSymbolInfo* fs = lookupFnSymbolCrossFile(file, fullName);
-            if (!fs) return; // builtin 方法（Array/String 等 #CompilerInner）P1-5 不拦，待 SDK 内化
+            if (!fs) return; // builtin 方法（Array/String 等 #Builtin）P1-5 不拦，待 SDK 内化
             if (fs->isConst) return;
             throw YuxError(call->resolveLineNumber(), call->resolveColumn(),
                            ErrorCode::E3111, _fnName, fullName);

@@ -356,11 +356,11 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
         }
 
         if (!fnCtx->fnBody()) {
-            if (!header->hasAnno("CompilerInner")) {
+            if (!header->hasAnno("Builtin")) {
                 throw YuxError(header->getLineNumber(), header->getColumn(), ErrorCode::E2007, structName,
                                header->name().getText())
                     .withHint(
-                        "结构体方法必须有函数体；若仅声明（由编译器内部提供实现），在签名上加 `#CompilerInner` 注解");
+                        "结构体方法必须有函数体；若仅声明（由编译器内部提供实现），在签名上加 `#Builtin` 注解");
             }
         } else if (fnCtx->fnBody()->fnExprkBody()) {
             auto exprBody = fnCtx->fnBody()->fnExprkBody();

@@ -112,7 +112,7 @@ void Compiler::compile(p<FileNode> file) {
         runtime::emitHeapHandleHelpers(_context, _builder, _module);
     }
 
-    // 编译所有非泛型、非 CompilerInner 的函数
+    // 编译所有非泛型、非 Builtin 的函数
     auto functions = file->getFunctions();
     DEBUG_LOG_VAL("Compiling functions", functions.size());
     for (auto fn : functions) {
@@ -122,8 +122,8 @@ void Compiler::compile(p<FileNode> file) {
             continue;
         }
         // 跳过编译器内部函数，它们由编译器特殊处理
-        if (fn->header()->hasAnno("CompilerInner")) {
-            DEBUG_LOG_VAL("  Skipping #CompilerInner function (compiler handles)", fn->header()->name().getText());
+        if (fn->header()->hasAnno("Builtin")) {
+            DEBUG_LOG_VAL("  Skipping #Builtin function (compiler handles)", fn->header()->name().getText());
             continue;
         }
         auto func = getFunction(fn->header());
@@ -374,15 +374,15 @@ void Compiler::compileStructImpls() {
             compileMethod(destructor, func, structName, true);
         }
 
-        // 编译所有方法 (跳过 CompilerInner 方法)
+        // 编译所有方法 (跳过 Builtin 方法)
         auto& methods = structImpl->methods();
         DEBUG_LOG_VAL("      Methods count", methods.size());
         for (auto method : methods) {
             string methodName = method->header()->name().getText();
 
-            // CompilerInner 方法由编译器特殊处理，不生成 IR
-            if (method->header()->hasAnno("CompilerInner")) {
-                DEBUG_LOG_VAL("        Skipping #CompilerInner method (compiler handles)",
+            // Builtin 方法由编译器特殊处理，不生成 IR
+            if (method->header()->hasAnno("Builtin")) {
+                DEBUG_LOG_VAL("        Skipping #Builtin method (compiler handles)",
                               structName << "." << methodName);
                 continue;
             }
@@ -653,9 +653,9 @@ void Compiler::emitInstanceMethods() {
 
                 // 编译所有方法
                 for (auto method : inst.baseImpl->methods()) {
-                    // 跳过 CompilerInner 方法
-                    if (method->header()->hasAnno("CompilerInner")) {
-                        DEBUG_LOG_VAL("        Skipping #CompilerInner method (compiler handles)",
+                    // 跳过 Builtin 方法
+                    if (method->header()->hasAnno("Builtin")) {
+                        DEBUG_LOG_VAL("        Skipping #Builtin method (compiler handles)",
                                       baseName << "." << method->header()->name().getText());
                         continue;
                     }

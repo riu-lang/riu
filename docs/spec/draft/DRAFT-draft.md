@@ -33,7 +33,7 @@
 | 调用 ABI | 单态化静态分发 | `<Type>__<DraftPath>__<method>`，无 vtable | [#B.3] |
 | 借用 ↔ owned | `as_ref` / `copy_of` | Rc→T& / T&→T 两个方向显式 builtin | [#D.5] |
 | 内置 `Any` draft | `#DraftLike draft Any { }` | 所有类型自动满足（∅ 签名集） | [#D.4] |
-| 内置 `ToString` | `base.yux` 显式 `i32 : ToString` 等 | 方法体走 `#CompilerInner`；不标 `#DraftLike` | [#D.1] |
+| 内置 `ToString` | `base.yux` 显式 `i32 : ToString` 等 | 方法体走 `#Builtin`；不标 `#DraftLike` | [#D.1] |
 | orphan 限制 | 实现块只能在 Type 包或 D 包 | 跨外部包绑定走 `#DraftLike` 结构化匹配 | [#C.5] |
 
 ## 3. 子特性 A — 显式实现 `:`
@@ -305,11 +305,11 @@ draft ToString {
 }
 ```
 
-各内置类型（`i8`–`u64` / `f32` / `f64` / `bool` / `String` 等）在 `base.yux` 内显式 `:` 实现，方法体走 `#CompilerInner`（沿用 §11.2.3，**不引入新注解** `#Builtin`）：
+各内置类型（`i8`–`u64` / `f32` / `f64` / `bool` / `String` 等）在 `base.yux` 内显式 `:` 实现，方法体走 `#Builtin`（沿用 §11.2.3；注：v1 后期 `#CompilerInner` 已重命名为 `#Builtin`）：
 
 ```yux
 i32 : ToString {
-  #CompilerInner
+  #Builtin
   fn to_string() String       ; 体由编译器在调用点合成（按 §11.2.3）
 }
 ```
@@ -320,11 +320,11 @@ i32 : ToString {
 - 若标 `#DraftLike`，任何长得像 `fn to_string() String` 的随机方法都会被自动当作"可插值"，存在 debug-string 被误用作显示文本的风险。
 - 与"明确的使用 / 显式优先"基调一致；用户给自己类型加 `ToString` 多写一行 `:` 实现块，接受。
 
-### 7.3 复用 `#CompilerInner`
+### 7.3 复用 `#Builtin`
 
-由 [#D.1] 决议：**不引入** `#Builtin`，复用 §11.2 `#CompilerInner`。形态与现有内置 `to_<type>` / `upgrade` / `same_ref` / `assert_eq` 完全一致；编译器对 `#CompilerInner` 修饰的 `to_string` 方法在调用点合成 IR。
+由 [#D.1] 决议：复用 §11.2 `#Builtin`（即原 `#CompilerInner`，v1 后期已重命名）。形态与现有内置 `to_<type>` / `upgrade` / `same_ref` / `assert_eq` 完全一致；编译器对 `#Builtin` 修饰的 `to_string` 方法在调用点合成 IR。
 
-注：MILESTONE / TARGETS 文本中的"`#Builtin` 注解"实指 `#CompilerInner`，措辞由本草案统一。
+注：MILESTONE / TARGETS 文本中的"`#Builtin` 注解"实指 `#Builtin`，措辞由本草案统一。
 
 ## 8.附 借用 ↔ owned 链路：`as_ref` 与 `copy_of`
 
@@ -414,8 +414,8 @@ fn caller(box Rc<MyType>) {
 - `sdk/yux/src/yux/core/base.yux`
   - 新增 `draft Any { }`（标 `#DraftLike`）。 [#D.4]
   - 新增 `draft ToString { fn to_string() String }`（不标 `#DraftLike`）。 [#D.1]
-  - 各内置类型实现块：`i8 : ToString { #CompilerInner fn to_string() String }` 等（覆盖 `i8`–`u64` / `f32` / `f64` / `bool` / `String`）。 [#D.1]
-  - 新增 `copy_of` 占位签名（`#CompilerInner`），与 `as_ref` 同处。 [#D.5]
+  - 各内置类型实现块：`i8 : ToString { #Builtin fn to_string() String }` 等（覆盖 `i8`–`u64` / `f32` / `f64` / `bool` / `String`）。 [#D.1]
+  - 新增 `copy_of` 占位签名（`#Builtin`），与 `as_ref` 同处。 [#D.5]
 - 不改 runtime helper 集；调用约定与 §8.5 完全兼容。
 
 ### 10.3 语法（`src/yux.g4`）
@@ -454,7 +454,7 @@ fn caller(box Rc<MyType>) {
 - **§7** 结构体实现块：在 §7.5 增子节"`Type : D1 + D2 { ... }` draft 实现块"，含穷尽性 + 不多余 + orphan 限制。 [#A.2] / [#C.5]
 - **§8.3.5 / §8.6** 借用：追加 `copy_of` 章（与 `as_ref` 并列）。 [#D.5]
 - **§8.6.7** 借用与边界：追加交叉引用到新 §12，规则本身不改。 [#B.2]
-- **§9.10**（如存在）/ §11：builtin 列表追加 `copy_of`；`#CompilerInner` 用例追加 `to_string` / `copy_of`。 [#D.1] / [#D.5]
+- **§9.10**（如存在）/ §11：builtin 列表追加 `copy_of`；`#Builtin` 用例追加 `to_string` / `copy_of`。 [#D.1] / [#D.5]
 - **§11.4** 注解：新增 `#DraftLike` 条款（§11.X，对应 [#C.4] 4 条措辞）。
 - **新增 §12 `draft`**（独立章节）：把草案 §3 / §4 / §5 / §6 / §7 / §8 内容固化为 §12.1–§12.7。
 - **附录 A**：保留字加 `draft`。
@@ -492,7 +492,7 @@ spec 落地后写：
   - 关联函数不 forward（v0.5 draft 无此概念）；其它堆句柄（Array / String / Weak）不参与；不绕过 [#C.5] orphan。
   - 影响章节：草案 §8，未来 spec §8.6.7（追加交叉引用）/ §12；不改 §8.3.5。
 
-- **[#D.1]** 内置 `ToString` 写在 `base.yux`，**不标** `#DraftLike`（强契约，避免 debug-string 误命中字符串模板）；各内置类型显式 `i32 : ToString { ... }`；方法体复用 §11.2 `#CompilerInner`，**不引入** `#Builtin` 注解（MILESTONE / TARGETS 中的"`#Builtin`"措辞按 `#CompilerInner` 统一）。
+- **[#D.1]** 内置 `ToString` 写在 `base.yux`，**不标** `#DraftLike`（强契约，避免 debug-string 误命中字符串模板）；各内置类型显式 `i32 : ToString { ... }`；方法体复用 §11.2 `#Builtin`（原 `#CompilerInner`，v1 后期已重命名）。原"不引入新注解"条款随重命名自然解除。
   - 影响章节：草案 §7，未来 spec §11.2.3（追加 `to_string` 列入内置 `to_<type>`）/ §12 / `base.yux`。
 
 - **[#C.4]** `#DraftLike` 滥用边界条款（拟入 §12.X.Y）：默认严格（未标 = 仅显式实现）；显式开放 = `#DraftLike` 仅在 draft 声明上；语义动机要求 = 风格指引不上诊断；硬性误用诊断 = 标错位置 / 标在带默认体 draft / 标在带方法本地泛型 draft。错误码暂占 `E1100` 段，Phase 2 与附录 D 一起定。

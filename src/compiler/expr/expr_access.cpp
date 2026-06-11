@@ -216,9 +216,9 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
         }
     }
 
-    auto structDecl = _file->getStructDecl(actualType.name, /*includeCompilerInner=*/true);
+    auto structDecl = _file->getStructDecl(actualType.name, /*includeBuiltin=*/true);
     if (!structDecl && _yux && _yux->sdkFile()) {
-        structDecl = _yux->sdkFile()->getStructDecl(actualType.name, /*includeCompilerInner=*/true);
+        structDecl = _yux->sdkFile()->getStructDecl(actualType.name, /*includeBuiltin=*/true);
     }
 
     if (structDecl) {
@@ -336,7 +336,7 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
     }
     auto innerStructDecl = _file->getStructDecl(innerType->name);
     if (!innerStructDecl && _yux && _yux->sdkFile()) {
-        innerStructDecl = _yux->sdkFile()->getStructDecl(innerType->name, /*includeCompilerInner=*/true);
+        innerStructDecl = _yux->sdkFile()->getStructDecl(innerType->name, /*includeBuiltin=*/true);
     }
     if (!innerStructDecl) {
         throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3044, innerType->name);

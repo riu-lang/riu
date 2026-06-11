@@ -273,7 +273,7 @@ yux-check 收尾（Bucket 4）：
   - 新错号 E3112-E3116（注解形态错）
 - ✅ **Sema/Codegen 拆分 Phase 3.3-3.5**（持续推进，未完）：
   - SemaPass 接管 enum / match arm 静态校验（E2019/E2020/E2021/E2023-E2027/E2032）
-  - SemaPass 接管 ArrayInit explicit vs value（E3009）、私有字段可见性（E3042）、ExprGetRef / ExprUnary（E3070/E3071）、int 字面量解析（E3103）、`#CompilerInner` / Array intrinsic、E7002 / E7011
+  - SemaPass 接管 ArrayInit explicit vs value（E3009）、私有字段可见性（E3042）、ExprGetRef / ExprUnary（E3070/E3071）、int 字面量解析（E3103）、`#Builtin` / Array intrinsic、E7002 / E7011
   - `compileMemberAssignStatement` E3042 路径切走 sema 验证
 - ✅ **`yux-check` 最小可用 exe（阶段 0）**：0 LLVM 依赖的诊断快速通道；CLAUDE.md 新增 Sema/Codegen 协议指南。
 - ✅ **warning 通道首批**：E5013 / E5014 / E7016 走 warning 而非 error。

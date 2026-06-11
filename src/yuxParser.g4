@@ -266,7 +266,7 @@ fn: fnHeader fnBody?;
 // fn name() 空返回
 // fn name() type 返回 type
 // fn some<T>() T
-// retType 仅 #CompilerInner baked builtin 允许含 `&`（spec §8.9 例外、§8.3.5.5 as_ref）；
+// retType 仅 #Builtin baked builtin 允许含 `&`（spec §8.9 例外、§8.3.5.5 as_ref）；
 // 用户代码 retType 含 `&` 由 semantic 层拒绝
 fnHeader:
     (buildAnnos+=buildAnno)*

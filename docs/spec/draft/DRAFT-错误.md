@@ -62,7 +62,7 @@ fn parse_int(s String) i32 { ... }
 | `structImpl` 内方法 | ✅ |
 | `draft` 内 `fn` 签名 | ✅（实现侧 `#Fallible` 必须与声明一致；§12.3.1 签名一致性） |
 | `extern` 块内 `fnHeader` | ❌（推 §7 FFI 边界，整体推迟；见 §7） |
-| `#CompilerInner` 函数 | ❌ 互斥 |
+| `#Builtin` 函数 | ❌ 互斥 |
 | `#Test` 函数 | ❌ 互斥（§11.3.2 / §11.3.5.3） |
 
 ### 3.3 参数约束
@@ -94,7 +94,7 @@ buildAnno ::= '#' ID ( '(' ID ')' )? codeLineEnd
 
 仅解禁单 ID 参数；不解禁多参数、不解禁字面量 / 表达式参数。多参数 / 字面量留 §11.5.2.4 后续课题（O14）。
 
-`#Fallible` / `#NoReturn` 的引入路径仍走"编译器内置名集合"（与 `#CompilerInner` / `#Test` 同档）；用户自定义注解（§11.6）的引入路径不变。
+`#Fallible` / `#NoReturn` 的引入路径仍走"编译器内置名集合"（与 `#Builtin` / `#Test` 同档）；用户自定义注解（§11.6）的引入路径不变。
 
 ## 4. 抛出与传播：`ret E::V` + 后缀 `!`
 
@@ -447,7 +447,7 @@ fn exit(code u32) { ... }    ; stdlib，路径 yux.core.exit
 | stderr 自动模板 | `panic: <msg>\n` | 无（用户自决） |
 | 退出码 | 固定 `_exit(1)` | 用户指定 |
 
-**`exit` vs `_exit` 内部名**：`_exit` 是 yux 编译器内部约定（`#CompilerInner`），用户不可调；`exit` 是公开 stdlib 函数。实施层可共用同一底层 syscall（POSIX `_exit(2)` / Windows `ExitProcess`）；命名分裂仅区分"内部触发 vs 用户主动"。若未来引入 atexit / RAII 全局析构，再考虑分裂为 `exit` (clean) / `_exit` (immediate)。
+**`exit` vs `_exit` 内部名**：`_exit` 是 yux 编译器内部约定（`#Builtin`），用户不可调；`exit` 是公开 stdlib 函数。实施层可共用同一底层 syscall（POSIX `_exit(2)` / Windows `ExitProcess`）；命名分裂仅区分"内部触发 vs 用户主动"。若未来引入 atexit / RAII 全局析构，再考虑分裂为 `exit` (clean) / `_exit` (immediate)。
 
 ### 8.8 panic 实施层（informative）
 
@@ -558,7 +558,7 @@ defer 与析构在"不允许抛出"这一点上**对等**；defer 的真正价�
 
 ### 11.1 编译器（`src/`）
 
-- 新增 `#Fallible(E)` 注解登记 + 单参数糖（沿用 `#Test` / `#CompilerInner` 路径）
+- 新增 `#Fallible(E)` 注解登记 + 单参数糖（沿用 `#Test` / `#Builtin` 路径）
 - 新增 `#NoReturn` 注解 + 控制流可达性分析
 - 新增 `tryExpr` AST 节点 + 类型路由（穷尽性 / 类型一致性）
 - 新增表达式后缀 `!` 优先级 = `exprCall` 同档

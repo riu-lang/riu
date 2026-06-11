@@ -8,7 +8,7 @@
 
 - **Phase a** g4 改造（commit `726931b`）。删 `Draft` token / `draftDecl` / `draftType` / `structImpl` 产生式；`structDecl` 合并方法块 = `(filedDecl|LineEnd)* fnClean? (fn|LineEnd)*`；`buildAnno` arg 升级到 `arg=ID genericDef?` 以承载 `#Impl(Spec<T>)` turbofish。
 - **Phase b.1** ast_builder 接管（commit `726931b` 同期）。`visitStructDecl` 重写为 3 路分发：`#Spec` → `DraftDeclNode`（仅签名）/ 普通 struct → `StructDeclNode`（+ `StructImplNode` 若有方法/析构/`#Impl`）/ 字段后的方法段融合。下游 AST 节点类型沿用原名（v1 内部不改）。E1137 / E1138 / E1139 三个新错码登记。
-- **Phase c** SDK / tests 全仓迁移（commit `c0553ca`）。`tmp_migrate.py` 脚本一次跑完 64 个 `*.yux` 文件：`draft Foo { ... }` → `#Spec struct Foo { ... }`；`T { ... }` 方法块 + `T : Spec { ... }` 实现块合并进 struct 主体 + 顶行 `#Impl(Spec)`；删 `Any` spec 与 `#DraftLike` 注解；内置类型（i8..u64 / f32 / f64 / bool / String）每个合并为单 `#Impl(ToString) #CompilerInner struct` 块。期间发现并修两个隐 bug，见踩坑清单。
+- **Phase c** SDK / tests 全仓迁移（commit `c0553ca`）。`tmp_migrate.py` 脚本一次跑完 64 个 `*.yux` 文件：`draft Foo { ... }` → `#Spec struct Foo { ... }`；`T { ... }` 方法块 + `T : Spec { ... }` 实现块合并进 struct 主体 + 顶行 `#Impl(Spec)`；删 `Any` spec 与 `#DraftLike` 注解；内置类型（i8..u64 / f32 / f64 / bool / String）每个合并为单 `#Impl(ToString) #Builtin struct` 块。期间发现并修两个隐 bug，见踩坑清单。
 - **Phase d** 文档迁移（commit `e840571`）。`12-draft.md` → `12-spec.md` 整章重写；§07 结构体 + §11 注解 + 附录 A/B + CHANGELOG 全部同步；用户向 `docs/{内置类型,函数,枚举与匹配}.md` 同步措辞。
 - **Phase b.1** SDK / tests 文件名重命名（commit `23a4341`）。纯 `git mv`：`sdk/yux/src/yux/core/draft_*.test.yux` → `spec_*`；`tests/cases/diag_draft_e110{1,4,6}_*.{yux,expected_err}` → `diag_spec_*`；`tests/projects/draft_{rc_forward,explicit_impl}/` → `spec_*`（含 `yux.toml` 的 `name=` 字段同步）。
 - **BUGS#4 修复**（与 b.2 同 commit `e6c7bdb`）。Phase b.1 文件重命名暴露 `SpecImplChecker::buildTypeOwnerMap` 的 latent bug——见踩坑清单。
@@ -90,7 +90,7 @@ Phase c 脚本合并 `struct X { fields }` + `X { methods }` 时，python 实现
 - spec 声明：`SpecDeclNode`（含成员签名列表 + `#DraftLike` flag 沿用）；位置 `src/ast/node/spec_node.h`
 - 实现块：`StructImplNode._specRefs`（每个 `#Impl(D)` 顶行注解解析后追加；同一 struct 多 `#Impl` 合到一个 StructImplNode）
 - 注册中心：`Yux::specRegistry()` + `Yux::specImplChecker()`，长生命期 + 一次性 validate flag
-- 分发：方法符号统一注册为 `<module>.<Type>.<member>`，无独立 vtable / 签名表；`#CompilerInner` 内嵌方法体走原有 baked dispatch
+- 分发：方法符号统一注册为 `<module>.<Type>.<member>`，无独立 vtable / 签名表；`#Builtin` 内嵌方法体走原有 baked dispatch
 - 关键校验：`SpecImplChecker::validateImpl`（穷尽性 E1101 / orphan E1120 / 重复 E1103）— BUGS#4 修复后 orphan 优先看 implFile 本地声明
 - 文件 / 类改名：`src/analyzer/spec_{registry,impl_checker}.{h,cpp}`、`src/ast/node/spec_node.h`；旧 `draft_*` 文件名全部 `git mv`
 - 错误码：E1101 / E1104 / E1106 / E1120 / E1131 / E1134 / E2015 文本 "draft" → "spec"；E1110-1112 保留（绑死 `#DraftLike`）；E1137 / E1138 / E1139 新增（v1 占位 / 静态调用 / spec body 方法带 body）；E1102 删除

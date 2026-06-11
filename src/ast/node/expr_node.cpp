@@ -110,7 +110,7 @@ static TypeInfo lookupDynMethodRetType(Node* contextParent, const TypeInfo& dynT
     return {};
 }
 
-static bool isCompilerInnerMethod(ScopeNode* scope, const string& structName, const string& methodName) {
+static bool isBuiltinMethod(ScopeNode* scope, const string& structName, const string& methodName) {
     if (!scope) return false;
 
     auto* file = dynamic_cast<FileNode*>(scope);
@@ -127,7 +127,7 @@ static bool isCompilerInnerMethod(ScopeNode* scope, const string& structName, co
 
     for (auto& method : structImpl->methods()) {
         if (method->header()->name().getText() == methodName) {
-            return method->header()->hasAnno("CompilerInner");
+            return method->header()->hasAnno("Builtin");
         }
     }
 
@@ -1089,12 +1089,12 @@ TypeInfo ExprDotNode::getType() const {
             // file 自身找不到时走父 FileNode (SDK) 链, 与 lookupSpecBoundMethodRetType
             // 同款; 不打通会导致 t.<SdkStructField> getType 回落到 baseExpr type
             // (sema 不知道字段实类型, 重载解析挑错).
-            auto structDecl = file->getStructDecl(actualType.name, /*includeCompilerInner=*/true);
+            auto structDecl = file->getStructDecl(actualType.name, /*includeBuiltin=*/true);
             if (!structDecl) {
                 ScopeNode* p = file->parentScope();
                 while (p && !structDecl) {
                     if (auto pf = dynamic_cast<FileNode*>(p)) {
-                        structDecl = pf->getStructDecl(actualType.name, /*includeCompilerInner=*/true);
+                        structDecl = pf->getStructDecl(actualType.name, /*includeBuiltin=*/true);
                     }
                     p = p->parentScope();
                 }

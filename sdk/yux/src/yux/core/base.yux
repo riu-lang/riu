@@ -31,14 +31,14 @@ fn _stderr_write(buf Ptr, off i64, len i64) {
   WriteFile(hStderr, bufWithOff, len.to_u32(), &written, null);
 }
 
-#CompilerInner
+#Builtin
 fn size_of<T>() u64
 
 ; DRAFT-spec-reflect Phase 3a (捷径 A): 反射 Type 节点拿取 intrinsic.
 ; 调用站 `__yux_reflect_type:<Counter>()` 由编译器特例化 lower 到
 ; `load %Type, ptr __yux_reflect_<mod>_<typename>__type` (linkonce_odr rodata).
 ; 草案 §2 的 `Counter::type` path 形态留 Phase 4 接入完整 spec 链, 这里走 fn 形态过渡.
-#CompilerInner
+#Builtin
 fn __yux_reflect_type<T>() Type
 
 ; ==================== 内置 spec（spec §12.7） ====================
@@ -80,148 +80,148 @@ struct ToJson {
 
 ; 内置类型
 ; 结构体仅占位，实际类型由编译器处理
-; to_<数字/bool> 方法由编译器合成，通过 #CompilerInner 标注
+; to_<数字/bool> 方法由编译器合成，通过 #Builtin 标注
 
 #Impl(ToString)
-#CompilerInner
+#Builtin
 struct i8 {
-  #CompilerInner
+  #Builtin
   fn to_i8() i8
 
-  #CompilerInner
+  #Builtin
   fn to_u8() u8
 
-  #CompilerInner
+  #Builtin
   fn to_i16() i16
 
-  #CompilerInner
+  #Builtin
   fn to_u16() u16
 
-  #CompilerInner
+  #Builtin
   fn to_i32() i32
 
-  #CompilerInner
+  #Builtin
   fn to_u32() u32
 
-  #CompilerInner
+  #Builtin
   fn to_i64() i64
 
-  #CompilerInner
+  #Builtin
   fn to_u64() u64
 
-  #CompilerInner
+  #Builtin
   fn to_f64() f64
 
-  #CompilerInner
+  #Builtin
   fn to_f32() f32
 
-  #CompilerInner
+  #Builtin
   fn to_bool() bool
 
   ; 算术运算符
-  #CompilerInner
+  #Builtin
   fn plus(other i8) i8
 
-  #CompilerInner
+  #Builtin
   fn plus(other i8&) i8
 
-  #CompilerInner
+  #Builtin
   fn minus(other i8) i8
 
-  #CompilerInner
+  #Builtin
   fn minus(other i8&) i8
 
-  #CompilerInner
+  #Builtin
   fn mul(other i8) i8
 
-  #CompilerInner
+  #Builtin
   fn mul(other i8&) i8
 
-  #CompilerInner
+  #Builtin
   fn div(other i8) i8
 
-  #CompilerInner
+  #Builtin
   fn div(other i8&) i8
 
-  #CompilerInner
+  #Builtin
   fn mod(other i8) i8
 
-  #CompilerInner
+  #Builtin
   fn mod(other i8&) i8
 
   ; 比较运算符
-  #CompilerInner
+  #Builtin
   fn eq(other i8) bool
 
-  #CompilerInner
+  #Builtin
   fn eq(other i8&) bool
 
-  #CompilerInner
+  #Builtin
   fn ne(other i8) bool
 
-  #CompilerInner
+  #Builtin
   fn ne(other i8&) bool
 
-  #CompilerInner
+  #Builtin
   fn lt(other i8) bool
 
-  #CompilerInner
+  #Builtin
   fn lt(other i8&) bool
 
-  #CompilerInner
+  #Builtin
   fn le(other i8) bool
 
-  #CompilerInner
+  #Builtin
   fn le(other i8&) bool
 
-  #CompilerInner
+  #Builtin
   fn gt(other i8) bool
 
-  #CompilerInner
+  #Builtin
   fn gt(other i8&) bool
 
-  #CompilerInner
+  #Builtin
   fn ge(other i8) bool
 
-  #CompilerInner
+  #Builtin
   fn ge(other i8&) bool
 
   ; 位运算符
-  #CompilerInner
+  #Builtin
   fn and(other i8) i8
 
-  #CompilerInner
+  #Builtin
   fn and(other i8&) i8
 
-  #CompilerInner
+  #Builtin
   fn or(other i8) i8
 
-  #CompilerInner
+  #Builtin
   fn or(other i8&) i8
 
-  #CompilerInner
+  #Builtin
   fn xor(other i8) i8
 
-  #CompilerInner
+  #Builtin
   fn xor(other i8&) i8
 
-  #CompilerInner
+  #Builtin
   fn shl(other i8) i8
 
-  #CompilerInner
+  #Builtin
   fn shl(other i8&) i8
 
-  #CompilerInner
+  #Builtin
   fn shr(other i8) i8
 
-  #CompilerInner
+  #Builtin
   fn shr(other i8&) i8
 
   ; 一元运算符
-  #CompilerInner
+  #Builtin
   fn neg() i8
 
-  #CompilerInner
+  #Builtin
   fn inv() i8
 
   fn to_string() String {
@@ -230,142 +230,142 @@ struct i8 {
 }
 
 #Impl(ToString)
-#CompilerInner
+#Builtin
 struct u8 {
-  #CompilerInner
+  #Builtin
   fn to_i8() i8
 
-  #CompilerInner
+  #Builtin
   fn to_u8() u8
 
-  #CompilerInner
+  #Builtin
   fn to_i16() i16
 
-  #CompilerInner
+  #Builtin
   fn to_u16() u16
 
-  #CompilerInner
+  #Builtin
   fn to_i32() i32
 
-  #CompilerInner
+  #Builtin
   fn to_u32() u32
 
-  #CompilerInner
+  #Builtin
   fn to_u64() u64
 
-  #CompilerInner
+  #Builtin
   fn to_f64() f64
 
-  #CompilerInner
+  #Builtin
   fn to_f32() f32
 
-  #CompilerInner
+  #Builtin
   fn to_bool() bool
 
   ; 算术运算符
-  #CompilerInner
+  #Builtin
   fn plus(other u8) u8
 
-  #CompilerInner
+  #Builtin
   fn plus(other u8&) u8
 
-  #CompilerInner
+  #Builtin
   fn minus(other u8) u8
 
-  #CompilerInner
+  #Builtin
   fn minus(other u8&) u8
 
-  #CompilerInner
+  #Builtin
   fn mul(other u8) u8
 
-  #CompilerInner
+  #Builtin
   fn mul(other u8&) u8
 
-  #CompilerInner
+  #Builtin
   fn div(other u8) u8
 
-  #CompilerInner
+  #Builtin
   fn div(other u8&) u8
 
-  #CompilerInner
+  #Builtin
   fn mod(other u8) u8
 
-  #CompilerInner
+  #Builtin
   fn mod(other u8&) u8
 
   ; 比较运算符
-  #CompilerInner
+  #Builtin
   fn eq(other u8) bool
 
-  #CompilerInner
+  #Builtin
   fn eq(other u8&) bool
 
-  #CompilerInner
+  #Builtin
   fn ne(other u8) bool
 
-  #CompilerInner
+  #Builtin
   fn ne(other u8&) bool
 
-  #CompilerInner
+  #Builtin
   fn lt(other u8) bool
 
-  #CompilerInner
+  #Builtin
   fn lt(other u8&) bool
 
-  #CompilerInner
+  #Builtin
   fn le(other u8) bool
 
-  #CompilerInner
+  #Builtin
   fn le(other u8&) bool
 
-  #CompilerInner
+  #Builtin
   fn gt(other u8) bool
 
-  #CompilerInner
+  #Builtin
   fn gt(other u8&) bool
 
-  #CompilerInner
+  #Builtin
   fn ge(other u8) bool
 
-  #CompilerInner
+  #Builtin
   fn ge(other u8&) bool
 
   ; 位运算符
-  #CompilerInner
+  #Builtin
   fn and(other u8) u8
 
-  #CompilerInner
+  #Builtin
   fn and(other u8&) u8
 
-  #CompilerInner
+  #Builtin
   fn or(other u8) u8
 
-  #CompilerInner
+  #Builtin
   fn or(other u8&) u8
 
-  #CompilerInner
+  #Builtin
   fn xor(other u8) u8
 
-  #CompilerInner
+  #Builtin
   fn xor(other u8&) u8
 
-  #CompilerInner
+  #Builtin
   fn shl(other u8) u8
 
-  #CompilerInner
+  #Builtin
   fn shl(other u8&) u8
 
-  #CompilerInner
+  #Builtin
   fn shr(other u8) u8
 
-  #CompilerInner
+  #Builtin
   fn shr(other u8&) u8
 
   ; 一元运算符
-  #CompilerInner
+  #Builtin
   fn neg() u8
 
-  #CompilerInner
+  #Builtin
   fn inv() u8
 
   fn to_string() String {
@@ -374,142 +374,142 @@ struct u8 {
 }
 
 #Impl(ToString)
-#CompilerInner
+#Builtin
 struct i16 {
-  #CompilerInner
+  #Builtin
   fn to_i8() i8
 
-  #CompilerInner
+  #Builtin
   fn to_u8() u8
 
-  #CompilerInner
+  #Builtin
   fn to_i16() i16
 
-  #CompilerInner
+  #Builtin
   fn to_u16() u16
 
-  #CompilerInner
+  #Builtin
   fn to_i32() i32
 
-  #CompilerInner
+  #Builtin
   fn to_u32() u32
 
-  #CompilerInner
+  #Builtin
   fn to_u64() u64
 
-  #CompilerInner
+  #Builtin
   fn to_f64() f64
 
-  #CompilerInner
+  #Builtin
   fn to_f32() f32
 
-  #CompilerInner
+  #Builtin
   fn to_bool() bool
 
   ; 算术运算符
-  #CompilerInner
+  #Builtin
   fn plus(other i16) i16
 
-  #CompilerInner
+  #Builtin
   fn plus(other i16&) i16
 
-  #CompilerInner
+  #Builtin
   fn minus(other i16) i16
 
-  #CompilerInner
+  #Builtin
   fn minus(other i16&) i16
 
-  #CompilerInner
+  #Builtin
   fn mul(other i16) i16
 
-  #CompilerInner
+  #Builtin
   fn mul(other i16&) i16
 
-  #CompilerInner
+  #Builtin
   fn div(other i16) i16
 
-  #CompilerInner
+  #Builtin
   fn div(other i16&) i16
 
-  #CompilerInner
+  #Builtin
   fn mod(other i16) i16
 
-  #CompilerInner
+  #Builtin
   fn mod(other i16&) i16
 
   ; 比较运算符
-  #CompilerInner
+  #Builtin
   fn eq(other i16) bool
 
-  #CompilerInner
+  #Builtin
   fn eq(other i16&) bool
 
-  #CompilerInner
+  #Builtin
   fn ne(other i16) bool
 
-  #CompilerInner
+  #Builtin
   fn ne(other i16&) bool
 
-  #CompilerInner
+  #Builtin
   fn lt(other i16) bool
 
-  #CompilerInner
+  #Builtin
   fn lt(other i16&) bool
 
-  #CompilerInner
+  #Builtin
   fn le(other i16) bool
 
-  #CompilerInner
+  #Builtin
   fn le(other i16&) bool
 
-  #CompilerInner
+  #Builtin
   fn gt(other i16) bool
 
-  #CompilerInner
+  #Builtin
   fn gt(other i16&) bool
 
-  #CompilerInner
+  #Builtin
   fn ge(other i16) bool
 
-  #CompilerInner
+  #Builtin
   fn ge(other i16&) bool
 
   ; 位运算符
-  #CompilerInner
+  #Builtin
   fn and(other i16) i16
 
-  #CompilerInner
+  #Builtin
   fn and(other i16&) i16
 
-  #CompilerInner
+  #Builtin
   fn or(other i16) i16
 
-  #CompilerInner
+  #Builtin
   fn or(other i16&) i16
 
-  #CompilerInner
+  #Builtin
   fn xor(other i16) i16
 
-  #CompilerInner
+  #Builtin
   fn xor(other i16&) i16
 
-  #CompilerInner
+  #Builtin
   fn shl(other i16) i16
 
-  #CompilerInner
+  #Builtin
   fn shl(other i16&) i16
 
-  #CompilerInner
+  #Builtin
   fn shr(other i16) i16
 
-  #CompilerInner
+  #Builtin
   fn shr(other i16&) i16
 
   ; 一元运算符
-  #CompilerInner
+  #Builtin
   fn neg() i16
 
-  #CompilerInner
+  #Builtin
   fn inv() i16
 
   fn to_string() String {
@@ -518,142 +518,142 @@ struct i16 {
 }
 
 #Impl(ToString)
-#CompilerInner
+#Builtin
 struct u16 {
-  #CompilerInner
+  #Builtin
   fn to_i8() i8
 
-  #CompilerInner
+  #Builtin
   fn to_u8() u8
 
-  #CompilerInner
+  #Builtin
   fn to_i16() i16
 
-  #CompilerInner
+  #Builtin
   fn to_u16() u16
 
-  #CompilerInner
+  #Builtin
   fn to_i32() i32
 
-  #CompilerInner
+  #Builtin
   fn to_u32() u32
 
-  #CompilerInner
+  #Builtin
   fn to_u64() u64
 
-  #CompilerInner
+  #Builtin
   fn to_f64() f64
 
-  #CompilerInner
+  #Builtin
   fn to_f32() f32
 
-  #CompilerInner
+  #Builtin
   fn to_bool() bool
 
   ; 算术运算符
-  #CompilerInner
+  #Builtin
   fn plus(other u16) u16
 
-  #CompilerInner
+  #Builtin
   fn plus(other u16&) u16
 
-  #CompilerInner
+  #Builtin
   fn minus(other u16) u16
 
-  #CompilerInner
+  #Builtin
   fn minus(other u16&) u16
 
-  #CompilerInner
+  #Builtin
   fn mul(other u16) u16
 
-  #CompilerInner
+  #Builtin
   fn mul(other u16&) u16
 
-  #CompilerInner
+  #Builtin
   fn div(other u16) u16
 
-  #CompilerInner
+  #Builtin
   fn div(other u16&) u16
 
-  #CompilerInner
+  #Builtin
   fn mod(other u16) u16
 
-  #CompilerInner
+  #Builtin
   fn mod(other u16&) u16
 
   ; 比较运算符
-  #CompilerInner
+  #Builtin
   fn eq(other u16) bool
 
-  #CompilerInner
+  #Builtin
   fn eq(other u16&) bool
 
-  #CompilerInner
+  #Builtin
   fn ne(other u16) bool
 
-  #CompilerInner
+  #Builtin
   fn ne(other u16&) bool
 
-  #CompilerInner
+  #Builtin
   fn lt(other u16) bool
 
-  #CompilerInner
+  #Builtin
   fn lt(other u16&) bool
 
-  #CompilerInner
+  #Builtin
   fn le(other u16) bool
 
-  #CompilerInner
+  #Builtin
   fn le(other u16&) bool
 
-  #CompilerInner
+  #Builtin
   fn gt(other u16) bool
 
-  #CompilerInner
+  #Builtin
   fn gt(other u16&) bool
 
-  #CompilerInner
+  #Builtin
   fn ge(other u16) bool
 
-  #CompilerInner
+  #Builtin
   fn ge(other u16&) bool
 
   ; 位运算符
-  #CompilerInner
+  #Builtin
   fn and(other u16) u16
 
-  #CompilerInner
+  #Builtin
   fn and(other u16&) u16
 
-  #CompilerInner
+  #Builtin
   fn or(other u16) u16
 
-  #CompilerInner
+  #Builtin
   fn or(other u16&) u16
 
-  #CompilerInner
+  #Builtin
   fn xor(other u16) u16
 
-  #CompilerInner
+  #Builtin
   fn xor(other u16&) u16
 
-  #CompilerInner
+  #Builtin
   fn shl(other u16) u16
 
-  #CompilerInner
+  #Builtin
   fn shl(other u16&) u16
 
-  #CompilerInner
+  #Builtin
   fn shr(other u16) u16
 
-  #CompilerInner
+  #Builtin
   fn shr(other u16&) u16
 
   ; 一元运算符
-  #CompilerInner
+  #Builtin
   fn neg() u16
 
-  #CompilerInner
+  #Builtin
   fn inv() u16
 
   fn to_string() String {
@@ -662,142 +662,142 @@ struct u16 {
 }
 
 #Impl(ToString)
-#CompilerInner
+#Builtin
 struct i32 {
-  #CompilerInner
+  #Builtin
   fn to_i8() i8
 
-  #CompilerInner
+  #Builtin
   fn to_u8() u8
 
-  #CompilerInner
+  #Builtin
   fn to_i16() i16
 
-  #CompilerInner
+  #Builtin
   fn to_u16() u16
 
-  #CompilerInner
+  #Builtin
   fn to_i32() i32
 
-  #CompilerInner
+  #Builtin
   fn to_u32() u32
 
-  #CompilerInner
+  #Builtin
   fn to_u64() u64
 
-  #CompilerInner
+  #Builtin
   fn to_f64() f64
 
-  #CompilerInner
+  #Builtin
   fn to_f32() f32
 
-  #CompilerInner
+  #Builtin
   fn to_bool() bool
 
   ; 算术运算符
-  #CompilerInner
+  #Builtin
   fn plus(other i32) i32
 
-  #CompilerInner
+  #Builtin
   fn plus(other i32&) i32
 
-  #CompilerInner
+  #Builtin
   fn minus(other i32) i32
 
-  #CompilerInner
+  #Builtin
   fn minus(other i32&) i32
 
-  #CompilerInner
+  #Builtin
   fn mul(other i32) i32
 
-  #CompilerInner
+  #Builtin
   fn mul(other i32&) i32
 
-  #CompilerInner
+  #Builtin
   fn div(other i32) i32
 
-  #CompilerInner
+  #Builtin
   fn div(other i32&) i32
 
-  #CompilerInner
+  #Builtin
   fn mod(other i32) i32
 
-  #CompilerInner
+  #Builtin
   fn mod(other i32&) i32
 
   ; 比较运算符
-  #CompilerInner
+  #Builtin
   fn eq(other i32) bool
 
-  #CompilerInner
+  #Builtin
   fn eq(other i32&) bool
 
-  #CompilerInner
+  #Builtin
   fn ne(other i32) bool
 
-  #CompilerInner
+  #Builtin
   fn ne(other i32&) bool
 
-  #CompilerInner
+  #Builtin
   fn lt(other i32) bool
 
-  #CompilerInner
+  #Builtin
   fn lt(other i32&) bool
 
-  #CompilerInner
+  #Builtin
   fn le(other i32) bool
 
-  #CompilerInner
+  #Builtin
   fn le(other i32&) bool
 
-  #CompilerInner
+  #Builtin
   fn gt(other i32) bool
 
-  #CompilerInner
+  #Builtin
   fn gt(other i32&) bool
 
-  #CompilerInner
+  #Builtin
   fn ge(other i32) bool
 
-  #CompilerInner
+  #Builtin
   fn ge(other i32&) bool
 
   ; 位运算符
-  #CompilerInner
+  #Builtin
   fn and(other i32) i32
 
-  #CompilerInner
+  #Builtin
   fn and(other i32&) i32
 
-  #CompilerInner
+  #Builtin
   fn or(other i32) i32
 
-  #CompilerInner
+  #Builtin
   fn or(other i32&) i32
 
-  #CompilerInner
+  #Builtin
   fn xor(other i32) i32
 
-  #CompilerInner
+  #Builtin
   fn xor(other i32&) i32
 
-  #CompilerInner
+  #Builtin
   fn shl(other i32) i32
 
-  #CompilerInner
+  #Builtin
   fn shl(other i32&) i32
 
-  #CompilerInner
+  #Builtin
   fn shr(other i32) i32
 
-  #CompilerInner
+  #Builtin
   fn shr(other i32&) i32
 
   ; 一元运算符
-  #CompilerInner
+  #Builtin
   fn neg() i32
 
-  #CompilerInner
+  #Builtin
   fn inv() i32
 
   fn to_string() String {
@@ -806,142 +806,142 @@ struct i32 {
 }
 
 #Impl(ToString)
-#CompilerInner
+#Builtin
 struct u32 {
-  #CompilerInner
+  #Builtin
   fn to_i8() i8
 
-  #CompilerInner
+  #Builtin
   fn to_u8() u8
 
-  #CompilerInner
+  #Builtin
   fn to_i16() i16
 
-  #CompilerInner
+  #Builtin
   fn to_u16() u16
 
-  #CompilerInner
+  #Builtin
   fn to_i32() i32
 
-  #CompilerInner
+  #Builtin
   fn to_u32() u32
 
-  #CompilerInner
+  #Builtin
   fn to_u64() u64
 
-  #CompilerInner
+  #Builtin
   fn to_f64() f64
 
-  #CompilerInner
+  #Builtin
   fn to_f32() f32
 
-  #CompilerInner
+  #Builtin
   fn to_bool() bool
 
   ; 算术运算符
-  #CompilerInner
+  #Builtin
   fn plus(other u32) u32
 
-  #CompilerInner
+  #Builtin
   fn plus(other u32&) u32
 
-  #CompilerInner
+  #Builtin
   fn minus(other u32) u32
 
-  #CompilerInner
+  #Builtin
   fn minus(other u32&) u32
 
-  #CompilerInner
+  #Builtin
   fn mul(other u32) u32
 
-  #CompilerInner
+  #Builtin
   fn mul(other u32&) u32
 
-  #CompilerInner
+  #Builtin
   fn div(other u32) u32
 
-  #CompilerInner
+  #Builtin
   fn div(other u32&) u32
 
-  #CompilerInner
+  #Builtin
   fn mod(other u32) u32
 
-  #CompilerInner
+  #Builtin
   fn mod(other u32&) u32
 
   ; 比较运算符
-  #CompilerInner
+  #Builtin
   fn eq(other u32) bool
 
-  #CompilerInner
+  #Builtin
   fn eq(other u32&) bool
 
-  #CompilerInner
+  #Builtin
   fn ne(other u32) bool
 
-  #CompilerInner
+  #Builtin
   fn ne(other u32&) bool
 
-  #CompilerInner
+  #Builtin
   fn lt(other u32) bool
 
-  #CompilerInner
+  #Builtin
   fn lt(other u32&) bool
 
-  #CompilerInner
+  #Builtin
   fn le(other u32) bool
 
-  #CompilerInner
+  #Builtin
   fn le(other u32&) bool
 
-  #CompilerInner
+  #Builtin
   fn gt(other u32) bool
 
-  #CompilerInner
+  #Builtin
   fn gt(other u32&) bool
 
-  #CompilerInner
+  #Builtin
   fn ge(other u32) bool
 
-  #CompilerInner
+  #Builtin
   fn ge(other u32&) bool
 
   ; 位运算符
-  #CompilerInner
+  #Builtin
   fn and(other u32) u32
 
-  #CompilerInner
+  #Builtin
   fn and(other u32&) u32
 
-  #CompilerInner
+  #Builtin
   fn or(other u32) u32
 
-  #CompilerInner
+  #Builtin
   fn or(other u32&) u32
 
-  #CompilerInner
+  #Builtin
   fn xor(other u32) u32
 
-  #CompilerInner
+  #Builtin
   fn xor(other u32&) u32
 
-  #CompilerInner
+  #Builtin
   fn shl(other u32) u32
 
-  #CompilerInner
+  #Builtin
   fn shl(other u32&) u32
 
-  #CompilerInner
+  #Builtin
   fn shr(other u32) u32
 
-  #CompilerInner
+  #Builtin
   fn shr(other u32&) u32
 
   ; 一元运算符
-  #CompilerInner
+  #Builtin
   fn neg() u32
 
-  #CompilerInner
+  #Builtin
   fn inv() u32
 
   fn to_string() String {
@@ -950,142 +950,142 @@ struct u32 {
 }
 
 #Impl(ToString)
-#CompilerInner
+#Builtin
 struct i64 {
-  #CompilerInner
+  #Builtin
   fn to_i8() i8
 
-  #CompilerInner
+  #Builtin
   fn to_u8() u8
 
-  #CompilerInner
+  #Builtin
   fn to_i16() i16
 
-  #CompilerInner
+  #Builtin
   fn to_u16() u16
 
-  #CompilerInner
+  #Builtin
   fn to_i32() i32
 
-  #CompilerInner
+  #Builtin
   fn to_u32() u32
 
-  #CompilerInner
+  #Builtin
   fn to_u64() u64
 
-  #CompilerInner
+  #Builtin
   fn to_f64() f64
 
-  #CompilerInner
+  #Builtin
   fn to_f32() f32
 
-  #CompilerInner
+  #Builtin
   fn to_bool() bool
 
   ; 算术运算符
-  #CompilerInner
+  #Builtin
   fn plus(other i64) i64
 
-  #CompilerInner
+  #Builtin
   fn plus(other i64&) i64
 
-  #CompilerInner
+  #Builtin
   fn minus(other i64) i64
 
-  #CompilerInner
+  #Builtin
   fn minus(other i64&) i64
 
-  #CompilerInner
+  #Builtin
   fn mul(other i64) i64
 
-  #CompilerInner
+  #Builtin
   fn mul(other i64&) i64
 
-  #CompilerInner
+  #Builtin
   fn div(other i64) i64
 
-  #CompilerInner
+  #Builtin
   fn div(other i64&) i64
 
-  #CompilerInner
+  #Builtin
   fn mod(other i64) i64
 
-  #CompilerInner
+  #Builtin
   fn mod(other i64&) i64
 
   ; 比较运算符
-  #CompilerInner
+  #Builtin
   fn eq(other i64) bool
 
-  #CompilerInner
+  #Builtin
   fn eq(other i64&) bool
 
-  #CompilerInner
+  #Builtin
   fn ne(other i64) bool
 
-  #CompilerInner
+  #Builtin
   fn ne(other i64&) bool
 
-  #CompilerInner
+  #Builtin
   fn lt(other i64) bool
 
-  #CompilerInner
+  #Builtin
   fn lt(other i64&) bool
 
-  #CompilerInner
+  #Builtin
   fn le(other i64) bool
 
-  #CompilerInner
+  #Builtin
   fn le(other i64&) bool
 
-  #CompilerInner
+  #Builtin
   fn gt(other i64) bool
 
-  #CompilerInner
+  #Builtin
   fn gt(other i64&) bool
 
-  #CompilerInner
+  #Builtin
   fn ge(other i64) bool
 
-  #CompilerInner
+  #Builtin
   fn ge(other i64&) bool
 
   ; 位运算符
-  #CompilerInner
+  #Builtin
   fn and(other i64) i64
 
-  #CompilerInner
+  #Builtin
   fn and(other i64&) i64
 
-  #CompilerInner
+  #Builtin
   fn or(other i64) i64
 
-  #CompilerInner
+  #Builtin
   fn or(other i64&) i64
 
-  #CompilerInner
+  #Builtin
   fn xor(other i64) i64
 
-  #CompilerInner
+  #Builtin
   fn xor(other i64&) i64
 
-  #CompilerInner
+  #Builtin
   fn shl(other i64) i64
 
-  #CompilerInner
+  #Builtin
   fn shl(other i64&) i64
 
-  #CompilerInner
+  #Builtin
   fn shr(other i64) i64
 
-  #CompilerInner
+  #Builtin
   fn shr(other i64&) i64
 
   ; 一元运算符
-  #CompilerInner
+  #Builtin
   fn neg() i64
 
-  #CompilerInner
+  #Builtin
   fn inv() i64
 
   fn to_string() String {
@@ -1127,142 +1127,142 @@ struct i64 {
 }
 
 #Impl(ToString)
-#CompilerInner
+#Builtin
 struct u64 {
-  #CompilerInner
+  #Builtin
   fn to_i8() i8
 
-  #CompilerInner
+  #Builtin
   fn to_u8() u8
 
-  #CompilerInner
+  #Builtin
   fn to_i16() i16
 
-  #CompilerInner
+  #Builtin
   fn to_u16() u16
 
-  #CompilerInner
+  #Builtin
   fn to_i32() i32
 
-  #CompilerInner
+  #Builtin
   fn to_u32() u32
 
-  #CompilerInner
+  #Builtin
   fn to_u64() u64
 
-  #CompilerInner
+  #Builtin
   fn to_f64() f64
 
-  #CompilerInner
+  #Builtin
   fn to_f32() f32
 
-  #CompilerInner
+  #Builtin
   fn to_bool() bool
 
   ; 算术运算符
-  #CompilerInner
+  #Builtin
   fn plus(other u64) u64
 
-  #CompilerInner
+  #Builtin
   fn plus(other u64&) u64
 
-  #CompilerInner
+  #Builtin
   fn minus(other u64) u64
 
-  #CompilerInner
+  #Builtin
   fn minus(other u64&) u64
 
-  #CompilerInner
+  #Builtin
   fn mul(other u64) u64
 
-  #CompilerInner
+  #Builtin
   fn mul(other u64&) u64
 
-  #CompilerInner
+  #Builtin
   fn div(other u64) u64
 
-  #CompilerInner
+  #Builtin
   fn div(other u64&) u64
 
-  #CompilerInner
+  #Builtin
   fn mod(other u64) u64
 
-  #CompilerInner
+  #Builtin
   fn mod(other u64&) u64
 
   ; 比较运算符
-  #CompilerInner
+  #Builtin
   fn eq(other u64) bool
 
-  #CompilerInner
+  #Builtin
   fn eq(other u64&) bool
 
-  #CompilerInner
+  #Builtin
   fn ne(other u64) bool
 
-  #CompilerInner
+  #Builtin
   fn ne(other u64&) bool
 
-  #CompilerInner
+  #Builtin
   fn lt(other u64) bool
 
-  #CompilerInner
+  #Builtin
   fn lt(other u64&) bool
 
-  #CompilerInner
+  #Builtin
   fn le(other u64) bool
 
-  #CompilerInner
+  #Builtin
   fn le(other u64&) bool
 
-  #CompilerInner
+  #Builtin
   fn gt(other u64) bool
 
-  #CompilerInner
+  #Builtin
   fn gt(other u64&) bool
 
-  #CompilerInner
+  #Builtin
   fn ge(other u64) bool
 
-  #CompilerInner
+  #Builtin
   fn ge(other u64&) bool
 
   ; 位运算符
-  #CompilerInner
+  #Builtin
   fn and(other u64) u64
 
-  #CompilerInner
+  #Builtin
   fn and(other u64&) u64
 
-  #CompilerInner
+  #Builtin
   fn or(other u64) u64
 
-  #CompilerInner
+  #Builtin
   fn or(other u64&) u64
 
-  #CompilerInner
+  #Builtin
   fn xor(other u64) u64
 
-  #CompilerInner
+  #Builtin
   fn xor(other u64&) u64
 
-  #CompilerInner
+  #Builtin
   fn shl(other u64) u64
 
-  #CompilerInner
+  #Builtin
   fn shl(other u64&) u64
 
-  #CompilerInner
+  #Builtin
   fn shr(other u64) u64
 
-  #CompilerInner
+  #Builtin
   fn shr(other u64&) u64
 
   ; 一元运算符
-  #CompilerInner
+  #Builtin
   fn neg() u64
 
-  #CompilerInner
+  #Builtin
   fn inv() u64
 
   fn to_string() String {
@@ -1297,108 +1297,108 @@ struct u64 {
 }
 
 #Impl(ToString)
-#CompilerInner
+#Builtin
 struct f64 {
-  #CompilerInner
+  #Builtin
   fn to_i8() i8
 
-  #CompilerInner
+  #Builtin
   fn to_u8() u8
 
-  #CompilerInner
+  #Builtin
   fn to_i16() i16
 
-  #CompilerInner
+  #Builtin
   fn to_u16() u16
 
-  #CompilerInner
+  #Builtin
   fn to_i32() i32
 
-  #CompilerInner
+  #Builtin
   fn to_u32() u32
 
-  #CompilerInner
+  #Builtin
   fn to_u64() u64
 
-  #CompilerInner
+  #Builtin
   fn to_f64() f64
 
-  #CompilerInner
+  #Builtin
   fn to_f32() f32
 
-  #CompilerInner
+  #Builtin
   fn to_bool() bool
 
   ; 算术运算符
-  #CompilerInner
+  #Builtin
   fn plus(other f64) f64
 
-  #CompilerInner
+  #Builtin
   fn plus(other f64&) f64
 
-  #CompilerInner
+  #Builtin
   fn minus(other f64) f64
 
-  #CompilerInner
+  #Builtin
   fn minus(other f64&) f64
 
-  #CompilerInner
+  #Builtin
   fn mul(other f64) f64
 
-  #CompilerInner
+  #Builtin
   fn mul(other f64&) f64
 
-  #CompilerInner
+  #Builtin
   fn div(other f64) f64
 
-  #CompilerInner
+  #Builtin
   fn div(other f64&) f64
 
-  #CompilerInner
+  #Builtin
   fn mod(other f64) f64
 
-  #CompilerInner
+  #Builtin
   fn mod(other f64&) f64
 
   ; 比较运算符
-  #CompilerInner
+  #Builtin
   fn eq(other f64) bool
 
-  #CompilerInner
+  #Builtin
   fn eq(other f64&) bool
 
-  #CompilerInner
+  #Builtin
   fn ne(other f64) bool
 
-  #CompilerInner
+  #Builtin
   fn ne(other f64&) bool
 
-  #CompilerInner
+  #Builtin
   fn lt(other f64) bool
 
-  #CompilerInner
+  #Builtin
   fn lt(other f64&) bool
 
-  #CompilerInner
+  #Builtin
   fn le(other f64) bool
 
-  #CompilerInner
+  #Builtin
   fn le(other f64&) bool
 
-  #CompilerInner
+  #Builtin
   fn gt(other f64) bool
 
-  #CompilerInner
+  #Builtin
   fn gt(other f64&) bool
 
-  #CompilerInner
+  #Builtin
   fn ge(other f64) bool
 
-  #CompilerInner
+  #Builtin
   fn ge(other f64&) bool
 
   ; 一元运算符
-  #CompilerInner
+  #Builtin
   fn neg() f64
 
   fn to_string() String {
@@ -1439,108 +1439,108 @@ struct f64 {
 }
 
 #Impl(ToString)
-#CompilerInner
+#Builtin
 struct f32 {
-  #CompilerInner
+  #Builtin
   fn to_i8() i8
 
-  #CompilerInner
+  #Builtin
   fn to_u8() u8
 
-  #CompilerInner
+  #Builtin
   fn to_i16() i16
 
-  #CompilerInner
+  #Builtin
   fn to_u16() u16
 
-  #CompilerInner
+  #Builtin
   fn to_i32() i32
 
-  #CompilerInner
+  #Builtin
   fn to_u32() u32
 
-  #CompilerInner
+  #Builtin
   fn to_u64() u64
 
-  #CompilerInner
+  #Builtin
   fn to_f64() f64
 
-  #CompilerInner
+  #Builtin
   fn to_f32() f32
 
-  #CompilerInner
+  #Builtin
   fn to_bool() bool
 
   ; 算术运算符
-  #CompilerInner
+  #Builtin
   fn plus(other f32) f32
 
-  #CompilerInner
+  #Builtin
   fn plus(other f32&) f32
 
-  #CompilerInner
+  #Builtin
   fn minus(other f32) f32
 
-  #CompilerInner
+  #Builtin
   fn minus(other f32&) f32
 
-  #CompilerInner
+  #Builtin
   fn mul(other f32) f32
 
-  #CompilerInner
+  #Builtin
   fn mul(other f32&) f32
 
-  #CompilerInner
+  #Builtin
   fn div(other f32) f32
 
-  #CompilerInner
+  #Builtin
   fn div(other f32&) f32
 
-  #CompilerInner
+  #Builtin
   fn mod(other f32) f32
 
-  #CompilerInner
+  #Builtin
   fn mod(other f32&) f32
 
   ; 比较运算符
-  #CompilerInner
+  #Builtin
   fn eq(other f32) bool
 
-  #CompilerInner
+  #Builtin
   fn eq(other f32&) bool
 
-  #CompilerInner
+  #Builtin
   fn ne(other f32) bool
 
-  #CompilerInner
+  #Builtin
   fn ne(other f32&) bool
 
-  #CompilerInner
+  #Builtin
   fn lt(other f32) bool
 
-  #CompilerInner
+  #Builtin
   fn lt(other f32&) bool
 
-  #CompilerInner
+  #Builtin
   fn le(other f32) bool
 
-  #CompilerInner
+  #Builtin
   fn le(other f32&) bool
 
-  #CompilerInner
+  #Builtin
   fn gt(other f32) bool
 
-  #CompilerInner
+  #Builtin
   fn gt(other f32&) bool
 
-  #CompilerInner
+  #Builtin
   fn ge(other f32) bool
 
-  #CompilerInner
+  #Builtin
   fn ge(other f32&) bool
 
   ; 一元运算符
-  #CompilerInner
+  #Builtin
   fn neg() f32
 
   fn to_string() String {
@@ -1550,50 +1550,50 @@ struct f32 {
 
 ; 内置泛型类型占位：实际布局与方法（_push/_len/... 等）由编译器合成
 
-#CompilerInner
+#Builtin
 struct Ref<T> {
   ; 内部处理
 }
 
-#CompilerInner
+#Builtin
 struct Ptr {
   ; 编译为 C void*
-  #CompilerInner
+  #Builtin
   fn to_int() u64
 }
 
-#CompilerInner
+#Builtin
 fn ptr_from_addr(addr u64) Ptr
 
 ; 私有（`_` 前缀约定）：Ptr + i64 字节偏移；编译器 GEP i8，不暴露给用户
 ; 取代 ptr_from_addr(p.to_int() + off.to_u64()) 的冗长写法（DRAFT §9.1：Ptr 算术不开放给用户）
-#CompilerInner
+#Builtin
 fn _ptr_offset(p Ptr, off i64) Ptr
 
-#CompilerInner
+#Builtin
 struct Rc<T> {
   ; 内部处理
 }
 
 ; Weak<T> 实例 layout = { ptr handle }，与 Rc<T> 同形
 ; handle 指向同一 Block；weak 计数维护 block 存活；不维护 payload 存活
-#CompilerInner
+#Builtin
 struct Weak<T> {
 }
 
 ; upgrade(w) Rc<T>?：尝试从 Weak 升级到 Rc；strong==0 → null；存活 → strong++ 返回 Some(Rc{handle})
-#CompilerInner
+#Builtin
 fn upgrade<T>(w Weak<T>) Rc<T>?
 
 ; same_ref:<T>(a, b) bool：地址相等比较（DRAFT §10）
 ; T 必须是 Rc<U> / Weak<U> / Array<U> / String / U&；标量禁
 ; 比对底层 handle 指针；空 Weak 与任何活句柄不等
-#CompilerInner
+#Builtin
 fn same_ref<T>(a T, b T) bool
 
 ; rc_leak_count() i64：返回当前未释放的 RC Block 数（Rc / Array / String / Weak 共用计数）
 ; 仅供测试 / 自检使用；正常程序不应依赖
-#CompilerInner
+#Builtin
 fn rc_leak_count() i64
 
 ; ptr_of:<T>(obj) Ptr：显式取裸指针（DRAFT §9.4）
@@ -1602,7 +1602,7 @@ fn rc_leak_count() i64
 ; T = Array<U>  → 指向元素首地址（同上）
 ; T = String     → 指向 UTF-32 码点首地址（不带 NUL 终止）
 ; T = 标量       → 报错
-#CompilerInner
+#Builtin
 fn ptr_of<T>(obj T) Ptr
 
 ; as_ref:<T>(box) T&：显式获取 Rc payload 的借用（spec §8.3.5.5）
@@ -1611,8 +1611,8 @@ fn ptr_of<T>(obj T) Ptr
 ; T 由实参推断；不接受 Rc<T>?
 ; DRAFT-heap-types §8.3a.6：同样接受 Heap<T>（句柄即裸 T*，返回的 T& 寿命绑定
 ;   到该 Heap 局部的所在作用域；签名仍写 Rc<T> 是因 v1 不支持函数重载，编译器
-;   在 #CompilerInner 分派时对 Heap arg 走 GEP 偏移 0 / 对 Rc arg 走偏移 8）
-#CompilerInner
+;   在 #Builtin 分派时对 Heap arg 走 GEP 偏移 0 / 对 Rc arg 走偏移 8）
+#Builtin
 fn as_ref<T>(box Rc<T>) T&
 
 ; copy_of:<T>(x T&) T：T& → T 显式深拷贝（spec §12.7.3）
@@ -1620,58 +1620,58 @@ fn as_ref<T>(box Rc<T>) T&
 ; 语义重载（DRAFT-const-mut [#1.I]）：T 同时可由 #Frozen T 实参传入，按 T& 看待，
 ;   返回的 owned T 不带 #Frozen 痕迹，作为唯一脱 const 出口
 ; T 不接受 owned T 自身（直接复用即可）
-#CompilerInner
+#Builtin
 fn copy_of<T>(x T&) T
 
 ; weak:<T>(box) Weak<T>：从 Rc 构造 Weak（spec §4.8.3.1 / §9）
 ; 接受 Rc<T> 或 Rc<T>?；null 输入返回空 Weak（永远 upgrade 失败）
 ; 复制 handle 指针；weak 计数 +1，不影响 strong
-#CompilerInner
+#Builtin
 fn weak<T>(box Rc<T>?) Weak<T>
 
 ; heap_some:<T>(v T) Heap<T>?：构造 _has=true 的 Heap<T>?（DRAFT-heap-types §8.3a.4.2）
 ; 等价于 `Nullable<Heap<T>> { _has=true, _value=Heap:<T>(v) }` 但走 baked intrinsic
 ; 是 Heap<T> → Heap<T>? 唯一合法构造路径之一（隐式 widen 由 E4027 禁；详见 §8a.2）
-#CompilerInner
+#Builtin
 fn heap_some<T>(v T) Heap<T>?
 
 ; heap_null:<T>() Heap<T>?：构造 _has=false 的 Heap<T>?（DRAFT-heap-types §8.3a.4.2）
 ; 等价于 `let h Heap<T>? = null` 的显式 turbofish 形态，便于类型推断 / 表达式位置使用
-#CompilerInner
+#Builtin
 fn heap_null<T>() Heap<T>?
 
 ; Array<T> 实例 layout 由编译器内部管理：{ ptr handle }，handle 指向 Block
 ; （Phase 1b：所有方法编译器特例化，主体不再读 yux 端字段）
-#CompilerInner
+#Builtin
 struct Array<T> {
-  #CompilerInner
+  #Builtin
   fn len() i64
 
-  #CompilerInner
+  #Builtin
   fn cap() i64
 
-  #CompilerInner
+  #Builtin
   fn is_empty() bool
 
-  #CompilerInner
+  #Builtin
   fn clear()
 
-  #CompilerInner
+  #Builtin
   fn set_len(new_len i64)
 
-  #CompilerInner
+  #Builtin
   fn push(value T)
 
-  #CompilerInner
+  #Builtin
   fn get(i i64) T&
 
-  #CompilerInner
+  #Builtin
   fn first() T
 
-  #CompilerInner
+  #Builtin
   fn last() T
 
-  #CompilerInner
+  #Builtin
   fn pop() T
 }
 
@@ -1938,10 +1938,10 @@ struct StringBuilder {
 }
 
 #Impl(ToString)
-#CompilerInner
+#Builtin
 struct bool {
   ; 一元运算符
-  #CompilerInner
+  #Builtin
   fn not() bool
 
   fn to_string() String {
@@ -2016,7 +2016,7 @@ fn eprintln<T : ToString>(x T) {
 }
 
 ; ==================== Phase 4b：String 断言（纯 yux）====================
-; 与 assert.yux 中的 #CompilerInner 同名/同失败语义，但走 yux 实现路径。
+; 与 assert.yux 中的 #Builtin 同名/同失败语义，但走 yux 实现路径。
 ; dispatcher（compiler_call.cpp）在参数严格匹配的非泛型重载存在时优先选这里，
 ; 绕开 compileTestAssertEq —— 后者仅处理 i8..u64 / f32 / f64 / bool。
 ;
@@ -2045,7 +2045,7 @@ fn assert_starts_with(s String&, prefix String&) {
 }
 
 ; ==================== DRAFT-spec-reflect Phase 2：反射 metadata 数据类型 ====================
-; Type / Field / Method / Variant: #CompilerInner struct, 布局由编译器硬编码.
+; Type / Field / Method / Variant: #Builtin struct, 布局由编译器硬编码.
 ; SDK 仅声明 user-visible 字段; fields/methods/variants 隐藏 slot
 ; 由 ensureReflectTypeGlobal codegen 直接写入, 用户通过 Counter::fields 静态路径访问.
 ; layout (编译器硬编码):
@@ -2058,25 +2058,25 @@ fn assert_starts_with(s String&, prefix String&) {
 ;     反射元数据类型均为纯值 copy（rodata → stack），不含 T&，避免引用语义复杂性.
 ;     Field 目前仅含 name；type/offset 待后续有需求时再加.
 
-#CompilerInner
+#Builtin
 struct Type {
   #Frozen
   name String
 }
 
-#CompilerInner
+#Builtin
 struct Field {
   #Frozen
   name String
 }
 
-#CompilerInner
+#Builtin
 struct Method {
   #Frozen
   name String
 }
 
-#CompilerInner
+#Builtin
 struct Variant {
   #Frozen
   name String

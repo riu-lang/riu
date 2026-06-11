@@ -205,18 +205,18 @@ struct ToString {
 
 `ToString` 是 v0.6 字符串模板 `"$expr"` 的"可插值"约束，属强契约；用户类型必须显式 `#Impl(ToString)` 才会进入插值路径，避免 debug-string 被误命中显示文本。
 
-§12.7.1.2 各内置类型在 `base.yux` 内以 `#Impl(ToString) struct T { ... fn to_string() String { ... } ... }` 形态显式实现；方法体可走 `#CompilerInner`（§11.2）或直接 yux 实现，二者并存。当前实施：
+§12.7.1.2 各内置类型在 `base.yux` 内以 `#Impl(ToString) struct T { ... fn to_string() String { ... } ... }` 形态显式实现；方法体可走 `#Builtin`（§11.2）或直接 yux 实现，二者并存。当前实施：
 
 ```yux
 #Impl(ToString)
-#CompilerInner
+#Builtin
 struct i64 {
   ; ... 内置算术 / 转换方法 ...
   fn to_string() String { ... }   ; yux 实现
 }
 
 #Impl(ToString)
-#CompilerInner
+#Builtin
 struct String {
   ; ... 内置方法 ...
   fn to_string() String { $ }     ; 恒等返回
@@ -225,7 +225,7 @@ struct String {
 ; 同理覆盖 i8 / u8 / i16 / u16 / i32 / u32 / u64 / f32 / f64 / bool
 ```
 
-§12.7.1.3 不引入新注解 `#Builtin`；MILESTONE / TARGETS 中的"`#Builtin`"措辞按 `#CompilerInner` 统一。
+§12.7.1.3 v1 中原注解 `#CompilerInner` 已于 2026-06-11 重命名为 `#Builtin`（§11.2）；原"不引入新注解 `#Builtin`"条款随此次重命名自然解除。
 
 ### §12.7.2 `Any`（已删除）
 
@@ -258,7 +258,7 @@ draft Any { }    ; v0.x，已废
 - 与 `as_ref` 不互锁：原 `x` 视图与返回的 owned 副本各自独立析构。
 - **不**接受 `Ptr`；turbofish 可省，T 由实参推断。
 
-§12.7.3.3 占位签名置于 `base.yux`，`#CompilerInner` 形态；编译器在调用点合成 IR（§11.2.3）。
+§12.7.3.3 占位签名置于 `base.yux`，`#Builtin` 形态；编译器在调用点合成 IR（§11.2.3）。
 
 ```yux
 fn use_owned<T : D>(x T) { ... }

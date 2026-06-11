@@ -39,7 +39,7 @@
     - [x] **10c** SDK：`sdk/yux/src/yux/core/exit.yux`（`#NoReturn fn exit(code u32)` 转发 `_exit(code.to_i32())`） ✅；`sdk/yux/src/yux/core/panic.yux`（`#NoReturn fn panic(msg String)` 调 `_yux_panic_failed(msg)`，写 stdout `panic: <msg>\n` 后 `RaiseException(0xE0FA1750)`，普通 build 无 SEH wrapper → OS 终止） ✅。烟测：`exit(7u32)` 退出码 7；`panic("boom")` 输出 `panic: boom\n` 后非零退出。TODO：stderr 通道（spec §8.6）待 STD_ERROR_HANDLE 接通。
     - [x] **10d** 编译器：`#NoReturn` 语义校验
         - [x] **10d-1** 头部级互斥（fn / structImpl 内方法）：E7012 retType 禁、E7013 与 `#Fallible` 互斥；`include/error_code.h` 注册 E7012/E7013/E7014；`tests/cases/diag_throw_e7012_*` + `diag_throw_e7013_*`（2026-05-10）
-        - [x] **10d-2** 流终止分析：E7014（`#NoReturn` 函数体可达末尾），最小覆盖 ret / loop 无 break / if-else 全分支 / match 全 arm / 已知 `#NoReturn` callee 调用；`src/analyzer/flow_terminate_checker.{h,cpp}` 在 `compileFn` / `compileMethod` 入口随 `checkBorrows` 一同调用。`FnSymbolInfo` 新增 `isNoReturn` 槽，extern fnHeader 现允许 `#NoReturn`（`externFnAllowedAnnos = {CompilerInner, NoReturn}`），E7012 同步在 extern 上生效；E7013 暂不在 extern 上触发（`#Fallible` 仍排除在 extern 白名单外）。SDK：`extern ExitProcess` / `extern RaiseException` 标 `#NoReturn`；`exit(u32)` 直接调 `ExitProcess(code)`（去掉 `_exit` 间接层 + `to_i32/to_u32`）；`_exit(i32)` / `_yux_panic_failed(String)` 统一标 `#NoReturn`。`tests/cases/diag_throw_e7014_noreturn_falls_through` + `diag_throw_e7014_noreturn_loop_with_break`（2026-05-10）。备注：trailing void-typed 表达式（如末尾的无 `;` 形 `if cond { panic(...) }`）会被 ast_builder 合成为 `ret <expr>`，落入 `StatementRetNode` 路径——属预期行为，E7014 仅捕获**结构性 fall-through**。
+        - [x] **10d-2** 流终止分析：E7014（`#NoReturn` 函数体可达末尾），最小覆盖 ret / loop 无 break / if-else 全分支 / match 全 arm / 已知 `#NoReturn` callee 调用；`src/analyzer/flow_terminate_checker.{h,cpp}` 在 `compileFn` / `compileMethod` 入口随 `checkBorrows` 一同调用。`FnSymbolInfo` 新增 `isNoReturn` 槽，extern fnHeader 现允许 `#NoReturn`（`externFnAllowedAnnos = {Builtin, NoReturn}`），E7012 同步在 extern 上生效；E7013 暂不在 extern 上触发（`#Fallible` 仍排除在 extern 白名单外）。SDK：`extern ExitProcess` / `extern RaiseException` 标 `#NoReturn`；`exit(u32)` 直接调 `ExitProcess(code)`（去掉 `_exit` 间接层 + `to_i32/to_u32`）；`_exit(i32)` / `_yux_panic_failed(String)` 统一标 `#NoReturn`。`tests/cases/diag_throw_e7014_noreturn_falls_through` + `diag_throw_e7014_noreturn_loop_with_break`（2026-05-10）。备注：trailing void-typed 表达式（如末尾的无 `;` 形 `if cond { panic(...) }`）会被 ast_builder 合成为 `ret <expr>`，落入 `StatementRetNode` 路径——属预期行为，E7014 仅捕获**结构性 fall-through**。
     - [x] **10e** 编译器：`#Fallible(E)` 类型路由
         - [x] **10e-1** AST 扩展 `ExprCallNode._errPropagate`，ast_builder 从 g4 `errPropagate=SymbolExcl?` 槽读入（exprCall / exprCallTrailingOnly 两路）
         - [x] **10e-2** 声明侧：`FnSymbolInfo.fallibleErrType` 槽位；visitProgram 预扫 fn header 的 `#Fallible(E)` 单参；structImpl 方法同路径；E7008（成功值类型 == 错误类型）在头部注册时按字符串比较触发
@@ -165,13 +165,13 @@ fn parse_int(s String) i32 { ... }
 | 顶层 `fn` | ✅ |
 | `structImpl` 内方法 | ✅ |
 | `extern` 块内 `fnHeader` | 推到 Phase 7（FFI 边界）决 |
-| `#CompilerInner` 函数 | ❌ 互斥（编译器 baked builtin 不进错误传播） |
+| `#Builtin` 函数 | ❌ 互斥（编译器 baked builtin 不进错误传播） |
 | `#Test` 函数 | ❌ 互斥（断言走 SEH 路径，§11.3.5.3） |
 | `draft` 内 `fn` 签名 | 暂 ❌；Phase 4/5 复审 |
 
 ### [#3.E]（前置依赖）§11 注解参数语法：仅解禁单参数糖
 
-**注解机制方向性铺垫**（[#3.E.方向]）：`#Name` 概念上指向一个 `Name` struct；v1 仍是**编译器内置名集合**（`#CompilerInner` / `#Test` / `#DraftLike` / `#Fallible`），用户自定义注解（§11.6）的引入路径不变 —— 仍按 §11.6 Open Issue 推进。本草案**不**预先承诺用户自定义路径，仅把语法形态留出空间。
+**注解机制方向性铺垫**（[#3.E.方向]）：`#Name` 概念上指向一个 `Name` struct；v1 仍是**编译器内置名集合**（`#Builtin` / `#Test` / `#DraftLike` / `#Fallible`），用户自定义注解（§11.6）的引入路径不变 —— 仍按 §11.6 Open Issue 推进。本草案**不**预先承诺用户自定义路径，仅把语法形态留出空间。
 
 本草案落地时**同步修改**的规范条款（最小化）：
 
@@ -722,7 +722,7 @@ fn exit(code u32) { ... }    ; stdlib，路径 yux.core.exit
 | `exit` vs `panic` 怎么选 | `panic("msg")` = 这是 bug / 不变式破坏，stderr 自动打模板；`exit(code)` = 业务正常终止（用户主动选择退出码），不打模板。用户视场景选。 |
 | `exit` vs `#Fallible` 让 main 错误退出 | `#Fallible` 适合"这个函数业务上可能失败、上层可能想 catch / try"；`exit(N)` 适合"已经决定立即终止、上层无 catch 必要"。两者并存、按场景选。 |
 
-**与 `_exit` 内部名的关系**：本草案多处引用的 `_exit(1)`（[#5.A] / [#8.F] / 既有 §3.10.2）当前是 yux 编译器**内部**约定（`#CompilerInner`），用户不可调；本节 `exit(code)` 是**公开** stdlib 函数。实施层 `_exit(N)` 与 `exit(N)` 可共用同一底层 syscall（POSIX 上是 `_exit(2)` / Windows 上是 `ExitProcess`）；命名分裂仅为区分"内部触发 vs 用户主动"。落稿 Phase 10 时若两者实施完全等价，可考虑合并；本草案保留两个名字。
+**与 `_exit` 内部名的关系**：本草案多处引用的 `_exit(1)`（[#5.A] / [#8.F] / 既有 §3.10.2）当前是 yux 编译器**内部**约定（`#Builtin`），用户不可调；本节 `exit(code)` 是**公开** stdlib 函数。实施层 `_exit(N)` 与 `exit(N)` 可共用同一底层 syscall（POSIX 上是 `_exit(2)` / Windows 上是 `ExitProcess`）；命名分裂仅为区分"内部触发 vs 用户主动"。落稿 Phase 10 时若两者实施完全等价，可考虑合并；本草案保留两个名字。
 
 **[#8.H] 诊断码新增**
 

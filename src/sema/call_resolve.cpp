@@ -47,8 +47,8 @@ static bool overloadMatchesFlexible(const vector<p<ExprNode>>& args, const vecto
             if (isIntTypeName(params[i].name)) continue;
             try {
                 if (paramAccepts(params[i], args[i]->getType())) continue;
-            } catch (...) {
-            } // NOLINT(bugprone-empty-catch)
+            } catch (...) {  // NOLINT(bugprone-empty-catch)
+            }
             return false;
         }
         try {
@@ -117,8 +117,8 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
                 if (isIntTypeName(c->params[i + 1].name)) continue;
                 try {
                     if (paramAccepts(c->params[i + 1], args[i]->getType())) continue;
-                } catch (...) {
-                } // NOLINT(bugprone-empty-catch)
+                } catch (...) {  // NOLINT(bugprone-empty-catch)
+                }
                 return false;
             }
             try {
@@ -549,10 +549,10 @@ void validateFnSymbolVisibility(const FnSymbolInfo* fnSymbol, const string& curr
     }
 }
 
-// ==================== CompilerInner intrinsic arity (Phase 3.3.2.c) ====================
-// 原 compileGenericFunctionCall 的 #CompilerInner 分支顶部散落的 typeArgs/args
+// ==================== Builtin intrinsic arity (Phase 3.3.2.c) ====================
+// 原 compileGenericFunctionCall 的 #Builtin 分支顶部散落的 typeArgs/args
 // 计数检查 (~12 处 throw 跨 7 个 fnName) 收口到单一 helper.
-void validateCompilerInnerIntrinsicShape(const string& fnName, size_t typeArgsCount, size_t argsCount, int line,
+void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, size_t argsCount, int line,
                                          int col) {
     if (fnName == "assert_eq") {
         if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName);
@@ -597,7 +597,7 @@ void validateCompilerInnerIntrinsicShape(const string& fnName, size_t typeArgsCo
         if (argsCount != 0) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(0));
         return;
     }
-    // 未知 CompilerInner intrinsic
+    // 未知 Builtin intrinsic
     throw YuxError(line, col, ErrorCode::E6017, fnName);
 }
 
@@ -657,14 +657,14 @@ void validateArrayMethodCall(const TypeInfo& baseType, const string& member, siz
     // 未知 member: 由 Compiler 端返回 nullptr fall-through 到 builtin/sdk 方法路径
 }
 
-// ==================== CompilerInner intrinsic 类型形态校验 (Phase 3.3.2.d) ====================
-// 原 compileGenericFunctionCall 的 #CompilerInner 分支内散落的 E6028 / E6029 / E6032
+// ==================== Builtin intrinsic 类型形态校验 (Phase 3.3.2.d) ====================
+// 原 compileGenericFunctionCall 的 #Builtin 分支内散落的 E6028 / E6029 / E6032
 // 校验 (跨 same_ref / ptr_of / as_ref / weak / copy_of 五个 fnName) 收口到单一 helper.
-void validateCompilerInnerIntrinsicTypeShape(const string& fnName, const vector<TypeInfo>& typeArgs,
+void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeInfo>& typeArgs,
                                              const vector<TypeInfo>& argTypes, const vector<p<ExprNode>>& argNodes,
                                              FileNode* file, FileNode* sdkFile, int line, int col) {
     if (fnName == "same_ref" || fnName == "ptr_of") {
-        // arity / typeArgs 计数已由 validateCompilerInnerIntrinsicShape 保证
+        // arity / typeArgs 计数已由 validateBuiltinIntrinsicShape 保证
         const auto& T = typeArgs[0];
         bool isHeapHandle =
             T.isRc() || T.isWeak() || T.isArrayGeneric() || (T.name == "String" && T.kind == TypeKind::Normal);
@@ -755,8 +755,8 @@ void validateCompilerInnerIntrinsicTypeShape(const string& fnName, const vector<
     // 其他 intrinsic (assert_eq / size_of / upgrade) 无类型形态校验, no-op
 }
 
-// ==================== CompilerInner 操作符方法 arity / 类型域 (Phase 3.3.2.e) ====================
-// 覆盖 compileBuiltinTypeMethodCall 内 isCompilerInnerMethod 分支:
+// ==================== Builtin 操作符方法 arity / 类型域 (Phase 3.3.2.e) ====================
+// 覆盖 compileBuiltinTypeMethodCall 内 isBuiltinMethod 分支:
 //   - 17 处 E6045 arity != 1 (二元 op)
 //   - 1 处 E3070 inv on float
 void validateOperatorMethodCall(const string& member, const TypeInfo& baseType, size_t argsCount, int line, int col) {
@@ -896,8 +896,8 @@ void validateMatchArms(EnumDeclNode* enumDecl, const string& enumName, p<ExprMat
                     if (!alias->isGeneric() && alias->target()) {
                         try {
                             if (alias->target()->getType().name == enumName) aliasOk = true;
-                        } catch (...) {
-                        } // NOLINT(bugprone-empty-catch)
+                        } catch (...) {  // NOLINT(bugprone-empty-catch)
+                        }
                     }
                 }
             }

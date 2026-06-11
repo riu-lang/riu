@@ -50,8 +50,8 @@
 ### 4a — 语法 / SDK 配套
 
 - `src/yux.g4`：`retType=type` → `retType=typeWithRef`；重新生成 ANTLR parser
-- `src/ast_builder.cpp`：3 处 retType 处理切到 `buildTypeWithRef`；新增 E2009 检查（非 `#CompilerInner` 不许 retType 含 `&`）
-- `sdk/yux/src/yux/core/base.yux`：声明 `#CompilerInner fn as_ref<T>(box Box<T>) T&`
+- `src/ast_builder.cpp`：3 处 retType 处理切到 `buildTypeWithRef`；新增 E2009 检查（非 `#Builtin` 不许 retType 含 `&`）
+- `sdk/yux/src/yux/core/base.yux`：声明 `#Builtin fn as_ref<T>(box Box<T>) T&`
 
 ### 4b — Codegen
 
@@ -67,7 +67,7 @@
 
 ### 4d — 错误码
 
-- `E2009`：用户函数 retType 含 `&` 但无 `#CompilerInner`
+- `E2009`：用户函数 retType 含 `&` 但无 `#Builtin`
 - `E2010`：Array<T>& 借用期内调用修改方法
 
 ## Phase 5 — 反例测试集
@@ -85,7 +85,7 @@
 - `as_ref:<T>(box) T&` baked：`compileGenericFnCall` `as_ref` 分支；`borrow_checker::rootFromRefInit` `as_ref` 识别；`compileStatementDeclareAssign` T& RHS 白名单
 - 借用块作用域栈：`borrow_checker::Scope { declared, borrows }`，`pushScope` / `popScope` 在 `visitBlock` 包裹
 - Array 借用期修改检测：`borrow_checker::checkArrayMutation`，挂在 `visitExpr` 对 `ExprCallNode` 的下钻
-- retType 含 `&` 控制：`ast_builder::visitFunctionHeader` 检查 `retType->getType().isRef() && !hasAnno("CompilerInner")` 抛 E2009
+- retType 含 `&` 控制：`ast_builder::visitFunctionHeader` 检查 `retType->getType().isRef() && !hasAnno("Builtin")` 抛 E2009
 
 ## TODO（v0.4 未覆盖，记入后续版本）
 

@@ -5,7 +5,7 @@
 //
 // Phase 3.2a：visitExpr 在每个表达式节点上写入 `setResolvedType(getType())`,
 // 覆盖范围扩到 file 顶层 fn body + struct impl 的方法/析构 body。
-// 泛型模板 / #CompilerInner 仍跳过 —— 它们的 codegen 路径会自行写 resolvedType,
+// 泛型模板 / #Builtin 仍跳过 —— 它们的 codegen 路径会自行写 resolvedType,
 // 留作本步 known-issue (lambda 反推 / 泛型 applySubst 的"运行时再写")。
 //
 // Phase 3.2b 前置 (本步)：将 `getType()` 抛出的"已迁移诊断"从静默吞掉改为
@@ -121,28 +121,28 @@ EnumDeclNode* lookupEnumIn(p<FileNode> file, p<FileNode> sdkFile, const string& 
 }
 
 // Bucket 4 (CURRENT-check.md): 与 lookupEnumIn 同款的 struct decl 三段查找.
-// FileNode::getStructDecl 默认过滤 #CompilerInner (Rc/Ref/Ptr/Array...) ——
+// FileNode::getStructDecl 默认过滤 #Builtin (Rc/Ref/Ptr/Array...) ——
 // SemaPass 走 E6011 arity 校验等需要看到这些占位, 这里统一传 true。
 // wildcardImports 已在 getStructDecl 内部覆盖, 只需再补 sdkFile 一档。
 StructDeclNode* lookupStructIn(p<FileNode> file, p<FileNode> sdkFile, const string& name) {
     if (!file) return nullptr;
-    if (auto* d = file->getStructDecl(name, /*includeCompilerInner=*/true)) return d;
+    if (auto* d = file->getStructDecl(name, /*includeBuiltin=*/true)) return d;
     if (sdkFile && sdkFile != file) {
-        if (auto* d = sdkFile->getStructDecl(name, /*includeCompilerInner=*/true)) return d;
+        if (auto* d = sdkFile->getStructDecl(name, /*includeBuiltin=*/true)) return d;
     }
     return nullptr;
 }
 
-// Phase 3.3.2.f: 与 Compiler::isCompilerInnerMethod 等价的本地版本.
+// Phase 3.3.2.f: 与 Compiler::isBuiltinMethod 等价的本地版本.
 // 仅查 sdkFile 的 struct impl (内建运算符方法都注册在 SDK 上), 不存在
 // 时返回 false. Sema 不依赖 Compiler 成员, 这里复制规则.
-bool isCompilerInnerMethodIn(FileNode* sdkFile, const string& structName, const string& methodName) {
+bool isBuiltinMethodIn(FileNode* sdkFile, const string& structName, const string& methodName) {
     if (!sdkFile) return false;
     auto structImpl = sdkFile->getStructImpl(structName);
     if (!structImpl) return false;
     for (auto& m : structImpl->methods()) {
         if (m->header()->name().getText() == methodName) {
-            return m->header()->hasAnno("CompilerInner");
+            return m->header()->hasAnno("Builtin");
         }
     }
     return false;
@@ -235,10 +235,10 @@ void SemaPass::run() {
     // 必须在遍历 fn 之前: 一旦命中, 直接抛错.
     sema::validateAliases(_file);
     for (auto& fn : _file->getFunctions()) {
-        // 泛型模板 / #CompilerInner 不走常规 codegen, 在 Compiler::compile 里也
+        // 泛型模板 / #Builtin 不走常规 codegen, 在 Compiler::compile 里也
         // 是被跳过的; SemaPass 这里同步跳过, 保持与 codegen 覆盖一致。
         if (fn->header()->isGeneric()) continue;
-        if (fn->header()->hasAnno("CompilerInner")) continue;
+        if (fn->header()->hasAnno("Builtin")) continue;
         visitFn(fn);
     }
     // struct impl 内的方法 / 析构 body 同样要走 SemaPass —— 它们的 codegen
@@ -252,7 +252,7 @@ void SemaPass::run() {
         for (auto& m : impl->methods()) {
             // 注：m->header()->isGeneric() 不再单独跳过——line 162 已跳过整个 generic impl,
             // 单方法泛型形态目前不支持 (Phase 6D-tail 清理)。
-            if (m->header()->hasAnno("CompilerInner")) continue;
+            if (m->header()->hasAnno("Builtin")) continue;
             // Phase 6A: 砍同名 ctor —— `fn TypeName(...)` 定义形态废除,
             // 构造唯一通道收敛到 `#Static fn`. `#Static fn TypeName(...)` 形态
             // 仍合法 (虽不推荐, 与 `#Static fn make()` 等并行).
@@ -1086,11 +1086,11 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 auto* structDecl = _file->getStructDecl(fnName);
                 if (!structDecl && _sdkFile) structDecl = _sdkFile->getStructDecl(fnName);
 
-                // Phase 3.3.2.f: CompilerInner 泛型 intrinsic 的 shape + type-shape 校验.
+                // Phase 3.3.2.f: Builtin 泛型 intrinsic 的 shape + type-shape 校验.
                 // 接管 E6017/E6018/E6024-E6029/E6032 实际抛出点 (与 Compiler::compileGenericFunctionCall
-                // 的 #CompilerInner 分支镜像).
+                // 的 #Builtin 分支镜像).
                 // 限制:
-                //   * 仅在 callee 是 ID-literal 且解析到泛型 fn 且 fn 头部 hasAnno(CompilerInner) 时接管;
+                //   * 仅在 callee 是 ID-literal 且解析到泛型 fn 且 fn 头部 hasAnno(Builtin) 时接管;
                 //   * typeArgs 仅在显式 (`f:<T>(...)`) 时由 SemaPass 取; 无显式 typeArgs (推断路径)
                 //     需要 sema::inferGenericFnTypeArgs, 它会抛 E6012/E6013, 而这两码当前仍归 Compiler
                 //     兜底 (3.3.1.b 未让 SemaPass 接管). 推断路径整体跳过, 留 Compiler 抛.
@@ -1098,7 +1098,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 if (!structDecl) {
                     auto* genFn = _file->getGenericFunction(fnName);
                     if (!genFn && _sdkFile) genFn = _sdkFile->getGenericFunction(fnName);
-                    if (genFn && genFn->header()->hasAnno("CompilerInner") && hasTypeArgs) {
+                    if (genFn && genFn->header()->hasAnno("Builtin") && hasTypeArgs) {
                         vector<TypeInfo> typeArgs;
                         bool typeArgsOk = true;
                         try {
@@ -1120,10 +1120,10 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                         }
 
                         if (typeArgsOk) {
-                            sema::validateCompilerInnerIntrinsicShape(fnName, typeArgs.size(), n->getArgs().size(),
+                            sema::validateBuiltinIntrinsicShape(fnName, typeArgs.size(), n->getArgs().size(),
                                                                       line, col);
                             if (argTypesOk) {
-                                sema::validateCompilerInnerIntrinsicTypeShape(fnName, typeArgs, argTypes, n->getArgs(),
+                                sema::validateBuiltinIntrinsicTypeShape(fnName, typeArgs, argTypes, n->getArgs(),
                                                                               _file, _sdkFile, line, col);
                             }
                         }
@@ -1156,7 +1156,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                         if (genericFn) fnOwner = _sdkFile;
                     }
                     if (genericFn && genericFn->header()->isGeneric() &&
-                        !genericFn->header()->hasAnno("CompilerInner")) {
+                        !genericFn->header()->hasAnno("Builtin")) {
                         vector<TypeInfo> typeArgs;
                         bool argTypesOk = true;
                         vector<TypeInfo> argTypes;
@@ -1352,7 +1352,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                     // Phase 3.3.2.f: 镜像 Compiler::compileMethodCall 的 baseType 派发,
                     // 主动调用 3.3.2.a / 3.3.2.e 抠出的 helper.
                     //   * baseType.isArrayGeneric() → validateArrayMethodCall (E3055/E6040-E6044)
-                    //   * isBuiltinType + isCompilerInnerMethodIn → validateOperatorMethodCall (E6045/E3070)
+                    //   * isBuiltinType + isBuiltinMethodIn → validateOperatorMethodCall (E6045/E3070)
                     // baseType 经 getType() 计算; 任一异常 (lambda 形参等) → 跳过, 交 Compiler 兜底.
                     // SemaPass 走非泛型 fn / 非泛型 impl 路径, 不需要 applySubst (替换栈为空).
                     TypeInfo baseType;
@@ -1371,7 +1371,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                             bool baseIsLvalue = isLvalueArrayBase(dotCallee->baseExpr());
                             sema::validateArrayMethodCall(baseType, member, argsCount, baseIsLvalue, dline, dcol);
                         } else if (isBuiltinType(baseType.name) &&
-                                   isCompilerInnerMethodIn(_sdkFile, baseType.name, member)) {
+                                   isBuiltinMethodIn(_sdkFile, baseType.name, member)) {
                             sema::validateOperatorMethodCall(member, baseType, argsCount, dline, dcol);
                         } else if (baseType.isDyn() && _yux) {
                             // Bucket 4 收口 (CURRENT-check.md): Dyn<D> 方法调用 (E1131/E6016/

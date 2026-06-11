@@ -17,6 +17,16 @@
 
 ---
 
+---
+
+## 2026-06-11 —— `#CompilerInner` 重命名为 `#Builtin`
+
+- **修改 §11.2**：注解名 `#CompilerInner` → `#Builtin`，所有子节、交叉引用同步更新。
+- **修改 §12.7.1.3**：原"不引入新注解 `#Builtin`"条款随本次重命名自然解除。
+- **修改**：`docs/`、`docs/spec/`、`docs/dev/`、`docs/spec/draft/`、`MILESTONE.md` 全仓文档同步重命名。
+- **修改**：`sdk/yux/src/yux/core/base.yux`、`assert.yux` 注解名同步更新。
+- **冲突 / 兼容**：破坏性变更——所有引用 `#CompilerInner` 的 yux 源码必须改为 `#Builtin`。用户代码原则上不应使用 `#CompilerInner`（§11.2.2.3），故无用户侧迁移成本。编译器内部标识符（`isBuiltinMethod`、`validateBuiltinIntrinsicShape` 等）同步重命名。
+
 ## 2026-06-10 —— 闭包捕获 sema 解锁 + yux-check 漏报清零（c90064d）
 
 - **修改 §4.11.6**：新增 §4.11.6.5 `Heap<T>` 非空形态闭包捕获条款；顶部加注引用 `DRAFT-closure-capture.md`。
@@ -46,7 +56,7 @@
 
 ## 2026-06-09 —— 编译期反射（内置 spec Reflect）落地（8edfeee）
 
-- **新增 §13**（反射）：内置 spec `Reflect` + 编译器隐式 `#Impl(Reflect)`、反射数据类型 `Type` / `Field` / `Method` / `Variant`（`#CompilerInner`）、`#Static #Frozen` 字段段（`type` / `fields` / `methods` / `variants`）仅类型形访问、`Field.value` sema 期改名、`.rodata` emit 与 `--gc-sections` DCE、`#Reflect` 注解防 DCE。
+- **新增 §13**（反射）：内置 spec `Reflect` + 编译器隐式 `#Impl(Reflect)`、反射数据类型 `Type` / `Field` / `Method` / `Variant`（`#Builtin`）、`#Static #Frozen` 字段段（`type` / `fields` / `methods` / `variants`）仅类型形访问、`Field.value` sema 期改名、`.rodata` emit 与 `--gc-sections` DCE、`#Reflect` 注解防 DCE。
 - **修改 §11**（编译期注解）：新增 §11.12 `#Reflect` 注解（零参，仅附着 structDecl）+ 更新 §11.5.1 注解表。
 - **修改 §12.1.1.1 / §12.8 项 14**：spec body 内 `#Static #Frozen` 字段段**允许**（Reflect spec 的 type/fields/methods/variants 即以此形态声明）；关联常量仍留 `DRAFT-data-struct.md`。
 - **修改 附录 D**：新增 E3133 / E3134 / E3135 / E3136（E3136 设计消解，未触发）。
@@ -213,7 +223,7 @@
 - **行为面新增**（DRAFT-heap-types Phase 8 / FFI handoff）：
   - `ptr_of:<Heap<T>>(h Heap<T>) Ptr`：把 Heap 单所有权交给裸 Ptr——返回 `h` 的裸 `T*`，同时把 source slot 写 null 并从 `_scopeVars` 摘除，避免作用域尾 `__yux_heap_free` 与 FFI 端 free 双释放。sema 只接受 ID-literal 实参 (E6028)；同时把 `T.isHeap()` 加入 `ptr_of` 合法 `T` 集合（`same_ref` 不接受 Heap，单 owner 比较无语义）。
   - `Heap:<T>(p Ptr) Heap<T>`：从裸 Ptr 接管所有权——跳 `__yux_heap_alloc` + store，直接把 `p` 作为 Heap 句柄；作用域尾走既有 `Heap<T>` dtor（`releaseAtPtr(inner T)` + `__yux_heap_free`）。sema/codegen 在 `ExprHeapCtorNode` 上识别 `argType.isPtr() && innerType.name != "Ptr"` 形态时放宽 E3028。责任方：调用者必须保证 `Ptr` 指向 `__yux_heap_alloc` 分配的 T-shape 内存。
-  - `src/sema/call_resolve.cpp::validateCompilerInnerIntrinsicTypeShape`：`ptr_of` 接受 Heap；强制 Heap 实参为 ID-literal。
+  - `src/sema/call_resolve.cpp::validateBuiltinIntrinsicTypeShape`：`ptr_of` 接受 Heap；强制 Heap 实参为 ID-literal。
   - `src/compiler/compiler_call.cpp::extractRawPtr` + `ptr_of` 分派点：加 Heap 分支 + move-out。
   - `src/compiler/compiler_expr.cpp::compileHeapCtorExpr`：加 take-over 分支。
   - `src/sema/sema_pass.cpp::visitExpr(ExprHeapCtorNode)`：相同的 take-over 形态放宽 E3028。
@@ -303,7 +313,7 @@
 - **修订 §7.3.2**：原"v1 不引入结构体字面量语法"改为"v1 提供受限的 `Self { ... }` 字段字面量，仅 `#Static fn` 体内合法"；普通表达式位 `Foo { ... }` 仍由语法层拒收。
 - **附录 A**：`Self` 从 A.2 上下文标识符提升到 A.1 关键字（lexer token `SelfType`）。
 - **附录 D**：新增错误码段 E3120–E3128（构造模型重构相关）；补登记 E3112–E3116（let-unify 引入但此前未上附录 D）。
-- **SDK 试点**：`sdk/yux/src/yux/core/base.yux` 给 `String` 加 `#Static` 工厂 `String::empty()` / `String::from(buf)`，与同名 ctor 并存。`Array::with_capacity(n)` 因 Array 是 `#CompilerInner` 空结构体、`Self { ... }` 字段字面量不适用，待 `#CompilerInner #Static fn` codegen 路径落地后再补。
+- **SDK 试点**：`sdk/yux/src/yux/core/base.yux` 给 `String` 加 `#Static` 工厂 `String::empty()` / `String::from(buf)`，与同名 ctor 并存。`Array::with_capacity(n)` 因 Array 是 `#Builtin` 空结构体、`Self { ... }` 字段字面量不适用，待 `#Builtin #Static fn` codegen 路径落地后再补。
 - **冲突 / 兼容**：纯增。已有项目代码无 `#Static` 注解、不写 `Self` / `Self { ... }` / `Type::name(...)` 形态时行为不变；同名 ctor 通道未删。`yux-check`（SemaPass）镜像已接入 E3120 / E3121 / E3122 / E3123 / E3124 / E3128 等；E3125–E3127 仍在 codegen 端兜底。详见 `docs/dev/static-fn-impl-log.md`（实施期归档）。
 
 ## 2026-05-16 —— Heap<T> 类型族（DRAFT-heap-types.md Phase 0 回写）
@@ -314,7 +324,7 @@
 - **新增 §8.3a（新节）**：`Heap<T>` 形态、A 档 NRVO / B 档 nullable move / C 档局部 move、容器规则 + FFI
 - **修改 §8.3.5.5 / §8.6.5.9**：`as_ref` 增加 `Heap<T>` 重载；寿命检查把 `Heap` 句柄登记为根
 - **新增 §9.5a（新节）**：Heap<T> 内置类型节；§9.5.6 改 `Arc` 占名；§9.2.3.4 `Array<Heap<T>>` 例外；§9.7.2.4 `ptr_of` 表加 Heap 行
-- **修改 §11.2.3.2**：`#CompilerInner` 重载清单注明 `as_ref` / `ptr_of` / `copy_of` / `Heap:<T>(Ptr)` 含 Heap 形态
+- **修改 §11.2.3.2**：`#Builtin` 重载清单注明 `as_ref` / `ptr_of` / `copy_of` / `Heap:<T>(Ptr)` 含 Heap 形态
 - **附录 D**：分配 E4023–E4028（Heap escape / move ban / 容器禁 / NRVO 不消解 / widen 禁 / FFI 禁）
 - **附录 C**：新增术语 堆作用域句柄 / Heap<T> / NRVO（A 档）/ nullable move（B 档）/ 复合 move（C 档）/ 生命传染
 - **冲突 / 兼容**：之前 §9.5.6 中 `Heap` 保留名报错 `E1132` 一并撤销（保留名仅留 `Arc`）；DRAFT-heap-types.md 与本次回写对齐后保留作 Phase 2+ 实施期参考
@@ -474,16 +484,16 @@
 
 ## 2026-05-05 —— v0.5 内置 `to_string` 迁入 `Type : ToString` 显式实现
 
-- **修改**：§12.7.1.2 措辞调整 —— 内置类型 `to_string` 以 `Type : ToString { ... }` 形态在 `base.yux` 显式实现；方法体可 `#CompilerInner` 或 yux 实现，二者并存；当前 i64/u64/f64/bool/String 走 yux 实现，窄类型委派。
+- **修改**：§12.7.1.2 措辞调整 —— 内置类型 `to_string` 以 `Type : ToString { ... }` 形态在 `base.yux` 显式实现；方法体可 `#Builtin` 或 yux 实现，二者并存；当前 i64/u64/f64/bool/String 走 yux 实现，窄类型委派。
 - **冲突 / 兼容**：`base.yux` 内对应方法从普通方法块迁入 draft 实现块，外部调用面（`x.to_string()`）不变，无破坏。
 
 ## 2026-05-04 —— 引入 §12 draft（接口与约束）+ `#DraftLike` + `<T : D>` 边界 + `copy_of`
 
 - **新增**：§12 全章 —— draft 声明 / 显式 `Type : D { ... }` 实现 / `#DraftLike` 结构化匹配 / 跨包 orphan / Box forward 归一 / 内置 `ToString` 与 `Any` / builtin `copy_of:<T>(x T&) T`。决议依据见 `docs/spec/draft/DRAFT-draft.md`。
 - **新增**：§7.8（draft 实现块语法扩展，详见 §12）；§6.4.4（draft 边界声明形态、单态化校验）；§11.4（`#DraftLike` 注解 + 互锁规则 + 风格指引）；§11.5 / §11.6 重编号（原 §11.4 → §11.5，原 §11.5 → §11.6）。
-- **修改**：§6.4.1.2 把"v0.5 引入 draft 后启用 trait bounds"改为正文，明确 v1 支持类型参数 + 可选 draft 边界，无 `where` / 无 or 约束；§11.2.3 builtin 清单追加 `as_ref` / `copy_of`，内置类型 `to_string` 经 `Type : ToString { #CompilerInner ... }` 形式给出。
+- **修改**：§6.4.1.2 把"v0.5 引入 draft 后启用 trait bounds"改为正文，明确 v1 支持类型参数 + 可选 draft 边界，无 `where` / 无 or 约束；§11.2.3 builtin 清单追加 `as_ref` / `copy_of`，内置类型 `to_string` 经 `Type : ToString { #Builtin ... }` 形式给出。
 - **新增**：附录 A 关键字加 `draft`、注解表加 `#DraftLike`；附录 B 加 `draftDecl` / 扩展 `structImpl` / `genericDef` 引入 `typeParam` + `draftBound`（v0.5+ 形态，回写 `src/yux.g4` 前需用户确认）；附录 C 新增 §C.6a draft 术语 11 项；附录 D 段位表追加 E11xx 段，§D.3.7 列出 E1101–E1106 / E1110–E1112 / E1120 占位（编号在编译器实施期固化）。
-- **冲突 / 兼容**：纯增量（v0.5 新引入）；既有 §6.4 / §7 / §11 / §8.6.7 条款均不破坏，仅追加交叉引用。`#DraftLike` 是 v1 第三种正式注解（继 `#CompilerInner` / `#Test`）。`src/yux.g4` 暂未改（按 CLAUDE.md 项目约束需先与用户确认）；附录 B 文本与 `.g4` 短期内不同步，以草案 `draft/DRAFT-draft.md` §10.3 为准。
+- **冲突 / 兼容**：纯增量（v0.5 新引入）；既有 §6.4 / §7 / §11 / §8.6.7 条款均不破坏，仅追加交叉引用。`#DraftLike` 是 v1 第三种正式注解（继 `#Builtin` / `#Test`）。`src/yux.g4` 暂未改（按 CLAUDE.md 项目约束需先与用户确认）；附录 B 文本与 `.g4` 短期内不同步，以草案 `draft/DRAFT-draft.md` §10.3 为准。
 - **后续**：编译器实现详见 CURRENT.md Phase 3；SDK / 测试详见 Phase 4；附录 D 占位错误码在 Phase 3 与 `include/error_code.h` 同步固化。
 
 ## 2026-05-04 —— 统一函数泛型声明调用
@@ -494,7 +504,7 @@
 ## 2026-05-04 —— 修复 `yux test` JIT 模式下跨 yux 助手帧 SEH 静默崩溃
 
 - **修改**：§11.3.5.8 known-issue 删除——根因是 LLVM `RTDyldMemoryManager::registerEHFramesInProcess` 在 Win64 COFF 上不调 `RtlAddFunctionTable`，导致 `RuntimeDyldCOFFX86_64` 收集的 `.pdata` 段从未注册到 OS，跨多个 JIT 帧 unwind 时 `RtlVirtualUnwind` 找不到 `RUNTIME_FUNCTION` → 进程静默退出。修法：自定义 `SectionMemoryManager` 子类覆盖 `registerEHFrames`/`deregisterEHFrames`，在 `RtlAddFunctionTable` / `RtlDeleteFunctionTable` 中注册 `.pdata`，ImageBase 取本对象内已分配 section 的最低非零地址。
-- **修改**：§11 Open Issues 同步移除「`yux test` JIT 模式下，从 yux 实现的助手中触发的 SEH 异常未被 wrapper 捕获」条目；JIT 模式下 yux 助手 fail 路径与 `#CompilerInner` fail 路径行为一致，均产出 `FAIL <module>#<fn> (SEH ASSERT_FAILED 0xe0fa17ed)`。
+- **修改**：§11 Open Issues 同步移除「`yux test` JIT 模式下，从 yux 实现的助手中触发的 SEH 异常未被 wrapper 捕获」条目；JIT 模式下 yux 助手 fail 路径与 `#Builtin` fail 路径行为一致，均产出 `FAIL <module>#<fn> (SEH ASSERT_FAILED 0xe0fa17ed)`。
 - **冲突 / 兼容**：纯修复；既有 v1 用例（仅覆盖 pass 路径）继续通过；之前因 known-issue 暂时移除的 fail 用例可重新启用。
 
 ## 2026-05-04 —— `yux test --isolate=process` 子进程隔离（Phase 5）
@@ -507,10 +517,10 @@
 
 ## 2026-05-04 —— `assert_eq` 扩展到 String + 新增 `assert_contains` / `assert_starts_with`（Phase 4b）
 
-- **修改**：§11.3.5.2 `assert_eq` 类型分派表加 `String`；分派改由编译器 dispatcher 在「参数严格匹配的非泛型重载存在时优先于泛型」实现（`compiler_call.cpp` 新 `getGenericFunction`），SDK 侧 `base.yux` 末尾追加 `fn assert_eq(actual String&, expected String&)` 等 yux 实现重载。`#CompilerInner` 泛型 `assert_eq:<T>` 仍是 i8..u64 / f32 / f64 / bool 路径，未变。
+- **修改**：§11.3.5.2 `assert_eq` 类型分派表加 `String`；分派改由编译器 dispatcher 在「参数严格匹配的非泛型重载存在时优先于泛型」实现（`compiler_call.cpp` 新 `getGenericFunction`），SDK 侧 `base.yux` 末尾追加 `fn assert_eq(actual String&, expected String&)` 等 yux 实现重载。`#Builtin` 泛型 `assert_eq:<T>` 仍是 i8..u64 / f32 / f64 / bool 路径，未变。
 - **新增**：§11.3.5.7 `fn assert_contains(haystack String&, needle String&)` / `fn assert_starts_with(s String&, prefix String&)`，纯 yux 实现，分别调用新增的 `String.contains` / `String.starts_with` 方法。
 - **新增**：`String` 加方法 `contains(needle String&) bool` 与 `starts_with(prefix String&) bool`（base.yux）。
-- **新增**：§11.3.5.8 known-issue —— `yux test`（JIT 模式）下，由 yux 助手的失败路径触发的 `_yux_test_assert_failed()` SEH 异常**不**被 wrapper 捕获，runner 直接 abort；v1 用例只覆盖 pass 路径，fail 路径暂由 `#CompilerInner` 数值/`bool`/`fail` 断言覆盖。详见 `BUGS.md`。
+- **新增**：§11.3.5.8 known-issue —— `yux test`（JIT 模式）下，由 yux 助手的失败路径触发的 `_yux_test_assert_failed()` SEH 异常**不**被 wrapper 捕获，runner 直接 abort；v1 用例只覆盖 pass 路径，fail 路径暂由 `#Builtin` 数值/`bool`/`fail` 断言覆盖。详见 `BUGS.md`。
 - **冲突 / 兼容**：纯增量；既有 `.yux` 源码无破坏。运算符 dispatcher 副作用：当用户同时定义同名 generic 与非泛型重载时，参数严格匹配的非泛型现在优先（更接近常见语言语义；先前是先到先得）。`compileCustomTypeBinaryOp` 同期加固：操作数本身是 `T&` 时剥一层 ref 后再做方法表查找；`compileKnownFunctionCall` 加固：非局部变量（字面量 / 临时值）作为 `T&` 形参实参时 alloca-store 临时再传 ptr。
 
 ## 2026-05-04 —— 运算符重载形参收口为 `Self&`
@@ -521,19 +531,19 @@
 
 ## 2026-05-03 —— 新增 `#Test` 测试断言 API（`assert_eq` / `assert_true` / `assert_false` / `fail`）
 
-- **新增**：§11.3.5「测试断言 API」 —— SDK 在 `sdk/yux/src/yux/core/assert.yux`（与 `base.yux` 同属 `yux.core` 平铺）提供 4 个 `#CompilerInner` 断言：泛型 `assert_eq:<T>`（T ∈ i8…u64 / f32 / f64 / bool）、`assert_true(bool)` / `assert_false(bool)`、`fail(String)`。无需 import，全局可用。失败语义（v1）：调 SDK `_yux_test_assert_failed()` → `RaiseException(0xE0FA17ED)` → SEH 显示 `FAIL <module>#<fn> (SEH ASSERT_FAILED 0xe0fa17ed)`。v1 **不**打印断言种类与 `fail(msg)` 的 `msg` 内容（待 String stringify 扩展同期补齐）。
+- **新增**：§11.3.5「测试断言 API」 —— SDK 在 `sdk/yux/src/yux/core/assert.yux`（与 `base.yux` 同属 `yux.core` 平铺）提供 4 个 `#Builtin` 断言：泛型 `assert_eq:<T>`（T ∈ i8…u64 / f32 / f64 / bool）、`assert_true(bool)` / `assert_false(bool)`、`fail(String)`。无需 import，全局可用。失败语义（v1）：调 SDK `_yux_test_assert_failed()` → `RaiseException(0xE0FA17ED)` → SEH 显示 `FAIL <module>#<fn> (SEH ASSERT_FAILED 0xe0fa17ed)`。v1 **不**打印断言种类与 `fail(msg)` 的 `msg` 内容（待 String stringify 扩展同期补齐）。
 - **新增**：附录 D §D.3 错误码 E6030 —— `assert_eq:<T>` 类型实参越界（仅数值 + bool）。`E6027 {} expects {} argument(s)` 复用为四个断言的 arity 错误。
 - **修改**：§11 Open Issues 收口"`#Test` assert API 形态"，新增"打印实参值需先引入 `Stringify` 约束"与"`assert_eq` 扩展到 String / 用户结构体"两项后续。
 - **冲突 / 兼容**：纯增量。SDK API 集合扩展，新模块 `yux.test.assert`；既有 `.yux` 源码无破坏。`#Test` 函数体内调用断言与 §11.3.2「无参 / 无返回 / 必须有体」约束相容。
 
 ## 2026-05-03 —— 新增 `#Test` 注解与 `yux test` 子命令
 
-- **新增**：§11.3 `#Test` 注解条款 —— 仅挂 `fn`；签名等价 `fn name(): void`（无参、无返回类型、必须有函数体）；与 `#CompilerInner` 互斥；仅可出现在 `*.test.yux` 文件中。普通 `yux build` 跳过 `#Test` 函数的 codegen，不进入 `.exe` / `.lib` 产物。
+- **新增**：§11.3 `#Test` 注解条款 —— 仅挂 `fn`；签名等价 `fn name(): void`（无参、无返回类型、必须有函数体）；与 `#Builtin` 互斥；仅可出现在 `*.test.yux` 文件中。普通 `yux build` 跳过 `#Test` 函数的 codegen，不进入 `.exe` / `.lib` 产物。
 - **新增**：§11.3.3 测试文件发现规则 —— `*.test.yux` 仅由 `yux test` 在项目 `src/` 下递归发现；模块名取 src 相对路径转点分形式，保留 `.test` 段（例：`src/yux/core/arithmetic.test.yux` → `yux.core.arithmetic.test`）。
 - **新增**：§11.3.4（informative）`yux test` 行为 —— 仅项目模式可用；选择器支持 `<prefix>` 前缀匹配、`<module>#<fnName>` 精确定位；v1 同进程顺序执行，无隔离（崩溃即整体非零退出）。
 - **修改**：原 §11.3「其他注解」与 §11.4「用户自定义注解」整体下移为 §11.4 / §11.5；§11.4.1 注解对照表加入 `#Test` 行。
 - **新增**：附录 C 加入 `#Test` 与 `yux test` 术语条目。
-- **冲突 / 兼容**：纯增量。既有 `#CompilerInner` 条款全部保留；既有 `.yux` 源码无破坏（现有源码均不带 `#Test`，且不存在 `*.test.yux` 文件）。
+- **冲突 / 兼容**：纯增量。既有 `#Builtin` 条款全部保留；既有 `.yux` 源码无破坏（现有源码均不带 `#Test`，且不存在 `*.test.yux` 文件）。
 
 ## 2026-05-03 —— 诊断列号语义收口 + 多字节插入符对齐
 
@@ -583,7 +593,7 @@
   - E2001 `Weak<T>?`、E3078 `Weak == / !=`：提示 `upgrade(weak)` 路径
   - E3017 / E3018 / E3019：T& 局部初始化形态指引
   - E4001 `BorrowChecker` 借用初始化、E4004 不能绑非本地
-  - E2006 / E2007 缺函数体：提示加 `#CompilerInner` 或补 body
+  - E2006 / E2007 缺函数体：提示加 `#Builtin` 或补 body
   - E6010 / E6011 泛型实参个数：给出 `:<T...>` 模板
   - E1002 ANTLR 文法错误：按消息模式（`';'`、`mismatched/extraneous input`、`no viable alternative`）附简单空格 / `;` 提示
 - **测试**：新增 `tests/cases/diag_ref_init_form.{yux,expected_err}` 与 `diag_generic_arity.{yux,expected_err}`；
@@ -636,7 +646,7 @@
 ## 2026-05-02 —— Phase 5：模块 / 注解 / 附录收口
 
 - **§10 模块系统**（重写）：覆盖 `yux.toml`（含 `[lib]` 节）、`<projectRoot>/src/` 源根、文件模块 vs 包模块、`use a.b.c` / `use a.b.*`、**`pkg` 文件再导出清单**（`name` 别名 / `name.*` 扁平）、命名解析三段式、循环依赖禁、`_` 前缀私有、`yux.core` SDK / `base.yux`。
-- **§11 编译期注解**：`buildAnno ::= '#' ID codeLineEnd`；`#CompilerInner` 互锁规则（带注解必省体；省体（除 extern）必带注解）；v1 不支持用户自定义注解。
+- **§11 编译期注解**：`buildAnno ::= '#' ID codeLineEnd`；`#Builtin` 互锁规则（带注解必省体；省体（除 extern）必带注解）；v1 不支持用户自定义注解。
 - **附录 A 保留字**：与 `yux.g4` 全量对齐（关键字 / 上下文标识符 / 注解名 / 符号 token / 词法 token / 预留）；显式登记 v1 无 `continue` / `pub` / `priv` / `mut` / `const` / `trait` / `match` / `for` / `while` / `do` / `async`。
 - **附录 C 术语表**：补 §C.6（模块 / 包 / 项目 / 入口 / 源根 / `pkg` 文件 / 文件模块 / 包模块 / 通配导入 / `_` 前缀私有 / `yux.core`）。
 

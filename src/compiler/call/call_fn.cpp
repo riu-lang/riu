@@ -35,7 +35,7 @@ llvm::Value* Compiler::compileFunctionCall(p<ExprCallNode> callNode, const strin
 
     // Phase 4b: 当存在同名 generic + 非泛型重载时，参数严格匹配的非泛型优先；
     // 仅在 fnSymbol 没匹配到时才走泛型路径。这样 `assert_eq(s1 String, s2 String)`
-    // 命中 SDK assert.yux 的 yux 重载，而不会跑到 #CompilerInner 的 compileTestAssertEq。
+    // 命中 SDK assert.yux 的 yux 重载，而不会跑到 #Builtin 的 compileTestAssertEq。
     auto genericFn = _file->getGenericFunction(fnName);
     p<FileNode> fnOwner = _file;
     if (!genericFn && _yux && _yux->sdkFile()) {
@@ -78,7 +78,7 @@ llvm::Value* Compiler::compileFunctionCall(p<ExprCallNode> callNode, const strin
     }
 
     // 测试断言内建（spec §11.3.5）：非泛型分支
-    // assert_eq:<T> 走 compileGenericFunctionCall #CompilerInner 分支
+    // assert_eq:<T> 走 compileGenericFunctionCall #Builtin 分支
     if (fnName == "assert_true") {
         DEBUG_LOG("    Expr: assert_true");
         return compileTestAssertTrue(callNode, args, argTypes);
@@ -168,15 +168,15 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
         sema::inferGenericFnTypeArgs(callNode, genericFn, fnName, argTypes, typeArgs);
     }
 
-    if (genericFn->header()->hasAnno("CompilerInner")) {
-        // Phase 3.3.2.c: CompilerInner intrinsic typeArgs/args arity 校验
+    if (genericFn->header()->hasAnno("Builtin")) {
+        // Phase 3.3.2.c: Builtin intrinsic typeArgs/args arity 校验
         // 同时覆盖 E6017 (未知 intrinsic) — helper 内部对清单外 fnName 直接抛.
-        sema::validateCompilerInnerIntrinsicShape(fnName, typeArgs.size(), args.size(), callNode->getLineNumber(),
+        sema::validateBuiltinIntrinsicShape(fnName, typeArgs.size(), args.size(), callNode->getLineNumber(),
                                                   callNode->getColumn());
-        // Phase 3.3.2.d: CompilerInner intrinsic 类型形态校验
+        // Phase 3.3.2.d: Builtin intrinsic 类型形态校验
         // 覆盖 same_ref / ptr_of (E6028 AST 形态 + E6029 T 必须堆句柄) / as_ref / weak (E6029 argType)
         // / copy_of (E6032 深度 Ref 扫描).
-        sema::validateCompilerInnerIntrinsicTypeShape(fnName, typeArgs, argTypes, callNode->getArgs(), _file,
+        sema::validateBuiltinIntrinsicTypeShape(fnName, typeArgs, argTypes, callNode->getArgs(), _file,
                                                       _yux ? _yux->sdkFile() : nullptr, callNode->getLineNumber(),
                                                       callNode->getColumn());
 
@@ -208,7 +208,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
         }
         if (fnName == "upgrade") {
             // Phase 1d.2：Weak<T> → Rc<T>?
-            // E6024 / E6025 已由 sema::validateCompilerInnerIntrinsicShape 校验
+            // E6024 / E6025 已由 sema::validateBuiltinIntrinsicShape 校验
             auto& T = typeArgs[0];
             auto tShared = make_shared<TypeInfo>(T);
             TypeInfo weakTy("Weak", {tShared});
@@ -249,9 +249,9 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
         if (fnName == "same_ref" || fnName == "ptr_of") {
             // Phase 7：地址相等 / 显式取裸指针 builtin
             // T 必须是堆句柄类型 (Rc / Weak / Array / String) 或 T&
-            // E6028 AST 形态 / E6029 T 必须堆句柄 已由 sema::validateCompilerInnerIntrinsicTypeShape 校验 (3.3.2.d)
+            // E6028 AST 形态 / E6029 T 必须堆句柄 已由 sema::validateBuiltinIntrinsicTypeShape 校验 (3.3.2.d)
             // 下方 extractRawPtr 内残留的 E6028 / E6029 是兜底防御 (sema 抢先抛, 几乎不可达)
-            // E6026 / E6027 已由 sema::validateCompilerInnerIntrinsicShape 校验
+            // E6026 / E6027 已由 sema::validateBuiltinIntrinsicShape 校验
             auto& T = typeArgs[0];
             auto ptrTy = llvm::PointerType::get(_context, 0);
 
@@ -340,7 +340,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             //   - Rc<T>:  跳过 8 字节 RC 头 (u32 strong + u32 weak) → payload
             //   - Heap<T>: 句柄 = 裸 T*, 直接返回 (无头, GEP 偏移 0)
             // 寿命检查在 borrow_checker 处理（识别 ExprCallNode 形如 as_ref(x)）
-            // E6026 / E6027 已由 sema::validateCompilerInnerIntrinsicShape 校验
+            // E6026 / E6027 已由 sema::validateBuiltinIntrinsicShape 校验
             auto& T = typeArgs[0];
             auto argType = callNode->getArgs()[0]->getType();
             if (argType.isHeap()) {
@@ -361,8 +361,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
         if (fnName == "copy_of") {
             // spec §12.7.3 / DRAFT-const-mut [#1.I]：copy_of:<T>(x T&) T
             // 返回独立 owned T；值类型 memcpy，含 Rc / Array / String / Weak 字段时按字段 retain
-            // 含 Ref<U> 字段 → 报 E6032（已由 sema::validateCompilerInnerIntrinsicTypeShape 校验, 3.3.2.d）
-            // E6026 / E6027 已由 sema::validateCompilerInnerIntrinsicShape 校验
+            // 含 Ref<U> 字段 → 报 E6032（已由 sema::validateBuiltinIntrinsicTypeShape 校验, 3.3.2.d）
+            // E6026 / E6027 已由 sema::validateBuiltinIntrinsicShape 校验
             auto& T = typeArgs[0];
 
             // Phase 3f / 6: Heap<U> 深拷 — 新分配 + 写入 inner U + 递归 retain U 的 RC 字段.
@@ -456,7 +456,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             // spec §4.8.3.1 / §9：weak:<T>(box Rc<T>?) Weak<T>
             // 接受 Rc<T> 或 Rc<T>?；null/哨兵输入返回空 Weak（永远 upgrade 失败）
             // 复用 _weak_retain：复制 handle 指针 + weak 计数 +1
-            // E6026 / E6027 已由 sema::validateCompilerInnerIntrinsicShape 校验
+            // E6026 / E6027 已由 sema::validateBuiltinIntrinsicShape 校验
             auto& T = typeArgs[0];
             auto argType = callNode->getArgs()[0]->getType();
 
@@ -545,7 +545,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             recordTemp(result, nullableHeapTy);
             return result;
         }
-        // E6017 (未知 CompilerInner intrinsic) 已由 sema::validateCompilerInnerIntrinsicShape
+        // E6017 (未知 Builtin intrinsic) 已由 sema::validateBuiltinIntrinsicShape
         // 在分派前抛出, 不会到这里; 留 unreachable assert 防御.
         throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6017, fnName);
     }

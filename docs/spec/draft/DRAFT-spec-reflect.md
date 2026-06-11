@@ -52,10 +52,10 @@ struct Reflect {                          ; 编译器隐式为每个类型 #Impl
 
 ## 3. `Type` / `Field` / `Method` / `Variant` 数据类型
 
-全部为 `#CompilerInner` struct，LLVM 布局由编译器硬编码。
+全部为 `#Builtin` struct，LLVM 布局由编译器硬编码。
 
 ```yux
-#CompilerInner
+#Builtin
 struct Type {
   #Frozen
   name String                          ; 全限定类型名（如 "yux.core.Counter"）
@@ -64,13 +64,13 @@ struct Type {
   ; 全部按值 copy（rodata → stack），不引入 T&。
 }
 
-#CompilerInner
+#Builtin
 struct Method {
   #Frozen
   name String
 }
 
-#CompilerInner
+#Builtin
 struct Variant {
   #Frozen
   name String
@@ -80,7 +80,7 @@ struct Variant {
 **`Field` 唯一编译器内置**（[#1.X]）——`.value` 是 dependent-typed phantom（类型按 f 静态绑定的具体字段而定），yux 类型系统当前无法表达：
 
 ```yux
-#CompilerInner
+#Builtin
 struct Field {
   #Frozen
   name String
@@ -174,7 +174,7 @@ sema 规则：
 
 ### 9.2 SDK
 
-- base.yux 写 `Reflect` spec + `Type` / `Method` / `Variant` 数据类型 + `Field` `#CompilerInner stub`
+- base.yux 写 `Reflect` spec + `Type` / `Method` / `Variant` 数据类型 + `Field` `#Builtin stub`
 - `#Reflect` 注解识别
 
 ### 9.3 g4

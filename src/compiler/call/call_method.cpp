@@ -340,8 +340,8 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
         }
     }
 
-    // 处理 #CompilerInner 运算符方法：直接生成 LLVM IR
-    if (isCompilerInnerMethod(baseType.name, member)) {
+    // 处理 #Builtin 运算符方法：直接生成 LLVM IR
+    if (isBuiltinMethod(baseType.name, member)) {
         // Phase 3.3.2.e: 操作符方法 arity + 类型域校验
         //   E6045 17 处二元 op arity != 1, E3070 inv-on-float 全部抠到 sema.
         sema::validateOperatorMethodCall(member, baseType, args.size(), callNode->getLineNumber(),
@@ -365,28 +365,28 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
 
         // 算术运算符
         if (member == "plus") {
-            DEBUG_LOG_VAL("    Expr: CompilerInner plus", baseType.name);
+            DEBUG_LOG_VAL("    Expr: Builtin plus", baseType.name);
             if (isFloat) {
                 return _builder.CreateFAdd(baseVal, rhs, "add");
             }
             return _builder.CreateAdd(baseVal, rhs, "add");
         }
         if (member == "minus") {
-            DEBUG_LOG_VAL("    Expr: CompilerInner minus", baseType.name);
+            DEBUG_LOG_VAL("    Expr: Builtin minus", baseType.name);
             if (isFloat) {
                 return _builder.CreateFSub(baseVal, rhs, "sub");
             }
             return _builder.CreateSub(baseVal, rhs, "sub");
         }
         if (member == "mul") {
-            DEBUG_LOG_VAL("    Expr: CompilerInner mul", baseType.name);
+            DEBUG_LOG_VAL("    Expr: Builtin mul", baseType.name);
             if (isFloat) {
                 return _builder.CreateFMul(baseVal, rhs, "mul");
             }
             return _builder.CreateMul(baseVal, rhs, "mul");
         }
         if (member == "div") {
-            DEBUG_LOG_VAL("    Expr: CompilerInner div", baseType.name);
+            DEBUG_LOG_VAL("    Expr: Builtin div", baseType.name);
             if (isFloat) {
                 return _builder.CreateFDiv(baseVal, rhs, "div");
             }
@@ -396,7 +396,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
             return _builder.CreateSDiv(baseVal, rhs, "div");
         }
         if (member == "mod") {
-            DEBUG_LOG_VAL("    Expr: CompilerInner mod", baseType.name);
+            DEBUG_LOG_VAL("    Expr: Builtin mod", baseType.name);
             if (isFloat) {
                 return _builder.CreateFRem(baseVal, rhs, "mod");
             }
@@ -408,21 +408,21 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
 
         // 比较运算符
         if (member == "eq") {
-            DEBUG_LOG_VAL("    Expr: CompilerInner eq", baseType.name);
+            DEBUG_LOG_VAL("    Expr: Builtin eq", baseType.name);
             if (isFloat) {
                 return _builder.CreateFCmpOEQ(baseVal, rhs, "eq");
             }
             return _builder.CreateICmpEQ(baseVal, rhs, "eq");
         }
         if (member == "ne") {
-            DEBUG_LOG_VAL("    Expr: CompilerInner ne", baseType.name);
+            DEBUG_LOG_VAL("    Expr: Builtin ne", baseType.name);
             if (isFloat) {
                 return _builder.CreateFCmpONE(baseVal, rhs, "ne");
             }
             return _builder.CreateICmpNE(baseVal, rhs, "ne");
         }
         if (member == "lt") {
-            DEBUG_LOG_VAL("    Expr: CompilerInner lt", baseType.name);
+            DEBUG_LOG_VAL("    Expr: Builtin lt", baseType.name);
             if (isFloat) {
                 return _builder.CreateFCmpOLT(baseVal, rhs, "lt");
             }
@@ -432,7 +432,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
             return _builder.CreateICmpSLT(baseVal, rhs, "lt");
         }
         if (member == "le") {
-            DEBUG_LOG_VAL("    Expr: CompilerInner le", baseType.name);
+            DEBUG_LOG_VAL("    Expr: Builtin le", baseType.name);
             if (isFloat) {
                 return _builder.CreateFCmpOLE(baseVal, rhs, "le");
             }
@@ -442,7 +442,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
             return _builder.CreateICmpSLE(baseVal, rhs, "le");
         }
         if (member == "gt") {
-            DEBUG_LOG_VAL("    Expr: CompilerInner gt", baseType.name);
+            DEBUG_LOG_VAL("    Expr: Builtin gt", baseType.name);
             if (isFloat) {
                 return _builder.CreateFCmpOGT(baseVal, rhs, "gt");
             }
@@ -452,7 +452,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
             return _builder.CreateICmpSGT(baseVal, rhs, "gt");
         }
         if (member == "ge") {
-            DEBUG_LOG_VAL("    Expr: CompilerInner ge", baseType.name);
+            DEBUG_LOG_VAL("    Expr: Builtin ge", baseType.name);
             if (isFloat) {
                 return _builder.CreateFCmpOGE(baseVal, rhs, "ge");
             }
@@ -464,23 +464,23 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
 
         // 位运算符
         if (member == "and") {
-            DEBUG_LOG_VAL("    Expr: CompilerInner and", baseType.name);
+            DEBUG_LOG_VAL("    Expr: Builtin and", baseType.name);
             return _builder.CreateAnd(baseVal, rhs, "and");
         }
         if (member == "or") {
-            DEBUG_LOG_VAL("    Expr: CompilerInner or", baseType.name);
+            DEBUG_LOG_VAL("    Expr: Builtin or", baseType.name);
             return _builder.CreateOr(baseVal, rhs, "or");
         }
         if (member == "xor") {
-            DEBUG_LOG_VAL("    Expr: CompilerInner xor", baseType.name);
+            DEBUG_LOG_VAL("    Expr: Builtin xor", baseType.name);
             return _builder.CreateXor(baseVal, rhs, "xor");
         }
         if (member == "shl") {
-            DEBUG_LOG_VAL("    Expr: CompilerInner shl", baseType.name);
+            DEBUG_LOG_VAL("    Expr: Builtin shl", baseType.name);
             return _builder.CreateShl(baseVal, rhs, "shl");
         }
         if (member == "shr") {
-            DEBUG_LOG_VAL("    Expr: CompilerInner shr", baseType.name);
+            DEBUG_LOG_VAL("    Expr: Builtin shr", baseType.name);
             if (isUnsigned) {
                 return _builder.CreateLShr(baseVal, rhs, "shr");
             }
@@ -489,19 +489,19 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
 
         // 一元运算符
         if (member == "neg") {
-            DEBUG_LOG_VAL("    Expr: CompilerInner neg", baseType.name);
+            DEBUG_LOG_VAL("    Expr: Builtin neg", baseType.name);
             if (isFloat) {
                 return _builder.CreateFNeg(baseVal, "neg");
             }
             return _builder.CreateNeg(baseVal, "neg");
         }
         if (member == "inv") {
-            DEBUG_LOG_VAL("    Expr: CompilerInner inv", baseType.name);
+            DEBUG_LOG_VAL("    Expr: Builtin inv", baseType.name);
             // E3070 (inv on float) 已由 sema::validateOperatorMethodCall 校验
             return _builder.CreateNot(baseVal, "inv");
         }
         if (member == "not") {
-            DEBUG_LOG_VAL("    Expr: CompilerInner not", baseType.name);
+            DEBUG_LOG_VAL("    Expr: Builtin not", baseType.name);
             return _builder.CreateNot(baseVal, "not");
         }
     }

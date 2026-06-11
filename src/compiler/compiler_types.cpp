@@ -570,7 +570,7 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         return it->second;
     }
 
-    // DRAFT-spec-reflect: Type / Field / Method / Variant — #CompilerInner struct,
+    // DRAFT-spec-reflect: Type / Field / Method / Variant — #Builtin struct,
     // LLVM layout 由编译器硬编码 (SDK 声明仅 name String 字段可见, 其余 slot 隐藏).
     {
         auto* ptrTy = llvm::PointerType::get(_context, 0);
@@ -729,7 +729,7 @@ llvm::StructType* Compiler::getOrCreateStructType(p<StructDeclNode> structDecl, 
     // DRAFT-spec-reflect: Field/Type/Method/Variant 的 LLVM 布局由编译器硬编码,
     // 不从 yux 声明构建, 避免 getOrCreateStructType 缓存旧布局覆盖硬编码版本.
     if (name == "Field" || name == "Type" || name == "Method" || name == "Variant") {
-        DEBUG_LOG_VAL("Skipping reflect #CompilerInner struct (hardcoded layout)", name);
+        DEBUG_LOG_VAL("Skipping reflect #Builtin struct (hardcoded layout)", name);
         return nullptr;
     }
 

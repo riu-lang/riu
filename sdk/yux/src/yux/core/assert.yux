@@ -1,6 +1,6 @@
 ; yux SDK - 测试断言 API（spec §11.3.5）
 ;
-; 四个 #CompilerInner 占位声明，由编译器在调用点合成 IR：
+; 四个 #Builtin 占位声明，由编译器在调用点合成 IR：
 ;   - assert_eq:<T>(actual, expected)  T ∈ i8..u64 / f32 / f64 / bool（其他类型 E6030）
 ;   - assert_true(actual bool)
 ;   - assert_false(actual bool)
@@ -16,16 +16,16 @@ extern {
   fn RaiseException(dwExceptionCode u32, dwExceptionFlags u32, nNumberOfArguments u32, lpArguments Ptr)
 }
 
-#CompilerInner
+#Builtin
 fn assert_eq<T>(actual T, expected T)
 
-#CompilerInner
+#Builtin
 fn assert_true(actual bool)
 
-#CompilerInner
+#Builtin
 fn assert_false(actual bool)
 
-#CompilerInner
+#Builtin
 fn fail(msg String)
 
 ; 0xE0FA17ED：客户位段（高 4 位 0xE）+ "FA17ED" 字面，便于 SEH 串号识别

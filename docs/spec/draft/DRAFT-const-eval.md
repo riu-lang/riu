@@ -187,7 +187,7 @@ fn sign(n i32) i32 {
 
 - ✅ 标量（`i32` / `u64` / `bool` / `f64` / 字符 codePoint 等）
 - ✅ const struct（全字段公开 + 字段类型递归满足约束）
-- ✅ `#CompilerInner` rodata struct（如 `Type` / `Field`）
+- ✅ `#Builtin` rodata struct（如 `Type` / `Field`）
 - ❌ `T&` / `Rc<T>` / `Heap<T>` / `Array<T>` / `String`（涉及 Block / 分配 / refcount，超出 rodata；ref 还涉及逃逸分析）
 
 违反 → **E3144**（`#Const fn` 形参 / 返回类型不支持 const-eval）。

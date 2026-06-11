@@ -30,8 +30,8 @@ namespace {
 //   #Spec            零参；标在 struct 上 — 把声明转为 spec（仅签名）
 //   #Impl(SpecName)  单参；标在 struct 上 — 实现关系，替代旧 `: D1 + D2` 头部槽
 inline const set<string>& knownAnnos() {
-    static const set<string> s = {"CompilerInner", "Test",   "TestIsolate", "DraftLike", "NoReturn", "Fallible",
-                                  "Const",         "Static", "Spec",        "Impl",      "Reflect"};
+    static const set<string> s = {"Builtin", "Test",   "TestIsolate", "DraftLike", "NoReturn", "Fallible",
+                                  "Const",   "Static", "Spec",        "Impl",      "Reflect"};
     return s;
 }
 
@@ -42,10 +42,10 @@ inline const set<string>& argAnnos() {
 }
 
 // 注解可附着位置的限定集合
-// fn 之外的位置（structDecl / extern / globalConst）只接受 #CompilerInner / #Spec / #Impl，
+// fn 之外的位置（structDecl / extern / globalConst）只接受 #Builtin / #Spec / #Impl，
 // 不接受 #Test（spec §11.3.1.2）
 inline const set<string>& nonFnAllowedAnnos() {
-    static const set<string> s = {"CompilerInner", "Spec", "Impl", "Reflect"};
+    static const set<string> s = {"Builtin", "Spec", "Impl", "Reflect"};
     return s;
 }
 
@@ -131,10 +131,10 @@ AnnoList collectAnnosNonFn(const AnnoVec& annos) {
     return out;
 }
 
-// 用于 extern 块内 fnHeader：允许 `CompilerInner` 与 `#NoReturn`（DRAFT-错误.md §8.3）。
+// 用于 extern 块内 fnHeader：允许 `Builtin` 与 `#NoReturn`（DRAFT-错误.md §8.3）。
 // `#Fallible` 在 extern 上仍被推迟（[#7]），不在白名单。
 inline const set<string>& externFnAllowedAnnos() {
-    static const set<string> s = {"CompilerInner", "NoReturn"};
+    static const set<string> s = {"Builtin", "NoReturn"};
     return s;
 }
 
@@ -183,8 +183,8 @@ static LetAnnoFlags readLetAnnos(const AnnoVec& annos) {
     for (auto* a : annos) {
         const string name = a->name->getText();
         auto* tk = a->name;
-        int line = (int)tk->getLine();
-        int col = (int)tk->getCharPositionInLine() + 1;
+        int line = static_cast<int>(tk->getLine());
+        int col = static_cast<int>(tk->getCharPositionInLine()) + 1;
         if (name == "Mut") {
             if (r.isFrozen) throw YuxError(line, col, ErrorCode::E3115, "Frozen", "Mut");
             if (r.isCval) throw YuxError(line, col, ErrorCode::E3115, "Cval", "Mut");

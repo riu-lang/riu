@@ -176,9 +176,9 @@ ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux, p<ExprCallNode>
 void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn, const string& fnName,
                             const vector<TypeInfo>& argTypes, vector<TypeInfo>& outTypeArgs);
 
-// CompilerInner 泛型 intrinsic 的 typeArgs / args arity 校验 (Phase 3.3.2.c).
+// Builtin 泛型 intrinsic 的 typeArgs / args arity 校验 (Phase 3.3.2.c).
 //
-// 覆盖 compileGenericFunctionCall 的 #CompilerInner 分支的纯计数校验:
+// 覆盖 compileGenericFunctionCall 的 #Builtin 分支的纯计数校验:
 //   - E6017: 未知 intrinsic (兜底, 不在清单内的 fnName)
 //   - E6018: size_of typeArgs 为空
 //   - E6024: upgrade typeArgs != 1
@@ -193,12 +193,12 @@ void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn, const
 // E6028 / E6029 / E6032 是类型形态校验, 留给 3.3.2.d.
 //
 // 纯字符串 + size 比较, 无 LLVM 依赖.
-void validateCompilerInnerIntrinsicShape(const string& fnName, size_t typeArgsCount, size_t argsCount, int line,
+void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, size_t argsCount, int line,
                                          int col);
 
-// CompilerInner 泛型 intrinsic 的类型形态校验 (Phase 3.3.2.d).
+// Builtin 泛型 intrinsic 的类型形态校验 (Phase 3.3.2.d).
 //
-// 在 validateCompilerInnerIntrinsicShape 通过 arity 校验之后调用.
+// 在 validateBuiltinIntrinsicShape 通过 arity 校验之后调用.
 // 覆盖与类型相关 (typeArg / argType / AST 形态) 的检查:
 //   - same_ref / ptr_of:
 //       * E6029: T 必须是堆句柄 (Rc / Weak / Array 泛型 / String Normal) 或 T&
@@ -217,13 +217,13 @@ void validateCompilerInnerIntrinsicShape(const string& fnName, size_t typeArgsCo
 //     变量符号表, 不在 AST 上, 留 inline
 //
 // `file` / `sdkFile` 用于 copy_of 的 struct 字段深度递归; 为 nullptr 时按"找不到声明 → 保守放过"处理.
-void validateCompilerInnerIntrinsicTypeShape(const string& fnName, const vector<TypeInfo>& typeArgs,
+void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeInfo>& typeArgs,
                                              const vector<TypeInfo>& argTypes, const vector<p<ExprNode>>& argNodes,
                                              FileNode* file, FileNode* sdkFile, int line, int col);
 
-// CompilerInner 操作符方法的 arity / 类型域校验 (Phase 3.3.2.e).
+// Builtin 操作符方法的 arity / 类型域校验 (Phase 3.3.2.e).
 //
-// 覆盖 `compileBuiltinTypeMethodCall` 内 `isCompilerInnerMethod` 分支的纯校验:
+// 覆盖 `compileBuiltinTypeMethodCall` 内 `isBuiltinMethod` 分支的纯校验:
 //   - E6045: 二元 op (plus/minus/mul/div/mod/eq/ne/lt/le/gt/ge/and/or/xor/shl/shr) args.size() != 1
 //   - E3070: 一元 `inv` 不接受 float 类型
 //

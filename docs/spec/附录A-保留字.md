@@ -56,7 +56,7 @@
 
 | 注解 | 用途 | 章节 |
 |---|---|---|
-| `#CompilerInner` | 编译器内部合成实现 | §11.2 |
+| `#Builtin` | 编译器内部合成实现 | §11.2 |
 | `#Test` | 单元测试函数（仅 `*.test.yux`） | §11.3 |
 | `#Spec` | 把 struct 声明转为 spec（仅签名集合） | §11.4 / §12.1 |
 | `#Impl(D)` | 宣告 struct 实现 spec `D`（单参数糖） | §11.4 / §12.2 |
@@ -69,7 +69,7 @@
 | `#Fallible(E)` | 失败声明：函数可能以错误 enum `E` 失败（草案，单参数糖） | DRAFT-错误.md §3 |
 | `#NoReturn` | 不返回声明：函数永不正常返回（草案，零参数） | DRAFT-错误.md §8.3 |
 
-§A.3.1 v1 正式注解：`#CompilerInner` / `#Test` / `#TestIsolate` / `#Spec` / `#Impl(D)` 已落地；DRAFT-错误.md 引入 `#Fallible(E)` / `#NoReturn`（草案，单参数糖于 §11.1.1.1 同步解禁）；其它注解形态属预留（§11.5.2）。早期 `#DraftLike` 已废弃（§11.4.3）。
+§A.3.1 v1 正式注解：`#Builtin` / `#Test` / `#TestIsolate` / `#Spec` / `#Impl(D)` 已落地；DRAFT-错误.md 引入 `#Fallible(E)` / `#NoReturn`（草案，单参数糖于 §11.1.1.1 同步解禁）；其它注解形态属预留（§11.5.2）。早期 `#DraftLike` 已废弃（§11.4.3）。
 
 ## A.4 运算符与符号 token
 

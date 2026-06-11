@@ -18,7 +18,7 @@ B 组（边界语法）：内联 `<T : D1 + D2>`，不引入 `where`；与 §8.6
 
 C 组（匹配规则）：签名等价按 §12.3.1；draft 自身可泛型；体内 fn 不得再带本地泛型；按需匹配（不强求全签名一致）。显隐优先级 —— 同包共存即 error，跨包结构化匹配自动命中。多包同名 draft 按完全限定名独立判断。`#DraftLike` 默认严格 + 4 条硬性误用诊断（贴非 draft / 默认体 / 体内本地泛型 / 与显式实现块共存）。orphan 规则：Type 包或 D 包二者其一才能写实现，否则 E1120。
 
-D 组（内置）：`ToString` 入 base.yux，**不**贴 `#DraftLike`（强契约，复用 `#CompilerInner` 让方法体可由编译器内嵌）；`Box<T>` forward 范围无独立机制，等价于现有 §8.6.7.3 归一并澄清 5 条边界；内置 `#DraftLike draft Any { }` 让所有类型自动满足（含微补：允许空 draft body）；新增 builtin `copy_of:<T>(x T&) T` 提供 T&→T 显式拷贝。
+D 组（内置）：`ToString` 入 base.yux，**不**贴 `#DraftLike`（强契约，复用 `#Builtin` 让方法体可由编译器内嵌）；`Box<T>` forward 范围无独立机制，等价于现有 §8.6.7.3 归一并澄清 5 条边界；内置 `#DraftLike draft Any { }` 让所有类型自动满足（含微补：允许空 draft body）；新增 builtin `copy_of:<T>(x T&) T` 提供 T&→T 显式拷贝。
 
 E 组（不在范围）：12 条决议 v1 不实施（dyn Draft / where 子句 / 默认方法体 / 关联类型 / 父 draft / blanket impl 等），全部记入 §12 Open Issues。
 
@@ -101,7 +101,7 @@ E1111（`#DraftLike` 默认方法体）在 grammar 层即被堵：`draftDecl` �
 
 ## Phase 4 — SDK + 测试
 
-`sdk/yux/src/yux/core/base.yux`：内置 `ToString` draft + `#DraftLike Any` + 各内置类型 `Type : ToString { ... }` 显式实现。窄整型（i8/u8/i16/u16/i32/u32）通过 `to_string()` 委派给宽类型；i64/u64/f64/bool/String 走 yux 实现；f32 委派 f64。spec §12.7.1.2 措辞同步订正：方法体 `#CompilerInner` 与 yux 实现并存为合法形态；CHANGELOG 顶部新条目记录此迁移。
+`sdk/yux/src/yux/core/base.yux`：内置 `ToString` draft + `#DraftLike Any` + 各内置类型 `Type : ToString { ... }` 显式实现。窄整型（i8/u8/i16/u16/i32/u32）通过 `to_string()` 委派给宽类型；i64/u64/f64/bool/String 走 yux 实现；f32 委派 f64。spec §12.7.1.2 措辞同步订正：方法体 `#Builtin` 与 yux 实现并存为合法形态；CHANGELOG 顶部新条目记录此迁移。
 
 SDK 端到端测试位于 `sdk/yux/src/yux/core/`：
 
@@ -119,7 +119,7 @@ SDK 端到端测试位于 `sdk/yux/src/yux/core/`：
 - 实现块：`StructImplNode._draftRefs`（解析后挂 `(typeQualified, draftQualified) → impl` 表）
 - 边界：`FnHeaderNode._typeParamBounds`，单态化期 `boundSatisfied(...)` 校验
 - 注册中心：`Yux::draftRegistry()` + `Yux::draftImplChecker()`，长生命期 + 一次性 validate flag
-- 分发：方法符号统一注册为 `<module>.<Type>.<member>`，无独立 vtable / 签名表；`#CompilerInner` 内嵌方法体走原有 baked dispatch
+- 分发：方法符号统一注册为 `<module>.<Type>.<member>`，无独立 vtable / 签名表；`#Builtin` 内嵌方法体走原有 baked dispatch
 - 解引用归一：`compileMethodCall` 中 `baseType.isBox() → actualType = boxElementType`（§8.6.7.3 既有路径，draft 复用）
 
 ## TODO（v0.5 未覆盖，记入后续版本）

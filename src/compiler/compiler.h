@@ -406,7 +406,7 @@ private:
                                           int lineNum); // 编译自定义类型一元运算符
 
     // ==================== 方法/函数调用编译 ====================
-    bool isCompilerInnerMethod(const string& structName, const string& methodName); // 检查是否为编译器内部方法
+    bool isBuiltinMethod(const string& structName, const string& methodName); // 检查是否为编译器内部方法
     llvm::Value* compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode> dotNode, vector<llvm::Value*>& args,
                                    vector<TypeInfo>& argTypes); // 编译方法调用
     llvm::Value* compileFunctionCall(p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args,

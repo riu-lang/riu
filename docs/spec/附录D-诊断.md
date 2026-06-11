@@ -50,7 +50,7 @@ N | <源码行原文>
 | E3xxx | 类型                | §3 §4  | 类型不匹配 / 符号查找 / 字段访问 / 泛型实参等       |
 | E4xxx | 所有权 / 借用       | §8     | `T&` 借用合法性、`$` 字段 DA/DAA、构造器返回限制    |
 | E5xxx | 模块 / 包           | §10    | `yux.toml` 解析、模块发现、循环依赖                 |
-| E6xxx | 内置 / 调用         | §6 §9  | 函数 / 方法调用、`#CompilerInner`、内置类型方法     |
+| E6xxx | 内置 / 调用         | §6 §9  | 函数 / 方法调用、`#Builtin`、内置类型方法     |
 | E7xxx | 错误处理 / panic    | §6 §8  | `#Fallible` / `!` / try-catch / `#NoReturn` / `panic` 边界（详见 DRAFT-错误.md / 待 spec 落地后补 §引用） |
 | E11xx | draft / 接口        | §12    | draft 实现穷尽性 / `#DraftLike` 误用 / orphan / 边界 |
 
@@ -82,14 +82,14 @@ N | <源码行原文>
 | E2003 | `module \`{}\` is ambiguous: both \`{}.yux\` and \`{}/\` exist` |
 | E2004 | `module alias \`{}\` conflicts with existing symbol` |
 | E2005 | `Unknown build annotation \`#{}\`` |
-| E2006 | `Function \`{}\` has no body; only \`#CompilerInner\` functions may omit the body` |
-| E2007 | `Method \`{}.{}\` has no body; only \`#CompilerInner\` methods may omit the body` |
+| E2006 | `Function \`{}\` has no body; only \`#Builtin\` functions may omit the body` |
+| E2007 | `Method \`{}.{}\` has no body; only \`#Builtin\` methods may omit the body` |
 | E2008 | `wildcard alias \`{}\` is ambiguous, matched {}` |
-| E2009 | `Function \`{}\` cannot return \`T&\`; only \`#CompilerInner\` baked builtins may have a reference return type (spec §8.9)` |
+| E2009 | `Function \`{}\` cannot return \`T&\`; only \`#Builtin\` baked builtins may have a reference return type (spec §8.9)` |
 | E2010 | `Cannot call mutating method \`Array.{}\` on \`{}\`: it has an active borrow (spec §8.4.2.5)` |
 | E2011 | `Build annotation \`#{}\` is not allowed on this declaration (only \`fn\` accepts it)` |
 | E2012 | `\`#Test\` function \`{}\` must have signature \`fn {}(): void\` (no params, no return type, must have body)` |
-| E2013 | `\`#Test\` and \`#CompilerInner\` cannot both be applied to function \`{}\`` |
+| E2013 | `\`#Test\` and \`#Builtin\` cannot both be applied to function \`{}\`` |
 | E2014 | `\`#Test\` is only allowed in \`*.test.yux\` files; \`{}\` is not a test file` |
 | E2015 | `draft bounds (\`: D\`) are only allowed at declaration sites (fn/struct/draft generic params); not at type references or call-point turbofish` |
 | E2016 | `Type alias \`{}\` forms a cycle (recursive without indirection)` |
@@ -357,7 +357,7 @@ static-vars（E3150..E3157；引入自 [draft/DRAFT-static-vars.md](draft/DRAFT-
 | E6014 | `Ambiguous call to '{}({})': {} overloads match; add type suffix to disambiguate:{}` |
 | E6015 | `Unsupported call expression` |
 | E6016 | `Unknown method '{}' for builtin type '{}'` |
-| E6017 | `Unknown #CompilerInner function '{}'` |
+| E6017 | `Unknown #Builtin function '{}'` |
 | E6018 | `Cannot determine type argument for size_of` |
 | E6019 | `Cannot determine LLVM type for '{}'` |
 
@@ -496,7 +496,7 @@ Array 内置方法（E6040..E6044）：
 - **高频场景 提示/修复建议**（原 v0.3 Phase 5）：
   - **A 阶段（已落地）**：诊断渲染支持 `= help: ...` 与 `= note: ...`；`YuxError` 通过链式 `withHint` / `withNote` 携带。
     已在 E2001（`Weak<T>?`）、E3078（`Weak == / !=`）、E3017 / E3018 / E3019 / E4001 / E4004（`T&`
-    初始化与借用形态）、E2006 / E2007（缺函数体 vs `#CompilerInner`）、E6010 / E6011（泛型实参个数）以及
+    初始化与借用形态）、E2006 / E2007（缺函数体 vs `#Builtin`）、E6010 / E6011（泛型实参个数）以及
     E1002（`SyntaxErrorListener` 对常见 `';'` / `mismatched input` / `extraneous input` 等模式）站点附了简单 hint。
     回归位于 `tests/cases/diag_*.yux`。
   - **B 阶段（已落地）**：未声明标识符的拼写近似建议（Levenshtein ≤ 2）。`src/symbol_suggest.{h,cpp}` 沿

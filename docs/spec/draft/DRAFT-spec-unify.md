@@ -300,10 +300,10 @@ struct Type {
 }
 ```
 
-`Field` 是**唯一编译器内置反射类型**（[#1.X]）——`.value` 字段类型按迭代位 + 是否绑 receiver 动态决定（dependent-typed phantom field），yux 类型系统当前无法表达，因此 base.yux 仅留 `#CompilerInner` stub：
+`Field` 是**唯一编译器内置反射类型**（[#1.X]）——`.value` 字段类型按迭代位 + 是否绑 receiver 动态决定（dependent-typed phantom field），yux 类型系统当前无法表达，因此 base.yux 仅留 `#Builtin` stub：
 
 ```yux
-#CompilerInner          ; 编译器内置：.value phantom 由 sema 注入
+#Builtin          ; 编译器内置：.value phantom 由 sema 注入
 struct Field {
   #Frozen
   name String
@@ -352,7 +352,7 @@ struct Field {
 
 - 无新语法 = sema/parser 无需引入"编译期前缀符号在字段位"的特殊路径
 - 无 IR-before pass = 编译器复杂度不上去（[#1.AE]）
-- `Field.value` 是 sema 改写产物，不是真实运行时字段——base.yux 仍保留 `#CompilerInner` Field stub（[#1.X]），LSP 补全 / hover / doc 三套硬编码这一字段
+- `Field.value` 是 sema 改写产物，不是真实运行时字段——base.yux 仍保留 `#Builtin` Field stub（[#1.X]），LSP 补全 / hover / doc 三套硬编码这一字段
 - 其它三个反射类型（`Type` / `Method` / `Variant`）不受影响，可纯 yux 写
 
 ## 7. 子特性 E — `#Reflect` 注解（**v1 占位 / 不实施**，[#1.AD]）
@@ -539,7 +539,7 @@ struct Counter {
   - **E3132-E3140**（sema 静态）：spec 默认体冲突（E3132，[#1.T]）、`Field.value` 改名时 f 非编译期可定（E3133，[#1.W] / [#1.AE]）、`Field.value` 改名无 receiver 绑定（E3134，[#1.W] / [#1.AE]）、`Reflect::variants` 在非 enum 上访问（E3135，[#1.Y]）、按值取 `Counter::type` 等 rodata 单例（E3136，[#1.Y]）、spec 实现者方法签名不匹配、spec 内 `#Static fn` 签名未实现。
 - **[#1.V] 收回**（被 [#1.Y] 取代）。原决议"编译期字符串 = `cval String`"——既然反射数据全走 `#Frozen` + rodata，`cval` 修饰多余；反射用例下 String 字段就是 `#Frozen String`（rodata 字面量串）。`cval` 体系本身（局部 `#Cval let` / 全局 `#Cval let`）由 let-unify 维持，与本草案无关。`#Const fn` 函数纯洁性也仍是独立维度。
 - **[#1.W]** 编译期字段访问形态 **`f.value`**：通过 `Field.value` 按普通字段访问语法读写，不引入新语法（如 `$.#f`）。`fields_of(instance)` 实例形态返回的 Field 绑 receiver，`f.value` 由 sema 替换为 `<instance>.<f.name>`；`fields_of(T)` 类型形态未绑 → `.value` 访问 E3134；出 `#Inline for` 上下文 → E3133。写 `f.value = expr` 受常规 const-mut 检查（`#Mut` 字段才允许）。理由：无新语法、与"普通字段访问"形态统一；代价见 [#1.X]。
-- **[#1.X]** `Field` 是**唯一编译器内置反射类型**——`.value` 是 dependent-typed phantom（类型按迭代位 + 是否绑 receiver 动态），yux 类型系统当前无法表达。后果：base.yux 仅留 `#CompilerInner stub`；LSP 补全 / hover、文档、sema 三套硬编码该字段。其它三个反射类型（`Type` / `Method` / `Variant`）不受影响、可纯 yux 表达。已知代价，实施时如有更优方案再议。
+- **[#1.X]** `Field` 是**唯一编译器内置反射类型**——`.value` 是 dependent-typed phantom（类型按迭代位 + 是否绑 receiver 动态），yux 类型系统当前无法表达。后果：base.yux 仅留 `#Builtin stub`；LSP 补全 / hover、文档、sema 三套硬编码该字段。其它三个反射类型（`Type` / `Method` / `Variant`）不受影响、可纯 yux 表达。已知代价，实施时如有更优方案再议。
 - **[#1.Y]** 反射通过**内置 spec `Reflect` + 静态字段**暴露——编译器隐式为每个类型 `#Impl(Reflect)`、自动填充 `#Static #Frozen` 字段。不引入 `fields_of(...)` 内置函数通道；类型形 `Counter::type` 无 `()` 直接读 rodata；实例形 `c.type` / `c.fields` 由 sema 注入 mirror（不在 spec body 内声明），等价同名 static field 读 + `c.fields` 附 receiver binding 给 `.value` phantom。数据走 `#Frozen T&` 落 `.rodata`，不引入 `cval& T` 区分（[#1.V] 收回——`#Frozen` + rodata 已覆盖 const 流出 runtime 的需求，`cval` 修饰多余）。`#Reflect` 注解语义从"opt-in 反射"退化为"强制 emit + 防 DCE"，默认走 emit + 链接期 `--gc-sections` 兜底。
 - **[#1.Z]** 反射所需的 **`#Static` 字段子集**（`#Static #Frozen` 字段 + 字段类型可为 `T&` + `Type::name` 无 `()` 访问形态）吸收进 spec-unify Phase (b)，**不前置 `DRAFT-data-struct.md` 全集**。子集明确不引入 `#Cval` / `#Mut` 静态字段等其它档位；data-struct 草案全集（含非反射场景的静态字段、`#Static let` 等）独立另起，与本草案约定不冲突即可。代价：未来 data-struct 落地时要 audit 一致性。同时收回方法形态（`#Static fn type() #Frozen Type&`）——用户决议"用方法多此一举"，全静态字段统一；额外好处：const-mut 返回值 `#Frozen` 缺口（[#1.V] 旁注）被 sidestep，spec-unify Phase 不依赖该缺口修复。spec body 内允许 `#Static` 字段是 [#1.Q] "spec 仅 fn 段" 的**通用扩展**（不仅 Reflect 专用）——type-bound 契约 vs instance 字段段，前者允许、后者仍禁；任何用户 spec 都可声明 `#Static` 字段作类型级常量契约。
 - **[#1.AB]** **实例不能调静态字段 / 静态函数**——`c.type` / `c.fields` / `$.type` / `$.fields` 等"实例形访问静态成员"一律 E1137 拒收；类型形 `Counter::type` / `Self::fields` 是唯一通道。理由：与 yux 静态成员一致性（静态属类型不属实例）；避免 sema 引入"实例形 mirror"注入逻辑；用户在方法体内写 `Self::fields` 与裸 `Counter::fields` 形态对齐。代价：反射 API 表面少一种写法，对工具 / 模板代码无影响（`Self::` 同样指当前类型）。本草案 §6.1 反射 API 全面改类型形。

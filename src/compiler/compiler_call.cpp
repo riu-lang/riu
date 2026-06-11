@@ -170,9 +170,9 @@ llvm::Function* Compiler::getDestructorFunction(const string& structName) {
 }
 
 // ==================== 编译器内部方法检查 ====================
-// 检查方法是否标记为 #CompilerInner
-// CompilerInner 方法由编译器特殊处理，不生成普通 IR
-bool Compiler::isCompilerInnerMethod(const string& structName, const string& methodName) {
+// 检查方法是否标记为 #Builtin
+// Builtin 方法由编译器特殊处理，不生成普通 IR
+bool Compiler::isBuiltinMethod(const string& structName, const string& methodName) {
     if (!_yux || !_yux->sdkFile()) return false;
 
     auto structImpl = _yux->sdkFile()->getStructImpl(structName);
@@ -180,7 +180,7 @@ bool Compiler::isCompilerInnerMethod(const string& structName, const string& met
 
     for (auto& method : structImpl->methods()) {
         if (method->header()->name().getText() == methodName) {
-            return method->header()->hasAnno("CompilerInner");
+            return method->header()->hasAnno("Builtin");
         }
     }
 
@@ -252,8 +252,8 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
         TypeInfo calleeStaticType;
         try {
             calleeStaticType = calleeExpr->getType();
-        } catch (...) {
-        } // NOLINT(bugprone-empty-catch)
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+        }
         if (calleeStaticType.isFn()) {
             return compileFnValueCall(node);
         }

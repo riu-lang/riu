@@ -45,7 +45,7 @@
 ## Phase 4 — `#Const fn` 调用纳入 const-eval
 
 - `ConstEvaluator` 加 `ExprCallNode` 分支：callee 必须 `#Const`，args 全 const-evaluable，按入参绑定形参局部环境，递归求 body
-- 形参 / 返回类型白名单校验（标量 / const struct / `#CompilerInner` rodata）；违反 → E3144
+- 形参 / 返回类型白名单校验（标量 / const struct / `#Builtin` rodata）；违反 → E3144
 - 错码 E3144 注册
 - 测试：`const_eval_const_fn_basic` / `const_eval_const_fn_nested` / `diag_const_eval_E3144`
 

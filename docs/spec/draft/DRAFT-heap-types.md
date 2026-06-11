@@ -331,7 +331,7 @@ spec 写明：**`copy_of` 不接受 `Rc<T>` 按值/借用形态**，编译错引
 
 借用 `Heap<T>&` 与借用 `Rc<T>&` 在借用检查器中走**同一根注册路径**（句柄本身是根）；`as_ref(h)` 站点的根追溯沿用 §8.6.5.7 对 `as_ref(box)` 的规则——根 = h 自身，借用作用域内 h 不可重赋。
 
-实现侧：`as_ref:<T>(h Heap<T>) T&` 走 §11.2.3 的 `#CompilerInner` baked dispatch，与 `as_ref(Rc<T>)` 同一入口，仅 GEP 偏移不同（Heap 无 RC 头，偏移 0；Rc 跳过 8 字节 RC 头）。
+实现侧：`as_ref:<T>(h Heap<T>) T&` 走 §11.2.3 的 `#Builtin` baked dispatch，与 `as_ref(Rc<T>)` 同一入口，仅 GEP 偏移不同（Heap 无 RC 头，偏移 0；Rc 跳过 8 字节 RC 头）。
 
 ### 8a.2 `Heap<T>` ↔ `Heap<T>?` 形态转换
 

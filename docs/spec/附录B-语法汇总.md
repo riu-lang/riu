@@ -129,7 +129,7 @@ fnBlockBody   ::= statementBlock
 spec-unify v1（2026-05-19）将 struct 声明与方法块合一为单一 `structDecl`；spec（接口契约）由 `#Spec` 顶行注解承载；spec 实现关系由 `#Impl(D)` 顶行注解承载（§12.1 / §12.2）。
 
 ```
-structDecl     ::= buildAnno*                              ; 顶行可含 #Spec / #Impl(D) / #CompilerInner 等
+structDecl     ::= buildAnno*                              ; 顶行可含 #Spec / #Impl(D) / #Builtin 等
                    'struct' ID ('<' type (',' type)* '>')? '{'
                        ( filedDecl | staticFieldDecl | LineEnd )*
                        fnClean?

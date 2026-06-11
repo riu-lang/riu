@@ -28,7 +28,7 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
     checkNoReturnHeader(header);
 
     // ==================== #Test 注解校验 (spec §11.3) ====================
-    // 仅 *.test.yux 允许；与 #CompilerInner 互斥；签名 `fn name(): void`、必须有体。
+    // 仅 *.test.yux 允许；与 #Builtin 互斥；签名 `fn name(): void`、必须有体。
     if (header->hasAnno("Test")) {
         // 注意：header->name() 返回 Token 值类型，getText() 返回的 const string& 绑定到临时对象会悬挂；按值拷贝
         const string fnName = header->name().getText();
@@ -39,7 +39,7 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
             throw YuxError(annoLine, annoCol, ErrorCode::E2014,
                            _sourcePath.empty() ? _moduleName : _sourcePath);
         }
-        if (header->hasAnno("CompilerInner")) {
+        if (header->hasAnno("Builtin")) {
             throw YuxError(annoLine, annoCol, ErrorCode::E2013, fnName);
         }
         bool sigOk = true;
@@ -58,7 +58,7 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
 
     // ==================== #TestIsolate 注解校验 (spec §11.3.6) ====================
     // 修饰一个 #Test：命中的测试在默认 isolate=none 模式下也强制走子进程，规避 JIT 跨帧 SEH。
-    // 必须搭配 #Test；其它约束（仅 .test.yux、与 CompilerInner 互斥、签名）由 #Test 那条已经覆盖。
+    // 必须搭配 #Test；其它约束（仅 .test.yux、与 Builtin 互斥、签名）由 #Test 那条已经覆盖。
     if (header->hasAnno("TestIsolate") && !header->hasAnno("Test")) {
         const string fnName = header->name().getText();
         throw YuxError(header->getLineNumber(), header->getColumn(),
@@ -87,11 +87,11 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
     }
 
     if (!ctx->fnBody()) {
-        if (!header->hasAnno("CompilerInner")) {
+        if (!header->hasAnno("Builtin")) {
             throw YuxError(
                 header->getLineNumber(), header->getColumn(),
                 ErrorCode::E2006, header->name().getText())
-                .withHint("普通函数必须有函数体；若仅声明（由编译器内部提供实现），在签名上加 `#CompilerInner` 注解");
+                .withHint("普通函数必须有函数体；若仅声明（由编译器内部提供实现），在签名上加 `#Builtin` 注解");
         }
         DEBUG_LOG("  Body: (compiler-synthesized)");
     } else if (ctx->fnBody()->fnExprkBody()) {
@@ -145,7 +145,7 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
     }
 
     // spec §6.3.X：返回 T& 受溯源约束（根须为 $ 或某 T& 形参），由 borrow_checker 在
-    // fn body 检查时强制（E4010）；此处只放过 #CompilerInner 与有"潜在源"的用户函数。
+    // fn body 检查时强制（E4010）；此处只放过 #Builtin 与有"潜在源"的用户函数。
     // 顶层 free fn 的 "无 T& 形参" 这种 0 源情况此处看不到（我们还没解析完形参），
     // 同样交给 borrow_checker 在拿到完整 fn 后判定。
     (void)retType; // 闸门已撤；保留语义校验给后续阶段

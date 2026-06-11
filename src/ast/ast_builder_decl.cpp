@@ -26,7 +26,7 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
 
     auto fnHeaders = ctx->fnHeader();
     for (auto header : fnHeaders) {
-        // extern 块内 fnHeader 接受 CompilerInner 与 #NoReturn（spec §11.5.1 / DRAFT-错误.md §8.3）。
+        // extern 块内 fnHeader 接受 Builtin 与 #NoReturn（spec §11.5.1 / DRAFT-错误.md §8.3）。
         AnnoList headerAnnos = collectAnnosExternFn(header->buildAnnos);
         bool externNoReturn = false;
         for (const auto& name : headerAnnos.names) {

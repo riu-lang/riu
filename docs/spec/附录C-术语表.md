@@ -120,7 +120,7 @@
 | `yux.core` | yux core SDK | §10.4 | 内置 SDK 模块名 |
 | `base.yux` | SDK base | §10.4 | 内置类型 / 内置函数声明源 |
 | 构建注解 | build annotation | §11 | `#Name` 形态 |
-| `#CompilerInner` | compiler-internal annotation | §11.2 | 编译器合成实现 |
+| `#Builtin` | compiler-internal annotation | §11.2 | 编译器合成实现 |
 | `#Test` | test annotation | §11.3 | 标记单元测试函数；仅 `*.test.yux` 中允许 |
 | `#DraftLike` | draft-like annotation | §11.4 / §12.4 | 开放结构化匹配的 draft |
 | 测试文件 | test file | §11.3.3 | 以 `.test.yux` 结尾；`yux test` 专属 |
@@ -151,7 +151,7 @@
 | 单态化 | monomorphization | §6.4 | 泛型按实参实例化 |
 | informative | informative | §index | 非规范性说明 |
 | Open Issue | open issue | §index | 各章末待决条目 |
-| `#CompilerInner` | — | §11.2 | 见 §C.6 |
+| `#Builtin` | — | §11.2 | 见 §C.6 |
 
 ## C.8 规范用语（normative）
 

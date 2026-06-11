@@ -78,7 +78,7 @@ G2 grammar 改动：`yuxParser.g4` `filedDecl` 接 `(buildAnnos+=buildAnno)*`（
 
 **未做**：
 
-- SDK 内化（`Array.size` / `String.size` 等纯方法补 `#Const`）—— 需先评估能否给 `#CompilerInner` 注解叠 `#Const`，留单独 commit；
+- SDK 内化（`Array.size` / `String.size` 等纯方法补 `#Const`）—— 需先评估能否给 `#Builtin` 注解叠 `#Const`，留单独 commit；
 - §4.2.5 递归（"调任何对 `$` / 参数有写效果的方法"）—— 当前由 (1)(2)(4) 等价覆盖；
 - `yux-check` sema 镜像（与 Phase 2 / 3 / 4 一致）。
 
@@ -98,7 +98,7 @@ G2 grammar 改动：`yuxParser.g4` `filedDecl` 接 `(buildAnnos+=buildAnno)*`（
 
 - **callsite `#Frozen` 实参传非 `#Frozen` 形参的全形态检查**：v1 简化为顶层 ID / paren ID 形态。
 - **`StatementSetNode` 的字段链拒收 + 字段深链 `#Val` / `#Frozen` 第二跳起解析**：需逐级类型推断，与 callsite 阶段一并。
-- **SDK 内化 `#Const`**：评估 `#CompilerInner` 叠 `#Const`；至少 `Array.size` / `String.size` / 数值 `to_*` 等明显纯方法。
+- **SDK 内化 `#Const`**：评估 `#Builtin` 叠 `#Const`；至少 `Array.size` / `String.size` / 数值 `to_*` 等明显纯方法。
 - **`yux-check` SemaPass 镜像**：含白名单 `kMigratedCodes` 同步（与 borrow / 错误模型一致）。
 - **顶层 `globalConst` 是否放宽到任意 const-evaluable expr**：当前保守 `literal` RHS。
 

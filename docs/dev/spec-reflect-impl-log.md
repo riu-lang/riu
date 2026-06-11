@@ -13,7 +13,7 @@
 - **反射走 runtime 数组**：`Self::fields` 是 `[Field& * N]&` 定长数组引用，可索引/取 len/`for` 遍历。不引入 `#Inline for` / IR-before unroll pass（永不引入）。
 - **Field.value sema 期改名**：识别 `<staticFieldsExpr>[<intLit>].value` AST pattern → resolve Field.name 静态值 → 改写为 `<receiver>.<name>`，复用既有字段访问通路。非编译期可定的 f → E3133。
 - **Reflect 为内置 spec**：编译器隐式 `#Impl(Reflect)`，四个 `#Static #Frozen` 字段（`type`/`fields`/`methods`/`variants`）仅类型形访问（`Counter::type` / `Self::fields`）。实例形 → E1138。
-- **反射数据类型 `#CompilerInner`**：`Type` / `Field` / `Method` / `Variant` 由编译器硬编码 LLVM 布局（`{ String name }`），用户不可构造/析构。
+- **反射数据类型 `#Builtin`**：`Type` / `Field` / `Method` / `Variant` 由编译器硬编码 LLVM 布局（`{ String name }`），用户不可构造/析构。
 - **常量 emit to .rodata**：Type 全局 linkonce_odr + Field data/refs 数组 PrivateLinkage。String 走 immortal Block（strong=0xFFFFFFFF），零 RC 开销。`--gc-sections` 自动回收未引用数据。
 - **`#Reflect` 注解防 DCE**：零参，标在 struct 上，强制加入 `llvm.compiler.used`。
 - **E3136 消解**：反射元数据统一按值 copy（rodata → stack），`Field` 不再含 `type`/`offset`（避免 `T&`），无需引入按值/按引用语义选择错误。
@@ -30,17 +30,17 @@
 
 ## Phase 2 — 反射数据类型
 
-- `base.yux` 新增 `Type` / `Method` / `Variant` / `Field` `#CompilerInner` stub
+- `base.yux` 新增 `Type` / `Method` / `Variant` / `Field` `#Builtin` stub
 - `Field` 先于 `Type` 声明避前向引用
-- sema：`Field` 标 `#CompilerInner` 暂不需要类型识别特例（无构造站点）
+- sema：`Field` 标 `#Builtin` 暂不需要类型识别特例（无构造站点）
 
 ## Phase 3 — Reflect Type 节点 .rodata emit
 
 - 拆 `emitStringConstBlock` helper（Block emit 与 alloca/load 解耦，供 reflect 节点复用）
-- `base.yux` 加 `#CompilerInner fn __yux_reflect_type:<T>() Type` intrinsic
+- `base.yux` 加 `#Builtin fn __yux_reflect_type:<T>() Type` intrinsic
 - `ensureReflectTypeGlobal(T)` lazy emit `__yux_reflect_<mod>_<typename>__type` linkonce_odr rodata 全局
 - Layout 级联：Type → String → Array<u32> → ptr → immortal Block
-- sema `validateCompilerInnerIntrinsicShape` 加 `__yux_reflect_type` arity 校验
+- sema `validateBuiltinIntrinsicShape` 加 `__yux_reflect_type` arity 校验
 - `call_fn.cpp` 加 intrinsic 分支：load Type 全局
 - 关键文件：`src/compiler/compiler.cpp::ensureReflectTypeGlobal`、`src/compiler/expr/expr_literal.cpp::emitStringConstBlock`、`src/compiler/call/call_fn.cpp`
 
