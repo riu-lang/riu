@@ -35,7 +35,7 @@ yux build --emit-ir          ; 同时输出 .ll
 # yux test（项目内，*.test.yux 的 #Test）
 yux test                     ; 当前项目所有 #Test
 yux test yux.core            ; 前缀匹配
-yux test -v                  ; 详细输出
+yux test -d                  ; 调试输出，主要是出参入参
 cd sdk/yux && yux test       ; 主测试集
 
 # yux-check test（诊断回归，; check: EXXXX 注解）

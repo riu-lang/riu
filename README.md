@@ -200,8 +200,8 @@ xmake build yux
 # 发现并运行全部用例
 xmake test
 
-# 详细日志
-xmake test -v
+# 调试信息，仅debug
+xmake test -d
 
 # 单独运行某个用例（xmake 的语法：<target>/<test-name>）
 xmake test yux_tests/basic_types.yux
