@@ -478,26 +478,57 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
     }
     DEBUG_LOG_VAL("    Expr: Compare", opStr << " : " << effLeftType.name);
 
-    // && 和 || 是逻辑运算符，不转换为方法调用
+    // && 和 || 是逻辑运算符，不转换为方法调用。
+    // 使用基本块实现短路求值：左侧决定是否跳过右侧。
     if (node->op() == ExprCompareNode::Op::AndAnd || node->op() == ExprCompareNode::Op::OrOr) {
+        bool isAnd = (node->op() == ExprCompareNode::Op::AndAnd);
+
+        // 编译左侧表达式
         auto left = compileExpr(node->left());
-        auto right = compileExpr(node->right());
-        // v0.16: bool& 自动 load
         if (leftType.isRef()) {
             left = _builder.CreateLoad(getLLVMType(effLeftType), left, "logical_lhs");
         }
+        auto leftBool = _builder.CreateICmpNE(
+            left, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), isAnd ? "and.lhs" : "or.lhs");
+
+        llvm::Function* func = _builder.GetInsertBlock()->getParent();
+        auto entryBB = _builder.GetInsertBlock();
+
+        llvm::BasicBlock* rightBB = llvm::BasicBlock::Create(
+            _context, isAnd ? "and.right" : "or.right", func);
+        llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(
+            _context, isAnd ? "and.merge" : "or.merge");
+
+        // &&：leftBool==false → 短路到 merge（结果 false）；leftBool==true → 进入 rightBB
+        // ||：leftBool==true  → 短路到 merge（结果 true）； leftBool==false → 进入 rightBB
+        if (isAnd) {
+            _builder.CreateCondBr(leftBool, rightBB, mergeBB);
+        } else {
+            _builder.CreateCondBr(leftBool, mergeBB, rightBB);
+        }
+
+        // 编译右侧表达式（仅在未短路时执行）
+        _builder.SetInsertPoint(rightBB);
+        auto right = compileExpr(node->right());
         if (rightType.isRef()) {
             right = _builder.CreateLoad(getLLVMType(effRightType), right, "logical_rhs");
         }
-        if (node->op() == ExprCompareNode::Op::AndAnd) {
-            auto leftBool = _builder.CreateICmpNE(left, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "and.lhs");
-            auto rightBool = _builder.CreateICmpNE(right, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "and.rhs");
-            return _builder.CreateAnd(leftBool, rightBool, "and");
-        } else {
-            auto leftBool = _builder.CreateICmpNE(left, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "or.lhs");
-            auto rightBool = _builder.CreateICmpNE(right, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "or.rhs");
-            return _builder.CreateOr(leftBool, rightBool, "or");
-        }
+        auto rightBool = _builder.CreateICmpNE(
+            right, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), isAnd ? "and.rhs" : "or.rhs");
+        _builder.CreateBr(mergeBB);
+        auto rightEndBB = _builder.GetInsertBlock();
+
+        // 合并块：phi 汇集短路路径与右侧路径的结果
+        func->insert(func->end(), mergeBB);
+        _builder.SetInsertPoint(mergeBB);
+
+        auto phi = _builder.CreatePHI(_builder.getInt1Ty(), 2, isAnd ? "and.result" : "or.result");
+        phi->addIncoming(rightBool, rightEndBB);
+        // 短路路径的常量结果：&& 短路 → false; || 短路 → true
+        phi->addIncoming(
+            llvm::ConstantInt::get(_builder.getInt1Ty(), isAnd ? 0 : 1), entryBB);
+
+        return phi;
     }
 
     // 检查是否为自定义类型（用剥 Ref 后的标量名）

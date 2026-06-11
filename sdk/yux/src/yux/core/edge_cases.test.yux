@@ -259,3 +259,67 @@ fn test_comparison_result_bool() {
   assert_true(a <= 10)
   assert_true(b >= 20)
 }
+
+; ==================== && / || 短路求值 + #Mut let 全局可变态 ====================
+
+#Mut let g_sc_val i32 = 0
+
+fn sc_set_val() bool {
+  g_sc_val = 1
+  ret true
+}
+
+fn sc_get_val() i32 = g_sc_val
+
+#Test
+fn test_and_short_circuit_false_left() {
+  g_sc_val = 0
+  ; false && expr: 左侧为 false，右侧不应执行
+  let a bool = false && sc_set_val()
+  assert_false(a)
+  assert_eq(sc_get_val(), 0)
+}
+
+#Test
+fn test_and_short_circuit_true_left() {
+  g_sc_val = 0
+  ; true && expr: 左侧为 true，必须执行右侧
+  let a bool = true && sc_set_val()
+  assert_true(a)
+  assert_eq(sc_get_val(), 1)
+}
+
+#Test
+fn test_or_short_circuit_true_left() {
+  g_sc_val = 0
+  ; true || expr: 左侧为 true，右侧不应执行
+  let a bool = true || sc_set_val()
+  assert_true(a)
+  assert_eq(sc_get_val(), 0)
+}
+
+#Test
+fn test_or_short_circuit_false_left() {
+  g_sc_val = 0
+  ; false || expr: 左侧为 false，必须执行右侧
+  let a bool = false || sc_set_val()
+  assert_true(a)
+  assert_eq(sc_get_val(), 1)
+}
+
+; 纯字面量短路求值（不涉函数调用）
+#Test
+fn test_and_literal_short_circuit() {
+  assert_false(false && true)
+  assert_false(false && false)
+  assert_true(true && true)
+  assert_false(true && false)
+}
+
+#Test
+fn test_or_literal_short_circuit() {
+  assert_true(true || false)
+  assert_true(true || true)
+  assert_true(false || true)
+  assert_false(false || false)
+}
