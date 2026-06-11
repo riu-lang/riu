@@ -753,6 +753,20 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             auto exprVal = compileExpr(expr);
             auto exprType = expr->getType();
 
+            // Ref 类型不能隐式转换为值类型（yux 无隐式转换）
+            // 例：let v i32 = arr[0] — arr[0] 返回 i32&，不能隐式转 i32
+            if (exprType.isRef() && !varType.isRef()) {
+                auto inner = exprType.refElementType();
+                auto innerName = inner ? inner->name : "?";
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3020,
+                               varType.name, exprType.getFullName())
+                    .withHint(std::format("表达式类型为 `{}&`（借用），不能隐式转为 `{}`；"
+                                          "若需绑定引用请写 `let r {}& = ...`，"
+                                          "若需取值请用 `copy_of:<{}>(...)`",
+                                          innerName, varType.name,
+                                          innerName, innerName));
+            }
+
             // 数组类型检查
             if (varType.isArray() && exprType.isArray()) {
                 if (varType.arraySize != exprType.arraySize) {
