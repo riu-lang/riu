@@ -179,7 +179,7 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         }
     }
 
-    // Phase 3.3.2.a: Array<T> 方法形态校验 (E3055/E6040-E6044)
+    // Phase 3.3.2.a: Array<T> 方法形态校验 (E3055/E6042/E6027)
     sema::validateArrayMethodCall(baseType, member, args.size(), arrayPtr != nullptr, callNode->getLineNumber(),
                                   callNode->getColumn());
 
@@ -220,7 +220,7 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
 
     if (member == "get") {
         DEBUG_LOG("    Expr: Array.get() → T&");
-        // E6040 已由 sema::validateArrayMethodCall 保证 args.size() == 1
+        // E6027 已由 sema::validateArrayMethodCall 保证 args.size() == 1
         auto ptr = getReadPtr();
         auto handle = loadArrayHandle(ptr);
         auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(handle), "a.data");
@@ -251,7 +251,7 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
 
     if (member == "pop") {
         DEBUG_LOG("    Expr: Array.pop()");
-        // E6041 已由 sema::validateArrayMethodCall 保证 arrayPtr != nullptr
+        // E6042 已由 sema::validateArrayMethodCall 保证 arrayPtr != nullptr (lvalue)
         auto handle = loadArrayHandle(arrayPtr);
         auto lenFieldPtr = arrayBlockLenPtr(handle);
         auto lenVal = _builder.CreateLoad(i64Ty, lenFieldPtr, "a.len");
@@ -266,7 +266,7 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
     }
 
     if (member == "push" || member == "set_len" || member == "clear") {
-        // E6042 已由 sema::validateArrayMethodCall 保证 arrayPtr != nullptr
+        // E6042 已由 sema::validateArrayMethodCall 保证 arrayPtr != nullptr (lvalue)
         auto handle = loadArrayHandle(arrayPtr);
         auto lenFieldPtr = arrayBlockLenPtr(handle);
         auto capFieldPtr = arrayBlockCapPtr(handle);
@@ -280,12 +280,12 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         }
         if (member == "set_len") {
             DEBUG_LOG("    Expr: Array.set_len()");
-            // E6043 已由 sema::validateArrayMethodCall 保证 args.size() == 1
+            // E6027 已由 sema::validateArrayMethodCall 保证 args.size() == 1 (set_len)
             _builder.CreateStore(args[0], lenFieldPtr);
             return voidResult();
         }
         DEBUG_LOG("    Expr: Array.push()");
-        // E6044 已由 sema::validateArrayMethodCall 保证 args.size() == 1
+        // E6027 已由 sema::validateArrayMethodCall 保证 args.size() == 1 (push)
         auto elemSize = _module->getDataLayout().getTypeAllocSize(elemLLVMType);
         auto elemVal = args[0];
         auto lenVal = _builder.CreateLoad(i64Ty, lenFieldPtr, "a.len");
@@ -343,7 +343,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
     // 处理 #Builtin 运算符方法：直接生成 LLVM IR
     if (isBuiltinMethod(baseType.name, member)) {
         // Phase 3.3.2.e: 操作符方法 arity + 类型域校验
-        //   E6045 17 处二元 op arity != 1, E3070 inv-on-float 全部抠到 sema.
+        //   E6027 17 处二元 op arity != 1, E3070 inv-on-float 全部抠到 sema.
         sema::validateOperatorMethodCall(member, baseType, args.size(), callNode->getLineNumber(),
                                          callNode->getColumn());
 

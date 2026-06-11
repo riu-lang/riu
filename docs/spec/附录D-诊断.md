@@ -331,34 +331,21 @@ builtin 调用 / 类型实参数量（E6020..E6029）：
 
 | 码     | 模板 |
 |--------|------|
-| E6020 | `ptr_from_addr expects 1 argument` |
-| E6021 | `rc_leak_count expects 0 arguments` |
-| E6022 | `_ptr_offset expects 2 arguments` |
 | E6023 | `Cannot call private function '_ptr_offset' (SDK-only Ptr arithmetic)` |
-| E6024 | `upgrade expects 1 type argument` |
-| E6025 | `upgrade expects 1 argument` |
-| E6026 | `{} expects 1 type argument` |
-| E6027 | `{} expects {} argument(s)` |
+| E6026 | `{} expects {} type argument(s)`（原 E6024/E6026 合并） |
+| E6027 | `{} expects {} argument(s)`（原 E6020-E6022/E6025/E6040/E6043-E6045 合并） |
 | E6028 | `{}:<T&> requires a local var or &expr argument` |
 | E6029 | `{}:<T> requires T to be Rc/Weak/Array/String or U& (got '{}')` |
 | E6030 | `assert_eq:<T> requires T to be a numeric or bool type (got '{}')` |
 | E6031 | `assert_eq operand type mismatch: actual is '{}', expected is '{}' ...` |
 
-Array 内置方法（E6040..E6044）：
+Array 内置方法（E6042）：
 
 | 码     | 模板 |
 |--------|------|
-| E6040 | `at requires 1 argument` |
-| E6041 | `Array.pop() requires an lvalue array` |
-| E6042 | `Array mutation method '{}' requires an lvalue array` |
-| E6043 | `set_len requires 1 argument` |
-| E6044 | `push requires 1 argument` |
+| E6042 | `Array.{}() requires an lvalue array`（原 E6041/E6042 合并） |
 
-内置算子方法 arity（E6045）：
-
-| 码     | 模板 |
-|--------|------|
-| E6045 | `{} requires 1 argument`（plus / minus / 等共用此模板，`{}` 为方法名） |
+> E6040/E6043/E6044/E6045 已退役 → E6027（泛化 arity 检查）；E6041 已退役 → E6042
 
 ### D.3.7 E7xxx — 错误处理 / panic（草案，待 spec 落地）
 
@@ -483,6 +470,6 @@ Array 内置方法（E6040..E6044）：
 ## D.7 Open Issues
 
 - E3099 采用包装上下文的双行模板，长期看应当替换为结构化 `note` 而非内嵌换行。
-- E6045（内置算子 arity）目前用占位字段承载方法名，未来若按算子细分，可能拆为 E60xx 段独立码。
+- E6027 已统一承载内置 intrinsic / Array 方法 / 算子方法 arity 检查（原 E6020-E6022/E6025/E6040/E6043-E6045）；若未来需要细分场景加 note，在 E6027 基础上加结构化 diagnostic note 即可，不再拆分独立码。
 
 > 已收口：原"列号按字节计算导致多字节字符插入符偏移"的 Open Issue（v0.4.x）已实现 —— `col` 改为 codepoint 列号、插入符按显示列宽对齐，详见 D.1.1。

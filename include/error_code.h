@@ -391,13 +391,10 @@ DEF_ERR(6018, "Cannot determine type argument for size_of")
 DEF_ERR(6019, "Cannot determine LLVM type for '{}'")
 
 // builtin 调用：参数 / 类型实参数量
-DEF_ERR(6020, "ptr_from_addr expects 1 argument")
-DEF_ERR(6021, "rc_leak_count expects 0 arguments")
-DEF_ERR(6022, "_ptr_offset expects 2 arguments")
+// E6020-E6022, E6025 已退役 → E6027
+// E6024 已退役 → E6026
 DEF_ERR(6023, "Cannot call private function '_ptr_offset' (SDK-only Ptr arithmetic)")
-DEF_ERR(6024, "upgrade expects 1 type argument")
-DEF_ERR(6025, "upgrade expects 1 argument")
-DEF_ERR(6026, "{} expects 1 type argument")
+DEF_ERR(6026, "{} expects {} type argument(s)")
 DEF_ERR(6027, "{} expects {} argument(s)")
 DEF_ERR(6028, "{}:<T&> requires a local var or &expr argument")
 DEF_ERR(6029, "{}:<T> requires T to be Rc/Weak/Array/String or U& (got '{}')")
@@ -410,14 +407,8 @@ DEF_ERR(6032, "copy_of:<T> cannot copy types containing Ref fields (offending: '
 DEF_ERR(6033, "No matching constructor for '{}({})'; declared overloads:{}")
 
 // Array 内置方法
-DEF_ERR(6040, "at requires 1 argument")
-DEF_ERR(6041, "Array.pop() requires an lvalue array")
-DEF_ERR(6042, "Array mutation method '{}' requires an lvalue array")
-DEF_ERR(6043, "set_len requires 1 argument")
-DEF_ERR(6044, "push requires 1 argument")
-
-// 内置算子方法 arity（plus / minus / ... 共用同一模板）
-DEF_ERR(6045, "{} requires 1 argument")
+// E6040/E6043/E6044 已退役 → E6027; E6041 已退役 → E6042; E6045 已退役 → E6027
+DEF_ERR(6042, "Array.{}() requires an lvalue array")
 
 // ── E7xxx 错误模型 / panic（DRAFT-错误.md） ─────────────────────────────
 // 附录 D §D.3.7 之后段位；E7001-E7014 默认 Error，E7015-E7018 默认 Warning（Phase 10d+ 启用）

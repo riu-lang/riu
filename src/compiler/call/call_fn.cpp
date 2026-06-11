@@ -53,7 +53,7 @@ llvm::Value* Compiler::compileFunctionCall(p<ExprCallNode> callNode, const strin
         return compileGenericFunctionCall(callNode, fnName, args, argTypes, genericFn, fnOwner);
     }
 
-    // Phase 3.3.2.b: 自由 intrinsic arity (E6020/E6021/E6022) 收口到 sema helper
+    // Phase 3.3.2.b: 自由 intrinsic arity (E6027) 收口到 sema helper
     sema::validateFreeIntrinsicArity(fnName, args.size(), callNode->getLineNumber(), callNode->getColumn());
 
     if (fnName == "ptr_from_addr") {
@@ -208,7 +208,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
         }
         if (fnName == "upgrade") {
             // Phase 1d.2：Weak<T> → Rc<T>?
-            // E6024 / E6025 已由 sema::validateBuiltinIntrinsicShape 校验
+            // E6026 / E6027 已由 sema::validateBuiltinIntrinsicShape 校验
             auto& T = typeArgs[0];
             auto tShared = make_shared<TypeInfo>(T);
             TypeInfo weakTy("Weak", {tShared});

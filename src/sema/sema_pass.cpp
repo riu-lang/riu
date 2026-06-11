@@ -1058,7 +1058,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 int col = n->getColumn();
                 bool hasTypeArgs = !n->getTypeArgs().empty();
 
-                // Phase 3.3.2.f: 自由 intrinsic arity 校验 (E6020/E6021/E6022).
+                // Phase 3.3.2.f: 自由 intrinsic arity 校验 (E6027).
                 // helper 仅对清单内 fnName 实际校验, 其他 fnName 是 no-op,
                 // 故无条件调用安全; 与 Compiler 端 compileExternalOrSdkFunctionCall
                 sema::validateFreeIntrinsicArity(fnName, n->getArgs().size(), line, col);
@@ -1067,7 +1067,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 if (!structDecl && _sdkFile) structDecl = _sdkFile->getStructDecl(fnName);
 
                 // Phase 3.3.2.f: Builtin 泛型 intrinsic 的 shape + type-shape 校验.
-                // 接管 E6017/E6018/E6024-E6029/E6032 实际抛出点 (与 Compiler::compileGenericFunctionCall
+                // 接管 E6017/E6018/E6026-E6029/E6032 实际抛出点 (与 Compiler::compileGenericFunctionCall
                 // 的 #Builtin 分支镜像).
                 // 限制:
                 //   * 仅在 callee 是 ID-literal 且解析到泛型 fn 且 fn 头部 hasAnno(Builtin) 时接管;
@@ -1331,8 +1331,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 if (!modCall.matched) {
                     // Phase 3.3.2.f: 镜像 Compiler::compileMethodCall 的 baseType 派发,
                     // 主动调用 3.3.2.a / 3.3.2.e 抠出的 helper.
-                    //   * baseType.isArrayGeneric() → validateArrayMethodCall (E3055/E6040-E6044)
-                    //   * isBuiltinType + isBuiltinMethodIn → validateOperatorMethodCall (E6045/E3070)
+                    //   * baseType.isArrayGeneric() → validateArrayMethodCall (E3055/E6042/E6027)
+                    //   * isBuiltinType + isBuiltinMethodIn → validateOperatorMethodCall (E6027/E3070)
                     // baseType 经 getType() 计算; 任一异常 (lambda 形参等) → 跳过, 交 Compiler 兜底.
                     // SemaPass 走非泛型 fn / 非泛型 impl 路径, 不需要 applySubst (替换栈为空).
                     TypeInfo baseType;

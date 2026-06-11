@@ -555,7 +555,7 @@ void validateFnSymbolVisibility(const FnSymbolInfo* fnSymbol, const string& curr
 void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, size_t argsCount, int line,
                                          int col) {
     if (fnName == "assert_eq") {
-        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName);
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
         return;
     }
     if (fnName == "size_of") {
@@ -563,37 +563,37 @@ void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, s
         return;
     }
     if (fnName == "upgrade") {
-        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6024);
-        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6025);
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
         return;
     }
     if (fnName == "same_ref" || fnName == "ptr_of") {
         size_t expectedArgs = (fnName == "same_ref" ? 2u : 1u);
-        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName);
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
         if (argsCount != expectedArgs) {
             throw YuxError(line, col, ErrorCode::E6027, fnName, expectedArgs);
         }
         return;
     }
     if (fnName == "as_ref" || fnName == "copy_of" || fnName == "weak") {
-        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName);
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
         if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
         return;
     }
     // DRAFT-heap-types §8.3a.4.2 (Phase 3d): Heap<T>? 构造助手
     if (fnName == "heap_some") {
-        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName);
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
         if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
         return;
     }
     if (fnName == "heap_null") {
-        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName);
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
         if (argsCount != 0) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(0));
         return;
     }
     // DRAFT-spec-reflect Phase 3a (捷径 A): __yux_reflect_type:<T>() 拿反射 Type 节点
     if (fnName == "__yux_reflect_type") {
-        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName);
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
         if (argsCount != 0) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(0));
         return;
     }
@@ -606,15 +606,15 @@ void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, s
 // 仅命中清单内的 fnName 才校验, 其他 fnName 是 no-op.
 void validateFreeIntrinsicArity(const string& fnName, size_t argsCount, int line, int col) {
     if (fnName == "ptr_from_addr") {
-        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6020);
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
         return;
     }
     if (fnName == "rc_leak_count") {
-        if (argsCount != 0) throw YuxError(line, col, ErrorCode::E6021);
+        if (argsCount != 0) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(0));
         return;
     }
     if (fnName == "_ptr_offset") {
-        if (argsCount != 2) throw YuxError(line, col, ErrorCode::E6022);
+        if (argsCount != 2) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(2));
         return;
     }
 }
@@ -634,11 +634,11 @@ void validateArrayMethodCall(const TypeInfo& baseType, const string& member, siz
 
     if (member == "is_empty" || member == "first" || member == "last") return;
     if (member == "get") {
-        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6040);
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, member, static_cast<size_t>(1));
         return;
     }
     if (member == "pop") {
-        if (!baseIsLvalue) throw YuxError(line, col, ErrorCode::E6041);
+        if (!baseIsLvalue) throw YuxError(line, col, ErrorCode::E6042, member);
         return;
     }
     if (member == "push" || member == "set_len" || member == "clear") {
@@ -647,11 +647,11 @@ void validateArrayMethodCall(const TypeInfo& baseType, const string& member, siz
         }
         if (member == "clear") return;
         if (member == "set_len") {
-            if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6043);
+            if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, member, static_cast<size_t>(1));
             return;
         }
         // push
-        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6044);
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, member, static_cast<size_t>(1));
         return;
     }
     // 未知 member: 由 Compiler 端返回 nullptr fall-through 到 builtin/sdk 方法路径
@@ -757,7 +757,7 @@ void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeIn
 
 // ==================== Builtin 操作符方法 arity / 类型域 (Phase 3.3.2.e) ====================
 // 覆盖 compileBuiltinTypeMethodCall 内 isBuiltinMethod 分支:
-//   - 17 处 E6045 arity != 1 (二元 op)
+//   - 17 处 E6027 arity != 1 (二元 op)
 //   - 1 处 E3070 inv on float
 void validateOperatorMethodCall(const string& member, const TypeInfo& baseType, size_t argsCount, int line, int col) {
     // 二元 op: args.size() 必须为 1
@@ -767,7 +767,7 @@ void validateOperatorMethodCall(const string& member, const TypeInfo& baseType, 
     for (auto& op : binaryOps) {
         if (member == op) {
             if (argsCount != 1) {
-                throw YuxError(line, col, ErrorCode::E6045, member);
+                throw YuxError(line, col, ErrorCode::E6027, member, static_cast<size_t>(1));
             }
             return;
         }
