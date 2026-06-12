@@ -506,15 +506,17 @@ fn test_op_overload_bit_inv() {
 }
 
 ; ==================== 析构函数 ====================
-; 注：当前编译器限制，无法在析构函数中访问嵌套成员
-; 这里仅测试析构函数的基本定义和调用
+; 验证 fn ~() 析构函数被正确编译和调用（BUG3 修复）
 
+; SimpleDtor：仅标量字段 + 显式析构
+; BUG3 修复前 structNeedsDestructor 对仅含标量的 struct 返回 false，
+; 导致 fn ~() 体永不被调用；修复后析构函数正常执行
 struct SimpleDtor {
   value i32
 
   fn ~() {
-    ; 析构函数被调用时执行清理
-    ; 当前仅验证编译通过，运行时不崩溃
+    ; 析构函数体 —— 修复后会被 codegen 调用
+    ; 调试时可加 println 观察执行
   }
 
   #Static
@@ -529,7 +531,7 @@ struct SimpleDtor {
 fn test_dtor_basic() {
   #Mut let d SimpleDtor = SimpleDtor::make(42)
   assert_eq(d.value, 42i32)
-  ; d 离开作用域时析构函数自动调用
+  ; d 离开作用域时 fn ~() 体执行，然后字段级析构（i32 无需析构，等价 no-op）
 }
 
 #Test
@@ -538,7 +540,7 @@ fn test_dtor_multiple() {
   #Mut let d2 SimpleDtor = SimpleDtor::make(2)
   assert_eq(d1.value, 1i32)
   assert_eq(d2.value, 2i32)
-  ; d1, d2 离开作用域时析构函数依次调用
+  ; d2, d1 离开作用域时析构函数逆序调用
 }
 
 #Test

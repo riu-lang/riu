@@ -758,9 +758,19 @@ bool Compiler::structParamUsesPointer(const string& typeName) {
 }
 
 // 检查结构体是否需要析构函数
-// 如果结构体有任何需要析构的字段，则需要析构函数
+// 两种情况需要析构：
+//   1. 有显式 fn ~() 析构函数 —— 即使所有字段都是标量
+//   2. 任何字段需要析构 —— 默认析构或字段级 release
 // 普通 struct 走 fields()；泛型实例走 baseDecl + 实例 args 替换
 bool Compiler::structNeedsDestructor(const string& structName) {
+    // 检查是否有显式析构函数 fn ~()
+    auto* impl = _file->getStructImpl(structName);
+    if (!impl && _yux && _yux->sdkFile()) {
+        impl = _yux->sdkFile()->getStructImpl(structName);
+    }
+    if (impl && impl->hasDestructor()) return true;
+
+    // 检查字段是否需要析构
     auto fieldTypes = resolveStructFieldTypes(structName);
     for (const auto& ft : fieldTypes) {
         if (typeNeedsDestructor(ft)) return true;
