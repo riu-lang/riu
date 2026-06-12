@@ -78,6 +78,11 @@ class Compiler {
         vector<TypeInfo> typeArgs; // 类型参数实例化参数
         string mangledName;        // mangle 后的实例名
         bool emitted = false;      // 是否已生成 IR
+        // 实例的"消费方"模块名，即触发该实例化的当前编译模块。
+        // 每个用到泛型实例的模块各自生成一份 IR，符号名以本字段为前缀，
+        // 不再共用 ownerFile 的前缀，避免 SDK + 用户模块同时实例化
+        // 相同泛型函数时出现 lld-link duplicate symbol。
+        string consumerModule;
     };
     map<string, FnInstance> _fnInstances;
 

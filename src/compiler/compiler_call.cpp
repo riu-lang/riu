@@ -277,12 +277,9 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
             string fnName = objLiteral->getValue().getText();
 
             // 检查是否为泛型函数
-            auto genericFn = _file->getFunction(fnName);
-            p<FileNode> fnOwner = _file;
-            if (!genericFn && _yux && _yux->sdkFile()) {
-                genericFn = _yux->sdkFile()->getFunction(fnName);
-                if (genericFn) fnOwner = _yux->sdkFile();
-            }
+            // getFunctionWithOwner 已搜索本地 + wildcardImports，不再需要手动 SDK 回退
+            auto [genericFn, fnOwner] = _file->getFunctionWithOwner(fnName);
+            if (!fnOwner) fnOwner = _file;
 
             // 处理显式类型参数的泛型函数调用
             if (genericFn && genericFn->header()->isGeneric()) {

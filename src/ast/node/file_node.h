@@ -42,7 +42,9 @@ public:
     [[nodiscard]] const vector<p<StructDeclNode>>& getStructDecls() const { return _structDecls; }
     [[nodiscard]] const vector<p<StructImplNode>>& getStructImpls() const { return _structImpls; }
     [[nodiscard]] const vector<p<GlobalConstNode>>& getGlobalConsts() const { return _globalConsts; }
-    [[nodiscard]] const vector<p<GlobalVarNode>>& getGlobalVars() const { return _globalVars; } // DRAFT-static-vars Phase 1
+    [[nodiscard]] const vector<p<GlobalVarNode>>& getGlobalVars() const {
+        return _globalVars;
+    } // DRAFT-static-vars Phase 1
     [[nodiscard]] const vector<p<SpecDeclNode>>& getSpecDecls() const { return _specDecls; }
     [[nodiscard]] const vector<p<AliasDeclNode>>& getAliasDecls() const { return _aliasDecls; }
     [[nodiscard]] const vector<p<EnumDeclNode>>& getEnumDecls() const { return _enumDecls; }
@@ -51,15 +53,19 @@ public:
     [[nodiscard]] EnumDeclNode* getEnumDecl(const string& name) const;
 
     // includeBuiltin: 是否把 `#Builtin` 占位 (Rc/Ref/Ptr/Array 等内建容器
-     // + i8..f64 等基本类型) 也算上。默认 false —— Compiler 端只关心用户结构体, 内建
-     // 占位由编译器合成不需要走 decl 查找。SemaPass 做泛型 arity 校验 (E6011) 等仅需
-     // 看到声明形态的场景要显式传 true, 否则 Rc<T> 查不到, arity 校验静默漏报。
+    // + i8..f64 等基本类型) 也算上。默认 false —— Compiler 端只关心用户结构体, 内建
+    // 占位由编译器合成不需要走 decl 查找。SemaPass 做泛型 arity 校验 (E6011) 等仅需
+    // 看到声明形态的场景要显式传 true, 否则 Rc<T> 查不到, arity 校验静默漏报。
     [[nodiscard]] StructDeclNode* getStructDecl(const string& name, bool includeBuiltin = false) const;
     [[nodiscard]] StructImplNode* getStructImpl(const string& name) const;
     [[nodiscard]] FnNode* getFunction(const string& name) const;
+    // 同 getFunction，同时返回所属 FileNode；搜索范围扩展到 wildcardImports
+    [[nodiscard]] pair<FnNode*, FileNode*> getFunctionWithOwner(const string& name) const;
     // 仅返回 generic 重载（用于 dispatcher：与 lookupFnSymbolWithParams 命中的非泛型重载竞争优先级时用到）
-    [[nodiscard]] FnNode* getGenericFunction(const string& name) const;
+    // 搜索范围：本地 _functions + wildcardImports
+    [[nodiscard]] pair<FnNode*, FileNode*> getGenericFunction(const string& name) const;
     // 收集所有同名泛型函数（支持多个泛型重载消歧，如 print<T>(x T) + print<T>(x T&)）
+    // 搜索范围：本地 _functions + wildcardImports
     void collectGenericFunctions(const string& name, vector<pair<FnNode*, FileNode*>>& out, FileNode* owner) const;
 
     void setModuleName(const string& name) { _moduleName = name; }
@@ -74,10 +80,10 @@ public:
     // 语义为"导入模块 a.b 的所有非私有成员"。wildcard=false 表示
     // `use a.b.c`，语义为"引入模块别名 c 指向 a.b.c"（暂未实现，见 BUGS.md）。
     struct UseSpec {
-        string moduleName;          // 点分，如 "yux.net"
-        string alias;               // 最后一段，如 "net"；wildcard 时未使用
-        bool wildcard = false;      // 是否 `.*`
-        int line = 0;               // 源码行号，用于报错
+        string moduleName;     // 点分，如 "yux.net"
+        string alias;          // 最后一段，如 "net"；wildcard 时未使用
+        bool wildcard = false; // 是否 `.*`
+        int line = 0;          // 源码行号，用于报错
     };
     void addUseSpec(UseSpec spec);
     [[nodiscard]] const vector<UseSpec>& useSpecs() const { return _useSpecs; }
@@ -114,9 +120,9 @@ private:
     vector<UseSpec> _useSpecs;
     vector<FileNode*> _wildcardImports;
     map<string, FileNode*> _moduleAliases;
-    map<string, string> _packageAliases;                    // alias → dotted path
-    map<string, map<string, FileNode*>> _packageChildren;   // alias → { child file name → FileNode }
-    map<string, vector<string>> _wildcardAliasSources;      // alias → 注入过该别名的源模块点分路径列表
+    map<string, string> _packageAliases;                  // alias → dotted path
+    map<string, map<string, FileNode*>> _packageChildren; // alias → { child file name → FileNode }
+    map<string, vector<string>> _wildcardAliasSources;    // alias → 注入过该别名的源模块点分路径列表
 };
 
-#endif //YUX_LANG_FILE_NODE_H
+#endif // YUX_LANG_FILE_NODE_H

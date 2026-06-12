@@ -1127,8 +1127,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 //     兜底 (3.3.1.b 未让 SemaPass 接管). 推断路径整体跳过, 留 Compiler 抛.
                 //   * argTypes 经 getType() 计算, 任一 arg 未推断 (lambda 形参) 时跳过.
                 if (!structDecl) {
-                    auto* genFn = _file->getGenericFunction(fnName);
-                    if (!genFn && _sdkFile) genFn = _sdkFile->getGenericFunction(fnName);
+                    auto [genFn, _] = _file->getGenericFunction(fnName);
+                    // getGenericFunction 已搜索 wildcardImports，不再需要手动 SDK 回退
                     if (genFn && genFn->header()->hasAnno("Builtin") && hasTypeArgs) {
                         vector<TypeInfo> typeArgs;
                         bool typeArgsOk = true;
@@ -1166,8 +1166,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
 
                 // 泛型 fn + 显式 typeArgs 的 arity 校验 (E6010, 与 compileCallExpr 入口一致)
                 if (!structDecl && hasTypeArgs) {
-                    auto* genFn2 = _file->getFunction(fnName);
-                    if (!genFn2 && _sdkFile) genFn2 = _sdkFile->getFunction(fnName);
+                    // getFunctionWithOwner 已搜索 wildcardImports
+                    auto [genFn2, _] = _file->getFunctionWithOwner(fnName);
                     if (genFn2 && genFn2->header()->isGeneric()) {
                         sema::validateGenericTypeArgsArity(fnName, genFn2->header()->typeParams().size(),
                                                            n->getTypeArgs().size(), line, col);
@@ -1182,11 +1182,9 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 if (_yux && !structDecl) {
                     // 收集所有同名泛型重载（如 print<T>(x T) + print<T>(x T&)），
                     // 用 resolveBestGenericOverload 选最佳匹配后再 infer + spec-bound 校验。
+                    // collectGenericFunctions 已搜索本地 + wildcardImports，不再需要手动 SDK 回退。
                     vector<pair<FnNode*, FileNode*>> genericFns;
                     _file->collectGenericFunctions(fnName, genericFns, _file);
-                    if (_sdkFile && _sdkFile != _file) {
-                        _sdkFile->collectGenericFunctions(fnName, genericFns, _sdkFile);
-                    }
                     FnNode* genericFn = nullptr;
                     p<FileNode> fnOwner = _file;
                     if (!genericFns.empty()) {
@@ -1284,9 +1282,9 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 // 泛型 fn/ctor 走 Compiler 的 substitute 推断, 灵活整数推断由
                 // 那条路径自行完成; SemaPass 暂不接入泛型实例化.
                 if (!hasTypeArgs) {
-                    auto* genFn = _file->getFunction(fnName);
-                    if (!genFn && _sdkFile) genFn = _sdkFile->getFunction(fnName);
-                    if (!genFn || !genFn->header()->isGeneric()) {
+                    // getFunctionWithOwner 已搜索 wildcardImports
+                    auto [genFn3, _] = _file->getFunctionWithOwner(fnName);
+                    if (!genFn3 || !genFn3->header()->isGeneric()) {
                         if (structDecl && !structDecl->isGeneric()) {
                             sema::resolveCtorOverload(_file, fnName, n->getArgs(), line);
                             if (_sdkFile && _sdkFile != _file) {
@@ -1519,8 +1517,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                         methodSymbol = _sdkFile->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
                     }
                     sema::validateStructMethodVisibility(methodSymbol, _currentStructName, baseType.name,
-                                                         dotCallee->member(), n->getLineNumber(),
-                                                         n->getColumn());
+                                                         dotCallee->member(), n->getLineNumber(), n->getColumn());
                 }
             } catch (const YuxError&) {
                 throw;

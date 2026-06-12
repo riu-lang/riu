@@ -85,10 +85,10 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
     // 返回值中的 T 是类型参数占位符，与 Array struct 声明的 typeParams[0] 同名，
     // ExprCallNode::getType() 的泛型替换逻辑（subst 表）会自动将 T 替换为具体元素类型。
     {
-        TypeInfo tpT("T");                              // 类型参数占位符
+        TypeInfo tpT("T");                                    // 类型参数占位符
         TypeInfo tpRefT("Ref", {make_shared<TypeInfo>(tpT)}); // T&
         TypeInfo tpi64("i64");
-        TypeInfo tpVoid;                                 // void（空 TypeInfo）
+        TypeInfo tpVoid; // void（空 TypeInfo）
         TypeInfo tpBool("bool");
 
         // Array.get(i i64) → T&
@@ -274,23 +274,97 @@ FnNode* FileNode::getFunction(const string& name) const {
     return nullptr;
 }
 
-// 仅返回 generic 重载：用于 dispatcher 让非泛型 fnSymbol 优先于同名泛型函数
-// （例：`assert_eq:<T>` 与 `assert_eq(String&, String&)` 共存时）
-FnNode* FileNode::getGenericFunction(const string& name) const {
-    for (auto& fn : _functions) {
-        if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
-            return fn;
-        }
+// 递归沿 parentScope 链（仅 FileNode 层）查找函数。SDK 默认挂为 parent scope，
+// 但 `use yux.core.*` 被 visitImports 跳过（ast_builder_decl.cpp:268），因此
+// SDK 不进入 _wildcardImports，需额外沿 parent scope 链搜索。
+namespace {
+FileNode* parentFileNode(const FileNode* f) {
+    if (!f) return nullptr;
+    auto* ps = const_cast<FileNode*>(f)->parentScope();
+    while (ps) {
+        if (auto* pf = dynamic_cast<FileNode*>(ps)) return pf;
+        ps = ps->parentScope();
     }
     return nullptr;
 }
+} // namespace
+
+// 同 getFunction，同时返回所属 FileNode；搜索范围：本地 + wildcardImports + parent scope 链
+pair<FnNode*, FileNode*> FileNode::getFunctionWithOwner(const string& name) const {
+    for (auto& fn : _functions) {
+        if (fn->header()->name().getText() == name) {
+            return {fn, const_cast<FileNode*>(this)};
+        }
+    }
+    for (auto* imp : _wildcardImports) {
+        for (auto& fn : imp->_functions) {
+            if (fn->header()->name().getText() == name) {
+                return {fn, imp};
+            }
+        }
+    }
+    // 沿 parent scope 链搜索（SDK 默认挂为 parent scope，不走 wildcard import）
+    for (auto* pf = parentFileNode(this); pf; pf = parentFileNode(pf)) {
+        for (auto& fn : pf->_functions) {
+            if (fn->header()->name().getText() == name) {
+                return {fn, pf};
+            }
+        }
+    }
+    return {nullptr, nullptr};
+}
+
+// 仅返回 generic 重载：用于 dispatcher 让非泛型 fnSymbol 优先于同名泛型函数
+// （例：`assert_eq:<T>` 与 `assert_eq(String&, String&)` 共存时）
+// 搜索范围：本地 + wildcardImports + parent scope 链
+pair<FnNode*, FileNode*> FileNode::getGenericFunction(const string& name) const {
+    for (auto& fn : _functions) {
+        if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
+            return {fn, const_cast<FileNode*>(this)};
+        }
+    }
+    for (auto* imp : _wildcardImports) {
+        for (auto& fn : imp->_functions) {
+            if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
+                return {fn, imp};
+            }
+        }
+    }
+    // 沿 parent scope 链搜索（SDK 默认挂为 parent scope，不走 wildcard import）
+    for (auto* pf = parentFileNode(this); pf; pf = parentFileNode(pf)) {
+        for (auto& fn : pf->_functions) {
+            if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
+                return {fn, pf};
+            }
+        }
+    }
+    return {nullptr, nullptr};
+}
 
 // 收集所有同名泛型函数（支持多个泛型重载消歧，如 print<T>(x T) + print<T>(x T&)）
+// 搜索范围：本地 + wildcardImports + parent scope 链
 void FileNode::collectGenericFunctions(const string& name, vector<pair<FnNode*, FileNode*>>& out,
                                        FileNode* owner) const {
     for (auto& fn : _functions) {
         if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
             out.emplace_back(fn, owner);
+        }
+    }
+    for (auto* imp : _wildcardImports) {
+        if (imp == owner) continue; // 避免重复收集（调用方可能已用本地 owner 收集过该 imp）
+        for (auto& fn : imp->_functions) {
+            if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
+                out.emplace_back(fn, imp);
+            }
+        }
+    }
+    // 沿 parent scope 链搜索（SDK 默认挂为 parent scope，不走 wildcard import）
+    for (auto* pf = parentFileNode(this); pf; pf = parentFileNode(pf)) {
+        if (pf == owner) continue;
+        for (auto& fn : pf->_functions) {
+            if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
+                out.emplace_back(fn, pf);
+            }
         }
     }
 }

@@ -382,8 +382,7 @@ void Compiler::compileStructImpls() {
 
             // Builtin 方法由编译器特殊处理，不生成 IR
             if (method->header()->hasAnno("Builtin")) {
-                DEBUG_LOG_VAL("        Skipping #Builtin method (compiler handles)",
-                              structName << "." << methodName);
+                DEBUG_LOG_VAL("        Skipping #Builtin method (compiler handles)", structName << "." << methodName);
                 continue;
             }
 
@@ -750,6 +749,10 @@ string Compiler::ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& type
     inst.ownerFile = ownerFile ? ownerFile : _file;
     inst.typeArgs = typeArgs;
     inst.mangledName = mangledName;
+    // 关键：把当前编译模块记下来，作为本实例 IR 的符号前缀。
+    // 即便后续 emitFnInstances 为了编译把 _file 切到 ownerFile，
+    // 实例的符号名仍用此处记录的消费方模块（与 StructInstance 对齐）。
+    inst.consumerModule = _file ? _file->moduleName() : "";
 
     _fnInstances[mangledName] = std::move(inst);
     DEBUG_LOG_VAL("Created generic function instance", mangledName);
@@ -807,9 +810,10 @@ void Compiler::emitFnInstances() {
                 }
 
                 // 生成 mangle 后的函数名
+                // 泛型实例：使用消费方模块（每个使用方模块各自生成一份实例 IR，避免重复符号）
                 bool isPrivate = !inst.mangledName.empty() && inst.mangledName[0] == '_';
-                string mangledFnName =
-                    Mangler::function(inst.ownerFile->moduleName(), inst.mangledName, paramTypes, isPrivate);
+                string ownerMod = inst.consumerModule.empty() ? inst.ownerFile->moduleName() : inst.consumerModule;
+                string mangledFnName = Mangler::function(ownerMod, inst.mangledName, paramTypes, isPrivate);
 
                 // 获取或创建 LLVM 函数
                 auto fn = _module->getFunction(mangledFnName);

@@ -36,12 +36,9 @@ llvm::Value* Compiler::compileFunctionCall(p<ExprCallNode> callNode, const strin
     // Phase 4b: 当存在同名 generic + 非泛型重载时，参数严格匹配的非泛型优先；
     // 仅在 fnSymbol 没匹配到时才走泛型路径。这样 `assert_eq(s1 String, s2 String)`
     // 命中 SDK assert.yux 的 yux 重载，而不会跑到 #Builtin 的 compileTestAssertEq。
-    auto genericFn = _file->getGenericFunction(fnName);
-    p<FileNode> fnOwner = _file;
-    if (!genericFn && _yux && _yux->sdkFile()) {
-        genericFn = _yux->sdkFile()->getGenericFunction(fnName);
-        if (genericFn) fnOwner = _yux->sdkFile();
-    }
+    // getGenericFunction 已搜索本地 + wildcardImports，不再需要手动 SDK 回退。
+    auto [genericFn, fnOwner] = _file->getGenericFunction(fnName);
+    if (!fnOwner) fnOwner = _file;
 
     // 泛型函数自身的 fnSymbol 注册项（参数含未解析类型形参如 T / Ref(T)）会在
     // lookupFnSymbolWithParams 中与调用方同名的未解析形参碰撞（典型场景：
@@ -49,12 +46,10 @@ llvm::Value* Compiler::compileFunctionCall(p<ExprCallNode> callNode, const strin
     // 应让位给泛型消歧路径，而非当作普通函数调用（生成未实例化的泛型符号引用）。
     // 检查所有同名泛型重载，只要 fnSymbol 的 params 与任一泛型声明的 params 完全一致，
     // 说明 fnSymbol 就是该泛型自身的注册项 → 忽略它。
+    // collectGenericFunctions 已搜索本地 + wildcardImports，不再需要手动 SDK 回退。
     if (fnSymbol && genericFn) {
         vector<pair<FnNode*, FileNode*>> allGenerics;
         _file->collectGenericFunctions(fnName, allGenerics, _file);
-        if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
-            _yux->sdkFile()->collectGenericFunctions(fnName, allGenerics, _yux->sdkFile());
-        }
         for (auto& [gFn, _] : allGenerics) {
             auto gp = gFn->header()->params();
             if (fnSymbol->params.size() != gp.size()) continue;
@@ -76,14 +71,11 @@ llvm::Value* Compiler::compileFunctionCall(p<ExprCallNode> callNode, const strin
     if (genericFn && !fnSymbol) {
         // 多泛型重载消歧：当有多个同名泛型（如 print<T>(x T) + print<T>(x T&)）时，
         // 逐个试 inferGenericFnTypeArgs，按参数结构打分，选最匹配的
+        // collectGenericFunctions 已搜索本地 + wildcardImports，不再需要手动 SDK 回退。
         vector<pair<FnNode*, FileNode*>> genericFns;
         _file->collectGenericFunctions(fnName, genericFns, _file);
-        if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
-            _yux->sdkFile()->collectGenericFunctions(fnName, genericFns, _yux->sdkFile());
-        }
         if (genericFns.size() > 1) {
-            auto [best, bestOwner] =
-                sema::resolveBestGenericOverload(genericFns, callNode, fnName, argTypes);
+            auto [best, bestOwner] = sema::resolveBestGenericOverload(genericFns, callNode, fnName, argTypes);
             if (best) {
                 genericFn = best;
                 fnOwner = bestOwner;
@@ -217,13 +209,13 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
         // Phase 3.3.2.c: Builtin intrinsic typeArgs/args arity 校验
         // 同时覆盖 E6017 (未知 intrinsic) — helper 内部对清单外 fnName 直接抛.
         sema::validateBuiltinIntrinsicShape(fnName, typeArgs.size(), args.size(), callNode->getLineNumber(),
-                                                  callNode->getColumn());
+                                            callNode->getColumn());
         // Phase 3.3.2.d: Builtin intrinsic 类型形态校验
         // 覆盖 same_ref / ptr_of (E6028 AST 形态 + E6029 T 必须堆句柄) / as_ref / weak (E6029 argType)
         // / copy_of (E6032 深度 Ref 扫描).
         sema::validateBuiltinIntrinsicTypeShape(fnName, typeArgs, argTypes, callNode->getArgs(), _file,
-                                                      _yux ? _yux->sdkFile() : nullptr, callNode->getLineNumber(),
-                                                      callNode->getColumn());
+                                                _yux ? _yux->sdkFile() : nullptr, callNode->getLineNumber(),
+                                                callNode->getColumn());
 
         // 测试断言泛型分支（spec §11.3.5）：assert_eq:<T> T ∈ 数值/bool
         if (fnName == "assert_eq") {
@@ -629,7 +621,10 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
     _substStack.pop_back();
 
     bool isPrivate = !fnName.empty() && fnName[0] == '_';
-    string cName = Mangler::function(fnOwner->moduleName(), mangledName, instParamTypes, isPrivate);
+    // 泛型实例：使用消费方模块作为符号前缀（与 emitFnInstances 一致，每个使用方模块各自一份 IR）
+    auto& fi = _fnInstances[mangledName];
+    string ownerModForMangle = fi.consumerModule.empty() ? fnOwner->moduleName() : fi.consumerModule;
+    string cName = Mangler::function(ownerModForMangle, mangledName, instParamTypes, isPrivate);
     DEBUG_LOG_VAL("    Expr: GenericFunctionCall", fnName << " -> " << cName);
 
     auto fn = _module->getFunction(cName);
