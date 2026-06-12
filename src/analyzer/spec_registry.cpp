@@ -23,42 +23,51 @@ void SpecRegistry::buildFromAllFiles() {
             string qn = makeQualified(file->moduleName(), d->name().getText());
             // 同一 qualified name 在多次 build 或 sdk 与 _files 重叠时可能重复; 取首次登记.
             if (_byQualified.find(qn) == _byQualified.end()) {
-                _byQualified.emplace(qn, Resolved{.qualifiedName=qn, .decl=d, .ownerFile=file});
+                _byQualified.emplace(qn, Resolved{.qualifiedName = qn, .decl = d, .ownerFile = file});
             }
         }
     };
 
     if (_yux) {
         if (auto sdk = _yux->sdkFile()) indexFile(sdk);
-        for (auto& f : _yux->files()) indexFile(f);
+        for (auto& f : _yux->files())
+            indexFile(f);
     }
 }
 
-std::optional<SpecRegistry::Resolved>
-SpecRegistry::resolve(const string& bareName, FileNode* visibleFrom) const {
+std::optional<SpecRegistry::Resolved> SpecRegistry::resolve(const string& bareName, FileNode* visibleFrom) const {
     if (!visibleFrom) return std::nullopt;
 
     // 1. 当前文件本地
     if (auto* d = lookupLocal(visibleFrom, bareName)) {
-        return Resolved{.qualifiedName=makeQualified(visibleFrom->moduleName(), d->name().getText()),
-                        .decl=d, .ownerFile=visibleFrom};
+        return Resolved{.qualifiedName = makeQualified(visibleFrom->moduleName(), d->name().getText()),
+                        .decl = d,
+                        .ownerFile = visibleFrom};
     }
 
     // 2. wildcard 导入 (use a.b.*)
     for (auto* imp : visibleFrom->wildcardImports()) {
         if (auto* d = lookupLocal(imp, bareName)) {
-            return Resolved{.qualifiedName=makeQualified(imp->moduleName(), d->name().getText()),
-                            .decl=d, .ownerFile=imp};
+            return Resolved{
+                .qualifiedName = makeQualified(imp->moduleName(), d->name().getText()), .decl = d, .ownerFile = imp};
         }
     }
 
-    // 3. 父作用域链 (用户文件 -> _sdkFile)
+    // 3. 父作用域链 (用户文件 -> _sdkFile)，含各 parent 的 wildcardImports
     ScopeNode* parent = visibleFrom->parentScope();
     while (parent) {
         if (auto* pf = dynamic_cast<FileNode*>(parent)) {
             if (auto* d = lookupLocal(pf, bareName)) {
-                return Resolved{.qualifiedName=makeQualified(pf->moduleName(), d->name().getText()),
-                                .decl=d, .ownerFile=pf};
+                return Resolved{
+                    .qualifiedName = makeQualified(pf->moduleName(), d->name().getText()), .decl = d, .ownerFile = pf};
+            }
+            // SDK 平铺文件拆分后，_sdkFile 空壳通过 wildcardImports 指向各子文件
+            for (auto* imp : pf->wildcardImports()) {
+                if (auto* d = lookupLocal(imp, bareName)) {
+                    return Resolved{.qualifiedName = makeQualified(imp->moduleName(), d->name().getText()),
+                                    .decl = d,
+                                    .ownerFile = imp};
+                }
             }
         }
         parent = parent->parentScope();

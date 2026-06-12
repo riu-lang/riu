@@ -103,38 +103,33 @@ void parseSdkDir(const std::string& sdkDir, Yux& yux) {
     }
     std::ranges::sort(yuxFiles);
 
-    // 第一遍：平铺（base.*）；先建好 _sdkFile 以便后续命名空间文件的父作用域有效
+    // 创建 _sdkFile 空壳作为父作用域（不再合并 AST）
+    auto sdk = yux.createSdkFile();
+
+    // 单遍：每个文件独立 FileNode，通过 wildcardImport + parentScope 双向关联 _sdkFile
     for (const auto& yuxFile : yuxFiles) {
         std::string stem = fs::path(yuxFile).stem().string();
         auto it = pkgMap.find(stem);
-        bool isFlat = (it == pkgMap.end()) || it->second.isFlat;
-        if (!isFlat) continue;
+        bool isFlatDep = (it == pkgMap.end()) || it->second.isFlat;
 
-        antlr4::ANTLRFileStream file;
-        file.loadFromFile(yuxFile);
-        yux::yuxLexer lexer(&file);
-        SyntaxErrorListener errListener(yuxFile, std::cerr);
-        lexer.removeErrorListeners();
-        lexer.addErrorListener(&errListener);
-        antlr4::CommonTokenStream tokenStream(&lexer);
-        yux::yuxParser parser(&tokenStream);
-        parser.removeErrorListeners();
-        parser.addErrorListener(&errListener);
-        auto program = parser.program();
-        if (errListener.hasErrors() || parser.getNumberOfSyntaxErrors()) {
-            throw YuxError(1, ErrorCode::E5010, yuxFile);
+        // 分配 moduleName: 命名空间文件沿用 pkg 指定的全名，其余统一用 yux.core.<stem>
+        std::string moduleName;
+        if (it != pkgMap.end() && !it->second.moduleName.empty() && !it->second.isFlat) {
+            moduleName = it->second.moduleName;
+        } else {
+            moduleName = "yux.core." + stem;
         }
-        ASTBuilder astBuilder(yux, "yux.core", true);
-        astBuilder.build(program);
-    }
 
-    // 第二遍：命名空间（math 等）→ 独立 FileNode 注册到 _modules
-    for (const auto& yuxFile : yuxFiles) {
-        std::string stem = fs::path(yuxFile).stem().string();
-        auto it = pkgMap.find(stem);
-        if (it == pkgMap.end() || it->second.isFlat) continue;
+        auto fileNode = yux.loadMainFile(fs::absolute(yuxFile).string(), moduleName);
 
-        yux.loadMainFile(fs::absolute(yuxFile).string(), it->second.moduleName);
+        // 所有 SDK 文件双向关联 _sdkFile：
+        // 1) fileNode 设 _sdkFile 为 parentScope → 可通过 parentScope 链找到其他 SDK 文件
+        // 2) _sdkFile 设 fileNode 为 wildcardImport → lookupFnSymbol/collectFnOverloads 可回退到这里
+        if (sdk && sdk != fileNode) {
+            fileNode->setParentScope(sdk);
+            fileNode->addImport("yux.core");
+            sdk->addWildcardImport(fileNode);
+        }
     }
 
     registerSdkPkgAliases(yux, pkgMap);

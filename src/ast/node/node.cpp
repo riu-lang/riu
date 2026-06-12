@@ -3,9 +3,13 @@
 
 #include "node.h"
 
-string Node::getLocation() const { return ""; }
+string Node::getLocation() const {
+    return "";
+}
 
-p<Node> Node::parent() const { return _parent; }
+p<Node> Node::parent() const {
+    return _parent;
+}
 
 Token Named::name() const {
     return _name;
@@ -49,38 +53,32 @@ FnSymbolInfo* ScopeNode::lookupFnSymbol(const string& name) {
     return nullptr;
 }
 
+bool ScopeNode::matchFnParams(const FnSymbolInfo& fnInfo, const vector<TypeInfo>& paramTypes) const {
+    if (fnInfo.params.size() != paramTypes.size()) return false;
+    for (size_t i = 0; i < paramTypes.size(); ++i) {
+        if (fnInfo.params[i] == paramTypes[i]) continue;
+        if (fnInfo.params[i].isRef()) {
+            auto refElemType = fnInfo.params[i].refElementType();
+            if (refElemType && *refElemType == paramTypes[i]) continue;
+        }
+        if (fnInfo.params[i].isPtr() && paramTypes[i].isRef()) continue;
+        // Phase 7c (DRAFT §9.3): extern 边界 Ptr 形参接受堆句柄类型自动转换
+        if (fnInfo.isExternal && fnInfo.params[i].isPtr() &&
+            (paramTypes[i].isRc() || paramTypes[i].isWeak() || paramTypes[i].isArrayGeneric() ||
+             (paramTypes[i].name == "String" && paramTypes[i].kind == TypeKind::Normal))) {
+            continue;
+        }
+        return false;
+    }
+    return true;
+}
+
 FnSymbolInfo* ScopeNode::lookupFnSymbolWithParams(const string& name, const vector<TypeInfo>& paramTypes) {
     auto it = _fnSymbols.find(name);
     if (it != _fnSymbols.end()) {
         for (auto& fnInfo : it->second) {
-            if (fnInfo.params.size() == paramTypes.size()) {
-                bool match = true;
-                for (size_t i = 0; i < paramTypes.size(); ++i) {
-                    if (fnInfo.params[i] == paramTypes[i]) {
-                        continue;
-                    }
-                    if (fnInfo.params[i].isRef()) {
-                        auto refElemType = fnInfo.params[i].refElementType();
-                        if (refElemType && *refElemType == paramTypes[i]) {
-                            continue;
-                        }
-                    }
-                    if (fnInfo.params[i].isPtr() && paramTypes[i].isRef()) {
-                        continue;
-                    }
-                    // Phase 7c (DRAFT §9.3): extern 边界 Ptr 形参接受堆句柄类型自动转换
-                    if (fnInfo.isExternal && fnInfo.params[i].isPtr() &&
-                        (paramTypes[i].isRc() || paramTypes[i].isWeak() ||
-                         paramTypes[i].isArrayGeneric() ||
-                         (paramTypes[i].name == "String" && paramTypes[i].kind == TypeKind::Normal))) {
-                        continue;
-                    }
-                    match = false;
-                    break;
-                }
-                if (match) {
-                    return &fnInfo;
-                }
+            if (matchFnParams(fnInfo, paramTypes)) {
+                return &fnInfo;
             }
         }
     }
@@ -122,11 +120,17 @@ bool ScopeNode::hasFnSymbol(const string& name) const {
     return false;
 }
 
-const map<string, SymbolInfo>& ScopeNode::localSymbols() const { return _symbols; }
+const map<string, SymbolInfo>& ScopeNode::localSymbols() const {
+    return _symbols;
+}
 
-const map<string, vector<FnSymbolInfo>>& ScopeNode::localFnSymbols() const { return _fnSymbols; }
+const map<string, vector<FnSymbolInfo>>& ScopeNode::localFnSymbols() const {
+    return _fnSymbols;
+}
 
-p<ScopeNode> ScopeNode::parentScope() const { return _parentScope; }
+p<ScopeNode> ScopeNode::parentScope() const {
+    return _parentScope;
+}
 
 p<ScopeNode> Node::findNearestScope() const {
     p<Node> current = _parent;

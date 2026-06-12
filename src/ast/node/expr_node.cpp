@@ -419,12 +419,19 @@ TypeInfo ExprCallNode::getType() const {
                 p<FnNode> fnNode = nullptr;
                 if (file) {
                     fnNode = file->getFunction(fnName);
-                    // 用户文件查不到时回退 SDK
+                    // 用户文件查不到时回退 SDK（含 wildcardImports——SDK 平铺文件拆分后
+                    // 泛型函数定义在子文件中，_sdkFile 空壳通过 wildcardImports 指向它们）
                     if (!fnNode) {
                         ScopeNode* p = file->parentScope();
                         while (p && !fnNode) {
                             if (auto* pf = dynamic_cast<FileNode*>(p)) {
                                 fnNode = pf->getFunction(fnName);
+                                if (!fnNode) {
+                                    for (auto* imp : pf->wildcardImports()) {
+                                        fnNode = imp->getFunction(fnName);
+                                        if (fnNode) break;
+                                    }
+                                }
                             }
                             p = p->parentScope();
                         }
@@ -555,7 +562,8 @@ TypeInfo ExprAddSubNode::getType() const {
         if (!isBuiltinType(leftType.name)) {
             return leftType;
         }
-        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3001, "arithmetic", leftType.name, rightType.name);
+        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3001, "arithmetic", leftType.name,
+                       rightType.name);
     }
     return leftType;
 }
@@ -600,7 +608,8 @@ TypeInfo ExprMulDivModNode::getType() const {
         if (!isBuiltinType(leftType.name)) {
             return leftType;
         }
-        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3001, "mul/div/mod", leftType.name, rightType.name);
+        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3001, "mul/div/mod", leftType.name,
+                       rightType.name);
     }
     return leftType;
 }
@@ -645,7 +654,8 @@ TypeInfo ExprBinOpNode::getType() const {
         if (!isBuiltinType(leftType.name)) {
             return leftType;
         }
-        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3001, "bitwise", leftType.name, rightType.name);
+        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3001, "bitwise", leftType.name,
+                       rightType.name);
     }
     return leftType;
 }
@@ -1241,7 +1251,8 @@ TypeInfo ExprCompareNode::getType() const {
         if (!isBuiltinType(leftType.name)) {
             return TypeInfo("bool");
         }
-        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3001, "comparison", leftType.name, rightType.name);
+        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3001, "comparison", leftType.name,
+                       rightType.name);
     }
     return TypeInfo("bool");
 }
@@ -1396,7 +1407,7 @@ TypeInfo ExprGetNode::getType() const {
     // v0.16: [] 语法糖同步——arr[i] 返回 T&，与 arr.get(i) 一致。
     // Array<T> 不可含 T&（§3.2.3.2），无需防双重包装；[T * N] 仅 reflect [Field& * N] 的 elem 已是 Ref，保留不包。
     auto wrapRef = [](const TypeInfo& elem) -> TypeInfo {
-        if (elem.isRef()) return elem;  // [T& * N] 的 elem 已是 T&，不双重包
+        if (elem.isRef()) return elem; // [T& * N] 的 elem 已是 T&，不双重包
         return {"Ref", {std::make_shared<TypeInfo>(elem)}};
     };
 

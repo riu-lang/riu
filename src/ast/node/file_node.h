@@ -29,6 +29,12 @@ class FileNode : public ScopeNode {
 public:
     explicit FileNode(string moduleName = "");
 
+    // 覆写：搜索范围扩展到 wildcardImports（与 getStructDecl/getEnumDecl/getAliasDecl 一致）
+    SymbolInfo* lookupSymbol(const string& name) override;
+    FnSymbolInfo* lookupFnSymbol(const string& name) override;
+    FnSymbolInfo* lookupFnSymbolWithParams(const string& name, const vector<TypeInfo>& paramTypes) override;
+    void collectFnOverloads(const string& name, vector<FnSymbolInfo*>& out) override;
+
     void addFunction(const p<FnNode>& function);
     void addStructDecl(const p<StructDeclNode>& structDecl);
     void addStructImpl(const p<StructImplNode>& structImpl);

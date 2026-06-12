@@ -47,21 +47,21 @@ IRResult compileIR(const std::string& inputFile, Yux& yux, bool isSdk = false);
 // SDK 构建路径 (与项目模式一致):
 //   sdkRoot = <sdk-project-root> (含 yux.toml)
 //   .lib    = sdkRoot/build/yux.lib                (最终产物, 去掉 <name>/ 子层)
-//   .obj    = sdkRoot/build/src/yux/core.obj       (中间产物, 镜像源相对项目根)
-//   .ll     = sdkRoot/build/src/yux/core.ll
+//   .objDir = sdkRoot/build/src/yux/core/          (中间产物目录, 每 .yux 一个 .obj)
+//   .irDir  = sdkRoot/build/src/yux/core/          (IR 输出目录)
 // sdkPath 形如 .../sdk/yux/src/yux/core, 向上 3 级即 sdkRoot。
 struct SdkPaths {
-    std::string objPath;
+    std::string objDir;
     std::string libPath;
-    std::string irPath;
+    std::string irDir;
 };
 
 SdkPaths sdkBuildPaths(const std::string& sdkPathAbs);
-bool needRecompileSdkDir(const std::string& sdkDir, const std::string& sdkObjPath);
+bool needRecompileSdkDir(const std::string& sdkDir, const std::string& sdkObjDir);
 
 // 薄壳: 捕获 sdk_loader::parseSdkDir 的 YuxError 并 reportRuntimeError + exit(1)。
 void parseSdkDirOrExit(const std::string& sdkDir, Yux& yux);
 
-IRResult compileSdkDir(const std::string& sdkDir, Yux& yux);
+void compileSdkDir(const std::string& sdkDir, Yux& yux);
 
 } // namespace yux::cli

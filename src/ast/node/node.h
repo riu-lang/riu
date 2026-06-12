@@ -11,7 +11,7 @@ enum class SymbolKind : u8 {
     Function,
     Variable,
     TypeParam,
-    Module, // `use a.b.c` 引入的模块别名；moduleName 存全限定名
+    Module,  // `use a.b.c` 引入的模块别名；moduleName 存全限定名
     Package, // `use a.b` 中 a.b 是目录时引入的包别名；moduleName 存点分路径
 };
 
@@ -88,11 +88,11 @@ struct FnSymbolInfo {
 // - var / fn 互斥：一个表达式要么解析到变量符号，要么解析到函数符号；都为空表示
 //   "尚未解析"（由外层 optional 区分 "未写入" vs "解析为 null"）。
 struct ResolvedSymbol {
-    SymbolInfo*   var = nullptr;
-    FnSymbolInfo* fn  = nullptr;
+    SymbolInfo* var = nullptr;
+    FnSymbolInfo* fn = nullptr;
 
     [[nodiscard]] bool isVar() const { return var != nullptr; }
-    [[nodiscard]] bool isFn()  const { return fn  != nullptr; }
+    [[nodiscard]] bool isFn() const { return fn != nullptr; }
 };
 
 class ScopeNode;
@@ -104,8 +104,7 @@ protected:
     int _col = 0; // 1-based 列号；0 表示未知（合成节点 / 旧路径）
 
 public:
-    explicit Node(const p<Node>& parent) : _parent(parent) {
-    }
+    explicit Node(const p<Node>& parent) : _parent(parent) {}
 
     virtual ~Node() = default;
 
@@ -147,21 +146,18 @@ protected:
     Token _name;
 
 public:
-    explicit Named(const Token& name) : _name(name) {
-    }
+    explicit Named(const Token& name) : _name(name) {}
 
     virtual ~Named() = default;
 
     [[nodiscard]] virtual Token name() const;
 };
 
-
 class Typed {
 public:
     virtual ~Typed() = default;
     [[nodiscard]] virtual TypeInfo getType() const = 0;
 };
-
 
 class Annotated {
 protected:
@@ -192,7 +188,8 @@ public:
     [[nodiscard]] const vector<string>& annos() const { return _annos; }
     [[nodiscard]] const vector<string>& annoArgs() const { return _annoArgs; }
     [[nodiscard]] bool hasAnno(const string& name) const {
-        for (auto& a : _annos) if (a == name) return true;
+        for (auto& a : _annos)
+            if (a == name) return true;
         return false;
     }
     // 返回注解的单参数糖（spec §11.1.1.1）。未找到返回 nullopt；找到但零参返回空字符串包装。
@@ -204,16 +201,18 @@ public:
     }
 };
 
-
 class ScopeNode : public Node {
 protected:
     map<string, SymbolInfo> _symbols;
     map<string, vector<FnSymbolInfo>> _fnSymbols;
     p<ScopeNode> _parentScope = nullptr;
 
+    // 参数匹配辅助：检查 fnInfo.params 是否与 paramTypes 兼容
+    [[nodiscard]] bool matchFnParams(const FnSymbolInfo& fnInfo, const vector<TypeInfo>& paramTypes) const;
+
 public:
     explicit ScopeNode(const p<Node>& parent) : Node(parent) {}
-    
+
     void registerSymbol(const string& name, SymbolInfo info);
 
     void eraseSymbol(const string& name);
@@ -222,13 +221,13 @@ public:
 
     void setParentScope(const p<ScopeNode>& scope);
 
-    SymbolInfo* lookupSymbol(const string& name);
+    virtual SymbolInfo* lookupSymbol(const string& name);
 
-    FnSymbolInfo* lookupFnSymbol(const string& name);
-    
-    FnSymbolInfo* lookupFnSymbolWithParams(const string& name, const vector<TypeInfo>& paramTypes);
+    virtual FnSymbolInfo* lookupFnSymbol(const string& name);
 
-    void collectFnOverloads(const string& name, vector<FnSymbolInfo*>& out);
+    virtual FnSymbolInfo* lookupFnSymbolWithParams(const string& name, const vector<TypeInfo>& paramTypes);
+
+    virtual void collectFnOverloads(const string& name, vector<FnSymbolInfo*>& out);
 
     [[nodiscard]] bool hasSymbol(const string& name) const;
 
@@ -243,7 +242,8 @@ public:
     void normalizeFnSymbolTypes(Resolver resolver) {
         for (auto& [name, overloads] : _fnSymbols) {
             for (auto& fn : overloads) {
-                for (auto& p : fn.params) p = resolver(p);
+                for (auto& p : fn.params)
+                    p = resolver(p);
                 if (!fn.retType.empty()) fn.retType = resolver(fn.retType);
             }
         }
@@ -253,5 +253,4 @@ public:
     }
 };
 
-
-#endif //YUX_LANG_NODE_H
+#endif // YUX_LANG_NODE_H

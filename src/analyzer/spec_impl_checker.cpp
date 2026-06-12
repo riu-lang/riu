@@ -87,9 +87,22 @@ void SpecImplChecker::validate() {
             validateImpl(file, impl);
         }
     };
-    if (auto sdk = _yux->sdkFile()) run(sdk);
+    // SDK 平铺文件拆分后，_sdkFile 为薄层空壳，struct impl 实际在各子文件
+    // （base.yux / assert.yux 等）中。收集到 processedSet 去重，避免 SDK 编译
+    // 时 _yux->files() 与 sdk->wildcardImports() 重叠导致 E1103 误报。
+    set<FileNode*> processedSet;
+    auto runOnce = [&](FileNode* file) {
+        if (!file || !processedSet.insert(file).second) return;
+        run(file);
+    };
+    if (auto sdk = _yux->sdkFile()) {
+        runOnce(sdk);
+        for (auto* imp : sdk->wildcardImports()) {
+            runOnce(imp);
+        }
+    }
     for (auto& f : _yux->files())
-        run(f);
+        runOnce(f);
 
     // §12.4.2.1 E1105 显隐冲突: 必须等所有显式 impl 全部 §12.2 校验通过
     // 后再做, 避免"穷尽性 / 不多余" 与 显隐冲突 互相覆盖错误位置.
@@ -636,9 +649,20 @@ void SpecImplChecker::validateDynTypeReferences() {
             }
         }
     };
-    if (auto sdk = _yux->sdkFile()) run(sdk);
+    // 去重：SDK flat 文件可能同时出现在 sdk->wildcardImports() 和 _yux->files() 中
+    set<FileNode*> processedSet;
+    auto runOnce = [&](FileNode* file) {
+        if (!file || !processedSet.insert(file).second) return;
+        run(file);
+    };
+    if (auto sdk = _yux->sdkFile()) {
+        runOnce(sdk);
+        for (auto* imp : sdk->wildcardImports()) {
+            runOnce(imp);
+        }
+    }
     for (auto& f : _yux->files())
-        run(f);
+        runOnce(f);
 }
 
 void SpecImplChecker::validateDynInTypeNode(TypeNode* tn, FileNode* file, const std::string& outerWrapper) const {

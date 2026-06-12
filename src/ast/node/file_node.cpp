@@ -303,11 +303,19 @@ pair<FnNode*, FileNode*> FileNode::getFunctionWithOwner(const string& name) cons
             }
         }
     }
-    // 沿 parent scope 链搜索（SDK 默认挂为 parent scope，不走 wildcard import）
+    // 沿 parent scope 链搜索（含各 parent 的 wildcardImports——SDK 平铺文件拆分后，
+    // _sdkFile 空壳不再直接持有函数，泛型函数定义在各子文件的 wildcardImport 里）
     for (auto* pf = parentFileNode(this); pf; pf = parentFileNode(pf)) {
         for (auto& fn : pf->_functions) {
             if (fn->header()->name().getText() == name) {
                 return {fn, pf};
+            }
+        }
+        for (auto* imp : pf->_wildcardImports) {
+            for (auto& fn : imp->_functions) {
+                if (fn->header()->name().getText() == name) {
+                    return {fn, imp};
+                }
             }
         }
     }
@@ -316,7 +324,7 @@ pair<FnNode*, FileNode*> FileNode::getFunctionWithOwner(const string& name) cons
 
 // 仅返回 generic 重载：用于 dispatcher 让非泛型 fnSymbol 优先于同名泛型函数
 // （例：`assert_eq:<T>` 与 `assert_eq(String&, String&)` 共存时）
-// 搜索范围：本地 + wildcardImports + parent scope 链
+// 搜索范围：本地 + wildcardImports + parent scope 链（含各 parent 的 wildcardImports）
 pair<FnNode*, FileNode*> FileNode::getGenericFunction(const string& name) const {
     for (auto& fn : _functions) {
         if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
@@ -330,11 +338,18 @@ pair<FnNode*, FileNode*> FileNode::getGenericFunction(const string& name) const 
             }
         }
     }
-    // 沿 parent scope 链搜索（SDK 默认挂为 parent scope，不走 wildcard import）
+    // 沿 parent scope 链搜索（含各 parent 的 wildcardImports）
     for (auto* pf = parentFileNode(this); pf; pf = parentFileNode(pf)) {
         for (auto& fn : pf->_functions) {
             if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
                 return {fn, pf};
+            }
+        }
+        for (auto* imp : pf->_wildcardImports) {
+            for (auto& fn : imp->_functions) {
+                if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
+                    return {fn, imp};
+                }
             }
         }
     }
@@ -342,7 +357,7 @@ pair<FnNode*, FileNode*> FileNode::getGenericFunction(const string& name) const 
 }
 
 // 收集所有同名泛型函数（支持多个泛型重载消歧，如 print<T>(x T) + print<T>(x T&)）
-// 搜索范围：本地 + wildcardImports + parent scope 链
+// 搜索范围：本地 + wildcardImports + parent scope 链（含各 parent 的 wildcardImports）
 void FileNode::collectGenericFunctions(const string& name, vector<pair<FnNode*, FileNode*>>& out,
                                        FileNode* owner) const {
     for (auto& fn : _functions) {
@@ -358,12 +373,20 @@ void FileNode::collectGenericFunctions(const string& name, vector<pair<FnNode*, 
             }
         }
     }
-    // 沿 parent scope 链搜索（SDK 默认挂为 parent scope，不走 wildcard import）
+    // 沿 parent scope 链搜索（含各 parent 的 wildcardImports）
     for (auto* pf = parentFileNode(this); pf; pf = parentFileNode(pf)) {
         if (pf == owner) continue;
         for (auto& fn : pf->_functions) {
             if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
                 out.emplace_back(fn, pf);
+            }
+        }
+        for (auto* imp : pf->_wildcardImports) {
+            if (imp == owner) continue;
+            for (auto& fn : imp->_functions) {
+                if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
+                    out.emplace_back(fn, imp);
+                }
             }
         }
     }
@@ -469,4 +492,112 @@ FileNode* FileNode::getStructOwner(const string& name) {
 void FileNode::addUseSpec(UseSpec spec) {
     if (spec.moduleName.empty() || spec.moduleName == _moduleName) return;
     _useSpecs.push_back(std::move(spec));
+}
+
+// ==================== 符号查找（覆写，搜索范围扩展到 wildcardImports） ====================
+
+SymbolInfo* FileNode::lookupSymbol(const string& name) {
+    auto it = _symbols.find(name);
+    if (it != _symbols.end()) {
+        return &it->second;
+    }
+    for (auto* imp : _wildcardImports) {
+        auto jt = imp->_symbols.find(name);
+        if (jt != imp->_symbols.end()) {
+            return &jt->second;
+        }
+    }
+    if (_parentScope) {
+        return _parentScope->lookupSymbol(name);
+    }
+    return nullptr;
+}
+
+FnSymbolInfo* FileNode::lookupFnSymbol(const string& name) {
+    auto it = _fnSymbols.find(name);
+    if (it != _fnSymbols.end() && !it->second.empty()) {
+        return &it->second[0];
+    }
+    for (auto* imp : _wildcardImports) {
+        auto jt = imp->_fnSymbols.find(name);
+        if (jt != imp->_fnSymbols.end() && !jt->second.empty()) {
+            return &jt->second[0];
+        }
+    }
+    if (_parentScope) {
+        return _parentScope->lookupFnSymbol(name);
+    }
+    return nullptr;
+}
+
+FnSymbolInfo* FileNode::lookupFnSymbolWithParams(const string& name, const vector<TypeInfo>& paramTypes) {
+    auto it = _fnSymbols.find(name);
+    if (it != _fnSymbols.end()) {
+        for (auto& fnInfo : it->second) {
+            if (matchFnParams(fnInfo, paramTypes)) return &fnInfo;
+        }
+    }
+    for (auto* imp : _wildcardImports) {
+        auto jt = imp->_fnSymbols.find(name);
+        if (jt != imp->_fnSymbols.end()) {
+            for (auto& fnInfo : jt->second) {
+                if (matchFnParams(fnInfo, paramTypes)) return &fnInfo;
+            }
+        }
+    }
+    if (_parentScope) {
+        return _parentScope->lookupFnSymbolWithParams(name, paramTypes);
+    }
+    return nullptr;
+}
+
+void FileNode::collectFnOverloads(const string& name, vector<FnSymbolInfo*>& out) {
+    // 指针去重辅助：线性扫描（实际集合很小，通常 < 5 条目）
+    auto addIfNew = [&](FnSymbolInfo* p) {
+        for (auto* existing : out) {
+            if (existing == p) return;
+        }
+        out.push_back(p);
+    };
+
+    // 语义去重辅助：检查 fns 是否已包含与 target 相同模块名+形参列表的条目。
+    // visitImportDecl 会将导入函数拷贝到本地 _fnSymbols，同时 addWildcardImport，
+    // 导致同一函数以不同 FnSymbolInfo 副本存在于本地和 wildcardImport 两端。
+    // 指针去重无法覆盖此场景（不同对象），需要按模块名+形参去重。
+    auto hasSemanticDup = [&](FnSymbolInfo* target) -> bool {
+        for (auto* existing : out) {
+            if (existing->moduleName != target->moduleName) continue;
+            if (existing->params.size() != target->params.size()) continue;
+            bool same = true;
+            for (size_t i = 0; i < target->params.size(); ++i) {
+                if (!(existing->params[i] == target->params[i])) {
+                    same = false;
+                    break;
+                }
+            }
+            if (same) return true;
+        }
+        return false;
+    };
+
+    // 1) 本地 _fnSymbols（含 visitImportDecl 注入的拷贝）
+    auto it = _fnSymbols.find(name);
+    if (it != _fnSymbols.end()) {
+        for (auto& fn : it->second)
+            addIfNew(&fn);
+    }
+
+    // 2) wildcardImports 的直接 _fnSymbols（仅浅层，避免递归回到自己）
+    for (auto* imp : _wildcardImports) {
+        auto jt = imp->_fnSymbols.find(name);
+        if (jt != imp->_fnSymbols.end()) {
+            for (auto& fn : jt->second)
+                if (!hasSemanticDup(&fn)) addIfNew(&fn);
+        }
+    }
+
+    // 3) parentScope 链（虚调用——若 parent 是 FileNode 则继续扩展 wildcardImports）
+    if (_parentScope) {
+        _parentScope->collectFnOverloads(name, out);
+    }
 }

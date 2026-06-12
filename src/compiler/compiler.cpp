@@ -276,13 +276,16 @@ llvm::Constant* Compiler::buildLLVMConstantFromValue(const ConstantValue& v, llv
 // 处理顺序: SDK 结构体 -> 导入的结构体 -> 当前文件的结构体
 void Compiler::compileStructDecls() {
     // 首先编译 SDK 中的结构体 (如果当前文件不是 SDK)
-    // 这确保 SDK 类型在其他文件之前可用
+    // 这确保 SDK 类型在其他文件之前可用。
+    // _sdkFile 现在是空壳, SDK 结构体分布在其 wildcardImports (每个 SDK 平铺文件) 中。
     if (_yux && _yux->sdkFile() && _file != _yux->sdkFile()) {
-        DEBUG_LOG_VAL("Compiling SDK struct declarations", _yux->sdkFile()->getStructDecls().size());
-        for (auto structDecl : _yux->sdkFile()->getStructDecls()) {
-            if (structDecl->isGeneric()) continue; // 跳过泛型结构体，它们会在使用时单态化
-            DEBUG_LOG_VAL("  SDK struct", structDecl->name().getText());
-            getOrCreateStructType(structDecl, _yux->sdkFile());
+        for (auto* sdkImp : _yux->sdkFile()->wildcardImports()) {
+            DEBUG_LOG_VAL("Compiling SDK struct declarations from", sdkImp->moduleName());
+            for (auto structDecl : sdkImp->getStructDecls()) {
+                if (structDecl->isGeneric()) continue; // 跳过泛型结构体，它们会在使用时单态化
+                DEBUG_LOG_VAL("  SDK struct", structDecl->name().getText());
+                getOrCreateStructType(structDecl, sdkImp);
+            }
         }
     }
     // 编译通配符导入的结构体

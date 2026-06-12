@@ -533,7 +533,9 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
             methodArgs.push_back(arg);
         }
 
-        string ownerMod = _yux->sdkFile()->moduleName();
+        // SDK 平铺文件拆分后，方法实际所属模块通过 sdkMethodSymbol 获取（不再硬编码 yux.core）
+        string ownerMod =
+            sdkMethodSymbol->moduleName.empty() ? _yux->sdkFile()->moduleName() : sdkMethodSymbol->moduleName;
         bool methPriv = !member.empty() && member[0] == '_';
         string mangledName = Mangler::method(ownerMod, baseType.name, member, argTypes, methPriv);
         auto fn = _module->getFunction(mangledName);

@@ -25,11 +25,17 @@
 namespace {
 
 // 获取或声明 SDK 侧 `_yux_test_assert_failed()` 函数
-// 在用户测试模块编译时声明为 external；链接时由 sdk yux.lib / JIT 时由 sdk core.obj 提供
-llvm::Function* getAssertFailedFn(llvm::Module* module) {
-    // 私有 fn (`_` 前缀): mangler 模块前缀 "yux.core_" + 源名 "_yux_test_assert_failed" + "()"
-    // 形成 "yux.core__yux_test_assert_failed()"
-    string name = Mangler::function("yux.core", "_yux_test_assert_failed", {}, true);
+// 通过 file 查找 _yux_test_assert_failed 的真实所属模块（不再硬编码 yux.core），
+// 确保 mangled 名与 assert.yux（模块 yux.core.assert）的定义一致。
+llvm::Function* getAssertFailedFn(llvm::Module* module, FileNode* file) {
+    string modName = "yux.core"; // 兜底
+    if (file) {
+        auto* fnSym = file->lookupFnSymbol("_yux_test_assert_failed");
+        if (fnSym && !fnSym->moduleName.empty()) {
+            modName = fnSym->moduleName;
+        }
+    }
+    string name = Mangler::function(modName, "_yux_test_assert_failed", {}, true);
     auto fn = module->getFunction(name);
     if (fn) return fn;
     auto fnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), {}, false);
@@ -38,9 +44,8 @@ llvm::Function* getAssertFailedFn(llvm::Module* module) {
 
 // 在 cond 为真（"失败"）时跳转到失败块：调 _yux_test_assert_failed() → unreachable
 // cond 为假时继续 fallthrough 到 contBB
-// fnCtx 为当前正在编译的 LLVM 函数（用于附加新 BasicBlock）
 void emitAssertFailureBranch(llvm::IRBuilder<>& builder, llvm::Module* module, llvm::Value* failCond,
-                             const string& siteName) {
+                             const string& siteName, FileNode* file) {
     auto& ctx = module->getContext();
     auto fnCtx = builder.GetInsertBlock()->getParent();
     auto failBB = llvm::BasicBlock::Create(ctx, siteName + ".fail", fnCtx);
@@ -48,7 +53,7 @@ void emitAssertFailureBranch(llvm::IRBuilder<>& builder, llvm::Module* module, l
     builder.CreateCondBr(failCond, failBB, contBB);
 
     builder.SetInsertPoint(failBB);
-    auto failedFn = getAssertFailedFn(module);
+    auto failedFn = getAssertFailedFn(module, file);
     builder.CreateCall(failedFn, {});
     // _yux_test_assert_failed 通过 RaiseException 抛 SEH 异常，正常控制流不返回；
     // unreachable 让 LLVM 优化掉后续路径
@@ -108,7 +113,7 @@ llvm::Value* Compiler::compileTestAssertEq(p<ExprCallNode> callNode, vector<llvm
         eq = _builder.CreateICmpEQ(args[0], args[1], "assert_eq.cmp");
     }
     auto neq = _builder.CreateNot(eq, "assert_eq.neq");
-    emitAssertFailureBranch(_builder, _module, neq, "assert_eq");
+    emitAssertFailureBranch(_builder, _module, neq, "assert_eq", _file);
     return llvm::UndefValue::get(_builder.getVoidTy());
 }
 
@@ -121,7 +126,7 @@ llvm::Value* Compiler::compileTestAssertTrue(p<ExprCallNode> callNode, vector<ll
     }
     if (args[0]->getType()->isPointerTy()) args[0] = _builder.CreateLoad(_builder.getInt1Ty(), args[0], "assert.load");
     auto failCond = _builder.CreateNot(args[0], "assert_true.neg");
-    emitAssertFailureBranch(_builder, _module, failCond, "assert_true");
+    emitAssertFailureBranch(_builder, _module, failCond, "assert_true", _file);
     return llvm::UndefValue::get(_builder.getVoidTy());
 }
 
@@ -133,7 +138,7 @@ llvm::Value* Compiler::compileTestAssertFalse(p<ExprCallNode> callNode, vector<l
         throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6027, "assert_false", 1);
     }
     if (args[0]->getType()->isPointerTy()) args[0] = _builder.CreateLoad(_builder.getInt1Ty(), args[0], "assert.load");
-    emitAssertFailureBranch(_builder, _module, args[0], "assert_false");
+    emitAssertFailureBranch(_builder, _module, args[0], "assert_false", _file);
     return llvm::UndefValue::get(_builder.getVoidTy());
 }
 
@@ -152,6 +157,6 @@ llvm::Value* Compiler::compileTestFail(p<ExprCallNode> callNode, vector<llvm::Va
     }
     // 直接走失败路径：恒真条件
     auto trueCond = llvm::ConstantInt::getTrue(_context);
-    emitAssertFailureBranch(_builder, _module, trueCond, "fail");
+    emitAssertFailureBranch(_builder, _module, trueCond, "fail", _file);
     return llvm::UndefValue::get(_builder.getVoidTy());
 }

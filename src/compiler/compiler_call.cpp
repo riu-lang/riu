@@ -77,13 +77,18 @@ llvm::Function* Compiler::getMethodFunction(const string& structName, const stri
     string ownerModule = _file->moduleName();
     if (auto instIt = _structInstances.find(structName); instIt != _structInstances.end()) {
         ownerModule = instIt->second.consumerModule;
-    } else if (!isBuiltinType(structName)) {
+    } else {
         auto* owner = _file->getStructOwner(structName);
         if (owner && owner != _file) {
             ownerModule = owner->moduleName();
-        } else if (!owner && _yux && _yux->sdkFile() && _yux->sdkFile() != _file &&
-                   _yux->sdkFile()->getStructDecl(structName)) {
-            ownerModule = _yux->sdkFile()->moduleName();
+        } else if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
+            // SDK 平铺文件拆分后，_sdkFile 空壳通过 wildcardImports 找到真实 owner
+            auto* sdkOwner = _yux->sdkFile()->getStructOwner(structName);
+            if (sdkOwner) {
+                ownerModule = sdkOwner->moduleName();
+            } else if (_yux->sdkFile()->getStructDecl(structName)) {
+                ownerModule = _yux->sdkFile()->moduleName();
+            }
         }
     }
     // 生成 mangle 名称
@@ -147,8 +152,13 @@ llvm::Function* Compiler::getDestructorFunction(const string& structName) {
         auto* owner = _file->getStructOwner(structName);
         if (owner && owner != _file) {
             ownerModule = owner->moduleName();
-        } else if (!owner && _yux && _yux->sdkFile() && _yux->sdkFile()->getStructDecl(structName)) {
-            ownerModule = _yux->sdkFile()->moduleName();
+        } else if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
+            auto* sdkOwner = _yux->sdkFile()->getStructOwner(structName);
+            if (sdkOwner) {
+                ownerModule = sdkOwner->moduleName();
+            } else if (_yux->sdkFile()->getStructDecl(structName)) {
+                ownerModule = _yux->sdkFile()->moduleName();
+            }
         }
     }
     string mangledName = Mangler::dtor(ownerModule, structName);

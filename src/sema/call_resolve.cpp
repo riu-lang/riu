@@ -45,7 +45,7 @@ static bool overloadMatchesFlexible(const vector<p<ExprNode>>& args, const vecto
             if (isIntTypeName(params[i].name)) continue;
             try {
                 if (paramAccepts(params[i], args[i]->getType())) continue;
-            } catch (...) {  // NOLINT(bugprone-empty-catch)
+            } catch (...) { // NOLINT(bugprone-empty-catch)
             }
             return false;
         }
@@ -115,7 +115,7 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
                 if (isIntTypeName(c->params[i + 1].name)) continue;
                 try {
                     if (paramAccepts(c->params[i + 1], args[i]->getType())) continue;
-                } catch (...) {  // NOLINT(bugprone-empty-catch)
+                } catch (...) { // NOLINT(bugprone-empty-catch)
                 }
                 return false;
             }
@@ -200,8 +200,8 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
                 sigs += ")";
             }
             throw YuxError(line, ErrorCode::E6027, structName, *arities.begin())
-                .withHint(std::format("实参 {} 个，候选重载有 {} 种参数个数；声明的重载:{}", args.size(), arities.size(),
-                                      sigs));
+                .withHint(std::format("实参 {} 个，候选重载有 {} 种参数个数；声明的重载:{}", args.size(),
+                                      arities.size(), sigs));
         }
     }
 }
@@ -295,8 +295,8 @@ void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName, 
                 sigs += ")";
             }
             throw YuxError(line, ErrorCode::E6027, fnName, *arities.begin())
-                .withHint(std::format("实参 {} 个，候选重载有 {} 种参数个数；声明的重载:{}", args.size(), arities.size(),
-                                      sigs));
+                .withHint(std::format("实参 {} 个，候选重载有 {} 种参数个数；声明的重载:{}", args.size(),
+                                      arities.size(), sigs));
         }
         // 个数匹配但类型不匹配 → 留 codegen 兜底
     }
@@ -652,16 +652,17 @@ void validateStructMethodVisibility(const FnSymbolInfo* methodSymbol, const stri
 void validateFnSymbolVisibility(const FnSymbolInfo* fnSymbol, const string& currentModuleName, const string& fnName,
                                 int line, int col) {
     if (!fnSymbol) return;
-    if (fnSymbol->isPrivate && !fnSymbol->moduleName.empty() && fnSymbol->moduleName != currentModuleName) {
-        throw YuxError(line, col, ErrorCode::E6006, fnName);
-    }
+    if (!fnSymbol->isPrivate || fnSymbol->moduleName.empty() || fnSymbol->moduleName == currentModuleName) return;
+    // SDK 平铺文件（yux.core.*）之间允许私有调用（拆分前它们同属 yux.core 模块）
+    auto isSdkFlat = [](const string& mod) -> bool { return mod.starts_with("yux.core.") || mod == "yux.core"; };
+    if (isSdkFlat(fnSymbol->moduleName) && isSdkFlat(currentModuleName)) return;
+    throw YuxError(line, col, ErrorCode::E6006, fnName);
 }
 
 // ==================== Builtin intrinsic arity (Phase 3.3.2.c) ====================
 // 原 compileGenericFunctionCall 的 #Builtin 分支顶部散落的 typeArgs/args
 // 计数检查 (~12 处 throw 跨 7 个 fnName) 收口到单一 helper.
-void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, size_t argsCount, int line,
-                                         int col) {
+void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, size_t argsCount, int line, int col) {
     if (fnName == "assert_eq") {
         if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
         return;
@@ -769,8 +770,8 @@ void validateArrayMethodCall(const TypeInfo& baseType, const string& member, siz
 // 原 compileGenericFunctionCall 的 #Builtin 分支内散落的 E6028 / E6029 / E6032
 // 校验 (跨 same_ref / ptr_of / as_ref / weak / copy_of 五个 fnName) 收口到单一 helper.
 void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeInfo>& typeArgs,
-                                             const vector<TypeInfo>& argTypes, const vector<p<ExprNode>>& argNodes,
-                                             FileNode* file, FileNode* sdkFile, int line, int col) {
+                                       const vector<TypeInfo>& argTypes, const vector<p<ExprNode>>& argNodes,
+                                       FileNode* file, FileNode* sdkFile, int line, int col) {
     if (fnName == "same_ref" || fnName == "ptr_of") {
         // arity / typeArgs 计数已由 validateBuiltinIntrinsicShape 保证
         const auto& T = typeArgs[0];
@@ -1004,7 +1005,7 @@ void validateMatchArms(EnumDeclNode* enumDecl, const string& enumName, p<ExprMat
                     if (!alias->isGeneric() && alias->target()) {
                         try {
                             if (alias->target()->getType().name == enumName) aliasOk = true;
-                        } catch (...) {  // NOLINT(bugprone-empty-catch)
+                        } catch (...) { // NOLINT(bugprone-empty-catch)
                         }
                     }
                 }

@@ -14,8 +14,8 @@
 #include <llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/Support/MemoryBuffer.h>
-#include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/TargetSelect.h>
+#include <llvm/Support/raw_ostream.h>
 
 #include <filesystem>
 
@@ -42,7 +42,7 @@ llvm::Expected<std::unique_ptr<llvm::orc::ObjectLayer>> makeYuxObjectLinkingLaye
 // 仅供 Phase 1 验证; Phase 2 起会被 `yux test` 子命令收编。
 int runViaJIT(std::unique_ptr<llvm::Module> mod, std::unique_ptr<llvm::LLVMContext> ctx,
               const std::vector<std::unique_ptr<llvm::Module>>& extraMods,
-              std::vector<std::unique_ptr<llvm::LLVMContext>>& extraCtxs, const std::string& sdkObjPath) {
+              std::vector<std::unique_ptr<llvm::LLVMContext>>& extraCtxs, const std::string& sdkObjDir) {
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
     llvm::InitializeNativeTargetAsmParser();
@@ -64,19 +64,28 @@ int runViaJIT(std::unique_ptr<llvm::Module> mod, std::unique_ptr<llvm::LLVMConte
     }
     jd.addGenerator(std::move(*procGen));
 
-    // 加载 sdk core.obj
-    if (!sdkObjPath.empty() && std::filesystem::exists(sdkObjPath)) {
-        auto bufOrErr = llvm::MemoryBuffer::getFile(sdkObjPath);
-        if (!bufOrErr) {
-            llvm::errs() << "[jit] read sdk obj failed: " << sdkObjPath << "\n";
-            return 1;
+    // 加载 SDK obj 目录下所有 .obj
+    if (!sdkObjDir.empty() && std::filesystem::exists(sdkObjDir)) {
+        bool anyLoaded = false;
+        for (const auto& entry : std::filesystem::directory_iterator(sdkObjDir)) {
+            if (!entry.is_regular_file()) continue;
+            if (entry.path().extension() != ".obj") continue;
+            auto bufOrErr = llvm::MemoryBuffer::getFile(entry.path().string());
+            if (!bufOrErr) {
+                llvm::errs() << "[jit] read sdk obj failed: " << entry.path().string() << "\n";
+                return 1;
+            }
+            if (auto e = jit->addObjectFile(std::move(*bufOrErr))) {
+                llvm::errs() << "[jit] addObjectFile failed: " << llvm::toString(std::move(e)) << "\n";
+                return 1;
+            }
+            anyLoaded = true;
         }
-        if (auto e = jit->addObjectFile(std::move(*bufOrErr))) {
-            llvm::errs() << "[jit] addObjectFile failed: " << llvm::toString(std::move(e)) << "\n";
-            return 1;
+        if (!anyLoaded) {
+            llvm::errs() << "[jit] warning: no .obj files found in " << sdkObjDir << "\n";
         }
     } else {
-        llvm::errs() << "[jit] warning: sdk obj not found at " << sdkObjPath << "\n";
+        llvm::errs() << "[jit] warning: sdk obj dir not found at " << sdkObjDir << "\n";
     }
 
     // 用户主模块

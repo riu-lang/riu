@@ -8,12 +8,13 @@
 
 #include "sdk_compile.h"
 
+#include <lld/Common/Driver.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/Path.h>
-#include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/TargetSelect.h>
+#include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/TargetParser/Triple.h>
 
@@ -32,6 +33,8 @@
 #include "tools/syntax_error_listener.h"
 #include "yux/yuxLexer.h"
 #include "yux/yuxParser.h"
+
+LLD_HAS_DRIVER(coff)
 
 namespace yux::cli {
 
@@ -208,35 +211,37 @@ IRResult compileIR(const std::string& inputFile, Yux& yux, bool isSdk) {
         reportRuntimeError(inputFile, e);
         exit(1);
     }
-    return {.context=std::move(context), .module=std::move(module)};
+    return {.context = std::move(context), .module = std::move(module)};
 }
 
 SdkPaths sdkBuildPaths(const std::string& sdkPathAbs) {
     namespace fs = std::filesystem;
     fs::path sdkRoot = fs::path(sdkPathAbs).parent_path().parent_path().parent_path();
     fs::path build = sdkRoot / "build";
-    fs::path objDir = build / "src" / "yux";
+    fs::path objDir = build / "src" / "yux" / "core";
     fs::create_directories(objDir);
     return {
-        .objPath=(objDir / "core.obj").string(),
-        .libPath=(build / "yux.lib").string(),
-        .irPath=(objDir / "core.ll").string(),
+        .objDir = objDir.string(),
+        .libPath = (build / "yux.lib").string(),
+        .irDir = objDir.string(),
     };
 }
 
-bool needRecompileSdkDir(const std::string& sdkDir, const std::string& sdkObjPath) {
-    if (!std::filesystem::exists(sdkObjPath)) {
+bool needRecompileSdkDir(const std::string& sdkDir, const std::string& sdkObjDir) {
+    // 检查 yux.lib 是否存在且比所有 SDK 源文件新
+    std::string libPath = (std::filesystem::path(sdkObjDir).parent_path().parent_path() / "yux.lib").string();
+    if (!std::filesystem::exists(libPath)) {
         return true;
     }
 
-    auto objTime = std::filesystem::last_write_time(sdkObjPath);
+    auto libTime = std::filesystem::last_write_time(libPath);
 
     for (const auto& entry : std::filesystem::directory_iterator(sdkDir)) {
         if (entry.is_regular_file()) {
             std::string filename = entry.path().filename().string();
             if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".yux") {
                 if (filename.size() >= 9 && filename.ends_with(".test.yux")) continue;
-                if (std::filesystem::last_write_time(entry.path()) > objTime) {
+                if (std::filesystem::last_write_time(entry.path()) > libTime) {
                     return true;
                 }
             }
@@ -258,15 +263,12 @@ void parseSdkDirOrExit(const std::string& sdkDir, Yux& yux) {
     }
 }
 
-IRResult compileSdkDir(const std::string& sdkDir, Yux& yux) {
+void compileSdkDir(const std::string& sdkDir, Yux& yux) {
     namespace fs = std::filesystem;
     std::cout << "Compiling SDK from directory: " << sdkDir << '\n';
 
-    auto context = std::make_unique<llvm::LLVMContext>();
-    auto module = std::make_unique<llvm::Module>("yux.core", *context);
-    llvm::IRBuilder<> builder(*context);
-
     auto pkgMap = sdk_loader::readSdkPkg(sdkDir);
+    SdkPaths sp = sdkBuildPaths(sdkDir);
 
     std::vector<std::string> yuxFiles;
     for (const auto& entry : fs::directory_iterator(sdkDir)) {
@@ -284,74 +286,91 @@ IRResult compileSdkDir(const std::string& sdkDir, Yux& yux) {
         reportRuntimeError(yuxFile, e, "Error in SDK file " + yuxFile + ": ");
     };
 
-    // 第一遍: 平铺文件 → 合并入 _sdkFile。
-    // 先把所有平铺文件的 AST 累加进 _sdkFile, 然后再做一次性 IR 编译。
-    // 旧版本是「每文件 parse + compile 一次」: 因为 _sdkFile 是单例, 每次 compile
-    // 都会把已经处理过的文件的函数再编一遍, 触发 LLVM 「bad signature」断言。
-    p<FileNode> sdkAst;
+    // 确保 _sdkFile 已解析 (含 AST 注册)
+    // parseSdkDir 应在调用前由 parseSdkDirOrExit() 完成；
+    // 此处仅作防御性检查：若 _modules 里缺少 SDK 模块，补跑一次 parse。
+    {
+        bool hasSdkModules = false;
+        for (auto& [stem, info] : pkgMap) {
+            if (yux.module(info.moduleName)) {
+                hasSdkModules = true;
+                break;
+            }
+        }
+        if (!hasSdkModules) {
+            // sdk_loader 内部保证至少创建 _sdkFile 与各子模块
+            sdk_loader::parseSdkDir(sdkDir, yux);
+        }
+    }
+
+    vector<std::string> objPaths;
+
+    // 每文件独立 LLVM Module + Compiler 遍
     for (const auto& yuxFile : yuxFiles) {
         std::string stem = fs::path(yuxFile).stem().string();
         auto it = pkgMap.find(stem);
-        bool isFlat = (it == pkgMap.end()) || it->second.isFlat;
-        if (!isFlat) continue;
+        bool isFlatDep = (it == pkgMap.end()) || it->second.isFlat;
 
-        std::cout << "  Processing: " << yuxFile << '\n';
-        antlr4::ANTLRFileStream file;
-        file.loadFromFile(yuxFile);
-        yuxLexer lexer(&file);
-        SyntaxErrorListener errListener(yuxFile, std::cerr);
-        lexer.removeErrorListeners();
-        lexer.addErrorListener(&errListener);
-        antlr4::CommonTokenStream tokenStream(&lexer);
-        yuxParser parser(&tokenStream);
-        parser.removeErrorListeners();
-        parser.addErrorListener(&errListener);
-        auto program = parser.program();
-        if (errListener.hasErrors() || parser.getNumberOfSyntaxErrors()) {
-            std::cerr << "Syntax errors in SDK file: " << yuxFile << '\n';
+        std::string moduleName;
+        if (it != pkgMap.end() && !it->second.moduleName.empty() && !it->second.isFlat) {
+            moduleName = it->second.moduleName;
+        } else {
+            moduleName = "yux.core." + stem;
+        }
+
+        // 只有 base.yux 发射运行时辅助（isSdkRuntime=true）
+        bool isSdkRuntime = isFlatDep && (stem == "base");
+
+        auto file = yux.module(moduleName);
+        if (!file) {
+            std::cerr << "Error: SDK module " << moduleName << " not loaded from " << yuxFile << '\n';
             exit(1);
         }
-        ASTBuilder astBuilder(yux, "yux.core", true);
+
+        std::cout << "  Compiling: " << moduleName << " (" << stem << ".yux)" << (isSdkRuntime ? " [runtime]" : "")
+                  << '\n';
+
+        auto context = std::make_unique<llvm::LLVMContext>();
+        auto module = std::make_unique<llvm::Module>(moduleName, *context);
+        llvm::IRBuilder<> builder(*context);
+
         try {
-            sdkAst = astBuilder.build(program); // 始终返回 _sdkFile (单例)
+            Compiler compiler(*context, builder, module.get(), file, &yux, isSdkRuntime);
+            compiler.compile(file);
         } catch (std::runtime_error& e) {
             reportErr(yuxFile, e);
             exit(1);
         }
-    }
 
-    // 平铺文件累加完成后, 用合并后的 _sdkFile 一次性发射 IR (含运行时辅助)。
-    if (sdkAst) {
-        try {
-            Compiler compiler(*context, builder, module.get(), sdkAst, &yux, true);
-            compiler.compile(sdkAst);
-        } catch (std::runtime_error& e) {
-            reportErr("(sdk flat compile)", e);
+        std::string objPath = (fs::path(sp.objDir) / (stem + ".obj")).string();
+        if (!compileIRToObj(module.get(), objPath)) {
+            std::cerr << "Failed to compile SDK obj: " << objPath << '\n';
             exit(1);
         }
-    }
-
-    // 第二遍: 命名空间文件 → 独立 FileNode 注册到 _modules, Compiler isSdk=false (避免重复 emit 运行时辅助)
-    for (const auto& yuxFile : yuxFiles) {
-        std::string stem = fs::path(yuxFile).stem().string();
-        auto it = pkgMap.find(stem);
-        if (it == pkgMap.end() || it->second.isFlat) continue;
-        const std::string& mn = it->second.moduleName;
-
-        std::cout << "  Processing: " << yuxFile << " (module: " << mn << ")" << '\n';
-        try {
-            auto fileNode = yux.loadMainFile(fs::absolute(yuxFile).string(), mn);
-            Compiler compiler(*context, builder, module.get(), fileNode, &yux, false);
-            compiler.compile(fileNode);
-        } catch (std::runtime_error& e) {
-            reportErr(yuxFile, e);
-            exit(1);
-        }
+        std::cout << "  Write obj: " << objPath << '\n';
+        objPaths.push_back(objPath);
     }
 
     sdk_loader::registerSdkPkgAliases(yux, pkgMap);
 
-    return {.context=std::move(context), .module=std::move(module)};
+    // 用 lld-link /lib 将所有 obj 归档为 yux.lib
+    if (!objPaths.empty()) {
+        string libOutArg = "/out:" + sp.libPath;
+        vector<const char*> libArgs = {"lld-link", "/lib", libOutArg.c_str()};
+        for (auto& o : objPaths)
+            libArgs.push_back(o.c_str());
+
+        string outStr, errStr;
+        llvm::raw_string_ostream oOS(outStr), eOS(errStr);
+        lld::DriverDef dd = {.f = lld::WinLink, .d = &lld::coff::link};
+        auto r = lldMain(libArgs, oOS, eOS, llvm::ArrayRef{dd});
+        if (r.retCode) {
+            llvm::errs() << errStr;
+            std::cerr << "Failed to archive SDK lib" << '\n';
+            exit(1);
+        }
+        std::cout << "Write SDK lib: " << sp.libPath << '\n';
+    }
 }
 
 } // namespace yux::cli

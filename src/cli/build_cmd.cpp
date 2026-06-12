@@ -68,8 +68,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             return 1;
         }
         if (!buildNameArg.empty() && yux.projectName() != buildNameArg) {
-            std::cerr << "Error: build target `" << buildNameArg
-                      << "` does not match yux.toml name `" << yux.projectName() << "`" << '\n';
+            std::cerr << "Error: build target `" << buildNameArg << "` does not match yux.toml name `"
+                      << yux.projectName() << "`" << '\n';
             return 1;
         }
         if (!yux.isLibProject()) {
@@ -94,14 +94,13 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 // 校验 canonical 解析后仍在 sourceRoot/ 子树
                 std::error_code _cec;
                 auto canonEntry = std::filesystem::canonical(inputFile, _cec);
-                auto canonRoot  = std::filesystem::canonical(yux.sourceRoot(), _cec);
+                auto canonRoot = std::filesystem::canonical(yux.sourceRoot(), _cec);
                 if (!_cec) {
                     auto rel = std::filesystem::relative(canonEntry, canonRoot, _cec);
-                    bool escapes = _cec || rel.empty() || rel.native().starts_with(L"..") ||
-                                   rel.string().starts_with("..");
+                    bool escapes =
+                        _cec || rel.empty() || rel.native().starts_with(L"..") || rel.string().starts_with("..");
                     if (escapes) {
-                        DiagnosticEngine::emit(tomlPath,
-                            YuxError(1, ErrorCode::E5014, yux.projectEntry()));
+                        DiagnosticEngine::emit(tomlPath, YuxError(1, ErrorCode::E5014, yux.projectEntry()));
                     }
                 }
             } catch (runtime_error& e) {
@@ -181,51 +180,18 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         namespace fs = std::filesystem;
         sdkPath = fs::absolute(sdkPath).string();
         SdkPaths sp = sdkBuildPaths(sdkPath);
-        string sdkObjPath = sp.objPath;
+        string sdkObjDir = sp.objDir;
         sdkLibPath = sp.libPath;
 
         bool libExists = fs::exists(sdkLibPath);
-        bool needCompile = !libExists || needRecompileSdkDir(sdkPath, sdkObjPath);
+        bool needCompile = !libExists || needRecompileSdkDir(sdkPath, sdkObjDir);
         if (needCompile) {
             SdkLock sdkLock;
             sdkLock.tryLock();
-            needCompile = !fs::exists(sdkLibPath) || needRecompileSdkDir(sdkPath, sdkObjPath);
+            needCompile = !fs::exists(sdkLibPath) || needRecompileSdkDir(sdkPath, sdkObjDir);
             if (needCompile) {
-                auto sdkIrr = compileSdkDir(sdkPath, yux);
-                auto sdkModule = sdkIrr.module.get();
-
-                if (emitIr) {
-                    string sdkIrPath = sp.irPath;
-                    std::error_code ec;
-                    llvm::raw_fd_ostream irFile(sdkIrPath, ec);
-                    if (!ec) {
-                        sdkModule->print(irFile, nullptr);
-                        irFile.flush();
-                        std::cout << "Write SDK IR: " << sdkIrPath << '\n';
-                    }
-                }
-
-                if (!compileIRToObj(sdkModule, sdkObjPath)) {
-                    std::cerr << "Failed to compile SDK to object file" << '\n';
-                    return 1;
-                }
-                std::cout << "Write SDK obj: " << sdkObjPath << '\n';
-
-                // 用 lld-link /lib 打包 obj 为静态库
-                string libOutArg = "/out:" + sdkLibPath;
-                std::vector<const char*> libArgs = {
-                    "lld-link", "/lib", sdkObjPath.c_str(), libOutArg.c_str()
-                };
-                std::string libOutStr, libErrStr;
-                llvm::raw_string_ostream libOOS(libOutStr), libEOS(libErrStr);
-                lld::DriverDef libDD = {.f=lld::WinLink, .d=&lld::coff::link};
-                auto libR = lldMain(libArgs, libOOS, libEOS, llvm::ArrayRef{libDD});
-                if (libR.retCode) {
-                    llvm::errs() << libErrStr;
-                    std::cerr << "Failed to archive SDK lib" << '\n';
-                    return 1;
-                }
-                std::cout << "Write SDK lib: " << sdkLibPath << '\n';
+                // compileSdkDir 内部完成每文件 obj 生成 + lld-link /lib 归档
+                compileSdkDir(sdkPath, yux);
                 compiled = true;
             } else {
                 parseSdkDirOrExit(sdkPath, yux);
@@ -235,10 +201,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         }
     }
 
-    // SDK 自构建：上面 compileSdkDir → core.obj → yux.lib 的产物已经就是项目目标 lib，
-    // 路径与 lib 模式下 `<projectRoot>/build/yux/yux.lib` 一致。再走 lib 走法会把同一批
-    // 源文件以 isSdk=false 重新编译一次（且会与已注册到 _sdkFile 的模块名冲突），
-    // 因此这里直接收尾退出。
+    // SDK 自构建：compileSdkDir 已生成多个 .obj → yux.lib, 产物就是项目目标 lib。
+    // 再走 lib 走法会把同一批源文件以 isSdk=false 重新编译一次, 因此这里直接收尾退出。
     if (projectMode && yux.projectName() == "yux") {
         if (!compiled) std::cout << "no work to do." << '\n';
         std::cout.flush();
@@ -246,8 +210,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         _exit(0);
     }
 
-    auto codegenTo = [&](p<FileNode> file, const std::string& moduleName,
-                         const std::string& objOut, const std::string& irOut) -> bool {
+    auto codegenTo = [&](p<FileNode> file, const std::string& moduleName, const std::string& objOut,
+                         const std::string& irOut) -> bool {
         std::cout << "Compile IR... (module: " << moduleName << ")" << '\n';
         auto ctx = std::make_unique<llvm::LLVMContext>();
         auto mod = std::make_unique<llvm::Module>(moduleName, *ctx);
@@ -293,8 +257,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         // 递归扫 src/ 下 .yux；模块名 = src 下相对路径，点分（不加项目名前缀）
         vector<std::pair<std::string, std::string>> libFiles; // {abs, modName}
         std::error_code walkEc;
-        for (auto it = fs::recursive_directory_iterator(srcDir, walkEc);
-             it != fs::recursive_directory_iterator(); ++it) {
+        for (auto it = fs::recursive_directory_iterator(srcDir, walkEc); it != fs::recursive_directory_iterator();
+             ++it) {
             if (walkEc) break;
             if (!it->is_regular_file()) continue;
             auto& p = it->path();
@@ -309,7 +273,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             auto rel = fs::relative(p, srcDir);
             string modName = rel.generic_string();
             modName = modName.substr(0, modName.size() - 4); // strip .yux
-            for (auto& c : modName) if (c == '/' || c == '\\') c = '.';
+            for (auto& c : modName)
+                if (c == '/' || c == '\\') c = '.';
             libFiles.emplace_back(fs::absolute(p).string(), modName);
         }
         std::ranges::sort(libFiles);
@@ -360,19 +325,25 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             try {
                 auto t = fs::last_write_time(libPath);
                 for (auto& o : libObjs) {
-                    if (fs::last_write_time(o) > t) { needLib = true; break; }
+                    if (fs::last_write_time(o) > t) {
+                        needLib = true;
+                        break;
+                    }
                 }
-            } catch (...) { needLib = true; }
+            } catch (...) {
+                needLib = true;
+            }
         }
         if (needLib) {
             string outArg = "/out:" + libPath;
             vector<const char*> args = {"lld-link", "/lib", outArg.c_str()};
-            for (auto& o : libObjs) args.push_back(o.c_str());
+            for (auto& o : libObjs)
+                args.push_back(o.c_str());
 
             std::string outStr, errStr;
             llvm::raw_string_ostream oOS(outStr), eOS(errStr);
             std::cout << "Static lib: " << libPath << '\n';
-            lld::DriverDef dd = {.f=lld::WinLink, .d=&lld::coff::link};
+            lld::DriverDef dd = {.f = lld::WinLink, .d = &lld::coff::link};
             lld::Result r = lldMain(args, oOS, eOS, llvm::ArrayRef{dd});
             if (r.retCode) {
                 llvm::errs() << errStr;
@@ -391,9 +362,10 @@ int runBuildCommand(const BuildCmdOptions& opts) {
     std::string baseName = llvm::sys::path::stem(inputFile).str();
     // 项目模式：obj 镜像 src 相对路径到 build/<rel>.obj；
     // 单文件模式：仍走 intermediateDir（pid 隔离的 .tmp，已跳过缓存）。
-    std::string objPath = projectMode
-        ? mirroredOutputBase(yux.projectRoot(), buildDir, std::filesystem::absolute(inputFile).string()) + ".obj"
-        : intermediateDir + "/" + baseName + ".obj";
+    std::string objPath =
+        projectMode
+            ? mirroredOutputBase(yux.projectRoot(), buildDir, std::filesystem::absolute(inputFile).string()) + ".obj"
+            : intermediateDir + "/" + baseName + ".obj";
     if (projectMode) {
         std::filesystem::create_directories(std::filesystem::path(objPath).parent_path());
     }
@@ -452,13 +424,12 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             }
         }
 
-        std::string sdkObjPath;
+        std::string sdkObjDir;
         if (!sdkPath.empty()) {
-            sdkObjPath = sdkBuildPaths(sdkPath).objPath;
+            sdkObjDir = sdkBuildPaths(sdkPath).objDir;
         }
 
-        int rc = jit::runViaJIT(std::move(mainMod), std::move(mainCtx),
-                           extraMods, extraCtxs, sdkObjPath);
+        int rc = jit::runViaJIT(std::move(mainMod), std::move(mainCtx), extraMods, extraCtxs, sdkObjDir);
         std::cout << "[jit-run] exit code = " << rc << '\n';
         std::cout.flush();
         std::cerr.flush();
@@ -476,9 +447,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
     std::string mainAbs = std::filesystem::absolute(inputFile).string();
     bool needCompile = !projectMode || !exeCaches.isFresh(mainAbs, objPath);
     if (needCompile) {
-        std::string irPath = projectMode
-            ? mirroredOutputBase(yux.projectRoot(), irDir, mainAbs) + ".ll"
-            : irDir + "/" + baseName + ".ll";
+        std::string irPath = projectMode ? mirroredOutputBase(yux.projectRoot(), irDir, mainAbs) + ".ll"
+                                         : irDir + "/" + baseName + ".ll";
         if (emitIr && projectMode) {
             std::filesystem::create_directories(std::filesystem::path(irPath).parent_path());
         }
@@ -496,14 +466,12 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         auto modFile = yux.module(modName);
         if (!modFile || modFile == yux.sdkFile()) continue;
         std::string modSrc = yux.modulePath(modName);
-        std::string modBase = projectMode
-            ? mirroredOutputBase(yux.projectRoot(), buildDir, modSrc)
-            : moduleOutputBase(intermediateDir, projectName, modName);
+        std::string modBase = projectMode ? mirroredOutputBase(yux.projectRoot(), buildDir, modSrc)
+                                          : moduleOutputBase(intermediateDir, projectName, modName);
         std::filesystem::create_directories(std::filesystem::path(modBase).parent_path());
         std::string modObj = modBase + ".obj";
-        std::string modIr = projectMode
-            ? mirroredOutputBase(yux.projectRoot(), irDir, modSrc) + ".ll"
-            : moduleOutputBase(irDir, projectName, modName) + ".ll";
+        std::string modIr = projectMode ? mirroredOutputBase(yux.projectRoot(), irDir, modSrc) + ".ll"
+                                        : moduleOutputBase(irDir, projectName, modName) + ".ll";
         if (emitIr) {
             std::filesystem::create_directories(std::filesystem::path(modIr).parent_path());
         }
@@ -538,8 +506,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             if (std::filesystem::last_write_time(objPath) > exeTime) {
                 needLink = true;
             }
-            if (!sdkLibPath.empty() &&
-                std::filesystem::last_write_time(sdkLibPath) > exeTime) {
+            if (!sdkLibPath.empty() && std::filesystem::last_write_time(sdkLibPath) > exeTime) {
                 needLink = true;
             }
             for (auto& mo : modObjPaths) {
@@ -556,14 +523,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
     if (needLink) {
         auto exeOut = "/out:" + exePath;
 
-        std::vector<const char*> args = {
-            "lld-link",
-            objPath.c_str(),
-            exeOut.c_str(),
-            "/subsystem:console",
-            "/entry:mainStartup",
-            "kernel32.lib"
-        };
+        std::vector<const char*> args = {"lld-link",           objPath.c_str(),      exeOut.c_str(),
+                                         "/subsystem:console", "/entry:mainStartup", "kernel32.lib"};
 
         if (!sdkLibPath.empty()) {
             args.insert(args.begin() + 2, sdkLibPath.c_str());
@@ -576,7 +537,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         llvm::raw_string_ostream stdoutOS(stdoutStr), stderrOS(stderrStr);
 
         std::cout << "Link obj: " << exePath << '\n';
-        lld::DriverDef driverDef = {.f=lld::WinLink, .d=&lld::coff::link};
+        lld::DriverDef driverDef = {.f = lld::WinLink, .d = &lld::coff::link};
         lld::Result result = lldMain(args, stdoutOS, stderrOS, llvm::ArrayRef{driverDef});
 
         if (result.retCode) {

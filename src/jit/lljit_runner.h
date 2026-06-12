@@ -27,9 +27,9 @@ namespace yux::jit {
 // YuxSEHMemoryManager 实例 (用于 .pdata SEH 注册)。
 llvm::Expected<std::unique_ptr<llvm::orc::ObjectLayer>> makeYuxObjectLinkingLayer(llvm::orc::ExecutionSession& ES);
 
-// 装载用户主模块 + 额外模块 + sdk core.obj, lookup mainStartup 调用, 返回退出码。
+// 装载用户主模块 + 额外模块 + SDK obj 目录下所有 .obj, lookup mainStartup 调用, 返回退出码。
 int runViaJIT(std::unique_ptr<llvm::Module> mod, std::unique_ptr<llvm::LLVMContext> ctx,
               const std::vector<std::unique_ptr<llvm::Module>>& extraMods,
-              std::vector<std::unique_ptr<llvm::LLVMContext>>& extraCtxs, const std::string& sdkObjPath);
+              std::vector<std::unique_ptr<llvm::LLVMContext>>& extraCtxs, const std::string& sdkObjDir);
 
 } // namespace yux::jit

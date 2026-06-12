@@ -13,8 +13,8 @@
 #include "ast/mangler.h"
 #include "ast/node/fn_node.h"
 #include "ast/yux.h"
-#include "compiler/compiler_test_intrinsics.h"
 #include "compiler/compiler.h"
+#include "compiler/compiler_test_intrinsics.h"
 #include "tools/build_cache.h"
 #include "tools/pkg_cache.h"
 #include "tools/sdk_loader.h"
@@ -29,8 +29,8 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/MemoryBuffer.h>
-#include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/TargetSelect.h>
+#include <llvm/Support/raw_ostream.h>
 
 #include <algorithm>
 #include <atomic>
@@ -65,20 +65,34 @@ const char* sehExceptionName(unsigned long code) {
     // yux test 自定义码: 测试断言失败 (spec §11.3.5)
     if (code == test_intrinsics::ASSERT_FAILED_CODE) return "ASSERT_FAILED";
     switch (code) {
-        case EXCEPTION_ACCESS_VIOLATION:      return "ACCESS_VIOLATION";
-        case EXCEPTION_INT_DIVIDE_BY_ZERO:    return "INT_DIVIDE_BY_ZERO";
-        case EXCEPTION_INT_OVERFLOW:          return "INT_OVERFLOW";
-        case EXCEPTION_FLT_DIVIDE_BY_ZERO:    return "FLT_DIVIDE_BY_ZERO";
-        case EXCEPTION_FLT_OVERFLOW:          return "FLT_OVERFLOW";
-        case EXCEPTION_FLT_UNDERFLOW:         return "FLT_UNDERFLOW";
-        case EXCEPTION_FLT_INVALID_OPERATION: return "FLT_INVALID_OPERATION";
-        case EXCEPTION_STACK_OVERFLOW:        return "STACK_OVERFLOW";
-        case EXCEPTION_ILLEGAL_INSTRUCTION:   return "ILLEGAL_INSTRUCTION";
-        case EXCEPTION_PRIV_INSTRUCTION:      return "PRIV_INSTRUCTION";
-        case EXCEPTION_BREAKPOINT:            return "BREAKPOINT";
-        case EXCEPTION_DATATYPE_MISALIGNMENT: return "DATATYPE_MISALIGNMENT";
-        case EXCEPTION_ARRAY_BOUNDS_EXCEEDED: return "ARRAY_BOUNDS_EXCEEDED";
-        default:                              return "UNKNOWN";
+    case EXCEPTION_ACCESS_VIOLATION:
+        return "ACCESS_VIOLATION";
+    case EXCEPTION_INT_DIVIDE_BY_ZERO:
+        return "INT_DIVIDE_BY_ZERO";
+    case EXCEPTION_INT_OVERFLOW:
+        return "INT_OVERFLOW";
+    case EXCEPTION_FLT_DIVIDE_BY_ZERO:
+        return "FLT_DIVIDE_BY_ZERO";
+    case EXCEPTION_FLT_OVERFLOW:
+        return "FLT_OVERFLOW";
+    case EXCEPTION_FLT_UNDERFLOW:
+        return "FLT_UNDERFLOW";
+    case EXCEPTION_FLT_INVALID_OPERATION:
+        return "FLT_INVALID_OPERATION";
+    case EXCEPTION_STACK_OVERFLOW:
+        return "STACK_OVERFLOW";
+    case EXCEPTION_ILLEGAL_INSTRUCTION:
+        return "ILLEGAL_INSTRUCTION";
+    case EXCEPTION_PRIV_INSTRUCTION:
+        return "PRIV_INSTRUCTION";
+    case EXCEPTION_BREAKPOINT:
+        return "BREAKPOINT";
+    case EXCEPTION_DATATYPE_MISALIGNMENT:
+        return "DATATYPE_MISALIGNMENT";
+    case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
+        return "ARRAY_BOUNDS_EXCEEDED";
+    default:
+        return "UNKNOWN";
     }
 }
 
@@ -110,8 +124,16 @@ struct TestOutputCapture {
         std::cerr.flush();
         std::fflush(stdout);
         std::fflush(stderr);
-        if (savedOut >= 0) { _dup2(savedOut, _fileno(stdout)); _close(savedOut); savedOut = -1; }
-        if (savedErr >= 0) { _dup2(savedErr, _fileno(stderr)); _close(savedErr); savedErr = -1; }
+        if (savedOut >= 0) {
+            _dup2(savedOut, _fileno(stdout));
+            _close(savedOut);
+            savedOut = -1;
+        }
+        if (savedErr >= 0) {
+            _dup2(savedErr, _fileno(stderr));
+            _close(savedErr);
+            savedErr = -1;
+        }
         std::string buf;
         if (tmp) {
             std::fseek(tmp, 0, SEEK_END);
@@ -151,18 +173,21 @@ std::wstring toWide(const std::string& s) {
 // Phase 5: 在 isolate=process 模式下, 给单个 #Test 起子进程跑。
 // 子进程协议: `<self> test <mod>#<fn> --isolate-child --capture <tmpfile>`
 // 子进程把所有 stdout/stderr 写入 capture 文件; 退出码 0=pass / SEH 码=fail / 2=child 自身错误。
-struct IsolatedResult { unsigned long exitCode; std::string capture; bool spawnOk; std::string spawnError; };
-IsolatedResult spawnIsolatedTest(const std::string& exePath,
-                                 const std::string& mod,
-                                 const std::string& fn) {
+struct IsolatedResult {
+    unsigned long exitCode;
+    std::string capture;
+    bool spawnOk;
+    std::string spawnError;
+};
+IsolatedResult spawnIsolatedTest(const std::string& exePath, const std::string& mod, const std::string& fn) {
     namespace fs = std::filesystem;
     static std::atomic<unsigned> seq{0};
     fs::path capPath = fs::temp_directory_path() /
-        ("yuxtest_" + std::to_string(GetCurrentProcessId()) + "_" + std::to_string(++seq) + ".txt");
+                       ("yuxtest_" + std::to_string(GetCurrentProcessId()) + "_" + std::to_string(++seq) + ".txt");
 
     // CreateProcessW 接收单条 cmdline; exe 路径与 capture 路径都用引号包起来防空格。
-    std::string cmd = "\"" + exePath + "\" test \"" + mod + "#" + fn +
-                      "\" --isolate-child --capture \"" + capPath.string() + "\"";
+    std::string cmd =
+        "\"" + exePath + "\" test \"" + mod + "#" + fn + "\" --isolate-child --capture \"" + capPath.string() + "\"";
     std::wstring wcmd = toWide(cmd);
     std::vector<wchar_t> cmdBuf(wcmd.begin(), wcmd.end());
     cmdBuf.push_back(0);
@@ -170,10 +195,13 @@ IsolatedResult spawnIsolatedTest(const std::string& exePath,
     STARTUPINFOW si{};
     si.cb = sizeof(si);
     PROCESS_INFORMATION pi{};
-    BOOL ok = CreateProcessW(nullptr, cmdBuf.data(), nullptr, nullptr, FALSE,
-                              CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+    BOOL ok =
+        CreateProcessW(nullptr, cmdBuf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
     if (!ok) {
-        return {.exitCode=0, .capture={}, .spawnOk=false, .spawnError="CreateProcess failed (GLE=" + std::to_string(GetLastError()) + ")"};
+        return {.exitCode = 0,
+                .capture = {},
+                .spawnOk = false,
+                .spawnError = "CreateProcess failed (GLE=" + std::to_string(GetLastError()) + ")"};
     }
     WaitForSingleObject(pi.hProcess, INFINITE);
     DWORD code = 0;
@@ -191,7 +219,7 @@ IsolatedResult spawnIsolatedTest(const std::string& exePath,
         std::error_code ec;
         fs::remove(capPath, ec);
     }
-    return {.exitCode=code, .capture=std::move(capContents), .spawnOk=true, .spawnError={}};
+    return {.exitCode = code, .capture = std::move(capContents), .spawnOk = true, .spawnError = {}};
 }
 
 // 把捕获到的输出按行缩进打印到 std::cout, 便于在 RUN/FAIL 行下视觉归属
@@ -213,8 +241,7 @@ void printCapturedOutput(const std::string& out) {
 
 } // namespace
 
-bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
-                             const std::string& captureFile) {
+bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild, const std::string& captureFile) {
     bool isChildIsolated = testCmdParsed && isolateChild;
     if (!isChildIsolated) return false;
     if (captureFile.empty()) {
@@ -249,27 +276,31 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
     // 解析 selector: 每项形如 `<prefix>` 或 `<module>#<fnName>`;
     // 多个 selector 之间「任一命中即收」。空列表 = 全收。
     // 子进程模式 (--isolate-child) 父进程派发时永远只传 1 个 `<mod>#<fn>`, 无需特判。
-    struct SelectorPart { std::string mod; std::string fn; };
+    struct SelectorPart {
+        std::string mod;
+        std::string fn;
+    };
     std::vector<SelectorPart> selectors;
     const auto& testSelectors = opts.selectors;
     selectors.reserve(testSelectors.size());
     for (auto& s : testSelectors) {
         auto hash = s.find('#');
-        if (hash == std::string::npos) selectors.push_back({.mod=s, .fn={}});
-        else selectors.push_back({.mod=s.substr(0, hash), .fn=s.substr(hash + 1)});
+        if (hash == std::string::npos)
+            selectors.push_back({.mod = s, .fn = {}});
+        else
+            selectors.push_back({.mod = s.substr(0, hash), .fn = s.substr(hash + 1)});
     }
     // 模块边界感知匹配: m == sel.mod 或 m 以 `sel.mod.` 开头。
     auto modCovers = [](const std::string& m, const std::string& sm) {
         if (sm.empty()) return true;
         if (m == sm) return true;
-        return m.size() > sm.size() + 1 &&
-               m.starts_with(sm) &&
-               m[sm.size()] == '.';
+        return m.size() > sm.size() + 1 && m.starts_with(sm) && m[sm.size()] == '.';
     };
     // 扫描期 *.test.yux 裁剪: 任一 selector 的模块范围覆盖即保留。
     auto matchesSelModule = [&](const std::string& m) {
         if (selectors.empty()) return true;
-        for (auto& sel : selectors) if (modCovers(m, sel.mod)) return true;
+        for (auto& sel : selectors)
+            if (modCovers(m, sel.mod)) return true;
         return false;
     };
     // 函数维度过滤: 任一 selector「模块覆盖 + (selFn 空或 fn 相等)」即命中。
@@ -314,36 +345,19 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
     } else {
         sdkPath = sdk_loader::findSdkPath();
     }
-    std::string sdkObjPath;
+    std::string sdkObjDir;
     if (!sdkPath.empty()) {
         sdkPath = fs::absolute(sdkPath).string();
-        sdkObjPath = sdkBuildPaths(sdkPath).objPath;
+        sdkObjDir = sdkBuildPaths(sdkPath).objDir;
 
-        bool needCompile = !fs::exists(sdkObjPath) || needRecompileSdkDir(sdkPath, sdkObjPath);
+        bool needCompile = !fs::exists(sdkObjDir) || needRecompileSdkDir(sdkPath, sdkObjDir);
         if (needCompile) {
             SdkLock sdkLock;
             sdkLock.tryLock();
-            needCompile = !fs::exists(sdkObjPath) || needRecompileSdkDir(sdkPath, sdkObjPath);
+            needCompile = !fs::exists(sdkObjDir) || needRecompileSdkDir(sdkPath, sdkObjDir);
             if (needCompile) {
-                auto sdkIrr = compileSdkDir(sdkPath, yux);
-
-                // --emit-ir：输出 SDK IR 到 build/ (与 build 命令行为一致)
-                if (opts.emitIr) {
-                    std::string sdkIrPath = sdkBuildPaths(sdkPath).irPath;
-                    std::error_code ec;
-                    llvm::raw_fd_ostream irFile(sdkIrPath, ec);
-                    if (!ec) {
-                        sdkIrr.module->print(irFile, nullptr);
-                        irFile.flush();
-                        std::cout << "Write SDK IR: " << sdkIrPath << '\n';
-                    }
-                }
-
-                if (!compileIRToObj(sdkIrr.module.get(), sdkObjPath)) {
-                    std::cerr << "Failed to compile SDK to object file" << '\n';
-                    std::exit(1);
-                }
-                std::cout << "Write SDK obj: " << sdkObjPath << '\n';
+                // compileSdkDir 内部完成每文件 obj 生成 + lld-link /lib 归档
+                compileSdkDir(sdkPath, yux);
             } else {
                 parseSdkDirOrExit(sdkPath, yux);
             }
@@ -358,36 +372,37 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
         std::cerr << "Error: project missing `src/` directory at " << srcDir.string() << '\n';
         std::exit(1);
     }
-    struct LoadEntry { std::string abs; std::string mod; bool isTest; };
+    struct LoadEntry {
+        std::string abs;
+        std::string mod;
+        bool isTest;
+    };
     std::vector<LoadEntry> entries;
     std::string sdkPathAbs = sdkPath.empty() ? std::string() : fs::absolute(sdkPath).string();
     std::error_code walkEc;
-    for (auto it = fs::recursive_directory_iterator(srcDir, walkEc);
-         it != fs::recursive_directory_iterator(); ++it) {
+    for (auto it = fs::recursive_directory_iterator(srcDir, walkEc); it != fs::recursive_directory_iterator(); ++it) {
         if (walkEc) break;
         if (!it->is_regular_file()) continue;
         const auto& p = it->path();
         if (p.extension() != ".yux") continue;
         auto fname = p.filename().string();
-        bool isTest = fname.size() >= 9 &&
-                      fname.ends_with(".test.yux");
+        bool isTest = fname.size() >= 9 && fname.ends_with(".test.yux");
         std::string absPath = fs::absolute(p).string();
-        if (!isTest && !sdkPathAbs.empty() &&
-            fs::path(absPath).parent_path().string() == sdkPathAbs) {
-            continue;  // SDK preload 已处理 sdk 目录下非 test 文件
+        if (!isTest && !sdkPathAbs.empty() && fs::path(absPath).parent_path().string() == sdkPathAbs) {
+            continue; // SDK preload 已处理 sdk 目录下非 test 文件
         }
         auto rel = fs::relative(p, srcDir);
         std::string modName = rel.generic_string();
         // strip ".yux" (保留 ".test" 段, 例如 "yux/core/arithmetic.test.yux" → "yux.core.arithmetic.test")
         modName = modName.substr(0, modName.size() - 4);
-        for (auto& c : modName) if (c == '/' || c == '\\') c = '.';
+        for (auto& c : modName)
+            if (c == '/' || c == '\\') c = '.';
         // selector 扫描期裁剪: 不匹配 selModule 的 *.test.yux 直接跳过, 避免无谓的解析/codegen。
         // 普通 .yux 仍保留 —— 它们可能是被选中 test 模块的依赖。
         if (isTest && !matchesSelModule(modName)) continue;
-        entries.push_back({.abs=absPath, .mod=modName, .isTest=isTest});
+        entries.push_back({.abs = absPath, .mod = modName, .isTest = isTest});
     }
-    std::ranges::sort(entries,
-              [](const LoadEntry& a, const LoadEntry& b) { return a.mod < b.mod; });
+    std::ranges::sort(entries, [](const LoadEntry& a, const LoadEntry& b) { return a.mod < b.mod; });
 
     // 加载所有 AST。若模块名已加载 (被 SDK 抢先), 跳过避免冲突。
     // 自维护加载顺序: Yux::loadMainFile 不写 _loadOrder。
@@ -412,7 +427,12 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
     std::vector<std::unique_ptr<llvm::Module>> mods;
     // 测试函数收集表: (modName, fnName, mangledSymbol)
     // isolate=true: 函数声明了 `#TestIsolate`, 默认模式下也强制走子进程 (规避 JIT 跨帧 SEH)。
-    struct TestEntry { std::string mod; std::string fn; std::string sym; bool isolate; };
+    struct TestEntry {
+        std::string mod;
+        std::string fn;
+        std::string sym;
+        bool isolate;
+    };
     std::vector<TestEntry> tests;
     for (auto& modName : loadedMods) {
         auto file = yux.module(modName);
@@ -452,7 +472,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
             // mangler: function(module, name, params=[], isPrivate=false) → "mod_name()"
             std::string sym = Mangler::function(modName, fnName, {}, false);
             bool isolate = fn->header()->hasAnno("TestIsolate");
-            tests.push_back({.mod=modName, .fn=fnName, .sym=sym, .isolate=isolate});
+            tests.push_back({.mod = modName, .fn = fnName, .sym = sym, .isolate = isolate});
         }
 
         mods.push_back(std::move(mod));
@@ -481,8 +501,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
 
     // Phase 5: 子进程模式必须命中且仅命中一个测试 (父进程派发时用 `<mod>#<fn>` 形式)
     if (isChildIsolated && filtered.size() != 1) {
-        std::cerr << "child: --isolate-child expects exactly one test, got "
-                  << filtered.size() << "\n";
+        std::cerr << "child: --isolate-child expects exactly one test, got " << filtered.size() << "\n";
         _exit(2);
     }
 
@@ -491,8 +510,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
         using namespace std::chrono;
         auto ms = duration_cast<milliseconds>(steady_clock::now() - t0).count();
         std::array<char, 32> buf{};
-        std::snprintf(buf.data(), buf.size(), " [%lld.%03llds]",
-                      static_cast<long long>(ms / 1000),
+        std::snprintf(buf.data(), buf.size(), " [%lld.%03llds]", static_cast<long long>(ms / 1000),
                       static_cast<long long>(ms % 1000));
         return std::string(buf.data());
     };
@@ -520,8 +538,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
             auto r = spawnIsolatedTest(self, t.mod, t.fn);
             std::string elapsed = fmtElapsed(t0);
             if (!r.spawnOk) {
-                std::cout << "FAIL " << prog << name
-                          << " (" << r.spawnError << ")" << elapsed << "\n";
+                std::cout << "FAIL " << prog << name << " (" << r.spawnError << ")" << elapsed << "\n";
                 failures.emplace_back(name, r.spawnError);
                 ++failed;
                 continue;
@@ -531,16 +548,13 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
                 if (opts.verbose) printCapturedOutput(r.capture);
                 ++passed;
             } else if (r.exitCode == 2) {
-                std::cout << "FAIL " << prog << name
-                          << " (child runner error)" << elapsed << "\n";
+                std::cout << "FAIL " << prog << name << " (child runner error)" << elapsed << "\n";
                 printCapturedOutput(r.capture);
                 failures.emplace_back(name, "child runner error");
                 ++failed;
             } else {
-                std::cout << "FAIL " << prog << name
-                          << " (SEH " << sehExceptionName(r.exitCode)
-                          << " 0x" << std::hex << r.exitCode << std::dec << ")"
-                          << elapsed << "\n";
+                std::cout << "FAIL " << prog << name << " (SEH " << sehExceptionName(r.exitCode) << " 0x" << std::hex
+                          << r.exitCode << std::dec << ")" << elapsed << "\n";
                 printCapturedOutput(r.capture);
                 failures.emplace_back(name, std::string("SEH ") + sehExceptionName(r.exitCode));
                 ++failed;
@@ -552,8 +566,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
                 std::cout << "  - " << f.first << "  (" << f.second << ")\n";
             }
         }
-        std::cout << "\n" << passed << " passed, " << failed << " failed,"
-                  << fmtElapsed(suiteT0) << "\n";
+        std::cout << "\n" << passed << " passed, " << failed << " failed," << fmtElapsed(suiteT0) << "\n";
         std::cout.flush();
         std::cerr.flush();
         _exit(failed == 0 ? 0 : 1);
@@ -564,44 +577,42 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
     llvm::InitializeNativeTargetAsmPrinter();
     llvm::InitializeNativeTargetAsmParser();
 
-    auto jitOrErr = llvm::orc::LLJITBuilder()
-        .setObjectLinkingLayerCreator(&jit::makeYuxObjectLinkingLayer)
-        .create();
+    auto jitOrErr = llvm::orc::LLJITBuilder().setObjectLinkingLayerCreator(&jit::makeYuxObjectLinkingLayer).create();
     if (!jitOrErr) {
-        llvm::errs() << "[test] LLJIT create failed: "
-                     << llvm::toString(jitOrErr.takeError()) << "\n";
+        llvm::errs() << "[test] LLJIT create failed: " << llvm::toString(jitOrErr.takeError()) << "\n";
         std::exit(1);
     }
     auto& jit = *jitOrErr;
     auto& jd = jit->getMainJITDylib();
 
-    auto procGen = llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
-        jit->getDataLayout().getGlobalPrefix());
+    auto procGen =
+        llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(jit->getDataLayout().getGlobalPrefix());
     if (!procGen) {
-        llvm::errs() << "[test] process generator failed: "
-                     << llvm::toString(procGen.takeError()) << "\n";
+        llvm::errs() << "[test] process generator failed: " << llvm::toString(procGen.takeError()) << "\n";
         std::exit(1);
     }
     jd.addGenerator(std::move(*procGen));
 
-    if (!sdkObjPath.empty() && fs::exists(sdkObjPath)) {
-        auto bufOrErr = llvm::MemoryBuffer::getFile(sdkObjPath);
-        if (!bufOrErr) {
-            llvm::errs() << "[test] read sdk obj failed: " << sdkObjPath << "\n";
-            std::exit(1);
-        }
-        if (auto e = jit->addObjectFile(std::move(*bufOrErr))) {
-            llvm::errs() << "[test] addObjectFile(sdk) failed: "
-                         << llvm::toString(std::move(e)) << "\n";
-            std::exit(1);
+    if (!sdkObjDir.empty() && fs::exists(sdkObjDir)) {
+        for (const auto& entry : fs::directory_iterator(sdkObjDir)) {
+            if (!entry.is_regular_file()) continue;
+            if (entry.path().extension() != ".obj") continue;
+            auto bufOrErr = llvm::MemoryBuffer::getFile(entry.path().string());
+            if (!bufOrErr) {
+                llvm::errs() << "[test] read sdk obj failed: " << entry.path().string() << "\n";
+                std::exit(1);
+            }
+            if (auto e = jit->addObjectFile(std::move(*bufOrErr))) {
+                llvm::errs() << "[test] addObjectFile(sdk) failed: " << llvm::toString(std::move(e)) << "\n";
+                std::exit(1);
+            }
         }
     }
     for (size_t i = 0; i < mods.size(); ++i) {
         mods[i]->setDataLayout(jit->getDataLayout());
         llvm::orc::ThreadSafeModule tsm(std::move(mods[i]), std::move(ctxs[i]));
         if (auto e = jit->addIRModule(std::move(tsm))) {
-            llvm::errs() << "[test] addIRModule failed: "
-                         << llvm::toString(std::move(e)) << "\n";
+            llvm::errs() << "[test] addIRModule failed: " << llvm::toString(std::move(e)) << "\n";
             std::exit(1);
         }
     }
@@ -619,9 +630,8 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
     std::string selfExeForIsolate;
     for (size_t i = 0; i < filtered.size(); ++i) {
         auto& t = filtered[i];
-        std::string prog = isChildIsolated
-            ? std::string()
-            : "[" + std::to_string(i + 1) + "/" + std::to_string(total) + "] ";
+        std::string prog =
+            isChildIsolated ? std::string() : "[" + std::to_string(i + 1) + "/" + std::to_string(total) + "] ";
         std::string name = t.mod + "#" + t.fn;
         if (!isChildIsolated) {
             std::cout << "RUN  " << prog << name << "\n";
@@ -633,9 +643,8 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
         if (!isChildIsolated && t.isolate) {
             if (selfExeForIsolate.empty()) selfExeForIsolate = getSelfExePath();
             if (selfExeForIsolate.empty()) {
-                std::cout << "FAIL " << prog << name
-                          << " (#TestIsolate: failed to resolve self exe)"
-                          << fmtElapsed(t0) << "\n";
+                std::cout << "FAIL " << prog << name << " (#TestIsolate: failed to resolve self exe)" << fmtElapsed(t0)
+                          << "\n";
                 failures.emplace_back(name, "#TestIsolate: failed to resolve self exe");
                 ++failed;
                 continue;
@@ -643,26 +652,21 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
             auto r = spawnIsolatedTest(selfExeForIsolate, t.mod, t.fn);
             std::string elapsed = fmtElapsed(t0);
             if (!r.spawnOk) {
-                std::cout << "FAIL " << prog << name
-                          << " (#TestIsolate: " << r.spawnError << ")" << elapsed << "\n";
+                std::cout << "FAIL " << prog << name << " (#TestIsolate: " << r.spawnError << ")" << elapsed << "\n";
                 failures.emplace_back(name, "#TestIsolate: " + r.spawnError);
                 ++failed;
             } else if (r.exitCode == 0) {
-                std::cout << "OK   " << prog << name
-                          << " (isolated)" << elapsed << "\n";
+                std::cout << "OK   " << prog << name << " (isolated)" << elapsed << "\n";
                 if (opts.verbose) printCapturedOutput(r.capture);
                 ++passed;
             } else if (r.exitCode == 2) {
-                std::cout << "FAIL " << prog << name
-                          << " (#TestIsolate: child runner error)" << elapsed << "\n";
+                std::cout << "FAIL " << prog << name << " (#TestIsolate: child runner error)" << elapsed << "\n";
                 printCapturedOutput(r.capture);
                 failures.emplace_back(name, "#TestIsolate: child runner error");
                 ++failed;
             } else {
-                std::cout << "FAIL " << prog << name
-                          << " (SEH " << sehExceptionName(r.exitCode)
-                          << " 0x" << std::hex << r.exitCode << std::dec << ", isolated)"
-                          << elapsed << "\n";
+                std::cout << "FAIL " << prog << name << " (SEH " << sehExceptionName(r.exitCode) << " 0x" << std::hex
+                          << r.exitCode << std::dec << ", isolated)" << elapsed << "\n";
                 printCapturedOutput(r.capture);
                 failures.emplace_back(name, std::string("SEH ") + sehExceptionName(r.exitCode) + ", isolated");
                 ++failed;
@@ -676,8 +680,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
                 std::cerr << "child: lookup failed: " << llvm::toString(sym.takeError()) << "\n";
                 childExitCode = 2;
             } else {
-                std::cout << "FAIL " << prog << name
-                          << " (lookup failed: " << llvm::toString(sym.takeError()) << ")"
+                std::cout << "FAIL " << prog << name << " (lookup failed: " << llvm::toString(sym.takeError()) << ")"
                           << fmtElapsed(t0) << "\n";
                 failures.emplace_back(name, "lookup failed");
                 ++failed;
@@ -702,10 +705,8 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
                 if (opts.verbose) printCapturedOutput(out);
                 ++passed;
             } else {
-                std::cout << "FAIL " << prog << name
-                          << " (SEH " << sehExceptionName(code)
-                          << " 0x" << std::hex << code << std::dec << ")"
-                          << elapsed << "\n";
+                std::cout << "FAIL " << prog << name << " (SEH " << sehExceptionName(code) << " 0x" << std::hex << code
+                          << std::dec << ")" << elapsed << "\n";
                 printCapturedOutput(out);
                 failures.emplace_back(name, std::string("SEH ") + sehExceptionName(code));
                 ++failed;
@@ -723,8 +724,7 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
             std::cout << "  - " << f.first << "  (" << f.second << ")\n";
         }
     }
-    std::cout << "\n" << passed << " passed, " << failed << " failed,"
-              << fmtElapsed(suiteT0) << "\n";
+    std::cout << "\n" << passed << " passed, " << failed << " failed," << fmtElapsed(suiteT0) << "\n";
     std::cout.flush();
     std::cerr.flush();
     _exit(failed == 0 ? 0 : 1);
