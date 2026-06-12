@@ -1,0 +1,6 @@
+; 模块未找到：`use` 不存在的模块应报 E5012
+use nonexistent_module_xyz  ; check: E5012
+
+fn main() {
+  ret;
+}

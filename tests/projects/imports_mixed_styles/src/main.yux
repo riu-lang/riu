@@ -1,0 +1,9 @@
+use yux.core.*
+use liba.*
+use libb
+
+fn main() {
+    greet()
+    println(add(10, 20))
+    println(libb.mul(6, 7))
+}

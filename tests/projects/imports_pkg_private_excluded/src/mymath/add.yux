@@ -1,0 +1,2 @@
+fn add(a i32, b i32) i32 = a + b
+fn _internal_calc() i32 = 999

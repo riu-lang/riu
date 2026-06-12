@@ -1,0 +1,7 @@
+use yux.core.*
+
+fn _helper(x i32) i32 = x * 2
+
+fn main() {
+    println(_helper(21))
+}
