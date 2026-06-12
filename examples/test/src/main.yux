@@ -223,7 +223,345 @@ fn main() {
   println("5! = ")
   println(f5_str)
 
-  println("=== 全部 9 节完成 ===")
+  ; ========== 10. 错误处理 ==========
+  println("=== 10. 错误处理 ===")
+
+  ; 10a. try-catch：捕获可失败函数的错误
+  let r1 i32 = try {
+    safe_divide(10, 2)          ; 成功路径
+  } catch e MathErr {
+    -1                           ; 错误降级
+  }
+  let r2 i32 = try {
+    safe_divide(10, 0)          ; 触发除零错误
+  } catch e MathErr {
+    -1                           ; 返回降级值
+  }
+  println("10/2 = ")
+  println(r1)
+  println("10/0 → ")
+  println(r2)
+
+  ; 10b. `!` 传播：同类型错误自动向上抛（try 块内无需 `!`）
+  let r3 i32 = try {
+    double_div(15, 3)            ; 15/3=5 → *2=10
+  } catch e MathErr {
+    -9
+  }
+  println("double_div(15, 3): ")
+  println(r3)
+
+  ; 10c. catch arm 内 match 解构 payload
+  ; 注意：safe_divide(5, 0) 触发 DivByZero → catch arm 命中
+  let r4 i32 = try {
+    safe_divide(5, 0)
+  } catch e MathErr {
+    match e {
+      MathErr::DivByZero => -1
+      MathErr::Overflow(_v) => -2
+    }
+  }
+  println("5/0 error code: ")
+  println(r4)
+
+  ; 10d. 跨类型错误包装
+  let r5 i32 = try {
+    compute(10, 2)               ; 成功
+  } catch e AppErr {
+    -1
+  }
+  let r6 i32 = try {
+    compute(10, 0)               ; MathErr::DivByZero → AppErr::Math
+  } catch e AppErr {
+    -1
+  }
+  println("compute(10, 2): ")
+  println(r5)
+  println("compute(10, 0): ")
+  println(r6)
+
+  ; ========== 11. 类型别名 ==========
+  println("=== 11. 类型别名 ===")
+
+  ; IPair 是 (i32, i32) 的透明别名
+  let p IPair = (1, 2)
+  let q IPair = swap_pair(p)             ; swap_pair 接受 IPair、返回 IPair
+  println("swap((1, 2)) = ")
+  println(q.0)
+  println(q.1)
+
+  ; Pair<f64> 是 (f64, f64) 的泛型别名
+  let pf Pair<f64> = (1.5, 2.5)
+  let pf_val f64 = pf.0
+  println("Pair<f64>.0: ")
+  println(pf_val)
+
+  ; ========== 12. 元组操作 ==========
+  println("=== 12. 元组操作 ===")
+
+  ; 构造
+  let t1 = (10, 20, 30)
+  let t2 (i32, f64, bool) = (42, 3.14, true)
+
+  ; 成员访问
+  println("t1.0 = ")
+  println(t1.0)
+  println("t2.1 = ")
+  println(t2.1)
+
+  ; 平铺解构
+  let (x, y, z) = t1
+  println("解构 t1 → x, y, z: ")
+  println(x)
+  println(y)
+  println(z)
+
+  ; 成员赋值（需可变）
+  #Mut let mt = (1, 2)
+  mt.0 = 10
+  mt.1 += 5
+  println("mt 赋值后: ")
+  println(mt.0)
+  println(mt.1)
+
+  ; 嵌套元组
+  let nest = ((1, 2), 3)
+  println("nest.0.1 = ")
+  println(nest.0.1)
+
+  ; ========== 13. Heap<T> 单所有者堆句柄 ==========
+  println("=== 13. Heap<T> ===")
+
+  ; 构造：Heap:<T>(value)
+  let h Heap<HeapBox> = Heap:<HeapBox>(HeapBox::make(42))
+  ; as_ref 借用内层值
+  let r HeapBox& = as_ref(h)
+  println("Heap value: ")
+  println(r.value)
+
+  ; #Mut 重赋新 Heap
+  #Mut let h2 Heap<i32> = Heap:<i32>(1i32)
+  h2 = Heap:<i32>(99i32)
+  let r2 i32& = as_ref(h2)
+  println("Heap reassign: ")
+  println(r2)
+
+  ; ========== 14. Dyn<D> 运行时多态 ==========
+  println("=== 14. Dyn<D> ===")
+
+  ; 构造 Rc<Named>，再包成 Dyn<Describable>
+  let named Rc<Named> = Named::make("yux")
+  let dd Dyn<Describable> = Dyn:<Describable>(named)
+  println("Dyn describe: ")
+  println(dd.describe())
+
+  ; ========== 15. 字段注解 ==========
+  println("=== 15. 字段注解（#Val / #Frozen） ===")
+
+  ; Resource 有 #Val（浅不可变）和 #Frozen（深不可变）字段
+  let res Resource = Resource::make(100, 200)
+  ; 可以读
+  println("res.counter = ")
+  println(res.counter)
+  println("res.payload = ")
+  println(res.payload)
+  ; res.counter = 999     ; ❌ 编译错 E3109：#Val 字段构造后不可写
+  ; res.payload = 888     ; ❌ 编译错 E3109：#Frozen 字段不可写
+
+  ; ========== 16. String 模板与拼接 ==========
+  println("=== 16. String 模板与拼接 ===")
+
+  ; 标识符插值：$name
+  let name String = "yux"
+  let s1 String = "Hello, $name!"
+  println("模板: ")
+  println(s1)
+
+  ; 表达式插值：${expr}
+  let x1 i32 = 10
+  let x2 i32 = 20
+  let s2 String = "$x1 + $x2 = ${x1 + x2}"
+  println("表达式插值: ")
+  println(s2)
+
+  ; + 连接（自动走 StringBuilder）
+  let s3 String = "sum = " + x1 + ", diff = " + (x2 - x1)
+  println("+ 连接: ")
+  println(s3)
+
+  ; ========== 17. Python 风格三元表达式 ==========
+  println("=== 17. 三元表达式 ===")
+
+  let score i32 = 85
+  let grade String = "A" if score >= 90 else "B" if score >= 80 else "C"
+  println("score=85 → grade: ")
+  println(grade)
+
+  let val i32 = -5
+  let sign i32 = 1 if val >= 0 else -1
+  println("sign(-5): ")
+  println(sign)
+
+  ; ========== 18. #Const fn + #Cval 编译期常量 ==========
+  println("=== 18. #Const fn + #Cval ===")
+
+  ; 局部 #Cval：编译期求值
+  #Cval let SIZE i32 = add_const(3, 4)
+  println("add_const(3, 4) = ")
+  println(SIZE)
+
+  ; 引用已有 #Cval
+  #Cval let DOUBLE i32 = SIZE * 2
+  println("SIZE * 2 = ")
+  println(DOUBLE)
+
+  ; ========== 19. Lambda 闭包捕获 ==========
+  println("=== 19. Lambda 闭包 ===")
+
+  ; 标量值复制捕获
+  let base_val i32 = 10
+  let add_n = (x i32) i32 => x + base_val  ; 捕获 base_val（值复制）
+  let r19 i32 = add_n(5)
+  println("add_n(5) where base=10 → ")
+  println(r19)
+
+  ; Rc<T> 句柄 retain 捕获
+  #Mut let rc_counter Rc<Counter> = Counter::make(0)
+  let inc = () => rc_counter.inc()         ; 捕获 Rc<Counter>（retain）
+  inc()
+  inc()
+  println("counter after 2 incs: ")
+  println(rc_counter.get_value())
+
+  println("=== 全部 19 节完成 ===")
+}
+
+; ==================== String / 常量 / Lambda 类型定义 ====================
+
+; #Const fn：编译期可求值
+#Const
+fn add_const(a i32, b i32) i32 = a + b
+
+; Counter：Lambda 闭包捕获演示（Rc retain）
+struct Counter {
+  value i32
+
+  #Static
+  fn make(v i32) Counter {
+    ret Self {
+      .value = v
+    }
+  }
+
+  fn inc() {
+    $.value = $.value + 1
+  }
+
+  fn get_value() i32 {
+    ret $.value
+  }
+}
+
+; ==================== 字段注解 类型定义 ====================
+
+; #Val（浅不可变）、#Frozen（深不可变）字段注解
+struct Resource {
+  #Val
+  counter i32        ; 构造后不可重赋
+  #Frozen
+  payload i32        ; 构造后自身及子字段不可写
+
+  #Static
+  fn make(c i32, p i32) Resource {
+    ret Self {
+      .counter = c
+      .payload = p
+    }
+  }
+}
+
+; ==================== Heap / Dyn 类型定义 ====================
+
+; ---- Heap<T> 演示用结构体 ----
+struct HeapBox {
+  value i32
+
+  #Static
+  fn make(v i32) HeapBox {
+    ret Self {
+      .value = v
+    }
+  }
+}
+
+; ---- Dyn<D> 演示用 spec + impl ----
+#Spec
+struct Describable {
+  fn describe() String
+}
+
+#Impl(Describable)
+struct Named {
+  name String
+
+  #Static
+  fn make(name String) Named {
+    ret Self {
+      .name = name
+    }
+  }
+
+  fn describe() String {
+    "Named: " + $.name
+  }
+}
+
+; ==================== 类型别名 ====================
+
+IPair = (i32, i32)
+Pair<T> = (T, T)
+
+; 使用别名作为参数/返回类型
+fn swap_pair(p IPair) IPair {
+  ret (p.1, p.0)
+}
+
+; ==================== 错误处理：类型定义与函数 ====================
+
+enum MathErr {
+  DivByZero
+  Overflow(i32)
+}
+
+enum AppErr {
+  Math(MathErr)
+}
+
+; 可失败函数：安全除法
+#Fallible(MathErr)
+fn safe_divide(a i32, b i32) i32 {
+  if b == 0 {
+    ret MathErr::DivByZero
+  }
+  ret a / b
+}
+
+; `!` 同类型传播
+#Fallible(MathErr)
+fn double_div(a i32, b i32) i32 {
+  let v i32 = safe_divide(a, b)!    ; 错误自动向上抛
+  ret v * 2
+}
+
+; 跨类型包装
+#Fallible(AppErr)
+fn compute(a i32, b i32) i32 {
+  let v i32 = try {
+    safe_divide(a, b)
+  } catch e MathErr {
+    ret AppErr::Math(e)              ; 跨类型显式包装
+  }
+  ret v
 }
 
 ; ==================== 辅助函数 ====================
