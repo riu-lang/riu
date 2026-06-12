@@ -169,6 +169,41 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
         }
         throw YuxError(line, ErrorCode::E6014, structName, argSigs, matches.size(), sigs);
     }
+
+    // candidates 非空但无任何匹配 (同 resolveFnOverload 的 BUGS.md #3)
+    if (!candidates.empty()) {
+        // ctor 符号表注册格式 `S.S`, params[0] 是接收者; 用户可见形参从 index 1 起
+        bool anyArityMatches = false;
+        for (auto c : candidates) {
+            if (c->params.size() - 1 == args.size()) {
+                anyArityMatches = true;
+                break;
+            }
+        }
+        if (!anyArityMatches) {
+            set<size_t> arities;
+            for (auto c : candidates) {
+                arities.insert(c->params.size() - 1);
+            }
+            if (arities.size() == 1) {
+                size_t expected = *arities.begin();
+                throw YuxError(line, ErrorCode::E6027, structName, expected)
+                    .withHint(std::format("期望 {} 个实参，实际 {} 个", expected, args.size()));
+            }
+            string sigs;
+            for (auto c : candidates) {
+                sigs += "\n  " + structName + "(";
+                for (size_t i = 1; i < c->params.size(); ++i) {
+                    if (i > 1) sigs += ", ";
+                    sigs += c->params[i].name;
+                }
+                sigs += ")";
+            }
+            throw YuxError(line, ErrorCode::E6027, structName, *arities.begin())
+                .withHint(std::format("实参 {} 个，候选重载有 {} 种参数个数；声明的重载:{}", args.size(), arities.size(),
+                                      sigs));
+        }
+    }
 }
 
 // ==================== 函数重载解析 ====================
@@ -226,6 +261,44 @@ void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName, 
             }
         }
         throw YuxError(line, ErrorCode::E6014, fnName, argSigs, matches.size(), sigs);
+    }
+
+    // candidates 非空但无任何匹配: 仅当实参个数与所有候选形参个数都不一致
+    // 时才报 E6027——这是最常见的原因（漏写/多写实参，BUGS.md #3）。
+    // 若个数匹配但类型不匹配，留给 codegen 按原路径报类型错误。
+    {
+        bool anyArityMatches = false;
+        for (auto c : candidates) {
+            if (c->params.size() == args.size()) {
+                anyArityMatches = true;
+                break;
+            }
+        }
+        if (!anyArityMatches) {
+            // 所有候选的形参个数都与实参个数不一致
+            set<size_t> arities;
+            for (auto c : candidates) {
+                arities.insert(c->params.size());
+            }
+            if (arities.size() == 1) {
+                size_t expected = *arities.begin();
+                throw YuxError(line, ErrorCode::E6027, fnName, expected)
+                    .withHint(std::format("期望 {} 个实参，实际 {} 个", expected, args.size()));
+            }
+            string sigs;
+            for (auto c : candidates) {
+                sigs += "\n  " + fnName + "(";
+                for (size_t i = 0; i < c->params.size(); ++i) {
+                    if (i) sigs += ", ";
+                    sigs += c->params[i].name;
+                }
+                sigs += ")";
+            }
+            throw YuxError(line, ErrorCode::E6027, fnName, *arities.begin())
+                .withHint(std::format("实参 {} 个，候选重载有 {} 种参数个数；声明的重载:{}", args.size(), arities.size(),
+                                      sigs));
+        }
+        // 个数匹配但类型不匹配 → 留 codegen 兜底
     }
 }
 
