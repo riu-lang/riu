@@ -706,6 +706,16 @@ void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, s
         if (argsCount != 0) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(0));
         return;
     }
+    if (fnName == "_ptr_as_ref") {
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
+        return;
+    }
+    if (fnName == "_ptr_write") {
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
+        if (argsCount != 2) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(2));
+        return;
+    }
     // 未知 Builtin intrinsic
     throw YuxError(line, col, ErrorCode::E6017, fnName);
 }
@@ -724,6 +734,18 @@ void validateFreeIntrinsicArity(const string& fnName, size_t argsCount, int line
     }
     if (fnName == "_ptr_offset") {
         if (argsCount != 2) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(2));
+        return;
+    }
+    if (fnName == "_ptr_load_i64" || fnName == "_ptr_load_ptr" || fnName == "_ptr_load_u32") {
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
+        return;
+    }
+    if (fnName == "_ptr_store_i64" || fnName == "_ptr_store_ptr" || fnName == "_ptr_store_u32") {
+        if (argsCount != 2) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(2));
+        return;
+    }
+    if (fnName == "_array_retain" || fnName == "_array_release") {
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
         return;
     }
 }

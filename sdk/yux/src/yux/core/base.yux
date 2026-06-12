@@ -7,6 +7,12 @@ extern {
   fn WriteFile(hFile Ptr, lpBuffer Ptr, nNumberOfBytesToWrite u32, lpNumberOfBytesWritten Ptr, lpOverlapped Ptr) i32
   #NoReturn
   fn ExitProcess(uExitCode u32)
+
+  ; 堆管理（Array / Rc 等 RC 类型底层分配）
+  fn GetProcessHeap() Ptr
+  fn HeapAlloc(hHeap Ptr, dwFlags u32, dwBytes u64) Ptr
+  fn HeapReAlloc(hHeap Ptr, dwFlags u32, lpMem Ptr, dwBytes u64) Ptr
+  fn HeapFree(hHeap Ptr, dwFlags u32, lpMem Ptr) i32
 }
 
 ; 全局常量
@@ -1570,6 +1576,71 @@ fn ptr_from_addr(addr u64) Ptr
 #Builtin
 fn _ptr_offset(p Ptr, off i64) Ptr
 
+; ==== 私有指针读写 intrinsic（Array / RC 底层用，不暴露给用户）====
+
+; 从 Ptr 加载 i64
+#Builtin
+fn _ptr_load_i64(p Ptr) i64
+; 将 i64 写入 Ptr
+#Builtin
+fn _ptr_store_i64(p Ptr, v i64)
+; 从 Ptr 加载指针
+#Builtin
+fn _ptr_load_ptr(p Ptr) Ptr
+; 将指针写入 Ptr
+#Builtin
+fn _ptr_store_ptr(p Ptr, v Ptr)
+; 从 Ptr 加载 u32
+#Builtin
+fn _ptr_load_u32(p Ptr) u32
+; 将 u32 写入 Ptr
+#Builtin
+fn _ptr_store_u32(p Ptr, v u32)
+
+; Ptr → T&：将裸指针解释为类型化引用（调用方保证指针指向有效 T）
+#Builtin
+fn _ptr_as_ref<T>(p Ptr) T&
+; 将 T 写入裸指针（调用方保证指针指向可写入的 T 槽位）
+#Builtin
+fn _ptr_write<T>(p Ptr, v T)
+
+; Array Block RC 操作（替代 emitArrayHelpers 中的 _array_retain/release 函数体）
+; strong++/strong--；null/哨兵(0xFFFFFFFF)跳过；strong 归零时 free data + free block
+#Builtin
+fn _array_retain(handle Ptr)
+#Builtin
+fn _array_release(handle Ptr)
+
+; ==== Block 运行时辅助（Array / RC 底层，基于 _ptr_* intrinsics）====
+
+; Block layout（32 bytes）:
+;   offset 0:  u32 strong
+;   offset 4:  u32 weak
+;   offset 8:  i64 len
+;   offset 16: i64 cap
+;   offset 24: ptr data
+
+; 读取 Block.len 字段
+fn _block_len(handle Ptr) i64 {
+  ret _ptr_load_i64(_ptr_offset(handle, 8i64))
+}
+; 设置 Block.len 字段
+fn _block_set_len(handle Ptr, n i64) {
+  _ptr_store_i64(_ptr_offset(handle, 8i64), n)
+}
+; 读取 Block.cap 字段
+fn _block_cap(handle Ptr) i64 {
+  ret _ptr_load_i64(_ptr_offset(handle, 16i64))
+}
+; 设置 Block.cap 字段
+fn _block_set_cap(handle Ptr, n i64) {
+  _ptr_store_i64(_ptr_offset(handle, 16i64), n)
+}
+; 读取 Block.data 字段
+fn _block_data(handle Ptr) Ptr {
+  ret _ptr_load_ptr(_ptr_offset(handle, 24i64))
+}
+
 #Builtin
 struct Rc<T> {
   ; 内部处理
@@ -1640,15 +1711,25 @@ fn heap_some<T>(v T) Heap<T>?
 #Builtin
 fn heap_null<T>() Heap<T>?
 
-; Array<T> 实例 layout 由编译器内部管理：{ ptr handle }，handle 指向 Block
-; （Phase 1b：所有方法编译器特例化，主体不再读 yux 端字段）
+; Array<T> 实例 layout = { ptr handle }，handle 指向 Block（null 表示空数组）
+; 方法逐步从编译器 codegen 迁移到 yux 实现
 #Builtin
 struct Array<T> {
-  #Builtin
-  fn len() i64
+  _handle Ptr
 
-  #Builtin
-  fn cap() i64
+  fn len() i64 {
+    if $._handle == Ptr(0) {
+      ret 0i64
+    }
+    ret _block_len($._handle)
+  }
+
+  fn cap() i64 {
+    if $._handle == Ptr(0) {
+      ret 0i64
+    }
+    ret _block_cap($._handle)
+  }
 
   #Builtin
   fn is_empty() bool

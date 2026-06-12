@@ -74,6 +74,19 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
 
     // 处理数组方法
     if (baseType.isArrayGeneric()) {
+        // len/cap：简单访问器，直接在 compileMethodCall 生成 IR（不经过 compileArrayMethodCall）
+        // 后续 Phase 2a 全部迁到 yux 实现后此处可删
+        if (member == "len" || member == "cap") {
+            DEBUG_LOG("    Expr: Array." + member + "()");
+            auto arrayStructType = getLLVMType(baseType);
+            auto baseVal = compileExpr(baseExpr);
+            auto tmp = _builder.CreateAlloca(arrayStructType, nullptr, "arr_tmp");
+            _builder.CreateStore(baseVal, tmp);
+            auto handle = loadArrayHandle(tmp);
+            auto fieldPtr = (member == "len") ? arrayBlockLenPtr(handle) : arrayBlockCapPtr(handle);
+            return _builder.CreateLoad(_builder.getInt64Ty(), fieldPtr, "array." + member);
+        }
+
         auto result = compileArrayMethodCall(callNode, baseExpr, baseType, member, args, argTypes);
         if (result) return result;
     }
@@ -190,21 +203,6 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         _builder.CreateStore(baseVal, tmp);
         return tmp;
     };
-
-    if (member == "len") {
-        DEBUG_LOG("    Expr: Array.len()");
-        auto ptr = getReadPtr();
-        auto handle = loadArrayHandle(ptr);
-        auto lenField = arrayBlockLenPtr(handle);
-        return _builder.CreateLoad(i64Ty, lenField, "array.len");
-    }
-    if (member == "cap") {
-        DEBUG_LOG("    Expr: Array.cap()");
-        auto ptr = getReadPtr();
-        auto handle = loadArrayHandle(ptr);
-        auto capField = arrayBlockCapPtr(handle);
-        return _builder.CreateLoad(i64Ty, capField, "array.cap");
-    }
 
     // E3055 已由 sema::validateArrayMethodCall 在函数顶部抛出 (顶部 helper 保证 elemType 非空)
     auto elemLLVMType = getLLVMType(*elemType);
