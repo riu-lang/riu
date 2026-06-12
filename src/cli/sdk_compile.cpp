@@ -28,6 +28,7 @@
 #include "ast/node/fn_node.h"
 #include "ast/yux.h"
 #include "compiler/compiler.h"
+#include "tools/build_cache.h"
 #include "tools/diagnostic.h"
 #include "tools/sdk_loader.h"
 #include "tools/syntax_error_listener.h"
@@ -228,20 +229,23 @@ SdkPaths sdkBuildPaths(const std::string& sdkPathAbs) {
 }
 
 bool needRecompileSdkDir(const std::string& sdkDir, const std::string& sdkObjDir) {
-    // 检查 yux.lib 是否存在且比所有 SDK 源文件新
-    std::string libPath = (std::filesystem::path(sdkObjDir).parent_path().parent_path() / "yux.lib").string();
+    // 检查 yux.lib 是否存在
+    // sdkObjDir = <sdkRoot>/build/src/yux/core, 向上 3 级回到 build/
+    std::string libPath =
+        (std::filesystem::path(sdkObjDir).parent_path().parent_path().parent_path() / "yux.lib").string();
     if (!std::filesystem::exists(libPath)) {
         return true;
     }
 
-    auto libTime = std::filesystem::last_write_time(libPath);
-
+    // 逐文件检查缓存：obj 不存在或源文件变化则需重编
     for (const auto& entry : std::filesystem::directory_iterator(sdkDir)) {
         if (entry.is_regular_file()) {
             std::string filename = entry.path().filename().string();
             if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".yux") {
                 if (filename.size() >= 9 && filename.ends_with(".test.yux")) continue;
-                if (std::filesystem::last_write_time(entry.path()) > libTime) {
+                std::string stem = entry.path().stem().string();
+                std::string objPath = (std::filesystem::path(sdkObjDir) / (stem + ".obj")).string();
+                if (BuildCache::needRecompile(objPath, entry.path().string())) {
                     return true;
                 }
             }
@@ -308,6 +312,14 @@ void compileSdkDir(const std::string& sdkDir, Yux& yux) {
     // 每文件独立 LLVM Module + Compiler 遍
     for (const auto& yuxFile : yuxFiles) {
         std::string stem = fs::path(yuxFile).stem().string();
+        std::string objPath = (fs::path(sp.objDir) / (stem + ".obj")).string();
+
+        // 缓存检查：obj 存在且源文件未变则跳过编译
+        if (!BuildCache::needRecompile(objPath, yuxFile)) {
+            objPaths.push_back(objPath);
+            continue;
+        }
+
         auto it = pkgMap.find(stem);
         bool isFlatDep = (it == pkgMap.end()) || it->second.isFlat;
 
@@ -342,12 +354,12 @@ void compileSdkDir(const std::string& sdkDir, Yux& yux) {
             exit(1);
         }
 
-        std::string objPath = (fs::path(sp.objDir) / (stem + ".obj")).string();
         if (!compileIRToObj(module.get(), objPath)) {
             std::cerr << "Failed to compile SDK obj: " << objPath << '\n';
             exit(1);
         }
         std::cout << "  Write obj: " << objPath << '\n';
+        BuildCache::updateCache(objPath, yuxFile);
         objPaths.push_back(objPath);
     }
 

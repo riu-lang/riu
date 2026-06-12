@@ -17,12 +17,11 @@ int64_t BuildCache::getFileTimestamp(const string& filePath) {
     if (!filesystem::exists(filePath)) {
         return 0;
     }
-    
     auto ftime = filesystem::last_write_time(filePath);
-    auto sctp = chrono::time_point_cast<chrono::system_clock::duration>(
-        ftime - filesystem::file_time_type::clock::now() + chrono::system_clock::now()
-    );
-    return chrono::duration_cast<chrono::seconds>(sctp.time_since_epoch()).count();
+    // 直接用文件时间的 epoch 计数做确定性比较，不走跨时钟换算
+    // (ftime - file_clock::now() + system_clock::now()) 两次 now() 之间细微间隔
+    // 会导致同文件两次 getFileTimestamp 返回不同值，缓存反复失效。
+    return chrono::duration_cast<chrono::seconds>(ftime.time_since_epoch()).count();
 }
 
 uintmax_t BuildCache::getFileSize(const string& filePath) {
