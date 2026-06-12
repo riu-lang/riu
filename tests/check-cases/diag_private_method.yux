@@ -1,0 +1,23 @@
+; BUG4: 私有 struct 方法 _ 前缀判断——从 free function 调用应报 E6007
+
+struct Foo {
+  #Static
+  fn make() Foo {
+    ret Self {
+    }
+  }
+
+  fn _secret() {
+    ret;
+  }
+
+  fn call_secret() {
+    $._secret()
+  }
+}
+
+fn main() i32 {
+  let f Foo = Foo::make()
+  f._secret()  ; check: E6007
+  ret 0i32
+}

@@ -64,7 +64,11 @@ struct FnSymbolInfo {
     FnSymbolInfo() = default;
     FnSymbolInfo(string n, string mod, vector<TypeInfo> p, TypeInfo r)
         : name(std::move(n)), moduleName(std::move(mod)), params(std::move(p)), retType(std::move(r)) {
-        isPrivate = !this->name.empty() && this->name[0] == '_';
+        // BUG4 fix: struct 方法的 name 格式为 "StructName.method"，
+        // 取最后一个 "." 之后的部分来判断 _ 前缀。
+        auto dotPos = this->name.rfind('.');
+        string baseName = (dotPos != string::npos) ? this->name.substr(dotPos + 1) : this->name;
+        isPrivate = !baseName.empty() && baseName[0] == '_';
     }
 
     string getFullName() const {

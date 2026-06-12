@@ -1491,6 +1491,43 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 }
             }
         }
+        // struct 方法私有可见性检查（E6007）——因 yux-check 不跑 LLVM
+        // codegen，必须在 sema 阶段独立校验。与 codegen compileStructMethodCall
+        // 中的 validateStructMethodVisibility 同义，构成双重保障。
+        if (auto dotCallee = dynamic_cast<p<ExprDotNode>>(n->getCalleeExpr())) {
+            try {
+                TypeInfo baseType = dotCallee->baseExpr()->getType();
+                if (baseType.isRef()) {
+                    if (auto inner = baseType.refElementType()) baseType = *inner;
+                }
+                if (baseType.isRc()) {
+                    if (auto inner = baseType.rcElementType()) baseType = *inner;
+                }
+                if (!baseType.name.empty() && !baseType.isDyn() && !isBuiltinType(baseType.name)) {
+                    string methodFullName = baseType.name + "." + dotCallee->member();
+                    vector<TypeInfo> methodParamTypes;
+                    methodParamTypes.push_back(baseType);
+                    for (auto& a : n->getArgs()) {
+                        try {
+                            methodParamTypes.push_back(a->getType());
+                        } catch (...) {
+                            methodParamTypes.push_back(TypeInfo());
+                        }
+                    }
+                    auto* methodSymbol = _file->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
+                    if (!methodSymbol && _sdkFile && _sdkFile != _file) {
+                        methodSymbol = _sdkFile->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
+                    }
+                    sema::validateStructMethodVisibility(methodSymbol, _currentStructName, baseType.name,
+                                                         dotCallee->member(), n->getLineNumber(),
+                                                         n->getColumn());
+                }
+            } catch (const YuxError&) {
+                throw;
+            } catch (...) { // NOLINT(bugprone-empty-catch)
+                // getType 失败或符号查找失败——留 Compiler 兜底
+            }
+        }
         return;
     }
     if (auto n = dynamic_cast<p<ExprDotNode>>(expr)) {
