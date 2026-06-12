@@ -95,6 +95,28 @@
 
 - **性能与 layout 优化**：String 专属 FAM Block（`{strong, weak, len_cps, u32 data[]}`）；Array Block 内联小尺寸优化；内联策略与裁剪；基准测试无回归。
 
+### v0.17.0-alpha — 项目模块 extern 完善 + SDK lib 去平铺 + LLVM 符号对齐
+
+**主题**：收口 extern 边界（类型白名单 + 编译器内部自动转换移入 SDK 显式 FFI 包装 + 跨模块查找修复）；补齐项目配置 `[deps]` 本地路径依赖；修复泛型函数跨模块实例化找不到定义模块的问题；SDK 源文件从平铺合并改为独立子模块各自编译再打包 lib；LLVM 符号分隔符向 yux 源码写法看齐。
+
+**范围（草稿）**：
+
+- extern 完善：为sdk内部结构体硬编码改yux铺路
+- 泛型跨模块：`getGenericFunction` 搜索扩展到 wildcardImports；`FnInstance` 对齐 `StructInstance` 加 `consumerModule`
+- SDK lib 去平铺：`base.*` 拆为独立子模块（`yux.core.base` / `.assert` / `.exit` / `.panic`），各独立 FileNode + `.obj` → `.lib`；pkg `*` 通配移除
+- LLVM 符号：分隔符统一；私有符号由源名前导 `_` 自然形成；运行时辅助不变
+
+**不在范围**：T/T&风调用的结构体保持内部处理。
+
+**退出标准**：
+- [ ] `yux test` / `yux-check test` / `xmake test` 全绿
+- [ ] 泛型跨模块搜索覆盖所有导入模块
+- [ ] Array转yux定义实现
+- [ ] SDK 独立子模块编译 + `yux.lib` 链接正常
+- [ ] LLVM 符号分隔符与 yux 写法一致
+- [ ] `./lint.cmd` 0 warnings
+- [ ] spec 回写 + CHANGELOG 收口
+
 ### v0.16.0 — 闭包捕获 + yux-check 闭环 + []语法糖 + 静态引用 + LSP/插件同步 ✅ 已完成（2026-06-12）
 
 **主题**：v0.8 lambda 留下的"零捕获"限制收口；同步把 `yux-check` 残留 5 例关掉；补齐两件 v0.15 推后项——`[]` 语法糖同步为 T& 返回 + 静态变量/全局变量 T& 引用；外围 LSP / 三插件随语言面变更同步。超出原范围额外完成：错误码压缩（3XXX/6XXX 合并同义码）、yux-check 诊断用例全量迁移（125→144）、若干 bug 修复。
