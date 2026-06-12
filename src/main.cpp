@@ -124,6 +124,8 @@ int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windo
     std::string testCaptureFile;
     auto* capOpt = testCmd->add_option("--capture", testCaptureFile, "(internal) child capture file path");
     capOpt->group("");
+    testCmd->add_flag("--emit-ir", emitIr, "Emit LLVM IR to .ll file (JIT modules)");
+    testCmd->add_option("--emit-ir-dir", emitIrDir, "Output directory for .ll files (default: build/)");
     testCmd->fallthrough();
 #ifdef _DEBUG
     testCmd->add_flag("-d,--debug", debug, "Output compilation IR debug information");
@@ -190,6 +192,8 @@ int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windo
         opts.isolateChild = testIsolateChild;
         opts.captureFile = testCaptureFile;
         opts.hasPositionalInput = !inputFile.empty();
+        opts.emitIr = emitIr;
+        opts.emitIrDir = emitIrDir;
         runTestCommand(opts, isChildIsolated);
     }
 

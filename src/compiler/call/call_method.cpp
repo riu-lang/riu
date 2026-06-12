@@ -226,6 +226,10 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(handle), "a.data");
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {args[0]}, "get.elem.ptr");
         // 返回 T&：不 load，直接返回元素地址指针
+        // 设置正确的 AST 类型（Ref<elemType>），确保后续重载消歧拿到具体类型
+        if (elemType) {
+            callNode->setResolvedType(TypeInfo("Ref", {elemType}));
+        }
         return elemPtr;
     }
 

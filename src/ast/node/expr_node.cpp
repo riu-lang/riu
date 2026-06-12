@@ -335,31 +335,53 @@ TypeInfo ExprCallNode::getType() const {
                 if (methodSym) {
                     auto rt = methodSym->retType;
                     // 结构体泛型实参替换：T→具体类型
-                    if (actualType.isGeneric()) {
-                        // 用户 file 找不到时（例如 Nullable/Array 等 SDK 泛型），
-                        // 沿父作用域回退到 SDK file
-                        StructDeclNode* structDecl = file->getStructDecl(actualType.name);
+                    if (actualType.isGeneric() && !actualType.genericArgs.empty()) {
+                        // 结构体泛型实参替换：T → 具体类型。
+                        // 优先用 structDecl 的 typeParams 做精确映射；structDecl 查不到时（内建
+                        // 容器如 Array<T>/Rc<T>）回退到单参数约定 T。
+                        StructDeclNode* structDecl = file->getStructDecl(actualType.name, /*includeBuiltin=*/true);
                         if (!structDecl) {
                             ScopeNode* p = file->parentScope();
                             while (p && !structDecl) {
                                 if (auto* pf = dynamic_cast<FileNode*>(p)) {
-                                    structDecl = pf->getStructDecl(actualType.name);
+                                    structDecl = pf->getStructDecl(actualType.name, /*includeBuiltin=*/true);
                                 }
                                 p = p->parentScope();
                             }
                         }
+                        std::map<std::string, TypeInfo> subst;
                         if (structDecl && structDecl->isGeneric() &&
                             structDecl->typeParams().size() == actualType.genericArgs.size()) {
-                            std::map<std::string, TypeInfo> subst;
                             for (size_t i = 0; i < actualType.genericArgs.size(); ++i) {
                                 auto& a = actualType.genericArgs[i];
                                 subst[structDecl->typeParams()[i]] = a ? *a : TypeInfo();
                             }
-                            rt = rt.substitute(subst);
+                        } else if (actualType.genericArgs.size() == 1) {
+                            // 单参数泛型：类型参数名约定为 T
+                            subst["T"] = actualType.genericArgs[0] ? *actualType.genericArgs[0] : TypeInfo();
                         }
+                        if (!subst.empty()) rt = rt.substitute(subst);
                     }
                     DEBUG_LOG_VAL("ExprCallNode::getType - method returning", rt.getFullName());
                     return rt;
+                }
+
+                // 内建容器方法（Array<T>/Rc<T> 等），methodSym 未注册时直接按表推导返回类型，
+                // 避免走下方 "fn() <ret>" 字符串编码丢失泛型结构（如 Ref<T> 编码后变成 Normal "Ref_T"）
+                if (actualType.isArrayGeneric()) {
+                    if (auto elem = actualType.arrayGenericElementType()) {
+                        const auto& m = dotNode->member();
+                        if (m == "get" || m == "first" || m == "last") {
+                            return TypeInfo("Ref", {elem});
+                        }
+                        if (m == "pop") {
+                            return *elem;
+                        }
+                    }
+                    const auto& m = dotNode->member();
+                    if (m == "len" || m == "cap") return TypeInfo("i64");
+                    if (m == "is_empty") return TypeInfo("bool");
+                    if (m == "push" || m == "clear" || m == "set_len") return {};
                 }
             }
         }
@@ -1075,6 +1097,47 @@ TypeInfo ExprDotNode::getType() const {
             }
         }
 
+        return _baseExpr->getType();
+    }
+
+    // Array<T> 方法调用（[T * N] 是 Array<T> 的语法糖）。
+    // Array fnSymbol 未显式注册（纯 codegen），此处按内建方法表直接构造返回类型。
+    // ExprCallNode::getType() 走 "fn() <ret>" 路径需要此处返回完整方法签名。
+    auto tryArrayMethodRetType = [&](const TypeInfo& elemTy) -> std::string {
+        if (member == "get" || member == "first" || member == "last") {
+            // 返回 T&（Ref<T>）
+            TypeInfo refTy("Ref", {std::make_shared<TypeInfo>(elemTy)});
+            return "fn() " + refTy.getFullName();
+        }
+        if (member == "pop") {
+            // 返回 T（owned）
+            return "fn() " + elemTy.getFullName();
+        }
+        if (member == "len" || member == "cap") {
+            return "fn() i64";
+        }
+        if (member == "is_empty") {
+            return "fn() bool";
+        }
+        if (member == "push") {
+            return "fn() void";
+        }
+        return ""; // 未知方法
+    };
+
+    if (actualType.isArray()) {
+        if (auto elemType = actualType.elementType) {
+            auto retSig = tryArrayMethodRetType(*elemType);
+            if (!retSig.empty()) return TypeInfo(retSig);
+        }
+        return _baseExpr->getType();
+    }
+
+    if (actualType.isArrayGeneric()) {
+        if (auto elemType = actualType.arrayGenericElementType()) {
+            auto retSig = tryArrayMethodRetType(*elemType);
+            if (!retSig.empty()) return TypeInfo(retSig);
+        }
         return _baseExpr->getType();
     }
 

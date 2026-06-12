@@ -43,7 +43,52 @@ llvm::Value* Compiler::compileFunctionCall(p<ExprCallNode> callNode, const strin
         if (genericFn) fnOwner = _yux->sdkFile();
     }
 
+    // 泛型函数自身的 fnSymbol 注册项（参数含未解析类型形参如 T / Ref(T)）会在
+    // lookupFnSymbolWithParams 中与调用方同名的未解析形参碰撞（典型场景：
+    // Array<T>::get → T& 实参命中 print<T>(x T&) 的 fnSymbol）。此时 fnSymbol
+    // 应让位给泛型消歧路径，而非当作普通函数调用（生成未实例化的泛型符号引用）。
+    // 检查所有同名泛型重载，只要 fnSymbol 的 params 与任一泛型声明的 params 完全一致，
+    // 说明 fnSymbol 就是该泛型自身的注册项 → 忽略它。
+    if (fnSymbol && genericFn) {
+        vector<pair<FnNode*, FileNode*>> allGenerics;
+        _file->collectGenericFunctions(fnName, allGenerics, _file);
+        if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
+            _yux->sdkFile()->collectGenericFunctions(fnName, allGenerics, _yux->sdkFile());
+        }
+        for (auto& [gFn, _] : allGenerics) {
+            auto gp = gFn->header()->params();
+            if (fnSymbol->params.size() != gp.size()) continue;
+            bool paramsMatch = true;
+            for (size_t i = 0; i < gp.size(); ++i) {
+                if (!gp[i]->type()) continue;
+                if (fnSymbol->params[i] != gp[i]->type()->getType()) {
+                    paramsMatch = false;
+                    break;
+                }
+            }
+            if (paramsMatch) {
+                fnSymbol = nullptr;
+                break;
+            }
+        }
+    }
+
     if (genericFn && !fnSymbol) {
+        // 多泛型重载消歧：当有多个同名泛型（如 print<T>(x T) + print<T>(x T&)）时，
+        // 逐个试 inferGenericFnTypeArgs，按参数结构打分，选最匹配的
+        vector<pair<FnNode*, FileNode*>> genericFns;
+        _file->collectGenericFunctions(fnName, genericFns, _file);
+        if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
+            _yux->sdkFile()->collectGenericFunctions(fnName, genericFns, _yux->sdkFile());
+        }
+        if (genericFns.size() > 1) {
+            auto [best, bestOwner] =
+                sema::resolveBestGenericOverload(genericFns, callNode, fnName, argTypes);
+            if (best) {
+                genericFn = best;
+                fnOwner = bestOwner;
+            }
+        }
         return compileGenericFunctionCall(callNode, fnName, args, argTypes, genericFn, fnOwner);
     }
     // 0-参泛型 intrinsic（如 size_of<T>() / heap_null<T>()）的 fnSymbol 会与同名空参

@@ -1951,8 +1951,10 @@ struct bool {
 
 ; ==================== stdlib I/O ====================
 ; v0.6 起 print* / eprint* 三态：
-;   - 非泛型借用 `(s String&)` —— String 实参与字面量走的快路径（owned 实参由 §7.2.3.3 自动取址匹配）
-;   - 泛型 owned `<T : ToString>(x T)` —— 其他实现 ToString 的类型通过单态化分发
+;   - 非泛型借用 `(s String&)` —— String 实参与字面量走的快路径
+;   - 泛型 owned `<T : ToString>(x T)` —— owned 值传参（如 print(42i64)）
+;   - 泛型借用 `<T : ToString>(x T&)` —— T& 实参免去手动 copy_of（如 Array::get 返回 T&）
+; 无隐式 auto-ref：T 值不会自动匹配 T& 形参，需要引用时调用处用显式 &arg。
 ; 选择 String& 而非 String 非泛型形态的原因：避免 owned/borrow 双非泛型时 dispatcher 无法在 String 值参上消歧（[E6014]）；
 ; 同时与既有 SDK 约定（assert_eq / starts_with / contains 形参均 String&）一致。
 ; 通道：print / println → stdout；eprint / eprintln → stderr（DRAFT-错误.md §8.6 panic 模板沿用此通道）。
@@ -1975,6 +1977,11 @@ fn print<T : ToString>(x T) {
   print(&s)
 }
 
+fn print<T : ToString>(x T&) {
+  let s String = x.to_string()
+  print(&s)
+}
+
 fn println(s String&) {
   print(&s)
   let nl [u8 * 1] = [10u8]
@@ -1982,6 +1989,11 @@ fn println(s String&) {
 }
 
 fn println<T : ToString>(x T) {
+  let s String = x.to_string()
+  println(&s)
+}
+
+fn println<T : ToString>(x T&) {
   let s String = x.to_string()
   println(&s)
 }
@@ -2004,6 +2016,11 @@ fn eprint<T : ToString>(x T) {
   eprint(&s)
 }
 
+fn eprint<T : ToString>(x T&) {
+  let s String = x.to_string()
+  eprint(&s)
+}
+
 fn eprintln(s String&) {
   eprint(&s)
   let nl [u8 * 1] = [10u8]
@@ -2011,6 +2028,11 @@ fn eprintln(s String&) {
 }
 
 fn eprintln<T : ToString>(x T) {
+  let s String = x.to_string()
+  eprintln(&s)
+}
+
+fn eprintln<T : ToString>(x T&) {
   let s String = x.to_string()
   eprintln(&s)
 }

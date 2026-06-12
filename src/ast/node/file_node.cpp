@@ -80,6 +80,57 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
         registerSymbol(fullName, {SymbolKind::Function, "not", TypeInfo("bool")});
         registerFnSymbol(fullName, {"not", "", {}, TypeInfo("bool")});
     }
+
+    // Array 内建方法符号（供泛型方法调用返回类型推导，codegen 由 compileArrayMethodCall 接管）。
+    // 返回值中的 T 是类型参数占位符，与 Array struct 声明的 typeParams[0] 同名，
+    // ExprCallNode::getType() 的泛型替换逻辑（subst 表）会自动将 T 替换为具体元素类型。
+    {
+        TypeInfo tpT("T");                              // 类型参数占位符
+        TypeInfo tpRefT("Ref", {make_shared<TypeInfo>(tpT)}); // T&
+        TypeInfo tpi64("i64");
+        TypeInfo tpVoid;                                 // void（空 TypeInfo）
+        TypeInfo tpBool("bool");
+
+        // Array.get(i i64) → T&
+        registerSymbol("Array.get", {SymbolKind::Function, "get", tpRefT});
+        registerFnSymbol("Array.get", {"get", "", {tpi64}, tpRefT});
+
+        // Array.first() → T&
+        registerSymbol("Array.first", {SymbolKind::Function, "first", tpRefT});
+        registerFnSymbol("Array.first", {"first", "", {}, tpRefT});
+
+        // Array.last() → T&
+        registerSymbol("Array.last", {SymbolKind::Function, "last", tpRefT});
+        registerFnSymbol("Array.last", {"last", "", {}, tpRefT});
+
+        // Array.pop() → T
+        registerSymbol("Array.pop", {SymbolKind::Function, "pop", tpT});
+        registerFnSymbol("Array.pop", {"pop", "", {}, tpT});
+
+        // Array.push(x T) → void
+        registerSymbol("Array.push", {SymbolKind::Function, "push", tpVoid});
+        registerFnSymbol("Array.push", {"push", "", {tpT}, tpVoid});
+
+        // Array.len() → i64
+        registerSymbol("Array.len", {SymbolKind::Function, "len", tpi64});
+        registerFnSymbol("Array.len", {"len", "", {}, tpi64});
+
+        // Array.cap() → i64
+        registerSymbol("Array.cap", {SymbolKind::Function, "cap", tpi64});
+        registerFnSymbol("Array.cap", {"cap", "", {}, tpi64});
+
+        // Array.is_empty() → bool
+        registerSymbol("Array.is_empty", {SymbolKind::Function, "is_empty", tpBool});
+        registerFnSymbol("Array.is_empty", {"is_empty", "", {}, tpBool});
+
+        // Array.clear() → void
+        registerSymbol("Array.clear", {SymbolKind::Function, "clear", tpVoid});
+        registerFnSymbol("Array.clear", {"clear", "", {}, tpVoid});
+
+        // Array.set_len(n i64) → void
+        registerSymbol("Array.set_len", {SymbolKind::Function, "set_len", tpVoid});
+        registerFnSymbol("Array.set_len", {"set_len", "", {tpi64}, tpVoid});
+    }
 }
 
 void FileNode::addFunction(const p<FnNode>& function) {
@@ -232,6 +283,16 @@ FnNode* FileNode::getGenericFunction(const string& name) const {
         }
     }
     return nullptr;
+}
+
+// 收集所有同名泛型函数（支持多个泛型重载消歧，如 print<T>(x T) + print<T>(x T&)）
+void FileNode::collectGenericFunctions(const string& name, vector<pair<FnNode*, FileNode*>>& out,
+                                       FileNode* owner) const {
+    for (auto& fn : _functions) {
+        if (fn->header()->name().getText() == name && fn->header()->isGeneric()) {
+            out.emplace_back(fn, owner);
+        }
+    }
 }
 
 void FileNode::addImport(const string& mod) {

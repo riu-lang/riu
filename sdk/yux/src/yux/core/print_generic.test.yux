@@ -1,6 +1,7 @@
 ; v0.6 stdlib I/O 泛型化回归
-; print / println / eprint / eprintln 各保留 String 非泛型 + `<T : ToString>(x T&)` 泛型借用
-; 测试目标：泛型重载在 i64 / bool / String / 用户类型上能正确分发并编译链接通过
+; print / println / eprint / eprintln 各保留三态：
+;   String& 非泛型快路径 + `<T : ToString>(x T)` 泛型 owned + `<T : ToString>(x T&)` 泛型借用
+; 测试目标：三种重载在 i64 / bool / String / 用户类型 / Array::get 返回 T& 上能正确分发并编译链接通过
 ; （stdout / stderr 实际字节不易在 in-process JIT 内回采，依赖 -v 时的捕获回放观察。）
 
 #Impl(ToString)
@@ -31,7 +32,7 @@ fn test_print_generic_builtin() {
 
 #Test
 fn test_print_string_fast_path() {
-  ; String 实参命中非泛型 print(s String) / println(s String) 快路径
+  ; String 实参命中非泛型 print(s String&) / println(s String&) 快路径
   print("hello ")
   println("world")
   assert_true(true)
@@ -51,5 +52,43 @@ fn test_eprint_generic() {
   eprintln(true)
   let t PrintTag = PrintTag::make(7i64)
   eprintln(t)
+  assert_true(true)
+}
+
+; === T& 泛型借用重载：Array::get 返回 T&，免去手动 copy_of ===
+
+#Test
+fn test_print_generic_ref() {
+  ; Array::get(i) 返回 i64&，应命中 print<T : ToString>(x T&)
+  #Mut let arr Array<i64> = []
+  arr.push(10i64)
+  arr.push(20i64)
+  arr.push(30i64)
+  ; 直接打印 get 返回值（T&），不走 copy_of
+  print(arr.get(0))
+  print(arr.get(1))
+  println(arr.get(2))
+  assert_true(true)
+}
+
+#Test
+fn test_eprint_generic_ref() {
+  #Mut let arr Array<bool> = []
+  arr.push(true)
+  arr.push(false)
+  ; bool& → eprint<T : ToString>(x T&) / eprintln<T : ToString>(x T&)
+  eprint(arr.get(0))
+  eprintln(arr.get(1))
+  assert_true(true)
+}
+
+#Test
+fn test_print_user_type_ref() {
+  ; 用户类型 T& 也应命中泛型借用重载
+  #Mut let arr Array<PrintTag> = []
+  arr.push(PrintTag::make(100i64))
+  arr.push(PrintTag::make(200i64))
+  print(arr.get(0))
+  println(arr.get(1))
   assert_true(true)
 }

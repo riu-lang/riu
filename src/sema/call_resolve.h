@@ -176,6 +176,22 @@ ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux, p<ExprCallNode>
 void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn, const string& fnName,
                             const vector<TypeInfo>& argTypes, vector<TypeInfo>& outTypeArgs);
 
+// 泛型重载消歧：从多个同名泛型函数中选最佳匹配 (Phase 3.3.1.a+).
+//
+// 逐个调用 inferGenericFnTypeArgs 尝试推断 typeArgs，成功则按形参/实参 Ref 一致性
+// 打分（pRef==aRef 加分），返回最高分者。平局时保留输入列表顺序（靠前者优先）。
+// 所有候选都推断失败时返回 {nullptr, nullptr}。
+//
+// callNode 仅用于错误行号/列号上报（inferGenericFnTypeArgs 抛 E6012/E6013 时内部吞掉）。
+// 纯 TypeInfo unify + 计数, 无 LLVM 依赖。
+//
+// 调用方:
+//   - SemaPass::visitExpr (Bucket 4 泛型 spec-bound 校验前)
+//   - Compiler::compileFunctionCall (泛型消歧块)
+std::pair<FnNode*, FileNode*> resolveBestGenericOverload(const std::vector<std::pair<FnNode*, FileNode*>>& genericFns,
+                                                         p<ExprCallNode> callNode, const std::string& fnName,
+                                                         const std::vector<TypeInfo>& argTypes);
+
 // Builtin 泛型 intrinsic 的 typeArgs / args arity 校验 (Phase 3.3.2.c).
 //
 // 覆盖 compileGenericFunctionCall 的 #Builtin 分支的纯计数校验:

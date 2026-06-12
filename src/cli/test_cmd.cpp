@@ -16,6 +16,7 @@
 #include "compiler/compiler_test_intrinsics.h"
 #include "compiler/compiler.h"
 #include "tools/build_cache.h"
+#include "tools/pkg_cache.h"
 #include "tools/sdk_loader.h"
 #include "types.h"
 
@@ -325,6 +326,19 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
             needCompile = !fs::exists(sdkObjPath) || needRecompileSdkDir(sdkPath, sdkObjPath);
             if (needCompile) {
                 auto sdkIrr = compileSdkDir(sdkPath, yux);
+
+                // --emit-ir：输出 SDK IR 到 build/ (与 build 命令行为一致)
+                if (opts.emitIr) {
+                    std::string sdkIrPath = sdkBuildPaths(sdkPath).irPath;
+                    std::error_code ec;
+                    llvm::raw_fd_ostream irFile(sdkIrPath, ec);
+                    if (!ec) {
+                        sdkIrr.module->print(irFile, nullptr);
+                        irFile.flush();
+                        std::cout << "Write SDK IR: " << sdkIrPath << '\n';
+                    }
+                }
+
                 if (!compileIRToObj(sdkIrr.module.get(), sdkObjPath)) {
                     std::cerr << "Failed to compile SDK to object file" << '\n';
                     std::exit(1);
@@ -414,6 +428,21 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild,
             std::string mp = yux.modulePath(modName);
             reportRuntimeError(mp, re, modName + ": ");
             std::exit(1);
+        }
+
+        // --emit-ir：输出 JIT 模块的 .ll 文件（与 build --emit-ir 同路径规则）
+        if (opts.emitIr) {
+            std::string srcPath = yux.modulePath(modName);
+            std::string irDir = opts.emitIrDir.empty() ? getBuildDir(yux.projectRoot()) : opts.emitIrDir;
+            std::string irPath = mirroredOutputBase(yux.projectRoot(), irDir, srcPath) + ".ll";
+            std::filesystem::create_directories(std::filesystem::path(irPath).parent_path());
+            std::error_code ec;
+            llvm::raw_fd_ostream irFile(irPath, ec);
+            if (!ec) {
+                mod->print(irFile, nullptr);
+                irFile.flush();
+                std::cout << "Write IR: " << irPath << '\n';
+            }
         }
 
         // 收集本模块内的 #Test 函数 (仅顶层 fn; 方法 v1 暂不收集)

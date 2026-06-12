@@ -1180,11 +1180,41 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 // E6012/E6013, 由内部 try/catch 吞掉留 Compiler 兜底 — 这两码当前
                 // 仍归 Compiler, 接管会破坏既有协议).
                 if (_yux && !structDecl) {
-                    auto* genericFn = _file->getGenericFunction(fnName);
+                    // 收集所有同名泛型重载（如 print<T>(x T) + print<T>(x T&)），
+                    // 用 resolveBestGenericOverload 选最佳匹配后再 infer + spec-bound 校验。
+                    vector<pair<FnNode*, FileNode*>> genericFns;
+                    _file->collectGenericFunctions(fnName, genericFns, _file);
+                    if (_sdkFile && _sdkFile != _file) {
+                        _sdkFile->collectGenericFunctions(fnName, genericFns, _sdkFile);
+                    }
+                    FnNode* genericFn = nullptr;
                     p<FileNode> fnOwner = _file;
-                    if (!genericFn && _sdkFile) {
-                        genericFn = _sdkFile->getGenericFunction(fnName);
-                        if (genericFn) fnOwner = _sdkFile;
+                    if (!genericFns.empty()) {
+                        // 多泛型重载消歧：用实参类型驱动，选 Ref/Ref 匹配最佳者
+                        if (genericFns.size() > 1) {
+                            vector<TypeInfo> disambigArgTypes;
+                            bool disambigOk = true;
+                            for (auto& a : n->getArgs()) {
+                                try {
+                                    disambigArgTypes.push_back(a->getType());
+                                } catch (...) {
+                                    disambigOk = false;
+                                    break;
+                                }
+                            }
+                            if (disambigOk && !disambigArgTypes.empty()) {
+                                auto [best, bestOwner] =
+                                    sema::resolveBestGenericOverload(genericFns, n, fnName, disambigArgTypes);
+                                if (best) {
+                                    genericFn = best;
+                                    fnOwner = bestOwner;
+                                }
+                            }
+                        }
+                        if (!genericFn) {
+                            genericFn = genericFns[0].first;
+                            fnOwner = genericFns[0].second;
+                        }
                     }
                     if (genericFn && genericFn->header()->isGeneric() && !genericFn->header()->hasAnno("Builtin")) {
                         vector<TypeInfo> typeArgs;

@@ -29,10 +29,8 @@ namespace sema {
 // 支持精确匹配和引用类型匹配
 static bool paramAccepts(const TypeInfo& param, const TypeInfo& argType) {
     if (param == argType) return true; // 精确匹配
-    if (param.isRef()) {
-        auto ref = param.refElementType();
-        if (ref && *ref == argType) return true; // 引用参数接受值类型
-    }
+    // 不再隐式取 ref：T 与 T& 是不同的类型，各有各的重载
+    // 需要引用时在调用处用显式 &arg（而非 &expr）
     if (param.isPtr() && argType.isRef()) return true; // 指针参数接受引用
     return false;
 }
@@ -476,6 +474,43 @@ void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn, const
         }
         outTypeArgs.push_back(it->second);
     }
+}
+
+// 泛型重载消歧 (Phase 3.3.1.a+)：从多个同名泛型函数中选最佳匹配。
+// 逐个 inferGenericFnTypeArgs 推断 typeArgs，成功则按形参/实参 Ref 一致性打分。
+std::pair<FnNode*, FileNode*> resolveBestGenericOverload(const std::vector<std::pair<FnNode*, FileNode*>>& genericFns,
+                                                         p<ExprCallNode> callNode, const std::string& fnName,
+                                                         const std::vector<TypeInfo>& argTypes) {
+    if (genericFns.empty()) return {nullptr, nullptr};
+    if (genericFns.size() == 1) return genericFns[0];
+
+    FnNode* best = genericFns[0].first;
+    FileNode* bestOwner = genericFns[0].second;
+    int bestScore = -1;
+    for (auto& [gFn, gOwner] : genericFns) {
+        vector<TypeInfo> trial;
+        bool ok = true;
+        try {
+            inferGenericFnTypeArgs(callNode, gFn, fnName, argTypes, trial);
+        } catch (...) {
+            ok = false;
+        }
+        if (!ok) continue;
+        int score = 0;
+        auto gp = gFn->header()->params();
+        for (size_t i = 0; i < gp.size() && i < argTypes.size(); ++i) {
+            if (!gp[i]->type()) continue;
+            bool pRef = gp[i]->type()->getType().isRef();
+            bool aRef = argTypes[i].isRef();
+            if (pRef == aRef) score++;
+        }
+        if (score > bestScore) {
+            best = gFn;
+            bestOwner = gOwner;
+            bestScore = score;
+        }
+    }
+    return {best, bestOwner};
 }
 
 // ==================== 函数符号可见性 (Phase 3.3.1.c) ====================

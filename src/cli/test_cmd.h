@@ -21,6 +21,8 @@ struct TestCmdOptions {
     bool isolateChild = false;
     std::string captureFile;
     bool hasPositionalInput = false;
+    bool emitIr = false;          // --emit-ir：输出 JIT 模块的 .ll 文件
+    std::string emitIrDir;        // --emit-ir-dir（默认 build/）
 };
 
 // 子进程模式 (--isolate-child) 下, 在任何输出前把 stdout/stderr 重定向到 capture

@@ -712,9 +712,29 @@ string Compiler::ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& type
         mangledName += "$" + a.getGenericMangleName();
     }
 
-    // 检查是否已存在
+    // 检查是否已存在。
+    // 同名泛型不同重载（如 print<T>(x T) vs print<T>(x T&)）共享同一 baseName+typeArgs
+    // 但 baseFn 不同 → 追加形参签名以区分，避免先注册者盖掉后者导致后者实例未 emit。
     auto it = _fnInstances.find(mangledName);
-    if (it != _fnInstances.end()) return mangledName;
+    if (it != _fnInstances.end()) {
+        if (it->second.baseFn == baseFn) return mangledName;
+        // 碰撞：同名不同参泛型。追加实例化后的形参签名作为消歧后缀。
+        const auto& tps = baseFn->header()->typeParams();
+        std::map<std::string, TypeInfo> tmpSubst;
+        for (size_t i = 0; i < tps.size() && i < typeArgs.size(); ++i) {
+            tmpSubst[tps[i]] = typeArgs[i];
+        }
+        string overloadSuffix;
+        for (auto& p : baseFn->header()->params()) {
+            if (p->type()) {
+                auto pt = p->type()->getType().substitute(tmpSubst);
+                overloadSuffix += "_" + pt.getGenericMangleName();
+            }
+        }
+        mangledName += overloadSuffix;
+        it = _fnInstances.find(mangledName);
+        if (it != _fnInstances.end()) return mangledName;
+    }
 
     // 验证类型参数数量
     auto& typeParams = baseFn->header()->typeParams();

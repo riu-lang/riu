@@ -59,6 +59,8 @@ public:
     [[nodiscard]] FnNode* getFunction(const string& name) const;
     // 仅返回 generic 重载（用于 dispatcher：与 lookupFnSymbolWithParams 命中的非泛型重载竞争优先级时用到）
     [[nodiscard]] FnNode* getGenericFunction(const string& name) const;
+    // 收集所有同名泛型函数（支持多个泛型重载消歧，如 print<T>(x T) + print<T>(x T&)）
+    void collectGenericFunctions(const string& name, vector<pair<FnNode*, FileNode*>>& out, FileNode* owner) const;
 
     void setModuleName(const string& name) { _moduleName = name; }
     [[nodiscard]] const string& moduleName() const { return _moduleName; }
