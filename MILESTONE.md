@@ -95,25 +95,84 @@
 
 - **性能与 layout 优化**：String 专属 FAM Block（`{strong, weak, len_cps, u32 data[]}`）；Array Block 内联小尺寸优化；内联策略与裁剪；基准测试无回归。
 
-### v0.16.0-alpha — 闭包捕获 + yux-check 闭环 + []语法糖 + 静态引用 + LSP/插件同步
+### v0.16.0 — 闭包捕获 + yux-check 闭环 + []语法糖 + 静态引用 + LSP/插件同步 ✅ 已完成（2026-06-12）
 
-**主题**：v0.8 lambda 留下的"零捕获"限制收口；同步把 `yux-check` 残留 5 例关掉；补齐两件 v0.15 推后项——`[]` 语法糖同步为 T& 返回 + 静态变量/全局变量 T& 引用；外围 LSP / 三插件随语言面变更同步。
+**主题**：v0.8 lambda 留下的"零捕获"限制收口；同步把 `yux-check` 残留 5 例关掉；补齐两件 v0.15 推后项——`[]` 语法糖同步为 T& 返回 + 静态变量/全局变量 T& 引用；外围 LSP / 三插件随语言面变更同步。超出原范围额外完成：错误码压缩（3XXX/6XXX 合并同义码）、yux-check 诊断用例全量迁移（125→144）、若干 bug 修复。
 
-**范围（草稿）**：
+**实际交付**：
 
-- 闭包捕获模型：move / retain / 借用 三档显式声明形态；捕获包 layout 与 RC 协议
-- lambda body sema 下钻：`SemaPass::visitExpr` 解锁 lambda 体（当前 `src/sema/sema_pass.cpp:1007-1015` 显式 skip）；自然关掉 lambda 体内 5 例漏报（E2030 ×2 / E4022 ×2 / E4024）
-- 借用 / `$` 逃逸检查在 lambda 体内生效
-- Heap by-value 捕获禁止（E4024 在 lambda 体内）
-- 与 v0.10 错误模型 v1 的交互：`#Fallible` lambda 形态（若需要）
-- `[]` <=> `get` 语法糖同步：`a[i]` 返回 T&（与 `Array::get()` 一致）；Array 当前绕过操作符重载规则需补
-- 静态变量 T& / 静态引用：扩展 T& 可指向静态/全局变量；`&global_var` 合法性、`T&` 跨函数返回评估
-- **LSP 同步**：semantic_tokens 新增闭包捕获关键字 / 静态引用相关 token；completion 适配捕获上下文；diagnostics 覆盖捕获相关错误码
-- **插件同步**：yux-vscode tmLanguage / yux-idea 高亮 新增闭包捕获语法形态；yux-claude-code LSP 客户端无额外改动（协议兼容）
+**A. 闭包捕获**（DRAFT-closure-capture Phase 1–5）：
+- 独立草案 `DRAFT-closure-capture.md` 定型 move / retain / borrow 三档捕获模式 + Heap B 档 move 捕获
+- Lambda body sema 解锁（移除 `SemaPass::visitExpr` 的 `return;` skip，走宽松模式——能查的查，依赖形参类型的 deferred 给 codegen）
+- yux-check lambda 体内 5 例漏报清零（E2030 ×2 / E4022 ×2 / E4024）
+- 借用检查在 lambda 体内生效（T& 捕获根溯源、ret T& 溯源）
+- Compiler 端防御性双跑全部移除（v0.16 收尾）
+- 实施日志：`docs/dev/closure-capture-impl-log.md`
 
-**不在范围**：高阶函数库化（map/filter/fold —— SDK 扩充时再做）、`dyn fn` 运行时多态、async lambda。
+**B. [] ⇔ get 语法糖同步**：
+- `arr[i]` 返回 T&（与 `Array::get()` 一致）；定长数组 `[T*N]` 同步
+- `&arr[i]` 形成 `T&&` 被 §2.6.1 拒绝（理由从"右值"更新为"嵌套引用"）
+- 相关 spec 更新（§4.7.1.2 / §4.7.3.1–3.2 / §9.2.3.1 / §9.9.3）
 
-**退出标准**：草案 `DRAFT-closure-capture.md` 全节定型并迁入 spec；`yux-check` 漏报清零（lambda 体内 5 例自动关闭）；`xmake test` + `yux test` 全绿；LSP semantic_tokens / completion 覆盖本轮新语法形态；三插件高亮同步完毕；实施日志归档 `docs/dev/closure-capture-impl-log.md`。
+**C. 静态引用**（DRAFT-static-ref Phase 1–2）：
+- `&global_var` / `&cval` / `&#Static FIELD` 合法化
+- `compileGetRefExpr` 全局变量 fallback（`_localVarPtrs` → `_module->getGlobalVariable`）
+- BorrowChecker 识全局/静态根 → `"$rodata"` immortal 哨兵，寿命自动通过
+- E4021 从"恰好 1 个 T& 形参"放宽为"最多 1 个"（0 T& 形参 + 静态借用合法）
+- 调用站自由函数零 T& 实参返回 T& → 溯源到 `"$rodata"`
+- spec 回写：§8.6 新增静态借用子条款 / §8.6.10 允许源集扩为 `{T& 形参} ∪ {全局/静态/cval}` / §8.9 + §3.7 删除"函数返回值 T&"禁忌 / §2.6.3 移除 / §3.2.3.2 更新 / 附录 D 同步
+- 实施日志：`docs/dev/static-ref-impl-log.md`
+
+**D. yux-check 闭环**：
+- P3 全量迁移 125 个 diag 用例到 `tests/check-cases/`
+- P4+P5 diag 分组从 `xmake test` 移除
+- `yux-check test` 子命令：`; check:` 注解行尾匹配 + 目录扫描 + 多线程
+- 跳过 SDK 加载提速 195x（10 文件 43s → 0.225s）
+
+**E. LSP / 插件同步**：
+- LSP semantic_tokens：Self 关键字、类型、运算符补齐 + 新 AST 节点覆盖（ExprGetRef/ExprStructLit/StatementStaticFieldSet/ExprEnumCtor 启发式分流）
+- 版本号统一升级
+- yux-vscode / yux-idea / yux-claude-code 三插件随语法变更同步
+
+**F. 错误码压缩**：
+- 合并同义 3XXX 码：减少诊断码维护面
+- 合并同义 6XXX 码：减少诊断码维护面
+
+**G. 模块系统测试补全**：
+- 新增 5 个正向项目测试（private_same_module / private_not_exported / pkg_private_excluded / deep_nesting / mixed_styles）
+- 新增 1 个 check-case（diag_module_not_found）
+- 发现 bug #4：E6007 struct 方法 isPrivate 判断被 `StructName.` 前缀遮蔽
+
+**H. Bug 修复**（v0.16 期间）：
+- `&&` / `||` 短路求值 → 改用基本块+CondBr 实现真正短路语义
+- loop 体内 `ret expr` 编译器 crash → exitBB 无 terminator 补齐 unreachable
+- ArrayGet 返回 `Ref_i32` 赋值给 `i32` 变量 → codegen 报类型不匹配而非生成错误 IR
+- AOT 模式 Array 索引返回垃圾值 → `loadArrayHandle`/`storeArrayHandle` LLVM IR 类型不匹配
+- 函数调用实参个数不匹配时 sema 应报 E6027 而非静默通过导致 codegen 崩溃
+- 元组成员移入赋值 `t.0 <- expr` 支持
+- ret/break 缺分号 hint（语法错误时针对空返回和 break 给出专属提示）
+- print/eprint 添加 T& 泛型重载
+- 缺失的类型不匹配检查 E3014
+- `#CompilerInner` → `#Builtin` 重命名
+
+**不在范围（推后）**：
+- `#Fallible` lambda 形态 → Open Issue O2，留 v0.x+1 专项
+- 嵌套闭包 T& 捕获多层验证 → O1 推后
+- `&Type::STATIC_FIELD` 语法 → 后续单独 MR
+- struct 含 T& 字段 / 多源 T& 形参返回 → v2
+- 高阶函数库化（map/filter/fold）→ SDK 扩充时再做
+- `dyn fn` 运行时多态 / async lambda
+
+**退出标准达成情况**：
+- ✅ `DRAFT-closure-capture.md` 全节定型并迁入 spec（§4.11.6 / §8.7.6）
+- ✅ `DRAFT-static-ref.md` 全节定型，spec 回写完毕（§8.6 / §8.6.10 / §8.9 / §3.7 / §2.6 / 附录 D）
+- ✅ yux-check 漏报清零（lambda 体内 5 例自动关闭）
+- ✅ xmake test 29/29、yux test 658/658、yux-check test 144/144 全绿
+- ✅ LSP semantic_tokens / completion 覆盖本轮新语法形态
+- ✅ 三插件高亮同步完毕
+- ✅ 实施日志 2 份归档完毕（closure-capture / static-ref）
+- ✅ lint 0 warnings
+- ✅ CHANGELOG 收口
 
 ### v0.15.0 — spec 收尾 + 编译期基础设施 ✅ 已完成（2026-06-09）
 

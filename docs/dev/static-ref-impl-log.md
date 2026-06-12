@@ -3,7 +3,7 @@
 `DRAFT-static-ref.md` Phase 1–2 的落地记录。范围：`&global_var` / `&cval` 取全局/静态引用、返回 T& 的函数以全局引用为源、借用检查器 immortal 哨兵放行。
 
 - 规范草案：`docs/spec/draft/DRAFT-static-ref.md`（已标注"已落地"）
-- spec 回写：§8.6（借用 T&）新增静态借用子条款、§8.6.10（返回引用的溯源约束）修订允许源集纳入 $rodata、§8.9（禁忌一览）删除"函数返回值 T&"条目（E2009 已在 v0.15 移除）→ **待收口**
+- spec 回写：§8.6（借用 T&）新增静态借用子条款（§8.6.1.3–§8.6.1.4）、§8.6.10（返回引用的溯源约束）修订允许源集纳入 $rodata、§8.9（禁忌一览）删除"函数返回值 T&"条目（E2009 已在 v0.15 移除）→ ✅ 已收口（v0.16 收尾）
 - 实施分支：`dev`（直推，未切特性分支）
 
 ---
@@ -124,6 +124,6 @@ Lambda：同规则，`lamRefParams.size() > 1`，0 形参时 `_returnAllowedDesc
 ## 跨 Phase TODO
 
 - **`&Type::STATIC_FIELD`**（如 `&Counter::DEFAULT`）：语法层暂不支持——`exprGetRef.obj` 不接受 `Type::ID` 路径。先做 `&global_var` / `&cval`，struct 静态字段引用后续单独 MR。
-- **spec 回写**：§8.6 / §8.6.10 / §8.9 + 附录 D 同步更新 → 待收口。
+- **spec 回写**：§8.6 / §8.6.10 / §8.9 + 附录 D 同步更新 → ✅ 已收口（v0.16 收尾）。
 - **struct 含 T& 字段**：推 v2（需生命周期标注 / pinned 语义）。
 - **≥2 T& 形参单源约束放松**：推 v2。

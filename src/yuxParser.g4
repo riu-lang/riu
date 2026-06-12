@@ -266,8 +266,8 @@ fn: fnHeader fnBody?;
 // fn name() 空返回
 // fn name() type 返回 type
 // fn some<T>() T
-// retType 仅 #Builtin baked builtin 允许含 `&`（spec §8.9 例外、§8.3.5.5 as_ref）；
-// 用户代码 retType 含 `&` 由 semantic 层拒绝
+// retType 含 `&` 合法；合法性由 §8.6.10 溯源约束在 semantic 层保证
+// 用户代码可返回 T&，源须来自 T& 形参（外发借用）或全局/静态/cval（静态借用）
 fnHeader:
     (buildAnnos+=buildAnno)*
     Fn name=ID genericDef?

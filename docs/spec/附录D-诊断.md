@@ -85,7 +85,7 @@ N | <源码行原文>
 | E2006 | `Function \`{}\` has no body; only \`#Builtin\` functions may omit the body` |
 | E2007 | `Method \`{}.{}\` has no body; only \`#Builtin\` methods may omit the body` |
 | E2008 | `wildcard alias \`{}\` is ambiguous, matched {}` |
-| E2009 | `Function \`{}\` cannot return \`T&\`; only \`#Builtin\` baked builtins may have a reference return type (spec §8.9)` |
+| E2009 | （已移除，v0.15）函数返回值 `T&` 不再无条件拒绝，合法性由 §8.6.10 溯源约束保证 |
 | E2010 | `Cannot call mutating method \`Array.{}\` on \`{}\`: it has an active borrow (spec §8.4.2.5)` |
 | E2011 | `Build annotation \`#{}\` is not allowed on this declaration (only \`fn\` accepts it)` |
 | E2012 | `\`#Test\` function \`{}\` must have signature \`fn {}(): void\` (no params, no return type, must have body)` |
@@ -273,7 +273,7 @@ static-vars（E3150..E3157；引入自 [draft/DRAFT-static-vars.md](draft/DRAFT-
 | E4012 | `field '$.{}' is not initialized at constructor exit (§8.2)` |
 | E4013 | `cannot return $ from constructor (§8.3)` |
 | E4020 | `return T& root must be {}, got '{}' (§8.6)` |
-| E4021 | `function returning T& requires exactly one source: \`$\` (method) or a single T& parameter (free fn)` |
+| E4021 | `function returning T& requires at most one T& parameter source: \`$\` (method) or 0–1 T& parameter (free fn); ≥2 T& parameters is an error (§8.6.10.3)` |
 | E4023 | `Heap<T> '{}' escapes its scope: ret position requires NRVO (§8.3a.4.1)` |
 | E4024 | `Heap<T> '{}' cannot be moved by value; declare as Heap<T>? for movable slots (§8.3a.3.2)` |
 | E4025 | `Rc<Heap<T>> / Weak<Heap<T>> / Heap<T> as Rc<U> inner field is forbidden (§8.3a.5.1)` |
