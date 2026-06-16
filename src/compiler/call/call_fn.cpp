@@ -114,40 +114,6 @@ llvm::Value* Compiler::compileFunctionCall(p<ExprCallNode> callNode, const strin
         return _builder.CreateGEP(i8Ty, args[0], args[1], "ptr_off");
     }
 
-    if (fnName == "_ptr_load_i64") {
-        DEBUG_LOG("    Expr: _ptr_load_i64");
-        return _builder.CreateLoad(_builder.getInt64Ty(), args[0], "ptr_load_i64");
-    }
-    if (fnName == "_ptr_store_i64") {
-        DEBUG_LOG("    Expr: _ptr_store_i64");
-        return _builder.CreateStore(args[1], args[0]);
-    }
-    if (fnName == "_ptr_load_ptr") {
-        DEBUG_LOG("    Expr: _ptr_load_ptr");
-        auto ptrTy = llvm::PointerType::get(_context, 0);
-        return _builder.CreateLoad(ptrTy, args[0], "ptr_load_ptr");
-    }
-    if (fnName == "_ptr_store_ptr") {
-        DEBUG_LOG("    Expr: _ptr_store_ptr");
-        return _builder.CreateStore(args[1], args[0]);
-    }
-    if (fnName == "_ptr_load_u32") {
-        DEBUG_LOG("    Expr: _ptr_load_u32");
-        return _builder.CreateLoad(_builder.getInt32Ty(), args[0], "ptr_load_u32");
-    }
-    if (fnName == "_ptr_store_u32") {
-        DEBUG_LOG("    Expr: _ptr_store_u32");
-        return _builder.CreateStore(args[1], args[0]);
-    }
-    if (fnName == "_array_retain") {
-        DEBUG_LOG("    Expr: _array_retain");
-        return _builder.CreateCall(runtime::getArrayRetainFn(_module, _builder), {args[0]});
-    }
-    if (fnName == "_array_release") {
-        DEBUG_LOG("    Expr: _array_release");
-        return _builder.CreateCall(runtime::getArrayReleaseFn(_module, _builder), {args[0]});
-    }
-
     // 测试断言内建（spec §11.3.5）：非泛型分支
     // assert_eq:<T> 走 compileGenericFunctionCall #Builtin 分支
     if (fnName == "assert_true") {
@@ -264,25 +230,6 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             auto size = _module->getDataLayout().getTypeAllocSize(llvmType);
             return _builder.getInt64(size);
         }
-        if (fnName == "_ptr_as_ref") {
-            DEBUG_LOG("    Expr: _ptr_as_ref");
-            auto elemTy = getLLVMType(typeArgs[0]);
-            if (!elemTy) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6019,
-                               typeArgs[0].getFullName());
-            }
-            return args[0];
-        }
-        if (fnName == "_ptr_write") {
-            DEBUG_LOG("    Expr: _ptr_write");
-            auto elemTy = getLLVMType(typeArgs[0]);
-            if (!elemTy) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6019,
-                               typeArgs[0].getFullName());
-            }
-            return _builder.CreateStore(args[1], args[0]);
-        }
-
         // DRAFT-spec-reflect Phase 3a (捷径 A): __yux_reflect_type:<T>() 拿 Type 反射节点.
         // lazy emit linkonce_odr rodata 全局 + load by value.
         if (fnName == "__yux_reflect_type") {
