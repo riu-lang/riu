@@ -738,7 +738,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             auto elemType = varType.heapElementType();
             if (!elemType) {
                 throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, std::string("?"),
-                               std::string("?"), std::string("?"));
+                               std::string("?"));
             }
             auto exprType = expr->getType();
             if (!exprType.isHeap() || !(*exprType.heapElementType() == *elemType)) {
@@ -817,7 +817,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                     if (dynamic_cast<LiteralObjNode*>(lit->literal())) {
                         if (!isFreshHandleExpr(expr)) {
                             throw YuxError(node->getLineNumber(), node->getColumn(),
-                                ErrorCode::E4031, varType.name, "let 绑定");
+                                ErrorCode::E4031, varType.name, "let 绑定", varType.name);
                         }
                     }
                 }

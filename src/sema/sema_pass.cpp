@@ -2055,8 +2055,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             // T != Ptr 时, argType == Ptr 视作合法 (代表接管裸指针所有权).
             bool takeoverFromPtr = argType.isPtr() && innerT.name != "Ptr";
             if (!takeoverFromPtr && !(argType == innerT)) {
-                throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3014, innerT.name, innerT.name,
-                               argType.name);
+                throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3014, innerT.name, argType.name);
             }
         }
         return;

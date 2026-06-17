@@ -838,25 +838,18 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
     return func;
 }
 
-// Phase B-1: 检查类型是否是 #NoCopy struct（含自动推断：有 fn ~() 即隐含 #NoCopy）
+// Phase B-1: 检查类型是否是 #NoCopy struct（仅判断显式 #NoCopy 注解，不隐式推断 ~()）
 bool Compiler::isNoCopyType(const TypeInfo& type) const {
     if (isBuiltinType(type.name)) return false;
     if (type.isRc() || type.isWeak() || type.isArrayGeneric() || type.isHeap()) return false;
     if (type.isRef() || type.isPtr()) return false;
 
-    // 查 local struct decl
+    // 查 local struct decl 的显式 #NoCopy 注解
     auto* decl = _file ? _file->getStructDecl(type.name) : nullptr;
     if (!decl && _yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
         decl = _yux->sdkFile()->getStructDecl(type.name);
     }
     if (decl && decl->hasAnno("NoCopy")) return true;
-
-    // 自动推断：有显式 fn ~() 隐含 #NoCopy
-    auto* impl = _file ? _file->getStructImpl(type.name) : nullptr;
-    if (!impl && _yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
-        impl = _yux->sdkFile()->getStructImpl(type.name);
-    }
-    if (impl && impl->hasDestructor()) return true;
 
     return false;
 }

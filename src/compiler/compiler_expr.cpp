@@ -287,7 +287,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
                 if (auto lit = dynamic_cast<ExprLiteralNode*>(fi->value())) {
                     if (dynamic_cast<LiteralObjNode*>(lit->literal())) {
                         if (!isFreshHandleExpr(fi->value())) {
-                            throw YuxError(line, col, ErrorCode::E4031, fname, "struct 字面量字段初始化");
+                            throw YuxError(line, col, ErrorCode::E4031, fieldType.name, "struct 字面量字段初始化", fieldType.name);
                         }
                     }
                 }

@@ -120,6 +120,21 @@ struct SourceLocation {
     [[nodiscard]] bool valid() const { return line > 0; }
 };
 
+// Debug 构建中校验 ErrorCode 消息模板的 {} 占位符数量与实际参数一致
+// std::vformat 参数不足时会抛 format_error，此断言让问题在 throw 点立刻暴露
+#ifndef NDEBUG
+inline constexpr size_t countFmtPlaceholders(std::string_view fmt) {
+    size_t count = 0;
+    for (size_t i = 0; i + 1 < fmt.size(); ++i) {
+        if (fmt[i] == '{' && fmt[i + 1] == '}') {
+            ++count;
+            ++i;
+        }
+    }
+    return count;
+}
+#endif
+
 class YuxError : public std::runtime_error {
     size_t _line = 0;
     int _col = 0; // 0 表示列未知
@@ -157,6 +172,9 @@ public:
         std::vformat(std::string_view(ec.message), std::make_format_args(args...))),
         _line(line), _col(col), _code(ec.code), _sev(ec.defaultSev) {
         assert(line > 0 && "YuxError line must be > 0");
+#ifndef NDEBUG
+        assert(sizeof...(args) == countFmtPlaceholders(ec.message) && "ErrorCode format arg count mismatch");
+#endif
     }
 
     // 列未知场景的便利重载（驱动层 / 模块层 errorLine）
@@ -165,6 +183,9 @@ public:
         std::vformat(std::string_view(ec.message), std::make_format_args(args...))),
         _line(line), _col(0), _code(ec.code), _sev(ec.defaultSev) {
         assert(line > 0 && "YuxError line must be > 0");
+#ifndef NDEBUG
+        assert(sizeof...(args) == countFmtPlaceholders(ec.message) && "ErrorCode format arg count mismatch");
+#endif
     }
 
     template <class... _Types>
@@ -172,6 +193,9 @@ public:
         std::vformat(std::string_view(ec.message), std::make_format_args(args...))),
         _line(loc.line), _col(loc.col), _code(ec.code), _sev(ec.defaultSev) {
         assert(loc.line > 0 && "YuxError line must be > 0");
+#ifndef NDEBUG
+        assert(sizeof...(args) == countFmtPlaceholders(ec.message) && "ErrorCode format arg count mismatch");
+#endif
     }
 
     void setLineNumber(size_t line) {

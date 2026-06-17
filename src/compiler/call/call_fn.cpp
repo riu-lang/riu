@@ -698,7 +698,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
                 if (dynamic_cast<LiteralObjNode*>(lit->literal())) {
                     if (!isFresh) {
                         throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                            ErrorCode::E4031, at.name, "按值传参");
+                            ErrorCode::E4031, at.name, "按值传参", at.name);
                     }
                 }
             }
@@ -931,7 +931,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
                     if (dynamic_cast<LiteralObjNode*>(lit->literal())) {
                         if (!isFreshHandleExpr(callNode->getArgs()[i])) {
                             throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                                ErrorCode::E4031, argTypes[i].name, "按值传参");
+                                ErrorCode::E4031, argTypes[i].name, "按值传参", argTypes[i].name);
                         }
                     }
                 }
