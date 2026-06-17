@@ -256,12 +256,15 @@ llvm::Constant* Compiler::buildLLVMConstantFromValue(const ConstantValue& v, llv
     case ConstantValue::Kind::Null:
         return nullptr;
     case ConstantValue::Kind::String: {
-        // Phase 6 reflect 反哺: String ConstantValue → Array<u32> struct + String struct.
-        // String LLVM layout: { Array<u32> data } = { { ptr _data, i64 _len, i64 _cap } }
+        // B-4: String = { Rc<Array<u32>> } = { { ptr handle } }
+        // sentinel RC Block + Rc wrap + String wrap，全常量。
         auto* st = llvm::dyn_cast_or_null<llvm::StructType>(expectedTy);
         if (!st || st->getNumElements() < 1) return nullptr;
-        auto* arrayConst = emitStringArrayConst(v.stringCodePoints);
-        return llvm::ConstantStruct::get(st, {arrayConst});
+        auto* blockGV = emitStringRcBlockConst(v.stringCodePoints);
+        // Rc<Array<u32>> = { ptr handle }
+        auto* rcElemTy = st->getElementType(0u);
+        auto* rcConst = llvm::ConstantStruct::get(llvm::cast<llvm::StructType>(rcElemTy), {blockGV});
+        return llvm::ConstantStruct::get(st, {rcConst});
     }
     }
     return nullptr;

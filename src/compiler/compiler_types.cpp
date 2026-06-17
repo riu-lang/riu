@@ -554,17 +554,18 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     // LLVM layout 由编译器硬编码 (SDK 声明仅 name String 字段可见, 其余 slot 隐藏).
     {
         auto* ptrTy = llvm::PointerType::get(_context, 0);
-        // Resolve String LLVM type: try cache first, then getLLVMType, then build directly.
-        // String = { Array_u32 } = { { ptr } } (Array_u32 is a single-ptr struct).
+        // B-4: Resolve String LLVM type: try cache first, then getLLVMType, then build directly.
+        // String = { Rc<Array<u32>> } = { { ptr } }（仍为 {ptr} 形状，含 Rc handle）
         auto* stringTy = [&]() -> llvm::Type* {
             auto cit = _structTypes.find("String");
             if (cit != _structTypes.end()) return cit->second;
             auto* resolved = getLLVMType(TypeInfo("String"));
             if (resolved) return resolved;
             // Fallback: build String type directly (test context, SDK not yet loaded)
-            vector<llvm::Type*> arrFields = {ptrTy};
-            auto* arrU32 = llvm::StructType::get(_context, arrFields);
-            vector<llvm::Type*> strFields = {arrU32};
+            // String = { _buf: Rc<Array<u32>> } = { { ptr } } — 8 字节
+            vector<llvm::Type*> rcFields = {ptrTy};                           // Rc<Array<u32>> = { ptr handle }
+            auto* rcTy = llvm::StructType::get(_context, rcFields);
+            vector<llvm::Type*> strFields = {rcTy};                           // String = { Rc<Array<u32>> }
             return llvm::StructType::get(_context, strFields);
         }();
         if (type.name == "Field" || type.name == "Method" || type.name == "Variant") {

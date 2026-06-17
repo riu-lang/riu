@@ -692,7 +692,7 @@ void Compiler::emitRetainOnHandleValue(llvm::Value* val, const TypeInfo& type) {
 
 // ==================== Phase 8b: fresh 表达式判定 ====================
 
-// 识别 +1 所有权（fresh）表达式：调用结果（函数 / 方法 / 构造器）+ 数组字面量
+// 识别 +1 所有权（fresh）表达式：调用结果（函数 / 方法 / 构造器）+ 数组字面量 + move-assign
 // 用于在复制语义 retain 路径上跳过多余 retain，避免 leak（DRAFT §7.6 / §8）
 bool Compiler::isFreshHandleExpr(p<ExprNode> expr) {
     if (!expr) return false;
@@ -700,6 +700,8 @@ bool Compiler::isFreshHandleExpr(p<ExprNode> expr) {
     if (dynamic_cast<ExprArrayNode*>(expr)) return true;
     // Phase 5: enum 构造把实参 +1 句柄收纳到 enum 值，结果是 +1 fresh
     if (dynamic_cast<ExprPathCallNode*>(expr)) return true;
+    // B-4: move-assign (a <- b) 移出旧值，返回 +1 fresh
+    if (dynamic_cast<ExprMoveAssignNode*>(expr)) return true;
     return false;
 }
 
@@ -808,11 +810,27 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
         return runtime::getRcReleaseFn(_module, _builder);
     }
 
-    // Fn / Dyn / Heap / Array（#Builtin 阶段）/ Rc / Weak 等类型的析构为编译器内联 IR，
+    // B-4: Array<T> 内层 → 生成 typed release，在 strong==0 时内联 _array_free_data
+    if (inner->isArrayGeneric()) {
+        // 构造 mangled name
+        string arrInnerName = inner->arrayGenericElementType() ? inner->arrayGenericElementType()->name : "T";
+        string mangledName = "_box_release_Array_" + arrInnerName;
+        auto func = runtime::getRcReleaseTypedFn(_module, _builder, mangledName);
+        if (func->empty()) {
+            auto* savedBB = _builder.GetInsertBlock();
+            auto savedIP = savedBB ? _builder.GetInsertPoint() : llvm::BasicBlock::iterator();
+            runtime::emitRcReleaseForArrayFn(_context, _builder, _module, func);
+            if (savedBB) {
+                _builder.SetInsertPoint(savedBB, savedIP);
+            }
+        }
+        return func;
+    }
+
+    // Fn / Dyn / Heap / Rc / Weak 等类型的析构为编译器内联 IR，
     // 没有独立的析构函数体可调用；暂回退到 generic _box_release。
     // TODO: 后续在 typed release 函数体内联生成这些类型的析构 IR，消除泄漏。
-    if (inner->isFn() || inner->isDyn() || inner->isHeap() || inner->isArrayGeneric() || inner->isRc()
-        || inner->isWeak()) {
+    if (inner->isFn() || inner->isDyn() || inner->isHeap() || inner->isRc() || inner->isWeak()) {
         return runtime::getRcReleaseFn(_module, _builder);
     }
 

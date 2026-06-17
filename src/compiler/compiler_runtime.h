@@ -48,6 +48,12 @@ void emitRcBlockCountAdd(llvm::IRBuilder<>& builder, llvm::Module* module, int64
 void emitRcReleaseTypedFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
                           llvm::Function* func, llvm::Function* dtorFn);
 
+// B-4: 生成 Rc<Array<T>> 的 typed release 函数体
+// 与 emitRcReleaseTypedFn 同形，但 strong==0 时不调 dtorFn，
+// 而是内联 Array data 释放：load payload._data → _array_free_data(data)
+void emitRcReleaseForArrayFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
+                             llvm::Function* func);
+
 llvm::Function* getRcAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 llvm::Function* getRcRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 // _box_release(handle) -> void

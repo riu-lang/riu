@@ -241,7 +241,8 @@ llvm::Function* getRcReleaseTypedFn(llvm::Module* module, llvm::IRBuilder<>& bui
     paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0));
 
     auto fnType = llvm::FunctionType::get(builder.getVoidTy(), paramTypes, false);
-    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, module);
+    // B-4: LinkOnceODRLinkage 避免多模块各自生成同签名 typed release 函数时符号冲突
+    return llvm::Function::Create(fnType, llvm::Function::LinkOnceODRLinkage, mangledName, module);
 }
 
 // 获取 owned Dyn<D> 的释放函数（Phase 3e）
@@ -755,6 +756,78 @@ void emitRcReleaseTypedFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder
         auto payloadPtr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(8)}, "payload_ptr");
         builder.CreateCall(dtorFn, {payloadPtr});
     }
+    builder.CreateBr(afterDtorBB);
+
+    builder.SetInsertPoint(afterDtorBB);
+    // weak-- + free（同 _box_release）
+    auto weakPtr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(4)}, "weak_ptr");
+    auto weak = builder.CreateLoad(i32Ty, weakPtr, "weak");
+    auto newWeak = builder.CreateSub(weak, llvm::ConstantInt::get(i32Ty, 1), "new_weak");
+    builder.CreateStore(newWeak, weakPtr);
+    auto weakIsZero = builder.CreateICmpEQ(newWeak, llvm::ConstantInt::get(i32Ty, 0), "weak_is_zero");
+    builder.CreateCondBr(weakIsZero, freeBB, doneBB);
+
+    builder.SetInsertPoint(freeBB);
+    auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
+    builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), block});
+    emitRcBlockCountAdd(builder, module, -1);
+    builder.CreateBr(doneBB);
+
+    builder.SetInsertPoint(doneBB);
+    builder.CreateRetVoid();
+}
+
+// ==================== B-4: Rc<Array<T>> typed release ====================
+// 与 _box_release 同形（null/哨兵跳过、strong--），
+// 但 strong==0 时内联 Array data 释放：load payload[0]._data → _array_free_data(data)
+void emitRcReleaseForArrayFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
+                             llvm::Function* func) {
+    if (!func || !func->empty()) return;
+
+    auto getProcessHeapFn = runtime::getProcessHeapFn(module, builder);
+    auto heapFreeFn = runtime::getHeapFreeFn(module, builder);
+
+    auto ptrTy = llvm::PointerType::get(context, 0);
+    auto i32Ty = builder.getInt32Ty();
+    auto i64Ty = builder.getInt64Ty();
+    auto sentinel = llvm::ConstantInt::get(i32Ty, 0xFFFFFFFFu);
+
+    auto entry = llvm::BasicBlock::Create(context, "entry", func);
+    auto checkBB = llvm::BasicBlock::Create(context, "check", func);
+    auto decBB = llvm::BasicBlock::Create(context, "dec", func);
+    auto strongZeroBB = llvm::BasicBlock::Create(context, "strong_zero", func);
+    auto afterDtorBB = llvm::BasicBlock::Create(context, "after_dtor", func);
+    auto freeBB = llvm::BasicBlock::Create(context, "free", func);
+    auto doneBB = llvm::BasicBlock::Create(context, "done", func);
+
+    builder.SetInsertPoint(entry);
+    llvm::Value* block = &*func->arg_begin();
+    auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
+    auto isNull = builder.CreateICmpEQ(block, nullPtr, "is_null");
+    builder.CreateCondBr(isNull, doneBB, checkBB);
+
+    builder.SetInsertPoint(checkBB);
+    auto strongPtr = block; // strong @ offset 0
+    auto strong = builder.CreateLoad(i32Ty, strongPtr, "strong");
+    auto isSentinel = builder.CreateICmpEQ(strong, sentinel, "is_sentinel");
+    builder.CreateCondBr(isSentinel, doneBB, decBB);
+
+    builder.SetInsertPoint(decBB);
+    auto newStrong = builder.CreateSub(strong, llvm::ConstantInt::get(i32Ty, 1), "new_strong");
+    builder.CreateStore(newStrong, strongPtr);
+    auto isZero = builder.CreateICmpEQ(newStrong, llvm::ConstantInt::get(i32Ty, 0), "is_zero");
+    builder.CreateCondBr(isZero, strongZeroBB, doneBB);
+
+    // strong 归零：释放 Array._data
+    // RC Block layout: { u32 strong, u32 weak, Array<T> payload }
+    // Array<T> layout: { ptr _data, i64 _len, i64 _cap }
+    // Array._data 在 block + 8（跳过 RC 头，即 Array payload 的 field 0）
+    builder.SetInsertPoint(strongZeroBB);
+    auto payloadPtr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(8)}, "arr_payload");
+    auto dataPtrAddr = builder.CreateBitCast(payloadPtr, llvm::PointerType::get(context, 0), "arr_data_addr");
+    auto data = builder.CreateLoad(ptrTy, dataPtrAddr, "arr_data");
+    auto freeDataFn = getArrayFreeDataFn(module, builder);
+    builder.CreateCall(freeDataFn, {data});
     builder.CreateBr(afterDtorBB);
 
     builder.SetInsertPoint(afterDtorBB);

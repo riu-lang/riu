@@ -37,7 +37,7 @@ static llvm::Constant* llvmConstantFromValue(llvm::LLVMContext& ctx, const Const
         return llvm::ConstantPointerNull::get(llvm::dyn_cast<llvm::PointerType>(llvmType));
     }
     case ConstantValue::Kind::String: {
-        // Phase 6: String ConstantValue 需要 Compiler 上下文（emitStringArrayConst）.
+        // Phase 6: String ConstantValue 需要 Compiler 上下文（emitStringRcBlockConst）.
         // 此静态函数无法处理 String; 调用方应使用 Compiler::buildLLVMConstantFromValue.
         return nullptr;
     }

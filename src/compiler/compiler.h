@@ -317,11 +317,11 @@ private:
     // ==================== 表达式编译 (具体类型) ====================
     llvm::Value* compileLiteralExpr(p<ExprLiteralNode> node); // 编译字面量表达式
     llvm::Value* emitStringLiteralValue(
-        const vector<u32>& codePoints); // 由码点向量发射 .rodata 哨兵 String 值（StringLiteral / StringTemplate 共用）
-    // 由码点向量发射 Array<u32> 结构体常量, 返回 { ptr data, i64 len, i64 cap } 的 ConstantStruct.
-    // _data 指针指向 PrivateLinkage .rodata u32 数组 (非空时).
+        const vector<u32>& codePoints); // B-4: 由码点向量发射 sentinel Rc<Array<u32>> 包装的 String 值
+    // B-4: 由码点向量发射 sentinel RC Block 全局常量。
+    // Block layout: { u32 strong(0xFFFFFFFF), u32 weak(0), ptr _data, i64 _len, i64 _cap }
     // 不需 _builder, 可在 builder 未设当前 BB 时调用 (供 reflect rodata 节点 emit 复用).
-    llvm::Constant* emitStringArrayConst(const vector<u32>& codePoints);
+    llvm::GlobalVariable* emitStringRcBlockConst(const vector<u32>& codePoints);
     // DRAFT-spec-reflect Phase 3a: lazy emit reflect rodata globals.
     // Returns the Type global; optionally returns the [N x ptr] fields ref array via outFieldsRefs.
     // 由 `__yux_reflect_type:<T>()` intrinsic 与 `<Struct>::fields` 调用站调用.

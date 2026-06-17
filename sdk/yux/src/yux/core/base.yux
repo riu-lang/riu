@@ -1716,26 +1716,25 @@ struct Nullable<T> {
   }
 }
 
-; String 类型 - 不可变；内部使用 Array<u32> 存储 Unicode code points
+; String 类型 - 不可变引用类型；内部使用 Rc<Array<u32>> 共享不可变码点缓冲
 ; 构造唯一通道：#Static 工厂 (String::empty / String::from / String::_take_buf)
+; B-4: {_buf Rc<Array<u32>>} — Rc 提供 retain/release，字面量走 sentinel RC Block
 #Impl(ToString)
 struct String {
-  data Array<u32>
+  _buf Rc<Array<u32>>
+  ; 无显式 ~()：编译器对含 Rc 字段的 struct 自动生成析构 → _box_release(_buf.handle)
 
-  fn ~() {
-    ; Array<u32> 会自动释放
-  }
-
-  ; 静态工厂：空字符串
+  ; 静态工厂：空字符串（复用空 sentinel RC Block）
   #Static
   fn empty() String {
+    let a Array<u32> = []                  ; 先构造空 Array<u32>
+    let buf Rc<Array<u32>> = move:<Array<u32>>(a)  ; 再装箱到 Rc
     ret Self {
-      .data = []
+      ._buf = move:<Rc<Array<u32>>>(buf)            ; 转移所有权
     }
   }
 
-  ; 静态工厂：从外部 Array<u32> 码点缓冲构造
-  ; **深拷贝**：iterate + push 到新 Block，外界改原 buf 不影响 String
+  ; 静态工厂：从外部 Array<u32> 码点缓冲**深拷贝**
   ; (公开安全入口；SDK 内部"我自己造的 buf 立即移交"场景用 _take_buf 走零拷贝)
   #Static
   fn from(buf Array<u32>) String {
@@ -1748,42 +1747,47 @@ struct String {
       copy.push(copy_of:<u32>(buf[i]))
       i += 1
     }
+    let rc Rc<Array<u32>> = move:<Array<u32>>(copy)  ; 接管拷贝的所有权
     ret Self {
-      .data = copy
+      ._buf = move:<Rc<Array<u32>>>(rc)               ; 转移所有权
     }
   }
 
-  ; SDK 私有：接管 Array<u32> 缓冲（句柄共享）
+  ; SDK 私有：接管 Array<u32> 缓冲所有权
   ; 调用方承诺移交后不再 mutate buf 内容；典型场景: i*.to_string() / SB::build()
   ; `_` 前缀模块私有 (spec §10.4 _ 前缀可见性规则)；外部使用走 String::from
   #Static
   fn _take_buf(buf Array<u32>) String {
+    let rc Rc<Array<u32>> = move:<Array<u32>>(buf)   ; 接管所有权
     ret Self {
-      .data = buf
+      ._buf = move:<Rc<Array<u32>>>(rc)               ; 转移 Rc 所有权到 struct
     }
   }
 
   fn len() i64 {
-    $.data.len()
+    let a Array<u32>& = as_ref:<Array<u32>>($._buf)
+    a.len()
   }
 
   ; 取码点
   fn get(i i64) u32 {
-    copy_of:<u32>($.data[i])
+    let a Array<u32>& = as_ref:<Array<u32>>($._buf)
+    copy_of:<u32>(a[i])
   }
 
   ; 等值比较：长度相同且每个码点相同
-  ; 形参为 String&（spec §7.2.3.3），运算符位置自动取址
   fn eq(other String&) bool {
-    if $.data.len() != other.data.len() {
+    let a Array<u32>& = as_ref:<Array<u32>>($._buf)
+    let b Array<u32>& = as_ref:<Array<u32>>(other._buf)
+    if a.len() != b.len() {
       ret false
     }
     #Mut let i i64 = 0
     loop {
-      if i >= $.data.len() {
+      if i >= a.len() {
         break;
       }
-      if $.data[i] != other.data[i] {
+      if a[i] != b[i] {
         ret false
       }
       i += 1
@@ -1797,8 +1801,10 @@ struct String {
 
   ; 是否以 prefix 开头：长度足够且前 plen 个码点逐位相等
   fn starts_with(prefix String&) bool {
-    let plen i64 = prefix.data.len()
-    if plen > $.data.len() {
+    let a Array<u32>& = as_ref:<Array<u32>>($._buf)
+    let b Array<u32>& = as_ref:<Array<u32>>(prefix._buf)
+    let plen i64 = b.len()
+    if plen > a.len() {
       ret false
     }
     #Mut let i i64 = 0
@@ -1806,7 +1812,7 @@ struct String {
       if i >= plen {
         break;
       }
-      if $.data[i] != prefix.data[i] {
+      if a[i] != b[i] {
         ret false
       }
       i += 1
@@ -1817,11 +1823,13 @@ struct String {
   ; 是否包含 needle 子串：朴素 O(n*m) 滑窗匹配
   ; 空 needle 视为匹配任何字符串（与 starts_with("") 一致）
   fn contains(needle String&) bool {
-    let nlen i64 = needle.data.len()
+    let a Array<u32>& = as_ref:<Array<u32>>($._buf)
+    let b Array<u32>& = as_ref:<Array<u32>>(needle._buf)
+    let nlen i64 = b.len()
     if nlen == 0 {
       ret true
     }
-    let hlen i64 = $.data.len()
+    let hlen i64 = a.len()
     if nlen > hlen {
       ret false
     }
@@ -1836,7 +1844,7 @@ struct String {
         if j >= nlen {
           break;
         }
-        if $.data[i + j] != needle.data[j] {
+        if a[i + j] != b[j] {
           hit = false
           break;
         }
@@ -1852,13 +1860,14 @@ struct String {
 
   ; 转为 UTF-8 字节数组
   fn to_bytes() Array<u8> {
+    let a Array<u32>& = as_ref:<Array<u32>>($._buf)
     #Mut let r Array<u8> = []
     #Mut let i i64 = 0
     loop {
-      if i >= $.data.len() {
+      if i >= a.len() {
         break;
       }
-      let cp u32 = copy_of:<u32>($.data[i])
+      let cp u32 = copy_of:<u32>(a[i])
       if cp < 128u32 {
         r.push(cp.to_u8());
       } elif cp < 2048u32 {
@@ -1879,9 +1888,9 @@ struct String {
     r
   }
 
-  ; String 自身实现 ToString：复用底层 Array<u32> Block，句柄共享
+  ; B-4: String 自身实现 ToString — 浅复制 Rc，共享底层缓冲
   fn to_string() String {
-    String::_take_buf($.data)
+    ret $
   }
 }
 

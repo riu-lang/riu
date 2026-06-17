@@ -267,21 +267,22 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
     throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3080);
 }
 
-// 由码点向量发射 Array<u32> 结构体常量，返回 { ptr data, i64 len, i64 cap } 的 ConstantStruct。
-// _data 指针指向 PrivateLinkage .rodata u32 数组（非空时），空字符串时 _data = null。
-// Array<u32> layout: { ptr _data, i64 _len, i64 _cap } — 24 字节，无 sentinel。
-// 不依赖 _builder 当前 BB, 仅操作 module 全局。
-llvm::Constant* Compiler::emitStringArrayConst(const vector<u32>& codePoints) {
+// B-4: 由码点向量发射 sentinel RC Block 全局常量。
+// Block layout: { u32 strong(0xFFFFFFFF), u32 weak(0), Array<u32> payload }
+// Array<u32> payload: { ptr _data, i64 _len, i64 _cap }
+// Block LLVM 类型: {i32, i32, ptr, i64, i64}（扁平化，与运行时 GEP 字节偏移兼容）
+// 返回 GlobalVariable*，指向 sentinel block。不依赖 _builder 当前 BB。
+llvm::GlobalVariable* Compiler::emitStringRcBlockConst(const vector<u32>& codePoints) {
     size_t len = codePoints.size();
 
     auto i32Ty = llvm::Type::getInt32Ty(_context);
     auto i64Ty = llvm::Type::getInt64Ty(_context);
     auto ptrTy = llvm::PointerType::get(_context, 0);
 
-    // Array<u32> layout: { ptr data, i64 len, i64 cap }
-    auto arrayTy = llvm::StructType::get(_context, {ptrTy, i64Ty, i64Ty});
+    // Sentinel RC Block: { u32 strong, u32 weak, ptr _data, i64 _len, i64 _cap }
+    auto blockTy = llvm::StructType::get(_context, {i32Ty, i32Ty, ptrTy, i64Ty, i64Ty});
 
-    // 数据缓冲：len > 0 时铺常量 u32 数组，否则用 null 指针（_data）。
+    // 数据缓冲：len > 0 时铺常量 u32 数组，否则用 null。
     llvm::Constant* dataConst = llvm::ConstantPointerNull::get(ptrTy);
     if (len > 0) {
         auto arrType = llvm::ArrayType::get(i32Ty, len);
@@ -294,32 +295,45 @@ llvm::Constant* Compiler::emitStringArrayConst(const vector<u32>& codePoints) {
 
         static int strDataCounter = 0;
         string dataName = ".str.data." + to_string(strDataCounter++);
-        dataConst = new llvm::GlobalVariable(*_module, arrType, /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage,
-                                             arrInit, dataName);
+        auto* dataGV = new llvm::GlobalVariable(*_module, arrType, /*isConstant=*/true,
+                                                 llvm::GlobalValue::PrivateLinkage, arrInit, dataName);
+        dataConst = dataGV;
     }
 
+    auto sentinelStrong = llvm::ConstantInt::get(i32Ty, 0xFFFFFFFFu);
+    auto sentinelWeak = llvm::ConstantInt::get(i32Ty, 0);
     auto lenC = llvm::ConstantInt::get(i64Ty, len);
-    auto arrayInit = llvm::ConstantStruct::get(arrayTy, {dataConst, lenC, lenC});
+    auto blockInit = llvm::ConstantStruct::get(blockTy, {sentinelStrong, sentinelWeak, dataConst, lenC, lenC});
 
-    // 空字面量共享同一全局，省 .rodata 体积。
+    // 空字面量：同一个空 sentinel block 全局复用
+    static llvm::GlobalVariable* emptyBlock = nullptr;
     if (len == 0) {
-        static llvm::Constant* emptyArray = nullptr;
-        if (!emptyArray) emptyArray = arrayInit;
-        return emptyArray;
+        if (!emptyBlock) {
+            emptyBlock = new llvm::GlobalVariable(*_module, blockTy, /*isConstant=*/true,
+                                                   llvm::GlobalValue::PrivateLinkage, blockInit, ".str.empty_block");
+        }
+        return emptyBlock;
     }
-    return arrayInit;
+
+    static int strBlockCounter = 0;
+    string blockName = ".str.rc." + to_string(strBlockCounter++);
+    return new llvm::GlobalVariable(*_module, blockTy, /*isConstant=*/true,
+                                     llvm::GlobalValue::PrivateLinkage, blockInit, blockName);
 }
 
-// 由码点向量发射 String 值
-// String layout: { Array<u32> data } = { { ptr _data, i64 _len, i64 _cap } }
+// 由码点向量发射 String 值。
+// B-4: String layout = { _buf Rc<Array<u32>> } = { { ptr handle } }
 // LiteralStringNode 与 StringTemplateNode（template parts）共用此发射路径。
 llvm::Value* Compiler::emitStringLiteralValue(const vector<u32>& codePoints) {
+    auto* blockGV = emitStringRcBlockConst(codePoints);
+
+    // String = { Rc<Array<u32>> } = { { ptr handle } }
     auto stringType = getLLVMType(TypeInfo("String"));
     auto alloca = _builder.CreateAlloca(stringType, nullptr, "str_tmp");
-    auto arrayConst = emitStringArrayConst(codePoints);
     auto zero32 = _builder.getInt32(0);
-    auto dataFieldPtr = _builder.CreateGEP(stringType, alloca, {zero32, zero32}, "str.data");
-    _builder.CreateStore(arrayConst, dataFieldPtr);
+    // GEP: String → field 0 (Rc<Array<u32>>) → field 0 (handle)
+    auto handleField = _builder.CreateGEP(stringType, alloca, {zero32, zero32, zero32}, "str.handle");
+    _builder.CreateStore(blockGV, handleField);
     return _builder.CreateLoad(stringType, alloca, "str_val");
 }
 
@@ -378,7 +392,9 @@ llvm::Value* Compiler::compileStringTemplate(StringTemplateNode* node) {
     }
 
     // 2. emit sb.append(String) 帮手：普通 struct String 走 by-value 调用约定
+    // B-4: String 含 Rc<Array<u32>> 字段，传参前必须 retain（callee-clean）
     auto emitAppendString = [&](llvm::Value* strVal) {
+        retainHandleAtCallSite(strVal, TypeInfo("String"));
         vector<TypeInfo> appendParams = {TypeInfo("String")};
         auto appendFn = getMethodFunction("StringBuilder", "append", appendParams, TypeInfo());
         _builder.CreateCall(appendFn, {sbPtr, strVal});
@@ -411,7 +427,7 @@ llvm::Value* Compiler::compileStringTemplate(StringTemplateNode* node) {
         }
     }
 
-    // 4. sb.build() → String
+    // 4. sb.build() → String（fresh +1，由 caller 的 temp frame 管理所有权）
     vector<TypeInfo> noArgs;
     auto buildFn = getMethodFunction("StringBuilder", "build", noArgs, TypeInfo("String"));
     auto result = _builder.CreateCall(buildFn, {sbPtr}, "tpl_built");
@@ -495,6 +511,7 @@ llvm::Value* Compiler::compileStringPlusChain(ExprAddSubNode* node) {
     auto appendFn = getMethodFunction("StringBuilder", "append", appendParams, TypeInfo());
 
     // 5. 逐叶 append；非 String 合成 `leaf.to_string()`（同 Phase 2b 模板）
+    // B-4: String 含 Rc<Array<u32>> 字段，传参前必须 retain（callee-clean）
     vector<std::unique_ptr<Node>> synthHolder;
     for (const auto& leaf : leaves) {
         llvm::Value* strVal;
@@ -509,10 +526,11 @@ llvm::Value* Compiler::compileStringPlusChain(ExprAddSubNode* node) {
             synthHolder.emplace_back(callNode);
             strVal = compileExpr(callNode);
         }
+        retainHandleAtCallSite(strVal, TypeInfo("String"));
         _builder.CreateCall(appendFn, {sbPtr, strVal});
     }
 
-    // 6. sb.build() → String
+    // 6. sb.build() → String（fresh +1，由 caller 的 temp frame 管理所有权）
     vector<TypeInfo> noArgs;
     auto buildFn = getMethodFunction("StringBuilder", "build", noArgs, TypeInfo("String"));
     auto result = _builder.CreateCall(buildFn, {sbPtr}, "plus_built");

@@ -314,11 +314,12 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
                     return _builder.CreateLoad(ptrTy, dataAddr, "array.data");
                 }
                 if (T.name == "String" && T.kind == TypeKind::Normal) {
-                    // String layout = { data: Array<u32> } = { { ptr handle } }
+                    // B-4: String layout = { _buf: Rc<Array<u32>> } = { { ptr handle } }
                     auto handle = _builder.CreateExtractValue(args[i], {0, 0}, "string.handle");
                     if (!forPtrOf) return handle;
+                    // RC Block: offset 8 = Array._data（跳过 u32 strong + u32 weak）
                     auto dataAddr = _builder.CreateInBoundsGEP(_builder.getInt8Ty(), handle,
-                                                               {llvm::ConstantInt::get(_builder.getInt64Ty(), 24)},
+                                                               {llvm::ConstantInt::get(_builder.getInt64Ty(), 8)},
                                                                "string.data.addr");
                     return _builder.CreateLoad(ptrTy, dataAddr, "string.data");
                 }
@@ -930,9 +931,11 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
                     continue;
                 }
                 if (aType.name == "String" && aType.kind == TypeKind::Normal) {
+                    // B-4: String = { _buf Rc<Array<u32>> } = { { ptr handle } }
                     auto handle = _builder.CreateExtractValue(args[i], {0, 0}, "string.handle");
+                    // RC Block: offset 8 = Array._data
                     auto dataAddr = _builder.CreateInBoundsGEP(_builder.getInt8Ty(), handle,
-                                                               {llvm::ConstantInt::get(_builder.getInt64Ty(), 24)},
+                                                               {llvm::ConstantInt::get(_builder.getInt64Ty(), 8)},
                                                                "string.data.addr");
                     auto dataPtr = _builder.CreateLoad(ptrTy, dataAddr, "string.data");
                     callArgs.push_back(dataPtr);
