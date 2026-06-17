@@ -235,11 +235,15 @@ private:
     void generateDefaultDestructor(const string& structName);                   // 生成默认析构函数
     bool typeNeedsDestructor(const TypeInfo& type);                             // 检查类型是否需要析构
     bool structNeedsDestructor(const string& structName);                       // 检查结构体是否需要析构
+    // Phase B-2: 获取或创建 Rc<T> 的 typed release 函数
+    // 若 rcType 内层 T 无需析构则返回 generic _box_release；
+    // 否则生成特化版 _box_release_T（strong==0 时先调 T::~() 再走 weak/free）
+    llvm::Function* getOrCreateRcTypedReleaseFn(const TypeInfo& rcType);
     // Phase B-1: #NoCopy / move 辅助
-    [[nodiscard]] bool isNoCopyType(const TypeInfo& type) const;               // 查 struct decl 的 #NoCopy 注解
-    void inferNoCopyAnnotations();                                              // 遍历 struct 声明，自动推断 #NoCopy
-    bool enumNeedsDestructor(const string& enumName);   // Phase 5: 任一 variant payload 需析构则枚举需析构
-    bool enumDeclNeedsDestructor(p<EnumDeclNode> decl); // Phase 5: 同上，按声明节点
+    [[nodiscard]] bool isNoCopyType(const TypeInfo& type) const; // 查 struct decl 的 #NoCopy 注解
+    void inferNoCopyAnnotations();                               // 遍历 struct 声明，自动推断 #NoCopy
+    bool enumNeedsDestructor(const string& enumName);            // Phase 5: 任一 variant payload 需析构则枚举需析构
+    bool enumDeclNeedsDestructor(p<EnumDeclNode> decl);          // Phase 5: 同上，按声明节点
     llvm::Function* getEnumDestructorFunction(const string& enumName);    // Phase 5: 获取或创建 __enum_drop_<E>
     void generateEnumDestructor(p<EnumDeclNode> decl, p<FileNode> owner); // Phase 5: 合成 __enum_drop_<E>(p*) 实现
     void compileEnumDtors(); // Phase 5: 在主流水线中为本文件 enum 生成 dtor 定义

@@ -39,7 +39,14 @@ llvm::Function* getHeapFreeFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 llvm::Function* getSetConsoleOutputCPFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 llvm::Function* getSetConsoleCPFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 
-// ==================== Rc<T> 智能指针支持 ====================
+// 全局 rc_block_count 增减（Phase 8a leak 检测）
+// delta: +1（alloc）或 -1（free）
+void emitRcBlockCountAdd(llvm::IRBuilder<>& builder, llvm::Module* module, int64_t delta);
+
+// 生成 _box_release_<T> 的函数体（Phase B-2）
+// func 必须为空（刚声明）；dtorFn 为 T 的析构函数（可为 null，表示 T 平凡）
+void emitRcReleaseTypedFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
+                          llvm::Function* func, llvm::Function* dtorFn);
 
 llvm::Function* getRcAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 llvm::Function* getRcRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder);
@@ -62,6 +69,13 @@ llvm::Function* getDynReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder
 // 多个 fat-ptr 副本共享同一 captures Rc 时，字段级析构必须只在 strong==0 一次性触发。
 // payload 头 8 字节 = dtor fn ptr（null 跳过），其后才是各 capture 字段。
 llvm::Function* getRcReleaseDtorFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+
+// _box_release_<T>(handle) -> void  (Phase B-2)
+// 专为 Rc<T> 其中 T 需析构：与 _box_release 同形（null/哨兵跳过、strong--），
+// 但 strong==0 时先对 payload（handle+8）调 T 的析构函数，再走 weak-- + free。
+// 每个 (T, module) 生成独立一份，由 Compiler::getOrCreateRcTypedReleaseFn 按需生成 body。
+// mangledName 由调用方构造（如 "_box_release_T_<sanitized>"），需保证模块内唯一。
+llvm::Function* getRcReleaseTypedFn(llvm::Module* module, llvm::IRBuilder<>& builder, const string& mangledName);
 
 // _box_upgrade(handle) -> handle_or_null
 // Phase 1d.2：Weak→Rc 升级；null/strong==0 → null；哨兵 → handle；其他 strong++ 返回 handle

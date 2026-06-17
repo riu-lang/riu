@@ -153,7 +153,7 @@ static void emitRcBlockCountDefinition(llvm::Module* module, llvm::IRBuilder<>& 
 }
 
 // 在当前 IRBuilder 插入位置 emit `_rc_block_count += delta`（delta 为 +1 / -1 i64 常量）
-static void emitRcBlockCountAdd(llvm::IRBuilder<>& builder, llvm::Module* module, int64_t delta) {
+void emitRcBlockCountAdd(llvm::IRBuilder<>& builder, llvm::Module* module, int64_t delta) {
     auto g = getRcBlockCountGlobal(module, builder);
     auto i64Ty = builder.getInt64Ty();
     auto cur = builder.CreateLoad(i64Ty, g, "rc_blk_cur");
@@ -228,6 +228,20 @@ llvm::Function* getRcReleaseDtorFn(llvm::Module* module, llvm::IRBuilder<>& buil
 
     auto fnType = llvm::FunctionType::get(builder.getVoidTy(), paramTypes, false);
     return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
+}
+
+// 获取按 T 特化的 Rc 释放函数声明（Phase B-2）
+// 签名: void _box_release_<T>(ptr block)
+// 函数体由 Compiler::getOrCreateRcTypedReleaseFn 按需生成。
+llvm::Function* getRcReleaseTypedFn(llvm::Module* module, llvm::IRBuilder<>& builder, const string& mangledName) {
+    auto func = module->getFunction(mangledName);
+    if (func) return func;
+
+    vector<llvm::Type*> paramTypes;
+    paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0));
+
+    auto fnType = llvm::FunctionType::get(builder.getVoidTy(), paramTypes, false);
+    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, module);
 }
 
 // 获取 owned Dyn<D> 的释放函数（Phase 3e）
@@ -714,6 +728,74 @@ void emitRcHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm:
 
     (void)ptrTy;
     (void)i64Ty;
+}
+
+// ==================== Phase B-2: 按 T 特化的 Rc 释放函数体生成 ====================
+// 与 _box_release 同形（null/哨兵跳过、strong--），
+// 但 strong==0 时先对 payload（handle+8）调 T 的析构函数，再 weak-- + free。
+// dtorFn 为 null 时跳过析构（等价于 generic _box_release，但不应被调用）。
+void emitRcReleaseTypedFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
+                          llvm::Function* func, llvm::Function* dtorFn) {
+    if (!func || !func->empty()) return;
+
+    auto getProcessHeapFn = runtime::getProcessHeapFn(module, builder);
+    auto heapFreeFn = runtime::getHeapFreeFn(module, builder);
+
+    auto ptrTy = llvm::PointerType::get(context, 0);
+    auto i32Ty = builder.getInt32Ty();
+    auto sentinel = llvm::ConstantInt::get(i32Ty, 0xFFFFFFFFu);
+
+    auto entry = llvm::BasicBlock::Create(context, "entry", func);
+    auto checkBB = llvm::BasicBlock::Create(context, "check", func);
+    auto decBB = llvm::BasicBlock::Create(context, "dec", func);
+    auto strongZeroBB = llvm::BasicBlock::Create(context, "strong_zero", func);
+    auto afterDtorBB = llvm::BasicBlock::Create(context, "after_dtor", func);
+    auto freeBB = llvm::BasicBlock::Create(context, "free", func);
+    auto doneBB = llvm::BasicBlock::Create(context, "done", func);
+
+    builder.SetInsertPoint(entry);
+    llvm::Value* block = &*func->arg_begin();
+    auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
+    auto isNull = builder.CreateICmpEQ(block, nullPtr, "is_null");
+    builder.CreateCondBr(isNull, doneBB, checkBB);
+
+    builder.SetInsertPoint(checkBB);
+    auto strongPtr = block; // strong @ offset 0
+    auto strong = builder.CreateLoad(i32Ty, strongPtr, "strong");
+    auto isSentinel = builder.CreateICmpEQ(strong, sentinel, "is_sentinel");
+    builder.CreateCondBr(isSentinel, doneBB, decBB);
+
+    builder.SetInsertPoint(decBB);
+    auto newStrong = builder.CreateSub(strong, llvm::ConstantInt::get(i32Ty, 1), "new_strong");
+    builder.CreateStore(newStrong, strongPtr);
+    auto isZero = builder.CreateICmpEQ(newStrong, llvm::ConstantInt::get(i32Ty, 0), "is_zero");
+    builder.CreateCondBr(isZero, strongZeroBB, doneBB);
+
+    // strong 归零：调 T::~() on payload (handle + 8)
+    builder.SetInsertPoint(strongZeroBB);
+    if (dtorFn) {
+        auto payloadPtr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(8)}, "payload_ptr");
+        builder.CreateCall(dtorFn, {payloadPtr});
+    }
+    builder.CreateBr(afterDtorBB);
+
+    builder.SetInsertPoint(afterDtorBB);
+    // weak-- + free（同 _box_release）
+    auto weakPtr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(4)}, "weak_ptr");
+    auto weak = builder.CreateLoad(i32Ty, weakPtr, "weak");
+    auto newWeak = builder.CreateSub(weak, llvm::ConstantInt::get(i32Ty, 1), "new_weak");
+    builder.CreateStore(newWeak, weakPtr);
+    auto weakIsZero = builder.CreateICmpEQ(newWeak, llvm::ConstantInt::get(i32Ty, 0), "weak_is_zero");
+    builder.CreateCondBr(weakIsZero, freeBB, doneBB);
+
+    builder.SetInsertPoint(freeBB);
+    auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
+    builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), block});
+    emitRcBlockCountAdd(builder, module, -1);
+    builder.CreateBr(doneBB);
+
+    builder.SetInsertPoint(doneBB);
+    builder.CreateRetVoid();
 }
 
 // ==================== Weak 辅助函数实现（Phase 1d.1） ====================

@@ -2,7 +2,7 @@
 // MPL-2.0
 
 // 析构函数编译实现
-// 
+//
 // 本文件包含析构函数相关的编译逻辑:
 // - 自动生成默认析构函数
 // - 调用结构体字段的析构函数
@@ -31,7 +31,9 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
         auto z = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
         auto handleField = _builder.CreateGEP(ty, slotPtr, {z, z}, "old.rc.handle_field");
         auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "old.rc.handle");
-        _builder.CreateCall(runtime::getRcReleaseFn(_module, _builder), {handle});
+        // Phase B-2: 若内层 T 需析构，用 typed release（strong==0 时调 T::~()）
+        auto releaseFn = getOrCreateRcTypedReleaseFn(type);
+        _builder.CreateCall(releaseFn, {handle});
         return;
     }
     if (type.isWeak()) {
@@ -80,8 +82,7 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
             // __yux_heap_free 对 null 安全, 内层 T 若需析构则按非 null 才调.
             auto elemSp = inner->heapElementType();
             if (elemSp && typeNeedsDestructor(*elemSp)) {
-                auto isNull = _builder.CreateICmpEQ(
-                    ptr, llvm::ConstantPointerNull::get(ptrTy), "old.heap_opt.isnull");
+                auto isNull = _builder.CreateICmpEQ(ptr, llvm::ConstantPointerNull::get(ptrTy), "old.heap_opt.isnull");
                 auto* pf = _builder.GetInsertBlock()->getParent();
                 auto* dropBB = llvm::BasicBlock::Create(_context, "old.heap_opt.drop", pf);
                 auto* contBB = llvm::BasicBlock::Create(_context, "old.heap_opt.cont", pf);
@@ -132,9 +133,10 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
         // 跳过条件：cap == null（零捕获）或 cap LSB == 1（栈嵌入 4c）
         auto i64Ty = _builder.getInt64Ty();
         auto capInt = _builder.CreatePtrToInt(cap, i64Ty, "old.fn.cap.asint");
-        auto isStack = _builder.CreateICmpNE(
-            _builder.CreateAnd(capInt, _builder.getInt64(1)), _builder.getInt64(0), "old.fn.cap.isstack");
-        auto isNull = _builder.CreateICmpEQ(cap, llvm::ConstantPointerNull::get(llvm::PointerType::get(_context, 0)), "old.fn.cap.isnull");
+        auto isStack = _builder.CreateICmpNE(_builder.CreateAnd(capInt, _builder.getInt64(1)), _builder.getInt64(0),
+                                             "old.fn.cap.isstack");
+        auto isNull = _builder.CreateICmpEQ(cap, llvm::ConstantPointerNull::get(llvm::PointerType::get(_context, 0)),
+                                            "old.fn.cap.isnull");
         auto skip = _builder.CreateOr(isStack, isNull, "old.fn.cap.skip");
         auto* pf = _builder.GetInsertBlock()->getParent();
         auto* relBB = llvm::BasicBlock::Create(_context, "old.fn.cap.rel", pf);
@@ -256,8 +258,7 @@ bool Compiler::tryHeapNullableLvalueSlot(ExprNode* expr, llvm::Value*& outSlot, 
         auto structLLVM = getLLVMType(baseType);
         auto z = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
         auto i = llvm::ConstantInt::get(_builder.getInt32Ty(), idx);
-        outSlot = _builder.CreateGEP(structLLVM, bit->second,
-                                     {z, i}, baseName + "." + member + ".slot");
+        outSlot = _builder.CreateGEP(structLLVM, bit->second, {z, i}, baseName + "." + member + ".slot");
         outTy = getLLVMType(fieldTy);
         return true;
     }
@@ -271,8 +272,8 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
     if (fieldTypes.empty()) return;
 
     auto structType = _structTypes.count(structName)
-        ? _structTypes[structName]
-        : llvm::cast_or_null<llvm::StructType>(getLLVMType(TypeInfo(structName)));
+                          ? _structTypes[structName]
+                          : llvm::cast_or_null<llvm::StructType>(getLLVMType(TypeInfo(structName)));
     if (!structType) return;
     auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
 
@@ -292,11 +293,12 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
         // 调用字段析构函数
         if (fieldType.isRc()) {
             // Rc 字段：load handle，调用 _box_release(handle)
+            // Phase B-2: 若内层 T 需析构，用 typed release
             auto rcStructType = getLLVMType(fieldType);
             auto handleField = _builder.CreateGEP(rcStructType, fieldPtr, {zero, zero});
             auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField);
 
-            auto rcReleaseFn = runtime::getRcReleaseFn(_module, _builder);
+            auto rcReleaseFn = getOrCreateRcTypedReleaseFn(fieldType);
             _builder.CreateCall(rcReleaseFn, {handle});
         } else if (fieldType.isWeak()) {
             // Weak 字段：load handle，调用 _weak_release(handle)
@@ -342,9 +344,7 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
             _builder.CreateCall(runtime::getDynReleaseFn(_module, _builder), {data, vtable});
         } else if (fieldType.isDynBorrow()) {
             // 借用 Dyn<D&>：不动 RC，等价 no-op
-        } else if (fieldType.isNullable()
-                   && fieldType.nullableInnerType()
-                   && fieldType.nullableInnerType()->isHeap()) {
+        } else if (fieldType.isNullable() && fieldType.nullableInnerType() && fieldType.nullableInnerType()->isHeap()) {
             // Phase 3d.3: Nullable<Heap<T>> 字段 — 走 releaseAtPtr 内联分支
             // (与局部 var 析构同款), 避免 fallthrough 误查 bare `Nullable_~()` dtor.
             releaseAtPtr(fieldPtr, fieldType);
@@ -422,8 +422,8 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
         auto ptrTy = llvm::PointerType::get(_context, 0);
         auto i64Ty = _builder.getInt64Ty();
         auto capInt = _builder.CreatePtrToInt(cap, i64Ty, "fn.cap.asint");
-        auto isStack = _builder.CreateICmpNE(
-            _builder.CreateAnd(capInt, _builder.getInt64(1)), _builder.getInt64(0), "fn.cap.isstack");
+        auto isStack = _builder.CreateICmpNE(_builder.CreateAnd(capInt, _builder.getInt64(1)), _builder.getInt64(0),
+                                             "fn.cap.isstack");
         auto isNull = _builder.CreateICmpEQ(cap, llvm::ConstantPointerNull::get(ptrTy), "fn.cap.isnull");
         auto skip = _builder.CreateOr(isStack, isNull, "fn.cap.skip");
         auto* fn = _builder.GetInsertBlock()->getParent();
@@ -474,7 +474,10 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
             if (!v->hasPayload()) continue;
             bool any = false;
             for (auto t : v->payloadTypes()) {
-                if (typeNeedsDestructor(t->getType())) { any = true; break; }
+                if (typeNeedsDestructor(t->getType())) {
+                    any = true;
+                    break;
+                }
             }
             if (any) dispatched.push_back(static_cast<int>(i));
         }
@@ -497,17 +500,21 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
             for (size_t i = 0; i < v->payloadTypes().size(); ++i) {
                 auto fieldType = v->payloadTypes()[i]->getType();
                 if (!typeNeedsDestructor(fieldType)) continue;
-                auto fieldPtr = _builder.CreateStructGEP(payloadStruct, payloadBufPtr,
-                    static_cast<unsigned>(i), "arg.enum.payload.elem");
+                auto fieldPtr = _builder.CreateStructGEP(payloadStruct, payloadBufPtr, static_cast<unsigned>(i),
+                                                         "arg.enum.payload.elem");
                 // 加载字段并 retain（按字段类型分派；handle 类直接 retain，含 RC 字段 struct 递归）
                 if (fieldType.isRc() || fieldType.isArrayGeneric() || fieldType.isWeak()) {
                     auto ll = getLLVMType(fieldType);
                     auto handleField = _builder.CreateStructGEP(ll, fieldPtr, 0, "arg.enum.handle.ptr");
-                    auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "arg.enum.handle");
+                    auto handle =
+                        _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "arg.enum.handle");
                     llvm::Function* retainFn = nullptr;
-                    if (fieldType.isRc()) retainFn = runtime::getRcRetainFn(_module, _builder);
-                    else if (fieldType.isArrayGeneric()) retainFn = runtime::getArrayRetainFn(_module, _builder);
-                    else retainFn = runtime::getWeakRetainFn(_module, _builder);
+                    if (fieldType.isRc())
+                        retainFn = runtime::getRcRetainFn(_module, _builder);
+                    else if (fieldType.isArrayGeneric())
+                        retainFn = runtime::getArrayRetainFn(_module, _builder);
+                    else
+                        retainFn = runtime::getWeakRetainFn(_module, _builder);
                     _builder.CreateCall(retainFn, {handle});
                 } else if (!isBuiltinType(fieldType.name) && structNeedsDestructor(fieldType.name)) {
                     auto ll = getLLVMType(fieldType);
@@ -543,9 +550,12 @@ void Compiler::retainStructFieldsAtCallSite(llvm::Value* argVal, const string& s
             auto fieldVal = _builder.CreateExtractValue(argVal, {static_cast<unsigned>(i)}, "field.val");
             auto handle = _builder.CreateExtractValue(fieldVal, {0}, "field.handle");
             llvm::Function* retainFn = nullptr;
-            if (ft.isRc()) retainFn = runtime::getRcRetainFn(_module, _builder);
-            else if (ft.isArrayGeneric()) retainFn = runtime::getArrayRetainFn(_module, _builder);
-            else retainFn = runtime::getWeakRetainFn(_module, _builder);
+            if (ft.isRc())
+                retainFn = runtime::getRcRetainFn(_module, _builder);
+            else if (ft.isArrayGeneric())
+                retainFn = runtime::getArrayRetainFn(_module, _builder);
+            else
+                retainFn = runtime::getWeakRetainFn(_module, _builder);
             _builder.CreateCall(retainFn, {handle});
         } else if (ft.isFn()) {
             // Phase 3a: fn 字段 fat-ptr，按 captures 字段 retain（null guard）
@@ -593,7 +603,9 @@ void Compiler::popAndReleaseTempFrame() {
         if (!t.val) continue;
         if (t.type.isRc()) {
             auto handle = _builder.CreateExtractValue(t.val, {0}, "temp.rc.handle");
-            _builder.CreateCall(runtime::getRcReleaseFn(_module, _builder), {handle});
+            // Phase B-2: 若内层 T 需析构，用 typed release
+            auto releaseFn = getOrCreateRcTypedReleaseFn(t.type);
+            _builder.CreateCall(releaseFn, {handle});
         } else if (t.type.isArrayGeneric()) {
             auto handle = _builder.CreateExtractValue(t.val, {0}, "temp.array.handle");
             _builder.CreateCall(runtime::getArrayReleaseFn(_module, _builder), {handle});
@@ -614,7 +626,7 @@ void Compiler::recordTemp(llvm::Value* val, const TypeInfo& type) {
     if (!val) return;
     if (_tempStack.empty()) return;
     if (type.isRc() || type.isArrayGeneric() || type.isWeak()) {
-        _tempStack.back().push_back({.val=val, .type=type, .spillSlot=nullptr});
+        _tempStack.back().push_back({.val = val, .type = type, .spillSlot = nullptr});
         return;
     }
     // Phase 8d.4: 含 RC 字段的 struct value（如 String）—— 落 entry 块 alloca，由 releaseAtPtr/dtor 释放
@@ -628,7 +640,7 @@ void Compiler::recordTemp(llvm::Value* val, const TypeInfo& type) {
     llvm::IRBuilder<> entryBuilder(&entryBB, entryBB.getFirstInsertionPt());
     auto slot = entryBuilder.CreateAlloca(getLLVMType(type), nullptr, "temp.struct.spill");
     _builder.CreateStore(val, slot);
-    _tempStack.back().push_back({.val=val, .type=type, .spillSlot=slot});
+    _tempStack.back().push_back({.val = val, .type = type, .spillSlot = slot});
 }
 
 // 消费顶帧中匹配的 Value*（用于 declare-assign / assign / ret / fresh-arg-callsite 路径）
@@ -780,6 +792,52 @@ bool Compiler::structNeedsDestructor(const string& structName) {
     return false;
 }
 
+// ==================== Phase B-2: Rc<T> 特化释放函数 ====================
+
+// 获取或创建 Rc<T> 的 typed release 函数。
+// 若 rcType 内层 T 无需析构，直接返回 generic _box_release。
+// 否则生成特化版 _box_release_T：strong==0 时先调 T::~() 再走 weak/free。
+llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
+    if (!rcType.isRc()) return runtime::getRcReleaseFn(_module, _builder);
+
+    auto inner = rcType.rcElementType();
+    if (!inner || !typeNeedsDestructor(*inner)) {
+        // T 平凡：直接用 generic _box_release
+        return runtime::getRcReleaseFn(_module, _builder);
+    }
+
+    // 构造 mangled name：_box_release_T_ + sanitized type name
+    string typeName = inner->name;
+    string mangledName = "_box_release_T_";
+    for (char c : typeName) {
+        if (isalnum(static_cast<unsigned char>(c)) || c == '_') {
+            mangledName += c;
+        } else {
+            mangledName += '_';
+        }
+    }
+
+    auto func = runtime::getRcReleaseTypedFn(_module, _builder, mangledName);
+    if (!func->empty()) return func;
+
+    // 获取 T 的析构函数
+    auto dtorFn = getDestructorFunction(inner->name);
+
+    // 保存当前插入点
+    auto* savedBB = _builder.GetInsertBlock();
+    auto savedIP = savedBB ? _builder.GetInsertPoint() : llvm::BasicBlock::iterator();
+
+    // 生成函数体
+    runtime::emitRcReleaseTypedFn(_context, _builder, _module, func, dtorFn);
+
+    // 恢复插入点
+    if (savedBB) {
+        _builder.SetInsertPoint(savedBB, savedIP);
+    }
+
+    return func;
+}
+
 // Phase B-1: 检查类型是否是 #NoCopy struct（含自动推断：有 fn ~() 即隐含 #NoCopy）
 bool Compiler::isNoCopyType(const TypeInfo& type) const {
     if (isBuiltinType(type.name)) return false;
@@ -890,7 +948,7 @@ void Compiler::generateEnumDestructor(p<EnumDeclNode> decl, p<FileNode> owner) {
     DEBUG_LOG_VAL("  Generating enum dtor for", enumName);
 
     auto fn = getEnumDestructorFunction(enumName);
-    if (!fn || !fn->empty()) return;     // 已有定义则不重复
+    if (!fn || !fn->empty()) return; // 已有定义则不重复
 
     auto enumLLVMType = getLLVMType(TypeInfo(enumName));
     if (!enumLLVMType) return;
@@ -914,7 +972,10 @@ void Compiler::generateEnumDestructor(p<EnumDeclNode> decl, p<FileNode> owner) {
         if (!v->hasPayload()) continue;
         bool any = false;
         for (auto t : v->payloadTypes()) {
-            if (typeNeedsDestructor(t->getType())) { any = true; break; }
+            if (typeNeedsDestructor(t->getType())) {
+                any = true;
+                break;
+            }
         }
         if (any) dispatchedIndices.push_back(static_cast<int>(i));
     }
@@ -941,8 +1002,8 @@ void Compiler::generateEnumDestructor(p<EnumDeclNode> decl, p<FileNode> owner) {
             size_t i = k - 1;
             auto fieldType = v->payloadTypes()[i]->getType();
             if (!typeNeedsDestructor(fieldType)) continue;
-            auto fieldPtr = _builder.CreateStructGEP(payloadStruct, payloadBufPtr,
-                static_cast<unsigned>(i), "payload.elem");
+            auto fieldPtr =
+                _builder.CreateStructGEP(payloadStruct, payloadBufPtr, static_cast<unsigned>(i), "payload.elem");
             releaseAtPtr(fieldPtr, fieldType);
         }
         _builder.CreateBr(exitBB);
