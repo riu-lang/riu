@@ -706,6 +706,12 @@ void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, s
         if (argsCount != 0) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(0));
         return;
     }
+    // Phase B-1: move:<T>(x T&) T — 所有权转移
+    if (fnName == "move") {
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
+        return;
+    }
     // 未知 Builtin intrinsic
     throw YuxError(line, col, ErrorCode::E6017, fnName);
 }
@@ -858,6 +864,15 @@ void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeIn
         string refPath;
         if (hasRefDeep(T, refPath)) {
             throw YuxError(line, col, ErrorCode::E6032, refPath);
+        }
+        return;
+    }
+    // Phase B-1: move:<T>(x T&) T — T 本身不能是引用
+    // 注：实参类型在 sema 阶段是表达式类型（如 i32），编译期 auto-ref 到 T&；
+    // 实参是否为 lvalue 的检查由 codegen 端 E6028 兜底（与 same_ref/ptr_of 同模式）
+    if (fnName == "move") {
+        if (typeArgs.size() >= 1 && typeArgs[0].isRef()) {
+            throw YuxError(line, col, ErrorCode::E4035);
         }
         return;
     }

@@ -1,0 +1,17 @@
+; require-sdk
+; Phase B-1: #NoCopy 按值传参隐式复制检查
+
+#NoCopy
+struct S {
+  x i32
+}
+
+fn consume(s S) {
+}
+
+fn test() {
+  let a S = S {
+    .x = 1
+  }
+  consume(a)              ; check: E4031  #NoCopy 不可按值传参
+}

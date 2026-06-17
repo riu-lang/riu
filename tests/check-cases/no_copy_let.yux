@@ -1,0 +1,14 @@
+; require-sdk
+; Phase B-1: #NoCopy let 绑定隐式复制检查
+
+#NoCopy
+struct S {
+  x i32
+}
+
+fn test() {
+  let a S = S {
+    .x = 1
+  }
+  let b S = a             ; check: E4031  #NoCopy 不可隐式复制
+}

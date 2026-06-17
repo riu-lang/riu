@@ -1,0 +1,7 @@
+; require-sdk
+; Phase B-1: move 类型校验 — 参数必须是 T&
+
+fn test() {
+  let a i32 = 1
+  let b = move:<i32>(a)       ; check: E4034  move 参数必须是 T&
+}

@@ -116,6 +116,8 @@ class Compiler {
 
     // ==================== 作用域管理 ====================
     vector<string> _scopeVars; // 当前作用域内的变量名列表 (用于析构函数调用)
+    // Phase B-1: move 语义 — 已被 move 的变量名集合 (不可再访问，析构时跳过)
+    set<string> _movedVars;
 
     // ==================== 当前编译状态 ====================
     llvm::Function* _currentFn = nullptr; // 当前正在编译的函数
@@ -233,6 +235,9 @@ private:
     void generateDefaultDestructor(const string& structName);                   // 生成默认析构函数
     bool typeNeedsDestructor(const TypeInfo& type);                             // 检查类型是否需要析构
     bool structNeedsDestructor(const string& structName);                       // 检查结构体是否需要析构
+    // Phase B-1: #NoCopy / move 辅助
+    [[nodiscard]] bool isNoCopyType(const TypeInfo& type) const;               // 查 struct decl 的 #NoCopy 注解
+    void inferNoCopyAnnotations();                                              // 遍历 struct 声明，自动推断 #NoCopy
     bool enumNeedsDestructor(const string& enumName);   // Phase 5: 任一 variant payload 需析构则枚举需析构
     bool enumDeclNeedsDestructor(p<EnumDeclNode> decl); // Phase 5: 同上，按声明节点
     llvm::Function* getEnumDestructorFunction(const string& enumName);    // Phase 5: 获取或创建 __enum_drop_<E>

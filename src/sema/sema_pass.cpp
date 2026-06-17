@@ -59,7 +59,7 @@ namespace {
 // Phase 3.2b 已由 SemaPass 接管的错误码白名单。SemaPass 在 visitExpr 中
 // 捕获 YuxError 时, 命中此清单的直接 rethrow, 让 SemaPass 成为该诊断的
 // 实际抛出点。新增迁移码追加到此处即可。
-constexpr std::array<std::string_view, 16> kMigratedCodes = {
+constexpr std::array<std::string_view, 18> kMigratedCodes = {
     // 算术 / 比较 / 分支结果（E3001-E3004 → E3001, E3005-E3008 → E3005）
     "E3001",
     "E3005",
@@ -84,6 +84,9 @@ constexpr std::array<std::string_view, 16> kMigratedCodes = {
     "E3130",
     // Bucket 2: LiteralObjNode::getType 抛 undefined symbol (原 E3032 → E3030)
     "E3030",
+    // Phase B-1: move intrinsic 类型形态校验（sema validateBuiltinIntrinsicTypeShape）
+    "E4034",
+    "E4035",
 };
 
 // 与 Compiler::lookupEnumDecl 等价的本地版本: 本文件 → SDK → wildcard imports.
@@ -1507,9 +1510,9 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                     methodParamTypes.push_back(baseType);
                     for (auto& a : n->getArgs()) {
                         try {
-                            methodParamTypes.push_back(a->getType());
+                            methodParamTypes.emplace_back(a->getType());
                         } catch (...) {
-                            methodParamTypes.push_back(TypeInfo());
+                            methodParamTypes.emplace_back();
                         }
                     }
                     auto* methodSymbol = _file->lookupFnSymbolWithParams(methodFullName, methodParamTypes);

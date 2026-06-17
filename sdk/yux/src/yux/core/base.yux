@@ -1623,6 +1623,12 @@ fn as_ref<T>(box Rc<T>) T&
 #Builtin
 fn copy_of<T>(x T&) T
 
+; move:<T>(x T&) T：所有权转移（Phase B-1）
+; 从 T& 引用转移所有权到返回值；源变量标记为不可达，析构跳过
+; 对 Rc/Array/Weak 等句柄类型，跳过 retain（直接转移 +1）
+#Builtin
+fn move<T>(x T&) T
+
 ; weak:<T>(box) Weak<T>：从 Rc 构造 Weak（spec §4.8.3.1 / §9）
 ; 接受 Rc<T> 或 Rc<T>?；null 输入返回空 Weak（永远 upgrade 失败）
 ; 复制 handle 指针；weak 计数 +1，不影响 strong

@@ -352,6 +352,13 @@ DEF_ERR(4029, "Arc<{}> is reserved for v1.x multi-threading; not yet implemented
 DEF_WARN(4030, "result of `<-` move-assign is discarded; the old value will be immediately released "
                "— use `a = b` if you don't need the old value (§4.13)")
 
+// ── E403x: #NoCopy / move 语义（Phase B-1）──
+DEF_ERR(4031, "Cannot implicitly copy `{}` (marked #NoCopy) in `{}`; use `move:<{}>(x)` to transfer ownership")
+DEF_ERR(4032, "Struct `{}` contains `#NoCopy` field `{}` and must itself be annotated `#NoCopy`")
+DEF_ERR(4033, "Cannot use `{}` after move; ownership has been transferred")
+DEF_ERR(4034, "`move` argument must be T&, got `{}` (spec §3g)")
+DEF_ERR(4035, "Type parameter of `move` must not itself be a reference (spec §3g)")
+
 // ── E5xxx 模块 / 包 ───────────────────────────────────────────────────
 DEF_ERR(5001, "yux.toml not found in {}")
 DEF_ERR(5002, "yux.toml is missing required field `name`")

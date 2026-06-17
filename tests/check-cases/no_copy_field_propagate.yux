@@ -1,0 +1,11 @@
+; require-sdk
+; Phase B-1: 含 #NoCopy 字段的 struct 必须标注 #NoCopy
+
+#NoCopy
+struct Inner {
+  x i32
+}
+
+struct Outer {             ; check: E4032  含 #NoCopy 字段必须标注
+  inner Inner
+}

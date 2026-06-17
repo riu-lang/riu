@@ -540,6 +540,43 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             recordTemp(result, weakTy);
             return result;
         }
+        if (fnName == "move") {
+            // Phase B-1: move:<T>(x T&) T — 所有权转移
+            // 从 T& 参数 load 出 T 值，源变量标记为 moved（不可达、不析构）
+            auto& T = typeArgs[0];
+            auto argNode = callNode->getArgs()[0];
+
+            // 回溯 AST 拿到源变量的 alloca 指针
+            llvm::Value* srcAlloca = nullptr;
+            string varName;
+            if (auto lit = dynamic_cast<ExprLiteralNode*>(argNode)) {
+                if (auto objLit = dynamic_cast<LiteralObjNode*>(lit->literal())) {
+                    varName = objLit->getValue().getText();
+                    auto it = _localVarPtrs.find(varName);
+                    if (it != _localVarPtrs.end()) srcAlloca = it->second;
+                }
+            }
+            if (!srcAlloca) {
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6028, fnName);
+            }
+
+            // Load T 值（不 retain，所有权转移）
+            auto llvmT = getLLVMType(T);
+            auto loaded = _builder.CreateLoad(llvmT, srcAlloca, "move.load");
+
+            // 标记 moved：destructor 跳过 + 后续访问报 E4033
+            _movedVars.insert(varName);
+            std::erase(_scopeVars, varName);
+
+            // 防御性：堆句柄类型写 null 到源 slot 防 double-free
+            if (T.isRc() || T.isArrayGeneric() || T.isWeak()) {
+                _builder.CreateStore(llvm::ConstantPointerNull::get(
+                    llvm::PointerType::get(_context, 0)), srcAlloca);
+            }
+            // TODO: 含 RC 字段的普通 struct move 后应清空 alloca，防字段级 double-release
+
+            return loaded;
+        }
         if (fnName == "heap_some" || fnName == "heap_null") {
             // DRAFT-heap-types §8.3a.4.2 (Phase 3d)：Heap<T>? 构造助手
             // heap_some<T>(v T) Heap<T>?  → {_has=true,  _value=__yux_heap_alloc + store v}
@@ -655,6 +692,17 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
         // Phase 8c: fresh 实参（call/array literal）已自带 +1，跳过 retain
         // Phase 8d.1: fresh 实参的 +1 移交给 callee，从临时帧消费掉，避免帧末多余 release
         bool isFresh = isFreshHandleExpr(callNode->getArgs()[i]);
+        // Phase B-1: #NoCopy 类型不可按值传参（从现有变量）
+        if (isNoCopyType(at)) {
+            if (auto lit = dynamic_cast<ExprLiteralNode*>(callNode->getArgs()[i])) {
+                if (dynamic_cast<LiteralObjNode*>(lit->literal())) {
+                    if (!isFresh) {
+                        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                            ErrorCode::E4031, at.name, "按值传参");
+                    }
+                }
+            }
+        }
         if (typeNeedsDestructor(at)) {
             if (!isFresh) {
                 retainHandleAtCallSite(args[i], at);
@@ -876,6 +924,19 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
         // callee-clean (DRAFT §7.3)：传参前 retain；callee 末尾析构 release 抵消
         // Phase 8c: fresh 实参（call/array literal）已自带 +1，跳过 retain
         // Phase 8d.1: fresh 实参的 +1 移交给 callee，从临时帧消费掉
+        // Phase B-1: #NoCopy 类型不可按值传参（从现有变量）
+        if (isNoCopyType(argTypes[i])) {
+            if (i < callNode->getArgs().size()) {
+                if (auto lit = dynamic_cast<ExprLiteralNode*>(callNode->getArgs()[i])) {
+                    if (dynamic_cast<LiteralObjNode*>(lit->literal())) {
+                        if (!isFreshHandleExpr(callNode->getArgs()[i])) {
+                            throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                                ErrorCode::E4031, argTypes[i].name, "按值传参");
+                        }
+                    }
+                }
+            }
+        }
         if (typeNeedsDestructor(argTypes[i])) {
             if (i < callNode->getArgs().size() && !isFreshHandleExpr(callNode->getArgs()[i])) {
                 retainHandleAtCallSite(args[i], argTypes[i]);

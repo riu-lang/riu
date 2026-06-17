@@ -124,6 +124,7 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     _currentStructName.clear();
     _localVarPtrs.clear();
     _scopeVars.clear();
+    _movedVars.clear(); // Phase B-1
     _tempStack.clear();
     _currentLambdaBodyScope = node->bodyScope(); // Phase 2c：启用 FV 通路
     // Phase 4a：启用捕获识别。清空旧 captures（防止重复 emit 累加；缓存命中走早返路径

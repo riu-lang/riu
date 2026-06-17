@@ -164,6 +164,11 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             node->setResolvedVar(sym);
         }
 
+        // Phase B-1: 检查变量是否已被 move
+        if (_movedVars.count(varName)) {
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E4033, varName);
+        }
+
         if (sym && _localVarPtrs.contains(varName)) {
             DEBUG_LOG_VAL("    Expr: VariableLoad", varName << " : " << sym->type.name);
             // Phase 4a: T& 借用 — _localVarPtrs[name] 是底层 T 的地址（参数/局部统一），自动解引用

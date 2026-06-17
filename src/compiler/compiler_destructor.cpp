@@ -185,6 +185,8 @@ void Compiler::callDestructorsForScope() {
     // 逆序遍历作用域变量列表
     for (auto it = _scopeVars.rbegin(); it != _scopeVars.rend(); ++it) {
         const auto& varName = *it;
+        // Phase B-1: 跳过已被 move 的变量（所有权已转移，不可析构）
+        if (_movedVars.count(varName)) continue;
         auto sym = _currentFnNode->lookupSymbol(varName);
         if (sym) {
             callDestructor(varName, sym->type);
@@ -775,6 +777,29 @@ bool Compiler::structNeedsDestructor(const string& structName) {
     for (const auto& ft : fieldTypes) {
         if (typeNeedsDestructor(ft)) return true;
     }
+    return false;
+}
+
+// Phase B-1: 检查类型是否是 #NoCopy struct（含自动推断：有 fn ~() 即隐含 #NoCopy）
+bool Compiler::isNoCopyType(const TypeInfo& type) const {
+    if (isBuiltinType(type.name)) return false;
+    if (type.isRc() || type.isWeak() || type.isArrayGeneric() || type.isHeap()) return false;
+    if (type.isRef() || type.isPtr()) return false;
+
+    // 查 local struct decl
+    auto* decl = _file ? _file->getStructDecl(type.name) : nullptr;
+    if (!decl && _yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
+        decl = _yux->sdkFile()->getStructDecl(type.name);
+    }
+    if (decl && decl->hasAnno("NoCopy")) return true;
+
+    // 自动推断：有显式 fn ~() 隐含 #NoCopy
+    auto* impl = _file ? _file->getStructImpl(type.name) : nullptr;
+    if (!impl && _yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
+        impl = _yux->sdkFile()->getStructImpl(type.name);
+    }
+    if (impl && impl->hasDestructor()) return true;
+
     return false;
 }
 

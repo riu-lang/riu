@@ -49,8 +49,16 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
         phi = llvm::PHINode::Create(getLLVMType(resultType), 2, "if.result", mergeBB);
     }
 
+    // Phase B-1: 条件 move 保守追踪 — 保存 then 前的 moved 状态，
+    // then 后收集，再恢复 for else 分支，最后取并集
+    auto savedMoved = _movedVars;
+
     DEBUG_LOG("      Compiling then block");
     compileStatementBlockWithResult(node->thenBlock(), mergeBB, phi, resultType);
+
+    // 收集 then 分支新增的 moved 变量
+    auto afterThenMoved = _movedVars;
+    _movedVars = savedMoved;
 
     func->insert(func->end(), elseBB);
     _builder.SetInsertPoint(elseBB);
@@ -60,6 +68,7 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
     DEBUG_LOG_VAL("      elifs count", elifs.size());
 
     if (!elifs.empty()) {
+        // TODO: Phase B-1 elif 链的条件 move 追踪 — 每个 elif 需独立快照+恢复+合并
         for (size_t i = 0; i < elifs.size(); ++i) {
             auto& elif = elifs[i];
             DEBUG_LOG_VAL("        Compiling elif", i);
@@ -89,6 +98,11 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
             phi->addIncoming(llvm::UndefValue::get(getLLVMType(resultType)), _builder.GetInsertBlock());
         }
         _builder.CreateBr(mergeBB);
+    }
+
+    // Phase B-1: 汇合 — 取 then 分支和 else 分支 moved 变量的并集
+    for (auto& v : afterThenMoved) {
+        _movedVars.insert(v);
     }
 
     func->insert(func->end(), mergeBB);

@@ -1,0 +1,57 @@
+; Phase B-1: move 语义功能测试
+
+; ---- #NoCopy struct ----
+
+#NoCopy
+struct Box {
+  val i32
+  fn ~() {
+    ; 显式析构，自动隐含 #NoCopy
+  }
+}
+
+; ---- make_box 辅助 ----
+
+fn make_box() Box {
+  ret Box {
+    .val = 7
+  }
+}
+
+; ---- move 基本所有权转移 (i32) ----
+
+#Test
+fn test_move_i32_ownership() {
+  let a i32 = 42
+  let b i32 = move:<i32>(a)
+  assert_eq(b, 42)
+}
+
+; ---- move #NoCopy struct ----
+
+#Test
+fn test_move_no_copy_struct() {
+  let a Box = Box {
+    .val = 10
+  }
+  let b Box = move:<Box>(a)
+  assert_eq(b.val, 10)
+}
+
+; ---- fresh 构造不触发 #NoCopy 检查 ----
+
+#Test
+fn test_no_copy_fresh_constructor() {
+  let a Box = Box {
+    .val = 1
+  }
+  assert_eq(a.val, 1)
+}
+
+; ---- #NoCopy 类型作为函数返回值 ----
+
+#Test
+fn test_no_copy_return() {
+  let b Box = make_box()
+  assert_eq(b.val, 7)
+}

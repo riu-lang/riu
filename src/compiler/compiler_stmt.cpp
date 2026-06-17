@@ -810,6 +810,19 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
 
             _builder.CreateStore(exprVal, alloca);
 
+            // Phase B-1: #NoCopy 类型不可从现有变量隐式复制
+            // 仅检查变量引用（LiteralObjNode），fresh 构造/函数调用等允许
+            if (isNoCopyType(varType) && !varType.isRef()) {
+                if (auto lit = dynamic_cast<ExprLiteralNode*>(expr)) {
+                    if (dynamic_cast<LiteralObjNode*>(lit->literal())) {
+                        if (!isFreshHandleExpr(expr)) {
+                            throw YuxError(node->getLineNumber(), node->getColumn(),
+                                ErrorCode::E4031, varType.name, "let 绑定");
+                        }
+                    }
+                }
+            }
+
             // 结构体类型需要加入作用域变量列表
             auto structDecl = _file->getStructDecl(varType.name);
             if (!structDecl && _yux) {

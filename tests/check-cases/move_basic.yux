@@ -1,0 +1,8 @@
+; require-sdk
+; Phase B-1: move 基本语义 — 所有权转移 + use-after-move 报错
+
+fn test() {
+  let a i32 = 42
+  let b i32 = move:<i32>(a)   ; OK: move 转移所有权
+  let c i32 = a               ; check: E4033  use after move
+}
