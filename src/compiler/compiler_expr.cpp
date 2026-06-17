@@ -264,7 +264,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
                         throw YuxError(line, col, ErrorCode::E3050);
                     }
                     auto block = buildArrayLiteralBlock(arrayNode, *elemType);
-                    storeArrayHandle(fieldPtr, block);
+                    _builder.CreateStore(block, fieldPtr);
                     continue;
                 }
             }

@@ -314,74 +314,38 @@ string Compiler::ensureStructInstance(p<StructDeclNode> baseDecl, const vector<s
     return mangledName;
 }
 
-// Phase 1b: Array<T> 的 RC Block 布局
-// { u32 strong, u32 weak, i64 len, i64 cap, ptr data }
-// 字段索引：0=strong, 1=weak, 2=len, 3=cap, 4=data
-// 与元素类型 T 无关（data 是不透明指针，元素大小由 sizeof(T) 在调用方算）
-llvm::StructType* Compiler::getArrayBlockType() {
-    static const char* kName = "ArrayBlock";
-    if (auto existing = llvm::StructType::getTypeByName(_context, kName)) {
-        return existing;
-    }
-    vector<llvm::Type*> fields;
-    fields.push_back(_builder.getInt32Ty());               // strong
-    fields.push_back(_builder.getInt32Ty());               // weak
-    fields.push_back(_builder.getInt64Ty());               // len
-    fields.push_back(_builder.getInt64Ty());               // cap
-    fields.push_back(llvm::PointerType::get(_context, 0)); // data
-    return llvm::StructType::create(_context, fields, kName);
+// B-3: Array<T> 新布局辅助 —— 去 Block，字段内联
+// Array 实例 layout：{ ptr _data @0, u64 _len @8, u64 _cap @16 }
+
+// 获取 Array struct 的 LLVM 类型 { ptr, i64, i64 }，用于 GEP
+static llvm::StructType* getArrayStructTypeForGEP(llvm::LLVMContext& ctx) {
+    std::array<llvm::Type*, 3> fields = {llvm::PointerType::get(ctx, 0),
+                                         llvm::Type::getInt64Ty(ctx),
+                                         llvm::Type::getInt64Ty(ctx)};
+    return llvm::StructType::get(ctx, llvm::ArrayRef(fields.data(), fields.size()));
 }
 
-// ==================== Array<T> 句柄辅助（Phase 1b） ====================
-// Array 实例 layout：{ ptr handle }（由 getLLVMType 返回 8 字节单字段 struct）
-// Block layout：{ u32 strong @0, u32 weak @4, i64 len @8, i64 cap @16, ptr data @24 }
-
-// 从 Array<T> 实例（栈上 alloca）加载句柄
-// Array<T> 实例 layout = { ptr handle }
-// 先 GEP 到 field 0 再 Load，避免 load ptr from { ptr }* 的 LLVM IR 类型不匹配。
-// 直接 load 在 AOT 全优化管线中可能导致 SROA/TBAA 误判为未初始化内存（BUG 4）。
-llvm::Value* Compiler::loadArrayHandle(llvm::Value* arrayStructPtr, const string& name) {
-    auto ptrTy = llvm::PointerType::get(_context, 0);
-    // 构造与 Array<T> 相同的匿名 struct { ptr }，LLVM 自动去重返回同一类型
-    std::array<llvm::Type*, 1> fields = {ptrTy};
-    auto arrayStructTy = llvm::StructType::get(_context, llvm::ArrayRef(fields.data(), fields.size()));
+// _data 字段指针（field 0，ptr*）
+llvm::Value* Compiler::arrayDataFieldPtr(llvm::Value* arrayStructPtr, const string& name) {
+    auto ty = getArrayStructTypeForGEP(_context);
     auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-    auto handleFieldPtr = _builder.CreateGEP(arrayStructTy, arrayStructPtr, {zero, zero}, name + ".field");
-    return _builder.CreateLoad(ptrTy, handleFieldPtr, name);
+    return _builder.CreateGEP(ty, arrayStructPtr, {zero, zero}, name + ".data_field");
 }
 
-// 把句柄写回 Array<T> 实例
-// Array<T> 实例 layout = { ptr handle }；先 GEP 到 field 0 再 Store，与 loadArrayHandle 对应。
-void Compiler::storeArrayHandle(llvm::Value* arrayStructPtr, llvm::Value* handle) {
-    auto ptrTy = llvm::PointerType::get(_context, 0);
-    std::array<llvm::Type*, 1> fields = {ptrTy};
-    auto arrayStructTy = llvm::StructType::get(_context, llvm::ArrayRef(fields.data(), fields.size()));
+// _len 字段指针（field 1，i64*）
+llvm::Value* Compiler::arrayLenFieldPtr(llvm::Value* arrayStructPtr, const string& name) {
+    auto ty = getArrayStructTypeForGEP(_context);
     auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-    auto handleFieldPtr = _builder.CreateGEP(arrayStructTy, arrayStructPtr, {zero, zero}, "array.handle.field");
-    _builder.CreateStore(handle, handleFieldPtr);
+    auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+    return _builder.CreateGEP(ty, arrayStructPtr, {zero, one}, name + ".len_field");
 }
 
-// Block.len 字段指针（offset 8）
-llvm::Value* Compiler::arrayBlockLenPtr(llvm::Value* handle) {
-    return _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "block.len_ptr");
-}
-
-// Block.cap 字段指针（offset 16）
-llvm::Value* Compiler::arrayBlockCapPtr(llvm::Value* handle) {
-    return _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(16)}, "block.cap_ptr");
-}
-
-// Block.data 字段指针（offset 24，存放数据缓冲首地址）
-llvm::Value* Compiler::arrayBlockDataFieldPtr(llvm::Value* handle) {
-    return _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(24)}, "block.data_field");
-}
-
-// 分配 Array<T> 的 Block
-// initCap > 0 时同时分配数据缓冲；调用方负责把元素写入 block.data
-llvm::Value* Compiler::allocArrayBlock(llvm::Type* elemLLVMType, llvm::Value* initCap, llvm::Value* initLen) {
-    auto elemSize = _module->getDataLayout().getTypeAllocSize(elemLLVMType);
-    auto allocFn = runtime::getArrayAllocFn(_module, _builder);
-    return _builder.CreateCall(allocFn, {_builder.getInt64(elemSize), initCap, initLen}, "array.block");
+// _cap 字段指针（field 2，i64*）
+llvm::Value* Compiler::arrayCapFieldPtr(llvm::Value* arrayStructPtr, const string& name) {
+    auto ty = getArrayStructTypeForGEP(_context);
+    auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+    auto two = llvm::ConstantInt::get(_builder.getInt32Ty(), 2);
+    return _builder.CreateGEP(ty, arrayStructPtr, {zero, two}, name + ".cap_field");
 }
 
 // ==================== 类型映射 ====================
@@ -489,9 +453,9 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         return llvm::PointerType::get(_context, 0);
     }
 
-    // Array<T> 类型 (动态数组，Phase 1b 新布局)
-    // 结构: { ptr handle }；handle 指向 Block = { u32 strong, u32 weak, i64 len, i64 cap, *T data }
-    // handle == null 表示空数组（无分配）；data 间接指针，realloc 只换 data 不动 block
+    // Array<T> 类型 (动态数组，B-3 新布局：去 Builtin/去 Block)
+    // 结构: { ptr _data, u64 _len, u64 _cap }，24 字节
+    // _data 为直接 HeapAlloc 的数据缓冲指针；_data == null 表示空数组（无分配）
     if (type.isArrayGeneric()) {
         auto elemType = type.arrayGenericElementType();
         if (elemType) {
@@ -502,7 +466,9 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             }
             DEBUG_LOG_VAL("    -> ArrayGeneric (struct)", "Array<" << elemType->name << ">");
             vector<llvm::Type*> arrayFields;
-            arrayFields.push_back(llvm::PointerType::get(_context, 0)); // handle: Block*
+            arrayFields.push_back(llvm::PointerType::get(_context, 0)); // _data: Ptr
+            arrayFields.push_back(_builder.getInt64Ty());               // _len: u64
+            arrayFields.push_back(_builder.getInt64Ty());               // _cap: u64
             return llvm::StructType::get(_context, arrayFields);
         }
         return llvm::PointerType::get(_context, 0);

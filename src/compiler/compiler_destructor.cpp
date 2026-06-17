@@ -45,11 +45,13 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
         return;
     }
     if (type.isArrayGeneric()) {
+        // B-3: Array 析构 — 直接 free _data buffer
         auto ty = getLLVMType(type);
         auto z = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-        auto handleField = _builder.CreateGEP(ty, slotPtr, {z, z}, "old.array.handle_field");
-        auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "old.array.handle");
-        _builder.CreateCall(runtime::getArrayReleaseFn(_module, _builder), {handle});
+        auto ptrTy = llvm::PointerType::get(_context, 0);
+        auto dataField = _builder.CreateGEP(ty, slotPtr, {z, z}, "old.array.data_field");
+        auto data = _builder.CreateLoad(ptrTy, dataField, "old.array.data");
+        _builder.CreateCall(runtime::getArrayFreeDataFn(_module, _builder), {data});
         return;
     }
 
@@ -309,13 +311,10 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
             auto weakReleaseFn = runtime::getWeakReleaseFn(_module, _builder);
             _builder.CreateCall(weakReleaseFn, {handle});
         } else if (fieldType.isArrayGeneric()) {
-            // Array 字段：load handle，调用 _array_release(handle)
-            auto arrayStructType = getLLVMType(fieldType);
-            auto handleField = _builder.CreateGEP(arrayStructType, fieldPtr, {zero, zero});
-            auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField);
-
-            auto arrayReleaseFn = runtime::getArrayReleaseFn(_module, _builder);
-            _builder.CreateCall(arrayReleaseFn, {handle});
+            // B-3: Array 字段析构 — 调用 _array_free_data
+            auto dataField = _builder.CreateGEP(getLLVMType(fieldType), fieldPtr, {zero, zero}, "fld.arr.data_field");
+            auto data = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataField, "fld.arr.data");
+            _builder.CreateCall(runtime::getArrayFreeDataFn(_module, _builder), {data});
         } else if (fieldType.isHeap()) {
             // Heap<T> 字段（DRAFT-heap-types §8.3a）：load 裸 T*，T 自身析构后 __yux_heap_free
             auto elemSp = fieldType.heapElementType();
@@ -402,10 +401,8 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
         return true;
     }
     if (argType.isArrayGeneric()) {
-        auto handle = extractHandle("arg.array.handle");
-        auto retainFn = runtime::getArrayRetainFn(_module, _builder);
-        _builder.CreateCall(retainFn, {handle});
-        return true;
+        // B-3: Array 无 RC，无需 retain（浅拷贝共享 _data，生命周期由 #NoCopy 禁隐式复制保证）
+        return false;
     }
     if (argType.isWeak()) {
         auto handle = extractHandle("arg.weak.handle");
@@ -512,7 +509,7 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
                     if (fieldType.isRc())
                         retainFn = runtime::getRcRetainFn(_module, _builder);
                     else if (fieldType.isArrayGeneric())
-                        retainFn = runtime::getArrayRetainFn(_module, _builder);
+                        continue;  // B-3: Array 无 RC，跳过 retain
                     else
                         retainFn = runtime::getWeakRetainFn(_module, _builder);
                     _builder.CreateCall(retainFn, {handle});
@@ -553,7 +550,7 @@ void Compiler::retainStructFieldsAtCallSite(llvm::Value* argVal, const string& s
             if (ft.isRc())
                 retainFn = runtime::getRcRetainFn(_module, _builder);
             else if (ft.isArrayGeneric())
-                retainFn = runtime::getArrayRetainFn(_module, _builder);
+                continue;  // B-3: Array 无 RC，跳过 retain
             else
                 retainFn = runtime::getWeakRetainFn(_module, _builder);
             _builder.CreateCall(retainFn, {handle});
@@ -607,8 +604,11 @@ void Compiler::popAndReleaseTempFrame() {
             auto releaseFn = getOrCreateRcTypedReleaseFn(t.type);
             _builder.CreateCall(releaseFn, {handle});
         } else if (t.type.isArrayGeneric()) {
-            auto handle = _builder.CreateExtractValue(t.val, {0}, "temp.array.handle");
-            _builder.CreateCall(runtime::getArrayReleaseFn(_module, _builder), {handle});
+            // B-3: Array 临时值析构 = free _data buffer
+            auto ptrTy = llvm::PointerType::get(_context, 0);
+            auto arrAlloca = _builder.CreateAlloca(getLLVMType(t.type), nullptr, "temp.arr");
+            _builder.CreateStore(t.val, arrAlloca);
+            releaseAtPtr(arrAlloca, t.type);
         } else if (t.type.isWeak()) {
             auto handle = _builder.CreateExtractValue(t.val, {0}, "temp.weak.handle");
             _builder.CreateCall(runtime::getWeakReleaseFn(_module, _builder), {handle});
@@ -683,8 +683,7 @@ void Compiler::emitRetainOnHandleValue(llvm::Value* val, const TypeInfo& type) {
         auto handle = _builder.CreateExtractValue(val, {0}, "merge.rc.handle");
         _builder.CreateCall(runtime::getRcRetainFn(_module, _builder), {handle});
     } else if (type.isArrayGeneric()) {
-        auto handle = _builder.CreateExtractValue(val, {0}, "merge.array.handle");
-        _builder.CreateCall(runtime::getArrayRetainFn(_module, _builder), {handle});
+        // B-3: Array 无 RC，跳过 retain
     } else if (type.isWeak()) {
         auto handle = _builder.CreateExtractValue(val, {0}, "merge.weak.handle");
         _builder.CreateCall(runtime::getWeakRetainFn(_module, _builder), {handle});
@@ -752,6 +751,9 @@ bool Compiler::structParamUsesPointer(const string& typeName) {
     // Ptr / 引用形参不是 struct，按值传递（原始 ptr）
     TypeInfo ti(typeName);
     if (ti.isPtr() || ti.isRef()) return false;
+
+    // B-3: Array<T> 是 #NoCopy 非平凡 struct，必须按指针传递（callee 可变修改应对 caller 可见）
+    if (ti.isArrayGeneric()) return true;
 
     // 普通 struct（当前文件 / SDK）→ by-value
     auto structDecl = _file->getStructDecl(typeName);
@@ -846,11 +848,14 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
     return func;
 }
 
-// Phase B-1: 检查类型是否是 #NoCopy struct（仅判断显式 #NoCopy 注解，不隐式推断 ~()）
+// Phase B-1: 检查类型是否是 #NoCopy struct（含显式 #NoCopy 注解 + 隐含析构）
 bool Compiler::isNoCopyType(const TypeInfo& type) const {
     if (isBuiltinType(type.name)) return false;
-    if (type.isRc() || type.isWeak() || type.isArrayGeneric() || type.isHeap()) return false;
+    if (type.isRc() || type.isWeak() || type.isHeap()) return false;
     if (type.isRef() || type.isPtr()) return false;
+
+    // B-3: Array<T> 去 Builtin 后为 #NoCopy（有 fn ~()，含 _data 所有权）
+    if (type.isArrayGeneric()) return true;
 
     // 查 local struct decl 的显式 #NoCopy 注解
     auto* decl = _file ? _file->getStructDecl(type.name) : nullptr;

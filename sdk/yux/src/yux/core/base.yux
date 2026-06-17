@@ -7,6 +7,12 @@ extern {
   fn WriteFile(hFile Ptr, lpBuffer Ptr, nNumberOfBytesToWrite u32, lpNumberOfBytesWritten Ptr, lpOverlapped Ptr) i32
   #NoReturn
   fn ExitProcess(uExitCode u32)
+
+  ; 堆管理 API（B-3: Array 去 Builtin 后 yux 层直接管理内存）
+  fn GetProcessHeap() Ptr
+  fn HeapAlloc(hHeap Ptr, dwFlags u32, dwBytes u64) Ptr
+  fn HeapReAlloc(hHeap Ptr, dwFlags u32, lpMem Ptr, dwBytes u64) Ptr
+  fn HeapFree(hHeap Ptr, dwFlags u32, lpMem Ptr) i32
 }
 
 ; 全局常量
@@ -1628,6 +1634,16 @@ fn copy_of<T>(x T&) T
 ; 对 Rc/Array/Weak 等句柄类型，跳过 retain（直接转移 +1）
 #Builtin
 fn move<T>(x T&) T
+
+; _ptr_as_ref:<T>(p Ptr) T&：裸指针 reinterpret 为 T& 引用（B-3）
+; 编译器 intrinsic：p 直接作为 T* 返回（LLVM 中 Ptr=T&）
+#Builtin
+fn _ptr_as_ref<T>(p Ptr) T&
+
+; _ptr_write:<T>(p Ptr, v T)：将 v 写入 p 指向的内存（B-3）
+; 编译器 intrinsic：CreateStore(v, p)
+#Builtin
+fn _ptr_write<T>(p Ptr, v T)
 
 ; weak:<T>(box) Weak<T>：从 Rc 构造 Weak（spec §4.8.3.1 / §9）
 ; 接受 Rc<T> 或 Rc<T>?；null 输入返回空 Weak（永远 upgrade 失败）

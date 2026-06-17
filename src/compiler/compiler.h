@@ -161,24 +161,17 @@ public:
 private:
     // ==================== 类型系统 ====================
     llvm::Type* getLLVMType(const TypeInfo& type); // 将 TypeInfo 转换为 LLVM 类型
-    llvm::StructType* getArrayBlockType(); // Phase 1b: { u32 strong, u32 weak, i64 len, i64 cap, ptr data } - Array<T>
-                                           // 的 RC Block 布局，与 T 无关
 
-    // ==================== Array<T> 句柄辅助（Phase 1b） ====================
-    // 这些辅助统一处理 Array<T> 实例 = { ptr handle } 经由 handle 间接访问 Block 的模式
-    llvm::Value* loadArrayHandle(llvm::Value* arrayStructPtr,
-                                 const string& name = "array.handle"); // 从 Array<T> 实例 alloca 加载句柄（指向 Block）
-    llvm::Value* arrayBlockLenPtr(llvm::Value* handle);                // Block.len 字段地址（i64*）
-    llvm::Value* arrayBlockCapPtr(llvm::Value* handle);                // Block.cap 字段地址（i64*）
-    llvm::Value* arrayBlockDataFieldPtr(llvm::Value* handle); // Block.data 字段地址（ptr*；存放当前数据缓冲指针）
-    llvm::Value* allocArrayBlock(llvm::Type* elemLLVMType, llvm::Value* initCap,
-                                 llvm::Value* initLen);                      // 调用 _array_alloc 返回 Block*
-    void storeArrayHandle(llvm::Value* arrayStructPtr, llvm::Value* handle); // 把句柄写到 Array<T> 实例（field 0）
-    // 把 ExprArrayNode 按 Array<elemType> 字面量编译，分配 Block 并写入元素，返回 Block* 句柄（strong=1）。
-    // 调用方收到句柄后通常用 storeArrayHandle 写入目标 Array<T> 实例的句柄槽。
-    // 处理元素 retain / consumeTemp，并在 elemType 自身是 Array<U> 且元素是嵌套字面量时
-    // 递归调用自身（修「嵌套 Array 字面量未按外层元素类型期望泛型形态」：内层若按
-    // ExprArrayNode::getType() 自报为 [N x U] 固定数组，会被外层 store 越界踩坏后续槽）。
+    // ==================== Array<T> 内联字段辅助（B-3） ====================
+    // Array 实例 layout：{ ptr _data @0, u64 _len @8, u64 _cap @16 }
+    llvm::Value* arrayDataFieldPtr(llvm::Value* arrayStructPtr,
+                                    const string& name = ""); // _data 字段指针（ptr*）
+    llvm::Value* arrayLenFieldPtr(llvm::Value* arrayStructPtr,
+                                   const string& name = "");  // _len 字段指针（i64*）
+    llvm::Value* arrayCapFieldPtr(llvm::Value* arrayStructPtr,
+                                   const string& name = "");  // _cap 字段指针（i64*）
+    // 把 ExprArrayNode 按 Array<elemType> 字面量编译，直接分配数据缓冲并填充元素，
+    // 返回 Array<T> struct 值。处理元素 retain / consumeTemp，嵌套 Array 递归。
     llvm::Value* buildArrayLiteralBlock(ExprArrayNode* arrayNode, const TypeInfo& elemType);
     llvm::FunctionType* getLLVMFunctionType(p<FnHeaderNode> header); // 获取函数的 LLVM 类型
     // DRAFT-错误.md [#10.A]：把 #Fallible(E) 函数的成功返回类型包成
@@ -325,10 +318,10 @@ private:
     llvm::Value* compileLiteralExpr(p<ExprLiteralNode> node); // 编译字面量表达式
     llvm::Value* emitStringLiteralValue(
         const vector<u32>& codePoints); // 由码点向量发射 .rodata 哨兵 String 值（StringLiteral / StringTemplate 共用）
-    // 由码点向量发射 .rodata 哨兵 Array<u32> Block, 返回 PrivateLinkage 全局指针 (handle).
-    // Block layout 与 Array<T> 一致: { i32 strong=0xFFFFFFFF, i32 weak=0, i64 len, i64 cap, ptr data }.
+    // 由码点向量发射 Array<u32> 结构体常量, 返回 { ptr data, i64 len, i64 cap } 的 ConstantStruct.
+    // _data 指针指向 PrivateLinkage .rodata u32 数组 (非空时).
     // 不需 _builder, 可在 builder 未设当前 BB 时调用 (供 reflect rodata 节点 emit 复用).
-    llvm::Constant* emitStringConstBlock(const vector<u32>& codePoints);
+    llvm::Constant* emitStringArrayConst(const vector<u32>& codePoints);
     // DRAFT-spec-reflect Phase 3a: lazy emit reflect rodata globals.
     // Returns the Type global; optionally returns the [N x ptr] fields ref array via outFieldsRefs.
     // 由 `__yux_reflect_type:<T>()` intrinsic 与 `<Struct>::fields` 调用站调用.

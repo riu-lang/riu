@@ -712,6 +712,18 @@ void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, s
         if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
         return;
     }
+    // B-3: _ptr_as_ref:<T>(p Ptr) T& — 裸指针→引用（1 typeArg + 1 arg）
+    if (fnName == "_ptr_as_ref") {
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
+        return;
+    }
+    // B-3: _ptr_write:<T>(p Ptr, v T) — 裸指针写入（1 typeArg + 2 args）
+    if (fnName == "_ptr_write") {
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
+        if (argsCount != 2) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(2));
+        return;
+    }
     // 未知 Builtin intrinsic
     throw YuxError(line, col, ErrorCode::E6017, fnName);
 }

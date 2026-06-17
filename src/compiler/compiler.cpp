@@ -256,16 +256,12 @@ llvm::Constant* Compiler::buildLLVMConstantFromValue(const ConstantValue& v, llv
     case ConstantValue::Kind::Null:
         return nullptr;
     case ConstantValue::Kind::String: {
-        // Phase 6 reflect 反哺: String ConstantValue → immortal Block + Array<u32> + String struct.
-        // String LLVM layout: { Array<u32> data } = { { ptr handle } }
-        // handle → Block { u32 strong=0xFFFFFFFF, u32 weak=0, i64 len, i64 cap, ptr data }
+        // Phase 6 reflect 反哺: String ConstantValue → Array<u32> struct + String struct.
+        // String LLVM layout: { Array<u32> data } = { { ptr _data, i64 _len, i64 _cap } }
         auto* st = llvm::dyn_cast_or_null<llvm::StructType>(expectedTy);
         if (!st || st->getNumElements() < 1) return nullptr;
-        auto* arrayTy = llvm::dyn_cast_or_null<llvm::StructType>(st->getElementType(0));
-        if (!arrayTy || arrayTy->getNumElements() < 1) return nullptr;
-        auto* block = emitStringConstBlock(v.stringCodePoints);
-        auto* arrayInit = llvm::ConstantStruct::get(arrayTy, {block});
-        return llvm::ConstantStruct::get(st, {arrayInit});
+        auto* arrayConst = emitStringArrayConst(v.stringCodePoints);
+        return llvm::ConstantStruct::get(st, {arrayConst});
     }
     }
     return nullptr;

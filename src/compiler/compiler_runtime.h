@@ -90,22 +90,13 @@ llvm::Function* getWeakReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builde
 // weak++；null/哨兵跳过
 llvm::Function* getWeakRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 
-// ==================== Array<T> 动态数组支持（Phase 1b）====================
-// Block 布局: { u32 strong, u32 weak, i64 len, i64 cap, ptr data }；data 是间接指针
-// handle == null 表示空数组；强引用归零时 free(data) + free(block)；哨兵 0xFFFFFFFF 跳过 RC
+// ==================== Array<T> 动态数组支持（B-3）====================
+// B-3: Array 去 Builtin/去 Block，layout = { ptr _data, u64 _len, u64 _cap }。
+// _data 是直接 HeapAlloc 的数据缓冲指针；析构只需 free _data。
 
-// _array_alloc(elemSize, initCap, initLen) -> Block*
-//   分配 block + (initCap > 0 ? data 缓冲)；strong=1, weak=1；len=initLen；data 由调用方填充
-llvm::Function* getArrayAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder);
-// _array_grow(handle, elemSize, newCap) -> void
-//   原地修改 block.cap、block.data；外部 handle 不动
-llvm::Function* getArrayGrowFn(llvm::Module* module, llvm::IRBuilder<>& builder);
-// _array_release(handle) -> void
-//   strong--；归零时 free(data) + free(block)；null/哨兵跳过
-llvm::Function* getArrayReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder);
-// _array_retain(handle) -> void
-//   strong++；null/哨兵跳过
-llvm::Function* getArrayRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+// _array_free_data(data Ptr) → void
+//   null 安全：data == null 跳过；否则 HeapFree(GetProcessHeap(), 0, data)
+llvm::Function* getArrayFreeDataFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 
 // ==================== Heap<T> 堆作用域句柄支持（DRAFT-heap-types §8.3a）====================
 // 单所有权、作用域绑定、无 RC 头，layout = 裸 T*

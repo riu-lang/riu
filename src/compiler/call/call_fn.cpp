@@ -477,9 +477,19 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
 
             // args[0] 是 T& (ptr) 或 T 值：若 LLVM 类型为 ptr 则 load 出 T 值
             llvm::Value* copied = args[0];
+            bool isArray = T.isArrayGeneric();
+            llvm::Type* copiedLLVMTy = getLLVMType(T);
             if (args[0]->getType()->isPointerTy()) {
-                copied = _builder.CreateLoad(getLLVMType(T), args[0], "copy_of.load");
+                copied = _builder.CreateLoad(copiedLLVMTy, args[0], "copy_of.load");
             }
+
+            // B-3: Array<T> — #NoCopy 类型，深拷贝尚未实现
+            // TODO: 实现 Array 逐元素深拷贝（分配新缓冲 + copy 元素）
+            if (isArray) {
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                    ErrorCode::E4031, T.name, "copy_of", T.name);
+            }
+
             // 把所有 RC 子结构 +1：Rc/Array/Weak 抽 handle 调对应 retain；
             // struct 走 retainStructFieldsAtCallSite 递归；含 RC enum 走其分支。
             // 内置 / Ptr / 平凡 struct：no-op。
@@ -576,6 +586,16 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             // TODO: 含 RC 字段的普通 struct move 后应清空 alloca，防字段级 double-release
 
             return loaded;
+        }
+        if (fnName == "_ptr_as_ref") {
+            // B-3: _ptr_as_ref:<T>(p Ptr) T& — 裸指针 reinterpret 为 T&
+            // LLVM opaque pointers 下 Ptr == T& (都是 ptr)，直接透传
+            return args[0];
+        }
+        if (fnName == "_ptr_write") {
+            // B-3: _ptr_write:<T>(p Ptr, v T) — 将 v 写入 p 指向的内存
+            _builder.CreateStore(args[1], args[0]);
+            return nullptr;  // void
         }
         if (fnName == "heap_some" || fnName == "heap_null") {
             // DRAFT-heap-types §8.3a.4.2 (Phase 3d)：Heap<T>? 构造助手
@@ -925,7 +945,8 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
         // Phase 8c: fresh 实参（call/array literal）已自带 +1，跳过 retain
         // Phase 8d.1: fresh 实参的 +1 移交给 callee，从临时帧消费掉
         // Phase B-1: #NoCopy 类型不可按值传参（从现有变量）
-        if (isNoCopyType(argTypes[i])) {
+        bool paramNeedsPtr = structParamUsesPointer(fnSymbol->params[i].name);
+        if (isNoCopyType(argTypes[i]) && !paramNeedsPtr) {
             if (i < callNode->getArgs().size()) {
                 if (auto lit = dynamic_cast<ExprLiteralNode*>(callNode->getArgs()[i])) {
                     if (dynamic_cast<LiteralObjNode*>(lit->literal())) {
@@ -937,7 +958,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
                 }
             }
         }
-        if (typeNeedsDestructor(argTypes[i])) {
+        if (typeNeedsDestructor(argTypes[i]) && !paramNeedsPtr) {
             if (i < callNode->getArgs().size() && !isFreshHandleExpr(callNode->getArgs()[i])) {
                 retainHandleAtCallSite(args[i], argTypes[i]);
             } else if (i < callNode->getArgs().size()) {
@@ -947,7 +968,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
             continue;
         }
 
-        if (structParamUsesPointer(fnSymbol->params[i].name)) {
+        if (paramNeedsPtr) {
             DEBUG_LOG_VAL("    Passing struct by pointer", "arg " << i << " : " << fnSymbol->params[i].name);
             auto structType = getLLVMType(argTypes[i]);
             auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");

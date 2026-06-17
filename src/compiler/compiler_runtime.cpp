@@ -307,64 +307,42 @@ llvm::Function* getWeakReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builde
 
 // ==================== Array<T> 动态数组支持（Phase 1b 新 ABI） ====================
 
-// _array_alloc(i64 elemSize, i64 initCap, i64 initLen) -> Block*
-// 分配 block + 可选 data 缓冲；strong=1, weak=1；调用方负责把元素 memcpy 进 data
-llvm::Function* getArrayAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
-    string fnName = "_array_alloc";
+// B-3: _array_free_data(ptr data) → void — null 安全 HeapFree
+llvm::Function* getArrayFreeDataFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
+    string fnName = "_array_free_data";
     auto func = module->getFunction(fnName);
     if (func) return func;
-
-    vector<llvm::Type*> paramTypes;
-    paramTypes.push_back(builder.getInt64Ty()); // elemSize
-    paramTypes.push_back(builder.getInt64Ty()); // initCap
-    paramTypes.push_back(builder.getInt64Ty()); // initLen
-
-    auto fnType = llvm::FunctionType::get(llvm::PointerType::get(builder.getContext(), 0), paramTypes, false);
-    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
-}
-
-// _array_grow(Block* handle, i64 elemSize, i64 newCap) -> void
-// handle 必须非空；原地修改 block.cap、block.data
-llvm::Function* getArrayGrowFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
-    string fnName = "_array_grow";
-    auto func = module->getFunction(fnName);
-    if (func) return func;
-
-    vector<llvm::Type*> paramTypes;
-    paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0)); // handle
-    paramTypes.push_back(builder.getInt64Ty());                            // elemSize
-    paramTypes.push_back(builder.getInt64Ty());                            // newCap
-
-    auto fnType = llvm::FunctionType::get(builder.getVoidTy(), paramTypes, false);
-    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
-}
-
-// _array_release(Block* handle) -> void
-// strong--；归零时 free(data) + free(block)；null/哨兵跳过
-llvm::Function* getArrayReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
-    string fnName = "_array_release";
-    auto func = module->getFunction(fnName);
-    if (func) return func;
-
     vector<llvm::Type*> paramTypes;
     paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0));
-
     auto fnType = llvm::FunctionType::get(builder.getVoidTy(), paramTypes, false);
-    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
-}
+    func = llvm::Function::Create(fnType, llvm::Function::LinkOnceODRLinkage, fnName, module);
 
-// _array_retain(Block* handle) -> void
-// strong++；null/哨兵跳过
-llvm::Function* getArrayRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
-    string fnName = "_array_retain";
-    auto func = module->getFunction(fnName);
-    if (func) return func;
+    // B-3: lazy emit body — 按需生成，使非 SDK 模块也能调用
+    auto& ctx = builder.getContext();
+    auto entry = llvm::BasicBlock::Create(ctx, "entry", func);
+    auto freeBB = llvm::BasicBlock::Create(ctx, "do_free", func);
+    auto doneBB = llvm::BasicBlock::Create(ctx, "done", func);
+    auto savedBB = builder.GetInsertBlock();
+    auto savedIP = savedBB ? builder.GetInsertPoint() : llvm::BasicBlock::iterator();
+    builder.SetInsertPoint(entry);
 
-    vector<llvm::Type*> paramTypes;
-    paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0));
+    auto ptrTy = llvm::PointerType::get(ctx, 0);
+    llvm::Value* data = &*func->arg_begin();
+    auto isNull = builder.CreateICmpEQ(data, llvm::ConstantPointerNull::get(ptrTy), "is_null");
+    builder.CreateCondBr(isNull, doneBB, freeBB);
 
-    auto fnType = llvm::FunctionType::get(builder.getVoidTy(), paramTypes, false);
-    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
+    builder.SetInsertPoint(freeBB);
+    auto heapFn = getProcessHeapFn(module, builder);
+    auto heap = builder.CreateCall(heapFn, {}, "heap");
+    auto heapFreeFn = getHeapFreeFn(module, builder);
+    builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), data});
+    builder.CreateBr(doneBB);
+
+    builder.SetInsertPoint(doneBB);
+    builder.CreateRetVoid();
+
+    if (savedBB) builder.SetInsertPoint(savedBB, savedIP);
+    return func;
 }
 
 // ==================== Heap<T> 堆作用域句柄支持（DRAFT-heap-types §8.3a） ====================
@@ -926,207 +904,11 @@ void emitWeakHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llv
 // Block 总头部 = 32 字节；data 是间接指针指向独立 heap 缓冲
 
 void emitArrayHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module) {
-    DEBUG_LOG("Emitting Array helper functions");
-
-    auto getProcessHeapFn = runtime::getProcessHeapFn(module, builder);
-    auto heapAllocFn = runtime::getHeapAllocFn(module, builder);
-    auto heapReAllocFn = runtime::getHeapReAllocFn(module, builder);
-    auto heapFreeFn = runtime::getHeapFreeFn(module, builder);
-
-    auto ptrTy = llvm::PointerType::get(context, 0);
-    auto i32Ty = builder.getInt32Ty();
-    auto i64Ty = builder.getInt64Ty();
-    auto i8Ty = builder.getInt8Ty();
-    auto sentinel = llvm::ConstantInt::get(i32Ty, 0xFFFFFFFFu);
-    auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
-
-    auto i64C = [&](int64_t v) { return builder.getInt64(v); };
-
-    // _array_alloc(elemSize, initCap, initLen) -> Block*
-    // 分配 32 字节 Block；如 initCap > 0 则额外分配 initCap*elemSize 数据缓冲，否则 data=null
-    {
-        DEBUG_LOG("  Emitting _array_alloc");
-        auto allocFn = getArrayAllocFn(module, builder);
-        if (allocFn->empty()) {
-            auto entry = llvm::BasicBlock::Create(context, "entry", allocFn);
-            auto allocDataBB = llvm::BasicBlock::Create(context, "alloc_data", allocFn);
-            auto doneBB = llvm::BasicBlock::Create(context, "done", allocFn);
-            builder.SetInsertPoint(entry);
-
-            auto argIt = allocFn->args().begin();
-            llvm::Value* elemSize = argIt;
-            elemSize->setName("elem_size");
-            ++argIt;
-            llvm::Value* initCap = argIt;
-            initCap->setName("init_cap");
-            ++argIt;
-            llvm::Value* initLen = argIt;
-            initLen->setName("init_len");
-
-            auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
-            auto block = builder.CreateCall(heapAllocFn, {heap, i64C(0), i64C(32)}, "block");
-
-            emitRcBlockCountAdd(builder, module, +1);
-
-            builder.CreateStore(llvm::ConstantInt::get(i32Ty, 1), block); // strong @0
-            auto weakPtr = builder.CreateGEP(i8Ty, block, {i64C(4)}, "weak_ptr");
-            builder.CreateStore(llvm::ConstantInt::get(i32Ty, 1), weakPtr); // weak @4
-            auto lenPtr = builder.CreateGEP(i8Ty, block, {i64C(8)}, "len_ptr");
-            builder.CreateStore(initLen, lenPtr); // len @8
-            auto capPtr = builder.CreateGEP(i8Ty, block, {i64C(16)}, "cap_ptr");
-            builder.CreateStore(initCap, capPtr); // cap @16
-            auto dataFieldPtr = builder.CreateGEP(i8Ty, block, {i64C(24)}, "data_field_ptr");
-            builder.CreateStore(nullPtr, dataFieldPtr); // data @24 = null（默认）
-
-            auto needData = builder.CreateICmpSGT(initCap, i64C(0), "need_data");
-            builder.CreateCondBr(needData, allocDataBB, doneBB);
-
-            builder.SetInsertPoint(allocDataBB);
-            auto byteSize = builder.CreateMul(initCap, elemSize, "byte_size");
-            auto dataMem = builder.CreateCall(heapAllocFn, {heap, i64C(0), byteSize}, "data_mem");
-            builder.CreateStore(dataMem, dataFieldPtr);
-            builder.CreateBr(doneBB);
-
-            builder.SetInsertPoint(doneBB);
-            builder.CreateRet(block);
-        }
-    }
-
-    // _array_grow(handle, elemSize, newCap) -> void
-    // handle 必须非空；realloc data 缓冲并更新 block.cap、block.data
-    {
-        DEBUG_LOG("  Emitting _array_grow");
-        auto growFn = getArrayGrowFn(module, builder);
-        if (growFn->empty()) {
-            auto entry = llvm::BasicBlock::Create(context, "entry", growFn);
-            auto allocBB = llvm::BasicBlock::Create(context, "alloc", growFn);
-            auto reallocBB = llvm::BasicBlock::Create(context, "realloc", growFn);
-            auto storeBB = llvm::BasicBlock::Create(context, "store", growFn);
-            builder.SetInsertPoint(entry);
-
-            auto argIt = growFn->args().begin();
-            llvm::Value* handle = argIt;
-            handle->setName("handle");
-            ++argIt;
-            llvm::Value* elemSize = argIt;
-            elemSize->setName("elem_size");
-            ++argIt;
-            llvm::Value* newCap = argIt;
-            newCap->setName("new_cap");
-
-            auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
-
-            auto capPtr = builder.CreateGEP(i8Ty, handle, {i64C(16)}, "cap_ptr");
-            auto dataFieldPtr = builder.CreateGEP(i8Ty, handle, {i64C(24)}, "data_field_ptr");
-            auto oldData = builder.CreateLoad(ptrTy, dataFieldPtr, "old_data");
-            auto newByteSize = builder.CreateMul(newCap, elemSize, "new_byte_size");
-
-            auto isNull = builder.CreateICmpEQ(oldData, nullPtr, "data_is_null");
-            builder.CreateCondBr(isNull, allocBB, reallocBB);
-
-            builder.SetInsertPoint(allocBB);
-            auto allocedData = builder.CreateCall(heapAllocFn, {heap, i64C(0), newByteSize}, "alloced_data");
-            builder.CreateBr(storeBB);
-
-            builder.SetInsertPoint(reallocBB);
-            auto realloced = builder.CreateCall(heapReAllocFn, {heap, i64C(0), oldData, newByteSize}, "realloced");
-            builder.CreateBr(storeBB);
-
-            builder.SetInsertPoint(storeBB);
-            auto phi = builder.CreatePHI(ptrTy, 2, "new_data");
-            phi->addIncoming(allocedData, allocBB);
-            phi->addIncoming(realloced, reallocBB);
-            builder.CreateStore(phi, dataFieldPtr);
-            builder.CreateStore(newCap, capPtr);
-            builder.CreateRetVoid();
-        }
-    }
-
-    // _array_retain(handle) -> void
-    // null/哨兵跳过；否则 strong++
-    {
-        DEBUG_LOG("  Emitting _array_retain");
-        auto retainFn = getArrayRetainFn(module, builder);
-        if (retainFn->empty()) {
-            auto entry = llvm::BasicBlock::Create(context, "entry", retainFn);
-            auto checkBB = llvm::BasicBlock::Create(context, "check", retainFn);
-            auto incBB = llvm::BasicBlock::Create(context, "inc", retainFn);
-            auto doneBB = llvm::BasicBlock::Create(context, "done", retainFn);
-            builder.SetInsertPoint(entry);
-
-            llvm::Value* handle = &*retainFn->arg_begin();
-            auto isNull = builder.CreateICmpEQ(handle, nullPtr, "is_null");
-            builder.CreateCondBr(isNull, doneBB, checkBB);
-
-            builder.SetInsertPoint(checkBB);
-            auto strong = builder.CreateLoad(i32Ty, handle, "strong");
-            auto isSentinel = builder.CreateICmpEQ(strong, sentinel, "is_sentinel");
-            builder.CreateCondBr(isSentinel, doneBB, incBB);
-
-            builder.SetInsertPoint(incBB);
-            auto newStrong = builder.CreateAdd(strong, llvm::ConstantInt::get(i32Ty, 1), "new_strong");
-            builder.CreateStore(newStrong, handle);
-            builder.CreateBr(doneBB);
-
-            builder.SetInsertPoint(doneBB);
-            builder.CreateRetVoid();
-        }
-    }
-
-    // _array_release(handle) -> void
-    // null/哨兵跳过；strong--；归零时 free(data) + free(block)
-    {
-        DEBUG_LOG("  Emitting _array_release");
-        auto releaseFn = getArrayReleaseFn(module, builder);
-        if (releaseFn->empty()) {
-            auto entry = llvm::BasicBlock::Create(context, "entry", releaseFn);
-            auto checkBB = llvm::BasicBlock::Create(context, "check", releaseFn);
-            auto decBB = llvm::BasicBlock::Create(context, "dec", releaseFn);
-            auto freeBB = llvm::BasicBlock::Create(context, "free", releaseFn);
-            auto freeDataBB = llvm::BasicBlock::Create(context, "free_data", releaseFn);
-            auto freeBlockBB = llvm::BasicBlock::Create(context, "free_block", releaseFn);
-            auto doneBB = llvm::BasicBlock::Create(context, "done", releaseFn);
-            builder.SetInsertPoint(entry);
-
-            llvm::Value* handle = &*releaseFn->arg_begin();
-            auto isNull = builder.CreateICmpEQ(handle, nullPtr, "is_null");
-            builder.CreateCondBr(isNull, doneBB, checkBB);
-
-            builder.SetInsertPoint(checkBB);
-            auto strong = builder.CreateLoad(i32Ty, handle, "strong");
-            auto isSentinel = builder.CreateICmpEQ(strong, sentinel, "is_sentinel");
-            builder.CreateCondBr(isSentinel, doneBB, decBB);
-
-            builder.SetInsertPoint(decBB);
-            auto newStrong = builder.CreateSub(strong, llvm::ConstantInt::get(i32Ty, 1), "new_strong");
-            builder.CreateStore(newStrong, handle);
-            auto isZero = builder.CreateICmpEQ(newStrong, llvm::ConstantInt::get(i32Ty, 0), "is_zero");
-            builder.CreateCondBr(isZero, freeBB, doneBB);
-
-            builder.SetInsertPoint(freeBB);
-            // free(data) if data != null
-            auto dataFieldPtr = builder.CreateGEP(i8Ty, handle, {i64C(24)}, "data_field_ptr");
-            auto data = builder.CreateLoad(ptrTy, dataFieldPtr, "data");
-            auto dataIsNull = builder.CreateICmpEQ(data, nullPtr, "data_is_null");
-            builder.CreateCondBr(dataIsNull, freeBlockBB, freeDataBB);
-
-            builder.SetInsertPoint(freeDataBB);
-            auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
-            builder.CreateCall(heapFreeFn, {heap, i64C(0), data});
-            builder.CreateBr(freeBlockBB);
-
-            builder.SetInsertPoint(freeBlockBB);
-            auto heap2 = builder.CreateCall(getProcessHeapFn, {}, "heap");
-            builder.CreateCall(heapFreeFn, {heap2, i64C(0), handle});
-            emitRcBlockCountAdd(builder, module, -1);
-            builder.CreateBr(doneBB);
-
-            builder.SetInsertPoint(doneBB);
-            builder.CreateRetVoid();
-        }
-    }
-
-    (void)ptrTy;
+    DEBUG_LOG("Emitting Array helper: _array_free_data");
+    // B-3: _array_free_data body 由 getArrayFreeDataFn 按需 lazy emit（LinkOnceODR），
+    // 此处仅确保 SDK 模块内也有定义（用于 JIT 模式下首个加载模块可直接 resolve）
+    getArrayFreeDataFn(module, builder);
+    (void)context;
 }
 
 // ==================== 程序启动 ====================

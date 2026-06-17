@@ -73,7 +73,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         // 注意：成功路径若返回堆句柄，仍需 move-return retain；本段保留同样逻辑
         bool didMoveRetainHandle = false;
         if (isSuccess && hasDeclaredRetType) {
-            if (declRetType.isRc() || declRetType.isArrayGeneric() || declRetType.isWeak()) {
+            if (declRetType.isRc() || declRetType.isWeak()) {
                 if (!isFreshHandleExpr(node->expr())) {
                     retainHandleAtCallSite(val, declRetType);
                 } else {
@@ -280,7 +280,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
     // Phase 8c: fresh retVal（call/array literal）已自带 +1，跳过 retain
     bool didMoveRetainHandle = false;
     if (retVal && hasDeclaredRetType && !nullableWrap) {
-        if (declRetType.isRc() || declRetType.isArrayGeneric() || declRetType.isWeak()) {
+        if (declRetType.isRc() || declRetType.isWeak()) {
             if (!isFreshHandleExpr(node->expr())) {
                 retainHandleAtCallSite(retVal, declRetType);
             } else {
@@ -656,7 +656,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             // 处理数组字面量：走统一 helper（含嵌套 Array<Array<U>> 字面量递归修复）
             if (auto arrayNode = dynamic_cast<ExprArrayNode*>(expr)) {
                 auto block = buildArrayLiteralBlock(arrayNode, *elemType);
-                storeArrayHandle(alloca, block);
+                _builder.CreateStore(block, alloca);
             } else {
                 // 从其他 Array<T> 表达式初始化：句柄复制 + retain
                 // 与 Rc 的 var q = p 路径同形（Phase 1a），否则作用域结束 LIFO 双重 release
@@ -1042,7 +1042,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                     auto block = buildArrayLiteralBlock(arrayNode, elemType ? *elemType : TypeInfo("i8"));
                     // Phase 3d: 释放旧 handle 后再写入新 handle
                     releaseAtPtr(it->second, sym->type);
-                    storeArrayHandle(it->second, block);
+                    _builder.CreateStore(block, it->second);
                     return;
                 }
             }
@@ -1487,8 +1487,8 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                         auto block = buildArrayLiteralBlock(arrayNode, elemType ? *elemType : TypeInfo("i8"));
                         // Phase 3d: 释放旧 handle 后再写入新 handle
                         releaseAtPtr(fieldPtr, fieldType);
-                        // fieldPtr 指向 Array<T> 实例（{ ptr handle }）；handle 在 offset 0
-                        storeArrayHandle(fieldPtr, block);
+                        // fieldPtr 指向 Array<T> 实例（{ ptr _data, i64 _len, i64 _cap }）；handle 在 offset 0
+                        _builder.CreateStore(block, fieldPtr);
                         return;
                     }
                 }
@@ -1720,7 +1720,7 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3061, "assignment");
     }
 
-    // 处理动态数组 Array<T>（Phase 1b：经由 handle 间接访问 Block.data）
+    // 处理动态数组 Array<T>（B-3：字段内联，直接访问 _data）
     if (arrayType.isArrayGeneric()) {
         auto elemType = arrayType.arrayGenericElementType();
         if (!elemType) {
@@ -1728,9 +1728,9 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
         }
 
         auto elemLLVMType = getLLVMType(*elemType);
-        auto handle = loadArrayHandle(currentPtr);
-        auto dataPtr =
-            _builder.CreateLoad(llvm::PointerType::get(_context, 0), arrayBlockDataFieldPtr(handle), "array.data.ptr");
+        // B-3: _data 字段内联，直接 load，不再经过 Block 间接
+        auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0),
+                                            arrayDataFieldPtr(currentPtr, "arr"), "array.data.ptr");
 
         auto indexVal = compileExpr(indices[0]);
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {indexVal}, "array.elem.ptr");

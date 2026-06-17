@@ -126,6 +126,7 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
     auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
     auto i64Ty = _builder.getInt64Ty();
     auto ptrTy = llvm::PointerType::get(_context, 0);
+    auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
 
     llvm::Value* arrayPtr = nullptr;
     if (auto baseLit = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
@@ -191,19 +192,23 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         return tmp;
     };
 
+    // B-3: _len 字段 load 辅助
+    auto loadLen = [&](llvm::Value* ptr) -> llvm::Value* {
+        return _builder.CreateLoad(i64Ty, arrayLenFieldPtr(ptr, "arr"), "array.len");
+    };
+    // B-3: _data 字段 load 辅助
+    auto loadData = [&](llvm::Value* ptr) -> llvm::Value* {
+        return _builder.CreateLoad(ptrTy, arrayDataFieldPtr(ptr, "arr"), "array.data");
+    };
+
     if (member == "len") {
         DEBUG_LOG("    Expr: Array.len()");
-        auto ptr = getReadPtr();
-        auto handle = loadArrayHandle(ptr);
-        auto lenField = arrayBlockLenPtr(handle);
-        return _builder.CreateLoad(i64Ty, lenField, "array.len");
+        return loadLen(getReadPtr());
     }
     if (member == "cap") {
         DEBUG_LOG("    Expr: Array.cap()");
         auto ptr = getReadPtr();
-        auto handle = loadArrayHandle(ptr);
-        auto capField = arrayBlockCapPtr(handle);
-        return _builder.CreateLoad(i64Ty, capField, "array.cap");
+        return _builder.CreateLoad(i64Ty, arrayCapFieldPtr(ptr, "arr"), "array.cap");
     }
 
     // E3055 已由 sema::validateArrayMethodCall 在函数顶部抛出 (顶部 helper 保证 elemType 非空)
@@ -211,22 +216,15 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
 
     if (member == "is_empty") {
         DEBUG_LOG("    Expr: Array.is_empty()");
-        auto ptr = getReadPtr();
-        auto handle = loadArrayHandle(ptr);
-        auto lenField = arrayBlockLenPtr(handle);
-        auto lenVal = _builder.CreateLoad(i64Ty, lenField, "array.len");
+        auto lenVal = loadLen(getReadPtr());
         return _builder.CreateICmpEQ(lenVal, _builder.getInt64(0), "array.is_empty");
     }
 
     if (member == "get") {
         DEBUG_LOG("    Expr: Array.get() → T&");
-        // E6027 已由 sema::validateArrayMethodCall 保证 args.size() == 1
         auto ptr = getReadPtr();
-        auto handle = loadArrayHandle(ptr);
-        auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(handle), "a.data");
+        auto dataPtr = loadData(ptr);
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {args[0]}, "get.elem.ptr");
-        // 返回 T&：不 load，直接返回元素地址指针
-        // 设置正确的 AST 类型（Ref<elemType>），确保后续重载消歧拿到具体类型
         if (elemType) {
             callNode->setResolvedType(TypeInfo("Ref", {elemType}));
         }
@@ -236,8 +234,7 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
     if (member == "first") {
         DEBUG_LOG("    Expr: Array.first()");
         auto ptr = getReadPtr();
-        auto handle = loadArrayHandle(ptr);
-        auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(handle), "a.data");
+        auto dataPtr = loadData(ptr);
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {_builder.getInt64(0)}, "first.elem.ptr");
         return _builder.CreateLoad(elemLLVMType, elemPtr, "first.elem");
     }
@@ -245,23 +242,20 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
     if (member == "last") {
         DEBUG_LOG("    Expr: Array.last()");
         auto ptr = getReadPtr();
-        auto handle = loadArrayHandle(ptr);
-        auto lenVal = _builder.CreateLoad(i64Ty, arrayBlockLenPtr(handle), "array.len");
+        auto lenVal = loadLen(ptr);
         auto lastIdx = _builder.CreateSub(lenVal, _builder.getInt64(1), "last.idx");
-        auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(handle), "a.data");
+        auto dataPtr = loadData(ptr);
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {lastIdx}, "last.elem.ptr");
         return _builder.CreateLoad(elemLLVMType, elemPtr, "last.elem");
     }
 
     if (member == "pop") {
         DEBUG_LOG("    Expr: Array.pop()");
-        // E6042 已由 sema::validateArrayMethodCall 保证 arrayPtr != nullptr (lvalue)
-        auto handle = loadArrayHandle(arrayPtr);
-        auto lenFieldPtr = arrayBlockLenPtr(handle);
+        auto lenFieldPtr = arrayLenFieldPtr(arrayPtr, "arr");
         auto lenVal = _builder.CreateLoad(i64Ty, lenFieldPtr, "a.len");
         auto lastIdx = _builder.CreateSub(lenVal, _builder.getInt64(1), "pop.idx");
 
-        auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(handle), "a.data");
+        auto dataPtr = loadData(arrayPtr);
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {lastIdx}, "pop.elem.ptr");
         auto elemVal = _builder.CreateLoad(elemLLVMType, elemPtr, "pop.elem");
 
@@ -271,9 +265,9 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
 
     if (member == "push" || member == "set_len" || member == "clear") {
         // E6042 已由 sema::validateArrayMethodCall 保证 arrayPtr != nullptr (lvalue)
-        auto handle = loadArrayHandle(arrayPtr);
-        auto lenFieldPtr = arrayBlockLenPtr(handle);
-        auto capFieldPtr = arrayBlockCapPtr(handle);
+        auto lenFieldPtr = arrayLenFieldPtr(arrayPtr, "arr");
+        auto capFieldPtr = arrayCapFieldPtr(arrayPtr, "arr");
+        auto dataFieldPtr = arrayDataFieldPtr(arrayPtr, "arr");
 
         auto voidResult = [&]() -> llvm::Value* { return llvm::ConstantInt::get(_builder.getInt32Ty(), 0); };
 
@@ -284,12 +278,10 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         }
         if (member == "set_len") {
             DEBUG_LOG("    Expr: Array.set_len()");
-            // E6027 已由 sema::validateArrayMethodCall 保证 args.size() == 1 (set_len)
             _builder.CreateStore(args[0], lenFieldPtr);
             return voidResult();
         }
         DEBUG_LOG("    Expr: Array.push()");
-        // E6027 已由 sema::validateArrayMethodCall 保证 args.size() == 1 (push)
         auto elemSize = _module->getDataLayout().getTypeAllocSize(elemLLVMType);
         auto elemVal = args[0];
         auto lenVal = _builder.CreateLoad(i64Ty, lenFieldPtr, "a.len");
@@ -300,18 +292,45 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         auto storeBB = llvm::BasicBlock::Create(_context, "push.store", _currentFn);
         _builder.CreateCondBr(needGrow, growBB, storeBB);
 
-        // 扩容路径：通过 _array_grow 在 Block 内原地更新 cap、data
+        // B-3 扩容路径：直接调 HeapAlloc/HeapReAlloc，更新 _data 和 _cap
         _builder.SetInsertPoint(growBB);
         auto capIsZero = _builder.CreateICmpEQ(capVal, _builder.getInt64(0), "cap.is_zero");
         auto doubled = _builder.CreateMul(capVal, _builder.getInt64(2), "cap.dbl");
         auto newCap = _builder.CreateSelect(capIsZero, _builder.getInt64(4), doubled, "new.cap");
-        auto growFn = runtime::getArrayGrowFn(_module, _builder);
-        _builder.CreateCall(growFn, {handle, _builder.getInt64(elemSize), newCap});
+
+        auto newByteSize = _builder.CreateMul(newCap, _builder.getInt64(elemSize), "new.byte_size");
+        auto oldData = _builder.CreateLoad(ptrTy, dataFieldPtr, "old.data");
+        auto heapFn = runtime::getProcessHeapFn(_module, _builder);
+        auto heap = _builder.CreateCall(heapFn, {}, "heap");
+        auto allocFn = runtime::getHeapAllocFn(_module, _builder);
+        auto reallocFn = runtime::getHeapReAllocFn(_module, _builder);
+
+        // 旧 data 为空 → HeapAlloc，否则 → HeapReAlloc
+        auto dataIsNull = _builder.CreateICmpEQ(oldData, nullPtr, "data.is_null");
+        auto allocBB = llvm::BasicBlock::Create(_context, "push.alloc", _currentFn);
+        auto reallocBB = llvm::BasicBlock::Create(_context, "push.realloc", _currentFn);
+        auto growDoneBB = llvm::BasicBlock::Create(_context, "push.grow_done", _currentFn);
+        _builder.CreateCondBr(dataIsNull, allocBB, reallocBB);
+
+        _builder.SetInsertPoint(allocBB);
+        auto alloced = _builder.CreateCall(allocFn, {heap, _builder.getInt64(0), newByteSize}, "alloced.data");
+        _builder.CreateBr(growDoneBB);
+
+        _builder.SetInsertPoint(reallocBB);
+        auto realloced = _builder.CreateCall(reallocFn, {heap, _builder.getInt64(0), oldData, newByteSize}, "realloced");
+        _builder.CreateBr(growDoneBB);
+
+        _builder.SetInsertPoint(growDoneBB);
+        auto phi = _builder.CreatePHI(ptrTy, 2, "new.data");
+        phi->addIncoming(alloced, allocBB);
+        phi->addIncoming(realloced, reallocBB);
+        _builder.CreateStore(phi, dataFieldPtr);
+        _builder.CreateStore(newCap, capFieldPtr);
         _builder.CreateBr(storeBB);
 
         // 写入新元素并 len++
         _builder.SetInsertPoint(storeBB);
-        auto curData = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(handle), "a.data.cur");
+        auto curData = _builder.CreateLoad(ptrTy, dataFieldPtr, "a.data.cur");
         auto elemPtr = _builder.CreateGEP(elemLLVMType, curData, {lenVal}, "push.elem.ptr");
         _builder.CreateStore(elemVal, elemPtr);
         auto newLen = _builder.CreateAdd(lenVal, _builder.getInt64(1), "new.len");

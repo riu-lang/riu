@@ -267,26 +267,21 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
     throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3080);
 }
 
-// 由码点向量发射 .rodata 哨兵 Array<u32> Block, 返回 PrivateLinkage 全局指针 (handle).
-//
-// Phase 1c.1：字面量走 .rodata 哨兵 Block，零启动开销。
-// Block 字节布局匹配 Array<T>（compiler_runtime.cpp）：
-//   { i32 strong=0xFFFFFFFF, i32 weak=0, i64 len, i64 cap, ptr data }
-// strong = 0xFFFFFFFF 让 _array_retain / _array_release 直接跳过；
-// String layout 仍是 { data: Array<u32> } = { { ptr handle } }，handle = &block。
-//
-// DRAFT-spec-reflect Phase 3a: 拆出 Block emit 部分供 reflect 节点 emit 复用,
-// 不依赖 _builder 当前 BB, 仅操作 module 全局.
-llvm::Constant* Compiler::emitStringConstBlock(const vector<u32>& codePoints) {
+// 由码点向量发射 Array<u32> 结构体常量，返回 { ptr data, i64 len, i64 cap } 的 ConstantStruct。
+// _data 指针指向 PrivateLinkage .rodata u32 数组（非空时），空字符串时 _data = null。
+// Array<u32> layout: { ptr _data, i64 _len, i64 _cap } — 24 字节，无 sentinel。
+// 不依赖 _builder 当前 BB, 仅操作 module 全局。
+llvm::Constant* Compiler::emitStringArrayConst(const vector<u32>& codePoints) {
     size_t len = codePoints.size();
 
     auto i32Ty = llvm::Type::getInt32Ty(_context);
     auto i64Ty = llvm::Type::getInt64Ty(_context);
     auto ptrTy = llvm::PointerType::get(_context, 0);
-    auto sentinel = llvm::ConstantInt::get(i32Ty, 0xFFFFFFFFu);
-    auto i32Zero = llvm::ConstantInt::get(i32Ty, 0);
 
-    // 数据缓冲：len > 0 时铺常量 u32 数组，否则用 null 指针（Block.data）。
+    // Array<u32> layout: { ptr data, i64 len, i64 cap }
+    auto arrayTy = llvm::StructType::get(_context, {ptrTy, i64Ty, i64Ty});
+
+    // 数据缓冲：len > 0 时铺常量 u32 数组，否则用 null 指针（_data）。
     llvm::Constant* dataConst = llvm::ConstantPointerNull::get(ptrTy);
     if (len > 0) {
         auto arrType = llvm::ArrayType::get(i32Ty, len);
@@ -303,33 +298,28 @@ llvm::Constant* Compiler::emitStringConstBlock(const vector<u32>& codePoints) {
                                              arrInit, dataName);
     }
 
-    // .rodata Block：32 字节精确匹配 Array Block layout。
-    auto blockTy = llvm::StructType::get(_context, {i32Ty, i32Ty, i64Ty, i64Ty, ptrTy});
     auto lenC = llvm::ConstantInt::get(i64Ty, len);
-    auto blockInit = llvm::ConstantStruct::get(blockTy, {sentinel, i32Zero, lenC, lenC, dataConst});
+    auto arrayInit = llvm::ConstantStruct::get(arrayTy, {dataConst, lenC, lenC});
 
     // 空字面量共享同一全局，省 .rodata 体积。
     if (len == 0) {
-        const char* sharedName = ".str.empty.block";
-        auto* existing = _module->getNamedGlobal(sharedName);
-        if (existing) return existing;
-        return new llvm::GlobalVariable(*_module, blockTy, /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage,
-                                        blockInit, sharedName);
+        static llvm::Constant* emptyArray = nullptr;
+        if (!emptyArray) emptyArray = arrayInit;
+        return emptyArray;
     }
-    static int strBlockCounter = 0;
-    string blockName = ".str.block." + to_string(strBlockCounter++);
-    return new llvm::GlobalVariable(*_module, blockTy, /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage,
-                                    blockInit, blockName);
+    return arrayInit;
 }
 
-// 由码点向量发射 .rodata 哨兵 String 值
-//
+// 由码点向量发射 String 值
+// String layout: { Array<u32> data } = { { ptr _data, i64 _len, i64 _cap } }
 // LiteralStringNode 与 StringTemplateNode（template parts）共用此发射路径。
 llvm::Value* Compiler::emitStringLiteralValue(const vector<u32>& codePoints) {
     auto stringType = getLLVMType(TypeInfo("String"));
     auto alloca = _builder.CreateAlloca(stringType, nullptr, "str_tmp");
-    auto blockGlobal = emitStringConstBlock(codePoints);
-    storeArrayHandle(alloca, blockGlobal);
+    auto arrayConst = emitStringArrayConst(codePoints);
+    auto zero32 = _builder.getInt32(0);
+    auto dataFieldPtr = _builder.CreateGEP(stringType, alloca, {zero32, zero32}, "str.data");
+    _builder.CreateStore(arrayConst, dataFieldPtr);
     return _builder.CreateLoad(stringType, alloca, "str_val");
 }
 
@@ -558,39 +548,61 @@ llvm::Value* Compiler::compileTupleExpr(p<ExprTupleNode> node) {
     return aggr;
 }
 
-// 把 ExprArrayNode 按 Array<elemType> 字面量编译，分配 Block 并写入元素，返回 Block* 句柄。
-// 详见声明处注释；嵌套 Array<Array<U>> 字面量的内层走自递归，避免被自身 getType()
-// 推断为 [N x U] 固定数组后被外层 store 越界踩坏后续槽。
+// B-3: 把 ExprArrayNode 按 Array<elemType> 字面量编译，直接分配数据缓冲并填充元素，
+// 返回 Array<T> struct 值（{ ptr _data, u64 _len, u64 _cap }）。
+// 嵌套 Array<Array<U>> 字面量的内层走自递归。
 llvm::Value* Compiler::buildArrayLiteralBlock(ExprArrayNode* arrayNode, const TypeInfo& elemType) {
     auto& elements = arrayNode->elements();
     auto count = elements.size();
     auto elemLLVMType = getLLVMType(elemType);
     auto countVal = _builder.getInt64(count);
-    auto block = allocArrayBlock(elemLLVMType, countVal, countVal);
-    if (count == 0) return block;
-
     auto ptrTy = llvm::PointerType::get(_context, 0);
-    auto dataPtr = _builder.CreateLoad(ptrTy, arrayBlockDataFieldPtr(block), "lit.data");
+    auto zero32 = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+
+    // 构造 Array<T> 类型
+    auto elemSp = make_shared<TypeInfo>(elemType);
+    TypeInfo arrayType("Array", {elemSp});
+    auto arrayLLVMType = getLLVMType(arrayType);
+
+    // Array<T> 临时 alloca
+    auto arrayAlloca = _builder.CreateAlloca(arrayLLVMType, nullptr, "array.lit");
+
+    // 初始化 _len 和 _cap
+    _builder.CreateStore(countVal, arrayLenFieldPtr(arrayAlloca, "lit"));
+    _builder.CreateStore(countVal, arrayCapFieldPtr(arrayAlloca, "lit"));
+
+    if (count == 0) {
+        // 空数组：_data = null
+        _builder.CreateStore(llvm::ConstantPointerNull::get(ptrTy), arrayDataFieldPtr(arrayAlloca, "lit"));
+        return _builder.CreateLoad(arrayLLVMType, arrayAlloca, "array.lit.load");
+    }
+
+    // 分配数据缓冲：HeapAlloc(count * sizeof(T))
+    auto elemSize = _module->getDataLayout().getTypeAllocSize(elemLLVMType);
+    auto byteSize = _builder.CreateMul(countVal, _builder.getInt64(elemSize), "byte_size");
+    auto heapFn = runtime::getProcessHeapFn(_module, _builder);
+    auto heap = _builder.CreateCall(heapFn, {}, "heap");
+    auto allocFn = runtime::getHeapAllocFn(_module, _builder);
+    auto data = _builder.CreateCall(allocFn, {heap, _builder.getInt64(0), byteSize}, "lit.data");
+
+    // 写入 _data 字段
+    _builder.CreateStore(data, arrayDataFieldPtr(arrayAlloca, "lit"));
+
     bool elemIsArrayGeneric = elemType.isArrayGeneric();
     sp<TypeInfo> innerElemType = elemIsArrayGeneric ? elemType.arrayGenericElementType() : nullptr;
 
     for (size_t i = 0; i < count; ++i) {
         llvm::Value* elemVal = nullptr;
-        // 嵌套：内层数组字面量按外层期望的 Array<U> 编译（递归），结果是 Block* 句柄，
-        // 包成 { ptr } 句柄值再写入外层槽。否则会按 getType() 自报的 [N x U] 固定数组
-        // 编译，CreateStore 写 sizeof([N x U]) 字节到 8 字节槽 → 越界。
+        // 嵌套：内层数组字面量按外层期望的 Array<U> 编译（递归），结果是 Array<U> struct 值
         if (elemIsArrayGeneric && innerElemType) {
             if (auto innerArr = dynamic_cast<ExprArrayNode*>(elements[i])) {
-                auto innerBlock = buildArrayLiteralBlock(innerArr, *innerElemType);
-                auto tmp = _builder.CreateAlloca(elemLLVMType, nullptr, "lit.nested.handle");
-                storeArrayHandle(tmp, innerBlock);
-                elemVal = _builder.CreateLoad(elemLLVMType, tmp, "lit.nested.handle.load");
+                elemVal = buildArrayLiteralBlock(innerArr, *innerElemType);
             }
         }
         if (!elemVal) elemVal = compileExpr(elements[i]);
 
         auto idx = _builder.getInt64(i);
-        auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {idx}, "lit.elem.ptr");
+        auto elemPtr = _builder.CreateGEP(elemLLVMType, data, {idx}, "lit.elem.ptr");
         // RC 元素：fresh 来源（call/构造/数组字面量）已 +1，跳过 retain，并尝试从临时帧消费；
         // 非 fresh（已有 var/field 读出）走复制 retain。
         if (typeNeedsDestructor(elemType)) {
@@ -602,7 +614,7 @@ llvm::Value* Compiler::buildArrayLiteralBlock(ExprArrayNode* arrayNode, const Ty
         }
         _builder.CreateStore(elemVal, elemPtr);
     }
-    return block;
+    return _builder.CreateLoad(arrayLLVMType, arrayAlloca, "array.lit.load");
 }
 
 llvm::Value* Compiler::compileArrayLiteralExpr(p<ExprArrayNode> node) {
@@ -613,13 +625,12 @@ llvm::Value* Compiler::compileArrayLiteralExpr(p<ExprArrayNode> node) {
 
     DEBUG_LOG_VAL("    Expr: ArrayLiteral", arrayType.name);
 
-    // Array<T> 字面量（动态数组）：走统一 helper，结果包装为 { handle } 结构体值返回
+    // Array<T> 字面量（动态数组）：走统一 helper，返回 Array<T> struct 值
     if (arrayType.isArrayGeneric()) {
         auto elemType = arrayType.arrayGenericElementType();
-        auto block = buildArrayLiteralBlock(node, elemType ? *elemType : TypeInfo("i8"));
-        auto alloca = _builder.CreateAlloca(llvmArrayType, nullptr, "array.literal");
-        storeArrayHandle(alloca, block);
-        return _builder.CreateLoad(llvmArrayType, alloca, "array.literal.load");
+        auto arrayVal = buildArrayLiteralBlock(node, elemType ? *elemType : TypeInfo("i8"));
+        // B-3: buildArrayLiteralBlock 直接返回 Array<T> struct 值
+        return arrayVal;
     }
 
     // 固定大小数组 [N]T 字面量

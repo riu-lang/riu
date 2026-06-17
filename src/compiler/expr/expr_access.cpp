@@ -96,9 +96,9 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
     if (derefArrayType.isArrayGeneric()) {
         auto elemType = derefArrayType.arrayGenericElementType();
         auto elemLLVMType = getLLVMType(*elemType);
-        auto handle = loadArrayHandle(currentPtr);
-        auto dataPtr =
-            _builder.CreateLoad(llvm::PointerType::get(_context, 0), arrayBlockDataFieldPtr(handle), "array.data.ptr");
+        // B-3: _data 字段内联，直接 load，不再经过 Block 间接
+        auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0),
+                                            arrayDataFieldPtr(currentPtr, "arr"), "array.data.ptr");
 
         auto indexVal = compileExpr(indices[0]);
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {indexVal}, "array.elem.ptr");
