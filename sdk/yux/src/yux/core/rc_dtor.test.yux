@@ -1,0 +1,68 @@
+; B-2: Rc<T> 对非平凡 T 的析构 —— typed release 函数测试
+; 验证 Rc<T> 其中 T 有析构逻辑（含 Rc 字段）时，
+; typed release 在 strong==0 时调 T::~()，不泄漏 T 的内部资源。
+
+struct HasRc {
+  data Rc<i32>
+
+  #Static
+  fn make(v i32) HasRc {
+    #Mut let r Rc<i32> = v
+    ret Self {
+      .data = r
+    }
+  }
+}
+
+; ---------- 基础：Rc<HasRc> 释放时 typed release 调 HasRc::~() ----------
+
+#Test
+fn test_rc_typed_release_has_rc() {
+  #Mut let base i64 = rc_leak_count()
+  {
+    #Mut let r Rc<HasRc> = HasRc::make(42i32)
+    ; 读 data 值验证结构完整
+    let v i32& = as_ref(r.data)
+    assert_eq(v, 42i32)
+    ; r 离开作用域 → strong--==0 → typed release → HasRc::~() → release data Rc<i32>
+  }
+  assert_eq(rc_leak_count() - base, 0i64)
+}
+
+; ---------- 共享句柄：最后一个离开才触发 typed release ----------
+
+#Test
+fn test_rc_typed_release_shared() {
+  #Mut let base i64 = rc_leak_count()
+  {
+    #Mut let r1 Rc<HasRc> = HasRc::make(7i32)
+    let v1 i32& = as_ref(r1.data)
+    assert_eq(v1, 7i32)
+    {
+      #Mut let r2 Rc<HasRc> = r1  ; share: strong=2
+      let v2 i32& = as_ref(r2.data)
+      assert_eq(v2, 7i32)
+      ; r2 离开作用域：strong-- → 1，未触发 typed release
+    }
+    ; r1 离开作用域：strong-- → 0 → typed release → HasRc::~()
+  }
+  assert_eq(rc_leak_count() - base, 0i64)
+}
+
+; ---------- 函数返回 Rc<HasRc> ----------
+
+fn make_has_rc(v i32) Rc<HasRc> {
+  #Mut let r Rc<HasRc> = HasRc::make(v)
+  ret r
+}
+
+#Test
+fn test_rc_typed_release_return() {
+  #Mut let base i64 = rc_leak_count()
+  {
+    #Mut let r Rc<HasRc> = make_has_rc(99i32)
+    let v i32& = as_ref(r.data)
+    assert_eq(v, 99i32)
+  }
+  assert_eq(rc_leak_count() - base, 0i64)
+}

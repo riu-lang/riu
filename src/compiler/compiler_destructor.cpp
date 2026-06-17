@@ -806,6 +806,14 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
         return runtime::getRcReleaseFn(_module, _builder);
     }
 
+    // Fn / Dyn / Heap / Array（#Builtin 阶段）/ Rc / Weak 等类型的析构为编译器内联 IR，
+    // 没有独立的析构函数体可调用；暂回退到 generic _box_release。
+    // TODO: 后续在 typed release 函数体内联生成这些类型的析构 IR，消除泄漏。
+    if (inner->isFn() || inner->isDyn() || inner->isHeap() || inner->isArrayGeneric() || inner->isRc()
+        || inner->isWeak()) {
+        return runtime::getRcReleaseFn(_module, _builder);
+    }
+
     // 构造 mangled name：_box_release_T_ + sanitized type name
     string typeName = inner->name;
     string mangledName = "_box_release_T_";
