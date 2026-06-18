@@ -137,9 +137,32 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(p<ExprNode> leftExpr, p<ExprNod
             sigs += effLeftType.name + "." + methodName + "(" + m->params[1].name + ")";
         }
         throw YuxError(lineNum, ErrorCode::E6014, methodFullName, effRightType.name, refMatches.size(), sigs);
-    } else {
-        // refMatches.size() == 1 (sema 已保证至少一个匹配)
+    } else if (refMatches.size() == 1) {
         methodSymbol = refMatches[0];
+    } else {
+        // sema tryValidateBinOpMethod 可能跳过容器类型（Nullable/Rc/Array 等），
+        // codegen 端无匹配方法 → 抛 E3073 而非访问空 vector 崩溃。
+        // methodFullName 形如 "Nullable.ne"，拆出操作符符号名
+        auto dotPos = methodFullName.find('.');
+        string mName = dotPos != string::npos ? methodFullName.substr(dotPos + 1) : methodName;
+        const char* opSym = mName == "eq"   ? "=="
+                            : mName == "ne" ? "!="
+                            : mName == "lt" ? "<"
+                            : mName == "le" ? "<="
+                            : mName == "gt" ? ">"
+                            : mName == "ge" ? ">="
+                            : mName == "plus"  ? "+"
+                            : mName == "minus" ? "-"
+                            : mName == "mul"   ? "*"
+                            : mName == "div"   ? "/"
+                            : mName == "mod"   ? "%"
+                            : mName == "and"   ? "and"
+                            : mName == "or"    ? "or"
+                            : mName == "xor"   ? "xor"
+                            : mName == "shl"   ? "<<"
+                            : mName == "shr"   ? ">>"
+                                              : mName.c_str();
+        throw YuxError(lineNum, ErrorCode::E3073, effLeftType.name, opSym, mName);
     }
 
     // 准备方法参数
@@ -428,8 +451,34 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
         // spec §7.2.3.3: 非内置类型允许跨类型比较，类型匹配由方法解析完成；
         // 内置类型跨类型时 getType 已抛 E3004 (kMigratedCodes)，此处不可达。
         if (isBuiltinType(effLeftType.name)) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3001, "comparison",
-                               effLeftType.name, effRightType.name);
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3001, "comparison", effLeftType.name,
+                           effRightType.name);
+        }
+    }
+
+    // Nullable<T> ==/!= null：内置比较 _has 字段
+    // 支持 h == null 和 null == h 两种形态，与 Ptr == null 对称
+    {
+        bool nullableOnLeft = effLeftType.isNullable() && effRightType.isPtr();
+        bool nullableOnRight = effRightType.isNullable() && effLeftType.isPtr();
+        if ((nullableOnLeft || nullableOnRight) &&
+            (node->op() == ExprCompareNode::Op::Eq || node->op() == ExprCompareNode::Op::Ne)) {
+            auto& nullableType = nullableOnLeft ? leftType : rightType;
+            auto& nullableEffType = nullableOnLeft ? effLeftType : effRightType;
+            auto nullableExpr = nullableOnLeft ? node->left() : node->right();
+            auto nullableVal = compileExpr(nullableExpr);
+            // Ref<Nullable<T>> 需 load 出 Nullable 值后才能 extractvalue
+            if (nullableType.isRef()) {
+                nullableVal = _builder.CreateLoad(getLLVMType(nullableEffType), nullableVal, "nullable_cmp_load");
+            }
+            // Nullable layout: { i1 _has, T _value } → 取 field 0
+            auto hasVal = _builder.CreateExtractValue(nullableVal, {0}, "nullable_has");
+            if (node->op() == ExprCompareNode::Op::Eq) {
+                // h == null → !_has
+                return _builder.CreateNot(hasVal);
+            }
+            // h != null → _has
+            return hasVal;
         }
     }
 
