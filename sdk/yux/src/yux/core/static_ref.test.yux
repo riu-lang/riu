@@ -118,17 +118,14 @@ fn test_return_ref_global_0param_vs_1param() {
   let r1 i32& = always_g_val()
   assert_eq(r1, 42)
 
-  ; TODO: 1 T& 形参忽略参数返回另一 global → codegen SEH crash，待独立排查
-  ; let r2 i32& = param_or_g_val(&G_MUT)
-  ; assert_eq(r2, 100)
+  ; 1 T& 形参忽略参数返回 G_VAL(42)，不是 G_MUT(100)
+  let r2 i32& = param_or_g_val(&G_MUT)
+  assert_eq(r2, 42)
 }
 
 fn always_g_val() i32& = &G_VAL
 
-; TODO: 此函数 codegen 侧返回不同 global 时 SEH crash，待修
-; fn param_or_g_val(p i32&) i32& {
-;   ret &G_VAL
-; }
+fn param_or_g_val(p i32&) i32& = &G_VAL
 
 ; ==================== 拷绑链 ====================
 

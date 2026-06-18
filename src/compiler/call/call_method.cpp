@@ -187,6 +187,11 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
     auto getReadPtr = [&]() -> llvm::Value* {
         if (arrayPtr) return arrayPtr;
         auto baseVal = compileExpr(baseExpr);
+        // [] 返回 T&（指针），直接用作 struct 指针，无需 alloca 副本
+        // 否则 compileExpr 返回的是 struct 值，需要 alloca 保存再取地址
+        if (baseExpr->getType().isRef()) {
+            return baseVal;
+        }
         auto tmp = _builder.CreateAlloca(arrayStructType, nullptr, "array_tmp");
         _builder.CreateStore(baseVal, tmp);
         return tmp;
@@ -317,7 +322,8 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         _builder.CreateBr(growDoneBB);
 
         _builder.SetInsertPoint(reallocBB);
-        auto realloced = _builder.CreateCall(reallocFn, {heap, _builder.getInt64(0), oldData, newByteSize}, "realloced");
+        auto realloced =
+            _builder.CreateCall(reallocFn, {heap, _builder.getInt64(0), oldData, newByteSize}, "realloced");
         _builder.CreateBr(growDoneBB);
 
         _builder.SetInsertPoint(growDoneBB);

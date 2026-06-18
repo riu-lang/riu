@@ -137,42 +137,40 @@ fn test_enum_match_drops_owned_payload() {
 }
 
 ; ==================== Rc<E> 枚举上堆 ====================
-; TODO: Rc<E> 在 match 中需要显式解引用，当前编译器不支持
-; 暂时注释掉相关测试
 
-; #Test
-; fn test_enum_box_basic() {
-;   var b Rc<Color> = Color::Red
-;   val n i32 = match b {
-;     Color::Red => 1
-;     Color::Green => 2
-;     Color::Blue => 3
-;   }
-;   assert_eq(n, 1)
-; }
+#Test
+fn test_enum_box_basic() {
+  #Mut let b Rc<Color> = Color::Red
+  let n i32 = match b {
+    Color::Red => 1
+    Color::Green => 2
+    Color::Blue => 3
+  }
+  assert_eq(n, 1)
+}
 
-; #Test
-; fn test_enum_box_with_payload() {
-;   var b Rc<Shape> = Shape::Circle(5.0f64)
-;   val area f64 = match b {
-;     Shape::Point => 0.0f64
-;     Shape::Circle(r) => 3.14f64 * r * r
-;     Shape::Rect(w, h) => w * h
-;   }
-;   assert_eq(area, 78.5f64)
-; }
+#Test
+fn test_enum_box_with_payload() {
+  #Mut let b Rc<Shape> = Shape::Circle(5.0f64)
+  let area f64 = match b {
+    Shape::Point => 0.0f64
+    Shape::Circle(r) => 3.14f64 * r * r
+    Shape::Rect(w, h) => w * h
+  }
+  assert_eq(area, 78.5f64)
+}
 
-; #Test
-; fn test_enum_box_reassign() {
-;   var b Rc<Color> = Color::Red
-;   b = Color::Blue
-;   val n i32 = match b {
-;     Color::Red => 1
-;     Color::Green => 2
-;     Color::Blue => 3
-;   }
-;   assert_eq(n, 3)
-; }
+#Test
+fn test_enum_box_reassign() {
+  #Mut let b Rc<Color> = Color::Red
+  b = Color::Blue
+  let n i32 = match b {
+    Color::Red => 1
+    Color::Green => 2
+    Color::Blue => 3
+  }
+  assert_eq(n, 3)
+}
 
 ; ==================== Array<E> 枚举数组 ====================
 
@@ -338,12 +336,6 @@ fn test_enum_match_return_tuple() {
 }
 
 ; ==================== 更多 payload 类型 ====================
-; P1-6（BUGS.md）现状：
-;   - 直接传裸值（如 `Container::Boxed(Point(...))`）：已落 E2032 编译期诊断拒收
-;     （回归: tests/cases/diag_enum_payload_type_mismatch.*）
-;   - 显式 `var bp Rc<T> = T(...); Container::Boxed(bp)`：编译能过但运行期
-;     RC 失衡（temp.struct.spill dtor 立即释放 box，导致 match 读到已释放内存），
-;     等 P1-6b 修好后再开下面用例
 
 enum Container {
   Empty
@@ -351,30 +343,30 @@ enum Container {
   Listed(Array<i32>)
 }
 
-; #Test
-; fn test_enum_payload_box() {
-;   var bp Rc<Point> = Point::make(10.0f64, 20.0f64)
-;   val c Container = Container::Boxed(bp)
-;
-;   val result f64 = match c {
-;     Container::Empty => 0.0f64
-;     Container::Boxed(p) => p.x + p.y
-;     Container::Listed(_arr) => -1.0f64
-;   }
-;
-;   assert_eq(result, 30.0f64)
-; }
+#Test
+fn test_enum_payload_box() {
+  #Mut let bp Rc<Point> = Point::make(10.0f64, 20.0f64)
+  let c Container = Container::Boxed(bp)
 
-; #Test
-; fn test_enum_payload_array() {
-;   var arr Array<i32> = [1, 2, 3, 4, 5]
-;   val c Container = Container::Listed(arr)
-;
-;   val result i32 = match c {
-;     Container::Empty => 0
-;     Container::Boxed(_p) => -1
-;     Container::Listed(a) => a.len().to_i32()
-;   }
-;
-;   assert_eq(result, 5)
-; }
+  let result f64 = match c {
+    Container::Empty => 0.0f64
+    Container::Boxed(p) => p.x + p.y
+    Container::Listed(_arr) => -1.0f64
+  }
+
+  assert_eq(result, 30.0f64)
+}
+
+#Test
+fn test_enum_payload_array() {
+  #Mut let arr Array<i32> = [1, 2, 3, 4, 5]
+  let c Container = Container::Listed(move:<Array<i32>>(arr))
+
+  let result i32 = match c {
+    Container::Empty => 0
+    Container::Boxed(_p) => -1
+    Container::Listed(a) => a.len().to_i32()
+  }
+
+  assert_eq(result, 5)
+}

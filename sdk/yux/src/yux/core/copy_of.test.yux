@@ -49,8 +49,7 @@ fn test_copy_of_box_handle() {
   assert_eq(b2.b, 22i32)
 }
 
-; ---------- Array<T>：handle copy + strong++ ----------
-; TODO: Array 暂不支持浅/深复制（#NoCopy），等实现后再启用此测试
+; ---------- Array<T>：深拷贝（#NoCopy 类型，后续实现）----------
 
 ;#Test
 ;fn test_copy_of_array() {
