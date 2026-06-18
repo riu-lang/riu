@@ -242,7 +242,10 @@ llvm::Function* getRcReleaseTypedFn(llvm::Module* module, llvm::IRBuilder<>& bui
 
     auto fnType = llvm::FunctionType::get(builder.getVoidTy(), paramTypes, false);
     // B-4: LinkOnceODRLinkage 避免多模块各自生成同签名 typed release 函数时符号冲突
-    return llvm::Function::Create(fnType, llvm::Function::LinkOnceODRLinkage, mangledName, module);
+    auto fn = llvm::Function::Create(fnType, llvm::Function::LinkOnceODRLinkage, mangledName, module);
+    // COFF 平台下 linkonce_odr 必须显式 COMDAT，否则仍按强符号 emit
+    fn->setComdat(module->getOrInsertComdat(mangledName));
+    return fn;
 }
 
 // 获取 owned Dyn<D> 的释放函数（Phase 3e）
@@ -317,6 +320,8 @@ llvm::Function* getArrayFreeDataFn(llvm::Module* module, llvm::IRBuilder<>& buil
     paramTypes.push_back(llvm::PointerType::get(builder.getContext(), 0));
     auto fnType = llvm::FunctionType::get(builder.getVoidTy(), paramTypes, false);
     func = llvm::Function::Create(fnType, llvm::Function::LinkOnceODRLinkage, fnName, module);
+    // COFF 平台下 linkonce_odr 必须显式 COMDAT，否则仍按强符号 emit
+    func->setComdat(module->getOrInsertComdat(fnName));
 
     // B-3: lazy emit body — 按需生成，使非 SDK 模块也能调用
     auto& ctx = builder.getContext();

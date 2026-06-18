@@ -879,12 +879,25 @@ void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeIn
         }
         return;
     }
-    // Phase B-1: move:<T>(x T&) T — T 本身不能是引用
-    // 注：实参类型在 sema 阶段是表达式类型（如 i32），编译期 auto-ref 到 T&；
-    // 实参是否为 lvalue 的检查由 codegen 端 E6028 兜底（与 same_ref/ptr_of 同模式）
+    // Phase B-1: move:<T>(x T&) T
+    // E4035: T 本身不能是引用（如 move:<i32&>(x)）
+    // E4034: 参数必须是 lvalue（变量引用或 &x），不能是纯右值（字面量/调用结果）
     if (fnName == "move") {
         if (typeArgs.size() >= 1 && typeArgs[0].isRef()) {
             throw YuxError(line, col, ErrorCode::E4035);
+        }
+        if (argNodes.size() >= 1) {
+            // 参数必须是 ID-literal（栈/堆变量）或 ExprGetRefNode（&x）
+            // 与 same_ref/ptr_of 同模式；不满足时抛 E4034 而非 E6028
+            bool ok = false;
+            if (auto* lit = dynamic_cast<ExprLiteralNode*>(argNodes[0])) {
+                if (dynamic_cast<LiteralObjNode*>(lit->literal())) ok = true;
+            }
+            if (!ok && dynamic_cast<ExprGetRefNode*>(argNodes[0])) ok = true;
+            if (!ok) {
+                throw YuxError(line, col, ErrorCode::E4034,
+                               argTypes.size() >= 1 ? argTypes[0].getFullName() : "?");
+            }
         }
         return;
     }

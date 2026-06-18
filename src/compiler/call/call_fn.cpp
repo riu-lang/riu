@@ -307,11 +307,9 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
                         }
                         return handle;
                     }
-                    // Array<U>：读 Block.data（offset 24：8 字节 RC 头 + 16 字节 len/cap）
-                    auto dataAddr = _builder.CreateInBoundsGEP(_builder.getInt8Ty(), handle,
-                                                               {llvm::ConstantInt::get(_builder.getInt64Ty(), 24)},
-                                                               "array.data.addr");
-                    return _builder.CreateLoad(ptrTy, dataAddr, "array.data");
+                    // B-3: Array 为 {ptr _data, i64 _len, i64 _cap} 内联 struct，
+                    // field 0 即 _data，无需跳 RC 头
+                    return handle;
                 }
                 if (T.name == "String" && T.kind == TypeKind::Normal) {
                     // B-4: String layout = { _buf: Rc<Array<u32>> } = { { ptr handle } }
@@ -930,12 +928,9 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
                         callArgs.push_back(payload);
                         continue;
                     }
-                    // Array：读 Block.data (offset 24)
-                    auto dataAddr = _builder.CreateInBoundsGEP(_builder.getInt8Ty(), handle,
-                                                               {llvm::ConstantInt::get(_builder.getInt64Ty(), 24)},
-                                                               "array.data.addr");
-                    auto dataPtr = _builder.CreateLoad(ptrTy, dataAddr, "array.data");
-                    callArgs.push_back(dataPtr);
+                    // B-3: Array 为 {ptr _data, i64 _len, i64 _cap} 内联 struct，
+                    // field 0 即 _data，无需跳 RC 头
+                    callArgs.push_back(handle);
                     continue;
                 }
                 if (aType.name == "String" && aType.kind == TypeKind::Normal) {

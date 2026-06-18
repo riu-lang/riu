@@ -1,7 +1,8 @@
 ; require-sdk
-; Phase B-1: move 类型校验 — 参数必须是 T&
+; Phase B-1: move 类型校验 — 参数必须是 T&（lvalue），不能是字面量
 
 fn test() {
   let a i32 = 1
-  let b = move:<i32>(a)       ; check: E4034  move 参数必须是 T&
+  let b = move:<i32>(a)         ; OK: 变量引用是 lvalue
+  let c = move:<i32>(42)        ; check: E4034  move 参数必须是 T&，42 是字面量非 lvalue
 }
