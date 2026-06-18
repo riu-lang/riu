@@ -238,6 +238,87 @@ void printCapturedOutput(const std::string& out) {
     std::cout << "  ----------------\n";
 }
 
+// 确保 SDK 已编译（非自构建项目：test 前自动 yux build）
+// sdkPath: SDK 源文件目录 (.../sdk/yux/src/yux/core)
+// sdkObjDir: SDK obj 产物目录 (.../sdk/yux/build/src/yux/core)
+// 返回 true 表示 SDK 就绪（编译成功或已是最新），false 表示编译失败
+bool ensureSdkBuilt(const std::string& sdkPath, const std::string& sdkObjDir) {
+	namespace fs = std::filesystem;
+
+	// SDK 项目根：core → src → yux → sdk/yux
+	fs::path sdkRoot = fs::path(sdkPath).parent_path().parent_path().parent_path();
+	std::string sdkBuildDir = (sdkRoot / "build").string();
+
+	// 用 PkgCacheRegistry 检查每个 SDK 源文件是否需要重编
+	// （基于编译器指纹 + 源文件 mtime/size，与 yux build 自身缓存一致）
+	PkgCacheRegistry caches(sdkRoot.string(), sdkBuildDir);
+
+	bool needBuild = false;
+	std::error_code ec;
+	for (auto it = fs::recursive_directory_iterator(sdkPath, ec); it != fs::recursive_directory_iterator(); ++it) {
+		if (ec) break;
+		if (!it->is_regular_file()) continue;
+		if (it->path().extension() != ".yux") continue;
+		// 跳过 .test.yux —— 不会被 yux build 编译
+		auto fname = it->path().filename().string();
+		if (fname.size() >= 9 && fname.ends_with(".test.yux")) continue;
+
+		std::string srcAbs = fs::absolute(it->path()).string();
+		std::string objPath = mirroredOutputBase(sdkRoot.string(), sdkBuildDir, srcAbs) + ".obj";
+
+		if (!caches.isFresh(srcAbs, objPath)) {
+			needBuild = true;
+			break;
+		}
+	}
+
+	// 即使 obj 都是新的，也要确保 .lib 存在（可能上次链接失败或被误删）
+	if (!needBuild) {
+		fs::path libPath = fs::path(sdkBuildDir) / "yux.lib";
+		if (!fs::exists(libPath)) needBuild = true;
+	}
+
+	if (!needBuild) return true;
+
+	// 需要编译 SDK：spawn yux build 子进程
+	std::string self = getSelfExePath();
+	if (self.empty()) {
+		std::cerr << "Error: failed to resolve yux executable path for SDK build" << '\n';
+		return false;
+	}
+
+	std::string cmd = "\"" + self + "\" build";
+	std::wstring wcmd = toWide(cmd);
+	std::vector<wchar_t> cmdBuf(wcmd.begin(), wcmd.end());
+	cmdBuf.push_back(0);
+
+	std::wstring wSdkRoot = toWide(sdkRoot.string());
+
+	STARTUPINFOW si{};
+	si.cb = sizeof(si);
+	PROCESS_INFORMATION pi{};
+
+	std::cout << "Building SDK (" << sdkRoot.string() << ")..." << '\n';
+
+	BOOL ok = CreateProcessW(nullptr, cmdBuf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr,
+	                         wSdkRoot.c_str(), &si, &pi);
+	if (!ok) {
+		std::cerr << "Error: failed to spawn yux build for SDK (GLE=" << GetLastError() << ")" << '\n';
+		return false;
+	}
+	WaitForSingleObject(pi.hProcess, INFINITE);
+	DWORD code = 0;
+	GetExitCodeProcess(pi.hProcess, &code);
+	CloseHandle(pi.hProcess);
+	CloseHandle(pi.hThread);
+
+	if (code != 0) {
+		std::cerr << "Error: SDK build failed (exit code " << code << ")" << '\n';
+		return false;
+	}
+	return true;
+}
+
 } // namespace
 
 bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild, const std::string& captureFile) {
@@ -354,6 +435,13 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild, const std::s
             sdk_loader::parseSdkDir(sdkPath, yux);
         } catch (std::runtime_error& e) {
             reportRuntimeError(sdkPath, e, "Error in SDK: ");
+            std::exit(1);
+        }
+    }
+
+    // 非自构建项目：确保 SDK 已编译（test 需要加载 SDK .obj 到 JIT）
+    if (!isSdkSelfBuild && !sdkPath.empty()) {
+        if (!ensureSdkBuilt(sdkPath, sdkObjDir)) {
             std::exit(1);
         }
     }

@@ -52,6 +52,8 @@ xmake test yux_tests/<name>   ; 跑单个用例
 - `yux test`：测试写在 `*.test.yux`（**不能**挂在普通 `.yux`），断言 `assert_eq`/`assert_true`/`fail`。SDK 测试集在 `sdk/yux/src/yux/core/*.test.yux`
 - `yux-check test`：诊断用例在 `tests/check-cases/`，行尾 `; check: EXXXX` 注解，错误码 + 行号精确匹配
 - `xmake test`：仅保留三组 — `tests/cases/format_*`（格式化）、`tests/cases/extern_*`/`ptr_*`（extern 边界）、`tests/projects/`（项目输出 + expected.txt）。其余编译+运行用例已全量迁到 SDK `yux test`，诊断用例已全量迁到 `yux-check test`
+- `yux test` 在非 SDK 项目中运行前，**自动检查并编译 SDK**（通过缓存判断是否需要重编）。SDK 自构建项目（`cd sdk/yux && yux test`）走 JIT 路径，不触发此检查
+- 构建缓存（`PkgCacheRegistry`）：基于编译器指纹 + 源文件 mtime/size 判断 obj 是否新鲜，`yux build` 与 `yux test` 共用同一套缓存，**无需手动删除**——编译器重编后指纹变化自动全体作废
 - 新增 SDK 测试**新建或追加**对应主题的 `.test.yux` 文件，不加到 `xmake test`
 
 ## 写 yux（易错）
