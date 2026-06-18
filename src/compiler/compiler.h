@@ -123,6 +123,10 @@ class Compiler {
     llvm::Function* _currentFn = nullptr; // 当前正在编译的函数
     p<FnNode> _currentFnNode = nullptr;   // 当前函数的 AST 节点
     string _currentStructName;            // 当前方法所属的结构体名
+    // String 字面量发射缓存（per-module，避免跨测试状态泄漏）
+    llvm::GlobalVariable* _strEmptyBlock = nullptr; // 空 String sentinel block 复用
+    int _strDataCounter = 0;                        // .str.data 命名计数器
+    int _strBlockCounter = 0;                       // .str.rc 命名计数器
     // Phase 2c：当前正在编译的 lambda body 作用域（emitLambdaFunction 期间有效）
     // 非空时 compileLiteralExpr 的 LiteralObj 路径启用 FV 校验 / 捕获识别。
     p<ScopeNode> _currentLambdaBodyScope = nullptr;

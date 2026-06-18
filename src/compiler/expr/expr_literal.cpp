@@ -293,10 +293,9 @@ llvm::GlobalVariable* Compiler::emitStringRcBlockConst(const vector<u32>& codePo
         }
         auto arrInit = llvm::ConstantArray::get(arrType, elements);
 
-        static int strDataCounter = 0;
-        string dataName = ".str.data." + to_string(strDataCounter++);
+        string dataName = ".str.data." + to_string(_strDataCounter++);
         auto* dataGV = new llvm::GlobalVariable(*_module, arrType, /*isConstant=*/true,
-                                                 llvm::GlobalValue::PrivateLinkage, arrInit, dataName);
+                                                llvm::GlobalValue::PrivateLinkage, arrInit, dataName);
         dataConst = dataGV;
     }
 
@@ -305,20 +304,18 @@ llvm::GlobalVariable* Compiler::emitStringRcBlockConst(const vector<u32>& codePo
     auto lenC = llvm::ConstantInt::get(i64Ty, len);
     auto blockInit = llvm::ConstantStruct::get(blockTy, {sentinelStrong, sentinelWeak, dataConst, lenC, lenC});
 
-    // 空字面量：同一个空 sentinel block 全局复用
-    static llvm::GlobalVariable* emptyBlock = nullptr;
+    // 空字面量：同一个空 sentinel block 全局复用（per-module）
     if (len == 0) {
-        if (!emptyBlock) {
-            emptyBlock = new llvm::GlobalVariable(*_module, blockTy, /*isConstant=*/true,
-                                                   llvm::GlobalValue::PrivateLinkage, blockInit, ".str.empty_block");
+        if (!_strEmptyBlock) {
+            _strEmptyBlock = new llvm::GlobalVariable(*_module, blockTy, /*isConstant=*/true,
+                                                      llvm::GlobalValue::PrivateLinkage, blockInit, ".str.empty_block");
         }
-        return emptyBlock;
+        return _strEmptyBlock;
     }
 
-    static int strBlockCounter = 0;
-    string blockName = ".str.rc." + to_string(strBlockCounter++);
-    return new llvm::GlobalVariable(*_module, blockTy, /*isConstant=*/true,
-                                     llvm::GlobalValue::PrivateLinkage, blockInit, blockName);
+    string blockName = ".str.rc." + to_string(_strBlockCounter++);
+    return new llvm::GlobalVariable(*_module, blockTy, /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage,
+                                    blockInit, blockName);
 }
 
 // 由码点向量发射 String 值。
