@@ -57,7 +57,7 @@ fn test_weak_upgrade_dangling_returns_null() {
 #Test
 fn test_weak_builtin_from_box() {
   #Mut let b Rc<WeakPair> = WeakPair::make(7i32, 8i32)
-  #Mut let w Weak<WeakPair> = weak:<WeakPair>(b)
+  #Mut let w Weak<WeakPair> = weak(b)
   #Mut let maybe Rc<WeakPair>? = upgrade(w)
   #Mut let got i32? = maybe?.a
   assert_eq(got ?? -1i32, 7i32)
@@ -67,7 +67,7 @@ fn test_weak_builtin_from_box() {
 fn test_weak_builtin_from_nullable_some() {
   #Mut let b Rc<WeakPair> = WeakPair::make(9i32, 10i32)
   #Mut let bn Rc<WeakPair>? = b
-  #Mut let w Weak<WeakPair> = weak:<WeakPair>(bn)
+  #Mut let w Weak<WeakPair> = weak(bn)
   #Mut let maybe Rc<WeakPair>? = upgrade(w)
   #Mut let got i32? = maybe?.a
   assert_eq(got ?? -1i32, 9i32)
@@ -76,7 +76,7 @@ fn test_weak_builtin_from_nullable_some() {
 #Test
 fn test_weak_builtin_from_nullable_null() {
   #Mut let bn Rc<WeakPair>? = null
-  #Mut let w Weak<WeakPair> = weak:<WeakPair>(bn)
+  #Mut let w Weak<WeakPair> = weak(bn)
   #Mut let maybe Rc<WeakPair>? = upgrade(w)
   #Mut let got i32? = maybe?.a
   assert_eq(got ?? -1i32, -1i32)

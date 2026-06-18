@@ -337,7 +337,7 @@ fn test_heap_3e_lambda_move_capture_no_double_free() {
 #Test
 fn test_heap_3f_copy_of_owned_scalar() {
   let a Heap<i32> = Heap:<i32>(99i32)
-  let b Heap<i32> = copy_of:<Heap<i32>>(a)
+  let b Heap<i32> = copy_of(a)
   let ra i32& = as_ref(a)
   let rb i32& = as_ref(b)
   assert_eq(ra, 99i32)
@@ -358,7 +358,7 @@ struct CopyHeapBox {
 #Test
 fn test_heap_3f_copy_of_owned_struct() {
   let a Heap<CopyHeapBox> = Heap:<CopyHeapBox>(CopyHeapBox::make(7i32))
-  let b Heap<CopyHeapBox> = copy_of:<Heap<CopyHeapBox>>(a)
+  let b Heap<CopyHeapBox> = copy_of(a)
   let ra CopyHeapBox& = as_ref(a)
   let rb CopyHeapBox& = as_ref(b)
   assert_eq(ra.k, 7i32)
@@ -368,7 +368,7 @@ fn test_heap_3f_copy_of_owned_struct() {
 #Test
 fn test_heap_3f_copy_of_nullable_some() {
   let a Heap<i32>? = heap_some(33i32)
-  let b Heap<i32>? = copy_of:<Heap<i32>?>(a)
+  let b Heap<i32>? = copy_of(a)
   assert_eq(a.has(), true)
   assert_eq(b.has(), true)
 }
@@ -376,7 +376,7 @@ fn test_heap_3f_copy_of_nullable_some() {
 #Test
 fn test_heap_3f_copy_of_nullable_null() {
   let a Heap<i32>? = heap_null:<i32>()
-  let b Heap<i32>? = copy_of:<Heap<i32>?>(a)
+  let b Heap<i32>? = copy_of(a)
   assert_eq(a.has(), false)
   assert_eq(b.has(), false)
 }
@@ -385,14 +385,14 @@ fn test_heap_3f_copy_of_nullable_null() {
 fn test_heap_3f_copy_of_no_double_free() {
   ; 两个独立 Heap, 各自作用域尾 __yux_heap_free 不冲突; 再分配应稳定.
   let a Heap<i32> = Heap:<i32>(1i32)
-  let b Heap<i32> = copy_of:<Heap<i32>>(a)
+  let b Heap<i32> = copy_of(a)
   let c Heap<i32> = Heap:<i32>(2i32)
   let rc i32& = as_ref(c)
   assert_eq(rc, 2i32)
 }
 
 ; ---------- Phase 8: FFI Heap ↔ Ptr 互转 ----------
-; ptr_of:<Heap<T>>(h)  → 移交所有权给 Ptr; source slot 写 null 且摘除 _scopeVars
+; ptr_of(h)  → 移交所有权给 Ptr; source slot 写 null 且摘除 _scopeVars
 ; Heap:<T>(p Ptr)      → 从 Ptr 接管所有权; 作用域尾走 Heap<T> dtor (free + inner release)
 ; 责任方: Ptr 必须指向 __yux_heap_alloc 分配的 T-shape 内存
 ; (FFI 上下文门控 8c 延后, 当前不限调用上下文)
@@ -400,7 +400,7 @@ fn test_heap_3f_copy_of_no_double_free() {
 #Test
 fn test_heap_8_ffi_ptr_roundtrip_scalar() {
   let h1 Heap<i32> = Heap:<i32>(123i32)
-  let p Ptr = ptr_of:<Heap<i32>>(h1)
+  let p Ptr = ptr_of(h1)
   ; h1 已 moveout; 后续访问由 borrow_checker 兜底 (本测试不复用)
   let h2 Heap<i32> = Heap:<i32>(p)
   let r i32& = as_ref(h2)
@@ -410,7 +410,7 @@ fn test_heap_8_ffi_ptr_roundtrip_scalar() {
 #Test
 fn test_heap_8_ffi_ptr_roundtrip_struct() {
   let h1 Heap<CopyHeapBox> = Heap:<CopyHeapBox>(CopyHeapBox::make(42i32))
-  let p Ptr = ptr_of:<Heap<CopyHeapBox>>(h1)
+  let p Ptr = ptr_of(h1)
   let h2 Heap<CopyHeapBox> = Heap:<CopyHeapBox>(p)
   let r CopyHeapBox& = as_ref(h2)
   assert_eq(r.k, 42i32)
@@ -420,11 +420,11 @@ fn test_heap_8_ffi_ptr_roundtrip_struct() {
 fn test_heap_8_ffi_ptr_no_double_free() {
   ; 两次 roundtrip 各自独立; 末尾无 dangling.
   let a Heap<i32> = Heap:<i32>(1i32)
-  let pa Ptr = ptr_of:<Heap<i32>>(a)
+  let pa Ptr = ptr_of(a)
   let a2 Heap<i32> = Heap:<i32>(pa)
 
   let b Heap<i32> = Heap:<i32>(2i32)
-  let pb Ptr = ptr_of:<Heap<i32>>(b)
+  let pb Ptr = ptr_of(b)
   let b2 Heap<i32> = Heap:<i32>(pb)
 
   let ra i32& = as_ref(a2)

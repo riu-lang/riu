@@ -533,6 +533,33 @@ void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn, const
                 }
             }
         }
+        // 形参为 Ref<X>、实参为非引用 (值类型): 编译器自动取址传参, unify 时剥 Ref
+        // 例: copy_of:<T>(x T&), 调用 copy_of(v) 其中 v: i32
+        //     形参 Ref(T) vs 实参 i32 → 剥 Ref 后 unify(T, i32) → T=i32
+        if (pType.isRef()) {
+            auto elem = pType.refElementType();
+            if (elem) {
+                if (aType.isRef()) {
+                    auto aElem = aType.refElementType();
+                    if (aElem) unify(*elem, *aElem);
+                } else {
+                    unify(*elem, aType);
+                }
+            }
+        }
+        // 形参为 Nullable<X>、实参非 Nullable: weak 等接受 T 与 T? 两种输入,
+        // unify 时剥 Nullable 继续匹配内层
+        if (pType.isNullable()) {
+            auto inner = pType.nullableInnerType();
+            if (inner) {
+                if (aType.isNullable()) {
+                    auto aInner = aType.nullableInnerType();
+                    if (aInner) unify(*inner, *aInner);
+                } else {
+                    unify(*inner, aType);
+                }
+            }
+        }
     };
     for (size_t i = 0; i < params.size(); ++i) {
         auto paramType = params[i]->type();

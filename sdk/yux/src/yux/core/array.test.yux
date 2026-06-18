@@ -157,9 +157,9 @@ fn test_array_get_tref_bind() {
 fn test_array_get_copy_of() {
   #Mut let a Array<i32> = [10, 20, 30]
   ; get 返回 T&，通过 copy_of 显式转换为 T 值
-  let v i32 = copy_of:<i32>(a.get(0i64))
+  let v i32 = copy_of(a.get(0i64))
   assert_eq(v, 10i32)
-  assert_eq(copy_of:<i32>(a.get(2i64)), 30i32)
+  assert_eq(copy_of(a.get(2i64)), 30i32)
 }
 
 #Test
@@ -206,20 +206,20 @@ fn test_array_index_ref_ops() {
   assert_true(arr[0] < arr[2])
 }
 
-; D.3: copy_of 取值（copy_of:<i32>(arr[i])）
+; D.3: copy_of 取值（copy_of(arr[i])）
 #Test
 fn test_array_index_copy_of() {
   #Mut let arr Array<i32> = [5, 10, 15]
   ; copy_of 从 T& 取出 T 值
-  let x i32 = copy_of:<i32>(arr[0])
+  let x i32 = copy_of(arr[0])
   assert_eq(x, 5i32)
   ; copy_of 的值与原数组独立（值语义）
-  let y i32 = copy_of:<i32>(arr[1])
+  let y i32 = copy_of(arr[1])
   arr[1] = 99
   assert_eq(y, 10i32)
   assert_eq(arr[1], 99)
   ; copy_of 的值可赋给不同类型宽度的变量
-  let z i64 = copy_of:<i32>(arr[2]).to_i64()
+  let z i64 = copy_of(arr[2]).to_i64()
   assert_eq(z, 15i64)
 }
 
@@ -247,8 +247,8 @@ fn test_fixed_array_index_ref_ops() {
 #Test
 fn test_fixed_array_index_copy_of() {
   let buf [i32 * 3] = [7i32, 14i32, 21i32]
-  let x i32 = copy_of:<i32>(buf[0])
+  let x i32 = copy_of(buf[0])
   assert_eq(x, 7i32)
-  let y i64 = copy_of:<i32>(buf[2]).to_i64()
+  let y i64 = copy_of(buf[2]).to_i64()
   assert_eq(y, 21i64)
 }

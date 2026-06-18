@@ -23,7 +23,7 @@ fn make_box() Box {
 #Test
 fn test_move_i32_ownership() {
   let a i32 = 42
-  let b i32 = move:<i32>(a)
+  let b i32 = move(a)
   assert_eq(b, 42)
 }
 
@@ -34,7 +34,7 @@ fn test_move_no_copy_struct() {
   let a Box = Box {
     .val = 10
   }
-  let b Box = move:<Box>(a)
+  let b Box = move(a)
   assert_eq(b.val, 10)
 }
 

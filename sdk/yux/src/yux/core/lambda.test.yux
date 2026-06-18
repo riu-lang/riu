@@ -52,7 +52,7 @@ fn run_first(a Array<fn(i32)i32>, x i32) i32 {
 }
 
 fn first(a Array<i32>) i32 {
-  ret copy_of:<i32>(a[0])
+  ret copy_of(a[0])
 }
 
 ; ==================== struct Holder ====================

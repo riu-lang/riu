@@ -464,6 +464,30 @@ TypeInfo ExprCallNode::getType() const {
                                     }
                                 }
                             }
+                            // 形参为 Ref<X>、实参为非引用: 剥 Ref 继续
+                            if (pT.isRef()) {
+                                auto elem = pT.refElementType();
+                                if (elem) {
+                                    if (aT.isRef()) {
+                                        auto aElem = aT.refElementType();
+                                        if (aElem) unify(*elem, *aElem);
+                                    } else {
+                                        unify(*elem, aT);
+                                    }
+                                }
+                            }
+                            // 形参为 Nullable<X>、实参非 Nullable: 剥 Nullable 继续
+                            if (pT.isNullable()) {
+                                auto inner = pT.nullableInnerType();
+                                if (inner) {
+                                    if (aT.isNullable()) {
+                                        auto aInner = aT.nullableInnerType();
+                                        if (aInner) unify(*inner, *aInner);
+                                    } else {
+                                        unify(*inner, aT);
+                                    }
+                                }
+                            }
                         };
                         auto params = fnNode->header()->params();
                         for (size_t i = 0; i < params.size() && i < _args.size(); ++i) {

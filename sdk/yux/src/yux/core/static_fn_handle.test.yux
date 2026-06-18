@@ -10,7 +10,7 @@ struct Buf {
   #Static
   fn from(arr Array<u32>) Buf {
     ret Self {
-      .data = move:<Array<u32>>(arr)
+      .data = move(arr)
     }
   }
 
@@ -29,7 +29,7 @@ struct Buf {
   }
 
   fn len() i64 = $.data.len()
-  fn get(i i64) u32 = copy_of:<u32>($.data[i])
+  fn get(i i64) u32 = copy_of($.data[i])
 }
 
 #Test

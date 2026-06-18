@@ -140,41 +140,41 @@ fn fns_pair_first<T>(a T, b T) T = a
 
 #Test
 fn test_generic_identity_i32() {
-  let a i32 = fns_identity:<i32>(42)
+  let a i32 = fns_identity(42)
   assert_eq(a, 42)
 }
 
 #Test
 fn test_generic_identity_i64() {
-  let a i64 = fns_identity:<i64>(100i64)
+  let a i64 = fns_identity(100i64)
   assert_eq(a, 100i64)
 }
 
 #Test
 fn test_generic_identity_f64() {
-  let a f64 = fns_identity:<f64>(3.14)
+  let a f64 = fns_identity(3.14)
   assert_eq(a, 3.14)
 }
 
 #Test
 fn test_generic_add_i32() {
-  assert_eq(fns_add_generic:<i32>(10, 20), 30)
+  assert_eq(fns_add_generic(10, 20), 30)
 }
 
 #Test
 fn test_generic_add_i64() {
-  assert_eq(fns_add_generic:<i64>(100i64, 200i64), 300i64)
+  assert_eq(fns_add_generic(100i64, 200i64), 300i64)
 }
 
 #Test
 fn test_generic_add_f64() {
-  assert_eq(fns_add_generic:<f64>(1.5, 2.5), 4.0)
+  assert_eq(fns_add_generic(1.5, 2.5), 4.0)
 }
 
 #Test
 fn test_generic_pair_first() {
-  assert_eq(fns_pair_first:<i32>(1, 2), 1)
-  assert_eq(fns_pair_first:<i64>(100i64, 200i64), 100i64)
+  assert_eq(fns_pair_first(1, 2), 1)
+  assert_eq(fns_pair_first(100i64, 200i64), 100i64)
 }
 
 ; ==================== 类型推断调用 ====================

@@ -360,7 +360,7 @@ fn test_enum_payload_box() {
 #Test
 fn test_enum_payload_array() {
   #Mut let arr Array<i32> = [1, 2, 3, 4, 5]
-  let c Container = Container::Listed(move:<Array<i32>>(arr))
+  let c Container = Container::Listed(move(arr))
 
   let result i32 = match c {
     Container::Empty => 0

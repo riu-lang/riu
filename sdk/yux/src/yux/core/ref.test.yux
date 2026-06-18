@@ -1,6 +1,6 @@
 ; T& 借用用例（迁自 tests/cases/ref_*、same_ref）
 ; 覆盖：标量借用读 / 写、&box 句柄借用、&p.field / &$.field / &box.field / RC 字段链、
-;       receiver 隐式 Self&、same_ref:<T> 地址相等。
+;       receiver 隐式 Self&、same_ref 地址相等。
 
 ; ---------- ref_basic：T& 读路径 ----------
 
@@ -185,15 +185,15 @@ fn test_ref_receiver_self_ref() {
   assert_eq(p.show_via_self_ref(), 10i32)
 }
 
-; ---------- same_ref:<T>：地址相等 ----------
+; ---------- same_ref：地址相等 ----------
 
 #Test
 fn test_same_ref_box_shared() {
   #Mut let p Rc<RefPair> = RefPair::make(1i32, 2i32)
   #Mut let q Rc<RefPair> = p
   #Mut let r Rc<RefPair> = RefPair::make(1i32, 2i32)
-  assert_true(same_ref:<Rc<RefPair>>(p, q))
-  assert_false(same_ref:<Rc<RefPair>>(p, r))
+  assert_true(same_ref(p, q))
+  assert_false(same_ref(p, r))
 }
 
 #Test
@@ -204,20 +204,20 @@ fn test_same_ref_weak_from_same_box() {
   #Mut let w1 Weak<RefPair> = p
   #Mut let w2 Weak<RefPair> = q
   #Mut let w3 Weak<RefPair> = r
-  assert_true(same_ref:<Weak<RefPair>>(w1, w2))
-  assert_false(same_ref:<Weak<RefPair>>(w1, w3))
+  assert_true(same_ref(w1, w2))
+  assert_false(same_ref(w1, w3))
 }
 
 #Test
 fn test_same_ref_array_self_vs_independent() {
   #Mut let a1 Array<i32> = [1i32, 2i32, 3i32]
   #Mut let a3 Array<i32> = [1i32, 2i32, 3i32]
-  assert_true(same_ref:<Array<i32>>(a1, a1))
-  assert_false(same_ref:<Array<i32>>(a1, a3))
+  assert_true(same_ref(a1, a1))
+  assert_false(same_ref(a1, a3))
 }
 
 #Test
 fn test_same_ref_string_self() {
   #Mut let s1 String = "hi"
-  assert_true(same_ref:<String>(s1, s1))
+  assert_true(same_ref(s1, s1))
 }

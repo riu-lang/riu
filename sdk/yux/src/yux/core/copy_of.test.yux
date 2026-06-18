@@ -32,7 +32,7 @@ struct Holder {
 #Test
 fn test_copy_of_i32() {
   #Mut let x i32 = 42i32
-  #Mut let y i32 = copy_of:<i32>(x)
+  #Mut let y i32 = copy_of(x)
   assert_eq(y, 42i32)
 }
 
@@ -41,7 +41,7 @@ fn test_copy_of_i32() {
 #Test
 fn test_copy_of_box_handle() {
   #Mut let b1 Rc<CopyPair> = CopyPair::make(11i32, 22i32)
-  #Mut let b2 Rc<CopyPair> = copy_of:<Rc<CopyPair>>(b1)
+  #Mut let b2 Rc<CopyPair> = copy_of(b1)
   ; 两个 Rc 看到同一份数据（浅拷句柄 + strong++）
   assert_eq(b1.a, 11i32)
   assert_eq(b2.a, 11i32)
@@ -54,7 +54,7 @@ fn test_copy_of_box_handle() {
 ;#Test
 ;fn test_copy_of_array() {
 ;  #Mut let a1 Array<i32> = [10i32, 20i32, 30i32]
-;  #Mut let a2 Array<i32> = copy_of:<Array<i32>>(a1)
+;  #Mut let a2 Array<i32> = copy_of(a1)
 ;  assert_eq(a2.len(), 3i64)
 ;  assert_eq(a1.len(), 3i64)
 ;  assert_eq(a2[0], 10i32)
@@ -66,7 +66,7 @@ fn test_copy_of_box_handle() {
 #Test
 fn test_copy_of_string() {
   #Mut let s1 String = "hello"
-  #Mut let s2 String = copy_of:<String>(s1)
+  #Mut let s2 String = copy_of(s1)
   assert_eq(s2, "hello")
   assert_eq(s1, "hello")
 }
@@ -76,7 +76,7 @@ fn test_copy_of_string() {
 #Test
 fn test_copy_of_struct_no_rc_field() {
   #Mut let p1 CopyPair = CopyPair::make(5i32, 6i32)
-  #Mut let p2 CopyPair = copy_of:<CopyPair>(p1)
+  #Mut let p2 CopyPair = copy_of(p1)
   assert_eq(p2.a, 5i32)
   assert_eq(p2.b, 6i32)
 }
@@ -87,7 +87,7 @@ fn test_copy_of_struct_no_rc_field() {
 fn test_copy_of_struct_with_box_field() {
   #Mut let p Rc<CopyPair> = CopyPair::make(5i32, 6i32)
   #Mut let h1 Holder = Holder::make(p, 100i32)
-  #Mut let h2 Holder = copy_of:<Holder>(h1)
+  #Mut let h2 Holder = copy_of(h1)
   assert_eq(h2.tag, 100i32)
   assert_eq(h1.tag, 100i32)
   assert_eq(h2.payload.a, 5i32)
