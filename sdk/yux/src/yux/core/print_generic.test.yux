@@ -22,9 +22,9 @@ struct PrintTag {
 
 #Test
 fn test_print_generic_builtin() {
-  print(42i64)
+  print(42)
   print(true)
-  println(7i64)
+  println(7)
   println(false)
   ; 走到这里说明各重载都已成功单态化并链接
   assert_true(true)
@@ -40,7 +40,7 @@ fn test_print_string_fast_path() {
 
 #Test
 fn test_print_user_type() {
-  let t PrintTag = PrintTag::make(123i64)
+  let t PrintTag = PrintTag::make(123)
   println(t)
   assert_true(true)
 }
@@ -48,9 +48,9 @@ fn test_print_user_type() {
 #Test
 fn test_eprint_generic() {
   eprint("err ")
-  eprintln(99i64)
+  eprintln(99)
   eprintln(true)
-  let t PrintTag = PrintTag::make(7i64)
+  let t PrintTag = PrintTag::make(7)
   eprintln(t)
   assert_true(true)
 }

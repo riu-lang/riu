@@ -97,17 +97,17 @@ fn test_struct_static_val_field() {
 
 #Test
 fn test_struct_static_mut_field_read() {
-  assert_eq(Counter::TOTAL, 10i64)
+  assert_eq(Counter::TOTAL, 10)
 }
 
 #Test
 fn test_struct_static_mut_field_write() {
-  Counter::TOTAL = 0i64
-  assert_eq(Counter::TOTAL, 0i64)
-  Counter::TOTAL = 42i64
-  assert_eq(Counter::TOTAL, 42i64)
-  Counter::TOTAL = Counter::TOTAL + 58i64
-  assert_eq(Counter::TOTAL, 100i64)
+  Counter::TOTAL = 0
+  assert_eq(Counter::TOTAL, 0)
+  Counter::TOTAL = 42
+  assert_eq(Counter::TOTAL, 42)
+  Counter::TOTAL = Counter::TOTAL + 58
+  assert_eq(Counter::TOTAL, 100)
   ; 恢复初始值，避免跨测试状态污染
-  Counter::TOTAL = 10i64
+  Counter::TOTAL = 10
 }

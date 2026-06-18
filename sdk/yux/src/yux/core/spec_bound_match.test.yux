@@ -24,13 +24,13 @@ fn show_via_bound<T : ToString>(x T) String {
 
 #Test
 fn test_bound_user_type() {
-  let t Tag = Tag::make(99i64)
+  let t Tag = Tag::make(99)
   assert_eq(show_via_bound(t), "99")
 }
 
 #Test
 fn test_bound_builtin_i64() {
-  assert_eq(show_via_bound(7i64), "7")
+  assert_eq(show_via_bound(7), "7")
 }
 
 #Test

@@ -17,20 +17,20 @@ struct Point {
 
 #Test
 fn test_static_make_and_sum() {
-  let p Point = Point::make(3i32, 4i32)
+  let p Point = Point::make(3, 4)
   assert_eq(p.sum(), 7i32)
 }
 
 #Test
 fn test_static_make_zero() {
-  let p Point = Point::make(0i32, 0i32)
-  assert_eq(p.x, 0i32)
-  assert_eq(p.y, 0i32)
+  let p Point = Point::make(0, 0)
+  assert_eq(p.x, 0)
+  assert_eq(p.y, 0)
 }
 
 #Test
 fn test_static_make_negative() {
-  let p Point = Point::make(-5i32, 10i32)
-  assert_eq(p.x, -5i32)
-  assert_eq(p.y, 10i32)
+  let p Point = Point::make(-5, 10)
+  assert_eq(p.x, -5)
+  assert_eq(p.y, 10)
 }

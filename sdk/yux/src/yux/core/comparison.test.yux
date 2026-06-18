@@ -90,8 +90,8 @@ fn test_neg_compare() {
 
 #Test
 fn test_i64_compare() {
-  let a i64 = 1000000000i64
-  let b i64 = 2000000000i64
+  let a i64 = 1000000000
+  let b i64 = 2000000000
   assert_true(a < b)
   assert_true(b > a)
   assert_true(a <= b)
@@ -100,8 +100,8 @@ fn test_i64_compare() {
 
 #Test
 fn test_u8_compare() {
-  let a u8 = 100u8
-  let b u8 = 200u8
+  let a u8 = 100
+  let b u8 = 200
   assert_true(a < b)
   assert_true(b > a)
 }

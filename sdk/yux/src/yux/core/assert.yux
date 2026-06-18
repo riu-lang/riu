@@ -30,6 +30,6 @@ fn fail(msg String)
 
 ; 0xE0FA17ED：客户位段（高 4 位 0xE）+ "FA17ED" 字面，便于 SEH 串号识别
 fn _yux_test_assert_failed() {
-  RaiseException(0xE0FA17EDu32, 0u32, 0u32, null);
+  RaiseException(0xE0FA17EDu32, 0, 0, null);
 }
 

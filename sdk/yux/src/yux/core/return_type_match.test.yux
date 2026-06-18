@@ -6,7 +6,7 @@ fn ret_i32() i32 {
 }
 
 fn ret_i64() i64 {
-  123456789i64
+  123456789
 }
 
 fn ret_f64() f64 {
@@ -23,7 +23,7 @@ fn ret_expr() i32 {
 }
 
 fn ret_inferred() i64 {
-  999i64
+  999
 }
 
 #Test
@@ -33,7 +33,7 @@ fn test_ret_i32() {
 
 #Test
 fn test_ret_i64() {
-  assert_eq(ret_i64(), 123456789i64)
+  assert_eq(ret_i64(), 123456789)
 }
 
 #Test
@@ -53,5 +53,5 @@ fn test_ret_expr() {
 
 #Test
 fn test_ret_inferred() {
-  assert_eq(ret_inferred(), 999i64)
+  assert_eq(ret_inferred(), 999)
 }

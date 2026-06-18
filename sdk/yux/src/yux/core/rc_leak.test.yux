@@ -28,15 +28,15 @@ fn rc_make_box(a i32, b i32) Rc<RcPair> {
 
 fn rc_pick_ff(c bool) Rc<RcPair> {
   ret if c {
-    rc_make_box(1i32, 2i32)
+    rc_make_box(1, 2)
   } else {
-    rc_make_box(3i32, 4i32)
+    rc_make_box(3, 4)
   }
 }
 
 fn rc_pick_fb(c bool, b Rc<RcPair>) Rc<RcPair> {
   ret if c {
-    rc_make_box(7i32, 8i32)
+    rc_make_box(7, 8)
   } else {
     b
   }
@@ -53,33 +53,33 @@ fn rc_pick_bb(c bool, b1 Rc<RcPair>, b2 Rc<RcPair>) Rc<RcPair> {
 #Test
 fn test_rc_branch_fresh_fresh() {
   #Mut let p1 Rc<RcPair> = rc_pick_ff(true)
-  assert_eq(p1.a, 1i32)
+  assert_eq(p1.a, 1)
   #Mut let p2 Rc<RcPair> = rc_pick_ff(false)
-  assert_eq(p2.a, 3i32)
+  assert_eq(p2.a, 3)
 }
 
 #Test
 fn test_rc_branch_fresh_borrow() {
-  #Mut let orig Rc<RcPair> = RcPair::make(11i32, 22i32)
+  #Mut let orig Rc<RcPair> = RcPair::make(11, 22)
   #Mut let p3 Rc<RcPair> = rc_pick_fb(true, orig)
-  assert_eq(p3.a, 7i32)
+  assert_eq(p3.a, 7)
   #Mut let p4 Rc<RcPair> = rc_pick_fb(false, orig)
-  assert_eq(p4.a, 11i32)
+  assert_eq(p4.a, 11)
   ; orig 仍活
-  assert_eq(orig.a, 11i32)
+  assert_eq(orig.a, 11)
 }
 
 #Test
 fn test_rc_branch_borrow_borrow() {
-  #Mut let b1 Rc<RcPair> = RcPair::make(33i32, 44i32)
-  #Mut let b2 Rc<RcPair> = RcPair::make(55i32, 66i32)
+  #Mut let b1 Rc<RcPair> = RcPair::make(33, 44)
+  #Mut let b2 Rc<RcPair> = RcPair::make(55, 66)
   #Mut let p5 Rc<RcPair> = rc_pick_bb(true, b1, b2)
-  assert_eq(p5.a, 33i32)
+  assert_eq(p5.a, 33)
   #Mut let p6 Rc<RcPair> = rc_pick_bb(false, b1, b2)
-  assert_eq(p6.a, 55i32)
+  assert_eq(p6.a, 55)
   ; 借用源仍活
-  assert_eq(b1.a, 33i32)
-  assert_eq(b2.a, 55i32)
+  assert_eq(b1.a, 33)
+  assert_eq(b2.a, 55)
 }
 
 ; ---------- rc_temp_drop / temp_zero_leak：fresh 临时被丢弃 / 用作 receiver / 参数 不堆积泄漏 ----------
@@ -100,22 +100,22 @@ fn rc_pass_array(a Array<i32>) i64 {
 #Test
 fn test_rc_drop_fresh_box_stmt() {
   #Mut let base i64 = rc_leak_count()
-  rc_make_box(1i32, 2i32);
-  assert_eq(rc_leak_count() - base, 0i64)
+  rc_make_box(1, 2);
+  assert_eq(rc_leak_count() - base, 0)
 }
 
 #Test
 fn test_rc_drop_fresh_array_stmt() {
   #Mut let base i64 = rc_leak_count()
   rc_make_array();
-  assert_eq(rc_leak_count() - base, 0i64)
+  assert_eq(rc_leak_count() - base, 0)
 }
 
 #Test
 fn test_rc_drop_array_literal_stmt() {
   #Mut let base i64 = rc_leak_count()
   [1i32, 2i32, 3i32];
-  assert_eq(rc_leak_count() - base, 0i64)
+  assert_eq(rc_leak_count() - base, 0)
 }
 
 #Test
@@ -123,45 +123,45 @@ fn test_rc_chain_method_on_fresh_box() {
   #Mut let base i64 = rc_leak_count()
   ; receiver 是 fresh Rc，方法返回后整条语句结束 release
   rc_make_box(11i32, 22i32).show();
-  assert_eq(rc_leak_count() - base, 0i64)
+  assert_eq(rc_leak_count() - base, 0)
 }
 
 #Test
 fn test_rc_chain_field_on_fresh_box() {
   #Mut let base i64 = rc_leak_count()
-  #Mut let v i32 = rc_make_box(1i32, 2i32).a
-  assert_eq(v, 1i32)
-  assert_eq(rc_leak_count() - base, 0i64)
+  #Mut let v i32 = rc_make_box(1, 2).a
+  assert_eq(v, 1)
+  assert_eq(rc_leak_count() - base, 0)
 }
 
 #Test
 fn test_rc_chain_method_on_fresh_array() {
   #Mut let base i64 = rc_leak_count()
   #Mut let n i64 = rc_make_array().len()
-  assert_eq(n, 3i64)
-  assert_eq(rc_leak_count() - base, 0i64)
+  assert_eq(n, 3)
+  assert_eq(rc_leak_count() - base, 0)
 }
 
 #Test
 fn test_rc_fresh_arg_box() {
   #Mut let base i64 = rc_leak_count()
-  #Mut let v i32 = rc_pass_box(rc_make_box(1i32, 2i32))
-  assert_eq(v, 1i32)
-  assert_eq(rc_leak_count() - base, 0i64)
+  #Mut let v i32 = rc_pass_box(rc_make_box(1, 2))
+  assert_eq(v, 1)
+  assert_eq(rc_leak_count() - base, 0)
 }
 
 #Test
 fn test_rc_fresh_arg_array() {
   #Mut let base i64 = rc_leak_count()
   #Mut let n i64 = rc_pass_array(rc_make_array())
-  assert_eq(n, 3i64)
-  assert_eq(rc_leak_count() - base, 0i64)
+  assert_eq(n, 3)
+  assert_eq(rc_leak_count() - base, 0)
 }
 
 #Test
 fn test_rc_branch_fresh_fresh_no_leak() {
   #Mut let base i64 = rc_leak_count()
   #Mut let v i32 = rc_pick_ff(true).a
-  assert_eq(v, 1i32)
-  assert_eq(rc_leak_count() - base, 0i64)
+  assert_eq(v, 1)
+  assert_eq(rc_leak_count() - base, 0)
 }

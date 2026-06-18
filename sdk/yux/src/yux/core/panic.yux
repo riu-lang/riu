@@ -15,7 +15,7 @@
 fn _yux_panic_failed(msg String) {
   eprint("panic: ")
   eprintln(msg)
-  RaiseException(0xE0FA1750u32, 0u32, 0u32, null);
+  RaiseException(0xE0FA1750u32, 0, 0, null);
 }
 
 #NoReturn

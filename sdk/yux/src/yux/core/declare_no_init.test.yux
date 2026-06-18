@@ -11,8 +11,8 @@ fn test_declare_then_assign_i32() {
 #Test
 fn test_declare_then_assign_i64() {
   #Mut let b i64
-  b = 20i64
-  assert_eq(b, 20i64)
+  b = 20
+  assert_eq(b, 20)
 }
 
 #Test

@@ -14,19 +14,19 @@
 fn test_i32_to_i64() {
   let a i32 = 10
   let c i64 = a.to_i64()
-  assert_eq(c, 10i64)
+  assert_eq(c, 10)
 }
 
 #Test
 fn test_i64_to_i32() {
-  let h i64 = -123i64
+  let h i64 = -123
   let i i32 = h.to_i32()
   assert_eq(i, -123)
 }
 
 #Test
 fn test_u8_to_i32() {
-  let d u8 = 100u8
+  let d u8 = 100
   let e i32 = d.to_i32()
   assert_eq(e, 100)
 }
@@ -35,21 +35,21 @@ fn test_u8_to_i32() {
 fn test_i32_to_u8() {
   let a i32 = 200
   let b u8 = a.to_u8()
-  assert_eq(b, 200u8)
+  assert_eq(b, 200)
 }
 
 #Test
 fn test_i16_to_i32() {
-  let a i16 = 1000i16
+  let a i16 = 1000
   let b i32 = a.to_i32()
   assert_eq(b, 1000)
 }
 
 #Test
 fn test_u32_to_i64() {
-  let a u32 = 4000000000u32
+  let a u32 = 4000000000
   let b i64 = a.to_i64()
-  assert_eq(b, 4000000000i64)
+  assert_eq(b, 4000000000)
 }
 
 ; ==================== 浮点类型转换 ====================
@@ -88,12 +88,12 @@ fn test_f64_to_i32_trunc() {
 fn test_f64_to_i64() {
   let a f64 = 12345.6
   let b i64 = a.to_i64()
-  assert_eq(b, 12345i64)
+  assert_eq(b, 12345)
 }
 
 #Test
 fn test_i64_to_f64() {
-  let a i64 = 1000000000i64
+  let a i64 = 1000000000
   let b f64 = a.to_f64()
   assert_eq(b, 1000000000.0f64)
 }
@@ -132,7 +132,7 @@ fn test_i32_to_string() {
 
 #Test
 fn test_i64_to_string() {
-  let a i64 = 123456789i64
+  let a i64 = 123456789
   let s String = a.to_string()
   assert_eq(s, "123456789")
 }

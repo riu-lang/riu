@@ -14,40 +14,40 @@ fn r_sum_three(x i32&, y i32&, z i32&) i32 {
 
 #Test
 fn test_ref_read_paths() {
-  #Mut let x i32 = 10i32
-  #Mut let y i32 = 20i32
-  #Mut let z i32 = 30i32
+  #Mut let x i32 = 10
+  #Mut let y i32 = 20
+  #Mut let z i32 = 30
 
-  assert_eq(r_add(&x, &y), 30i32)
+  assert_eq(r_add(&x, &y), 30)
 
   #Mut let rx i32& = &x
-  assert_eq(rx, 10i32)
+  assert_eq(rx, 10)
 
   #Mut let rx2 i32& = rx
-  assert_eq(rx2, 10i32)
+  assert_eq(rx2, 10)
 
-  assert_eq(r_sum_three(&x, &y, &z), 60i32)
+  assert_eq(r_sum_three(&x, &y, &z), 60)
 }
 
 ; ---------- ref_write：T& 赋值落 store-through ----------
 
 fn r_bump(r i32&) {
-  r = r + 1i32
+  r = r + 1
 }
 
 #Test
 fn test_ref_store_through() {
-  #Mut let x i32 = 10i32
+  #Mut let x i32 = 10
   #Mut let d i32& = &x
-  d = 99i32
-  assert_eq(x, 99i32)
-  d = d + 1i32
-  assert_eq(x, 100i32)
+  d = 99
+  assert_eq(x, 99)
+  d = d + 1
+  assert_eq(x, 100)
   r_bump(&x)
-  assert_eq(x, 101i32)
+  assert_eq(x, 101)
   #Mut let d2 i32& = d
-  d2 = 7i32
-  assert_eq(x, 7i32)
+  d2 = 7
+  assert_eq(x, 7)
 }
 
 ; ---------- ref_box：&box → Rc<T>& 句柄借用 ----------
@@ -83,11 +83,11 @@ fn r_box_bump(b Rc<RefPair>&) {
 
 #Test
 fn test_ref_box_handle_borrow() {
-  #Mut let p Rc<RefPair> = RefPair::make(10i32, 20i32)
-  assert_eq(r_box_show_a(&p), 10i32)
+  #Mut let p Rc<RefPair> = RefPair::make(10, 20)
+  assert_eq(r_box_show_a(&p), 10)
   assert_eq(p.sum(), 30i32)
   r_box_bump(&p)
-  assert_eq(p.a, 99i32)
+  assert_eq(p.a, 99)
   assert_eq(p.sum(), 119i32)
 }
 
@@ -121,39 +121,39 @@ struct RefHolder {
 }
 
 fn r_add1(r i32&) {
-  r = r + 1i32
+  r = r + 1
 }
 
 #Test
 fn test_ref_local_field() {
-  #Mut let p RefP = RefP::make(10i32, 20i32)
+  #Mut let p RefP = RefP::make(10, 20)
   r_add1(&p.x)
-  assert_eq(p.x, 11i32)
-  assert_eq(p.y, 20i32)
+  assert_eq(p.x, 11)
+  assert_eq(p.y, 20)
 }
 
 #Test
 fn test_ref_box_field() {
-  #Mut let b Rc<RefP> = RefP::make(100i32, 200i32)
+  #Mut let b Rc<RefP> = RefP::make(100, 200)
   r_add1(&b.x)
-  assert_eq(b.x, 101i32)
-  assert_eq(b.y, 200i32)
+  assert_eq(b.x, 101)
+  assert_eq(b.y, 200)
 }
 
 #Test
 fn test_ref_rc_field_chain() {
-  #Mut let b Rc<RefP> = RefP::make(100i32, 200i32)
+  #Mut let b Rc<RefP> = RefP::make(100, 200)
   #Mut let h RefHolder = RefHolder::make(b)
   r_add1(&h.inner.x)
   ; b 与 h.inner 共享同一 block
-  assert_eq(b.x, 101i32)
+  assert_eq(b.x, 101)
 }
 
 #Test
 fn test_ref_self_field() {
-  #Mut let p RefP = RefP::make(10i32, 20i32)
+  #Mut let p RefP = RefP::make(10, 20)
   p.bump_x()
-  assert_eq(p.x, 11i32)
+  assert_eq(p.x, 11)
 }
 
 ; ---------- ref_self：receiver 隐式 Self&（&$ 传给自由函数） ----------
@@ -181,7 +181,7 @@ fn r_dump_x(p RefQ&) i32 {
 
 #Test
 fn test_ref_receiver_self_ref() {
-  #Mut let p RefQ = RefQ::make(10i32, 20i32)
+  #Mut let p RefQ = RefQ::make(10, 20)
   assert_eq(p.show_via_self_ref(), 10i32)
 }
 
@@ -189,18 +189,18 @@ fn test_ref_receiver_self_ref() {
 
 #Test
 fn test_same_ref_box_shared() {
-  #Mut let p Rc<RefPair> = RefPair::make(1i32, 2i32)
+  #Mut let p Rc<RefPair> = RefPair::make(1, 2)
   #Mut let q Rc<RefPair> = p
-  #Mut let r Rc<RefPair> = RefPair::make(1i32, 2i32)
+  #Mut let r Rc<RefPair> = RefPair::make(1, 2)
   assert_true(same_ref(p, q))
   assert_false(same_ref(p, r))
 }
 
 #Test
 fn test_same_ref_weak_from_same_box() {
-  #Mut let p Rc<RefPair> = RefPair::make(1i32, 2i32)
+  #Mut let p Rc<RefPair> = RefPair::make(1, 2)
   #Mut let q Rc<RefPair> = p
-  #Mut let r Rc<RefPair> = RefPair::make(1i32, 2i32)
+  #Mut let r Rc<RefPair> = RefPair::make(1, 2)
   #Mut let w1 Weak<RefPair> = p
   #Mut let w2 Weak<RefPair> = q
   #Mut let w3 Weak<RefPair> = r

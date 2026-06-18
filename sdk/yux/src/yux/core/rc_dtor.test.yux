@@ -20,13 +20,13 @@ struct HasRc {
 fn test_rc_typed_release_has_rc() {
   #Mut let base i64 = rc_leak_count()
   {
-    #Mut let r Rc<HasRc> = HasRc::make(42i32)
+    #Mut let r Rc<HasRc> = HasRc::make(42)
     ; 读 data 值验证结构完整
     let v i32& = as_ref(r.data)
-    assert_eq(v, 42i32)
+    assert_eq(v, 42)
     ; r 离开作用域 → strong--==0 → typed release → HasRc::~() → release data Rc<i32>
   }
-  assert_eq(rc_leak_count() - base, 0i64)
+  assert_eq(rc_leak_count() - base, 0)
 }
 
 ; ---------- 共享句柄：最后一个离开才触发 typed release ----------
@@ -35,18 +35,18 @@ fn test_rc_typed_release_has_rc() {
 fn test_rc_typed_release_shared() {
   #Mut let base i64 = rc_leak_count()
   {
-    #Mut let r1 Rc<HasRc> = HasRc::make(7i32)
+    #Mut let r1 Rc<HasRc> = HasRc::make(7)
     let v1 i32& = as_ref(r1.data)
-    assert_eq(v1, 7i32)
+    assert_eq(v1, 7)
     {
       #Mut let r2 Rc<HasRc> = r1  ; share: strong=2
       let v2 i32& = as_ref(r2.data)
-      assert_eq(v2, 7i32)
+      assert_eq(v2, 7)
       ; r2 离开作用域：strong-- → 1，未触发 typed release
     }
     ; r1 离开作用域：strong-- → 0 → typed release → HasRc::~()
   }
-  assert_eq(rc_leak_count() - base, 0i64)
+  assert_eq(rc_leak_count() - base, 0)
 }
 
 ; ---------- 函数返回 Rc<HasRc> ----------
@@ -60,9 +60,9 @@ fn make_has_rc(v i32) Rc<HasRc> {
 fn test_rc_typed_release_return() {
   #Mut let base i64 = rc_leak_count()
   {
-    #Mut let r Rc<HasRc> = make_has_rc(99i32)
+    #Mut let r Rc<HasRc> = make_has_rc(99)
     let v i32& = as_ref(r.data)
-    assert_eq(v, 99i32)
+    assert_eq(v, 99)
   }
-  assert_eq(rc_leak_count() - base, 0i64)
+  assert_eq(rc_leak_count() - base, 0)
 }

@@ -5,15 +5,15 @@ A = i32
 
 #Test
 fn test_alias_basic_int() {
-  #Mut let x A = 7i32
-  assert_eq(x, 7i32)
+  #Mut let x A = 7
+  assert_eq(x, 7)
 }
 
 #Test
 fn test_alias_in_arith() {
-  #Mut let x A = 10i32
-  #Mut let y A = 3i32
-  assert_eq(x + y, 13i32)
+  #Mut let x A = 10
+  #Mut let y A = 3
+  assert_eq(x + y, 13)
 }
 
 fn add_alias(x A, y A) A {
@@ -22,15 +22,15 @@ fn add_alias(x A, y A) A {
 
 #Test
 fn test_alias_fn_signature() {
-  assert_eq(add_alias(2i32, 3i32), 5i32)
+  assert_eq(add_alias(2, 3), 5)
 }
 
 ; 把 alias 类型的局部变量喂给以 alias 声明形参的函数
 #Test
 fn test_alias_var_as_arg() {
-  #Mut let a A = 4i32
-  #Mut let b A = 6i32
-  assert_eq(add_alias(a, b), 10i32)
+  #Mut let a A = 4
+  #Mut let b A = 6
+  assert_eq(add_alias(a, b), 10)
 }
 
 ; 链式别名 A1 -> A2 -> A -> i32
@@ -39,8 +39,8 @@ A1 = A2
 
 #Test
 fn test_alias_chain() {
-  #Mut let x A1 = 99i32
-  assert_eq(x, 99i32)
+  #Mut let x A1 = 99
+  assert_eq(x, 99)
 }
 
 ; 元组别名 + 成员访问（Phase 4 与 alias 的协同）
@@ -48,9 +48,9 @@ IPair = (i32, i32)
 
 #Test
 fn test_alias_tuple_member() {
-  #Mut let p IPair = (5i32, 9i32)
-  assert_eq(p.0, 5i32)
-  assert_eq(p.1, 9i32)
+  #Mut let p IPair = (5, 9)
+  assert_eq(p.0, 5)
+  assert_eq(p.1, 9)
 }
 
 ; 泛型元组别名实例化后的成员访问
@@ -58,34 +58,34 @@ Pair<T> = (T, T)
 
 #Test
 fn test_alias_generic_tuple_member() {
-  #Mut let p Pair<i32> = (40i32, 2i32)
-  assert_eq(p.0, 40i32)
-  assert_eq(p.1, 2i32)
+  #Mut let p Pair<i32> = (40, 2)
+  assert_eq(p.0, 40)
+  assert_eq(p.1, 2)
 }
 
 ; 解构 alias 类型的元组（Phase 5）
 #Test
 fn test_alias_tuple_destructure() {
-  #Mut let p IPair = (11i32, 22i32)
+  #Mut let p IPair = (11, 22)
   #Mut let (a, b) IPair = p
-  assert_eq(a, 11i32)
-  assert_eq(b, 22i32)
+  assert_eq(a, 11)
+  assert_eq(b, 22)
 }
 
 ; alias 路径上的元组成员赋值（Phase 6）
 #Test
 fn test_alias_tuple_member_assign() {
-  #Mut let p IPair = (1i32, 2i32)
-  p.0 = 100i32
-  p.1 = 200i32
-  assert_eq(p.0, 100i32)
-  assert_eq(p.1, 200i32)
+  #Mut let p IPair = (1, 2)
+  p.0 = 100
+  p.1 = 200
+  assert_eq(p.0, 100)
+  assert_eq(p.1, 200)
 }
 
 #Test
 fn test_alias_generic_tuple_member_assign() {
-  #Mut let p Pair<i32> = (3i32, 4i32)
-  p.1 = 77i32
-  assert_eq(p.0, 3i32)
-  assert_eq(p.1, 77i32)
+  #Mut let p Pair<i32> = (3, 4)
+  p.1 = 77
+  assert_eq(p.0, 3)
+  assert_eq(p.1, 77)
 }

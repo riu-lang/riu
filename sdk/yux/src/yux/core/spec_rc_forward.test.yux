@@ -19,12 +19,12 @@ struct Bag {
 
 #Test
 fn test_box_forward_to_string() {
-  let b Rc<Bag> = Bag::make(31i64)
+  let b Rc<Bag> = Bag::make(31)
   assert_eq(b.to_string(), "31")
 }
 
 #Test
 fn test_box_forward_negative() {
-  let b Rc<Bag> = Bag::make(-9i64)
+  let b Rc<Bag> = Bag::make(-9)
   assert_eq(b.to_string(), "-9")
 }

@@ -31,22 +31,22 @@ struct Holder {
 
 #Test
 fn test_copy_of_i32() {
-  #Mut let x i32 = 42i32
+  #Mut let x i32 = 42
   #Mut let y i32 = copy_of(x)
-  assert_eq(y, 42i32)
+  assert_eq(y, 42)
 }
 
 ; ---------- Rc<T>：handle copy + strong++ ----------
 
 #Test
 fn test_copy_of_box_handle() {
-  #Mut let b1 Rc<CopyPair> = CopyPair::make(11i32, 22i32)
+  #Mut let b1 Rc<CopyPair> = CopyPair::make(11, 22)
   #Mut let b2 Rc<CopyPair> = copy_of(b1)
   ; 两个 Rc 看到同一份数据（浅拷句柄 + strong++）
-  assert_eq(b1.a, 11i32)
-  assert_eq(b2.a, 11i32)
-  assert_eq(b1.b, 22i32)
-  assert_eq(b2.b, 22i32)
+  assert_eq(b1.a, 11)
+  assert_eq(b2.a, 11)
+  assert_eq(b1.b, 22)
+  assert_eq(b2.b, 22)
 }
 
 ; ---------- Array<T>：深拷贝（#NoCopy 类型，后续实现）----------
@@ -75,22 +75,22 @@ fn test_copy_of_string() {
 
 #Test
 fn test_copy_of_struct_no_rc_field() {
-  #Mut let p1 CopyPair = CopyPair::make(5i32, 6i32)
+  #Mut let p1 CopyPair = CopyPair::make(5, 6)
   #Mut let p2 CopyPair = copy_of(p1)
-  assert_eq(p2.a, 5i32)
-  assert_eq(p2.b, 6i32)
+  assert_eq(p2.a, 5)
+  assert_eq(p2.b, 6)
 }
 
 ; ---------- 含 Rc 字段的 struct：字段级 retain ----------
 
 #Test
 fn test_copy_of_struct_with_box_field() {
-  #Mut let p Rc<CopyPair> = CopyPair::make(5i32, 6i32)
-  #Mut let h1 Holder = Holder::make(p, 100i32)
+  #Mut let p Rc<CopyPair> = CopyPair::make(5, 6)
+  #Mut let h1 Holder = Holder::make(p, 100)
   #Mut let h2 Holder = copy_of(h1)
-  assert_eq(h2.tag, 100i32)
-  assert_eq(h1.tag, 100i32)
-  assert_eq(h2.payload.a, 5i32)
-  assert_eq(h1.payload.a, 5i32)
-  assert_eq(h2.payload.b, 6i32)
+  assert_eq(h2.tag, 100)
+  assert_eq(h1.tag, 100)
+  assert_eq(h2.payload.a, 5)
+  assert_eq(h1.payload.a, 5)
+  assert_eq(h2.payload.b, 6)
 }

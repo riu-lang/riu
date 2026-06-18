@@ -516,6 +516,14 @@ void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn, const
     map<string, TypeInfo> inferred;
     // 递归 unify: 形参 pType 与实参 aType 匹配; 遇到形如 T 的裸类型形参则记录推断
     std::function<void(const TypeInfo&, const TypeInfo&)> unify = [&](const TypeInfo& pType, const TypeInfo& aType) {
+        // 实参为引用但形参非引用：剥引用（如 arr[0] 返回 T& 传给形参 T）
+        if (aType.isRef() && !pType.isRef()) {
+            auto aElem = aType.refElementType();
+            if (aElem) {
+                unify(pType, *aElem);
+                return;
+            }
+        }
         if (pType.isNormal() && !isBuiltinType(pType.name)) {
             for (auto& tp : typeParams) {
                 if (pType.name == tp) {
@@ -564,7 +572,34 @@ void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn, const
     for (size_t i = 0; i < params.size(); ++i) {
         auto paramType = params[i]->type();
         if (!paramType) continue;
-        unify(paramType->getType(), argTypes[i]);
+
+        TypeInfo pType = paramType->getType();
+
+        // 若实参是灵活整数，且对应形参的类型参数已被推断为整型，跳过 unify
+        // （不覆盖已推断的泛型类型参数，避免 `assert_eq(a_i8, 42)` 中 T 被 42 的默认 i32 覆盖）
+        bool skipUnify = false;
+        if (isFlexibleIntExpr(callNode->getArgs()[i]) && pType.isNormal() && !isBuiltinType(pType.name)) {
+            for (auto& tp : typeParams) {
+                if (pType.name == tp) {
+                    auto it = inferred.find(tp);
+                    if (it != inferred.end()) {
+                        // 检查推断结果是否为整型（含引用剥壳：arr[0] 返 T&，T 记为 i64&）
+                        string inferredName = it->second.name;
+                        if (it->second.isRef()) {
+                            if (auto inner = it->second.refElementType()) inferredName = inner->name;
+                        }
+                        if (isIntTypeName(inferredName)) {
+                            skipUnify = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!skipUnify) {
+            unify(pType, argTypes[i]);
+        }
     }
 
     for (auto& tp : typeParams) {

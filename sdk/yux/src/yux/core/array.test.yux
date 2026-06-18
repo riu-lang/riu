@@ -111,15 +111,15 @@ struct ArrPair {
 
 #Test
 fn test_array_elem_box_reassign() {
-  #Mut let p Rc<ArrPair> = ArrPair::make(10i32, 20i32)
-  #Mut let q Rc<ArrPair> = ArrPair::make(30i32, 40i32)
+  #Mut let p Rc<ArrPair> = ArrPair::make(10, 20)
+  #Mut let q Rc<ArrPair> = ArrPair::make(30, 40)
   #Mut let arr Array<Rc<ArrPair>> = [p]
   assert_eq(arr[0].a, 10i32)
   arr[0] = q
   assert_eq(arr[0].a, 30i32)
   ; 旧元素仍由 main 的 p 持有
-  assert_eq(p.a, 10i32)
-  assert_eq(q.b, 40i32)
+  assert_eq(p.a, 10)
+  assert_eq(q.b, 40)
 }
 
 ; ---------- 嵌套 Array<Array<T>> 字面量：内层按外层 elemType 走 Array<T> 路径 ----------
@@ -158,7 +158,7 @@ fn test_array_get_copy_of() {
   #Mut let a Array<i32> = [10, 20, 30]
   ; get 返回 T&，通过 copy_of 显式转换为 T 值
   let v i32 = copy_of(a.get(0i64))
-  assert_eq(v, 10i32)
+  assert_eq(v, 10)
   assert_eq(copy_of(a.get(2i64)), 30i32)
 }
 
@@ -212,15 +212,15 @@ fn test_array_index_copy_of() {
   #Mut let arr Array<i32> = [5, 10, 15]
   ; copy_of 从 T& 取出 T 值
   let x i32 = copy_of(arr[0])
-  assert_eq(x, 5i32)
+  assert_eq(x, 5)
   ; copy_of 的值与原数组独立（值语义）
   let y i32 = copy_of(arr[1])
   arr[1] = 99
-  assert_eq(y, 10i32)
+  assert_eq(y, 10)
   assert_eq(arr[1], 99)
   ; copy_of 的值可赋给不同类型宽度的变量
   let z i64 = copy_of(arr[2]).to_i64()
-  assert_eq(z, 15i64)
+  assert_eq(z, 15)
 }
 
 ; D.1b: [T * N] 固定数组 T& 绑定 + 读 + 写穿
@@ -228,7 +228,7 @@ fn test_array_index_copy_of() {
 fn test_fixed_array_index_ref_bind() {
   #Mut let buf [i32 * 3] = [1i32, 2i32, 3i32]
   let r i32& = buf[0]
-  assert_eq(r, 1i32)
+  assert_eq(r, 1)
   #Mut let w i32& = buf[2]
   w = 99
   assert_eq(buf[2], 99i32)
@@ -248,7 +248,7 @@ fn test_fixed_array_index_ref_ops() {
 fn test_fixed_array_index_copy_of() {
   let buf [i32 * 3] = [7i32, 14i32, 21i32]
   let x i32 = copy_of(buf[0])
-  assert_eq(x, 7i32)
+  assert_eq(x, 7)
   let y i64 = copy_of(buf[2]).to_i64()
-  assert_eq(y, 21i64)
+  assert_eq(y, 21)
 }

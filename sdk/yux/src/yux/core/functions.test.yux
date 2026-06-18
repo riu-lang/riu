@@ -147,7 +147,7 @@ fn test_generic_identity_i32() {
 #Test
 fn test_generic_identity_i64() {
   let a i64 = fns_identity(100i64)
-  assert_eq(a, 100i64)
+  assert_eq(a, 100)
 }
 
 #Test
@@ -163,7 +163,7 @@ fn test_generic_add_i32() {
 
 #Test
 fn test_generic_add_i64() {
-  assert_eq(fns_add_generic(100i64, 200i64), 300i64)
+  assert_eq(fns_add_generic(100, 200), 300)
 }
 
 #Test
@@ -174,7 +174,7 @@ fn test_generic_add_f64() {
 #Test
 fn test_generic_pair_first() {
   assert_eq(fns_pair_first(1, 2), 1)
-  assert_eq(fns_pair_first(100i64, 200i64), 100i64)
+  assert_eq(fns_pair_first(100, 200), 100)
 }
 
 ; ==================== 类型推断调用 ====================
@@ -188,7 +188,7 @@ fn test_generic_inferred_i32() {
 #Test
 fn test_generic_inferred_i64() {
   let a i64 = fns_identity(123456789i64)
-  assert_eq(a, 123456789i64)
+  assert_eq(a, 123456789)
 }
 
 ; ==================== 嵌套调用 ====================

@@ -26,7 +26,7 @@ fn test_hex() {
 
 #Test
 fn test_typed_suffix() {
-  assert_eq(0b1010u8, 10u8)
+  assert_eq(0b1010u8, 10)
   assert_eq(0o644i32, 420)
-  assert_eq(0xABCDu64, 43981u64)
+  assert_eq(0xABCDu64, 43981)
 }

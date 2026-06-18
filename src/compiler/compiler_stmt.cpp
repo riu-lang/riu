@@ -431,8 +431,22 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         if (node->varType()) {
             varType = node->varType()->getType();
             // 推断灵活整数的类型
-            if (isIntTypeName(varType.name) && isFlexibleIntExpr(expr)) {
-                tryInferIntType(expr, varType);
+            if (isFlexibleIntExpr(expr)) {
+                if (isIntTypeName(varType.name)) {
+                    tryInferIntType(expr, varType);
+                } else if (varType.isRc()) {
+                    if (auto elem = varType.rcElementType()) {
+                        if (isIntTypeName(elem->name)) tryInferIntType(expr, *elem);
+                    }
+                } else if (varType.isWeak()) {
+                    if (auto elem = varType.weakElementType()) {
+                        if (isIntTypeName(elem->name)) tryInferIntType(expr, *elem);
+                    }
+                } else if (varType.isHeap()) {
+                    if (auto elem = varType.heapElementType()) {
+                        if (isIntTypeName(elem->name)) tryInferIntType(expr, *elem);
+                    }
+                }
             }
         } else {
             varType = expr->getType();
@@ -1033,8 +1047,22 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         }
 
         // 推断灵活整数的类型
-        if (isIntTypeName(sym->type.name) && isFlexibleIntExpr(expr)) {
-            tryInferIntType(expr, sym->type);
+        if (isFlexibleIntExpr(expr)) {
+            if (isIntTypeName(sym->type.name)) {
+                tryInferIntType(expr, sym->type);
+            } else if (sym->type.isRc()) {
+                if (auto elem = sym->type.rcElementType()) {
+                    if (isIntTypeName(elem->name)) tryInferIntType(expr, *elem);
+                }
+            } else if (sym->type.isWeak()) {
+                if (auto elem = sym->type.weakElementType()) {
+                    if (isIntTypeName(elem->name)) tryInferIntType(expr, *elem);
+                }
+            } else if (sym->type.isHeap()) {
+                if (auto elem = sym->type.heapElementType()) {
+                    if (isIntTypeName(elem->name)) tryInferIntType(expr, *elem);
+                }
+            }
         }
 
         // 处理 Array<T> 字面量赋值（包括空数组 = []）

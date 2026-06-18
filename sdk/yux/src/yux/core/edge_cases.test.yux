@@ -216,17 +216,17 @@ fn test_bitwise_u32_mask() {
 
 #Test
 fn test_bitwise_shift_u32() {
-  let x u32 = 1u32
-  assert_eq(x << 4u32, 16u32)
-  assert_eq(x << 8u32, 256u32)
-  let y u32 = 256u32
-  assert_eq(y >> 4u32, 16u32)
+  let x u32 = 1
+  assert_eq(x << 4, 16)
+  assert_eq(x << 8, 256)
+  let y u32 = 256
+  assert_eq(y >> 4, 16)
 }
 
 #Test
 fn test_bitwise_not_u8() {
-  let a u8 = 0u8
-  assert_eq(~a, 255u8)
+  let a u8 = 0
+  assert_eq(~a, 255)
 }
 
 ; ==================== codePoint 字面量 ====================
@@ -234,17 +234,17 @@ fn test_bitwise_not_u8() {
 #Test
 fn test_codepoint_ascii() {
   let a u32 = c'A'
-  assert_eq(a, 65u32)
+  assert_eq(a, 65)
   let nl u32 = c'\n'
-  assert_eq(nl, 10u32)
+  assert_eq(nl, 10)
 }
 
 #Test
 fn test_codepoint_digit() {
   let zero u32 = c'0'
   let nine u32 = c'9'
-  assert_eq(zero, 48u32)
-  assert_eq(nine, 57u32)
+  assert_eq(zero, 48)
+  assert_eq(nine, 57)
 }
 
 ; ==================== 类型推断：上下文驱动整型宽度 ====================
@@ -255,7 +255,7 @@ fn accept_i64(x i64) i64 = x
 fn test_type_inference_i64_literal() {
   ; 字面量按上下文推断为 i64
   let r i64 = accept_i64(42)
-  assert_eq(r, 42i64)
+  assert_eq(r, 42)
 }
 
 fn accept_u8(x u8) u8 = x
@@ -263,7 +263,7 @@ fn accept_u8(x u8) u8 = x
 #Test
 fn test_type_inference_u8_literal() {
   let r u8 = accept_u8(100)
-  assert_eq(r, 100u8)
+  assert_eq(r, 100)
 }
 
 ; ==================== if-else 单行表达式（仅 if/else，不支持 elif） ====================

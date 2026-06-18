@@ -5,7 +5,7 @@
 
 #Test
 fn test_math_abs_i8_neg() {
-  ; 0i8 - 5i8 = -5i8；abs 应得 5i8
+  ; 0 - 5 = -5；abs 应得 5
   assert_eq(math.abs(0i8 - 5i8), 5i8)
 }
 

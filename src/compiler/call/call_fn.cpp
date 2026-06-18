@@ -205,6 +205,33 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
         sema::inferGenericFnTypeArgs(callNode, genericFn, fnName, argTypes, typeArgs);
     }
 
+    // 泛型类型推断完成后，按推断出的类型参数为灵活整数实参推断具体类型并重编译
+    // 典型场景：assert_eq(a_i8, 42) — T 由 a 推断为 i8，42 默认 i32 需要按 T=i8 收束
+    {
+        auto params = genericFn->header()->params();
+        for (size_t i = 0; i < params.size() && i < callNode->getArgs().size(); ++i) {
+            if (!isFlexibleIntExpr(callNode->getArgs()[i])) continue;
+            auto paramTypeNode = params[i]->type();
+            if (!paramTypeNode) continue;
+            TypeInfo pt = paramTypeNode->getType();
+            for (size_t j = 0; j < typeParams.size() && j < typeArgs.size(); ++j) {
+                if (pt.name == typeParams[j]) {
+                    // 剥 Ref 壳后检查是否为整型（arr[0] 返 T&，T 被记为 i64& 时这里也能命中）
+                    TypeInfo target = typeArgs[j];
+                    if (target.isRef()) {
+                        if (auto inner = target.refElementType()) target = *inner;
+                    }
+                    if (isIntTypeName(target.name)) {
+                        tryInferIntType(callNode->getArgs()[i], target);
+                        args[i] = compileExpr(callNode->getArgs()[i]);
+                        argTypes[i] = callNode->getArgs()[i]->getType();
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     if (genericFn->header()->hasAnno("Builtin")) {
         // Phase 3.3.2.c: Builtin intrinsic typeArgs/args arity 校验
         // 同时覆盖 E6017 (未知 intrinsic) — helper 内部对清单外 fnName 直接抛.

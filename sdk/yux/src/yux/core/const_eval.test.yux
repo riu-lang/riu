@@ -65,7 +65,7 @@ fn test_cval_global_arith() {
   assert_eq(GA, 10)
   assert_eq(GB, 15)
   assert_eq(GC, 5)
-  assert_eq(GMASK, 15u32)
+  assert_eq(GMASK, 15)
 }
 
 ; ==================== #Const fn 基本调用 ====================

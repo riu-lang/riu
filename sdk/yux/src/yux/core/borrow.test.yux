@@ -23,21 +23,21 @@ fn br_read_a(p BrPair&) i32 {
 
 #Test
 fn test_borrow_as_ref_box_payload() {
-  #Mut let b Rc<BrPair> = BrPair::make(7i32, 8i32)
+  #Mut let b Rc<BrPair> = BrPair::make(7, 8)
   let r BrPair& = as_ref(b)
-  assert_eq(r.a, 7i32)
-  assert_eq(br_read_a(as_ref(b)), 7i32)
+  assert_eq(r.a, 7)
+  assert_eq(br_read_a(as_ref(b)), 7)
 }
 
 ; ---------- borrow_as_ref_chain：同一 box 两次 as_ref 共享借用 ----------
 
 #Test
 fn test_borrow_as_ref_two_shared() {
-  #Mut let b Rc<BrPair> = BrPair::make(11i32, 22i32)
+  #Mut let b Rc<BrPair> = BrPair::make(11, 22)
   let r1 BrPair& = as_ref(b)
   let r2 BrPair& = as_ref(b)
-  assert_eq(r1.a, 11i32)
-  assert_eq(r2.b, 22i32)
+  assert_eq(r1.a, 11)
+  assert_eq(r2.b, 22)
 }
 
 ; ---------- borrow_array_push_after_drop：Array<T>& 借用消亡后 push ----------
@@ -59,12 +59,12 @@ fn test_borrow_array_push_after_drop() {
 #Test
 fn test_borrow_array_ref_in_loop() {
   #Mut let a Array<i32> = [10i32, 20i32, 30i32]
-  #Mut let i i32 = 0i32
+  #Mut let i i32 = 0
   loop {
     let r Array<i32>& = &a
     assert_eq(r.len(), 3i64)
-    i = i + 1i32
-    if i >= 2i32 {
+    i = i + 1
+    if i >= 2 {
       break;
     }
   }
@@ -90,36 +90,36 @@ fn test_borrow_array_read_via_ref_then_write_origin() {
 
 #Test
 fn test_borrow_box_reassign_after_drop() {
-  #Mut let b Rc<BrPair> = BrPair::make(7i32, 8i32)
-  #Mut let b2 Rc<BrPair> = BrPair::make(9i32, 10i32)
+  #Mut let b Rc<BrPair> = BrPair::make(7, 8)
+  #Mut let b2 Rc<BrPair> = BrPair::make(9, 10)
   loop {
     let r BrPair& = as_ref(b)
-    assert_eq(r.a, 7i32)
+    assert_eq(r.a, 7)
     break;
   }
   b = b2
-  assert_eq(b.a, 9i32)
+  assert_eq(b.a, 9)
 }
 
 ; ---------- borrow_copy_bind_root：拷贝绑定后根仍是原变量 ----------
 
 #Test
 fn test_borrow_copy_bind_root() {
-  #Mut let c i32 = 7i32
+  #Mut let c i32 = 7
   let r1 i32& = &c
   let r2 i32& = r1
-  assert_eq(r1, 7i32)
-  assert_eq(r2, 7i32)
+  assert_eq(r1, 7)
+  assert_eq(r2, 7)
 }
 
 ; ---------- borrow_generic_ref_param：泛型 T& 形参 ----------
 
 fn br_first_byte<T>(p T&) i32 {
-  ret 1i32
+  ret 1
 }
 
 #Test
 fn test_borrow_generic_ref_param() {
-  #Mut let x i32 = 42i32
-  assert_eq(br_first_byte(&x), 1i32)
+  #Mut let x i32 = 42
+  assert_eq(br_first_byte(&x), 1)
 }

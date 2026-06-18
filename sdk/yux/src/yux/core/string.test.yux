@@ -158,14 +158,14 @@ fn test_string_template_utf8_part() {
 
 #Test
 fn test_string_template_i32_interp() {
-  let n i32 = 42i32
+  let n i32 = 42
   let s String = "n=${n}"
   assert_eq(s, "n=42")
 }
 
 #Test
 fn test_string_template_i64_literal_interp() {
-  let s String = "x=${1234i64}"
+  let s String = "x=${1234}"
   assert_eq(s, "x=1234")
 }
 
@@ -180,7 +180,7 @@ fn test_string_template_bool_interp() {
 
 #Test
 fn test_string_template_u64_interp() {
-  let n u64 = 0u64
+  let n u64 = 0
   let s String = "n=${n}"
   assert_eq(s, "n=0")
 }
@@ -188,7 +188,7 @@ fn test_string_template_u64_interp() {
 #Test
 fn test_string_template_mixed_kind_interp() {
   let name String = "yux"
-  let n i32 = 7i32
+  let n i32 = 7
   let s String = "$name v${n}"
   assert_eq(s, "yux v7")
 }
@@ -222,7 +222,7 @@ fn test_string_plus_with_literal() {
 
 #Test
 fn test_string_plus_to_string() {
-  let n i32 = 42i32
+  let n i32 = 42
   let s String = "n=" + n
   assert_eq(s, "n=42")
 }
@@ -230,7 +230,7 @@ fn test_string_plus_to_string() {
 #Test
 #TestIsolate ; 命中已知 JIT 跨帧 SEH 漏报，强制子进程跑
 fn test_string_plus_left_non_string() {
-  let n i64 = 7i64
+  let n i64 = 7
   let s String = n + " items"
   assert_eq(s, "7 items")
 }
@@ -238,7 +238,7 @@ fn test_string_plus_left_non_string() {
 #Test
 fn test_string_plus_mixed_chain() {
   let name String = "yux"
-  let v i32 = 6i32
+  let v i32 = 6
   let ok bool = true
   let s String = name + " v" + v + " ok=" + ok
   assert_eq(s, "yux v6 ok=true")

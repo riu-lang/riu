@@ -93,9 +93,9 @@ fn test_nullable_coalesce_null() {
 #Test
 fn test_nullable_reassign_coalesce() {
   #Mut let x i64? = null
-  let v i64 = x ?? 100i64
-  assert_eq(v, 100i64)
-  x = 50i64
-  let w i64 = x ?? 0i64
-  assert_eq(w, 50i64)
+  let v i64 = x ?? 100
+  assert_eq(v, 100)
+  x = 50
+  let w i64 = x ?? 0
+  assert_eq(w, 50)
 }

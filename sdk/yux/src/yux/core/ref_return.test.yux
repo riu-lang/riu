@@ -24,22 +24,22 @@ fn alias(p P&) P& = p
 
 #Test
 fn test_method_field_ref() {
-  #Mut let a P = P::make(7i32, 8i32)
+  #Mut let a P = P::make(7, 8)
   let rx i32& = a.x_ref()
-  assert_eq(rx, 7i32)
+  assert_eq(rx, 7)
 }
 
 #Test
 fn test_method_self_ref() {
-  #Mut let a P = P::make(1i32, 2i32)
+  #Mut let a P = P::make(1, 2)
   let r P& = a.me()
-  assert_eq(r.x, 1i32)
-  assert_eq(r.y, 2i32)
+  assert_eq(r.x, 1)
+  assert_eq(r.y, 2)
 }
 
 #Test
 fn test_freefn_alias_param() {
-  #Mut let a P = P::make(11i32, 22i32)
+  #Mut let a P = P::make(11, 22)
   let r P& = alias(&a)
-  assert_eq(r.x, 11i32)
+  assert_eq(r.x, 11)
 }

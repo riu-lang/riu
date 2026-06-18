@@ -27,26 +27,26 @@ fn test_bool_false() {
 
 #Test
 fn test_i8_type() {
-  let a i8 = 42i8
-  assert_eq(a, 42i8)
+  let a i8 = 42
+  assert_eq(a, 42)
 }
 
 #Test
 fn test_u8_type() {
-  let a u8 = 255u8
-  assert_eq(a, 255u8)
+  let a u8 = 255
+  assert_eq(a, 255)
 }
 
 #Test
 fn test_i16_type() {
-  let a i16 = 1000i16
-  assert_eq(a, 1000i16)
+  let a i16 = 1000
+  assert_eq(a, 1000)
 }
 
 #Test
 fn test_u16_type() {
-  let a u16 = 65535u16
-  assert_eq(a, 65535u16)
+  let a u16 = 65535
+  assert_eq(a, 65535)
 }
 
 #Test
@@ -57,20 +57,20 @@ fn test_i32_type() {
 
 #Test
 fn test_u32_type() {
-  let a u32 = 4000000000u32
-  assert_eq(a, 4000000000u32)
+  let a u32 = 4000000000
+  assert_eq(a, 4000000000)
 }
 
 #Test
 fn test_i64_type() {
-  let a i64 = 1000000000i64
-  assert_eq(a, 1000000000i64)
+  let a i64 = 1000000000
+  assert_eq(a, 1000000000)
 }
 
 #Test
 fn test_u64_type() {
-  let a u64 = 1000000000u64
-  assert_eq(a, 1000000000u64)
+  let a u64 = 1000000000
+  assert_eq(a, 1000000000)
 }
 
 ; ==================== 浮点类型 ====================
@@ -112,13 +112,13 @@ fn test_hex_literal() {
 #Test
 fn test_i8_suffix() {
   let a i8 = 127i8
-  assert_eq(a, 127i8)
+  assert_eq(a, 127)
 }
 
 #Test
 fn test_u64_suffix() {
   let a u64 = 100u64
-  assert_eq(a, 100u64)
+  assert_eq(a, 100)
 }
 
 #Test

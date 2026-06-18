@@ -11,8 +11,8 @@ fn test_var_reassign() {
 
 #Test
 fn test_val_i64() {
-  let b i64 = 100i64
-  assert_eq(b, 100i64)
+  let b i64 = 100
+  assert_eq(b, 100)
 }
 
 #Test

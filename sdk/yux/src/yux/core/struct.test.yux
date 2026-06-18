@@ -50,10 +50,10 @@ struct Pt {
 
 #Test
 fn test_struct_eq_overload() {
-  let a Pt = Pt::make(1i32, 2i32)
-  let b Pt = Pt::make(1i32, 2i32)
-  let c Pt = Pt::make(1i32, 9i32)
-  let d Pt = Pt::make(9i32, 2i32)
+  let a Pt = Pt::make(1, 2)
+  let b Pt = Pt::make(1, 2)
+  let c Pt = Pt::make(1, 9)
+  let d Pt = Pt::make(9, 2)
   assert_true(a == b)
   assert_false(a == c)
   assert_false(a == d)
@@ -106,17 +106,17 @@ struct StPointI {
 }
 
 fn st_modify_byval(p StPointI) {
-  p.x = 999i32
-  p.y = 888i32
+  p.x = 999
+  p.y = 888
 }
 
 #Test
 fn test_struct_byval_trivial_no_caller_change() {
-  #Mut let pt StPointI = StPointI::make(10i32, 20i32)
+  #Mut let pt StPointI = StPointI::make(10, 20)
   st_modify_byval(pt)
   ; 调用方原值不受影响
-  assert_eq(pt.x, 10i32)
-  assert_eq(pt.y, 20i32)
+  assert_eq(pt.x, 10)
+  assert_eq(pt.y, 20)
 }
 
 ; ---------- struct_byval_rc：含 RC 字段 struct by-value 传参 ----------
@@ -127,13 +127,13 @@ fn st_observe_holder(h StHolder) i32 {
 
 #Test
 fn test_struct_byval_with_rc_field() {
-  #Mut let p Rc<StPair> = StPair::make(11i32, 22i32)
-  #Mut let h StHolder = StHolder::make(p, 7i32)
+  #Mut let p Rc<StPair> = StPair::make(11, 22)
+  #Mut let h StHolder = StHolder::make(p, 7)
   ; observe 内对 RC 字段 retain，返回后 caller 仍可读
-  assert_eq(st_observe_holder(h), 11i32 + 22i32 + 7i32)
-  assert_eq(h.bx.a, 11i32)
-  assert_eq(p.b, 22i32)
-  assert_eq(h.tag, 7i32)
+  assert_eq(st_observe_holder(h), 11 + 22 + 7)
+  assert_eq(h.bx.a, 11)
+  assert_eq(p.b, 22)
+  assert_eq(h.tag, 7)
 }
 
 ; ---------- generic_struct_byval：泛型 struct 实例 by-value 传参 ----------
@@ -157,52 +157,52 @@ fn st_observe_generic(h StGenericHolder<Rc<StPair>>) i32 {
 
 #Test
 fn test_struct_byval_generic_instance() {
-  #Mut let p Rc<StPair> = StPair::make(11i32, 22i32)
-  #Mut let h StGenericHolder<Rc<StPair>> = StGenericHolder:<Rc<StPair>>::make(p, 7i32)
-  assert_eq(st_observe_generic(h), 11i32 + 22i32 + 7i32)
-  assert_eq(h.payload.a, 11i32)
-  assert_eq(p.b, 22i32)
-  assert_eq(h.tag, 7i32)
+  #Mut let p Rc<StPair> = StPair::make(11, 22)
+  #Mut let h StGenericHolder<Rc<StPair>> = StGenericHolder:<Rc<StPair>>::make(p, 7)
+  assert_eq(st_observe_generic(h), 11 + 22 + 7)
+  assert_eq(h.payload.a, 11)
+  assert_eq(p.b, 22)
+  assert_eq(h.tag, 7)
 }
 
 ; ---------- struct_assign_rc：含 RC 字段 struct 整体赋值 retain-then-release ----------
 
 #Test
 fn test_struct_whole_assign_rc() {
-  #Mut let p Rc<StPair> = StPair::make(1i32, 2i32)
-  #Mut let q Rc<StPair> = StPair::make(3i32, 4i32)
-  #Mut let h1 StHolder = StHolder::make(p, 10i32)
-  #Mut let h3 StHolder = StHolder::make(q, 30i32)
+  #Mut let p Rc<StPair> = StPair::make(1, 2)
+  #Mut let q Rc<StPair> = StPair::make(3, 4)
+  #Mut let h1 StHolder = StHolder::make(p, 10)
+  #Mut let h3 StHolder = StHolder::make(q, 30)
   #Mut let h2 StHolder = h1
-  assert_eq(h2.bx.a, 1i32)
-  assert_eq(h2.tag, 10i32)
+  assert_eq(h2.bx.a, 1)
+  assert_eq(h2.tag, 10)
   h2 = h3
-  assert_eq(h2.bx.a, 3i32)
-  assert_eq(h2.tag, 30i32)
+  assert_eq(h2.bx.a, 3)
+  assert_eq(h2.tag, 30)
   ; 自赋值
   h2 = h2
-  assert_eq(h2.bx.b, 4i32)
+  assert_eq(h2.bx.b, 4)
   ; 来源仍可读
-  assert_eq(h1.bx.a, 1i32)
-  assert_eq(p.a, 1i32)
-  assert_eq(q.b, 4i32)
+  assert_eq(h1.bx.a, 1)
+  assert_eq(p.a, 1)
+  assert_eq(q.b, 4)
 }
 
 ; ---------- field_reassign_rc：字段重赋值 retain-then-release ----------
 
 #Test
 fn test_struct_field_reassign_rc() {
-  #Mut let p Rc<StPair> = StPair::make(11i32, 22i32)
-  #Mut let q Rc<StPair> = StPair::make(33i32, 44i32)
-  #Mut let h StHolder = StHolder::make(p, 7i32)
-  assert_eq(h.bx.a, 11i32)
-  assert_eq(h.bx.b, 22i32)
+  #Mut let p Rc<StPair> = StPair::make(11, 22)
+  #Mut let q Rc<StPair> = StPair::make(33, 44)
+  #Mut let h StHolder = StHolder::make(p, 7)
+  assert_eq(h.bx.a, 11)
+  assert_eq(h.bx.b, 22)
   h.bx = q
-  assert_eq(h.bx.a, 33i32)
-  assert_eq(h.bx.b, 44i32)
+  assert_eq(h.bx.a, 33)
+  assert_eq(h.bx.b, 44)
   ; p 仍由 main 持有
-  assert_eq(p.a, 11i32)
-  assert_eq(q.b, 44i32)
+  assert_eq(p.a, 11)
+  assert_eq(q.b, 44)
 }
 
 ; ---------- ctor_daa：构造函数定性赋值分析 ----------
@@ -243,40 +243,40 @@ struct DaaBranchy {
     if c {
       ret Self {
         .v = a
-        .w = a + 1i32
+        .w = a + 1
       }
     }
     ret Self {
       .v = b
-      .w = b - 1i32
+      .w = b - 1
     }
   }
 }
 
 #Test
 fn test_ctor_daa_rhs_reads_init_field() {
-  let p = DaaPoint::make(10i32, 5i32)
-  assert_eq(p.x, 10i32)
-  assert_eq(p.y, 15i32)
+  let p = DaaPoint::make(10, 5)
+  assert_eq(p.x, 10)
+  assert_eq(p.y, 15)
 }
 
 #Test
 fn test_ctor_daa_with_box_field() {
-  #Mut let bp Rc<DaaPoint> = DaaPoint::make(100i32, 200i32)
-  let tg = DaaTagged::make(7i32, bp)
-  assert_eq(tg.tag, 7i32)
-  assert_eq(tg.bx.x, 100i32)
+  #Mut let bp Rc<DaaPoint> = DaaPoint::make(100, 200)
+  let tg = DaaTagged::make(7, bp)
+  assert_eq(tg.tag, 7)
+  assert_eq(tg.bx.x, 100)
 }
 
 #Test
 fn test_ctor_daa_branch_full_init() {
-  let b1 = DaaBranchy::make(true, 3i32, 0i32)
-  assert_eq(b1.v, 3i32)
-  assert_eq(b1.w, 4i32)
+  let b1 = DaaBranchy::make(true, 3, 0)
+  assert_eq(b1.v, 3)
+  assert_eq(b1.w, 4)
 
-  let b2 = DaaBranchy::make(false, 0i32, 50i32)
-  assert_eq(b2.v, 50i32)
-  assert_eq(b2.w, 49i32)
+  let b2 = DaaBranchy::make(false, 0, 50)
+  assert_eq(b2.v, 50)
+  assert_eq(b2.w, 49)
 }
 
 ; ==================== 运算符重载 ====================
@@ -314,47 +314,47 @@ struct Vec2 {
 
 #Test
 fn test_op_overload_plus() {
-  let a Vec2 = Vec2::make(1i32, 2i32)
-  let b Vec2 = Vec2::make(3i32, 4i32)
+  let a Vec2 = Vec2::make(1, 2)
+  let b Vec2 = Vec2::make(3, 4)
   let c Vec2 = a + b
-  assert_eq(c.x, 4i32)
-  assert_eq(c.y, 6i32)
+  assert_eq(c.x, 4)
+  assert_eq(c.y, 6)
 }
 
 #Test
 fn test_op_overload_minus() {
-  let a Vec2 = Vec2::make(10i32, 20i32)
-  let b Vec2 = Vec2::make(3i32, 4i32)
+  let a Vec2 = Vec2::make(10, 20)
+  let b Vec2 = Vec2::make(3, 4)
   let c Vec2 = a - b
-  assert_eq(c.x, 7i32)
-  assert_eq(c.y, 16i32)
+  assert_eq(c.x, 7)
+  assert_eq(c.y, 16)
 }
 
 #Test
 fn test_op_overload_mul() {
-  let a Vec2 = Vec2::make(2i32, 3i32)
-  let b Vec2 = Vec2::make(4i32, 5i32)
+  let a Vec2 = Vec2::make(2, 3)
+  let b Vec2 = Vec2::make(4, 5)
   let c Vec2 = a * b
-  assert_eq(c.x, 8i32)
-  assert_eq(c.y, 15i32)
+  assert_eq(c.x, 8)
+  assert_eq(c.y, 15)
 }
 
 #Test
 fn test_op_overload_neg() {
-  let a Vec2 = Vec2::make(5i32, -3i32)
+  let a Vec2 = Vec2::make(5, -3)
   let b Vec2 = -a
-  assert_eq(b.x, -5i32)
-  assert_eq(b.y, 3i32)
+  assert_eq(b.x, -5)
+  assert_eq(b.y, 3)
 }
 
 #Test
 fn test_op_overload_chain() {
-  let a Vec2 = Vec2::make(1i32, 2i32)
-  let b Vec2 = Vec2::make(3i32, 4i32)
-  let c Vec2 = Vec2::make(5i32, 6i32)
+  let a Vec2 = Vec2::make(1, 2)
+  let b Vec2 = Vec2::make(3, 4)
+  let c Vec2 = Vec2::make(5, 6)
   let d Vec2 = a + b + c
-  assert_eq(d.x, 9i32)
-  assert_eq(d.y, 12i32)
+  assert_eq(d.x, 9)
+  assert_eq(d.y, 12)
 }
 
 ; ---------- 比较运算符重载 ----------
@@ -398,9 +398,9 @@ struct OrderedPoint {
 
 #Test
 fn test_op_overload_eq_ne() {
-  let a OrderedPoint = OrderedPoint::make(1i32, 2i32)
-  let b OrderedPoint = OrderedPoint::make(1i32, 2i32)
-  let c OrderedPoint = OrderedPoint::make(1i32, 3i32)
+  let a OrderedPoint = OrderedPoint::make(1, 2)
+  let b OrderedPoint = OrderedPoint::make(1, 2)
+  let c OrderedPoint = OrderedPoint::make(1, 3)
   assert_true(a == b)
   assert_false(a == c)
   assert_false(a != b)
@@ -409,9 +409,9 @@ fn test_op_overload_eq_ne() {
 
 #Test
 fn test_op_overload_lt() {
-  let a OrderedPoint = OrderedPoint::make(1i32, 2i32)
-  let b OrderedPoint = OrderedPoint::make(2i32, 1i32)
-  let c OrderedPoint = OrderedPoint::make(1i32, 3i32)
+  let a OrderedPoint = OrderedPoint::make(1, 2)
+  let b OrderedPoint = OrderedPoint::make(2, 1)
+  let c OrderedPoint = OrderedPoint::make(1, 3)
   assert_true(a < b)
   assert_true(a < c)
   assert_false(b < a)
@@ -419,9 +419,9 @@ fn test_op_overload_lt() {
 
 #Test
 fn test_op_overload_le() {
-  let a OrderedPoint = OrderedPoint::make(1i32, 2i32)
-  let b OrderedPoint = OrderedPoint::make(1i32, 2i32)
-  let c OrderedPoint = OrderedPoint::make(2i32, 1i32)
+  let a OrderedPoint = OrderedPoint::make(1, 2)
+  let b OrderedPoint = OrderedPoint::make(1, 2)
+  let c OrderedPoint = OrderedPoint::make(2, 1)
   assert_true(a <= b)
   assert_true(a <= c)
   assert_false(c <= a)
@@ -429,17 +429,17 @@ fn test_op_overload_le() {
 
 #Test
 fn test_op_overload_gt() {
-  let a OrderedPoint = OrderedPoint::make(2i32, 1i32)
-  let b OrderedPoint = OrderedPoint::make(1i32, 2i32)
+  let a OrderedPoint = OrderedPoint::make(2, 1)
+  let b OrderedPoint = OrderedPoint::make(1, 2)
   assert_true(a > b)
   assert_false(b > a)
 }
 
 #Test
 fn test_op_overload_ge() {
-  let a OrderedPoint = OrderedPoint::make(1i32, 2i32)
-  let b OrderedPoint = OrderedPoint::make(1i32, 2i32)
-  let c OrderedPoint = OrderedPoint::make(1i32, 1i32)
+  let a OrderedPoint = OrderedPoint::make(1, 2)
+  let b OrderedPoint = OrderedPoint::make(1, 2)
+  let c OrderedPoint = OrderedPoint::make(1, 1)
   assert_true(a >= b)
   assert_true(a >= c)
   assert_false(c >= a)
@@ -530,7 +530,7 @@ struct SimpleDtor {
 #Test
 fn test_dtor_basic() {
   #Mut let d SimpleDtor = SimpleDtor::make(42)
-  assert_eq(d.value, 42i32)
+  assert_eq(d.value, 42)
   ; d 离开作用域时 fn ~() 体执行，然后字段级析构（i32 无需析构，等价 no-op）
 }
 
@@ -538,8 +538,8 @@ fn test_dtor_basic() {
 fn test_dtor_multiple() {
   #Mut let d1 SimpleDtor = SimpleDtor::make(1)
   #Mut let d2 SimpleDtor = SimpleDtor::make(2)
-  assert_eq(d1.value, 1i32)
-  assert_eq(d2.value, 2i32)
+  assert_eq(d1.value, 1)
+  assert_eq(d2.value, 2)
   ; d2, d1 离开作用域时析构函数逆序调用
 }
 
@@ -547,7 +547,7 @@ fn test_dtor_multiple() {
 fn test_dtor_nested_scope() {
   {
     #Mut let d SimpleDtor = SimpleDtor::make(100)
-    assert_eq(d.value, 100i32)
+    assert_eq(d.value, 100)
   }
   ; d 在内层作用域结束时析构
   assert_true(true)
@@ -582,9 +582,9 @@ struct OuterStruct {
 
 #Test
 fn test_nested_struct_access() {
-  let o OuterStruct = OuterStruct::make(42i32, 7i32)
-  assert_eq(o.inner.value, 42i32)
-  assert_eq(o.tag, 7i32)
+  let o OuterStruct = OuterStruct::make(42, 7)
+  assert_eq(o.inner.value, 42)
+  assert_eq(o.tag, 7)
 }
 
 ; ==================== struct 方法链式调用 ====================
@@ -595,7 +595,7 @@ struct FluentBuilder {
   #Static
   fn make() FluentBuilder {
     ret Self {
-      .sum = 0i32
+      .sum = 0
     }
   }
 
@@ -613,5 +613,5 @@ struct FluentBuilder {
 fn test_method_chain() {
   let b FluentBuilder = FluentBuilder::make()
   let result i32 = b.add(1).add(2).add(3).get()
-  assert_eq(result, 6i32)
+  assert_eq(result, 6)
 }

@@ -25,7 +25,7 @@ let _STD_ERROR_HANDLE i32 = -12
 fn _stdout_write(buf Ptr, off i64, len i64) {
   #Mut let hStdout Ptr = GetStdHandle(_STD_OUTPUT_HANDLE)
   #Mut let bufWithOff Ptr = _ptr_offset(buf, off)
-  #Mut let written u32 = 0u32
+  #Mut let written u32 = 0
   WriteFile(hStdout, bufWithOff, len.to_u32(), &written, null);
 }
 
@@ -33,7 +33,7 @@ fn _stdout_write(buf Ptr, off i64, len i64) {
 fn _stderr_write(buf Ptr, off i64, len i64) {
   #Mut let hStderr Ptr = GetStdHandle(_STD_ERROR_HANDLE)
   #Mut let bufWithOff Ptr = _ptr_offset(buf, off)
-  #Mut let written u32 = 0u32
+  #Mut let written u32 = 0
   WriteFile(hStderr, bufWithOff, len.to_u32(), &written, null);
 }
 
@@ -1097,7 +1097,7 @@ struct i64 {
   fn to_string() String {
     #Mut let out Array<u32> = []
     #Mut let buf [u8 * 21] = [0u8 ...]
-    #Mut let is_neg = $ < 0i64
+    #Mut let is_neg = $ < 0
     #Mut let v i64 = $
     if is_neg {
       v = -$
@@ -1119,7 +1119,7 @@ struct i64 {
     if is_neg {
       out.push(c'-')
     }
-    #Mut let start i64 = 21i64 - i
+    #Mut let start i64 = 21 - i
     #Mut let k i64 = 0
     loop {
       if k >= i {
@@ -1277,19 +1277,19 @@ struct u64 {
     #Mut let v u64 = $
     #Mut let i i64 = 0
     loop {
-      if v == 0u64 {
+      if v == 0 {
         break;
       }
-      #Mut let digit u64 = v % 10u64
+      #Mut let digit u64 = v % 10
       buf[20i64 - i] = 48u8 + digit.to_u8()
-      v /= 10u64
+      v /= 10
       i += 1
     }
     if i == 0 {
       buf[20i64] = 48u8
       i = 1
     }
-    #Mut let start i64 = 21i64 - i
+    #Mut let start i64 = 21 - i
     #Mut let k i64 = 0
     loop {
       if k >= i {
@@ -1868,12 +1868,12 @@ struct String {
         break;
       }
       let cp u32 = copy_of:<u32>(a[i])
-      if cp < 128u32 {
+      if cp < 128 {
         r.push(cp.to_u8());
-      } elif cp < 2048u32 {
+      } elif cp < 2048 {
         r.push(192u8 + ((cp >> 6u32) & 31u32).to_u8())
         r.push(128u8 + (cp & 63u32).to_u8());
-      } elif cp < 65536u32 {
+      } elif cp < 65536 {
         r.push(224u8 + ((cp >> 12u32) & 15u32).to_u8())
         r.push(128u8 + ((cp >> 6u32) & 63u32).to_u8())
         r.push(128u8 + (cp & 63u32).to_u8());
@@ -1983,7 +1983,7 @@ struct bool {
 ; ==================== stdlib I/O ====================
 ; v0.6 起 print* / eprint* 三态：
 ;   - 非泛型借用 `(s String&)` —— String 实参与字面量走的快路径
-;   - 泛型 owned `<T : ToString>(x T)` —— owned 值传参（如 print(42i64)）
+;   - 泛型 owned `<T : ToString>(x T)` —— owned 值传参（如 print(42)）
 ;   - 泛型借用 `<T : ToString>(x T&)` —— T& 实参免去手动 copy_of（如 Array::get 返回 T&）
 ; 无隐式 auto-ref：T 值不会自动匹配 T& 形参，需要引用时调用处用显式 &arg。
 ; 选择 String& 而非 String 非泛型形态的原因：避免 owned/borrow 双非泛型时 dispatcher 无法在 String 值参上消歧（[E6014]）；
@@ -1998,7 +1998,7 @@ fn print(s String&) {
       break;
     }
     let b [u8 * 1] = [copy_of:<u8>(bytes[i])]
-    _stdout_write(&b, 0i64, 1i64)
+    _stdout_write(&b, 0, 1)
     i += 1
   }
 }
@@ -2016,7 +2016,7 @@ fn print<T : ToString>(x T&) {
 fn println(s String&) {
   print(&s)
   let nl [u8 * 1] = [10u8]
-  _stdout_write(&nl, 0i64, 1i64)
+  _stdout_write(&nl, 0, 1)
 }
 
 fn println<T : ToString>(x T) {
@@ -2037,7 +2037,7 @@ fn eprint(s String&) {
       break;
     }
     let b [u8 * 1] = [copy_of:<u8>(bytes[i])]
-    _stderr_write(&b, 0i64, 1i64)
+    _stderr_write(&b, 0, 1)
     i += 1
   }
 }
@@ -2055,7 +2055,7 @@ fn eprint<T : ToString>(x T&) {
 fn eprintln(s String&) {
   eprint(&s)
   let nl [u8 * 1] = [10u8]
-  _stderr_write(&nl, 0i64, 1i64)
+  _stderr_write(&nl, 0, 1)
 }
 
 fn eprintln<T : ToString>(x T) {

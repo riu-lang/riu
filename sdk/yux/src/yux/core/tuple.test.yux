@@ -2,7 +2,7 @@
 
 ; 以元组为参数（不读取）
 fn take_pair(t (i32, i32)) i32 {
-  ret 1i32
+  ret 1
 }
 
 ; 以元组为参数并读取首元素
@@ -12,139 +12,139 @@ fn first_of(t (i32, i32)) i32 {
 
 ; 返回元组
 fn make_pair() (i32, i32) {
-  ret (1i32, 2i32)
+  ret (1, 2)
 }
 
 ; 嵌套元组
 fn make_nested() ((i32, i32), i32) {
-  ret ((1i32, 2i32), 3i32)
+  ret ((1, 2), 3)
 }
 
 #Test
 fn test_tuple_construct_local() {
-  #Mut let t (i32, i32) = (10i32, 20i32)
-  assert_eq(t.0, 10i32)
-  assert_eq(t.1, 20i32)
+  #Mut let t (i32, i32) = (10, 20)
+  assert_eq(t.0, 10)
+  assert_eq(t.1, 20)
 }
 
 #Test
 fn test_tuple_pass_by_value() {
-  assert_eq(take_pair((7i32, 8i32)), 1i32)
-  assert_eq(first_of((7i32, 8i32)), 7i32)
+  assert_eq(take_pair((7, 8)), 1)
+  assert_eq(first_of((7, 8)), 7)
 }
 
 #Test
 fn test_tuple_return_value() {
   #Mut let t (i32, i32) = make_pair()
-  assert_eq(t.0, 1i32)
-  assert_eq(t.1, 2i32)
+  assert_eq(t.0, 1)
+  assert_eq(t.1, 2)
 }
 
 #Test
 fn test_tuple_nested() {
   #Mut let t ((i32, i32), i32) = make_nested()
   ; 链式 .0.0 / .0.1：lexer DOT_NUM token 让每段 .N 独立成 token
-  assert_eq(t.0.0, 1i32)
-  assert_eq(t.0.1, 2i32)
-  assert_eq(t.1, 3i32)
+  assert_eq(t.0.0, 1)
+  assert_eq(t.0.1, 2)
+  assert_eq(t.1, 3)
   ; 中间变量等价路径
   #Mut let inner (i32, i32) = t.0
-  assert_eq(inner.0, 1i32)
-  assert_eq(inner.1, 2i32)
+  assert_eq(inner.0, 1)
+  assert_eq(inner.1, 2)
 }
 
 #Test
 fn test_tuple_nested_three_level() {
-  #Mut let t (((i32, i32), i32), i32) = (((10i32, 20i32), 30i32), 40i32)
-  assert_eq(t.0.0.0, 10i32)
-  assert_eq(t.0.0.1, 20i32)
-  assert_eq(t.0.1, 30i32)
-  assert_eq(t.1, 40i32)
+  #Mut let t (((i32, i32), i32), i32) = (((10, 20), 30), 40)
+  assert_eq(t.0.0.0, 10)
+  assert_eq(t.0.0.1, 20)
+  assert_eq(t.0.1, 30)
+  assert_eq(t.1, 40)
 }
 
 #Test
 fn test_tuple_nested_member_on_literal() {
   ; 直接对元组字面量取嵌套元素
-  assert_eq(((1i32, 2i32), 3i32).0.0, 1i32)
-  assert_eq(((1i32, 2i32), 3i32).0.1, 2i32)
+  assert_eq(((1, 2), 3).0.0, 1)
+  assert_eq(((1, 2), 3).0.1, 2)
 }
 
 #Test
 fn test_tuple_destructure_basic() {
   ; var (a, b) = (e1, e2) 平铺解构
-  #Mut let (a, b) = (10i32, 20i32)
-  assert_eq(a, 10i32)
-  assert_eq(b, 20i32)
+  #Mut let (a, b) = (10, 20)
+  assert_eq(a, 10)
+  assert_eq(b, 20)
 }
 
 #Test
 fn test_tuple_destructure_from_call() {
   ; 解构来自函数返回的元组
   #Mut let (x, y) = make_pair()
-  assert_eq(x, 1i32)
-  assert_eq(y, 2i32)
+  assert_eq(x, 1)
+  assert_eq(y, 2)
 }
 
 #Test
 fn test_tuple_destructure_three() {
   ; 三元元组
-  #Mut let (a, b, c) = (1i32, 2i32, 3i32)
-  assert_eq(a, 1i32)
-  assert_eq(b, 2i32)
-  assert_eq(c, 3i32)
+  #Mut let (a, b, c) = (1, 2, 3)
+  assert_eq(a, 1)
+  assert_eq(b, 2)
+  assert_eq(c, 3)
 }
 
 #Test
 fn test_tuple_destructure_with_type_anno() {
   ; 显式标注整体元组类型
-  #Mut let (a, b) (i32, i32) = (5i32, 6i32)
-  assert_eq(a, 5i32)
-  assert_eq(b, 6i32)
+  #Mut let (a, b) (i32, i32) = (5, 6)
+  assert_eq(a, 5)
+  assert_eq(b, 6)
 }
 
 #Test
 fn test_tuple_destructure_var_mutable() {
   ; var 解构出来的元素可以再赋值
-  #Mut let (a, b) = (1i32, 2i32)
-  a = 100i32
-  b = 200i32
-  assert_eq(a, 100i32)
-  assert_eq(b, 200i32)
+  #Mut let (a, b) = (1, 2)
+  a = 100
+  b = 200
+  assert_eq(a, 100)
+  assert_eq(b, 200)
 }
 
 #Test
 fn test_tuple_member_on_literal() {
   ; 直接对元组字面量取元素（应在 SSA 上 ExtractValue）
-  assert_eq((100i32, 200i32).0, 100i32)
-  assert_eq((100i32, 200i32).1, 200i32)
+  assert_eq((100, 200).0, 100)
+  assert_eq((100, 200).1, 200)
 }
 
 ; ===== Phase 6 — 元组成员赋值 obj.0 = e =====
 
 #Test
 fn test_tuple_member_assign_simple() {
-  #Mut let t (i32, i32) = (1i32, 2i32)
-  t.0 = 10i32
-  t.1 = 20i32
-  assert_eq(t.0, 10i32)
-  assert_eq(t.1, 20i32)
+  #Mut let t (i32, i32) = (1, 2)
+  t.0 = 10
+  t.1 = 20
+  assert_eq(t.0, 10)
+  assert_eq(t.1, 20)
 }
 
 #Test
 fn test_tuple_member_assign_nested() {
-  #Mut let t ((i32, i32), i32) = ((1i32, 2i32), 3i32)
-  t.0.1 = 99i32
-  t.1 = 7i32
-  assert_eq(t.0.0, 1i32)
-  assert_eq(t.0.1, 99i32)
-  assert_eq(t.1, 7i32)
+  #Mut let t ((i32, i32), i32) = ((1, 2), 3)
+  t.0.1 = 99
+  t.1 = 7
+  assert_eq(t.0.0, 1)
+  assert_eq(t.0.1, 99)
+  assert_eq(t.1, 7)
 }
 
 #Test
 fn test_tuple_member_assign_compound() {
-  #Mut let t (i32, i32) = (5i32, 10i32)
-  t.0 += 3i32
-  t.1 *= 2i32
-  assert_eq(t.0, 8i32)
-  assert_eq(t.1, 20i32)
+  #Mut let t (i32, i32) = (5, 10)
+  t.0 += 3
+  t.1 *= 2
+  assert_eq(t.0, 8)
+  assert_eq(t.1, 20)
 }
