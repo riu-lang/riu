@@ -15,7 +15,6 @@
 #include "ast/yux.h"
 #include "compiler/compiler.h"
 #include "compiler/compiler_test_intrinsics.h"
-#include "tools/build_cache.h"
 #include "tools/pkg_cache.h"
 #include "tools/sdk_loader.h"
 #include "types.h"
@@ -331,11 +330,8 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild, const std::s
         std::exit(1);
     }
 
-    // SDK: 与 build 路径共享。需要 sdk obj 给 JIT 加载; 如不存在则现编。
-    // SDK self-project (yux.toml name="yux") 特殊处理:
-    // findSdkPath() 返回 build 目录下的 SDK 拷贝, 与项目源里的原文件不在同一路径,
-    // 这会导致递归扫描误把原 SDK 文件当成用户文件再加载一遍 → 符号重复。
-    // 用项目源里的 SDK 路径覆盖, 让 sdkPathAbs 与递归扫描看到的 parent 一致。
+    // SDK 符号表加载（仅解析不编译；SDK 自构建时模块 AOT 编为 obj，
+    // 其余模块 JIT 编为 IR——均在下方统一处理）
     std::string sdkPath;
     if (yux.projectName() == "yux") {
         fs::path candidate = fs::path(yux.sourceRoot()) / "yux" / "core";
@@ -345,24 +341,20 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild, const std::s
     } else {
         sdkPath = sdk_loader::findSdkPath();
     }
+    bool isSdkSelfBuild = yux.projectName() == "yux" && !sdkPath.empty();
     std::string sdkObjDir;
     if (!sdkPath.empty()) {
         sdkPath = fs::absolute(sdkPath).string();
-        sdkObjDir = sdkBuildPaths(sdkPath).objDir;
+        // SDK obj 产物目录：sdkRoot/build/src/yux/core/
+        auto sdkRootPath = fs::path(sdkPath).parent_path().parent_path().parent_path();
+        sdkObjDir = (sdkRootPath / "build" / "src" / "yux" / "core").string();
 
-        bool needCompile = !fs::exists(sdkObjDir) || needRecompileSdkDir(sdkPath, sdkObjDir);
-        if (needCompile) {
-            SdkLock sdkLock;
-            sdkLock.tryLock();
-            needCompile = !fs::exists(sdkObjDir) || needRecompileSdkDir(sdkPath, sdkObjDir);
-            if (needCompile) {
-                // compileSdkDir 内部完成每文件 obj 生成 + lld-link /lib 归档
-                compileSdkDir(sdkPath, yux);
-            } else {
-                parseSdkDirOrExit(sdkPath, yux);
-            }
-        } else {
-            parseSdkDirOrExit(sdkPath, yux);
+        // 解析 SDK 源码获取符号表（_sdkFile + 各模块 AST）
+        try {
+            sdk_loader::parseSdkDir(sdkPath, yux);
+        } catch (std::runtime_error& e) {
+            reportRuntimeError(sdkPath, e, "Error in SDK: ");
+            std::exit(1);
         }
     }
 
@@ -388,7 +380,10 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild, const std::s
         auto fname = p.filename().string();
         bool isTest = fname.size() >= 9 && fname.ends_with(".test.yux");
         std::string absPath = fs::absolute(p).string();
-        if (!isTest && !sdkPathAbs.empty() && fs::path(absPath).parent_path().string() == sdkPathAbs) {
+        // SDK 自构建：非 test SDK 文件也作为项目源文件参与编译
+        // 非 SDK 项目：SDK 文件已预编译为 obj，跳过
+        if (!isTest && !isSdkSelfBuild && !sdkPathAbs.empty() &&
+            fs::path(absPath).parent_path().string() == sdkPathAbs) {
             continue; // SDK preload 已处理 sdk 目录下非 test 文件
         }
         auto rel = fs::relative(p, srcDir);
@@ -433,16 +428,32 @@ bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild, const std::s
         std::string sym;
         bool isolate;
     };
+    // SDK 自构建：读 pkg 文件确定 runtime base 模块，对其传 isSdk=true
+    std::map<std::string, SdkPkgEntry> sdkPkgMap;
+    if (isSdkSelfBuild && !sdkPath.empty()) {
+        sdkPkgMap = sdk_loader::readSdkPkg(sdkPath);
+    }
+
     std::vector<TestEntry> tests;
     for (auto& modName : loadedMods) {
         auto file = yux.module(modName);
         if (!file || file == yux.sdkFile()) continue;
 
+        // SDK 自构建：runtime base 模块需发射运行时辅助
+        bool isSdkRuntime = false;
+        if (isSdkSelfBuild) {
+            std::string srcPath = yux.modulePath(modName);
+            auto stem = fs::path(srcPath).stem().string();
+            auto it = sdkPkgMap.find(stem);
+            bool isFlatDep = (it == sdkPkgMap.end()) || it->second.isFlat;
+            isSdkRuntime = isFlatDep && (stem == "base");
+        }
+
         auto ctx = std::make_unique<llvm::LLVMContext>();
         auto mod = std::make_unique<llvm::Module>(modName, *ctx);
         llvm::IRBuilder<> builder(*ctx);
         try {
-            Compiler compiler(*ctx, builder, mod.get(), file, &yux, false);
+            Compiler compiler(*ctx, builder, mod.get(), file, &yux, isSdkRuntime);
             compiler.compile(file);
         } catch (runtime_error& re) {
             std::string mp = yux.modulePath(modName);

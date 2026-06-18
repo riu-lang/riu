@@ -200,8 +200,7 @@ p<FileNode> Yux::_parseFile(const string& absPath, const string& moduleName, int
     // 测试文件按文件名后缀识别（spec §11.3.3.1）
     bool isTestFile = absPath.size() >= 9 &&
                       absPath.ends_with(".test.yux");
-    auto astBuilder = std::make_unique<ASTBuilder>(*this, moduleName, false,
-                                                    isTestFile, absPath);
+    auto astBuilder = std::make_unique<ASTBuilder>(*this, moduleName, isTestFile, absPath);
     auto fileNode = astBuilder->build(program);
     _moduleBuilders.push_back(std::move(astBuilder));
     return fileNode;

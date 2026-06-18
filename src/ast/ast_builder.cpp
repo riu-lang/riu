@@ -15,22 +15,18 @@
 //
 // 本文件留：ctor / dtor / build / preloadPackageChildren / visitProgram。
 
-#include <algorithm>
-#include "ast_builder_helpers.h"
 #include "ast_builder.h"
+#include "ast_builder_helpers.h"
 #include "node/expr_node.h"
 #include "node/literal_node.h"
 #include "node/statement_node.h"
 #include "types.h"
+#include <algorithm>
 
-ASTBuilder::ASTBuilder(Yux& yux, string moduleName, bool isSdk, bool isTestFile, string sourcePath)
-    : _yux(yux), _isSdk(isSdk), _isTestFile(isTestFile), _moduleName(std::move(moduleName)),
-      _sourcePath(std::move(sourcePath)) {}
+ASTBuilder::ASTBuilder(Yux& yux, string moduleName, bool isTestFile, string sourcePath)
+    : _yux(yux), _isTestFile(isTestFile), _moduleName(std::move(moduleName)), _sourcePath(std::move(sourcePath)) {}
 
 ASTBuilder::~ASTBuilder() {
-    if (_isSdk) {
-        return;
-    }
     for (auto node : _nodes) {
         delete node;
     }
@@ -76,12 +72,7 @@ void ASTBuilder::preloadPackageChildren(FileNode* file, const string& alias, con
 
 std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
     DEBUG_LOG("Visit: Program");
-    p<FileNode> file;
-    if (_isSdk) {
-        file = _yux.createSdkFile();
-    } else {
-        file = _yux.createFile(_moduleName);
-    }
+    auto file = _yux.createFile(_moduleName);
 
     auto moduleName = file->moduleName();
 
@@ -168,9 +159,8 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         sym.isConst = isConst;
         file->registerSymbol(name, sym);
 
-        DEBUG_LOG_VAL("  Register global let", name << " : " << type.name
-                                              << (flags.isMut ? " #Mut" : "")
-                                              << (flags.isCval ? " #Cval" : ""));
+        DEBUG_LOG_VAL("  Register global let",
+                      name << " : " << type.name << (flags.isMut ? " #Mut" : "") << (flags.isCval ? " #Cval" : ""));
     }
 
     visitChildren(ctx);

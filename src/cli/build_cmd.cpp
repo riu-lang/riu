@@ -14,7 +14,6 @@
 #include "ast/node/fn_node.h"
 #include "ast/yux.h"
 #include "compiler/compiler.h"
-#include "tools/build_cache.h"
 #include "tools/diagnostic.h"
 #include "tools/pkg_cache.h"
 #include "tools/sdk_loader.h"
@@ -159,8 +158,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         std::filesystem::remove(intermediateRoot, _ec);
     };
 
-    // SDK 自构建（cd sdk/yux && yux build [yux]）：sdkPath 必须指向项目源里的 SDK，
-    // 否则会与 findSdkPath() 返回的安装拷贝走两条路径，最终把同一批文件编译两次。
+    // SDK 符号表加载（所有项目都需要，仅解析不编译）
     string sdkPath;
     {
         namespace fs = std::filesystem;
@@ -172,52 +170,35 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         }
         if (sdkPath.empty()) sdkPath = sdk_loader::findSdkPath();
     }
-    // SDK 静态库路径：放在 sdk 目录下的 build 中（不放用户项目）
     string sdkLibPath;
-    bool compiled = false;
+    bool isSdkSelfBuild = projectMode && yux.projectName() == "yux" && !sdkPath.empty();
 
     if (!sdkPath.empty()) {
         namespace fs = std::filesystem;
         sdkPath = fs::absolute(sdkPath).string();
-        SdkPaths sp = sdkBuildPaths(sdkPath);
-        string sdkObjDir = sp.objDir;
-        sdkLibPath = sp.libPath;
+        // SDK 静态库路径推导：sdkRoot = sdkPath 向上到含 yux.toml 的目录
+        fs::path sdkRoot = fs::path(sdkPath).parent_path().parent_path().parent_path(); // src/yux/core → sdk/yux
+        sdkLibPath = (sdkRoot / "build" / "yux.lib").string();
 
-        bool libExists = fs::exists(sdkLibPath);
-        bool needCompile = !libExists || needRecompileSdkDir(sdkPath, sdkObjDir);
-        if (needCompile) {
-            SdkLock sdkLock;
-            sdkLock.tryLock();
-            needCompile = !fs::exists(sdkLibPath) || needRecompileSdkDir(sdkPath, sdkObjDir);
-            if (needCompile) {
-                // compileSdkDir 内部完成每文件 obj 生成 + lld-link /lib 归档
-                compileSdkDir(sdkPath, yux);
-                compiled = true;
-            } else {
-                parseSdkDirOrExit(sdkPath, yux);
-            }
-        } else {
-            parseSdkDirOrExit(sdkPath, yux);
+        // 解析 SDK 源码获取符号表（_sdkFile + 各模块 AST）
+        try {
+            sdk_loader::parseSdkDir(sdkPath, yux);
+        } catch (std::runtime_error& e) {
+            reportRuntimeError(sdkPath, e, "Error in SDK: ");
+            return 1;
         }
     }
 
-    // SDK 自构建：compileSdkDir 已生成多个 .obj → yux.lib, 产物就是项目目标 lib。
-    // 再走 lib 走法会把同一批源文件以 isSdk=false 重新编译一次, 因此这里直接收尾退出。
-    if (projectMode && yux.projectName() == "yux") {
-        if (!compiled) std::cout << "no work to do." << '\n';
-        std::cout.flush();
-        std::cerr.flush();
-        _exit(0);
-    }
+    bool compiled = false;
 
     auto codegenTo = [&](p<FileNode> file, const std::string& moduleName, const std::string& objOut,
-                         const std::string& irOut) -> bool {
+                         const std::string& irOut, bool isSdk = false) -> bool {
         std::cout << "Compile IR... (module: " << moduleName << ")" << '\n';
         auto ctx = std::make_unique<llvm::LLVMContext>();
         auto mod = std::make_unique<llvm::Module>(moduleName, *ctx);
         llvm::IRBuilder<> builder(*ctx);
         try {
-            Compiler compiler(*ctx, builder, mod.get(), file, &yux, false);
+            Compiler compiler(*ctx, builder, mod.get(), file, &yux, isSdk);
             compiler.compile(file);
         } catch (runtime_error& e) {
             // 通过模块名查回源文件路径（Yux::modulePath 维护映射）
@@ -279,13 +260,15 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         }
         std::ranges::sort(libFiles);
 
-        // 加载所有 AST
-        for (auto& [abs, mn] : libFiles) {
-            try {
-                yux.loadMainFile(abs, mn);
-            } catch (runtime_error& e) {
-                reportRuntimeError(abs, e, mn + ": ");
-                return 1;
+        // 加载所有 AST（SDK 自构建时 parseSdkDir 已加载，跳过重复解析）
+        if (!isSdkSelfBuild) {
+            for (auto& [abs, mn] : libFiles) {
+                try {
+                    yux.loadMainFile(abs, mn);
+                } catch (runtime_error& e) {
+                    reportRuntimeError(abs, e, mn + ": ");
+                    return 1;
+                }
             }
         }
 
@@ -293,7 +276,29 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         vector<std::string> libObjs;
         bool anyCodegenError = false;
         PkgCacheRegistry libCaches(yux.projectRoot(), buildDir);
-        for (auto& [abs, mn] : libFiles) {
+
+        // SDK 自构建：编译列表来自 parseSdkDir 已加载的模块，读 pkg 文件确定 runtime base
+        std::map<std::string, SdkPkgEntry> sdkPkgMap;
+        if (isSdkSelfBuild) {
+            sdkPkgMap = sdk_loader::readSdkPkg(sdkPath);
+        }
+
+        // 构建编译列表：SDK 自构建用 yux.files()，普通 lib 用 libFiles
+        vector<std::pair<std::string, std::string>> compileList; // {abs, modName}
+        if (isSdkSelfBuild) {
+            for (auto& file : yux.files()) {
+                if (file == yux.sdkFile()) continue;
+                string mn = file->moduleName();
+                string abs = yux.modulePath(mn);
+                if (abs.empty()) continue;
+                compileList.push_back({abs, mn});
+            }
+            std::ranges::sort(compileList);
+        } else {
+            compileList = libFiles;
+        }
+
+        for (auto& [abs, mn] : compileList) {
             auto file = yux.module(mn);
             if (!file) continue;
             string base = mirroredOutputBase(yux.projectRoot(), buildDir, abs);
@@ -303,8 +308,17 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             if (emitIr) {
                 fs::create_directories(fs::path(ir).parent_path());
             }
+            // SDK 自构建：runtime base 模块需发射运行时辅助
+            bool isSdkRuntime = false;
+            if (isSdkSelfBuild) {
+                auto stem = fs::path(abs).stem().string();
+                auto it = sdkPkgMap.find(stem);
+                bool isFlatDep = (it == sdkPkgMap.end()) || it->second.isFlat;
+                isSdkRuntime = isFlatDep && (stem == "base");
+            }
+
             if (!libCaches.isFresh(abs, obj)) {
-                if (!codegenTo(file, mn, obj, ir)) {
+                if (!codegenTo(file, mn, obj, ir, isSdkRuntime)) {
                     anyCodegenError = true;
                     continue; // 跳过 cache 更新与 obj 收集；继续下一个模块
                 }
@@ -426,7 +440,10 @@ int runBuildCommand(const BuildCmdOptions& opts) {
 
         std::string sdkObjDir;
         if (!sdkPath.empty()) {
-            sdkObjDir = sdkBuildPaths(sdkPath).objDir;
+            // sdkPath = <sdkRoot>/src/yux/core, obj 产物在 <sdkRoot>/build/src/yux/core/
+            namespace fs = std::filesystem;
+            auto sdkRootPath = fs::path(sdkPath).parent_path().parent_path().parent_path();
+            sdkObjDir = (sdkRootPath / "build" / "src" / "yux" / "core").string();
         }
 
         int rc = jit::runViaJIT(std::move(mainMod), std::move(mainCtx), extraMods, extraCtxs, sdkObjDir);

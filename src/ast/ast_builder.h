@@ -12,7 +12,6 @@
 
 class ASTBuilder : public yux::yuxParserBaseVisitor {
     Yux& _yux;
-    bool _isSdk = false;
     bool _isTestFile = false;
     string _moduleName;
     string _sourcePath; // 用于 #Test 在非 *.test.yux 文件中的诊断
@@ -49,8 +48,7 @@ class ASTBuilder : public yux::yuxParserBaseVisitor {
     string findEnclosingStructName() const;
 
 public:
-    explicit ASTBuilder(Yux& yux, string moduleName = "", bool isSdk = false, bool isTestFile = false,
-                        string sourcePath = "");
+    explicit ASTBuilder(Yux& yux, string moduleName = "", bool isTestFile = false, string sourcePath = "");
     ~ASTBuilder() override;
 
     [[nodiscard]] bool isTestFile() const { return _isTestFile; }
