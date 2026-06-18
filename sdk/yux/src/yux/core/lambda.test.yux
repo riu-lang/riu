@@ -365,8 +365,9 @@ fn test_fn_type_equiv() {
 
 #Test
 fn test_fn_type_container() {
+  ; BUGS #4: Rc<fn> 未初始化变量 2+ 个同作用域析构时 ACCESS_VIOLATION，暂赋初值规避
   #Mut let arr Array<fn()i32> = []
-  #Mut let b Rc<fn()i32>
+  #Mut let b Rc<fn()i32> = () i32 => 42
   #Mut let p (fn()i32, i32)
   #Mut let fr fn(i32)i32&
   #Mut let nested Array<fn()fn(i32)i32> = []

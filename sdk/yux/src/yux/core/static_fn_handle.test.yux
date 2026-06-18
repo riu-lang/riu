@@ -10,7 +10,7 @@ struct Buf {
   #Static
   fn from(arr Array<u32>) Buf {
     ret Self {
-      .data = arr
+      .data = move:<Array<u32>>(arr)
     }
   }
 

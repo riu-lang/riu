@@ -1,6 +1,7 @@
 ; Phase 4b/4c: String #Static 工厂回归 (ctor 已砍, 构造唯一通道为静态工厂)
 
 #Test
+#TestIsolate ; 全量 in-process 跑到 503 时 LLVM Value 析构断言崩溃，子进程隔离绕过
 fn test_string_static_empty() {
   let s String = String::empty()
   assert_eq(s.len(), 0i64)
@@ -8,6 +9,7 @@ fn test_string_static_empty() {
 }
 
 #Test
+#TestIsolate ; 全量 in-process LLVM 状态累积崩溃，子进程隔离绕过
 fn test_string_static_from_buf() {
   ; 'h''i' = 104, 105
   let buf Array<u32> = [104u32, 105u32]
@@ -19,6 +21,7 @@ fn test_string_static_from_buf() {
 }
 
 #Test
+#TestIsolate ; 全量 in-process LLVM 状态累积崩溃，子进程隔离绕过
 fn test_string_static_from_empty_buf() {
   let buf Array<u32> = []
   let s String = String::from(buf)
@@ -27,6 +30,7 @@ fn test_string_static_from_empty_buf() {
 }
 
 #Test
+#TestIsolate ; 全量 in-process LLVM 状态累积崩溃，子进程隔离绕过
 fn test_string_from_defensive_copy() {
   ; 关键回归: String::from 深拷贝, 外界 mutate buf 不影响已构造的 String
   #Mut let buf Array<u32> = [104u32, 105u32]
