@@ -236,11 +236,42 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                 // (compiler_call.cpp:667-670). 不做这步会让 callee 拿到 caller 唯一 +1,
                 // callee 析构释放后 caller 的 alloca 变成 use-after-free.
                 for (size_t i = 0; i < argVals.size() && i < paramTypes.size(); ++i) {
-                    if (!typeNeedsDestructor(paramTypes[i])) continue;
-                    if (!isFreshHandleExpr(node->args()[i])) {
-                        retainHandleAtCallSite(argVals[i], paramTypes[i]);
-                    } else {
-                        consumeTemp(argVals[i]);
+                    // Phase 4c: 静态 fn 调用点的句柄实参所有权转移，与 ExprCallNode 路径对齐
+                    // (compiler_call.cpp:667-670). 不做这步会让 callee 拿到 caller 唯一 +1,
+                    // callee 析构释放后 caller 的 alloca 变成 use-after-free.
+                    if (typeNeedsDestructor(paramTypes[i])) {
+                        if (!isFreshHandleExpr(node->args()[i])) {
+                            retainHandleAtCallSite(argVals[i], paramTypes[i]);
+                        } else {
+                            consumeTemp(argVals[i]);
+                        }
+                    }
+                    // B-4: Array<T> 等 struct-by-pointer 实参做指针转换,
+                    // 对齐 getMethodFunction 中 structParamUsesPointer 的 LLVM 签名。
+                    // 优先复用源变量 alloca（避免副本导致 caller 析构时 double-free），
+                    // 找不到则创临时 alloca（表达式结果等场景）。
+                    if (structParamUsesPointer(paramTypes[i])) {
+                        llvm::Value* ptrAlloca = nullptr;
+                        auto& arg = node->args()[i];
+                        if (auto lit = dynamic_cast<ExprLiteralNode*>(arg)) {
+                            if (auto objLit = dynamic_cast<LiteralObjNode*>(lit->literal())) {
+                                auto varName = objLit->getValue().getText();
+                                auto it = _localVarPtrs.find(varName);
+                                if (it != _localVarPtrs.end()) {
+                                    ptrAlloca = it->second;
+                                    // 所有权转移给 callee（callee 内部 move 会 zero _data），
+                                    // 标记 moved 防 caller 析构 double-free
+                                    _movedVars.insert(varName);
+                                    std::erase(_scopeVars, varName);
+                                }
+                            }
+                        }
+                        if (!ptrAlloca) {
+                            auto structType = getLLVMType(paramTypes[i]);
+                            ptrAlloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");
+                            _builder.CreateStore(argVals[i], ptrAlloca);
+                        }
+                        argVals[i] = ptrAlloca;
                     }
                 }
                 auto callResult = _builder.CreateCall(fn, argVals, retType.empty() ? "" : methodName + ".ret");

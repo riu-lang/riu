@@ -689,7 +689,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
     if (!fn) {
         vector<llvm::Type*> paramTypes;
         for (auto& t : instParamTypes) {
-            if (!t.isPtr() && !t.isRef() && structParamUsesPointer(t.name)) {
+            if (!t.isPtr() && !t.isRef() && structParamUsesPointer(t)) {
                 paramTypes.push_back(llvm::PointerType::get(_context, 0));
             } else {
                 paramTypes.push_back(getLLVMType(t));
@@ -730,10 +730,18 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             } else {
                 consumeTemp(args[i]);
             }
-            callArgs.push_back(args[i]);
+            // B-4: Array<T> 等既需析构又需按指针传参的类型，做指针转换再 push
+            if (structParamUsesPointer(at)) {
+                auto structType = getLLVMType(at);
+                auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");
+                _builder.CreateStore(args[i], alloca);
+                callArgs.push_back(alloca);
+            } else {
+                callArgs.push_back(args[i]);
+            }
             continue;
         }
-        if (structParamUsesPointer(at.name)) {
+        if (structParamUsesPointer(at)) {
             auto structType = getLLVMType(at);
             auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");
             _builder.CreateStore(args[i], alloca);
@@ -948,7 +956,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
         // Phase 8c: fresh 实参（call/array literal）已自带 +1，跳过 retain
         // Phase 8d.1: fresh 实参的 +1 移交给 callee，从临时帧消费掉
         // Phase B-1: #NoCopy 类型不可按值传参（从现有变量）
-        bool paramNeedsPtr = structParamUsesPointer(fnSymbol->params[i].name);
+        bool paramNeedsPtr = structParamUsesPointer(fnSymbol->params[i]);
         if (isNoCopyType(argTypes[i]) && !paramNeedsPtr) {
             if (i < callNode->getArgs().size()) {
                 if (auto lit = dynamic_cast<ExprLiteralNode*>(callNode->getArgs()[i])) {
@@ -973,6 +981,16 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
 
         if (paramNeedsPtr) {
             DEBUG_LOG_VAL("    Passing struct by pointer", "arg " << i << " : " << fnSymbol->params[i].name);
+            // B-4: Array<T> 等 struct-by-pointer 实参也需要 consumeTemp（避免 temp frame
+            // 末尾重复释放已在 callee 中移入 Rc 的 _data 缓冲）。
+            // 对齐 compileMethodCall 的 typeNeedsDestructor + structParamUsesPointer 双检模式。
+            if (typeNeedsDestructor(argTypes[i])) {
+                if (i < callNode->getArgs().size() && !isFreshHandleExpr(callNode->getArgs()[i])) {
+                    retainHandleAtCallSite(args[i], argTypes[i]);
+                } else if (i < callNode->getArgs().size()) {
+                    consumeTemp(args[i]);
+                }
+            }
             auto structType = getLLVMType(argTypes[i]);
             auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");
             _builder.CreateStore(args[i], alloca);

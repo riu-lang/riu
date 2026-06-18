@@ -566,6 +566,12 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 // 写 handle 字段
                 auto handleField = _builder.CreateGEP(rcStructType, alloca, {zero, zero}, "handle_field");
                 _builder.CreateStore(block, handleField);
+
+                // B-4: 消费临时帧中的 exprVal（对齐 Rc-from-Rc / Array-from-Array 路径），
+                // 避免 popAndReleaseTempFrame 双释放已移入 Rc block 的数据缓冲。
+                if (isFreshHandleExpr(expr)) {
+                    consumeTemp(exprVal);
+                }
             } else {
                 throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, elemType->name,
                                exprType.name);

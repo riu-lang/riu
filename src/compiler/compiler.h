@@ -295,6 +295,8 @@ private:
     // 规则：内置类型 / Ptr / Ref → false；用户 struct（普通或泛型实例）一律 by-value（false）；
     // 仅 _structTypes 中注册但找不到声明（跨模块未通配导入）→ 保守 true
     bool structParamUsesPointer(const string& typeName);
+    // B-4: TypeInfo 重载 — 直接用已有 TypeInfo，避免从裸 name 构造时丢失泛型实参
+    bool structParamUsesPointer(const TypeInfo& ti);
 
     // Phase 3c.2.c: 解析结构体字段类型清单
     // 普通 struct → 直接取 fields().getType()

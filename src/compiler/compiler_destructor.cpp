@@ -755,7 +755,9 @@ bool Compiler::structParamUsesPointer(const string& typeName) {
     if (ti.isPtr() || ti.isRef()) return false;
 
     // B-3: Array<T> 是 #NoCopy 非平凡 struct，必须按指针传递（callee 可变修改应对 caller 可见）
-    if (ti.isArrayGeneric()) return true;
+    // B-4: 当 typeName 仅为 "Array"（丢失泛型实参的裸名）时，仍识别为 Array 泛型；
+    // 调用方若持有完整 TypeInfo 应优先走 TypeInfo 重载。
+    if (ti.isArrayGeneric() || typeName == "Array") return true;
 
     // 普通 struct（当前文件 / SDK）→ by-value
     auto structDecl = _file->getStructDecl(typeName);
@@ -773,6 +775,13 @@ bool Compiler::structParamUsesPointer(const string& typeName) {
     }
 
     return false;
+}
+
+// B-4: TypeInfo 重载 — 直接读 isArrayGeneric()，避免从裸 name 字符串构造 TypeInfo 丢失泛型实参。
+bool Compiler::structParamUsesPointer(const TypeInfo& ti) {
+    if (ti.isPtr() || ti.isRef()) return false;
+    if (ti.isArrayGeneric()) return true;
+    return structParamUsesPointer(ti.name);
 }
 
 // 检查结构体是否需要析构函数
