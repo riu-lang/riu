@@ -99,6 +99,25 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
             }
             return;
         }
+        // Nullable<Rc<T>> / Nullable<Weak<T>> / Nullable<含 RC 字段 struct> 等：
+        // _has=true 时释放内层 T 的值
+        if (inner && typeNeedsDestructor(*inner)) {
+            auto ty = getLLVMType(type);
+            auto z = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+            auto hasField = _builder.CreateGEP(ty, slotPtr, {z, z}, "old.nullable.has_field");
+            auto hasVal = _builder.CreateLoad(_builder.getInt1Ty(), hasField, "old.nullable.has");
+            auto valueField = _builder.CreateGEP(ty, slotPtr, {z, one}, "old.nullable.value_field");
+            auto* pf = _builder.GetInsertBlock()->getParent();
+            auto* dropBB = llvm::BasicBlock::Create(_context, "old.nullable.drop", pf);
+            auto* contBB = llvm::BasicBlock::Create(_context, "old.nullable.cont", pf);
+            _builder.CreateCondBr(hasVal, dropBB, contBB);
+            _builder.SetInsertPoint(dropBB);
+            releaseAtPtr(valueField, *inner);
+            _builder.CreateBr(contBB);
+            _builder.SetInsertPoint(contBB);
+            return;
+        }
     }
 
     // Phase 3e: owned Dyn<D> 释放
@@ -724,10 +743,11 @@ bool Compiler::typeNeedsDestructor(const TypeInfo& type) {
     // Heap<T>：作用域尾走 __yux_heap_free（DRAFT-heap-types §8.3a）
     if (type.isHeap()) return true;
 
-    // Phase 3d.2: Heap<T>? (Nullable<Heap<T>>) —— _has=true 时同 Heap<T> 释放.
+    // Nullable<T>：若内层 T 需析构（Rc/Weak/Array/Heap/String/含 RC 字段 struct/enum），
+    // 则 Nullable<T> 也需析构——_has=true 时调内层 T 的析构释放
     if (type.isNullable()) {
         auto inner = type.nullableInnerType();
-        if (inner && inner->isHeap()) return true;
+        if (inner && (inner->isHeap() || typeNeedsDestructor(*inner))) return true;
     }
 
     // Phase 3a: 函数类型 fn(...)R 的 captures 字段是 Rc<CapturesT>?，按 §7.4 字段级 RC

@@ -433,6 +433,20 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                     continue;
                 }
 
+                if (emitIr) {
+                    std::string testIr = mirroredOutputBase(yux.projectRoot(), irDir, testAbs) + ".ll";
+                    fs::create_directories(fs::path(testIr).parent_path());
+                    std::error_code ec;
+                    llvm::raw_fd_ostream irFile(testIr, ec);
+                    if (ec) {
+                        std::cerr << "Error opening test IR file: " << ec.message() << '\n';
+                    } else {
+                        tMod->print(irFile, nullptr);
+                        irFile.flush();
+                        std::cout << "Write test IR: " << testIr << '\n';
+                    }
+                }
+
                 if (!compileIRToObj(tMod.get(), testObj)) {
                     std::cerr << "Error: failed to compile test IR: " << testObj << '\n';
                     continue;

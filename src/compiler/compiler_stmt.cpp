@@ -738,10 +738,24 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 auto exprVal = compileExpr(expr);
 
                 if (exprType.isNullable() && exprType == varType) {
-                    // 整体复制 Nullable<T>
+                    // 整体复制 Nullable<T>：若内层含 Rc/Weak/fn 需 retain（与 struct 声明路径对称）
+                    if (typeNeedsDestructor(*innerType)) {
+                        if (!isFreshHandleExpr(expr)) {
+                            retainHandleAtCallSite(exprVal, *innerType);
+                        } else {
+                            consumeTemp(exprVal);
+                        }
+                    }
                     _builder.CreateStore(exprVal, alloca);
                 } else if (exprType == *innerType) {
-                    // 隐式包装：T → Nullable<T>
+                    // 隐式包装：T → Nullable<T>：若 T 含 Rc/Weak/fn 需 retain
+                    if (typeNeedsDestructor(*innerType)) {
+                        if (!isFreshHandleExpr(expr)) {
+                            retainHandleAtCallSite(exprVal, *innerType);
+                        } else {
+                            consumeTemp(exprVal);
+                        }
+                    }
                     _builder.CreateStore(_builder.getInt1(true), hasField);
                     _builder.CreateStore(exprVal, valueField);
                 } else {
@@ -849,10 +863,16 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 structDecl = _yux->sdkFile()->getStructDecl(varType.name);
             }
             if (structDecl) {
+                // Phase 3d: 含 RC 字段 struct 从已有变量复制时必须 retain 内部字段
+                // （与赋值路径 compiler_stmt.cpp:1220-1227 对称）
                 // Phase 8d.4: fresh 含 RC 字段 struct value（如 String = i64.to_string()）
                 // 的 +1 已转给 var slot；从临时帧消费，避免帧弹出时再调 dtor 双释放
-                if (typeNeedsDestructor(varType) && isFreshHandleExpr(expr)) {
-                    consumeTemp(exprVal);
+                if (typeNeedsDestructor(varType)) {
+                    if (!isFreshHandleExpr(expr)) {
+                        retainHandleAtCallSite(exprVal, varType);
+                    } else {
+                        consumeTemp(exprVal);
+                    }
                 }
                 _scopeVars.push_back(varName);
             }
