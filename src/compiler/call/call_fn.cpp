@@ -509,11 +509,11 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
                 copied = _builder.CreateLoad(copiedLLVMTy, args[0], "copy_of.load");
             }
 
-            // B-3: Array<T> — #NoCopy 类型，深拷贝尚未实现
-            // TODO: 实现 Array 逐元素深拷贝（分配新缓冲 + copy 元素）
+            // B-3: Array<T> — #NoCopy 类型，深拷贝待 Spec Clone 后实现
+            // TODO(Spec Clone): 实现 Array 逐元素深拷贝（分配新缓冲 + 逐元素复制 + retain）
             if (isArray) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                    ErrorCode::E4031, T.name, "copy_of", T.name);
+                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E4031, T.name, "copy_of",
+                               T.name);
             }
 
             // 把所有 RC 子结构 +1：Rc/Array/Weak 抽 handle 调对应 retain；
@@ -606,8 +606,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
 
             // 防御性：堆句柄类型写 null 到源 slot 防 double-free
             if (T.isRc() || T.isArrayGeneric() || T.isWeak()) {
-                _builder.CreateStore(llvm::ConstantPointerNull::get(
-                    llvm::PointerType::get(_context, 0)), srcAlloca);
+                _builder.CreateStore(llvm::ConstantPointerNull::get(llvm::PointerType::get(_context, 0)), srcAlloca);
             }
             // TODO: 含 RC 字段的普通 struct move 后应清空 alloca，防字段级 double-release
 
@@ -621,7 +620,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
         if (fnName == "_ptr_write") {
             // B-3: _ptr_write:<T>(p Ptr, v T) — 将 v 写入 p 指向的内存
             _builder.CreateStore(args[1], args[0]);
-            return nullptr;  // void
+            return nullptr; // void
         }
         if (fnName == "heap_some" || fnName == "heap_null") {
             // DRAFT-heap-types §8.3a.4.2 (Phase 3d)：Heap<T>? 构造助手
@@ -743,8 +742,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             if (auto lit = dynamic_cast<ExprLiteralNode*>(callNode->getArgs()[i])) {
                 if (dynamic_cast<LiteralObjNode*>(lit->literal())) {
                     if (!isFresh) {
-                        throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                            ErrorCode::E4031, at.name, "按值传参", at.name);
+                        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E4031, at.name,
+                                       "按值传参", at.name);
                     }
                 }
             }
@@ -984,8 +983,8 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
                 if (auto lit = dynamic_cast<ExprLiteralNode*>(callNode->getArgs()[i])) {
                     if (dynamic_cast<LiteralObjNode*>(lit->literal())) {
                         if (!isFreshHandleExpr(callNode->getArgs()[i])) {
-                            throw YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                                ErrorCode::E4031, argTypes[i].name, "按值传参", argTypes[i].name);
+                            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E4031,
+                                           argTypes[i].name, "按值传参", argTypes[i].name);
                         }
                     }
                 }

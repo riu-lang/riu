@@ -381,6 +381,10 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
                 auto valLLVMTy = getLLVMType(cap.type);
                 auto srcVal = _builder.CreateLoad(valLLVMTy, it->second, "cap.src");
                 _builder.CreateStore(srcVal, dstAddr);
+                // B-3: #NoCopy 类型（Array / 自定义 #NoCopy struct）捕获 → move 语义：
+                // 值已移入 captures buffer，源 alloca 清零防外层析构 double-free。
+                // 置于 retain 分支之前：NoCopy 无 RC，retain 路径对它们无意义。
+                bool isNoCopyCap = isNoCopyType(cap.type);
                 if (isHeapNullableCap) {
                     auto z0 = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
                     auto z1 = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
@@ -388,6 +392,10 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
                     auto valField = _builder.CreateGEP(valLLVMTy, it->second, {z0, z1}, "cap.bdang.value");
                     _builder.CreateStore(_builder.getInt1(false), hasField);
                     _builder.CreateStore(llvm::ConstantPointerNull::get(ptrTy), valField);
+                } else if (isNoCopyCap) {
+                    // #NoCopy 类型：值已移入 captures，源写零防 double-free
+                    auto zeroVal = llvm::ConstantAggregateZero::get(valLLVMTy);
+                    _builder.CreateStore(zeroVal, it->second);
                 } else if (typeNeedsDestructor(cap.type)) {
                     // 堆句柄按 callee-clean 习惯 retain（与 retainHandleAtCallSite 同款逻辑）
                     // —— 仅 Rc 路径需要；栈嵌入路径已在前面拒绝了 needs-dtor 字段

@@ -49,7 +49,7 @@ fn test_copy_of_box_handle() {
   assert_eq(b2.b, 22)
 }
 
-; ---------- Array<T>：深拷贝（#NoCopy 类型，后续实现）----------
+; ---------- Array<T>：深拷贝（#NoCopy 类型，待 Spec Clone 后实现）----------
 
 ;#Test
 ;fn test_copy_of_array() {
