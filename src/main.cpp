@@ -96,37 +96,22 @@ int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windo
     buildCmd->add_option("name", buildNameArg, "Project name (optional; must match `name` in yux.toml when given)");
     buildCmd->add_flag("--emit-ir", emitIr, "Emit LLVM IR to .ll file");
     buildCmd->add_option("--emit-ir-dir", emitIrDir, "Output directory for .ll files (default: build/)");
+    bool testMode = false;
+    buildCmd->add_flag("--test", testMode, "Build test executables for *.test.yux into build/tests/");
     buildCmd->fallthrough(); // 允许 --warn / --allow / --deny / -Werror 在 build 子命令上使用
 
 #ifdef _DEBUG
     buildCmd->add_flag("-d,--debug", debug, "Output compilation IR debug information");
 #endif
 
-    // `yux test [selector]` 子命令（仅项目模式；spec §11.3.4）
-    // selector 形态：
-    //   <prefix>             模块名前缀匹配（例：yux.core 命中 yux.core.*.test）
-    //   <module>#<fnName>    精确匹配模块名 + 函数名
-    auto* testCmd = app.add_subcommand("test", "Run #Test functions in *.test.yux files (project mode only)");
-    std::vector<std::string> testSelectors;
+    // `yux test` 子命令：yux build --test → yux-test-runner 加载 DLL 执行
+    auto* testCmd =
+        app.add_subcommand("test", "Run #Test functions via DLL test runner (yux-test-runner must be in PATH)");
     bool testVerbose = false;
-    testCmd->add_option("selector", testSelectors,
-                        "One or more module prefixes or `<module>#<fnName>` selectors (test matches any)");
     testCmd->add_flag("-v,--verbose", testVerbose,
                       "Print captured stdout/stderr for every test (default: only on failure)");
-    // Phase 5：进程隔离开关
-    std::string testIsolate = "none";
-    testCmd->add_option("--isolate", testIsolate, "Isolation mode: none|process (default: none)")
-        ->check(CLI::IsMember({"none", "process"}));
-    bool testIsolateChild = false;
-    auto* childOpt =
-        testCmd->add_flag("--isolate-child", testIsolateChild, "(internal) child runner for --isolate=process");
-    childOpt->group(""); // 隐藏
-    std::string testCaptureFile;
-    auto* capOpt = testCmd->add_option("--capture", testCaptureFile, "(internal) child capture file path");
-    capOpt->group("");
-    testCmd->add_flag("--emit-ir", emitIr, "Emit LLVM IR to .ll file (JIT modules)");
-    testCmd->add_option("--emit-ir-dir", emitIrDir, "Output directory for .ll files (default: build/)");
-    testCmd->fallthrough();
+    int testThreads = 0;
+    testCmd->add_option("--threads", testThreads, "Thread count (default: CPU cores)");
 #ifdef _DEBUG
     testCmd->add_flag("-d,--debug", debug, "Output compilation IR debug information");
 #endif
@@ -143,9 +128,6 @@ int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windo
     // 只剩 ast 引擎；旧 token 流 Formatter 已删除
 
     CLI11_PARSE(app, argc, argv);
-
-    // Phase 5：子进程模式 — 在任何输出前把 stdout/stderr 重定向到 capture 文件
-    bool isChildIsolated = maybeApplyChildRedirect(testCmd->parsed(), testIsolateChild, testCaptureFile);
 
     // 把诊断 severity 开关下发到 DiagPolicy
     // applyOverride: 校验 code 已知 + 允许策略；不可降级时打印拒绝信息
@@ -178,27 +160,21 @@ int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windo
         return runFormatCommand(fopts);
     }
 
-    if (!isChildIsolated) {
-        std::cout << "Working at: " << std::filesystem::absolute(std::filesystem::current_path()).string() << '\n';
-    }
+    // 始终打印工作目录
+    std::cout << "Working at: " << std::filesystem::absolute(std::filesystem::current_path()).string() << '\n';
+    std::cout.flush();
 
-    // `yux test` 子命令：项目模式 #Test 收集 + LLJIT 装载 + SEH 包裹 + 子进程隔离。
-    // 实现拆到 src/cli/test_cmd.cpp；runTestCommand 内部 _exit，永不返回。
+    // `yux test` 子命令：yux build --test → yux-test-runner 加载 DLL 执行
     if (testCmd->parsed()) {
         TestCmdOptions opts;
-        opts.selectors = testSelectors;
         opts.verbose = testVerbose;
-        opts.isolate = testIsolate;
-        opts.isolateChild = testIsolateChild;
-        opts.captureFile = testCaptureFile;
-        opts.hasPositionalInput = !inputFile.empty();
-        opts.emitIr = emitIr;
-        opts.emitIrDir = emitIrDir;
-        runTestCommand(opts, isChildIsolated);
+        opts.threads = testThreads;
+        runTestCommand(opts);
     }
 
     BuildCmdOptions bopts;
     bopts.projectMode = buildCmd->parsed();
+    bopts.testMode = testMode;
     bopts.emitIr = emitIr;
     bopts.emitIrDir = emitIrDir;
     bopts.jitRun = jitRun;

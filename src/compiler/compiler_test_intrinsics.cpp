@@ -24,9 +24,9 @@
 
 namespace {
 
-// 获取或声明 SDK 侧 `_yux_test_assert_failed()` 函数
-// 通过 file 查找 _yux_test_assert_failed 的真实所属模块（不再硬编码 yux.core），
-// 确保 mangled 名与 assert.yux（模块 yux.core.assert）的定义一致。
+// 获取或声明断言失败函数
+// 始终调用 SDK 的 _yux_test_assert_failed() → RaiseException(0xE0FA17ED)
+// 由 yux test (JIT) 或 yux-test-runner.exe (DLL) 的 SEH wrapper 捕获
 llvm::Function* getAssertFailedFn(llvm::Module* module, FileNode* file) {
     string modName = "yux.core"; // 兜底
     if (file) {
@@ -42,8 +42,7 @@ llvm::Function* getAssertFailedFn(llvm::Module* module, FileNode* file) {
     return llvm::Function::Create(fnTy, llvm::Function::ExternalLinkage, name, module);
 }
 
-// 在 cond 为真（"失败"）时跳转到失败块：调 _yux_test_assert_failed() → unreachable
-// cond 为假时继续 fallthrough 到 contBB
+// 在 cond 为真（"失败"）时跳转到失败块：调断言失败函数 → unreachable
 void emitAssertFailureBranch(llvm::IRBuilder<>& builder, llvm::Module* module, llvm::Value* failCond,
                              const string& siteName, FileNode* file) {
     auto& ctx = module->getContext();
@@ -55,8 +54,7 @@ void emitAssertFailureBranch(llvm::IRBuilder<>& builder, llvm::Module* module, l
     builder.SetInsertPoint(failBB);
     auto failedFn = getAssertFailedFn(module, file);
     builder.CreateCall(failedFn, {});
-    // _yux_test_assert_failed 通过 RaiseException 抛 SEH 异常，正常控制流不返回；
-    // unreachable 让 LLVM 优化掉后续路径
+    // RaiseException 抛 SEH，控制流不返回
     builder.CreateUnreachable();
 
     builder.SetInsertPoint(contBB);

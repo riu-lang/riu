@@ -131,6 +131,10 @@ void emitArrayHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, ll
 void emitHeapHandleHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module);
 void emitMainStartup(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
                      const std::vector<std::string>& initModuleNames = {});
+// 测试 DLL 模式：生成 yux_test_init（dllexport），调全局 init + _yux_register_tests
+// yux-test-runner.exe 加载 DLL 后通过 GetProcAddress 调用
+void emitTestDllInit(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
+                     const std::vector<std::string>& initModuleNames = {});
 void emitRuntimeHelpers(llvm::IRBuilder<>& builder, llvm::Module* module);
 
 } // namespace runtime

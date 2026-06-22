@@ -105,6 +105,7 @@
 - 泛型跨模块：`getGenericFunction` 搜索扩展到 wildcardImports；`FnInstance` 对齐 `StructInstance` 加 `consumerModule`
 - SDK lib 去平铺：`base.*` 拆为独立子模块（`yux.core.base` / `.assert` / `.exit` / `.panic`），各独立 FileNode + `.obj` → `.lib`；pkg `*` 通配移除
 - LLVM 符号：分隔符统一；私有符号由源名前导 `_` 自然形成；运行时辅助不变
+- 测试基础设施重构：删除 JIT/单文件模式，`yux test` 全量走 DLL + 多子进程并行（`yux build --test` → 并行 spawn `yux-test-runner` 每 DLL 一进程）；`yux-test-runner` 简化为单 DLL 顺序执行。进程隔离缓解 BUG 4（累积堆损坏）从 ~80% 失败降到 ~3-8%。
 
 **不在范围**：T/T&风调用的结构体保持内部处理。
 

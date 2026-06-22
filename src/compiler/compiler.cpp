@@ -36,8 +36,9 @@
 // ==================== 构造函数 ====================
 // 初始化编译器，建立基本类型到 LLVM 类型的映射
 Compiler::Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, p<FileNode> file,
-                   Yux* yux, bool isSdk)
-    : _context(context), _builder(builder), _module(mod), _file(file), _yux(yux), _isSdk(isSdk) {
+                   Yux* yux, bool isSdk, bool isTestDll)
+    : _context(context), _builder(builder), _module(mod), _file(file), _yux(yux), _isSdk(isSdk),
+      _isTestDll(isTestDll) {
     // 初始化基本类型映射表
     // 注意: i8/u8, i16/u16 等使用相同的 LLVM 类型，语义区分在 TypeInfo 中
     _typeMap.insert({"", _builder.getVoidTy()});      // void 类型
@@ -141,8 +142,15 @@ void Compiler::compile(p<FileNode> file) {
     // 非 SDK 程序需要生成 main 启动代码
     // main 函数会被重命名为 yux_main，真正的 main 由 mainStartup 提供
     if (!_isSdk) {
-        auto mainFn = _file->getFunction("main");
-        if (mainFn) {
+        if (_isTestDll) {
+            DEBUG_LOG("Emitting test DLL init");
+            vector<string> loadOrder;
+            if (_yux) loadOrder = _yux->loadOrder();
+            runtime::emitTestDllInit(_context, _builder, _module, loadOrder);
+            emitTestRegistrations();
+        } else {
+            auto mainFn = _file->getFunction("main");
+            if (mainFn) {
             // 10g-7：main 是否标 #Fallible(E)？
             string mainFallibleErr;
             if (mainFn->header()) {
@@ -162,7 +170,136 @@ void Compiler::compile(p<FileNode> file) {
             }
         }
     }
+    }
     DEBUG_LOG("=== Compilation complete ===");
+}
+
+// ==================== 测试注册生成 ====================
+
+// 测试 DLL 模式：生成编译期全局注册表 + dllexport 访问器函数
+//
+// 生成内容：
+//   @yux_test_count:   i32           — 测试数量
+//   @yux_test_names:   [N x ptr]     — 测试名称字符串指针数组
+//   @yux_test_fns:     [N x ptr]     — 测试函数指针数组
+//   yux_test_get_count(): i32         — dllexport，返回 @yux_test_count
+//   yux_test_get_name(i32): ptr       — dllexport，返回 names[i]
+//   yux_test_get_fn(i32): ptr         — dllexport，返回 fns[i]
+//
+// yux-test-runner.exe 加载 DLL 后通过 GetProcAddress 调用访问器获取测试列表，
+// 然后多线程调用 fn() + SEH 包裹捕获断言失败（RaiseException）。
+void Compiler::emitTestRegistrations() {
+    // 收集本模块内的 #Test 函数
+    struct TestFnInfo {
+        std::string fnName;
+        std::string mangledName;
+    };
+    std::vector<TestFnInfo> testFns;
+    for (auto& fn : _file->getFunctions()) {
+        if (!fn->header()->hasAnno("Test")) continue;
+        std::string fnName = fn->header()->name().getText();
+        std::string sym = Mangler::function(_file->moduleName(), fnName, {}, false);
+        testFns.push_back({fnName, sym});
+    }
+
+    if (testFns.empty()) {
+        // 没有 #Test 函数：不生成注册表（yux-test-runner.exe 会因找不到 yux_test_get_count 而跳过该 DLL）
+        return;
+    }
+
+    DEBUG_LOG_VAL("Emitting test registry", testFns.size());
+
+    auto i32Ty = _builder.getInt32Ty();
+    auto ptrTy = llvm::PointerType::get(_context, 0);
+    auto voidFnTy = llvm::FunctionType::get(_builder.getVoidTy(), {}, false);
+    auto voidFnPtrTy = llvm::PointerType::get(_context, 0); // void(*)()
+
+    size_t N = testFns.size();
+
+    // ====== 名称字符串全局 ======
+    std::vector<llvm::Constant*> namePtrs;
+    for (size_t i = 0; i < N; ++i) {
+        std::string fullName = _file->moduleName() + "#" + testFns[i].fnName;
+        auto nameConst = llvm::ConstantDataArray::getString(_context, fullName, true);
+        auto nameGlobal = new llvm::GlobalVariable(*_module, nameConst->getType(), true,
+                                                    llvm::GlobalValue::InternalLinkage, nameConst,
+                                                    "_yux_test_name_" + std::to_string(i));
+        namePtrs.push_back(llvm::ConstantExpr::getBitCast(nameGlobal, ptrTy));
+    }
+
+    // ====== 函数指针数组 ======
+    std::vector<llvm::Constant*> fnPtrs;
+    for (size_t i = 0; i < N; ++i) {
+        // 测试函数已在 compileFn 阶段生成，直接按名查找并 bitcast
+        auto func = _module->getFunction(testFns[i].mangledName);
+        if (!func) {
+            // 未找到（可能因错误被跳过），创建外部声明作为占位
+            func = llvm::Function::Create(voidFnTy, llvm::Function::ExternalLinkage,
+                                           testFns[i].mangledName, _module);
+        }
+        fnPtrs.push_back(llvm::ConstantExpr::getBitCast(func, voidFnPtrTy));
+    }
+
+    // ====== 全局 count ======
+    auto countGlobal =
+        new llvm::GlobalVariable(*_module, i32Ty, false, llvm::GlobalValue::InternalLinkage,
+                                  llvm::ConstantInt::get(i32Ty, static_cast<uint32_t>(N)), "yux_test_count");
+
+    // ====== 全局 names 数组 ======
+    auto namesArrTy = llvm::ArrayType::get(ptrTy, N);
+    auto namesConst = llvm::ConstantArray::get(namesArrTy, namePtrs);
+    new llvm::GlobalVariable(*_module, namesArrTy, false, llvm::GlobalValue::InternalLinkage, namesConst,
+                              "yux_test_names");
+
+    // ====== 全局 fns 数组 ======
+    auto fnsArrTy = llvm::ArrayType::get(voidFnPtrTy, N);
+    auto fnsConst = llvm::ConstantArray::get(fnsArrTy, fnPtrs);
+    new llvm::GlobalVariable(*_module, fnsArrTy, false, llvm::GlobalValue::InternalLinkage, fnsConst, "yux_test_fns");
+
+    // ====== dllexport 访问器函数 ======
+
+    // yux_test_get_count(): i32
+    {
+        auto fnType = llvm::FunctionType::get(i32Ty, {}, false);
+        auto fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, "yux_test_get_count", _module);
+        fn->setDLLStorageClass(llvm::GlobalValue::DLLExportStorageClass);
+
+        auto entry = llvm::BasicBlock::Create(_context, "entry", fn);
+        _builder.SetInsertPoint(entry);
+        auto val = _builder.CreateLoad(i32Ty, countGlobal, "count");
+        _builder.CreateRet(val);
+    }
+
+    // yux_test_get_name(i32): ptr
+    {
+        auto fnType = llvm::FunctionType::get(ptrTy, {i32Ty}, false);
+        auto fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, "yux_test_get_name", _module);
+        fn->setDLLStorageClass(llvm::GlobalValue::DLLExportStorageClass);
+
+        auto entry = llvm::BasicBlock::Create(_context, "entry", fn);
+        _builder.SetInsertPoint(entry);
+        llvm::Value* idx = &*fn->arg_begin();
+        // 直接用 GEP 索引 names 全局数组
+        auto nameGlobal = _module->getGlobalVariable("yux_test_names", true);
+        auto namePtr = _builder.CreateGEP(namesArrTy, nameGlobal, {_builder.getInt32(0), idx}, "name_ptr");
+        auto name = _builder.CreateLoad(ptrTy, namePtr, "name");
+        _builder.CreateRet(name);
+    }
+
+    // yux_test_get_fn(i32): ptr (返回 void(*)() 函数指针)
+    {
+        auto fnType = llvm::FunctionType::get(voidFnPtrTy, {i32Ty}, false);
+        auto fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, "yux_test_get_fn", _module);
+        fn->setDLLStorageClass(llvm::GlobalValue::DLLExportStorageClass);
+
+        auto entry = llvm::BasicBlock::Create(_context, "entry", fn);
+        _builder.SetInsertPoint(entry);
+        llvm::Value* idx = &*fn->arg_begin();
+        auto fnsGlobal = _module->getGlobalVariable("yux_test_fns", true);
+        auto fnPtr = _builder.CreateGEP(fnsArrTy, fnsGlobal, {_builder.getInt32(0), idx}, "fn_ptr");
+        auto fnVal = _builder.CreateLoad(voidFnPtrTy, fnPtr, "fn");
+        _builder.CreateRet(fnVal);
+    }
 }
 
 // ==================== 全局常量编译 ====================

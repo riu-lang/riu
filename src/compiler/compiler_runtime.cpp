@@ -1050,6 +1050,48 @@ void emitMainStartup(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llv
     builder.CreateRet(builder.getInt32(0));
 }
 
+// 测试 DLL 模式的 yux_test_init：由 yux-test-runner.exe 通过 GetProcAddress 调用
+// 调用各模块全局初始化函数。测试注册表在编译期由 emitTestRegistrations 生成为全局数组，
+// 无需运行时注册。
+void emitTestDllInit(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
+                     const std::vector<std::string>& initModuleNames) {
+    DEBUG_LOG("Emitting test DLL init function");
+
+    auto voidFnType = llvm::FunctionType::get(builder.getVoidTy(), {}, false);
+    auto initFn = llvm::Function::Create(voidFnType, llvm::Function::ExternalLinkage, "yux_test_init", module);
+    // DLL 导出：yux-test-runner.exe 通过 GetProcAddress 查找
+    initFn->setDLLStorageClass(llvm::GlobalValue::DLLExportStorageClass);
+    DEBUG_LOG("  Created yux_test_init (dllexport)");
+
+    auto entry = llvm::BasicBlock::Create(context, "entry", initFn);
+    builder.SetInsertPoint(entry);
+
+    // 按模块拓扑序调用 _yux_global_init_<Mod>()
+    auto voidInitFnType = llvm::FunctionType::get(builder.getVoidTy(), {}, false);
+    if (!initModuleNames.empty()) {
+        for (auto& modName : initModuleNames) {
+            string fnName = "_yux_global_init_" + modName;
+            for (auto& c : fnName) {
+                if (c == '.') c = '_';
+            }
+            auto callee = module->getOrInsertFunction(fnName, voidInitFnType);
+            builder.CreateCall(callee, {});
+            DEBUG_LOG_VAL("  Called global init (topo order)", fnName);
+        }
+    } else {
+        // 兼容：遍历当前 Module 内所有 init 函数
+        for (auto& func : module->getFunctionList()) {
+            auto funcName = func.getName();
+            if (funcName.starts_with("_yux_global_init_")) {
+                builder.CreateCall(&func, {});
+                DEBUG_LOG_VAL("  Called global init (legacy)", funcName.str());
+            }
+        }
+    }
+
+    builder.CreateRetVoid();
+}
+
 // ==================== 通用运行时辅助 ====================
 
 // 生成通用运行时辅助函数

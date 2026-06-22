@@ -44,6 +44,7 @@ class Compiler {
     p<FileNode> _file;           // 当前编译的源文件 AST
     Yux* _yux = nullptr;         // 编译器主驱动，用于访问 SDK 等全局资源
     bool _isSdk = false;         // 是否正在编译 SDK (core.yux)
+    bool _isTestDll = false;     // 是否为 test DLL 模式（影响断言内建 + 导出）
 
     // ==================== 类型映射表 ====================
     map<string, llvm::Type*> _typeMap;           // 基本类型 -> LLVM 类型映射
@@ -186,6 +187,9 @@ private:
     //   名往 stderr 写 "error: <module>.<EnumName>::<VariantName>[(...)]\n" 后 ExitProcess(1)；
     //   isErr=0 → ret 0。spec §6.1。
     void emitMainStartupFallible(const string& fallibleErrName);
+    // 测试 DLL 模式：生成 _yux_register_tests()（InternalLinkage），为每个 #Test fn 调 _yux_test_register
+    // 由 yux_test_init（dllexport）在全局 init 之后调用
+    void emitTestRegistrations();
 
     llvm::Type* wrapFallibleRetType(const TypeInfo& retType, const string& errTypeName);
     // 同上，但强制返回 StructType* 用于 ret 路径构造 insertvalue。errTypeName 必须非空。
@@ -461,11 +465,12 @@ public:
     // @param context   LLVM 上下文
     // @param builder   IR 构建器
     // @param mod       LLVM 模块
-    // @param file      要编译的源文件 AST
-    // @param yux       编译器主驱动 (可选)
-    // @param isSdk     是否为 SDK 编译
+    // @param file       要编译的源文件 AST
+    // @param yux        编译器主驱动 (可选)
+    // @param isSdk      是否为 SDK 编译
+    // @param isTestDll  是否为 test DLL 模式（断言走 _yux_test_throw_failure + dllexport）
     Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, p<FileNode> file,
-             Yux* yux = nullptr, bool isSdk = false);
+             Yux* yux = nullptr, bool isSdk = false, bool isTestDll = false);
 
     // ==================== 编译入口 ====================
     void compile(p<FileNode> file); // 编译文件 (主入口)

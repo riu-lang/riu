@@ -226,6 +226,10 @@ target("yux_codegen")
         end
     end)
 
+target("yux-test-runner")
+    set_kind("binary")
+    add_files("src/tools/runner_main.cpp")
+
 target("yux")
     set_kind("binary")
     add_deps("yux_codegen")

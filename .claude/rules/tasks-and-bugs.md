@@ -30,21 +30,20 @@ SDK 测试（`sdk/yux/src/yux/core/*.test.yux`）按主题建文件，内部 `#T
 
 ### 测试命令速查
 
-新测试默认 `yux test`（JIT 进程内，快）。诊断用 `yux-check test`，格式化/extern/项目输出用 `xmake test`。
+新测试默认 `yux test`（DLL + 多子进程并行）。诊断用 `yux-check test`，格式化/extern/项目输出用 `xmake test`。
 
 ```powershell
 # yux test（项目内，*.test.yux 的 #Test）
+# 流程：yux build --test → 并行 spawn yux-test-runner 子进程
 yux test                          ; 当前项目所有 #Test
-yux test yux.core                 ; 模块前缀筛选用例
-yux test -d                       ; 打印ast ir编译过程参数信息
-yux test --isolate process        ; 全部子进程隔离（排查 SEH flake）
+yux test --threads 4              ; 指定并行子进程数（默认 CPU 核数）
+yux test --verbose                ; 打印每个测试捕获的 stdout/stderr
+yux test -d                       ; 调试输出传给 yux build --test
 cd sdk/yux && yux test            ; 主测试集
 
-# IR 调试（yux test / yux build 通用）
-yux test --emit-ir                ; 输出 .ll 文件到 build/
-yux test --emit-ir --emit-ir-dir ir_out  ; 指定 .ll 输出目录
-yux test -d                       ; 打印ast ir编译过程参数信息
+# IR 调试（yux build）
 yux build --emit-ir               ; 构建同时输出 .ll
+yux build --emit-ir --emit-ir-dir ir_out  ; 指定 .ll 输出目录
 
 # yux-check test（诊断回归，; check: EXXXX 注解）
 yux-check test tests/check-cases/   ; 批量诊断测试

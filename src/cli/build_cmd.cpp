@@ -291,7 +291,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 string mn = file->moduleName();
                 string abs = yux.modulePath(mn);
                 if (abs.empty()) continue;
-                compileList.push_back({abs, mn});
+                compileList.emplace_back(abs, mn);
             }
             std::ranges::sort(compileList);
         } else {
@@ -367,6 +367,128 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         }
 
         if (!compiled) std::cout << "no work to do." << '\n';
+
+        // ====== test 模式（lib 项目：每个 .test.yux → 独立 test exe） ======
+        if (opts.testMode) {
+            // 构建 test 专用产物目录
+            std::string testsDir = buildDir + "/tests";
+            std::string testsObjDir = testsDir + "/obj";
+            ensureBuildDir(testsDir);
+            ensureBuildDir(testsObjDir);
+
+            // 递归扫 src/ 下 *.test.yux（test 模式不再跳过 .test.yux）
+            std::vector<std::pair<std::string, std::string>> testFiles; // {abs, modName}
+            std::error_code ec;
+            for (auto it = fs::recursive_directory_iterator(srcDir, ec); it != fs::recursive_directory_iterator();
+                 ++it) {
+                if (ec) break;
+                if (!it->is_regular_file()) continue;
+                auto& p = it->path();
+                if (p.extension() != ".yux") continue;
+                auto fname = p.filename().string();
+                if (!(fname.size() >= 9 && fname.ends_with(".test.yux"))) continue;
+                auto rel = fs::relative(p, srcDir);
+                std::string modName = rel.generic_string();
+                modName = modName.substr(0, modName.size() - 4); // strip .yux
+                for (auto& c : modName)
+                    if (c == '/' || c == '\\') c = '.';
+                testFiles.emplace_back(fs::absolute(p).string(), modName);
+            }
+            std::ranges::sort(testFiles);
+
+            // 扫描模块名用于依赖收集
+            // （libFiles 已包含所有非 test 的 .yux）
+            std::map<std::string, std::string> allObjMap;  // modName → obj path
+            for (auto& [abs, mn] : libFiles) {
+                std::string obj = mirroredOutputBase(yux.projectRoot(), buildDir, abs) + ".obj";
+                allObjMap[mn] = obj;
+            }
+
+            size_t testExeCount = 0;
+            for (auto& [testAbs, testMod] : testFiles) {
+                // 解析测试文件 AST
+                std::string testModName = testMod;
+                try {
+                    yux.loadMainFile(testAbs, testModName);
+                } catch (std::runtime_error& e) {
+                    reportRuntimeError(testAbs, e, testModName + ": ");
+                    continue;
+                }
+
+                // Codegen 测试模块（isTestDll=true）
+                auto testFile = yux.module(testModName);
+                if (!testFile) continue;
+
+                std::string testObj = mirroredOutputBase(yux.projectRoot(), testsObjDir, testAbs) + ".obj";
+                fs::create_directories(fs::path(testObj).parent_path());
+
+                auto tCtx = std::make_unique<llvm::LLVMContext>();
+                auto tMod = std::make_unique<llvm::Module>(testModName, *tCtx);
+                llvm::IRBuilder<> tBuilder(*tCtx);
+                try {
+                    Compiler compiler(*tCtx, tBuilder, tMod.get(), testFile, &yux, false, true); // isTestDll=true
+                    compiler.compile(testFile);
+                } catch (std::runtime_error& e) {
+                    reportRuntimeError(testAbs, e, testModName + ": ");
+                    continue;
+                }
+
+                if (!compileIRToObj(tMod.get(), testObj)) {
+                    std::cerr << "Error: failed to compile test IR: " << testObj << '\n';
+                    continue;
+                }
+                std::cout << "Write test obj: " << testObj << '\n';
+
+                // 收集依赖 obj（从 yux.loadOrder — 测试模块引用的依赖）
+                std::vector<std::string> linkObjs = {testObj};
+                std::set<std::string> seenMods;
+                for (auto& depMod : yux.loadOrder()) {
+                    if (seenMods.count(depMod)) continue;
+                    seenMods.insert(depMod);
+                    auto it = allObjMap.find(depMod);
+                    if (it != allObjMap.end()) {
+                        linkObjs.push_back(it->second);
+                    }
+                }
+                // SDK lib
+                if (!sdkLibPath.empty()) linkObjs.push_back(sdkLibPath);
+
+                // LLD 链接 test dll
+                // 替换模块名中的 '.' 为 '_'（Windows DLL 路径）
+                std::string dllFileName = testMod;
+                for (auto& c : dllFileName)
+                    if (c == '.') c = '_';
+                std::string testDllPath = testsDir;
+                testDllPath += "/";
+                testDllPath += dllFileName;
+                testDllPath += ".test.dll";
+
+                std::string dllOut = "/out:" + testDllPath;
+                // DLL 模式：/dll，无需 /entry /subsystem /kernel32.lib
+                std::vector<const char*> linkArgs = {"lld-link", dllOut.c_str(), "/dll", "/noentry", "kernel32.lib"};
+                for (auto& o : linkObjs)
+                    linkArgs.insert(linkArgs.begin() + 1, o.c_str());
+
+                std::string outStr, errStr;
+                llvm::raw_string_ostream oOS(outStr), eOS(errStr);
+                std::cout << "Link test dll: " << testDllPath << '\n';
+                lld::DriverDef dd = {.f = lld::WinLink, .d = &lld::coff::link};
+                lld::Result r = lldMain(linkArgs, oOS, eOS, llvm::ArrayRef{dd});
+                if (r.retCode) {
+                    std::cerr << "Error: test dll link failed for " << testMod << "\n" << errStr;
+                    continue;
+                }
+                ++testExeCount;
+            }
+            if (testExeCount > 0) {
+                std::cout << "Built " << testExeCount << " test dll(s) into " << testsDir << '\n';
+            } else if (!testFiles.empty()) {
+                std::cout << "no test dll built (all failed)\n";
+            } else {
+                std::cout << "no *.test.yux files found\n";
+            }
+        }
+
         std::cout.flush();
         std::cerr.flush();
         _exit(0);

@@ -3,34 +3,19 @@
 
 // `yux test` 子命令实现
 //
-// 从 src/main.cpp 抠出 (P1 Phase 1.b.ii): 收集 #Test 函数、LLJIT 装载、SEH
-// 包裹 + 输出捕获、子进程隔离 (--isolate=process / #TestIsolate)。
-// 仅项目模式; 详见 spec §11.3。
+// 流程：yux build --test → yux-test-runner 多线程加载 *.test.dll 执行
+// DLL 协议见 src/tools/runner_main.cpp 文件头注释
 
 #pragma once
-
-#include <string>
-#include <vector>
 
 namespace yux::cli {
 
 struct TestCmdOptions {
-    std::vector<std::string> selectors;
     bool verbose = false;
-    std::string isolate = "none"; // "none" | "process"
-    bool isolateChild = false;
-    std::string captureFile;
-    bool hasPositionalInput = false;
-    bool emitIr = false;          // --emit-ir：输出 JIT 模块的 .ll 文件
-    std::string emitIrDir;        // --emit-ir-dir（默认 build/）
+    int threads = 0; // 线程数（0 = CPU 核数）
 };
 
-// 子进程模式 (--isolate-child) 下, 在任何输出前把 stdout/stderr 重定向到 capture
-// 文件。返回 true 表示当前进程是 isolated child; false 表示正常进程。
-// 失败 (例如无法打开 capture 文件) 时直接 _exit(2)。
-bool maybeApplyChildRedirect(bool testCmdParsed, bool isolateChild, const std::string& captureFile);
-
 // 运行 `yux test`。永不返回 (内部调 _exit)。
-[[noreturn]] void runTestCommand(const TestCmdOptions& opts, bool isChildIsolated);
+[[noreturn]] void runTestCommand(const TestCmdOptions& opts);
 
 } // namespace yux::cli

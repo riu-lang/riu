@@ -29,14 +29,16 @@ yux build --emit-ir          ; 同时输出 .ll
 
 ## 测试
 
-**新测试默认 `yux test`**（JIT 进程内，快）。诊断用 `yux-check test`，格式化/extern/项目输出用 `xmake test`。
+**新测试默认 `yux test`**（DLL + 多子进程并行，每 DLL 独立进程）。诊断用 `yux-check test`，格式化/extern/项目输出用 `xmake test`。
 
 ```powershell
 # yux test（项目内，*.test.yux 的 #Test）
-yux test                     ; 当前项目所有 #Test
-yux test yux.core            ; 前缀匹配
-yux test -d                  ; 调试输出，主要是出参入参
-cd sdk/yux && yux test       ; 主测试集
+# 流程：yux build --test → 并行 spawn yux-test-runner 子进程
+yux test                        ; 当前项目所有 #Test
+yux test --threads 4            ; 指定并行子进程数（默认 CPU 核数）
+yux test --verbose              ; 打印每个测试捕获的 stdout/stderr
+yux test -d                     ; 调试输出传给 yux build --test
+cd sdk/yux && yux test          ; 主测试集
 
 # yux-check test（诊断回归，; check: EXXXX 注解）
 yux-check test tests/check-cases/   ; 批量测试
@@ -52,7 +54,7 @@ xmake test yux_tests/<name>   ; 跑单个用例
 - `yux test`：测试写在 `*.test.yux`（**不能**挂在普通 `.yux`），断言 `assert_eq`/`assert_true`/`fail`。SDK 测试集在 `sdk/yux/src/yux/core/*.test.yux`
 - `yux-check test`：诊断用例在 `tests/check-cases/`，行尾 `; check: EXXXX` 注解，错误码 + 行号精确匹配
 - `xmake test`：仅保留三组 — `tests/cases/format_*`（格式化）、`tests/cases/extern_*`/`ptr_*`（extern 边界）、`tests/projects/`（项目输出 + expected.txt）。其余编译+运行用例已全量迁到 SDK `yux test`，诊断用例已全量迁到 `yux-check test`
-- `yux test` 在非 SDK 项目中运行前，**自动检查并编译 SDK**（通过缓存判断是否需要重编）。SDK 自构建项目（`cd sdk/yux && yux test`）走 JIT 路径，不触发此检查
+- `yux test` 自动运行 `yux build --test`（复用缓存，只重编变化的文件），然后并行 spawn `yux-test-runner` 子进程——每个子进程加载一个 DLL、顺序跑其中测试、SEH 包裹异常
 - 构建缓存（`PkgCacheRegistry`）：基于编译器指纹 + 源文件 mtime/size 判断 obj 是否新鲜，`yux build` 与 `yux test` 共用同一套缓存，**无需手动删除**——编译器重编后指纹变化自动全体作废
 - 新增 SDK 测试**新建或追加**对应主题的 `.test.yux` 文件，不加到 `xmake test`
 
