@@ -228,7 +228,7 @@ fn test_string_plus_to_string() {
 }
 
 #Test
-#TestIsolate ; 命中已知 JIT 跨帧 SEH 漏报，强制子进程跑
+#TestIsolate
 fn test_string_plus_left_non_string() {
   let n i64 = 7
   let s String = n + " items"
