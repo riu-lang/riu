@@ -13,6 +13,7 @@
 
 #include "analyzer/symbol_suggest.h"
 #include "ast/mangler.h"
+#include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/statement_node.h"
 #include "compiler.h"
@@ -280,7 +281,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
     // Phase 8c: fresh retVal（call/array literal）已自带 +1，跳过 retain
     bool didMoveRetainHandle = false;
     if (retVal && hasDeclaredRetType && !nullableWrap) {
-        if (declRetType.isRc() || declRetType.isWeak()) {
+        if (declRetType.isRc() || declRetType.isWeak() || declRetType.isFn()) {
             if (!isFreshHandleExpr(node->expr())) {
                 retainHandleAtCallSite(retVal, declRetType);
             } else {
@@ -368,12 +369,14 @@ void Compiler::compileDeclareStatement(p<StatementDeclareNode> node) {
 
     // Phase 3a: fn(...)R 未初始化时零填充 fat-ptr，让析构期 captures 为 null（_box_release 早返）
     // 否则栈上 captures 字段值为垃圾，析构读到非 null 指针即段错。
-    if (varType.isFn()) {
+    // 需要 resolveAlias：类型别名（如 Callback = fn(s String)bool）的 isFn() 对别名返回 false，
+    // 但底层 LLVM 类型是 fat-ptr，不解别名会导致零初始化被跳过 → 后续 retain/release 段错。
+    if (resolveAlias(varType).isFn()) {
         _builder.CreateStore(llvm::Constant::getNullValue(llvmType), alloca);
     }
 
     // 对于需要析构的类型，加入作用域变量列表
-    if (typeNeedsDestructor(varType)) {
+    if (typeNeedsDestructor(resolveAlias(varType))) {
         _scopeVars.push_back(varName);
     }
 }
@@ -857,19 +860,38 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 }
             }
 
-            // 结构体类型需要加入作用域变量列表
+            // 结构体/枚举类型需要加入作用域变量列表
             auto structDecl = _file->getStructDecl(varType.name);
             if (!structDecl && _yux) {
                 structDecl = _yux->sdkFile()->getStructDecl(varType.name);
             }
-            if (structDecl) {
-                // Phase 3d: 含 RC 字段 struct 从已有变量复制时必须 retain 内部字段
+            p<EnumDeclNode> enumDecl = nullptr;
+            if (!structDecl) {
+                enumDecl = _file->getEnumDecl(varType.name);
+                if (!enumDecl && _yux) {
+                    enumDecl = _yux->sdkFile()->getEnumDecl(varType.name);
+                }
+            }
+            if (structDecl || enumDecl) {
+                // Phase 3d: 含 RC 字段 struct/enum 从已有变量复制时必须 retain 内部字段
                 // （与赋值路径 compiler_stmt.cpp:1220-1227 对称）
-                // Phase 8d.4: fresh 含 RC 字段 struct value（如 String = i64.to_string()）
-                // 的 +1 已转给 var slot；从临时帧消费，避免帧弹出时再调 dtor 双释放
+                // Phase 8d.4: fresh 含 RC 字段 struct/enum value 的 +1 已转给 var slot；
+                // 从临时帧消费，避免帧弹出时再调 dtor 双释放
                 if (typeNeedsDestructor(varType)) {
                     if (!isFreshHandleExpr(expr)) {
                         retainHandleAtCallSite(exprVal, varType);
+                    } else {
+                        consumeTemp(exprVal);
+                    }
+                }
+                _scopeVars.push_back(varName);
+            }
+            // fn 类型：fat-ptr 的 captures 字段是 Rc 句柄，需在作用域尾释放
+            // resolveAlias：类型别名（如 Callback = fn(s String)bool）的 isFn() 对别名返回 false
+            if (resolveAlias(varType).isFn()) {
+                if (typeNeedsDestructor(resolveAlias(varType))) {
+                    if (!isFreshHandleExpr(expr)) {
+                        retainHandleAtCallSite(exprVal, resolveAlias(varType));
                     } else {
                         consumeTemp(exprVal);
                     }

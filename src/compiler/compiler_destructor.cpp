@@ -631,6 +631,26 @@ void Compiler::popAndReleaseTempFrame() {
         } else if (t.type.isWeak()) {
             auto handle = _builder.CreateExtractValue(t.val, {0}, "temp.weak.handle");
             _builder.CreateCall(runtime::getWeakReleaseFn(_module, _builder), {handle});
+        } else if (t.type.isFn()) {
+            // fn fat-ptr 的 captures（offset 1）走 _box_release_dtor；
+            // 与 releaseAtPtr 的 fn 分支同款逻辑（null / stack-embedded 跳过）
+            auto cap = _builder.CreateExtractValue(t.val, {1}, "temp.fn.captures");
+            auto i64Ty = _builder.getInt64Ty();
+            auto ptrTy = llvm::PointerType::get(_context, 0);
+            auto capInt = _builder.CreatePtrToInt(cap, i64Ty, "temp.fn.cap.asint");
+            auto isStack = _builder.CreateICmpNE(
+                _builder.CreateAnd(capInt, _builder.getInt64(1)), _builder.getInt64(0), "temp.fn.isstack");
+            auto isNull =
+                _builder.CreateICmpEQ(cap, llvm::ConstantPointerNull::get(ptrTy), "temp.fn.isnull");
+            auto skip = _builder.CreateOr(isStack, isNull, "temp.fn.skip");
+            auto* pf = _builder.GetInsertBlock()->getParent();
+            auto* relBB = llvm::BasicBlock::Create(_context, "temp.fn.rel", pf);
+            auto* contBB = llvm::BasicBlock::Create(_context, "temp.fn.cont", pf);
+            _builder.CreateCondBr(skip, contBB, relBB);
+            _builder.SetInsertPoint(relBB);
+            _builder.CreateCall(runtime::getRcReleaseDtorFn(_module, _builder), {cap});
+            _builder.CreateBr(contBB);
+            _builder.SetInsertPoint(contBB);
         } else if (t.spillSlot) {
             // Phase 8d.4: 含 RC 字段 struct value：调其析构（按字段逆序 release）
             releaseAtPtr(t.spillSlot, t.type);
@@ -639,12 +659,12 @@ void Compiler::popAndReleaseTempFrame() {
 }
 
 // 记录一个 fresh RC 临时到顶帧
-// - Rc/Array/Weak: 直接保存 by-value struct {ptr handle}，pop 时 extractValue 取 handle
+// - Rc/Array/Weak/fn: 直接保存 by-value struct {ptr handle}，pop 时 extractValue 取 handle
 // - 含 RC 字段 struct (e.g. String): 入 entry-block alloca 留 dtor 用，pop 时调 releaseAtPtr
 void Compiler::recordTemp(llvm::Value* val, const TypeInfo& type) {
     if (!val) return;
     if (_tempStack.empty()) return;
-    if (type.isRc() || type.isArrayGeneric() || type.isWeak()) {
+    if (type.isRc() || type.isArrayGeneric() || type.isWeak() || type.isFn()) {
         _tempStack.back().push_back({.val = val, .type = type, .spillSlot = nullptr});
         return;
     }
@@ -711,7 +731,7 @@ void Compiler::emitRetainOnHandleValue(llvm::Value* val, const TypeInfo& type) {
 
 // ==================== Phase 8b: fresh 表达式判定 ====================
 
-// 识别 +1 所有权（fresh）表达式：调用结果（函数 / 方法 / 构造器）+ 数组字面量 + move-assign
+// 识别 +1 所有权（fresh）表达式：调用结果（函数 / 方法 / 构造器）+ 数组字面量 + move-assign + lambda
 // 用于在复制语义 retain 路径上跳过多余 retain，避免 leak（DRAFT §7.6 / §8）
 bool Compiler::isFreshHandleExpr(p<ExprNode> expr) {
     if (!expr) return false;
@@ -721,6 +741,8 @@ bool Compiler::isFreshHandleExpr(p<ExprNode> expr) {
     if (dynamic_cast<ExprPathCallNode*>(expr)) return true;
     // B-4: move-assign (a <- b) 移出旧值，返回 +1 fresh
     if (dynamic_cast<ExprMoveAssignNode*>(expr)) return true;
+    // Phase 8f: lambda 字面量创建 captures Rc 块（strong=1），是 +1 fresh
+    if (dynamic_cast<LambdaExprNode*>(expr)) return true;
     return false;
 }
 

@@ -333,6 +333,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
         // 接管, 这里只走 IR emit.
         for (size_t i = 0; i < declArity; ++i) {
             auto argExpr = node->args()[i];
+            auto argType = argExpr->getType();
             auto argVal = compileExpr(argExpr);
             if (!argVal) {
                 std::string msg = enumName;
@@ -345,9 +346,21 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
             auto fieldPtr =
                 _builder.CreateStructGEP(payloadStruct, payloadBufPtr, static_cast<unsigned>(i), "enum.payload.elem");
             _builder.CreateStore(argVal, fieldPtr);
-            // 实参作为 fresh 临时若已入帧，需消费掉：所有权随构造转交给 enum 值，
-            // 否则帧弹出时会 release 一次导致 use-after-free
-            consumeTemp(argVal);
+            // 若实参类型需要析构（Rc/Array/Weak/fn/含RC字段struct/enum），
+            // 非 fresh 源需 retain——否则源变量和 enum 共享同一句柄但 strong 只记 1，
+            // 任一侧先析构即导致对侧 use-after-free。
+            // fresh 源（调用/构造/数组字面量）已持 +1，直接转移所有权给 enum payload。
+            if (typeNeedsDestructor(argType)) {
+                if (!isFreshHandleExpr(argExpr)) {
+                    retainHandleAtCallSite(argVal, argType);
+                } else {
+                    consumeTemp(argVal);
+                }
+            } else {
+                // 实参作为 fresh 临时若已入帧，需消费掉：所有权随构造转交给 enum 值，
+                // 否则帧弹出时会 release 一次导致 use-after-free
+                consumeTemp(argVal);
+            }
         }
     }
 

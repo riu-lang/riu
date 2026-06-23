@@ -218,12 +218,14 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             int idx = _currentLambdaForCapture->findCapture(varName);
             if (idx < 0) {
                 u64 offset = _currentLambdaForCapture->capturesTotalSize();
-                u64 slotSize = 8;
-                if (isHeapNullable) {
-                    auto llvmTy = getLLVMType(t);
-                    auto rawSize = _module->getDataLayout().getTypeAllocSize(llvmTy).getFixedValue();
-                    slotSize = rawSize < 8 ? 8 : rawSize;
-                }
+                // 槽位字节数按实际 LLVM allocSize 计算，而非硬编码 8：
+                // Rc/Weak/String = 8 字节，但 Array<T> = 24 字节（{ptr,i64,i64}），
+                // Heap<T>? = 16 字节（{i1,ptr}）。统一走 getTypeAllocSize 防溢出。
+                auto llvmTy = getLLVMType(t);
+                auto rawSize = _module->getDataLayout().getTypeAllocSize(llvmTy).getFixedValue();
+                u64 slotSize = rawSize < 8 ? 8 : rawSize;
+                // 注：isHeapNullable 同样走上述逻辑，不再另分支
+                (void)isHeapNullable;
                 idx = _currentLambdaForCapture->addCapture(varName, t, offset, offset + slotSize);
                 if (isRef) {
                     // Phase 4c：标记 lambda 含 T& 捕获，触发栈嵌入路径 + 不可逃逸约束
