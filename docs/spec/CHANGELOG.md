@@ -363,10 +363,10 @@
 - **激活 E7016**：DRAFT-错误.md §4.2 / spec §4.12.1.4 —— `try` 块内对 `#Fallible` 调用写 `!` 冗余。原 `DEF_WARN` 仅注册未发射，本次接入 `sema::checkErrPropagateForIdCall`，Compiler / SemaPass 双跑由 emit 内部 `(file, code, line, col, msg)` 5 元组去重。
 - **冲突 / 兼容**：纯增。已有项目若 `entry` 是相对路径且解析在 `<src>/` 内（约定形态）行为不变。
 
-## 2026-05-13 —— `#TestIsolate` per-test 隔离修饰注解
+## 2026-05-13 —— `#TestIsolate` per-test 隔离修饰注解（已移除）
 
-- **新增**：§11.3.6 `#TestIsolate` —— 修饰 `#Test`，命中后即便在默认 `--isolate=none` 模式下也强制走子进程派发，规避 JIT 跨帧 SEH 漏报。必须与 `#Test` 同存，缺失报新增错误码 E2033（附录 D §D.2）。`--isolate=process` 覆盖此修饰（全部子进程）。§11.5.1 注解表 + Open Issues 同步。
-- **冲突 / 兼容**：纯增注解。未使用 `#TestIsolate` 的测试行为不变。
+- **移除**：`#TestIsolate` 注解已全面移除。`yux test` 现固定使用子进程派发模式，不再需要 per-test 隔离修饰。
+- **冲突 / 兼容**：使用了 `#TestIsolate` 的测试文件需删除该注解。
 
 ## 2026-05-12 —— 嵌套数组字面量按外层靶向类型递归编译
 

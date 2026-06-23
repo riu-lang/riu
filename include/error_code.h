@@ -157,8 +157,6 @@ DEF_ERR(2030, "lambda body cannot assign to captured variable `{}` (spec §6.2.1
 DEF_ERR(2031, "extern fn `{}` cannot use fn(...) types in {} (function values are not ABI-compatible with C; spec §7)")
 DEF_ERR(2032, "Enum variant `{}::{}` payload #{} type mismatch: expected `{}`, got `{}` (no implicit conversion; for "
               "`Rc<T>` payload, bind `var b Rc<T> = T(...)` first then pass `b`)")
-DEF_ERR(2033, "`#TestIsolate` on `{}` requires a sibling `#Test` annotation (isolation modifies how a `#Test` runs; it "
-              "is not a standalone marker)")
 
 // ── E3xxx 类型 — 类型不匹配 ───────────────────────────────────────────
 // E3001: 统一二元运算类型不匹配（原 E3001-E3004, E3075-E3077 合并）

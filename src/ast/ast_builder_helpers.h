@@ -30,8 +30,8 @@ namespace {
 //   #Spec            零参；标在 struct 上 — 把声明转为 spec（仅签名）
 //   #Impl(SpecName)  单参；标在 struct 上 — 实现关系，替代旧 `: D1 + D2` 头部槽
 inline const set<string>& knownAnnos() {
-    static const set<string> s = {"Builtin", "Test",   "TestIsolate", "DraftLike", "NoReturn", "Fallible",
-                                  "Const",   "Static", "Spec",        "Impl",      "Reflect",  "NoCopy"};
+    static const set<string> s = {"Builtin", "Test",   "DraftLike", "NoReturn", "Fallible",
+                                  "Const",   "Static", "Spec",      "Impl",      "Reflect",  "NoCopy"};
     return s;
 }
 

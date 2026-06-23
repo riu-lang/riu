@@ -228,7 +228,6 @@ fn test_string_plus_to_string() {
 }
 
 #Test
-#TestIsolate
 fn test_string_plus_left_non_string() {
   let n i64 = 7
   let s String = n + " items"

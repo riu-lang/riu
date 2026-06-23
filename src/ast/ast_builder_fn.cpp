@@ -56,16 +56,8 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
         }
     }
 
-    // ==================== #TestIsolate 注解校验 (spec §11.3.6) ====================
-    // 修饰一个 #Test：命中的测试在默认 isolate=none 模式下也强制走子进程，规避 JIT 跨帧 SEH。
-    // 必须搭配 #Test；其它约束（仅 .test.yux、与 Builtin 互斥、签名）由 #Test 那条已经覆盖。
-    if (header->hasAnno("TestIsolate") && !header->hasAnno("Test")) {
-        const string fnName = header->name().getText();
-        throw YuxError(header->getLineNumber(), header->getColumn(),
-                       ErrorCode::E2033, fnName);
-    }
 
-    stack.emplace_back(fn);
+stack.emplace_back(fn);
     _scopeStack.push_back(fn);
 
     for (auto& tp : header->typeParams()) {
