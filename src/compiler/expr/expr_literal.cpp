@@ -164,10 +164,7 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             node->setResolvedVar(sym);
         }
 
-        // Phase B-1: 检查变量是否已被 move
-        if (_movedVars.count(varName)) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E4033, varName);
-        }
+        // Phase B-1: E4033 use-after-move 检查已迁入 SemaPass，Compiler 端不再重复。
 
         if (sym && _localVarPtrs.contains(varName)) {
             DEBUG_LOG_VAL("    Expr: VariableLoad", varName << " : " << sym->type.name);

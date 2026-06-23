@@ -477,56 +477,7 @@ void Compiler::compileStructDecls() {
         }
     }
 
-    // Phase B-1: 在 struct decls 编译完后、impls 编译前，自动推断 #NoCopy
-    DEBUG_LOG("Inferring #NoCopy annotations...");
-    inferNoCopyAnnotations();
-}
-
-// Phase B-1: 遍历所有 struct 声明，检查 #NoCopy 字段传播约束
-// 规则：含显式 #NoCopy 字段的 struct 必须也显式标注 #NoCopy（E4032）
-// 注意：有 ~() 的 struct（如 String）自动表现为不可复制，但不会触发 E4032 传播；
-// 只有显式标注 #NoCopy 的 struct 才要求包含者也显式标注。
-void Compiler::inferNoCopyAnnotations() {
-    // 收集所有待检查的 struct decl（本地 + SDK）
-    vector<pair<StructDeclNode*, FileNode*>> allStructs;
-    for (auto* decl : _file->getStructDecls()) {
-        allStructs.emplace_back(decl, _file);
-    }
-    // SDK structs
-    if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
-        for (auto* sdkImp : _yux->sdkFile()->wildcardImports()) {
-            for (auto* decl : sdkImp->getStructDecls()) {
-                allStructs.emplace_back(decl, sdkImp);
-            }
-        }
-    }
-
-    // 检查未标 #NoCopy 的 struct 是否含有显式 #NoCopy 字段（报 E4032）
-    for (auto& [decl, owner] : allStructs) {
-        if (decl->isGeneric()) continue;
-        if (decl->hasAnno("NoCopy")) continue; // 已显式标注，OK
-
-        for (auto* field : decl->fields()) {
-            auto ft = field->getType();
-            // Rc/Array/Weak/Heap 字段不触发 #NoCopy（这些可浅复制）
-            if (ft.isRc() || ft.isArrayGeneric() || ft.isWeak() || ft.isHeap()) continue;
-            if (ft.isRef() || ft.isPtr()) continue;
-            if (isBuiltinType(ft.name)) continue;
-
-            // 仅检查显式标注 #NoCopy 的字段类型（自动推断 ~() 的不传播）
-            auto* fieldDecl = owner->getStructDecl(ft.name);
-            if (!fieldDecl && _yux && _yux->sdkFile() && _yux->sdkFile() != owner) {
-                for (auto* sdkImp : _yux->sdkFile()->wildcardImports()) {
-                    fieldDecl = sdkImp->getStructDecl(ft.name);
-                    if (fieldDecl) break;
-                }
-            }
-            if (fieldDecl && fieldDecl->hasAnno("NoCopy")) {
-                throw YuxError(decl->getLineNumber(), decl->getColumn(),
-                    ErrorCode::E4032, decl->name().getText(), field->name().getText());
-            }
-        }
-    }
+    // Phase B-1: E4032 #NoCopy 字段传播检查已迁入 SemaPass，Compiler 端不再重复。
 }
 
 // ==================== 结构体实现编译 ====================

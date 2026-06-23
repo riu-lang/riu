@@ -282,16 +282,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
                 }
             }
 
-            // Phase B-1: #NoCopy 字段不可从现有变量隐式复制
-            if (fdecl && isNoCopyType(fieldType)) {
-                if (auto lit = dynamic_cast<ExprLiteralNode*>(fi->value())) {
-                    if (dynamic_cast<LiteralObjNode*>(lit->literal())) {
-                        if (!isFreshHandleExpr(fi->value())) {
-                            throw YuxError(line, col, ErrorCode::E4031, fieldType.name, "struct 字面量字段初始化", fieldType.name);
-                        }
-                    }
-                }
-            }
+            // Phase B-1: E4031 #NoCopy 字段初始化检查已迁入 SemaPass，Compiler 端不再重复。
 
             auto val = compileExpr(fi->value());
             // Phase 4a: 句柄字段所有权转移 (与 declare-assign 路径对齐, BUGS #4)

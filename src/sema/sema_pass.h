@@ -71,6 +71,10 @@ private:
     // ExprLiteralNode handler 置 true; 退出 lambda 后据此写 hasRefCapture.
     bool _currentLambdaHasRefCapture = false;
 
+    // Phase B-1: move 追踪 — 已被 move 的变量名 (E4033 判定依据).
+    // visitFn 入口 clear，move intrinsic 调用处 insert，if/else 汇合取并集。
+    std::set<std::string> _movedVars;
+
     void visitFn(p<FnNode> fn);
     void visitStmt(p<StatementNode> stmt);
     void visitBlock(p<StatementBlockNode> block);

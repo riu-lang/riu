@@ -59,7 +59,7 @@ namespace {
 // Phase 3.2b 已由 SemaPass 接管的错误码白名单。SemaPass 在 visitExpr 中
 // 捕获 YuxError 时, 命中此清单的直接 rethrow, 让 SemaPass 成为该诊断的
 // 实际抛出点。新增迁移码追加到此处即可。
-constexpr std::array<std::string_view, 18> kMigratedCodes = {
+constexpr std::array<std::string_view, 21> kMigratedCodes = {
     // 算术 / 比较 / 分支结果（E3001-E3004 → E3001, E3005-E3008 → E3005）
     "E3001",
     "E3005",
@@ -87,6 +87,10 @@ constexpr std::array<std::string_view, 18> kMigratedCodes = {
     // Phase B-1: move intrinsic 类型形态校验（sema validateBuiltinIntrinsicTypeShape）
     "E4034",
     "E4035",
+    // Phase B-1: #NoCopy 隐式复制 / 传播 / use-after-move（已由 SemaPass 接管）
+    "E4031",
+    "E4032",
+    "E4033",
 };
 
 // 与 Compiler::lookupEnumDecl 等价的本地版本: 本文件 → SDK → wildcard imports.
@@ -198,6 +202,31 @@ void validateNoNestedHeap(const TypeInfo& t, int line, int col) {
     }
 }
 
+// Phase B-1: 与 Compiler::isNoCopyType 等价的本地版本（0 LLVM 依赖）。
+// 判定类型是否为 #NoCopy：Array<T> 隐含，或 struct decl 显式标注 #NoCopy。
+bool isNoCopyTypeIn(const TypeInfo& type, p<FileNode> file, p<FileNode> sdkFile) {
+    if (isBuiltinType(type.name)) return false;
+    if (type.isRc() || type.isWeak() || type.isHeap()) return false;
+    if (type.isRef() || type.isPtr()) return false;
+    if (type.isArrayGeneric()) return true; // Array<T> 隐含 #NoCopy
+
+    auto* decl = lookupStructIn(file, sdkFile, type.name);
+    if (decl && decl->hasAnno("NoCopy")) return true;
+    return false;
+}
+
+// Phase B-1: 与 Compiler::isFreshHandleExpr 等价的本地版本（0 LLVM 依赖）。
+// fresh 表达式自带 +1 所有权，隐式复制路径可安全跳过 retain。
+bool isFreshHandleExpr(p<ExprNode> expr) {
+    if (!expr) return false;
+    if (dynamic_cast<p<ExprCallNode>>(expr)) return true;      // 函数调用结果 / builtin intrinsic
+    if (dynamic_cast<p<ExprArrayNode>>(expr)) return true;     // 数组字面量
+    if (dynamic_cast<p<ExprPathCallNode>>(expr)) return true;  // 枚举构造器
+    if (dynamic_cast<p<ExprMoveAssignNode>>(expr)) return true;// move-assign 结果
+    if (dynamic_cast<p<LambdaExprNode>>(expr)) return true;    // lambda 字面量
+    return false;
+}
+
 bool isMigratedCode(const char* code) {
     if (!code) return false;
     std::string_view sv(code);
@@ -255,6 +284,44 @@ void SemaPass::run() {
     // DRAFT-spec-default-body Phase 2: spec 默认体占位符号校验
     // (sema 期不下钻完整 typecheck; 仅识别 `$.method(...)` 形态)
     visitSpecDefaults();
+
+    // Phase B-1: #NoCopy 字段传播 (E4032) — 含显式 #NoCopy 字段的 struct
+    // 自身也必须标注 #NoCopy（与 Compiler::inferNoCopyAnnotations 镜像）。
+    {
+        // 收集所有可见 struct decl（本地 + SDK + wildcard imports）
+        vector<StructDeclNode*> allDecls = _file->getStructDecls();
+        if (_sdkFile && _sdkFile != _file) {
+            for (auto* d : _sdkFile->getStructDecls()) {
+                if (std::ranges::find(allDecls, d) == allDecls.end()) {
+                    allDecls.push_back(d);
+                }
+            }
+            for (auto* imp : _sdkFile->wildcardImports()) {
+                for (auto* d : imp->getStructDecls()) {
+                    if (std::ranges::find(allDecls, d) == allDecls.end()) {
+                        allDecls.push_back(d);
+                    }
+                }
+            }
+        }
+
+        for (auto* decl : allDecls) {
+            if (decl->isGeneric()) continue;       // 泛型 struct 实例化后才知字段类型
+            if (decl->hasAnno("NoCopy")) continue; // 已标注，跳过
+            for (auto* field : decl->fields()) {
+                auto ft = field->getType();
+                if (ft.isRc() || ft.isArrayGeneric() || ft.isWeak() || ft.isHeap()) continue;
+                if (ft.isRef() || ft.isPtr()) continue;
+                if (isBuiltinType(ft.name)) continue;
+
+                auto* fieldDecl = lookupStructIn(_file, _sdkFile, ft.name);
+                if (fieldDecl && fieldDecl->hasAnno("NoCopy")) {
+                    throw YuxError(decl->getLineNumber(), decl->getColumn(), ErrorCode::E4032,
+                                   decl->name().getText(), field->name().getText());
+                }
+            }
+        }
+    }
 }
 
 namespace {
@@ -383,6 +450,7 @@ void SemaPass::visitFn(p<FnNode> fn) {
     // caller 的 #Fallible(E) 注解.
     auto savedFn = _currentFn;
     _currentFn = fn;
+    _movedVars.clear(); // Phase B-1: 进入 fn 时清空 move 追踪
 
     // Bucket 1 (CURRENT-check.md): 把 0-LLVM analyzer 接入 sema, 让 yux-check
     // 也能覆盖 borrow / const-mut / NoReturn 流终止 检查.
@@ -836,6 +904,20 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                 }
             }
         }
+        // Phase B-1: #NoCopy 类型不可从现有变量隐式复制（let 绑定）
+        if (da->varType() && da->expr()) {
+            auto varType = da->varType()->getType();
+            if (isNoCopyTypeIn(varType, _file, _sdkFile) && !varType.isRef()) {
+                if (auto lit = dynamic_cast<p<ExprLiteralNode>>(da->expr())) {
+                    if (dynamic_cast<p<LiteralObjNode>>(lit->literal())) {
+                        if (!isFreshHandleExpr(da->expr())) {
+                            throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E4031, varType.name,
+                                           "let 绑定", varType.name);
+                        }
+                    }
+                }
+            }
+        }
         return;
     }
     if (auto se = dynamic_cast<p<StatementExprNode>>(stmt)) {
@@ -882,6 +964,27 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         if (auto obj = dynamic_cast<p<LiteralObjNode>>(n->literal())) {
             if (obj->getValue().getText() == "$" && _currentFn && _currentFn->header()->isStatic()) {
                 throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3128);
+            }
+            // Phase B-1: use-after-move 检查 (E4033)
+            if (_currentFn && obj->getValue().getText() != "$") {
+                string varName = obj->getValue().getText();
+                if (_movedVars.count(varName)) {
+                    // lambda 体内仅当 varName 不是 lambda 形参时才报错
+                    if (!_currentLambda) {
+                        throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E4033, varName);
+                    } else {
+                        bool isParam = false;
+                        for (auto& p : _currentLambda->params()) {
+                            if (p.name.getText() == varName) {
+                                isParam = true;
+                                break;
+                            }
+                        }
+                        if (!isParam) {
+                            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E4033, varName);
+                        }
+                    }
+                }
             }
         }
         // 字符串模板含插值表达式; 其余字面量无子表达式
@@ -1167,6 +1270,15 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 // Phase 6D: 同名 ctor 已被 sema E3130 拦截在定义点; 调用点 `Foo(args)`
                 // 不再分派 ctor, 形态 / arity 校验全部失效, 整段块移除.
 
+                // Phase B-1: move:<T>(var) — 标记源变量为 moved (E4033 判定依据)
+                if (_currentFn && fnName == "move" && !n->getArgs().empty()) {
+                    if (auto argLit = dynamic_cast<p<ExprLiteralNode>>(n->getArgs()[0])) {
+                        if (auto argObj = dynamic_cast<p<LiteralObjNode>>(argLit->literal())) {
+                            _movedVars.insert(argObj->getValue().getText());
+                        }
+                    }
+                }
+
                 // 泛型 fn + 显式 typeArgs 的 arity 校验 (E6010, 与 compileCallExpr 入口一致)
                 if (!structDecl && hasTypeArgs) {
                     // getFunctionWithOwner 已搜索 wildcardImports
@@ -1314,6 +1426,25 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                                     fnSym = _sdkFile->lookupFnSymbolWithParams(fnName, argTypes);
                                 }
                                 sema::validateFnSymbolVisibility(fnSym, _file->moduleName(), fnName, line, col);
+                                // Phase B-1: #NoCopy 类型不可按值传参
+                                if (fnSym) {
+                                    for (size_t i = 0; i < n->getArgs().size() && i < fnSym->params.size(); ++i) {
+                                        const auto& pt = fnSym->params[i];
+                                        if (isNoCopyTypeIn(pt, _file, _sdkFile)) {
+                                            if (i < n->getArgs().size()) {
+                                                if (auto litA = dynamic_cast<p<ExprLiteralNode>>(n->getArgs()[i])) {
+                                                    if (dynamic_cast<p<LiteralObjNode>>(litA->literal())) {
+                                                        if (!isFreshHandleExpr(n->getArgs()[i])) {
+                                                            throw YuxError(n->getLineNumber(), n->getColumn(),
+                                                                           ErrorCode::E4031, pt.name, "按值传参",
+                                                                           pt.name);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1521,6 +1652,22 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                     }
                     sema::validateStructMethodVisibility(methodSymbol, _currentStructName, baseType.name,
                                                          dotCallee->member(), n->getLineNumber(), n->getColumn());
+                    // Phase B-1: 方法调用的 #NoCopy 按值传参检查
+                    if (methodSymbol) {
+                        for (size_t i = 0; i < n->getArgs().size() && i < methodSymbol->params.size(); ++i) {
+                            const auto& pt = methodSymbol->params[i];
+                            if (isNoCopyTypeIn(pt, _file, _sdkFile)) {
+                                if (auto litA = dynamic_cast<p<ExprLiteralNode>>(n->getArgs()[i])) {
+                                    if (dynamic_cast<p<LiteralObjNode>>(litA->literal())) {
+                                        if (!isFreshHandleExpr(n->getArgs()[i])) {
+                                            throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E4031,
+                                                           pt.name, "按值传参", pt.name);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             } catch (const YuxError&) {
                 throw;
@@ -1577,12 +1724,26 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     }
     if (auto n = dynamic_cast<p<ExprIfElseNode>>(expr)) {
         visitExpr(n->condition());
+        // Phase B-1: 分支 _movedVars 汇合 — 各分支分别从 saved 出发，最后取并集
+        auto savedMoved = _movedVars;
         visitBlock(n->thenBlock());
+        auto afterThenMoved = std::move(_movedVars);
+        _movedVars = savedMoved;
+
         for (auto& el : n->elifs()) {
             visitExpr(el->condition());
+            auto savedElif = _movedVars;
             visitBlock(el->block());
+            for (auto& v : _movedVars) afterThenMoved.insert(v);
+            _movedVars = savedElif;
         }
-        if (n->elseBlock()) visitBlock(n->elseBlock());
+
+        if (n->elseBlock()) {
+            visitBlock(n->elseBlock());
+            for (auto& v : afterThenMoved) _movedVars.insert(v);
+        } else {
+            _movedVars = std::move(afterThenMoved);
+        }
         return;
     }
     if (auto n = dynamic_cast<p<ExprOneLineIfElseNode>>(expr)) {
@@ -1684,6 +1845,24 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 throw YuxError(fline, fcol, ErrorCode::E3127, fname);
             }
             visitExpr(fi->value());
+            // Phase B-1: #NoCopy 字段不可从现有变量隐式复制
+            if (decl) {
+                int fieldIdx = decl->fieldIndex(fname);
+                if (fieldIdx >= 0) {
+                    auto* fieldDecl = decl->fields()[fieldIdx];
+                    auto fieldType = fieldDecl->getType();
+                    if (isNoCopyTypeIn(fieldType, _file, _sdkFile)) {
+                        if (auto lit = dynamic_cast<p<ExprLiteralNode>>(fi->value())) {
+                            if (dynamic_cast<p<LiteralObjNode>>(lit->literal())) {
+                                if (!isFreshHandleExpr(fi->value())) {
+                                    throw YuxError(fline, fcol, ErrorCode::E4031, fieldType.name,
+                                                   "struct 字面量字段初始化", fieldType.name);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         if (seen.size() != decl->fields().size()) {
             for (auto& f : decl->fields()) {

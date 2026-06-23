@@ -242,7 +242,6 @@ private:
     llvm::Function* getOrCreateRcTypedReleaseFn(const TypeInfo& rcType);
     // Phase B-1: #NoCopy / move 辅助
     [[nodiscard]] bool isNoCopyType(const TypeInfo& type) const; // 查 struct decl 的 #NoCopy 注解
-    void inferNoCopyAnnotations();                               // 遍历 struct 声明，自动推断 #NoCopy
     bool enumNeedsDestructor(const string& enumName);            // Phase 5: 任一 variant payload 需析构则枚举需析构
     bool enumDeclNeedsDestructor(p<EnumDeclNode> decl);          // Phase 5: 同上，按声明节点
     llvm::Function* getEnumDestructorFunction(const string& enumName);    // Phase 5: 获取或创建 __enum_drop_<E>

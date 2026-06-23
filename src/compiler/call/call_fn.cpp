@@ -729,17 +729,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
         // Phase 8c: fresh 实参（call/array literal）已自带 +1，跳过 retain
         // Phase 8d.1: fresh 实参的 +1 移交给 callee，从临时帧消费掉，避免帧末多余 release
         bool isFresh = isFreshHandleExpr(callNode->getArgs()[i]);
-        // Phase B-1: #NoCopy 类型不可按值传参（从现有变量）
-        if (isNoCopyType(at)) {
-            if (auto lit = dynamic_cast<ExprLiteralNode*>(callNode->getArgs()[i])) {
-                if (dynamic_cast<LiteralObjNode*>(lit->literal())) {
-                    if (!isFresh) {
-                        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E4031, at.name,
-                                       "按值传参", at.name);
-                    }
-                }
-            }
-        }
+        // Phase B-1: E4031 #NoCopy 按值传参检查已迁入 SemaPass，Compiler 端不再重复。
         if (typeNeedsDestructor(at)) {
             if (!isFresh) {
                 retainHandleAtCallSite(args[i], at);
@@ -968,20 +958,8 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
         // callee-clean (DRAFT §7.3)：传参前 retain；callee 末尾析构 release 抵消
         // Phase 8c: fresh 实参（call/array literal）已自带 +1，跳过 retain
         // Phase 8d.1: fresh 实参的 +1 移交给 callee，从临时帧消费掉
-        // Phase B-1: #NoCopy 类型不可按值传参（从现有变量）
+        // Phase B-1: E4031 #NoCopy 按值传参检查已迁入 SemaPass，Compiler 端不再重复。
         bool paramNeedsPtr = structParamUsesPointer(fnSymbol->params[i]);
-        if (isNoCopyType(argTypes[i]) && !paramNeedsPtr) {
-            if (i < callNode->getArgs().size()) {
-                if (auto lit = dynamic_cast<ExprLiteralNode*>(callNode->getArgs()[i])) {
-                    if (dynamic_cast<LiteralObjNode*>(lit->literal())) {
-                        if (!isFreshHandleExpr(callNode->getArgs()[i])) {
-                            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E4031,
-                                           argTypes[i].name, "按值传参", argTypes[i].name);
-                        }
-                    }
-                }
-            }
-        }
         if (typeNeedsDestructor(argTypes[i]) && !paramNeedsPtr) {
             if (i < callNode->getArgs().size() && !isFreshHandleExpr(callNode->getArgs()[i])) {
                 retainHandleAtCallSite(args[i], argTypes[i]);
