@@ -27,6 +27,48 @@ yux build --emit-ir          ; 同时输出 .ll
 
 **单文件模式 `yux <file>.yux` 已弃用**，一律走项目模式。
 
+### 可执行文件清单
+
+所有 exe 放在 `build/windows/x64/<mode>/`，**互相独立 —— 构建一个不会自动编译其他**。需要多个时推荐一次性构建全部：
+
+```powershell
+xmake                           ; 构建所有 target（全部 exe + 静态库）
+xmake build yux                 ; 仅构建主编译器
+xmake build yux-lsp             ; 仅构建 LSP
+```
+
+| exe | xmake target | 用途 | 依赖 LLVM | 用户直接调用 |
+|-----|-------------|------|-----------|-------------|
+| `yux` | `yux` | 主编译器：`build`(项目编译)、`test`(运行测试)、`format`(格式化) | 是 | 是 |
+| `yux-lsp` | `yux-lsp` | LSP 服务器，编辑器插件通过 stdio 接入；构建后自动复制为 `yux-lsp-claude` | 否 | 否（插件自动启动） |
+| `yux-ast` | `yux-ast` | 转储 ANTLR4 parse tree，仅词法+语法，不做 AST/语义/codegen | 否 | 是 |
+| `yux-check` | `yux-check` | 快速语义检查（阶段 0）：parse→AST→SemaPass，0 LLVM；支持单文件 + `test` 子命令批量诊断 | 否 | 是 |
+| `yux-test-runner` | `yux-test-runner` | 测试运行器，由 `yux test` 内部 spawn 加载 DLL 执行 #Test | 否 | 否（`yux test` 自动调） |
+
+各 exe 用法：
+
+```powershell
+# yux（主编译器）
+yux build [<name>]              ; 项目编译（需在含 yux.toml 的目录）
+yux build [<name>] --emit-ir    ; 同时输出 .ll
+yux build [<name>] --test       ; 构建测试 DLL（yux test 内部自动加此参数）
+yux test                        ; 运行当前项目所有 #Test
+yux test --threads 4 --verbose
+yux format <file>               ; 格式化源码
+yux format <file> -i            ; 原地格式化
+yux format --stdin              ; 从 stdin 读取并格式化
+
+# yux-ast
+yux-ast <input.yux>             ; parse tree 多行打印到 stdout
+yux-ast <input.yux> -o <file>   ; 写入文件
+yux-ast <input.yux> --oneline   ; 单行紧凑形式
+
+# yux-check
+yux-check <input.yux>           ; 单文件快速 sema（退出码 0=无误）
+yux-check test <dir>            ; 批量诊断测试（; check: EXXXX 注解）
+yux-check test <dir> -r         ; 递归子目录
+```
+
 ## 测试
 
 **新测试默认 `yux test`**（DLL + 多子进程并行，每 DLL 独立进程）。诊断用 `yux-check test`，格式化/extern/项目输出用 `xmake test`。
