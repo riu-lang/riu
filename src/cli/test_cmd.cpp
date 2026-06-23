@@ -194,15 +194,13 @@ DWORD spawnAndWait(const std::wstring& cmdLine, const std::wstring& workingDir =
 
     // 5. 汇总
     std::cout.flush();
-    std::cout << "=== yux test summary ===\n";
-    std::cout << "  DLLs: " << dllPaths.size() << " total, " << passedDlls << " passed, " << failedDlls << " failed\n";
-
     if (!failedDllNames.empty()) {
         std::cout << "\nFailed DLLs:\n";
         for (auto& name : failedDllNames) {
             std::cout << "  - " << name << "\n";
         }
     }
+    std::cout << "\n" << dllPaths.size() << " total, " << passedDlls << " passed, " << failedDlls << " failed\n";
     std::cout.flush();
 
     _exit(failedDlls == 0 ? 0 : 1);

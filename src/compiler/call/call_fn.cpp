@@ -447,7 +447,6 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
                 _builder.CreateStore(srcInner, newPtr);
                 // inner 的 RC 字段 +1 (deep copy 后两个 Heap 各持一份内嵌 Rc 句柄)
                 retainHandleAtCallSite(srcInner, innerType);
-                recordTemp(newPtr, T);
                 return newPtr;
             }
 
@@ -483,6 +482,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
                     auto newPtr = _builder.CreateCall(allocFn, {sizeVal}, "copy_of.nh.new");
                     _builder.CreateStore(srcInner, newPtr);
                     retainHandleAtCallSite(srcInner, innerType);
+
                     auto* afterAllocBB = _builder.GetInsertBlock();
                     _builder.CreateBr(contBB);
 
@@ -496,7 +496,6 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
                     result = _builder.CreateInsertValue(result, hasFlag, {0}, "copy_of.nh.res.has");
                     result = _builder.CreateInsertValue(result, phi, {1}, "copy_of.nh.res.val");
 
-                    recordTemp(result, T);
                     return result;
                 }
             }
@@ -521,8 +520,6 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             // 内置 / Ptr / 平凡 struct：no-op。
             retainHandleAtCallSite(copied, T);
 
-            // 登记为 fresh +1 句柄/struct，未被消费时帧弹出自动释放
-            recordTemp(copied, T);
             return copied;
         }
         if (fnName == "weak") {
@@ -571,9 +568,6 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             _builder.CreateStore(srcHandle, handleField);
             auto result = _builder.CreateLoad(weakStructTy, resultAlloca, "weak.result.val");
 
-            // Phase 8d.1：fresh +1 weak 句柄，登记到当前语句临时帧，
-            // 未被消费时帧弹出自动 _weak_release。
-            recordTemp(result, weakTy);
             return result;
         }
         if (fnName == "move") {
@@ -660,8 +654,6 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             }
 
             auto result = _builder.CreateLoad(nullableLLVMTy, resultAlloca, "heap_opt.val");
-            // fresh handle：未消费时由作用域尾析构（Nullable<Heap<T>> 的 _has + free 路径）
-            recordTemp(result, nullableHeapTy);
             return result;
         }
         // E6017 (未知 Builtin intrinsic) 已由 sema::validateBuiltinIntrinsicShape

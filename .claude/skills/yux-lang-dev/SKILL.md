@@ -52,6 +52,7 @@ xmake test yux_tests/<name>   ; 跑单个用例
 ```
 
 - `yux test`：测试写在 `*.test.yux`（**不能**挂在普通 `.yux`），断言 `assert_eq`/`assert_true`/`fail`。SDK 测试集在 `sdk/yux/src/yux/core/*.test.yux`
+- **摘要行**：每个 DLL 输出末尾必有一行 `<dll>: X passed, Y failed, [T]`。如果某个 DLL 输出末尾**没有**摘要行，就是进程意外退出（崩溃/被强制终止/死循环），不要以为是测试还在跑
 - `yux-check test`：诊断用例在 `tests/check-cases/`，行尾 `; check: EXXXX` 注解，错误码 + 行号精确匹配
 - `xmake test`：仅保留三组 — `tests/cases/format_*`（格式化）、`tests/cases/extern_*`/`ptr_*`（extern 边界）、`tests/projects/`（项目输出 + expected.txt）。其余编译+运行用例已全量迁到 SDK `yux test`，诊断用例已全量迁到 `yux-check test`
 - `yux test` 自动运行 `yux build --test`（复用缓存，只重编变化的文件），然后并行 spawn `yux-test-runner` 子进程——每个子进程加载一个 DLL、顺序跑其中测试、SEH 包裹异常

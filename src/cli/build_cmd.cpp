@@ -404,6 +404,9 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 allObjMap[mn] = obj;
             }
 
+            // 测试 obj 缓存（与 lib 缓存隔离：testsObjDir 下独立 .cache 文件）
+            PkgCacheRegistry testCaches(yux.projectRoot(), testsObjDir);
+
             size_t testExeCount = 0;
             for (auto& [testAbs, testMod] : testFiles) {
                 // 解析测试文件 AST
@@ -422,36 +425,40 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 std::string testObj = mirroredOutputBase(yux.projectRoot(), testsObjDir, testAbs) + ".obj";
                 fs::create_directories(fs::path(testObj).parent_path());
 
-                auto tCtx = std::make_unique<llvm::LLVMContext>();
-                auto tMod = std::make_unique<llvm::Module>(testModName, *tCtx);
-                llvm::IRBuilder<> tBuilder(*tCtx);
-                try {
-                    Compiler compiler(*tCtx, tBuilder, tMod.get(), testFile, &yux, false, true); // isTestDll=true
-                    compiler.compile(testFile);
-                } catch (std::runtime_error& e) {
-                    reportRuntimeError(testAbs, e, testModName + ": ");
-                    continue;
-                }
-
-                if (emitIr) {
-                    std::string testIr = mirroredOutputBase(yux.projectRoot(), irDir, testAbs) + ".ll";
-                    fs::create_directories(fs::path(testIr).parent_path());
-                    std::error_code ec;
-                    llvm::raw_fd_ostream irFile(testIr, ec);
-                    if (ec) {
-                        std::cerr << "Error opening test IR file: " << ec.message() << '\n';
-                    } else {
-                        tMod->print(irFile, nullptr);
-                        irFile.flush();
-                        std::cout << "Write test IR: " << testIr << '\n';
+                // 缓存检查：test obj 新鲜则跳过 codegen
+                if (!testCaches.isFresh(testAbs, testObj)) {
+                    auto tCtx = std::make_unique<llvm::LLVMContext>();
+                    auto tMod = std::make_unique<llvm::Module>(testModName, *tCtx);
+                    llvm::IRBuilder<> tBuilder(*tCtx);
+                    try {
+                        Compiler compiler(*tCtx, tBuilder, tMod.get(), testFile, &yux, false, true); // isTestDll=true
+                        compiler.compile(testFile);
+                    } catch (std::runtime_error& e) {
+                        reportRuntimeError(testAbs, e, testModName + ": ");
+                        continue;
                     }
-                }
 
-                if (!compileIRToObj(tMod.get(), testObj)) {
-                    std::cerr << "Error: failed to compile test IR: " << testObj << '\n';
-                    continue;
+                    if (emitIr) {
+                        std::string testIr = mirroredOutputBase(yux.projectRoot(), irDir, testAbs) + ".ll";
+                        fs::create_directories(fs::path(testIr).parent_path());
+                        std::error_code ec;
+                        llvm::raw_fd_ostream irFile(testIr, ec);
+                        if (ec) {
+                            std::cerr << "Error opening test IR file: " << ec.message() << '\n';
+                        } else {
+                            tMod->print(irFile, nullptr);
+                            irFile.flush();
+                            std::cout << "Write test IR: " << testIr << '\n';
+                        }
+                    }
+
+                    if (!compileIRToObj(tMod.get(), testObj)) {
+                        std::cerr << "Error: failed to compile test IR: " << testObj << '\n';
+                        continue;
+                    }
+                    std::cout << "Write test obj: " << testObj << '\n';
+                    testCaches.mark(testAbs);
                 }
-                std::cout << "Write test obj: " << testObj << '\n';
 
                 // 收集依赖 obj（从 yux.loadOrder — 测试模块引用的依赖）
                 std::vector<std::string> linkObjs = {testObj};
@@ -477,23 +484,43 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 testDllPath += dllFileName;
                 testDllPath += ".test.dll";
 
-                std::string dllOut = "/out:" + testDllPath;
-                // DLL 模式：/dll，无需 /entry /subsystem /kernel32.lib
-                std::vector<const char*> linkArgs = {"lld-link", dllOut.c_str(), "/dll", "/noentry", "kernel32.lib"};
-                for (auto& o : linkObjs)
-                    linkArgs.insert(linkArgs.begin() + 1, o.c_str());
+                // 检查 DLL 是否需要重新链接（DLL 比所有输入 obj 都新则跳过）
+                bool needLink = true;
+                if (fs::exists(testDllPath)) {
+                    needLink = false;
+                    try {
+                        auto dllTime = fs::last_write_time(testDllPath);
+                        for (auto& o : linkObjs) {
+                            if (fs::exists(o) && fs::last_write_time(o) > dllTime) {
+                                needLink = true;
+                                break;
+                            }
+                        }
+                    } catch (...) {
+                        needLink = true;
+                    }
+                }
 
-                std::string outStr, errStr;
-                llvm::raw_string_ostream oOS(outStr), eOS(errStr);
-                std::cout << "Link test dll: " << testDllPath << '\n';
-                lld::DriverDef dd = {.f = lld::WinLink, .d = &lld::coff::link};
-                lld::Result r = lldMain(linkArgs, oOS, eOS, llvm::ArrayRef{dd});
-                if (r.retCode) {
-                    std::cerr << "Error: test dll link failed for " << testMod << "\n" << errStr;
-                    continue;
+                if (needLink) {
+                    std::string dllOut = "/out:" + testDllPath;
+                    // DLL 模式：/dll，无需 /entry /subsystem /kernel32.lib
+                    std::vector<const char*> linkArgs = {"lld-link", dllOut.c_str(), "/dll", "/noentry", "kernel32.lib"};
+                    for (auto& o : linkObjs)
+                        linkArgs.insert(linkArgs.begin() + 1, o.c_str());
+
+                    std::string outStr, errStr;
+                    llvm::raw_string_ostream oOS(outStr), eOS(errStr);
+                    std::cout << "Link test dll: " << testDllPath << '\n';
+                    lld::DriverDef dd = {.f = lld::WinLink, .d = &lld::coff::link};
+                    lld::Result r = lldMain(linkArgs, oOS, eOS, llvm::ArrayRef{dd});
+                    if (r.retCode) {
+                        std::cerr << "Error: test dll link failed for " << testMod << "\n" << errStr;
+                        continue;
+                    }
                 }
                 ++testExeCount;
             }
+            testCaches.flushAll();
             if (testExeCount > 0) {
                 std::cout << "Built " << testExeCount << " test dll(s) into " << testsDir << '\n';
             } else if (!testFiles.empty()) {
