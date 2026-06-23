@@ -367,11 +367,11 @@ void Compiler::compileDeclareStatement(p<StatementDeclareNode> node) {
     auto alloca = _builder.CreateAlloca(llvmType, nullptr, varName);
     _localVarPtrs[varName] = alloca;
 
-    // Phase 3a: fn(...)R 未初始化时零填充 fat-ptr，让析构期 captures 为 null（_box_release 早返）
-    // 否则栈上 captures 字段值为垃圾，析构读到非 null 指针即段错。
-    // 需要 resolveAlias：类型别名（如 Callback = fn(s String)bool）的 isFn() 对别名返回 false，
-    // 但底层 LLVM 类型是 fat-ptr，不解别名会导致零初始化被跳过 → 后续 retain/release 段错。
-    if (resolveAlias(varType).isFn()) {
+    // Phase 3a: 需要析构的类型未初始化时零填充，让析构期指针字段为 null（release 函数 null 安全早返）
+    // 否则栈上指针字段为垃圾，析构读到非 null 指针即段错（如 BUG2：Rc<fn> 2+ 同作用域）。
+    // 需要 resolveAlias：类型别名（如 Callback = fn(s String)bool）底层的 LLVM 类型含指针，
+    // 不解别名会导致零初始化被跳过 → 后续 retain/release 段错。
+    if (typeNeedsDestructor(resolveAlias(varType))) {
         _builder.CreateStore(llvm::Constant::getNullValue(llvmType), alloca);
     }
 
@@ -1794,8 +1794,8 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
 
         auto elemLLVMType = getLLVMType(*elemType);
         // B-3: _data 字段内联，直接 load，不再经过 Block 间接
-        auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0),
-                                            arrayDataFieldPtr(currentPtr, "arr"), "array.data.ptr");
+        auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), arrayDataFieldPtr(currentPtr, "arr"),
+                                           "array.data.ptr");
 
         auto indexVal = compileExpr(indices[0]);
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {indexVal}, "array.elem.ptr");
