@@ -52,7 +52,9 @@ xmake build yux-lsp             ; 仅构建 LSP
 yux build [<name>]              ; 项目编译（需在含 yux.toml 的目录）
 yux build [<name>] --emit-ir    ; 同时输出 .ll
 yux build [<name>] --test       ; 构建测试 DLL（yux test 内部自动加此参数）
+yux build [<name>] --test --test-mod yux.core.array  ; 只编译指定模块的测试
 yux test                        ; 运行当前项目所有 #Test
+yux test --test-mod yux.core.array  ; 只运行指定模块的测试
 yux test --threads 4 --verbose
 yux format <file>               ; 格式化源码
 yux format <file> -i            ; 原地格式化
@@ -77,6 +79,7 @@ yux-check test <dir> -r         ; 递归子目录
 # yux test（项目内，*.test.yux 的 #Test）
 # 流程：yux build --test → 并行 spawn yux-test-runner 子进程
 yux test                        ; 当前项目所有 #Test
+yux test --test-mod yux.core.array  ; 只编译/运行指定模块的测试
 yux test --threads 4            ; 指定并行子进程数（默认 CPU 核数）
 yux test --verbose              ; 打印每个测试捕获的 stdout/stderr
 yux test -d                     ; 调试输出传给 yux build --test

@@ -36,6 +36,7 @@ SDK 测试（`sdk/yux/src/yux/core/*.test.yux`）按主题建文件，内部 `#T
 # yux test（项目内，*.test.yux 的 #Test）
 # 流程：yux build --test → 并行 spawn yux-test-runner 子进程
 yux test                          ; 当前项目所有 #Test
+yux test --test-mod yux.core.array    ; 只编译/运行指定模块的测试
 yux test --threads 4              ; 指定并行子进程数（默认 CPU 核数）
 yux test --verbose                ; 打印每个测试捕获的 stdout/stderr
 yux test -d                       ; 调试输出传给 yux build --test

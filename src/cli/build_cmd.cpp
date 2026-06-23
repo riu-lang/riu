@@ -396,6 +396,26 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             }
             std::ranges::sort(testFiles);
 
+            // --test-mod 过滤：只编译指定模块的测试
+            // 模块名如 yux.core.array.test，去掉末尾 .test 后与 --test-mod 值比对
+            if (!opts.testMod.empty()) {
+                std::vector<std::pair<std::string, std::string>> filtered;
+                for (auto& [abs, mod] : testFiles) {
+                    std::string base = mod;
+                    // 去掉 trailing ".test"
+                    if (base.size() > 5 && base.substr(base.size() - 5) == ".test") {
+                        base = base.substr(0, base.size() - 5);
+                    }
+                    if (base == opts.testMod || mod == opts.testMod) {
+                        filtered.emplace_back(abs, mod);
+                    }
+                }
+                if (filtered.empty()) {
+                    std::cerr << "Error: no test file matches --test-mod " << opts.testMod << "\n";
+                }
+                testFiles = std::move(filtered);
+            }
+
             // 扫描模块名用于依赖收集
             // （libFiles 已包含所有非 test 的 .yux）
             std::map<std::string, std::string> allObjMap;  // modName → obj path
@@ -525,9 +545,10 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 std::cout << "Built " << testExeCount << " test dll(s) into " << testsDir << '\n';
             } else if (!testFiles.empty()) {
                 std::cout << "no test dll built (all failed)\n";
-            } else {
+            } else if (opts.testMod.empty()) {
                 std::cout << "no *.test.yux files found\n";
             }
+            // --test-mod 无匹配时已在上面输出 stderr，不再重复 stdout
         }
 
         std::cout.flush();

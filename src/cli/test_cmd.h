@@ -8,11 +8,14 @@
 
 #pragma once
 
+#include <string>
+
 namespace yux::cli {
 
 struct TestCmdOptions {
     bool verbose = false;
-    int threads = 0; // 线程数（0 = CPU 核数）
+    int threads = 0;     // 线程数（0 = CPU 核数）
+    std::string testMod; // --test-mod：只编译/运行指定模块的 test
 };
 
 // 运行 `yux test`。永不返回 (内部调 _exit)。

@@ -98,6 +98,8 @@ int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windo
     buildCmd->add_option("--emit-ir-dir", emitIrDir, "Output directory for .ll files (default: build/)");
     bool testMode = false;
     buildCmd->add_flag("--test", testMode, "Build test executables for *.test.yux into build/tests/");
+    std::string buildTestMod;
+    buildCmd->add_option("--test-mod", buildTestMod, "Build only the specified test module (e.g. yux.core.array)");
     buildCmd->fallthrough(); // 允许 --warn / --allow / --deny / -Werror 在 build 子命令上使用
 
 #ifdef _DEBUG
@@ -112,6 +114,9 @@ int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windo
                       "Print captured stdout/stderr for every test (default: only on failure)");
     int testThreads = 0;
     testCmd->add_option("--threads", testThreads, "Thread count (default: CPU cores)");
+    std::string testTestMod;
+    testCmd->add_option("--test-mod", testTestMod,
+                        "Build and run only the specified test module (e.g. yux.core.array)");
 #ifdef _DEBUG
     testCmd->add_flag("-d,--debug", debug, "Output compilation IR debug information");
 #endif
@@ -169,12 +174,14 @@ int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windo
         TestCmdOptions opts;
         opts.verbose = testVerbose;
         opts.threads = testThreads;
+        opts.testMod = testTestMod;
         runTestCommand(opts);
     }
 
     BuildCmdOptions bopts;
     bopts.projectMode = buildCmd->parsed();
     bopts.testMode = testMode;
+    bopts.testMod = buildTestMod;
     bopts.emitIr = emitIr;
     bopts.emitIrDir = emitIrDir;
     bopts.jitRun = jitRun;

@@ -88,6 +88,9 @@ DWORD spawnAndWait(const std::wstring& cmdLine, const std::wstring& workingDir =
     std::cout.flush();
     {
         std::wstring cmd = L"\"" + toWide(self) + L"\" build --test";
+        if (!opts.testMod.empty()) {
+            cmd += L" --test-mod " + toWide(opts.testMod);
+        }
         DWORD code = spawnAndWait(cmd, toWide(cwd));
         if (code != 0) {
             std::cerr << "Error: yux build --test failed (exit code " << code << ")\n";
@@ -126,6 +129,27 @@ DWORD spawnAndWait(const std::wstring& cmdLine, const std::wstring& workingDir =
         }
     }
     std::ranges::sort(dllPaths);
+
+    // --test-mod 过滤：只运行指定模块的 DLL
+    if (!opts.testMod.empty()) {
+        // DLL 名由模块名推导：yux.core.array → yux_core_array_test.test.dll
+        std::string expectedStem = opts.testMod;
+        for (auto& c : expectedStem)
+            if (c == '.') c = '_';
+        expectedStem += "_test"; // 对应 .test 后缀（模块名中 . → _）
+        std::vector<std::string> filtered;
+        for (auto& p : dllPaths) {
+            std::string stem = fs::path(p).stem().string(); // 如 yux_core_array_test.test
+            if (stem == expectedStem + ".test" || stem == expectedStem) {
+                filtered.push_back(p);
+            }
+        }
+        if (filtered.empty()) {
+            std::cerr << "Error: no test DLL matches --test-mod " << opts.testMod << "\n";
+            std::cerr << "  Expected stem: " << expectedStem << ".test.dll\n";
+        }
+        dllPaths = std::move(filtered);
+    }
 
     if (dllPaths.empty()) {
         std::cout << "No *.test.dll found in " << testsDir << " — nothing to test.\n";
