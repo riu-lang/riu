@@ -460,34 +460,40 @@ struct TypeInfo {
         return name;
     }
 
-    // 单态化实例 mangle 名：Base$Arg1$Arg2，嵌套递归（e.g. A<B<i32>> → A$B$i32）
-    string getGenericMangleName() const {
+    // LLVM 符号用 mangle 名（与 yux 源码写法一致）：
+    // 泛型 Base<Arg1,Arg2>，元组 (T1,T2)，函数 fn(P1,...,Pn)R，数组 [E*N]
+    string getMangleName() const {
         if (kind == TypeKind::Generic && !genericArgs.empty()) {
-            string result = name;
-            for (auto& a : genericArgs) {
-                result += "$" + a->getGenericMangleName();
+            string result = name + "<";
+            for (size_t i = 0; i < genericArgs.size(); ++i) {
+                if (i > 0) result += ",";
+                result += genericArgs[i]->getMangleName();
             }
+            result += ">";
             return result;
         }
         if (kind == TypeKind::Array && elementType) {
-            return "[" + elementType->getGenericMangleName() + "*" + std::to_string(arraySize) + "]";
+            return "[" + elementType->getMangleName() + "*" + std::to_string(arraySize) + "]";
         }
-        // 元组 mangle：Tuple$T1$T2$...，避免括号 / 逗号污染符号
+        // 元组：(T1,T2)
         if (kind == TypeKind::Tuple) {
-            string result = "Tuple";
-            for (auto& a : genericArgs) {
-                result += "$" + (a ? a->getGenericMangleName() : string("?"));
+            string result = "(";
+            for (size_t i = 0; i < genericArgs.size(); ++i) {
+                if (i > 0) result += ",";
+                result += genericArgs[i] ? genericArgs[i]->getMangleName() : string("?");
             }
+            result += ")";
             return result;
         }
-        // 函数 mangle：Fn[N]$P1$P2$...$R / FnQ 表 nullable
+        // 函数：fn(P1,...,Pn)R / fn?(...)R
         if (kind == TypeKind::Fn) {
-            string result = fnNullable ? "FnQ" : "Fn";
-            result += std::to_string(genericArgs.size());
-            for (auto& a : genericArgs) {
-                result += "$" + (a ? a->getGenericMangleName() : string("?"));
+            string result = fnNullable ? "fn?(" : "fn(";
+            for (size_t i = 0; i < genericArgs.size(); ++i) {
+                if (i > 0) result += ",";
+                result += genericArgs[i] ? genericArgs[i]->getMangleName() : string("?");
             }
-            result += "$" + (elementType ? elementType->getGenericMangleName() : string("void"));
+            result += ")";
+            result += elementType ? elementType->getMangleName() : string("void");
             return result;
         }
         return name;

@@ -846,11 +846,13 @@ void Compiler::emitInstanceMethods() {
 string Compiler::ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& typeArgs, p<FileNode> ownerFile,
                                   int sourceLine) {
     string baseName = baseFn->header()->name().getText();
-    // 生成 mangle 名称: foo$i32$i64
-    string mangledName = baseName;
-    for (auto& a : typeArgs) {
-        mangledName += "$" + a.getGenericMangleName();
+    // 生成 mangle 名称: foo<i32,i64>
+    string mangledName = baseName + "<";
+    for (size_t i = 0; i < typeArgs.size(); ++i) {
+        if (i > 0) mangledName += ",";
+        mangledName += typeArgs[i].getMangleName();
     }
+    mangledName += ">";
 
     // 检查是否已存在。
     // 同名泛型不同重载（如 print<T>(x T) vs print<T>(x T&)）共享同一 baseName+typeArgs
@@ -868,7 +870,7 @@ string Compiler::ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& type
         for (auto& p : baseFn->header()->params()) {
             if (p->type()) {
                 auto pt = p->type()->getType().substitute(tmpSubst);
-                overloadSuffix += "_" + pt.getGenericMangleName();
+                overloadSuffix += "_" + pt.getMangleName();
             }
         }
         mangledName += overloadSuffix;
@@ -1242,17 +1244,17 @@ llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t, llvm:
     }
     if (!ownerFile) return nullptr; // builtin / unknown - 不发射
 
-    // 符号名: mod 里 '.' / 其它非标识符字符 → '_'
+    // 符号名: __yux_reflect.<mod>.<type>（LLVM quoted identifier 支持 '.'）
     auto sanitize = [](const std::string& s) {
         std::string out;
         out.reserve(s.size());
         for (char c : s) {
-            bool keep = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+            bool keep = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.';
             out += keep ? c : '_';
         }
         return out;
     };
-    std::string symName = "__yux_reflect_" + sanitize(ownerFile->moduleName()) + "_" + t.name + "__type";
+    std::string symName = "__yux_reflect." + sanitize(ownerFile->moduleName()) + "." + t.name;
 
     if (auto* existing = _module->getNamedGlobal(symName)) {
         if (outFieldsRefs) {

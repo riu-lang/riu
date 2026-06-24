@@ -220,15 +220,17 @@ void Compiler::validateAliases() {
 // ==================== 泛型结构体实例化 ====================
 
 // 确保泛型结构体实例存在
-// 返回 mangle 后的实例名 (如 "Rc$i32")
+// 返回 mangle 后的实例名 (如 "Rc<i32>")
 string Compiler::ensureStructInstance(p<StructDeclNode> baseDecl, const vector<sp<TypeInfo>>& args,
                                       p<FileNode> ownerFile, int sourceLine) {
     string baseName = baseDecl->name().getText();
-    // 生成 mangle 名称: StructName$T1$T2...
-    string mangledName = baseName;
-    for (auto& a : args) {
-        mangledName += "$" + (a ? a->getGenericMangleName() : string("?"));
+    // 生成 mangle 名称: StructName<T1,T2>
+    string mangledName = baseName + "<";
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (i > 0) mangledName += ",";
+        mangledName += args[i] ? args[i]->getMangleName() : string("?");
     }
+    mangledName += ">";
 
     // 检查是否已存在
     auto it = _structInstances.find(mangledName);
@@ -526,7 +528,7 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             return _structTypes[mangled];
         }
         // 从缓存查找
-        string mangledKey = type.getGenericMangleName();
+        string mangledKey = type.getMangleName();
         auto it = _structTypes.find(mangledKey);
         if (it != _structTypes.end()) {
             DEBUG_LOG_VAL("    -> Generic struct (cached)", mangledKey);
@@ -657,7 +659,8 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             if (maxPayload > 0) {
                 fields.push_back(llvm::ArrayType::get(_builder.getInt8Ty(), maxPayload));
             }
-            string mangled = "Enum$" + (enumOwner ? enumOwner->moduleName() : string("")) + "$" + type.name;
+            string prefix = enumOwner && !enumOwner->moduleName().empty() ? enumOwner->moduleName() + "." : "";
+            string mangled = prefix + type.name;
             auto enumType = llvm::StructType::create(_context, fields, mangled);
             _structTypes[cacheKey] = enumType;
             DEBUG_LOG_VAL("    -> Enum (created)", mangled << " payload=" << maxPayload);
@@ -839,14 +842,11 @@ void Compiler::emitMainStartupFallible(const string& fallibleErrName) {
     _builder.CreateCall(setConsoleOutputCP, {cpUtf8});
     _builder.CreateCall(setConsoleCP, {cpUtf8});
 
-    // DRAFT-static-vars Phase 6: 按模块拓扑序调用 _yux_global_init_<Mod>()
+    // DRAFT-static-vars Phase 6: 按模块拓扑序调用 __yux_global_init.<Mod>()
     auto voidFnType = llvm::FunctionType::get(_builder.getVoidTy(), {}, false);
     if (_yux && !_yux->loadOrder().empty()) {
         for (auto& modName : _yux->loadOrder()) {
-            string fnName = "_yux_global_init_" + modName;
-            for (auto& c : fnName) {
-                if (c == '.') c = '_';
-            }
+            string fnName = "__yux_global_init." + modName;
             auto callee = _module->getOrInsertFunction(fnName, voidFnType);
             _builder.CreateCall(callee, {});
         }
@@ -854,7 +854,7 @@ void Compiler::emitMainStartupFallible(const string& fallibleErrName) {
         // 兼容旧路径（单文件模式）：遍历当前 Module 内所有 init 函数
         for (auto& func : _module->getFunctionList()) {
             auto funcName = func.getName();
-            if (funcName.starts_with("_yux_global_init_")) {
+            if (funcName.starts_with("__yux_global_init.")) {
                 _builder.CreateCall(&func, {});
             }
         }

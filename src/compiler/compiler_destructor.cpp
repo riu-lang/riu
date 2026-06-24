@@ -865,7 +865,7 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
     if (inner->isArrayGeneric()) {
         // 构造 mangled name
         string arrInnerName = inner->arrayGenericElementType() ? inner->arrayGenericElementType()->name : "T";
-        string mangledName = "_box_release_Array_" + arrInnerName;
+        string mangledName = "__yux_box_release.Array." + arrInnerName;
         auto func = runtime::getRcReleaseTypedFn(_module, _builder, mangledName);
         if (func->empty()) {
             auto* savedBB = _builder.GetInsertBlock();
@@ -885,16 +885,8 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
         return runtime::getRcReleaseFn(_module, _builder);
     }
 
-    // 构造 mangled name：_box_release_T_ + sanitized type name
-    string typeName = inner->name;
-    string mangledName = "_box_release_T_";
-    for (char c : typeName) {
-        if (isalnum(static_cast<unsigned char>(c)) || c == '_') {
-            mangledName += c;
-        } else {
-            mangledName += '_';
-        }
-    }
+    // 构造 mangled name：__yux_box_release.T.<type>
+    string mangledName = "__yux_box_release.T." + inner->getMangleName();
 
     auto func = runtime::getRcReleaseTypedFn(_module, _builder, mangledName);
     if (!func->empty()) return func;
@@ -1003,8 +995,8 @@ llvm::Function* Compiler::getEnumDestructorFunction(const string& enumName) {
     if (!decl) return nullptr;
 
     string ownerModule = owner ? owner->moduleName() : _file->moduleName();
-    // mangling: Enum$<module>$<name>_~()  与 struct dtor 形态一致（仅替换前缀为 Enum$）
-    string mangled = "Enum$" + ownerModule + "$" + enumName + "_~()";
+    // mangling: module.EnumName::~()  与 struct dtor 形态一致
+    string mangled = ownerModule + "." + enumName + "::~()";
 
     auto func = _module->getFunction(mangled);
     if (func) return func;

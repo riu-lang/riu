@@ -153,13 +153,9 @@ void Compiler::compileGlobalVars() {
         }
     }
 
-    // Phase 6: 始终生成 _yux_global_init_<Mod>() —— 即使无 runtime init item，
+    // Phase 6: 始终生成 __yux_global_init.<Mod>() —— 即使无 runtime init item，
     // 跨模块 main shim 也会按拓扑序调用它；空函数开销为一条 ret。
-    // 函数名中 '.' 替换为 '_' 以符合 LLVM 标识符规则。
-    auto fnName = "_yux_global_init_" + _file->moduleName();
-    for (auto& c : fnName) {
-        if (c == '.') c = '_';
-    }
+    auto fnName = "__yux_global_init." + _file->moduleName();
 
     // Phase 6: ExternalLinkage 以便跨模块 main shim 调用（DRAFT-static-vars §5.5）
     auto fnType = llvm::FunctionType::get(_builder.getVoidTy(), {}, false);

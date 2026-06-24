@@ -30,12 +30,12 @@ namespace {
 llvm::Function* getAssertFailedFn(llvm::Module* module, FileNode* file) {
     string modName = "yux.core"; // 兜底
     if (file) {
-        auto* fnSym = file->lookupFnSymbol("_yux_test_assert_failed");
+        auto* fnSym = file->lookupFnSymbol("__yux_test_assert_failed");
         if (fnSym && !fnSym->moduleName.empty()) {
             modName = fnSym->moduleName;
         }
     }
-    string name = Mangler::function(modName, "_yux_test_assert_failed", {}, true);
+    string name = Mangler::function(modName, "__yux_test_assert_failed", {}, true);
     auto fn = module->getFunction(name);
     if (fn) return fn;
     auto fnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), {}, false);

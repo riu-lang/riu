@@ -136,7 +136,7 @@ llvm::Function* getSetConsoleCPFn(llvm::Module* module, llvm::IRBuilder<>& build
 // 获取（或新建 extern 声明）全局 _rc_block_count（i64）
 // 用户模块只声明、不定义；定义由 SDK 模块的 emitRcBlockCountDefinition 单独发射
 llvm::GlobalVariable* getRcBlockCountGlobal(llvm::Module* module, llvm::IRBuilder<>& builder) {
-    const string name = "_rc_block_count";
+    const string name = "__yux_rc_block_count";
     if (auto g = module->getGlobalVariable(name)) return g;
     auto i64Ty = builder.getInt64Ty();
     return new llvm::GlobalVariable(*module, i64Ty,
@@ -173,7 +173,7 @@ void emitRcBlockCountAdd(llvm::IRBuilder<>& builder, llvm::Module* module, int64
 // 签名: ptr _box_alloc(i64 payload_size)
 // 分配 8 字节 RC 头 + payload_size，初始化 strong=1, weak=1，返回 block 指针
 llvm::Function* getRcAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
-    string fnName = "_box_alloc";
+    string fnName = "__yux_box_alloc";
     auto func = module->getFunction(fnName);
     if (func) return func;
 
@@ -188,7 +188,7 @@ llvm::Function* getRcAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
 // 签名: void _box_retain(ptr block)
 // 哨兵跳过；否则 strong++
 llvm::Function* getRcRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
-    string fnName = "_box_retain";
+    string fnName = "__yux_box_retain";
     auto func = module->getFunction(fnName);
     if (func) return func;
 
@@ -204,7 +204,7 @@ llvm::Function* getRcRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder) 
 // Phase 1d.1：哨兵 / null 跳过；否则 strong--；strong==0 时 weak--，weak 也==0 时 free
 // payload 析构由调用方在 IR 内联（在 _box_release 之前），与 Phase 1a 一致
 llvm::Function* getRcReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
-    string fnName = "_box_release";
+    string fnName = "__yux_box_release";
     auto func = module->getFunction(fnName);
     if (func) return func;
 
@@ -219,7 +219,7 @@ llvm::Function* getRcReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder)
 // 签名: void _box_release_dtor(ptr block)
 // 见头文件说明。runtime 实现见 emitRcHelpers。
 llvm::Function* getRcReleaseDtorFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
-    string fnName = "_box_release_dtor";
+    string fnName = "__yux_box_release_dtor";
     auto func = module->getFunction(fnName);
     if (func) return func;
 
@@ -252,7 +252,7 @@ llvm::Function* getRcReleaseTypedFn(llvm::Module* module, llvm::IRBuilder<>& bui
 // 签名: void _dyn_release(ptr data, ptr vtable)
 // 见头文件说明。runtime 实现见 emitRcHelpers。
 llvm::Function* getDynReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
-    string fnName = "_dyn_release";
+    string fnName = "__yux_dyn_release";
     auto func = module->getFunction(fnName);
     if (func) return func;
 
@@ -268,7 +268,7 @@ llvm::Function* getDynReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder
 // 签名: ptr _box_upgrade(ptr block)
 // null/strong==0 → 返回 null；哨兵 → 直接返回 block；否则 strong++ 并返回 block
 llvm::Function* getRcUpgradeFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
-    string fnName = "_box_upgrade";
+    string fnName = "__yux_box_upgrade";
     auto func = module->getFunction(fnName);
     if (func) return func;
 
@@ -283,7 +283,7 @@ llvm::Function* getRcUpgradeFn(llvm::Module* module, llvm::IRBuilder<>& builder)
 // 签名: void _weak_retain(ptr block)
 // null/哨兵跳过；否则 weak++
 llvm::Function* getWeakRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
-    string fnName = "_weak_retain";
+    string fnName = "__yux_weak_retain";
     auto func = module->getFunction(fnName);
     if (func) return func;
 
@@ -298,7 +298,7 @@ llvm::Function* getWeakRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder
 // 签名: void _weak_release(ptr block)
 // 哨兵 / null 跳过；否则 weak--；weak==0 时 free 整个 block
 llvm::Function* getWeakReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
-    string fnName = "_weak_release";
+    string fnName = "__yux_weak_release";
     auto func = module->getFunction(fnName);
     if (func) return func;
 
@@ -313,7 +313,7 @@ llvm::Function* getWeakReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builde
 
 // B-3: _array_free_data(ptr data) → void — null 安全 HeapFree
 llvm::Function* getArrayFreeDataFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
-    string fnName = "_array_free_data";
+    string fnName = "__yux_array_free_data";
     auto func = module->getFunction(fnName);
     if (func) return func;
     vector<llvm::Type*> paramTypes;
@@ -1014,16 +1014,12 @@ void emitMainStartup(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llv
     builder.CreateCall(setConsoleCP, {cpUtf8});
     DEBUG_LOG("  Set console code page to UTF-8");
 
-    // DRAFT-static-vars Phase 6: 按模块拓扑序调用 _yux_global_init_<Mod>()
+    // DRAFT-static-vars Phase 6: 按模块拓扑序调用 __yux_global_init.<Mod>()
     // initModuleNames 由 Compiler 端传入（Yux::loadOrder），已按导入依赖的拓扑序排列。
-    // 模块名中的 '.' 在函数名中替换为 '_'。
     auto voidFnType = llvm::FunctionType::get(builder.getVoidTy(), {}, false);
     if (!initModuleNames.empty()) {
         for (auto& modName : initModuleNames) {
-            string fnName = "_yux_global_init_" + modName;
-            for (auto& c : fnName) {
-                if (c == '.') c = '_';
-            }
+            string fnName = "__yux_global_init." + modName;
             auto callee = module->getOrInsertFunction(fnName, voidFnType);
             builder.CreateCall(callee, {});
             DEBUG_LOG_VAL("  Called global init (topo order)", fnName);
@@ -1032,7 +1028,7 @@ void emitMainStartup(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llv
         // 兼容旧路径（单文件模式 / 无 Yux 驱动）：遍历当前 Module 内所有 init 函数
         for (auto& func : module->getFunctionList()) {
             auto funcName = func.getName();
-            if (funcName.starts_with("_yux_global_init_")) {
+            if (funcName.starts_with("__yux_global_init.")) {
                 builder.CreateCall(&func, {});
                 DEBUG_LOG_VAL("  Called global init (legacy)", funcName.str());
             }
@@ -1066,14 +1062,11 @@ void emitTestDllInit(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llv
     auto entry = llvm::BasicBlock::Create(context, "entry", initFn);
     builder.SetInsertPoint(entry);
 
-    // 按模块拓扑序调用 _yux_global_init_<Mod>()
+    // 按模块拓扑序调用 __yux_global_init.<Mod>()
     auto voidInitFnType = llvm::FunctionType::get(builder.getVoidTy(), {}, false);
     if (!initModuleNames.empty()) {
         for (auto& modName : initModuleNames) {
-            string fnName = "_yux_global_init_" + modName;
-            for (auto& c : fnName) {
-                if (c == '.') c = '_';
-            }
+            string fnName = "__yux_global_init." + modName;
             auto callee = module->getOrInsertFunction(fnName, voidInitFnType);
             builder.CreateCall(callee, {});
             DEBUG_LOG_VAL("  Called global init (topo order)", fnName);
@@ -1082,7 +1075,7 @@ void emitTestDllInit(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llv
         // 兼容：遍历当前 Module 内所有 init 函数
         for (auto& func : module->getFunctionList()) {
             auto funcName = func.getName();
-            if (funcName.starts_with("_yux_global_init_")) {
+            if (funcName.starts_with("__yux_global_init.")) {
                 builder.CreateCall(&func, {});
                 DEBUG_LOG_VAL("  Called global init (legacy)", funcName.str());
             }

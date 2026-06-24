@@ -34,12 +34,12 @@
 namespace {
 
 // 把 draft 完全限定名（"yux.core.ToString" / "Greet"）转成符号安全形式：
-// '.' → '_'，其它 ASCII 标识符字符直通；非常规字符按 '_' 兜底。
+// '.' 保留（LLVM quoted identifier 合法），其它 ASCII 标识符字符直通；非常规字符按 '_' 兜底。
 std::string sanitizeForSymbol(const std::string& s) {
     std::string out;
     out.reserve(s.size());
     for (char c : s) {
-        bool keep = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+        bool keep = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.';
         out += keep ? c : '_';
     }
     return out;
@@ -111,15 +111,15 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(const TypeInfo& concreteType,
     const std::string& uStruct = concreteType.name;
     std::string uModule = findStructOwnerModule(_yux, uStruct);
 
-    // 符号名：__yux_vtable_<uMod>_<uStruct>__<dQualified>
+    // 符号名：__yux_vtable.<uMod>.<uStruct>.<dQualified>
     // uMod 为空（罕见，类型未在已加载模块中找到）时退化为仅 struct 名。
-    std::string symName = "__yux_vtable_";
+    std::string symName = "__yux_vtable.";
     if (!uModule.empty()) {
         symName += sanitizeForSymbol(uModule);
-        symName += "_";
+        symName += ".";
     }
     symName += sanitizeForSymbol(uStruct);
-    symName += "__";
+    symName += ".";
     symName += sanitizeForSymbol(specQualified);
 
     if (auto* existing = _module->getNamedGlobal(symName)) {
@@ -275,11 +275,11 @@ llvm::Function* Compiler::getOrEmitDynPrimitiveThunk(const TypeInfo& concreteTyp
     auto uLLVMTy = getLLVMType(concreteType);
 
     const std::string methodName = sig->name().getText();
-    std::string thunkName = "__yux_dyn_thunk__";
+    std::string thunkName = "__yux_dyn_thunk.";
     thunkName += sanitizeForSymbol(concreteType.name);
-    thunkName += "__";
+    thunkName += ".";
     thunkName += sanitizeForSymbol(specQualified);
-    thunkName += "__";
+    thunkName += ".";
     thunkName += sanitizeForSymbol(methodName);
 
     if (auto* existing = _module->getFunction(thunkName)) {

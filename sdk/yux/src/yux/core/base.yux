@@ -2081,19 +2081,19 @@ fn eprintln<T : ToString>(x T&) {
 
 fn assert_eq(actual String&, expected String&) {
   if actual != expected {
-    _yux_test_assert_failed();
+    __yux_test_assert_failed();
   }
 }
 
 fn assert_contains(haystack String&, needle String&) {
   if !haystack.contains(&needle) {
-    _yux_test_assert_failed();
+    __yux_test_assert_failed();
   }
 }
 
 fn assert_starts_with(s String&, prefix String&) {
   if !s.starts_with(&prefix) {
-    _yux_test_assert_failed();
+    __yux_test_assert_failed();
   }
 }
 

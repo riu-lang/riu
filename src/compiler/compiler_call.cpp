@@ -346,10 +346,12 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                         for (auto& tn : explicitTypeArgs) {
                             instArgs.push_back(make_shared<TypeInfo>(applySubst(tn->getType())));
                         }
-                        string effName = fnName;
-                        for (auto& a : instArgs) {
-                            effName += "$" + a->getGenericMangleName();
+                        string effName = fnName + "<";
+                        for (size_t i = 0; i < instArgs.size(); ++i) {
+                            if (i > 0) effName += ",";
+                            effName += instArgs[i]->getMangleName();
                         }
+                        effName += ">";
 
                         map<string, TypeInfo> subst;
                         for (size_t i = 0; i < structDecl->typeParams().size(); ++i) {

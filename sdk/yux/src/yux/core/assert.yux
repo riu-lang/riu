@@ -6,7 +6,7 @@
 ;   - assert_false(actual bool)
 ;   - fail(msg String)
 ;
-; 失败时编译器合成的 IR 调用本文件 _yux_test_assert_failed()，
+; 失败时编译器合成的 IR 调用本文件 __yux_test_assert_failed()，
 ; 后者触发自定义 SEH 异常码 0xE0FA17ED；yux test 的 SEH wrapper 翻译为 ASSERT_FAILED。
 
 extern {
@@ -29,7 +29,7 @@ fn assert_false(actual bool)
 fn fail(msg String)
 
 ; 0xE0FA17ED：客户位段（高 4 位 0xE）+ "FA17ED" 字面，便于 SEH 串号识别
-fn _yux_test_assert_failed() {
+fn __yux_test_assert_failed() {
   RaiseException(0xE0FA17EDu32, 0, 0, null);
 }
 
