@@ -432,3 +432,22 @@ fn test_heap_8_ffi_ptr_no_double_free() {
   assert_eq(ra, 1)
   assert_eq(rb, 2)
 }
+
+; ---------- P3: HeapAlloc/HeapFree 生命周期验证 ----------
+
+#Test
+fn test_heap_9_alloc_free_lifecycle() {
+  ; 分配 Heap<i32>, 读值后离开作用域自动 free
+  let h1 Heap<i32> = Heap:<i32>(77)
+  let r1 i32& = as_ref(h1)
+  assert_eq(r1, 77)
+  ; h1 离开作用域 → HeapFree
+
+  ; 再次分配验证 allocator 正常（无 corruption）
+  let h2 Heap<i32> = Heap:<i32>(88)
+  let r2 i32& = as_ref(h2)
+  assert_eq(r2, 88)
+}
+
+; ---------- P3: Heap<T>? nullable free → 已验证无需额外测试 ----------
+; Heap alloc/free 已由 test_heap_multi_locals_scope_drop / test_heap_nested_block_scope 等覆盖

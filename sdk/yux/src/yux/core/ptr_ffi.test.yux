@@ -1,0 +1,25 @@
+; P3: _ptr_as_ref / _ptr_write builtin 功能测试
+; ptr_of 接受 Rc<T>/Array<T>/String/U&，用 Rc<i32> 获取 Ptr
+
+; ---- _ptr_write + _ptr_as_ref (via Rc<i32>) ----
+
+#Test
+fn test_ptr_write_and_from_rc() {
+  #Mut let x Rc<i32> = 42
+  #Mut let p Ptr = ptr_of(x)
+  ; _ptr_as_ref 将 Ptr 重新解释为 i32&
+  let r i32& = _ptr_as_ref:<i32>(p)
+  assert_eq(r, 42)
+}
+
+; ---- _ptr_write 写穿 Rc<i32> payload ----)
+
+#Test
+fn test_ptr_write_to_rc_payload() {
+  #Mut let a Rc<i32> = 10
+  #Mut let p Ptr = ptr_of(a)
+  _ptr_write:<i32>(p, 77)
+  ; _ptr_as_ref 读回
+  let r i32& = _ptr_as_ref:<i32>(p)
+  assert_eq(r, 77)
+}

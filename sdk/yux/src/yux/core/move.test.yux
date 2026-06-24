@@ -71,3 +71,40 @@ fn test_move_elif_branch() {
   }
   ; a was moved in elif branch — scope exit skips a's dtor via _movedVars merge
 }
+
+; ---- move Rc<i32> ----
+
+#Test
+fn test_move_rc_i32() {
+  let a Rc<i32> = 100
+  let v i32& = as_ref(a)
+  assert_eq(v, 100)
+  let b Rc<i32> = move(a)
+  ; a was moved — b now owns the handle
+  let w i32& = as_ref(b)
+  assert_eq(w, 100)
+}
+
+; ---- move Array<i32> ----
+
+#Test
+fn test_move_array_i32() {
+  let a Array<i32> = [1, 2, 3]
+  assert_eq(a.len(), 3)
+  let b Array<i32> = move(a)
+  ; a was moved — b now owns
+  assert_eq(b.len(), 3)
+  assert_eq(b.get(0), 1)
+  assert_eq(b.get(2), 3)
+}
+
+; ---- move String ----
+
+#Test
+fn test_move_string() {
+  let s String = "hello"
+  assert_eq(s.len(), 5)
+  let t String = move(s)
+  ; s was moved — t now owns
+  assert_eq(t.len(), 5)
+}

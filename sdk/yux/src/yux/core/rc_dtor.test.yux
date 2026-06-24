@@ -81,3 +81,44 @@ fn test_rc_nested_rc_typed_release() {
   }
   assert_eq(rc_leak_count() - base, 0)
 }
+
+; ---------- 深层嵌套: Rc<Rc<Rc<i32>>> ----------
+
+#Test
+fn test_rc_dtor_triple_nested() {
+  #Mut let base i64 = rc_leak_count()
+  {
+    #Mut let a Rc<i32> = 42
+    #Mut let b Rc<Rc<i32>> = move(a)
+    #Mut let c Rc<Rc<Rc<i32>>> = move(b)
+    ; c 离开作用域 → inline dtor 释放 b handle → inline dtor 释放 a handle → free
+  }
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+; ---------- Rc<Array<i32>> typed release ----------
+
+#Test
+fn test_rc_dtor_array() {
+  #Mut let base i64 = rc_leak_count()
+  {
+    #Mut let arr Array<i32> = [10, 20, 30]
+    #Mut let r Rc<Array<i32>> = move(arr)
+    ; r 离开作用域 → typed release → Array::~() → HeapFree(_data)
+  }
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+; ---------- Rc<Rc<Array<i32>>> 双层 ----------
+
+#Test
+fn test_rc_dtor_rc_array() {
+  #Mut let base i64 = rc_leak_count()
+  {
+    #Mut let arr Array<i32> = [5, 15, 25]
+    #Mut let inner Rc<Array<i32>> = move(arr)
+    #Mut let outer Rc<Rc<Array<i32>>> = move(inner)
+    ; outer → inline dtor _box_release(inner) → inner strong==0 → typed release Array::~()
+  }
+  assert_eq(rc_leak_count() - base, 0)
+}

@@ -273,13 +273,20 @@ static-vars（E3150..E3157；引入自 [draft/DRAFT-static-vars.md](draft/DRAFT-
 | E4013 | `cannot return $ from constructor (§8.3)` |
 | E4020 | `return T& root must be {}, got '{}' (§8.6)` |
 | E4021 | `function returning T& requires at most one T& parameter source: \`$\` (method) or 0–1 T& parameter (free fn); ≥2 T& parameters is an error (§8.6.10.3)` |
+| E4022 | `lambda value with \`T&\` capture cannot escape current frame (cannot be returned, stored to global, or assigned to outer variable; spec §6.2.1, DRAFT-closure-capture §4.3)` |
 | E4023 | `Heap<T> '{}' escapes its scope: ret position requires NRVO (§8.3a.4.1)` |
 | E4024 | `Heap<T> '{}' cannot be moved by value; declare as Heap<T>? for movable slots (§8.3a.3.2)` |
 | E4025 | `Rc<Heap<T>> / Weak<Heap<T>> / Heap<T> as Rc<U> inner field is forbidden (§8.3a.5.1)` |
 | E4026 | `NRVO not applicable: multiple ret sources or coexists with outliving borrow (§8.3a.4.1)` |
 | E4027 | `implicit widen Heap<T> -> Heap<T>? is forbidden; restructure source signature (§8.3a.4.3)` |
 | E4028 | `extern fn parameter / return must not be Heap<T>; use Ptr at FFI boundary (§8.3a.5.3)` |
+| E4029 | `Arc<{}> is reserved for v1.x multi-threading; not yet implemented (DRAFT-heap-types §9)` |
 | E4030 | `` result of `<-` move-assign is discarded; the old value will be immediately released — use `a = b` if you don't need the old value `` |
+| E4031 | `Cannot implicitly copy \`{}\` (marked #NoCopy) in \`{}\`; use \`move:<{}>(x)\` to transfer ownership` |
+| E4032 | `Struct \`{}\` contains \`#NoCopy\` field \`{}\` and must itself be annotated \`#NoCopy\`` |
+| E4033 | `Cannot use \`{}\` after move; ownership has been transferred` |
+| E4034 | `\`move\` argument must be T&, got \`{}\` (spec §3g)` |
+| E4035 | `Type parameter of \`move\` must not itself be a reference (spec §3g)` |
 
 ### D.3.5 E5xxx — 模块 / 包
 

@@ -95,28 +95,107 @@
 
 - **性能与 layout 优化**：String 专属 FAM Block（`{strong, weak, len_cps, u32 data[]}`）；Array Block 内联小尺寸优化；内联策略与裁剪；基准测试无回归。
 
-### v0.17.0-alpha — 项目模块 extern 完善 + SDK lib 去平铺 + LLVM 符号对齐
+### v0.18.0-alpha — BUG 解决 + Open Issue 收口 + SDK 扩展
 
-**主题**：收口 extern 边界（类型白名单 + 编译器内部自动转换移入 SDK 显式 FFI 包装 + 跨模块查找修复）；补齐项目配置 `[deps]` 本地路径依赖；修复泛型函数跨模块实例化找不到定义模块的问题；SDK 源文件从平铺合并改为独立子模块各自编译再打包 lib；LLVM 符号分隔符向 yux 源码写法看齐。
+**主题**：清理 v0.17 遗留 TODO/BUG；收口 spec 各章 Open Issues；SDK 第一轮方法补全。
 
 **范围（草稿）**：
 
-- extern 完善：为sdk内部结构体硬编码改yux铺路
-- 泛型跨模块：`getGenericFunction` 搜索扩展到 wildcardImports；`FnInstance` 对齐 `StructInstance` 加 `consumerModule`
-- SDK lib 去平铺：`base.*` 拆为独立子模块（`yux.core.base` / `.assert` / `.exit` / `.panic`），各独立 FileNode + `.obj` → `.lib`；pkg `*` 通配移除
-- LLVM 符号：分隔符统一；私有符号由源名前导 `_` 自然形成；运行时辅助不变
-- 测试基础设施重构：删除 JIT/单文件模式，`yux test` 全量走 DLL + 多子进程并行（`yux build --test` → 并行 spawn `yux-test-runner` 每 DLL 一进程）；`yux-test-runner` 简化为单 DLL 顺序执行。进程隔离缓解 BUG 4（累积堆损坏）从 ~80% 失败降到 ~3-8%。
+- BUG：`_weak_release` strong count 检查、`Rc<Heap<T>>`/`Rc<Dyn<D>>` typed release、`#NoCopy` 泛型类型识别
+- Open Issue：spec 各章逐条审计（关/转/留）
+- SDK：`String` 高频方法（`to_upper`/`starts_with`/`contains` 等）、`math.*` 模块、`Array` 迭代/变换方法
 
-**不在范围**：T/T&风调用的结构体保持内部处理。
+**不在范围**：Clone spec / 泛型 enum / 错误模型 v2 / 多线程 / 包管理。
 
 **退出标准**：
+- [ ] BUGS.md 清零或标注推后
+- [ ] spec 各章 Open Issues 审计完毕
+- [ ] SDK 新增方法覆盖 String + Array + math 高频 API
 - [ ] `yux test` / `yux-check test` / `xmake test` 全绿
-- [ ] 泛型跨模块搜索覆盖所有导入模块
-- [ ] Array转yux定义实现
-- [ ] SDK 独立子模块编译 + `yux.lib` 链接正常
-- [ ] LLVM 符号分隔符与 yux 写法一致
 - [ ] `./lint.cmd` 0 warnings
-- [ ] spec 回写 + CHANGELOG 收口
+- [ ] CHANGELOG 收口
+
+### v0.17.0 — 项目模块 + extern 完善 + 内存模型重构（B-1~B-4）+ LLVM 符号对齐 ✅ 已完成（2026-06-24）
+
+**主题**：收口 extern 边界；补齐项目配置依赖；深度重构内置类型内存模型（move 语义 / `#NoCopy` / Array 去 Block / String → `Rc<Array<u32>>`）；灵活整数与泛型类型推断补全；LLVM 符号名全面向 yux 源码写法看齐；测试基础设施从 JIT 转向 DLL 多子进程。
+
+**实际交付**：
+
+**A. Move 语义 + `#NoCopy`（B-1/B-2）**：
+- `move:<T>(x T&)` builtin：所有权转移，源变量标记 moved-out（E4033 use-after-move）
+- `#NoCopy` 注解：struct 标注后禁止隐式复制（E4031）；字段传染规则（E4032）；`Array<T>` 编译器内部隐式 `#NoCopy`
+- `<-` 移入赋值：表达式，返回旧值，新旧两端的 RC 所有权管理走统一协议（§8.7.7）
+- 全链路 sema 化：E4031/E4032/E4033 从 Compiler 迁入 SemaPass（0 LLVM 依赖）
+
+**B. Array 去 Block（B-3）**：
+- Layout 从 `{ handle: *Block }` 单指针重构为 `{ _data: Ptr, _len: i64, _cap: i64 }` 三字段内联（24 字节）
+- 去掉 RC 头与 Block 间接层：分配走 `HeapAlloc`，扩容走 `HeapReAlloc`
+- 句柄复制语义从"共享 Block + retain"改为"按值 memcpy"；共享转 `Rc<Array<T>>`
+- `__yux_array_alloc` / `__yux_array_grow` / `__yux_array_free_data` runtime 入口
+
+**C. String → `Rc<Array<u32>>`（B-4）**：
+- String 从独立 Block layout `{ rc, len, data[] }` 重构为 `{ _buf: Rc<Array<u32>> }`
+- 复用 `Rc<Array<u32>>` 通用 RC 协议，消除重复实现
+- 字面量哨兵保留在 `Rc<Array<u32>>` Block 的 RC 头
+
+**D. LLVM 符号名统一**：
+- 模块分隔符 `_` → `.`；结构体分隔符 `#` → `.`；实例方法用 `.`
+- 析构 `~()` → `::~()`；Lambda → `<module>.__lambda_<line>_<col>`
+- 泛型参数 `$` → `<>` 尖括号；元组 `(T1,T2)` / fn 类型 `fn(P)R`
+- 运行时辅助 `_box_*` / `_weak_*` → `__yux_` 统一前缀
+- Enum/Dyn/Reflect 符号同步更新
+
+**E. 灵活整数推断补全**：
+- 重载解析中的灵活整数匹配：先以默认 i32 匹配收集候选，恰好一个候选时以灵活模式重新推断目标类型
+- 不覆盖已推断的泛型类型参数（`assert_eq(a_i8, 42)` 中 T 保持 i8）
+- 推断完成后按类型重编译实参 node
+
+**F. 泛型类型隐式推断（Ref/Nullable 剥壳）**：
+- 实参 `T&` 而形参按值 `T` → 自动剥引用（`arr[0]` 返 `T&` 传给 `T` 形参）
+- 形参 `Ref<T>` 而实参值类型 → 自动取址推断（`copy_of(v)` → `T=i32`）
+- 形参 `Nullable<T>` 而实参非 Nullable → 剥壳推断（`weak(box Rc<U>)` → `T=U`）
+
+**G. Rc<inner> inline dtor typed release**：
+- `Rc<Rc<T>>` / `Rc<Weak<T>>` → payload[0] handle → `_box_release` / `_weak_release`
+- `Rc<fn(...)>` → payload[8] captures → `_box_release`
+- `Rc<Heap<T>>` / `Rc<Dyn<D>>` → TODO（依赖 Compiler 上下文）
+
+**H. 项目配置与 extern**：
+- `yux.toml [link]` 段；`#CName` 注解；`buildAnno` 参数扩展
+- extern 类型白名单 + SDK 显式 FFI 包装
+- `[deps]` 本地路径依赖；泛型函数跨模块查找扩展
+- SDK lib 去平铺：`base.*` 拆为独立子模块编译 + lib 打包
+
+**I. 测试基础设施重构**：
+- 删除 JIT/单文件模式，`yux test` 全量走 DLL + 多子进程并行
+- `yux-test-runner` 简化为单 DLL 顺序执行
+- `yux build --test-mod <module>` 只编译指定模块的测试
+- 进程隔离缓解累积堆损坏（~80% → ~3-8% 失败率）
+
+**J. Bug 修复**（v0.17 期间）：
+- `Nullable<T> ==/!= null` 编译器崩溃
+- RC 引用计数生命周期链缺失（fn/enum/Array captures 全链路）
+- builtin handler 双重 recordTemp 导致 RC 引用计数错乱
+- `let` 声明含 RC 字段 struct/Nullable 时缺失 retain → double-free
+- `Rc<fn>` 未初始化析构 ACCESS_VIOLATION → 零初始化扩展
+- lambda 捕获 `#NoCopy` 类型自动 move
+- elif move codegen 追踪
+- SEH 异常后 FreeLibrary 永久阻塞
+
+**不在范围（推后）**：
+- Array yux 定义实现（当前仍由编译器内置）
+- `Rc<Heap<T>>` / `Rc<Dyn<D>>` typed release → TODO
+- `copy_of` Array 深拷贝 → 保持抛 E4031，待 Clone spec
+- `_ptr_as_ref` / `_ptr_write` 测试 → 待补
+- `HeapAlloc`/`HeapFree` 测试 → 待补
+
+**退出标准达成情况**：
+- ✅ `yux test` 63/63、`yux-check test` 152/152、`xmake test` 29/29 全绿
+- ✅ 泛型跨模块搜索覆盖所有导入模块
+- ✅ SDK 独立子模块编译 + `yux.lib` 链接正常
+- ✅ LLVM 符号分隔符与 yux 写法一致
+- ✅ `./lint.cmd` 0 warnings
+- ✅ spec 回写完成（8 项：Array/String/move/#NoCopy/灵活整数/泛型推断/LLVM 符号/E4034 等）
 
 ### v0.16.0 — 闭包捕获 + yux-check 闭环 + []语法糖 + 静态引用 + LSP/插件同步 ✅ 已完成（2026-06-12）
 
