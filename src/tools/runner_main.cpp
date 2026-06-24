@@ -14,7 +14,7 @@
 //   → GetProcAddress("yux_test_get_name")(i) 取名称
 //   → GetProcAddress("yux_test_get_fn")(i) 取函数指针
 //   → 顺序调用 fn() 并 SEH 包裹
-//   → FreeLibrary
+//   → 打印汇总 → (无严重 SEH 时 FreeLibrary，否则跳过) → ExitProcess
 
 #define NOMINMAX
 #include <windows.h>
@@ -183,6 +183,7 @@ int main(int argc, char* argv[]) {
     auto suiteT0 = std::chrono::steady_clock::now();
     int passed = 0;
     int failed = 0;
+    bool hadSevereSEH = false; // 是否有非断言失败的 SEH 异常（进程状态可能损坏）
     std::vector<std::pair<std::string, std::string>> failures;
 
     for (size_t i = 0; i < tests.size(); ++i) {
@@ -200,6 +201,11 @@ int main(int argc, char* argv[]) {
         unsigned long sehCode = runTestSEH(test.fn);
         if (sehCode != 0) {
             ok = false;
+            // 非断言失败的 SEH（ACCESS_VIOLATION 等）意味着进程状态可能已损坏，
+            // 后续不能安全调用 FreeLibrary（会在 DLL_PROCESS_DETACH / CRT 清理时死锁）
+            if (sehCode != ASSERT_FAILED_CODE) {
+                hadSevereSEH = true;
+            }
             errorMsg = std::string("SEH ") + sehExceptionName(sehCode) + " (0x";
             std::array<char, 16> hexBuf{};
             std::snprintf(hexBuf.data(), hexBuf.size(), "%08lX", sehCode);
@@ -221,10 +227,7 @@ int main(int argc, char* argv[]) {
         std::cout.flush();
     }
 
-    // 卸载 DLL
-    FreeLibrary(hDll);
-
-    // 打印本 DLL 汇总
+    // 打印本 DLL 汇总（必须在 FreeLibrary 之前——SEH 损坏进程状态后 FreeLibrary 可能死锁）
     if (!failures.empty()) {
         std::cout << "\nFailed tests in " << dllName << ":\n";
         for (auto& f : failures) {
@@ -234,6 +237,13 @@ int main(int argc, char* argv[]) {
     std::cout << "\n"
               << dllName << ": " << passed << " passed, " << failed << " failed, [" << formatElapsed(suiteT0) << "]\n";
     std::cout.flush();
+
+    // 卸载 DLL。有严重 SEH 异常时跳过——进程状态可能已损坏，
+    // FreeLibrary → DLL_PROCESS_DETACH → CRT/TLS 清理可能永久阻塞。
+    // 跳过 FreeLibrary 无害：ExitProcess 时 OS 会回收所有资源。
+    if (!hadSevereSEH) {
+        FreeLibrary(hDll);
+    }
 
     ExitProcess(failed == 0 ? 0 : 1);
 }
