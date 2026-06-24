@@ -42,6 +42,8 @@ class Yux {
     // [lib].type："static" / "dynamic"；空 = 非库项目
     // TODO(dynamic)：当前仅 static 生效；dynamic 待项目依赖功能补齐
     string _projectLibType;
+    // [link].libs：系统库名列表（不含 .lib 后缀），如 ["user32", "shell32"]
+    vector<string> _projectLinkLibs;
 
 public:
     Yux();
@@ -115,6 +117,8 @@ public:
     // 是否为库项目；true 时 entry 应为空
     bool isLibProject() const { return !_projectLibType.empty(); }
     const string& projectLibType() const { return _projectLibType; }
+    // [link].libs：项目级系统库名列表
+    const vector<string>& projectLinkLibs() const { return _projectLinkLibs; }
 
     // 已成功加载的用户模块名列表（按首次加载顺序）。
     const vector<string>& loadOrder() const { return _loadOrder; }

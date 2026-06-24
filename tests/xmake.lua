@@ -32,7 +32,7 @@ local projects_dir = path.join(os.scriptdir(), "projects")
 local function categorize(name)
     if name:startswith("project_") then return "yux/project" end
     if name:startswith("format_")  then return "yux/format"  end
-    if name:startswith("ptr_") or name == "extern_ptr_auto" then
+    if name:startswith("ptr_") or name:startswith("extern_") then
         return "yux/extern"
     end
     return "yux/misc"

@@ -1,0 +1,5 @@
+; #CName 不带参数 → E2005（#CName 在 argAnnos 白名单，缺参抛 E2005）
+extern {
+  #CName  ; check: E2005
+  fn foo() i32
+}

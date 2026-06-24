@@ -30,14 +30,14 @@ namespace {
 //   #Spec            零参；标在 struct 上 — 把声明转为 spec（仅签名）
 //   #Impl(SpecName)  单参；标在 struct 上 — 实现关系，替代旧 `: D1 + D2` 头部槽
 inline const set<string>& knownAnnos() {
-    static const set<string> s = {"Builtin", "Test",   "DraftLike", "NoReturn", "Fallible",
-                                  "Const",   "Static", "Spec",      "Impl",      "Reflect",  "NoCopy"};
+    static const set<string> s = {"Builtin", "Test", "DraftLike", "NoReturn", "Fallible", "Const", "Static",
+                                  "Spec",    "Impl", "Reflect",   "NoCopy",   "CName"};
     return s;
 }
 
 // 单参注解白名单（spec §11.1.1.1）。其它注解出现 (arg) 形式视为非法（E2005 形式错配）。
 inline const set<string>& argAnnos() {
-    static const set<string> s = {"Fallible", "Impl"};
+    static const set<string> s = {"Fallible", "Impl", "CName"};
     return s;
 }
 
@@ -55,7 +55,30 @@ struct AnnoList {
     vector<string> args;
 };
 
-// 校验单参 / 零参形态：argAnnos() 中的注解必须带 (ID)，否则缺参；其他注解出现 (ID) 视为多余。
+// 从 BuildAnnoContext 取注解参数文本（§11.1.1.1 扩展：ID / 数字 / 字符串 / type）
+template <typename A>
+inline string getBuildAnnoArgText(A* ctx) {
+    if (auto* aa = ctx->annoArg()) {
+        if (aa->arg) {
+            string t = aa->arg->getText();
+            if (auto* gd = aa->genericDef()) t += gd->getText();
+            return t;
+        }
+        if (aa->argNum) return aa->argNum->getText(); // INT / FLOAT
+        if (aa->argStr) return aa->argStr->getText(); // STR_LINE_RAW (r"...")
+        if (aa->argTPL) {                             // "text"
+            string t;
+            for (auto* tn : aa->argText)
+                t += tn->getText();
+            return t;
+        }
+        if (aa->argType) return aa->argType->getText(); // type
+    }
+    return "";
+}
+
+// 校验单参 / 零参形态：argAnnos() 中的注解必须带括号参数，否则缺参；其他注解出现括号参数视为多余。
+// hasArg 基于括号是否存在（ParStart != nullptr），空字符串 "" 也是合法参数值。
 template <typename A>
 static void checkAnnoArity(A* a, const string& name, bool hasArg) {
     bool needArg = argAnnos().contains(name);
@@ -83,9 +106,8 @@ AnnoList collectAnnos(const AnnoVec& annos) {
             throw YuxError(static_cast<int>(a->name->getLine()), static_cast<int>(a->name->getCharPositionInLine()) + 1,
                            ErrorCode::E1110);
         }
-        string arg;
-        if (a->arg) arg = a->arg->getText();
-        checkAnnoArity(a, name, !arg.empty());
+        string arg = getBuildAnnoArgText(a);
+        checkAnnoArity(a, name, a->ParStart() != nullptr);
         out.names.push_back(std::move(name));
         out.args.push_back(std::move(arg));
     }
@@ -107,9 +129,8 @@ AnnoList collectAnnosForSpec(const AnnoVec& annos) {
             throw YuxError(static_cast<int>(a->name->getLine()), static_cast<int>(a->name->getCharPositionInLine()) + 1,
                            ErrorCode::E2011, name);
         }
-        string arg;
-        if (a->arg) arg = a->arg->getText();
-        checkAnnoArity(a, name, !arg.empty());
+        string arg = getBuildAnnoArgText(a);
+        checkAnnoArity(a, name, a->ParStart() != nullptr);
         out.names.push_back(std::move(name));
         out.args.push_back(std::move(arg));
     }
@@ -134,7 +155,7 @@ AnnoList collectAnnosNonFn(const AnnoVec& annos) {
 // 用于 extern 块内 fnHeader：允许 `Builtin` 与 `#NoReturn`（DRAFT-错误.md §8.3）。
 // `#Fallible` 在 extern 上仍被推迟（[#7]），不在白名单。
 inline const set<string>& externFnAllowedAnnos() {
-    static const set<string> s = {"Builtin", "NoReturn"};
+    static const set<string> s = {"Builtin", "NoReturn", "CName"};
     return s;
 }
 

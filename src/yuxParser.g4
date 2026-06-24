@@ -73,20 +73,30 @@ aliasDecl:
 // 构建注解
 //////////////
 
-// #Name / #Name(ID) / #Name(ID<T>)
-// 单参 ID + 可选 turbofish（[#1.O] v1 子集）：
-//   - 裸 ID：兼容 #Fallible(SomeErr) / #Impl(Spec) 等
-//   - ID + genericDef：兼容 #Impl(Spec<T>) 等
-//   - 字面量参数（#Doc("...") 等）押后扩展
+// #Name / #Name(ID) / #Name(ID<T>) / #Name("str") / #Name(42) / #Name(type)
+// annoArg 是注解参数的多态形态（spec §11.1.1.1 子集扩展）：
+//   - ID + 可选 turbofish：兼容 #Fallible(SomeErr) / #Impl(Spec<T>) 等
+//   - 数字字面量：INT / FLOAT
+//   - 字符串：双引号无插值纯文本 "..." 或 raw string r"..."
+//   - type：完整类型引用（含泛型、nullable 等）
 buildAnno:
     SymbolHash
     name=ID
     (
         ParStart
-          arg=ID genericDef?
+          annoArg
         ParEnd
     )?
     LineEnd
+    ;
+
+annoArg:
+      arg=ID genericDef?                       // #Impl(Spec<T>), #Fallible(E)
+    | argNum=INT                               // #Align(8)
+    | argNum=FLOAT                             // #Version(1.0)
+    | argStr=STR_LINE_RAW                      // r"..."
+    | argTPL=STR_TPL_OPEN argText+=STR_TPL_TEXT* STR_TPL_CLOSE  // "no-interpolation"
+    | argType=type                             // #Impl(Rc<String>)
     ;
 
 ///////////

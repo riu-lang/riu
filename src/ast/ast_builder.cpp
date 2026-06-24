@@ -122,8 +122,8 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
                 fnFnSym.isNoReturn = true;
             } else if (aname == "Const") {
                 fnFnSym.isConst = true;
-            } else if (aname == "Fallible" && a->arg) {
-                fnFnSym.fallibleErrType = a->arg->getText();
+            } else if (aname == "Fallible" && a->annoArg()) {
+                fnFnSym.fallibleErrType = getBuildAnnoArgText(a);
             }
         }
         // E7008：成功值类型 == #Fallible 错误类型（编译器无法分流 `ret` 通道）

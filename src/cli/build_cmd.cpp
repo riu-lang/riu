@@ -527,6 +527,14 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                     std::vector<const char*> linkArgs = {"lld-link", dllOut.c_str(), "/dll", "/noentry", "kernel32.lib"};
                     for (auto& o : linkObjs)
                         linkArgs.insert(linkArgs.begin() + 1, o.c_str());
+                    // 项目级 [link].libs（yux.toml）
+                    std::vector<std::string> projLibArgs;
+                    for (auto& lib : yux.projectLinkLibs()) {
+                        projLibArgs.push_back(lib + ".lib");
+                    }
+                    for (auto& lib : projLibArgs) {
+                        linkArgs.push_back(lib.c_str());
+                    }
 
                     std::string outStr, errStr;
                     llvm::raw_string_ostream oOS(outStr), eOS(errStr);
@@ -732,6 +740,14 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         }
         for (auto& mo : modObjPaths) {
             args.insert(args.begin() + 2, mo.c_str());
+        }
+        // 项目级 [link].libs（yux.toml）
+        std::vector<std::string> projLibArgs;
+        for (auto& lib : yux.projectLinkLibs()) {
+            projLibArgs.push_back(lib + ".lib");
+        }
+        for (auto& lib : projLibArgs) {
+            args.push_back(lib.c_str());
         }
 
         std::string stdoutStr, stderrStr;

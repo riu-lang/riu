@@ -783,7 +783,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
                                                 FnSymbolInfo* fnSymbol) {
     string cName;
     if (fnSymbol->isExternal) {
-        cName = fnName;
+        cName = fnSymbol->cName.empty() ? fnName : fnSymbol->cName;
     } else if (fnName == "main") {
         cName = "yux_main";
     } else {

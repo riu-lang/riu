@@ -20,8 +20,7 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
     DEBUG_LOG("Visit: ExternDelc");
     auto file = any_cast_p<FileNode>(stack.back());
 
-    // extern 本身和内部 fnHeader 的注解当前仅验证名字（预留未来使用）
-    // extern 块及其内 fnHeader 不接受 #Test（spec §11.3.1.2）
+    // extern 块的注解当前仅验证名字（预留未来使用）
     (void)collectAnnosNonFn(ctx->buildAnnos);
 
     auto fnHeaders = ctx->fnHeader();
@@ -98,6 +97,13 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
         FnSymbolInfo fnFnSym{fnName, file->moduleName(), paramTypes, retType};
         fnFnSym.isExternal = true;
         fnFnSym.isNoReturn = externNoReturn;
+        // #CName("link_symbol")：extern fn 的链接时符号名（§6.6.1.2）
+        for (size_t i = 0; i < headerAnnos.names.size(); ++i) {
+            if (headerAnnos.names[i] == "CName") {
+                fnFnSym.cName = headerAnnos.args[i];
+                break;
+            }
+        }
         file->registerFnSymbol(fnName, fnFnSym);
     }
 

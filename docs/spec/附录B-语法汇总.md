@@ -34,7 +34,13 @@ globalConst    ::= buildAnno* 'let' ID typeWithRef? '=' expr codeLineEnd
 
 aliasDecl      ::= ID genericDef? '=' type codeLineEnd
 
-buildAnno      ::= '#' ID ( '(' ID ')' )? codeLineEnd  ; 单参数糖于 DRAFT-错误.md §3.5 解禁；多参数 / 字面量参数 v1 仍不接受
+buildAnno      ::= '#' ID ( '(' annoArg ')' )? codeLineEnd
+annoArg        ::= ID ('<' typeParam (',' typeParam)* '>')?
+                 | INT | FLOAT
+                 | STR_LINE_RAW
+                 | '"' STR_TPL_TEXT* '"'
+                 | type
+                 ; 参数接受 ID（含 turbofish）/ 数字 / 字符串（无插值） / type 引用
 ```
 
 ## B.2 类型

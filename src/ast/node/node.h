@@ -60,6 +60,10 @@ struct FnSymbolInfo {
     // 未声明 `#Fallible`（无错误通道）。Phase 10e 仅按字符串比较；后续可扩展为完整
     // TypeInfo（需要泛型 / 跨模块解析时）。
     string fallibleErrType;
+    // `#CName("link_symbol")`：extern fn 的链接时符号名（§6.6）。
+    // 非空时 codegen 用此字符串声明 LLVM Function 而非 yux 声明名。
+    // 空字符串表示使用 yux 声明名（当前行为）。
+    string cName;
 
     FnSymbolInfo() = default;
     FnSymbolInfo(string n, string mod, vector<TypeInfo> p, TypeInfo r)

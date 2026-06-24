@@ -151,6 +151,21 @@ void Yux::initProjectFromDir(const string& rootDir) {
                 throw YuxError(1, ErrorCode::E5007);
             }
         }
+        // [link] 表：libs = ["user32", "shell32", ...]
+        if (data.contains("link")) {
+            const auto& link = data.at("link");
+            if (!link.is_table()) {
+                throw YuxError(1, ErrorCode::E5005);
+            }
+            if (link.contains("libs") && link.at("libs").is_array()) {
+                for (const auto& lib : link.at("libs").as_array()) {
+                    if (lib.is_string()) {
+                        _projectLinkLibs.push_back(lib.as_string());
+                    }
+                }
+            }
+        }
+
         // lib 与 entry 互斥
         if (!_projectLibType.empty() && !_projectEntry.empty()) {
             throw YuxError(1, ErrorCode::E5008);
@@ -193,13 +208,12 @@ p<FileNode> Yux::_parseFile(const string& absPath, const string& moduleName, int
     if (errListener.hasErrors() || parser.getNumberOfSyntaxErrors()) {
         // 用首个语法错误的实际错误码（E1001/E1002）+ 行号替代通用 E5010，
         // 使 yux-check test 的 ; check: 注解能精确匹配。
-        throw YuxError(errListener.firstErrorLine(), errListener.firstErrorCol(),
-                       *errListener.firstErrorCodeDef(), absPath);
+        throw YuxError(errListener.firstErrorLine(), errListener.firstErrorCol(), *errListener.firstErrorCodeDef(),
+                       absPath);
     }
 
     // 测试文件按文件名后缀识别（spec §11.3.3.1）
-    bool isTestFile = absPath.size() >= 9 &&
-                      absPath.ends_with(".test.yux");
+    bool isTestFile = absPath.size() >= 9 && absPath.ends_with(".test.yux");
     auto astBuilder = std::make_unique<ASTBuilder>(*this, moduleName, isTestFile, absPath);
     auto fileNode = astBuilder->build(program);
     _moduleBuilders.push_back(std::move(astBuilder));
@@ -221,15 +235,17 @@ Yux::ModulePathKind Yux::modulePathKind(const string& moduleName) const {
     namespace fs = std::filesystem;
     if (moduleName.empty()) return ModulePathKind::NotFound;
     string rel = moduleName;
-    for (auto& c : rel) if (c == '.') c = '/';
+    for (auto& c : rel)
+        if (c == '.') c = '/';
     fs::path root = _sourceRoot.empty() ? fs::path() : fs::path(_sourceRoot);
     fs::path dirPath = root.empty() ? fs::path(rel) : (root / rel);
-    fs::path filePath = dirPath; filePath += ".yux";
+    fs::path filePath = dirPath;
+    filePath += ".yux";
     bool hasFile = fs::exists(filePath) && fs::is_regular_file(filePath);
-    bool hasDir  = fs::exists(dirPath) && fs::is_directory(dirPath);
+    bool hasDir = fs::exists(dirPath) && fs::is_directory(dirPath);
     if (hasFile && hasDir) return ModulePathKind::Conflict;
     if (hasFile) return ModulePathKind::File;
-    if (hasDir)  return ModulePathKind::Package;
+    if (hasDir) return ModulePathKind::Package;
     return ModulePathKind::NotFound;
 }
 
@@ -237,7 +253,8 @@ vector<string> Yux::listPackageYuxChildren(const string& moduleName) const {
     namespace fs = std::filesystem;
     vector<string> out;
     string rel = moduleName;
-    for (auto& c : rel) if (c == '.') c = '/';
+    for (auto& c : rel)
+        if (c == '.') c = '/';
     fs::path root = _sourceRoot.empty() ? fs::path() : fs::path(_sourceRoot);
     fs::path dirPath = root.empty() ? fs::path(rel) : (root / rel);
     if (!fs::exists(dirPath) || !fs::is_directory(dirPath)) return out;
@@ -255,7 +272,8 @@ vector<string> Yux::listPackageSubdirs(const string& moduleName) const {
     namespace fs = std::filesystem;
     vector<string> out;
     string rel = moduleName;
-    for (auto& c : rel) if (c == '.') c = '/';
+    for (auto& c : rel)
+        if (c == '.') c = '/';
     fs::path root = _sourceRoot.empty() ? fs::path() : fs::path(_sourceRoot);
     fs::path dirPath = root.empty() ? fs::path(rel) : (root / rel);
     if (!fs::exists(dirPath) || !fs::is_directory(dirPath)) return out;
@@ -270,7 +288,8 @@ vector<string> Yux::listPackageSubdirs(const string& moduleName) const {
 bool Yux::hasPkgFile(const string& moduleName) const {
     namespace fs = std::filesystem;
     string rel = moduleName;
-    for (auto& c : rel) if (c == '.') c = '/';
+    for (auto& c : rel)
+        if (c == '.') c = '/';
     fs::path root = _sourceRoot.empty() ? fs::path() : fs::path(_sourceRoot);
     fs::path dirPath = root.empty() ? fs::path(rel) : (root / rel);
     fs::path pkgPath = dirPath / "pkg";
@@ -280,33 +299,34 @@ bool Yux::hasPkgFile(const string& moduleName) const {
 vector<PkgExportItem> Yux::parsePkgFile(const string& moduleName) const {
     namespace fs = std::filesystem;
     vector<PkgExportItem> items;
-    
+
     string rel = moduleName;
-    for (auto& c : rel) if (c == '.') c = '/';
+    for (auto& c : rel)
+        if (c == '.') c = '/';
     fs::path root = _sourceRoot.empty() ? fs::path() : fs::path(_sourceRoot);
     fs::path dirPath = root.empty() ? fs::path(rel) : (root / rel);
     fs::path pkgPath = dirPath / "pkg";
-    
+
     if (!fs::exists(pkgPath) || !fs::is_regular_file(pkgPath)) {
         return items;
     }
-    
+
     std::ifstream file(pkgPath);
     if (!file.is_open()) {
         return items;
     }
-    
+
     string line;
     while (std::getline(file, line)) {
         // 去除首尾空白
         size_t start = line.find_first_not_of(" \t\r\n");
-        if (start == string::npos) continue;  // 空行
+        if (start == string::npos) continue; // 空行
         size_t end = line.find_last_not_of(" \t\r\n");
         line = line.substr(start, end - start + 1);
-        
+
         // 跳过空行和注释行（以 ; 开头）
         if (line.empty() || line[0] == ';') continue;
-        
+
         // 解析导出项
         PkgExportItem item;
         if (line.size() >= 2 && line.substr(line.size() - 2) == ".*") {
@@ -316,12 +336,12 @@ vector<PkgExportItem> Yux::parsePkgFile(const string& moduleName) const {
             item.name = line;
             item.wildcard = false;
         }
-        
+
         if (!item.name.empty()) {
             items.push_back(item);
         }
     }
-    
+
     return items;
 }
 
@@ -350,9 +370,8 @@ p<FileNode> Yux::loadModule(const string& moduleName, int errorLine) {
     }
     relPath += ".yux";
 
-    std::filesystem::path fullPath = _sourceRoot.empty()
-        ? std::filesystem::path(relPath)
-        : std::filesystem::path(_sourceRoot) / relPath;
+    std::filesystem::path fullPath =
+        _sourceRoot.empty() ? std::filesystem::path(relPath) : std::filesystem::path(_sourceRoot) / relPath;
 
     if (!std::filesystem::exists(fullPath)) {
         throw YuxError(errorLine, ErrorCode::E5012, moduleName, fullPath.string());

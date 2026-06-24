@@ -42,8 +42,8 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
         if (!knownAnnos().contains(name)) {
             throw YuxError(line, col, ErrorCode::E2005, name);
         }
-        string arg = a->arg ? a->arg->getText() : "";
-        checkAnnoArity(a, name, !arg.empty());
+        string arg = getBuildAnnoArgText(a);
+        checkAnnoArity(a, name, a->ParStart() != nullptr);
 
         if (name == "DraftLike") {
             // §12.4.1.1：#DraftLike 只允许在 spec / draft 上（即同时带 #Spec）
@@ -58,12 +58,14 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
             SpecRef r;
             r.name = arg;
             // 解析 turbofish 类型实参（若有）
-            if (auto* gd = a->genericDef()) {
-                for (auto* pCtx : gd->params) {
-                    if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(pCtx->type(0))) {
-                        r.typeArgs.emplace_back(tn->ID()->getText());
+            if (auto* aa = a->annoArg()) {
+                if (auto* gd = aa->genericDef()) {
+                    for (auto* pCtx : gd->params) {
+                        if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(pCtx->type(0))) {
+                            r.typeArgs.emplace_back(tn->ID()->getText());
+                        }
+                        // 复杂泛型实参押后
                     }
-                    // 复杂泛型实参押后
                 }
             }
             r.line = line;
@@ -359,8 +361,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
             if (!header->hasAnno("Builtin")) {
                 throw YuxError(header->getLineNumber(), header->getColumn(), ErrorCode::E2007, structName,
                                header->name().getText())
-                    .withHint(
-                        "结构体方法必须有函数体；若仅声明（由编译器内部提供实现），在签名上加 `#Builtin` 注解");
+                    .withHint("结构体方法必须有函数体；若仅声明（由编译器内部提供实现），在签名上加 `#Builtin` 注解");
             }
         } else if (fnCtx->fnBody()->fnExprkBody()) {
             auto exprBody = fnCtx->fnBody()->fnExprkBody();
@@ -509,7 +510,7 @@ FieldAnnoFlags readFieldAnnos(const std::vector<yux::yuxParser::BuildAnnoContext
         auto* tk = a->SymbolHash()->getSymbol();
         int line = static_cast<int>(tk->getLine());
         int col = static_cast<int>(tk->getCharPositionInLine()) + 1;
-        if (a->arg != nullptr) {
+        if (a->annoArg() != nullptr) {
             // 字段注解 P1 不接受带实参形态（#Val(x) / #Frozen(x) / #Static(x) 无意义）。
             throw YuxError(line, col, ErrorCode::E3108, name);
         }

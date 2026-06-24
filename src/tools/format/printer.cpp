@@ -156,7 +156,22 @@ Doc Printer::buildAnnoDoc(yuxParser::BuildAnnoContext* ctx) {
     parts.push_back(text(ctx->name->getText()));
     if (ctx->ParStart() != nullptr) {
         parts.push_back(text("("));
-        if (ctx->arg != nullptr) parts.push_back(text(ctx->arg->getText()));
+        if (auto* aa = ctx->annoArg()) {
+            if (aa->arg) {
+                parts.push_back(text(aa->arg->getText()));
+                if (auto* gd = aa->genericDef()) parts.push_back(genericDefDoc(gd));
+            } else if (aa->argNum) {
+                parts.push_back(text(aa->argNum->getText()));
+            } else if (aa->argStr) {
+                parts.push_back(text(aa->argStr->getText()));
+            } else if (aa->argTPL) {
+                parts.push_back(text("\""));
+                for (auto* tn : aa->argText) parts.push_back(text(tn->getText()));
+                parts.push_back(text("\""));
+            } else if (aa->argType) {
+                parts.push_back(typeDoc(aa->argType));
+            }
+        }
         parts.push_back(text(")"));
     }
     return concat(std::move(parts));
