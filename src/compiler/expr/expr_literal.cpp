@@ -278,7 +278,8 @@ llvm::GlobalVariable* Compiler::emitStringRcBlockConst(const vector<u32>& codePo
     auto i64Ty = llvm::Type::getInt64Ty(_context);
     auto ptrTy = llvm::PointerType::get(_context, 0);
 
-    // Sentinel RC Block: { u32 strong, u32 weak, ptr _data, i64 _len, i64 _cap }
+    // Sentinel RC Block: { u32 strong @0, u32 weak @4, Array<u32>={ptr _data,i64 _len,i64 _cap} @8 }
+    // 与 compiler_runtime.cpp 内各 emit 函数的 block+4/block+8 字节偏移须保持同步。
     auto blockTy = llvm::StructType::get(_context, {i32Ty, i32Ty, ptrTy, i64Ty, i64Ty});
 
     // 数据缓冲：len > 0 时铺常量 u32 数组，否则用 null。

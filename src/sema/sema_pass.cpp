@@ -215,8 +215,9 @@ bool isNoCopyTypeIn(const TypeInfo& type, p<FileNode> file, p<FileNode> sdkFile)
     return false;
 }
 
-// Phase B-1: 与 Compiler::isFreshHandleExpr 等价的本地版本（0 LLVM 依赖）。
+// Phase B-1: 与 Compiler::isFreshHandleExpr（compiler_destructor.cpp）等价的本地版本（0 LLVM 依赖）。
 // fresh 表达式自带 +1 所有权，隐式复制路径可安全跳过 retain。
+// !! 两处须保持同步 — 新增 case 需两边同时添加 !!
 bool isFreshHandleExpr(p<ExprNode> expr) {
     if (!expr) return false;
     if (dynamic_cast<p<ExprCallNode>>(expr)) return true;      // 函数调用结果 / builtin intrinsic
@@ -315,6 +316,9 @@ void SemaPass::run() {
                 if (isBuiltinType(ft.name)) continue;
 
                 auto* fieldDecl = lookupStructIn(_file, _sdkFile, ft.name);
+                // TODO: 泛型 NoCopy 类型（如 MyNoCopyStruct<i32>）的 ft.name 是修饰名，
+                // lookupStructIn 按基名匹配不到，E4032 静默跳过。
+                // 修法：剥泛型参数后查找，或用 decl 指针替代 name 查找。
                 if (fieldDecl && fieldDecl->hasAnno("NoCopy")) {
                     throw YuxError(decl->getLineNumber(), decl->getColumn(), ErrorCode::E4032,
                                    decl->name().getText(), field->name().getText());

@@ -733,6 +733,7 @@ void Compiler::emitRetainOnHandleValue(llvm::Value* val, const TypeInfo& type) {
 
 // 识别 +1 所有权（fresh）表达式：调用结果（函数 / 方法 / 构造器）+ 数组字面量 + move-assign + lambda
 // 用于在复制语义 retain 路径上跳过多余 retain，避免 leak（DRAFT §7.6 / §8）
+// !! 与 sema_pass.cpp::isFreshHandleExpr 须保持同步 — 新增 case 需两边同时添加 !!
 bool Compiler::isFreshHandleExpr(p<ExprNode> expr) {
     if (!expr) return false;
     if (dynamic_cast<ExprCallNode*>(expr)) return true;
