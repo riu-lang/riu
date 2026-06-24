@@ -878,10 +878,48 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
         return func;
     }
 
-    // Fn / Dyn / Heap / Rc / Weak 等类型的析构为编译器内联 IR，
-    // 没有独立的析构函数体可调用；暂回退到 generic _box_release。
-    // TODO: 后续在 typed release 函数体内联生成这些类型的析构 IR，消除泄漏。
-    if (inner->isFn() || inner->isDyn() || inner->isHeap() || inner->isRc() || inner->isWeak()) {
+    // Rc<U> / Weak<U> / fn(...) 无独立 dtor 函数，由 typed release 内联生成 dtor IR
+    if (inner->isRc()) {
+        string mangledName =
+            "__yux_box_release.Rc." + inner->rcElementType()->getMangleName();
+        auto func = runtime::getRcReleaseTypedFn(_module, _builder, mangledName);
+        if (func->empty()) {
+            auto* savedBB = _builder.GetInsertBlock();
+            auto savedIP = savedBB ? _builder.GetInsertPoint() : llvm::BasicBlock::iterator();
+            runtime::emitRcReleaseForInlineDtorFn(_context, _builder, _module, func, "Rc");
+            if (savedBB) _builder.SetInsertPoint(savedBB, savedIP);
+        }
+        return func;
+    }
+    if (inner->isWeak()) {
+        string mangledName =
+            "__yux_box_release.Weak." + inner->weakElementType()->getMangleName();
+        auto func = runtime::getRcReleaseTypedFn(_module, _builder, mangledName);
+        if (func->empty()) {
+            auto* savedBB = _builder.GetInsertBlock();
+            auto savedIP = savedBB ? _builder.GetInsertPoint() : llvm::BasicBlock::iterator();
+            runtime::emitRcReleaseForInlineDtorFn(_context, _builder, _module, func, "Weak");
+            if (savedBB) _builder.SetInsertPoint(savedBB, savedIP);
+        }
+        return func;
+    }
+    if (inner->isFn()) {
+        string mangledName = "__yux_box_release.Fn." + inner->getMangleName();
+        auto func = runtime::getRcReleaseTypedFn(_module, _builder, mangledName);
+        if (func->empty()) {
+            auto* savedBB = _builder.GetInsertBlock();
+            auto savedIP = savedBB ? _builder.GetInsertPoint() : llvm::BasicBlock::iterator();
+            runtime::emitRcReleaseForInlineDtorFn(_context, _builder, _module, func, "Fn");
+            if (savedBB) _builder.SetInsertPoint(savedBB, savedIP);
+        }
+        return func;
+    }
+
+    // Heap<T> / Dyn<D> 的析构依赖 Compiler 上下文（releaseAtPtr / vtable dispatch），
+    // 无法在 typed release 函数体内独立生成；暂回退 generic _box_release。
+    // TODO: Heap — 在 typed release 内复现 releaseAtPtr + HeapFree 序列
+    // TODO: Dyn  — vtable[0] dtor 间接调用（Phase 3e）
+    if (inner->isHeap() || inner->isDyn()) {
         return runtime::getRcReleaseFn(_module, _builder);
     }
 

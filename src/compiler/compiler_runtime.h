@@ -54,6 +54,14 @@ void emitRcReleaseTypedFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder
 void emitRcReleaseForArrayFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
                              llvm::Function* func);
 
+// B-2 inline-dtor: Rc<T> 其中 T 为 Rc/Weak/fn 等无独立 dtor 函数的内联析构类型。
+// kind: "Rc" → payload[0] 内层 handle → _box_release
+//       "Weak" → payload[0] 内层 handle → _weak_release
+//       "Fn"   → payload[8] captures ptr → _box_release (null-safe)
+// 与 emitRcReleaseTypedFn 同骨架，但 strong==0 时内联上述 dtor IR 而非调 dtorFn。
+void emitRcReleaseForInlineDtorFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
+                                  llvm::Function* func, const string& kind);
+
 llvm::Function* getRcAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 llvm::Function* getRcRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 // _box_release(handle) -> void

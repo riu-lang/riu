@@ -1,0 +1,12 @@
+; require-sdk
+; Phase B-1: elif 分支 move 追踪 — 变量在 elif 分支 move 后不可访问
+
+fn test() {
+  let a i32 = 42
+  if false {
+    let _ = a
+  } elif true {
+    let _ = move:<i32>(a)      ; elif 分支中 move a
+  }
+  let b i32 = a                ; check: E4033  use after move (elif 分支 move 后)
+}

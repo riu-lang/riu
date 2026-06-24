@@ -66,3 +66,18 @@ fn test_rc_typed_release_return() {
   }
   assert_eq(rc_leak_count() - base, 0)
 }
+
+; ---------- B-2 inline-dtor: Rc<Rc<i32>> 内层 typed release ----------
+
+#Test
+fn test_rc_nested_rc_typed_release() {
+  #Mut let base i64 = rc_leak_count()
+  {
+    #Mut let inner Rc<i32> = 42
+    #Mut let outer Rc<Rc<i32>> = move(inner)
+    ; inner was moved — outer now owns the handle
+    ; outer 离开作用域 → strong==0 → inline dtor 调 _box_release(inner_handle)
+    ; strong 1→0 → free
+  }
+  assert_eq(rc_leak_count() - base, 0)
+}

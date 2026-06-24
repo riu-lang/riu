@@ -68,7 +68,6 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
     DEBUG_LOG_VAL("      elifs count", elifs.size());
 
     if (!elifs.empty()) {
-        // TODO: Phase B-1 elif 链的条件 move 追踪 — 每个 elif 需独立快照+恢复+合并
         for (size_t i = 0; i < elifs.size(); ++i) {
             auto& elif = elifs[i];
             DEBUG_LOG_VAL("        Compiling elif", i);
@@ -82,7 +81,11 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
             _builder.CreateCondBr(elifCondBool, elifThenBB, elifElseBB);
 
             _builder.SetInsertPoint(elifThenBB);
+            // Phase B-1: elif 分支 move 追踪 — 快照 → 体 → 合并 → 恢复，与 SemaPass 对齐
+            auto savedElif = _movedVars;
             compileStatementBlockWithResult(elif->block(), mergeBB, phi, resultType);
+            for (auto& v : _movedVars) afterThenMoved.insert(v);
+            _movedVars = savedElif;
 
             func->insert(func->end(), elifElseBB);
             _builder.SetInsertPoint(elifElseBB);

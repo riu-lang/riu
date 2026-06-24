@@ -854,6 +854,95 @@ void emitRcReleaseForArrayFn(llvm::LLVMContext& context, llvm::IRBuilder<>& buil
     builder.CreateRetVoid();
 }
 
+// ==================== B-2 inline-dtor: Rc<inline-type> typed release ====================
+// Rc<T> 其中 T 为 Rc/Weak/fn 等无独立 dtor 函数的内联析构类型。
+// 与 _box_release 同骨架，但 strong==0 时按 kind 内联析构 IR 而非调 dtorFn。
+void emitRcReleaseForInlineDtorFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
+                                  llvm::Function* func, const string& kind) {
+    if (!func || !func->empty()) return;
+
+    auto getProcessHeapFn = runtime::getProcessHeapFn(module, builder);
+    auto heapFreeFn = runtime::getHeapFreeFn(module, builder);
+
+    auto ptrTy = llvm::PointerType::get(context, 0);
+    auto i32Ty = builder.getInt32Ty();
+    auto sentinel = llvm::ConstantInt::get(i32Ty, 0xFFFFFFFFu);
+
+    auto entry = llvm::BasicBlock::Create(context, "entry", func);
+    auto checkBB = llvm::BasicBlock::Create(context, "check", func);
+    auto decBB = llvm::BasicBlock::Create(context, "dec", func);
+    auto strongZeroBB = llvm::BasicBlock::Create(context, "strong_zero", func);
+    auto afterDtorBB = llvm::BasicBlock::Create(context, "after_dtor", func);
+    auto freeBB = llvm::BasicBlock::Create(context, "free", func);
+    auto doneBB = llvm::BasicBlock::Create(context, "done", func);
+
+    builder.SetInsertPoint(entry);
+    llvm::Value* block = &*func->arg_begin();
+    auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
+    auto isNull = builder.CreateICmpEQ(block, nullPtr, "is_null");
+    builder.CreateCondBr(isNull, doneBB, checkBB);
+
+    builder.SetInsertPoint(checkBB);
+    auto strongPtr = block; // strong @ offset 0
+    auto strong = builder.CreateLoad(i32Ty, strongPtr, "strong");
+    auto isSentinel = builder.CreateICmpEQ(strong, sentinel, "is_sentinel");
+    builder.CreateCondBr(isSentinel, doneBB, decBB);
+
+    builder.SetInsertPoint(decBB);
+    auto newStrong = builder.CreateSub(strong, llvm::ConstantInt::get(i32Ty, 1), "new_strong");
+    builder.CreateStore(newStrong, strongPtr);
+    auto isZero = builder.CreateICmpEQ(newStrong, llvm::ConstantInt::get(i32Ty, 0), "is_zero");
+    builder.CreateCondBr(isZero, strongZeroBB, doneBB);
+
+    // strong 归零：内联析构 IR
+    builder.SetInsertPoint(strongZeroBB);
+    if (kind == "Rc") {
+        // Rc<Rc<U>>: payload = Rc<U> = {ptr handle} @ block+8
+        auto payloadPtr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(8)}, "nested_rc_payload");
+        auto handleAddr = builder.CreateBitCast(payloadPtr, llvm::PointerType::get(context, 0), "nested_rc_handle_addr");
+        auto handle = builder.CreateLoad(ptrTy, handleAddr, "nested_rc_handle");
+        auto releaseFn = getRcReleaseFn(module, builder);
+        builder.CreateCall(releaseFn, {handle});
+    } else if (kind == "Weak") {
+        // Rc<Weak<U>>: payload = Weak<U> = {ptr handle} @ block+8
+        auto payloadPtr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(8)}, "nested_weak_payload");
+        auto handleAddr = builder.CreateBitCast(payloadPtr, llvm::PointerType::get(context, 0), "nested_weak_handle_addr");
+        auto handle = builder.CreateLoad(ptrTy, handleAddr, "nested_weak_handle");
+        auto releaseFn = getWeakReleaseFn(module, builder);
+        builder.CreateCall(releaseFn, {handle});
+    } else if (kind == "Fn") {
+        // Rc<fn(...)>: payload = {ptr fn_ptr, ptr captures} @ block+8
+        // captures 在 payload[8] (fn_ptr 之后)，若 non-null 则 _box_release
+        auto capturesAddr =
+            builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(16)}, "fn_captures_addr");
+        auto capturesPtr =
+            builder.CreateBitCast(capturesAddr, llvm::PointerType::get(context, 0), "fn_captures_ptr");
+        auto captures = builder.CreateLoad(ptrTy, capturesPtr, "fn_captures");
+        auto releaseFn = getRcReleaseFn(module, builder);
+        builder.CreateCall(releaseFn, {captures});
+    }
+    // 未知 kind 不生成任何析构 IR（安全退化：仅释放 RC block，payload 泄漏但不会 crash）
+    builder.CreateBr(afterDtorBB);
+
+    builder.SetInsertPoint(afterDtorBB);
+    // weak-- + free（同 _box_release）
+    auto weakPtr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(4)}, "weak_ptr");
+    auto weak = builder.CreateLoad(i32Ty, weakPtr, "weak");
+    auto newWeak = builder.CreateSub(weak, llvm::ConstantInt::get(i32Ty, 1), "new_weak");
+    builder.CreateStore(newWeak, weakPtr);
+    auto weakIsZero = builder.CreateICmpEQ(newWeak, llvm::ConstantInt::get(i32Ty, 0), "weak_is_zero");
+    builder.CreateCondBr(weakIsZero, freeBB, doneBB);
+
+    builder.SetInsertPoint(freeBB);
+    auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
+    builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), block});
+    emitRcBlockCountAdd(builder, module, -1);
+    builder.CreateBr(doneBB);
+
+    builder.SetInsertPoint(doneBB);
+    builder.CreateRetVoid();
+}
+
 // ==================== Weak 辅助函数实现（Phase 1d.1） ====================
 // Block 与 Rc 共享同一布局：{ u32 strong @0, u32 weak @4, payload }
 // _weak_release 仅维护 block 存活；payload 已在 strong 归零时被调用方析构

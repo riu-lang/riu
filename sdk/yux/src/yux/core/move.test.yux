@@ -55,3 +55,19 @@ fn test_no_copy_return() {
   let b Box = make_box()
   assert_eq(b.val, 7)
 }
+
+; ---- elif 分支 move ----
+
+#Test
+fn test_move_elif_branch() {
+  let a Box = Box {
+    .val = 99
+  }
+  if false {
+    let _ = 0
+  } elif true {
+    let b Box = move(a)
+    assert_eq(b.val, 99)
+  }
+  ; a was moved in elif branch — scope exit skips a's dtor via _movedVars merge
+}
