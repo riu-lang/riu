@@ -41,6 +41,193 @@ LLD_HAS_DRIVER(coff)
 
 namespace yux::cli {
 
+// ====== buildTestDlls：lib 与 exe 模式共用的 test DLL 构建逻辑 ======
+// allObjMap: modName → obj path（所有非 test 模块的 obj，由调用方预编译后传入）
+static void buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const std::string& buildDir,
+                          const std::string& irDir, bool emitIr, const std::string& sdkLibPath,
+                          const std::string& testModFilter,
+                          const std::map<std::string, std::string>& allObjMap) {
+    namespace fs = std::filesystem;
+
+    // 构建 test 专用产物目录
+    std::string testsDir = buildDir + "/tests";
+    std::string testsObjDir = testsDir + "/obj";
+    ensureBuildDir(testsDir);
+    ensureBuildDir(testsObjDir);
+
+    // 递归扫 src/ 下 *.test.yux
+    std::vector<std::pair<std::string, std::string>> testFiles; // {abs, modName}
+    std::error_code ec;
+    for (auto it = fs::recursive_directory_iterator(srcDir, ec); it != fs::recursive_directory_iterator(); ++it) {
+        if (ec) break;
+        if (!it->is_regular_file()) continue;
+        auto& p = it->path();
+        if (p.extension() != ".yux") continue;
+        auto fname = p.filename().string();
+        if (!(fname.size() >= 9 && fname.ends_with(".test.yux"))) continue;
+        auto rel = fs::relative(p, srcDir);
+        std::string modName = rel.generic_string();
+        modName = modName.substr(0, modName.size() - 4); // strip .yux
+        for (auto& c : modName)
+            if (c == '/' || c == '\\') c = '.';
+        testFiles.emplace_back(fs::absolute(p).string(), modName);
+    }
+    std::ranges::sort(testFiles);
+
+    // --test-mod 过滤：只编译指定模块的测试
+    if (!testModFilter.empty()) {
+        std::vector<std::pair<std::string, std::string>> filtered;
+        for (auto& [abs, mod] : testFiles) {
+            std::string base = mod;
+            // 去掉 trailing ".test"
+            if (base.size() > 5 && base.substr(base.size() - 5) == ".test") {
+                base = base.substr(0, base.size() - 5);
+            }
+            if (base == testModFilter || mod == testModFilter) {
+                filtered.emplace_back(abs, mod);
+            }
+        }
+        if (filtered.empty()) {
+            std::cerr << "Error: no test file matches --test-mod " << testModFilter << "\n";
+        }
+        testFiles = std::move(filtered);
+    }
+
+    // 测试 obj 缓存（与 lib 缓存隔离：testsObjDir 下独立 .cache 文件）
+    PkgCacheRegistry testCaches(yux.projectRoot(), testsObjDir);
+
+    size_t testExeCount = 0;
+    for (auto& [testAbs, testMod] : testFiles) {
+        // 解析测试文件 AST
+        std::string testModName = testMod;
+        try {
+            yux.loadMainFile(testAbs, testModName);
+        } catch (std::runtime_error& e) {
+            reportRuntimeError(testAbs, e, testModName + ": ");
+            continue;
+        }
+
+        // Codegen 测试模块（isTestDll=true）
+        auto testFile = yux.module(testModName);
+        if (!testFile) continue;
+
+        std::string testObj = mirroredOutputBase(yux.projectRoot(), testsObjDir, testAbs) + ".obj";
+        fs::create_directories(fs::path(testObj).parent_path());
+
+        // 缓存检查：test obj 新鲜则跳过 codegen
+        if (!testCaches.isFresh(testAbs, testObj)) {
+            auto tCtx = std::make_unique<llvm::LLVMContext>();
+            auto tMod = std::make_unique<llvm::Module>(testModName, *tCtx);
+            llvm::IRBuilder<> tBuilder(*tCtx);
+            try {
+                Compiler compiler(*tCtx, tBuilder, tMod.get(), testFile, &yux, false, true); // isTestDll=true
+                compiler.compile(testFile);
+            } catch (std::runtime_error& e) {
+                reportRuntimeError(testAbs, e, testModName + ": ");
+                continue;
+            }
+
+            if (emitIr) {
+                std::string testIr = mirroredOutputBase(yux.projectRoot(), irDir, testAbs) + ".ll";
+                fs::create_directories(fs::path(testIr).parent_path());
+                std::error_code ec2;
+                llvm::raw_fd_ostream irFile(testIr, ec2);
+                if (ec2) {
+                    std::cerr << "Error opening test IR file: " << ec2.message() << '\n';
+                } else {
+                    tMod->print(irFile, nullptr);
+                    irFile.flush();
+                    std::cout << "Write test IR: " << testIr << '\n';
+                }
+            }
+
+            if (!compileIRToObj(tMod.get(), testObj)) {
+                std::cerr << "Error: failed to compile test IR: " << testObj << '\n';
+                continue;
+            }
+            std::cout << "Write test obj: " << testObj << '\n';
+            testCaches.mark(testAbs);
+        }
+
+        // 收集依赖 obj（从 yux.loadOrder — 测试模块引用的依赖）
+        std::vector<std::string> linkObjs = {testObj};
+        std::set<std::string> seenMods;
+        for (auto& depMod : yux.loadOrder()) {
+            if (seenMods.count(depMod)) continue;
+            seenMods.insert(depMod);
+            auto it = allObjMap.find(depMod);
+            if (it != allObjMap.end()) {
+                linkObjs.push_back(it->second);
+            }
+        }
+        // SDK lib
+        if (!sdkLibPath.empty()) linkObjs.push_back(sdkLibPath);
+
+        // LLD 链接 test dll
+        // 替换模块名中的 '.' 为 '_'（Windows DLL 路径）
+        std::string dllFileName = testMod;
+        for (auto& c : dllFileName)
+            if (c == '.') c = '_';
+        std::string testDllPath = testsDir;
+        testDllPath += "/";
+        testDllPath += dllFileName;
+        testDllPath += ".test.dll";
+
+        // 检查 DLL 是否需要重新链接（DLL 比所有输入 obj 都新则跳过）
+        bool needLink = true;
+        if (fs::exists(testDllPath)) {
+            needLink = false;
+            try {
+                auto dllTime = fs::last_write_time(testDllPath);
+                for (auto& o : linkObjs) {
+                    if (fs::exists(o) && fs::last_write_time(o) > dllTime) {
+                        needLink = true;
+                        break;
+                    }
+                }
+            } catch (...) {
+                needLink = true;
+            }
+        }
+
+        if (needLink) {
+            std::string dllOut = "/out:" + testDllPath;
+            // DLL 模式：/dll，无需 /entry /subsystem /kernel32.lib
+            std::vector<const char*> linkArgs = {"lld-link", dllOut.c_str(), "/dll", "/noentry", "kernel32.lib"};
+            for (auto& o : linkObjs)
+                linkArgs.insert(linkArgs.begin() + 1, o.c_str());
+            // 项目级 [link].libs（yux.toml）
+            std::vector<std::string> projLibArgs;
+            for (auto& lib : yux.projectLinkLibs()) {
+                projLibArgs.push_back(lib + ".lib");
+            }
+            for (auto& lib : projLibArgs) {
+                linkArgs.push_back(lib.c_str());
+            }
+
+            std::string outStr, errStr;
+            llvm::raw_string_ostream oOS(outStr), eOS(errStr);
+            std::cout << "Link test dll: " << testDllPath << '\n';
+            lld::DriverDef dd = {.f = lld::WinLink, .d = &lld::coff::link};
+            lld::Result r = lldMain(linkArgs, oOS, eOS, llvm::ArrayRef{dd});
+            if (r.retCode) {
+                std::cerr << "Error: test dll link failed for " << testMod << "\n" << errStr;
+                continue;
+            }
+        }
+        ++testExeCount;
+    }
+    testCaches.flushAll();
+    if (testExeCount > 0) {
+        std::cout << "Built " << testExeCount << " test dll(s) into " << testsDir << '\n';
+    } else if (!testFiles.empty()) {
+        std::cout << "no test dll built (all failed)\n";
+    } else if (testModFilter.empty()) {
+        std::cout << "no *.test.yux files found\n";
+    }
+    // --test-mod 无匹配时已在上面输出 stderr，不再重复 stdout
+}
+
 int runBuildCommand(const BuildCmdOptions& opts) {
     bool projectMode = opts.projectMode;
     bool emitIr = opts.emitIr;
@@ -368,196 +555,124 @@ int runBuildCommand(const BuildCmdOptions& opts) {
 
         if (!compiled) std::cout << "no work to do." << '\n';
 
-        // ====== test 模式（lib 项目：每个 .test.yux → 独立 test exe） ======
+        // ====== test 模式：构建 test DLL（lib 与 exe 共用 buildTestDlls） ======
         if (opts.testMode) {
-            // 构建 test 专用产物目录
-            std::string testsDir = buildDir + "/tests";
-            std::string testsObjDir = testsDir + "/obj";
-            ensureBuildDir(testsDir);
-            ensureBuildDir(testsObjDir);
-
-            // 递归扫 src/ 下 *.test.yux（test 模式不再跳过 .test.yux）
-            std::vector<std::pair<std::string, std::string>> testFiles; // {abs, modName}
-            std::error_code ec;
-            for (auto it = fs::recursive_directory_iterator(srcDir, ec); it != fs::recursive_directory_iterator();
-                 ++it) {
-                if (ec) break;
-                if (!it->is_regular_file()) continue;
-                auto& p = it->path();
-                if (p.extension() != ".yux") continue;
-                auto fname = p.filename().string();
-                if (!(fname.size() >= 9 && fname.ends_with(".test.yux"))) continue;
-                auto rel = fs::relative(p, srcDir);
-                std::string modName = rel.generic_string();
-                modName = modName.substr(0, modName.size() - 4); // strip .yux
-                for (auto& c : modName)
-                    if (c == '/' || c == '\\') c = '.';
-                testFiles.emplace_back(fs::absolute(p).string(), modName);
-            }
-            std::ranges::sort(testFiles);
-
-            // --test-mod 过滤：只编译指定模块的测试
-            // 模块名如 yux.core.array.test，去掉末尾 .test 后与 --test-mod 值比对
-            if (!opts.testMod.empty()) {
-                std::vector<std::pair<std::string, std::string>> filtered;
-                for (auto& [abs, mod] : testFiles) {
-                    std::string base = mod;
-                    // 去掉 trailing ".test"
-                    if (base.size() > 5 && base.substr(base.size() - 5) == ".test") {
-                        base = base.substr(0, base.size() - 5);
-                    }
-                    if (base == opts.testMod || mod == opts.testMod) {
-                        filtered.emplace_back(abs, mod);
-                    }
-                }
-                if (filtered.empty()) {
-                    std::cerr << "Error: no test file matches --test-mod " << opts.testMod << "\n";
-                }
-                testFiles = std::move(filtered);
-            }
-
-            // 扫描模块名用于依赖收集
-            // （libFiles 已包含所有非 test 的 .yux）
-            std::map<std::string, std::string> allObjMap;  // modName → obj path
+            // 构建非 test 模块 obj 映射用于 test DLL 依赖收集
+            std::map<std::string, std::string> allObjMap; // modName → obj path
             for (auto& [abs, mn] : libFiles) {
                 std::string obj = mirroredOutputBase(yux.projectRoot(), buildDir, abs) + ".obj";
                 allObjMap[mn] = obj;
             }
+            buildTestDlls(yux, srcDir, buildDir, irDir, emitIr, sdkLibPath, opts.testMod, allObjMap);
+        }
 
-            // 测试 obj 缓存（与 lib 缓存隔离：testsObjDir 下独立 .cache 文件）
-            PkgCacheRegistry testCaches(yux.projectRoot(), testsObjDir);
+        std::cout.flush();
+        std::cerr.flush();
+        _exit(0);
+    }
 
-            size_t testExeCount = 0;
-            for (auto& [testAbs, testMod] : testFiles) {
-                // 解析测试文件 AST
-                std::string testModName = testMod;
+    // ====== exe 模式 test：全量扫描 src/ → 编译非 test 模块 → test DLL ======
+    if (opts.testMode) {
+        namespace fs = std::filesystem;
+        fs::path srcDir(yux.sourceRoot());
+        if (!fs::is_directory(srcDir)) {
+            std::cerr << "Error: project missing `src/` directory at " << srcDir.string() << '\n';
+            return 1;
+        }
+
+        // 递归扫 src/ 下 *.yux（跳过 *.test.yux）
+        vector<std::pair<std::string, std::string>> nonTestFiles; // {abs, modName}
+        std::error_code walkEc;
+        for (auto it = fs::recursive_directory_iterator(srcDir, walkEc); it != fs::recursive_directory_iterator();
+             ++it) {
+            if (walkEc) break;
+            if (!it->is_regular_file()) continue;
+            auto& p = it->path();
+            if (p.extension() != ".yux") continue;
+            auto fname = p.filename().string();
+            if (fname.size() >= 9 && fname.ends_with(".test.yux")) continue;
+            auto rel = fs::relative(p, srcDir);
+            string modName = rel.generic_string();
+            modName = modName.substr(0, modName.size() - 4); // strip .yux
+            for (auto& c : modName)
+                if (c == '/' || c == '\\') c = '.';
+            nonTestFiles.emplace_back(fs::absolute(p).string(), modName);
+        }
+        std::ranges::sort(nonTestFiles);
+
+        // 加载所有非 test 模块 AST（SDK 自构建时 parseSdkDir 已加载，跳过重复解析）
+        if (!isSdkSelfBuild) {
+            for (auto& [abs, mn] : nonTestFiles) {
                 try {
-                    yux.loadMainFile(testAbs, testModName);
-                } catch (std::runtime_error& e) {
-                    reportRuntimeError(testAbs, e, testModName + ": ");
+                    yux.loadMainFile(abs, mn);
+                } catch (runtime_error& e) {
+                    reportRuntimeError(abs, e, mn + ": ");
+                    return 1;
+                }
+            }
+        }
+
+        // 构建编译列表（SDK 自构建用 yux.files()，普通项目用目录扫描）
+        vector<std::pair<std::string, std::string>> compileList; // {abs, modName}
+        std::map<std::string, SdkPkgEntry> sdkPkgMap;
+        if (isSdkSelfBuild) {
+            sdkPkgMap = sdk_loader::readSdkPkg(sdkPath);
+            for (auto& file : yux.files()) {
+                if (file == yux.sdkFile()) continue;
+                string mn = file->moduleName();
+                string abs = yux.modulePath(mn);
+                if (abs.empty()) continue;
+                compileList.emplace_back(abs, mn);
+            }
+            std::ranges::sort(compileList);
+        } else {
+            compileList = nonTestFiles;
+        }
+
+        // 各模块 codegen → obj（文件级聚合：单文件失败继续编译其余）
+        bool anyCodegenError = false;
+        PkgCacheRegistry exeTestCaches(yux.projectRoot(), buildDir);
+
+        for (auto& [abs, mn] : compileList) {
+            auto file = yux.module(mn);
+            if (!file) continue;
+            string base = mirroredOutputBase(yux.projectRoot(), buildDir, abs);
+            fs::create_directories(fs::path(base).parent_path());
+            string obj = base + ".obj";
+            string ir = mirroredOutputBase(yux.projectRoot(), irDir, abs) + ".ll";
+            if (emitIr) {
+                fs::create_directories(fs::path(ir).parent_path());
+            }
+            // SDK 自构建：runtime base 模块需发射运行时辅助
+            bool isSdkRuntime = false;
+            if (isSdkSelfBuild) {
+                auto stem = fs::path(abs).stem().string();
+                auto it = sdkPkgMap.find(stem);
+                bool isFlatDep = (it == sdkPkgMap.end()) || it->second.isFlat;
+                isSdkRuntime = isFlatDep && (stem == "base");
+            }
+
+            if (!exeTestCaches.isFresh(abs, obj)) {
+                if (!codegenTo(file, mn, obj, ir, isSdkRuntime)) {
+                    anyCodegenError = true;
                     continue;
                 }
-
-                // Codegen 测试模块（isTestDll=true）
-                auto testFile = yux.module(testModName);
-                if (!testFile) continue;
-
-                std::string testObj = mirroredOutputBase(yux.projectRoot(), testsObjDir, testAbs) + ".obj";
-                fs::create_directories(fs::path(testObj).parent_path());
-
-                // 缓存检查：test obj 新鲜则跳过 codegen
-                if (!testCaches.isFresh(testAbs, testObj)) {
-                    auto tCtx = std::make_unique<llvm::LLVMContext>();
-                    auto tMod = std::make_unique<llvm::Module>(testModName, *tCtx);
-                    llvm::IRBuilder<> tBuilder(*tCtx);
-                    try {
-                        Compiler compiler(*tCtx, tBuilder, tMod.get(), testFile, &yux, false, true); // isTestDll=true
-                        compiler.compile(testFile);
-                    } catch (std::runtime_error& e) {
-                        reportRuntimeError(testAbs, e, testModName + ": ");
-                        continue;
-                    }
-
-                    if (emitIr) {
-                        std::string testIr = mirroredOutputBase(yux.projectRoot(), irDir, testAbs) + ".ll";
-                        fs::create_directories(fs::path(testIr).parent_path());
-                        std::error_code ec;
-                        llvm::raw_fd_ostream irFile(testIr, ec);
-                        if (ec) {
-                            std::cerr << "Error opening test IR file: " << ec.message() << '\n';
-                        } else {
-                            tMod->print(irFile, nullptr);
-                            irFile.flush();
-                            std::cout << "Write test IR: " << testIr << '\n';
-                        }
-                    }
-
-                    if (!compileIRToObj(tMod.get(), testObj)) {
-                        std::cerr << "Error: failed to compile test IR: " << testObj << '\n';
-                        continue;
-                    }
-                    std::cout << "Write test obj: " << testObj << '\n';
-                    testCaches.mark(testAbs);
-                }
-
-                // 收集依赖 obj（从 yux.loadOrder — 测试模块引用的依赖）
-                std::vector<std::string> linkObjs = {testObj};
-                std::set<std::string> seenMods;
-                for (auto& depMod : yux.loadOrder()) {
-                    if (seenMods.count(depMod)) continue;
-                    seenMods.insert(depMod);
-                    auto it = allObjMap.find(depMod);
-                    if (it != allObjMap.end()) {
-                        linkObjs.push_back(it->second);
-                    }
-                }
-                // SDK lib
-                if (!sdkLibPath.empty()) linkObjs.push_back(sdkLibPath);
-
-                // LLD 链接 test dll
-                // 替换模块名中的 '.' 为 '_'（Windows DLL 路径）
-                std::string dllFileName = testMod;
-                for (auto& c : dllFileName)
-                    if (c == '.') c = '_';
-                std::string testDllPath = testsDir;
-                testDllPath += "/";
-                testDllPath += dllFileName;
-                testDllPath += ".test.dll";
-
-                // 检查 DLL 是否需要重新链接（DLL 比所有输入 obj 都新则跳过）
-                bool needLink = true;
-                if (fs::exists(testDllPath)) {
-                    needLink = false;
-                    try {
-                        auto dllTime = fs::last_write_time(testDllPath);
-                        for (auto& o : linkObjs) {
-                            if (fs::exists(o) && fs::last_write_time(o) > dllTime) {
-                                needLink = true;
-                                break;
-                            }
-                        }
-                    } catch (...) {
-                        needLink = true;
-                    }
-                }
-
-                if (needLink) {
-                    std::string dllOut = "/out:" + testDllPath;
-                    // DLL 模式：/dll，无需 /entry /subsystem /kernel32.lib
-                    std::vector<const char*> linkArgs = {"lld-link", dllOut.c_str(), "/dll", "/noentry", "kernel32.lib"};
-                    for (auto& o : linkObjs)
-                        linkArgs.insert(linkArgs.begin() + 1, o.c_str());
-                    // 项目级 [link].libs（yux.toml）
-                    std::vector<std::string> projLibArgs;
-                    for (auto& lib : yux.projectLinkLibs()) {
-                        projLibArgs.push_back(lib + ".lib");
-                    }
-                    for (auto& lib : projLibArgs) {
-                        linkArgs.push_back(lib.c_str());
-                    }
-
-                    std::string outStr, errStr;
-                    llvm::raw_string_ostream oOS(outStr), eOS(errStr);
-                    std::cout << "Link test dll: " << testDllPath << '\n';
-                    lld::DriverDef dd = {.f = lld::WinLink, .d = &lld::coff::link};
-                    lld::Result r = lldMain(linkArgs, oOS, eOS, llvm::ArrayRef{dd});
-                    if (r.retCode) {
-                        std::cerr << "Error: test dll link failed for " << testMod << "\n" << errStr;
-                        continue;
-                    }
-                }
-                ++testExeCount;
+                exeTestCaches.mark(abs);
+                compiled = true;
             }
-            testCaches.flushAll();
-            if (testExeCount > 0) {
-                std::cout << "Built " << testExeCount << " test dll(s) into " << testsDir << '\n';
-            } else if (!testFiles.empty()) {
-                std::cout << "no test dll built (all failed)\n";
-            } else if (opts.testMod.empty()) {
-                std::cout << "no *.test.yux files found\n";
-            }
-            // --test-mod 无匹配时已在上面输出 stderr，不再重复 stdout
         }
+        exeTestCaches.flushAll();
+        if (anyCodegenError) {
+            return 1;
+        }
+
+        // 构建非 test 模块 obj 映射用于 test DLL 依赖收集
+        std::map<std::string, std::string> allObjMap; // modName → obj path
+        for (auto& [abs, mn] : nonTestFiles) {
+            std::string obj = mirroredOutputBase(yux.projectRoot(), buildDir, abs) + ".obj";
+            allObjMap[mn] = obj;
+        }
+        buildTestDlls(yux, srcDir, buildDir, irDir, emitIr, sdkLibPath, opts.testMod, allObjMap);
 
         std::cout.flush();
         std::cerr.flush();
