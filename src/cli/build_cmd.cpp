@@ -55,6 +55,18 @@ static void buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const s
     ensureBuildDir(testsDir);
     ensureBuildDir(testsObjDir);
 
+    // 清理上次构建可能残留的失败标记文件
+    {
+        std::error_code ec2;
+        for (auto it = fs::directory_iterator(testsDir, ec2); it != fs::directory_iterator(); ++it) {
+            if (ec2) break;
+            if (!it->is_regular_file()) continue;
+            if (it->path().extension() == ".failed") {
+                fs::remove(it->path(), ec2);
+            }
+        }
+    }
+
     // 递归扫 src/ 下 *.test.yux
     std::vector<std::pair<std::string, std::string>> testFiles; // {abs, modName}
     std::error_code ec;
@@ -97,19 +109,35 @@ static void buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const s
     PkgCacheRegistry testCaches(yux.projectRoot(), testsObjDir);
 
     size_t testExeCount = 0;
+    size_t testFailCount = 0;
     for (auto& [testAbs, testMod] : testFiles) {
+        // 计算 DLL 文件名（后续多处使用，也用于失败标记文件路径）
+        std::string dllFileName = testMod;
+        for (auto& c : dllFileName)
+            if (c == '.') c = '_';
+
         // 解析测试文件 AST
         std::string testModName = testMod;
         try {
             yux.loadMainFile(testAbs, testModName);
         } catch (std::runtime_error& e) {
             reportRuntimeError(testAbs, e, testModName + ": ");
+            std::string failPath = std::string(testsDir).append("/").append(dllFileName).append(".test.failed");
+            std::ofstream failFile(failPath);
+            if (failFile) failFile << e.what() << "\n";
+            ++testFailCount;
             continue;
         }
 
         // Codegen 测试模块（isTestDll=true）
         auto testFile = yux.module(testModName);
-        if (!testFile) continue;
+        if (!testFile) {
+            std::string failPath = std::string(testsDir).append("/").append(dllFileName).append(".test.failed");
+            std::ofstream failFile(failPath);
+            if (failFile) failFile << "module not found after parse\n";
+            ++testFailCount;
+            continue;
+        }
 
         std::string testObj = mirroredOutputBase(yux.projectRoot(), testsObjDir, testAbs) + ".obj";
         fs::create_directories(fs::path(testObj).parent_path());
@@ -124,6 +152,10 @@ static void buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const s
                 compiler.compile(testFile);
             } catch (std::runtime_error& e) {
                 reportRuntimeError(testAbs, e, testModName + ": ");
+                std::string failPath = std::string(testsDir).append("/").append(dllFileName).append(".test.failed");
+                std::ofstream failFile(failPath);
+                if (failFile) failFile << e.what() << "\n";
+                ++testFailCount;
                 continue;
             }
 
@@ -143,6 +175,10 @@ static void buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const s
 
             if (!compileIRToObj(tMod.get(), testObj)) {
                 std::cerr << "Error: failed to compile test IR: " << testObj << '\n';
+                std::string failPath = std::string(testsDir).append("/").append(dllFileName).append(".test.failed");
+                std::ofstream failFile(failPath);
+                if (failFile) failFile << "compile IR to obj failed: " << testObj << "\n";
+                ++testFailCount;
                 continue;
             }
             std::cout << "Write test obj: " << testObj << '\n';
@@ -163,11 +199,7 @@ static void buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const s
         // SDK lib
         if (!sdkLibPath.empty()) linkObjs.push_back(sdkLibPath);
 
-        // LLD 链接 test dll
-        // 替换模块名中的 '.' 为 '_'（Windows DLL 路径）
-        std::string dllFileName = testMod;
-        for (auto& c : dllFileName)
-            if (c == '.') c = '_';
+        // LLD 链接 test dll（dllFileName 已在循环顶部计算）
         std::string testDllPath = testsDir;
         testDllPath += "/";
         testDllPath += dllFileName;
@@ -212,9 +244,17 @@ static void buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const s
             lld::Result r = lldMain(linkArgs, oOS, eOS, llvm::ArrayRef{dd});
             if (r.retCode) {
                 std::cerr << "Error: test dll link failed for " << testMod << "\n" << errStr;
+                std::string failPath = std::string(testsDir).append("/").append(dllFileName).append(".test.failed");
+                std::ofstream failFile(failPath);
+                if (failFile) failFile << "link failed: " << errStr << "\n";
+                ++testFailCount;
                 continue;
             }
         }
+        // 构建成功，清除可能存在的旧失败标记
+        std::string oldFailPath = std::string(testsDir).append("/").append(dllFileName).append(".test.failed");
+        std::error_code rmEc;
+        fs::remove(oldFailPath, rmEc);
         ++testExeCount;
     }
     testCaches.flushAll();
@@ -224,6 +264,9 @@ static void buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const s
         std::cout << "no test dll built (all failed)\n";
     } else if (testModFilter.empty()) {
         std::cout << "no *.test.yux files found\n";
+    }
+    if (testFailCount > 0) {
+        std::cout << testFailCount << " test file(s) failed to build\n";
     }
     // --test-mod 无匹配时已在上面输出 stderr，不再重复 stdout
 }

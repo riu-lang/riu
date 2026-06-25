@@ -130,6 +130,18 @@ DWORD spawnAndWait(const std::wstring& cmdLine, const std::wstring& workingDir =
     }
     std::ranges::sort(dllPaths);
 
+    // 同时扫描 .test.failed 标记文件（构建失败的测试文件）
+    std::vector<std::string> failedMarkers;
+    for (auto it = fs::directory_iterator(testsDir, ec); it != fs::directory_iterator(); ++it) {
+        if (ec) break;
+        if (!it->is_regular_file()) continue;
+        auto& p = it->path();
+        if (p.extension() == ".failed" && p.stem().string().ends_with(".test")) {
+            failedMarkers.push_back(p.string());
+        }
+    }
+    std::ranges::sort(failedMarkers);
+
     // --test-mod 过滤：只运行指定模块的 DLL
     if (!opts.testMod.empty()) {
         // DLL 名由模块名推导：yux.core.array → yux_core_array_test.test.dll
@@ -149,85 +161,121 @@ DWORD spawnAndWait(const std::wstring& cmdLine, const std::wstring& workingDir =
             std::cerr << "  Expected stem: " << expectedStem << ".test.dll\n";
         }
         dllPaths = std::move(filtered);
+
+        // 同时过滤失败标记文件
+        std::vector<std::string> filteredMarkers;
+        for (auto& p : failedMarkers) {
+            std::string stem = fs::path(p).stem().string(); // 如 yux_core_array_test.test
+            if (stem == expectedStem + ".test" || stem == expectedStem) {
+                filteredMarkers.push_back(p);
+            }
+        }
+        failedMarkers = std::move(filteredMarkers);
     }
 
-    if (dllPaths.empty()) {
+    if (dllPaths.empty() && failedMarkers.empty()) {
         std::cout << "No *.test.dll found in " << testsDir << " — nothing to test.\n";
         _exit(0);
     }
 
+    // 构建失败计数（从标记文件数量得出）
+    int buildFailures = static_cast<int>(failedMarkers.size());
+
     // 4. 并行 spawn yux-test-runner 子进程（每 DLL 一个）
-    std::cout.flush();
-    std::string runnerExe = "yux-test-runner";
-
-    int maxParallel = opts.threads > 0 ? opts.threads : static_cast<int>(std::thread::hardware_concurrency());
-    if (maxParallel < 1) maxParallel = 1;
-
-    std::cout << "Running " << dllPaths.size() << " DLL(s) with " << maxParallel << " parallel worker(s)...\n\n";
-    std::cout.flush();
-
-    // 信号量：mutex + condition_variable 控制并发上限
-    std::mutex cvMtx;
-    std::condition_variable cv;
-    int activeCount = 0;
-
-    std::vector<std::thread> waiters;
     std::atomic<int> passedDlls{0};
     std::atomic<int> failedDlls{0};
     std::vector<std::string> failedDllNames;
-    std::mutex failedMtx;
+    if (!dllPaths.empty()) {
+        std::cout.flush();
+        std::string runnerExe = "yux-test-runner";
 
-    for (const auto& dllPath : dllPaths) {
-        {
-            std::unique_lock lock(cvMtx);
-            cv.wait(lock, [&] { return activeCount < maxParallel; });
-            activeCount++;
+        int maxParallel = opts.threads > 0 ? opts.threads : static_cast<int>(std::thread::hardware_concurrency());
+        if (maxParallel < 1) maxParallel = 1;
+
+        std::cout << "Running " << dllPaths.size() << " DLL(s) with " << maxParallel
+                  << " parallel worker(s)...\n\n";
+        std::cout.flush();
+
+        // 信号量：mutex + condition_variable 控制并发上限
+        std::mutex cvMtx;
+        std::condition_variable cv;
+        int activeCount = 0;
+
+        std::vector<std::thread> waiters;
+        std::mutex failedMtx;
+
+        for (const auto& dllPath : dllPaths) {
+            {
+                std::unique_lock lock(cvMtx);
+                cv.wait(lock, [&] { return activeCount < maxParallel; });
+                activeCount++;
+            }
+
+            // 每个 DLL 起一个线程负责 spawn + wait
+            waiters.emplace_back([&, dllPath]() {
+                std::wstring cmdLine =
+                    L"\"" + toWide(runnerExe) + L"\" \"" + toWide(dllPath) + L"\"";
+                if (opts.verbose) cmdLine += L" --verbose";
+
+                DWORD code = spawnAndWait(cmdLine, toWide(cwd));
+
+                // 提取 DLL 名（用于汇总报告）
+                std::string dllName = dllPath;
+                auto slashPos = dllName.find_last_of("/\\");
+                if (slashPos != std::string::npos) dllName = dllName.substr(slashPos + 1);
+
+                if (code == 0) {
+                    ++passedDlls;
+                } else {
+                    ++failedDlls;
+                    std::scoped_lock lock(failedMtx);
+                    failedDllNames.push_back(dllName);
+                }
+
+                {
+                    std::scoped_lock lock(cvMtx);
+                    activeCount--;
+                }
+                cv.notify_one();
+            });
         }
 
-        // 每个 DLL 起一个线程负责 spawn + wait
-        waiters.emplace_back([&, dllPath]() {
-            std::wstring cmdLine = L"\"" + toWide(runnerExe) + L"\" \"" + toWide(dllPath) + L"\"";
-            if (opts.verbose) cmdLine += L" --verbose";
-
-            DWORD code = spawnAndWait(cmdLine, toWide(cwd));
-
-            // 提取 DLL 名（用于汇总报告）
-            std::string dllName = dllPath;
-            auto slashPos = dllName.find_last_of("/\\");
-            if (slashPos != std::string::npos) dllName = dllName.substr(slashPos + 1);
-
-            if (code == 0) {
-                ++passedDlls;
-            } else {
-                ++failedDlls;
-                std::scoped_lock lock(failedMtx);
-                failedDllNames.push_back(dllName);
-            }
-
-            {
-                std::scoped_lock lock(cvMtx);
-                activeCount--;
-            }
-            cv.notify_one();
-        });
+        // 等待所有子进程完成
+        for (auto& t : waiters)
+            t.join();
     }
-
-    // 等待所有子进程完成
-    for (auto& t : waiters)
-        t.join();
 
     // 5. 汇总
     std::cout.flush();
-    if (!failedDllNames.empty()) {
-        std::cout << "\nFailed DLLs:\n";
-        for (auto& name : failedDllNames) {
-            std::cout << "  - " << name << "\n";
+        if (buildFailures > 0) {
+            std::cout << "\nBuild failures:\n";
+            for (auto& marker : failedMarkers) {
+                std::string markerName = fs::path(marker).filename().string();
+                // 去除 .failed 后缀得到应有的 DLL 名
+                std::string dllStem = markerName.substr(0, markerName.size() - 7); // ".failed"
+                std::cout << "  [BUILD FAIL] " << dllStem << ".dll\n";
+                // 打印失败原因（标记文件内容）
+                std::ifstream mf(marker);
+                if (mf) {
+                    std::string line;
+                    while (std::getline(mf, line)) {
+                        if (!line.empty()) std::cout << "    " << line << "\n";
+                    }
+                }
+            }
         }
-    }
-    std::cout << "\n" << dllPaths.size() << " total, " << passedDlls << " passed, " << failedDlls << " failed\n";
-    std::cout.flush();
+        if (!failedDllNames.empty()) {
+            std::cout << "\nFailed DLLs:\n";
+            for (auto& name : failedDllNames) {
+                std::cout << "  - " << name << "\n";
+            }
+        }
+        int totalCount = static_cast<int>(dllPaths.size()) + buildFailures;
+        int totalFailed = failedDlls.load() + buildFailures;
+        std::cout << "\n" << totalCount << " total, " << passedDlls << " passed, " << totalFailed << " failed\n";
+        std::cout.flush();
 
-    _exit(failedDlls == 0 ? 0 : 1);
-}
+        _exit(totalFailed == 0 ? 0 : 1);
+    }
 
 } // namespace yux::cli
