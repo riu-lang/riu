@@ -70,40 +70,40 @@ fn test_string_contains_direct() {
 fn test_string_escape_newline_codepoint() {
   let s String = "a\nb"
   ; 长度 3，中间一位是 LF (0x0A)
-  assert_eq(s.len(), 3i64)
-  assert_eq(s.get(0i64), 97u32)
-  assert_eq(s.get(1i64), 10u32)
-  assert_eq(s.get(2i64), 98u32)
+  assert_eq(s.len(), 3)
+  assert_eq(s.get(0), 97u32)
+  assert_eq(s.get(1), 10u32)
+  assert_eq(s.get(2), 98u32)
 }
 
 #Test
 fn test_string_escape_tab_codepoint() {
   let s String = "x\ty"
-  assert_eq(s.len(), 3i64)
-  assert_eq(s.get(1i64), 9u32)
+  assert_eq(s.len(), 3)
+  assert_eq(s.get(1), 9u32)
 }
 
 #Test
 fn test_string_escape_quote_codepoint() {
   let s String = "\""
-  assert_eq(s.len(), 1i64)
-  assert_eq(s.get(0i64), 34u32)
+  assert_eq(s.len(), 1)
+  assert_eq(s.get(0), 34u32)
 }
 
 #Test
 fn test_string_raw_keeps_backslash() {
   let s String = r"\n"
   ; raw 字符串：长度 2，第一位是反斜线 (0x5C)、第二位是字面 'n'
-  assert_eq(s.len(), 2i64)
-  assert_eq(s.get(0i64), 92u32)
-  assert_eq(s.get(1i64), 110u32)
+  assert_eq(s.len(), 2)
+  assert_eq(s.get(0), 92u32)
+  assert_eq(s.get(1), 110u32)
 }
 
 #Test
 fn test_string_raw_path() {
   let s String = r"C:\path"
-  assert_eq(s.len(), 7i64)
-  assert_eq(s.get(2i64), 92u32)
+  assert_eq(s.len(), 7)
+  assert_eq(s.get(2), 92u32)
 }
 
 ; v0.6 Phase 1b：字符串模板转义 `\$`，无插值时降级回 LiteralStringNode
@@ -112,15 +112,15 @@ fn test_string_raw_path() {
 fn test_string_dollar_escape_codepoint() {
   let s String = "price=\$5"
   ; 长度 8，第 6 位是字面 '$' (0x24)
-  assert_eq(s.len(), 8i64)
-  assert_eq(s.get(6i64), 36u32)
+  assert_eq(s.len(), 8)
+  assert_eq(s.get(6), 36u32)
 }
 
 #Test
 fn test_string_dollar_escape_only() {
   let s String = "\$"
-  assert_eq(s.len(), 1i64)
-  assert_eq(s.get(0i64), 36u32)
+  assert_eq(s.len(), 1)
+  assert_eq(s.get(0), 36u32)
 }
 
 ; v0.6 Phase 2a：字符串模板 codegen → StringBuilder 链
@@ -130,7 +130,7 @@ fn test_string_dollar_escape_only() {
 fn test_string_template_dollar_id() {
   let name String = "yux"
   let s String = "hello, $name!"
-  assert_eq(s.len(), 11i64)
+  assert_eq(s.len(), 11)
   assert_eq(s, "hello, yux!")
 }
 
@@ -163,10 +163,10 @@ fn test_string_template_utf8_part() {
   let v String = "中"
   let s String = "前${v}后"
   ; 三个码点
-  assert_eq(s.len(), 3i64)
-  assert_eq(s.get(0i64), 21069u32)
-  assert_eq(s.get(1i64), 20013u32)
-  assert_eq(s.get(2i64), 21518u32)
+  assert_eq(s.len(), 3)
+  assert_eq(s.get(0), 21069u32)
+  assert_eq(s.get(1), 20013u32)
+  assert_eq(s.get(2), 21518u32)
 }
 
 ; ==================== Phase 2b：ToString 自动分发 ====================

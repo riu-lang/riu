@@ -19,11 +19,19 @@
 
 ---
 
+## 2026-06-25 —— Array<T> / String / StringBuilder 索引与长度迁移至 usize
+
+- **修改 §9.2.1.1**：Array<T> layout `{ _data: Ptr, _len: usize, _cap: usize }`（原 `i64`）
+- **修改 §9.2.3**：`len()` / `cap()` 返回 `usize`，`get(i usize)` / `set_len(len usize)` 形参改为 `usize`
+- **修改 §9.3.4**：`String.len()` 返回 `usize`，`String.get(i usize)`
+- **修改 §9.4.2**：`StringBuilder.len()` 返回 `usize`
+- **冲突 / 兼容**：**破坏性变更**——现有 `i64` 类型作为 Array/String 索引或长度接收者的代码需更新为 `usize`（或去掉类型后缀借助 flexible integer 推断）。编译器内部 struct layout `{ ptr, i64, i64 }` 在 64-bit 上保持不变（`usize` ≡ `i64`），但 yux 层类型系统严格区分
+
 ## 2026-06-25 —— 添加 isize / usize 指针宽度整数类型
 
 - **新增 §9.1.1**：整数类型表追加 `isize`（有符号指针宽度整数）、`usize`（无符号指针宽度整数），LLVM 落地为 `iN`（N = 目标指针位宽）
 - **修改 §9.1.1.3**：原"v1 不提供 `isize` / `usize`"条款移除，标注已在 v0.18 落地
-- **冲突 / 兼容**：无破坏性变更——新增类型，不影响现有 `i8`–`i64` / `u8`–`u64` 代码。SDK 中 `Array.len()` / `Array.get()` 等返回类型暂保持 `i64`，后续单独改造
+- **冲突 / 兼容**：无破坏性变更——新增类型，不影响现有 `i8`–`i64` / `u8`–`u64` 代码
 
 ---
 

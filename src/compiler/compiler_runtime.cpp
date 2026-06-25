@@ -825,7 +825,7 @@ void emitRcReleaseForArrayFn(llvm::LLVMContext& context, llvm::IRBuilder<>& buil
 
     // strong 归零：释放 Array._data
     // RC Block layout: { u32 strong, u32 weak, Array<T> payload }
-    // Array<T> layout: { ptr _data, i64 _len, i64 _cap }
+    // Array<T> layout: { ptr _data, usize _len, usize _cap }
     // Array._data 在 block + 8（跳过 RC 头，即 Array payload 的 field 0）
     builder.SetInsertPoint(strongZeroBB);
     auto payloadPtr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(8)}, "arr_payload");

@@ -239,7 +239,7 @@ fn test_array_fn_elem() {
   arr.push((x i32) i32 => x * 2)
   arr.push((x i32) i32 => x - 5)
 
-  assert_eq(arr.len(), 3i64)
+  assert_eq(arr.len(), 3)
   assert_eq(arr[0](10), 11)
   assert_eq(arr[1](10), 20)
   assert_eq(arr[2](10), 5)

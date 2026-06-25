@@ -28,8 +28,8 @@ struct Buf {
     }
   }
 
-  fn len() i64 = $.data.len()
-  fn get(i i64) u32 = copy_of($.data[i])
+  fn len() usize = $.data.len()
+  fn get(i usize) u32 = copy_of($.data[i])
 }
 
 #Test
@@ -37,24 +37,24 @@ fn test_buf_from_existing_array() {
   ; 非 fresh 源: arr 是 local Array<u32>, 进 Self {...} 需要 retain
   let arr Array<u32> = [10u32, 20u32, 30u32]
   let b Buf = Buf::from(arr)
-  assert_eq(b.len(), 3i64)
-  assert_eq(b.get(0i64), 10u32)
-  assert_eq(b.get(2i64), 30u32)
+  assert_eq(b.len(), 3)
+  assert_eq(b.get(0), 10u32)
+  assert_eq(b.get(2), 30u32)
   ; arr 与 b.data 共享句柄, 出作用域后两者都 release, 不应 double free
-  assert_eq(arr.len(), 3i64)
+  assert_eq(arr.len(), 3)
 }
 
 #Test
 fn test_buf_one_via_array_literal() {
   ; fresh 源: 数组字面量自带 +1, 不应再 retain
   let b Buf = Buf::one()
-  assert_eq(b.len(), 1i64)
-  assert_eq(b.get(0i64), 42u32)
+  assert_eq(b.len(), 1)
+  assert_eq(b.get(0), 42u32)
 }
 
 #Test
 fn test_buf_empty_via_empty_literal() {
   ; BUGS #3 验证: Self {...} 内嵌空数组 [] 既能 parse 也能 codegen
   let b Buf = Buf::empty()
-  assert_eq(b.len(), 0i64)
+  assert_eq(b.len(), 0)
 }

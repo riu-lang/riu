@@ -93,7 +93,7 @@ fn rc_pass_box(b Rc<RcPair>) i32 {
   ret b.a
 }
 
-fn rc_pass_array(a Array<i32>) i64 {
+fn rc_pass_array(a Array<i32>) usize {
   ret a.len()
 }
 
@@ -137,7 +137,7 @@ fn test_rc_chain_field_on_fresh_box() {
 #Test
 fn test_rc_chain_method_on_fresh_array() {
   #Mut let base i64 = rc_leak_count()
-  #Mut let n i64 = rc_make_array().len()
+  #Mut let n usize = rc_make_array().len()
   assert_eq(n, 3)
   assert_eq(rc_leak_count() - base, 0)
 }
@@ -153,7 +153,7 @@ fn test_rc_fresh_arg_box() {
 #Test
 fn test_rc_fresh_arg_array() {
   #Mut let base i64 = rc_leak_count()
-  #Mut let n i64 = rc_pass_array(rc_make_array())
+  #Mut let n usize = rc_pass_array(rc_make_array())
   assert_eq(n, 3)
   assert_eq(rc_leak_count() - base, 0)
 }

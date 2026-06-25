@@ -177,7 +177,7 @@ fn test_enum_box_reassign() {
 #Test
 fn test_enum_array_basic() {
   #Mut let arr Array<Color> = [Color::Red, Color::Green, Color::Blue]
-  assert_eq(arr.len(), 3i64)
+  assert_eq(arr.len(), 3)
   
   let n i32 = match arr[0] {
     Color::Red => 1
@@ -190,7 +190,7 @@ fn test_enum_array_basic() {
 #Test
 fn test_enum_array_with_payload() {
   #Mut let arr Array<Shape> = [Shape::Point, Shape::Circle(2.0f64), Shape::Rect(3.0f64, 4.0f64)]
-  assert_eq(arr.len(), 3i64)
+  assert_eq(arr.len(), 3)
   
   let area f64 = match arr[1] {
     Shape::Point => 0.0f64

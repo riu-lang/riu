@@ -1720,7 +1720,7 @@ struct f64 {
     }
     ; 整数部分：复用 i64.to_string 后逐码点 push
     let int_part String = v.to_i64().to_string()
-    #Mut let ii i64 = 0
+    #Mut let ii usize = 0
     loop {
       if ii >= int_part.len() {
         break;
@@ -1963,15 +1963,16 @@ fn heap_some<T>(v T) Heap<T>?
 #Builtin
 fn heap_null<T>() Heap<T>?
 
-; Array<T> 实例 layout 由编译器内部管理：{ ptr handle }，handle 指向 Block
-; （Phase 1b：所有方法编译器特例化，主体不再读 yux 端字段）
+; Array<T> 实例 layout 由编译器内部管理：{ ptr _data, usize _len, usize _cap }
+; （方法编译器特例化，主体不再读 yux 端字段）
+; TODO: is_empty / clear 可改为 yux 端便捷方法（$.len() == 0usize / $.set_len(0usize)）
 #Builtin
 struct Array<T> {
   #Builtin
-  fn len() i64
+  fn len() usize
 
   #Builtin
-  fn cap() i64
+  fn cap() usize
 
   #Builtin
   fn is_empty() bool
@@ -1980,13 +1981,13 @@ struct Array<T> {
   fn clear()
 
   #Builtin
-  fn set_len(new_len i64)
+  fn set_len(new_len usize)
 
   #Builtin
   fn push(value T)
 
   #Builtin
-  fn get(i i64) T&
+  fn get(i usize) T&
 
   #Builtin
   fn first() T
@@ -2040,7 +2041,7 @@ struct String {
   #Static
   fn from(buf Array<u32>) String {
     #Mut let copy Array<u32> = []
-    #Mut let i i64 = 0
+    #Mut let i usize = 0
     loop {
       if i >= buf.len() {
         break;
@@ -2065,13 +2066,13 @@ struct String {
     }
   }
 
-  fn len() i64 {
+  fn len() usize {
     let a Array<u32>& = as_ref:<Array<u32>>($._buf)
     a.len()
   }
 
   ; 取码点
-  fn get(i i64) u32 {
+  fn get(i usize) u32 {
     let a Array<u32>& = as_ref:<Array<u32>>($._buf)
     copy_of:<u32>(a[i])
   }
@@ -2083,7 +2084,7 @@ struct String {
     if a.len() != b.len() {
       ret false
     }
-    #Mut let i i64 = 0
+    #Mut let i usize = 0
     loop {
       if i >= a.len() {
         break;
@@ -2104,11 +2105,11 @@ struct String {
   fn starts_with(prefix String&) bool {
     let a Array<u32>& = as_ref:<Array<u32>>($._buf)
     let b Array<u32>& = as_ref:<Array<u32>>(prefix._buf)
-    let plen i64 = b.len()
+    let plen usize = b.len()
     if plen > a.len() {
       ret false
     }
-    #Mut let i i64 = 0
+    #Mut let i usize = 0
     loop {
       if i >= plen {
         break;
@@ -2126,20 +2127,20 @@ struct String {
   fn contains(needle String&) bool {
     let a Array<u32>& = as_ref:<Array<u32>>($._buf)
     let b Array<u32>& = as_ref:<Array<u32>>(needle._buf)
-    let nlen i64 = b.len()
+    let nlen usize = b.len()
     if nlen == 0 {
       ret true
     }
-    let hlen i64 = a.len()
+    let hlen usize = a.len()
     if nlen > hlen {
       ret false
     }
-    #Mut let i i64 = 0
+    #Mut let i usize = 0
     loop {
       if i + nlen > hlen {
         break;
       }
-      #Mut let j i64 = 0
+      #Mut let j usize = 0
       #Mut let hit bool = true
       loop {
         if j >= nlen {
@@ -2163,7 +2164,7 @@ struct String {
   fn to_bytes() Array<u8> {
     let a Array<u32>& = as_ref:<Array<u32>>($._buf)
     #Mut let r Array<u8> = []
-    #Mut let i i64 = 0
+    #Mut let i usize = 0
     loop {
       if i >= a.len() {
         break;
@@ -2208,7 +2209,7 @@ struct StringBuilder {
     }
   }
 
-  fn len() i64 {
+  fn len() usize {
     $.data.len()
   }
 
@@ -2224,7 +2225,7 @@ struct StringBuilder {
 
   ; 追加另一个字符串的全部码点
   fn append(s String) {
-    #Mut let i i64 = 0
+    #Mut let i usize = 0
     loop {
       if i >= s.len() {
         break;
@@ -2244,7 +2245,7 @@ struct StringBuilder {
     if $.data.len() != other.data.len() {
       ret false
     }
-    #Mut let i i64 = 0
+    #Mut let i usize = 0
     loop {
       if i >= $.data.len() {
         break;
@@ -2293,7 +2294,7 @@ struct bool {
 
 fn print(s String&) {
   let bytes Array<u8> = s.to_bytes()
-  #Mut let i i64 = 0
+  #Mut let i usize = 0
   loop {
     if i >= bytes.len() {
       break;
@@ -2332,7 +2333,7 @@ fn println<T : ToString>(x T&) {
 
 fn eprint(s String&) {
   let bytes Array<u8> = s.to_bytes()
-  #Mut let i i64 = 0
+  #Mut let i usize = 0
   loop {
     if i >= bytes.len() {
       break;

@@ -167,14 +167,19 @@ private:
     // ==================== 类型系统 ====================
     llvm::Type* getLLVMType(const TypeInfo& type); // 将 TypeInfo 转换为 LLVM 类型
 
+    // ==================== usize 辅助 ====================
+    // 返回 usize 对应的 LLVM 类型（指针宽度整数，64-bit 上为 i64）
+    [[nodiscard]] llvm::Type* getSizeType() const;
+
     // ==================== Array<T> 内联字段辅助（B-3） ====================
-    // Array 实例 layout：{ ptr _data @0, u64 _len @8, u64 _cap @16 }
+    // Array 实例 layout：{ ptr _data @0, usize _len @8, usize _cap @16 }
+    [[nodiscard]] llvm::StructType* getArrayStructTypeForGEP() const;             // 获取 Array LLVM struct 类型
     llvm::Value* arrayDataFieldPtr(llvm::Value* arrayStructPtr,
                                     const string& name = ""); // _data 字段指针（ptr*）
     llvm::Value* arrayLenFieldPtr(llvm::Value* arrayStructPtr,
-                                   const string& name = "");  // _len 字段指针（i64*）
+                                   const string& name = "");  // _len 字段指针（usize*）
     llvm::Value* arrayCapFieldPtr(llvm::Value* arrayStructPtr,
-                                   const string& name = "");  // _cap 字段指针（i64*）
+                                   const string& name = "");  // _cap 字段指针（usize*）
     // 把 ExprArrayNode 按 Array<elemType> 字面量编译，直接分配数据缓冲并填充元素，
     // 返回 Array<T> struct 值。处理元素 retain / consumeTemp，嵌套 Array 递归。
     llvm::Value* buildArrayLiteralBlock(ExprArrayNode* arrayNode, const TypeInfo& elemType);
@@ -332,7 +337,7 @@ private:
     llvm::Value* emitStringLiteralValue(
         const vector<u32>& codePoints); // B-4: 由码点向量发射 sentinel Rc<Array<u32>> 包装的 String 值
     // B-4: 由码点向量发射 sentinel RC Block 全局常量。
-    // Block layout: { u32 strong(0xFFFFFFFF), u32 weak(0), ptr _data, i64 _len, i64 _cap }
+    // Block layout: { u32 strong(0xFFFFFFFF), u32 weak(0), ptr _data, usize _len, usize _cap }
     // 不需 _builder, 可在 builder 未设当前 BB 时调用 (供 reflect rodata 节点 emit 复用).
     llvm::GlobalVariable* emitStringRcBlockConst(const vector<u32>& codePoints);
     // DRAFT-spec-reflect Phase 3a: lazy emit reflect rodata globals.

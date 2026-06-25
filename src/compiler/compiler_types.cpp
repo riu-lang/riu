@@ -316,35 +316,40 @@ string Compiler::ensureStructInstance(p<StructDeclNode> baseDecl, const vector<s
     return mangledName;
 }
 
-// B-3: Array<T> 新布局辅助 —— 去 Block，字段内联
-// Array 实例 layout：{ ptr _data @0, u64 _len @8, u64 _cap @16 }
+// ==================== usize 辅助 ====================
 
-// 获取 Array struct 的 LLVM 类型 { ptr, i64, i64 }，用于 GEP
-static llvm::StructType* getArrayStructTypeForGEP(llvm::LLVMContext& ctx) {
-    std::array<llvm::Type*, 3> fields = {llvm::PointerType::get(ctx, 0),
-                                         llvm::Type::getInt64Ty(ctx),
-                                         llvm::Type::getInt64Ty(ctx)};
-    return llvm::StructType::get(ctx, llvm::ArrayRef(fields.data(), fields.size()));
+llvm::Type* Compiler::getSizeType() const {
+    return _typeMap.at("usize");
+}
+
+// B-3: Array<T> 新布局辅助 —— 去 Block，字段内联
+// Array 实例 layout：{ ptr _data @0, usize _len @8, usize _cap @16 }
+
+// 获取 Array struct 的 LLVM 类型 { ptr, usize, usize }，用于 GEP
+llvm::StructType* Compiler::getArrayStructTypeForGEP() const {
+    auto* sizeTy = getSizeType();
+    std::array<llvm::Type*, 3> fields = {llvm::PointerType::get(_context, 0), sizeTy, sizeTy};
+    return llvm::StructType::get(_context, llvm::ArrayRef(fields.data(), fields.size()));
 }
 
 // _data 字段指针（field 0，ptr*）
 llvm::Value* Compiler::arrayDataFieldPtr(llvm::Value* arrayStructPtr, const string& name) {
-    auto ty = getArrayStructTypeForGEP(_context);
+    auto ty = getArrayStructTypeForGEP();
     auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
     return _builder.CreateGEP(ty, arrayStructPtr, {zero, zero}, name + ".data_field");
 }
 
-// _len 字段指针（field 1，i64*）
+// _len 字段指针（field 1，usize*）
 llvm::Value* Compiler::arrayLenFieldPtr(llvm::Value* arrayStructPtr, const string& name) {
-    auto ty = getArrayStructTypeForGEP(_context);
+    auto ty = getArrayStructTypeForGEP();
     auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
     auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
     return _builder.CreateGEP(ty, arrayStructPtr, {zero, one}, name + ".len_field");
 }
 
-// _cap 字段指针（field 2，i64*）
+// _cap 字段指针（field 2，usize*）
 llvm::Value* Compiler::arrayCapFieldPtr(llvm::Value* arrayStructPtr, const string& name) {
-    auto ty = getArrayStructTypeForGEP(_context);
+    auto ty = getArrayStructTypeForGEP();
     auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
     auto two = llvm::ConstantInt::get(_builder.getInt32Ty(), 2);
     return _builder.CreateGEP(ty, arrayStructPtr, {zero, two}, name + ".cap_field");

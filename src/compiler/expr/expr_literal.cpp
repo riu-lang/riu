@@ -570,7 +570,8 @@ llvm::Value* Compiler::buildArrayLiteralBlock(ExprArrayNode* arrayNode, const Ty
     auto& elements = arrayNode->elements();
     auto count = elements.size();
     auto elemLLVMType = getLLVMType(elemType);
-    auto countVal = _builder.getInt64(count);
+    auto sizeTy = getSizeType();
+    auto countVal = llvm::ConstantInt::get(sizeTy, count);
     auto ptrTy = llvm::PointerType::get(_context, 0);
     auto zero32 = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
 
@@ -594,11 +595,13 @@ llvm::Value* Compiler::buildArrayLiteralBlock(ExprArrayNode* arrayNode, const Ty
 
     // 分配数据缓冲：HeapAlloc(count * sizeof(T))
     auto elemSize = _module->getDataLayout().getTypeAllocSize(elemLLVMType);
-    auto byteSize = _builder.CreateMul(countVal, _builder.getInt64(elemSize), "byte_size");
+    auto elemSizeVal = llvm::ConstantInt::get(sizeTy, elemSize);
+    auto byteSize = _builder.CreateMul(countVal, elemSizeVal, "byte_size");
     auto heapFn = runtime::getProcessHeapFn(_module, _builder);
     auto heap = _builder.CreateCall(heapFn, {}, "heap");
     auto allocFn = runtime::getHeapAllocFn(_module, _builder);
-    auto data = _builder.CreateCall(allocFn, {heap, _builder.getInt64(0), byteSize}, "lit.data");
+    auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
+    auto data = _builder.CreateCall(allocFn, {heap, zeroSize, byteSize}, "lit.data");
 
     // 写入 _data 字段
     _builder.CreateStore(data, arrayDataFieldPtr(arrayAlloca, "lit"));
@@ -616,7 +619,7 @@ llvm::Value* Compiler::buildArrayLiteralBlock(ExprArrayNode* arrayNode, const Ty
         }
         if (!elemVal) elemVal = compileExpr(elements[i]);
 
-        auto idx = _builder.getInt64(i);
+        auto idx = llvm::ConstantInt::get(sizeTy, i);
         auto elemPtr = _builder.CreateGEP(elemLLVMType, data, {idx}, "lit.elem.ptr");
         // RC 元素：fresh 来源（call/构造/数组字面量）已 +1，跳过 retain，并尝试从临时帧消费；
         // 非 fresh（已有 var/field 读出）走复制 retain。

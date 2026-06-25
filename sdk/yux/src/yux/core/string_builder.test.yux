@@ -6,7 +6,7 @@
 #Test
 fn test_empty_ctor() {
   #Mut let sb StringBuilder = StringBuilder::make()
-  assert_eq(sb.len(), 0i64)
+  assert_eq(sb.len(), 0)
 }
 
 ; append 测试
@@ -19,7 +19,7 @@ fn test_append_code_point() {
   sb.append(c'l')
   sb.append(c'l')
   sb.append(c'o')
-  assert_eq(sb.len(), 5i64)
+  assert_eq(sb.len(), 5)
   let s String = sb.build()
   assert_eq(s, "Hello")
 }
@@ -30,7 +30,7 @@ fn test_append_ascii_byte() {
   sb.append(72u8)   ; 'H'
   sb.append(105u8)  ; 'i'
   sb.append(33u8)   ; '!'
-  assert_eq(sb.len(), 3i64)
+  assert_eq(sb.len(), 3)
   let s String = sb.build()
   assert_eq(s, "Hi!")
 }
@@ -41,7 +41,7 @@ fn test_append_string() {
   sb.append("Hello")
   sb.append(" ")
   sb.append("World")
-  assert_eq(sb.len(), 11i64)
+  assert_eq(sb.len(), 11)
   let s String = sb.build()
   assert_eq(s, "Hello World")
 }
@@ -63,11 +63,11 @@ fn test_append_mixed() {
 #Test
 fn test_len_after_append() {
   #Mut let sb StringBuilder = StringBuilder::make()
-  assert_eq(sb.len(), 0i64)
+  assert_eq(sb.len(), 0)
   sb.append("abc")
-  assert_eq(sb.len(), 3i64)
+  assert_eq(sb.len(), 3)
   sb.append("def")
-  assert_eq(sb.len(), 6i64)
+  assert_eq(sb.len(), 6)
 }
 
 ; clear 测试
@@ -76,11 +76,11 @@ fn test_len_after_append() {
 fn test_clear() {
   #Mut let sb StringBuilder = StringBuilder::make()
   sb.append("Hello")
-  assert_eq(sb.len(), 5i64)
+  assert_eq(sb.len(), 5)
   sb.clear()
-  assert_eq(sb.len(), 0i64)
+  assert_eq(sb.len(), 0)
   let s String = sb.build()
-  assert_eq(s.len(), 0i64)
+  assert_eq(s.len(), 0)
 }
 
 #Test
@@ -112,7 +112,7 @@ fn test_build_resets_buffer() {
   sb.append("Hello")
   let s1 String = sb.build()
   assert_eq(s1, "Hello")
-  assert_eq(sb.len(), 0i64)
+  assert_eq(sb.len(), 0)
   
   ; build 后继续 append 不影响已返回的 String
   sb.append("World")
@@ -147,7 +147,7 @@ fn test_append_unicode() {
   sb.append(20320u32)  ; '你'
   sb.append(22909u32)  ; '好'
   let s String = sb.build()
-  assert_eq(s.len(), 2i64)
+  assert_eq(s.len(), 2)
 }
 
 #Test
@@ -157,7 +157,7 @@ fn test_append_mixed_unicode() {
   sb.append(20320u32)  ; '你'
   sb.append(22909u32)  ; '好'
   let s String = sb.build()
-  assert_eq(s.len(), 8i64)  ; "Hello 你好" = 6 + 2 = 8 个码点
+  assert_eq(s.len(), 8)  ; "Hello 你好" = 6 + 2 = 8 个码点
 }
 
 ; 边界测试
@@ -166,14 +166,14 @@ fn test_append_mixed_unicode() {
 fn test_empty_string_append() {
   #Mut let sb StringBuilder = StringBuilder::make()
   sb.append("")
-  assert_eq(sb.len(), 0i64)
+  assert_eq(sb.len(), 0)
   let s String = sb.build()
-  assert_eq(s.len(), 0i64)
+  assert_eq(s.len(), 0)
 }
 
 #Test
 fn test_build_empty() {
   #Mut let sb StringBuilder = StringBuilder::make()
   let s String = sb.build()
-  assert_eq(s.len(), 0i64)
+  assert_eq(s.len(), 0)
 }

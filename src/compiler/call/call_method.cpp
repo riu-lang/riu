@@ -124,7 +124,7 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
     auto elemType = baseType.arrayGenericElementType();
     auto arrayStructType = getLLVMType(baseType);
     auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-    auto i64Ty = _builder.getInt64Ty();
+    auto sizeTy = getSizeType();
     auto ptrTy = llvm::PointerType::get(_context, 0);
     auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
 
@@ -199,7 +199,7 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
 
     // B-3: _len 字段 load 辅助
     auto loadLen = [&](llvm::Value* ptr) -> llvm::Value* {
-        return _builder.CreateLoad(i64Ty, arrayLenFieldPtr(ptr, "arr"), "array.len");
+        return _builder.CreateLoad(sizeTy, arrayLenFieldPtr(ptr, "arr"), "array.len");
     };
     // B-3: _data 字段 load 辅助
     auto loadData = [&](llvm::Value* ptr) -> llvm::Value* {
@@ -213,7 +213,7 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
     if (member == "cap") {
         DEBUG_LOG("    Expr: Array.cap()");
         auto ptr = getReadPtr();
-        return _builder.CreateLoad(i64Ty, arrayCapFieldPtr(ptr, "arr"), "array.cap");
+        return _builder.CreateLoad(sizeTy, arrayCapFieldPtr(ptr, "arr"), "array.cap");
     }
 
     // E3055 已由 sema::validateArrayMethodCall 在函数顶部抛出 (顶部 helper 保证 elemType 非空)
@@ -222,7 +222,8 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
     if (member == "is_empty") {
         DEBUG_LOG("    Expr: Array.is_empty()");
         auto lenVal = loadLen(getReadPtr());
-        return _builder.CreateICmpEQ(lenVal, _builder.getInt64(0), "array.is_empty");
+        auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
+        return _builder.CreateICmpEQ(lenVal, zeroSize, "array.is_empty");
     }
 
     if (member == "get") {
@@ -240,7 +241,8 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         DEBUG_LOG("    Expr: Array.first()");
         auto ptr = getReadPtr();
         auto dataPtr = loadData(ptr);
-        auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {_builder.getInt64(0)}, "first.elem.ptr");
+        auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
+        auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {zeroSize}, "first.elem.ptr");
         return _builder.CreateLoad(elemLLVMType, elemPtr, "first.elem");
     }
 
@@ -248,7 +250,8 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         DEBUG_LOG("    Expr: Array.last()");
         auto ptr = getReadPtr();
         auto lenVal = loadLen(ptr);
-        auto lastIdx = _builder.CreateSub(lenVal, _builder.getInt64(1), "last.idx");
+        auto oneSize = llvm::ConstantInt::get(sizeTy, 1);
+        auto lastIdx = _builder.CreateSub(lenVal, oneSize, "last.idx");
         auto dataPtr = loadData(ptr);
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {lastIdx}, "last.elem.ptr");
         return _builder.CreateLoad(elemLLVMType, elemPtr, "last.elem");
@@ -257,8 +260,9 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
     if (member == "pop") {
         DEBUG_LOG("    Expr: Array.pop()");
         auto lenFieldPtr = arrayLenFieldPtr(arrayPtr, "arr");
-        auto lenVal = _builder.CreateLoad(i64Ty, lenFieldPtr, "a.len");
-        auto lastIdx = _builder.CreateSub(lenVal, _builder.getInt64(1), "pop.idx");
+        auto lenVal = _builder.CreateLoad(sizeTy, lenFieldPtr, "a.len");
+        auto oneSize = llvm::ConstantInt::get(sizeTy, 1);
+        auto lastIdx = _builder.CreateSub(lenVal, oneSize, "pop.idx");
 
         auto dataPtr = loadData(arrayPtr);
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {lastIdx}, "pop.elem.ptr");
@@ -278,7 +282,8 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
 
         if (member == "clear") {
             DEBUG_LOG("    Expr: Array.clear()");
-            _builder.CreateStore(_builder.getInt64(0), lenFieldPtr);
+            auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
+            _builder.CreateStore(zeroSize, lenFieldPtr);
             return voidResult();
         }
         if (member == "set_len") {
@@ -289,8 +294,8 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         DEBUG_LOG("    Expr: Array.push()");
         auto elemSize = _module->getDataLayout().getTypeAllocSize(elemLLVMType);
         auto elemVal = args[0];
-        auto lenVal = _builder.CreateLoad(i64Ty, lenFieldPtr, "a.len");
-        auto capVal = _builder.CreateLoad(i64Ty, capFieldPtr, "a.cap");
+        auto lenVal = _builder.CreateLoad(sizeTy, lenFieldPtr, "a.len");
+        auto capVal = _builder.CreateLoad(sizeTy, capFieldPtr, "a.cap");
 
         auto needGrow = _builder.CreateICmpUGE(lenVal, capVal, "push.need_grow");
         auto growBB = llvm::BasicBlock::Create(_context, "push.grow", _currentFn);
@@ -299,11 +304,14 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
 
         // B-3 扩容路径：直接调 HeapAlloc/HeapReAlloc，更新 _data 和 _cap
         _builder.SetInsertPoint(growBB);
-        auto capIsZero = _builder.CreateICmpEQ(capVal, _builder.getInt64(0), "cap.is_zero");
-        auto doubled = _builder.CreateMul(capVal, _builder.getInt64(2), "cap.dbl");
-        auto newCap = _builder.CreateSelect(capIsZero, _builder.getInt64(4), doubled, "new.cap");
+        auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
+        auto oneSize = llvm::ConstantInt::get(sizeTy, 1);
+        auto capIsZero = _builder.CreateICmpEQ(capVal, zeroSize, "cap.is_zero");
+        auto doubled = _builder.CreateMul(capVal, llvm::ConstantInt::get(sizeTy, 2), "cap.dbl");
+        auto newCap = _builder.CreateSelect(capIsZero, llvm::ConstantInt::get(sizeTy, 4), doubled, "new.cap");
 
-        auto newByteSize = _builder.CreateMul(newCap, _builder.getInt64(elemSize), "new.byte_size");
+        auto elemSizeVal = llvm::ConstantInt::get(sizeTy, elemSize);
+        auto newByteSize = _builder.CreateMul(newCap, elemSizeVal, "new.byte_size");
         auto oldData = _builder.CreateLoad(ptrTy, dataFieldPtr, "old.data");
         auto heapFn = runtime::getProcessHeapFn(_module, _builder);
         auto heap = _builder.CreateCall(heapFn, {}, "heap");
@@ -318,12 +326,12 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         _builder.CreateCondBr(dataIsNull, allocBB, reallocBB);
 
         _builder.SetInsertPoint(allocBB);
-        auto alloced = _builder.CreateCall(allocFn, {heap, _builder.getInt64(0), newByteSize}, "alloced.data");
+        auto alloced = _builder.CreateCall(allocFn, {heap, zeroSize, newByteSize}, "alloced.data");
         _builder.CreateBr(growDoneBB);
 
         _builder.SetInsertPoint(reallocBB);
         auto realloced =
-            _builder.CreateCall(reallocFn, {heap, _builder.getInt64(0), oldData, newByteSize}, "realloced");
+            _builder.CreateCall(reallocFn, {heap, zeroSize, oldData, newByteSize}, "realloced");
         _builder.CreateBr(growDoneBB);
 
         _builder.SetInsertPoint(growDoneBB);
@@ -339,7 +347,7 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         auto curData = _builder.CreateLoad(ptrTy, dataFieldPtr, "a.data.cur");
         auto elemPtr = _builder.CreateGEP(elemLLVMType, curData, {lenVal}, "push.elem.ptr");
         _builder.CreateStore(elemVal, elemPtr);
-        auto newLen = _builder.CreateAdd(lenVal, _builder.getInt64(1), "new.len");
+        auto newLen = _builder.CreateAdd(lenVal, oneSize, "new.len");
         _builder.CreateStore(newLen, lenFieldPtr);
         return voidResult();
     }

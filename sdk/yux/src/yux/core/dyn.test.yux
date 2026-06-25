@@ -194,7 +194,7 @@ fn test_dyn_array_iterate() {
   arr.push(Dyn:<Shape>(b2))
   arr.push(Dyn:<Shape>(b3))
 
-  assert_eq(arr.len(), 3i64)
+  assert_eq(arr.len(), 3)
   assert_eq(arr[0].area(), 9i64)
   assert_eq(arr[1].area(), 20i64)
   assert_eq(arr[2].area(), 36i64)

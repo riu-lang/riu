@@ -1148,7 +1148,7 @@ TypeInfo ExprDotNode::getType() const {
             return "fn() " + elemTy.getFullName();
         }
         if (member == "len" || member == "cap") {
-            return "fn() i64";
+            return "fn() usize";
         }
         if (member == "is_empty") {
             return "fn() bool";

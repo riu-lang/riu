@@ -47,11 +47,11 @@ fn test_borrow_array_push_after_drop() {
   #Mut let a Array<i32> = [1i32, 2i32, 3i32]
   loop {
     let r Array<i32>& = &a
-    assert_eq(r.len(), 3i64)
+    assert_eq(r.len(), 3)
     break;
   }
   a.push(4i32)
-  assert_eq(a.len(), 4i64)
+  assert_eq(a.len(), 4)
 }
 
 ; ---------- borrow_array_ref_in_loop：循环内借用按块作用域，每次迭代消亡 ----------
@@ -62,14 +62,14 @@ fn test_borrow_array_ref_in_loop() {
   #Mut let i i32 = 0
   loop {
     let r Array<i32>& = &a
-    assert_eq(r.len(), 3i64)
+    assert_eq(r.len(), 3)
     i = i + 1
     if i >= 2 {
       break;
     }
   }
   a.push(40i32)
-  assert_eq(a.len(), 4i64)
+  assert_eq(a.len(), 4)
 }
 
 ; ---------- borrow_array_via_ref_method：通过 ref 读取，原句柄写 ----------
@@ -79,11 +79,11 @@ fn test_borrow_array_read_via_ref_then_write_origin() {
   #Mut let a Array<i32> = [10i32, 20i32]
   loop {
     let r Array<i32>& = &a
-    assert_eq(r.len(), 2i64)
+    assert_eq(r.len(), 2)
     break;
   }
   a.push(30i32)
-  assert_eq(a.len(), 3i64)
+  assert_eq(a.len(), 3)
 }
 
 ; ---------- borrow_box_reassign_after_drop：嵌套块借用消亡后 box 重赋 ----------

@@ -88,13 +88,13 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
     {
         TypeInfo tpT("T");                                    // 类型参数占位符
         TypeInfo tpRefT("Ref", {make_shared<TypeInfo>(tpT)}); // T&
-        TypeInfo tpi64("i64");
+        TypeInfo tpusize("usize");
         TypeInfo tpVoid; // void（空 TypeInfo）
         TypeInfo tpBool("bool");
 
-        // Array.get(i i64) → T&
+        // Array.get(i usize) → T&
         registerSymbol("Array.get", {SymbolKind::Function, "get", tpRefT});
-        registerFnSymbol("Array.get", {"get", "", {tpi64}, tpRefT});
+        registerFnSymbol("Array.get", {"get", "", {tpusize}, tpRefT});
 
         // Array.first() → T&
         registerSymbol("Array.first", {SymbolKind::Function, "first", tpRefT});
@@ -112,13 +112,13 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
         registerSymbol("Array.push", {SymbolKind::Function, "push", tpVoid});
         registerFnSymbol("Array.push", {"push", "", {tpT}, tpVoid});
 
-        // Array.len() → i64
-        registerSymbol("Array.len", {SymbolKind::Function, "len", tpi64});
-        registerFnSymbol("Array.len", {"len", "", {}, tpi64});
+        // Array.len() → usize
+        registerSymbol("Array.len", {SymbolKind::Function, "len", tpusize});
+        registerFnSymbol("Array.len", {"len", "", {}, tpusize});
 
-        // Array.cap() → i64
-        registerSymbol("Array.cap", {SymbolKind::Function, "cap", tpi64});
-        registerFnSymbol("Array.cap", {"cap", "", {}, tpi64});
+        // Array.cap() → usize
+        registerSymbol("Array.cap", {SymbolKind::Function, "cap", tpusize});
+        registerFnSymbol("Array.cap", {"cap", "", {}, tpusize});
 
         // Array.is_empty() → bool
         registerSymbol("Array.is_empty", {SymbolKind::Function, "is_empty", tpBool});
@@ -128,9 +128,9 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
         registerSymbol("Array.clear", {SymbolKind::Function, "clear", tpVoid});
         registerFnSymbol("Array.clear", {"clear", "", {}, tpVoid});
 
-        // Array.set_len(n i64) → void
+        // Array.set_len(n usize) → void
         registerSymbol("Array.set_len", {SymbolKind::Function, "set_len", tpVoid});
-        registerFnSymbol("Array.set_len", {"set_len", "", {tpi64}, tpVoid});
+        registerFnSymbol("Array.set_len", {"set_len", "", {tpusize}, tpVoid});
     }
 }
 
