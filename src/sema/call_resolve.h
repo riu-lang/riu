@@ -32,6 +32,13 @@ void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName, 
 // 命中多个候选时抛 E6014.
 void resolveCtorOverload(FileNode* file, const string& structName, const vector<p<ExprNode>>& args, int line);
 
+// 解析结构体方法调用的重载 (在符号表中以 `TypeName.methodName` 注册, params[0] 是接收者).
+// 与 resolveCtorOverload 同思路，但方法名由调用方拼接 `baseTypeName + "." + member`.
+// 命中多个候选时抛 E6014；无候选时 no-op.
+// sdkFile 为可选的 SDK 回退查找 (允许 nullptr).
+void resolveMethodOverload(FileNode* file, FileNode* sdkFile, const string& baseTypeName, const string& member,
+                           const vector<p<ExprNode>>& args, int line);
+
 // 泛型函数 / 泛型构造器调用点的类型实参 arity 校验 (Phase 3.3 前置.3c).
 //
 // 当调用点写了显式 `:<T1, T2, ...>` 时, 检查 arity 与声明的 typeParams 是否匹配.

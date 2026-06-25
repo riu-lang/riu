@@ -491,6 +491,41 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
         }
     }
 
+    // 方法调用：在 arg 编译前解析重载并推断灵活整数类型
+    // 普通函数调用在上方 resolveFnOverload 已处理，构造器在 resolveCtorOverload 已处理；
+    // 方法调用（ExprDotNode callee）此前缺少这一步，导致如 s.get(0) 中 0 默认 i32
+    // 无法匹配 String::get(usize) → compileStructMethodCall 返回 nullptr → E6015。
+    // 仅对结构体类型方法做重载解析；内置类型 / Array / Ptr / Dyn 有各自 codegen 分派路径。
+    if (auto dotNode = dynamic_cast<ExprDotNode*>(calleeExpr)) {
+        auto baseType = dotNode->baseExpr()->getType();
+        baseType = applySubst(baseType);
+        if (baseType.isRef()) {
+            auto inner = baseType.refElementType();
+            if (inner) baseType = *inner;
+        }
+
+        // Unwrap Rc<T> → T：方法在 inner type 上查找（对齐 compileMethodCall 逻辑）
+        string effectiveTypeName = baseType.name;
+        if (baseType.isRc()) {
+            auto rcElem = baseType.rcElementType();
+            if (rcElem) effectiveTypeName = rcElem->name;
+        }
+
+        // 仅结构体类型方法走重载解析；内置类型 / Array / Ptr / Dyn 跳过
+        if (!effectiveTypeName.empty() && !isBuiltinType(effectiveTypeName) && !baseType.isArrayGeneric()
+            && !baseType.isPtr() && !baseType.isDyn()) {
+            string member = dotNode->member();
+            if (dotNode->hasSpecQualifier()) {
+                auto bt = dotNode->baseExpr()->getType();
+                if (!bt.isDyn()) {
+                    member = member + "__at__" + dotNode->specQualifier();
+                }
+            }
+            sema::resolveMethodOverload(_file, _yux ? _yux->sdkFile() : nullptr, effectiveTypeName, member,
+                                         node->getArgs(), node->getLineNumber());
+        }
+    }
+
     for (auto& arg : node->getArgs()) {
         auto argType = arg->getType();
         argTypes.push_back(argType);

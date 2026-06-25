@@ -206,6 +206,130 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
     }
 }
 
+// ==================== 方法重载解析 ====================
+// 解析结构体方法调用的重载，推断灵活整数类型
+// 与 resolveCtorOverload 同思路，但方法在符号表中以 `TypeName.methodName` 注册，
+// params[0] 是接收者；匹配时跳过 params[0]，按用户写的实参列表推断未尽缀的整数字面量类型。
+void resolveMethodOverload(FileNode* file, FileNode* sdkFile, const string& baseTypeName, const string& member,
+                           const vector<p<ExprNode>>& args, int line) {
+    string methodFullName = baseTypeName + "." + member;
+    vector<FnSymbolInfo*> candidates;
+    if (file) file->collectFnOverloads(methodFullName, candidates);
+    if (sdkFile && sdkFile != file) {
+        sdkFile->collectFnOverloads(methodFullName, candidates);
+    }
+    // 去重：_parentScope 递归 + SDK 直查可能返回同一 FnSymbolInfo*
+    // NOLINTBEGIN(modernize-use-ranges)
+    sort(candidates.begin(), candidates.end());
+    candidates.erase(unique(candidates.begin(), candidates.end()), candidates.end());
+    // NOLINTEND(modernize-use-ranges)
+
+    if (candidates.empty()) return;
+
+    auto matchesDefault = [&](FnSymbolInfo* c) {
+        if (c->params.size() != args.size() + 1) return false;
+        TypeInfo i32Type("i32");
+        for (size_t i = 0; i < args.size(); ++i) {
+            TypeInfo argType;
+            if (isFlexibleIntExpr(args[i])) {
+                argType = i32Type;
+            } else {
+                try {
+                    argType = args[i]->getType();
+                } catch (...) {
+                    return false;
+                }
+            }
+            if (!paramAccepts(c->params[i + 1], argType)) return false;
+        }
+        return true;
+    };
+    auto matchesFlexible = [&](FnSymbolInfo* c) {
+        if (c->params.size() != args.size() + 1) return false;
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (isFlexibleIntExpr(args[i])) {
+                if (isIntTypeName(c->params[i + 1].name)) continue;
+                try {
+                    if (paramAccepts(c->params[i + 1], args[i]->getType())) continue;
+                } catch (...) { // NOLINT(bugprone-empty-catch)
+                }
+                return false;
+            }
+            try {
+                if (!paramAccepts(c->params[i + 1], args[i]->getType())) return false;
+            } catch (...) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    vector<FnSymbolInfo*> defaultMatches;
+    for (auto c : candidates)
+        if (matchesDefault(c)) defaultMatches.push_back(c);
+
+    vector<FnSymbolInfo*> matches;
+    if (defaultMatches.empty()) {
+        for (auto c : candidates)
+            if (matchesFlexible(c)) matches.push_back(c);
+    } else {
+        matches = defaultMatches;
+    }
+
+    if (matches.size() == 1) {
+        // 唯一匹配：把每个灵活整数实参推断到对应形参类型
+        auto fn = matches[0];
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (isFlexibleIntExpr(args[i]) && isIntTypeName(fn->params[i + 1].name)) {
+                tryInferIntType(args[i], fn->params[i + 1]);
+            }
+        }
+    } else if (matches.size() > 1) {
+        string sigs;
+        for (auto m : matches) {
+            sigs += "\n  " + methodFullName + "(";
+            for (size_t i = 1; i < m->params.size(); ++i) {
+                if (i > 1) sigs += ", ";
+                sigs += m->params[i].name;
+            }
+            sigs += ")";
+        }
+        string argSigs;
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (i) argSigs += ", ";
+            try {
+                argSigs += args[i]->getType().name;
+            } catch (...) {
+                argSigs += "?";
+            }
+        }
+        throw YuxError(line, ErrorCode::E6014, methodFullName, argSigs, matches.size(), sigs);
+    }
+
+    // candidates 非空但无任何匹配：仅当实参个数与所有候选形参个数都不一致
+    // 时才报 E6027；若个数匹配但类型不匹配，留给 codegen 按原路径报类型错误。
+    if (!candidates.empty()) {
+        bool anyArityMatches = false;
+        for (auto c : candidates) {
+            if (c->params.size() - 1 == args.size()) {
+                anyArityMatches = true;
+                break;
+            }
+        }
+        if (!anyArityMatches) {
+            set<size_t> arities;
+            for (auto c : candidates) {
+                arities.insert(c->params.size() - 1);
+            }
+            if (arities.size() == 1) {
+                size_t expected = *arities.begin();
+                throw YuxError(line, ErrorCode::E6027, methodFullName, expected)
+                    .withHint(std::format("期望 {} 个实参，实际 {} 个", expected, args.size()));
+            }
+        }
+    }
+}
+
 // ==================== 函数重载解析 ====================
 // 解析函数重载，确定应该调用哪个版本
 // 如果有歧义，抛出错误要求用户添加类型后缀
