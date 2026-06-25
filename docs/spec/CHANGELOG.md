@@ -172,7 +172,7 @@
   - `E1101` 复用为"实现者未实现 + 默认体不可用"的统一诊断（与 §12.2.2.1 既有 missing-impl 语义并轨；未引入草案曾估的 E1136 新码）。
 - **永久决议**（承 DRAFT-spec-unify [#1.AA] / [#1.AE]）：
   - **不引入** `#Derive(Spec)` 独立注解 —— `#Impl(D) + 不写体` 即 fall-through。
-  - **不引入** 按字段递归自动 derive 默认体（`ToJson.to_json` / `Eq.eq` / `Clone.clone` 字段遍历形态永不引入）。
+  - **不引入** 按字段递归自动 derive 默认体（`ToJson.to_json` / `Eq.eq` 字段遍历形态永不引入）。
 - **SDK 形态**（§12.10.6）：`base.yux` 5 件套补默认体可落地部分 —— `Ord.{lt,le,gt,ge}` 由 `cmp` 推、`Eq.ne` 由 `eq` 推；其余维持纯抽象签名。
 - **g4**：未动。spec-unify v1 阶段已铺 `fnDecl` body 可选形态，本次仅放开 ast_builder 拒收。
 - **测试**：`spec_default_body_parse_*` / `spec_default_body_sema_*` / `spec_default_fallthrough_{basic,block,ord_sdk,eq_sdk}` / `spec_combine_{conflict_E3132_basic,default_plus_abstract}` 端到端 + 占位校验全绿；全量回归 SDK / `xmake test` 通过（详 `docs/dev/spec-default-body-impl-log.md`）。
@@ -263,7 +263,7 @@
   - `src/compiler/compiler_call.cpp::copy_of`：在通用分派前插入 `T.isHeap()` 与 `T.isNullable() && nullableInner.isHeap()` 两条分支；后者用 cond-br + alloc BB + cont BB + PHI 合并。
   - `src/sema/call_resolve.cpp::copy_of` `hasRefDeep`：把 `t.isHeap()` 加入"不展开"列表（与 `Rc/Weak/Array/Nullable/Dyn/Ptr/Fn` 同级），把 Heap 当不透明堆句柄。
 - **不在范围**：
-  - **spec Clone 优先级**（草案 Phase 6 第三条）：依赖 DRAFT-spec-unify 至少"Spec 形态可识别"，未到位前留 TODO。
+  - **`copy_of` 深拷贝补全**（Phase 6 第三条）：Heap/Dyn 字段深拷已落地，Array 逐元素深拷待实施。
   - **显式 by-value 拒绝**：草案曾提"`copy_of(rc)` / `copy_of(heap)` 按值禁；引导 `Rc:<T>(copy_of(as_ref(rc)))`"——但 by-value 形态本就走 auto-borrow→T& 等价路径，新深拷分支下也得到正确独立 Heap，无再 broken；不再加显式禁止。
 - **测试**：`sdk/yux/src/yux/core/heap.test.yux` 新增 5 项 — `test_heap_3f_copy_of_owned_scalar` / `_owned_struct` / `_nullable_some` / `_nullable_null` / `_no_double_free`；SDK 526 → 531 通过。
 - **回归**：`xmake test` 184/184、`yux test`（SDK）531/531 全绿。

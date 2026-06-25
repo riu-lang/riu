@@ -105,7 +105,7 @@
 - Open Issue：spec 各章逐条审计（关/转/留）
 - SDK：`String` 高频方法（`to_upper`/`starts_with`/`contains` 等）、`math.*` 模块、`Array` 迭代/变换方法
 
-**不在范围**：Clone spec / 泛型 enum / 错误模型 v2 / 多线程 / 包管理。
+**不在范围**：泛型 enum / 错误模型 v2 / 多线程 / 包管理。
 
 **退出标准**：
 - [ ] BUGS.md 清零或标注推后
@@ -185,7 +185,7 @@
 **不在范围（推后）**：
 - Array yux 定义实现（当前仍由编译器内置）
 - `Rc<Heap<T>>` / `Rc<Dyn<D>>` typed release → TODO
-- `copy_of` Array 深拷贝 → 保持抛 E4031，待 Clone spec
+- `copy_of` Array 深拷贝 → 编译器展开逐元素深拷（Phase 3 待实施）
 - `_ptr_as_ref` / `_ptr_write` 测试 → 待补
 - `HeapAlloc`/`HeapFree` 测试 → 待补
 
@@ -285,7 +285,7 @@
 **A. spec 默认方法体**（DRAFT-spec-default-body Phase 1-5）：
 - spec body 内方法可带 body；实现者未覆盖 = fall-through 默认体
 - 多 spec 默认体冲突 → E3132 必须显式覆盖消歧
-- 内置 5 件套（Eq/Ord/Clone/ToJson）落地
+- 内置 4 件套（ToString/ToJson/Eq/Ord）落地
 - `$.m@SpecA()` 显式消歧（DRAFT-spec-disambig-at Phase 1-5）
 - 实施日志：`docs/dev/spec-default-body-impl-log.md` + `docs/dev/spec-disambig-at-impl-log.md`
 
@@ -392,7 +392,7 @@ yux-check 收尾（Bucket 4）：
   - 子特性 C：`Heap<T>?` + B 档 move（接管者作用域尾释放、隐式 null 写回）
   - 子特性 D：A 档 NRVO（fn 返回 `Heap` 触发；不触发条件明确）
   - 子特性 E：Lambda 返回 `Heap` / 捕获 `Heap<T>?` move-out / 借用捕获 + return-move
-  - 子特性 F：`copy_of:<T>(x T&) T` 深拷贝唯一入口；与 Clone draft 关系定型
+  - 子特性 F：`copy_of:<T>(x T&) T` 深拷贝唯一入口；Heap/Dyn/Array 字段全覆盖
   - 子特性 G：`Arc<T>` 占名条款细化（**仅占名**，真正实现留 v1.x）
 - **LSP / 插件简单更新**：
   - LSP semantic_tokens / completion：`Heap` / `copy_of` 加入类型 / 内置函数集
@@ -464,7 +464,7 @@ yux-check 收尾（Bucket 4）：
 - ✅ fat pointer `{ vtable_ptr, data_ptr }` 16 字节 sized 类型，owned `Dyn<D>` 与 `Box<U>` 同源（data 指 `[RC head | 实例]`，标准 RC + vtable[0] dtor）；借用 `Dyn<D&>` 不动 RC，按 §8.6 借用栈追踪
 - ✅ 构造走 turbofish `Dyn:<D>(box_u)` / `Dyn:<D&>(u_ref)` 类型构造形态；不走隐式 coercion / 不引入 `as_dyn` builtin
 - ✅ vtable 模型：per-`(Type, Draft)` 静态 `linkonce_odr` global；槽 0 = `fn(ptr) void` dtor、槽 1..N = D 方法按声明序；符号 `__yux_vtable_<U_mod>_<U_struct>__<D_qualified>`
-- ✅ 对象安全 v1 第一轮：**禁止** `Self` / draft-name 在 receiver 之外的位置（E1134）；自反方法 `fn clone() Self` 走 `<T : D>` 单态化路径替代，thunk 解锁留 v0.X+1
+- ✅ 对象安全 v1 第一轮：**禁止** `Self` / draft-name 在 receiver 之外的位置（E1134）；自反返回类型（如 `fn dup() Self`）走 `<T : D>` 单态化路径替代，thunk 解锁留 v0.X+1
 - ✅ 静态检查：`E1131` 非 draft / `E1132` 嵌套（`Dyn<Dyn>` / `Box<Dyn>` / `Weak<Dyn>`）/ `E1133` 构造源不满足 D / `E1134` 非对象安全 / `E1135` `Dyn<D>?` / `E1136` extern 边界（占位）；方法调用复用 `E6012` / `E6015` / `E6016`
 - ✅ codegen：vtable 生成（`compiler_dyn_vtable.cpp`）+ `compileDynCtorExpr` + `compileDynMethodCall` + `_dyn_release(data, vtable)`（emit 在 `emitBoxHelpers` 末尾）；内置 U（i32/i64/bool 等）走 `__yux_dyn_thunk__<U>__<draftQ>__<method>` 适配 thunk 调和 by-value ↔ ptr ABI
 - ✅ 借用：`Dyn<D&>` 形参 / 局部按 `data_ptr` 视作借用根登记到 `refToRoot`；`rootFromDynBorrowInit` 解根

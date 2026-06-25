@@ -331,7 +331,7 @@ v1 / v0.5 **明确不做**：
 §12.9.4.1 spec `D` 在以下任一条件成立时**不对象安全**：
 
 - spec 体内**任一**方法签名在 **receiver 之外**的位置出现 `Self` 类型；
-- spec 体内**任一**方法签名在返回位置出现 spec 自身名（如 `#Spec struct D { fn clone() D }`）。
+- spec 体内**任一**方法签名在返回位置出现 spec 自身名（如 `#Spec struct D { fn dup() D }`）。
 
 §12.9.4.2 v1 第一轮**不**为自反方法（`Self` / spec-name 返回）生成 thunk；用 `<T : D>` 单态化路径替代。Thunk 解锁留 v0.X+1。
 
@@ -494,11 +494,11 @@ struct Ord {
 
 ### §12.10.6 SDK 内置 spec
 
-§12.10.6.1 `sdk/yux/src/yux/core/base.yux` 中 5 件套（`ToString` / `ToJson` / `Eq` / `Ord` / `Clone`）按本节落地：
+§12.10.6.1 `sdk/yux/src/yux/core/base.yux` 中 4 件套（`ToString` / `ToJson` / `Eq` / `Ord`）按本节落地：
 
 - `Ord.lt` / `Ord.le` / `Ord.gt` / `Ord.ge` 由 `Ord.cmp` 默认体推导；
 - `Eq.ne` 由 `Eq.eq` 默认体推导；
-- `ToJson.to_json` / `Eq.eq` / `Clone.clone` / `Ord.cmp` / `ToString.to_string` 维持**纯抽象签名**（按 §12.10.2.2 永不按字段递归自动 derive）。
+- `ToJson.to_json` / `Eq.eq` / `Ord.cmp` / `ToString.to_string` 维持**纯抽象签名**（按 §12.10.2.2 永不按字段递归自动 derive）。
 
 §12.10.6.2 用户类型只需写 `#Impl(Ord) struct N { ... fn cmp(...) i32 { ... } }`，`lt/le/gt/ge` 自动 fall-through，无需重复实现。
 

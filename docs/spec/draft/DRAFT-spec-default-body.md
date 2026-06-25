@@ -60,13 +60,13 @@ v1（本草案落地后）允许的方法体形态：
 
 不引入隐式优先级 / 顺序 / `use SpecA::method` 机制。
 
-## 5. base.yux 内置 5 件套
+## 5. base.yux 内置 4 件套
 
-`ToString` / `ToJson` / `Eq` / `Ord` / `Clone` 改为带默认体的 spec。本草案能落地的形态：
+`ToString` / `ToJson` / `Eq` / `Ord` 改为带默认体的 spec。本草案能落地的形态：
 
 - ✅ `Ord.lt / le / gt / ge` 由 `cmp` 推
 - ✅ `Eq.ne` 由 `eq` 推
-- ❌ `ToJson.to_json` / `Eq.eq` / `Clone.clone` 按字段递归形态自动 derive —— **永不引入**（[#1.AE]）；实现者手写体或用 `Counter::fields[0].value` 形态手动展开
+- ❌ `ToJson.to_json` / `Eq.eq` 按字段递归形态自动 derive —— **永不引入**（[#1.AE]）；实现者手写体或用 `Counter::fields[0].value` 形态手动展开
 
 ## 6. 错误码
 

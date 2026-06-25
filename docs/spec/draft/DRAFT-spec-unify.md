@@ -65,11 +65,6 @@ struct ToString {
 }
 
 #Spec
-struct Cloneable {
-  fn clone() Self                       ; Self 返回，见 §5
-}
-
-#Spec
 struct Iter<T> {                        ; 泛型 spec
   fn next() T?
 }
@@ -92,7 +87,6 @@ struct Default {                        ; spec 含 #Static fn 工厂签名
 ### 3.2 实现：`#Impl(Spec)` 顶行注解 + 声明合一
 
 ```yux
-#Impl(Cloneable)
 #Impl(ToString)
 struct Counter {
   ; ===== 字段段（必须在最前）=====
@@ -117,10 +111,6 @@ struct Counter {
     $.step = $.step + 1
   }
 
-  fn clone() Self {
-    Counter::make($.value)
-  }
-
   fn to_string() String {
     ; ...
   }
@@ -131,12 +121,12 @@ struct Counter {
 多 spec 一律**顶行堆叠**（`buildAnno` 单参形态，见 §10.3 / [#1.O]）：
 
 ```yux
-#Impl(Cloneable)
+#Impl(Eq)
 #Impl(ToString)
 struct Counter { ... }
 ```
 
-不支持单注解多参 `#Impl(Cloneable, ToString)`——未来 anno-struct 草案（[#1.P]）若决议放开 named-args / 多字段注解，再行考量；spec-unify v1 仅堆叠。
+不支持单注解多参 `#Impl(Eq, ToString)`——未来 anno-struct 草案（[#1.P]）若决议放开 named-args / 多字段注解，再行考量；spec-unify v1 仅堆叠。
 
 g4 改动方向：
 
@@ -229,7 +219,6 @@ struct Ord {
 |---|---|---|
 | receiver | ✅ | ✅ |
 | 参数 `fn eq(other Self&) bool` | ✅ | ❌ E1134（解锁待 thunk） |
-| 返回 `fn clone() Self` | ✅ | ❌ E1134（解锁待 thunk） |
 | 字段类型 `Rc<Self>` | ✅ | ❌ |
 | `Self::fields` 等反射静态字段 | ✅ | ✅（vtable 携带 type 元数据指针）—— 形态占位，反射 v1 不实施 |
 
@@ -331,7 +320,7 @@ struct Field {
 - ✅ `Reflect` 静态字段 API 完整可用，工具链 / debug / dump 等读 `Counter::fields[0].name` 之类编译期常量访问形态可用
 - ✅ 同质字段类型场景（所有字段都 `Dyn<ToString>` 或 `i32` 等）可走普通 `for` 遍历 + `.value` 必须仍在编译期下标位
 - ❌ "异构类型 + 单遍循环"的自动 derive（`ToJson.to_json` 自动按字段递归调 `to_json`）—— `for f in Self::fields { f.value.to_json() }` 报错，因为 `f` 运行期才知道是哪个字段，`.value` 类型不定
-- 因此 5 件套中 `ToJson.to_json` / `Eq.eq` / `Clone.clone` 等按字段递归形态的默认体**永不引入** —— 实现者手写
+- 因此 4 件套中 `ToJson.to_json` / `Eq.eq` 等按字段递归形态的默认体**永不引入** —— 实现者手写
 
 ### 6.4 字段访问 `f.value` —— sema 期改名（[#1.W] / [#1.AE]）
 
@@ -557,7 +546,7 @@ struct Counter {
 - **[#1.AE]** **永不引入 `#Inline for` 编译期循环 unroll** —— 增加编译器复杂度（新 IR-before pass / `#Inline` 通用语义 / unroll 上限 / IR 爆量风险），性价比低。替代路径：
   - **反射数组走 runtime**：`Self::fields` 是普通 `[Field& * N]&` 数组，普通 `for` 遍历，正常 codegen
   - **`Field.value` sema 期纯改名**：当 `f` 是编译期可确定的具体 Field 引用（如 `Counter::fields[0]` 下标位字面量）时，sema 改写为 `<receiver>.<f.name>`；`f` 运行期才能定 → E3133。无 IR-before pass，sema 复用既有字段访问通路
-  - **异构按字段递归默认体永不引入**：`ToJson.to_json` / `Eq.eq` / `Clone.clone` 等自动 derive 形态——实现者手写体或显式覆盖
+  - **异构按字段递归默认体永不引入**：`ToJson.to_json` / `Eq.eq` 等自动 derive 形态——实现者手写体或显式覆盖
   
   代价：[#1.AC] 同步收回；[#1.W] / [#1.X] 保留并简化（不再依赖 unroll，只是 sema 改写规则）；base.yux 5 件套自动 derive 路径永久关闭。理由：yux 哲学倾向"显式 > 编译期魔法"——用户写 N 个字段就手写 N 行 `to_json`，与 macro-free / 无 procedural macros 决议一致。
 
@@ -579,6 +568,6 @@ struct Counter {
    - **占位章节（不进 v1 Phase，独立草案落地）**：
      - spec 默认方法体 + fall-through → `DRAFT-spec-default-body.md`
      - `#Static #Frozen` 字段子集 + 内置 spec `Reflect`（runtime 反射数组）+ `Field.value` sema 改名 + `#Reflect` 防 DCE → `DRAFT-spec-reflect.md`
-     - base.yux 内置 5 件套（ToString / ToJson / Eq / Ord / Clone）spec 声明 → v1 可写"仅签名"形态，实现者必须全写体；可推默认体（如 `Ord.lt/le/gt/ge` 由 `cmp` 推）待 default-body 落地；按字段递归默认体（`ToJson.to_json` 等）**永不引入**（[#1.AE]）。
+     - base.yux 内置 4 件套（ToString / ToJson / Eq / Ord）spec 声明 → v1 可写"仅签名"形态，实现者必须全写体；可推默认体（如 `Ord.lt/le/gt/ge` 由 `cmp` 推）待 default-body 落地；按字段递归默认体（`ToJson.to_json` 等）**永不引入**（[#1.AE]）。
    - **永不引入**（[#1.AE]）：`#Inline for` 编译期 unroll / IR-before unroll pass / 异构按字段递归自动 derive。
 6. 完成后归档 `docs/dev/spec-unify-impl-log.md`。

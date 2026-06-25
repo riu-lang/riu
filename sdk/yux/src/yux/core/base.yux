@@ -73,12 +73,7 @@ struct Ord {
   fn ge(other Self&) bool = $.cmp(&other) >= 0
 }
 
-; Clone / ToJson：纯抽象签名；按字段递归 derive 永不引入（DRAFT [#1.AE]）
-#Spec
-struct Clone {
-  fn clone() Self
-}
-
+; ToJson：纯抽象签名；按字段递归 derive 永不引入（DRAFT [#1.AE]）
 #Spec
 struct ToJson {
   fn to_json() String

@@ -297,14 +297,16 @@ fn copy_of<T>(x T&) T                ; base.yux baked
 | `Heap<T>?&`，非 null | 同 `Heap<T>&` | `Heap<T>?` |
 | `Rc<T>` 走深拷而非 retain | `copy_of(as_ref(rc))` | 新 owned `T`（不是新 Rc，是拆出来的 owned） |
 
-### 8.3 与 spec Clone 的关系
+### 8.3 深拷贝唯一入口：`copy_of`
 
-`#Spec Clone { fn clone() Self }` 与 `copy_of` 关系：
+`copy_of:<T>(x T&) T` 是 yux 唯一的深拷贝机制：
 
 - `copy_of` 是 baked 内置函数，编译器按 T 实际字段表展开拷贝代码——**编译期反射**路径（见 DRAFT-spec-unify §6）。
-- `Clone` spec 仅在用户需要**自定义拷贝逻辑**（例如拷贝时打日志、注册到 registry、修改某字段）时使用。
-- 默认情况下，**绝大多数类型不需要实现 `Clone`**——直接 `copy_of(x)` 就行。
-- 实现了 `Clone` 的类型上调 `copy_of`：编译器优先走 `Clone.clone()` 而非默认字段拷贝（确保用户自定义逻辑生效）。
+- 对于 Heap 字段：编译器自动分配新堆内存并拷贝内部值。
+- 对于 Dyn 字段：编译器自动 retain data 指针保活。
+- 对于 Array：编译器自动分配新缓冲并逐元素深拷贝（见 Phase 3）。
+- 对于 `#NoCopy` 类型：`copy_of` 拒绝（E4031），编译器无法判断安全深拷策略。
+- 不需要额外的 `Clone` spec——`copy_of` 已是统一入口，编译器全自动展开。
 
 ### 8.4 RC 类型的拷贝歧义
 
@@ -514,7 +516,7 @@ spec 写明：**`copy_of` 不接受 `Rc<T>` 按值/借用形态**，编译错引
 3. **Phase 3**：A 档 NRVO（return Heap）。完成后 Phase 2 的 `E4023` 在 ret 位置改触发 NRVO 路径。
 4. **Phase 4**：`Heap<T>?` + B 档 nullable move（局部 + 形参 + 字段 move-out）。依赖现有 nullable flow，先确认 flow 分析支持"调用点改写"——若不支持，本 Phase 拆为 4a（flow 扩展）+ 4b（B 档接入）。
 5. **Phase 5**：lambda 捕获 Heap 全场景（§7）。依赖 v0.8 lambda 主题落地——若 lambda 未到位，本 Phase 阻塞。
-6. **Phase 6**：`copy_of` 扩展 Heap 形态支持 + spec Clone 优先级（依赖 DRAFT-spec-unify Phase ≥ Spec 形态可识别）。
+6. **Phase 6**：`copy_of` 扩展 Heap 形态支持（已落地）+ Array 逐元素深拷贝（待实施）。
 7. **Phase 7**：`Arc<T>` 占名条款写入 spec（纯文档，可与任何 Phase 并行）。
 8. **Phase 8**：FFI 边界 `Ptr:<T>(h)` / `Heap:<T>(p)` 互转 builtin（§8b）。可与 P5 / P6 并行。
 9. 每 Phase 独立 `xmake test` + `yux test` 双回归；diag 用例放 `tests/cases/diag_heap_*`，分组自动落到 `yux/diag`。
