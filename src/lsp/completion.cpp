@@ -64,6 +64,8 @@ const std::vector<CompletionItem>& buildItems() {
         ty("f32", "32位浮点数");
         ty("f64", "64位浮点数");
         ty("bool", "布尔类型");
+        ty("isize", "指针宽度有符号整数");
+        ty("usize", "指针宽度无符号整数");
         ty("String", "字符串类型");
         ty("Rc",   "堆对象类型 Rc<T>（多 owner，含 RC 头）");
         ty("Heap", "堆作用域句柄 Heap<T>（单 owner，零 RC，作用域绑定）");
@@ -88,7 +90,7 @@ const std::vector<CompletionItem>& buildItems() {
         fn("panic",     "不可恢复终止 panic(msg String) —— 走 abort 通道，不入错误模型");
 
         // TYPE_CONVERSION_FUNCTIONS
-        for (const char* t : {"bool","i8","i16","i32","i64","u8","u16","u32","u64","f32","f64"}) {
+        for (const char* t : {"bool","i8","i16","i32","i64","u8","u16","u32","u64","f32","f64","isize","usize"}) {
             std::string label = "to_";
             label += t;
             std::string detail = "类型转换：转换为 ";

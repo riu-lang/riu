@@ -87,7 +87,7 @@ llvm::Value* Compiler::compileTestAssertEq(p<ExprCallNode> callNode, vector<llvm
     }
     const string& tname = actualTypeArg.name;
     bool isInt = (tname == "i8" || tname == "u8" || tname == "i16" || tname == "u16" || tname == "i32" ||
-                  tname == "u32" || tname == "i64" || tname == "u64");
+                  tname == "u32" || tname == "i64" || tname == "u64" || tname == "isize" || tname == "usize");
     bool isBool = (tname == "bool");
     bool isFloat = (tname == "f32" || tname == "f64");
 

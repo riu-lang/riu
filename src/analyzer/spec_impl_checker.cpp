@@ -33,7 +33,7 @@ namespace {
 const std::set<std::string>& builtinTypeNames() {
     static const std::set<std::string> s = {"i8",    "u8",   "i16", "u16",      "i32",    "u32",           "i64",
                                             "u64",   "f32",  "f64", "bool",     "String", "StringBuilder", "Rc",
-                                            "Array", "Weak", "Ptr", "Nullable", "Ref"};
+                                            "Array", "Weak", "Ptr", "Nullable", "Ref",    "isize",         "usize"};
     return s;
 }
 

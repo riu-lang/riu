@@ -962,7 +962,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
 
     // 辅助函数: 判断是否为无符号类型
     auto isUnsignedType = [](const TypeInfo& type) -> bool {
-        return type.name == "u8" || type.name == "u16" || type.name == "u32" || type.name == "u64";
+        return type.name == "u8" || type.name == "u16" || type.name == "u32" || type.name == "u64" || type.name == "usize";
     };
 
     // 辅助函数: 应用复合赋值运算符

@@ -579,7 +579,8 @@ struct TypeInfo {
 
 inline bool isBuiltinType(const string& typeName) {
     static const vector<string> builtinTypes = {
-        "bool", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64"
+        "bool", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64",
+        "isize", "usize"
     };
     return std::find(builtinTypes.begin(), builtinTypes.end(), typeName) != builtinTypes.end();
 }

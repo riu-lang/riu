@@ -5,8 +5,9 @@
 
 FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::move(moduleName)) {
     // 注册基本类型为 struct 占位符，并预声明方法符号
-    const initializer_list<string> TYPES = {"bool", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64"};
-    const initializer_list<string> INT_TYPES = {"i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"};
+    const initializer_list<string> TYPES = {"bool", "i8",  "i16", "i32", "i64",   "u8",   "u16",
+                                            "u32",  "u64", "f32", "f64", "isize", "usize"};
+    const initializer_list<string> INT_TYPES = {"i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "isize", "usize"};
     const initializer_list<string> FLOAT_TYPES = {"f32", "f64"};
 
     for (const auto& t : TYPES) {

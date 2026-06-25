@@ -53,6 +53,11 @@ Compiler::Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm:
     _typeMap.insert({"u64", _builder.getInt64Ty()});  // 无符号 64 位整数
     _typeMap.insert({"f32", _builder.getFloatTy()});  // 32 位浮点数
     _typeMap.insert({"f64", _builder.getDoubleTy()}); // 64 位浮点数
+
+    // isize / usize: 指针宽度整数（与目标指针相同位宽）
+    auto ptrSizeBits = _module->getDataLayout().getPointerSizeInBits(0);
+    _typeMap.insert({"isize", llvm::Type::getIntNTy(_context, ptrSizeBits)});
+    _typeMap.insert({"usize", llvm::Type::getIntNTy(_context, ptrSizeBits)});
 }
 
 // ==================== 编译主入口 ====================

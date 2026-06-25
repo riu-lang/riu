@@ -18,11 +18,11 @@ namespace {
 // ---- 类型工具 -------------------------------------------------------------
 
 bool isSignedIntType(const TypeInfo& t) {
-    return t.name == "i8" || t.name == "i16" || t.name == "i32" || t.name == "i64";
+    return t.name == "i8" || t.name == "i16" || t.name == "i32" || t.name == "i64" || t.name == "isize";
 }
 
 bool isUnsignedIntType(const TypeInfo& t) {
-    return t.name == "u8" || t.name == "u16" || t.name == "u32" || t.name == "u64";
+    return t.name == "u8" || t.name == "u16" || t.name == "u32" || t.name == "u64" || t.name == "usize";
 }
 
 bool isIntType(const TypeInfo& t) {
@@ -38,6 +38,8 @@ int intBitWidth(const TypeInfo& t) {
     if (t.name == "i16" || t.name == "u16") return 16;
     if (t.name == "i32" || t.name == "u32") return 32;
     if (t.name == "i64" || t.name == "u64") return 64;
+    // TODO: 跨平台编译时需根据目标指针宽度动态返回
+    if (t.name == "isize" || t.name == "usize") return static_cast<int>(sizeof(void*) * 8);
     return 0;
 }
 
@@ -344,7 +346,8 @@ std::optional<ConstantValue> ConstEvaluator::evalCall(const p<ExprCallNode>& cal
     auto isWhitelisted = [](const TypeInfo& t) {
         return t.name == "bool" || t.name == "i8"  || t.name == "i16" || t.name == "i32" || t.name == "i64" ||
                t.name == "u8"   || t.name == "u16" || t.name == "u32" || t.name == "u64" ||
-               t.name == "f32"  || t.name == "f64";
+               t.name == "f32"  || t.name == "f64" ||
+               t.name == "isize" || t.name == "usize";
     };
     TypeInfo retT = header->retType() ? header->retType()->getType() : TypeInfo();
     if (!isWhitelisted(retT)) {

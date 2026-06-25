@@ -59,7 +59,8 @@ bool isFlexibleIntExpr(p<ExprNode> expr);
 bool tryInferIntType(p<ExprNode> expr, const TypeInfo& target);
 
 inline bool isIntTypeName(const string& n) {
-    return n == "i8" || n == "i16" || n == "i32" || n == "i64" || n == "u8" || n == "u16" || n == "u32" || n == "u64";
+    return n == "i8" || n == "i16" || n == "i32" || n == "i64" || n == "u8" || n == "u16" || n == "u32" || n == "u64"
+        || n == "isize" || n == "usize";
 }
 
 class ExprCallNode : public ExprNode {
