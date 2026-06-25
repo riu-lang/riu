@@ -473,9 +473,9 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             }
             DEBUG_LOG_VAL("    -> ArrayGeneric (struct)", "Array<" << elemType->name << ">");
             vector<llvm::Type*> arrayFields;
-            arrayFields.push_back(llvm::PointerType::get(_context, 0)); // _data: Ptr
-            arrayFields.push_back(_builder.getInt64Ty());               // _len: u64
-            arrayFields.push_back(_builder.getInt64Ty());               // _cap: u64
+            arrayFields.push_back(llvm::PointerType::get(_context, 0)); // _data: ptr
+            arrayFields.push_back(getSizeType());                       // _len: usize
+            arrayFields.push_back(getSizeType());                       // _cap: usize
             return llvm::StructType::get(_context, arrayFields);
         }
         return llvm::PointerType::get(_context, 0);

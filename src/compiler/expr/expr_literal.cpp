@@ -275,12 +275,12 @@ llvm::GlobalVariable* Compiler::emitStringRcBlockConst(const vector<u32>& codePo
     size_t len = codePoints.size();
 
     auto i32Ty = llvm::Type::getInt32Ty(_context);
-    auto i64Ty = llvm::Type::getInt64Ty(_context);
+    auto sizeTy = getSizeType();
     auto ptrTy = llvm::PointerType::get(_context, 0);
 
-    // Sentinel RC Block: { u32 strong @0, u32 weak @4, Array<u32>={ptr _data,i64 _len,i64 _cap} @8 }
+    // Sentinel RC Block: { u32 strong @0, u32 weak @4, Array<u32>={ptr _data,usize _len,usize _cap} @8 }
     // 与 compiler_runtime.cpp 内各 emit 函数的 block+4/block+8 字节偏移须保持同步。
-    auto blockTy = llvm::StructType::get(_context, {i32Ty, i32Ty, ptrTy, i64Ty, i64Ty});
+    auto blockTy = llvm::StructType::get(_context, {i32Ty, i32Ty, ptrTy, sizeTy, sizeTy});
 
     // 数据缓冲：len > 0 时铺常量 u32 数组，否则用 null。
     llvm::Constant* dataConst = llvm::ConstantPointerNull::get(ptrTy);
@@ -301,7 +301,7 @@ llvm::GlobalVariable* Compiler::emitStringRcBlockConst(const vector<u32>& codePo
 
     auto sentinelStrong = llvm::ConstantInt::get(i32Ty, 0xFFFFFFFFu);
     auto sentinelWeak = llvm::ConstantInt::get(i32Ty, 0);
-    auto lenC = llvm::ConstantInt::get(i64Ty, len);
+    auto lenC = llvm::ConstantInt::get(sizeTy, len);
     auto blockInit = llvm::ConstantStruct::get(blockTy, {sentinelStrong, sentinelWeak, dataConst, lenC, lenC});
 
     // 空字面量：同一个空 sentinel block 全局复用（per-module）
