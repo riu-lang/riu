@@ -106,6 +106,19 @@ llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& srcType, con
     } else if (!srcIsFloat && !dstIsFloat) {
         // 整数之间的转换
         auto srcLLVMType = getLLVMType(srcType);
+
+        // bool 与整数的语义转换：不能用 trunc/sext，必须 icmp ne 0 / zext
+        if (dstType.name == "bool") {
+            // int -> bool：非零为 true，零为 false
+            DEBUG_LOG("      ICmpNE 0 (int -> bool)");
+            return _builder.CreateICmpNE(val, llvm::ConstantInt::get(srcLLVMType, 0));
+        }
+        if (srcType.name == "bool") {
+            // bool -> int：true=1, false=0，必须零扩展
+            DEBUG_LOG("      ZExt (bool -> int)");
+            return _builder.CreateZExt(val, dstLLVMType);
+        }
+
         if (dstLLVMType->getIntegerBitWidth() > srcLLVMType->getIntegerBitWidth()) {
             // 扩展
             if (srcIsUnsigned) {

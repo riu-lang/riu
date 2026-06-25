@@ -121,6 +121,20 @@ fn test_i32_to_bool_negative() {
   assert_eq(b, true)
 }
 
+#Test
+fn test_i32_to_bool_even_nonzero() {
+  let a i32 = 2
+  let b bool = a.to_bool()
+  assert_eq(b, true)
+}
+
+#Test
+fn test_u64_to_bool_even_nonzero() {
+  let a u64 = 10
+  let b bool = a.to_bool()
+  assert_eq(b, true)
+}
+
 ; ==================== to_string() 转换 ====================
 
 #Test
