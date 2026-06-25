@@ -256,6 +256,10 @@ private:
     // Phase 3c.2.a: struct value 内逐 RC 字段（嵌套 struct 递归）retain
     void retainStructFieldsAtCallSite(llvm::Value* argVal, const string& structName);
 
+    // Phase 3c.2.b: copy_of 专用 — 深拷 struct 所有字段，含 Heap 新分配 + Dyn retain
+    // 返回可能被 InsertValue 替换了 Heap 指针的新 struct value
+    llvm::Value* copyOfStructFields(llvm::Value* structVal, const string& structName);
+
     // Phase 3d: 释放槽位（变量 / 字段 / 元素地址）当前持有的 RC 值
     // Rc/Array/Weak: load handle 后调对应 release；含 RC 字段 struct: 调其析构（字段逆序 release）
     // 内置 / 引用 / 指针 / 平凡 struct: no-op

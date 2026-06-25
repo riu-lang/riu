@@ -520,6 +520,12 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             // 内置 / Ptr / 平凡 struct：no-op。
             retainHandleAtCallSite(copied, T);
 
+            // 补 Heap 字段深拷：retainHandleAtCallSite 对 Heap 字段是 no-op（所有权语义），
+            // copy_of 需要独立分配新堆内存。递归进入嵌套 struct 处理其中的 Heap 字段。
+            if (!isBuiltinType(T.name) && structNeedsDestructor(T.name)) {
+                copied = copyOfStructFields(copied, T.name);
+            }
+
             return copied;
         }
         if (fnName == "weak") {

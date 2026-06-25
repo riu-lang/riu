@@ -541,6 +541,16 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
                     auto ll = getLLVMType(fieldType);
                     auto fieldVal = _builder.CreateLoad(ll, fieldPtr, "arg.enum.nested.val");
                     retainHandleAtCallSite(fieldVal, fieldType);
+                } else if (fieldType.isDynOwned()) {
+                    // Dyn<D> owned payload：{ vtable, data } fat ptr，retain data
+                    auto dynStructType = getLLVMType(fieldType);
+                    auto dataField = _builder.CreateStructGEP(dynStructType, fieldPtr, 1, "arg.enum.dyn.data_field");
+                    auto data = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataField, "arg.enum.dyn.data");
+                    _builder.CreateCall(runtime::getRcRetainFn(_module, _builder), {data});
+                } else if (fieldType.isDynBorrow()) {
+                    // Dyn<D&> borrow payload：不动 RC
+                } else if (fieldType.isHeap()) {
+                    // Heap<T> payload：pass-by-value 所有权转移，不深拷
                 }
             }
             _builder.CreateBr(mergeBB);
@@ -587,12 +597,63 @@ void Compiler::retainStructFieldsAtCallSite(llvm::Value* argVal, const string& s
             _builder.CreateCall(runtime::getRcRetainFn(_module, _builder), {cap});
             _builder.CreateBr(contBB);
             _builder.SetInsertPoint(contBB);
+        } else if (ft.isDynOwned()) {
+            // Dyn<D> owned 字段：{ vtable, data } fat ptr，data 指向 RC block，需 retain
+            auto fieldVal = _builder.CreateExtractValue(argVal, {static_cast<unsigned>(i)}, "field.dyn");
+            auto data = _builder.CreateExtractValue(fieldVal, {1}, "field.dyn.data");
+            _builder.CreateCall(runtime::getRcRetainFn(_module, _builder), {data});
+        } else if (ft.isDynBorrow()) {
+            // Dyn<D&> 借用字段：不动 RC，源 owner 持有
+        } else if (ft.isHeap()) {
+            // Heap<T> 字段：pass-by-value 时所有权转移，不深拷；copy_of 走 copyOfStructFields
         } else if (!isBuiltinType(ft.name)) {
             // 嵌套 struct 字段：递归
             auto fieldVal = _builder.CreateExtractValue(argVal, {static_cast<unsigned>(i)}, "field.struct");
             retainStructFieldsAtCallSite(fieldVal, ft.name);
         }
     }
+}
+
+// copy_of 专用：深拷 struct 所有字段（含 Heap 新分配 + 替换指针）
+// Rc/Weak/fn 字段的 retain 仍由 retainHandleAtCallSite 处理；
+// 本函数只负责 Heap 字段的深拷（需要新分配内存，不能走 retain 路径）。
+// 递归进入嵌套 struct/enum 处理其中的 Heap 字段。
+llvm::Value* Compiler::copyOfStructFields(llvm::Value* structVal, const string& structName) {
+    auto fieldTypes = resolveStructFieldTypes(structName);
+    for (size_t i = 0; i < fieldTypes.size(); ++i) {
+        const auto& ft = fieldTypes[i];
+        if (!typeNeedsDestructor(ft)) continue;
+
+        if (ft.isHeap()) {
+            // Heap<T> 字段：新分配 + memcpy 旧值 + retain inner RC + 替换指针
+            auto elemSp = ft.heapElementType();
+            if (!elemSp) continue;
+            const auto& innerType = *elemSp;
+            auto innerLLVMType = getLLVMType(innerType);
+            auto oldPayload = _builder.CreateExtractValue(structVal, {static_cast<unsigned>(i)}, "cof.heap.old");
+            auto sizeVal =
+                _builder.getInt64(_module->getDataLayout().getTypeAllocSize(innerLLVMType).getFixedValue());
+            auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
+            auto newPayload = _builder.CreateCall(allocFn, {sizeVal}, "cof.heap.new");
+            auto oldInner = _builder.CreateLoad(innerLLVMType, oldPayload, "cof.heap.oldval");
+            _builder.CreateStore(oldInner, newPayload);
+            // 递归 retain inner 的 RC/Dyn 字段
+            retainHandleAtCallSite(oldInner, innerType);
+            // 替换 struct 中的 Heap 指针
+            structVal = _builder.CreateInsertValue(structVal, newPayload, {static_cast<unsigned>(i)},
+                                                   "cof.heap.inserted");
+        } else if (!isBuiltinType(ft.name) && structNeedsDestructor(ft.name)) {
+            // 嵌套 struct：递归处理其中的 Heap 字段
+            auto fieldVal = _builder.CreateExtractValue(structVal, {static_cast<unsigned>(i)}, "cof.struct");
+            auto newFieldVal = copyOfStructFields(fieldVal, ft.name);
+            if (newFieldVal != fieldVal) {
+                structVal = _builder.CreateInsertValue(structVal, newFieldVal, {static_cast<unsigned>(i)},
+                                                       "cof.struct.inserted");
+            }
+        }
+        // Rc/Weak/fn/Dyn/Array：已由 retainHandleAtCallSite 处理，这里跳过
+    }
+    return structVal;
 }
 
 // ==================== Phase 8d.1: per-statement 临时清单 ====================
