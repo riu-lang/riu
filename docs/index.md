@@ -109,9 +109,7 @@ fn main() {
 ```yux
 struct Counter {
   value i32
-}
 
-Counter {
   #Static
   fn make(initial i32) Counter {
     ret Self {
@@ -137,17 +135,17 @@ fn main() {
 ```yux
 struct Data {
   value i32
-}
 
-Data {
   #Static
   fn make(value i32) Data {
-    ret Self { .value = value }
+    ret Self {
+      .value = value
+    }
   }
 }
 
 fn main() {
-  #Mut let box = Rc:<Data>(Data::make(42))
+  #Mut let box Rc<Data> = Data::make(42)
   println(box.value)
 
   #Mut let box2 Rc<Data> = box  ; 引用计数 +1

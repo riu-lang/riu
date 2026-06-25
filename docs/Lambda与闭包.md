@@ -67,11 +67,6 @@ let sum = { a i32, b i32 =>
 let once fn()i32 = {
   42
 }
-
-; 0 参块 + 显式返回类型：用 `() T =>` 头
-let once2 = { () i32 =>
-  42
-}
 ```
 
 ### 形参类型推断
@@ -94,15 +89,15 @@ let f = x => x + 1              ; ❌ 编译错（无上下文）
 
 ### 返回类型规则（spec §4.11.3）
 
+表达式形 lambda 可在 `=>` 前写显式返回类型；块形 lambda **无**返回类型标注位，始终由上下文推断。
+
 | 形态 | 返回类型 |
 |---|---|
 | `x => expr` | 上下文推断 |
 | `(x i32) => expr` | **默认 void**（不写就是 void） |
 | `(x i32) i32 => expr` | 显式 `i32` |
-| `{ a, b => body }` | 上下文推断（裸参） |
-| `{ (a, b) i32 => body }` | 显式 `i32`（括号 + 显式） |
-| `{ body }` | 0 参块；无 `=>`；多行真块；返回类型上下文推断 |
-| `{ () i32 => body }` | 0 参块 + 显式返回类型（用 `() T =>` 头） |
+| `{ a, b => body }` | 上下文推断（块形无显式返回类型位） |
+| `{ body }` | 0 参块；无 `=>`；多行真块；上下文推断 |
 
 **裸 vs 括号差异化的理由**：括号形态是"完整声明形"，不写返回类型即视作刻意 void；裸形态是"轻量推断形"，留空让上下文驱动。
 
@@ -110,8 +105,8 @@ let f = x => x + 1              ; ❌ 编译错（无上下文）
 
 ```yux
 ; ✅ 多参 lambda 在 args 位置必带括号
-op({ (a i32, b i32) i32 => a + b })
-op((a, b) => a + b)
+op({ a, b => a + b })           ; 块形，类型由 op 形参反推
+op((a, b) => a + b)             ; 表达式形
 
 ; 单参裸 single 仍可（apply 由用户定义，签名 fn(i32, fn(i32)i32) i32）
 let r = apply(7, x => x * 2)
@@ -197,15 +192,21 @@ fn bad() {
 ```yux
 struct Counter {
   v i32
-}
 
-Counter {
-  fn Counter() { $.v = 0 }
-  fn inc() { $.v = $.v + 1 }
+  #Static
+  fn make() Counter {
+    ret Self {
+      .v = 0
+    }
+  }
+
+  fn inc() {
+    $.v = $.v + 1
+  }
 }
 
 fn good() {
-  #Mut let c = Rc:<Counter>(Counter::make())
+  #Mut let c Rc<Counter> = Counter::make()
   let f = () => c.inc()    ; ✅ 走 mutator 方法，外层状态受影响
   f()
   f()
@@ -235,9 +236,7 @@ fn use_reader(r i32&) {
 ```yux
 struct Greeter {
   msg String
-}
 
-Greeter {
   fn greet_all(names Array<String>) {
     each(names) { n =>
       println($.msg + " " + n)   ; ✅ 捕获 $，方法 frame 内消费

@@ -1,0 +1,56 @@
+; ptr_ffi.yux — 原始指针 Ptr 示例
+; 对照 docs/内置类型.md §Ptr、docs/类型系统.md §Ptr
+; 注：extern 块示例见各文档 §FFI 互操作；实际链接需提供符号实现
+use yux.core.*
+
+; ==================== Ptr 基本操作 ====================
+
+struct Data {
+  value i32
+
+  #Static
+  fn make(v i32) Data {
+    ret Self {
+      .value = v
+    }
+  }
+}
+
+fn demo_ptr_basics() {
+  println("=== Ptr 基本操作 ===")
+
+  ; null 指针
+  #Mut let p Ptr = null
+  let null_addr u64 = p.to_int()
+  println("null ptr addr: ")
+  println(null_addr.to_i64())
+
+  ; 从 T& 获取 Ptr
+  let d Data = Data::make(42)
+  let ref Data& = &d
+  #Mut let p2 Ptr = ref          ; T& → Ptr
+  println("ref->ptr(非空): ")
+  println(p2.to_int().to_i64() != 0)
+
+  ; 从 Rc<T> 获取 Ptr（自动装箱 T→Rc<T>）
+  let rc Rc<Data> = Data::make(100)
+  #Mut let p3 Ptr = rc            ; Rc<T> → Ptr
+
+  ; ptr_of: 显式取裸指针（指向 Rc payload）
+  let p4 Ptr = ptr_of:<Rc<Data>>(rc)
+  let addr u64 = p4.to_int()
+  println("ptr_of(Rc) addr: ")
+  println(addr.to_i64())
+
+  ; ptr_from_addr: 地址转回 Ptr
+  #Mut let p5 Ptr = ptr_from_addr(addr)
+  println("round-trip: addr same? ")
+  println(p5.to_int() == addr)
+}
+
+; ==================== 主入口 ====================
+
+fn run_ptr_ffi() {
+  demo_ptr_basics()
+  println("=== ptr_ffi 完成 ===")
+}

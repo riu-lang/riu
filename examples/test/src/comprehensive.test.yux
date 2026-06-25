@@ -1,0 +1,592 @@
+; comprehensive.test.yux — 覆盖 docs 中关键特性的回归测试
+; 运行：cd examples/test && yux test
+; 注：.test.yux 中所有类型/枚举/别名声明必须在 #Test 函数之前
+use yux.core.*
+
+; ==================== 测试用类型（全部在 #Test 之前声明） ====================
+
+struct CBox {
+  value i32
+
+  #Static
+  fn make(v i32) CBox {
+    ret Self {
+      .value = v
+    }
+  }
+}
+
+struct Vec2 {
+  x f64
+  y f64
+
+  #Static
+  fn make(x f64, y f64) Vec2 {
+    ret Self {
+      .x = x
+      .y = y
+    }
+  }
+
+  fn plus(other Vec2&) Vec2 {
+    Vec2::make($.x + other.x, $.y + other.y)
+  }
+}
+
+struct Tagger {
+  id i32
+
+  #Mut
+  #Static
+  count i64 = 0
+
+  #Static
+  fn make(id i32) Tagger {
+    Tagger::count = Tagger::count + 1
+    ret Self {
+      .id = id
+    }
+  }
+}
+
+struct HBox {
+  val i32
+
+  #Static
+  fn make(v i32) HBox {
+    ret Self {
+      .val = v
+    }
+  }
+}
+
+enum Color {
+  Red
+  Green
+  Blue
+}
+
+enum DivErr {
+  ByZero
+  Overflow(i32)
+}
+
+IPair = (i32, i32)
+
+#Const
+fn triple(x i32) i32 = x * 3
+
+#Fallible(DivErr)
+fn safe_div(a i32, b i32) i32 {
+  if b == 0 {
+    ret DivErr::ByZero
+  }
+  ret a / b
+}
+
+; ==================== 基础类型 / 字面量 ====================
+
+#Test
+fn test_integer_literals() {
+  assert_eq(42, 42)
+  assert_eq(0xFF, 255)
+  assert_eq(0b1010, 10)
+}
+
+#Test
+fn test_float_literals() {
+  assert_eq(1.5 + 1.5, 3.0)
+}
+
+#Test
+fn test_code_point() {
+  let a u32 = c'A'
+  assert_eq(a, 65u32)
+  let newline u32 = c'\n'
+  assert_eq(newline, 10u32)
+}
+
+#Test
+fn test_string_literals() {
+  let s = "hello"
+  assert_eq(s.len(), 5i64)
+}
+
+#Test
+fn test_bool_ops() {
+  assert_true(true)
+  assert_false(!true)
+  assert_true(true || false)
+  assert_false(true && false)
+}
+
+; ==================== 类型转换 ====================
+
+#Test
+fn test_type_conversions() {
+  let a i32 = 10
+  let b i64 = a.to_i64()
+  assert_eq(b, 10i64)
+  let c f64 = a.to_f64()
+  assert_eq(c, 10.0)
+}
+
+; ==================== 运算符 ====================
+
+#Test
+fn test_arithmetic_ops() {
+  assert_eq(10 + 5, 15)
+  assert_eq(10 - 5, 5)
+  assert_eq(10 * 5, 50)
+  assert_eq(10 / 5, 2)
+  assert_eq(10 % 3, 1)
+}
+
+#Test
+fn test_bitwise_ops() {
+  assert_eq(0xF0 & 0x0F, 0)
+  assert_eq(0xF0 | 0x0F, 255)
+  assert_eq(1 << 4, 16)
+  assert_eq(16 >> 2, 4)
+}
+
+#Test
+fn test_comparison_ops() {
+  assert_true(10 > 5)
+  assert_true(5 < 10)
+  assert_true(10 >= 10)
+  assert_true(5 <= 10)
+  assert_true(10 == 10)
+  assert_true(10 != 5)
+}
+
+#Test
+fn test_compound_assign() {
+  #Mut let a i32 = 10
+  a += 5
+  assert_eq(a, 15)
+  a -= 3
+  assert_eq(a, 12)
+  a *= 2
+  assert_eq(a, 24)
+  a /= 4
+  assert_eq(a, 6)
+}
+
+; ==================== 变量声明 ====================
+
+#Test
+fn test_variable_forms() {
+  let a = 42
+  assert_eq(a, 42)
+  #Mut let b i32 = 10
+  b = 20
+  assert_eq(b, 20)
+  #Mut let c i32
+  c = 30
+  assert_eq(c, 30)
+}
+
+; ==================== 固定数组 ====================
+
+#Test
+fn test_fixed_array_literal() {
+  let arr [i32 * 3] = [1, 2, 3]
+  assert_eq(arr[0], 1)
+  assert_eq(arr[1], 2)
+  assert_eq(arr[2], 3)
+}
+
+#Test
+fn test_fixed_array_fill() {
+  #Mut let buf [u8 * 3] = [0u8 ...]
+  assert_eq(buf[0], 0u8)
+  assert_eq(buf[1], 0u8)
+  assert_eq(buf[2], 0u8)
+}
+
+#Test
+fn test_fixed_array_fill_type() {
+  #Mut let zeros [i32 * 3] = [0 ... i32]
+  assert_eq(zeros[0], 0)
+  assert_eq(zeros[1], 0)
+  assert_eq(zeros[2], 0)
+}
+
+#Test
+fn test_fixed_array_mutate() {
+  #Mut let arr [i32 * 2] = [10, 20]
+  arr[0] = 100
+  assert_eq(arr[0], 100)
+  assert_eq(arr[1], 20)
+}
+
+; ==================== 动态数组 Array<T> ====================
+
+#Test
+fn test_array_push_len() {
+  #Mut let a Array<i32> = []
+  assert_eq(a.len(), 0i64)
+  a.push(10)
+  a.push(20)
+  assert_eq(a.len(), 2i64)
+}
+
+#Test
+fn test_array_index() {
+  #Mut let a Array<i32> = [100, 200]
+  assert_eq(a[0], 100)
+  assert_eq(a[1], 200)
+}
+
+#Test
+fn test_array_get() {
+  #Mut let a Array<i32> = [10, 20, 30]
+  assert_eq(a.get(0i64), 10)
+  assert_eq(a.get(1i64), 20)
+}
+
+#Test
+fn test_array_first_last_pop() {
+  #Mut let a Array<i32> = [10, 20, 30]
+  assert_eq(a.first(), 10)
+  assert_eq(a.last(), 30)
+  let popped i32 = a.pop()
+  assert_eq(popped, 30)
+  assert_eq(a.len(), 2i64)
+}
+
+#Test
+fn test_array_clear_is_empty() {
+  #Mut let a Array<i32> = [1, 2, 3]
+  assert_false(a.is_empty())
+  a.clear()
+  assert_true(a.is_empty())
+  assert_eq(a.len(), 0i64)
+}
+
+; ==================== 结构体 ====================
+
+#Test
+fn test_struct_factory() {
+  let b CBox = CBox::make(42)
+  assert_eq(b.value, 42)
+}
+
+#Test
+fn test_struct_literal() {
+  let b CBox = CBox {
+    .value = 99
+  }
+  assert_eq(b.value, 99)
+}
+
+#Test
+fn test_operator_overload() {
+  let a Vec2 = Vec2::make(1.0, 2.0)
+  let b Vec2 = Vec2::make(3.0, 4.0)
+  let c Vec2 = a + b
+  assert_eq(c.x, 4.0)
+  assert_eq(c.y, 6.0)
+}
+
+#Test
+fn test_static_field() {
+  let start i64 = Tagger::count
+  let t1 Tagger = Tagger::make(1)
+  let t2 Tagger = Tagger::make(2)
+  let end i64 = Tagger::count
+  assert_eq(end - start, 2i64)
+}
+
+; ==================== 元组 ====================
+
+#Test
+fn test_tuple_construct() {
+  let t = (1, 2, 3)
+  assert_eq(t.0, 1)
+  assert_eq(t.1, 2)
+  assert_eq(t.2, 3)
+}
+
+#Test
+fn test_tuple_deconstruct() {
+  let (x, y) = (10, 20)
+  assert_eq(x, 10)
+  assert_eq(y, 20)
+}
+
+#Test
+fn test_tuple_mutate() {
+  #Mut let t = (1, 2)
+  t.0 = 10
+  t.1 += 5
+  assert_eq(t.0, 10)
+  assert_eq(t.1, 7)
+}
+
+#Test
+fn test_tuple_nested() {
+  let nest = ((1, 2), 3)
+  assert_eq(nest.0.0, 1)
+  assert_eq(nest.0.1, 2)
+  assert_eq(nest.1, 3)
+}
+
+; ==================== 类型别名 ====================
+
+#Test
+fn test_type_alias() {
+  let p IPair = (1, 2)
+  assert_eq(p.0, 1)
+  assert_eq(p.1, 2)
+}
+
+; ==================== Nullable ====================
+
+#Test
+fn test_nullable_some() {
+  let x i32? = 42i32
+  assert_true(x.has())
+  assert_eq(x.get(), 42)
+}
+
+#Test
+fn test_nullable_none() {
+  let x i32? = null
+  assert_false(x.has())
+}
+
+#Test
+fn test_null_coalesce() {
+  let some i32? = 7i32
+  assert_eq(some ?? 0i32, 7)
+  let none i32? = null
+  assert_eq(none ?? 99i32, 99)
+}
+
+; ==================== Move 语义 ====================
+
+#Test
+fn test_move_assign() {
+  #Mut let a String = "first"
+  #Mut let b String = "second"
+  let old String = a <- b
+  assert_eq(old, "first")
+  assert_eq(a, "second")
+}
+
+; ==================== Lambda ====================
+
+#Test
+fn test_lambda_expression() {
+  let add = (a i32, b i32) i32 => a + b
+  assert_eq(add(2, 3), 5)
+}
+
+#Test
+fn test_lambda_bare_single() {
+  #Mut let f fn(i32)i32 = x => x * 2
+  assert_eq(f(5), 10)
+}
+
+#Test
+fn test_lambda_zero_param() {
+  let f = () => 42
+  assert_eq(f(), 42)
+}
+
+#Test
+fn test_lambda_capture_scalar() {
+  let n i32 = 10
+  let f = (x i32) i32 => x + n
+  assert_eq(f(5), 15)
+}
+
+#Test
+fn test_lambda_capture_rc() {
+  let box Rc<CBox> = CBox::make(0)
+  let check = () => box.value
+  assert_eq(check(), 0)
+}
+
+; ==================== String ====================
+
+#Test
+fn test_string_len() {
+  let s = "hello"
+  assert_eq(s.len(), 5i64)
+}
+
+#Test
+fn test_string_get() {
+  let s = "ABC"
+  assert_eq(s.get(0i64), 65u32)
+  assert_eq(s.get(1i64), 66u32)
+}
+
+#Test
+fn test_string_eq() {
+  assert_true("abc" == "abc")
+  assert_false("abc" != "abc")
+}
+
+#Test
+fn test_string_template_id() {
+  let name = "yux"
+  let s = "hello $name"
+  assert_eq(s, "hello yux")
+}
+
+#Test
+fn test_string_template_expr() {
+  let x i32 = 2
+  let y i32 = 3
+  let s = "${x + y}"
+  assert_eq(s, "5")
+}
+
+#Test
+fn test_string_concat() {
+  let s = "val=" + 42
+  assert_eq(s, "val=42")
+}
+
+; ==================== StringBuilder ====================
+
+#Test
+fn test_sb_build() {
+  #Mut let sb StringBuilder = StringBuilder::make()
+  sb.append(c'H')
+  sb.append(c'i')
+  assert_eq(sb.build(), "Hi")
+}
+
+#Test
+fn test_sb_empty() {
+  #Mut let sb StringBuilder = StringBuilder::make()
+  assert_eq(sb.build(), "")
+}
+
+; ==================== Ptr ====================
+
+#Test
+fn test_ptr_null() {
+  #Mut let p Ptr = null
+  let addr u64 = p.to_int()
+  assert_eq(addr, 0u64)
+}
+
+#Test
+fn test_ptr_from_ref() {
+  let v i32 = 42
+  let r i32& = &v
+  #Mut let p Ptr = r
+  let addr u64 = p.to_int()
+  assert_true(addr != 0u64)
+}
+
+; ==================== Heap<T> ====================
+
+#Test
+fn test_heap_as_ref() {
+  let h Heap<HBox> = Heap:<HBox>(HBox::make(42))
+  let r HBox& = as_ref(h)
+  assert_eq(r.val, 42)
+}
+
+; ==================== 控制流 ====================
+
+#Test
+fn test_if_else_expr() {
+  let a = 10
+  let max = if a > 5 { a } else { 5 }
+  assert_eq(max, 10)
+}
+
+#Test
+fn test_python_ternary() {
+  let val i32 = 100 if 1 < 2 else 0
+  assert_eq(val, 100)
+}
+
+#Test
+fn test_python_ternary_chained() {
+  let score i32 = 75
+  let grade String = "A" if score >= 90 else "B" if score >= 75 else "C"
+  assert_eq(grade, "B")
+}
+
+#Test
+fn test_loop_break() {
+  #Mut let sum i32 = 0
+  #Mut let i i32 = 1
+  loop {
+    if i > 5 {
+      break;
+    }
+    sum = sum + i
+    i = i + 1
+  }
+  assert_eq(sum, 15)
+}
+
+; ==================== match + enum ====================
+
+#Test
+fn test_match_enum() {
+  let c Color = Color::Green
+  let s String = match c {
+    Color::Red => "R"
+    Color::Green => "G"
+    Color::Blue => "B"
+  }
+  assert_eq(s, "G")
+}
+
+; ==================== #Cval ====================
+
+#Test
+fn test_cval_const_fn() {
+  #Cval let v i32 = triple(7)
+  assert_eq(v, 21)
+}
+
+#Test
+fn test_cval_chain() {
+  #Cval let base i32 = 10
+  #Cval let doubled i32 = base * 2
+  assert_eq(doubled, 20)
+}
+
+; ==================== 错误处理 ====================
+
+#Test
+fn test_error_try_catch_ok() {
+  let v i32 = try {
+    safe_div(10, 2)
+  } catch e DivErr {
+    -1
+  }
+  assert_eq(v, 5)
+}
+
+#Test
+fn test_error_try_catch_err() {
+  let v i32 = try {
+    safe_div(10, 0)
+  } catch e DivErr {
+    -99
+  }
+  assert_eq(v, -99)
+}
+
+; ==================== copy_of ====================
+
+#Test
+fn test_copy_of_scalar() {
+  let v i32 = 42
+  let r i32& = &v
+  let c i32 = copy_of:<i32>(r)
+  assert_eq(c, 42)
+}

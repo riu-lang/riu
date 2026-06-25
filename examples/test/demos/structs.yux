@@ -1,0 +1,181 @@
+; structs.yux — 结构体示例：析构函数/字段注解/struct字面量/静态字段
+; 对照 docs/结构体.md
+; 注：当前编译器要求方法写在 struct body 内（非单独 impl 块），与文档有出入
+use yux.core.*
+
+; ==================== 基础结构体 + 析构 ====================
+
+struct Counter {
+  value i32
+
+  fn ~() {
+    ; 离开作用域时自动调用
+    ; 析构期可自由修改 $（不受 const-mut 约束）
+  }
+
+  #Static
+  fn make(v i32) Counter {
+    ret Self {
+      .value = v
+    }
+  }
+
+  fn inc() {
+    $.value = $.value + 1
+  }
+
+  fn get() i32 {
+    ret $.value
+  }
+}
+
+fn demo_destructor() {
+  println("=== 析构函数 ===")
+  #Mut let c Counter = Counter::make(0)
+  c.inc()
+  c.inc()
+  let v i32 = c.get()
+  println("counter after 2 incs: ")
+  println(v)
+  ; c 离开作用域 → ~() 自动调用
+}
+
+; ==================== struct 字面量直接构造 ====================
+
+struct Point {
+  x f64
+  y f64
+
+  #Static
+  fn make(x f64, y f64) Point {
+    ret Self {
+      .x = x
+      .y = y
+    }
+  }
+
+  #Static
+  fn origin() Point {
+    ret Point::make(0.0, 0.0)
+  }
+
+  fn plus(other Point&) Point {
+    Point::make($.x + other.x, $.y + other.y)
+  }
+}
+
+fn demo_struct_literal() {
+  println("=== struct 字面量 ===")
+  ; 方式一：工厂函数
+  let p1 Point = Point::make(1.0, 2.0)
+
+  ; 方式二：struct 字面量直接构造
+  let p2 Point = Point {
+    .x = 3.0
+    .y = 4.0
+  }
+
+  let p3 Point = p1 + p2
+  println("p3.x: ")
+  println(p3.x)
+  println("p3.y: ")
+  println(p3.y)
+}
+
+; ==================== 字段注解 #Val / #Frozen ====================
+
+struct Config {
+  name String
+  limit i32
+
+  #Static
+  fn make(name String, limit i32) Config {
+    ret Self {
+      .name = name
+      .limit = limit
+    }
+  }
+
+  fn name_len() i64 {
+    $.name.len()
+  }
+}
+
+struct Resource {
+  #Val
+  counter i32        ; 浅不可变：构造后不能写 $.counter = x
+  #Frozen
+  payload Config     ; 深不可变：构造后不能写 $.payload 的子字段
+
+  #Static
+  fn make(c i32, p Config) Resource {
+    ret Self {
+      .counter = c
+      .payload = p
+    }
+  }
+}
+
+fn demo_field_annotations() {
+  println("=== 字段注解 ===")
+  let cfg Config = Config::make("example", 100)
+  let res Resource = Resource::make(42, cfg)
+  println("res.counter: ")
+  println(res.counter)
+  println("res.payload.name: ")
+  println(res.payload.name)
+  ; res.counter = 999  ; ❌ E3109：#Val 字段构造后不可写
+  ; res.payload.name = "x"  ; ❌ E3109：#Frozen 字段子字段不可写
+}
+
+; ==================== 静态字段 ====================
+
+struct Tracker {
+  label i32
+
+  ; 静态 val 字段
+  #Static
+  DEFAULT_ID i32 = 0
+
+  ; 静态可变字段
+  #Mut
+  #Static
+  total_created i64 = 0
+
+  #Static
+  fn make(label i32) Tracker {
+    Tracker::total_created = Tracker::total_created + 1
+    ret Self {
+      .label = label
+    }
+  }
+
+  fn id() i32 {
+    ret $.label + Tracker::DEFAULT_ID
+  }
+}
+
+fn demo_static_fields() {
+  println("=== 静态字段 ===")
+  println("默认 DEFAULT_ID: ")
+  println(Tracker::DEFAULT_ID)
+  println("初始 total_created: ")
+  println(Tracker::total_created)
+
+  let t1 Tracker = Tracker::make(1)
+  let t2 Tracker = Tracker::make(2)
+  println("2 个后 total_created: ")
+  println(Tracker::total_created)
+  println("t2.id(): ")
+  println(t2.id())
+}
+
+; ==================== 主入口 ====================
+
+fn run_structs() {
+  demo_destructor()
+  demo_struct_literal()
+  demo_field_annotations()
+  demo_static_fields()
+  println("=== structs 完成 ===")
+}

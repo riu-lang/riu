@@ -1,0 +1,134 @@
+; string_ops.yux — String/StringBuilder 操作示例
+; 对照 docs/内置类型.md §String、§StringBuilder
+use yux.core.*
+
+fn demo_string_basics() {
+  println("=== String 基本操作 ===")
+
+  ; 字面量
+  let s String = "Hello"
+  println(s)
+
+  ; 长度
+  let n i64 = s.len()
+  println("len: ")
+  println(n)
+
+  ; 取码点（方法调用参数需精确类型后缀：0i64）
+  let c u32 = s.get(0i64)
+  println("get(0) = 'H': ")
+  println(c)
+
+  ; equals
+  let eq bool = s == "Hello"
+  println("== 'Hello': ")
+  println(eq)
+
+  ; starts_with / contains: SDK 已定义但链接时缺失符号（待 SDK 重编）
+  ; let sw bool = s.starts_with("Hel")
+  ; let has bool = s.contains("ell")
+
+  ; to_bytes (UTF-8)
+  let bytes Array<u8> = s.to_bytes()
+  println("to_bytes len: ")
+  println(bytes.len())
+}
+
+fn demo_string_template() {
+  println("=== 字符串模板 ===")
+
+  ; 标识符插值：$name
+  let name String = "yux"
+  let s1 String = "Hello, $name!"
+  println(s1)
+
+  ; 表达式插值：${expr}
+  let x i32 = 10
+  let y i32 = 20
+  let s2 String = "$x + $y = ${x + y}"
+  println(s2)
+
+  ; \$ 转义
+  let s3 String = "price: \$100"
+  println(s3)
+}
+
+fn demo_string_concat() {
+  println("=== 字符串 + 连接 ===")
+
+  let n i32 = 42
+  let s String = "n = " + n
+  println(s)
+
+  ; 多段连接
+  let a i32 = 3
+  let b i32 = 5
+  let s2 String = a + " + " + b + " = " + (a + b)
+  println(s2)
+}
+
+fn demo_stringbuilder() {
+  println("=== StringBuilder ===")
+
+  #Mut let sb StringBuilder = StringBuilder::make()
+
+  ; append 码点
+  sb.append(c'H')
+  sb.append(c'e')
+  sb.append(c'l')
+  sb.append(c'l')
+  sb.append(c'o')
+  let s1 String = sb.build()
+  println("build #1: ")
+  println(s1)
+  ; build 后 sb 重置，可继续用
+
+  ; append 字节
+  sb.append(87u8)       ; 'W'
+  sb.append(111u8)      ; 'o'
+  sb.append(114u8)      ; 'r'
+  sb.append(108u8)      ; 'l'
+  sb.append(100u8)      ; 'd'
+  let s2 String = sb.build()
+  println("build #2: ")
+  println(s2)
+
+  ; append 字符串
+  sb.append("yux")
+  sb.append(32u32)      ; space
+  sb.append("lang")
+  let s3 String = sb.build()
+  println("build #3: ")
+  println(s3)
+
+  ; 空 build
+  let s4 String = sb.build()
+  println("build #4 (空): ")
+  println(s4)
+  println("空 len: ")
+  println(s4.len())
+}
+
+fn demo_string_from_buffer() {
+  println("=== String::from(Array<u32>) ===")
+
+  ; 通过 Array<u32> 缓冲构造
+  #Mut let buf Array<u32> = []
+  buf.push(c'h')
+  buf.push(c'i')
+  let s String = String::from(buf)
+  println(s)
+  println("len: ")
+  println(s.len())
+}
+
+; ==================== 主入口 ====================
+
+fn run_string_ops() {
+  demo_string_basics()
+  demo_string_template()
+  demo_string_concat()
+  demo_stringbuilder()
+  demo_string_from_buffer()
+  println("=== string_ops 完成 ===")
+}
