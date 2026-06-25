@@ -736,6 +736,12 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
             receiverArg = _builder.CreateLoad(receiverTy, dataPtr, "rc.payload.val");
         }
 
+        // 使用方法声明的形参类型（含 Ref<>）替代调用点实参类型，
+        // 保证 T& 形参的 mangle 名 / LLVM 签名与定义侧一致。
+        // 注意：methodSymbol->params 第 0 元素是 receiver 类型（如 String），
+        // 真正的形参从下标 1 开始。
+        auto& mparams = methodSymbol->params;
+
         vector<llvm::Value*> methodArgs;
         methodArgs.push_back(receiverArg);
         for (size_t i = 0; i < args.size(); ++i) {
@@ -749,7 +755,10 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
                     consumeTemp(args[i]);
                 }
             }
-            if (structParamUsesPointer(at.name)) {
+            // auto-ref: 方法形参为 T& 但实参为 T（by-value）时，取址传指针
+            size_t mpi = i + 1; // 跳 receiver（mparams[0]）
+            bool needsAutoRef = mpi < mparams.size() && mparams[mpi].isRef() && !at.isRef();
+            if (needsAutoRef || structParamUsesPointer(at.name)) {
                 auto structType = getLLVMType(at);
                 auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");
                 _builder.CreateStore(args[i], alloca);
@@ -761,7 +770,11 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
 
         string ownerMod = methodSymbol->moduleName.empty() ? _file->moduleName() : methodSymbol->moduleName;
         bool methPriv = !member.empty() && member[0] == '_';
-        string mangledName = Mangler::method(ownerMod, actualType.name, member, argTypes, methPriv);
+        // 去掉 mparams[0]（receiver 类型），Mangler::method 已含 structName
+        vector<TypeInfo> methodDeclaredParams(mparams.size() > 1 ? mparams.begin() + 1 : mparams.begin(), mparams.end());
+        // 若 mparams 仅含 receiver（无参方法如 len()），methodDeclaredParams 为空
+        if (mparams.size() <= 1) methodDeclaredParams.clear();
+        string mangledName = Mangler::method(ownerMod, actualType.name, member, methodDeclaredParams, methPriv);
         auto fn = _module->getFunction(mangledName);
         if (!fn) {
             vector<llvm::Type*> paramTypes;
@@ -770,7 +783,8 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
             } else {
                 paramTypes.push_back(llvm::PointerType::get(_context, 0));
             }
-            for (auto& t : argTypes) {
+            for (size_t i = 1; i < mparams.size(); ++i) {
+                auto& t = mparams[i];
                 if (structParamUsesPointer(t.name)) {
                     paramTypes.push_back(llvm::PointerType::get(_context, 0));
                 } else {

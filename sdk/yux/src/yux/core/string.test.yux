@@ -49,6 +49,21 @@ fn test_string_starts_with_empty_prefix() {
   assert_starts_with(s, "")
 }
 
+; 直接调用 starts_with / contains（测试 String& 形参的 auto-ref codegen）
+#Test
+fn test_string_starts_with_direct() {
+  let s String = "hello world"
+  assert_true(s.starts_with("hello"))
+  assert_false(s.starts_with("world"))
+}
+
+#Test
+fn test_string_contains_direct() {
+  let s String = "foo bar baz"
+  assert_true(s.contains("bar"))
+  assert_false(s.contains("qux"))
+}
+
 ; 迁自 tests/cases/strings.yux —— 转义序列与原始字符串
 
 #Test
