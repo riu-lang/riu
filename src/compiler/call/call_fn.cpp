@@ -508,9 +508,97 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
                 copied = _builder.CreateLoad(copiedLLVMTy, args[0], "copy_of.load");
             }
 
-            // B-3: Array<T> — #NoCopy 类型，深拷贝待 Spec Clone 后实现
-            // TODO(Spec Clone): 实现 Array 逐元素深拷贝（分配新缓冲 + 逐元素复制 + retain）
+            // Phase 3: Array<T> 深拷 — 分配新缓冲 + 逐元素 memcpy + retain + Heap 深拷
+            // Array layout: { ptr _data @0, u64 _len @8, u64 _cap @16 }
             if (isArray) {
+                auto elemSp = T.arrayGenericElementType();
+                if (!elemSp) {
+                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6029, fnName,
+                                   T.getFullName());
+                }
+                const auto& elemType = *elemSp;
+                auto elemLLVMType = getLLVMType(elemType);
+                auto resultTy = getLLVMType(T);
+
+                auto oldData = _builder.CreateExtractValue(copied, {0}, "cof.arr.data");
+                auto oldLen = _builder.CreateExtractValue(copied, {1}, "cof.arr.len");
+
+                auto* fn = _builder.GetInsertBlock()->getParent();
+                auto* startBB = _builder.GetInsertBlock();
+                auto ptrTy = llvm::PointerType::get(_context, 0);
+                auto nullData = llvm::ConstantPointerNull::get(ptrTy);
+
+                // 空 Array 结果
+                llvm::Value* emptyArr = llvm::UndefValue::get(resultTy);
+                emptyArr = _builder.CreateInsertValue(emptyArr, nullData, {0});
+                emptyArr = _builder.CreateInsertValue(emptyArr, _builder.getInt64(0), {1});
+                emptyArr = _builder.CreateInsertValue(emptyArr, _builder.getInt64(0), {2});
+
+                auto* allocBB = llvm::BasicBlock::Create(_context, "cof.arr.alloc", fn);
+                auto* loopHdrBB = llvm::BasicBlock::Create(_context, "cof.arr.loop.hdr", fn);
+                auto* loopBodyBB = llvm::BasicBlock::Create(_context, "cof.arr.loop.body", fn);
+                auto* loopLatchBB = llvm::BasicBlock::Create(_context, "cof.arr.loop.latch", fn);
+                auto* loopExitBB = llvm::BasicBlock::Create(_context, "cof.arr.loop.exit", fn);
+                auto* doneBB = llvm::BasicBlock::Create(_context, "cof.arr.done", fn);
+
+                // len == 0 → 直接返回空数组
+                auto lenIsZero = _builder.CreateICmpEQ(oldLen, _builder.getInt64(0), "cof.arr.is_empty");
+                _builder.CreateCondBr(lenIsZero, doneBB, allocBB);
+
+                // allocBB: 分配新数据缓冲 newData = HeapAlloc(len * sizeof(T))
+                _builder.SetInsertPoint(allocBB);
+                auto elemSize = _builder.getInt64(
+                    _module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
+                auto newSize = _builder.CreateMul(oldLen, elemSize, "cof.arr.new_size");
+                auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
+                auto newData = _builder.CreateCall(allocFn, {newSize}, "cof.arr.new_data");
+                _builder.CreateBr(loopHdrBB);
+
+                // loopHdrBB: for i (0..len-1)
+                _builder.SetInsertPoint(loopHdrBB);
+                auto loopPhi = _builder.CreatePHI(_builder.getInt64Ty(), 2, "cof.arr.i");
+                loopPhi->addIncoming(_builder.getInt64(0), allocBB);
+                auto loopCond = _builder.CreateICmpULT(loopPhi, oldLen, "cof.arr.loop.cond");
+                _builder.CreateCondBr(loopCond, loopBodyBB, loopExitBB);
+
+                // loopBodyBB: 拷贝元素 + retain + Heap 深拷
+                _builder.SetInsertPoint(loopBodyBB);
+                auto oldElemPtr = _builder.CreateInBoundsGEP(elemLLVMType, oldData, {loopPhi}, "cof.arr.old.ptr");
+                llvm::Value* elemVal = _builder.CreateLoad(elemLLVMType, oldElemPtr, "cof.arr.elem");
+                retainHandleAtCallSite(elemVal, elemType);
+                if (!isBuiltinType(elemType.name) && structNeedsDestructor(elemType.name)) {
+                    elemVal = copyOfStructFields(elemVal, elemType.name);
+                }
+                auto newElemPtr = _builder.CreateInBoundsGEP(elemLLVMType, newData, {loopPhi}, "cof.arr.new.ptr");
+                _builder.CreateStore(elemVal, newElemPtr);
+                _builder.CreateBr(loopLatchBB);
+
+                // loopLatchBB: i++
+                _builder.SetInsertPoint(loopLatchBB);
+                auto iNext = _builder.CreateAdd(loopPhi, _builder.getInt64(1), "cof.arr.i.next");
+                loopPhi->addIncoming(iNext, loopLatchBB);
+                _builder.CreateBr(loopHdrBB);
+
+                // loopExitBB: 构造新 Array { newData, len, len }（cap == len 紧凑）
+                _builder.SetInsertPoint(loopExitBB);
+                llvm::Value* newArr = llvm::UndefValue::get(resultTy);
+                newArr = _builder.CreateInsertValue(newArr, newData, {0});
+                newArr = _builder.CreateInsertValue(newArr, oldLen, {1});
+                newArr = _builder.CreateInsertValue(newArr, oldLen, {2}); // cap == len 紧凑
+                _builder.CreateBr(doneBB);
+
+                // doneBB: phi 汇聚空 / 非空两条路径
+                _builder.SetInsertPoint(doneBB);
+                auto resultPhi = _builder.CreatePHI(resultTy, 2, "cof.arr.result");
+                resultPhi->addIncoming(emptyArr, startBB);
+                resultPhi->addIncoming(newArr, loopExitBB);
+
+                return resultPhi;
+            }
+
+            // Phase B-1: #NoCopy 类型（显式注解 + 隐含 Array/含析构 struct）拒绝 copy_of
+            // Array 已在上方分支处理，此处拦截用户自定义 #NoCopy 类型
+            if (isNoCopyType(T)) {
                 throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E4031, T.name, "copy_of",
                                T.name);
             }

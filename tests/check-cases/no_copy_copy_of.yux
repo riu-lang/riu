@@ -1,0 +1,14 @@
+; require-sdk
+; Phase 3: #NoCopy struct 上 copy_of 拒绝（E4031）—— 显式 type args 路径
+
+#NoCopy
+struct Pinned {
+  x i32
+}
+
+fn try_copy_of_nocopy() {
+  let p Pinned = Pinned {
+    .x = 42
+  }
+  let q Pinned = copy_of:<Pinned>(p)  ; check: E4031
+}

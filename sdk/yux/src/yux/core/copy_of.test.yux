@@ -49,17 +49,53 @@ fn test_copy_of_box_handle() {
   assert_eq(b2.b, 22)
 }
 
-; ---------- Array<T>：深拷贝（#NoCopy 类型，待 Spec Clone 后实现）----------
+; ---------- Array<T>：深拷贝（Phase 3：分配新缓冲 + 逐元素 retain）----------
 
-;#Test
-;fn test_copy_of_array() {
-;  #Mut let a1 Array<i32> = [10i32, 20i32, 30i32]
-;  #Mut let a2 Array<i32> = copy_of(a1)
-;  assert_eq(a2.len(), 3i64)
-;  assert_eq(a1.len(), 3i64)
-;  assert_eq(a2[0], 10i32)
-;  assert_eq(a2[2], 30i32)
-;}
+#Test
+fn test_copy_of_array_i32() {
+  #Mut let a1 Array<i32> = [10i32, 20i32, 30i32]
+  #Mut let a2 Array<i32> = copy_of(a1)
+  assert_eq(a2.len(), 3i64)
+  assert_eq(a1.len(), 3i64)
+  assert_eq(a2[0], 10i32)
+  assert_eq(a2[1], 20i32)
+  assert_eq(a2[2], 30i32)
+  ; 修改 a1 不影响 a2（独立缓冲）
+  a1[0] = 99i32
+  assert_eq(a1[0], 99i32)
+  assert_eq(a2[0], 10i32)
+}
+
+#Test
+fn test_copy_of_array_empty() {
+  let a1 Array<i32> = []
+  #Mut let a2 Array<i32> = copy_of(a1)
+  assert_eq(a2.len(), 0i64)
+}
+
+#Test
+fn test_copy_of_array_struct() {
+  #Mut let a1 Array<CopyPair> = [CopyPair::make(1, 2), CopyPair::make(3, 4), CopyPair::make(5, 6)]
+  #Mut let a2 Array<CopyPair> = copy_of(a1)
+  assert_eq(a2.len(), 3i64)
+  assert_eq(a2[0].a, 1)
+  assert_eq(a2[0].b, 2)
+  assert_eq(a2[2].a, 5)
+  assert_eq(a2[2].b, 6)
+}
+
+#Test
+fn test_copy_of_array_string() {
+  #Mut let a1 Array<String> = ["hello", "world"]
+  #Mut let a2 Array<String> = copy_of(a1)
+  assert_eq(a2.len(), 2i64)
+  assert_eq(a2[0], "hello")
+  assert_eq(a2[1], "world")
+  ; 修改 a1 不影响 a2
+  a1[0] = "changed"
+  assert_eq(a1[0], "changed")
+  assert_eq(a2[0], "hello")
+}
 
 ; ---------- String：内含 Array<u32>，递归 retain ----------
 

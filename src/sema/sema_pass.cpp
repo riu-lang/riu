@@ -1266,6 +1266,15 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                             if (argTypesOk) {
                                 sema::validateBuiltinIntrinsicTypeShape(fnName, typeArgs, argTypes, n->getArgs(), _file,
                                                                         _sdkFile, line, col);
+
+                                // Phase 3: copy_of 拒绝用户自定义 #NoCopy 类型（Array<T> 由 codegen 单独展开，sema 不过滤）
+                                if (fnName == "copy_of" && !typeArgs.empty()) {
+                                    const auto& T = typeArgs[0];
+                                    if (isNoCopyTypeIn(T, _file, _sdkFile) && !T.isArrayGeneric()) {
+                                        throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E4031, T.name,
+                                                       "copy_of", T.name);
+                                    }
+                                }
                             }
                         }
                     }
