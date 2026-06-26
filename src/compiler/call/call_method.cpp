@@ -675,7 +675,7 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
                                                const TypeInfo& actualType, const string& member,
                                                vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
 
-    if (actualType.isGeneric()) {
+    if (actualType.hasGenericArgs()) {
         auto baseDecl = _file->getStructDecl(actualType.name);
         p<FileNode> owner = _file;
         if (!baseDecl && _yux && _yux->sdkFile()) {

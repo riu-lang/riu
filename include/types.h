@@ -245,11 +245,19 @@ T any_cast_v(const std::any& a) {
 }
 
 enum class TypeKind : u8 {
-    Normal,
-    Generic,
-    Array,
-    Tuple,
-    Fn      // 函数类型字面量 fn(P1, ..., Pn) R（结构等同；参数名不参与判等）
+    Normal,        // 普通具名类型（内置标量 / 用户 struct 名 / Self）
+    Generic,       // 用户定义泛型结构体实例化（如 MyVec<i32>）
+    Rc,            // 内置 Rc<T> 智能指针
+    Ref,           // 内置 Ref<T> / T& 引用
+    Weak,          // 内置 Weak<T> 弱引用
+    Heap,          // 内置 Heap<T> 堆作用域句柄
+    Dyn,           // 内置 Dyn<D> 动态分发
+    ArrayGeneric,  // 内置 Array<T> 动态数组
+    Nullable,      // 内置 Nullable<T> / T?
+    Ptr,           // 内置原始指针（void*）
+    Array,         // 固定大小数组 [T * N]
+    Tuple,         // 元组 (T1, T2, ...)
+    Fn             // 函数类型字面量 fn(P1, ..., Pn) R（结构等同；参数名不参与判等）
 };
 
 // 元组类型构造时使用的 tag，用来与 Generic 构造区分
@@ -257,6 +265,19 @@ struct TupleTag {};
 
 // 函数类型构造 tag；fnRet 为返回类型（void 时传 nullptr 或空 TypeInfo）
 struct FnTag {};
+
+// 根据内置泛型包装名称返回对应 TypeKind；非内置名返回 TypeKind::Generic
+// 用于 TypeInfo(string, vector<sp<TypeInfo>>) 构造函数自动分发，消除字符串比对
+inline TypeKind kindForBuiltinWrapper(const string& name) {
+    if (name == "Rc")       return TypeKind::Rc;
+    if (name == "Ref")      return TypeKind::Ref;
+    if (name == "Weak")     return TypeKind::Weak;
+    if (name == "Heap")     return TypeKind::Heap;
+    if (name == "Dyn")      return TypeKind::Dyn;
+    if (name == "Array")    return TypeKind::ArrayGeneric;
+    if (name == "Nullable") return TypeKind::Nullable;
+    return TypeKind::Generic;
+}
 
 struct TypeInfo {
     TypeKind kind = TypeKind::Normal;
@@ -268,11 +289,17 @@ struct TypeInfo {
 
     TypeInfo() = default;
 
+    // 普通具名类型构造（内置标量 / 用户 struct 名 / Self）
+    // "Ptr" 自动识别为 TypeKind::Ptr（null 字面量类型）
     explicit TypeInfo(string n) : name(std::move(n)) {
+        if (name == "Ptr") kind = TypeKind::Ptr;
     }
 
+    // 泛型实例化构造：根据 name 自动分发到正确的 TypeKind
+    // 内置包装（Rc/Ref/Weak/Heap/Dyn/Array/Nullable）→ 对应专有 kind
+    // 其他 → TypeKind::Generic（用户定义泛型结构体）
     TypeInfo(string n, vector<sp<TypeInfo>> args) :
-        kind(TypeKind::Generic),
+        kind(kindForBuiltinWrapper(n)),
         name(std::move(n)),
         genericArgs(std::move(args)) {
     }
@@ -338,7 +365,7 @@ struct TypeInfo {
     [[nodiscard]] bool startsWith(char c) const { return !name.empty() && name[0] == c; }
 
     [[nodiscard]] bool isRef() const {
-        return kind == TypeKind::Generic && name == "Ref" && genericArgs.size() == 1;
+        return kind == TypeKind::Ref && genericArgs.size() == 1;
     }
 
     [[nodiscard]] sp<TypeInfo> refElementType() const {
@@ -349,7 +376,7 @@ struct TypeInfo {
     }
 
     [[nodiscard]] bool isRc() const {
-        return kind == TypeKind::Generic && name == "Rc" && genericArgs.size() == 1;
+        return kind == TypeKind::Rc && genericArgs.size() == 1;
     }
 
     [[nodiscard]] sp<TypeInfo> rcElementType() const {
@@ -362,7 +389,7 @@ struct TypeInfo {
     // Heap<T>：堆作用域句柄（DRAFT-heap-types §8.3a），layout = 裸 T*
     // 与 Rc<T> 不同：无 RC 头、单所有权、作用域绑定析构、不可装入 Rc/Weak（§8.3a.5.1）
     [[nodiscard]] bool isHeap() const {
-        return kind == TypeKind::Generic && name == "Heap" && genericArgs.size() == 1;
+        return kind == TypeKind::Heap && genericArgs.size() == 1;
     }
 
     [[nodiscard]] sp<TypeInfo> heapElementType() const {
@@ -375,7 +402,7 @@ struct TypeInfo {
     // Weak<T>：弱引用，layout 与 Rc<T> 同形 { ptr handle }
     // handle 指向 Rc 的 Block；weak 计数维护 block 存活，不维护 payload 存活
     [[nodiscard]] bool isWeak() const {
-        return kind == TypeKind::Generic && name == "Weak" && genericArgs.size() == 1;
+        return kind == TypeKind::Weak && genericArgs.size() == 1;
     }
 
     [[nodiscard]] sp<TypeInfo> weakElementType() const {
@@ -386,7 +413,7 @@ struct TypeInfo {
     }
 
     [[nodiscard]] bool isPtr() const {
-        return name == "Ptr";
+        return kind == TypeKind::Ptr;
     }
 
     [[nodiscard]] sp<TypeInfo> ptrElementType() const {
@@ -397,7 +424,7 @@ struct TypeInfo {
     }
 
     [[nodiscard]] bool isArrayGeneric() const {
-        return kind == TypeKind::Generic && name == "Array" && genericArgs.size() == 1;
+        return kind == TypeKind::ArrayGeneric && genericArgs.size() == 1;
     }
 
     [[nodiscard]] sp<TypeInfo> arrayGenericElementType() const {
@@ -411,7 +438,7 @@ struct TypeInfo {
     // layout = { vtable_ptr, data_ptr } 16 字节 fat pointer。
     // 内层若为 Ref<D> 则是借用形态 (Dyn<D&>)，否则 owned。
     [[nodiscard]] bool isDyn() const {
-        return kind == TypeKind::Generic && name == "Dyn" && genericArgs.size() == 1;
+        return kind == TypeKind::Dyn && genericArgs.size() == 1;
     }
 
     [[nodiscard]] bool isDynBorrow() const {
@@ -431,7 +458,7 @@ struct TypeInfo {
 
     // Nullable<T>：T? 解糖后的类型；layout = { bool _has; T _value }
     [[nodiscard]] bool isNullable() const {
-        return kind == TypeKind::Generic && name == "Nullable" && genericArgs.size() == 1;
+        return kind == TypeKind::Nullable && genericArgs.size() == 1;
     }
 
     [[nodiscard]] sp<TypeInfo> nullableInnerType() const {
@@ -441,8 +468,25 @@ struct TypeInfo {
         return nullptr;
     }
 
+    // 是否有类型实参：Generic（用户泛型）或内置包装类型
+    [[nodiscard]] bool hasGenericArgs() const {
+        switch (kind) {
+            case TypeKind::Generic:
+            case TypeKind::Rc:
+            case TypeKind::Ref:
+            case TypeKind::Weak:
+            case TypeKind::Heap:
+            case TypeKind::Dyn:
+            case TypeKind::ArrayGeneric:
+            case TypeKind::Nullable:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     string getFullName() const {
-        if (kind == TypeKind::Generic && !genericArgs.empty()) {
+        if (hasGenericArgs() && !genericArgs.empty()) {
             string result = name;
             for (size_t i = 0; i < genericArgs.size(); ++i) {
                 result += "_" + genericArgs[i]->getFullName();
@@ -463,7 +507,7 @@ struct TypeInfo {
     // LLVM 符号用 mangle 名（与 yux 源码写法一致）：
     // 泛型 Base<Arg1,Arg2>，元组 (T1,T2)，函数 fn(P1,...,Pn)R，数组 [E*N]
     string getMangleName() const {
-        if (kind == TypeKind::Generic && !genericArgs.empty()) {
+        if (hasGenericArgs() && !genericArgs.empty()) {
             string result = name + "<";
             for (size_t i = 0; i < genericArgs.size(); ++i) {
                 if (i > 0) result += ",";
@@ -499,14 +543,14 @@ struct TypeInfo {
         return name;
     }
 
-    // 应用类型形参替换。Normal 类型若匹配 subst 键则整体替换（可被替换为 Generic/Array）。
+    // 应用类型形参替换。Normal 类型若匹配 subst 键则整体替换（可被替换为 Generic/Array 等）。
     TypeInfo substitute(const std::map<std::string, TypeInfo>& subst) const {
-        if (kind == TypeKind::Normal) {
+        if (kind == TypeKind::Normal || kind == TypeKind::Ptr) {
             auto it = subst.find(name);
             if (it != subst.end()) return it->second;
             return *this;
         }
-        if (kind == TypeKind::Generic) {
+        if (hasGenericArgs() && !genericArgs.empty()) {
             vector<sp<TypeInfo>> newArgs;
             newArgs.reserve(genericArgs.size());
             for (auto& a : genericArgs) {
@@ -548,7 +592,7 @@ struct TypeInfo {
             if (!elementType || !other.elementType) return false;
             return *elementType == *other.elementType;
         }
-        if (kind == TypeKind::Generic || kind == TypeKind::Tuple) {
+        if (hasGenericArgs() || kind == TypeKind::Tuple) {
             if (genericArgs.size() != other.genericArgs.size()) return false;
             for (size_t i = 0; i < genericArgs.size(); ++i) {
                 if (!genericArgs[i] && !other.genericArgs[i]) continue;

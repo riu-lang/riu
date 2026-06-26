@@ -171,7 +171,7 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
 
         currentPtr = _builder.CreateGEP(structType, currentPtr, indices, "struct.field.ptr");
         TypeInfo fieldType = field->getType();
-        if (currentType.isGeneric() && structDecl->isGeneric() &&
+        if (currentType.hasGenericArgs() && structDecl->isGeneric() &&
             currentType.genericArgs.size() == structDecl->typeParams().size()) {
             map<string, TypeInfo> subst;
             for (size_t i = 0; i < structDecl->typeParams().size(); ++i) {

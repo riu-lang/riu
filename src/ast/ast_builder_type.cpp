@@ -177,7 +177,7 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
     } else if (auto nul = dynamic_cast<yuxParser::TypeNullableWithRefContext*>(twr)) {
         // 内层是 type（不带 &），直接复用 visitType* 通路
         auto innerT = any_cast_p<TypeNode>(visit(nul->type()));
-        if (innerT->getType().kind == TypeKind::Generic && innerT->getType().name == "Weak") {
+        if (innerT->getType().isWeak()) {
             auto qt = nul->SymbolQuest()->getSymbol();
             throw YuxError(qt ? static_cast<int>(qt->getLine()) : 0,
                 qt ? static_cast<int>(qt->getCharPositionInLine()) + 1 : 0,
@@ -279,7 +279,7 @@ std::any ASTBuilder::visitTypeNullable(yux::yuxParser::TypeNullableContext* ctx)
     // Phase 1d.3：禁 Weak<T>?（DRAFT §5：Weak 已原生可空，再裹 Nullable 无意义）
     {
         auto innerTI = inner->getType();
-        if (innerTI.kind == TypeKind::Generic && innerTI.name == "Weak") {
+        if (innerTI.isWeak()) {
             int line = questTok ? static_cast<int>(questTok->getLine()) : 0;
             int col  = questTok ? static_cast<int>(questTok->getCharPositionInLine()) + 1 : 0;
             throw YuxError(line, col, ErrorCode::E2001)

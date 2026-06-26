@@ -276,7 +276,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
             auto fieldPtr = _builder.CreateGEP(structType, dataPtr, indices, "struct.field");
             auto fieldType = field->getType();
 
-            if (actualType.isGeneric() && structDecl->isGeneric() &&
+            if (actualType.hasGenericArgs() && structDecl->isGeneric() &&
                 actualType.genericArgs.size() == structDecl->typeParams().size()) {
                 map<string, TypeInfo> subst;
                 for (size_t i = 0; i < structDecl->typeParams().size(); ++i) {

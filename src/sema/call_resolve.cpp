@@ -656,9 +656,9 @@ void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn, const
                 }
             }
         }
-        // Generic vs Generic: 同名同元数则递归各 typeArg
-        if (pType.kind == TypeKind::Generic && aType.kind == TypeKind::Generic && pType.name == aType.name &&
-            pType.genericArgs.size() == aType.genericArgs.size()) {
+        // 泛型实例化 vs 泛型实例化（含内置包装）：同名同元数则递归各 typeArg
+        if (pType.hasGenericArgs() && aType.hasGenericArgs() && pType.kind == aType.kind &&
+            pType.name == aType.name && pType.genericArgs.size() == aType.genericArgs.size()) {
             for (size_t i = 0; i < pType.genericArgs.size(); ++i) {
                 if (pType.genericArgs[i] && aType.genericArgs[i]) {
                     unify(*pType.genericArgs[i], *aType.genericArgs[i]);
@@ -1137,7 +1137,7 @@ EnumDeclNode* lookupEnumInFiles(FileNode* file, FileNode* sdkFile, const string&
 // 用户友好类型渲染: Rc<T> / Array<T> / [N]T / Generic<A,B>
 // 与 compiler_expr.cpp compileEnumCtorExpr 内 fmtType lambda 等价.
 string fmtTypeFriendly(const TypeInfo& t) {
-    if (t.kind == TypeKind::Generic && !t.genericArgs.empty()) {
+    if (t.hasGenericArgs() && !t.genericArgs.empty()) {
         string r = t.name + "<";
         for (size_t j = 0; j < t.genericArgs.size(); ++j) {
             if (j) r += ", ";
@@ -1353,7 +1353,7 @@ void validateGetRefPrivacy(FileNode* file, FileNode* sdkFile, p<ExprGetRefNode> 
 
         // 推进 currentType: 取 field type, 含泛型实参替换 (与 getType 同款).
         TypeInfo fieldType = structDecl->fields()[idx]->getType();
-        if (lookupType.isGeneric() && structDecl->isGeneric() &&
+        if (lookupType.hasGenericArgs() && structDecl->isGeneric() &&
             lookupType.genericArgs.size() == structDecl->typeParams().size()) {
             std::map<string, TypeInfo> subst;
             for (size_t i = 0; i < structDecl->typeParams().size(); ++i) {

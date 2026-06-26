@@ -73,7 +73,7 @@ std::string typeText(const p<TypeNode>& t) {
 
 std::string typeInfoDisplay(const TypeInfo& info) {
     if (info.empty()) return "<?>";
-    if (info.kind == TypeKind::Generic && !info.genericArgs.empty()) {
+    if (info.hasGenericArgs() && !info.genericArgs.empty()) {
         std::string s = info.name + "<";
         bool first = true;
         for (const auto& a : info.genericArgs) {
@@ -345,7 +345,7 @@ static LspPosition byteOffsetToLsp(const std::string& docText, size_t byteOff) {
             utf16 += (cp <= 0xFFFF ? 1 : 2);
         }
     } catch (...) { /* 残缺 UTF-8：保持 utf16 当前值 */
-    }               // NOLINT(bugprone-empty-catch)
+    } // NOLINT(bugprone-empty-catch)
     p.character = utf16;
     return p;
 }

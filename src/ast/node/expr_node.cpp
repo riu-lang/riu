@@ -335,7 +335,7 @@ TypeInfo ExprCallNode::getType() const {
                 if (methodSym) {
                     auto rt = methodSym->retType;
                     // 结构体泛型实参替换：T→具体类型
-                    if (actualType.isGeneric() && !actualType.genericArgs.empty()) {
+                    if (actualType.hasGenericArgs() && !actualType.genericArgs.empty()) {
                         // 结构体泛型实参替换：T → 具体类型。
                         // 优先用 structDecl 的 typeParams 做精确映射；structDecl 查不到时（内建
                         // 容器如 Array<T>/Rc<T>）回退到单参数约定 T。
@@ -456,8 +456,8 @@ TypeInfo ExprCallNode::getType() const {
                                     }
                                 }
                             }
-                            if (pT.kind == TypeKind::Generic && aT.kind == TypeKind::Generic && pT.name == aT.name &&
-                                pT.genericArgs.size() == aT.genericArgs.size()) {
+                            if (pT.hasGenericArgs() && aT.hasGenericArgs() && pT.kind == aT.kind &&
+                                pT.name == aT.name && pT.genericArgs.size() == aT.genericArgs.size()) {
                                 for (size_t i = 0; i < pT.genericArgs.size(); ++i) {
                                     if (pT.genericArgs[i] && aT.genericArgs[i]) {
                                         unify(*pT.genericArgs[i], *aT.genericArgs[i]);
@@ -1201,7 +1201,7 @@ TypeInfo ExprDotNode::getType() const {
 
             // 若 actualType 是泛型实例，构造 T→具体 的替换表
             map<string, TypeInfo> genSubst;
-            if (actualType.isGeneric() && structDecl && structDecl->isGeneric() &&
+            if (actualType.hasGenericArgs() && structDecl && structDecl->isGeneric() &&
                 structDecl->typeParams().size() == actualType.genericArgs.size()) {
                 for (size_t i = 0; i < actualType.genericArgs.size(); ++i) {
                     auto& a = actualType.genericArgs[i];
@@ -1619,7 +1619,7 @@ TypeInfo ExprGetRefNode::getType() const {
 
         TypeInfo fieldType = field->getType();
         // 泛型实例：按 typeParam→arg 替换字段类型
-        if (lookupType.isGeneric() && structDecl->isGeneric() &&
+        if (lookupType.hasGenericArgs() && structDecl->isGeneric() &&
             lookupType.genericArgs.size() == structDecl->typeParams().size()) {
             map<string, TypeInfo> subst;
             for (size_t i = 0; i < structDecl->typeParams().size(); ++i) {
@@ -1702,7 +1702,7 @@ int ExprMoveAssignNode::resolveColumn() const {
 TypeInfo ExprNullElseNode::getType() const {
     auto leftType = _left->getType();
     // 左侧若为 Nullable<T>，结果为 T
-    if (leftType.kind == TypeKind::Generic && leftType.name == "Nullable" && leftType.genericArgs.size() == 1) {
+    if (leftType.isNullable()) {
         return *leftType.genericArgs[0];
     }
     // 容错：非 Nullable 时退回右侧类型，由后续语义检查报错

@@ -97,8 +97,9 @@ TypeInfo resolveAliasImpl(const TypeInfo& t, FileNode* file, std::set<std::strin
         TypeInfo target = alias->target()->getType();
         return resolveAliasImpl(target, file, visited);
     }
-    if (t.kind == TypeKind::Generic) {
-        // 泛型别名实例化：Pair<T> = (T, T) 遇 Pair<i32> → (i32, i32)
+    if (t.hasGenericArgs() && !t.genericArgs.empty()) {
+        // 泛型别名实例化（用户 Generic）或内置包装（Rc/Ref/Weak/Heap/Dyn/ArrayGeneric/Nullable）
+        // Pair<T> = (T, T) 遇 Pair<i32> → (i32, i32) ; 内置包装无别名时递归解析实参
         auto* alias = file->getAliasDecl(t.name);
         if (alias && alias->isGeneric() && alias->typeParams().size() == t.genericArgs.size() && alias->target()) {
             if (visited.count(t.name)) {
@@ -112,7 +113,7 @@ TypeInfo resolveAliasImpl(const TypeInfo& t, FileNode* file, std::set<std::strin
             TypeInfo inst = alias->target()->getType().substitute(subst);
             return resolveAliasImpl(inst, file, visited);
         }
-        // 普通泛型：递归解析每个实参中的别名
+        // 无别名命中（用户泛型或内置包装）：递归解析每个实参中的别名
         vector<sp<TypeInfo>> newArgs;
         newArgs.reserve(t.genericArgs.size());
         for (auto& a : t.genericArgs) {
@@ -370,16 +371,21 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         return _builder.getVoidTy();
     }
 
-    // 内建泛型类型（Rc/Weak/Array/Nullable）写成 Normal 形式（即不带 `<T>`）：
-    // 这些类型没有 StructDecl 兜底，落到下方各分支也只剩 `Unknown type (null)`，
-    // 返回 null 会让调用方在后续 SEH/段错误时崩。这里早抛 E6011 以给出诊断。
+    // 内置泛型包装类型若被误写成 Normal 形式（即不带 `<T>`，kind 未正确分发）：
+    // 这些类型没有 StructDecl 兜底，落到下方各分支只会得到 `Unknown type (null)`，
+    // 返回 null 会让调用方在后续 SEH/段错误时崩溃。这里早抛 E6011 以给出诊断。
+    // 注：正常情况下构造函数 kindForBuiltinWrapper() 已自动分发到正确 kind，
+    // 此检查仅防御单参 TypeInfo(name) 误用或未来回归。
     if (type.isNormal()) {
-        static constexpr std::array<std::pair<const char*, size_t>, 5> kBuiltinGenerics{{
+        static constexpr std::array<std::pair<const char*, size_t>, 8> kBuiltinGenerics{{
             {"Rc", 1},
             {"Weak", 1},
             {"Array", 1},
             {"Nullable", 1},
             {"Heap", 1},
+            {"Ref", 1},
+            {"Dyn", 1},
+            {"Ptr", 0},
         }};
         for (auto [bname, arity] : kBuiltinGenerics) {
             if (type.name == bname) {
@@ -479,6 +485,20 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             return llvm::StructType::get(_context, arrayFields);
         }
         return llvm::PointerType::get(_context, 0);
+    }
+
+    // Nullable<T> 类型：layout = { bool _has, T _value }
+    // T? 解糖后类型（spec §3.5 / DRAFT-nullable-types §8.2）
+    if (type.isNullable()) {
+        auto inner = type.nullableInnerType();
+        if (inner) {
+            DEBUG_LOG_VAL("    -> NullableType (struct)", type.name);
+            vector<llvm::Type*> fields;
+            fields.push_back(_builder.getInt1Ty());          // _has: bool
+            fields.push_back(getLLVMType(*inner));          // _value: T
+            return llvm::StructType::get(_context, fields);
+        }
+        return nullptr;
     }
 
     // Dyn<D> / Dyn<D&> 类型 (DRAFT-dyn-draft / 拟 §12.9)
