@@ -113,9 +113,7 @@
 | `[` `]` | `GetStart` `GetEnd` |
 | `{` `}` | `BlockStart` `BlockEnd` |
 
-§A.4.1 多字符运算符（如 `<<` / `>>` / `<=` / `>=` / `<<=` / `>>=`）由两个或多个上表 token 拼装；具体规则见 §2.4 与 `opShift` / `opCompare` / `opAssign`。
-
-§A.4.2 `^=` 在 lexer 层有 token，但 `opAssign` 产生式 v1 **未**包含；按位异或赋值 `^=` v1 不可用。Open Issue：是否补入 `opAssign`。
+§A.4.1 多字符运算符（如 `<<` / `>>` / `<=` / `>=` / `<<=` / `>>=`）由两个或多个上表 token 拼装；具体规则见 §2.4 与 `opShift` / `opCompare` / `opAssign`。`^=` 为单 token（`SymbolXorEq`），直接由 `opAssign` 包含。
 
 ## A.5 词法 token 摘录
 

@@ -49,3 +49,24 @@ fn test_shl_assign() {
   b <<= 1
   assert_eq(b, 8)
 }
+
+#Test
+fn test_xor_assign() {
+  #Mut let a i32 = 0x0F
+  a ^= 0xF0
+  assert_eq(a, 0xFF)
+}
+
+#Test
+fn test_xor_assign_u8() {
+  #Mut let a u8 = 0b1010u8
+  a ^= 0b1100u8
+  assert_eq(a, 0b0110u8)
+}
+
+#Test
+fn test_xor_assign_u64() {
+  #Mut let a u64 = 0xFFFFFFFF00000000u64
+  a ^= 0x00000000FFFFFFFFu64
+  assert_eq(a, 0xFFFFFFFFFFFFFFFFu64)
+}

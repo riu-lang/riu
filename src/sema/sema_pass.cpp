@@ -606,7 +606,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             }
         }
         // v0.16 闭包捕获: lambda body 内对捕获变量赋值 / 成员链写 → E2030.
-        // 覆盖 `=` / `+= -= *= /= %=` / `<<= >>=` 及 `obj.f = ...` / `obj[i] = ...`
+        // 覆盖 `=` / `+= -= *= /= %= ^=` / `<<= >>=` 及 `obj.f = ...` / `obj[i] = ...`
         // (obj 为捕获变量)。
         // 判定: objName 不在 lambda 自身的形参列表 → 外层变量 → 捕获 → 禁写.
         // 不能用 bodyScope->lookupSymbol(), 因其沿父链查找到外层 fn 作用域.
