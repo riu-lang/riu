@@ -51,10 +51,11 @@ private:
     p<FnNode> _currentFn = nullptr;
     vector<vector<string>> _tryStack;
 
-    // Bucket 2 (CURRENT-check.md): break outside loop (E3094) 校验. visitStmt
-    // 进入 StatementLoopNode 时 ++, 离开时 --; StatementBreakNode 命中且 depth=0
-    // 时抛 E3094.
-    int _loopDepth = 0;
+    // labeled break：label stack 替代 _loopDepth。
+    // 进入 loop 时 push label（空 Token = 无 label），离开时 pop；
+    // break@label 按 label 从内向外搜索匹配，未命中 → E3025；
+    // 无 label 的 break 走最内层 loop（栈非空校验 → E3094）。
+    vector<Token> _loopLabelStack;
 
     // Phase 3.4.d.2: 当前所在 struct impl 名 (用于私有字段可见性 E3042).
     // 与 Compiler 的 `_currentStructName` 同步: 进入 struct impl 方法 visit

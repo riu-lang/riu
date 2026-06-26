@@ -107,7 +107,7 @@ N | <源码行原文>
 
 ### D.3.3 E3xxx — 类型
 
-类型不匹配（E3001..E3026）：
+类型不匹配（E3001..E3028）：
 
 | 码     | 模板 | 备注 |
 |--------|------|------|
@@ -119,7 +119,9 @@ N | <源码行原文>
 | E3016 | `Weak<{}> 仅支持从 Rc<{}> 或 Weak<{}> 构造` | |
 | E3018 | `T& copy-bind source type mismatch: '{}' is not {}&` | |
 | E3019 | `T& local initializer must be &expr or copy-bind from a T& variable` | |
+| E3022 | `Duplicate loop label '{}': already used by an enclosing loop` | labeled break（v0.18）|
 | E3024 | `Operator requires Nullable<T> on the left, got {}` | 原 E3024-E3025 合并 |
+| E3025 | `break@label '{}' target not found: no enclosing loop with that label` | labeled break（v0.18）|
 | E3026 | `` String template interpolation requires type implementing ToString, got '{}' `` | |
 
 符号查找：

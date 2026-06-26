@@ -1709,8 +1709,8 @@ void Compiler::compileLoopStatement(p<StatementLoopNode> node) {
     func->insert(func->end(), bodyBB);
     _builder.SetInsertPoint(bodyBB);
 
-    // 将退出块压入栈 (供 break 使用)
-    _loopExitBlocks.push_back(exitBB);
+    // 将退出块压入栈 (供 break / break@label 使用)
+    _loopExitBlocks.push_back({.label = node->label().getText(), .exitBB = exitBB});
 
     // 编译循环体语句
     for (auto& stmt : node->block()->statements()) {
@@ -1746,15 +1746,32 @@ void Compiler::compileLoopStatement(p<StatementLoopNode> node) {
 // 编译 break 语句
 // 跳出当前循环
 void Compiler::compileBreakStatement(p<StatementBreakNode> node) {
-    DEBUG_LOG("  Statement: Break");
+    const auto& brLabel = node->label();
+    DEBUG_LOG("  Statement: Break"
+              << (brLabel.getText().empty() ? "" : " (label: " + brLabel.getText() + ")"));
 
     // 检查是否在循环内
     if (_loopExitBlocks.empty()) {
         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3094);
     }
 
-    // 跳转到循环退出块
-    llvm::BasicBlock* exitBB = _loopExitBlocks.back();
+    // 查找目标退出块
+    llvm::BasicBlock* exitBB = nullptr;
+    if (brLabel.getText().empty()) {
+        // 无 label：跳转到最内层 loop
+        exitBB = _loopExitBlocks.back().exitBB;
+    } else {
+        // break@label：从内向外搜索匹配 label
+        for (auto it = _loopExitBlocks.rbegin(); it != _loopExitBlocks.rend(); ++it) {
+            if (it->label == brLabel.getText()) {
+                exitBB = it->exitBB;
+                break;
+            }
+        }
+        if (!exitBB) {
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3025, brLabel.getText());
+        }
+    }
     _builder.CreateBr(exitBB);
 
     // 创建不可达基本块 (break 后的代码不应执行)

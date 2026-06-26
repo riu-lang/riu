@@ -17,6 +17,15 @@
 
 ---
 
+## 2026-06-26 —— labeled break（`break@label`）
+
+- **新增 §5.5.1.6**：`ID ':' loop` labeled loop 语法，支持为循环命名
+- **新增 §5.5.2.1–§5.5.2.3**：`break@ID` 形态，从嵌套 loop 中跳出指定标签层
+- **修改 §5.5.1.1**：`loop` 产生式扩展为 `(ID ':')? Loop loopInit? statementBlock`
+- **新增诊断码 E3022**：重复 loop label 检测（`Duplicate loop label '{}': already used by an enclosing loop`）
+- **新增诊断码 E3025**：`break@label` 目标不存在（`break@label '{}' target not found: no enclosing loop with that label`）
+- **冲突 / 兼容**：完全向后兼容——无 label 的 `loop { }` 与 `break;` 行为不变。label 检测仅对新增语法生效
+
 ## 2026-06-26 —— loop init 子句
 
 - **新增 §5.5.1.5**：`loop name = expr { }` 和 `loop (a, b) = expr { }` 形态，在 loop 前声明默认可变的局部变量

@@ -140,7 +140,12 @@ class Compiler {
     llvm::Value* _currentLambdaCapturesArg = nullptr;
 
     // ==================== 控制流 ====================
-    vector<llvm::BasicBlock*> _loopExitBlocks; // 循环退出块栈 (用于 break 语句)
+    // labeled break：每条记录 = (label 文本, 退出 BB)；空 label = 无标签 loop
+    struct LoopExitInfo {
+        string label;
+        llvm::BasicBlock* exitBB;
+    };
+    vector<LoopExitInfo> _loopExitBlocks; // 循环退出块栈 (用于 break / break@label)
 
 public:
     // DRAFT-错误.md [#4.H]：try-catch 块栈

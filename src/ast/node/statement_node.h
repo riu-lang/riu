@@ -118,16 +118,19 @@ class StatementBlockNode;
 class StatementLoopNode : public StatementNode {
 protected:
     p<StatementBlockNode> _block;
+    Token _label;              // label 名称；空 Token = 无 label（label: loop { }）
     // loop init 子句（可选）：loop name = expr { } / loop (a, b) = expr { }
     vector<Token> _initNames; // 变量名；空 = 无 init
     p<TypeNode> _initType;    // 可选类型标注；nullptr = 从 expr 推断
     p<ExprNode> _initExpr;    // init 表达式；nullptr = 无 init
 
 public:
-    explicit StatementLoopNode(const p<Node>& parent, p<StatementBlockNode> block, vector<Token> initNames = {},
-                               p<TypeNode> initType = nullptr, p<ExprNode> initExpr = nullptr);
+    explicit StatementLoopNode(const p<Node>& parent, p<StatementBlockNode> block, Token label = {},
+                               vector<Token> initNames = {}, p<TypeNode> initType = nullptr,
+                               p<ExprNode> initExpr = nullptr);
 
     [[nodiscard]] const p<StatementBlockNode>& block() const;
+    [[nodiscard]] const Token& label() const { return _label; }
     [[nodiscard]] const vector<Token>& initNames() const { return _initNames; }
     [[nodiscard]] const p<TypeNode>& initType() const { return _initType; }
     [[nodiscard]] const p<ExprNode>& initExpr() const { return _initExpr; }
@@ -135,8 +138,12 @@ public:
 };
 
 class StatementBreakNode : public StatementNode {
+protected:
+    Token _label; // label 名称；空 Token = 无 label（break@label;）
+
 public:
-    explicit StatementBreakNode(const p<Node>& parent) : StatementNode(parent) {}
+    explicit StatementBreakNode(const p<Node>& parent, Token label = {}) : StatementNode(parent), _label(std::move(label)) {}
+    [[nodiscard]] const Token& label() const { return _label; }
 };
 
 // DRAFT-static-vars Phase 5：静态字段写语句（Type::FIELD = expr）

@@ -174,6 +174,8 @@ DEF_ERR(3019, "T& local initializer must be &expr or copy-bind from a T& variabl
 // E3020 已退役 → E3014
 // E3024: 统一 Nullable 操作符左侧类型要求（原 E3024 + E3025 合并）
 DEF_ERR(3024, "Operator requires Nullable<T> on the left, got {}")
+DEF_ERR(3025, "break@label '{}' target not found: no enclosing loop with that label")
+DEF_ERR(3022, "Duplicate loop label '{}': already used by an enclosing loop")
 DEF_ERR(3026, "String template interpolation requires type implementing ToString, got '{}' (impl `Type : ToString {{ "
               "fn to_string() String {{ ... }} }}`)")
 DEF_ERR(3027, "Type mismatch in match arms: expected {}, arm produces {}")

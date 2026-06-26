@@ -193,6 +193,12 @@ std::any ASTBuilder::visitStatementLoop(yux::yuxParser::StatementLoopContext* ct
     auto scope = currentScope();
     auto block = any_cast_p<StatementBlockNode>(visit(ctx->statementBlock()));
 
+    // 处理可选的 label 前缀：label: loop { }
+    Token label;
+    if (ctx->ID()) {
+        label = Token(ctx->ID()->getText(), static_cast<int>(ctx->ID()->getSymbol()->getLine()));
+    }
+
     // 处理可选的 loop init 子句
     vector<Token> initNames;
     p<TypeNode> initType = nullptr;
@@ -237,15 +243,20 @@ std::any ASTBuilder::visitStatementLoop(yux::yuxParser::StatementLoopContext* ct
         }
     }
 
-    DEBUG_LOG("  Statement: Loop" << (ctx->loopInit() ? " (with init)" : ""));
+    DEBUG_LOG("  Statement: Loop" << (ctx->loopInit() ? " (with init)" : "")
+                                  << (ctx->ID() ? " (label: " + label.getText() + ")" : ""));
     return static_cast<p<StatementNode>>(
-        createWithLine<StatementLoopNode>(ctx, scope, block, std::move(initNames), initType, initExpr));
+        createWithLine<StatementLoopNode>(ctx, scope, block, label, std::move(initNames), initType, initExpr));
 }
 
 std::any ASTBuilder::visitStatementBreak(yux::yuxParser::StatementBreakContext* ctx) {
     auto scope = currentScope();
-    DEBUG_LOG("  Statement: Break");
-    return static_cast<p<StatementNode>>(createWithLine<StatementBreakNode>(ctx, scope));
+    Token label;
+    if (ctx->ID()) {
+        label = Token(ctx->ID()->getText(), static_cast<int>(ctx->ID()->getSymbol()->getLine()));
+    }
+    DEBUG_LOG("  Statement: Break" << (ctx->ID() ? " (label: " + label.getText() + ")" : ""));
+    return static_cast<p<StatementNode>>(createWithLine<StatementBreakNode>(ctx, scope, label));
 }
 
 std::any ASTBuilder::visitStatementSet(yux::yuxParser::StatementSetContext* ctx) {

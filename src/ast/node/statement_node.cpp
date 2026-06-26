@@ -28,10 +28,10 @@ p<TypeNode> StatementDeclareAssignNode::varType() const {
     return _type;
 }
 
-StatementLoopNode::StatementLoopNode(const p<Node>& parent, p<StatementBlockNode> block, vector<Token> initNames,
-                                     p<TypeNode> initType, p<ExprNode> initExpr)
-    : StatementNode(parent), _block(block), _initNames(std::move(initNames)), _initType(initType), _initExpr(initExpr) {
-}
+StatementLoopNode::StatementLoopNode(const p<Node>& parent, p<StatementBlockNode> block, Token label,
+                                     vector<Token> initNames, p<TypeNode> initType, p<ExprNode> initExpr)
+    : StatementNode(parent), _block(block), _label(std::move(label)), _initNames(std::move(initNames)),
+      _initType(initType), _initExpr(initExpr) {}
 
 const p<StatementBlockNode>& StatementLoopNode::block() const {
     return _block;

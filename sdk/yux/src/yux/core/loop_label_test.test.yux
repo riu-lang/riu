@@ -1,0 +1,54 @@
+#Test
+fn test_labeled_break_basic() {
+    #Mut
+    let i i32 = 0
+
+    outer: loop {
+        inner: loop {
+            i = i + 1
+            if i == 2 {
+                break@outer;
+            }
+            break;
+        }
+    }
+
+    assert_eq(i, 2)
+}
+
+#Test
+fn test_labeled_break_with_init() {
+    #Mut
+    let sum i32 = 0
+
+    outer: loop i i32 = 0 {
+        if i >= 10 {
+            break;
+        }
+        i = i + 1
+        sum = sum + i
+        if i == 5 {
+            break@outer;
+        }
+    }
+
+    ; sum = 1+2+3+4+5 = 15
+    assert_eq(sum, 15)
+}
+
+#Test
+fn test_labeled_break_deep() {
+    #Mut
+    let i i32 = 1
+
+    a: loop {
+        b: loop {
+            c: loop {
+                i = 100
+                break@a;
+            }
+        }
+    }
+
+    assert_eq(i, 100)
+}

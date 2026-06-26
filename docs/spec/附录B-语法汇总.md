@@ -297,12 +297,12 @@ statement ::=
   | 'cval' ID typeWithRef '=' expr codeLineEnd                  # statementCvalDeclAssign
   | expr '[' expr (',' expr)* ']' '=' expr                      # statementSet
   | ID '::' ID '=' expr codeLineEnd                             # statementStaticFieldSet
-  | 'loop' statementBlock                                       # statementLoop
+  | (ID ':')? 'loop' loopInit? statementBlock                    # statementLoop
   | (ID | '$') ('.' ID | DOT_NUM)* opAssign expr codeLineEnd    # statementAssign
   | expr ';'? codeLineEnd                                       # statementExpr
   | 'ret' expr codeLineEnd                                      # statementRet
   | 'ret' ';' LineEnd                                           # statementRetVoid
-  | 'break' ';' codeLineEnd                                     # statementBreak
+  | 'break' ('@' ID)? ';' codeLineEnd                           # statementBreak
 
 statementBlock ::= '{' codeLineEnd
                        (statement | comment | codeLineEnd)*

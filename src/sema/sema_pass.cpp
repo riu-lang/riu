@@ -488,12 +488,21 @@ void SemaPass::visitBlock(p<StatementBlockNode> block) {
 void SemaPass::visitStmt(p<StatementNode> stmt) {
     if (!stmt) return;
     if (auto loop = dynamic_cast<p<StatementLoopNode>>(stmt)) {
-        ++_loopDepth;
+        const auto& label = loop->label();
+        // 检测重复 label：同名 label 不可在外层 loop 栈中出现
+        if (!label.getText().empty()) {
+            for (const auto& existing : _loopLabelStack) {
+                if (existing.getText() == label.getText()) {
+                    throw YuxError(loop->getLineNumber(), loop->getColumn(), ErrorCode::E3022, label.getText());
+                }
+            }
+        }
+        _loopLabelStack.push_back(label); // 空 Token = 无 label
         if (loop->hasInit()) {
             visitExpr(loop->initExpr());
         }
         visitBlock(loop->block());
-        --_loopDepth;
+        _loopLabelStack.pop_back();
         return;
     }
     if (auto set = dynamic_cast<p<StatementSetNode>>(stmt)) {
@@ -528,8 +537,24 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         return;
     }
     if (auto br = dynamic_cast<p<StatementBreakNode>>(stmt)) {
-        if (_loopDepth == 0) {
-            throw YuxError(br->getLineNumber(), br->getColumn(), ErrorCode::E3094);
+        const auto& brLabel = br->label();
+        if (brLabel.getText().empty()) {
+            // 无 label 的 break：检查是否有外层 loop
+            if (_loopLabelStack.empty()) {
+                throw YuxError(br->getLineNumber(), br->getColumn(), ErrorCode::E3094);
+            }
+        } else {
+            // break@label：从内向外搜索匹配 label
+            bool found = false;
+            for (auto it = _loopLabelStack.rbegin(); it != _loopLabelStack.rend(); ++it) {
+                if (it->getText() == brLabel.getText()) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                throw YuxError(br->getLineNumber(), br->getColumn(), ErrorCode::E3025, brLabel.getText());
+            }
         }
         return;
     }

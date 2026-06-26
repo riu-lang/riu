@@ -29,21 +29,33 @@ bool blockTerminates(p<ScopeNode> scope, p<StatementBlockNode> block);
 bool stmtTerminates(p<ScopeNode> scope, p<StatementNode> stmt);
 bool exprTerminates(p<ScopeNode> scope, p<ExprNode> expr);
 
-// loop body 是否含可达 break（属于该层 loop）；嵌套 loop 内的 break 不算。
-bool blockHasOwnBreak(p<StatementBlockNode> block);
+// loop body 是否含可达 break（属于目标 label 对应的 loop）。
+// 裸 break 总是属于最内层 loop；break@L 精确匹配 label L。
+// forLabel 为空时匹配所有裸 break（用于非 labeled 场景的兼容）。
+bool blockHasOwnBreak(p<StatementBlockNode> block, const string& forLabel);
 
-bool stmtsHaveOwnBreak(const vector<p<StatementNode>>& stmts) {
+bool stmtsHaveOwnBreak(const vector<p<StatementNode>>& stmts, const string& forLabel) {
     for (auto s : stmts) {
-        if (dynamic_cast<p<StatementBreakNode>>(s)) return true;
-        if (dynamic_cast<p<StatementLoopNode>>(s)) continue; // 内层 loop 屏蔽
+        if (auto br = dynamic_cast<p<StatementBreakNode>>(s)) {
+            const auto& bl = br->label();
+            if (bl.getText().empty()) return true;     // 裸 break → 当前层 own break
+            if (bl.getText() == forLabel) return true; // break@L 匹配当前 loop label
+            continue;                                  // break@other → 不属于当前 loop
+        }
+        if (auto nestedLoop = dynamic_cast<p<StatementLoopNode>>(s)) {
+            // 嵌套 loop：裸 break 只跳出内层，不属外层；
+            // 但 break@forLabel 即使在内层体内也会跳出外层 → 递归检查
+            if (!forLabel.empty() && blockHasOwnBreak(nestedLoop->block(), forLabel)) return true;
+            continue;
+        }
         if (auto se = dynamic_cast<p<StatementExprNode>>(s)) {
             auto e = se->expr();
             if (auto ife = dynamic_cast<p<ExprIfElseNode>>(e)) {
-                if (blockHasOwnBreak(ife->thenBlock())) return true;
+                if (blockHasOwnBreak(ife->thenBlock(), forLabel)) return true;
                 for (auto& el : ife->elifs()) {
-                    if (blockHasOwnBreak(el->block())) return true;
+                    if (blockHasOwnBreak(el->block(), forLabel)) return true;
                 }
-                if (ife->elseBlock() && blockHasOwnBreak(ife->elseBlock())) return true;
+                if (ife->elseBlock() && blockHasOwnBreak(ife->elseBlock(), forLabel)) return true;
                 continue;
             }
             // match arm body 是单表达式；break 不会作为 arm body 出现，跳过递归。
@@ -52,9 +64,9 @@ bool stmtsHaveOwnBreak(const vector<p<StatementNode>>& stmts) {
     return false;
 }
 
-bool blockHasOwnBreak(p<StatementBlockNode> block) {
+bool blockHasOwnBreak(p<StatementBlockNode> block, const string& forLabel) {
     if (!block) return false;
-    return stmtsHaveOwnBreak(block->statements());
+    return stmtsHaveOwnBreak(block->statements(), forLabel);
 }
 
 bool exprTerminates(p<ScopeNode> scope, p<ExprNode> expr) {
@@ -85,7 +97,7 @@ bool stmtTerminates(p<ScopeNode> scope, p<StatementNode> stmt) {
     if (dynamic_cast<p<StatementRetNode>>(stmt)) return true;
     if (dynamic_cast<p<StatementRetVoidNode>>(stmt)) return true;
     if (auto loop = dynamic_cast<p<StatementLoopNode>>(stmt)) {
-        return !blockHasOwnBreak(loop->block());
+        return !blockHasOwnBreak(loop->block(), loop->label().getText());
     }
     if (auto se = dynamic_cast<p<StatementExprNode>>(stmt)) {
         return exprTerminates(scope, se->expr());

@@ -789,6 +789,10 @@ for (auto* a : n->letAnnos) {
     }
     if (auto* n = dynamic_cast<yuxParser::StatementLoopContext*>(ctx)) {
         std::vector<Doc> parts;
+        if (n->ID()) {
+            parts.push_back(text(n->ID()->getText()));
+            parts.push_back(text(": "));
+        }
         parts.push_back(text("loop "));
         if (auto initCtx = n->loopInit(); initCtx) {
             if (initCtx->name) {
@@ -850,7 +854,10 @@ for (auto* a : n->letAnnos) {
     if (dynamic_cast<yuxParser::StatementRetVoidContext*>(ctx)) {
         return text("ret;");
     }
-    if (dynamic_cast<yuxParser::StatementBreakContext*>(ctx)) {
+    if (auto* n = dynamic_cast<yuxParser::StatementBreakContext*>(ctx)) {
+        if (n->ID()) {
+            return concat({text("break@"), text(n->ID()->getText()), text(";")});
+        }
         return text("break;");
     }
     // 兜底（语法演化时保护）
