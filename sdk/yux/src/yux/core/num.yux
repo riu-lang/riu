@@ -1016,8 +1016,7 @@ struct i64 {
     if is_neg {
       v = -$
     }
-    #Mut let i i64 = 0
-    loop {
+    loop i i64 = 0 {
       if v == 0 {
         break;
       }
@@ -1034,8 +1033,7 @@ struct i64 {
       out.push(c'-')
     }
     #Mut let start i64 = 21 - i
-    #Mut let k i64 = 0
-    loop {
+    loop k i64 = 0 {
       if k >= i {
         break;
       }
@@ -1189,8 +1187,7 @@ struct u64 {
     #Mut let out Array<u32> = []
     #Mut let buf [u8 * 21] = [0u8 ...]
     #Mut let v u64 = $
-    #Mut let i i64 = 0
-    loop {
+    loop i i64 = 0 {
       if v == 0 {
         break;
       }
@@ -1204,8 +1201,7 @@ struct u64 {
       i = 1
     }
     #Mut let start i64 = 21 - i
-    #Mut let k i64 = 0
-    loop {
+    loop k i64 = 0 {
       if k >= i {
         break;
       }
@@ -1639,8 +1635,7 @@ struct f64 {
     }
     ; 整数部分：复用 i64.to_string 后逐码点 push
     let int_part String = v.to_i64().to_string()
-    #Mut let ii usize = 0
-    loop {
+    loop ii usize = 0 {
       if ii >= int_part.len() {
         break;
       }
@@ -1649,8 +1644,7 @@ struct f64 {
     }
     out.push(c'.')
     #Mut let frac f64 = v - v.to_i64().to_f64()
-    #Mut let i i64 = 0
-    loop {
+    loop i i64 = 0 {
       if i == 6 {
         break;
       }

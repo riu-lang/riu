@@ -62,8 +62,7 @@ struct String {
     if a.len() != b.len() {
       ret false
     }
-    #Mut let i usize = 0
-    loop {
+    loop i usize = 0 {
       if i >= a.len() {
         break;
       }
@@ -87,8 +86,7 @@ struct String {
     if plen > a.len() {
       ret false
     }
-    #Mut let i usize = 0
-    loop {
+    loop i usize = 0 {
       if i >= plen {
         break;
       }
@@ -113,8 +111,7 @@ struct String {
     if nlen > hlen {
       ret false
     }
-    #Mut let i usize = 0
-    loop {
+    loop i usize = 0 {
       if i + nlen > hlen {
         break;
       }
@@ -142,8 +139,7 @@ struct String {
   fn to_bytes() Array<u8> {
     let a Array<u32>& = as_ref($._buf)
     #Mut let r Array<u8> = []
-    #Mut let i usize = 0
-    loop {
+    loop i usize = 0 {
       if i >= a.len() {
         break;
       }
@@ -203,8 +199,7 @@ struct StringBuilder {
 
   ; 追加另一个字符串的全部码点
   fn append(s String) {
-    #Mut let i usize = 0
-    loop {
+    loop i usize = 0 {
       if i >= s.len() {
         break;
       }
@@ -223,8 +218,7 @@ struct StringBuilder {
     if $.data.len() != other.data.len() {
       ret false
     }
-    #Mut let i usize = 0
-    loop {
+    loop i usize = 0 {
       if i >= $.data.len() {
         break;
       }

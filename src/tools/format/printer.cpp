@@ -788,10 +788,37 @@ for (auto* a : n->letAnnos) {
         return concat(std::move(parts));
     }
     if (auto* n = dynamic_cast<yuxParser::StatementLoopContext*>(ctx)) {
-        return concat({
-            text("loop "),
-            statementBlockDoc(n->statementBlock(), indentLevel),
-        });
+        std::vector<Doc> parts;
+        parts.push_back(text("loop "));
+        if (auto initCtx = n->loopInit(); initCtx) {
+            if (initCtx->name) {
+                // 单变量：loop i = expr
+                parts.push_back(text(initCtx->name->getText()));
+                if (auto twr = initCtx->typeWithRef(); twr) {
+                    parts.push_back(text(" "));
+                    parts.push_back(typeWithRefDoc(twr));
+                }
+                parts.push_back(text(" = "));
+                parts.push_back(exprDoc(initCtx->expr()));
+            } else {
+                // tuple 解构：loop (i, n) = expr
+                parts.push_back(text("("));
+                for (size_t i = 0; i < initCtx->names.size(); ++i) {
+                    if (i > 0) parts.push_back(text(", "));
+                    parts.push_back(text(initCtx->names[i]->getText()));
+                }
+                parts.push_back(text(")"));
+                if (auto twr = initCtx->typeWithRef(); twr) {
+                    parts.push_back(text(" "));
+                    parts.push_back(typeWithRefDoc(twr));
+                }
+                parts.push_back(text(" = "));
+                parts.push_back(exprDoc(initCtx->expr()));
+            }
+            parts.push_back(text(" "));
+        }
+        parts.push_back(statementBlockDoc(n->statementBlock(), indentLevel));
+        return concat(std::move(parts));
     }
     if (auto* n = dynamic_cast<yuxParser::StatementAssignContext*>(ctx)) {
         // obj (.id|DOT_NUM)* opAssign expr

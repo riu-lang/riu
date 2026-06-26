@@ -8,13 +8,13 @@
 //   - visitStatementBlock
 // 拆自原 ast_builder.cpp（P1 Phase 2），方法体一字不动。
 
-#include <algorithm>
-#include "ast_builder_helpers.h"
 #include "ast_builder.h"
+#include "ast_builder_helpers.h"
 #include "node/expr_node.h"
 #include "node/literal_node.h"
 #include "node/statement_node.h"
 #include "types.h"
+#include <algorithm>
 
 // DRAFT-let-unify §3：局部 `let` 声明。
 // 注解映射：默认 → isMut=false（不可重赋）；#Mut → isMut=true；#Cval → isConst=true；
@@ -53,7 +53,8 @@ std::any ASTBuilder::visitStatementLet(yux::yuxParser::StatementLetContext* ctx)
         if (scope) {
             scope->registerSymbol(name->getText(), {SymbolKind::Variable, name->getText(), varType, true});
         }
-        return static_cast<p<StatementNode>>(createWithLine<StatementDeclareNode>(ctx, scope, isMut, isConst, name, type));
+        return static_cast<p<StatementNode>>(
+            createWithLine<StatementDeclareNode>(ctx, scope, isMut, isConst, name, type));
     }
 
     auto expr = any_cast_p<ExprNode>(visit(ctx->expr()));
@@ -69,7 +70,8 @@ std::any ASTBuilder::visitStatementLet(yux::yuxParser::StatementLetContext* ctx)
         scope->registerSymbol(name->getText(), sym);
     }
 
-    return static_cast<p<StatementNode>>(createWithLine<StatementDeclareAssignNode>(ctx, scope, isMut, isConst, name, type, expr));
+    return static_cast<p<StatementNode>>(
+        createWithLine<StatementDeclareAssignNode>(ctx, scope, isMut, isConst, name, type, expr));
 }
 
 // DRAFT-let-unify §3：let 元组解构（默认 → 不可重赋 / #Mut → isMut=true / #Cval → isConst=true）。
@@ -104,7 +106,7 @@ std::any ASTBuilder::visitStatementLetTuple(yux::yuxParser::StatementLetTupleCon
 
     vector<Token> names;
     names.reserve(ctx->names.size());
-for (auto idTok : ctx->names) {
+    for (auto idTok : ctx->names) {
         names.emplace_back(idTok);
     }
 
@@ -190,8 +192,54 @@ std::any ASTBuilder::visitStatementRetVoid(yux::yuxParser::StatementRetVoidConte
 std::any ASTBuilder::visitStatementLoop(yux::yuxParser::StatementLoopContext* ctx) {
     auto scope = currentScope();
     auto block = any_cast_p<StatementBlockNode>(visit(ctx->statementBlock()));
-    DEBUG_LOG("  Statement: Loop");
-    return static_cast<p<StatementNode>>(createWithLine<StatementLoopNode>(ctx, scope, block));
+
+    // 处理可选的 loop init 子句
+    vector<Token> initNames;
+    p<TypeNode> initType = nullptr;
+    p<ExprNode> initExpr = nullptr;
+
+    if (auto initCtx = ctx->loopInit(); initCtx) {
+        // 提取变量名
+        if (initCtx->name) {
+            // 单变量：loop i = expr
+            initNames.push_back(initCtx->name);
+        } else {
+            // tuple 解构：loop (i, j) = expr
+            for (auto id : initCtx->names) {
+                initNames.push_back(id);
+            }
+        }
+
+        // 可选类型标注
+        if (auto twr = initCtx->typeWithRef(); twr) {
+            initType = buildTypeWithRef(twr, scope);
+        }
+
+        // init 表达式
+        initExpr = any_cast_p<ExprNode>(visit(initCtx->expr()));
+
+        // 在函数作用域中注册 loop init 变量（yux 无独立块作用域，所有局部变量平级）
+        // 变量默认可变
+        TypeInfo initExprType = initExpr->getType();
+        for (size_t idx = 0; idx < initNames.size(); ++idx) {
+            TypeInfo varType;
+            if (initType && initNames.size() == 1) {
+                varType = initType->getType();
+            } else if (initExprType.isTuple() && idx < initExprType.tupleElements().size()) {
+                varType = *initExprType.tupleElements()[idx];
+            } else {
+                varType = initExprType;
+            }
+            SymbolInfo sym(SymbolKind::Variable, initNames[idx].getText(), varType, /*isMut=*/true);
+            if (scope) {
+                scope->registerSymbol(initNames[idx].getText(), sym);
+            }
+        }
+    }
+
+    DEBUG_LOG("  Statement: Loop" << (ctx->loopInit() ? " (with init)" : ""));
+    return static_cast<p<StatementNode>>(
+        createWithLine<StatementLoopNode>(ctx, scope, block, std::move(initNames), initType, initExpr));
 }
 
 std::any ASTBuilder::visitStatementBreak(yux::yuxParser::StatementBreakContext* ctx) {
@@ -208,7 +256,7 @@ std::any ASTBuilder::visitStatementSet(yux::yuxParser::StatementSetContext* ctx)
 
     vector<p<ExprNode>> indices;
     indices.reserve(ctx->args.size());
-for (auto arg : ctx->args) {
+    for (auto arg : ctx->args) {
         indices.push_back(any_cast_p<ExprNode>(visit(arg)));
     }
 
@@ -224,8 +272,7 @@ std::any ASTBuilder::visitStatementStaticFieldSet(yux::yuxParser::StatementStati
     Token fieldName(ctx->fieldName);
     auto valueExpr = any_cast_p<ExprNode>(visit(ctx->value));
 
-    DEBUG_LOG_VAL("  Statement: StaticFieldSet",
-                  typeName.getText() << "::" << fieldName.getText() << " = ...");
+    DEBUG_LOG_VAL("  Statement: StaticFieldSet", typeName.getText() << "::" << fieldName.getText() << " = ...");
     return static_cast<p<StatementNode>>(
         createWithLine<StatementStaticFieldSetNode>(ctx, scope, typeName, fieldName, valueExpr));
 }

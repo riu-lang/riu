@@ -1618,11 +1618,80 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
 
 // 编译 loop 循环语句
 // 生成无限循环结构，配合 break 语句使用
+// loopInit 可选：loop name = expr { } / loop (a, b) = expr { }
 void Compiler::compileLoopStatement(p<StatementLoopNode> node) {
-    DEBUG_LOG("  Statement: Loop");
+    DEBUG_LOG("  Statement: Loop" << (node->hasInit() ? " (with init)" : ""));
 
     llvm::Function* func = _builder.GetInsertBlock()->getParent();
 
+    // ==== loop init 子句（在 pre-header 中分配变量并初始化）====
+    if (node->hasInit()) {
+        auto initExprNode = node->initExpr();
+        const auto& names = node->initNames();
+
+        // 若标注了类型，先对灵活整数做推断（在编译 expr 之前）
+        if (node->initType()) {
+            auto declaredType = node->initType()->getType();
+            if (names.size() == 1) {
+                if (isFlexibleIntExpr(initExprNode) && isIntTypeName(declaredType.name)) {
+                    tryInferIntType(initExprNode, declaredType);
+                }
+            }
+        }
+
+        // 编译 init 表达式（pre-header 中）
+        auto initVal = compileExpr(initExprNode);
+        if (!initVal) {
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3091);
+        }
+
+        if (names.size() == 1) {
+            // 单变量：loop i = expr
+            TypeInfo varType;
+            if (node->initType()) {
+                varType = node->initType()->getType();
+            } else {
+                varType = initExprNode->getType();
+            }
+
+            auto llvmType = getLLVMType(varType);
+            auto alloca = _builder.CreateAlloca(llvmType, nullptr, names[0].getText());
+            _localVarPtrs[names[0].getText()] = alloca;
+            _builder.CreateStore(initVal, alloca);
+        } else {
+            // Tuple 解构：loop (a, b) = expr
+            TypeInfo wholeType;
+            if (node->initType()) {
+                wholeType = node->initType()->getType();
+            } else {
+                wholeType = initExprNode->getType();
+            }
+            auto resolved = applySubst(wholeType);
+            if (!resolved.isTuple()) {
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3101, wholeType.name);
+            }
+            const auto& elems = resolved.tupleElements();
+            if (elems.size() != names.size()) {
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3102,
+                               std::to_string(names.size()), std::to_string(elems.size()));
+            }
+
+            for (size_t i = 0; i < names.size(); ++i) {
+                auto varName = names[i].getText();
+                const auto& elemType = *elems[i];
+
+                auto llvmType = getLLVMType(elemType);
+                auto alloca = _builder.CreateAlloca(llvmType, nullptr, varName);
+                _localVarPtrs[varName] = alloca;
+
+                auto elemVal = _builder.CreateExtractValue(initVal, {static_cast<unsigned>(i)}, "loop.bind");
+                _builder.CreateStore(elemVal, alloca);
+            }
+            // TODO: 元素若为 RC / Rc / 含析构 struct，需要 retain
+        }
+    }
+
+    // ==== 循环结构 ====
     // 创建循环基本块: 条件块、循环体块、退出块
     llvm::BasicBlock* condBB = llvm::BasicBlock::Create(_context, "loop.cond");
     llvm::BasicBlock* bodyBB = llvm::BasicBlock::Create(_context, "loop.body");

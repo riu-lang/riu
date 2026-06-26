@@ -274,8 +274,7 @@ struct bool {
 
 fn print(s String&) {
   let bytes Array<u8> = s.to_bytes()
-  #Mut let i usize = 0
-  loop {
+  loop i usize = 0 {
     if i >= bytes.len() {
       break;
     }
@@ -313,8 +312,7 @@ fn println<T : ToString>(x T&) {
 
 fn eprint(s String&) {
   let bytes Array<u8> = s.to_bytes()
-  #Mut let i usize = 0
-  loop {
+  loop i usize = 0 {
     if i >= bytes.len() {
       break;
     }

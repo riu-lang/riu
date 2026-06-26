@@ -430,7 +430,13 @@ void walkStmtForSpecDefault(const p<StatementNode>& s, SpecDeclNode* spec) {
         walkExprForSpecDefault(n->expr(), spec);
         return;
     }
-    // StatementLoopNode / Block / Declare(无 init) / RetVoid / Break 等 Phase 2 不处理
+    if (auto n = dynamic_cast<p<StatementLoopNode>>(s)) {
+        if (n->hasInit()) {
+            walkExprForSpecDefault(n->initExpr(), spec);
+        }
+        return;
+    }
+    // Block / Declare(无 init) / RetVoid / Break 等 Phase 2 不处理
 }
 } // namespace
 
@@ -483,6 +489,9 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
     if (!stmt) return;
     if (auto loop = dynamic_cast<p<StatementLoopNode>>(stmt)) {
         ++_loopDepth;
+        if (loop->hasInit()) {
+            visitExpr(loop->initExpr());
+        }
         visitBlock(loop->block());
         --_loopDepth;
         return;

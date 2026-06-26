@@ -674,7 +674,7 @@ statement:
       value=expr
       LineEnd                         # statementStaticFieldSet
     // 循环
-    | Loop statementBlock LineEnd     # statementLoop
+    | Loop loopInit? statementBlock LineEnd     # statementLoop
     // obj.member = expr
     | obj=(ID|SymbolThis)
       (SymbolDot subs+=ID | subs+=DOT_NUM)*
@@ -694,5 +694,17 @@ statementBlock:
     BlockStart LineEnd
         (statement|LineEnd)*
     BlockEnd
+    ;
+
+// loop init 子句：loop name = expr { } / loop (a, b) = expr { }
+// 不以 LineEnd 结尾 —— '{' 充当终结符（类似 if cond { 中的 cond）
+loopInit:
+    // 单变量：loop i = 0 { } / loop i i64 = 0 { }
+    name=ID typeWithRef? SymbolEq expr
+    |
+    // tuple 解构：loop (i, n) = (0, arr.len()) { }
+    ParStart names+=ID (SymbolComma names+=ID)+ ParEnd
+    typeWithRef?
+    SymbolEq expr
     ;
 

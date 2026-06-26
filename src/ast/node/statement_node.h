@@ -9,11 +9,9 @@
 #include "expr_node.h"
 #include "type_node.h"
 
-
 class StatementNode : public Node {
 public:
-    explicit StatementNode(const p<Node>& parent) : Node(parent) {
-    }
+    explicit StatementNode(const p<Node>& parent) : Node(parent) {}
 };
 
 class StatementExprNode : public StatementNode {
@@ -22,11 +20,8 @@ protected:
     bool _hasSemicolon;
 
 public:
-    explicit StatementExprNode(const p<Node>& parent, p<ExprNode> expr, bool hasSemicolon = true) :
-        StatementNode(parent),
-        _expr(std::move(expr)),
-        _hasSemicolon(hasSemicolon) {
-    }
+    explicit StatementExprNode(const p<Node>& parent, p<ExprNode> expr, bool hasSemicolon = true)
+        : StatementNode(parent), _expr(std::move(expr)), _hasSemicolon(hasSemicolon) {}
 
     [[nodiscard]] const p<ExprNode>& expr() const;
     [[nodiscard]] bool hasSemicolon() const;
@@ -34,9 +29,7 @@ public:
 
 class StatementRetNode : public StatementExprNode {
 public:
-    explicit StatementRetNode(const p<Node>& parent, p<ExprNode> expr) :
-        StatementExprNode(parent, std::move(expr)) {
-    }
+    explicit StatementRetNode(const p<Node>& parent, p<ExprNode> expr) : StatementExprNode(parent, std::move(expr)) {}
 };
 
 class StatementRetVoidNode : public StatementNode {
@@ -54,9 +47,8 @@ protected:
     p<TypeNode> _type;
 
 public:
-    explicit StatementDeclareNode(const p<Node>& parent, bool isMut, bool isConst, Token name, p<TypeNode> type) :
-        StatementNode(parent), _isMut(isMut), _isConst(isConst), _name(name), _type(type) {
-    }
+    explicit StatementDeclareNode(const p<Node>& parent, bool isMut, bool isConst, Token name, p<TypeNode> type)
+        : StatementNode(parent), _isMut(isMut), _isConst(isConst), _name(name), _type(type) {}
 
     [[nodiscard]] bool isMut() const { return _isMut; }
     [[nodiscard]] bool isConst() const { return _isConst; }
@@ -72,9 +64,9 @@ protected:
     p<TypeNode> _type;
 
 public:
-    explicit StatementDeclareAssignNode(const p<Node>& parent, bool isMut, bool isConst, Token name, p<TypeNode> type, p<ExprNode> expr) :
-        StatementExprNode(parent, std::move(expr)), _isMut(isMut), _isConst(isConst), _name(name), _type(type) {
-    }
+    explicit StatementDeclareAssignNode(const p<Node>& parent, bool isMut, bool isConst, Token name, p<TypeNode> type,
+                                        p<ExprNode> expr)
+        : StatementExprNode(parent, std::move(expr)), _isMut(isMut), _isConst(isConst), _name(name), _type(type) {}
 
     [[nodiscard]] bool isMut() const { return _isMut; }
     [[nodiscard]] bool isConst() const { return _isConst; }
@@ -92,11 +84,10 @@ protected:
     p<TypeNode> _type; // 可选，整体元组类型（含 typeWithRef）
 
 public:
-    explicit StatementDeclareAssignTupleNode(const p<Node>& parent, bool isMut, bool isConst,
-                                             vector<Token> names, p<TypeNode> type, p<ExprNode> expr) :
-        StatementExprNode(parent, std::move(expr)), _isMut(isMut), _isConst(isConst),
-        _names(std::move(names)), _type(std::move(type)) {
-    }
+    explicit StatementDeclareAssignTupleNode(const p<Node>& parent, bool isMut, bool isConst, vector<Token> names,
+                                             p<TypeNode> type, p<ExprNode> expr)
+        : StatementExprNode(parent, std::move(expr)), _isMut(isMut), _isConst(isConst), _names(std::move(names)),
+          _type(std::move(type)) {}
 
     [[nodiscard]] bool isMut() const { return _isMut; }
     [[nodiscard]] bool isConst() const { return _isConst; }
@@ -104,16 +95,7 @@ public:
     [[nodiscard]] p<TypeNode> varType() const { return _type; }
 };
 
-enum class AssignOp {
-    Eq,
-    AddEq,
-    SubEq,
-    MulEq,
-    DivEq,
-    ModEq,
-    MtMtEq,
-    LtLtEq
-};
+enum class AssignOp { Eq, AddEq, SubEq, MulEq, DivEq, ModEq, MtMtEq, LtLtEq };
 
 class StatementAssignNode : public StatementExprNode {
 protected:
@@ -122,12 +104,9 @@ protected:
     AssignOp _op;
 
 public:
-    explicit StatementAssignNode(const p<Node>& parent, Token obj, vector<Token> subs, p<ExprNode> expr, AssignOp op = AssignOp::Eq) :
-        StatementExprNode(parent, std::move(expr)),
-        _obj(obj),
-        _subs(std::move(subs)),
-        _op(op) {
-    }
+    explicit StatementAssignNode(const p<Node>& parent, Token obj, vector<Token> subs, p<ExprNode> expr,
+                                 AssignOp op = AssignOp::Eq)
+        : StatementExprNode(parent, std::move(expr)), _obj(obj), _subs(std::move(subs)), _op(op) {}
 
     [[nodiscard]] Token obj() const { return _obj; }
     [[nodiscard]] const vector<Token>& subs() const { return _subs; }
@@ -139,11 +118,20 @@ class StatementBlockNode;
 class StatementLoopNode : public StatementNode {
 protected:
     p<StatementBlockNode> _block;
+    // loop init 子句（可选）：loop name = expr { } / loop (a, b) = expr { }
+    vector<Token> _initNames; // 变量名；空 = 无 init
+    p<TypeNode> _initType;    // 可选类型标注；nullptr = 从 expr 推断
+    p<ExprNode> _initExpr;    // init 表达式；nullptr = 无 init
 
 public:
-    explicit StatementLoopNode(const p<Node>& parent, p<StatementBlockNode> block);
+    explicit StatementLoopNode(const p<Node>& parent, p<StatementBlockNode> block, vector<Token> initNames = {},
+                               p<TypeNode> initType = nullptr, p<ExprNode> initExpr = nullptr);
 
     [[nodiscard]] const p<StatementBlockNode>& block() const;
+    [[nodiscard]] const vector<Token>& initNames() const { return _initNames; }
+    [[nodiscard]] const p<TypeNode>& initType() const { return _initType; }
+    [[nodiscard]] const p<ExprNode>& initExpr() const { return _initExpr; }
+    [[nodiscard]] bool hasInit() const { return !_initNames.empty(); }
 };
 
 class StatementBreakNode : public StatementNode {
@@ -161,12 +149,9 @@ protected:
     p<ExprNode> _valueExpr;
 
 public:
-    StatementStaticFieldSetNode(const p<Node>& parent, Token typeName, Token fieldName, p<ExprNode> valueExpr) :
-        StatementNode(parent),
-        _typeName(std::move(typeName)),
-        _fieldName(std::move(fieldName)),
-        _valueExpr(std::move(valueExpr)) {
-    }
+    StatementStaticFieldSetNode(const p<Node>& parent, Token typeName, Token fieldName, p<ExprNode> valueExpr)
+        : StatementNode(parent), _typeName(std::move(typeName)), _fieldName(std::move(fieldName)),
+          _valueExpr(std::move(valueExpr)) {}
 
     [[nodiscard]] Token typeName() const { return _typeName; }
     [[nodiscard]] Token fieldName() const { return _fieldName; }
@@ -179,16 +164,12 @@ class StatementSetNode : public StatementNode {
     p<ExprNode> _valueExpr;
 
 public:
-    StatementSetNode(const p<Node>& parent, p<ExprNode> arrayExpr, vector<p<ExprNode>> indices, p<ExprNode> valueExpr) :
-        StatementNode(parent),
-        _arrayExpr(arrayExpr),
-        _indices(std::move(indices)),
-        _valueExpr(valueExpr) {
-    }
+    StatementSetNode(const p<Node>& parent, p<ExprNode> arrayExpr, vector<p<ExprNode>> indices, p<ExprNode> valueExpr)
+        : StatementNode(parent), _arrayExpr(arrayExpr), _indices(std::move(indices)), _valueExpr(valueExpr) {}
 
     [[nodiscard]] const p<ExprNode>& arrayExpr() const;
     [[nodiscard]] const vector<p<ExprNode>>& indices() const;
     [[nodiscard]] const p<ExprNode>& valueExpr() const;
 };
 
-#endif //YUX_LANG_STATEMENT_NODE_H
+#endif // YUX_LANG_STATEMENT_NODE_H

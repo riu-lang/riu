@@ -1,8 +1,8 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 
-#include "expr_node.h"
 #include "statement_node.h"
+#include "expr_node.h"
 
 const p<ExprNode>& StatementExprNode::expr() const {
     return _expr;
@@ -28,9 +28,9 @@ p<TypeNode> StatementDeclareAssignNode::varType() const {
     return _type;
 }
 
-StatementLoopNode::StatementLoopNode(const p<Node>& parent, p<StatementBlockNode> block) :
-    StatementNode(parent),
-    _block(block) {
+StatementLoopNode::StatementLoopNode(const p<Node>& parent, p<StatementBlockNode> block, vector<Token> initNames,
+                                     p<TypeNode> initType, p<ExprNode> initExpr)
+    : StatementNode(parent), _block(block), _initNames(std::move(initNames)), _initType(initType), _initExpr(initExpr) {
 }
 
 const p<StatementBlockNode>& StatementLoopNode::block() const {

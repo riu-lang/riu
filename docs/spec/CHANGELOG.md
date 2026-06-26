@@ -17,6 +17,12 @@
 
 ---
 
+## 2026-06-26 —— loop init 子句
+
+- **新增 §5.5.1.5**：`loop name = expr { }` 和 `loop (a, b) = expr { }` 形态，在 loop 前声明默认可变的局部变量
+- **修改 §5.5.1.1**：`loop` 产生式扩展为 `Loop loopInit? statementBlock`
+- **冲突 / 兼容**：完全向后兼容——`loop { }` 无 init 形态不变。init 变量默认可变，和旧写法 `#Mut let x = ...; loop { ... }` 语义等价，仅更简洁
+
 ---
 
 ## 2026-06-25 —— Array<T> / String / StringBuilder 索引与长度迁移至 usize
