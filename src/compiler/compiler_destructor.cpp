@@ -805,6 +805,8 @@ bool Compiler::isFreshHandleExpr(p<ExprNode> expr) {
     if (dynamic_cast<ExprMoveAssignNode*>(expr)) return true;
     // Phase 8f: lambda 字面量创建 captures Rc 块（strong=1），是 +1 fresh
     if (dynamic_cast<LambdaExprNode*>(expr)) return true;
+    // B-1: struct 字面量 Self { ... } 创建新的 struct 值，是 +1 fresh
+    if (dynamic_cast<ExprStructLitNode*>(expr)) return true;
     return false;
 }
 

@@ -34,14 +34,14 @@ struct Buf {
 
 #Test
 fn test_buf_from_existing_array() {
-  ; 非 fresh 源: arr 是 local Array<u32>, 进 Self {...} 需要 retain
-  let arr Array<u32> = [10u32, 20u32, 30u32]
-  let b Buf = Buf::from(arr)
-  assert_eq(b.len(), 3)
+  ; BUGS #1: Array 是 #NoCopy, 按值传参需要 move() 转移所有权
+  let arr Array<u32> = [10u32, 32u32, 30u32]
+  let arr_len = arr.len()
+  let b Buf = Buf::from(move(arr))
+  assert_eq(b.len(), arr_len)
   assert_eq(b.get(0), 10u32)
   assert_eq(b.get(2), 30u32)
-  ; arr 与 b.data 共享句柄, 出作用域后两者都 release, 不应 double free
-  assert_eq(arr.len(), 3)
+  ; arr 已 move 走, b.data 独占句柄
 }
 
 #Test

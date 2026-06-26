@@ -23,8 +23,9 @@ struct String {
 
   ; 静态工厂：从外部 Array<u32> 码点缓冲**深拷贝**
   ; (公开安全入口；SDK 内部"我自己造的 buf 立即移交"场景用 _take_buf 走零拷贝)
+  ; BUGS #1: buf 改为 Array<u32>& 借用——Array 是 #NoCopy，不可按值隐式拷贝
   #Static
-  fn from(buf Array<u32>) String {
+  fn from(buf Array<u32>&) String {
     #Mut let copy Array<u32> = []
     #Mut let i usize = 0
     loop {

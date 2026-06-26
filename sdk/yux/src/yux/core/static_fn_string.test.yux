@@ -11,7 +11,7 @@ fn test_string_static_empty() {
 fn test_string_static_from_buf() {
   ; 'h''i' = 104, 105
   let buf Array<u32> = [104u32, 105u32]
-  let s String = String::from(buf)
+  let s String = String::from(&buf)
   assert_eq(s.len(), 2)
   assert_eq(s, "hi")
   ; from() 深拷贝, buf 自身仍可独立存在
@@ -21,7 +21,7 @@ fn test_string_static_from_buf() {
 #Test
 fn test_string_static_from_empty_buf() {
   let buf Array<u32> = []
-  let s String = String::from(buf)
+  let s String = String::from(&buf)
   assert_eq(s.len(), 0)
   assert_eq(s, "")
 }
@@ -30,7 +30,7 @@ fn test_string_static_from_empty_buf() {
 fn test_string_from_defensive_copy() {
   ; 关键回归: String::from 深拷贝, 外界 mutate buf 不影响已构造的 String
   #Mut let buf Array<u32> = [104u32, 105u32]
-  let s String = String::from(buf)
+  let s String = String::from(&buf)
   assert_eq(s, "hi")
   assert_eq(buf.len(), 2)
 }

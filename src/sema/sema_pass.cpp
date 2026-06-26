@@ -222,9 +222,10 @@ bool isFreshHandleExpr(p<ExprNode> expr) {
     if (!expr) return false;
     if (dynamic_cast<p<ExprCallNode>>(expr)) return true;      // 函数调用结果 / builtin intrinsic
     if (dynamic_cast<p<ExprArrayNode>>(expr)) return true;     // 数组字面量
-    if (dynamic_cast<p<ExprPathCallNode>>(expr)) return true;  // 枚举构造器
+    if (dynamic_cast<p<ExprPathCallNode>>(expr)) return true;  // 枚举构造器 / #Static fn 调用
     if (dynamic_cast<p<ExprMoveAssignNode>>(expr)) return true;// move-assign 结果
     if (dynamic_cast<p<LambdaExprNode>>(expr)) return true;    // lambda 字面量
+    if (dynamic_cast<p<ExprStructLitNode>>(expr)) return true; // struct 字面量 (Self { ... })
     return false;
 }
 
@@ -912,13 +913,9 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         if (da->varType() && da->expr()) {
             auto varType = da->varType()->getType();
             if (isNoCopyTypeIn(varType, _file, _sdkFile) && !varType.isRef()) {
-                if (auto lit = dynamic_cast<p<ExprLiteralNode>>(da->expr())) {
-                    if (dynamic_cast<p<LiteralObjNode>>(lit->literal())) {
-                        if (!isFreshHandleExpr(da->expr())) {
-                            throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E4031, varType.name,
-                                           "let 绑定", varType.name);
-                        }
-                    }
+                if (!isFreshHandleExpr(da->expr())) {
+                    throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E4031, varType.name,
+                                   "let 绑定", varType.name);
                 }
             }
         }
@@ -1444,16 +1441,10 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                                     for (size_t i = 0; i < n->getArgs().size() && i < fnSym->params.size(); ++i) {
                                         const auto& pt = fnSym->params[i];
                                         if (isNoCopyTypeIn(pt, _file, _sdkFile)) {
-                                            if (i < n->getArgs().size()) {
-                                                if (auto litA = dynamic_cast<p<ExprLiteralNode>>(n->getArgs()[i])) {
-                                                    if (dynamic_cast<p<LiteralObjNode>>(litA->literal())) {
-                                                        if (!isFreshHandleExpr(n->getArgs()[i])) {
-                                                            throw YuxError(n->getLineNumber(), n->getColumn(),
-                                                                           ErrorCode::E4031, pt.name, "按值传参",
-                                                                           pt.name);
-                                                        }
-                                                    }
-                                                }
+                                            if (!isFreshHandleExpr(n->getArgs()[i])) {
+                                                throw YuxError(n->getLineNumber(), n->getColumn(),
+                                                               ErrorCode::E4031, pt.name, "按值传参",
+                                                               pt.name);
                                             }
                                         }
                                     }
@@ -1670,13 +1661,9 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                         for (size_t i = 0; i < n->getArgs().size() && i < methodSymbol->params.size(); ++i) {
                             const auto& pt = methodSymbol->params[i];
                             if (isNoCopyTypeIn(pt, _file, _sdkFile)) {
-                                if (auto litA = dynamic_cast<p<ExprLiteralNode>>(n->getArgs()[i])) {
-                                    if (dynamic_cast<p<LiteralObjNode>>(litA->literal())) {
-                                        if (!isFreshHandleExpr(n->getArgs()[i])) {
-                                            throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E4031,
-                                                           pt.name, "按值传参", pt.name);
-                                        }
-                                    }
+                                if (!isFreshHandleExpr(n->getArgs()[i])) {
+                                    throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E4031,
+                                                   pt.name, "按值传参", pt.name);
                                 }
                             }
                         }
@@ -1865,13 +1852,9 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                     auto* fieldDecl = decl->fields()[fieldIdx];
                     auto fieldType = fieldDecl->getType();
                     if (isNoCopyTypeIn(fieldType, _file, _sdkFile)) {
-                        if (auto lit = dynamic_cast<p<ExprLiteralNode>>(fi->value())) {
-                            if (dynamic_cast<p<LiteralObjNode>>(lit->literal())) {
-                                if (!isFreshHandleExpr(fi->value())) {
-                                    throw YuxError(fline, fcol, ErrorCode::E4031, fieldType.name,
-                                                   "struct 字面量字段初始化", fieldType.name);
-                                }
-                            }
+                        if (!isFreshHandleExpr(fi->value())) {
+                            throw YuxError(fline, fcol, ErrorCode::E4031, fieldType.name,
+                                           "struct 字面量字段初始化", fieldType.name);
                         }
                     }
                 }
@@ -2034,6 +2017,16 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                                 if (!(argTypes[i] == paramTypes[i])) {
                                     throw YuxError(line, col, ErrorCode::E3131, lhsName, rhsName, paramTypes.size(),
                                                    renderTypes(paramTypes), argTypes.size(), renderTypes(argTypes));
+                                }
+                            }
+                        }
+                        // Phase B-1: #NoCopy 类型不可按值传参（#Static fn 调用）
+                        for (size_t i = 0; i < n->args().size() && i < paramTypes.size(); ++i) {
+                            const auto& pt = paramTypes[i];
+                            if (isNoCopyTypeIn(pt, _file, _sdkFile)) {
+                                if (!isFreshHandleExpr(n->args()[i])) {
+                                    throw YuxError(line, col, ErrorCode::E4031, pt.name, "按值传参",
+                                                   pt.name);
                                 }
                             }
                         }
