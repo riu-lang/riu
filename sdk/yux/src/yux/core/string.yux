@@ -26,15 +26,7 @@ struct String {
   ; BUGS #1: buf 改为 Array<u32>& 借用——Array 是 #NoCopy，不可按值隐式拷贝
   #Static
   fn from(buf Array<u32>&) String {
-    #Mut let copy Array<u32> = []
-    #Mut let i usize = 0
-    loop {
-      if i >= buf.len() {
-        break;
-      }
-      copy.push(copy_of(buf[i]))
-      i += 1
-    }
+    #Mut let copy Array<u32> = buf.clone()
     let rc Rc<Array<u32>> = move(copy)   ; 接管拷贝的所有权
     ret Self {
       ._buf = move(rc)                   ; 转移所有权
