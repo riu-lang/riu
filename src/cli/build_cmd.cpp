@@ -116,26 +116,32 @@ static void buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const s
         for (auto& c : dllFileName)
             if (c == '.') c = '_';
 
+        // 构建失败时写标记文件 + 删除旧 DLL（避免 test 扫描时重复计入）
+        auto markAsFailed = [&](const std::string& reason) {
+            std::string failPath = std::string(testsDir).append("/").append(dllFileName).append(".test.failed");
+            std::ofstream failFile(failPath);
+            if (failFile) failFile << reason << "\n";
+            // 删除旧 DLL：如果上次构建成功但本次失败，旧 DLL 已过时
+            std::string oldDll = std::string(testsDir).append("/").append(dllFileName).append(".test.dll");
+            std::error_code rmEc;
+            fs::remove(oldDll, rmEc);
+            ++testFailCount;
+        };
+
         // 解析测试文件 AST
         std::string testModName = testMod;
         try {
             yux.loadMainFile(testAbs, testModName);
         } catch (std::runtime_error& e) {
             reportRuntimeError(testAbs, e, testModName + ": ");
-            std::string failPath = std::string(testsDir).append("/").append(dllFileName).append(".test.failed");
-            std::ofstream failFile(failPath);
-            if (failFile) failFile << e.what() << "\n";
-            ++testFailCount;
+            markAsFailed(e.what());
             continue;
         }
 
         // Codegen 测试模块（isTestDll=true）
         auto testFile = yux.module(testModName);
         if (!testFile) {
-            std::string failPath = std::string(testsDir).append("/").append(dllFileName).append(".test.failed");
-            std::ofstream failFile(failPath);
-            if (failFile) failFile << "module not found after parse\n";
-            ++testFailCount;
+            markAsFailed("module not found after parse");
             continue;
         }
 
@@ -152,10 +158,7 @@ static void buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const s
                 compiler.compile(testFile);
             } catch (std::runtime_error& e) {
                 reportRuntimeError(testAbs, e, testModName + ": ");
-                std::string failPath = std::string(testsDir).append("/").append(dllFileName).append(".test.failed");
-                std::ofstream failFile(failPath);
-                if (failFile) failFile << e.what() << "\n";
-                ++testFailCount;
+                markAsFailed(e.what());
                 continue;
             }
 
@@ -175,10 +178,7 @@ static void buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const s
 
             if (!compileIRToObj(tMod.get(), testObj)) {
                 std::cerr << "Error: failed to compile test IR: " << testObj << '\n';
-                std::string failPath = std::string(testsDir).append("/").append(dllFileName).append(".test.failed");
-                std::ofstream failFile(failPath);
-                if (failFile) failFile << "compile IR to obj failed: " << testObj << "\n";
-                ++testFailCount;
+                markAsFailed("compile IR to obj failed: " + testObj);
                 continue;
             }
             std::cout << "Write test obj: " << testObj << '\n';
@@ -244,10 +244,7 @@ static void buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const s
             lld::Result r = lldMain(linkArgs, oOS, eOS, llvm::ArrayRef{dd});
             if (r.retCode) {
                 std::cerr << "Error: test dll link failed for " << testMod << "\n" << errStr;
-                std::string failPath = std::string(testsDir).append("/").append(dllFileName).append(".test.failed");
-                std::ofstream failFile(failPath);
-                if (failFile) failFile << "link failed: " << errStr << "\n";
-                ++testFailCount;
+                markAsFailed("link failed: " + errStr);
                 continue;
             }
         }

@@ -1051,6 +1051,10 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
             // Phase 3c.1: 非平凡结构体仍走指针 ABI
             _localVarPtrs[paramName] = &arg;
             DEBUG_LOG_VAL("  Param (struct ptr)", paramName << " : " << paramType.name << "*");
+            // 堆句柄参数也需 callee-clean（Array 等非平凡 struct 走指针 ABI 时）
+            if (typeNeedsDestructor(paramType)) {
+                _scopeVars.push_back(paramName);
+            }
         } else {
             // 基本类型 / 平凡结构体: 创建 alloca 并存储 by-value 参数
             auto llvmType = getLLVMType(paramType);
@@ -1171,6 +1175,10 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
             // Phase 3c.1: 非平凡结构体仍走指针 ABI
             _localVarPtrs[paramName] = argIt;
             DEBUG_LOG_VAL("  Param (struct ptr)", paramName << " : " << paramType.name << "*");
+            // 堆句柄参数也需 callee-clean（Array 等非平凡 struct 走指针 ABI 时）
+            if (typeNeedsDestructor(paramType)) {
+                _scopeVars.push_back(paramName);
+            }
         } else {
             // 基本类型 / 平凡结构体: 创建 alloca 并存储 by-value 参数
             auto alloca = _builder.CreateAlloca(llvmType, nullptr, paramName);
