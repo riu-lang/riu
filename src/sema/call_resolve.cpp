@@ -946,6 +946,7 @@ void validateArrayMethodCall(const TypeInfo& baseType, const string& member, siz
     }
 
     if (member == "is_empty" || member == "first" || member == "last") return;
+    if (member == "clone") return; // 深拷贝，无需 lvalue，0 参 → Array<T>
     if (member == "get") {
         if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, member, static_cast<size_t>(1));
         return;

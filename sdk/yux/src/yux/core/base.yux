@@ -223,6 +223,10 @@ struct Array<T> {
 
   #Builtin
   fn pop() T
+
+  ; Array 深拷贝唯一入口，替代 copy_of（copy_of 不再接受 Array）
+  #Builtin
+  fn clone() Array<T>
 }
 
 ; Nullable<T> - 可空包装类型

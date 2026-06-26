@@ -1168,6 +1168,8 @@ TypeInfo ExprDotNode::getType() const {
     }
 
     if (actualType.isArrayGeneric()) {
+        // Array::clone() 深拷贝返回同类型 Array<T>
+        if (member == "clone") return TypeInfo("fn() " + actualType.getFullName());
         if (auto elemType = actualType.arrayGenericElementType()) {
             auto retSig = tryArrayMethodRetType(*elemType);
             if (!retSig.empty()) return TypeInfo(retSig);

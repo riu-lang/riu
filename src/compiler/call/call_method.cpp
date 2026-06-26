@@ -352,6 +352,89 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         return voidResult();
     }
 
+    if (member == "clone") {
+        DEBUG_LOG("    Expr: Array.clone() → Array<T> 深拷贝");
+        // BUGS #1: Array 深拷贝唯一入口，替代 copy_of（copy_of 不再接受 Array）
+        // 深拷贝语义：分配新缓冲 + 逐元素 copy + retain + Heap 深拷
+        auto ptr = getReadPtr();
+        auto oldData = loadData(ptr);
+        auto oldLen = loadLen(ptr);
+        auto resultTy = arrayStructType;
+
+        auto* fn = _builder.GetInsertBlock()->getParent();
+        auto* startBB = _builder.GetInsertBlock();
+
+        // 空 Array 结果
+        llvm::Value* emptyArr = llvm::UndefValue::get(resultTy);
+        emptyArr = _builder.CreateInsertValue(emptyArr, nullPtr, {0}, "clone.empty.data");
+        emptyArr = _builder.CreateInsertValue(emptyArr, llvm::ConstantInt::get(sizeTy, 0), {1}, "clone.empty.len");
+        emptyArr = _builder.CreateInsertValue(emptyArr, llvm::ConstantInt::get(sizeTy, 0), {2}, "clone.empty.cap");
+
+        auto* allocBB = llvm::BasicBlock::Create(_context, "clone.alloc", fn);
+        auto* loopHdrBB = llvm::BasicBlock::Create(_context, "clone.loop.hdr", fn);
+        auto* loopBodyBB = llvm::BasicBlock::Create(_context, "clone.loop.body", fn);
+        auto* loopLatchBB = llvm::BasicBlock::Create(_context, "clone.loop.latch", fn);
+        auto* loopExitBB = llvm::BasicBlock::Create(_context, "clone.loop.exit", fn);
+        auto* doneBB = llvm::BasicBlock::Create(_context, "clone.done", fn);
+
+        // len == 0 → 直接返回空数组
+        auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
+        auto lenIsZero = _builder.CreateICmpEQ(oldLen, zeroSize, "clone.is_empty");
+        _builder.CreateCondBr(lenIsZero, doneBB, allocBB);
+
+        // allocBB: 分配新数据缓冲 newData = HeapAlloc(len * sizeof(T))
+        _builder.SetInsertPoint(allocBB);
+        auto elemSizeVal = _builder.getInt64(
+            _module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
+        // oldLen 是 usize (sizeTy)，elemSizeVal 是 i64；统一为 i64 做乘法
+        auto oldLenI64 = _builder.CreateZExtOrTrunc(oldLen, _builder.getInt64Ty(), "clone.len.i64");
+        auto newSize = _builder.CreateMul(oldLenI64, elemSizeVal, "clone.new_size");
+        auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
+        auto newData = _builder.CreateCall(allocFn, {newSize}, "clone.new_data");
+        _builder.CreateBr(loopHdrBB);
+
+        // loopHdrBB: for i (0..len-1)，使用 i64 索引 (GEP 需要)
+        _builder.SetInsertPoint(loopHdrBB);
+        auto loopPhi = _builder.CreatePHI(_builder.getInt64Ty(), 2, "clone.i");
+        loopPhi->addIncoming(_builder.getInt64(0), allocBB);
+        auto loopCond = _builder.CreateICmpULT(loopPhi, oldLenI64, "clone.loop.cond");
+        _builder.CreateCondBr(loopCond, loopBodyBB, loopExitBB);
+
+        // loopBodyBB: 拷贝元素 + retain + Heap 深拷
+        _builder.SetInsertPoint(loopBodyBB);
+        auto oldElemPtr = _builder.CreateInBoundsGEP(elemLLVMType, oldData, {loopPhi}, "clone.old.ptr");
+        llvm::Value* elemVal = _builder.CreateLoad(elemLLVMType, oldElemPtr, "clone.elem");
+        retainHandleAtCallSite(elemVal, *elemType);
+        if (!isBuiltinType(elemType->name) && structNeedsDestructor(elemType->name)) {
+            elemVal = copyOfStructFields(elemVal, elemType->name);
+        }
+        auto newElemPtr = _builder.CreateInBoundsGEP(elemLLVMType, newData, {loopPhi}, "clone.new.ptr");
+        _builder.CreateStore(elemVal, newElemPtr);
+        _builder.CreateBr(loopLatchBB);
+
+        // loopLatchBB: i++
+        _builder.SetInsertPoint(loopLatchBB);
+        auto iNext = _builder.CreateAdd(loopPhi, _builder.getInt64(1), "clone.i.next");
+        loopPhi->addIncoming(iNext, loopLatchBB);
+        _builder.CreateBr(loopHdrBB);
+
+        // loopExitBB: 构造新 Array { newData, len, len }（cap == len 紧凑）
+        _builder.SetInsertPoint(loopExitBB);
+        llvm::Value* newArr = llvm::UndefValue::get(resultTy);
+        newArr = _builder.CreateInsertValue(newArr, newData, {0}, "clone.res.data");
+        newArr = _builder.CreateInsertValue(newArr, oldLen, {1}, "clone.res.len");
+        newArr = _builder.CreateInsertValue(newArr, oldLen, {2}, "clone.res.cap"); // cap == len 紧凑
+        _builder.CreateBr(doneBB);
+
+        // doneBB: phi 汇聚空 / 非空两条路径
+        _builder.SetInsertPoint(doneBB);
+        auto resultPhi = _builder.CreatePHI(resultTy, 2, "clone.result");
+        resultPhi->addIncoming(emptyArr, startBB);
+        resultPhi->addIncoming(newArr, loopExitBB);
+
+        return resultPhi;
+    }
+
     return nullptr;
 }
 
