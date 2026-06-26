@@ -47,7 +47,7 @@
 
 仅类型层：能写 `var f fn(i32)i32`、`Callback = fn(s String)bool`、`Array<fn()i32>`；不生成调用代码。
 
-- AST：`TypeFnNode`（`type_node.h`）+ `TypeInfo::Fn` kind（`include/types.h`）；ast_builder `visitTypeFn` / `buildTypeWithRef`；`TypeInfo::substitute` / `==` / `getFullName` / `getGenericMangleName` 支持 Fn
+- AST：`TypeFnNode`（`type_node.h`）+ `TypeInfo::Fn` kind（`src/types.h`）；ast_builder `visitTypeFn` / `buildTypeWithRef`；`TypeInfo::substitute` / `==` / `getFullName` / `getGenericMangleName` 支持 Fn
 - 类型系统：`getLLVMType` 加 Fn case → 16-byte fat-ptr `{ ptr, ptr }` 占位；`resolveAliasImpl` 加 Fn 递归（fn 形参 / 返回类型内的别名透明展开）
 - 结构等同复用 `TypeInfo::operator==`：参数名不参与；arity + 各位置类型 + 返回类型递归判等；void 缺省作 nullptr 参与判等
 - §3.7 容器禁忌：`Weak<fn(...)>` 在 ast_builder `visitTypeGeneric` / `buildTypeWithRef` 双通路抛 `E2001`
@@ -222,7 +222,7 @@ body 入口掩 LSB        ; 还原 alloca 真实地址
 | `src/compiler/compiler_runtime.cpp` | `_box_release_dtor` runtime helper |
 | `src/compiler/compiler_stmt.cpp` | `compileDeclareStatement` Fn 零填充 + `compileAssignStatement` 入口 `E2030` 检查 |
 | `src/analyzer/borrow_checker.cpp` | `visitExpr` LambdaExprNode 递归 + `visitLambda` 单源约束 + 捕获 `T&` 溯源排除 |
-| `include/types.h` | `TypeInfo::Fn` kind + 结构等同 |
+| `src/types.h` | `TypeInfo::Fn` kind + 结构等同 |
 | `include/error_code.h` | `E2028`（FV 兜底）/ `E2029`（不支持的捕获）/ `E2030`（捕获写禁）/ `E2031`（FFI 拒）/ `E4020`（捕获 T& 出现在 ret 允许源外）/ `E4021`（多形参 T&）/ `E4022`（含 T& 捕获 lambda 逃逸） |
 | `tests/cases/lambda_*` | 用例族（type / call / closure / extern 子组） |
 

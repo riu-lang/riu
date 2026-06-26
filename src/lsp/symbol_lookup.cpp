@@ -13,6 +13,7 @@
 #include "antlr4-runtime.h"
 #include "utf8.h"
 #include "yux/yuxLexer.h"
+#include <cstdio>
 
 #include <algorithm>
 #include <set>
@@ -53,7 +54,8 @@ bool tokenContains(const LspPosition& s, const LspPosition& e, const LspPosition
 }
 
 bool readFileText(const std::string& absPath, std::string& out) {
-    FILE* fp = std::fopen(absPath.c_str(), "rb");
+    FILE* fp = nullptr;
+    fopen_s(&fp, absPath.c_str(), "rb");
     if (!fp) return false;
     std::fseek(fp, 0, SEEK_END);
     long sz = std::ftell(fp);
@@ -344,8 +346,9 @@ static LspPosition byteOffsetToLsp(const std::string& docText, size_t byteOff) {
             char32_t cp = utf8::next(it, end);
             utf16 += (cp <= 0xFFFF ? 1 : 2);
         }
+        // NOLINTNEXTLINE(bugprone-empty-catch)
     } catch (...) { /* 残缺 UTF-8：保持 utf16 当前值 */
-    } // NOLINT(bugprone-empty-catch)
+    }
     p.character = utf16;
     return p;
 }

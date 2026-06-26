@@ -3,8 +3,8 @@
 
 #include "syntax_error_listener.h"
 
+#include "../error_code.h"
 #include "diagnostic.h"
-#include "error_code.h"
 
 #include "Lexer.h"
 #include "TokenStream.h"
@@ -96,7 +96,7 @@ void SyntaxErrorListener::syntaxError(antlr4::Recognizer* recognizer,
             auto* ts = dynamic_cast<antlr4::TokenStream*>(recognizer->getInputStream());
             if (ts && offending) {
                 auto idx = offending->getTokenIndex();
-                for (int i = 1; i <= 5 && idx >= i; ++i) {
+                for (size_t i = 1; i <= 5 && idx >= i; ++i) {
                     auto* tok = ts->get(idx - i);
                     if (tok && tok->getChannel() == antlr4::Token::DEFAULT_CHANNEL) {
                         prevText = tok->getText();

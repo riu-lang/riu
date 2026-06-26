@@ -316,7 +316,7 @@ struct EnumValue<E> {
 
 ### 8.1 编译器（`src/`）
 
-- `include/types.h`：`TypeKind` 增 `Enum` 档位；`TypeInfo` 携带 enum decl 引用。
+- `src/types.h`：`TypeKind` 增 `Enum` 档位；`TypeInfo` 携带 enum decl 引用。
 - `src/node/`：新增 `enum_node.{cpp,h}`（声明节点）、`enum_variant_node.{cpp,h}`（variant 节点）；表达式侧扩 `expr_node` 加 `EnumCtorExpr` 与 `MatchExpr` 形态（具体落点待 Phase 1 评估，可能复用现有 ctor 路径）。
 - `src/ast_builder.cpp`：enum 声明 / 构造 / match 的 ANTLR → AST 路径。
 - `src/compiler.cpp` / `compiler_call.cpp`：构造调用分发；类型检查接入。

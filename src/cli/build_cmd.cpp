@@ -10,6 +10,7 @@
 #include "jit/lljit_runner.h"
 #include "sdk_compile.h"
 
+#include "../types.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/fn_node.h"
 #include "ast/yux.h"
@@ -17,7 +18,6 @@
 #include "tools/diagnostic.h"
 #include "tools/pkg_cache.h"
 #include "tools/sdk_loader.h"
-#include "types.h"
 
 #include <lld/Common/Driver.h>
 #include <llvm/IR/IRBuilder.h>

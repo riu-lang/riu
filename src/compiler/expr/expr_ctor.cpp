@@ -544,7 +544,7 @@ llvm::Value* Compiler::compileHeapCtorExpr(p<ExprHeapCtorNode> node) {
     if (!innerSp) {
         throw YuxError(line, col, "Heap:<T>(x) 缺少类型实参");
     }
-    auto innerType = *innerSp;
+    const auto& innerType = *innerSp;
 
     auto argExpr = node->arg();
     if (isIntTypeName(innerType.name) && isFlexibleIntExpr(argExpr)) {

@@ -60,6 +60,7 @@ TypeInfo Compiler::resolvedOrInferredType(p<ExprNode> node) const {
 
 // 创建类型转换
 // 处理整数、浮点数、指针、引用等类型之间的转换
+// NOLINTBEGIN(bugprone-branch-clone)
 llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& srcType, const TypeInfo& dstType) {
     // 相同类型无需转换
     if (srcType == dstType) {
@@ -96,7 +97,7 @@ llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& srcType, con
 
     if (srcIsFloat && dstIsFloat) {
         // 浮点数之间的转换
-        if (srcType.name == "f64" && dstType.name == "f32") {
+        if (srcType.name == "f64" && dstType.name == "f32") { // NOLINT(bugprone-branch-clone)
             DEBUG_LOG("      FPTrunc (f64 -> f32)");
             return _builder.CreateFPTrunc(val, dstLLVMType);
         } else {
@@ -121,7 +122,7 @@ llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& srcType, con
 
         if (dstLLVMType->getIntegerBitWidth() > srcLLVMType->getIntegerBitWidth()) {
             // 扩展
-            if (srcIsUnsigned) {
+            if (srcIsUnsigned) { // NOLINT(bugprone-branch-clone)
                 DEBUG_LOG("      ZExt (unsigned int extension)");
                 return _builder.CreateZExt(val, dstLLVMType);
             } else {
@@ -153,7 +154,9 @@ llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& srcType, con
         }
     }
 }
+// NOLINTEND(bugprone-branch-clone)
 
+// NOLINTBEGIN(bugprone-branch-clone)
 llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
     auto type = node->getType();
     DEBUG_LOG_VAL("  compileExpr", "type=" << (type.empty() ? "void" : type.name));
@@ -356,6 +359,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3091);
     }
 }
+// NOLINTEND(bugprone-branch-clone)
 
 void Compiler::compileStatementBlock(p<StatementBlockNode> block) {
     DEBUG_LOG_VAL("  compileStatementBlock", block->statements().size()

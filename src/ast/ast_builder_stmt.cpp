@@ -8,12 +8,12 @@
 //   - visitStatementBlock
 // 拆自原 ast_builder.cpp（P1 Phase 2），方法体一字不动。
 
+#include "../types.h"
 #include "ast_builder.h"
 #include "ast_builder_helpers.h"
 #include "node/expr_node.h"
 #include "node/literal_node.h"
 #include "node/statement_node.h"
-#include "types.h"
 #include <algorithm>
 
 // DRAFT-let-unify §3：局部 `let` 声明。
@@ -208,11 +208,11 @@ std::any ASTBuilder::visitStatementLoop(yux::yuxParser::StatementLoopContext* ct
         // 提取变量名
         if (initCtx->name) {
             // 单变量：loop i = expr
-            initNames.push_back(initCtx->name);
+            initNames.emplace_back(initCtx->name);
         } else {
             // tuple 解构：loop (i, j) = expr
             for (auto id : initCtx->names) {
-                initNames.push_back(id);
+                initNames.emplace_back(id);
             }
         }
 
@@ -236,7 +236,7 @@ std::any ASTBuilder::visitStatementLoop(yux::yuxParser::StatementLoopContext* ct
             } else {
                 varType = initExprType;
             }
-            SymbolInfo sym(SymbolKind::Variable, initNames[idx].getText(), varType, /*isMut=*/true);
+            SymbolInfo sym(SymbolKind::Variable, initNames[idx].getText(), varType, /*w=*/true);
             if (scope) {
                 scope->registerSymbol(initNames[idx].getText(), sym);
             }

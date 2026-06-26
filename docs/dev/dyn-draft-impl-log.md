@@ -36,7 +36,7 @@ DRAFT-dyn-draft.md 起草，关键决议确认：
 
 ### 1b — 类型形态进 AST + LLVM 类型
 
-- `TypeInfo::isDyn()` / `isDynOwned()` / `isDynBorrow()` / `dynDraftType()` 加入 `include/types.h`
+- `TypeInfo::isDyn()` / `isDynOwned()` / `isDynBorrow()` / `dynDraftType()` 加入 `src/types.h`
 - `Dyn<D>` 走现有 TypeGenericNode 路径（不需要新 AST 节点 / 不需要在 ast_builder 特化）
 - `compiler_types.cpp::getLLVMType(Dyn<X>)` 返回 `{ ptr, ptr }` fat pointer
 
@@ -196,7 +196,7 @@ BUGS.md 第 1 条。根因：SDK 内置类型方法 receiver 走 by-value ABI（
 - fat pointer 表示：`{ vtable: ptr, data: ptr }`，16 字节，sized；`getLLVMType` `compiler_types.cpp:458`
 - vtable 符号：`__yux_vtable_<U_mod>_<U_struct>__<D_qualified>`，`linkonce_odr` `unnamed_addr`，槽 0 dtor / 槽 1..N D 方法按声明序
 - 内置 U 适配 thunk：`__yux_dyn_thunk__<U>__<draftQ>__<method>`，`linkonce_odr`，load primitive 后转发到 SDK by-value fn
-- 类型谓词：`TypeInfo::isDyn()` / `isDynOwned()` / `isDynBorrow()` / `dynDraftType()`，`include/types.h`
+- 类型谓词：`TypeInfo::isDyn()` / `isDynOwned()` / `isDynBorrow()` / `dynDraftType()`，`src/types.h`
 - 构造节点：`ExprDynCtorNode`，ast_builder 在 `visitExprCall` 命中 `Dyn` + 1 typeArg + 1 arg 重写
 - vtable 生成：`Compiler::getOrEmitDynVTable`，`src/compiler/compiler_dyn_vtable.cpp`
 - 方法分派：`Compiler::compileDynMethodCall`，`src/compiler/compiler_call.cpp`

@@ -4,7 +4,7 @@
 #ifndef YUX_LANG_NODE_H
 #define YUX_LANG_NODE_H
 
-#include "types.h"
+#include "../../types.h"
 
 enum class SymbolKind : u8 {
     Struct,
@@ -37,7 +37,7 @@ struct SymbolInfo {
         isPrivate = !this->name.empty() && this->name[0] == '_';
     }
 
-    string getFullName() const {
+    [[nodiscard]] string getFullName() const {
         if (moduleName.empty()) return name;
         return moduleName + "_" + name;
     }
@@ -75,7 +75,7 @@ struct FnSymbolInfo {
         isPrivate = !baseName.empty() && baseName[0] == '_';
     }
 
-    string getFullName() const {
+    [[nodiscard]] string getFullName() const {
         if (moduleName.empty()) return name;
         return moduleName + "_" + name;
     }
@@ -150,7 +150,7 @@ protected:
     Token _name;
 
 public:
-    explicit Named(const Token& name) : _name(name) {}
+    explicit Named(Token name) : _name(std::move(name)) {}
 
     virtual ~Named() = default;
 

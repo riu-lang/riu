@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <set>
 
+#include "../../types.h"
 #include "analyzer/symbol_suggest.h"
 #include "file_node.h"
 #include "fn_node.h"
@@ -13,7 +14,6 @@
 #include "spec_node.h"
 #include "statement_node.h"
 #include "struct_node.h"
-#include "types.h"
 
 // §12.4：在生成式 AST 中遇到 `x.m()`（x:T 为泛型形参）时，
 // 用形参声明位的 draft 边界查 m 的返回类型；走包含 SDK 回退的 file 链。

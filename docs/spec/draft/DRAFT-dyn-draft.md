@@ -222,7 +222,7 @@ release(Dyn<D&>): no-op
 
 - `src/ast/node/`：新增 `DynTypeNode`（或扩 `TypeNormalNode` 一支）；构造表达式 `ExprDynCtorNode`（或复用 `ExprCallNode` 走 `Dyn<D>(...)` 形态）
 - `src/ast/ast_builder.cpp`：解析 `Dyn<...>` 类型 + 构造表达式
-- `include/types.h` / `src/`：`TypeInfo` 加 `isDyn()` / `isDynRef()` 谓词 + draft ref 携带
+- `src/types.h` / `src/`：`TypeInfo` 加 `isDyn()` / `isDynRef()` 谓词 + draft ref 携带
 - `src/analyzer/draft_impl_checker.{h,cpp}`：新增 object safety 谓词 `draftIsObjectSafe(DraftDeclNode*)`；构造检查 `typeSatisfiesDraftForDyn(...)`
 - `src/compiler/`：
   - `compiler_type.cpp`：`getLLVMType(Dyn<D>)` = `{ ptr, ptr }`

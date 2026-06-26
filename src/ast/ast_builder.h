@@ -35,7 +35,7 @@ class ASTBuilder : public yux::yuxParserBaseVisitor {
         return node;
     }
 
-    p<ScopeNode> currentScope() const {
+    [[nodiscard]] p<ScopeNode> currentScope() const {
         if (_scopeStack.empty()) return nullptr;
         return _scopeStack.back();
     }
@@ -45,7 +45,7 @@ class ASTBuilder : public yux::yuxParserBaseVisitor {
 
     // Phase 2b 构造模型重构: 从 _scopeStack 找最内层 StructImplNode 的 structName.
     // 用于 TypeSelfNode / ExprStructLitNode 构造时锁定所属结构体; 体外返回空串.
-    string findEnclosingStructName() const;
+    [[nodiscard]] string findEnclosingStructName() const;
 
 public:
     explicit ASTBuilder(Yux& yux, string moduleName = "", bool isTestFile = false, string sourcePath = "");

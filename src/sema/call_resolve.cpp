@@ -10,12 +10,12 @@
 // 不依赖任何 LLVM 头; 由 yux_frontend 静态库提供, Compiler 与未来的 SemaPass 共享.
 
 #include "sema/call_resolve.h"
+#include "../types.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
 #include "ast/node/enum_node.h"
 #include "ast/yux.h"
 #include "tools/diagnostic.h"
-#include "types.h"
 #include <algorithm>
 #include <format>
 #include <functional>

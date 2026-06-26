@@ -547,10 +547,8 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
                     auto dataField = _builder.CreateStructGEP(dynStructType, fieldPtr, 1, "arg.enum.dyn.data_field");
                     auto data = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataField, "arg.enum.dyn.data");
                     _builder.CreateCall(runtime::getRcRetainFn(_module, _builder), {data});
-                } else if (fieldType.isDynBorrow()) {
-                    // Dyn<D&> borrow payload：不动 RC
-                } else if (fieldType.isHeap()) {
-                    // Heap<T> payload：pass-by-value 所有权转移，不深拷
+                } else if (fieldType.isDynBorrow() || fieldType.isHeap()) {
+                    // Dyn<D&> borrow / Heap<T> payload：不动 RC（借用不持有，Heap 所有权转移不深拷）
                 }
             }
             _builder.CreateBr(mergeBB);
@@ -602,10 +600,8 @@ void Compiler::retainStructFieldsAtCallSite(llvm::Value* argVal, const string& s
             auto fieldVal = _builder.CreateExtractValue(argVal, {static_cast<unsigned>(i)}, "field.dyn");
             auto data = _builder.CreateExtractValue(fieldVal, {1}, "field.dyn.data");
             _builder.CreateCall(runtime::getRcRetainFn(_module, _builder), {data});
-        } else if (ft.isDynBorrow()) {
-            // Dyn<D&> 借用字段：不动 RC，源 owner 持有
-        } else if (ft.isHeap()) {
-            // Heap<T> 字段：pass-by-value 时所有权转移，不深拷；copy_of 走 copyOfStructFields
+        } else if (ft.isDynBorrow() || ft.isHeap()) {
+            // Dyn<D&> 借用 / Heap<T> 字段：不动 RC（借用不持有，Heap 所有权转移不深拷）
         } else if (!isBuiltinType(ft.name)) {
             // 嵌套 struct 字段：递归
             auto fieldVal = _builder.CreateExtractValue(argVal, {static_cast<unsigned>(i)}, "field.struct");

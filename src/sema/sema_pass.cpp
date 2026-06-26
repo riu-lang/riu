@@ -38,6 +38,7 @@
 #include <set>
 #include <string_view>
 
+#include "../types.h"
 #include "analyzer/borrow_checker.h"
 #include "analyzer/const_mut_checker.h"
 #include "analyzer/flow_terminate_checker.h"
@@ -53,7 +54,6 @@
 #include "ast/yux.h"
 #include "sema/call_resolve.h"
 #include "tools/diagnostic.h"
-#include "types.h"
 
 namespace {
 // Phase 3.2b 已由 SemaPass 接管的错误码白名单。SemaPass 在 visitExpr 中

@@ -12,14 +12,14 @@ heap-types 草案 Phase 1（`docs/spec/draft/DRAFT-heap-types.md` §3）的落�
 ## 改动面清单
 
 ### R2 — 编译器端（src/ + include/）
-26 个 C++ 源文件 + `include/types.h` + `include/error_code.h` + `src/yuxParser.g4` 一行注释。涉及 ~480 处 identifier / 字符串 / 注释替换。
+26 个 C++ 源文件 + `src/types.h` + `include/error_code.h` + `src/yuxParser.g4` 一行注释。涉及 ~480 处 identifier / 字符串 / 注释替换。
 
 - C++ identifier rename：见核心决策第二条
 - IR value name 字符串：`"box.handle"` / `"box.payload"` / `"box_src_tmp"` / `"box_block"` 等 → `"rc.handle"` / `"rc.payload"` / `"rc_src_tmp"` / `"rc_block"`
 - 用户可见错误消息（E1132 / E1133 / E2001 / E2029 / E2032 / E3014 / E3016 / E3050 / E3056 / E4022 / E6029）：`Box<T>` / `Box` → `Rc<T>` / `Rc`
 - 注释：`box payload` / `源 box` / `captures box` / `box 元素类型` / `box-deref` / `Box/Array/Weak` → `Rc/rc`
 - `compiler.h` 注释中泛型实例化举例 `Box2` / `Box2$i32` → `Foo2` / `Foo2$i32`（避免与类型 Box 混淆）
-- `include/types.h:321` `name == "Box"` 比对 → `name == "Rc"`（与 SDK base.yux 端类型名对齐）
+- `src/types.h:321` `name == "Box"` 比对 → `name == "Rc"`（与 SDK base.yux 端类型名对齐）
 
 ### R3 — SDK 内 .yux
 13 个文件，~174 处替换：`base.yux` 内置类型 / `#Builtin` 函数签名 + 12 个 `*.test.yux`。`Weak<Box<T>>` → `Weak<Rc<T>>`。

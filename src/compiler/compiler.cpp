@@ -13,6 +13,7 @@
 // - 泛型单态化相关函数
 
 #include "compiler.h"
+#include "../types.h"
 #include "analyzer/borrow_checker.h"
 #include "analyzer/const_mut_checker.h"
 #include "analyzer/flow_terminate_checker.h"
@@ -25,7 +26,6 @@
 #include "compiler_runtime.h"
 #include "sema/const_eval.h"
 #include "sema/sema_pass.h"
-#include "types.h"
 #include <algorithm>
 #include <array>
 #include <llvm/IR/Constants.h>
@@ -204,7 +204,7 @@ void Compiler::emitTestRegistrations() {
         if (!fn->header()->hasAnno("Test")) continue;
         std::string fnName = fn->header()->name().getText();
         std::string sym = Mangler::function(_file->moduleName(), fnName, {}, false);
-        testFns.push_back({fnName, sym});
+        testFns.push_back({.fnName = fnName, .mangledName = sym});
     }
 
     if (testFns.empty()) {

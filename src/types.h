@@ -3,12 +3,12 @@
 
 #pragma once
 
-#include <algorithm>
 #include "antlr4-runtime.h"
+#include "error_code.h"
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
-#include "error_code.h"
 #include <exception>
 #include <functional>
 #include <iostream>
@@ -18,24 +18,22 @@
 #include <stdexcept>
 #include <utility>
 #include <vector>
-#include <xstring>
+#include <string>
 
 using namespace std;
 
-typedef int8_t i8;
-typedef int16_t i16;
-typedef int32_t i32;
-typedef int64_t i64;
-// typedef __int128 i128;
+using i8 = int8_t;
+using i16 = int16_t;
+using i32 = int32_t;
+using i64 = int64_t;
 
-typedef uint8_t u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-// typedef unsigned __int128 u128;
+using u8 = uint8_t;
+using u16 = uint16_t;
+using u32 = uint32_t;
+using u64 = uint64_t;
 
-typedef float f32;
-typedef double f64;
+using f32 = float;
+using f64 = double;
 
 template <typename T>
 using sp = shared_ptr<T>;
@@ -47,8 +45,10 @@ using p = T*;
 
 extern bool debug;
 
+// NOLINTBEGIN(bugprone-macro-parentheses)
 #define DEBUG_LOG(msg) if(debug) { std::cerr << "[DEBUG] " << msg << '\n'; }
 #define DEBUG_LOG_VAL(msg, val) if(debug) { std::cerr << "[DEBUG] " << msg << ": " << val << '\n'; }
+// NOLINTEND(bugprone-macro-parentheses)
 
 #else
 
@@ -148,27 +148,27 @@ public:
         assert(line > 0 && "YuxError line must be > 0");
     }
 
-    template <class... _Types>
-    explicit YuxError(size_t line, const format_string<_Types...> format, _Types&&... args) : runtime_error(
+    template <class... Types>
+    explicit YuxError(size_t line, const format_string<Types...> format, Types&&... args) : runtime_error(
         std::vformat(format.get(), std::make_format_args(args...))), _line(line) {
         assert(line > 0 && "YuxError line must be > 0");
     }
 
-    template <class... _Types>
-    explicit YuxError(size_t line, int col, const format_string<_Types...> format, _Types&&... args) : runtime_error(
+    template <class... Types>
+    explicit YuxError(size_t line, int col, const format_string<Types...> format, Types&&... args) : runtime_error(
         std::vformat(format.get(), std::make_format_args(args...))), _line(line), _col(col) {
         assert(line > 0 && "YuxError line must be > 0");
     }
 
-    template <class... _Types>
-    explicit YuxError(SourceLocation loc, const format_string<_Types...> format, _Types&&... args) : runtime_error(
+    template <class... Types>
+    explicit YuxError(SourceLocation loc, const format_string<Types...> format, Types&&... args) : runtime_error(
         std::vformat(format.get(), std::make_format_args(args...))), _line(loc.line), _col(loc.col) {
         assert(loc.line > 0 && "YuxError line must be > 0");
     }
 
     // ErrorCode 路径：模板取自 ec.message，code 取自 ec.code
-    template <class... _Types>
-    explicit YuxError(size_t line, int col, const ErrorCodeDef& ec, _Types&&... args) : runtime_error(
+    template <class... Types>
+    explicit YuxError(size_t line, int col, const ErrorCodeDef& ec, Types&&... args) : runtime_error(
         std::vformat(std::string_view(ec.message), std::make_format_args(args...))),
         _line(line), _col(col), _code(ec.code), _sev(ec.defaultSev) {
         assert(line > 0 && "YuxError line must be > 0");
@@ -178,18 +178,18 @@ public:
     }
 
     // 列未知场景的便利重载（驱动层 / 模块层 errorLine）
-    template <class... _Types>
-    explicit YuxError(size_t line, const ErrorCodeDef& ec, _Types&&... args) : runtime_error(
+    template <class... Types>
+    explicit YuxError(size_t line, const ErrorCodeDef& ec, Types&&... args) : runtime_error(
         std::vformat(std::string_view(ec.message), std::make_format_args(args...))),
-        _line(line), _col(0), _code(ec.code), _sev(ec.defaultSev) {
+        _line(line), _code(ec.code), _sev(ec.defaultSev) {
         assert(line > 0 && "YuxError line must be > 0");
 #ifndef NDEBUG
         assert(sizeof...(args) == countFmtPlaceholders(ec.message) && "ErrorCode format arg count mismatch");
 #endif
     }
 
-    template <class... _Types>
-    explicit YuxError(SourceLocation loc, const ErrorCodeDef& ec, _Types&&... args) : runtime_error(
+    template <class... Types>
+    explicit YuxError(SourceLocation loc, const ErrorCodeDef& ec, Types&&... args) : runtime_error(
         std::vformat(std::string_view(ec.message), std::make_format_args(args...))),
         _line(loc.line), _col(loc.col), _code(ec.code), _sev(ec.defaultSev) {
         assert(loc.line > 0 && "YuxError line must be > 0");
@@ -485,11 +485,11 @@ struct TypeInfo {
         }
     }
 
-    string getFullName() const {
+    [[nodiscard]] string getFullName() const {
         if (hasGenericArgs() && !genericArgs.empty()) {
             string result = name;
-            for (size_t i = 0; i < genericArgs.size(); ++i) {
-                result += "_" + genericArgs[i]->getFullName();
+            for (auto& genericArg : genericArgs) {
+                result += "_" + genericArg->getFullName();
             }
             return result;
         }
@@ -506,7 +506,7 @@ struct TypeInfo {
 
     // LLVM 符号用 mangle 名（与 yux 源码写法一致）：
     // 泛型 Base<Arg1,Arg2>，元组 (T1,T2)，函数 fn(P1,...,Pn)R，数组 [E*N]
-    string getMangleName() const {
+    [[nodiscard]] string getMangleName() const {
         if (hasGenericArgs() && !genericArgs.empty()) {
             string result = name + "<";
             for (size_t i = 0; i < genericArgs.size(); ++i) {
@@ -544,7 +544,7 @@ struct TypeInfo {
     }
 
     // 应用类型形参替换。Normal 类型若匹配 subst 键则整体替换（可被替换为 Generic/Array 等）。
-    TypeInfo substitute(const std::map<std::string, TypeInfo>& subst) const {
+    [[nodiscard]] TypeInfo substitute(const std::map<std::string, TypeInfo>& subst) const {
         if (kind == TypeKind::Normal || kind == TypeKind::Ptr) {
             auto it = subst.find(name);
             if (it != subst.end()) return it->second;
@@ -556,11 +556,11 @@ struct TypeInfo {
             for (auto& a : genericArgs) {
                 newArgs.push_back(std::make_shared<TypeInfo>(a ? a->substitute(subst) : TypeInfo()));
             }
-            return TypeInfo(name, std::move(newArgs));
+            return {name, std::move(newArgs)};
         }
         if (kind == TypeKind::Array && elementType) {
             auto sub = elementType->substitute(subst);
-            return TypeInfo(std::make_shared<TypeInfo>(std::move(sub)), arraySize);
+            return {std::make_shared<TypeInfo>(std::move(sub)), arraySize};
         }
         if (kind == TypeKind::Tuple) {
             vector<sp<TypeInfo>> newElems;
@@ -626,5 +626,5 @@ inline bool isBuiltinType(const string& typeName) {
         "bool", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64",
         "isize", "usize"
     };
-    return std::find(builtinTypes.begin(), builtinTypes.end(), typeName) != builtinTypes.end();
+    return std::ranges::find(builtinTypes, typeName) != builtinTypes.end();
 }

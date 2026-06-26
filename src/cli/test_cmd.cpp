@@ -5,8 +5,8 @@
 
 #undef ERROR
 
+#include "../types.h"
 #include "test_cmd.h"
-#include "types.h"
 
 #include <algorithm>
 #include <array>

@@ -23,7 +23,7 @@
 ## Phase 2 — Heap<T> 非空形态最小集
 
 - AST `TypeHeapNode` / `ExprHeapCtorNode`；ast_builder 在 `visitExprCall` 末段单点拦截 `Heap:<T>(x)` → `ExprHeapCtorNode`（与 `Dyn<D>` 同形）
-- `include/types.h` `TypeInfo::isHeap()` / `heapElementType()`
+- `src/types.h` `TypeInfo::isHeap()` / `heapElementType()`
 - `getLLVMType(Heap<T>) = ptr`；`compileHeapCtorExpr`：`__yux_heap_alloc(sizeof(T))` + `store args[0]` + `consumeTemp(args[0])`
 - runtime `src/runtime/heap_handle.{h,cpp}`：`emitHeapHandleHelpers` 注入 `__yux_heap_alloc(i64) → ptr` / `__yux_heap_free(ptr)` (Win32 HeapAlloc/HeapFree，null 安全)
 - borrow_checker：decl-assign / 顶层重赋 RHS 必须是 `ExprHeapCtorNode`（禁 by-value move）；`Heap<T>` 形参 / 返回类型 / 字段位 允许
@@ -85,7 +85,7 @@ extern fn 形参 / 返回类型见 Heap → E4028。validateExternSignature 加 
 ### 编译器 / runtime
 
 - 新增：`src/runtime/heap_handle.{h,cpp}` (Win32 HeapAlloc/Free wrappers)
-- 修改：`include/types.h` (isHeap/heapElementType)、`ast_builder.cpp` (Heap ctor 拦截)、`expr_node.{h,cpp}` (ExprHeapCtorNode)、`type_node.{h,cpp}` (TypeHeapNode)
+- 修改：`src/types.h` (isHeap/heapElementType)、`ast_builder.cpp` (Heap ctor 拦截)、`expr_node.{h,cpp}` (ExprHeapCtorNode)、`type_node.{h,cpp}` (TypeHeapNode)
 - 修改：`compiler_call.cpp`（extractRawPtr / as_ref / copy_of / heap_some / heap_null / call-site B 档写回）、`compiler_expr.cpp`（compileHeapCtorExpr + lambda capture 接受 Heap?）、`compiler_lambda.cpp`（env 写入 + outer slot null 化）、`compiler_destructor.cpp`（Heap / Nullable<Heap> 释放序）、`compiler_types.cpp`（getLLVMType Heap）、`compiler_stmt.cpp`（decl-assign Heap RHS 形态接受）
 - 修改：`sema/call_resolve.cpp`（hasRefDeep skip Heap、ptr_of 接受 Heap、validateBuiltinIntrinsicTypeShape ptr_of / copy_of / as_ref Heap 分支）、`sema/sema_pass.cpp`（visitExpr ExprHeapCtorNode、kMigratedCodes E4023-E4028 加白名单）
 - 修改：`analyzer/borrow_checker.cpp`（_returnsHeap NRVO / decl-assign 白名单 / 重赋 / Heap<T>? 白名单 / E4027 widen ban）

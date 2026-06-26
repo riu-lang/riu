@@ -14,7 +14,6 @@ yux-lang/
 │   ├── main.cpp      CLI 入口
 │   └── yux*.g4       语法文件（不要手改）
 ├── gen/              ANTLR4 生成代码，不要手改
-├── include/          公共 C++ 头（types.h）
 ├── sdk/yux/          自举运行时（独立 yux 项目，编为静态库 yux.lib），链接到每个 yux 程序
 │   └── src/yux/core/  SDK 源码 + *.test.yux 测试（#Test 注解，yux test 运行）
 ├── docs/             语言参考文档（中文）；入口 docs/index.md

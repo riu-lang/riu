@@ -7,9 +7,9 @@
 #include <unordered_set>
 #include <utility>
 
+#include "../types.h"
 #include "antlr4-runtime.h"
 #include "position.h"
-#include "types.h"
 #include "utf8.h"
 #include "yux/yuxLexer.h"
 #include "yux/yuxParser.h"

@@ -7,13 +7,13 @@
 //   - buildTypeWithRef / findEnclosingStructName
 // 拆自原 ast_builder.cpp（P1 Phase 2），方法体一字不动。
 
-#include <algorithm>
-#include "ast_builder_helpers.h"
+#include "../types.h"
 #include "ast_builder.h"
+#include "ast_builder_helpers.h"
 #include "node/expr_node.h"
 #include "node/literal_node.h"
 #include "node/statement_node.h"
-#include "types.h"
+#include <algorithm>
 
 std::any ASTBuilder::visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) {
     p<Node> parent = currentScope();
@@ -41,7 +41,7 @@ std::any ASTBuilder::visitTypeSelf(yux::yuxParser::TypeSelfContext* ctx) {
 
 // 扫 _scopeStack 找最内层 StructImplNode 的 structName, 找不到返回空串.
 string ASTBuilder::findEnclosingStructName() const {
-    for (auto it = _scopeStack.rbegin(); it != _scopeStack.rend(); ++it) {
+    for (auto it = _scopeStack.rbegin(); it != _scopeStack.rend(); ++it) { // NOLINT(modernize-loop-convert)
         if (auto* impl = dynamic_cast<StructImplNode*>(*it)) {
             return impl->structName();
         }
