@@ -25,3 +25,8 @@
 /*.cmd
 /*.ps1
 /*.sh
+
+/data/
+/tools.local/
+/.*.toml
+/.mcp.json
