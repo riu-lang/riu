@@ -58,6 +58,15 @@ bool isFlexibleIntExpr(p<ExprNode> expr);
 // 也可以是其类型已经等于 target）。
 bool tryInferIntType(p<ExprNode> expr, const TypeInfo& target);
 
+// 如果表达式是 null 字面量（或其简单包装，如括号），返回 true。
+// "灵活 null"：可以在上下文中推断为任意 Nullable<T>。
+bool isFlexibleNullExpr(p<ExprNode> expr);
+
+// 尝试将 null 字面量的类型设置为目标 Nullable<T>。
+// 成功返回 true（target 确实是 Nullable<T> 且 expr 是灵活 null）；
+// 失败返回 false。
+bool tryInferNullType(p<ExprNode> expr, const TypeInfo& nullableTarget);
+
 inline bool isIntTypeName(const string& n) {
     return n == "i8" || n == "i16" || n == "i32" || n == "i64" || n == "u8" || n == "u16" || n == "u32" || n == "u64"
         || n == "isize" || n == "usize";

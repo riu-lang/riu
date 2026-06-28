@@ -197,6 +197,28 @@ bool tryInferIntType(p<ExprNode> expr, const TypeInfo& target) {
     }
 }
 
+// ==================== null 字面量灵活类型推断 ====================
+
+bool isFlexibleNullExpr(p<ExprNode> expr) {
+    expr = unwrapParen(expr);
+    if (auto lit = dynamic_cast<ExprLiteralNode*>(expr)) {
+        return dynamic_cast<LiteralNullNode*>(lit->literal()) != nullptr;
+    }
+    return false;
+}
+
+bool tryInferNullType(p<ExprNode> expr, const TypeInfo& nullableTarget) {
+    if (!nullableTarget.isNullable()) return false;
+    expr = unwrapParen(expr);
+    if (auto lit = dynamic_cast<ExprLiteralNode*>(expr)) {
+        if (auto nullLit = dynamic_cast<LiteralNullNode*>(lit->literal())) {
+            nullLit->setType(nullableTarget);
+            return true;
+        }
+    }
+    return false;
+}
+
 const p<ExprNode>& ExprCallNode::getCalleeExpr() const {
     return _calleeExpr;
 }

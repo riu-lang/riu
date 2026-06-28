@@ -256,6 +256,22 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
         return llvm::ConstantInt::get(getLLVMType(type), cpLiteral->codePoint(), false);
     } else if (auto nullLiteral = dynamic_cast<LiteralNullNode*>(literal)) {
         DEBUG_LOG("    Expr: NullLiteral");
+        // 若已推断为 Nullable<T>，生成 { _has=false, _value=zeroinit } 结构体常量
+        if (nullLiteral->hasInferredType() && nullLiteral->getType().isNullable()) {
+            auto nullableType = nullLiteral->getType();
+            auto innerType = nullableType.nullableInnerType();
+            auto llvmStructType = getLLVMType(nullableType);
+            auto innerLLVMType = innerType ? getLLVMType(*innerType) : nullptr;
+            if (llvmStructType && innerLLVMType && llvmStructType->isStructTy()) {
+                std::vector<llvm::Constant*> fields = {
+                    llvm::ConstantInt::get(_builder.getInt1Ty(), 0), // _has = false
+                    llvm::Constant::getNullValue(innerLLVMType)      // _value = zeroinit
+                };
+                DEBUG_LOG("    -> Inferred Nullable<T>: emitting zeroinit struct constant");
+                return llvm::ConstantStruct::get(llvm::cast<llvm::StructType>(llvmStructType), fields);
+            }
+        }
+        // 未推断或非 Nullable 目标：保持原有 Ptr 行为
         return llvm::ConstantPointerNull::get(llvm::PointerType::get(_context, 0));
     } else if (auto stringLiteral = dynamic_cast<LiteralStringNode*>(literal)) {
         DEBUG_LOG_VAL("    Expr: StringLiteral", text);

@@ -96,6 +96,7 @@ string LiteralObjNode::getLocation() const {
 LiteralNullNode::LiteralNullNode(const Token& value) : LiteralNode(value) {}
 
 TypeInfo LiteralNullNode::getType() const {
+    if (!_type.empty()) return _type;
     return TypeInfo("Ptr");
 }
 

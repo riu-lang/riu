@@ -64,9 +64,13 @@ public:
 };
 
 class LiteralNullNode : public LiteralNode {
+protected:
+    TypeInfo _type; // 推断的目标类型（初始为空，此时 getType() 返回 Ptr）
 public:
     explicit LiteralNullNode(const Token& value);
     [[nodiscard]] TypeInfo getType() const override;
+    void setType(TypeInfo t) { _type = std::move(t); }
+    [[nodiscard]] bool hasInferredType() const { return !_type.empty(); }
 };
 
 class LiteralCodePointNode : public LiteralNode {

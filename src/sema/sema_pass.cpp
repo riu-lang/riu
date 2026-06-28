@@ -845,13 +845,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                     auto innerType = varType.nullableInnerType();
                     if (innerType) {
                         // null 字面量直通
-                        bool isNullLit = false;
-                        if (auto litWrap = dynamic_cast<p<ExprLiteralNode>>(da->expr())) {
-                            if (dynamic_cast<p<LiteralNullNode>>(litWrap->literal())) {
-                                isNullLit = true;
-                            }
-                        }
-                        if (!isNullLit) {
+                        if (!isFlexibleNullExpr(da->expr())) {
                             if (isIntTypeName(innerType->name) && isFlexibleIntExpr(da->expr())) {
                                 tryInferIntType(da->expr(), *innerType);
                             }

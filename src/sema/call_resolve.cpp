@@ -32,6 +32,8 @@ static bool paramAccepts(const TypeInfo& param, const TypeInfo& argType) {
     // 不再隐式取 ref：T 与 T& 是不同的类型，各有各的重载
     // 需要引用时在调用处用显式 &arg（而非 &expr）
     if (param.isPtr() && argType.isRef()) return true; // 指针参数接受引用
+    // null 字面量（类型 Ptr）可以匹配任何 Nullable<T> 形参
+    if (param.isNullable() && argType.isPtr()) return true;
     return false;
 }
 
@@ -43,6 +45,15 @@ static bool overloadMatchesFlexible(const vector<p<ExprNode>>& args, const vecto
         if (isFlexibleIntExpr(args[i])) {
             // 灵活整数可以匹配任何整数类型
             if (isIntTypeName(params[i].name)) continue;
+            try {
+                if (paramAccepts(params[i], args[i]->getType())) continue;
+            } catch (...) { // NOLINT(bugprone-empty-catch)
+            }
+            return false;
+        }
+        // 灵活 null 可以匹配任何 Nullable<T> 形参
+        if (isFlexibleNullExpr(args[i])) {
+            if (params[i].isNullable()) continue;
             try {
                 if (paramAccepts(params[i], args[i]->getType())) continue;
             } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -63,10 +74,13 @@ static bool overloadMatchesFlexible(const vector<p<ExprNode>>& args, const vecto
 static bool overloadMatchesDefault(const vector<p<ExprNode>>& args, const vector<TypeInfo>& params) {
     if (params.size() != args.size()) return false;
     TypeInfo i32Type("i32");
+    TypeInfo ptrType("Ptr");
     for (size_t i = 0; i < args.size(); ++i) {
         TypeInfo argType;
         if (isFlexibleIntExpr(args[i])) {
             argType = i32Type; // 灵活整数默认为 i32
+        } else if (isFlexibleNullExpr(args[i])) {
+            argType = ptrType; // 灵活 null 默认保持 Ptr，通过 paramAccepts 匹配 Nullable<T>
         } else {
             try {
                 argType = args[i]->getType();
@@ -93,10 +107,13 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
     auto matchesDefault = [&](FnSymbolInfo* c) {
         if (c->params.size() != args.size() + 1) return false;
         TypeInfo i32Type("i32");
+        TypeInfo ptrType("Ptr");
         for (size_t i = 0; i < args.size(); ++i) {
             TypeInfo argType;
             if (isFlexibleIntExpr(args[i])) {
                 argType = i32Type;
+            } else if (isFlexibleNullExpr(args[i])) {
+                argType = ptrType;
             } else {
                 try {
                     argType = args[i]->getType();
@@ -113,6 +130,14 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
         for (size_t i = 0; i < args.size(); ++i) {
             if (isFlexibleIntExpr(args[i])) {
                 if (isIntTypeName(c->params[i + 1].name)) continue;
+                try {
+                    if (paramAccepts(c->params[i + 1], args[i]->getType())) continue;
+                } catch (...) { // NOLINT(bugprone-empty-catch)
+                }
+                return false;
+            }
+            if (isFlexibleNullExpr(args[i])) {
+                if (c->params[i + 1].isNullable()) continue;
                 try {
                     if (paramAccepts(c->params[i + 1], args[i]->getType())) continue;
                 } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -141,11 +166,14 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
     }
 
     if (matches.size() == 1) {
-        // 唯一匹配：把每个灵活整数实参推断到对应 ctor 形参类型
+        // 唯一匹配：把每个灵活整数 / 灵活 null 实参推断到对应 ctor 形参类型
         auto fn = matches[0];
         for (size_t i = 0; i < args.size(); ++i) {
             if (isFlexibleIntExpr(args[i]) && isIntTypeName(fn->params[i + 1].name)) {
                 tryInferIntType(args[i], fn->params[i + 1]);
+            }
+            if (isFlexibleNullExpr(args[i]) && fn->params[i + 1].isNullable()) {
+                tryInferNullType(args[i], fn->params[i + 1]);
             }
         }
     } else if (matches.size() > 1) {
@@ -207,9 +235,9 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
 }
 
 // ==================== 方法重载解析 ====================
-// 解析结构体方法调用的重载，推断灵活整数类型
+// 解析结构体方法调用的重载，推断灵活整数 / 灵活 null 类型
 // 与 resolveCtorOverload 同思路，但方法在符号表中以 `TypeName.methodName` 注册，
-// params[0] 是接收者；匹配时跳过 params[0]，按用户写的实参列表推断未尽缀的整数字面量类型。
+// params[0] 是接收者；匹配时跳过 params[0]，按用户写的实参列表推断未带后缀的整数字面量类型。
 void resolveMethodOverload(FileNode* file, FileNode* sdkFile, const string& baseTypeName, const string& member,
                            const vector<p<ExprNode>>& args, int line) {
     string methodFullName = baseTypeName + "." + member;
@@ -229,10 +257,13 @@ void resolveMethodOverload(FileNode* file, FileNode* sdkFile, const string& base
     auto matchesDefault = [&](FnSymbolInfo* c) {
         if (c->params.size() != args.size() + 1) return false;
         TypeInfo i32Type("i32");
+        TypeInfo ptrType("Ptr");
         for (size_t i = 0; i < args.size(); ++i) {
             TypeInfo argType;
             if (isFlexibleIntExpr(args[i])) {
                 argType = i32Type;
+            } else if (isFlexibleNullExpr(args[i])) {
+                argType = ptrType;
             } else {
                 try {
                     argType = args[i]->getType();
@@ -249,6 +280,14 @@ void resolveMethodOverload(FileNode* file, FileNode* sdkFile, const string& base
         for (size_t i = 0; i < args.size(); ++i) {
             if (isFlexibleIntExpr(args[i])) {
                 if (isIntTypeName(c->params[i + 1].name)) continue;
+                try {
+                    if (paramAccepts(c->params[i + 1], args[i]->getType())) continue;
+                } catch (...) { // NOLINT(bugprone-empty-catch)
+                }
+                return false;
+            }
+            if (isFlexibleNullExpr(args[i])) {
+                if (c->params[i + 1].isNullable()) continue;
                 try {
                     if (paramAccepts(c->params[i + 1], args[i]->getType())) continue;
                 } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -277,11 +316,14 @@ void resolveMethodOverload(FileNode* file, FileNode* sdkFile, const string& base
     }
 
     if (matches.size() == 1) {
-        // 唯一匹配：把每个灵活整数实参推断到对应形参类型
+        // 唯一匹配：把每个灵活整数 / 灵活 null 实参推断到对应形参类型
         auto fn = matches[0];
         for (size_t i = 0; i < args.size(); ++i) {
             if (isFlexibleIntExpr(args[i]) && isIntTypeName(fn->params[i + 1].name)) {
                 tryInferIntType(args[i], fn->params[i + 1]);
+            }
+            if (isFlexibleNullExpr(args[i]) && fn->params[i + 1].isNullable()) {
+                tryInferNullType(args[i], fn->params[i + 1]);
             }
         }
     } else if (matches.size() > 1) {
@@ -357,11 +399,14 @@ void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName, 
     }
 
     if (matches.size() == 1) {
-        // 唯一匹配: 推断灵活整数的类型
+        // 唯一匹配: 推断灵活整数 / 灵活 null 的类型
         auto fn = matches[0];
         for (size_t i = 0; i < args.size(); ++i) {
             if (isFlexibleIntExpr(args[i]) && isIntTypeName(fn->params[i].name)) {
                 tryInferIntType(args[i], fn->params[i]);
+            }
+            if (isFlexibleNullExpr(args[i]) && fn->params[i].isNullable()) {
+                tryInferNullType(args[i], fn->params[i]);
             }
         }
     } else if (matches.size() > 1) {
@@ -681,12 +726,15 @@ void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn, const
         }
         // 形参为 Nullable<X>、实参非 Nullable: weak 等接受 T 与 T? 两种输入,
         // unify 时剥 Nullable 继续匹配内层
+        // 但如果实参是 Ptr（null 字面量），不参与 T 推断（null 不携带内层类型信息）
         if (pType.isNullable()) {
             auto inner = pType.nullableInnerType();
             if (inner) {
                 if (aType.isNullable()) {
                     auto aInner = aType.nullableInnerType();
                     if (aInner) unify(*inner, *aInner);
+                } else if (aType.isPtr()) {
+                    // null 字面量：不贡献类型推断，允许通过
                 } else {
                     unify(*inner, aType);
                 }
@@ -719,6 +767,10 @@ void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn, const
                     }
                 }
             }
+        }
+        // 若实参是灵活 null，跳过 unify（null 不携带内层类型信息，不参与 T 推断）
+        if (isFlexibleNullExpr(callNode->getArgs()[i])) {
+            skipUnify = true;
         }
 
         if (!skipUnify) {

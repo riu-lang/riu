@@ -61,3 +61,64 @@ fn test_nullable_reassign_from_null() {
   assert_true(x.has())
   assert_eq(x.get(), 0i64)
 }
+
+; ---------- null 类型自动推断：函数调用 ----------
+
+fn take_nullable_i32(x i32?) bool {
+  ret !x.has()
+}
+
+#Test
+fn test_null_infer_fn_call() {
+  ; null 作为实参应自动推断为 Nullable<i32>
+  assert_true(take_nullable_i32(null))
+}
+
+fn take_nullable_string(x String?) bool {
+  ret !x.has()
+}
+
+#Test
+fn test_null_infer_fn_call_string() {
+  assert_true(take_nullable_string(null))
+}
+
+; ---------- null 类型自动推断：重载消歧 ----------
+
+fn overload_nullable(x i32) bool {
+  ret false
+}
+
+fn overload_nullable(x i32?) bool {
+  ret true
+}
+
+#Test
+fn test_null_infer_overload_disambig() {
+  ; null 应精确匹配 i32? 重载
+  assert_true(overload_nullable(null))
+}
+
+; ---------- null 类型自动推断：多参数（T + T?） ----------
+
+fn multi_param_nullable(a i32, b i32?) bool {
+  ret !b.has()
+}
+
+#Test
+fn test_null_infer_multi_param() {
+  assert_true(multi_param_nullable(42, null))
+}
+
+; ---------- null 类型自动推断：泛型函数 + 显式类型参数 ----------
+
+fn identity_nullable<T>(x T?) T? {
+  ret x
+}
+
+#Test
+fn test_null_infer_generic_turbofish() {
+  ; 显式指定类型参数，null 推断为 Nullable<i32>
+  #Mut let r i32? = identity_nullable:<i32>(null)
+  assert_true(!r.has())
+}

@@ -321,6 +321,10 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                             if (isIntTypeName(instParamType.name) && i < node->getArgs().size()) {
                                 tryInferIntType(node->getArgs()[i], instParamType);
                             }
+                            // 推断灵活 null 的类型
+                            if (instParamType.isNullable() && i < node->getArgs().size()) {
+                                tryInferNullType(node->getArgs()[i], instParamType);
+                            }
                         }
                     }
 
@@ -374,6 +378,9 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                                             TypeInfo instParamType = paramType->getType().substitute(subst);
                                             if (isIntTypeName(instParamType.name)) {
                                                 tryInferIntType(node->getArgs()[i], instParamType);
+                                            }
+                                            if (instParamType.isNullable()) {
+                                                tryInferNullType(node->getArgs()[i], instParamType);
                                             }
                                         }
                                     }
@@ -512,8 +519,8 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
         }
 
         // 仅结构体类型方法走重载解析；内置类型 / Array / Ptr / Dyn 跳过
-        if (!effectiveTypeName.empty() && !isBuiltinType(effectiveTypeName) && !baseType.isArrayGeneric()
-            && !baseType.isPtr() && !baseType.isDyn()) {
+        if (!effectiveTypeName.empty() && !isBuiltinType(effectiveTypeName) && !baseType.isArrayGeneric() &&
+            !baseType.isPtr() && !baseType.isDyn()) {
             string member = dotNode->member();
             if (dotNode->hasSpecQualifier()) {
                 auto bt = dotNode->baseExpr()->getType();
@@ -522,7 +529,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                 }
             }
             sema::resolveMethodOverload(_file, _yux ? _yux->sdkFile() : nullptr, effectiveTypeName, member,
-                                         node->getArgs(), node->getLineNumber());
+                                        node->getArgs(), node->getLineNumber());
         }
     }
 

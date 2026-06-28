@@ -415,10 +415,7 @@ private:
                 else if (varType.isNullable() && da->expr()) {
                     auto inner = varType.nullableInnerType();
                     if (inner && inner->isHeap()) {
-                        bool ok = false;
-                        if (auto litWrap = dynamic_cast<ExprLiteralNode*>(da->expr())) {
-                            if (dynamic_cast<LiteralNullNode*>(litWrap->literal())) ok = true;
-                        }
+                        bool ok = isFlexibleNullExpr(da->expr());
                         if (!ok) {
                             if (auto call = dynamic_cast<ExprCallNode*>(da->expr())) {
                                 if (call->getType() == varType) ok = true;
@@ -470,10 +467,7 @@ private:
                 else if (rit != _rootType.end() && rit->second.isNullable() && as->expr()) {
                     auto inner = rit->second.nullableInnerType();
                     if (inner && inner->isHeap()) {
-                        bool ok = false;
-                        if (auto litWrap = dynamic_cast<ExprLiteralNode*>(as->expr())) {
-                            if (dynamic_cast<LiteralNullNode*>(litWrap->literal())) ok = true;
-                        }
+                        bool ok = isFlexibleNullExpr(as->expr());
                         if (!ok) {
                             if (auto call = dynamic_cast<ExprCallNode*>(as->expr())) {
                                 if (call->getType() == rit->second) ok = true;

@@ -212,11 +212,9 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
     if (hasDeclaredRetType && declRetType.isNullable()) {
         auto innerType = declRetType.nullableInnerType();
         if (innerType) {
-            if (auto litWrap = dynamic_cast<ExprLiteralNode*>(node->expr())) {
-                if (dynamic_cast<LiteralNullNode*>(litWrap->literal())) {
-                    nullableWrap = true;
-                    nullableWrapNullLit = true;
-                }
+            if (isFlexibleNullExpr(node->expr())) {
+                nullableWrap = true;
+                nullableWrapNullLit = true;
             }
             if (!nullableWrap) {
                 if (isIntTypeName(innerType->name) && isFlexibleIntExpr(node->expr())) {
@@ -721,12 +719,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             llvm::Value* valueField = _builder.CreateGEP(nullableStructType, alloca, {zero, one}, "nullable_value");
 
             // 是否是 null 字面量？
-            bool isNullLit = false;
-            if (auto litWrap = dynamic_cast<ExprLiteralNode*>(expr)) {
-                if (dynamic_cast<LiteralNullNode*>(litWrap->literal())) {
-                    isNullLit = true;
-                }
-            }
+            bool isNullLit = isFlexibleNullExpr(expr);
 
             if (isNullLit) {
                 // null → _has=false, _value=zero
@@ -1203,12 +1196,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             llvm::Value* hasField = _builder.CreateGEP(nullableStructType, alloca, {zero, zero}, "nullable_has");
             llvm::Value* valueField = _builder.CreateGEP(nullableStructType, alloca, {zero, one}, "nullable_value");
 
-            bool isNullLit = false;
-            if (auto litWrap = dynamic_cast<ExprLiteralNode*>(expr)) {
-                if (dynamic_cast<LiteralNullNode*>(litWrap->literal())) {
-                    isNullLit = true;
-                }
-            }
+            bool isNullLit = isFlexibleNullExpr(expr);
 
             if (isNullLit) {
                 _builder.CreateStore(_builder.getInt1(false), hasField);
