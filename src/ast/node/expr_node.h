@@ -465,10 +465,10 @@ private:
 public:
     LambdaExprNode(const p<Node>& parent, Form form, vector<LambdaParamSlot> params, p<TypeNode> retType,
                    p<ExprNode> bodyExpr, vector<p<StatementNode>> bodyStmts)
-        : ExprNode(parent), _form(form), _params(std::move(params)), _retType(std::move(retType)),
-          _bodyExpr(std::move(bodyExpr)), _bodyStmts(std::move(bodyStmts)) {}
+        : ExprNode(parent), _form(form), _params(std::move(params)), _retType(retType),
+          _bodyExpr(bodyExpr), _bodyStmts(std::move(bodyStmts)) {}
 
-    void setBodyScope(p<ScopeNode> sc) { _bodyScope = std::move(sc); }
+    void setBodyScope(p<ScopeNode> sc) { _bodyScope = sc; }
     [[nodiscard]] p<ScopeNode> bodyScope() const { return _bodyScope; }
 
     // Phase 4a：捕获表（emitLambdaFunction 期间增量 append）
@@ -573,7 +573,7 @@ class FieldInitNode : public Node {
 
 public:
     FieldInitNode(const p<Node>& parent, Token name, p<ExprNode> value)
-        : Node(parent), _name(std::move(name)), _value(std::move(value)) {}
+        : Node(parent), _name(std::move(name)), _value(value) {}
 
     [[nodiscard]] const Token& name() const { return _name; }
     [[nodiscard]] const p<ExprNode>& value() const { return _value; }
@@ -594,7 +594,7 @@ public:
     ExprStructLitNode(const p<Node>& parent, Token selfTok, string structName, bool isSelfForm = true)
         : ExprNode(parent), _selfTok(std::move(selfTok)), _structName(std::move(structName)), _isSelfForm(isSelfForm) {}
 
-    void addField(p<FieldInitNode> f) { _fields.push_back(std::move(f)); }
+    void addField(p<FieldInitNode> f) { _fields.push_back(f); }
 
     [[nodiscard]] const Token& selfToken() const { return _selfTok; }
     [[nodiscard]] const string& structName() const { return _structName; }
@@ -637,7 +637,7 @@ class MatchArmNode : public ScopeNode {
 
 public:
     MatchArmNode(const p<Node>& parent, p<EnumPatternNode> pattern, p<ExprNode> body)
-        : ScopeNode(parent), _pattern(std::move(pattern)), _body(std::move(body)) {}
+        : ScopeNode(parent), _pattern(pattern), _body(body) {}
 
     [[nodiscard]] const p<EnumPatternNode>& pattern() const { return _pattern; }
     [[nodiscard]] const p<ExprNode>& body() const { return _body; }
@@ -651,7 +651,7 @@ class ExprMatchNode : public ExprNode {
 
 public:
     ExprMatchNode(const p<Node>& parent, p<ExprNode> scrutinee, vector<p<MatchArmNode>> arms)
-        : ExprNode(parent), _scrutinee(std::move(scrutinee)), _arms(std::move(arms)) {}
+        : ExprNode(parent), _scrutinee(scrutinee), _arms(std::move(arms)) {}
 
     [[nodiscard]] const p<ExprNode>& scrutinee() const { return _scrutinee; }
     [[nodiscard]] const vector<p<MatchArmNode>>& arms() const { return _arms; }
@@ -669,7 +669,7 @@ class CatchArmNode : public ScopeNode {
 
 public:
     CatchArmNode(const p<Node>& parent, Token errName, string errType, p<StatementBlockNode> body)
-        : ScopeNode(parent), _errName(std::move(errName)), _errType(std::move(errType)), _body(std::move(body)) {}
+        : ScopeNode(parent), _errName(std::move(errName)), _errType(std::move(errType)), _body(body) {}
 
     [[nodiscard]] const Token& errName() const { return _errName; }
     [[nodiscard]] const string& errType() const { return _errType; }
@@ -686,7 +686,7 @@ class ExprTryCatchNode : public ExprNode {
 
 public:
     ExprTryCatchNode(const p<Node>& parent, p<StatementBlockNode> tryBlock, vector<p<CatchArmNode>> catches)
-        : ExprNode(parent), _tryBlock(std::move(tryBlock)), _catches(std::move(catches)) {}
+        : ExprNode(parent), _tryBlock(tryBlock), _catches(std::move(catches)) {}
 
     [[nodiscard]] const p<StatementBlockNode>& tryBlock() const { return _tryBlock; }
     [[nodiscard]] const vector<p<CatchArmNode>>& catches() const { return _catches; }
@@ -708,7 +708,7 @@ class ExprDynCtorNode : public ExprNode {
 
 public:
     ExprDynCtorNode(const p<Node>& parent, p<TypeNode> specType, p<ExprNode> arg, bool isBorrow)
-        : ExprNode(parent), _specType(std::move(specType)), _arg(std::move(arg)), _isBorrow(isBorrow) {}
+        : ExprNode(parent), _specType(specType), _arg(arg), _isBorrow(isBorrow) {}
 
     [[nodiscard]] const p<TypeNode>& specType() const { return _specType; }
     [[nodiscard]] const p<ExprNode>& arg() const { return _arg; }
@@ -727,7 +727,7 @@ class ExprHeapCtorNode : public ExprNode {
 
 public:
     ExprHeapCtorNode(const p<Node>& parent, p<TypeNode> innerType, p<ExprNode> arg)
-        : ExprNode(parent), _innerType(std::move(innerType)), _arg(std::move(arg)) {}
+        : ExprNode(parent), _innerType(innerType), _arg(arg) {}
 
     [[nodiscard]] const p<TypeNode>& innerType() const { return _innerType; }
     [[nodiscard]] const p<ExprNode>& arg() const { return _arg; }
@@ -741,7 +741,7 @@ class ExprMoveAssignNode : public ExprNode {
 
 public:
     ExprMoveAssignNode(const p<Node>& parent, p<ExprNode> left, p<ExprNode> right)
-        : ExprNode(parent), _left(std::move(left)), _right(std::move(right)) {}
+        : ExprNode(parent), _left(left), _right(right) {}
 
     [[nodiscard]] const p<ExprNode>& left() const { return _left; }
     [[nodiscard]] const p<ExprNode>& right() const { return _right; }
@@ -757,7 +757,7 @@ class ExprNullElseNode : public ExprNode {
 
 public:
     ExprNullElseNode(const p<Node>& parent, p<ExprNode> left, p<ExprNode> right)
-        : ExprNode(parent), _left(std::move(left)), _right(std::move(right)) {}
+        : ExprNode(parent), _left(left), _right(right) {}
 
     [[nodiscard]] const p<ExprNode>& left() const { return _left; }
     [[nodiscard]] const p<ExprNode>& right() const { return _right; }
