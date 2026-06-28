@@ -36,7 +36,7 @@
 
 ## 改完 C++ 必须 lint + format，提交时 0 警告
 
-仓库根有两个**本地包装器**（不在 PATH，需要 cd ... & `./...`）；都是 `init.js` 生成、各平台一份（`.ps1` / `.sh` / `.ps1`）。**改完 C++ 别手敲 `xmake check clang.tidy ...`，跑包装器即可**：
+仓库根有两个**本地包装器**（不在 PATH，需要在项目根目录用 `./...`）；都是 `init.js` 生成、各平台一份（`.ps1` / `.sh` / `.ps1`）。**改完 C++ 别手敲 `xmake check clang.tidy ...`，跑包装器即可**：
 
 ```powershell
 ./format.ps1            ; clang-format -i 给 git 已变动 / 未跟踪的 C++ 文件
