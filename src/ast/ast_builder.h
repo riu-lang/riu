@@ -116,6 +116,7 @@ public:
     std::any visitExprArray(yux::yuxParser::ExprArrayContext* ctx) override;
     std::any visitExprArrayInit(yux::yuxParser::ExprArrayInitContext* ctx) override;
     std::any visitExprTuple(yux::yuxParser::ExprTupleContext* ctx) override;
+    std::any visitExprUnit(yux::yuxParser::ExprUnitContext* ctx) override;
     std::any visitExprTupleMember(yux::yuxParser::ExprTupleMemberContext* ctx) override;
     std::any visitExprUnary(yux::yuxParser::ExprUnaryContext* ctx) override;
     std::any visitExprNullElse(yux::yuxParser::ExprNullElseContext* ctx) override;
@@ -142,6 +143,7 @@ public:
     std::any visitTypeArray(yux::yuxParser::TypeArrayContext* ctx) override;
     std::any visitTypeNullable(yux::yuxParser::TypeNullableContext* ctx) override;
     std::any visitTypeTuple(yux::yuxParser::TypeTupleContext* ctx) override;
+    std::any visitTypeUnit(yux::yuxParser::TypeUnitContext* ctx) override;
     std::any visitTypeFn(yux::yuxParser::TypeFnContext* ctx) override;
 
     std::any visitLiteralNumber(yux::yuxParser::LiteralNumberContext* ctx) override;

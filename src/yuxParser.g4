@@ -146,6 +146,8 @@ type:
     | GetStart
         type SymbolMul INT
       GetEnd                   #typeArray
+    // () → unit 类型
+    | ParStart ParEnd          #typeUnit
     // (T1, T2)
     | ParStart types+=type
         (SymbolComma types+=type)+
@@ -173,6 +175,8 @@ typeWithRef:
         typeWithRef SymbolMul INT
       GetEnd
       SymbolAnd?                        #typeArrayWithRef
+    // () → unit 类型
+    | ParStart ParEnd                   #typeUnitWithRef
     // (T1, T2)
     | ParStart
         types+=typeWithRef
@@ -560,6 +564,8 @@ expr:
     | expr
       SymbolQuest SymbolQuest
       expr                           #exprNullElse
+    // () → unit 值
+    | ParStart ParEnd               #exprUnit
     // (e1, e2)
     | ParStart
         values+=expr

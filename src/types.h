@@ -332,6 +332,10 @@ struct TypeInfo {
         elementType(std::move(retType)),
         genericArgs(std::move(paramTypes)),
         fnNullable(nullable) {
+        // 规范化：() 返回类型等价于省略 retType（皆为 unit）
+        if (elementType && elementType->kind == TypeKind::Tuple && elementType->genericArgs.empty()) {
+            elementType = nullptr;
+        }
         name = nullable ? "fn?(" : "fn(";
         for (size_t i = 0; i < genericArgs.size(); ++i) {
             if (i > 0) name += ",";

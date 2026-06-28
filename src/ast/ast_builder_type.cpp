@@ -150,6 +150,13 @@ std::any ASTBuilder::visitTypeTuple(yux::yuxParser::TypeTupleContext* ctx) {
     return static_cast<p<TypeNode>>(createWithLine<TypeTupleNode>(ctx, parent, std::move(elementTypes)));
 }
 
+// unit 类型 () —— 0 元素元组
+std::any ASTBuilder::visitTypeUnit(yux::yuxParser::TypeUnitContext* ctx) {
+    p<Node> parent = currentScope();
+    DEBUG_LOG_VAL("    Type: Unit", "()");
+    return static_cast<p<TypeNode>>(createWithLine<TypeTupleNode>(ctx, parent, vector<p<TypeNode>>{}));
+}
+
 // Phase 4a: typeWithRef → TypeNode；SymbolAnd 存在则包成 Ref<inner>
 // 语法已改：typeWithRef 现有 4 个分支，与 type 的 4 个分支结构对应，但每个内部位置（generic args / array elem）
 // 也允许带 &，从而支持 Rc<i32&> 这类嵌套引用类型作为参数 / 局部 var 类型。
@@ -219,6 +226,10 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
         auto count = a->INT()->getSymbol();
         inner = static_cast<p<TypeNode>>(createWithLine<TypeArrayNode>(a, parent, elemType, count));
         andTok = a->SymbolAnd();
+    } else if (auto u = dynamic_cast<yuxParser::TypeUnitWithRefContext*>(twr)) {
+        // unit 类型 () 在 typeWithRef 位（如 fn 返回类型显式标注 ()）
+        inner = static_cast<p<TypeNode>>(createWithLine<TypeTupleNode>(u, parent, vector<p<TypeNode>>{}));
+        andTok = nullptr;
     } else if (auto t = dynamic_cast<yuxParser::TypeTupleWithRefContext*>(twr)) {
         // 元组 (T1, T2, ...)；每个元素本身可带 & 引用
         // 元组本身不带尾随 &（g4 中 typeTupleWithRef 没有 SymbolAnd?）

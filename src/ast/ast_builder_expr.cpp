@@ -712,6 +712,13 @@ std::any ASTBuilder::visitExprTuple(yux::yuxParser::ExprTupleContext* ctx) {
     return static_cast<p<ExprNode>>(createWithLine<ExprTupleNode>(ctx, scope, std::move(elements)));
 }
 
+// unit 值 () —— 0 元素元组构造
+std::any ASTBuilder::visitExprUnit(yux::yuxParser::ExprUnitContext* ctx) {
+    DEBUG_LOG_VAL("    Expr: Unit", "()");
+    auto scope = currentScope();
+    return static_cast<p<ExprNode>>(createWithLine<ExprTupleNode>(ctx, scope, vector<p<ExprNode>>{}));
+}
+
 // 元组成员访问 a.0
 // 复用 ExprDotNode（member token 为 DOT_NUM，文本形如 ".0"），不支持 ?. 安全访问
 // 链式 t.0.0 由 parser 左递归后缀重复匹配，每个 DOT_NUM 单独一个 ExprDotNode

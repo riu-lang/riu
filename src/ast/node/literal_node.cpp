@@ -69,7 +69,14 @@ TypeInfo LiteralObjNode::getType() const {
         auto sym = scope->lookupSymbol(name);
         if (sym) {
             if (sym->kind == SymbolKind::Function) {
-                return TypeInfo("fn() " + sym->type.name);
+                // TODO: 应构造准确的 Fn TypeInfo 而非 Normal 类型字符串拼接。
+                // 障碍：泛型函数（如 heap_some<T>）的 SymbolInfo/FnSymbolInfo 持有未解析
+                // 的类型参数 T，而 ExprCallNode::getType() 通过 lookupFnSymbolWithParams
+                // + unify 推断泛型实参。literal_node 缺少实参上下文，无法完成推断。
+                // 改造方向：① 在 ExprCallNode::getType() 的 isFn() 路径中增加泛型推断；
+                // ② 或在 literal_node 中仅对非泛型函数走 FnTag 路径。
+                // 规范化：unit 返回类型 () 在名称中表现为空（与隐式 void 一致）
+                return TypeInfo("fn() " + (sym->type.name == "()" ? "" : sym->type.name));
             }
             // Phase 4a: T& 局部 / 参数 在表达式上下文按值语义出现（自动解引用为 T）；
             // 借用绑定 / 调用借用形参 等需要原始 Ref 类型的场景，在调用点直接读 sym 表
