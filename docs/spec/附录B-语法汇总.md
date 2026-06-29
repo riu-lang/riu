@@ -50,6 +50,7 @@ type           ::= ID                              # typeNormal
                  | type '?'                        # typeNullable
                  | ID genericDef                   # typeGeneric
                  | '[' type '*' INT ']'            # typeArray
+                 | '(' ')'                        # typeUnit
                  | '(' type (',' type)+ ')'        # typeTuple
                  | 'fn' '?'? '(' fnTypeParams? ')' (retType=typeWithRef)?  # typeFn
 
@@ -57,6 +58,7 @@ typeWithRef    ::= type '?' '&'?                   # typeNullableWithRef
                  | ID '&'?                         # typeNormalWithRef
                  | ID genericDefWithRef '&'?       # typeGenericWithRef
                  | '[' typeWithRef '*' INT ']' '&'?# typeArrayWithRef
+                 | '(' ')'                        # typeUnitWithRef
                  | '(' typeWithRef (',' typeWithRef)+ ')' # typeTupleWithRef
                  | 'fn' '?'? '(' fnTypeParams? ')' (retType=typeWithRef)? '&'?  # typeFnWithRef
 
@@ -212,6 +214,7 @@ expr ::=
   | '[' literal '.' '.' '.' type? ']'                            # exprArrayInit
   | expr LineEnd* '?'? '.' ID ('@' ID)?                          # exprDot  ; `@ID` = spec 默认体消歧后缀（§12.10.8）
   | expr LineEnd* DOT_NUM                                        # exprTupleMember
+  | '(' ')'                                                       # exprUnit
   | '(' expr (',' expr)+ ')'                                     # exprTuple
   | typeName '{' LineEnd ( fieldInit | LineEnd )* '}'            # exprStructLit
   | '[' LineEnd* (expr (',' LineEnd* expr)* ','? LineEnd*)? ']'  # exprArray
