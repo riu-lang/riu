@@ -1615,6 +1615,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         // 检查每个实参与形参类型是否匹配（Ref<T> 不能隐式转为 T 等）。
         // 非 ID-literal callee（如 lambda 变量 f(xs[i])）走 compiler_lambda.cpp
         // 的 compileFnValueCall，此处提前检测避免 "bad signature" LLVM 断言。
+        // 排除函数名字面量：它们虽然现在返回准确的 Fn TypeInfo，但实参类型
+        // 校验（含 extern Ptr 自动转换）已在 codegen 的 matchFnParams 中完成。
         {
             TypeInfo calleeType;
             try {
@@ -1623,6 +1625,21 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             }
 
             if (calleeType.isFn()) {
+                // 函数名字面量（如 `strLen(a)`）的参数类型匹配（含 extern Ptr
+                // 自动转换）由 codegen matchFnParams 负责，不在此处重复校验
+                bool isFnNameLiteral = false;
+                if (auto* lit = dynamic_cast<ExprLiteralNode*>(n->getCalleeExpr())) {
+                    if (auto* objLit = dynamic_cast<LiteralObjNode*>(lit->literal())) {
+                        auto scope = objLit->findNearestScope();
+                        if (scope) {
+                            auto* sym = scope->lookupSymbol(objLit->getValue().getText());
+                            if (sym && sym->kind == SymbolKind::Function) {
+                                isFnNameLiteral = true;
+                            }
+                        }
+                    }
+                }
+                if (!isFnNameLiteral) {
                 const auto& expectedParams = calleeType.fnParamTypes();
                 for (size_t idx = 0; idx < n->getArgs().size() && idx < expectedParams.size(); ++idx) {
                     try {
@@ -1653,6 +1670,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                         // getType 失败: 留 Compiler 兜底
                     }
                 }
+                }  // if (!isFnNameLiteral)
             }
         }
         // struct 方法私有可见性检查（E6007）——因 yux-check 不跑 LLVM

@@ -254,8 +254,8 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
 
     // Phase 2b: callee 静态类型为 Fn(...)R → 走 fat-ptr 路径
     // 涵盖：lambda IIFE `((x i32) i32 => ...)(5)`、fn-typed 变量 / 字段 / 调用结果
-    // 普通 ID callee（普通函数名）走 ExprLiteralNode 路径，那里返回 "fn() <ret>" 字符串
-    // 编码（kind=Normal），不会命中 isFn()
+    // 排除：函数名字面量（LiteralObjNode 引用 Function 符号）——即使现在返回准确
+    // 的 Fn TypeInfo，仍走下方字面量路径以完成重载解析和形参类型检查。
     // Phase 3c: callee 为 Rc<fn(...)R> → 自动解引取 fat-ptr 后走同款 fn-value-call
     // v0.16: callee 为 Ref<fn(...)R>（如 arr[i] 返回 fn&）→ Load 引用得 fat-ptr 后调用
     {
@@ -265,7 +265,22 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
         } catch (...) { // NOLINT(bugprone-empty-catch)
         }
         if (calleeStaticType.isFn()) {
-            return compileFnValueCall(node);
+            // 函数名字面量不能走 fn-value-call：下方字面量路径负责重载解析和形参类型检查
+            bool isFnNameLiteral = false;
+            if (auto* lit = dynamic_cast<ExprLiteralNode*>(calleeExpr)) {
+                if (auto* objLit = dynamic_cast<LiteralObjNode*>(lit->literal())) {
+                    auto scope = objLit->findNearestScope();
+                    if (scope) {
+                        auto* sym = scope->lookupSymbol(objLit->getValue().getText());
+                        if (sym && sym->kind == SymbolKind::Function) {
+                            isFnNameLiteral = true;
+                        }
+                    }
+                }
+            }
+            if (!isFnNameLiteral) {
+                return compileFnValueCall(node);
+            }
         }
         if (calleeStaticType.isRc()) {
             auto inner = calleeStaticType.rcElementType();
