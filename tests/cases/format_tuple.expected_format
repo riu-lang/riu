@@ -1,7 +1,0 @@
-; tuple 类型 / 元组字面 / 解构 / .N 访问
-fn make() i32 {
-  #Mut let p (i32, i32) = (1, 2)
-  #Mut let (x, y) (i32, i32) = p
-  #Mut let z i32 = p.0 + p.1 + x + y
-  z
-}

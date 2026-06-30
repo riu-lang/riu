@@ -20,10 +20,6 @@ namespace yux::cli {
 std::string getBuildDir(const std::string& projectRoot);
 void ensureBuildDir(const std::string& buildDir);
 
-// 模块名 → 构建产物基础路径 (不含扩展名)
-std::string moduleOutputBase(const std::string& buildDir, const std::string& projectName,
-                             const std::string& moduleName);
-
 bool compileIRToObj(llvm::Module* module, const std::string& outputPath);
 
 // 把 runtime_error 渲染成统一格式的诊断到 stderr。

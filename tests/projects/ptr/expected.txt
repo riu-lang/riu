@@ -1,2 +1,5 @@
 non-null
 null-literal-eq-null
+yes
+yes
+yes

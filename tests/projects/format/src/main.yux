@@ -1,0 +1,75 @@
+; ====== format_basic: 基础格式化：参数 / 类型 / 二元 / 块体的空格 + 缩进规整 ======
+fn add(a   i32 ,b i32) i32 {
+    #Mut let sum i32 = a + b
+        sum
+}
+
+fn neg(x i32) i32 {
+        -x
+}
+
+; ====== format_call_chain: 调用 / 链式 / 索引 ======
+fn call_chain() i32 {
+  #Mut let x i32 = foo(1,2)
+  #Mut let y i32 = obj.bar(3,4)
+  #Mut let z i32 = arr[0,1]
+  x + y + z
+}
+
+fn foo(a i32, b i32) i32 {
+  a + b
+}
+
+; ====== format_enum: enum 构造：E::V / E::V() / E::V(args) ======
+enum Shape {
+  Point
+  Circle(i32)
+  Rect(i32, i32)
+}
+
+fn make_shape() i32 {
+  #Mut let s1 Shape = Shape::Point
+  #Mut let s2 Shape = Shape::Point()
+  #Mut let s3 Shape = Shape::Circle(3)
+  #Mut let s4 Shape = Shape::Rect(4,5)
+  0
+}
+
+; ====== format_fn_type: fn 类型字面量：fn(...)RetT 的紧凑空格 ======
+fn use_cb(cb fn(i32)i32) i32 {
+  cb(0)
+}
+
+fn pass(a fn(s String)i32?, b fn?(i32)i32) i32 {
+  0
+}
+
+; ====== format_generic: 泛型形参 / 实参 / 边界规整 ======
+fn make_generic<T : ToString,U>(a Rc<T>,b U) i32 {
+  println(a.to_string())
+  1
+}
+
+fn alias<T,U>() i32 {
+  #Mut let arr [Rc<T> * 4]
+  4
+}
+
+; ====== format_lambda: lambda 各形态：单参 / 括参 / 块 ======
+fn each() i32 {
+    #Mut let f1 = x => x
+    #Mut let f2 = (x i32, y i32) i32 => x + y
+    #Mut let f3 = {
+        x i32 =>
+            x
+    }
+    f1(0)
+}
+
+; ====== format_tuple: tuple 类型 / 元组字面 / 解构 / .N 访问 ======
+fn make_tuple() i32 {
+  #Mut let p (i32,i32) = (1,2)
+  #Mut let (x, y) (i32, i32) = p
+  #Mut let z i32 = p.0 + p.1 + x + y
+  z
+}

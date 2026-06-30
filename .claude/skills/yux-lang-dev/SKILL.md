@@ -25,7 +25,7 @@ yux build                    ; 项目模式（必须在含 yux.toml 的目录）
 yux build --emit-ir          ; 同时输出 .ll
 ```
 
-**单文件模式 `yux <file>.yux` 已弃用**，一律走项目模式。
+`yux <file>.yux` 单文件编译模式已移除（v0.18），编译必须走项目模式（`yux build`）。
 
 ### 可执行文件清单
 

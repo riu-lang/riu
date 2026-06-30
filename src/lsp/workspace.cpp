@@ -222,7 +222,7 @@ bool Project::rebuild() {
             }
             _mainPath = normalizePath(fs::absolute(entryPath).string());
         } else {
-            _yux->initSingleFileRoot(_mainPath);
+            _yux->initFileRoot(_mainPath);
         }
 
         std::string sdkDir = findSdkPathForLsp();

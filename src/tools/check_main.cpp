@@ -195,7 +195,7 @@ static CheckResult runSemaOnFile(const string& absPath, const string& sdkPath) {
     string moduleName = filesystem::path(absPath).stem().string();
 
     Yux yux;
-    yux.initSingleFileRoot(absPath);
+    yux.initFileRoot(absPath);
 
     try {
         // 加载 SDK (找不到不致命)
@@ -376,7 +376,7 @@ static int runCheckTest(const string& dir, bool recursive) {
             if (fileRequiresSdk(files[i])) {
                 sdkPath = sdk_loader::findSdkPath();
                 if (!sdkPath.empty()) {
-                    sdkYux.initSingleFileRoot(files[0]);
+                    sdkYux.initFileRoot(files[0]);
                     sdk_loader::parseSdkDir(sdkPath, sdkYux);
                     sdkLoaded = true;
                 }
@@ -387,7 +387,7 @@ static int runCheckTest(const string& dir, bool recursive) {
 
     for (size_t i = 0; i < fileCount; ++i) {
         Yux yux;
-        yux.initSingleFileRoot(files[i]);
+        yux.initFileRoot(files[i]);
 
         if (fileRequiresSdk(files[i]) && sdkLoaded) {
             yux.setSdkFile(sdkYux.sdkFile());
@@ -503,7 +503,7 @@ int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape) — main
     string moduleName = filesystem::path(absPath).stem().string();
 
     Yux yux;
-    yux.initSingleFileRoot(absPath);
+    yux.initFileRoot(absPath);
 
     try {
         // 先加载 SDK (yux.core), 让用户文件经父作用域看到 String / ToString /

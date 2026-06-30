@@ -3,54 +3,45 @@
 
 -- yux 语言测试：使用 xmake 原生测试机制（xmake test）
 --
--- 用例分布（截至 v0.16）：
---   - tests/cases/format_*.yux        格式化用例；配对 *.expected_format，
---                                    `yux format <case>` 的 stdout 需与 expected 完全一致（CRLF 归一）
---   - tests/cases/extern_ptr_*.yux / ptr_*.yux  extern fn 边界用例；配对 *.expected，
---                                    编译+运行 stdout 需与 expected 完全一致
---   - tests/projects/<case>/          项目模式用例；包含 yux.toml + 入口源文件 + expected.txt
---   - tests/check-cases/diag_*.yux   诊断回归用例（; check: EXXXX 注解），由 `yux-check test` 运行
---   - sdk/yux/src/yux/core/*.test.yux  纯逻辑 + 行为用例（#Test 注解），由 `yux test` 运行
+-- 用例分布（截至 v0.18）：
+--   - tests/projects/<case>/              项目模式用例；包含 yux.toml + 入口源文件 + expected.txt
+--   - tests/projects/<case>/              格式化用例；包含 yux.toml + expected_format
+--                                         `yux format <entry>` 的 stdout 需与 expected_format 完全一致（CRLF 归一）
+--   - tests/check-cases/diag_*.yux        诊断回归用例（; check: EXXXX 注解），由 `yux-check test` 运行
+--   - sdk/yux/src/yux/core/*.test.yux     纯逻辑 + 行为用例（#Test 注解），由 `yux test` 运行
 --
 -- 运行：
 --   xmake build yux                         先构建编译器
 --   xmake test                              运行全部用例
 --   xmake test -v                           详细日志（失败时打印 stdout / stderr / errors）
---   xmake test yux_tests/<name>             单独运行（<name> 为用例文件基名）
+--   xmake test yux_tests/<name>             单独运行（<name> = project_<dirname>）
 --   xmake test "yux_tests/*"                通配符
 --   xmake test -g yux/<cat>                 只跑某一分类（见下方 categorize 函数）
 --
 -- 分类：
---   yux/project   项目模式用例            tests/projects/* (前缀 project_)
---   yux/format    格式化用例              format_*
---   yux/extern    extern fn 边界          extern_*、ptr_*
+--   yux/project   编译+运行项目用例        tests/projects/* (含 expected.txt)
+--   yux/format    格式化用例              tests/projects/* (含 expected_format)
 
-local cases_dir = path.join(os.scriptdir(), "cases")
 local projects_dir = path.join(os.scriptdir(), "projects")
 
--- 用例名 → 分组名。name 为不带 .yux 的基名；项目模式用例形如 "project_<dir>"。
+-- 用例名 → 分组名。name 形如 "project_<dir>"。
 local function categorize(name)
-    if name:startswith("project_") then return "yux/project" end
-    if name:startswith("format_")  then return "yux/format"  end
-    if name:startswith("ptr_") or name:startswith("extern_") then
-        return "yux/extern"
-    end
+    if not name:startswith("project_") then return "yux/misc" end
+    local dirname = name:sub(9) -- strip "project_" prefix
+    local d = path.join(projects_dir, dirname)
+    if os.isfile(path.join(d, "expected_format")) then return "yux/format" end
+    if os.isfile(path.join(d, "expected.txt")) then return "yux/project" end
     return "yux/misc"
 end
 
 local function list_case_names()
     local r = {}
-    for _, f in ipairs(os.files(path.join(cases_dir, "*.yux"))) do
-        if os.isfile((f:gsub("%.yux$", ".expected"))) then
-            r[path.basename(f)] = true
-        elseif os.isfile((f:gsub("%.yux$", ".expected_format"))) then
-            r[path.basename(f)] = true
-        end
-    end
     for _, d in ipairs(os.dirs(path.join(projects_dir, "*"))) do
-        if os.isfile(path.join(d, "yux.toml")) and os.isfile(path.join(d, "expected.txt")) then
+        if not os.isfile(path.join(d, "yux.toml")) then goto continue end
+        if os.isfile(path.join(d, "expected.txt")) or os.isfile(path.join(d, "expected_format")) then
             r["project_" .. path.filename(d)] = true
         end
+        ::continue::
     end
     return r
 end
@@ -66,31 +57,24 @@ target("yux_tests")
 
     on_test(function (target, opt)
         -- 在 sandbox 里重新扫描用例（不复用 description-scope 的闭包变量）
-        local cd = path.join(target:scriptdir(), "cases")
-        local cases = {}
-        for _, f in ipairs(os.files(path.join(cd, "*.yux"))) do
-            local exp = f:gsub("%.yux$", ".expected")
-            local exp_fmt = f:gsub("%.yux$", ".expected_format")
-            if os.isfile(exp) then
-                cases[path.basename(f)] = {file = path.absolute(f)}
-            elseif os.isfile(exp_fmt) then
-                cases[path.basename(f)] = {
-                    file = path.absolute(f),
-                    expected_format_file = path.absolute(exp_fmt),
-                    is_format = true,
-                }
-            end
-        end
         local pd = path.join(target:scriptdir(), "projects")
+        local cases = {}
         for _, d in ipairs(os.dirs(path.join(pd, "*"))) do
-            if os.isfile(path.join(d, "yux.toml")) and os.isfile(path.join(d, "expected.txt")) then
-                cases["project_" .. path.filename(d)] = {
-                    project_dir = path.absolute(d),
-                    project_name = path.filename(d),
-                    expected_file = path.absolute(path.join(d, "expected.txt")),
-                    is_project = true,
-                }
+            if not os.isfile(path.join(d, "yux.toml")) then goto continue end
+            local dirname = path.filename(d)
+            local entry = {
+                project_dir = path.absolute(d),
+                project_name = dirname,
+            }
+            if os.isfile(path.join(d, "expected.txt")) then
+                entry.expected_file = path.absolute(path.join(d, "expected.txt"))
+                entry.is_project = true
+            elseif os.isfile(path.join(d, "expected_format")) then
+                entry.expected_format_file = path.absolute(path.join(d, "expected_format"))
+                entry.is_format = true
             end
+            cases["project_" .. dirname] = entry
+            ::continue::
         end
 
         local short = opt.name:match("/(.+)$") or opt.name
@@ -106,6 +90,7 @@ target("yux_tests")
             yux_exe = "yux"
         end
 
+        -- ==== 项目编译+运行测试 ====
         if entry.is_project then
             local pdir = entry.project_dir
             local pname = entry.project_name
@@ -161,12 +146,25 @@ target("yux_tests")
             return true
         end
 
+        -- ==== 格式化测试 ====
         if entry.is_format then
-            -- 格式化用例：调 `yux format <case>`，stdout 与 expected_format 完全一致
+            -- 从 yux.toml 读取 entry 字段确定待格式化的文件
+            local toml_content = io.readfile(path.join(entry.project_dir, "yux.toml")) or ""
+            local entry_file = toml_content:match('entry%s*=%s*"([^"]+)"')
+            if not entry_file then
+                opt.errors = "yux.toml missing entry in " .. entry.project_dir
+                return false
+            end
+            local src_file = path.absolute(path.join(entry.project_dir, "src", entry_file))
+            if not os.isfile(src_file) then
+                opt.errors = "source file not found: " .. src_file
+                return false
+            end
+
             local stdout_data, stderr_data
             local ok = try {
                 function ()
-                    stdout_data, stderr_data = os.iorunv(yux_exe, {"format", entry.file})
+                    stdout_data, stderr_data = os.iorunv(yux_exe, {"format", src_file})
                     return true
                 end,
                 catch {
@@ -179,7 +177,7 @@ target("yux_tests")
             opt.stdout = stdout_data
             opt.stderr = stderr_data
             if not ok then
-                opt.errors = "format invocation failed: " .. entry.file .. "\n" .. tostring(stderr_data or "")
+                opt.errors = "format invocation failed: " .. src_file .. "\n" .. tostring(stderr_data or "")
                 return false
             end
 
@@ -190,73 +188,12 @@ target("yux_tests")
             local expected_n = strip_cr(expected)
             if actual_n ~= expected_n then
                 opt.errors = format("format output mismatch for %s\n--- expected ---\n%s\n--- actual ---\n%s",
-                                    entry.file, expected_n, actual_n)
+                                    entry.project_name, expected_n, actual_n)
                 return false
             end
             return true
         end
 
-        -- extern/ptr 用例：编译 + 运行，stdout 与 .expected 完全一致
-        local case = entry.file
-        local expected_file = case:gsub("%.yux$", ".expected")
-        local workdir = path.directory(case)
-        local stem = path.basename(case)
-        local project_root = path.directory(target:scriptdir())
-        local build_root = path.join(workdir, "build")
-        local exe = path.join(build_root, stem .. ".exe")
-        local obj = path.join(build_root, stem .. ".obj")
-        local cache = obj .. ".cache"
-        os.tryrm(exe)
-        os.tryrm(obj)
-        os.tryrm(cache)
-
-        local stdout_data, stderr_data
-        local ok = try {
-            function ()
-                stdout_data, stderr_data = os.iorunv(yux_exe, {case}, {curdir = project_root})
-                return true
-            end,
-            catch {
-                function (errs)
-                    stderr_data = tostring(errs)
-                    return nil
-                end
-            }
-        }
-        opt.stdout = stdout_data
-        opt.stderr = stderr_data
-
-        if not ok or not os.isfile(exe) then
-            opt.errors = "compile failed: " .. case .. "\n" .. tostring(stderr_data or "")
-            return false
-        end
-
-        local actual = ""
-        local run_ok = try {
-            function ()
-                actual = os.iorunv(exe, {}, {curdir = workdir})
-                return true
-            end,
-            catch {
-                function (errs)
-                    opt.errors = "run failed: " .. exe .. "\n" .. tostring(errs)
-                    return nil
-                end
-            }
-        }
-        if not run_ok then
-            return false
-        end
-
-        local expected = os.isfile(expected_file) and io.readfile(expected_file) or ""
-        if actual ~= expected then
-            opt.errors = format("output mismatch for %s\n--- expected ---\n%s\n--- actual ---\n%s",
-                                case, expected, actual)
-            opt.stdout = actual
-            return false
-        end
-        os.tryrm(exe)
-        os.tryrm(obj)
-        os.tryrm(cache)
-        return true
+        opt.errors = "test entry has no recognized type: " .. entry.project_name
+        return false
     end)

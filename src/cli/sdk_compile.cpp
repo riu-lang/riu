@@ -30,31 +30,6 @@ void ensureBuildDir(const std::string& buildDir) {
     std::filesystem::create_directories(buildDir);
 }
 
-// 模块名 → 构建产物基础路径 (不含扩展名)。
-// 多段 `A.B.C` → `<buildDir>/A/B/C`;
-// 单段 `X`: 项目模式 `<buildDir>/<projectName>/X`, 单文件模式 `<buildDir>/X`。
-std::string moduleOutputBase(const std::string& buildDir, const std::string& projectName,
-                             const std::string& moduleName) {
-    std::filesystem::path p(buildDir);
-    size_t start = 0;
-    size_t dot = moduleName.find('.');
-    if (dot == std::string::npos) {
-        if (!projectName.empty()) p /= projectName;
-        p /= moduleName;
-        return p.string();
-    }
-    while (true) {
-        size_t next = moduleName.find('.', start);
-        if (next == std::string::npos) {
-            p /= moduleName.substr(start);
-            break;
-        }
-        p /= moduleName.substr(start, next - start);
-        start = next + 1;
-    }
-    return p.string();
-}
-
 bool compileIRToObj(llvm::Module* module, const std::string& outputPath) {
     llvm::InitializeAllTargetInfos();
     llvm::InitializeAllTargets();

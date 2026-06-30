@@ -96,7 +96,7 @@ p<FileNode> Yux::createSdkFile() {
     return _sdkFile;
 }
 
-void Yux::initSingleFileRoot(const string& mainFileAbsPath) {
+void Yux::initFileRoot(const string& mainFileAbsPath) {
     _projectRoot = std::filesystem::path(mainFileAbsPath).parent_path().string();
     _sourceRoot = _projectRoot;
 }

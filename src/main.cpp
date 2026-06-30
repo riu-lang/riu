@@ -50,18 +50,13 @@ int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windo
     signal(SIGFPE, handleCrash);
 
     CLI::App app{"yux compiler"};
-    app.require_subcommand(0, 1);
+    app.require_subcommand(1);
 
     bool emitIr = false;
     app.add_flag("--emit-ir", emitIr, "Emit LLVM IR to .ll file");
 
     std::string emitIrDir;
     app.add_option("--emit-ir-dir", emitIrDir, "Output directory for .ll files (default: build/)");
-
-    // [Phase 1 spike] 在进程内 JIT 跑入口模块，绕开 obj 写盘 + LLD 链接。
-    // 仅单文件模式生效；正式 `yux test` 子命令会替代它。
-    bool jitRun = false;
-    app.add_flag("--jit-run", jitRun, "[spike] Run input via in-process JIT (single-file only; skips obj/exe)");
 
     // 诊断严重度开关：允许在主命令和 build 子命令上都使用
     // --warn=<code>  把指定 code 视为 warning（仅对默认 sev <= Warning 的码生效；Error 码拒绝降级）
@@ -86,9 +81,6 @@ int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windo
 #ifdef _DEBUG
     app.add_flag("-d,--debug", debug, "Output compilation IR debug information");
 #endif
-
-    std::string inputFile;
-    app.add_option("input", inputFile, "Input .yux file (single-file mode)");
 
     auto* buildCmd = app.add_subcommand("build", "Build project (must run at project root containing yux.toml)");
     std::string buildNameArg;
@@ -184,10 +176,7 @@ int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windo
     bopts.testMod = buildTestMod;
     bopts.emitIr = emitIr;
     bopts.emitIrDir = emitIrDir;
-    bopts.jitRun = jitRun;
     bopts.buildNameArg = buildNameArg;
-    bopts.inputFile = inputFile;
-    bopts.helpText = app.help();
     int rc = runBuildCommand(bopts);
     if (rc != 0) return rc;
     std::cout.flush();

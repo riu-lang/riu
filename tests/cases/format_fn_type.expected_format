@@ -1,8 +1,0 @@
-; fn 类型字面量：fn(...)RetT 的紧凑空格
-fn use_cb(cb fn(i32)i32) i32 {
-  cb(0)
-}
-
-fn pass(a fn(s String)i32?, b fn?(i32)i32) i32 {
-  0
-}
