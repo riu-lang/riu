@@ -357,12 +357,18 @@ void Compiler::compileGlobalConsts() {
             throw YuxError(globalConst->getLineNumber(), globalConst->getColumn(), ErrorCode::E3080);
         }
 
-        // #Inline #Cval：不创建 GlobalVariable，存入 _inlineConstantValues 表，
-        // 使用处由 compileLiteralExpr 直接返回常量值（类似 C #define）。
+        // #Inline #Cval：存入 _inlineConstantValues 表，同文件使用处由
+        // compileLiteralExpr 直接返回常量值（类似 C #define），省去 Load 指令。
+        // 非私有常量同时生成 GlobalVariable（ExternalLinkage），供跨文件引用；
+        // 私有常量（`_` 前缀）仅同文件可见，不产生 GlobalVariable。
         if (globalConst->isInline()) {
             _inlineConstantValues[mangledName] = initValue;
-            DEBUG_LOG_VAL("Created inline constant", mangledName << " : " << type.name << " [inline #define-like]");
-            continue;
+            if (isPriv) {
+                DEBUG_LOG_VAL("Created inline constant (private)", mangledName << " : " << type.name << " [inline only]");
+                continue;
+            }
+            DEBUG_LOG_VAL("Created inline constant (public)", mangledName << " : " << type.name << " [inline + global for cross-file]");
+            // 非私有：不 continue，继续走下面的 GlobalVariable 创建逻辑
         }
 
         auto linkage =

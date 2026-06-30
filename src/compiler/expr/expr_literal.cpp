@@ -191,6 +191,19 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
         }
 
         auto globalVar = _module->getGlobalVariable(mangledName, true);
+        // 跨文件常量：当前模块中不存在 GlobalVariable 定义，但 lookupSymbol 已在
+        // 父作用域（经 _sdkFile → wildcardImports）找到符号。仿照函数调用的跨文件
+        // 模式创建外部声明（ExternalLinkage + nullptr initializer），由 LLD 链接时
+        // 解析到定义所在 .obj。
+        // 仅当不在 lambda body 捕获上下文时才创建——lambda 捕获的外层局部变量
+        // 走下方 _currentLambdaForCapture 分支，不应误创为全局常量。
+        if (!globalVar && sym && !(_currentLambdaForCapture && _currentLambdaBodyScope)) {
+            auto llvmType = getLLVMType(sym->type);
+            globalVar = new llvm::GlobalVariable(*_module, llvmType, true,
+                                                  llvm::GlobalValue::ExternalLinkage,
+                                                  nullptr, mangledName);
+            DEBUG_LOG_VAL("    Expr: GlobalConstDecl (cross-file)", varName << " : " << sym->type.name);
+        }
         if (globalVar) {
             DEBUG_LOG_VAL("    Expr: GlobalConstLoad", varName << " : " << (sym ? sym->type.name : "unknown"));
             return _builder.CreateLoad(globalVar->getValueType(), globalVar, "global.load");

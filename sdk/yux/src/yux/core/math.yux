@@ -1,3 +1,10 @@
+; 跨文件 #Cval / #Inline #Cval 测试常量（供 math_int.test.yux 跨文件引用验证）
+#Cval
+let MATH_TEST_CVAL i32 = 100
+#Inline
+#Cval
+let MATH_TEST_INLINE i32 = 200
+
 fn abs(v i8) i8 {
   if v < 0 {
     -v

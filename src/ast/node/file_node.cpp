@@ -140,8 +140,9 @@ void FileNode::addFunction(const p<FnNode>& function) {
 
 void FileNode::addStructDecl(const p<StructDeclNode>& structDecl) {
     _structDecls.push_back(structDecl);
-    registerSymbol(structDecl->name().getText(),
-                   {SymbolKind::Struct, structDecl->name().getText(), TypeInfo(structDecl->name().getText())});
+    SymbolInfo sym(SymbolKind::Struct, structDecl->name().getText(), TypeInfo(structDecl->name().getText()));
+    sym.moduleName = _moduleName;
+    registerSymbol(structDecl->name().getText(), sym);
 }
 
 void FileNode::addStructImpl(const p<StructImplNode>& structImpl) {
@@ -214,7 +215,9 @@ void FileNode::addGlobalConst(const p<GlobalConstNode>& globalConst) {
     _globalConsts.push_back(globalConst);
     string name = globalConst->name().getText();
     if (!lookupSymbol(name)) {
-        registerSymbol(name, {SymbolKind::Variable, name, globalConst->getType(), false});
+        SymbolInfo sym(SymbolKind::Variable, name, globalConst->getType(), false);
+        sym.moduleName = _moduleName;
+        registerSymbol(name, sym);
     }
 }
 
@@ -224,7 +227,9 @@ void FileNode::addGlobalVar(const p<GlobalVarNode>& globalVar) {
     string name = globalVar->name().getText();
     if (!lookupSymbol(name)) {
         bool isMutable = globalVar->isMutable();
-        registerSymbol(name, {SymbolKind::Variable, name, globalVar->getType(), isMutable});
+        SymbolInfo sym(SymbolKind::Variable, name, globalVar->getType(), isMutable);
+        sym.moduleName = _moduleName;
+        registerSymbol(name, sym);
     }
 }
 

@@ -149,3 +149,17 @@ fn test_math_max_i64() {
   assert_eq(math.max(-10000i64, 10000i64), 10000i64)
   assert_eq(math.max(0i64, 0i64), 0i64)
 }
+
+; ==================== 跨文件 #Cval 常量测试 ====================
+
+#Test
+fn test_cross_file_cval() {
+  ; math.yux 定义的 #Cval（非内联）——跨文件通过 GlobalVariable 引用
+  assert_eq(MATH_TEST_CVAL, 100)
+}
+
+#Test
+fn test_cross_file_inline_cval() {
+  ; math.yux 定义的 #Inline #Cval——跨文件通过 GlobalVariable 引用
+  assert_eq(MATH_TEST_INLINE, 200)
+}
