@@ -14,8 +14,9 @@ class SpecImplChecker;
 
 // pkg 文件导出项
 struct PkgExportItem {
-    string name;        // 模块名或包名
-    bool wildcard;      // true 表示 "name.*"，false 表示 "name"
+    string name;   // 源模块名（如 "add"）
+    string rename; // 重命名导出别名（空 = 用 name 本身，如 "addition"）
+    bool wildcard; // true 表示 "name.*"，false 表示 "name"
 };
 
 class Yux {
@@ -88,7 +89,7 @@ public:
     vector<string> listPackageYuxChildren(const string& moduleName) const;
     // 列出包（目录）下的直接子目录名。
     vector<string> listPackageSubdirs(const string& moduleName) const;
-    
+
     // pkg 文件相关
     // 检查包目录下是否存在 pkg 文件
     bool hasPkgFile(const string& moduleName) const;
@@ -136,4 +137,4 @@ private:
     bool _specImplValidated = false;
 };
 
-#endif //YUX_LANG_YUX_H
+#endif // YUX_LANG_YUX_H

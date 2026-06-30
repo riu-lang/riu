@@ -327,15 +327,38 @@ vector<PkgExportItem> Yux::parsePkgFile(const string& moduleName) const {
         // 跳过空行和注释行（以 ; 开头）
         if (line.empty() || line[0] == ';') continue;
 
-        // 解析导出项
+        // 解析导出项：支持 name / name.* / name as alias
         PkgExportItem item;
-        if (line.size() >= 2 && line.substr(line.size() - 2) == ".*") {
-            item.name = line.substr(0, line.size() - 2);
+
+        // 检查是否有 " as " 重命名子句
+        auto asPos = line.find(" as ");
+        string namePart = line;
+        string aliasPart;
+        if (asPos != string::npos) {
+            namePart = line.substr(0, asPos);
+            aliasPart = line.substr(asPos + 4); // " as " 长度 4
+            // 对 alias 部分 trim
+            size_t aStart = aliasPart.find_first_not_of(" \t");
+            if (aStart != string::npos) {
+                size_t aEnd = aliasPart.find_last_not_of(" \t");
+                aliasPart = aliasPart.substr(aStart, aEnd - aStart + 1);
+            }
+            if (aliasPart.empty()) continue; // "add as " → 无有效别名，跳过
+        }
+
+        if (namePart.size() >= 2 && namePart.substr(namePart.size() - 2) == ".*") {
+            namePart = namePart.substr(0, namePart.size() - 2);
+            if (!aliasPart.empty()) {
+                // "name.* as alias" 无效组合（wildcard 扁平导出无法重命名），跳过
+                DEBUG_LOG_VAL("    skip invalid pkg line (wildcard+rename)", line);
+                continue;
+            }
             item.wildcard = true;
         } else {
-            item.name = line;
             item.wildcard = false;
         }
+        item.name = namePart;
+        item.rename = aliasPart;
 
         if (!item.name.empty()) {
             items.push_back(item);

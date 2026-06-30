@@ -1,0 +1,4 @@
+; add as addition — 重命名导出
+add as addition
+; sub — 保持原名导出
+sub.*

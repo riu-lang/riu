@@ -15,7 +15,15 @@
 
 ---
 
+## 2026-06-30 —— pkg 文件 `name as alias` 重命名导出
+
+- **新增 §10.2.4.2**：pkg 文件语法行追加 `name as alias`——把子模块 `name` 以别名 `alias` 再导出，调用方以 `alias.member` 访问。
+- **新增 §10.2.4.4.1**：重命名导出示例（`tests/projects/pkg_rename_export`）。
+- **删除 Open Issue**："`pkg` 文件是否未来支持重命名导出（如 `name as alias`）"——已落地。
+- **冲突 / 兼容**：纯增量。`name` / `name.*` 行为不变；`name as alias` 仅扩展 pkg 文件解析，不影响已有 `pkg` 文件。
+
 ---
+
 
 ## 2026-06-29 —— 关闭 §10 Open Issue ×2：自动扁平保留 + 不引入 `pub`/`private`
 

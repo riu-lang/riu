@@ -1,0 +1,9 @@
+use yux.core.*
+use mymath.*
+
+fn main() {
+    ; sub 模块成员已扁平导出（sub.*），可直接调用
+    println(sub(10, 3))
+    ; add 模块以 addition 别名导出，通过 addition.add 调用
+    println(addition.add(7, 2))
+}
