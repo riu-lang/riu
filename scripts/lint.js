@@ -6,7 +6,7 @@
  *
  * 默认作用域：git 已变动（含未跟踪）的 .h / .hpp / .cpp / .cc 文件，
  *            排除 gen/ / third_party/ / build/。
- * 可选 --all：扫 yux_frontend / yux_codegen / yux 三个 target 全量。
+ * 可选 --all：扫全部 target 全量（yux_frontend / yux_codegen / yux-test-runner / yux / yux-lsp / yux-ast / yux-check）。
  * 可选 显式文件位置参数：只对列出的文件跑（透传 -f）。
  *
  * 用法：
@@ -20,7 +20,7 @@ const path = require('path');
 const { execSync, spawnSync } = require('child_process');
 
 const PROJECT_ROOT = path.join(__dirname, '..');
-const TARGETS = ['yux_frontend', 'yux_codegen', 'yux'];
+const TARGETS = ['yux_frontend', 'yux_codegen', 'yux-test-runner', 'yux', 'yux-lsp', 'yux-ast', 'yux-check'];
 const SRC_EXTS = new Set(['.h', '.hpp', '.cpp', '.cc', '.cxx']);
 const EXCLUDE_RE = /(^|[\\/])(gen|third_party|build|\.xmake|\.cache)([\\/]|$)/;
 

@@ -35,7 +35,7 @@ struct RunnerOptions {
     bool verbose = false;
 };
 
-RunnerOptions parseArgs(int argc, char* argv[]) {
+RunnerOptions parseArgs(int argc, char* argv[]) { // NOLINT(modernize-avoid-c-arrays)
     RunnerOptions opts;
     if (argc < 2) {
         std::cerr << "Usage: yux-test-runner <dll-path> [--verbose]\n";
@@ -113,7 +113,7 @@ std::string formatElapsed(std::chrono::steady_clock::time_point t0) {
 
 // ==================== 主函数 ====================
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape)
     auto opts = parseArgs(argc, argv);
 
     // 设置控制台 UTF-8
