@@ -130,6 +130,12 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
         string ownerMod = (!sym->moduleName.empty()) ? sym->moduleName : _file->moduleName();
         bool globPriv = !objName.empty() && objName[0] == '_';
         string mangledName = Mangler::global(ownerMod, objName, globPriv);
+
+        // #Inline #Cval：无 GlobalVariable 存储地址，无法取址。报 E3118 提示改用普通 #Cval。
+        if (_inlineConstantValues.contains(mangledName)) {
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3118, objName);
+        }
+
         auto globalVar = _module->getGlobalVariable(mangledName, true);
         if (!globalVar) {
             // 非全局变量也非局部变量（如闭包外层变量）→ 保留原有 E3031 语义

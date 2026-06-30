@@ -250,13 +250,18 @@ DEF_ERR(3109, "Cannot write field '{}' marked '#{}' outside the constructor of s
 DEF_ERR(3110, "`#Const fn` '{}' cannot {}: {} (DRAFT-const-mut §4.2)")
 DEF_ERR(3111, "`#Const fn` '{}' cannot call non-`#Const` function '{}' (DRAFT-const-mut §4.2.4)")
 DEF_ERR(3112,
-        "Unknown `let` annotation '#{}' (only '#Mut', '#Frozen', '#Cval' are supported on `let`; DRAFT-let-unify §3.4)")
+        "Unknown `let` annotation '#{}' (only '#Mut', '#Frozen', '#Cval', '#Inline' are supported on `let`; "
+        "DRAFT-let-unify §3.4)")
 DEF_ERR(3113, "`let {}` requires a type or initializer (DRAFT-let-unify §3.4)")
 DEF_ERR(3114, "`let {} <type>` requires an initializer (use `#Mut let` for deferred assignment; DRAFT-let-unify §3.4)")
 DEF_ERR(3115, "Annotations '#{}' and '#{}' are mutually exclusive on `let` (DRAFT-let-unify §3.4)")
 DEF_ERR(
     3116,
     "Global `let {}` requires `#Cval`: only compile-time constants are allowed at global scope (DRAFT-let-unify §3)")
+DEF_ERR(3117, "`#Inline` requires `#Cval` on `let` declaration (DRAFT-let-unify §3.4)")
+DEF_ERR(3118,
+        "Cannot take address of `#Inline` constant `{}`: inline constants have no storage address "
+        "(like C `#define`; use a plain `#Cval` if an address is needed)")
 
 // ── DRAFT-const-eval Phase 2: 全局 const-eval ─────────────────────────
 DEF_ERR(3140, "Global `let {}` initializer is not a constant expression (DRAFT-const-eval §2; allowed: literals, "

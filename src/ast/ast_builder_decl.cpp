@@ -195,11 +195,18 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
                            ErrorCode::E3140, name->getText());
         }
 
-        auto globalConst = createWithLine<GlobalConstNode>(ctx, file, name, typeNode, expr);
+        auto globalConst = createWithLine<GlobalConstNode>(ctx, file, name, typeNode, expr, flags.isInline);
         file->addGlobalConst(globalConst);
 
-        DEBUG_LOG_VAL("  LetGlobal #Cval", name->getText() << " : " << typeNode->getType().name);
+        DEBUG_LOG_VAL("  LetGlobal #Cval", name->getText() << " : " << typeNode->getType().name
+                                                           << (flags.isInline ? " [inline]" : ""));
         return globalConst;
+    }
+
+    // #Inline 必须与 #Cval 组合使用，单独出现报错
+    if (flags.isInline) {
+        throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
+                       ErrorCode::E3117);
     }
 
     // DRAFT-static-vars Phase 1：默认 val 档 —— 运行期初始化全局变量

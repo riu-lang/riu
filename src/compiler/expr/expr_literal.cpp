@@ -179,6 +179,17 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
         string ownerMod = (sym && !sym->moduleName.empty()) ? sym->moduleName : _file->moduleName();
         bool globPriv = !varName.empty() && varName[0] == '_';
         string mangledName = Mangler::global(ownerMod, varName, globPriv);
+
+        // #Inline #Cval：优先查 _inlineConstantValues 表，命中则直接返回常量值（无 Load 指令），
+        // 实现 C #define 风格的内联替换。该表由 compileGlobalConsts 在遇到 #Inline 标注的
+        // #Cval 时填充（不创建 GlobalVariable）。
+        auto inlineIt = _inlineConstantValues.find(mangledName);
+        if (inlineIt != _inlineConstantValues.end()) {
+            DEBUG_LOG_VAL("    Expr: InlineConst", varName << " : " << (sym ? sym->type.name : "unknown")
+                                                           << " [direct constant, no load]");
+            return inlineIt->second;
+        }
+
         auto globalVar = _module->getGlobalVariable(mangledName, true);
         if (globalVar) {
             DEBUG_LOG_VAL("    Expr: GlobalConstLoad", varName << " : " << (sym ? sym->type.name : "unknown"));

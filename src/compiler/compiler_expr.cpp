@@ -424,6 +424,10 @@ llvm::Value* Compiler::compileLvalueAddr(p<ExprNode> node) {
             string ownerMod = _file ? _file->moduleName() : "";
             bool globPriv = !name.empty() && name[0] == '_';
             string mangledName = Mangler::global(ownerMod, name, globPriv);
+            // #Inline #Cval：无存储地址，不可作为 lvalue
+            if (_inlineConstantValues.contains(mangledName)) {
+                throw YuxError(line, col, ErrorCode::E3118, name);
+            }
             if (auto gv = _module->getGlobalVariable(mangledName, true)) {
                 return gv;
             }

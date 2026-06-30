@@ -30,8 +30,8 @@ namespace {
 //   #Spec            零参；标在 struct 上 — 把声明转为 spec（仅签名）
 //   #Impl(SpecName)  单参；标在 struct 上 — 实现关系，替代旧 `: D1 + D2` 头部槽
 inline const set<string>& knownAnnos() {
-    static const set<string> s = {"Builtin", "Test", "DraftLike", "NoReturn", "Fallible", "Const", "Static",
-                                  "Spec",    "Impl", "Reflect",   "NoCopy",   "CName"};
+    static const set<string> s = {"Builtin", "Test", "DraftLike", "NoReturn", "Fallible", "Const",
+                                  "Static",  "Spec", "Impl",      "Reflect",  "NoCopy",   "CName"};
     return s;
 }
 
@@ -191,11 +191,13 @@ static void checkNoReturnHeader(p<FnHeaderNode> header) {
     }
 }
 
-// DRAFT-let-unify §3.4：`let` 注解只允许 #Mut / #Frozen / #Cval，互斥；其他报 E3112。
+// DRAFT-let-unify §3.4：`let` 注解只允许 #Mut / #Frozen / #Cval / #Inline，互斥；其他报 E3112。
+// #Inline 仅与 #Cval 组合使用（相当于 C #define），不与 #Mut / #Frozen 共存。
 struct LetAnnoFlags {
     bool isMut = false;
     bool isFrozen = false;
     bool isCval = false;
+    bool isInline = false;
 };
 
 template <typename AnnoVec>
@@ -209,15 +211,21 @@ static LetAnnoFlags readLetAnnos(const AnnoVec& annos) {
         if (name == "Mut") {
             if (r.isFrozen) throw YuxError(line, col, ErrorCode::E3115, "Frozen", "Mut");
             if (r.isCval) throw YuxError(line, col, ErrorCode::E3115, "Cval", "Mut");
+            if (r.isInline) throw YuxError(line, col, ErrorCode::E3115, "Inline", "Mut");
             r.isMut = true;
         } else if (name == "Frozen") {
             if (r.isMut) throw YuxError(line, col, ErrorCode::E3115, "Mut", "Frozen");
             if (r.isCval) throw YuxError(line, col, ErrorCode::E3115, "Cval", "Frozen");
+            if (r.isInline) throw YuxError(line, col, ErrorCode::E3115, "Inline", "Frozen");
             r.isFrozen = true;
         } else if (name == "Cval") {
             if (r.isMut) throw YuxError(line, col, ErrorCode::E3115, "Mut", "Cval");
             if (r.isFrozen) throw YuxError(line, col, ErrorCode::E3115, "Frozen", "Cval");
             r.isCval = true;
+        } else if (name == "Inline") {
+            if (r.isMut) throw YuxError(line, col, ErrorCode::E3115, "Mut", "Inline");
+            if (r.isFrozen) throw YuxError(line, col, ErrorCode::E3115, "Frozen", "Inline");
+            r.isInline = true;
         } else {
             throw YuxError(line, col, ErrorCode::E3112, name);
         }

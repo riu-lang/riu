@@ -15,6 +15,15 @@
 
 ---
 
+## 2026-06-30 —— `#Inline` 对全局 `#Cval` 的内联支持
+
+- **新增 §11.14**：`#Inline` 注解——标记全局 `#Cval` 为内联常量，不产生 LLVM GlobalVariable 符号，使用处直接替换常量值（类似 C `#define`）。零参，仅可附着于全局 `#Cval let`；与 `#Mut` / `#Frozen` 互斥；单独使用报 E3117。
+- **修改 §11.5.1**：v1 注解表追加 `#Inline` 行；§11.5.1.1 落地清单纳入 `#Inline`。
+- **修改 §11.5.2.4**：从候选未来注解中移除 `#Inline`（`#NoInline` 保留）。
+- **修改 E3112 消息**：`let` 注解白名单追加 `#Inline`。
+- **新增 E3117**：`#Inline` requires `#Cval` on `let` declaration。
+- **冲突 / 兼容**：纯增量。已有 `#Cval` 行为不变；`#Inline` 是新注解，不影响已有代码。
+
 ## 2026-06-30 —— pkg 文件 `name as alias` 重命名导出
 
 - **新增 §10.2.4.2**：pkg 文件语法行追加 `name as alias`——把子模块 `name` 以别名 `alias` 再导出，调用方以 `alias.member` 访问。

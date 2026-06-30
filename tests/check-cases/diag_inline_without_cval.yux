@@ -1,0 +1,12 @@
+; #Inline 必须与 #Cval 组合使用，单独出现 → E3117
+; #Inline 与 #Mut 互斥 → E3115
+
+fn main() {
+  ; 局部 let 上 #Inline 无 #Cval —— 当前局部 let 不触发 E3117（仅在全局 letGlobal 位报），
+  ; 局部在 readLetAnnos 接受但 visitLetGlobal 不走，所以局部不会走到 E3117。
+  ; 留作未来扩展。
+}
+
+; 全局 #Inline 无 #Cval → E3117
+#Inline
+let BAD_INLINE i32 = 42  ; check: E3117

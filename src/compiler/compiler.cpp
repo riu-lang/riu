@@ -357,6 +357,14 @@ void Compiler::compileGlobalConsts() {
             throw YuxError(globalConst->getLineNumber(), globalConst->getColumn(), ErrorCode::E3080);
         }
 
+        // #Inline #Cval：不创建 GlobalVariable，存入 _inlineConstantValues 表，
+        // 使用处由 compileLiteralExpr 直接返回常量值（类似 C #define）。
+        if (globalConst->isInline()) {
+            _inlineConstantValues[mangledName] = initValue;
+            DEBUG_LOG_VAL("Created inline constant", mangledName << " : " << type.name << " [inline #define-like]");
+            continue;
+        }
+
         auto linkage =
             globalConst->isPrivate() ? llvm::GlobalValue::InternalLinkage : llvm::GlobalValue::ExternalLinkage;
 

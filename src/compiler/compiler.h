@@ -128,6 +128,11 @@ class Compiler {
     llvm::GlobalVariable* _strEmptyBlock = nullptr; // 空 String sentinel block 复用
     int _strDataCounter = 0;                        // .str.data 命名计数器
     int _strBlockCounter = 0;                       // .str.rc 命名计数器
+    // #Inline #Cval 内联常量值缓存（mangledName → llvm::Constant*）。
+    // compileGlobalConsts 在遇到 #Inline 标注的 #Cval 时不创建 GlobalVariable，
+    // 而是把 llvm::Constant* 存入此表；compileLiteralExpr 在引用全局常量时优先查此表，
+    // 命中则直接返回常量（无 load），实现 C #define 风格的内联替换。
+    std::map<std::string, llvm::Constant*> _inlineConstantValues;
     // Phase 2c：当前正在编译的 lambda body 作用域（emitLambdaFunction 期间有效）
     // 非空时 compileLiteralExpr 的 LiteralObj 路径启用 FV 校验 / 捕获识别。
     p<ScopeNode> _currentLambdaBodyScope = nullptr;

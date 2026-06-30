@@ -1,0 +1,10 @@
+; 不能对 #Inline #Cval 取址 → E3118
+; 内联常量没有存储地址，类似 C #define
+
+#Inline
+#Cval
+let INLINE_VAL i32 = 100
+
+fn main() {
+  let p i32& = &INLINE_VAL  ; check: E3118
+}

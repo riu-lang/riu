@@ -12,16 +12,18 @@ class GlobalConstNode : public Node, public Named, public Typed {
     p<TypeNode> _type;
     p<ExprNode> _value;
     bool _isPrivate;
+    bool _isInline; // #Inline 注解：不产生 GlobalVariable，使用处直接替换常量值（类似 C #define）
 
 public:
-    GlobalConstNode(const p<Node>& parent, Token name, p<TypeNode> type, p<ExprNode> value)
-        : Node(parent), Named(name), _type(type), _value(value) {
+    GlobalConstNode(const p<Node>& parent, Token name, p<TypeNode> type, p<ExprNode> value, bool isInline = false)
+        : Node(parent), Named(name), _type(type), _value(value), _isInline(isInline) {
         _isPrivate = !name.getText().empty() && name.getText()[0] == '_';
     }
 
     [[nodiscard]] p<TypeNode> typeNode() const;
     [[nodiscard]] p<ExprNode> value() const;
     [[nodiscard]] bool isPrivate() const;
+    [[nodiscard]] bool isInline() const { return _isInline; }
 
     [[nodiscard]] TypeInfo getType() const override;
 };

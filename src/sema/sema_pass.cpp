@@ -2355,6 +2355,19 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         if (n->obj().getText() == "$" && _currentFn && _currentFn->header()->isStatic()) {
             throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3128);
         }
+        // #Inline #Cval 检查：内联常量无存储地址，不可取址。
+        // 先查本文件，再查 SDK 文件的全局常量列表。
+        auto checkInlineConst = [&](p<FileNode> f) {
+            if (!f) return;
+            for (const auto& gc : f->getGlobalConsts()) {
+                if (gc->name().getText() == n->obj().getText() && gc->isInline()) {
+                    throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3118,
+                                   n->obj().getText());
+                }
+            }
+        };
+        checkInlineConst(_file);
+        checkInlineConst(_sdkFile);
         try {
             sema::validateGetRefPrivacy(_file, _sdkFile, n, _currentStructName);
         } catch (const YuxError&) {

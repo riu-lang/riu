@@ -8,6 +8,20 @@ let TEST_PI f64 = 3.14159
 #Cval
 let _TEST_INTERNAL_CONST i32 = 42
 
+; #Inline #Cval —— 内联常量，不产生 GlobalVariable，使用处直接替换（类似 C #define）
+#Inline
+#Cval
+let INLINE_INT i32 = 42
+#Inline
+#Cval
+let INLINE_NEG i32 = -100
+#Inline
+#Cval
+let INLINE_BOOL bool = true
+#Inline
+#Cval
+let _INLINE_PRIVATE i64 = 999
+
 #Test
 fn test_global_const_i32() {
   assert_eq(TEST_MAX_SIZE, 1024)
@@ -21,4 +35,31 @@ fn test_global_const_f64() {
 #Test
 fn test_global_const_internal() {
   assert_eq(_TEST_INTERNAL_CONST, 42)
+}
+
+#Test
+fn test_inline_cval_int() {
+  assert_eq(INLINE_INT, 42)
+}
+
+#Test
+fn test_inline_cval_neg() {
+  assert_eq(INLINE_NEG, -100)
+}
+
+#Test
+fn test_inline_cval_bool() {
+  assert_true(INLINE_BOOL)
+}
+
+#Test
+fn test_inline_cval_private() {
+  assert_eq(_INLINE_PRIVATE, 999)
+}
+
+; 验证内联常量可用于表达式计算（不经过 load 指令）
+#Test
+fn test_inline_cval_in_expr() {
+  let result i32 = INLINE_INT + 8
+  assert_eq(result, 50)
 }
