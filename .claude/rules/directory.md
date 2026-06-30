@@ -36,11 +36,8 @@ yux-lang/
 ├── scripts/          构建/同步辅助脚本
 │   └── sync-deps.js     sync-deps 核心逻辑（读取 DEPS.json）
 ├── .claude/
-│   ├── rules/        自动加载的项目规则（behavior、tasks-and-bugs、directory），`.trae/rules` junction 到这里
+│   ├── rules/        自动加载的项目规则（behavior、tasks-and-bugs、directory）
 │   └── skills/       项目技能（仅 yux-lang-dev）
-├── .trae/
-│   ├── rules         junction → ../.claude/rules
-│   └── skills        junction → ../.claude/skills
 ├── rules/            按需手动读的规则（不自动加载）：yux-syntax、sema-codegen、spec-writeback
 ├── xmake.lua         顶层构建脚本
 ├── yux.toml          仓库自身的 dogfood 项目配置

@@ -12,9 +12,7 @@ const DEPS_FILE = path.join(PROJECT_ROOT, 'DEPS.json');
 const THIRD_PARTY_DIR = path.join(PROJECT_ROOT, 'third_party');
 const BIN_DIR = path.join(PROJECT_ROOT, 'bin');
 const SKILLS_DIR_CLAUDE = path.join(PROJECT_ROOT, '.claude', 'skills');
-const SKILLS_DIR_TRAE = path.join(PROJECT_ROOT, '.trae', 'skills');
 const RULES_DIR_CLAUDE = path.join(PROJECT_ROOT, '.claude', 'rules');
-const RULES_DIR_TRAE = path.join(PROJECT_ROOT, '.trae', 'rules');
 const SDK_SRC_DIR = path.join(PROJECT_ROOT, 'sdk');
 const SDK_LINK_DIR = path.join(PROJECT_ROOT, 'build', 'windows', 'x64', 'sdk');
 
@@ -118,40 +116,6 @@ async function syncDependency(name, config) {
   }
 
   await updateRepo(name, url, commit, targetPath);
-}
-
-
-// 把 .trae/<sub> 链接到 .claude/<sub>，让 Trae 与 Claude Code 共享同一份内容
-function syncTraeLink(source, link) {
-  log(`\n=== Linking ${path.relative(PROJECT_ROOT, link)} -> ${path.relative(PROJECT_ROOT, source)} ===`, 'cyan');
-  log(`Source: ${source}`);
-  log(`Link:   ${link}`);
-
-  fs.mkdirSync(source, { recursive: true });
-  fs.mkdirSync(path.dirname(link), { recursive: true });
-
-  let st = null;
-  try { st = fs.lstatSync(link); } catch {}
-  if (st) {
-    if (st.isSymbolicLink()) {
-      try {
-        const cur = fs.readlinkSync(link);
-        const resolved = path.resolve(path.dirname(link), cur);
-        if (resolved === source) {
-          log(`Already linked, skipping`, 'green');
-          return;
-        }
-      } catch {}
-      fs.unlinkSync(link);
-    } else {
-      // 旧的实体目录（历史上 sync 会把内容复制两份），删除以便建立 junction
-      fs.rmSync(link, { recursive: true, force: true });
-    }
-  }
-
-  const type = process.platform === 'win32' ? 'junction' : 'dir';
-  fs.symlinkSync(source, link, type);
-  log(`Linked (${type})`, 'green');
 }
 
 
@@ -272,17 +236,6 @@ async function main() {
   fs.mkdirSync(THIRD_PARTY_DIR, { recursive: true });
   fs.mkdirSync(BIN_DIR, { recursive: true });
   fs.mkdirSync(SKILLS_DIR_CLAUDE, { recursive: true });
-
-  // 把 .trae/{skills,rules} 链接到 .claude/{skills,rules}，二者共享同一份内容；
-  // 即使本次没有要同步的项目也建一次，保证仓库克隆后链接立即生效
-  try {
-    syncTraeLink(SKILLS_DIR_CLAUDE, SKILLS_DIR_TRAE);
-    syncTraeLink(RULES_DIR_CLAUDE, RULES_DIR_TRAE);
-  } catch (e) {
-    log(`Failed to link .trae mirrors: ${e.message}`, 'red');
-    process.exit(1);
-  }
-
   const binariesToProcess = targetDeps.length > 0
     ? Object.fromEntries(targetDeps.filter(n => binaries[n]).map(n => [n, binaries[n]]))
     : binaries;

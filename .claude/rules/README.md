@@ -1,6 +1,6 @@
 # yux-lang 规则模块
 
-本目录是 yux-lang 项目的**规则事实源**，按主题拆分；`.trae/rules` 通过 `sync-deps` 建立 junction 指向这里，Claude Code 与 Trae 共享同一份规则。
+本目录是 yux-lang 项目的**规则事实源**，按主题拆分。
 
 开始任务前先看[「怎么用」](#怎么用)；规则与 [`.claude/skills/yux-lang-dev`](../skills/yux-lang-dev/SKILL.md)（怎么构建 / 测 / 写）配套。
 
