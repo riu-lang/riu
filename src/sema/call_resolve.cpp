@@ -625,6 +625,15 @@ ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux, p<ExprCallNode>
                 const string& fnName = segs.back();
                 auto* fnSym = target->lookupFnSymbolWithParams(fnName, argTypes);
                 if (!fnSym) {
+                    // 泛型回退：检查目标模块是否有同名泛型函数
+                    auto [gFn, gOwner] = target->getGenericFunction(fnName);
+                    if (gFn) {
+                        result.matched = true;
+                        result.fnName = fnName;
+                        result.genericFn = gFn;
+                        result.genericOwner = gOwner ? gOwner : target;
+                        return result;
+                    }
                     throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6002, fnName,
                                    aliasSym->moduleName + "." + childKey);
                 }
@@ -653,6 +662,15 @@ ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux, p<ExprCallNode>
                 }
                 auto* fnSym = targetMod->lookupFnSymbolWithParams(member, argTypes);
                 if (!fnSym) {
+                    // 泛型回退：检查目标模块是否有同名泛型函数
+                    auto [gFn, gOwner] = targetMod->getGenericFunction(member);
+                    if (gFn) {
+                        result.matched = true;
+                        result.fnName = member;
+                        result.genericFn = gFn;
+                        result.genericOwner = gOwner ? gOwner : targetMod;
+                        return result;
+                    }
                     throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6002, member,
                                    aliasSym->moduleName);
                 }

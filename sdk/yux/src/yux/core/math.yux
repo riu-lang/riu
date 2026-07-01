@@ -1,9 +1,36 @@
-; 跨文件 #Cval / #Inline #Cval 测试常量（供 math_int.test.yux 跨文件引用验证）
-#Cval
-let MATH_TEST_CVAL i32 = 100
+; yux SDK - 数学函数（纯 yux 实现）
+; 需 extern C 的函数（sqrt/pow/sin/cos/tan 等）见文件末尾 TODO
+; 注：#Cval 常量当前为文件作用域，跨文件不可见（编译器限制）。常量仅可在 math.yux 内部使用。
+; 未来跨文件常量访问机制落地后，math.PI 等路径将可用。
+
+; ==================== #Inline 数学常量（文件作用域） ====================
+
 #Inline
 #Cval
-let MATH_TEST_INLINE i32 = 200
+let PI f64 = 3.141592653589793
+
+#Inline
+#Cval
+let TAU f64 = 6.283185307179586
+
+#Inline
+#Cval
+let E f64 = 2.718281828459045
+
+#Inline
+#Cval
+let PHI f64 = 1.618033988749895
+
+#Inline
+#Cval
+let LN2 f64 = 0.6931471805599453
+
+#Inline
+#Cval
+let LN10 f64 = 2.302585092994046
+
+; ==================== abs（有符号整数 / 浮点） ====================
+; v < (v − v) 消去零字面量，适配泛型——但 unsigned 语义需单独实现
 
 fn abs(v i8) i8 {
   if v < 0 {
@@ -37,7 +64,25 @@ fn abs(v i64) i64 {
   }
 }
 
-fn min(a i8, b i8) i8 {
+fn abs(v f64) f64 {
+  if v < 0.0f64 {
+    -v
+  } else {
+    v
+  }
+}
+
+fn abs(v f32) f32 {
+  if v < 0.0f32 {
+    -v
+  } else {
+    v
+  }
+}
+
+; ==================== min / max / clamp（泛型，所有内建数值类型通用） ====================
+
+fn min<T>(a T, b T) T {
   if a < b {
     a
   } else {
@@ -45,31 +90,7 @@ fn min(a i8, b i8) i8 {
   }
 }
 
-fn min(a i16, b i16) i16 {
-  if a < b {
-    a
-  } else {
-    b
-  }
-}
-
-fn min(a i32, b i32) i32 {
-  if a < b {
-    a
-  } else {
-    b
-  }
-}
-
-fn min(a i64, b i64) i64 {
-  if a < b {
-    a
-  } else {
-    b
-  }
-}
-
-fn max(a i8, b i8) i8 {
+fn max<T>(a T, b T) T {
   if a > b {
     a
   } else {
@@ -77,26 +98,462 @@ fn max(a i8, b i8) i8 {
   }
 }
 
-fn max(a i16, b i16) i16 {
-  if a > b {
-    a
+fn clamp<T>(v T, lo T, hi T) T {
+  if v < lo {
+    lo
   } else {
-    b
+    if v > hi {
+      hi
+    } else {
+      v
+    }
   }
 }
 
-fn max(a i32, b i32) i32 {
-  if a > b {
-    a
+
+; ==================== sign（有符号整数）→ i32 ====================
+
+fn sign(v i8) i32 {
+  if v > 0 {
+    1
   } else {
-    b
+    if v < 0 {
+      -1
+    } else {
+      0
+    }
   }
 }
 
-fn max(a i64, b i64) i64 {
-  if a > b {
-    a
+fn sign(v i16) i32 {
+  if v > 0 {
+    1
   } else {
-    b
+    if v < 0 {
+      -1
+    } else {
+      0
+    }
   }
 }
+
+fn sign(v i32) i32 {
+  if v > 0 {
+    1
+  } else {
+    if v < 0 {
+      -1
+    } else {
+      0
+    }
+  }
+}
+
+fn sign(v i64) i32 {
+  if v > 0 {
+    1
+  } else {
+    if v < 0 {
+      -1
+    } else {
+      0
+    }
+  }
+}
+
+; ==================== floor / ceil / trunc / round（f64） ====================
+; to_i64 向零截断（C 语义），据此反推 floor/ceil
+
+fn floor(v f64) f64 {
+  let i i64 = v.to_i64()
+  let fi f64 = i.to_f64()
+  if v >= 0.0f64 {
+    fi
+  } else {
+    if fi == v {
+      fi
+    } else {
+      fi - 1.0f64
+    }
+  }
+}
+
+fn ceil(v f64) f64 {
+  let i i64 = v.to_i64()
+  let fi f64 = i.to_f64()
+  if v <= 0.0f64 {
+    fi
+  } else {
+    if fi == v {
+      fi
+    } else {
+      fi + 1.0f64
+    }
+  }
+}
+
+fn trunc(v f64) f64 = v.to_i64().to_f64()
+
+fn round(v f64) f64 {
+  if v >= 0.0f64 {
+    floor(v + 0.5)
+  } else {
+    ceil(v - 0.5)
+  }
+}
+
+; ==================== floor / ceil / trunc / round（f32） ====================
+
+fn floor_f32(v f32) f32 {
+  let i i64 = v.to_i64()
+  let fi f32 = i.to_f32()
+  if v >= 0.0f32 {
+    fi
+  } else {
+    if fi == v {
+      fi
+    } else {
+      fi - 1.0f32
+    }
+  }
+}
+
+fn ceil_f32(v f32) f32 {
+  let i i64 = v.to_i64()
+  let fi f32 = i.to_f32()
+  if v <= 0.0f32 {
+    fi
+  } else {
+    if fi == v {
+      fi
+    } else {
+      fi + 1.0f32
+    }
+  }
+}
+
+fn trunc_f32(v f32) f32 = v.to_i64().to_f32()
+
+fn round_f32(v f32) f32 {
+  if v >= 0.0f32 {
+    floor_f32(v + 0.5f32)
+  } else {
+    ceil_f32(v - 0.5f32)
+  }
+}
+
+; ==================== sqrt（牛顿迭代法） ====================
+; x_{n+1} = (x_n + v / x_n) * 0.5
+; 对 v <= 0 返回 0；正常值 20 次迭代够 f64 精度
+
+fn sqrt(v f64) f64 {
+  if v <= 0.0f64 {
+    0.0f64
+  } else {
+    #Mut let x f64 = v
+    loop i i32 = 0 {
+      if i >= 20 {
+        break;
+      }
+      x = (x + v / x) * 0.5
+      i += 1
+    }
+    x
+  }
+}
+
+fn sqrt_f32(v f32) f32 {
+  if v <= 0.0f32 {
+    0.0f32
+  } else {
+    #Mut let x f32 = v
+    loop i i32 = 0 {
+      if i >= 20 {
+        break;
+      }
+      x = (x + v / x) * 0.5f32
+      i += 1
+    }
+    x
+  }
+}
+
+; ==================== sin / cos / tan（泰勒级数 + 区间归约到 [-PI, PI]） ====================
+; sin: x - x³/3! + x⁵/5! - x⁷/7! + ...  迭代 12 项够 f64 精度
+; cos: 1 - x²/2! + x⁴/4! - x⁶/6! + ...
+; tan = sin / cos
+
+fn sin(v f64) f64 {
+  ; 区间归约到 [-PI, PI]
+  #Mut let x f64 = v
+  loop {
+    if x <= PI {
+      break;
+    }
+    x = x - TAU
+  }
+  loop {
+    if x >= -PI {
+      break;
+    }
+    x = x + TAU
+  }
+  ; 泰勒级数迭代
+  #Mut let result f64 = x
+  #Mut let term f64 = x
+  #Mut let xx f64 = x * x
+  loop k i32 = 1 {
+    if k >= 12 {
+      break;
+    }
+    ; term = term * (-xx) / ((2k) * (2k+1))
+    let denom i32 = (2 * k) * (2 * k + 1)
+    term = 0.0f64 - term * xx / denom.to_f64()
+    result = result + term
+    k += 1
+  }
+  result
+}
+
+fn cos(v f64) f64 {
+  ; 区间归约到 [-PI, PI]
+  #Mut let x f64 = v
+  loop {
+    if x <= PI {
+      break;
+    }
+    x = x - TAU
+  }
+  loop {
+    if x >= -PI {
+      break;
+    }
+    x = x + TAU
+  }
+  ; 泰勒级数迭代: cos(x) = 1 - x²/2! + x⁴/4! - ...
+  #Mut let result f64 = 1.0f64
+  #Mut let term f64 = 1.0f64
+  #Mut let xx f64 = x * x
+  loop k i32 = 1 {
+    if k >= 12 {
+      break;
+    }
+    ; term = term * (-xx) / ((2k-1) * (2k))
+    let denom i32 = (2 * k - 1) * (2 * k)
+    term = 0.0f64 - term * xx / denom.to_f64()
+    result = result + term
+    k += 1
+  }
+  result
+}
+
+fn tan(v f64) f64 = sin(v) / cos(v)
+
+; ==================== exp（泰勒级数） ====================
+; exp(x) = 1 + x + x²/2! + x³/3! + ...
+; 无区间归约；x 绝对值越大收敛越慢。16 项对 |x| < 10 够用
+
+fn exp(v f64) f64 {
+  #Mut let result f64 = 1.0f64
+  #Mut let term f64 = 1.0f64
+  #Mut let x f64 = v
+  loop k i32 = 1 {
+    if k >= 16 {
+      break;
+    }
+    term = term * x / k.to_f64()
+    result = result + term
+    k += 1
+  }
+  result
+}
+
+; ==================== pow（整数指数快速幂） ====================
+; 指数为负时返回 1 / pow(base, -exp)
+; TODO: pow_f64(base f64, exp f64) f64 — 分数指数需 ln（exp(exp * ln(base))），ln 待实现
+
+fn pow_int(base f64, exp i32) f64 {
+  if exp == 0 {
+    1.0f64
+  } else {
+    if exp < 0 {
+      1.0f64 / pow_int(base, -exp)
+    } else {
+      #Mut let result f64 = 1.0f64
+      #Mut let b f64 = base
+      #Mut let e i32 = exp
+      loop {
+        if e == 0 {
+          break;
+        }
+        if e % 2 == 1 {
+          result = result * b
+        }
+        b = b * b
+        e = e / 2
+      }
+      result
+    }
+  }
+}
+
+; ==================== ln（自然对数） ====================
+; 通过 bit-cast 提取 IEEE 754 指数，尾数归一化到 [1, 2)，
+; 再用 atanh trick z=(m-1)/(m+1) → ln(m)=2*(z+z³/3+z⁵/5+...)
+; TODO: subnormal 处理（当前仅处理正常数）
+
+fn ln(v f64) f64 {
+  if v <= 0.0f64 {
+    ; ln(0) = -inf, ln(负数) = NaN；暂时返回 0
+    0.0f64
+  } else {
+    let bits u64 = v.to_bits()
+    ; 提取偏置指数（IEEE 754 bits [62:52]）
+    let exp_biased u64 = (bits >> 52u64) & 0x7FFu64
+    if exp_biased == 0u64 {
+      ; subnormal：放大 2⁵² 后递归，再补偿 -52*ln(2)
+      ; TODO: 改用更快的 bit-cast 归一化（subnormal 极少触发，精度不影响正常用例）
+      let scaled f64 = v * 4503599627370496.0f64
+      ln(scaled) - 52.0f64 * LN2
+    } else {
+      let exp i32 = exp_biased.to_i32() - 1023
+      ; 把指数域替换为 1023 → 尾数 m ∈ [1, 2)
+      let mbits u64 = (bits & 0x000FFFFFFFFFFFFFu64) | 0x3FF0000000000000u64
+      let m f64 = mbits.as_f64()
+      ; atanh trick: ln(m) = 2*(z + z³/3 + z⁵/5 + ...) where z = (m-1)/(m+1)
+      ; z ∈ [0, 1/3), ~12 项收敛到 f64 精度
+      let z f64 = (m - 1.0f64) / (m + 1.0f64)
+      let z2 f64 = z * z
+      #Mut let term f64 = z
+      #Mut let sum f64 = z
+      #Mut let n i32 = 3
+      loop {
+        if n >= 25 {
+          break;
+        }
+        term = term * z2
+        sum = sum + term / n.to_f64()
+        n += 2
+      }
+      2.0f64 * sum + exp.to_f64() * LN2
+    }
+  }
+}
+
+; ==================== log10 ====================
+
+fn log10(v f64) f64 = ln(v) / LN10
+
+; ==================== atan（反正切） ====================
+; 区间归约：|x|≤0.5 → Taylor |x|>1 → π/2 − atan(1/x)  0.5<|x|≤1 → π/4 + atan((x-1)/(x+1))
+; 归约后自变量 ≤ 0.2，Taylor ~20 项收敛到 f64 精度
+
+fn atan(v f64) f64 {
+  if v < 0.0f64 {
+    -atan(-v)
+  } else {
+    if v > 1.0f64 {
+      PI / 2.0f64 - atan(1.0f64 / v)
+    } else {
+      if v > 0.5 {
+        let reduced f64 = (v - 1.0f64) / (v + 1.0f64)
+        PI / 4.0f64 + atan(reduced)
+      } else {
+        ; Taylor: atan(x) = x − x³/3 + x⁵/5 − x⁷/7 + ...
+        let x2 f64 = v * v
+        #Mut let term f64 = v
+        #Mut let result f64 = v
+        #Mut let n i32 = 3
+        loop {
+          if n >= 40 {
+            break;
+          }
+          term = -term * x2
+          result = result + term / n.to_f64()
+          n += 2
+        }
+        result
+      }
+    }
+  }
+}
+
+; ==================== asin（反正弦） ====================
+; |x|≤0.5 → Taylor  |x|>0.5 → π/2 − 2·asin(√((1−|x|)/2))
+
+fn asin(v f64) f64 {
+  if v < -1.0f64 || v > 1.0f64 {
+    0.0f64
+  } else {
+    if v < 0.0f64 {
+      -asin(-v)
+    } else {
+      if v > 0.5 {
+        let s f64 = sqrt((1.0f64 - v) / 2.0f64)
+        PI / 2.0f64 - 2.0f64 * asin(s)
+      } else {
+        ; Taylor: asin(x) = x + x³/6 + 3x⁵/40 + ...
+        ; term_{n+2} = term_n · x² · n² / ((n+1)(n+2))
+        let x2 f64 = v * v
+        #Mut let term f64 = v
+        #Mut let result f64 = v
+        #Mut let n i32 = 1
+        loop {
+          if n >= 23 {
+            break;
+          }
+          let nf f64 = n.to_f64()
+          term = term * x2 * nf * nf / ((nf + 1.0f64) * (nf + 2.0f64))
+          result = result + term
+          n += 2
+        }
+        result
+      }
+    }
+  }
+}
+
+; ==================== acos（反余弦） ====================
+
+fn acos(v f64) f64 {
+  PI / 2.0f64 - asin(v)
+}
+
+; ==================== sinh / cosh / tanh（双曲函数） ====================
+; sinh = (eˣ − e⁻ˣ)/2  cosh = (eˣ + e⁻ˣ)/2  tanh = sinh/cosh
+; TODO: 大 |x| 时 exp(x) 溢出，后续加区间分段保护
+
+fn sinh(v f64) f64 {
+  (exp(v) - exp(-v)) / 2.0f64
+}
+
+fn cosh(v f64) f64 {
+  (exp(v) + exp(-v)) / 2.0f64
+}
+
+fn tanh(v f64) f64 {
+  sinh(v) / cosh(v)
+}
+
+; ==================== pow_f64（浮点指数幂） ====================
+; pow_f64(base, exp) = exp(exp · ln(base))
+; 仅 base > 0 时合法；base == 0 且 exp > 0 返回 0；其它 TODO
+
+fn pow_f64(base f64, exp_ f64) f64 {
+  if base > 0.0f64 {
+    exp(exp_ * ln(base))
+  } else {
+    if base == 0.0f64 {
+      if exp_ > 0.0f64 {
+        0.0f64
+      } else {
+        ; 0^0 或 0^负 → NaN，TODO
+        1.0f64
+      }
+    } else {
+      ; 负数底数 → NaN，TODO
+      0.0f64
+    }
+  }
+}
+

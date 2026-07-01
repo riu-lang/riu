@@ -164,6 +164,10 @@ struct ModuleFnCallResult {
     bool matched = false;
     string fnName;
     FnSymbolInfo* fnSym = nullptr;
+    // 泛型函数回退：当 lookupFnSymbolWithParams 未命中具体重载，但目标模块存在
+    // 同名泛型函数时，填入 genericFn + genericOwner。调用方据此走 compileGenericFunctionCall。
+    FnNode* genericFn = nullptr;
+    FileNode* genericOwner = nullptr;
 };
 
 ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux, p<ExprCallNode> callNode, p<ExprDotNode> dotNode,

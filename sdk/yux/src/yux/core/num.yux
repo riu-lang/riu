@@ -758,6 +758,9 @@ struct u32 {
   #Builtin
   fn to_bool() bool
 
+  #Builtin
+  fn as_f32() f32
+
   ; 算术运算符
   #Builtin
   fn plus(other u32) u32
@@ -1076,6 +1079,9 @@ struct u64 {
 
   #Builtin
   fn to_bool() bool
+
+  #Builtin
+  fn as_f64() f64
 
   ; 算术运算符
   #Builtin
@@ -1551,6 +1557,9 @@ struct f64 {
   #Builtin
   fn to_bool() bool
 
+  #Builtin
+  fn to_bits() u64
+
   ; 算术运算符
   #Builtin
   fn plus(other f64) f64
@@ -1690,6 +1699,9 @@ struct f32 {
 
   #Builtin
   fn to_bool() bool
+
+  #Builtin
+  fn to_bits() u32
 
   ; 算术运算符
   #Builtin

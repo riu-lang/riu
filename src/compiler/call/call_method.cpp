@@ -35,6 +35,11 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
 
     // 处理包别名调用 / 模块别名调用 (E6001-E6005 已迁至 sema::resolveModuleFnCall)
     if (auto modCall = sema::resolveModuleFnCall(_file, _yux, callNode, dotNode, argTypes); modCall.matched) {
+        // 泛型回退：模块限定调用目标为泛型函数时走 compileGenericFunctionCall
+        if (modCall.genericFn) {
+            return compileGenericFunctionCall(callNode, modCall.fnName, args, argTypes, modCall.genericFn,
+                                              modCall.genericOwner);
+        }
         return compileKnownFunctionCall(callNode, modCall.fnName, args, argTypes, modCall.fnSym);
     }
 
@@ -441,6 +446,45 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
 llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<ExprNode> baseExpr,
                                                     const TypeInfo& baseType, const string& member,
                                                     vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
+
+    // 处理 bit-cast：f64.to_bits()→u64 / f32.to_bits()→u32 / u64.as_f64()→f64 / u32.as_f32()→f32
+    // alloca + store + bitcast ptr + load（CreateBitCast 只接受指针类型）
+    if (member == "to_bits") {
+        if (baseType.name == "f64" || baseType.name == "f32") {
+            DEBUG_LOG_VAL("    Expr: BitCast", baseType.name << ".to_bits()");
+            auto baseVal = compileExpr(baseExpr);
+            auto srcType = baseExpr->getType();
+            if (srcType.isRef() && baseVal->getType()->isPointerTy()) {
+                auto inner = srcType.refElementType();
+                if (inner) baseVal = _builder.CreateLoad(getLLVMType(*inner), baseVal, "bitcast.load.ref");
+            }
+            auto srcLLVMTy = getLLVMType(baseType);
+            auto dstLLVMTy = baseType.name == "f64" ? llvm::Type::getInt64Ty(_context)
+                                                     : llvm::Type::getInt32Ty(_context);
+            auto alloca = _builder.CreateAlloca(srcLLVMTy, nullptr, "bitcast.tmp");
+            _builder.CreateStore(baseVal, alloca);
+            auto bitcastPtr = _builder.CreateBitCast(alloca, llvm::PointerType::get(_context, 0), "bitcast.ptr");
+            return _builder.CreateLoad(dstLLVMTy, bitcastPtr, "bitcast.load");
+        }
+    }
+    if (member == "as_f64" || member == "as_f32") {
+        if ((member == "as_f64" && baseType.name == "u64") || (member == "as_f32" && baseType.name == "u32")) {
+            DEBUG_LOG_VAL("    Expr: BitCast", baseType.name << "." << member << "()");
+            auto baseVal = compileExpr(baseExpr);
+            auto srcType = baseExpr->getType();
+            if (srcType.isRef() && baseVal->getType()->isPointerTy()) {
+                auto inner = srcType.refElementType();
+                if (inner) baseVal = _builder.CreateLoad(getLLVMType(*inner), baseVal, "bitcast.load.ref");
+            }
+            auto srcLLVMTy = getLLVMType(baseType);
+            auto dstLLVMTy =
+                member == "as_f64" ? llvm::Type::getDoubleTy(_context) : llvm::Type::getFloatTy(_context);
+            auto alloca = _builder.CreateAlloca(srcLLVMTy, nullptr, "bitcast.tmp");
+            _builder.CreateStore(baseVal, alloca);
+            auto bitcastPtr = _builder.CreateBitCast(alloca, llvm::PointerType::get(_context, 0), "bitcast.ptr");
+            return _builder.CreateLoad(dstLLVMTy, bitcastPtr, "bitcast.load");
+        }
+    }
 
     if (member.starts_with("to_")) {
         string dstType = member.substr(3);

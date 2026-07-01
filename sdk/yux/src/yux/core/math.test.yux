@@ -1,0 +1,609 @@
+; math.* 标准库测试（Step 1：泛化基础函数）
+; 注：#Cval 常量（PI/TAU/E/PHI）当前为文件作用域，跨文件不可见（编译器限制），
+; 暂无法在此测试。常量定义见 math.yux。
+
+; ==================== abs f64 ====================
+
+#Test
+fn test_math_abs_f64_neg() {
+  assert_eq(math.abs(-3.14), 3.14)
+}
+
+#Test
+fn test_math_abs_f64_positive() {
+  assert_eq(math.abs(2.718), 2.718)
+}
+
+#Test
+fn test_math_abs_f64_zero() {
+  assert_eq(math.abs(0.0f64), 0.0f64)
+}
+
+; ==================== abs f32 ====================
+
+#Test
+fn test_math_abs_f32_neg() {
+  assert_eq(math.abs(-1.5f32), 1.5f32)
+}
+
+#Test
+fn test_math_abs_f32_positive() {
+  assert_eq(math.abs(3.25f32), 3.25f32)
+}
+
+#Test
+fn test_math_abs_f32_zero() {
+  assert_eq(math.abs(0.0f32), 0.0f32)
+}
+
+; ==================== min 无符号整数 ====================
+
+#Test
+fn test_math_min_u8() {
+  assert_eq(math.min(10u8, 20u8), 10u8)
+  assert_eq(math.min(20u8, 10u8), 10u8)
+  assert_eq(math.min(0u8, 255u8), 0u8)
+  assert_eq(math.min(200u8, 200u8), 200u8)
+}
+
+#Test
+fn test_math_min_u16() {
+  assert_eq(math.min(100u16, 200u16), 100u16)
+  assert_eq(math.min(200u16, 100u16), 100u16)
+  assert_eq(math.min(0u16, 65535u16), 0u16)
+  assert_eq(math.min(1000u16, 1000u16), 1000u16)
+}
+
+#Test
+fn test_math_min_u32() {
+  assert_eq(math.min(1000u32, 2000u32), 1000u32)
+  assert_eq(math.min(2000u32, 1000u32), 1000u32)
+  assert_eq(math.min(0u32, 4294967295u32), 0u32)
+}
+
+#Test
+fn test_math_min_u64() {
+  assert_eq(math.min(10000u64, 20000u64), 10000u64)
+  assert_eq(math.min(20000u64, 10000u64), 10000u64)
+  assert_eq(math.min(0u64, 18446744073709551615u64), 0u64)
+}
+
+; ==================== min f64 ====================
+
+#Test
+fn test_math_min_f64() {
+  assert_eq(math.min(1.5, 2.5), 1.5)
+  assert_eq(math.min(2.5, 1.5), 1.5)
+  assert_eq(math.min(-1.0, 1.0), -1.0)
+  assert_eq(math.min(3.14, 3.14), 3.14)
+}
+
+; ==================== min f32 ====================
+
+#Test
+fn test_math_min_f32() {
+  assert_eq(math.min(1.5f32, 2.5f32), 1.5f32)
+  assert_eq(math.min(2.5f32, 1.5f32), 1.5f32)
+  assert_eq(math.min(-1.0f32, 1.0f32), -1.0f32)
+}
+
+; ==================== max 无符号整数 ====================
+
+#Test
+fn test_math_max_u8() {
+  assert_eq(math.max(10u8, 20u8), 20u8)
+  assert_eq(math.max(20u8, 10u8), 20u8)
+  assert_eq(math.max(0u8, 255u8), 255u8)
+  assert_eq(math.max(200u8, 200u8), 200u8)
+}
+
+#Test
+fn test_math_max_u16() {
+  assert_eq(math.max(100u16, 200u16), 200u16)
+  assert_eq(math.max(200u16, 100u16), 200u16)
+  assert_eq(math.max(0u16, 65535u16), 65535u16)
+}
+
+#Test
+fn test_math_max_u32() {
+  assert_eq(math.max(1000u32, 2000u32), 2000u32)
+  assert_eq(math.max(2000u32, 1000u32), 2000u32)
+  assert_eq(math.max(0u32, 4294967295u32), 4294967295u32)
+}
+
+#Test
+fn test_math_max_u64() {
+  assert_eq(math.max(10000u64, 20000u64), 20000u64)
+  assert_eq(math.max(20000u64, 10000u64), 20000u64)
+  assert_eq(math.max(0u64, 18446744073709551615u64), 18446744073709551615u64)
+}
+
+; ==================== max f64 ====================
+
+#Test
+fn test_math_max_f64() {
+  assert_eq(math.max(1.5, 2.5), 2.5)
+  assert_eq(math.max(2.5, 1.5), 2.5)
+  assert_eq(math.max(-1.0, 1.0), 1.0)
+  assert_eq(math.max(3.14, 3.14), 3.14)
+}
+
+; ==================== max f32 ====================
+
+#Test
+fn test_math_max_f32() {
+  assert_eq(math.max(1.5f32, 2.5f32), 2.5f32)
+  assert_eq(math.max(2.5f32, 1.5f32), 2.5f32)
+  assert_eq(math.max(-1.0f32, 1.0f32), 1.0f32)
+}
+
+; ==================== clamp 有符号整数 ====================
+
+#Test
+fn test_math_clamp_i8() {
+  assert_eq(math.clamp(5i8, 0i8, 10i8), 5i8)
+  assert_eq(math.clamp(-5i8, 0i8, 10i8), 0i8)
+  assert_eq(math.clamp(15i8, 0i8, 10i8), 10i8)
+  assert_eq(math.clamp(0i8, 0i8, 10i8), 0i8)
+  assert_eq(math.clamp(10i8, 0i8, 10i8), 10i8)
+}
+
+#Test
+fn test_math_clamp_i16() {
+  assert_eq(math.clamp(50i16, 0i16, 100i16), 50i16)
+  assert_eq(math.clamp(-10i16, 0i16, 100i16), 0i16)
+  assert_eq(math.clamp(200i16, 0i16, 100i16), 100i16)
+}
+
+#Test
+fn test_math_clamp_i32() {
+  assert_eq(math.clamp(500i32, 0i32, 1000i32), 500i32)
+  assert_eq(math.clamp(-100i32, 0i32, 1000i32), 0i32)
+  assert_eq(math.clamp(2000i32, 0i32, 1000i32), 1000i32)
+}
+
+#Test
+fn test_math_clamp_i64() {
+  assert_eq(math.clamp(5000i64, 0i64, 10000i64), 5000i64)
+  assert_eq(math.clamp(-1000i64, 0i64, 10000i64), 0i64)
+  assert_eq(math.clamp(20000i64, 0i64, 10000i64), 10000i64)
+}
+
+; ==================== clamp 无符号整数 ====================
+
+#Test
+fn test_math_clamp_u8() {
+  assert_eq(math.clamp(5u8, 0u8, 10u8), 5u8)
+  assert_eq(math.clamp(0u8, 5u8, 10u8), 5u8)
+  assert_eq(math.clamp(20u8, 5u8, 10u8), 10u8)
+}
+
+#Test
+fn test_math_clamp_u16() {
+  assert_eq(math.clamp(50u16, 0u16, 100u16), 50u16)
+  assert_eq(math.clamp(0u16, 10u16, 100u16), 10u16)
+  assert_eq(math.clamp(200u16, 10u16, 100u16), 100u16)
+}
+
+#Test
+fn test_math_clamp_u32() {
+  assert_eq(math.clamp(500u32, 0u32, 1000u32), 500u32)
+  assert_eq(math.clamp(0u32, 100u32, 1000u32), 100u32)
+  assert_eq(math.clamp(2000u32, 100u32, 1000u32), 1000u32)
+}
+
+#Test
+fn test_math_clamp_u64() {
+  assert_eq(math.clamp(5000u64, 0u64, 10000u64), 5000u64)
+  assert_eq(math.clamp(0u64, 1000u64, 10000u64), 1000u64)
+  assert_eq(math.clamp(20000u64, 1000u64, 10000u64), 10000u64)
+}
+
+; ==================== clamp 浮点 ====================
+
+#Test
+fn test_math_clamp_f64() {
+  assert_eq(math.clamp(0.5, 0.0f64, 1.0), 0.5)
+  assert_eq(math.clamp(-0.5, 0.0f64, 1.0), 0.0f64)
+  assert_eq(math.clamp(1.5, 0.0f64, 1.0), 1.0)
+  assert_eq(math.clamp(0.0f64, 0.0f64, 1.0), 0.0f64)
+  assert_eq(math.clamp(1.0, 0.0f64, 1.0), 1.0)
+}
+
+#Test
+fn test_math_clamp_f32() {
+  assert_eq(math.clamp(0.5f32, 0.0f32, 1.0f32), 0.5f32)
+  assert_eq(math.clamp(-0.5f32, 0.0f32, 1.0f32), 0.0f32)
+  assert_eq(math.clamp(1.5f32, 0.0f32, 1.0f32), 1.0f32)
+}
+
+; ==================== sign 有符号整数 ====================
+
+#Test
+fn test_math_sign_i8() {
+  assert_eq(math.sign(42i8), 1)
+  assert_eq(math.sign(-42i8), -1)
+  assert_eq(math.sign(0i8), 0)
+  assert_eq(math.sign(127i8), 1)
+  assert_eq(math.sign(-128i8), -1)
+}
+
+#Test
+fn test_math_sign_i16() {
+  assert_eq(math.sign(100i16), 1)
+  assert_eq(math.sign(-100i16), -1)
+  assert_eq(math.sign(0i16), 0)
+}
+
+#Test
+fn test_math_sign_i32() {
+  assert_eq(math.sign(1000i32), 1)
+  assert_eq(math.sign(-1000i32), -1)
+  assert_eq(math.sign(0i32), 0)
+}
+
+#Test
+fn test_math_sign_i64() {
+  assert_eq(math.sign(10000i64), 1)
+  assert_eq(math.sign(-10000i64), -1)
+  assert_eq(math.sign(0i64), 0)
+}
+
+; ==================== floor f64 ====================
+
+#Test
+fn test_math_floor_f64() {
+  assert_eq(math.floor(3.7), 3.0f64)
+  assert_eq(math.floor(3.0f64), 3.0f64)
+  assert_eq(math.floor(0.3), 0.0f64)
+  assert_eq(math.floor(0.0f64), 0.0f64)
+  assert_eq(math.floor(-0.3), -1.0f64)
+  assert_eq(math.floor(-3.7), -4.0f64)
+  assert_eq(math.floor(-3.0f64), -3.0f64)
+}
+
+; ==================== ceil f64 ====================
+
+#Test
+fn test_math_ceil_f64() {
+  assert_eq(math.ceil(3.7), 4.0f64)
+  assert_eq(math.ceil(3.0f64), 3.0f64)
+  assert_eq(math.ceil(0.3), 1.0f64)
+  assert_eq(math.ceil(0.0f64), 0.0f64)
+  assert_eq(math.ceil(-0.3), 0.0f64)
+  assert_eq(math.ceil(-3.7), -3.0f64)
+  assert_eq(math.ceil(-3.0f64), -3.0f64)
+}
+
+; ==================== trunc f64 ====================
+
+#Test
+fn test_math_trunc_f64() {
+  assert_eq(math.trunc(3.7), 3.0f64)
+  assert_eq(math.trunc(-3.7), -3.0f64)
+  assert_eq(math.trunc(0.9), 0.0f64)
+  assert_eq(math.trunc(0.0f64), 0.0f64)
+}
+
+; ==================== round f64 ====================
+
+#Test
+fn test_math_round_f64() {
+  assert_eq(math.round(3.3), 3.0f64)
+  assert_eq(math.round(3.7), 4.0f64)
+  assert_eq(math.round(3.5), 4.0f64)
+  assert_eq(math.round(-3.3), -3.0f64)
+  assert_eq(math.round(-3.7), -4.0f64)
+  assert_eq(math.round(-3.5), -4.0f64)
+  assert_eq(math.round(0.0f64), 0.0f64)
+}
+
+; ==================== floor f32 ====================
+
+#Test
+fn test_math_floor_f32() {
+  assert_eq(math.floor_f32(3.7f32), 3.0f32)
+  assert_eq(math.floor_f32(-3.7f32), -4.0f32)
+  assert_eq(math.floor_f32(0.0f32), 0.0f32)
+}
+
+; ==================== ceil f32 ====================
+
+#Test
+fn test_math_ceil_f32() {
+  assert_eq(math.ceil_f32(3.7f32), 4.0f32)
+  assert_eq(math.ceil_f32(-3.7f32), -3.0f32)
+  assert_eq(math.ceil_f32(0.0f32), 0.0f32)
+}
+
+; ==================== trunc f32 ====================
+
+#Test
+fn test_math_trunc_f32() {
+  assert_eq(math.trunc_f32(3.7f32), 3.0f32)
+  assert_eq(math.trunc_f32(-3.7f32), -3.0f32)
+}
+
+; ==================== round f32 ====================
+
+#Test
+fn test_math_round_f32() {
+  assert_eq(math.round_f32(3.3f32), 3.0f32)
+  assert_eq(math.round_f32(3.7f32), 4.0f32)
+  assert_eq(math.round_f32(-3.5f32), -4.0f32)
+}
+
+; ==================== sqrt f64 ====================
+
+#Test
+fn test_math_sqrt_f64() {
+  assert_eq(math.sqrt(0.0f64), 0.0f64)
+  assert_eq(math.sqrt(1.0f64), 1.0f64)
+  assert_eq(math.sqrt(4.0f64), 2.0f64)
+  assert_eq(math.sqrt(9.0f64), 3.0f64)
+  assert_eq(math.sqrt(16.0f64), 4.0f64)
+  assert_eq(math.sqrt(100.0f64), 10.0f64)
+  ; sqrt(2) ≈ 1.414，容忍 f64 误差
+  let s2 f64 = math.sqrt(2.0f64)
+  assert_true(s2 > 1.414)
+  assert_true(s2 < 1.415)
+}
+
+; ==================== sqrt f32 ====================
+
+#Test
+fn test_math_sqrt_f32() {
+  assert_eq(math.sqrt_f32(0.0f32), 0.0f32)
+  assert_eq(math.sqrt_f32(4.0f32), 2.0f32)
+  assert_eq(math.sqrt_f32(25.0f32), 5.0f32)
+}
+
+; ==================== sin f64 ====================
+; PI ≈ 3.141592653589793，跨文件 #Cval 不可见（BUGS.md），测试中用字面量
+
+#Test
+fn test_math_sin_f64() {
+  ; sin(0) = 0
+  assert_eq(math.sin(0.0f64), 0.0f64)
+  ; sin(PI/2) ≈ 1
+  let s_pi2 f64 = math.sin(1.5707963267948966)
+  assert_true(s_pi2 > 0.999)
+  assert_true(s_pi2 < 1.001)
+  ; sin(PI) ≈ 0
+  let s_pi f64 = math.sin(3.141592653589793)
+  assert_true(s_pi > -0.001)
+  assert_true(s_pi < 0.001)
+  ; sin(-PI/2) ≈ -1
+  let s_neg f64 = math.sin(-1.5707963267948966)
+  assert_true(s_neg > -1.001)
+  assert_true(s_neg < -0.999)
+}
+
+; ==================== cos f64 ====================
+
+#Test
+fn test_math_cos_f64() {
+  ; cos(0) ≈ 1
+  let c0 f64 = math.cos(0.0f64)
+  assert_true(c0 > 0.999)
+  assert_true(c0 < 1.001)
+  ; cos(PI/2) ≈ 0
+  let c_pi2 f64 = math.cos(1.5707963267948966)
+  assert_true(c_pi2 > -0.001)
+  assert_true(c_pi2 < 0.001)
+  ; cos(PI) ≈ -1
+  let c_pi f64 = math.cos(3.141592653589793)
+  assert_true(c_pi > -1.001)
+  assert_true(c_pi < -0.999)
+}
+
+; ==================== tan f64 ====================
+
+#Test
+fn test_math_tan_f64() {
+  ; tan(0) = 0
+  assert_eq(math.tan(0.0f64), 0.0f64)
+  ; tan(PI/4) ≈ 1
+  let t f64 = math.tan(0.7853981633974483)
+  assert_true(t > 0.999)
+  assert_true(t < 1.001)
+}
+
+; ==================== exp f64 ====================
+
+#Test
+fn test_math_exp_f64() {
+  ; exp(0) = 1
+  assert_eq(math.exp(0.0f64), 1.0f64)
+  ; exp(1) = e ≈ 2.718
+  let e1 f64 = math.exp(1.0f64)
+  assert_true(e1 > 2.71)
+  assert_true(e1 < 2.72)
+  ; exp(-1) = 1/e ≈ 0.367
+  let en1 f64 = math.exp(-1.0f64)
+  assert_true(en1 > 0.36)
+  assert_true(en1 < 0.37)
+}
+
+; ==================== pow_int f64 ====================
+
+#Test
+fn test_math_pow_int() {
+  ; 2^0 = 1
+  assert_eq(math.pow_int(2.0f64, 0), 1.0f64)
+  ; 2^3 = 8
+  assert_eq(math.pow_int(2.0f64, 3), 8.0f64)
+  ; 2^10 = 1024
+  assert_eq(math.pow_int(2.0f64, 10), 1024.0f64)
+  ; 3^4 = 81
+  assert_eq(math.pow_int(3.0f64, 4), 81.0f64)
+  ; 2^{-1} = 0.5
+  assert_eq(math.pow_int(2.0f64, -1), 0.5)
+  ; 2^{-2} = 0.25
+  assert_eq(math.pow_int(2.0f64, -2), 0.25)
+  ; 10^0 = 1
+  assert_eq(math.pow_int(10.0f64, 0), 1.0f64)
+}
+
+; ==================== ln f64 ====================
+
+#Test
+fn test_math_ln_f64() {
+  ; ln(1) = 0
+  assert_eq(math.ln(1.0f64), 0.0f64)
+  ; ln(e) ≈ 1 (E ≈ 2.718281828459045)
+  let lne f64 = math.ln(2.718281828459045)
+  assert_true(lne > 0.999)
+  assert_true(lne < 1.001)
+  ; ln(2) ≈ 0.693147
+  let ln2 f64 = math.ln(2.0f64)
+  assert_true(ln2 > 0.693)
+  assert_true(ln2 < 0.694)
+  ; ln(10) ≈ 2.302585
+  let ln10 f64 = math.ln(10.0f64)
+  assert_true(ln10 > 2.30)
+  assert_true(ln10 < 2.31)
+}
+
+; ==================== log10 f64 ====================
+
+#Test
+fn test_math_log10_f64() {
+  ; log10(1) = 0
+  assert_eq(math.log10(1.0f64), 0.0f64)
+  ; log10(10) ≈ 1
+  let lg10 f64 = math.log10(10.0f64)
+  assert_true(lg10 > 0.999)
+  assert_true(lg10 < 1.001)
+  ; log10(100) ≈ 2
+  let lg100 f64 = math.log10(100.0f64)
+  assert_true(lg100 > 1.999)
+  assert_true(lg100 < 2.001)
+}
+
+; ==================== atan f64 ====================
+
+#Test
+fn test_math_atan_f64() {
+  ; atan(0) = 0
+  assert_eq(math.atan(0.0f64), 0.0f64)
+  ; atan(1) ≈ π/4 ≈ 0.7854
+  let a1 f64 = math.atan(1.0f64)
+  assert_true(a1 > 0.785)
+  assert_true(a1 < 0.786)
+  ; atan(∞) ≈ π/2 ≈ 1.5708
+  let a_big f64 = math.atan(10000000000.0f64)
+  assert_true(a_big > 1.56)
+  assert_true(a_big < 1.58)
+  ; atan(-1) ≈ -π/4: 奇函数
+  let a_neg f64 = math.atan(-1.0f64)
+  assert_true(a_neg > -0.786)
+  assert_true(a_neg < -0.785)
+}
+
+; ==================== asin f64 ====================
+
+#Test
+fn test_math_asin_f64() {
+  ; asin(0) = 0
+  assert_eq(math.asin(0.0f64), 0.0f64)
+  ; asin(1) ≈ π/2 ≈ 1.5708
+  let a1 f64 = math.asin(1.0f64)
+  assert_true(a1 > 1.56)
+  assert_true(a1 < 1.58)
+  ; asin(0.5) ≈ π/6 ≈ 0.5236
+  let a05 f64 = math.asin(0.5)
+  assert_true(a05 > 0.523)
+  assert_true(a05 < 0.524)
+  ; asin(-0.5) 奇函数
+  let a_neg f64 = math.asin(-0.5)
+  assert_true(a_neg > -0.524)
+  assert_true(a_neg < -0.523)
+}
+
+; ==================== acos f64 ====================
+
+#Test
+fn test_math_acos_f64() {
+  ; acos(1) = 0
+  assert_eq(math.acos(1.0f64), 0.0f64)
+  ; acos(0) ≈ π/2 ≈ 1.5708
+  let a0 f64 = math.acos(0.0f64)
+  assert_true(a0 > 1.56)
+  assert_true(a0 < 1.58)
+  ; acos(-1) ≈ π
+  let a_neg1 f64 = math.acos(-1.0f64)
+  assert_true(a_neg1 > 3.14)
+  assert_true(a_neg1 < 3.15)
+}
+
+; ==================== sinh f64 ====================
+
+#Test
+fn test_math_sinh_f64() {
+  ; sinh(0) = 0
+  assert_eq(math.sinh(0.0f64), 0.0f64)
+  ; sinh(1) = (e - 1/e)/2 ≈ 1.1752
+  let s1 f64 = math.sinh(1.0f64)
+  assert_true(s1 > 1.17)
+  assert_true(s1 < 1.18)
+  ; sinh 奇函数
+  let s_neg f64 = math.sinh(-1.0f64)
+  assert_true(s_neg > -1.18)
+  assert_true(s_neg < -1.17)
+}
+
+; ==================== cosh f64 ====================
+
+#Test
+fn test_math_cosh_f64() {
+  ; cosh(0) = 1
+  assert_eq(math.cosh(0.0f64), 1.0f64)
+  ; cosh(1) = (e + 1/e)/2 ≈ 1.5431
+  let c1 f64 = math.cosh(1.0f64)
+  assert_true(c1 > 1.54)
+  assert_true(c1 < 1.55)
+  ; cosh 偶函数
+  let c_neg f64 = math.cosh(-1.0f64)
+  assert_true(c_neg > 1.54)
+  assert_true(c_neg < 1.55)
+}
+
+; ==================== tanh f64 ====================
+
+#Test
+fn test_math_tanh_f64() {
+  ; tanh(0) = 0
+  assert_eq(math.tanh(0.0f64), 0.0f64)
+  ; tanh(1) ≈ 0.7616
+  let t1 f64 = math.tanh(1.0f64)
+  assert_true(t1 > 0.76)
+  assert_true(t1 < 0.77)
+  ; tanh 奇函数
+  let t_neg f64 = math.tanh(-1.0f64)
+  assert_true(t_neg > -0.77)
+  assert_true(t_neg < -0.76)
+  ; tanh 大值 → 1（仅粗略检验，exp(x) 在 |x|≥10 时 Taylor 精度有限）
+  let t_big f64 = math.tanh(10.0f64)
+  assert_true(t_big > 0.99)
+}
+
+; ==================== pow_f64 ====================
+
+#Test
+fn test_math_pow_f64() {
+  ; 2^0.5 = sqrt(2) ≈ 1.4142
+  let p1 f64 = math.pow_f64(2.0f64, 0.5)
+  assert_true(p1 > 1.414)
+  assert_true(p1 < 1.415)
+  ; 10^2 = 100
+  let p2 f64 = math.pow_f64(10.0f64, 2.0f64)
+  assert_true(p2 > 99.9)
+  assert_true(p2 < 100.1)
+  ; e^1 ≈ 2.718
+  let p3 f64 = math.pow_f64(2.718281828459045, 1.0f64)
+  assert_true(p3 > 2.71)
+  assert_true(p3 < 2.72)
+  ; 任何数^0 = 1
+  assert_eq(math.pow_f64(5.0f64, 0.0f64), 1.0f64)
+}
