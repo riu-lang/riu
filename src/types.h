@@ -489,20 +489,40 @@ struct TypeInfo {
         }
     }
 
+    // 完整类型名（与 yux 源码写法一致，用于报错/调试输出）：
+    // 泛型 Base<Arg1,Arg2>，元组 (T1,T2)，函数 fn(P1,...,Pn)R，数组 [E*N]
     [[nodiscard]] string getFullName() const {
         if (hasGenericArgs() && !genericArgs.empty()) {
-            string result = name;
-            for (auto& genericArg : genericArgs) {
-                result += "_" + genericArg->getFullName();
+            string result = name + "<";
+            for (size_t i = 0; i < genericArgs.size(); ++i) {
+                if (i > 0) result += ",";
+                result += genericArgs[i]->getFullName();
             }
+            result += ">";
             return result;
         }
-        if (kind == TypeKind::Fn) {
-            string result = fnNullable ? "fnQ" : "fn";
-            for (auto& a : genericArgs) {
-                result += "_" + (a ? a->getFullName() : string("?"));
+        if (kind == TypeKind::Array && elementType) {
+            return "[" + elementType->getFullName() + "*" + std::to_string(arraySize) + "]";
+        }
+        // 元组：(T1,T2)
+        if (kind == TypeKind::Tuple) {
+            string result = "(";
+            for (size_t i = 0; i < genericArgs.size(); ++i) {
+                if (i > 0) result += ",";
+                result += genericArgs[i] ? genericArgs[i]->getFullName() : string("?");
             }
-            result += "__" + (elementType ? elementType->getFullName() : string("void"));
+            result += ")";
+            return result;
+        }
+        // 函数：fn(P1,...,Pn)R / fn?(...)R
+        if (kind == TypeKind::Fn) {
+            string result = fnNullable ? "fn?(" : "fn(";
+            for (size_t i = 0; i < genericArgs.size(); ++i) {
+                if (i > 0) result += ",";
+                result += genericArgs[i] ? genericArgs[i]->getFullName() : string("?");
+            }
+            result += ")";
+            result += elementType ? elementType->getFullName() : string("void");
             return result;
         }
         return name;
