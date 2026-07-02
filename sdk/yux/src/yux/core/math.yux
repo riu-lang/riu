@@ -1,7 +1,40 @@
-; yux SDK - 数学函数（纯 yux 实现）
-; 需 extern C 的函数（sqrt/pow/sin/cos/tan 等）见文件末尾 TODO
+; yux SDK - 数学函数
+; 超越函数（sin/cos/exp/log/pow/sqrt 等）走 yuxrt（musl libm 移植），
+; 精度和正确性久经验证。纯 yux 实现的函数（abs/min/max/clamp/sign/pow_int）保留。
 ; 注：#Cval 常量当前为文件作用域，跨文件不可见（编译器限制）。常量仅可在 math.yux 内部使用。
 ; 未来跨文件常量访问机制落地后，math.PI 等路径将可用。
+
+; ==================== yuxrt 数学函数 extern 声明 ====================
+
+extern {
+  fn yuxrt_sin(v f64) f64
+  fn yuxrt_cos(v f64) f64
+  fn yuxrt_tan(v f64) f64
+  fn yuxrt_asin(v f64) f64
+  fn yuxrt_acos(v f64) f64
+  fn yuxrt_atan(v f64) f64
+  fn yuxrt_atan2(y f64, x f64) f64
+  fn yuxrt_sinh(v f64) f64
+  fn yuxrt_cosh(v f64) f64
+  fn yuxrt_tanh(v f64) f64
+  fn yuxrt_exp(v f64) f64
+  fn yuxrt_expm1(v f64) f64
+  fn yuxrt_log(v f64) f64
+  fn yuxrt_log10(v f64) f64
+  fn yuxrt_log2(v f64) f64
+  fn yuxrt_log1p(v f64) f64
+  fn yuxrt_pow(base f64, exp_ f64) f64
+  fn yuxrt_sqrt(v f64) f64
+  fn yuxrt_cbrt(v f64) f64
+  fn yuxrt_hypot(x f64, y f64) f64
+  fn yuxrt_fabs(v f64) f64
+  fn yuxrt_floor(v f64) f64
+  fn yuxrt_ceil(v f64) f64
+  fn yuxrt_trunc(v f64) f64
+  fn yuxrt_round(v f64) f64
+  fn yuxrt_fmod(x f64, y f64) f64
+  fn yuxrt_scalbn(x f64, n i32) f64
+}
 
 ; ==================== #Inline 数学常量（文件作用域） ====================
 
@@ -162,45 +195,15 @@ fn sign(v i64) i32 {
 }
 
 ; ==================== floor / ceil / trunc / round（f64） ====================
-; to_i64 向零截断（C 语义），据此反推 floor/ceil
+; Phase 3：走 yuxrt（musl libm），正确处理 subnormal/NaN/±inf
 
-fn floor(v f64) f64 {
-  let i i64 = v.to_i64()
-  let fi f64 = i.to_f64()
-  if v >= 0.0f64 {
-    fi
-  } else {
-    if fi == v {
-      fi
-    } else {
-      fi - 1.0f64
-    }
-  }
-}
+fn floor(v f64) f64 = yuxrt_floor(v)
 
-fn ceil(v f64) f64 {
-  let i i64 = v.to_i64()
-  let fi f64 = i.to_f64()
-  if v <= 0.0f64 {
-    fi
-  } else {
-    if fi == v {
-      fi
-    } else {
-      fi + 1.0f64
-    }
-  }
-}
+fn ceil(v f64) f64 = yuxrt_ceil(v)
 
-fn trunc(v f64) f64 = v.to_i64().to_f64()
+fn trunc(v f64) f64 = yuxrt_trunc(v)
 
-fn round(v f64) f64 {
-  if v >= 0.0f64 {
-    floor(v + 0.5)
-  } else {
-    ceil(v - 0.5)
-  }
-}
+fn round(v f64) f64 = yuxrt_round(v)
 
 ; ==================== floor / ceil / trunc / round（f32） ====================
 
@@ -242,25 +245,7 @@ fn round_f32(v f32) f32 {
   }
 }
 
-; ==================== sqrt（牛顿迭代法） ====================
-; x_{n+1} = (x_n + v / x_n) * 0.5
-; 对 v <= 0 返回 0；正常值 20 次迭代够 f64 精度
-
-fn sqrt(v f64) f64 {
-  if v <= 0.0f64 {
-    0.0f64
-  } else {
-    #Mut let x f64 = v
-    loop i i32 = 0 {
-      if i >= 20 {
-        break;
-      }
-      x = (x + v / x) * 0.5
-      i += 1
-    }
-    x
-  }
-}
+fn sqrt(v f64) f64 = yuxrt_sqrt(v)
 
 fn sqrt_f32(v f32) f32 {
   if v <= 0.0f32 {
@@ -278,95 +263,13 @@ fn sqrt_f32(v f32) f32 {
   }
 }
 
-; ==================== sin / cos / tan（泰勒级数 + 区间归约到 [-PI, PI]） ====================
-; sin: x - x³/3! + x⁵/5! - x⁷/7! + ...  迭代 12 项够 f64 精度
-; cos: 1 - x²/2! + x⁴/4! - x⁶/6! + ...
-; tan = sin / cos
+fn sin(v f64) f64 = yuxrt_sin(v)
 
-fn sin(v f64) f64 {
-  ; 区间归约到 [-PI, PI]
-  #Mut let x f64 = v
-  loop {
-    if x <= PI {
-      break;
-    }
-    x = x - TAU
-  }
-  loop {
-    if x >= -PI {
-      break;
-    }
-    x = x + TAU
-  }
-  ; 泰勒级数迭代
-  #Mut let result f64 = x
-  #Mut let term f64 = x
-  #Mut let xx f64 = x * x
-  loop k i32 = 1 {
-    if k >= 12 {
-      break;
-    }
-    ; term = term * (-xx) / ((2k) * (2k+1))
-    let denom i32 = (2 * k) * (2 * k + 1)
-    term = 0.0f64 - term * xx / denom.to_f64()
-    result = result + term
-    k += 1
-  }
-  result
-}
+fn cos(v f64) f64 = yuxrt_cos(v)
 
-fn cos(v f64) f64 {
-  ; 区间归约到 [-PI, PI]
-  #Mut let x f64 = v
-  loop {
-    if x <= PI {
-      break;
-    }
-    x = x - TAU
-  }
-  loop {
-    if x >= -PI {
-      break;
-    }
-    x = x + TAU
-  }
-  ; 泰勒级数迭代: cos(x) = 1 - x²/2! + x⁴/4! - ...
-  #Mut let result f64 = 1.0f64
-  #Mut let term f64 = 1.0f64
-  #Mut let xx f64 = x * x
-  loop k i32 = 1 {
-    if k >= 12 {
-      break;
-    }
-    ; term = term * (-xx) / ((2k-1) * (2k))
-    let denom i32 = (2 * k - 1) * (2 * k)
-    term = 0.0f64 - term * xx / denom.to_f64()
-    result = result + term
-    k += 1
-  }
-  result
-}
+fn tan(v f64) f64 = yuxrt_tan(v)
 
-fn tan(v f64) f64 = sin(v) / cos(v)
-
-; ==================== exp（泰勒级数） ====================
-; exp(x) = 1 + x + x²/2! + x³/3! + ...
-; 无区间归约；x 绝对值越大收敛越慢。16 项对 |x| < 10 够用
-
-fn exp(v f64) f64 {
-  #Mut let result f64 = 1.0f64
-  #Mut let term f64 = 1.0f64
-  #Mut let x f64 = v
-  loop k i32 = 1 {
-    if k >= 16 {
-      break;
-    }
-    term = term * x / k.to_f64()
-    result = result + term
-    k += 1
-  }
-  result
-}
+fn exp(v f64) f64 = yuxrt_exp(v)
 
 ; ==================== pow（整数指数快速幂） ====================
 ; 指数为负时返回 1 / pow(base, -exp)
@@ -397,163 +300,25 @@ fn pow_int(base f64, exp i32) f64 {
   }
 }
 
-; ==================== ln（自然对数） ====================
-; 通过 bit-cast 提取 IEEE 754 指数，尾数归一化到 [1, 2)，
-; 再用 atanh trick z=(m-1)/(m+1) → ln(m)=2*(z+z³/3+z⁵/5+...)
-; TODO: subnormal 处理（当前仅处理正常数）
+fn ln(v f64) f64 = yuxrt_log(v)
 
-fn ln(v f64) f64 {
-  if v <= 0.0f64 {
-    ; ln(0) = -inf, ln(负数) = NaN；暂时返回 0
-    0.0f64
-  } else {
-    let bits u64 = v.to_bits()
-    ; 提取偏置指数（IEEE 754 bits [62:52]）
-    let exp_biased u64 = (bits >> 52u64) & 0x7FFu64
-    if exp_biased == 0u64 {
-      ; subnormal：放大 2⁵² 后递归，再补偿 -52*ln(2)
-      ; TODO: 改用更快的 bit-cast 归一化（subnormal 极少触发，精度不影响正常用例）
-      let scaled f64 = v * 4503599627370496.0f64
-      ln(scaled) - 52.0f64 * LN2
-    } else {
-      let exp i32 = exp_biased.to_i32() - 1023
-      ; 把指数域替换为 1023 → 尾数 m ∈ [1, 2)
-      let mbits u64 = (bits & 0x000FFFFFFFFFFFFFu64) | 0x3FF0000000000000u64
-      let m f64 = mbits.as_f64()
-      ; atanh trick: ln(m) = 2*(z + z³/3 + z⁵/5 + ...) where z = (m-1)/(m+1)
-      ; z ∈ [0, 1/3), ~12 项收敛到 f64 精度
-      let z f64 = (m - 1.0f64) / (m + 1.0f64)
-      let z2 f64 = z * z
-      #Mut let term f64 = z
-      #Mut let sum f64 = z
-      #Mut let n i32 = 3
-      loop {
-        if n >= 25 {
-          break;
-        }
-        term = term * z2
-        sum = sum + term / n.to_f64()
-        n += 2
-      }
-      2.0f64 * sum + exp.to_f64() * LN2
-    }
-  }
-}
+fn log10(v f64) f64 = yuxrt_log10(v)
 
-; ==================== log10 ====================
+fn atan(v f64) f64 = yuxrt_atan(v)
 
-fn log10(v f64) f64 = ln(v) / LN10
+fn asin(v f64) f64 = yuxrt_asin(v)
 
-; ==================== atan（反正切） ====================
-; 区间归约：|x|≤0.5 → Taylor |x|>1 → π/2 − atan(1/x)  0.5<|x|≤1 → π/4 + atan((x-1)/(x+1))
-; 归约后自变量 ≤ 0.2，Taylor ~20 项收敛到 f64 精度
+fn acos(v f64) f64 = yuxrt_acos(v)
 
-fn atan(v f64) f64 {
-  if v < 0.0f64 {
-    -atan(-v)
-  } else {
-    if v > 1.0f64 {
-      PI / 2.0f64 - atan(1.0f64 / v)
-    } else {
-      if v > 0.5 {
-        let reduced f64 = (v - 1.0f64) / (v + 1.0f64)
-        PI / 4.0f64 + atan(reduced)
-      } else {
-        ; Taylor: atan(x) = x − x³/3 + x⁵/5 − x⁷/7 + ...
-        let x2 f64 = v * v
-        #Mut let term f64 = v
-        #Mut let result f64 = v
-        #Mut let n i32 = 3
-        loop {
-          if n >= 40 {
-            break;
-          }
-          term = -term * x2
-          result = result + term / n.to_f64()
-          n += 2
-        }
-        result
-      }
-    }
-  }
-}
+; ==================== sinh / cosh / tanh（双曲函数，走 yuxrt） ====================
 
-; ==================== asin（反正弦） ====================
-; |x|≤0.5 → Taylor  |x|>0.5 → π/2 − 2·asin(√((1−|x|)/2))
+fn sinh(v f64) f64 = yuxrt_sinh(v)
 
-fn asin(v f64) f64 {
-  if v < -1.0f64 || v > 1.0f64 {
-    0.0f64
-  } else {
-    if v < 0.0f64 {
-      -asin(-v)
-    } else {
-      if v > 0.5 {
-        let s f64 = sqrt((1.0f64 - v) / 2.0f64)
-        PI / 2.0f64 - 2.0f64 * asin(s)
-      } else {
-        ; Taylor: asin(x) = x + x³/6 + 3x⁵/40 + ...
-        ; term_{n+2} = term_n · x² · n² / ((n+1)(n+2))
-        let x2 f64 = v * v
-        #Mut let term f64 = v
-        #Mut let result f64 = v
-        #Mut let n i32 = 1
-        loop {
-          if n >= 23 {
-            break;
-          }
-          let nf f64 = n.to_f64()
-          term = term * x2 * nf * nf / ((nf + 1.0f64) * (nf + 2.0f64))
-          result = result + term
-          n += 2
-        }
-        result
-      }
-    }
-  }
-}
+fn cosh(v f64) f64 = yuxrt_cosh(v)
 
-; ==================== acos（反余弦） ====================
+fn tanh(v f64) f64 = yuxrt_tanh(v)
 
-fn acos(v f64) f64 {
-  PI / 2.0f64 - asin(v)
-}
+; ==================== pow_f64（浮点指数幂，走 yuxrt_pow） ====================
 
-; ==================== sinh / cosh / tanh（双曲函数） ====================
-; sinh = (eˣ − e⁻ˣ)/2  cosh = (eˣ + e⁻ˣ)/2  tanh = sinh/cosh
-; TODO: 大 |x| 时 exp(x) 溢出，后续加区间分段保护
-
-fn sinh(v f64) f64 {
-  (exp(v) - exp(-v)) / 2.0f64
-}
-
-fn cosh(v f64) f64 {
-  (exp(v) + exp(-v)) / 2.0f64
-}
-
-fn tanh(v f64) f64 {
-  sinh(v) / cosh(v)
-}
-
-; ==================== pow_f64（浮点指数幂） ====================
-; pow_f64(base, exp) = exp(exp · ln(base))
-; 仅 base > 0 时合法；base == 0 且 exp > 0 返回 0；其它 TODO
-
-fn pow_f64(base f64, exp_ f64) f64 {
-  if base > 0.0f64 {
-    exp(exp_ * ln(base))
-  } else {
-    if base == 0.0f64 {
-      if exp_ > 0.0f64 {
-        0.0f64
-      } else {
-        ; 0^0 或 0^负 → NaN，TODO
-        1.0f64
-      }
-    } else {
-      ; 负数底数 → NaN，TODO
-      0.0f64
-    }
-  }
-}
+fn pow_f64(base f64, exp_ f64) f64 = yuxrt_pow(base, exp_)
 

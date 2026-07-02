@@ -28,16 +28,20 @@ class Compiler;
 
 namespace runtime {
 
-// ==================== Windows API 辅助 ====================
+// ==================== Windows API 辅助（I/O 相关，暂保留） ====================
 
 llvm::Function* getOrCreateWindowsAPI(llvm::Module* module, llvm::IRBuilder<>& builder, const string& name);
 
-llvm::Function* getProcessHeapFn(llvm::Module* module, llvm::IRBuilder<>& builder);
-llvm::Function* getHeapAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder);
-llvm::Function* getHeapReAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder);
-llvm::Function* getHeapFreeFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 llvm::Function* getSetConsoleOutputCPFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 llvm::Function* getSetConsoleCPFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+
+// ==================== yuxrt C 运行时函数声明 ====================
+// 替代直接 emit Win32 HeapAlloc/HeapFree IR 的方案。
+// yuxrt 是纯 C99 静态库（yuxrt.lib），由编译器链接到每个 yux 程序。
+
+llvm::Function* getYuxrtAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+llvm::Function* getYuxrtReallocFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+llvm::Function* getYuxrtFreeFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 
 // 全局 rc_block_count 增减（Phase 8a leak 检测）
 // delta: +1（alloc）或 -1（free）

@@ -185,8 +185,8 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
         // #Cval 时填充（不创建 GlobalVariable）。
         auto inlineIt = _inlineConstantValues.find(mangledName);
         if (inlineIt != _inlineConstantValues.end()) {
-            DEBUG_LOG_VAL("    Expr: InlineConst", varName << " : " << (sym ? sym->type.name : "unknown")
-                                                           << " [direct constant, no load]");
+            DEBUG_LOG_VAL("    Expr: InlineConst",
+                          varName << " : " << (sym ? sym->type.name : "unknown") << " [direct constant, no load]");
             return inlineIt->second;
         }
 
@@ -199,9 +199,8 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
         // 走下方 _currentLambdaForCapture 分支，不应误创为全局常量。
         if (!globalVar && sym && !(_currentLambdaForCapture && _currentLambdaBodyScope)) {
             auto llvmType = getLLVMType(sym->type);
-            globalVar = new llvm::GlobalVariable(*_module, llvmType, true,
-                                                  llvm::GlobalValue::ExternalLinkage,
-                                                  nullptr, mangledName);
+            globalVar = new llvm::GlobalVariable(*_module, llvmType, true, llvm::GlobalValue::ExternalLinkage, nullptr,
+                                                 mangledName);
             DEBUG_LOG_VAL("    Expr: GlobalConstDecl (cross-file)", varName << " : " << sym->type.name);
         }
         if (globalVar) {
@@ -637,11 +636,8 @@ llvm::Value* Compiler::buildArrayLiteralBlock(ExprArrayNode* arrayNode, const Ty
     auto elemSize = _module->getDataLayout().getTypeAllocSize(elemLLVMType);
     auto elemSizeVal = llvm::ConstantInt::get(sizeTy, elemSize);
     auto byteSize = _builder.CreateMul(countVal, elemSizeVal, "byte_size");
-    auto heapFn = runtime::getProcessHeapFn(_module, _builder);
-    auto heap = _builder.CreateCall(heapFn, {}, "heap");
-    auto allocFn = runtime::getHeapAllocFn(_module, _builder);
-    auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
-    auto data = _builder.CreateCall(allocFn, {heap, zeroSize, byteSize}, "lit.data");
+    auto allocFn = runtime::getYuxrtAllocFn(_module, _builder);
+    auto data = _builder.CreateCall(allocFn, {byteSize}, "lit.data");
 
     // 写入 _data 字段
     _builder.CreateStore(data, arrayDataFieldPtr(arrayAlloca, "lit"));

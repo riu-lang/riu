@@ -44,7 +44,7 @@ namespace yux::cli {
 // allObjMap: modName → obj path（所有非 test 模块的 obj，由调用方预编译后传入）
 static void buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const std::string& buildDir,
                           const std::string& irDir, bool emitIr, const std::string& sdkLibPath,
-                          const std::string& testModFilter,
+                          const std::string& yuxrtLibPath, const std::string& testModFilter,
                           const std::map<std::string, std::string>& allObjMap) {
     namespace fs = std::filesystem;
 
@@ -227,6 +227,8 @@ static void buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const s
             std::vector<const char*> linkArgs = {"lld-link", dllOut.c_str(), "/dll", "/noentry", "kernel32.lib"};
             for (auto& o : linkObjs)
                 linkArgs.insert(linkArgs.begin() + 1, o.c_str());
+            // yuxrt 运行时库
+            if (!yuxrtLibPath.empty()) linkArgs.push_back(yuxrtLibPath.c_str());
             // 项目级 [link].libs（yux.toml）
             std::vector<std::string> projLibArgs;
             for (auto& lib : yux.projectLinkLibs()) {
@@ -369,6 +371,33 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         } catch (std::runtime_error& e) {
             reportRuntimeError(sdkPath, e, "Error in SDK: ");
             return 1;
+        }
+    }
+
+    // yuxrt 静态库路径推导：与 yux.exe 同 xmake 输出树下，exe=bin/，lib=lib/
+    // 开发期：build/<plat>/<arch>/<mode>/lib/yuxrt.lib；发布后随编译器安装。
+    string yuxrtLibPath;
+    {
+        namespace fs = std::filesystem;
+        // 从 exe 路径反推：yux.exe 在 bin/，yuxrt.lib 在 lib/
+        std::array<char, MAX_PATH> exeBuf{};
+        DWORD len = GetModuleFileNameA(nullptr, exeBuf.data(), static_cast<DWORD>(exeBuf.size()));
+        if (len > 0 && len < exeBuf.size()) {
+            fs::path exeDir = fs::path(exeBuf.data()).parent_path(); // bin/
+            fs::path buildDir2 = exeDir.parent_path();               // <mode>/
+            fs::path candidate = buildDir2 / "lib" / "yuxrt.lib";
+            if (fs::exists(candidate)) {
+                yuxrtLibPath = candidate.string();
+            }
+        }
+        // 备选：相对 SDK 项目根（dogfood build）
+        if (yuxrtLibPath.empty()) {
+            fs::path alt = fs::path(yux.projectRoot()) / "build" / "lib" / "yuxrt.lib";
+            if (fs::exists(alt)) yuxrtLibPath = alt.string();
+        }
+        if (yuxrtLibPath.empty()) {
+            std::cerr
+                << "Warning: yuxrt.lib not found — runtime functions (yuxrt_alloc/free/math) will be unresolved\n";
         }
     }
 
@@ -559,7 +588,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 std::string obj = mirroredOutputBase(yux.projectRoot(), buildDir, abs) + ".obj";
                 allObjMap[mn] = obj;
             }
-            buildTestDlls(yux, srcDir, buildDir, irDir, emitIr, sdkLibPath, opts.testMod, allObjMap);
+            buildTestDlls(yux, srcDir, buildDir, irDir, emitIr, sdkLibPath, yuxrtLibPath, opts.testMod, allObjMap);
         }
 
         std::cout.flush();
@@ -668,7 +697,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             std::string obj = mirroredOutputBase(yux.projectRoot(), buildDir, abs) + ".obj";
             allObjMap[mn] = obj;
         }
-        buildTestDlls(yux, srcDir, buildDir, irDir, emitIr, sdkLibPath, opts.testMod, allObjMap);
+        buildTestDlls(yux, srcDir, buildDir, irDir, emitIr, sdkLibPath, yuxrtLibPath, opts.testMod, allObjMap);
 
         std::cout.flush();
         std::cerr.flush();
@@ -780,6 +809,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         for (auto& mo : modObjPaths) {
             args.insert(args.begin() + 2, mo.c_str());
         }
+        // yuxrt 运行时库
+        if (!yuxrtLibPath.empty()) args.push_back(yuxrtLibPath.c_str());
         // 项目级 [link].libs（yux.toml）
         std::vector<std::string> projLibArgs;
         for (auto& lib : yux.projectLinkLibs()) {

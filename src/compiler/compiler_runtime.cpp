@@ -28,42 +28,6 @@ llvm::Function* getOrCreateWindowsAPI(llvm::Module* module, llvm::IRBuilder<>& b
     auto func = module->getFunction(name);
     if (func) return func;
 
-    // GetProcessHeap: 获取进程默认堆
-    // 签名: ptr GetProcessHeap()
-    if (name == "GetProcessHeap") {
-        auto fnType = llvm::FunctionType::get(llvm::PointerType::get(builder.getContext(), 0), {}, false);
-        return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, name, module);
-    }
-
-    // HeapAlloc: 从堆分配内存
-    // 签名: ptr HeapAlloc(ptr heap, i64 flags, i64 size)
-    if (name == "HeapAlloc") {
-        auto fnType = llvm::FunctionType::get(
-            llvm::PointerType::get(builder.getContext(), 0),
-            {llvm::PointerType::get(builder.getContext(), 0), builder.getInt64Ty(), builder.getInt64Ty()}, false);
-        return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, name, module);
-    }
-
-    // HeapReAlloc: 重新分配堆内存
-    // 签名: ptr HeapReAlloc(ptr heap, i64 flags, ptr mem, i64 size)
-    if (name == "HeapReAlloc") {
-        auto fnType = llvm::FunctionType::get(llvm::PointerType::get(builder.getContext(), 0),
-                                              {llvm::PointerType::get(builder.getContext(), 0), builder.getInt64Ty(),
-                                               llvm::PointerType::get(builder.getContext(), 0), builder.getInt64Ty()},
-                                              false);
-        return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, name, module);
-    }
-
-    // HeapFree: 释放堆内存
-    // 签名: i32 HeapFree(ptr heap, i64 flags, ptr mem)
-    if (name == "HeapFree") {
-        auto fnType = llvm::FunctionType::get(builder.getInt32Ty(),
-                                              {llvm::PointerType::get(builder.getContext(), 0), builder.getInt64Ty(),
-                                               llvm::PointerType::get(builder.getContext(), 0)},
-                                              false);
-        return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, name, module);
-    }
-
     // GetStdHandle: 取标准 IO 句柄
     // 签名: ptr GetStdHandle(i32 nStdHandle)
     if (name == "GetStdHandle") {
@@ -101,24 +65,39 @@ llvm::Function* getOrCreateWindowsAPI(llvm::Module* module, llvm::IRBuilder<>& b
     return nullptr;
 }
 
-// 获取 GetProcessHeap 函数
-llvm::Function* getProcessHeapFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
-    return getOrCreateWindowsAPI(module, builder, "GetProcessHeap");
+// ==================== yuxrt C 运行时函数声明 ====================
+// 替代直接 emit Win32 HeapAlloc/HeapFree IR 的方案。
+// yuxrt 是纯 C99 静态库（yuxrt.lib），由编译器链接到每个 yux 程序。
+
+// yuxrt_alloc(size u64) -> ptr
+llvm::Function* getYuxrtAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
+    string fnName = "yuxrt_alloc";
+    auto func = module->getFunction(fnName);
+    if (func) return func;
+    auto fnType =
+        llvm::FunctionType::get(llvm::PointerType::get(builder.getContext(), 0), {builder.getInt64Ty()}, false);
+    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
-// 获取 HeapAlloc 函数
-llvm::Function* getHeapAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
-    return getOrCreateWindowsAPI(module, builder, "HeapAlloc");
+// yuxrt_realloc(ptr, new_size u64) -> ptr
+llvm::Function* getYuxrtReallocFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
+    string fnName = "yuxrt_realloc";
+    auto func = module->getFunction(fnName);
+    if (func) return func;
+    auto fnType =
+        llvm::FunctionType::get(llvm::PointerType::get(builder.getContext(), 0),
+                                {llvm::PointerType::get(builder.getContext(), 0), builder.getInt64Ty()}, false);
+    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
-// 获取 HeapReAlloc 函数
-llvm::Function* getHeapReAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
-    return getOrCreateWindowsAPI(module, builder, "HeapReAlloc");
-}
-
-// 获取 HeapFree 函数
-llvm::Function* getHeapFreeFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
-    return getOrCreateWindowsAPI(module, builder, "HeapFree");
+// yuxrt_free(ptr) -> void
+llvm::Function* getYuxrtFreeFn(llvm::Module* module, llvm::IRBuilder<>& builder) {
+    string fnName = "yuxrt_free";
+    auto func = module->getFunction(fnName);
+    if (func) return func;
+    auto fnType =
+        llvm::FunctionType::get(builder.getVoidTy(), {llvm::PointerType::get(builder.getContext(), 0)}, false);
+    return llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, fnName, module);
 }
 
 // 获取 SetConsoleOutputCP 函数
@@ -338,10 +317,8 @@ llvm::Function* getArrayFreeDataFn(llvm::Module* module, llvm::IRBuilder<>& buil
     builder.CreateCondBr(isNull, doneBB, freeBB);
 
     builder.SetInsertPoint(freeBB);
-    auto heapFn = getProcessHeapFn(module, builder);
-    auto heap = builder.CreateCall(heapFn, {}, "heap");
-    auto heapFreeFn = getHeapFreeFn(module, builder);
-    builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), data});
+    auto freeFn = getYuxrtFreeFn(module, builder);
+    builder.CreateCall(freeFn, {data});
     builder.CreateBr(doneBB);
 
     builder.SetInsertPoint(doneBB);
@@ -387,12 +364,11 @@ llvm::Function* getHeapHandleFreeFn(llvm::Module* module, llvm::IRBuilder<>& bui
 void emitHeapHandleHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module) {
     DEBUG_LOG("Emitting Heap<T> helper functions");
 
-    auto getProcessHeapFn = runtime::getProcessHeapFn(module, builder);
-    auto heapAllocFn = runtime::getHeapAllocFn(module, builder);
-    auto heapFreeFn = runtime::getHeapFreeFn(module, builder);
+    auto allocFn = runtime::getYuxrtAllocFn(module, builder);
+    auto freeFn = runtime::getYuxrtFreeFn(module, builder);
     auto ptrTy = llvm::PointerType::get(context, 0);
 
-    // __yux_heap_alloc: 直接调 HeapAlloc(processHeap, 0, payloadSize)，返回裸 payload 指针
+    // __yux_heap_alloc: 直接调 yuxrt_alloc(payloadSize)，返回裸 payload 指针
     {
         DEBUG_LOG("  Emitting __yux_heap_alloc");
         auto fn = getHeapHandleAllocFn(module, builder);
@@ -401,13 +377,12 @@ void emitHeapHandleHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builde
             builder.SetInsertPoint(entry);
 
             llvm::Value* payloadSize = &*fn->arg_begin();
-            auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
-            auto buf = builder.CreateCall(heapAllocFn, {heap, builder.getInt64(0), payloadSize}, "heap_buf");
+            auto buf = builder.CreateCall(allocFn, {payloadSize}, "heap_buf");
             builder.CreateRet(buf);
         }
     }
 
-    // __yux_heap_free: null 跳过；非 null 调 HeapFree(processHeap, 0, ptr)
+    // __yux_heap_free: null 跳过；非 null 调 yuxrt_free(ptr)
     {
         DEBUG_LOG("  Emitting __yux_heap_free");
         auto fn = getHeapHandleFreeFn(module, builder);
@@ -423,8 +398,7 @@ void emitHeapHandleHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builde
             builder.CreateCondBr(isNull, doneBB, freeBB);
 
             builder.SetInsertPoint(freeBB);
-            auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
-            builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), ptr});
+            builder.CreateCall(freeFn, {ptr});
             builder.CreateBr(doneBB);
 
             builder.SetInsertPoint(doneBB);
@@ -443,9 +417,8 @@ void emitRcHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm:
 
     emitRcBlockCountDefinition(module, builder);
 
-    auto getProcessHeapFn = runtime::getProcessHeapFn(module, builder);
-    auto heapAllocFn = runtime::getHeapAllocFn(module, builder);
-    auto heapFreeFn = runtime::getHeapFreeFn(module, builder);
+    auto allocFn = runtime::getYuxrtAllocFn(module, builder);
+    auto freeFn = runtime::getYuxrtFreeFn(module, builder);
 
     auto ptrTy = llvm::PointerType::get(context, 0);
     auto i32Ty = builder.getInt32Ty();
@@ -455,20 +428,18 @@ void emitRcHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm:
     // _box_alloc: 分配 8 字节 RC 头 + payload_size，初始化 strong=1, weak=1
     {
         DEBUG_LOG("  Emitting _box_alloc");
-        auto allocFn = getRcAllocFn(module, builder);
-        if (allocFn->empty()) {
-            auto entry = llvm::BasicBlock::Create(context, "entry", allocFn);
+        auto rcAllocFn = getRcAllocFn(module, builder);
+        if (rcAllocFn->empty()) {
+            auto entry = llvm::BasicBlock::Create(context, "entry", rcAllocFn);
             builder.SetInsertPoint(entry);
 
-            llvm::Value* payloadSize = &*allocFn->arg_begin();
-
-            auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
+            llvm::Value* payloadSize = &*rcAllocFn->arg_begin();
 
             // 总大小 = 8（RC 头）+ payload_size
             auto headerSize = builder.getInt64(8);
             auto totalSize = builder.CreateAdd(payloadSize, headerSize, "total_size");
 
-            auto block = builder.CreateCall(heapAllocFn, {heap, builder.getInt64(0), totalSize}, "block");
+            auto block = builder.CreateCall(allocFn, {totalSize}, "block");
 
             emitRcBlockCountAdd(builder, module, +1);
 
@@ -552,8 +523,7 @@ void emitRcHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm:
             builder.CreateCondBr(weakIsZero, freeBB, doneBB);
 
             builder.SetInsertPoint(freeBB);
-            auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
-            builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), block});
+            builder.CreateCall(freeFn, {block});
             emitRcBlockCountAdd(builder, module, -1);
             builder.CreateBr(doneBB);
 
@@ -621,8 +591,7 @@ void emitRcHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm:
             builder.CreateCondBr(weakIsZero, freeBB, doneBB);
 
             builder.SetInsertPoint(freeBB);
-            auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
-            builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), block});
+            builder.CreateCall(freeFn, {block});
             emitRcBlockCountAdd(builder, module, -1);
             builder.CreateBr(doneBB);
 
@@ -700,8 +669,7 @@ void emitRcHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm:
             builder.CreateCondBr(weakIsZero, freeBB, doneBB);
 
             builder.SetInsertPoint(freeBB);
-            auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
-            builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), data});
+            builder.CreateCall(freeFn, {data});
             emitRcBlockCountAdd(builder, module, -1);
             builder.CreateBr(doneBB);
 
@@ -722,8 +690,7 @@ void emitRcReleaseTypedFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder
                           llvm::Function* func, llvm::Function* dtorFn) {
     if (!func || !func->empty()) return;
 
-    auto getProcessHeapFn = runtime::getProcessHeapFn(module, builder);
-    auto heapFreeFn = runtime::getHeapFreeFn(module, builder);
+    auto freeFn = runtime::getYuxrtFreeFn(module, builder);
 
     auto ptrTy = llvm::PointerType::get(context, 0);
     auto i32Ty = builder.getInt32Ty();
@@ -773,8 +740,7 @@ void emitRcReleaseTypedFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder
     builder.CreateCondBr(weakIsZero, freeBB, doneBB);
 
     builder.SetInsertPoint(freeBB);
-    auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
-    builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), block});
+    builder.CreateCall(freeFn, {block});
     emitRcBlockCountAdd(builder, module, -1);
     builder.CreateBr(doneBB);
 
@@ -789,8 +755,7 @@ void emitRcReleaseForArrayFn(llvm::LLVMContext& context, llvm::IRBuilder<>& buil
                              llvm::Function* func) {
     if (!func || !func->empty()) return;
 
-    auto getProcessHeapFn = runtime::getProcessHeapFn(module, builder);
-    auto heapFreeFn = runtime::getHeapFreeFn(module, builder);
+    auto freeFn = runtime::getYuxrtFreeFn(module, builder);
 
     auto ptrTy = llvm::PointerType::get(context, 0);
     auto i32Ty = builder.getInt32Ty();
@@ -845,8 +810,7 @@ void emitRcReleaseForArrayFn(llvm::LLVMContext& context, llvm::IRBuilder<>& buil
     builder.CreateCondBr(weakIsZero, freeBB, doneBB);
 
     builder.SetInsertPoint(freeBB);
-    auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
-    builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), block});
+    builder.CreateCall(freeFn, {block});
     emitRcBlockCountAdd(builder, module, -1);
     builder.CreateBr(doneBB);
 
@@ -861,8 +825,7 @@ void emitRcReleaseForInlineDtorFn(llvm::LLVMContext& context, llvm::IRBuilder<>&
                                   llvm::Function* func, const string& kind) {
     if (!func || !func->empty()) return;
 
-    auto getProcessHeapFn = runtime::getProcessHeapFn(module, builder);
-    auto heapFreeFn = runtime::getHeapFreeFn(module, builder);
+    auto freeFn = runtime::getYuxrtFreeFn(module, builder);
 
     auto ptrTy = llvm::PointerType::get(context, 0);
     auto i32Ty = builder.getInt32Ty();
@@ -899,24 +862,24 @@ void emitRcReleaseForInlineDtorFn(llvm::LLVMContext& context, llvm::IRBuilder<>&
     if (kind == "Rc") {
         // Rc<Rc<U>>: payload = Rc<U> = {ptr handle} @ block+8
         auto payloadPtr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(8)}, "nested_rc_payload");
-        auto handleAddr = builder.CreateBitCast(payloadPtr, llvm::PointerType::get(context, 0), "nested_rc_handle_addr");
+        auto handleAddr =
+            builder.CreateBitCast(payloadPtr, llvm::PointerType::get(context, 0), "nested_rc_handle_addr");
         auto handle = builder.CreateLoad(ptrTy, handleAddr, "nested_rc_handle");
         auto releaseFn = getRcReleaseFn(module, builder);
         builder.CreateCall(releaseFn, {handle});
     } else if (kind == "Weak") {
         // Rc<Weak<U>>: payload = Weak<U> = {ptr handle} @ block+8
         auto payloadPtr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(8)}, "nested_weak_payload");
-        auto handleAddr = builder.CreateBitCast(payloadPtr, llvm::PointerType::get(context, 0), "nested_weak_handle_addr");
+        auto handleAddr =
+            builder.CreateBitCast(payloadPtr, llvm::PointerType::get(context, 0), "nested_weak_handle_addr");
         auto handle = builder.CreateLoad(ptrTy, handleAddr, "nested_weak_handle");
         auto releaseFn = getWeakReleaseFn(module, builder);
         builder.CreateCall(releaseFn, {handle});
     } else if (kind == "Fn") {
         // Rc<fn(...)>: payload = {ptr fn_ptr, ptr captures} @ block+8
         // captures 在 payload[8] (fn_ptr 之后)，若 non-null 则 _box_release
-        auto capturesAddr =
-            builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(16)}, "fn_captures_addr");
-        auto capturesPtr =
-            builder.CreateBitCast(capturesAddr, llvm::PointerType::get(context, 0), "fn_captures_ptr");
+        auto capturesAddr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(16)}, "fn_captures_addr");
+        auto capturesPtr = builder.CreateBitCast(capturesAddr, llvm::PointerType::get(context, 0), "fn_captures_ptr");
         auto captures = builder.CreateLoad(ptrTy, capturesPtr, "fn_captures");
         auto releaseFn = getRcReleaseFn(module, builder);
         builder.CreateCall(releaseFn, {captures});
@@ -934,8 +897,7 @@ void emitRcReleaseForInlineDtorFn(llvm::LLVMContext& context, llvm::IRBuilder<>&
     builder.CreateCondBr(weakIsZero, freeBB, doneBB);
 
     builder.SetInsertPoint(freeBB);
-    auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
-    builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), block});
+    builder.CreateCall(freeFn, {block});
     emitRcBlockCountAdd(builder, module, -1);
     builder.CreateBr(doneBB);
 
@@ -950,8 +912,7 @@ void emitRcReleaseForInlineDtorFn(llvm::LLVMContext& context, llvm::IRBuilder<>&
 void emitWeakHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module) {
     DEBUG_LOG("Emitting Weak helper functions");
 
-    auto getProcessHeapFn = runtime::getProcessHeapFn(module, builder);
-    auto heapFreeFn = runtime::getHeapFreeFn(module, builder);
+    auto freeFn = runtime::getYuxrtFreeFn(module, builder);
 
     auto ptrTy = llvm::PointerType::get(context, 0);
     auto i32Ty = builder.getInt32Ty();
@@ -1056,8 +1017,7 @@ void emitWeakHelpers(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llv
         builder.CreateCondBr(isZero, freeBB, doneBB);
 
         builder.SetInsertPoint(freeBB);
-        auto heap = builder.CreateCall(getProcessHeapFn, {}, "heap");
-        builder.CreateCall(heapFreeFn, {heap, builder.getInt64(0), block});
+        builder.CreateCall(freeFn, {block});
         emitRcBlockCountAdd(builder, module, -1);
         builder.CreateBr(doneBB);
 

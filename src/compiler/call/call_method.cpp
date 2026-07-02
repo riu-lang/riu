@@ -318,12 +318,10 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         auto elemSizeVal = llvm::ConstantInt::get(sizeTy, elemSize);
         auto newByteSize = _builder.CreateMul(newCap, elemSizeVal, "new.byte_size");
         auto oldData = _builder.CreateLoad(ptrTy, dataFieldPtr, "old.data");
-        auto heapFn = runtime::getProcessHeapFn(_module, _builder);
-        auto heap = _builder.CreateCall(heapFn, {}, "heap");
-        auto allocFn = runtime::getHeapAllocFn(_module, _builder);
-        auto reallocFn = runtime::getHeapReAllocFn(_module, _builder);
+        auto allocFn = runtime::getYuxrtAllocFn(_module, _builder);
+        auto reallocFn = runtime::getYuxrtReallocFn(_module, _builder);
 
-        // 旧 data 为空 → HeapAlloc，否则 → HeapReAlloc
+        // 旧 data 为空 → yuxrt_alloc，否则 → yuxrt_realloc
         auto dataIsNull = _builder.CreateICmpEQ(oldData, nullPtr, "data.is_null");
         auto allocBB = llvm::BasicBlock::Create(_context, "push.alloc", _currentFn);
         auto reallocBB = llvm::BasicBlock::Create(_context, "push.realloc", _currentFn);
@@ -331,12 +329,11 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         _builder.CreateCondBr(dataIsNull, allocBB, reallocBB);
 
         _builder.SetInsertPoint(allocBB);
-        auto alloced = _builder.CreateCall(allocFn, {heap, zeroSize, newByteSize}, "alloced.data");
+        auto alloced = _builder.CreateCall(allocFn, {newByteSize}, "alloced.data");
         _builder.CreateBr(growDoneBB);
 
         _builder.SetInsertPoint(reallocBB);
-        auto realloced =
-            _builder.CreateCall(reallocFn, {heap, zeroSize, oldData, newByteSize}, "realloced");
+        auto realloced = _builder.CreateCall(reallocFn, {oldData, newByteSize}, "realloced");
         _builder.CreateBr(growDoneBB);
 
         _builder.SetInsertPoint(growDoneBB);

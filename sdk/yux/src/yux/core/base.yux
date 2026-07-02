@@ -1,18 +1,22 @@
 ; yux SDK - 自举运行时
 ; 使用 Windows API 进行 I/O
 
-; 外部 Windows 函数声明
+; 外部函数声明（I/O + 进程退出仍走 Win32，内存管理走 yuxrt）
 extern {
   fn GetStdHandle(nStdHandle i32) Ptr
   fn WriteFile(hFile Ptr, lpBuffer Ptr, nNumberOfBytesToWrite u32, lpNumberOfBytesWritten Ptr, lpOverlapped Ptr) i32
   #NoReturn
   fn ExitProcess(uExitCode u32)
 
-  ; 堆管理 API（B-3: Array 去 Builtin 后 yux 层直接管理内存）
-  fn GetProcessHeap() Ptr
-  fn HeapAlloc(hHeap Ptr, dwFlags u32, dwBytes u64) Ptr
-  fn HeapReAlloc(hHeap Ptr, dwFlags u32, lpMem Ptr, dwBytes u64) Ptr
-  fn HeapFree(hHeap Ptr, dwFlags u32, lpMem Ptr) i32
+  ; yuxrt 内存管理（替代 Win32 HeapAlloc/HeapFree）
+  fn yuxrt_alloc(size u64) Ptr
+  fn yuxrt_alloc_zeroed(size u64) Ptr
+  fn yuxrt_realloc(ptr Ptr, new_size u64) Ptr
+  fn yuxrt_free(ptr Ptr)
+  fn yuxrt_memcpy(dst Ptr, src Ptr, size u64) Ptr
+  fn yuxrt_memset(dst Ptr, val i32, size u64) Ptr
+  fn yuxrt_memcmp(a Ptr, b Ptr, size u64) i32
+  fn yuxrt_memmove(dst Ptr, src Ptr, size u64) Ptr
 }
 
 ; 全局常量
