@@ -3,9 +3,7 @@
 #ifndef YUXRT_H
 #define YUXRT_H
 
+#include "math/math.h"
 #include "mem/mem.h"
-
-// math.h 在 Phase 2 引入
-// #include "math/math.h"
 
 #endif // YUXRT_H

@@ -21,7 +21,7 @@ void yuxrt_free(void* ptr);
 void* yuxrt_memcpy(void* dst, const void* src, size_t size);
 
 // 将 dst 的前 size 字节设为 val。
-void* yuxrt_memset(void* dst, uint8_t val, size_t size);
+void* yuxrt_memset(void* dst, int val, size_t size);
 
 // 比较 a 和 b 的前 size 字节。
 // 返回 0 表示相等，<0 表示 a<b，>0 表示 a>b。

@@ -11,5 +11,4 @@ target("yuxrt")
     add_files("port/win32.c")
     add_files("mem/alloc.c")
     add_files("mem/ops.c")
-    -- math 文件 Phase 2 加入：
-    -- add_files("math/*.c")
+    add_files("math/*.c")
