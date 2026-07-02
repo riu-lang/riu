@@ -10,7 +10,7 @@ yux 是自举编译器：`.yux → ANTLR4 → AST → LLVM IR → LLD → exe`�
 ## 环境
 
 - Windows + **Clang（无 MSVC）**，LLVM 在 PATH
-- `build/windows/x64/debug` 在 PATH，构建后直接 `yux ...`
+- `build/windows/x64/debug/bin` 在 PATH，构建后直接 `yux ...`
 - C++ lint/format：`./lint.cmd`（clang-tidy）、`./format.cmd`（clang-format），**必须带 `./`**（不在 PATH）。提交时 `./lint.cmd` 必须 **0 警告**
 - 不要假设有 `npm run lint` / `make fmt`
 
@@ -29,7 +29,7 @@ yux build --emit-ir          ; 同时输出 .ll
 
 ### 可执行文件清单
 
-所有 exe 放在 `build/windows/x64/<mode>/`，**互相独立 —— 构建一个不会自动编译其他**。需要多个时推荐一次性构建全部：
+所有 exe 放在 `build/windows/x64/<mode>/bin/`，**互相独立 —— 构建一个不会自动编译其他**。需要多个时推荐一次性构建全部：
 
 ```powershell
 xmake                           ; 构建所有 target（全部 exe + 静态库）

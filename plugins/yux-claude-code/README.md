@@ -8,7 +8,7 @@ Claude Code 插件，让 Claude 编辑 `.yux` 文件时通过 LSP 实时看到�
 
 - 已构建 yux 工具链：`xmake build yux-lsp`（根 `xmake.lua` 在 `after_build` 里把 `yux-lsp.exe` 复制成 `yux-lsp-claude.exe`，免去手动 copy）
 - 副本被运行中的 Claude Code 占用时, 构建会自动把旧副本重命名为 `yux-lsp-claude.exe.old` 再写入新文件, 并打 `warning: ... 重启 Claude Code 后生效`。**真正切到新代码必须重启 Claude Code（或先 `/plugin` disable 本插件再 enable）** —— 否则当前进程仍是旧二进制
-- 本仓库默认产物目录 `build/windows/x64/debug` / `build/windows/x64/release` 已加进 `PATH` 时无需额外操作
+- 本仓库默认产物目录 `build/windows/x64/debug/bin` / `build/windows/x64/release/bin` 已加进 `PATH` 时无需额外操作
 
 > 历史上这份副本要求用户手动 `copy yux-lsp.exe yux-lsp-claude.exe`，出现过"语法/特性升级后忘记复制 → LSP 误报"（例：`#Fallible(E)` 单参注解上线后旧副本不识别）。现在已并入 xmake 主构建。
 

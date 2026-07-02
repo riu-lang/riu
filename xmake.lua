@@ -13,6 +13,10 @@ add_rules("mode.debug", "mode.release")
 
 set_toolchains("clang")
 
+-- 输出目录：build/<plat>/<arch>/<profile>/{bin,lib}
+-- 编译期 SDK symlink 在 xmake 内维护（不再由 init.js 手写）
+set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)", { bindir = "bin", libdir = "lib" })
+
 add_cxxflags("-Wno-language-extension-token", {force = true})
 
 local third_party = path.join(os.projectdir(), "third_party")
@@ -237,6 +241,16 @@ target("yux")
     add_files("src/main.cpp")
     add_files("src/cli/*.cpp")
     set_rundir("$(projectdir)")
+    before_build(function (target)
+        -- SDK symlink: build/<plat>/<arch>/<mode>/sdk → <repo>/sdk
+        -- 替代旧 sync-deps.js 在 build/<plat>/<arch>/ 平铺 symlink 的方式
+        local sdk_src = path.join(os.projectdir(), "sdk")
+        local sdk_link = path.join(path.directory(target:targetdir()), "sdk")
+        if not os.isdir(sdk_link) then
+            os.ln(sdk_src, sdk_link)
+            cprint("${dim}  [sdk-link] %s → sdk/${clear}", sdk_link)
+        end
+    end)
 
 target("yux-lsp")
     set_kind("binary")
@@ -290,6 +304,7 @@ target("yux-check")
     set_rundir("$(projectdir)")
 
 includes("tests")
+includes("yuxrt")
 includes("@builtin/xpack")
 
 local third_party_licenses = {

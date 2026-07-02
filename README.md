@@ -42,7 +42,7 @@ fn main() {
 - **编译器**: Clang
 - **构建工具**: xmake
 - **系统**: Windows
-- `build/windows/x64/debug`的绝对路径添加到`PATH`，以便调用
+- `build/windows/x64/debug/bin`的绝对路径添加到`PATH`，以便调用
 
 ### 依赖
 
