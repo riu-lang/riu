@@ -661,6 +661,56 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             auto result = _builder.CreateLoad(nullableLLVMTy, resultAlloca, "heap_opt.val");
             return result;
         }
+        if (fnName == "heap" || fnName == "_heap_take") {
+            // heap:<T>(v T) Heap<T> — 从值构造 owned Heap（alloc + store）
+            // _heap_take:<T>(p Ptr) Heap<T> — 从裸 Ptr 接管（私有）
+            auto& T = typeArgs[0];
+            auto ptrTy = llvm::PointerType::get(_context, 0);
+
+            if (fnName == "_heap_take") {
+                // Ptr 接管：直接返回 Ptr 作为 Heap<T> 句柄
+                consumeTemp(args[0]);
+                DEBUG_LOG_VAL("    Builtin: _heap_take", T.name << " <- Ptr");
+                return args[0];
+            }
+
+            // heap: alloc + store，返回裸 T* 形态的 Heap<T>
+            auto innerLLVMType = getLLVMType(T);
+            auto sizeVal =
+                _builder.getInt64(_module->getDataLayout().getTypeAllocSize(innerLLVMType).getFixedValue());
+            auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
+            auto rawPtr = _builder.CreateCall(allocFn, {sizeVal}, "heap.payload");
+            _builder.CreateStore(args[0], rawPtr);
+            consumeTemp(args[0]);
+            DEBUG_LOG_VAL("    Builtin: heap", T.name);
+            return rawPtr;
+        }
+        if (fnName == "rc") {
+            // rc:<T>(v T) Rc<T> — 从值构造 owned Rc（alloc block + store @ block+8）
+            auto& T = typeArgs[0];
+            auto elemLLVMType = getLLVMType(T);
+            auto sizeVal =
+                _builder.getInt64(_module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
+            auto allocFn = runtime::getRcAllocFn(_module, _builder);
+            auto block = _builder.CreateCall(allocFn, {sizeVal}, "rc.block");
+
+            // payload 起始 = block + 8（跳过 refcount 头）
+            auto payloadPtr =
+                _builder.CreateGEP(_builder.getInt8Ty(), block, {_builder.getInt64(8)}, "rc.payload");
+            _builder.CreateStore(args[0], payloadPtr);
+            consumeTemp(args[0]);
+
+            // 构造 Rc<T> struct { ptr handle }
+            auto tShared = make_shared<TypeInfo>(T);
+            TypeInfo rcTy("Rc", {tShared});
+            auto rcStructType = getLLVMType(rcTy);
+            auto resultAlloca = _builder.CreateAlloca(rcStructType, nullptr, "rc.result");
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto handleField = _builder.CreateGEP(rcStructType, resultAlloca, {zero, zero}, "rc.handle_field");
+            _builder.CreateStore(block, handleField);
+            DEBUG_LOG_VAL("    Builtin: rc", T.name);
+            return _builder.CreateLoad(rcStructType, resultAlloca, "rc.val");
+        }
         // E6017 (未知 Builtin intrinsic) 已由 sema::validateBuiltinIntrinsicShape
         // 在分派前抛出, 不会到这里; 留 unreachable assert 防御.
         throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6017, fnName);

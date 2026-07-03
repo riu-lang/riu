@@ -1,5 +1,5 @@
 ; DRAFT-heap-types §8.3a Heap<T> 行为用例（Phase 2.9）
-; 覆盖：Heap:<T>(...) 构造、as_ref(Heap<T>) 借用、可变 Heap 重赋、
+; 覆盖：heap:<T>(...) 构造、as_ref(Heap<T>) 借用、可变 Heap 重赋、
 ;       struct 字段 Heap<T> 析构、嵌套 Heap 构造、多次 as_ref 共享借用。
 ; 负面诊断（E3028 / E4023 / E4024 / E4025）见 tests/cases/diag_heap_*.
 
@@ -20,7 +20,7 @@ struct HeapWrap {
   #Static
   fn make(v i32) HeapWrap {
     ret Self {
-      .inner = Heap:<i32>(v)
+      .inner = heap:<i32>(v)
     }
   }
 }
@@ -29,7 +29,7 @@ struct HeapWrap {
 
 #Test
 fn test_heap_scalar_ctor_and_as_ref() {
-  let h Heap<i32> = Heap:<i32>(42)
+  let h Heap<i32> = heap:<i32>(42)
   let r i32& = as_ref(h)
   assert_eq(r, 42)
 }
@@ -38,17 +38,17 @@ fn test_heap_scalar_ctor_and_as_ref() {
 
 #Test
 fn test_heap_struct_ctor_field_read() {
-  let h Heap<HeapBox> = Heap:<HeapBox>(HeapBox::make(7))
+  let h Heap<HeapBox> = heap:<HeapBox>(HeapBox::make(7))
   let r HeapBox& = as_ref(h)
   assert_eq(r.k, 7)
 }
 
-; ---------- 3. #Mut Heap：重赋必须是 Heap:<T>(...) 新构造 ----------
+; ---------- 3. #Mut Heap：重赋必须是 heap:<T>(...) 新构造 ----------
 
 #Test
 fn test_heap_mut_reassign_fresh_ctor() {
-  #Mut let h Heap<i32> = Heap:<i32>(1)
-  h = Heap:<i32>(99)
+  #Mut let h Heap<i32> = heap:<i32>(1)
+  h = heap:<i32>(99)
   let r i32& = as_ref(h)
   assert_eq(r, 99)
 }
@@ -57,7 +57,7 @@ fn test_heap_mut_reassign_fresh_ctor() {
 
 #Test
 fn test_heap_two_as_ref_shared() {
-  let h Heap<HeapBox> = Heap:<HeapBox>(HeapBox::make(13))
+  let h Heap<HeapBox> = heap:<HeapBox>(HeapBox::make(13))
   let r1 HeapBox& = as_ref(h)
   let r2 HeapBox& = as_ref(h)
   assert_eq(r1.k, 13)
@@ -80,9 +80,9 @@ fn test_heap_inside_struct_field() {
 
 #Test
 fn test_heap_multi_locals_scope_drop() {
-  let a Heap<i32> = Heap:<i32>(2)
-  let b Heap<i32> = Heap:<i32>(4)
-  let c Heap<i32> = Heap:<i32>(8)
+  let a Heap<i32> = heap:<i32>(2)
+  let b Heap<i32> = heap:<i32>(4)
+  let c Heap<i32> = heap:<i32>(8)
   let ra i32& = as_ref(a)
   let rb i32& = as_ref(b)
   let rc i32& = as_ref(c)
@@ -93,9 +93,9 @@ fn test_heap_multi_locals_scope_drop() {
 
 #Test
 fn test_heap_nested_block_scope() {
-  let outer Heap<i32> = Heap:<i32>(100)
+  let outer Heap<i32> = heap:<i32>(100)
   {
-    let inner Heap<i32> = Heap:<i32>(200)
+    let inner Heap<i32> = heap:<i32>(200)
     let ri i32& = as_ref(inner)
     assert_eq(ri, 200)
   }
@@ -108,7 +108,7 @@ fn test_heap_nested_block_scope() {
 #Test
 fn test_heap_field_and_top_heap_coexist() {
   let w HeapWrap = HeapWrap::make(50)
-  let h Heap<i32> = Heap:<i32>(60)
+  let h Heap<i32> = heap:<i32>(60)
   let rh i32& = as_ref(h)
   assert_eq(rh, 60)
 }
@@ -118,7 +118,7 @@ fn test_heap_field_and_top_heap_coexist() {
 ;   调用方 `let r Heap<T> = call()` 接管 fresh handover（E4024 放行 ExprCallNode 形态）。
 
 fn nrvo_make_h(v i32) Heap<i32> {
-  let h Heap<i32> = Heap:<i32>(v)
+  let h Heap<i32> = heap:<i32>(v)
   ret h
 }
 
@@ -155,10 +155,10 @@ fn test_heap_some_and_null_distinct() {
 
 fn nrvo_pick(cond bool) Heap<i32> {
   if cond {
-    let a Heap<i32> = Heap:<i32>(11)
+    let a Heap<i32> = heap:<i32>(11)
     ret a
   }
-  let b Heap<i32> = Heap:<i32>(22)
+  let b Heap<i32> = heap:<i32>(22)
   ret b
 }
 
@@ -336,7 +336,7 @@ fn test_heap_3e_lambda_move_capture_no_double_free() {
 
 #Test
 fn test_heap_3f_copy_of_owned_scalar() {
-  let a Heap<i32> = Heap:<i32>(99)
+  let a Heap<i32> = heap:<i32>(99)
   let b Heap<i32> = copy_of(a)
   let ra i32& = as_ref(a)
   let rb i32& = as_ref(b)
@@ -357,7 +357,7 @@ struct CopyHeapBox {
 
 #Test
 fn test_heap_3f_copy_of_owned_struct() {
-  let a Heap<CopyHeapBox> = Heap:<CopyHeapBox>(CopyHeapBox::make(7))
+  let a Heap<CopyHeapBox> = heap:<CopyHeapBox>(CopyHeapBox::make(7))
   let b Heap<CopyHeapBox> = copy_of(a)
   let ra CopyHeapBox& = as_ref(a)
   let rb CopyHeapBox& = as_ref(b)
@@ -384,34 +384,34 @@ fn test_heap_3f_copy_of_nullable_null() {
 #Test
 fn test_heap_3f_copy_of_no_double_free() {
   ; 两个独立 Heap, 各自作用域尾 __yux_heap_free 不冲突; 再分配应稳定.
-  let a Heap<i32> = Heap:<i32>(1)
+  let a Heap<i32> = heap:<i32>(1)
   let b Heap<i32> = copy_of(a)
-  let c Heap<i32> = Heap:<i32>(2)
+  let c Heap<i32> = heap:<i32>(2)
   let rc i32& = as_ref(c)
   assert_eq(rc, 2)
 }
 
 ; ---------- Phase 8: FFI Heap ↔ Ptr 互转 ----------
 ; ptr_of(h)  → 移交所有权给 Ptr; source slot 写 null 且摘除 _scopeVars
-; Heap:<T>(p Ptr)      → 从 Ptr 接管所有权; 作用域尾走 Heap<T> dtor (free + inner release)
+; _heap_take:<T>(p Ptr)      → 从 Ptr 接管所有权; 作用域尾走 Heap<T> dtor (free + inner release)
 ; 责任方: Ptr 必须指向 __yux_heap_alloc 分配的 T-shape 内存
 ; (FFI 上下文门控 8c 延后, 当前不限调用上下文)
 
 #Test
 fn test_heap_8_ffi_ptr_roundtrip_scalar() {
-  let h1 Heap<i32> = Heap:<i32>(123)
+  let h1 Heap<i32> = heap:<i32>(123)
   let p Ptr = ptr_of(h1)
   ; h1 已 moveout; 后续访问由 borrow_checker 兜底 (本测试不复用)
-  let h2 Heap<i32> = Heap:<i32>(p)
+  let h2 Heap<i32> = _heap_take:<i32>(p)
   let r i32& = as_ref(h2)
   assert_eq(r, 123)
 }
 
 #Test
 fn test_heap_8_ffi_ptr_roundtrip_struct() {
-  let h1 Heap<CopyHeapBox> = Heap:<CopyHeapBox>(CopyHeapBox::make(42))
+  let h1 Heap<CopyHeapBox> = heap:<CopyHeapBox>(CopyHeapBox::make(42))
   let p Ptr = ptr_of(h1)
-  let h2 Heap<CopyHeapBox> = Heap:<CopyHeapBox>(p)
+  let h2 Heap<CopyHeapBox> = _heap_take:<CopyHeapBox>(p)
   let r CopyHeapBox& = as_ref(h2)
   assert_eq(r.k, 42)
 }
@@ -419,13 +419,13 @@ fn test_heap_8_ffi_ptr_roundtrip_struct() {
 #Test
 fn test_heap_8_ffi_ptr_no_double_free() {
   ; 两次 roundtrip 各自独立; 末尾无 dangling.
-  let a Heap<i32> = Heap:<i32>(1)
+  let a Heap<i32> = heap:<i32>(1)
   let pa Ptr = ptr_of(a)
-  let a2 Heap<i32> = Heap:<i32>(pa)
+  let a2 Heap<i32> = _heap_take:<i32>(pa)
 
-  let b Heap<i32> = Heap:<i32>(2)
+  let b Heap<i32> = heap:<i32>(2)
   let pb Ptr = ptr_of(b)
-  let b2 Heap<i32> = Heap:<i32>(pb)
+  let b2 Heap<i32> = _heap_take:<i32>(pb)
 
   let ra i32& = as_ref(a2)
   let rb i32& = as_ref(b2)
@@ -438,13 +438,13 @@ fn test_heap_8_ffi_ptr_no_double_free() {
 #Test
 fn test_heap_9_alloc_free_lifecycle() {
   ; 分配 Heap<i32>, 读值后离开作用域自动 free
-  let h1 Heap<i32> = Heap:<i32>(77)
+  let h1 Heap<i32> = heap:<i32>(77)
   let r1 i32& = as_ref(h1)
   assert_eq(r1, 77)
   ; h1 离开作用域 → HeapFree
 
   ; 再次分配验证 allocator 正常（无 corruption）
-  let h2 Heap<i32> = Heap:<i32>(88)
+  let h2 Heap<i32> = heap:<i32>(88)
   let r2 i32& = as_ref(h2)
   assert_eq(r2, 88)
 }

@@ -717,23 +717,6 @@ public:
 };
 
 // Heap:<T>(arg) 堆作用域句柄构造（DRAFT-heap-types §8.3a）
-//
-// 单参形态：arg 求值为 T 值，编译器分配堆 buffer + 将 T 值 store 入堆 + 返回 Heap<T> 句柄。
-// 与 ExprDynCtorNode 同构（单点 AST 节点便于 NRVO 在 Phase 3 识别）。
-// ast_builder 在 visitExprCall 命中 callee = LiteralObj("Heap") + 单 typeArg + 单 arg 时改产此节点。
-class ExprHeapCtorNode : public ExprNode {
-    p<TypeNode> _innerType; // turbofish 内的 T
-    p<ExprNode> _arg;       // 构造源：求值为 T 的表达式
-
-public:
-    ExprHeapCtorNode(const p<Node>& parent, p<TypeNode> innerType, p<ExprNode> arg)
-        : ExprNode(parent), _innerType(innerType), _arg(arg) {}
-
-    [[nodiscard]] const p<TypeNode>& innerType() const { return _innerType; }
-    [[nodiscard]] const p<ExprNode>& arg() const { return _arg; }
-    [[nodiscard]] TypeInfo getType() const override;
-};
-
 // a <- b：移出旧值、替换新值、返回旧值（表达式，右结合，最低优先级）
 class ExprMoveAssignNode : public ExprNode {
     p<ExprNode> _left;

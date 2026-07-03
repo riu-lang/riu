@@ -1,5 +1,6 @@
-; DRAFT-heap-types §8.3a.3.1：Heap:<T>(x) 中 x 类型必须 == T，否则报 E3028
+; require-sdk
+; DRAFT-heap-types §8.3a.3.1：heap:<T>(x) 中 x 类型必须 == T，否则报 E3014
 
 fn main() {
-  let h Heap<i32> = Heap:<i32>(3.14f32)  ; check: E3014
+  let h Heap<i32> = heap:<i32>(3.14f32)  ; check: E3014
 }

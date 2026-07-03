@@ -428,22 +428,22 @@ struct HeapBox {
 
 #Test
 fn test_heap_ctor_and_as_ref() {
-  let h Heap<HeapBox> = Heap:<HeapBox>(HeapBox::make(42))
+  let h Heap<HeapBox> = heap:<HeapBox>(HeapBox::make(42))
   let r HeapBox& = as_ref(h)
   assert_eq(r.value, 42)
 }
 
 #Test
 fn test_heap_scalar_ctor() {
-  let h Heap<i32> = Heap:<i32>(7i32)
+  let h Heap<i32> = heap:<i32>(7i32)
   let r i32& = as_ref(h)
   assert_eq(r, 7i32)
 }
 
 #Test
 fn test_heap_mut_reassign() {
-  #Mut let h Heap<i32> = Heap:<i32>(1i32)
-  h = Heap:<i32>(99i32)
+  #Mut let h Heap<i32> = heap:<i32>(1i32)
+  h = heap:<i32>(99i32)
   let r i32& = as_ref(h)
   assert_eq(r, 99i32)
 }

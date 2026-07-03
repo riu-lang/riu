@@ -198,8 +198,8 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
         auto globalConst = createWithLine<GlobalConstNode>(ctx, file, name, typeNode, expr, flags.isInline);
         file->addGlobalConst(globalConst);
 
-        DEBUG_LOG_VAL("  LetGlobal #Cval", name->getText() << " : " << typeNode->getType().name
-                                                           << (flags.isInline ? " [inline]" : ""));
+        DEBUG_LOG_VAL("  LetGlobal #Cval",
+                      name->getText() << " : " << typeNode->getType().name << (flags.isInline ? " [inline]" : ""));
         return globalConst;
     }
 
@@ -695,9 +695,6 @@ bool ASTBuilder::exprContainsTryCatch(p<ExprNode> expr) {
     }
     if (auto* dynCtor = dynamic_cast<ExprDynCtorNode*>(expr)) {
         return exprContainsTryCatch(dynCtor->arg());
-    }
-    if (auto* heap = dynamic_cast<ExprHeapCtorNode*>(expr)) {
-        return exprContainsTryCatch(heap->arg());
     }
     if (auto* pc = dynamic_cast<ExprPathCallNode*>(expr)) {
         for (auto& a : pc->args()) {

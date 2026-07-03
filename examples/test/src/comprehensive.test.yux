@@ -490,7 +490,7 @@ fn test_ptr_from_ref() {
 
 #Test
 fn test_heap_as_ref() {
-  let h Heap<HBox> = Heap:<HBox>(HBox::make(42))
+  let h Heap<HBox> = heap:<HBox>(HBox::make(42))
   let r HBox& = as_ref(h)
   assert_eq(r.val, 42)
 }

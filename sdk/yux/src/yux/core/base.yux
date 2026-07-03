@@ -112,6 +112,11 @@ struct Rc<T> {
   ; 内部处理
 }
 
+; rc:<T>(v T) Rc<T>：从值构造 owned Rc
+; 编译器 intrinsic：__yux_rc_alloc + store v @ block+8，返回 { handle } 形态的 Rc<T>
+#Builtin
+fn rc<T>(v T) Rc<T>
+
 ; Weak<T> 实例 layout = { ptr handle }，与 Rc<T> 同形
 ; handle 指向同一 Block；weak 计数维护 block 存活；不维护 payload 存活
 #Builtin
@@ -183,7 +188,7 @@ fn _ptr_write<T>(p Ptr, v T)
 fn weak<T>(box Rc<T>?) Weak<T>
 
 ; heap_some:<T>(v T) Heap<T>?：构造 _has=true 的 Heap<T>?（DRAFT-heap-types §8.3a.4.2）
-; 等价于 `Nullable<Heap<T>> { _has=true, _value=Heap:<T>(v) }` 但走 baked intrinsic
+; 等价于 `Nullable<Heap<T>> { _has=true, _value=heap:<T>(v) }` 但走 baked intrinsic
 ; 是 Heap<T> → Heap<T>? 唯一合法构造路径之一（隐式 widen 由 E4027 禁；详见 §8a.2）
 #Builtin
 fn heap_some<T>(v T) Heap<T>?
@@ -192,6 +197,17 @@ fn heap_some<T>(v T) Heap<T>?
 ; 等价于 `let h Heap<T>? = null` 的显式 turbofish 形态，便于类型推断 / 表达式位置使用
 #Builtin
 fn heap_null<T>() Heap<T>?
+
+; heap:<T>(v T) Heap<T>：从值构造 owned Heap（DRAFT-heap-types §8.3a）
+; 编译器 intrinsic：__yux_heap_alloc + store v，返回裸 T* 形态的 Heap<T> 句柄
+#Builtin
+fn heap<T>(v T) Heap<T>
+
+; _heap_take:<T>(p Ptr) Heap<T>：从裸 Ptr 接管所有权（私有；FFI 互转）
+; 编译器 intrinsic：直接返回 Ptr 作为 Heap<T> 句柄，作用域尾走 Heap<T> dtor
+; 调用方保证 Ptr 由 yuxrt 兼容的 allocator 分配
+#Builtin
+fn _heap_take<T>(p Ptr) Heap<T>
 
 ; Array<T> 实例 layout 由编译器内部管理：{ ptr _data, usize _len, usize _cap }
 ; （方法编译器特例化，主体不再读 yux 端字段）

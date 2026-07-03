@@ -1044,13 +1044,15 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 if (!isParam) {
                     if (auto sym = _currentFn->lookupSymbol(varName)) {
                         const auto& t = sym->type;
-                        if (t.isHeap()) {
+                        // 函数名 / 类型名不是变量捕获，跳过 Heap/Ref 捕获检查
+                        bool isVarOrParam = sym->kind != SymbolKind::Function && sym->kind != SymbolKind::Struct;
+                        if (isVarOrParam && t.isHeap()) {
                             auto elem = t.heapElementType();
                             string elemName = elem ? elem->getFullName() : string("?");
                             throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E4024, elemName,
                                            varName, elemName);
                         }
-                        if (t.isRef()) {
+                        if (isVarOrParam && t.isRef()) {
                             _currentLambdaHasRefCapture = true;
                         }
                     }
@@ -1181,7 +1183,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             }
             try {
                 auto t0 = n->getTypeArgs()[0]->getType();
-                if ((calleeName == "Rc" || calleeName == "Weak" || calleeName == "Array") && t0.isHeap()) {
+                if ((calleeName == "rc" || calleeName == "Rc" || calleeName == "Weak" || calleeName == "Array") && t0.isHeap()) {
                     auto inner = t0.heapElementType();
                     throw YuxError(eline, ecol, ErrorCode::E4025, calleeName, inner ? inner->name : std::string("?"));
                 }
@@ -2271,26 +2273,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         }
         return;
     }
-    if (auto n = dynamic_cast<p<ExprHeapCtorNode>>(expr)) {
-        // Phase 2.6: Heap:<T>(x) 形态检查 (DRAFT-heap-types §8.3a)
-        // - 递归 arg
-        // - E3028: arg 类型必须与 turbofish 内层 T 等价
-        // - E4025: Rc/Weak/Array<Heap<...>> 在 getLLVMType 容器分支拦截，不在此处
-        visitExpr(n->arg());
-        auto resultType = n->getType();
-        auto innerSp = resultType.heapElementType();
-        if (innerSp) {
-            const auto& innerT = *innerSp;
-            auto argType = n->arg()->getType();
-            // Phase 8b: Heap:<T>(p Ptr) FFI take-over (DRAFT-heap-types §8.3a) —
-            // T != Ptr 时, argType == Ptr 视作合法 (代表接管裸指针所有权).
-            bool takeoverFromPtr = argType.isPtr() && innerT.name != "Ptr";
-            if (!takeoverFromPtr && !(argType == innerT)) {
-                throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3014, innerT.name, argType.name);
-            }
-        }
-        return;
-    }
+    // heap:<T>(v) / rc:<T>(v) 由 #Builtin generic 路径在 call_fn.cpp 处理，
+    // 类型校验由 sema::validateBuiltinIntrinsicShape/TypeShape 覆盖，不在此处重复。
     if (auto n = dynamic_cast<p<ExprNullElseNode>>(expr)) {
         visitExpr(n->left());
         visitExpr(n->right());

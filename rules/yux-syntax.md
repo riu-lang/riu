@@ -51,11 +51,11 @@ extend Point {
 
 ## 5. 显式构造堆句柄
 
-堆句柄类型**一律显式 turbofish**，没有"非平凡 T 自动 Rc 包"：
+堆句柄通过内置函数构造，**一律显式 turbofish**，没有"非平凡 T 自动 Rc 包"：
 
 ```yux
-let p = Heap:<Point>(1, 2)
-let r = Rc:<String>("hi")
+let p = heap:<Point>(1, 2)
+let r = rc:<String>("hi")
 ```
 
 详见 [docs/内置类型.md](../../docs/内置类型.md)、[docs/类型系统.md](../docs/类型系统.md)。
@@ -72,7 +72,7 @@ let r = Rc:<String>("hi")
 
 ```yux
 let old = a <- b        ; old = 旧值，a 被重写为 b
-let prev = $.buf <- Rc:<Buffer>(64)   ; 字段级移入
+let prev = $.buf <- rc:<Buffer>(64)   ; 字段级移入
 ```
 
 ## 8. 块体强制换行，无独立块作用域

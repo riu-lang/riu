@@ -956,6 +956,24 @@ void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, s
         if (argsCount != 0) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(0));
         return;
     }
+    // heap:<T>(v T) Heap<T> — 从值构造 owned Heap
+    if (fnName == "heap") {
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
+        return;
+    }
+    // _heap_take:<T>(p Ptr) Heap<T> — 从裸 Ptr 接管（私有）
+    if (fnName == "_heap_take") {
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
+        return;
+    }
+    // rc:<T>(v T) Rc<T> — 从值构造 owned Rc
+    if (fnName == "rc") {
+        if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
+        return;
+    }
     // DRAFT-spec-reflect Phase 3a (捷径 A): __yux_reflect_type:<T>() 拿反射 Type 节点
     if (fnName == "__yux_reflect_type") {
         if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
@@ -1156,6 +1174,36 @@ void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeIn
                                argTypes.size() >= 1 ? argTypes[0].getFullName() : "?");
             }
         }
+        return;
+    }
+    // heap:<T>(v T) Heap<T> — arg 类型必须 == T
+    if (fnName == "heap") {
+        if (typeArgs.size() >= 1 && argTypes.size() >= 1) {
+            const auto& T = typeArgs[0];
+            const auto& argType = argTypes[0];
+            if (argType.isPtr()) {
+                // Ptr → Heap<T> 接管路径留给 _heap_take，heap 不接受
+                throw YuxError(line, col, ErrorCode::E3014, T.name, "Ptr");
+            }
+            if (!(argType == T)) {
+                throw YuxError(line, col, ErrorCode::E3014, T.name, argType.name);
+            }
+        }
+        return;
+    }
+    // _heap_take:<T>(p Ptr) Heap<T> — arg 必须是 Ptr（私有）
+    if (fnName == "_heap_take") {
+        if (argTypes.size() >= 1) {
+            const auto& argType = argTypes[0];
+            if (!argType.isPtr()) {
+                throw YuxError(line, col, ErrorCode::E3014, "Ptr", argType.name);
+            }
+        }
+        return;
+    }
+    // rc:<T>(v T) Rc<T> — arg 类型必须 == T
+    if (fnName == "rc") {
+        // 类型校验由 codegen 端在 CreateStore 前做（对齐 Rc 初始化路径）
         return;
     }
     // 其他 intrinsic (assert_eq / size_of / upgrade) 无类型形态校验, no-op

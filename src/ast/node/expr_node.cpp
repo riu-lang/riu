@@ -1790,13 +1790,6 @@ TypeInfo ExprDynCtorNode::getType() const {
     return TypeInfo("Dyn", {inner});
 }
 
-// Heap:<T>(arg) 的整体类型 = Heap<T>
-TypeInfo ExprHeapCtorNode::getType() const {
-    if (!_innerType) return {};
-    auto inner = make_shared<TypeInfo>(_innerType->getType());
-    return TypeInfo("Heap", {inner});
-}
-
 // Phase 3b: 类型 = 所属结构体, structName 由 ast_builder 扫 _scopeStack 时填入
 TypeInfo ExprStructLitNode::getType() const {
     return _structName.empty() ? TypeInfo() : TypeInfo(_structName);

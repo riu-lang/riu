@@ -210,9 +210,6 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         // Phase 1c：仅 emit 占位 fat ptr { vtable=null, data=src.handle }；
         // 真 vtable 与 dtor 路由留 Phase 3，对象安全 / E1133 类型检查留 Phase 2。
         return compileDynCtorExpr(dynCtorNode);
-    } else if (auto heapCtorNode = dynamic_cast<ExprHeapCtorNode*>(node)) {
-        // Heap:<T>(x) 构造（DRAFT-heap-types §8.3a）—— Phase 2.4 codegen
-        return compileHeapCtorExpr(heapCtorNode);
     } else if (auto structLitNode = dynamic_cast<ExprStructLitNode*>(node)) {
         // Phase 3b 构造模型重构: `Self { .field = value ... }` codegen.
         // 仅在 #Static fn 体内合法 (sema Phase 2d 已校验). 流程:

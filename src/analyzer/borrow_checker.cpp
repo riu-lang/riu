@@ -391,16 +391,14 @@ private:
             } else if (!varType.empty()) {
                 // DRAFT-heap-types §8.3a.3.2 (Phase 2.8)：Heap<T> 单所有权，
                 // 不允许 `let h2 Heap<T> = h1` 这类 by-value move（会双释放）；
-                // RHS 必须是 ExprHeapCtorNode（`Heap:<T>(...)` 显式构造）。
+                // RHS 必须是 heap:<T>(...) 构造调用（ExprCallNode）。
                 // Phase 3 引入 Heap<T>? 可移动槽后，由 nullable 路径接管 move。
                 if (varType.isHeap()) {
-                    bool ok = dynamic_cast<ExprHeapCtorNode*>(da->expr()) != nullptr;
-                    // Phase 3c: 函数返回 Heap<T> 走 NRVO 移交，调用结果亦为 fresh handover.
-                    if (!ok) {
-                        if (auto call = dynamic_cast<ExprCallNode*>(da->expr())) {
-                            auto rt = call->getType();
-                            if (rt.isHeap() && rt == varType) ok = true;
-                        }
+                    bool ok = false;
+                    // Phase 3c: 函数返回 Heap<T> / heap:<T>(...) builtin 调用走 NRVO 移交
+                    if (auto call = dynamic_cast<ExprCallNode*>(da->expr())) {
+                        auto rt = call->getType();
+                        if (rt.isHeap() && rt == varType) ok = true;
                     }
                     if (!ok) {
                         auto inner = varType.heapElementType();
@@ -446,15 +444,13 @@ private:
                 auto lhsName = as->obj().getText();
                 checkRootReassign(lhsName, s->getLineNumber());
                 // DRAFT-heap-types §8.3a.3.2 (Phase 2.8)：Heap<T> 局部重赋
-                // RHS 必须是 ExprHeapCtorNode（同 decl-assign 理由）。
+                // RHS 必须是 heap:<T>(...) 构造调用（同 decl-assign 理由）。
                 auto rit = _rootType.find(lhsName);
                 if (rit != _rootType.end() && rit->second.isHeap() && as->expr()) {
-                    bool ok = dynamic_cast<ExprHeapCtorNode*>(as->expr()) != nullptr;
-                    if (!ok) {
-                        if (auto call = dynamic_cast<ExprCallNode*>(as->expr())) {
-                            auto rt = call->getType();
-                            if (rt.isHeap() && rt == rit->second) ok = true;
-                        }
+                    bool ok = false;
+                    if (auto call = dynamic_cast<ExprCallNode*>(as->expr())) {
+                        auto rt = call->getType();
+                        if (rt.isHeap() && rt == rit->second) ok = true;
                     }
                     if (!ok) {
                         auto inner = rit->second.heapElementType();

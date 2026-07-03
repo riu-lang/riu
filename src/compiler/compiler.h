@@ -378,10 +378,6 @@ private:
     // 真 vtable 与对象安全检查留 Phase 2/3
     llvm::Value* compileDynCtorExpr(p<class ExprDynCtorNode> node);
 
-    // Heap:<T>(x) 构造表达式（DRAFT-heap-types §8.3a）
-    // Phase 2.4：__yux_heap_alloc(sizeof T) + store T → 返回裸 T*
-    llvm::Value* compileHeapCtorExpr(p<class ExprHeapCtorNode> node);
-
     // Phase 3a：为 (concreteType U, specQualified D) 获取或合成 vtable 全局
     // 符号：__yux_vtable_<U_mod>_<U_struct>__<D_qualified>，linkonce_odr。
     // 布局：i8* 数组，长度 = 1 + D.signatures().size()

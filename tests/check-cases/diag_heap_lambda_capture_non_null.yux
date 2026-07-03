@@ -3,7 +3,7 @@
 ; 引导用户改写为 Heap<T>?（B 档 move 捕获）或 Heap<T>&（借用捕获）
 
 fn main() {
-  let h Heap<i32> = Heap:<i32>(5i32)
+  let h Heap<i32> = heap:<i32>(5i32)
   let f fn()i32 = {
     1i32
   }
