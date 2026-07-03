@@ -41,7 +41,6 @@ yux-lang/
 ├── rules/            按需手动读的规则（不自动加载）：yux-syntax、sema-codegen、spec-writeback
 ├── xmake.lua         顶层构建脚本
 ├── yux.toml          仓库自身的 dogfood 项目配置
-├── AGENT-XMAKE.md    xmake API 文档索引导航
 ├── DEPS.json         第三方依赖声明
 ├── CURRENT.md        当前多步任务追踪，本地（不入 git）
 ├── CURRENT-*.md      其它任务，本地（不入 git）

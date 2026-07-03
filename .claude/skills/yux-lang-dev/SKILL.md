@@ -5,7 +5,7 @@ description: Use at the start of any task in the yux-lang compiler repo — quic
 
 # yux-lang 开发上手
 
-yux 是自举编译器：`.yux → ANTLR4 → AST → LLVM IR → LLD → exe`。项目规则见 [`.claude/rules/`](../../rules/README.md)，xmake API 见 [`AGENT-XMAKE.md`](../../../AGENT-XMAKE.md)。
+yux 是自举编译器：`.yux → ANTLR4 → AST → LLVM IR → LLD → exe`。项目规则见 [`.claude/rules/`](../../rules/README.md)。
 
 ## 环境
 
