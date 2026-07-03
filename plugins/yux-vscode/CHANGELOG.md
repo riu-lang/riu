@@ -4,6 +4,11 @@ All notable changes to the "yux-vscode" extension will be documented in this fil
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.9.2]
+
+- LSP 补全：新增 `isize` / `usize` 指针宽度整数类型
+- TextMate：原始类型高亮补 `isize` / `usize`
+
 ## [0.9.1]
 
 - 语法同步：跟随 yux 语言最新变化
