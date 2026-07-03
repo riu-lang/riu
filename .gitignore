@@ -27,6 +27,6 @@
 /*.sh
 
 /data/
-/tools.local/
+/*.local/
 /.*.toml
 /.mcp.json
