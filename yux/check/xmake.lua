@@ -1,3 +1,6 @@
+-- Copyright (c) 2026. Yin-Jinlong@github
+-- MPL-2.0
+
 -- yux/check — 快速语义检查工具（yux-check 可执行文件）
 -- 0 LLVM 依赖，仅链 yux_frontend。用法: yux-check <file> | yux-check test <dir>
 

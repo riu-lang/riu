@@ -1,3 +1,6 @@
+-- Copyright (c) 2026. Yin-Jinlong@github
+-- MPL-2.0
+
 -- yuxrt — yux 运行时库 xmake 构建
 -- 产出 yuxrt.lib（静态库），C99，无 CRT 依赖。
 -- 项目使用 clang 工具链（set_toolchains("clang")），此处不设 MSVC 风格 flag。

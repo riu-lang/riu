@@ -1,3 +1,6 @@
+-- Copyright (c) 2026. Yin-Jinlong@github
+-- MPL-2.0
+
 -- yux/ast — ANTLR4 运行时 + AST 构建器 + parse tree 转储工具
 -- 产出 antlr4_static.lib（ANTLR4 C++ 运行时）、yux_ast.lib（AST 构建器）、yux-ast（parse tree 转储）
 

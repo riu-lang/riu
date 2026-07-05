@@ -1,3 +1,6 @@
+-- Copyright (c) 2026. Yin-Jinlong@github
+-- MPL-2.0
+
 -- yux/lsp — LSP 服务器（yux-lsp 可执行文件）
 -- 叶子节点，直接编成二进制，不做静态库
 

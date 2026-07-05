@@ -1,3 +1,6 @@
+-- Copyright (c) 2026. Yin-Jinlong@github
+-- MPL-2.0
+
 -- yux/analyzer — 语义分析器（借用检查、常量/可变检查、流终止检查、符号建议、spec 注册表/实现校验）
 -- 产出 yux_analyzer.lib（静态库），0 LLVM 依赖，仅依赖 yux_ast
 

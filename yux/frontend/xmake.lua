@@ -1,3 +1,6 @@
+-- Copyright (c) 2026. Yin-Jinlong@github
+-- MPL-2.0
+
 -- yux/frontend — 前端静态库（yux_frontend.lib）
 -- 0 LLVM 依赖：词法/语法（ANTLR）+ AST + 语义分析 + 格式化 + 诊断 + SDK 加载
 -- yux-lsp / yux-check / yux-ast / yux 四个二进制共用此 lib
