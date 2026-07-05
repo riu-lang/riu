@@ -5,7 +5,7 @@
 
 #undef ERROR
 
-#include "../types.h"
+#include "types.h"
 #include "test_cmd.h"
 
 #include <algorithm>

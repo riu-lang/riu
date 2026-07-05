@@ -16,7 +16,7 @@
 #ifndef YUX_LANG_AST_BUILDER_HELPERS_H
 #define YUX_LANG_AST_BUILDER_HELPERS_H
 
-#include "../types.h"
+#include "types.h"
 #include "node/fn_node.h"
 #include "yux/yuxParser.h"
 

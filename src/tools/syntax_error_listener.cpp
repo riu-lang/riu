@@ -3,7 +3,7 @@
 
 #include "syntax_error_listener.h"
 
-#include "../error_code.h"
+#include "error_code.h"
 #include "diagnostic.h"
 
 #include "Lexer.h"

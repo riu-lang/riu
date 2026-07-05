@@ -9,7 +9,7 @@
 
 #include "sdk_compile.h"
 
-#include "../types.h"
+#include "types.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/fn_node.h"
 #include "ast/yux.h"

@@ -10,8 +10,8 @@
 #ifndef YUX_LANG_SYNTAX_ERROR_LISTENER_H
 #define YUX_LANG_SYNTAX_ERROR_LISTENER_H
 
-#include "../error_code.h"
-#include "../types.h"
+#include "error_code.h"
+#include "types.h"
 #include "BaseErrorListener.h"
 
 #include <ostream>

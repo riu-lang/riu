@@ -14,7 +14,7 @@
 
 #include "spec_impl_checker.h"
 
-#include "../error_code.h"
+#include "error_code.h"
 #include "ast/node/alias_node.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/type_node.h"

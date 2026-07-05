@@ -7,7 +7,7 @@
 #include <unordered_set>
 #include <utility>
 
-#include "../types.h"
+#include "types.h"
 #include "antlr4-runtime.h"
 #include "position.h"
 #include "utf8.h"

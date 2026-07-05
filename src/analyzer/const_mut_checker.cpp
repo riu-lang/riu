@@ -3,7 +3,7 @@
 
 #include "const_mut_checker.h"
 
-#include "../error_code.h"
+#include "error_code.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/file_node.h"
 #include "ast/node/literal_node.h"

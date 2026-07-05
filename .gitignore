@@ -1,7 +1,5 @@
 .idea/
 /*build*/
-/gen/*
-!/gen/.clang-tidy
 /*.exe
 /third_party/
 .cache/

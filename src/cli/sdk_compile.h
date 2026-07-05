@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "../types.h"
+#include "types.h"
 
 #include <llvm/IR/Module.h>
 

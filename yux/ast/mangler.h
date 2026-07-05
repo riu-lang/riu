@@ -4,7 +4,7 @@
 #ifndef YUX_LANG_MANGLER_H
 #define YUX_LANG_MANGLER_H
 
-#include "../types.h"
+#include "types.h"
 
 // Mangler 集中管理所有用户/SDK 源符号的 LLVM 名称生成。
 // 命名规则（仅作用于 .yux 源文件中定义的符号；运行时辅助、Windows API、

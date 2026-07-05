@@ -3,7 +3,7 @@
 
 #include "const_eval.h"
 
-#include "../error_code.h"
+#include "error_code.h"
 #include "ast/node/file_node.h"
 #include "ast/node/fn_node.h"
 #include "ast/node/statement_node.h"

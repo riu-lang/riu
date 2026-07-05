@@ -10,9 +10,9 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const PROJECT_ROOT = path.join(__dirname, '..');
-const LEXER_GRAMMAR = path.join(PROJECT_ROOT, 'src', 'yuxLexer.g4');
-const PARSER_GRAMMAR = path.join(PROJECT_ROOT, 'src', 'yuxParser.g4');
-const OUTPUT_DIR = path.join(PROJECT_ROOT, 'gen', 'yux');
+const LEXER_GRAMMAR = path.join(PROJECT_ROOT, 'yux', 'ast', 'yuxLexer.g4');
+const PARSER_GRAMMAR = path.join(PROJECT_ROOT, 'yux', 'ast', 'yuxParser.g4');
+const OUTPUT_DIR = path.join(PROJECT_ROOT, 'yux', 'ast', 'gen', 'yux');
 const JAR_FILE = path.join(PROJECT_ROOT, 'bin', 'antlr-4.13.2-complete.jar');
 
 function log(msg, color = 'reset') {

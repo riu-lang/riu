@@ -4,16 +4,19 @@
 yux-lang/
 ├── src/              编译器 C++ 源码
 │   ├── analyzer/     分析器（借用检查、draft 实现检查、符号建议）
-│   ├── ast/          AST 相关（ast_builder、mangler、yux 驱动）
-│   │   └── node/     AST 节点定义
 │   ├── compiler/     LLVM IR 生成（compiler 主文件 + 按功能拆分的子模块）
 │   ├── sema/         语义分析（0 LLVM 依赖，静态库 yux_frontend）
 │   ├── lsp/          LSP 服务器（completion、diagnostics、semantic tokens）
 │   ├── runtime/      运行时支持（构造 / 析构辅助）
 │   ├── tools/        工具类（build_cache、diagnostic、formatter）
-│   ├── main.cpp      CLI 入口
-│   └── yux*.g4       语法文件（不要手改）
-├── gen/              ANTLR4 生成代码，不要手改
+│   └── main.cpp      CLI 入口
+├── yux/              从 src 提取的独立子系统（各自含 xmake.lua）
+│   ├── rt/           运行时 C99 静态库（yuxrt.lib，mem + math + port）
+│   └── ast/          AST 构建器 + ANTLR 生成代码 + 语法文件（yux_ast.lib）
+│       ├── gen/yux/  ANTLR4 生成代码，不要手改
+│       ├── node/     AST 节点定义
+│       ├── yux*.g4   语法文件（不要手改）
+│       └── xmake.lua
 ├── sdk/yux/          自举运行时（独立 yux 项目，编为静态库 yux.lib），链接到每个 yux 程序
 │   └── src/yux/core/  SDK 源码 + *.test.yux 测试（#Test 注解，yux test 运行）
 ├── docs/             语言参考文档（中文）；入口 docs/index.md

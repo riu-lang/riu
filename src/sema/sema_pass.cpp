@@ -38,7 +38,7 @@
 #include <set>
 #include <string_view>
 
-#include "../types.h"
+#include "types.h"
 #include "analyzer/borrow_checker.h"
 #include "analyzer/const_mut_checker.h"
 #include "analyzer/flow_terminate_checker.h"

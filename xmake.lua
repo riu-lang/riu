@@ -160,29 +160,19 @@ target("llvm")
 -- 不引用任何 LLVM 头/链接，使 yux-lsp 可以脱离 LLVM 编译链路构建
 target("yux_frontend")
     set_kind("static")
-    add_deps("antlr4_static")
-    add_includedirs("src", "gen", {public = true})
-    add_includedirs(path.join(third_party, "antlr4/runtime/Cpp/runtime/src"), {public = true})
+    add_deps("yux_ast")
+    add_includedirs("src", {public = true})
     add_includedirs(path.join(third_party, "utfcpp/source"), {public = true})
     add_includedirs(path.join(third_party, "toml11/single_include"), {public = true})
     add_includedirs(path.join(third_party, "nlohmann_json/single_include"), {public = true})
 
     add_files(
-        "src/ast/ast_builder.cpp",
-        "src/ast/ast_builder_decl.cpp",
-        "src/ast/ast_builder_struct.cpp",
-        "src/ast/ast_builder_fn.cpp",
-        "src/ast/ast_builder_stmt.cpp",
-        "src/ast/ast_builder_expr.cpp",
-        "src/ast/ast_builder_type.cpp",
-        "src/ast/yux.cpp",
         "src/tools/diagnostic.cpp",
         "src/tools/format/doc.cpp",
         "src/tools/format/trivia.cpp",
         "src/tools/format/render.cpp",
         "src/tools/format/printer.cpp",
         "src/tools/syntax_error_listener.cpp",
-        "src/ast/mangler.cpp",
         "src/tools/pkg_cache.cpp",
         "src/tools/sdk_loader.cpp",
         "src/analyzer/borrow_checker.cpp",
@@ -195,10 +185,8 @@ target("yux_frontend")
         "src/sema/call_resolve.cpp",
         "src/sema/const_eval.cpp"
     )
-    add_files("src/ast/node/*.cpp")
-    add_files("gen/yux/*.cpp")
 
-    add_defines("UNICODE", "NOMINMAX", "ANTLR4CPP_STATIC", {public = true})
+    add_defines("UNICODE", "NOMINMAX", {public = true})
 
 -- codegen 静态库：所有依赖 LLVM 的实现（compiler*.cpp）
 -- yux 主二进制依赖之；yux-lsp 不依赖
@@ -305,6 +293,7 @@ target("yux-check")
 
 includes("tests")
 includes("yux/rt")
+includes("yux/ast")
 includes("@builtin/xpack")
 
 local third_party_licenses = {

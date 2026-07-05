@@ -3,7 +3,7 @@
 
 #include "flow_terminate_checker.h"
 
-#include "../error_code.h"
+#include "error_code.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/literal_node.h"
 #include "ast/node/statement_node.h"

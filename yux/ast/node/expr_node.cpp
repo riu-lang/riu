@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <set>
 
-#include "../../types.h"
+#include "types.h"
 #include "analyzer/symbol_suggest.h"
 #include "file_node.h"
 #include "fn_node.h"

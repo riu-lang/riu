@@ -19,7 +19,7 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 
-#include "../types.h"
+#include "types.h"
 #include <llvm/IR/Module.h>
 #include <string>
 #include <vector>

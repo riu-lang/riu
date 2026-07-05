@@ -12,7 +12,7 @@
 #ifndef YUX_LANG_SYMBOL_SUGGEST_H
 #define YUX_LANG_SYMBOL_SUGGEST_H
 
-#include "../types.h"
+#include "types.h"
 
 class ScopeNode;
 

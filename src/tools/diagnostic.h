@@ -15,7 +15,7 @@
 #ifndef YUX_LANG_DIAGNOSTIC_H
 #define YUX_LANG_DIAGNOSTIC_H
 
-#include "../types.h"
+#include "types.h"
 #include <ostream>
 
 // DiagSeverity 在 error_code.h 中定义（Note < Warning < Error）

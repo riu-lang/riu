@@ -4,7 +4,7 @@
 #ifndef YUX_LANG_NODE_H
 #define YUX_LANG_NODE_H
 
-#include "../../types.h"
+#include "types.h"
 
 enum class SymbolKind : u8 {
     Struct,
