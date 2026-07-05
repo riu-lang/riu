@@ -212,10 +212,6 @@ target("yux_codegen")
         end
     end)
 
-target("yux-test-runner")
-    set_kind("binary")
-    add_files("src/tools/runner_main.cpp")
-
 target("yux")
     set_kind("binary")
     add_deps("yux_codegen", "yuxrt")
@@ -256,6 +252,7 @@ includes("yux/rt")
 includes("yux/ast")
 includes("yux/analyzer")
 includes("yux/lsp")
+includes("yux/test-runner")
 includes("@builtin/xpack")
 
 local third_party_licenses = {

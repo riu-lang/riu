@@ -15,7 +15,8 @@ yux-lang/
 │   │   ├── yux*.g4   语法文件（不要手改）
 │   │   └── xmake.lua
 │   ├── analyzer/     语义分析器（yux_analyzer.lib）
-│   └── lsp/          LSP 服务器（yux-lsp 可执行文件，叶子节点）
+│   ├── lsp/          LSP 服务器（yux-lsp 可执行文件，叶子节点）
+│   └── test-runner/  测试运行器（yux-test-runner 可执行文件，0 依赖，叶子节点）
 ├── sdk/yux/          自举运行时（独立 yux 项目，编为静态库 yux.lib），链接到每个 yux 程序
 │   └── src/yux/core/  SDK 源码 + *.test.yux 测试（#Test 注解，yux test 运行）
 ├── docs/             语言参考文档（中文）；入口 docs/index.md
