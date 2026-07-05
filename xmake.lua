@@ -304,7 +304,7 @@ target("yux-check")
     set_rundir("$(projectdir)")
 
 includes("tests")
-includes("yuxrt")
+includes("yux/rt")
 includes("@builtin/xpack")
 
 local third_party_licenses = {
