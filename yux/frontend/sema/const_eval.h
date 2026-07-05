@@ -5,6 +5,7 @@
 #define YUX_LANG_CONST_EVAL_H
 
 #include "ast/node/expr_node.h"
+#include "constant_value.h"
 
 #include <map>
 #include <optional>
@@ -16,6 +17,9 @@ class FileNode;
 // DRAFT-const-eval Phase 1 —— sema 期常量求值器骨架（0 LLVM 依赖）。
 //
 // 设计依据：DRAFT-const-eval.md §2 全景模型 + §4.8 实现替代方案。
+//
+// ConstantValue 类型定义已提取至 yux/include/constant_value.h（纯数据类型，与
+// types.h 同级），供 AST 节点与 sema 层共享，消除 AST→sema 反向依赖。
 //
 // 范围（Phase 1）：
 //   - 叶：LiteralIntNode / LiteralBoolNode / LiteralNullNode / LiteralFloatNode
@@ -44,87 +48,6 @@ class FileNode;
 //
 // [#4.8.B] 整数：uint64_t bits + TypeInfo（按 type 决定 sign / width）；溢出按
 // DRAFT §4.7 决议 trap（Phase 2 抛 E3143），Phase 1 暂以 nullopt 返回。
-
-struct ConstantValue {
-    enum class Kind : u8 {
-        Int,    // 整数：bits 持 zero-extended 表示, type 给出 width / signedness
-        Float,  // 浮点：floatVal 持 host double, type 决定 f32 / f64
-        Bool,   // bool: boolVal
-        Null,   // null: 无 payload
-        Struct, // 结构体字段值: structFields（Phase 5 启用）
-        String  // 编译期字符串：stringCodePoints 持 u32 码点向量（Phase 6 reflect 反哺）
-    };
-
-    Kind kind = Kind::Null;
-    TypeInfo type;
-
-    // 互斥 payload（Kind = Int / Float / Bool 时有效）。
-    // Phase 1 不引入 union 以保留 ConstantValue 可默认 copy / assign；用独立成员牺牲一点
-    // 空间换简化, 不影响正确性。
-    u64    intBits  = 0;
-    f64    floatVal = 0.0;
-    bool   boolVal  = false;
-
-    // Kind = Struct 时持有字段值（顺序与声明序一致）。Phase 1 留空。
-    vector<ConstantValue> structFields;
-
-    // Kind = String 时持有 u32 码点（不可变 rodata 字符串内容）。
-    vector<u32> stringCodePoints;
-
-    static ConstantValue makeInt(u64 bits, TypeInfo t) {
-        ConstantValue v;
-        v.kind = Kind::Int;
-        v.type = std::move(t);
-        v.intBits = bits;
-        return v;
-    }
-    static ConstantValue makeFloat(f64 val, TypeInfo t) {
-        ConstantValue v;
-        v.kind = Kind::Float;
-        v.type = std::move(t);
-        v.floatVal = val;
-        return v;
-    }
-    static ConstantValue makeBool(bool b) {
-        ConstantValue v;
-        v.kind = Kind::Bool;
-        v.type = TypeInfo("bool");
-        v.boolVal = b;
-        return v;
-    }
-    static ConstantValue makeNull() {
-        ConstantValue v;
-        v.kind = Kind::Null;
-        v.type = TypeInfo("Ptr");
-        return v;
-    }
-    // DRAFT-const-eval Phase 5: struct 字面量值. fields 按结构体声明序排列.
-    static ConstantValue makeStruct(vector<ConstantValue> fields, TypeInfo t) {
-        ConstantValue v;
-        v.kind = Kind::Struct;
-        v.type = std::move(t);
-        v.structFields = std::move(fields);
-        return v;
-    }
-    // Phase 6: 编译期字符串（rodata 不可变码点序列）。codePoints 为 u32 码点。
-    static ConstantValue makeString(vector<u32> codePoints) {
-        ConstantValue v;
-        v.kind = Kind::String;
-        v.type = TypeInfo("String");
-        v.stringCodePoints = std::move(codePoints);
-        return v;
-    }
-
-    [[nodiscard]] bool isInt()    const { return kind == Kind::Int;    }
-    [[nodiscard]] bool isFloat()  const { return kind == Kind::Float;  }
-    [[nodiscard]] bool isBool()   const { return kind == Kind::Bool;   }
-    [[nodiscard]] bool isNull()   const { return kind == Kind::Null;   }
-    [[nodiscard]] bool isStruct() const { return kind == Kind::Struct; }
-    [[nodiscard]] bool isString() const { return kind == Kind::String; }
-
-    // 整数按 type 中的符号位解释为 i64（仅 isInt() 时有意义）。
-    [[nodiscard]] i64 asSigned() const;
-};
 
 // ConstEvaluator —— 单次求值会话。
 //

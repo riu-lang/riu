@@ -10,9 +10,7 @@ target("yux_analyzer")
 
     -- yux/ 顶层：让 #include "analyzer/..." 能找到 yux/analyzer/...
     add_includedirs("..", {public = true})
-    -- yux/include/：公共头文件（types.h, error_code.h）
+    -- yux/include/：公共头文件（types.h, error_code.h, constant_value.h）
     add_includedirs("../include", {public = true})
-    -- TODO: yux/frontend/ 仅因 AST 节点反向依赖 sema/（层次违例），后续重构移除
-    add_includedirs(path.join(os.projectdir(), "yux/frontend"))
 
     add_files("*.cpp")

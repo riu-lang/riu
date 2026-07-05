@@ -22,7 +22,9 @@
 #include <optional>
 
 // Phase 3: 需要 ConstantValue 完整类型以支持 std::optional 成员
-#include "sema/const_eval.h"
+// ConstantValue 定义在 yux/include/constant_value.h（与 types.h 同级），
+// 避免 AST 节点反向依赖 sema 层。
+#include "constant_value.h"
 
 class GlobalVarNode : public Node, public Named, public Typed {
     p<TypeNode> _type;

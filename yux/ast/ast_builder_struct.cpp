@@ -13,7 +13,6 @@
 #include "node/expr_node.h"
 #include "node/literal_node.h"
 #include "node/statement_node.h"
-#include "sema/const_eval.h"
 #include <algorithm>
 
 // spec-unify v1：声明合一的 visitStructDecl 入口。

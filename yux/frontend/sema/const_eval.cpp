@@ -77,10 +77,6 @@ std::optional<TypeInfo> unifyArith(const TypeInfo& a, const TypeInfo& b) {
 
 } // namespace
 
-i64 ConstantValue::asSigned() const {
-    return signExtend(intBits, type);
-}
-
 void ConstEvaluator::setNamedConst(const string& name, ConstantValue value) {
     _env[name] = std::move(value);
 }

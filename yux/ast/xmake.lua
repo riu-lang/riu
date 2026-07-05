@@ -31,7 +31,8 @@ target("yux_ast")
     add_includedirs("..", {public = true})
     -- yux/include/：公共头文件（types.h 等）
     add_includedirs("../include", {public = true})
-    -- TODO: yux/frontend/ 仅因 AST 节点反向依赖 sema/（层次违例），后续重构移除
+    -- yux/frontend/：ast_builder_decl.cpp 使用 ConstEvaluator（构建期常量求值），
+    -- expr_node.cpp 使用 sema::parseIntLiteral。AST 节点头文件已不再依赖 sema/。
     add_includedirs(path.join(os.projectdir(), "yux/frontend"))
     -- ANTLR 生成代码：让 #include "yux/..." 能找到 yux/ast/gen/yux/...
     add_includedirs("gen", {public = true})
