@@ -21,25 +21,6 @@ add_cxxflags("-Wno-language-extension-token", {force = true})
 
 local third_party = path.join(os.projectdir(), "third_party")
 
-target("antlr4_static")
-    set_kind("static")
-    set_languages("c++17")
-    add_defines("ANTLR4CPP_STATIC")
-    add_includedirs(path.join(third_party, "antlr4/runtime/Cpp/runtime/src"))
-    add_files(path.join(third_party, "antlr4/runtime/Cpp/runtime/src/*.cpp"))
-    add_files(path.join(third_party, "antlr4/runtime/Cpp/runtime/src/atn/*.cpp"))
-    add_files(path.join(third_party, "antlr4/runtime/Cpp/runtime/src/dfa/*.cpp"))
-    add_files(path.join(third_party, "antlr4/runtime/Cpp/runtime/src/misc/*.cpp"))
-    add_files(path.join(third_party, "antlr4/runtime/Cpp/runtime/src/internal/*.cpp"))
-    add_files(path.join(third_party, "antlr4/runtime/Cpp/runtime/src/support/*.cpp"))
-    add_files(path.join(third_party, "antlr4/runtime/Cpp/runtime/src/tree/*.cpp"))
-    add_files(path.join(third_party, "antlr4/runtime/Cpp/runtime/src/tree/pattern/*.cpp"))
-    add_files(path.join(third_party, "antlr4/runtime/Cpp/runtime/src/tree/xpath/*.cpp"))
-    add_cxxflags("-include chrono", {force = true})
-    if is_plat("windows") then
-        add_syslinks("shlwapi")
-    end
-
 target("zlib")
     set_kind("static")
     add_includedirs(path.join(third_party, "zlib"), {public = true})
@@ -229,14 +210,6 @@ target("yux")
             cprint("${dim}  [sdk-link] %s → sdk/${clear}", sdk_link)
         end
     end)
-
--- yux-ast: 独立的 parse tree 转储工具, 仅 ANTLR 词法 + 语法, 不做 AST/语义/codegen
-target("yux-ast")
-    set_kind("binary")
-    add_deps("yux_frontend")
-    add_includedirs(path.join(third_party, "cli11/include"))
-    add_files("src/tools/ast_main.cpp")
-    set_rundir("$(projectdir)")
 
 -- yux-check: 单文件快速语义检查 (阶段 0), 0 LLVM 依赖.
 -- 详见 CURRENT.md "yux-check 最小可用 exe" 一节.

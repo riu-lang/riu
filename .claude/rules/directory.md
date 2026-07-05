@@ -9,7 +9,7 @@ yux-lang/
 │   └── main.cpp      CLI 入口
 ├── yux/              从 src 提取的独立子系统（各自含 xmake.lua）
 │   ├── rt/           运行时 C99 静态库（yuxrt.lib，mem + math + port）
-│   ├── ast/          AST 构建器 + ANTLR 生成代码 + 语法文件（yux_ast.lib）
+│   ├── ast/          ANTLR4 运行时 + AST 构建器 + parse tree 转储（antlr4_static.lib + yux_ast.lib + yux-ast）
 │   │   ├── gen/yux/  ANTLR4 生成代码，不要手改
 │   │   ├── node/     AST 节点定义
 │   │   ├── yux*.g4   语法文件（不要手改）
