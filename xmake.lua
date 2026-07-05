@@ -160,7 +160,7 @@ target("llvm")
 -- 不引用任何 LLVM 头/链接，使 yux-lsp 可以脱离 LLVM 编译链路构建
 target("yux_frontend")
     set_kind("static")
-    add_deps("yux_ast")
+    add_deps("yux_ast", "yux_analyzer")
     add_includedirs("src", {public = true})
     add_includedirs(path.join(third_party, "utfcpp/source"), {public = true})
     add_includedirs(path.join(third_party, "toml11/single_include"), {public = true})
@@ -175,12 +175,6 @@ target("yux_frontend")
         "src/tools/syntax_error_listener.cpp",
         "src/tools/pkg_cache.cpp",
         "src/tools/sdk_loader.cpp",
-        "src/analyzer/borrow_checker.cpp",
-        "src/analyzer/const_mut_checker.cpp",
-        "src/analyzer/flow_terminate_checker.cpp",
-        "src/analyzer/symbol_suggest.cpp",
-        "src/analyzer/spec_registry.cpp",
-        "src/analyzer/spec_impl_checker.cpp",
         "src/sema/sema_pass.cpp",
         "src/sema/call_resolve.cpp",
         "src/sema/const_eval.cpp"
@@ -294,6 +288,7 @@ target("yux-check")
 includes("tests")
 includes("yux/rt")
 includes("yux/ast")
+includes("yux/analyzer")
 includes("@builtin/xpack")
 
 local third_party_licenses = {
