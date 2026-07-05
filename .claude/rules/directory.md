@@ -5,7 +5,6 @@ yux-lang/
 ├── src/              编译器 C++ 源码
 │   ├── compiler/     LLVM IR 生成（compiler 主文件 + 按功能拆分的子模块）
 │   ├── sema/         语义分析（0 LLVM 依赖，静态库 yux_frontend）
-│   ├── lsp/          LSP 服务器（completion、diagnostics、semantic tokens）
 │   ├── tools/        工具类（build_cache、diagnostic、formatter）
 │   └── main.cpp      CLI 入口
 ├── yux/              从 src 提取的独立子系统（各自含 xmake.lua）
@@ -15,7 +14,8 @@ yux-lang/
 │   │   ├── node/     AST 节点定义
 │   │   ├── yux*.g4   语法文件（不要手改）
 │   │   └── xmake.lua
-│   └── analyzer/     语义分析器（yux_analyzer.lib，borrow / const_mut / flow_terminate / spec / symbol_suggest）
+│   ├── analyzer/     语义分析器（yux_analyzer.lib）
+│   └── lsp/          LSP 服务器（yux-lsp 可执行文件，叶子节点）
 ├── sdk/yux/          自举运行时（独立 yux 项目，编为静态库 yux.lib），链接到每个 yux 程序
 │   └── src/yux/core/  SDK 源码 + *.test.yux 测试（#Test 注解，yux test 运行）
 ├── docs/             语言参考文档（中文）；入口 docs/index.md
