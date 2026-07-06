@@ -2,6 +2,7 @@
 ;
 ; 覆盖：
 ;   - loop init i32
+;   - loop init usize/isize
 ;   - labeled loop + break@
 ;   - 嵌套 labeled loop
 ;   - loop 空循环
@@ -99,4 +100,35 @@ fn test_loop_accumulate() {
     i = i + 1
   }
   assert_eq(product, 120)
+}
+
+; ==================== loop init usize ====================
+
+#Test
+fn test_loop_init_usize() {
+  ; v0.18: usize 类型 loop init — 由 tryInferIntType 将灵活整数 0 推断为 usize
+  #Mut let count i32 = 0
+  loop i usize = 0 {
+    if i >= 5usize {
+      break;
+    }
+    count = count + 1
+    i = i + 1usize
+  }
+  assert_eq(count, 5)
+}
+
+#Test
+fn test_loop_init_isize() {
+  ; v0.18: isize 类型 loop init
+  #Mut let sum isize = 0
+  loop i isize = 0 {
+    if i >= 3isize {
+      break;
+    }
+    sum = sum + i
+    i = i + 1isize
+  }
+  ; 0 + 1 + 2 = 3
+  assert_eq(sum, 3isize)
 }

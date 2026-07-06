@@ -1,7 +1,10 @@
 ; Array 运算行为测试（下标、方法调用、不同元素类型）
 ;
-; 已知问题：
-;   - f64 数组 3 项链式加法 arr[0]+arr[1]+arr[2] → LLVM StoreInst assertion
+; 覆盖：
+;   - i32 下标读写
+;   - f64 基本操作与链式加法
+;   - bool / String 元素
+;   - push / len / clear / clone / first / last / is_empty
 
 #Test
 fn test_array_subscript_read() {
@@ -68,6 +71,23 @@ fn test_array_f64_basic() {
   assert_eq(arr.len(), 3)
   ; 2 操作数 f64 加法正常
   assert_eq(arr[0] + arr[1], 4.0f64)
+}
+
+#Test
+fn test_array_f64_chain_add() {
+  ; v0.18: 修复 f64 3 项链式加法 LLVM crash
+  ; 根因：ExprAddSubNode::getType() 在操作数都是 Ref<f64> 时返回 Ref<f64> 而非 f64，
+  ; 导致外层 + 对已 lower 为标量的中间结果尝试 CreateLoad → StoreInst assertion
+  #Mut let arr Array<f64> = [1.0f64, 2.0f64, 3.0f64]
+  assert_eq(arr[0] + arr[1] + arr[2], 6.0f64)
+}
+
+#Test
+fn test_array_f64_let_bind() {
+  ; v0.18: 修复后 let x f64 = arr[i] + arr[j] 不再报 "expected f64, got Ref<f64>"
+  #Mut let arr Array<f64> = [1.0f64, 2.0f64]
+  let x f64 = arr[0] + arr[1]
+  assert_eq(x, 3.0f64)
 }
 
 #Test

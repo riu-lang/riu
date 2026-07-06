@@ -255,12 +255,14 @@ llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
     bool isFloat = effLeftType.startsWith('f');
 
     // v0.16: 操作数若是 T&（如 arr[i]）则 load 出值
-    if (leftType.isRef()) {
+    // 防御：仅在值是 pointer 类型时才 load（避免 getType 返回 Ref 但值已被 lower 为标量时双重 load）
+    if (leftType.isRef() && left->getType()->isPointerTy()) {
         left = _builder.CreateLoad(getLLVMType(effLeftType), left, "add_lhs");
     }
     auto rightType = applySubst(node->right()->getType());
-    if (rightType.isRef()) {
-        right = _builder.CreateLoad(getLLVMType(effLeftType), right, "add_rhs");
+    auto effRightType = rightType.isRef() ? *rightType.refElementType() : rightType;
+    if (rightType.isRef() && right->getType()->isPointerTy()) {
+        right = _builder.CreateLoad(getLLVMType(effRightType), right, "add_rhs");
     }
 
     if (node->op() == ExprAddSubNode::Op::Add) {
@@ -321,12 +323,14 @@ llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
     bool isUnsigned = effLeftType.startsWith('u');
 
     // v0.16: 操作数若是 T& 则 load 出值
-    if (leftType.isRef()) {
+    // 防御：仅在值是 pointer 类型时才 load
+    if (leftType.isRef() && left->getType()->isPointerTy()) {
         left = _builder.CreateLoad(getLLVMType(effLeftType), left, "mul_lhs");
     }
     auto rightType = applySubst(node->right()->getType());
-    if (rightType.isRef()) {
-        right = _builder.CreateLoad(getLLVMType(effLeftType), right, "mul_rhs");
+    auto effRightType = rightType.isRef() ? *rightType.refElementType() : rightType;
+    if (rightType.isRef() && right->getType()->isPointerTy()) {
+        right = _builder.CreateLoad(getLLVMType(effRightType), right, "mul_rhs");
     }
 
     switch (node->op()) {
@@ -411,12 +415,14 @@ llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
     auto right = compileExpr(node->right());
 
     // v0.16: 操作数若是 T& 则 load 出值
-    if (leftType.isRef()) {
+    // 防御：仅在值是 pointer 类型时才 load
+    if (leftType.isRef() && left->getType()->isPointerTy()) {
         left = _builder.CreateLoad(getLLVMType(effLeftType), left, "binop_lhs");
     }
     auto rightType = applySubst(node->right()->getType());
-    if (rightType.isRef()) {
-        right = _builder.CreateLoad(getLLVMType(effLeftType), right, "binop_rhs");
+    auto effRightType = rightType.isRef() ? *rightType.refElementType() : rightType;
+    if (rightType.isRef() && right->getType()->isPointerTy()) {
+        right = _builder.CreateLoad(getLLVMType(effRightType), right, "binop_rhs");
     }
 
     switch (node->op()) {

@@ -591,6 +591,15 @@ const p<ExprNode>& ExprAddSubNode::right() const {
 TypeInfo ExprAddSubNode::getType() const {
     auto leftType = _left->getType();
     auto rightType = _right->getType();
+    // v0.16: [] 返回 T&，标量运算符剥 Ref 后按值类型比较和返回
+    // （如 arr[0] + arr[1] 应返回 f64 而非 f64&，两 f64 值相加结果不是引用）
+    auto unwrapRef = [](TypeInfo& t) {
+        if (t.isRef()) {
+            if (auto inner = t.refElementType()) t = *inner;
+        }
+    };
+    unwrapRef(leftType);
+    unwrapRef(rightType);
     // v0.6 Phase 2c：`+` 任一操作数为 String 时整链结果即 String，
     // codegen 期 lower 为 StringBuilder 累加（详见 spec §4.4.1.4 / §4.3.1.7）。
     // 仅 Add 适用；Sub 仍按原算术规则。
@@ -643,6 +652,14 @@ const p<ExprNode>& ExprMulDivModNode::right() const {
 TypeInfo ExprMulDivModNode::getType() const {
     auto leftType = _left->getType();
     auto rightType = _right->getType();
+    // v0.16: [] 返回 T&，标量运算符剥 Ref 后按值类型比较和返回
+    auto unwrapRef = [](TypeInfo& t) {
+        if (t.isRef()) {
+            if (auto inner = t.refElementType()) t = *inner;
+        }
+    };
+    unwrapRef(leftType);
+    unwrapRef(rightType);
     if (leftType != rightType) {
         if (isFlexibleIntExpr(_right) && tryInferIntType(_right, leftType)) {
             return leftType;
@@ -689,6 +706,14 @@ const p<ExprNode>& ExprBinOpNode::right() const {
 TypeInfo ExprBinOpNode::getType() const {
     auto leftType = _left->getType();
     auto rightType = _right->getType();
+    // v0.16: [] 返回 T&，标量运算符剥 Ref 后按值类型比较和返回
+    auto unwrapRef = [](TypeInfo& t) {
+        if (t.isRef()) {
+            if (auto inner = t.refElementType()) t = *inner;
+        }
+    };
+    unwrapRef(leftType);
+    unwrapRef(rightType);
     if (leftType != rightType) {
         if (isFlexibleIntExpr(_right) && tryInferIntType(_right, leftType)) {
             return leftType;
