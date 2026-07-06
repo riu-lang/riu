@@ -48,17 +48,14 @@ yux build --emit-ir --emit-ir-dir ir_out  ; 指定 .ll 输出目录
 
 # yux-check test（诊断回归，; check: EXXXX 注解）
 yux-check test tests/check-cases/   ; 批量诊断测试
-yux-check test tests/check-cases/ -r ; 递归子目录
 yux-check <file>                    ; 单文件诊断（输出 file:line:col [EXXXX]）
 
 # xmake test（仅 format / extern / 项目输出）
-xmake test -g yux/format          ; 格式化（format_*）
-xmake test -g yux/extern          ; extern 边界（extern_* / ptr_*）
-xmake test -g yux/project         ; 项目模式用例（tests/projects/）
+xmake test -g yux/xxxx            ; 格式化（format_*）
 xmake test yux_tests/<name>       ; 跑单个用例
 ```
 
-分组名由 `tests/xmake.lua` 的 `categorize()` 按文件名前缀决定。当前仅三组：`yux/project`、`yux/format`、`yux/extern`。
+详细命令见 [docs/命令行工具.md](../../docs/命令行工具.md)。
 
 ### 完成一个版本后归档实施记录
 

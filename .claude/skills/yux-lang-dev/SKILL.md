@@ -27,82 +27,21 @@ yux build --emit-ir          ; 同时输出 .ll
 
 `yux <file>.yux` 单文件编译模式已移除（v0.18），编译必须走项目模式（`yux build`）。
 
-### 可执行文件清单
-
-所有 exe 放在 `build/windows/x64/<mode>/bin/`，**互相独立 —— 构建一个不会自动编译其他**。需要多个时推荐一次性构建全部：
-
-```powershell
-xmake                           ; 构建所有 target（全部 exe + 静态库）
-xmake build yux                 ; 仅构建主编译器
-xmake build yux-lsp             ; 仅构建 LSP
-```
-
-| exe | xmake target | 用途 | 依赖 LLVM | 用户直接调用 |
-|-----|-------------|------|-----------|-------------|
-| `yux` | `yux` | 主编译器：`build`(项目编译)、`test`(运行测试)、`format`(格式化) | 是 | 是 |
-| `yux-lsp` | `yux-lsp` | LSP 服务器，编辑器插件通过 stdio 接入；构建后自动复制为 `yux-lsp-claude` | 否 | 否（插件自动启动） |
-| `yux-ast` | `yux-ast` | 转储 ANTLR4 parse tree，仅词法+语法，不做 AST/语义/codegen | 否 | 是 |
-| `yux-check` | `yux-check` | 快速语义检查（阶段 0）：parse→AST→SemaPass，0 LLVM；支持单文件 + `test` 子命令批量诊断 | 否 | 是 |
-| `yux-test-runner` | `yux-test-runner` | 测试运行器，由 `yux test` 内部 spawn 加载 DLL 执行 #Test | 否 | 否（`yux test` 自动调） |
-
-各 exe 用法：
-
-```powershell
-# yux（主编译器）
-yux build [<name>]              ; 项目编译（需在含 yux.toml 的目录）
-yux build [<name>] --emit-ir    ; 同时输出 .ll
-yux build [<name>] --test       ; 构建测试 DLL（yux test 内部自动加此参数）
-yux build [<name>] --test --test-mod yux.core.array  ; 只编译指定模块的测试
-yux test                        ; 运行当前项目所有 #Test
-yux test --test-mod yux.core.array  ; 只运行指定模块的测试
-yux test --threads 4 --verbose
-yux format <file>               ; 格式化源码
-yux format <file> -i            ; 原地格式化
-yux format --stdin              ; 从 stdin 读取并格式化
-
-# yux-ast
-yux-ast <input.yux>             ; parse tree 多行打印到 stdout
-yux-ast <input.yux> -o <file>   ; 写入文件
-yux-ast <input.yux> --oneline   ; 单行紧凑形式
-
-# yux-check
-yux-check <input.yux>           ; 单文件快速 sema（退出码 0=无误）
-yux-check test <dir>            ; 批量诊断测试（; check: EXXXX 注解）
-yux-check test <dir> -r         ; 递归子目录
-```
+各 exe 详细用法见 [docs/命令行工具.md](../../../docs/命令行工具.md)。
 
 ## 测试
 
-**新测试默认 `yux test`**（DLL + 多子进程并行，每 DLL 独立进程）。诊断用 `yux-check test`，格式化/extern/项目输出用 `xmake test`。
+**新测试默认 `yux test`**（DLL + 多子进程并行）。诊断用 `yux-check test`，格式化/extern/项目输出用 `xmake test`。
 
 ```powershell
-# yux test（项目内，*.test.yux 的 #Test）
-# 流程：yux build --test → 并行 spawn yux-test-runner 子进程
-yux test                        ; 当前项目所有 #Test
-yux test --test-mod yux.core.array  ; 只编译/运行指定模块的测试
-yux test --threads 4            ; 指定并行子进程数（默认 CPU 核数）
-yux test --verbose              ; 打印每个测试捕获的 stdout/stderr
-yux test -d                     ; 调试输出传给 yux build --test
-cd sdk/yux && yux test          ; 主测试集
-
-# yux-check test（诊断回归，; check: EXXXX 注解）
-yux-check test tests/check-cases/   ; 批量测试
-yux-check test tests/check-cases/ -r ; 递归子目录
-
-# xmake test（format / extern / 项目输出，tests/cases/ + tests/projects/）
-xmake test -g yux/format      ; 格式化（format_*）
-xmake test -g yux/extern      ; extern 边界（extern_* / ptr_*）
-xmake test -g yux/project     ; 项目模式用例（tests/projects/）
-xmake test yux_tests/<name>   ; 跑单个用例
+yux test                 ; 当前项目所有 #Test
+yux test --verbose       ; 打印每个测试捕获的 stdout/stderr
+yux test -d              ; 调试输出
+yux-check <file>         ; 单文件快速 sema
+cd sdk/yux && yux test   ; 主测试集
 ```
 
-- `yux test`：测试写在 `*.test.yux`（**不能**挂在普通 `.yux`），断言 `assert_eq`/`assert_true`/`fail`。SDK 测试集在 `sdk/yux/src/yux/core/*.test.yux`
-- **摘要行**：每个 DLL 输出末尾必有一行 `<dll>: X passed, Y failed, [T]`。如果某个 DLL 输出末尾**没有**摘要行，就是进程意外退出（崩溃/被强制终止/死循环），不要以为是测试还在跑
-- `yux-check test`：诊断用例在 `tests/check-cases/`，行尾 `; check: EXXXX` 注解，错误码 + 行号精确匹配
-- `xmake test`：仅保留三组 — `tests/cases/format_*`（格式化）、`tests/cases/extern_*`/`ptr_*`（extern 边界）、`tests/projects/`（项目输出 + expected.txt）。其余编译+运行用例已全量迁到 SDK `yux test`，诊断用例已全量迁到 `yux-check test`
-- `yux test` 自动运行 `yux build --test`（复用缓存，只重编变化的文件），然后并行 spawn `yux-test-runner` 子进程——每个子进程加载一个 DLL、顺序跑其中测试、SEH 包裹异常
-- 构建缓存（`PkgCacheRegistry`）：基于编译器指纹 + 源文件 mtime/size 判断 obj 是否新鲜，`yux build` 与 `yux test` 共用同一套缓存，**无需手动删除**——编译器重编后指纹变化自动全体作废
-- 新增 SDK 测试**新建或追加**对应主题的 `.test.yux` 文件，不加到 `xmake test`
+详细测试命令见 [docs/命令行工具.md](../../../docs/命令行工具.md)。
 
 ## 写 yux（易错）
 
