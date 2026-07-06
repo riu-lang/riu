@@ -236,10 +236,10 @@ struct Array<T> {
   fn get(i usize) T&
 
   #Builtin
-  fn first() T
+  fn first() T&
 
   #Builtin
-  fn last() T
+  fn last() T&
 
   #Builtin
   fn pop() T

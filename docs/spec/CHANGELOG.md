@@ -487,7 +487,7 @@
 
 ## 2026-05-12 —— assert_eq 两实参类型不一致诊断
 
-- **新增**：附录 D §D.3 错误码 E6031 —— `assert_eq(actual, expected)` 两实参 LLVM 类型不一致时给出明确错误，取代旧版本直接触发 LLVM `CreateICmpEQ` same-type 断言导致编译器崩溃的行为。典型场景：`assert_eq(arr.len(), 3)` —— `Array.len()` 返 `i64`，整型字面量默认 `i32`。提示用户给字面量加后缀（`3i64` / `3u8` / ...）或写 turbofish `assert_eq:<T>(...)`。
+- **新增**：附录 D §D.3 错误码 E6031 —— `assert_eq(actual, expected)` 两实参 LLVM 类型不一致时给出明确错误，取代旧版本直接触发 LLVM `CreateICmpEQ` same-type 断言导致编译器崩溃的行为。典型场景：`assert_eq(arr.len(), 3)` —— `Array.len()` 返 `usize`，整型字面量默认 `i32`。提示用户给字面量加后缀或写 turbofish `assert_eq:<T>(...)`。
 - **冲突 / 兼容**：纯增诊断。原本会编译器崩溃的代码现在报 E6031；语义无变化，无 yux 程序行为差异。
 
 ## 2026-05-11 —— Dyn<D> / Dyn<D&> 运行时多态落地

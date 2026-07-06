@@ -1517,7 +1517,7 @@ i64 parseIntLiteral(const string& text, int line, int col) {
     string numStr = text;
 
     // 识别类型后缀 (决定 signed/unsigned 解析路径)
-    static const std::regex suffix_regex(R"([iu](?:8|16|32|64)?$)");
+    static const std::regex suffix_regex(R"([iu](?:8|16|32|64|size)?$)");
     std::smatch m;
     string suffix;
     if (std::regex_search(numStr, m, suffix_regex)) {

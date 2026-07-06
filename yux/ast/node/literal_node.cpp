@@ -25,7 +25,7 @@ LiteralNumberNode::LiteralNumberNode(const Token& value) : LiteralNode(value) {}
 LiteralIntNode::LiteralIntNode(const Token& value) : LiteralNumberNode(value) {
     const auto& v = value.getText();
     // language=RegExp
-    static const std::regex type_regex(R"([ui](\d+)$)");
+    static const std::regex type_regex(R"([ui](\d+|size)$)");
     if (std::smatch match; std::regex_search(v, match, type_regex)) {
         _type = TypeInfo(match.str());
         _hasSuffix = true;

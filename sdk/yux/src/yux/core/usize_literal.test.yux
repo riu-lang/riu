@@ -1,0 +1,40 @@
+; #Test usize / isize 整数字面量后缀
+#Test
+fn test_usize_suffix_literal() {
+    let a usize = 42usize
+    assert_eq(a, 42usize)
+
+    let b usize = 0usize
+    assert_eq(b, 0usize)
+}
+
+#Test
+fn test_usize_suffix_array_index() {
+    #Mut let arr Array<i32> = [10, 20, 30]
+    let idx usize = 1usize
+    assert_eq(arr.get(idx), 20)
+    assert_eq(arr.get(0usize), 10)
+    assert_eq(arr.get(2usize), 30)
+}
+
+#Test
+fn test_usize_suffix_len_compare() {
+    #Mut let arr Array<i32> = [1, 2, 3]
+    assert_eq(arr.len(), 3usize)
+}
+
+#Test
+fn test_usize_suffix_arithmetic() {
+    let a usize = 10usize
+    let b usize = a + 20usize
+    assert_eq(b, 30usize)
+}
+
+#Test
+fn test_isize_suffix_literal() {
+    let a isize = 42isize
+    assert_eq(a, 42isize)
+
+    let b isize = -10isize
+    assert_eq(b, -10isize)
+}
