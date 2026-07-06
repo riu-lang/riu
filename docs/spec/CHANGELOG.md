@@ -15,6 +15,14 @@
 
 ---
 
+## 2026-07-06 —— 测试隔离机制落地（DLL 级子进程）
+
+- **修改 §11.3.4.3–§11.3.4.4**：从设计的 `--isolate=process` 改为实际的 DLL 级子进程隔离——`yux test` 为每个 `*.test.dll` 启动独立 `yux-test-runner` 子进程，进程内 SEH 包裹单条测试。
+- **关闭 Open Issue**：`#Test` 测试隔离机制——已落地。
+- **冲突 / 兼容**：纯增量。测试语义不变；`--isolate` CLI flag 不再需要（隔离由架构保证）。
+
+---
+
 ## 2026-07-06 —— `rc:<T>(v)` 显式 Rc 构造
 
 - **修改 §9.5.2.2**：从"v1 不提供独立构造函数"更新为 `rc:<T>(v T) Rc<T>` baked builtin——分配 RC Block + store payload + 返回 `Rc<T>` 句柄，与隐式装箱等价。
