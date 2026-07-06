@@ -1,0 +1,149 @@
+; 字符串模板插值 + 字符串 `+` 连接行为测试
+;
+; 覆盖：
+;   - 标识符插值 "hello, $name"
+;   - 表达式插值 "result = ${expr}"
+;   - 转义 \$ 不进入插值
+;   - 字符串 + 连接（+ 链）
+;   - + 连接链中嵌套表达式
+;   - 模板 + to_string() 隐式调用（i32/f64/bool）
+
+; ==================== 标识符插值 ====================
+
+#Test
+fn test_string_template_id() {
+  let name String = "world"
+  let s String = "hello, $name"
+  assert_eq(s.len(), 12)
+}
+
+#Test
+fn test_string_template_two_ids() {
+  let a String = "foo"
+  let b String = "bar"
+  let s String = "$a$b"
+  assert_eq(s.len(), 6)
+}
+
+#Test
+fn test_string_template_id_surrounded() {
+  let name String = "x"
+  let s String = "[$name]"
+  assert_eq(s.len(), 3)
+}
+
+; ==================== 表达式插值 ====================
+
+#Test
+fn test_string_template_expr_i32() {
+  let n i32 = 42
+  let s String = "n = ${n + 1}"
+  assert_eq(s.len(), 6)  ; "n = 43" = 6 chars
+}
+
+#Test
+fn test_string_template_expr_multiple() {
+  let x i32 = 1
+  let y i32 = 2
+  let s String = "${x}+${y}=${x + y}"
+  assert_eq(s.len(), 5)  ; "1+2=3" = 5 chars
+}
+
+#Test
+fn test_string_template_mixed() {
+  let name String = "alice"
+  let age i32 = 30
+  let s String = "$name is ${age} years old"
+  assert_eq(s.len(), 21)  ; "alice is 30 years old" = 21
+}
+
+; ==================== \$ 转义 ====================
+
+#Test
+fn test_string_template_escape_dollar() {
+  let s String = "cost \$100"
+  assert_eq(s.len(), 9)  ; "cost $100" = 9 chars
+}
+
+; ==================== 字符串 + 连接 ====================
+
+#Test
+fn test_string_concat_simple() {
+  let s String = "hello" + " " + "world"
+  assert_eq(s.len(), 11)
+}
+
+#Test
+fn test_string_concat_with_i32() {
+  let x i32 = 42
+  let s String = "x = " + x
+  assert_eq(s.len(), 6)  ; "x = 42" = 6
+}
+
+#Test
+fn test_string_concat_with_bool() {
+  let b bool = true
+  let s String = "b = " + b
+  assert_eq(s.len(), 8)  ; "b = true" = 8
+}
+
+#Test
+fn test_string_concat_chain_nested_expr() {
+  let x i32 = 10
+  let y i32 = 20
+  let s String = "sum = " + (x + y)
+  assert_eq(s.len(), 8)  ; "sum = 30" = 8
+}
+
+#Test
+fn test_string_concat_long_chain() {
+  let a i32 = 1
+  let b i32 = 2
+  let c i32 = 3
+  let s String = "" + a + ", " + b + ", " + c
+  assert_eq(s.len(), 7)  ; "1, 2, 3" = 7
+}
+
+; ==================== 空字符串 + 边界 ====================
+
+#Test
+fn test_string_empty_template() {
+  let s String = ""
+  assert_eq(s.len(), 0)
+}
+
+#Test
+fn test_string_only_dollar_expr() {
+  let x i32 = 99
+  let s String = "${x}"
+  assert_eq(s.len(), 2)
+}
+
+#Test
+fn test_string_template_to_string_implicit() {
+  let n i32 = 7
+  let f f64 = 3.14f64
+  let b bool = false
+  let s String = "$n $f $b"
+  ; "7 3.14 false"
+  ; "7 3.140000 false" = 16 (f64 固定 6 位小数)
+  assert_eq(s.len(), 16)
+}
+
+; ==================== 字符串与变量 ====================
+
+#Test
+fn test_string_identity() {
+  let s String = "hello"
+  let s2 String = s
+  assert_eq(s2.len(), 5)
+}
+
+#Test
+fn test_string_compare_eq() {
+  let a String = "abc"
+  let b String = "abc"
+  let c String = "xyz"
+  assert_true(a == b)
+  assert_false(a == c)
+}

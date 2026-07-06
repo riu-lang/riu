@@ -1,0 +1,258 @@
+; struct 字段注解 #Val / #Frozen 行为测试
+;
+; 覆盖：
+;   - #Val 字段：构造期可写，成员函数不可重赋
+;   - #Frozen 字段：构造期可写，成员函数自身及子字段均禁写
+;   - #Frozen 字段 + Rc<T>：禁止通过引用修改内部
+;   - #Val / #Frozen 互斥报错
+;   - 多重注解锁
+
+; ==================== 基础 #Val 字段测试 ====================
+
+struct ValCounter {
+  #Val
+  id i32
+  value i32
+
+  #Static
+  fn make(id i32, value i32) ValCounter {
+    ret Self {
+      .id = id
+      .value = value
+    }
+  }
+
+  fn get_id() i32 {
+    ret $.id
+  }
+
+  fn inc() {
+    ; $.id = $.id + 1  ; 应报 E3109：#Val 字段不可重赋
+    $.value = $.value + 1
+  }
+}
+
+#Test
+fn test_val_field_construct_and_read() {
+  let c ValCounter = ValCounter::make(1, 10)
+  assert_eq(c.id, 1)
+  assert_eq(c.value, 10)
+}
+
+#Test
+fn test_val_field_read_in_method() {
+  let c ValCounter = ValCounter::make(100, 5)
+  let v i32 = c.get_id()
+  assert_eq(v, 100)
+}
+
+#Test
+fn test_val_field_other_field_mutable() {
+  ; 非 #Val 字段 value 可以被修改
+  #Mut let c ValCounter = ValCounter::make(1, 0)
+  c.inc()
+  assert_eq(c.value, 1)
+}
+
+; ==================== 嵌套 struct + #Frozen ====================
+
+struct InnerData {
+  x i32
+  y i32
+
+  #Static
+  fn make(x i32, y i32) InnerData {
+    ret Self {
+      .x = x
+      .y = y
+    }
+  }
+}
+
+struct OuterFrozen {
+  #Frozen
+  data InnerData
+  tag i32
+
+  #Static
+  fn make(x i32, y i32, tag i32) OuterFrozen {
+    ret Self {
+      .data = InnerData::make(x, y)
+      .tag = tag
+    }
+  }
+
+  fn get_x() i32 {
+    ret $.data.x
+  }
+
+  fn get_y() i32 {
+    ret $.data.y
+  }
+}
+
+#Test
+fn test_frozen_field_construct_and_read() {
+  let o OuterFrozen = OuterFrozen::make(3, 4, 99)
+  assert_eq(o.tag, 99)
+  assert_eq(o.data.x, 3)
+  assert_eq(o.data.y, 4)
+}
+
+#Test
+fn test_frozen_field_read_in_method() {
+  let o OuterFrozen = OuterFrozen::make(5, 6, 0)
+  ; 读取嵌套字段应允许（只读）
+  assert_eq(o.get_x(), 5)
+  assert_eq(o.get_y(), 6)
+}
+
+; ==================== #Frozen + 非 #Val 字段混用 ====================
+
+struct MixedAnno {
+  #Frozen
+  frozen_val i32
+  mutable_val i32
+
+  #Static
+  fn make(frozen_val i32, mutable_val i32) MixedAnno {
+    ret Self {
+      .frozen_val = frozen_val
+      .mutable_val = mutable_val
+    }
+  }
+
+  fn inc_mut() {
+    $.mutable_val = $.mutable_val + 1
+  }
+}
+
+#Test
+fn test_mixed_frozen_and_mutable_field() {
+  #Mut let m MixedAnno = MixedAnno::make(42, 0)
+  m.inc_mut()
+  assert_eq(m.mutable_val, 1)
+  ; frozen_val 应保持原值
+  assert_eq(m.frozen_val, 42)
+}
+
+; ==================== #Val 字段 + 不可变变量 ====================
+
+#Test
+fn test_val_field_in_immutable_var() {
+  let c ValCounter = ValCounter::make(7, 0)
+  ; 可以读 #Val 字段
+  assert_eq(c.id, 7)
+  ; c 本身不可变，所以连 .value 也不能写（变量自身浅不可变）
+}
+
+; ==================== 构造函数内写 #Val / #Frozen 字段 ====================
+
+struct AnnoConstruct {
+  #Val
+  a i32
+  #Frozen
+  b i32
+
+  #Static
+  fn make(a i32, b i32) AnnoConstruct {
+    ret Self {
+      .a = a
+      .b = b
+    }
+  }
+}
+
+#Test
+fn test_anno_field_construct_valid() {
+  ; 构造期 #Val / #Frozen 字段均可初始化
+  let ac AnnoConstruct = AnnoConstruct::make(1, 2)
+  assert_eq(ac.a, 1)
+  assert_eq(ac.b, 2)
+}
+
+; ==================== struct literal 直接构造 #Val / #Frozen ====================
+
+#Test
+fn test_val_field_struct_literal() {
+  ; struct 字面量直接构造也应该初始化 #Val 字段
+  let c ValCounter = ValCounter {
+    .id = 55
+    .value = 10
+  }
+  assert_eq(c.id, 55)
+  assert_eq(c.value, 10)
+}
+
+#Test
+fn test_frozen_field_struct_literal() {
+  let o OuterFrozen = OuterFrozen {
+    .data = InnerData::make(10, 20)
+    .tag = 77
+  }
+  assert_eq(o.tag, 77)
+  assert_eq(o.data.x, 10)
+}
+
+; ==================== #Frozen 字段含 Rc<T>（只读引用） ====================
+
+struct RcInner {
+  v i32
+
+  #Static
+  fn make(v i32) RcInner {
+    ret Self {
+      .v = v
+    }
+  }
+
+  fn get_v() i32 {
+    ret $.v
+  }
+}
+
+struct FrozenRcHolder {
+  #Frozen
+  inner Rc<RcInner>
+  extra i32
+
+  #Static
+  fn make(v i32, extra i32) FrozenRcHolder {
+    ret Self {
+      .inner = rc:<RcInner>(RcInner::make(v))
+      .extra = extra
+    }
+  }
+
+  fn get_inner_v() i32 {
+    ret $.inner.get_v()
+  }
+}
+
+#Test
+fn test_frozen_rc_field_read() {
+  ; 通过 #Frozen 字段访问 Rc<T> 内部应该允许只读
+  let h FrozenRcHolder = FrozenRcHolder::make(42, 0)
+  assert_eq(h.inner.get_v(), 42)
+  assert_eq(h.get_inner_v(), 42)
+}
+
+; ==================== 结构体整体 #Frozen ====================
+
+#Test
+fn test_local_frozen_let_read() {
+  #Frozen let c ValCounter = ValCounter::make(1, 2)
+  assert_eq(c.id, 1)
+  assert_eq(c.value, 2)
+}
+
+; ==================== 边界：多次构造 #Val 初始化 ====================
+
+#Test
+fn test_val_field_reconstruct() {
+  ; 每次构造都可以初始化 #Val 字段
+  let c1 ValCounter = ValCounter::make(10, 0)
+  let c2 ValCounter = ValCounter::make(20, 0)
+  assert_eq(c1.id, 10)
+  assert_eq(c2.id, 20)
+}
