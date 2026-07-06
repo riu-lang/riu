@@ -6,8 +6,17 @@
 -- 已完成v...
 
 set_project("yux-lang")
-set_version("0.18.0-alpha")
+local yux_version = "0.18.0-alpha"
+set_version(yux_version)
 set_languages("c++23")
+
+-- 生成版本字符串供各 target 通过 add_defines 注入（格式 v0.18-2026-07-06）
+-- 从 set_version 提取 major.minor，拼接当前日期
+do
+    local major_minor = yux_version or "0.0"
+    local date = os.date("%Y-%m-%d")
+    _YUX_VERSION_STR = "v" .. major_minor .. "-" .. date
+end
 
 add_rules("mode.debug", "mode.release")
 

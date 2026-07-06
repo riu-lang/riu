@@ -7,6 +7,7 @@
 target("yux-check")
     set_kind("binary")
     add_deps("yux_frontend")
+    add_defines("YUX_VERSION=\"" .. _YUX_VERSION_STR .. "\"")
     add_includedirs(path.join(os.projectdir(), "third_party", "cli11/include"))
     add_files("check_main.cpp")
     set_rundir("$(projectdir)")

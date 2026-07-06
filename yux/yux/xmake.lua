@@ -125,6 +125,7 @@ target("llvm")
 target("yux")
     set_kind("binary")
     add_deps("yux_frontend", "yuxrt", "zlib", "llvm")
+    add_defines("YUX_VERSION=\"" .. _YUX_VERSION_STR .. "\"")
 
     -- compiler/ + cli/ 的内部 include（private 即可，binary 不导出）
     add_includedirs(".")

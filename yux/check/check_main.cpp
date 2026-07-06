@@ -443,7 +443,18 @@ int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape) — main
     SetConsoleOutputCP(CP_UTF8);
 #endif
 
+    // --version：在 CLI11 解析之前手动处理，避免 required option 冲突。
+    // CLI11 仍注册同名 flag 以确保 -h 显示 --version。
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--version") {
+            std::cout << "yux-check " YUX_VERSION "\n";
+            return 0;
+        }
+    }
+
     CLI::App app{"yux-check: fast standalone semantic check (no LLVM)"};
+    bool versionFlag = false;
+    app.add_flag("--version", versionFlag, "Print version and exit");
     app.require_subcommand(0, 1);
 
     // ---- 单文件模式 (保持现有行为) ----

@@ -45,12 +45,23 @@ int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windo
     SetConsoleCP(CP_UTF8);
     SetConsoleOutputCP(CP_UTF8);
 
+    // --version：在 CLI11 解析之前手动处理，避免 require_subcommand 冲突。
+    // CLI11 仍注册同名 flag 以确保 -h 显示 --version。
+    for (int i = 1; i < argc; ++i) {
+        if (std::wstring(argv[i]) == L"--version") {
+            std::cout << "yux " YUX_VERSION "\n";
+            return 0;
+        }
+    }
+
     signal(SIGSEGV, handleCrash);
     signal(SIGABRT, handleCrash);
     signal(SIGFPE, handleCrash);
 
     CLI::App app{"yux compiler"};
     app.require_subcommand(1);
+    bool versionFlag = false;
+    app.add_flag("--version", versionFlag, "Print version and exit");
 
     bool emitIr = false;
     app.add_flag("--emit-ir", emitIr, "Emit LLVM IR to .ll file");

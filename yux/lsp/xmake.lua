@@ -7,6 +7,7 @@
 target("yux-lsp")
     set_kind("binary")
     add_deps("yux_frontend")
+    add_defines("YUX_VERSION=\"" .. _YUX_VERSION_STR .. "\"")
 
     -- yux/ 顶层：让 #include "lsp/..." 能找到 yux/lsp/...
     add_includedirs("..", {public = true})

@@ -7,4 +7,5 @@
 
 target("yux-test-runner")
     set_kind("binary")
+    add_defines("YUX_VERSION=\"" .. _YUX_VERSION_STR .. "\"")
     add_files("runner_main.cpp")

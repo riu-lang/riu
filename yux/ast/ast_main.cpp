@@ -34,7 +34,18 @@ int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape)
     SetConsoleOutputCP(CP_UTF8);
 #endif
 
+    // --version：在 CLI11 解析之前手动处理，避免 required option 冲突。
+    // CLI11 仍注册同名 flag 以确保 -h 显示 --version。
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--version") {
+            std::cout << "yux-ast " YUX_VERSION "\n";
+            return 0;
+        }
+    }
+
     CLI::App app{"yux-ast: dump ANTLR parse tree of a .yux file"};
+    bool versionFlag = false;
+    app.add_flag("--version", versionFlag, "Print version and exit");
 
     std::string inputFile;
     app.add_option("input", inputFile, "Input .yux file")->required();

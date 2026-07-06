@@ -41,6 +41,11 @@ RunnerOptions parseArgs(int argc, char* argv[]) { // NOLINT(modernize-avoid-c-ar
         std::cerr << "Usage: yux-test-runner <dll-path> [--verbose]\n";
         std::exit(1);
     }
+    // --version：打印版本号后退出
+    if (std::string(argv[1]) == "--version") {
+        std::cout << "yux-test-runner " YUX_VERSION "\n";
+        std::exit(0);
+    }
     opts.dllPath = argv[1];
     for (int i = 2; i < argc; ++i) {
         std::string arg = argv[i];
