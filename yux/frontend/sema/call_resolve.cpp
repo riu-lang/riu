@@ -3,7 +3,7 @@
 
 // 调用重载解析实现 (Sema/Codegen 拆分 Phase 3.3 前置)
 //
-// 本文件内容原位于 `src/compiler/compiler_call.cpp` 顶部, 现整体迁移到 sema 层:
+// 本文件内容原位于 `yux/yux/compiler/compiler_call.cpp` 顶部, 现整体迁移到 sema 层:
 // - paramAccepts / overloadMatchesDefault / overloadMatchesFlexible: 纯 TypeInfo 匹配
 // - resolveFnOverload / resolveCtorOverload: 重载解析 + 灵活整数推断 + E6014 歧义诊断
 //
@@ -544,7 +544,7 @@ void checkBangWithoutFallibleCaller(FnNode* currentFnNode, p<ExprCallNode> callN
 }
 
 // ==================== ID-callee 错误传播校验 (Phase 10e/10f) ====================
-// 原位于 `src/compiler/compiler_call.cpp` 的 static 自由函数, 形参从
+// 原位于 `yux/yux/compiler/compiler_call.cpp` 的 static 自由函数, 形参从
 // `Compiler::TryCatchCtx*` 改成 `vector<string>* tryBlockSeenErrs` 以解开 LLVM 耦合
 // (原 TryCatchCtx 内含 llvm::BasicBlock*, 函数体只读 seenErrTypes).
 void checkErrPropagateForIdCall(FnNode* currentFnNode, p<ExprCallNode> callNode, const string& fnName,

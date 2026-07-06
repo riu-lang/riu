@@ -19,14 +19,14 @@
 | 文件 | 内容 | 何时读 |
 |------|------|--------|
 | [yux-syntax.md](../../rules/yux-syntax.md) | yux 语法速查（简版） | 编辑 `*.yux` 时 |
-| [sema-codegen.md](../../rules/sema-codegen.md) | Sema / Codegen 两段分离协议 | 改 `src/sema/` 或 `src/compiler/` 时 |
+| [sema-codegen.md](../../rules/sema-codegen.md) | Sema / Codegen 两段分离协议 | 改 `yux/frontend/sema/` 或 `yux/yux/compiler/` 时 |
 | [spec-writeback.md](../../rules/spec-writeback.md) | 语言面变更回写流程 | 改语言特性/语法/spec 时 |
 
 ## 怎么用
 
 - 接到任务前，**至少看 [behavior.md](behavior.md) 与 [tasks-and-bugs.md](tasks-and-bugs.md)**；按任务性质再翻其余模块。
 - 想"按惯例推测"的内容，**先来这里或技能中核对**；这里没写清楚的，用 Read/Grep 查实际源码和脚本，**不要凭目录名、文件名或命名习惯推断行为**。
-- 文档（`docs/`）为中文参考，权威是 `src/yux.g4` + 编译器源码；冲突时更新文档，不要反过来。
+- 文档（`docs/`）为中文参考，权威是 `yux/ast/yux*.g4` + 编译器源码；冲突时更新文档，不要反过来。
 
 ## 维护
 

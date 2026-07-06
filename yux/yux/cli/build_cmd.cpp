@@ -362,7 +362,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         namespace fs = std::filesystem;
         sdkPath = fs::absolute(sdkPath).string();
         // SDK 静态库路径推导：sdkRoot = sdkPath 向上到含 yux.toml 的目录
-        fs::path sdkRoot = fs::path(sdkPath).parent_path().parent_path().parent_path(); // src/yux/core → sdk/yux
+        fs::path sdkRoot = fs::path(sdkPath).parent_path().parent_path().parent_path(); // sdk/yux/src/yux/core → sdk/yux
         sdkLibPath = (sdkRoot / "build" / "yux.lib").string();
 
         // 解析 SDK 源码获取符号表（_sdkFile + 各模块 AST）

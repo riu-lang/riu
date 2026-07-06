@@ -120,4 +120,4 @@ yux **没有任何隐式类型转换**。整数不自动拓宽/收窄，`i8` 和
 
 - **注释必须中文**；用 `// ====` 分隔区域
 - 遇到问题/潜在 bug/未完成/待验证 → 必须写 `// TODO:`，不要假装没看见
-- 改 `src/sema/` 或 `src/compiler/` 前，手动读 [`rules/sema-codegen.md`](../../../rules/sema-codegen.md)
+- 改 `yux/frontend/sema/` 或 `yux/yux/compiler/` 前，手动读 [`rules/sema-codegen.md`](../../../rules/sema-codegen.md)

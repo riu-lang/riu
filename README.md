@@ -77,7 +77,7 @@ sync-deps.cmd        # Windows CMD
 
 ### 生成解析器代码
 
-当修改 `src/yux.g4` 语法文件后，需要重新生成 C++ 解析器代码：
+当修改 `yux/ast/yux.g4` 语法文件后，需要重新生成 C++ 解析器代码：
 
 ```powershell
 ./gen-antlr.ps1      # Windows PowerShell
@@ -189,7 +189,7 @@ entry="main.yux"
 
 测试运行器当前以单文件模式在内部调用 `yux` 编译每个用例，产物落在 `tests/cases/build/<stem>.exe`（错误用例在 `tests/cases/error/build/`）。单文件模式本身已弃用，这里是最后一处内部使用，未来会替换为每用例一个小项目的 harness。
 
-语法以 `src/yux*.g4` 和 [文档](docs/index.md) 为准，用例需符合这两者；
+语法以 `yux/ast/yux*.g4` 和 [文档](docs/index.md) 为准，用例需符合这两者；
 
 **运行方式：**
 

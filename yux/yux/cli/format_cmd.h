@@ -3,7 +3,7 @@
 
 // `yux format` 子命令实现
 //
-// 从 src/main.cpp 抠出 (P1 Phase 1.b.iii): stdin / 文件输入, --in-place 覆盖,
+// 从 yux/yux/main.cpp 抠出 (P1 Phase 1.b.iii): stdin / 文件输入, --in-place 覆盖,
 // 向上查找 yux.toml 读取 fmt.line_width。仅 AST 引擎; 旧 token 流 Formatter 已删除。
 
 #pragma once

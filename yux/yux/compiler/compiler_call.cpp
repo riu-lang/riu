@@ -22,7 +22,7 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 
-// 重载解析 / 灵活整数推断 / E6014 歧义诊断已迁至 src/sema/call_resolve.cpp,
+// 重载解析 / 灵活整数推断 / E6014 歧义诊断已迁至 yux/frontend/sema/call_resolve.cpp,
 // 由 namespace sema 提供 resolveFnOverload / resolveCtorOverload, 不依赖 LLVM.
 
 // ==================== 函数获取 ====================
@@ -215,7 +215,7 @@ bool Compiler::isBuiltinMethod(const string& structName, const string& methodNam
 //     用，10f-5）；写了 ! 给 E7016 警告（语义不变，编译器视同义）
 //   - inTryBlock=false 时：沿用原 10e 逻辑（E7001 / E7004 / E7006）
 // Phase 10e/10f 的 ID-callee 错误传播校验 (E7001/E7004/E7006/E7016) 已迁至
-// src/sema/call_resolve.cpp 的 sema::checkErrPropagateForIdCall, 形参改成
+// yux/frontend/sema/call_resolve.cpp 的 sema::checkErrPropagateForIdCall, 形参改成
 // `vector<string>* tryBlockSeenErrs` 解开 Compiler::TryCatchCtx 的 LLVM 耦合.
 
 llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {

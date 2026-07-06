@@ -4,7 +4,7 @@
 
 ## 不要改语法文件
 
-`src/yux*.g4` **只读**。如果任务看起来需要改语法，立刻暂停，列出遇到的问题与可能的修改方向，交给用户决定。**不要"先改一点试试"**。
+`yux/ast/yux*.g4` **只读**。如果任务看起来需要改语法，立刻暂停，列出遇到的问题与可能的修改方向，交给用户决定。**不要"先改一点试试"**。
 
 ## 多步任务先落到 `CURRENT.md`
 
@@ -22,15 +22,15 @@
 
 涉及到具体的测试名、目录路径、文件内容、命令参数时，用 Read/Grep/Glob 查实际文件，不要凭命名推断。
 
-当 docs、`yux.g4`、编译器三者冲突时，以 `src/yux*.g4` 和编译器源码为准，随后更新 docs，**不要反过来**。
+当 docs、`yux.g4`、编译器三者冲突时，以 `yux/ast/yux*.g4` 和编译器源码为准，随后更新 docs，**不要反过来**。
 
 ## 写 yux 代码前先看速查 + 按顺序读文档
 
 写 `*.yux` 时先翻 [`rules/yux-syntax.md`](../../rules/yux-syntax.md)（简版速查，列易踩坑点），再按需要往下查：
 
 1. `docs/*.md`（中文教程）
-2. `src/yux*.g4`（权威语法）
-3. `src/*.cpp`（编译器实现，最后查）
+2. `yux/ast/yux*.g4`（权威语法）
+3. `yux/**/*.cpp`（编译器实现，最后查）
 
 **不要拿 Rust / C++ / Go 的语义去套 yux**。
 
@@ -43,8 +43,8 @@
 ./lint.ps1              ; 仅 lint git 已变动 / 未跟踪文件
 ./format.ps1 --all      ; 全仓
 ./lint.ps1 --all        ; 三个 target 全量
-./format.ps1 src/x.cpp  ; 指定文件
-./lint.ps1 src/x.cpp    ; 指定文件
+./format.ps1 yux/x.cpp  ; 指定文件
+./lint.ps1 yux/x.cpp    ; 指定文件
 ./format.ps1 --check    ; clang-format --dry-run -Werror, 有差异退出码 1
 ```
 

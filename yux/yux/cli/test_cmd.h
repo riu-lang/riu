@@ -4,7 +4,7 @@
 // `yux test` 子命令实现
 //
 // 流程：yux build --test → yux-test-runner 多线程加载 *.test.dll 执行
-// DLL 协议见 src/tools/runner_main.cpp 文件头注释
+// DLL 协议见 yux/test-runner/runner_main.cpp 文件头注释
 
 #pragma once
 

@@ -17,6 +17,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 其他参考：
 - [docs/index.md](docs/index.md) — 语言文档索引（中文）
-- [src/yuxParser.g4](src/yuxParser.g4) / [src/yuxLexer.g4](src/yuxLexer.g4) — 权威 ANTLR4 语法（**只读**）
+- [yuxParser.g4](yux/ast/yuxParser.g4) / [yuxLexer.g4](yux/ast/yuxLexer.g4) — 权威 ANTLR4 语法（**只读**）
 - [README.md](README.md) — 面向用户的概述
 - [组织架构](yux.md)

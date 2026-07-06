@@ -93,10 +93,10 @@ let prev = $.buf <- rc:<Buffer>(64)   ; 字段级移入
 
 ## 9. 不要碰语法文件
 
-写 yux 时如果觉得语法不顺，**先暂停**告诉用户。`src/yux*.g4` 只读，详见 [behavior.md](../.claude/rules/behavior.md)。
+写 yux 时如果觉得语法不顺，**先暂停**告诉用户。`yux/ast/yux*.g4` 只读，详见 [behavior.md](../.claude/rules/behavior.md)。
 
 ## 想看完整语法
 
 - [docs/index.md](../docs/index.md) — 教程入口（中文）
 - [docs/spec/index.md](../docs/spec/index.md) — 规范（草案）
-- [src/yuxParser.g4](../src/yuxParser.g4) / [src/yuxLexer.g4](../src/yuxLexer.g4) — 权威语法
+- [yux/ast/yuxParser.g4](../yux/ast/yuxParser.g4) / [yux/ast/yuxLexer.g4](../yux/ast/yuxLexer.g4) — 权威语法

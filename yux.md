@@ -2,7 +2,7 @@
 
 本文件汇总 yux-lang 仓库的关键架构图，便于快速上手与跨模块讨论。图示用 Mermaid，配合 [CLAUDE.md](CLAUDE.md) / [.claude/rules/directory.md](.claude/rules/directory.md) / [.claude/rules/sema-codegen.md](.claude/rules/sema-codegen.md) 阅读。
 
-权威源：`src/yux*.g4`（语法）、`src/` C++ 源码、`xmake.lua`（构建拓扑）。图与代码冲突时以代码为准，**回头更新本文档**而非反过来。
+权威源：`yux/ast/yux*.g4`（语法）、`yux/` C++ 源码、`xmake.lua`（构建拓扑）。图与代码冲突时以代码为准，**回头更新本文档**而非反过来。
 
 ---
 
@@ -49,16 +49,16 @@ flowchart TB
     src[.yux 源文件] --> lex[yuxLexer<br/>ANTLR4 生成]
     lex --> parse[yuxParser<br/>ANTLR4 生成]
     parse --> tree[ParseTree]
-    tree --> builder[ast::AstBuilder<br/>src/ast/ast_builder.cpp]
-    builder --> ast[AST 节点<br/>src/ast/node/*]
+    tree --> builder[ast::AstBuilder<br/>yux/ast/ast_builder.cpp]
+    builder --> ast[AST 节点<br/>yux/ast/node/*]
 
-    ast --> sema[SemaPass<br/>src/sema/sema_pass.cpp]
+    ast --> sema[SemaPass<br/>yux/frontend/sema/sema_pass.cpp]
     sema -. 双跑防御 .-> compiler
 
     ast --> analyzer[Analyzer<br/>borrow / const_mut /<br/>flow_terminate /<br/>spec_impl / symbol_suggest]
     analyzer --> compiler
 
-    ast --> compiler[Compiler<br/>src/compiler/compiler*.cpp]
+    ast --> compiler[Compiler<br/>yux/yux/compiler/compiler*.cpp]
     compiler --> ir[LLVM IR]
     ir --> llc[LLVM 后端]
     llc --> obj[.obj]
@@ -129,7 +129,7 @@ flowchart TB
 
 规则要点（写新 C++ 时必看）：
 
-- `src/sema/` 禁止 `#include "llvm/..."`，禁止访问 `IRBuilder` / `_module`。
+- `yux/frontend/sema/` 禁止 `#include "llvm/..."`，禁止访问 `IRBuilder` / `_module`。
 - 让 sema 接管某错误码 → **必须同步更新 `kMigratedCodes` 白名单**，否则 sema 自身 try/catch 吞错、无测试能捕获。
 - 新增 AST / 表达式类 → 在 `SemaPass::visitExpr` 加 dispatch 分支（即使是空占位），否则 sema 静默 skip 整个子树。
 - sema 接管后 Compiler 端原 inline throw / validate 调用直接删除（v0.16 收尾）。
@@ -180,7 +180,7 @@ classDiagram
     StatementNode "1" o-- "*" ExprNode
 ```
 
-定义在 `src/ast/node/*.h`；新增节点务必同步 `SemaPass::visitExpr` 与 mangler/builder 路径。
+定义在 `yux/ast/node/*.h`；新增节点务必同步 `SemaPass::visitExpr` 与 mangler/builder 路径。
 
 ---
 
@@ -200,7 +200,7 @@ flowchart LR
     comp & sym & tok & diag --> doc
 ```
 
-入口 `src/lsp/lsp_main.cpp`，编为 `yux-lsp`，构建后复制一份为 `yux-lsp-claude`（独立进程，避免 clientInfo 串扰）。
+入口 `yux/lsp/lsp_main.cpp`，编为 `yux-lsp`，构建后复制一份为 `yux-lsp-claude`（独立进程，避免 clientInfo 串扰）。
 
 ---
 
@@ -208,9 +208,9 @@ flowchart LR
 
 详见 [.claude/rules/directory.md](.claude/rules/directory.md)。一句话版：
 
-- `src/`：编译器实现（`sema/` 零 LLVM；`compiler/` 全 LLVM；`analyzer/` 语义检查；`lsp/` LSP；`tools/` 工具）
+- `yux/`：编译器实现（`yux/` 零 LLVM；`yux/yux/compiler/` 全 LLVM；`yux/analyzer/` 语义检查；`yux/lsp/` LSP；`yux/frontend/tools/` 工具）
 - `sdk/yux/`：自举 runtime（独立 yux 项目 → `yux.lib`）
-- `gen/`：ANTLR 生成代码（不要手改）
+- `yux/ast/gen/`：ANTLR 生成代码（不要手改）
 - `docs/`：中文教程 + `docs/spec/` 规范草案
 - `tests/`：单文件用例 + 项目用例（前缀分组，见 `yux-lang-dev` 技能）
 - `plugins/`：编辑器 / Claude Code 插件

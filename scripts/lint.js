@@ -12,7 +12,7 @@
  * 用法：
  *   node scripts/lint.js                 ; 改了什么 lint 什么
  *   node scripts/lint.js --all           ; 三个 target 全量
- *   node scripts/lint.js src/foo.cpp ... ; 指定文件
+ *   node scripts/lint.js yux/foo.cpp ... ; 指定文件
  */
 
 const fs = require('fs');

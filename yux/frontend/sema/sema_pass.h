@@ -20,7 +20,7 @@ class Yux;
 // 3.1：仅骨架 —— walk file→fn→stmt→expr 全树, visitExpr 暂为空。
 // 3.2：visitExpr 写 resolvedType, 与 compile<Foo>Expr 入口的写并存校验。
 // 3.3+：按子系统（方法分派 / 调用解析 / intrinsic ...）把 throw 从
-//      `src/compiler/compiler_*.cpp` 抠进来, 最终 codegen 不再抛语义错。
+//      `yux/yux/compiler/compiler_*.cpp` 抠进来, 最终 codegen 不再抛语义错。
 //
 // 当前 pass 是 no-op, 主要保证拓扑落位; 由 `yux_frontend` 静态库提供,
 // 不依赖 LLVM, 给 `yux-lsp` / 未来 `yux-check` 共用。

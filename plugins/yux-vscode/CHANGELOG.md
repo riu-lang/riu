@@ -104,7 +104,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [0.2.0]
 
-- 用基于 `src/yux.g4` 生成的 antlr-ng parser（通过 `-D language=TypeScript` 覆盖 .g4 的 Cpp 目标）替换原正则方案
+- 用基于 `yux/ast/yux.g4` 生成的 antlr-ng parser（通过 `-D language=TypeScript` 覆盖 .g4 的 Cpp 目标）替换原正则方案
 - 作用域感知：函数参数 / 函数体 / 嵌套 block 三级 scope，定义跳转与变量补全按可见性过滤
 - 一层泛型壳剥离（`Ref<T>` / `Rc<T>` / `Ptr<T>` / `Array<T>`），多级点链 `a.b.c.` 按 struct 字段/方法下钻
 - `self` 在 struct impl 方法内解析为当前 struct

@@ -1,6 +1,6 @@
 # 附录 B：语法汇总
 
-> 权威来源：[`src/yux.g4`](../../src/yux.g4)。本附录是规范化摘录（简化记号见 §2.1.1），不得与 `.g4` 冲突；当 `.g4` 与本附录不一致时**应当**修订本附录。
+> 权威来源：[`yux/ast/yux.g4`](../../yux/ast/yux.g4)。本附录是规范化摘录（简化记号见 §2.1.1），不得与 `.g4` 冲突；当 `.g4` 与本附录不一致时**应当**修订本附录。
 
 ## B.1 顶层
 
@@ -80,7 +80,7 @@ draftBound        ::= modulePath? ID genericDef?     # 例：ToString / pkg.Disp
 - `typeWithRef` 仅出现在函数参数与局部变量声明位置（§3.2 / §8.3.1）；其它位置只能用 `type`。
 - `typeParam` 的 spec 边界仅出现在**声明位**（`fn` / `struct` / `#Spec struct` 头部的 `genericDef` 槽位）；调用点 turbofish `f:<T>(args)` 处**不得**写边界（§6.4.4.3）。
 
-> 上述边界产生式 spec-unify v1 已落地 `src/yux.g4`；`draftBound` 产生式名沿用历史 token 名，语义为"spec 边界"（§12）。
+> 上述边界产生式 spec-unify v1 已落地 `yux/ast/yux.g4`；`draftBound` 产生式名沿用历史 token 名，语义为"spec 边界"（§12）。
 
 ## B.2a `Dyn<D>` / `Dyn<D&>`（v0.5+）
 

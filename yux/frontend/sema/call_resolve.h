@@ -15,7 +15,7 @@ class SpecImplChecker;
 
 // 调用重载解析（Sema/Codegen 拆分 Phase 3.3 前置）
 //
-// 从 `src/compiler/compiler_call.cpp` 抠出, 不依赖 LLVM, 用于:
+// 从 `yux/yux/compiler/compiler_call.cpp` 抠出, 不依赖 LLVM, 用于:
 // - 当前: Compiler 在 compile 调用 / 构造点调用, 行为不变
 // - 后续: SemaPass 在 visitCall 阶段调用, 提前完成歧义诊断 + 灵活整数推断
 //

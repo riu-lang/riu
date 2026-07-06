@@ -1,7 +1,7 @@
 # 附录 D：诊断与错误码
 
-> 权威来源：[`include/error_code.h`](../../include/error_code.h) 的 `ErrorCode::E####` 与
-> [`src/diagnostic.{h,cpp}`](../../src/diagnostic.cpp) 的 `Diagnostic` / `DiagnosticEngine`。
+> 权威来源：[`yux/include/error_code.h`](../../yux/include/error_code.h) 的 `ErrorCode::E####` 与
+> [`yux/frontend/tools/diagnostic.{h,cpp}`](../../yux/frontend/tools/diagnostic.cpp) 的 `Diagnostic` / `DiagnosticEngine`。
 > 本附录是规范化摘录，与上述源码冲突时**应当**修订本附录。
 
 本附录约定编译器面向用户输出的诊断信息形态、错误码段位与全量码表。运行时诊断（panic、栈回溯等）不在本附录范围。
@@ -64,7 +64,7 @@ N | <源码行原文>
 
 ### D.3.1 E1xxx — 词法 / 文法（ANTLR）
 
-由 `SyntaxErrorListener`（`src/syntax_error_listener.{h,cpp}`）接管 ANTLR 默认 ConsoleErrorListener，按 `recognizer` 是否为 `antlr4::Lexer` 派发：
+由 `SyntaxErrorListener`（`yux/frontend/tools/syntax_error_listener.{h,cpp}`）接管 ANTLR 默认 ConsoleErrorListener，按 `recognizer` 是否为 `antlr4::Lexer` 派发：
 
 | 码     | 模板                  | 触发                                  |
 |--------|-----------------------|---------------------------------------|
@@ -460,7 +460,7 @@ Array 内置方法（E6042）：
     初始化与借用形态）、E2006 / E2007（缺函数体 vs `#Builtin`）、E6010 / E6011（泛型实参个数）以及
     E1002（`SyntaxErrorListener` 对常见 `';'` / `mismatched input` / `extraneous input` 等模式）站点附了简单 hint。
     回归位于 `tests/cases/diag_*.yux`。
-  - **B 阶段（已落地）**：未声明标识符的拼写近似建议（Levenshtein ≤ 2）。`src/symbol_suggest.{h,cpp}` 沿
+  - **B 阶段（已落地）**：未声明标识符的拼写近似建议（Levenshtein ≤ 2）。`yux/analyzer/symbol_suggest.{h,cpp}` 沿
     `ScopeNode` 父链汇总可见变量与函数名，对 E3030 / E3031 / E3032 抛出处给出最近 1–3 个候选，组装为
     `did you mean ...` 风格的 `= help:` 行；候选为空时不附 hint。回归位于 `tests/cases/diag_suggest_var.{yux,expected_err}`。
   - **后续候选场景（待启）**：类型不匹配时的 `.to_<type>()` 候选；`extern` 签名不匹配；字段拼写近似（E304x）等。

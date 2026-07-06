@@ -6,14 +6,14 @@
  *
  * 默认作用域: git 已变动 (含未跟踪) 的 .h / .hpp / .cpp / .cc 文件,
  *            排除 gen/ / third_party/ / build/ / .xmake/ / .cache/.
- * --all: 扫 src/、include/、sdk/yux/src/ 下所有匹配.
+ * --all: 扫 yux/、include/、sdk/yux/src/ 下所有匹配.
  * 显式文件位置参数: 只处理列出的文件.
  * --check: 只检查不改 (clang-format --dry-run -Werror), 有差异退出码 1.
  *
  * 用法:
  *   node scripts/format.js                 ; 改了什么格式化什么
  *   node scripts/format.js --all           ; 全仓
- *   node scripts/format.js src/foo.cpp ... ; 指定文件
+ *   node scripts/format.js yux/foo.cpp ... ; 指定文件
  *   node scripts/format.js --check         ; 只检查不改
  */
 
@@ -63,7 +63,7 @@ function walkDir(dir, out) {
 }
 
 function allRepoFiles() {
-  const roots = ['src', 'include', 'sdk/yux/src'];
+  const roots = ['yux', 'include', 'sdk/yux/src'];
   const out = [];
   for (const r of roots) walkDir(path.join(PROJECT_ROOT, r), out);
   return out;

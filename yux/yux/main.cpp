@@ -32,7 +32,7 @@ std::string wstr2str(const std::wstring& wstr) {
     return {u8.begin(), u8.end()};
 }
 
-// findSdkPath() 已抠到 sdk_loader::findSdkPath (src/tools/sdk_loader.{h,cpp})。
+// findSdkPath() 已抠到 sdk_loader::findSdkPath (yux/frontend/tools/sdk_loader.{h,cpp})。
 // 历史 TODO(phase-C): SDK 改用 lib 链路后, 该函数应返回 SDK 项目根 (含 yux.toml),
 // 而非直接给 core 目录。
 

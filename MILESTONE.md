@@ -661,7 +661,7 @@ yux-check 收尾（Bucket 4）：
 - `docs/spec/` §1–§11 + 附录 A / B / C 全部填实
 - `DRAFT-所有权与引用.md` 已迁入 §8，原草案归档至 `docs/spec/draft/`
 - 草案目录化 + `_模板.md` 骨架范本入库
-- 用语统一（应当 / 不得 / 应该 / 可以）；附录 B 与 `src/yux.g4` 交叉核对
+- 用语统一（应当 / 不得 / 应该 / 可以）；附录 B 与 `yux/ast/yux.g4` 交叉核对
 - `docs/spec/CHANGELOG.md` 上线，记录各 Phase 收口
 
 **退出标准**：✅ spec 主体章节 TODO 清零（Open Issues 保留）；附录 B 与 `yux.g4` 对齐；详见 `docs/spec/CHANGELOG.md`。

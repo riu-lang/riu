@@ -3,7 +3,7 @@
 
 // `yux build` 子命令实现
 //
-// 从 src/main.cpp 抠出 (P1 Phase 1.b.iii.b):
+// 从 yux/yux/main.cpp 抠出 (P1 Phase 1.b.iii.b):
 // - 项目模式: 加载 yux.toml + entry, 调度 SDK / lib / exe 三条路径,
 //   走 codegen → obj → LLD 链接 → exe / lib;
 // - 包级缓存 (PkgCacheRegistry) 控制增量编译。
