@@ -1,0 +1,45 @@
+; 函数名作为值使用（非 lambda）+ 类型别名
+; BUGS.md: Predicate = fn(i32) bool; let f Predicate = is_positive → codegen 崩溃
+
+fn is_positive(x i32) bool = x > 0
+
+Predicate = fn(i32) bool
+
+; 直接 fn 类型 + 调用
+#Test
+fn test_fn_direct_call() {
+    let f fn(i32) bool = is_positive
+    assert_true(f(5))
+    assert_false(f(-3))
+}
+
+; 多个函数变量引用同一个函数 — thunk 复用
+#Test
+fn test_multi_ref() {
+    let f fn(i32) bool = is_positive
+    let g fn(i32) bool = is_positive
+    assert_true(f(10))
+    assert_true(g(10))
+}
+
+; 类型别名 + 仅赋值
+#Test
+fn test_fn_alias_assign_only() {
+    let f Predicate = is_positive
+    assert_true(true)
+}
+
+; 类型别名 + 调用
+#Test
+fn test_fn_alias_call() {
+    let f Predicate = is_positive
+    assert_true(f(7))
+    assert_false(f(-1))
+}
+
+; 直接调用（不经过变量）
+#Test
+fn test_fn_direct_call_no_var() {
+    assert_true(is_positive(100))
+    assert_false(is_positive(-50))
+}

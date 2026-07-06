@@ -1,9 +1,6 @@
 ; 类型别名行为测试（具体透明别名）
 ;
 ; 已知问题：
-;   - 泛型别名 Pair<T> = (T,T)：p.0+p.1 → codegen "Type does not support '+'"
-;   - 泛型别名 Pair<T>：let x = p.0 → LLVM GEP crash
-;   - 函数类型别名 Predicate = fn(i32)bool：let f Predicate = is_positive → GEP crash
 ;   - enum 别名 C = Color：match c2 { C::Green => ... } → 可能导致 sdk compile(需验证)
 
 IPair = (i32, i32)

@@ -1,0 +1,19 @@
+; 最简复现：泛型别名成员在 + 运算符中的类型
+Pair<T> = (T, T)
+
+#Test
+fn test_pair_member_simple() {
+    let p Pair<i32> = (5, 10)
+
+    ; 单独成员访问正常
+    let a i32 = p.0
+    assert_eq(a, 5)
+}
+
+#Test
+fn test_pair_member_add() {
+    let p Pair<i32> = (5, 10)
+
+    ; p.0 + p.1 触发 E3073
+    assert_eq(p.0 + p.1, 15)
+}

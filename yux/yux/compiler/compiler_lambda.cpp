@@ -432,7 +432,7 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
 // 4) 编译实参 + CreateCall(fnType, fn_ptr, [captures, args...])
 llvm::Value* Compiler::compileFnValueCall(p<ExprCallNode> node) {
     auto calleeExpr = node->getCalleeExpr();
-    auto fnType = calleeExpr->getType();
+    auto fnType = resolveAlias(calleeExpr->getType());
     if (!fnType.isFn()) {
         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3091);
     }

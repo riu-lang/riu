@@ -89,3 +89,17 @@ fn test_alias_generic_tuple_member_assign() {
   assert_eq(p.0, 3)
   assert_eq(p.1, 77)
 }
+
+; 泛型别名的成员参与算术运算（v0.18 修复）
+#Test
+fn test_alias_generic_tuple_member_add() {
+  let p Pair<i32> = (5, 10)
+  assert_eq(p.0 + p.1, 15)
+}
+
+#Test
+fn test_alias_generic_tuple_chain_add() {
+  let p Pair<i32> = (3, 7)
+  let sum i32 = p.0 + p.1 + 5
+  assert_eq(sum, 15)
+}

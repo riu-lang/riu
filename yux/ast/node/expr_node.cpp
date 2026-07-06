@@ -1090,10 +1090,10 @@ TypeInfo ExprDotNode::getType() const {
     auto baseType = _baseExpr->getType();
 
     // 元组成员访问 a.N：member 为纯数字，base 为 Tuple（或别名透明展开后的 Tuple）
-    // 透明别名仅做一层手工解析（只处理顶层 Normal alias 名，泛型 alias 留给 Compiler::applySubst 在 codegen 阶段兜底）
+    // 透明别名解析覆盖 Normal（如 IPair = (i32,i32)）和 Generic（如 Pair<i32> 实例化自 Pair<T> = (T,T)）
     if (!member.empty() && std::ranges::all_of(member, [](char c) { return c >= '0' && c <= '9'; })) {
         TypeInfo resolved = baseType;
-        if (resolved.kind == TypeKind::Normal) {
+        if (resolved.kind == TypeKind::Normal || resolved.kind == TypeKind::Generic) {
             auto scope = findNearestScope();
             auto* file = dynamic_cast<FileNode*>(scope);
             while (!file && scope) {
@@ -1103,12 +1103,28 @@ TypeInfo ExprDotNode::getType() const {
             if (file) {
                 std::set<std::string> visited;
                 auto cur = resolved;
-                while (cur.kind == TypeKind::Normal) {
+                while (cur.kind == TypeKind::Normal || cur.kind == TypeKind::Generic) {
                     auto* alias = file->getAliasDecl(cur.name);
-                    if (!alias || alias->isGeneric() || !alias->target()) break;
-                    if (visited.count(cur.name)) break;
-                    visited.insert(cur.name);
-                    cur = alias->target()->getType();
+                    // 非泛型别名：直接把目标类型作为新 cur 继续展开（如 A = IPair → IPair → (i32,i32)）
+                    if (alias && !alias->isGeneric() && alias->target()) {
+                        if (visited.count(cur.name)) break;
+                        visited.insert(cur.name);
+                        cur = alias->target()->getType();
+                        continue;
+                    }
+                    // 泛型别名实例化：Pair<T> = (T,T) 遇 Pair<i32> → 替换 T→i32 得 (i32,i32)
+                    if (alias && alias->isGeneric() && alias->target() &&
+                        alias->typeParams().size() == cur.genericArgs.size()) {
+                        if (visited.count(cur.name)) break;
+                        visited.insert(cur.name);
+                        std::map<std::string, TypeInfo> subst;
+                        for (size_t i = 0; i < alias->typeParams().size(); ++i) {
+                            subst[alias->typeParams()[i]] = cur.genericArgs[i] ? *cur.genericArgs[i] : TypeInfo();
+                        }
+                        cur = alias->target()->getType().substitute(subst);
+                        continue;
+                    }
+                    break;
                 }
                 resolved = cur;
             }

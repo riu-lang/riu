@@ -176,6 +176,68 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             return _builder.CreateLoad(getLLVMType(sym->type), _localVarPtrs[varName]);
         }
 
+        // 函数名作为值使用（非调用）：构造 fat-ptr { fn_ptr, null }
+        // 普通函数编译为 (P1..Pn)→R ABI（无 captures 参数），但 fn-value 调用期
+        // 望 captures-leading ABI (ptr, P1..Pn)→R。此处按需合成 thunk 桥接二者。
+        if (sym && sym->kind == SymbolKind::Function) {
+            auto* fnSym = _currentFnNode ? _currentFnNode->lookupFnSymbol(varName) : nullptr;
+            if (!fnSym) {
+                auto sc = node->findNearestScope();
+                if (sc) fnSym = sc->lookupFnSymbol(varName);
+            }
+            if (fnSym) {
+                string ownerMod = fnSym->moduleName.empty() ? _file->moduleName() : fnSym->moduleName;
+                bool isPriv = !varName.empty() && varName[0] == '_';
+                string fnMangled = Mangler::function(ownerMod, varName, fnSym->params, isPriv);
+                auto func = _module->getFunction(fnMangled);
+                if (func) {
+                    DEBUG_LOG_VAL("    Expr: FunctionValue (fat-ptr)", varName << " -> " << fnMangled);
+                    auto ptrTy = llvm::PointerType::get(_context, 0);
+
+                    // 检查是否需要 ABI 适配 thunk：普通函数的 LLVM 签名不含 captures
+                    // 首参，参数个数 == fnSym->params.size()；captures-leading 则会多 1。
+                    auto* funcTy = func->getFunctionType();
+                    auto fnValuePtr = static_cast<llvm::Value*>(func);
+                    if (funcTy->getNumParams() == fnSym->params.size()) {
+                        string thunkName = "__fn_thunk_" + fnMangled;
+                        auto thunk = _module->getFunction(thunkName);
+                        if (!thunk) {
+                            vector<llvm::Type*> thunkParams;
+                            thunkParams.push_back(ptrTy); // captures
+                            for (auto& p : fnSym->params)
+                                thunkParams.push_back(getLLVMType(p));
+                            auto* thunkTy = llvm::FunctionType::get(funcTy->getReturnType(), thunkParams, false);
+                            thunk =
+                                llvm::Function::Create(thunkTy, llvm::Function::InternalLinkage, thunkName, _module);
+                            DEBUG_LOG_VAL("    -> generated thunk", thunkName);
+                            // 生成 thunk body：忽略 captures，forward 其余实参到原函数
+                            auto* savedBB = _builder.GetInsertBlock();
+                            auto savedIP = _builder.GetInsertPoint();
+                            auto* bb = llvm::BasicBlock::Create(_context, "entry", thunk);
+                            _builder.SetInsertPoint(bb);
+                            vector<llvm::Value*> fwdArgs;
+                            for (unsigned i = 1; i < thunk->arg_size(); ++i)
+                                fwdArgs.push_back(thunk->getArg(i));
+                            auto* retVal = _builder.CreateCall(func, fwdArgs);
+                            if (funcTy->getReturnType()->isVoidTy())
+                                _builder.CreateRetVoid();
+                            else
+                                _builder.CreateRet(retVal);
+                            if (savedBB) _builder.SetInsertPoint(savedBB, savedIP);
+                        }
+                        fnValuePtr = thunk;
+                    }
+
+                    auto fatStructTy = llvm::StructType::get(_context, {ptrTy, ptrTy});
+                    auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
+                    llvm::Value* fat = llvm::UndefValue::get(fatStructTy);
+                    fat = _builder.CreateInsertValue(fat, fnValuePtr, {0}, "fn.ptr");
+                    fat = _builder.CreateInsertValue(fat, nullPtr, {1}, "fn.captures");
+                    return fat;
+                }
+            }
+        }
+
         string ownerMod = (sym && !sym->moduleName.empty()) ? sym->moduleName : _file->moduleName();
         bool globPriv = !varName.empty() && varName[0] == '_';
         string mangledName = Mangler::global(ownerMod, varName, globPriv);

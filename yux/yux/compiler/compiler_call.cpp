@@ -264,7 +264,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
             calleeStaticType = calleeExpr->getType();
         } catch (...) { // NOLINT(bugprone-empty-catch)
         }
-        if (calleeStaticType.isFn()) {
+        if (calleeStaticType.isFn() || resolveAlias(calleeStaticType).isFn()) {
             // 函数名字面量不能走 fn-value-call：下方字面量路径负责重载解析和形参类型检查
             bool isFnNameLiteral = false;
             if (auto* lit = dynamic_cast<ExprLiteralNode*>(calleeExpr)) {
@@ -282,14 +282,16 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                 return compileFnValueCall(node);
             }
         }
-        if (calleeStaticType.isRc()) {
-            auto inner = calleeStaticType.rcElementType();
+        if (calleeStaticType.isRc() || resolveAlias(calleeStaticType).isRc()) {
+            auto inner = calleeStaticType.isRc() ? calleeStaticType.rcElementType()
+                                                 : resolveAlias(calleeStaticType).rcElementType();
             if (inner && inner->isFn()) {
                 return compileRcFnValueCall(node, *inner);
             }
         }
-        if (calleeStaticType.isRef()) {
-            auto inner = calleeStaticType.refElementType();
+        if (calleeStaticType.isRef() || resolveAlias(calleeStaticType).isRef()) {
+            auto inner = calleeStaticType.isRef() ? calleeStaticType.refElementType()
+                                                  : resolveAlias(calleeStaticType).refElementType();
             if (inner && inner->isFn()) {
                 return compileRefFnValueCall(node, *inner);
             }
