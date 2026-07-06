@@ -1,63 +1,77 @@
-# 行为约束
+# 决策框架
 
-适用于 Claude Code / Trae 等 agent 在本仓库工作时。
+适用于 Claude Code 等 agent 在本仓库工作时。**硬性规则**，每条都必须遵守。
 
-## 不要改语法文件
+## 核心循环
 
-`yux/ast/yux*.g4` **只读**。如果任务看起来需要改语法，立刻暂停，列出遇到的问题与可能的修改方向，交给用户决定。**不要"先改一点试试"**。
-
-## 多步任务先落到 `CURRENT.md`
-
-接到多步骤任务时，先在 `CURRENT.md` 写入分阶段计划（格式参照该文件现有条目），每完成一个阶段就地更新；整个任务完成后删除该条目。单步小修不需要写。
-
-详细模板与归档规则见 [tasks-and-bugs.md](tasks-and-bugs.md)。
-
-## 新发现的 bug 写入 `BUGS.md`
-
-指的是**与当前任务无关**、或需大量排查、或临时绕过的 bug。按文件里的模板填写，然后暂停相关任务并告知用户。
-
-**进度 → `CURRENT.md`，bug → `BUGS.md`，两者不混用**。
-
-## 信息不足时先查证，不要编造
-
-涉及到具体的测试名、目录路径、文件内容、命令参数时，用 Read/Grep/Glob 查实际文件，不要凭命名推断。
-
-当 docs、`yux/ast/yux*.g4`、编译器三者冲突时，以 `yux/ast/yux*.g4` 和编译器源码为准，随后更新 docs，**不要反过来**。
-
-## 写 yux 代码前先看速查 + 按顺序读文档
-
-写 `*.yux` 时先翻 [`rules/yux-syntax.md`](../../rules/yux-syntax.md)（简版速查，列易踩坑点），再按需要往下查：
-
-1. `docs/*.md`（中文教程）
-2. `yux/ast/yux*.g4`（权威语法）
-3. `yux/**/*.cpp`（编译器实现，最后查）
-
-**不要拿 Rust / C++ / Go 的语义去套 yux**。
-
-## 改完 C++ 必须 lint + format，提交时 0 警告
-
-仓库根有两个**本地包装器**（不在 PATH，需要在项目根目录用 `./...`）；都是 `init.js` 生成、各平台一份（`.ps1` / `.sh` / `.ps1`）。**改完 C++ 别手敲 `xmake check clang.tidy ...`，跑包装器即可**：
-
-```powershell
-./format.ps1            ; clang-format -i 给 git 已变动 / 未跟踪的 C++ 文件
-./lint.ps1              ; 仅 lint git 已变动 / 未跟踪文件
-./format.ps1 --all      ; 全仓
-./lint.ps1 --all        ; 三个 target 全量
-./format.ps1 yux/x.cpp  ; 指定文件
-./lint.ps1 yux/x.cpp    ; 指定文件
-./format.ps1 --check    ; clang-format --dry-run -Werror, 有差异退出码 1
+```
+接任务 → CURRENT.md 写计划 → 实现 → 构建 → 测试 → 提交
 ```
 
-包装器内部：`./lint.ps1` 走 `xmake check clang.tidy`，`./format.ps1` 走 `clang-format -i`（含 #include 块内排序，规则在仓库根 `.clang-format`）；默认增量便于 agent 在每次改完后无脑跑。
+每一步出错都有对应的分叉，不要硬走。
 
-**提交门槛**：`./lint.ps1` 输出必须 `0 warnings`。**唯一例外**：一次清理任务需要拆成多个提交按主题逐批落地时，中间提交可以保留尚未处理的剩余警告，但主题工作完成后的**收尾提交必须归零**。
+## 异常分支
 
-例外不适用于功能 / bug fix 提交。这类提交本身就不该引入新警告，撞到非自身代码的旧警告时，与用户对齐后再决定单独清还是顺手带。
+### 实现时撞到 bug
 
-PostToolUse hook (`.claude/hooks/format-cpp.ps1`) 每次 Edit/Write C++ 文件时自动调 `clang-format -i`，无需手动跑；`./format.ps1` 主要用于批量场景（`--all` / 多文件 / pre-commit `--check`）。
+先判断是否当前相关，有可能之前引起的：
 
-> 已知尚未处理：未使用 include 清理（clangd `unused-includes` / IWYU），后续单独排专项再开。
+1. `git stash` 暂存当前改动+`xmake build`构建所有目标
+2. 跑相关测试确认基线（`yux test --test-mod <M>` 或 `xmake test yux_tests/<N>`）
+3. 基线也挂 → **已有 bug**，`git stash pop` 恢复，记入 `BUGS.md`，绕过继续
+4. 基线通过 → **当前改动引入**，`git stash pop`，修掉
 
-## 改语言面必须回写规范
+### 规范没有明确说可以 = 不允许
 
-凡是新增 / 修改 / 删除语言特性、语法形态、用法语义、ABI 协议、内置类型行为等"涉及标准"的变更，落地前**先与用户确认条款措辞**，确认后同步更新 `docs/spec/` 与 CHANGELOG。详见 [`rules/spec-writeback.md`](../../rules/spec-writeback.md)（按需手动读）。
+遇到规范未覆盖的设计分岔（如"导入符号是否允许覆盖"），**停，问用户**。不准自己拍板 + 补一行注释就当允许。
+
+### 会话恢复 / 继续旧任务
+
+1. 读 `CURRENT.md` + `BUGS.md`
+2. `yux build` 确认基线能编译
+3. 基线不干净 → 先修到编译通过，再继续
+
+### 基线判定
+
+任务开始前可以先检查一下git工作区（轻量。判断是继续的任务还是新的任务）
+
+git 工作区干净 + `BUGS.md` 无记录 + `CURRENT.md` 无记录 → 上一任务已完结，test 全过。这是当前唯一的可靠基线。
+
+### 改语法文件
+
+`yux/ast/yux*.g4` **只读**。如果任务看起来需要改语法，立刻暂停，列出问题与可能方向，交给用户决定。**不要"先改一点试试"**。
+
+## 强制触发
+
+以下场景**必须先读对应文件再动手**，不读不准写：
+
+| 场景 | 必读 |
+|------|------|
+| 编辑 `*.yux` | `rules/yux-syntax.md`（写前往下逐条勾） |
+| 改 `yux/frontend/sema/` 或 `yux/yux/compiler/` | `rules/sema-codegen.md` |
+| 改语言特性 / 语法 / ABI | `rules/spec-writeback.md` |
+| 需要各 exe 参数 / 调试流程 | `rules/manuals/manual-yux.md` 等 |
+
+遇到代码BUG需要排查->`rules/manuals/manual-yux.md`排查
+
+> yux-check 小且独立（构建yux不会自动构建check）
+> 需要多个exe/任务完成的前的编译 -> `xmake build` 构建所有目标。xmake 只支持一次全部/单个目标，不能xmake build a b c
+
+## 信息查证
+
+涉及到测试名、目录路径、文件内容、命令参数时，用 Read/Grep/Glob 查实际文件，**不凭命名推断**。
+
+当 docs、`yux/ast/yux*.g4`、编译器三者冲突时，以 `yux/ast/yux*.g4` 和编译器源码为准，随后更新 docs。
+
+## 改完 C++
+
+- hook 自动 `clang-format -i`，无需手动 format
+- 提交前 `./lint.ps1`，必须 **0 warnings**
+- 未完成 / 潜在 bug / 待验证 → 必须写 `// TODO:`，不假装没看见
+- 注释用中文；`// ====` 分隔区域
+
+## 原则
+
+- **质量 > 速度**。项目复杂，不强制完成任务。不能为了关 CURRENT 而糊过去
+- **规范没说 = 不允许**，灰色地带必须问
+- **不要拿 Rust / C++ / Go 语义去套 yux**
