@@ -1,9 +1,7 @@
 ; Array 运算行为测试（下标、方法调用、不同元素类型）
 ;
 ; 已知问题：
-;   - arr.clear() → codegen "Type Array is not a Function"
 ;   - f64 数组 3 项链式加法 arr[0]+arr[1]+arr[2] → LLVM StoreInst assertion
-;   - arr.first()/last() 声明返回 T 但实际返回 T&
 
 #Test
 fn test_array_subscript_read() {
@@ -84,6 +82,15 @@ fn test_array_bool_elements() {
 fn test_array_of_string() {
   #Mut let arr Array<String> = ["hello", "world"]
   assert_eq(arr.len(), 2)
+}
+
+#Test
+fn test_array_clear() {
+  #Mut let arr Array<i32> = [1, 2, 3]
+  assert_eq(arr.len(), 3)
+  arr.clear()
+  assert_eq(arr.len(), 0)
+  assert_true(arr.is_empty())
 }
 
 #Test

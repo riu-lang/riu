@@ -1175,7 +1175,7 @@ TypeInfo ExprDotNode::getType() const {
         if (member == "is_empty") {
             return "fn() bool";
         }
-        if (member == "push") {
+        if (member == "push" || member == "clear" || member == "set_len") {
             return "fn() void";
         }
         return ""; // 未知方法
