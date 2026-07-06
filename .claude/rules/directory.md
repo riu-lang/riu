@@ -49,7 +49,6 @@ yux-lang/
 ├── CURRENT.md        当前多步任务追踪，本地（不入 git）
 ├── CURRENT-*.md      其它任务，本地（不入 git）
 ├── BUGS.md           新发现的 bug 清单，本地（不入 git）
-├── TARGETS.md        短期目标，次于里程碑
 ├── MILESTONE.md      里程碑，当前稳定版目标和已经实现的目标
 └── CLAUDE.md / README.md
 ```

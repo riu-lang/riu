@@ -1,6 +1,6 @@
 # 附录 A：保留字
 
-> 与 [`yux/ast/yux.g4`](../../yux/ast/yux.g4) 的 lexer token 一致；冲突以 `.g4` 为准。本附录是规范化摘录。
+> 与 [`yux/ast/yuxLexer.g4`](../../yux/ast/yuxLexer.g4) 的 lexer token 一致；冲突以 `.g4` 为准。本附录是规范化摘录。
 
 ## A.1 关键字
 

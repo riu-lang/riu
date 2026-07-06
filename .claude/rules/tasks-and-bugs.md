@@ -7,7 +7,7 @@
 | `CURRENT.md` | 当前正在进行的多步骤任务、分阶段计划与勾选 | 否（本地） |
 | `CURRENT-*.md` | 并行的其它多步任务 | 否（本地） |
 | `BUGS.md` | 开发过程中**新发现**、与当前任务无关、需大量排查或临时绕过的 bug | 否（本地） |
-| `MILESTONE.md` / `TARGETS.md` | 里程碑与短期目标 | 是 |
+| `MILESTONE.md` | 里程碑 | 是 |
 | `docs/dev/*.md` | 已完成版本的实施日志归档（见下） | 是 |
 | `docs/spec/*.md` | 语言规范（草案中） | 是 |
 | `docs/spec/draft/DRAFT-*.md` | 跨章节的语言面设计草案、决议讨论；骨架范本见 `docs/spec/draft/_模板.md` | 是 |
@@ -26,11 +26,15 @@
 
 ### 测试用例命名
 
-SDK 测试（`sdk/yux/src/yux/core/*.test.yux`）按主题建文件，内部 `#Test fn` 名自由但必须 `test_` 前缀。`tests/cases/` 仅剩 `format_*` / `extern_*` / `ptr_*` 三个前缀，`tests/xmake.lua` 的 `categorize()` 按前缀自动分到 `yux/format`、`yux/extern` 分组。
+SDK 测试（`sdk/yux/src/yux/core/*.test.yux`）按主题建文件，内部 `#Test fn` 名自由但必须 `test_` 前缀。
+
+项目与格式化用例位于 `tests/projects/`，每目录一个 `yux.toml`，由 `tests/xmake.lua` 的 `categorize()` 按目录内文件类型自动分到 `yux/project`（含 `expected.txt`）或 `yux/format`（含 `expected_format`）分组，用例名统一加 `project_` 前缀。
+
+诊断用例位于 `tests/check-cases/`（`diag_*.yux`），由 `yux-check test` 运行，行尾 `; check: EXXXX` 注解精确匹配错误码。
 
 ### 测试命令速查
 
-新测试默认 `yux test`（DLL + 多子进程并行）。诊断用 `yux-check test`，格式化/extern/项目输出用 `xmake test`。
+新测试默认 `yux test`（DLL + 多子进程并行）。诊断用 `yux-check test`，项目编译/格式化输出用 `xmake test`。
 
 ```powershell
 # yux test（项目内，*.test.yux 的 #Test）
@@ -50,9 +54,10 @@ yux build --emit-ir --emit-ir-dir ir_out  ; 指定 .ll 输出目录
 yux-check test tests/check-cases/   ; 批量诊断测试
 yux-check <file>                    ; 单文件诊断（输出 file:line:col [EXXXX]）
 
-# xmake test（仅 format / extern / 项目输出）
-xmake test -g yux/xxxx            ; 格式化（format_*）
-xmake test yux_tests/<name>       ; 跑单个用例
+# xmake test（项目编译+运行 / 格式化回归）
+xmake test -g yux/project          ; 项目编译+运行（tests/projects/*，含 expected.txt）
+xmake test -g yux/format           ; 格式化回归（tests/projects/*，含 expected_format）
+xmake test yux_tests/project_<name> ; 跑单个用例
 ```
 
 详细命令见 [docs/命令行工具.md](../../docs/命令行工具.md)。

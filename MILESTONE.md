@@ -61,7 +61,7 @@
 
 ### v1.0 候选 — 规范定稿 + ABI 冻结
 
-> **现状提示**：v1.0 仍远（当前 v0.14；v0.15 / v0.16 待启动）。spec 仍有较多遗留 Open Issues、潜在 bug 待挖；本节标准是终态门槛，不是近期目标。下方"后续主题"里的待编号工作要先落，才进 v1.0 候选。
+> **现状提示**：v1.0 仍远（当前 v0.18；v0.19+ 待启动）。spec 仍有较多遗留 Open Issues、潜在 bug 待挖；本节标准是终态门槛，不是近期目标。下方"后续主题"里的待编号工作要先落，才进 v1.0 候选。
 
 **退出标准**：
 
@@ -112,7 +112,7 @@
 - [ ] spec 各章 Open Issues 审计完毕
 - [ ] SDK 新增方法覆盖 String + Array + math 高频 API
 - [ ] `yux test` / `yux-check test` / `xmake test` 全绿
-- [ ] `./lint.cmd` 0 warnings
+- [ ] `./lint.ps1` 0 warnings
 - [ ] CHANGELOG 收口
 
 ### v0.17.0 — 项目模块 + extern 完善 + 内存模型重构（B-1~B-4）+ LLVM 符号对齐 ✅ 已完成（2026-06-24）
@@ -194,7 +194,7 @@
 - ✅ 泛型跨模块搜索覆盖所有导入模块
 - ✅ SDK 独立子模块编译 + `yux.lib` 链接正常
 - ✅ LLVM 符号分隔符与 yux 写法一致
-- ✅ `./lint.cmd` 0 warnings
+- ✅ `./lint.ps1` 0 warnings
 - ✅ spec 回写完成（8 项：Array/String/move/#NoCopy/灵活整数/泛型推断/LLVM 符号/E4034 等）
 
 ### v0.16.0 — 闭包捕获 + yux-check 闭环 + []语法糖 + 静态引用 + LSP/插件同步 ✅ 已完成（2026-06-12）

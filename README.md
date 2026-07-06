@@ -22,11 +22,11 @@ yux 是一门自举的编程语言，使用 ANTLR4 解析语法，LLVM 作为编
 fn add(a i32, b i32) i32 = a + b
 
 fn main() {
-  val a = add(1, 2)
+  let a = add(1, 2)
   println(a.to_string())
   
   ; if 表达式
-  val max = if a > 0 { a } else { -a }
+  let max = if a > 0 { a } else { -a }
   println(max.to_string())
 }
 ```
@@ -77,7 +77,7 @@ sync-deps.cmd        # Windows CMD
 
 ### 生成解析器代码
 
-当修改 `yux/ast/yux.g4` 语法文件后，需要重新生成 C++ 解析器代码：
+当修改 `yux/ast/yux*.g4` 语法文件后，需要重新生成 C++ 解析器代码：
 
 ```powershell
 ./gen-antlr.ps1      # Windows PowerShell
@@ -85,7 +85,7 @@ sync-deps.cmd        # Windows CMD
 gen-antlr.cmd        # Windows CMD
 ```
 
-此命令使用 `bin/antlr-4.13.2-complete.jar` 从语法文件生成代码到 `gen/yux/` 目录。
+此命令使用 `bin/antlr-4.13.2-complete.jar` 从语法文件生成代码到 `yux/ast/gen/yux/` 目录。
 
 ### 代码统计
 
@@ -180,38 +180,38 @@ entry="main.yux"
 
 ## 测试
 
-测试用例位于 `tests/cases/` 目录，使用 xmake 原生测试机制驱动，不再依赖 googletest / CMake。
+测试分为三级，覆盖不同层面：
 
-**用例结构：**
-
-- `tests/cases/*.yux` + 同名 `*.expected`：编译应成功，运行产物的 stdout 需与 `.expected` 完全一致
-- `tests/cases/error/err_*.yux` + 同名 `*.expected`：编译应失败（`.expected` 内容仅作占位）
-
-测试运行器当前以单文件模式在内部调用 `yux` 编译每个用例，产物落在 `tests/cases/build/<stem>.exe`（错误用例在 `tests/cases/error/build/`）。单文件模式本身已弃用，这里是最后一处内部使用，未来会替换为每用例一个小项目的 harness。
-
-语法以 `yux/ast/yux*.g4` 和 [文档](docs/index.md) 为准，用例需符合这两者；
+| 层级 | 命令 | 用例位置 | 说明 |
+|------|------|---------|------|
+| 项目编译+运行 | `xmake test` | `tests/projects/` | 每目录一个 `yux.toml` + `expected.txt`；编译产物并比对 stdout |
+| 格式化回归 | `xmake test` | `tests/projects/` | `expected_format` 文件，比对外格式化输出 |
+| 诊断回归 | `yux-check test` | `tests/check-cases/` | `diag_*.yux`，行尾 `; check: EXXXX` 注解精确匹配 |
+| 单元/行为测试 | `yux test` | `sdk/yux/src/yux/core/*.test.yux` | `#Test` 注解，DLL + 多子进程并行 |
 
 **运行方式：**
 
 ```powershell
-# 先构建编译器（测试会通过 xmake 依赖自动构建，但显式构建便于定位编译期错误）
+# 项目 / 格式化测试
 xmake build yux
+xmake test                  # 全部
+xmake test yux_tests/<name> # 单个
 
-# 发现并运行全部用例
-xmake test
+# 诊断回归
+yux-check test tests/check-cases/
 
-# 调试信息，仅debug
-xmake test -d
-
-# 单独运行某个用例（xmake 的语法：<target>/<test-name>）
-xmake test yux_tests/basic_types.yux
-xmake test yux_tests/error_err_val_reassign.yux
+# SDK 单元测试（主测试集）
+cd sdk/yux && yux test
+yux test --verbose          # 打印每个测试 stdout/stderr
+yux test --test-mod yux.core.array  # 只测指定模块
 ```
 
-测试逻辑定义在 [tests/xmake.lua](tests/xmake.lua) 的 `yux_tests` target，通过 `add_tests` + 自定义 `on_run` 完成「编译 → 运行 → 比对输出」。
+语法以 `yux/ast/yux*.g4` 和 [文档](docs/index.md) 为准，用例需符合这两者。
+
+测试逻辑：`xmake test` 定义在 [tests/xmake.lua](tests/xmake.lua) 的 `yux_tests` target；`yux test` 流程为 `yux build --test` → 并行 spawn `yux-test-runner` 子进程加载 DLL 执行。
 
 ## License
 
 [MPL-2.0](LICENSE.txt)
 
-Copyright (c) 2025. Yin-Jinlong@github
+Copyright (c) 2025-2026. Yin-Jinlong@github

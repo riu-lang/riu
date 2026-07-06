@@ -11,7 +11,7 @@ yux 是自举编译器：`.yux → ANTLR4 → AST → LLVM IR → LLD → exe`�
 
 - Windows + **Clang（无 MSVC）**，LLVM 在 PATH
 - `build/windows/x64/debug/bin` 在 PATH，构建后直接 `yux ...`
-- C++ lint/format：`./lint.cmd`（clang-tidy）、`./format.cmd`（clang-format），**必须带 `./`**（不在 PATH）。提交时 `./lint.cmd` 必须 **0 警告**
+- C++ lint/format：`./lint.ps1`（clang-tidy）、`./format.ps1`（clang-format），**必须带 `./`**（不在 PATH）。提交时 `./lint.ps1` 必须 **0 警告**
 - 不要假设有 `npm run lint` / `make fmt`
 
 ## 构建
