@@ -118,9 +118,19 @@ llvm::Value* Compiler::compileTestAssertEq(p<ExprCallNode> callNode, vector<llvm
 // ==================== assert_true(bool) ====================
 
 llvm::Value* Compiler::compileTestAssertTrue(p<ExprCallNode> callNode, vector<llvm::Value*>& args,
-                                             vector<TypeInfo>& /*argTypes*/) {
+                                             vector<TypeInfo>& argTypes) {
     if (args.size() != 1) {
         throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6027, "assert_true", 1);
+    }
+    // Rc<T> auto-deref: 从 Rc struct { ptr handle } 提取 payload 内 T 值
+    if (argTypes[0].isRc()) {
+        auto inner = argTypes[0].rcElementType();
+        if (inner && inner->name == "bool") {
+            auto handle = _builder.CreateExtractValue(args[0], {0}, "assert.rc.handle");
+            auto payload =
+                _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "assert.rc.payload");
+            args[0] = _builder.CreateLoad(_builder.getInt1Ty(), payload, "assert.rc.bool");
+        }
     }
     if (args[0]->getType()->isPointerTy()) args[0] = _builder.CreateLoad(_builder.getInt1Ty(), args[0], "assert.load");
     auto failCond = _builder.CreateNot(args[0], "assert_true.neg");
@@ -131,9 +141,19 @@ llvm::Value* Compiler::compileTestAssertTrue(p<ExprCallNode> callNode, vector<ll
 // ==================== assert_false(bool) ====================
 
 llvm::Value* Compiler::compileTestAssertFalse(p<ExprCallNode> callNode, vector<llvm::Value*>& args,
-                                              vector<TypeInfo>& /*argTypes*/) {
+                                              vector<TypeInfo>& argTypes) {
     if (args.size() != 1) {
         throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6027, "assert_false", 1);
+    }
+    // Rc<T> auto-deref: 从 Rc struct { ptr handle } 提取 payload 内 T 值
+    if (argTypes[0].isRc()) {
+        auto inner = argTypes[0].rcElementType();
+        if (inner && inner->name == "bool") {
+            auto handle = _builder.CreateExtractValue(args[0], {0}, "assert.rc.handle");
+            auto payload =
+                _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "assert.rc.payload");
+            args[0] = _builder.CreateLoad(_builder.getInt1Ty(), payload, "assert.rc.bool");
+        }
     }
     if (args[0]->getType()->isPointerTy()) args[0] = _builder.CreateLoad(_builder.getInt1Ty(), args[0], "assert.load");
     emitAssertFailureBranch(_builder, _module, args[0], "assert_false", _file);
