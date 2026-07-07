@@ -19,7 +19,7 @@ Claude Code 插件，让 Claude 编辑 `.yux` 文件时通过 LSP 实时看到�
 ### 本地装载（直接指向工作树）
 
 ```
-/plugin marketplace add E:\yux-lang\plugins
+/plugin marketplace add path/to/yux-lang/plugins
 /plugin install yux-lang-lsp@yux-lang
 /reload-plugins
 ```
