@@ -28,12 +28,21 @@ llvm::Value* Compiler::compileCustomTypeUnaryOp(p<ExprNode> expr, const TypeInfo
 
     // v0.16: [] 返回 T&——剥 Ref 用于方法名查找
     auto effType = type.isRef() ? *type.refElementType() : type;
+    // Rc<T> → T：运算符穿透 Rc wrapper，方法在内部类型上查找
+    if (effType.isRc()) {
+        if (auto inner = effType.rcElementType()) effType = *inner;
+    }
 
     DEBUG_LOG_VAL("    Expr: CustomTypeUnaryOp", effType.name << "." << methodName);
 
     // 获取操作数的指针
     llvm::Value* ptr = nullptr;
-    if (type.isRef()) {
+    if (type.isRc()) {
+        // Rc<T>：解引用 handle → payload 指针作为 self
+        auto rcVal = compileExpr(expr);
+        auto handle = _builder.CreateExtractValue(rcVal, {0}, "rc.op.handle");
+        ptr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.op.payload");
+    } else if (type.isRef()) {
         // v0.16: [] 返回 T&——compileExpr 已返回指针，直接用作 self ptr
         ptr = compileExpr(expr);
     } else {
@@ -198,6 +207,11 @@ llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
     auto rightType = node->right()->getType();
     // v0.16: [] 返回 T&——标量操作符自动剥 Ref
     auto effRightType = rightType.isRef() ? *rightType.refElementType() : rightType;
+    // Rc<T> → T：运算符自动穿透 Rc wrapper，作用在内部 T
+    bool rightIsRc = false;
+    if (effRightType.isRc()) {
+        if (auto inner = effRightType.rcElementType()) { effRightType = *inner; rightIsRc = true; }
+    }
 
     string opStr;
     switch (node->op()) {
@@ -213,7 +227,7 @@ llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
     }
     DEBUG_LOG_VAL("    Expr: Unary", opStr << " : " << type.name);
 
-    // 检查是否为自定义类型（用剥 Ref 后的标量名）
+    // 检查是否为自定义类型（用剥 Ref/Rc 后的标量名）
     if (!isBuiltinType(effRightType.name)) {
         string methodName;
         switch (node->op()) {
@@ -236,7 +250,11 @@ llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
     bool isBool = type.name == "bool";
 
     // v0.16: 操作数若是 T& 则 load 出值
-    if (rightType.isRef()) {
+    if (rightIsRc) {
+        auto handle = _builder.CreateExtractValue(right, {0}, "rc.handle");
+        auto payload = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.payload");
+        right = _builder.CreateLoad(getLLVMType(effRightType), payload, "rc.val");
+    } else if (rightType.isRef()) {
         right = _builder.CreateLoad(getLLVMType(effRightType), right, "unary_op");
     }
 

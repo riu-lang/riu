@@ -600,6 +600,14 @@ TypeInfo ExprAddSubNode::getType() const {
     };
     unwrapRef(leftType);
     unwrapRef(rightType);
+    // Rc<T> → T：运算符穿透 Rc wrapper，类型比较在内部 T 上进行
+    auto unwrapRc = [](TypeInfo& t) {
+        if (t.isRc()) {
+            if (auto inner = t.rcElementType()) t = *inner;
+        }
+    };
+    unwrapRc(leftType);
+    unwrapRc(rightType);
     // v0.6 Phase 2c：`+` 任一操作数为 String 时整链结果即 String，
     // codegen 期 lower 为 StringBuilder 累加（详见 spec §4.4.1.4 / §4.3.1.7）。
     // 仅 Add 适用；Sub 仍按原算术规则。
@@ -660,6 +668,14 @@ TypeInfo ExprMulDivModNode::getType() const {
     };
     unwrapRef(leftType);
     unwrapRef(rightType);
+    // Rc<T> → T：运算符穿透 Rc wrapper，类型比较在内部 T 上进行
+    auto unwrapRc = [](TypeInfo& t) {
+        if (t.isRc()) {
+            if (auto inner = t.rcElementType()) t = *inner;
+        }
+    };
+    unwrapRc(leftType);
+    unwrapRc(rightType);
     if (leftType != rightType) {
         if (isFlexibleIntExpr(_right) && tryInferIntType(_right, leftType)) {
             return leftType;
@@ -714,6 +730,14 @@ TypeInfo ExprBinOpNode::getType() const {
     };
     unwrapRef(leftType);
     unwrapRef(rightType);
+    // Rc<T> → T：运算符穿透 Rc wrapper，类型比较在内部 T 上进行
+    auto unwrapRc = [](TypeInfo& t) {
+        if (t.isRc()) {
+            if (auto inner = t.rcElementType()) t = *inner;
+        }
+    };
+    unwrapRc(leftType);
+    unwrapRc(rightType);
     if (leftType != rightType) {
         if (isFlexibleIntExpr(_right) && tryInferIntType(_right, leftType)) {
             return leftType;
@@ -1329,6 +1353,22 @@ const p<ExprNode>& ExprCompareNode::right() const {
 TypeInfo ExprCompareNode::getType() const {
     auto leftType = _left->getType();
     auto rightType = _right->getType();
+    // v0.16: [] 返回 T&，标量运算符剥 Ref 后按值类型比较和返回
+    auto unwrapRef = [](TypeInfo& t) {
+        if (t.isRef()) {
+            if (auto inner = t.refElementType()) t = *inner;
+        }
+    };
+    unwrapRef(leftType);
+    unwrapRef(rightType);
+    // Rc<T> → T：运算符穿透 Rc wrapper，类型比较在内部 T 上进行
+    auto unwrapRc = [](TypeInfo& t) {
+        if (t.isRc()) {
+            if (auto inner = t.rcElementType()) t = *inner;
+        }
+    };
+    unwrapRc(leftType);
+    unwrapRc(rightType);
     if (leftType != rightType) {
         if (isFlexibleIntExpr(_right) && tryInferIntType(_right, leftType)) {
             return TypeInfo("bool");
@@ -1719,6 +1759,10 @@ const p<ExprNode>& ExprUnaryNode::right() const {
 
 TypeInfo ExprUnaryNode::getType() const {
     auto rightType = _right->getType();
+    // Rc<T> → T：一元运算符穿透 Rc wrapper，结果类型为内部 T
+    if (rightType.isRc()) {
+        if (auto inner = rightType.rcElementType()) rightType = *inner;
+    }
     // Phase 3.4.h: 内置类型的一元 op 形态校验 (与 compileUnaryExpr 内置分支同义).
     // 非 builtin 走自定义方法路径 (customMethodOp), 不在此校验; 与 codegen `if
     // (!isBuiltinType(rightType.name)) compileCustomTypeUnaryOp(...)` 顺序一致.

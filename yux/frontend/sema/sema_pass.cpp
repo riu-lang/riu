@@ -2388,15 +2388,26 @@ void SemaPass::tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExp
         // String 走 StringBuilder 特殊 lowering / 其它 builtin-handled 路径,
         // 没有用户可见的 plus/eq/... 方法签名, 不能走 customBinaryOp 解析.
         if (leftType.name == "String") return;
-        if (leftType.isRef() || leftType.isRc() || leftType.isArrayGeneric() || leftType.isHeap() ||
+        if (leftType.isRef() || leftType.isArrayGeneric() || leftType.isHeap() ||
             leftType.isWeak() || leftType.isNullable() || leftType.isPtr() || leftType.isTuple())
             return;
-        StructDeclNode* decl = _file ? _file->getStructDecl(leftType.name) : nullptr;
-        if (!decl && _sdkFile) decl = _sdkFile->getStructDecl(leftType.name);
+        // Rc<T> → T：运算符穿透 Rc wrapper，在内部类型上验证方法
+        TypeInfo resolvedLeftType = leftType;
+        if (leftType.isRc()) {
+            auto rcInner = leftType.rcElementType();
+            if (!rcInner) return;
+            resolvedLeftType = *rcInner;
+        }
+        StructDeclNode* decl = _file ? _file->getStructDecl(resolvedLeftType.name) : nullptr;
+        if (!decl && _sdkFile) decl = _sdkFile->getStructDecl(resolvedLeftType.name);
         if (!decl || decl->isGeneric()) return;
         TypeInfo effRightType =
             (rightType.isRef() && rightType.refElementType()) ? *rightType.refElementType() : rightType;
-        sema::validateBinOpMethodResolution(_file, _sdkFile, leftType, effRightType, methodName, line, col);
+        // Rc<T> → T：运算符穿透 Rc wrapper，方法在内部类型上验证
+        if (effRightType.isRc()) {
+            if (auto inner = effRightType.rcElementType()) effRightType = *inner;
+        }
+        sema::validateBinOpMethodResolution(_file, _sdkFile, resolvedLeftType, effRightType, methodName, line, col);
     } catch (const YuxError&) {
         throw;
     } catch (...) { // NOLINT(bugprone-empty-catch)
