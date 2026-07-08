@@ -28,8 +28,7 @@ yux-lang/
 │   └── xmake.lua     测试运行器
 ├── plugins/          编辑器插件（VSCode / IntelliJ / Claude Code）
 ├── .claude/
-│   ├── rules/        硬性规则（每会话自动加载）
-│   └── skills/       项目技能（yux-lang-dev）
+│   └── rules/        硬性规则（每会话自动加载）
 ├── rules/            按需读的手册与规则
 │   └── manuals/      工程手册（各 exe 用法）
 ├── third_party/      依赖（由 sync-deps 拉取）

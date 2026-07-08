@@ -6,10 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 规则来源
 
-本项目的事实源拆为三类，开始任何任务前**都要看**，不要凭文件名或 README 推测项目约定：
+本项目的事实源拆为两类，开始任何任务前**都要看**，不要凭文件名或 README 推测项目约定：
 
-- [.claude/rules/](.claude/rules/README.md) —— **硬性规则**，每会话自动加载。[behavior.md](.claude/rules/behavior.md) 是核心决策框架——什么情况该做什么、什么时候必须停下来。
-- 技能 `yux-lang-dev`（[.claude/skills/yux-lang-dev/SKILL.md](.claude/skills/yux-lang-dev/SKILL.md)）—— 每会话通过 Skill 工具加载，指向工程手册与构建/测试环境。
+- [.claude/rules/](.claude/rules/README.md) —— **硬性规则**，每会话自动加载。[behavior.md](.claude/rules/behavior.md) 是核心决策框架——什么情况该做什么、什么时候必须停下来；[engineering.md](.claude/rules/engineering.md) 是工程环境与测试流程。
 - 手册（`rules/manuals/` + `rules/yux-syntax.md` 等）—— 按需读，触发条件见 behavior.md 强制触发表。
 
 ## 核心工作文件

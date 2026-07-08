@@ -5,10 +5,32 @@
 ## 核心循环
 
 ```
-接任务 → CURRENT.md 写计划 → 实现 → 构建 → 测试 → 提交
+接任务 → CURRENT.md 写计划 → 实现 → 构建 → 中途测试 → ... → 结束回归 → 提交
 ```
 
 每一步出错都有对应的分叉，不要硬走。
+
+### 中途测试
+
+改完代码、构建通过后立即跑：
+
+```
+yux test
+```
+
+在 `sdk/yux/` 下运行。快速验证当前改动是否破坏已有行为。
+
+### 结束回归（任务收尾）
+
+任务全部完成、准备提交前跑完整回归：
+
+```powershell
+xmake build yux-check
+yux-check test tests/check-cases/
+xmake test
+```
+
+三项全部通过才算验证完毕。详细测试命令见 [engineering.md](engineering.md)。
 
 ## 异常分支
 

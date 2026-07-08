@@ -1,6 +1,6 @@
 # yux-lang 规则模块
 
-本目录是 yux-lang 项目的**硬性规则**，每会话自动加载。与 [`.claude/skills/yux-lang-dev`](../skills/yux-lang-dev/SKILL.md)（工程手册入口）配套。
+本目录是 yux-lang 项目的**硬性规则**，每会话自动加载。所有工程环境、测试流程、手册入口均在此，无需手动调用 skill。
 
 ## 自动加载（每次会话）
 
@@ -8,6 +8,7 @@
 |------|------|
 | [behavior.md](behavior.md) | **决策框架**：核心循环、异常分支、强制触发、原则 |
 | [directory.md](directory.md) | 仓库目录结构 |
+| [engineering.md](engineering.md) | **工程环境与测试**：环境、构建、中途测试/结束回归流程、手册入口、C++ 规范 |
 
 ## 手册与专题规则（`rules/` 目录，按需读）
 

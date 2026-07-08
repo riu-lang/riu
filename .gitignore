@@ -4,15 +4,9 @@
 /third_party/
 .cache/
 /compile_commands.json
-/.cache/
 /.xmake/
 /.vscode/
 /bin/
-
-/.trae/skills/*
-/.trae/rules/*
-/.claude/skills/xmake*
-/.claude/skills/xrepo-*/
 
 .claude/settings.local.json
 /BUGS.md

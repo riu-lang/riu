@@ -212,5 +212,5 @@ flowchart LR
 - `sdk/yux/`：自举 runtime（独立 yux 项目 → `yux.lib`）
 - `yux/ast/gen/`：ANTLR 生成代码（不要手改）
 - `docs/`：中文教程 + `docs/spec/` 规范草案
-- `tests/`：单文件用例 + 项目用例（前缀分组，见 `yux-lang-dev` 技能）
+- `tests/`：单文件用例 + 项目用例（前缀分组）
 - `plugins/`：编辑器 / Claude Code 插件
