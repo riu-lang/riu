@@ -2388,11 +2388,16 @@ void SemaPass::tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExp
         // String 走 StringBuilder 特殊 lowering / 其它 builtin-handled 路径,
         // 没有用户可见的 plus/eq/... 方法签名, 不能走 customBinaryOp 解析.
         if (leftType.name == "String") return;
-        if (leftType.isRef() || leftType.isArrayGeneric() || leftType.isHeap() ||
+        if (leftType.isRef() || leftType.isArrayGeneric() ||
             leftType.isWeak() || leftType.isNullable() || leftType.isPtr() || leftType.isTuple())
             return;
-        // Rc<T> → T：运算符穿透 Rc wrapper，在内部类型上验证方法
+        // Heap<T> → T / Rc<T> → T：运算符穿透 wrapper，在内部类型上验证方法
         TypeInfo resolvedLeftType = leftType;
+        if (leftType.isHeap()) {
+            auto heapInner = leftType.heapElementType();
+            if (!heapInner) return;
+            resolvedLeftType = *heapInner;
+        }
         if (leftType.isRc()) {
             auto rcInner = leftType.rcElementType();
             if (!rcInner) return;
@@ -2403,7 +2408,10 @@ void SemaPass::tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExp
         if (!decl || decl->isGeneric()) return;
         TypeInfo effRightType =
             (rightType.isRef() && rightType.refElementType()) ? *rightType.refElementType() : rightType;
-        // Rc<T> → T：运算符穿透 Rc wrapper，方法在内部类型上验证
+        // Heap<T> → T / Rc<T> → T：运算符穿透 wrapper，方法在内部类型上验证
+        if (effRightType.isHeap()) {
+            if (auto inner = effRightType.heapElementType()) effRightType = *inner;
+        }
         if (effRightType.isRc()) {
             if (auto inner = effRightType.rcElementType()) effRightType = *inner;
         }

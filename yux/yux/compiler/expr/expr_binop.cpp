@@ -32,9 +32,9 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(p<ExprNode> leftExpr, p<ExprNod
 
     // 获取左操作数的指针
     llvm::Value* leftPtr = nullptr;
-    // Rc<T> 不取 _localVarPtrs 快捷路径：_localVarPtrs 存的是 Rc struct 指针，
-    // 而我们需要 payload 指针（handle+8），必须走下方 Rc 解引用逻辑。
-    if (!leftType.isRc()) {
+    // Rc<T> / Heap<T> 不取 _localVarPtrs 快捷路径：_localVarPtrs 存的是 Rc struct / Heap 槽指针，
+    // 而我们需要 payload 指针（handle+8 / T*），必须走下方解引用逻辑。
+    if (!leftType.isRc() && !leftType.isHeap()) {
         if (auto leftLiteral = dynamic_cast<ExprLiteralNode*>(leftExpr)) {
             if (auto objLiteral = dynamic_cast<LiteralObjNode*>(leftLiteral->literal())) {
                 auto varName = objLiteral->getValue().getText();
@@ -52,8 +52,8 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(p<ExprNode> leftExpr, p<ExprNod
             auto rcVal = compileExpr(leftExpr);
             auto handle = _builder.CreateExtractValue(rcVal, {0}, "rc.op.handle");
             leftPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.op.payload");
-        } else if (leftType.isRef()) {
-            // v0.16: [] 返回 T&——leftVal 已是指针，直接用作 leftPtr，不再包一层 alloca
+        } else if (leftType.isHeap() || leftType.isRef()) { // NOLINT(bugprone-branch-clone): 语义不同但 body 相同
+            // Heap<T> / T&：compileExpr 已返回指针，直接用作 leftPtr
             leftPtr = compileExpr(leftExpr);
         } else {
             auto leftVal = compileExpr(leftExpr);
@@ -88,7 +88,8 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(p<ExprNode> leftExpr, p<ExprNod
             auto handle = _builder.CreateExtractValue(rcVal, {0}, "rc.rhs.handle");
             rightVal = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.rhs.payload");
         } else {
-            rightVal = compileExpr(rightExpr);
+            // Heap<T> / T& / 普通值：compileExpr 直接返回指针或值
+            rightVal = compileExpr(rightExpr); // NOLINT(bugprone-branch-clone): Heap 特化路径保留可读性
         }
     }
 
@@ -98,6 +99,13 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(p<ExprNode> leftExpr, p<ExprNod
     // 仍能匹配到 `i32.plus` 等内置方法。
     TypeInfo effLeftType = leftType.isRef() ? *leftType.refElementType() : leftType;
     TypeInfo effRightType = rightType.isRef() ? *rightType.refElementType() : rightType;
+    // Heap<T> → T：运算符穿透 Heap wrapper，方法在内部类型上查找
+    if (effLeftType.isHeap()) {
+        if (auto inner = effLeftType.heapElementType()) effLeftType = *inner;
+    }
+    if (effRightType.isHeap()) {
+        if (auto inner = effRightType.heapElementType()) effRightType = *inner;
+    }
     // Rc<T> → T：运算符穿透 Rc wrapper，方法在内部类型上查找
     if (effLeftType.isRc()) {
         if (auto inner = effLeftType.rcElementType()) effLeftType = *inner;
@@ -168,12 +176,12 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(p<ExprNode> leftExpr, p<ExprNod
         // methodFullName 形如 "Nullable.ne"，拆出操作符符号名
         auto dotPos = methodFullName.find('.');
         string mName = dotPos != string::npos ? methodFullName.substr(dotPos + 1) : methodName;
-        const char* opSym = mName == "eq"   ? "=="
-                            : mName == "ne" ? "!="
-                            : mName == "lt" ? "<"
-                            : mName == "le" ? "<="
-                            : mName == "gt" ? ">"
-                            : mName == "ge" ? ">="
+        const char* opSym = mName == "eq"      ? "=="
+                            : mName == "ne"    ? "!="
+                            : mName == "lt"    ? "<"
+                            : mName == "le"    ? "<="
+                            : mName == "gt"    ? ">"
+                            : mName == "ge"    ? ">="
                             : mName == "plus"  ? "+"
                             : mName == "minus" ? "-"
                             : mName == "mul"   ? "*"
@@ -184,7 +192,7 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(p<ExprNode> leftExpr, p<ExprNod
                             : mName == "xor"   ? "xor"
                             : mName == "shl"   ? "<<"
                             : mName == "shr"   ? ">>"
-                                              : mName.c_str();
+                                               : mName.c_str();
         throw YuxError(lineNum, ErrorCode::E3073, effLeftType.name, opSym, mName);
     }
 
@@ -200,8 +208,8 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(p<ExprNode> leftExpr, p<ExprNod
 
     if (rhsByPtr) {
         // 形参期望指针
-        if (rightType.isRef() || rightType.isRc()) {
-            // 右操作数本身是引用/Rc，rightVal 已是指针，直接传
+        if (rightType.isRef() || rightType.isRc() || rightType.isHeap()) {
+            // 右操作数本身是引用/Rc/Heap，rightVal 已是指针，直接传
             methodArgs.push_back(rightVal);
         } else {
             // 右操作数是值，取址后传递
@@ -212,8 +220,8 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(p<ExprNode> leftExpr, p<ExprNod
         }
     } else {
         // 形参期望值（内置标量 / 平凡结构体）
-        if (rightType.isRef() || rightType.isRc()) {
-            // 右操作数是引用/Rc，需要 load 后按值传递
+        if (rightType.isRef() || rightType.isRc() || rightType.isHeap()) {
+            // 右操作数是引用/Rc/Heap，需要 load 后按值传递
             auto structType = getLLVMType(effRightType);
             auto loaded = _builder.CreateLoad(structType, rightVal, "op_rhs_val");
             methodArgs.push_back(loaded);
@@ -257,15 +265,37 @@ llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
     auto rightType = applySubst(node->right()->getType());
     // v0.16: [] 返回 T&——标量操作符自动剥 Ref，使内置类型检查落在标量名上
     auto effLeftType = leftType.isRef() ? *leftType.refElementType() : leftType;
+    // Heap<T> → T：运算符自动穿透 Heap wrapper，作用在内部 T
+    bool leftIsHeap = false;
+    if (effLeftType.isHeap()) {
+        if (auto inner = effLeftType.heapElementType()) {
+            effLeftType = *inner;
+            leftIsHeap = true;
+        }
+    }
     // Rc<T> → T：运算符自动穿透 Rc wrapper，作用在内部 T
     bool leftIsRc = false;
     if (effLeftType.isRc()) {
-        if (auto inner = effLeftType.rcElementType()) { effLeftType = *inner; leftIsRc = true; }
+        if (auto inner = effLeftType.rcElementType()) {
+            effLeftType = *inner;
+            leftIsRc = true;
+        }
     }
     auto effRightType = rightType.isRef() ? *rightType.refElementType() : rightType;
+    // Heap<T> → T：运算符自动穿透 Heap wrapper，作用在内部 T
+    bool rightIsHeap = false;
+    if (effRightType.isHeap()) {
+        if (auto inner = effRightType.heapElementType()) {
+            effRightType = *inner;
+            rightIsHeap = true;
+        }
+    }
     bool rightIsRc = false;
     if (effRightType.isRc()) {
-        if (auto inner = effRightType.rcElementType()) { effRightType = *inner; rightIsRc = true; }
+        if (auto inner = effRightType.rcElementType()) {
+            effRightType = *inner;
+            rightIsRc = true;
+        }
     }
 
     string opStr = (node->op() == ExprAddSubNode::Op::Add) ? "+" : "-";
@@ -290,14 +320,18 @@ llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
 
     // v0.16: 操作数若是 T&（如 arr[i]）则 load 出值
     // 防御：仅在值是 pointer 类型时才 load（避免 getType 返回 Ref 但值已被 lower 为标量时双重 load）
-    if (leftIsRc) {
+    if (leftIsHeap) {
+        left = _builder.CreateLoad(getLLVMType(effLeftType), left, "heap.lhs.val");
+    } else if (leftIsRc) {
         auto handle = _builder.CreateExtractValue(left, {0}, "rc.lhs.handle");
         auto payload = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.lhs.payload");
         left = _builder.CreateLoad(getLLVMType(effLeftType), payload, "rc.lhs.val");
     } else if (leftType.isRef() && left->getType()->isPointerTy()) {
         left = _builder.CreateLoad(getLLVMType(effLeftType), left, "add_lhs");
     }
-    if (rightIsRc) {
+    if (rightIsHeap) {
+        right = _builder.CreateLoad(getLLVMType(effRightType), right, "heap.rhs.val");
+    } else if (rightIsRc) {
         auto handle = _builder.CreateExtractValue(right, {0}, "rc.rhs.handle");
         auto payload = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.rhs.payload");
         right = _builder.CreateLoad(getLLVMType(effRightType), payload, "rc.rhs.val");
@@ -325,15 +359,37 @@ llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
     auto rightType = applySubst(node->right()->getType());
     // v0.16: [] 返回 T&——标量操作符自动剥 Ref
     auto effLeftType = leftType.isRef() ? *leftType.refElementType() : leftType;
+    // Heap<T> → T：运算符自动穿透 Heap wrapper，作用在内部 T
+    bool leftIsHeap = false;
+    if (effLeftType.isHeap()) {
+        if (auto inner = effLeftType.heapElementType()) {
+            effLeftType = *inner;
+            leftIsHeap = true;
+        }
+    }
     // Rc<T> → T：运算符自动穿透 Rc wrapper，作用在内部 T
     bool leftIsRc = false;
     if (effLeftType.isRc()) {
-        if (auto inner = effLeftType.rcElementType()) { effLeftType = *inner; leftIsRc = true; }
+        if (auto inner = effLeftType.rcElementType()) {
+            effLeftType = *inner;
+            leftIsRc = true;
+        }
     }
     auto effRightType = rightType.isRef() ? *rightType.refElementType() : rightType;
+    // Heap<T> → T：运算符自动穿透 Heap wrapper，作用在内部 T
+    bool rightIsHeap = false;
+    if (effRightType.isHeap()) {
+        if (auto inner = effRightType.heapElementType()) {
+            effRightType = *inner;
+            rightIsHeap = true;
+        }
+    }
     bool rightIsRc = false;
     if (effRightType.isRc()) {
-        if (auto inner = effRightType.rcElementType()) { effRightType = *inner; rightIsRc = true; }
+        if (auto inner = effRightType.rcElementType()) {
+            effRightType = *inner;
+            rightIsRc = true;
+        }
     }
 
     string opStr;
@@ -375,14 +431,18 @@ llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
 
     // v0.16: 操作数若是 T& 则 load 出值
     // 防御：仅在值是 pointer 类型时才 load
-    if (leftIsRc) {
+    if (leftIsHeap) {
+        left = _builder.CreateLoad(getLLVMType(effLeftType), left, "heap.lhs.val");
+    } else if (leftIsRc) {
         auto handle = _builder.CreateExtractValue(left, {0}, "rc.lhs.handle");
         auto payload = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.lhs.payload");
         left = _builder.CreateLoad(getLLVMType(effLeftType), payload, "rc.lhs.val");
     } else if (leftType.isRef() && left->getType()->isPointerTy()) {
         left = _builder.CreateLoad(getLLVMType(effLeftType), left, "mul_lhs");
     }
-    if (rightIsRc) {
+    if (rightIsHeap) {
+        right = _builder.CreateLoad(getLLVMType(effRightType), right, "heap.rhs.val");
+    } else if (rightIsRc) {
         auto handle = _builder.CreateExtractValue(right, {0}, "rc.rhs.handle");
         auto payload = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.rhs.payload");
         right = _builder.CreateLoad(getLLVMType(effRightType), payload, "rc.rhs.val");
@@ -424,15 +484,37 @@ llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
     auto rightType = applySubst(node->right()->getType());
     // v0.16: [] 返回 T&——标量操作符自动剥 Ref
     auto effLeftType = leftType.isRef() ? *leftType.refElementType() : leftType;
+    // Heap<T> → T：运算符自动穿透 Heap wrapper，作用在内部 T
+    bool leftIsHeap = false;
+    if (effLeftType.isHeap()) {
+        if (auto inner = effLeftType.heapElementType()) {
+            effLeftType = *inner;
+            leftIsHeap = true;
+        }
+    }
     // Rc<T> → T：运算符自动穿透 Rc wrapper，作用在内部 T
     bool leftIsRc = false;
     if (effLeftType.isRc()) {
-        if (auto inner = effLeftType.rcElementType()) { effLeftType = *inner; leftIsRc = true; }
+        if (auto inner = effLeftType.rcElementType()) {
+            effLeftType = *inner;
+            leftIsRc = true;
+        }
     }
     auto effRightType = rightType.isRef() ? *rightType.refElementType() : rightType;
+    // Heap<T> → T：运算符自动穿透 Heap wrapper，作用在内部 T
+    bool rightIsHeap = false;
+    if (effRightType.isHeap()) {
+        if (auto inner = effRightType.heapElementType()) {
+            effRightType = *inner;
+            rightIsHeap = true;
+        }
+    }
     bool rightIsRc = false;
     if (effRightType.isRc()) {
-        if (auto inner = effRightType.rcElementType()) { effRightType = *inner; rightIsRc = true; }
+        if (auto inner = effRightType.rcElementType()) {
+            effRightType = *inner;
+            rightIsRc = true;
+        }
     }
 
     string opStr;
@@ -484,14 +566,18 @@ llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
 
     // v0.16: 操作数若是 T& 则 load 出值
     // 防御：仅在值是 pointer 类型时才 load
-    if (leftIsRc) {
+    if (leftIsHeap) {
+        left = _builder.CreateLoad(getLLVMType(effLeftType), left, "heap.lhs.val");
+    } else if (leftIsRc) {
         auto handle = _builder.CreateExtractValue(left, {0}, "rc.lhs.handle");
         auto payload = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.lhs.payload");
         left = _builder.CreateLoad(getLLVMType(effLeftType), payload, "rc.lhs.val");
     } else if (leftType.isRef() && left->getType()->isPointerTy()) {
         left = _builder.CreateLoad(getLLVMType(effLeftType), left, "binop_lhs");
     }
-    if (rightIsRc) {
+    if (rightIsHeap) {
+        right = _builder.CreateLoad(getLLVMType(effRightType), right, "heap.rhs.val");
+    } else if (rightIsRc) {
         auto handle = _builder.CreateExtractValue(right, {0}, "rc.rhs.handle");
         auto payload = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.rhs.payload");
         right = _builder.CreateLoad(getLLVMType(effRightType), payload, "rc.rhs.val");
@@ -526,14 +612,35 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
     // v0.16: [] 返回 T&——标量操作符自动剥 Ref 用于类型匹配
     auto effLeftType = leftType.isRef() ? *leftType.refElementType() : leftType;
     auto effRightType = rightType.isRef() ? *rightType.refElementType() : rightType;
+    // Heap<T> → T：运算符自动穿透 Heap wrapper，作用在内部 T
+    bool leftIsHeap = false;
+    if (effLeftType.isHeap()) {
+        if (auto inner = effLeftType.heapElementType()) {
+            effLeftType = *inner;
+            leftIsHeap = true;
+        }
+    }
+    bool rightIsHeap = false;
+    if (effRightType.isHeap()) {
+        if (auto inner = effRightType.heapElementType()) {
+            effRightType = *inner;
+            rightIsHeap = true;
+        }
+    }
     // Rc<T> → T：运算符自动穿透 Rc wrapper，作用在内部 T
     bool leftIsRc = false;
     if (effLeftType.isRc()) {
-        if (auto inner = effLeftType.rcElementType()) { effLeftType = *inner; leftIsRc = true; }
+        if (auto inner = effLeftType.rcElementType()) {
+            effLeftType = *inner;
+            leftIsRc = true;
+        }
     }
     bool rightIsRc = false;
     if (effRightType.isRc()) {
-        if (auto inner = effRightType.rcElementType()) { effRightType = *inner; rightIsRc = true; }
+        if (auto inner = effRightType.rcElementType()) {
+            effRightType = *inner;
+            rightIsRc = true;
+        }
     }
 
     if (effLeftType != effRightType) {
@@ -704,14 +811,18 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
     bool isUnsigned = effLeftType.startsWith('u');
 
     // v0.16: 操作数若是 T&（如 arr[i]）则 load 出值
-    if (leftIsRc) {
+    if (leftIsHeap) {
+        left = _builder.CreateLoad(getLLVMType(effLeftType), left, "heap.lhs.val");
+    } else if (leftIsRc) {
         auto handle = _builder.CreateExtractValue(left, {0}, "rc.lhs.handle");
         auto payload = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.lhs.payload");
         left = _builder.CreateLoad(getLLVMType(effLeftType), payload, "rc.lhs.val");
     } else if (leftType.isRef()) {
         left = _builder.CreateLoad(getLLVMType(effLeftType), left, "cmp_lhs");
     }
-    if (rightIsRc) {
+    if (rightIsHeap) {
+        right = _builder.CreateLoad(getLLVMType(effRightType), right, "heap.rhs.val");
+    } else if (rightIsRc) {
         auto handle = _builder.CreateExtractValue(right, {0}, "rc.rhs.handle");
         auto payload = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.rhs.payload");
         right = _builder.CreateLoad(getLLVMType(effRightType), payload, "rc.rhs.val");

@@ -1,0 +1,249 @@
+; P3: Heap<T> 自动解引用行为用例
+; 覆盖：字段访问、方法调用、运算符、取引用
+
+; ---------- 辅助类型 ----------
+
+struct HeapBox {
+  k i32
+
+  #Static
+  fn make(k i32) HeapBox {
+    ret Self {
+      .k = k
+    }
+  }
+
+  fn get_k() i32 {
+    ret $.k
+  }
+}
+
+struct Vec2f {
+  x f64
+  y f64
+
+  #Static
+  fn make(x f64, y f64) Vec2f {
+    ret Self {
+      .x = x
+      .y = y
+    }
+  }
+
+  fn len_sq() f64 {
+    ret $.x * $.x + $.y * $.y
+  }
+}
+
+; ---------- 1. Heap<Struct> 字段访问 ----------
+
+#Test
+fn test_heap_field_access() {
+  let h Heap<HeapBox> = heap:<HeapBox>(HeapBox::make(42))
+  assert_eq(h.k, 42)
+}
+
+#Test
+fn test_heap_field_access_nested() {
+  let h Heap<Vec2f> = heap:<Vec2f>(Vec2f::make(3.0, 4.0))
+  assert_eq(h.x, 3.0)
+  assert_eq(h.y, 4.0)
+}
+
+; ---------- 2. Heap<Struct> 方法调用 ----------
+
+#Test
+fn test_heap_struct_method() {
+  let h Heap<HeapBox> = heap:<HeapBox>(HeapBox::make(99))
+  assert_eq(h.get_k(), 99)
+}
+
+#Test
+fn test_heap_struct_method_with_ref_param() {
+  let h Heap<Vec2f> = heap:<Vec2f>(Vec2f::make(3.0, 4.0))
+  assert_eq(h.len_sq(), 25.0)
+}
+
+; ---------- 3. Heap<builtin> 方法调用 ----------
+
+#Test
+fn test_heap_i32_to_string() {
+  let h Heap<i32> = heap:<i32>(42)
+  assert_eq(h.to_string(), "42")
+}
+
+#Test
+fn test_heap_bool_to_string() {
+  let h Heap<bool> = heap:<bool>(true)
+  assert_eq(h.to_string(), "true")
+}
+
+; ---------- 4. Heap<T> 运算符 ----------
+
+#Test
+fn test_heap_i32_add() {
+  let h Heap<i32> = heap:<i32>(10)
+  assert_eq(h + 5, 15)
+}
+
+#Test
+fn test_heap_i32_sub() {
+  let h Heap<i32> = heap:<i32>(10)
+  assert_eq(h - 3, 7)
+}
+
+#Test
+fn test_heap_i32_mul() {
+  let h Heap<i32> = heap:<i32>(6)
+  assert_eq(h * 7, 42)
+}
+
+#Test
+fn test_heap_i32_div() {
+  let h Heap<i32> = heap:<i32>(42)
+  assert_eq(h / 6, 7)
+}
+
+#Test
+fn test_heap_i32_mod() {
+  let h Heap<i32> = heap:<i32>(10)
+  assert_eq(h % 3, 1)
+}
+
+#Test
+fn test_heap_i32_eq() {
+  let h Heap<i32> = heap:<i32>(42)
+  assert_true(h == 42)
+  assert_false(h == 0)
+}
+
+#Test
+fn test_heap_i32_ne() {
+  let h Heap<i32> = heap:<i32>(42)
+  assert_true(h != 0)
+  assert_false(h != 42)
+}
+
+#Test
+fn test_heap_i32_lt() {
+  let h Heap<i32> = heap:<i32>(10)
+  assert_true(h < 20)
+  assert_false(h < 5)
+}
+
+#Test
+fn test_heap_i32_le() {
+  let h Heap<i32> = heap:<i32>(10)
+  assert_true(h <= 10)
+  assert_true(h <= 20)
+  assert_false(h <= 5)
+}
+
+#Test
+fn test_heap_i32_gt() {
+  let h Heap<i32> = heap:<i32>(10)
+  assert_true(h > 5)
+  assert_false(h > 20)
+}
+
+#Test
+fn test_heap_i32_ge() {
+  let h Heap<i32> = heap:<i32>(10)
+  assert_true(h >= 10)
+  assert_true(h >= 5)
+  assert_false(h >= 20)
+}
+
+#Test
+fn test_heap_i32_neg() {
+  let h Heap<i32> = heap:<i32>(42)
+  assert_eq(-h, -42)
+}
+
+#Test
+fn test_heap_i32_not() {
+  let h Heap<bool> = heap:<bool>(true)
+  assert_false(!h)
+}
+
+#Test
+fn test_heap_f64_add() {
+  let h Heap<f64> = heap:<f64>(3.5)
+  assert_eq(h + 1.5, 5.0)
+}
+
+#Test
+fn test_heap_f64_mul() {
+  let h Heap<f64> = heap:<f64>(3.0)
+  assert_eq(h * 2.0, 6.0)
+}
+
+; ---------- 5. Heap<i32> 位运算 ----------
+
+#Test
+fn test_heap_i32_and() {
+  let h Heap<i32> = heap:<i32>(0xFF)
+  assert_eq(h & 0x0F, 0x0F)
+}
+
+#Test
+fn test_heap_i32_or() {
+  let h Heap<i32> = heap:<i32>(0xF0)
+  assert_eq(h | 0x0F, 0xFF)
+}
+
+#Test
+fn test_heap_i32_xor() {
+  let h Heap<i32> = heap:<i32>(0xFF)
+  assert_eq(h ^ 0x0F, 0xF0)
+}
+
+#Test
+fn test_heap_i32_shl() {
+  let h Heap<i32> = heap:<i32>(1)
+  assert_eq(h << 3, 8)
+}
+
+#Test
+fn test_heap_i32_shr() {
+  let h Heap<i32> = heap:<i32>(8)
+  assert_eq(h >> 2, 2)
+}
+
+; ---------- 6. Heap<i32> rhs 运算符 ----------
+
+#Test
+fn test_heap_i32_rhs_add() {
+  let h Heap<i32> = heap:<i32>(5)
+  assert_eq(10 + h, 15)
+}
+
+#Test
+fn test_heap_i32_rhs_eq() {
+  let h Heap<i32> = heap:<i32>(42)
+  assert_true(42 == h)
+}
+
+; ---------- 7. Heap 字段 + 运算符综合 ----------
+
+#Test
+fn test_heap_field_and_operator_combined() {
+  let h Heap<HeapBox> = heap:<HeapBox>(HeapBox::make(30))
+  assert_eq(h.k + 12, 42)
+}
+
+#Test
+fn test_heap_bool_not_combined() {
+  let h Heap<bool> = heap:<bool>(false)
+  assert_true(!h)
+}
+
+; ---------- 8. as_ref + 字段访问 ----------
+
+#Test
+fn test_heap_ref_then_field() {
+  let h Heap<Vec2f> = heap:<Vec2f>(Vec2f::make(5.0, 12.0))
+  let r Vec2f& = as_ref(h)
+  assert_eq(r.x, 5.0)
+  assert_eq(r.y, 12.0)
+}

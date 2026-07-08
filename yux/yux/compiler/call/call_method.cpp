@@ -56,11 +56,17 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
         if (inner) baseType = *inner;
     }
 
-    // Rc<T> 自动解引用：提前到 builtin/Array/Dyn 检查之前（P2）
-    // Rc<T> 对方法调用应穿透 wrapper 作用在内部 T，与字段访问 / 运算符一致
+    // Heap<T> / Rc<T> 自动解引用：提前到 builtin/Array/Dyn 检查之前
+    // 对方法调用应穿透 wrapper 作用在内部 T，与字段访问 / 运算符一致
     TypeInfo actualType = baseType;
-    if (baseType.isRc()) {
-        auto rcElemType = baseType.rcElementType();
+    if (actualType.isHeap()) {
+        auto heapElemType = actualType.heapElementType();
+        if (heapElemType) {
+            actualType = *heapElemType;
+        }
+    }
+    if (actualType.isRc()) {
+        auto rcElemType = actualType.rcElementType();
         if (rcElemType) {
             actualType = *rcElemType;
         }
@@ -126,8 +132,12 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
                                               const string& member, vector<llvm::Value*>& args,
                                               vector<TypeInfo>& argTypes) {
 
-    // Rc<Array<T>> 自动解引用（P2）：elemType / structType 用内层 Array<T> 而非 Rc<Array<T>>
+    // Heap<T> / Rc<T> 自动解引用：elemType / structType 用内层 Array<T> 而非 wrapper
     TypeInfo arrType = baseType;
+    if (baseType.isHeap()) {
+        auto heapElem = baseType.heapElementType();
+        if (heapElem) arrType = *heapElem;
+    }
     if (baseType.isRc()) {
         auto rcElem = baseType.rcElementType();
         if (rcElem) arrType = *rcElem;
@@ -155,6 +165,10 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
             auto t = outerType.refElementType();
             if (t) outerActual = *t;
         }
+        if (outerType.isHeap()) {
+            auto t = outerType.heapElementType();
+            if (t) outerActual = *t;
+        }
         if (outerType.isRc()) {
             auto t = outerType.rcElementType();
             if (t) outerActual = *t;
@@ -176,7 +190,10 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
             int fi = outerStructDecl->fieldIndex(dotBase->member());
             if (fi >= 0) {
                 llvm::Value* dataPtr = outerPtr;
-                if (outerType.isRc()) {
+                if (outerType.isHeap()) {
+                    // Heap<T>: outerPtr 是 alloca slot (T**)，load 出 T* → dataPtr
+                    dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), outerPtr, "heap.ptr");
+                } else if (outerType.isRc()) {
                     // Rc.field：load handle，payload = handle + 8
                     auto rcStructType = getLLVMType(outerType);
                     auto handleField = _builder.CreateGEP(rcStructType, outerPtr, {zero, zero}, "rc.handle_field");
@@ -191,7 +208,10 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         }
     }
 
-    // Rc<Array<T>> 自动解引用（P2）：从 Rc handle 取出 Array<T> 指针
+    // Heap<T> / Rc<T> 自动解引用：从 wrapper 取出 Array<T> 指针
+    if (arrayPtr && baseType.isHeap()) {
+        arrayPtr = _builder.CreateLoad(ptrTy, arrayPtr, "heap.arr.ptr");
+    }
     if (arrayPtr && baseType.isRc()) {
         auto rcStructType = getLLVMType(baseType);
         auto handleField = _builder.CreateGEP(rcStructType, arrayPtr, {zero, zero}, "rc.handle_field");
@@ -211,6 +231,10 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         // 否则 compileExpr 返回的是 struct 值，需要 alloca 保存再取地址
         if (baseExpr->getType().isRef()) {
             // TODO: Rc<Array<T>>& 路径待支持（需先 load Rc struct 再 unwrap）
+            return baseVal;
+        }
+        // Heap<Array<T>> 自动解引用：compileExpr 返回 Array<T>*，直接使用
+        if (baseType.isHeap()) {
             return baseVal;
         }
         // Rc<Array<T>> 自动解引用（P2）：从 Rc handle 取出 Array<T> 指针
@@ -471,15 +495,18 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
                                                     const TypeInfo& baseType, const string& member,
                                                     vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
 
-    // Rc<T> 自动解引用（P2）：方法查找与类型判定用内层 T 而非 Rc<T>
-    // 例如 Rc<i32>.to_string() → 按 i32 查找 SDK 方法，receiver 值从 Rc handle 解包
+    // Heap<T> / Rc<T> 自动解引用：方法查找与类型判定用内层 T 而非 wrapper 类型
     TypeInfo lookupType = baseType;
+    if (baseType.isHeap()) {
+        auto heapElem = baseType.heapElementType();
+        if (heapElem) lookupType = *heapElem;
+    }
     if (baseType.isRc()) {
         auto rcElem = baseType.rcElementType();
         if (rcElem) lookupType = *rcElem;
     }
 
-    // 编译 receiver 值：若 baseType 是 Rc，compileExpr 后自动 unwrap 到 heap payload
+    // 编译 receiver 值：若 baseType 是 Heap/Rc，compileExpr 后自动 unwrap 到内层值
     // 同时处理 T& 自动 load（v0.16: [] 返回 Ref 时 compileExpr 返回指针）
     auto compileReceiver = [&]() -> llvm::Value* {
         auto val = compileExpr(baseExpr);
@@ -489,6 +516,10 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
             if (inner) {
                 val = _builder.CreateLoad(getLLVMType(*inner), val, "ref.load");
             }
+        }
+        if (baseType.isHeap()) {
+            // Heap<T>: compileExpr 返回 T*，load 出 T 值
+            return _builder.CreateLoad(getLLVMType(lookupType), val, "heap.val");
         }
         if (!baseType.isRc()) return val;
         // Rc<T> struct { ptr } → alloca → extract handle → +8 payload → load T 值
@@ -876,17 +907,31 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
             }
         }
 
+        bool heapFromLocal = false;
         if (!basePtr) {
             auto baseVal = compileExpr(baseExpr);
-            auto structType = getLLVMType(actualType);
-            auto alloca = _builder.CreateAlloca(structType, nullptr, "method_tmp");
-            _builder.CreateStore(baseVal, alloca);
-            basePtr = alloca;
+            if (baseType.isHeap()) {
+                // Heap<T>: compileExpr 返回 T*，直接用作 struct 指针
+                basePtr = baseVal;
+            } else {
+                auto structType = getLLVMType(actualType);
+                auto alloca = _builder.CreateAlloca(structType, nullptr, "method_tmp");
+                _builder.CreateStore(baseVal, alloca);
+                basePtr = alloca;
+            }
+        } else if (baseType.isHeap()) {
+            heapFromLocal = true;
         }
 
         llvm::Value* dataPtr = basePtr;
 
-        if (baseType.isRc()) {
+        if (baseType.isHeap()) {
+            // Heap<T>：若来自 _localVarPtrs（alloca slot T**），load 出 T*
+            if (heapFromLocal) {
+                dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataPtr, "heap.ptr");
+            }
+            // else: compileExpr 已返回 T*，无需额外 load
+        } else if (baseType.isRc()) {
             // Rc 方法 receiver：load handle，payload = handle + 8
             auto rcStructType = getLLVMType(baseType);
             auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);

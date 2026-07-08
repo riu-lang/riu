@@ -342,6 +342,8 @@ TypeInfo ExprCallNode::getType() const {
             TypeInfo actualType = baseType;
             if (baseType.isRef()) {
                 if (auto e = baseType.refElementType()) actualType = *e;
+            } else if (baseType.isHeap()) {
+                if (auto e = baseType.heapElementType()) actualType = *e;
             } else if (baseType.isRc()) {
                 if (auto e = baseType.rcElementType()) actualType = *e;
             }
@@ -600,6 +602,14 @@ TypeInfo ExprAddSubNode::getType() const {
     };
     unwrapRef(leftType);
     unwrapRef(rightType);
+    // Heap<T> → T：运算符穿透 Heap wrapper，类型比较在内部 T 上进行
+    auto unwrapHeap = [](TypeInfo& t) {
+        if (t.isHeap()) {
+            if (auto inner = t.heapElementType()) t = *inner;
+        }
+    };
+    unwrapHeap(leftType);
+    unwrapHeap(rightType);
     // Rc<T> → T：运算符穿透 Rc wrapper，类型比较在内部 T 上进行
     auto unwrapRc = [](TypeInfo& t) {
         if (t.isRc()) {
@@ -668,6 +678,14 @@ TypeInfo ExprMulDivModNode::getType() const {
     };
     unwrapRef(leftType);
     unwrapRef(rightType);
+    // Heap<T> → T：运算符穿透 Heap wrapper，类型比较在内部 T 上进行
+    auto unwrapHeap = [](TypeInfo& t) {
+        if (t.isHeap()) {
+            if (auto inner = t.heapElementType()) t = *inner;
+        }
+    };
+    unwrapHeap(leftType);
+    unwrapHeap(rightType);
     // Rc<T> → T：运算符穿透 Rc wrapper，类型比较在内部 T 上进行
     auto unwrapRc = [](TypeInfo& t) {
         if (t.isRc()) {
@@ -730,6 +748,14 @@ TypeInfo ExprBinOpNode::getType() const {
     };
     unwrapRef(leftType);
     unwrapRef(rightType);
+    // Heap<T> → T：运算符穿透 Heap wrapper，类型比较在内部 T 上进行
+    auto unwrapHeap = [](TypeInfo& t) {
+        if (t.isHeap()) {
+            if (auto inner = t.heapElementType()) t = *inner;
+        }
+    };
+    unwrapHeap(leftType);
+    unwrapHeap(rightType);
     // Rc<T> → T：运算符穿透 Rc wrapper，类型比较在内部 T 上进行
     auto unwrapRc = [](TypeInfo& t) {
         if (t.isRc()) {
@@ -1173,6 +1199,13 @@ TypeInfo ExprDotNode::getType() const {
         }
     }
 
+    if (actualType.isHeap()) {
+        auto heapElemType = actualType.heapElementType();
+        if (heapElemType) {
+            actualType = *heapElemType;
+        }
+    }
+
     if (actualType.isRc()) {
         auto rcElemType = actualType.rcElementType();
         if (rcElemType) {
@@ -1361,6 +1394,14 @@ TypeInfo ExprCompareNode::getType() const {
     };
     unwrapRef(leftType);
     unwrapRef(rightType);
+    // Heap<T> → T：运算符穿透 Heap wrapper，类型比较在内部 T 上进行
+    auto unwrapHeap = [](TypeInfo& t) {
+        if (t.isHeap()) {
+            if (auto inner = t.heapElementType()) t = *inner;
+        }
+    };
+    unwrapHeap(leftType);
+    unwrapHeap(rightType);
     // Rc<T> → T：运算符穿透 Rc wrapper，类型比较在内部 T 上进行
     auto unwrapRc = [](TypeInfo& t) {
         if (t.isRc()) {
@@ -1705,7 +1746,11 @@ TypeInfo ExprGetRefNode::getType() const {
         }
 
         // Phase 4c: Rc<T>.field 自动解引用到 payload 上找字段（&rc.field → field&）
+        // Heap<T> 同理解引用到堆上 struct 再找字段
         TypeInfo lookupType = baseType;
+        if (lookupType.isHeap()) {
+            if (auto inner = lookupType.heapElementType()) lookupType = *inner;
+        }
         if (lookupType.isRc()) {
             if (auto inner = lookupType.rcElementType()) lookupType = *inner;
         }
@@ -1759,6 +1804,10 @@ const p<ExprNode>& ExprUnaryNode::right() const {
 
 TypeInfo ExprUnaryNode::getType() const {
     auto rightType = _right->getType();
+    // Heap<T> → T：一元运算符穿透 Heap wrapper，结果类型为内部 T
+    if (rightType.isHeap()) {
+        if (auto inner = rightType.heapElementType()) rightType = *inner;
+    }
     // Rc<T> → T：一元运算符穿透 Rc wrapper，结果类型为内部 T
     if (rightType.isRc()) {
         if (auto inner = rightType.rcElementType()) rightType = *inner;

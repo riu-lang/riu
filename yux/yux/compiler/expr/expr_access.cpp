@@ -201,11 +201,20 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
     auto baseType = baseExpr->getType();
     TypeInfo actualType = baseType;
     llvm::Value* structPtr = nullptr;
+    bool isHeapBase = baseType.isHeap();
+    bool heapFromLocal = false;
 
     if (baseType.isRef()) {
         auto refElemType = baseType.refElementType();
         if (refElemType) {
             actualType = *refElemType;
+        }
+    }
+
+    if (actualType.isHeap()) {
+        auto heapElemType = actualType.heapElementType();
+        if (heapElemType) {
+            actualType = *heapElemType;
         }
     }
 
@@ -235,20 +244,33 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
                     auto it = _localVarPtrs.find(varName);
                     if (it != _localVarPtrs.end()) {
                         structPtr = it->second;
+                        if (isHeapBase) heapFromLocal = true;
                     }
                 }
             }
 
             if (!structPtr) {
                 auto baseVal = compileExpr(baseExpr);
-                auto tmpAlloca = _builder.CreateAlloca(getLLVMType(baseType), nullptr, "struct_field_tmp");
-                _builder.CreateStore(baseVal, tmpAlloca);
-                structPtr = tmpAlloca;
+                if (isHeapBase) {
+                    // Heap<T>: compileExpr 返回 T*，直接用作 struct 指针
+                    structPtr = baseVal;
+                } else {
+                    auto tmpAlloca = _builder.CreateAlloca(getLLVMType(baseType), nullptr, "struct_field_tmp");
+                    _builder.CreateStore(baseVal, tmpAlloca);
+                    structPtr = tmpAlloca;
+                }
             }
 
             llvm::Value* dataPtr = structPtr;
 
-            if ((baseType.isRc() ||
+            if (isHeapBase) {
+                // Heap<T>: 若来自 _localVarPtrs（alloca slot T**），load 出 T*
+                // 若来自 compileExpr（已是 T*），无需额外 load — 但 _localVarPtrs
+                // 和 compileExpr 都返回 ptr，靠 heapFromLocal 区分
+                if (heapFromLocal) {
+                    dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataPtr, "heap.ptr");
+                }
+            } else if ((baseType.isRc() ||
                  (baseType.isRef() && baseType.refElementType() && baseType.refElementType()->isRc()))) {
                 // Ref<Rc<...>>：先 deref 拿到指向 Rc struct 的指针，再提取 handle
                 if (baseType.isRef()) {

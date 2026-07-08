@@ -28,6 +28,10 @@ llvm::Value* Compiler::compileCustomTypeUnaryOp(p<ExprNode> expr, const TypeInfo
 
     // v0.16: [] 返回 T&——剥 Ref 用于方法名查找
     auto effType = type.isRef() ? *type.refElementType() : type;
+    // Heap<T> → T：运算符穿透 Heap wrapper，方法在内部类型上查找
+    if (effType.isHeap()) {
+        if (auto inner = effType.heapElementType()) effType = *inner;
+    }
     // Rc<T> → T：运算符穿透 Rc wrapper，方法在内部类型上查找
     if (effType.isRc()) {
         if (auto inner = effType.rcElementType()) effType = *inner;
@@ -42,8 +46,8 @@ llvm::Value* Compiler::compileCustomTypeUnaryOp(p<ExprNode> expr, const TypeInfo
         auto rcVal = compileExpr(expr);
         auto handle = _builder.CreateExtractValue(rcVal, {0}, "rc.op.handle");
         ptr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.op.payload");
-    } else if (type.isRef()) {
-        // v0.16: [] 返回 T&——compileExpr 已返回指针，直接用作 self ptr
+    } else if (type.isHeap() || type.isRef()) { // NOLINT(bugprone-branch-clone): 语义不同但 body 相同
+        // Heap<T> / T&：compileExpr 已返回指针，直接用作 self ptr
         ptr = compileExpr(expr);
     } else {
         if (auto literal = dynamic_cast<ExprLiteralNode*>(expr)) {
@@ -163,6 +167,11 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
     for (auto& sub : subs) {
         const auto& memberName = sub.getText();
 
+        // Phase 4c: Heap<T>.field —— 自动 deref：currentPtr 是 alloca slot (T**)，load 出 T*
+        if (currentType.isHeap()) {
+            currentPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), currentPtr, "heap.ptr");
+            if (auto inner = currentType.heapElementType()) currentType = *inner;
+        }
         // Phase 4c: Rc<T>.field —— 自动 deref：load handle，payload = handle + 8
         if (currentType.isRc()) {
             auto rcStructType = getLLVMType(currentType);
@@ -207,10 +216,21 @@ llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
     auto rightType = node->right()->getType();
     // v0.16: [] 返回 T&——标量操作符自动剥 Ref
     auto effRightType = rightType.isRef() ? *rightType.refElementType() : rightType;
+    // Heap<T> → T：运算符自动穿透 Heap wrapper，作用在内部 T
+    bool rightIsHeap = false;
+    if (effRightType.isHeap()) {
+        if (auto inner = effRightType.heapElementType()) {
+            effRightType = *inner;
+            rightIsHeap = true;
+        }
+    }
     // Rc<T> → T：运算符自动穿透 Rc wrapper，作用在内部 T
     bool rightIsRc = false;
     if (effRightType.isRc()) {
-        if (auto inner = effRightType.rcElementType()) { effRightType = *inner; rightIsRc = true; }
+        if (auto inner = effRightType.rcElementType()) {
+            effRightType = *inner;
+            rightIsRc = true;
+        }
     }
 
     string opStr;
@@ -227,7 +247,7 @@ llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
     }
     DEBUG_LOG_VAL("    Expr: Unary", opStr << " : " << type.name);
 
-    // 检查是否为自定义类型（用剥 Ref/Rc 后的标量名）
+    // 检查是否为自定义类型（用剥 Ref/Heap/Rc 后的标量名）
     if (!isBuiltinType(effRightType.name)) {
         string methodName;
         switch (node->op()) {
@@ -250,7 +270,9 @@ llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
     bool isBool = type.name == "bool";
 
     // v0.16: 操作数若是 T& 则 load 出值
-    if (rightIsRc) {
+    if (rightIsHeap) {
+        right = _builder.CreateLoad(getLLVMType(effRightType), right, "heap.val");
+    } else if (rightIsRc) {
         auto handle = _builder.CreateExtractValue(right, {0}, "rc.handle");
         auto payload = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.payload");
         right = _builder.CreateLoad(getLLVMType(effRightType), payload, "rc.val");

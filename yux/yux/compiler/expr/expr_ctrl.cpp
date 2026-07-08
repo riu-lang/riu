@@ -253,6 +253,23 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
         }
     }
 
+    // Heap<E> match：自动 deref。Heap<T> 是裸 T*，load 即可得 enum 值。
+    bool heapDeref = false;
+    if (scrutType.isHeap()) {
+        auto inner = scrutType.heapElementType();
+        if (inner) {
+            p<FileNode> tmpOwner = nullptr;
+            if (lookupEnumDecl(inner->name, tmpOwner)) {
+                if (isFreshHandleExpr(scrutinee)) {
+                    throw YuxError(line, col, ErrorCode::E2022, scrutType.name)
+                        .withHint("不支持对临时 Heap<E> 直接 match；先 `var h Heap<E> = ...` 落地再 match h");
+                }
+                heapDeref = true;
+                scrutType = *inner;
+            }
+        }
+    }
+
     // v0.16: T& match（如 match arr[i]）——自动 Load 引用以检查 enum discriminant。
     // arr[i] 返回 T&（指针），match 需要读枚举值来判断变体。
     bool refDeref = false;
@@ -335,6 +352,10 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
             _builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "match.rc.payload");
         auto enumVal = _builder.CreateLoad(enumLLVMType, payload, "match.rc.enum");
         _builder.CreateStore(enumVal, scrutAlloca);
+    } else if (heapDeref) {
+        // scrutVal 是 E*（Heap<E> 的裸指针），Load 出枚举值再存入 alloca
+        auto enumVal = _builder.CreateLoad(enumLLVMType, scrutVal, "match.heap.enum");
+        _builder.CreateStore(enumVal, scrutAlloca);
     } else if (refDeref) {
         // v0.16: scrutVal 是 T& 指针（如 arr[i] 返回），Load 出枚举值再存入 alloca
         auto enumVal = _builder.CreateLoad(enumLLVMType, scrutVal, "match.ref.enum");
@@ -344,8 +365,8 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
     }
 
     // 仅当 scrutinee 是 fresh（构造 / 函数返回 / 含 RC 的 enum 临时）我们才需要在 match 末 dtor
-    // Rc deref / Ref deref 路径走借用语义，不接管所有权，故不计 drop
-    bool ownsScrut = !rcDeref && !refDeref && isFreshHandleExpr(scrutinee);
+    // Rc deref / Heap deref / Ref deref 路径走借用语义，不接管所有权，故不计 drop
+    bool ownsScrut = !rcDeref && !heapDeref && !refDeref && isFreshHandleExpr(scrutinee);
     if (ownsScrut) {
         consumeTemp(scrutVal);
     }
