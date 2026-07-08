@@ -56,17 +56,25 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
         if (inner) baseType = *inner;
     }
 
+    // Rc<T> 自动解引用：提前到 builtin/Array/Dyn 检查之前（P2）
+    // Rc<T> 对方法调用应穿透 wrapper 作用在内部 T，与字段访问 / 运算符一致
+    TypeInfo actualType = baseType;
+    if (baseType.isRc()) {
+        auto rcElemType = baseType.rcElementType();
+        if (rcElemType) {
+            actualType = *rcElemType;
+        }
+    }
+
     // Dyn<D> / Dyn<D&> 方法调用 (Phase 2d 静态检查 + Phase 3d vtable codegen)
     if (baseType.isDyn()) {
         return compileDynMethodCall(callNode, baseExpr, baseType, member, args, argTypes);
     }
 
-    // 处理内置类型方法
-    if (isBuiltinType(baseType.name)) {
+    // 处理内置类型方法（用 Rc 解引用后的 actualType 做分发）
+    if (isBuiltinType(actualType.name)) {
         return compileBuiltinTypeMethodCall(callNode, baseExpr, baseType, member, args, argTypes);
     }
-
-    TypeInfo actualType = baseType;
 
     // 处理指针类型方法
     if (baseType.isPtr()) {
@@ -77,18 +85,10 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
         }
     }
 
-    // 处理数组方法
-    if (baseType.isArrayGeneric()) {
+    // 处理数组方法（用 Rc 解引用后的 actualType 做分发）
+    if (actualType.isArrayGeneric()) {
         auto result = compileArrayMethodCall(callNode, baseExpr, baseType, member, args, argTypes);
         if (result) return result;
-    }
-
-    // 处理 Rc 类型: 解包获取实际类型
-    if (baseType.isRc()) {
-        auto rcElemType = baseType.rcElementType();
-        if (rcElemType) {
-            actualType = *rcElemType;
-        }
     }
 
     // 处理结构体方法
@@ -126,8 +126,14 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
                                               const string& member, vector<llvm::Value*>& args,
                                               vector<TypeInfo>& argTypes) {
 
-    auto elemType = baseType.arrayGenericElementType();
-    auto arrayStructType = getLLVMType(baseType);
+    // Rc<Array<T>> 自动解引用（P2）：elemType / structType 用内层 Array<T> 而非 Rc<Array<T>>
+    TypeInfo arrType = baseType;
+    if (baseType.isRc()) {
+        auto rcElem = baseType.rcElementType();
+        if (rcElem) arrType = *rcElem;
+    }
+    auto elemType = arrType.arrayGenericElementType();
+    auto arrayStructType = getLLVMType(arrType);
     auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
     auto sizeTy = getSizeType();
     auto ptrTy = llvm::PointerType::get(_context, 0);
@@ -185,8 +191,17 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         }
     }
 
+    // Rc<Array<T>> 自动解引用（P2）：从 Rc handle 取出 Array<T> 指针
+    if (arrayPtr && baseType.isRc()) {
+        auto rcStructType = getLLVMType(baseType);
+        auto handleField = _builder.CreateGEP(rcStructType, arrayPtr, {zero, zero}, "rc.handle_field");
+        auto handle = _builder.CreateLoad(ptrTy, handleField, "rc.handle");
+        arrayPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.payload");
+    }
+
     // Phase 3.3.2.a: Array<T> 方法形态校验 (E3055/E6042/E6027)
-    sema::validateArrayMethodCall(baseType, member, args.size(), arrayPtr != nullptr, callNode->getLineNumber(),
+    // 用 arrType（Rc 解引用后）而非 baseType，确保 elemType 提取正确
+    sema::validateArrayMethodCall(arrType, member, args.size(), arrayPtr != nullptr, callNode->getLineNumber(),
                                   callNode->getColumn());
 
     auto getReadPtr = [&]() -> llvm::Value* {
@@ -195,7 +210,19 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         // [] 返回 T&（指针），直接用作 struct 指针，无需 alloca 副本
         // 否则 compileExpr 返回的是 struct 值，需要 alloca 保存再取地址
         if (baseExpr->getType().isRef()) {
+            // TODO: Rc<Array<T>>& 路径待支持（需先 load Rc struct 再 unwrap）
             return baseVal;
+        }
+        // Rc<Array<T>> 自动解引用（P2）：从 Rc handle 取出 Array<T> 指针
+        if (baseType.isRc()) {
+            auto rcStructType = getLLVMType(baseType);
+            auto tmp = _builder.CreateAlloca(rcStructType, nullptr, "rc_tmp");
+            _builder.CreateStore(baseVal, tmp);
+            auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto handleField = _builder.CreateGEP(rcStructType, tmp, {zero, zero}, "rc.handle_field");
+            auto ptrTy = llvm::PointerType::get(_context, 0);
+            auto handle = _builder.CreateLoad(ptrTy, handleField, "rc.handle");
+            return _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.payload");
         }
         auto tmp = _builder.CreateAlloca(arrayStructType, nullptr, "array_tmp");
         _builder.CreateStore(baseVal, tmp);
@@ -444,20 +471,48 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
                                                     const TypeInfo& baseType, const string& member,
                                                     vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
 
+    // Rc<T> 自动解引用（P2）：方法查找与类型判定用内层 T 而非 Rc<T>
+    // 例如 Rc<i32>.to_string() → 按 i32 查找 SDK 方法，receiver 值从 Rc handle 解包
+    TypeInfo lookupType = baseType;
+    if (baseType.isRc()) {
+        auto rcElem = baseType.rcElementType();
+        if (rcElem) lookupType = *rcElem;
+    }
+
+    // 编译 receiver 值：若 baseType 是 Rc，compileExpr 后自动 unwrap 到 heap payload
+    // 同时处理 T& 自动 load（v0.16: [] 返回 Ref 时 compileExpr 返回指针）
+    auto compileReceiver = [&]() -> llvm::Value* {
+        auto val = compileExpr(baseExpr);
+        auto srcType = baseExpr->getType();
+        if (srcType.isRef() && val->getType()->isPointerTy()) {
+            auto inner = srcType.refElementType();
+            if (inner) {
+                val = _builder.CreateLoad(getLLVMType(*inner), val, "ref.load");
+            }
+        }
+        if (!baseType.isRc()) return val;
+        // Rc<T> struct { ptr } → alloca → extract handle → +8 payload → load T 值
+        auto rcStructType = getLLVMType(baseType);
+        auto tmp = _builder.CreateAlloca(rcStructType, nullptr, "rc.unwrap");
+        _builder.CreateStore(val, tmp);
+        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        auto handleField = _builder.CreateGEP(rcStructType, tmp, {zero, zero}, "rc.handle.field");
+        auto ptrTy = llvm::PointerType::get(_context, 0);
+        auto handle = _builder.CreateLoad(ptrTy, handleField, "rc.handle");
+        auto payload = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.payload");
+        auto llvmTy = getLLVMType(lookupType);
+        return _builder.CreateLoad(llvmTy, payload, "rc.payload.val");
+    };
+
     // 处理 bit-cast：f64.to_bits()→u64 / f32.to_bits()→u32 / u64.as_f64()→f64 / u32.as_f32()→f32
     // alloca + store + bitcast ptr + load（CreateBitCast 只接受指针类型）
     if (member == "to_bits") {
-        if (baseType.name == "f64" || baseType.name == "f32") {
-            DEBUG_LOG_VAL("    Expr: BitCast", baseType.name << ".to_bits()");
-            auto baseVal = compileExpr(baseExpr);
-            auto srcType = baseExpr->getType();
-            if (srcType.isRef() && baseVal->getType()->isPointerTy()) {
-                auto inner = srcType.refElementType();
-                if (inner) baseVal = _builder.CreateLoad(getLLVMType(*inner), baseVal, "bitcast.load.ref");
-            }
-            auto srcLLVMTy = getLLVMType(baseType);
-            auto dstLLVMTy = baseType.name == "f64" ? llvm::Type::getInt64Ty(_context)
-                                                     : llvm::Type::getInt32Ty(_context);
+        if (lookupType.name == "f64" || lookupType.name == "f32") {
+            DEBUG_LOG_VAL("    Expr: BitCast", lookupType.name << ".to_bits()");
+            auto baseVal = compileReceiver();
+            auto srcLLVMTy = getLLVMType(lookupType);
+            auto dstLLVMTy = lookupType.name == "f64" ? llvm::Type::getInt64Ty(_context)
+                                                      : llvm::Type::getInt32Ty(_context);
             auto alloca = _builder.CreateAlloca(srcLLVMTy, nullptr, "bitcast.tmp");
             _builder.CreateStore(baseVal, alloca);
             auto bitcastPtr = _builder.CreateBitCast(alloca, llvm::PointerType::get(_context, 0), "bitcast.ptr");
@@ -465,15 +520,10 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
         }
     }
     if (member == "as_f64" || member == "as_f32") {
-        if ((member == "as_f64" && baseType.name == "u64") || (member == "as_f32" && baseType.name == "u32")) {
-            DEBUG_LOG_VAL("    Expr: BitCast", baseType.name << "." << member << "()");
-            auto baseVal = compileExpr(baseExpr);
-            auto srcType = baseExpr->getType();
-            if (srcType.isRef() && baseVal->getType()->isPointerTy()) {
-                auto inner = srcType.refElementType();
-                if (inner) baseVal = _builder.CreateLoad(getLLVMType(*inner), baseVal, "bitcast.load.ref");
-            }
-            auto srcLLVMTy = getLLVMType(baseType);
+        if ((member == "as_f64" && lookupType.name == "u64") || (member == "as_f32" && lookupType.name == "u32")) {
+            DEBUG_LOG_VAL("    Expr: BitCast", lookupType.name << "." << member << "()");
+            auto baseVal = compileReceiver();
+            auto srcLLVMTy = getLLVMType(lookupType);
             auto dstLLVMTy =
                 member == "as_f64" ? llvm::Type::getDoubleTy(_context) : llvm::Type::getFloatTy(_context);
             auto alloca = _builder.CreateAlloca(srcLLVMTy, nullptr, "bitcast.tmp");
@@ -487,30 +537,21 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
         string dstType = member.substr(3);
         if (isBuiltinType(dstType)) {
             DEBUG_LOG_VAL("    Expr: CastCall (to_)", dstType);
-            auto baseVal = compileExpr(baseExpr);
-            // v0.16: [] 返回 T&——若 baseExpr 是 Ref，Load 出值后用内层类型做 cast
-            auto srcType = baseExpr->getType();
-            if (srcType.isRef() && baseVal->getType()->isPointerTy()) {
-                auto inner = srcType.refElementType();
-                if (inner) {
-                    baseVal = _builder.CreateLoad(getLLVMType(*inner), baseVal, "cast.load");
-                    srcType = *inner;
-                }
-            }
-            return createCast(baseVal, srcType, TypeInfo(dstType));
+            auto baseVal = compileReceiver();
+            return createCast(baseVal, lookupType, TypeInfo(dstType));
         }
     }
 
     // 处理 #Builtin 运算符方法：直接生成 LLVM IR
-    if (isBuiltinMethod(baseType.name, member)) {
+    if (isBuiltinMethod(lookupType.name, member)) {
         // Phase 3.3.2.e: 操作符方法 arity + 类型域校验
         //   E6027 17 处二元 op arity != 1, E3070 inv-on-float 全部抠到 sema.
-        sema::validateOperatorMethodCall(member, baseType, args.size(), callNode->getLineNumber(),
+        sema::validateOperatorMethodCall(member, lookupType, args.size(), callNode->getLineNumber(),
                                          callNode->getColumn());
 
-        auto baseVal = compileExpr(baseExpr);
-        bool isFloat = baseType.startsWith('f');
-        bool isUnsigned = baseType.startsWith('u');
+        auto baseVal = compileReceiver();
+        bool isFloat = lookupType.startsWith('f');
+        bool isUnsigned = lookupType.startsWith('u');
 
         // T& 实参自动 load：形参声明为 T& 时 args[0] 是指针，load 出值参与 LLVM 运算
         auto loadScalarArg = [&](size_t idx) -> llvm::Value* {
@@ -668,12 +709,12 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
     }
 
     vector<TypeInfo> methodParamTypes;
-    methodParamTypes.push_back(baseType);
+    methodParamTypes.push_back(lookupType);
     for (auto& t : argTypes) {
         methodParamTypes.push_back(t);
     }
 
-    string methodFullName = baseType.name + "." + member;
+    string methodFullName = lookupType.name + "." + member;
     FnSymbolInfo* sdkMethodSymbol = nullptr;
     if (_yux && _yux->sdkFile()) {
         sdkMethodSymbol = _yux->sdkFile()->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
@@ -682,7 +723,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
     if (sdkMethodSymbol) {
         DEBUG_LOG_VAL("    Expr: BuiltinTypeMethodCall (SDK)", methodFullName);
 
-        auto baseVal = compileExpr(baseExpr);
+        auto baseVal = compileReceiver();
 
         vector<llvm::Value*> methodArgs;
         methodArgs.push_back(baseVal);
@@ -694,11 +735,11 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
         string ownerMod =
             sdkMethodSymbol->moduleName.empty() ? _yux->sdkFile()->moduleName() : sdkMethodSymbol->moduleName;
         bool methPriv = !member.empty() && member[0] == '_';
-        string mangledName = Mangler::method(ownerMod, baseType.name, member, argTypes, methPriv);
+        string mangledName = Mangler::method(ownerMod, lookupType.name, member, argTypes, methPriv);
         auto fn = _module->getFunction(mangledName);
         if (!fn) {
             vector<llvm::Type*> paramTypes;
-            paramTypes.push_back(getLLVMType(baseType));
+            paramTypes.push_back(getLLVMType(lookupType));
             for (auto& t : argTypes) {
                 paramTypes.push_back(getLLVMType(t));
             }
