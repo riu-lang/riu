@@ -330,6 +330,11 @@ private:
     // 找不到则返回空
     vector<TypeInfo> resolveStructFieldTypes(const string& structName);
 
+    // 从 target type 递归推断灵活整数类型（含 tuple/泛型别名展开）
+    // 当 target 解析为 tuple 且 expr 为 tuple 字面量时，逐元素递归推断；
+    // 否则委托给 AST 层的 tryInferIntType。
+    void inferFlexibleInts(p<ExprNode> expr, const TypeInfo& target);
+
     // ==================== 语句编译 ====================
     void compileRetStatement(p<StatementRetNode> node);                               // 编译 return 语句
     void compileRetVoidStatement(p<StatementRetVoidNode> node);                       // 编译 return; 语句

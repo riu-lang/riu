@@ -38,6 +38,8 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         if (isIntTypeName(declRetType.name) && isFlexibleIntExpr(node->expr())) {
             tryInferIntType(node->expr(), declRetType);
         }
+        // 推断 tuple 字面量中灵活整数的类型（含泛型别名展开）
+        inferFlexibleInts(node->expr(), declRetType);
     }
 
     auto retType = node->expr()->getType();
@@ -449,6 +451,11 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                     }
                 }
             }
+            // 推断 tuple 字面量中灵活整数的类型：
+            // 当 target type 展开为 tuple（含泛型别名如 Triple<i64> → (i64,i64,i64)）,
+            // 递归推断每个元素的灵活整数类型。
+            // 否则元素默认为 i32，与 target 的 i64 不匹配 → LLVM store 类型断言崩溃。
+            inferFlexibleInts(expr, varType);
         } else {
             varType = expr->getType();
         }

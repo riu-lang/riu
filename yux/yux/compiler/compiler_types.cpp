@@ -78,6 +78,33 @@ TypeInfo Compiler::applySubst(const TypeInfo& t) const {
     return resolveAlias(result);
 }
 
+// 从 target type 递归推断灵活整数类型（含 tuple/泛型别名展开）
+// 当 target 解析为 tuple 且 expr 为 tuple 字面量时，逐元素递归推断；
+// 否则委托给 AST 层的 tryInferIntType。
+void Compiler::inferFlexibleInts(p<ExprNode> expr, const TypeInfo& target) {
+    // 先展开别名（Triple<i64> → (i64,i64,i64)）
+    TypeInfo resolved = applySubst(target);
+    // tuple 目标 + tuple 字面量 → 逐元素递归
+    if (resolved.isTuple()) {
+        if (auto tupleExpr = dynamic_cast<ExprTupleNode*>(expr)) {
+            auto& targetElems = resolved.tupleElements();
+            auto& srcElems = tupleExpr->elements();
+            if (targetElems.size() == srcElems.size()) {
+                for (size_t i = 0; i < srcElems.size(); ++i) {
+                    if (targetElems[i]) {
+                        inferFlexibleInts(srcElems[i], *targetElems[i]);
+                    }
+                }
+            }
+        }
+        return;
+    }
+    // 标量整数目标 → 委托 AST 层
+    if (isIntTypeName(resolved.name) && isFlexibleIntExpr(expr)) {
+        tryInferIntType(expr, resolved);
+    }
+}
+
 // ==================== 别名解析 ====================
 
 namespace {

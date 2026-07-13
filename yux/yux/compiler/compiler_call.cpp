@@ -334,9 +334,12 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                         auto paramType = params[i]->type();
                         if (paramType) {
                             TypeInfo instParamType = applySubst(paramType->getType());
-                            // 推断灵活整数的类型
-                            if (isIntTypeName(instParamType.name) && i < node->getArgs().size()) {
-                                tryInferIntType(node->getArgs()[i], instParamType);
+                            // 推断灵活整数的类型（含 tuple/泛型别名展开）
+                            if (i < node->getArgs().size()) {
+                                if (isIntTypeName(instParamType.name)) {
+                                    tryInferIntType(node->getArgs()[i], instParamType);
+                                }
+                                inferFlexibleInts(node->getArgs()[i], instParamType);
                             }
                             // 推断灵活 null 的类型
                             if (instParamType.isNullable() && i < node->getArgs().size()) {
@@ -396,6 +399,8 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                                             if (isIntTypeName(instParamType.name)) {
                                                 tryInferIntType(node->getArgs()[i], instParamType);
                                             }
+                                            // 推断 tuple 字面量中灵活整数的类型（含泛型别名展开）
+                                            inferFlexibleInts(node->getArgs()[i], instParamType);
                                             if (instParamType.isNullable()) {
                                                 tryInferNullType(node->getArgs()[i], instParamType);
                                             }
