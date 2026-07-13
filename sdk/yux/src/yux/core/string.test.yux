@@ -1,4 +1,15 @@
-; SDK dogfood：String 等值 / 子串 / 前缀
+; String 行为测试
+;
+; 覆盖：
+;   - 等值比较（== / !=）
+;   - contains / starts_with（含 String& 形参直接调用）
+;   - 转义序列与原始字符串（\n \t \" r"..."）
+;   - \$ 转义与字符串模板插值（$id / ${expr} / UTF-8）
+;   - ToString 自动分发（i32 / i64 / u64 / bool / f64）
+;   - String + 链式连接（含左右非 String、混合类型链）
+;   - 边界条件（空字符串、纯插值）
+
+; ==================== 等值比较 ====================
 
 #Test
 fn test_string_eq_basic() {
@@ -19,6 +30,8 @@ fn test_string_eq_empty() {
   let b String = ""
   assert_eq(a, b)
 }
+
+; ==================== contains / starts_with ====================
 
 #Test
 fn test_string_contains_full() {
@@ -49,7 +62,7 @@ fn test_string_starts_with_empty_prefix() {
   assert_starts_with(s, "")
 }
 
-; 直接调用 starts_with / contains（测试 String& 形参的 auto-ref codegen）
+; String& 形参直接调用
 #Test
 fn test_string_starts_with_direct() {
   let s String = "hello world"
@@ -64,12 +77,11 @@ fn test_string_contains_direct() {
   assert_false(s.contains("qux"))
 }
 
-; 迁自 tests/cases/strings.yux —— 转义序列与原始字符串
+; ==================== 转义序列 ====================
 
 #Test
 fn test_string_escape_newline_codepoint() {
   let s String = "a\nb"
-  ; 长度 3，中间一位是 LF (0x0A)
   assert_eq(s.len(), 3)
   assert_eq(s.get(0), 97u32)
   assert_eq(s.get(1), 10u32)
@@ -90,10 +102,11 @@ fn test_string_escape_quote_codepoint() {
   assert_eq(s.get(0), 34u32)
 }
 
+; ==================== 原始字符串 ====================
+
 #Test
 fn test_string_raw_keeps_backslash() {
   let s String = r"\n"
-  ; raw 字符串：长度 2，第一位是反斜线 (0x5C)、第二位是字面 'n'
   assert_eq(s.len(), 2)
   assert_eq(s.get(0), 92u32)
   assert_eq(s.get(1), 110u32)
@@ -106,12 +119,11 @@ fn test_string_raw_path() {
   assert_eq(s.get(2), 92u32)
 }
 
-; v0.6 Phase 1b：字符串模板转义 `\$`，无插值时降级回 LiteralStringNode
+; ==================== \$ 转义 ====================
 
 #Test
 fn test_string_dollar_escape_codepoint() {
   let s String = "price=\$5"
-  ; 长度 8，第 6 位是字面 '$' (0x24)
   assert_eq(s.len(), 8)
   assert_eq(s.get(6), 36u32)
 }
@@ -123,8 +135,7 @@ fn test_string_dollar_escape_only() {
   assert_eq(s.get(0), 36u32)
 }
 
-; v0.6 Phase 2a：字符串模板 codegen → StringBuilder 链
-; v0.6 Phase 2b：插值位置非 String 自动调 ToString.to_string() 桥接
+; ==================== 字符串模板插值（$id / ${expr}） ====================
 
 #Test
 fn test_string_template_dollar_id() {
@@ -132,6 +143,13 @@ fn test_string_template_dollar_id() {
   let s String = "hello, $name!"
   assert_eq(s.len(), 11)
   assert_eq(s, "hello, yux!")
+}
+
+#Test
+fn test_string_template_id_surrounded() {
+  let name String = "x"
+  let s String = "[$name]"
+  assert_eq(s, "[x]")
 }
 
 #Test
@@ -153,7 +171,6 @@ fn test_string_template_mixed_text() {
 fn test_string_template_empty_part() {
   let a String = "ab"
   let b String = "cd"
-  ; 相邻插值之间没有文本：parts 中含空段，应被跳过
   let s String = "${a}${b}"
   assert_eq(s, "abcd")
 }
@@ -162,14 +179,13 @@ fn test_string_template_empty_part() {
 fn test_string_template_utf8_part() {
   let v String = "中"
   let s String = "前${v}后"
-  ; 三个码点
   assert_eq(s.len(), 3)
   assert_eq(s.get(0), 21069u32)
   assert_eq(s.get(1), 20013u32)
   assert_eq(s.get(2), 21518u32)
 }
 
-; ==================== Phase 2b：ToString 自动分发 ====================
+; ==================== ToString 自动分发 ====================
 
 #Test
 fn test_string_template_i32_interp() {
@@ -201,6 +217,14 @@ fn test_string_template_u64_interp() {
 }
 
 #Test
+fn test_string_template_f64_interp() {
+  let f f64 = 3.14f64
+  let s String = "${f}"
+  ; "3.140000" — f64 固定 6 位小数
+  assert_eq(s.len(), 8)
+}
+
+#Test
 fn test_string_template_mixed_kind_interp() {
   let name String = "yux"
   let n i32 = 7
@@ -208,7 +232,7 @@ fn test_string_template_mixed_kind_interp() {
   assert_eq(s, "yux v7")
 }
 
-; v0.6 Phase 2c：String + 链 lower 为 StringBuilder
+; ==================== String + 链式连接 ====================
 
 #Test
 fn test_string_plus_two() {
@@ -270,4 +294,13 @@ fn test_string_plus_utf8() {
   let b String = "世界"
   let s String = a + "，" + b
   assert_eq(s, "你好，世界")
+}
+
+#Test
+fn test_string_plus_nested_expr() {
+  ; 括号表达式在 + 链中
+  let x i32 = 10
+  let y i32 = 20
+  let s String = "sum = " + (x + y)
+  assert_eq(s, "sum = 30")
 }

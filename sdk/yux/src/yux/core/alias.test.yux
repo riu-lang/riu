@@ -1,5 +1,13 @@
-; 顶层透明类型别名 (v0.6 Phase 2b)
-; A = T 时 A 与 T 在赋值 / 算术 / 函数签名 / 比较中等价
+; 类型别名行为测试
+;
+; 覆盖：
+;   - 简单透明别名（A = i32）— 赋值、算术、函数签名、实参
+;   - 链式别名（A1 → A2 → A → i32）
+;   - tuple 别名（IPair / Point3D）— 成员访问、解构、赋值、函数传参/返回
+;   - 泛型 tuple 别名（Pair<T>）— 实例化、成员访问、赋值、算术
+;   - 函数类型别名（Predicate = fn(i32) bool）— 赋值、调用
+
+; ==================== 简单透明别名 A = i32 ====================
 
 A = i32
 
@@ -25,7 +33,6 @@ fn test_alias_fn_signature() {
   assert_eq(add_alias(2, 3), 5)
 }
 
-; 把 alias 类型的局部变量喂给以 alias 声明形参的函数
 #Test
 fn test_alias_var_as_arg() {
   #Mut let a A = 4
@@ -33,7 +40,8 @@ fn test_alias_var_as_arg() {
   assert_eq(add_alias(a, b), 10)
 }
 
-; 链式别名 A1 -> A2 -> A -> i32
+; ==================== 链式别名 ====================
+
 A2 = A
 A1 = A2
 
@@ -43,8 +51,11 @@ fn test_alias_chain() {
   assert_eq(x, 99)
 }
 
-; 元组别名 + 成员访问（Phase 4 与 alias 的协同）
+; ==================== tuple 别名 IPair = (i32, i32) ====================
+
 IPair = (i32, i32)
+
+; --- 成员访问与解构 ---
 
 #Test
 fn test_alias_tuple_member() {
@@ -53,17 +64,6 @@ fn test_alias_tuple_member() {
   assert_eq(p.1, 9)
 }
 
-; 泛型元组别名实例化后的成员访问
-Pair<T> = (T, T)
-
-#Test
-fn test_alias_generic_tuple_member() {
-  #Mut let p Pair<i32> = (40, 2)
-  assert_eq(p.0, 40)
-  assert_eq(p.1, 2)
-}
-
-; 解构 alias 类型的元组（Phase 5）
 #Test
 fn test_alias_tuple_destructure() {
   #Mut let p IPair = (11, 22)
@@ -72,7 +72,8 @@ fn test_alias_tuple_destructure() {
   assert_eq(b, 22)
 }
 
-; alias 路径上的元组成员赋值（Phase 6）
+; --- 成员赋值 ---
+
 #Test
 fn test_alias_tuple_member_assign() {
   #Mut let p IPair = (1, 2)
@@ -80,6 +81,63 @@ fn test_alias_tuple_member_assign() {
   p.1 = 200
   assert_eq(p.0, 100)
   assert_eq(p.1, 200)
+}
+
+; --- 函数传参 / 返回 / swap ---
+
+fn alias_sum(p IPair) i32 {
+  ret p.0 + p.1
+}
+
+fn alias_make(a i32, b i32) IPair {
+  ret (a, b)
+}
+
+fn alias_swap(p IPair) IPair {
+  ret (p.1, p.0)
+}
+
+#Test
+fn test_alias_fn_param() {
+  let p IPair = (10, 20)
+  assert_eq(alias_sum(p), 30)
+}
+
+#Test
+fn test_alias_fn_return() {
+  let p IPair = alias_make(3, 4)
+  assert_eq(p.0, 3)
+  assert_eq(p.1, 4)
+}
+
+#Test
+fn test_alias_swap() {
+  let q IPair = alias_swap((1, 2))
+  assert_eq(q.0, 2)
+  assert_eq(q.1, 1)
+}
+
+; ==================== 3D tuple 别名 Point3D = (f64, f64, f64) ====================
+
+Point3D = (f64, f64, f64)
+
+#Test
+fn test_alias_tuple_3d() {
+  let p Point3D = (1.0f64, 2.0f64, 3.0f64)
+  assert_eq(p.0, 1.0f64)
+  assert_eq(p.1, 2.0f64)
+  assert_eq(p.2, 3.0f64)
+}
+
+; ==================== 泛型 tuple 别名 Pair<T> = (T, T) ====================
+
+Pair<T> = (T, T)
+
+#Test
+fn test_alias_generic_tuple_member() {
+  #Mut let p Pair<i32> = (40, 2)
+  assert_eq(p.0, 40)
+  assert_eq(p.1, 2)
 }
 
 #Test
@@ -90,7 +148,6 @@ fn test_alias_generic_tuple_member_assign() {
   assert_eq(p.1, 77)
 }
 
-; 泛型别名的成员参与算术运算（v0.18 修复）
 #Test
 fn test_alias_generic_tuple_member_add() {
   let p Pair<i32> = (5, 10)
@@ -102,4 +159,44 @@ fn test_alias_generic_tuple_chain_add() {
   let p Pair<i32> = (3, 7)
   let sum i32 = p.0 + p.1 + 5
   assert_eq(sum, 15)
+}
+
+; ==================== 函数类型别名 Predicate = fn(i32) bool ====================
+
+fn is_positive(x i32) bool = x > 0
+
+Predicate = fn(i32) bool
+
+#Test
+fn test_fn_direct_call() {
+  let f fn(i32) bool = is_positive
+  assert_true(f(5))
+  assert_false(f(-3))
+}
+
+#Test
+fn test_multi_ref() {
+  let f fn(i32) bool = is_positive
+  let g fn(i32) bool = is_positive
+  assert_true(f(10))
+  assert_true(g(10))
+}
+
+#Test
+fn test_fn_alias_assign_only() {
+  let f Predicate = is_positive
+  assert_true(true)
+}
+
+#Test
+fn test_fn_alias_call() {
+  let f Predicate = is_positive
+  assert_true(f(7))
+  assert_false(f(-1))
+}
+
+#Test
+fn test_fn_direct_call_no_var() {
+  assert_true(is_positive(100))
+  assert_false(is_positive(-50))
 }

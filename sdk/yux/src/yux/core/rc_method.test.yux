@@ -1,6 +1,9 @@
 ; Rc<T> 方法调用自动解引用测试
-; P2: Rc<T> 方法调用应穿透 wrapper，转发到内部 T 的方法。
-; 覆盖：Rc<Array<i32>>.len()、Rc<i32>.to_string()、Rc<String>.len()
+;
+; Rc 测试分散在 5 个文件中，详见 rc.test.yux 头部注释。
+;
+; 本文件覆盖（P2）：Rc<Array<i32>>.len()/is_empty()、Rc<i32/f64/bool>.to_string()、
+; Rc<String>.len()
 
 ; ==================== Rc<Array<T>> 方法 ====================
 
@@ -34,14 +37,11 @@ fn test_rc_i32_to_string() {
   assert_eq(r.to_string(), "42")
 }
 
-; TODO: Rc<f64>.to_string() 触发 SEH ASSERT_FAILED，疑似 f64 load 对齐或 SDK 方法签名不匹配
-; 待独立排查
-
-;#Test
-;fn test_rc_f64_to_string() {
-;  let r Rc<f64> = 3.14
-;  assert_eq(r.to_string(), "3.14")
-;}
+#Test
+fn test_rc_f64_to_string() {
+  let r Rc<f64> = 3.14
+  assert_eq(r.to_string(), "3.140000")
+}
 
 #Test
 fn test_rc_bool_to_string() {

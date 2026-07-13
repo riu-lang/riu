@@ -1,6 +1,14 @@
-; Rc<T> 行为用例（迁自 tests/cases/box_*、var_reassign_box）
-; 覆盖：基础构造与字段读、句柄复制共享、上下文驱动重赋、move-return、
-;       变量重赋走 retain-then-release、自赋值。
+; Rc<T> 生命周期与基础行为测试
+;
+; Rc 测试分散在 5 个文件中，各司其职：
+;   rc.test.yux        — 基础构造、字段访问、共享语义、重赋、move-return
+;   rc_operator.test.yux — 运算符自动解引用（P1）
+;   rc_method.test.yux   — 方法调用自动解引用（P2）
+;   rc_dtor.test.yux     — 析构 / typed release（B-2）
+;   rc_leak.test.yux     — 临时值泄漏计数 / RC 生命周期量化
+;
+; 本文件覆盖：基础构造与字段读、句柄复制共享、上下文驱动重赋、move-return、
+; 变量重赋走 retain-then-release、自赋值。
 
 struct BoxPair {
   a i32

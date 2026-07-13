@@ -1,0 +1,252 @@
+; loop 循环行为测试
+;
+; 覆盖：
+;   - 基本 loop + break
+;   - loop init（类型标注、外部绑定、tuple 解构）
+;   - loop init isize / usize
+;   - labeled loop + break@label
+;   - 嵌套 labeled loop + 深层 break
+;   - 边界条件（零迭代、累加/累乘）
+
+; ==================== 基本 loop + break ====================
+
+#Test
+fn test_loop_break() {
+  #Mut let i i32 = 0
+  #Mut let sum i32 = 0
+  loop {
+    if i >= 5 {
+      break;
+    }
+    sum = sum + i
+    i = i + 1
+  }
+  assert_eq(i, 5)
+  assert_eq(sum, 0 + 1 + 2 + 3 + 4)
+}
+
+; ==================== loop 内修改外部变量 ====================
+
+#Test
+fn test_loop_modify_outer() {
+  #Mut let counter i32 = 0
+  loop {
+    counter = counter + 1
+    if counter >= 10 {
+      break;
+    }
+  }
+  assert_eq(counter, 10)
+}
+
+#Test
+fn test_loop_accumulate_sum() {
+  #Mut let sum i32 = 0
+  #Mut let i i32 = 1
+  loop {
+    if i > 10 {
+      break;
+    }
+    sum = sum + i
+    i = i + 1
+  }
+  assert_eq(sum, 55)
+}
+
+; ==================== loop init（单变量） ====================
+
+#Test
+fn test_loop_init_counter() {
+  #Mut let sum i32 = 0
+  loop i = 0 {
+    if i >= 10 {
+      break;
+    }
+    sum = sum + i
+    i = i + 1
+  }
+  assert_eq(sum, 45)
+  assert_eq(i, 10)
+}
+
+#Test
+fn test_loop_init_type_annot() {
+  #Mut let sum i64 = 0
+  loop i i64 = 0 {
+    if i >= 100 {
+      break;
+    }
+    sum = sum + i
+    i = i + 1
+  }
+  assert_eq(sum, 4950)
+}
+
+#Test
+fn test_loop_init_with_bound() {
+  let n i32 = 7
+  #Mut let count i32 = 0
+  loop i = 0 {
+    if i >= n {
+      break;
+    }
+    count = count + 1
+    i = i + 1
+  }
+  assert_eq(count, 7)
+}
+
+; ==================== loop init（tuple 解构） ====================
+
+#Test
+fn test_loop_init_tuple() {
+  #Mut let acc i32 = 0
+  loop (i, limit) = (0, 5) {
+    if i >= limit {
+      break;
+    }
+    acc = acc + i
+    i = i + 1
+  }
+  assert_eq(acc, 0 + 1 + 2 + 3 + 4)
+}
+
+; ==================== loop init isize / usize ====================
+
+#Test
+fn test_loop_init_usize() {
+  #Mut let count i32 = 0
+  loop i usize = 0 {
+    if i >= 5usize {
+      break;
+    }
+    count = count + 1
+    i = i + 1usize
+  }
+  assert_eq(count, 5)
+}
+
+#Test
+fn test_loop_init_isize() {
+  #Mut let sum isize = 0
+  loop i isize = 0 {
+    if i >= 3isize {
+      break;
+    }
+    sum = sum + i
+    i = i + 1isize
+  }
+  assert_eq(sum, 3isize)
+}
+
+; ==================== labeled loop + break@ ====================
+
+#Test
+fn test_labeled_loop_basic() {
+  #Mut let count i32 = 0
+  outer: loop i = 0 {
+    if i >= 3 {
+      break@outer;
+    }
+    count = count + 1
+    i = i + 1
+  }
+  assert_eq(count, 3)
+}
+
+#Test
+fn test_labeled_break_basic() {
+  #Mut let i i32 = 0
+  outer: loop {
+    inner: loop {
+      i = i + 1
+      if i == 2 {
+        break@outer;
+      }
+      break;
+    }
+  }
+  assert_eq(i, 2)
+}
+
+#Test
+fn test_labeled_break_with_init() {
+  #Mut let sum i32 = 0
+  outer: loop i i32 = 0 {
+    if i >= 10 {
+      break;
+    }
+    i = i + 1
+    sum = sum + i
+    if i == 5 {
+      break@outer;
+    }
+  }
+  assert_eq(sum, 15)
+}
+
+; ==================== 嵌套 labeled loop ====================
+
+#Test
+fn test_nested_labeled_loop() {
+  #Mut let found i32 = 0
+  outer: loop i = 0 {
+    if i >= 5 {
+      break@outer;
+    }
+    inner: loop j = 0 {
+      if j >= 3 {
+        break;
+      }
+      if i == 2 && j == 1 {
+        found = 1
+        break@outer;
+      }
+      j = j + 1
+    }
+    i = i + 1
+  }
+  assert_eq(found, 1)
+}
+
+#Test
+fn test_labeled_break_deep() {
+  #Mut let i i32 = 1
+  a: loop {
+    b: loop {
+      c: loop {
+        i = 100
+        break@a;
+      }
+    }
+  }
+  assert_eq(i, 100)
+}
+
+; ==================== 边界条件 ====================
+
+#Test
+fn test_loop_zero_iteration() {
+  #Mut let count i32 = 0
+  loop i = 0 {
+    if true {
+      break;
+    }
+    count = count + 1
+    i = i + 1
+  }
+  assert_eq(count, 0)
+}
+
+#Test
+fn test_loop_accumulate_product() {
+  #Mut let product i32 = 1
+  loop i = 1 {
+    if i > 5 {
+      break;
+    }
+    product = product * i
+    i = i + 1
+  }
+  assert_eq(product, 120)
+}

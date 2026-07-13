@@ -1,8 +1,18 @@
-; Array<T> 行为用例（迁自 tests/cases/array_*）
-; 覆盖：基础下标读写、定长数组初始化（fill/列表）、按值传参共享语义、
-;       函数返回 move、Array<Rc<T>> 元素重赋值的 retain/release。
+; Array<T> 行为测试
+;
+; 覆盖：
+;   - 下标读写（Array<T> / [T * N]）
+;   - push / len / first / last / is_empty
+;   - f64 元素链式加法（回归 v0.18 LLVM crash）
+;   - bool / String 元素
+;   - clear / clone
+;   - 函数返回 move、传参共享语义
+;   - Array<Rc<T>> 元素重赋值 retain/release
+;   - 嵌套 Array<Array<T>> 字面量
+;   - get / copy_of / T& 写穿
+;   - [T * N] 定长数组 T& 绑定 + 运算符 + copy_of
 
-; ---------- array_access：下标读写 ----------
+; ==================== 下标读写 ====================
 
 #Test
 fn test_array_access_read_write() {
@@ -14,7 +24,7 @@ fn test_array_access_read_write() {
   assert_eq(arr[2], 35i32)
 }
 
-; ---------- array_fill：定长数组 fill 与混合初始化 ----------
+; ==================== 定长数组 fill / 列表初始化 ====================
 
 #Test
 fn test_array_fill_u8_zero() {
@@ -37,8 +47,6 @@ fn test_array_fixed_bool_listed() {
   assert_true(flags[2])
 }
 
-; ---------- array_types：定长数组列表初始化 + 各元素类型 ----------
-
 #Test
 fn test_array_fixed_i32_list() {
   let arr [i32 * 5] = [1i32, 2i32, 3i32, 4i32, 5i32]
@@ -60,7 +68,114 @@ fn test_array_fixed_bool_list_mixed() {
   assert_false(bools[1])
 }
 
-; ---------- array_return：函数返回 Array<T> 走 move-return ----------
+; ==================== push / len / first / last / is_empty ====================
+
+#Test
+fn test_array_push_basic() {
+  #Mut let arr Array<i32> = []
+  arr.push(1)
+  arr.push(2)
+  assert_eq(arr.len(), 2)
+}
+
+#Test
+fn test_array_push_many() {
+  #Mut let arr Array<i32> = []
+  loop i = 0 {
+    if i >= 5 {
+      break;
+    }
+    arr.push(i * 10)
+    i = i + 1
+  }
+  assert_eq(arr.len(), 5)
+}
+
+#Test
+fn test_array_len() {
+  #Mut let arr Array<i32> = [1, 2, 3, 4, 5]
+  assert_eq(arr.len(), 5)
+}
+
+#Test
+fn test_array_first_last() {
+  #Mut let arr Array<i32> = [100, 200, 300]
+  assert_eq(arr.first(), 100)
+  assert_eq(arr.last(), 300)
+}
+
+#Test
+fn test_array_is_empty() {
+  #Mut let arr Array<i32> = [1, 2, 3]
+  assert_false(arr.is_empty())
+}
+
+#Test
+fn test_array_empty_is_empty() {
+  #Mut let empty Array<i32> = []
+  assert_true(empty.is_empty())
+}
+
+; ==================== f64 元素运算（含 v0.18 回归） ====================
+
+#Test
+fn test_array_f64_basic() {
+  #Mut let arr Array<f64> = [1.5f64, 2.5f64, 3.5f64]
+  assert_eq(arr.len(), 3)
+  assert_eq(arr[0] + arr[1], 4.0f64)
+}
+
+#Test
+fn test_array_f64_chain_add() {
+  ; v0.18: 修复 f64 3 项链式加法 LLVM crash
+  ; 根因：ExprAddSubNode::getType() 在操作数都是 Ref<f64> 时返回 Ref<f64> 而非 f64
+  #Mut let arr Array<f64> = [1.0f64, 2.0f64, 3.0f64]
+  assert_eq(arr[0] + arr[1] + arr[2], 6.0f64)
+}
+
+#Test
+fn test_array_f64_let_bind() {
+  ; v0.18: 修复后 let x f64 = arr[i] + arr[j] 不再报 "expected f64, got Ref<f64>"
+  #Mut let arr Array<f64> = [1.0f64, 2.0f64]
+  let x f64 = arr[0] + arr[1]
+  assert_eq(x, 3.0f64)
+}
+
+; ==================== bool / String 元素 ====================
+
+#Test
+fn test_array_bool_elements() {
+  #Mut let arr Array<bool> = [true, false, true]
+  assert_eq(arr.len(), 3)
+  assert_true(arr[0])
+  assert_false(arr[1])
+}
+
+#Test
+fn test_array_of_string() {
+  #Mut let arr Array<String> = ["hello", "world"]
+  assert_eq(arr.len(), 2)
+}
+
+; ==================== clear / clone ====================
+
+#Test
+fn test_array_clear() {
+  #Mut let arr Array<i32> = [1, 2, 3]
+  assert_eq(arr.len(), 3)
+  arr.clear()
+  assert_eq(arr.len(), 0)
+  assert_true(arr.is_empty())
+}
+
+#Test
+fn test_array_clone() {
+  #Mut let arr Array<i32> = [1, 2, 3]
+  #Mut let copy Array<i32> = arr.clone()
+  assert_eq(copy.len(), 3)
+}
+
+; ==================== 函数返回 Array<T>（move-return） ====================
 
 fn make_array_i32() Array<i32> {
   #Mut let a Array<i32> = [10i32, 20i32, 30i32]
@@ -76,7 +191,7 @@ fn test_array_return_move() {
   assert_eq(arr[2], 30i32)
 }
 
-; ---------- array_passing_share：传参为句柄共享，callee 修改对 caller 可见 ----------
+; ==================== 传参共享语义 ====================
 
 fn modify_share(a Array<i32>&) {
   a[0] = 99i32
@@ -94,7 +209,7 @@ fn test_array_passing_share() {
   assert_eq(arr[3], 42i32)
 }
 
-; ---------- array_elem_rc_assign：Array<Rc<T>> 元素重赋值 retain-then-release ----------
+; ==================== Array<Rc<T>> 元素重赋值 ====================
 
 struct ArrPair {
   a i32
@@ -117,12 +232,11 @@ fn test_array_elem_box_reassign() {
   assert_eq(arr[0].a, 10i32)
   arr[0] = q
   assert_eq(arr[0].a, 30i32)
-  ; 旧元素仍由 main 的 p 持有
   assert_eq(p.a, 10)
   assert_eq(q.b, 40)
 }
 
-; ---------- 嵌套 Array<Array<T>> 字面量：内层按外层 elemType 走 Array<T> 路径 ----------
+; ==================== 嵌套 Array<Array<T>> ====================
 
 #Test
 fn test_array_nested_literal_even() {
@@ -143,12 +257,11 @@ fn test_array_nested_literal_uneven() {
   assert_eq(rows[1][2], 5i32)
 }
 
-; ---------- array_get：T& 引用访问 ----------
+; ==================== T& 引用访问（get / copy_of / 写穿） ====================
 
 #Test
 fn test_array_get_tref_bind() {
   #Mut let a Array<i32> = [100, 200]
-  ; get 返回 T&，可绑定到 T& 局部
   let r i32& = a.get(0)
   assert_eq(r, 100)
 }
@@ -156,7 +269,6 @@ fn test_array_get_tref_bind() {
 #Test
 fn test_array_get_copy_of() {
   #Mut let a Array<i32> = [10, 20, 30]
-  ; get 返回 T&，通过 copy_of 显式转换为 T 值
   let v i32 = copy_of(a.get(0))
   assert_eq(v, 10)
   assert_eq(copy_of(a.get(2)), 30i32)
@@ -165,65 +277,51 @@ fn test_array_get_copy_of() {
 #Test
 fn test_array_get_write_through() {
   #Mut let a Array<i32> = [5, 10, 15]
-  ; 通过 T& 写穿元素
   #Mut let w i32& = a.get(1)
   w = 42
-  ; 验证原数组元素被修改
-  assert_eq(a[1], 42)
   assert_eq(a[1], 42)
 }
 
-; ---------- v0.16 [] → T& 新增用例 ----------
+; ==================== v0.16 [] → T&（Array<T>） ====================
 
-; D.1: T& 绑定 + 读 + 写穿（let r T& = arr[i]）
 #Test
 fn test_array_index_ref_bind() {
   #Mut let arr Array<i32> = [100, 200, 300]
-  ; 绑定到 T& 局部
   let r i32& = arr[0]
   assert_eq(r, 100)
-  ; 写穿：通过 T& 修改引用
   #Mut let w i32& = arr[1]
   w = 42
   assert_eq(arr[1], 42)
   assert_eq(w, 42)
 }
 
-; D.2: 操作符自动解包（arr[i] + arr[j] / arr[i] == arr[j]）
 #Test
 fn test_array_index_ref_ops() {
   let arr Array<i32> = [10, 20, 30]
-  ; 加法：两边 T& 自动剥 & + Load
   assert_eq(arr[0] + arr[1], 30i32)
-  ; 乘法
   assert_eq(arr[1] * arr[2], 600i32)
-  ; 比较：T& == T&
   assert_true(arr[0] == arr[0])
   assert_false(arr[0] == arr[1])
-  ; 比较：T& == 字面量
   assert_eq(arr[0], 10i32)
   assert_true(arr[1] > arr[0])
   assert_true(arr[0] < arr[2])
 }
 
-; D.3: copy_of 取值（copy_of(arr[i])）
 #Test
 fn test_array_index_copy_of() {
   #Mut let arr Array<i32> = [5, 10, 15]
-  ; copy_of 从 T& 取出 T 值
   let x i32 = copy_of(arr[0])
   assert_eq(x, 5)
-  ; copy_of 的值与原数组独立（值语义）
   let y i32 = copy_of(arr[1])
   arr[1] = 99
   assert_eq(y, 10)
   assert_eq(arr[1], 99)
-  ; copy_of 的值可赋给不同类型宽度的变量
   let z i64 = copy_of(arr[2]).to_i64()
   assert_eq(z, 15)
 }
 
-; D.1b: [T * N] 固定数组 T& 绑定 + 读 + 写穿
+; ==================== v0.16 [] → T&（[T * N] 定长数组） ====================
+
 #Test
 fn test_fixed_array_index_ref_bind() {
   #Mut let buf [i32 * 3] = [1i32, 2i32, 3i32]
@@ -234,7 +332,6 @@ fn test_fixed_array_index_ref_bind() {
   assert_eq(buf[2], 99i32)
 }
 
-; D.2b: [T * N] 操作符自动解包
 #Test
 fn test_fixed_array_index_ref_ops() {
   let buf [i32 * 3] = [5i32, 10i32, 15i32]
@@ -243,7 +340,6 @@ fn test_fixed_array_index_ref_ops() {
   assert_true(buf[0] < buf[2])
 }
 
-; D.3b: [T * N] 用 copy_of 取值
 #Test
 fn test_fixed_array_index_copy_of() {
   let buf [i32 * 3] = [7i32, 14i32, 21i32]

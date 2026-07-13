@@ -1,6 +1,9 @@
-; RC 临时值清单 / 泄漏量化用例（迁自 tests/cases/rc_temp_*、temp_zero_leak、rc_leak_baseline）
-; 覆盖：分支表达式 RC 归一、表达式语句丢弃 fresh、链式 receiver / 参数 fresh、
-;       rc_leak_count() 在已修复路径上 delta=0；rc_leak_baseline 锁定当前观察值。
+; Rc<T> 临时值泄漏计数 / RC 生命周期量化测试
+;
+; Rc 测试分散在 5 个文件中，详见 rc.test.yux 头部注释。
+;
+; 本文件覆盖：分支表达式 RC 归一、表达式语句丢弃 fresh、
+; 链式 receiver / 参数 fresh、rc_leak_count() delta=0 验证
 
 struct RcPair {
   a i32

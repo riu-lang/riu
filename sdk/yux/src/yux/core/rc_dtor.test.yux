@@ -1,6 +1,10 @@
-; B-2: Rc<T> 对非平凡 T 的析构 —— typed release 函数测试
-; 验证 Rc<T> 其中 T 有析构逻辑（含 Rc 字段）时，
-; typed release 在 strong==0 时调 T::~()，不泄漏 T 的内部资源。
+; Rc<T> 析构 / typed release 测试
+;
+; Rc 测试分散在 5 个文件中，详见 rc.test.yux 头部注释。
+;
+; 本文件覆盖（B-2）：Rc<含 Rc 字段的 struct> typed release、
+; 共享句柄最后离开触发释放、嵌套 Rc<Rc<i32>> / Rc<Rc<Rc<i32>>>、
+; Rc<Array<i32>> typed release
 
 struct HasRc {
   data Rc<i32>
