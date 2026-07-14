@@ -362,9 +362,10 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
             _builder.CreateCall(runtime::getDynReleaseFn(_module, _builder), {data, vtable});
         } else if (fieldType.isDynBorrow()) {
             // 借用 Dyn<D&>：不动 RC，等价 no-op
-        } else if (fieldType.isNullable() && fieldType.nullableInnerType() && fieldType.nullableInnerType()->isHeap()) {
-            // Phase 3d.3: Nullable<Heap<T>> 字段 — 走 releaseAtPtr 内联分支
-            // (与局部 var 析构同款), 避免 fallthrough 误查 bare `Nullable_~()` dtor.
+        } else if (fieldType.isNullable()) {
+            // Phase 3d.3: Nullable<T> 字段 — 走 releaseAtPtr 内联分支
+            // (覆盖 Nullable<Heap<T>> / Nullable<Rc<T>> / Nullable<String> 等),
+            // 避免 fallthrough 误查 bare `Nullable_~()` dtor.
             releaseAtPtr(fieldPtr, fieldType);
         } else if (!isBuiltinType(fieldType.name)) {
             // 结构体字段: 调用其析构函数
