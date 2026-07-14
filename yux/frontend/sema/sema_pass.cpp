@@ -2283,6 +2283,12 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         // getType 抛错时跳过, 留 Compiler 兜底.
         try {
             auto leftType = n->left()->getType();
+            // Array<Nullable<T>> 下标返回 Ref<Nullable<T>>（T?&），剥 Ref 后校验
+            if (leftType.isRef()) {
+                if (auto refInner = leftType.refElementType(); refInner && refInner->isNullable()) {
+                    leftType = *refInner;
+                }
+            }
             if (!leftType.isNullable()) {
                 throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3024, leftType.name);
             }

@@ -453,6 +453,17 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
 llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto leftType = node->left()->getType();
+
+    // Array<Nullable<T>> 下标返回 Ref<Nullable<T>>（T?&）→ 需先 load Nullable struct
+    // 再走 extractvalue，与 compileCompareExpr 中 Nullable == null 的 Ref load 对齐
+    bool needRefLoad = false;
+    if (leftType.isRef()) {
+        if (auto refInner = leftType.refElementType(); refInner && refInner->isNullable()) {
+            leftType = *refInner;
+            needRefLoad = true;
+        }
+    }
+
     if (!leftType.isNullable()) {
         throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3024, leftType.name);
     }
@@ -471,6 +482,10 @@ llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
 
     // 计算左侧（Nullable 结构体值）
     auto leftVal = compileExpr(node->left());
+    // Ref<Nullable<T>>：compileExpr 返回指向 Nullable struct 的指针，需 load 出 struct 值
+    if (needRefLoad) {
+        leftVal = _builder.CreateLoad(getLLVMType(leftType), leftVal, "ne.ref.load");
+    }
     auto hasVal = _builder.CreateExtractValue(leftVal, {0}, "ne.has");
     auto valueVal = _builder.CreateExtractValue(leftVal, {1}, "ne.value");
 

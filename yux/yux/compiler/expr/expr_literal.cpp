@@ -717,6 +717,34 @@ llvm::Value* Compiler::buildArrayLiteralBlock(ExprArrayNode* arrayNode, const Ty
         }
         if (!elemVal) elemVal = compileExpr(elements[i]);
 
+        // Nullable<T> 元素包装：T 值 → {i1 true, T _value}，null 字面量 → {i1 false, T undef}
+        if (elemType.isNullable()) {
+            if (auto innerType = elemType.nullableInnerType()) {
+                auto elemExprType = elements[i]->getType();
+                if (isIntTypeName(innerType->name) && isFlexibleIntExpr(elements[i])) {
+                    tryInferIntType(elements[i], *innerType);
+                }
+                bool isNullLit = isFlexibleNullExpr(elements[i]);
+                // 仅在元素类型不是 Nullable<T> 时包装（已是 Nullable 的直接 store）
+                if (isNullLit || !elemExprType.isNullable()) {
+                    auto innerLLVMType = getLLVMType(*innerType);
+                    auto tmp = _builder.CreateAlloca(elemLLVMType, nullptr, "nullable_wrap");
+                    auto z = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+                    auto o = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+                    auto hasPtr = _builder.CreateGEP(elemLLVMType, tmp, {z, z}, "nw.has");
+                    auto valPtr = _builder.CreateGEP(elemLLVMType, tmp, {z, o}, "nw.val");
+                    if (isNullLit) {
+                        _builder.CreateStore(_builder.getInt1(false), hasPtr);
+                        _builder.CreateStore(llvm::Constant::getNullValue(innerLLVMType), valPtr);
+                    } else {
+                        _builder.CreateStore(_builder.getInt1(true), hasPtr);
+                        _builder.CreateStore(elemVal, valPtr);
+                    }
+                    elemVal = _builder.CreateLoad(elemLLVMType, tmp, "nw.load");
+                }
+            }
+        }
+
         auto idx = llvm::ConstantInt::get(sizeTy, i);
         auto elemPtr = _builder.CreateGEP(elemLLVMType, data, {idx}, "lit.elem.ptr");
         // RC 元素：fresh 来源（call/构造/数组字面量）已 +1，跳过 retain，并尝试从临时帧消费；

@@ -123,6 +123,30 @@ fn test_null_infer_generic_turbofish() {
   assert_true(!r.has())
 }
 
+; ---------- Array<Nullable<T>> 下标 Ref 直接 ??（P0-2）----------
+
+#Test
+fn test_nullable_array_subscript_null_else() {
+  ; arr[0] 返回 i32?&（Ref<Nullable<i32>>），?? 应自动解引用取 _value
+  #Mut let arr Array<i32?> = [42, null]
+  assert_eq(arr[0] ?? -1, 42)
+}
+
+#Test
+fn test_nullable_array_subscript_null_else_null_elem() {
+  ; arr[1] 是 null，?? 应返回默认值
+  #Mut let arr Array<i32?> = [42, null]
+  assert_eq(arr[1] ?? -1, -1)
+}
+
+#Test
+fn test_nullable_array_subscript_null_else_via_ref() {
+  ; 通过 Ref 变量间接持有 下标结果再 ??
+  #Mut let arr Array<i32?> = [7, null]
+  #Mut let r i32?& = arr[0]
+  assert_eq(r ?? -1, 7)
+}
+
 ; ---------- 嵌套 Nullable ?? null 展开（P0-1）----------
 
 #Test

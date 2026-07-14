@@ -1857,6 +1857,12 @@ int ExprMoveAssignNode::resolveColumn() const {
 // 类型规则：a 必须是 Nullable<T>，结果类型为 T；b 必须能转为 T
 TypeInfo ExprNullElseNode::getType() const {
     auto leftType = _left->getType();
+    // Ref<Nullable<T>> → 剥 Ref 取 Nullable（如 Array<Nullable<T>> 下标返回 T?&）
+    if (leftType.isRef()) {
+        if (auto refInner = leftType.refElementType(); refInner && refInner->isNullable()) {
+            return *refInner->genericArgs[0];
+        }
+    }
     // 左侧若为 Nullable<T>，结果为 T
     if (leftType.isNullable()) {
         return *leftType.genericArgs[0];
