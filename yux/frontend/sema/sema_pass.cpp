@@ -2291,6 +2291,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             if (isIntTypeName(innerType->name) && isFlexibleIntExpr(n->right())) {
                 tryInferIntType(n->right(), *innerType);
             }
+            tryInferNullType(n->right(), *innerType);
             auto rightType = n->right()->getType();
             if (!(rightType == *innerType)) {
                 throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3014, innerType->name,

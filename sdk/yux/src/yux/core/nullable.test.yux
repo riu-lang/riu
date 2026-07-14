@@ -122,3 +122,31 @@ fn test_null_infer_generic_turbofish() {
   #Mut let r i32? = identity_nullable:<i32>(null)
   assert_true(!r.has())
 }
+
+; ---------- 嵌套 Nullable ?? null 展开（P0-1）----------
+
+#Test
+fn test_nullable_nested_null_else_outer_null() {
+  ; b: i32?? = null（外层为 None），?? null 应返回 null（i32?）
+  #Mut let b i32?? = null
+  #Mut let r i32? = b ?? null
+  assert_true(r == null)
+}
+
+#Test
+fn test_nullable_nested_null_else_outer_some_inner_some() {
+  ; b: i32?? = Some(Some(42))，?? null 应返回 Some(42)
+  #Mut let inner i32? = 42
+  #Mut let b i32?? = inner
+  #Mut let r i32? = b ?? null
+  assert_eq(r ?? -1, 42)
+}
+
+#Test
+fn test_nullable_nested_null_else_outer_some_inner_null() {
+  ; b: i32?? = Some(None)，?? null 应返回 None（i32?）
+  #Mut let inner i32? = null
+  #Mut let b i32?? = inner
+  #Mut let r i32? = b ?? null
+  assert_true(r == null)
+}

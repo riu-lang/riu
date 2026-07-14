@@ -466,6 +466,8 @@ llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
     if (isIntTypeName(innerType->name) && isFlexibleIntExpr(node->right())) {
         tryInferIntType(node->right(), *innerType);
     }
+    // flexible null 推断：右侧 null 字面量 → 推断为 Nullable<T>（如 b: i32?? 的 ?? null）
+    tryInferNullType(node->right(), *innerType);
 
     // 计算左侧（Nullable 结构体值）
     auto leftVal = compileExpr(node->left());
