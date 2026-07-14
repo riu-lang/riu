@@ -130,3 +130,28 @@ fn test_copy_of_struct_with_box_field() {
   assert_eq(h1.payload.a, 5)
   assert_eq(h2.payload.b, 6)
 }
+
+; ---------- 含 String 字段的 struct ----------
+
+struct Named {
+  name String
+  id i32
+
+  #Static
+  fn make(name String, id i32) Named {
+    ret Self {
+      .name = name
+      .id = id
+    }
+  }
+}
+
+#Test
+fn test_copy_of_struct_with_string_field() {
+  ; 验证：copy_of 含 String 字段的 struct 正确 retain
+  #Mut let n1 Named = Named::make("alice", 1)
+  #Mut let n2 Named = copy_of(n1)
+  assert_eq(n2.name, "alice")
+  assert_eq(n2.id, 1)
+  assert_eq(n1.name, "alice")
+}

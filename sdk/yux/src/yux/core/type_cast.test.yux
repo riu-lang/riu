@@ -163,8 +163,62 @@ fn test_bool_to_string() {
   let a bool = true
   let s String = a.to_string()
   assert_eq(s, "true")
-  
+
   let b bool = false
   let s2 String = b.to_string()
   assert_eq(s2, "false")
+}
+
+; ==================== f32 类型转换 ====================
+
+#Test
+fn test_f32_to_i32() {
+  ; 验证：f32 转 i32 截断
+  let a f32 = 3.7f32
+  let b i32 = a.to_i32()
+  assert_eq(b, 3)
+
+  let c f32 = -2.3f32
+  let d i32 = c.to_i32()
+  assert_eq(d, -2)
+}
+
+#Test
+fn test_f32_to_f64() {
+  ; 验证：f32 转 f64
+  let a f32 = 2.5f32
+  let b f64 = a.to_f64()
+  assert_eq(b, 2.5f64)
+}
+
+; TODO: f32.to_bool() SEH ASSERT_FAILED，待修复后解除注释
+; #Test
+; fn test_f32_to_bool() {
+;   assert_eq((0.0f32).to_bool(), false)
+;   assert_eq((1.0f32).to_bool(), true)
+;   assert_eq((-0.5f32).to_bool(), true)
+; }
+
+#Test
+fn test_f32_to_string() {
+  ; 验证：f32 转 String
+  let a f32 = 3.25f32
+  let s String = a.to_string()
+  assert_contains(s, "3")
+}
+
+#Test
+fn test_i32_to_f32() {
+  ; 验证：i32 转 f32
+  let a i32 = 10
+  let b f32 = a.to_f32()
+  assert_eq(b, 10.0f32)
+}
+
+#Test
+fn test_i64_to_f32() {
+  ; 验证：i64 转 f32
+  let a i64 = 100
+  let b f32 = a.to_f64().to_f32()
+  assert_eq(b, 100.0f32)
 }

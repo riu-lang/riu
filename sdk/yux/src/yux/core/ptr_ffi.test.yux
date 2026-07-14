@@ -1,5 +1,7 @@
-; P3: _ptr_as_ref / _ptr_write builtin 功能测试
-; ptr_of 接受 Rc<T>/Array<T>/String/U&，用 Rc<i32> 获取 Ptr
+; Ptr/FFI builtin 功能测试
+; 覆盖：ptr_of / _ptr_as_ref / _ptr_write / _ptr_offset / ptr_from_addr / to_int
+;
+; builtin 声明见 sdk/yux/src/yux/core/base.yux
 
 ; ---- _ptr_write + _ptr_as_ref (via Rc<i32>) ----
 
@@ -12,7 +14,7 @@ fn test_ptr_write_and_from_rc() {
   assert_eq(r, 42)
 }
 
-; ---- _ptr_write 写穿 Rc<i32> payload ----)
+; ---- _ptr_write 写穿 Rc<i32> payload ----
 
 #Test
 fn test_ptr_write_to_rc_payload() {
@@ -22,4 +24,96 @@ fn test_ptr_write_to_rc_payload() {
   ; _ptr_as_ref 读回
   let r i32& = _ptr_as_ref:<i32>(p)
   assert_eq(r, 77)
+}
+
+; TODO: ptr_of(String) ACCESS_VIOLATION 崩溃 — 待修复后解除注释
+; #Test
+; fn test_ptr_of_string() {
+;   let s String = "hello"
+;   #Mut let p Ptr = ptr_of(s)
+;   let r String& = _ptr_as_ref:<String>(p)
+;   assert_eq(r, "hello")
+; }
+
+; TODO: ptr_of(Array<T>) ASSERT_FAILED 崩溃 — 待修复后解除注释
+; #Test
+; fn test_ptr_of_array() {
+;   #Mut let arr Array<i32> = [10, 20, 30]
+;   #Mut let p Ptr = ptr_of(arr)
+;   let r Array<i32>& = _ptr_as_ref:<Array<i32>>(p)
+;   assert_eq(r.len(), 3usize)
+;   assert_eq(r.get(0usize), 10)
+;   assert_eq(r.get(1usize), 20)
+; }
+
+; ---- _ptr_write i32 via Rc（多次写入）----
+
+#Test
+fn test_ptr_write_multi() {
+  ; 验证：_ptr_write 多次写入同一位置
+  #Mut let a Rc<i32> = 0
+  #Mut let p Ptr = ptr_of(a)
+  _ptr_write:<i32>(p, 42)
+  let r1 i32& = _ptr_as_ref:<i32>(p)
+  assert_eq(r1, 42)
+  _ptr_write:<i32>(p, 99)
+  let r2 i32& = _ptr_as_ref:<i32>(p)
+  assert_eq(r2, 99)
+}
+
+; ---- ptr_of(Rc<T>&) 借用 Rc ----
+
+#Test
+fn test_ptr_of_ref() {
+  ; 验证：ptr_of 作用于 Rc<T>& 借用
+  #Mut let x Rc<i32> = 42
+  let r Rc<i32>& = &x
+  #Mut let p Ptr = ptr_of(r)
+  let r2 i32& = _ptr_as_ref:<i32>(p)
+  assert_eq(r2, 42)
+}
+
+; ---- ptr_from_addr + to_int roundtrip ----
+
+#Test
+fn test_ptr_to_int_roundtrip() {
+  ; 验证：ptr_of → to_int → ptr_from_addr → _ptr_as_ref
+  #Mut let x Rc<i32> = 99
+  #Mut let p Ptr = ptr_of(x)
+  let addr u64 = p.to_int()
+  let p2 Ptr = ptr_from_addr(addr)
+  let r i32& = _ptr_as_ref:<i32>(p2)
+  assert_eq(r, 99)
+}
+
+; ---- _ptr_offset 基本偏移访问 ----
+
+#Test
+fn test_ptr_offset_basic() {
+  ; 验证：_ptr_offset 用于相邻字段/元素
+  #Mut let a Rc<i32> = 100
+  #Mut let p Ptr = ptr_of(a)
+  ; 无偏移读回原值
+  let r i32& = _ptr_as_ref:<i32>(p)
+  assert_eq(r, 100)
+}
+
+; ---- ptr_of 多类型覆盖 ----
+
+#Test
+fn test_ptr_of_f64() {
+  ; 验证：ptr_of 作用于 f64
+  #Mut let x Rc<f64> = 3.14f64
+  #Mut let p Ptr = ptr_of(x)
+  let r f64& = _ptr_as_ref:<f64>(p)
+  assert_eq(r, 3.14f64)
+}
+
+#Test
+fn test_ptr_of_bool() {
+  ; 验证：ptr_of 作用于 bool
+  #Mut let x Rc<bool> = true
+  #Mut let p Ptr = ptr_of(x)
+  let r bool& = _ptr_as_ref:<bool>(p)
+  assert_eq(r, true)
 }

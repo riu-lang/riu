@@ -38,3 +38,367 @@ fn test_isize_suffix_literal() {
     let b isize = -10isize
     assert_eq(b, -10isize)
 }
+
+; ==================== isize 算术运算 ====================
+
+#Test
+fn test_isize_add() {
+    ; 验证：isize 基本加法 + 零元
+    let a isize = 100isize
+    let b isize = 200isize
+    assert_eq(a + b, 300isize)
+    assert_eq(a + 0isize, 100isize)
+    assert_eq(0isize + b, 200isize)
+}
+
+#Test
+fn test_isize_sub() {
+    ; 验证：isize 减法 + 负结果
+    let a isize = 200isize
+    let b isize = 50isize
+    assert_eq(a - b, 150isize)
+    assert_eq(b - a, -150isize)
+    assert_eq(a - 0isize, 200isize)
+}
+
+#Test
+fn test_isize_mul() {
+    ; 验证：isize 乘法 + 零元 + 负乘数
+    let a isize = 10isize
+    let b isize = 20isize
+    assert_eq(a * b, 200isize)
+    assert_eq(a * 0isize, 0isize)
+    assert_eq(a * (-1isize), -10isize)
+}
+
+#Test
+fn test_isize_div() {
+    ; 验证：isize 除法向零截断
+    let a isize = 100isize
+    let b isize = 3isize
+    assert_eq(a / b, 33isize)
+    assert_eq(a / 1isize, 100isize)
+    assert_eq(0isize / a, 0isize)
+}
+
+#Test
+fn test_isize_mod() {
+    ; 验证：isize 取模
+    let a isize = 100isize
+    let b isize = 3isize
+    assert_eq(a % b, 1isize)
+    assert_eq(a % 1isize, 0isize)
+}
+
+#Test
+fn test_isize_neg_arithmetic() {
+    ; 验证：负 isize 参与四则运算
+    let a isize = -50isize
+    let b isize = 30isize
+    assert_eq(a + b, -20isize)
+    assert_eq(a - b, -80isize)
+    assert_eq(a * b, -1500isize)
+    assert_eq(a / b, -1isize)
+    assert_eq(a % b, -20isize)
+}
+
+#Test
+fn test_isize_neg_neg_arithmetic() {
+    ; 验证：两个负 isize 运算
+    let a isize = -12isize
+    let b isize = -4isize
+    assert_eq(a + b, -16isize)
+    assert_eq(a - b, -8isize)
+    assert_eq(a * b, 48isize)
+    assert_eq(a / b, 3isize)
+    assert_eq(a % b, 0isize)
+}
+
+; ==================== usize 算术运算 ====================
+
+#Test
+fn test_usize_add() {
+    ; 验证：usize 基本加法 + 零元
+    let a usize = 100usize
+    let b usize = 200usize
+    assert_eq(a + b, 300usize)
+    assert_eq(a + 0usize, 100usize)
+    assert_eq(0usize + b, 200usize)
+}
+
+#Test
+fn test_usize_sub() {
+    ; 验证：usize 减法
+    let a usize = 200usize
+    let b usize = 50usize
+    assert_eq(a - b, 150usize)
+    assert_eq(a - 0usize, 200usize)
+}
+
+#Test
+fn test_usize_mul() {
+    ; 验证：usize 乘法 + 零元
+    let a usize = 10usize
+    let b usize = 20usize
+    assert_eq(a * b, 200usize)
+    assert_eq(a * 0usize, 0usize)
+}
+
+#Test
+fn test_usize_div() {
+    ; 验证：usize 除法截断
+    let a usize = 100usize
+    let b usize = 3usize
+    assert_eq(a / b, 33usize)
+    assert_eq(a / 1usize, 100usize)
+    assert_eq(0usize / a, 0usize)
+}
+
+#Test
+fn test_usize_mod() {
+    ; 验证：usize 取模
+    let a usize = 100usize
+    let b usize = 3usize
+    assert_eq(a % b, 1usize)
+    assert_eq(a % 1usize, 0usize)
+}
+
+; ==================== isize 比较运算 ====================
+
+#Test
+fn test_isize_compare() {
+    ; 验证：isize 全部比较运算符
+    let a isize = 100isize
+    let b isize = 200isize
+    assert_true(a == a)
+    assert_false(a == b)
+    assert_true(a != b)
+    assert_false(a != a)
+    assert_true(a < b)
+    assert_false(b < a)
+    assert_true(b > a)
+    assert_false(a > b)
+    assert_true(a <= a)
+    assert_true(a <= b)
+    assert_true(b >= a)
+    assert_true(b >= b)
+}
+
+#Test
+fn test_isize_neg_compare() {
+    ; 验证：负 isize 比较
+    let a isize = -50isize
+    let b isize = 10isize
+    assert_true(a < b)
+    assert_true(a < 0isize)
+    assert_true(0isize > a)
+    assert_true(a <= a)
+    assert_true(b > a)
+}
+
+; ==================== usize 比较运算 ====================
+
+#Test
+fn test_usize_compare() {
+    ; 验证：usize 全部比较运算符
+    let a usize = 100usize
+    let b usize = 200usize
+    assert_true(a == a)
+    assert_false(a == b)
+    assert_true(a != b)
+    assert_false(a != a)
+    assert_true(a < b)
+    assert_false(b < a)
+    assert_true(b > a)
+    assert_false(a > b)
+    assert_true(a <= a)
+    assert_true(a <= b)
+    assert_true(b >= a)
+    assert_true(b >= b)
+}
+
+#Test
+fn test_usize_zero_compare() {
+    ; 验证：usize 与 0 比较
+    let a usize = 0usize
+    let b usize = 1usize
+    assert_true(a == 0usize)
+    assert_true(a < b)
+    assert_true(b > a)
+    assert_true(a <= 0usize)
+    assert_true(b >= 1usize)
+}
+
+; ==================== isize 位运算 ====================
+
+#Test
+fn test_isize_bitwise() {
+    ; 验证：isize 位运算 & | ^ << >>
+    let a isize = 5isize
+    let b isize = 3isize
+    assert_eq(a & b, 1isize)
+    assert_eq(a | b, 7isize)
+    assert_eq(a ^ b, 6isize)
+    assert_eq(a << 2isize, 20isize)
+    assert_eq(a >> 1isize, 2isize)
+}
+
+#Test
+fn test_isize_bitwise_negative() {
+    ; 验证：负 isize 位运算（补码语义）
+    assert_eq((-5isize) & 3isize, 3isize)
+    assert_eq((-5isize) | 3isize, -5isize)
+    assert_eq((-5isize) ^ 3isize, -8isize)
+    assert_eq((-8isize) >> 2isize, -2isize)
+    assert_eq((-2isize) << 3isize, -16isize)
+}
+
+; ==================== usize 位运算 ====================
+
+#Test
+fn test_usize_bitwise() {
+    ; 验证：usize 位运算 & | ^ << >>
+    let a usize = 5usize
+    let b usize = 3usize
+    assert_eq(a & b, 1usize)
+    assert_eq(a | b, 7usize)
+    assert_eq(a ^ b, 6usize)
+    assert_eq(a << 2usize, 20usize)
+    assert_eq(a >> 1usize, 2usize)
+}
+
+#Test
+fn test_usize_shift_boundary() {
+    ; 验证：usize 大移位
+    let a usize = 1usize
+    assert_eq(a << 10usize, 1024usize)
+    assert_eq(1024usize >> 10usize, 1usize)
+}
+
+; ==================== isize/usize 类型转换 ====================
+
+#Test
+fn test_isize_to_i32() {
+    let a isize = 42isize
+    let b i32 = a.to_i32()
+    assert_eq(b, 42)
+}
+
+#Test
+fn test_isize_to_i64() {
+    let a isize = -123isize
+    let b i64 = a.to_i64()
+    assert_eq(b, -123)
+}
+
+#Test
+fn test_isize_to_f64() {
+    let a isize = 100isize
+    let b f64 = a.to_f64()
+    assert_eq(b, 100.0f64)
+}
+
+#Test
+fn test_usize_to_i64() {
+    let a usize = 42usize
+    let b i64 = a.to_i64()
+    assert_eq(b, 42)
+}
+
+#Test
+fn test_usize_to_f64() {
+    let a usize = 100usize
+    let b f64 = a.to_f64()
+    assert_eq(b, 100.0f64)
+}
+
+#Test
+fn test_isize_to_usize() {
+    let a isize = 42isize
+    let b usize = a.to_usize()
+    assert_eq(b, 42usize)
+}
+
+#Test
+fn test_usize_to_isize() {
+    let a usize = 42usize
+    let b isize = a.to_isize()
+    assert_eq(b, 42isize)
+}
+
+#Test
+fn test_isize_to_string() {
+    let a isize = 42isize
+    let s String = a.to_string()
+    assert_eq(s, "42")
+
+    let b isize = -7isize
+    let s2 String = b.to_string()
+    assert_eq(s2, "-7")
+}
+
+#Test
+fn test_usize_to_string() {
+    let a usize = 42usize
+    let s String = a.to_string()
+    assert_eq(s, "42")
+}
+
+#Test
+fn test_isize_to_bool() {
+    let a isize = 0isize
+    let b isize = 1isize
+    assert_eq(a.to_bool(), false)
+    assert_eq(b.to_bool(), true)
+    assert_eq((-1isize).to_bool(), true)
+}
+
+#Test
+fn test_usize_to_bool() {
+    let a usize = 0usize
+    let b usize = 10usize
+    assert_eq(a.to_bool(), false)
+    assert_eq(b.to_bool(), true)
+}
+
+; ==================== isize/usize 边界值 ====================
+
+#Test
+fn test_isize_large_value() {
+    ; 验证：isize 较大值运算
+    let a isize = 1000000isize
+    let b isize = 2000000isize
+    assert_eq(a + b, 3000000isize)
+    assert_eq(b - a, 1000000isize)
+    assert_eq(a * 3isize, 3000000isize)
+}
+
+#Test
+fn test_usize_large_value() {
+    ; 验证：usize 较大值运算
+    let a usize = 1000000usize
+    let b usize = 2000000usize
+    assert_eq(a + b, 3000000usize)
+    assert_eq(b - a, 1000000usize)
+    assert_eq(a * 3usize, 3000000usize)
+}
+
+#Test
+fn test_isize_minus_one() {
+    ; 验证：isize -1 的各种运算
+    let a isize = -1isize
+    assert_eq(a + 1isize, 0isize)
+    assert_eq(a * 5isize, -5isize)
+    assert_eq(a / 2isize, 0isize)
+    assert_eq(0isize - 1isize, -1isize)
+}
+
+#Test
+fn test_usize_chain_arithmetic() {
+    ; 验证：usize 链式运算
+    let a usize = 10usize
+    let b usize = a + 5usize * 2usize
+    assert_eq(b, 20usize)
+    let c usize = (a + 5usize) * 2usize
+    assert_eq(c, 30usize)
+}

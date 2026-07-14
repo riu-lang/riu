@@ -219,3 +219,4 @@ fn test_move_assign_tuple_member_swap() {
   assert_eq(a.1, 2)
   assert_eq(b.0, 3)  ; b 不变
 }
+; TODO: Heap<T>? <- 交换需要 heap_some/heap_null builtin（见 Phase 3l）

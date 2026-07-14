@@ -1,0 +1,322 @@
+; match 表达式专项测试
+; 覆盖：match 各分支形态、else 兜底、块体、表达式位置、借用 scrutinee
+;
+; 注意：yux 的 match 仅用于 enum 类型（整数/bool/String 用 if/else）。
+; enum + match 的完整覆盖见 enum.test.yux，本文件专注 match 作为语言结构的边缘场景。
+
+; ==================== 测试用 enum 定义 ====================
+
+enum Sign {
+  Pos
+  Neg
+  Zero
+}
+
+enum Option {
+  Some(i32)
+  None
+}
+
+enum Color {
+  Red
+  Green
+  Blue
+}
+
+; ==================== match 基本形态 ====================
+
+#Test
+fn test_match_all_variants() {
+  ; 验证：覆盖全部 variant 的无 else match
+  let s Sign = Sign::Pos
+  let n i32 = match s {
+    Sign::Pos => 1
+    Sign::Neg => -1
+    Sign::Zero => 0
+  }
+  assert_eq(n, 1)
+}
+
+#Test
+fn test_match_with_else() {
+  ; 验证：else 兜底分支
+  let s Sign = Sign::Neg
+  let n i32 = match s {
+    Sign::Pos => 1
+    else => -1
+  }
+  assert_eq(n, -1)
+}
+
+#Test
+fn test_match_else_only() {
+  ; 验证：仅 else 分支（退化 match）
+  let s Sign = Sign::Zero
+  let n i32 = match s {
+    else => 0
+  }
+  assert_eq(n, 0)
+}
+
+; ==================== match 块体分支 ====================
+
+fn calc_red() i32 {
+  ret 1
+}
+
+fn calc_green() i32 {
+  ret 2
+}
+
+fn calc_blue() i32 {
+  let x i32 = 10
+  let y i32 = 20
+  ret x + y
+}
+
+#Test
+fn test_match_block_body() {
+  ; 验证：match 分支调用辅助函数（模拟块体逻辑）
+  let c Color = Color::Blue
+  let result i32 = match c {
+    Color::Red => calc_red()
+    Color::Green => calc_green()
+    Color::Blue => calc_blue()
+  }
+  assert_eq(result, 30)
+}
+
+fn calc_hundred() i32 {
+  let a i32 = 100
+  ret a
+}
+
+#Test
+fn test_match_mixed_body_style() {
+  ; 验证：单表达式分支与函数调用分支混合
+  let s Sign = Sign::Zero
+  let n i32 = match s {
+    Sign::Pos => 1
+    Sign::Neg => -1
+    Sign::Zero => calc_hundred()
+  }
+  assert_eq(n, 100)
+}
+
+; ==================== match 在不同表达式位置 ====================
+
+fn get_sign_value(s Sign) i32 {
+  ret match s {
+    Sign::Pos => 1
+    Sign::Neg => -1
+    Sign::Zero => 0
+  }
+}
+
+#Test
+fn test_match_as_ret_value() {
+  ; 验证：match 直接作为 ret 值
+  let result i32 = get_sign_value(Sign::Neg)
+  assert_eq(result, -1)
+}
+
+fn identity(x i32) i32 = x
+
+#Test
+fn test_match_as_fn_arg() {
+  ; 验证：match 作为函数实参
+  let s Sign = Sign::Pos
+  let result i32 = identity(match s {
+    Sign::Pos => 10
+    Sign::Neg => -10
+    Sign::Zero => 0
+  })
+  assert_eq(result, 10)
+}
+
+#Test
+fn test_match_in_arithmetic() {
+  ; 验证：match 参与算术表达式
+  let s Sign = Sign::Neg
+  let n i32 = match s {
+    Sign::Pos => 10
+    Sign::Neg => 20
+    Sign::Zero => 30
+  }
+  assert_eq(n * 2 + 1, 41)
+}
+
+; ==================== match scrutinee 来源 ====================
+
+fn make_sign(n i32) Sign {
+  if n > 0 {
+    ret Sign::Pos
+  }
+  if n < 0 {
+    ret Sign::Neg
+  }
+  ret Sign::Zero
+}
+
+#Test
+fn test_match_on_fn_call() {
+  ; 验证：match 的 scrutinee 是函数调用返回值
+  let n i32 = match make_sign(5) {
+    Sign::Pos => 1
+    Sign::Neg => -1
+    Sign::Zero => 0
+  }
+  assert_eq(n, 1)
+}
+
+#Test
+fn test_match_on_fn_call_neg() {
+  ; 验证：match 函数调用返回的 Neg
+  let n i32 = match make_sign(-3) {
+    Sign::Pos => 1
+    Sign::Neg => -1
+    Sign::Zero => 0
+  }
+  assert_eq(n, -1)
+}
+
+; ==================== match 含 payload variant ====================
+
+#Test
+fn test_match_payload_bind() {
+  ; 验证：match 绑定 payload 值
+  let o Option = Option::Some(42)
+  let n i32 = match o {
+    Option::Some(v) => v
+    Option::None => -1
+  }
+  assert_eq(n, 42)
+}
+
+#Test
+fn test_match_payload_none() {
+  ; 验证：match 零参 variant（None）
+  let o Option = Option::None
+  let n i32 = match o {
+    Option::Some(v) => v
+    Option::None => -1
+  }
+  assert_eq(n, -1)
+}
+
+#Test
+fn test_match_payload_with_else() {
+  ; 验证：payload + else 兜底
+  let o Option = Option::Some(100)
+  let n i32 = match o {
+    Option::Some(v) => v
+    else => 0
+  }
+  assert_eq(n, 100)
+}
+
+; ==================== match 借用 scrutinee ====================
+
+fn inspect_sign(s Sign&) String {
+  match s {
+    Sign::Pos => "pos"
+    Sign::Neg => "neg"
+    Sign::Zero => "zero"
+  }
+}
+
+#Test
+fn test_match_borrowed_scrutinee() {
+  ; 验证：match 的 scrutinee 是 T& 借用
+  let s Sign = Sign::Pos
+  assert_eq(inspect_sign(&s), "pos")
+
+  let n Sign = Sign::Neg
+  assert_eq(inspect_sign(&n), "neg")
+}
+
+fn color_name(c Color&) String {
+  match c {
+    Color::Red => "red"
+    else => "other"
+  }
+}
+
+#Test
+fn test_match_borrowed_with_else() {
+  ; 验证：借用 scrutinee + else 兜底
+  let c Color = Color::Green
+  let r String = color_name(&c)
+  assert_eq(r, "other")
+}
+
+; ==================== match 嵌套 ====================
+
+enum Outer {
+  A(i32)
+  B(i32)
+}
+
+#Test
+fn test_match_nested_in_arm() {
+  ; 验证：match 分支内含另一个 match
+  let o Outer = Outer::A(1)
+  let result String = match o {
+    Outer::A(n) => match make_sign(n) {
+      Sign::Pos => "A-pos"
+      Sign::Neg => "A-neg"
+      Sign::Zero => "A-zero"
+    }
+    Outer::B(n) => match make_sign(n) {
+      Sign::Pos => "B-pos"
+      Sign::Neg => "B-neg"
+      Sign::Zero => "B-zero"
+    }
+  }
+  assert_eq(result, "A-pos")
+}
+
+; ==================== match 返回值不同但类型相同 ====================
+
+#Test
+fn test_match_all_arms_same_type() {
+  ; 验证：所有分支返回相同类型
+  let s Sign = Sign::Zero
+  let v f64 = match s {
+    Sign::Pos => 1.0f64
+    Sign::Neg => -1.0f64
+    Sign::Zero => 0.0f64
+  }
+  assert_eq(v, 0.0f64)
+}
+
+; ==================== match 非穷尽 + else ====================
+
+#Test
+fn test_match_partial_with_else() {
+  ; 验证：仅匹配部分 variant + else 兜底
+  let c Color = Color::Green
+  let n i32 = match c {
+    Color::Red => 1
+    else => 99
+  }
+  assert_eq(n, 99)
+}
+
+#Test
+fn test_match_single_variant_else() {
+  ; 验证：仅匹配一个 variant + else
+  let c Color = Color::Red
+  let n i32 = match c {
+    Color::Red => 1
+    else => 0
+  }
+  assert_eq(n, 1)
+
+  let c2 Color = Color::Blue
+  let n2 i32 = match c2 {
+    Color::Red => 1
+    else => 0
+  }
+  assert_eq(n2, 0)
+}

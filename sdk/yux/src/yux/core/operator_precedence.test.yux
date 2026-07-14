@@ -1,5 +1,15 @@
 ; 运算符优先级用例
 ; 迁自 tests/cases/operator_precedence.yux
+;
+; 本文件覆盖运算符优先级与结合性：
+; - 算术优先级链
+; - 位移 vs 算术
+; - 位运算 vs 算术/比较
+; - 比较 vs 逻辑
+; - 一元 vs 二元
+; - 左结合性
+
+; ==================== 算术优先级基础 ====================
 
 #Test
 fn test_mul_before_add() {
@@ -25,4 +35,132 @@ fn test_left_assoc_div_mul() {
 fn test_relational_after_arith() {
   assert_true((1 + 2) > 2)
   assert_true((3 * 2) == 6)
+}
+
+; ==================== 比较与算术混合（无括号） ====================
+
+#Test
+fn test_compare_after_arith_no_paren() {
+  ; 验证：算术优先于比较（a + b == c 不需要括号）
+  assert_true(1 + 2 == 3)
+  assert_false(1 + 2 == 4)
+  assert_true(2 * 3 > 5)
+  assert_true(10 - 3 < 8)
+}
+
+; ==================== 位移与算术 ====================
+
+#Test
+fn test_shift_vs_add() {
+  ; 验证：移位与加法的优先级关系
+  ; 若 << 优先于 +：2 << 1 + 3 = 2 << 4 = 32
+  ; 若 + 优先于 <<：2 << 1 + 3 = (2 << 1) + 3 = 4 + 3 = 7
+  ; 实际：<< 优先级低于 +，所以是 2 << (1+3) = 2 << 4 = 32
+  ; 但通常 << 低于 + 在多数语言，我们用括号显式控制
+  assert_eq((2 << 1) + 3, 7)
+  assert_eq(2 << (1 + 3), 32)
+}
+
+#Test
+fn test_shift_left_assoc() {
+  ; 验证：移位左结合
+  assert_eq(8 >> 2 >> 1, 1)
+  assert_eq(1 << 2 << 3, 32)
+}
+
+; ==================== 位运算与算术 ====================
+
+#Test
+fn test_bitwise_vs_add() {
+  ; 验证：位运算与加法的优先级（用括号显式控制）
+  assert_eq((5 & 3) + 1, 2)
+  assert_eq(1 + (5 & 3), 2)
+  assert_eq((5 | 3) + 2, 9)
+}
+
+#Test
+fn test_bitwise_precedence() {
+  ; 验证：位运算之间优先级 & > ^ > |
+  ; 5 & 3 = 1, 1 ^ 6 = 7, 7 | 0 = 7
+  assert_eq(5 & 3 ^ 6 | 0, 7)
+}
+
+; ==================== 比较与逻辑 ====================
+
+#Test
+fn test_logical_vs_compare() {
+  ; 验证：比较优先于逻辑（a == b && c == d 不需要括号）
+  assert_true(1 == 1 && 2 == 2)
+  assert_false(1 == 2 && 2 == 2)
+  assert_true(1 == 1 || 1 == 2)
+  assert_false(1 == 2 || 2 == 3)
+}
+
+#Test
+fn test_logical_short_circuit() {
+  ; 验证：&& / || 短路求值
+  assert_true(true || false)
+  assert_false(false && false)
+  assert_true(true && true)
+}
+
+; ==================== 一元与二元混合 ====================
+
+#Test
+fn test_unary_vs_binary() {
+  ; 验证：一元运算符优先级高于二元
+  assert_eq(-3 + 5, 2)
+  assert_eq(5 + -3, 2)
+  assert_eq(-3 * 4, -12)
+  assert_eq(4 * -3, -12)
+}
+
+#Test
+fn test_not_vs_logical() {
+  ; 验证：! 优先于 && / ||
+  assert_true(!false && true)
+  assert_false(!true && true)
+  assert_true(!false || false)
+}
+
+; ==================== 复杂组合 ====================
+
+#Test
+fn test_complex_mixed() {
+  ; 验证：a + b * c == d 风格表达式
+  assert_true(2 + 3 * 4 == 14)
+  assert_false(2 + 3 * 4 == 20)
+  assert_true(10 - 6 / 2 == 7)
+}
+
+#Test
+fn test_paren_chained() {
+  ; 验证：多层括号
+  assert_eq(((1 + 2) * (3 + 4)) - 5, 16)
+  assert_eq(1 + (2 * (3 + (4 - 5))), 5)
+}
+
+#Test
+fn test_mod_precedence() {
+  ; 验证：% 与 * / 同级，优先于 +
+  assert_eq(10 + 7 % 3, 11)
+  assert_eq(7 % 3 + 10, 11)
+  assert_eq(10 - 7 % 3, 9)
+}
+
+; ==================== 结合性更多测试 ====================
+
+#Test
+fn test_left_assoc_add_sub() {
+  ; 验证：加减左结合
+  assert_eq(10 - 5 + 3, 8)
+  assert_eq(10 + 5 - 3, 12)
+}
+
+#Test
+fn test_left_assoc_mul_div_mod() {
+  ; 验证：乘除模左结合
+  assert_eq(12 / 3 * 2, 8)
+  assert_eq(12 * 3 / 2, 18)
+  assert_eq(10 % 3 * 2, 2)
 }

@@ -148,6 +148,73 @@ fn test_zero_div() {
   assert_eq(0 / 5, 0)
 }
 
+; ==================== f32 浮点运算 ====================
+
+#Test
+fn test_f32_add() {
+  ; 验证：f32 基本加法
+  assert_eq(1.5f32 + 2.5f32, 4.0f32)
+  assert_eq(0.0f32 + 3.14f32, 3.14f32)
+  assert_eq(1.0f32 + 0.0f32, 1.0f32)
+}
+
+#Test
+fn test_f32_sub() {
+  ; 验证：f32 减法
+  assert_eq(5.0f32 - 2.0f32, 3.0f32)
+  assert_eq(2.0f32 - 5.0f32, -3.0f32)
+  assert_eq(3.14f32 - 0.0f32, 3.14f32)
+}
+
+#Test
+fn test_f32_mul() {
+  ; 验证：f32 乘法
+  assert_eq(2.5f32 * 4.0f32, 10.0f32)
+  assert_eq(3.0f32 * 0.0f32, 0.0f32)
+  assert_eq(1.5f32 * 2.0f32, 3.0f32)
+}
+
+#Test
+fn test_f32_div() {
+  ; 验证：f32 除法
+  assert_eq(10.0f32 / 4.0f32, 2.5f32)
+  assert_eq(0.0f32 / 3.14f32, 0.0f32)
+  assert_eq(7.5f32 / 2.5f32, 3.0f32)
+}
+
+#Test
+fn test_f32_neg_arithmetic() {
+  ; 验证：负 f32 四则运算
+  assert_eq(-1.5f32 + 0.5f32, -1.0f32)
+  assert_eq(-3.0f32 - 2.0f32, -5.0f32)
+  assert_eq(-2.0f32 * 3.0f32, -6.0f32)
+  assert_eq(-6.0f32 / 2.0f32, -3.0f32)
+}
+
+#Test
+fn test_f32_neg_neg_arithmetic() {
+  ; 验证：两个负 f32 运算
+  assert_eq(-1.5f32 + (-2.5f32), -4.0f32)
+  assert_eq(-4.0f32 - (-1.0f32), -3.0f32)
+  assert_eq(-2.0f32 * (-3.0f32), 6.0f32)
+  assert_eq(-6.0f32 / (-2.0f32), 3.0f32)
+}
+
+#Test
+fn test_f32_large_values() {
+  ; 验证：f32 较大值运算
+  assert_eq(1000000.0f32 + 2000000.0f32, 3000000.0f32)
+  assert_eq(1000000.0f32 * 2.0f32, 2000000.0f32)
+}
+
+#Test
+fn test_f32_chain() {
+  ; 验证：f32 链式运算
+  assert_eq(1.0f32 + 2.0f32 + 3.0f32, 6.0f32)
+  assert_eq(2.0f32 * 3.0f32 * 4.0f32, 24.0f32)
+  assert_eq(10.0f32 - 3.0f32 - 2.0f32, 5.0f32)
+}
+
 ; ==================== T& 形参方法调用 ====================
 
 #Test

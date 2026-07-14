@@ -108,3 +108,34 @@ fn test_move_string() {
   ; s was moved — t now owns
   assert_eq(t.len(), 5)
 }
+
+; ---- move Heap<T> ----
+
+#Test
+fn test_move_heap_i32() {
+  ; 验证：move Heap<T> 转移所有权
+  let a Heap<i32> = heap:<i32>(42)
+  assert_true(a == 42)
+  let b Heap<i32> = move(a)
+  assert_true(b == 42)
+}
+
+#Test
+fn test_move_heap_f64() {
+  ; 验证：move Heap<f64> 转移所有权
+  let a Heap<f64> = heap:<f64>(3.14f64)
+  assert_true(a == 3.14f64)
+  let b Heap<f64> = move(a)
+  assert_true(b == 3.14f64)
+}
+
+#Test
+fn test_move_rc_after_move() {
+  ; 验证：move Rc 后新 owner 可正常使用
+  let a Rc<i32> = 100
+  let b Rc<i32> = move(a)
+  assert_true(b == 100)
+  ; b 仍可读
+  let v i32& = as_ref(b)
+  assert_eq(v, 100)
+}
