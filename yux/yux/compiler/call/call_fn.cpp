@@ -807,6 +807,25 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");
             _builder.CreateStore(args[i], alloca);
             callArgs.push_back(alloca);
+        } else if (at.isNullable() && !argTypes[i].isNullable() && !argTypes[i].isPtr()) {
+            // Nullable<T> 形参 + T 值实参：自动包装 T → {_has=true, _value=T}
+            auto inner = at.nullableInnerType();
+            if (inner && *inner == argTypes[i]) {
+                if (typeNeedsDestructor(*inner)) {
+                    if (!isFresh) {
+                        retainHandleAtCallSite(args[i], *inner);
+                    } else {
+                        consumeTemp(args[i]);
+                    }
+                }
+                auto nullableLLVMTy = getLLVMType(at);
+                llvm::Value* wrapped = llvm::UndefValue::get(nullableLLVMTy);
+                wrapped = _builder.CreateInsertValue(wrapped, _builder.getInt1(true), {0});
+                wrapped = _builder.CreateInsertValue(wrapped, args[i], {1});
+                callArgs.push_back(wrapped);
+            } else {
+                callArgs.push_back(args[i]);
+            }
         } else {
             callArgs.push_back(args[i]);
         }
@@ -1042,6 +1061,28 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
             _builder.CreateStore(args[i], alloca);
             callArgs.push_back(alloca);
             continue;
+        }
+
+        // Nullable<T> 形参 + T 值实参：自动包装 T → {_has=true, _value=T}
+        if (i < fnSymbol->params.size() && fnSymbol->params[i].isNullable() && !argTypes[i].isNullable() &&
+            !argTypes[i].isPtr()) {
+            auto inner = fnSymbol->params[i].nullableInnerType();
+            if (inner && *inner == argTypes[i]) {
+                // 若内层 T 含 RC/Weak/fn 需要 retain（对齐 compileDeclareAssignStatement nullable 路径）
+                if (typeNeedsDestructor(*inner)) {
+                    if (!isFreshHandleExpr(callNode->getArgs()[i])) {
+                        retainHandleAtCallSite(args[i], *inner);
+                    } else {
+                        consumeTemp(args[i]);
+                    }
+                }
+                auto nullableLLVMTy = getLLVMType(fnSymbol->params[i]);
+                llvm::Value* wrapped = llvm::UndefValue::get(nullableLLVMTy);
+                wrapped = _builder.CreateInsertValue(wrapped, _builder.getInt1(true), {0});
+                wrapped = _builder.CreateInsertValue(wrapped, args[i], {1});
+                callArgs.push_back(wrapped);
+                continue;
+            }
         }
 
         callArgs.push_back(args[i]);

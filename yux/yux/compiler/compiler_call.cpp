@@ -338,6 +338,12 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                             if (i < node->getArgs().size()) {
                                 if (isIntTypeName(instParamType.name)) {
                                     tryInferIntType(node->getArgs()[i], instParamType);
+                                } else if (instParamType.isNullable()) {
+                                    // Nullable<T> 形参：按内层 T 推断灵活整数
+                                    auto inner = instParamType.nullableInnerType();
+                                    if (inner && isIntTypeName(inner->name)) {
+                                        tryInferIntType(node->getArgs()[i], *inner);
+                                    }
                                 }
                                 inferFlexibleInts(node->getArgs()[i], instParamType);
                             }

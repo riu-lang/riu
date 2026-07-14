@@ -68,6 +68,11 @@ bool ScopeNode::matchFnParams(const FnSymbolInfo& fnInfo, const vector<TypeInfo>
              (paramTypes[i].name == "String" && paramTypes[i].kind == TypeKind::Normal))) {
             continue;
         }
+        // Nullable<T> 形参接受 T 值实参（自动包装 T → {_has=true, _value=T}）
+        if (fnInfo.params[i].isNullable()) {
+            auto inner = fnInfo.params[i].nullableInnerType();
+            if (inner && *inner == paramTypes[i]) continue;
+        }
         return false;
     }
     return true;

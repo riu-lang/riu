@@ -174,3 +174,84 @@ fn test_nullable_nested_null_else_outer_some_inner_null() {
   #Mut let r i32? = b ?? null
   assert_true(r == null)
 }
+
+; ---------- 实参 T 自动包装为 Nullable<T>（P1-3）----------
+
+fn take_nullable(x i32?) bool {
+  ret (x ?? -999) == 42
+}
+
+fn take_nullable_two(x i32?, y i32?) (i32, i32) {
+  ret (x ?? -1, y ?? -1)
+}
+
+#Test
+fn test_nullable_arg_wrap_i32() {
+  ; f(42) 调用 fn f(x i32?) → 42 自动包装为 Some(42)
+  assert_true(take_nullable(42))
+}
+
+#Test
+fn test_nullable_arg_wrap_null() {
+  ; null 仍正常工作
+  assert_true(!take_nullable(null))
+}
+
+#Test
+fn test_nullable_arg_wrap_mixed() {
+  ; 第一个实参 i32、第二个 null 混合
+  #Mut let r (i32, i32) = take_nullable_two(10, null)
+  assert_eq(r.0, 10)
+  assert_eq(r.1, -1)
+}
+
+#Test
+fn test_nullable_arg_wrap_with_var() {
+  ; 变量作为实参传给 Nullable 形参
+  #Mut let v i32 = 42
+  assert_true(take_nullable(v))
+}
+
+#Test
+fn test_nullable_arg_wrap_expression() {
+  ; 表达式结果作为实参
+  assert_true(take_nullable(21 + 21))
+}
+
+; ---------- P1-3 边界：i64? 形参（显式后缀）----------
+
+fn take_i64_nullable(x i64?) bool {
+  ret (x ?? -1i64) == 100i64
+}
+
+#Test
+fn test_nullable_arg_wrap_i64_explicit() {
+  ; 显式 i64 后缀
+  assert_true(take_i64_nullable(100i64))
+}
+
+#Test
+fn test_nullable_arg_wrap_i64_null() {
+  ; null 匹配 i64? 形参
+  assert_true(!take_i64_nullable(null))
+}
+
+; ---------- P1-3 边界：i64? 形参（显式后缀）----------
+; TODO: 灵活整数推断（不带后缀）在非 i32 目标类型 + resolveFnOverload 路径不工作（已有 bug）
+; TODO: String? / struct 类型 Nullable 形参需进一步排查 LLVM 签名不匹配
+
+fn nullable_i64_check(x i64?) bool {
+  ret (x ?? -1i64) == 100i64
+}
+
+#Test
+fn test_nullable_arg_wrap_i64_explicit() {
+  ; 显式 i64 后缀：100i64 → 自动包装为 Nullable<i64>
+  assert_true(nullable_i64_check(100i64))
+}
+
+#Test
+fn test_nullable_arg_wrap_i64_null() {
+  ; null 匹配 i64? 形参
+  assert_true(!nullable_i64_check(null))
+}

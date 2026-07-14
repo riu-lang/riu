@@ -34,6 +34,11 @@ static bool paramAccepts(const TypeInfo& param, const TypeInfo& argType) {
     if (param.isPtr() && argType.isRef()) return true; // 指针参数接受引用
     // null 字面量（类型 Ptr）可以匹配任何 Nullable<T> 形参
     if (param.isNullable() && argType.isPtr()) return true;
+    // T 值可以匹配 Nullable<T> 形参（自动包装 T → {_has=true, _value=T}）
+    if (param.isNullable()) {
+        auto inner = param.nullableInnerType();
+        if (inner && *inner == argType) return true;
+    }
     return false;
 }
 
@@ -45,6 +50,11 @@ static bool overloadMatchesFlexible(const vector<p<ExprNode>>& args, const vecto
         if (isFlexibleIntExpr(args[i])) {
             // 灵活整数可以匹配任何整数类型
             if (isIntTypeName(params[i].name)) continue;
+            // 形参为 Nullable<T> 且 T 为整数类型 → 允许灵活整数匹配
+            if (params[i].isNullable()) {
+                auto inner = params[i].nullableInnerType();
+                if (inner && isIntTypeName(inner->name)) continue;
+            }
             try {
                 if (paramAccepts(params[i], args[i]->getType())) continue;
             } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -404,6 +414,12 @@ void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName, 
         for (size_t i = 0; i < args.size(); ++i) {
             if (isFlexibleIntExpr(args[i]) && isIntTypeName(fn->params[i].name)) {
                 tryInferIntType(args[i], fn->params[i]);
+            } else if (isFlexibleIntExpr(args[i]) && fn->params[i].isNullable()) {
+                // Nullable<T> 形参：按内层 T 推断灵活整数
+                auto inner = fn->params[i].nullableInnerType();
+                if (inner && isIntTypeName(inner->name)) {
+                    tryInferIntType(args[i], *inner);
+                }
             }
             if (isFlexibleNullExpr(args[i]) && fn->params[i].isNullable()) {
                 tryInferNullType(args[i], fn->params[i]);

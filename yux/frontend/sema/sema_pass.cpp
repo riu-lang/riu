@@ -2063,8 +2063,16 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                             for (size_t i = 0; i < argTypes.size(); ++i) {
                                 if (argTypes[i].empty()) continue;
                                 if (!(argTypes[i] == paramTypes[i])) {
-                                    throw YuxError(line, col, ErrorCode::E3131, lhsName, rhsName, paramTypes.size(),
-                                                   renderTypes(paramTypes), argTypes.size(), renderTypes(argTypes));
+                                    // Nullable<T> 形参接受 T 值实参（自动包装）
+                                    bool nullableMatch = false;
+                                    if (paramTypes[i].isNullable()) {
+                                        auto inner = paramTypes[i].nullableInnerType();
+                                        if (inner && *inner == argTypes[i]) nullableMatch = true;
+                                    }
+                                    if (!nullableMatch) {
+                                        throw YuxError(line, col, ErrorCode::E3131, lhsName, rhsName, paramTypes.size(),
+                                                       renderTypes(paramTypes), argTypes.size(), renderTypes(argTypes));
+                                    }
                                 }
                             }
                         }
