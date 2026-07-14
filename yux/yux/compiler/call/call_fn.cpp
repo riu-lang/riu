@@ -215,6 +215,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             if (!paramTypeNode) continue;
             TypeInfo pt = paramTypeNode->getType();
             for (size_t j = 0; j < typeParams.size() && j < typeArgs.size(); ++j) {
+                // 形参直接是类型参数（如 T）→ 按推断出的 target 重编译
                 if (pt.name == typeParams[j]) {
                     // 剥 Ref 壳后检查是否为整型（arr[0] 返 T&，T 被记为 i64& 时这里也能命中）
                     TypeInfo target = typeArgs[j];
@@ -226,6 +227,22 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
                         args[i] = compileExpr(callNode->getArgs()[i]);
                         argTypes[i] = callNode->getArgs()[i]->getType();
                         break;
+                    }
+                }
+                // 形参为 Nullable<T>（pt.name="Nullable"）→ 剥 Nullable 后用内层 T 匹配
+                if (pt.isNullable()) {
+                    auto inner = pt.nullableInnerType();
+                    if (inner && inner->name == typeParams[j]) {
+                        TypeInfo target = typeArgs[j];
+                        if (target.isRef()) {
+                            if (auto refInner = target.refElementType()) target = *refInner;
+                        }
+                        if (isIntTypeName(target.name)) {
+                            tryInferIntType(callNode->getArgs()[i], target);
+                            args[i] = compileExpr(callNode->getArgs()[i]);
+                            argTypes[i] = callNode->getArgs()[i]->getType();
+                            break;
+                        }
                     }
                 }
             }

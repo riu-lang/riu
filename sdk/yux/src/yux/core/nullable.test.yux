@@ -218,26 +218,7 @@ fn test_nullable_arg_wrap_expression() {
   assert_true(take_nullable(21 + 21))
 }
 
-; ---------- P1-3 边界：i64? 形参（显式后缀）----------
-
-fn take_i64_nullable(x i64?) bool {
-  ret (x ?? -1i64) == 100i64
-}
-
-#Test
-fn test_nullable_arg_wrap_i64_explicit() {
-  ; 显式 i64 后缀
-  assert_true(take_i64_nullable(100i64))
-}
-
-#Test
-fn test_nullable_arg_wrap_i64_null() {
-  ; null 匹配 i64? 形参
-  assert_true(!take_i64_nullable(null))
-}
-
-; ---------- P1-3 边界：i64? 形参（显式后缀）----------
-; TODO: 灵活整数推断（不带后缀）在非 i32 目标类型 + resolveFnOverload 路径不工作（已有 bug）
+; ---------- P1-3 边界：i64? 形参 ----------
 ; TODO: String? / struct 类型 Nullable 形参需进一步排查 LLVM 签名不匹配
 
 fn nullable_i64_check(x i64?) bool {
@@ -248,6 +229,12 @@ fn nullable_i64_check(x i64?) bool {
 fn test_nullable_arg_wrap_i64_explicit() {
   ; 显式 i64 后缀：100i64 → 自动包装为 Nullable<i64>
   assert_true(nullable_i64_check(100i64))
+}
+
+#Test
+fn test_nullable_arg_wrap_i64_flexible_int() {
+  ; 灵活整数（不带后缀）→ 自动推断为 i64 并包装为 Nullable<i64>
+  assert_true(nullable_i64_check(100))
 }
 
 #Test

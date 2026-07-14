@@ -140,6 +140,11 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
         for (size_t i = 0; i < args.size(); ++i) {
             if (isFlexibleIntExpr(args[i])) {
                 if (isIntTypeName(c->params[i + 1].name)) continue;
+                // Nullable<整数> 形参：剥 Nullable 后检查内层是否为整数类型
+                if (c->params[i + 1].isNullable()) {
+                    auto inner = c->params[i + 1].nullableInnerType();
+                    if (inner && isIntTypeName(inner->name)) continue;
+                }
                 try {
                     if (paramAccepts(c->params[i + 1], args[i]->getType())) continue;
                 } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -181,6 +186,12 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
         for (size_t i = 0; i < args.size(); ++i) {
             if (isFlexibleIntExpr(args[i]) && isIntTypeName(fn->params[i + 1].name)) {
                 tryInferIntType(args[i], fn->params[i + 1]);
+            } else if (isFlexibleIntExpr(args[i]) && fn->params[i + 1].isNullable()) {
+                // Nullable<整数> 形参：按内层 T 推断灵活整数
+                auto inner = fn->params[i + 1].nullableInnerType();
+                if (inner && isIntTypeName(inner->name)) {
+                    tryInferIntType(args[i], *inner);
+                }
             }
             if (isFlexibleNullExpr(args[i]) && fn->params[i + 1].isNullable()) {
                 tryInferNullType(args[i], fn->params[i + 1]);
@@ -290,6 +301,11 @@ void resolveMethodOverload(FileNode* file, FileNode* sdkFile, const string& base
         for (size_t i = 0; i < args.size(); ++i) {
             if (isFlexibleIntExpr(args[i])) {
                 if (isIntTypeName(c->params[i + 1].name)) continue;
+                // Nullable<整数> 形参：剥 Nullable 后检查内层是否为整数类型
+                if (c->params[i + 1].isNullable()) {
+                    auto inner = c->params[i + 1].nullableInnerType();
+                    if (inner && isIntTypeName(inner->name)) continue;
+                }
                 try {
                     if (paramAccepts(c->params[i + 1], args[i]->getType())) continue;
                 } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -331,6 +347,12 @@ void resolveMethodOverload(FileNode* file, FileNode* sdkFile, const string& base
         for (size_t i = 0; i < args.size(); ++i) {
             if (isFlexibleIntExpr(args[i]) && isIntTypeName(fn->params[i + 1].name)) {
                 tryInferIntType(args[i], fn->params[i + 1]);
+            } else if (isFlexibleIntExpr(args[i]) && fn->params[i + 1].isNullable()) {
+                // Nullable<整数> 形参：按内层 T 推断灵活整数
+                auto inner = fn->params[i + 1].nullableInnerType();
+                if (inner && isIntTypeName(inner->name)) {
+                    tryInferIntType(args[i], *inner);
+                }
             }
             if (isFlexibleNullExpr(args[i]) && fn->params[i + 1].isNullable()) {
                 tryInferNullType(args[i], fn->params[i + 1]);
@@ -797,6 +819,27 @@ void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn, const
                         if (isIntTypeName(inferredName)) {
                             skipUnify = true;
                             break;
+                        }
+                    }
+                }
+            }
+            // Nullable<T> 形参（pType.name="Nullable"）：若内层类型参数已被推断为整型，同样跳过
+            if (!skipUnify && pType.isNullable()) {
+                auto nullableInner = pType.nullableInnerType();
+                if (nullableInner) {
+                    for (auto& tp : typeParams) {
+                        if (nullableInner->name == tp) {
+                            auto it = inferred.find(tp);
+                            if (it != inferred.end()) {
+                                string inferredName = it->second.name;
+                                if (it->second.isRef()) {
+                                    if (auto ri = it->second.refElementType()) inferredName = ri->name;
+                                }
+                                if (isIntTypeName(inferredName)) {
+                                    skipUnify = true;
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
