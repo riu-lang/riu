@@ -1,6 +1,13 @@
-; operator 测试套件
-; 迁自 tests/cases/op_overload_*.yux
-; 覆盖: 运算符重载 by-value 形参、跨类型重载
+; 运算符重载行为测试
+;
+; 覆盖：
+;   - 算术运算符：+ / - / *（by-value 形参、跨类型重载）
+;   - 比较运算符：== / !=
+;   - 自定义类型（Point / Counter 等）的运算符重载
+;
+; 已知缺口：更多运算符扩展（div / mod / shl / shr / not）见 op_overload_ext.test.yux；
+; 一元运算符重载（- / ~ / !）当前仅 Point 上的 - 覆盖；
+; spec 运算符（Add / Eq / Index）路径见 spec.test.yux。
 
 struct Point {
   x i32

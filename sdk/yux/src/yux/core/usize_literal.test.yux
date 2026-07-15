@@ -1,4 +1,20 @@
-; #Test usize / isize 整数字面量后缀
+; usize / isize 整数字面量及运算行为测试
+;
+; 覆盖：
+;   - 字面量后缀：usize（42usize / 0usize）、isize（42isize / -10isize）
+;   - Array 下标索引（arr.get(1usize)）、与 arr.len() 比较
+;   - isize 四则：+ / - / * / / / %（含零元、负数、双负）
+;   - usize 四则：+ / - / * / / / %
+;   - isize 比较：== / != / < / > / <= / >=（含负数比较）
+;   - usize 比较：== / != / < / > / <= / >=（含零值比较）
+;   - isize 位运算：& / | / ^ / << / >>（含负数补码语义）
+;   - usize 位运算：& / | / ^ / << / >>（含大移位）
+;   - 类型转换：isize ↔ i32 / i64 / f64 / usize / to_string / to_bool
+;   - 类型转换：usize → i64 / f64 / isize / to_string / to_bool
+;   - 边界值：isize -1、较大值链式运算、优先级组合
+;
+; 已知缺口：isize/usize 溢出回绕未覆盖；
+; isize/usize 复合赋值见 compound_assign.test.yux。
 #Test
 fn test_usize_suffix_literal() {
     let a usize = 42usize

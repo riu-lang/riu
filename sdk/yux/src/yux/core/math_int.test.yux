@@ -1,5 +1,13 @@
-; math.* 标准库基本用例
-; 迁自 tests/cases/math_int.yux
+; math 整数标准库行为测试
+;
+; 覆盖：
+;   - math.abs：i8 / i16 / i32 / i64（负数 / 正数 / 零）
+;   - math.min：i8 / i16 / i32 / i64（含负数、零）
+;   - math.max：i8 / i16 / i32 / i64（含负数、零）
+;   - #Inline #Cval 跨文件常量：PI / E 从 math.yux 可见
+;
+; 已知缺口：无符号类型（u8/u16/u32/u64/u128）abs 不适用，
+; min/max 对无符号类型未覆盖；更多 math.*（sqrt/sin/cos/log 等）见 math.test.yux。
 
 ; ==================== abs i8 ====================
 

@@ -1,5 +1,16 @@
-; Weak<T> 用例（迁自 tests/cases/weak_*）
-; 覆盖：Weak 从 Rc 构造、upgrade 成功 / 失败、?. 短路、?? fallback。
+; Weak<T> 弱引用行为测试
+;
+; 覆盖：
+;   - Weak 构造与析构生命周期（从 Rc 隐式构造）
+;   - upgrade 成功路径：box 仍活 → Some → ?. 读字段
+;   - upgrade 失败路径：box 已死 → null → ?? fallback
+;   - weak(box) builtin 显式构造
+;   - weak(bn) 从 Nullable<Rc<T>> 构造（Some / null）
+;   - 同测试内 alive vs dead 双路径验证
+;
+; 已知缺口：Weak<Array<T>> / Weak<String> 当前不支持（Weak 仅用于 Rc<T>）；
+; 多处同时持有 Weak 并验证引用计数语义未覆盖。
+; Rc<T> 基础见 rc.test.yux。
 
 struct WeakPair {
   a i32

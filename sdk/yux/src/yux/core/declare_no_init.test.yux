@@ -1,5 +1,10 @@
-; var 声明不初始化 + 后续赋值
-; 迁自 tests/cases/declare_no_init.yux
+; 延迟初始化变量声明行为测试
+;
+; 覆盖：
+;   - #Mut let 不初始化 + 后续赋值：i32 / i64 / f32
+;
+; 已知缺口：句柄类型（String / Array / Rc）的延迟初始化未覆盖；
+; 负面诊断（未初始化使用）见 tests/check-cases/diag_uninit_*。
 
 #Test
 fn test_declare_then_assign_i32() {

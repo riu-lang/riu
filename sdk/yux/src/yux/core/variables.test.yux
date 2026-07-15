@@ -1,5 +1,12 @@
-; var / val 基础用例
-; 迁自 tests/cases/variables.yux
+; 变量声明与赋值行为测试
+;
+; 覆盖：
+;   - #Mut let：可变变量声明 + 重赋值（i32）
+;   - let（val）：不可变变量声明（i64）
+;   - 类型推断：整数（默认 i32）、浮点（默认 f64）、bool
+;
+; 已知缺口：String / Array / Rc 等句柄类型变量声明未在本文件覆盖（见各专项文件）；
+; 声明不初始化见 declare_no_init.test.yux。
 
 #Test
 fn test_var_reassign() {

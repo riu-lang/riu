@@ -1,5 +1,12 @@
-; 多函数协作用例
-; 迁自 tests/cases/multi_fn.yux
+; 多函数协作行为测试
+;
+; 覆盖：
+;   - 文件内函数间调用（helper → main-like）
+;   - 表达式体函数（fn f() T = expr）
+;   - 块体函数间的调用链
+;
+; 已知缺口：跨文件函数调用不在 SDK test 范围内（见 tests/projects/）；
+; 更多函数定义/调用见 functions.test.yux。
 
 fn mf_helper() i32 = 100
 

@@ -1,14 +1,17 @@
-; 顶层函数定义/调用用例
-; 迁自 tests/cases/functions.yux
+; 顶层函数定义与调用行为测试
 ;
-; 本文件包含函数相关测试:
-; - 表达式体函数
-; - 块体函数
-; - void 函数
-; - 参数组语法
-; - 多返回路径
-; - 泛型函数
-; - 提前返回
+; 覆盖：
+;   - 表达式体函数（fn f() T = expr）
+;   - 块体函数（fn f() T { ... ret val }）
+;   - void 函数（无返回值）
+;   - 参数组语法
+;   - 多返回路径（条件分支内 ret）
+;   - 泛型函数（fn f<T>(x T) T）
+;   - 提前返回（ret 在中途退出）
+;
+; 已知缺口：函数重载/同名冲突见 multi_fn.test.yux；
+; #Static fn 见 static_fn.test.yux / static_fn_handle.test.yux；
+; lambda / fn 值见 lambda.test.yux。
 
 ; ==================== 基础函数定义 ====================
 

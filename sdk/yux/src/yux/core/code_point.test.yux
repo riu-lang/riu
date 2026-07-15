@@ -1,5 +1,13 @@
-; 字符字面量 / 码点用例
-; 迁自 tests/cases/code_point.yux
+; 字符字面量 / 码点（code point）行为测试
+;
+; 覆盖：
+;   - c'A' ASCII 大写字母码点（65）
+;   - c'\n' 转义换行符码点（10）
+;   - c'\t' 转义制表符码点（9）
+;   - c'0' ASCII 数字码点（48）
+;
+; 已知缺口：Unicode 非 ASCII 码点（如 c'中'）未覆盖；
+; 非法码点（如空字符 c''）负面诊断见 tests/check-cases/diag_code_point_*。
 
 #Test
 fn test_code_point_a() {

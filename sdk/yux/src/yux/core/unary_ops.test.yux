@@ -1,5 +1,12 @@
-; 一元运算符用例
-; 迁自 tests/cases/unary_ops.yux
+; 一元运算符行为测试
+;
+; 覆盖：
+;   - `-` 取负：整数（i32）、浮点（f64）
+;   - `~` 按位取反：i32、u8
+;   - `!` 逻辑非：bool（true/false）
+;
+; 已知缺口：f32 取负未覆盖；isize/usize 一元运算未覆盖。
+; 运算符重载的一元运算见 operator.test.yux / op_overload_ext.test.yux。
 
 #Test
 fn test_neg_int() {

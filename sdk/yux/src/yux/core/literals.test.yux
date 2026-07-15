@@ -1,5 +1,13 @@
-; 字面量用例
-; 迁自 tests/cases/literals.yux + tests/cases/all_types.yux
+; 字面量行为测试
+;
+; 覆盖：
+;   - 整数默认类型推断（i32）、各整数类型边界值（i8 min/max、u8 max、i16 min、u16 max、i32 min、i64 min+1）
+;   - 浮点默认类型推断（f64）、f32/f64 显式后缀、负浮点
+;   - bool 字面量
+;   - 进制字面量：十六进制（0xFF i64）、二进制（0b1010 u8）、八进制（0o77 i32）
+;
+; 已知缺口：usize/isize 字面量后缀见 usize_literal.test.yux；
+; 各进制与类型后缀组合见 integer_bases.test.yux。
 
 #Test
 fn test_int_literal_default() {

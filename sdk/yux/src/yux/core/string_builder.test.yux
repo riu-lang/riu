@@ -1,5 +1,16 @@
-; StringBuilder 测试
-; 覆盖构造、append、len、clear、build 等方法
+; StringBuilder 行为测试
+;
+; 覆盖：
+;   - 构造：StringBuilder::make() 空 builder
+;   - append：码点（c'H'）、ASCII byte（72u8）、String、混合类型链
+;   - len：空构造后 / append 后 / clear 后
+;   - clear：清空 + 复用（clear 后重新 append 并 build）
+;   - build：返回 String、重置 buffer（build 后 len=0 可继续 append）
+;   - 重复 build：多次 build 各得独立 String
+;   - Unicode：追加中文码点（你/好）、混合 ASCII + Unicode
+;   - 边界：空 String append、空 builder build
+;
+; 已知缺口：StringBuilder eq/ne 比较未覆盖；build 后与之前返回的 String 隔离性仅单项验证。
 
 ; 构造测试
 

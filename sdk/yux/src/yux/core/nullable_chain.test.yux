@@ -1,4 +1,13 @@
-; Nullable 链式操作扩展：嵌套 ?. 链、?? 链、Nullable<String>、混合场景
+; Nullable 链式操作行为测试
+;
+; 覆盖：
+;   - 嵌套 ?. 链：a?.b?.c 短路传播
+;   - ?? 链：多层 fallback 组合
+;   - Nullable<String>：?. 与 ?? 在句柄类型上的行为
+;   - 混合场景：?. + ?? + 方法调用组合
+;
+; 已知缺口：?.foo() 可选链方法调用的 BUG 见 BUGS.md / Phase 2d；
+; Nullable 基础行为（??、?.field、.has()、.get()）见 nullable.test.yux。
 
 struct InnerVal {
   v i32

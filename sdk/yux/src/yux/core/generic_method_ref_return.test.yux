@@ -1,5 +1,12 @@
-; 验证：泛型 struct 方法返回 T& 的类型替换
-; （不涉及泛型函数同名冲突，纯验证独立场景）
+; 泛型 struct 方法返回 T& 类型替换测试
+;
+; 覆盖：
+;   - Box<T> 泛型 struct：get_val() 返回 T&、set_val(T) 写字段
+;   - Box<i32> 实例化后 T& → i32& 正确替换
+;   - 通过返回的 T& 引用修改源字段（写穿验证）
+;
+; 已知缺口：无——本文件为 BUG 回归（泛型 struct 方法体内 T& 字段类型/表达式类型替换缺失）的专项验证。
+; 泛型名冲突综合场景见 generic_name_conflict.test.yux。
 
 struct Box<T> {
   val T

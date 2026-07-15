@@ -1,6 +1,13 @@
-; 泛型名冲突复现 v4：聚焦原始 BUG
-; 泛型函数 identity<T> + 泛型 struct Pair<T> 同名 T
-; 去掉方法中的 T& 返回，只保留 Static fn
+; 泛型名冲突回归测试
+;
+; 覆盖：
+;   - 泛型函数 identity<T> + 泛型 struct Pair<T> 同名 T 在同一文件共存
+;   - Pair<T> 不同实例化（i32 / f64）
+;   - identity + Pair 交叉调用
+;   - 泛型函数返回元组（make_pair<T>）
+;
+; 已知缺口：无——本文件为 BUG 回归（泛型 struct 方法体内 T& 字段类型替换缺失）的专项验证。
+; 泛型 struct 方法返回 T& 独立场景见 generic_method_ref_return.test.yux。
 
 fn identity<T>(x T) T = x
 

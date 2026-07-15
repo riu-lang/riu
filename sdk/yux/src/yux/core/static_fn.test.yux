@@ -1,4 +1,15 @@
-; Phase 3 端到端: #Static fn + Self { ... } + Type::name(...) JIT 验证
+; #Static fn 静态工厂行为测试
+;
+; 覆盖：
+;   - Type::name(...) 调用语法（JIT 编译+链接）
+;   - 多个 static factory 方法共存（make / make_double 等）
+;   - 基础构造、零值、负值等边界输入
+;   - Self { ... } 字段字面量构造
+;
+; 已知缺口：无——#Static fn 当前仅支持 struct 构造函数模式，
+; 泛型 struct 的 #Static fn 见 generic_name_conflict / generic_method_ref_return。
+; 更多 Self { ... } 句柄字段 retain 回归见 static_fn_handle.test.yux。
+; String #Static 工厂见 static_fn_string.test.yux。
 
 struct Point {
   x i32

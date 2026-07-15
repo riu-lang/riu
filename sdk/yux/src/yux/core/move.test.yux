@@ -1,4 +1,21 @@
-; Phase B-1: move 语义功能测试
+; move 所有权转移行为测试
+;
+; 覆盖：
+;   - move(i32) 标量所有权转移
+;   - move(#NoCopy struct) 不可拷贝类型转移
+;   - fresh 构造不触发 #NoCopy 检查
+;   - #NoCopy 类型作为函数返回值
+;   - elif 分支内 move + 作用域结束跳过析构（_movedVars merge）
+;   - move(Rc<i32>) 句柄转移
+;   - move(Array<i32>) 数组所有权转移
+;   - move(String) 字符串所有权转移
+;   - move(Heap<i32/f64>) 堆分配所有权转移
+;   - move(x) push 到 Array 中
+;   - move(String) 到 struct 字段
+;
+; 已知缺口：Heap<T> 不能按值 move 赋值（需 Heap<T>? 中间态，见 BUGS.md）；
+; move 与 Heap<T>? 交互见 move_assign.test.yux。
+; 负面诊断（E4023/E4024）见 tests/check-cases/diag_move_*。
 
 ; ---- #NoCopy struct ----
 

@@ -1,5 +1,13 @@
-; 顶层 cval（全局常量）用例
-; 迁自 tests/cases/global_const.yux
+; 全局常量（#Cval / #Inline #Cval）行为测试
+;
+; 覆盖：
+;   - #Cval 全局常量：i32 / f64 / _ 前缀（内部常量）
+;   - #Inline #Cval 内联常量：i32 / 负数 / bool / _ 前缀
+;   - 常量在表达式计算中使用（不经过 load 指令）
+;   - 跨文件常量（PI / E）见 math_int.test.yux
+;
+; 已知缺口：#Cval 常量目前仅文件作用域，跨文件不可见限制见 math.test.yux 头注；
+; struct 内 #Cval 字段未覆盖。
 
 #Cval
 let TEST_MAX_SIZE i32 = 1024

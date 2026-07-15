@@ -1,4 +1,13 @@
-; Phase 4b/4c: String #Static 工厂回归 (ctor 已砍, 构造唯一通道为静态工厂)
+; String #Static 工厂行为测试
+;
+; 覆盖：
+;   - String::empty() 空字符串构造
+;   - String::from(&buf) 从 Array<u32> 深拷贝构造
+;   - 空 buf 输入
+;   - 深拷贝隔离性：构造后修改 buf 不影响已创建的 String
+;
+; 已知缺口：无——String 构造目前唯一通道为静态工厂（ctor 已砍）。
+; String 其他行为见 string.test.yux / string_builder.test.yux。
 
 #Test
 fn test_string_static_empty() {

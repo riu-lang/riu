@@ -1,5 +1,15 @@
-; Nullable<T> 用例（迁自 tests/cases/nullable_*）
-; 覆盖：?? 默认值、?.field 短路、.has() / .get()、null 重赋为有值。
+; Nullable<T> 行为测试
+;
+; 覆盖：
+;   - ?? 默认值：null ?? fallback、有值 ?? fallback（取原值）
+;   - ?.field 短路：null?.field 得 null、有值?.field 得 Some
+;   - .has() / .get()：判空与取值
+;   - null 赋值：将 Nullable 重设为空
+;   - Nullable<struct>：含字段访问 + ?? 链
+;
+; 已知缺口：Nullable 嵌套 ?? BUG（见 BUGS.md / Phase 2c）；
+; Nullable 链式操作扩展见 nullable_chain.test.yux。
+; 负面诊断（E6027 等）见 tests/check-cases/diag_nullable_*。
 
 struct NN {
   v i32

@@ -1,4 +1,13 @@
-; Phase 4a: Self { ... } 句柄字段 retain 回归 (BUGS #4)
+; #Static fn + Self { ... } 句柄字段行为测试
+;
+; 覆盖：
+;   - Self { .field = move(arr) } 句柄字段所有权转移
+;   - Self { .field = [literal] } fresh 数组字面量（不应再 retain）
+;   - Self { .field = [] } 空数组字面量（parse + codegen）
+;   - 含 Array<T> 字段 + 析构函数的 struct 静态工厂
+;
+; 已知缺口：无——本文件为 BUGS #4（Self 句柄字段 retain 回归）的专项验证。
+; 基础 #Static fn 见 static_fn.test.yux。
 
 struct Buf {
   data Array<u32>

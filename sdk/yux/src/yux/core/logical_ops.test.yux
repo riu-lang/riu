@@ -1,5 +1,13 @@
-; 逻辑运算用例
-; 迁自 tests/cases/logical_ops.yux
+; 逻辑运算行为测试
+;
+; 覆盖：
+;   - &&（逻辑与）真值表：TT/TF/FT/FF
+;   - ||（逻辑或）真值表：FT/FF
+;   - ! 与 && 组合
+;   - 逻辑 vs 位运算区分：&& 返回 bool，& 返回同类型（u8）
+;
+; 已知缺口：短路求值行为（&& / || 右侧不执行）无专项测试；
+; 短路求值侧面验证见 control_flow.test.yux。
 
 #Test
 fn test_and_tt() {
