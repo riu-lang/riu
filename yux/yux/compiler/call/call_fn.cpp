@@ -385,6 +385,22 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
                 if (T.isHeap()) {
                     return args[i];
                 }
+                // Fallback: T 非堆句柄/Ref/Heap，但实参本身是引用类型（如 ptr_of(r) 其中 r: i32&，
+                // inferGenericFnTypeArgs 剥引用后 T 被推断为 i32）。回溯 AST 取原始指针。
+                // sema 端 validateBuiltinIntrinsicTypeShape 已校验实参为 ID-literal / &x 后才放行至此。
+                {
+                    auto argNode = callNode->getArgs()[i];
+                    if (auto litExpr = dynamic_cast<ExprLiteralNode*>(argNode)) {
+                        if (auto objLit = dynamic_cast<LiteralObjNode*>(litExpr->literal())) {
+                            auto name = objLit->getValue().getText();
+                            auto it = _localVarPtrs.find(name);
+                            if (it != _localVarPtrs.end()) return it->second;
+                        }
+                    }
+                    if (auto refExpr = dynamic_cast<ExprGetRefNode*>(argNode)) {
+                        return compileGetRefExpr(refExpr);
+                    }
+                }
                 throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6029, fnName,
                                T.getFullName());
             };

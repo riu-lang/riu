@@ -73,6 +73,38 @@ fn test_ptr_of_ref() {
   assert_eq(r2, 42)
 }
 
+; ---- ptr_of(T&) 普通引用 ----
+
+#Test
+fn test_ptr_of_plain_ref() {
+  ; 验证：ptr_of 作用于普通 i32& 引用（非堆句柄包装）
+  #Mut let x i32 = 77
+  let r i32& = &x
+  #Mut let p Ptr = ptr_of(r)
+  let r2 i32& = _ptr_as_ref:<i32>(p)
+  assert_eq(r2, 77)
+}
+
+#Test
+fn test_ptr_of_by_addr() {
+  ; 验证：ptr_of 直接作用于 &x 取地址表达式
+  #Mut let x i32 = 99
+  #Mut let p Ptr = ptr_of(&x)
+  let r i32& = _ptr_as_ref:<i32>(p)
+  assert_eq(r, 99)
+}
+
+; ---- same_ref 普通引用 ----
+
+#Test
+fn test_same_ref_plain() {
+  ; 验证：same_ref 作用于两个 plain i32& 引用
+  #Mut let x i32 = 55
+  let r1 i32& = &x
+  let r2 i32& = &x
+  assert_true(same_ref(r1, r2))
+}
+
 ; ---- ptr_from_addr + to_int roundtrip ----
 
 #Test

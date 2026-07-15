@@ -1132,10 +1132,31 @@ void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeIn
         // Phase 8a: ptr_of:<Heap<T>>(h) move-out FFI handoff (DRAFT-heap-types §8.3a)
         // same_ref 不接受 Heap (Heap 单所有权, 两个 Heap 不可能指同一块, 比较无意义)
         bool isHeapForPtrOf = (fnName == "ptr_of" && T.isHeap());
-        if (!isHeapHandle && !T.isRef() && !isHeapForPtrOf) {
+        // 实参为 T& 时：
+        //   - ExprGetRefNode (&x) → getType() 返回 i32& → argTypes 保留引用
+        //   - LiteralObjNode (ref 变量) → getType() 自动剥引用 → argTypes 丢失引用
+        // 因此同时检查 argTypes 和 AST 符号类型。
+        bool argIsRef = false;
+        for (auto& at : argTypes) {
+            if (at.isRef()) { argIsRef = true; break; }
+        }
+        if (!argIsRef) {
+            for (auto& node : argNodes) {
+                if (auto lit = dynamic_cast<ExprLiteralNode*>(node)) {
+                    if (auto objLit = dynamic_cast<LiteralObjNode*>(lit->literal())) {
+                        auto scope = objLit->findNearestScope();
+                        if (scope) {
+                            auto sym = scope->lookupSymbol(objLit->getValue().getText());
+                            if (sym && sym->type.isRef()) { argIsRef = true; break; }
+                        }
+                    }
+                }
+            }
+        }
+        if (!isHeapHandle && !T.isRef() && !isHeapForPtrOf && !argIsRef) {
             throw YuxError(line, col, ErrorCode::E6029, fnName, T.getFullName());
         }
-        if (T.isRef() || isHeapForPtrOf) {
+        if (T.isRef() || isHeapForPtrOf || argIsRef) {
             // 取源裸指针仅支持: ID-literal (栈/堆变量) 或 ExprGetRefNode (`&x` 字面)
             // _localVarPtrs 查不到的 fallback 仍由 Compiler 抛 E6028.
             // Phase 8a: Heap move-out 也只接受 ID-literal (槽要 null 化 / 摘除 _scopeVars).
