@@ -37,6 +37,7 @@ fn make_box() Box {
 
 ; ---- move 基本所有权转移 (i32) ----
 
+; 验证：基本整数所有权转移
 #Test
 fn test_move_i32_ownership() {
   let a i32 = 42
@@ -46,6 +47,7 @@ fn test_move_i32_ownership() {
 
 ; ---- move #NoCopy struct ----
 
+; 验证：Move 不可复制结构体时的值转移行为
 #Test
 fn test_move_no_copy_struct() {
   let a Box = Box {
@@ -57,6 +59,7 @@ fn test_move_no_copy_struct() {
 
 ; ---- fresh 构造不触发 #NoCopy 检查 ----
 
+; 验证：Fresh 构造不触发 #NoCopy 检查
 #Test
 fn test_no_copy_fresh_constructor() {
   let a Box = Box {
@@ -67,6 +70,7 @@ fn test_no_copy_fresh_constructor() {
 
 ; ---- #NoCopy 类型作为函数返回值 ----
 
+; 验证：NoCopy 类型作为函数返回值时，不会被移动
 #Test
 fn test_no_copy_return() {
   let b Box = make_box()
@@ -75,6 +79,7 @@ fn test_no_copy_return() {
 
 ; ---- elif 分支 move ----
 
+; 验证：elif 分支中移动变量后，原变量的析构在作用域退出时被跳过
 #Test
 fn test_move_elif_branch() {
   let a Box = Box {
@@ -91,6 +96,7 @@ fn test_move_elif_branch() {
 
 ; ---- move Rc<i32> ----
 
+; 验证：Rc 所有权转移后引用值不变
 #Test
 fn test_move_rc_i32() {
   let a Rc<i32> = 100
@@ -104,6 +110,7 @@ fn test_move_rc_i32() {
 
 ; ---- move Array<i32> ----
 
+; 验证：Move Array<i32> 后所有权转移与长度不变
 #Test
 fn test_move_array_i32() {
   let a Array<i32> = [1, 2, 3]
@@ -117,6 +124,7 @@ fn test_move_array_i32() {
 
 ; ---- move String ----
 
+; 验证：String 移动后长度不变
 #Test
 fn test_move_string() {
   let s String = "hello"

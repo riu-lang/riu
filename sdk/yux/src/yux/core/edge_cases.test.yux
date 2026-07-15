@@ -12,6 +12,7 @@ fn test_fixed_array_bool_list_four() {
   assert_false(flags[3])
 }
 
+; 验证：FixedArray 填充模式初始化
 #Test
 fn test_fixed_array_fill_u8_pattern() {
   #Mut let buf [u8 * 6] = [97u8 ...]
@@ -19,6 +20,7 @@ fn test_fixed_array_fill_u8_pattern() {
   assert_eq(buf[5], 97u8)
 }
 
+; 验证：FixedArray 初始化并填充 i64 类型元素
 #Test
 fn test_fixed_array_fill_i64_with_type() {
   #Mut let arr [i64 * 3] = [7i64 ...]
@@ -26,6 +28,7 @@ fn test_fixed_array_fill_i64_with_type() {
   assert_eq(arr[2], 7i64)
 }
 
+; 验证：FixedArray 使用类型填充并初始化
 #Test
 fn test_fixed_array_fill_f64_with_type() {
   #Mut let arr [f64 * 2] = [1.5 ... f64]
@@ -35,6 +38,7 @@ fn test_fixed_array_fill_f64_with_type() {
 
 ; ==================== 定长数组部分写后读取 ====================
 
+; 验证：定长数组写后读取
 #Test
 fn test_fixed_array_write_then_read() {
   #Mut let buf [i32 * 3] = [0 ... i32]
@@ -46,6 +50,7 @@ fn test_fixed_array_write_then_read() {
 
 ; ==================== loop 多层嵌套 break ====================
 
+; 验证：多层嵌套循环中内层 break 对外层循环的影响
 #Test
 fn test_loop_nested_break() {
   #Mut let outer i32 = 0
@@ -96,6 +101,7 @@ fn loop_ret_sum(n i32) i32 {
   }
 }
 
+; 验证：循环提前返回的 sum 计算
 #Test
 fn test_loop_early_ret() {
   assert_eq(loop_ret_sum(5), 15)
@@ -109,6 +115,7 @@ fn simple_loop_ret() i32 {
   }
 }
 
+; 验证：简单循环返回值
 #Test
 fn test_simple_loop_ret() {
   assert_eq(simple_loop_ret(), 42)
@@ -127,6 +134,7 @@ fn nested_if_ret(x i32) i32 {
   }
 }
 
+; 验证：嵌套 if 返回值
 #Test
 fn test_nested_loop_ret() {
   assert_eq(nested_if_ret(5), 5)
@@ -150,6 +158,7 @@ fn inspect(m MsgKind&) String {
   }
 }
 
+; 验证：MsgKind 枚举的 inspect 函数返回值与预期一致
 #Test
 fn test_match_rc_payload_string() {
   let msg1 MsgKind = MsgKind::Simple
@@ -185,6 +194,7 @@ fn sign_desc(s SignKind) String {
   }
 }
 
+; 验证：match 表达式中的 else 分支处理
 #Test
 fn test_match_else_branch() {
   let a SignKind = classify(5)
@@ -197,6 +207,7 @@ fn test_match_else_branch() {
 
 ; ==================== bitwise 无符号类型 ====================
 
+; 验证：无符号类型 u8 的按位与、或和异或运算
 #Test
 fn test_bitwise_u8() {
   let a u8 = 0xF0u8
@@ -206,6 +217,7 @@ fn test_bitwise_u8() {
   assert_eq(a ^ b, 0xFFu8)
 }
 
+; 验证：U32 类型的按位与和或操作
 #Test
 fn test_bitwise_u32_mask() {
   let mask u32 = 0xFF00u32
@@ -214,6 +226,7 @@ fn test_bitwise_u32_mask() {
   assert_eq(val | mask, 0xFFCDu32)
 }
 
+; 验证：无符号整数的位移操作
 #Test
 fn test_bitwise_shift_u32() {
   let x u32 = 1
@@ -223,6 +236,7 @@ fn test_bitwise_shift_u32() {
   assert_eq(y >> 4, 16)
 }
 
+; 验证：u8 类型按位取反操作
 #Test
 fn test_bitwise_not_u8() {
   let a u8 = 0
@@ -231,6 +245,7 @@ fn test_bitwise_not_u8() {
 
 ; ==================== codePoint 字面量 ====================
 
+; 验证：ASCII 字面量的 codePoint 表达
 #Test
 fn test_codepoint_ascii() {
   let a u32 = c'A'
@@ -239,6 +254,7 @@ fn test_codepoint_ascii() {
   assert_eq(nl, 10)
 }
 
+; 验证：字符 '0' 到 '9' 的 Unicode 码点是否正确
 #Test
 fn test_codepoint_digit() {
   let zero u32 = c'0'
@@ -251,6 +267,7 @@ fn test_codepoint_digit() {
 
 fn accept_i64(x i64) i64 = x
 
+; 验证：整数字面量在特定上下文中按预期推断为 i64 类型
 #Test
 fn test_type_inference_i64_literal() {
   ; 字面量按上下文推断为 i64
@@ -260,6 +277,7 @@ fn test_type_inference_i64_literal() {
 
 fn accept_u8(x u8) u8 = x
 
+; 验证：u8 类型字面量的类型推断
 #Test
 fn test_type_inference_u8_literal() {
   let r u8 = accept_u8(100)
@@ -268,6 +286,7 @@ fn test_type_inference_u8_literal() {
 
 ; ==================== if-else 单行表达式（仅 if/else，不支持 elif） ====================
 
+; 验证：单行 if-else 链判断分数等级
 #Test
 fn test_if_else_single_line_chain() {
   let score = 75
@@ -279,6 +298,7 @@ fn test_if_else_single_line_chain() {
 
 fn add3(a, b, c i32) i32 = a + b + c
 
+; 验证：多行调用函数并验证结果
 #Test
 fn test_multi_line_call() {
   let r = add3(
@@ -291,6 +311,7 @@ fn test_multi_line_call() {
 
 ; ==================== 比较运算符结果 bool ====================
 
+; 验证：比较运算符在不同情况下的结果
 #Test
 fn test_comparison_result_bool() {
   let a = 10
@@ -316,6 +337,7 @@ fn sc_set_val() bool {
 
 fn sc_get_val() i32 = g_sc_val
 
+; 验证：逻辑与运算符短路特性，左侧为 false 时右侧不执行
 #Test
 fn test_and_short_circuit_false_left() {
   g_sc_val = 0
@@ -325,6 +347,7 @@ fn test_and_short_circuit_false_left() {
   assert_eq(sc_get_val(), 0)
 }
 
+; 验证：逻辑与运算符短路特性，左侧为真时执行右侧表达式
 #Test
 fn test_and_short_circuit_true_left() {
   g_sc_val = 0
@@ -334,6 +357,7 @@ fn test_and_short_circuit_true_left() {
   assert_eq(sc_get_val(), 1)
 }
 
+; 验证：逻辑或运算符短路特性，左侧为真时右侧不执行
 #Test
 fn test_or_short_circuit_true_left() {
   g_sc_val = 0
@@ -343,6 +367,7 @@ fn test_or_short_circuit_true_left() {
   assert_eq(sc_get_val(), 0)
 }
 
+; 验证：逻辑或运算符短路特性，左侧为 false 时右侧必须执行
 #Test
 fn test_or_short_circuit_false_left() {
   g_sc_val = 0
@@ -361,6 +386,7 @@ fn test_and_literal_short_circuit() {
   assert_false(true && false)
 }
 
+; 验证：逻辑或运算符短路行为
 #Test
 fn test_or_literal_short_circuit() {
   assert_true(true || false)

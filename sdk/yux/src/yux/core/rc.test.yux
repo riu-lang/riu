@@ -44,6 +44,7 @@ struct BoxCell {
 
 ; ---------- box_basic：构造、字段读、句柄复制共享语义 ----------
 
+; 验证：Rc 句柄复制共享语义
 #Test
 fn test_box_basic_fields() {
   #Mut let p Rc<BoxPair> = BoxPair::make(11, 22)
@@ -58,6 +59,7 @@ fn test_box_basic_fields() {
 
 ; ---------- box_share：通过一个句柄写穿，另一个读到 ----------
 
+; 验证：Rc 多句柄共享修改写穿
 #Test
 fn test_box_share_write_through() {
   #Mut let p Rc<BoxPair> = BoxPair::make(10, 20)
@@ -92,6 +94,7 @@ fn test_box_field_write() {
 
 ; ---------- box_reassign_ctor：Rc 上下文驱动构造 + 顶层重赋 ----------
 
+; 验证：Rc 上下文驱动构造与顶层重赋
 #Test
 fn test_box_reassign_ctor() {
   #Mut let b Rc<BoxPair> = BoxPair::make(7, 8)
@@ -109,6 +112,7 @@ fn make_box_cell(x i32) Rc<BoxCell> {
   ret c
 }
 
+; 验证：Rc 返回移动后值不变
 #Test
 fn test_box_return_move() {
   #Mut let b Rc<BoxCell> = make_box_cell(42)
@@ -120,6 +124,7 @@ fn test_box_return_move() {
 
 ; ---------- var_reassign_box：变量重赋 retain-then-release & 自赋值 ----------
 
+; 验证：Rc 变量重赋与 retain-release 行为，包括自赋值
 #Test
 fn test_box_var_reassign() {
   #Mut let p Rc<BoxPair> = BoxPair::make(1, 2)
@@ -147,6 +152,7 @@ fn test_box_i32_to_string() {
   assert_eq(s, "42")
 }
 
+; 验证：Rc 包装的 i32 调用 to_string 方法
 #Test
 fn test_box_i32_with_literal_method() {
   let b Rc<i32> = 42
@@ -157,12 +163,14 @@ fn test_box_i32_with_literal_method() {
   assert_eq(s2, "42")
 }
 
+; 验证：Rc 包装 i64 转换为字符串
 #Test
 fn test_box_i64_to_string() {
   let b Rc<i64> = 123
   assert_eq(b.to_string(), "123")
 }
 
+; 验证：Rc 包装的布尔值转换为字符串
 #Test
 fn test_box_bool_to_string() {
   let b Rc<bool> = true

@@ -11,26 +11,31 @@
 
 ; ==================== 基本位运算 ====================
 
+; 验证：二进制与运算的基本行为
 #Test
 fn test_bit_and() {
   assert_eq(5 & 3, 1)
 }
 
+; 验证：按位或运算符的基本行为
 #Test
 fn test_bit_or() {
   assert_eq(5 | 3, 7)
 }
 
+; 验证：按位异或运算符的基本行为
 #Test
 fn test_bit_xor() {
   assert_eq(5 ^ 3, 6)
 }
 
+; 验证：右移操作符的行为
 #Test
 fn test_shr() {
   assert_eq(8 >> 2, 2)
 }
 
+; 验证：左移操作符（<<）的功能
 #Test
 fn test_shl() {
   assert_eq(2 << 3, 16)
@@ -38,6 +43,7 @@ fn test_shl() {
 
 ; ==================== 各整数类型位运算 ====================
 
+; 验证：整数类型位运算符功能
 #Test
 fn test_bitwise_i8() {
   assert_eq(5 & 3, 1)
@@ -47,6 +53,7 @@ fn test_bitwise_i8() {
   assert_eq(2 << 3, 16)
 }
 
+; 验证：i16 类型的按位与、或、异或、右移和左移操作
 #Test
 fn test_bitwise_i16() {
   assert_eq(5 & 3, 1)
@@ -56,6 +63,7 @@ fn test_bitwise_i16() {
   assert_eq(2 << 3, 16)
 }
 
+; 验证：基本位运算符功能
 #Test
 fn test_bitwise_i32() {
   assert_eq(5 & 3, 1)
@@ -65,6 +73,7 @@ fn test_bitwise_i32() {
   assert_eq(2 << 3, 16)
 }
 
+; 验证：i64 类型的按位与、或、异或、右移和左移操作
 #Test
 fn test_bitwise_i64() {
   assert_eq(5 & 3, 1)
@@ -74,6 +83,7 @@ fn test_bitwise_i64() {
   assert_eq(2 << 3, 16)
 }
 
+; 验证：基本位运算符功能
 #Test
 fn test_bitwise_u8() {
   assert_eq(5 & 3, 1)
@@ -83,6 +93,7 @@ fn test_bitwise_u8() {
   assert_eq(2 << 3, 16)
 }
 
+; 验证：u16 类型的按位与、或、异或、右移和左移操作
 #Test
 fn test_bitwise_u16() {
   assert_eq(5 & 3, 1)
@@ -92,6 +103,7 @@ fn test_bitwise_u16() {
   assert_eq(2 << 3, 16)
 }
 
+; 验证：u32 类型的按位与、或、异或、右移和左移操作
 #Test
 fn test_bitwise_u32() {
   assert_eq(5 & 3, 1)
@@ -101,6 +113,7 @@ fn test_bitwise_u32() {
   assert_eq(2 << 3, 16)
 }
 
+; 验证：u64 类型的按位与、或、异或、右移和左移操作
 #Test
 fn test_bitwise_u64() {
   assert_eq(5 & 3, 1)
@@ -112,6 +125,7 @@ fn test_bitwise_u64() {
 
 ; ==================== 负数位运算 ====================
 
+; 验证：负数与正数的按位与运算结果
 #Test
 fn test_bitwise_negative_and() {
   ; -5 & 3 = 3 (in two's complement)
@@ -121,6 +135,7 @@ fn test_bitwise_negative_and() {
   assert_eq(-5 & 3, 3)
 }
 
+; 验证：按位或操作符对负数和正数的处理
 #Test
 fn test_bitwise_negative_or() {
   ; -5 | 3 = -5
@@ -130,6 +145,7 @@ fn test_bitwise_negative_or() {
   assert_eq(-5 | 3, -5)
 }
 
+; 验证：按位异或操作符对负数和正数的处理
 #Test
 fn test_bitwise_negative_xor() {
   ; -5 ^ 3 = -8
@@ -139,6 +155,7 @@ fn test_bitwise_negative_xor() {
   assert_eq(-5 ^ 3, -8)
 }
 
+; 验证：算术右移负数保留符号位
 #Test
 fn test_bitwise_negative_shr() {
   ; 右移负数：算术右移（保留符号位）
@@ -148,6 +165,7 @@ fn test_bitwise_negative_shr() {
   assert_eq(-8 >> 2, -2)
 }
 
+; 验证：左移负数的行为
 #Test
 fn test_bitwise_negative_shl() {
   ; 左移负数
@@ -159,6 +177,7 @@ fn test_bitwise_negative_shl() {
 
 ; ==================== 边界值测试 ====================
 
+; 验证：i8 类型的边界值位运算
 #Test
 fn test_bitwise_boundary_i8() {
   ; i8 范围：-128 ~ 127
@@ -166,6 +185,7 @@ fn test_bitwise_boundary_i8() {
   assert_eq(-128 | 0, -128)
 }
 
+; 验证：u8 类型的边界值位运算
 #Test
 fn test_bitwise_boundary_u8() {
   ; u8 范围：0 ~ 255
@@ -173,6 +193,7 @@ fn test_bitwise_boundary_u8() {
   assert_eq(255 | 0, 255)
 }
 
+; 验证：移位操作在边界值上的行为
 #Test
 fn test_bitwise_shift_boundary() {
   ; 移位边界

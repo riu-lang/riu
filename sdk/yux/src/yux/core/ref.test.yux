@@ -12,6 +12,7 @@ fn r_sum_three(x i32&, y i32&, z i32&) i32 {
   ret x + y + z
 }
 
+; 验证：引用读取路径与共享所有权
 #Test
 fn test_ref_read_paths() {
   #Mut let x i32 = 10
@@ -35,6 +36,7 @@ fn r_bump(r i32&) {
   r = r + 1
 }
 
+; 验证：通过引用修改变量值并传递给函数
 #Test
 fn test_ref_store_through() {
   #Mut let x i32 = 10
@@ -81,6 +83,7 @@ fn r_box_bump(b Rc<RefPair>&) {
   b.set_a(99i32)
 }
 
+; 验证：Rc 引用计数和借用检查器行为
 #Test
 fn test_ref_box_handle_borrow() {
   #Mut let p Rc<RefPair> = RefPair::make(10, 20)
@@ -124,6 +127,7 @@ fn r_add1(r i32&) {
   r = r + 1
 }
 
+; 验证：通过引用修改局部结构体字段
 #Test
 fn test_ref_local_field() {
   #Mut let p RefP = RefP::make(10, 20)
@@ -132,6 +136,7 @@ fn test_ref_local_field() {
   assert_eq(p.y, 20)
 }
 
+; 验证：Rc 引用的结构体字段修改后可见性
 #Test
 fn test_ref_box_field() {
   #Mut let b Rc<RefP> = RefP::make(100, 200)
@@ -140,6 +145,7 @@ fn test_ref_box_field() {
   assert_eq(b.y, 200)
 }
 
+; 验证：Rc 和 RefHolder 共享字段修改
 #Test
 fn test_ref_rc_field_chain() {
   #Mut let b Rc<RefP> = RefP::make(100, 200)
@@ -149,6 +155,7 @@ fn test_ref_rc_field_chain() {
   assert_eq(b.x, 101)
 }
 
+; 验证：Ref 结构体字段修改
 #Test
 fn test_ref_self_field() {
   #Mut let p RefP = RefP::make(10, 20)
@@ -179,6 +186,7 @@ fn r_dump_x(p RefQ&) i32 {
   ret p.x
 }
 
+; 验证：Ref 类型接收者通过自身引用调用方法
 #Test
 fn test_ref_receiver_self_ref() {
   #Mut let p RefQ = RefQ::make(10, 20)
@@ -187,6 +195,7 @@ fn test_ref_receiver_self_ref() {
 
 ; ---------- same_ref：地址相等 ----------
 
+; 验证：Rc 多句柄共享时地址相等性判断
 #Test
 fn test_same_ref_box_shared() {
   #Mut let p Rc<RefPair> = RefPair::make(1, 2)
@@ -196,6 +205,7 @@ fn test_same_ref_box_shared() {
   assert_false(same_ref(p, r))
 }
 
+; 验证：相同 Box 创建的 Weak 引用比较
 #Test
 fn test_same_ref_weak_from_same_box() {
   #Mut let p Rc<RefPair> = RefPair::make(1, 2)
@@ -208,6 +218,7 @@ fn test_same_ref_weak_from_same_box() {
   assert_false(same_ref(w1, w3))
 }
 
+; 验证：same_ref 函数对相同数组和不同数组的引用比较
 #Test
 fn test_same_ref_array_self_vs_independent() {
   #Mut let a1 Array<i32> = [1i32, 2i32, 3i32]
@@ -216,6 +227,7 @@ fn test_same_ref_array_self_vs_independent() {
   assert_false(same_ref(a1, a3))
 }
 
+; 验证：相同引用的字符串比较
 #Test
 fn test_same_ref_string_self() {
   #Mut let s1 String = "hi"

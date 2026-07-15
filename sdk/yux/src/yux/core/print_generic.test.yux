@@ -20,6 +20,7 @@ struct PrintTag {
   }
 }
 
+; 验证：Generic print 和 println 函数的调用与输出
 #Test
 fn test_print_generic_builtin() {
   print(42)
@@ -30,6 +31,7 @@ fn test_print_generic_builtin() {
   assert_true(true)
 }
 
+; 验证：String 参数的非泛型 print 和 println 快路径
 #Test
 fn test_print_string_fast_path() {
   ; String 实参命中非泛型 print(s String&) / println(s String&) 快路径
@@ -38,6 +40,7 @@ fn test_print_string_fast_path() {
   assert_true(true)
 }
 
+; 验证：打印自定义类型并断言真值
 #Test
 fn test_print_user_type() {
   let t PrintTag = PrintTag::make(123)
@@ -45,6 +48,7 @@ fn test_print_user_type() {
   assert_true(true)
 }
 
+; 验证：eprint 和 eprintln 函数的通用打印行为
 #Test
 fn test_eprint_generic() {
   eprint("err ")
@@ -57,6 +61,7 @@ fn test_eprint_generic() {
 
 ; === T& 泛型借用重载：Array::get 返回 T&，免去手动 copy_of ===
 
+; 验证：Array::get 返回 T&，直接打印免去手动 copy_of
 #Test
 fn test_print_generic_ref() {
   ; Array::get(i) 返回 i64&，应命中 print<T : ToString>(x T&)
@@ -71,6 +76,7 @@ fn test_print_generic_ref() {
   assert_true(true)
 }
 
+; 验证：eprint 和 eprintln 函数的通用引用打印行为
 #Test
 fn test_eprint_generic_ref() {
   #Mut let arr Array<bool> = []
@@ -82,6 +88,7 @@ fn test_eprint_generic_ref() {
   assert_true(true)
 }
 
+; 验证：泛型借用重载对用户类型引用的打印行为
 #Test
 fn test_print_user_type_ref() {
   ; 用户类型 T& 也应命中泛型借用重载

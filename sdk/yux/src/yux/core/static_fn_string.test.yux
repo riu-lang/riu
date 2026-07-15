@@ -16,6 +16,7 @@ fn test_string_static_empty() {
   assert_eq(s, "")
 }
 
+; 验证：String::from() 方法从缓冲区创建字符串并进行深拷贝
 #Test
 fn test_string_static_from_buf() {
   ; 'h''i' = 104, 105
@@ -27,6 +28,7 @@ fn test_string_static_from_buf() {
   assert_eq(buf.len(), 2)
 }
 
+; 验证：String 从空缓冲区创建时的长度和内容
 #Test
 fn test_string_static_from_empty_buf() {
   let buf Array<u32> = []
@@ -35,6 +37,7 @@ fn test_string_static_from_empty_buf() {
   assert_eq(s, "")
 }
 
+; 验证：String::from 深拷贝，外界修改 buf 不影响已构造的 String
 #Test
 fn test_string_from_defensive_copy() {
   ; 关键回归: String::from 深拷贝, 外界 mutate buf 不影响已构造的 String

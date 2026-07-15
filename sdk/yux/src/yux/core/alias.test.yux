@@ -11,12 +11,14 @@
 
 A = i32
 
+; 验证：基本整数别名的创建和读取
 #Test
 fn test_alias_basic_int() {
   #Mut let x A = 7
   assert_eq(x, 7)
 }
 
+; 验证：算术运算中别名的使用
 #Test
 fn test_alias_in_arith() {
   #Mut let x A = 10
@@ -28,11 +30,13 @@ fn add_alias(x A, y A) A {
   ret x + y
 }
 
+; 验证：检查别名函数签名是否正确
 #Test
 fn test_alias_fn_signature() {
   assert_eq(add_alias(2, 3), 5)
 }
 
+; 验证：使用别名变量作为函数参数
 #Test
 fn test_alias_var_as_arg() {
   #Mut let a A = 4
@@ -45,6 +49,7 @@ fn test_alias_var_as_arg() {
 A2 = A
 A1 = A2
 
+; 验证：Alias 链式赋值与读取
 #Test
 fn test_alias_chain() {
   #Mut let x A1 = 99
@@ -57,6 +62,7 @@ IPair = (i32, i32)
 
 ; --- 成员访问与解构 ---
 
+; 验证：元组成员访问与解构
 #Test
 fn test_alias_tuple_member() {
   #Mut let p IPair = (5, 9)
@@ -64,6 +70,7 @@ fn test_alias_tuple_member() {
   assert_eq(p.1, 9)
 }
 
+; 验证：元组解构赋值
 #Test
 fn test_alias_tuple_destructure() {
   #Mut let p IPair = (11, 22)
@@ -74,6 +81,7 @@ fn test_alias_tuple_destructure() {
 
 ; --- 成员赋值 ---
 
+; 验证：元组成员赋值
 #Test
 fn test_alias_tuple_member_assign() {
   #Mut let p IPair = (1, 2)
@@ -97,12 +105,14 @@ fn alias_swap(p IPair) IPair {
   ret (p.1, p.0)
 }
 
+; 验证：Alias 函数参数传递与求和
 #Test
 fn test_alias_fn_param() {
   let p IPair = (10, 20)
   assert_eq(alias_sum(p), 30)
 }
 
+; 验证：alias 返回值的正确性
 #Test
 fn test_alias_fn_return() {
   let p IPair = alias_make(3, 4)
@@ -110,6 +120,7 @@ fn test_alias_fn_return() {
   assert_eq(p.1, 4)
 }
 
+; 验证：alias_swap 函数是否能正确交换元组中的元素
 #Test
 fn test_alias_swap() {
   let q IPair = alias_swap((1, 2))
@@ -121,6 +132,7 @@ fn test_alias_swap() {
 
 Point3D = (f64, f64, f64)
 
+; 验证：Tuple 访问元素
 #Test
 fn test_alias_tuple_3d() {
   let p Point3D = (1.0f64, 2.0f64, 3.0f64)
@@ -133,6 +145,7 @@ fn test_alias_tuple_3d() {
 
 Pair<T> = (T, T)
 
+; 验证：Alias 对泛型元组成员的访问和断言
 #Test
 fn test_alias_generic_tuple_member() {
   #Mut let p Pair<i32> = (40, 2)
@@ -140,6 +153,7 @@ fn test_alias_generic_tuple_member() {
   assert_eq(p.1, 2)
 }
 
+; 验证：Alias 范型元组成员赋值
 #Test
 fn test_alias_generic_tuple_member_assign() {
   #Mut let p Pair<i32> = (3, 4)
@@ -148,12 +162,14 @@ fn test_alias_generic_tuple_member_assign() {
   assert_eq(p.1, 77)
 }
 
+; 验证：Generic Tuple 成员相加
 #Test
 fn test_alias_generic_tuple_member_add() {
   let p Pair<i32> = (5, 10)
   assert_eq(p.0 + p.1, 15)
 }
 
+; 验证：Generic Tuple 的链式加法
 #Test
 fn test_alias_generic_tuple_chain_add() {
   let p Pair<i32> = (3, 7)
@@ -167,6 +183,7 @@ fn is_positive(x i32) bool = x > 0
 
 Predicate = fn(i32) bool
 
+; 验证：直接调用函数并检查返回值
 #Test
 fn test_fn_direct_call() {
   let f fn(i32) bool = is_positive
@@ -174,6 +191,7 @@ fn test_fn_direct_call() {
   assert_false(f(-3))
 }
 
+; 验证：多引用别名函数的行为一致性
 #Test
 fn test_multi_ref() {
   let f fn(i32) bool = is_positive
@@ -182,12 +200,14 @@ fn test_multi_ref() {
   assert_true(g(10))
 }
 
+; 验证：函数别名赋值
 #Test
 fn test_fn_alias_assign_only() {
   let f Predicate = is_positive
   assert_true(true)
 }
 
+; 验证：函数别名调用正确性
 #Test
 fn test_fn_alias_call() {
   let f Predicate = is_positive
@@ -195,6 +215,7 @@ fn test_fn_alias_call() {
   assert_false(f(-1))
 }
 
+; 验证：直接调用函数并验证返回值
 #Test
 fn test_fn_direct_call_no_var() {
   assert_true(is_positive(100))

@@ -15,18 +15,21 @@ fn test_code_point_a() {
   assert_eq(a, 65)
 }
 
+; 验证：字符换行符的 Unicode 码点是否正确
 #Test
 fn test_code_point_newline() {
   let b u32 = c'\n'
   assert_eq(b, 10)
 }
 
+; 验证：Tab 字符的 Unicode 码点是否正确
 #Test
 fn test_code_point_tab() {
   let c u32 = c'\t'
   assert_eq(c, 9)
 }
 
+; 验证：字符 '0' 的 Unicode 码点是否正确
 #Test
 fn test_code_point_zero() {
   let d u32 = c'0'

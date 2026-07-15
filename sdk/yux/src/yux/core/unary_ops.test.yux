@@ -14,12 +14,14 @@ fn test_neg_int() {
   assert_eq(a, -10)
 }
 
+; 验证：浮点数取负操作
 #Test
 fn test_neg_float() {
   let b = -3.14
   assert_eq(b, -3.14)
 }
 
+; 验证：按位取反操作符的正确性
 #Test
 fn test_bit_not() {
   ; ~5 = -6（二补码）
@@ -27,11 +29,13 @@ fn test_bit_not() {
   assert_eq(c, -6)
 }
 
+; 验证：逻辑非运算符对真值的转换
 #Test
 fn test_logical_not_true() {
   assert_eq(!true, false)
 }
 
+; 验证：逻辑非运算符对假值的处理
 #Test
 fn test_logical_not_false() {
   assert_eq(!false, true)

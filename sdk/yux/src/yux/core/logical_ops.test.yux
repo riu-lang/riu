@@ -14,21 +14,25 @@ fn test_and_tt() {
   assert_eq(true && true, true)
 }
 
+; 验证：逻辑与操作符的基本行为
 #Test
 fn test_and_tf() {
   assert_eq(true && false, false)
 }
 
+; 验证：逻辑或运算符的真值判断
 #Test
 fn test_or_ft() {
   assert_eq(false || true, true)
 }
 
+; 验证：逻辑或操作符在两个假值之间的行为
 #Test
 fn test_or_ff() {
   assert_eq(false || false, false)
 }
 
+; 验证：逻辑与和非操作的组合行为
 #Test
 fn test_and_with_not() {
   assert_eq(true && !false, true)

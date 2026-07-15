@@ -32,6 +32,7 @@ struct Ratio {
   }
 }
 
+; 验证：Ratio 类型的除法运算符重载
 #Test
 fn test_op_overload_div() {
   let a Ratio = Ratio::make(20, 40)
@@ -41,6 +42,7 @@ fn test_op_overload_div() {
   assert_eq(c.den, 8)
 }
 
+; 验证：Ratio 类型的取模运算符重载
 #Test
 fn test_op_overload_mod() {
   let a Ratio = Ratio::make(17, 25)
@@ -71,6 +73,7 @@ struct ShiftVal {
   }
 }
 
+; 验证：左移操作符重载
 #Test
 fn test_op_overload_shl() {
   let a ShiftVal = ShiftVal::make(1)
@@ -79,6 +82,7 @@ fn test_op_overload_shl() {
   assert_eq(c.v, 16)
 }
 
+; 验证：右移操作符重载
 #Test
 fn test_op_overload_shr() {
   let a ShiftVal = ShiftVal::make(32)
@@ -104,6 +108,7 @@ struct Flag {
   }
 }
 
+; 验证：逻辑非操作符对布尔值的反转
 #Test
 fn test_op_overload_not() {
   let a Flag = Flag::make(true)

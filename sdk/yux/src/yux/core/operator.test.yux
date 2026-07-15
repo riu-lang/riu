@@ -49,6 +49,7 @@ struct Vec2 {
 
 ; ==================== 按值形参运算符 ====================
 
+; 验证：按值形参运算符重载
 #Test
 fn test_op_overload_byval() {
   let p1 Point = Point::make(1, 2)
@@ -59,6 +60,7 @@ fn test_op_overload_byval() {
 
 ; ==================== 跨类型运算符重载 ====================
 
+; 验证：跨类型运算符重载，包括加法和乘法
 #Test
 fn test_op_overload_cross_type() {
   let v Vec2 = Vec2::make(2.0, 3.0)

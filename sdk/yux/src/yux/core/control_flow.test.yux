@@ -13,6 +13,7 @@
 
 ; ==================== 基础 if-else 表达式 ====================
 
+; 验证：基本的 if-else 表达式用于比较两个值并返回较大的那个
 #Test
 fn test_if_else_expr_basic() {
   let a i32 = 10
@@ -21,6 +22,7 @@ fn test_if_else_expr_basic() {
   assert_eq(max, 20)
 }
 
+; 验证：单行 if-else 表达式是否正确返回值
 #Test
 fn test_if_else_expr_single_line() {
   let x i32 = 5
@@ -28,6 +30,7 @@ fn test_if_else_expr_single_line() {
   assert_eq(sign, 1)
 }
 
+; 验证：单行 if-else 表达式处理负数情况
 #Test
 fn test_if_else_expr_single_line_negative() {
   let x i32 = -3
@@ -37,6 +40,7 @@ fn test_if_else_expr_single_line_negative() {
 
 ; ==================== if/elif/else 链作为表达式 ====================
 
+; 验证：if/elif/else 链作为表达式是否正确返回值
 #Test
 fn test_if_elif_else_chain_expr() {
   let score i32 = 85
@@ -52,6 +56,7 @@ fn test_if_elif_else_chain_expr() {
   assert_eq(grade, 2)
 }
 
+; 验证：if-elif-else 链中最后一个 else 分支的执行
 #Test
 fn test_if_elif_else_chain_else_branch() {
   let score i32 = 50
@@ -65,6 +70,7 @@ fn test_if_elif_else_chain_else_branch() {
   assert_eq(grade, 4)
 }
 
+; 验证：if-elif-else 链中第一个分支的执行
 #Test
 fn test_if_elif_else_chain_first_branch() {
   let score i32 = 95
@@ -80,6 +86,7 @@ fn test_if_elif_else_chain_first_branch() {
 
 ; ==================== Python 风格三元 a if cond else b ====================
 
+; 验证：Python 风格三元运算符，条件为真时返回 a 的值
 #Test
 fn test_ternary_python_style_true() {
   let a i32 = 10
@@ -88,6 +95,7 @@ fn test_ternary_python_style_true() {
   assert_eq(max, 20)
 }
 
+; 验证：Python 风格的三元运算符在 false 条件下的行为
 #Test
 fn test_ternary_python_style_false() {
   let a i32 = 30
@@ -96,6 +104,7 @@ fn test_ternary_python_style_false() {
   assert_eq(max, 30)
 }
 
+; 验证：Python 风格的三元运算符用于条件赋值
 #Test
 fn test_ternary_python_style_sign() {
   let x i32 = -5
@@ -103,6 +112,7 @@ fn test_ternary_python_style_sign() {
   assert_eq(sign, -1)
 }
 
+; 验证：三元运算符用于生成字符串并验证其长度
 #Test
 fn test_ternary_python_style_string() {
   let x i32 = 10
@@ -110,6 +120,7 @@ fn test_ternary_python_style_string() {
   assert_eq(msg.len(), 8)
 }
 
+; 验证：Python 风格嵌套三元运算符的正确性
 #Test
 fn test_ternary_python_style_nested() {
   let score i32 = 75
@@ -119,6 +130,7 @@ fn test_ternary_python_style_nested() {
 
 ; ==================== if 作为语句（无 else） ====================
 
+; 验证：if 语句作为语句时，true 条件下的赋值行为
 #Test
 fn test_if_statement_no_else() {
   #Mut let x i32 = 0
@@ -128,6 +140,7 @@ fn test_if_statement_no_else() {
   assert_eq(x, 1)
 }
 
+; 验证：if 语句条件为假时，不执行块内代码
 #Test
 fn test_if_statement_condition_false() {
   #Mut let x i32 = 0
@@ -139,6 +152,7 @@ fn test_if_statement_condition_false() {
 
 ; ==================== 嵌套 if-else ====================
 
+; 验证：嵌套 if-else 表达式求最大值
 #Test
 fn test_nested_if_else_expr() {
   let a i32 = 10
@@ -154,6 +168,7 @@ fn test_nested_if_else_expr() {
 
 ; ==================== 复杂条件（&& / ||） ====================
 
+; 验证：if 语句中使用 && 条件判断
 #Test
 fn test_if_with_and_condition() {
   let x i32 = 5
@@ -162,6 +177,7 @@ fn test_if_with_and_condition() {
   assert_eq(result, 1)
 }
 
+; 验证：if 语句中使用或条件
 #Test
 fn test_if_with_or_condition() {
   let x i32 = -1
@@ -170,6 +186,7 @@ fn test_if_with_or_condition() {
   assert_eq(result, 1)
 }
 
+; 验证：if 语句处理复杂条件
 #Test
 fn test_if_with_complex_condition() {
   let a i32 = 10
@@ -188,12 +205,14 @@ fn return_early(flag bool) i32 {
   ret 0
 }
 
+; 验证：当条件为真时，函数是否能提前返回值
 #Test
 fn test_early_return_true() {
   let v i32 = return_early(true)
   assert_eq(v, 1)
 }
 
+; 验证：早期返回 false 时的默认值
 #Test
 fn test_early_return_false() {
   let v i32 = return_early(false)
@@ -202,6 +221,7 @@ fn test_early_return_false() {
 
 ; ==================== if 表达式 + 算术组合 ====================
 
+; 验证：If 表达式在算术组合中的使用
 #Test
 fn test_if_expr_in_arithmetic() {
   let a i32 = 10
@@ -216,12 +236,14 @@ fn side_effect_flag() bool {
   ret true
 }
 
+; 验证：短路与逻辑运算符的行为
 #Test
 fn test_short_circuit_and() {
   let result bool = false && side_effect_flag()
   assert_false(result)
 }
 
+; 验证：短路或运算符的行为
 #Test
 fn test_short_circuit_or() {
   let result bool = true || side_effect_flag()

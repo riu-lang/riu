@@ -41,6 +41,7 @@ struct Buf {
   fn get(i usize) u32 = copy_of($.data[i])
 }
 
+; 验证：从现有数组创建缓冲区并保持数据一致性
 #Test
 fn test_buf_from_existing_array() {
   ; BUGS #1: Array 是 #NoCopy, 按值传参需要 move() 转移所有权
@@ -53,6 +54,7 @@ fn test_buf_from_existing_array() {
   ; arr 已 move 走, b.data 独占句柄
 }
 
+; 验证：数组字面量创建的 Buffer 长度和内容
 #Test
 fn test_buf_one_via_array_literal() {
   ; fresh 源: 数组字面量自带 +1, 不应再 retain

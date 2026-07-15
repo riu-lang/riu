@@ -31,18 +31,21 @@ let MUT_POINT Point = Point {
 
 ; ==================== &global_val 基本 ====================
 
+; 验证：全局变量引用与读取
 #Test
 fn test_ref_global_val() {
   let r i32& = &G_VAL
   assert_eq(r, 42)
 }
 
+; 验证：全局常量引用与读取
 #Test
 fn test_ref_global_cval() {
   let r i32& = &G_CVAL
   assert_eq(r, 7)
 }
 
+; 验证：全局私有变量通过引用访问
 #Test
 fn test_ref_global_private() {
   let r i32& = &_PRIV_VAL
@@ -51,12 +54,14 @@ fn test_ref_global_private() {
 
 ; ==================== &global_mut 读写 ====================
 
+; 验证：全局可变引用的读取行为
 #Test
 fn test_ref_global_mut_read() {
   let r i32& = &G_MUT
   assert_eq(r, 100)
 }
 
+; 验证：全局可变引用的修改与读取
 #Test
 fn test_ref_global_mut_write() {
   let r i32& = &G_MUT
@@ -65,6 +70,7 @@ fn test_ref_global_mut_write() {
   G_MUT = 100 ; 恢复
 }
 
+; 验证：全局可变变量的直接赋值与读取
 #Test
 fn test_ref_global_mut_direct_assign() {
   G_MUT = 50
@@ -74,6 +80,7 @@ fn test_ref_global_mut_direct_assign() {
 
 ; ==================== &global_struct_field ====================
 
+; 验证：全局结构体字段引用读取
 #Test
 fn test_ref_global_struct_field_read() {
   let rx i32& = &ORIGIN.x
@@ -82,6 +89,7 @@ fn test_ref_global_struct_field_read() {
   assert_eq(ry, 0)
 }
 
+; 验证：全局可变结构体字段的引用读写
 #Test
 fn test_ref_global_mut_struct_field_write() {
   let rx i32& = &MUT_POINT.x
@@ -93,6 +101,7 @@ fn test_ref_global_mut_struct_field_write() {
 
 ; ==================== T& 返回：自由函数 ====================
 
+; 验证：自由函数返回全局引用并正确读取值
 #Test
 fn test_return_ref_global_freefn() {
   let r i32& = get_g_val_ref()
@@ -101,6 +110,7 @@ fn test_return_ref_global_freefn() {
 
 fn get_g_val_ref() i32& = &G_VAL
 
+; 验证：返回全局可变引用并修改其值
 #Test
 fn test_return_ref_global_mut_freefn() {
   let r i32& = get_g_mut_ref()
@@ -112,6 +122,7 @@ fn test_return_ref_global_mut_freefn() {
 
 fn get_g_mut_ref() i32& = &G_MUT
 
+; 验证：全局值引用返回行为与参数无关
 #Test
 fn test_return_ref_global_0param_vs_1param() {
   ; 0 T& 形参 — 只能静态借用
@@ -129,6 +140,7 @@ fn param_or_g_val(p i32&) i32& = &G_VAL
 
 ; ==================== 拷绑链 ====================
 
+; 验证：拷绑链的引用传递与值相等性检查
 #Test
 fn test_ref_chain() {
   let r1 i32& = &G_VAL
@@ -137,6 +149,7 @@ fn test_ref_chain() {
   assert_eq(r3, 42)
 }
 
+; 验证：连续引用链的可变性传递
 #Test
 fn test_ref_chain_mut() {
   let r1 i32& = &G_MUT
@@ -148,6 +161,7 @@ fn test_ref_chain_mut() {
 
 ; ==================== 复合场景 ====================
 
+; 验证：全局变量通过引用返回并在块内使用
 #Test
 fn test_ref_global_block_ret() {
   ; 0 T& 形参函数体 ret &global
@@ -161,6 +175,7 @@ fn block_ret_global() i32& {
 
 ; ==================== 静态引用不阻止全局修改 ====================
 
+; 验证：静态引用不阻止全局修改
 #Test
 fn test_ref_global_no_block_mutate() {
   ; 静态根的 T& 存活期内，全局本身仍可修改（地址固定，不会 dangling）

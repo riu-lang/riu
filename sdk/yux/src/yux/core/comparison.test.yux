@@ -12,6 +12,7 @@
 
 ; ==================== 整数比较 ====================
 
+; 验证：整数的相等和不相等比较运算符
 #Test
 fn test_eq_ne() {
   assert_false(10 == 5)
@@ -20,6 +21,7 @@ fn test_eq_ne() {
   assert_false(10 != 10)
 }
 
+; 验证：比较运算符大于和大于等于的行为
 #Test
 fn test_gt_ge() {
   assert_true(10 > 5)
@@ -28,6 +30,7 @@ fn test_gt_ge() {
   assert_true(10 >= 10)
 }
 
+; 验证：比较运算符 < 和 <= 的行为
 #Test
 fn test_lt_le() {
   assert_false(10 < 5)
@@ -38,12 +41,14 @@ fn test_lt_le() {
 
 ; ==================== 浮点数比较 ====================
 
+; 验证：浮点数相等与不相等的比较
 #Test
 fn test_float_eq() {
   assert_true(3.14 == 3.14)
   assert_false(3.14 == 2.71)
 }
 
+; 验证：浮点数比较运算符小于和大于
 #Test
 fn test_float_lt_gt() {
   assert_true(1.5 < 2.5)
@@ -52,6 +57,7 @@ fn test_float_lt_gt() {
   assert_false(1.5 > 2.5)
 }
 
+; 验证：浮点数的 <= 和 >= 比较运算符
 #Test
 fn test_float_le_ge() {
   assert_true(1.0 <= 1.0)
@@ -62,6 +68,7 @@ fn test_float_le_ge() {
 
 ; ==================== String 比较 ====================
 
+; 验证：String 等于比较
 #Test
 fn test_string_eq() {
   let a String = "hello"
@@ -71,6 +78,7 @@ fn test_string_eq() {
   assert_false(a == c)
 }
 
+; 验证：String 不等运算符的行为
 #Test
 fn test_string_ne() {
   let a String = "hello"
@@ -81,6 +89,7 @@ fn test_string_ne() {
 
 ; ==================== 负数比较 ====================
 
+; 验证：负数之间的比较行为
 #Test
 fn test_neg_compare() {
   assert_true(-5 < 0)
@@ -92,6 +101,7 @@ fn test_neg_compare() {
 
 ; ==================== 各类型比较 ====================
 
+; 验证：i64 类型的比较操作符
 #Test
 fn test_i64_compare() {
   let a i64 = 1000000000
@@ -102,6 +112,7 @@ fn test_i64_compare() {
   assert_true(b >= a)
 }
 
+; 验证：u8 类型的比较操作符小于和大于
 #Test
 fn test_u8_compare() {
   let a u8 = 100

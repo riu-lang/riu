@@ -10,6 +10,7 @@
 
 ; ==================== 基本 loop + break ====================
 
+; 验证：基本 loop 中 break 的行为
 #Test
 fn test_loop_break() {
   #Mut let i i32 = 0
@@ -27,6 +28,7 @@ fn test_loop_break() {
 
 ; ==================== loop 内修改外部变量 ====================
 
+; 验证：循环内修改外部可变变量并达到条件后退出
 #Test
 fn test_loop_modify_outer() {
   #Mut let counter i32 = 0
@@ -39,6 +41,7 @@ fn test_loop_modify_outer() {
   assert_eq(counter, 10)
 }
 
+; 验证：循环累加求和行为
 #Test
 fn test_loop_accumulate_sum() {
   #Mut let sum i32 = 0
@@ -55,6 +58,7 @@ fn test_loop_accumulate_sum() {
 
 ; ==================== loop init（单变量） ====================
 
+; 验证：循环初始化计数器并累加值
 #Test
 fn test_loop_init_counter() {
   #Mut let sum i32 = 0
@@ -69,6 +73,7 @@ fn test_loop_init_counter() {
   assert_eq(i, 10)
 }
 
+; 验证：循环初始化类型注解与累加行为
 #Test
 fn test_loop_init_type_annot() {
   #Mut let sum i64 = 0
@@ -82,6 +87,7 @@ fn test_loop_init_type_annot() {
   assert_eq(sum, 4950)
 }
 
+; 验证：循环初始化带边界条件
 #Test
 fn test_loop_init_with_bound() {
   let n i32 = 7
@@ -98,6 +104,7 @@ fn test_loop_init_with_bound() {
 
 ; ==================== loop init（tuple 解构） ====================
 
+; 验证：循环初始化元组并累加值
 #Test
 fn test_loop_init_tuple() {
   #Mut let acc i32 = 0
@@ -113,6 +120,7 @@ fn test_loop_init_tuple() {
 
 ; ==================== loop init isize / usize ====================
 
+; 验证：循环初始化 usize 变量并计数
 #Test
 fn test_loop_init_usize() {
   #Mut let count i32 = 0
@@ -126,6 +134,7 @@ fn test_loop_init_usize() {
   assert_eq(count, 5)
 }
 
+; 验证：循环初始化 isize 类型变量并累加值
 #Test
 fn test_loop_init_isize() {
   #Mut let sum isize = 0
@@ -141,6 +150,7 @@ fn test_loop_init_isize() {
 
 ; ==================== labeled loop + break@ ====================
 
+; 验证：带标签的循环中使用 break@ 跳出外层循环
 #Test
 fn test_labeled_loop_basic() {
   #Mut let count i32 = 0
@@ -154,6 +164,7 @@ fn test_labeled_loop_basic() {
   assert_eq(count, 3)
 }
 
+; 验证：带标签的 break 跳出外层循环
 #Test
 fn test_labeled_break_basic() {
   #Mut let i i32 = 0
@@ -169,6 +180,7 @@ fn test_labeled_break_basic() {
   assert_eq(i, 2)
 }
 
+; 验证：带初始化的标签循环中使用 break 跳转到外部循环
 #Test
 fn test_labeled_break_with_init() {
   #Mut let sum i32 = 0
@@ -187,6 +199,7 @@ fn test_labeled_break_with_init() {
 
 ; ==================== 嵌套 labeled loop ====================
 
+; 验证：嵌套带标签的循环中，内层循环的 break@outer 是否能正确跳出外层循环
 #Test
 fn test_nested_labeled_loop() {
   #Mut let found i32 = 0
@@ -209,6 +222,7 @@ fn test_nested_labeled_loop() {
   assert_eq(found, 1)
 }
 
+; 验证：带标签的 break 能够跳出多层循环
 #Test
 fn test_labeled_break_deep() {
   #Mut let i i32 = 1
@@ -225,6 +239,7 @@ fn test_labeled_break_deep() {
 
 ; ==================== 边界条件 ====================
 
+; 验证：循环零次迭代
 #Test
 fn test_loop_zero_iteration() {
   #Mut let count i32 = 0
@@ -238,6 +253,7 @@ fn test_loop_zero_iteration() {
   assert_eq(count, 0)
 }
 
+; 验证：循环累乘并验证结果
 #Test
 fn test_loop_accumulate_product() {
   #Mut let product i32 = 1

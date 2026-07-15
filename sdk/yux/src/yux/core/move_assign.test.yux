@@ -19,6 +19,7 @@ struct MvPair {
 
 ; ==================== 标量 swap ====================
 
+; 验证：标量变量的移动赋值与交换行为
 #Test
 fn test_move_assign_scalar_swap() {
   #Mut let a i32 = 10
@@ -30,6 +31,7 @@ fn test_move_assign_scalar_swap() {
   assert_eq(b, 20)
 }
 
+; 验证：自赋值移动操作后值不变
 #Test
 fn test_move_assign_scalar_self_swap() {
   ; a <- a 自己移入自己：旧值==新值
@@ -41,6 +43,7 @@ fn test_move_assign_scalar_self_swap() {
 
 ; ==================== Rc<T> 句柄交换 ====================
 
+; 验证：Rc<T> 句柄交换后所有权转移
 #Test
 fn test_move_assign_box_swap() {
   #Mut let x Rc<MvPair> = MvPair::make(1, 2)
@@ -84,6 +87,7 @@ struct MvHolder {
   }
 }
 
+; 验证：字段级 move 赋值，旧值被取出并修改，新值被写入，原引用保持不变
 #Test
 fn test_move_assign_field_level() {
   #Mut let p1 Rc<MvPair> = MvPair::make(1, 2)
@@ -101,6 +105,7 @@ fn test_move_assign_field_level() {
 
 ; ==================== 表达式值语义：<- 返回旧值可直接消费 ====================
 
+; 验证：Move 赋值表达式返回旧值可直接参与运算
 #Test
 fn test_move_assign_expr_value_used() {
   #Mut let a i32 = 100
@@ -111,6 +116,7 @@ fn test_move_assign_expr_value_used() {
   assert_eq(a, 200)
 }
 
+; 验证：Move 赋值表达式将旧值传递给函数
 #Test
 fn test_move_assign_expr_value_passed_to_fn() {
   #Mut let x i32 = 50
@@ -123,6 +129,7 @@ fn test_move_assign_expr_value_passed_to_fn() {
 
 ; ==================== 右结合：a <- b <- c = a <- (b <- c) ====================
 
+; 验证：右结合赋值表达式 a <- b <- c 的行为
 #Test
 fn test_move_assign_right_assoc() {
   #Mut let a i32 = 1
@@ -140,6 +147,7 @@ fn test_move_assign_right_assoc() {
 
 ; ==================== #Mut let 延后赋值后使用 <- ====================
 
+; 验证：Move 赋值后变量值更新
 #Test
 fn test_move_assign_after_deferred_init() {
   #Mut let x i32
@@ -152,6 +160,7 @@ fn test_move_assign_after_deferred_init() {
 
 ; ==================== <- 作为表达式传给函数 + 忽略返回值 ====================
 
+; 验证：Move 赋值表达式作为参数传递给函数并忽略返回值
 #Test
 fn test_move_assign_expr_passed_to_fn_and_ignored() {
   #Mut let a i32 = 15
@@ -163,6 +172,7 @@ fn test_move_assign_expr_passed_to_fn_and_ignored() {
 
 ; ==================== 链式 <- 多次交换 ====================
 
+; 验证：链式赋值右结合性，确保变量按预期交换值
 #Test
 fn test_move_assign_chain_three() {
   #Mut let x i32 = 1
@@ -178,6 +188,7 @@ fn test_move_assign_chain_three() {
 
 ; ==================== 字段级 <- 多次交换同字段 ====================
 
+; 验证：多次移动赋值字段，确保旧值独立存活
 #Test
 fn test_move_assign_field_twice() {
   #Mut let p1 Rc<MvPair> = MvPair::make(1, 2)
@@ -199,6 +210,7 @@ fn test_move_assign_field_twice() {
 
 ; ==================== 元组成员移入赋值 ====================
 
+; 验证：元组成员移入赋值后旧值和新值正确更新
 #Test
 fn test_move_assign_tuple_member_scalar() {
   #Mut let t (i32, i32) = (10, 20)
@@ -209,6 +221,7 @@ fn test_move_assign_tuple_member_scalar() {
   assert_eq(t.1, 20)
 }
 
+; 验证：元组成员移动赋值与交换
 #Test
 fn test_move_assign_tuple_member_swap() {
   #Mut let a (i32, i32) = (1, 2)

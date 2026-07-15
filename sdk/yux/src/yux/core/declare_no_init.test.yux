@@ -13,6 +13,7 @@ fn test_declare_then_assign_i32() {
   assert_eq(a, 10)
 }
 
+; 验证：变量声明后赋值与读取
 #Test
 fn test_declare_then_assign_i64() {
   #Mut let b i64
@@ -20,6 +21,7 @@ fn test_declare_then_assign_i64() {
   assert_eq(b, 20)
 }
 
+; 验证：变量声明后赋值与比较浮点数
 #Test
 fn test_declare_then_assign_f32() {
   #Mut let c f32

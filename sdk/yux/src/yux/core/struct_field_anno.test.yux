@@ -32,6 +32,7 @@ struct ValCounter {
   }
 }
 
+; 验证：结构体字段构造与读取
 #Test
 fn test_val_field_construct_and_read() {
   let c ValCounter = ValCounter::make(1, 10)
@@ -39,6 +40,7 @@ fn test_val_field_construct_and_read() {
   assert_eq(c.value, 10)
 }
 
+; 验证：在方法中读取结构体的值字段
 #Test
 fn test_val_field_read_in_method() {
   let c ValCounter = ValCounter::make(100, 5)
@@ -46,6 +48,7 @@ fn test_val_field_read_in_method() {
   assert_eq(v, 100)
 }
 
+; 验证：非 #Val 字段可以被修改
 #Test
 fn test_val_field_other_field_mutable() {
   ; 非 #Val 字段 value 可以被修改
@@ -91,6 +94,7 @@ struct OuterFrozen {
   }
 }
 
+; 验证：Frozen 结构体字段构造与读取
 #Test
 fn test_frozen_field_construct_and_read() {
   let o OuterFrozen = OuterFrozen::make(3, 4, 99)
@@ -99,6 +103,7 @@ fn test_frozen_field_construct_and_read() {
   assert_eq(o.data.y, 4)
 }
 
+; 验证：在方法中读取冻结结构体的嵌套字段应允许（只读）
 #Test
 fn test_frozen_field_read_in_method() {
   let o OuterFrozen = OuterFrozen::make(5, 6, 0)
@@ -127,6 +132,7 @@ struct MixedAnno {
   }
 }
 
+; 验证：Mutable 和 Frozen 字段的混合使用，确保 Frozen 字段在修改后保持不变
 #Test
 fn test_mixed_frozen_and_mutable_field() {
   #Mut let m MixedAnno = MixedAnno::make(42, 0)
@@ -138,6 +144,7 @@ fn test_mixed_frozen_and_mutable_field() {
 
 ; ==================== #Val 字段 + 不可变变量 ====================
 
+; 验证：不可变变量中的 Val 字段读取与浅不可变性
 #Test
 fn test_val_field_in_immutable_var() {
   let c ValCounter = ValCounter::make(7, 0)
@@ -163,6 +170,7 @@ struct AnnoConstruct {
   }
 }
 
+; 验证：构造期 #Val / #Frozen 字段均可初始化
 #Test
 fn test_anno_field_construct_valid() {
   ; 构造期 #Val / #Frozen 字段均可初始化
@@ -173,6 +181,7 @@ fn test_anno_field_construct_valid() {
 
 ; ==================== struct literal 直接构造 #Val / #Frozen ====================
 
+; 验证：struct 字面量直接构造初始化 #Val 字段
 #Test
 fn test_val_field_struct_literal() {
   ; struct 字面量直接构造也应该初始化 #Val 字段
@@ -184,6 +193,7 @@ fn test_val_field_struct_literal() {
   assert_eq(c.value, 10)
 }
 
+; 验证：Frozen 结构体字面量初始化与字段访问
 #Test
 fn test_frozen_field_struct_literal() {
   let o OuterFrozen = OuterFrozen {
@@ -229,6 +239,7 @@ struct FrozenRcHolder {
   }
 }
 
+; 验证：通过 #Frozen 字段访问 Rc<T> 内部应该允许只读
 #Test
 fn test_frozen_rc_field_read() {
   ; 通过 #Frozen 字段访问 Rc<T> 内部应该允许只读
@@ -239,6 +250,7 @@ fn test_frozen_rc_field_read() {
 
 ; ==================== 结构体整体 #Frozen ====================
 
+; 验证：Frozen 结构体局部变量读取
 #Test
 fn test_local_frozen_let_read() {
   #Frozen let c ValCounter = ValCounter::make(1, 2)
@@ -248,6 +260,7 @@ fn test_local_frozen_let_read() {
 
 ; ==================== 边界：多次构造 #Val 初始化 ====================
 
+; 验证：多次构造 #Val 初始化
 #Test
 fn test_val_field_reconstruct() {
   ; 每次构造都可以初始化 #Val 字段

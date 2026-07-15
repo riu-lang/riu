@@ -22,6 +22,7 @@ struct DynCounter {
   }
 }
 
+; 验证：Dyn 转换为 ToString 后正确输出字符串
 #Test
 fn test_dyn_to_string_counter_pos() {
   let b Rc<DynCounter> = DynCounter::make(42)
@@ -29,6 +30,7 @@ fn test_dyn_to_string_counter_pos() {
   assert_eq(d.to_string(), "42")
 }
 
+; 验证：Dyn 转换为 ToString 后正确输出负数
 #Test
 fn test_dyn_to_string_counter_neg() {
   let b Rc<DynCounter> = DynCounter::make(-7)
@@ -36,6 +38,7 @@ fn test_dyn_to_string_counter_neg() {
   assert_eq(d.to_string(), "-7")
 }
 
+; 验证：Dyn 转换为 ToString 后，值为零时的字符串表示
 #Test
 fn test_dyn_to_string_counter_zero() {
   let b Rc<DynCounter> = DynCounter::make(0)
@@ -91,6 +94,7 @@ struct Rect {
   }
 }
 
+; 验证：Dynamic Shape 包装 Square 后的面积和名称
 #Test
 fn test_dyn_custom_draft_square() {
   let b Rc<Square> = Square::make(5)
@@ -99,6 +103,7 @@ fn test_dyn_custom_draft_square() {
   assert_eq(d.name(), "square")
 }
 
+; 验证：动态类型多态下矩形面积和名称正确性
 #Test
 fn test_dyn_custom_draft_rect() {
   let b Rc<Rect> = Rect::make(3, 4)
@@ -113,12 +118,14 @@ fn shape_area_via_dyn(d Dyn<Shape>) i64 {
   d.area()
 }
 
+; 验证：通过动态分发传递形状对象并计算面积
 #Test
 fn test_dyn_pass_to_fn_square() {
   let b Rc<Square> = Square::make(6)
   assert_eq(shape_area_via_dyn(Dyn:<Shape>(b)), 36)
 }
 
+; 验证：通过动态分发传递矩形对象并计算面积
 #Test
 fn test_dyn_pass_to_fn_rect() {
   let b Rc<Rect> = Rect::make(7, 2)
@@ -148,6 +155,7 @@ struct Labeled {
   }
 }
 
+; 验证：动态类型析构链式调用字符串字段释放
 #Test
 fn test_dyn_dtor_chain_string_field() {
   let b Rc<Labeled> = Labeled::make("triangle", 9)
@@ -168,6 +176,7 @@ fn test_dyn_to_string_box_i32() {
   assert_eq(d.to_string(), "42")
 }
 
+; 验证：Rc 包装的 i64 转换为 ToString 并正确输出字符串
 #Test
 fn test_dyn_to_string_box_i64() {
   let b Rc<i64> = 123
@@ -175,6 +184,7 @@ fn test_dyn_to_string_box_i64() {
   assert_eq(d.to_string(), "123")
 }
 
+; 验证：Rc 包装的布尔值转换为字符串
 #Test
 fn test_dyn_to_string_box_bool() {
   let b Rc<bool> = true
@@ -184,6 +194,7 @@ fn test_dyn_to_string_box_bool() {
 
 ; ---------- Array<Dyn<D>> 遍历：收集多个不同 U 的实现，遍历调用同一方法 ----------
 
+; 验证：遍历包含不同 Shape 实现的 Array，调用 area 方法并验证结果
 #Test
 fn test_dyn_array_iterate() {
   #Mut let arr Array<Dyn<Shape>> = []
@@ -244,6 +255,7 @@ struct DynHolder {
   }
 }
 
+; 验证：Rc 和 Dyn 的组合使用，确保动态类型和引用计数的正确性
 #Test
 fn test_dyn_field_owned() {
   let bg Rc<G> = G::make(42, "ok")
@@ -278,6 +290,7 @@ struct DynCaller {
   }
 }
 
+; 验证：动态调用构造方法并执行
 #Test
 fn test_dyn_ctor_in_method() {
   let c DynCaller = DynCaller::make(2)
@@ -308,6 +321,7 @@ struct N2 {
   }
 }
 
+; 验证：Dyn 默认行为是 fallthrough，根据内部值判断正负性
 #Test
 fn test_dyn_default_fallthrough() {
   let ra Rc<N2> = N2::make(3)

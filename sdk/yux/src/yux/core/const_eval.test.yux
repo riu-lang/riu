@@ -60,6 +60,7 @@ let GC i32 = (GA * 2) - GB
 #Cval
 let GMASK u32 = 0xFFu32 & 0x0Fu32
 
+; 验证：全局常量算术运算
 #Test
 fn test_cval_global_arith() {
   assert_eq(GA, 10)
@@ -79,6 +80,7 @@ let SQ i32 = const_square(5)
 #Cval
 let MIX i32 = const_add(SUM, SQ) * 2
 
+; 验证：常量表达式计算正确性
 #Test
 fn test_const_fn_basic() {
   assert_eq(SUM, 7)
@@ -94,6 +96,7 @@ let QA i32 = const_quad(3)
 #Cval
 let QB i32 = const_quad(const_quad(2))
 
+; 验证：常量表达式嵌套调用
 #Test
 fn test_const_fn_nested() {
   assert_eq(QA, 12)
@@ -114,6 +117,7 @@ let PV Point = Point {
   .y = 10 * 2
 }
 
+; 验证：全局结构体字面量的初始化与访问
 #Test
 fn test_global_struct_literal() {
   assert_eq(ORIGIN.x, 0)
@@ -136,6 +140,7 @@ let R Rect = Rect {
   }
 }
 
+; 验证：嵌套结构体字面量的访问和比较
 #Test
 fn test_nested_struct_literal() {
   assert_eq(R.tl.x, 1)
@@ -146,6 +151,7 @@ fn test_nested_struct_literal() {
 
 ; ==================== 运行期 struct 字面量 ====================
 
+; 验证：运行时 struct 字面量的创建和访问
 #Test
 fn test_struct_literal_runtime() {
   let p Point = Point {
@@ -162,6 +168,7 @@ fn test_struct_literal_runtime() {
 
 ; ==================== #Cval 局部声明 ====================
 
+; 验证：局部变量声明与初始化
 #Test
 fn test_cval_local() {
   #Cval let k i32 = 42
@@ -170,6 +177,7 @@ fn test_cval_local() {
   assert_eq(m, 43)
 }
 
+; 验证：常量表达式计算与布尔逻辑
 #Test
 fn test_cval_local_expr() {
   #Cval let a i32 = 6
@@ -183,6 +191,7 @@ fn test_cval_local_expr() {
 
 ; ==================== #Const fn 注解 ====================
 
+; 验证：常量函数注解是否正确处理常量表达式
 #Test
 fn test_const_fn_annotation() {
   assert_eq(const_add(2, 3), 5)

@@ -22,22 +22,26 @@ fn show_via_bound<T : ToString>(x T) String {
   x.to_string()
 }
 
+; 验证：通过边界类型显示用户定义类型
 #Test
 fn test_bound_user_type() {
   let t Tag = Tag::make(99)
   assert_eq(show_via_bound(t), "99")
 }
 
+; 验证：内置 i64 类型的 show_via_bound 函数是否正确显示整数
 #Test
 fn test_bound_builtin_i64() {
   assert_eq(show_via_bound(7), "7")
 }
 
+; 验证：内置布尔值的边界显示行为
 #Test
 fn test_bound_builtin_bool() {
   assert_eq(show_via_bound(true), "true")
 }
 
+; 验证：内置字符串的边界匹配显示
 #Test
 fn test_bound_builtin_string() {
   let s String = "world"

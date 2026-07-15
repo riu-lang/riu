@@ -32,6 +32,7 @@ struct P {
 ; 自由函数：单个 T& 形参，透传
 fn alias(p P&) P& = p
 
+; 验证：方法返回字段引用
 #Test
 fn test_method_field_ref() {
   #Mut let a P = P::make(7, 8)
@@ -39,6 +40,7 @@ fn test_method_field_ref() {
   assert_eq(rx, 7)
 }
 
+; 验证：方法返回自身引用
 #Test
 fn test_method_self_ref() {
   #Mut let a P = P::make(1, 2)
@@ -47,6 +49,7 @@ fn test_method_self_ref() {
   assert_eq(r.y, 2)
 }
 
+; 验证：别名参数传递与修改
 #Test
 fn test_freefn_alias_param() {
   #Mut let a P = P::make(11, 22)

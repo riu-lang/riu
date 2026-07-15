@@ -21,6 +21,7 @@ fn br_read_a(p BrPair&) i32 {
 
 ; ---------- borrow_as_ref_ok：as_ref(b) 取 Rc payload 的 T& ----------
 
+; 验证：as_ref(b) 取 Rc payload 的 T& 是否正确
 #Test
 fn test_borrow_as_ref_box_payload() {
   #Mut let b Rc<BrPair> = BrPair::make(7, 8)
@@ -31,6 +32,7 @@ fn test_borrow_as_ref_box_payload() {
 
 ; ---------- borrow_as_ref_chain：同一 box 两次 as_ref 共享借用 ----------
 
+; 验证：Rc 引用链共享借用
 #Test
 fn test_borrow_as_ref_two_shared() {
   #Mut let b Rc<BrPair> = BrPair::make(11, 22)
@@ -42,6 +44,7 @@ fn test_borrow_as_ref_two_shared() {
 
 ; ---------- borrow_array_push_after_drop：Array<T>& 借用消亡后 push ----------
 
+; 验证：Array 借用消亡后仍然可以 push 元素
 #Test
 fn test_borrow_array_push_after_drop() {
   #Mut let a Array<i32> = [1i32, 2i32, 3i32]
@@ -56,6 +59,7 @@ fn test_borrow_array_push_after_drop() {
 
 ; ---------- borrow_array_ref_in_loop：循环内借用按块作用域，每次迭代消亡 ----------
 
+; 验证：循环内借用数组按块作用域，每次迭代消亡后仍可修改原数组
 #Test
 fn test_borrow_array_ref_in_loop() {
   #Mut let a Array<i32> = [10i32, 20i32, 30i32]
@@ -74,6 +78,7 @@ fn test_borrow_array_ref_in_loop() {
 
 ; ---------- borrow_array_via_ref_method：通过 ref 读取，原句柄写 ----------
 
+; 验证：通过 ref 读取数组后，原句柄可以继续写入
 #Test
 fn test_borrow_array_read_via_ref_then_write_origin() {
   #Mut let a Array<i32> = [10i32, 20i32]
@@ -88,6 +93,7 @@ fn test_borrow_array_read_via_ref_then_write_origin() {
 
 ; ---------- borrow_box_reassign_after_drop：嵌套块借用消亡后 box 重赋 ----------
 
+; 验证：嵌套块借用消亡后 box 重赋
 #Test
 fn test_borrow_box_reassign_after_drop() {
   #Mut let b Rc<BrPair> = BrPair::make(7, 8)
@@ -103,6 +109,7 @@ fn test_borrow_box_reassign_after_drop() {
 
 ; ---------- borrow_copy_bind_root：拷贝绑定后根仍是原变量 ----------
 
+; 验证：拷贝绑定后根变量值不变
 #Test
 fn test_borrow_copy_bind_root() {
   #Mut let c i32 = 7
@@ -118,6 +125,7 @@ fn br_first_byte<T>(p T&) i32 {
   ret 1
 }
 
+; 验证：借用泛型引用参数的首字节获取
 #Test
 fn test_borrow_generic_ref_param() {
   #Mut let x i32 = 42

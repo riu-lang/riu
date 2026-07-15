@@ -24,16 +24,19 @@ fn fns_sub(a i32, b i32) i32 {
 fn fns_nop() {
 }
 
+; 验证：函数调用表达式返回值正确性
 #Test
 fn test_call_expr_body() {
   assert_eq(fns_add(1, 2), 3)
 }
 
+; 验证：调用包含块体的函数并验证其返回值
 #Test
 fn test_call_block_body() {
   assert_eq(fns_sub(5, 3), 2)
 }
 
+; 验证：调用无返回值的函数并断言真值
 #Test
 fn test_call_void() {
   fns_nop()
@@ -48,16 +51,19 @@ fn fns_param_group_mixed(a, b i32, c f64) f64 = (a + b).to_f64() + c
 
 fn fns_param_group_multi(a, b i32, x, y f64) f64 = (a + b).to_f64() + x + y
 
+; 验证：fns_param_group 函数的两个参数相加
 #Test
 fn test_param_group_two() {
   assert_eq(fns_param_group(10, 20), 30)
 }
 
+; 验证：参数分组混合使用时的函数调用行为
 #Test
 fn test_param_group_mixed() {
   assert_eq(fns_param_group_mixed(1, 2, 3.0), 6.0)
 }
 
+; 验证：多参数分组函数的计算结果
 #Test
 fn test_param_group_multi() {
   assert_eq(fns_param_group_multi(1, 2, 3.0, 4.0), 10.0)
@@ -91,42 +97,50 @@ fn fns_early_ret_void(flag bool) {
   assert_true(flag)
 }
 
+; 验证：负数输入时 multi_ret 函数返回 -1
 #Test
 fn test_multi_ret_negative() {
   assert_eq(fns_multi_ret(-5), -1)
 }
 
+; 验证：多返回值函数在输入零时是否返回零
 #Test
 fn test_multi_ret_zero() {
   assert_eq(fns_multi_ret(0), 0)
 }
 
+; 验证：多返回值函数的正向返回值
 #Test
 fn test_multi_ret_positive() {
   assert_eq(fns_multi_ret(5), 1)
 }
 
+; 验证：多返回表达式函数的正确性
 #Test
 fn test_multi_ret_expr_large() {
   assert_eq(fns_multi_ret_expr(20), 40)
 }
 
+; 验证：多返回值表达式在特定输入下的行为
 #Test
 fn test_multi_ret_expr_medium() {
   assert_eq(fns_multi_ret_expr(7), 17)
 }
 
+; 验证：多返回值表达式在小范围内的行为
 #Test
 fn test_multi_ret_expr_small() {
   assert_eq(fns_multi_ret_expr(3), 3)
 }
 
+; 验证：早期返回 void 函数后跳过后续代码
 #Test
 fn test_early_ret_void_skip() {
   fns_early_ret_void(false)
   assert_true(true)
 }
 
+; 验证：函数提前返回导致的空执行
 #Test
 fn test_early_ret_void_exec() {
   fns_early_ret_void(true)
@@ -141,39 +155,46 @@ fn fns_add_generic<T>(a T, b T) T = a + b
 
 fn fns_pair_first<T>(a T, b T) T = a
 
+; 验证：泛型 identity 函数对 i32 类型的正确性
 #Test
 fn test_generic_identity_i32() {
   let a i32 = fns_identity(42)
   assert_eq(a, 42)
 }
 
+; 验证：泛型 identity 函数对 i64 类型的正确性
 #Test
 fn test_generic_identity_i64() {
   let a i64 = fns_identity(100i64)
   assert_eq(a, 100)
 }
 
+; 验证：泛型 identity 函数对 f64 类型的值进行正确返回
 #Test
 fn test_generic_identity_f64() {
   let a f64 = fns_identity(3.14)
   assert_eq(a, 3.14)
 }
 
+; 验证：泛型加法函数对整数的正确性
 #Test
 fn test_generic_add_i32() {
   assert_eq(fns_add_generic(10, 20), 30)
 }
 
+; 验证：泛型函数 fns_add_generic 对 i64 类型的加法
 #Test
 fn test_generic_add_i64() {
   assert_eq(fns_add_generic(100, 200), 300)
 }
 
+; 验证：泛型加法函数对浮点数的处理
 #Test
 fn test_generic_add_f64() {
   assert_eq(fns_add_generic(1.5, 2.5), 4.0)
 }
 
+; 验证：泛型 Pair 的 first 成员访问
 #Test
 fn test_generic_pair_first() {
   assert_eq(fns_pair_first(1, 2), 1)
@@ -182,12 +203,14 @@ fn test_generic_pair_first() {
 
 ; ==================== 类型推断调用 ====================
 
+; 验证：泛型推断整数类型
 #Test
 fn test_generic_inferred_i32() {
   let a i32 = fns_identity(999)
   assert_eq(a, 999)
 }
 
+; 验证：泛型推断 i64 类型的正确性
 #Test
 fn test_generic_inferred_i64() {
   let a i64 = fns_identity(123456789i64)
@@ -200,11 +223,13 @@ fn fns_double(x i32) i32 = x * 2
 
 fn fns_triple(x i32) i32 = x * 3
 
+; 验证：嵌套函数调用是否正确计算结果
 #Test
 fn test_nested_call() {
   assert_eq(fns_double(fns_triple(5)), 30)
 }
 
+; 验证：链式调用函数的正确性
 #Test
 fn test_chain_call() {
   assert_eq(fns_add(fns_double(3), fns_triple(2)), 12)

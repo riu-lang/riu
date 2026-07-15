@@ -19,12 +19,14 @@ struct Counter {
   }
 }
 
+; 验证：Counter 显式实现 to_string 方法返回正确字符串
 #Test
 fn test_counter_explicit_to_string() {
   let c Counter = Counter::make(42)
   assert_eq(c.to_string(), "42")
 }
 
+; 验证：Counter 显式实现负数的字符串表示
 #Test
 fn test_counter_explicit_negative() {
   let c Counter = Counter::make(-7)
@@ -33,6 +35,7 @@ fn test_counter_explicit_negative() {
 
 ; ---------- 内置类型走 i8/i32/i64/... : ToString ----------
 
+; 验证：内置 i64 类型转换为字符串的行为
 #Test
 fn test_builtin_i64_to_string() {
   assert_eq(123i64.to_string(), "123")
@@ -40,6 +43,7 @@ fn test_builtin_i64_to_string() {
   assert_eq(0i64.to_string(), "0")
 }
 
+; 验证：内置窄类型转换为字符串的行为
 #Test
 fn test_builtin_narrow_int_to_string() {
   ; 窄类型委派宽类型；同样走 Type : ToString 块
@@ -48,12 +52,14 @@ fn test_builtin_narrow_int_to_string() {
   assert_eq(0i8.to_string(), "0")
 }
 
+; 验证：内置布尔值转换为字符串的行为
 #Test
 fn test_builtin_bool_to_string() {
   assert_eq(true.to_string(), "true")
   assert_eq(false.to_string(), "false")
 }
 
+; 验证：String 转换为字符串时共享底层数据块且等值
 #Test
 fn test_builtin_string_to_string() {
   ; String : ToString —— 共享底层 Array<u32> Block，等值

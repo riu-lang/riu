@@ -5,6 +5,7 @@
 
 ; ---- _ptr_write + _ptr_as_ref (via Rc<i32>) ----
 
+; 验证：Ptr 和 Rc<i32> 之间的转换与解引用
 #Test
 fn test_ptr_write_and_from_rc() {
   #Mut let x Rc<i32> = 42
@@ -16,6 +17,7 @@ fn test_ptr_write_and_from_rc() {
 
 ; ---- _ptr_write 写穿 Rc<i32> payload ----
 
+; 验证：通过指针修改 Rc<i32> 的值并读取验证
 #Test
 fn test_ptr_write_to_rc_payload() {
   #Mut let a Rc<i32> = 10

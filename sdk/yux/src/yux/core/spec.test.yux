@@ -233,6 +233,7 @@ fn test_spec_default_body_parse() {
   assert_true(true)
 }
 
+; 验证：spec body 内允许定义静态字段
 #Test
 fn test_spec_static_field_parse() {
   ; spec body 内允许 #Static 字段段
@@ -241,6 +242,7 @@ fn test_spec_static_field_parse() {
 
 ; ==================== Phase 3: 默认体 fall-through ====================
 
+; 验证：基本的默认体 fall-through 行为
 #Test
 fn test_spec_default_fallthrough_basic() {
   let a N = N::make(3)
@@ -248,6 +250,7 @@ fn test_spec_default_fallthrough_basic() {
   assert_true(a.lt(&b))
 }
 
+; 验证：K 类型的 ge 方法默认行为是 fallthrough
 #Test
 fn test_spec_default_fallthrough_block() {
   let a K = K::make(5)
@@ -255,6 +258,7 @@ fn test_spec_default_fallthrough_block() {
   assert_true(a.ge(&b))
 }
 
+; 验证：K2 结构体的默认值与抽象方法组合行为
 #Test
 fn test_spec_combine_default_plus_abstract() {
   let k K2 = K2::make(7)
@@ -263,6 +267,7 @@ fn test_spec_combine_default_plus_abstract() {
 
 ; ==================== Phase 5: SDK 内置 Eq/Ord 默认体 ====================
 
+; 验证：SDK 内置 Eq 默认体的 eq 和 ne 方法行为
 #Test
 fn test_spec_default_fallthrough_eq_sdk() {
   let a NEq = NEq::make(3)
@@ -272,6 +277,7 @@ fn test_spec_default_fallthrough_eq_sdk() {
   assert_true(a.ne(&c))
 }
 
+; 验证：NOrd 类型的比较行为，包括 lt、le、gt 和 ge 方法
 #Test
 fn test_spec_default_fallthrough_ord_sdk() {
   let a NOrd = NOrd::make(3)
@@ -285,6 +291,7 @@ fn test_spec_default_fallthrough_ord_sdk() {
 
 ; ==================== Disambig @ 测试 ====================
 
+; 验证：基本的 disambig @ 行为
 #Test
 fn test_spec_disambig_at_basic() {
   let s S2 = S2::make()
@@ -292,6 +299,7 @@ fn test_spec_disambig_at_basic() {
   assert_eq(s.call_at(), 1)
 }
 
+; 验证：Spec disambiguation at e3132 with delegate method
 #Test
 fn test_spec_disambig_at_e3132_delegate() {
   let s S = S::make()
@@ -300,6 +308,7 @@ fn test_spec_disambig_at_e3132_delegate() {
   assert_eq(s.pick_b(), 2)
 }
 
+; 验证：Override 和 Delegate 方法调用的歧义解析
 #Test
 fn test_spec_disambig_at_override_delegate() {
   let s S10 = S10::make()

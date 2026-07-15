@@ -28,6 +28,7 @@ struct Pair<T> {
   }
 }
 
+; 验证：Pair 结构体的创建与字段访问
 #Test
 fn test_pair_i32() {
   let p Pair<i32> = Pair:<i32>::make(10, 20)
@@ -35,6 +36,7 @@ fn test_pair_i32() {
   assert_eq(p.b, 20)
 }
 
+; 验证：Pair 结构体中两个 f64 类型字段的求和
 #Test
 fn test_pair_f64() {
   let p Pair<f64> = Pair:<f64>::make(1.5f64, 2.5f64)
@@ -42,6 +44,7 @@ fn test_pair_f64() {
   assert_eq(sum, 4.0f64)
 }
 
+; 验证：Identity 函数与 Pair 结构体的使用
 #Test
 fn test_identity_and_pair() {
   let a i32 = identity(100)
@@ -50,6 +53,7 @@ fn test_identity_and_pair() {
   assert_eq(p.b, 101)
 }
 
+; 验证：make_pair 函数创建的元组在解构后保持值不变
 #Test
 fn test_make_pair_then_identity() {
   let t (i32, i32) = make_pair(3, 7)

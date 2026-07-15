@@ -24,6 +24,7 @@ fn test_usize_suffix_literal() {
     assert_eq(b, 0usize)
 }
 
+; 验证：Array 使用 usize 类型索引访问元素
 #Test
 fn test_usize_suffix_array_index() {
     #Mut let arr Array<i32> = [10, 20, 30]
@@ -33,12 +34,14 @@ fn test_usize_suffix_array_index() {
     assert_eq(arr.get(2usize), 30)
 }
 
+; 验证：Array len 方法返回 usize 类型长度
 #Test
 fn test_usize_suffix_len_compare() {
     #Mut let arr Array<i32> = [1, 2, 3]
     assert_eq(arr.len(), 3usize)
 }
 
+; 验证：usize 后缀算术运算
 #Test
 fn test_usize_suffix_arithmetic() {
     let a usize = 10usize
@@ -46,6 +49,7 @@ fn test_usize_suffix_arithmetic() {
     assert_eq(b, 30usize)
 }
 
+; 验证：isize 类型后缀字面量的解析与赋值
 #Test
 fn test_isize_suffix_literal() {
     let a isize = 42isize
@@ -293,6 +297,7 @@ fn test_usize_shift_boundary() {
 
 ; ==================== isize/usize 类型转换 ====================
 
+; 验证：isize 到 i32 的类型转换
 #Test
 fn test_isize_to_i32() {
     let a isize = 42isize
@@ -300,6 +305,7 @@ fn test_isize_to_i32() {
     assert_eq(b, 42)
 }
 
+; 验证：isize 转换为 i64 的正确性
 #Test
 fn test_isize_to_i64() {
     let a isize = -123isize
@@ -307,6 +313,7 @@ fn test_isize_to_i64() {
     assert_eq(b, -123)
 }
 
+; 验证：isize 转换为 f64 的正确性
 #Test
 fn test_isize_to_f64() {
     let a isize = 100isize
@@ -314,6 +321,7 @@ fn test_isize_to_f64() {
     assert_eq(b, 100.0f64)
 }
 
+; 验证：usize 转换为 i64 的正确性
 #Test
 fn test_usize_to_i64() {
     let a usize = 42usize
@@ -321,6 +329,7 @@ fn test_usize_to_i64() {
     assert_eq(b, 42)
 }
 
+; 验证：Usize 转换为 F64 的正确性
 #Test
 fn test_usize_to_f64() {
     let a usize = 100usize
@@ -328,6 +337,7 @@ fn test_usize_to_f64() {
     assert_eq(b, 100.0f64)
 }
 
+; 验证：isize 转 usize 的正确性
 #Test
 fn test_isize_to_usize() {
     let a isize = 42isize
@@ -335,6 +345,7 @@ fn test_isize_to_usize() {
     assert_eq(b, 42usize)
 }
 
+; 验证：usize 转换为 isize 的正确性
 #Test
 fn test_usize_to_isize() {
     let a usize = 42usize
@@ -342,6 +353,7 @@ fn test_usize_to_isize() {
     assert_eq(b, 42isize)
 }
 
+; 验证：isize 转换为字符串时保留正负号
 #Test
 fn test_isize_to_string() {
     let a isize = 42isize
@@ -353,6 +365,7 @@ fn test_isize_to_string() {
     assert_eq(s2, "-7")
 }
 
+; 验证：Uszie 类型转换为字符串
 #Test
 fn test_usize_to_string() {
     let a usize = 42usize
@@ -360,6 +373,7 @@ fn test_usize_to_string() {
     assert_eq(s, "42")
 }
 
+; 验证：isize 转换为 bool 的行为
 #Test
 fn test_isize_to_bool() {
     let a isize = 0isize
@@ -369,6 +383,7 @@ fn test_isize_to_bool() {
     assert_eq((-1isize).to_bool(), true)
 }
 
+; 验证：usize 转换为 bool 的行为
 #Test
 fn test_usize_to_bool() {
     let a usize = 0usize

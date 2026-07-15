@@ -29,6 +29,7 @@ struct Holder {
 
 ; ---------- 原子类型：纯值复制 ----------
 
+; 验证：纯值类型复制行为
 #Test
 fn test_copy_of_i32() {
   #Mut let x i32 = 42
@@ -38,6 +39,7 @@ fn test_copy_of_i32() {
 
 ; ---------- Rc<T>：handle copy + strong++ ----------
 
+; 验证：Rc 复制句柄后数据共享与 strong 增加
 #Test
 fn test_copy_of_box_handle() {
   #Mut let b1 Rc<CopyPair> = CopyPair::make(11, 22)
@@ -66,6 +68,7 @@ fn test_array_clone_i32() {
   assert_eq(a2[0], 10i32)
 }
 
+; 验证：空数组的 clone 操作
 #Test
 fn test_array_clone_empty() {
   let a1 Array<i32> = []
@@ -73,6 +76,7 @@ fn test_array_clone_empty() {
   assert_eq(a2.len(), 0)
 }
 
+; 验证：Array clone 方法是否正确复制结构体数组
 #Test
 fn test_array_clone_struct() {
   #Mut let a1 Array<CopyPair> = [CopyPair::make(1, 2), CopyPair::make(3, 4), CopyPair::make(5, 6)]
@@ -84,6 +88,7 @@ fn test_array_clone_struct() {
   assert_eq(a2[2].b, 6)
 }
 
+; 验证：Array clone 后修改源数组不影响克隆数组
 #Test
 fn test_array_clone_string() {
   #Mut let a1 Array<String> = ["hello", "world"]
@@ -99,6 +104,7 @@ fn test_array_clone_string() {
 
 ; ---------- String：内含 Array<u32>，递归 retain ----------
 
+; 验证：String 复制后内容不变
 #Test
 fn test_copy_of_string() {
   #Mut let s1 String = "hello"
@@ -109,6 +115,7 @@ fn test_copy_of_string() {
 
 ; ---------- 平凡 struct（无 RC 字段）：纯 memcpy ----------
 
+; 验证：纯结构体无 RC 字段的复制行为
 #Test
 fn test_copy_of_struct_no_rc_field() {
   #Mut let p1 CopyPair = CopyPair::make(5, 6)
@@ -119,6 +126,7 @@ fn test_copy_of_struct_no_rc_field() {
 
 ; ---------- 含 Rc 字段的 struct：字段级 retain ----------
 
+; 验证：复制包含 Rc 字段的 struct 后，引用计数和字段值保持一致
 #Test
 fn test_copy_of_struct_with_box_field() {
   #Mut let p Rc<CopyPair> = CopyPair::make(5, 6)

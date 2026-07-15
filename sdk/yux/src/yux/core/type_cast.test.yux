@@ -14,6 +14,7 @@
 
 ; ==================== 整数类型互转 ====================
 
+; 验证：i32 到 i64 的类型转换是否正确
 #Test
 fn test_i32_to_i64() {
   let a i32 = 10
@@ -21,6 +22,7 @@ fn test_i32_to_i64() {
   assert_eq(c, 10)
 }
 
+; 验证：i64 转换为 i32 的正确性
 #Test
 fn test_i64_to_i32() {
   let h i64 = -123
@@ -28,6 +30,7 @@ fn test_i64_to_i32() {
   assert_eq(i, -123)
 }
 
+; 验证：u8 到 i32 的类型转换
 #Test
 fn test_u8_to_i32() {
   let d u8 = 100
@@ -35,6 +38,7 @@ fn test_u8_to_i32() {
   assert_eq(e, 100)
 }
 
+; 验证：i32 转换为 u8 的行为
 #Test
 fn test_i32_to_u8() {
   let a i32 = 200
@@ -42,6 +46,7 @@ fn test_i32_to_u8() {
   assert_eq(b, 200)
 }
 
+; 验证：i16 到 i32 的类型转换
 #Test
 fn test_i16_to_i32() {
   let a i16 = 1000
@@ -49,6 +54,7 @@ fn test_i16_to_i32() {
   assert_eq(b, 1000)
 }
 
+; 验证：u32 到 i64 的类型转换是否正确
 #Test
 fn test_u32_to_i64() {
   let a u32 = 4000000000
@@ -58,6 +64,7 @@ fn test_u32_to_i64() {
 
 ; ==================== 浮点类型转换 ====================
 
+; 验证：浮点数从 f32 转换到 f64 的行为
 #Test
 fn test_f32_to_f64() {
   let a f32 = 2.5f32
@@ -65,6 +72,7 @@ fn test_f32_to_f64() {
   assert_eq(b, 2.5f64)
 }
 
+; 验证：浮点数类型转换 f64 到 f32
 #Test
 fn test_f64_to_f32() {
   let a f64 = 2.718
@@ -74,6 +82,7 @@ fn test_f64_to_f32() {
 
 ; ==================== 整数与浮点互转 ====================
 
+; 验证：整数到浮点数的类型转换
 #Test
 fn test_i32_to_f64() {
   let a i32 = 10
@@ -81,6 +90,7 @@ fn test_i32_to_f64() {
   assert_eq(b, 10.0f64)
 }
 
+; 验证：f64 转 i32 的截断行为
 #Test
 fn test_f64_to_i32_trunc() {
   let f f64 = 3.7
@@ -88,6 +98,7 @@ fn test_f64_to_i32_trunc() {
   assert_eq(g, 3)
 }
 
+; 验证：浮点数到整数的类型转换
 #Test
 fn test_f64_to_i64() {
   let a f64 = 12345.6
@@ -95,6 +106,7 @@ fn test_f64_to_i64() {
   assert_eq(b, 12345)
 }
 
+; 验证：i64 转换为 f64 的精度和范围
 #Test
 fn test_i64_to_f64() {
   let a i64 = 1000000000
@@ -104,6 +116,7 @@ fn test_i64_to_f64() {
 
 ; ==================== to_bool() 转换 ====================
 
+; 验证：i32 转换为 bool 时，0 应该转换为 false
 #Test
 fn test_i32_to_bool_zero() {
   let a i32 = 0
@@ -111,6 +124,7 @@ fn test_i32_to_bool_zero() {
   assert_eq(b, false)
 }
 
+; 验证：非零整数转换为布尔值为真
 #Test
 fn test_i32_to_bool_nonzero() {
   let a i32 = 1
@@ -118,6 +132,7 @@ fn test_i32_to_bool_nonzero() {
   assert_eq(b, true)
 }
 
+; 验证：负整数转换为布尔值结果为真
 #Test
 fn test_i32_to_bool_negative() {
   let a i32 = -1
@@ -125,6 +140,7 @@ fn test_i32_to_bool_negative() {
   assert_eq(b, true)
 }
 
+; 验证：整数转换为布尔值，偶数非零值转换为真
 #Test
 fn test_i32_to_bool_even_nonzero() {
   let a i32 = 2
@@ -132,6 +148,7 @@ fn test_i32_to_bool_even_nonzero() {
   assert_eq(b, true)
 }
 
+; 验证：u64 转换为 bool 时，非零偶数应为真
 #Test
 fn test_u64_to_bool_even_nonzero() {
   let a u64 = 10
@@ -141,6 +158,7 @@ fn test_u64_to_bool_even_nonzero() {
 
 ; ==================== to_string() 转换 ====================
 
+; 验证：i32 转换为字符串
 #Test
 fn test_i32_to_string() {
   let a i32 = 42
@@ -148,6 +166,7 @@ fn test_i32_to_string() {
   assert_eq(s, "42")
 }
 
+; 验证：i64 转换为字符串
 #Test
 fn test_i64_to_string() {
   let a i64 = 123456789
@@ -155,6 +174,7 @@ fn test_i64_to_string() {
   assert_eq(s, "123456789")
 }
 
+; 验证：f64 转换为字符串时包含预期数字部分
 #Test
 fn test_f64_to_string() {
   let a f64 = 3.14
@@ -162,6 +182,7 @@ fn test_f64_to_string() {
   assert_contains(s, "3")
 }
 
+; 验证：布尔值转换为字符串
 #Test
 fn test_bool_to_string() {
   let a bool = true
@@ -195,6 +216,7 @@ fn test_f32_to_f64() {
   assert_eq(b, 2.5f64)
 }
 
+; 验证：浮点数到布尔值的类型转换行为
 #Test
 fn test_f32_to_bool() {
   assert_eq((0.0f32).to_bool(), false)
@@ -202,6 +224,7 @@ fn test_f32_to_bool() {
   assert_eq((-0.5f32).to_bool(), true)
 }
 
+; 验证：浮点数到布尔值的类型转换行为
 #Test
 fn test_f64_to_bool() {
   assert_eq((0.0f64).to_bool(), false)

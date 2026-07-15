@@ -15,12 +15,14 @@ fn test_int_literal_default() {
   assert_eq(a, 42)
 }
 
+; 验证：i8 类型字面量的创建与比较
 #Test
 fn test_i8_literal() {
   let e = 42
   assert_eq(e, 42)
 }
 
+; 验证：i8 类型的最小值和最大值
 #Test
 fn test_i8_min_max() {
   let lo i8 = -128
@@ -29,72 +31,84 @@ fn test_i8_min_max() {
   assert_eq(hi, 127)
 }
 
+; 验证：u8 类型的最大值
 #Test
 fn test_u8_max() {
   let c u8 = 255
   assert_eq(c, 255)
 }
 
+; 验证：i16 类型的最小值
 #Test
 fn test_i16_min() {
   let d i16 = -32768
   assert_eq(d, -32768)
 }
 
+; 验证：u16 类型的最大值是否正确
 #Test
 fn test_u16_max() {
   let e u16 = 65535
   assert_eq(e, 65535)
 }
 
+; 验证：i32 类型的最小值
 #Test
 fn test_i32_min() {
   let f i32 = -2147483648
   assert_eq(f, -2147483648)
 }
 
+; 验证：u64 类型字面量的创建与比较
 #Test
 fn test_u64_literal() {
   let f = 100
   assert_eq(f, 100)
 }
 
+; 验证：负整数字面量的解析与赋值
 #Test
 fn test_i32_negative_literal() {
   let g = -123
   assert_eq(g, -123)
 }
 
+; 验证：i64 类型的最小值加一
 #Test
 fn test_i64_min_plus_one() {
   let g i64 = -9223372036854775807
   assert_eq(g, -9223372036854775807)
 }
 
+; 验证：f64 类型的默认值
 #Test
 fn test_f64_default() {
   let h = 3.14
   assert_eq(h, 3.14)
 }
 
+; 验证：浮点数字面量的创建与比较
 #Test
 fn test_f32_literal() {
   let i = 2.5f32
   assert_eq(i, 2.5f32)
 }
 
+; 验证：显式浮点数字面量的创建与比较
 #Test
 fn test_f64_literal_explicit() {
   let j = 1.0f64
   assert_eq(j, 1.0f64)
 }
 
+; 验证：负浮点数字面量的表示与比较
 #Test
 fn test_f64_negative() {
   let k = -0.5
   assert_eq(k, -0.5)
 }
 
+; 验证：布尔字面量的真值判断
 #Test
 fn test_bool_literals() {
   assert_eq(true, true)

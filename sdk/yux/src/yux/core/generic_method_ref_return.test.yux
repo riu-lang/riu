@@ -27,6 +27,7 @@ struct Box<T> {
   }
 }
 
+; 验证：Box 获取引用并读取值
 #Test
 fn test_box_get_ref_i32() {
   #Mut let b Box<i32> = Box:<i32>::make(42)
@@ -34,6 +35,7 @@ fn test_box_get_ref_i32() {
   assert_eq(r, 42)
 }
 
+; 验证：Box 获取引用并修改值
 #Test
 fn test_box_get_ref_and_modify() {
   #Mut let b Box<i32> = Box:<i32>::make(10)

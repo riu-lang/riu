@@ -36,6 +36,7 @@ ColorAlias = Color
 
 ; ==================== 基本枚举测试 ====================
 
+; 验证：Enum 匹配零值变体
 #Test
 fn test_enum_match_zero_variant() {
   let c Color = Color::Red
@@ -47,6 +48,7 @@ fn test_enum_match_zero_variant() {
   assert_eq(n, 1)
 }
 
+; 验证：Enum 匹配零值带括号
 #Test
 fn test_enum_match_zero_with_paren() {
   let c Color = Color::Green()
@@ -58,6 +60,7 @@ fn test_enum_match_zero_with_paren() {
   assert_eq(n, 20)
 }
 
+; 验证：Enum match 其他分支处理
 #Test
 fn test_enum_match_else_branch() {
   let c Color = Color::Blue
@@ -68,6 +71,7 @@ fn test_enum_match_else_branch() {
   assert_eq(n, 99)
 }
 
+; 验证：Enum match 匹配包含浮点数的元组负载
 #Test
 fn test_enum_match_tuple_payload_f64() {
   let s Shape = Shape::Circle(2.0f64)
@@ -80,6 +84,7 @@ fn test_enum_match_tuple_payload_f64() {
   assert_eq(area, 12.56f64)
 }
 
+; 验证：Enum 匹配带元组负载的矩形面积计算
 #Test
 fn test_enum_match_tuple_payload_rect() {
   let s Shape = Shape::Rect(3.0f64, 4.0f64)
@@ -91,6 +96,7 @@ fn test_enum_match_tuple_payload_rect() {
   assert_eq(area, 12.0f64)
 }
 
+; 验证：Enum 匹配别名并返回对应值
 #Test
 fn test_enum_match_alias() {
   let c ColorAlias = ColorAlias::Red
@@ -102,6 +108,7 @@ fn test_enum_match_alias() {
   assert_eq(n, 7)
 }
 
+; 验证：Enum match 检查字符串负载
 #Test
 fn test_enum_match_string_payload_check() {
   let t Tagged = Tagged::Msg("hello")
@@ -113,6 +120,7 @@ fn test_enum_match_string_payload_check() {
   assert_eq(flag, 1)
 }
 
+; 验证：Enum match 匹配 Pair 类型并提取其第一个字段
 #Test
 fn test_enum_match_pair_payload_use_first() {
   let t Tagged = Tagged::Pair(42, "hello world")
@@ -124,6 +132,7 @@ fn test_enum_match_pair_payload_use_first() {
   assert_eq(n, 42)
 }
 
+; 验证：Enum match 消费拥有者载荷并按标签释放资源
 #Test
 fn test_enum_match_drops_owned_payload() {
   ; 直接 match 一个临时构造的含 String 的 enum：
@@ -138,6 +147,7 @@ fn test_enum_match_drops_owned_payload() {
 
 ; ==================== Rc<E> 枚举上堆 ====================
 
+; 验证：Rc 枚举匹配与解包
 #Test
 fn test_enum_box_basic() {
   #Mut let b Rc<Color> = Color::Red
@@ -149,6 +159,7 @@ fn test_enum_box_basic() {
   assert_eq(n, 1)
 }
 
+; 验证：Rc 包装的枚举类型处理不同变体的匹配与计算
 #Test
 fn test_enum_box_with_payload() {
   #Mut let b Rc<Shape> = Shape::Circle(5.0f64)
@@ -160,6 +171,7 @@ fn test_enum_box_with_payload() {
   assert_eq(area, 78.5f64)
 }
 
+; 验证：Rc 引用计数枚举重新赋值
 #Test
 fn test_enum_box_reassign() {
   #Mut let b Rc<Color> = Color::Red
@@ -174,6 +186,7 @@ fn test_enum_box_reassign() {
 
 ; ==================== Array<E> 枚举数组 ====================
 
+; 验证：Enum 数组基本操作，包括长度获取和元素匹配
 #Test
 fn test_enum_array_basic() {
   #Mut let arr Array<Color> = [Color::Red, Color::Green, Color::Blue]
@@ -187,6 +200,7 @@ fn test_enum_array_basic() {
   assert_eq(n, 1)
 }
 
+; 验证：Enum 数组中不同变体的匹配与计算
 #Test
 fn test_enum_array_with_payload() {
   #Mut let arr Array<Shape> = [Shape::Point, Shape::Circle(2.0f64), Shape::Rect(3.0f64, 4.0f64)]
@@ -200,6 +214,7 @@ fn test_enum_array_with_payload() {
   assert_eq(area, 12.56f64)
 }
 
+; 验证：Enum 数组元素修改与匹配
 #Test
 fn test_enum_array_modify() {
   #Mut let arr Array<Color> = [Color::Red, Color::Green]
@@ -215,6 +230,7 @@ fn test_enum_array_modify() {
 
 ; ==================== E? 可空枚举 ====================
 
+; 验证：可空枚举 has_value 方法返回 true 表示有值
 #Test
 fn test_enum_nullable_has_value() {
   #Mut let opt Color? = Color::Red
@@ -228,12 +244,14 @@ fn test_enum_nullable_has_value() {
   assert_eq(n, 1)
 }
 
+; 验证：Nullable 枚举在没有值时 has 方法返回 false
 #Test
 fn test_enum_nullable_no_value() {
   #Mut let opt Color? = null
   assert_false(opt.has())
 }
 
+; 验证：可选枚举在有值时返回正确内容
 #Test
 fn test_enum_nullable_with_payload() {
   #Mut let opt Shape? = Shape::Rect(4.0f64, 5.0f64)
@@ -259,6 +277,7 @@ enum Inner {
   Y(i32)
 }
 
+; 验证：嵌套 match 表达式处理枚举值
 #Test
 fn test_enum_nested_match() {
   let o Outer = Outer::B(Color::Green)
@@ -274,6 +293,7 @@ fn test_enum_nested_match() {
   assert_eq(result, 20)
 }
 
+; 验证：嵌套 match 表达式处理枚举值并计算结果
 #Test
 fn test_enum_nested_match_with_payload() {
   let o Outer = Outer::A(5)
@@ -309,6 +329,7 @@ enum Geometry {
   Coord(f64, f64)
 }
 
+; 验证：Enum match 返回结构体
 #Test
 fn test_enum_match_return_struct() {
   let g Geometry = Geometry::Coord(3.0f64, 4.0f64)
@@ -322,6 +343,7 @@ fn test_enum_match_return_struct() {
   assert_eq(p.y, 4.0f64)
 }
 
+; 验证：Enum match 匹配 Geometry 类型并返回元组
 #Test
 fn test_enum_match_return_tuple() {
   let g Geometry = Geometry::Coord(5.0f64, 6.0f64)
@@ -343,6 +365,7 @@ enum Container {
   Listed(Array<i32>)
 }
 
+; 验证：枚举类型中 Box 包装的值的解包和求和
 #Test
 fn test_enum_payload_box() {
   #Mut let bp Rc<Point> = Point::make(10.0f64, 20.0f64)
@@ -357,6 +380,7 @@ fn test_enum_payload_box() {
   assert_eq(result, 30.0f64)
 }
 
+; 验证：Enum 包含数组时，获取数组长度并返回
 #Test
 fn test_enum_payload_array() {
   #Mut let arr Array<i32> = [1, 2, 3, 4, 5]

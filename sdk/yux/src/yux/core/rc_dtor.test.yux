@@ -35,6 +35,7 @@ fn test_rc_typed_release_has_rc() {
 
 ; ---------- 共享句柄：最后一个离开才触发 typed release ----------
 
+; 验证：Rc 共享句柄最后一个离开时触发类型释放
 #Test
 fn test_rc_typed_release_shared() {
   #Mut let base i64 = rc_leak_count()
@@ -60,6 +61,7 @@ fn make_has_rc(v i32) Rc<HasRc> {
   ret r
 }
 
+; 验证：Rc 引用计数在作用域结束时正确释放
 #Test
 fn test_rc_typed_release_return() {
   #Mut let base i64 = rc_leak_count()
@@ -73,6 +75,7 @@ fn test_rc_typed_release_return() {
 
 ; ---------- B-2 inline-dtor: Rc<Rc<i32>> 内层 typed release ----------
 
+; 验证：Rc<Rc<i32>> 内层 Rc 在外层作用域离开时正确释放
 #Test
 fn test_rc_nested_rc_typed_release() {
   #Mut let base i64 = rc_leak_count()
@@ -88,6 +91,7 @@ fn test_rc_nested_rc_typed_release() {
 
 ; ---------- 深层嵌套: Rc<Rc<Rc<i32>>> ----------
 
+; 验证：Rc 三重嵌套作用域退出时的析构顺序和内存释放
 #Test
 fn test_rc_dtor_triple_nested() {
   #Mut let base i64 = rc_leak_count()
@@ -102,6 +106,7 @@ fn test_rc_dtor_triple_nested() {
 
 ; ---------- Rc<Array<i32>> typed release ----------
 
+; 验证：Rc<Array<i32>> 离开作用域时，Array 被正确释放
 #Test
 fn test_rc_dtor_array() {
   #Mut let base i64 = rc_leak_count()
@@ -115,6 +120,7 @@ fn test_rc_dtor_array() {
 
 ; ---------- Rc<Rc<Array<i32>>> 双层 ----------
 
+; 验证：双层 Rc 解构时，内部 Rc 和数组正确释放
 #Test
 fn test_rc_dtor_rc_array() {
   #Mut let base i64 = rc_leak_count()

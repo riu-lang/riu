@@ -54,6 +54,7 @@ fn parse_double(n i32) i32 {
   ret v * 2
 }
 
+; 验证：正常情况下，try 块中的成功值能够穿越并赋值给外部变量
 #Test
 fn test_fallible_success_path() {
   ; 正常成功值穿越 try block
@@ -65,6 +66,7 @@ fn test_fallible_success_path() {
   assert_eq(x, 7)
 }
 
+; 验证：捕获零变体错误并返回默认值
 #Test
 fn test_fallible_zero_variant_caught() {
   ; ret ParseErr::Empty → catch arm 命中
@@ -76,6 +78,7 @@ fn test_fallible_zero_variant_caught() {
   assert_eq(x, -1)
 }
 
+; 验证：在 match 表达式中解构 fallible 函数的 payload 变量
 #Test
 fn test_fallible_payload_variant_match_in_arm() {
   ; ret ParseErr::Invalid(-5) → arm 内 match e 解构 payload
@@ -90,6 +93,7 @@ fn test_fallible_payload_variant_match_in_arm() {
   assert_eq(x, -5)
 }
 
+; 验证：parse_double 内部 parse_pos(0)! 透传 ParseErr::Empty
 #Test
 fn test_bang_propagate_same_type() {
   ; parse_double 内部 parse_pos(0)! 透传 ParseErr::Empty
@@ -101,6 +105,7 @@ fn test_bang_propagate_same_type() {
   assert_eq(x, 99)
 }
 
+; 验证：parse_double 成功路径处理
 #Test
 fn test_bang_propagate_success() {
   ; parse_double(3) 成功路径：parse_pos(3)! 取 3 → 返回 6
@@ -112,6 +117,7 @@ fn test_bang_propagate_success() {
   assert_eq(x, 6)
 }
 
+; 验证：try 表达式成功和错误情况下的值合并
 #Test
 fn test_try_phi_merges_success_and_catch() {
   ; try 表达式值合并：成功 → 7；错误 → 11
@@ -129,6 +135,7 @@ fn test_try_phi_merges_success_and_catch() {
   assert_eq(err, 11)
 }
 
+; 验证：try 块内不同 #Fallible 类型的错误分别路由到对应的 catch arm
 #Test
 fn test_try_multi_catch_routes_by_type() {
   ; 单 try 内不同 #Fallible 类型，各自路由到对应 catch arm
@@ -182,6 +189,7 @@ fn process(n i32) i32 {
   ret r
 }
 
+; 验证：嵌套 try 包裹并重新抛出解析错误
 #Test
 fn test_nested_try_wrap_rethrow_parse() {
   let tag i32 = try {
@@ -195,6 +203,7 @@ fn test_nested_try_wrap_rethrow_parse() {
   assert_eq(tag, 1)
 }
 
+; 验证：嵌套 try-wrap 和 rethrow IO 错误
 #Test
 fn test_nested_try_wrap_rethrow_io() {
   let tag i32 = try {
@@ -208,6 +217,7 @@ fn test_nested_try_wrap_rethrow_io() {
   assert_eq(tag, 2)
 }
 
+; 验证：嵌套的 try-wrap 和 rethrow 成功场景
 #Test
 fn test_nested_try_wrap_rethrow_success() {
   let tag i32 = try {
@@ -218,6 +228,7 @@ fn test_nested_try_wrap_rethrow_success() {
   assert_eq(tag, 9)
 }
 
+; 验证：catch arm 中的 ret 流终止不影响 try 表达式 phi 合并
 #Test
 fn test_catch_arm_terminates_via_outer_ret() {
   ; catch arm 以 ret 流终止 → 不参与 try 表达式 phi 合并

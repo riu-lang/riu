@@ -7,6 +7,7 @@
 
 ; ==================== 比较运算符 ====================
 
+; 验证：Rc<i32> 与 i32 的相等运算符重载
 #Test
 fn test_rc_i32_eq_literal() {
   let r Rc<i32> = 42
@@ -14,12 +15,14 @@ fn test_rc_i32_eq_literal() {
   assert_true(42 == r)
 }
 
+; 验证：Rc<i32> 不等于字面量 0 的比较
 #Test
 fn test_rc_i32_ne_literal() {
   let r Rc<i32> = 42
   assert_true(r != 0)
 }
 
+; 验证：Rc<i32> 相等性比较
 #Test
 fn test_rc_i32_eq_rc() {
   let a Rc<i32> = 10
@@ -27,6 +30,7 @@ fn test_rc_i32_eq_rc() {
   assert_true(a == b)
 }
 
+; 验证：Rc<i32> 不等运算符功能
 #Test
 fn test_rc_i32_ne_rc() {
   let a Rc<i32> = 10
@@ -34,18 +38,21 @@ fn test_rc_i32_ne_rc() {
   assert_true(a != b)
 }
 
+; 验证：Rc 包装的 f64 等于操作
 #Test
 fn test_rc_f64_eq() {
   let r Rc<f64> = 3.14
   assert_true(r == 3.14)
 }
 
+; 验证：Rc 包装的布尔值相等性比较
 #Test
 fn test_rc_bool_eq() {
   let r Rc<bool> = true
   assert_true(r == true)
 }
 
+; 验证：Rc<i32> 的比较运算符行为
 #Test
 fn test_rc_i32_cmp_lt() {
   let r Rc<i32> = 10
@@ -54,6 +61,7 @@ fn test_rc_i32_cmp_lt() {
   assert_true(r <= 20)
 }
 
+; 验证：Rc 包装的 i32 大小比较运算符重载
 #Test
 fn test_rc_i32_cmp_gt() {
   let r Rc<i32> = 30
@@ -62,6 +70,7 @@ fn test_rc_i32_cmp_gt() {
   assert_true(r >= 20)
 }
 
+; 验证：Rc 包装的 f64 类型比较操作符
 #Test
 fn test_rc_f64_cmp() {
   let r Rc<f64> = 1.5
@@ -71,6 +80,7 @@ fn test_rc_f64_cmp() {
 
 ; ==================== 算术运算符 ====================
 
+; 验证：Rc 包装的 i32 加法运算
 #Test
 fn test_rc_i32_add() {
   let a Rc<i32> = 10
@@ -79,6 +89,7 @@ fn test_rc_i32_add() {
   assert_eq(c, 30)
 }
 
+; 验证：Rc 包装的 i32 加法与赋值
 #Test
 fn test_rc_i32_add_literal() {
   let r Rc<i32> = 10
@@ -86,6 +97,7 @@ fn test_rc_i32_add_literal() {
   assert_eq(c, 15)
 }
 
+; 验证：Rc 包装的 i32 相减操作
 #Test
 fn test_rc_i32_sub() {
   let a Rc<i32> = 30
@@ -94,6 +106,7 @@ fn test_rc_i32_sub() {
   assert_eq(c, 20)
 }
 
+; 验证：Rc 包装的 i32 相乘操作
 #Test
 fn test_rc_i32_mul() {
   let a Rc<i32> = 7
@@ -102,6 +115,7 @@ fn test_rc_i32_mul() {
   assert_eq(c, 42)
 }
 
+; 验证：Rc 包装的 i32 类型除法操作
 #Test
 fn test_rc_i32_div() {
   let a Rc<i32> = 100
@@ -110,6 +124,7 @@ fn test_rc_i32_div() {
   assert_eq(c, 25)
 }
 
+; 验证：Rc 包装的 i32 取模运算
 #Test
 fn test_rc_i32_mod() {
   let a Rc<i32> = 17
@@ -118,6 +133,7 @@ fn test_rc_i32_mod() {
   assert_eq(c, 2)
 }
 
+; 验证：Rc 包装的浮点数相加
 #Test
 fn test_rc_f64_add() {
   let a Rc<f64> = 1.5
@@ -126,6 +142,7 @@ fn test_rc_f64_add() {
   assert_eq(c, 4.0)
 }
 
+; 验证：Rc 指针下 f64 类型的减法操作
 #Test
 fn test_rc_f64_sub() {
   let a Rc<f64> = 10.0
@@ -134,6 +151,7 @@ fn test_rc_f64_sub() {
   assert_eq(c, 7.0)
 }
 
+; 验证：Rc 包装的浮点数乘法
 #Test
 fn test_rc_f64_mul() {
   let a Rc<f64> = 3.0
@@ -142,6 +160,7 @@ fn test_rc_f64_mul() {
   assert_eq(c, 12.0)
 }
 
+; 验证：Rc 包装的浮点数除法
 #Test
 fn test_rc_f64_div() {
   let a Rc<f64> = 10.0
@@ -152,6 +171,7 @@ fn test_rc_f64_div() {
 
 ; ==================== 一元运算符 ====================
 
+; 验证：Rc 包装的 i32 取负运算符行为
 #Test
 fn test_rc_i32_neg() {
   let r Rc<i32> = 42
@@ -159,6 +179,7 @@ fn test_rc_i32_neg() {
   assert_eq(c, -42)
 }
 
+; 验证：Rc 包装的 f64 取负操作
 #Test
 fn test_rc_f64_neg() {
   let r Rc<f64> = 3.14
@@ -166,6 +187,7 @@ fn test_rc_f64_neg() {
   assert_eq(c, -3.14)
 }
 
+; 验证：Rc 包装的 i32 取反操作
 #Test
 fn test_rc_i32_rev() {
   let r Rc<i32> = 0xF0
@@ -173,6 +195,7 @@ fn test_rc_i32_rev() {
   assert_eq(c, ~0xF0)
 }
 
+; 验证：Rc 包装的布尔值取反
 #Test
 fn test_rc_bool_not() {
   let r Rc<bool> = true
@@ -182,6 +205,7 @@ fn test_rc_bool_not() {
 
 ; ==================== 位运算符 ====================
 
+; 验证：Rc 包装的 i32 类型按位与运算
 #Test
 fn test_rc_i32_bitwise_and() {
   let a Rc<i32> = 0xFF
@@ -190,6 +214,7 @@ fn test_rc_i32_bitwise_and() {
   assert_eq(c, 0x0F)
 }
 
+; 验证：Rc 包装的 i32 进行按位或运算
 #Test
 fn test_rc_i32_bitwise_or() {
   let a Rc<i32> = 0xF0
@@ -198,6 +223,7 @@ fn test_rc_i32_bitwise_or() {
   assert_eq(c, 0xFF)
 }
 
+; 验证：Rc 包装的 i32 进行按位异或运算
 #Test
 fn test_rc_i32_bitwise_xor() {
   let a Rc<i32> = 0xFF
@@ -206,6 +232,7 @@ fn test_rc_i32_bitwise_xor() {
   assert_eq(c, 0xF0)
 }
 
+; 验证：Rc 包装的 i32 左移操作
 #Test
 fn test_rc_i32_shl() {
   let r Rc<i32> = 1
@@ -213,6 +240,7 @@ fn test_rc_i32_shl() {
   assert_eq(c, 16)
 }
 
+; 验证：Rc 包装的 i32 右移操作
 #Test
 fn test_rc_i32_shr() {
   let r Rc<i32> = 64
@@ -251,6 +279,7 @@ struct Vec2f {
   }
 }
 
+; 验证：Rc<Vec2f> 加法运算符重载
 #Test
 fn test_rc_vec2f_add_vec2f() {
   let r Rc<Vec2f> = Vec2f::make(1.0, 2.0)
@@ -260,6 +289,7 @@ fn test_rc_vec2f_add_vec2f() {
   assert_eq(s.y, 6.0)
 }
 
+; 验证：Rc<Vec2f> 加法运算符重载
 #Test
 fn test_rc_vec2f_add_rc_vec2f() {
   let a Rc<Vec2f> = Vec2f::make(1.0, 2.0)
@@ -269,6 +299,7 @@ fn test_rc_vec2f_add_rc_vec2f() {
   assert_eq(s.y, 6.0)
 }
 
+; 验证：Rc<Vec2f> 的减法操作
 #Test
 fn test_rc_vec2f_sub() {
   let r Rc<Vec2f> = Vec2f::make(5.0, 4.0)
@@ -278,6 +309,7 @@ fn test_rc_vec2f_sub() {
   assert_eq(d.y, 3.0)
 }
 
+; 验证：Rc<Vec2f> 乘以标量后得到正确结果
 #Test
 fn test_rc_vec2f_mul_scalar() {
   let r Rc<Vec2f> = Vec2f::make(2.0, 3.0)
@@ -286,6 +318,7 @@ fn test_rc_vec2f_mul_scalar() {
   assert_eq(s.y, 6.0)
 }
 
+; 验证：Rc<Vec2f> 的负号操作符行为
 #Test
 fn test_rc_vec2f_neg() {
   let r Rc<Vec2f> = Vec2f::make(3.0, -4.0)
@@ -296,6 +329,7 @@ fn test_rc_vec2f_neg() {
 
 ; ==================== 复合运算 ====================
 
+; 验证：Rc 引用计数智能指针链式加法
 #Test
 fn test_rc_i32_chain_add() {
   let a Rc<i32> = 10
@@ -305,6 +339,7 @@ fn test_rc_i32_chain_add() {
   assert_eq(sum, 60)
 }
 
+; 验证：Rc<i32> 表达式计算与赋值
 #Test
 fn test_rc_i32_expr() {
   let r Rc<i32> = 10

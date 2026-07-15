@@ -18,6 +18,7 @@ struct StPointF {
   }
 }
 
+; 验证：Struct 基本字段的读取
 #Test
 fn test_struct_basic_fields() {
   let p = StPointF::make(1.0, 2.0)
@@ -48,6 +49,7 @@ struct Pt {
   }
 }
 
+; 验证：Struct 等号重载与不等号重载
 #Test
 fn test_struct_eq_overload() {
   let a Pt = Pt::make(1, 2)
@@ -110,6 +112,7 @@ fn st_modify_byval(p StPointI) {
   p.y = 888
 }
 
+; 验证：按值传递结构体，修改不影响调用者原始值
 #Test
 fn test_struct_byval_trivial_no_caller_change() {
   #Mut let pt StPointI = StPointI::make(10, 20)
@@ -125,6 +128,7 @@ fn st_observe_holder(h StHolder) i32 {
   ret h.bx.a + h.bx.b + h.tag
 }
 
+; 验证：Rc 字段在结构体中传递时的引用计数行为
 #Test
 fn test_struct_byval_with_rc_field() {
   #Mut let p Rc<StPair> = StPair::make(11, 22)
@@ -155,6 +159,7 @@ fn st_observe_generic(h StGenericHolder<Rc<StPair>>) i32 {
   ret h.payload.a + h.payload.b + h.tag
 }
 
+; 验证：Rc 引用计数共享与修改
 #Test
 fn test_struct_byval_generic_instance() {
   #Mut let p Rc<StPair> = StPair::make(11, 22)
@@ -167,6 +172,7 @@ fn test_struct_byval_generic_instance() {
 
 ; ---------- struct_assign_rc：含 RC 字段 struct 整体赋值 retain-then-release ----------
 
+; 验证：Rc 字段的结构体整体赋值，引用计数变化及自赋值行为
 #Test
 fn test_struct_whole_assign_rc() {
   #Mut let p Rc<StPair> = StPair::make(1, 2)
@@ -190,6 +196,7 @@ fn test_struct_whole_assign_rc() {
 
 ; ---------- field_reassign_rc：字段重赋值 retain-then-release ----------
 
+; 验证：Rc 引用计数共享修改字段
 #Test
 fn test_struct_field_reassign_rc() {
   #Mut let p Rc<StPair> = StPair::make(11, 22)
@@ -253,6 +260,7 @@ struct DaaBranchy {
   }
 }
 
+; 验证：DaaPoint 构造函数初始化字段正确读取
 #Test
 fn test_ctor_daa_rhs_reads_init_field() {
   let p = DaaPoint::make(10, 5)
@@ -260,6 +268,7 @@ fn test_ctor_daa_rhs_reads_init_field() {
   assert_eq(p.y, 15)
 }
 
+; 验证：带 Box 字段的结构体构造与访问
 #Test
 fn test_ctor_daa_with_box_field() {
   #Mut let bp Rc<DaaPoint> = DaaPoint::make(100, 200)
@@ -268,6 +277,7 @@ fn test_ctor_daa_with_box_field() {
   assert_eq(tg.bx.x, 100)
 }
 
+; 验证：DaaBranchy 构造函数在不同参数下的初始化行为
 #Test
 fn test_ctor_daa_branch_full_init() {
   let b1 = DaaBranchy::make(true, 3, 0)
@@ -312,6 +322,7 @@ struct Vec2 {
   }
 }
 
+; 验证：Vec2 加法运算符重载
 #Test
 fn test_op_overload_plus() {
   let a Vec2 = Vec2::make(1, 2)
@@ -321,6 +332,7 @@ fn test_op_overload_plus() {
   assert_eq(c.y, 6)
 }
 
+; 验证：重载减法运算符，确保向量相减正确计算结果
 #Test
 fn test_op_overload_minus() {
   let a Vec2 = Vec2::make(10, 20)
@@ -330,6 +342,7 @@ fn test_op_overload_minus() {
   assert_eq(c.y, 16)
 }
 
+; 验证：Vec2 结构体的乘法运算符重载
 #Test
 fn test_op_overload_mul() {
   let a Vec2 = Vec2::make(2, 3)
@@ -339,6 +352,7 @@ fn test_op_overload_mul() {
   assert_eq(c.y, 15)
 }
 
+; 验证：Vec2 的负号重载行为
 #Test
 fn test_op_overload_neg() {
   let a Vec2 = Vec2::make(5, -3)
@@ -347,6 +361,7 @@ fn test_op_overload_neg() {
   assert_eq(b.y, 3)
 }
 
+; 验证：向量加法重载链式调用
 #Test
 fn test_op_overload_chain() {
   let a Vec2 = Vec2::make(1, 2)
@@ -396,6 +411,7 @@ struct OrderedPoint {
   }
 }
 
+; 验证：重载的相等和不相等运算符
 #Test
 fn test_op_overload_eq_ne() {
   let a OrderedPoint = OrderedPoint::make(1, 2)
@@ -407,6 +423,7 @@ fn test_op_overload_eq_ne() {
   assert_true(a != c)
 }
 
+; 验证：OrderedPoint 的小于运算符重载正确性
 #Test
 fn test_op_overload_lt() {
   let a OrderedPoint = OrderedPoint::make(1, 2)
@@ -417,6 +434,7 @@ fn test_op_overload_lt() {
   assert_false(b < a)
 }
 
+; 验证：OrderedPoint 的 <= 运算符重载行为
 #Test
 fn test_op_overload_le() {
   let a OrderedPoint = OrderedPoint::make(1, 2)
@@ -427,6 +445,7 @@ fn test_op_overload_le() {
   assert_false(c <= a)
 }
 
+; 验证：重载大于运算符的行为
 #Test
 fn test_op_overload_gt() {
   let a OrderedPoint = OrderedPoint::make(2, 1)
@@ -435,6 +454,7 @@ fn test_op_overload_gt() {
   assert_false(b > a)
 }
 
+; 验证：重载大于等于运算符的行为
 #Test
 fn test_op_overload_ge() {
   let a OrderedPoint = OrderedPoint::make(1, 2)
@@ -474,6 +494,7 @@ struct BitFlags {
   }
 }
 
+; 验证：位与运算符重载
 #Test
 fn test_op_overload_bit_and() {
   let a BitFlags = BitFlags::make(0xFFu32)
@@ -482,6 +503,7 @@ fn test_op_overload_bit_and() {
   assert_eq(c.bits, 0x0Fu32)
 }
 
+; 验证：BitFlags 的按位或运算符重载
 #Test
 fn test_op_overload_bit_or() {
   let a BitFlags = BitFlags::make(0xF0u32)
@@ -490,6 +512,7 @@ fn test_op_overload_bit_or() {
   assert_eq(c.bits, 0xFFu32)
 }
 
+; 验证：BitFlags 的按位异或运算符重载
 #Test
 fn test_op_overload_bit_xor() {
   let a BitFlags = BitFlags::make(0xFFu32)
@@ -498,6 +521,7 @@ fn test_op_overload_bit_xor() {
   assert_eq(c.bits, 0xF0u32)
 }
 
+; 验证：位运算符重载的按位取反操作
 #Test
 fn test_op_overload_bit_inv() {
   let a BitFlags = BitFlags::make(0x00u32)
@@ -527,6 +551,7 @@ struct SimpleDtor {
   }
 }
 
+; 验证：基本析构器在离开作用域时正确执行
 #Test
 fn test_dtor_basic() {
   #Mut let d SimpleDtor = SimpleDtor::make(42)
@@ -534,6 +559,7 @@ fn test_dtor_basic() {
   ; d 离开作用域时 fn ~() 体执行，然后字段级析构（i32 无需析构，等价 no-op）
 }
 
+; 验证：多个对象离开作用域时，析构函数按后进先出顺序调用
 #Test
 fn test_dtor_multiple() {
   #Mut let d1 SimpleDtor = SimpleDtor::make(1)
@@ -543,6 +569,7 @@ fn test_dtor_multiple() {
   ; d2, d1 离开作用域时析构函数逆序调用
 }
 
+; 验证：内部作用域结束时的析构行为
 #Test
 fn test_dtor_nested_scope() {
   {
@@ -580,6 +607,7 @@ struct OuterStruct {
   }
 }
 
+; 验证：嵌套结构体访问
 #Test
 fn test_nested_struct_access() {
   let o OuterStruct = OuterStruct::make(42, 7)
@@ -609,6 +637,7 @@ struct FluentBuilder {
   }
 }
 
+; 验证：FluentBuilder 方法链调用与结果计算
 #Test
 fn test_method_chain() {
   let b FluentBuilder = FluentBuilder::make()

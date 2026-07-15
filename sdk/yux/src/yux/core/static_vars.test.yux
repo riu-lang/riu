@@ -43,11 +43,13 @@ struct Counter {
 
 ; ==================== 全局 val 基本 ====================
 
+; 验证：全局变量的基本使用和读取
 #Test
 fn test_global_val_basic() {
   assert_eq(ANSWER, 42)
 }
 
+; 验证：全局变量调用函数
 #Test
 fn test_global_val_calls_fn() {
   assert_eq(PORT, 8080)
@@ -55,11 +57,13 @@ fn test_global_val_calls_fn() {
 
 ; ==================== 全局 #Mut 读写 ====================
 
+; 验证：全局可变变量的读取行为
 #Test
 fn test_global_mut_read() {
   assert_eq(COUNTER, 0)
 }
 
+; 验证：全局变量可变写入与读取
 #Test
 fn test_global_mut_write() {
   COUNTER = 42
@@ -69,11 +73,13 @@ fn test_global_mut_write() {
 
 ; ==================== 全局 const-eval ====================
 
+; 验证：全局常量算术表达式求值
 #Test
 fn test_const_eval_val_arith() {
   assert_eq(ARITH_VAL, 70)
 }
 
+; 验证：常量可变性与算术运算
 #Test
 fn test_const_eval_mut_arith() {
   assert_eq(MUT_COUNTER, 150)
@@ -82,6 +88,7 @@ fn test_const_eval_mut_arith() {
   MUT_COUNTER = 150
 }
 
+; 验证：常量结构体的值在编译时求值
 #Test
 fn test_const_eval_val_struct() {
   assert_eq(ORIGIN.x, 0)
@@ -90,11 +97,13 @@ fn test_const_eval_val_struct() {
 
 ; ==================== struct 静态字段 ====================
 
+; 验证：静态字段的默认值是否正确
 #Test
 fn test_struct_static_val_field() {
   assert_eq(Counter::DEFAULT, 42)
 }
 
+; 验证：读取静态可变字段的值
 #Test
 fn test_struct_static_mut_field_read() {
   assert_eq(Counter::TOTAL, 10)

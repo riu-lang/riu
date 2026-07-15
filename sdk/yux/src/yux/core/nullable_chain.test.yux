@@ -44,6 +44,7 @@ struct OuterVal {
 
 ; ==================== 嵌套 ?. 链式 ====================
 
+; 验证：两层可选链式访问
 #Test
 fn test_nullable_chain_two_level_some() {
   #Mut let inner InnerVal = InnerVal::make(42)
@@ -55,6 +56,7 @@ fn test_nullable_chain_two_level_some() {
   assert_eq(v ?? -1, 42)
 }
 
+; 验证：两层嵌套空值的可选链操作
 #Test
 fn test_nullable_chain_two_level_null_mid() {
   #Mut let outerMid OuterVal? = null
@@ -65,6 +67,7 @@ fn test_nullable_chain_two_level_null_mid() {
 
 ; ==================== Nullable<String> ====================
 
+; 验证：Nullable<String> 的 has 和 ?? 操作符行为
 #Test
 fn test_nullable_string_some() {
   #Mut let s String? = "hello"
@@ -72,6 +75,7 @@ fn test_nullable_string_some() {
   assert_eq(s ?? "fallback", "hello")
 }
 
+; 验证：NullableString 在 null 时的行为
 #Test
 fn test_nullable_string_null() {
   #Mut let s String? = null
@@ -81,6 +85,7 @@ fn test_nullable_string_null() {
 
 ; ==================== 混合类型 ?? ====================
 
+; 验证：nullable coalesce 在非空值时返回原值
 #Test
 fn test_nullable_coalesce_some() {
   #Mut let x i32? = 7
@@ -89,6 +94,7 @@ fn test_nullable_coalesce_some() {
   assert_eq(r, 7)
 }
 
+; 验证：Nullable coalesce 在值为 null 时返回 fallback 值
 #Test
 fn test_nullable_coalesce_null() {
   #Mut let y i32? = null
@@ -99,6 +105,7 @@ fn test_nullable_coalesce_null() {
 
 ; ==================== Nullable reassign with ?? ====================
 
+; 验证：Nullable 变量重新赋值与空合并操作符
 #Test
 fn test_nullable_reassign_coalesce() {
   #Mut let x i64? = null
@@ -130,6 +137,7 @@ struct ValWithMethod {
   }
 }
 
+; 验证：可选链式调用在存在值时正确调用方法
 #Test
 fn test_safe_method_call_some() {
   #Mut let v ValWithMethod = ValWithMethod::make(42)
@@ -139,6 +147,7 @@ fn test_safe_method_call_some() {
   assert_eq(r ?? -1, 42)
 }
 
+; 验证：空值链式调用短路行为
 #Test
 fn test_safe_method_call_null() {
   #Mut let n ValWithMethod? = null
@@ -147,6 +156,7 @@ fn test_safe_method_call_null() {
   assert_eq(r ?? -99, -99)
 }
 
+; 验证：可选链式调用方法并传递参数
 #Test
 fn test_safe_method_call_with_arg() {
   #Mut let v ValWithMethod = ValWithMethod::make(21)
@@ -158,6 +168,7 @@ fn test_safe_method_call_with_arg() {
 
 ; ==================== ?. SDKBuiltin 类型方法调用 ====================
 
+; 验证：在可选的 SDKBuiltin 类型上调用方法并处理空值
 #Test
 fn test_safe_method_string_len_some() {
   #Mut let s String? = "hello"
@@ -166,6 +177,7 @@ fn test_safe_method_string_len_some() {
   assert_eq(r ?? 0usize, 5usize)
 }
 
+; 验证：在 null 的可选字符串上调用 safe method len 返回默认值
 #Test
 fn test_safe_method_string_len_null() {
   #Mut let s String? = null

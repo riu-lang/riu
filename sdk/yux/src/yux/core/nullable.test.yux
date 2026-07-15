@@ -24,12 +24,14 @@ struct NN {
 
 ; ---------- nullable_basic：?? 拿 fallback ----------
 
+; 验证：Nullable 的 some_or_default 方法返回 Some 值
 #Test
 fn test_nullable_some_or_default() {
   #Mut let nx i32? = 42
   assert_eq(nx ?? -1, 42)
 }
 
+; 验证：Nullable 类型的 null_or_default 方法
 #Test
 fn test_nullable_null_or_default() {
   #Mut let ny i32? = null
@@ -38,6 +40,7 @@ fn test_nullable_null_or_default() {
 
 ; ---------- nullable_chain：?.field 短路 ----------
 
+; 验证：Nullable chain 在存在字段时返回字段值
 #Test
 fn test_nullable_chain_some_field() {
   #Mut let n NN = NN::make(7)
@@ -46,6 +49,7 @@ fn test_nullable_chain_some_field() {
   assert_eq(v1 ?? -1, 7)
 }
 
+; 验证：Nullable 链式访问空字段的默认值处理
 #Test
 fn test_nullable_chain_null_field() {
   #Mut let emptyN NN? = null
@@ -55,6 +59,7 @@ fn test_nullable_chain_null_field() {
 
 ; ---------- nullable_chain_method：泛型结构体方法链式 ----------
 
+; 验证：Nullable 类型的 get 方法返回值
 #Test
 fn test_nullable_method_chain_get() {
   #Mut let nx i32? = 42
@@ -64,6 +69,7 @@ fn test_nullable_method_chain_get() {
 
 ; ---------- nullable_reassign：null 重赋为有值 ----------
 
+; 验证：null 变量重赋值为非空值后的行为
 #Test
 fn test_nullable_reassign_from_null() {
   #Mut let x i64? = null
@@ -78,6 +84,7 @@ fn take_nullable_i32(x i32?) bool {
   ret !x.has()
 }
 
+; 验证：null 作为实参在函数调用时的类型推断
 #Test
 fn test_null_infer_fn_call() {
   ; null 作为实参应自动推断为 Nullable<i32>
@@ -88,6 +95,7 @@ fn take_nullable_string(x String?) bool {
   ret !x.has()
 }
 
+; 验证：空值在函数调用中的推断处理
 #Test
 fn test_null_infer_fn_call_string() {
   assert_true(take_nullable_string(null))
@@ -103,6 +111,7 @@ fn overload_nullable(x i32?) bool {
   ret true
 }
 
+; 验证：null 在重载中应精确匹配 i32? 类型
 #Test
 fn test_null_infer_overload_disambig() {
   ; null 应精确匹配 i32? 重载
@@ -115,6 +124,7 @@ fn multi_param_nullable(a i32, b i32?) bool {
   ret !b.has()
 }
 
+; 验证：多参数函数中 null 类型推断
 #Test
 fn test_null_infer_multi_param() {
   assert_true(multi_param_nullable(42, null))
@@ -126,6 +136,7 @@ fn identity_nullable<T>(x T?) T? {
   ret x
 }
 
+; 验证：Null 类型推断与 has 方法
 #Test
 fn test_null_infer_generic_turbofish() {
   ; 显式指定类型参数，null 推断为 Nullable<i32>
@@ -142,6 +153,7 @@ fn test_nullable_array_subscript_null_else() {
   assert_eq(arr[0] ?? -1, 42)
 }
 
+; 验证：Nullable 数组下标访问，当元素为 null 时使用默认值
 #Test
 fn test_nullable_array_subscript_null_else_null_elem() {
   ; arr[1] 是 null，?? 应返回默认值
@@ -149,6 +161,7 @@ fn test_nullable_array_subscript_null_else_null_elem() {
   assert_eq(arr[1] ?? -1, -1)
 }
 
+; 验证：通过 Ref 变量间接持有下标结果再使用 ??
 #Test
 fn test_nullable_array_subscript_null_else_via_ref() {
   ; 通过 Ref 变量间接持有 下标结果再 ??
@@ -167,6 +180,7 @@ fn test_nullable_nested_null_else_outer_null() {
   assert_true(r == null)
 }
 
+; 验证：嵌套 Nullable 的 ?? 操作符处理
 #Test
 fn test_nullable_nested_null_else_outer_some_inner_some() {
   ; b: i32?? = Some(Some(42))，?? null 应返回 Some(42)
@@ -176,6 +190,7 @@ fn test_nullable_nested_null_else_outer_some_inner_some() {
   assert_eq(r ?? -1, 42)
 }
 
+; 验证：嵌套可选值中内层为 None 时，外层 ?? 操作符返回 None
 #Test
 fn test_nullable_nested_null_else_outer_some_inner_null() {
   ; b: i32?? = Some(None)，?? null 应返回 None（i32?）
@@ -195,18 +210,21 @@ fn take_nullable_two(x i32?, y i32?) (i32, i32) {
   ret (x ?? -1, y ?? -1)
 }
 
+; 验证：自动将非空值包装为可选类型
 #Test
 fn test_nullable_arg_wrap_i32() {
   ; f(42) 调用 fn f(x i32?) → 42 自动包装为 Some(42)
   assert_true(take_nullable(42))
 }
 
+; 验证：null 参数在函数调用中保持不变
 #Test
 fn test_nullable_arg_wrap_null() {
   ; null 仍正常工作
   assert_true(!take_nullable(null))
 }
 
+; 验证：Nullable 参数包装混合使用
 #Test
 fn test_nullable_arg_wrap_mixed() {
   ; 第一个实参 i32、第二个 null 混合
@@ -215,6 +233,7 @@ fn test_nullable_arg_wrap_mixed() {
   assert_eq(r.1, -1)
 }
 
+; 验证：Nullable 参数接收变量并返回真值
 #Test
 fn test_nullable_arg_wrap_with_var() {
   ; 变量作为实参传给 Nullable 形参
@@ -222,6 +241,7 @@ fn test_nullable_arg_wrap_with_var() {
   assert_true(take_nullable(v))
 }
 
+; 验证：表达式结果作为可选参数传递
 #Test
 fn test_nullable_arg_wrap_expression() {
   ; 表达式结果作为实参
@@ -234,18 +254,21 @@ fn nullable_i64_check(x i64?) bool {
   ret (x ?? -1i64) == 100i64
 }
 
+; 验证：显式 i64 后缀自动包装为 Nullable<i64>
 #Test
 fn test_nullable_arg_wrap_i64_explicit() {
   ; 显式 i64 后缀：100i64 → 自动包装为 Nullable<i64>
   assert_true(nullable_i64_check(100i64))
 }
 
+; 验证：灵活整数参数自动转换为 Nullable<i64>
 #Test
 fn test_nullable_arg_wrap_i64_flexible_int() {
   ; 灵活整数（不带后缀）→ 自动推断为 i64 并包装为 Nullable<i64>
   assert_true(nullable_i64_check(100))
 }
 
+; 验证：null 匹配 i64? 形参
 #Test
 fn test_nullable_arg_wrap_i64_null() {
   ; null 匹配 i64? 形参
@@ -261,6 +284,7 @@ fn take_string_nullable(s String?) String {
   ret s ?? "(null)"
 }
 
+; 验证：字符串字面量自动包装为 Nullable<String>
 #Test
 fn test_nullable_arg_wrap_string_literal() {
   ; 字符串字面量 → 自动包装为 Nullable<String>
@@ -268,6 +292,7 @@ fn test_nullable_arg_wrap_string_literal() {
   assert_eq(result, "hello")
 }
 
+; 验证：Nullable 类型包装空值并返回字符串表示
 #Test
 fn test_nullable_arg_wrap_string_null() {
   ; null → Nullable<String>
@@ -275,6 +300,7 @@ fn test_nullable_arg_wrap_string_null() {
   assert_eq(result, "(null)")
 }
 
+; 验证：表达式结果自动包装为 Nullable<String>
 #Test
 fn test_nullable_arg_wrap_string_expression() {
   ; 表达式结果 → 自动包装为 Nullable<String>
@@ -298,12 +324,14 @@ fn nt_check_nullable_box(p NT_NullableBox?) bool {
   ret p != null
 }
 
+; 验证：Nullable 包装结构体字面量
 #Test
 fn test_nullable_arg_wrap_struct_literal() {
   ; struct 字面量 → 自动包装为 Nullable<Struct>
   assert_true(nt_check_nullable_box(NT_NullableBox::make(42)))
 }
 
+; 验证：检查将 null 转换为 Nullable<Struct> 后是否正确识别为非空
 #Test
 fn test_nullable_arg_wrap_struct_null() {
   ; null → Nullable<Struct>

@@ -15,11 +15,13 @@ fn mf_main_like() i32 {
   ret h + 100
 }
 
+; 验证：mf_helper 函数返回值是否正确
 #Test
 fn test_helper_only() {
   assert_eq(mf_helper(), 100)
 }
 
+; 验证：mf_main_like 函数返回值是否正确
 #Test
 fn test_helper_chain() {
   assert_eq(mf_main_like(), 200)

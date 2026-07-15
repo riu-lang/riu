@@ -30,36 +30,43 @@ let INLINE_BOOL bool = true
 #Cval
 let _INLINE_PRIVATE i64 = 999
 
+; 验证：全局常量 i32 类型的值是否正确
 #Test
 fn test_global_const_i32() {
   assert_eq(TEST_MAX_SIZE, 1024)
 }
 
+; 验证：全局常量 f64 类型的值是否正确
 #Test
 fn test_global_const_f64() {
   assert_eq(TEST_PI, 3.14159)
 }
 
+; 验证：全局常量内部值是否正确
 #Test
 fn test_global_const_internal() {
   assert_eq(_TEST_INTERNAL_CONST, 42)
 }
 
+; 验证：内联整数常量的值是否正确
 #Test
 fn test_inline_cval_int() {
   assert_eq(INLINE_INT, 42)
 }
 
+; 验证：内联常量的负值计算
 #Test
 fn test_inline_cval_neg() {
   assert_eq(INLINE_NEG, -100)
 }
 
+; 验证：内联布尔常量的真假值
 #Test
 fn test_inline_cval_bool() {
   assert_true(INLINE_BOOL)
 }
 
+; 验证：内联常量的私有访问
 #Test
 fn test_inline_cval_private() {
   assert_eq(_INLINE_PRIVATE, 999)

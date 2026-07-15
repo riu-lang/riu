@@ -35,6 +35,7 @@ fn test_append_code_point() {
   assert_eq(s, "Hello")
 }
 
+; 验证：StringBuilder 追加 ASCII 字节并构建字符串
 #Test
 fn test_append_ascii_byte() {
   #Mut let sb StringBuilder = StringBuilder::make()
@@ -46,6 +47,7 @@ fn test_append_ascii_byte() {
   assert_eq(s, "Hi!")
 }
 
+; 验证：StringBuilder 追加字符串并构建最终结果
 #Test
 fn test_append_string() {
   #Mut let sb StringBuilder = StringBuilder::make()
@@ -57,6 +59,7 @@ fn test_append_string() {
   assert_eq(s, "Hello World")
 }
 
+; 验证：StringBuilder 追加不同类型数据并构建字符串
 #Test
 fn test_append_mixed() {
   #Mut let sb StringBuilder = StringBuilder::make()
@@ -94,6 +97,7 @@ fn test_clear() {
   assert_eq(s.len(), 0)
 }
 
+; 验证：StringBuilder 清空后可以重用
 #Test
 fn test_clear_and_reuse() {
   #Mut let sb StringBuilder = StringBuilder::make()
@@ -117,6 +121,7 @@ fn test_build_returns_string() {
   assert_eq(s, "Test")
 }
 
+; 验证：StringBuilder build 后 buffer 重置不影响已返回的字符串
 #Test
 fn test_build_resets_buffer() {
   #Mut let sb StringBuilder = StringBuilder::make()
@@ -132,6 +137,7 @@ fn test_build_resets_buffer() {
   assert_eq(s2, "World")
 }
 
+; 验证：StringBuilder 多次构建字符串
 #Test
 fn test_multiple_build() {
   #Mut let sb StringBuilder = StringBuilder::make()
@@ -161,6 +167,7 @@ fn test_append_unicode() {
   assert_eq(s.len(), 2)
 }
 
+; 验证：StringBuilder 追加混合 Unicode 字符串
 #Test
 fn test_append_mixed_unicode() {
   #Mut let sb StringBuilder = StringBuilder::make()
@@ -182,6 +189,7 @@ fn test_empty_string_append() {
   assert_eq(s.len(), 0)
 }
 
+; 验证：StringBuilder 构建空字符串
 #Test
 fn test_build_empty() {
   #Mut let sb StringBuilder = StringBuilder::make()

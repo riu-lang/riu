@@ -10,24 +10,28 @@
 
 fn add_u8(a u8, b u8) u8 = a + b
 
+; 验证：u8 类型字面量的算术运算结果推断为 i32
 #Test
 fn test_u8_promote_literal() {
   let a u8 = 1 + 2
   assert_eq(a, 3)
 }
 
+; 验证：i64 类型默认整数字面量
 #Test
 fn test_i64_default_int_literal() {
   let b i64 = 100 + 200
   assert_eq(b, 300)
 }
 
+; 验证：u32 类型的混合运算结果
 #Test
 fn test_u32_mixed() {
   let c u32 = 5 * 3 + 1
   assert_eq(c, 16)
 }
 
+; 验证：u8 类型变量的赋值和运算
 #Test
 fn test_u8_var_assign() {
   #Mut let x u8 = 42
@@ -38,6 +42,7 @@ fn test_u8_var_assign() {
   assert_eq(x, 15)
 }
 
+; 验证：u8 类型加法函数正确性
 #Test
 fn test_call_u8() {
   assert_eq(add_u8(1, 2), 3)

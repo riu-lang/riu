@@ -11,6 +11,7 @@
 
 ; ==================== 等值比较 ====================
 
+; 验证：基本字符串等值比较
 #Test
 fn test_string_eq_basic() {
   let a String = "hello"
@@ -18,12 +19,14 @@ fn test_string_eq_basic() {
   assert_eq(a, b)
 }
 
+; 验证：String 与字符串字面量的相等性比较
 #Test
 fn test_string_eq_literal() {
   let s String = "world"
   assert_eq(s, "world")
 }
 
+; 验证：空字符串相等性检查
 #Test
 fn test_string_eq_empty() {
   let a String = ""
@@ -33,6 +36,7 @@ fn test_string_eq_empty() {
 
 ; ==================== contains / starts_with ====================
 
+; 验证：String 的 contains 方法是否能正确检测子字符串
 #Test
 fn test_string_contains_full() {
   let s String = "hello world"
@@ -42,12 +46,14 @@ fn test_string_contains_full() {
   assert_contains(s, "d")
 }
 
+; 验证：空字符串作为子串是否被正确包含在任何字符串中
 #Test
 fn test_string_contains_empty_needle() {
   let s String = "anything"
   assert_contains(s, "")
 }
 
+; 验证：String 的 starts_with 方法基本用法
 #Test
 fn test_string_starts_with_basic() {
   let s String = "hello world"
@@ -56,6 +62,7 @@ fn test_string_starts_with_basic() {
   assert_starts_with(s, "hello world")
 }
 
+; 验证：空字符串作为前缀时，String 的 starts_with 方法返回 true
 #Test
 fn test_string_starts_with_empty_prefix() {
   let s String = "x"
@@ -70,6 +77,7 @@ fn test_string_starts_with_direct() {
   assert_false(s.starts_with("world"))
 }
 
+; 验证：String 的 contains 方法是否能正确判断子字符串存在
 #Test
 fn test_string_contains_direct() {
   let s String = "foo bar baz"
@@ -79,6 +87,7 @@ fn test_string_contains_direct() {
 
 ; ==================== 转义序列 ====================
 
+; 验证：字符串转义序列 \n 的长度和内容
 #Test
 fn test_string_escape_newline_codepoint() {
   let s String = "a\nb"
@@ -88,6 +97,7 @@ fn test_string_escape_newline_codepoint() {
   assert_eq(s.get(2), 98u32)
 }
 
+; 验证：String 转义字符 \t 和 Unicode 码点处理
 #Test
 fn test_string_escape_tab_codepoint() {
   let s String = "x\ty"
@@ -95,6 +105,7 @@ fn test_string_escape_tab_codepoint() {
   assert_eq(s.get(1), 9u32)
 }
 
+; 验证：String 转义字符和 Unicode 码点处理
 #Test
 fn test_string_escape_quote_codepoint() {
   let s String = "\""
@@ -104,6 +115,7 @@ fn test_string_escape_quote_codepoint() {
 
 ; ==================== 原始字符串 ====================
 
+; 验证：原始字符串中的反斜杠和换行符保持不变
 #Test
 fn test_string_raw_keeps_backslash() {
   let s String = r"\n"
@@ -112,6 +124,7 @@ fn test_string_raw_keeps_backslash() {
   assert_eq(s.get(1), 110u32)
 }
 
+; 验证：Raw string 的长度和字符访问
 #Test
 fn test_string_raw_path() {
   let s String = r"C:\path"
@@ -121,6 +134,7 @@ fn test_string_raw_path() {
 
 ; ==================== \$ 转义 ====================
 
+; 验证：字符串中的美元符号转义码点处理
 #Test
 fn test_string_dollar_escape_codepoint() {
   let s String = "price=\$5"
@@ -128,6 +142,7 @@ fn test_string_dollar_escape_codepoint() {
   assert_eq(s.get(6), 36u32)
 }
 
+; 验证：字符串中美元符号的转义处理
 #Test
 fn test_string_dollar_escape_only() {
   let s String = "\$"
@@ -137,6 +152,7 @@ fn test_string_dollar_escape_only() {
 
 ; ==================== 字符串模板插值（$id / ${expr}） ====================
 
+; 验证：字符串模板插值 $id 行为
 #Test
 fn test_string_template_dollar_id() {
   let name String = "yux"
@@ -145,6 +161,7 @@ fn test_string_template_dollar_id() {
   assert_eq(s, "hello, yux!")
 }
 
+; 验证：字符串模板中变量被正确替换
 #Test
 fn test_string_template_id_surrounded() {
   let name String = "x"
@@ -152,6 +169,7 @@ fn test_string_template_id_surrounded() {
   assert_eq(s, "[x]")
 }
 
+; 验证：字符串模板中的大括号插值功能
 #Test
 fn test_string_template_brace_interp() {
   let a String = "x"
@@ -160,6 +178,7 @@ fn test_string_template_brace_interp() {
   assert_eq(s, "x=y")
 }
 
+; 验证：字符串模板混合文本与变量替换
 #Test
 fn test_string_template_mixed_text() {
   let v String = "world"
@@ -167,6 +186,7 @@ fn test_string_template_mixed_text() {
   assert_eq(s, "hi world, bye")
 }
 
+; 验证：空占位符在字符串模板中的处理
 #Test
 fn test_string_template_empty_part() {
   let a String = "ab"
@@ -175,6 +195,7 @@ fn test_string_template_empty_part() {
   assert_eq(s, "abcd")
 }
 
+; 验证：字符串模板处理 UTF-8 编码字符
 #Test
 fn test_string_template_utf8_part() {
   let v String = "中"
@@ -187,6 +208,7 @@ fn test_string_template_utf8_part() {
 
 ; ==================== ToString 自动分发 ====================
 
+; 验证：字符串模板中整数插值
 #Test
 fn test_string_template_i32_interp() {
   let n i32 = 42
@@ -194,12 +216,14 @@ fn test_string_template_i32_interp() {
   assert_eq(s, "n=42")
 }
 
+; 验证：字符串模板中插入 i64 字面量
 #Test
 fn test_string_template_i64_literal_interp() {
   let s String = "x=${1234}"
   assert_eq(s, "x=1234")
 }
 
+; 验证：字符串模板中布尔值的插值
 #Test
 fn test_string_template_bool_interp() {
   let b bool = true
@@ -209,6 +233,7 @@ fn test_string_template_bool_interp() {
   assert_eq(s2, "b=false")
 }
 
+; 验证：字符串模板中插入 u64 类型变量
 #Test
 fn test_string_template_u64_interp() {
   let n u64 = 0
@@ -216,6 +241,7 @@ fn test_string_template_u64_interp() {
   assert_eq(s, "n=0")
 }
 
+; 验证：String 模板中 f64 插值固定 6 位小数
 #Test
 fn test_string_template_f64_interp() {
   let f f64 = 3.14f64
@@ -224,6 +250,7 @@ fn test_string_template_f64_interp() {
   assert_eq(s.len(), 8)
 }
 
+; 验证：字符串模板混合类型插值
 #Test
 fn test_string_template_mixed_kind_interp() {
   let name String = "yux"
@@ -234,6 +261,7 @@ fn test_string_template_mixed_kind_interp() {
 
 ; ==================== String + 链式连接 ====================
 
+; 验证：String 链式连接操作
 #Test
 fn test_string_plus_two() {
   let a String = "foo"
@@ -242,6 +270,7 @@ fn test_string_plus_two() {
   assert_eq(s, "foobar")
 }
 
+; 验证：字符串连接操作符 "+" 的连续使用
 #Test
 fn test_string_plus_chain() {
   let a String = "a"
@@ -252,6 +281,7 @@ fn test_string_plus_chain() {
   assert_eq(s, "abcd")
 }
 
+; 验证：String 与字符串字面量相加
 #Test
 fn test_string_plus_with_literal() {
   let name String = "yux"
@@ -259,6 +289,7 @@ fn test_string_plus_with_literal() {
   assert_eq(s, "hello, yux!")
 }
 
+; 验证：字符串与整数拼接生成新字符串
 #Test
 fn test_string_plus_to_string() {
   let n i32 = 42
@@ -266,6 +297,7 @@ fn test_string_plus_to_string() {
   assert_eq(s, "n=42")
 }
 
+; 验证：字符串与非字符串相加的行为
 #Test
 fn test_string_plus_left_non_string() {
   let n i64 = 7
@@ -273,6 +305,7 @@ fn test_string_plus_left_non_string() {
   assert_eq(s, "7 items")
 }
 
+; 验证：字符串拼接与混合类型连接
 #Test
 fn test_string_plus_mixed_chain() {
   let name String = "yux"
@@ -282,12 +315,14 @@ fn test_string_plus_mixed_chain() {
   assert_eq(s, "yux v6 ok=true")
 }
 
+; 验证：空字符串与非空字符串相加，结果为非空字符串
 #Test
 fn test_string_plus_empty_left() {
   let s String = "" + "tail"
   assert_eq(s, "tail")
 }
 
+; 验证：String 连接 UTF-8 字符串
 #Test
 fn test_string_plus_utf8() {
   let a String = "你好"
@@ -296,6 +331,7 @@ fn test_string_plus_utf8() {
   assert_eq(s, "你好，世界")
 }
 
+; 验证：括号表达式在字符串拼接中的使用
 #Test
 fn test_string_plus_nested_expr() {
   ; 括号表达式在 + 链中

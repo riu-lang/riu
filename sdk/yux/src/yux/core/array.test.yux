@@ -14,6 +14,7 @@
 
 ; ==================== 下标读写 ====================
 
+; 验证：Array 下标读写与赋值
 #Test
 fn test_array_access_read_write() {
   #Mut let arr Array<i32> = [10i32, 20i32, 30i32]
@@ -26,6 +27,7 @@ fn test_array_access_read_write() {
 
 ; ==================== 定长数组 fill / 列表初始化 ====================
 
+; 验证：定长数组 fill 初始化为零值
 #Test
 fn test_array_fill_u8_zero() {
   #Mut let buf [u8 * 5] = [0u8 ...]
@@ -33,6 +35,7 @@ fn test_array_fill_u8_zero() {
   assert_eq(buf[4], 0u8)
 }
 
+; 验证：Array 填充零值
 #Test
 fn test_array_fill_i32_zero_with_type() {
   #Mut let arr [i32 * 3] = [0 ... i32]
@@ -40,6 +43,7 @@ fn test_array_fill_i32_zero_with_type() {
   assert_eq(arr[2], 0i32)
 }
 
+; 验证：固定大小数组中布尔值的读取与断言
 #Test
 fn test_array_fixed_bool_listed() {
   #Mut let flags [bool * 3] = [true, true, true]
@@ -47,6 +51,7 @@ fn test_array_fixed_bool_listed() {
   assert_true(flags[2])
 }
 
+; 验证：固定大小数组的索引读取
 #Test
 fn test_array_fixed_i32_list() {
   let arr [i32 * 5] = [1i32, 2i32, 3i32, 4i32, 5i32]
@@ -54,6 +59,7 @@ fn test_array_fixed_i32_list() {
   assert_eq(arr[4], 5i32)
 }
 
+; 验证：固定大小数组的元素读取
 #Test
 fn test_array_fixed_u8_list() {
   let bytes [u8 * 4] = [97u8, 98u8, 99u8, 100u8]
@@ -61,6 +67,7 @@ fn test_array_fixed_u8_list() {
   assert_eq(bytes[3], 100u8)
 }
 
+; 验证：固定长度数组中布尔值的读取与断言
 #Test
 fn test_array_fixed_bool_list_mixed() {
   let bools [bool * 3] = [true, false, true]
@@ -70,6 +77,7 @@ fn test_array_fixed_bool_list_mixed() {
 
 ; ==================== push / len / first / last / is_empty ====================
 
+; 验证：Array push 基本行为
 #Test
 fn test_array_push_basic() {
   #Mut let arr Array<i32> = []
@@ -78,6 +86,7 @@ fn test_array_push_basic() {
   assert_eq(arr.len(), 2)
 }
 
+; 验证：Array push 多次后长度正确
 #Test
 fn test_array_push_many() {
   #Mut let arr Array<i32> = []
@@ -91,12 +100,14 @@ fn test_array_push_many() {
   assert_eq(arr.len(), 5)
 }
 
+; 验证：Array len 方法返回数组长度
 #Test
 fn test_array_len() {
   #Mut let arr Array<i32> = [1, 2, 3, 4, 5]
   assert_eq(arr.len(), 5)
 }
 
+; 验证：Array 的 first 和 last 方法返回正确值
 #Test
 fn test_array_first_last() {
   #Mut let arr Array<i32> = [100, 200, 300]
@@ -104,12 +115,14 @@ fn test_array_first_last() {
   assert_eq(arr.last(), 300)
 }
 
+; 验证：Array is_empty 方法在非空数组上返回 false
 #Test
 fn test_array_is_empty() {
   #Mut let arr Array<i32> = [1, 2, 3]
   assert_false(arr.is_empty())
 }
 
+; 验证：空数组的 is_empty 方法返回 true
 #Test
 fn test_array_empty_is_empty() {
   #Mut let empty Array<i32> = []
@@ -118,6 +131,7 @@ fn test_array_empty_is_empty() {
 
 ; ==================== f64 元素运算（含 v0.18 回归） ====================
 
+; 验证：Array f64 基本运算和长度检查
 #Test
 fn test_array_f64_basic() {
   #Mut let arr Array<f64> = [1.5f64, 2.5f64, 3.5f64]
@@ -125,6 +139,7 @@ fn test_array_f64_basic() {
   assert_eq(arr[0] + arr[1], 4.0f64)
 }
 
+; 验证：Array f64 项链式加法
 #Test
 fn test_array_f64_chain_add() {
   ; v0.18: 修复 f64 3 项链式加法 LLVM crash
@@ -133,6 +148,7 @@ fn test_array_f64_chain_add() {
   assert_eq(arr[0] + arr[1] + arr[2], 6.0f64)
 }
 
+; 验证：Array 中的 f64 类型元素通过索引访问并进行加法运算
 #Test
 fn test_array_f64_let_bind() {
   ; v0.18: 修复后 let x f64 = arr[i] + arr[j] 不再报 "expected f64, got Ref<f64>"
@@ -143,6 +159,7 @@ fn test_array_f64_let_bind() {
 
 ; ==================== bool / String 元素 ====================
 
+; 验证：Array 存储布尔元素的长度和值
 #Test
 fn test_array_bool_elements() {
   #Mut let arr Array<bool> = [true, false, true]
@@ -151,6 +168,7 @@ fn test_array_bool_elements() {
   assert_false(arr[1])
 }
 
+; 验证：Array of String 的长度
 #Test
 fn test_array_of_string() {
   #Mut let arr Array<String> = ["hello", "world"]
@@ -159,6 +177,7 @@ fn test_array_of_string() {
 
 ; ==================== clear / clone ====================
 
+; 验证：Array clear 方法是否能清空数组并使长度和 is_empty 返回正确值
 #Test
 fn test_array_clear() {
   #Mut let arr Array<i32> = [1, 2, 3]
@@ -168,6 +187,7 @@ fn test_array_clear() {
   assert_true(arr.is_empty())
 }
 
+; 验证：Array clone 后长度不变
 #Test
 fn test_array_clone() {
   #Mut let arr Array<i32> = [1, 2, 3]
@@ -182,6 +202,7 @@ fn make_array_i32() Array<i32> {
   ret a
 }
 
+; 验证：Array 返回移动后长度和元素值正确
 #Test
 fn test_array_return_move() {
   #Mut let arr Array<i32> = make_array_i32()
@@ -198,6 +219,7 @@ fn modify_share(a Array<i32>&) {
   a.push(42i32)
 }
 
+; 验证：Array 通过引用共享修改
 #Test
 fn test_array_passing_share() {
   #Mut let arr Array<i32> = [1i32, 2i32, 3i32]
@@ -224,6 +246,7 @@ struct ArrPair {
   }
 }
 
+; 验证：Rc 引用计数数组元素重新赋值
 #Test
 fn test_array_elem_box_reassign() {
   #Mut let p Rc<ArrPair> = ArrPair::make(10, 20)
@@ -238,6 +261,7 @@ fn test_array_elem_box_reassign() {
 
 ; ==================== 嵌套 Array<Array<T>> ====================
 
+; 验证：嵌套 Array<Array<T>> 的字面量初始化和访问
 #Test
 fn test_array_nested_literal_even() {
   #Mut let rows Array<Array<i32>> = [[1i32, 2i32], [3i32, 4i32]]
@@ -247,6 +271,7 @@ fn test_array_nested_literal_even() {
   assert_eq(rows[1][0], 3i32)
 }
 
+; 验证：嵌套数组字面量的长度和元素访问
 #Test
 fn test_array_nested_literal_uneven() {
   #Mut let rows Array<Array<i32>> = [[1i32, 2i32], [3i32, 4i32, 5i32]]
@@ -259,6 +284,7 @@ fn test_array_nested_literal_uneven() {
 
 ; ==================== T& 引用访问（get / copy_of / 写穿） ====================
 
+; 验证：Array 引用访问与解引用
 #Test
 fn test_array_get_tref_bind() {
   #Mut let a Array<i32> = [100, 200]
@@ -266,6 +292,7 @@ fn test_array_get_tref_bind() {
   assert_eq(r, 100)
 }
 
+; 验证：Array get 方法返回值的复制
 #Test
 fn test_array_get_copy_of() {
   #Mut let a Array<i32> = [10, 20, 30]
@@ -274,6 +301,7 @@ fn test_array_get_copy_of() {
   assert_eq(copy_of(a.get(2)), 30i32)
 }
 
+; 验证：Array get 方法返回的引用可以用于修改数组元素
 #Test
 fn test_array_get_write_through() {
   #Mut let a Array<i32> = [5, 10, 15]
@@ -284,6 +312,7 @@ fn test_array_get_write_through() {
 
 ; ==================== v0.16 [] → T&（Array<T>） ====================
 
+; 验证：Array 索引引用绑定与修改
 #Test
 fn test_array_index_ref_bind() {
   #Mut let arr Array<i32> = [100, 200, 300]
@@ -295,6 +324,7 @@ fn test_array_index_ref_bind() {
   assert_eq(w, 42)
 }
 
+; 验证：Array 索引引用操作符的行为，包括加法、乘法、相等性比较和大小比较
 #Test
 fn test_array_index_ref_ops() {
   let arr Array<i32> = [10, 20, 30]
@@ -307,6 +337,7 @@ fn test_array_index_ref_ops() {
   assert_true(arr[0] < arr[2])
 }
 
+; 验证：Array 索引读取与复制行为
 #Test
 fn test_array_index_copy_of() {
   #Mut let arr Array<i32> = [5, 10, 15]
@@ -322,6 +353,7 @@ fn test_array_index_copy_of() {
 
 ; ==================== v0.16 [] → T&（[T * N] 定长数组） ====================
 
+; 验证：定长数组索引引用绑定与修改
 #Test
 fn test_fixed_array_index_ref_bind() {
   #Mut let buf [i32 * 3] = [1i32, 2i32, 3i32]
@@ -332,6 +364,7 @@ fn test_fixed_array_index_ref_bind() {
   assert_eq(buf[2], 99i32)
 }
 
+; 验证：固定数组索引引用操作
 #Test
 fn test_fixed_array_index_ref_ops() {
   let buf [i32 * 3] = [5i32, 10i32, 15i32]
@@ -340,6 +373,7 @@ fn test_fixed_array_index_ref_ops() {
   assert_true(buf[0] < buf[2])
 }
 
+; 验证：FixedArray 索引访问与元素复制
 #Test
 fn test_fixed_array_index_copy_of() {
   let buf [i32 * 3] = [7i32, 14i32, 21i32]

@@ -130,12 +130,14 @@ struct Counter {
 
 ; ==================== IIFE 测试 ====================
 
+; 验证：立即执行函数表达式（IIFE）单参数行为
 #Test
 fn test_iife_single_param() {
   let r = ((x i32) i32 => x + 1)(5)
   assert_eq(r, 6)
 }
 
+; 验证：立即执行函数表达式（IIFE）处理多个参数
 #Test
 fn test_iife_multi_param() {
   let r = ((a, b i32) i32 => a + b)(3, 4)
@@ -144,6 +146,7 @@ fn test_iife_multi_param() {
 
 ; ==================== lambda 变量调用测试 ====================
 
+; 验证：Lambda 表达式变量调用与计算结果
 #Test
 fn test_lambda_var_call() {
   #Mut let f fn(i32)i32 = (x i32) i32 => x * 2
@@ -154,12 +157,14 @@ fn test_lambda_var_call() {
 
 ; ==================== lambda 作实参测试 ====================
 
+; 验证：Lambda 表达式作为参数显式调用
 #Test
 fn test_lambda_as_arg_explicit() {
   let r = apply((x i32) i32 => x + 10, 5)
   assert_eq(r, 15)
 }
 
+; 验证：Lambda 作为参数传递并进行类型推断
 #Test
 fn test_lambda_as_arg_inferred() {
   let r = apply(x => x * x, 6)
@@ -168,6 +173,7 @@ fn test_lambda_as_arg_inferred() {
 
 ; ==================== lambda 作返回值测试 ====================
 
+; 验证：Lambda 函数作为返回值使用
 #Test
 fn test_lambda_return() {
   #Mut let f fn(i32)i32 = make_inc()
@@ -175,12 +181,14 @@ fn test_lambda_return() {
   assert_eq(f(99), 100)
 }
 
+; 验证：Lambda 返回值链式调用
 #Test
 fn test_lambda_return_chained() {
   let r = make_inc()(41)
   assert_eq(r, 42)
 }
 
+; 验证：Lambda 返回常量值
 #Test
 fn test_lambda_return_const() {
   #Mut let g fn(i32)i32 = make_const(0)
@@ -189,6 +197,7 @@ fn test_lambda_return_const() {
 
 ; ==================== lambda 参数传递测试 ====================
 
+; 验证：Lambda 参数传递与高阶函数使用
 #Test
 fn test_lambda_param_pass() {
   #Mut let inc fn(i32)i32 = (x i32) i32 => x + 1
@@ -201,6 +210,7 @@ fn test_lambda_param_pass() {
 
 ; ==================== struct fn 字段测试 ====================
 
+; 验证：Struct 方法调用与字段访问
 #Test
 fn test_struct_fn_field() {
   #Mut let s Holder = Holder::make(make_inc(), 100)
@@ -208,6 +218,7 @@ fn test_struct_fn_field() {
   assert_eq(s.h(10), 11)
 }
 
+; 验证：Struct 方法重新赋值与调用
 #Test
 fn test_struct_fn_field_reassign() {
   #Mut let s Holder = Holder::make(make_inc(), 100)
@@ -215,6 +226,7 @@ fn test_struct_fn_field_reassign() {
   assert_eq(s.h(4), 12)
 }
 
+; 验证：Struct 方法按值调用字段并修改
 #Test
 fn test_struct_fn_field_by_value() {
   #Mut let s Holder = Holder::make(make_inc(), 100)
@@ -222,6 +234,7 @@ fn test_struct_fn_field_by_value() {
   assert_eq(r, 8)
 }
 
+; 验证：Struct 字段整体重新赋值后方法调用
 #Test
 fn test_struct_fn_field_whole_reassign() {
   #Mut let s Holder = Holder::make(make_inc(), 100)
@@ -232,6 +245,7 @@ fn test_struct_fn_field_whole_reassign() {
 
 ; ==================== Array<fn> 测试 ====================
 
+; 验证：Array 存储和调用不同行为的函数元素
 #Test
 fn test_array_fn_elem() {
   #Mut let arr Array<fn(i32)i32> = []
@@ -245,6 +259,7 @@ fn test_array_fn_elem() {
   assert_eq(arr[2](10), 5)
 }
 
+; 验证：Array 存储函数并按值调用
 #Test
 fn test_array_fn_elem_by_value() {
   #Mut let arr Array<fn(i32)i32> = []
@@ -254,6 +269,7 @@ fn test_array_fn_elem_by_value() {
   assert_eq(r, 101)
 }
 
+; 验证：Array 中存储的函数元素重新赋值
 #Test
 fn test_array_fn_elem_reassign() {
   #Mut let arr Array<fn(i32)i32> = []
@@ -265,6 +281,7 @@ fn test_array_fn_elem_reassign() {
 
 ; ==================== Rc<fn> 测试 ====================
 
+; 验证：Rc<fn> 调用与闭包行为
 #Test
 fn test_box_fn_call() {
   #Mut let b Rc<fn(i32)i32> = (x i32) i32 => x + 100
@@ -272,6 +289,7 @@ fn test_box_fn_call() {
   assert_eq(b(10), 110)
 }
 
+; 验证：Rc 复制函数后调用结果不变
 #Test
 fn test_box_fn_copy() {
   #Mut let b Rc<fn(i32)i32> = (x i32) i32 => x + 100
@@ -279,6 +297,7 @@ fn test_box_fn_copy() {
   assert_eq(b2(7), 107)
 }
 
+; 验证：Rc 引用计数指针下挂的闭包重新赋值后，原有引用仍然有效
 #Test
 fn test_box_fn_reassign() {
   #Mut let b Rc<fn(i32)i32> = (x i32) i32 => x + 100
@@ -291,6 +310,7 @@ fn test_box_fn_reassign() {
 
 ; ==================== 0 参块 lambda tail-expr 返回（BUG#0 修复） ====================
 
+; 验证：零参数块尾表达式返回值
 #Test
 fn test_zero_block_tail_expr_return() {
   let once fn()i32 = {
@@ -299,6 +319,7 @@ fn test_zero_block_tail_expr_return() {
   assert_eq(once(), 42)
 }
 
+; 验证：Lambda 表达式中尾部表达式与预lude
 #Test
 fn test_zero_block_tail_expr_with_prelude() {
   let f fn()i32 = {
@@ -309,6 +330,7 @@ fn test_zero_block_tail_expr_with_prelude() {
   assert_eq(f(), 7)
 }
 
+; 验证：零块通过参数传播
 #Test
 fn test_zero_block_propagates_via_arg() {
   let seven fn()i32 = {
@@ -319,6 +341,7 @@ fn test_zero_block_propagates_via_arg() {
 
 ; ==================== fn 类型声明测试 ====================
 
+; 验证：函数类型声明与定义
 #Test
 fn test_fn_type_decl() {
   #Mut let a fn()
@@ -332,6 +355,7 @@ fn test_fn_type_decl() {
   assert_true(true)
 }
 
+; 验证：函数类型别名的定义与使用
 #Test
 fn test_fn_type_alias() {
   #Mut let c Callback
@@ -343,6 +367,7 @@ fn test_fn_type_alias() {
   assert_true(true)
 }
 
+; 验证：函数类型等价性检查
 #Test
 fn test_fn_type_equiv() {
   #Mut let x fn(s String)bool
@@ -363,6 +388,7 @@ fn test_fn_type_equiv() {
   assert_true(true)
 }
 
+; 验证：Rc<fn> 类型的容器在多作用域析构时的行为
 #Test
 fn test_fn_type_container() {
   ; BUGS #4: Rc<fn> 未初始化变量 2+ 个同作用域析构时 ACCESS_VIOLATION，暂赋初值规避
@@ -375,6 +401,7 @@ fn test_fn_type_container() {
   assert_true(true)
 }
 
+; 验证：可选函数类型声明与赋值
 #Test
 fn test_fn_type_nullable() {
   #Mut let a fn?()
@@ -387,6 +414,7 @@ fn test_fn_type_nullable() {
 
 ; ==================== lambda 闭包捕获测试 ====================
 
+; 验证：闭包捕获可变变量并修改其值
 #Test
 fn test_closure_capture_scalar() {
   #Mut let x i32 = 10
@@ -398,6 +426,7 @@ fn test_closure_capture_scalar() {
   assert_eq(f(1), 11)
 }
 
+; 验证：闭包捕获多个变量并进行不同操作
 #Test
 fn test_closure_capture_multi() {
   #Mut let a i32 = 3
@@ -415,6 +444,7 @@ fn test_closure_capture_multi() {
   assert_eq(pick(1, 2), 1)
 }
 
+; 验证：闭包捕获 Rc<Cell> 并共享其值
 #Test
 fn test_closure_capture_box() {
   #Mut let b Rc<Cell> = Cell::make(42)
@@ -426,6 +456,7 @@ fn test_closure_capture_box() {
   assert_eq(g(), 42)
 }
 
+; 验证：闭包捕获变量并返回其值
 #Test
 fn test_closure_capture_string() {
   #Mut let s String = "hello"
@@ -440,6 +471,7 @@ fn test_closure_capture_string() {
   assert_eq(h(), 8)
 }
 
+; 验证：闭包捕获数组并返回第一个元素两次
 #Test
 fn test_closure_capture_array() {
   #Mut let arr Array<i32> = [10, 20, 30]
@@ -448,6 +480,7 @@ fn test_closure_capture_array() {
   assert_eq(f(), 10)
 }
 
+; 验证：闭包传递与别名
 #Test
 fn test_closure_pass_around() {
   #Mut let add10 fn(i32)i32 = make_adder(10)
@@ -461,6 +494,7 @@ fn test_closure_pass_around() {
   assert_eq(alias(7), 17)
 }
 
+; 验证：闭包捕获自身并修改状态
 #Test
 fn test_closure_self_capture() {
   #Mut let c Counter = Counter::make(10)
@@ -470,6 +504,7 @@ fn test_closure_self_capture() {
 
 ; ==================== lambda if 表达式体 ====================
 
+; 验证：Lambda 表达式在 if 表达式体中的使用
 #Test
 fn test_lambda_if_expr_body() {
   let abs1 = (x i32) i32 => if x > 0 { x } else { 0 - x }
@@ -500,6 +535,7 @@ fn apply_color(f fn(Color)i32, c Color) i32 {
   ret f(c)
 }
 
+; 验证：Lambda 表达式在 match 表达式中的使用和应用
 #Test
 fn test_lambda_match_expr_body() {
   let cl = (c Color) i32 => match c {
@@ -527,6 +563,7 @@ fn use_borrow_capture(r i32&) i32 {
   ret sum
 }
 
+; 验证：闭包借用捕获并调用参数
 #Test
 fn test_closure_borrow_capture_call_arg() {
   #Mut let n i32 = 100
@@ -539,6 +576,7 @@ fn use_lambda_borrow_ret(f fn(i32&)i32&) {
   ; 不调用 f，仅验证 borrow checker 接受此形态
 }
 
+; 验证：闭包返回借用参数
 #Test
 fn test_closure_ret_borrow_param() {
   use_lambda_borrow_ret((r i32&) i32& => r)

@@ -16,26 +16,31 @@
 
 ; ==================== 整数基本运算 ====================
 
+; 验证：整数加法
 #Test
 fn test_int_add() {
   assert_eq(10 + 5, 15)
 }
 
+; 验证：整数减法运算
 #Test
 fn test_int_sub() {
   assert_eq(10 - 5, 5)
 }
 
+; 验证：整数乘法运算正确性
 #Test
 fn test_int_mul() {
   assert_eq(10 * 5, 50)
 }
 
+; 验证：整数除法行为
 #Test
 fn test_int_div() {
   assert_eq(10 / 5, 2)
 }
 
+; 验证：整数取模运算
 #Test
 fn test_int_mod() {
   assert_eq(10 % 3, 1)
@@ -43,22 +48,26 @@ fn test_int_mod() {
 
 ; ==================== 浮点数运算 ====================
 
+; 验证：浮点数加法结果是否符合预期
 #Test
 fn test_float_add() {
   ; 3.14 + 2.86 在 IEEE-754 下恰好等于 6.0
   assert_eq(3.14 + 2.86, 6.0)
 }
 
+; 验证：浮点数减法运算
 #Test
 fn test_float_sub() {
   assert_eq(10.0 - 0.5, 9.5)
 }
 
+; 验证：浮点数乘法运算
 #Test
 fn test_float_mul() {
   assert_eq(2.5 * 4.0, 10.0)
 }
 
+; 验证：浮点数除法结果正确性
 #Test
 fn test_float_div() {
   assert_eq(7.5 / 2.5, 3.0)
@@ -66,22 +75,26 @@ fn test_float_div() {
 
 ; ==================== 负数运算 ====================
 
+; 验证：负数加法
 #Test
 fn test_neg_add() {
   assert_eq(-5 + 3, -2)
 }
 
+; 验证：负数减去负数的运算结果
 #Test
 fn test_neg_sub() {
   assert_eq(-10 - (-5), -5)
 }
 
+; 验证：负数乘法结果正确性
 #Test
 fn test_neg_mul() {
   assert_eq(-3 * 4, -12)
   assert_eq(-3 * (-4), 12)
 }
 
+; 验证：负数除法的正负结果
 #Test
 fn test_neg_div() {
   assert_eq(-12 / 4, -3)
@@ -90,6 +103,7 @@ fn test_neg_div() {
 
 ; ==================== 各整数类型运算 ====================
 
+; 验证：i64 类型加法运算
 #Test
 fn test_i64_add() {
   let a i64 = 1000000000
@@ -97,6 +111,7 @@ fn test_i64_add() {
   assert_eq(a + b, 3000000000)
 }
 
+; 验证：u8 类型加法运算
 #Test
 fn test_u8_add() {
   let a u8 = 100
@@ -104,6 +119,7 @@ fn test_u8_add() {
   assert_eq(a + b, 150)
 }
 
+; 验证：u32 类型的乘法运算
 #Test
 fn test_u32_mul() {
   let a u32 = 1000
@@ -111,6 +127,7 @@ fn test_u32_mul() {
   assert_eq(a * b, 2000000)
 }
 
+; 验证：i16 类型除法运算结果正确性
 #Test
 fn test_i16_div() {
   let a i16 = 1000
@@ -120,6 +137,7 @@ fn test_i16_div() {
 
 ; ==================== 运算优先级 ====================
 
+; 验证：算术运算符优先级
 #Test
 fn test_arith_priority() {
   assert_eq(2 + 3 * 4, 14)
@@ -127,6 +145,7 @@ fn test_arith_priority() {
   assert_eq((2 + 3) * 4, 20)
 }
 
+; 验证：算术表达式链式计算
 #Test
 fn test_arith_chain() {
   assert_eq(1 + 2 + 3 + 4, 10)
@@ -136,6 +155,7 @@ fn test_arith_chain() {
 
 ; ==================== 零运算 ====================
 
+; 验证：零加法运算
 #Test
 fn test_zero_add() {
   assert_eq(0 + 0, 0)
@@ -143,12 +163,14 @@ fn test_zero_add() {
   assert_eq(5 + 0, 5)
 }
 
+; 验证：零乘以任何数等于零
 #Test
 fn test_zero_mul() {
   assert_eq(0 * 100, 0)
   assert_eq(100 * 0, 0)
 }
 
+; 验证：整数除以零的行为
 #Test
 fn test_zero_div() {
   assert_eq(0 / 5, 0)
@@ -223,6 +245,7 @@ fn test_f32_chain() {
 
 ; ==================== T& 形参方法调用 ====================
 
+; 验证：T& 形参方法调用
 #Test
 fn test_scalar_plus_ref() {
   ; 显式调用 plus 方法，传入 T& 实参
@@ -233,6 +256,7 @@ fn test_scalar_plus_ref() {
   assert_eq(z, 13)
 }
 
+; 验证：标量类型与引用比较
 #Test
 fn test_scalar_eq_ref() {
   ; 显式调用 eq 方法，传入 T& 实参
@@ -242,6 +266,7 @@ fn test_scalar_eq_ref() {
   assert_eq(a.eq(rb), true)
 }
 
+; 验证：标量与引用字面量相加
 #Test
 fn test_scalar_plus_ref_literal() {
   ; 直接传 &y 不用中间变量

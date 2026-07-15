@@ -14,24 +14,28 @@ fn test_decimal() {
   assert_eq(42, 42)
 }
 
+; 验证：二进制数的解析与转换
 #Test
 fn test_binary() {
   assert_eq(0b1010, 10)
   assert_eq(0b1111_1111, 255)
 }
 
+; 验证：八进制字面量转换为十进制整数
 #Test
 fn test_octal() {
   assert_eq(0o755, 493)
   assert_eq(0o777, 511)
 }
 
+; 验证：十六进制常量的解析与值匹配
 #Test
 fn test_hex() {
   assert_eq(0xFF, 255)
   assert_eq(0xFFFF, 65535)
 }
 
+; 验证：不同进制整数后缀的解析与转换
 #Test
 fn test_typed_suffix() {
   assert_eq(0b1010u8, 10)

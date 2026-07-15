@@ -56,6 +56,7 @@ struct Tagged {
 
 ; ==================== Type 反射基本 ====================
 
+; 验证：Type 反射获取基本类型信息
 #Test
 fn test_reflect_type_basic() {
   let t Type = __yux_reflect_type:<Counter>()
@@ -68,6 +69,7 @@ fn test_reflect_type_basic() {
 
 ; ==================== 静态路径访问 Type::type / ::fields ====================
 
+; 验证：静态路径访问 Type 的 name 和 fields
 #Test
 fn test_reflect_static_access() {
   let t Type = Counter::type
@@ -81,6 +83,7 @@ fn test_reflect_static_access() {
 
 ; ==================== Field 名称遍历 ====================
 
+; 验证：Reflect 获取结构体字段类型和偏移量
 #Test
 fn test_reflect_field_type_offset() {
   let fs [Field& * 2]& = Rect::fields
@@ -92,6 +95,7 @@ fn test_reflect_field_type_offset() {
 
 ; ==================== Field.value 读 ====================
 
+; 验证：Field.value 基本读取行为
 #Test
 fn test_reflect_field_value_basic() {
   let p Point = Point::make(3, 5)
@@ -100,6 +104,7 @@ fn test_reflect_field_value_basic() {
 
 ; ==================== Field.value 写 ====================
 
+; 验证：Reflect Field.value 写操作
 #Test
 fn test_reflect_field_value_write() {
   let c Counter = Counter::make(10, 100)
@@ -113,6 +118,7 @@ fn test_reflect_field_value_write() {
 
 ; ==================== #Reflect 防 DCE ====================
 
+; 验证：Reflect 模块中的 DCE 注解是否有效
 #Test
 fn test_reflect_dce_annotated() {
   let t Type = Tagged::type

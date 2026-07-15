@@ -55,6 +55,7 @@ fn make_dangling_weak() Weak<WeakPair> {
   ret w
 }
 
+; 验证：弱引用升级后悬空返回 null
 #Test
 fn test_weak_upgrade_dangling_returns_null() {
   #Mut let w Weak<WeakPair> = make_dangling_weak()
@@ -65,6 +66,7 @@ fn test_weak_upgrade_dangling_returns_null() {
 
 ; ---------- weak(box) builtin：显式 turbofish 形态 ----------
 
+; 验证：从 Box 创建 Weak 并升级
 #Test
 fn test_weak_builtin_from_box() {
   #Mut let b Rc<WeakPair> = WeakPair::make(7, 8)
@@ -74,6 +76,7 @@ fn test_weak_builtin_from_box() {
   assert_eq(got ?? -1, 7)
 }
 
+; 验证：从可选的 Weak 对象升级并获取值
 #Test
 fn test_weak_builtin_from_nullable_some() {
   #Mut let b Rc<WeakPair> = WeakPair::make(9, 10)
@@ -84,6 +87,7 @@ fn test_weak_builtin_from_nullable_some() {
   assert_eq(got ?? -1, 9)
 }
 
+; 验证：弱引用从空可选值升级后仍为空
 #Test
 fn test_weak_builtin_from_nullable_null() {
   #Mut let bn Rc<WeakPair>? = null
@@ -93,6 +97,7 @@ fn test_weak_builtin_from_nullable_null() {
   assert_eq(got ?? -1, -1)
 }
 
+; 验证：弱引用升级在目标对象存活和死亡时的行为差异
 #Test
 fn test_weak_upgrade_alive_vs_dead_same_test() {
   ; 失败路径

@@ -17,12 +17,14 @@ struct Bag {
   }
 }
 
+; 验证：Rc 包装的结构体转换为字符串
 #Test
 fn test_box_forward_to_string() {
   let b Rc<Bag> = Bag::make(31)
   assert_eq(b.to_string(), "31")
 }
 
+; 验证：Rc 转换为字符串时处理负数
 #Test
 fn test_box_forward_negative() {
   let b Rc<Bag> = Bag::make(-9)

@@ -59,6 +59,7 @@ struct HeapWrap {
 
 ; ==================== 基础构造 + as_ref ====================
 
+; 验证：Heap 构造与 as_ref 转换
 #Test
 fn test_heap_scalar_ctor_and_as_ref() {
   let h Heap<i32> = heap:<i32>(42)
@@ -66,6 +67,7 @@ fn test_heap_scalar_ctor_and_as_ref() {
   assert_eq(r, 42)
 }
 
+; 验证：堆结构构造后字段读取
 #Test
 fn test_heap_struct_ctor_field_read() {
   let h Heap<HeapBox> = heap:<HeapBox>(HeapBox::make(7))
@@ -75,12 +77,14 @@ fn test_heap_struct_ctor_field_read() {
 
 ; ==================== 自动解引用：字段访问 ====================
 
+; 验证：堆字段访问
 #Test
 fn test_heap_field_access() {
   let h Heap<HeapBox> = heap:<HeapBox>(HeapBox::make(42))
   assert_eq(h.k, 42)
 }
 
+; 验证：堆上嵌套结构体字段访问
 #Test
 fn test_heap_field_access_nested() {
   let h Heap<Vec2f> = heap:<Vec2f>(Vec2f::make(3.0, 4.0))
@@ -90,24 +94,28 @@ fn test_heap_field_access_nested() {
 
 ; ==================== 自动解引用：方法调用 ====================
 
+; 验证：堆结构方法调用与解引用
 #Test
 fn test_heap_struct_method() {
   let h Heap<HeapBox> = heap:<HeapBox>(HeapBox::make(99))
   assert_eq(h.get_k(), 99)
 }
 
+; 验证：Heap 结构体方法对引用参数的处理
 #Test
 fn test_heap_struct_method_with_ref_param() {
   let h Heap<Vec2f> = heap:<Vec2f>(Vec2f::make(3.0, 4.0))
   assert_eq(h.len_sq(), 25.0)
 }
 
+; 验证：Heap 中 i32 类型值转换为字符串
 #Test
 fn test_heap_i32_to_string() {
   let h Heap<i32> = heap:<i32>(42)
   assert_eq(h.to_string(), "42")
 }
 
+; 验证：Heap 中 bool 类型值转换为字符串
 #Test
 fn test_heap_bool_to_string() {
   let h Heap<bool> = heap:<bool>(true)
@@ -116,30 +124,35 @@ fn test_heap_bool_to_string() {
 
 ; ==================== 自动解引用：运算符 ====================
 
+; 验证：Heap 类型的自动解引用和加法运算
 #Test
 fn test_heap_i32_add() {
   let h Heap<i32> = heap:<i32>(10)
   assert_eq(h + 5, 15)
 }
 
+; 验证：Heap i32 类型的减法操作
 #Test
 fn test_heap_i32_sub() {
   let h Heap<i32> = heap:<i32>(10)
   assert_eq(h - 3, 7)
 }
 
+; 验证：Heap 实例乘法运算
 #Test
 fn test_heap_i32_mul() {
   let h Heap<i32> = heap:<i32>(6)
   assert_eq(h * 7, 42)
 }
 
+; 验证：Heap 上的整数除法行为
 #Test
 fn test_heap_i32_div() {
   let h Heap<i32> = heap:<i32>(42)
   assert_eq(h / 6, 7)
 }
 
+; 验证：Heap i32 取模操作
 #Test
 fn test_heap_i32_mod() {
   let h Heap<i32> = heap:<i32>(10)
@@ -148,6 +161,7 @@ fn test_heap_i32_mod() {
 
 ; --- 比较运算符 ---
 
+; 验证：Heap 中的 i32 值比较运算符
 #Test
 fn test_heap_i32_eq() {
   let h Heap<i32> = heap:<i32>(42)
@@ -155,6 +169,7 @@ fn test_heap_i32_eq() {
   assert_false(h == 0)
 }
 
+; 验证：Heap i32 不等运算符的行为
 #Test
 fn test_heap_i32_ne() {
   let h Heap<i32> = heap:<i32>(42)
@@ -162,6 +177,7 @@ fn test_heap_i32_ne() {
   assert_false(h != 42)
 }
 
+; 验证：Heap i32 类型的比较行为
 #Test
 fn test_heap_i32_lt() {
   let h Heap<i32> = heap:<i32>(10)
@@ -169,6 +185,7 @@ fn test_heap_i32_lt() {
   assert_false(h < 5)
 }
 
+; 验证：Heap i32 类型的比较操作符 <= 的行为
 #Test
 fn test_heap_i32_le() {
   let h Heap<i32> = heap:<i32>(10)
@@ -177,6 +194,7 @@ fn test_heap_i32_le() {
   assert_false(h <= 5)
 }
 
+; 验证：Heap i32 大于比较运算符
 #Test
 fn test_heap_i32_gt() {
   let h Heap<i32> = heap:<i32>(10)
@@ -184,6 +202,7 @@ fn test_heap_i32_gt() {
   assert_false(h > 20)
 }
 
+; 验证：Heap i32 类型的 >= 比较运算符
 #Test
 fn test_heap_i32_ge() {
   let h Heap<i32> = heap:<i32>(10)
@@ -194,12 +213,14 @@ fn test_heap_i32_ge() {
 
 ; --- 一元运算符 ---
 
+; 验证：堆上 i32 类型的负号运算符行为
 #Test
 fn test_heap_i32_neg() {
   let h Heap<i32> = heap:<i32>(42)
   assert_eq(-h, -42)
 }
 
+; 验证：Heap 中的 bool 值取反后断言为假
 #Test
 fn test_heap_i32_not() {
   let h Heap<bool> = heap:<bool>(true)
@@ -208,12 +229,14 @@ fn test_heap_i32_not() {
 
 ; --- f64 运算符 ---
 
+; 验证：Heap 中的 f64 类型加法运算
 #Test
 fn test_heap_f64_add() {
   let h Heap<f64> = heap:<f64>(3.5)
   assert_eq(h + 1.5, 5.0)
 }
 
+; 验证：Heap 中的 f64 类型乘法操作
 #Test
 fn test_heap_f64_mul() {
   let h Heap<f64> = heap:<f64>(3.0)
@@ -222,30 +245,35 @@ fn test_heap_f64_mul() {
 
 ; ==================== 自动解引用：位运算 ====================
 
+; 验证：Heap 中的 i32 类型与操作符
 #Test
 fn test_heap_i32_and() {
   let h Heap<i32> = heap:<i32>(0xFF)
   assert_eq(h & 0x0F, 0x0F)
 }
 
+; 验证：Heap 的按位或操作
 #Test
 fn test_heap_i32_or() {
   let h Heap<i32> = heap:<i32>(0xF0)
   assert_eq(h | 0x0F, 0xFF)
 }
 
+; 验证：Heap i32 类型的异或操作
 #Test
 fn test_heap_i32_xor() {
   let h Heap<i32> = heap:<i32>(0xFF)
   assert_eq(h ^ 0x0F, 0xF0)
 }
 
+; 验证：Heap 中的 i32 类型左移操作
 #Test
 fn test_heap_i32_shl() {
   let h Heap<i32> = heap:<i32>(1)
   assert_eq(h << 3, 8)
 }
 
+; 验证：Heap 的右移操作
 #Test
 fn test_heap_i32_shr() {
   let h Heap<i32> = heap:<i32>(8)
@@ -254,12 +282,14 @@ fn test_heap_i32_shr() {
 
 ; --- rhs 运算符 ---
 
+; 验证：Heap 实现 i32 类型的 rhs 加法运算符
 #Test
 fn test_heap_i32_rhs_add() {
   let h Heap<i32> = heap:<i32>(5)
   assert_eq(10 + h, 15)
 }
 
+; 验证：Heap i32 类型的 rhs_eq 方法
 #Test
 fn test_heap_i32_rhs_eq() {
   let h Heap<i32> = heap:<i32>(42)
@@ -268,12 +298,14 @@ fn test_heap_i32_rhs_eq() {
 
 ; --- 字段 + 运算符综合 ---
 
+; 验证：堆字段与运算符综合使用
 #Test
 fn test_heap_field_and_operator_combined() {
   let h Heap<HeapBox> = heap:<HeapBox>(HeapBox::make(30))
   assert_eq(h.k + 12, 42)
 }
 
+; 验证：Heap 中的 bool 取反操作
 #Test
 fn test_heap_bool_not_combined() {
   let h Heap<bool> = heap:<bool>(false)
@@ -282,6 +314,7 @@ fn test_heap_bool_not_combined() {
 
 ; ==================== as_ref + 字段访问 ====================
 
+; 验证：Heap 中的值通过 as_ref 获取引用并访问字段
 #Test
 fn test_heap_ref_then_field() {
   let h Heap<Vec2f> = heap:<Vec2f>(Vec2f::make(5.0, 12.0))
@@ -292,6 +325,7 @@ fn test_heap_ref_then_field() {
 
 ; ==================== #Mut Heap 重赋 ====================
 
+; 验证：Heap 变量重新赋值后引用正确更新
 #Test
 fn test_heap_mut_reassign_fresh_ctor() {
   #Mut let h Heap<i32> = heap:<i32>(1)
@@ -302,6 +336,7 @@ fn test_heap_mut_reassign_fresh_ctor() {
 
 ; ==================== 共享借用 ====================
 
+; 验证：Heap 中的值通过共享引用访问时的一致性
 #Test
 fn test_heap_two_as_ref_shared() {
   let h Heap<HeapBox> = heap:<HeapBox>(HeapBox::make(13))
@@ -313,6 +348,7 @@ fn test_heap_two_as_ref_shared() {
 
 ; ==================== struct 字段 Heap<T> 析构 ====================
 
+; 验证：Heap 在结构体字段中的析构行为
 #Test
 fn test_heap_inside_struct_field() {
   let w HeapWrap = HeapWrap::make(31)
@@ -321,6 +357,7 @@ fn test_heap_inside_struct_field() {
 
 ; ==================== 多局部 + 嵌套作用域 ====================
 
+; 验证：多局部变量作用域内堆内存引用和求和
 #Test
 fn test_heap_multi_locals_scope_drop() {
   let a Heap<i32> = heap:<i32>(2)
@@ -332,6 +369,7 @@ fn test_heap_multi_locals_scope_drop() {
   assert_eq(ra + rb + rc, 14)
 }
 
+; 验证：Heap 在嵌套块作用域中的可见性和生命周期管理
 #Test
 fn test_heap_nested_block_scope() {
   let outer Heap<i32> = heap:<i32>(100)
@@ -344,6 +382,7 @@ fn test_heap_nested_block_scope() {
   assert_eq(ro, 100)
 }
 
+; 验证：HeapWrap 和顶层堆共存时字段访问
 #Test
 fn test_heap_field_and_top_heap_coexist() {
   let w HeapWrap = HeapWrap::make(50)
@@ -359,6 +398,7 @@ fn nrvo_make_h(v i32) Heap<i32> {
   ret h
 }
 
+; 验证：NRVO 返回局部变量的堆对象
 #Test
 fn test_heap_nrvo_return_local() {
   let r Heap<i32> = nrvo_make_h(77)
@@ -375,6 +415,7 @@ fn nrvo_pick(cond bool) Heap<i32> {
   ret b
 }
 
+; 验证：NRVO 多返回值优化
 #Test
 fn test_heap_nrvo_multi_ret() {
   let r1 Heap<i32> = nrvo_pick(true)
@@ -387,18 +428,21 @@ fn test_heap_nrvo_multi_ret() {
 
 ; ==================== heap_some / heap_null — Heap<T>? 构造 ====================
 
+; 验证：Heap<T>? 构造函数是否能正确创建包含值的可选堆对象
 #Test
 fn test_heap_some_constructs_nullable_with_value() {
   let h Heap<i32>? = heap_some(7)
   assert_eq(h.has(), true)
 }
 
+; 验证：heap_null 构造空的可选堆
 #Test
 fn test_heap_null_constructs_empty_nullable() {
   let h Heap<i32>? = heap_null:<i32>()
   assert_eq(h.has(), false)
 }
 
+; 验证：Heap 的 has 方法在 Some 和 Null 状态下的区别
 #Test
 fn test_heap_some_and_null_distinct() {
   let a Heap<i32>? = heap_some(1)
@@ -416,6 +460,7 @@ fn bdang_consume(h Heap<i32>?) i32 {
   ret 0
 }
 
+; 验证：Heap 的 has 和 consume 方法行为
 #Test
 fn test_heap_bdang_call_site_writeback() {
   let a Heap<i32>? = heap_some(5)
@@ -425,6 +470,7 @@ fn test_heap_bdang_call_site_writeback() {
   assert_eq(a.has(), false)
 }
 
+; 验证：Heap 在 consume 后仍然可以正常使用
 #Test
 fn test_heap_bdang_no_double_free() {
   let a Heap<i32>? = heap_some(7)
@@ -433,6 +479,7 @@ fn test_heap_bdang_no_double_free() {
   assert_eq(b.has(), true)
 }
 
+; 验证：heap_null 返回的空堆栈传递给 bdang_consume 后，返回值和堆栈状态正确
 #Test
 fn test_heap_bdang_null_arg_passthrough() {
   let a Heap<i32>? = heap_null:<i32>()
@@ -473,18 +520,21 @@ struct HeapNullableTarget {
   }
 }
 
+; 验证：HeapNullableTarget 构造函数从局部结构体字段移动出数据
 #Test
 fn test_heap_3d3_struct_lit_field_moveout() {
   let t HeapNullableTarget = HeapNullableTarget::from_local_struct_field()
   assert_eq(t.buf.has(), true)
 }
 
+; 验证：HeapNullableTarget 从本地 ID 创建并检查 has 方法返回值
 #Test
 fn test_heap_3d3_struct_lit_local_id_moveout() {
   let t HeapNullableTarget = HeapNullableTarget::from_local_id(heap_some(7))
   assert_eq(t.buf.has(), true)
 }
 
+; 验证：HeapNullableHolder 结构体的堆可选字段在创建时初始化为非空
 #Test
 fn test_heap_3d3_struct_with_heap_nullable_field_no_leak() {
   let a HeapNullableHolder = HeapNullableHolder::make()
@@ -497,6 +547,7 @@ fn bdang_field_consume(h Heap<i32>?) bool {
   ret h.has()
 }
 
+; 验证：HeapNullableHolder 的 buf 字段在调用 consume 后变为 null
 #Test
 fn test_heap_3d3_call_site_field_lvalue_writeback() {
   let h HeapNullableHolder = HeapNullableHolder::make()
@@ -506,6 +557,7 @@ fn test_heap_3d3_call_site_field_lvalue_writeback() {
   assert_eq(h.buf.has(), false)
 }
 
+; 验证：HeapNullableHolder 的字段在调用时不会导致双重释放
 #Test
 fn test_heap_3d3_call_site_field_no_double_free() {
   let h HeapNullableHolder = HeapNullableHolder::make()
@@ -516,6 +568,7 @@ fn test_heap_3d3_call_site_field_no_double_free() {
 
 ; ==================== Lambda 捕获 Heap<T>? ====================
 
+; 验证：Lambda 捕获可选堆并移动所有权
 #Test
 fn test_heap_3e_lambda_move_capture_nullable() {
   let h Heap<i32>? = heap_some(33)
@@ -526,6 +579,7 @@ fn test_heap_3e_lambda_move_capture_nullable() {
   assert_eq(f(), true)
 }
 
+; 验证：空堆捕获 lambda 函数调用
 #Test
 fn test_heap_3e_lambda_move_capture_null_source() {
   let h Heap<i32>? = heap_null:<i32>()
@@ -536,6 +590,7 @@ fn test_heap_3e_lambda_move_capture_null_source() {
   assert_eq(f(), false)
 }
 
+; 验证：Lambda 捕获堆对象后，堆对象不会被重复释放
 #Test
 fn test_heap_3e_lambda_move_capture_no_double_free() {
   let h Heap<i32>? = heap_some(7)
@@ -549,6 +604,7 @@ fn test_heap_3e_lambda_move_capture_no_double_free() {
 
 ; ==================== copy_of（深拷贝） ====================
 
+; 验证：Heap 深拷贝后值不变
 #Test
 fn test_heap_3f_copy_of_owned_scalar() {
   let a Heap<i32> = heap:<i32>(99)
@@ -570,6 +626,7 @@ struct CopyHeapBox {
   }
 }
 
+; 验证：CopyHeapBox 在堆上复制后，两个变量的值保持一致
 #Test
 fn test_heap_3f_copy_of_owned_struct() {
   let a Heap<CopyHeapBox> = heap:<CopyHeapBox>(CopyHeapBox::make(7))
@@ -580,6 +637,7 @@ fn test_heap_3f_copy_of_owned_struct() {
   assert_eq(rb.k, 7)
 }
 
+; 验证：Heap 的 copy_of 函数对 Some 值的复制行为
 #Test
 fn test_heap_3f_copy_of_nullable_some() {
   let a Heap<i32>? = heap_some(33)
@@ -588,6 +646,7 @@ fn test_heap_3f_copy_of_nullable_some() {
   assert_eq(b.has(), true)
 }
 
+; 验证：Nullable Heap 复制后都为空
 #Test
 fn test_heap_3f_copy_of_nullable_null() {
   let a Heap<i32>? = heap_null:<i32>()
@@ -596,6 +655,7 @@ fn test_heap_3f_copy_of_nullable_null() {
   assert_eq(b.has(), false)
 }
 
+; 验证：Heap 复制操作不会导致双重释放
 #Test
 fn test_heap_3f_copy_of_no_double_free() {
   let a Heap<i32> = heap:<i32>(1)
@@ -607,6 +667,7 @@ fn test_heap_3f_copy_of_no_double_free() {
 
 ; ==================== FFI Heap ↔ Ptr 互转 ====================
 
+; 验证：FFI 地址与堆值之间的相互转换
 #Test
 fn test_heap_8_ffi_ptr_roundtrip_scalar() {
   let h1 Heap<i32> = heap:<i32>(123)
@@ -616,6 +677,7 @@ fn test_heap_8_ffi_ptr_roundtrip_scalar() {
   assert_eq(r, 123)
 }
 
+; 验证：FFI 指针在堆上的双向传递和引用转换
 #Test
 fn test_heap_8_ffi_ptr_roundtrip_struct() {
   let h1 Heap<CopyHeapBox> = heap:<CopyHeapBox>(CopyHeapBox::make(42))
@@ -625,6 +687,7 @@ fn test_heap_8_ffi_ptr_roundtrip_struct() {
   assert_eq(r.k, 42)
 }
 
+; 验证：FFI 指针在堆上分配和释放，确保无双重释放
 #Test
 fn test_heap_8_ffi_ptr_no_double_free() {
   let a Heap<i32> = heap:<i32>(1)
@@ -643,6 +706,7 @@ fn test_heap_8_ffi_ptr_no_double_free() {
 
 ; ==================== 分配/释放生命周期验证 ====================
 
+; 验证：Heap 分配与释放生命周期
 #Test
 fn test_heap_9_alloc_free_lifecycle() {
   let h1 Heap<i32> = heap:<i32>(77)
