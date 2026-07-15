@@ -339,13 +339,22 @@ TypeInfo ExprCallNode::getType() const {
     if (type.name.starts_with("fn() ")) {
         if (auto dotNode = dynamic_cast<ExprDotNode*>(_calleeExpr)) {
             auto baseType = dotNode->baseExpr()->getType();
-            TypeInfo actualType = baseType;
-            if (baseType.isRef()) {
-                if (auto e = baseType.refElementType()) actualType = *e;
-            } else if (baseType.isHeap()) {
-                if (auto e = baseType.heapElementType()) actualType = *e;
-            } else if (baseType.isRc()) {
-                if (auto e = baseType.rcElementType()) actualType = *e;
+
+            // 安全方法调用 a?.foo()：base 是 Nullable<T>，需要从内层 T 找方法
+            bool isSafeCall = dotNode->isSafe() && baseType.isNullable();
+            TypeInfo lookupType = baseType;
+            if (isSafeCall) {
+                auto inner = baseType.nullableInnerType();
+                if (inner) lookupType = *inner;
+            }
+
+            TypeInfo actualType = lookupType;
+            if (lookupType.isRef()) {
+                if (auto e = lookupType.refElementType()) actualType = *e;
+            } else if (lookupType.isHeap()) {
+                if (auto e = lookupType.heapElementType()) actualType = *e;
+            } else if (lookupType.isRc()) {
+                if (auto e = lookupType.rcElementType()) actualType = *e;
             }
             auto scope = findNearestScope();
             auto* file = dynamic_cast<FileNode*>(scope);
@@ -387,6 +396,11 @@ TypeInfo ExprCallNode::getType() const {
                         if (!subst.empty()) rt = rt.substitute(subst);
                     }
                     DEBUG_LOG_VAL("ExprCallNode::getType - method returning", rt.getFullName());
+                    if (isSafeCall) {
+                        std::vector<sp<TypeInfo>> nullArgs;
+                        nullArgs.push_back(make_shared<TypeInfo>(rt));
+                        return {"Nullable", nullArgs};
+                    }
                     return rt;
                 }
 
@@ -396,15 +410,32 @@ TypeInfo ExprCallNode::getType() const {
                     if (auto elem = actualType.arrayGenericElementType()) {
                         const auto& m = dotNode->member();
                         if (m == "get" || m == "first" || m == "last") {
-                            return TypeInfo("Ref", {elem});
+                            TypeInfo refTy("Ref", {elem});
+                            if (isSafeCall) {
+                                return TypeInfo("Nullable", {std::make_shared<TypeInfo>(refTy)});
+                            }
+                            return refTy;
                         }
                         if (m == "pop") {
+                            if (isSafeCall) {
+                                return TypeInfo("Nullable", {std::make_shared<TypeInfo>(*elem)});
+                            }
                             return *elem;
                         }
                     }
                     const auto& m = dotNode->member();
-                    if (m == "len" || m == "cap") return TypeInfo("i64");
-                    if (m == "is_empty") return TypeInfo("bool");
+                    if (m == "len" || m == "cap") {
+                        if (isSafeCall) {
+                            return TypeInfo("Nullable", {std::make_shared<TypeInfo>(TypeInfo("usize"))});
+                        }
+                        return TypeInfo("usize");
+                    }
+                    if (m == "is_empty") {
+                        if (isSafeCall) {
+                            return TypeInfo("Nullable", {std::make_shared<TypeInfo>(TypeInfo("bool"))});
+                        }
+                        return TypeInfo("bool");
+                    }
                     if (m == "push" || m == "clear" || m == "set_len") return {};
                 }
             }
@@ -851,9 +882,9 @@ TypeInfo ExprDotNode::getType() const {
     auto member = this->member();
     DEBUG_LOG_VAL("ExprDotNode::getType - member", member);
 
-    // 安全访问 a?.b：base 必须是 Nullable<T>
-    // 类型规则：解出 T，从 T 的字段查 b 的类型 U，结果为 Nullable<U>
-    // 不支持方法调用形式（要求 exprCall 同时知道 safe，目前只解到字段）
+    // 安全访问 a?.b / a?.foo()：base 必须是 Nullable<T>
+    // a?.b 字段访问 → 结果为 Nullable<U>（U = b 的字段类型）
+    // a?.foo() 方法调用 → 先返回 fn() <ret> 编码，由 ExprCallNode::getType() 包装为 Nullable<ret>
     if (_safe) {
         auto baseT = _baseExpr->getType();
         if (!baseT.isNullable()) {
@@ -863,7 +894,8 @@ TypeInfo ExprDotNode::getType() const {
         if (!innerType) {
             throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3050);
         }
-        // Phase 5: Rc<T>? 自动 deref —— 把 Rc<U> 视为 U 进字段查
+        // Phase 5: Rc<T>? 自动 deref —— 把 Rc<U> 视为 U 进字段/方法查
+        auto rawInnerType = innerType; // Rc<U>（用于泛型替换等场景）
         if (innerType->isRc()) {
             auto rcInner = innerType->rcElementType();
             if (!rcInner) {
@@ -880,28 +912,135 @@ TypeInfo ExprDotNode::getType() const {
         if (!file) {
             return {};
         }
-        auto sd = file->getStructDecl(innerType->name);
+
+        // 查找 struct decl：先在本 FileNode 查，再沿 parentScope（SDK）链找
+        auto sd = file->getStructDecl(innerType->name, /*includeBuiltin=*/true);
         if (!sd) {
-            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3044, innerType->name);
+            ScopeNode* p = file->parentScope();
+            while (p && !sd) {
+                if (auto pf = dynamic_cast<FileNode*>(p)) {
+                    sd = pf->getStructDecl(innerType->name, /*includeBuiltin=*/true);
+                }
+                p = p->parentScope();
+            }
         }
 
-        int idx = sd->fieldIndex(member);
-        if (idx < 0) {
-            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3040, innerType->name, member);
-        }
-        auto fieldType = sd->fields()[idx]->getType();
-        // 泛型实参替换 T → 实际类型
-        if (innerType->isGeneric() && sd->isGeneric() && innerType->genericArgs.size() == sd->typeParams().size()) {
-            std::map<std::string, TypeInfo> subst;
-            for (size_t i = 0; i < sd->typeParams().size(); ++i) {
-                subst[sd->typeParams()[i]] = innerType->genericArgs[i] ? *innerType->genericArgs[i] : TypeInfo();
+        // 创建泛型替换表（innerType 有泛型实参时使用）
+        map<string, TypeInfo> genSubst;
+        if (innerType->isGeneric() && sd && sd->isGeneric() &&
+            innerType->genericArgs.size() == sd->typeParams().size()) {
+            for (size_t i = 0; i < innerType->genericArgs.size(); ++i) {
+                auto& a = innerType->genericArgs[i];
+                genSubst[sd->typeParams()[i]] = a ? *a : TypeInfo();
             }
-            fieldType = fieldType.substitute(subst);
         }
-        // 包装为 Nullable<U>
-        std::vector<sp<TypeInfo>> args;
-        args.push_back(make_shared<TypeInfo>(fieldType));
-        return {"Nullable", args};
+
+        // 先尝试字段访问
+        if (sd) {
+            int idx = sd->fieldIndex(member);
+            if (idx >= 0) {
+                auto fieldType = sd->fields()[idx]->getType();
+                if (!genSubst.empty()) fieldType = fieldType.substitute(genSubst);
+                // 包装为 Nullable<U>
+                std::vector<sp<TypeInfo>> args;
+                args.push_back(make_shared<TypeInfo>(fieldType));
+                return {"Nullable", args};
+            }
+        }
+
+        // 字段未找到 → 尝试方法调用（a?.foo()）
+        // 方法查找走 fnSymbol，与下方非 safe 路径模式一致
+        {
+            // 对 Rc<T>? 的 actualType 需要用 inner type 做方法查找
+            const TypeInfo& actualType = *innerType;
+
+            // 内建类型方法
+            if (isBuiltinType(actualType.name)) {
+                if (member.starts_with("to_")) {
+                    string dstType = member.substr(3);
+                    if (isBuiltinType(dstType)) {
+                        return TypeInfo("fn() " + dstType);
+                    }
+                }
+                // SDK 注册的内建类型方法（如 String.len、i32.to_string 等）
+                string methodFullName = actualType.name + "." + member;
+                auto methodSym = file->lookupFnSymbol(methodFullName);
+                if (!methodSym) {
+                    ScopeNode* p = file->parentScope();
+                    while (p && !methodSym) {
+                        if (auto pf = dynamic_cast<FileNode*>(p)) {
+                            methodSym = pf->lookupFnSymbol(methodFullName);
+                        }
+                        p = p->parentScope();
+                    }
+                }
+                if (methodSym) {
+                    DEBUG_LOG_VAL("ExprDotNode::getType - safe builtin method, returning fn()", methodSym->retType.name);
+                    return TypeInfo("fn() " + methodSym->retType.getFullName());
+                }
+            }
+
+            // Array<T> / [T*N] 方法
+            auto tryArrayMethodRetType = [&](const TypeInfo& elemTy) -> std::string {
+                if (member == "get" || member == "first" || member == "last") {
+                    TypeInfo refTy("Ref", {std::make_shared<TypeInfo>(elemTy)});
+                    return "fn() " + refTy.getFullName();
+                }
+                if (member == "pop") return "fn() " + elemTy.getFullName();
+                if (member == "len" || member == "cap") return "fn() usize";
+                if (member == "is_empty") return "fn() bool";
+                if (member == "push" || member == "clear" || member == "set_len") return "fn() void";
+                return "";
+            };
+
+            if (actualType.isArrayGeneric()) {
+                if (member == "clone") return TypeInfo("fn() " + actualType.getFullName());
+                if (auto elemType = actualType.arrayGenericElementType()) {
+                    auto retSig = tryArrayMethodRetType(*elemType);
+                    if (!retSig.empty()) return TypeInfo(retSig);
+                }
+            }
+            if (actualType.isArray()) {
+                if (auto elemType = actualType.elementType) {
+                    auto retSig = tryArrayMethodRetType(*elemType);
+                    if (!retSig.empty()) return TypeInfo(retSig);
+                }
+            }
+
+            // 结构体方法
+            string methodFullName = actualType.name + "." + member;
+            auto methodSym = file->lookupFnSymbol(methodFullName);
+            if (!methodSym) {
+                ScopeNode* p = file->parentScope();
+                while (p && !methodSym) {
+                    if (auto pf = dynamic_cast<FileNode*>(p)) {
+                        methodSym = pf->lookupFnSymbol(methodFullName);
+                    }
+                    p = p->parentScope();
+                }
+            }
+            if (methodSym) {
+                auto rt = methodSym->retType;
+                if (!genSubst.empty()) rt = rt.substitute(genSubst);
+                DEBUG_LOG_VAL("ExprDotNode::getType - safe method, returning fn()", rt.name);
+                return TypeInfo("fn() " + rt.getFullName());
+            }
+
+            // §12.4: dyn 边界方法
+            if (actualType.kind == TypeKind::Normal && !actualType.isGeneric()) {
+                auto rt = lookupSpecBoundMethodRetType(parent(), actualType.name, member);
+                if (!rt.empty()) {
+                    return TypeInfo("fn() " + rt.getFullName());
+                }
+            }
+        }
+
+        // 字段和方法都未找到 → 报错
+        if (sd) {
+            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3040, innerType->name, member);
+        } else {
+            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3044, innerType->name);
+        }
     }
 
     // DRAFT-spec-reflect §6: Field.value → compile-time field name rewrite.

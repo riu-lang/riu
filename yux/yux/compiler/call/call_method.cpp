@@ -16,6 +16,280 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 
+// ==================== 安全方法调用编译 (a?.foo()) ====================
+// 编译 a?.foo(args) 安全方法调用表达式
+// 语义：a 是 Nullable<T>，T 有方法 foo
+//   - a 持值 → 调用 a._value.foo(args)，结果包装为 Nullable<ret>{ has=true, value=result }
+//   - a 不持值 → Nullable<ret>{ has=false, value=zero }
+// 模式与 compileSafeDotExpr 一致：extractvalue + br + then/else/merge BB
+llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<ExprDotNode> dotNode,
+                                                 vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
+    auto baseExpr = dotNode->baseExpr();
+    auto member = dotNode->member();
+    auto baseType = baseExpr->getType();
+
+    if (!baseType.isNullable()) {
+        throw YuxError(dotNode->resolveLineNumber(), dotNode->resolveColumn(), ErrorCode::E3024, baseType.name);
+    }
+    auto innerType = baseType.nullableInnerType();
+    if (!innerType) {
+        throw YuxError(dotNode->resolveLineNumber(), dotNode->resolveColumn(), ErrorCode::E3050);
+    }
+    // Phase 5: Rc<T>? 自动 deref
+    bool innerIsRc = innerType->isRc();
+    auto rawInnerType = innerType;
+    if (innerIsRc) {
+        auto rcInner = innerType->rcElementType();
+        if (!rcInner) {
+            throw YuxError(dotNode->resolveLineNumber(), dotNode->resolveColumn(), ErrorCode::E3050);
+        }
+        innerType = rcInner;
+    }
+
+    // 去掉 Ref/Heap/Rc 包装，拿到实际方法查找类型
+    TypeInfo actualType = *innerType;
+    if (actualType.isRef()) {
+        if (auto e = actualType.refElementType()) actualType = *e;
+    } else if (actualType.isHeap()) {
+        if (auto e = actualType.heapElementType()) actualType = *e;
+    } else if (actualType.isRc()) {
+        if (auto e = actualType.rcElementType()) actualType = *e;
+    }
+
+    // DRAFT-spec-disambig-at: 处理 @Spec 后缀
+    if (dotNode->hasSpecQualifier()) {
+        auto bt = dotNode->baseExpr()->getType();
+        if (!bt.isDyn()) {
+            member = member + "__at__" + dotNode->specQualifier();
+        }
+    }
+
+    // 查找方法符号
+    vector<TypeInfo> methodParamTypes;
+    methodParamTypes.push_back(actualType);
+    methodParamTypes.insert(methodParamTypes.end(), argTypes.begin(), argTypes.end());
+    string methodFullName = actualType.name + "." + member;
+
+    FnSymbolInfo* methodSymbol = _file->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
+    if (!methodSymbol && _yux && _yux->sdkFile()) {
+        methodSymbol = _yux->sdkFile()->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
+    }
+
+    // 泛型 struct 实例方法
+    p<FnNode> genericMethodNode = nullptr;
+    string genericEffName;
+    map<string, TypeInfo> genericSubst;
+    if (!methodSymbol && actualType.hasGenericArgs()) {
+        auto baseDecl = _file->getStructDecl(actualType.name);
+        p<FileNode> owner = _file;
+        if (!baseDecl && _yux && _yux->sdkFile()) {
+            baseDecl = _yux->sdkFile()->getStructDecl(actualType.name);
+            if (baseDecl) owner = _yux->sdkFile();
+        }
+        if (baseDecl && baseDecl->isGeneric()) {
+            genericEffName = ensureStructInstance(baseDecl, actualType.genericArgs, owner);
+            auto& inst = _structInstances[genericEffName];
+            if (inst.baseImpl) {
+                for (auto m : inst.baseImpl->methods()) {
+                    if (m->header()->name().getText() != member) continue;
+                    if (m->header()->params().size() != argTypes.size()) continue;
+                    genericMethodNode = m;
+                    for (size_t i = 0; i < inst.args.size(); ++i) {
+                        genericSubst[inst.baseDecl->typeParams()[i]] = inst.args[i];
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!methodSymbol && !genericMethodNode) {
+        return nullptr; // 方法未找到，由调用方处理错误
+    }
+
+    // 方法返回类型
+    TypeInfo retType;
+    if (methodSymbol) {
+        retType = methodSymbol->retType;
+        // 泛型替换
+        if (actualType.hasGenericArgs() && !actualType.genericArgs.empty()) {
+            StructDeclNode* structDecl = _file->getStructDecl(actualType.name, /*includeBuiltin=*/true);
+            if (!structDecl && _yux && _yux->sdkFile()) {
+                structDecl = _yux->sdkFile()->getStructDecl(actualType.name, /*includeBuiltin=*/true);
+            }
+            if (structDecl && structDecl->isGeneric() &&
+                structDecl->typeParams().size() == actualType.genericArgs.size()) {
+                map<string, TypeInfo> subst;
+                for (size_t i = 0; i < actualType.genericArgs.size(); ++i) {
+                    auto& a = actualType.genericArgs[i];
+                    subst[structDecl->typeParams()[i]] = a ? *a : TypeInfo();
+                }
+                retType = retType.substitute(subst);
+            }
+        }
+    } else if (genericMethodNode && genericMethodNode->header()->retType()) {
+        retType = genericMethodNode->header()->retType()->getType().substitute(genericSubst);
+    }
+
+    // 结果类型 Nullable<ret>
+    vector<sp<TypeInfo>> nullArgsInner;
+    nullArgsInner.push_back(make_shared<TypeInfo>(retType));
+    TypeInfo resultType("Nullable", nullArgsInner);
+
+    // LLVM 类型
+    auto baseLLVMType = getLLVMType(baseType);
+    auto innerLLVMType = getLLVMType(*rawInnerType); // Rc struct 或 bare struct
+    auto resultLLVMType = getLLVMType(resultType);
+
+    // 编译 base 表达式 (Nullable<T>)
+    auto baseVal = compileExpr(baseExpr);
+    auto hasVal = _builder.CreateExtractValue(baseVal, {0}, "sd.m.has");
+    auto innerVal = _builder.CreateExtractValue(baseVal, {1}, "sd.m.inner");
+
+    // 结果 alloca
+    auto resultAlloca = _builder.CreateAlloca(resultLLVMType, nullptr, "sd.m.result");
+    auto zero32 = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+    auto one32 = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+    auto resHasField = _builder.CreateGEP(resultLLVMType, resultAlloca, {zero32, zero32}, "sd.m.res.has");
+    auto resValueField = _builder.CreateGEP(resultLLVMType, resultAlloca, {zero32, one32}, "sd.m.res.value");
+
+    llvm::Function* func = _builder.GetInsertBlock()->getParent();
+    auto thenBB = llvm::BasicBlock::Create(_context, "sd.m.then", func);
+    auto elseBB = llvm::BasicBlock::Create(_context, "sd.m.else");
+    auto mergeBB = llvm::BasicBlock::Create(_context, "sd.m.merge");
+
+    _builder.CreateCondBr(hasVal, thenBB, elseBB);
+
+    // ==== then: 调用方法，包装结果为 Nullable<ret> ====
+    _builder.SetInsertPoint(thenBB);
+
+    llvm::Value* receiverArg = nullptr;
+    llvm::Value* dataPtr = nullptr;
+
+    if (innerIsRc) {
+        // Rc<T>?: 提取 handle → payload = handle + 8
+        auto rcAlloca = _builder.CreateAlloca(innerLLVMType, nullptr, "sd.m.rc.tmp");
+        _builder.CreateStore(innerVal, rcAlloca);
+        auto handleField = _builder.CreateGEP(innerLLVMType, rcAlloca, {zero32, zero32}, "sd.m.rc.handle");
+        auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "sd.m.rc.handle");
+        dataPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "sd.m.rc.payload");
+    } else {
+        auto innerAlloca = _builder.CreateAlloca(innerLLVMType, nullptr, "sd.m.inner.tmp");
+        _builder.CreateStore(innerVal, innerAlloca);
+        dataPtr = innerAlloca;
+    }
+
+    bool receiverByValue = isBuiltinType(actualType.name);
+    receiverArg = dataPtr;
+    if (receiverByValue) {
+        receiverArg = _builder.CreateLoad(getLLVMType(actualType), dataPtr, "sd.m.receiver.val");
+    }
+
+    // 构建方法调用参数
+    vector<llvm::Value*> methodArgs;
+    methodArgs.push_back(receiverArg);
+    static const vector<TypeInfo> emptyParams;
+    const auto& mparams = methodSymbol ? methodSymbol->params : emptyParams;
+    for (size_t i = 0; i < args.size(); ++i) {
+        auto& at = argTypes[i];
+        if (typeNeedsDestructor(at)) {
+            if (i < callNode->getArgs().size() && !isFreshHandleExpr(callNode->getArgs()[i])) {
+                retainHandleAtCallSite(args[i], at);
+            } else if (i < callNode->getArgs().size()) {
+                consumeTemp(args[i]);
+            }
+        }
+        size_t mpi = i + 1;
+        bool needsAutoRef = mpi < mparams.size() && mparams[mpi].isRef() && !at.isRef();
+        if (needsAutoRef || structParamUsesPointer(at.name)) {
+            auto structType = getLLVMType(at);
+            auto alloca = _builder.CreateAlloca(structType, nullptr, "sd.m.arg_tmp");
+            _builder.CreateStore(args[i], alloca);
+            methodArgs.push_back(alloca);
+        } else {
+            methodArgs.push_back(args[i]);
+        }
+    }
+
+    // 获取或创建 LLVM 函数
+    llvm::Function* llvmFn = nullptr;
+    if (genericMethodNode) {
+        string ownerMod = _structInstances[genericEffName].consumerModule;
+        bool methPriv = !member.empty() && member[0] == '_';
+        string mangledName = Mangler::method(ownerMod, genericEffName, member, argTypes, methPriv);
+        llvmFn = _module->getFunction(mangledName);
+        if (!llvmFn) {
+            vector<llvm::Type*> paramTypes;
+            paramTypes.push_back(llvm::PointerType::get(_context, 0));
+            for (auto& t : argTypes) {
+                if (structParamUsesPointer(t.name)) {
+                    paramTypes.push_back(llvm::PointerType::get(_context, 0));
+                } else {
+                    paramTypes.push_back(getLLVMType(t));
+                }
+            }
+            TypeInfo genRetType;
+            if (genericMethodNode->header()->retType()) {
+                genRetType = genericMethodNode->header()->retType()->getType().substitute(genericSubst);
+            }
+            string mFallibleErr;
+            if (auto e = genericMethodNode->header()->getAnnoArg("Fallible")) mFallibleErr = *e;
+            auto llvmRetType = wrapFallibleRetType(genRetType, mFallibleErr);
+            auto fnType = llvm::FunctionType::get(llvmRetType, paramTypes, false);
+            llvmFn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
+        }
+    } else if (methodSymbol) {
+        string ownerMod = methodSymbol->moduleName.empty() ? _file->moduleName() : methodSymbol->moduleName;
+        bool methPriv = !member.empty() && member[0] == '_';
+        vector<TypeInfo> declaredParams(mparams.size() > 1 ? mparams.begin() + 1 : mparams.begin(), mparams.end());
+        if (mparams.size() <= 1) declaredParams.clear();
+        string mangledName = Mangler::method(ownerMod, actualType.name, member, declaredParams, methPriv);
+        llvmFn = _module->getFunction(mangledName);
+        if (!llvmFn) {
+            vector<llvm::Type*> paramTypes;
+            if (receiverByValue) {
+                paramTypes.push_back(getLLVMType(actualType));
+            } else {
+                paramTypes.push_back(llvm::PointerType::get(_context, 0));
+            }
+            for (size_t i = 1; i < mparams.size(); ++i) {
+                auto& t = mparams[i];
+                if (structParamUsesPointer(t.name)) {
+                    paramTypes.push_back(llvm::PointerType::get(_context, 0));
+                } else {
+                    paramTypes.push_back(getLLVMType(t));
+                }
+            }
+            auto rt = wrapFallibleRetType(methodSymbol->retType, methodSymbol->fallibleErrType);
+            auto fnType = llvm::FunctionType::get(rt, paramTypes, false);
+            llvmFn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
+        }
+    }
+
+    if (!llvmFn) {
+        _builder.CreateStore(_builder.getInt1(false), resHasField);
+        _builder.CreateStore(llvm::Constant::getNullValue(getLLVMType(retType)), resValueField);
+        _builder.CreateBr(mergeBB);
+    } else {
+        auto callResult = _builder.CreateCall(llvmFn, methodArgs, "sd.m.call");
+        _builder.CreateStore(_builder.getInt1(true), resHasField);
+        _builder.CreateStore(callResult, resValueField);
+        _builder.CreateBr(mergeBB);
+    }
+
+    // ==== else: 空 Nullable<ret> ====
+    func->insert(func->end(), elseBB);
+    _builder.SetInsertPoint(elseBB);
+    _builder.CreateStore(_builder.getInt1(false), resHasField);
+    _builder.CreateStore(llvm::Constant::getNullValue(getLLVMType(retType)), resValueField);
+    _builder.CreateBr(mergeBB);
+
+    // ==== merge: load result ====
+    func->insert(func->end(), mergeBB);
+    _builder.SetInsertPoint(mergeBB);
+    return _builder.CreateLoad(resultLLVMType, resultAlloca, "sd.m.result.load");
+}
+
 // ==================== 方法调用编译 ====================
 // 编译方法调用表达式 (obj.method(args))
 // 处理多种情况: 包别名调用、模块别名调用、内置类型方法、数组方法、结构体方法

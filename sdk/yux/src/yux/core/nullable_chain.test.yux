@@ -99,3 +99,68 @@ fn test_nullable_reassign_coalesce() {
   let w i64 = x ?? 0
   assert_eq(w, 50)
 }
+
+; ==================== ?.foo() 安全方法调用 ====================
+
+struct ValWithMethod {
+  v i32
+
+  #Static
+  fn make(v i32) ValWithMethod {
+    ret Self {
+      .v = v
+    }
+  }
+
+  fn getValue() i32 {
+    ret $.v
+  }
+
+  fn double() i32 {
+    ret $.v * 2
+  }
+}
+
+#Test
+fn test_safe_method_call_some() {
+  #Mut let v ValWithMethod = ValWithMethod::make(42)
+  #Mut let maybe ValWithMethod? = v
+  ; ?.foo() 有值调用
+  #Mut let r i32? = maybe?.getValue()
+  assert_eq(r ?? -1, 42)
+}
+
+#Test
+fn test_safe_method_call_null() {
+  #Mut let n ValWithMethod? = null
+  ; ?.foo() null 短路
+  #Mut let r i32? = n?.getValue()
+  assert_eq(r ?? -99, -99)
+}
+
+#Test
+fn test_safe_method_call_with_arg() {
+  #Mut let v ValWithMethod = ValWithMethod::make(21)
+  #Mut let maybe ValWithMethod? = v
+  ; ?.double() 有值调用
+  #Mut let r i32? = maybe?.double()
+  assert_eq(r ?? -1, 42)
+}
+
+; ==================== ?. SDKBuiltin 类型方法调用 ====================
+
+#Test
+fn test_safe_method_string_len_some() {
+  #Mut let s String? = "hello"
+  ; ?.len() 在 SDK String? 上
+  #Mut let r usize? = s?.len()
+  assert_eq(r ?? 0usize, 5usize)
+}
+
+#Test
+fn test_safe_method_string_len_null() {
+  #Mut let s String? = null
+  ; ?.len() 在 null String? 上
+  #Mut let r usize? = s?.len()
+  assert_eq(r ?? 999usize, 999usize)
+}

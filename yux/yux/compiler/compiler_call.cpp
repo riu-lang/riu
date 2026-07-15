@@ -534,6 +534,13 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
     if (auto dotNode = dynamic_cast<ExprDotNode*>(calleeExpr)) {
         auto baseType = dotNode->baseExpr()->getType();
         baseType = applySubst(baseType);
+
+        // 安全方法调用 a?.foo()：从 Nullable<T> 解出 T 做重载解析
+        if (dotNode->isSafe() && baseType.isNullable()) {
+            auto inner = baseType.nullableInnerType();
+            if (inner) baseType = *inner;
+        }
+
         if (baseType.isRef()) {
             auto inner = baseType.refElementType();
             if (inner) baseType = *inner;
@@ -605,9 +612,16 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
     }
 
     if (auto dotNode = dynamic_cast<ExprDotNode*>(calleeExpr)) {
-        auto result = compileMethodCall(node, dotNode, args, argTypes);
-        if (result) {
-            return result;
+        if (dotNode->isSafe()) {
+            auto result = compileSafeDotMethodCall(node, dotNode, args, argTypes);
+            if (result) {
+                return result;
+            }
+        } else {
+            auto result = compileMethodCall(node, dotNode, args, argTypes);
+            if (result) {
+                return result;
+            }
         }
     }
 
