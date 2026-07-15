@@ -244,3 +244,31 @@ fn test_scalar_plus_ref_literal() {
   let z i32 = x.plus(&y)
   assert_eq(z, 15)
 }
+
+; ==================== f64 特殊值（迁自 bug_hunt） ====================
+
+#Test
+fn test_f64_neg_zero() {
+  ; 验证：IEEE 754 -0.0 == +0.0
+  let a f64 = -0.0f64
+  let b f64 = 0.0f64
+  assert_true(a == b)
+}
+
+#Test
+fn test_f64_large_mul() {
+  ; 验证：f64 大值乘法
+  let a f64 = 1.0e10f64
+  let b f64 = 2.0f64
+  let c f64 = a * b
+  assert_eq(c, 2.0e10f64)
+}
+
+#Test
+fn test_f64_small_div() {
+  ; 验证：1/3 ≈ 0.333...
+  let a f64 = 1.0f64
+  let b f64 = 3.0f64
+  let c f64 = a / b
+  assert_true(c > 0.33f64 && c < 0.34f64)
+}

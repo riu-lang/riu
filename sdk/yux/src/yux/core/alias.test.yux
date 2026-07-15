@@ -200,3 +200,30 @@ fn test_fn_direct_call_no_var() {
   assert_true(is_positive(100))
   assert_false(is_positive(-50))
 }
+
+; ==================== 泛型别名 bool 成员 + fn 别名重赋值（迁自 bug_hunt） ====================
+
+Flag<T> = (bool, T)
+
+#Test
+fn test_generic_alias_bool_member() {
+  ; 验证：Flag<T> = (bool, T) 别名成员访问
+  let f Flag<i32> = (true, 42)
+  assert_true(f.0)
+  assert_eq(f.1, 42)
+}
+
+fn square_fn(x i32) i32 = x * x
+
+fn cube_fn(x i32) i32 = x * x * x
+
+IntUnOp = fn(i32) i32
+
+#Test
+fn test_fn_alias_reassign() {
+  ; 验证：fn 类型别名变量可重新赋值
+  #Mut let f IntUnOp = square_fn
+  assert_eq(f(4), 16)
+  f = cube_fn
+  assert_eq(f(4), 64)
+}

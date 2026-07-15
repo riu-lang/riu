@@ -250,3 +250,75 @@ fn test_loop_accumulate_product() {
   }
   assert_eq(product, 120)
 }
+
+; ==================== 多种 loop init 类型（迁自 bug_hunt） ====================
+
+#Test
+fn test_loop_u32_init() {
+  ; 验证：loop init u32 类型
+  #Mut let sum u32 = 0
+  loop i u32 = 0 {
+    if i >= 5 {
+      break;
+    }
+    sum = sum + i
+    i = i + 1
+  }
+  assert_eq(sum, 10)
+}
+
+#Test
+fn test_loop_u64_init() {
+  ; 验证：loop init u64 类型
+  #Mut let sum u64 = 0
+  loop i u64 = 0 {
+    if i >= 4 {
+      break;
+    }
+    sum = sum + i
+    i = i + 1
+  }
+  assert_eq(sum, 6)
+}
+
+#Test
+fn test_loop_u8_init() {
+  ; 验证：loop init u8 类型
+  #Mut let sum u8 = 0
+  loop i u8 = 0 {
+    if i >= 10 {
+      break;
+    }
+    sum = sum + i
+    i = i + 1
+  }
+  assert_eq(sum, 45)
+}
+
+#Test
+fn test_loop_i8_init() {
+  ; 验证：loop init i8 类型
+  #Mut let sum i8 = 0
+  loop i i8 = 0 {
+    if i >= 5 {
+      break;
+    }
+    sum = sum + i
+    i = i + 1
+  }
+  assert_eq(sum, 10)
+}
+
+#Test
+fn test_loop_f64_counter() {
+  ; 验证：loop init f64 类型
+  #Mut let sum f64 = 0.0f64
+  loop i f64 = 0.0f64 {
+    if i >= 5.0f64 {
+      break;
+    }
+    sum = sum + i
+    i = i + 1.0f64
+  }
+  assert_eq(sum, 10.0f64)
+}

@@ -92,3 +92,26 @@ fn test_bool_literals() {
   assert_eq(true, true)
   assert_eq(false, false)
 }
+
+; ==================== hex / binary / octal 字面量（迁自 bug_hunt） ====================
+
+#Test
+fn test_literal_hex_i64() {
+  ; 验证：十六进制 i64 字面量
+  let a i64 = 0xFF
+  assert_eq(a, 255)
+}
+
+#Test
+fn test_literal_binary() {
+  ; 验证：二进制 u8 字面量
+  let a u8 = 0b1010
+  assert_eq(a, 10)
+}
+
+#Test
+fn test_literal_octal() {
+  ; 验证：八进制 i32 字面量
+  let a i32 = 0o77
+  assert_eq(a, 63)
+}

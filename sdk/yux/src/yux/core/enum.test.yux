@@ -370,3 +370,69 @@ fn test_enum_payload_array() {
 
   assert_eq(result, 5)
 }
+
+; ==================== 多 payload 变体（迁自 bug_hunt） ====================
+
+enum BHMultiPayload {
+  A
+  B(i32)
+  C(i32, String)
+  D(i32, String, f64)
+}
+
+fn bh_multi_inspect(e BHMultiPayload&) i32 {
+  match e {
+    BHMultiPayload::A => 0
+    BHMultiPayload::B(x) => x
+    BHMultiPayload::C(x, _) => x
+    BHMultiPayload::D(x, _s, _d) => x
+  }
+}
+
+#Test
+fn test_enum_multi_payload_a() {
+  ; 验证：0 字段变体 match
+  let e BHMultiPayload = BHMultiPayload::A
+  assert_eq(bh_multi_inspect(&e), 0)
+}
+
+#Test
+fn test_enum_multi_payload_b() {
+  ; 验证：1 字段变体 match
+  let e BHMultiPayload = BHMultiPayload::B(42)
+  assert_eq(bh_multi_inspect(&e), 42)
+}
+
+#Test
+fn test_enum_multi_payload_c() {
+  ; 验证：2 字段变体 match（含 String）
+  let e BHMultiPayload = BHMultiPayload::C(10, "ten")
+  assert_eq(bh_multi_inspect(&e), 10)
+}
+
+#Test
+fn test_enum_multi_payload_d() {
+  ; 验证：3 字段变体 match（含 String + f64）
+  let e BHMultiPayload = BHMultiPayload::D(99, "test", 3.14f64)
+  assert_eq(bh_multi_inspect(&e), 99)
+}
+
+; ==================== Enum Rc payload match（迁自 bug_hunt） ====================
+
+enum RcPayload {
+  Nothing
+  Text(String)
+  Num(i32)
+}
+
+#Test
+fn test_enum_rc_payload_match() {
+  ; 验证：match enum with String payload（Rc 字段）
+  let e RcPayload = RcPayload::Text("hi")
+  let s String = match e {
+    RcPayload::Nothing => "none"
+    RcPayload::Text(t) => t
+    RcPayload::Num(n) => "not text"
+  }
+  assert_eq(s, "hi")
+}

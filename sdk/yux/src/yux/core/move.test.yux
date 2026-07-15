@@ -139,3 +139,33 @@ fn test_move_rc_after_move() {
   let v i32& = as_ref(b)
   assert_eq(v, 100)
 }
+
+; ==================== move 入 Array / move Rc 入 struct（迁自 bug_hunt） ====================
+
+#Test
+fn test_move_into_array() {
+  ; 验证：move(x) push 到 Array
+  let x i32 = 42
+  #Mut let arr Array<i32> = []
+  arr.push(move(x))
+  assert_eq(arr[0], 42)
+}
+
+struct MoveBox {
+  val String
+
+  #Static
+  fn make(v String) Self {
+    Self {
+      .val = move(v)
+    }
+  }
+}
+
+#Test
+fn test_move_of_rc_into_struct() {
+  ; 验证：move(String) 到 struct 的 Rc 字段
+  let s String = "hello"
+  let b MoveBox = MoveBox::make(move(s))
+  assert_eq(b.val, "hello")
+}

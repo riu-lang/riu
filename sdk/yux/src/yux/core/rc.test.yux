@@ -168,3 +168,21 @@ fn test_box_bool_to_string() {
   let b Rc<bool> = true
   assert_eq(b.to_string(), "true")
 }
+
+; ==================== Rc<Array> + Rc<bool>（迁自 bug_hunt） ====================
+
+#Test
+fn test_rc_array_i32() {
+  ; 验证：Rc<Array<i32>> 通过 as_ref 访问方法
+  #Mut let arr Array<i32> = [1, 2, 3]
+  let r Rc<Array<i32>> = move(arr)
+  let a Array<i32>& = as_ref(r)
+  assert_eq(a.len(), 3)
+}
+
+#Test
+fn test_rc_bool_make() {
+  ; 验证：rc:<bool>(true) 构造和自动解引用
+  let r Rc<bool> = rc:<bool>(true)
+  assert_true(r)
+}

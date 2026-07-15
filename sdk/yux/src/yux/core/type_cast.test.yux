@@ -228,3 +228,29 @@ fn test_i64_to_f32() {
   let b f32 = a.to_f64().to_f32()
   assert_eq(b, 100.0f32)
 }
+
+; ==================== 补充转换路径（迁自 bug_hunt） ====================
+
+#Test
+fn test_u8_to_f64() {
+  ; 验证：u8 转 f64
+  let a u8 = 200
+  let b f64 = a.to_f64()
+  assert_eq(b, 200.0f64)
+}
+
+#Test
+fn test_i16_to_u32() {
+  ; 验证：i16 转 u32
+  let a i16 = 1000
+  let b u32 = a.to_u32()
+  assert_eq(b, 1000)
+}
+
+#Test
+fn test_i64_to_u8_wrap() {
+  ; 验证：i64 转 u8 回绕（300 = 256 + 44）
+  let a i64 = 300
+  let b u8 = a.to_u8()
+  assert_eq(b, 44)
+}

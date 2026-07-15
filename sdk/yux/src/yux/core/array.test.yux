@@ -348,3 +348,93 @@ fn test_fixed_array_index_copy_of() {
   let y i64 = copy_of(buf[2]).to_i64()
   assert_eq(y, 21)
 }
+
+; ==================== pop / set_len / clear+push（迁自 bug_hunt） ====================
+
+#Test
+fn test_array_pop_basic() {
+  ; 验证：pop 返回值并递减 len
+  #Mut let arr Array<i32> = [10, 20, 30]
+  assert_eq(arr.pop(), 30)
+  assert_eq(arr.len(), 2)
+  assert_eq(arr.pop(), 20)
+  assert_eq(arr.len(), 1)
+  assert_eq(arr.pop(), 10)
+  assert_eq(arr.len(), 0)
+}
+
+#Test
+fn test_array_pop_to_empty() {
+  ; 验证：pop 到空数组后可继续 push
+  #Mut let arr Array<i32> = [42]
+  assert_eq(arr.pop(), 42)
+  assert_true(arr.is_empty())
+  arr.push(99)
+  assert_eq(arr.len(), 1)
+  assert_eq(arr.pop(), 99)
+}
+
+#Test
+fn test_array_set_len_shrink() {
+  ; 验证：set_len 截断数组，保留前 N 个元素
+  #Mut let arr Array<i32> = [1, 2, 3, 4, 5]
+  arr.set_len(2)
+  assert_eq(arr.len(), 2)
+  assert_eq(arr[0], 1)
+  assert_eq(arr[1], 2)
+}
+
+#Test
+fn test_array_set_len_grow() {
+  ; 验证：set_len 扩容数组，前 N 个元素保留
+  #Mut let arr Array<i32> = [1, 2]
+  arr.set_len(5)
+  assert_eq(arr.len(), 5)
+  assert_eq(arr[0], 1)
+  assert_eq(arr[1], 2)
+}
+
+#Test
+fn test_array_push_after_clear() {
+  ; 验证：clear 后 is_empty，可继续 push
+  #Mut let arr Array<i32> = []
+  arr.push(1)
+  arr.push(2)
+  arr.clear()
+  assert_true(arr.is_empty())
+  arr.push(3)
+  assert_eq(arr.len(), 1)
+  assert_eq(arr[0], 3)
+}
+
+; ==================== 嵌套 Array（迁自 bug_hunt） ====================
+
+#Test
+fn test_nested_array_push_inner() {
+  ; 验证：push(move(inner)) 到 Array<Array<i32>>
+  #Mut let outer Array<Array<i32>> = []
+  #Mut let inner Array<i32> = [1, 2]
+  outer.push(move(inner))
+  assert_eq(outer.len(), 1)
+}
+
+; ==================== Array<f64>（迁自 bug_hunt） ====================
+
+#Test
+fn test_array_f64_push_and_read() {
+  ; 验证：Array<f64> push 和索引读取
+  #Mut let arr Array<f64> = []
+  arr.push(1.0f64)
+  arr.push(2.5f64)
+  arr.push(3.0f64)
+  assert_eq(arr.len(), 3)
+  assert_eq(arr[0] + arr[1] + arr[2], 6.5f64)
+}
+
+#Test
+fn test_array_f64_first_last() {
+  ; 验证：Array<f64> first() 和 last()
+  #Mut let arr Array<f64> = [1.0f64, 2.0f64, 3.0f64]
+  assert_eq(arr.first(), 1.0f64)
+  assert_eq(arr.last(), 3.0f64)
+}

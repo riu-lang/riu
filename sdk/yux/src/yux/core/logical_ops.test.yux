@@ -25,3 +25,21 @@ fn test_or_ff() {
 fn test_and_with_not() {
   assert_eq(true && !false, true)
 }
+
+; ==================== 逻辑 vs 位运算对比（迁自 bug_hunt） ====================
+
+#Test
+fn test_logical_vs_bitwise_and() {
+  ; 验证：&& 返回 bool，& 返回同类型
+  assert_true(true && true)
+  let b u8 = 0xFF & 0x0F
+  assert_eq(b, 0x0F)
+}
+
+#Test
+fn test_logical_vs_bitwise_or() {
+  ; 验证：|| 返回 bool，| 返回同类型
+  assert_true(false || true)
+  let b u8 = 0xF0 | 0x0F
+  assert_eq(b, 0xFF)
+}

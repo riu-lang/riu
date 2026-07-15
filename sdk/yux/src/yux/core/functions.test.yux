@@ -206,3 +206,28 @@ fn test_nested_call() {
 fn test_chain_call() {
   assert_eq(fns_add(fns_double(3), fns_triple(2)), 12)
 }
+
+; ==================== 块表达式值函数（迁自 bug_hunt） ====================
+
+fn bh_block_expr_val(flag bool) i32 {
+  #Mut let result i32 = 0
+  if flag {
+    result = 42
+  }
+  if !flag {
+    result = -1
+  }
+  ret result
+}
+
+#Test
+fn test_fn_block_expr_true() {
+  ; 验证：函数内条件赋值路径（true 分支）
+  assert_eq(bh_block_expr_val(true), 42)
+}
+
+#Test
+fn test_fn_block_expr_false() {
+  ; 验证：函数内条件赋值路径（false 分支）
+  assert_eq(bh_block_expr_val(false), -1)
+}

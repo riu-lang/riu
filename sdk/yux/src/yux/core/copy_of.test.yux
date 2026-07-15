@@ -155,3 +155,13 @@ fn test_copy_of_struct_with_string_field() {
   assert_eq(n2.id, 1)
   assert_eq(n1.name, "alice")
 }
+
+; ==================== copy_of f64（迁自 bug_hunt） ====================
+
+#Test
+fn test_copy_of_f64() {
+  ; 验证：copy_of 对 f64 纯值类型
+  let a f64 = 3.14f64
+  let b f64 = copy_of(a)
+  assert_eq(b, 3.14f64)
+}

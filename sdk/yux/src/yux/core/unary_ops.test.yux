@@ -29,3 +29,13 @@ fn test_logical_not_true() {
 fn test_logical_not_false() {
   assert_eq(!false, true)
 }
+
+; ==================== 按位取反 u8（迁自 bug_hunt） ====================
+
+#Test
+fn test_unary_inv_u8() {
+  ; 验证：u8 按位取反 ~0x0F == 0xF0
+  let a u8 = 0x0F
+  let b u8 = ~a
+  assert_eq(b, 0xF0)
+}

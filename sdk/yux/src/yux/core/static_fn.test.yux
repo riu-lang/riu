@@ -34,3 +34,30 @@ fn test_static_make_negative() {
   assert_eq(p.x, -5)
   assert_eq(p.y, 10)
 }
+
+; ==================== 多个 static factory（迁自 bug_hunt） ====================
+
+struct BHStaticTest {
+  val i32
+
+  #Static
+  fn make(val i32) Self {
+    Self {
+      .val = val
+    }
+  }
+
+  #Static
+  fn make_double(val i32) Self {
+    Self {
+      .val = val * 2
+    }
+  }
+}
+
+#Test
+fn test_static_fn_make_double() {
+  ; 验证：多个 static factory 方法共存
+  let d BHStaticTest = BHStaticTest::make_double(21)
+  assert_eq(d.val, 42)
+}

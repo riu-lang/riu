@@ -43,3 +43,29 @@ fn test_freefn_alias_param() {
   let r P& = alias(&a)
   assert_eq(r.x, 11)
 }
+
+; ==================== ref 返回后修改源值（迁自 bug_hunt） ====================
+
+struct BHRefData {
+  val i32
+
+  #Static
+  fn make(val i32) Self {
+    Self {
+      .val = val
+    }
+  }
+}
+
+fn bh_ref_get_val(s BHRefData&) i32& {
+  ret &s.val
+}
+
+#Test
+fn test_ref_return_modify() {
+  ; 验证：通过返回的 ref 修改源 struct 字段
+  #Mut let s BHRefData = BHRefData::make(42)
+  #Mut let r i32& = bh_ref_get_val(&s)
+  r = 99
+  assert_eq(s.val, 99)
+}

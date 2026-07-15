@@ -299,3 +299,131 @@ fn test_nullable_arg_wrap_struct_null() {
   ; null → Nullable<Struct>
   assert_true(!nt_check_nullable_box(null))
 }
+
+; ==================== 嵌套 Nullable（迁自 bug_hunt） ====================
+
+#Test
+fn test_nullable_nested_some() {
+  ; 验证：i32? 升格为 i32??（Some 包裹）
+  let a i32? = 42
+  let b i32?? = a
+  assert_true(b != null)
+}
+
+#Test
+fn test_nullable_nested_null() {
+  ; 验证：null i32? 升格为 i32??（Some(null)，b != null 为 true）
+  let a i32? = null
+  let b i32?? = a
+  assert_true(b != null)
+}
+
+#Test
+fn test_nullable_nested_outer_null() {
+  ; 验证：i32?? 直接赋值 null
+  let b i32?? = null
+  assert_true(b == null)
+}
+
+; ==================== ?. 链 + ?? fallback（迁自 bug_hunt） ====================
+
+struct NullablePair {
+  a i32
+  b i32
+
+  #Static
+  fn make(a i32, b i32) NullablePair {
+    ret Self {
+      .a = a
+      .b = b
+    }
+  }
+}
+
+#Test
+fn test_nullable_chain_struct() {
+  ; 验证：?. 取 struct 字段返回 Nullable
+  let p NullablePair? = NullablePair::make(10, 20)
+  let x i32? = p?.a
+  assert_eq(x ?? -1, 10)
+}
+
+#Test
+fn test_nullable_chain_null_input() {
+  ; 验证：?. 在 null 输入上短路
+  let p NullablePair? = null
+  let x i32? = p?.a
+  assert_true(x == null)
+}
+
+; ==================== Array<Nullable<T>>（迁自 bug_hunt） ====================
+
+#Test
+fn test_array_of_nullable_len() {
+  ; 验证：Array<i32?> 字面量构造 + len
+  #Mut let arr Array<i32?> = [1, null, 3]
+  assert_eq(arr.len(), 3)
+}
+
+#Test
+fn test_array_of_nullable_write() {
+  ; 验证：Array<i32?> 元素赋值为 null / 值
+  #Mut let arr Array<i32?> = [1, 2, 3]
+  arr[0] = null
+  arr[1] = 42
+  assert_eq(arr.len(), 3)
+}
+
+; ==================== Nullable struct 字段（迁自 bug_hunt） ====================
+
+struct BHNullableField {
+  label String?
+
+  #Static
+  fn make_with_label(label String) Self {
+    Self {
+      .label = label
+    }
+  }
+
+  #Static
+  fn make_null() Self {
+    Self {
+      .label = null
+    }
+  }
+}
+
+#Test
+fn test_nullable_field_with_string() {
+  ; 验证：struct 的 Nullable<String> 字段 has() = true
+  let s BHNullableField = BHNullableField::make_with_label("hello")
+  assert_true(s.label.has())
+}
+
+#Test
+fn test_nullable_field_null() {
+  ; 验证：struct 的 Nullable<String> 字段 has() = false
+  let s BHNullableField = BHNullableField::make_null()
+  assert_true(!s.label.has())
+}
+
+; ==================== String→String? 自动包装（迁自 bug_hunt） ====================
+
+fn bh_take_string_nullable(s String?) String {
+  ret s ?? "(null)"
+}
+
+#Test
+fn test_string_to_nullable_basic() {
+  ; 验证：String 实参 → String? 形参自动包装
+  let result String = bh_take_string_nullable("hello")
+  assert_eq(result, "hello")
+}
+
+#Test
+fn test_string_to_nullable_null() {
+  ; 验证：null → String? 形参
+  let result String = bh_take_string_nullable(null)
+  assert_eq(result, "(null)")
+}

@@ -304,3 +304,19 @@ fn test_string_plus_nested_expr() {
   let s String = "sum = " + (x + y)
   assert_eq(s, "sum = 30")
 }
+
+; ==================== len 边界（迁自 bug_hunt） ====================
+
+#Test
+fn test_string_empty_len() {
+  ; 验证：空字符串 len() == 0
+  let s String = ""
+  assert_eq(s.len(), 0)
+}
+
+#Test
+fn test_string_single_char() {
+  ; 验证：单字符字符串 len() == 1
+  let s String = "x"
+  assert_eq(s.len(), 1)
+}
