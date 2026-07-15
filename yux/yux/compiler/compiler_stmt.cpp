@@ -1003,6 +1003,10 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             return _builder.CreateSRem(currentVal, exprVal, "modtmp");
         case AssignOp::XorEq: // ^=
             return _builder.CreateXor(currentVal, exprVal, "xortmp");
+        case AssignOp::OrEq: // |=
+            return _builder.CreateOr(currentVal, exprVal, "ortmp");
+        case AssignOp::AndEq: // &=
+            return _builder.CreateAnd(currentVal, exprVal, "andtmp");
         case AssignOp::MtMtEq: // >>=
             return _builder.CreateAShr(currentVal, exprVal, "shrtmp");
         case AssignOp::LtLtEq: // <<=

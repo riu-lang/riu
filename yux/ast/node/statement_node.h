@@ -94,7 +94,7 @@ public:
     [[nodiscard]] p<TypeNode> varType() const { return _type; }
 };
 
-enum class AssignOp : u8 { Eq, AddEq, SubEq, MulEq, DivEq, ModEq, XorEq, MtMtEq, LtLtEq };
+enum class AssignOp : u8 { Eq, AddEq, SubEq, MulEq, DivEq, ModEq, XorEq, OrEq, AndEq, MtMtEq, LtLtEq };
 
 class StatementAssignNode : public StatementExprNode {
 protected:

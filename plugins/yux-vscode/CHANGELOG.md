@@ -4,6 +4,11 @@ All notable changes to the "yux-vscode" extension will be documented in this fil
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.9.3]
+
+- TextMate：复合赋值运算符正则补充 `|=` / `&=` 两位运算符
+- 跟随 yux 语言：`|=`（按位或赋值）和 `&=`（按位与赋值）已落地
+
 ## [0.9.2]
 
 - LSP 补全：新增 `isize` / `usize` 指针宽度整数类型

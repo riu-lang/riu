@@ -51,6 +51,7 @@ SymbolAdd: '+';
 SymbolAddEq: '+=';
 SymbolAnd: '&';
 SymbolAndAnd: '&&';
+SymbolAndEq: '&=';
 SymbolAt: '@';
 SymbolColon: ':';
 // 静态成员也考虑用此
@@ -74,6 +75,7 @@ SymbolMt: '>';
 SymbolMul: '*';
 SymbolMulEq: '*=';
 SymbolOr: '|';
+SymbolOrEq: '|=';
 SymbolOrOr: '||';
 SymbolQuest: '?';
 fragment SymbolQuote2: '"';

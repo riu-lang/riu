@@ -8,12 +8,12 @@
 //   - visitStatementBlock
 // 拆自原 ast_builder.cpp（P1 Phase 2），方法体一字不动。
 
-#include "types.h"
 #include "ast_builder.h"
 #include "ast_builder_helpers.h"
 #include "node/expr_node.h"
 #include "node/literal_node.h"
 #include "node/statement_node.h"
+#include "types.h"
 #include <algorithm>
 
 // DRAFT-let-unify §3：局部 `let` 声明。
@@ -155,6 +155,10 @@ std::any ASTBuilder::visitStatementAssign(yux::yuxParser::StatementAssignContext
             op = AssignOp::ModEq;
         else if (opText == "^=")
             op = AssignOp::XorEq;
+        else if (opText == "|=")
+            op = AssignOp::OrEq;
+        else if (opText == "&=")
+            op = AssignOp::AndEq;
         else if (opText == ">>=")
             op = AssignOp::MtMtEq;
         else if (opText == "<<=")

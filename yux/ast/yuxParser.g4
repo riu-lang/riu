@@ -615,7 +615,7 @@ opEq:
     | SymbolExclEq
     ;
 
-// 赋值操作符: = += -= *= /= %= >>= <<= ^=
+// 赋值操作符: = += -= *= /= %= >>= <<= ^= |= &=
 opAssign:
       SymbolEq
     | SymbolAddEq
@@ -624,6 +624,8 @@ opAssign:
     | SymbolDivEq
     | SymbolModEq
     | SymbolXorEq
+    | SymbolOrEq
+    | SymbolAndEq
     | SymbolMt SymbolMt SymbolEq
     | SymbolLt SymbolLt SymbolEq
     ;
