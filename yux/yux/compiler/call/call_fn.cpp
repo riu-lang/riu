@@ -817,6 +817,30 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
         // Phase 8c: fresh 实参（call/array literal）已自带 +1，跳过 retain
         // Phase 8d.1: fresh 实参的 +1 移交给 callee，从临时帧消费掉，避免帧末多余 release
         bool isFresh = isFreshHandleExpr(callNode->getArgs()[i]);
+
+        // Nullable<T> 形参 + T 值实参：自动包装 T → {_has=true, _value=T}
+        // 必须在 typeNeedsDestructor(at) 检查之前：内层 T 含 RC 字段时
+        // typeNeedsDestructor(Nullable<T>) 为 true，会提前 continue 跳过包装逻辑，
+        // 导致裸 T 值传入 Nullable<T> 形参 → LLVM "bad signature" 断言。
+        if (at.isNullable() && !argTypes[i].isNullable() && !argTypes[i].isPtr()) {
+            auto inner = at.nullableInnerType();
+            if (inner && *inner == argTypes[i]) {
+                if (typeNeedsDestructor(*inner)) {
+                    if (!isFresh) {
+                        retainHandleAtCallSite(args[i], *inner);
+                    } else {
+                        consumeTemp(args[i]);
+                    }
+                }
+                auto nullableLLVMTy = getLLVMType(at);
+                llvm::Value* wrapped = llvm::UndefValue::get(nullableLLVMTy);
+                wrapped = _builder.CreateInsertValue(wrapped, _builder.getInt1(true), {0});
+                wrapped = _builder.CreateInsertValue(wrapped, args[i], {1});
+                callArgs.push_back(wrapped);
+                continue;
+            }
+        }
+
         // Phase B-1: E4031 #NoCopy 按值传参检查已迁入 SemaPass，Compiler 端不再重复。
         if (typeNeedsDestructor(at)) {
             if (!isFresh) {
@@ -840,25 +864,6 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");
             _builder.CreateStore(args[i], alloca);
             callArgs.push_back(alloca);
-        } else if (at.isNullable() && !argTypes[i].isNullable() && !argTypes[i].isPtr()) {
-            // Nullable<T> 形参 + T 值实参：自动包装 T → {_has=true, _value=T}
-            auto inner = at.nullableInnerType();
-            if (inner && *inner == argTypes[i]) {
-                if (typeNeedsDestructor(*inner)) {
-                    if (!isFresh) {
-                        retainHandleAtCallSite(args[i], *inner);
-                    } else {
-                        consumeTemp(args[i]);
-                    }
-                }
-                auto nullableLLVMTy = getLLVMType(at);
-                llvm::Value* wrapped = llvm::UndefValue::get(nullableLLVMTy);
-                wrapped = _builder.CreateInsertValue(wrapped, _builder.getInt1(true), {0});
-                wrapped = _builder.CreateInsertValue(wrapped, args[i], {1});
-                callArgs.push_back(wrapped);
-            } else {
-                callArgs.push_back(args[i]);
-            }
         } else {
             callArgs.push_back(args[i]);
         }
@@ -1062,6 +1067,31 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
             }
         }
 
+        // Nullable<T> 形参 + T 值实参：自动包装 T → {_has=true, _value=T}
+        // 必须在 typeNeedsDestructor 检查之前：String 等含 RC 字段的类型
+        // typeNeedsDestructor(实参类型) 为 true，会提前 continue 跳过包装逻辑，
+        // 导致裸 T 值传入 Nullable<T> 形参 → LLVM "bad signature" 断言。
+        if (i < fnSymbol->params.size() && fnSymbol->params[i].isNullable() && !argTypes[i].isNullable() &&
+            !argTypes[i].isPtr()) {
+            auto inner = fnSymbol->params[i].nullableInnerType();
+            if (inner && *inner == argTypes[i]) {
+                // 若内层 T 含 RC/Weak/fn 需要 retain（对齐 compileDeclareAssignStatement nullable 路径）
+                if (typeNeedsDestructor(*inner)) {
+                    if (i < callNode->getArgs().size() && !isFreshHandleExpr(callNode->getArgs()[i])) {
+                        retainHandleAtCallSite(args[i], *inner);
+                    } else if (i < callNode->getArgs().size()) {
+                        consumeTemp(args[i]);
+                    }
+                }
+                auto nullableLLVMTy = getLLVMType(fnSymbol->params[i]);
+                llvm::Value* wrapped = llvm::UndefValue::get(nullableLLVMTy);
+                wrapped = _builder.CreateInsertValue(wrapped, _builder.getInt1(true), {0});
+                wrapped = _builder.CreateInsertValue(wrapped, args[i], {1});
+                callArgs.push_back(wrapped);
+                continue;
+            }
+        }
+
         // callee-clean (DRAFT §7.3)：传参前 retain；callee 末尾析构 release 抵消
         // Phase 8c: fresh 实参（call/array literal）已自带 +1，跳过 retain
         // Phase 8d.1: fresh 实参的 +1 移交给 callee，从临时帧消费掉
@@ -1094,28 +1124,6 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
             _builder.CreateStore(args[i], alloca);
             callArgs.push_back(alloca);
             continue;
-        }
-
-        // Nullable<T> 形参 + T 值实参：自动包装 T → {_has=true, _value=T}
-        if (i < fnSymbol->params.size() && fnSymbol->params[i].isNullable() && !argTypes[i].isNullable() &&
-            !argTypes[i].isPtr()) {
-            auto inner = fnSymbol->params[i].nullableInnerType();
-            if (inner && *inner == argTypes[i]) {
-                // 若内层 T 含 RC/Weak/fn 需要 retain（对齐 compileDeclareAssignStatement nullable 路径）
-                if (typeNeedsDestructor(*inner)) {
-                    if (!isFreshHandleExpr(callNode->getArgs()[i])) {
-                        retainHandleAtCallSite(args[i], *inner);
-                    } else {
-                        consumeTemp(args[i]);
-                    }
-                }
-                auto nullableLLVMTy = getLLVMType(fnSymbol->params[i]);
-                llvm::Value* wrapped = llvm::UndefValue::get(nullableLLVMTy);
-                wrapped = _builder.CreateInsertValue(wrapped, _builder.getInt1(true), {0});
-                wrapped = _builder.CreateInsertValue(wrapped, args[i], {1});
-                callArgs.push_back(wrapped);
-                continue;
-            }
         }
 
         callArgs.push_back(args[i]);

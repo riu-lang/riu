@@ -219,7 +219,6 @@ fn test_nullable_arg_wrap_expression() {
 }
 
 ; ---------- P1-3 边界：i64? 形参 ----------
-; TODO: String? / struct 类型 Nullable 形参需进一步排查 LLVM 签名不匹配
 
 fn nullable_i64_check(x i64?) bool {
   ret (x ?? -1i64) == 100i64
@@ -241,4 +240,62 @@ fn test_nullable_arg_wrap_i64_flexible_int() {
 fn test_nullable_arg_wrap_i64_null() {
   ; null 匹配 i64? 形参
   assert_true(!nullable_i64_check(null))
+}
+
+; ---------- P1-3 边界：String? / struct 类型 Nullable 形参 T→Nullable<T> 自动包装 ----------
+; 修复：2026-07-15 — compileKnownFunctionCall / compileGenericFunctionCall 中
+; Nullable 包装逻辑移到 typeNeedsDestructor 检查之前，防止 String 等含 RC 字段类型
+; 被 typeNeedsDestructor 分支提前 continue 跳过包装
+
+fn take_string_nullable(s String?) String {
+  ret s ?? "(null)"
+}
+
+#Test
+fn test_nullable_arg_wrap_string_literal() {
+  ; 字符串字面量 → 自动包装为 Nullable<String>
+  let result String = take_string_nullable("hello")
+  assert_eq(result, "hello")
+}
+
+#Test
+fn test_nullable_arg_wrap_string_null() {
+  ; null → Nullable<String>
+  let result String = take_string_nullable(null)
+  assert_eq(result, "(null)")
+}
+
+#Test
+fn test_nullable_arg_wrap_string_expression() {
+  ; 表达式结果 → 自动包装为 Nullable<String>
+  let a String = "world"
+  let result String = take_string_nullable(a)
+  assert_eq(result, "world")
+}
+
+struct NT_NullableBox {
+  val i32
+
+  #Static
+  fn make(val i32) Self {
+    Self {
+      .val = val
+    }
+  }
+}
+
+fn nt_check_nullable_box(p NT_NullableBox?) bool {
+  ret p != null
+}
+
+#Test
+fn test_nullable_arg_wrap_struct_literal() {
+  ; struct 字面量 → 自动包装为 Nullable<Struct>
+  assert_true(nt_check_nullable_box(NT_NullableBox::make(42)))
+}
+
+#Test
+fn test_nullable_arg_wrap_struct_null() {
+  ; null → Nullable<Struct>
+  assert_true(!nt_check_nullable_box(null))
 }
