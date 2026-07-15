@@ -131,3 +131,24 @@ fn test_borrow_generic_ref_param() {
   #Mut let x i32 = 42
   assert_eq(br_first_byte(&x), 1)
 }
+
+; ==================== 边界测试 ====================
+
+#Test
+fn test_borrow_as_ref_zero_value() {
+  ; 验证：as_ref 取零值 Rc payload 的引用
+  #Mut let b Rc<BrPair> = BrPair::make(0, 0)
+  let r BrPair& = as_ref(b)
+  assert_eq(r.a, 0)
+  assert_eq(r.b, 0)
+}
+
+#Test
+fn test_borrow_copy_bind_zero() {
+  ; 验证：零值拷绑传递
+  #Mut let c i32 = 0
+  let r1 i32& = &c
+  let r2 i32& = r1
+  assert_eq(r1, 0)
+  assert_eq(r2, 0)
+}

@@ -194,3 +194,21 @@ fn test_move_of_rc_into_struct() {
   let b MoveBox = MoveBox::make(move(s))
   assert_eq(b.val, "hello")
 }
+
+; ==================== 边界测试 ====================
+
+#Test
+fn test_move_i32_zero() {
+  ; 验证：move 零值标量
+  let a i32 = 0
+  let b i32 = move(a)
+  assert_eq(b, 0)
+}
+
+#Test
+fn test_move_string_empty() {
+  ; 验证：move 空 String
+  let s String = ""
+  let t String = move(s)
+  assert_eq(t.len(), 0)
+}

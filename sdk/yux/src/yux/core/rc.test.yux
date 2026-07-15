@@ -194,3 +194,12 @@ fn test_rc_bool_make() {
   let r Rc<bool> = rc:<bool>(true)
   assert_true(r)
 }
+
+; ==================== 边界测试 ====================
+
+#Test
+fn test_rc_zero_value() {
+  ; 验证：Rc<i32> 零值构造和比较
+  let r Rc<i32> = 0
+  assert_true(r == 0)
+}

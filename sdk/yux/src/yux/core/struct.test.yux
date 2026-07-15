@@ -707,3 +707,16 @@ fn test_struct_with_rc_field() {
   let s BHWithRcField = BHWithRcField::make("test", 42)
   assert_eq(s.count, 42)
 }
+
+; ==================== 边界测试 ====================
+
+#Test
+fn test_struct_zero_value_fields() {
+  ; 验证：字段全为零值的 struct
+  let p StPointF = StPointF {
+    .x = 0.0
+    .y = 0.0
+  }
+  assert_eq(p.x, 0.0)
+  assert_eq(p.y, 0.0)
+}

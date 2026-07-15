@@ -259,3 +259,41 @@ fn test_fn_block_expr_false() {
   ; 验证：函数内条件赋值路径（false 分支）
   assert_eq(bh_block_expr_val(false), -1)
 }
+
+; ==================== 边界 / 扩展测试 ====================
+
+#Test
+fn test_generic_identity_bool() {
+  ; 验证：泛型 identity 对 bool 类型的正确性
+  let a bool = fns_identity(true)
+  assert_true(a)
+  let b bool = fns_identity(false)
+  assert_false(b)
+}
+
+#Test
+fn test_generic_identity_string() {
+  ; 验证：泛型 identity 对 String 类型的正确性
+  let a String = fns_identity("hello")
+  assert_eq(a, "hello")
+}
+
+#Test
+fn test_void_fn_boundary() {
+  ; 验证：void 函数在边界条件下的行为
+  fns_nop()
+  fns_early_ret_void(true)
+  fns_early_ret_void(false)
+  assert_true(true)
+}
+
+#Test
+fn test_nested_ret_paths() {
+  ; 验证：多层嵌套返回路径
+  let v i32 = fns_multi_ret_expr(0)
+  assert_eq(v, 0)
+  let v2 i32 = fns_multi_ret_expr(6)
+  assert_eq(v2, 16)
+  let v3 i32 = fns_multi_ret_expr(11)
+  assert_eq(v3, 22)
+}

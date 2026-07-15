@@ -82,3 +82,15 @@ fn test_ref_return_modify() {
   r = 99
   assert_eq(s.val, 99)
 }
+
+; ==================== 边界测试 ====================
+
+#Test
+fn test_ref_return_zero_value() {
+  ; 验证：ref 返回零值字段
+  #Mut let s BHRefData = BHRefData::make(0)
+  #Mut let r i32& = bh_ref_get_val(&s)
+  assert_eq(r, 0)
+  r = -1
+  assert_eq(s.val, -1)
+}

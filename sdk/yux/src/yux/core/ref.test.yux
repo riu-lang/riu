@@ -233,3 +233,25 @@ fn test_same_ref_string_self() {
   #Mut let s1 String = "hi"
   assert_true(same_ref(s1, s1))
 }
+
+; ==================== 边界测试 ====================
+
+#Test
+fn test_ref_zero_value() {
+  ; 验证：引用指向零值
+  #Mut let x i32 = 0
+  #Mut let r i32& = &x
+  assert_eq(r, 0)
+  r = -1
+  assert_eq(x, -1)
+}
+
+#Test
+fn test_ref_extreme_value() {
+  ; 验证：引用指向边界值
+  #Mut let x i32 = -2147483648
+  #Mut let r i32& = &x
+  assert_eq(r, -2147483648)
+  r = 2147483647
+  assert_eq(x, 2147483647)
+}

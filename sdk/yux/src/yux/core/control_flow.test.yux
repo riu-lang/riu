@@ -249,3 +249,37 @@ fn test_short_circuit_or() {
   let result bool = true || side_effect_flag()
   assert_true(result)
 }
+
+; ==================== 边界 / 扩展测试 ====================
+
+#Test
+fn test_if_elif_all_false() {
+  ; 验证：if/elif 链全部条件为 false 时走 else 分支
+  let x i32 = 0
+  let result i32 = if x > 0 {
+    1
+  } elif x > 10 {
+    2
+  } else {
+    99
+  }
+  assert_eq(result, 99)
+}
+
+#Test
+fn test_ternary_with_arithmetic() {
+  ; 验证：三元表达式直接参与算术运算
+  let a i32 = 10
+  let b i32 = 20
+  let result i32 = (a if a > b else b) + 5
+  assert_eq(result, 25)
+}
+
+#Test
+fn test_if_else_zero_condition() {
+  ; 验证：if 条件为字面量 false 和 true
+  let result i32 = if false { 1 } else { 0 }
+  assert_eq(result, 0)
+  let result2 i32 = if true { 42 } else { 0 }
+  assert_eq(result2, 42)
+}

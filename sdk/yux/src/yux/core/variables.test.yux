@@ -43,3 +43,42 @@ fn test_val_inferred_bool() {
   let e = true
   assert_true(e)
 }
+
+; ==================== 边界 / 扩展测试 ====================
+
+#Test
+fn test_var_multiple_reassign() {
+  ; 验证：多次重赋值
+  #Mut let a i32 = 0
+  a = 1
+  assert_eq(a, 1)
+  a = 2
+  assert_eq(a, 2)
+  a = -1
+  assert_eq(a, -1)
+}
+
+#Test
+fn test_val_f32_explicit() {
+  ; 验证：f32 显式类型变量
+  let a f32 = 1.0f32
+  assert_eq(a, 1.0f32)
+}
+
+#Test
+fn test_val_isize() {
+  ; 验证：isize 变量声明与赋值
+  let a isize = 100
+  assert_eq(a, 100)
+  let b isize = -100
+  assert_eq(b, -100)
+}
+
+#Test
+fn test_val_usize() {
+  ; 验证：usize 变量声明
+  let a usize = 0
+  assert_eq(a, 0)
+  let b usize = 999
+  assert_eq(b, 999)
+}

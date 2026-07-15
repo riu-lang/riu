@@ -248,3 +248,23 @@ fn test_fn_alias_reassign() {
   f = cube_fn
   assert_eq(f(4), 64)
 }
+
+; ==================== 边界测试 ====================
+
+#Test
+fn test_alias_boundary_value() {
+  ; 验证：别名类型承载 i32 边界值
+  #Mut let a A = -2147483648
+  assert_eq(a, -2147483648)
+  a = 2147483647
+  assert_eq(a, 2147483647)
+}
+
+#Test
+fn test_alias_chain_boundary() {
+  ; 验证：链式别名边界值
+  #Mut let v A2 = 0
+  assert_eq(v, 0)
+  v = -1
+  assert_eq(v, -1)
+}

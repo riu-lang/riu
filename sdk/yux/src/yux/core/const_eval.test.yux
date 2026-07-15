@@ -1,6 +1,6 @@
 ; const_eval 测试套件
 ; 迁自 tests/cases/const_eval_*.yux, misc_cval_*.yux, misc_const_fn_*.yux
-; 覆盖: #Cval 全局/局部、#Const fn、struct 字面量、编译期求值
+; 覆盖: #Cval 全局/局部、#Const fn、struct 字面量、编译期求值、边界值
 
 ; ==================== 测试用类型定义 ====================
 
@@ -196,4 +196,53 @@ fn test_cval_local_expr() {
 fn test_const_fn_annotation() {
   assert_eq(const_add(2, 3), 5)
   assert_eq(clamp(7), 7)
+}
+
+; ==================== 边界测试 ====================
+
+#Cval
+let CZERO i32 = 0
+
+#Cval
+let CNEG i32 = -100
+
+#Cval
+let CMIN i32 = const_add(-1073741824, -1073741824)  ; -2147483648
+
+#Cval
+let CMAX i32 = 2147483647
+
+; 验证：常量边界值（零、负数、MIN）
+#Test
+fn test_cval_boundary() {
+  assert_eq(CZERO, 0)
+  assert_eq(CNEG, -100)
+  assert_eq(CMIN, -2147483648)
+}
+
+; 验证：常量零输入下的函数调用
+#Test
+fn test_const_fn_zero_input() {
+  ; const fn 零输入
+  assert_eq(const_add(0, 0), 0)
+  assert_eq(const_square(0), 0)
+  assert_eq(const_dbl(0), 0)
+  assert_eq(const_quad(0), 0)
+}
+
+; 验证：常量函数在边界输入下的行为
+#Test
+fn test_const_fn_large_input() {
+  ; const fn 大数值输入
+  assert_eq(const_add(1000000000, 1000000000), 2000000000)
+  assert_eq(const_square(46340), 2147395600)
+}
+
+#Cval
+let CNEG_EXPR i32 = -10 * 5 + const_add(-3, -2)
+
+; 验证：常量表达式中负数的计算
+#Test
+fn test_cval_negative_expr() {
+  assert_eq(CNEG_EXPR, -55)
 }

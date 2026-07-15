@@ -185,3 +185,11 @@ fn test_ref_global_no_block_mutate() {
   assert_eq(r, 50) ; 透过引用也看到新值
   G_MUT = 100 ; 恢复
 }
+
+; ==================== 边界测试 ====================
+
+#Test
+fn test_static_ref_cval_zero() {
+  ; 验证：#Cval 静态引用始终有效
+  assert_eq(G_CVAL, 7)
+}

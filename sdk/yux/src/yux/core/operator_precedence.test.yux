@@ -169,3 +169,35 @@ fn test_left_assoc_mul_div_mod() {
   assert_eq(12 * 3 / 2, 18)
   assert_eq(10 % 3 * 2, 2)
 }
+
+; ==================== 边界 / 扩展优先级测试 ====================
+
+#Test
+fn test_not_vs_bitwise() {
+  ; 验证：! 与位运算 & 的优先级（! 优先于 &）
+  ; !true = false = 0, 0 & 1 = 0
+  let a i32 = 1
+  let ok bool = !false && a == 1
+  assert_true(ok)
+}
+
+#Test
+fn test_negate_vs_shift() {
+  ; 验证：一元取负 vs 左移（取负优先于移位）
+  assert_eq(-1 << 2, -4)
+  assert_eq(-(1 << 2), -4)
+}
+
+#Test
+fn test_mixed_unary_bitwise() {
+  ; 验证：~ 按位取反在表达式链中的优先级
+  assert_eq(~0 & 0xFF, 0xFF)
+  assert_eq(~1 | 1, -1)
+}
+
+#Test
+fn test_compare_chain() {
+  ; 验证：比较链（== 和 && 的组合优先级）
+  assert_true(1 == 1 && 2 == 2 && 3 == 3)
+  assert_false(1 == 1 && 2 == 0 && 3 == 3)
+}

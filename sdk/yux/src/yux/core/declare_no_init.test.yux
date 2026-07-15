@@ -3,7 +3,7 @@
 ; 覆盖：
 ;   - #Mut let 不初始化 + 后续赋值：i32 / i64 / f32
 ;
-; 已知缺口：句柄类型（String / Array / Rc）的延迟初始化未覆盖；
+; 已知缺口：句柄类型（String / Array / Rc）的延迟初始化可能涉及 move 语义，暂不覆盖；
 ; 负面诊断（未初始化使用）见 tests/check-cases/diag_uninit_*。
 
 #Test
@@ -27,4 +27,36 @@ fn test_declare_then_assign_f32() {
   #Mut let c f32
   c = 3.14f32
   assert_eq(c, 3.14f32)
+}
+
+; ==================== 扩展测试 ====================
+
+#Test
+fn test_declare_then_assign_bool() {
+  ; 验证：bool 延迟初始化
+  #Mut let flag bool
+  flag = true
+  assert_true(flag)
+  flag = false
+  assert_false(flag)
+}
+
+#Test
+fn test_declare_then_assign_isize() {
+  ; 验证：isize 延迟初始化
+  #Mut let a isize
+  a = -42
+  assert_eq(a, -42)
+}
+
+#Test
+fn test_declare_reassign() {
+  ; 验证：延迟初始化后重赋值
+  #Mut let x i32
+  x = 5
+  assert_eq(x, 5)
+  x = 10
+  assert_eq(x, 10)
+  x = 0
+  assert_eq(x, 0)
 }

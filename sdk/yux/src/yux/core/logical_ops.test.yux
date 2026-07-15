@@ -6,8 +6,7 @@
 ;   - ! 与 && 组合
 ;   - 逻辑 vs 位运算区分：&& 返回 bool，& 返回同类型（u8）
 ;
-; 已知缺口：短路求值行为（&& / || 右侧不执行）无专项测试；
-; 短路求值侧面验证见 control_flow.test.yux。
+; 已知缺口：短路求值通过函数调用侧面验证（false && fn() 不调用 fn）。
 
 #Test
 fn test_and_tt() {
@@ -54,4 +53,36 @@ fn test_logical_vs_bitwise_or() {
   assert_true(false || true)
   let b u8 = 0xF0 | 0x0F
   assert_eq(b, 0xFF)
+}
+
+; ==================== 短路求值验证 ====================
+
+#Test
+fn test_and_short_circuit() {
+  ; 验证：&& 短路求值——左操作数为 false 时右侧不执行
+  ; 若右侧除零表达式被执行，SEH 会使本测试失败
+  let ok = false && (1i32 / 0i32 == 0)
+  assert_eq(ok, false)
+}
+
+#Test
+fn test_or_short_circuit() {
+  ; 验证：|| 短路求值——左操作数为 true 时右侧不执行
+  ; 若右侧除零表达式被执行，SEH 会使本测试失败
+  let ok = true || (1i32 / 0i32 == 0)
+  assert_eq(ok, true)
+}
+
+#Test
+fn test_and_chain_short_circuit() {
+  ; 验证：&& 链中首个 false 之后的表达式均不执行
+  let a = true && false && (1i32 / 0i32 == 0)
+  assert_eq(a, false)
+}
+
+#Test
+fn test_or_chain_short_circuit() {
+  ; 验证：|| 链中首个 true 之后的表达式均不执行
+  let a = false || true || (1i32 / 0i32 == 0)
+  assert_eq(a, true)
 }

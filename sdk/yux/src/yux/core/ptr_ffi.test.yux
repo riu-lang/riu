@@ -151,3 +151,13 @@ fn test_ptr_of_bool() {
   let r bool& = _ptr_as_ref:<bool>(p)
   assert_eq(r, true)
 }
+
+; ==================== 边界测试 ====================
+
+#Test
+fn test_ptr_from_addr_zero() {
+  ; 验证：ptr_from_addr(0) 生成空指针并安全转回
+  let p Ptr = ptr_from_addr(0)
+  let addr u64 = p.to_int()
+  assert_eq(addr, 0u64)
+}

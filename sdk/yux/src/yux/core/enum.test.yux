@@ -460,3 +460,16 @@ fn test_enum_rc_payload_match() {
   }
   assert_eq(s, "hi")
 }
+
+; ==================== 边界测试 ====================
+
+#Test
+fn test_enum_zero_variant_match_else() {
+  ; 验证：仅匹配零参 variant + else 兜底
+  let c Color = Color::Green
+  let r i32 = match c {
+    Color::Red => 1
+    else => 0
+  }
+  assert_eq(r, 0)
+}

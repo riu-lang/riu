@@ -5,7 +5,6 @@
 ;   - 表达式体函数（fn f() T = expr）
 ;   - 块体函数间的调用链
 ;
-; 已知缺口：跨文件函数调用不在 SDK test 范围内（见 tests/projects/）；
 ; 更多函数定义/调用见 functions.test.yux。
 
 fn mf_helper() i32 = 100
@@ -25,4 +24,53 @@ fn test_helper_only() {
 #Test
 fn test_helper_chain() {
   assert_eq(mf_main_like(), 200)
+}
+
+; ==================== 扩展测试 ====================
+
+fn mf_triple_chain(x i32) i32 {
+  let a i32 = mf_double(x)
+  ret mf_add_one(a)
+}
+
+fn mf_double(x i32) i32 = x * 2
+
+fn mf_add_one(x i32) i32 = x + 1
+
+fn mf_abs(x i32) i32 {
+  if x < 0 {
+    ret -x
+  }
+  ret x
+}
+
+fn mf_max(a i32, b i32) i32 {
+  if a > b {
+    ret a
+  }
+  ret b
+}
+
+; 验证：三函数调用链 double → add_one
+#Test
+fn test_triple_chain() {
+  assert_eq(mf_triple_chain(5), 11)
+  assert_eq(mf_triple_chain(0), 1)
+}
+
+; 验证：多函数协作计算绝对值
+#Test
+fn test_abs_fn() {
+  assert_eq(mf_abs(10), 10)
+  assert_eq(mf_abs(-10), 10)
+  assert_eq(mf_abs(0), 0)
+}
+
+; 验证：多函数协作求最大值
+#Test
+fn test_max_fn() {
+  assert_eq(mf_max(10, 20), 20)
+  assert_eq(mf_max(20, 10), 20)
+  assert_eq(mf_max(-5, 5), 5)
+  assert_eq(mf_max(0, 0), 0)
 }

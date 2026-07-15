@@ -6,7 +6,6 @@
 ;   - 负数位运算（二补码下的与/或/异或/算术右移/左移）
 ;   - 边界值：i8 min(-128)/max(127)、u8 max(255)、移位到 i32/i64 最小值
 ;
-; 已知缺口：isize / usize 位运算无专项测试（当前仅靠类型推断覆盖）；
 ; 位运算复合赋值见 compound_assign.test.yux。
 
 ; ==================== 基本位运算 ====================
@@ -199,4 +198,40 @@ fn test_bitwise_shift_boundary() {
   ; 移位边界
   assert_eq(1 << 31, -2147483648)  ; 最小 i32
   assert_eq(1 << 63, -9223372036854775808)  ; 最小 i64
+}
+
+; ==================== isize / usize 位运算 ====================
+
+#Test
+fn test_bitwise_isize() {
+  ; 验证：isize 位运算
+  let a isize = 5
+  let b isize = 3
+  assert_eq(a & b, 1)
+  assert_eq(a | b, 7)
+  assert_eq(a ^ b, 6)
+  assert_eq(a << 2, 20)
+  assert_eq(a >> 1, 2)
+}
+
+#Test
+fn test_bitwise_usize() {
+  ; 验证：usize 位运算
+  let a usize = 5
+  let b usize = 3
+  assert_eq(a & b, 1)
+  assert_eq(a | b, 7)
+  assert_eq(a ^ b, 6)
+  assert_eq(a << 2, 20)
+  assert_eq(a >> 1, 2)
+}
+
+; ==================== 移位边界扩展 ====================
+
+#Test
+fn test_shift_all_bits() {
+  ; 验证：移位填满整个位宽
+  assert_eq(1 << 0, 1)
+  assert_eq(1 << 15, 32768)
+  assert_eq(0xFFFF >> 15, 1)
 }
