@@ -144,7 +144,13 @@ llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& srcType, con
             return _builder.CreateSIToFP(val, dstLLVMType);
         }
     } else {
-        // 浮点数转整数
+        // 浮点数转 bool / 整数
+        if (dstType.name == "bool") {
+            // float -> bool：fcmp une x, 0.0（NaN 也判 true，与主流语言一致）
+            DEBUG_LOG("      FCmpUNE 0.0 (float -> bool)");
+            auto srcLLVMType = getLLVMType(srcType);
+            return _builder.CreateFCmpUNE(val, llvm::ConstantFP::get(srcLLVMType, 0.0));
+        }
         if (dstIsUnsigned) {
             DEBUG_LOG("      FPToUI (float to unsigned int)");
             return _builder.CreateFPToUI(val, dstLLVMType);
