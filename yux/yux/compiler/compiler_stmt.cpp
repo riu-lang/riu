@@ -166,7 +166,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         if (!refPtr) {
             if (auto getRef = dynamic_cast<ExprGetRefNode*>(node->expr())) {
                 refPtr = compileGetRefExpr(static_cast<p<ExprGetRefNode>>(getRef));
-                srcInner = getRef->getType();
+                srcInner = applySubst(getRef->getType());
                 if (srcInner.isRef()) {
                     if (auto in = srcInner.refElementType()) srcInner = *in;
                 }
@@ -177,7 +177,8 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
             // 应当返回指针；目前 LiteralObj 路径会自动解引用，不在此分支命中。
             if (retType.isRef()) {
                 refPtr = compileExpr(node->expr());
-                if (auto in = retType.refElementType()) srcInner = *in;
+                auto resolvedRet = applySubst(retType);
+                if (auto in = resolvedRet.refElementType()) srcInner = *in;
             }
         }
         if (!refPtr) {

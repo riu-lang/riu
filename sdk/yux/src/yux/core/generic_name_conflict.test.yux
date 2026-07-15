@@ -1,0 +1,51 @@
+; 泛型名冲突复现 v4：聚焦原始 BUG
+; 泛型函数 identity<T> + 泛型 struct Pair<T> 同名 T
+; 去掉方法中的 T& 返回，只保留 Static fn
+
+fn identity<T>(x T) T = x
+
+fn make_pair<T>(a T, b T) (T, T) {
+  ret (a, b)
+}
+
+struct Pair<T> {
+  a T
+  b T
+
+  #Static
+  fn make(a T, b T) Self {
+    Self {
+      .a = move(a)
+      .b = move(b)
+    }
+  }
+}
+
+#Test
+fn test_pair_i32() {
+  let p Pair<i32> = Pair:<i32>::make(10, 20)
+  assert_eq(p.a, 10)
+  assert_eq(p.b, 20)
+}
+
+#Test
+fn test_pair_f64() {
+  let p Pair<f64> = Pair:<f64>::make(1.5f64, 2.5f64)
+  let sum f64 = p.a + p.b
+  assert_eq(sum, 4.0f64)
+}
+
+#Test
+fn test_identity_and_pair() {
+  let a i32 = identity(100)
+  let p Pair<i32> = Pair:<i32>::make(a, a + 1)
+  assert_eq(p.a, 100)
+  assert_eq(p.b, 101)
+}
+
+#Test
+fn test_make_pair_then_identity() {
+  let t (i32, i32) = make_pair(3, 7)
+  assert_eq(t.0, 3)
+  assert_eq(t.1, 7)
+}

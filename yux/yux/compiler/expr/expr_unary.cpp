@@ -204,6 +204,8 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
             }
             fieldType = fieldType.substitute(subst);
         }
+        // 泛型 struct 方法体内 `$` 的类型不含泛型实参时，通过 _substStack 替换
+        fieldType = applySubst(fieldType);
         currentType = fieldType;
     }
 

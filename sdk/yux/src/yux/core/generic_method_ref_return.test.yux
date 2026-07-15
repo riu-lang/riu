@@ -1,0 +1,36 @@
+; 验证：泛型 struct 方法返回 T& 的类型替换
+; （不涉及泛型函数同名冲突，纯验证独立场景）
+
+struct Box<T> {
+  val T
+
+  #Static
+  fn make(v T) Self {
+    Self {
+      .val = move(v)
+    }
+  }
+
+  fn get_val() T& {
+    ret &$.val
+  }
+
+  fn set_val(v T) {
+    $.val = move(v)
+  }
+}
+
+#Test
+fn test_box_get_ref_i32() {
+  #Mut let b Box<i32> = Box:<i32>::make(42)
+  let r i32& = b.get_val()
+  assert_eq(r, 42)
+}
+
+#Test
+fn test_box_get_ref_and_modify() {
+  #Mut let b Box<i32> = Box:<i32>::make(10)
+  #Mut let r i32& = b.get_val()
+  r = 99
+  assert_eq(b.val, 99)
+}

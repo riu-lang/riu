@@ -307,6 +307,9 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
                 }
                 fieldType = fieldType.substitute(subst);
             }
+            // 泛型 struct 方法体内 `$` 的类型不含泛型实参时
+            // （如 Ref<Box> 而非 Ref<Box<i32>>），仍需通过 _substStack 替换字段类型 T → i32
+            fieldType = applySubst(fieldType);
 
             return _builder.CreateLoad(getLLVMType(fieldType), fieldPtr, "field.load");
         }
