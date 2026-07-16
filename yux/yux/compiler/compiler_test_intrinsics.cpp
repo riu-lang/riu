@@ -77,9 +77,17 @@ llvm::Value* Compiler::compileTestAssertEq(p<ExprCallNode> callNode, vector<llvm
 
     TypeInfo actualTypeArg = typeArg;
     if (actualTypeArg.isRef() && actualTypeArg.refElementType()) actualTypeArg = *actualTypeArg.refElementType();
-    // Auto-load T& arguments ([] returns T&, assert_eq needs T values)
+    // Heap<T> → T：assert_eq 自动穿透 Heap wrapper，比较内部标量值
+    if (actualTypeArg.isHeap()) {
+        if (auto inner = actualTypeArg.heapElementType()) actualTypeArg = *inner;
+    }
+    // Auto-load: Heap<T> (bare ptr → load inner T value) / T& (load value)
     for (size_t i = 0; i < args.size(); ++i) {
-        if (argTypes[i].isRef() && args[i]->getType()->isPointerTy()) {
+        if (argTypes[i].isHeap() && args[i]->getType()->isPointerTy()) {
+            auto inner = *argTypes[i].heapElementType();
+            args[i] = _builder.CreateLoad(getLLVMType(inner), args[i], "assert.heap.load");
+            argTypes[i] = inner;
+        } else if (argTypes[i].isRef() && args[i]->getType()->isPointerTy()) {
             auto inner = *argTypes[i].refElementType();
             args[i] = _builder.CreateLoad(getLLVMType(inner), args[i], "assert.load");
             argTypes[i] = inner;
