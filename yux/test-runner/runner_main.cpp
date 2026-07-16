@@ -206,16 +206,20 @@ int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape)
         unsigned long sehCode = runTestSEH(test.fn);
         if (sehCode != 0) {
             ok = false;
-            // 非断言失败的 SEH（ACCESS_VIOLATION 等）意味着进程状态可能已损坏，
-            // 后续不能安全调用 FreeLibrary（会在 DLL_PROCESS_DETACH / CRT 清理时死锁）
-            if (sehCode != ASSERT_FAILED_CODE) {
+            if (sehCode == ASSERT_FAILED_CODE) {
+                // 测试断言失败（assert_eq / assert_true / assert_false / fail）
+                // 这是正常的测试失败，不是编译器 BUG
+                errorMsg = "assertion failed";
+            } else {
+                // 非断言失败的 SEH（ACCESS_VIOLATION 等）意味着进程状态可能已损坏，
+                // 后续不能安全调用 FreeLibrary（会在 DLL_PROCESS_DETACH / CRT 清理时死锁）
                 hadSevereSEH = true;
+                errorMsg = std::string("SEH ") + sehExceptionName(sehCode) + " (0x";
+                std::array<char, 16> hexBuf{};
+                std::snprintf(hexBuf.data(), hexBuf.size(), "%08lX", sehCode);
+                errorMsg += hexBuf.data();
+                errorMsg += ")";
             }
-            errorMsg = std::string("SEH ") + sehExceptionName(sehCode) + " (0x";
-            std::array<char, 16> hexBuf{};
-            std::snprintf(hexBuf.data(), hexBuf.size(), "%08lX", sehCode);
-            errorMsg += hexBuf.data();
-            errorMsg += ")";
         }
 
         auto elapsed = formatElapsed(t0);
