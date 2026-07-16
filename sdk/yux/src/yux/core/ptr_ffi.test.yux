@@ -28,25 +28,25 @@ fn test_ptr_write_to_rc_payload() {
   assert_eq(r, 77)
 }
 
-; TODO: ptr_of(String) ACCESS_VIOLATION 崩溃 — 待修复后解除注释
-; #Test
-; fn test_ptr_of_string() {
-;   let s String = "hello"
-;   #Mut let p Ptr = ptr_of(s)
-;   let r String& = _ptr_as_ref:<String>(p)
-;   assert_eq(r, "hello")
-; }
+; ptr_of(String) → _ptr_as_ref 验证：String 经 ptr_of 可正确 round-trip 为 String&
+#Test
+fn test_ptr_of_string() {
+  let s String = "hello"
+  #Mut let p Ptr = ptr_of(s)
+  let r String& = _ptr_as_ref:<String>(p)
+  assert_eq(r, "hello")
+}
 
-; TODO: ptr_of(Array<T>) ASSERT_FAILED 崩溃 — 待修复后解除注释
-; #Test
-; fn test_ptr_of_array() {
-;   #Mut let arr Array<i32> = [10, 20, 30]
-;   #Mut let p Ptr = ptr_of(arr)
-;   let r Array<i32>& = _ptr_as_ref:<Array<i32>>(p)
-;   assert_eq(r.len(), 3usize)
-;   assert_eq(r.get(0usize), 10)
-;   assert_eq(r.get(1usize), 20)
-; }
+; ptr_of(Array<T>) → _ptr_as_ref 验证：Array 经 ptr_of 可正确 round-trip 为 Array<T>&
+#Test
+fn test_ptr_of_array() {
+  #Mut let arr Array<i32> = [10, 20, 30]
+  #Mut let p Ptr = ptr_of(arr)
+  let r Array<i32>& = _ptr_as_ref:<Array<i32>>(p)
+  assert_eq(r.len(), 3usize)
+  assert_eq(r.get(0usize), 10)
+  assert_eq(r.get(1usize), 20)
+}
 
 ; ---- _ptr_write i32 via Rc（多次写入）----
 

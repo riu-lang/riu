@@ -351,19 +351,17 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
                         }
                         return handle;
                     }
-                    // B-3: Array 为 {ptr _data, i64 _len, i64 _cap} 内联 struct，
-                    // field 0 即 _data，无需跳 RC 头
-                    return handle;
+                    // ptr_of:<Array<T>>: 返回指向 Array struct 本身的指针（非 _data 元素缓冲区），
+                    // 使 _ptr_as_ref:<Array<T>>(p) 可正确 round-trip。
+                    // fall through 到下方泛型路径，取 alloca 地址。
                 }
                 if (T.name == "String" && T.kind == TypeKind::Normal) {
                     // B-4: String layout = { _buf: Rc<Array<u32>> } = { { ptr handle } }
                     auto handle = _builder.CreateExtractValue(args[i], {0, 0}, "string.handle");
                     if (!forPtrOf) return handle;
-                    // RC Block: offset 8 = Array._data（跳过 u32 strong + u32 weak）
-                    auto dataAddr = _builder.CreateInBoundsGEP(_builder.getInt8Ty(), handle,
-                                                               {llvm::ConstantInt::get(_builder.getInt64Ty(), 8)},
-                                                               "string.data.addr");
-                    return _builder.CreateLoad(ptrTy, dataAddr, "string.data");
+                    // ptr_of: 返回指向 String struct 本身的指针（非字符数据），
+                    // 使 _ptr_as_ref:<String>(p) 可正确 round-trip。
+                    // fall through 到下方泛型路径，取 alloca 地址。
                 }
                 if (T.isRef()) {
                     // T& 路径：args[i] 是 compileExpr 自动 deref 后的 U 值，需要回溯 AST 拿原始指针
