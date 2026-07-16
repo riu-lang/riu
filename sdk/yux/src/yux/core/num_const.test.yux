@@ -1,0 +1,78 @@
+; 数字类型静态常量 MAX/MIN 测试
+; #Cval #Inline 关联常量 (Type::CONST)
+
+#Test
+fn int_max_min() {
+  ; i8
+  assert_eq(i8::MAX, 127i8)
+  assert_eq(i8::MIN, -128i8)
+
+  ; u8
+  assert_eq(u8::MAX, 255u8)
+  assert_eq(u8::MIN, 0u8)
+
+  ; i16
+  assert_eq(i16::MAX, 32767i16)
+  assert_eq(i16::MIN, -32768i16)
+
+  ; u16
+  assert_eq(u16::MAX, 65535u16)
+  assert_eq(u16::MIN, 0u16)
+
+  ; i32
+  assert_eq(i32::MAX, 2147483647i32)
+  assert_eq(i32::MIN, -2147483648i32)
+
+  ; u32
+  assert_eq(u32::MAX, 4294967295u32)
+  assert_eq(u32::MIN, 0u32)
+
+  ; i64
+  assert_eq(i64::MAX, 9223372036854775807i64)
+  assert_eq(i64::MIN, -9223372036854775808i64)
+
+  ; u64
+  assert_eq(u64::MAX, 18446744073709551615u64)
+  assert_eq(u64::MIN, 0u64)
+
+  ; bool
+  assert_eq(bool::MAX, true)
+  assert_eq(bool::MIN, false)
+}
+
+#Test
+fn float_max_min() {
+  ; f64
+  assert_eq(f64::MAX, 1.7976931348623157e308f64)
+  assert_eq(f64::MIN, -1.7976931348623157e308f64)
+
+  ; f32
+  assert_eq(f32::MAX, 3.40282347e38f32)
+  assert_eq(f32::MIN, -3.40282347e38f32)
+}
+
+#Test
+fn use_in_expression() {
+  ; MAX/MIN 可以在表达式中使用
+  let half_max i32 = i32::MAX / 2i32
+  assert_eq(half_max, 1073741823i32)
+
+  let min_plus_one i32 = i32::MIN + 1i32
+  assert_eq(min_plus_one, -2147483647i32)
+
+  ; 比较
+  assert_true(i32::MAX > 0i32)
+  assert_true(i32::MIN < 0i32)
+  assert_true(u32::MIN == 0u32)
+  assert_true(u32::MAX > u32::MIN)
+}
+
+#Test
+fn type_annotation_usage() {
+  ; 不带类型后缀的字面量与 MAX 比较
+  let b u8 = 0
+  assert_eq(b, u8::MIN)
+
+  let max_u16 u16 = u16::MAX
+  assert_eq(max_u16, 65535u16)
+}

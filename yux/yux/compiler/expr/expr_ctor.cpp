@@ -12,14 +12,100 @@
 #include "ast/mangler.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
+#include "ast/node/file_node.h"
 #include "ast/node/literal_node.h"
 #include "ast/yux.h"
 #include "sema/call_resolve.h"
+#include "sema/const_eval.h"
 #include <algorithm>
 #include <cassert>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
+#include <regex>
 #include <set>
+
+// #Cval #Inline 静态字段 init 直接求值为 llvm::Constant*。
+// 不经过 ConstEvaluator，避免其内部 parseIntLiteral 对大 u64 字面量（>= 2^63）
+// 走 stoll 溢出导致返回 nullopt。直接按字段类型决定 signedness 解析。
+llvm::Constant* Compiler::evalInlineFieldInit(p<ExprNode> init, const TypeInfo& fieldType, llvm::Type* llvmType) {
+    if (!init || !llvmType) return nullptr;
+
+    // ---- 处理一元负号（ExprUnaryNode Neg）：用于 MIN = -128 等形式 ----
+    bool negate = false;
+    if (auto* unary = dynamic_cast<ExprUnaryNode*>(init)) {
+        if (unary->op() == ExprUnaryNode::Op::Neg) {
+            negate = true;
+            init = unary->right();
+        }
+    }
+
+    // ---- 叶：字面量 ----
+    if (auto* litExpr = dynamic_cast<ExprLiteralNode*>(init)) {
+        auto* lit = litExpr->literal();
+        if (!lit) return nullptr;
+
+        if (auto* intLit = dynamic_cast<LiteralIntNode*>(lit)) {
+            string text = intLit->getValue().getText();
+            // 按字段类型决定 signedness（而非文本后缀），避免无后缀大 u64 走 stoll 溢出
+            bool isUnsigned = !fieldType.name.empty() && fieldType.name[0] == 'u';
+            try {
+                // 去掉文本后缀再按 fieldType 解析
+                string numStr = text;
+                static const std::regex suffixRe(R"([iu](?:8|16|32|64|size)?$)");
+                numStr = std::regex_replace(numStr, suffixRe, "");
+
+                int base = 10;
+                string parseStr = numStr;
+                if (numStr.size() >= 2 && numStr[0] == '0') {
+                    if (numStr[1] == 'b' || numStr[1] == 'B') { base = 2; parseStr = numStr.substr(2); }
+                    else if (numStr[1] == 'o' || numStr[1] == 'O') { base = 8; parseStr = numStr.substr(2); }
+                    else if (numStr[1] == 'x' || numStr[1] == 'X') { base = 16; parseStr = numStr.substr(2); }
+                }
+                std::erase(parseStr, '_');
+
+                u64 bits;
+                if (isUnsigned) {
+                    bits = std::stoull(parseStr, nullptr, base);
+                } else {
+                    i64 v = std::stoll(parseStr, nullptr, base);
+                    bits = static_cast<u64>(v);
+                }
+                if (negate) {
+                    i64 negV = -static_cast<i64>(bits);
+                    bits = static_cast<u64>(negV);
+                }
+                return llvm::ConstantInt::get(llvmType, bits, false);
+            } catch (...) {
+                return nullptr;
+            }
+        }
+
+        if (auto* floatLit = dynamic_cast<LiteralFloatNode*>(lit)) {
+            string text = floatLit->getValue().getText();
+            // 去掉 f32/f64 后缀
+            if (text.size() >= 3) {
+                string suf = text.substr(text.size() - 3);
+                if (suf == "f32" || suf == "f64") text = text.substr(0, text.size() - 3);
+            }
+            try {
+                double v = std::stod(text);
+                if (fieldType.name == "f32") v = static_cast<float>(v);
+                if (negate) v = -v;
+                return llvm::ConstantFP::get(llvmType, v);
+            } catch (...) {
+                return nullptr;
+            }
+        }
+
+        if (auto* boolLit = dynamic_cast<LiteralBoolNode*>(lit)) {
+            bool v = boolLit->getValue().getText() == "true";
+            if (negate) v = !v;
+            return llvm::ConstantInt::get(llvmType, v ? 1 : 0, false);
+        }
+    }
+
+    return nullptr;
+}
 
 // 编译枚举构造表达式 E::V / E::V() / E::V(args)
 // Phase 5: 支持零参 + tuple-payload variant
@@ -111,19 +197,39 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
         // 若 LHS 是 struct 且 RHS 无 args（零参无括号），先查静态字段
         if (node->args().empty()) {
             string fieldName = node->variantName().getText();
-            auto* structDecl = _file ? _file->getStructDecl(lhsRaw) : nullptr;
+            // includeBuiltin=true：允许 #Builtin struct（如 i8）上的静态字段
+            auto* structDecl = _file ? _file->getStructDecl(lhsRaw, /*includeBuiltin=*/true) : nullptr;
             if (!structDecl && sdk && sdk != _file) {
-                structDecl = sdk->getStructDecl(lhsRaw);
+                structDecl = sdk->getStructDecl(lhsRaw, /*includeBuiltin=*/true);
             }
             if (structDecl) {
                 if (auto* sf = structDecl->staticField(fieldName)) {
+                    // #Cval #Inline：使用处直接内联常量值，不产生 GlobalVariable / 符号
+                    if (sf->isCval && sf->isInline) {
+                        auto llvmType = getLLVMType(sf->type->getType());
+                        llvm::Constant* constVal = evalInlineFieldInit(sf->init, sf->type->getType(), llvmType);
+                        if (constVal) {
+                            DEBUG_LOG_VAL("    Expr: InlineStaticField",
+                                          lhsRaw << "::" << fieldName << " = [inline constant]");
+                            return constVal;
+                        }
+                        // 求值失败是编译器 bug（#Cval 字段的 init 必须是 const-evaluable）
+                        throw YuxError(line, col, ErrorCode::E3140, lhsRaw + "::" + fieldName);
+                    }
                     string ownerMod = _file ? _file->moduleName() : "";
                     auto mangledName = Mangler::staticField(ownerMod, lhsRaw, fieldName);
                     auto* gv = _module->getGlobalVariable(mangledName, true);
                     if (!gv && sdk) {
-                        // 静态字段可能在 SDK 模块中（跨模块访问）
-                        // TODO: 跨模块静态字段访问（Phase 6）
-                        (void)sdk;
+                        // 静态字段在 SDK 模块中（跨模块访问）：用 SDK 模块名查找
+                        string sdkMod = sdk->moduleName();
+                        mangledName = Mangler::staticField(sdkMod, lhsRaw, fieldName);
+                        gv = _module->getGlobalVariable(mangledName, true);
+                        if (!gv) {
+                            // 跨文件引用：创建外部声明供链接时解析
+                            auto llvmType = getLLVMType(sf->type->getType());
+                            gv = new llvm::GlobalVariable(*_module, llvmType, true, llvm::GlobalValue::ExternalLinkage,
+                                                          nullptr, mangledName);
+                        }
                     }
                     if (gv) {
                         return _builder.CreateLoad(gv->getValueType(), gv, "static.field.load");

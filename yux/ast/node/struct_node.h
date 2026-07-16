@@ -20,6 +20,10 @@ class StructFieldNode : public Node {
     // DRAFT-spec-reflect Phase 1: `#Static` 字段段 (type-bound 契约;
     // spec body 内允许, 普通 struct 内待 data-struct 全集启用).
     bool _isStatic = false;
+    // #Cval #Inline 关联常量：编译期常量，使用处直接内联值（无 GlobalVariable），
+    // #Cval 隐含 #Static 语义（编译期常量不可能是实例字段）。
+    bool _isCval = false;
+    bool _isInline = false;
 
 public:
     StructFieldNode(const p<Node>& parent, const Token& name, p<TypeNode> type)
@@ -35,9 +39,13 @@ public:
     void setVal(bool v) { _isVal = v; }
     void setFrozen(bool v) { _isFrozen = v; }
     void setStatic(bool v) { _isStatic = v; }
+    void setCval(bool v) { _isCval = v; }
+    void setInline(bool v) { _isInline = v; }
     [[nodiscard]] bool isVal() const { return _isVal; }
     [[nodiscard]] bool isFrozen() const { return _isFrozen; }
     [[nodiscard]] bool isStatic() const { return _isStatic; }
+    [[nodiscard]] bool isCval() const { return _isCval; }
+    [[nodiscard]] bool isInline() const { return _isInline; }
 };
 
 class StructDeclNode : public ScopeNode, public Named, public Annotated {
@@ -49,6 +57,8 @@ public:
         p<ExprNode> init;       // v1 必须非空（E3150）
         bool isMutable = false; // #Mut 叠加
         bool isPrivate = false;
+        bool isCval = false;   // #Cval：编译期常量，不产生 GlobalVariable
+        bool isInline = false; // #Inline：使用处直接内联值
     };
 
 private:

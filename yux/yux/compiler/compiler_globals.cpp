@@ -125,6 +125,14 @@ void Compiler::compileGlobalVars() {
         auto type = sf.type->getType();
         auto llvmType = getLLVMType(type);
 
+        // #Cval #Inline：纯内联常量（类似 C #define），不产生 GlobalVariable / 符号。
+        // 使用处由 compileEnumCtorExpr 直接求值替换，跨文件访问同样走 AST 内联。
+        if (sf.isCval && sf.isInline) {
+            DEBUG_LOG_VAL("  StaticField (inline)", sfs.structName << "::" << fieldName << " : " << type.name
+                                                                   << " [inline, no GlobalVariable]");
+            continue;
+        }
+
         // 尝试 const-eval
         llvm::Constant* init = nullptr;
         bool isConstEval = false;

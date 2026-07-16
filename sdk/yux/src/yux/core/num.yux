@@ -5,6 +5,14 @@
 #Impl(ToString)
 #Builtin
 struct i8 {
+  #Cval
+  #Inline
+  MAX i8 = 127
+
+  #Cval
+  #Inline
+  MIN i8 = -128
+
   #Builtin
   fn to_i8() i8
 
@@ -152,6 +160,14 @@ struct i8 {
 #Impl(ToString)
 #Builtin
 struct u8 {
+  #Cval
+  #Inline
+  MAX u8 = 255
+
+  #Cval
+  #Inline
+  MIN u8 = 0
+
   #Builtin
   fn to_i8() i8
 
@@ -296,6 +312,14 @@ struct u8 {
 #Impl(ToString)
 #Builtin
 struct i16 {
+  #Cval
+  #Inline
+  MAX i16 = 32767
+
+  #Cval
+  #Inline
+  MIN i16 = -32768
+
   #Builtin
   fn to_i8() i8
 
@@ -440,6 +464,14 @@ struct i16 {
 #Impl(ToString)
 #Builtin
 struct u16 {
+  #Cval
+  #Inline
+  MAX u16 = 65535
+
+  #Cval
+  #Inline
+  MIN u16 = 0
+
   #Builtin
   fn to_i8() i8
 
@@ -584,6 +616,14 @@ struct u16 {
 #Impl(ToString)
 #Builtin
 struct i32 {
+  #Cval
+  #Inline
+  MAX i32 = 2147483647
+
+  #Cval
+  #Inline
+  MIN i32 = -2147483648
+
   #Builtin
   fn to_i8() i8
 
@@ -728,6 +768,14 @@ struct i32 {
 #Impl(ToString)
 #Builtin
 struct u32 {
+  #Cval
+  #Inline
+  MAX u32 = 4294967295
+
+  #Cval
+  #Inline
+  MIN u32 = 0
+
   #Builtin
   fn to_i8() i8
 
@@ -875,6 +923,14 @@ struct u32 {
 #Impl(ToString)
 #Builtin
 struct i64 {
+  #Cval
+  #Inline
+  MAX i64 = 9223372036854775807
+
+  #Cval
+  #Inline
+  MIN i64 = -9223372036854775808
+
   #Builtin
   fn to_i8() i8
 
@@ -1050,6 +1106,14 @@ struct i64 {
 #Impl(ToString)
 #Builtin
 struct u64 {
+  #Cval
+  #Inline
+  MAX u64 = 18446744073709551615
+
+  #Cval
+  #Inline
+  MIN u64 = 0
+
   #Builtin
   fn to_i8() i8
 
@@ -1221,6 +1285,14 @@ struct u64 {
 #Impl(ToString)
 #Builtin
 struct isize {
+  #Cval
+  #Inline
+  MAX isize = 9223372036854775807
+
+  #Cval
+  #Inline
+  MIN isize = -9223372036854775808
+
   #Builtin
   fn to_i8() i8
 
@@ -1374,6 +1446,14 @@ struct isize {
 #Impl(ToString)
 #Builtin
 struct usize {
+  #Cval
+  #Inline
+  MAX usize = 18446744073709551615
+
+  #Cval
+  #Inline
+  MIN usize = 0
+
   #Builtin
   fn to_i8() i8
 
@@ -1527,6 +1607,14 @@ struct usize {
 #Impl(ToString)
 #Builtin
 struct f64 {
+  #Cval
+  #Inline
+  MAX f64 = 1.7976931348623157e308f64
+
+  #Cval
+  #Inline
+  MIN f64 = -1.7976931348623157e308f64
+
   #Builtin
   fn to_i8() i8
 
@@ -1670,6 +1758,14 @@ struct f64 {
 #Impl(ToString)
 #Builtin
 struct f32 {
+  #Cval
+  #Inline
+  MAX f32 = 3.40282347e38f32
+
+  #Cval
+  #Inline
+  MIN f32 = -3.40282347e38f32
+
   #Builtin
   fn to_i8() i8
 

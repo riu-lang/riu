@@ -273,6 +273,14 @@ struct Nullable<T> {
 #Impl(ToString)
 #Builtin
 struct bool {
+  #Cval
+  #Inline
+  MAX bool = true
+
+  #Cval
+  #Inline
+  MIN bool = false
+
   ; 一元运算符
   #Builtin
   fn not() bool

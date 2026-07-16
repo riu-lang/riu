@@ -1943,10 +1943,11 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             string lhsName = n->enumName().getText();
 
             // DRAFT-static-vars Phase 4: 零参且 LHS 是 struct 且 RHS 是静态字段 → 放行
+            // includeBuiltin=true：允许 #Builtin struct（如 i8）上的静态字段访问（如 i8::MAX）
             if (n->args().empty()) {
-                auto* structDecl = _file ? _file->getStructDecl(lhsName) : nullptr;
+                auto* structDecl = _file ? _file->getStructDecl(lhsName, /*includeBuiltin=*/true) : nullptr;
                 if (!structDecl && _sdkFile && _sdkFile != _file) {
-                    structDecl = _sdkFile->getStructDecl(lhsName);
+                    structDecl = _sdkFile->getStructDecl(lhsName, /*includeBuiltin=*/true);
                 }
                 if (structDecl) {
                     if (auto* sf = structDecl->staticField(n->variantName().getText())) {
@@ -1966,9 +1967,9 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
 
                 // DRAFT-static-vars Phase 4: 若零参且 RHS 是静态字段名 → 放行
                 if (n->args().empty()) {
-                    auto* structDecl = _file ? _file->getStructDecl(lhsName) : nullptr;
+                    auto* structDecl = _file ? _file->getStructDecl(lhsName, /*includeBuiltin=*/true) : nullptr;
                     if (!structDecl && _sdkFile && _sdkFile != _file) {
-                        structDecl = _sdkFile->getStructDecl(lhsName);
+                        structDecl = _sdkFile->getStructDecl(lhsName, /*includeBuiltin=*/true);
                     }
                     if (structDecl && structDecl->staticField(rhsName)) {
                         return; // 静态字段读，放行

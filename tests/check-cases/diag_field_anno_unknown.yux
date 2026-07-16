@@ -1,7 +1,8 @@
 ; P1-4: 未知字段注解 -> E3108 (DRAFT-const-mut §6.1)
+; 注：#Cval / #Inline 已收为合法字段注解（关联常量），改用 #Unknown
 
 struct Outer {
-    #Cval  ; check: E3108
+    #Unknown  ; check: E3108
     tag i32
 
     fn Outer(t i32) {

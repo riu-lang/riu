@@ -7,12 +7,12 @@
 //   - visitFiledDecl   (字段)
 // 拆自原 ast_builder.cpp（P1 Phase 2），方法体一字不动。
 
-#include "types.h"
 #include "ast_builder.h"
 #include "ast_builder_helpers.h"
 #include "node/expr_node.h"
 #include "node/literal_node.h"
 #include "node/statement_node.h"
+#include "types.h"
 #include <algorithm>
 
 // spec-unify v1：声明合一的 visitStructDecl 入口。
@@ -213,23 +213,37 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
 
     for (auto fieldCtx : ctx->filedDecl()) {
         // DRAFT-static-vars Phase 4: 检测 #Static 注解，分流静态 / 实例字段
+        // #Cval 隐含 #Static 语义（编译期常量不可能是实例字段）
         bool isStatic = false;
         bool isMut = false;
+        bool isCval = false;
+        bool isInline = false;
         for (auto* a : fieldCtx->buildAnnos) {
             string annoName = a->name->getText();
             if (annoName == "Static") isStatic = true;
             if (annoName == "Mut") isMut = true;
+            if (annoName == "Cval") {
+                isStatic = true;
+                isCval = true;
+            }
+            if (annoName == "Inline") isInline = true;
         }
 
         if (isStatic) {
-            // 静态字段：仅接受 #Static 和 #Mut（栈叠），其余注解拒
+            // 静态字段：仅接受 #Static / #Mut / #Cval / #Inline，其余注解拒
             for (auto* a : fieldCtx->buildAnnos) {
                 string annoName = a->name->getText();
-                if (annoName != "Static" && annoName != "Mut") {
+                if (annoName != "Static" && annoName != "Mut" && annoName != "Cval" && annoName != "Inline") {
                     auto* tk = a->SymbolHash()->getSymbol();
                     throw YuxError(static_cast<int>(tk->getLine()), static_cast<int>(tk->getCharPositionInLine()) + 1,
                                    ErrorCode::E3108, annoName);
                 }
+            }
+
+            // #Inline 必须与 #Cval 组合
+            if (isInline && !isCval) {
+                throw YuxError(static_cast<int>(fieldCtx->name->getLine()),
+                               static_cast<int>(fieldCtx->name->getCharPositionInLine()) + 1, ErrorCode::E3117);
             }
 
             // 决议 [#1.F]: v1 禁泛型 struct 上的 #Static FIELD
@@ -262,10 +276,13 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
             sf.init = initExpr;
             sf.isMutable = isMut;
             sf.isPrivate = !sf.name.getText().empty() && sf.name.getText()[0] == '_';
+            sf.isCval = isCval;
+            sf.isInline = isInline;
             std::string sfName = sf.name.getText(); // 在 move 前保存，避免 use-after-move
             structDecl->addStaticField(std::move(sf));
 
-            DEBUG_LOG_VAL("    StaticField", sfName << " : " << typeNode->getType().name << (isMut ? " #Mut" : ""));
+            DEBUG_LOG_VAL("    StaticField", sfName << " : " << typeNode->getType().name << (isMut ? " #Mut" : "")
+                                                    << (isCval ? " #Cval" : "") << (isInline ? " #Inline" : ""));
             continue;
         }
 
@@ -501,6 +518,8 @@ struct FieldAnnoFlags {
     bool isVal = false;
     bool isFrozen = false;
     bool isStatic = false;
+    bool isCval = false;
+    bool isInline = false;
 };
 FieldAnnoFlags readFieldAnnos(const std::vector<yux::yuxParser::BuildAnnoContext*>& annos) {
     FieldAnnoFlags r;
@@ -523,9 +542,22 @@ FieldAnnoFlags readFieldAnnos(const std::vector<yux::yuxParser::BuildAnnoContext
             // DRAFT-spec-reflect Phase 1: `#Static` 字段段; 与 #Frozen 可组合, 与 #Val 互斥.
             if (r.isVal) throw YuxError(line, col, ErrorCode::E3108, name);
             r.isStatic = true;
+        } else if (name == "Cval") {
+            // #Cval 关联常量：编译期常量，隐含 #Static 语义。
+            if (r.isVal) throw YuxError(line, col, ErrorCode::E3108, name);
+            r.isCval = true;
+            r.isStatic = true; // #Cval 默认带 #Static
+        } else if (name == "Inline") {
+            // #Inline 关联常量：使用处直接内联值，无 GlobalVariable。
+            if (r.isVal) throw YuxError(line, col, ErrorCode::E3108, name);
+            r.isInline = true;
         } else {
             throw YuxError(line, col, ErrorCode::E3108, name);
         }
+    }
+    // #Inline 只能与 #Cval 组合
+    if (r.isInline && !r.isCval) {
+        throw YuxError(0, 0, ErrorCode::E3117);
     }
     return r;
 }
@@ -538,10 +570,13 @@ std::any ASTBuilder::visitFiledDecl(yux::yuxParser::FiledDeclContext* ctx) {
     auto flags = readFieldAnnos(ctx->buildAnnos);
     DEBUG_LOG_VAL("    Field", ctx->name->getText()
                                    << " : " << type->getType().name << (flags.isVal ? " #Val" : "")
-                                   << (flags.isFrozen ? " #Frozen" : "") << (flags.isStatic ? " #Static" : ""));
+                                   << (flags.isFrozen ? " #Frozen" : "") << (flags.isStatic ? " #Static" : "")
+                                   << (flags.isCval ? " #Cval" : "") << (flags.isInline ? " #Inline" : ""));
     auto node = createWithLine<StructFieldNode>(ctx, parent, ctx->name, type);
     node->setVal(flags.isVal);
     node->setFrozen(flags.isFrozen);
     node->setStatic(flags.isStatic);
+    node->setCval(flags.isCval);
+    node->setInline(flags.isInline);
     return node;
 }

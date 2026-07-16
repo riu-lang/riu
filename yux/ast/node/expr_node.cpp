@@ -2096,8 +2096,9 @@ TypeInfo ExprPathCallNode::getType() const {
         }
 
         // DRAFT-static-vars Phase 4: 若零参且 RHS 是 struct 静态字段，返回字段类型
+        // includeBuiltin=true：允许 #Builtin struct 上的静态字段（如 i8::MAX）
         if (_args.empty()) {
-            auto* structDecl = file->getStructDecl(n);
+            auto* structDecl = file->getStructDecl(n, /*includeBuiltin=*/true);
             if (structDecl) {
                 if (auto* sf = structDecl->staticField(_variantName.getText())) {
                     return sf->type->getType();
