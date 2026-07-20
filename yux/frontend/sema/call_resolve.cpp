@@ -1102,7 +1102,7 @@ void validateArrayMethodCall(const TypeInfo& baseType, const string& member, siz
         if (!baseIsLvalue) throw YuxError(line, col, ErrorCode::E6042, member);
         return;
     }
-    if (member == "push" || member == "set_len" || member == "clear") {
+    if (member == "push" || member == "set_len" || member == "clear" || member == "reserve") {
         if (!baseIsLvalue) {
             throw YuxError(line, col, ErrorCode::E6042, member);
         }
@@ -1111,7 +1111,7 @@ void validateArrayMethodCall(const TypeInfo& baseType, const string& member, siz
             if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, member, static_cast<size_t>(1));
             return;
         }
-        // push
+        // push / reserve
         if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, member, static_cast<size_t>(1));
         return;
     }

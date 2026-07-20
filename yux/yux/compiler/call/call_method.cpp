@@ -602,7 +602,7 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         return elemVal;
     }
 
-    if (member == "push" || member == "set_len" || member == "clear") {
+    if (member == "push" || member == "set_len" || member == "clear" || member == "reserve") {
         // E6042 已由 sema::validateArrayMethodCall 保证 arrayPtr != nullptr (lvalue)
         auto lenFieldPtr = arrayLenFieldPtr(arrayPtr, "arr");
         auto capFieldPtr = arrayCapFieldPtr(arrayPtr, "arr");
@@ -619,6 +619,57 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         if (member == "set_len") {
             DEBUG_LOG("    Expr: Array.set_len()");
             _builder.CreateStore(args[0], lenFieldPtr);
+            return voidResult();
+        }
+        if (member == "reserve") {
+            DEBUG_LOG("    Expr: Array.reserve()");
+            auto additional = args[0];
+            auto lenVal = _builder.CreateLoad(sizeTy, lenFieldPtr, "a.len");
+            auto capVal = _builder.CreateLoad(sizeTy, capFieldPtr, "a.cap");
+            auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
+            auto needCap = _builder.CreateAdd(lenVal, additional, "need.cap");
+            // 检查是否上溢（needCap < lenVal → overflow → 转为 usize 最大）
+            auto overflowed = _builder.CreateICmpULT(needCap, lenVal, "overflow");
+            auto maxSize = llvm::ConstantInt::get(sizeTy, ~0ULL);
+            auto safeNeedCap = _builder.CreateSelect(overflowed, maxSize, needCap, "safe.need");
+            auto needGrow = _builder.CreateICmpUGT(safeNeedCap, capVal, "reserve.need_grow");
+
+            auto doneBB = llvm::BasicBlock::Create(_context, "reserve.done", _currentFn);
+            auto growBB = llvm::BasicBlock::Create(_context, "reserve.grow", _currentFn);
+            _builder.CreateCondBr(needGrow, growBB, doneBB);
+
+            // growBB: 扩容路径
+            _builder.SetInsertPoint(growBB);
+            auto elemSize = _module->getDataLayout().getTypeAllocSize(elemLLVMType);
+            auto elemSizeVal = llvm::ConstantInt::get(sizeTy, elemSize);
+            auto newByteSize = _builder.CreateMul(safeNeedCap, elemSizeVal, "new.byte_size");
+            auto oldData = _builder.CreateLoad(ptrTy, dataFieldPtr, "old.data");
+            auto allocFn = runtime::getYuxrtAllocFn(_module, _builder);
+            auto reallocFn = runtime::getYuxrtReallocFn(_module, _builder);
+
+            auto dataIsNull = _builder.CreateICmpEQ(oldData, nullPtr, "data.is_null");
+            auto allocBB = llvm::BasicBlock::Create(_context, "reserve.alloc", _currentFn);
+            auto reallocBB = llvm::BasicBlock::Create(_context, "reserve.realloc", _currentFn);
+            auto growDoneBB = llvm::BasicBlock::Create(_context, "reserve.grow_done", _currentFn);
+            _builder.CreateCondBr(dataIsNull, allocBB, reallocBB);
+
+            _builder.SetInsertPoint(allocBB);
+            auto alloced = _builder.CreateCall(allocFn, {newByteSize}, "alloced.data");
+            _builder.CreateBr(growDoneBB);
+
+            _builder.SetInsertPoint(reallocBB);
+            auto realloced = _builder.CreateCall(reallocFn, {oldData, newByteSize}, "realloced");
+            _builder.CreateBr(growDoneBB);
+
+            _builder.SetInsertPoint(growDoneBB);
+            auto phi = _builder.CreatePHI(ptrTy, 2, "new.data");
+            phi->addIncoming(alloced, allocBB);
+            phi->addIncoming(realloced, reallocBB);
+            _builder.CreateStore(phi, dataFieldPtr);
+            _builder.CreateStore(safeNeedCap, capFieldPtr);
+            _builder.CreateBr(doneBB);
+
+            _builder.SetInsertPoint(doneBB);
             return voidResult();
         }
         DEBUG_LOG("    Expr: Array.push()");

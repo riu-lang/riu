@@ -441,6 +441,52 @@ fn test_array_push_after_clear() {
   assert_eq(arr[0], 3)
 }
 
+; ==================== reserve ====================
+
+#Test
+fn test_array_reserve_basic() {
+  ; 验证：reserve 后 cap >= len+additional，len 不变
+  #Mut let arr Array<i32> = []
+  arr.reserve(10usize)
+  assert_eq(arr.len(), 0)
+  assert_true(arr.is_empty())
+  ; push 不应触发重分配
+  loop i i32 = 0 {
+    if i >= 10 {
+      break;
+    }
+    arr.push(i)
+    i += 1
+  }
+  assert_eq(arr.len(), 10)
+}
+
+#Test
+fn test_array_reserve_after_push() {
+  ; 验证：先 push 再 reserve，数据不丢
+  #Mut let arr Array<i32> = []
+  arr.push(42)
+  arr.reserve(100usize)
+  assert_eq(arr.len(), 1)
+  assert_eq(arr[0], 42)
+}
+
+#Test
+fn test_array_reserve_no_shrink() {
+  ; 验证：reserve 小于当前 cap 时不会缩容
+  #Mut let arr Array<i32> = []
+  loop i i32 = 0 {
+    if i >= 20 {
+      break;
+    }
+    arr.push(i)
+    i += 1
+  }
+  let cap_before usize = arr.cap()
+  arr.reserve(1usize)
+  assert_true(arr.cap() >= cap_before)
+}
+
 ; ==================== 嵌套 Array（迁自 bug_hunt） ====================
 
 #Test

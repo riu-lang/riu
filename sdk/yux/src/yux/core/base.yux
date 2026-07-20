@@ -227,6 +227,9 @@ struct Array<T> {
   fn clear()
 
   #Builtin
+  fn reserve(additional usize)
+
+  #Builtin
   fn set_len(new_len usize)
 
   #Builtin

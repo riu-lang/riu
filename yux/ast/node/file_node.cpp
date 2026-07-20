@@ -128,6 +128,10 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
         registerSymbol("Array.clear", {SymbolKind::Function, "clear", tpVoid});
         registerFnSymbol("Array.clear", {"clear", "", {}, tpVoid});
 
+        // Array.reserve(n usize) → void
+        registerSymbol("Array.reserve", {SymbolKind::Function, "reserve", tpVoid});
+        registerFnSymbol("Array.reserve", {"reserve", "", {tpusize}, tpVoid});
+
         // Array.set_len(n usize) → void
         registerSymbol("Array.set_len", {SymbolKind::Function, "set_len", tpVoid});
         registerFnSymbol("Array.set_len", {"set_len", "", {tpusize}, tpVoid});

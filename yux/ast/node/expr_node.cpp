@@ -989,7 +989,7 @@ TypeInfo ExprDotNode::getType() const {
                 if (member == "pop") return "fn() " + elemTy.getFullName();
                 if (member == "len" || member == "cap") return "fn() usize";
                 if (member == "is_empty") return "fn() bool";
-                if (member == "push" || member == "clear" || member == "set_len") return "fn() void";
+                if (member == "push" || member == "clear" || member == "set_len" || member == "reserve") return "fn() void";
                 return "";
             };
 
@@ -1412,7 +1412,7 @@ TypeInfo ExprDotNode::getType() const {
         if (member == "is_empty") {
             return "fn() bool";
         }
-        if (member == "push" || member == "clear" || member == "set_len") {
+        if (member == "push" || member == "clear" || member == "set_len" || member == "reserve") {
             return "fn() void";
         }
         return ""; // 未知方法
