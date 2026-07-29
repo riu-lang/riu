@@ -1,0 +1,7 @@
+; 块作用域：loop init 出块不可见
+fn main() {
+  loop i = 0 {
+    break;
+  }
+  let y i32 = i  ; check: E3030
+}

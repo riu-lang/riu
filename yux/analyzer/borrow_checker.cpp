@@ -46,7 +46,7 @@ class BorrowChecker {
     // DRAFT-heap-types §8.3a.4.1 (Phase 2.8)：fn 返回 Heap<T> 时启用
     // v1 无 NRVO，任意 `ret <expr>` 一律 E4023。Phase 3 NRVO 落地后再放宽。
     bool _returnsHeap = false;
-    std::string _returnHeapInnerName;  // 错误消息里的 T
+    std::string _returnHeapInnerName; // 错误消息里的 T
 
     // §8.4.2.5 Array<T> 借用期不可调用的修改方法名单
     static const std::set<std::string>& arrayMutatingMethods() {
@@ -126,9 +126,7 @@ public:
     }
 
 private:
-    void pushScope() {
-        _scopes.push_back({});
-    }
+    void pushScope() { _scopes.push_back({}); }
 
     void popScope() {
         auto& s = _scopes.back();
@@ -189,9 +187,7 @@ private:
     //   - `ret as_ref(box)`     → 根 = box 的根
     //   - `ret recv.foo(...)` / `ret f(args)` 返 T& → P3 扩展（rootFromRefInit 暂不识别会抛 E4001，
     //     由 P3 在 ExprCallNode 分支补齐）
-    std::string rootFromRetExpr(p<ExprNode> expr, int line) {
-        return rootFromRefInit(expr, line);
-    }
+    std::string rootFromRetExpr(p<ExprNode> expr, int line) { return rootFromRefInit(expr, line); }
 
     // Phase 2e: `val d Dyn<D&> = Dyn:<D&>(x)` 的根推导.
     // 期望 RHS 是 ExprDynCtorNode(isBorrow=true); x 形态在 Phase 2b 限定为:
@@ -211,8 +207,7 @@ private:
                 }
             }
             // 兜底: 落到 E4001 (借用初始化形态不被识别)
-            throw YuxError(line, ErrorCode::E4001)
-                .withHint("Dyn<D&>(...) 的参数应为 `&y.f` / T& 变量 / Rc<U> 变量名");
+            throw YuxError(line, ErrorCode::E4001).withHint("Dyn<D&>(...) 的参数应为 `&y.f` / T& 变量 / Rc<U> 变量名");
         }
         // RHS 是已有 Dyn<D&> 变量 (拷绑形态): 顺 refToRoot 链解根
         if (auto litExpr = dynamic_cast<ExprLiteralNode*>(expr)) {
@@ -330,7 +325,8 @@ private:
             }
         }
         throw YuxError(line, ErrorCode::E4001)
-            .withHint("T& 借用初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量），或 `val r T& = as_ref(box)`");
+            .withHint(
+                "T& 借用初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量），或 `val r T& = as_ref(box)`");
     }
 
     // ------- 遍历 -------
@@ -356,7 +352,20 @@ private:
         }
 
         if (auto loop = dynamic_cast<StatementLoopNode*>(s)) {
-            visitBlock(loop->block());
+            // loop init 与 body 共享同一块作用域
+            pushScope();
+            for (auto& n : loop->initNames()) {
+                declare(n.getText());
+            }
+            if (auto blk = loop->block()) {
+                for (auto& st : blk->statements()) {
+                    visitStmt(st);
+                }
+                if (blk->hasResult() && blk->resultExpr()) {
+                    visitExpr(blk->resultExpr());
+                }
+            }
+            popScope();
             return;
         }
 
@@ -403,8 +412,7 @@ private:
                     if (!ok) {
                         auto inner = varType.heapElementType();
                         std::string innerName = inner ? inner->name : std::string("?");
-                        throw YuxError(s->getLineNumber(), ErrorCode::E4024,
-                                       innerName, vname, innerName);
+                        throw YuxError(s->getLineNumber(), ErrorCode::E4024, innerName, vname, innerName);
                     }
                 }
                 // DRAFT-heap-types §8.3a.4.3 (Phase 3d.1)：Heap<T>? 槽的 RHS 形态白名单。
@@ -424,11 +432,9 @@ private:
                             std::string innerName = heapInner ? heapInner->name : std::string("?");
                             auto exprType = da->expr()->getType();
                             if (exprType.isHeap()) {
-                                throw YuxError(s->getLineNumber(), ErrorCode::E4027,
-                                               innerName, innerName);
+                                throw YuxError(s->getLineNumber(), ErrorCode::E4027, innerName, innerName);
                             }
-                            throw YuxError(s->getLineNumber(), ErrorCode::E4024,
-                                           innerName, vname, innerName);
+                            throw YuxError(s->getLineNumber(), ErrorCode::E4024, innerName, vname, innerName);
                         }
                     }
                 }
@@ -455,8 +461,7 @@ private:
                     if (!ok) {
                         auto inner = rit->second.heapElementType();
                         std::string innerName = inner ? inner->name : std::string("?");
-                        throw YuxError(s->getLineNumber(), ErrorCode::E4024,
-                                       innerName, lhsName, innerName);
+                        throw YuxError(s->getLineNumber(), ErrorCode::E4024, innerName, lhsName, innerName);
                     }
                 }
                 // Phase 3d.1：Heap<T>? 顶层重赋同样走白名单（同上）。
@@ -474,11 +479,9 @@ private:
                             std::string innerName = heapInner ? heapInner->name : std::string("?");
                             auto exprType = as->expr()->getType();
                             if (exprType.isHeap()) {
-                                throw YuxError(s->getLineNumber(), ErrorCode::E4027,
-                                               innerName, innerName);
+                                throw YuxError(s->getLineNumber(), ErrorCode::E4027, innerName, innerName);
                             }
-                            throw YuxError(s->getLineNumber(), ErrorCode::E4024,
-                                           innerName, lhsName, innerName);
+                            throw YuxError(s->getLineNumber(), ErrorCode::E4024, innerName, lhsName, innerName);
                         }
                     }
                 }
@@ -503,8 +506,7 @@ private:
                 if (_returnsRef) {
                     auto root = rootFromRetExpr(ret->expr(), s->getLineNumber());
                     if (_returnAllowedSources.find(root) == _returnAllowedSources.end()) {
-                        throw YuxError(s->getLineNumber(), ErrorCode::E4020,
-                                       _returnAllowedDesc, root);
+                        throw YuxError(s->getLineNumber(), ErrorCode::E4020, _returnAllowedDesc, root);
                     }
                 }
                 // DRAFT-heap-types §8.3a.4 (Phase 3c)：A 档 NRVO（最小集）。
@@ -528,8 +530,7 @@ private:
                         }
                     }
                     if (!nrvoEligible) {
-                        throw YuxError(s->getLineNumber(), ErrorCode::E4023,
-                                       _returnHeapInnerName, name);
+                        throw YuxError(s->getLineNumber(), ErrorCode::E4023, _returnHeapInnerName, name);
                     }
                 }
             }
@@ -646,8 +647,7 @@ private:
             if (_returnsRef) {
                 auto root = rootFromRetExpr(lam->bodyExpr(), lam->getLineNumber());
                 if (_returnAllowedSources.find(root) == _returnAllowedSources.end()) {
-                    throw YuxError(lam->getLineNumber(), ErrorCode::E4020,
-                                   _returnAllowedDesc, root);
+                    throw YuxError(lam->getLineNumber(), ErrorCode::E4020, _returnAllowedDesc, root);
                 }
             }
         } else {
@@ -691,9 +691,9 @@ private:
         auto bit = _activeBorrows.find(rootName);
         if (bit == _activeBorrows.end() || bit->second <= 0) return;
 
-        throw YuxError(call->getLineNumber(), call->getColumn(), ErrorCode::E2010,
-                       methodName, recvName)
-            .withHint("Array<T>& 借用存活区间内禁止 push / pop / clear / set_len 等修改操作（spec §8.4.2.5）；先让借用结束再修改");
+        throw YuxError(call->getLineNumber(), call->getColumn(), ErrorCode::E2010, methodName, recvName)
+            .withHint("Array<T>& 借用存活区间内禁止 push / pop / clear / set_len 等修改操作（spec "
+                      "§8.4.2.5）；先让借用结束再修改");
     }
 };
 

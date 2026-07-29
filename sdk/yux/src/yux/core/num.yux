@@ -1075,7 +1075,9 @@ struct i64 {
     if is_neg {
       v = -$
     }
-    loop i i64 = 0 {
+    ; i 出 loop 后仍要用：提到外层（§5.7 块作用域）
+    #Mut let i i64 = 0
+    loop {
       if v == 0 {
         break;
       }
@@ -1092,7 +1094,8 @@ struct i64 {
       out.push(c'-')
     }
     #Mut let start i64 = 21 - i
-    loop k i64 = 0 {
+    #Mut let k i64 = 0
+    loop {
       if k >= i {
         break;
       }
@@ -1257,7 +1260,9 @@ struct u64 {
     #Mut let out Array<u32> = []
     #Mut let buf [u8 * 21] = [0u8 ...]
     #Mut let v u64 = $
-    loop i i64 = 0 {
+    ; i 出 loop 后仍要用：提到外层（§5.7 块作用域）
+    #Mut let i i64 = 0
+    loop {
       if v == 0 {
         break;
       }
@@ -1271,7 +1276,8 @@ struct u64 {
       i = 1
     }
     #Mut let start i64 = 21 - i
-    loop k i64 = 0 {
+    #Mut let k i64 = 0
+    loop {
       if k >= i {
         break;
       }

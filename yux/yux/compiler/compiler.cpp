@@ -13,7 +13,6 @@
 // - 泛型单态化相关函数
 
 #include "compiler.h"
-#include "types.h"
 #include "analyzer/borrow_checker.h"
 #include "analyzer/const_mut_checker.h"
 #include "analyzer/flow_terminate_checker.h"
@@ -26,6 +25,7 @@
 #include "compiler_runtime.h"
 #include "sema/const_eval.h"
 #include "sema/sema_pass.h"
+#include "types.h"
 #include <algorithm>
 #include <array>
 #include <llvm/IR/Constants.h>
@@ -37,8 +37,7 @@
 // 初始化编译器，建立基本类型到 LLVM 类型的映射
 Compiler::Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, p<FileNode> file,
                    Yux* yux, bool isSdk, bool isTestDll)
-    : _context(context), _builder(builder), _module(mod), _file(file), _yux(yux), _isSdk(isSdk),
-      _isTestDll(isTestDll) {
+    : _context(context), _builder(builder), _module(mod), _file(file), _yux(yux), _isSdk(isSdk), _isTestDll(isTestDll) {
     // 初始化基本类型映射表
     // 注意: i8/u8, i16/u16 等使用相同的 LLVM 类型，语义区分在 TypeInfo 中
     _typeMap.insert({"", _builder.getVoidTy()});      // void 类型
@@ -156,25 +155,25 @@ void Compiler::compile(p<FileNode> file) {
         } else {
             auto mainFn = _file->getFunction("main");
             if (mainFn) {
-            // 10g-7：main 是否标 #Fallible(E)？
-            string mainFallibleErr;
-            if (mainFn->header()) {
-                if (auto e = mainFn->header()->getAnnoArg("Fallible")) {
-                    mainFallibleErr = *e;
+                // 10g-7：main 是否标 #Fallible(E)？
+                string mainFallibleErr;
+                if (mainFn->header()) {
+                    if (auto e = mainFn->header()->getAnnoArg("Fallible")) {
+                        mainFallibleErr = *e;
+                    }
+                }
+                if (!mainFallibleErr.empty()) {
+                    DEBUG_LOG_VAL("Emitting main startup (Fallible)", mainFallibleErr);
+                    emitMainStartupFallible(mainFallibleErr);
+                } else {
+                    DEBUG_LOG("Emitting main startup");
+                    // Phase 6: 传入模块加载顺序（拓扑序，依赖在前）
+                    vector<string> loadOrder;
+                    if (_yux) loadOrder = _yux->loadOrder();
+                    runtime::emitMainStartup(_context, _builder, _module, loadOrder);
                 }
             }
-            if (!mainFallibleErr.empty()) {
-                DEBUG_LOG_VAL("Emitting main startup (Fallible)", mainFallibleErr);
-                emitMainStartupFallible(mainFallibleErr);
-            } else {
-                DEBUG_LOG("Emitting main startup");
-                // Phase 6: 传入模块加载顺序（拓扑序，依赖在前）
-                vector<string> loadOrder;
-                if (_yux) loadOrder = _yux->loadOrder();
-                runtime::emitMainStartup(_context, _builder, _module, loadOrder);
-            }
         }
-    }
     }
     DEBUG_LOG("=== Compilation complete ===");
 }
@@ -226,9 +225,9 @@ void Compiler::emitTestRegistrations() {
     for (size_t i = 0; i < N; ++i) {
         std::string fullName = _file->moduleName() + "#" + testFns[i].fnName;
         auto nameConst = llvm::ConstantDataArray::getString(_context, fullName, true);
-        auto nameGlobal = new llvm::GlobalVariable(*_module, nameConst->getType(), true,
-                                                    llvm::GlobalValue::InternalLinkage, nameConst,
-                                                    "_yux_test_name_" + std::to_string(i));
+        auto nameGlobal =
+            new llvm::GlobalVariable(*_module, nameConst->getType(), true, llvm::GlobalValue::InternalLinkage,
+                                     nameConst, "_yux_test_name_" + std::to_string(i));
         namePtrs.push_back(llvm::ConstantExpr::getBitCast(nameGlobal, ptrTy));
     }
 
@@ -239,8 +238,7 @@ void Compiler::emitTestRegistrations() {
         auto func = _module->getFunction(testFns[i].mangledName);
         if (!func) {
             // 未找到（可能因错误被跳过），创建外部声明作为占位
-            func = llvm::Function::Create(voidFnTy, llvm::Function::ExternalLinkage,
-                                           testFns[i].mangledName, _module);
+            func = llvm::Function::Create(voidFnTy, llvm::Function::ExternalLinkage, testFns[i].mangledName, _module);
         }
         fnPtrs.push_back(llvm::ConstantExpr::getBitCast(func, voidFnPtrTy));
     }
@@ -248,13 +246,13 @@ void Compiler::emitTestRegistrations() {
     // ====== 全局 count ======
     auto countGlobal =
         new llvm::GlobalVariable(*_module, i32Ty, false, llvm::GlobalValue::InternalLinkage,
-                                  llvm::ConstantInt::get(i32Ty, static_cast<uint32_t>(N)), "yux_test_count");
+                                 llvm::ConstantInt::get(i32Ty, static_cast<uint32_t>(N)), "yux_test_count");
 
     // ====== 全局 names 数组 ======
     auto namesArrTy = llvm::ArrayType::get(ptrTy, N);
     auto namesConst = llvm::ConstantArray::get(namesArrTy, namePtrs);
     new llvm::GlobalVariable(*_module, namesArrTy, false, llvm::GlobalValue::InternalLinkage, namesConst,
-                              "yux_test_names");
+                             "yux_test_names");
 
     // ====== 全局 fns 数组 ======
     auto fnsArrTy = llvm::ArrayType::get(voidFnPtrTy, N);
@@ -364,10 +362,12 @@ void Compiler::compileGlobalConsts() {
         if (globalConst->isInline()) {
             _inlineConstantValues[mangledName] = initValue;
             if (isPriv) {
-                DEBUG_LOG_VAL("Created inline constant (private)", mangledName << " : " << type.name << " [inline only]");
+                DEBUG_LOG_VAL("Created inline constant (private)",
+                              mangledName << " : " << type.name << " [inline only]");
                 continue;
             }
-            DEBUG_LOG_VAL("Created inline constant (public)", mangledName << " : " << type.name << " [inline + global for cross-file]");
+            DEBUG_LOG_VAL("Created inline constant (public)",
+                          mangledName << " : " << type.name << " [inline + global for cross-file]");
             // 非私有：不 continue，继续走下面的 GlobalVariable 创建逻辑
         }
 
@@ -1030,7 +1030,8 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
     _currentFnNode = node;
     _currentStructName.clear();
     _localVarPtrs.clear();
-    _scopeVars.clear();
+    _scopeFrames.clear();
+    pushScopeFrame();   // fn 顶层帧
     _movedVars.clear(); // Phase B-1
 
     DEBUG_LOG_VAL("Compiling function", node->header()->name().getText());
@@ -1063,25 +1064,15 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
             DEBUG_LOG_VAL("  Param (ref)", paramName << " : " << paramType.getFullName());
         } else if (structParamUsesPointer(paramType.name)) {
             // Phase 3c.1: 非平凡结构体仍走指针 ABI
-            _localVarPtrs[paramName] = &arg;
+            registerLocalVar(paramName, &arg, paramType);
             DEBUG_LOG_VAL("  Param (struct ptr)", paramName << " : " << paramType.name << "*");
-            // 堆句柄参数也需 callee-clean（Array 等非平凡 struct 走指针 ABI 时）
-            if (typeNeedsDestructor(paramType)) {
-                _scopeVars.push_back(paramName);
-            }
         } else {
             // 基本类型 / 平凡结构体: 创建 alloca 并存储 by-value 参数
             auto llvmType = getLLVMType(paramType);
             auto alloca = _builder.CreateAlloca(llvmType, nullptr, paramName);
             _builder.CreateStore(&arg, alloca);
-            _localVarPtrs[paramName] = alloca;
+            registerLocalVar(paramName, alloca, paramType);
             DEBUG_LOG_VAL("  Param", paramName << " : " << paramType.name);
-
-            // Phase 3a: 堆句柄参数（Rc/Array/Weak）按 callee-clean 协议
-            // 在作用域结束时 release，与局部变量同路径
-            if (typeNeedsDestructor(paramType)) {
-                _scopeVars.push_back(paramName);
-            }
         }
     }
 
@@ -1125,7 +1116,8 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
     _currentFnNode = node;
     _currentStructName = structName;
     _localVarPtrs.clear();
-    _scopeVars.clear();
+    _scopeFrames.clear();
+    pushScopeFrame();   // method 顶层帧
     _movedVars.clear(); // Phase B-1
 
     DEBUG_LOG_VAL("Compiling method", structName << "." << node->header()->name().getText());
@@ -1187,23 +1179,14 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
             DEBUG_LOG_VAL("  Method param (ref)", paramName << " : " << paramType.getFullName());
         } else if (structParamUsesPointer(paramType.name)) {
             // Phase 3c.1: 非平凡结构体仍走指针 ABI
-            _localVarPtrs[paramName] = argIt;
+            registerLocalVar(paramName, argIt, paramType);
             DEBUG_LOG_VAL("  Param (struct ptr)", paramName << " : " << paramType.name << "*");
-            // 堆句柄参数也需 callee-clean（Array 等非平凡 struct 走指针 ABI 时）
-            if (typeNeedsDestructor(paramType)) {
-                _scopeVars.push_back(paramName);
-            }
         } else {
             // 基本类型 / 平凡结构体: 创建 alloca 并存储 by-value 参数
             auto alloca = _builder.CreateAlloca(llvmType, nullptr, paramName);
             _builder.CreateStore(argIt, alloca);
-            _localVarPtrs[paramName] = alloca;
+            registerLocalVar(paramName, alloca, paramType);
             DEBUG_LOG_VAL("  Param", paramName << " : " << paramType.name);
-
-            // Phase 3a: 堆句柄参数（Rc/Array/Weak）按 callee-clean 协议在作用域末 release
-            if (typeNeedsDestructor(paramType)) {
-                _scopeVars.push_back(paramName);
-            }
         }
         ++argIt;
     }
@@ -1276,7 +1259,8 @@ llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t, llvm:
         std::string out;
         out.reserve(s.size());
         for (char c : s) {
-            bool keep = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.';
+            bool keep =
+                (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.';
             out += keep ? c : '_';
         }
         return out;

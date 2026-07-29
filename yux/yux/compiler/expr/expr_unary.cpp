@@ -127,7 +127,7 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
     if (it != _localVarPtrs.end()) {
         // —— 局部变量路径 ——
         currentPtr = it->second;
-        sym = _currentFnNode->lookupSymbol(objName);
+        sym = lookupVarSymbol(objName, node);
         if (!sym) {
             SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
                                                ErrorCode::E3030, objName);
@@ -135,7 +135,7 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
     } else {
         // —— 全局变量路径（DRAFT-static-ref） ——
         // 全局变量不在 _localVarPtrs 中，通过文件级符号表查找，再走 Mangler 获取 LLVM GlobalVariable
-        sym = _currentFnNode->lookupSymbol(objName);
+        sym = lookupVarSymbol(objName, node);
         if (!sym) {
             SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
                                                ErrorCode::E3030, objName);

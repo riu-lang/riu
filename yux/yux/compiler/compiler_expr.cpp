@@ -402,22 +402,39 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
 void Compiler::compileStatementBlock(p<StatementBlockNode> block) {
     DEBUG_LOG_VAL("  compileStatementBlock", block->statements().size()
                                                  << " statements, hasResult=" << block->hasResult());
+    pushScopeFrame();
+    const size_t myDepth = scopeFrameDepth();
     for (auto& stmt : block->statements()) {
+        if (_builder.GetInsertBlock()->getTerminator()) break;
         compileStatement(stmt);
     }
-    if (block->hasResult()) {
+    if (!_builder.GetInsertBlock()->getTerminator() && block->hasResult()) {
         DEBUG_LOG("    Compiling result expression");
         compileExpr(block->resultExpr());
+    }
+    if (scopeFrameDepth() == myDepth) {
+        if (_builder.GetInsertBlock()->getTerminator()) {
+            // break/ret 已发射析构；仅恢复编译期帧栈，供兄弟分支继续
+            popScopeFrameNoDestroy();
+        } else {
+            popScopeFrameAndDestroy();
+        }
     }
 }
 
 llvm::Value* Compiler::compileStatementBlockWithResult(p<StatementBlockNode> block, llvm::BasicBlock* continueBlock,
                                                        llvm::PHINode* phi, const TypeInfo& resultType) {
+    pushScopeFrame();
+    const size_t myDepth = scopeFrameDepth();
     for (auto& stmt : block->statements()) {
+        if (_builder.GetInsertBlock()->getTerminator()) break;
         compileStatement(stmt);
     }
 
     if (_builder.GetInsertBlock()->getTerminator()) {
+        if (scopeFrameDepth() == myDepth) {
+            popScopeFrameNoDestroy();
+        }
         return nullptr;
     }
 
@@ -429,6 +446,9 @@ llvm::Value* Compiler::compileStatementBlockWithResult(p<StatementBlockNode> blo
         }
     }
 
+    if (scopeFrameDepth() == myDepth) {
+        popScopeFrameAndDestroy();
+    }
     _builder.CreateBr(continueBlock);
     return nullptr;
 }
@@ -482,7 +502,10 @@ llvm::Value* Compiler::compileLvalueAddr(p<ExprNode> node) {
         bool wasRef = false;
         if (baseType.isRef()) {
             auto inner = baseType.refElementType();
-            if (inner) { baseType = *inner; wasRef = true; }
+            if (inner) {
+                baseType = *inner;
+                wasRef = true;
+            }
         }
         // 剥 Rc<T> → T
         if (baseType.isRc()) {
@@ -499,8 +522,8 @@ llvm::Value* Compiler::compileLvalueAddr(p<ExprNode> node) {
                 auto& elems = resolved.tupleElements();
                 auto idx = static_cast<size_t>(std::stoul(member));
                 if (idx >= elems.size()) {
-                    throw YuxError(line, col, ErrorCode::E3100, member,
-                                   baseType.getFullName(), std::to_string(elems.size()));
+                    throw YuxError(line, col, ErrorCode::E3100, member, baseType.getFullName(),
+                                   std::to_string(elems.size()));
                 }
                 // Ref<T> 的 lvalue addr 存的是引用值（ptr），需先 Load 再 GEP 到元组元素
                 if (wasRef) {

@@ -57,9 +57,16 @@ llvm::Constant* Compiler::evalInlineFieldInit(p<ExprNode> init, const TypeInfo& 
                 int base = 10;
                 string parseStr = numStr;
                 if (numStr.size() >= 2 && numStr[0] == '0') {
-                    if (numStr[1] == 'b' || numStr[1] == 'B') { base = 2; parseStr = numStr.substr(2); }
-                    else if (numStr[1] == 'o' || numStr[1] == 'O') { base = 8; parseStr = numStr.substr(2); }
-                    else if (numStr[1] == 'x' || numStr[1] == 'X') { base = 16; parseStr = numStr.substr(2); }
+                    if (numStr[1] == 'b' || numStr[1] == 'B') {
+                        base = 2;
+                        parseStr = numStr.substr(2);
+                    } else if (numStr[1] == 'o' || numStr[1] == 'O') {
+                        base = 8;
+                        parseStr = numStr.substr(2);
+                    } else if (numStr[1] == 'x' || numStr[1] == 'X') {
+                        base = 16;
+                        parseStr = numStr.substr(2);
+                    }
                 }
                 std::erase(parseStr, '_');
 
@@ -368,7 +375,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                                     // 所有权转移给 callee（callee 内部 move 会 zero _data），
                                     // 标记 moved 防 caller 析构 double-free
                                     _movedVars.insert(varName);
-                                    std::erase(_scopeVars, varName);
+                                    eraseScopeVar(varName);
                                 }
                             }
                         }

@@ -58,11 +58,12 @@ fn test_loop_accumulate_sum() {
 
 ; ==================== loop init（单变量） ====================
 
-; 验证：循环初始化计数器并累加值
+; 验证：循环计数器累加；出 loop 仍要用 i 时须外层声明（§5.7）
 #Test
 fn test_loop_init_counter() {
   #Mut let sum i32 = 0
-  loop i = 0 {
+  #Mut let i i32 = 0
+  loop {
     if i >= 10 {
       break;
     }

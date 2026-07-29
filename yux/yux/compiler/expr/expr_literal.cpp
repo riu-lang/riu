@@ -149,15 +149,7 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
         // Phase 2b：lambda body 编译期 _currentFnNode 为 nullptr，但 body 节点的 parent
         // 链能经 bodyScope 找到 lambda 形参；fall back 到 findNearestScope 让 lambda 形参
         // 与外层局部都能查到（外层情况下两者等价）
-        SymbolInfo* sym = nullptr;
-        if (_currentFnNode) {
-            sym = _currentFnNode->lookupSymbol(varName);
-        }
-        if (!sym) {
-            if (auto sc = node->findNearestScope()) {
-                sym = sc->lookupSymbol(varName);
-            }
-        }
+        SymbolInfo* sym = lookupVarSymbol(varName, node);
         // Phase 2.3：解析到的变量符号挂回 AST，供后续 pass（codegen/LSP）复用，
         // 避免 2.4 切读路径前再发生一次 lookupSymbol。
         if (sym) {

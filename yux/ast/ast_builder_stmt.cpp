@@ -196,8 +196,7 @@ std::any ASTBuilder::visitStatementRetVoid(yux::yuxParser::StatementRetVoidConte
 }
 
 std::any ASTBuilder::visitStatementLoop(yux::yuxParser::StatementLoopContext* ctx) {
-    auto scope = currentScope();
-    auto block = any_cast_p<StatementBlockNode>(visit(ctx->statementBlock()));
+    auto outerScope = currentScope();
 
     // 处理可选的 label 前缀：label: loop { }
     Token label;
@@ -205,7 +204,7 @@ std::any ASTBuilder::visitStatementLoop(yux::yuxParser::StatementLoopContext* ct
         label = Token(ctx->ID()->getText(), static_cast<int>(ctx->ID()->getSymbol()->getLine()));
     }
 
-    // 处理可选的 loop init 子句
+    // loop init：RHS 在外层求值（init 名对 RHS 不可见）；符号注册进 loop 体 block（§5.5.1.5）
     vector<Token> initNames;
     p<TypeNode> initType = nullptr;
     p<ExprNode> initExpr = nullptr;
@@ -224,14 +223,20 @@ std::any ASTBuilder::visitStatementLoop(yux::yuxParser::StatementLoopContext* ct
 
         // 可选类型标注
         if (auto twr = initCtx->typeWithRef(); twr) {
-            initType = buildTypeWithRef(twr, scope);
+            initType = buildTypeWithRef(twr, outerScope);
         }
 
         // init 表达式
         initExpr = any_cast_p<ExprNode>(visit(initCtx->expr()));
+    }
 
-        // 在函数作用域中注册 loop init 变量（yux 无独立块作用域，所有局部变量平级）
-        // 变量默认可变
+    // 先建 block scope 并 push，再注册 init，再 visit 体——体内才能看见 init 名
+    auto blockCtx = ctx->statementBlock();
+    auto block = createWithLine<StatementBlockNode>(blockCtx, outerScope, vector<p<StatementNode>>{}, nullptr, false);
+    block->setParentScope(outerScope);
+    _scopeStack.push_back(block);
+
+    if (initExpr) {
         TypeInfo initExprType = initExpr->getType();
         for (size_t idx = 0; idx < initNames.size(); ++idx) {
             TypeInfo varType;
@@ -242,17 +247,44 @@ std::any ASTBuilder::visitStatementLoop(yux::yuxParser::StatementLoopContext* ct
             } else {
                 varType = initExprType;
             }
-            SymbolInfo sym(SymbolKind::Variable, initNames[idx].getText(), varType, /*w=*/true);
-            if (scope) {
-                scope->registerSymbol(initNames[idx].getText(), sym);
+            // loop init 默认可变（§5.5.1.5）
+            block->registerSymbol(initNames[idx].getText(),
+                                  SymbolInfo(SymbolKind::Variable, initNames[idx].getText(), varType, /*w=*/true));
+        }
+    }
+
+    vector<p<StatementNode>> statements;
+    for (auto stmtCtx : blockCtx->statement()) {
+        statements.push_back(any_cast_p<StatementNode>(visit(stmtCtx)));
+    }
+
+    p<ExprNode> resultExpr = nullptr;
+    bool hasResult = false;
+    if (!statements.empty()) {
+        if (auto exprStmt = dynamic_cast<StatementExprNode*>(statements.back())) {
+            if (!exprStmt->hasSemicolon()) {
+                resultExpr = exprStmt->expr();
+                hasResult = true;
+                statements.pop_back();
             }
         }
+    }
+
+    _scopeStack.pop_back();
+
+    // 最终 block 持有 statements；init 符号拷入。体内节点 parent 仍是 push 期的 block（含 init），
+    // findNearestScope 可解析 init / 体 let。
+    auto filled =
+        createWithLine<StatementBlockNode>(blockCtx, outerScope, std::move(statements), resultExpr, hasResult);
+    filled->setParentScope(outerScope);
+    for (auto& [name, sym] : block->localSymbols()) {
+        filled->registerSymbol(name, sym);
     }
 
     DEBUG_LOG("  Statement: Loop" << (ctx->loopInit() ? " (with init)" : "")
                                   << (ctx->ID() ? " (label: " + label.getText() + ")" : ""));
     return static_cast<p<StatementNode>>(
-        createWithLine<StatementLoopNode>(ctx, scope, block, label, std::move(initNames), initType, initExpr));
+        createWithLine<StatementLoopNode>(ctx, outerScope, filled, label, std::move(initNames), initType, initExpr));
 }
 
 std::any ASTBuilder::visitStatementBreak(yux::yuxParser::StatementBreakContext* ctx) {
@@ -297,18 +329,20 @@ std::any ASTBuilder::visitStatementStaticFieldSet(yux::yuxParser::StatementStati
 std::any ASTBuilder::visitStatementBlock(yux::yuxParser::StatementBlockContext* ctx) {
     DEBUG_LOG("  Visit: StatementBlock");
     auto parentScope = currentScope();
+    // §5.7.1：statementBlock 产生新作用域；先 push 再 visit，let 注册到本 block
+    auto block = createWithLine<StatementBlockNode>(ctx, parentScope, vector<p<StatementNode>>{}, nullptr, false);
+    block->setParentScope(parentScope);
+    _scopeStack.push_back(block);
+
     vector<p<StatementNode>> statements;
     for (auto stmtCtx : ctx->statement()) {
-        auto stmt = any_cast_p<StatementNode>(visit(stmtCtx));
-        statements.push_back(stmt);
+        statements.push_back(any_cast_p<StatementNode>(visit(stmtCtx)));
     }
 
     p<ExprNode> resultExpr = nullptr;
     bool hasResult = false;
-
     if (!statements.empty()) {
-        auto lastStmt = statements.back();
-        if (auto exprStmt = dynamic_cast<StatementExprNode*>(lastStmt)) {
+        if (auto exprStmt = dynamic_cast<StatementExprNode*>(statements.back())) {
             if (!exprStmt->hasSemicolon()) {
                 resultExpr = exprStmt->expr();
                 hasResult = true;
@@ -317,9 +351,15 @@ std::any ASTBuilder::visitStatementBlock(yux::yuxParser::StatementBlockContext* 
             }
         }
     }
+    _scopeStack.pop_back();
 
     DEBUG_LOG_VAL("    Statements count", statements.size());
-    auto block = createWithLine<StatementBlockNode>(ctx, parentScope, statements, resultExpr, hasResult);
-    block->setParentScope(parentScope);
-    return block;
+    // 重建带 statements 的 block；visit 期符号已在栈上的 block 中，拷到最终节点。
+    // 体内语句 parent 仍指向 push 期 block（符号表所在），findNearestScope 正确。
+    auto filled = createWithLine<StatementBlockNode>(ctx, parentScope, std::move(statements), resultExpr, hasResult);
+    filled->setParentScope(parentScope);
+    for (auto& [name, sym] : block->localSymbols()) {
+        filled->registerSymbol(name, sym);
+    }
+    return filled;
 }

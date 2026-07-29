@@ -1,0 +1,7 @@
+; 块作用域：if 体内 let 出块不可见
+fn main() {
+  if true {
+    let x i32 = 1
+  }
+  let y i32 = x  ; check: E3030
+}

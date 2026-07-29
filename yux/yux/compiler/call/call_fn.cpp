@@ -418,7 +418,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
                 if (auto litE = dynamic_cast<ExprLiteralNode*>(argNode)) {
                     if (auto objLit = dynamic_cast<LiteralObjNode*>(litE->literal())) {
                         auto name = objLit->getValue().getText();
-                        std::erase(_scopeVars, name);
+                        eraseScopeVar(name);
                         auto it = _localVarPtrs.find(name);
                         if (it != _localVarPtrs.end()) {
                             _builder.CreateStore(llvm::ConstantPointerNull::get(ptrTy), it->second);
@@ -632,7 +632,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
 
             // 标记 moved：destructor 跳过 + 后续访问报 E4033
             _movedVars.insert(varName);
-            std::erase(_scopeVars, varName);
+            eraseScopeVar(varName);
 
             // 防御性：堆句柄类型写 null 到源 slot 防 double-free
             if (T.isRc() || T.isArrayGeneric() || T.isWeak()) {
@@ -707,8 +707,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
 
             // heap: alloc + store，返回裸 T* 形态的 Heap<T>
             auto innerLLVMType = getLLVMType(T);
-            auto sizeVal =
-                _builder.getInt64(_module->getDataLayout().getTypeAllocSize(innerLLVMType).getFixedValue());
+            auto sizeVal = _builder.getInt64(_module->getDataLayout().getTypeAllocSize(innerLLVMType).getFixedValue());
             auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
             auto rawPtr = _builder.CreateCall(allocFn, {sizeVal}, "heap.payload");
             _builder.CreateStore(args[0], rawPtr);
@@ -720,14 +719,12 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             // rc:<T>(v T) Rc<T> — 从值构造 owned Rc（alloc block + store @ block+8）
             auto& T = typeArgs[0];
             auto elemLLVMType = getLLVMType(T);
-            auto sizeVal =
-                _builder.getInt64(_module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
+            auto sizeVal = _builder.getInt64(_module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
             auto allocFn = runtime::getRcAllocFn(_module, _builder);
             auto block = _builder.CreateCall(allocFn, {sizeVal}, "rc.block");
 
             // payload 起始 = block + 8（跳过 refcount 头）
-            auto payloadPtr =
-                _builder.CreateGEP(_builder.getInt8Ty(), block, {_builder.getInt64(8)}, "rc.payload");
+            auto payloadPtr = _builder.CreateGEP(_builder.getInt8Ty(), block, {_builder.getInt64(8)}, "rc.payload");
             _builder.CreateStore(args[0], payloadPtr);
             consumeTemp(args[0]);
 

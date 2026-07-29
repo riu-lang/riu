@@ -283,3 +283,49 @@ fn test_if_else_zero_condition() {
   let result2 i32 = if true { 42 } else { 0 }
   assert_eq(result2, 42)
 }
+
+; ==================== 块作用域（§5.7.1）====================
+
+; 验证：if 体内 let 可遮蔽外层同名；出块后仍是外层值
+#Test
+fn test_block_scope_if_shadow() {
+  let x i32 = 1
+  let inner i32 = if true {
+    let x i32 = 42
+    x
+  } else {
+    0
+  }
+  assert_eq(inner, 42)
+  assert_eq(x, 1)
+}
+
+; 验证：loop init 变量在体内可用，并可 break 退出
+#Test
+fn test_block_scope_loop_init() {
+  #Mut let sum i32 = 0
+  loop i = 0 {
+    if i >= 3 {
+      break;
+    }
+    sum = sum + i
+    i = i + 1
+  }
+  assert_eq(sum, 3)
+}
+
+; 验证：labeled break 跨层退出
+#Test
+fn test_block_scope_labeled_break() {
+  #Mut let n i32 = 0
+  outer: loop {
+    loop i = 0 {
+      if i >= 2 {
+        break@outer;
+      }
+      n = n + 1
+      i = i + 1
+    }
+  }
+  assert_eq(n, 2)
+}

@@ -98,7 +98,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
             if (auto litNode = dynamic_cast<ExprLiteralNode*>(node->expr())) {
                 if (auto objLit = dynamic_cast<LiteralObjNode*>(litNode->literal())) {
                     auto varName = objLit->getValue().getText();
-                    std::erase(_scopeVars, varName);
+                    eraseScopeVar(varName);
                 }
             }
         }
@@ -147,7 +147,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         if (auto litExpr = dynamic_cast<ExprLiteralNode*>(node->expr())) {
             if (auto objLit = dynamic_cast<LiteralObjNode*>(litExpr->literal())) {
                 auto vname = objLit->getValue().getText();
-                auto sym = _currentFnNode->lookupSymbol(vname);
+                auto sym = lookupVarSymbol(vname, node);
                 bool isDollar = (vname == "$");
                 bool isRefVar = sym && sym->type.isRef();
                 if ((isDollar || isRefVar) && _localVarPtrs.contains(vname)) {
@@ -303,7 +303,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         if (auto litNode = dynamic_cast<ExprLiteralNode*>(node->expr())) {
             if (auto objLit = dynamic_cast<LiteralObjNode*>(litNode->literal())) {
                 auto varName = objLit->getValue().getText();
-                std::erase(_scopeVars, varName);
+                eraseScopeVar(varName);
             }
         }
     }
@@ -366,8 +366,6 @@ void Compiler::compileDeclareStatement(p<StatementDeclareNode> node) {
 
     auto llvmType = getLLVMType(varType);
     auto alloca = _builder.CreateAlloca(llvmType, nullptr, varName);
-    _localVarPtrs[varName] = alloca;
-
     // Phase 3a: 需要析构的类型未初始化时零填充，让析构期指针字段为 null（release 函数 null 安全早返）
     // 否则栈上指针字段为垃圾，析构读到非 null 指针即段错（如 BUG2：Rc<fn> 2+ 同作用域）。
     // 需要 resolveAlias：类型别名（如 Callback = fn(s String)bool）底层的 LLVM 类型含指针，
@@ -376,10 +374,7 @@ void Compiler::compileDeclareStatement(p<StatementDeclareNode> node) {
         _builder.CreateStore(llvm::Constant::getNullValue(llvmType), alloca);
     }
 
-    // 对于需要析构的类型，加入作用域变量列表
-    if (typeNeedsDestructor(resolveAlias(varType))) {
-        _scopeVars.push_back(varName);
-    }
+    registerLocalVar(varName, alloca, varType);
 }
 
 // 编译变量声明并赋值语句
@@ -426,7 +421,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
 
         auto llvmType = getLLVMType(varType);
         auto alloca = _builder.CreateAlloca(llvmType, nullptr, varName);
-        _localVarPtrs[varName] = alloca;
+        registerLocalVar(varName, alloca, varType);
 
         compileArrayInitExpr(arrayInitNode, varType, alloca);
     } else {
@@ -529,13 +524,13 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                     .withHint("T& 局部初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量），或 `val r T& = "
                               "as_ref(box)`");
             }
-            _localVarPtrs[varName] = rhsPtr;
+            registerLocalVar(varName, rhsPtr, varType);
             return;
         }
 
         auto llvmType = getLLVMType(varType);
         auto alloca = _builder.CreateAlloca(llvmType, nullptr, varName);
-        _localVarPtrs[varName] = alloca;
+        registerLocalVar(varName, alloca, varType);
 
         // 处理 Rc<T> 类型（Phase 1a 新布局：单 handle 指针 + Block 单分配）
         // Rc 实例 = { handle: Block* }；Block = { u32 strong, u32 weak, payload }
@@ -600,7 +595,6 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                                exprType.name);
             }
 
-            _scopeVars.push_back(varName); // 加入作用域变量列表 (需要析构)
         }
         // 处理 Weak<T> 类型（Phase 1d.2：支持从 Rc<T> 或 Weak<T> 构造，weak++）
         else if (varType.isWeak()) {
@@ -670,7 +664,6 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             auto handleField = _builder.CreateGEP(weakStructType, alloca, {zero, zero}, "weak_handle_field");
             _builder.CreateStore(srcHandle, handleField);
 
-            _scopeVars.push_back(varName);
         }
         // 处理 Array<T> 类型 (动态数组，Phase 1b 单 handle Block 布局)
         else if (varType.isArrayGeneric()) {
@@ -705,7 +698,6 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 _builder.CreateStore(exprVal, alloca);
             }
 
-            _scopeVars.push_back(varName); // 加入作用域变量列表 (需要析构)
         }
         // 处理 Nullable<T> 类型 (T? 的解糖)
         // 三种 RHS:
@@ -767,7 +759,6 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                                    innerType->name);
                 }
             }
-            _scopeVars.push_back(varName);
         }
         // Heap<T>：单所有权堆作用域句柄（DRAFT-heap-types §8.3a）
         // Phase 2.5：仅接受 Heap:<T>(...) 等同型 Heap<T> RHS，作用域尾走 __yux_heap_free
@@ -785,7 +776,6 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             }
             auto exprVal = compileExpr(expr);
             _builder.CreateStore(exprVal, alloca);
-            _scopeVars.push_back(varName);
         } else {
             // 普通变量
             auto exprVal = compileExpr(expr);
@@ -874,7 +864,6 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                         consumeTemp(exprVal);
                     }
                 }
-                _scopeVars.push_back(varName);
             }
             // fn 类型：fat-ptr 的 captures 字段是 Rc 句柄，需在作用域尾释放
             // resolveAlias：类型别名（如 Callback = fn(s String)bool）的 isFn() 对别名返回 false
@@ -886,7 +875,15 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                         consumeTemp(exprVal);
                     }
                 }
-                _scopeVars.push_back(varName);
+            }
+            // Dyn<D> owned：非 struct/enum 名，上面 structDecl 分支进不去；拷贝须 retain data，
+            // 否则 `let d = h.inner` 与 h 析构双释放（yux.core.dyn.test 顺序跑炸堆）。
+            if (varType.isDynOwned()) {
+                if (!isFreshHandleExpr(expr)) {
+                    retainHandleAtCallSite(exprVal, varType);
+                } else {
+                    consumeTemp(exprVal);
+                }
             }
         }
     }
@@ -935,14 +932,16 @@ void Compiler::compileDeclareAssignTupleStatement(p<StatementDeclareAssignTupleN
 
         auto llvmType = getLLVMType(elemType);
         auto alloca = _builder.CreateAlloca(llvmType, nullptr, varName);
-        _localVarPtrs[varName] = alloca;
+        registerLocalVar(varName, alloca, elemType);
 
         auto elemVal = _builder.CreateExtractValue(exprVal, {static_cast<unsigned>(i)}, "tuple.bind");
         _builder.CreateStore(elemVal, alloca);
 
         // 刷新符号表类型（visit 阶段对 alias 路径登记的是空 TypeInfo）
-        if (auto sym = _currentFnNode->lookupSymbol(varName)) {
-            sym->type = elemType;
+        if (auto sc = node->findNearestScope()) {
+            if (auto sym = sc->lookupSymbol(varName)) {
+                sym->type = elemType;
+            }
         }
         // TODO: 元素若为 RC / Rc / 含析构 struct，需要在此处 retain；当前 Phase 5 仅覆盖值类型
     }
@@ -963,7 +962,8 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
 
     // 辅助函数: 判断是否为无符号类型
     auto isUnsignedType = [](const TypeInfo& type) -> bool {
-        return type.name == "u8" || type.name == "u16" || type.name == "u32" || type.name == "u64" || type.name == "usize";
+        return type.name == "u8" || type.name == "u16" || type.name == "u32" || type.name == "u64" ||
+               type.name == "usize";
     };
 
     // 辅助函数: 应用复合赋值运算符
@@ -1018,7 +1018,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
 
     // 处理简单变量赋值 (无成员访问)
     if (subs.empty()) {
-        auto sym = _currentFnNode->lookupSymbol(objName);
+        auto sym = lookupVarSymbol(objName, node);
         if (!sym) {
             SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
                                                ErrorCode::E3030, objName);
@@ -1262,7 +1262,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         _builder.CreateStore(valToStore, _localVarPtrs[objName]);
     } else {
         // 处理成员访问赋值 (obj.field = value)
-        auto sym = _currentFnNode->lookupSymbol(objName);
+        auto sym = lookupVarSymbol(objName, node);
         if (!sym) {
             SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
                                                ErrorCode::E3030, objName);
@@ -1625,13 +1625,14 @@ void Compiler::compileLoopStatement(p<StatementLoopNode> node) {
     DEBUG_LOG("  Statement: Loop" << (node->hasInit() ? " (with init)" : ""));
 
     llvm::Function* func = _builder.GetInsertBlock()->getParent();
+    const size_t frameDepthBeforeLoop = scopeFrameDepth();
 
-    // ==== loop init 子句（在 pre-header 中分配变量并初始化）====
+    // ==== loop init 子句（pre-header 分配；跨迭代，仅 loop 退出时析构）====
     if (node->hasInit()) {
+        pushScopeFrame(); // loop-init 帧
         auto initExprNode = node->initExpr();
         const auto& names = node->initNames();
 
-        // 若标注了类型，先对灵活整数做推断（在编译 expr 之前）
         if (node->initType()) {
             auto declaredType = node->initType()->getType();
             if (names.size() == 1) {
@@ -1658,8 +1659,10 @@ void Compiler::compileLoopStatement(p<StatementLoopNode> node) {
 
             auto llvmType = getLLVMType(varType);
             auto alloca = _builder.CreateAlloca(llvmType, nullptr, names[0].getText());
-            _localVarPtrs[names[0].getText()] = alloca;
+            registerLocalVar(names[0].getText(), alloca, varType);
             _builder.CreateStore(initVal, alloca);
+            if (typeNeedsDestructor(resolveAlias(varType))) {
+            }
         } else {
             // Tuple 解构：loop (a, b) = expr
             TypeInfo wholeType;
@@ -1674,8 +1677,8 @@ void Compiler::compileLoopStatement(p<StatementLoopNode> node) {
             }
             const auto& elems = resolved.tupleElements();
             if (elems.size() != names.size()) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3102,
-                               std::to_string(names.size()), std::to_string(elems.size()));
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3102, std::to_string(names.size()),
+                               std::to_string(elems.size()));
             }
 
             for (size_t i = 0; i < names.size(); ++i) {
@@ -1684,7 +1687,7 @@ void Compiler::compileLoopStatement(p<StatementLoopNode> node) {
 
                 auto llvmType = getLLVMType(elemType);
                 auto alloca = _builder.CreateAlloca(llvmType, nullptr, varName);
-                _localVarPtrs[varName] = alloca;
+                registerLocalVar(varName, alloca, elemType);
 
                 auto elemVal = _builder.CreateExtractValue(initVal, {static_cast<unsigned>(i)}, "loop.bind");
                 _builder.CreateStore(elemVal, alloca);
@@ -1694,50 +1697,38 @@ void Compiler::compileLoopStatement(p<StatementLoopNode> node) {
     }
 
     // ==== 循环结构 ====
-    // 创建循环基本块: 条件块、循环体块、退出块
     llvm::BasicBlock* condBB = llvm::BasicBlock::Create(_context, "loop.cond");
     llvm::BasicBlock* bodyBB = llvm::BasicBlock::Create(_context, "loop.body");
     llvm::BasicBlock* exitBB = llvm::BasicBlock::Create(_context, "loop.exit");
 
-    // 跳转到条件块
     _builder.CreateBr(condBB);
 
-    // 设置条件块: 无条件跳转到循环体
     func->insert(func->end(), condBB);
     _builder.SetInsertPoint(condBB);
     _builder.CreateBr(bodyBB);
 
-    // 设置循环体块
     func->insert(func->end(), bodyBB);
     _builder.SetInsertPoint(bodyBB);
 
-    // 将退出块压入栈 (供 break / break@label 使用)
-    _loopExitBlocks.push_back({.label = node->label().getText(), .exitBB = exitBB});
+    _loopExitBlocks.push_back(
+        {.label = node->label().getText(), .exitBB = exitBB, .frameDepthBeforeLoop = frameDepthBeforeLoop});
 
-    // 编译循环体语句
-    for (auto& stmt : node->block()->statements()) {
-        compileStatement(stmt);
-    }
+    // 体：compileStatementBlock 推 body 帧，每轮尾（br cond 前）析构体 let
+    compileStatementBlock(node->block());
 
-    // 编译结果表达式 (如果有)
-    if (node->block()->hasResult()) {
-        compileExpr(node->block()->resultExpr());
-    }
-
-    // 移除退出块
     _loopExitBlocks.pop_back();
 
-    // 无限循环: 跳回条件块
     if (!_builder.GetInsertBlock()->getTerminator()) {
         _builder.CreateBr(condBB);
     }
 
-    // 设置退出块
     func->insert(func->end(), exitBB);
     _builder.SetInsertPoint(exitBB);
 
-    // 若 exitBB 没有前驱（没有 break 指向它），说明循环体以内置终结指令（ret 等）结束，
-    // exitBB 不可达，需 unreachable 收尾；否则空块无 terminator 会导致 LLVM ilist assertion。
+    // break 已在跳转前 emitDestructorsAbove(frameDepthBeforeLoop)；exitBB 不再析构。
+    // 编译期清掉 loop-init 帧（若有），避免泄漏到 loop 之后的代码。
+    unwindScopeFramesTo(frameDepthBeforeLoop);
+
     if (!exitBB->hasNPredecessorsOrMore(1)) {
         _builder.CreateUnreachable();
     }
@@ -1749,34 +1740,31 @@ void Compiler::compileLoopStatement(p<StatementLoopNode> node) {
 // 跳出当前循环
 void Compiler::compileBreakStatement(p<StatementBreakNode> node) {
     const auto& brLabel = node->label();
-    DEBUG_LOG("  Statement: Break"
-              << (brLabel.getText().empty() ? "" : " (label: " + brLabel.getText() + ")"));
+    DEBUG_LOG("  Statement: Break" << (brLabel.getText().empty() ? "" : " (label: " + brLabel.getText() + ")"));
 
-    // 检查是否在循环内
     if (_loopExitBlocks.empty()) {
         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3094);
     }
 
-    // 查找目标退出块
-    llvm::BasicBlock* exitBB = nullptr;
+    const LoopExitInfo* target = nullptr;
     if (brLabel.getText().empty()) {
-        // 无 label：跳转到最内层 loop
-        exitBB = _loopExitBlocks.back().exitBB;
+        target = &_loopExitBlocks.back();
     } else {
-        // break@label：从内向外搜索匹配 label
         for (auto it = _loopExitBlocks.rbegin(); it != _loopExitBlocks.rend(); ++it) {
             if (it->label == brLabel.getText()) {
-                exitBB = it->exitBB;
+                target = &(*it);
                 break;
             }
         }
-        if (!exitBB) {
+        if (!target) {
             throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3025, brLabel.getText());
         }
     }
-    _builder.CreateBr(exitBB);
 
-    // 创建不可达基本块 (break 后的代码不应执行)
+    // 先发射析构 IR（含 body / 嵌套 if / loop-init），不 pop 编译期帧；再跳 exit
+    emitDestructorsAbove(target->frameDepthBeforeLoop);
+    _builder.CreateBr(target->exitBB);
+
     llvm::Function* func = _builder.GetInsertBlock()->getParent();
     llvm::BasicBlock* unreachableBB = llvm::BasicBlock::Create(_context, "unreachable", func);
     _builder.SetInsertPoint(unreachableBB);

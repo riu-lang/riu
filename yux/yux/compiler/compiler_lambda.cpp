@@ -106,12 +106,12 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
 
     auto func = llvm::Function::Create(fnType, llvm::Function::InternalLinkage, mangled, _module);
 
-    // 保存当前编译状态；lambda 是顶层 fn，不复用外层 _localVarPtrs / _scopeVars
+    // 保存当前编译状态；lambda 是顶层 fn，不复用外层 _localVarPtrs / _scopeFrames
     auto savedFn = _currentFn;
     auto savedFnNode = _currentFnNode;
     auto savedStruct = _currentStructName;
     auto savedLocals = std::move(_localVarPtrs);
-    auto savedScope = std::move(_scopeVars);
+    auto savedScope = std::move(_scopeFrames);
     auto savedTempStack = std::move(_tempStack);
     auto savedInsert = _builder.GetInsertBlock();
     auto savedInsertPoint = _builder.GetInsertPoint();
@@ -123,7 +123,8 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     _currentFnNode = nullptr; // lambda 无 FnNode；body 引用外层符号走 Phase 4a 捕获通道
     _currentStructName.clear();
     _localVarPtrs.clear();
-    _scopeVars.clear();
+    _scopeFrames.clear();
+    pushScopeFrame();
     _movedVars.clear(); // Phase B-1
     _tempStack.clear();
     _currentLambdaBodyScope = node->bodyScope(); // Phase 2c：启用 FV 通路
@@ -219,7 +220,7 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     _currentFnNode = savedFnNode;
     _currentStructName = savedStruct;
     _localVarPtrs = std::move(savedLocals);
-    _scopeVars = std::move(savedScope);
+    _scopeFrames = std::move(savedScope);
     _tempStack = std::move(savedTempStack);
     _currentLambdaBodyScope = savedLambdaBodyScope;
     _currentLambdaForCapture = savedLambdaForCapture;

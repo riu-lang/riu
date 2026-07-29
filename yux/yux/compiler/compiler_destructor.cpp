@@ -13,6 +13,7 @@
 #include "ast/node/expr_node.h"
 #include "ast/node/literal_node.h"
 #include "compiler.h"
+#include <algorithm>
 #include <llvm/IR/Instructions.h>
 
 // ==================== 析构函数调用 ====================
@@ -202,19 +203,90 @@ void Compiler::callDestructor(const string& varName, const TypeInfo& varType) {
     releaseAtPtr(it->second, varType);
 }
 
-// 调用当前作用域所有变量的析构函数
-// 按照变量声明的逆序调用 (后进先出)
-void Compiler::callDestructorsForScope() {
-    // 逆序遍历作用域变量列表
-    for (auto it = _scopeVars.rbegin(); it != _scopeVars.rend(); ++it) {
-        const auto& varName = *it;
-        // Phase B-1: 跳过已被 move 的变量（所有权已转移，不可析构）
-        if (_movedVars.count(varName)) continue;
-        auto sym = _currentFnNode->lookupSymbol(varName);
-        if (sym) {
-            callDestructor(varName, sym->type);
+void Compiler::pushScopeFrame() {
+    _scopeFrames.emplace_back();
+}
+
+void Compiler::popScopeFrameAndDestroy() {
+    if (_scopeFrames.empty()) return;
+    auto& frame = _scopeFrames.back();
+    for (auto it = frame.rbegin(); it != frame.rend(); ++it) {
+        if (it->needsDtor && !_movedVars.count(it->name)) {
+            callDestructor(it->name, it->type);
+        }
+        if (it->prevPtr) {
+            _localVarPtrs[it->name] = it->prevPtr;
+        } else {
+            _localVarPtrs.erase(it->name);
+        }
+        _movedVars.erase(it->name);
+    }
+    _scopeFrames.pop_back();
+}
+
+void Compiler::popScopeFrameNoDestroy() {
+    if (_scopeFrames.empty()) return;
+    for (auto& v : _scopeFrames.back()) {
+        if (v.prevPtr) {
+            _localVarPtrs[v.name] = v.prevPtr;
+        } else {
+            _localVarPtrs.erase(v.name);
+        }
+        _movedVars.erase(v.name);
+    }
+    _scopeFrames.pop_back();
+}
+
+void Compiler::emitDestructorsAbove(size_t depth) {
+    // 仅发射析构 IR，不改编译期帧栈（供 break / ret；兄弟分支仍需同一帧结构）
+    for (size_t i = _scopeFrames.size(); i > depth; --i) {
+        auto& frame = _scopeFrames[i - 1];
+        for (auto it = frame.rbegin(); it != frame.rend(); ++it) {
+            if (!it->needsDtor || _movedVars.count(it->name)) continue;
+            callDestructor(it->name, it->type);
         }
     }
+}
+
+void Compiler::unwindScopeFramesTo(size_t depth) {
+    while (_scopeFrames.size() > depth) {
+        popScopeFrameNoDestroy();
+    }
+}
+
+void Compiler::pushScopeVar(const string& name, const TypeInfo& type, llvm::Value* prevPtr, bool needsDtor) {
+    if (_scopeFrames.empty()) pushScopeFrame();
+    _scopeFrames.back().push_back({.name=name, .type=type, .prevPtr=prevPtr, .needsDtor=needsDtor});
+}
+
+void Compiler::registerLocalVar(const string& name, llvm::Value* alloca, const TypeInfo& type) {
+    llvm::Value* prev = nullptr;
+    auto it = _localVarPtrs.find(name);
+    if (it != _localVarPtrs.end()) prev = it->second;
+    _localVarPtrs[name] = alloca;
+    auto resolved = resolveAlias(type);
+    pushScopeVar(name, resolved, prev, typeNeedsDestructor(resolved));
+}
+
+void Compiler::eraseScopeVar(const string& name) {
+    for (auto& frame : _scopeFrames) {
+        std::erase_if(frame, [&](const ScopeVar& v) { return v.name == name; });
+    }
+}
+
+SymbolInfo* Compiler::lookupVarSymbol(const string& name, p<Node> from) {
+    if (from) {
+        if (auto sc = from->findNearestScope()) {
+            if (auto* s = sc->lookupSymbol(name)) return s;
+        }
+    }
+    if (_currentFnNode) return _currentFnNode->lookupSymbol(name);
+    return nullptr;
+}
+
+// ret 路径：对全部帧发射析构，不 pop（兄弟分支 / 后续编译仍依赖帧栈）
+void Compiler::callDestructorsForScope() {
+    emitDestructorsAbove(0);
 }
 
 // Phase 3d.3: 若 expr 是 `Heap<T>?` 的 lvalue, 返回其 slot ptr + slot llvm 类型.
@@ -238,7 +310,7 @@ bool Compiler::tryHeapNullableLvalueSlot(ExprNode* expr, llvm::Value*& outSlot, 
             auto name = obj->getValue().getText();
             auto it = _localVarPtrs.find(name);
             if (it == _localVarPtrs.end()) return false;
-            auto sym = _currentFnNode ? _currentFnNode->lookupSymbol(name) : nullptr;
+            auto sym = lookupVarSymbol(name, litE);
             if (!sym) return false;
             auto ty = applySubst(sym->type);
             if (!isHeapNullable(ty)) return false;
@@ -431,6 +503,18 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
         return true;
     }
 
+    // Dyn<D> owned：fat ptr { vtable, data }，data 指向 RC block，拷贝时 retain data
+    // （与字段路径 retainStructFieldsAtCallSite 的 isDynOwned 分支对齐）
+    if (argType.isDynOwned()) {
+        auto data = _builder.CreateExtractValue(argVal, {1}, "arg.dyn.data");
+        _builder.CreateCall(runtime::getRcRetainFn(_module, _builder), {data});
+        return true;
+    }
+    if (argType.isDynBorrow()) {
+        // 借用形态不动 RC
+        return false;
+    }
+
     // Phase 3a / 4c: fn(...)R fat-ptr：retain captures（offset 1）
     // 跳过条件：null（零捕获）或 LSB=1（4c 栈嵌入 T& 捕获）
     // _box_retain 不做 null 检查，需 IR 级 guard
@@ -529,7 +613,7 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
                     if (fieldType.isRc())
                         retainFn = runtime::getRcRetainFn(_module, _builder);
                     else if (fieldType.isArrayGeneric())
-                        continue;  // B-3: Array 无 RC，跳过 retain
+                        continue; // B-3: Array 无 RC，跳过 retain
                     else
                         retainFn = runtime::getWeakRetainFn(_module, _builder);
                     _builder.CreateCall(retainFn, {handle});
@@ -546,7 +630,8 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
                     // Dyn<D> owned payload：{ vtable, data } fat ptr，retain data
                     auto dynStructType = getLLVMType(fieldType);
                     auto dataField = _builder.CreateStructGEP(dynStructType, fieldPtr, 1, "arg.enum.dyn.data_field");
-                    auto data = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataField, "arg.enum.dyn.data");
+                    auto data =
+                        _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataField, "arg.enum.dyn.data");
                     _builder.CreateCall(runtime::getRcRetainFn(_module, _builder), {data});
                 } else if (fieldType.isDynBorrow() || fieldType.isHeap()) {
                     // Dyn<D&> borrow / Heap<T> payload：不动 RC（借用不持有，Heap 所有权转移不深拷）
@@ -578,7 +663,7 @@ void Compiler::retainStructFieldsAtCallSite(llvm::Value* argVal, const string& s
             if (ft.isRc())
                 retainFn = runtime::getRcRetainFn(_module, _builder);
             else if (ft.isArrayGeneric())
-                continue;  // B-3: Array 无 RC，跳过 retain
+                continue; // B-3: Array 无 RC，跳过 retain
             else
                 retainFn = runtime::getWeakRetainFn(_module, _builder);
             _builder.CreateCall(retainFn, {handle});
@@ -628,8 +713,7 @@ llvm::Value* Compiler::copyOfStructFields(llvm::Value* structVal, const string& 
             const auto& innerType = *elemSp;
             auto innerLLVMType = getLLVMType(innerType);
             auto oldPayload = _builder.CreateExtractValue(structVal, {static_cast<unsigned>(i)}, "cof.heap.old");
-            auto sizeVal =
-                _builder.getInt64(_module->getDataLayout().getTypeAllocSize(innerLLVMType).getFixedValue());
+            auto sizeVal = _builder.getInt64(_module->getDataLayout().getTypeAllocSize(innerLLVMType).getFixedValue());
             auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
             auto newPayload = _builder.CreateCall(allocFn, {sizeVal}, "cof.heap.new");
             auto oldInner = _builder.CreateLoad(innerLLVMType, oldPayload, "cof.heap.oldval");
@@ -637,8 +721,8 @@ llvm::Value* Compiler::copyOfStructFields(llvm::Value* structVal, const string& 
             // 递归 retain inner 的 RC/Dyn 字段
             retainHandleAtCallSite(oldInner, innerType);
             // 替换 struct 中的 Heap 指针
-            structVal = _builder.CreateInsertValue(structVal, newPayload, {static_cast<unsigned>(i)},
-                                                   "cof.heap.inserted");
+            structVal =
+                _builder.CreateInsertValue(structVal, newPayload, {static_cast<unsigned>(i)}, "cof.heap.inserted");
         } else if (!isBuiltinType(ft.name) && structNeedsDestructor(ft.name)) {
             // 嵌套 struct：递归处理其中的 Heap 字段
             auto fieldVal = _builder.CreateExtractValue(structVal, {static_cast<unsigned>(i)}, "cof.struct");
@@ -696,10 +780,9 @@ void Compiler::popAndReleaseTempFrame() {
             auto i64Ty = _builder.getInt64Ty();
             auto ptrTy = llvm::PointerType::get(_context, 0);
             auto capInt = _builder.CreatePtrToInt(cap, i64Ty, "temp.fn.cap.asint");
-            auto isStack = _builder.CreateICmpNE(
-                _builder.CreateAnd(capInt, _builder.getInt64(1)), _builder.getInt64(0), "temp.fn.isstack");
-            auto isNull =
-                _builder.CreateICmpEQ(cap, llvm::ConstantPointerNull::get(ptrTy), "temp.fn.isnull");
+            auto isStack = _builder.CreateICmpNE(_builder.CreateAnd(capInt, _builder.getInt64(1)), _builder.getInt64(0),
+                                                 "temp.fn.isstack");
+            auto isNull = _builder.CreateICmpEQ(cap, llvm::ConstantPointerNull::get(ptrTy), "temp.fn.isnull");
             auto skip = _builder.CreateOr(isStack, isNull, "temp.fn.skip");
             auto* pf = _builder.GetInsertBlock()->getParent();
             auto* relBB = llvm::BasicBlock::Create(_context, "temp.fn.rel", pf);
@@ -941,8 +1024,7 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
 
     // Rc<U> / Weak<U> / fn(...) 无独立 dtor 函数，由 typed release 内联生成 dtor IR
     if (inner->isRc()) {
-        string mangledName =
-            "__yux_box_release.Rc." + inner->rcElementType()->getMangleName();
+        string mangledName = "__yux_box_release.Rc." + inner->rcElementType()->getMangleName();
         auto func = runtime::getRcReleaseTypedFn(_module, _builder, mangledName);
         if (func->empty()) {
             auto* savedBB = _builder.GetInsertBlock();
@@ -953,8 +1035,7 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
         return func;
     }
     if (inner->isWeak()) {
-        string mangledName =
-            "__yux_box_release.Weak." + inner->weakElementType()->getMangleName();
+        string mangledName = "__yux_box_release.Weak." + inner->weakElementType()->getMangleName();
         auto func = runtime::getRcReleaseTypedFn(_module, _builder, mangledName);
         if (func->empty()) {
             auto* savedBB = _builder.GetInsertBlock();

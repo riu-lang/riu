@@ -1,0 +1,8 @@
+; 块作用域：loop 体内 let 出块不可见
+fn main() {
+  loop {
+    let x i32 = 1
+    break;
+  }
+  let y i32 = x  ; check: E3030
+}

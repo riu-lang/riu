@@ -370,10 +370,11 @@ fn test_heap_multi_locals_scope_drop() {
 }
 
 ; 验证：Heap 在嵌套块作用域中的可见性和生命周期管理
+; （裸 `{ }` 是 0 参 lambda，不是语句块；用 if 真块作用域）
 #Test
 fn test_heap_nested_block_scope() {
   let outer Heap<i32> = heap:<i32>(100)
-  {
+  if true {
     let inner Heap<i32> = heap:<i32>(200)
     let ri i32& = as_ref(inner)
     assert_eq(ri, 200)

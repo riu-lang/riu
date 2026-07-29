@@ -38,7 +38,6 @@
 #include <set>
 #include <string_view>
 
-#include "types.h"
 #include "analyzer/borrow_checker.h"
 #include "analyzer/const_mut_checker.h"
 #include "analyzer/flow_terminate_checker.h"
@@ -54,6 +53,7 @@
 #include "ast/yux.h"
 #include "sema/call_resolve.h"
 #include "tools/diagnostic.h"
+#include "types.h"
 
 namespace {
 // Phase 3.2b 已由 SemaPass 接管的错误码白名单。SemaPass 在 visitExpr 中
@@ -220,12 +220,12 @@ bool isNoCopyTypeIn(const TypeInfo& type, p<FileNode> file, p<FileNode> sdkFile)
 // !! 两处须保持同步 — 新增 case 需两边同时添加 !!
 bool isFreshHandleExpr(p<ExprNode> expr) {
     if (!expr) return false;
-    if (dynamic_cast<p<ExprCallNode>>(expr)) return true;      // 函数调用结果 / builtin intrinsic
-    if (dynamic_cast<p<ExprArrayNode>>(expr)) return true;     // 数组字面量
-    if (dynamic_cast<p<ExprPathCallNode>>(expr)) return true;  // 枚举构造器 / #Static fn 调用
-    if (dynamic_cast<p<ExprMoveAssignNode>>(expr)) return true;// move-assign 结果
-    if (dynamic_cast<p<LambdaExprNode>>(expr)) return true;    // lambda 字面量
-    if (dynamic_cast<p<ExprStructLitNode>>(expr)) return true; // struct 字面量 (Self { ... })
+    if (dynamic_cast<p<ExprCallNode>>(expr)) return true;       // 函数调用结果 / builtin intrinsic
+    if (dynamic_cast<p<ExprArrayNode>>(expr)) return true;      // 数组字面量
+    if (dynamic_cast<p<ExprPathCallNode>>(expr)) return true;   // 枚举构造器 / #Static fn 调用
+    if (dynamic_cast<p<ExprMoveAssignNode>>(expr)) return true; // move-assign 结果
+    if (dynamic_cast<p<LambdaExprNode>>(expr)) return true;     // lambda 字面量
+    if (dynamic_cast<p<ExprStructLitNode>>(expr)) return true;  // struct 字面量 (Self { ... })
     return false;
 }
 
@@ -321,8 +321,8 @@ void SemaPass::run() {
                 // lookupStructIn 按基名匹配不到，E4032 静默跳过。
                 // 修法：剥泛型参数后查找，或用 decl 指针替代 name 查找。
                 if (fieldDecl && fieldDecl->hasAnno("NoCopy")) {
-                    throw YuxError(decl->getLineNumber(), decl->getColumn(), ErrorCode::E4032,
-                                   decl->name().getText(), field->name().getText());
+                    throw YuxError(decl->getLineNumber(), decl->getColumn(), ErrorCode::E4032, decl->name().getText(),
+                                   field->name().getText());
                 }
             }
         }
@@ -527,8 +527,18 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                                 break;
                             }
                         }
-                        if (!isParam && _currentFn->lookupSymbol(objName)) {
-                            throw YuxError(set->getLineNumber(), set->getColumn(), ErrorCode::E2030, objName);
+                        bool isLambdaLocal = false;
+                        if (auto body = _currentLambda->bodyScope()) {
+                            isLambdaLocal = body->localSymbols().contains(objName);
+                        }
+                        if (!isParam && !isLambdaLocal) {
+                            SymbolInfo* sym = nullptr;
+                            if (auto sc = set->findNearestScope()) {
+                                sym = sc->lookupSymbol(objName);
+                            }
+                            if (sym && sym->kind == SymbolKind::Variable) {
+                                throw YuxError(set->getLineNumber(), set->getColumn(), ErrorCode::E2030, objName);
+                            }
                         }
                     }
                 }
@@ -598,18 +608,22 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         if (as->subs().empty() && _currentFn) {
             string objName = as->obj().getText();
             if (objName != "$") {
-                if (auto sym = _currentFn->lookupSymbol(objName)) {
-                    if (!sym->writeable && !sym->type.isRef()) {
-                        throw YuxError(as->getLineNumber(), as->getColumn(), ErrorCode::E3093, objName);
-                    }
+                SymbolInfo* sym = nullptr;
+                if (auto sc = as->findNearestScope()) {
+                    sym = sc->lookupSymbol(objName);
+                }
+                if (!sym) {
+                    sym = _currentFn->lookupSymbol(objName);
+                }
+                if (sym && !sym->writeable && !sym->type.isRef()) {
+                    throw YuxError(as->getLineNumber(), as->getColumn(), ErrorCode::E3093, objName);
                 }
             }
         }
         // v0.16 闭包捕获: lambda body 内对捕获变量赋值 / 成员链写 → E2030.
         // 覆盖 `=` / `+= -= *= /= %= ^=` / `<<= >>=` 及 `obj.f = ...` / `obj[i] = ...`
         // (obj 为捕获变量)。
-        // 判定: objName 不在 lambda 自身的形参列表 → 外层变量 → 捕获 → 禁写.
-        // 不能用 bodyScope->lookupSymbol(), 因其沿父链查找到外层 fn 作用域.
+        // 判定: objName 不在 lambda 形参、也不在 lambda body 本地 let → 外层变量 → 捕获 → 禁写.
         if (_currentLambda && _currentFn) {
             string objName = as->obj().getText();
             if (objName != "$") {
@@ -620,8 +634,18 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                         break;
                     }
                 }
-                if (!isParam && _currentFn->lookupSymbol(objName)) {
-                    throw YuxError(as->getLineNumber(), as->getColumn(), ErrorCode::E2030, objName);
+                bool isLambdaLocal = false;
+                if (auto body = _currentLambda->bodyScope()) {
+                    isLambdaLocal = body->localSymbols().contains(objName);
+                }
+                if (!isParam && !isLambdaLocal) {
+                    SymbolInfo* sym = nullptr;
+                    if (auto sc = as->findNearestScope()) {
+                        sym = sc->lookupSymbol(objName);
+                    }
+                    if (sym && sym->kind == SymbolKind::Variable) {
+                        throw YuxError(as->getLineNumber(), as->getColumn(), ErrorCode::E2030, objName);
+                    }
                 }
             }
         }
@@ -639,7 +663,14 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         if (!as->subs().empty() && _currentFn) {
             string objName = as->obj().getText();
             if (objName != "$") {
-                if (auto sym = _currentFn->lookupSymbol(objName)) {
+                SymbolInfo* sym = nullptr;
+                if (auto sc = as->findNearestScope()) {
+                    sym = sc->lookupSymbol(objName);
+                }
+                if (!sym) {
+                    sym = _currentFn->lookupSymbol(objName);
+                }
+                if (sym) {
                     TypeInfo curType = sym->type;
                     if (curType.isRef()) {
                         if (auto inner = curType.refElementType()) curType = *inner;
@@ -870,7 +901,13 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                     if (auto litExpr = dynamic_cast<p<ExprLiteralNode>>(da->expr())) {
                         if (auto litObj = dynamic_cast<p<LiteralObjNode>>(litExpr->literal())) {
                             string srcName = litObj->getValue().getText();
-                            auto sym = _currentFn->lookupSymbol(srcName);
+                            SymbolInfo* sym = nullptr;
+                            if (auto sc = da->findNearestScope()) {
+                                sym = sc->lookupSymbol(srcName);
+                            }
+                            if (!sym && _currentFn) {
+                                sym = _currentFn->lookupSymbol(srcName);
+                            }
                             if (!sym || !sym->type.isRef() || !sym->type.refElementType() ||
                                 *sym->type.refElementType() != *innerType) {
                                 throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3018, srcName,
@@ -942,8 +979,8 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             auto varType = da->varType()->getType();
             if (isNoCopyTypeIn(varType, _file, _sdkFile) && !varType.isRef()) {
                 if (!isFreshHandleExpr(da->expr())) {
-                    throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E4031, varType.name,
-                                   "let 绑定", varType.name);
+                    throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E4031, varType.name, "let 绑定",
+                                   varType.name);
                 }
             }
         }
@@ -1028,12 +1065,12 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         // - 引用外层 T& 变量 → 标记 hasRefCapture (E4022 数据收集)
         // 非 ID-obj / 全局 / template 插值等其它字面量形态不触发捕获, 跳过。
         // $ 在方法体内 lambda 是 Self&, 同样标记 hasRefCapture。
+        // 查找起点：lambda body 的 *父* 作用域（块作用域后 let 不在 FnNode 上；
+        // 也避免把 lambda 体内 / 嵌套块的本地 Heap let 误判为捕获）。
         if (_currentLambda && _currentFn) {
             auto obj2 = dynamic_cast<p<LiteralObjNode>>(n->literal());
             if (obj2) {
                 string varName = obj2->getValue().getText();
-                // 检查标识符是否为 lambda 形参 (不在形参列表 → 外层变量 → 捕获).
-                // 不能用 bodyScope->lookupSymbol, 因其沿父链查找.
                 bool isParam = false;
                 for (auto& p : _currentLambda->params()) {
                     if (p.name.getText() == varName) {
@@ -1042,7 +1079,16 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                     }
                 }
                 if (!isParam) {
-                    if (auto sym = _currentFn->lookupSymbol(varName)) {
+                    SymbolInfo* sym = nullptr;
+                    if (auto body = _currentLambda->bodyScope()) {
+                        if (auto parent = body->parentScope()) {
+                            sym = parent->lookupSymbol(varName);
+                        }
+                    }
+                    if (!sym) {
+                        sym = _currentFn->lookupSymbol(varName);
+                    }
+                    if (sym) {
                         const auto& t = sym->type;
                         // 函数名 / 类型名不是变量捕获，跳过 Heap/Ref 捕获检查
                         bool isVarOrParam = sym->kind != SymbolKind::Function && sym->kind != SymbolKind::Struct;
@@ -1183,7 +1229,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             }
             try {
                 auto t0 = n->getTypeArgs()[0]->getType();
-                if ((calleeName == "rc" || calleeName == "Rc" || calleeName == "Weak" || calleeName == "Array") && t0.isHeap()) {
+                if ((calleeName == "rc" || calleeName == "Rc" || calleeName == "Weak" || calleeName == "Array") &&
+                    t0.isHeap()) {
                     auto inner = t0.heapElementType();
                     throw YuxError(eline, ecol, ErrorCode::E4025, calleeName, inner ? inner->name : std::string("?"));
                 }
@@ -1472,9 +1519,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                                         const auto& pt = fnSym->params[i];
                                         if (isNoCopyTypeIn(pt, _file, _sdkFile)) {
                                             if (!isFreshHandleExpr(n->getArgs()[i])) {
-                                                throw YuxError(n->getLineNumber(), n->getColumn(),
-                                                               ErrorCode::E4031, pt.name, "按值传参",
-                                                               pt.name);
+                                                throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E4031,
+                                                               pt.name, "按值传参", pt.name);
                                             }
                                         }
                                     }
@@ -1642,37 +1688,40 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                     }
                 }
                 if (!isFnNameLiteral) {
-                const auto& expectedParams = calleeType.fnParamTypes();
-                for (size_t idx = 0; idx < n->getArgs().size() && idx < expectedParams.size(); ++idx) {
-                    try {
-                        auto argType = n->getArgs()[idx]->getType();
-                        if (expectedParams[idx] && !argType.name.empty() && argType.name != "Self" &&
-                            expectedParams[idx]->name != "Self") {
-                            // Ref<T> 实参传给值类型形参 T
-                            if (argType.isRef() && !expectedParams[idx]->isRef()) {
-                                auto inner = argType.refElementType();
-                                throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3014,
-                                               expectedParams[idx]->getFullName(), argType.getFullName())
-                                    .withHint(std::format("实参类型为 `{}&`（借用），形参期望 `{}`；"
-                                                          "若需取值请用 `copy_of:<{}>(...)` 或先 `let tmp {} = expr`",
-                                                          inner ? inner->name : "?", expectedParams[idx]->getFullName(),
-                                                          inner ? inner->name : "?", inner ? inner->name : "?"));
+                    const auto& expectedParams = calleeType.fnParamTypes();
+                    for (size_t idx = 0; idx < n->getArgs().size() && idx < expectedParams.size(); ++idx) {
+                        try {
+                            auto argType = n->getArgs()[idx]->getType();
+                            if (expectedParams[idx] && !argType.name.empty() && argType.name != "Self" &&
+                                expectedParams[idx]->name != "Self") {
+                                // Ref<T> 实参传给值类型形参 T
+                                if (argType.isRef() && !expectedParams[idx]->isRef()) {
+                                    auto inner = argType.refElementType();
+                                    throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3014,
+                                                   expectedParams[idx]->getFullName(), argType.getFullName())
+                                        .withHint(
+                                            std::format("实参类型为 `{}&`（借用），形参期望 `{}`；"
+                                                        "若需取值请用 `copy_of:<{}>(...)` 或先 `let tmp {} = expr`",
+                                                        inner ? inner->name : "?", expectedParams[idx]->getFullName(),
+                                                        inner ? inner->name : "?", inner ? inner->name : "?"));
+                                }
+                                // 值类型不匹配
+                                if (!argType.isRef() && !expectedParams[idx]->isRef() &&
+                                    argType != *expectedParams[idx]) {
+                                    throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3014,
+                                                   expectedParams[idx]->getFullName(), argType.getFullName())
+                                        .withHint(std::format("实参类型 `{}` 与形参类型 `{}` 不匹配",
+                                                              argType.getFullName(),
+                                                              expectedParams[idx]->getFullName()));
+                                }
                             }
-                            // 值类型不匹配
-                            if (!argType.isRef() && !expectedParams[idx]->isRef() && argType != *expectedParams[idx]) {
-                                throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3014,
-                                               expectedParams[idx]->getFullName(), argType.getFullName())
-                                    .withHint(std::format("实参类型 `{}` 与形参类型 `{}` 不匹配", argType.getFullName(),
-                                                          expectedParams[idx]->getFullName()));
-                            }
+                        } catch (const YuxError&) {
+                            throw;
+                        } catch (...) { // NOLINT(bugprone-empty-catch)
+                            // getType 失败: 留 Compiler 兜底
                         }
-                    } catch (const YuxError&) {
-                        throw;
-                    } catch (...) { // NOLINT(bugprone-empty-catch)
-                        // getType 失败: 留 Compiler 兜底
                     }
-                }
-                }  // if (!isFnNameLiteral)
+                } // if (!isFnNameLiteral)
             }
         }
         // struct 方法私有可见性检查（E6007）——因 yux-check 不跑 LLVM
@@ -1710,8 +1759,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                             const auto& pt = methodSymbol->params[i];
                             if (isNoCopyTypeIn(pt, _file, _sdkFile)) {
                                 if (!isFreshHandleExpr(n->getArgs()[i])) {
-                                    throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E4031,
-                                                   pt.name, "按值传参", pt.name);
+                                    throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E4031, pt.name,
+                                                   "按值传参", pt.name);
                                 }
                             }
                         }
@@ -1782,13 +1831,15 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             visitExpr(el->condition());
             auto savedElif = _movedVars;
             visitBlock(el->block());
-            for (auto& v : _movedVars) afterThenMoved.insert(v);
+            for (auto& v : _movedVars)
+                afterThenMoved.insert(v);
             _movedVars = savedElif;
         }
 
         if (n->elseBlock()) {
             visitBlock(n->elseBlock());
-            for (auto& v : afterThenMoved) _movedVars.insert(v);
+            for (auto& v : afterThenMoved)
+                _movedVars.insert(v);
         } else {
             _movedVars = std::move(afterThenMoved);
         }
@@ -1901,8 +1952,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                     auto fieldType = fieldDecl->getType();
                     if (isNoCopyTypeIn(fieldType, _file, _sdkFile)) {
                         if (!isFreshHandleExpr(fi->value())) {
-                            throw YuxError(fline, fcol, ErrorCode::E4031, fieldType.name,
-                                           "struct 字面量字段初始化", fieldType.name);
+                            throw YuxError(fline, fcol, ErrorCode::E4031, fieldType.name, "struct 字面量字段初始化",
+                                           fieldType.name);
                         }
                     }
                 }
@@ -2082,8 +2133,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                             const auto& pt = paramTypes[i];
                             if (isNoCopyTypeIn(pt, _file, _sdkFile)) {
                                 if (!isFreshHandleExpr(n->args()[i])) {
-                                    throw YuxError(line, col, ErrorCode::E4031, pt.name, "按值传参",
-                                                   pt.name);
+                                    throw YuxError(line, col, ErrorCode::E4031, pt.name, "按值传参", pt.name);
                                 }
                             }
                         }
@@ -2361,8 +2411,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
             if (!f) return;
             for (const auto& gc : f->getGlobalConsts()) {
                 if (gc->name().getText() == n->obj().getText() && gc->isInline()) {
-                    throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3118,
-                                   n->obj().getText());
+                    throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3118, n->obj().getText());
                 }
             }
         };
@@ -2404,8 +2453,8 @@ void SemaPass::tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExp
         // String 走 StringBuilder 特殊 lowering / 其它 builtin-handled 路径,
         // 没有用户可见的 plus/eq/... 方法签名, 不能走 customBinaryOp 解析.
         if (leftType.name == "String") return;
-        if (leftType.isRef() || leftType.isArrayGeneric() ||
-            leftType.isWeak() || leftType.isNullable() || leftType.isPtr() || leftType.isTuple())
+        if (leftType.isRef() || leftType.isArrayGeneric() || leftType.isWeak() || leftType.isNullable() ||
+            leftType.isPtr() || leftType.isTuple())
             return;
         // Heap<T> → T / Rc<T> → T：运算符穿透 wrapper，在内部类型上验证方法
         TypeInfo resolvedLeftType = leftType;

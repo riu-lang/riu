@@ -115,8 +115,28 @@ class Compiler {
     void emitInstanceMethods();              // 生成所有泛型结构体实例的方法
     void emitFnInstances();                  // 生成所有泛型函数实例
 
-    // ==================== 作用域管理 ====================
-    vector<string> _scopeVars; // 当前作用域内的变量名列表 (用于析构函数调用)
+    // ==================== 作用域管理（§5.7 块级帧栈）====================
+    // 每帧 = 一个 statementBlock / fn 顶层 / loop-init 内需析构的局部变量。
+    // 块出口 / 每轮 loop 尾 pop 当前帧；break  unwind 到 loop 进入前深度；ret 清空全部帧。
+    struct ScopeVar {
+        string name;
+        TypeInfo type;
+        llvm::Value* prevPtr = nullptr; // 同名遮蔽时保存外层 alloca，出块恢复
+        bool needsDtor = false;
+    };
+    vector<vector<ScopeVar>> _scopeFrames;
+    void pushScopeFrame();
+    void popScopeFrameAndDestroy();          // 支配性块出口：发射析构并 pop
+    void popScopeFrameNoDestroy();           // 仅 pop（loop 编译结束后清 init 帧）
+    void emitDestructorsAbove(size_t depth); // 仅发射析构 IR，不 pop（break/ret）
+    void unwindScopeFramesTo(size_t depth);  // 仅 pop 到 depth，不发射析构
+    [[nodiscard]] size_t scopeFrameDepth() const { return _scopeFrames.size(); }
+    // 登记局部：写入 _localVarPtrs，并入当前帧（支持同名遮蔽恢复）
+    void registerLocalVar(const string& name, llvm::Value* alloca, const TypeInfo& type);
+    void pushScopeVar(const string& name, const TypeInfo& type, llvm::Value* prevPtr, bool needsDtor);
+    void eraseScopeVar(const string& name); // 从所有帧摘除（move-out / ret 移出）
+    // 局部变量符号：优先 from 的词法 scope（块作用域），再回退 FnNode（参数 / 旧路径）
+    SymbolInfo* lookupVarSymbol(const string& name, p<Node> from);
     // Phase B-1: move 语义 — 已被 move 的变量名集合 (不可再访问，析构时跳过)
     set<string> _movedVars;
 
@@ -145,10 +165,11 @@ class Compiler {
     llvm::Value* _currentLambdaCapturesArg = nullptr;
 
     // ==================== 控制流 ====================
-    // labeled break：每条记录 = (label 文本, 退出 BB)；空 label = 无标签 loop
+    // labeled break：每条记录 = (label 文本, 退出 BB, 进入 loop 前的帧深度)；空 label = 无标签 loop
     struct LoopExitInfo {
         string label;
         llvm::BasicBlock* exitBB;
+        size_t frameDepthBeforeLoop = 0; // break 时 unwind 到此深度（含销毁 loop-init 帧）
     };
     vector<LoopExitInfo> _loopExitBlocks; // 循环退出块栈 (用于 break / break@label)
 
@@ -183,13 +204,13 @@ private:
 
     // ==================== Array<T> 内联字段辅助（B-3） ====================
     // Array 实例 layout：{ ptr _data @0, usize _len @8, usize _cap @16 }
-    [[nodiscard]] llvm::StructType* getArrayStructTypeForGEP() const;             // 获取 Array LLVM struct 类型
+    [[nodiscard]] llvm::StructType* getArrayStructTypeForGEP() const; // 获取 Array LLVM struct 类型
     llvm::Value* arrayDataFieldPtr(llvm::Value* arrayStructPtr,
-                                    const string& name = ""); // _data 字段指针（ptr*）
+                                   const string& name = ""); // _data 字段指针（ptr*）
     llvm::Value* arrayLenFieldPtr(llvm::Value* arrayStructPtr,
-                                   const string& name = "");  // _len 字段指针（usize*）
+                                  const string& name = ""); // _len 字段指针（usize*）
     llvm::Value* arrayCapFieldPtr(llvm::Value* arrayStructPtr,
-                                   const string& name = "");  // _cap 字段指针（usize*）
+                                  const string& name = ""); // _cap 字段指针（usize*）
     // 把 ExprArrayNode 按 Array<elemType> 字面量编译，直接分配数据缓冲并填充元素，
     // 返回 Array<T> struct 值。处理元素 retain / consumeTemp，嵌套 Array 递归。
     llvm::Value* buildArrayLiteralBlock(ExprArrayNode* arrayNode, const TypeInfo& elemType);
@@ -445,8 +466,7 @@ private:
     bool isBuiltinMethod(const string& structName, const string& methodName); // 检查是否为编译器内部方法
     llvm::Value* compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode> dotNode, vector<llvm::Value*>& args,
                                    vector<TypeInfo>& argTypes); // 编译方法调用
-    llvm::Value* compileSafeDotMethodCall(p<ExprCallNode> callNode, p<ExprDotNode> dotNode,
-                                          vector<llvm::Value*>& args,
+    llvm::Value* compileSafeDotMethodCall(p<ExprCallNode> callNode, p<ExprDotNode> dotNode, vector<llvm::Value*>& args,
                                           vector<TypeInfo>& argTypes); // 编译 a?.foo() 安全方法调用
     llvm::Value* compileFunctionCall(p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args,
                                      vector<TypeInfo>& argTypes); // 编译函数调用

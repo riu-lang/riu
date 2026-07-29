@@ -104,6 +104,7 @@
 - BUG：`_weak_release` strong count 检查、`Rc<Heap<T>>`/`Rc<Dyn<D>>` typed release、`#NoCopy` 泛型类型识别
 - Open Issue：spec 各章逐条审计（关/转/留）
 - SDK：`String` 高频方法（`to_upper`/`starts_with`/`contains` 等）、`math.*` 模块、`Array` 迭代/变换方法
+- ✅ **statementBlock 真块作用域**（对齐 §5.7.1）：if/loop/match/catch 体词法作用域；loop init 仅体内可见；codegen `_scopeFrames` 按帧析构；`Dyn` 拷贝 retain 补齐
 
 **不在范围**：泛型 enum / 错误模型 v2 / 多线程 / 包管理。
 

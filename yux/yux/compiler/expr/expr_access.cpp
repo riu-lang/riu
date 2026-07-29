@@ -97,8 +97,8 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
         auto elemType = derefArrayType.arrayGenericElementType();
         auto elemLLVMType = getLLVMType(*elemType);
         // B-3: _data 字段内联，直接 load，不再经过 Block 间接
-        auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0),
-                                            arrayDataFieldPtr(currentPtr, "arr"), "array.data.ptr");
+        auto dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), arrayDataFieldPtr(currentPtr, "arr"),
+                                           "array.data.ptr");
 
         auto indexVal = compileExpr(indices[0]);
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {indexVal}, "array.elem.ptr");
@@ -271,7 +271,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
                     dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataPtr, "heap.ptr");
                 }
             } else if ((baseType.isRc() ||
-                 (baseType.isRef() && baseType.refElementType() && baseType.refElementType()->isRc()))) {
+                        (baseType.isRef() && baseType.refElementType() && baseType.refElementType()->isRc()))) {
                 // Ref<Rc<...>>：先 deref 拿到指向 Rc struct 的指针，再提取 handle
                 if (baseType.isRef()) {
                     dataPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataPtr, "ref.deref");
@@ -324,7 +324,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
     if (auto baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
         if (auto objLiteral = dynamic_cast<LiteralObjNode*>(baseLiteral->literal())) {
             auto objName = objLiteral->getValue().getText();
-            auto sym = _currentFnNode->lookupSymbol(objName);
+            auto sym = lookupVarSymbol(objName, node);
             if (sym && _localVarPtrs.contains(objName)) {
                 DEBUG_LOG_VAL("    Expr: DotMemberLoad", objName << "." << member);
                 return _builder.CreateLoad(getLLVMType(sym->type), _localVarPtrs[objName]);
@@ -515,8 +515,8 @@ llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
     auto rightType = node->right()->getType();
     auto rightVal = compileBranchResultNormalized(node->right(), *innerType);
     if (rightType != *innerType) {
-        throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3014,
-                               innerType->name, rightType.name);
+        throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3014, innerType->name,
+                       rightType.name);
     }
     auto elseEndBB = _builder.GetInsertBlock();
     _builder.CreateBr(mergeBB);
