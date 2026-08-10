@@ -107,7 +107,7 @@ numInt         ::= INT
 numFloat       ::= FLOAT
 ```
 
-> `literalObj` 让 `cval NAME T = X` 中的 `X` 可以是另一个 `cval` 名（编译期常量传播）。
+> `literalObj` 让 `#Cval let NAME T = X` 中的 `X` 可以是另一个 `#Cval let` 名（编译期常量传播）。
 
 ## B.4 函数
 
@@ -294,12 +294,10 @@ enumPattern    ::= ID '::' ID ( '(' ID (',' ID)* ')' )?          # patternEnum
 
 ```
 statement ::=
-    'va'[rl] ID type codeLineEnd                                # statementDeclare
-  | 'va'[rl] ID typeWithRef? '=' expr codeLineEnd               # statementDeclareAssign
-  | 'va'[rl] '(' ID (',' ID)+ ')' typeWithRef? '=' expr codeLineEnd # statementDeclareAssignTuple
-  | 'cval' ID typeWithRef '=' expr codeLineEnd                  # statementCvalDeclAssign
-  | expr '[' expr (',' expr)* ']' '=' expr                      # statementSet
-  | ID '::' ID '=' expr codeLineEnd                             # statementStaticFieldSet
+    letAnno* 'let' ID typeWithRef? ('=' expr)? codeLineEnd                # statementLet
+  | letAnno* 'let' '(' ID (',' ID)+ ')' typeWithRef? '=' expr codeLineEnd # statementLetTuple
+  | expr '[' expr (',' expr)* ']' '=' expr                                # statementSet
+  | ID '::' ID '=' expr codeLineEnd                                       # statementStaticFieldSet
   | (ID ':')? 'loop' loopInit? statementBlock                    # statementLoop
   | (ID | '$') ('.' ID | DOT_NUM)* opAssign expr codeLineEnd    # statementAssign
   | expr ';'? codeLineEnd                                       # statementExpr
@@ -310,9 +308,11 @@ statement ::=
 statementBlock ::= '{' codeLineEnd
                        (statement | comment | codeLineEnd)*
                    '}'
+
+letAnno        ::= '#' ID codeLineEnd?   ; #Mut / #Cval / #Frozen（let 声明专用，无单参槽）
 ```
 
-> `'va'[rl]` 是 `DeclKey` 中 `var` / `val` 两支；`'cval'` 形态在 let-unify 后已由 `#Cval let` 替代（§5.1.4 / §5.1.5）。顶层 `globalConst` RHS 从 `literal` 升为 `expr`（常量表达式，const-eval 落地，§5.1.4.1.3）。
+> `statementLet` / `statementLetTuple` 由 let-unify 统一局部声明形态（注解严格 inline）；旧 `var` / `val` / `cval` 关键字已从 lexer 移除（附录 A §A.1.1），`#Mut let x T`（无 init）保留旧 `var x T` 的延后赋值语义（§5.1.1.3）。顶层 `globalConst` RHS 从 `literal` 升为 `expr`（常量表达式，const-eval 落地，§5.1.4.1.3）。
 
 ## B.8 词法 token（节录）
 

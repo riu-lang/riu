@@ -58,7 +58,7 @@
 | 安全访问 | safe-dot | §4.6 | `a?.field`，链式展开 |
 | Null 兜底 | null-coalescing | §4.6 / `exprNullElse` | `a ?? b` |
 | 表达式语句 | expression statement | §5.3 | `expr ';'? codeLineEnd` |
-| 声明语句 | declaration statement | §5.1 | `var` / `val` / `cval` 三种 |
+| 声明语句 | declaration statement | §5.1 | `let`（默认 / `#Mut` / `#Cval` / `#Frozen` 档位） |
 | 控制流 | control flow | §5.4 / §5.5 | `if` / `loop` / `break` / `ret` |
 | 作用域 | scope | §5.7 | 词法块；析构按声明逆序 |
 
