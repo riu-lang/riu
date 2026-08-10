@@ -235,7 +235,7 @@
 **E. LSP / 插件同步**：
 - LSP semantic_tokens：Self 关键字、类型、运算符补齐 + 新 AST 节点覆盖（ExprGetRef/ExprStructLit/StatementStaticFieldSet/ExprEnumCtor 启发式分流）
 - 版本号统一升级
-- yux-vscode / yux-idea / yux-claude-code 三插件随语法变更同步
+- yux-vscode / yux-idea 两插件随语法变更同步
 
 **F. 错误码压缩**：
 - 合并同义 3XXX 码：减少诊断码维护面
@@ -445,7 +445,6 @@ yux-check 收尾（Bucket 4）：
   - 0 参块 lambda tail-expr 返回 + `expectedFnType` 反推
   - `yux test` / `--jit-run` 错误路径 SIGSEGV 修复
   - `yux test` suite 末尾汇报失败名单
-  - `yux-lsp` after_build 自动复制为 `yux-lsp-claude`
 
 **不在范围**：
 

@@ -35,7 +35,6 @@ heap-types 草案 Phase 1（`docs/spec/draft/DRAFT-heap-types.md` §3）的落�
 - docs/dev impl-logs：6 个文件加脚注头，正文保留
 - plugins/yux-vscode：tmLanguage `support.type.generic` keyword 列表加 `Heap` / `Arc` 占名；CHANGELOG / README 改 Box→Rc
 - plugins/yux-idea：source 无 Box keyword（走 LSP semantic tokens），无改动
-- plugins/yux-claude-code：无 Box 引用
 
 ### 文件 / 目录 rename（16 项）
 

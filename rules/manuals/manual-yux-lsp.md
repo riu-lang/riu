@@ -4,8 +4,7 @@ LSP 服务器，0 LLVM 依赖。编辑器插件通过 stdio 接入。
 
 ## 启动方式
 
-- **不直接调**。由编辑器插件自动启动：VSCode（`yux-vscode`）、IntelliJ（`yux-idea` 通过 LSP4IJ）、Claude Code（`yux-claude-code`）
-- Claude Code LSP 插件对接独立可执行 `yux-lsp-claude`（构建后从 `yux-lsp` 自动复制）
+- **不直接调**。由编辑器插件自动启动：VSCode（`yux-vscode`）、IntelliJ（`yux-idea` 通过 LSP4IJ）
 
 ## 构建
 
@@ -13,7 +12,7 @@ LSP 服务器，0 LLVM 依赖。编辑器插件通过 stdio 接入。
 xmake build yux-lsp
 ```
 
-构建后 `build/windows/x64/debug/bin/yux-lsp.exe`，同时自动复制为 `yux-lsp-claude.exe`。
+构建后 `build/windows/x64/debug/bin/yux-lsp.exe`。
 
 ## 诊断
 

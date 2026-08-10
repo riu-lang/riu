@@ -18,7 +18,7 @@ graph LR
     codegen[yux_codegen<br/>静态库, 依赖 LLVM]
 
     yux[yux<br/>主二进制 CLI]
-    lsp[yux-lsp / yux-lsp-claude<br/>LSP 服务器]
+    lsp[yux-lsp<br/>LSP 服务器]
     ast[yux-ast<br/>parse tree dump]
     check[yux-check<br/>快速语义检查]
 
@@ -200,7 +200,7 @@ flowchart LR
     comp & sym & tok & diag --> doc
 ```
 
-入口 `yux/lsp/lsp_main.cpp`，编为 `yux-lsp`，构建后复制一份为 `yux-lsp-claude`（独立进程，避免 clientInfo 串扰）。
+入口 `yux/lsp/lsp_main.cpp`，编为 `yux-lsp`。
 
 ---
 
