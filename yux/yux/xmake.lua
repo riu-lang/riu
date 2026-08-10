@@ -105,8 +105,6 @@ target("llvm")
                 "-DLLVM_INCLUDE_EXAMPLES=OFF",
                 "-DLLVM_INCLUDE_TESTS=OFF",
                 "-DLLVM_INCLUDE_BENCHMARKS=OFF",
-                "-DLLVM_ENABLE_RUNTIMES=libc",
-                "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=TRUE",
                 "-G", "Ninja",
                 path.join(third_party, "llvm", "llvm")
             }
