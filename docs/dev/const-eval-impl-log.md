@@ -10,7 +10,7 @@
 
 ## 核心决策
 
-- **ConstantValue 自定义 variant**（0 LLVM 依赖）：`int64_t` / `double` / `bool` / `null` / `struct{vector<ConstantValue>}`。保持 sema/codegen 分离协议不破（[sema-codegen.md](../../.claude/rules/sema-codegen.md)）。
+- **ConstantValue 自定义 variant**（0 LLVM 依赖）：`int64_t` / `double` / `bool` / `null` / `struct{vector<ConstantValue>}`。保持 sema/codegen 分离协议不破（[sema-codegen.md](../../rules/sema-codegen.md)）。
 - **求值阶段在 sema 期**：`ConstEvaluator` 输入 `ExprNode*` + const 上下文，递归求值输出 `std::optional<ConstantValue>`；codegen 端翻为 `llvm::Constant` emit 全局，不走 IRBuilder runtime 路径。
 - **复用 `#Const` 注解**（[#1.B]）：自由/静态成员位叠加 const-eval 通路，等价 C++ `constexpr`；成员位语义不变（不改 `$` / 不调非 `#Const`）。同一注解、两个使用面，不引入新注解。
 - **整数溢出 trap（E3143）**（[#1.H]）：sema 期可算出的算术错直接编译失败，与运行期 wrap 形成"一致失败"而非"一致 wrap"。

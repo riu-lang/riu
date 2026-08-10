@@ -26,12 +26,16 @@ yux-lang/
 │   ├── projects/     项目编译+运行+格式化用例（每目录一个 yux.toml）
 │   ├── check-cases/  诊断用例（diag_*.yux，yux-check test）
 │   └── xmake.lua     测试运行器
-├── plugins/          编辑器插件（VSCode / IntelliJ / Claude Code）
-├── .claude/
-│   └── rules/        硬性规则（每会话自动加载）
-├── rules/            按需读的手册与规则
+├── plugins/          编辑器插件（VSCode / IntelliJ）
+├── rules/            规则与手册（每会话通过 RULES.md 加载）
+│   ├── behavior.md   决策框架（硬性）
+│   ├── directory.md  目录结构（硬性）
+│   ├── engineering.md 工程环境与测试（硬性）
+│   ├── sema-codegen.md Sema/Codegen 协议
+│   ├── spec-writeback.md 语言面变更回写
+│   ├── yux-syntax.md  yux 写前清单
 │   └── manuals/      工程手册（各 exe 用法）
 ├── third_party/      依赖（由 sync-deps 拉取）
 ├── scripts/          构建/同步辅助脚本
-└── CLAUDE.md / README.md
+└── RULES.md / README.md / yux.md
 ```

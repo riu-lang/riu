@@ -1,19 +1,17 @@
-# CLAUDE.md
+# RULES
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-不要擅自决定/改动任务方向，遇到问题停下来。
+本项目规则入口，每会话自动加载。不要擅自决定/改动任务方向，遇到问题停下来。
 
 ## 规则来源
 
 本项目的事实源拆为两类，开始任何任务前**都要看**，不要凭文件名或 README 推测项目约定：
 
-- [.claude/rules/](.claude/rules/README.md) —— **硬性规则**，每会话自动加载。[behavior.md](.claude/rules/behavior.md) 是核心决策框架——什么情况该做什么、什么时候必须停下来；[engineering.md](.claude/rules/engineering.md) 是工程环境与测试流程。
+- [rules/README.md](rules/README.md) —— **硬性规则**，每会话通过本文件加载。[rules/behavior.md](rules/behavior.md) 是核心决策框架——什么情况该做什么、什么时候必须停下来；[rules/engineering.md](rules/engineering.md) 是工程环境与测试流程。
 - 手册（`rules/manuals/` + `rules/yux-syntax.md` 等）—— 按需读，触发条件见 behavior.md 强制触发表。
 
 ## 核心工作文件
 
-这几个文件是工作核心，不随会话中断消失。Claude 内置任务/plan只适合短小内容（如"实现 P1 拆 1.xxx 2.xxx"），项目初期 BUG 多、会话一换任务就丢，走文件才可靠：
+这几个文件是工作核心，不随会话中断消失。项目初期 BUG 多、会话一换任务就丢，走文件才可靠：
 
 | 文件 | 内容 | 入 git |
 |------|------|--------|
@@ -39,8 +37,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 最低限度阅读
 
 开始任务前至少看：
-- [.claude/rules/behavior.md](.claude/rules/behavior.md) — 决策框架（强制）
-- [.claude/rules/directory.md](.claude/rules/directory.md) — 目录结构
+- [rules/behavior.md](rules/behavior.md) — 决策框架（强制）
+- [rules/directory.md](rules/directory.md) — 目录结构
 
 ## 其他参考
 

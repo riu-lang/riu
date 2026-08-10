@@ -199,7 +199,7 @@ sema 在该节点上的判定（按 LHS 名查找）：
 
 ### 10.3 语法（`src/yux.g4`）
 
-> 改语法属于**高风险动作**，按 CLAUDE.md 项目约束需先与用户确认；本节只列要改什么，不动手。
+> 改语法属于**高风险动作**，按 RULES.md 项目约束需先与用户确认；本节只列要改什么，不动手。
 
 - `exprEnumCtor` 产生式扩展（或并入新规则）：在 `ID :: ID` 后加 `(SymbolColon genericDef)?` 与 `(ParStart ... ParEnd)`，让静态调用与 enum 构造共用同一节点；LHS 增加 `Self` 入口。
   - 现状：`enumName=ID SymbolColonColon variant=ID (ParStart args ParEnd)?`

@@ -81,4 +81,4 @@ xmake test                          ; 项目编译+运行 + 格式化回归（�
 - 注释用中文；`// ====` 分隔区域
 - 未完成 / 潜在 bug / 待验证 → 必须写 `// TODO:`，不假装没看见
 - 提交前 `./lint.ps1`，必须 **0 warnings**
-- hook 自动调 `clang-format -i`，无需手动 format
+- 改完 C++ 后立即跑 `./format.ps1`，确保代码风格一致

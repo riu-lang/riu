@@ -12,7 +12,7 @@
 /BUGS.md
 /CURRENT*.md
 /DRAFT-*.md
-/CLAUDE.local.md
+/*.local.md
 
 /*.cmd
 /*.ps1

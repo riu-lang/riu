@@ -97,7 +97,7 @@ fn merge<T : Display + Hash, U : Display>(a T, b U) { ... }
 struct Cache<K : Hash, V> { ... }
 ```
 
-产生式调整（草案；实际改 `yux.g4` 前需用户确认 — CLAUDE.md 项目约束）：
+产生式调整（草案；实际改 `yux.g4` 前需用户确认 — RULES.md 项目约束）：
 
 ```
 genericDef        ::= '<' typeParam        (',' typeParam)*        '>'
@@ -420,7 +420,7 @@ fn caller(box Rc<MyType>) {
 
 ### 10.3 语法（`src/yux.g4`）
 
-> **不要先动**。本节列出"待改产生式"，按 CLAUDE.md 项目约束，定型后与用户确认再改。
+> **不要先动**。本节列出"待改产生式"，按 RULES.md 项目约束，定型后与用户确认再改。
 
 - 新增顶层 `draftDecl`：`'draft' genericDef? ID '{' fnSig* '}'`。 [#A.1] / [#B.1 修订]
 - 实现块在现有 `structImpl` 基础上扩展：`structImpl ::= ID (':' draftBound ('+' draftBound)*)? '{' members '}'`。 [#A.2]
@@ -567,6 +567,6 @@ spec 落地后写：
 
 1. §10.5 列出的每个 spec 章节逐条改写，引用本草案条目编号（如 [#A.2]）保留可追溯性。
 2. `docs/spec/CHANGELOG.md` 顶部追加一条，摘要 + 影响章节，日期为合并日。
-3. 附录 A / B / C 按 §10 同步；如需动 `src/yux.g4`，**先与用户确认**再改，按 CLAUDE.md 项目约束。
+3. 附录 A / B / C 按 §10 同步；如需动 `src/yux.g4`，**先与用户确认**再改，按 RULES.md 项目约束。
 4. `CURRENT.md` 的 Phase 列表从 §10 派生，每完成一个阶段就地更新；全部完成后归档到 `docs/dev/draft-impl-log.md`（剔除人名/路径/行号/测试计数）。
 5. 处置本文件：要么删除，要么在头部加一句「已落地，见 §N.M」并保留为历史档。

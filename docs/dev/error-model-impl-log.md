@@ -187,7 +187,7 @@ fn parse_int(s String) i32 { ... }
 
 3. **§11.5.2.4** Open Issue "注解参数语法的设计窗口"由本草案部分收口（仅单参数 + 类型名 ID）；多参数 / 字面量留下一波。
 
-4. **`src/yux.g4`**：`buildAnno` 产生式同步（按 CLAUDE.md 须用户确认后才动）。
+4. **`src/yux.g4`**：`buildAnno` 产生式同步（按 RULES.md 须用户确认后才动）。
 
 ### [#3.F] 与"无错误"形态的关系
 
@@ -446,7 +446,7 @@ try-catch arm 必须 `ret` 或产生表达式值；表达式值类型必须与 t
 - 附录 B：`exprUnary` 后增加 `exprErrPropagate ::= postfix '!'` 形态；新增 `exprTry ::= 'try' '{' stmt* '}' (catchClause)+`、`catchClause ::= 'catch' ID typeRef '{' stmt* '}'`。
 - 附录 D：新增段位 E7xxx 表头 + E7001-E7011 共 11 条 + E7015 警告码。
 - §11.1 注解参数语法：按 [#3.E] 单参数糖解禁同步。
-- `src/yux*.g4`：按 CLAUDE.md 须用户单独确认才动；本草案不直接修改。
+- `src/yux*.g4`：按 RULES.md 须用户单独确认才动；本草案不直接修改。
 
 ### Open Issues（Phase 5 收尾）
 

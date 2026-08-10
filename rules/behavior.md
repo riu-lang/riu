@@ -1,6 +1,6 @@
 # 决策框架
 
-适用于 Claude Code 等 agent 在本仓库工作时。**硬性规则**，每条都必须遵守。
+适用于 agent 在本仓库工作时。**硬性规则**，每条都必须遵守。
 
 ## 核心循环
 
@@ -77,17 +77,17 @@ git 工作区干净 + `BUGS.md` 无记录 + `CURRENT.md` 无记录 → 上一任
 遇到代码BUG需要排查->`rules/manuals/manual-yux.md`排查
 
 > yux-check 小且独立（构建yux不会自动构建check）
-> 需要多个exe/任务完成的前的编译 -> `xmake build` 构建所有目标。xmake 只支持一次全部/单个目标，不能xmake build a b c
+> 需要多个exe/任务完成前的编译 -> `xmake build` 构建所有目标。xmake 只支持一次全部/单个目标，不能xmake build a b c
 
 ## 信息查证
 
-涉及到测试名、目录路径、文件内容、命令参数时，用 Read/Grep/Glob 查实际文件，**不凭命名推断**。
+涉及到测试名、目录路径、文件内容、命令参数时，用工具查实际文件，**不凭命名推断**。
 
 当 docs、`yux/ast/yux*.g4`、编译器三者冲突时，以 `yux/ast/yux*.g4` 和编译器源码为准，随后更新 docs。
 
 ## 改完 C++
 
-- hook 自动 `clang-format -i`，无需手动 format
+- 改完 C++ 后立即跑 `./format.ps1`，确保代码风格一致
 - 提交前 `./lint.ps1`，必须 **0 warnings**
 - 未完成 / 潜在 bug / 待验证 → 必须写 `// TODO:`，不假装没看见
 - 注释用中文；`// ====` 分隔区域

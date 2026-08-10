@@ -249,7 +249,7 @@ yux **无 `throw` 关键字**，错误通过**返回值传递**（fallible 函�
 
 | 点 | v1 选 | 备选 | 切换代价 |
 |---|---|---|---|
-| `ConstantValue` 表示 | sema 自定义 variant（int / float / bool / null / struct），0 LLVM | 直接复用 `llvm::Constant*` 但禁 IRBuilder 调用 | 中等：选备选则 sema 重新拉 LLVM 依赖，违反 sema/codegen 分离协议（见 [sema-codegen.md](../../../.claude/rules/sema-codegen.md)），不推荐反向 |
+| `ConstantValue` 表示 | sema 自定义 variant（int / float / bool / null / struct），0 LLVM | 直接复用 `llvm::Constant*` 但禁 IRBuilder 调用 | 中等：选备选则 sema 重新拉 LLVM 依赖，违反 sema/codegen 分离协议（见 [sema-codegen.md](../../../rules/sema-codegen.md)），不推荐反向 |
 | 非 const 子表达式错码 | 单一 E3140 + 错点定位到子表达式 | 细分（E3140a 非 const fn 调 / E3140b 含 `$` / E3140c 含全局非 #Cval / ...） | 低：错码细分可后续追加，不破坏 v1 测试 |
 | `#Const fn` body 校验时机 | 复用 `src/analyzer/const_mut_checker.cpp` 扩白名单 | SemaPass 内单开 `ConstFnBodyChecker` pass | 中：单开 pass 与 `kMigratedCodes` 白名单冲突，需同步迁 |
 | `#Const fn` 同参多次调用求值 | 每次求（无缓存） | sema 期 memoize `(fn, args) → ConstantValue` | 低：缓存可后置加，不影响正确性；v1 不做避免缓存键设计 |

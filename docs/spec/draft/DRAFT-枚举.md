@@ -331,7 +331,7 @@ struct EnumValue<E> {
 
 ### 8.3 语法（`src/yux*.g4`）
 
-> 高风险，按 CLAUDE.md 项目约束需逐处与用户确认；本节只列"要改什么"。
+> 高风险，按 RULES.md 项目约束需逐处与用户确认；本节只列"要改什么"。
 
 - `yuxParser.g4`：新增 `enumDecl`（顶层）、`enumVariant`（短名 + 可选 tuple payload）、`matchExpr` + `matchArm` + `enumPattern` + `else` 分支。
 - `yuxParser.g4`：构造表达式 `E::V(args)` 与既有 `::` 路径的接驳。

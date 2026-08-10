@@ -37,7 +37,7 @@
 
 - **三档全局 let 共用 letGlobal 产生式**：注解决定档位 —— 无注解 = val，`#Mut` = var，`#Cval` = const（const-eval 通路）
 - **struct 静态字段段独立于 `filedDecl`**：新增产生式 `staticFieldDecl`，必须带 `#Static`，可叠加 `#Mut`；与 `filedDecl` 在 structDecl body 内混合书写
-- **静态字段无 `let` 关键字**：沿用结构体字段段"无 let"约定（[yux-syntax.md §2](../../../.claude/rules/yux-syntax.md)）
+- **静态字段无 `let` 关键字**：沿用结构体字段段"无 let"约定（[yux-syntax.md §2](../../../rules/yux-syntax.md)）
 - **读写路径走 `Type::NAME` 而非 `instance.field`**：静态字段不挂在实例上；`obj.FIELD` 不解析（E3152）
 - **初始化顺序确定**：按"模块拓扑序 → 同模块内 lexical 序"，跨模块循环 = E3153
 

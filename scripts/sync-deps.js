@@ -11,8 +11,6 @@ const PROJECT_ROOT = path.join(__dirname, '..');
 const DEPS_FILE = path.join(PROJECT_ROOT, 'DEPS.json');
 const THIRD_PARTY_DIR = path.join(PROJECT_ROOT, 'third_party');
 const BIN_DIR = path.join(PROJECT_ROOT, 'bin');
-const SKILLS_DIR_CLAUDE = path.join(PROJECT_ROOT, '.claude', 'skills');
-const RULES_DIR_CLAUDE = path.join(PROJECT_ROOT, '.claude', 'rules');
 const SDK_SRC_DIR = path.join(PROJECT_ROOT, 'sdk');
 const SDK_LINK_DIR = path.join(PROJECT_ROOT, 'build', 'windows', 'x64', 'sdk');
 
@@ -235,7 +233,6 @@ async function main() {
 
   fs.mkdirSync(THIRD_PARTY_DIR, { recursive: true });
   fs.mkdirSync(BIN_DIR, { recursive: true });
-  fs.mkdirSync(SKILLS_DIR_CLAUDE, { recursive: true });
   const binariesToProcess = targetDeps.length > 0
     ? Object.fromEntries(targetDeps.filter(n => binaries[n]).map(n => [n, binaries[n]]))
     : binaries;

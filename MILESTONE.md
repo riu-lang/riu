@@ -353,7 +353,7 @@
 - `.clang-tidy` 落地，镜像 `.clangd` 的 `modernize-* / bugprone-* / performance-*`（排除 `-modernize-use-trailing-return-type` 与 `-bugprone-easily-swappable-parameters`）；`gen/.clang-tidy` 顶替关掉 ANTLR 生成代码
 - 多轮 `clang-tidy --fix` + 手工批：c-style cast 全转 `static_cast`/`reinterpret_cast`、`endl → "\n"`、c-array → `std::array`、空 catch 加 NOLINT、`YuxError` 拷贝/移动 noexcept、`bugprone-narrowing-conversions` + `branch-clone` 全清；最终 `yux_frontend` / `yux_codegen` / `yux` 三个 target **0 警告**
 - 新增 `scripts/{lint,format}.js` + `node init.js` 生成 `./lint.{ps1,cmd,sh}` / `./format.{ps1,cmd,sh}` 本地包装器；默认仅作用于 git 变动 / 未跟踪文件，`--all` / 位置参数切作用域，`--check` 只查不改；`./format` 是块内 `#include` 排序器（不破坏 `main.cpp` 头序）
-- `.claude/rules/behavior.md` 加「改完 C++ 必须 lint + format，提交 0 警告」条目；`SKILL.md` / `README.md` 同步替换说明
+- `rules/behavior.md` 加「改完 C++ 必须 lint + format，提交 0 警告」条目；`SKILL.md` / `README.md` 同步替换说明
 
 yux-check 收尾（Bucket 4）：
 
@@ -366,7 +366,7 @@ yux-check 收尾（Bucket 4）：
 
 工具链 / 文档周边：
 
-- `AGENTS.md` 链接清理 → `.claude/rules/`；MILESTONE 草案 v0.14 / v0.15 / v0.16 写定
+- `AGENTS.md` 链接清理 → `rules/`；MILESTONE 草案 v0.14 / v0.15 / v0.16 写定
 
 **推后**：
 
@@ -437,7 +437,7 @@ yux-check 收尾（Bucket 4）：
   - SemaPass 接管 enum / match arm 静态校验（E2019/E2020/E2021/E2023-E2027/E2032）
   - SemaPass 接管 ArrayInit explicit vs value（E3009）、私有字段可见性（E3042）、ExprGetRef / ExprUnary（E3070/E3071）、int 字面量解析（E3103）、`#Builtin` / Array intrinsic、E7002 / E7011
   - `compileMemberAssignStatement` E3042 路径切走 sema 验证
-- ✅ **`yux-check` 最小可用 exe（阶段 0）**：0 LLVM 依赖的诊断快速通道；CLAUDE.md 新增 Sema/Codegen 协议指南。
+- ✅ **`yux-check` 最小可用 exe（阶段 0）**：0 LLVM 依赖的诊断快速通道；RULES.md 新增 Sema/Codegen 协议指南。
 - ✅ **warning 通道首批**：E5013 / E5014 / E7016 走 warning 而非 error。
 - ✅ **工具链 / 小修**：
   - tuple destructure 别名右值在 ast_builder 透明展开 alias
