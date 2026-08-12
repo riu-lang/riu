@@ -14,10 +14,6 @@
 /DRAFT-*.md
 /*.local.md
 
-/*.cmd
-/*.ps1
-/*.sh
-
 /data/
 /*.local/
 /.*.toml

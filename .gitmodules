@@ -1,0 +1,3 @@
+[submodule "scripts/ps-sync-deps"]
+	path = scripts/ps-sync-deps
+	url = https://github.com/Yin-Jinlong/ps-sync-deps.git

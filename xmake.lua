@@ -23,7 +23,7 @@ add_rules("mode.debug", "mode.release")
 set_toolchains("clang")
 
 -- 输出目录：build/<plat>/<arch>/<profile>/{bin,lib}
--- 编译期 SDK symlink 在 xmake 内维护（不再由 init.js 手写）
+-- 编译期 SDK symlink 在 xmake 内维护（不再由 sync-deps 手写）
 set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)", { bindir = "bin", libdir = "lib" })
 
 add_cxxflags("-Wno-language-extension-token", {force = true})

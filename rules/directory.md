@@ -35,7 +35,8 @@ yux-lang/
 │   ├── spec-writeback.md 语言面变更回写
 │   ├── yux-syntax.md  yux 写前清单
 │   └── manuals/      工程手册（各 exe 用法）
-├── third_party/      依赖（由 sync-deps 拉取）
-├── scripts/          构建/同步辅助脚本
+├── third_party/      依赖（由 ./sync-deps.ps1 拉取）
+├── scripts/ps-sync-deps/  依赖同步工具（git submodule）
+├── *.ps1             根目录工具：sync-deps / gen-antlr / count-lines / lint / format
 └── RULES.md / README.md / yux.md
 ```

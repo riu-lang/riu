@@ -55,60 +55,62 @@ fn main() {
 | utfcpp | UTF-8 编码处理 |
 | zlib | 压缩库 |
 
-### 初始化项目
-
-克隆仓库后，运行初始化脚本生成跨平台包装脚本：
+### 克隆与子模块
 
 ```powershell
-node init.js
+git clone --recurse-submodules <repo-url>
+# 若已克隆未拉子模块：
+git submodule update --init scripts/ps-sync-deps
 ```
 
-此命令会在项目根目录生成 `sync-deps`、`gen-antlr`、`count-lines`、`lint`、`format` 的跨平台包装脚本（`.ps1`、`.sh`、`.cmd`）。
+根目录 PowerShell 脚本（无需 `init`）：
+
+| 脚本 | 作用 |
+|------|------|
+| `./sync-deps.ps1` | 按 `DEPS.json` 同步 `third_party/` 与 `bin/`（调用 `scripts/ps-sync-deps`） |
+| `./gen-antlr.ps1` | 从 `yux/ast/yux*.g4` 生成 C++ 解析器到 `yux/ast/gen/yux/` |
+| `./count-lines.ps1` | `cloc` 统计（可选 commit，默认 HEAD） |
+| `./lint.ps1` | clang-tidy（默认 git 变动文件；`--all` / 路径参数） |
+| `./format.ps1` | clang-format（默认 git 变动；`--all` / `--check` / 路径参数） |
 
 ### 同步依赖
 
 ```powershell
-./sync-deps.ps1      # Windows PowerShell
-./sync-deps.sh       # Linux/macOS
-sync-deps.cmd        # Windows CMD
+./sync-deps.ps1
+./sync-deps.ps1 -DryRun          # 预览
+./sync-deps.ps1 cli11 zlib       # 只同步指定项
 ```
-
-此命令会下载 `third_party/` 下的源码依赖，以及 `bin/` 下的二进制工具（如 ANTLR4 jar）。
 
 ### 生成解析器代码
 
-当修改 `yux/ast/yux*.g4` 语法文件后，需要重新生成 C++ 解析器代码：
+修改 `yux/ast/yux*.g4` 后：
 
 ```powershell
-./gen-antlr.ps1      # Windows PowerShell
-./gen-antlr.sh       # Linux/macOS
-gen-antlr.cmd        # Windows CMD
+./gen-antlr.ps1
 ```
 
-此命令使用 `bin/antlr-4.13.2-complete.jar` 从语法文件生成代码到 `yux/ast/gen/yux/` 目录。
+需要先有 `bin/antlr-4.13.2-complete.jar`（由 `sync-deps` 下载）。
 
 ### 代码统计
 
-使用 [cloc](https://github.com/AlDanial/cloc) 统计代码行数：
+使用 [cloc](https://github.com/AlDanial/cloc)：
 
 ```powershell
-./count-lines           # 统计 HEAD
-./count-lines <commit>  # 统计指定 commit
+./count-lines.ps1           # HEAD
+./count-lines.ps1 <commit>
 ```
 
-此命令会自动排除 lock 文件（如 `package-lock.json`），并使用 `yux_lang_def.txt` 配置识别 yux 语言。
+排除 lock 文件，并用 `yux_lang_def.txt` 识别 yux。
 
 ### Lint / Format
 
-`lint` 跑 clang-tidy，`format` 排 `#include` 块；默认只作用于 git 已变动 / 未跟踪文件，加 `--all` 切全仓，加位置参数指定文件：
-
 ```powershell
 ./lint.ps1                 # lint git 已变动文件
-./lint.ps1 --all           # 三个 target 全量
+./lint.ps1 --all           # target 全量
 ./lint.ps1 src/foo.cpp     # 指定文件
-./format.ps1               # 排 git 已变动文件 #include 块
+./format.ps1               # 格式化 git 已变动文件
 ./format.ps1 --all         # 全仓
-./format.ps1 --check       # 只检查不改, 有差异退出码 1
+./format.ps1 --check       # 只检查不改，有差异退出码 1
 ```
 
 ## 构建
