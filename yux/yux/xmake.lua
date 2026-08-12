@@ -75,8 +75,10 @@ target("llvm")
     on_build(function (target)
         import("lib.detect.find_tool")
 
+        local llvm_src_dir = path.join(third_party, "llvm")
         local llvm_build_dir = path.join(target:autogendir(), "llvm")
         local cmake_cache = path.join(llvm_build_dir, "CMakeCache.txt")
+        local stamp_file = path.join(llvm_build_dir, "yux-llvm-src.stamp")
         local lib_dir = path.join(llvm_build_dir, "lib")
 
         local function check_libs_exist()
@@ -89,9 +91,39 @@ target("llvm")
             return true, nil
         end
 
+        local function read_src_commit()
+            local out = os.iorunv("git", {"-C", llvm_src_dir, "rev-parse", "HEAD"})
+            if not out then
+                raise("failed to read llvm source commit (git rev-parse HEAD in " .. llvm_src_dir .. ")")
+            end
+            return out:trim()
+        end
+
+        local function read_stamp()
+            if not os.isfile(stamp_file) then
+                return nil
+            end
+            return io.readfile(stamp_file):trim()
+        end
+
         local cmake = find_tool("cmake")
         if not cmake then
             raise("cmake not found")
+        end
+
+        local src_commit = read_src_commit()
+        local stamped = read_stamp()
+        local src_dirty = (stamped ~= src_commit)
+        if src_dirty then
+            if stamped then
+                cprint("${yellow}  [llvm] source commit changed: %s → %s${clear}",
+                    stamped:sub(1, 8), src_commit:sub(1, 8))
+            else
+                cprint("${yellow}  [llvm] no source stamp; will configure/build${clear}")
+            end
+            if os.isfile(cmake_cache) then
+                os.rm(cmake_cache)
+            end
         end
 
         if not os.isfile(cmake_cache) then
@@ -106,14 +138,19 @@ target("llvm")
                 "-DLLVM_INCLUDE_TESTS=OFF",
                 "-DLLVM_INCLUDE_BENCHMARKS=OFF",
                 "-G", "Ninja",
-                path.join(third_party, "llvm", "llvm")
+                path.join(llvm_src_dir, "llvm")
             }
             os.vrunv(cmake.program, cmake_configs, {curdir = llvm_build_dir})
         end
 
         local all_exist, missing_lib = check_libs_exist()
-        if not all_exist then
+        if src_dirty or not all_exist then
+            if not all_exist and missing_lib then
+                cprint("${dim}  [llvm] missing lib: %s${clear}", missing_lib)
+            end
             os.vrunv(cmake.program, {"--build", ".", "-j", tostring(os.cpuinfo().ncpu - 2)}, {curdir = llvm_build_dir})
+            io.writefile(stamp_file, src_commit .. "\n")
+            cprint("${green}  [llvm] stamped %s${clear}", src_commit:sub(1, 8))
         end
     end)
 

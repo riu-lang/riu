@@ -81,6 +81,8 @@ git submodule update --init scripts/ps-sync-deps
 ./sync-deps.ps1 cli11 zlib       # 只同步指定项
 ```
 
+若 `llvm` 源码 commit 有变，下次 `xmake build yux`（或 `xmake build llvm`）会按 stamp 自动重新 configure 并编译 LLVM（首次/升级可能很久）。
+
 ### 生成解析器代码
 
 修改 `yux/ast/yux*.g4` 后：
