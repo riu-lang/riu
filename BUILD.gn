@@ -1,0 +1,20 @@
+# Copyright (c) 2026. Yin-Jinlong@github
+# MPL-2.0
+
+pool("console") {
+  depth = 1
+}
+
+group("default") {
+  deps = [
+    "//yux/ast:yux-ast",
+    "//yux/check:yux-check",
+    "//yux/lsp:yux-lsp",
+    "//yux/test-runner:yux-test-runner",
+    "//yux/yux:yux",
+  ]
+}
+
+group("all") {
+  deps = [ ":default" ]
+}

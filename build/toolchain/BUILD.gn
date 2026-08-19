@@ -1,0 +1,86 @@
+# Copyright (c) 2026. Yin-Jinlong@github
+# MPL-2.0
+
+toolchain("win_clang_x64") {
+  cc = "clang-cl.exe"
+  cxx = "clang-cl.exe"
+  ar = "llvm-lib.exe"
+  ld = "lld-link.exe"
+
+  lib_switch = ""
+  lib_dir_switch = "/LIBPATH:"
+
+  toolchain_args = {
+    current_cpu = "x64"
+    current_os = "win"
+  }
+
+  tool("cc") {
+    command = "$cc /nologo /showIncludes {{defines}} {{include_dirs}} {{cflags}} {{cflags_c}} /c {{source}} /Fo{{output}}"
+    depsformat = "msvc"
+    description = "CC {{output}}"
+    outputs = [ "{{source_out_dir}}/{{target_output_name}}.{{source_name_part}}.obj" ]
+  }
+
+  tool("cxx") {
+    command = "$cxx /nologo /showIncludes {{defines}} {{include_dirs}} {{cflags}} {{cflags_cc}} /c {{source}} /Fo{{output}}"
+    depsformat = "msvc"
+    description = "CXX {{output}}"
+    outputs = [ "{{source_out_dir}}/{{target_output_name}}.{{source_name_part}}.obj" ]
+  }
+
+  tool("alink") {
+    rspfile = "{{output}}.rsp"
+    command = "$ar /nologo /OUT:{{output}} @$rspfile"
+    rspfile_content = "{{inputs}}"
+    description = "LIB {{output}}"
+    outputs = [ "{{output_dir}}/{{target_output_name}}{{output_extension}}" ]
+    default_output_dir = "{{target_out_dir}}"
+    default_output_extension = ".lib"
+    output_prefix = ""
+  }
+
+  tool("solink") {
+    command = "cmd /c echo shared_library is not used && exit 1"
+    description = "SOLINK {{output}}"
+    outputs = [
+      "{{output_dir}}/{{target_output_name}}.dll",
+      "{{output_dir}}/{{target_output_name}}.dll.lib",
+    ]
+    default_output_dir = "{{root_out_dir}}"
+    default_output_extension = ".dll"
+    output_prefix = ""
+    restat = true
+  }
+
+  tool("solink_module") {
+    command = "cmd /c echo loadable_module is not used && exit 1"
+    description = "SOLINK_MODULE {{output}}"
+    outputs = [ "{{output_dir}}/{{target_output_name}}.dll" ]
+    default_output_dir = "{{root_out_dir}}"
+    default_output_extension = ".dll"
+    output_prefix = ""
+  }
+
+  tool("link") {
+    pdbname = "{{output_dir}}/{{target_output_name}}.pdb"
+    rspfile = "{{output}}.rsp"
+    command = "$ld /nologo /OUT:{{output}} /PDB:$pdbname @$rspfile"
+    rspfile_content = "{{inputs}} {{libs}} {{solibs}} {{ldflags}}"
+    description = "LINK {{output}}"
+    outputs = [ "{{output_dir}}/{{target_output_name}}{{output_extension}}" ]
+    default_output_dir = "{{root_out_dir}}"
+    default_output_extension = ".exe"
+    output_prefix = ""
+  }
+
+  tool("stamp") {
+    command = "cmd /c type nul > {{output}}"
+    description = "STAMP {{output}}"
+  }
+
+  tool("copy") {
+    command = "cmd /c copy /Y {{source}} {{output}}"
+    description = "COPY {{output}}"
+  }
+}

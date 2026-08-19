@@ -374,7 +374,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         }
     }
 
-    // yuxrt 静态库路径推导：与 yux.exe 同 xmake 输出树下，exe=bin/，lib=lib/
+    // yuxrt 静态库路径推导：与 yux.exe 同 GN 输出树下，exe=bin/，lib=lib/
+    // 开发期：build/<plat>/<arch>/<mode>/lib/yuxrt.lib；发布后随编译器安装。
     // 开发期：build/<plat>/<arch>/<mode>/lib/yuxrt.lib；发布后随编译器安装。
     string yuxrtLibPath;
     {

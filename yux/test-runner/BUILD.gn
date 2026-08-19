@@ -1,0 +1,8 @@
+# Copyright (c) 2026. Yin-Jinlong@github
+# MPL-2.0
+
+executable("yux-test-runner") {
+  output_dir = "$root_out_dir/bin"
+  defines = [ "YUX_VERSION=\"$yux_version_str\"" ]
+  sources = [ "runner_main.cpp" ]
+}

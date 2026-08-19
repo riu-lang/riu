@@ -1,0 +1,46 @@
+# Copyright (c) 2026. Yin-Jinlong@github
+# MPL-2.0
+
+_repo = rebase_path("//")
+
+config("zlib_public") {
+  include_dirs = [ "//third_party/zlib" ]
+  defines = [ "ZLIB_COMPAT" ]
+}
+
+static_library("zlib") {
+  public_configs = [ ":zlib_public" ]
+  configs -= [ "//build/config:language_cxx" ]
+  configs += [ "//build/config:language_c99" ]
+  sources = exec_script("//build/glob.py",
+                        [
+                          _repo,
+                          "third_party/zlib",
+                          ".c",
+                          "--flat",
+                        ],
+                        "list lines")
+}
+
+config("antlr4_public") {
+  include_dirs =
+      [ "//third_party/antlr4/runtime/Cpp/runtime/src" ]
+  defines = [ "ANTLR4CPP_STATIC" ]
+  libs = [ "shlwapi.lib" ]
+}
+
+static_library("antlr4_static") {
+  public_configs = [ ":antlr4_public" ]
+  configs -= [ "//build/config:language_cxx" ]
+  configs += [
+    "//build/config:language_cxx17",
+    "//build/config:antlr_internal",
+  ]
+  sources = exec_script("//build/glob.py",
+                        [
+                          _repo,
+                          "third_party/antlr4/runtime/Cpp/runtime/src",
+                          ".cpp",
+                        ],
+                        "list lines")
+}

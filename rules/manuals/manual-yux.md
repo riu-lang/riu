@@ -7,23 +7,23 @@
 ```powershell
 ./sync-deps.ps1              ; 拉取第三方依赖
 ./gen-antlr.ps1              ; 改 g4 后重新生成 parser
-xmake build yux              ; 编译编译器
+./build.ps1 yux              ; 编译编译器
 ```
 
-日常重编译：`xmake build yux`（增量，2min+ 耗时主要在链接阶段）。
+日常重编译：`./build.ps1 yux`（增量，2min+ 耗时主要在链接阶段）。
 
 **重编目标对照**（每个 exe 独立，改了代码要重编对应的）：
 
 | 修改的代码 | 需要重编 |
 |------------|----------|
-| `yux/yux/compiler/` | `xmake build yux` |
-| `yux/frontend/`（sema/AST） | `xmake build yux` + `xmake build yux-check` |
-| `yux/ast/`（ANTLR4 运行时/AST 节点） | `xmake build yux` + `xmake build yux-check` + `xmake build yux-ast` |
-| `yux/lsp/` | `xmake build yux-lsp` |
-| `yux/test-runner/` | `xmake build yux-test-runner` |
-| 改 g4 | `./gen-antlr.ps1` → 上面全部 |_
-_
-> 改了 `yux/frontend/` 只 `xmake build yux`，然后用 `yux-check` 验证 → `yux-check` 没重编，跑的是旧代码。
+| `yux/yux/compiler/` | `./build.ps1 yux` |
+| `yux/frontend/`（sema/AST） | `./build.ps1 yux yux-check` |
+| `yux/ast/`（ANTLR4 运行时/AST 节点） | `./build.ps1 yux yux-check yux-ast` |
+| `yux/lsp/` | `./build.ps1 yux-lsp` |
+| `yux/test-runner/` | `./build.ps1 yux-test-runner` |
+| 改 g4 | `./gen-antlr.ps1` → 上面全部 |
+
+> 改了 `yux/frontend/` 只 `./build.ps1 yux`，然后用 `yux-check` 验证 → `yux-check` 没重编，跑的是旧代码。
 
 `build/windows/x64/debug/bin` 默认已配置到 PATH，构建后直接 `yux ...`。
 
@@ -147,12 +147,13 @@ LLVM IR 里能看到每个函数的入口标签、alloca/load/store、call 等�
 
 见上方「调试测试崩溃」段。关键信号：DLL 末尾无摘要行 = 进程意外退出。
 
-## xmake test（项目/格式化回归）
+## 项目/格式化回归
 
 ```powershell
-xmake test -g yux/project          ; 项目编译+运行（tests/projects/*，含 expected.txt）
-xmake test -g yux/format           ; 格式化回归（tests/projects/*，含 expected_format）
-xmake test yux_tests/project_<name> ; 跑单个用例
+./build.ps1 test                      ; 全部 tests/projects
+./build.ps1 test -Group project       ; 项目编译+运行（含 expected.txt）
+./build.ps1 test -Group format        ; 格式化回归（含 expected_format）
+./build.ps1 test <name>               ; 跑单个用例（目录名）
 ```
 
 ## lint / format 包装器

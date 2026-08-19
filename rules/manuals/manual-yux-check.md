@@ -26,10 +26,10 @@ yux-check test tests/check-cases/
 
 ## 注意
 
-**`yux-check` 是独立 exe**，不在 `xmake build yux` 的产物里。改了 `yux/frontend/`（sema、AST）代码后，只 `xmake build yux` 不够——`yux-check` 链接同一个 `yux_frontend` 静态库但也需要重编自己的 main：
+**`yux-check` 是独立 exe**，不在 `./build.ps1 yux` 的产物里。改了 `yux/frontend/`（sema、AST）代码后，只 `./build.ps1 yux` 不够——`yux-check` 链接同一个 `yux_frontend` 静态库但也需要重编自己的 main：
 
 ```powershell
-xmake build yux-check    ; 改了 sema/AST 后必须单独编
+./build.ps1 yux-check    ; 改了 sema/AST 后必须单独编
 ```
 
-判断该重编哪个：修改的文件在 `yux/frontend/` 或 `yux/ast/` 下 → `yux-check` 和 `yux` 都要重编；只改了 `yux/yux/compiler/` → 只需 `xmake build yux`（`yux-check` 0 LLVM，不碰 compiler 代码）。
+判断该重编哪个：修改的文件在 `yux/frontend/` 或 `yux/ast/` 下 → `yux-check` 和 `yux` 都要重编；只改了 `yux/yux/compiler/` → 只需 `./build.ps1 yux`（`yux-check` 0 LLVM，不碰 compiler 代码）。

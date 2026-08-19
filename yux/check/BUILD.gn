@@ -1,0 +1,10 @@
+# Copyright (c) 2026. Yin-Jinlong@github
+# MPL-2.0
+
+executable("yux-check") {
+  output_dir = "$root_out_dir/bin"
+  defines = [ "YUX_VERSION=\"$yux_version_str\"" ]
+  deps = [ "//yux/frontend:yux_frontend" ]
+  include_dirs = [ "//third_party/cli11/include" ]
+  sources = [ "check_main.cpp" ]
+}

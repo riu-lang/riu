@@ -1,0 +1,6 @@
+# Copyright (c) 2026. Yin-Jinlong@github
+# MPL-2.0
+#
+# LLVM 由 third_party/llvm/llvm/utils/gn 单独 gn gen + ninja。
+# 链接库名单由 build_llvm.py 写成 $llvm_build_dir/yux_llvm_libs.rsp（LLVM*.lib + lld*.lib）。
+# 只编 X86 + lldCOFF，不编 clang / 测试 / 其它后端。

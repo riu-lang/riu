@@ -1,0 +1,68 @@
+# Copyright (c) 2026. Yin-Jinlong@github
+# MPL-2.0
+
+import("//build/llvm.gni")
+
+_llvm_out = "$root_out_dir/llvm"
+
+config("llvm_public") {
+  include_dirs = [
+    "//third_party/llvm/llvm/include",
+    "//third_party/llvm/lld/include",
+    "$_llvm_out/gen/llvm/include",
+    "$_llvm_out/gen/lld/include",
+  ]
+  lib_dirs = [ "$_llvm_out/lib" ]
+  ldflags = [ "@" + rebase_path("$_llvm_out/yux_llvm_libs.rsp") ]
+  libs = [
+    "psapi.lib",
+    "shell32.lib",
+    "ole32.lib",
+    "uuid.lib",
+    "advapi32.lib",
+    "ws2_32.lib",
+  ]
+}
+
+action("build_llvm") {
+  script = "//build/build_llvm.py"
+  pool = "//:console"
+
+  _stamp = "$root_out_dir/llvm.stamp"
+  _rsp = "$_llvm_out/yux_llvm_libs.rsp"
+  _src = rebase_path("//third_party/llvm")
+  _build = rebase_path(_llvm_out, root_build_dir)
+  _stamp_arg = rebase_path(_stamp, root_build_dir)
+  _wrapper = rebase_path("//build/llvm_cl_wrapper.py")
+  _rsp_arg = rebase_path(_rsp, root_build_dir)
+
+  args = [
+    "--src",
+    _src,
+    "--build",
+    _build,
+    "--stamp",
+    _stamp_arg,
+    "--wrapper",
+    _wrapper,
+    "--rsp",
+    _rsp_arg,
+  ]
+  if (is_debug) {
+    args += [ "--debug" ]
+  }
+
+  inputs = [
+    "//build/build_llvm.py",
+    "//build/llvm_cl_wrapper.py",
+  ]
+  outputs = [
+    _stamp,
+    _rsp,
+  ]
+}
+
+group("llvm") {
+  public_deps = [ ":build_llvm" ]
+  public_configs = [ ":llvm_public" ]
+}

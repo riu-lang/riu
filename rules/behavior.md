@@ -25,9 +25,9 @@ yux test
 任务全部完成、准备提交前跑完整回归：
 
 ```powershell
-xmake build yux-check
+./build.ps1 yux-check
 yux-check test tests/check-cases/
-xmake test
+./build.ps1 test
 ```
 
 三项全部通过才算验证完毕。详细测试命令见 [engineering.md](engineering.md)。
@@ -38,8 +38,8 @@ xmake test
 
 先判断是否当前相关，有可能之前引起的：
 
-1. `git stash` 暂存当前改动+`xmake build`构建所有目标
-2. 跑相关测试确认基线（`yux test --test-mod <M>` 或 `xmake test yux_tests/<N>`）
+1. `git stash` 暂存当前改动 + `./build.ps1` 构建所有目标
+2. 跑相关测试确认基线（`yux test --test-mod <M>` 或 `./build.ps1 test <N>`）
 3. 基线也挂 → **已有 bug**，`git stash pop` 恢复，记入 `BUGS.md`，绕过继续
 4. 基线通过 → **当前改动引入**，`git stash pop`，修掉
 
@@ -76,8 +76,8 @@ git 工作区干净 + `BUGS.md` 无记录 + `CURRENT.md` 无记录 → 上一任
 
 遇到代码BUG需要排查->`rules/manuals/manual-yux.md`排查
 
-> yux-check 小且独立（构建yux不会自动构建check）
-> 需要多个exe/任务完成前的编译 -> `xmake build` 构建所有目标。xmake 只支持一次全部/单个目标，不能xmake build a b c
+> yux-check 小且独立（构建 yux 不会自动构建 check）
+> 需要多个 exe / 任务完成前的编译 → `./build.ps1` 构建全部默认目标，或 `./build.ps1 yux yux-check yux-lsp` 一次指定多个。
 
 ## 信息查证
 

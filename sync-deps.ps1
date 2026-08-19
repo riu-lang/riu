@@ -53,8 +53,8 @@ if ($touchesLlvm -and -not $isDryRun) {
         $afterShort = $llvmAfter.Substring(0, [Math]::Min(8, $llvmAfter.Length))
         Write-Host ''
         Write-Host "llvm source updated ($beforeShort → $afterShort)" -ForegroundColor Yellow
-        Write-Host '  next: xmake build llvm   (or xmake build yux)' -ForegroundColor Yellow
-        Write-Host '  xmake will reconfigure + rebuild LLVM when the source stamp differs.' -ForegroundColor DarkGray
+        Write-Host '  next: ./build.ps1 llvm   (or ./build.ps1 yux)' -ForegroundColor Yellow
+        Write-Host '  GN will reconfigure + rebuild LLVM when the source stamp differs.' -ForegroundColor DarkGray
     }
 }
 

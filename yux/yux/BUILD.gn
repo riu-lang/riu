@@ -1,0 +1,44 @@
+# Copyright (c) 2026. Yin-Jinlong@github
+# MPL-2.0
+
+executable("yux") {
+  output_dir = "$root_out_dir/bin"
+  defines = [ "YUX_VERSION=\"$yux_version_str\"" ]
+  include_dirs = [
+    ".",
+    "//third_party/cli11/include",
+  ]
+  deps = [
+    "//build/llvm:llvm",
+    "//build/third_party:zlib",
+    "//yux/frontend:yux_frontend",
+    "//yux/rt:yuxrt",
+  ]
+  libs = [ "ntdll.lib" ]
+  sources = [
+    "main.cpp",
+    "cli/build_cmd.cpp",
+    "cli/format_cmd.cpp",
+    "cli/sdk_compile.cpp",
+    "cli/test_cmd.cpp",
+    "compiler/call/call_fn.cpp",
+    "compiler/call/call_method.cpp",
+    "compiler/compiler.cpp",
+    "compiler/compiler_call.cpp",
+    "compiler/compiler_destructor.cpp",
+    "compiler/compiler_dyn_vtable.cpp",
+    "compiler/compiler_expr.cpp",
+    "compiler/compiler_globals.cpp",
+    "compiler/compiler_lambda.cpp",
+    "compiler/compiler_runtime.cpp",
+    "compiler/compiler_stmt.cpp",
+    "compiler/compiler_test_intrinsics.cpp",
+    "compiler/compiler_types.cpp",
+    "compiler/expr/expr_access.cpp",
+    "compiler/expr/expr_binop.cpp",
+    "compiler/expr/expr_ctor.cpp",
+    "compiler/expr/expr_ctrl.cpp",
+    "compiler/expr/expr_literal.cpp",
+    "compiler/expr/expr_unary.cpp",
+  ]
+}

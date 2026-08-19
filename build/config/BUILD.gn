@@ -1,0 +1,74 @@
+# Copyright (c) 2026. Yin-Jinlong@github
+# MPL-2.0
+
+config("compiler") {
+  cflags = [
+    "/nologo",
+    "/utf-8",
+    "/bigobj",
+    "-Wno-language-extension-token",
+  ]
+  if (is_debug) {
+    cflags += [
+      "/Od",
+      "/Z7",
+      "/MDd",
+    ]
+    defines = [ "_DEBUG", "_CRT_SECURE_NO_WARNINGS" ]
+  } else {
+    cflags += [
+      "/O2",
+      "/MD",
+    ]
+    defines = [ "NDEBUG", "_CRT_SECURE_NO_WARNINGS" ]
+  }
+}
+
+config("runtime") {
+  if (is_debug) {
+    ldflags = [
+      "/DEBUG:FULL",
+      "/INCREMENTAL:NO",
+    ]
+  } else {
+    ldflags = [ "/INCREMENTAL:NO" ]
+  }
+}
+
+config("language_cxx") {
+  cflags_cc = [
+    "/clang:-std=c++23",
+    "/EHsc",
+    "/GR",
+  ]
+}
+
+config("language_c99") {
+  cflags_c = [ "/clang:-std=c99" ]
+}
+
+config("language_cxx17") {
+  cflags_cc = [
+    "/clang:-std=c++17",
+    "/EHsc",
+    "/GR",
+  ]
+}
+
+config("executable") {
+  ldflags = [
+    "/SUBSYSTEM:CONSOLE",
+    "/MACHINE:X64",
+  ]
+}
+
+config("no_autolink") {
+  cflags = [
+    "-Xclang",
+    "-fno-autolink",
+  ]
+}
+
+config("antlr_internal") {
+  cflags_cc = [ "/FIchrono" ]
+}

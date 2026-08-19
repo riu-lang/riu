@@ -1,0 +1,36 @@
+# Copyright (c) 2026. Yin-Jinlong@github
+# MPL-2.0
+
+config("yux_frontend_public") {
+  include_dirs = [
+    ".",
+    "//third_party/utfcpp/source",
+    "//third_party/toml11/single_include",
+    "//third_party/nlohmann_json/single_include",
+  ]
+  defines = [
+    "UNICODE",
+    "NOMINMAX",
+  ]
+}
+
+static_library("yux_frontend") {
+  public_configs = [ ":yux_frontend_public" ]
+  public_deps = [
+    "//yux/analyzer:yux_analyzer",
+    "//yux/ast:yux_ast",
+  ]
+  sources = [
+    "sema/call_resolve.cpp",
+    "sema/const_eval.cpp",
+    "sema/sema_pass.cpp",
+    "tools/diagnostic.cpp",
+    "tools/pkg_cache.cpp",
+    "tools/sdk_loader.cpp",
+    "tools/syntax_error_listener.cpp",
+    "tools/format/doc.cpp",
+    "tools/format/printer.cpp",
+    "tools/format/render.cpp",
+    "tools/format/trivia.cpp",
+  ]
+}

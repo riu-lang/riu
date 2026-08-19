@@ -40,7 +40,7 @@ fn main() {
 ### 环境要求
 
 - **编译器**: Clang
-- **构建工具**: xmake
+- **构建工具**: GN + Ninja（Python 3 供 GN 脚本；LLVM 用其自带 `llvm/utils/gn`）
 - **系统**: Windows
 - `build/windows/x64/debug/bin`的绝对路径添加到`PATH`，以便调用
 
@@ -68,6 +68,7 @@ git submodule update --init scripts/ps-sync-deps
 | 脚本 | 作用 |
 |------|------|
 | `./sync-deps.ps1` | 按 `DEPS.json` 同步 `third_party/` 与 `bin/`（调用 `scripts/ps-sync-deps`） |
+| `./build.ps1` | GN + Ninja 构建入口 |
 | `./gen-antlr.ps1` | 从 `yux/ast/yux*.g4` 生成 C++ 解析器到 `yux/ast/gen/yux/` |
 | `./count-lines.ps1` | `cloc` 统计（可选 commit，默认 HEAD） |
 | `./lint.ps1` | clang-tidy（默认 git 变动文件；`--all` / 路径参数） |
@@ -81,7 +82,7 @@ git submodule update --init scripts/ps-sync-deps
 ./sync-deps.ps1 cli11 zlib       # 只同步指定项
 ```
 
-若 `llvm` 源码 commit 有变，下次 `xmake build yux`（或 `xmake build llvm`）会按 stamp 自动重新 configure 并编译 LLVM（首次/升级可能很久）。
+若 `llvm` 源码 commit 有变，下次 `./build.ps1 yux`（或 `./build.ps1 llvm`）会按 stamp 自动重新 gn gen 并编译 LLVM（首次/升级可能很久）。
 
 ### 生成解析器代码
 
@@ -119,11 +120,12 @@ git submodule update --init scripts/ps-sync-deps
 
 ```powershell
 # 构建 yux 编译器
-xmake build yux
+./build.ps1 yux
 
 # 可选：附属工具
-xmake build yux-lsp     # LSP 服务器（编辑器插件用）
-xmake build yux-ast     # 仅 ANTLR parse tree 转储工具
+./build.ps1 yux-lsp     # LSP 服务器（编辑器插件用）
+./build.ps1 yux-ast     # 仅 ANTLR parse tree 转储工具
+./build.ps1             # 全部默认目标
 ```
 
 ## 使用
@@ -180,8 +182,8 @@ entry="main.yux"
 
 | 层级 | 命令 | 用例位置 | 说明 |
 |------|------|---------|------|
-| 项目编译+运行 | `xmake test` | `tests/projects/` | 每目录一个 `yux.toml` + `expected.txt`；编译产物并比对 stdout |
-| 格式化回归 | `xmake test` | `tests/projects/` | `expected_format` 文件，比对外格式化输出 |
+| 项目编译+运行 | `./build.ps1 test` | `tests/projects/` | 每目录一个 `yux.toml` + `expected.txt`；编译产物并比对 stdout |
+| 格式化回归 | `./build.ps1 test` | `tests/projects/` | `expected_format` 文件，比对外格式化输出 |
 | 诊断回归 | `yux-check test` | `tests/check-cases/` | `diag_*.yux`，行尾 `; check: EXXXX` 注解精确匹配 |
 | 单元/行为测试 | `yux test` | `sdk/yux/src/yux/core/*.test.yux` | `#Test` 注解，DLL + 多子进程并行 |
 
@@ -189,9 +191,10 @@ entry="main.yux"
 
 ```powershell
 # 项目 / 格式化测试
-xmake build yux
-xmake test                  # 全部
-xmake test yux_tests/<name> # 单个
+./build.ps1 yux
+./build.ps1 test                  # 全部
+./build.ps1 test <name>           # 单个（tests/projects/<name>）
+./build.ps1 test -Group format    # 只跑格式化
 
 # 诊断回归
 yux-check test tests/check-cases/
@@ -204,7 +207,7 @@ yux test --test-mod yux.core.array  # 只测指定模块
 
 语法以 `yux/ast/yux*.g4` 和 [文档](docs/index.md) 为准，用例需符合这两者。
 
-测试逻辑：`xmake test` 定义在 [tests/xmake.lua](tests/xmake.lua) 的 `yux_tests` target；`yux test` 流程为 `yux build --test` → 并行 spawn `yux-test-runner` 子进程加载 DLL 执行。
+测试逻辑：`./build.ps1 test` 定义在 [tests/run.ps1](tests/run.ps1)；`yux test` 流程为 `yux build --test` → 并行 spawn `yux-test-runner` 子进程加载 DLL 执行。
 
 ## License
 

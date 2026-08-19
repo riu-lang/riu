@@ -1,0 +1,183 @@
+#Requires -Version 5.1
+<#
+.SYNOPSIS
+  GN + Ninja 构建入口：vcvars → gn gen → ninja。
+
+.DESCRIPTION
+  ./build.ps1                 构建全部默认目标（yux 及附属工具）
+  ./build.ps1 yux             只构建主编译器
+  ./build.ps1 yux yux-check   一次构建多个目标
+  ./build.ps1 llvm            只确保 LLVM
+  ./build.ps1 test            项目/格式化回归（tests/projects）
+  ./build.ps1 pack            打包 zip
+  ./build.ps1 -Release ...    release 配置
+#>
+$ErrorActionPreference = 'Stop'
+
+$ProjectRoot = $PSScriptRoot
+$Mode = 'debug'
+$GenOnly = $false
+$DoTest = $false
+$DoPack = $false
+$NinjaTargets = New-Object System.Collections.Generic.List[string]
+$Forward = New-Object System.Collections.Generic.List[string]
+
+function Write-Log([string]$Message, [ConsoleColor]$Color = [ConsoleColor]::White) {
+    Write-Host $Message -ForegroundColor $Color
+}
+
+function Show-Help {
+    Write-Host @'
+用法:
+  ./build.ps1 [options] [ninja-targets...]
+  ./build.ps1 test [test-args...]
+  ./build.ps1 pack
+
+选项:
+  -Release / --release   release 配置（默认 debug）
+  -GenOnly / --gen-only  只 gn gen，不 ninja
+  -h / --help            帮助
+
+常用目标: yux  yux-lsp  yux-ast  yux-check  yux-test-runner  yuxrt  llvm
+无目标时构建 default（全部 exe）。
+'@
+}
+
+foreach ($a in $args) {
+    $s = [string]$a
+    if ($s -in @('-h', '--help', '-Help', '/?')) { Show-Help; exit 0 }
+    elseif ($s -in @('-Release', '--release')) { $Mode = 'release' }
+    elseif ($s -in @('-GenOnly', '--gen-only')) { $GenOnly = $true }
+    elseif ($s -in @('test', '-Test', '--test')) { $DoTest = $true }
+    elseif ($s -in @('pack', '-Pack', '--pack')) { $DoPack = $true }
+    elseif ($DoTest) { [void]$Forward.Add($s) }
+    else { [void]$NinjaTargets.Add($s) }
+}
+
+function ConvertTo-GnPath([string]$Path) {
+    return ($Path -replace '\\', '/')
+}
+
+function Get-YuxVersion {
+    $gni = Join-Path $ProjectRoot 'build\version.gni'
+    foreach ($line in Get-Content -LiteralPath $gni) {
+        if ($line -match 'yux_version\s*=\s*"([^"]+)"') { return $Matches[1] }
+    }
+    throw 'yux_version not found in build/version.gni'
+}
+
+function Find-Tool([string]$Name) {
+    $cmd = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    $fallback = @(
+        (Join-Path 'D:\tools' "$Name.exe"),
+        (Join-Path $ProjectRoot "bin\$Name.exe")
+    )
+    foreach ($p in $fallback) {
+        if (Test-Path -LiteralPath $p) { return $p }
+    }
+    throw "$Name not found in PATH (install GN/Ninja, or put $Name.exe in D:\tools or bin\)"
+}
+
+function Ensure-SdkLink([string]$OutDir) {
+    $link = Join-Path $OutDir 'sdk'
+    $src = Join-Path $ProjectRoot 'sdk'
+    if (Test-Path -LiteralPath $link) { return }
+    Write-Log "sdk junction: $link → sdk/" DarkGray
+    cmd.exe /c "mklink /J `"$link`" `"$src`"" | Out-Null
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $link)) {
+        throw "failed to create sdk junction at $link"
+    }
+}
+
+function Write-ArgsGn([string]$OutDir, [string]$LlvmDir, [string]$VersionStr) {
+    $argsFile = Join-Path $OutDir 'args.gn'
+    $isDebug = if ($Mode -eq 'debug') { 'true' } else { 'false' }
+    $content = @"
+is_debug = $isDebug
+yux_version_str = "$VersionStr"
+llvm_build_dir = "$(ConvertTo-GnPath $LlvmDir)"
+"@
+    $existing = ''
+    if (Test-Path -LiteralPath $argsFile) {
+        $existing = Get-Content -LiteralPath $argsFile -Raw -ErrorAction SilentlyContinue
+    }
+    $normNew = ($content -replace '\r\n', "`n").Trim() + "`n"
+    $normOld = if ($existing) { ($existing -replace '\r\n', "`n").Trim() + "`n" } else { '' }
+    if ($normOld -ne $normNew) {
+        [System.IO.File]::WriteAllText($argsFile, $normNew)
+        return $true
+    }
+    return $false
+}
+
+$OutDir = Join-Path $ProjectRoot "build\windows\x64\$Mode"
+New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
+
+$LlvmDir = Join-Path $OutDir 'llvm'
+
+$version = Get-YuxVersion
+$versionStr = "v$version-$(Get-Date -Format 'yyyy-MM-dd')"
+$argsChanged = Write-ArgsGn -OutDir $OutDir -LlvmDir $LlvmDir -VersionStr $versionStr
+
+$gn = Find-Tool 'gn'
+$ninja = Find-Tool 'ninja'
+$buildNinja = Join-Path $OutDir 'build.ninja'
+$needGen = $argsChanged -or -not (Test-Path -LiteralPath $buildNinja)
+
+if ($needGen) {
+    Write-Log "`n=== gn gen $OutDir ===" Cyan
+    Push-Location $ProjectRoot
+    try {
+        & $gn gen $OutDir --export-compile-commands
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    } finally {
+        Pop-Location
+    }
+    $cc = Join-Path $OutDir 'compile_commands.json'
+    if (Test-Path -LiteralPath $cc) {
+        Copy-Item -LiteralPath $cc -Destination (Join-Path $ProjectRoot 'compile_commands.json') -Force
+    }
+} else {
+    Write-Log "gn: $OutDir (up to date)" DarkGray
+}
+
+Ensure-SdkLink $OutDir
+
+if ($GenOnly) {
+    Write-Log 'gen-only; skip ninja.' Green
+    exit 0
+}
+
+if ($DoPack) {
+    $pack = Join-Path $ProjectRoot 'scripts\pack.ps1'
+    & $pack -OutDir $OutDir -Version $version
+    exit $LASTEXITCODE
+}
+
+if ($DoTest) {
+    if ($NinjaTargets.Count -eq 0) {
+        Write-Log "`n=== ninja yux ===" Cyan
+        & $ninja -C $OutDir yux
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
+    $yuxExe = Join-Path $OutDir 'bin\yux.exe'
+    $runner = Join-Path $ProjectRoot 'tests\run.ps1'
+    if ($Forward.Count -gt 0) {
+        & $runner -YuxExe $yuxExe @($Forward.ToArray())
+    } else {
+        & $runner -YuxExe $yuxExe
+    }
+    exit $LASTEXITCODE
+}
+
+$ninjaArgs = @('-C', $OutDir)
+if ($NinjaTargets.Count -gt 0) {
+    $ninjaArgs += $NinjaTargets.ToArray()
+}
+Write-Log ("`n=== ninja {0} ===" -f ($ninjaArgs -join ' ')) Cyan
+& $ninja @ninjaArgs
+$code = $LASTEXITCODE
+if ($code -ne 0) { exit $code }
+Write-Log "`nbuild ok: $OutDir" Green
+exit 0

@@ -3,7 +3,7 @@
 > 内容多、短期难完，版本号从 **v0.x** 起步推进，**v1.0** 定义为"语言核心稳定 + 规范定稿 + 基础 SDK 可用"的状态，不设硬性日期。
 > 当前条目仅为方向规划，不是承诺；已完成版本的实现细节归档到对应 `docs/dev/*-impl-log.md`。
 >
-> **版本号**以 `xmake.lua` 的 `set_version()` 为准，本文件镜像之。开发中版本标 `-alpha`（如 `set_version("0.17.0-alpha")`），完成后去掉。
+> **版本号**以 `build/version.gni` 的 `yux_version` 为准，本文件镜像之。开发中版本标 `-alpha`（如 `yux_version = "0.17.0-alpha"`），完成后去掉。
 >
 > **本文档不引用未跟踪的本地文件**（如 `BUGS.md` / `CURRENT.md`），只描述问题或修复本身。
 >
@@ -112,7 +112,7 @@
 - [ ] BUGS.md 清零或标注推后
 - [ ] spec 各章 Open Issues 审计完毕
 - [ ] SDK 新增方法覆盖 String + Array + math 高频 API
-- [ ] `yux test` / `yux-check test` / `xmake test` 全绿
+- [ ] `yux test` / `yux-check test` / `./build.ps1 test` 全绿
 - [ ] `./lint.ps1` 0 warnings
 - [ ] CHANGELOG 收口
 

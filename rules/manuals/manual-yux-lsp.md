@@ -9,7 +9,7 @@ LSP 服务器，0 LLVM 依赖。编辑器插件通过 stdio 接入。
 ## 构建
 
 ```powershell
-xmake build yux-lsp
+./build.ps1 yux-lsp
 ```
 
 构建后 `build/windows/x64/debug/bin/yux-lsp.exe`。

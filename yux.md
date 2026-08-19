@@ -2,40 +2,45 @@
 
 本文件汇总 yux-lang 仓库的关键架构图，便于快速上手与跨模块讨论。图示用 Mermaid，配合 [RULES.md](RULES.md) / [rules/directory.md](rules/directory.md) / [rules/sema-codegen.md](rules/sema-codegen.md) 阅读。
 
-权威源：`yux/ast/yux*.g4`（语法）、`yux/` C++ 源码、`xmake.lua`（构建拓扑）。图与代码冲突时以代码为准，**回头更新本文档**而非反过来。
+权威源：`yux/ast/yux*.g4`（语法）、`yux/` C++ 源码、`BUILD.gn` / `build/`（构建拓扑）。图与代码冲突时以代码为准，**回头更新本文档**而非反过来。
 
 ---
 
-## 1. 构建 target 依赖（xmake.lua）
+## 1. 构建 target 依赖（GN）
 
 ```mermaid
 graph LR
     antlr[antlr4_static<br/>C++17 静态库]
     zlib[zlib]
-    llvm[llvm<br/>phony, CMake 驱动]
+    llvm[llvm<br/>GN + Ninja]
+    astlib[yux_ast]
+    analyzer[yux_analyzer]
+    rt[yuxrt<br/>C99]
 
     frontend[yux_frontend<br/>静态库, 0 LLVM]
-    codegen[yux_codegen<br/>静态库, 依赖 LLVM]
 
     yux[yux<br/>主二进制 CLI]
     lsp[yux-lsp<br/>LSP 服务器]
     ast[yux-ast<br/>parse tree dump]
     check[yux-check<br/>快速语义检查]
+    runner[yux-test-runner]
 
-    antlr --> frontend
-    frontend --> codegen
-    zlib --> codegen
-    llvm --> codegen
-
-    codegen --> yux
+    antlr --> astlib
+    astlib --> analyzer
+    astlib --> frontend
+    analyzer --> frontend
+    frontend --> yux
+    zlib --> yux
+    llvm --> yux
+    rt --> yux
     frontend --> lsp
     frontend --> ast
     frontend --> check
 
     classDef nollvm fill:#e0f3e0,stroke:#3a3
     classDef llvmDep fill:#fde2e2,stroke:#c33
-    class frontend,lsp,ast,check nollvm
-    class codegen,yux llvmDep
+    class frontend,lsp,ast,check,astlib,analyzer,antlr,runner nollvm
+    class llvm,yux llvmDep
 ```
 
 绿色 = 0 LLVM 依赖（编译快、可独立分发）；红色 = 链接整个 LLVM/lld。

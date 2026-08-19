@@ -1,17 +1,19 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  clang-tidy wrapper via xmake check clang.tidy.
+  clang-tidy wrapper via compile_commands.json (gn gen --export-compile-commands).
 
 .DESCRIPTION
   Default: git-changed (incl. untracked) .h/.hpp/.cpp/.cc, excluding gen/third_party/build.
-  --all: full targets. Positional paths: only those files (-f).
+  --all: files listed in compile_commands.json (project sources only).
+  Positional paths: only those files.
 #>
 $ErrorActionPreference = 'Stop'
 
 $ProjectRoot = $PSScriptRoot
-$Targets = @('yux_frontend', 'yux_codegen', 'yux-test-runner', 'yux', 'yux-lsp', 'yux-ast', 'yux-check')
 $SrcExts = @('.h', '.hpp', '.cpp', '.cc', '.cxx')
+$OutDir = Join-Path $ProjectRoot 'build\windows\x64\debug'
+if ($env:YUX_OUT_DIR) { $OutDir = $env:YUX_OUT_DIR }
 
 function Write-Log([string]$Message, [ConsoleColor]$Color = [ConsoleColor]::White) {
     Write-Host $Message -ForegroundColor $Color
@@ -67,9 +69,33 @@ function Filter-Cxx([string[]]$Files) {
         if ($SrcExts -notcontains $ext) { continue }
         if (Test-ExcludedPath $rel) { continue }
         $full = Join-Path $ProjectRoot ($rel -replace '/', [IO.Path]::DirectorySeparatorChar)
-        if (Test-Path -LiteralPath $full) { [void]$result.Add($rel) }
+        if (Test-Path -LiteralPath $full) { [void]$result.Add((Get-RelativeToRoot $full)) }
     }
     return ,@($result.ToArray())
+}
+
+function Get-CompileCommandsFiles {
+    $cc = Join-Path $OutDir 'compile_commands.json'
+    if (-not (Test-Path -LiteralPath $cc)) {
+        throw "compile_commands.json not found. Run ./build.ps1 --gen-only first."
+    }
+    $json = Get-Content -LiteralPath $cc -Raw -Encoding utf8 | ConvertFrom-Json
+    $result = New-Object System.Collections.Generic.List[string]
+    $seen = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($e in $json) {
+        $rel = Get-RelativeToRoot $e.file
+        if (Test-ExcludedPath $rel) { continue }
+        if ($seen.Add($rel)) { [void]$result.Add($rel) }
+    }
+    return ,@($result.ToArray())
+}
+
+function Find-ClangTidy {
+    $cmd = Get-Command clang-tidy -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    $cand = 'D:\LLVM\latest\bin\clang-tidy.exe'
+    if (Test-Path -LiteralPath $cand) { return $cand }
+    return $null
 }
 
 $flagAll = $false
@@ -83,10 +109,9 @@ if ($positional.Count -gt 0) {
     $files = Filter-Cxx @($positional.ToArray())
     if ($files.Count -eq 0) { Write-Log 'no matching files.' Gray; exit 0 }
     Write-Log "scope: $($files.Count) explicit file(s)" Cyan
-    $xmakeArgs = @('check', 'clang.tidy', '-f', ($files -join ';'))
 } elseif ($flagAll) {
-    Write-Log ("scope: --all (targets: {0})" -f ($Targets -join ' ')) Cyan
-    $xmakeArgs = @('check', 'clang.tidy') + $Targets
+    $files = Get-CompileCommandsFiles
+    Write-Log "scope: --all ($($files.Count) file(s) from compile_commands.json)" Cyan
 } else {
     $files = Filter-Cxx @(Get-GitChangedFiles)
     if ($files.Count -eq 0) {
@@ -94,13 +119,24 @@ if ($positional.Count -gt 0) {
         exit 0
     }
     Write-Log "scope: git changed ($($files.Count) file(s))" Cyan
-    $xmakeArgs = @('check', 'clang.tidy', '-f', ($files -join ';'))
 }
 
-Write-Log ("`n=== xmake {0} ===`n" -f ($xmakeArgs -join ' ')) Cyan
+$tidy = Find-ClangTidy
+if (-not $tidy) {
+    Write-Log 'clang-tidy not found in PATH; aborting.' Red
+    exit 2
+}
+if (-not (Test-Path -LiteralPath (Join-Path $OutDir 'compile_commands.json'))) {
+    Write-Log 'compile_commands.json missing. Run ./build.ps1 --gen-only' Red
+    exit 2
+}
+
+Write-Log "clang-tidy: $tidy" DarkGray
+Write-Log "compile_commands: $OutDir`n" DarkGray
+
 Push-Location $ProjectRoot
 try {
-    & xmake @xmakeArgs
+    & $tidy -p $OutDir @files
     $code = $LASTEXITCODE
 } finally {
     Pop-Location

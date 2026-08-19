@@ -4,20 +4,20 @@ yux 是自举编译器：`.yux → ANTLR4 → AST → LLVM IR → LLD → exe`�
 
 ## 环境
 
-- Windows + Clang（无 MSVC），LLVM 在 PATH
+- Windows + Clang（无 MSVC 作为编译器；仍需 VS 的 Windows SDK / STL）
 - `build/windows/x64/debug/bin` 在 PATH，构建后直接 `yux ...`
 - 每个 exe 独立，改了代码要重编对应的：
 
 | 修改的代码 | 需要重编 |
 |------------|----------|
-| `yux/yux/compiler/` | `xmake build yux` |
-| `yux/frontend/`（sema/AST） | `xmake build yux` + `xmake build yux-check` |
-| `yux/ast/`（ANTLR4 运行时/AST 节点） | `xmake build yux` + `xmake build yux-check` + `xmake build yux-ast` |
-| `yux/lsp/` | `xmake build yux-lsp` |
-| `yux/test-runner/` | `xmake build yux-test-runner` |
+| `yux/yux/compiler/` | `./build.ps1 yux` |
+| `yux/frontend/`（sema/AST） | `./build.ps1 yux yux-check` |
+| `yux/ast/`（ANTLR4 运行时/AST 节点） | `./build.ps1 yux yux-check yux-ast` |
+| `yux/lsp/` | `./build.ps1 yux-lsp` |
+| `yux/test-runner/` | `./build.ps1 yux-test-runner` |
 | 改 g4 | `./gen-antlr.ps1` → 上面全部 |
 
-> 改了 `yux/frontend/` 只 `xmake build yux`，然后用 `yux-check` 验证 → `yux-check` 没重编，跑的是旧代码。
+> 改了 `yux/frontend/` 只 `./build.ps1 yux`，然后用 `yux-check` 验证 → `yux-check` 没重编，跑的是旧代码。
 
 ## 测试
 
@@ -43,9 +43,9 @@ yux test --threads 4                ; 指定并行数
 任务完结前跑完整回归：
 
 ```powershell
-xmake build yux-check               ; 确保 yux-check 是最新的
+./build.ps1 yux-check               ; 确保 yux-check 是最新的
 yux-check test tests/check-cases/   ; 诊断回归用例
-xmake test                          ; 项目编译+运行 + 格式化回归（全量）
+./build.ps1 test                    ; 项目编译+运行 + 格式化回归（全量）
 ```
 
 三项都过 → 任务验证完毕，可以提交。

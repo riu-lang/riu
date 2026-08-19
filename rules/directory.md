@@ -2,7 +2,7 @@
 
 ```
 yux-lang/
-├── yux/              所有构建子系统（各自含 xmake.lua）
+├── yux/              所有构建子系统（各自含 BUILD.gn）
 │   ├── yux/          主编译器 + LLVM codegen（yux.exe）
 │   │   ├── compiler/  LLVM IR 生成
 │   │   ├── cli/      CLI 子命令（build/test/format）
@@ -25,7 +25,8 @@ yux-lang/
 ├── tests/
 │   ├── projects/     项目编译+运行+格式化用例（每目录一个 yux.toml）
 │   ├── check-cases/  诊断用例（diag_*.yux，yux-check test）
-│   └── xmake.lua     测试运行器
+│   └── run.ps1       项目/格式化回归
+├── build/            GN 描述（BUILDCONFIG / toolchain / third_party）
 ├── plugins/          编辑器插件（VSCode / IntelliJ）
 ├── rules/            规则与手册（每会话通过 RULES.md 加载）
 │   ├── behavior.md   决策框架（硬性）
@@ -37,6 +38,6 @@ yux-lang/
 │   └── manuals/      工程手册（各 exe 用法）
 ├── third_party/      依赖（由 ./sync-deps.ps1 拉取）
 ├── scripts/ps-sync-deps/  依赖同步工具（git submodule）
-├── *.ps1             根目录工具：sync-deps / gen-antlr / count-lines / lint / format
-└── RULES.md / README.md / yux.md
+├── *.ps1             根目录工具：build / sync-deps / gen-antlr / count-lines / lint / format
+└── RULES.md / README.md / yux.md / BUILD.gn / .gn
 ```

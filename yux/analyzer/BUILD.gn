@@ -1,0 +1,22 @@
+# Copyright (c) 2026. Yin-Jinlong@github
+# MPL-2.0
+
+config("yux_analyzer_public") {
+  include_dirs = [
+    "//yux",
+    "//yux/include",
+  ]
+}
+
+static_library("yux_analyzer") {
+  public_configs = [ ":yux_analyzer_public" ]
+  public_deps = [ "//yux/ast:yux_ast" ]
+  sources = [
+    "borrow_checker.cpp",
+    "const_mut_checker.cpp",
+    "flow_terminate_checker.cpp",
+    "spec_impl_checker.cpp",
+    "spec_registry.cpp",
+    "symbol_suggest.cpp",
+  ]
+}
