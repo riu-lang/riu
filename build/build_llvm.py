@@ -35,10 +35,16 @@ def write_stamp(path: str, commit: str) -> None:
         f.write(commit + "\n")
 
 
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
 def which_or_die(name: str) -> str:
+    local = os.path.join(_REPO_ROOT, "bin", f"{name}.exe")
+    if os.path.isfile(local):
+        return os.path.normpath(local)
     p = shutil.which(name)
     if not p:
-        sys.stderr.write(f"{name} not found in PATH\n")
+        sys.stderr.write(f"{name} not found (bin/{name}.exe or PATH)\n")
         sys.exit(1)
     return os.path.normpath(p)
 

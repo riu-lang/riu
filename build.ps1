@@ -67,16 +67,15 @@ function Get-YuxVersion {
 }
 
 function Find-Tool([string]$Name) {
-    $cmd = Get-Command $Name -ErrorAction SilentlyContinue
-    if ($cmd) { return $cmd.Source }
-    $fallback = @(
-        (Join-Path 'D:\tools' "$Name.exe"),
+    $candidates = @(
         (Join-Path $ProjectRoot "bin\$Name.exe")
     )
-    foreach ($p in $fallback) {
+    foreach ($p in $candidates) {
         if (Test-Path -LiteralPath $p) { return $p }
     }
-    throw "$Name not found in PATH (install GN/Ninja, or put $Name.exe in D:\tools or bin\)"
+    $cmd = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    throw "$Name not found (run ./sync-deps.ps1 for ninja, or put $Name.exe in bin\ / PATH)"
 }
 
 function Ensure-SdkLink([string]$OutDir) {

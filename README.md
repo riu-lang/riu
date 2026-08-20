@@ -40,7 +40,7 @@ fn main() {
 ### 环境要求
 
 - **编译器**: Clang
-- **构建工具**: GN + Ninja（Python 3 供 GN 脚本；LLVM 用其自带 `llvm/utils/gn`）
+- **构建工具**: GN（PATH）；Ninja / cloc 由 `./sync-deps.ps1` 下载到 `bin/`（Python 3 供 GN 脚本；LLVM 用其自带 `llvm/utils/gn`）
 - **系统**: Windows
 - `build/windows/x64/debug/bin`的绝对路径添加到`PATH`，以便调用
 
@@ -96,7 +96,7 @@ git submodule update --init scripts/ps-sync-deps
 
 ### 代码统计
 
-使用 [cloc](https://github.com/AlDanial/cloc)：
+使用 [cloc](https://github.com/AlDanial/cloc)（`bin/cloc-2.10.exe`，由 `sync-deps` 下载）：
 
 ```powershell
 ./count-lines.ps1           # HEAD
