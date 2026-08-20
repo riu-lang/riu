@@ -4,8 +4,31 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
+
+
+def _is_flag(arg: str) -> bool:
+    # MSVC (/nologo) or GNU (-W...); path fragments like "Files/..." are not flags.
+    return arg.startswith("-") or arg.startswith("/")
+
+
+def _take_compiler(argv: list[str]) -> tuple[str, list[str]]:
+    """Compiler path may be split on spaces when GN/ninja omit quotes."""
+    if not argv:
+        raise ValueError("missing compiler path")
+    parts: list[str] = []
+    for i, a in enumerate(argv):
+        if parts and _is_flag(a):
+            break
+        parts.append(a)
+        candidate = " ".join(parts)
+        for path in (candidate, candidate + ".exe"):
+            if os.path.isfile(path):
+                return path, argv[i + 1 :]
+    joined = " ".join(parts)
+    raise FileNotFoundError(f"compiler not found: {joined!r}")
 
 
 def main() -> int:
@@ -18,13 +41,15 @@ def main() -> int:
             i += 2
             continue
         break
-    if i >= len(argv):
-        sys.stderr.write("llvm_cl_wrapper: missing compiler path\n")
+    try:
+        compiler, rest = _take_compiler(argv[i:])
+    except (ValueError, FileNotFoundError) as e:
+        sys.stderr.write(f"llvm_cl_wrapper: {e}\n")
         return 2
-    cmd = [argv[i]]
+    cmd = [compiler]
     if crt:
         cmd.append(crt)
-    cmd.extend(argv[i + 1 :])
+    cmd.extend(rest)
     return subprocess.call(cmd)
 
 

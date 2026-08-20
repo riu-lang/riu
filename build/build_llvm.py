@@ -53,13 +53,34 @@ def to_gn_path(path: str) -> str:
     return os.path.normpath(path).replace("\\", "/")
 
 
+def without_spaces(path: str) -> str:
+    """LLVM's GN toolchain does not quote compiler/linker paths.
+
+    Paths under e.g. ``C:\\Program Files\\...`` break ninja argv splitting.
+    Prefer the Windows 8.3 short name when available.
+    """
+    if os.name != "nt" or " " not in path:
+        return path
+    import ctypes
+
+    buf = ctypes.create_unicode_buffer(512)
+    n = ctypes.windll.kernel32.GetShortPathNameW(path, buf, len(buf))
+    if n and n < len(buf) and buf.value and " " not in buf.value:
+        return buf.value
+    sys.stderr.write(
+        f"path has spaces and no 8.3 short name: {path}\n"
+        "Install LLVM to a path without spaces, or enable 8.3 names on this volume.\n"
+    )
+    sys.exit(1)
+
+
 def clang_prefix_from_clang_cl(clang_cl: str) -> str:
     # D:/LLVM/latest/bin/clang-cl.exe → D:/LLVM/latest
     bindir = os.path.dirname(clang_cl)
     if os.path.basename(bindir).lower() != "bin":
         sys.stderr.write(f"clang-cl is not in a bin/ directory: {clang_cl}\n")
         sys.exit(1)
-    return os.path.dirname(bindir)
+    return without_spaces(os.path.dirname(bindir))
 
 
 def write_args_gn(
