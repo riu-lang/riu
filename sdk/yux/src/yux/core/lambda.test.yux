@@ -13,41 +13,41 @@
 
 ; ==================== 类型别名 ====================
 
-Callback = fn(s String)bool
-Pred<T> = fn(x T)bool
-Op2<A, B> = fn(a A, b B)A
+Callback = Function<String, bool>
+Pred<T> = Function<T, bool>
+Op2<A, B> = Function<A, B, A>
 
 ; ==================== 辅助函数 ====================
 
-fn apply(f fn(i32)i32, x i32) i32 {
+fn apply(f Function<i32, i32>, x i32) i32 {
   ret f(x)
 }
 
-fn apply0(f fn()i32) i32 {
+fn apply0(f Function<i32>) i32 {
   ret f()
 }
 
-fn run_twice(f fn(i32)i32, x i32) i32 {
+fn run_twice(f Function<i32, i32>, x i32) i32 {
   ret f(x) + f(x + 1)
 }
 
-fn forward(g fn(i32)i32, y i32) i32 {
+fn forward(g Function<i32, i32>, y i32) i32 {
   ret run_twice(g, y)
 }
 
-fn make_inc() fn(i32)i32 {
+fn make_inc() Function<i32, i32> {
   ret (x i32) i32 => x + 1
 }
 
-fn make_const(v i32) fn(i32)i32 {
+fn make_const(v i32) Function<i32, i32> {
   ret (x i32) i32 => x * 2
 }
 
-fn make_adder(n i32) fn(i32)i32 {
+fn make_adder(n i32) Function<i32, i32> {
   ret (x i32) i32 => x + n
 }
 
-fn run_first(a Array<fn(i32)i32>&, x i32) i32 {
+fn run_first(a Array<Function<i32, i32>>&, x i32) i32 {
   ret a[0](x)
 }
 
@@ -58,11 +58,11 @@ fn first(a Array<i32>&) i32 {
 ; ==================== struct Holder ====================
 
 struct Holder {
-  h fn(i32)i32
+  h Function<i32, i32>
   base i32
 
   #Static
-  fn make(h fn(i32)i32, base i32) Holder {
+  fn make(h Function<i32, i32>, base i32) Holder {
     ret Self {
       .h = h
       .base = base
@@ -73,7 +73,7 @@ struct Holder {
     ret $.h(x) + $.base
   }
 
-  fn set(h fn(i32)i32) {
+  fn set(h Function<i32, i32>) {
     $.h = h
     ret;
   }
@@ -149,7 +149,7 @@ fn test_iife_multi_param() {
 ; 验证：Lambda 表达式变量调用与计算结果
 #Test
 fn test_lambda_var_call() {
-  #Mut let f fn(i32)i32 = (x i32) i32 => x * 2
+  #Mut let f Function<i32, i32> = (x i32) i32 => x * 2
   assert_eq(f(7), 14)
   assert_eq(f(0), 0)
   assert_eq(f(21), 42)
@@ -176,7 +176,7 @@ fn test_lambda_as_arg_inferred() {
 ; 验证：Lambda 函数作为返回值使用
 #Test
 fn test_lambda_return() {
-  #Mut let f fn(i32)i32 = make_inc()
+  #Mut let f Function<i32, i32> = make_inc()
   assert_eq(f(10), 11)
   assert_eq(f(99), 100)
 }
@@ -191,7 +191,7 @@ fn test_lambda_return_chained() {
 ; 验证：Lambda 返回常量值
 #Test
 fn test_lambda_return_const() {
-  #Mut let g fn(i32)i32 = make_const(0)
+  #Mut let g Function<i32, i32> = make_const(0)
   assert_eq(g(7), 14)
 }
 
@@ -200,7 +200,7 @@ fn test_lambda_return_const() {
 ; 验证：Lambda 参数传递与高阶函数使用
 #Test
 fn test_lambda_param_pass() {
-  #Mut let inc fn(i32)i32 = (x i32) i32 => x + 1
+  #Mut let inc Function<i32, i32> = (x i32) i32 => x + 1
   #Mut let r1 = forward(inc, 10)
   assert_eq(r1, 23)
 
@@ -248,7 +248,7 @@ fn test_struct_fn_field_whole_reassign() {
 ; 验证：Array 存储和调用不同行为的函数元素
 #Test
 fn test_array_fn_elem() {
-  #Mut let arr Array<fn(i32)i32> = []
+  #Mut let arr Array<Function<i32, i32>> = []
   arr.push(make_inc())
   arr.push((x i32) i32 => x * 2)
   arr.push((x i32) i32 => x - 5)
@@ -262,7 +262,7 @@ fn test_array_fn_elem() {
 ; 验证：Array 存储函数并按值调用
 #Test
 fn test_array_fn_elem_by_value() {
-  #Mut let arr Array<fn(i32)i32> = []
+  #Mut let arr Array<Function<i32, i32>> = []
   arr.push(make_inc())
 
   let r = run_first(arr, 100)
@@ -272,7 +272,7 @@ fn test_array_fn_elem_by_value() {
 ; 验证：Array 中存储的函数元素重新赋值
 #Test
 fn test_array_fn_elem_reassign() {
-  #Mut let arr Array<fn(i32)i32> = []
+  #Mut let arr Array<Function<i32, i32>> = []
   arr.push(make_inc())
 
   arr[0] = (x i32) i32 => x + 1000
@@ -284,7 +284,7 @@ fn test_array_fn_elem_reassign() {
 ; 验证：Rc<fn> 调用与闭包行为
 #Test
 fn test_box_fn_call() {
-  #Mut let b Rc<fn(i32)i32> = (x i32) i32 => x + 100
+  #Mut let b Rc<Function<i32, i32>> = (x i32) i32 => x + 100
   assert_eq(b(5), 105)
   assert_eq(b(10), 110)
 }
@@ -292,16 +292,16 @@ fn test_box_fn_call() {
 ; 验证：Rc 复制函数后调用结果不变
 #Test
 fn test_box_fn_copy() {
-  #Mut let b Rc<fn(i32)i32> = (x i32) i32 => x + 100
-  #Mut let b2 Rc<fn(i32)i32> = b
+  #Mut let b Rc<Function<i32, i32>> = (x i32) i32 => x + 100
+  #Mut let b2 Rc<Function<i32, i32>> = b
   assert_eq(b2(7), 107)
 }
 
 ; 验证：Rc 引用计数指针下挂的闭包重新赋值后，原有引用仍然有效
 #Test
 fn test_box_fn_reassign() {
-  #Mut let b Rc<fn(i32)i32> = (x i32) i32 => x + 100
-  #Mut let b2 Rc<fn(i32)i32> = b
+  #Mut let b Rc<Function<i32, i32>> = (x i32) i32 => x + 100
+  #Mut let b2 Rc<Function<i32, i32>> = b
 
   b = (x i32) i32 => x * 3
   assert_eq(b(4), 12)
@@ -313,7 +313,7 @@ fn test_box_fn_reassign() {
 ; 验证：零参数块尾表达式返回值
 #Test
 fn test_zero_block_tail_expr_return() {
-  let once fn()i32 = {
+  let once Function<i32> = {
     42
   }
   assert_eq(once(), 42)
@@ -322,7 +322,7 @@ fn test_zero_block_tail_expr_return() {
 ; 验证：Lambda 表达式中尾部表达式与预lude
 #Test
 fn test_zero_block_tail_expr_with_prelude() {
-  let f fn()i32 = {
+  let f Function<i32> = {
     #Mut let a = 3
     #Mut let b = 4
     a + b
@@ -333,7 +333,7 @@ fn test_zero_block_tail_expr_with_prelude() {
 ; 验证：零块通过参数传播
 #Test
 fn test_zero_block_propagates_via_arg() {
-  let seven fn()i32 = {
+  let seven Function<i32> = {
     7
   }
   assert_eq(apply0(seven), 7)
@@ -344,13 +344,13 @@ fn test_zero_block_propagates_via_arg() {
 ; 验证：函数类型声明与定义
 #Test
 fn test_fn_type_decl() {
-  #Mut let a fn()
-  #Mut let b fn()i32
-  #Mut let c fn(i32)i32
-  #Mut let d fn(x i32)i32
-  #Mut let e fn(a, b i32)i32
-  #Mut let f fn(g fn(i32)i32)i32
-  #Mut let h fn()fn(i32)i32
+  #Mut let a Function<()>
+  #Mut let b Function<i32>
+  #Mut let c Function<i32, i32>
+  #Mut let d Function<i32, i32>
+  #Mut let e Function<i32, i32, i32>
+  #Mut let f Function<Function<i32, i32>, i32>
+  #Mut let h Function<Function<i32, i32>>
 
   assert_true(true)
 }
@@ -362,7 +362,7 @@ fn test_fn_type_alias() {
   #Mut let pi Pred<i32>
   #Mut let ps Pred<String>
   #Mut let op Op2<i32, i32>
-  #Mut let nested Pred<fn()i32>
+  #Mut let nested Pred<Function<i32>>
 
   assert_true(true)
 }
@@ -370,20 +370,20 @@ fn test_fn_type_alias() {
 ; 验证：函数类型等价性检查
 #Test
 fn test_fn_type_equiv() {
-  #Mut let x fn(s String)bool
+  #Mut let x Function<String, bool>
   #Mut let c Callback = x
   #Mut let y Callback
-  #Mut let z fn(s String)bool = y
+  #Mut let z Function<String, bool> = y
 
-  #Mut let a fn(a i32, b i32)i32
-  #Mut let b fn(x i32, y i32)i32 = a
-  #Mut let d fn(i32, i32)i32 = b
+  #Mut let a Function<i32, i32, i32>
+  #Mut let b Function<i32, i32, i32> = a
+  #Mut let d Function<i32, i32, i32> = b
 
-  #Mut let g fn(a, b i32)i32
-  #Mut let ge fn(a i32, b i32)i32 = g
+  #Mut let g Function<i32, i32, i32>
+  #Mut let ge Function<i32, i32, i32> = g
 
-  #Mut let n1 fn(f fn(i32)i32)i32
-  #Mut let n2 fn(f fn(x i32)i32)i32 = n1
+  #Mut let n1 Function<Function<i32, i32>, i32>
+  #Mut let n2 Function<Function<i32, i32>, i32> = n1
 
   assert_true(true)
 }
@@ -392,11 +392,11 @@ fn test_fn_type_equiv() {
 #Test
 fn test_fn_type_container() {
   ; BUGS #4: Rc<fn> 未初始化变量 2+ 个同作用域析构时 ACCESS_VIOLATION，暂赋初值规避
-  #Mut let arr Array<fn()i32> = []
-  #Mut let b Rc<fn()i32> = () i32 => 42
-  #Mut let p (fn()i32, i32)
-  #Mut let fr fn(i32)i32&
-  #Mut let nested Array<fn()fn(i32)i32> = []
+  #Mut let arr Array<Function<i32>> = []
+  #Mut let b Rc<Function<i32>> = () i32 => 42
+  #Mut let p (Function<i32>, i32)
+  #Mut let fr Function<i32, i32>&
+  #Mut let nested Array<Function<Function<i32, i32>>> = []
 
   assert_true(true)
 }
@@ -404,10 +404,10 @@ fn test_fn_type_container() {
 ; 验证：可选函数类型声明与赋值
 #Test
 fn test_fn_type_nullable() {
-  #Mut let a fn?()
-  #Mut let b fn?(i32)i32
-  #Mut let c fn(s String)i32?
-  #Mut let d fn?(s String)i32?
+  #Mut let a Function<()>?
+  #Mut let b Function<i32, i32>?
+  #Mut let c Function<String, i32?>
+  #Mut let d Function<String, i32?>?
 
   assert_true(true)
 }
@@ -483,14 +483,14 @@ fn test_closure_capture_array() {
 ; 验证：闭包传递与别名
 #Test
 fn test_closure_pass_around() {
-  #Mut let add10 fn(i32)i32 = make_adder(10)
+  #Mut let add10 Function<i32, i32> = make_adder(10)
   assert_eq(apply(add10, 5), 15)
   assert_eq(apply(add10, 100), 110)
 
-  #Mut let add42 fn(i32)i32 = make_adder(42)
+  #Mut let add42 Function<i32, i32> = make_adder(42)
   assert_eq(add42(8), 50)
 
-  #Mut let alias fn(i32)i32 = add10
+  #Mut let alias Function<i32, i32> = add10
   assert_eq(alias(7), 17)
 }
 
@@ -531,7 +531,7 @@ fn classify(c Color) i32 {
   }
 }
 
-fn apply_color(f fn(Color)i32, c Color) i32 {
+fn apply_color(f Function<Color, i32>, c Color) i32 {
   ret f(c)
 }
 
@@ -572,7 +572,7 @@ fn test_closure_borrow_capture_call_arg() {
 
 ; ==================== lambda T& 形参返回 T&（合法路径） ====================
 
-fn use_lambda_borrow_ret(f fn(i32&)i32&) {
+fn use_lambda_borrow_ret(f Function<i32&, i32&>) {
   ; 不调用 f，仅验证 borrow checker 接受此形态
 }
 

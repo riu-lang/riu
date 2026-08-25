@@ -386,7 +386,7 @@ fn test_lambda_expression() {
 
 #Test
 fn test_lambda_bare_single() {
-  #Mut let f fn(i32)i32 = x => x * 2
+  #Mut let f Function<i32, i32> = x => x * 2
   assert_eq(f(5), 10)
 }
 

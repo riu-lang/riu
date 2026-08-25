@@ -7,9 +7,9 @@
 #include <unordered_set>
 #include <utility>
 
-#include "types.h"
 #include "antlr4-runtime.h"
 #include "position.h"
+#include "types.h"
 #include "utf8.h"
 #include "yux/yuxLexer.h"
 #include "yux/yuxParser.h"
@@ -43,47 +43,82 @@ constexpr int MOD_DECLARATION = 1 << 0;
 int classify(size_t type) {
     using L = ::yux::yuxLexer;
     switch (type) {
-        case L::Space:
-        case L::LineEnd:
-            return -1;
+    case L::Space:
+    case L::LineEnd:
+        return -1;
 
-        case L::LineComment:
-        case L::LineEndComment:
-            return static_cast<int>(TT::Comment);
+    case L::LineComment:
+    case L::LineEndComment:
+        return static_cast<int>(TT::Comment);
 
-        case L::Break: case L::Catch: case L::Elif: case L::Else:
-        case L::Enum: case L::Extern: case L::False: case L::Fn: case L::If: case L::Let:
-        case L::Loop: case L::Match: case L::Null: case L::Ret: case L::SelfType:
-        case L::Struct: case L::True: case L::Try: case L::Use:
-            return static_cast<int>(TT::Keyword);
+    case L::Break:
+    case L::Catch:
+    case L::Elif:
+    case L::Else:
+    case L::Enum:
+    case L::Extern:
+    case L::False:
+    case L::Fn:
+    case L::If:
+    case L::Let:
+    case L::Loop:
+    case L::Match:
+    case L::Null:
+    case L::Ret:
+    case L::SelfType:
+    case L::Struct:
+    case L::True:
+    case L::Try:
+    case L::Use:
+        return static_cast<int>(TT::Keyword);
 
-        // 仅着色"真正的运算符"，逗号/分号/点/括号留默认色
-        case L::SymbolAdd: case L::SymbolAnd: case L::SymbolAt: case L::SymbolDiv:
-        case L::SymbolEq: case L::SymbolExcl: case L::SymbolLt:
-        case L::SymbolMod: case L::SymbolMt: case L::SymbolMul:
-        case L::SymbolOr: case L::SymbolQuest: case L::SymbolRev:
-        case L::SymbolSub: case L::SymbolXor:
-            return static_cast<int>(TT::Operator);
+    // 仅着色"真正的运算符"，逗号/分号/点/括号留默认色
+    case L::SymbolAdd:
+    case L::SymbolAnd:
+    case L::SymbolAt:
+    case L::SymbolDiv:
+    case L::SymbolEq:
+    case L::SymbolExcl:
+    case L::SymbolLt:
+    case L::SymbolMod:
+    case L::SymbolMt:
+    case L::SymbolMul:
+    case L::SymbolOr:
+    case L::SymbolQuest:
+    case L::SymbolRev:
+    case L::SymbolSub:
+    case L::SymbolXor:
+        return static_cast<int>(TT::Operator);
 
-        case L::ID:
-            return static_cast<int>(TT::Variable);
+    case L::ID:
+        return static_cast<int>(TT::Variable);
 
-        case L::INT: case L::FLOAT:
-        case L::INT_10: case L::INT_2: case L::INT_8: case L::INT_16:
-        case L::INT_SUFFIX:
-        case L::FLOAT_SUFFIX: case L::FLOAT_DOT: case L::FLOAT_EXP:
-        case L::NUN_SIGN:
-            return static_cast<int>(TT::Number);
+    case L::INT:
+    case L::FLOAT:
+    case L::INT_10:
+    case L::INT_2:
+    case L::INT_8:
+    case L::INT_16:
+    case L::INT_SUFFIX:
+    case L::FLOAT_SUFFIX:
+    case L::FLOAT_DOT:
+    case L::FLOAT_EXP:
+    case L::NUN_SIGN:
+        return static_cast<int>(TT::Number);
 
-        // 字符串模板：开/闭引号、文本片段、$ident 一律按字符串高亮；
-        // ${ ... } 内嵌表达式段落由 popMode 后的常规 token 接管，不在此处处理。
-        case L::STR_TPL_OPEN: case L::STR_TPL_CLOSE: case L::STR_TPL_TEXT:
-        case L::STR_TPL_DOLLAR_ID: case L::STR_TPL_INTERP_OPEN:
-        case L::STR_LINE_RAW: case L::CODE_POINT:
-            return static_cast<int>(TT::String);
+    // 字符串模板：开/闭引号、文本片段、$ident 一律按字符串高亮；
+    // ${ ... } 内嵌表达式段落由 popMode 后的常规 token 接管，不在此处处理。
+    case L::STR_TPL_OPEN:
+    case L::STR_TPL_CLOSE:
+    case L::STR_TPL_TEXT:
+    case L::STR_TPL_DOLLAR_ID:
+    case L::STR_TPL_INTERP_OPEN:
+    case L::STR_LINE_RAW:
+    case L::CODE_POINT:
+        return static_cast<int>(TT::String);
 
-        default:
-            return -1;
+    default:
+        return -1;
     }
 }
 
@@ -135,7 +170,10 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
             // spec-unify v1：#Spec 注解的 struct 渲染为 Interface（spec），否则 Class
             bool isSpec = false;
             for (auto* a : c->buildAnnos) {
-                if (a->name && a->name->getText() == "Spec") { isSpec = true; break; }
+                if (a->name && a->name->getText() == "Spec") {
+                    isSpec = true;
+                    break;
+                }
             }
             put(out, st->name, isSpec ? TT::Interface : TT::Class, MOD_DECLARATION);
         }
@@ -152,22 +190,21 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
     } else if (auto* c = dynamic_cast<P::FnParamStdContext*>(node)) {
         put(out, c->name, TT::Parameter, MOD_DECLARATION);
     } else if (auto* c = dynamic_cast<P::FnParamGroupContext*>(node)) {
-        for (auto* tok : c->names) put(out, tok, TT::Parameter, MOD_DECLARATION);
+        for (auto* tok : c->names)
+            put(out, tok, TT::Parameter, MOD_DECLARATION);
     } else if (auto* c = dynamic_cast<P::LambdaParamStdContext*>(node)) {
         put(out, c->name, TT::Parameter, MOD_DECLARATION);
     } else if (auto* c = dynamic_cast<P::LambdaParamGroupContext*>(node)) {
-        for (auto* tok : c->names) put(out, tok, TT::Parameter, MOD_DECLARATION);
-    } else if (auto* c = dynamic_cast<P::FnTypeParamNamedContext*>(node)) {
-        // fn 类型字面量参数名仅作文档（§3.4），但 IDE 仍按 Parameter 高亮
-        put(out, c->name, TT::Parameter, MOD_DECLARATION);
-    } else if (auto* c = dynamic_cast<P::FnTypeParamGroupContext*>(node)) {
-        for (auto* tok : c->names) put(out, tok, TT::Parameter, MOD_DECLARATION);
+        for (auto* tok : c->names)
+            put(out, tok, TT::Parameter, MOD_DECLARATION);
     } else if (auto* c = dynamic_cast<P::ExprDotContext*>(node)) {
         // 默认全部当字段；如果整个 dot 是被调用的左部，下面 ExprCall 分支会把最后一个 member 改成 method
-        for (auto* tok : c->member) put(out, tok, TT::Property, 0);
+        for (auto* tok : c->member)
+            put(out, tok, TT::Property, 0);
     } else if (auto* c = dynamic_cast<P::ExprGetRefContext*>(node)) {
         // &a.b.c —— subs 链上每个 ID 均为字段名
-        for (auto* tok : c->subs) put(out, tok, TT::Property, 0);
+        for (auto* tok : c->subs)
+            put(out, tok, TT::Property, 0);
     } else if (auto* c = dynamic_cast<P::ExprStructLitContext*>(node)) {
         // Self { .x = 1 .y = 2 } 或 Name { .x = 1 } —— 类型名按 Class，字段名按 Property
         if (c->typeName) put(out, c->typeName, TT::Class, 0);
@@ -187,8 +224,9 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
         if (auto* term = c->ID()) put(out, term->getSymbol(), TT::Class, 0);
     } else if (auto* c = dynamic_cast<P::TypeGenericWithRefContext*>(node)) {
         if (auto* term = c->ID()) put(out, term->getSymbol(), TT::Class, 0);
-    // TypeNullable / TypeArray / TypeTuple / TypeFn 及对应 WithRef 变体本身不持有
-    // 顶层 ID（仅是结构容器），其内部嵌套的 type / typeWithRef 由父级遍历递归覆盖
+        // TypeNullable / TypeArray / TypeTuple 及对应 WithRef 变体本身不持有
+        // 顶层 ID（仅是结构容器），其内部嵌套的 type / typeWithRef 由父级遍历递归覆盖
+        // Function<...> 走 TypeGeneric / TypeGenericWithRef
     } else if (auto* c = dynamic_cast<P::AliasDeclContext*>(node)) {
         // 类型别名 `Name = T` / `Pair<T> = (T, T)`：左侧名字按用户类型染色
         if (auto* term = c->ID()) put(out, term->getSymbol(), TT::Class, MOD_DECLARATION);
@@ -213,7 +251,8 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
         // match 模式 E::V(a, b)：a/b 是新引入绑定，按 Parameter 染色
         if (c->enumName) put(out, c->enumName, TT::Enum, 0);
         if (c->variant) put(out, c->variant, TT::EnumMember, 0);
-        for (auto* tok : c->binds) put(out, tok, TT::Parameter, MOD_DECLARATION);
+        for (auto* tok : c->binds)
+            put(out, tok, TT::Parameter, MOD_DECLARATION);
     } else if (auto* c = dynamic_cast<P::CatchArmContext*>(node)) {
         // catch err T { ... } 中的 err 是绑定参数；T 走 type 递归
         if (c->err) put(out, c->err, TT::Parameter, MOD_DECLARATION);
@@ -240,8 +279,7 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
             if (enumCtor->variant) {
                 std::string vName = enumCtor->variant->getText();
                 bool isUpper = !vName.empty() && (vName[0] >= 'A' && vName[0] <= 'Z');
-                out[enumCtor->variant->getTokenIndex()] = {
-                    static_cast<int>(isUpper ? TT::EnumMember : TT::Method), 0};
+                out[enumCtor->variant->getTokenIndex()] = {static_cast<int>(isUpper ? TT::EnumMember : TT::Method), 0};
             }
         }
     }
@@ -251,9 +289,8 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
 
 const std::vector<std::string>& semanticTokenTypes() {
     static const std::vector<std::string> types = {
-        "keyword", "operator", "string", "number", "comment",
-        "variable", "class", "function", "property", "parameter", "method", "metadata",
-        "interface", "enum", "enumMember",
+        "keyword",  "operator",  "string", "number",   "comment",   "variable", "class",      "function",
+        "property", "parameter", "method", "metadata", "interface", "enum",     "enumMember",
     };
     return types;
 }

@@ -17,6 +17,15 @@
 
 ---
 
+## 2026-08-25 —— 函数类型改为特殊泛型 `Function<P..., Ret>`
+
+- **修改 §3.11**：函数类型字面量从紧凑形 `fn(T)R` / `fn?(T)R` 改为内置特殊泛型 `Function<P1, P2, ..., Ret>`。末位永远是返回类型；`Function<()>` = 0 参 unit 返回；可空走标准 `Function<...>?`。
+- **删除**：`typeFn` / `typeFnWithRef` / `fnTypeParams` 产生式（`yuxParser.g4`）。函数**声明** `fn foo(...)` 不动。
+- **修改 附录 B**：去掉 `fnType`；新增 B.2b `Function<P..., Ret>`。
+- **修改 E2031**：文案从 `fn(...)` 改为 `Function<...>`。
+- **ABI**：可空仍是 16 字节 fat-ptr（`fn_ptr == null`），不套 `Nullable` 外壳。LLVM mangle 从 `fn(i32)i32` / `fn()void` 改为 `Function<i32,i32>` / `Function<()>`。
+- **冲突 / 兼容**：破坏性。旧写法 `fn(i32)i32` / `fn?()` 改为 `Function<i32, i32>` / `Function<()>?`。类型位不再写形参名。含 `T&` 形参的函数类型暂不能作 struct 字段（`genericDef` 实参不允许 `Type&`，与 `Dyn<D&>` 同缺口）。
+
 ## 2026-08-25 —— 删除 Python 风三元 `a if c else b`
 
 - **删除 §4.9.2**：`exprIfElsePreValue`（`trueExpr if cond else falseExpr`）下线；条件表达式统一为 §4.9.1 `if c { a } else { b }`

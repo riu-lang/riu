@@ -104,6 +104,10 @@ N | <源码行原文>
 | E2025 | `\`else\` arm must be the last arm in match` |
 | E2026 | `match pattern for \`{}::{}\` expects {} binding(s), got {}` |
 | E2027 | `duplicate binding \`{}\` in match pattern \`{}::{}\`` |
+| E2028 | `lambda body references outer local \`{}\`: closures not yet supported (Phase 4)` |
+| E2029 | `lambda capture of \`{}\` (type \`{}\`) not yet supported: ...` |
+| E2030 | `lambda body cannot assign to captured variable \`{}\` (spec §6.2.1: captures are immutable in v1)` |
+| E2031 | `extern fn \`{}\` cannot use Function<...> types in {} (function values are not ABI-compatible with C; spec §7)` |
 
 ### D.3.3 E3xxx — 类型
 

@@ -24,9 +24,8 @@ class TypeSelfNode : public TypeNode {
     string _structName;
 
 public:
-    TypeSelfNode(const p<Node>& parent, Token selfTok, string structName) :
-        TypeNode(parent), _selfTok(std::move(selfTok)), _structName(std::move(structName)) {
-    }
+    TypeSelfNode(const p<Node>& parent, Token selfTok, string structName)
+        : TypeNode(parent), _selfTok(std::move(selfTok)), _structName(std::move(structName)) {}
 
     [[nodiscard]] TypeInfo getType() const override {
         // structName 为空 (typically spec 体内): 返回名为 "Self" 的占位 TypeInfo,
@@ -49,17 +48,11 @@ class TypeNormalNode : public TypeNode {
     Token _typeName;
 
 public:
-    TypeNormalNode(const p<Node>& parent, Token typeName) :
-        TypeNode(parent), _typeName(typeName) {
-    }
+    TypeNormalNode(const p<Node>& parent, Token typeName) : TypeNode(parent), _typeName(std::move(typeName)) {}
 
-    [[nodiscard]] TypeInfo getType() const override {
-        return TypeInfo(_typeName.getText());
-    }
+    [[nodiscard]] TypeInfo getType() const override { return TypeInfo(_typeName.getText()); }
 
-    [[nodiscard]] Token typeNameToken() const {
-        return _typeName;
-    }
+    [[nodiscard]] Token typeNameToken() const { return _typeName; }
 };
 
 class TypeArrayNode : public TypeNode {
@@ -67,28 +60,21 @@ class TypeArrayNode : public TypeNode {
     Token _count;
 
 public:
-    TypeArrayNode(const p<Node>& parent, p<TypeNode> elementType, Token count) :
-        TypeNode(parent), _elementType(elementType), _count(count) {
-    }
+    TypeArrayNode(const p<Node>& parent, p<TypeNode> elementType, Token count)
+        : TypeNode(parent), _elementType(elementType), _count(std::move(count)) {}
 
     [[nodiscard]] TypeInfo getType() const override {
         auto elemTypeInfo = _elementType->getType();
         auto elemShared = make_shared<TypeInfo>(elemTypeInfo);
         u64 size = stoull(_count.getText());
-        return TypeInfo(elemShared, size);
+        return {elemShared, size};
     }
 
-    [[nodiscard]] p<TypeNode> elementType() const {
-        return _elementType;
-    }
+    [[nodiscard]] p<TypeNode> elementType() const { return _elementType; }
 
-    [[nodiscard]] Token count() const {
-        return _count;
-    }
+    [[nodiscard]] Token count() const { return _count; }
 
-    [[nodiscard]] bool isArray() const override {
-        return true;
-    }
+    [[nodiscard]] bool isArray() const override { return true; }
 };
 
 class TypeGenericNode : public TypeNode {
@@ -96,42 +82,34 @@ class TypeGenericNode : public TypeNode {
     vector<p<TypeNode>> _typeArgs;
 
 public:
-    TypeGenericNode(const p<Node>& parent, Token baseName, vector<p<TypeNode>> typeArgs) :
-        TypeNode(parent), _baseName(baseName), _typeArgs(std::move(typeArgs)) {
-    }
+    TypeGenericNode(const p<Node>& parent, Token baseName, vector<p<TypeNode>> typeArgs)
+        : TypeNode(parent), _baseName(std::move(baseName)), _typeArgs(std::move(typeArgs)) {}
 
     [[nodiscard]] TypeInfo getType() const override {
         vector<sp<TypeInfo>> args;
+        args.reserve(_typeArgs.size());
         for (auto& typeArg : _typeArgs) {
             args.push_back(make_shared<TypeInfo>(typeArg->getType()));
         }
-        return TypeInfo(_baseName.getText(), args);
+        return {_baseName.getText(), args};
     }
 
-    [[nodiscard]] Token baseName() const {
-        return _baseName;
-    }
+    [[nodiscard]] Token baseName() const { return _baseName; }
 
-    [[nodiscard]] const vector<p<TypeNode>>& typeArgs() const {
-        return _typeArgs;
-    }
+    [[nodiscard]] const vector<p<TypeNode>>& typeArgs() const { return _typeArgs; }
 };
 
-// 函数类型节点 fn(P1, ..., Pn) R / fn?(...) R 紧凑形 nullable [#24]
-// 形参类型列表 + 可选返回类型（void 时为 nullptr）+ nullable 标志
-// 参数名不参与判等（§3.4）；本节点不存名
+// 函数类型节点 Function<P..., Ret> / Function<...>?
+// 形参类型列表 + 可选返回类型（unit 时为 nullptr）+ nullable 标志
+// 由特殊泛型 Function<...> 解糖而来；参数名不参与判等
 class TypeFnNode : public TypeNode {
     vector<p<TypeNode>> _paramTypes;
-    p<TypeNode> _retType;       // nullptr → void
-    bool _nullable;             // fn?(...)R
+    p<TypeNode> _retType; // nullptr → unit
+    bool _nullable;       // Function<...>?
 
 public:
-    TypeFnNode(const p<Node>& parent, vector<p<TypeNode>> paramTypes, p<TypeNode> retType, bool nullable) :
-        TypeNode(parent),
-        _paramTypes(std::move(paramTypes)),
-        _retType(std::move(retType)),
-        _nullable(nullable) {
-    }
+    TypeFnNode(const p<Node>& parent, vector<p<TypeNode>> paramTypes, p<TypeNode> retType, bool nullable)
+        : TypeNode(parent), _paramTypes(std::move(paramTypes)), _retType(retType), _nullable(nullable) {}
 
     [[nodiscard]] TypeInfo getType() const override {
         vector<sp<TypeInfo>> params;
@@ -147,6 +125,7 @@ public:
     [[nodiscard]] const vector<p<TypeNode>>& paramTypes() const { return _paramTypes; }
     [[nodiscard]] p<TypeNode> retType() const { return _retType; }
     [[nodiscard]] bool nullable() const { return _nullable; }
+    void setNullable(bool v) { _nullable = v; }
 };
 
 // 元组类型节点 (T1, T2, ...)
@@ -154,9 +133,8 @@ class TypeTupleNode : public TypeNode {
     vector<p<TypeNode>> _elementTypes;
 
 public:
-    TypeTupleNode(const p<Node>& parent, vector<p<TypeNode>> elementTypes) :
-        TypeNode(parent), _elementTypes(std::move(elementTypes)) {
-    }
+    TypeTupleNode(const p<Node>& parent, vector<p<TypeNode>> elementTypes)
+        : TypeNode(parent), _elementTypes(std::move(elementTypes)) {}
 
     [[nodiscard]] TypeInfo getType() const override {
         vector<sp<TypeInfo>> elems;
@@ -167,9 +145,7 @@ public:
         return TypeInfo(TupleTag{}, std::move(elems));
     }
 
-    [[nodiscard]] const vector<p<TypeNode>>& elementTypes() const {
-        return _elementTypes;
-    }
+    [[nodiscard]] const vector<p<TypeNode>>& elementTypes() const { return _elementTypes; }
 };
 
-#endif //YUX_LANG_TYPE_NODE_H
+#endif // YUX_LANG_TYPE_NODE_H

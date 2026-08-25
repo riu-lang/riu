@@ -3,6 +3,6 @@
 ; spec §3.7 / §5.5
 
 fn main() {
-  #Mut let w Weak<fn()i32>  ; check: E2001
+  #Mut let w Weak<Function<i32>>  ; check: E2001
   ret;
 }

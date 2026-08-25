@@ -13,9 +13,8 @@
 //
 // Phase 3 范围:
 // - 类型节点全套：type / typeWithRef 的 Normal / Generic / Nullable / Array
-//   / Tuple / Fn 各变体，统一处理后置 `&` 借用标记
-// - genericDef / genericDefWithRef / fnTypeParams / fnTypeParam / fnParams /
-//   fnParam 全套
+//   / Tuple 各变体，统一处理后置 `&` 借用标记
+// - genericDef / genericDefWithRef / fnParams / fnParam 全套
 // - fnHeader / fnBody 框架：fnHeader 用 Doc 重排参数；fnBody 表达式体走
 //   `= <rawExpr>`、块体走 `{...}` 把 statementBlock 内容当原文嵌入并按
 //   缩进规整一次
@@ -103,8 +102,6 @@ private:
     Doc typeWithRefDoc(yuxParser::TypeWithRefContext* ctx);
     Doc genericDefDoc(yuxParser::GenericDefContext* ctx);
     Doc genericDefWithRefDoc(yuxParser::GenericDefWithRefContext* ctx);
-    Doc fnTypeParamsDoc(yuxParser::FnTypeParamsContext* ctx);
-    Doc fnTypeParamDoc(yuxParser::FnTypeParamContext* ctx);
     Doc fnParamsDoc(yuxParser::FnParamsContext* ctx);
     Doc fnParamDoc(yuxParser::FnParamContext* ctx);
 
@@ -234,21 +231,6 @@ Doc Printer::typeDoc(yuxParser::TypeContext* ctx) {
         parts.push_back(text(")"));
         return concat(std::move(parts));
     }
-    if (auto* n = dynamic_cast<yuxParser::TypeFnContext*>(ctx)) {
-        std::vector<Doc> parts;
-        parts.push_back(text("fn"));
-        if (n->SymbolQuest() != nullptr) parts.push_back(text("?"));
-        parts.push_back(text("("));
-        if (n->fnTypeParams() != nullptr) {
-            parts.push_back(fnTypeParamsDoc(n->fnTypeParams()));
-        }
-        parts.push_back(text(")"));
-        if (n->retType != nullptr) {
-            // fn 类型字面量内：返回类型与 ) 之间不加空格 (`fn(i32)i32`)
-            parts.push_back(typeWithRefDoc(n->retType));
-        }
-        return concat(std::move(parts));
-    }
     // 兜底：未识别变体，使用原文
     return text(rawSpan(tokens_, ctx));
 }
@@ -289,21 +271,6 @@ Doc Printer::typeWithRefDoc(yuxParser::TypeWithRefContext* ctx) {
         parts.push_back(text(")"));
         return concat(std::move(parts));
     }
-    if (auto* n = dynamic_cast<yuxParser::TypeFnWithRefContext*>(ctx)) {
-        std::vector<Doc> parts;
-        parts.push_back(text("fn"));
-        if (n->SymbolQuest() != nullptr) parts.push_back(text("?"));
-        parts.push_back(text("("));
-        if (n->fnTypeParams() != nullptr) {
-            parts.push_back(fnTypeParamsDoc(n->fnTypeParams()));
-        }
-        parts.push_back(text(")"));
-        if (n->retType != nullptr) {
-            parts.push_back(typeWithRefDoc(n->retType));
-        }
-        parts.push_back(refSuffix(n->SymbolAnd()));
-        return concat(std::move(parts));
-    }
     return text(rawSpan(tokens_, ctx));
 }
 
@@ -339,36 +306,6 @@ Doc Printer::genericDefWithRefDoc(yuxParser::GenericDefWithRefContext* ctx) {
     }
     parts.push_back(text(">"));
     return concat(std::move(parts));
-}
-
-Doc Printer::fnTypeParamsDoc(yuxParser::FnTypeParamsContext* ctx) {
-    std::vector<Doc> parts;
-    auto params = ctx->fnTypeParam();
-    for (std::size_t i = 0; i < params.size(); ++i) {
-        if (i > 0) parts.push_back(text(", "));
-        parts.push_back(fnTypeParamDoc(params[i]));
-    }
-    return concat(std::move(parts));
-}
-
-Doc Printer::fnTypeParamDoc(yuxParser::FnTypeParamContext* ctx) {
-    if (auto* n = dynamic_cast<yuxParser::FnTypeParamNamedContext*>(ctx)) {
-        return concat({text(n->ID()->getText()), text(" "), typeWithRefDoc(n->typeWithRef())});
-    }
-    if (auto* n = dynamic_cast<yuxParser::FnTypeParamGroupContext*>(ctx)) {
-        std::vector<Doc> parts;
-        for (std::size_t i = 0; i < n->names.size(); ++i) {
-            if (i > 0) parts.push_back(text(", "));
-            parts.push_back(text(n->names[i]->getText()));
-        }
-        parts.push_back(text(" "));
-        parts.push_back(typeWithRefDoc(n->typeWithRef()));
-        return concat(std::move(parts));
-    }
-    if (auto* n = dynamic_cast<yuxParser::FnTypeParamUnnamedContext*>(ctx)) {
-        return typeWithRefDoc(n->typeWithRef());
-    }
-    return text(rawSpan(tokens_, ctx));
 }
 
 Doc Printer::fnParamsDoc(yuxParser::FnParamsContext* ctx) {

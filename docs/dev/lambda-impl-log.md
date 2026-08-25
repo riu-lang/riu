@@ -1,3 +1,5 @@
+> 2026-08-25：类型位语法已改为 `Function<P..., Ret>`（见 `docs/dev/function-type-impl-log.md`）。本日志保留 `fn(T)R` 作为落地时的历史写法。
+
 # Lambda 与函数类型 v1 实施日志
 
 > 注：本日志使用旧名 Box / box；当前等同 Rc<T>。

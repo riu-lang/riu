@@ -62,13 +62,20 @@ TypeInfo Compiler::resolvedOrInferredType(p<ExprNode> node) const {
 // 处理整数、浮点数、指针、引用等类型之间的转换
 // NOLINTBEGIN(bugprone-branch-clone)
 llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& srcType, const TypeInfo& dstType) {
-    // 相同类型无需转换
-    if (srcType == dstType) {
+    // 相同类型无需转换（含透明别名：IntUnOp = Function<i32, i32>）
+    if (srcType == dstType || resolveAlias(srcType) == resolveAlias(dstType)) {
         DEBUG_LOG_VAL("    Cast: no-op", srcType.name);
         return val;
     }
 
     DEBUG_LOG_VAL("    Cast", srcType.name << " -> " << dstType.name);
+
+    auto dstLLVMType = getLLVMType(dstType);
+    auto srcLLVMType = getLLVMType(srcType);
+    if (srcLLVMType == dstLLVMType) {
+        DEBUG_LOG_VAL("    Cast: no-op (same LLVM type)", srcType.name << " -> " << dstType.name);
+        return val;
+    }
 
     // 指针类型转换
     if (dstType.isPtr()) {
@@ -89,7 +96,6 @@ llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& srcType, con
     }
 
     // 数值类型转换
-    auto dstLLVMType = getLLVMType(dstType);
     bool srcIsFloat = srcType.startsWith('f');
     bool dstIsFloat = dstType.startsWith('f');
     bool srcIsUnsigned = srcType.startsWith('u');
@@ -106,7 +112,6 @@ llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& srcType, con
         }
     } else if (!srcIsFloat && !dstIsFloat) {
         // 整数之间的转换
-        auto srcLLVMType = getLLVMType(srcType);
 
         // bool 与整数的语义转换：不能用 trunc/sext，必须 icmp ne 0 / zext
         if (dstType.name == "bool") {

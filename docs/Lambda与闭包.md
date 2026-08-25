@@ -1,6 +1,6 @@
 # Lambda 与闭包
 
-本文档介绍 yux 中的函数类型字面量、lambda 字面量与闭包。
+本文档介绍 yux 中的函数类型、lambda 字面量与闭包。
 
 > 规范层条款见 `docs/spec/03-类型系统.md` §3.11、`docs/spec/04-表达式.md` §4.11、`docs/spec/06-函数.md` §6.5.5、`docs/spec/08-所有权与引用.md` §8.7.6。闭包捕获模型的完整决议见 `docs/spec/draft/DRAFT-closure-capture.md`（v0.16 已落地）。
 
@@ -8,7 +8,7 @@
 
 yux 把"函数"视作一等值：
 
-- **函数类型字面量** `fn(T)R`：与 `i32` / `Rc<T>` 并列的类型。
+- **函数类型** `Function<P..., Ret>`：与 `i32` / `Rc<T>` 并列的特殊泛型。
 - **lambda 字面量**：以 `=>` 标记的匿名函数表达式，求值得到一个函数值。
 - **闭包**：lambda 体引用外层变量时，编译器自动收集为捕获，无需显式列表。
 
@@ -16,32 +16,29 @@ yux 把"函数"视作一等值：
 
 ```yux
 ; 变量持有函数值
-#Mut let f fn(i32)i32 = (x i32) i32 => x + 1
+#Mut let f Function<i32, i32> = (x i32) i32 => x + 1
 println(f(41)) ; 42
 
 ; 类型别名（透明 alias）
-Predicate = fn(s String) bool
+Predicate = Function<String, bool>
 
 fn first_match(arr Array<String>, p Predicate) String {
   ; ...
 }
 ```
 
-写法约定（详见 spec §3.11.2 / §3.11.3）：
+写法约定（详见 spec §3.11）：
 
-- `fn` 与 `(` 之间**不带**空格：`fn(i32)i32` ✅；`fn (i32) i32` ❌。
-- `)` 与返回类型之间**不带**空格：`fn(i32)i32` ✅；`fn(i32) i32` ❌。
-- nullable 紧贴 `fn`：`fn?(T)R` 表"整个函数值可空"；`fn(T)R?` 表"函数值非空、返回 `R?`"。
-- `(fn(T)R)?` **禁**：统一到紧凑形 `fn?(T)R`。
-- `Weak<fn(...)>` **禁**：函数值有自带 RC 协议，不接 weak 句柄。
+- `Function` 是内置名（不是新关键字），末位类型实参永远是返回类型。
+- `Function<()>` = 0 参、返回 unit；`Function<i32>` = 0 参、返回 `i32`；`Function<i32, bool>` = `(i32) -> bool`。
+- 可空走标准 `?`：`Function<i32, i32>?`；返回可空是 `Function<i32, i32?>`。
+- `Weak<Function<...>>` **禁**：函数值不是堆句柄。
 
-类型相等是**结构等同**：参数名不参与判等，参数组糖与展开形等同。
+类型相等是**结构等同**。文档用别名，不在类型位写形参名。
 
 ```yux
-; 三者等同
-fn(i32, i32) i32
-fn(a i32, b i32) i32
-fn(a, b i32) i32
+Function<i32, i32, i32>            ; (i32, i32) -> i32
+Callback = Function<String, bool>  ; 别名即文档
 ```
 
 ## Lambda 字面量
@@ -54,7 +51,7 @@ let add = (a i32, b i32) i32 => a + b
 
 ; 单参省括号（裸 single）
 let inc = (x i32) i32 => x + 1   ; 完整形
-let f fn(i32)i32 = x => x + 1     ; 裸 single，类型由上下文反推
+let f Function<i32, i32> = x => x + 1     ; 裸 single，类型由上下文反推
 
 ; 块形（≥ 1 参，=> 分隔参列与体）
 let sum = { a i32, b i32 =>
@@ -64,7 +61,7 @@ let sum = { a i32, b i32 =>
 
 ; 0 参块（无 =>；必须多行真块，单行 { expr } 不是 lambda 而是 expr-lambda 的位置）
 ; 体内末位无 `;` 的表达式作 tail-return；返回类型由上下文反推
-let once fn()i32 = {
+let once Function<i32> = {
   42
 }
 ```
@@ -74,7 +71,7 @@ let once fn()i32 = {
 实参 / 字段值 / 别名右侧位置可省去形参类型：
 
 ```yux
-fn op(f fn(a, b i32) i32) i32 = f(1, 2)
+fn op(f Function<i32, i32, i32>) i32 = f(1, 2)
 
 ; { ... } 内的 a / b 由 op 的形参类型反推为 i32
 let r = op({ a, b => a + b })
@@ -108,7 +105,7 @@ let f = x => x + 1              ; ❌ 编译错（无上下文）
 op({ a, b => a + b })           ; 块形，类型由 op 形参反推
 op((a, b) => a + b)             ; 表达式形
 
-; 单参裸 single 仍可（apply 由用户定义，签名 fn(i32, fn(i32)i32) i32）
+; 单参裸 single 仍可（apply 由用户定义，签名 Function<i32, Function<i32, i32>, i32>）
 let r = apply(7, x => x * 2)
 ```
 
@@ -130,7 +127,7 @@ let name = (k Kind) String => match k {
 仅块形 lambda 可作"尾随实参糖"：
 
 ```yux
-fn each<T>(arr Array<T>, body fn(T)) {
+fn each<T>(arr Array<T>, body Function<T, ()>) {
   ; ...
 }
 
@@ -166,7 +163,7 @@ lambda 体引用了**非形参 / 非全局**的标识符，编译器自动收集
 | `Heap<T>`（非空堆） | **禁止捕获** → E4024（非空不可 move） |
 
 ```yux
-fn make_adder(n i32) fn(i32)i32 {
+fn make_adder(n i32) Function<i32, i32> {
   ret (x i32) i32 => x + n   ; 捕获标量 n（值复制）
 }
 
@@ -219,7 +216,7 @@ fn good() {
 捕获了 `T&` 的 lambda 自身按"广义 `T&`"处理 —— 不可逃逸出借用源 scope：
 
 ```yux
-fn make_reader(r i32&) fn() i32 {
+fn make_reader(r i32&) Function<i32> {
   ret () i32 => r              ; ❌ E4022：含 T& 捕获的 lambda 不能 ret 出去
 }
 
@@ -264,7 +261,7 @@ fn outer(c i32&) {
 `Heap<T>?`（可空堆）捕获时走 **B 档 move**：outer slot 写 null，env 独占所有权，lambda 析构时释放。
 
 ```yux
-fn make_handler(h Heap<Data>?) fn() {
+fn make_handler(h Heap<Data>?) Function<()> {
   ret () => {
     ; h 被捕获，outer slot 变 null
     ; lambda 析构时释放 env 中的 Heap 句柄
@@ -280,7 +277,7 @@ v1 显式不支持函数类型跨 FFI 边界：
 
 ```yux
 extern {
-  fn my_callback(cb fn()) ; ❌ E2031：extern fn 不接受 fn(...) 类型
+  fn my_callback(cb Function<()>) ; ❌ E2031：extern fn 不接受 Function<...> 类型
 }
 ```
 
@@ -288,7 +285,7 @@ extern {
 
 ## 不在范围
 
-- 泛型 lambda 字面量（`<T>(x T) => x`）：v1 不支持，推 v0.x+1。多数泛型需求由"外层泛型 fn + 内层单态 lambda" + 泛型类型别名 `Predicate<T> = fn(x T)bool` 已覆盖。
+- 泛型 lambda 字面量（`<T>(x T) => x`）：v1 不支持，推 v0.x+1。多数泛型需求由"外层泛型 fn + 内层单态 lambda" + 泛型类型别名 `Predicate<T> = Function<T, bool>` 已覆盖。
 - `it` 隐式参数名。
 - 函数值 `==` / 地址相等比较。
 - `#Inline` / `#CallOnce` 注解：v1 不引入；上线后将解锁 lambda 内对外层 `#Mut let` 变量的赋值直通。

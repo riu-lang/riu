@@ -16,9 +16,9 @@
 #include <memory>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
-#include <string>
 
 using namespace std;
 
@@ -46,8 +46,14 @@ using p = T*;
 extern bool debug;
 
 // NOLINTBEGIN(bugprone-macro-parentheses)
-#define DEBUG_LOG(msg) if(debug) { std::cerr << "[DEBUG] " << msg << '\n'; }
-#define DEBUG_LOG_VAL(msg, val) if(debug) { std::cerr << "[DEBUG] " << msg << ": " << val << '\n'; }
+#define DEBUG_LOG(msg)                                                                                                 \
+    if (debug) {                                                                                                       \
+        std::cerr << "[DEBUG] " << msg << '\n';                                                                        \
+    }
+#define DEBUG_LOG_VAL(msg, val)                                                                                        \
+    if (debug) {                                                                                                       \
+        std::cerr << "[DEBUG] " << msg << ": " << val << '\n';                                                         \
+    }
 // NOLINTEND(bugprone-macro-parentheses)
 
 #else
@@ -81,9 +87,7 @@ public:
 
     // 合成 Token：用于编译器解糖时构造没有真实 antlr token 的节点
     // 例如 T? -> Nullable<T> 时，"Nullable" 这个名字没有源文件来源
-    TokenInfo(string text, size_t line)
-        : _text(std::move(text)), _line(line) {
-    }
+    TokenInfo(string text, size_t line) : _text(std::move(text)), _line(line) {}
 
     TokenInfo(const TokenInfo& other) = default;
     TokenInfo(TokenInfo&& other) noexcept = default;
@@ -114,8 +118,7 @@ struct SourceLocation {
     int col = 0;
 
     SourceLocation() = default;
-    SourceLocation(int l, int c) : line(l), col(c) {
-    }
+    SourceLocation(int l, int c) : line(l), col(c) {}
 
     [[nodiscard]] bool valid() const { return line > 0; }
 };
@@ -137,11 +140,11 @@ inline constexpr size_t countFmtPlaceholders(std::string_view fmt) {
 
 class YuxError : public std::runtime_error {
     size_t _line = 0;
-    int _col = 0; // 0 表示列未知
-    const char* _code = "E0000"; // 指向 ErrorCode 表中的静态字面量
+    int _col = 0;                            // 0 表示列未知
+    const char* _code = "E0000";             // 指向 ErrorCode 表中的静态字面量
     DiagSeverity _sev = DiagSeverity::Error; // 默认严重等级（来源于 ErrorCodeDef.defaultSev）
-    vector<string> _hints; // 修复建议（"= help: ..."），可链式 withHint 追加
-    vector<string> _notes; // 附加说明（"= note: ..."），可链式 withNote 追加
+    vector<string> _hints;                   // 修复建议（"= help: ..."），可链式 withHint 追加
+    vector<string> _notes;                   // 附加说明（"= note: ..."），可链式 withNote 追加
 
 public:
     explicit YuxError(const string& msg, size_t line) : runtime_error(msg), _line(line) {
@@ -149,28 +152,28 @@ public:
     }
 
     template <class... Types>
-    explicit YuxError(size_t line, const format_string<Types...> format, Types&&... args) : runtime_error(
-        std::vformat(format.get(), std::make_format_args(args...))), _line(line) {
+    explicit YuxError(size_t line, const format_string<Types...> format, Types&&... args)
+        : runtime_error(std::vformat(format.get(), std::make_format_args(args...))), _line(line) {
         assert(line > 0 && "YuxError line must be > 0");
     }
 
     template <class... Types>
-    explicit YuxError(size_t line, int col, const format_string<Types...> format, Types&&... args) : runtime_error(
-        std::vformat(format.get(), std::make_format_args(args...))), _line(line), _col(col) {
+    explicit YuxError(size_t line, int col, const format_string<Types...> format, Types&&... args)
+        : runtime_error(std::vformat(format.get(), std::make_format_args(args...))), _line(line), _col(col) {
         assert(line > 0 && "YuxError line must be > 0");
     }
 
     template <class... Types>
-    explicit YuxError(SourceLocation loc, const format_string<Types...> format, Types&&... args) : runtime_error(
-        std::vformat(format.get(), std::make_format_args(args...))), _line(loc.line), _col(loc.col) {
+    explicit YuxError(SourceLocation loc, const format_string<Types...> format, Types&&... args)
+        : runtime_error(std::vformat(format.get(), std::make_format_args(args...))), _line(loc.line), _col(loc.col) {
         assert(loc.line > 0 && "YuxError line must be > 0");
     }
 
     // ErrorCode 路径：模板取自 ec.message，code 取自 ec.code
     template <class... Types>
-    explicit YuxError(size_t line, int col, const ErrorCodeDef& ec, Types&&... args) : runtime_error(
-        std::vformat(std::string_view(ec.message), std::make_format_args(args...))),
-        _line(line), _col(col), _code(ec.code), _sev(ec.defaultSev) {
+    explicit YuxError(size_t line, int col, const ErrorCodeDef& ec, Types&&... args)
+        : runtime_error(std::vformat(std::string_view(ec.message), std::make_format_args(args...))), _line(line),
+          _col(col), _code(ec.code), _sev(ec.defaultSev) {
         assert(line > 0 && "YuxError line must be > 0");
 #ifndef NDEBUG
         assert(sizeof...(args) == countFmtPlaceholders(ec.message) && "ErrorCode format arg count mismatch");
@@ -179,9 +182,9 @@ public:
 
     // 列未知场景的便利重载（驱动层 / 模块层 errorLine）
     template <class... Types>
-    explicit YuxError(size_t line, const ErrorCodeDef& ec, Types&&... args) : runtime_error(
-        std::vformat(std::string_view(ec.message), std::make_format_args(args...))),
-        _line(line), _code(ec.code), _sev(ec.defaultSev) {
+    explicit YuxError(size_t line, const ErrorCodeDef& ec, Types&&... args)
+        : runtime_error(std::vformat(std::string_view(ec.message), std::make_format_args(args...))), _line(line),
+          _code(ec.code), _sev(ec.defaultSev) {
         assert(line > 0 && "YuxError line must be > 0");
 #ifndef NDEBUG
         assert(sizeof...(args) == countFmtPlaceholders(ec.message) && "ErrorCode format arg count mismatch");
@@ -189,9 +192,9 @@ public:
     }
 
     template <class... Types>
-    explicit YuxError(SourceLocation loc, const ErrorCodeDef& ec, Types&&... args) : runtime_error(
-        std::vformat(std::string_view(ec.message), std::make_format_args(args...))),
-        _line(loc.line), _col(loc.col), _code(ec.code), _sev(ec.defaultSev) {
+    explicit YuxError(SourceLocation loc, const ErrorCodeDef& ec, Types&&... args)
+        : runtime_error(std::vformat(std::string_view(ec.message), std::make_format_args(args...))), _line(loc.line),
+          _col(loc.col), _code(ec.code), _sev(ec.defaultSev) {
         assert(loc.line > 0 && "YuxError line must be > 0");
 #ifndef NDEBUG
         assert(sizeof...(args) == countFmtPlaceholders(ec.message) && "ErrorCode format arg count mismatch");
@@ -205,9 +208,7 @@ public:
 
     void setColumn(int col) { _col = col; }
 
-    [[nodiscard]] size_t getLineNumber() const {
-        return _line;
-    }
+    [[nodiscard]] size_t getLineNumber() const { return _line; }
 
     [[nodiscard]] int getColumn() const { return _col; }
 
@@ -218,10 +219,22 @@ public:
     [[nodiscard]] DiagSeverity getSeverity() const { return _sev; }
 
     // 链式追加 help / note：支持 `throw YuxError(...).withHint("...")` 形态
-    YuxError& withHint(string h) & { _hints.push_back(std::move(h)); return *this; }
-    YuxError&& withHint(string h) && { _hints.push_back(std::move(h)); return std::move(*this); }
-    YuxError& withNote(string n) & { _notes.push_back(std::move(n)); return *this; }
-    YuxError&& withNote(string n) && { _notes.push_back(std::move(n)); return std::move(*this); }
+    YuxError& withHint(string h) & {
+        _hints.push_back(std::move(h));
+        return *this;
+    }
+    YuxError&& withHint(string h) && {
+        _hints.push_back(std::move(h));
+        return std::move(*this);
+    }
+    YuxError& withNote(string n) & {
+        _notes.push_back(std::move(n));
+        return *this;
+    }
+    YuxError&& withNote(string n) && {
+        _notes.push_back(std::move(n));
+        return std::move(*this);
+    }
 
     [[nodiscard]] const vector<string>& hints() const { return _hints; }
     [[nodiscard]] const vector<string>& notes() const { return _notes; }
@@ -245,36 +258,36 @@ T any_cast_v(const std::any& a) {
 }
 
 enum class TypeKind : u8 {
-    Normal,        // 普通具名类型（内置标量 / 用户 struct 名 / Self）
-    Generic,       // 用户定义泛型结构体实例化（如 MyVec<i32>）
-    Rc,            // 内置 Rc<T> 智能指针
-    Ref,           // 内置 Ref<T> / T& 引用
-    Weak,          // 内置 Weak<T> 弱引用
-    Heap,          // 内置 Heap<T> 堆作用域句柄
-    Dyn,           // 内置 Dyn<D> 动态分发
-    ArrayGeneric,  // 内置 Array<T> 动态数组
-    Nullable,      // 内置 Nullable<T> / T?
-    Ptr,           // 内置原始指针（void*）
-    Array,         // 固定大小数组 [T * N]
-    Tuple,         // 元组 (T1, T2, ...)
-    Fn             // 函数类型字面量 fn(P1, ..., Pn) R（结构等同；参数名不参与判等）
+    Normal,       // 普通具名类型（内置标量 / 用户 struct 名 / Self）
+    Generic,      // 用户定义泛型结构体实例化（如 MyVec<i32>）
+    Rc,           // 内置 Rc<T> 智能指针
+    Ref,          // 内置 Ref<T> / T& 引用
+    Weak,         // 内置 Weak<T> 弱引用
+    Heap,         // 内置 Heap<T> 堆作用域句柄
+    Dyn,          // 内置 Dyn<D> 动态分发
+    ArrayGeneric, // 内置 Array<T> 动态数组
+    Nullable,     // 内置 Nullable<T> / T?
+    Ptr,          // 内置原始指针（void*）
+    Array,        // 固定大小数组 [T * N]
+    Tuple,        // 元组 (T1, T2, ...)
+    Fn            // 函数类型 Function<P1, ..., Pn, Ret>（结构等同；末位为返回类型）
 };
 
 // 元组类型构造时使用的 tag，用来与 Generic 构造区分
 struct TupleTag {};
 
-// 函数类型构造 tag；fnRet 为返回类型（void 时传 nullptr 或空 TypeInfo）
+// 函数类型构造 tag；fnRet 为返回类型（unit 时传 nullptr 或空 TypeInfo）
 struct FnTag {};
 
 // 根据内置泛型包装名称返回对应 TypeKind；非内置名返回 TypeKind::Generic
 // 用于 TypeInfo(string, vector<sp<TypeInfo>>) 构造函数自动分发，消除字符串比对
 inline TypeKind kindForBuiltinWrapper(const string& name) {
-    if (name == "Rc")       return TypeKind::Rc;
-    if (name == "Ref")      return TypeKind::Ref;
-    if (name == "Weak")     return TypeKind::Weak;
-    if (name == "Heap")     return TypeKind::Heap;
-    if (name == "Dyn")      return TypeKind::Dyn;
-    if (name == "Array")    return TypeKind::ArrayGeneric;
+    if (name == "Rc") return TypeKind::Rc;
+    if (name == "Ref") return TypeKind::Ref;
+    if (name == "Weak") return TypeKind::Weak;
+    if (name == "Heap") return TypeKind::Heap;
+    if (name == "Dyn") return TypeKind::Dyn;
+    if (name == "Array") return TypeKind::ArrayGeneric;
     if (name == "Nullable") return TypeKind::Nullable;
     return TypeKind::Generic;
 }
@@ -283,9 +296,9 @@ struct TypeInfo {
     TypeKind kind = TypeKind::Normal;
     string name;
     u64 arraySize = 0;
-    sp<TypeInfo> elementType = nullptr;     // Array 元素类型 / Fn 返回类型（void 时为 nullptr）
-    vector<sp<TypeInfo>> genericArgs;       // Generic 实参 / Tuple 元素 / Fn 形参类型列表
-    bool fnNullable = false;                // Fn: fn?(...)R 紧凑形 nullable [#24]
+    sp<TypeInfo> elementType = nullptr; // Array 元素类型 / Fn 返回类型（unit 时为 nullptr）
+    vector<sp<TypeInfo>> genericArgs;   // Generic 实参 / Tuple 元素 / Fn 形参类型列表
+    bool fnNullable = false;            // Fn: Function<...>? 可空（仍 16 字节 fat-ptr，不套 Nullable）
 
     TypeInfo() = default;
 
@@ -297,25 +310,19 @@ struct TypeInfo {
 
     // 泛型实例化构造：根据 name 自动分发到正确的 TypeKind
     // 内置包装（Rc/Ref/Weak/Heap/Dyn/Array/Nullable）→ 对应专有 kind
+    // Function<P..., Ret> → TypeKind::Fn（末位为返回类型）
+    // Nullable<Function<...>> 折叠为 Fn + fnNullable（可空仍是 16 字节 fat-ptr）
     // 其他 → TypeKind::Generic（用户定义泛型结构体）
-    TypeInfo(string n, vector<sp<TypeInfo>> args) :
-        kind(kindForBuiltinWrapper(n)),
-        name(std::move(n)),
-        genericArgs(std::move(args)) {
-    }
+    TypeInfo(string n, vector<sp<TypeInfo>> args);
 
-    TypeInfo(sp<TypeInfo> elemType, u64 size) :
-        kind(TypeKind::Array),
-        arraySize(size),
-        elementType(std::move(elemType)) {
+    TypeInfo(sp<TypeInfo> elemType, u64 size)
+        : kind(TypeKind::Array), arraySize(size), elementType(std::move(elemType)) {
         name = "[" + elementType->name + " * " + to_string(arraySize) + "]";
     }
 
     // 元组类型 (T1, T2, ...)
     // 元素列表复用 genericArgs 存储；name 合成为 "(T1,T2,...)" 形式
-    TypeInfo(TupleTag, vector<sp<TypeInfo>> elements) :
-        kind(TypeKind::Tuple),
-        genericArgs(std::move(elements)) {
+    TypeInfo(TupleTag, vector<sp<TypeInfo>> elements) : kind(TypeKind::Tuple), genericArgs(std::move(elements)) {
         name = "(";
         for (size_t i = 0; i < genericArgs.size(); ++i) {
             if (i > 0) name += ",";
@@ -324,25 +331,29 @@ struct TypeInfo {
         name += ")";
     }
 
-    // 函数类型 fn(P1,...,Pn) R / fn?(...)R nullable 紧凑形 [#24]
-    // 形参类型列表存 genericArgs；返回类型存 elementType（void 时为 nullptr）
-    // name 合成为 "fn(P1,P2,...)R" / "fn?(P1,P2,...)R"，参数名不参与（§3.4）
-    TypeInfo(FnTag, vector<sp<TypeInfo>> paramTypes, sp<TypeInfo> retType, bool nullable = false) :
-        kind(TypeKind::Fn),
-        elementType(std::move(retType)),
-        genericArgs(std::move(paramTypes)),
-        fnNullable(nullable) {
+    // 函数类型 Function<P..., Ret> / Function<...>?
+    // 形参类型列表存 genericArgs；返回类型存 elementType（unit 时为 nullptr）
+    // 末位永远是返回类型；unit 返回写 ()
+    TypeInfo(FnTag, vector<sp<TypeInfo>> paramTypes, sp<TypeInfo> retType, bool nullable = false)
+        : kind(TypeKind::Fn), elementType(std::move(retType)), genericArgs(std::move(paramTypes)),
+          fnNullable(nullable) {
         // 规范化：() 返回类型等价于省略 retType（皆为 unit）
         if (elementType && elementType->kind == TypeKind::Tuple && elementType->genericArgs.empty()) {
             elementType = nullptr;
         }
-        name = nullable ? "fn?(" : "fn(";
+        rebuildFnName();
+    }
+
+    void rebuildFnName() {
+        name = "Function<";
         for (size_t i = 0; i < genericArgs.size(); ++i) {
             if (i > 0) name += ",";
             name += genericArgs[i] ? genericArgs[i]->name : "?";
         }
-        name += ")";
-        if (elementType) name += elementType->name;
+        if (!genericArgs.empty()) name += ",";
+        name += elementType ? elementType->name : "()";
+        name += ">";
+        if (fnNullable) name += "?";
     }
 
     [[nodiscard]] bool isArray() const { return kind == TypeKind::Array; }
@@ -361,16 +372,14 @@ struct TypeInfo {
     // 函数类型形参列表（仅 isFn() 时有意义）
     [[nodiscard]] const vector<sp<TypeInfo>>& fnParamTypes() const { return genericArgs; }
 
-    // 函数类型返回值（void 时为 nullptr）
+    // 函数类型返回值（unit 时为 nullptr）
     [[nodiscard]] sp<TypeInfo> fnReturnType() const { return elementType; }
 
     [[nodiscard]] bool empty() const { return name.empty(); }
 
     [[nodiscard]] bool startsWith(char c) const { return !name.empty() && name[0] == c; }
 
-    [[nodiscard]] bool isRef() const {
-        return kind == TypeKind::Ref && genericArgs.size() == 1;
-    }
+    [[nodiscard]] bool isRef() const { return kind == TypeKind::Ref && genericArgs.size() == 1; }
 
     [[nodiscard]] sp<TypeInfo> refElementType() const {
         if (isRef() && genericArgs.size() == 1) {
@@ -379,9 +388,7 @@ struct TypeInfo {
         return nullptr;
     }
 
-    [[nodiscard]] bool isRc() const {
-        return kind == TypeKind::Rc && genericArgs.size() == 1;
-    }
+    [[nodiscard]] bool isRc() const { return kind == TypeKind::Rc && genericArgs.size() == 1; }
 
     [[nodiscard]] sp<TypeInfo> rcElementType() const {
         if (isRc() && genericArgs.size() == 1) {
@@ -392,9 +399,7 @@ struct TypeInfo {
 
     // Heap<T>：堆作用域句柄（DRAFT-heap-types §8.3a），layout = 裸 T*
     // 与 Rc<T> 不同：无 RC 头、单所有权、作用域绑定析构、不可装入 Rc/Weak（§8.3a.5.1）
-    [[nodiscard]] bool isHeap() const {
-        return kind == TypeKind::Heap && genericArgs.size() == 1;
-    }
+    [[nodiscard]] bool isHeap() const { return kind == TypeKind::Heap && genericArgs.size() == 1; }
 
     [[nodiscard]] sp<TypeInfo> heapElementType() const {
         if (isHeap() && genericArgs.size() == 1) {
@@ -405,9 +410,7 @@ struct TypeInfo {
 
     // Weak<T>：弱引用，layout 与 Rc<T> 同形 { ptr handle }
     // handle 指向 Rc 的 Block；weak 计数维护 block 存活，不维护 payload 存活
-    [[nodiscard]] bool isWeak() const {
-        return kind == TypeKind::Weak && genericArgs.size() == 1;
-    }
+    [[nodiscard]] bool isWeak() const { return kind == TypeKind::Weak && genericArgs.size() == 1; }
 
     [[nodiscard]] sp<TypeInfo> weakElementType() const {
         if (isWeak() && genericArgs.size() == 1) {
@@ -416,9 +419,7 @@ struct TypeInfo {
         return nullptr;
     }
 
-    [[nodiscard]] bool isPtr() const {
-        return kind == TypeKind::Ptr;
-    }
+    [[nodiscard]] bool isPtr() const { return kind == TypeKind::Ptr; }
 
     [[nodiscard]] sp<TypeInfo> ptrElementType() const {
         if (isPtr() && genericArgs.size() == 1) {
@@ -427,9 +428,7 @@ struct TypeInfo {
         return nullptr;
     }
 
-    [[nodiscard]] bool isArrayGeneric() const {
-        return kind == TypeKind::ArrayGeneric && genericArgs.size() == 1;
-    }
+    [[nodiscard]] bool isArrayGeneric() const { return kind == TypeKind::ArrayGeneric && genericArgs.size() == 1; }
 
     [[nodiscard]] sp<TypeInfo> arrayGenericElementType() const {
         if (isArrayGeneric() && genericArgs.size() == 1) {
@@ -441,17 +440,11 @@ struct TypeInfo {
     // Dyn<D> / Dyn<D&>：draft 运行时多态形态（DRAFT-dyn-draft / 拟 §12.9）
     // layout = { vtable_ptr, data_ptr } 16 字节 fat pointer。
     // 内层若为 Ref<D> 则是借用形态 (Dyn<D&>)，否则 owned。
-    [[nodiscard]] bool isDyn() const {
-        return kind == TypeKind::Dyn && genericArgs.size() == 1;
-    }
+    [[nodiscard]] bool isDyn() const { return kind == TypeKind::Dyn && genericArgs.size() == 1; }
 
-    [[nodiscard]] bool isDynBorrow() const {
-        return isDyn() && genericArgs[0] && genericArgs[0]->isRef();
-    }
+    [[nodiscard]] bool isDynBorrow() const { return isDyn() && genericArgs[0] && genericArgs[0]->isRef(); }
 
-    [[nodiscard]] bool isDynOwned() const {
-        return isDyn() && genericArgs[0] && !genericArgs[0]->isRef();
-    }
+    [[nodiscard]] bool isDynOwned() const { return isDyn() && genericArgs[0] && !genericArgs[0]->isRef(); }
 
     // 拿 D（剥掉借用形态外层的 Ref）。
     [[nodiscard]] sp<TypeInfo> dynSpecType() const {
@@ -461,9 +454,7 @@ struct TypeInfo {
     }
 
     // Nullable<T>：T? 解糖后的类型；layout = { bool _has; T _value }
-    [[nodiscard]] bool isNullable() const {
-        return kind == TypeKind::Nullable && genericArgs.size() == 1;
-    }
+    [[nodiscard]] bool isNullable() const { return kind == TypeKind::Nullable && genericArgs.size() == 1; }
 
     [[nodiscard]] sp<TypeInfo> nullableInnerType() const {
         if (isNullable() && genericArgs.size() == 1) {
@@ -475,22 +466,22 @@ struct TypeInfo {
     // 是否有类型实参：Generic（用户泛型）或内置包装类型
     [[nodiscard]] bool hasGenericArgs() const {
         switch (kind) {
-            case TypeKind::Generic:
-            case TypeKind::Rc:
-            case TypeKind::Ref:
-            case TypeKind::Weak:
-            case TypeKind::Heap:
-            case TypeKind::Dyn:
-            case TypeKind::ArrayGeneric:
-            case TypeKind::Nullable:
-                return true;
-            default:
-                return false;
+        case TypeKind::Generic:
+        case TypeKind::Rc:
+        case TypeKind::Ref:
+        case TypeKind::Weak:
+        case TypeKind::Heap:
+        case TypeKind::Dyn:
+        case TypeKind::ArrayGeneric:
+        case TypeKind::Nullable:
+            return true;
+        default:
+            return false;
         }
     }
 
     // 完整类型名（与 yux 源码写法一致，用于报错/调试输出）：
-    // 泛型 Base<Arg1,Arg2>，元组 (T1,T2)，函数 fn(P1,...,Pn)R，数组 [E*N]
+    // 泛型 Base<Arg1,Arg2>，元组 (T1,T2)，函数 Function<P...,Ret>，数组 [E*N]
     [[nodiscard]] string getFullName() const {
         if (hasGenericArgs() && !genericArgs.empty()) {
             string result = name + "<";
@@ -514,22 +505,15 @@ struct TypeInfo {
             result += ")";
             return result;
         }
-        // 函数：fn(P1,...,Pn)R / fn?(...)R
+        // 函数：Function<P...,Ret> / Function<...>?
         if (kind == TypeKind::Fn) {
-            string result = fnNullable ? "fn?(" : "fn(";
-            for (size_t i = 0; i < genericArgs.size(); ++i) {
-                if (i > 0) result += ",";
-                result += genericArgs[i] ? genericArgs[i]->getFullName() : string("?");
-            }
-            result += ")";
-            result += elementType ? elementType->getFullName() : string("void");
-            return result;
+            return formatFnGeneric(false);
         }
         return name;
     }
 
     // LLVM 符号用 mangle 名（与 yux 源码写法一致）：
-    // 泛型 Base<Arg1,Arg2>，元组 (T1,T2)，函数 fn(P1,...,Pn)R，数组 [E*N]
+    // 泛型 Base<Arg1,Arg2>，元组 (T1,T2)，函数 Function<P...,Ret>，数组 [E*N]
     [[nodiscard]] string getMangleName() const {
         if (hasGenericArgs() && !genericArgs.empty()) {
             string result = name + "<";
@@ -553,18 +537,32 @@ struct TypeInfo {
             result += ")";
             return result;
         }
-        // 函数：fn(P1,...,Pn)R / fn?(...)R
+        // 函数：Function<P...,Ret> / Function<...>?
         if (kind == TypeKind::Fn) {
-            string result = fnNullable ? "fn?(" : "fn(";
-            for (size_t i = 0; i < genericArgs.size(); ++i) {
-                if (i > 0) result += ",";
-                result += genericArgs[i] ? genericArgs[i]->getMangleName() : string("?");
-            }
-            result += ")";
-            result += elementType ? elementType->getMangleName() : string("void");
-            return result;
+            return formatFnGeneric(true);
         }
         return name;
+    }
+
+    [[nodiscard]] string formatFnGeneric(bool mangle) const {
+        string result = "Function<";
+        for (size_t i = 0; i < genericArgs.size(); ++i) {
+            if (i > 0) result += ",";
+            if (!genericArgs[i]) {
+                result += "?";
+            } else {
+                result += mangle ? genericArgs[i]->getMangleName() : genericArgs[i]->getFullName();
+            }
+        }
+        if (!genericArgs.empty()) result += ",";
+        if (!elementType) {
+            result += "()";
+        } else {
+            result += mangle ? elementType->getMangleName() : elementType->getFullName();
+        }
+        result += ">";
+        if (fnNullable) result += "?";
+        return result;
     }
 
     // 应用类型形参替换。Normal 类型若匹配 subst 键则整体替换（可被替换为 Generic/Array 等）。
@@ -632,7 +630,7 @@ struct TypeInfo {
                 if (!genericArgs[i] || !other.genericArgs[i]) return false;
                 if (*genericArgs[i] != *other.genericArgs[i]) return false;
             }
-            // 返回类型：void（nullptr）也参与判等
+            // 返回类型：unit（nullptr）也参与判等
             if (!elementType && !other.elementType) return true;
             if (!elementType || !other.elementType) return false;
             return *elementType == *other.elementType;
@@ -640,15 +638,37 @@ struct TypeInfo {
         return true;
     }
 
-    bool operator!=(const TypeInfo& other) const {
-        return !(*this == other);
-    }
+    bool operator!=(const TypeInfo& other) const { return !(*this == other); }
 };
 
+inline TypeInfo::TypeInfo(string n, vector<sp<TypeInfo>> args) {
+    // Function<P..., Ret>：末位是返回类型，其余是形参
+    if (n == "Function") {
+        kind = TypeKind::Fn;
+        if (!args.empty()) {
+            elementType = args.back();
+            genericArgs.assign(args.begin(), args.end() - 1);
+            if (elementType && elementType->kind == TypeKind::Tuple && elementType->genericArgs.empty()) {
+                elementType = nullptr;
+            }
+        }
+        rebuildFnName();
+        return;
+    }
+    // Function<...>? 走标准 `?` 后缀，AST 会包一层 Nullable；折叠回 fat-ptr 可空
+    if (n == "Nullable" && args.size() == 1 && args[0] && args[0]->isFn() && !args[0]->fnNullable) {
+        *this = *args[0];
+        fnNullable = true;
+        rebuildFnName();
+        return;
+    }
+    kind = kindForBuiltinWrapper(n);
+    name = std::move(n);
+    genericArgs = std::move(args);
+}
+
 inline bool isBuiltinType(const string& typeName) {
-    static const vector<string> builtinTypes = {
-        "bool", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64",
-        "isize", "usize"
-    };
+    static const vector<string> builtinTypes = {"bool", "i8",  "i16", "i32", "i64",   "u8",   "u16",
+                                                "u32",  "u64", "f32", "f64", "isize", "usize"};
     return std::ranges::find(builtinTypes, typeName) != builtinTypes.end();
 }

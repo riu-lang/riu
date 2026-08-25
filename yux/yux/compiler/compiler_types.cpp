@@ -404,7 +404,7 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     // 注：正常情况下构造函数 kindForBuiltinWrapper() 已自动分发到正确 kind，
     // 此检查仅防御单参 TypeInfo(name) 误用或未来回归。
     if (type.isNormal()) {
-        static constexpr std::array<std::pair<const char*, size_t>, 8> kBuiltinGenerics{{
+        static constexpr std::array<std::pair<const char*, size_t>, 9> kBuiltinGenerics{{
             {"Rc", 1},
             {"Weak", 1},
             {"Array", 1},
@@ -412,6 +412,7 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             {"Heap", 1},
             {"Ref", 1},
             {"Dyn", 1},
+            {"Function", 1},
             {"Ptr", 0},
         }};
         for (auto [bname, arity] : kBuiltinGenerics) {
@@ -521,8 +522,8 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         if (inner) {
             DEBUG_LOG_VAL("    -> NullableType (struct)", type.name);
             vector<llvm::Type*> fields;
-            fields.push_back(_builder.getInt1Ty());          // _has: bool
-            fields.push_back(getLLVMType(*inner));          // _value: T
+            fields.push_back(_builder.getInt1Ty()); // _has: bool
+            fields.push_back(getLLVMType(*inner));  // _value: T
             return llvm::StructType::get(_context, fields);
         }
         return nullptr;
@@ -540,9 +541,8 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         return llvm::StructType::get(_context, dynFields);
     }
 
-    // 函数类型字面量 fn(P1,...) R / fn?(...) R → 16 字节 fat-ptr 占位（spec §5.2）
-    // layout: { ptr fn_ptr, ptr captures }；captures 为 Rc<CapturesT>? handle，
-    // Phase 1 仅占位（不生成调用），调用 / RC / 闭包推迟 Phase 2/3/4
+    // 函数类型 Function<P..., Ret> / Function<...>? → 16 字节 fat-ptr
+    // layout: { ptr fn_ptr, ptr captures }；可空仍是同一布局（fn_ptr == null）
     if (type.isFn()) {
         DEBUG_LOG_VAL("    -> FnType (fat-ptr placeholder)", type.name);
         vector<llvm::Type*> fnFields;
@@ -617,9 +617,9 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             if (resolved) return resolved;
             // Fallback: build String type directly (test context, SDK not yet loaded)
             // String = { _buf: Rc<Array<u32>> } = { { ptr } } — 8 字节
-            vector<llvm::Type*> rcFields = {ptrTy};                           // Rc<Array<u32>> = { ptr handle }
+            vector<llvm::Type*> rcFields = {ptrTy}; // Rc<Array<u32>> = { ptr handle }
             auto* rcTy = llvm::StructType::get(_context, rcFields);
-            vector<llvm::Type*> strFields = {rcTy};                           // String = { Rc<Array<u32>> }
+            vector<llvm::Type*> strFields = {rcTy}; // String = { Rc<Array<u32>> }
             return llvm::StructType::get(_context, strFields);
         }();
         if (type.name == "Field" || type.name == "Method" || type.name == "Variant") {

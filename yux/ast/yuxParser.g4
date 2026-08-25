@@ -152,23 +152,16 @@ type:
     | ParStart types+=type
         (SymbolComma types+=type)+
       ParEnd                   #typeTuple
-    // fn(T)R / fn?(T)R / fn() / 名可省 / 组糖 a, b T
-    | Fn SymbolQuest?
-      ParStart
-        fnTypeParams?
-      ParEnd
-      retType=typeWithRef?     #typeFn
     ;
 
 typeWithRef:
     // 注意：typeNullableWithRef 必须排在 typeNormalWithRef 前面 ——
-    // 否则 `T?` 会被 typeNormalWithRef 吃掉 `T` 后把 `?` 漏给外层 typeNullable，
-    // 导致 fn 类型字面量的 retType `i32?` 被错切成 `(fn(...)i32)?`（违反 [#24]）
+    // 否则 `T?` 会被 typeNormalWithRef 吃掉 `T` 后把 `?` 漏给外层 typeNullable
       type SymbolQuest SymbolAnd?       #typeNullableWithRef
     | ID SymbolAnd? #typeNormalWithRef
     // [PROBE static-fn] Self&
     | SelfType SymbolAnd? #typeSelfWithRef
-    // A<T> B<T1, T2>
+    // A<T> B<T1, T2>；函数类型 Function<P..., Ret> 走此支（特殊泛型）
     | ID genericDefWithRef SymbolAnd?   #typeGenericWithRef
     // [ type * count ]
     | GetStart
@@ -182,27 +175,6 @@ typeWithRef:
         types+=typeWithRef
         (SymbolComma types+=typeWithRef)+
       ParEnd                            #typeTupleWithRef
-    // 函数类型出现在 typeWithRef 位（fn 形参 / 返回值）；外层 & 借用一个 fn 值
-    | Fn SymbolQuest?
-      ParStart
-        fnTypeParams?
-      ParEnd retType=typeWithRef?
-      SymbolAnd?                        #typeFnWithRef
-    ;
-
-// fn 类型字面量参数：名可省（仅文档），允许组糖 a, b T；类型用 typeWithRef（支持 T&）
-fnTypeParams:
-    fnTypeParam
-    (SymbolComma LineEnd* fnTypeParam)*
-    SymbolComma?
-    LineEnd*
-    ;
-
-fnTypeParam:
-      (names+=ID SymbolComma LineEnd*)+
-      names+=ID typeWithRef         # fnTypeParamGroup
-    | name=ID typeWithRef           # fnTypeParamNamed
-    | typeWithRef                   # fnTypeParamUnnamed
     ;
 
 // typeParam: 单个类型形参 / 类型实参槽位。

@@ -573,7 +573,7 @@ fn test_heap_3d3_call_site_field_no_double_free() {
 #Test
 fn test_heap_3e_lambda_move_capture_nullable() {
   let h Heap<i32>? = heap_some(33)
-  let f fn()bool = {
+  let f Function<bool> = {
     h.has()
   }
   assert_eq(h.has(), false)
@@ -584,7 +584,7 @@ fn test_heap_3e_lambda_move_capture_nullable() {
 #Test
 fn test_heap_3e_lambda_move_capture_null_source() {
   let h Heap<i32>? = heap_null:<i32>()
-  let f fn()bool = {
+  let f Function<bool> = {
     h.has()
   }
   assert_eq(h.has(), false)
@@ -595,7 +595,7 @@ fn test_heap_3e_lambda_move_capture_null_source() {
 #Test
 fn test_heap_3e_lambda_move_capture_no_double_free() {
   let h Heap<i32>? = heap_some(7)
-  let f fn()bool = {
+  let f Function<bool> = {
     h.has()
   }
   let _ bool = f()

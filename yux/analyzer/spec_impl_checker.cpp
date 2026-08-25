@@ -14,11 +14,11 @@
 
 #include "spec_impl_checker.h"
 
-#include "error_code.h"
 #include "ast/node/alias_node.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/type_node.h"
 #include "ast/yux.h"
+#include "error_code.h"
 #include "spec_registry.h"
 
 #include <functional>
@@ -31,9 +31,10 @@ namespace {
 // 内置类型按 yux.core 归属 (§12.5 orphan 用; SDK base.yux 内为这些类型
 // 实现 ToString 等内置 draft 视为合法).
 const std::set<std::string>& builtinTypeNames() {
-    static const std::set<std::string> s = {"i8",    "u8",   "i16", "u16",      "i32",    "u32",           "i64",
-                                            "u64",   "f32",  "f64", "bool",     "String", "StringBuilder", "Rc",
-                                            "Array", "Weak", "Ptr", "Nullable", "Ref",    "isize",         "usize"};
+    static const std::set<std::string> s = {"i8",      "u8",   "i16", "u16",      "i32",    "u32",           "i64",
+                                            "u64",     "f32",  "f64", "bool",     "String", "StringBuilder", "Rc",
+                                            "Array",   "Weak", "Ptr", "Nullable", "Ref",    "isize",         "usize",
+                                            "Function"};
     return s;
 }
 
@@ -748,7 +749,7 @@ void SpecImplChecker::validateDynInTypeNode(TypeNode* tn, FileNode* file, const 
         return;
     }
 
-    // TypeFnNode: fn(P...) R, 参数 / 返回类型继续递归
+    // TypeFnNode: Function<P..., Ret>，参数 / 返回类型继续递归
     if (auto* fn = dynamic_cast<TypeFnNode*>(tn)) {
         for (auto& pt : fn->paramTypes()) {
             if (pt) validateDynInTypeNode(pt, file, std::string());

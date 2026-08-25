@@ -52,7 +52,6 @@ type           ::= ID                              # typeNormal
                  | '[' type '*' INT ']'            # typeArray
                  | '(' ')'                        # typeUnit
                  | '(' type (',' type)+ ')'        # typeTuple
-                 | 'fn' '?'? '(' fnTypeParams? ')' (retType=typeWithRef)?  # typeFn
 
 typeWithRef    ::= type '?' '&'?                   # typeNullableWithRef
                  | ID '&'?                         # typeNormalWithRef
@@ -60,12 +59,6 @@ typeWithRef    ::= type '?' '&'?                   # typeNullableWithRef
                  | '[' typeWithRef '*' INT ']' '&'?# typeArrayWithRef
                  | '(' ')'                        # typeUnitWithRef
                  | '(' typeWithRef (',' typeWithRef)+ ')' # typeTupleWithRef
-                 | 'fn' '?'? '(' fnTypeParams? ')' (retType=typeWithRef)? '&'?  # typeFnWithRef
-
-fnTypeParams   ::= fnTypeParam (',' LineEnd* fnTypeParam)* ','? LineEnd*
-fnTypeParam    ::= (ID ',' LineEnd*)+ ID typeWithRef     # fnTypeParamGroup    ; a, b T
-                 | ID typeWithRef                        # fnTypeParamNamed    ; a T
-                 | typeWithRef                           # fnTypeParamUnnamed  ; T （名可省，§3.2）
 
 genericDef        ::= '<' typeParam        (',' typeParam)*        '>'
 genericDefWithRef ::= '<' typeParamWithRef (',' typeParamWithRef)* '>'
@@ -90,6 +83,15 @@ draftBound        ::= modulePath? ID genericDef?     # 例：ToString / pkg.Disp
 - `Dyn<...>` 不得嵌套 `Dyn` / `Rc<Dyn>` / `Weak<Dyn>` / `Dyn<D>?`（语义层拒绝，E1132 / E1135）。
 
 构造形态走 `exprCall` 的 turbofish 形：`Dyn:<D>(box_u)` / `Dyn:<D&>(u_ref)`；无 `:` 写法 `Dyn<D>` 仅在类型位有效。
+
+## B.2b `Function<P..., Ret>`（函数类型）
+
+`Function` 是编译器内置类型名（非关键字），走 `typeGeneric` / `typeGenericWithRef`。语义见 §3.11。
+
+- 末位类型实参永远是返回类型；至少 1 个实参。`Function<()>` = 0 参 unit 返回。
+- 可空走标准 `?`：`Function<i32, i32>?`。布局仍是 16 字节 fat-ptr（`fn_ptr == null` 表空），不套 `Nullable` 外壳。
+- `Weak<Function<...>>` 禁。`extern fn` 形参 / 返回禁。
+- 含 `T&` 的类型实参仅 `genericDefWithRef` 槽合法（与 `Dyn<D&>` 同）。
 
 ## B.3 字面量
 

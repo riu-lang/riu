@@ -11,14 +11,14 @@ struct Holder {
     }
   }
 
-  fn make() fn(i32)i32 {
+  fn make() Function<i32, i32> {
     ret (x i32) i32 => $.v + x  ; check: E4022
   }
 }
 
 fn main() {
   #Mut let h Holder = Holder::build(7)
-  #Mut let f fn(i32)i32 = h.make()
+  #Mut let f Function<i32, i32> = h.make()
   println(f(3))
   ret;
 }

@@ -5,7 +5,7 @@
 ;   - 链式别名（A1 → A2 → A → i32）
 ;   - tuple 别名（IPair / Point3D）— 成员访问、解构、赋值、函数传参/返回
 ;   - 泛型 tuple 别名（Pair<T>）— 实例化、成员访问、赋值、算术
-;   - 函数类型别名（Predicate = fn(i32) bool）— 赋值、调用
+;   - 函数类型别名（Predicate = Function<i32, bool>）— 赋值、调用
 
 ; ==================== 简单透明别名 A = i32 ====================
 
@@ -177,16 +177,16 @@ fn test_alias_generic_tuple_chain_add() {
   assert_eq(sum, 15)
 }
 
-; ==================== 函数类型别名 Predicate = fn(i32) bool ====================
+; ==================== 函数类型别名 Predicate = Function<i32, bool> ====================
 
 fn is_positive(x i32) bool = x > 0
 
-Predicate = fn(i32) bool
+Predicate = Function<i32, bool>
 
 ; 验证：直接调用函数并检查返回值
 #Test
 fn test_fn_direct_call() {
-  let f fn(i32) bool = is_positive
+  let f Function<i32, bool> = is_positive
   assert_true(f(5))
   assert_false(f(-3))
 }
@@ -194,8 +194,8 @@ fn test_fn_direct_call() {
 ; 验证：多引用别名函数的行为一致性
 #Test
 fn test_multi_ref() {
-  let f fn(i32) bool = is_positive
-  let g fn(i32) bool = is_positive
+  let f Function<i32, bool> = is_positive
+  let g Function<i32, bool> = is_positive
   assert_true(f(10))
   assert_true(g(10))
 }
@@ -238,7 +238,7 @@ fn square_fn(x i32) i32 = x * x
 
 fn cube_fn(x i32) i32 = x * x * x
 
-IntUnOp = fn(i32) i32
+IntUnOp = Function<i32, i32>
 
 #Test
 fn test_fn_alias_reassign() {

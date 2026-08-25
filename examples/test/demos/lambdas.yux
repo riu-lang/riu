@@ -40,8 +40,8 @@ fn demo_lambda_forms() {
   println(inc(41))
 
   ; 3. 单参裸 single（类型由上下文推断）
-  ; 存入 fn(i32)i32 类型变量
-  #Mut let double_fn fn(i32)i32 = x => x * 2
+  ; 存入 Function<i32, i32> 类型变量
+  #Mut let double_fn Function<i32, i32> = x => x * 2
   println("double(21): ")
   println(double_fn(21))
 
@@ -96,7 +96,7 @@ fn demo_closure_capture_rc() {
 ; ==================== 高阶函数 ====================
 
 ; 接受函数值作为参数
-fn apply_i32(x i32, f fn(i32)i32) i32 {
+fn apply_i32(x i32, f Function<i32, i32>) i32 {
   ret f(x)
 }
 
@@ -115,15 +115,15 @@ fn demo_higher_order() {
 
 ; ==================== Lambda 作为返回值 ====================
 
-fn make_adder(n i32) fn(i32)i32 {
+fn make_adder(n i32) Function<i32, i32> {
   ret (x i32) i32 => x + n    ; 捕获 n（值复制）
 }
 
 fn demo_returning_lambda() {
   println("=== Lambda 作为返回值 ===")
 
-  let add5 fn(i32)i32 = make_adder(5)
-  let add10 fn(i32)i32 = make_adder(10)
+  let add5 Function<i32, i32> = make_adder(5)
+  let add10 Function<i32, i32> = make_adder(10)
   println("add5(1): ")
   println(add5(1))
   println("add10(1): ")
