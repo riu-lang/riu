@@ -5,6 +5,13 @@ config("yuxrt_public") {
   include_dirs = [ "." ]
 }
 
+# yuxrt 进 /noentry 的 yux 程序与测试 DLL，不链 CRT。
+# clang-cl 默认 /GS，本地数组（如 sin.c 的 double y[2]）会引用
+# __security_cookie / __security_check_cookie。
+config("yuxrt_freestanding") {
+  cflags = [ "/GS-" ]
+}
+
 static_library("yuxrt") {
   output_name = "yuxrt"
   output_dir = "$root_out_dir/lib"
@@ -13,6 +20,7 @@ static_library("yuxrt") {
   configs += [
     "//build/config:language_c99",
     "//build/config:no_autolink",
+    ":yuxrt_freestanding",
   ]
   sources = [
     "port/win32.c",
