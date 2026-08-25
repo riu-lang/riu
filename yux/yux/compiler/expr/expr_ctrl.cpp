@@ -4,9 +4,8 @@
 // 控制流表达式编译 (if-else / match / try-catch)：从 compiler_expr.cpp 拆出 (P1 Phase 4)。
 // 方法体一字不动。
 
-#include "../compiler_runtime.h"
 #include "../compiler.h"
-#include <algorithm>
+#include "../compiler_runtime.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
 #include "analyzer/symbol_suggest.h"
@@ -15,20 +14,20 @@
 #include "ast/node/expr_node.h"
 #include "ast/node/literal_node.h"
 #include "ast/yux.h"
+#include "sema/call_resolve.h"
+#include <algorithm>
 #include <cassert>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
-#include "sema/call_resolve.h"
 #include <set>
-
 
 llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto resultType = node->getType();
     bool hasResult = !resultType.empty();
 
-    DEBUG_LOG_VAL(
-        "    Expr: IfElse", "hasResult=" << hasResult << ", type=" << (resultType.empty() ? "void" : resultType.name));
+    DEBUG_LOG_VAL("    Expr: IfElse",
+                  "hasResult=" << hasResult << ", type=" << (resultType.empty() ? "void" : resultType.name));
 
     auto condVal = compileExpr(node->condition());
     auto condBool = _builder.CreateICmpNE(condVal, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "if.cond");
@@ -72,8 +71,8 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
             auto& elif = elifs[i];
             DEBUG_LOG_VAL("        Compiling elif", i);
             auto elifCond = compileExpr(elif->condition());
-            auto elifCondBool = _builder.CreateICmpNE(
-                elifCond, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "elif.cond");
+            auto elifCondBool =
+                _builder.CreateICmpNE(elifCond, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "elif.cond");
 
             llvm::BasicBlock* elifThenBB = llvm::BasicBlock::Create(_context, "elif.then", func);
             llvm::BasicBlock* elifElseBB = llvm::BasicBlock::Create(_context, "elif.else");
@@ -84,7 +83,8 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
             // Phase B-1: elif 分支 move 追踪 — 快照 → 体 → 合并 → 恢复，与 SemaPass 对齐
             auto savedElif = _movedVars;
             compileStatementBlockWithResult(elif->block(), mergeBB, phi, resultType);
-            for (auto& v : _movedVars) afterThenMoved.insert(v);
+            for (auto& v : _movedVars)
+                afterThenMoved.insert(v);
             _movedVars = savedElif;
 
             func->insert(func->end(), elifElseBB);
@@ -163,48 +163,6 @@ llvm::Value* Compiler::compileOneLineIfElseExpr(p<ExprOneLineIfElseNode> node) {
     }
     return phi;
 }
-
-llvm::Value* Compiler::compileIfElsePreValueExpr(p<ExprIfElsePreValueNode> node) {
-    if (!node->hasResolvedType()) node->setResolvedType(node->getType());
-    auto resultType = node->getType();
-
-    DEBUG_LOG_VAL("    Expr: IfElsePreValue", "type=" << resultType.name);
-
-    auto condVal = compileExpr(node->condition());
-    auto condBool = _builder.CreateICmpNE(condVal, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "if.cond");
-
-    llvm::Function* func = _builder.GetInsertBlock()->getParent();
-
-    llvm::BasicBlock* thenBB = llvm::BasicBlock::Create(_context, "if.then", func);
-    llvm::BasicBlock* elseBB = llvm::BasicBlock::Create(_context, "if.else");
-    llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(_context, "if.merge");
-
-    _builder.CreateCondBr(condBool, thenBB, elseBB);
-
-    _builder.SetInsertPoint(thenBB);
-    auto trueVal = compileBranchResultNormalized(node->trueValue(), resultType);
-    _builder.CreateBr(mergeBB);
-    auto thenEndBB = _builder.GetInsertBlock();
-
-    func->insert(func->end(), elseBB);
-    _builder.SetInsertPoint(elseBB);
-    auto falseVal = compileBranchResultNormalized(node->falseValue(), resultType);
-    _builder.CreateBr(mergeBB);
-    auto elseEndBB = _builder.GetInsertBlock();
-
-    func->insert(func->end(), mergeBB);
-    _builder.SetInsertPoint(mergeBB);
-
-    auto phi = llvm::PHINode::Create(getLLVMType(resultType), 2, "if.result", mergeBB);
-    phi->addIncoming(trueVal, thenEndBB);
-    phi->addIncoming(falseVal, elseEndBB);
-
-    if (resultType.isRc() || resultType.isArrayGeneric() || resultType.isWeak()) {
-        recordTemp(phi, resultType);
-    }
-    return phi;
-}
-
 
 // 编译 match 表达式 (Phase 6)
 // 形态：match scrutinee { (E::V[(b1,..)] | else) => body ... }
@@ -317,15 +275,14 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
             continue;
         }
         if (t != resultType) {
-            throw YuxError(arm->body()->resolveLineNumber(), arm->body()->resolveColumn(),
-                ErrorCode::E3014, resultType.name, t.name);
+            throw YuxError(arm->body()->resolveLineNumber(), arm->body()->resolveColumn(), ErrorCode::E3014,
+                           resultType.name, t.name);
         }
     }
     bool hasResult = !resultType.empty();
 
-    DEBUG_LOG_VAL("    Expr: Match",
-        "enum=" << enumName << " arms=" << arms.size() << " hasResult=" << hasResult
-                << " result=" << (hasResult ? resultType.name : "void"));
+    DEBUG_LOG_VAL("    Expr: Match", "enum=" << enumName << " arms=" << arms.size() << " hasResult=" << hasResult
+                                             << " result=" << (hasResult ? resultType.name : "void"));
 
     // 4. 求值 scrutinee 并落 alloca；fresh 时 consume 拿走所有权
     auto enumLLVMType = getLLVMType(scrutType);
@@ -344,12 +301,9 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
         auto rcAlloca = _builder.CreateAlloca(rcLLVMType, nullptr, "match.rc");
         _builder.CreateStore(scrutVal, rcAlloca);
         auto zero32 = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-        auto handleField = _builder.CreateGEP(
-            rcLLVMType, rcAlloca, {zero32, zero32}, "match.rc.handle_field");
-        auto handle = _builder.CreateLoad(
-            llvm::PointerType::get(_context, 0), handleField, "match.rc.handle");
-        auto payload = _builder.CreateGEP(
-            _builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "match.rc.payload");
+        auto handleField = _builder.CreateGEP(rcLLVMType, rcAlloca, {zero32, zero32}, "match.rc.handle_field");
+        auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "match.rc.handle");
+        auto payload = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "match.rc.payload");
         auto enumVal = _builder.CreateLoad(enumLLVMType, payload, "match.rc.enum");
         _builder.CreateStore(enumVal, scrutAlloca);
     } else if (heapDeref) {
@@ -409,8 +363,8 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
     // 6. 编译每个 arm
     llvm::PHINode* phi = nullptr;
     if (hasResult) {
-        phi = llvm::PHINode::Create(getLLVMType(resultType),
-            static_cast<unsigned>(arms.size()), "match.result", mergeBB);
+        phi =
+            llvm::PHINode::Create(getLLVMType(resultType), static_cast<unsigned>(arms.size()), "match.result", mergeBB);
     }
 
     auto resultLLVMType = hasResult ? getLLVMType(resultType) : nullptr;
@@ -441,22 +395,19 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
                 elemTys.push_back(getLLVMType(t->getType()));
             }
             auto payloadStruct = llvm::StructType::get(_context, elemTys);
-            auto payloadBufPtr = _builder.CreateStructGEP(enumLLVMType, scrutAlloca, 1,
-                "match.payload.ptr");
+            auto payloadBufPtr = _builder.CreateStructGEP(enumLLVMType, scrutAlloca, 1, "match.payload.ptr");
 
             for (size_t k = 0; k < pat->binds().size(); ++k) {
                 const string& bn = pat->binds()[k].getText();
                 auto bindType = variant->payloadTypes()[k]->getType();
                 auto bindLLVMType = getLLVMType(bindType);
 
-                auto fieldPtr = _builder.CreateStructGEP(payloadStruct, payloadBufPtr,
-                    static_cast<unsigned>(k), "match.bind.field");
-                auto loaded = _builder.CreateLoad(bindLLVMType, fieldPtr,
-                    ("match.bind." + bn).c_str());
+                auto fieldPtr = _builder.CreateStructGEP(payloadStruct, payloadBufPtr, static_cast<unsigned>(k),
+                                                         "match.bind.field");
+                auto loaded = _builder.CreateLoad(bindLLVMType, fieldPtr, ("match.bind." + bn).c_str());
 
                 // 独立 alloca，便于 compileLiteralExpr 通过 _localVarPtrs 取出
-                auto bindAlloca = _builder.CreateAlloca(bindLLVMType, nullptr,
-                    ("bind." + bn).c_str());
+                auto bindAlloca = _builder.CreateAlloca(bindLLVMType, nullptr, ("bind." + bn).c_str());
                 _builder.CreateStore(loaded, bindAlloca);
 
                 BindSnap snap;
@@ -468,8 +419,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
                 snap.hadPtr = (pit != _localVarPtrs.end());
                 snap.prevPtr = snap.hadPtr ? pit->second : nullptr;
 
-                _currentFnNode->registerSymbol(bn,
-                    {SymbolKind::Variable, bn, bindType, false});
+                _currentFnNode->registerSymbol(bn, {SymbolKind::Variable, bn, bindType, false});
                 _localVarPtrs[bn] = bindAlloca;
 
                 snaps.push_back(snap);
@@ -546,7 +496,6 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
     return nullptr;
 }
 
-
 // Phase 10f / 10g：try-catch 表达式编译（DRAFT-错误.md [#4.H]）
 //
 // 10g-5/6 实施后，错误通道路由 + 表达式合并已落地：
@@ -589,15 +538,13 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
         if (!enumDecl) {
             int aline = arm->getLineNumber() > 0 ? arm->getLineNumber() : line;
             int acol = arm->getColumn() > 0 ? arm->getColumn() : col;
-            throw YuxError(aline, acol, ErrorCode::E7011,
-                arm->errName().getText(), errType, errType);
+            throw YuxError(aline, acol, ErrorCode::E7011, arm->errName().getText(), errType, errType);
         }
         ctx.catchTypes.push_back(errType);
 
         // 为 e 绑定分配 alloca（类型 = enum）；命名带 arm 错误名便于 IR 阅读
         const string& bn = arm->errName().getText();
-        auto eAlloca = _builder.CreateAlloca(getLLVMType(TypeInfo(errType)),
-            nullptr, ("catch.e." + bn).c_str());
+        auto eAlloca = _builder.CreateAlloca(getLLVMType(TypeInfo(errType)), nullptr, ("catch.e." + bn).c_str());
         ctx.armEAllocas.push_back(eAlloca);
 
         // arm entry BB 暂不插入 func；编译 arm body 时再 insert
@@ -619,7 +566,10 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
     TypeInfo resultType;
     llvm::Value* tryResult = nullptr;
     if (hasResult) {
-        try { resultType = tryBlock->resultExpr()->getType(); } catch (...) {} // NOLINT(bugprone-empty-catch)
+        try {
+            resultType = tryBlock->resultExpr()->getType();
+        } catch (...) {
+        } // NOLINT(bugprone-empty-catch)
         tryResult = compileExpr(tryBlock->resultExpr());
     }
 
@@ -633,7 +583,10 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
     for (auto& seen : finishedCtx.seenErrTypes) {
         bool covered = false;
         for (auto& ct : ctx.catchTypes) {
-            if (ct == seen) { covered = true; break; }
+            if (ct == seen) {
+                covered = true;
+                break;
+            }
         }
         if (!covered) {
             throw YuxError(line, col, ErrorCode::E7002, seen, string("<unknown>"), seen);
@@ -681,8 +634,10 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
         auto armEndBB = _builder.GetInsertBlock();
 
         // 还原 _localVarPtrs（CatchArmNode 自身的符号 entry 由 ScopeNode 持有，无需手动撤）
-        if (hadPtr) _localVarPtrs[bn] = prevPtr;
-        else _localVarPtrs.erase(bn);
+        if (hadPtr)
+            _localVarPtrs[bn] = prevPtr;
+        else
+            _localVarPtrs.erase(bn);
 
         // 跳 join（若未被流终止抢占 terminator）
         if (!armEndBB->getTerminator()) {
@@ -699,8 +654,7 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
 
     // 表达式合并：若有结果，phi；若所有路径都流终止，joinBB 不可达
     if (hasResult && !phiIncoming.empty()) {
-        auto phi = _builder.CreatePHI(resultLLVMType,
-            static_cast<unsigned>(phiIncoming.size()), "trycatch.result");
+        auto phi = _builder.CreatePHI(resultLLVMType, static_cast<unsigned>(phiIncoming.size()), "trycatch.result");
         for (auto& inc : phiIncoming) {
             phi->addIncoming(inc.first, inc.second);
         }

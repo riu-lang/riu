@@ -1851,12 +1851,6 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         visitExpr(n->falseValue());
         return;
     }
-    if (auto n = dynamic_cast<p<ExprIfElsePreValueNode>>(expr)) {
-        visitExpr(n->condition());
-        visitExpr(n->trueValue());
-        visitExpr(n->falseValue());
-        return;
-    }
     if (auto n = dynamic_cast<p<ExprGetNode>>(expr)) {
         visitExpr(n->arrayExpr());
         for (auto& i : n->indices())

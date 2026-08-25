@@ -505,19 +505,6 @@ fn test_if_else_expr() {
 }
 
 #Test
-fn test_python_ternary() {
-  let val i32 = 100 if 1 < 2 else 0
-  assert_eq(val, 100)
-}
-
-#Test
-fn test_python_ternary_chained() {
-  let score i32 = 75
-  let grade String = "A" if score >= 90 else "B" if score >= 75 else "C"
-  assert_eq(grade, "B")
-}
-
-#Test
 fn test_loop_break() {
   #Mut let sum i32 = 0
   #Mut let i i32 = 1

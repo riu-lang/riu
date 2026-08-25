@@ -33,7 +33,7 @@ class FileNode;
 // 不在范围（Phase 1）：
 //   - ExprCallNode → Phase 4
 //   - struct 字面量 → Phase 5
-//   - 控制流（ExprIfElse / ExprOneLineIfElse / ExprIfElsePreValue）→ Phase 3
+//   - 控制流（ExprIfElse / ExprOneLineIfElse）→ Phase 3
 //
 // 错误处理：本 Phase **不抛错码**；失败统一返回 nullopt。Phase 2 caller 在
 // visitLetGlobal 内据 nullopt 抛 E3140（非 const 子表达式）。
@@ -92,4 +92,4 @@ private:
     std::optional<ConstantValue> evalStructLit(const p<ExprStructLitNode>& node);
 };
 
-#endif //YUX_LANG_CONST_EVAL_H
+#endif // YUX_LANG_CONST_EVAL_H

@@ -197,8 +197,6 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         return compileIfElseExpr(ifElseNode);
     } else if (auto oneLineIfElseNode = dynamic_cast<ExprOneLineIfElseNode*>(node)) {
         return compileOneLineIfElseExpr(oneLineIfElseNode);
-    } else if (auto ifElsePreValueNode = dynamic_cast<ExprIfElsePreValueNode*>(node)) {
-        return compileIfElsePreValueExpr(ifElsePreValueNode);
     } else if (auto getNode = dynamic_cast<ExprGetNode*>(node)) {
         return compileArrayGetExpr(getNode);
     } else if (auto arrayNode = dynamic_cast<ExprArrayNode*>(node)) {

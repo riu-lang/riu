@@ -502,27 +502,6 @@ fn test_string_concat() {
   assert_eq(s, "val = 10")
 }
 
-; ==================== Python 风格三元表达式 ====================
-
-#Test
-fn test_ternary_true_expr() {
-  let val i32 = 100 if 1 < 2 else 0
-  assert_eq(val, 100)
-}
-
-#Test
-fn test_ternary_false_expr() {
-  let val i32 = 100 if 1 > 2 else 0
-  assert_eq(val, 0)
-}
-
-#Test
-fn test_ternary_chained() {
-  let score i32 = 75
-  let grade String = "A" if score >= 90 else "B" if score >= 75 else "C"
-  assert_eq(grade, "B")
-}
-
 ; ==================== #Const fn + #Cval ====================
 
 #Const

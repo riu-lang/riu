@@ -4,18 +4,18 @@
 // ast_builder 表达式 / 字面量族实现：
 //   - 调用 / lambda / 算术 / 比较 / 位运算 / 移位
 //   - 字面量 (Number / Bool / Null / Obj / String / StringTpl / CodePoint / Num)
-//   - 控制流 (IfElse / OneLineIfElse / IfElsePreValue / ElIf / Else / Match / TryCatch)
+//   - 控制流 (IfElse / OneLineIfElse / ElIf / Else / Match / TryCatch)
 //   - 集合访问 / 构造 (Get / GetRef / Array / Tuple / TupleMember / ArrayInit / StructLit / FieldInit)
 //   - 枚举 / 一元 / NullElse / $（This）
 //   - match / catch arm 与 Pattern
 // 拆自原 ast_builder.cpp（P1 Phase 2），方法体一字不动。
 
-#include "types.h"
 #include "ast_builder.h"
 #include "ast_builder_helpers.h"
 #include "node/expr_node.h"
 #include "node/literal_node.h"
 #include "node/statement_node.h"
+#include "types.h"
 #include <algorithm>
 #include <functional>
 
@@ -624,17 +624,6 @@ std::any ASTBuilder::visitExprOneLineIfElse(yux::yuxParser::ExprOneLineIfElseCon
 
     return static_cast<p<ExprNode>>(
         createWithLine<ExprOneLineIfElseNode>(ctx, scope, condition, trueValue, falseValue));
-}
-
-std::any ASTBuilder::visitExprIfElsePreValue(yux::yuxParser::ExprIfElsePreValueContext* ctx) {
-    DEBUG_LOG("    Expr: IfElsePreValue (Python-style)");
-    auto scope = currentScope();
-    auto trueValue = any_cast_p<ExprNode>(visit(ctx->trueValue));
-    auto condition = any_cast_p<ExprNode>(visit(ctx->condition));
-    auto falseValue = any_cast_p<ExprNode>(visit(ctx->falseValue));
-
-    return static_cast<p<ExprNode>>(
-        createWithLine<ExprIfElsePreValueNode>(ctx, scope, condition, trueValue, falseValue));
 }
 
 std::any ASTBuilder::visitExprElIf(yux::yuxParser::ExprElIfContext* ctx) {

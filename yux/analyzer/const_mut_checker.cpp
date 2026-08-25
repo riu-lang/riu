@@ -3,12 +3,12 @@
 
 #include "const_mut_checker.h"
 
-#include "error_code.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/file_node.h"
 #include "ast/node/literal_node.h"
 #include "ast/node/statement_node.h"
 #include "ast/node/struct_node.h"
+#include "error_code.h"
 
 #include <set>
 
@@ -109,7 +109,10 @@ void requireConstExpr(p<ExprNode> e, p<ScopeNode> scope) {
                 p<Node> cur = e;
                 FileNode* file = nullptr;
                 while (cur) {
-                    if (auto* fl = dynamic_cast<FileNode*>(cur)) { file = fl; break; }
+                    if (auto* fl = dynamic_cast<FileNode*>(cur)) {
+                        file = fl;
+                        break;
+                    }
                     cur = cur->parent();
                 }
                 if (file) {
@@ -125,24 +128,24 @@ void requireConstExpr(p<ExprNode> e, p<ScopeNode> scope) {
             }
         }
         if (!ok) throwNonConst(e, "function / method call");
-        for (auto& a : call->getArgs()) requireConstExpr(a, scope);
+        for (auto& a : call->getArgs())
+            requireConstExpr(a, scope);
         return;
     }
-    if (dynamic_cast<p<ExprDotNode>>(e))          throwNonConst(e, "member access");
-    if (dynamic_cast<p<ExprGetNode>>(e))          throwNonConst(e, "array indexing");
-    if (dynamic_cast<p<ExprGetRefNode>>(e))       throwNonConst(e, "address-of (&) expression");
-    if (dynamic_cast<p<ExprArrayNode>>(e))        throwNonConst(e, "array literal");
-    if (dynamic_cast<p<ExprArrayInitNode>>(e))    throwNonConst(e, "array fill expression");
-    if (dynamic_cast<p<ExprTupleNode>>(e))        throwNonConst(e, "tuple construction");
-    if (dynamic_cast<p<ExprIfElseNode>>(e))       throwNonConst(e, "if-else expression");
-    if (dynamic_cast<p<ExprOneLineIfElseNode>>(e))   throwNonConst(e, "if-else expression");
-    if (dynamic_cast<p<ExprIfElsePreValueNode>>(e))  throwNonConst(e, "if-else expression");
-    if (dynamic_cast<p<ExprMatchNode>>(e))        throwNonConst(e, "match expression");
-    if (dynamic_cast<p<ExprTryCatchNode>>(e))     throwNonConst(e, "try-catch expression");
-    if (dynamic_cast<p<ExprPathCallNode>>(e))     throwNonConst(e, "enum constructor");
-    if (dynamic_cast<p<ExprDynCtorNode>>(e))      throwNonConst(e, "Dyn<...> construction");
-    if (dynamic_cast<p<ExprNullElseNode>>(e))     throwNonConst(e, "`??` expression");
-    if (dynamic_cast<p<LambdaExprNode>>(e))       throwNonConst(e, "lambda expression");
+    if (dynamic_cast<p<ExprDotNode>>(e)) throwNonConst(e, "member access");
+    if (dynamic_cast<p<ExprGetNode>>(e)) throwNonConst(e, "array indexing");
+    if (dynamic_cast<p<ExprGetRefNode>>(e)) throwNonConst(e, "address-of (&) expression");
+    if (dynamic_cast<p<ExprArrayNode>>(e)) throwNonConst(e, "array literal");
+    if (dynamic_cast<p<ExprArrayInitNode>>(e)) throwNonConst(e, "array fill expression");
+    if (dynamic_cast<p<ExprTupleNode>>(e)) throwNonConst(e, "tuple construction");
+    if (dynamic_cast<p<ExprIfElseNode>>(e)) throwNonConst(e, "if-else expression");
+    if (dynamic_cast<p<ExprOneLineIfElseNode>>(e)) throwNonConst(e, "if-else expression");
+    if (dynamic_cast<p<ExprMatchNode>>(e)) throwNonConst(e, "match expression");
+    if (dynamic_cast<p<ExprTryCatchNode>>(e)) throwNonConst(e, "try-catch expression");
+    if (dynamic_cast<p<ExprPathCallNode>>(e)) throwNonConst(e, "enum constructor");
+    if (dynamic_cast<p<ExprDynCtorNode>>(e)) throwNonConst(e, "Dyn<...> construction");
+    if (dynamic_cast<p<ExprNullElseNode>>(e)) throwNonConst(e, "`??` expression");
+    if (dynamic_cast<p<LambdaExprNode>>(e)) throwNonConst(e, "lambda expression");
 
     throwNonConst(e, "unsupported expression");
 }
@@ -206,10 +209,10 @@ SymbolInfo* lookupLhsSym(p<StatementAssignNode> a, p<ScopeNode> scope) {
 // `Self { .f = v }` 字段字面量产出 `Self`" —— 字段字面量是表达式分支,
 // 不走 StatementAssignNode 路径, 无需在此处放行。
 struct FnContext {
-    FileNode*       file = nullptr;
+    FileNode* file = nullptr;
     StructImplNode* impl = nullptr;
-    string          implStructName;
-    bool            isDestructor  = false;
+    string implStructName;
+    bool isDestructor = false;
 };
 
 FnContext resolveFnContext(p<FnNode> fn) {
@@ -251,7 +254,8 @@ public:
         _ctx = resolveFnContext(fn);
         _isConstFn = fn->header()->hasAnno("Const");
         _fnName = fn->header()->name().getText();
-        for (auto& s : fn->body()) visitStmt(s);
+        for (auto& s : fn->body())
+            visitStmt(s);
     }
 
 private:
@@ -277,8 +281,7 @@ private:
         if (name == "$") {
             what = as->subs().empty() ? "rebind `$`" : "write field of `$`";
             detail = as->subs().empty() ? "$" : ("$." + as->subs().front().getText());
-        } else if (sym && sym->kind == SymbolKind::Variable && !sym->isConst &&
-                   !sym->moduleName.empty()) {
+        } else if (sym && sym->kind == SymbolKind::Variable && !sym->isConst && !sym->moduleName.empty()) {
             // 全局变量（注册时带 moduleName）
             what = as->subs().empty() ? "rebind global variable" : "write field of global variable";
             detail = name + (as->subs().empty() ? "" : ("." + as->subs().front().getText()));
@@ -289,15 +292,15 @@ private:
             what = "write field of parameter";
             detail = name + "." + as->subs().front().getText();
         }
-        throw YuxError(as->getLineNumber(), as->getColumn(),
-                       ErrorCode::E3110, _fnName, what, detail);
+        throw YuxError(as->getLineNumber(), as->getColumn(), ErrorCode::E3110, _fnName, what, detail);
     }
 
     void checkConstFnSet(p<StatementSetNode> st, p<ScopeNode> scope) {
         if (!_isConstFn) return;
         // arrayExpr 形态：单 ID 时按上面规则；复杂表达式（链式）按"写非本地"判定
         p<ExprNode> ae = st->arrayExpr();
-        while (auto paren = dynamic_cast<p<ExprParenNode>>(ae)) ae = paren->expr();
+        while (auto paren = dynamic_cast<p<ExprParenNode>>(ae))
+            ae = paren->expr();
         string name;
         if (auto le = dynamic_cast<p<ExprLiteralNode>>(ae)) {
             if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
@@ -312,16 +315,14 @@ private:
         if (name == "$") {
             what = "write element of `$`";
             detail = "$[i]";
-        } else if (sym && sym->kind == SymbolKind::Variable && !sym->isConst &&
-                   !sym->moduleName.empty()) {
+        } else if (sym && sym->kind == SymbolKind::Variable && !sym->isConst && !sym->moduleName.empty()) {
             what = "write element of global variable";
             detail = (name.empty() ? "<expr>" : name) + "[i]";
         } else {
             what = "write element of parameter";
             detail = (name.empty() ? "<expr>" : name) + "[i]";
         }
-        throw YuxError(st->getLineNumber(), st->getColumn(),
-                       ErrorCode::E3110, _fnName, what, detail);
+        throw YuxError(st->getLineNumber(), st->getColumn(), ErrorCode::E3110, _fnName, what, detail);
     }
 
     // 取 fn 所在 file（沿 parent chain 找 FileNode），用于跨自由函数/方法符号查表。
@@ -368,8 +369,7 @@ private:
                 FnSymbolInfo* fs = lookupFnSymbolCrossFile(file, fname);
                 if (!fs) return; // 内置 / 编译器合成（如 copy_of / panic / println 等），P1-5 不拦
                 if (fs->isConst) return;
-                throw YuxError(call->resolveLineNumber(), call->resolveColumn(),
-                               ErrorCode::E3111, _fnName, fname);
+                throw YuxError(call->resolveLineNumber(), call->resolveColumn(), ErrorCode::E3111, _fnName, fname);
             }
         }
         // 方法形态：receiver.method(...)
@@ -385,16 +385,14 @@ private:
             if (recvName.empty() || !scope) return;
             SymbolInfo* sym = scope->lookupSymbol(recvName);
             if (!sym) return;
-            string typeName = sym->type.isRef() && sym->type.refElementType()
-                                ? sym->type.refElementType()->name
-                                : sym->type.name;
+            string typeName =
+                sym->type.isRef() && sym->type.refElementType() ? sym->type.refElementType()->name : sym->type.name;
             if (typeName.empty()) return;
             string fullName = typeName + "." + dot->member();
             FnSymbolInfo* fs = lookupFnSymbolCrossFile(file, fullName);
             if (!fs) return; // builtin 方法（Array/String 等 #Builtin）P1-5 不拦，待 SDK 内化
             if (fs->isConst) return;
-            throw YuxError(call->resolveLineNumber(), call->resolveColumn(),
-                           ErrorCode::E3111, _fnName, fullName);
+            throw YuxError(call->resolveLineNumber(), call->resolveColumn(), ErrorCode::E3111, _fnName, fullName);
         }
     }
 
@@ -404,16 +402,15 @@ private:
     //   - subs.size() >  1：深写，#Frozen 拒（深传染），#Val 放行（浅）。
     // obj 的类型从 scope 取，跨模块走 getStructOwner。
     void checkFieldWrite(p<StatementAssignNode> as, p<ScopeNode> scope) {
-        if (_ctx.isDestructor) return;            // 析构不受 const-mut 约束（§6.2 / [#1.L]）
+        if (_ctx.isDestructor) return; // 析构不受 const-mut 约束（§6.2 / [#1.L]）
         if (as->subs().empty()) return;
         auto sc = scope ? scope : as->findNearestScope();
         if (!sc) return;
         SymbolInfo* sym = sc->lookupSymbol(as->obj().getText());
         if (!sym) return;
         // `$` 类型为 Ref<StructName>，需要剥一层；其余 obj 直接读 type.name。
-        string typeName = sym->type.isRef() && sym->type.refElementType()
-                            ? sym->type.refElementType()->name
-                            : sym->type.name;
+        string typeName =
+            sym->type.isRef() && sym->type.refElementType() ? sym->type.refElementType()->name : sym->type.name;
         StructDeclNode* sd = findStructDecl(_ctx.file, typeName);
         if (!sd) return;
         const string& fieldName = as->subs().front().getText();
@@ -426,13 +423,13 @@ private:
         // `#Val/#Frozen` 字段的初始化只能走 `#Static fn` 体内 `Self { .f = v }`
         // 字段字面量 (属表达式分支, 不进 StatementAssignNode), 这里一律拒收。
         const char* tag = fd->isFrozen() ? "Frozen" : "Val";
-        throw YuxError(as->getLineNumber(), as->getColumn(),
-                       ErrorCode::E3109, fieldName, tag, sd->name().getText());
+        throw YuxError(as->getLineNumber(), as->getColumn(), ErrorCode::E3109, fieldName, tag, sd->name().getText());
     }
 
     void visitBlock(p<StatementBlockNode> blk) {
         if (!blk) return;
-        for (auto& s : blk->statements()) visitStmt(s);
+        for (auto& s : blk->statements())
+            visitStmt(s);
         if (blk->hasResult() && blk->resultExpr()) visitExpr(blk->resultExpr());
     }
 
@@ -447,12 +444,12 @@ private:
         auto throwE = [&](const char* what) {
             throw YuxError(s->getLineNumber(), s->getColumn(), ErrorCode::E3141, _fnName, what);
         };
-        if (dynamic_cast<p<StatementLoopNode>>(s))               throwE("loop");
-        if (dynamic_cast<p<StatementBreakNode>>(s))              throwE("break");
+        if (dynamic_cast<p<StatementLoopNode>>(s)) throwE("loop");
+        if (dynamic_cast<p<StatementBreakNode>>(s)) throwE("break");
         // StatementAssignNode / StatementSetNode 写本地 cval = E3093 (compiler 端);
         // 写参数 / $ / 全局 = E3110 (checkConstFnWrite/Set). 不在此层抢报, 让既有错码生效.
         if (dynamic_cast<p<StatementAssignNode>>(s)) return;
-        if (dynamic_cast<p<StatementSetNode>>(s))    return;
+        if (dynamic_cast<p<StatementSetNode>>(s)) return;
         if (auto da = dynamic_cast<p<StatementDeclareAssignNode>>(s)) {
             if (!da->isConst()) throwE("non-`#Cval` local `let`");
             return;
@@ -465,11 +462,11 @@ private:
         if (auto se = dynamic_cast<p<StatementExprNode>>(s)) {
             if (dynamic_cast<p<StatementRetNode>>(s)) return; // ret 允许
             p<ExprNode> e = se->expr();
-            if (dynamic_cast<p<ExprMatchNode>>(e))    throwE("match expression");
+            if (dynamic_cast<p<ExprMatchNode>>(e)) throwE("match expression");
             if (dynamic_cast<p<ExprTryCatchNode>>(e)) throwE("try-catch expression");
             throwE("expression statement");
         }
-        if (dynamic_cast<p<StatementBlockNode>>(s))              throwE("nested block statement");
+        if (dynamic_cast<p<StatementBlockNode>>(s)) throwE("nested block statement");
     }
 
     void visitStmt(p<StatementNode> s) {
@@ -500,7 +497,8 @@ private:
                 int col = s->getColumn();
                 // RHS 一定是 frozen ID（顶层），取名字塞进消息。
                 p<ExprNode> e = da->expr();
-                while (auto paren = dynamic_cast<p<ExprParenNode>>(e)) e = paren->expr();
+                while (auto paren = dynamic_cast<p<ExprParenNode>>(e))
+                    e = paren->expr();
                 string srcName = "<frozen>";
                 if (auto le = dynamic_cast<p<ExprLiteralNode>>(e)) {
                     if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
@@ -520,8 +518,7 @@ private:
                 if (sym && sym->isFrozen) {
                     int line = s->getLineNumber();
                     int col = s->getColumn();
-                    throw YuxError(line, col, ErrorCode::E3106,
-                                   as->subs().front().getText(), as->obj().getText());
+                    throw YuxError(line, col, ErrorCode::E3106, as->subs().front().getText(), as->obj().getText());
                 }
                 // §6.2 / §6.3：字段层 #Val/#Frozen 在构造期外禁写。
                 checkFieldWrite(as, scope);
@@ -538,7 +535,8 @@ private:
                     int line = s->getLineNumber();
                     int col = s->getColumn();
                     p<ExprNode> e = as->expr();
-                    while (auto paren = dynamic_cast<p<ExprParenNode>>(e)) e = paren->expr();
+                    while (auto paren = dynamic_cast<p<ExprParenNode>>(e))
+                        e = paren->expr();
                     string srcName = "<frozen>";
                     if (auto le = dynamic_cast<p<ExprLiteralNode>>(e)) {
                         if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
@@ -555,8 +553,7 @@ private:
             // DRAFT-static-vars Phase 5：静态字段写 Type::FIELD = expr
             // §4.2：#Const fn 体内禁写静态字段
             if (_isConstFn) {
-                throw YuxError(s->getLineNumber(), s->getColumn(), ErrorCode::E3110,
-                               _fnName, "write static field",
+                throw YuxError(s->getLineNumber(), s->getColumn(), ErrorCode::E3110, _fnName, "write static field",
                                sfs->typeName().getText() + "::" + sfs->fieldName().getText());
             }
             visitExpr(sfs->valueExpr());
@@ -570,7 +567,8 @@ private:
                 int col = s->getColumn();
                 string objName = "<expr>";
                 p<ExprNode> ae = st->arrayExpr();
-                while (auto paren = dynamic_cast<p<ExprParenNode>>(ae)) ae = paren->expr();
+                while (auto paren = dynamic_cast<p<ExprParenNode>>(ae))
+                    ae = paren->expr();
                 if (auto le = dynamic_cast<p<ExprLiteralNode>>(ae)) {
                     if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
                         objName = obj->getValue().getText();
@@ -581,7 +579,8 @@ private:
             // §4.2：#Const fn 内禁写 $/参数/全局的数组槽。
             checkConstFnSet(st, scope);
             visitExpr(st->arrayExpr());
-            for (auto& i : st->indices()) visitExpr(i);
+            for (auto& i : st->indices())
+                visitExpr(i);
             visitExpr(st->valueExpr());
             return;
         }
@@ -608,12 +607,6 @@ private:
             visitBlock(ie->elseBlock());
             return;
         }
-        if (auto pe = dynamic_cast<p<ExprIfElsePreValueNode>>(e)) {
-            visitExpr(pe->condition());
-            visitExpr(pe->trueValue());
-            visitExpr(pe->falseValue());
-            return;
-        }
         if (auto ol = dynamic_cast<p<ExprOneLineIfElseNode>>(e)) {
             visitExpr(ol->condition());
             visitExpr(ol->trueValue());
@@ -623,12 +616,14 @@ private:
         if (auto call = dynamic_cast<p<ExprCallNode>>(e)) {
             checkConstFnCall(call);
             visitExpr(call->getCalleeExpr());
-            for (auto& a : call->getArgs()) visitExpr(a);
+            for (auto& a : call->getArgs())
+                visitExpr(a);
             return;
         }
         if (auto lam = dynamic_cast<p<LambdaExprNode>>(e)) {
             if (lam->bodyExpr()) visitExpr(lam->bodyExpr());
-            for (auto& s : lam->bodyStmts()) visitStmt(s);
+            for (auto& s : lam->bodyStmts())
+                visitStmt(s);
             return;
         }
         if (auto m = dynamic_cast<p<ExprMatchNode>>(e)) {
@@ -649,7 +644,7 @@ private:
     }
 };
 
-} // anon namespace
+} // namespace
 
 void checkConstMut(p<FnNode> fn) {
     ConstMutWalker w;

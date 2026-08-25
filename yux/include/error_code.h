@@ -249,9 +249,8 @@ DEF_ERR(3108, "Unknown or duplicate field annotation '#{}' (only '#Val' and '#Fr
 DEF_ERR(3109, "Cannot write field '{}' marked '#{}' outside the constructor of struct '{}' (DRAFT-const-mut §6.2)")
 DEF_ERR(3110, "`#Const fn` '{}' cannot {}: {} (DRAFT-const-mut §4.2)")
 DEF_ERR(3111, "`#Const fn` '{}' cannot call non-`#Const` function '{}' (DRAFT-const-mut §4.2.4)")
-DEF_ERR(3112,
-        "Unknown `let` annotation '#{}' (only '#Mut', '#Frozen', '#Cval', '#Inline' are supported on `let`; "
-        "DRAFT-let-unify §3.4)")
+DEF_ERR(3112, "Unknown `let` annotation '#{}' (only '#Mut', '#Frozen', '#Cval', '#Inline' are supported on `let`; "
+              "DRAFT-let-unify §3.4)")
 DEF_ERR(3113, "`let {}` requires a type or initializer (DRAFT-let-unify §3.4)")
 DEF_ERR(3114, "`let {} <type>` requires an initializer (use `#Mut let` for deferred assignment; DRAFT-let-unify §3.4)")
 DEF_ERR(3115, "Annotations '#{}' and '#{}' are mutually exclusive on `let` (DRAFT-let-unify §3.4)")
@@ -259,9 +258,8 @@ DEF_ERR(
     3116,
     "Global `let {}` requires `#Cval`: only compile-time constants are allowed at global scope (DRAFT-let-unify §3)")
 DEF_ERR(3117, "`#Inline` requires `#Cval` on `let` declaration (DRAFT-let-unify §3.4)")
-DEF_ERR(3118,
-        "Cannot take address of `#Inline` constant `{}`: inline constants have no storage address "
-        "(like C `#define`; use a plain `#Cval` if an address is needed)")
+DEF_ERR(3118, "Cannot take address of `#Inline` constant `{}`: inline constants have no storage address "
+              "(like C `#define`; use a plain `#Cval` if an address is needed)")
 
 // ── DRAFT-const-eval Phase 2: 全局 const-eval ─────────────────────────
 DEF_ERR(3140, "Global `let {}` initializer is not a constant expression (DRAFT-const-eval §2; allowed: literals, "
@@ -272,7 +270,7 @@ DEF_ERR(3143, "Constant expression evaluation error in global `let {}` (overflow
 
 // ── DRAFT-const-eval Phase 3: #Const fn body 控制流白名单 ─────────────
 DEF_ERR(3141, "`#Const fn` '{}' body contains disallowed control-flow form: {} (DRAFT-const-eval §3; allowed: "
-              "`= expr`, `{{ ret expr }}`, sequential `#Cval let`, `exprOneLineIfElse` / `exprIfElsePreValue`, "
+              "`= expr`, `{{ ret expr }}`, sequential `#Cval let`, `exprOneLineIfElse`, "
               "if-statement with `ret` in both branches)")
 
 // ── DRAFT-const-eval Phase 4: #Const fn 调用纳入 const-eval ───────────

@@ -385,20 +385,19 @@ private:
     compileStringTemplate(StringTemplateNode* node); // v0.6 Phase 2a：StringTemplateNode → StringBuilder lower
     llvm::Value* compileStringPlusChain(
         ExprAddSubNode* node); // v0.6 Phase 2c：连续 String + ... 整链 lower 为单条 StringBuilder 累加
-    llvm::Value* compileAddSubExpr(p<ExprAddSubNode> node);                 // 编译加减表达式
-    llvm::Value* compileMulDivModExpr(p<ExprMulDivModNode> node);           // 编译乘除取模表达式
-    llvm::Value* compileBinOpExpr(p<ExprBinOpNode> node);                   // 编译位运算表达式
-    llvm::Value* compileParenExpr(p<ExprParenNode> node);                   // 编译括号表达式
-    llvm::Value* compileCallExpr(p<ExprCallNode> node);                     // 编译函数调用表达式
-    llvm::Value* compileDotExpr(p<ExprDotNode> node);                       // 编译成员访问表达式
-    llvm::Value* compileCompareExpr(p<ExprCompareNode> node);               // 编译比较表达式
-    llvm::Value* compileIfElseExpr(p<ExprIfElseNode> node);                 // 编译 if-else 表达式
-    llvm::Value* compileOneLineIfElseExpr(p<ExprOneLineIfElseNode> node);   // 编译单行 if-else 表达式
-    llvm::Value* compileIfElsePreValueExpr(p<ExprIfElsePreValueNode> node); // 编译前置值 if-else 表达式
-    llvm::Value* compileArrayGetExpr(p<ExprGetNode> node);                  // 编译数组索引表达式
-    llvm::Value* compileArrayLiteralExpr(p<ExprArrayNode> node);            // 编译数组字面量表达式
-    llvm::Value* compileTupleExpr(p<ExprTupleNode> node);                   // 编译元组构造表达式 (e1, e2, ...)
-    llvm::Value* compileEnumCtorExpr(p<ExprPathCallNode> node);             // 编译枚举构造表达式 E::V / E::V(args)
+    llvm::Value* compileAddSubExpr(p<ExprAddSubNode> node);               // 编译加减表达式
+    llvm::Value* compileMulDivModExpr(p<ExprMulDivModNode> node);         // 编译乘除取模表达式
+    llvm::Value* compileBinOpExpr(p<ExprBinOpNode> node);                 // 编译位运算表达式
+    llvm::Value* compileParenExpr(p<ExprParenNode> node);                 // 编译括号表达式
+    llvm::Value* compileCallExpr(p<ExprCallNode> node);                   // 编译函数调用表达式
+    llvm::Value* compileDotExpr(p<ExprDotNode> node);                     // 编译成员访问表达式
+    llvm::Value* compileCompareExpr(p<ExprCompareNode> node);             // 编译比较表达式
+    llvm::Value* compileIfElseExpr(p<ExprIfElseNode> node);               // 编译 if-else 表达式
+    llvm::Value* compileOneLineIfElseExpr(p<ExprOneLineIfElseNode> node); // 编译单行 if-else 表达式
+    llvm::Value* compileArrayGetExpr(p<ExprGetNode> node);                // 编译数组索引表达式
+    llvm::Value* compileArrayLiteralExpr(p<ExprArrayNode> node);          // 编译数组字面量表达式
+    llvm::Value* compileTupleExpr(p<ExprTupleNode> node);                 // 编译元组构造表达式 (e1, e2, ...)
+    llvm::Value* compileEnumCtorExpr(p<ExprPathCallNode> node);           // 编译枚举构造表达式 E::V / E::V(args)
     // Dyn<D>(x) 构造表达式（DRAFT-dyn-draft / 拟 §12.9）
     // Phase 1c：仅 emit { vtable=null, data=src.handle } 占位 fat ptr，
     // 真 vtable 与对象安全检查留 Phase 2/3

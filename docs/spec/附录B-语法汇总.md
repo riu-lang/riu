@@ -202,7 +202,6 @@ expr ::=
   | '&' (ID | '$') (LineEnd* '.' ID)*                            # exprGetRef
   | expr '[' LineEnd* expr (',' LineEnd* expr)* ','? LineEnd* ']' # exprGet
   | 'if' expr '{' expr '}' 'else' '{' expr '}'                   # exprOneLineIfElse
-  | expr 'if' expr 'else' expr                                   # exprIfElsePreValue
   | 'if' expr statementBlock exprElIf* exprElse?                 # exprIfElse
   | 'match' expr '{' codeLineEnd
         ((matchArm codeLineEnd) | comment)+

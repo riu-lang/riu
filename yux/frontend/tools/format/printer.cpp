@@ -8,7 +8,7 @@
 //   nullElse）/ call(无尾随 lambda) / dot / tupleMember / get / getRef /
 //   array / tuple / enumCtor / arrayInit / this / lambdaSingle / lambdaParen
 // - 仍走 raw: lambdaBlock / lambdaZeroBlock / tryCatch / match / ifElse /
-//   oneLineIfElse / ifElsePreValue / call 含尾随 lambda
+//   oneLineIfElse / call 含尾随 lambda
 // - 已接入 fnExprkBody（`fn name() T = <expr>` 体）
 //
 // Phase 3 范围:
@@ -52,8 +52,7 @@ namespace {
 // 通道，因此返回的字符串与输入完全一致（含其中的 hidden 注释 / 空白）。
 std::string rawSpan(antlr4::CommonTokenStream& tokens, antlr4::ParserRuleContext* ctx) {
     if (ctx == nullptr || ctx->start == nullptr || ctx->stop == nullptr) return {};
-    return tokens.getText(antlr4::misc::Interval(
-        ctx->start->getTokenIndex(), ctx->stop->getTokenIndex()));
+    return tokens.getText(antlr4::misc::Interval(ctx->start->getTokenIndex(), ctx->stop->getTokenIndex()));
 }
 
 // 把多行原文按"原始公共缩进"剥掉，再补上目标缩进。
@@ -70,8 +69,7 @@ std::string trimRightLineEnds(std::string s) {
 
 class Printer {
 public:
-    Printer(antlr4::CommonTokenStream& tokens, const TriviaMap& trivia)
-        : tokens_(tokens), trivia_(trivia) {}
+    Printer(antlr4::CommonTokenStream& tokens, const TriviaMap& trivia) : tokens_(tokens), trivia_(trivia) {}
 
     Doc programDoc(yuxParser::ProgramContext* ctx);
 
@@ -82,11 +80,11 @@ private:
     // 顶层 item 的渲染单元：要么是结构化 Doc (走 render 出现刷格式)，
     // 要么是纯原文块 (按行直出，避免再次 break/flat 决策影响)
     struct Item {
-        std::vector<TriviaComment> leading;  // 项前 leading 注释
-        bool blankBefore = false;            // 是否需要在前面插入一个空行
-        bool blankAfterLeading = false;      // leading 与项之间是否需要空行
-        Doc doc;                             // 结构化输出 (与 raw 二选一)
-        std::string raw;                     // 原文回退输出 (与 doc 二选一)
+        std::vector<TriviaComment> leading; // 项前 leading 注释
+        bool blankBefore = false;           // 是否需要在前面插入一个空行
+        bool blankAfterLeading = false;     // leading 与项之间是否需要空行
+        Doc doc;                            // 结构化输出 (与 raw 二选一)
+        std::string raw;                    // 原文回退输出 (与 doc 二选一)
     };
 
     Item visitTopLevel(antlr4::tree::ParseTree* child);
@@ -123,17 +121,13 @@ private:
 
     // 把多行原文按"原起始列 → 目标列"做整体平移：第 0 行原样，第 i>0 行
     // 把至多 srcStartCol 个前导空格替换为 targetCol 空格
-    static std::string reindentMultilineRaw(const std::string& raw,
-                                            std::size_t srcStartCol,
-                                            std::size_t targetCol);
+    static std::string reindentMultilineRaw(const std::string& raw, std::size_t srcStartCol, std::size_t targetCol);
 
     // 抓 ctx 的原文，但去掉末尾的 LineEnd token（语句规则末尾固定挂 LineEnd）
     std::string rawSpanWithoutTrailingLineEnd(antlr4::ParserRuleContext* ctx);
 
     // 取顶层 item 起始 default token 的 index，用于查 trivia
-    static std::size_t startTokenIndex(antlr4::ParserRuleContext* ctx) {
-        return ctx->start->getTokenIndex();
-    }
+    static std::size_t startTokenIndex(antlr4::ParserRuleContext* ctx) { return ctx->start->getTokenIndex(); }
 };
 
 Doc Printer::importsDoc(yuxParser::ImportsContext* ctx) {
@@ -166,7 +160,8 @@ Doc Printer::buildAnnoDoc(yuxParser::BuildAnnoContext* ctx) {
                 parts.push_back(text(aa->argStr->getText()));
             } else if (aa->argTPL) {
                 parts.push_back(text("\""));
-                for (auto* tn : aa->argText) parts.push_back(text(tn->getText()));
+                for (auto* tn : aa->argText)
+                    parts.push_back(text(tn->getText()));
                 parts.push_back(text("\""));
             } else if (aa->argType) {
                 parts.push_back(typeDoc(aa->argType));
@@ -222,8 +217,11 @@ Doc Printer::typeDoc(yuxParser::TypeContext* ctx) {
     }
     if (auto* n = dynamic_cast<yuxParser::TypeArrayContext*>(ctx)) {
         return concat({
-            text("["), typeDoc(n->type()),
-            text(" * "), text(n->INT()->getText()), text("]"),
+            text("["),
+            typeDoc(n->type()),
+            text(" * "),
+            text(n->INT()->getText()),
+            text("]"),
         });
     }
     if (auto* n = dynamic_cast<yuxParser::TypeTupleContext*>(ctx)) {
@@ -256,9 +254,7 @@ Doc Printer::typeDoc(yuxParser::TypeContext* ctx) {
 }
 
 Doc Printer::typeWithRefDoc(yuxParser::TypeWithRefContext* ctx) {
-    auto refSuffix = [](antlr4::tree::TerminalNode* andTok) -> Doc {
-        return andTok != nullptr ? text("&") : text("");
-    };
+    auto refSuffix = [](antlr4::tree::TerminalNode* andTok) -> Doc { return andTok != nullptr ? text("&") : text(""); };
     if (auto* n = dynamic_cast<yuxParser::TypeNormalWithRefContext*>(ctx)) {
         return concat({text(n->ID()->getText()), refSuffix(n->SymbolAnd())});
     }
@@ -274,8 +270,11 @@ Doc Printer::typeWithRefDoc(yuxParser::TypeWithRefContext* ctx) {
     }
     if (auto* n = dynamic_cast<yuxParser::TypeArrayWithRefContext*>(ctx)) {
         return concat({
-            text("["), typeWithRefDoc(n->typeWithRef()),
-            text(" * "), text(n->INT()->getText()), text("]"),
+            text("["),
+            typeWithRefDoc(n->typeWithRef()),
+            text(" * "),
+            text(n->INT()->getText()),
+            text("]"),
             refSuffix(n->SymbolAnd()),
         });
     }
@@ -456,8 +455,7 @@ Doc Printer::exprDoc(yuxParser::ExprContext* ctx) {
         return concat({text(n->op->getText()), exprDoc(n->right)});
     }
     // ----- 二元（统一通过 op 文本 / 子规则原文）-----
-    auto binDoc = [&](yuxParser::ExprContext* l, const std::string& opText,
-                      yuxParser::ExprContext* r) -> Doc {
+    auto binDoc = [&](yuxParser::ExprContext* l, const std::string& opText, yuxParser::ExprContext* r) -> Doc {
         return concat({exprDoc(l), text(" "), text(opText), text(" "), exprDoc(r)});
     };
     if (auto* n = dynamic_cast<yuxParser::ExprAddSubContext*>(ctx)) {
@@ -625,7 +623,7 @@ Doc Printer::exprDoc(yuxParser::ExprContext* ctx) {
     }
     // ----- 其余块形 / 控制流：raw -----
     // ExprLambdaBlock / ExprLambdaZeroBlock / ExprTryCatch / ExprMatch /
-    // ExprIfElse / ExprOneLineIfElse / ExprIfElsePreValue
+    // ExprIfElse / ExprOneLineIfElse
     return text(rawSpan(tokens_, ctx));
 }
 
@@ -667,15 +665,16 @@ Doc Printer::fnBodyDoc(yuxParser::FnBodyContext* ctx, int indentLevel) {
 
 // ==================== 语句 / 块 ====================
 
-std::string Printer::reindentMultilineRaw(const std::string& raw,
-                                          std::size_t srcStartCol,
-                                          std::size_t targetCol) {
+std::string Printer::reindentMultilineRaw(const std::string& raw, std::size_t srcStartCol, std::size_t targetCol) {
     std::vector<std::string> lines;
     {
         std::string cur;
         for (char c : raw) {
-            if (c == '\n') { lines.push_back(std::move(cur)); cur.clear(); }
-            else if (c != '\r') cur.push_back(c);
+            if (c == '\n') {
+                lines.push_back(std::move(cur));
+                cur.clear();
+            } else if (c != '\r')
+                cur.push_back(c);
         }
         lines.push_back(std::move(cur));
     }
@@ -687,7 +686,8 @@ std::string Printer::reindentMultilineRaw(const std::string& raw,
             out += lines[i];
         } else {
             std::size_t k = 0;
-            while (k < lines[i].size() && k < srcStartCol && lines[i][k] == ' ') ++k;
+            while (k < lines[i].size() && k < srcStartCol && lines[i][k] == ' ')
+                ++k;
             out += pad;
             out += lines[i].substr(k);
         }
@@ -715,7 +715,6 @@ static bool isBlockExpr(yuxParser::ExprContext* e) {
     if (dynamic_cast<yuxParser::ExprMatchContext*>(e)) return true;
     if (dynamic_cast<yuxParser::ExprIfElseContext*>(e)) return true;
     if (dynamic_cast<yuxParser::ExprOneLineIfElseContext*>(e)) return true;
-    if (dynamic_cast<yuxParser::ExprIfElsePreValueContext*>(e)) return true;
     if (auto* c = dynamic_cast<yuxParser::ExprCallContext*>(e)) {
         return c->trailing != nullptr;
     }
@@ -730,15 +729,14 @@ Doc Printer::statementDoc(yuxParser::StatementContext* ctx, int indentLevel) {
     if (startLine != stopLine) {
         std::size_t srcCol = ctx->start->getCharPositionInLine();
         std::string raw = rawSpanWithoutTrailingLineEnd(ctx);
-        return text(reindentMultilineRaw(raw, srcCol,
-                                         static_cast<std::size_t>(indentLevel) * 2));
+        return text(reindentMultilineRaw(raw, srcCol, static_cast<std::size_t>(indentLevel) * 2));
     }
 
     if (auto* n = dynamic_cast<yuxParser::StatementLetContext*>(ctx)) {
         // letAnno* let name (Type)? (= expr)?
         std::vector<Doc> parts;
         parts.reserve(n->letAnnos.size());
-for (auto* a : n->letAnnos) {
+        for (auto* a : n->letAnnos) {
             parts.push_back(text("#" + a->name->getText() + " "));
         }
         parts.push_back(text("let "));
@@ -757,7 +755,7 @@ for (auto* a : n->letAnnos) {
         // letAnno* let (a, b) (Type)? = expr
         std::vector<Doc> parts;
         parts.reserve(n->letAnnos.size());
-for (auto* a : n->letAnnos) {
+        for (auto* a : n->letAnnos) {
             parts.push_back(text("#" + a->name->getText() + " "));
         }
         parts.push_back(text("let ("));
@@ -862,8 +860,8 @@ for (auto* a : n->letAnnos) {
     }
     // 兜底（语法演化时保护）
     std::size_t srcCol = ctx->start->getCharPositionInLine();
-    return text(reindentMultilineRaw(rawSpanWithoutTrailingLineEnd(ctx), srcCol,
-                                     static_cast<std::size_t>(indentLevel) * 2));
+    return text(
+        reindentMultilineRaw(rawSpanWithoutTrailingLineEnd(ctx), srcCol, static_cast<std::size_t>(indentLevel) * 2));
 }
 
 Doc Printer::statementBlockDoc(yuxParser::StatementBlockContext* ctx, int indentLevel) {
@@ -883,9 +881,7 @@ Doc Printer::statementBlockDoc(yuxParser::StatementBlockContext* ctx, int indent
         // "item 前空行" 的判定：若有 leading 注释，看首条注释自身是否处于
         // 空行之后；否则看语句锚点的 blankBefore。这样 src 的"空行 + 注释 +
         // 语句"就不会被吃掉
-        bool emitBlank = (cs != nullptr && !cs->empty())
-                         ? cs->front().blankBefore
-                         : stmtBlank;
+        bool emitBlank = (cs != nullptr && !cs->empty()) ? cs->front().blankBefore : stmtBlank;
         inner.push_back(hardline());
         if (!first && emitBlank) inner.push_back(hardline());
         first = false;
@@ -927,15 +923,14 @@ Doc Printer::statementBlockDoc(yuxParser::StatementBlockContext* ctx, int indent
         auto leadIt = trivia_.leadingByTokenIndex.find(endIdx);
         if (leadIt != trivia_.leadingByTokenIndex.end()) {
             const auto& cs = leadIt->second;
-            for (const auto & c : cs) {
+            for (const auto& c : cs) {
                 inner.push_back(hardline());
                 if (c.blankBefore) inner.push_back(hardline());
                 inner.push_back(text(c.text));
             }
         }
         auto blankIt = trivia_.blankBefore.find(endIdx);
-        if (blankIt != trivia_.blankBefore.end() && blankIt->second
-            && leadIt == trivia_.leadingByTokenIndex.end()) {
+        if (blankIt != trivia_.blankBefore.end() && blankIt->second && leadIt == trivia_.leadingByTokenIndex.end()) {
             // 末尾仅有空行，无注释
             inner.push_back(hardline());
         }
@@ -1052,9 +1047,7 @@ Doc Printer::programDoc(yuxParser::ProgramContext* ctx) {
         // 同 statementBlockDoc：若 item 带 leading 注释，则用首条注释的
         // blankBefore 来判定项前是否需要空行（避免源 "空行 + 注释 + item"
         // 形态被错误压平）
-        bool emitBlank = !it.leading.empty()
-                         ? it.leading.front().blankBefore
-                         : it.blankBefore;
+        bool emitBlank = !it.leading.empty() ? it.leading.front().blankBefore : it.blankBefore;
         if (!first) {
             out.push_back('\n');
             if (emitBlank) out.push_back('\n');
@@ -1108,7 +1101,8 @@ std::string formatAst(const std::string& source, const FormatConfig& config) {
     for (std::size_t i = 0; i <= out.size(); ++i) {
         if (i == out.size() || out[i] == '\n') {
             std::size_t end = i;
-            while (end > lineStart && (out[end - 1] == ' ' || out[end - 1] == '\t')) --end;
+            while (end > lineStart && (out[end - 1] == ' ' || out[end - 1] == '\t'))
+                --end;
             trimmed.append(out, lineStart, end - lineStart);
             if (i < out.size()) trimmed.push_back('\n');
             lineStart = i + 1;

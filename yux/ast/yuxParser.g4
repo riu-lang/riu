@@ -464,9 +464,6 @@ expr:
       BlockStart trueValue=expr
       BlockEnd Else BlockStart falseValue=expr
       BlockEnd                            # exprOneLineIfElse
-    // true if condition else false 类python
-    | trueValue=expr If condition=expr
-      Else falseValue=expr                # exprIfElsePreValue
     // if e {
     // ...
     // } elif e {

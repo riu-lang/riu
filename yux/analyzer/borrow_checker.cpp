@@ -560,12 +560,6 @@ private:
             if (ie->elseBlock()) visitBlock(ie->elseBlock());
             return;
         }
-        if (auto pe = dynamic_cast<ExprIfElsePreValueNode*>(e)) {
-            if (pe->condition()) visitExpr(pe->condition());
-            if (pe->trueValue()) visitExpr(pe->trueValue());
-            if (pe->falseValue()) visitExpr(pe->falseValue());
-            return;
-        }
         if (auto ol = dynamic_cast<ExprOneLineIfElseNode*>(e)) {
             if (ol->condition()) visitExpr(ol->condition());
             if (ol->trueValue()) visitExpr(ol->trueValue());

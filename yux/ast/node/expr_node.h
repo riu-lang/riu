@@ -68,8 +68,8 @@ bool isFlexibleNullExpr(p<ExprNode> expr);
 bool tryInferNullType(p<ExprNode> expr, const TypeInfo& nullableTarget);
 
 inline bool isIntTypeName(const string& n) {
-    return n == "i8" || n == "i16" || n == "i32" || n == "i64" || n == "u8" || n == "u16" || n == "u32" || n == "u64"
-        || n == "isize" || n == "usize";
+    return n == "i8" || n == "i16" || n == "i32" || n == "i64" || n == "u8" || n == "u16" || n == "u32" || n == "u64" ||
+           n == "isize" || n == "usize";
 }
 
 class ExprCallNode : public ExprNode {
@@ -314,23 +314,6 @@ public:
     [[nodiscard]] int resolveColumn() const override;
 };
 
-class ExprIfElsePreValueNode : public ExprNode {
-    p<ExprNode> _condition;
-    p<ExprNode> _trueValue;
-    p<ExprNode> _falseValue;
-
-public:
-    ExprIfElsePreValueNode(const p<Node>& parent, p<ExprNode> condition, p<ExprNode> trueValue, p<ExprNode> falseValue)
-        : ExprNode(parent), _condition(condition), _trueValue(trueValue), _falseValue(falseValue) {}
-
-    [[nodiscard]] const p<ExprNode>& condition() const { return _condition; }
-    [[nodiscard]] const p<ExprNode>& trueValue() const { return _trueValue; }
-    [[nodiscard]] const p<ExprNode>& falseValue() const { return _falseValue; }
-    [[nodiscard]] TypeInfo getType() const override;
-    [[nodiscard]] int resolveLineNumber() const override;
-    [[nodiscard]] int resolveColumn() const override;
-};
-
 class ExprGetNode : public ExprNode {
     p<ExprNode> _arrayExpr;
     vector<p<ExprNode>> _indices;
@@ -465,8 +448,8 @@ private:
 public:
     LambdaExprNode(const p<Node>& parent, Form form, vector<LambdaParamSlot> params, p<TypeNode> retType,
                    p<ExprNode> bodyExpr, vector<p<StatementNode>> bodyStmts)
-        : ExprNode(parent), _form(form), _params(std::move(params)), _retType(retType),
-          _bodyExpr(bodyExpr), _bodyStmts(std::move(bodyStmts)) {}
+        : ExprNode(parent), _form(form), _params(std::move(params)), _retType(retType), _bodyExpr(bodyExpr),
+          _bodyStmts(std::move(bodyStmts)) {}
 
     void setBodyScope(p<ScopeNode> sc) { _bodyScope = sc; }
     [[nodiscard]] p<ScopeNode> bodyScope() const { return _bodyScope; }

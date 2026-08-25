@@ -228,7 +228,7 @@ const-eval（E3140..E3144；引入自 [draft/DRAFT-const-eval.md](draft/DRAFT-co
 | 码 | 模板 |
 |---|---|
 | E3140 | `Global \`let {}\` initializer is not a constant expression (DRAFT-const-eval §2; allowed: literals, references to declared \`#Cval\` globals, and arithmetic / bitwise / comparison / logical combinations thereof)` |
-| E3141 | `` \`#Const fn\` '{}' body contains disallowed control-flow form: {} (DRAFT-const-eval §3; allowed: \`= expr\`, \`{{ ret expr }}\`, sequential \`#Cval let\`, \`exprOneLineIfElse\` / \`exprIfElsePreValue\`, if-statement with \`ret\` in both branches) `` |
+| E3141 | `` \`#Const fn\` '{}' body contains disallowed control-flow form: {} (DRAFT-const-eval §3; allowed: \`= expr\`, \`{{ ret expr }}\`, sequential \`#Cval let\`, \`exprOneLineIfElse\`, if-statement with \`ret\` in both branches) `` |
 | E3142 | `struct literal for '{}' requires all-public fields (DRAFT-const-eval §5.4; v1 placeholder — no \`#Private\` modifier exists yet)` |
 | E3143 | `Constant expression evaluation error in global \`let {}\` (overflow, division by zero, or unsupported operation; DRAFT-const-eval §4.7)` |
 | E3144 | `` \`#Const fn\` '{}' cannot be invoked in a constant expression: {} type '{}' is not in the const-eval whitelist (DRAFT-const-eval §4; allowed: scalar integer / float / bool) `` |

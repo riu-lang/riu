@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <set>
 
-#include "types.h"
 #include "analyzer/symbol_suggest.h"
 #include "file_node.h"
 #include "fn_node.h"
@@ -14,6 +13,7 @@
 #include "spec_node.h"
 #include "statement_node.h"
 #include "struct_node.h"
+#include "types.h"
 
 // §12.4：在生成式 AST 中遇到 `x.m()`（x:T 为泛型形参）时，
 // 用形参声明位的 draft 边界查 m 的返回类型；走包含 SDK 回退的 file 链。
@@ -975,7 +975,8 @@ TypeInfo ExprDotNode::getType() const {
                     }
                 }
                 if (methodSym) {
-                    DEBUG_LOG_VAL("ExprDotNode::getType - safe builtin method, returning fn()", methodSym->retType.name);
+                    DEBUG_LOG_VAL("ExprDotNode::getType - safe builtin method, returning fn()",
+                                  methodSym->retType.name);
                     return TypeInfo("fn() " + methodSym->retType.getFullName());
                 }
             }
@@ -989,7 +990,8 @@ TypeInfo ExprDotNode::getType() const {
                 if (member == "pop") return "fn() " + elemTy.getFullName();
                 if (member == "len" || member == "cap") return "fn() usize";
                 if (member == "is_empty") return "fn() bool";
-                if (member == "push" || member == "clear" || member == "set_len" || member == "reserve") return "fn() void";
+                if (member == "push" || member == "clear" || member == "set_len" || member == "reserve")
+                    return "fn() void";
                 return "";
             };
 
@@ -1673,25 +1675,6 @@ int ExprOneLineIfElseNode::resolveLineNumber() const {
 }
 
 int ExprOneLineIfElseNode::resolveColumn() const {
-    if (_line > 0) return _col;
-    return _condition->resolveColumn();
-}
-
-TypeInfo ExprIfElsePreValueNode::getType() const {
-    auto trueType = _trueValue->getType();
-    auto falseType = _falseValue->getType();
-    if (trueType != falseType) {
-        throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3005, trueType.name, falseType.name);
-    }
-    return trueType;
-}
-
-int ExprIfElsePreValueNode::resolveLineNumber() const {
-    if (_line > 0) return _line;
-    return _condition->resolveLineNumber();
-}
-
-int ExprIfElsePreValueNode::resolveColumn() const {
     if (_line > 0) return _col;
     return _condition->resolveColumn();
 }

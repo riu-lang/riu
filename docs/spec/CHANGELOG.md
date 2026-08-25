@@ -17,6 +17,14 @@
 
 ---
 
+## 2026-08-25 —— 删除 Python 风三元 `a if c else b`
+
+- **删除 §4.9.2**：`exprIfElsePreValue`（`trueExpr if cond else falseExpr`）下线；条件表达式统一为 §4.9.1 `if c { a } else { b }`
+- **修改 §4.2.1 / §5.4.1 / §5.7.1.1 / §2.5 / §11.6.4.2 / 附录 B**：从产生式表与 const-eval 白名单去掉该形态
+- **修改 附录 D E3141**：允许列表不再含 `exprIfElsePreValue`
+- **语法**：`yuxParser.g4` 删除 `# exprIfElsePreValue` 分支
+- **冲突 / 兼容**：破坏性。旧写法 `a if c else b` 改为 `if c { a } else { b }`
+
 ## 2026-07-15 —— 复合赋值补入 `|=`（按位或赋值）和 `&=`（按位与赋值）
 
 - **修改 §1.7.1**：复合赋值行从 `+= -= *= /= %= ^=` 扩展为含 `|=` `&=`

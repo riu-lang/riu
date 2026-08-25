@@ -8,6 +8,7 @@
 /.xmake/
 /.vscode/
 /bin/
+.cursor/
 
 .claude/settings.local.json
 /BUGS.md

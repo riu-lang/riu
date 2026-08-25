@@ -6,7 +6,6 @@
 //   - visitAliasDecl / visitEnumDecl / visitEnumVariant
 // 拆自原 ast_builder.cpp（P1 Phase 2），方法体一字不动。
 
-#include "types.h"
 #include "ast_builder.h"
 #include "ast_builder_helpers.h"
 #include "node/expr_node.h"
@@ -14,6 +13,7 @@
 #include "node/literal_node.h"
 #include "node/statement_node.h"
 #include "sema/const_eval.h"
+#include "types.h"
 #include <algorithm>
 
 std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
@@ -655,12 +655,6 @@ bool ASTBuilder::exprContainsTryCatch(p<ExprNode> expr) {
         if (exprContainsTryCatch(ol->condition())) return true;
         if (exprContainsTryCatch(ol->trueValue())) return true;
         if (exprContainsTryCatch(ol->falseValue())) return true;
-        return false;
-    }
-    if (auto* pv = dynamic_cast<ExprIfElsePreValueNode*>(expr)) {
-        if (exprContainsTryCatch(pv->condition())) return true;
-        if (exprContainsTryCatch(pv->trueValue())) return true;
-        if (exprContainsTryCatch(pv->falseValue())) return true;
         return false;
     }
 
