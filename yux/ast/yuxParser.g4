@@ -439,9 +439,7 @@ expr:
       exprElse?               # exprIfElse
     // match e {
     //   enum => expr
-    //   else => {
-    //    ...
-    //   }
+    //   else => { stmts }
     // }
     | Match expr BlockStart LineEnd
         (
@@ -589,9 +587,8 @@ opAssign:
     | SymbolLt SymbolLt SymbolEq
     ;
 
-// match arm: 模式 => 单表达式体
-// v1 仅支持单表达式体；多语句体押后（spec §5.5 statement 形态留给后续）
-matchArm: pattern=enumPattern SymbolEqMt body=expr;
+// match arm: 模式 => 单表达式体 或 语句块（块可单行，与 lambda / if 同）
+matchArm: pattern=enumPattern SymbolEqMt (statementBlock | body=expr);
 
 // match 模式（v1 子集）：
 //   E::V             零参 variant

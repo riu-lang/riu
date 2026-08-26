@@ -675,7 +675,17 @@ bool ASTBuilder::exprContainsTryCatch(p<ExprNode> expr) {
     if (auto* m = dynamic_cast<ExprMatchNode*>(expr)) {
         if (exprContainsTryCatch(m->scrutinee())) return true;
         for (auto& arm : m->arms()) {
-            if (exprContainsTryCatch(arm->body())) return true;
+            if (arm->hasBlock()) {
+                auto& blk = arm->block();
+                if (blk->hasResult() && exprContainsTryCatch(blk->resultExpr())) return true;
+                for (auto& s : blk->statements()) {
+                    if (auto se = dynamic_cast<StatementExprNode*>(s)) {
+                        if (exprContainsTryCatch(se->expr())) return true;
+                    }
+                }
+            } else if (exprContainsTryCatch(arm->body())) {
+                return true;
+            }
         }
         return false;
     }

@@ -254,7 +254,7 @@ opAssign       ::= '=' | '+=' | '-=' | '*=' | '/=' | '%=' | '^=' | '|=' | '&='
 moveAssign     ::= '<-'                                          ; 表达式级移入赋值（§4.13），不在 opAssign 中
                  | '>' '>' '=' | '<' '<' '='
 
-matchArm       ::= enumPattern '=>' expr
+matchArm       ::= enumPattern '=>' (statementBlock | expr)
 
 lambdaBody     ::= expr                                          ; 非左递归包装：迫使内部 expr 以新优先级启动
 lambdaParams   ::= lambdaParam (',' LineEnd* lambdaParam)* ','? LineEnd*
@@ -279,7 +279,7 @@ enumPattern    ::= ID '::' ID ( '(' ID (',' ID)* ')' )?          # patternEnum
 - `!` 与 `=` / `==` 之间需空白或换行（避免被吞为 `SymbolExclEq`）。
 
 - `exprEnumCtor`：`E::V` 与 `E::V()` 等价；类型别名 `C = E` 后 `C::V` 在解析期归一为 `E::V`。
-- `exprMatch`：v1 arm 体仅单表达式（多语句体押后）；arm 顺序对穷尽语义无影响，仅 `else` **应当**为最后一条；穷尽性 / binding arity / 重复 variant 由语义层校验。
+- `exprMatch`：arm 体为 `=> expr` 或 `=> { stmts }`（块可单行，值规则同 §5.4.4）；arm 顺序对穷尽语义无影响，仅 `else` **应当**为最后一条；穷尽性 / binding arity / 重复 variant 由语义层校验。
 - `enumPattern` 的 binding 位仅接受 ID（不可变值绑定）；不支持 `_` 通配、字面量、嵌套、多模式合并 `|`、守卫 `if`、`@` 绑定（§3.10 / 草案 §5.3）。
 
 > 优先级与结合性由 ANTLR4 在 `expr` 中按分支出现顺序自上而下决定。规范层语义见 §4。

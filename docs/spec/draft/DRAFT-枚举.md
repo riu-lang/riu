@@ -199,8 +199,11 @@ var area = match s {
 
 ### 5.5 类型与值规则
 
-- match 作为表达式时，所有 arm 体类型应当**严格一致**（无隐式转换）。
-- match 作为语句使用（不取值）时，各 arm 体可为表达式语句、块或控制流终结（`ret;` / `break;`）。
+- match 作为表达式时，所有 arm 体类型应当**严格一致**（无隐式转换）。arm 体两种形态：
+  - `pattern => expr`（单表达式，可单行）
+  - `pattern => { stmts }`（`statementBlock`，可单行；块值规则同 §5.4.4）
+- 一支以 `ret` / `panic` 等流终止时不参与类型合并（§4.9.1.4）。
+- match 作为语句使用（不取值）时，各 arm 体可为表达式、块或控制流终结（`ret;` / `break;`）。
 - 被 match 的标量（scrutinee）只求值一次。
 - scrutinee 类型应当是 enum 类型 `E` 或其类型别名（解析期已替换）；非 enum 类型在 v1 不允许进入 match（不做整型 / 字符串 match）。
 

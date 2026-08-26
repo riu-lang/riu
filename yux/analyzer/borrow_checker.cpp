@@ -579,8 +579,19 @@ private:
             visitLambda(lam);
             return;
         }
+        if (auto m = dynamic_cast<ExprMatchNode*>(e)) {
+            if (m->scrutinee()) visitExpr(m->scrutinee());
+            for (auto& arm : m->arms()) {
+                if (!arm) continue;
+                if (arm->hasBlock())
+                    visitBlock(arm->block());
+                else if (arm->body())
+                    visitExpr(arm->body());
+            }
+            return;
+        }
         // 其余表达式不需深入；本检查不依赖完整数据流。
-        // 嵌套 block 只通过 if/else 表达式承载，已上面覆盖。
+        // 嵌套 block 通过 if/else / match / lambda 承载，已上面覆盖。
     }
 
     // Phase 4e（spec §6.5）：lambda body 借用检查。

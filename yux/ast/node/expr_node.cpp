@@ -2024,11 +2024,47 @@ int ExprNullElseNode::resolveColumn() const {
 // 别名解析失败时（链中出现非 Normal 或解不到底）退回原始名，留给编译期 getLLVMType 报错
 // match 表达式：取所有非-else arm body 的共同类型；任一 arm 为 void 则整体 void
 // 类型不一致抛 E3027（match arm 体类型失配，spec §5.5）
+TypeInfo MatchArmNode::resultType() const {
+    if (_block) {
+        if (!_block->hasResult() || !_block->resultExpr()) return {};
+        return _block->resultExpr()->getType();
+    }
+    if (_body) return _body->getType();
+    return {};
+}
+
+bool MatchArmNode::skipsTypeMerge() const {
+    if (!_block || _block->hasResult()) return false;
+    for (auto& s : _block->statements()) {
+        if (dynamic_cast<StatementRetNode*>(s) || dynamic_cast<StatementRetVoidNode*>(s)) return true;
+    }
+    return false;
+}
+
+int MatchArmNode::resultLine() const {
+    if (_block) {
+        if (_block->hasResult() && _block->resultExpr()) return _block->resultExpr()->resolveLineNumber();
+        return _block->getLineNumber();
+    }
+    if (_body) return _body->resolveLineNumber();
+    return getLineNumber();
+}
+
+int MatchArmNode::resultCol() const {
+    if (_block) {
+        if (_block->hasResult() && _block->resultExpr()) return _block->resultExpr()->resolveColumn();
+        return _block->getColumn();
+    }
+    if (_body) return _body->resolveColumn();
+    return getColumn();
+}
+
 TypeInfo ExprMatchNode::getType() const {
     TypeInfo first;
     bool firstSet = false;
     for (auto& arm : _arms) {
-        auto t = arm->body()->getType();
+        if (arm->skipsTypeMerge()) continue;
+        auto t = arm->resultType();
         if (!firstSet) {
             first = t;
             firstSet = true;

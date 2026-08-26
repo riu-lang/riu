@@ -182,7 +182,7 @@ llvm::Value* Compiler::compileOneLineIfElseExpr(p<ExprOneLineIfElseNode> node) {
 //   在整个 match 期间不被覆盖；arm body 不应让绑定逃逸（赋给变量等需要 +1 时
 //   依赖普通赋值路径自身的 retain，仅 Rc/Array/Weak 走 compileBranchResultNormalized
 //   归一）
-// - arm body 仅单表达式（grammar 已限定）；多语句体押后
+// - arm body：`=> expr` 或 `=> { stmts }`（块末无 `;` 的表达式即块值，与 if 同）
 llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto scrutinee = node->scrutinee();
@@ -264,19 +264,19 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
         seenVariants.insert(pat->variantName().getText());
     }
 
-    // 3. 结果类型一致性
+    // 3. 结果类型一致性（流终止块臂不参与，与 if / try-catch 同档）
     TypeInfo resultType;
     bool firstSet = false;
     for (auto& arm : arms) {
-        auto t = arm->body()->getType();
+        if (arm->skipsTypeMerge()) continue;
+        auto t = arm->resultType();
         if (!firstSet) {
             resultType = t;
             firstSet = true;
             continue;
         }
         if (t != resultType) {
-            throw YuxError(arm->body()->resolveLineNumber(), arm->body()->resolveColumn(), ErrorCode::E3014,
-                           resultType.name, t.name);
+            throw YuxError(arm->resultLine(), arm->resultCol(), ErrorCode::E3014, resultType.name, t.name);
         }
     }
     bool hasResult = !resultType.empty();
@@ -428,7 +428,13 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
 
         // 编译 body：RC 句柄需归一到 +1 的部分由 compileBranchResultNormalized 处理
         llvm::Value* bodyVal = nullptr;
-        if (hasResult) {
+        if (arm->hasBlock()) {
+            if (hasResult) {
+                compileStatementBlockWithResult(arm->block(), mergeBB, phi, resultType);
+            } else {
+                compileStatementBlock(arm->block());
+            }
+        } else if (hasResult) {
             bodyVal = compileBranchResultNormalized(arm->body(), resultType);
         } else {
             // 作为语句：仍走 compileExpr，吃掉中间 fresh 临时

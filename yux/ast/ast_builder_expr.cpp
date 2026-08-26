@@ -832,12 +832,17 @@ std::any ASTBuilder::visitMatchArm(yux::yuxParser::MatchArmContext* ctx) {
 
     // 在 arm scope 下 visit body，使其内部 binding 引用走 arm scope -> outer 链
     _scopeStack.push_back(arm);
-    auto body = any_cast_p<ExprNode>(visit(ctx->body));
+    p<ExprNode> body = nullptr;
+    p<StatementBlockNode> block = nullptr;
+    if (auto* blk = ctx->statementBlock()) {
+        block = any_cast_p<StatementBlockNode>(visit(blk));
+    } else if (ctx->body) {
+        body = any_cast_p<ExprNode>(visit(ctx->body));
+    }
     _scopeStack.pop_back();
 
-    // 修正 arm 的 body
-    // MatchArmNode 没暴露 body setter；最简改 ExprNode 字段：直接重建一个新 arm
-    auto fullArm = createWithLine<MatchArmNode>(ctx, outer, pattern, body);
+    // 修正 arm 的 body / block
+    auto fullArm = createWithLine<MatchArmNode>(ctx, outer, pattern, body, block);
     fullArm->setParentScope(outer);
     // 把刚才在 arm scope 注册的 binding 复制过去
     for (auto& [n, sym] : arm->localSymbols()) {

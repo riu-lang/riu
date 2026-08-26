@@ -629,7 +629,11 @@ private:
         if (auto m = dynamic_cast<p<ExprMatchNode>>(e)) {
             visitExpr(m->scrutinee());
             for (auto& arm : m->arms()) {
-                if (arm) visitExpr(arm->body());
+                if (!arm) continue;
+                if (arm->hasBlock())
+                    visitBlock(arm->block());
+                else
+                    visitExpr(arm->body());
             }
             return;
         }

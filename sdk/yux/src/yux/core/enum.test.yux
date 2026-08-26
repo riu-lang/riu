@@ -461,6 +461,93 @@ fn test_enum_rc_payload_match() {
   assert_eq(s, "hi")
 }
 
+; ==================== match arm 块体 ====================
+
+#Test
+fn test_enum_match_block_body() {
+  ; 验证：match 块体多语句，末表达式为块值
+  let c Color = Color::Red
+  let n i32 = match c {
+    Color::Red => {
+      let x = 1
+      x + 1
+    }
+    Color::Green => 0
+    Color::Blue => 0
+  }
+  assert_eq(n, 2)
+}
+
+#Test
+fn test_enum_match_block_oneline() {
+  ; 验证：match 块体单行
+  let c Color = Color::Green
+  let n i32 = match c {
+    Color::Red => { 1 }
+    Color::Green => { 2 }
+    Color::Blue => { 3 }
+  }
+  assert_eq(n, 2)
+}
+
+#Test
+fn test_enum_match_mixed_body() {
+  ; 验证：match 块体与表达式体混用
+  let c Color = Color::Blue
+  let n i32 = match c {
+    Color::Red => 1
+    Color::Green => { 2 }
+    Color::Blue => {
+      let x = 3
+      x
+    }
+  }
+  assert_eq(n, 3)
+}
+
+#Test
+fn test_enum_match_block_binding() {
+  ; 验证：match 块体内使用 payload 绑定
+  let s Shape = Shape::Circle(2.0f64)
+  let area f64 = match s {
+    Shape::Point => 0.0f64
+    Shape::Circle(r) => {
+      let rr = r * r
+      3.14f64 * rr
+    }
+    Shape::Rect(w, h) => w * h
+  }
+  assert_eq(area, 12.56f64)
+}
+
+fn match_block_ret_helper(c Color) i32 {
+  ret match c {
+    Color::Red => {
+      ret 10
+    }
+    Color::Green => 20
+    Color::Blue => 30
+  }
+}
+
+#Test
+fn test_enum_match_block_ret() {
+  ; 验证：match 块体 `ret` 流终止不参与类型合并
+  let c Color = Color::Red
+  let n i32 = match_block_ret_helper(c)
+  assert_eq(n, 10)
+}
+
+#Test
+fn test_enum_match_block_empty_stmt() {
+  ; 验证：match 空块作语句（不取值）
+  let c Color = Color::Red
+  match c {
+    Color::Red => {}
+    else => {}
+  }
+}
+
 ; ==================== 边界测试 ====================
 
 #Test

@@ -3,10 +3,10 @@
 
 #include "flow_terminate_checker.h"
 
-#include "error_code.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/literal_node.h"
 #include "ast/node/statement_node.h"
+#include "error_code.h"
 
 namespace {
 
@@ -58,7 +58,13 @@ bool stmtsHaveOwnBreak(const vector<p<StatementNode>>& stmts, const string& forL
                 if (ife->elseBlock() && blockHasOwnBreak(ife->elseBlock(), forLabel)) return true;
                 continue;
             }
-            // match arm body 是单表达式；break 不会作为 arm body 出现，跳过递归。
+            // match arm 可为表达式或块；块内 break 属当前 loop
+            if (auto m = dynamic_cast<p<ExprMatchNode>>(e)) {
+                for (auto& arm : m->arms()) {
+                    if (arm && arm->hasBlock() && blockHasOwnBreak(arm->block(), forLabel)) return true;
+                }
+                continue;
+            }
         }
     }
     return false;
@@ -85,7 +91,11 @@ bool exprTerminates(p<ScopeNode> scope, p<ExprNode> expr) {
     if (auto m = dynamic_cast<p<ExprMatchNode>>(expr)) {
         if (m->arms().empty()) return false;
         for (auto& arm : m->arms()) {
-            if (!exprTerminates(scope, arm->body())) return false;
+            if (arm->hasBlock()) {
+                if (!blockTerminates(scope, arm->block())) return false;
+            } else if (!exprTerminates(scope, arm->body())) {
+                return false;
+            }
         }
         return true;
     }

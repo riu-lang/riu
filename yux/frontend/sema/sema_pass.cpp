@@ -2153,8 +2153,12 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     }
     if (auto n = dynamic_cast<p<ExprMatchNode>>(expr)) {
         visitExpr(n->scrutinee());
-        for (auto& arm : n->arms())
-            visitExpr(arm->body());
+        for (auto& arm : n->arms()) {
+            if (arm->hasBlock())
+                visitBlock(arm->block());
+            else
+                visitExpr(arm->body());
+        }
 
         // Phase 3.4.b: SemaPass 接管 E2019/E2020/E2023/E2024/E2025/E2026/E2027.
         // 仅在 scrut 直接是 enum 名 (非 Rc/E / 非 alias 链) 时接入: 那两条路径

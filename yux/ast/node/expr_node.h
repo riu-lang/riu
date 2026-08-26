@@ -601,24 +601,32 @@ public:
     [[nodiscard]] const vector<Token>& binds() const { return _binds; }
 };
 
-// match 单条 arm: pattern => body
-// body 为单表达式（v1 不支持多语句体）
+// match 单条 arm: pattern => expr  或  pattern => { stmts }
+// 表达式体与块体互斥；块体值规则与 if / lambda 同（末表达式无 `;` 即块值）
 // MatchArm 自身是 ScopeNode，承载 pattern 中的 binding 符号（让 body 内的
 // LiteralObj::getType 能沿 scope 链解析到绑定类型）
 class MatchArmNode : public ScopeNode {
     p<EnumPatternNode> _pattern;
-    p<ExprNode> _body;
+    p<ExprNode> _body;            // 表达式体；块体时为 nullptr
+    p<StatementBlockNode> _block; // 块体；表达式体时为 nullptr
 
 public:
-    MatchArmNode(const p<Node>& parent, p<EnumPatternNode> pattern, p<ExprNode> body)
-        : ScopeNode(parent), _pattern(pattern), _body(body) {}
+    MatchArmNode(const p<Node>& parent, p<EnumPatternNode> pattern, p<ExprNode> body,
+                 p<StatementBlockNode> block = nullptr)
+        : ScopeNode(parent), _pattern(pattern), _body(body), _block(block) {}
 
     [[nodiscard]] const p<EnumPatternNode>& pattern() const { return _pattern; }
     [[nodiscard]] const p<ExprNode>& body() const { return _body; }
+    [[nodiscard]] const p<StatementBlockNode>& block() const { return _block; }
+    [[nodiscard]] bool hasBlock() const { return _block != nullptr; }
+    [[nodiscard]] TypeInfo resultType() const;
+    [[nodiscard]] bool skipsTypeMerge() const;
+    [[nodiscard]] int resultLine() const;
+    [[nodiscard]] int resultCol() const;
 };
 
 // match 表达式: match scrutinee { arm1 ... armN }
-// 类型：所有非-else arm body 类型必须严格一致；若全 arm 体均为 void，则 match 类型为 void
+// 类型：参与合并的 arm 体类型必须严格一致（流终止臂跳过）；若全为 void 则 match 为 void
 class ExprMatchNode : public ExprNode {
     p<ExprNode> _scrutinee;
     vector<p<MatchArmNode>> _arms;
