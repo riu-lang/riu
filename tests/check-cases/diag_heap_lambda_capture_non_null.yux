@@ -4,10 +4,10 @@
 
 fn main() {
   let h Heap<i32> = heap:<i32>(5i32)
-  let f Function<i32> = {
+  let f Function<i32> = () => {
     1i32
   }
-  let g Function<i32> = {
+  let g Function<i32> = () => {
     as_ref(h)  ; check: E4024
   }
 }

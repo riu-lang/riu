@@ -1,3 +1,5 @@
+> 2026-08-26：lambda 字面量形态收敛为 `(args) Ret? => expr` / `=> { stmts }`，尾随仅挂在调用上；括参无标注不再默认 void。见 spec §4.11 / CHANGELOG。
+
 > 2026-08-25：类型位语法已改为 `Function<P..., Ret>`（见 `docs/dev/function-type-impl-log.md`）。本日志保留 `fn(T)R` 作为落地时的历史写法。
 
 # Lambda 与函数类型 v1 实施日志

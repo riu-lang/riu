@@ -407,29 +407,21 @@ struct CaptureSlot {
     u64 byteOffset; // 在 captures buffer 中的字节偏移（自然对齐）
 };
 
-// Lambda 字面量节点：四种语法形态归一存储（spec §4.0）
-// - Single:    `x => expr`                  （裸单参；params.size()==1，type 必空）
-// - Paren:     `(args) RetT? => expr`       （括参 + 可选返回类型；多参形）
-// - Block:     `{ args => stmts }`           （块形 ≥1 参）
-// - ZeroBlock: `{ stmts }`                    （0 参块；params 为空，retType 由上下文推断）
+// Lambda 字面量节点（spec §4.11）
+// - Expr： `(args) RetT? => expr`     bodyExpr 单表达式
+// - Block：`(args) RetT? => { stmts }` 或调用尾随 `{ (args) RetT? => stmts }`
 //
-// body 储存策略：
-// - Single / Paren：bodyExpr 单表达式；bodyStmts 为空
-// - Block / ZeroBlock：bodyStmts 语句序列；bodyExpr 为空（tail 表达式语义由 Phase 2b codegen 决定）
-//
-// retType：
-// - 显式标注（仅 Paren 形态可写）→ 非空 TypeNode
-// - 裸 / 块 → nullptr，待 §4.2 表规则在 Phase 2b/2c 决定（裸 → 推断；括 + 无标 → void）
+// retType：显式标注则非空；否则 nullptr，由期望函数类型或 body 推断。
 class LambdaExprNode : public ExprNode {
 public:
-    enum class Form { Single, Paren, Block, ZeroBlock };
+    enum class Form { Expr, Block };
 
 private:
     Form _form;
     vector<LambdaParamSlot> _params;
     p<TypeNode> _retType;                // 仅 Paren 显式标注；其余 nullptr
-    p<ExprNode> _bodyExpr;               // Single / Paren
-    vector<p<StatementNode>> _bodyStmts; // Block / ZeroBlock
+    p<ExprNode> _bodyExpr;               // Form::Expr
+    vector<p<StatementNode>> _bodyStmts; // Form::Block
     // body 编译用的内层作用域；持有 lambda 形参符号。AST builder 在构建时填充，
     // 让 body 表达式 / 语句的 parent 链可经此链路向上找到形参（findNearestScope）。
     // body 内的符号引用在 sema 阶段可识别"形参 vs 自由变量"，闭包来到 Phase 4 之前
@@ -491,8 +483,7 @@ public:
     [[nodiscard]] const p<ExprNode>& bodyExpr() const { return _bodyExpr; }
     [[nodiscard]] const vector<p<StatementNode>>& bodyStmts() const { return _bodyStmts; }
 
-    // 形参 name 可省（裸列单 ID 仅在 Single 形态出现，必有 name；
-    // Paren / Block 的 lambdaParam 也强制 ID，因 g4 lambdaParam 总以 names+= 起头）
+    // 形参 name 由 lambdaParam 强制带 ID
     [[nodiscard]] bool hasAllParamTypes() const {
         for (auto& s : _params)
             if (!s.type) return false;

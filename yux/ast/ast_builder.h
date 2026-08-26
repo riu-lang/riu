@@ -10,6 +10,8 @@
 #include "yux/yuxParserBaseVisitor.h"
 #include "yux/yuxParserVisitor.h"
 
+class LambdaExprNode;
+
 class ASTBuilder : public yux::yuxParserBaseVisitor {
     Yux& _yux;
     bool _isTestFile = false;
@@ -42,6 +44,7 @@ class ASTBuilder : public yux::yuxParserBaseVisitor {
 
     // Phase 4a: typeWithRef -> TypeNode；若 SymbolAnd 存在，包成 Ref<inner>
     p<TypeNode> buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr, p<Node> parent);
+    p<LambdaExprNode> makeTrailingLambda(yux::yuxParser::TrailingLambdaContext* tl);
 
     // Function<P..., Ret> → TypeFnNode；末位为返回类型，() 表 unit
     p<TypeNode> makeFunctionType(antlr4::ParserRuleContext* ctx, p<Node> parent, vector<p<TypeNode>> typeArgs,
@@ -134,10 +137,7 @@ public:
     std::any visitExprMatch(yux::yuxParser::ExprMatchContext* ctx) override;
     std::any visitExprTryCatch(yux::yuxParser::ExprTryCatchContext* ctx) override;
     std::any visitCatchArm(yux::yuxParser::CatchArmContext* ctx) override;
-    std::any visitExprLambdaSingle(yux::yuxParser::ExprLambdaSingleContext* ctx) override;
     std::any visitExprLambdaParen(yux::yuxParser::ExprLambdaParenContext* ctx) override;
-    std::any visitExprLambdaBlock(yux::yuxParser::ExprLambdaBlockContext* ctx) override;
-    std::any visitExprLambdaZeroBlock(yux::yuxParser::ExprLambdaZeroBlockContext* ctx) override;
     std::any visitExprCallTrailingOnly(yux::yuxParser::ExprCallTrailingOnlyContext* ctx) override;
     std::any visitMatchArm(yux::yuxParser::MatchArmContext* ctx) override;
     std::any visitPatternEnum(yux::yuxParser::PatternEnumContext* ctx) override;

@@ -1762,9 +1762,9 @@ int ExprArrayNode::resolveLineNumber() const {
 }
 
 // Lambda 字面量类型：Fn TypeInfo（结构等同，§3.4）
-// 形参类型缺失（待上下文反推）→ 槽位放 empty TypeInfo 占位
-// 返回类型：显式标注用之；否则 nullptr 表示"待 §4.2 / 上下文决定"
-// Phase 2b：调用点 / 赋值点反推后 _inferredFnType 持完整类型，优先返回
+// 形参类型缺失 → 槽位放 empty TypeInfo 占位，由调用 / 赋值点反推
+// 返回类型：显式标注用之；否则从 body / 期望类型推断
+// 调用点 / 赋值点反推后 _inferredFnType 持完整类型，优先返回
 TypeInfo LambdaExprNode::getType() const {
     if (_inferredFnType.isFn()) return _inferredFnType;
     vector<sp<TypeInfo>> ps;
@@ -1773,11 +1773,27 @@ TypeInfo LambdaExprNode::getType() const {
         if (slot.type)
             ps.push_back(make_shared<TypeInfo>(slot.type->getType()));
         else
-            ps.push_back(make_shared<TypeInfo>()); // 占位，等 Phase 2b 反推回填
+            ps.push_back(make_shared<TypeInfo>()); // 占位，等调用 / 赋值点反推回填
     }
     sp<TypeInfo> rt = nullptr;
-    if (_retType) rt = make_shared<TypeInfo>(_retType->getType());
-    // nullable=false：lambda 字面量本身永非空（fn?(...)R 是类型层 nullable，与字面量值无关）
+    if (_retType) {
+        rt = make_shared<TypeInfo>(_retType->getType());
+    } else if (_bodyExpr) {
+        auto bt = _bodyExpr->getType();
+        if (!bt.empty()) rt = make_shared<TypeInfo>(bt);
+    } else if (!_bodyStmts.empty()) {
+        auto* last = _bodyStmts.back();
+        if (auto retStmt = dynamic_cast<StatementRetNode*>(last)) {
+            auto bt = retStmt->expr()->getType();
+            if (!bt.empty()) rt = make_shared<TypeInfo>(bt);
+        } else if (auto exprStmt = dynamic_cast<StatementExprNode*>(last)) {
+            if (!exprStmt->hasSemicolon()) {
+                auto bt = exprStmt->expr()->getType();
+                if (!bt.empty()) rt = make_shared<TypeInfo>(bt);
+            }
+        }
+    }
+    // nullable=false：lambda 字面量本身永非空
     return TypeInfo(FnTag{}, std::move(ps), rt, false);
 }
 

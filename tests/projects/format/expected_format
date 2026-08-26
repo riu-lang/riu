@@ -55,13 +55,12 @@ fn alias<T, U>() i32 {
   4
 }
 
-; ====== format_lambda: lambda 各形态：单参 / 括参 / 块 ======
+; ====== format_lambda: lambda 各形态：括参表达式体 / 语句体 ======
 fn each() i32 {
-  #Mut let f1 = x => x
+  #Mut let f1 = (x) => x
   #Mut let f2 = (x i32, y i32) i32 => x + y
-  #Mut let f3 = {
-      x i32 =>
-          x
+  #Mut let f3 = (x i32) => {
+    x
   }
   f1(0)
 }

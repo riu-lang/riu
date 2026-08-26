@@ -26,7 +26,7 @@ struct Counter {
 ; ==================== Lambda 形态 ====================
 
 fn demo_lambda_forms() {
-  println("=== Lambda 四种形态 ===")
+  println("=== Lambda 形态 ===")
 
   ; 1. 表达式形（多参，完整声明）
   let add = (a i32, b i32) i32 => a + b
@@ -34,20 +34,17 @@ fn demo_lambda_forms() {
   println("add(3, 5): ")
   println(sum)
 
-  ; 2. 单参省括号（完整形）
+  ; 2. 单参（完整形）
   let inc = (x i32) i32 => x + 1
   println("inc(41): ")
   println(inc(41))
 
-  ; 3. 单参裸 single（类型由上下文推断）
-  ; 存入 Function<i32, i32> 类型变量
-  #Mut let double_fn Function<i32, i32> = x => x * 2
+  ; 3. 类型由上下文推断
+  #Mut let double_fn Function<i32, i32> = (x) => x * 2
   println("double(21): ")
   println(double_fn(21))
 
-  ; 4. 表达式体含 loop 的 lambda（用 = expr 省去块体换行，内部 if/loop 自成块）
-  ; 注：块形 lambda `{ a, b => ... }` 的返回类型需上下文推断，无上下文时建议用表达式形
-  ;     文档中块形的显式返回类型写法 `{ (a,b) i32 => ... }` 当前 parser 不接受
+  ; 4. 语句体
   let mul = (a i32, b i32) i32 => a * b
   println("mul(6, 7): ")
   println(mul(6, 7))
@@ -103,8 +100,8 @@ fn apply_i32(x i32, f Function<i32, i32>) i32 {
 fn demo_higher_order() {
   println("=== 高阶函数 ===")
 
-  let triple i32 = apply_i32(7, x => x * 3)
-  println("apply_i32(7, x => x*3): ")
+  let triple i32 = apply_i32(7){ (x) => x * 3 }
+  println("apply_i32(7){ (x) => x*3 }: ")
   println(triple)
 
   ; 匿名 lambda 直接传参

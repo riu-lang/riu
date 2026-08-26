@@ -569,10 +569,10 @@ fn test_dtor_multiple() {
   ; d2, d1 离开作用域时析构函数逆序调用
 }
 
-; 验证：内部作用域结束时的析构行为
+; 验证：内部作用域结束时的析构行为（裸 `{ }` 不是语句块，用 if 真块）
 #Test
 fn test_dtor_nested_scope() {
-  {
+  if true {
     #Mut let d SimpleDtor = SimpleDtor::make(100)
     assert_eq(d.value, 100)
   }

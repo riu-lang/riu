@@ -6,8 +6,8 @@
 // Phase 4a 范围（增量, 表达式简单形态走 Doc, 块形态仍 raw）:
 // - 简单内联表达式: literal / paren / unary / binary（含 shift/compare/eq/bool/
 //   nullElse）/ call(无尾随 lambda) / dot / tupleMember / get / getRef /
-//   array / tuple / enumCtor / arrayInit / this / lambdaSingle / lambdaParen
-// - 仍走 raw: lambdaBlock / lambdaZeroBlock / tryCatch / match / ifElse /
+//   array / tuple / enumCtor / arrayInit / this / lambdaParen（表达式体）
+// - 仍走 raw: lambda 语句体 / tryCatch / match / ifElse /
 //   oneLineIfElse / call 含尾随 lambda
 // - 已接入 fnExprkBody（`fn name() T = <expr>` 体）
 //
@@ -535,15 +535,11 @@ Doc Printer::exprDoc(yuxParser::ExprContext* ctx) {
         }
         return concat(std::move(parts));
     }
-    // ----- lambda（仅单表达式形态走 Doc）-----
-    if (auto* n = dynamic_cast<yuxParser::ExprLambdaSingleContext*>(ctx)) {
-        return concat({
-            text(n->name->getText()),
-            text(" => "),
-            exprDoc(n->body->expr()),
-        });
-    }
+    // ----- lambda（表达式体走 Doc；语句体走 raw）-----
     if (auto* n = dynamic_cast<yuxParser::ExprLambdaParenContext*>(ctx)) {
+        if (n->statementBlock() != nullptr) {
+            return text(rawSpan(tokens_, ctx));
+        }
         std::vector<Doc> parts;
         parts.push_back(text("("));
         if (n->lambdaParams() != nullptr) {
@@ -559,8 +555,7 @@ Doc Printer::exprDoc(yuxParser::ExprContext* ctx) {
         return concat(std::move(parts));
     }
     // ----- 其余块形 / 控制流：raw -----
-    // ExprLambdaBlock / ExprLambdaZeroBlock / ExprTryCatch / ExprMatch /
-    // ExprIfElse / ExprOneLineIfElse
+    // ExprTryCatch / ExprMatch / ExprIfElse / ExprOneLineIfElse
     return text(rawSpan(tokens_, ctx));
 }
 
@@ -646,8 +641,9 @@ std::string Printer::rawSpanWithoutTrailingLineEnd(antlr4::ParserRuleContext* ct
 // 判定一个 expr 是否为"块形 / 多行"形态：含块的 lambda、try-catch、match、
 // if-else 各形态，以及含尾随 lambda 的 call。这些不在 Phase 4a 结构化覆盖里。
 static bool isBlockExpr(yuxParser::ExprContext* e) {
-    if (dynamic_cast<yuxParser::ExprLambdaBlockContext*>(e)) return true;
-    if (dynamic_cast<yuxParser::ExprLambdaZeroBlockContext*>(e)) return true;
+    if (auto* lam = dynamic_cast<yuxParser::ExprLambdaParenContext*>(e)) {
+        return lam->statementBlock() != nullptr;
+    }
     if (dynamic_cast<yuxParser::ExprTryCatchContext*>(e)) return true;
     if (dynamic_cast<yuxParser::ExprMatchContext*>(e)) return true;
     if (dynamic_cast<yuxParser::ExprIfElseContext*>(e)) return true;

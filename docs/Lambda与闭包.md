@@ -43,27 +43,22 @@ Callback = Function<String, bool>  ; 别名即文档
 
 ## Lambda 字面量
 
-四种形态（详见 spec §4.11.1）：
+两种前缀 + 调用尾随（详见 spec §4.11.1）：
 
 ```yux
-; 表达式形（多参，需括号）
+; 表达式体
 let add = (a i32, b i32) i32 => a + b
+let inc = (x i32) i32 => x + 1
+let f Function<i32, i32> = (x) => x + 1     ; 类型由上下文反推
 
-; 单参省括号（裸 single）
-let inc = (x i32) i32 => x + 1   ; 完整形
-let f Function<i32, i32> = x => x + 1     ; 裸 single，类型由上下文反推
-
-; 块形（≥ 1 参，=> 分隔参列与体）
-let sum = { a i32, b i32 =>
+; 语句体
+let sum = (a i32, b i32) => {
   let s = a + b
   ret s
 }
 
-; 0 参块（无 =>；必须多行真块，单行 { expr } 不是 lambda 而是 expr-lambda 的位置）
-; 体内末位无 `;` 的表达式作 tail-return；返回类型由上下文反推
-let once Function<i32> = {
-  42
-}
+; 0 参
+let once = () => 42
 ```
 
 ### 形参类型推断
@@ -74,42 +69,39 @@ let once Function<i32> = {
 fn op(f Function<i32, i32, i32>) i32 = f(1, 2)
 
 ; { ... } 内的 a / b 由 op 的形参类型反推为 i32
-let r = op({ a, b => a + b })
+let r = op((a, b) => a + b)
 ```
 
 无上下文则需显式标注：
 
 ```yux
 let f = (x i32) i32 => x + 1   ; ✅ 显式
-let f = x => x + 1              ; ❌ 编译错（无上下文）
+let f = (x) => x + 1            ; ❌ 编译错（无上下文，形参类型无法推断）
 ```
 
 ### 返回类型规则（spec §4.11.3）
 
-表达式形 lambda 可在 `=>` 前写显式返回类型；块形 lambda **无**返回类型标注位，始终由上下文推断。
+表达式形 / 语句体 lambda 可在 `=>` 前写显式返回类型；不写则由上下文或 body 推断（不再默认 void）。
 
 | 形态 | 返回类型 |
 |---|---|
-| `x => expr` | 上下文推断 |
-| `(x i32) => expr` | **默认 void**（不写就是 void） |
+| `(x) => expr` | 上下文或 `expr` 推断 |
+| `(x i32) => expr` | 同上（不写不是 void） |
 | `(x i32) i32 => expr` | 显式 `i32` |
-| `{ a, b => body }` | 上下文推断（块形无显式返回类型位） |
-| `{ body }` | 0 参块；无 `=>`；多行真块；上下文推断 |
-
-**裸 vs 括号差异化的理由**：括号形态是"完整声明形"，不写返回类型即视作刻意 void；裸形态是"轻量推断形"，留空让上下文驱动。
+| `(x) => { stmts }` | 上下文、显式 `ret` 或尾表达式 |
+| `foo(){ () => stmts }` | 尾随块，规则同语句体 |
 
 ### 实参 / 字段值位置必须括起来
 
 ```yux
-; ✅ 多参 lambda 在 args 位置必带括号
-op({ a, b => a + b })           ; 块形，类型由 op 形参反推
-op((a, b) => a + b)             ; 表达式形
+; ✅ 多参 lambda 在 args 位置带括号
+op((a, b) => a + b)
+op { (a, b) => a + b }          ; 尾随
 
-; 单参裸 single 仍可（apply 由用户定义，签名 Function<i32, Function<i32, i32>, i32>）
-let r = apply(7, x => x * 2)
+let r = apply(7, (x) => x * 2)
 ```
 
-> Array v1 暂未提供 `map` / `filter` / `fold` 等高阶方法；上面示例用一个用户自定义 `apply` 演示单参裸 lambda 在实参位置的写法。批量遍历用 `each`（见 §尾随 lambda 调用糖）或 `for ... in arr`。
+> Array v1 暂未提供 `map` / `filter` / `fold` 等高阶方法；上面示例用一个用户自定义 `apply` 演示括参 lambda 在实参位置的写法。批量遍历用 `each`（见 §尾随 lambda 调用糖）或 `for ... in arr`。
 
 ### 表达式体可含 `if` / `match`
 
@@ -124,7 +116,7 @@ let name = (k Kind) String => match k {
 
 ## 尾随 lambda 调用糖
 
-仅块形 lambda 可作"尾随实参糖"：
+仅调用位置可把末位 lambda 写成尾随块（Kotlin 风）：
 
 ```yux
 fn each<T>(arr Array<T>, body Function<T, ()>) {
@@ -132,15 +124,15 @@ fn each<T>(arr Array<T>, body Function<T, ()>) {
 }
 
 ; 标准调用
-each(arr, { x => println(x) })
+each(arr, (x) => println(x))
 
-; 糖：尾随 lambda 移到 (...) 之后
-each(arr) { x =>
+; 糖：尾随移到 (...) 之后
+each(arr){ (x) =>
   println(x)
 }
 
 ; 糖：唯一实参时省 (...)
-each(arr) { x => println(x) }
+each { (x) => println(x) }
 ```
 
 详见 spec §4.8.4。
@@ -235,7 +227,7 @@ struct Greeter {
   msg String
 
   fn greet_all(names Array<String>) {
-    each(names) { n =>
+    each(names){ (n) =>
       println($.msg + " " + n)   ; ✅ 捕获 $，方法 frame 内消费
     }
   }

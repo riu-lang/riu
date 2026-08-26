@@ -28,10 +28,27 @@
 void Compiler::compileRetStatement(p<StatementRetNode> node) {
     DEBUG_LOG("  Statement: Return");
 
-    // 获取函数声明的返回类型
+    // 获取函数声明的返回类型（lambda 体内用 lambda 自身的 Ret，不用外层 fn）
     TypeInfo declRetType;
     bool hasDeclaredRetType = false;
-    if (_currentFnNode && _currentFnNode->header() && _currentFnNode->header()->retType()) {
+    if (_currentLambdaForCapture) {
+        if (_currentLambdaForCapture->retType()) {
+            declRetType = _currentLambdaForCapture->retType()->getType();
+            hasDeclaredRetType = true;
+        } else {
+            auto ft = _currentLambdaForCapture->getType();
+            if (ft.isFn() && ft.fnReturnType() && !ft.fnReturnType()->empty()) {
+                declRetType = *ft.fnReturnType();
+                hasDeclaredRetType = true;
+            }
+        }
+        if (hasDeclaredRetType) {
+            if (isIntTypeName(declRetType.name) && isFlexibleIntExpr(node->expr())) {
+                tryInferIntType(node->expr(), declRetType);
+            }
+            inferFlexibleInts(node->expr(), declRetType);
+        }
+    } else if (_currentFnNode && _currentFnNode->header() && _currentFnNode->header()->retType()) {
         declRetType = _currentFnNode->header()->retType()->getType();
         hasDeclaredRetType = true;
         // 推断灵活整数的类型
@@ -330,6 +347,13 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
 // 编译无返回值的 return; 语句
 void Compiler::compileRetVoidStatement(p<StatementRetVoidNode> node) {
     DEBUG_LOG("  Statement: Return Void");
+    if (_currentLambdaForCapture) {
+        auto ft = _currentLambdaForCapture->getType();
+        if (ft.isFn() && ft.fnReturnType() && !ft.fnReturnType()->empty()) {
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, ft.fnReturnType()->getFullName(),
+                           "void");
+        }
+    }
     // Phase 8e: 同上，先释放临时帧再 CreateRetVoid（pop+push 保持栈平衡）
     popAndReleaseTempFrame();
     pushTempFrame();

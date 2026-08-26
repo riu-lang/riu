@@ -79,18 +79,27 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
         }
     }
 
-    // 解析返回类型（spec §4.2）：
-    // - 显式标注（仅 Paren 形态可写）→ 严格用之
-    // - Paren 无标注 → 默认 void（不接受上下文反推；自描述形态）
-    // - 裸形（Single/Block/ZeroBlock）无标注 → 上下文反推；无上下文 → void（兜底）
+    // 解析返回类型（spec §4.11.3）：
+    // 显式标注优先；否则用期望函数类型；再否则从 body 推断；都没有则为 void。
     TypeInfo retType;
     if (node->retType()) {
         retType = node->retType()->getType();
-    } else if (node->form() == LambdaExprNode::Form::Paren) {
-        // 括 + 无标 → void（spec §4.2 [#14]）
-        // body 表达式被作"语句位置丢弃"
     } else if (expectedFnType.isFn() && expectedFnType.fnReturnType()) {
         retType = *expectedFnType.fnReturnType();
+    } else if (node->bodyExpr()) {
+        auto bt = node->bodyExpr()->getType();
+        if (!bt.empty()) retType = bt;
+    } else if (!node->bodyStmts().empty()) {
+        auto* last = node->bodyStmts().back();
+        if (auto retStmt = dynamic_cast<StatementRetNode*>(last)) {
+            auto bt = retStmt->expr()->getType();
+            if (!bt.empty()) retType = bt;
+        } else if (auto exprStmt = dynamic_cast<StatementExprNode*>(last)) {
+            if (!exprStmt->hasSemicolon()) {
+                auto bt = exprStmt->expr()->getType();
+                if (!bt.empty()) retType = bt;
+            }
+        }
     }
     // retType.empty() == void
 
@@ -163,10 +172,8 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     }
 
     // 编译 body
-    // - Single / Paren：单表达式 → ret expr（void 返回类型时 ret void）
-    // - Block / ZeroBlock：语句序列 → 顺序编译；retType 非 void 时若末位是无 `;` 的
-    //   ExprStmt，当 tail-expr 返回值（spec §4.0 "0 参块与 ≥1 参块同构"，BUG#0 修复）；
-    //   否则末尾走隐式 ret void / 缺显式 ret 报错
+    // - Form::Expr：单表达式 → ret expr（void 返回类型时 ret void）
+    // - Form::Block：语句序列；retType 非 void 时末位无 `;` 的 ExprStmt 作 tail-expr 返回
     pushTempFrame();
     if (node->bodyExpr()) {
         auto val = compileExpr(node->bodyExpr());

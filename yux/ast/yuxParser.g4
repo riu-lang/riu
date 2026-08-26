@@ -322,16 +322,16 @@ lambdaParam:
 // 否则 `(a, b) => a + b` 会被 ANTLR 切成 `((a, b) => a) + b`
 lambdaBody: expr;
 
-// 尾随 lambda 调用糖（§4.5）：仅块形 lambda 可作尾随
+// 尾随 lambda（仅函数调用，Kotlin 风）：foo(args){ (params) Ret? => stmts }
+// 形参列表必须带括号（0 参写 ()）；Ret 可省，由上下文 / 体推断。
 trailingLambda:
-      BlockStart LineEnd*
-        lambdaParams SymbolEqMt
-        LineEnd*
-        (statement|LineEnd)*
-      BlockEnd                # trailingLambdaBlock
-    | BlockStart LineEnd
-        (statement|LineEnd)*
-      BlockEnd                # trailingLambdaZeroBlock
+    BlockStart LineEnd*
+      ParStart lambdaParams? ParEnd
+      retType=typeWithRef?
+      SymbolEqMt
+      LineEnd*
+      (statement|LineEnd)*
+    BlockEnd
     ;
 
 fnBody: fnExprkBody | fnBlockBody;
@@ -390,26 +390,16 @@ fieldInit:
 ///////////
 
 expr:
-    // 单参裸形 lambda: x => expr （单 ID 不与 fn 类型字面量歧义）
-    // body 走 lambdaBody 包装规则：避免 ANTLR4 左递归把 `x => a + b` 误切成 `(x => a) + b`
-      name=ID SymbolEqMt body=lambdaBody  # exprLambdaSingle
-    // 括参形 lambda: (args) RetT? => expr
-    | ParStart lambdaParams? ParEnd
+    // 前缀 lambda: (args) RetT? => expr  或  (args) RetT? => { stmts }
+    // body 走 lambdaBody 包装规则：避免 ANTLR4 左递归把 `(a, b) => a + b` 误切成 `((a, b) => a) + b`
+    // 语句体走 statementBlock；`{ stmts }` 不再单独作为 lambda 表达式（尾随见 trailingLambda）
+      ParStart lambdaParams? ParEnd
       retType=typeWithRef?
-      SymbolEqMt body=lambdaBody          # exprLambdaParen
-    // 块形 lambda: { args => stmts }
-    | BlockStart LineEnd*
-        lambdaParams
-        SymbolEqMt
-        (statement|LineEnd)*
-      BlockEnd                            # exprLambdaBlock
-    // 0 参块 lambda: { stmts } —— 禁写 =>
-    | BlockStart LineEnd
-        (statement|LineEnd)*
-      BlockEnd                            # exprLambdaZeroBlock
+      SymbolEqMt
+      (statementBlock | body=lambdaBody)  # exprLambdaParen
     // [PROBE static-fn] 结构体字段字面量：Self { \n .x = e \n .y = e \n }
     // DRAFT-const-eval Phase 5: LHS 放宽到通用 ID（如 Point { .x = 1 .y = 2 }）
-    // 多行强制；.field= 前缀消除与 lambda zero-block 的歧义
+    // 多行强制；`.field=` 前缀标明字段项
     | (selfLhs=SelfType | typeName=ID) BlockStart LineEnd
         (fieldInits+=fieldInit|LineEnd)*
       BlockEnd                            # exprStructLit
@@ -499,7 +489,7 @@ expr:
             SymbolComma? LineEnd*
         )?
       GetEnd                                                  # exprArray
-    // e() e(e) e(e,e) e<T>() / 尾随块 lambda： e(args) { ... } 或 e { ... }（唯一实参时省括号）
+    // e() e(e) e(e,e) e<T>() / 尾随 lambda： e(args){ (params) => stmts } 或 e { () => stmts }（唯一实参时省括号）
     | left=expr (SymbolColon genericDef)? ParStart LineEnd*
         ( args+=expr
             (SymbolComma LineEnd* args+=expr)*
@@ -628,7 +618,7 @@ statement:
     // type / init 同时缺失由 ast_builder 报 E3113；type 在但 init 缺由 E3114
     // #Mut 例外：允许 `#Mut let x T` 无 init（延后赋值，等价旧 `var x T`）
       (letAnnos+=letAnno)*
-      Let name=ID typeWithRef? (SymbolEq expr)? LineEnd   #statementLet
+      Let name=ID typeWithRef? (SymbolEq expr)? LineEnd?   #statementLet
     // DRAFT-let-unify §3：let 元组解构。注解语义与 statementLet 同（默认→val / #Mut→var / #Cval→cval）。
     | (letAnnos+=letAnno)*
       Let
@@ -636,7 +626,7 @@ statement:
         names+=ID (SymbolComma names+=ID)+
       ParEnd
       typeWithRef?
-      SymbolEq expr LineEnd                               #statementLetTuple
+      SymbolEq expr LineEnd?                               #statementLetTuple
     // e[a, b, c] = e 实际应为成员函数set的快捷调用
     | obj=expr
       GetStart
@@ -645,31 +635,32 @@ statement:
       GetEnd
       SymbolEq
       value=expr
-      LineEnd                         # statementSet
+      LineEnd?                         # statementSet
     // Type::FIELD = expr 静态字段写（DRAFT-static-vars Phase 5）
     | typeName=ID SymbolColonColon fieldName=ID
       SymbolEq
       value=expr
-      LineEnd                         # statementStaticFieldSet
+      LineEnd?                         # statementStaticFieldSet
     // 循环
-    | (ID SymbolColon)? Loop loopInit? statementBlock LineEnd     # statementLoop
+    | (ID SymbolColon)? Loop loopInit? statementBlock LineEnd?     # statementLoop
     // obj.member = expr
     | obj=(ID|SymbolThis)
       (SymbolDot subs+=ID | subs+=DOT_NUM)*
       opAssign
-      expr LineEnd                    #statementAssign
-    // 尾随;表示空类型（void）
-    | expr SymbolSemicolon? LineEnd   # statementExpr
+      expr LineEnd?                    #statementAssign
+    // 尾随;表示空类型（void）；LineEnd 可省（块末 `}` 充当终结）
+    | expr SymbolSemicolon? LineEnd?   # statementExpr
     // ret value
-    | Ret expr LineEnd                # statementRet
+    | Ret expr LineEnd?                # statementRet
     // ret; 返回空，强制尾随;表示空返回
-    | Ret SymbolSemicolon LineEnd     # statementRetVoid
+    | Ret SymbolSemicolon LineEnd?     # statementRetVoid
     // break; 强制尾随;不返回任何值
-    | Break (SymbolAt ID)? SymbolSemicolon LineEnd   # statementBreak
+    | Break (SymbolAt ID)? SymbolSemicolon LineEnd?   # statementBreak
     ;
 
+// `{` 后 / 语句后 / `}` 前换行均可省：`fn f() { ret 1 }`、`if c { a } else { b }` 合法。
 statementBlock:
-    BlockStart LineEnd
+    BlockStart LineEnd*
         (statement|LineEnd)*
     BlockEnd
     ;

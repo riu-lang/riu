@@ -8,11 +8,12 @@ struct Foo {
   x i32
 
   #Static
-  BAR i32 = try {
+  BAR i32 = try {  ; check: E3155
     1
   } catch e E {
     0
   }
 }
 
-fn main() {}  ; check: E1002
+fn main() {
+}

@@ -635,7 +635,7 @@ private:
             _returnAllowedSources.insert("$rodata");
         }
 
-        // 遍历 body：Single / Paren 单表达式视作隐式 ret；Block / ZeroBlock 走 stmt 通路
+        // 遍历 body：表达式体视作隐式 ret；语句体走 stmt 通路
         if (lam->bodyExpr()) {
             visitExpr(lam->bodyExpr());
             if (_returnsRef) {

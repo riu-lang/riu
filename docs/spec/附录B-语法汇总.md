@@ -225,14 +225,8 @@ expr ::=
         '!'?                                                     # exprCall  ; 末尾 `!` = 错误传播（DRAFT-错误.md §4.2）
   | expr (':' genericDef)? trailingLambda
         '!'?                                                     # exprCallTrailingOnly  ; 末尾 `!` 同 `exprCall`
-  | ID '=>' lambdaBody                                           # exprLambdaSingle
-  | '(' lambdaParams? ')' (retType=typeWithRef)? '=>' lambdaBody # exprLambdaParen
-  | '{' LineEnd* lambdaParams '=>' LineEnd*
-        (statement | comment | codeLineEnd)*
-    '}'                                                          # exprLambdaBlock
-  | '{' codeLineEnd
-        (statement | comment | codeLineEnd)*
-    '}'                                                          # exprLambdaZeroBlock
+  | '(' lambdaParams? ')' (retType=typeWithRef)? '=>'
+        (statementBlock | lambdaBody)                            # exprLambdaParen
   | ('-' | '~' | '!') expr                                       # exprUnary
   | expr opShift expr                                            # exprShift
   | expr ('&' | '|' | '^') expr                                  # exprBinOp
@@ -267,12 +261,11 @@ lambdaParams   ::= lambdaParam (',' LineEnd* lambdaParam)* ','? LineEnd*
 lambdaParam    ::= (ID ',' LineEnd*)+ ID typeWithRef?            # lambdaParamGroup
                  | ID typeWithRef?                               # lambdaParamStd
 
-trailingLambda ::= '{' LineEnd* lambdaParams '=>' LineEnd*
+trailingLambda ::= '{' LineEnd*
+                       '(' lambdaParams? ')' (retType=typeWithRef)? '=>'
+                       LineEnd*
                        (statement | comment | codeLineEnd)*
-                   '}'                                           # trailingLambdaBlock
-                 | '{' codeLineEnd
-                       (statement | comment | codeLineEnd)*
-                   '}'                                           # trailingLambdaZeroBlock
+                   '}'                                           ; 仅挂在调用上（§4.8.4）
 enumPattern    ::= ID '::' ID ( '(' ID (',' ID)* ')' )?          # patternEnum
                  | 'else'                                        # patternElse
 ```
@@ -282,7 +275,7 @@ enumPattern    ::= ID '::' ID ( '(' ID (',' ID)* ')' )?          # patternEnum
 `exprTryCatch` / `catchArm`、以及 `exprCall` / `exprCallTrailingOnly` 末尾的 `'!'?` 槽（错误传播）见草案 [draft/DRAFT-错误.md](draft/DRAFT-错误.md) §4 / §5；语义层约束（穷尽性 / 类型一致性 / 跨类型 E7004 / 冗余 E7016）由编译器分析。
 
 - 后缀 `!` **仅**附着在 `exprCall` / `exprCallTrailingOnly` 末尾（产生式内嵌槽 `errPropagate=SymbolExcl?`），不构成独立产生式；非调用位置出现的 `!` 由 `exprUnary` 解析为布尔取反，不进入错误传播路径。
-- `f(a) { x => body }!` 与 `f { x => body }!` 合法（trailing lambda 与 `!` 槽并存于产生式末尾），详见 DRAFT-错误.md §4.4。
+- `f(a){ (x) => body }!` 与 `f { () => body }!` 合法（trailing lambda 与 `!` 槽并存于产生式末尾），详见 DRAFT-错误.md §4.4。
 - `!` 与 `=` / `==` 之间需空白或换行（避免被吞为 `SymbolExclEq`）。
 
 - `exprEnumCtor`：`E::V` 与 `E::V()` 等价；类型别名 `C = E` 后 `C::V` 在解析期归一为 `E::V`。
@@ -295,20 +288,21 @@ enumPattern    ::= ID '::' ID ( '(' ID (',' ID)* ')' )?          # patternEnum
 
 ```
 statement ::=
-    letAnno* 'let' ID typeWithRef? ('=' expr)? codeLineEnd                # statementLet
-  | letAnno* 'let' '(' ID (',' ID)+ ')' typeWithRef? '=' expr codeLineEnd # statementLetTuple
-  | expr '[' expr (',' expr)* ']' '=' expr                                # statementSet
-  | ID '::' ID '=' expr codeLineEnd                                       # statementStaticFieldSet
-  | (ID ':')? 'loop' loopInit? statementBlock                    # statementLoop
-  | (ID | '$') ('.' ID | DOT_NUM)* opAssign expr codeLineEnd    # statementAssign
-  | expr ';'? codeLineEnd                                       # statementExpr
-  | 'ret' expr codeLineEnd                                      # statementRet
-  | 'ret' ';' LineEnd                                           # statementRetVoid
-  | 'break' ('@' ID)? ';' codeLineEnd                           # statementBreak
+    letAnno* 'let' ID typeWithRef? ('=' expr)? codeLineEnd?               # statementLet
+  | letAnno* 'let' '(' ID (',' ID)+ ')' typeWithRef? '=' expr codeLineEnd? # statementLetTuple
+  | expr '[' expr (',' expr)* ']' '=' expr codeLineEnd?                   # statementSet
+  | ID '::' ID '=' expr codeLineEnd?                                      # statementStaticFieldSet
+  | (ID ':')? 'loop' loopInit? statementBlock codeLineEnd?                # statementLoop
+  | (ID | '$') ('.' ID | DOT_NUM)* opAssign expr codeLineEnd?   # statementAssign
+  | expr ';'? codeLineEnd?                                      # statementExpr
+  | 'ret' expr codeLineEnd?                                     # statementRet
+  | 'ret' ';' codeLineEnd?                                      # statementRetVoid
+  | 'break' ('@' ID)? ';' codeLineEnd?                          # statementBreak
 
-statementBlock ::= '{' codeLineEnd
+statementBlock ::= '{' LineEnd*
                        (statement | comment | codeLineEnd)*
                    '}'
+                   ; `{` 后 / 语句后 / `}` 前换行均可省（§2.3.2.3）
 
 letAnno        ::= '#' ID codeLineEnd?   ; #Mut / #Cval / #Frozen（let 声明专用，无单参槽）
 ```

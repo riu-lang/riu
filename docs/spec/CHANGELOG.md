@@ -17,6 +17,16 @@
 
 ---
 
+## 2026-08-26 —— 块可单行；lambda 形态收敛为括参前缀 + 调用尾随
+
+- **修改 §2.3.2.3 / §5 / 附录 B**：`statementBlock` 不再强制 `{` 后 / `}` 前换行。`fn f() { ret 1 }`、`if c { a } else { b }` 与多行写法等价。语句末 `codeLineEnd` 在块末可省。
+- **修改 §4.11 / §4.8.4**：lambda 只保留 `(args) Ret? => expr` 与 `(args) Ret? => { stmts }`。去掉裸 `x => expr`、表达式位 `{ args => stmts }` / `{ stmts }`。尾随**仅**挂在函数调用：`foo(xxx){ () => stmts }` / `foo { () => stmts }`（唯一实参可省 `()`）。
+- **修改 §4.11.3**：括参无返回标注不再默认 void。形参类型与返回类型均可从期望函数类型或 body 推断。
+- **语法**：`yuxParser.g4` 删除 `exprLambdaSingle` / `exprLambdaBlock` / `exprLambdaZeroBlock`；`trailingLambda` 统一为 `{ '(' params? ')' Ret? '=>' stmts '}'`。
+- **冲突 / 兼容**：破坏性。旧写法 `x => expr` 改为 `(x) => expr`；`{ a, b => body }` 改为 `(a, b) => { body }` 或调用尾随 `f { (a, b) => body }`；`{ 42 }` 0 参块改为 `() => 42`。
+
+---
+
 ## 2026-08-25 —— 函数类型改为特殊泛型 `Function<P..., Ret>`
 
 - **修改 §3.11**：函数类型字面量从紧凑形 `fn(T)R` / `fn?(T)R` 改为内置特殊泛型 `Function<P1, P2, ..., Ret>`。末位永远是返回类型；`Function<()>` = 0 参 unit 返回；可空走标准 `Function<...>?`。

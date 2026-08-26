@@ -27,6 +27,10 @@ fn apply0(f Function<i32>) i32 {
   ret f()
 }
 
+fn call_with(x i32, f Function<i32, i32>) i32 {
+  ret f(x)
+}
+
 fn run_twice(f Function<i32, i32>, x i32) i32 {
   ret f(x) + f(x + 1)
 }
@@ -167,7 +171,7 @@ fn test_lambda_as_arg_explicit() {
 ; 验证：Lambda 作为参数传递并进行类型推断
 #Test
 fn test_lambda_as_arg_inferred() {
-  let r = apply(x => x * x, 6)
+  let r = apply((x) => x * x, 6)
   assert_eq(r, 36)
 }
 
@@ -308,12 +312,12 @@ fn test_box_fn_reassign() {
   assert_eq(b2(20), 120)
 }
 
-; ==================== 0 参块 lambda tail-expr 返回（BUG#0 修复） ====================
+; ==================== 0 参语句体 lambda tail-expr 返回（BUG#0 修复） ====================
 
 ; 验证：零参数块尾表达式返回值
 #Test
 fn test_zero_block_tail_expr_return() {
-  let once Function<i32> = {
+  let once Function<i32> = () => {
     42
   }
   assert_eq(once(), 42)
@@ -322,7 +326,7 @@ fn test_zero_block_tail_expr_return() {
 ; 验证：Lambda 表达式中尾部表达式与预lude
 #Test
 fn test_zero_block_tail_expr_with_prelude() {
-  let f Function<i32> = {
+  let f Function<i32> = () => {
     #Mut let a = 3
     #Mut let b = 4
     a + b
@@ -333,7 +337,7 @@ fn test_zero_block_tail_expr_with_prelude() {
 ; 验证：零块通过参数传播
 #Test
 fn test_zero_block_propagates_via_arg() {
-  let seven Function<i32> = {
+  let seven Function<i32> = () => {
     7
   }
   assert_eq(apply0(seven), 7)
@@ -511,7 +515,7 @@ fn test_lambda_if_expr_body() {
   assert_eq(abs1(5), 5)
   assert_eq(abs1(0 - 7), 7)
 
-  let r1 = apply(x => if x > 10 { x + 1 } else { x }, 20)
+  let r1 = apply((x) => if x > 10 { x + 1 } else { x }, 20)
   assert_eq(r1, 21)
 }
 
@@ -546,7 +550,7 @@ fn test_lambda_match_expr_body() {
   assert_eq(cl(Color::Red), 1)
   assert_eq(cl(Color::Green), 2)
 
-  let r1 = apply_color(c => match c {
+  let r1 = apply_color((c) => match c {
     Color::Red   => 10
     Color::Green => 20
     Color::Blue  => 30
@@ -581,4 +585,46 @@ fn use_lambda_borrow_ret(f Function<i32&, i32&>) {
 fn test_closure_ret_borrow_param() {
   use_lambda_borrow_ret((r i32&) i32& => r)
   assert_true(true)
+}
+
+; ==================== 语句体 / 尾随 / 推断 / 单行块 ====================
+
+fn one_line_add(a i32, b i32) i32 { ret a + b }
+
+; 验证：返回类型由表达式体推断
+#Test
+fn test_lambda_ret_inferred() {
+  let f = () => 42
+  assert_eq(f(), 42)
+  let g = (x i32) => x + 1
+  assert_eq(g(41), 42)
+}
+
+; 验证：语句体 lambda
+#Test
+fn test_lambda_stmt_body() {
+  let f = (x i32) i32 => {
+    let y = x + 1
+    ret y
+  }
+  assert_eq(f(4), 5)
+}
+
+; 验证：尾随 lambda（调用末位）
+#Test
+fn test_lambda_trailing() {
+  let r = call_with(5){ (x) => x * 2 }
+  assert_eq(r, 10)
+  let r2 = apply0(){ () => 7 }
+  assert_eq(r2, 7)
+  let r3 = apply0 { () => 8 }
+  assert_eq(r3, 8)
+}
+
+; 验证：函数体 / if 可写成一行
+#Test
+fn test_one_line_block() {
+  assert_eq(one_line_add(2, 3), 5)
+  let v = if true { 1 } else { 0 }
+  assert_eq(v, 1)
 }

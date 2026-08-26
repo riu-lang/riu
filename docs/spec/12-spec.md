@@ -439,7 +439,7 @@ struct Ord {
 |---|---|---|
 | 仅签名 | `fn cmp(other Self&) i32` | 必须由实现者写体 |
 | `= expr` 单表达式体 | `fn lt(other Self&) bool = $.cmp(other) < 0` | 与 fn 通用 `fnExprBody` 一致 |
-| `{ ... }` 块体 | `fn le(other Self&) bool { $.cmp(other) <= 0 }` | 多行强制换行（§4 块体） |
+| `{ ... }` 块体 | `fn le(other Self&) bool { $.cmp(other) <= 0 }` | 可单行；多行时 `{` 后换行（§2.3.2.3） |
 
 §12.10.1.3 默认体内 `Self` 视为**抽象类型变量**（具体化推迟到 §12.10.4 单态化时机）；`$` 在默认体内类型为 `Self&`（与 §12.2.3.2 一致）。
 

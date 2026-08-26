@@ -2,7 +2,8 @@
 
 struct Foo {
   #Static
-  BAR i32
+  BAR i32  ; check: E3150
 }
 
-fn main() {}  ; check: E1002
+fn main() {
+}
