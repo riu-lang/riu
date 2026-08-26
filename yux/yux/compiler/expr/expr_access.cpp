@@ -338,7 +338,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
 // 语义：a 是 Nullable<T>，T 是结构体，b 是 T 的字段
 //   - a 持值 → Nullable<U>{ has=true, value=a._value.b }
 //   - a 不持值 → Nullable<U>{ has=false, value=zero }
-// 当前实现仅覆盖字段访问；方法调用形式 a?.foo() 不在本阶段
+// 当前实现覆盖字段访问；方法调用 a?.foo() 走 compileSafeDotMethodCall
 // 链式 a?.b?.c 自然递归（每层 base 类型为 Nullable<X>，仍走同分支）
 llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
     auto baseExpr = node->baseExpr();

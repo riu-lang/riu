@@ -15,6 +15,12 @@
 #include "struct_node.h"
 #include "types.h"
 
+// 安全方法调用结果：方法返回 U → U?；省略返回（unit）用 ()。
+static TypeInfo wrapAsNullable(TypeInfo inner) {
+    if (inner.empty()) inner = TypeInfo(TupleTag{}, {});
+    return {"Nullable", {std::make_shared<TypeInfo>(std::move(inner))}};
+}
+
 // §12.4：在生成式 AST 中遇到 `x.m()`（x:T 为泛型形参）时，
 // 用形参声明位的 draft 边界查 m 的返回类型；走包含 SDK 回退的 file 链。
 static TypeInfo lookupSpecBoundMethodRetType(Node* contextParent, const string& typeParamName,
@@ -396,11 +402,7 @@ TypeInfo ExprCallNode::getType() const {
                         if (!subst.empty()) rt = rt.substitute(subst);
                     }
                     DEBUG_LOG_VAL("ExprCallNode::getType - method returning", rt.getFullName());
-                    if (isSafeCall) {
-                        std::vector<sp<TypeInfo>> nullArgs;
-                        nullArgs.push_back(make_shared<TypeInfo>(rt));
-                        return {"Nullable", nullArgs};
-                    }
+                    if (isSafeCall) return wrapAsNullable(rt);
                     return rt;
                 }
 
@@ -411,32 +413,27 @@ TypeInfo ExprCallNode::getType() const {
                         const auto& m = dotNode->member();
                         if (m == "get" || m == "first" || m == "last") {
                             TypeInfo refTy("Ref", {elem});
-                            if (isSafeCall) {
-                                return TypeInfo("Nullable", {std::make_shared<TypeInfo>(refTy)});
-                            }
+                            if (isSafeCall) return wrapAsNullable(refTy);
                             return refTy;
                         }
                         if (m == "pop") {
-                            if (isSafeCall) {
-                                return TypeInfo("Nullable", {std::make_shared<TypeInfo>(*elem)});
-                            }
+                            if (isSafeCall) return wrapAsNullable(*elem);
                             return *elem;
                         }
                     }
                     const auto& m = dotNode->member();
                     if (m == "len" || m == "cap") {
-                        if (isSafeCall) {
-                            return TypeInfo("Nullable", {std::make_shared<TypeInfo>(TypeInfo("usize"))});
-                        }
+                        if (isSafeCall) return wrapAsNullable(TypeInfo("usize"));
                         return TypeInfo("usize");
                     }
                     if (m == "is_empty") {
-                        if (isSafeCall) {
-                            return TypeInfo("Nullable", {std::make_shared<TypeInfo>(TypeInfo("bool"))});
-                        }
+                        if (isSafeCall) return wrapAsNullable(TypeInfo("bool"));
                         return TypeInfo("bool");
                     }
-                    if (m == "push" || m == "clear" || m == "set_len") return {};
+                    if (m == "push" || m == "clear" || m == "set_len") {
+                        if (isSafeCall) return wrapAsNullable({});
+                        return {};
+                    }
                 }
             }
         }
@@ -558,6 +555,11 @@ TypeInfo ExprCallNode::getType() const {
             }
         }
         DEBUG_LOG_VAL("ExprCallNode::getType - returning", retType.name);
+        if (auto fallbackDot = dynamic_cast<ExprDotNode*>(_calleeExpr)) {
+            if (fallbackDot->isSafe() && fallbackDot->baseExpr()->getType().isNullable()) {
+                return wrapAsNullable(retType);
+            }
+        }
         return retType;
     }
 

@@ -19,11 +19,11 @@
 // ==================== 安全方法调用编译 (a?.foo()) ====================
 // 编译 a?.foo(args) 安全方法调用表达式
 // 语义：a 是 Nullable<T>，T 有方法 foo
-//   - a 持值 → 调用 a._value.foo(args)，结果包装为 Nullable<ret>{ has=true, value=result }
-//   - a 不持值 → Nullable<ret>{ has=false, value=zero }
+//   - a 持值 → 求值实参并调用 a._value.foo(args)，结果包装为 Nullable<ret>
+//   - a 不持值 → 不求值实参（§4.1.1.3 短路），Nullable<ret>{ has=false, value=zero }
 // 模式与 compileSafeDotExpr 一致：extractvalue + br + then/else/merge BB
 llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<ExprDotNode> dotNode,
-                                                 vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
+                                                vector<TypeInfo>& argTypes) {
     auto baseExpr = dotNode->baseExpr();
     auto member = dotNode->member();
     auto baseType = baseExpr->getType();
@@ -130,6 +130,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
     } else if (genericMethodNode && genericMethodNode->header()->retType()) {
         retType = genericMethodNode->header()->retType()->getType().substitute(genericSubst);
     }
+    if (retType.empty()) retType = TypeInfo(TupleTag{}, {});
 
     // 结果类型 Nullable<ret>
     vector<sp<TypeInfo>> nullArgsInner;
@@ -174,9 +175,23 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
         auto handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "sd.m.rc.handle");
         dataPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "sd.m.rc.payload");
     } else {
-        auto innerAlloca = _builder.CreateAlloca(innerLLVMType, nullptr, "sd.m.inner.tmp");
-        _builder.CreateStore(innerVal, innerAlloca);
-        dataPtr = innerAlloca;
+        // 局部 T?：直接用槽内 _value 指针，让 mutating 方法写回原变量
+        llvm::Value* localSlot = nullptr;
+        if (auto lit = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
+            if (auto obj = dynamic_cast<LiteralObjNode*>(lit->literal())) {
+                auto it = _localVarPtrs.find(obj->getValue().getText());
+                if (it != _localVarPtrs.end()) {
+                    localSlot = _builder.CreateGEP(baseLLVMType, it->second, {zero32, one32}, "sd.m.inner.slot");
+                }
+            }
+        }
+        if (localSlot) {
+            dataPtr = localSlot;
+        } else {
+            auto innerAlloca = _builder.CreateAlloca(innerLLVMType, nullptr, "sd.m.inner.tmp");
+            _builder.CreateStore(innerVal, innerAlloca);
+            dataPtr = innerAlloca;
+        }
     }
 
     bool receiverByValue = isBuiltinType(actualType.name);
@@ -185,18 +200,20 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
         receiverArg = _builder.CreateLoad(getLLVMType(actualType), dataPtr, "sd.m.receiver.val");
     }
 
-    // 构建方法调用参数
+    // 构建方法调用参数（实参在 then 内求值，空 receiver 不触发副作用）
     vector<llvm::Value*> methodArgs;
     methodArgs.push_back(receiverArg);
     static const vector<TypeInfo> emptyParams;
     const auto& mparams = methodSymbol ? methodSymbol->params : emptyParams;
-    for (size_t i = 0; i < args.size(); ++i) {
+    const auto& callArgs = callNode->getArgs();
+    for (size_t i = 0; i < callArgs.size(); ++i) {
         auto& at = argTypes[i];
+        auto argVal = compileExpr(callArgs[i]);
         if (typeNeedsDestructor(at)) {
-            if (i < callNode->getArgs().size() && !isFreshHandleExpr(callNode->getArgs()[i])) {
-                retainHandleAtCallSite(args[i], at);
-            } else if (i < callNode->getArgs().size()) {
-                consumeTemp(args[i]);
+            if (!isFreshHandleExpr(callArgs[i])) {
+                retainHandleAtCallSite(argVal, at);
+            } else {
+                consumeTemp(argVal);
             }
         }
         size_t mpi = i + 1;
@@ -204,10 +221,10 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
         if (needsAutoRef || structParamUsesPointer(at.name)) {
             auto structType = getLLVMType(at);
             auto alloca = _builder.CreateAlloca(structType, nullptr, "sd.m.arg_tmp");
-            _builder.CreateStore(args[i], alloca);
+            _builder.CreateStore(argVal, alloca);
             methodArgs.push_back(alloca);
         } else {
-            methodArgs.push_back(args[i]);
+            methodArgs.push_back(argVal);
         }
     }
 
@@ -267,15 +284,18 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
     }
 
     if (!llvmFn) {
-        _builder.CreateStore(_builder.getInt1(false), resHasField);
+        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6015);
+    }
+    if (llvmFn->getReturnType()->isVoidTy()) {
+        _builder.CreateCall(llvmFn, methodArgs);
+        _builder.CreateStore(_builder.getInt1(true), resHasField);
         _builder.CreateStore(llvm::Constant::getNullValue(getLLVMType(retType)), resValueField);
-        _builder.CreateBr(mergeBB);
     } else {
         auto callResult = _builder.CreateCall(llvmFn, methodArgs, "sd.m.call");
         _builder.CreateStore(_builder.getInt1(true), resHasField);
         _builder.CreateStore(callResult, resValueField);
-        _builder.CreateBr(mergeBB);
     }
+    _builder.CreateBr(mergeBB);
 
     // ==== else: 空 Nullable<ret> ====
     func->insert(func->end(), elseBB);
@@ -762,8 +782,7 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
 
         // allocBB: 分配新数据缓冲 newData = HeapAlloc(len * sizeof(T))
         _builder.SetInsertPoint(allocBB);
-        auto elemSizeVal = _builder.getInt64(
-            _module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
+        auto elemSizeVal = _builder.getInt64(_module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
         // oldLen 是 usize (sizeTy)，elemSizeVal 是 i64；统一为 i64 做乘法
         auto oldLenI64 = _builder.CreateZExtOrTrunc(oldLen, _builder.getInt64Ty(), "clone.len.i64");
         auto newSize = _builder.CreateMul(oldLenI64, elemSizeVal, "clone.new_size");
@@ -867,8 +886,8 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
             DEBUG_LOG_VAL("    Expr: BitCast", lookupType.name << ".to_bits()");
             auto baseVal = compileReceiver();
             auto srcLLVMTy = getLLVMType(lookupType);
-            auto dstLLVMTy = lookupType.name == "f64" ? llvm::Type::getInt64Ty(_context)
-                                                      : llvm::Type::getInt32Ty(_context);
+            auto dstLLVMTy =
+                lookupType.name == "f64" ? llvm::Type::getInt64Ty(_context) : llvm::Type::getInt32Ty(_context);
             auto alloca = _builder.CreateAlloca(srcLLVMTy, nullptr, "bitcast.tmp");
             _builder.CreateStore(baseVal, alloca);
             auto bitcastPtr = _builder.CreateBitCast(alloca, llvm::PointerType::get(_context, 0), "bitcast.ptr");
@@ -880,8 +899,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
             DEBUG_LOG_VAL("    Expr: BitCast", lookupType.name << "." << member << "()");
             auto baseVal = compileReceiver();
             auto srcLLVMTy = getLLVMType(lookupType);
-            auto dstLLVMTy =
-                member == "as_f64" ? llvm::Type::getDoubleTy(_context) : llvm::Type::getFloatTy(_context);
+            auto dstLLVMTy = member == "as_f64" ? llvm::Type::getDoubleTy(_context) : llvm::Type::getFloatTy(_context);
             auto alloca = _builder.CreateAlloca(srcLLVMTy, nullptr, "bitcast.tmp");
             _builder.CreateStore(baseVal, alloca);
             auto bitcastPtr = _builder.CreateBitCast(alloca, llvm::PointerType::get(_context, 0), "bitcast.ptr");
@@ -1314,7 +1332,8 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
         string ownerMod = methodSymbol->moduleName.empty() ? _file->moduleName() : methodSymbol->moduleName;
         bool methPriv = !member.empty() && member[0] == '_';
         // 去掉 mparams[0]（receiver 类型），Mangler::method 已含 structName
-        vector<TypeInfo> methodDeclaredParams(mparams.size() > 1 ? mparams.begin() + 1 : mparams.begin(), mparams.end());
+        vector<TypeInfo> methodDeclaredParams(mparams.size() > 1 ? mparams.begin() + 1 : mparams.begin(),
+                                              mparams.end());
         // 若 mparams 仅含 receiver（无参方法如 len()），methodDeclaredParams 为空
         if (mparams.size() <= 1) methodDeclaredParams.clear();
         string mangledName = Mangler::method(ownerMod, actualType.name, member, methodDeclaredParams, methPriv);

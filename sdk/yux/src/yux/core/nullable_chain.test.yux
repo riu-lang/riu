@@ -4,9 +4,9 @@
 ;   - 嵌套 ?. 链：a?.b?.c 短路传播
 ;   - ?? 链：多层 fallback 组合
 ;   - Nullable<String>：?. 与 ?? 在句柄类型上的行为
-;   - 混合场景：?. + ?? + 方法调用组合
+;   - ?.foo() 安全方法调用：有值 / 空 / 有参 / 实参短路 / unit 返回 / 链式
+;   - SDK 类型方法：String?.len() / String?.to_string() / i32?.to_string()
 ;
-; 已知缺口：?.foo() 可选链方法调用的 BUG 见 BUGS.md / Phase 2d；
 ; Nullable 基础行为（??、?.field、.has()、.get()）见 nullable.test.yux。
 
 struct InnerVal {
@@ -135,6 +135,18 @@ struct ValWithMethod {
   fn double() i32 {
     ret $.v * 2
   }
+
+  fn add(x i32) i32 {
+    ret $.v + x
+  }
+
+  fn bump() {
+    $.v = $.v + 1
+  }
+
+  fn nest() ValWithMethod {
+    ret ValWithMethod::make($.v)
+  }
 }
 
 ; 验证：可选链式调用在存在值时正确调用方法
@@ -161,8 +173,7 @@ fn test_safe_method_call_null() {
 fn test_safe_method_call_with_arg() {
   #Mut let v ValWithMethod = ValWithMethod::make(21)
   #Mut let maybe ValWithMethod? = v
-  ; ?.double() 有值调用
-  #Mut let r i32? = maybe?.double()
+  #Mut let r i32? = maybe?.add(21)
   assert_eq(r ?? -1, 42)
 }
 
@@ -184,4 +195,110 @@ fn test_safe_method_string_len_null() {
   ; ?.len() 在 null String? 上
   #Mut let r usize? = s?.len()
   assert_eq(r ?? 999usize, 999usize)
+}
+
+; ==================== 实参短路 / unit 返回 / 链式 / String 返回 ====================
+
+struct TickCounter {
+  n i32
+
+  #Static
+  fn make(n i32) TickCounter {
+    ret Self {
+      .n = n
+    }
+  }
+
+  fn tick() i32 {
+    $.n = $.n + 1
+    ret $.n
+  }
+}
+
+; 验证：receiver 为空时不求值 ?.method 的实参
+#Test
+fn test_safe_method_arg_short_circuit_null() {
+  #Mut let c TickCounter = TickCounter::make(0)
+  #Mut let n ValWithMethod? = null
+  #Mut let r i32? = n?.add(c.tick())
+  assert_eq(r ?? -1, -1)
+  assert_eq(c.n, 0)
+}
+
+; 验证：receiver 有值时求值实参并传入方法
+#Test
+fn test_safe_method_arg_eval_when_some() {
+  #Mut let c TickCounter = TickCounter::make(0)
+  #Mut let v ValWithMethod = ValWithMethod::make(10)
+  #Mut let maybe ValWithMethod? = v
+  #Mut let r i32? = maybe?.add(c.tick())
+  assert_eq(r ?? -1, 11)
+  assert_eq(c.n, 1)
+}
+
+; 验证：unit 返回方法在有值时被调用
+#Test
+fn test_safe_method_void_some() {
+  #Mut let v ValWithMethod = ValWithMethod::make(1)
+  #Mut let maybe ValWithMethod? = v
+  #Mut let r ()? = maybe?.bump()
+  assert_true(r.has())
+  assert_eq(maybe.get().v, 2)
+}
+
+; 验证：unit 返回方法在空值时不调用
+#Test
+fn test_safe_method_void_null() {
+  #Mut let n ValWithMethod? = null
+  n?.bump()
+  assert_false(n.has())
+}
+
+; 验证：?.method()?.method() 链式
+#Test
+fn test_safe_method_chain() {
+  #Mut let v ValWithMethod = ValWithMethod::make(7)
+  #Mut let maybe ValWithMethod? = v
+  #Mut let r i32? = maybe?.nest()?.getValue()
+  assert_eq(r ?? -1, 7)
+}
+
+; 验证：空值链式方法调用短路
+#Test
+fn test_safe_method_chain_null() {
+  #Mut let n ValWithMethod? = null
+  #Mut let r i32? = n?.nest()?.getValue()
+  assert_eq(r ?? -99, -99)
+}
+
+; 验证：String?.to_string() 有值返回句柄
+#Test
+fn test_safe_method_string_to_string_some() {
+  #Mut let s String? = "hi"
+  #Mut let r String? = s?.to_string()
+  assert_eq(r ?? "", "hi")
+}
+
+; 验证：String?.to_string() 空值短路
+#Test
+fn test_safe_method_string_to_string_null() {
+  #Mut let s String? = null
+  #Mut let r String? = s?.to_string()
+  assert_eq(r ?? "none", "none")
+}
+
+; 验证：i32?.to_string() 有值
+#Test
+fn test_safe_method_i32_to_string_some() {
+  #Mut let n i32? = 42
+  #Mut let r String? = n?.to_string()
+  assert_eq(r ?? "", "42")
+}
+
+; 验证：i32?.to_string() 空值短路
+#Test
+fn test_safe_method_i32_to_string_null() {
+  #Mut let n i32? = null
+  #Mut let r String? = n?.to_string()
+  assert_eq(r ?? "none", "none")
 }

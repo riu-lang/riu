@@ -465,7 +465,7 @@ private:
     bool isBuiltinMethod(const string& structName, const string& methodName); // 检查是否为编译器内部方法
     llvm::Value* compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode> dotNode, vector<llvm::Value*>& args,
                                    vector<TypeInfo>& argTypes); // 编译方法调用
-    llvm::Value* compileSafeDotMethodCall(p<ExprCallNode> callNode, p<ExprDotNode> dotNode, vector<llvm::Value*>& args,
+    llvm::Value* compileSafeDotMethodCall(p<ExprCallNode> callNode, p<ExprDotNode> dotNode,
                                           vector<TypeInfo>& argTypes); // 编译 a?.foo() 安全方法调用
     llvm::Value* compileFunctionCall(p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args,
                                      vector<TypeInfo>& argTypes); // 编译函数调用

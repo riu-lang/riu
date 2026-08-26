@@ -55,7 +55,7 @@
 | 短路 | short-circuit | §4.5 | `&&` / `\|\|` 的短路语义 |
 | 取址 | address-of | §4.7 / §8.6.4 | `& expr`，结果 `T&` |
 | Nullable | nullable type | §3.6 / §9.8 | `T?`，解糖为 `Nullable<T>` |
-| 安全访问 | safe-dot | §4.6 | `a?.field`，链式展开 |
+| 安全访问 | safe-dot | §4.6 | `a?.field` / `a?.method(args)`，链式展开 |
 | Null 兜底 | null-coalescing | §4.6 / `exprNullElse` | `a ?? b` |
 | 表达式语句 | expression statement | §5.3 | `expr ';'? codeLineEnd` |
 | 声明语句 | declaration statement | §5.1 | `let`（默认 / `#Mut` / `#Cval` / `#Frozen` 档位） |

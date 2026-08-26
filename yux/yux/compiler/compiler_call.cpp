@@ -568,9 +568,16 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
         }
     }
 
+    bool delaySafeMethodArgs = false;
+    if (auto delayDot = dynamic_cast<ExprDotNode*>(calleeExpr)) {
+        // §4.1.1.3：a?.m(args) 在 a 为空时不求值实参，推迟到 then 分支
+        delaySafeMethodArgs = delayDot->isSafe();
+    }
+
     for (auto& arg : node->getArgs()) {
         auto argType = arg->getType();
         argTypes.push_back(argType);
+        if (delaySafeMethodArgs) continue;
 
         bool passByPtr = false;
         if (isGenericCtorCall && ctorStructImpl) {
@@ -613,7 +620,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
 
     if (auto dotNode = dynamic_cast<ExprDotNode*>(calleeExpr)) {
         if (dotNode->isSafe()) {
-            auto result = compileSafeDotMethodCall(node, dotNode, args, argTypes);
+            auto result = compileSafeDotMethodCall(node, dotNode, argTypes);
             if (result) {
                 return result;
             }
