@@ -192,7 +192,8 @@ entry="main.yux"
 ```powershell
 # 项目 / 格式化测试
 ./build.ps1 yux
-./build.ps1 test                  # 全部
+./build.ps1 test                  # 全部（默认并行，jobs = CPU 核数）
+./build.ps1 test -Jobs 1          # 强制串行
 ./build.ps1 test <name>           # 单个（tests/projects/<name>）
 ./build.ps1 test -Group format    # 只跑格式化
 

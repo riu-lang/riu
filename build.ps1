@@ -9,7 +9,7 @@
   ./build.ps1 yux             只构建主编译器
   ./build.ps1 yux yux-check   一次构建多个目标
   ./build.ps1 llvm            只确保 LLVM
-  ./build.ps1 test            项目/格式化回归（tests/projects）
+  ./build.ps1 test            项目/格式化回归（tests/projects，默认并行）
   ./build.ps1 pack            打包 zip
   ./build.ps1 -Release ...    release 配置
 #>
@@ -32,12 +32,18 @@ function Show-Help {
 用法:
   ./build.ps1 [options] [ninja-targets...]
   ./build.ps1 test [test-args...]
+  ./build.ps1 test -Jobs 8
   ./build.ps1 pack
 
 选项:
   -Release / --release   release 配置（默认 debug）
   -GenOnly / --gen-only  只 gn gen，不 ninja
   -h / --help            帮助
+
+test 参数（转发到 tests/run.ps1）:
+  -Jobs / --jobs / -j N  并行用例数（默认 CPU 核数；1 = 串行）
+  -Group project|format  只跑一类
+  <name>                 只跑指定用例目录
 
 常用目标: yux  yux-lsp  yux-ast  yux-check  yux-test-runner  yuxrt  llvm
 无目标时构建 default（全部 exe）。

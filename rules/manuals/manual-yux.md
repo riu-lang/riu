@@ -150,7 +150,9 @@ LLVM IR 里能看到每个函数的入口标签、alloca/load/store、call 等�
 ## 项目/格式化回归
 
 ```powershell
-./build.ps1 test                      ; 全部 tests/projects
+./build.ps1 test                      ; 全部 tests/projects（默认并行，jobs = CPU 核数）
+./build.ps1 test -Jobs 8              ; 指定并行用例数
+./build.ps1 test -Jobs 1              ; 强制串行
 ./build.ps1 test -Group project       ; 项目编译+运行（含 expected.txt）
 ./build.ps1 test -Group format        ; 格式化回归（含 expected_format）
 ./build.ps1 test <name>               ; 跑单个用例（目录名）

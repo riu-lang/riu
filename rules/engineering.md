@@ -45,7 +45,8 @@ yux test --threads 4                ; 指定并行数
 ```powershell
 ./build.ps1 yux-check               ; 确保 yux-check 是最新的
 yux-check test tests/check-cases/   ; 诊断回归用例
-./build.ps1 test                    ; 项目编译+运行 + 格式化回归（全量）
+./build.ps1 test                    ; 项目编译+运行 + 格式化回归（全量，默认并行）
+./build.ps1 test -Jobs 1            ; 强制串行（对照 / 调试）
 ```
 
 三项都过 → 任务验证完毕，可以提交。
