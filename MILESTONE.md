@@ -61,7 +61,7 @@
 
 ### v1.0 候选 — 规范定稿 + ABI 冻结
 
-> **现状提示**：v1.0 仍远（当前 v0.18；v0.19+ 待启动）。spec 仍有较多遗留 Open Issues、潜在 bug 待挖；本节标准是终态门槛，不是近期目标。下方"后续主题"里的待编号工作要先落，才进 v1.0 候选。
+> **现状提示**：v1.0 仍远（当前 v0.19-alpha）。spec 残留 Open Issues 已审计并关/转/留；本节标准是终态门槛，不是近期目标。下方"后续主题"里的待编号工作要先落，才进 v1.0 候选。
 
 **退出标准**：
 
@@ -80,12 +80,17 @@
   - **依赖**：v0.9 错误模型 v1（已完成）；可能还需泛型 enum / Self 类型 / 函数值的错误通道支持（[#22]）。
   - **不含**：unwind / SEH / personality（yux 不引入异常机制，永久拒绝）。
 
-- **SDK 第一轮扩充**：
-  - `math.*` / `Map<K, V>`
-  - `String` 方法补全（`to_upper` / `split` / `contains` 等）
+- **SDK 第一轮剩余**：
+  - `Map<K, V>`
   - 基础 IO 改进（行读取、文件 API 雏形）
   - `format` 类格式化（候选 `?` / `{}`，配合 SDK 一并做）
-  - `for in` 迭代（`Iter<T>` draft + Array / 定长数组特例 lowering）
+  - `math.*` / `String.starts_with` / `contains` / `Array.clone()` 已在 v0.18；`to_upper` / `split` 等进 v0.19
+
+- **控制流语法（需改 g4，开工前拍板）**：`continue` / `continue@label`（名称 continue vs next 待决议）；`for in` 迭代（`Iter<T>` draft + Array / 定长数组特例 lowering）。当前 `yuxParser.g4` **无** `statementForIn` 骨架（v0.6 曾占位，后已删除）。
+
+- **泛型 enum**：enum 类型参数 / 方法 / spec 实现 / struct-style payload（§3.10.2.6）。错误模型 v2 可能依赖此项。
+
+- **反射补全**：`Field.type` / `offset`；显式 receiver `other::fields[0].value`；`Self::type` / `Self::fields`；`methods` / `variants` 数组填充；`#Reflect` 命名参数（待 anno-struct）。
 
 - **工具链与编辑器支持**：LSP / IDE 插件（高亮、补全、跳转）；测试框架（约定 + runner）；文档生成（从源码注释 / spec 抽取）。
 
@@ -95,26 +100,86 @@
 
 - **性能与 layout 优化**：String 专属 FAM Block（`{strong, weak, len_cps, u32 data[]}`）；Array Block 内联小尺寸优化；内联策略与裁剪；基准测试无回归。
 
-### v0.18.0-alpha — BUG 解决 + Open Issue 收口 + SDK 扩展
+### v0.19.0-alpha — 遗留实现收口 + SDK 方法补全 + Array 工厂
 
-**主题**：清理 v0.17 遗留 TODO/BUG；收口 spec 各章 Open Issues；SDK 第一轮方法补全。
+**主题**：把 v0.18 审计后留下的实现洞补上（Array move / `#NoCopy` 泛型 / typed release TODO）；补齐 String 剩余高频方法与 Array 静态工厂。不加新语法。
 
 **范围（草稿）**：
 
-- BUG：`_weak_release` strong count 检查、`Rc<Heap<T>>`/`Rc<Dyn<D>>` typed release、`#NoCopy` 泛型类型识别
-- Open Issue：spec 各章逐条审计（关/转/留）
-- SDK：`String` 高频方法（`to_upper`/`starts_with`/`contains` 等）、`math.*` 模块、`Array` 迭代/变换方法
-- ✅ **statementBlock 真块作用域**（对齐 §5.7.1）：if/loop/match/catch 体词法作用域；loop init 仅体内可见；codegen `_scopeFrames` 按帧析构；`Dyn` 拷贝 retain 补齐
+- BUG：`move:<Array<T>>` 崩溃（A5）；`#NoCopy` 泛型类型识别（E4032 对 `Foo<T>` 字段静默跳过）；`Rc` 内层 `Heap` / `Dyn` typed release（容器形态已禁 E4025 / E1132，确认后删 TODO 或补洞）
+- Array 工厂：`Array::with_capacity(n)` 等 `#Builtin #Static fn` codegen 入口（A1）
+- SDK String：`to_upper` / `to_lower` / `ends_with` / `split`（`starts_with` / `contains` 已在 v0.18）
 
-**不在范围**：泛型 enum / 错误模型 v2 / 多线程 / 包管理。
+**不在范围**：`continue` / `for in`（需改 g4）；泛型 enum；错误模型 v2；`Map` / `format` / IO；反射补全；嵌套闭包 `T&` / `#Fallible` lambda；块值多分支推断 / 单行 if-else 临时值边界。
 
 **退出标准**：
-- [ ] BUGS.md 清零或标注推后
-- [ ] spec 各章 Open Issues 审计完毕
-- [ ] SDK 新增方法覆盖 String + Array + math 高频 API
+
+- [ ] A5 / E4032 泛型 `#NoCopy` 关；Heap/Dyn typed-release TODO 有结论（实现或删除）
+- [ ] `Array::with_capacity` 可用
+- [ ] String `to_upper` / `to_lower` / `ends_with` / `split` 有 SDK 测试
 - [ ] `yux test` / `yux-check test` / `./build.ps1 test` 全绿
 - [ ] `./lint.ps1` 0 warnings
 - [ ] CHANGELOG 收口
+
+### v0.18.0 — Open Issue 审计 + 语言面收口 + 块作用域 ✅ 已完成（2026-08-27）
+
+**主题**：审计 spec 各章 Open Issues（关/转/留）；把日常写法里已经落地或已决议的语言面写进规范并补齐实现缺口；statementBlock 真块作用域。原定的所有权 BUG 清扫与 SDK 全量方法未做完，推 v0.19 / 后续主题。
+
+**实际交付**：
+
+**A. spec Open Issues 审计（§1–§12）**：
+- §1 转义列表与 lexer 对齐；未知 / 非法 `\x` `\u` → E2033；`LineEnd` 去掉孤立 `\r`
+- §2 `??` / `?.` 不升格 token；不承认隐式续行；附录 B 手工摘录、不以脚本对齐 g4
+- §3 `()` 作为 unit 类型/值；`to_string()` 合约关（堆 `String`）；零拷贝句柄 / 泛型 enum **留**
+- §4 优先级表与 g4 对齐（`??` > `<-`，右结合）；`&` 不作用于调用结果；`Self { }` 仅 `#Static fn`
+- §5 statementBlock 真块作用域（§5.7.1）；loop init 仅体内可见；不引入 `while` / C 风格 `for`；`continue` **留**
+- §6 类型约束即 `<T : D>`；不引入 `var p T`；extern / `#Mut` 形参 / `T&` panic **转** 后续
+- §8 草案已迁入；Array 与 RC 脱钩（B-3）；`Weak<Array>` **转** v1.x
+- §9 `isize`/`usize`；`Array.clone()`；`rc:<T>`；`Ptr` 无泛型；越界可恢复错误 **转** 错误模型
+- §10 `pub`/`private` 永不引入；`name as alias`；第三方库 **转** 包管理
+- §11 未知注解报错；自定义 / 多参 / 表达式级 **转** 后续
+- §12 内置 spec 清单；操作符糖 / `extend` / `AnyRef` **转** 后续
+- 闭包 DRAFT O3 / O4 **关**（`Heap<T>?` 多次调用与 `[T*N]` 捕获不单列条款）
+
+**B. 整数宽度与索引**：
+- `isize` / `usize` 指针宽度整数
+- Array / String / StringBuilder 的 `len` / 索引改为 `usize`
+
+**C. 控制流与块**：
+- `loop init` 子句；`break@label` labeled break（E3022 / E3025）
+- statementBlock 真块作用域 + 可单行（`fn f() { ret 1 }`）
+- match arm `=> { stmts }`
+- 删除 Python 风三元 `a if c else b`
+- `?.method(args)` 安全方法调用
+
+**D. 类型与 lambda**：
+- `()` unit 类型（零元素元组）
+- 函数类型 `Function<P..., Ret>`（取代 `fn(T)R`）
+- lambda 只保留括参前缀 + 调用尾随
+
+**E. 模块 / 注解 / 其它**：
+- pkg `name as alias`；`#Inline` 全局 `#Cval`；复合赋值 `^=` `|=` `&=`
+- `#Test` DLL 级子进程隔离（规范追上实现）
+
+**F. SDK（部分）**：
+- `String.starts_with` / `contains` + 对应 assert
+- `Array.clone()` 深拷贝唯一入口（`copy_of` 拒 `#NoCopy`）
+- `math.*` 模块（超越函数走 yuxrt / musl libm）
+
+**不在范围（推后）**：
+- `move:<Array<T>>` 崩溃（A5）；`#NoCopy` 泛型识别（E4032）；`Rc` 内层 Heap/Dyn typed release TODO → **v0.19**
+- `Array::with_capacity` 等静态工厂（A1）→ **v0.19**
+- String `to_upper` / `split` 等 → **v0.19**
+- `continue` / `for in`（需改 g4）
+- 泛型 enum；错误模型 v2；反射 §13 残留；嵌套闭包 `T&` / `#Fallible` lambda
+- 块值多分支推断；单行 if-else 临时值边界；E3099 / E6027 结构化 note
+- `__copy_S` / `__destroy_S` 体积优化；字段重排
+
+**退出标准达成情况**：
+- ✅ spec 各章 Open Issues 审计完毕（残留显式留/转，见各章末尾与「不在范围」）
+- ✅ CHANGELOG 收口
+- ⏭ SDK 高频 API 未全覆盖（仅 starts_with / contains / clone / math）→ v0.19
+- ⏭ 原定所有权 BUG 未清完 → v0.19
 
 ### v0.17.0 — 项目模块 + extern 完善 + 内存模型重构（B-1~B-4）+ LLVM 符号对齐 ✅ 已完成（2026-06-24）
 
