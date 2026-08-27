@@ -821,8 +821,10 @@ void emitRcReleaseForArrayFn(llvm::LLVMContext& context, llvm::IRBuilder<>& buil
 // ==================== B-2 inline-dtor: Rc<inline-type> typed release ====================
 // Rc<T> 其中 T 为 Rc/Weak/fn 等无独立 dtor 函数的内联析构类型。
 // 与 _box_release 同骨架，但 strong==0 时按 kind 内联析构 IR 而非调 dtorFn。
+// payloadReleaseFn：内层 handle 的释放函数。kind=Rc 时为内层 Rc 的 typed release，
+// 从而 Rc<Rc<Rc<T>>> 会递归走到每一层，而不是一律 generic _box_release。
 void emitRcReleaseForInlineDtorFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
-                                  llvm::Function* func, const string& kind) {
+                                  llvm::Function* func, const string& kind, llvm::Function* payloadReleaseFn) {
     if (!func || !func->empty()) return;
 
     auto freeFn = runtime::getYuxrtFreeFn(module, builder);
@@ -859,32 +861,34 @@ void emitRcReleaseForInlineDtorFn(llvm::LLVMContext& context, llvm::IRBuilder<>&
 
     // strong 归零：内联析构 IR
     builder.SetInsertPoint(strongZeroBB);
-    if (kind == "Rc") {
-        // Rc<Rc<U>>: payload = Rc<U> = {ptr handle} @ block+8
-        auto payloadPtr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(8)}, "nested_rc_payload");
-        auto handleAddr =
-            builder.CreateBitCast(payloadPtr, llvm::PointerType::get(context, 0), "nested_rc_handle_addr");
-        auto handle = builder.CreateLoad(ptrTy, handleAddr, "nested_rc_handle");
-        auto releaseFn = getRcReleaseFn(module, builder);
-        builder.CreateCall(releaseFn, {handle});
-    } else if (kind == "Weak") {
-        // Rc<Weak<U>>: payload = Weak<U> = {ptr handle} @ block+8
-        auto payloadPtr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(8)}, "nested_weak_payload");
-        auto handleAddr =
-            builder.CreateBitCast(payloadPtr, llvm::PointerType::get(context, 0), "nested_weak_handle_addr");
-        auto handle = builder.CreateLoad(ptrTy, handleAddr, "nested_weak_handle");
-        auto releaseFn = getWeakReleaseFn(module, builder);
-        builder.CreateCall(releaseFn, {handle});
-    } else if (kind == "Fn") {
-        // Rc<fn(...)>: payload = {ptr fn_ptr, ptr captures} @ block+8
-        // captures 在 payload[8] (fn_ptr 之后)，若 non-null 则 _box_release
-        auto capturesAddr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(16)}, "fn_captures_addr");
-        auto capturesPtr = builder.CreateBitCast(capturesAddr, llvm::PointerType::get(context, 0), "fn_captures_ptr");
-        auto captures = builder.CreateLoad(ptrTy, capturesPtr, "fn_captures");
-        auto releaseFn = getRcReleaseFn(module, builder);
-        builder.CreateCall(releaseFn, {captures});
+    if (payloadReleaseFn) {
+        if (kind == "Rc") {
+            // Rc<Rc<U>>: payload = Rc<U> = {ptr handle} @ block+8
+            auto payloadPtr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(8)}, "nested_rc_payload");
+            auto handleAddr =
+                builder.CreateBitCast(payloadPtr, llvm::PointerType::get(context, 0), "nested_rc_handle_addr");
+            auto handle = builder.CreateLoad(ptrTy, handleAddr, "nested_rc_handle");
+            builder.CreateCall(payloadReleaseFn, {handle});
+        } else if (kind == "Weak") {
+            // Rc<Weak<U>>: payload = Weak<U> = {ptr handle} @ block+8
+            auto payloadPtr =
+                builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(8)}, "nested_weak_payload");
+            auto handleAddr =
+                builder.CreateBitCast(payloadPtr, llvm::PointerType::get(context, 0), "nested_weak_handle_addr");
+            auto handle = builder.CreateLoad(ptrTy, handleAddr, "nested_weak_handle");
+            builder.CreateCall(payloadReleaseFn, {handle});
+        } else if (kind == "Fn") {
+            // Rc<fn(...)>: payload = {ptr fn_ptr, ptr captures} @ block+8
+            // captures 在 payload[8] (fn_ptr 之后)，若 non-null 则走 payloadReleaseFn
+            auto capturesAddr =
+                builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(16)}, "fn_captures_addr");
+            auto capturesPtr =
+                builder.CreateBitCast(capturesAddr, llvm::PointerType::get(context, 0), "fn_captures_ptr");
+            auto captures = builder.CreateLoad(ptrTy, capturesPtr, "fn_captures");
+            builder.CreateCall(payloadReleaseFn, {captures});
+        }
     }
-    // 未知 kind 不生成任何析构 IR（安全退化：仅释放 RC block，payload 泄漏但不会 crash）
+    // 未知 kind / payloadReleaseFn 为 null：不生成析构 IR（安全退化：仅释放 RC block）
     builder.CreateBr(afterDtorBB);
 
     builder.SetInsertPoint(afterDtorBB);

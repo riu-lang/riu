@@ -256,7 +256,7 @@ void Compiler::unwindScopeFramesTo(size_t depth) {
 
 void Compiler::pushScopeVar(const string& name, const TypeInfo& type, llvm::Value* prevPtr, bool needsDtor) {
     if (_scopeFrames.empty()) pushScopeFrame();
-    _scopeFrames.back().push_back({.name=name, .type=type, .prevPtr=prevPtr, .needsDtor=needsDtor});
+    _scopeFrames.back().push_back({.name = name, .type = type, .prevPtr = prevPtr, .needsDtor = needsDtor});
 }
 
 void Compiler::registerLocalVar(const string& name, llvm::Value* alloca, const TypeInfo& type) {
@@ -1029,7 +1029,9 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
         if (func->empty()) {
             auto* savedBB = _builder.GetInsertBlock();
             auto savedIP = savedBB ? _builder.GetInsertPoint() : llvm::BasicBlock::iterator();
-            runtime::emitRcReleaseForInlineDtorFn(_context, _builder, _module, func, "Rc");
+            // 内层可能仍是 Rc<...>，必须走 typed release，否则 Rc<Rc<Rc<T>>> 最内层泄漏
+            auto innerReleaseFn = getOrCreateRcTypedReleaseFn(*inner);
+            runtime::emitRcReleaseForInlineDtorFn(_context, _builder, _module, func, "Rc", innerReleaseFn);
             if (savedBB) _builder.SetInsertPoint(savedBB, savedIP);
         }
         return func;
@@ -1040,7 +1042,8 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
         if (func->empty()) {
             auto* savedBB = _builder.GetInsertBlock();
             auto savedIP = savedBB ? _builder.GetInsertPoint() : llvm::BasicBlock::iterator();
-            runtime::emitRcReleaseForInlineDtorFn(_context, _builder, _module, func, "Weak");
+            runtime::emitRcReleaseForInlineDtorFn(_context, _builder, _module, func, "Weak",
+                                                  runtime::getWeakReleaseFn(_module, _builder));
             if (savedBB) _builder.SetInsertPoint(savedBB, savedIP);
         }
         return func;
@@ -1051,7 +1054,8 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
         if (func->empty()) {
             auto* savedBB = _builder.GetInsertBlock();
             auto savedIP = savedBB ? _builder.GetInsertPoint() : llvm::BasicBlock::iterator();
-            runtime::emitRcReleaseForInlineDtorFn(_context, _builder, _module, func, "Fn");
+            runtime::emitRcReleaseForInlineDtorFn(_context, _builder, _module, func, "Fn",
+                                                  runtime::getRcReleaseFn(_module, _builder));
             if (savedBB) _builder.SetInsertPoint(savedBB, savedIP);
         }
         return func;
