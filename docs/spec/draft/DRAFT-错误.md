@@ -94,7 +94,7 @@ buildAnno ::= '#' ID ( '(' ID ')' )? codeLineEnd
 
 仅解禁单 ID 参数；不解禁多参数、不解禁字面量 / 表达式参数。多参数 / 字面量留 §11.5.2.4 后续课题（O14）。
 
-`#Fallible` / `#NoReturn` 的引入路径仍走"编译器内置名集合"（与 `#Builtin` / `#Test` 同档）；用户自定义注解（§11.6）的引入路径不变。
+`#Fallible` / `#NoReturn` 的引入路径仍走"编译器内置名集合"（与 `#Builtin` / `#Test` 同档）；用户自定义注解（§11.15）的引入路径不变。
 
 ## 4. 抛出与传播：`ret E::V` + 后缀 `!`
 
@@ -551,7 +551,7 @@ defer 与析构在"不允许抛出"这一点上**对等**；defer 的真正价�
 - panic stack trace / file:line 自动附加（待调试基础设施落地）
 - FFI 边界错误翻译（推 §7 待 extern 限制 + fnType 完成）
 - `extern fn` 上的 `#Fallible(E)`
-- 用户自定义注解形态（沿用 §11.6 现有窗口）
+- 用户自定义注解形态（沿用 §11.15 现有窗口）
 - panic message 结构化 payload
 
 ## 11. 迁移面（粗估）

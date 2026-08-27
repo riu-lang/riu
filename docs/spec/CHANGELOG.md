@@ -15,6 +15,14 @@
 
 ---
 
+## 2026-08-27 —— §11 收口：未知注解报错；自定义 / 多参 / 表达式级转后续
+
+- **关闭 Open Issues**：`#Test` 隔离已落地（DLL 子进程 + 进程内 SEH）。`@sdk_only` 不引入，Ptr 算术走 `_ptr_offset`（与 §8 重复）。用户自定义注解、多参数 / 命名参数、表达式级注解转后续版本（anno-struct）。`#Reflect` 命名参数转 §13。`assert_eq` 用户类型与断言打印实参转后续版本（v1 数值+bool+String；不引入独立 `Stringify`）。
+- **修改 §11.1**：`buildAnno` 单参与 g4 `annoArg` 对齐（ID / 数字 / 字符串 / `type`）；可附着位置补 `letAnno` / `paramAnno`，去掉已不存在的 `globalConst`。未知名按位置报 E2005 / E3112 / E3108 / E3105。
+- **修改 §11.2.2.3 / §11.4.3.2 / §11.5.2.4 / §11.15**：`#Builtin` 无路径白名单；`#DraftLike` 非 spec 位已报 E1110；用户自定义注解从重复的 §11.6 改编号为 §11.15。
+- **修改 §6.1.3 / 附录 A.3 / §12 Open Issues**：未知注解不再是"解析但不绑定"；附录补 `#CName` / `#Reflect` / `#NoCopy` / `#Inline`。
+- **冲突 / 兼容**：无行为变化。规范追上已落地的注解白名单与测试隔离。
+
 ## 2026-08-27 —— §12 收口：内置 spec 清单；操作符糖 / extend / AnyRef 转后续
 
 - **关闭 Open Issues**：`Eq` / `Ord` / `ToJson` 方法契约已落地（`base.yux` / §12.10.6）。编译期 `Reflect` 已落地（§13）。跨编译单元边界 IR：v1 调用方需可见泛型函数体（§6.4.2.3）。操作符 spec 语法糖转后续版本（运算符维持 §7.2.3）。`Stringify` 与 `assert_eq` 用户类型转 §11。`is` / `as` / `AnyRef` 转后续版本。扩展实现块 / `extend` 转 v1.x 包管理。

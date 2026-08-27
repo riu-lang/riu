@@ -158,7 +158,7 @@ struct Bad {
 
 §12.4.3.1 `#DraftLike` 注解在 spec-unify v1 中**已删除**。其原语义"开放结构化匹配"在统一形态下由"宣告 `#Impl(D)` 即可"取代——结构化匹配不再是开放档位，所有满足关系一律走 `#Impl(D)` 显式宣告。
 
-§12.4.3.2 早期代码 / 文档中残留的 `#DraftLike` 字样应迁删；v1 编译器对 `#DraftLike` 仍保留 lexer / parser 接受，但语义层视为 noop 并在 future commit 转报 E1110（迁移期保留以减少噪音）。
+§12.4.3.2 早期代码 / 文档中残留的 `#DraftLike` 字样应迁删。`#DraftLike` 仍在注解白名单：非 `#Spec` 位已报 E1110；`#Spec struct` 上为 noop（§11.4.3.2）。
 
 ## §12.5 跨包规则（orphan）
 
@@ -597,4 +597,4 @@ struct S {
 
 ## Open Issues
 
-（无。操作符 spec 语法糖转后续版本，运算符维持 §7.2.3；`Eq` / `Ord` / `ToJson` 方法契约已落地。`Stringify` 与 `assert_eq` 用户类型转 §11。跨编译单元边界 IR：v1 调用方需可见函数体（§6.4.2.3）。`Reflect` 编译期已落地（§13）；`is` / `as` / `AnyRef` 转后续版本。扩展实现块 / `extend` 转 v1.x 包管理。）
+（无。操作符 spec 语法糖转后续版本，运算符维持 §7.2.3；`Eq` / `Ord` / `ToJson` 方法契约已落地。`Stringify` 与 `assert_eq` 用户类型见 §11（v1 不引入；转后续版本）。跨编译单元边界 IR：v1 调用方需可见函数体（§6.4.2.3）。`Reflect` 编译期已落地（§13）；`is` / `as` / `AnyRef` 转后续版本。扩展实现块 / `extend` 转 v1.x 包管理。）

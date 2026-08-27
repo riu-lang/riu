@@ -68,8 +68,12 @@
 | `#Static` | struct body 内方法（关联函数）+ 字段（静态字段） | §11.11 / §7.10 / §7.11 |
 | `#Fallible(E)` | 失败声明：函数可能以错误 enum `E` 失败（草案，单参数糖） | DRAFT-错误.md §3 |
 | `#NoReturn` | 不返回声明：函数永不正常返回（草案，零参数） | DRAFT-错误.md §8.3 |
+| `#CName` | `extern` 块内指定链接时 C ABI 符号名（单参） | §6.6.1.3 / §11.5.1 |
+| `#Reflect` | 强制保留反射 rodata | §11.12 / §13.6 |
+| `#NoCopy` | 结构体不可隐式复制 | §11.13 / §7.6a |
+| `#Inline` | 全局 `#Cval` 常量内联（无 GlobalVariable） | §11.14 |
 
-§A.3.1 v1 正式注解：`#Builtin` / `#Test` / `#Spec` / `#Impl(D)` 已落地；DRAFT-错误.md 引入 `#Fallible(E)` / `#NoReturn`（草案，单参数糖于 §11.1.1.1 同步解禁）；其它注解形态属预留（§11.5.2）。早期 `#DraftLike` 已废弃（§11.4.3）。
+§A.3.1 v1 正式注解即上表。`#Fallible(E)` / `#NoReturn` 由 DRAFT-错误.md 引入。早期 `#DraftLike` 已废弃（§11.4.3）。用户自定义注解不支持（§11.15）。
 
 ## A.4 运算符与符号 token
 
