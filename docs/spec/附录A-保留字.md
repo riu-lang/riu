@@ -140,6 +140,7 @@
 §A.6.2 v1 **没有**以下名称对应的 token / 关键字（如有需要由用户自由用作 `ID`）：
 
 - `pub` / `priv` / `private` / `internal`：可见性修饰符（§10.3.1.2 不引入）；
+- `extend`：扩展实现块（v1 不引入，§12 / DRAFT-spec-unify §3.3）；
 - `mut` / `const`：可变性修饰符（v1 用 `let` 默认不可变 + `#Mut` 注解放宽，见 §5.1.1）；
 - `var` / `val` / `cval`：旧声明关键字（已被 let-unify 移除，由 `let` + `#Mut` / `#Cval` 取代）；
 - `trait` / `impl` / `where`：v1 用 `#Spec struct` + `#Impl(D)` 顶行注解替代，无 `where` 子句（§12 / §6.4.4）；

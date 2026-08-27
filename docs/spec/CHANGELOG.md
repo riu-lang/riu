@@ -15,9 +15,17 @@
 
 ---
 
+## 2026-08-27 —— §10 收口：别名导入、无下沉、第三方库转包管理
+
+- **关闭 Open Issues**：`pub` / `private` 永不引入（已是永久决议）；无 `pkg` 时保留别名导出（已决议）；`name as alias` 已落地。循环依赖 v1 禁止、不引入 forward 声明（§10.2.6.2）。嵌套模块无可见性下沉（§10.3.3）。第三方库转 v1.x 包管理（§10.4.5）。`extension` 转 §12。
+- **修改 §10.2.2 / §10.2.3 / §10.2.5**：非通配 `use` 只登记末段别名，不注入裸名（对齐编译器）。`use` 须在其它顶层声明之前。同名冲突：E2004（导入时）/ E2008（通配别名使用点）；扁平成员先到优先。
+- **修改 §10.4.1.3**：`yux.core` 为每个用户模块的 parent scope（隐式回退）；显式 `use yux.core.*` 可写。
+- **修改 §9.10.2 / §12 Open Issues / 附录 A.6.2**：`extension` 窗口改指 §12；`extend` 列入未来保留字（当前仍可作 `ID`）。
+- **冲突 / 兼容**：无行为变化。规范追上已落地的别名导入与 SDK 回退。
+
 ## 2026-08-27 —— §9 收口：工厂 / clone / Ptr 例外；to_string 合约
 
-- **关闭 Open Issues**：`String(buf)` 已由 `String::from`（深拷贝）+ SDK 私有 `_take_buf`（move-in）替代；`rc:<T>` / `Ptr` 无泛型已落地；`Ptr` 不归入 `T?`（v1 不改）；Ptr 算术与 §8 重复（`_ptr_offset`）；`extension` 窗口留 §10；`to_string()` 返回堆 `String`（§9.1.4.2，关 §3 对应条）；`Array.clone()` 为深拷贝唯一入口（A4）。
+- **关闭 Open Issues**：`String(buf)` 已由 `String::from`（深拷贝）+ SDK 私有 `_take_buf`（move-in）替代；`rc:<T>` / `Ptr` 无泛型已落地；`Ptr` 不归入 `T?`（v1 不改）；Ptr 算术与 §8 重复（`_ptr_offset`）；`extension` 窗口转 §12；`to_string()` 返回堆 `String`（§9.1.4.2，关 §3 对应条）；`Array.clone()` 为深拷贝唯一入口（A4）。
 - **修改 §9.2 / §9.3 / §9.4 / §9.7 / §9.10**：方法表补 `clone()`；构造改为静态工厂；`StringBuilder::make()`；`Ptr` 标题去掉 `<T>`。
 - **修改 §3.6.1.3 / §7.6a.5 / §7.10.6 / §8.4 / §11.13.1.1 / §12.7.3.2**：`null` 的 `Ptr` 例外；`copy_of` 拒 `#NoCopy`（含 Array）。
 - **转**：越界 / 空 `pop` / `Nullable.get()` 改为可恢复错误 → 错误模型（v1 保持 `_exit(1)`）。

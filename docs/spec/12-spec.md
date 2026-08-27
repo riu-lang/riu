@@ -570,4 +570,4 @@ struct S {
 - 用户结构体相等约束 / `Eq` spec 的最小形态（与 §11.3.5 的 `assert_eq` 用户类型扩展联动）。
 - 跨编译单元的边界 IR 共享（v1 与现有 `<T>` 一致：调用方需可见函数体）。
 - 内置 spec `Reflect`（runtime 反射数组）+ 类型擦除 / `AnyRef` downcast 扩展（[`draft/DRAFT-spec-reflect.md`](draft/DRAFT-spec-reflect.md) / §8a）。
-- 扩展实现块（同包内多 struct 共享 impl / 第三方包友好 impl 形态，[`draft/DRAFT-extension-blocks.md`](draft/DRAFT-extension-blocks.md)）。
+- 扩展实现块（同包内多 struct 共享 impl / 第三方包友好 impl / 用户对内置类型加方法，[`draft/DRAFT-extension-blocks.md`](draft/DRAFT-extension-blocks.md)；v1.x 包管理时启动）。
