@@ -5,7 +5,7 @@
 ## B.1 顶层
 
 ```
-program        ::= comment*
+program        ::= LineEnd*
                    imports*
                    ( fn
                    | externDecl
@@ -13,13 +13,12 @@ program        ::= comment*
                    | aliasDecl
                    | enumDecl
                    | structDecl
-                   | comment
-                   | codeLineEnd
+                   | LineEnd
                    )*
                    EOF
 
-comment        ::= LineComment
 codeLineEnd    ::= LineEndComment? LineEnd
+                   ; LineEndComment 走 HIDDEN，parser 只看见 LineEnd（§2.2.3）
 
 imports        ::= 'use' ID ('.' ID)* ('.' '*')? codeLineEnd
 
@@ -119,7 +118,7 @@ fnClean        ::= 'fn' '~' '(' ')' fnBody
 fn             ::= fnHeader fnBody?
 
 fnHeader       ::= buildAnno*
-                   'fn' genericDef? ID '(' LineEnd*
+                   'fn' ID genericDef? '(' LineEnd*
                        fnParams?
                    ')' (retType=type)?
 
@@ -237,7 +236,7 @@ expr ::=
   | expr opBool expr                                             # exprBool
   | literal                                                      # exprLiteral
   | expr '?' '?' expr                                            # exprNullElse
-  | expr '<' '-' expr                                            # exprMoveAssign
+  | expr '<-' expr                                               # exprMoveAssign
   | '$'                                                          # exprThis
 
 exprElIf       ::= 'elif' expr statementBlock
@@ -251,8 +250,8 @@ opEq           ::= '==' | '!='
 opBool         ::= '||' | '&&'
 
 opAssign       ::= '=' | '+=' | '-=' | '*=' | '/=' | '%=' | '^=' | '|=' | '&='
-moveAssign     ::= '<-'                                          ; 表达式级移入赋值（§4.13），不在 opAssign 中
                  | '>' '>' '=' | '<' '<' '='
+moveAssign     ::= '<-'                                          ; 表达式级移入赋值（§4.13），词法 token；不在 opAssign 中
 
 matchArm       ::= enumPattern '=>' (statementBlock | expr)
 
@@ -332,3 +331,4 @@ letAnno        ::= '#' ID codeLineEnd?   ; #Mut / #Cval / #Frozen（let 声明�
 
 - §B 中条目过时**应当**修订本附录，**不得**反向修改 `yux.g4`（参见 `RULES.md` 的规则）。
 - 出现产生式新增 / 重命名时，请在 §B 对应小节追加，并同步 §2.5 的总览列表。
+- 本附录是手工摘录，**不**提供与 `yux.g4` 的自动一致性脚本；细节与分支顺序以 `.g4` 为准（§2.1.2）。

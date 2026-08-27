@@ -13,6 +13,8 @@
 | 字面量 | literal | §1.6 | 数值 / 布尔 / 字符串 / 码点 / `null` |
 | 码点 | code point | §1.6.5 / `CODE_POINT` | `c'<ch>'`，类型 `u32` |
 | 产生式 | production | §2.1 | EBNF / ANTLR 文法规则 |
+| 拼合运算符 | composed operator | §2.4 | 词法单字符、语法层拼出的多字符算符（`<<` `??` `?.` 等） |
+| 显式换行槽 | explicit line-break slot | §2.3.2 | 产生式写明的 `LineEnd*`；不是隐式续行 |
 | 关键字 | keyword | §A.1 | `yux.g4` 独立 lexer token |
 | 上下文标识符 | contextual identifier | §A.2 | 内置类型名等非关键字保留名 |
 | 注解 | build annotation | §11 | `#Name` 形态的编译期标签 |
