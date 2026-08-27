@@ -15,6 +15,14 @@
 
 ---
 
+## 2026-08-27 —— §9 收口：工厂 / clone / Ptr 例外；to_string 合约
+
+- **关闭 Open Issues**：`String(buf)` 已由 `String::from`（深拷贝）+ SDK 私有 `_take_buf`（move-in）替代；`rc:<T>` / `Ptr` 无泛型已落地；`Ptr` 不归入 `T?`（v1 不改）；Ptr 算术与 §8 重复（`_ptr_offset`）；`extension` 窗口留 §10；`to_string()` 返回堆 `String`（§9.1.4.2，关 §3 对应条）；`Array.clone()` 为深拷贝唯一入口（A4）。
+- **修改 §9.2 / §9.3 / §9.4 / §9.7 / §9.10**：方法表补 `clone()`；构造改为静态工厂；`StringBuilder::make()`；`Ptr` 标题去掉 `<T>`。
+- **修改 §3.6.1.3 / §7.6a.5 / §7.10.6 / §8.4 / §11.13.1.1 / §12.7.3.2**：`null` 的 `Ptr` 例外；`copy_of` 拒 `#NoCopy`（含 Array）。
+- **转**：越界 / 空 `pop` / `Nullable.get()` 改为可恢复错误 → 错误模型（v1 保持 `_exit(1)`）。
+- **冲突 / 兼容**：无行为变化。规范追上已落地的工厂与 `clone()`。
+
 ## 2026-08-27 —— §8 收口：草案已迁入；Array 与 RC 脱钩
 
 - **关闭 Open Issues**：草案 §12 迁移；peephole retain/release（正文 §8.7.2.3 已记 v1 不做）；派生 `__copy_S` / `__destroy_S`（与 §7 重复）；`Ptr` `@sdk_only`（v1 走 `_ptr_offset`）；`copy_of` 非 Array 已落地；`_ptr_as_ref` / `_ptr_write` 已有 SDK 测试；Array 字面量哨兵（B-3 后不再适用）。

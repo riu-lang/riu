@@ -252,8 +252,9 @@ draft Any { }    ; v0.x，已废
 - T 受 §8.6.7.1 owned 限制；`x` 是 T 的借用，结果是 T 的栈上 owned 副本。
 - 复制语义按 T 档位：
   - **值类型**（标量 / 用户 struct / `[T*N]`）：memcpy + 字段级 retain（§7.4.3 / §7.4.4）。
-  - **堆句柄**（`Rc<U>` / `Array<U>` / `String` / `Weak<U>` / `StringBuilder`）：句柄复制 + RC retain，沿用 §8.5 callee-clean 协议。
+  - **堆句柄**（`Rc<U>` / `String` / `Weak<U>` / `StringBuilder`）：句柄复制 + RC retain，沿用 §8.5 callee-clean 协议。
   - **`Heap<T>` / `Heap<T>?`**：深拷——重新 `__yux_heap_alloc` + 写入 inner T + 递归 retain inner 子句柄字段（[`draft/DRAFT-heap-types.md`](draft/DRAFT-heap-types.md) Phase 6）。
+  - **`Array<T>` / 其它 `#NoCopy`**：拒绝（E4031）。`Array<T>` 深拷贝走 `arr.clone()`（§9.2.2.3）。
 - `x` 的借用根（如对应的 `box` / 局部变量）在 `copy_of` 调用语句结束后仍可正常使用（临时借用 + 立即释放，按 §8.8 临时帧）。
 - 与 `as_ref` 不互锁：原 `x` 视图与返回的 owned 副本各自独立析构。
 - **不**接受 `Ptr`；turbofish 可省，T 由实参推断。
