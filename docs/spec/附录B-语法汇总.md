@@ -324,7 +324,7 @@ letAnno        ::= '#' ID codeLineEnd?   ; #Mut / #Cval / #Frozen（let 声明�
 | `CODE_POINT` | `c'<char>'`，类型 `u32` |
 | `LineComment` | 行首列起的 `;...` 注释，含 `LineEnd` |
 | `LineEndComment` | 代码后空格起的 `;...` 注释，不含 `LineEnd` |
-| `LineEnd` | `\r\n` / `\n` / `\r` / `EOF` |
+| `LineEnd` | `\r\n` / `\n` / `EOF` |
 | `Space` | `' '`，HIDDEN 通道 |
 | `EmptyLine` | 行首列的纯空白行，HIDDEN 通道 |
 

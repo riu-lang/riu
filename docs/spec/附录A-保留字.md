@@ -129,7 +129,7 @@
 | `CODE_POINT` | `c'<char>'`，类型 `u32` | §1.6.5 |
 | `LineComment` | 行首列起的 `;...` 注释，含 `LineEnd` | §1.3 |
 | `LineEndComment` | 代码后空格起的 `;...` 注释，不含 `LineEnd` | §1.3 |
-| `LineEnd` | `\r\n` / `\n` / `\r` / `EOF` | §1.2 |
+| `LineEnd` | `\r\n` / `\n` / `EOF` | §1.2 |
 | `Space` | `' '`，HIDDEN 通道 | §1.2 |
 | `EmptyLine` | 行首列的纯空白行，HIDDEN 通道 | §1.2 |
 

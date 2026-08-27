@@ -404,68 +404,111 @@ void appendUtf8(string& out, u32 cp) {
     }
 }
 
-// 解码 STR_TPL_TEXT 片段中的转义序列：\n \r \t \0 \\ \" \$ \xNN \uNNNN
-// 其余 \x 形式按字面追加 x
-void decodeTplText(const string& raw, string& out) {
+bool isHexDigit(char c) {
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
+
+u32 parseHex(const string& s, size_t pos, size_t n) {
+    u32 v = 0;
+    for (size_t k = 0; k < n; ++k) {
+        char c = s[pos + k];
+        v <<= 4;
+        if (c >= '0' && c <= '9') v |= static_cast<u32>(c - '0');
+        else if (c >= 'a' && c <= 'f') v |= static_cast<u32>(c - 'a' + 10);
+        else v |= static_cast<u32>(c - 'A' + 10);
+    }
+    return v;
+}
+
+int utf8CodepointsBefore(const string& s, size_t byteEnd) {
+    int n = 0;
+    for (size_t j = 0; j < byteEnd && j < s.size();) {
+        auto c = static_cast<unsigned char>(s[j]);
+        if ((c & 0x80) == 0) j += 1;
+        else if ((c & 0xE0) == 0xC0) j += 2;
+        else if ((c & 0xF0) == 0xE0) j += 3;
+        else if ((c & 0xF8) == 0xF0) j += 4;
+        else j += 1;
+        ++n;
+    }
+    return n;
+}
+
+[[noreturn]] void throwBadEscape(size_t line, int startCol, const string& raw, size_t i, const string& seq) {
+    throw YuxError(line, startCol + utf8CodepointsBefore(raw, i), ErrorCode::E2033, seq);
+}
+
+// 解码 STR_TPL_TEXT：§1.6.4.1 / §4.3.1.6 承认的转义；其余为 E2033。
+void decodeTplText(const string& raw, string& out, size_t line, int startCol) {
     for (size_t i = 0; i < raw.size();) {
-        if (raw[i] == '\\' && i + 1 < raw.size()) {
-            char esc = raw[i + 1];
-            switch (esc) {
-            case 'n':
-                out += '\n';
-                i += 2;
-                break;
-            case 'r':
-                out += '\r';
-                i += 2;
-                break;
-            case 't':
-                out += '\t';
-                i += 2;
-                break;
-            case '0':
-                out += '\0';
-                i += 2;
-                break;
-            case '\\':
-                out += '\\';
-                i += 2;
-                break;
-            case '"':
-                out += '"';
-                i += 2;
-                break;
-            case '$':
-                out += '$';
-                i += 2;
-                break;
-            case 'x':
-                if (i + 3 < raw.size()) {
-                    u8 v = static_cast<u8>(std::stoi(raw.substr(i + 2, 2), nullptr, 16));
-                    out += static_cast<char>(v);
-                    i += 4;
-                } else {
-                    out += raw[i];
-                    ++i;
-                }
-                break;
-            case 'u':
-                if (i + 5 < raw.size()) {
-                    u32 cp = static_cast<u32>(std::stoi(raw.substr(i + 2, 4), nullptr, 16));
-                    appendUtf8(out, cp);
-                    i += 6;
-                } else {
-                    out += raw[i];
-                    ++i;
-                }
-                break;
-            default:
-                out += raw[i + 1];
-                i += 2;
-                break;
-            }
-        } else {
+        if (raw[i] != '\\') {
             out += raw[i++];
+            continue;
+        }
+        if (i + 1 >= raw.size()) {
+            throwBadEscape(line, startCol, raw, i, "\\");
+        }
+        char esc = raw[i + 1];
+        switch (esc) {
+        case 'n':
+            out += '\n';
+            i += 2;
+            break;
+        case 'r':
+            out += '\r';
+            i += 2;
+            break;
+        case 't':
+            out += '\t';
+            i += 2;
+            break;
+        case 'v':
+            out += '\v';
+            i += 2;
+            break;
+        case 'b':
+            out += '\b';
+            i += 2;
+            break;
+        case '0':
+            out += '\0';
+            i += 2;
+            break;
+        case '\\':
+            out += '\\';
+            i += 2;
+            break;
+        case '"':
+            out += '"';
+            i += 2;
+            break;
+        case '\'':
+            out += '\'';
+            i += 2;
+            break;
+        case '$':
+            out += '$';
+            i += 2;
+            break;
+        case 'x': {
+            if (i + 3 >= raw.size() || !isHexDigit(raw[i + 2]) || !isHexDigit(raw[i + 3])) {
+                throwBadEscape(line, startCol, raw, i, raw.substr(i, std::min<size_t>(raw.size() - i, 4)));
+            }
+            out += static_cast<char>(parseHex(raw, i + 2, 2));
+            i += 4;
+            break;
+        }
+        case 'u': {
+            if (i + 5 >= raw.size() || !isHexDigit(raw[i + 2]) || !isHexDigit(raw[i + 3]) || !isHexDigit(raw[i + 4]) ||
+                !isHexDigit(raw[i + 5])) {
+                throwBadEscape(line, startCol, raw, i, raw.substr(i, std::min<size_t>(raw.size() - i, 6)));
+            }
+            appendUtf8(out, parseHex(raw, i + 2, 4));
+            i += 6;
+            break;
+        }
+        default:
+            throwBadEscape(line, startCol, raw, i, string{'\\', esc});
         }
     }
 }
@@ -488,7 +531,9 @@ std::any ASTBuilder::visitStringTemplate(yux::yuxParser::StringTemplateContext* 
 
     for (auto* part : ctx->templatePart()) {
         if (auto* t = dynamic_cast<yux::yuxParser::TplTextContext*>(part)) {
-            decodeTplText(t->STR_TPL_TEXT()->getText(), current);
+            auto* tok = t->STR_TPL_TEXT()->getSymbol();
+            decodeTplText(t->STR_TPL_TEXT()->getText(), current, tok->getLine(),
+                          static_cast<int>(tok->getCharPositionInLine()) + 1);
         } else if (auto* d = dynamic_cast<yux::yuxParser::TplDollarIdContext*>(part)) {
             flushText();
             auto* tok = d->STR_TPL_DOLLAR_ID()->getSymbol();

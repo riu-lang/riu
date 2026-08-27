@@ -3,7 +3,7 @@
 ; 覆盖：
 ;   - 等值比较（== / !=）
 ;   - contains / starts_with（含 String& 形参直接调用）
-;   - 转义序列与原始字符串（\n \t \" r"..."）
+;   - 转义序列与原始字符串（\n \t \r \0 \v \b \\ \" \' \$ \xNN \uNNNN r"..."）
 ;   - \$ 转义与字符串模板插值（$id / ${expr} / UTF-8）
 ;   - ToString 自动分发（i32 / i64 / u64 / bool / f64）
 ;   - String + 链式连接（含左右非 String、混合类型链）
@@ -111,6 +111,71 @@ fn test_string_escape_quote_codepoint() {
   let s String = "\""
   assert_eq(s.len(), 1)
   assert_eq(s.get(0), 34u32)
+}
+
+; 验证：\r 回车码点
+#Test
+fn test_string_escape_cr_codepoint() {
+  let s String = "a\rb"
+  assert_eq(s.len(), 3)
+  assert_eq(s.get(1), 13u32)
+}
+
+; 验证：\0 空字符码点
+#Test
+fn test_string_escape_nul_codepoint() {
+  let s String = "a\0b"
+  assert_eq(s.len(), 3)
+  assert_eq(s.get(1), 0u32)
+}
+
+; 验证：\\ 反斜杠码点；\\q 是反斜杠+q 而非未知转义
+#Test
+fn test_string_escape_backslash_codepoint() {
+  let s String = "\\q"
+  assert_eq(s.len(), 2)
+  assert_eq(s.get(0), 92u32)
+  assert_eq(s.get(1), 113u32)
+}
+
+; 验证：\' 单引号码点
+#Test
+fn test_string_escape_squote_codepoint() {
+  let s String = "\'"
+  assert_eq(s.len(), 1)
+  assert_eq(s.get(0), 39u32)
+}
+
+; 验证：\v 垂直制表码点
+#Test
+fn test_string_escape_vt_codepoint() {
+  let s String = "\v"
+  assert_eq(s.len(), 1)
+  assert_eq(s.get(0), 11u32)
+}
+
+; 验证：\b 退格码点
+#Test
+fn test_string_escape_bs_codepoint() {
+  let s String = "\b"
+  assert_eq(s.len(), 1)
+  assert_eq(s.get(0), 8u32)
+}
+
+; 验证：\xNN 单字节
+#Test
+fn test_string_escape_hex_codepoint() {
+  let s String = "\x41"
+  assert_eq(s.len(), 1)
+  assert_eq(s.get(0), 65u32)
+}
+
+; 验证：\uNNNN BMP 码点
+#Test
+fn test_string_escape_unicode_codepoint() {
+  let s String = "\u4e2d"
+  assert_eq(s.len(), 1)
+  assert_eq(s.get(0), 20013u32)
 }
 
 ; ==================== 原始字符串 ====================

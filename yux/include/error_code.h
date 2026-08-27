@@ -158,6 +158,7 @@ DEF_ERR(2031,
         "extern fn `{}` cannot use Function<...> types in {} (function values are not ABI-compatible with C; spec §7)")
 DEF_ERR(2032, "Enum variant `{}::{}` payload #{} type mismatch: expected `{}`, got `{}` (no implicit conversion; for "
               "`Rc<T>` payload, bind `var b Rc<T> = T(...)` first then pass `b`)")
+DEF_ERR(2033, "invalid string escape sequence `{}`")
 
 // ── E3xxx 类型 — 类型不匹配 ───────────────────────────────────────────
 // E3001: 统一二元运算类型不匹配（原 E3001-E3004, E3075-E3077 合并）

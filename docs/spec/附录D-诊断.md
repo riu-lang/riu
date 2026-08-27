@@ -108,6 +108,7 @@ N | <源码行原文>
 | E2029 | `lambda capture of \`{}\` (type \`{}\`) not yet supported: ...` |
 | E2030 | `lambda body cannot assign to captured variable \`{}\` (spec §6.2.1: captures are immutable in v1)` |
 | E2031 | `extern fn \`{}\` cannot use Function<...> types in {} (function values are not ABI-compatible with C; spec §7)` |
+| E2033 | `invalid string escape sequence \`{}\`` |
 
 ### D.3.3 E3xxx — 类型
 
