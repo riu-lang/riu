@@ -15,6 +15,14 @@
 
 ---
 
+## 2026-08-27 —— §8 收口：草案已迁入；Array 与 RC 脱钩
+
+- **关闭 Open Issues**：草案 §12 迁移；peephole retain/release（正文 §8.7.2.3 已记 v1 不做）；派生 `__copy_S` / `__destroy_S`（与 §7 重复）；`Ptr` `@sdk_only`（v1 走 `_ptr_offset`）；`copy_of` 非 Array 已落地；`_ptr_as_ref` / `_ptr_write` 已有 SDK 测试；Array 字面量哨兵（B-3 后不再适用）。
+- **修改 §8.1.1 / §8.2.1.2 / §8.2.3.3 / §8.4 / §8.7.1.4 / §8.7.6.4**：Array 按 B-3 与 §9.2 对齐——三字段内联、`#NoCopy`、不参与 RC；哨兵仅 `String` 字面量；闭包捕获 Array 走 move。
+- **修改** `DRAFT-所有权与引用.md` 头部：标注已落地，见 §8。
+- **保留**：`Weak<Array<T>>` / `Weak<String>` 转 v1.x。Array `.clone()` vs `copy_of` 归 §9 Open Issues。
+- **冲突 / 兼容**：无行为变化。规范追上已落地的 B-3 实现。
+
 ## 2026-08-27 —— §4 收口：`??` > `<-`；优先级表与 Open Issues
 
 - **语法**：`yuxParser.g4` 把 `exprNullElse` 挪到 `exprMoveAssign` 之前，并为 `??` 加 `<assoc=right>`。`x <- y ?? z` 解析为 `x <- (y ?? z)`（原先 g4 顺序会解析成 `(x <- y) ?? z`）。
