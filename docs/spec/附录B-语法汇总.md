@@ -234,9 +234,9 @@ expr ::=
   | expr opCompare expr                                          # exprCompare
   | expr opEq expr                                               # exprEq
   | expr opBool expr                                             # exprBool
+  | expr '?' '?' expr                                            # exprNullElse   ; 右结合；高于 <-
+  | expr '<-' expr                                               # exprMoveAssign ; 右结合；二元最低
   | literal                                                      # exprLiteral
-  | expr '?' '?' expr                                            # exprNullElse
-  | expr '<-' expr                                               # exprMoveAssign
   | '$'                                                          # exprThis
 
 exprElIf       ::= 'elif' expr statementBlock

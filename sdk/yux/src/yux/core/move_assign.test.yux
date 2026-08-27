@@ -1,6 +1,7 @@
 ; 移入赋值 `<-` 行为用例（DRAFT-static-ref / v0.15 Move 语义）
 ; 覆盖：标量 swap、Rc 句柄交换、字段级移入、表达式值语义、
-;       右结合、链式、#Mut let 延后赋值后的 <-、元组成员 <-。
+;       右结合、链式、#Mut let 延后赋值后的 <-、元组成员 <-、
+;       <- 低于 ??（§4.2.1 / §4.13.1.1）。
 
 ; ==================== 辅助类型 ====================
 
@@ -231,5 +232,19 @@ fn test_move_assign_tuple_member_swap() {
   assert_eq(a.0, 3)
   assert_eq(a.1, 2)
   assert_eq(b.0, 3)  ; b 不变
+}
+
+; ==================== <- 低于 ?? ====================
+
+; 验证：x <- y ?? z 解析为 x <- (y ?? z)，不是 (x <- y) ?? z
+#Test
+fn test_move_assign_looser_than_null_else() {
+  #Mut let x i32 = 10
+  let y i32? = null
+  let old i32 = x <- y ?? 99
+  ; 期望：x <- (null ?? 99) → 写入 99，返回旧值 10
+  ; 若 (x <- y) ?? 99：y 是 i32?，与 x 的 i32 不能 <-
+  assert_eq(old, 10)
+  assert_eq(x, 99)
 }
 ; TODO: Heap<T>? <- 交换需要 heap_some/heap_null builtin（见 Phase 3l）

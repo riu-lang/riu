@@ -514,13 +514,13 @@ expr:
     | left=expr opEq right=expr      # exprEq
     // 布尔
     | left=expr opBool right=expr    # exprBool
-    // a <- b  —— 移出旧值、替换新值、返回旧值（表达式，右结合，最低优先级）
-    | <assoc=right> left=expr SymbolLtSub right=expr  # exprMoveAssign
-    | literal                        # exprLiteral
-    // e ?? e
-    | expr
+    // e ?? e —— 右结合；高于 <-（`x <- y ?? z` = `x <- (y ?? z)`）
+    | <assoc=right> expr
       SymbolQuest SymbolQuest
       expr                           #exprNullElse
+    // a <- b  —— 移出旧值、替换新值、返回旧值（表达式，右结合，二元最低）
+    | <assoc=right> left=expr SymbolLtSub right=expr  # exprMoveAssign
+    | literal                        # exprLiteral
     // () → unit 值
     | ParStart ParEnd               #exprUnit
     // (e1, e2)
