@@ -173,6 +173,8 @@ struct Bad {
 
 §12.5.2 设计动机（*informative*）：避免外部库类型被第三方"污染"实现而破坏可推断性；让 `#Impl` 是跨包绑定行为的唯一通道，且通道在 spec 与类型同包内对称。
 
+§12.5.3 扩展实现块（v1 不引入）：v1 **不**引入 `extend` 顶层声明。为外部类型实现 spec、同包多 struct 共享 impl、用户对内置类型加方法，一律等 v1.x 包管理（形态预留见 [`draft/DRAFT-spec-unify.md`](draft/DRAFT-spec-unify.md) [#1.M]；独立草案 `DRAFT-extension-blocks.md` 届时再建）。`extend` 为未来保留字（附录 A.6.2），当前仍可作 `ID`。v1 只能在 S 或 D 所在包的 `structDecl` 上写 `#Impl(D)`（§12.5.1）。
+
 ## §12.6 堆句柄与 spec
 
 §12.6.1 v1 **不**为 `Rc<U>` / `Heap<U>` 引入独立的 forward 机制；堆句柄上的方法调用经 §8.6.7.3 自动解引用 + 方法分发归一处理。
@@ -205,7 +207,7 @@ struct ToString {
 
 `ToString` 是 v0.6 字符串模板 `"$expr"` 的"可插值"约束，属强契约；用户类型必须显式 `#Impl(ToString)` 才会进入插值路径，避免 debug-string 被误命中显示文本。
 
-§12.7.1.2 各内置类型在 `base.yux` 内以 `#Impl(ToString) struct T { ... fn to_string() String { ... } ... }` 形态显式实现；方法体可走 `#Builtin`（§11.2）或直接 yux 实现，二者并存。当前实施：
+§12.7.1.2 各内置类型以 `#Impl(ToString) struct T { ... fn to_string() String { ... } ... }` 形态显式实现；方法体可走 `#Builtin`（§11.2）或直接 yux 实现，二者并存。数值类型在 `num.yux`，`String` 在 `string.yux`，`bool` 在 `base.yux`。当前实施：
 
 ```yux
 #Impl(ToString)
@@ -236,7 +238,7 @@ struct String {
 draft Any { }    ; v0.x，已废
 ```
 
-§12.7.2.2 删除原因：unified `#Spec` + `#Impl` 形态下，所有 owned 类型"自动满足 Any"必须为每个类型写 `#Impl(Any)` 才能宣告，零意义；而无 `#DraftLike` 自动派生机制，"universal bound" 概念在 v1 不再成立。需要 universal bound 时由 [`draft/DRAFT-spec-default-body.md`](draft/DRAFT-spec-default-body.md) / [`draft/DRAFT-spec-reflect.md`](draft/DRAFT-spec-reflect.md) 落地后由具体方案承接（典型：通过反射 + 类型擦除 §8a 提供 `AnyRef`）。
+§12.7.2.2 删除原因：unified `#Spec` + `#Impl` 形态下，所有 owned 类型"自动满足 Any"必须为每个类型写 `#Impl(Any)` 才能宣告，零意义；而无 `#DraftLike` 自动派生机制，"universal bound" 概念在 v1 不再成立。编译期反射已由 §13 `Reflect` 承接。运行时 `is` / `as` / 类型擦除 `AnyRef` 仍按 §12.8 项 7 留后续版本。
 
 ### §12.7.3 `copy_of`
 
@@ -269,6 +271,36 @@ fn caller(box Rc<MyType>) {
 }
 ```
 
+### §12.7.4 `Eq` / `Ord` / `ToJson`
+
+§12.7.4.1 SDK 另有三个内置 spec，声明在 `base.yux`，方法与默认体见 §12.10.6：
+
+```yux
+#Spec
+struct Eq {
+  fn eq(other Self&) bool
+  fn ne(other Self&) bool = !$.eq(&other)
+}
+
+#Spec
+struct Ord {
+  fn cmp(other Self&) i32
+  fn lt(other Self&) bool = $.cmp(&other) < 0
+  ; le / gt / ge 同理由 cmp 默认体推导
+}
+
+#Spec
+struct ToJson {
+  fn to_json() String          ; 纯抽象；永不按字段递归自动 derive
+}
+```
+
+用户结构体写 `#Impl(Eq)` / `#Impl(Ord)` / `#Impl(ToJson)` 即宣告。编译期反射 spec `Reflect` 见 §13。
+
+§12.7.4.2 `Eq.eq` / `Eq.ne` / `Ord.lt` 等与 §7.2.3 运算符方法**同名**：`#Impl(Eq)` 的 `fn eq` 同时可作为 `==` 的重载入口。这不是操作符 spec——运算符仍按方法名分发，不因 `#Impl` 自动绑定其它算符。操作符 spec 语法糖（`Add` / `Index` 等）见 §12.8 项 6。
+
+§12.7.4.3 v1 **不**引入独立 `Stringify` spec。`ToString` 只服务插值（§12.7.1）；断言失败打印实参值的窗口在 §11.3.5.4。
+
 ## §12.8 不在范围
 
 v1 / v0.5 **明确不做**：
@@ -278,8 +310,8 @@ v1 / v0.5 **明确不做**：
 3. **spec 体内方法本地泛型**（spec 自身可泛型）。
 4. **关联类型 / 关联常量**（占位 → [`draft/DRAFT-assoc-types.md`](draft/DRAFT-assoc-types.md)）。
 5. **跨外部包为外部类型实现外部 spec**（§12.5；语法层自然落实）。
-6. **操作符 spec**（`Add` / `Eq` / `Index` 等语法糖绑定；留 v0.7+；当前运算符走 §7.2.3 重载）。
-7. **运行时反射 / `is` / `as` 类型测试**（占位 → [`draft/DRAFT-spec-reflect.md`](draft/DRAFT-spec-reflect.md)，含 §8a 类型擦除 + Any downcast 扩展）。
+6. **操作符 spec**（`Add` / `Index` 等语法糖绑定；留后续版本；当前运算符走 §7.2.3 重载）。`Eq` / `Ord` 作为方法契约已落地（§12.7.4 / §12.10.6）；方法名与运算符重载重合，但运算符不因 `#Impl` 自动绑定。
+7. ~~**运行时反射 / `is` / `as` 类型测试**~~ → 编译期反射已落地，见 §13。**运行时 `is` / `as` / 类型擦除 `AnyRef`** 仍留后续版本。
 8. **spec 继承 / super-trait**（需"D2 蕴含 D1"时直接在边界写 `<T : D1 + D2>`）。
 9. **协变 / 逆变返回或参数**（§12.3.1 签名等价不变）。
 10. **spec 上独立可见性修饰**（沿用 §10 `_` 前缀私有）。
@@ -565,9 +597,4 @@ struct S {
 
 ## Open Issues
 
-- 操作符 spec（`Add` / `Eq` / `Index` …）的引入窗口与现有 §7.2.3 运算符重载的对齐路径。
-- 是否为内置 `Stringify` 引入"断言失败时自动追加 actual / expected"路径（与 §11.3.5.4 联动）。
-- 用户结构体相等约束 / `Eq` spec 的最小形态（与 §11.3.5 的 `assert_eq` 用户类型扩展联动）。
-- 跨编译单元的边界 IR 共享（v1 与现有 `<T>` 一致：调用方需可见函数体）。
-- 内置 spec `Reflect`（runtime 反射数组）+ 类型擦除 / `AnyRef` downcast 扩展（[`draft/DRAFT-spec-reflect.md`](draft/DRAFT-spec-reflect.md) / §8a）。
-- 扩展实现块（同包内多 struct 共享 impl / 第三方包友好 impl / 用户对内置类型加方法，[`draft/DRAFT-extension-blocks.md`](draft/DRAFT-extension-blocks.md)；v1.x 包管理时启动）。
+（无。操作符 spec 语法糖转后续版本，运算符维持 §7.2.3；`Eq` / `Ord` / `ToJson` 方法契约已落地。`Stringify` 与 `assert_eq` 用户类型转 §11。跨编译单元边界 IR：v1 调用方需可见函数体（§6.4.2.3）。`Reflect` 编译期已落地（§13）；`is` / `as` / `AnyRef` 转后续版本。扩展实现块 / `extend` 转 v1.x 包管理。）
