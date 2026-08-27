@@ -135,7 +135,7 @@
 | draft | draft (interface contract) | §12 | 一组方法签名集合；显式 `:` 实现 + 可选 `#DraftLike` 结构化匹配 |
 | 显式实现 | explicit impl | §12.2 | `Type : D1 + D2 { ... }` 块；穷尽且不多余 |
 | 结构化匹配 | structural match | §12.4 | `#DraftLike` draft 按 §12.3 签名等价命中 |
-| draft 边界 | draft bound | §6.4.4 / §12.4 | `<T : D1 + D2>` 内联约束 |
+| spec 边界 | spec bound | §6.4.4 / §12.4 | `<T : D1 + D2>` 内联约束（产生式名 `draftBound` 为 g4 历史名；旧称 draft 边界） |
 | 单态化分发 | monomorphized dispatch | §12.4.4.5 / §6.5 | v1 边界泛型的实例化 + 静态分发，无 vtable |
 | orphan 规则 | orphan rule | §12.5 | `Type : D` 实现块只能在 `Type` 包或 `D` 包 |
 | Rc forward | box forward | §12.6 | `Rc<U>` 上调 D 方法走 §8.6.7.3 自动解引用 + 归一 |
