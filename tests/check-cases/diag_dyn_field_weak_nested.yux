@@ -1,0 +1,13 @@
+; Phase 2c：Weak<Dyn<D>> 字段类型 → E1132
+#Spec
+struct Greet {
+  fn hi()
+}
+
+struct Holder {
+  d Weak<Dyn<Greet>>  ; check: E1132
+}
+
+fn main() {
+  ret;
+}

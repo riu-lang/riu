@@ -23,13 +23,14 @@
 #ifndef YUX_LANG_DRAFT_IMPL_CHECKER_H
 #define YUX_LANG_DRAFT_IMPL_CHECKER_H
 
-#include "types.h"
 #include "ast/node/file_node.h"
 #include "ast/node/fn_node.h"
 #include "ast/node/spec_node.h"
 #include "ast/node/struct_node.h"
+#include "types.h"
 
 #include <map>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -51,9 +52,8 @@ public:
     //
     // 注: 类型参数为 bare 名 (例如 "Counter"), 与 draft impl 解析使用的
     // 命名空间一致; 泛型类型实例化场景 (例如 `Counter<i32>`) 留给 3.3.
-    bool typeSatisfiesSpec(const std::string& typeBareName,
-                            SpecDeclNode* draft,
-                            const std::vector<TypeInfo>& specTypeArgs) const;
+    bool typeSatisfiesSpec(const std::string& typeBareName, SpecDeclNode* draft,
+                           const std::vector<TypeInfo>& specTypeArgs) const;
 
     // §6.4.4.4 / §12.4 泛型边界单态化校验 (Phase 3.3): 给定实参类型 + 一个
     // 已解析的 draft, 返回 typeArg 是否满足该 draft 边界. 命中条件:
@@ -62,9 +62,7 @@ public:
     // 仅返回 bool, 由调用方负责把 false 翻成 E1106 诊断.
     //
     // 调用前需保证 validate() 已跑过 (Yux::specImplChecker() 自动触发).
-    bool boundSatisfied(const TypeInfo& typeArg,
-                        SpecDeclNode* draft,
-                        const std::string& specQualified,
+    bool boundSatisfied(const TypeInfo& typeArg, SpecDeclNode* draft, const std::string& specQualified,
                         const std::vector<TypeInfo>& specTypeArgs) const;
 
     // §12.9 / DRAFT-dyn-draft §4 对象安全 (Phase 2a):
@@ -104,6 +102,9 @@ private:
     // structName → 所属模块名. 内置类型 (i32 / String / Rc ...) 归 "yux.core".
     std::map<std::string, std::string> _typeOwnerModule;
 
+    // validateDynInTypeNode 跟随透明别名时的环检测（A = B, B = A）
+    mutable std::set<std::string> _dynAliasVisited;
+
     void buildTypeOwnerMap();
     void validateImpl(FileNode* implFile, StructImplNode* impl);
 
@@ -114,8 +115,7 @@ private:
 
     // 按 §12.3.1 比较 impl 方法签名与 draft 签名. subst 为 draft 自身泛型
     // 形参 → impl 块给出的类型实参的替换表.
-    bool sigEquivalent(FnHeaderNode* implMethod,
-                       FnHeaderNode* specSig,
+    bool sigEquivalent(FnHeaderNode* implMethod, FnHeaderNode* specSig,
                        const std::map<std::string, TypeInfo>& subst) const;
 
     // 拼 `<i32,String>` 形态尾缀, 让 `Counter : To<i32>` 与
@@ -130,8 +130,7 @@ private:
     // outerWrapper 标识当前 TypeNode 是否被某容器包裹 (空串表示根/允许容器):
     //   "Rc" / "Weak" / "Dyn" / "Nullable" → 命中 Dyn 时报相应错误码.
     //   "Array" / "Ref" / "" 等不触发包裹诊断 (Array<Dyn<D>> 合法; Dyn<D&> 内部 Ref 合法).
-    void validateDynInTypeNode(TypeNode* tn, FileNode* file,
-                               const std::string& outerWrapper) const;
+    void validateDynInTypeNode(TypeNode* tn, FileNode* file, const std::string& outerWrapper) const;
 };
 
-#endif //YUX_LANG_DRAFT_IMPL_CHECKER_H
+#endif // YUX_LANG_DRAFT_IMPL_CHECKER_H

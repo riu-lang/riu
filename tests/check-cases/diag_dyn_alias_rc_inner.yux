@@ -1,0 +1,15 @@
+; Phase 2c 补洞：别名展开后 Rc<D>（D = Dyn<Greet>）→ E1132
+#Spec
+struct Greet {
+  fn hi()
+}
+
+D = Dyn<Greet>
+
+fn take(x Rc<D>) {  ; check: E1132
+  ret;
+}
+
+fn main() {
+  ret;
+}

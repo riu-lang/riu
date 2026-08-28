@@ -1063,12 +1063,15 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
         return func;
     }
 
-    // Heap<T> / Dyn<D> 的析构依赖 Compiler 上下文（releaseAtPtr / vtable dispatch），
-    // 无法在 typed release 函数体内独立生成；暂回退 generic _box_release。
-    // TODO: Heap — 在 typed release 内复现 releaseAtPtr + HeapFree 序列
-    // TODO: Dyn  — vtable[0] dtor 间接调用（Phase 3e）
-    if (inner->isHeap() || inner->isDyn()) {
-        return runtime::getRcReleaseFn(_module, _builder);
+    // Rc<Heap<T>> / Rc<Dyn<D>> 已由 getLLVMType 拒绝（E4025 / E1132，含别名展开与
+    // 泛型 subst、以及 Rc<Rc<Heap<T>>> 递归）。本函数不可达这两类内层。
+    // 禁止回退 generic _box_release：那会跳过 HeapFree / Dyn vtable dtor，造成泄漏。
+    if (inner->isHeap()) {
+        auto sp = inner->heapElementType();
+        throw YuxError(1, ErrorCode::E4025, std::string("Rc"), sp ? sp->name : std::string("?"));
+    }
+    if (inner->isDyn()) {
+        throw YuxError(1, ErrorCode::E1132, std::string("Rc<") + inner->getFullName() + ">");
     }
 
     // 构造 mangled name：__yux_box_release.T.<type>

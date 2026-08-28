@@ -1,0 +1,9 @@
+; Phase 2c 补洞：局部 let Rc<Dyn<D>> → E1132（SpecImplChecker 原先不走局部声明）
+#Spec
+struct Greet {
+  fn hi()
+}
+
+fn main() {
+  let bad Rc<Dyn<Greet>> = rc:<i32>(0)  ; check: E1132
+}

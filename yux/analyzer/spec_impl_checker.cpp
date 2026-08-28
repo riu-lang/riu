@@ -587,6 +587,7 @@ bool SpecImplChecker::specIsObjectSafe(SpecDeclNode* draft) const {
 // 构造检查 (Phase 2b) 接管 E1131..E1134.
 void SpecImplChecker::validateDynTypeReferences() {
     if (!_yux) return;
+    _dynAliasVisited.clear();
     // 确保 registry 已建好 (validate() 已 buildFromAllFiles 过, 但本方法
     // 可能在其它入口被独立调用, 这里再触发一次幂等).
     (void)_yux->specRegistry();
@@ -768,7 +769,30 @@ void SpecImplChecker::validateDynInTypeNode(TypeNode* tn, FileNode* file, const 
         return;
     }
 
-    // TypeNormalNode: 叶子节点, 无 Dyn 可能
+    // TypeNormalNode: 可能是指向 Dyn / Rc<Dyn> 的透明别名（`D = Dyn<Greet>` 后 `Rc<D>`）
+    if (auto* normal = dynamic_cast<TypeNormalNode*>(tn)) {
+        if (outerWrapper != "Rc" && outerWrapper != "Weak" && outerWrapper != "Dyn" && outerWrapper != "Nullable") {
+            return;
+        }
+        if (!file) return;
+        const std::string name = normal->typeNameToken().getText();
+        AliasDeclNode* alias = file->getAliasDecl(name);
+        if (!alias && _yux && _yux->sdkFile() && _yux->sdkFile() != file) {
+            alias = _yux->sdkFile()->getAliasDecl(name);
+        }
+        if (!alias || !alias->target() || alias->isGeneric()) return;
+        if (!_dynAliasVisited.insert(name).second) return; // 环，留给 E2016
+        try {
+            validateDynInTypeNode(alias->target(), file, outerWrapper);
+        } catch (YuxError& e) {
+            // 诊断钉在使用点 `Rc<D>`，不要指到别名定义行
+            if (tn->getLineNumber() > 0) e.setLineNumber(tn->getLineNumber());
+            e.setColumn(tn->getColumn());
+            _dynAliasVisited.erase(name);
+            throw;
+        }
+        _dynAliasVisited.erase(name);
+    }
 }
 
 std::string SpecImplChecker::specTypeArgsSuffix(const SpecRef& ref) {

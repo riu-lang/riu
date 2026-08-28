@@ -402,6 +402,10 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     auto type = applySubst(rawType);
     DEBUG_LOG_VAL("  getLLVMType", type.name << " (kind=" << static_cast<int>(type.kind) << ")");
 
+    // E4025 / E1132：别名展开与泛型 subst 之后拦截 Rc/Weak 内嵌 Heap/Dyn
+    // （含 Rc<Rc<Heap<T>>>）。typed release 依赖此门，禁止回退 generic _box_release。
+    validateRcContainerBans(type, 1, 0);
+
     // 空类型返回 void
     if (type.empty()) {
         DEBUG_LOG("    -> Void type");
@@ -465,11 +469,6 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     if (type.isRc()) {
         auto elemType = type.rcElementType();
         if (elemType) {
-            // E4025: Rc<Heap<T>> 禁止 (DRAFT-heap-types §8.3a.5.1)
-            if (elemType->isHeap()) {
-                auto innerSp = elemType->heapElementType();
-                throw YuxError(1, ErrorCode::E4025, std::string("Rc"), innerSp ? innerSp->name : std::string("?"));
-            }
             DEBUG_LOG_VAL("    -> RcType (struct)", "Rc<" << elemType->name << ">");
             vector<llvm::Type*> rcFields;
             rcFields.push_back(llvm::PointerType::get(_context, 0)); // handle: Block*
@@ -491,11 +490,6 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     if (type.isWeak()) {
         auto elemType = type.weakElementType();
         if (elemType) {
-            // E4025: Weak<Heap<T>> 禁止 (DRAFT-heap-types §8.3a.5.1)
-            if (elemType->isHeap()) {
-                auto innerSp = elemType->heapElementType();
-                throw YuxError(1, ErrorCode::E4025, std::string("Weak"), innerSp ? innerSp->name : std::string("?"));
-            }
             DEBUG_LOG_VAL("    -> WeakType (struct)", "Weak<" << elemType->name << ">");
             vector<llvm::Type*> weakFields;
             weakFields.push_back(llvm::PointerType::get(_context, 0)); // handle: Block*
@@ -511,11 +505,6 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     if (type.isArrayGeneric()) {
         auto elemType = type.arrayGenericElementType();
         if (elemType) {
-            // E4025: Array<Heap<T>> 禁止 (DRAFT-heap-types §8.3a.5.1)
-            if (elemType->isHeap()) {
-                auto innerSp = elemType->heapElementType();
-                throw YuxError(1, ErrorCode::E4025, std::string("Array"), innerSp ? innerSp->name : std::string("?"));
-            }
             DEBUG_LOG_VAL("    -> ArrayGeneric (struct)", "Array<" << elemType->name << ">");
         }
         return getArrayStructTypeForGEP();

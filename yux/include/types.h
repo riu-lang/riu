@@ -693,3 +693,86 @@ inline bool isBuiltinType(const string& typeName) {
                                                 "u32",  "u64", "f32", "f64", "isize", "usize"};
     return std::ranges::find(builtinTypes, typeName) != builtinTypes.end();
 }
+
+// E4025: Rc / Weak / Array 禁止直接内嵌 Heap（§8.3a.5.1）。递归下钻，覆盖
+// `Rc<Rc<Heap<T>>>` / `Array<Rc<Heap<T>>>`。sema 与 getLLVMType 共用。
+inline void validateNoNestedHeap(const TypeInfo& t, int line, int col) {
+    if (t.isRc()) {
+        if (auto e = t.rcElementType()) {
+            if (e->isHeap()) {
+                auto inner = e->heapElementType();
+                throw YuxError(line, col, ErrorCode::E4025, std::string("Rc"), inner ? inner->name : std::string("?"));
+            }
+            validateNoNestedHeap(*e, line, col);
+        }
+        return;
+    }
+    if (t.isWeak()) {
+        if (auto e = t.weakElementType()) {
+            if (e->isHeap()) {
+                auto inner = e->heapElementType();
+                throw YuxError(line, col, ErrorCode::E4025, std::string("Weak"),
+                               inner ? inner->name : std::string("?"));
+            }
+            validateNoNestedHeap(*e, line, col);
+        }
+        return;
+    }
+    if (t.isArrayGeneric()) {
+        if (auto e = t.arrayGenericElementType()) {
+            if (e->isHeap()) {
+                auto inner = e->heapElementType();
+                throw YuxError(line, col, ErrorCode::E4025, std::string("Array"),
+                               inner ? inner->name : std::string("?"));
+            }
+            validateNoNestedHeap(*e, line, col);
+        }
+        return;
+    }
+    if (t.isHeap()) {
+        if (auto e = t.heapElementType()) validateNoNestedHeap(*e, line, col);
+        return;
+    }
+    for (const auto& g : t.genericArgs) {
+        if (g) validateNoNestedHeap(*g, line, col);
+    }
+}
+
+// E1132: Rc / Weak 禁止直接内嵌 Dyn（§12.9.3.2）。递归下钻，覆盖
+// `Rc<Rc<Dyn<D>>>`。Array<Dyn<D>> 合法，不在此禁。sema 与 getLLVMType 共用。
+inline void validateNoDynInRcWeak(const TypeInfo& t, int line, int col) {
+    if (t.isRc()) {
+        if (auto e = t.rcElementType()) {
+            if (e->isDyn()) {
+                throw YuxError(line, col, ErrorCode::E1132, std::string("Rc<") + e->getFullName() + ">");
+            }
+            validateNoDynInRcWeak(*e, line, col);
+        }
+        return;
+    }
+    if (t.isWeak()) {
+        if (auto e = t.weakElementType()) {
+            if (e->isDyn()) {
+                throw YuxError(line, col, ErrorCode::E1132, std::string("Weak<") + e->getFullName() + ">");
+            }
+            validateNoDynInRcWeak(*e, line, col);
+        }
+        return;
+    }
+    if (t.isArrayGeneric()) {
+        if (auto e = t.arrayGenericElementType()) validateNoDynInRcWeak(*e, line, col);
+        return;
+    }
+    if (t.isHeap()) {
+        if (auto e = t.heapElementType()) validateNoDynInRcWeak(*e, line, col);
+        return;
+    }
+    for (const auto& g : t.genericArgs) {
+        if (g) validateNoDynInRcWeak(*g, line, col);
+    }
+}
+
+inline void validateRcContainerBans(const TypeInfo& t, int line, int col) {
+    validateNoNestedHeap(t, line, col);
+    validateNoDynInRcWeak(t, line, col);
+}

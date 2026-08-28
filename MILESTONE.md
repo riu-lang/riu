@@ -114,7 +114,7 @@
 
 **退出标准**：
 
-- [ ] A5 / E4032 泛型 `#NoCopy` 关；Heap/Dyn typed-release TODO 有结论（实现或删除）
+- [x] A5 / E4032 泛型 `#NoCopy` 关；Heap/Dyn typed-release TODO 有结论（实现或删除）
 - [x] `Array::with_capacity` 可用
 - [x] String `to_upper` / `to_lower` / `ends_with` / `split` 有 SDK 测试
 - [ ] `yux test` / `yux-check test` / `./build.ps1 test` 全绿

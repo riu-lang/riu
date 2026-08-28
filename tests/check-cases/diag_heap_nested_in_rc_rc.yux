@@ -1,0 +1,8 @@
+; DRAFT-heap-types §8.3a.5.1：递归拦截 Rc<Rc<Heap<T>>>（getLLVMType 原先只查直接内层）
+fn take(x Rc<Rc<Heap<i32>>>) {  ; check: E4025
+  ret;
+}
+
+fn main() {
+  ret;
+}

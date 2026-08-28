@@ -1,0 +1,8 @@
+; DRAFT-heap-types §8.3a.5.1：形参位 Rc<Heap<T>> → E4025（不依赖 turbofish）
+fn take(x Rc<Heap<i32>>) {  ; check: E4025
+  ret;
+}
+
+fn main() {
+  ret;
+}

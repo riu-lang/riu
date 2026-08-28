@@ -50,6 +50,7 @@
 #include "ast/node/literal_node.h"
 #include "ast/node/statement_node.h"
 #include "ast/node/struct_node.h"
+#include "ast/node/type_node.h"
 #include "ast/yux.h"
 #include "sema/call_resolve.h"
 #include "tools/diagnostic.h"
@@ -156,50 +157,13 @@ bool isLvalueArrayBase(ExprNode* baseExpr) {
     return false;
 }
 
-// E4025 (DRAFT-heap-types §8.3a.5.1): Rc/Weak/Array 容器禁止内嵌 Heap.
-// 递归扫描 TypeInfo: 若任一 Rc/Weak/Array 直接 elem 是 Heap, 抛 E4025;
-// 否则继续下钻 (覆盖 `Rc<Rc<Heap<T>>>` / `Array<Rc<Heap<T>>>` 等).
-void validateNoNestedHeap(const TypeInfo& t, int line, int col) {
-    if (t.isRc()) {
-        if (auto e = t.rcElementType()) {
-            if (e->isHeap()) {
-                auto inner = e->heapElementType();
-                throw YuxError(line, col, ErrorCode::E4025, std::string("Rc"), inner ? inner->name : std::string("?"));
-            }
-            validateNoNestedHeap(*e, line, col);
-        }
-        return;
-    }
-    if (t.isWeak()) {
-        if (auto e = t.weakElementType()) {
-            if (e->isHeap()) {
-                auto inner = e->heapElementType();
-                throw YuxError(line, col, ErrorCode::E4025, std::string("Weak"),
-                               inner ? inner->name : std::string("?"));
-            }
-            validateNoNestedHeap(*e, line, col);
-        }
-        return;
-    }
-    if (t.isArrayGeneric()) {
-        if (auto e = t.arrayGenericElementType()) {
-            if (e->isHeap()) {
-                auto inner = e->heapElementType();
-                throw YuxError(line, col, ErrorCode::E4025, std::string("Array"),
-                               inner ? inner->name : std::string("?"));
-            }
-            validateNoNestedHeap(*e, line, col);
-        }
-        return;
-    }
-    if (t.isHeap()) {
-        if (auto e = t.heapElementType()) validateNoNestedHeap(*e, line, col);
-        return;
-    }
-    // 其余形态 (struct / tuple / nullable / ref / ptr / dyn ...) 递归 genericArgs.
-    for (const auto& g : t.genericArgs) {
-        if (g) validateNoNestedHeap(*g, line, col);
-    }
+void validateContainerBansAt(const TypeInfo& t, p<TypeNode> tn, int fallbackLine, int fallbackCol) {
+    if (!tn) return;
+    int line = tn->getLineNumber();
+    int col = tn->getColumn();
+    if (line <= 0) line = fallbackLine > 0 ? fallbackLine : 1;
+    if (col < 0) col = fallbackCol;
+    validateRcContainerBans(t, line, col);
 }
 
 // Phase B-1: 与 Compiler::isNoCopyType 等价的本地版本（0 LLVM 依赖）。
@@ -248,6 +212,19 @@ void SemaPass::run() {
     // Bucket 3: 顶层类型别名一次性校验 (E2017 名字冲突 + E2016 环).
     // 必须在遍历 fn 之前: 一旦命中, 直接抛错.
     sema::validateAliases(_file);
+    // E4025 / E1132：struct 字段上的 Rc/Weak/Array 内嵌 Heap、Rc/Weak 内嵌 Dyn
+    for (auto& sd : _file->getStructDecls()) {
+        if (!sd) continue;
+        for (auto& f : sd->fields()) {
+            if (!f || !f->type()) continue;
+            try {
+                validateContainerBansAt(f->type()->getType(), f->type(), f->getLineNumber(), f->getColumn());
+            } catch (const YuxError&) {
+                throw;
+            } catch (...) { // NOLINT(bugprone-empty-catch)
+            }
+        }
+    }
     for (auto& fn : _file->getFunctions()) {
         // 泛型模板 / #Builtin 不走常规 codegen, 在 Compiler::compile 里也
         // 是被跳过的; SemaPass 这里同步跳过, 保持与 codegen 覆盖一致。
@@ -463,6 +440,29 @@ void SemaPass::visitFn(p<FnNode> fn) {
     auto savedFn = _currentFn;
     _currentFn = fn;
     _movedVars.clear(); // Phase B-1: 进入 fn 时清空 move 追踪
+
+    // E4025 / E1132：形参 / 返回类型上的容器禁令（getLLVMType 同款，补 yux-check）
+    if (auto hdr = fn->header()) {
+        for (auto& param : hdr->params()) {
+            if (!param || !param->type()) continue;
+            try {
+                validateContainerBansAt(param->type()->getType(), param->type(),
+                                        static_cast<int>(param->name().getLine()),
+                                        static_cast<int>(param->name().getCharPositionInLine()));
+            } catch (const YuxError&) {
+                throw;
+            } catch (...) { // NOLINT(bugprone-empty-catch)
+            }
+        }
+        if (auto rt = hdr->retType()) {
+            try {
+                validateContainerBansAt(rt->getType(), rt, fn->getLineNumber(), fn->getColumn());
+            } catch (const YuxError&) {
+                throw;
+            } catch (...) { // NOLINT(bugprone-empty-catch)
+            }
+        }
+    }
 
     // Bucket 1 (CURRENT-check.md): 把 0-LLVM analyzer 接入 sema, 让 yux-check
     // 也能覆盖 borrow / const-mut / NoReturn 流终止 检查.
@@ -840,6 +840,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         if (da->varType()) {
             try {
                 auto vt = da->varType()->getType();
+                validateContainerBansAt(vt, da->varType(), da->getLineNumber(), da->getColumn());
                 if (!vt.name.empty() && !isBuiltinType(vt.name) && !vt.isRef() && !vt.isFn() && !vt.isTuple()) {
                     if (auto* sd = lookupStructIn(_file, _sdkFile, vt.name)) {
                         size_t want = sd->typeParams().size();
@@ -947,9 +948,9 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                         if (_sdkFile && _sdkFile->getStructDecl(t.name)) return true;
                         return false;
                     };
-                    if (!varType.name.empty() && !exprType.name.empty() && !varType.isSelf() &&
-                        !exprType.isSelf() && !exprType.isRef() && !exprType.isFn() &&
-                        !isAliasName(exprType.name) && isKnownType(varType) && isKnownType(exprType)) {
+                    if (!varType.name.empty() && !exprType.name.empty() && !varType.isSelf() && !exprType.isSelf() &&
+                        !exprType.isRef() && !exprType.isFn() && !isAliasName(exprType.name) && isKnownType(varType) &&
+                        isKnownType(exprType)) {
                         if (varType != exprType) {
                             throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3014,
                                            varType.getFullName(), exprType.getFullName())
@@ -1235,9 +1236,12 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                     auto inner = t0.heapElementType();
                     throw YuxError(eline, ecol, ErrorCode::E4025, calleeName, inner ? inner->name : std::string("?"));
                 }
+                if ((calleeName == "rc" || calleeName == "Rc" || calleeName == "Weak") && t0.isDyn()) {
+                    throw YuxError(eline, ecol, ErrorCode::E1132, calleeName + "<" + t0.getFullName() + ">");
+                }
                 for (auto& tn : n->getTypeArgs()) {
                     try {
-                        validateNoNestedHeap(tn->getType(), eline, ecol);
+                        validateRcContainerBans(tn->getType(), eline, ecol);
                     } catch (const YuxError&) {
                         throw;
                     } catch (...) { // NOLINT(bugprone-empty-catch) — sema 非 YuxError 异常留 Compiler 兜底
