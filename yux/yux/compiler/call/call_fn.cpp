@@ -31,7 +31,12 @@ llvm::Value* Compiler::compileFunctionCall(p<ExprCallNode> callNode, const strin
     resolvedArgTypes.reserve(argTypes.size());
     for (auto& t : argTypes)
         resolvedArgTypes.push_back(applySubst(t));
-    auto fnSymbol = _file->lookupFnSymbolWithParams(fnName, resolvedArgTypes);
+    FnSymbolInfo* fnSymbol = nullptr;
+    if (callNode->hasResolvedSymbol() && callNode->resolvedSymbol().isFn()) {
+        fnSymbol = callNode->resolvedSymbol().fn;
+    } else {
+        fnSymbol = _file->lookupFnSymbolWithParams(fnName, resolvedArgTypes);
+    }
 
     // Phase 4b: 当存在同名 generic + 非泛型重载时，参数严格匹配的非泛型优先；
     // 仅在 fnSymbol 没匹配到时才走泛型路径。这样 `assert_eq(s1 String, s2 String)`

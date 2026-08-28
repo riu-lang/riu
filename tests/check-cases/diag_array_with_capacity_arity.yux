@@ -1,0 +1,7 @@
+; require-sdk
+; Array:<T>::with_capacity 缺实参 → E3131（Phase B SemaPass 接管）
+
+fn main() {
+  let a Array<i32> = Array:<i32>::with_capacity()  ; check: E3131
+  ret;
+}

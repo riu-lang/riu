@@ -262,7 +262,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
     {
         TypeInfo calleeStaticType;
         try {
-            calleeStaticType = calleeExpr->getType();
+            calleeStaticType = resolvedOrInferredType(calleeExpr);
         } catch (...) { // NOLINT(bugprone-empty-catch)
         }
         if (calleeStaticType.isFn() || resolveAlias(calleeStaticType).isFn()) {

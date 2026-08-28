@@ -1747,4 +1747,41 @@ void validateStringTemplateInterps(FileNode* file, FileNode* sdkFile, StringTemp
     }
 }
 
+void validateArrayWithCapacity(p<ExprPathCallNode> node) {
+    if (!node) return;
+    int line = node->getLineNumber();
+    int col = node->getColumn();
+    const auto& lhsTArgs = node->lhsTypeArgs();
+    if (lhsTArgs.size() != 1) {
+        throw YuxError(line, col, ErrorCode::E6011, "Array", static_cast<size_t>(1), lhsTArgs.size());
+    }
+    if (node->args().size() != 1) {
+        string got;
+        for (size_t i = 0; i < node->args().size(); ++i) {
+            if (i) got += ", ";
+            try {
+                got += node->args()[i]->getType().getFullName();
+            } catch (...) {
+                got += "?";
+            }
+        }
+        throw YuxError(line, col, ErrorCode::E3131, "Array", "with_capacity", static_cast<size_t>(1), "usize",
+                       node->args().size(), got);
+    }
+    TypeInfo usizeTy("usize");
+    tryInferIntType(node->args()[0], usizeTy);
+    TypeInfo actualTy;
+    try {
+        actualTy = node->args()[0]->getType();
+    } catch (const YuxError&) {
+        throw;
+    } catch (...) { // NOLINT(bugprone-empty-catch)
+        return;
+    }
+    if (!actualTy.empty() && !(actualTy == usizeTy)) {
+        throw YuxError(line, col, ErrorCode::E3131, "Array", "with_capacity", static_cast<size_t>(1), "usize",
+                       static_cast<size_t>(1), actualTy.getFullName());
+    }
+}
+
 } // namespace sema

@@ -117,8 +117,8 @@ flowchart LR
 flowchart TB
     ast[AST] --> sema{SemaPass.visit*}
 
-    sema -- "已迁移错误码<br/>kMigratedCodes 白名单" --> throwSema[throw YuxError]
-    sema -- "未迁移路径<br/>(泛型体 / lambda 体 /<br/>所有 stmt / target-type / alias 环)" --> skip[沉默通过]
+    sema -- "getType YuxError<br/>默认重抛" --> throwSema[throw YuxError]
+    sema -- "kDeferredCodes / 缺口<br/>(泛型体 / stmt / E3009 / E3095)" --> skip[交给 Compiler]
 
     throwSema --> userErr[(诊断输出)]
     skip --> compiler[Compiler<br/>compiler_*.cpp]
@@ -135,7 +135,7 @@ flowchart TB
 规则要点（写新 C++ 时必看）：
 
 - `yux/frontend/sema/` 禁止 `#include "llvm/..."`，禁止访问 `IRBuilder` / `_module`。
-- 让 sema 接管某错误码 → **必须同步更新 `kMigratedCodes` 白名单**，否则 sema 自身 try/catch 吞错、无测试能捕获。
+- 让 sema 接管某错误码 → **默认即由 SemaPass 重抛**。若必须暂留 Compiler（假阳性），加入 `kDeferredCodes`，禁止静默吞。
 - 新增 AST / 表达式类 → 在 `SemaPass::visitExpr` 加 dispatch 分支（即使是空占位），否则 sema 静默 skip 整个子树。
 - sema 接管后 Compiler 端原 inline throw / validate 调用直接删除（v0.16 收尾）。
 

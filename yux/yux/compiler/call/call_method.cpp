@@ -26,7 +26,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
                                                 vector<TypeInfo>& argTypes) {
     auto baseExpr = dotNode->baseExpr();
     auto member = dotNode->member();
-    auto baseType = baseExpr->getType();
+    auto baseType = resolvedOrInferredType(baseExpr);
 
     if (!baseType.isNullable()) {
         throw YuxError(dotNode->resolveLineNumber(), dotNode->resolveColumn(), ErrorCode::E3024, baseType.name);
@@ -337,7 +337,7 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
         return compileKnownFunctionCall(callNode, modCall.fnName, args, argTypes, modCall.fnSym);
     }
 
-    auto baseType = baseExpr->getType();
+    auto baseType = resolvedOrInferredType(baseExpr);
     // §12.4 / §6.4.4：若 baseExpr 类型是当前替换栈中的泛型形参 T，
     // 应用替换得到具体类型（T -> i32 / Counter / ...），后续按具体类型分发
     // 边界 (E1106) 已在调用点 compileGenericFunctionCall 校验过。

@@ -8,28 +8,9 @@
 // 泛型模板 / #Builtin 仍跳过 —— 它们的 codegen 路径会自行写 resolvedType,
 // 留作本步 known-issue (lambda 反推 / 泛型 applySubst 的"运行时再写")。
 //
-// Phase 3.2b 前置 (本步)：将 `getType()` 抛出的"已迁移诊断"从静默吞掉改为
-// 向外抛, 让 SemaPass 实际接管该错误码。当前已迁移清单 (kMigratedCodes)：
-//   C1 算术 / 比较 / 分支结果类型不匹配:
-//     - E3001 / E3002 / E3003: 算术 / 乘除模 / 二元位运算左右类型不匹配
-//     - E3004:                 比较运算左右类型不匹配
-//     - E3005 / E3006:         if-elif / if-else 分支结果类型不匹配
-//     - E3007:                 one-line if-else 真假分支类型不匹配
-//     - E3008:                 if-else 预值表达式真假分支类型不匹配
-//   C1 字段 / 元组访问 / 引用 / 索引 形态:
-//     - E3025: `.?` safe-dot base 不是 Nullable
-//     - E3040: 字段不存在 (struct / nullable struct payload)
-//     - E3041: `&` getRef 时 struct 未找到
-//     - E3043: `&` getRef 时找不到 file 作用域
-//     - E3044: `.?` safe-dot 在 inner struct 上找不到 struct decl
-//     - E3050: Rc<T>? 取 inner 时 Rc 元素类型缺失
-//     - E3051: `.?` safe-dot 的 nullable inner 类型缺失
-//     - E3057: 数组索引时元素类型缺失 (含 Array 泛型 / 普通数组)
-//     - E3062: 索引目标非数组
-//     - E3097: `&` getRef 时找不到 nearestScope
-//     - E3100: 元组下标越界
-// 其余错误码 (lambda 形参未推断、泛型 arity E3095 等) 仍走原 codegen 路径
-// 报错; 等后续 batch 一并迁过来再扩 kMigratedCodes。
+// Phase B：SemaPass 为 getType 诊断的权威抛出点。默认重抛所有 YuxError；
+// 仅 kDeferredCodes 里缺 Sema 上下文的码仍吞掉、留给 Compiler（Phase C 再收）。
+// 非 YuxError 在 debug 下 assert，禁止静默吞。
 
 #include "sema/sema_pass.h"
 #include "sema/call_resolve.h"
@@ -37,6 +18,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <set>
 #include <string_view>
 
@@ -58,41 +40,13 @@
 #include "types.h"
 
 namespace {
-// Phase 3.2b 已由 SemaPass 接管的错误码白名单。SemaPass 在 visitExpr 中
-// 捕获 YuxError 时, 命中此清单的直接 rethrow, 让 SemaPass 成为该诊断的
-// 实际抛出点。新增迁移码追加到此处即可。
-constexpr std::array<std::string_view, 21> kMigratedCodes = {
-    // 算术 / 比较 / 分支结果（E3001-E3004 → E3001, E3005-E3008 → E3005）
-    "E3001",
-    "E3005",
-    // 数组 / 字段 / 元组 / 引用
-    // E3009 已移除 kMigratedCodes: 合并 E3011 后 SemaPass 对嵌套数组字面量
-    // 产生假阳性（缺少 target-type 上下文），交回 Compiler 端兜底。
-    "E3024", // 原 E3025 (Nullable 操作符左侧类型要求)
-    "E3040",
-    "E3041",
-    "E3043",
-    "E3044",
-    "E3050", // 原 E3050-E3057 合并
-    "E3062",
-    "E3097",
-    "E3100",
-    // Phase 3.4.f.2: 字面量越界
-    "E3103",
-    // Phase 3.4.h: ExprUnaryNode 内置 op 形态校验 (Rev on float / Not on non-bool)
-    "E3070",
-    "E3071",
-    // Phase 6A: 砍同名 ctor 定义形态
-    "E3130",
-    // Bucket 2: LiteralObjNode::getType 抛 undefined symbol (原 E3032 → E3030)
-    "E3030",
-    // Phase B-1: move intrinsic 类型形态校验（sema validateBuiltinIntrinsicTypeShape）
-    "E4034",
-    "E4035",
-    // Phase B-1: #NoCopy 隐式复制 / 传播 / use-after-move（已由 SemaPass 接管）
-    "E4031",
-    "E4032",
-    "E4033",
+// Phase B 反转白名单：默认重抛 getType 的 YuxError。仅下列码 SemaPass 缺上下文，
+// 仍交给 Compiler（Phase C 收口后删除）。
+//   E3009: 嵌套数组字面量需要 target-type（SemaPass 无上下文，假阳性）
+//   E3095: 方法点 / 类型名当 callee 时 getType 过早抛「不是函数」，挡住 E1101/E1140 等更精确诊断
+constexpr std::array<std::string_view, 2> kDeferredCodes = {
+    "E3009",
+    "E3095",
 };
 
 // Phase 3.3.2.f: 与 Compiler::isBuiltinMethod 等价的本地版本.
@@ -167,10 +121,10 @@ bool isFreshHandleExpr(p<ExprNode> expr) {
     return false;
 }
 
-bool isMigratedCode(const char* code) {
+bool isDeferredCode(const char* code) {
     if (!code) return false;
     std::string_view sv(code);
-    for (auto c : kMigratedCodes) {
+    for (auto c : kDeferredCodes) {
         if (sv == c) return true;
     }
     return false;
@@ -977,25 +931,18 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
 
 void SemaPass::visitExpr(p<ExprNode> expr) {
     if (!expr) return;
-    // Phase 3.2a：在每个 expr 节点上写 resolvedType, 与 compile<Foo>Expr 入口
-    // 的同款 set 并存 (值相同, 后者随后变成 no-op)。getType() 是各子类的纯查询,
-    // 不读 resolvedType, 此处先写后递归都安全; 选先写, 让下游若有早读路径也能命中。
-    //
-    // 已知问题: 部分 getType() 在错误形态下会抛 YuxError —— 例如算术节点遇到
-    // lambda 形参未推断 (E3001), 或调用节点遇到泛型 arity 错配 (E3095)。
-    //
-    // Phase 3.2b 起开始按错误码白名单 (kMigratedCodes) 接管诊断: 命中清单的
-    // 重新抛出, 由 SemaPass 实际报错; 其余仍吞掉, 留给 compile<Foo>Expr 的
-    // 原有路径继续报。这样可以一码一码迁, 不必一次性把整个 getType 路径搬空。
+    // Phase B：getType 诊断默认由 SemaPass 重抛。kDeferredCodes（E3009 / E3095）
+    // 仍缺上下文或会挡住更精确诊断，吞掉留给后续 handler / Compiler；非 YuxError debug assert。
     try {
         expr->setResolvedType(expr->getType());
     } catch (const YuxError& e) {
-        if (isMigratedCode(e.getCode())) {
+        if (!isDeferredCode(e.getCode())) {
             throw;
         }
-        // 未迁移码: 暂留给原 codegen 路径
-    } catch (...) { // NOLINT(bugprone-empty-catch)
-        // 非 YuxError (内部异常) 不该出现; 防御性吞掉以免影响 codegen
+    } catch (...) { // NOLINT(bugprone-empty-catch) — release 仍吞非 YuxError；debug 下 assert
+#ifndef NDEBUG
+        assert(false && "getType threw non-YuxError; SemaPass must not swallow unknown failures");
+#endif
     }
 
     if (auto n = dynamic_cast<p<ExprLiteralNode>>(expr)) {
@@ -1084,6 +1031,20 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         // 这里主动调 sema::parseIntLiteral 触发越界 / 非法格式校验.
         if (auto intLit = dynamic_cast<p<LiteralIntNode>>(n->literal())) {
             (void)sema::parseIntLiteral(intLit->getValue().getText(), n->getLineNumber(), n->getColumn());
+        }
+        // Phase B：标识符解析挂到 AST，codegen 读 resolvedSymbol。
+        if (auto objSym = dynamic_cast<p<LiteralObjNode>>(n->literal())) {
+            string varName = objSym->getValue().getText();
+            if (varName != "$") {
+                SymbolInfo* sym = nullptr;
+                if (auto sc = n->findNearestScope()) {
+                    sym = sc->lookupSymbol(varName);
+                }
+                if (!sym && _currentFn) {
+                    sym = _currentFn->lookupSymbol(varName);
+                }
+                if (sym) n->setResolvedVar(sym);
+            }
         }
         return;
     }
@@ -1491,6 +1452,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                                     fnSym = _sdkFile->lookupFnSymbolWithParams(fnName, argTypes);
                                 }
                                 sema::validateFnSymbolVisibility(fnSym, _file->moduleName(), fnName, line, col);
+                                if (fnSym) n->setResolvedFn(fnSym);
                                 // Phase B-1: #NoCopy 类型不可按值传参
                                 if (fnSym) {
                                     for (size_t i = 0; i < n->getArgs().size() && i < fnSym->params.size(); ++i) {
@@ -1714,8 +1676,16 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 if (baseType.isRc()) {
                     if (auto inner = baseType.rcElementType()) baseType = *inner;
                 }
-                if (!baseType.name.empty() && !baseType.isDyn() && !isBuiltinType(baseType.name)) {
-                    string methodFullName = baseType.name + "." + dotCallee->member();
+                if (!baseType.name.empty() && !baseType.isDyn() && !isBuiltinType(baseType.name) &&
+                    !baseType.isArrayGeneric() && !baseType.isPtr()) {
+                    string member = dotCallee->member();
+                    if (dotCallee->hasSpecQualifier()) {
+                        member = member + "__at__" + dotCallee->specQualifier();
+                    }
+                    // Phase B：与 compileCallExpr 对齐，方法重载 + 灵活整数推断进 SemaPass。
+                    sema::resolveMethodOverload(_file, _sdkFile, baseType.name, member, n->getArgs(),
+                                                n->getLineNumber());
+                    string methodFullName = baseType.name + "." + member;
                     vector<TypeInfo> methodParamTypes;
                     methodParamTypes.push_back(baseType);
                     for (auto& a : n->getArgs()) {
@@ -1729,6 +1699,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                     if (!methodSymbol && _sdkFile && _sdkFile != _file) {
                         methodSymbol = _sdkFile->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
                     }
+                    if (methodSymbol) n->setResolvedFn(methodSymbol);
                     sema::validateStructMethodVisibility(methodSymbol, _currentStructName, baseType.name,
                                                          dotCallee->member(), n->getLineNumber(), n->getColumn());
                     // Phase B-1: 方法调用的 #NoCopy 按值传参检查
@@ -1787,7 +1758,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         }
 
         // Phase 3.4.d.2: 字段私有可见性 (E3042). safe `?.` 路径在 helper 内
-        // 自跳过 (走 getType, kMigratedCodes 已覆盖). 异常静默吞掉, 留 Compiler.
+        // 自跳过 (走 getType, SemaPass 默认重抛). 异常静默吞掉, 留 Compiler.
         try {
             sema::validateDotFieldPrivacy(_file, _sdkFile, n, _currentStructName);
         } catch (const YuxError&) {
@@ -1943,6 +1914,12 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     if (auto n = dynamic_cast<p<ExprPathCallNode>>(expr)) {
         for (auto& a : n->args())
             visitExpr(a);
+
+        // Phase B：Array:<T>::with_capacity 形态校验（E6011 / E3131）。
+        // 泛型 struct 的 #Static fn 路径 skipTypeCheck，必须在此单独接管。
+        if (n->enumName().getText() == "Array" && n->variantName().getText() == "with_capacity") {
+            sema::validateArrayWithCapacity(n);
+        }
 
         // DRAFT-spec-reflect Phase 4: `<Struct>::type` / `<Struct>::fields` /
         // `<Struct>::methods` / `<Struct>::variants` reflect 静态访问.
@@ -2372,7 +2349,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
     }
     // Phase 3.4.d.1: ExprGetRefNode —— 无子表达式可递, 顶部
     // setResolvedType(getType()) 已经触发 ExprGetRefNode::getType 抛
-    // E3040/E3041 (kMigratedCodes 命中, 自动重抛), 由此 Compiler 端
+    // E3040/E3041 (SemaPass 默认重抛), 由此 Compiler 端
     // compileGetRefExpr 的 1656/1661 内联 throw 在正常 codepath 下不可达。
     // Phase 3.4.d.2: 补 E3042 链式私有字段可见性校验.
     if (auto n = dynamic_cast<p<ExprGetRefNode>>(expr)) {
@@ -2401,9 +2378,9 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         }
         return;
     }
-    // Phase 3.4.f.1: ExprArrayInitNode 显式化 —— 无子表达式可递, 顶部
-    // setResolvedType(getType()) 已经触发 ExprArrayInitNode::getType 抛 E3009
-    // (explicitType vs value 字面量类型不匹配, kMigratedCodes 命中, 自动重抛).
+    // Phase 3.4.f.1: ExprArrayInitNode 显式化 —— 无子表达式可递。
+    // E3009（explicitType vs value）在 kDeferredCodes：SemaPass 缺 target-type
+    // 上下文会假阳性，留给 Compiler（Phase C）。
     if (auto n = dynamic_cast<p<ExprArrayInitNode>>(expr)) {
         (void)n;
         return;

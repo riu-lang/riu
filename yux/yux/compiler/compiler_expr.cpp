@@ -171,10 +171,9 @@ llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& srcType, con
 llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
     auto type = node->getType();
     DEBUG_LOG_VAL("  compileExpr", "type=" << (type.empty() ? "void" : type.name));
-    // Phase 2.2 Sema/Codegen 拆分：resolvedType 由各 compile<Foo>Expr 自行写入。
-    // Phase 2.4：本入口 dispatch 后的 recordTemp / typeNeedsDestructor 改读
-    // resolvedOrInferredType(node)；本地 type 仅给 DEBUG_LOG 用，等 Phase 3
-    // SemaPass 落地后即可整体删除。
+    // Phase B：dispatch 后的 recordTemp 等读 resolvedOrInferredType；此处 type 仅 DEBUG_LOG。
+    // 不能在入口对所有节点 assert resolvedType==getType：SemaPass 先写槽再跑
+    // resolveFnOverload，灵活整数会被回填，槽与二次 getType 会暂时不一致。
 
     if (auto literalNode = dynamic_cast<ExprLiteralNode*>(node)) {
         return compileLiteralExpr(literalNode);

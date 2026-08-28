@@ -510,7 +510,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
 // 的 smoke 只看编译能否过、IR 是否成型，不验运行时所有权。
 llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
-    auto resultType = node->getType();
+    auto resultType = resolvedOrInferredType(node);
     int line = node->getLineNumber();
     int col = node->getColumn();
 

@@ -254,10 +254,9 @@ private:
 
     // ==================== 表达式编译 ====================
     llvm::Value* compileExpr(p<ExprNode> node); // 编译表达式 (主入口)
-    // Phase 2.4 Sema/Codegen 拆分：codegen 读类型的统一入口。
-    // 优先返回 compile<Foo>Expr 已写入的 resolvedType；尚未走过该路径的节点
-    // 回退到节点自身的 getType()（与 2.2 之前的行为一致）。debug 构建下若
-    // 两者均可得，校验其一致，拦截写入污染或被遗漏的入口。
+    // Phase 2.4 / Phase B：codegen 读类型的统一入口。
+    // 优先返回 SemaPass / compile<Foo>Expr 已写入的 resolvedType；尚未走过该路径
+    // 的节点回退到 getType()。debug 构建下若两者均可得，校验一致。
     [[nodiscard]] TypeInfo resolvedOrInferredType(p<ExprNode> node) const;
     llvm::Value* compileArrayInitExpr(p<ExprArrayInitNode> node, const TypeInfo& targetType,
                                       llvm::Value* destPtr = nullptr);                           // 编译数组初始化表达式

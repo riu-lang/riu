@@ -11,9 +11,10 @@ sema 相关代码进 `yux/frontend/sema/sema_pass.{h,cpp}` 与 `yux/frontend/sem
 ## 新加 `throw YuxError` 时
 
 - 默认**不强求** sema 镜像；写在 `yux/yux/compiler/compiler_*.cpp` 里照常即可。
-- 若顺手让 sema 接管（推荐对纯静态形态检查这么做），**必须同步更新 `yux/frontend/sema/sema_pass.cpp` 顶部的 `kMigratedCodes` 白名单**。
-  - 漏更新 = sema 抛了又被自身的 try/catch 吞掉，**无测试能捕获**。
-- sema 接管后 Compiler 端的原 inline throw / validate 调用**直接删除**（sema 已覆盖，codegen 正常路径不可达）；不再保留防御性双跑。
+- `getType()` 抛出的 YuxError 由 SemaPass **默认重抛**（SemaPass 为权威）。仅 `kDeferredCodes`（当前 E3009 / E3095）因缺上下文或会挡住更精确诊断仍交给后续 handler / Compiler。
+- 新码若必须暂留 Compiler（假阳性 / 缺上下文），**必须加入 `kDeferredCodes`**，否则 debug 下会从 SemaPass 报出，或非 YuxError 会 assert。
+- 禁止再靠「不在白名单就静默吞」——漏分类的码必须显式进 deferred 或让 SemaPass 报。
+- sema 接管后 Compiler 端的原 inline throw / validate 调用**直接删除**（sema 已覆盖，codegen 正常路径不可达）；不再保留防御性双跑。泛型 fn/impl 体 SemaPass 仍跳过，那些路径的 Compiler throw 先留到 Phase C。
 
 ## 新加 AST 节点 / 表达式类
 

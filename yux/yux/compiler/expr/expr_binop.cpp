@@ -645,7 +645,7 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
 
     if (effLeftType != effRightType) {
         // spec §7.2.3.3: 非内置类型允许跨类型比较，类型匹配由方法解析完成；
-        // 内置类型跨类型时 getType 已抛 E3004 (kMigratedCodes)，此处不可达。
+        // 内置类型跨类型时 getType 已抛 E3004（SemaPass 默认重抛），此处不可达。
         if (isBuiltinType(effLeftType.name)) {
             throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3001, "comparison", effLeftType.name,
                            effRightType.name);

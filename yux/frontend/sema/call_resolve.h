@@ -17,8 +17,8 @@ class SpecImplChecker;
 // 调用重载解析（Sema/Codegen 拆分 Phase 3.3 前置）
 //
 // 从 `yux/yux/compiler/compiler_call.cpp` 抠出, 不依赖 LLVM, 用于:
-// - 当前: Compiler 在 compile 调用 / 构造点调用, 行为不变
-// - 后续: SemaPass 在 visitCall 阶段调用, 提前完成歧义诊断 + 灵活整数推断
+// - SemaPass 在 visitCall 阶段调用, 提前完成歧义诊断 + 灵活整数推断
+// - Compiler 在 compile 调用 / 构造点仍调用（泛型体 SemaPass 跳过，作兜底）
 //
 // 副作用: 唯一匹配时会通过 tryInferIntType 把灵活整数实参类型回填到 AST 节点;
 //        因此整条流水线必须保证只调用一次, 否则推断会被重复执行 (幂等但浪费).
@@ -398,8 +398,8 @@ void validatePrivateFieldAccess(StructDeclNode* structDecl, const string& fieldN
 //
 // 内部走 `compileGetRefExpr` 同款链路: scope.lookupSymbol(obj) → 剥 ref → 逐
 // sub 解析 struct decl (含 rc-deref) → fieldIndex → validatePrivateFieldAccess.
-// E3030/E3040/E3041/E3043/E3097 由 ExprGetRefNode::getType() 抛 (均在
-// kMigratedCodes, SemaPass 顶部 setResolvedType 自动重抛), helper 仅补 E3042.
+// E3030/E3040/E3041/E3043/E3097 由 ExprGetRefNode::getType() 抛 (SemaPass 默认重抛,
+// 不在 kDeferredCodes 内), helper 仅补 E3042.
 //
 // scope 取自 node->findNearestScope(); 若拿不到则静默返回 (留 Compiler 兜底).
 // SemaPass 调用时可传当前 `_currentStructName`, Compiler 调用时传当前
@@ -440,7 +440,7 @@ i64 parseIntLiteral(const string& text, int line = 0, int col = 0);
 //   - E3073: Ptr 不支持 < / <= / > / >= (仅开放 == / !=)
 //
 // rightType 与 leftType 类型不匹配 (E3004) 已由 ExprCompareNode::getType 抢先抛
-// (kMigratedCodes 命中), 这里仅做 leftType 单边形态校验.
+// (SemaPass 默认重抛), 这里仅做 leftType 单边形态校验.
 //
 // 调用方:
 //   - Compiler::compileCompareExpr 在 leftType / rightType 计算后调用
@@ -482,6 +482,12 @@ void validateBinOpMethodResolution(FileNode* file, FileNode* sdkFile, const Type
 //
 // 纯 AST / 字符串查表, 无 LLVM 依赖.
 void validateStringTemplateInterps(FileNode* file, FileNode* sdkFile, StringTemplateNode* tpl);
+
+// Phase B：`Array:<T>::with_capacity(n)` 静态工厂形态校验。
+//   - E6011: turbofish 必须恰好 1 个类型实参
+//   - E3131: 恰好 1 个 usize 值实参（灵活整数按 usize 回填）
+// Compiler::compileArrayWithCapacity 同款检查；SemaPass 接管后正常路径不可达。
+void validateArrayWithCapacity(p<ExprPathCallNode> node);
 
 } // namespace sema
 
