@@ -278,7 +278,17 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                     }
                 }
             }
-            if (!isFnNameLiteral) {
+            // 方法点 getType 也返回 TypeKind::Fn（仅编码返回类型），不是 fat-ptr 值；
+            // 真正的 Fn 字段才走 compileFnValueCall。
+            bool isMethodDot = false;
+            if (auto* dot = dynamic_cast<ExprDotNode*>(calleeExpr)) {
+                try {
+                    isMethodDot = !dot->isFieldAccess();
+                } catch (...) { // NOLINT(bugprone-empty-catch)
+                    isMethodDot = true;
+                }
+            }
+            if (!isFnNameLiteral && !isMethodDot) {
                 return compileFnValueCall(node);
             }
         }

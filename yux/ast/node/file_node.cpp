@@ -83,8 +83,8 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
     }
 
     // Array 内建方法符号（供泛型方法调用返回类型推导，codegen 由 compileArrayMethodCall 接管）。
-    // 返回值中的 T 是类型参数占位符，与 Array struct 声明的 typeParams[0] 同名，
-    // ExprCallNode::getType() 的泛型替换逻辑（subst 表）会自动将 T 替换为具体元素类型。
+    // 返回值中的 T 是类型参数占位符，与 Array struct 声明的 typeParams[0] 同名；
+    // ExprDotNode::getType 构造 Fn 时按元素类型替换。
     {
         TypeInfo tpT("T");                                    // 类型参数占位符
         TypeInfo tpRefT("Ref", {make_shared<TypeInfo>(tpT)}); // T&

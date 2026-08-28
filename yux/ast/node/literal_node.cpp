@@ -69,39 +69,20 @@ TypeInfo LiteralObjNode::getType() const {
         auto sym = scope->lookupSymbol(name);
         if (sym) {
             if (sym->kind == SymbolKind::Function) {
-                // 尝试从 FnSymbolInfo 构造准确的 Fn TypeInfo。
-                // 泛型函数保留字符串路径：ExprCallNode::getType() 的
-                // starts_with("fn() ") 路径需要实参上下文做泛型推断（unify），
-                // 直接走 isFn() 会漏掉类型参数替换。
-                // TODO: ExprCallNode::getType() 的 isFn() 路径支持泛型推断后，
-                // 泛型函数也可统一走 FnTag。
+                // 泛型函数也走 FnTag；ExprCallNode::getType 的 isFn() 路径用实参 unify。
                 if (auto* fnSym = scope->lookupFnSymbol(name)) {
-                    bool generic = false;
-                    const Node* cur = this;
-                    while (cur) {
-                        if (auto* f = dynamic_cast<const FileNode*>(cur)) {
-                            auto [fnNode, owner] = f->getFunctionWithOwner(name);
-                            if (fnNode && fnNode->header() && fnNode->header()->isGeneric()) {
-                                generic = true;
-                            }
-                            break;
-                        }
-                        cur = cur->parent();
-                    }
-                    if (!generic) {
-                        vector<sp<TypeInfo>> paramTypes;
-                        paramTypes.reserve(fnSym->params.size());
-                        for (auto& p : fnSym->params)
-                            paramTypes.push_back(make_shared<TypeInfo>(p));
-                        sp<TypeInfo> retType = nullptr;
-                        if (!fnSym->retType.empty() && fnSym->retType.name != "()")
-                            retType = make_shared<TypeInfo>(fnSym->retType);
-                        return TypeInfo(FnTag{}, std::move(paramTypes), std::move(retType));
-                    }
+                    vector<sp<TypeInfo>> paramTypes;
+                    paramTypes.reserve(fnSym->params.size());
+                    for (auto& p : fnSym->params)
+                        paramTypes.push_back(make_shared<TypeInfo>(p));
+                    sp<TypeInfo> retType = nullptr;
+                    if (!fnSym->retType.empty() && fnSym->retType.name != "()")
+                        retType = make_shared<TypeInfo>(fnSym->retType);
+                    return TypeInfo(FnTag{}, std::move(paramTypes), std::move(retType));
                 }
-                // 泛型函数 / 无 FnSymbolInfo → 回退字符串路径
-                // 规范化：unit 返回类型 () 在名称中表现为空（与隐式 void 一致）
-                return TypeInfo("fn() " + (sym->type.name == "()" ? "" : sym->type.name));
+                sp<TypeInfo> retType = nullptr;
+                if (!sym->type.empty() && sym->type.name != "()") retType = make_shared<TypeInfo>(sym->type);
+                return TypeInfo(FnTag{}, {}, std::move(retType));
             }
             // Phase 4a: T& 局部 / 参数 在表达式上下文按值语义出现（自动解引用为 T）；
             // 借用绑定 / 调用借用形参 等需要原始 Ref 类型的场景，在调用点直接读 sym 表
@@ -114,7 +95,7 @@ TypeInfo LiteralObjNode::getType() const {
     }
 
     if (name == "_stdout_write") {
-        return TypeInfo("fn() ");
+        return TypeInfo(FnTag{}, {}, nullptr);
     }
 
     SymbolSuggest::throwSymbolNotFound(scope, static_cast<int>(_value.getLine()),
