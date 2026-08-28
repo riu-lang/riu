@@ -776,7 +776,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             if (hasDeclRet) declRetType = header->retType()->getType();
             // 灵活整数推断仅在有 declRetType 时影响匹配 (Compiler 会先 tryInferIntType
             // 改写 expr 类型再比); 无 decl 时 (E3022 路径) 不构成 skip 理由.
-            // alias 形态 (`IPair = (i32, i32)` 等) 名称直比会假阳性 (`IPair` vs `(i32,i32)`),
+            // alias 形态 (`IPair = (i32, i32)` 等) `TypeInfo==` 会假阳性 (`IPair` vs `(i32,i32)`),
             // sema 暂未做 resolveAlias 递归比对, 任一侧名称命中 alias 即 skip 留 Compiler 兜底.
             auto isAliased = [&](const string& n) -> bool {
                 if (!_file) return false;
@@ -800,9 +800,9 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                         if (retType.empty()) {
                             throw YuxError(line, ErrorCode::E3014, declRetType.getFullName(), "void");
                         }
-                        // 名称直比 —— 不做 resolveAlias (sema 暂无该 helper);
+                        // TypeInfo== —— 不做 resolveAlias (sema 暂无该 helper);
                         // alias 形态 / Self 已在 skip 排除, 这里假阴性可接受 (Compiler 兜底).
-                        if (retType.getFullName() != declRetType.getFullName()) {
+                        if (retType != declRetType) {
                             throw YuxError(line, ErrorCode::E3014, declRetType.getFullName(), retType.getFullName());
                         }
                     } else {

@@ -96,7 +96,7 @@ DynCalleeResolved resolveDynCalleeSpec(const SpecRegistry* registry, FileNode* v
 // 校验:
 //   - E6016: specDecl.signatures 内找不到名为 member 的签名
 //   - E6012: 找到签名但 params arity 与 argTypes 不一致
-//   - E6015: 形参类型 (按 draft 签名 getFullName 比对) 与实参不一致, 带 hint
+//   - E6015: 形参类型 (按 draft 签名 TypeInfo== 比对) 与实参不一致, 带 hint
 //
 // 命中 (合法) 时返回找到的 `FnHeaderNode*`, 让 codegen 走 vtable indirect call.
 // 纯 AST / TypeInfo, 无 LLVM 依赖.

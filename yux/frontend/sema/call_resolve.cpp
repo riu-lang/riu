@@ -543,12 +543,12 @@ FnHeaderNode* resolveDynMethodSig(SpecDeclNode* specDecl, const string& specQual
                        static_cast<int>(argTypes.size()));
     }
 
-    // 4. 参数类型按 D 签名比对 (类型名 + 全名相等; 与 yux 名义类型一致)
+    // 4. 参数类型按 D 签名比对 (TypeInfo::operator==; 与 yux 名义类型一致)
     for (size_t i = 0; i < sig->params().size(); ++i) {
         auto sp = sig->params()[i];
         if (!sp || !sp->type()) continue;
         TypeInfo expected = sp->type()->getType();
-        if (expected.getFullName() != argTypes[i].getFullName()) {
+        if (expected != argTypes[i]) {
             std::string hint = "Dyn<";
             hint += specQualified;
             hint += ">.";
