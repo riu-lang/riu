@@ -46,11 +46,9 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
         return;
     }
     if (type.isArrayGeneric()) {
-        // B-3: Array 析构 — 直接 free _data buffer
-        auto ty = getLLVMType(type);
-        auto z = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        // B-3: Array 析构 — 直接 free _data buffer（GEP 走三字段 layout）
         auto ptrTy = llvm::PointerType::get(_context, 0);
-        auto dataField = _builder.CreateGEP(ty, slotPtr, {z, z}, "old.array.data_field");
+        auto dataField = arrayDataFieldPtr(slotPtr, "old.array");
         auto data = _builder.CreateLoad(ptrTy, dataField, "old.array.data");
         _builder.CreateCall(runtime::getArrayFreeDataFn(_module, _builder), {data});
         return;
@@ -402,8 +400,8 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
             auto weakReleaseFn = runtime::getWeakReleaseFn(_module, _builder);
             _builder.CreateCall(weakReleaseFn, {handle});
         } else if (fieldType.isArrayGeneric()) {
-            // B-3: Array 字段析构 — 调用 _array_free_data
-            auto dataField = _builder.CreateGEP(getLLVMType(fieldType), fieldPtr, {zero, zero}, "fld.arr.data_field");
+            // B-3: Array 字段析构 — 调用 _array_free_data（GEP 走三字段 layout）
+            auto dataField = arrayDataFieldPtr(fieldPtr, "fld.arr");
             auto data = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataField, "fld.arr.data");
             _builder.CreateCall(runtime::getArrayFreeDataFn(_module, _builder), {data});
         } else if (fieldType.isHeap()) {

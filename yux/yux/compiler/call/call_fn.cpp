@@ -634,9 +634,18 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             _movedVars.insert(varName);
             eraseScopeVar(varName);
 
-            // 防御性：堆句柄类型写 null 到源 slot 防 double-free
+            // 防御性：源 slot 清零，防 double-free。
+            // B-3: Array<T> 是三字段 struct {ptr, usize, usize}，不能当单指针
+            // store null——opaque ptr 下会变成「8 字节写进 24 字节 alloca」，
+            // 后续按三字段 GEP 会触发 LLVM `Invalid GetElementPtrInst indices`。
+            // Rc / Weak 同理是 {ptr handle} struct，一律 zeroinitializer。
             if (T.isRc() || T.isArrayGeneric() || T.isWeak()) {
-                _builder.CreateStore(llvm::ConstantPointerNull::get(llvm::PointerType::get(_context, 0)), srcAlloca);
+                if (llvmT->isStructTy()) {
+                    _builder.CreateStore(llvm::ConstantAggregateZero::get(llvmT), srcAlloca);
+                } else {
+                    _builder.CreateStore(llvm::ConstantPointerNull::get(llvm::PointerType::get(_context, 0)),
+                                         srcAlloca);
+                }
             }
             // TODO: 含 RC 字段的普通 struct move 后应清空 alloca，防字段级 double-release
 

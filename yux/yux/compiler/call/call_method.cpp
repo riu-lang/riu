@@ -695,6 +695,15 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         DEBUG_LOG("    Expr: Array.push()");
         auto elemSize = _module->getDataLayout().getTypeAllocSize(elemLLVMType);
         auto elemVal = args[0];
+        // 与 arr[i]=expr 对齐：fresh 实参（move / 字面量）从临时帧摘走，避免
+        // 语句末 popAndReleaseTempFrame 把已写入缓冲的 Array._data 再 free。
+        if (elemType && typeNeedsDestructor(*elemType) && !callNode->getArgs().empty()) {
+            if (!isFreshHandleExpr(callNode->getArgs()[0])) {
+                retainHandleAtCallSite(elemVal, *elemType);
+            } else {
+                consumeTemp(elemVal);
+            }
+        }
         auto lenVal = _builder.CreateLoad(sizeTy, lenFieldPtr, "a.len");
         auto capVal = _builder.CreateLoad(sizeTy, capFieldPtr, "a.cap");
 

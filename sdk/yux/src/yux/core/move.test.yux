@@ -8,6 +8,7 @@
 ;   - elif 分支内 move + 作用域结束跳过析构（_movedVars merge）
 ;   - move(Rc<i32>) 句柄转移
 ;   - move(Array<i32>) 数组所有权转移
+;   - move:<Array<T>> 显式 turbofish + [] / 嵌套 Array GEP（A5）
 ;   - move(String) 字符串所有权转移
 ;   - move(Heap<i32/f64>) 堆分配所有权转移
 ;   - move(x) push 到 Array 中
@@ -120,6 +121,44 @@ fn test_move_array_i32() {
   assert_eq(b.len(), 3)
   assert_eq(b.get(0), 1)
   assert_eq(b.get(2), 3)
+}
+
+; ---- move Array<i32> A5 回归（GEP / B-3 三字段） ----
+
+; 验证：显式 turbofish move:<Array<T>> 后下标 GEP 可读
+#Test
+fn test_move_array_turbofish_index() {
+  let a Array<i32> = [1, 2, 3]
+  let b Array<i32> = move:<Array<i32>>(a)
+  assert_eq(b.len(), 3)
+  assert_eq(b[0], 1)
+  assert_eq(b[2], 3)
+}
+
+; 验证：空 Array move 后仍是空
+#Test
+fn test_move_array_empty_turbofish() {
+  let a Array<i32> = []
+  let b Array<i32> = move:<Array<i32>>(a)
+  assert_true(b.is_empty())
+  assert_eq(b.len(), 0)
+}
+
+; 验证：嵌套 Array<Array<T>> move / push 后元素 GEP
+#Test
+fn test_move_nested_array() {
+  let inner Array<i32> = [10, 20]
+  #Mut let outer Array<Array<i32>> = []
+  outer.push(move(inner))
+  assert_eq(outer.len(), 1)
+  assert_eq(outer[0].len(), 2)
+  assert_eq(outer[0][0], 10)
+  assert_eq(outer[0][1], 20)
+  let moved Array<Array<i32>> = move(outer)
+  assert_eq(moved.len(), 1)
+  assert_eq(moved[0].len(), 2)
+  assert_eq(moved[0][0], 10)
+  assert_eq(moved[0][1], 20)
 }
 
 ; ---- move String ----

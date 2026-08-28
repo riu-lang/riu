@@ -496,6 +496,9 @@ fn test_nested_array_push_inner() {
   #Mut let inner Array<i32> = [1, 2]
   outer.push(move(inner))
   assert_eq(outer.len(), 1)
+  assert_eq(outer[0].len(), 2)
+  assert_eq(outer[0][0], 1)
+  assert_eq(outer[0][1], 2)
 }
 
 ; ==================== Array<f64>（迁自 bug_hunt） ====================

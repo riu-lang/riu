@@ -495,8 +495,9 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     }
 
     // Array<T> 类型 (动态数组，B-3 新布局：去 Builtin/去 Block)
-    // 结构: { ptr _data, u64 _len, u64 _cap }，24 字节
-    // _data 为直接 HeapAlloc 的数据缓冲指针；_data == null 表示空数组（无分配）
+    // 结构: { ptr _data, usize _len, usize _cap }，24 字节
+    // 必须与 getArrayStructTypeForGEP 共用同一 intern 类型，禁止退回裸 ptr
+    // （退回 ptr 后按三字段 GEP → LLVM `Invalid GetElementPtrInst indices`）。
     if (type.isArrayGeneric()) {
         auto elemType = type.arrayGenericElementType();
         if (elemType) {
@@ -506,13 +507,8 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
                 throw YuxError(1, ErrorCode::E4025, std::string("Array"), innerSp ? innerSp->name : std::string("?"));
             }
             DEBUG_LOG_VAL("    -> ArrayGeneric (struct)", "Array<" << elemType->name << ">");
-            vector<llvm::Type*> arrayFields;
-            arrayFields.push_back(llvm::PointerType::get(_context, 0)); // _data: ptr
-            arrayFields.push_back(getSizeType());                       // _len: usize
-            arrayFields.push_back(getSizeType());                       // _cap: usize
-            return llvm::StructType::get(_context, arrayFields);
         }
-        return llvm::PointerType::get(_context, 0);
+        return getArrayStructTypeForGEP();
     }
 
     // Nullable<T> 类型：layout = { bool _has, T _value }
