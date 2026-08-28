@@ -210,7 +210,7 @@ bool isNoCopyTypeIn(const TypeInfo& type, p<FileNode> file, p<FileNode> sdkFile)
     if (type.isRef() || type.isPtr()) return false;
     if (type.isArrayGeneric()) return true; // Array<T> 隐含 #NoCopy
 
-    auto* decl = lookupStructIn(file, sdkFile, type.name);
+    auto* decl = lookupStructIn(file, sdkFile, type.baseStructName());
     if (decl && decl->hasAnno("NoCopy")) return true;
     return false;
 }
@@ -288,7 +288,7 @@ void SemaPass::run() {
     visitSpecDefaults();
 
     // Phase B-1: #NoCopy 字段传播 (E4032) — 含显式 #NoCopy 字段的 struct
-    // 自身也必须标注 #NoCopy（与 Compiler::inferNoCopyAnnotations 镜像）。
+    // 自身也必须标注 #NoCopy。泛型模板按字段基名检查（剥 <T>），不整 decl 跳过。
     {
         // 收集所有可见 struct decl（本地 + SDK + wildcard imports）
         vector<StructDeclNode*> allDecls = _file->getStructDecls();
@@ -308,18 +308,19 @@ void SemaPass::run() {
         }
 
         for (auto* decl : allDecls) {
-            if (decl->isGeneric()) continue;       // 泛型 struct 实例化后才知字段类型
             if (decl->hasAnno("NoCopy")) continue; // 已标注，跳过
             for (auto* field : decl->fields()) {
                 auto ft = field->getType();
                 if (ft.isRc() || ft.isArrayGeneric() || ft.isWeak() || ft.isHeap()) continue;
                 if (ft.isRef() || ft.isPtr()) continue;
                 if (isBuiltinType(ft.name)) continue;
+                // 字段类型为本模板形参（struct W<T> { item T }）时，实例化前无法判定。
+                if (decl->isGeneric() && ft.isNormal() &&
+                    std::ranges::find(decl->typeParams(), ft.name) != decl->typeParams().end()) {
+                    continue;
+                }
 
-                auto* fieldDecl = lookupStructIn(_file, _sdkFile, ft.name);
-                // TODO: 泛型 NoCopy 类型（如 MyNoCopyStruct<i32>）的 ft.name 是修饰名，
-                // lookupStructIn 按基名匹配不到，E4032 静默跳过。
-                // 修法：剥泛型参数后查找，或用 decl 指针替代 name 查找。
+                auto* fieldDecl = lookupStructIn(_file, _sdkFile, ft.baseStructName());
                 if (fieldDecl && fieldDecl->hasAnno("NoCopy")) {
                     throw YuxError(decl->getLineNumber(), decl->getColumn(), ErrorCode::E4032, decl->name().getText(),
                                    field->name().getText());

@@ -1,0 +1,10 @@
+; require-sdk
+; 字段类型为本模板形参时，实例化前不报 E4032
+
+struct Holder<T> {
+  item T
+}
+
+fn main() {
+  ret;
+}

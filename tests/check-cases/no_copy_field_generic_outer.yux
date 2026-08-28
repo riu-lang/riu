@@ -1,0 +1,11 @@
+; require-sdk
+; 泛型 struct 模板含 #NoCopy 字段时不得因未实例化而跳过 E4032
+
+#NoCopy
+struct MyNoCopy<T> {
+  val T
+}
+
+struct Wrapper<T> {        ; check: E4032  模板含 #NoCopy 字段必须标注
+  inner MyNoCopy<T>
+}

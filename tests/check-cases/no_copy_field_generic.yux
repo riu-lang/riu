@@ -1,0 +1,11 @@
+; require-sdk
+; 泛型 #NoCopy struct 实例作字段必须传染（E4032）
+
+#NoCopy
+struct MyNoCopy<T> {
+  val T
+}
+
+struct Outer {             ; check: E4032  含泛型 #NoCopy 字段必须标注
+  inner MyNoCopy<i32>
+}

@@ -544,6 +544,17 @@ struct TypeInfo {
         return name;
     }
 
+    // struct decl 查找用基名：剥 `Foo<Arg>` / `Foo$Arg` 修饰。
+    // TypeGenericNode 的 name 已是基名；此处防御完整名或 LLVM 修饰名被塞进 name 的路径。
+    [[nodiscard]] string baseStructName() const {
+        string n = name;
+        auto cut = n.find_first_of("$<");
+        if (cut != string::npos) {
+            n.resize(cut);
+        }
+        return n;
+    }
+
     [[nodiscard]] string formatFnGeneric(bool mangle) const {
         string result = "Function<";
         for (size_t i = 0; i < genericArgs.size(); ++i) {

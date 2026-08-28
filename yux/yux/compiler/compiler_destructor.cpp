@@ -1100,10 +1100,11 @@ bool Compiler::isNoCopyType(const TypeInfo& type) const {
     // B-3: Array<T> 去 Builtin 后为 #NoCopy（有 fn ~()，含 _data 所有权）
     if (type.isArrayGeneric()) return true;
 
-    // 查 local struct decl 的显式 #NoCopy 注解
-    auto* decl = _file ? _file->getStructDecl(type.name) : nullptr;
+    // 查 local struct decl 的显式 #NoCopy 注解（按基名，与 SemaPass::isNoCopyTypeIn 对齐）
+    const string baseName = type.baseStructName();
+    auto* decl = _file ? _file->getStructDecl(baseName) : nullptr;
     if (!decl && _yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
-        decl = _yux->sdkFile()->getStructDecl(type.name);
+        decl = _yux->sdkFile()->getStructDecl(baseName);
     }
     if (decl && decl->hasAnno("NoCopy")) return true;
 
