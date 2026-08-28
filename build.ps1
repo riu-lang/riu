@@ -140,10 +140,6 @@ if ($needGen) {
     } finally {
         Pop-Location
     }
-    $cc = Join-Path $OutDir 'compile_commands.json'
-    if (Test-Path -LiteralPath $cc) {
-        Copy-Item -LiteralPath $cc -Destination (Join-Path $ProjectRoot 'compile_commands.json') -Force
-    }
 } else {
     Write-Log "gn: $OutDir (up to date)" DarkGray
 }

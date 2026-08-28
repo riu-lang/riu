@@ -575,8 +575,8 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
     if (hasResult) {
         try {
             resultType = tryBlock->resultExpr()->getType();
-        } catch (...) {
-        } // NOLINT(bugprone-empty-catch)
+        } catch (...) { // NOLINT(bugprone-empty-catch) — getType 失败: 仍编译 resultExpr，异常留上层
+        }
         tryResult = compileExpr(tryBlock->resultExpr());
     }
 

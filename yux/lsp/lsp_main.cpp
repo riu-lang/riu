@@ -13,7 +13,7 @@
 #include <iostream>
 #include <string>
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv) { // NOLINT(bugprone-exception-escape) — iostream 可能抛 ios_base::failure
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--version") {
             std::cout << "yux-lsp " YUX_VERSION "\n";

@@ -12,7 +12,6 @@
 #ifndef YUX_LANG_FORMAT_TRIVIA_H
 #define YUX_LANG_FORMAT_TRIVIA_H
 
-#include <cstddef>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -24,10 +23,10 @@ class CommonTokenStream;
 namespace yux::format {
 
 struct TriviaComment {
-    std::string text;       // 原始文本，含 `;` 引导
-    bool isLineComment;     // 现在仅有行注释；保留字段供后续扩展
-    std::size_t line;       // 1-based 源码行号
-    bool blankBefore;       // 该注释前在源码里是否存在空行（与上一注释或上一 default token 对比）
+    std::string text;   // 原始文本，含 `;` 引导
+    bool isLineComment; // 现在仅有行注释；保留字段供后续扩展
+    std::size_t line;   // 1-based 源码行号
+    bool blankBefore;   // 该注释前在源码里是否存在空行（与上一注释或上一 default token 对比）
 };
 
 class TriviaMap {

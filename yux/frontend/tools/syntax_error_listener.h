@@ -10,11 +10,9 @@
 #ifndef YUX_LANG_SYNTAX_ERROR_LISTENER_H
 #define YUX_LANG_SYNTAX_ERROR_LISTENER_H
 
+#include "BaseErrorListener.h"
 #include "error_code.h"
 #include "types.h"
-#include "BaseErrorListener.h"
-
-#include <ostream>
 
 class SyntaxErrorListener : public antlr4::BaseErrorListener {
 public:
@@ -24,7 +22,7 @@ public:
                      const std::string& msg, std::exception_ptr e) override;
 
     [[nodiscard]] bool hasErrors() const { return _errorCount > 0; }
-    [[nodiscard]] int  errorCount() const { return _errorCount; }
+    [[nodiscard]] int errorCount() const { return _errorCount; }
 
     // 首个错误的 ErrorCodeDef 指针与位置；仅 syntaxError 至少调用一次后有效。
     // 用于调用方构造 YuxError 时复现正确的错误码与行号（而非万能 E5010）。

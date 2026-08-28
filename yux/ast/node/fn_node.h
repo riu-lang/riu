@@ -23,9 +23,8 @@ protected:
     bool _isFrozen = false;
 
 public:
-    explicit FnParamNode(const p<Node>& parent, Token name, p<TypeNode> type) :
-        Node(parent), _name(name), _type(type) {
-    }
+    explicit FnParamNode(const p<Node>& parent, Token name, p<TypeNode> type)
+        : Node(parent), _name(std::move(name)), _type(type) {}
 
     [[nodiscard]] Token name() const;
     [[nodiscard]] p<TypeNode> type() const;
@@ -44,9 +43,8 @@ protected:
     p<TypeNode> _retType;
 
 public:
-    FnHeaderNode(const p<Node>& parent, Token name, p<TypeNode> retType) :
-        Node(parent), Named(name), _retType(retType) {
-    }
+    FnHeaderNode(const p<Node>& parent, Token name, p<TypeNode> retType)
+        : Node(parent), Named(std::move(name)), _retType(retType) {}
 
     void addParam(p<FnParamNode> param);
 
@@ -83,4 +81,4 @@ public:
     [[nodiscard]] string getLocation() const override;
 };
 
-#endif //YUX_LANG_FN_NODE_H
+#endif // YUX_LANG_FN_NODE_H

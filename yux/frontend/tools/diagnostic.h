@@ -16,7 +16,6 @@
 #define YUX_LANG_DIAGNOSTIC_H
 
 #include "types.h"
-#include <ostream>
 
 // DiagSeverity 在 error_code.h 中定义（Note < Warning < Error）
 
@@ -27,8 +26,8 @@ struct Diagnostic {
     size_t line = 0;       // 1-based；0 = 未知
     int col = 0;           // 1-based；0 = 未知
     string message;
-    vector<string> notes;  // Phase 2+ 使用
-    vector<string> hints;  // Phase 5 使用
+    vector<string> notes; // Phase 2+ 使用
+    vector<string> hints; // Phase 5 使用
 };
 
 // CLI 严重度覆盖策略（Phase 4）
@@ -68,9 +67,7 @@ public:
     // 把 YuxError 转成 Diagnostic 并渲染到 out。
     // sourcePath 决定文件名前缀；若为空，前缀只剩 line:col。
     // 引擎内部按 sourcePath 缓存源文件内容（同一个引擎实例多次调用同一文件不重复读）。
-    static void renderYuxError(std::ostream& out,
-                               const string& sourcePath,
-                               const YuxError& err);
+    static void renderYuxError(std::ostream& out, const string& sourcePath, const YuxError& err);
 
     // 通用渲染入口
     static void render(std::ostream& out, const Diagnostic& diag);
@@ -90,9 +87,7 @@ public:
     //
     // 不应用到 Error 默认严重度的 YuxError —— 那种应当 `throw`，由顶层 catch 走
     // renderYuxError。emit 内部 assert 默认严重度 ≤ Warning。
-    static void emit(std::ostream& out,
-                     const string& sourcePath,
-                     const YuxError& err);
+    static void emit(std::ostream& out, const string& sourcePath, const YuxError& err);
 
     // 便利重载：默认 std::cerr
     static void emit(const string& sourcePath, const YuxError& err);

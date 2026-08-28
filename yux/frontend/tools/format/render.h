@@ -14,7 +14,6 @@
 #ifndef YUX_LANG_FORMAT_RENDER_H
 #define YUX_LANG_FORMAT_RENDER_H
 
-#include <cstddef>
 #include <string>
 
 #include "tools/format/doc.h"

@@ -27,8 +27,7 @@ class ASTBuilder : public yux::yuxParserBaseVisitor {
         auto node = new T(std::forward<Args>(args)...);
         _nodes.push_back(node);
         if (ctx) {
-            auto start = ctx->getStart();
-            if (start) {
+            if (auto start = ctx->getStart()) {
                 // 列号转 1-based（ANTLR 的 charPositionInLine 为 0-based）
                 node->setLocation(static_cast<int>(start->getLine()),
                                   static_cast<int>(start->getCharPositionInLine()) + 1);

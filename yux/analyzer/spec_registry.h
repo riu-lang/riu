@@ -30,7 +30,7 @@ class SpecRegistry {
 public:
     // spec 解析结果: 完全限定名 + 声明节点 + 所属文件
     struct Resolved {
-        string qualifiedName;       // "<moduleName>.<D>"; 模块名为空时退化为裸名
+        string qualifiedName; // "<moduleName>.<D>"; 模块名为空时退化为裸名
         SpecDeclNode* decl;
         FileNode* ownerFile;
     };
@@ -48,7 +48,7 @@ public:
     std::optional<Resolved> resolve(const string& bareName, FileNode* visibleFrom) const;
 
     // 已注册的全部 spec (qualified name -> Resolved).
-    const std::map<string, Resolved>& byQualified() const { return _byQualified; }
+    [[nodiscard]] const std::map<string, Resolved>& byQualified() const { return _byQualified; }
 
 private:
     Yux* _yux;
@@ -60,4 +60,4 @@ private:
     static string makeQualified(const string& moduleName, const string& specName);
 };
 
-#endif //YUX_LANG_SPEC_REGISTRY_H
+#endif // YUX_LANG_SPEC_REGISTRY_H

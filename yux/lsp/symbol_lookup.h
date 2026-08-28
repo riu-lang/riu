@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "position.h"
+#include "types.h"
 
 class FileNode;
 class FnNode;
@@ -35,14 +36,14 @@ TokenHit identifierAt(const std::string& docText, LspPosition pos);
 
 // 名字查找：先 file 本地，再依次走 wildcardImports / moduleAliases / packageAliases
 struct LookupResult {
-    enum class Kind { None, Function, Struct, GlobalConst };
+    enum class Kind : u8 { None, Function, Struct, GlobalConst };
     Kind kind = Kind::None;
     FileNode* ownerFile = nullptr;
     FnNode* fn = nullptr;
     StructDeclNode* sd = nullptr;
-    StructImplNode* si = nullptr;          // 仅 Struct 时附带（可能为 nullptr）
+    StructImplNode* si = nullptr; // 仅 Struct 时附带（可能为 nullptr）
     GlobalConstNode* gc = nullptr;
-    std::vector<FnNode*> overloads;        // Function 时收集所有同名 fn（含跨文件）
+    std::vector<FnNode*> overloads; // Function 时收集所有同名 fn（含跨文件）
 };
 LookupResult lookupName(Project& project, FileNode* fromFile, const std::string& name);
 
@@ -66,8 +67,8 @@ std::string typeInfoDisplay(const TypeInfo& info);
 
 // 用于 signatureHelp：把 fn 渲染成签名字符串与参数 label 范围列表
 struct SignatureLabels {
-    std::string label;                          // "fn name(p1 T1, p2 T2) Ret"
-    std::vector<std::pair<int, int>> params;    // 每个参数在 label 中 [start, end) 字符偏移
+    std::string label;                       // "fn name(p1 T1, p2 T2) Ret"
+    std::vector<std::pair<int, int>> params; // 每个参数在 label 中 [start, end) 字符偏移
 };
 SignatureLabels renderSignature(FnNode* fn);
 
@@ -85,9 +86,9 @@ CompletionVisible collectVisible(Project& project, FileNode* fromFile);
 //   - completion：cursor 在 `.` 之后（member 可空）→ memberStart/End 为 cursor 自身
 struct ReceiverCtx {
     bool found = false;
-    std::string receiver;     // dot 左侧的 IDENT
-    std::string member;       // dot 右侧的 IDENT；completion 后缀为空时为 ""
-    LspPosition memberStart;  // 仅 member 非空时有意义
+    std::string receiver;    // dot 左侧的 IDENT
+    std::string member;      // dot 右侧的 IDENT；completion 后缀为空时为 ""
+    LspPosition memberStart; // 仅 member 非空时有意义
     LspPosition memberEnd;
 };
 // member 模式：cursor 在 IDENT 内/末，IDENT 前为 `\s*\.\s*IDENT`
@@ -95,22 +96,20 @@ ReceiverCtx receiverContextAt(const std::string& docText, LspPosition pos);
 
 // 在 fromFile（含其 wildcardImports）找名为 structName 的 struct，返回成员定位
 struct MemberHit {
-    enum class Kind { None, Field, Method } kind = Kind::None;
+    enum class Kind : u8 { None, Field, Method } kind = Kind::None;
     FileNode* ownerFile = nullptr;
     StructFieldNode* field = nullptr;     // Field 时有效
-    FnNode* method = nullptr;              // Method 时取首个重载
-    std::vector<FnNode*> methodOverloads;  // Method 时全部同名重载
+    FnNode* method = nullptr;             // Method 时取首个重载
+    std::vector<FnNode*> methodOverloads; // Method 时全部同名重载
 };
-MemberHit lookupStructMember(Project& project, FileNode* fromFile,
-                              const std::string& structName,
-                              const std::string& memberName);
+MemberHit lookupStructMember(Project& project, FileNode* fromFile, const std::string& structName,
+                             const std::string& memberName);
 
 struct StructMembers {
     std::vector<StructDeclNode*> structs; // 命中的 struct 声明（用于字段渲染）
-    std::vector<FnNode*> methods;          // 该 struct 的所有方法（含重载）
+    std::vector<FnNode*> methods;         // 该 struct 的所有方法（含重载）
 };
-StructMembers collectStructMembers(Project& project, FileNode* fromFile,
-                                    const std::string& structName);
+StructMembers collectStructMembers(Project& project, FileNode* fromFile, const std::string& structName);
 
 // 在文档文本中向左扫描定位"当前正在调用的函数名"（用于 signatureHelp）
 // 返回 (callee, activeParameter)；找不到则 found=false

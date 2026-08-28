@@ -97,7 +97,7 @@ struct ConstantValue {
         if (kind != Kind::Int) return 0;
 
         // 计算 type 的位宽
-        int w = 0;
+        auto w = 0u;
         const auto& n = type.name;
         if (n == "i8" || n == "u8")
             w = 8;
@@ -114,8 +114,8 @@ struct ConstantValue {
 
         if (w >= 64) return static_cast<i64>(intBits);
 
-        u64 signBit = static_cast<u64>(1) << (w - 1);
-        u64 mask = (static_cast<u64>(1) << w) - 1;
+        u64 signBit = static_cast<u64>(1) << (w - 1u);
+        u64 mask = (static_cast<u64>(1) << w) - 1u;
         if (intBits & signBit) {
             // 符号位为 1，做符号扩展
             return static_cast<i64>(intBits | ~mask);

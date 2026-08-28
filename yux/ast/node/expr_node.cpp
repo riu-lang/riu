@@ -2024,7 +2024,7 @@ TypeInfo ExprPathCallNode::getType() const {
         for (auto& ta : _lhsTypeArgs) {
             args.push_back(make_shared<TypeInfo>(ta->getType()));
         }
-        return TypeInfo(n, std::move(args));
+        return {n, std::move(args)};
     }
 
     return TypeInfo(n);

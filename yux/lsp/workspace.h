@@ -55,19 +55,19 @@ public:
     bool rebuild();
 
     // 查找：归一化路径 → FileNode
-    FileNode* fileForPath(const std::string& normPath) const;
+    [[nodiscard]] FileNode* fileForPath(const std::string& normPath) const;
     // 项目里所有已加载的 (normPath, FileNode) — 用于跨文件查找
-    const std::map<std::string, FileNode*>& allFiles() const { return _byPath; }
+    [[nodiscard]] const std::map<std::string, FileNode*>& allFiles() const { return _byPath; }
 
-    FileNode* sdkFile() const { return _yux ? _yux->sdkFile() : nullptr; }
+    [[nodiscard]] FileNode* sdkFile() const { return _yux ? _yux->sdkFile() : nullptr; }
 
-    const std::string& rootKey() const { return _rootKey; } // 用于 workspace map
-    const std::string& mainPath() const { return _mainPath; }
-    const std::string& buildError() const { return _buildError; }
-    bool ok() const { return _ok; }
+    [[nodiscard]] const std::string& rootKey() const { return _rootKey; } // 用于 workspace map
+    [[nodiscard]] const std::string& mainPath() const { return _mainPath; }
+    [[nodiscard]] const std::string& buildError() const { return _buildError; }
+    [[nodiscard]] bool ok() const { return _ok; }
 
 private:
-    enum class Mode { Project, SingleFile };
+    enum class Mode : u8 { Project, SingleFile };
     Mode _mode = Mode::Project;
     std::string _rootKey;  // 归一化后的项目根（或单文件路径）
     std::string _rootDir;  // 原始 rootDir（项目模式）

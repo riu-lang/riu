@@ -202,8 +202,8 @@ p<LambdaExprNode> ASTBuilder::makeTrailingLambda(yux::yuxParser::TrailingLambdaC
         stmts.push_back(any_cast_p<StatementNode>(visit(s)));
     }
     _scopeStack.pop_back();
-    auto node = createWithLine<LambdaExprNode>(tl, scope, LambdaExprNode::Form::Block, std::move(params),
-                                               std::move(retType), nullptr, std::move(stmts));
+    auto node = createWithLine<LambdaExprNode>(tl, scope, LambdaExprNode::Form::Block, std::move(params), retType,
+                                               nullptr, std::move(stmts));
     node->setBodyScope(bodyScope);
     return node;
 }
@@ -413,9 +413,12 @@ u32 parseHex(const string& s, size_t pos, size_t n) {
     for (size_t k = 0; k < n; ++k) {
         char c = s[pos + k];
         v <<= 4;
-        if (c >= '0' && c <= '9') v |= static_cast<u32>(c - '0');
-        else if (c >= 'a' && c <= 'f') v |= static_cast<u32>(c - 'a' + 10);
-        else v |= static_cast<u32>(c - 'A' + 10);
+        if (c >= '0' && c <= '9')
+            v |= static_cast<u32>(c - '0');
+        else if (c >= 'a' && c <= 'f')
+            v |= static_cast<u32>(c - 'a' + 10);
+        else
+            v |= static_cast<u32>(c - 'A' + 10);
     }
     return v;
 }
@@ -424,11 +427,14 @@ int utf8CodepointsBefore(const string& s, size_t byteEnd) {
     int n = 0;
     for (size_t j = 0; j < byteEnd && j < s.size();) {
         auto c = static_cast<unsigned char>(s[j]);
-        if ((c & 0x80) == 0) j += 1;
-        else if ((c & 0xE0) == 0xC0) j += 2;
-        else if ((c & 0xF0) == 0xE0) j += 3;
-        else if ((c & 0xF8) == 0xF0) j += 4;
-        else j += 1;
+        if ((c & 0xE0) == 0xC0)
+            j += 2;
+        else if ((c & 0xF0) == 0xE0)
+            j += 3;
+        else if ((c & 0xF8) == 0xF0)
+            j += 4;
+        else
+            j += 1; // ASCII 或非法起始字节
         ++n;
     }
     return n;

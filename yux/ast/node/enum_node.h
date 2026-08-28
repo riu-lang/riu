@@ -18,7 +18,9 @@
 #define YUX_LANG_ENUM_NODE_H
 
 #include "node.h"
+
 #include "type_node.h"
+#include <utility>
 
 // 单个 variant: 短名 + 可选 tuple-style payload
 // payloadTypes 为空表示零参 variant
@@ -26,9 +28,7 @@ class EnumVariantNode : public Node, public Named {
     vector<p<TypeNode>> _payloadTypes;
 
 public:
-    EnumVariantNode(const p<Node>& parent, Token name) :
-        Node(parent), Named(name) {
-    }
+    EnumVariantNode(const p<Node>& parent, Token name) : Node(parent), Named(std::move(name)) {}
 
     void addPayloadType(p<TypeNode> ty) { _payloadTypes.push_back(ty); }
     void setPayloadTypes(vector<p<TypeNode>> tys) { _payloadTypes = std::move(tys); }
@@ -46,8 +46,7 @@ class EnumDeclNode : public ScopeNode, public Named, public Annotated {
     bool _isPrivate;
 
 public:
-    EnumDeclNode(const p<Node>& parent, Token name) :
-        ScopeNode(parent), Named(name) {
+    EnumDeclNode(const p<Node>& parent, const Token& name) : ScopeNode(parent), Named(name) {
         _isPrivate = !name.getText().empty() && name.getText()[0] == '_';
     }
 
@@ -77,4 +76,4 @@ public:
     [[nodiscard]] bool isPrivate() const { return _isPrivate; }
 };
 
-#endif //YUX_LANG_ENUM_NODE_H
+#endif // YUX_LANG_ENUM_NODE_H

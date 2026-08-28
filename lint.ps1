@@ -94,8 +94,6 @@ function Get-CompileCommandsFiles {
 function Find-ClangTidy {
     $cmd = Get-Command clang-tidy -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
-    $cand = 'D:\LLVM\latest\bin\clang-tidy.exe'
-    if (Test-Path -LiteralPath $cand) { return $cand }
     return $null
 }
 

@@ -5,7 +5,9 @@
 #define YUX_LANG_ALIAS_NODE_H
 
 #include "node.h"
+
 #include "type_node.h"
+#include <utility>
 
 // 顶层透明类型别名 `A = T` / `Pair<T> = (T, T)`
 // 别名是编译期等价（非 newtype）；解析时透明替换为目标类型
@@ -14,9 +16,8 @@ class AliasDeclNode : public ScopeNode, public Named {
     p<TypeNode> _target;
 
 public:
-    AliasDeclNode(const p<Node>& parent, Token name, p<TypeNode> target) :
-        ScopeNode(parent), Named(name), _target(target) {
-    }
+    AliasDeclNode(const p<Node>& parent, Token name, p<TypeNode> target)
+        : ScopeNode(parent), Named(std::move(name)), _target(target) {}
 
     void setTypeParams(vector<string> params) { _typeParams = std::move(params); }
     void setTarget(p<TypeNode> target) { _target = target; }
@@ -25,4 +26,4 @@ public:
     [[nodiscard]] p<TypeNode> target() const { return _target; }
 };
 
-#endif //YUX_LANG_ALIAS_NODE_H
+#endif // YUX_LANG_ALIAS_NODE_H

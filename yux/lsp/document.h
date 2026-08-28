@@ -21,22 +21,23 @@
 #include <vector>
 
 #include "position.h"
+#include "types.h"
 
 namespace antlr4 {
 class ANTLRInputStream;
 class CommonTokenStream;
-}
+} // namespace antlr4
 
 namespace yux {
 class yuxLexer;
 class yuxParser;
-namespace yuxParserNS {} // 占位
-}
+namespace yuxParserNS {} // namespace yuxParserNS
+} // namespace yux
 
 namespace yux::lsp {
 
 // LSP DiagnosticSeverity
-enum class Severity : int {
+enum class Severity : u8 {
     Error = 1,
     Warning = 2,
     Information = 3,
@@ -51,7 +52,7 @@ struct Diagnostic {
 };
 
 // LSP SymbolKind 子集（参见 lsp 规范）
-enum class SymbolKind : int {
+enum class SymbolKind : u8 {
     Function = 12,
     Struct = 23,
     Constant = 14,
@@ -60,9 +61,9 @@ enum class SymbolKind : int {
 struct DocSymbol {
     std::string name;
     SymbolKind kind;
-    LspPosition rangeStart;       // 整个声明范围
+    LspPosition rangeStart; // 整个声明范围
     LspPosition rangeEnd;
-    LspPosition selStart;         // 名字范围（用于 selectionRange）
+    LspPosition selStart; // 名字范围（用于 selectionRange）
     LspPosition selEnd;
 };
 
@@ -79,12 +80,12 @@ public:
     // 触发解析；幂等。返回是否真的重新解析（脏才解析）。
     bool parseIfDirty();
 
-    int version() const { return _version; }
-    const std::string& uri() const { return _uri; }
-    const std::string& text() const { return _text; }
+    [[nodiscard]] int version() const { return _version; }
+    [[nodiscard]] const std::string& uri() const { return _uri; }
+    [[nodiscard]] const std::string& text() const { return _text; }
 
-    const std::vector<Diagnostic>& diagnostics() const { return _diagnostics; }
-    const std::vector<DocSymbol>& symbols() const { return _symbols; }
+    [[nodiscard]] const std::vector<Diagnostic>& diagnostics() const { return _diagnostics; }
+    [[nodiscard]] const std::vector<DocSymbol>& symbols() const { return _symbols; }
 
 private:
     std::string _uri;

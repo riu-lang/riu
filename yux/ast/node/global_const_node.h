@@ -15,7 +15,8 @@ class GlobalConstNode : public Node, public Named, public Typed {
     bool _isInline; // #Inline 注解：不产生 GlobalVariable，使用处直接替换常量值（类似 C #define）
 
 public:
-    GlobalConstNode(const p<Node>& parent, Token name, p<TypeNode> type, p<ExprNode> value, bool isInline = false)
+    GlobalConstNode(const p<Node>& parent, const Token& name, p<TypeNode> type, p<ExprNode> value,
+                    bool isInline = false)
         : Node(parent), Named(name), _type(type), _value(value), _isInline(isInline) {
         _isPrivate = !name.getText().empty() && name.getText()[0] == '_';
     }

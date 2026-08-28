@@ -12,10 +12,12 @@
 #include <string>
 #include <vector>
 
+#include "types.h"
+
 namespace yux::lsp {
 
 // LSP CompletionItemKind 子集
-enum class CompletionKind : int {
+enum class CompletionKind : u8 {
     Class = 7,
     Function = 3,
     Keyword = 14,
@@ -23,7 +25,7 @@ enum class CompletionKind : int {
 };
 
 // LSP InsertTextFormat
-enum class InsertFormat : int {
+enum class InsertFormat : u8 {
     PlainText = 1,
     Snippet = 2,
 };
@@ -32,9 +34,9 @@ struct CompletionItem {
     std::string label;
     CompletionKind kind = CompletionKind::Keyword;
     std::string detail;
-    std::string insertText;            // 空 → 用 label
+    std::string insertText; // 空 → 用 label
     InsertFormat format = InsertFormat::PlainText;
-    std::string documentation;         // 空 → 不发
+    std::string documentation; // 空 → 不发
 };
 
 // 全部静态项；幂等、无状态、可重复调用

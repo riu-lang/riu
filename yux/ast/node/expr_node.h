@@ -43,8 +43,8 @@ public:
     [[nodiscard]] const TypeInfo& resolvedType() const { return *_resolvedType; }
 
     void setResolvedSymbol(ResolvedSymbol s) { _resolvedSymbol = s; }
-    void setResolvedVar(SymbolInfo* v) { _resolvedSymbol = ResolvedSymbol{v, nullptr}; }
-    void setResolvedFn(FnSymbolInfo* f) { _resolvedSymbol = ResolvedSymbol{nullptr, f}; }
+    void setResolvedVar(SymbolInfo* v) { _resolvedSymbol = ResolvedSymbol{.var = v, .fn = nullptr}; }
+    void setResolvedFn(FnSymbolInfo* f) { _resolvedSymbol = ResolvedSymbol{.var = nullptr, .fn = f}; }
     [[nodiscard]] bool hasResolvedSymbol() const { return _resolvedSymbol.has_value(); }
     [[nodiscard]] const ResolvedSymbol& resolvedSymbol() const { return *_resolvedSymbol; }
 };
@@ -114,7 +114,7 @@ public:
 
 class ExprAddSubNode : public ExprNode {
 public:
-    enum class Op { Add, Sub };
+    enum class Op : u8 { Add, Sub };
 
 protected:
     Op _op;
@@ -135,7 +135,7 @@ public:
 
 class ExprMulDivModNode : public ExprNode {
 public:
-    enum class Op { Mul, Div, Mod };
+    enum class Op : u8 { Mul, Div, Mod };
 
 protected:
     Op _op;
@@ -156,7 +156,7 @@ public:
 
 class ExprBinOpNode : public ExprNode {
 public:
-    enum class Op { And, Or, Xor, Shl, Shr };
+    enum class Op : u8 { And, Or, Xor, Shl, Shr };
 
 protected:
     Op _op;
@@ -200,13 +200,13 @@ protected:
 
 public:
     ExprDotNode(const p<Node>& parent, p<ExprNode> baseExpr, Token member)
-        : ExprNode(parent), _baseExpr(baseExpr), _member(member) {}
+        : ExprNode(parent), _baseExpr(baseExpr), _member(std::move(member)) {}
 
     ExprDotNode(const p<Node>& parent, p<ExprNode> baseExpr, Token member, bool safe)
-        : ExprNode(parent), _baseExpr(baseExpr), _member(member), _safe(safe) {}
+        : ExprNode(parent), _baseExpr(baseExpr), _member(std::move(member)), _safe(safe) {}
 
     ExprDotNode(const p<Node>& parent, p<ExprNode> baseExpr, Token member, bool safe, string specQualifier)
-        : ExprNode(parent), _baseExpr(baseExpr), _member(member), _safe(safe),
+        : ExprNode(parent), _baseExpr(baseExpr), _member(std::move(member)), _safe(safe),
           _specQualifier(std::move(specQualifier)) {}
 
     [[nodiscard]] const p<ExprNode>& baseExpr() const;
@@ -234,7 +234,7 @@ public:
 
 class ExprCompareNode : public ExprNode {
 public:
-    enum class Op { Eq, Ne, Lt, Le, Gt, Ge, AndAnd, OrOr };
+    enum class Op : u8 { Eq, Ne, Lt, Le, Gt, Ge, AndAnd, OrOr };
 
 protected:
     Op _op;
@@ -364,7 +364,7 @@ class ExprGetRefNode : public ExprNode {
 
 public:
     ExprGetRefNode(const p<Node>& parent, Token obj, vector<Token> subs)
-        : ExprNode(parent), _obj(obj), _subs(std::move(subs)) {}
+        : ExprNode(parent), _obj(std::move(obj)), _subs(std::move(subs)) {}
 
     [[nodiscard]] Token obj() const { return _obj; }
     [[nodiscard]] const vector<Token>& subs() const { return _subs; }
@@ -375,7 +375,7 @@ public:
 
 class ExprUnaryNode : public ExprNode {
 public:
-    enum class Op { Neg, Rev, Not };
+    enum class Op : u8 { Neg, Rev, Not };
 
 protected:
     Op _op;
@@ -417,7 +417,7 @@ struct CaptureSlot {
 // retType：显式标注则非空；否则 nullptr，由期望函数类型或 body 推断。
 class LambdaExprNode : public ExprNode {
 public:
-    enum class Form { Expr, Block };
+    enum class Form : u8 { Expr, Block };
 
 private:
     Form _form;
@@ -429,7 +429,7 @@ private:
     // 让 body 表达式 / 语句的 parent 链可经此链路向上找到形参（findNearestScope）。
     // body 内的符号引用在 sema 阶段可识别"形参 vs 自由变量"，闭包来到 Phase 4 之前
     // 自由变量直接报错（Phase 2c）。
-    p<ScopeNode> _bodyScope;
+    p<ScopeNode> _bodyScope{nullptr};
     // Phase 2b：调用 / 赋值点反推后的整体 Fn 类型（getType() 优先返回）
     TypeInfo _inferredFnType;
     // Phase 4a：自由变量捕获槽位（emit 期间增量填充）
@@ -454,14 +454,14 @@ public:
     [[nodiscard]] u64 capturesTotalSize() const { return _capturesTotalSize; }
     [[nodiscard]] int findCapture(const string& name) const {
         for (size_t i = 0; i < _captures.size(); ++i)
-            if (_captures[i].name == name) return (int)i;
+            if (_captures[i].name == name) return static_cast<int>(i);
         return -1;
     }
     // 追加捕获槽位；offset / totalSize 由调用方按对齐规则算好。返回新槽位索引。
     int addCapture(const string& name, TypeInfo type, u64 offset, u64 totalSize) {
-        _captures.push_back(CaptureSlot{name, std::move(type), offset});
+        _captures.push_back(CaptureSlot{.name = name, .type = std::move(type), .byteOffset = offset});
         _capturesTotalSize = totalSize;
-        return (int)_captures.size() - 1;
+        return static_cast<int>(_captures.size()) - 1;
     }
     // 重置捕获状态（emitLambdaFunction 缓存命中前的清场，避免重复 append）
     void clearCaptures() {
@@ -591,7 +591,7 @@ class EnumPatternNode : public Node {
 
 public:
     // 兜底分支
-    EnumPatternNode(const p<Node>& parent, Token elseTok)
+    EnumPatternNode(const p<Node>& parent, const Token& elseTok)
         : Node(parent), _isElse(true), _enumName(elseTok), _variantName(elseTok) {}
     // enum 模式
     EnumPatternNode(const p<Node>& parent, Token enumName, Token variantName, vector<Token> binds)

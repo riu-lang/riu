@@ -16,7 +16,6 @@
 #ifndef YUX_LANG_PKG_CACHE_H
 #define YUX_LANG_PKG_CACHE_H
 
-#include <cstdint>
 #include <string>
 #include <unordered_map>
 
@@ -26,11 +25,11 @@ public:
     // 加载 cachePath 下的缓存。指纹不匹配或文件缺失则置 _valid = false（即所有 isFresh 返回 false）。
     void load(const std::string& cachePath, const std::string& expectedFingerprint);
     // src 是否仍与缓存条目一致，且 obj 存在。
-    bool isFresh(const std::string& srcAbs, const std::string& objPath) const;
+    [[nodiscard]] bool isFresh(const std::string& srcAbs, const std::string& objPath) const;
     // 写入/更新条目。
     void mark(const std::string& srcAbs);
     // 是否需要写回。
-    bool dirty() const { return _dirty; }
+    [[nodiscard]] bool dirty() const { return _dirty; }
     // 原子写回到 cachePath。
     bool flush(const std::string& fingerprint);
 
@@ -56,11 +55,11 @@ public:
     // 把所有 dirty 的 PkgCache flush 到磁盘。
     void flushAll();
 
-    const std::string& fingerprint() const { return _fingerprint; }
+    [[nodiscard]] const std::string& fingerprint() const { return _fingerprint; }
 
 private:
     // 计算 srcAbs 应该归属的 cache 文件路径（`<buildDir>/<rel-dir>/<dirname>.cache`）。
-    std::string cachePathFor(const std::string& srcAbs) const;
+    [[nodiscard]] std::string cachePathFor(const std::string& srcAbs) const;
     PkgCache& getOrLoad(const std::string& srcAbs);
 
     std::string _projectRoot;
@@ -75,8 +74,6 @@ std::string computeYuxFingerprint();
 // 把源文件相对项目根的相对路径镜像到 buildDir 下，得到 obj/ir 路径（不含扩展名的 base）。
 //   `<projectRoot>/src/A/B/foo.yux` -> `<buildDir>/src/A/B/foo`
 // 调用方再拼 `.obj` / `.ll`。
-std::string mirroredOutputBase(const std::string& projectRoot,
-                               const std::string& buildDir,
-                               const std::string& srcAbs);
+std::string mirroredOutputBase(const std::string& projectRoot, const std::string& buildDir, const std::string& srcAbs);
 
 #endif

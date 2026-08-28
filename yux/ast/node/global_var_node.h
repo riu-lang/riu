@@ -35,7 +35,7 @@ class GlobalVarNode : public Node, public Named, public Typed {
     std::optional<ConstantValue> _constValue;
 
 public:
-    GlobalVarNode(const p<Node>& parent, Token name, p<TypeNode> type, p<ExprNode> value, bool isMutable = false)
+    GlobalVarNode(const p<Node>& parent, const Token& name, p<TypeNode> type, p<ExprNode> value, bool isMutable = false)
         : Node(parent), Named(name), _type(type), _value(value), _isMutable(isMutable) {
         _isPrivate = !name.getText().empty() && name.getText()[0] == '_';
     }

@@ -325,10 +325,10 @@ struct TypeInfo {
     TypeInfo(TupleTag, vector<sp<TypeInfo>> elements) : kind(TypeKind::Tuple), genericArgs(std::move(elements)) {
         name = "(";
         for (size_t i = 0; i < genericArgs.size(); ++i) {
-            if (i > 0) name += ",";
+            if (i > 0) name += ',';
             name += genericArgs[i] ? genericArgs[i]->name : "?";
         }
-        name += ")";
+        name += ')';
     }
 
     // 函数类型 Function<P..., Ret> / Function<...>?
@@ -347,13 +347,13 @@ struct TypeInfo {
     void rebuildFnName() {
         name = "Function<";
         for (size_t i = 0; i < genericArgs.size(); ++i) {
-            if (i > 0) name += ",";
+            if (i > 0) name += ',';
             name += genericArgs[i] ? genericArgs[i]->name : "?";
         }
-        if (!genericArgs.empty()) name += ",";
+        if (!genericArgs.empty()) name += ',';
         name += elementType ? elementType->name : "()";
-        name += ">";
-        if (fnNullable) name += "?";
+        name += '>';
+        if (fnNullable) name += '?';
     }
 
     [[nodiscard]] bool isArray() const { return kind == TypeKind::Array; }
@@ -522,10 +522,10 @@ struct TypeInfo {
         if (hasGenericArgs() && !genericArgs.empty()) {
             string result = name + "<";
             for (size_t i = 0; i < genericArgs.size(); ++i) {
-                if (i > 0) result += ",";
+                if (i > 0) result += ',';
                 result += genericArgs[i]->getFullName();
             }
-            result += ">";
+            result += '>';
             return result;
         }
         if (kind == TypeKind::Array && elementType) {
@@ -535,10 +535,10 @@ struct TypeInfo {
         if (kind == TypeKind::Tuple) {
             string result = "(";
             for (size_t i = 0; i < genericArgs.size(); ++i) {
-                if (i > 0) result += ",";
+                if (i > 0) result += ',';
                 result += genericArgs[i] ? genericArgs[i]->getFullName() : string("?");
             }
-            result += ")";
+            result += ')';
             return result;
         }
         // 函数：Function<P...,Ret> / Function<...>?
@@ -554,10 +554,10 @@ struct TypeInfo {
         if (hasGenericArgs() && !genericArgs.empty()) {
             string result = name + "<";
             for (size_t i = 0; i < genericArgs.size(); ++i) {
-                if (i > 0) result += ",";
+                if (i > 0) result += ',';
                 result += genericArgs[i]->getMangleName();
             }
-            result += ">";
+            result += '>';
             return result;
         }
         if (kind == TypeKind::Array && elementType) {
@@ -567,10 +567,10 @@ struct TypeInfo {
         if (kind == TypeKind::Tuple) {
             string result = "(";
             for (size_t i = 0; i < genericArgs.size(); ++i) {
-                if (i > 0) result += ",";
+                if (i > 0) result += ',';
                 result += genericArgs[i] ? genericArgs[i]->getMangleName() : string("?");
             }
-            result += ")";
+            result += ')';
             return result;
         }
         // 函数：Function<P...,Ret> / Function<...>?
@@ -594,21 +594,21 @@ struct TypeInfo {
     [[nodiscard]] string formatFnGeneric(bool mangle) const {
         string result = "Function<";
         for (size_t i = 0; i < genericArgs.size(); ++i) {
-            if (i > 0) result += ",";
+            if (i > 0) result += ',';
             if (!genericArgs[i]) {
-                result += "?";
+                result += '?';
             } else {
                 result += mangle ? genericArgs[i]->getMangleName() : genericArgs[i]->getFullName();
             }
         }
-        if (!genericArgs.empty()) result += ",";
+        if (!genericArgs.empty()) result += ',';
         if (!elementType) {
             result += "()";
         } else {
             result += mangle ? elementType->getMangleName() : elementType->getFullName();
         }
-        result += ">";
-        if (fnNullable) result += "?";
+        result += '>';
+        if (fnNullable) result += '?';
         return result;
     }
 
