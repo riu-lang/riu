@@ -844,6 +844,75 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
     return nullptr;
 }
 
+llvm::Value* Compiler::compileArrayWithCapacity(p<ExprPathCallNode> node) {
+    int line = node->getLineNumber();
+    int col = node->getColumn();
+    const auto& lhsTArgs = node->lhsTypeArgs();
+    if (lhsTArgs.size() != 1) {
+        throw YuxError(line, col, ErrorCode::E6011, "Array", static_cast<size_t>(1), lhsTArgs.size());
+    }
+    if (node->args().size() != 1) {
+        string got;
+        for (size_t i = 0; i < node->args().size(); ++i) {
+            if (i) got += ", ";
+            got += node->args()[i]->getType().getFullName();
+        }
+        throw YuxError(line, col, ErrorCode::E3131, "Array", "with_capacity", static_cast<size_t>(1), "usize",
+                       node->args().size(), got);
+    }
+
+    TypeInfo elemType = lhsTArgs[0]->getType();
+    TypeInfo arrType("Array", {make_shared<TypeInfo>(elemType)});
+    TypeInfo usizeTy("usize");
+    tryInferIntType(node->args()[0], usizeTy);
+    auto actualTy = node->args()[0]->getType();
+    if (!actualTy.empty() && !(actualTy == usizeTy)) {
+        throw YuxError(line, col, ErrorCode::E3131, "Array", "with_capacity", static_cast<size_t>(1), "usize",
+                       static_cast<size_t>(1), actualTy.getFullName());
+    }
+
+    auto capVal = compileExpr(node->args()[0]);
+    auto sizeTy = getSizeType();
+    capVal = _builder.CreateZExtOrTrunc(capVal, sizeTy, "with_cap.n");
+
+    auto resultTy = getLLVMType(arrType);
+    auto ptrTy = llvm::PointerType::get(_context, 0);
+    auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
+    auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
+
+    auto* fn = _builder.GetInsertBlock()->getParent();
+    auto* startBB = _builder.GetInsertBlock();
+    auto* allocBB = llvm::BasicBlock::Create(_context, "with_cap.alloc", fn);
+    auto* doneBB = llvm::BasicBlock::Create(_context, "with_cap.done", fn);
+
+    llvm::Value* emptyArr = llvm::UndefValue::get(resultTy);
+    emptyArr = _builder.CreateInsertValue(emptyArr, nullPtr, {0}, "with_cap.empty.data");
+    emptyArr = _builder.CreateInsertValue(emptyArr, zeroSize, {1}, "with_cap.empty.len");
+    emptyArr = _builder.CreateInsertValue(emptyArr, zeroSize, {2}, "with_cap.empty.cap");
+
+    auto isZero = _builder.CreateICmpEQ(capVal, zeroSize, "with_cap.is_zero");
+    _builder.CreateCondBr(isZero, doneBB, allocBB);
+
+    _builder.SetInsertPoint(allocBB);
+    auto elemLLVMType = getLLVMType(elemType);
+    auto elemSize = _module->getDataLayout().getTypeAllocSize(elemLLVMType);
+    auto elemSizeVal = llvm::ConstantInt::get(sizeTy, elemSize);
+    auto byteSize = _builder.CreateMul(capVal, elemSizeVal, "with_cap.bytes");
+    auto allocFn = runtime::getYuxrtAllocFn(_module, _builder);
+    auto data = _builder.CreateCall(allocFn, {byteSize}, "with_cap.data");
+    llvm::Value* filled = llvm::UndefValue::get(resultTy);
+    filled = _builder.CreateInsertValue(filled, data, {0}, "with_cap.res.data");
+    filled = _builder.CreateInsertValue(filled, zeroSize, {1}, "with_cap.res.len");
+    filled = _builder.CreateInsertValue(filled, capVal, {2}, "with_cap.res.cap");
+    _builder.CreateBr(doneBB);
+
+    _builder.SetInsertPoint(doneBB);
+    auto phi = _builder.CreatePHI(resultTy, 2, "with_cap.result");
+    phi->addIncoming(emptyArr, startBB);
+    phi->addIncoming(filled, allocBB);
+    return phi;
+}
+
 llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<ExprNode> baseExpr,
                                                     const TypeInfo& baseType, const string& member,
                                                     vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {

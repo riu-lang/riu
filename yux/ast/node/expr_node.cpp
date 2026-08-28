@@ -2112,5 +2112,17 @@ TypeInfo ExprPathCallNode::getType() const {
         }
     }
 
+    // Array:<T>::factory(...)：#Builtin #Static 工厂（with_capacity）返回 Array<T>。
+    // 无此分支时 getType 只给出裸名 Array，debug 下与 resolvedType 不一致，
+    // recordTemp 也认不出 isArrayGeneric。
+    if (n == "Array" && !_lhsTypeArgs.empty()) {
+        vector<sp<TypeInfo>> args;
+        args.reserve(_lhsTypeArgs.size());
+        for (auto& ta : _lhsTypeArgs) {
+            args.push_back(make_shared<TypeInfo>(ta->getType()));
+        }
+        return TypeInfo(n, std::move(args));
+    }
+
     return TypeInfo(n);
 }

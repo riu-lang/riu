@@ -274,8 +274,8 @@ private:
     void callFieldDestructor(llvm::Value* structPtr, const string& structName); // 调用结构体字段的析构函数
     void generateDefaultDestructor(const string& structName);                   // 生成默认析构函数
     bool typeNeedsDestructor(const TypeInfo& type);                             // 检查类型是否需要析构
-    bool structNeedsDestructor(const string& structName);                       // 检查结构体是否需要析构（decl / 实例 key）
-    bool structNeedsDestructor(const TypeInfo& type);                           // 泛型用 baseStructName 仅查 decl，实例身份走 mangle
+    bool structNeedsDestructor(const string& structName); // 检查结构体是否需要析构（decl / 实例 key）
+    bool structNeedsDestructor(const TypeInfo& type);     // 泛型用 baseStructName 仅查 decl，实例身份走 mangle
     // Phase B-2: 获取或创建 Rc<T> 的 typed release 函数
     // 若 rcType 内层 T 无需析构则返回 generic _box_release；
     // 否则生成特化版 _box_release_T（strong==0 时先调 T::~() 再走 weak/free）
@@ -481,6 +481,8 @@ private:
     llvm::Value* compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType,
                                         const string& member, vector<llvm::Value*>& args,
                                         vector<TypeInfo>& argTypes); // 编译数组方法调用
+    // Array:<T>::with_capacity(n) — #Builtin #Static 工厂，调用点内联合成
+    llvm::Value* compileArrayWithCapacity(p<ExprPathCallNode> node);
     llvm::Value* compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType,
                                               const string& member, vector<llvm::Value*>& args,
                                               vector<TypeInfo>& argTypes); // 编译内置类型方法调用

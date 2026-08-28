@@ -3,6 +3,7 @@
 ; 覆盖：
 ;   - 下标读写（Array<T> / [T * N]）
 ;   - push / len / first / last / is_empty
+;   - Array:<T>::with_capacity 静态工厂
 ;   - f64 元素链式加法（回归 v0.18 LLVM crash）
 ;   - bool / String 元素
 ;   - clear / clone
@@ -73,6 +74,49 @@ fn test_array_fixed_bool_list_mixed() {
   let bools [bool * 3] = [true, false, true]
   assert_true(bools[0])
   assert_false(bools[1])
+}
+
+; ==================== Array:<T>::with_capacity ====================
+
+; 验证：with_capacity 预留容量，len 为 0，push 不立刻扩容
+#Test
+fn test_array_with_capacity() {
+  #Mut let arr Array<i32> = Array:<i32>::with_capacity(8)
+  assert_eq(arr.len(), 0)
+  assert_eq(arr.cap(), 8)
+  assert_true(arr.is_empty())
+  arr.push(1)
+  arr.push(2)
+  arr.push(3)
+  assert_eq(arr.len(), 3)
+  assert_eq(arr.cap(), 8)
+  assert_eq(arr[0], 1)
+  assert_eq(arr[1], 2)
+  assert_eq(arr[2], 3)
+}
+
+; 验证：with_capacity(0) 与空字面量相同（不分配）
+#Test
+fn test_array_with_capacity_zero() {
+  #Mut let arr Array<i32> = Array:<i32>::with_capacity(0)
+  assert_eq(arr.len(), 0)
+  assert_eq(arr.cap(), 0)
+  assert_true(arr.is_empty())
+  arr.push(42)
+  assert_eq(arr.len(), 1)
+  assert_eq(arr[0], 42)
+}
+
+; 验证：容量实参为运行期 usize
+#Test
+fn test_array_with_capacity_runtime_n() {
+  let n usize = 4usize
+  #Mut let arr Array<i32> = Array:<i32>::with_capacity(n)
+  assert_eq(arr.cap(), 4usize)
+  arr.push(10)
+  arr.push(20)
+  assert_eq(arr.len(), 2)
+  assert_eq(arr.cap(), 4usize)
 }
 
 ; ==================== push / len / first / last / is_empty ====================

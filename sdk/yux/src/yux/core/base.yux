@@ -214,6 +214,11 @@ fn _heap_take<T>(p Ptr) Heap<T>
 ; TODO: is_empty / clear 可改为 yux 端便捷方法（$.len() == 0usize / $.set_len(0usize)）
 #Builtin
 struct Array<T> {
+  ; 预分配容量的静态工厂；n == 0 时与 [] 相同（不分配）
+  #Builtin
+  #Static
+  fn with_capacity(n usize) Self
+
   #Builtin
   fn len() usize
 
