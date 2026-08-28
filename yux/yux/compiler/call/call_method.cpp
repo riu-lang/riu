@@ -218,7 +218,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
         }
         size_t mpi = i + 1;
         bool needsAutoRef = mpi < mparams.size() && mparams[mpi].isRef() && !at.isRef();
-        if (needsAutoRef || structParamUsesPointer(at.name)) {
+        if (needsAutoRef || structParamUsesPointer(at)) {
             auto structType = getLLVMType(at);
             auto alloca = _builder.CreateAlloca(structType, nullptr, "sd.m.arg_tmp");
             _builder.CreateStore(argVal, alloca);
@@ -239,7 +239,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
             vector<llvm::Type*> paramTypes;
             paramTypes.push_back(llvm::PointerType::get(_context, 0));
             for (auto& t : argTypes) {
-                if (structParamUsesPointer(t.name)) {
+                if (structParamUsesPointer(t)) {
                     paramTypes.push_back(llvm::PointerType::get(_context, 0));
                 } else {
                     paramTypes.push_back(getLLVMType(t));
@@ -271,7 +271,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
             }
             for (size_t i = 1; i < mparams.size(); ++i) {
                 auto& t = mparams[i];
-                if (structParamUsesPointer(t.name)) {
+                if (structParamUsesPointer(t)) {
                     paramTypes.push_back(llvm::PointerType::get(_context, 0));
                 } else {
                     paramTypes.push_back(getLLVMType(t));
@@ -811,8 +811,8 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         auto oldElemPtr = _builder.CreateInBoundsGEP(elemLLVMType, oldData, {loopPhi}, "clone.old.ptr");
         llvm::Value* elemVal = _builder.CreateLoad(elemLLVMType, oldElemPtr, "clone.elem");
         retainHandleAtCallSite(elemVal, *elemType);
-        if (!isBuiltinType(elemType->name) && structNeedsDestructor(elemType->name)) {
-            elemVal = copyOfStructFields(elemVal, elemType->name);
+        if (!isBuiltinType(elemType->name) && structNeedsDestructor(*elemType)) {
+            elemVal = copyOfStructFields(elemVal, elemType->isGeneric() ? elemType->getMangleName() : elemType->name);
         }
         auto newElemPtr = _builder.CreateInBoundsGEP(elemLLVMType, newData, {loopPhi}, "clone.new.ptr");
         _builder.CreateStore(elemVal, newElemPtr);
@@ -1187,7 +1187,7 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
                                 consumeTemp(args[i]);
                             }
                         }
-                        if (structParamUsesPointer(at.name)) {
+                        if (structParamUsesPointer(at)) {
                             auto structType = getLLVMType(at);
                             auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");
                             _builder.CreateStore(args[i], alloca);
@@ -1210,7 +1210,7 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
                         vector<llvm::Type*> paramTypes;
                         paramTypes.push_back(llvm::PointerType::get(_context, 0));
                         for (auto& t : argTypes) {
-                            if (structParamUsesPointer(t.name)) {
+                            if (structParamUsesPointer(t)) {
                                 paramTypes.push_back(llvm::PointerType::get(_context, 0));
                             } else {
                                 paramTypes.push_back(getLLVMType(t));
@@ -1328,7 +1328,7 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
             // auto-ref: 方法形参为 T& 但实参为 T（by-value）时，取址传指针
             size_t mpi = i + 1; // 跳 receiver（mparams[0]）
             bool needsAutoRef = mpi < mparams.size() && mparams[mpi].isRef() && !at.isRef();
-            if (needsAutoRef || structParamUsesPointer(at.name)) {
+            if (needsAutoRef || structParamUsesPointer(at)) {
                 auto structType = getLLVMType(at);
                 auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");
                 _builder.CreateStore(args[i], alloca);
@@ -1356,7 +1356,7 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
             }
             for (size_t i = 1; i < mparams.size(); ++i) {
                 auto& t = mparams[i];
-                if (structParamUsesPointer(t.name)) {
+                if (structParamUsesPointer(t)) {
                     paramTypes.push_back(llvm::PointerType::get(_context, 0));
                 } else {
                     paramTypes.push_back(getLLVMType(t));
@@ -1488,7 +1488,7 @@ llvm::Value* Compiler::compileDynMethodCall(p<ExprCallNode> callNode, p<ExprNode
     callArgs.push_back(receiver);
     for (size_t i = 0; i < args.size(); ++i) {
         auto& at = argTypes[i];
-        if (structParamUsesPointer(at.name)) {
+        if (structParamUsesPointer(at)) {
             auto stTy = getLLVMType(at);
             auto alloca = _builder.CreateAlloca(stTy, nullptr, "dyn.arg.tmp");
             _builder.CreateStore(args[i], alloca);

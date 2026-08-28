@@ -139,8 +139,8 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(const TypeInfo& concreteType,
     // 槽 0：U 的析构函数指针
     // 复用现有 struct dtor 入口；trivial 类型 → null（release 路径据此跳过 dispatch）
     llvm::Constant* dtorSlot = nullPtr;
-    if (structNeedsDestructor(uStruct)) {
-        auto* dtorFn = getDestructorFunction(uStruct);
+    if (structNeedsDestructor(concreteType)) {
+        auto* dtorFn = getDestructorFunction(concreteType.isGeneric() ? concreteType.getMangleName() : uStruct);
         if (dtorFn) {
             dtorSlot = dtorFn;
         }

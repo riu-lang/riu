@@ -324,7 +324,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
     if (ownsScrut) {
         consumeTemp(scrutVal);
     }
-    bool needScrutDrop = ownsScrut && enumNeedsDestructor(enumName);
+    bool needScrutDrop = ownsScrut && enumNeedsDestructor(scrutType);
 
     // 5. 构造基本块
     llvm::Function* func = _builder.GetInsertBlock()->getParent();
@@ -550,7 +550,8 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
 
         // 为 e 绑定分配 alloca（类型 = enum）；命名带 arm 错误名便于 IR 阅读
         const string& bn = arm->errName().getText();
-        auto eAlloca = _builder.CreateAlloca(getLLVMType(TypeInfo(errType)), nullptr, ("catch.e." + bn).c_str());
+        TypeInfo catchErrTy(errType);
+        auto eAlloca = _builder.CreateAlloca(getLLVMType(catchErrTy), nullptr, ("catch.e." + bn).c_str());
         ctx.armEAllocas.push_back(eAlloca);
 
         // arm entry BB 暂不插入 func；编译 arm body 时再 insert

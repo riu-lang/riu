@@ -170,7 +170,7 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
     }
 
     // Phase 5: enum 类型 —— 走合成的 __enum_drop_<E> 按 tag dispatch
-    if (enumNeedsDestructor(type.name)) {
+    if (enumNeedsDestructor(type)) {
         auto dtorFn = getEnumDestructorFunction(type.name);
         if (dtorFn) {
             _builder.CreateCall(dtorFn, {slotPtr});
@@ -179,8 +179,8 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
     }
 
     // 结构体：调其析构函数（默认析构按字段逆序 release）
-    if (structNeedsDestructor(type.name)) {
-        auto dtorFn = getDestructorFunction(type.name);
+    if (structNeedsDestructor(type)) {
+        auto dtorFn = getDestructorFunction(type.isGeneric() ? type.getMangleName() : type.name);
         if (dtorFn) {
             _builder.CreateCall(dtorFn, {slotPtr});
         }
@@ -364,7 +364,7 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
 
     auto structType = _structTypes.count(structName)
                           ? _structTypes[structName]
-                          : llvm::cast_or_null<llvm::StructType>(getLLVMType(TypeInfo(structName)));
+                          : llvm::cast_or_null<llvm::StructType>(getLLVMType(typeInfoForNamedStruct(structName)));
     if (!structType) return;
     auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
 
@@ -439,7 +439,8 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
             releaseAtPtr(fieldPtr, fieldType);
         } else if (!isBuiltinType(fieldType.name)) {
             // 结构体字段: 调用其析构函数
-            auto fieldDtorsFn = getDestructorFunction(fieldType.name);
+            const string fieldKey = fieldType.isGeneric() ? fieldType.getMangleName() : fieldType.name;
+            auto fieldDtorsFn = getDestructorFunction(fieldKey);
             if (fieldDtorsFn) {
                 _builder.CreateCall(fieldDtorsFn, {fieldPtr});
             }
@@ -537,8 +538,8 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
     }
 
     // Phase 3c.2.a: 含 RC 字段的非平凡 struct 按值传参，逐字段 retain；callee 析构释放
-    if (!isBuiltinType(argType.name) && structNeedsDestructor(argType.name)) {
-        retainStructFieldsAtCallSite(argVal, argType.name);
+    if (!isBuiltinType(argType.name) && structNeedsDestructor(argType)) {
+        retainStructFieldsAtCallSite(argVal, argType.isGeneric() ? argType.getMangleName() : argType.name);
         return true;
     }
 
@@ -547,7 +548,7 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
     // 字段 retain。考虑到此路径需要重做一份 switch-on-tag IR，与 dtor 高度对称，
     // 直接合成 __enum_copy_<E> 比 inline 展开更省 IR；Phase 5 先用 inline 实现，
     // copy helper 押后到后续优化。
-    if (!isBuiltinType(argType.name) && enumNeedsDestructor(argType.name)) {
+    if (!isBuiltinType(argType.name) && enumNeedsDestructor(argType)) {
         p<FileNode> owner = nullptr;
         auto decl = lookupEnumDecl(argType.name, owner);
         if (!decl) return false;
@@ -615,11 +616,12 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
                     else
                         retainFn = runtime::getWeakRetainFn(_module, _builder);
                     _builder.CreateCall(retainFn, {handle});
-                } else if (!isBuiltinType(fieldType.name) && structNeedsDestructor(fieldType.name)) {
+                } else if (!isBuiltinType(fieldType.name) && structNeedsDestructor(fieldType)) {
                     auto ll = getLLVMType(fieldType);
                     auto fieldVal = _builder.CreateLoad(ll, fieldPtr, "arg.enum.struct.val");
-                    retainStructFieldsAtCallSite(fieldVal, fieldType.name);
-                } else if (!isBuiltinType(fieldType.name) && enumNeedsDestructor(fieldType.name)) {
+                    retainStructFieldsAtCallSite(fieldVal,
+                                                 fieldType.isGeneric() ? fieldType.getMangleName() : fieldType.name);
+                } else if (!isBuiltinType(fieldType.name) && enumNeedsDestructor(fieldType)) {
                     // 嵌套 enum：递归（极少见但形态完整）
                     auto ll = getLLVMType(fieldType);
                     auto fieldVal = _builder.CreateLoad(ll, fieldPtr, "arg.enum.nested.val");
@@ -689,7 +691,7 @@ void Compiler::retainStructFieldsAtCallSite(llvm::Value* argVal, const string& s
         } else if (!isBuiltinType(ft.name)) {
             // 嵌套 struct 字段：递归
             auto fieldVal = _builder.CreateExtractValue(argVal, {static_cast<unsigned>(i)}, "field.struct");
-            retainStructFieldsAtCallSite(fieldVal, ft.name);
+            retainStructFieldsAtCallSite(fieldVal, ft.isGeneric() ? ft.getMangleName() : ft.name);
         }
     }
 }
@@ -721,10 +723,10 @@ llvm::Value* Compiler::copyOfStructFields(llvm::Value* structVal, const string& 
             // 替换 struct 中的 Heap 指针
             structVal =
                 _builder.CreateInsertValue(structVal, newPayload, {static_cast<unsigned>(i)}, "cof.heap.inserted");
-        } else if (!isBuiltinType(ft.name) && structNeedsDestructor(ft.name)) {
+        } else if (!isBuiltinType(ft.name) && structNeedsDestructor(ft)) {
             // 嵌套 struct：递归处理其中的 Heap 字段
             auto fieldVal = _builder.CreateExtractValue(structVal, {static_cast<unsigned>(i)}, "cof.struct");
-            auto newFieldVal = copyOfStructFields(fieldVal, ft.name);
+            auto newFieldVal = copyOfStructFields(fieldVal, ft.isGeneric() ? ft.getMangleName() : ft.name);
             if (newFieldVal != fieldVal) {
                 structVal = _builder.CreateInsertValue(structVal, newFieldVal, {static_cast<unsigned>(i)},
                                                        "cof.struct.inserted");
@@ -811,7 +813,7 @@ void Compiler::recordTemp(llvm::Value* val, const TypeInfo& type) {
     // Phase 5 扩展：含 RC payload 的 enum 值同样按值持有 RC 句柄，按 tag dispatch dtor
     if (type.isRef() || type.isPtr()) return;
     if (isBuiltinType(type.name)) return;
-    if (!structNeedsDestructor(type.name) && !enumNeedsDestructor(type.name)) return;
+    if (!structNeedsDestructor(type) && !enumNeedsDestructor(type)) return;
 
     auto* fn = _builder.GetInsertBlock()->getParent();
     auto& entryBB = fn->getEntryBlock();
@@ -923,49 +925,38 @@ bool Compiler::typeNeedsDestructor(const TypeInfo& type) {
     if (type.isDyn()) return true;
 
     // Phase 5: enum 类型若任一 variant 含 RC payload 字段则需析构
-    if (enumNeedsDestructor(type.name)) return true;
+    if (enumNeedsDestructor(type)) return true;
 
     // 检查结构体是否需要析构
-    return structNeedsDestructor(type.name);
+    return structNeedsDestructor(type);
 }
 
 // Phase 3c.2.a/c: 用户 struct（普通 + 泛型实例）一律 by-value
 // 仅 _structTypes 已注册但找不到声明的跨模块 struct：保守按指针
-bool Compiler::structParamUsesPointer(const string& typeName) {
-    if (isBuiltinType(typeName)) return false;
-
-    // Ptr / 引用形参不是 struct，按值传递（原始 ptr）
-    TypeInfo ti(typeName);
+// 必须传完整 TypeInfo：从裸名构造会丢掉 genericArgs，Array/Rc 变成错误 kind。
+bool Compiler::structParamUsesPointer(const TypeInfo& ti) {
     if (ti.isPtr() || ti.isRef()) return false;
+    if (ti.isArrayGeneric()) return true;
+    if (isBuiltinType(ti.name)) return false;
 
-    // B-3: Array<T> 是 #NoCopy 非平凡 struct，必须按指针传递（callee 可变修改应对 caller 可见）
-    // B-4: 当 typeName 仅为 "Array"（丢失泛型实参的裸名）时，仍识别为 Array 泛型；
-    // 调用方若持有完整 TypeInfo 应优先走 TypeInfo 重载。
-    if (ti.isArrayGeneric() || typeName == "Array") return true;
-
-    // 普通 struct（当前文件 / SDK）→ by-value
-    auto structDecl = _file->getStructDecl(typeName);
+    // Decl 查找只用基名（Generic `Foo` / 防御 `Foo<i32>` 被塞进 name）；不作类型身份
+    const string declName = ti.baseStructName();
+    auto structDecl = _file->getStructDecl(declName);
     if (!structDecl && _yux && _yux->sdkFile()) {
-        structDecl = _yux->sdkFile()->getStructDecl(typeName);
+        structDecl = _yux->sdkFile()->getStructDecl(declName);
     }
     if (structDecl) return false;
 
-    // 泛型实例 → by-value（3c.2.c）；fields 通过 resolveStructFieldTypes 套替换
-    if (_structInstances.find(typeName) != _structInstances.end()) return false;
+    // 泛型实例 → by-value（3c.2.c）；实例 key 走 mangle，不走裸 name
+    const string instKey = ti.isGeneric() ? ti.getMangleName() : ti.name;
+    if (_structInstances.find(instKey) != _structInstances.end()) return false;
 
     // 仅在 LLVM 类型表中注册的（跨模块未通配导入等）保守按指针
-    if (_structTypes.find(typeName) != _structTypes.end()) {
+    if (_structTypes.find(instKey) != _structTypes.end()) {
         return true;
     }
 
     return false;
-}
-
-// B-4: TypeInfo 重载 — 直接读 isArrayGeneric()，避免从裸 name 字符串构造 TypeInfo 丢失泛型实参。
-bool Compiler::structParamUsesPointer(const TypeInfo& ti) {
-    if (ti.isPtr() || ti.isRef()) return false;
-    if (ti.isArrayGeneric()) return true;
-    return structParamUsesPointer(ti.name);
 }
 
 // 检查结构体是否需要析构函数
@@ -987,6 +978,19 @@ bool Compiler::structNeedsDestructor(const string& structName) {
         if (typeNeedsDestructor(ft)) return true;
     }
     return false;
+}
+
+bool Compiler::structNeedsDestructor(const TypeInfo& type) {
+    // Array<T> 有 _data 所有权，kind 即身份；不走裸名 "Array"
+    if (type.isArrayGeneric()) return true;
+    if (type.isGeneric()) {
+        const string instKey = type.getMangleName();
+        if (_structInstances.find(instKey) != _structInstances.end()) {
+            return structNeedsDestructor(instKey);
+        }
+        return structNeedsDestructor(type.baseStructName());
+    }
+    return structNeedsDestructor(type.name);
 }
 
 // ==================== Phase B-2: Rc<T> 特化释放函数 ====================
@@ -1074,7 +1078,7 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
     if (!func->empty()) return func;
 
     // 获取 T 的析构函数
-    auto dtorFn = getDestructorFunction(inner->name);
+    auto dtorFn = getDestructorFunction(inner->isGeneric() ? inner->getMangleName() : inner->name);
 
     // 保存当前插入点
     auto* savedBB = _builder.GetInsertBlock();
@@ -1170,6 +1174,11 @@ bool Compiler::enumNeedsDestructor(const string& enumName) {
     return enumDeclNeedsDestructor(decl);
 }
 
+bool Compiler::enumNeedsDestructor(const TypeInfo& type) {
+    if (!type.isNormal()) return false;
+    return enumNeedsDestructor(type.name);
+}
+
 // 获取或创建 __enum_drop_<E> 函数声明（mangled 含 owner 模块名）
 // 与 struct dtor 同模型：定义只在 owner 模块发射，consumer 拿到 extern decl
 llvm::Function* Compiler::getEnumDestructorFunction(const string& enumName) {
@@ -1200,7 +1209,8 @@ void Compiler::generateEnumDestructor(p<EnumDeclNode> decl, p<FileNode> owner) {
     auto fn = getEnumDestructorFunction(enumName);
     if (!fn || !fn->empty()) return; // 已有定义则不重复
 
-    auto enumLLVMType = getLLVMType(TypeInfo(enumName));
+    TypeInfo enumTy(enumName);
+    auto enumLLVMType = getLLVMType(enumTy);
     if (!enumLLVMType) return;
 
     // 保存当前插入点（compileEnumDtors 在主流水线中可能已设过）

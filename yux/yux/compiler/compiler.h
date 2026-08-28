@@ -197,6 +197,9 @@ public:
 private:
     // ==================== 类型系统 ====================
     llvm::Type* getLLVMType(const TypeInfo& type); // 将 TypeInfo 转换为 LLVM 类型
+    // 从 struct 名还原完整 TypeInfo。命中 `_structInstances`（mangle `Foo<i32>`）时带上
+    // args 走 kind 分发；否则 `TypeInfo(name)`（Normal / 标量 / 源码名，唯一名字构造点）。
+    [[nodiscard]] TypeInfo typeInfoForNamedStruct(const string& name) const;
 
     // ==================== usize 辅助 ====================
     // 返回 usize 对应的 LLVM 类型（指针宽度整数，64-bit 上为 i64）
@@ -271,7 +274,8 @@ private:
     void callFieldDestructor(llvm::Value* structPtr, const string& structName); // 调用结构体字段的析构函数
     void generateDefaultDestructor(const string& structName);                   // 生成默认析构函数
     bool typeNeedsDestructor(const TypeInfo& type);                             // 检查类型是否需要析构
-    bool structNeedsDestructor(const string& structName);                       // 检查结构体是否需要析构
+    bool structNeedsDestructor(const string& structName);                       // 检查结构体是否需要析构（decl / 实例 key）
+    bool structNeedsDestructor(const TypeInfo& type);                           // 泛型用 baseStructName 仅查 decl，实例身份走 mangle
     // Phase B-2: 获取或创建 Rc<T> 的 typed release 函数
     // 若 rcType 内层 T 无需析构则返回 generic _box_release；
     // 否则生成特化版 _box_release_T（strong==0 时先调 T::~() 再走 weak/free）
@@ -279,6 +283,7 @@ private:
     // Phase B-1: #NoCopy / move 辅助
     [[nodiscard]] bool isNoCopyType(const TypeInfo& type) const; // 查 struct decl 的 #NoCopy 注解
     bool enumNeedsDestructor(const string& enumName);            // Phase 5: 任一 variant payload 需析构则枚举需析构
+    bool enumNeedsDestructor(const TypeInfo& type);              // 非 Normal 直接 false；identity 不走裸名重建
     bool enumDeclNeedsDestructor(p<EnumDeclNode> decl);          // Phase 5: 同上，按声明节点
     llvm::Function* getEnumDestructorFunction(const string& enumName);    // Phase 5: 获取或创建 __enum_drop_<E>
     void generateEnumDestructor(p<EnumDeclNode> decl, p<FileNode> owner); // Phase 5: 合成 __enum_drop_<E>(p*) 实现
@@ -339,10 +344,9 @@ private:
 
     // Phase 3c.1/3c.2: 结构体形参 ABI 判定
     // 返回 true 表示该结构体形参按指针传递（保守路径），false 则按 LLVM by-value
-    // 规则：内置类型 / Ptr / Ref → false；用户 struct（普通或泛型实例）一律 by-value（false）；
-    // 仅 _structTypes 中注册但找不到声明（跨模块未通配导入）→ 保守 true
-    bool structParamUsesPointer(const string& typeName);
-    // B-4: TypeInfo 重载 — 直接用已有 TypeInfo，避免从裸 name 构造时丢失泛型实参
+    // 规则：内置类型 / Ptr / Ref → false；ArrayGeneric → true；用户 struct（普通或泛型实例）一律
+    // by-value（false）；仅 _structTypes 中注册但找不到声明（跨模块未通配导入）→ 保守 true
+    // 调用方必须传完整 TypeInfo；禁止从裸名重建（会丢掉 genericArgs，Array/Rc 变成错误 kind）
     bool structParamUsesPointer(const TypeInfo& ti);
 
     // Phase 3c.2.c: 解析结构体字段类型清单

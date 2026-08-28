@@ -552,8 +552,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
 
             // 补 Heap 字段深拷：retainHandleAtCallSite 对 Heap 字段是 no-op（所有权语义），
             // copy_of 需要独立分配新堆内存。递归进入嵌套 struct 处理其中的 Heap 字段。
-            if (!isBuiltinType(T.name) && structNeedsDestructor(T.name)) {
-                copied = copyOfStructFields(copied, T.name);
+            if (!isBuiltinType(T.name) && structNeedsDestructor(T)) {
+                copied = copyOfStructFields(copied, T.isGeneric() ? T.getMangleName() : T.name);
             }
 
             return copied;
@@ -922,7 +922,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
     if (!fn) {
         vector<llvm::Type*> paramTypes;
         for (auto& param : fnSymbol->params) {
-            if (param.isPtr() || param.isRef() || structParamUsesPointer(param.name)) {
+            if (param.isPtr() || param.isRef() || structParamUsesPointer(param)) {
                 paramTypes.push_back(llvm::PointerType::get(_context, 0));
             } else {
                 paramTypes.push_back(getLLVMType(param));

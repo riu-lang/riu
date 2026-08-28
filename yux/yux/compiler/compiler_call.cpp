@@ -111,8 +111,9 @@ llvm::Function* Compiler::getMethodFunction(const string& structName, const stri
 
     // 第一个参数是当前实例（用户层 `$`） —— #Static fn 没有 receiver, 跳过
     if (!isStatic) {
-        if (isBuiltinType(structName) || TypeInfo(structName).isPtr() || TypeInfo(structName).isRef()) {
-            llvmParamTypes.push_back(getLLVMType(TypeInfo(structName)));
+        TypeInfo recvTy = typeInfoForNamedStruct(structName);
+        if (isBuiltinType(structName) || recvTy.isPtr() || recvTy.isRef()) {
+            llvmParamTypes.push_back(getLLVMType(recvTy));
         } else {
             llvmParamTypes.push_back(llvm::PointerType::get(_context, 0)); // 结构体通过指针传递
         }
@@ -124,7 +125,7 @@ llvm::Function* Compiler::getMethodFunction(const string& structName, const stri
             llvmParamTypes.push_back(llvm::PointerType::get(_context, 0));
             continue;
         }
-        if (structParamUsesPointer(paramType.name)) {
+        if (structParamUsesPointer(paramType)) {
             llvmParamTypes.push_back(llvm::PointerType::get(_context, 0));
         } else {
             llvmParamTypes.push_back(getLLVMType(paramType));
@@ -599,7 +600,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                         auto paramType = params[argIdx]->type();
                         if (paramType) {
                             TypeInfo instParamType = paramType->getType().substitute(ctorSubst);
-                            if (structParamUsesPointer(instParamType.name)) {
+                            if (structParamUsesPointer(instParamType)) {
                                 passByPtr = true;
                             }
                         }

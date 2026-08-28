@@ -255,7 +255,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         if (!decl) {
             throw YuxError(line, col, ErrorCode::E0000, "`Self { ... }` codegen 找不到 struct decl: " + structName);
         }
-        auto llvmStructType = getLLVMType(TypeInfo(structName));
+        auto llvmStructType = getLLVMType(typeInfoForNamedStruct(structName));
         if (!llvmStructType) {
             throw YuxError(line, col, ErrorCode::E3096, structName);
         }

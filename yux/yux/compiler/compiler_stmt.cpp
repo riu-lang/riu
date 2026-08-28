@@ -122,8 +122,9 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
 
         // 构 retStruct
         TypeInfo successType = hasDeclaredRetType ? declRetType : TypeInfo();
+        TypeInfo errTy(fallibleErrName);
         auto retStructTy = getFallibleRetStructType(successType, fallibleErrName);
-        auto errLLVMTy = getLLVMType(TypeInfo(fallibleErrName));
+        auto errLLVMTy = getLLVMType(errTy);
         llvm::Value* retStruct = llvm::UndefValue::get(retStructTy);
         retStruct = _builder.CreateInsertValue(retStruct, _builder.getInt1(isError ? true : false), {0});
         unsigned errFieldIdx;
@@ -366,7 +367,8 @@ void Compiler::compileRetVoidStatement(p<StatementRetVoidNode> node) {
     }
     if (!fallibleErrName.empty()) {
         auto retStructTy = getFallibleRetStructType(TypeInfo(), fallibleErrName);
-        auto errLLVMTy = getLLVMType(TypeInfo(fallibleErrName));
+        TypeInfo voidErrType(fallibleErrName);
+        auto errLLVMTy = getLLVMType(voidErrType);
         llvm::Value* retStruct = llvm::UndefValue::get(retStructTy);
         retStruct = _builder.CreateInsertValue(retStruct, _builder.getInt1(false), {0});
         retStruct = _builder.CreateInsertValue(retStruct, llvm::Constant::getNullValue(errLLVMTy), {1});
@@ -1477,7 +1479,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             if (selfIt == _localVarPtrs.end()) {
                 throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3134);
             }
-            auto structType = getLLVMType(TypeInfo(_currentStructName));
+            auto structType = getLLVMType(typeInfoForNamedStruct(_currentStructName));
             auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
             auto fIdxVal = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIdx);
             std::array<llvm::Value*, 2> indices{zero, fIdxVal};

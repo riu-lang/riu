@@ -385,6 +385,22 @@ llvm::Value* Compiler::arrayCapFieldPtr(llvm::Value* arrayStructPtr, const strin
 
 // ==================== 类型映射 ====================
 
+// 从 struct 名还原完整 TypeInfo。
+// `_structInstances` 的 key 是 mangle（`Foo<i32>` / `Array<i32>`）；命中时带上 args
+// 走 `TypeInfo(base, args)` 唯一名字分发，避免 `TypeInfo("Array")` 变成 Normal。
+TypeInfo Compiler::typeInfoForNamedStruct(const string& name) const {
+    auto instIt = _structInstances.find(name);
+    if (instIt != _structInstances.end() && instIt->second.baseDecl) {
+        vector<sp<TypeInfo>> args;
+        args.reserve(instIt->second.args.size());
+        for (const auto& a : instIt->second.args) {
+            args.push_back(std::make_shared<TypeInfo>(a));
+        }
+        return TypeInfo(instIt->second.baseDecl->name().getText(), std::move(args));
+    }
+    return TypeInfo(name);
+}
+
 // 将 TypeInfo 转换为 LLVM 类型
 // 处理基本类型、数组、指针、引用、结构体、泛型实例等
 llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
@@ -801,7 +817,7 @@ llvm::FunctionType* Compiler::getLLVMFunctionType(p<FnHeaderNode> header) {
         if (paramType.isPtr() || paramType.isRef()) {
             paramTypes.push_back(llvm::PointerType::get(_context, 0));
             DEBUG_LOG_VAL("    param", param->name().getText() << " : " << paramType.name << " (pointer type)");
-        } else if (structParamUsesPointer(paramType.name)) {
+        } else if (structParamUsesPointer(paramType)) {
             // Phase 3c.1: 非平凡结构体仍按指针传递；平凡结构体走 by-value
             paramTypes.push_back(llvm::PointerType::get(_context, 0));
             DEBUG_LOG_VAL("    param", param->name().getText() << " : " << paramType.name << " (struct ptr)");
@@ -838,7 +854,8 @@ llvm::Type* Compiler::wrapFallibleRetType(const TypeInfo& retType, const string&
 
 llvm::StructType* Compiler::getFallibleRetStructType(const TypeInfo& retType, const string& errTypeName) {
     // ErrEnum 必为已声明 enum（10e 静态层已校 + E7011）；通过 TypeInfo 走 getLLVMType
-    auto errLLVMType = getLLVMType(TypeInfo(errTypeName));
+    TypeInfo errType(errTypeName);
+    auto errLLVMType = getLLVMType(errType);
     vector<llvm::Type*> fields;
     fields.push_back(_builder.getInt1Ty()); // 字段 0：isErr
     if (!retType.empty()) {

@@ -1062,7 +1062,7 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
             // 引用类型直接使用传入的指针
             _localVarPtrs[paramName] = &arg;
             DEBUG_LOG_VAL("  Param (ref)", paramName << " : " << paramType.getFullName());
-        } else if (structParamUsesPointer(paramType.name)) {
+        } else if (structParamUsesPointer(paramType)) {
             // Phase 3c.1: 非平凡结构体仍走指针 ABI
             registerLocalVar(paramName, &arg, paramType);
             DEBUG_LOG_VAL("  Param (struct ptr)", paramName << " : " << paramType.name << "*");
@@ -1092,7 +1092,8 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
         if (!fallibleErrName.empty() && fnRetVoid) {
             callDestructorsForScope();
             auto retStructTy = getFallibleRetStructType(TypeInfo(), fallibleErrName);
-            auto errLLVMTy = getLLVMType(TypeInfo(fallibleErrName));
+            TypeInfo errType(fallibleErrName);
+            auto errLLVMTy = getLLVMType(errType);
             llvm::Value* rs = llvm::UndefValue::get(retStructTy);
             rs = _builder.CreateInsertValue(rs, _builder.getInt1(false), {0});
             rs = _builder.CreateInsertValue(rs, llvm::Constant::getNullValue(errLLVMTy), {1});
@@ -1150,7 +1151,8 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
 
         if (isBuiltinType(structName)) {
             // 内置类型：值类型，需要创建 alloca
-            auto thisAlloca = _builder.CreateAlloca(getLLVMType(TypeInfo(structName)), nullptr, "this.addr");
+            auto thisTy = typeInfoForNamedStruct(structName);
+            auto thisAlloca = _builder.CreateAlloca(getLLVMType(thisTy), nullptr, "this.addr");
             _builder.CreateStore(argIt, thisAlloca);
             _localVarPtrs[thisName] = thisAlloca;
             thisPtr = thisAlloca;
@@ -1177,7 +1179,7 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
             // 不另开 alloca，否则 `other.field` 会 GEP 到 alloca 自身而非被引用的 struct
             _localVarPtrs[paramName] = argIt;
             DEBUG_LOG_VAL("  Method param (ref)", paramName << " : " << paramType.getFullName());
-        } else if (structParamUsesPointer(paramType.name)) {
+        } else if (structParamUsesPointer(paramType)) {
             // Phase 3c.1: 非平凡结构体仍走指针 ABI
             registerLocalVar(paramName, argIt, paramType);
             DEBUG_LOG_VAL("  Param (struct ptr)", paramName << " : " << paramType.name << "*");
@@ -1205,7 +1207,8 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
         if (!fallibleErrName.empty() && methRetVoid && !isDestructor) {
             callDestructorsForScope();
             auto retStructTy = getFallibleRetStructType(TypeInfo(), fallibleErrName);
-            auto errLLVMTy = getLLVMType(TypeInfo(fallibleErrName));
+            TypeInfo errType(fallibleErrName);
+            auto errLLVMTy = getLLVMType(errType);
             llvm::Value* rs = llvm::UndefValue::get(retStructTy);
             rs = _builder.CreateInsertValue(rs, _builder.getInt1(false), {0});
             rs = _builder.CreateInsertValue(rs, llvm::Constant::getNullValue(errLLVMTy), {1});

@@ -189,7 +189,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
         if (selfIt == _localVarPtrs.end()) {
             throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3134);
         }
-        auto structType = getLLVMType(TypeInfo(_currentStructName));
+        auto structType = getLLVMType(typeInfoForNamedStruct(_currentStructName));
         auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
         auto fIdx = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIdx);
         std::array<llvm::Value*, 2> indices{zero, fIdx};

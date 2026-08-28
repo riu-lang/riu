@@ -204,7 +204,7 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(p<ExprNode> leftExpr, p<ExprNod
     // 形参为 Ref<T> 或 structParamUsesPointer → 传指针；其余按值。
     // 与 getLLVMFunctionType / compileFn 的方法形参 ABI 保持一致。
     TypeInfo declaredRhsType = methodSymbol->params.size() >= 2 ? methodSymbol->params[1] : rightType;
-    bool rhsByPtr = declaredRhsType.isRef() || structParamUsesPointer(declaredRhsType.name);
+    bool rhsByPtr = declaredRhsType.isRef() || structParamUsesPointer(declaredRhsType);
 
     if (rhsByPtr) {
         // 形参期望指针

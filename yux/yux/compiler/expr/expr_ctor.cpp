@@ -408,7 +408,8 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
     (void)givenArity; // arity 已由 sema::validateEnumCtorShape 校验
 
     int tagIndex = enumDecl->variantIndex(variantName);
-    auto enumLLVMType = getLLVMType(TypeInfo(enumName));
+    TypeInfo enumTy(enumName);
+    auto enumLLVMType = getLLVMType(enumTy);
     if (!enumLLVMType) {
         throw YuxError(line, col, ErrorCode::E3096, enumName);
     }
