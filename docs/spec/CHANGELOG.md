@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-08-28 —— String：`to_upper` / `to_lower` / `ends_with` / `split`
+
+- **修改 §9.3.4**：方法表补 `starts_with` / `contains`（v0.18 已落地、表未列）以及 `ends_with` / `to_upper` / `to_lower` / `split`。`to_upper` / `to_lower` 仅 ASCII `a-z` ↔ `A-Z`（§9.3.4.3）；`split` 语义见 §9.3.4.4。
+- **修改 §9.3.4.1**：从"不提供"清单去掉 `to_upper`；`trim` / `substring` / `repeat` 仍不提供。
+- **冲突 / 兼容**：无用户破坏。
+
 ## 2026-08-28 —— Array:<T>::with_capacity 静态工厂
 
 - **修改 §9.2.2.1 / 新增 §9.2.2.1a / 修改 §9.2.3**：空数组只走 `[]`；删除旧 `Array<T>()` 构造。新增 `#Builtin #Static` 工厂 `Array:<T>::with_capacity(n usize)`（调用须 turbofish）。

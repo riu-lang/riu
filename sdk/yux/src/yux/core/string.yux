@@ -44,6 +44,20 @@ struct String {
     }
   }
 
+  ; SDK 私有：从码点缓冲拷贝 [start, end) 构造新 String
+  #Static
+  fn _from_range(src Array<u32>&, start usize, end usize) String {
+    #Mut let buf Array<u32> = []
+    loop i usize = start {
+      if i >= end {
+        break;
+      }
+      buf.push(copy_of(src[i]))
+      i += 1
+    }
+    String::_take_buf(move(buf))
+  }
+
   fn len() usize {
     let a Array<u32>& = as_ref($._buf)
     a.len()
@@ -98,6 +112,29 @@ struct String {
     true
   }
 
+  ; 是否以 suffix 结尾：长度足够且后 slen 个码点逐位相等
+  ; 空 suffix 视为匹配任何字符串（与 starts_with("") 一致）
+  fn ends_with(suffix String&) bool {
+    let a Array<u32>& = as_ref($._buf)
+    let b Array<u32>& = as_ref(suffix._buf)
+    let slen usize = b.len()
+    let hlen usize = a.len()
+    if slen > hlen {
+      ret false
+    }
+    let off usize = hlen - slen
+    loop i usize = 0 {
+      if i >= slen {
+        break;
+      }
+      if a[off + i] != b[i] {
+        ret false
+      }
+      i += 1
+    }
+    true
+  }
+
   ; 是否包含 needle 子串：朴素 O(n*m) 滑窗匹配
   ; 空 needle 视为匹配任何字符串（与 starts_with("") 一致）
   fn contains(needle String&) bool {
@@ -133,6 +170,90 @@ struct String {
       i += 1
     }
     false
+  }
+
+  ; ASCII 大写：a-z → A-Z，其余码点不变（含非 ASCII）；返回新 String
+  fn to_upper() String {
+    let a Array<u32>& = as_ref($._buf)
+    #Mut let buf Array<u32> = []
+    loop i usize = 0 {
+      if i >= a.len() {
+        break;
+      }
+      #Mut let cp u32 = copy_of(a[i])
+      if cp >= c'a' && cp <= c'z' {
+        cp = cp - 32u32
+      }
+      buf.push(cp)
+      i += 1
+    }
+    String::_take_buf(move(buf))
+  }
+
+  ; ASCII 小写：A-Z → a-z，其余码点不变（含非 ASCII）；返回新 String
+  fn to_lower() String {
+    let a Array<u32>& = as_ref($._buf)
+    #Mut let buf Array<u32> = []
+    loop i usize = 0 {
+      if i >= a.len() {
+        break;
+      }
+      #Mut let cp u32 = copy_of(a[i])
+      if cp >= c'A' && cp <= c'Z' {
+        cp = cp + 32u32
+      }
+      buf.push(cp)
+      i += 1
+    }
+    String::_take_buf(move(buf))
+  }
+
+  ; 按 sep 切分；空 sep 按码点切开；连续 / 首尾 sep 产生空段
+  ; 空接收者 + 非空 sep → [""]；空接收者 + 空 sep → []
+  fn split(sep String&) Array<String> {
+    let a Array<u32>& = as_ref($._buf)
+    let b Array<u32>& = as_ref(sep._buf)
+    let slen usize = b.len()
+    let hlen usize = a.len()
+    #Mut let parts Array<String> = []
+    if slen == 0 {
+      loop i usize = 0 {
+        if i >= hlen {
+          break;
+        }
+        parts.push(String::_from_range(&a, i, i + 1))
+        i += 1
+      }
+      ret parts
+    }
+    #Mut let start usize = 0
+    #Mut let i usize = 0
+    loop {
+      if i + slen > hlen {
+        break;
+      }
+      #Mut let j usize = 0
+      #Mut let hit bool = true
+      loop {
+        if j >= slen {
+          break;
+        }
+        if a[i + j] != b[j] {
+          hit = false
+          break;
+        }
+        j += 1
+      }
+      if hit {
+        parts.push(String::_from_range(&a, start, i))
+        i += slen
+        start = i
+      } else {
+        i += 1
+      }
+    }
+    parts.push(String::_from_range(&a, start, hlen))
+    ret parts
   }
 
   ; 转为 UTF-8 字节数组

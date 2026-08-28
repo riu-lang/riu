@@ -2,7 +2,9 @@
 ;
 ; 覆盖：
 ;   - 等值比较（== / !=）
-;   - contains / starts_with（含 String& 形参直接调用）
+;   - contains / starts_with / ends_with（含 String& 形参直接调用）
+;   - to_upper / to_lower（ASCII；非 ASCII 码点不变）
+;   - split（空 sep、连续 sep、首尾 sep、Unicode）
 ;   - 转义序列与原始字符串（\n \t \r \0 \v \b \\ \" \' \$ \xNN \uNNNN r"..."）
 ;   - \$ 转义与字符串模板插值（$id / ${expr} / UTF-8）
 ;   - ToString 自动分发（i32 / i64 / u64 / bool / f64）
@@ -83,6 +85,160 @@ fn test_string_contains_direct() {
   let s String = "foo bar baz"
   assert_true(s.contains("bar"))
   assert_false(s.contains("qux"))
+}
+
+; ==================== ends_with ====================
+
+; 验证：String 的 ends_with 方法基本用法
+#Test
+fn test_string_ends_with_basic() {
+  let s String = "hello world"
+  assert_true(s.ends_with("world"))
+  assert_true(s.ends_with("d"))
+  assert_true(s.ends_with("hello world"))
+  assert_false(s.ends_with("hello"))
+}
+
+; 验证：空字符串作为后缀时，String 的 ends_with 方法返回 true
+#Test
+fn test_string_ends_with_empty_suffix() {
+  let s String = "x"
+  assert_true(s.ends_with(""))
+  let empty String = ""
+  assert_true(empty.ends_with(""))
+}
+
+; 验证：后缀长于接收者时 ends_with 返回 false
+#Test
+fn test_string_ends_with_longer_suffix() {
+  let s String = "ab"
+  assert_false(s.ends_with("abc"))
+}
+
+; 验证：UTF-8 码点后缀
+#Test
+fn test_string_ends_with_utf8() {
+  let s String = "你好世界"
+  assert_true(s.ends_with("世界"))
+  assert_false(s.ends_with("你好"))
+}
+
+; ==================== to_upper / to_lower ====================
+
+; 验证：ASCII 大小写转换
+#Test
+fn test_string_to_upper_ascii() {
+  assert_eq("Hello".to_upper(), "HELLO")
+  assert_eq("hello".to_upper(), "HELLO")
+  assert_eq("ABC123".to_upper(), "ABC123")
+  assert_eq("".to_upper(), "")
+}
+
+; 验证：to_upper 不转换非 ASCII 码点（含 Latin-1 / CJK）
+#Test
+fn test_string_to_upper_non_ascii_unchanged() {
+  assert_eq("café".to_upper(), "CAFé")
+  assert_eq("你好Hello".to_upper(), "你好HELLO")
+}
+
+; 验证：ASCII 小写转换
+#Test
+fn test_string_to_lower_ascii() {
+  assert_eq("Hello".to_lower(), "hello")
+  assert_eq("HELLO".to_lower(), "hello")
+  assert_eq("xyz".to_lower(), "xyz")
+  assert_eq("".to_lower(), "")
+}
+
+; 验证：to_lower 不转换非 ASCII 码点
+#Test
+fn test_string_to_lower_non_ascii_unchanged() {
+  assert_eq("CAFÉ".to_lower(), "cafÉ")
+  assert_eq("你好HELLO".to_lower(), "你好hello")
+}
+
+; ==================== split ====================
+
+; 验证：按单码点分隔符切分
+#Test
+fn test_string_split_comma() {
+  let parts Array<String> = "a,b,c".split(",")
+  assert_eq(parts.len(), 3)
+  assert_eq(parts[0], "a")
+  assert_eq(parts[1], "b")
+  assert_eq(parts[2], "c")
+}
+
+; 验证：连续分隔符产生空段
+#Test
+fn test_string_split_consecutive_sep() {
+  let parts Array<String> = "a,,b".split(",")
+  assert_eq(parts.len(), 3)
+  assert_eq(parts[0], "a")
+  assert_eq(parts[1], "")
+  assert_eq(parts[2], "b")
+}
+
+; 验证：首尾分隔符产生空段
+#Test
+fn test_string_split_leading_trailing_sep() {
+  let parts Array<String> = ",a,".split(",")
+  assert_eq(parts.len(), 3)
+  assert_eq(parts[0], "")
+  assert_eq(parts[1], "a")
+  assert_eq(parts[2], "")
+}
+
+; 验证：无匹配时整串作为唯一段
+#Test
+fn test_string_split_no_match() {
+  let parts Array<String> = "abc".split(",")
+  assert_eq(parts.len(), 1)
+  assert_eq(parts[0], "abc")
+}
+
+; 验证：空接收者 + 非空 sep → 单个空段
+#Test
+fn test_string_split_empty_haystack() {
+  let parts Array<String> = "".split(",")
+  assert_eq(parts.len(), 1)
+  assert_eq(parts[0], "")
+}
+
+; 验证：空 sep 按码点切开
+#Test
+fn test_string_split_empty_sep() {
+  let parts Array<String> = "abc".split("")
+  assert_eq(parts.len(), 3)
+  assert_eq(parts[0], "a")
+  assert_eq(parts[1], "b")
+  assert_eq(parts[2], "c")
+}
+
+; 验证：空接收者 + 空 sep → 空数组
+#Test
+fn test_string_split_empty_both() {
+  let parts Array<String> = "".split("")
+  assert_eq(parts.len(), 0)
+}
+
+; 验证：多码点分隔符
+#Test
+fn test_string_split_multi_cp_sep() {
+  let parts Array<String> = "a::b::c".split("::")
+  assert_eq(parts.len(), 3)
+  assert_eq(parts[0], "a")
+  assert_eq(parts[1], "b")
+  assert_eq(parts[2], "c")
+}
+
+; 验证：UTF-8 切分
+#Test
+fn test_string_split_utf8() {
+  let parts Array<String> = "你好,世界".split(",")
+  assert_eq(parts.len(), 2)
+  assert_eq(parts[0], "你好")
+  assert_eq(parts[1], "世界")
 }
 
 ; ==================== 转义序列 ====================
