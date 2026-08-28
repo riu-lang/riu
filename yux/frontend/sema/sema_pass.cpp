@@ -32,6 +32,8 @@
 // 报错; 等后续 batch 一并迁过来再扩 kMigratedCodes。
 
 #include "sema/sema_pass.h"
+#include "sema/call_resolve.h"
+#include "sema/name_resolver.h"
 
 #include <algorithm>
 #include <array>
@@ -52,7 +54,6 @@
 #include "ast/node/struct_node.h"
 #include "ast/node/type_node.h"
 #include "ast/yux.h"
-#include "sema/call_resolve.h"
 #include "tools/diagnostic.h"
 #include "types.h"
 
@@ -93,33 +94,6 @@ constexpr std::array<std::string_view, 21> kMigratedCodes = {
     "E4032",
     "E4033",
 };
-
-// 与 Compiler::lookupEnumDecl 等价的本地版本: 本文件 → SDK → wildcard imports.
-// SemaPass 不依赖 LLVM, 无法直接调用 Compiler 成员, 这里复制查找规则。
-EnumDeclNode* lookupEnumIn(p<FileNode> file, p<FileNode> sdkFile, const string& name) {
-    if (!file) return nullptr;
-    if (auto* d = file->getEnumDecl(name)) return d;
-    if (sdkFile && sdkFile != file) {
-        if (auto* d = sdkFile->getEnumDecl(name)) return d;
-    }
-    for (auto* imp : file->wildcardImports()) {
-        if (auto* d = imp->getEnumDecl(name)) return d;
-    }
-    return nullptr;
-}
-
-// Bucket 4 (CURRENT-check.md): 与 lookupEnumIn 同款的 struct decl 三段查找.
-// FileNode::getStructDecl 默认过滤 #Builtin (Rc/Ref/Ptr/Array...) ——
-// SemaPass 走 E6011 arity 校验等需要看到这些占位, 这里统一传 true。
-// wildcardImports 已在 getStructDecl 内部覆盖, 只需再补 sdkFile 一档。
-StructDeclNode* lookupStructIn(p<FileNode> file, p<FileNode> sdkFile, const string& name) {
-    if (!file) return nullptr;
-    if (auto* d = file->getStructDecl(name, /*includeBuiltin=*/true)) return d;
-    if (sdkFile && sdkFile != file) {
-        if (auto* d = sdkFile->getStructDecl(name, /*includeBuiltin=*/true)) return d;
-    }
-    return nullptr;
-}
 
 // Phase 3.3.2.f: 与 Compiler::isBuiltinMethod 等价的本地版本.
 // 仅查 sdkFile 的 struct impl (内建运算符方法都注册在 SDK 上), 不存在
@@ -174,7 +148,7 @@ bool isNoCopyTypeIn(const TypeInfo& type, p<FileNode> file, p<FileNode> sdkFile)
     if (type.isRef() || type.isPtr()) return false;
     if (type.isArrayGeneric()) return true; // Array<T> 隐含 #NoCopy
 
-    auto* decl = lookupStructIn(file, sdkFile, type.baseStructName());
+    auto* decl = sema::NameResolver(file, sdkFile).lookupStruct(type.baseStructName(), true);
     if (decl && decl->hasAnno("NoCopy")) return true;
     return false;
 }
@@ -205,13 +179,12 @@ bool isMigratedCode(const char* code) {
 
 SemaPass::SemaPass(p<FileNode> file, Yux* yux)
     : _file(file), _yux(yux), _sdkFile(yux ? yux->sdkFile() : nullptr),
-      _sourcePath((yux && file) ? yux->modulePath(file->moduleName()) : "") {}
+      _sourcePath((yux && file) ? yux->modulePath(file->moduleName()) : ""), _names(_file, _sdkFile) {}
 
 void SemaPass::run() {
     if (!_file) return;
-    // Bucket 3: 顶层类型别名一次性校验 (E2017 名字冲突 + E2016 环).
-    // 必须在遍历 fn 之前: 一旦命中, 直接抛错.
-    sema::validateAliases(_file);
+    // 顶层类型别名一次性校验 (E2017 / E2016) + fn 符号表归一化
+    sema::validateAliases(_file, _sdkFile);
     // E4025 / E1132：struct 字段上的 Rc/Weak/Array 内嵌 Heap、Rc/Weak 内嵌 Dyn
     for (auto& sd : _file->getStructDecls()) {
         if (!sd) continue;
@@ -297,7 +270,7 @@ void SemaPass::run() {
                     continue;
                 }
 
-                auto* fieldDecl = lookupStructIn(_file, _sdkFile, ft.baseStructName());
+                auto* fieldDecl = _names.lookupStruct(ft.baseStructName(), true);
                 if (fieldDecl && fieldDecl->hasAnno("NoCopy")) {
                     throw YuxError(decl->getLineNumber(), decl->getColumn(), ErrorCode::E4032, decl->name().getText(),
                                    field->name().getText());
@@ -577,7 +550,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             try {
                 auto vt = d->varType()->getType();
                 if (!vt.name.empty() && !isBuiltinType(vt.name) && !vt.isRef() && !vt.isFn() && !vt.isTuple()) {
-                    if (auto* sd = lookupStructIn(_file, _sdkFile, vt.name)) {
+                    if (auto* sd = _names.lookupStruct(vt.name, true)) {
                         size_t want = sd->typeParams().size();
                         size_t got = vt.genericArgs.size();
                         if (want > 0 && want != got) {
@@ -842,7 +815,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                 auto vt = da->varType()->getType();
                 validateContainerBansAt(vt, da->varType(), da->getLineNumber(), da->getColumn());
                 if (!vt.name.empty() && !isBuiltinType(vt.name) && !vt.isRef() && !vt.isFn() && !vt.isTuple()) {
-                    if (auto* sd = lookupStructIn(_file, _sdkFile, vt.name)) {
+                    if (auto* sd = _names.lookupStruct(vt.name, true)) {
                         size_t want = sd->typeParams().size();
                         size_t got = vt.genericArgs.size();
                         if (want > 0 && want != got) {
@@ -2172,14 +2145,13 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         try {
             TypeInfo scrutType = n->scrutinee()->getType();
             // v0.16: [] 返回 T&——match scrutinee 自动剥 Ref 检查底层 enum 类型
-            TypeInfo checkType =
-                scrutType.isRef() && scrutType.refElementType() ? *scrutType.refElementType() : scrutType;
+            TypeInfo checkType = scrutType.peelRef();
             // Rc<E> 自动 deref 走 Compiler 兜底, 不在此处接入
             if (!checkType.isRc()) {
-                auto* enumDecl = lookupEnumIn(_file, _sdkFile, checkType.name);
+                auto* enumDecl = _names.lookupEnum(checkType.name);
                 if (enumDecl) {
                     sema::validateMatchArms(enumDecl, checkType.name, n, _file);
-                } else if (isBuiltinType(checkType.name) || checkType.name == "String") {
+                } else if (isBuiltinType(checkType.name) || checkType.isString()) {
                     // Bucket 6 (CURRENT-check.md): E2022 scrutinee 非 enum.
                     // 仅在 builtin 原型 / String 时接管 — 复杂路径 (alias 链 /
                     // Box<E> / fresh Rc) 留 Compiler 兜底.
@@ -2211,7 +2183,7 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         int col = n->getColumn();
         for (auto& arm : n->catches()) {
             const string& errType = arm->errType();
-            auto* enumDecl = lookupEnumIn(_file, _sdkFile, errType);
+            auto* enumDecl = _names.lookupEnum(errType);
             if (!enumDecl) {
                 int aline = arm->getLineNumber() > 0 ? arm->getLineNumber() : line;
                 int acol = arm->getColumn() > 0 ? arm->getColumn() : col;
@@ -2455,7 +2427,7 @@ void SemaPass::tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExp
         if (leftType.name.empty() || isBuiltinType(leftType.name)) return;
         // String 走 StringBuilder 特殊 lowering / 其它 builtin-handled 路径,
         // 没有用户可见的 plus/eq/... 方法签名, 不能走 customBinaryOp 解析.
-        if (leftType.name == "String") return;
+        if (leftType.isString()) return;
         if (leftType.isRef() || leftType.isArrayGeneric() || leftType.isWeak() || leftType.isNullable() ||
             leftType.isPtr() || leftType.isTuple())
             return;
@@ -2471,18 +2443,9 @@ void SemaPass::tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExp
             if (!rcInner) return;
             resolvedLeftType = *rcInner;
         }
-        StructDeclNode* decl = _file ? _file->getStructDecl(resolvedLeftType.name) : nullptr;
-        if (!decl && _sdkFile) decl = _sdkFile->getStructDecl(resolvedLeftType.name);
+        StructDeclNode* decl = _names.lookupStruct(resolvedLeftType.name);
         if (!decl || decl->isGeneric()) return;
-        TypeInfo effRightType =
-            (rightType.isRef() && rightType.refElementType()) ? *rightType.refElementType() : rightType;
-        // Heap<T> → T / Rc<T> → T：运算符穿透 wrapper，方法在内部类型上验证
-        if (effRightType.isHeap()) {
-            if (auto inner = effRightType.heapElementType()) effRightType = *inner;
-        }
-        if (effRightType.isRc()) {
-            if (auto inner = effRightType.rcElementType()) effRightType = *inner;
-        }
+        TypeInfo effRightType = rightType.peelAutoDeref();
         sema::validateBinOpMethodResolution(_file, _sdkFile, resolvedLeftType, effRightType, methodName, line, col);
     } catch (const YuxError&) {
         throw;

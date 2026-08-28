@@ -5,6 +5,7 @@
 #define YUX_LANG_SEMA_PASS_H
 
 #include "ast/node/file_node.h"
+#include "sema/name_resolver.h"
 
 class ExprNode;
 class StatementNode;
@@ -42,6 +43,7 @@ private:
     // 派生缓存: 进 ctor 时从 _yux 一次性算出, 避免后续 visit* 反复调用 yux 接口。
     p<FileNode> _sdkFile;
     string _sourcePath;
+    sema::NameResolver _names;
 
     // Phase 3.3 前置.4: 当前所在 fn (用于 caller 的 #Fallible(E) 校验) +
     // try block 栈 (用于 ID-callee 错误传播 E7001/E7004/E7006/E7016).
@@ -95,8 +97,8 @@ private:
     // 仅在 leftType 是非 builtin / 非 Ref/Rc/Array/Heap/Weak/Nullable/Ptr/Tuple
     // 容器 / 已知非泛型 struct 时调用; 泛型 struct / 模板形参 / lambda 形参 (getType
     // 抛错) 一律跳过, 留 Compiler 兜底. methodName 由调用方按 op 映射 (plus/minus/...).
-    void tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExpr,
-                                 const string& methodName, int line, int col);
+    void tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExpr, const string& methodName, int line,
+                                int col);
 };
 
-#endif //YUX_LANG_SEMA_PASS_H
+#endif // YUX_LANG_SEMA_PASS_H

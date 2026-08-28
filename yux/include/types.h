@@ -473,6 +473,32 @@ struct TypeInfo {
         return nullptr;
     }
 
+    // 堆句柄 String（B-4：`{ _buf: Rc<Array<u32>> }`），不是用户 struct 名碰巧叫 String
+    [[nodiscard]] bool isString() const { return kind == TypeKind::Normal && name == "String"; }
+
+    // 8 字节堆句柄：Rc / Weak / Array<T> / String。不含 Heap（单所有权裸指针）
+    [[nodiscard]] bool isRcHandle() const { return isRc() || isWeak() || isArrayGeneric() || isString(); }
+
+    // 剥一层 Ref<T> → T；非 Ref 原样返回
+    [[nodiscard]] TypeInfo peelRef() const {
+        if (isRef()) {
+            if (auto inner = refElementType()) return *inner;
+        }
+        return *this;
+    }
+
+    // 运算符自动解引用：Ref → Heap → Rc，各一层（与 expr getType 历史行为一致）
+    [[nodiscard]] TypeInfo peelAutoDeref() const {
+        TypeInfo t = peelRef();
+        if (t.isHeap()) {
+            if (auto inner = t.heapElementType()) t = *inner;
+        }
+        if (t.isRc()) {
+            if (auto inner = t.rcElementType()) t = *inner;
+        }
+        return t;
+    }
+
     // 是否有类型实参：Generic（用户泛型）或内置包装类型
     [[nodiscard]] bool hasGenericArgs() const {
         switch (kind) {

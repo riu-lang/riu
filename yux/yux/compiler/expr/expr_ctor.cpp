@@ -406,7 +406,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
     }
 
     p<FileNode> owner = nullptr;
-    auto enumDecl = lookupEnumDecl(enumName, owner);
+    auto enumDecl = names().lookupEnum(enumName, &owner);
     auto variant = enumDecl->variant(variantName);
 
     size_t givenArity = node->args().size();

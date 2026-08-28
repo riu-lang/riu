@@ -355,7 +355,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
                     // 使 _ptr_as_ref:<Array<T>>(p) 可正确 round-trip。
                     // fall through 到下方泛型路径，取 alloca 地址。
                 }
-                if (T.name == "String" && T.kind == TypeKind::Normal) {
+                if (T.isString()) {
                     // B-4: String layout = { _buf: Rc<Array<u32>> } = { { ptr handle } }
                     auto handle = _builder.CreateExtractValue(args[i], {0, 0}, "string.handle");
                     if (!forPtrOf) return handle;
@@ -1057,7 +1057,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
                     callArgs.push_back(handle);
                     continue;
                 }
-                if (aType.name == "String" && aType.kind == TypeKind::Normal) {
+                if (aType.isString()) {
                     // B-4: String = { _buf Rc<Array<u32>> } = { { ptr handle } }
                     auto handle = _builder.CreateExtractValue(args[i], {0, 0}, "string.handle");
                     // RC Block: offset 8 = Array._data

@@ -61,7 +61,7 @@
 
 ### v1.0 候选 — 规范定稿 + ABI 冻结
 
-> **现状提示**：v1.0 仍远（当前 v0.19-alpha）。spec 残留 Open Issues 已审计并关/转/留；本节标准是终态门槛，不是近期目标。下方"后续主题"里的待编号工作要先落，才进 v1.0 候选。
+> **现状提示**：v1.0 仍远（当前 v0.20-alpha）。spec 残留 Open Issues 已审计并关/转/留；本节标准是终态门槛，不是近期目标。下方"后续主题"里的待编号工作要先落，才进 v1.0 候选。
 
 **退出标准**：
 
@@ -100,7 +100,29 @@
 
 - **性能与 layout 优化**：String 专属 FAM Block（`{strong, weak, len_cps, u32 data[]}`）；Array Block 内联小尺寸优化；内联策略与裁剪；基准测试无回归。
 
-### v0.19.0-alpha — 遗留实现收口 + SDK 方法补全 + Array 工厂
+### v0.20.0-alpha — 编译器结构收口
+
+**主题**：语义检查收口到 SemaPass；TypeInfo 谓词与名字查找去重；所有权三个入口；Builtin 方法表驱动。不加新语法。
+
+**范围（草稿）**：
+
+- TypeInfo：`peelRef` / `peelAutoDeref` / `isRcHandle`；NameResolver（本文件 → SDK → wildcard）一份实现；`validateAliases` 只留 sema 版
+- 调用 / 方法 / 构造 / statement / 泛型体语义 throw 迁入 SemaPass；反转 `kMigratedCodes`
+- OwnershipOps：`storeIntoSlot` / `passAsArg` / `returnValue`
+- Array / String `#Builtin` 方法改表驱动
+
+**不在范围**：完整 HIR；Compiler 拆成多类；AST visitor；改 g4；`continue` / `for in`；泛型 enum；错误模型 v2；`Map` / `format` / IO。
+
+**退出标准**：
+
+- [ ] NameResolver 为 struct / enum / fn / alias 唯一查找；Compiler 不再双跑 `validateAliases`
+- [ ] 正常路径下 Compiler 不再抛语义错；`yux-check` 覆盖与 `yux build` 对齐（仍缺的列进 TODO）
+- [ ] 所有权三个入口收口 retain / release 协议
+- [ ] `yux test` / `yux-check test` / `./build.ps1 test` 全绿
+- [ ] `./lint.ps1` 0 warnings
+- [ ] CHANGELOG 收口
+
+### v0.19.0-alpha — 遗留实现收口 + SDK 方法补全 + Array 工厂 ✅ 已完成（2026-08-28）
 
 **主题**：把 v0.18 审计后留下的实现洞补上（Array move / `#NoCopy` 泛型 / typed release TODO）；补齐 String 剩余高频方法与 Array 静态工厂。不加新语法。
 
@@ -117,9 +139,9 @@
 - [x] A5 / E4032 泛型 `#NoCopy` 关；Heap/Dyn typed-release TODO 有结论（实现或删除）
 - [x] `Array::with_capacity` 可用
 - [x] String `to_upper` / `to_lower` / `ends_with` / `split` 有 SDK 测试
-- [ ] `yux test` / `yux-check test` / `./build.ps1 test` 全绿
-- [ ] `./lint.ps1` 0 warnings
-- [ ] CHANGELOG 收口
+- [x] `yux test` / `yux-check test` / `./build.ps1 test` 全绿
+- [x] `./lint.ps1` 0 warnings
+- [x] CHANGELOG 收口
 
 ### v0.18.0 — Open Issue 审计 + 语言面收口 + 块作用域 ✅ 已完成（2026-08-27）
 

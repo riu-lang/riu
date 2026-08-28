@@ -1,0 +1,46 @@
+// Copyright (c) 2026. Yin-Jinlong@github
+// MPL-2.0
+
+#ifndef YUX_LANG_SEMA_NAME_RESOLVER_H
+#define YUX_LANG_SEMA_NAME_RESOLVER_H
+
+#include "ast/node/file_node.h"
+
+class AliasDeclNode;
+class EnumDeclNode;
+class StructDeclNode;
+struct FnSymbolInfo;
+struct TypeInfo;
+
+// 跨文件名字查找（0 LLVM）：本文件 → SDK → wildcard imports。
+// FileNode::get* 已含本文件 wildcard；此处再补 SDK，并保留第三段
+// `imp->get*`（导入文件自己的 wildcard，与历史 lookupEnumDecl 一致）。
+namespace sema {
+
+struct NameResolver {
+    FileNode* file = nullptr;
+    FileNode* sdkFile = nullptr;
+
+    NameResolver() = default;
+    NameResolver(FileNode* f, FileNode* sdk) : file(f), sdkFile(sdk) {}
+
+    // includeBuiltin：是否命中 `#Builtin` 占位 struct（Rc/Array 等）。Sema arity 校验传 true。
+    [[nodiscard]] StructDeclNode* lookupStruct(const string& name, bool includeBuiltin = false,
+                                               FileNode** outOwner = nullptr) const;
+    [[nodiscard]] EnumDeclNode* lookupEnum(const string& name, FileNode** outOwner = nullptr) const;
+    [[nodiscard]] AliasDeclNode* lookupAlias(const string& name, FileNode** outOwner = nullptr) const;
+    [[nodiscard]] FnSymbolInfo* lookupFn(const string& name, FileNode** outOwner = nullptr) const;
+    [[nodiscard]] FnSymbolInfo* lookupFnWithParams(const string& name, const vector<TypeInfo>& paramTypes,
+                                                   FileNode** outOwner = nullptr) const;
+};
+
+// 透明别名解析（完整版：递归 generic / array / tuple / fn）。遇环抛 E2016。
+[[nodiscard]] TypeInfo resolveAlias(const TypeInfo& t, FileNode* file, FileNode* sdkFile = nullptr);
+
+// 顶层别名一次性校验：E2017 名字冲突 + E2016 环 + fn 符号表归一化。
+// SemaPass::run 起始处调一次；Compiler 不再双跑。
+void validateAliases(p<FileNode> file, p<FileNode> sdkFile = nullptr);
+
+} // namespace sema
+
+#endif // YUX_LANG_SEMA_NAME_RESOLVER_H

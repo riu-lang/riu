@@ -24,7 +24,6 @@ sema 相关代码进 `yux/frontend/sema/sema_pass.{h,cpp}` 与 `yux/frontend/sem
 - 泛型 fn / impl 体
 - 所有 statement（lambda body 内 statement 已解锁 v0.16）
 - target-type 上下文驱动的类型检查
-- `compiler_types.cpp` 的 alias 环检测
 
 在这些路径里加 throw 时 sema 镜像不会生效，省事写 Compiler 端即可。
 

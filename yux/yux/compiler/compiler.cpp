@@ -79,13 +79,9 @@ void Compiler::compile(p<FileNode> file) {
         _yux->validateSpecImpls();
     }
 
-    // 透明类型别名的一次性校验：名称冲突 + 环检测
-    DEBUG_LOG("Validating type aliases...");
-    validateAliases();
+    // 透明类型别名的校验 + 符号表归一化由 SemaPass::run 一次完成
 
-    // Sema/Codegen 拆分骨架（Phase 3.1）：当前是 no-op, 仅落位走 AST 全树。
-    // 3.2 起 visitExpr 写 resolvedType, 与 compile<Foo>Expr 入口的写并存校验;
-    // 3.3+ 按子系统迁 throw, 让 codegen 不再抛语义错。
+    // Sema/Codegen 拆分：visitExpr 写 resolvedType；3.3+ 按子系统迁 throw。
     DEBUG_LOG("Running SemaPass...");
     SemaPass(_file, _yux).run();
 

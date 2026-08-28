@@ -199,7 +199,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
         auto inner = scrutType.rcElementType();
         if (inner) {
             p<FileNode> tmpOwner = nullptr;
-            if (lookupEnumDecl(inner->name, tmpOwner)) {
+            if (names().lookupEnum(inner->name, &tmpOwner)) {
                 if (isFreshHandleExpr(scrutinee)) {
                     throw YuxError(line, col, ErrorCode::E2022, scrutType.name)
                         .withHint("不支持对临时 Rc<E> 直接 match；先 `var b Rc<E> = ...` 落地再 match b");
@@ -217,7 +217,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
         auto inner = scrutType.heapElementType();
         if (inner) {
             p<FileNode> tmpOwner = nullptr;
-            if (lookupEnumDecl(inner->name, tmpOwner)) {
+            if (names().lookupEnum(inner->name, &tmpOwner)) {
                 if (isFreshHandleExpr(scrutinee)) {
                     throw YuxError(line, col, ErrorCode::E2022, scrutType.name)
                         .withHint("不支持对临时 Heap<E> 直接 match；先 `var h Heap<E> = ...` 落地再 match h");
@@ -235,7 +235,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
         auto inner = scrutType.refElementType();
         if (inner) {
             p<FileNode> tmpOwner = nullptr;
-            if (lookupEnumDecl(inner->name, tmpOwner)) {
+            if (names().lookupEnum(inner->name, &tmpOwner)) {
                 refDeref = true;
                 scrutType = *inner;
             }
@@ -244,7 +244,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
 
     // 1. 必须是 enum
     p<FileNode> enumOwner = nullptr;
-    auto enumDecl = lookupEnumDecl(scrutType.name, enumOwner);
+    auto enumDecl = names().lookupEnum(scrutType.name, &enumOwner);
     if (!enumDecl) {
         throw YuxError(line, col, ErrorCode::E2022, scrutType.name);
     }
@@ -540,7 +540,7 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
     for (auto& arm : node->catches()) {
         const string& errType = arm->errType();
         p<FileNode> owner = nullptr;
-        auto enumDecl = lookupEnumDecl(errType, owner);
+        auto enumDecl = names().lookupEnum(errType, &owner);
         if (!enumDecl) {
             int aline = arm->getLineNumber() > 0 ? arm->getLineNumber() : line;
             int acol = arm->getColumn() > 0 ? arm->getColumn() : col;

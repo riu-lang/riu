@@ -8,6 +8,7 @@
 #include "ast/node/file_node.h"
 #include "ast/node/fn_node.h"
 #include "ast/node/spec_node.h"
+#include "sema/name_resolver.h"
 
 class Yux;
 class SpecRegistry;
@@ -361,7 +362,7 @@ void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, p<ExprPathCallNode
 //
 // 不覆盖:
 //   - E2022 (scrutinee 不是 enum / Rc<E> 仅借用语义) —— 调用方 (Compiler) 自身在
-//     lookupEnumDecl 失败时抛, 涉及 rc-deref / alias / isFreshHandleExpr; SemaPass 暂跳过
+//     lookupEnum 失败时抛, 涉及 rc-deref / alias / isFreshHandleExpr; SemaPass 暂跳过
 //   - E3027 (arm body 结果类型不一致) —— 跨 arm body getType 计算, 可能因 lambda
 //     形参未推断而误判, 留 Compiler
 //   - E3091/E3096 —— codegen 兜底
@@ -431,11 +432,6 @@ void validateDotFieldPrivacy(FileNode* file, FileNode* sdkFile, p<ExprDotNode> n
 //
 // 纯字符串解析, 无 LLVM / AST 依赖.
 i64 parseIntLiteral(const string& text, int line = 0, int col = 0);
-
-// Bucket 3 (CURRENT-check.md): 顶层类型别名一次性校验 (E2017 名字冲突 + E2016 环).
-// 镜像 Compiler::validateAliases 但 0 LLVM 依赖, 仅查 FileNode AST. 在
-// SemaPass::run 起始处调一次. Compiler 端同名方法负责符号表归一化等副作用.
-void validateAliases(p<FileNode> file);
 
 // Bucket 6 单点 (CURRENT-check.md): 比较表达式 leftType 形态校验.
 //

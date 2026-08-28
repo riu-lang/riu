@@ -27,6 +27,7 @@
 #include "ast/yux.h"
 #include "compiler_runtime.h"
 #include "sema/const_eval.h"
+#include "sema/name_resolver.h"
 
 // 类型转换信息
 // 用于延迟处理类型转换 (如 .to_i32() 方法调用)
@@ -106,8 +107,8 @@ class Compiler {
     [[nodiscard]] TypeInfo applySubst(const TypeInfo& t) const; // 应用当前类型替换（含别名透明替换）
     // 顶层透明类型别名解析；递归把 alias 名替换为目标类型，遇环抛 E2016
     [[nodiscard]] TypeInfo resolveAlias(const TypeInfo& t) const;
-    // 编译入口处的别名一次性校验：名称冲突 (E2017) + 环检测 (E2016)
-    void validateAliases();
+    // 本文件 → SDK → wildcard（0 LLVM，与 SemaPass 共用）
+    [[nodiscard]] sema::NameResolver names() const { return {_file, _yux ? _yux->sdkFile() : nullptr}; }
     string ensureStructInstance(p<StructDeclNode> baseDecl, const vector<sp<TypeInfo>>& args, p<FileNode> ownerFile,
                                 int sourceLine = 0); // 确保结构体实例存在
     string ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& typeArgs, p<FileNode> ownerFile,
@@ -450,8 +451,6 @@ private:
     // 实参位置 lambda 类型反推：用 fnParamTypes()[i] 回填 LambdaExprNode 形参缺失类型
     // 在调用点正式 compileExpr(args) 之前调用
     void inferLambdaParamsFromFnType(p<class LambdaExprNode> lambda, const TypeInfo& expectedFnType);
-    // 查找 enum 声明（本文件 + SDK 回退 + wildcard 导入），未找到返回 nullptr / 空 owner
-    p<EnumDeclNode> lookupEnumDecl(const string& name, p<FileNode>& outOwner);
     llvm::Value* compileGetRefExpr(p<ExprGetRefNode> node);         // 编译取引用表达式
     llvm::Value* compileUnaryExpr(p<ExprUnaryNode> node);           // 编译一元表达式
     llvm::Value* compileNullElseExpr(p<ExprNullElseNode> node);     // 编译 a ?? b：a 持值则取 a.get()，否则取 b

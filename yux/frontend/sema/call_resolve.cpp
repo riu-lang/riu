@@ -10,12 +10,12 @@
 // 不依赖任何 LLVM 头; 由 yux_frontend 静态库提供, Compiler 与未来的 SemaPass 共享.
 
 #include "sema/call_resolve.h"
-#include "types.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
 #include "ast/node/enum_node.h"
 #include "ast/yux.h"
 #include "tools/diagnostic.h"
+#include "types.h"
 #include <algorithm>
 #include <format>
 #include <functional>
@@ -758,8 +758,8 @@ void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn, const
             }
         }
         // 泛型实例化 vs 泛型实例化（含内置包装）：同名同元数则递归各 typeArg
-        if (pType.hasGenericArgs() && aType.hasGenericArgs() && pType.kind == aType.kind &&
-            pType.name == aType.name && pType.genericArgs.size() == aType.genericArgs.size()) {
+        if (pType.hasGenericArgs() && aType.hasGenericArgs() && pType.kind == aType.kind && pType.name == aType.name &&
+            pType.genericArgs.size() == aType.genericArgs.size()) {
             for (size_t i = 0; i < pType.genericArgs.size(); ++i) {
                 if (pType.genericArgs[i] && aType.genericArgs[i]) {
                     unify(*pType.genericArgs[i], *aType.genericArgs[i]);
@@ -1127,8 +1127,7 @@ void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeIn
     if (fnName == "same_ref" || fnName == "ptr_of") {
         // arity / typeArgs 计数已由 validateBuiltinIntrinsicShape 保证
         const auto& T = typeArgs[0];
-        bool isHeapHandle =
-            T.isRc() || T.isWeak() || T.isArrayGeneric() || (T.name == "String" && T.kind == TypeKind::Normal);
+        bool isHeapHandle = T.isRcHandle();
         // Phase 8a: ptr_of:<Heap<T>>(h) move-out FFI handoff (DRAFT-heap-types §8.3a)
         // same_ref 不接受 Heap (Heap 单所有权, 两个 Heap 不可能指同一块, 比较无意义)
         bool isHeapForPtrOf = (fnName == "ptr_of" && T.isHeap());
@@ -1138,7 +1137,10 @@ void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeIn
         // 因此同时检查 argTypes 和 AST 符号类型。
         bool argIsRef = false;
         for (auto& at : argTypes) {
-            if (at.isRef()) { argIsRef = true; break; }
+            if (at.isRef()) {
+                argIsRef = true;
+                break;
+            }
         }
         if (!argIsRef) {
             for (auto& node : argNodes) {
@@ -1147,7 +1149,10 @@ void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeIn
                         auto scope = objLit->findNearestScope();
                         if (scope) {
                             auto sym = scope->lookupSymbol(objLit->getValue().getText());
-                            if (sym && sym->type.isRef()) { argIsRef = true; break; }
+                            if (sym && sym->type.isRef()) {
+                                argIsRef = true;
+                                break;
+                            }
                         }
                     }
                 }
@@ -1250,8 +1255,7 @@ void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeIn
             }
             if (!ok && dynamic_cast<ExprGetRefNode*>(argNodes[0])) ok = true;
             if (!ok) {
-                throw YuxError(line, col, ErrorCode::E4034,
-                               argTypes.size() >= 1 ? argTypes[0].getFullName() : "?");
+                throw YuxError(line, col, ErrorCode::E4034, argTypes.size() >= 1 ? argTypes[0].getFullName() : "?");
             }
         }
         return;
@@ -1319,19 +1323,6 @@ void validateOperatorMethodCall(const string& member, const TypeInfo& baseType, 
 // ========== Phase 3.4.a: 枚举构造表达式形态校验 ==========
 
 namespace {
-// 等价于 Compiler::lookupEnumDecl: 本文件 → SDK → wildcard imports.
-EnumDeclNode* lookupEnumInFiles(FileNode* file, FileNode* sdkFile, const string& name) {
-    if (!file) return nullptr;
-    if (auto* d = file->getEnumDecl(name)) return d;
-    if (sdkFile && sdkFile != file) {
-        if (auto* d = sdkFile->getEnumDecl(name)) return d;
-    }
-    for (auto* imp : file->wildcardImports()) {
-        if (auto* d = imp->getEnumDecl(name)) return d;
-    }
-    return nullptr;
-}
-
 // 用户友好类型渲染: Rc<T> / Array<T> / [N]T / Generic<A,B>
 // 与 compiler_expr.cpp compileEnumCtorExpr 内 fmtType lambda 等价.
 string fmtTypeFriendly(const TypeInfo& t) {
@@ -1359,7 +1350,7 @@ void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, p<ExprPathCallNode
     int line = node->getLineNumber();
     int col = node->getColumn();
 
-    auto* enumDecl = lookupEnumInFiles(file, sdkFile, enumName);
+    auto* enumDecl = NameResolver(file, sdkFile).lookupEnum(enumName);
     if (!enumDecl) {
         throw YuxError(line, col, ErrorCode::E2019, enumNameRaw, enumNameRaw, variantName);
     }
@@ -1494,16 +1485,6 @@ string stripGenericSuffix(const string& name) {
     auto pos = name.find('$');
     return pos == string::npos ? name : name.substr(0, pos);
 }
-
-// 查 struct decl: file → sdkFile.
-StructDeclNode* lookupStructIn(FileNode* file, FileNode* sdkFile, const string& name) {
-    if (!file) return nullptr;
-    if (auto* d = file->getStructDecl(name)) return d;
-    if (sdkFile && sdkFile != file) {
-        if (auto* d = sdkFile->getStructDecl(name)) return d;
-    }
-    return nullptr;
-}
 } // namespace
 
 void validatePrivateFieldAccess(StructDeclNode* structDecl, const string& fieldName, const string& baseTypeName,
@@ -1541,7 +1522,7 @@ void validateGetRefPrivacy(FileNode* file, FileNode* sdkFile, p<ExprGetRefNode> 
             if (auto inner = lookupType.rcElementType()) lookupType = *inner;
         }
 
-        auto structDecl = lookupStructIn(file, sdkFile, lookupType.name);
+        auto structDecl = NameResolver(file, sdkFile).lookupStruct(lookupType.name);
         if (!structDecl) return; // E3041 由 getType 抢
 
         int idx = structDecl->fieldIndex(sub.getText());
@@ -1584,7 +1565,7 @@ void validateDotFieldPrivacy(FileNode* file, FileNode* sdkFile, p<ExprDotNode> n
         if (auto inner = actualType.rcElementType()) actualType = *inner;
     }
 
-    auto structDecl = lookupStructIn(file, sdkFile, actualType.name);
+    auto structDecl = NameResolver(file, sdkFile).lookupStruct(actualType.name);
     if (!structDecl) return; // 不是 struct 字段访问 (可能 method / 别的形态), 跳过
 
     validatePrivateFieldAccess(structDecl, node->member(), actualType.name, accessorStructName,
@@ -1638,78 +1619,6 @@ i64 parseIntLiteral(const string& text, int line, int col) {
     } catch (const std::invalid_argument&) {
         int errLine = line > 0 ? line : 1;
         throw YuxError(errLine, col, ErrorCode::E3103, text, suffix.empty() ? string("i64") : suffix);
-    }
-}
-
-// ==================== Bucket 3: 类型别名一次性校验 ====================
-// 镜像 Compiler::validateAliases (compiler_types.cpp). 0 LLVM, 由 SemaPass 起调.
-
-namespace {
-
-TypeInfo resolveAliasImpl(const TypeInfo& t, FileNode* file, std::set<std::string>& visited) {
-    if (!file) return t;
-    if (t.kind == TypeKind::Normal) {
-        auto* alias = file->getAliasDecl(t.name);
-        if (!alias) return t;
-        if (alias->isGeneric()) return t;
-        if (visited.count(t.name)) {
-            throw YuxError(static_cast<int>(alias->name().getLine()), ErrorCode::E2016, t.name);
-        }
-        visited.insert(t.name);
-        if (!alias->target()) return t;
-        TypeInfo target = alias->target()->getType();
-        return resolveAliasImpl(target, file, visited);
-    }
-    if (t.kind == TypeKind::Generic) {
-        auto* alias = file->getAliasDecl(t.name);
-        if (alias && alias->isGeneric() && alias->typeParams().size() == t.genericArgs.size() && alias->target()) {
-            if (visited.count(t.name)) {
-                throw YuxError(static_cast<int>(alias->name().getLine()), ErrorCode::E2016, t.name);
-            }
-            visited.insert(t.name);
-            std::map<std::string, TypeInfo> subst;
-            for (size_t i = 0; i < alias->typeParams().size(); ++i) {
-                subst[alias->typeParams()[i]] = t.genericArgs[i] ? *t.genericArgs[i] : TypeInfo();
-            }
-            TypeInfo inst = alias->target()->getType().substitute(subst);
-            return resolveAliasImpl(inst, file, visited);
-        }
-        // 普通泛型不递归到 args (sema 仅做环检测起点, 简化处理)
-        return t;
-    }
-    return t;
-}
-
-} // namespace
-
-void validateAliases(p<FileNode> file) {
-    if (!file) return;
-    auto& aliases = file->getAliasDecls();
-
-    for (auto& a : aliases) {
-        string name = a->name().getText();
-        if (auto* s = file->getStructDecl(name)) {
-            (void)s;
-            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017, name, string("struct"), name);
-        }
-        if (auto* d = file->getSpecDecl(name)) {
-            (void)d;
-            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017, name, string("draft"), name);
-        }
-        size_t cnt = 0;
-        for (auto& b : aliases) {
-            if (b->name().getText() == name) ++cnt;
-        }
-        if (cnt > 1) {
-            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017, name, string("type alias"), name);
-        }
-    }
-
-    for (auto& a : aliases) {
-        if (!a->target()) continue;
-        std::set<std::string> visited;
-        visited.insert(a->name().getText());
-        (void)resolveAliasImpl(a->target()->getType(), file, visited);
     }
 }
 
@@ -1819,7 +1728,7 @@ void validateBinOpMethodResolution(FileNode* file, FileNode* sdkFile, const Type
 void validateStringTemplateInterps(FileNode* file, FileNode* sdkFile, StringTemplateNode* tpl) {
     if (!tpl) return;
     auto canToString = [&](const TypeInfo& t) -> bool {
-        if (t.name == "String") return true;
+        if (t.isString()) return true;
         string fullName = t.name + ".to_string";
         if (sdkFile && sdkFile->lookupFnSymbol(fullName)) return true;
         if (file && file->lookupFnSymbol(fullName)) return true;

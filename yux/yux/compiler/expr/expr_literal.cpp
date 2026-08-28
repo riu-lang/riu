@@ -275,7 +275,7 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
         if (_currentLambdaForCapture && _currentLambdaBodyScope && sym && sym->kind == SymbolKind::Variable) {
             const auto& t = sym->type;
             bool isScalar = t.isNormal() && isBuiltinType(t.name);
-            bool isHandle = t.isRc() || t.isWeak() || t.isArrayGeneric() || (t.isNormal() && t.name == "String");
+            bool isHandle = t.isRcHandle();
             bool isRef = t.isRef();
             bool isHeapNullable = false;
             if (t.isNullable()) {

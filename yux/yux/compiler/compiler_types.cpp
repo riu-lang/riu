@@ -17,6 +17,7 @@
 #include "ast/node/spec_node.h"
 #include "ast/node/struct_node.h"
 #include "compiler.h"
+#include "sema/name_resolver.h"
 #include <array>
 #include <llvm/IR/DerivedTypes.h>
 #include <set>
@@ -107,142 +108,8 @@ void Compiler::inferFlexibleInts(p<ExprNode> expr, const TypeInfo& target) {
 
 // ==================== 别名解析 ====================
 
-namespace {
-// 内部递归实现：visited 用于环检测
-TypeInfo resolveAliasImpl(const TypeInfo& t, FileNode* file, std::set<std::string>& visited) {
-    if (!file) return t;
-    if (t.kind == TypeKind::Normal) {
-        auto* alias = file->getAliasDecl(t.name);
-        if (!alias) return t;
-        // 别名是泛型而引用位置不带类型实参 → 不替换（让后续 arity 检查报错）
-        if (alias->isGeneric()) return t;
-        if (visited.count(t.name)) {
-            throw YuxError(static_cast<int>(alias->name().getLine()), ErrorCode::E2016, t.name);
-        }
-        visited.insert(t.name);
-        if (!alias->target()) return t;
-        TypeInfo target = alias->target()->getType();
-        return resolveAliasImpl(target, file, visited);
-    }
-    if (t.hasGenericArgs() && !t.genericArgs.empty()) {
-        // 泛型别名实例化（用户 Generic）或内置包装（Rc/Ref/Weak/Heap/Dyn/ArrayGeneric/Nullable）
-        // Pair<T> = (T, T) 遇 Pair<i32> → (i32, i32) ; 内置包装无别名时递归解析实参
-        auto* alias = file->getAliasDecl(t.name);
-        if (alias && alias->isGeneric() && alias->typeParams().size() == t.genericArgs.size() && alias->target()) {
-            if (visited.count(t.name)) {
-                throw YuxError(static_cast<int>(alias->name().getLine()), ErrorCode::E2016, t.name);
-            }
-            visited.insert(t.name);
-            std::map<std::string, TypeInfo> subst;
-            for (size_t i = 0; i < alias->typeParams().size(); ++i) {
-                subst[alias->typeParams()[i]] = t.genericArgs[i] ? *t.genericArgs[i] : TypeInfo();
-            }
-            TypeInfo inst = alias->target()->getType().substitute(subst);
-            return resolveAliasImpl(inst, file, visited);
-        }
-        // 无别名命中（用户泛型或内置包装）：递归解析每个实参中的别名
-        vector<sp<TypeInfo>> newArgs;
-        newArgs.reserve(t.genericArgs.size());
-        for (auto& a : t.genericArgs) {
-            if (a) {
-                std::set<std::string> sub = visited;
-                newArgs.push_back(std::make_shared<TypeInfo>(resolveAliasImpl(*a, file, sub)));
-            } else {
-                newArgs.push_back(nullptr);
-            }
-        }
-        return {t.name, std::move(newArgs)};
-    }
-    if (t.kind == TypeKind::Array && t.elementType) {
-        std::set<std::string> sub = visited;
-        TypeInfo inner = resolveAliasImpl(*t.elementType, file, sub);
-        return {std::make_shared<TypeInfo>(std::move(inner)), t.arraySize};
-    }
-    if (t.kind == TypeKind::Tuple) {
-        vector<sp<TypeInfo>> newElems;
-        newElems.reserve(t.genericArgs.size());
-        for (auto& a : t.genericArgs) {
-            if (a) {
-                std::set<std::string> sub = visited;
-                newElems.push_back(std::make_shared<TypeInfo>(resolveAliasImpl(*a, file, sub)));
-            } else {
-                newElems.push_back(nullptr);
-            }
-        }
-        return TypeInfo(TupleTag{}, std::move(newElems));
-    }
-    // 函数类型：递归解析每个形参 / 返回类型中的别名
-    if (t.kind == TypeKind::Fn) {
-        vector<sp<TypeInfo>> newParams;
-        newParams.reserve(t.genericArgs.size());
-        for (auto& a : t.genericArgs) {
-            if (a) {
-                std::set<std::string> sub = visited;
-                newParams.push_back(std::make_shared<TypeInfo>(resolveAliasImpl(*a, file, sub)));
-            } else {
-                newParams.push_back(nullptr);
-            }
-        }
-        sp<TypeInfo> newRet = nullptr;
-        if (t.elementType) {
-            std::set<std::string> sub = visited;
-            newRet = std::make_shared<TypeInfo>(resolveAliasImpl(*t.elementType, file, sub));
-        }
-        return TypeInfo(FnTag{}, std::move(newParams), newRet, t.fnNullable);
-    }
-    return t;
-}
-} // namespace
-
 TypeInfo Compiler::resolveAlias(const TypeInfo& t) const {
-    std::set<std::string> visited;
-    return resolveAliasImpl(t, _file ? _file : nullptr, visited);
-}
-
-// 编译入口处的别名一次性校验
-// 1. 名称冲突：alias 名 vs 已存在的 struct / draft / 其他 alias
-// 2. 环检测：每个别名 target 走一次 resolveAlias，触发遇环抛 E2016
-void Compiler::validateAliases() {
-    if (!_file) return;
-    auto& aliases = _file->getAliasDecls();
-
-    // 先做名称冲突检查（先于解析）
-    // 注意：a->name() 返回 Token 值类型，绑定 .getText() 的引用会悬空，需复制为 string。
-    for (auto& a : aliases) {
-        string name = a->name().getText();
-        // 与本文件 struct 同名
-        if (auto* s = _file->getStructDecl(name)) {
-            (void)s;
-            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017, name, string("struct"), name);
-        }
-        // 与本文件 draft 同名
-        if (auto* d = _file->getSpecDecl(name)) {
-            (void)d;
-            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017, name, string("draft"), name);
-        }
-        // 重复 alias
-        size_t cnt = 0;
-        for (auto& b : aliases) {
-            if (b->name().getText() == name) ++cnt;
-        }
-        if (cnt > 1) {
-            throw YuxError(static_cast<int>(a->name().getLine()), ErrorCode::E2017, name, string("type alias"), name);
-        }
-    }
-
-    // 环检测：以每个别名为起点尝试解析
-    for (auto& a : aliases) {
-        if (!a->target()) continue;
-        std::set<std::string> visited;
-        visited.insert(a->name().getText());
-        // 触发递归；若闭合则抛 E2016
-        (void)resolveAliasImpl(a->target()->getType(), _file, visited);
-    }
-
-    // 校验通过后，对函数符号表的 params / retType 做一次性透明别名解析，
-    // 避免后续 lookupFnSymbolWithParams 因 alias 名 vs 目标名的字面差异而错过重载
-    auto resolver = [this](const TypeInfo& t) { return resolveAlias(t); };
-    _file->normalizeFnSymbolTypes(resolver);
+    return sema::resolveAlias(t, _file, _yux ? _yux->sdkFile() : nullptr);
 }
 
 // ==================== 泛型结构体实例化 ====================
@@ -563,15 +430,11 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
 
     // 泛型类型实例 (如 Rc<i32>)
     if (type.isGeneric()) {
-        auto baseDecl = _file->getStructDecl(type.name);
-        p<FileNode> owner = _file;
-        if (!baseDecl && _yux && _yux->sdkFile()) {
-            baseDecl = _yux->sdkFile()->getStructDecl(type.name);
-            if (baseDecl) owner = _yux->sdkFile();
-        }
+        p<FileNode> owner = nullptr;
+        auto baseDecl = names().lookupStruct(type.name, /*includeBuiltin=*/false, &owner);
         if (baseDecl && baseDecl->isGeneric()) {
             // 确保实例存在
-            string mangled = ensureStructInstance(baseDecl, type.genericArgs, owner);
+            string mangled = ensureStructInstance(baseDecl, type.genericArgs, owner ? owner : _file);
             return _structTypes[mangled];
         }
         // 从缓存查找
@@ -635,21 +498,9 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     }
 
     // 尝试查找并创建结构体类型
-    auto structDecl = _file->getStructDecl(type.name);
-    p<FileNode> sourceFile = _file;
-    if (!structDecl && _yux && _yux->sdkFile()) {
-        structDecl = _yux->sdkFile()->getStructDecl(type.name);
-        sourceFile = _yux->sdkFile();
-    }
-    if (!structDecl) {
-        for (auto* imp : _file->wildcardImports()) {
-            structDecl = imp->getStructDecl(type.name);
-            if (structDecl) {
-                sourceFile = imp;
-                break;
-            }
-        }
-    }
+    p<FileNode> sourceFile = nullptr;
+    auto structDecl = names().lookupStruct(type.name, /*includeBuiltin=*/false, &sourceFile);
+    if (!sourceFile) sourceFile = _file;
 
     if (structDecl) {
         // 泛型 struct 但用法没带 `<T>`：避免落进 getOrCreateStructType 把未实例化的类型参数当成
@@ -674,14 +525,14 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     // 全部零参 variant 时省略 payload 字段（N==0）。详见 docs/spec/draft/DRAFT-枚举.md §6
     {
         string cacheKey = "$enum$" + type.name;
-        // 先查缓存：泛型实例方法 emit 时 _file 会切到 SDK，lookupEnumDecl 找不到用户文件里的 enum，
+        // 先查缓存：泛型实例方法 emit 时 _file 会切到 SDK，lookupEnum 找不到用户文件里的 enum，
         // 但 LLVM 类型其实已经在用户文件 emit 阶段建过缓存，直接返回即可，避免落到 null 上层崩。
         if (auto cit = _structTypes.find(cacheKey); cit != _structTypes.end()) {
             DEBUG_LOG_VAL("    -> Enum (cached)", type.name);
             return cit->second;
         }
         p<FileNode> enumOwner = nullptr;
-        auto enumDecl = lookupEnumDecl(type.name, enumOwner);
+        auto enumDecl = names().lookupEnum(type.name, &enumOwner);
         if (enumDecl) {
             // 计算 max payload 字节数
             u64 maxPayload = 0;
@@ -716,33 +567,6 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     }
 
     DEBUG_LOG_VAL("    -> Unknown type (null)", type.name);
-    return nullptr;
-}
-
-// 查找 enum 声明：本文件 → SDK → wildcard imports
-// outOwner 接收所属 FileNode，用于 mangle 名带模块前缀
-p<EnumDeclNode> Compiler::lookupEnumDecl(const string& name, p<FileNode>& outOwner) {
-    if (!_file) {
-        outOwner = nullptr;
-        return nullptr;
-    }
-    if (auto* d = _file->getEnumDecl(name)) {
-        outOwner = _file;
-        return d;
-    }
-    if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
-        if (auto* d = _yux->sdkFile()->getEnumDecl(name)) {
-            outOwner = _yux->sdkFile();
-            return d;
-        }
-    }
-    for (auto* imp : _file->wildcardImports()) {
-        if (auto* d = imp->getEnumDecl(name)) {
-            outOwner = imp;
-            return d;
-        }
-    }
-    outOwner = nullptr;
     return nullptr;
 }
 
@@ -929,7 +753,7 @@ void Compiler::emitMainStartupFallible(const string& fallibleErrName) {
 
     // 查 enum decl 拿 variant 列表（含模块名修饰）
     p<FileNode> enumOwner = nullptr;
-    auto enumDecl = lookupEnumDecl(fallibleErrName, enumOwner);
+    auto enumDecl = names().lookupEnum(fallibleErrName, &enumOwner);
     if (!enumDecl) {
         // 防御：10e 已校 #Fallible 类型存在；走 unreachable 兜底
         _builder.CreateCall(exitProcess, {_builder.getInt32(1)});

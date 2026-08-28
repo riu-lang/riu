@@ -59,6 +59,8 @@ public:
     // 项目里所有已加载的 (normPath, FileNode) — 用于跨文件查找
     const std::map<std::string, FileNode*>& allFiles() const { return _byPath; }
 
+    FileNode* sdkFile() const { return _yux ? _yux->sdkFile() : nullptr; }
+
     const std::string& rootKey() const { return _rootKey; } // 用于 workspace map
     const std::string& mainPath() const { return _mainPath; }
     const std::string& buildError() const { return _buildError; }
@@ -67,9 +69,9 @@ public:
 private:
     enum class Mode { Project, SingleFile };
     Mode _mode = Mode::Project;
-    std::string _rootKey;          // 归一化后的项目根（或单文件路径）
-    std::string _rootDir;          // 原始 rootDir（项目模式）
-    std::string _mainPath;         // 主文件绝对路径
+    std::string _rootKey;  // 归一化后的项目根（或单文件路径）
+    std::string _rootDir;  // 原始 rootDir（项目模式）
+    std::string _mainPath; // 主文件绝对路径
     std::unique_ptr<Yux> _yux;
     p<FileNode> _mainFile;
     std::map<std::string, FileNode*> _byPath;

@@ -8,6 +8,7 @@
 #include "ast/node/global_const_node.h"
 #include "ast/node/struct_node.h"
 #include "ast/node/type_node.h"
+#include "sema/name_resolver.h"
 #include "workspace.h"
 
 #include "antlr4-runtime.h"
@@ -409,11 +410,22 @@ namespace {
 void collectStructInScope(Project& project, FileNode* fromFile, const std::string& structName,
                           std::vector<std::pair<FileNode*, StructDeclNode*>>& decls,
                           std::vector<std::pair<FileNode*, StructImplNode*>>& impls) {
+    auto addDecl = [&](FileNode* f, StructDeclNode* sd) {
+        if (!f || !sd) return;
+        for (auto& [of, od] : decls) {
+            if (od == sd) return;
+        }
+        decls.emplace_back(f, sd);
+    };
     auto visit = [&](FileNode* f) {
         if (!f) return;
-        if (auto* sd = f->getStructDecl(structName)) decls.emplace_back(f, sd);
+        addDecl(f, f->getStructDecl(structName));
         if (auto* si = f->getStructImpl(structName)) impls.emplace_back(f, si);
     };
+    FileNode* owner = nullptr;
+    if (auto* sd = sema::NameResolver(fromFile, project.sdkFile()).lookupStruct(structName, false, &owner)) {
+        addDecl(owner ? owner : fromFile, sd);
+    }
     visit(fromFile);
     if (fromFile)
         for (auto* w : fromFile->wildcardImports())

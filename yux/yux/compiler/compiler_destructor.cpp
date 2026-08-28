@@ -550,7 +550,7 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
     // copy helper 押后到后续优化。
     if (!isBuiltinType(argType.name) && enumNeedsDestructor(argType)) {
         p<FileNode> owner = nullptr;
-        auto decl = lookupEnumDecl(argType.name, owner);
+        auto decl = names().lookupEnum(argType.name, &owner);
         if (!decl) return false;
 
         auto enumLLVMType = getLLVMType(argType);
@@ -1172,7 +1172,7 @@ bool Compiler::enumDeclNeedsDestructor(p<EnumDeclNode> decl) {
 bool Compiler::enumNeedsDestructor(const string& enumName) {
     if (enumName.empty()) return false;
     p<FileNode> owner = nullptr;
-    auto decl = lookupEnumDecl(enumName, owner);
+    auto decl = names().lookupEnum(enumName, &owner);
     if (!decl) return false;
     return enumDeclNeedsDestructor(decl);
 }
@@ -1186,7 +1186,7 @@ bool Compiler::enumNeedsDestructor(const TypeInfo& type) {
 // 与 struct dtor 同模型：定义只在 owner 模块发射，consumer 拿到 extern decl
 llvm::Function* Compiler::getEnumDestructorFunction(const string& enumName) {
     p<FileNode> owner = nullptr;
-    auto decl = lookupEnumDecl(enumName, owner);
+    auto decl = names().lookupEnum(enumName, &owner);
     if (!decl) return nullptr;
 
     string ownerModule = owner ? owner->moduleName() : _file->moduleName();

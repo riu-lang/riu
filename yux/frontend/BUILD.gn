@@ -23,6 +23,7 @@ static_library("yux_frontend") {
   sources = [
     "sema/call_resolve.cpp",
     "sema/const_eval.cpp",
+    "sema/name_resolver.cpp",
     "sema/sema_pass.cpp",
     "tools/diagnostic.cpp",
     "tools/pkg_cache.cpp",
