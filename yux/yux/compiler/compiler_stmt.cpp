@@ -207,7 +207,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         // 方法上下文中 `Self` 解析为当前结构体名（applySubst 不覆盖该映射）。
         auto declInner = declRetType.refElementType();
         TypeInfo declInnerResolved = declInner ? *declInner : TypeInfo();
-        if (!_currentStructName.empty() && declInnerResolved.name == "Self") {
+        if (!_currentStructName.empty() && declInnerResolved.isSelf()) {
             declInnerResolved.name = _currentStructName;
         }
         if (declInner && !srcInner.empty() && declInnerResolved != srcInner) {
@@ -849,8 +849,8 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 if (_yux && _yux->sdkFile() && _yux->sdkFile()->getStructDecl(n)) return true;
                 return false;
             };
-            if (!cmpVarType.name.empty() && !cmpExprType.name.empty() && cmpVarType.name != "Self" &&
-                cmpExprType.name != "Self" && !cmpVarType.isRef() && !cmpExprType.isRef() &&
+            if (!cmpVarType.name.empty() && !cmpExprType.name.empty() && !cmpVarType.isSelf() &&
+                !cmpExprType.isSelf() && !cmpVarType.isRef() && !cmpExprType.isRef() &&
                 cmpVarType.genericArgs.empty() && cmpExprType.genericArgs.empty() && isKnownTypeName(cmpVarType.name) &&
                 isKnownTypeName(cmpExprType.name) && !isFlexibleIntExpr(expr)) {
                 if (cmpVarType != cmpExprType) {
@@ -983,47 +983,37 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
     auto& subs = node->subs();
     auto assignOp = node->op();
 
-    // 辅助函数: 判断是否为浮点类型
-    auto isFloatType = [](const TypeInfo& type) -> bool { return type.name == "f32" || type.name == "f64"; };
-
-    // 辅助函数: 判断是否为无符号类型
-    auto isUnsignedType = [](const TypeInfo& type) -> bool {
-        return type.name == "u8" || type.name == "u16" || type.name == "u32" || type.name == "u64" ||
-               type.name == "usize";
-    };
-
-    // 辅助函数: 应用复合赋值运算符
-    auto applyCompoundOp = [this, isFloatType, isUnsignedType](llvm::Value* currentVal, llvm::Value* exprVal,
-                                                               AssignOp op, const TypeInfo& type) -> llvm::Value* {
+    auto applyCompoundOp = [this](llvm::Value* currentVal, llvm::Value* exprVal, AssignOp op,
+                                  const TypeInfo& type) -> llvm::Value* {
         switch (op) {
         case AssignOp::AddEq:
-            if (isFloatType(type)) {
+            if (type.isFloat()) {
                 return _builder.CreateFAdd(currentVal, exprVal, "addtmp");
             }
             return _builder.CreateAdd(currentVal, exprVal, "addtmp");
         case AssignOp::SubEq:
-            if (isFloatType(type)) {
+            if (type.isFloat()) {
                 return _builder.CreateFSub(currentVal, exprVal, "subtmp");
             }
             return _builder.CreateSub(currentVal, exprVal, "subtmp");
         case AssignOp::MulEq:
-            if (isFloatType(type)) {
+            if (type.isFloat()) {
                 return _builder.CreateFMul(currentVal, exprVal, "multmp");
             }
             return _builder.CreateMul(currentVal, exprVal, "multmp");
         case AssignOp::DivEq:
-            if (isFloatType(type)) {
+            if (type.isFloat()) {
                 return _builder.CreateFDiv(currentVal, exprVal, "divtmp");
             }
-            if (isUnsignedType(type)) {
+            if (type.isUnsigned()) {
                 return _builder.CreateUDiv(currentVal, exprVal, "divtmp");
             }
             return _builder.CreateSDiv(currentVal, exprVal, "divtmp");
         case AssignOp::ModEq:
-            if (isFloatType(type)) {
+            if (type.isFloat()) {
                 return _builder.CreateFRem(currentVal, exprVal, "modtmp");
             }
-            if (isUnsignedType(type)) {
+            if (type.isUnsigned()) {
                 return _builder.CreateURem(currentVal, exprVal, "modtmp");
             }
             return _builder.CreateSRem(currentVal, exprVal, "modtmp");

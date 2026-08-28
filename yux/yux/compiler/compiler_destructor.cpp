@@ -1033,7 +1033,7 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
             auto savedIP = savedBB ? _builder.GetInsertPoint() : llvm::BasicBlock::iterator();
             // 内层可能仍是 Rc<...>，必须走 typed release，否则 Rc<Rc<Rc<T>>> 最内层泄漏
             auto innerReleaseFn = getOrCreateRcTypedReleaseFn(*inner);
-            runtime::emitRcReleaseForInlineDtorFn(_context, _builder, _module, func, "Rc", innerReleaseFn);
+            runtime::emitRcReleaseForInlineDtorFn(_context, _builder, _module, func, TypeKind::Rc, innerReleaseFn);
             if (savedBB) _builder.SetInsertPoint(savedBB, savedIP);
         }
         return func;
@@ -1044,7 +1044,7 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
         if (func->empty()) {
             auto* savedBB = _builder.GetInsertBlock();
             auto savedIP = savedBB ? _builder.GetInsertPoint() : llvm::BasicBlock::iterator();
-            runtime::emitRcReleaseForInlineDtorFn(_context, _builder, _module, func, "Weak",
+            runtime::emitRcReleaseForInlineDtorFn(_context, _builder, _module, func, TypeKind::Weak,
                                                   runtime::getWeakReleaseFn(_module, _builder));
             if (savedBB) _builder.SetInsertPoint(savedBB, savedIP);
         }
@@ -1056,7 +1056,7 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
         if (func->empty()) {
             auto* savedBB = _builder.GetInsertBlock();
             auto savedIP = savedBB ? _builder.GetInsertPoint() : llvm::BasicBlock::iterator();
-            runtime::emitRcReleaseForInlineDtorFn(_context, _builder, _module, func, "Fn",
+            runtime::emitRcReleaseForInlineDtorFn(_context, _builder, _module, func, TypeKind::Fn,
                                                   runtime::getRcReleaseFn(_module, _builder));
             if (savedBB) _builder.SetInsertPoint(savedBB, savedIP);
         }

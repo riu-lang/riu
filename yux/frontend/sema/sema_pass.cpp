@@ -757,7 +757,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         //   * Fallible(E) 注解          —— 成功 / 错误双通道, 复用 E3020 但多分支
         //   * declRetType.isNullable()  —— null 字面量 / T 值自动 wrap
         //   * isFlexibleIntExpr(expr)   —— 灵活整数推断后再比, sema 不改写 expr 类型
-        //   * declRetType.name == "Self" —— 方法上下文 Self 解析需 currentStructName 替换
+        //   * declRetType.isSelf() —— 方法上下文 Self 解析需 currentStructName 替换
         // 普通 case: `fn add() i32 { ret true }` (E3020) /
         //           `fn foo() { ret 42 }` (E3022).
         // v0.16: lambda body 内 ret 的返回类型校验依赖 lambda 自身的 retType,
@@ -783,7 +783,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                 return _file->getAliasDecl(n) != nullptr;
             };
             bool skip = hasFallible || (hasDeclRet && (declRetType.isRef() || declRetType.isNullable())) ||
-                        (hasDeclRet && declRetType.name == "Self") || (hasDeclRet && isFlexibleIntExpr(ret->expr())) ||
+                        (hasDeclRet && declRetType.isSelf()) || (hasDeclRet && isFlexibleIntExpr(ret->expr())) ||
                         (hasDeclRet && isAliased(declRetType.name));
             if (!skip) {
                 TypeInfo retType;
@@ -947,8 +947,8 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                         if (_sdkFile && _sdkFile->getStructDecl(t.name)) return true;
                         return false;
                     };
-                    if (!varType.name.empty() && !exprType.name.empty() && varType.name != "Self" &&
-                        exprType.name != "Self" && !exprType.isRef() && !exprType.isFn() &&
+                    if (!varType.name.empty() && !exprType.name.empty() && !varType.isSelf() &&
+                        !exprType.isSelf() && !exprType.isRef() && !exprType.isFn() &&
                         !isAliasName(exprType.name) && isKnownType(varType) && isKnownType(exprType)) {
                         if (varType != exprType) {
                             throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3014,
@@ -1693,8 +1693,8 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                     for (size_t idx = 0; idx < n->getArgs().size() && idx < expectedParams.size(); ++idx) {
                         try {
                             auto argType = n->getArgs()[idx]->getType();
-                            if (expectedParams[idx] && !argType.name.empty() && argType.name != "Self" &&
-                                expectedParams[idx]->name != "Self") {
+                            if (expectedParams[idx] && !argType.name.empty() && !argType.isSelf() &&
+                                !expectedParams[idx]->isSelf()) {
                                 // Ref<T> 实参传给值类型形参 T
                                 if (argType.isRef() && !expectedParams[idx]->isRef()) {
                                     auto inner = argType.refElementType();

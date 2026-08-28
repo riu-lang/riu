@@ -1885,7 +1885,7 @@ TypeInfo ExprUnaryNode::getType() const {
     // 非 builtin 走自定义方法路径 (customMethodOp), 不在此校验; 与 codegen `if
     // (!isBuiltinType(rightType.name)) compileCustomTypeUnaryOp(...)` 顺序一致.
     if (isBuiltinType(rightType.name)) {
-        if (_op == Op::Rev && rightType.startsWith('f')) {
+        if (_op == Op::Rev && rightType.isFloat()) {
             throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3070, rightType.name);
         }
         if (_op == Op::Not && rightType.name != "bool") {

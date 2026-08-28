@@ -47,7 +47,7 @@ llvm::Constant* Compiler::evalInlineFieldInit(p<ExprNode> init, const TypeInfo& 
         if (auto* intLit = dynamic_cast<LiteralIntNode*>(lit)) {
             string text = intLit->getValue().getText();
             // 按字段类型决定 signedness（而非文本后缀），避免无后缀大 u64 走 stoll 溢出
-            bool isUnsigned = !fieldType.name.empty() && fieldType.name[0] == 'u';
+            bool isUnsigned = fieldType.isUnsigned();
             try {
                 // 去掉文本后缀再按 fieldType 解析
                 string numStr = text;

@@ -488,8 +488,8 @@ llvm::Value* Compiler::compileFnValueCall(p<ExprCallNode> node) {
     for (size_t idx = 0; idx < node->getArgs().size() && idx < expectedParams.size(); ++idx) {
         try {
             auto argType = node->getArgs()[idx]->getType();
-            if (expectedParams[idx] && !argType.name.empty() && argType.name != "Self" &&
-                expectedParams[idx]->name != "Self") {
+            if (expectedParams[idx] && !argType.name.empty() && !argType.isSelf() &&
+                !expectedParams[idx]->isSelf()) {
                 // Ref<T> 实参传给值类型形参 T：类型不匹配
                 if (argType.isRef() && !expectedParams[idx]->isRef()) {
                     auto inner = argType.refElementType();
@@ -583,8 +583,8 @@ llvm::Value* Compiler::compileRcFnValueCall(p<ExprCallNode> node, const TypeInfo
     for (size_t idx = 0; idx < node->getArgs().size() && idx < expectedParams.size(); ++idx) {
         try {
             auto argType = node->getArgs()[idx]->getType();
-            if (expectedParams[idx] && !argType.name.empty() && argType.name != "Self" &&
-                expectedParams[idx]->name != "Self") {
+            if (expectedParams[idx] && !argType.name.empty() && !argType.isSelf() &&
+                !expectedParams[idx]->isSelf()) {
                 if (argType.isRef() && !expectedParams[idx]->isRef()) {
                     auto inner = argType.refElementType();
                     throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014,
@@ -671,8 +671,8 @@ llvm::Value* Compiler::compileRefFnValueCall(p<ExprCallNode> node, const TypeInf
     for (size_t idx = 0; idx < node->getArgs().size() && idx < expectedParams.size(); ++idx) {
         try {
             auto argType = node->getArgs()[idx]->getType();
-            if (expectedParams[idx] && !argType.name.empty() && argType.name != "Self" &&
-                expectedParams[idx]->name != "Self") {
+            if (expectedParams[idx] && !argType.name.empty() && !argType.isSelf() &&
+                !expectedParams[idx]->isSelf()) {
                 if (argType.isRef() && !expectedParams[idx]->isRef()) {
                     auto inner = argType.refElementType();
                     throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014,

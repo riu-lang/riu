@@ -268,7 +268,7 @@ llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
 
     // 内置类型：直接生成 LLVM IR
     auto right = compileExpr(node->right());
-    bool isFloat = type.startsWith('f');
+    bool isFloat = type.isFloat();
     bool isBool = type.name == "bool";
 
     // v0.16: 操作数若是 T& 则 load 出值

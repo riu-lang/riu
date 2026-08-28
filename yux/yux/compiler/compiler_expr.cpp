@@ -96,10 +96,10 @@ llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& srcType, con
     }
 
     // 数值类型转换
-    bool srcIsFloat = srcType.startsWith('f');
-    bool dstIsFloat = dstType.startsWith('f');
-    bool srcIsUnsigned = srcType.startsWith('u');
-    bool dstIsUnsigned = dstType.startsWith('u');
+    bool srcIsFloat = srcType.isFloat();
+    bool dstIsFloat = dstType.isFloat();
+    bool srcIsUnsigned = srcType.isUnsigned();
+    bool dstIsUnsigned = dstType.isUnsigned();
 
     if (srcIsFloat && dstIsFloat) {
         // 浮点数之间的转换

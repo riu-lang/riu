@@ -325,12 +325,6 @@ string Compiler::ensureStructInstance(p<StructDeclNode> baseDecl, const vector<s
         _substStack.pop_back();
         rethrowWithInstantiationContext(e);
     }
-    // Array<T> 特殊处理: 使用标准布局 { handle: Block* } 单字段（Phase 1b）
-    // Block = { u32 strong, u32 weak, i64 len, i64 cap, *T data }；handle == null 表示空数组
-    if (baseName == "Array") {
-        fieldTypes.clear();
-        fieldTypes.push_back(llvm::PointerType::get(_context, 0));
-    }
 
     // 创建 LLVM 结构体类型
     string fullMangled = Mangler::structType(inst.ownerFile->moduleName(), mangledName);
@@ -396,7 +390,7 @@ TypeInfo Compiler::typeInfoForNamedStruct(const string& name) const {
         for (const auto& a : instIt->second.args) {
             args.push_back(std::make_shared<TypeInfo>(a));
         }
-        return TypeInfo(instIt->second.baseDecl->name().getText(), std::move(args));
+        return {instIt->second.baseDecl->name().getText(), std::move(args)};
     }
     return TypeInfo(name);
 }

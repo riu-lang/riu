@@ -316,7 +316,7 @@ llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
     // 内置类型：直接生成 LLVM IR
     auto left = compileExpr(node->left());
     auto right = compileExpr(node->right());
-    bool isFloat = effLeftType.startsWith('f');
+    bool isFloat = effLeftType.isFloat();
 
     // v0.16: 操作数若是 T&（如 arr[i]）则 load 出值
     // 防御：仅在值是 pointer 类型时才 load（避免 getType 返回 Ref 但值已被 lower 为标量时双重 load）
@@ -426,8 +426,8 @@ llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
     // 内置类型：直接生成 LLVM IR
     auto left = compileExpr(node->left());
     auto right = compileExpr(node->right());
-    bool isFloat = effLeftType.startsWith('f');
-    bool isUnsigned = effLeftType.startsWith('u');
+    bool isFloat = effLeftType.isFloat();
+    bool isUnsigned = effLeftType.isUnsigned();
 
     // v0.16: 操作数若是 T& 则 load 出值
     // 防御：仅在值是 pointer 类型时才 load
@@ -595,7 +595,7 @@ llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
     case ExprBinOpNode::Op::Shl:
         return _builder.CreateShl(left, right);
     case ExprBinOpNode::Op::Shr:
-        if (type.startsWith('u')) {
+        if (type.isUnsigned()) {
             return _builder.CreateLShr(left, right);
         }
         return _builder.CreateAShr(left, right);
@@ -807,8 +807,8 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
     // 内置类型：直接生成 LLVM IR
     auto left = compileExpr(node->left());
     auto right = compileExpr(node->right());
-    bool isFloat = effLeftType.startsWith('f');
-    bool isUnsigned = effLeftType.startsWith('u');
+    bool isFloat = effLeftType.isFloat();
+    bool isUnsigned = effLeftType.isUnsigned();
 
     // v0.16: 操作数若是 T&（如 arr[i]）则 load 出值
     if (leftIsHeap) {

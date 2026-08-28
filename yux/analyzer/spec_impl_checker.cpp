@@ -671,16 +671,16 @@ void SpecImplChecker::validateDynInTypeNode(TypeNode* tn, FileNode* file, const 
 
     // TypeGenericNode: 处理 Dyn / 容器 / 通用递归
     if (auto* gen = dynamic_cast<TypeGenericNode*>(tn)) {
-        const std::string baseName = gen->baseName().getText();
+        const TypeInfo t = gen->getType();
         int line = tn->getLineNumber();
         int col = tn->getColumn();
 
         // 命中 Dyn 形态: 先按外层 wrapper 判 E1132 / E1135
-        if (baseName == "Dyn" && gen->typeArgs().size() == 1) {
+        if (t.isDyn() && gen->typeArgs().size() == 1) {
             // 外层禁忌: Rc<Dyn> / Weak<Dyn> / Dyn<Dyn> → E1132;
             // Nullable<Dyn> (即 Dyn<D>?) → E1135.
             if (outerWrapper == "Rc" || outerWrapper == "Weak" || outerWrapper == "Dyn") {
-                throw YuxError(line, col, ErrorCode::E1132, outerWrapper + "<" + gen->getType().getFullName() + ">");
+                throw YuxError(line, col, ErrorCode::E1132, outerWrapper + "<" + t.getFullName() + ">");
             }
             if (outerWrapper == "Nullable") {
                 throw YuxError(line, col, ErrorCode::E1135);
@@ -690,15 +690,15 @@ void SpecImplChecker::validateDynInTypeNode(TypeNode* tn, FileNode* file, const 
             TypeNode* inner = gen->typeArgs()[0];
             TypeNode* innerStripped = inner;
             if (auto* refGen = dynamic_cast<TypeGenericNode*>(inner)) {
-                if (refGen->baseName().getText() == "Ref" && refGen->typeArgs().size() == 1) {
+                if (refGen->getType().isRef() && refGen->typeArgs().size() == 1) {
                     innerStripped = refGen->typeArgs()[0];
                 }
             }
 
             // 内层若仍是 Dyn → E1132
             if (auto* innerGen = dynamic_cast<TypeGenericNode*>(innerStripped)) {
-                if (innerGen->baseName().getText() == "Dyn") {
-                    throw YuxError(line, col, ErrorCode::E1132, gen->getType().getFullName());
+                if (innerGen->getType().isDyn()) {
+                    throw YuxError(line, col, ErrorCode::E1132, t.getFullName());
                 }
             }
 
@@ -732,8 +732,8 @@ void SpecImplChecker::validateDynInTypeNode(TypeNode* tn, FileNode* file, const 
         // Array / Ref / Tuple / 用户结构体等不会触发包裹诊断; Rc/Weak/Nullable
         // 会传递给子项, 由子项的 Dyn 分支命中 E1132 / E1135.
         std::string childWrap;
-        if (baseName == "Rc" || baseName == "Weak" || baseName == "Nullable") {
-            childWrap = baseName;
+        if (t.isRc() || t.isWeak() || t.isNullable()) {
+            childWrap = t.name;
         }
         for (auto& arg : gen->typeArgs()) {
             if (arg) validateDynInTypeNode(arg, file, childWrap);

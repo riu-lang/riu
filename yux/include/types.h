@@ -377,7 +377,17 @@ struct TypeInfo {
 
     [[nodiscard]] bool empty() const { return name.empty(); }
 
-    [[nodiscard]] bool startsWith(char c) const { return !name.empty() && name[0] == c; }
+    // 标量浮点 f32/f64（不靠 name[0]=='f'，避免用户类型名误命中）
+    [[nodiscard]] bool isFloat() const { return kind == TypeKind::Normal && (name == "f32" || name == "f64"); }
+
+    // 无符号整数：u8/u16/u32/u64/usize
+    [[nodiscard]] bool isUnsigned() const {
+        return kind == TypeKind::Normal &&
+               (name == "u8" || name == "u16" || name == "u32" || name == "u64" || name == "usize");
+    }
+
+    // 方法上下文占位名；仍是 Normal，只是不许散落 "Self" 字符串
+    [[nodiscard]] bool isSelf() const { return kind == TypeKind::Normal && name == "Self"; }
 
     [[nodiscard]] bool isRef() const { return kind == TypeKind::Ref && genericArgs.size() == 1; }
 

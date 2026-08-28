@@ -933,8 +933,8 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
                                          callNode->getColumn());
 
         auto baseVal = compileReceiver();
-        bool isFloat = lookupType.startsWith('f');
-        bool isUnsigned = lookupType.startsWith('u');
+        bool isFloat = lookupType.isFloat();
+        bool isUnsigned = lookupType.isUnsigned();
 
         // T& 实参自动 load：形参声明为 T& 时 args[0] 是指针，load 出值参与 LLVM 运算
         auto loadScalarArg = [&](size_t idx) -> llvm::Value* {

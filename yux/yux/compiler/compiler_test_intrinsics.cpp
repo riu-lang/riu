@@ -97,7 +97,7 @@ llvm::Value* Compiler::compileTestAssertEq(p<ExprCallNode> callNode, vector<llvm
     bool isInt = (tname == "i8" || tname == "u8" || tname == "i16" || tname == "u16" || tname == "i32" ||
                   tname == "u32" || tname == "i64" || tname == "u64" || tname == "isize" || tname == "usize");
     bool isBool = (tname == "bool");
-    bool isFloat = (tname == "f32" || tname == "f64");
+    bool isFloat = actualTypeArg.isFloat();
 
     if (!(isInt || isBool || isFloat)) {
         throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6030, actualTypeArg.getFullName());

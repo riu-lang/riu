@@ -21,17 +21,13 @@ bool isSignedIntType(const TypeInfo& t) {
     return t.name == "i8" || t.name == "i16" || t.name == "i32" || t.name == "i64" || t.name == "isize";
 }
 
-bool isUnsignedIntType(const TypeInfo& t) {
-    return t.name == "u8" || t.name == "u16" || t.name == "u32" || t.name == "u64" || t.name == "usize";
-}
+bool isUnsignedIntType(const TypeInfo& t) { return t.isUnsigned(); }
 
 bool isIntType(const TypeInfo& t) {
     return isSignedIntType(t) || isUnsignedIntType(t);
 }
 
-bool isFloatType(const TypeInfo& t) {
-    return t.name == "f32" || t.name == "f64";
-}
+bool isFloatType(const TypeInfo& t) { return t.isFloat(); }
 
 int intBitWidth(const TypeInfo& t) {
     if (t.name == "i8"  || t.name == "u8")  return 8;

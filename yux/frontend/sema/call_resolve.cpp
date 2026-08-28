@@ -1308,7 +1308,7 @@ void validateOperatorMethodCall(const string& member, const TypeInfo& baseType, 
     }
     // 一元 inv: 不接受 float
     if (member == "inv") {
-        if (baseType.startsWith('f')) {
+        if (baseType.isFloat()) {
             throw YuxError(line, col, ErrorCode::E3070, baseType.name);
         }
         return;

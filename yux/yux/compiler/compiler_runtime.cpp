@@ -824,7 +824,7 @@ void emitRcReleaseForArrayFn(llvm::LLVMContext& context, llvm::IRBuilder<>& buil
 // payloadReleaseFn：内层 handle 的释放函数。kind=Rc 时为内层 Rc 的 typed release，
 // 从而 Rc<Rc<Rc<T>>> 会递归走到每一层，而不是一律 generic _box_release。
 void emitRcReleaseForInlineDtorFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
-                                  llvm::Function* func, const string& kind, llvm::Function* payloadReleaseFn) {
+                                  llvm::Function* func, TypeKind kind, llvm::Function* payloadReleaseFn) {
     if (!func || !func->empty()) return;
 
     auto freeFn = runtime::getYuxrtFreeFn(module, builder);
@@ -862,14 +862,14 @@ void emitRcReleaseForInlineDtorFn(llvm::LLVMContext& context, llvm::IRBuilder<>&
     // strong 归零：内联析构 IR
     builder.SetInsertPoint(strongZeroBB);
     if (payloadReleaseFn) {
-        if (kind == "Rc") {
+        if (kind == TypeKind::Rc) {
             // Rc<Rc<U>>: payload = Rc<U> = {ptr handle} @ block+8
             auto payloadPtr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(8)}, "nested_rc_payload");
             auto handleAddr =
                 builder.CreateBitCast(payloadPtr, llvm::PointerType::get(context, 0), "nested_rc_handle_addr");
             auto handle = builder.CreateLoad(ptrTy, handleAddr, "nested_rc_handle");
             builder.CreateCall(payloadReleaseFn, {handle});
-        } else if (kind == "Weak") {
+        } else if (kind == TypeKind::Weak) {
             // Rc<Weak<U>>: payload = Weak<U> = {ptr handle} @ block+8
             auto payloadPtr =
                 builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(8)}, "nested_weak_payload");
@@ -877,7 +877,7 @@ void emitRcReleaseForInlineDtorFn(llvm::LLVMContext& context, llvm::IRBuilder<>&
                 builder.CreateBitCast(payloadPtr, llvm::PointerType::get(context, 0), "nested_weak_handle_addr");
             auto handle = builder.CreateLoad(ptrTy, handleAddr, "nested_weak_handle");
             builder.CreateCall(payloadReleaseFn, {handle});
-        } else if (kind == "Fn") {
+        } else if (kind == TypeKind::Fn) {
             // Rc<fn(...)>: payload = {ptr fn_ptr, ptr captures} @ block+8
             // captures 在 payload[8] (fn_ptr 之后)，若 non-null 则走 payloadReleaseFn
             auto capturesAddr =

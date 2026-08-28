@@ -254,7 +254,7 @@ void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeIn
 //   - E3070: 一元 `inv` 不接受 float 类型
 //
 // 不命中 op 清单时 no-op (调用方继续 fall-through 到 IR emit).
-// 纯字符串 + 计数 + baseType.startsWith('f'), 无 LLVM 依赖.
+// 纯字符串 + 计数 + baseType.isFloat(), 无 LLVM 依赖.
 void validateOperatorMethodCall(const string& member, const TypeInfo& baseType, size_t argsCount, int line, int col);
 
 // 自由内建 intrinsic 的 arity 校验 (Phase 3.3.2.b).
