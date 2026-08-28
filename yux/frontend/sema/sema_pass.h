@@ -61,9 +61,14 @@ private:
 
     // Phase 3.4.d.2: 当前所在 struct impl 名 (用于私有字段可见性 E3042).
     // 与 Compiler 的 `_currentStructName` 同步: 进入 struct impl 方法 visit
-    // 时 set, 离开时 clear; sema 不下钻泛型 impl, 这里恒为非 `$<...>` 形态.
+    // 时 set, 离开时 clear. Phase C 下钻泛型 impl，名字仍是裸 struct 名（无 `<T>`）.
     // 空串表示自由 fn (任何私有字段访问都报错).
     string _currentStructName;
+
+    // Phase C：当前泛型 fn / impl 的类型参数名。非空 = 正在走模板体。
+    // 类型参数当不透明 TypeParam：依赖 T 具体化的 getType 诊断吞掉；
+    // 形态检查（#NoCopy / 未定义符号 / arity）仍报。
+    std::set<std::string> _currentTypeParams;
 
     // v0.16 闭包捕获: 当前正在遍历的 lambda 节点 (非空 = 在 lambda body 内).
     // 与 Compiler 的 `_currentLambdaForCapture` 功能对等但 0 LLVM 依赖.
@@ -82,6 +87,9 @@ private:
     void visitStmt(p<StatementNode> stmt);
     void visitBlock(p<StatementBlockNode> block);
     void visitExpr(p<ExprNode> expr);
+
+    // Phase C：t 剥 Ref/Heap/Rc 后是否为当前模板的类型参数。
+    [[nodiscard]] bool isCurrentTypeParam(const TypeInfo& t) const;
 
     // DRAFT-spec-default-body Phase 2：spec 默认体占位符号校验
     // ([#1.S])。仅识别 `$.method(args)` 形态, 验证 method 在 spec 自身签名集

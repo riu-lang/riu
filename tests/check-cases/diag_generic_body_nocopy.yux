@@ -1,0 +1,15 @@
+; require-sdk
+; 泛型 fn 体：具体 #NoCopy 类型仍不可隐式复制（Phase C 形态检查）
+
+#NoCopy
+struct S {
+  x i32
+}
+
+fn id<T>(x T) T {
+  let a S = S {
+    .x = 1
+  }
+  let b S = a  ; check: E4031
+  x
+}

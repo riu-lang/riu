@@ -1,0 +1,10 @@
+; 泛型 impl 体：未定义符号（Phase C 不透明 TypeParam 形态检查）
+
+struct Holder<T> {
+  item T
+
+  fn get() T {
+    let y i32 = nope  ; check: E3030
+    $.item
+  }
+}

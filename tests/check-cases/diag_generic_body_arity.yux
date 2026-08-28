@@ -1,0 +1,11 @@
+; 泛型 fn 体：泛型 struct arity（Phase C 不透明 TypeParam 形态检查）
+
+struct Pair<T, U> {
+  a T
+  b U
+}
+
+fn id<T>(x T) T {
+  #Mut let p Pair<i32>  ; check: E6011
+  x
+}

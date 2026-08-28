@@ -5,11 +5,11 @@
 //
 // Phase 3.2a：visitExpr 在每个表达式节点上写入 `setResolvedType(getType())`,
 // 覆盖范围扩到 file 顶层 fn body + struct impl 的方法/析构 body。
-// 泛型模板 / #Builtin 仍跳过 —— 它们的 codegen 路径会自行写 resolvedType,
-// 留作本步 known-issue (lambda 反推 / 泛型 applySubst 的"运行时再写")。
+// #Builtin 仍跳过。Phase C：泛型模板体也 walk（类型参数不透明）。
 //
 // Phase B：SemaPass 为 getType 诊断的权威抛出点。默认重抛所有 YuxError；
-// 仅 kDeferredCodes 里缺 Sema 上下文的码仍吞掉、留给 Compiler（Phase C 再收）。
+// 仅 kDeferredCodes 里缺 Sema 上下文的码仍吞掉、留给 Compiler。
+// Phase C：泛型 fn/impl 体再吞一批依赖 T 具体化的码（见 isMorphologicalGenericCode）。
 // 非 YuxError 在 debug 下 assert，禁止静默吞。
 
 #include "sema/sema_pass.h"
@@ -129,6 +129,30 @@ bool isDeferredCode(const char* code) {
     }
     return false;
 }
+
+// Phase C：泛型模板体内仍从 getType 重抛的形态码（不依赖 T 具体化）。
+// 其余类型错（E3001 / E3041 / E6016 等）等实例化后再查，此处吞掉。
+bool isMorphologicalGenericCode(const char* code) {
+    if (!code) return false;
+    std::string_view sv(code);
+    constexpr std::array<std::string_view, 15> kKeep = {
+        "E3030",          // 未定义符号
+        "E6010", "E6011", // 泛型 arity
+        "E4031", "E4032", // #NoCopy
+        "E3103",          // 整数字面量越界
+        "E2033",          // 非法转义
+        "E4025", "E1132", // 容器禁令
+        "E2016", "E2017", // 别名
+        "E3130",          // 同名 ctor 定义
+        "E3128",          // #Static 体内 $
+        "E2030",          // lambda 捕获赋值
+        "E4033",          // use-after-move
+    };
+    for (auto c : kKeep) {
+        if (sv == c) return true;
+    }
+    return false;
+}
 } // namespace
 
 SemaPass::SemaPass(p<FileNode> file, Yux* yux)
@@ -153,9 +177,8 @@ void SemaPass::run() {
         }
     }
     for (auto& fn : _file->getFunctions()) {
-        // 泛型模板 / #Builtin 不走常规 codegen, 在 Compiler::compile 里也
-        // 是被跳过的; SemaPass 这里同步跳过, 保持与 codegen 覆盖一致。
-        if (fn->header()->isGeneric()) continue;
+        // #Builtin 无真实体，仍跳过。Phase C：泛型模板体要走 SemaPass
+        // （类型参数当不透明 TypeParam，做 #NoCopy / 未定义符号 / arity）。
         if (fn->header()->hasAnno("Builtin")) continue;
         visitFn(fn);
     }
@@ -163,13 +186,14 @@ void SemaPass::run() {
     // 入口也是 compile<Foo>Expr, 不覆盖会导致后续 3.2b 把 set 改 assert 时
     // 方法体内表达式全部 assert 失败。
     for (auto& impl : _file->getStructImpls()) {
-        if (impl->isGeneric()) continue;
+        auto savedTypeParams = _currentTypeParams;
+        for (const auto& tp : impl->typeParams()) {
+            _currentTypeParams.insert(tp);
+        }
         // Phase 3.4.d.2: 进入 impl 时记录 currentStructName, 供 visitExpr 走
         // ExprGetRefNode / ExprDotNode 字段访问时校验 E3042 私有可见性.
         _currentStructName = impl->structName();
         for (auto& m : impl->methods()) {
-            // 注：m->header()->isGeneric() 不再单独跳过——line 162 已跳过整个 generic impl,
-            // 单方法泛型形态目前不支持 (Phase 6D-tail 清理)。
             if (m->header()->hasAnno("Builtin")) continue;
             // Phase 6A: 砍同名 ctor —— `fn TypeName(...)` 定义形态废除,
             // 构造唯一通道收敛到 `#Static fn`. `#Static fn TypeName(...)` 形态
@@ -185,6 +209,7 @@ void SemaPass::run() {
             visitFn(impl->destructor());
         }
         _currentStructName.clear();
+        _currentTypeParams = std::move(savedTypeParams);
     }
 
     // DRAFT-spec-default-body Phase 2: spec 默认体占位符号校验
@@ -368,6 +393,13 @@ void SemaPass::visitFn(p<FnNode> fn) {
     _currentFn = fn;
     _movedVars.clear(); // Phase B-1: 进入 fn 时清空 move 追踪
 
+    auto savedTypeParams = _currentTypeParams;
+    if (auto hdr = fn->header()) {
+        for (const auto& tp : hdr->typeParams()) {
+            _currentTypeParams.insert(tp);
+        }
+    }
+
     // E4025 / E1132：形参 / 返回类型上的容器禁令（getLLVMType 同款，补 yux-check）
     if (auto hdr = fn->header()) {
         for (auto& param : hdr->params()) {
@@ -400,6 +432,7 @@ void SemaPass::visitFn(p<FnNode> fn) {
     for (auto& stmt : fn->body()) {
         visitStmt(stmt);
     }
+    _currentTypeParams = std::move(savedTypeParams);
     _currentFn = savedFn;
 }
 
@@ -932,13 +965,15 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
 void SemaPass::visitExpr(p<ExprNode> expr) {
     if (!expr) return;
     // Phase B：getType 诊断默认由 SemaPass 重抛。kDeferredCodes（E3009 / E3095）
-    // 仍缺上下文或会挡住更精确诊断，吞掉留给后续 handler / Compiler；非 YuxError debug assert。
+    // 仍缺上下文或会挡住更精确诊断，吞掉留给后续 handler / Compiler。
+    // Phase C：泛型模板体内再吞依赖 T 具体化的码；形态检查仍重抛。
     try {
         expr->setResolvedType(expr->getType());
     } catch (const YuxError& e) {
-        if (!isDeferredCode(e.getCode())) {
-            throw;
-        }
+        // 吞：kDeferredCodes，以及泛型模板体内依赖 T 具体化的类型错。
+        const bool swallow =
+            isDeferredCode(e.getCode()) || (!_currentTypeParams.empty() && !isMorphologicalGenericCode(e.getCode()));
+        if (!swallow) throw;
     } catch (...) { // NOLINT(bugprone-empty-catch) — release 仍吞非 YuxError；debug 下 assert
 #ifndef NDEBUG
         assert(false && "getType threw non-YuxError; SemaPass must not swallow unknown failures");
@@ -1676,8 +1711,10 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
                 if (baseType.isRc()) {
                     if (auto inner = baseType.rcElementType()) baseType = *inner;
                 }
-                if (!baseType.name.empty() && !baseType.isDyn() && !isBuiltinType(baseType.name) &&
-                    !baseType.isArrayGeneric() && !baseType.isPtr()) {
+                if (isCurrentTypeParam(baseType)) {
+                    // Phase C：不透明 TypeParam，方法存在性等实例化后再查
+                } else if (!baseType.name.empty() && !baseType.isDyn() && !isBuiltinType(baseType.name) &&
+                           !baseType.isArrayGeneric() && !baseType.isPtr()) {
                     string member = dotCallee->member();
                     if (dotCallee->hasSpecQualifier()) {
                         member = member + "__at__" + dotCallee->specQualifier();
@@ -2401,6 +2438,7 @@ void SemaPass::tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExp
     try {
         TypeInfo leftType = leftExpr->getType();
         TypeInfo rightType = rightExpr->getType();
+        if (isCurrentTypeParam(leftType) || isCurrentTypeParam(rightType)) return;
         if (leftType.name.empty() || isBuiltinType(leftType.name)) return;
         // String 走 StringBuilder 特殊 lowering / 其它 builtin-handled 路径,
         // 没有用户可见的 plus/eq/... 方法签名, 不能走 customBinaryOp 解析.
@@ -2429,4 +2467,10 @@ void SemaPass::tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExp
     } catch (...) { // NOLINT(bugprone-empty-catch)
         // getType 内部异常: 留 Compiler 兜底
     }
+}
+
+bool SemaPass::isCurrentTypeParam(const TypeInfo& t) const {
+    TypeInfo peeled = t.peelAutoDeref();
+    if (!peeled.isNormal() || peeled.name.empty()) return false;
+    return _currentTypeParams.count(peeled.name) > 0;
 }
