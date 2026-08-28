@@ -127,13 +127,26 @@ function Invoke-ClangFormat([string]$Clang, [string[]]$Files, [bool]$Check) {
     return $failed
 }
 
+function Show-Help {
+    Write-Host @'
+用法:
+  ./format.ps1              仅 git 变动/未跟踪的 C/C++（clang-format -i）
+  ./format.ps1 --all        yux/ include/ sdk/yux/src/
+  ./format.ps1 --check      dry-run + -Werror（pre-commit）
+  ./format.ps1 yux/x.cpp    指定文件
+  ./format.ps1 -h / --help  帮助
+'@
+}
+
 $flagAll = $false
 $flagCheck = $false
 $positional = New-Object System.Collections.Generic.List[string]
 foreach ($a in $args) {
-    if ($a -eq '--all') { $flagAll = $true }
-    elseif ($a -eq '--check') { $flagCheck = $true }
-    elseif (-not ([string]$a).StartsWith('--')) { [void]$positional.Add([string]$a) }
+    $s = [string]$a
+    if ($s -in @('-h', '--help', '-Help', '/?')) { Show-Help; exit 0 }
+    elseif ($s -eq '--all') { $flagAll = $true }
+    elseif ($s -eq '--check') { $flagCheck = $true }
+    elseif (-not $s.StartsWith('--')) { [void]$positional.Add($s) }
 }
 
 if ($positional.Count -gt 0) {

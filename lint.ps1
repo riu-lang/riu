@@ -99,11 +99,25 @@ function Find-ClangTidy {
     return $null
 }
 
+function Show-Help {
+    Write-Host @'
+用法:
+  ./lint.ps1              仅 git 变动/未跟踪的 C/C++
+  ./lint.ps1 --all        compile_commands.json 中的项目源
+  ./lint.ps1 yux/x.cpp    指定文件
+  ./lint.ps1 -h / --help  帮助
+
+需要 compile_commands.json（./build.ps1 --gen-only）。提交须 0 warnings。
+'@
+}
+
 $flagAll = $false
 $positional = New-Object System.Collections.Generic.List[string]
 foreach ($a in $args) {
-    if ($a -eq '--all') { $flagAll = $true }
-    elseif (-not ([string]$a).StartsWith('--')) { [void]$positional.Add([string]$a) }
+    $s = [string]$a
+    if ($s -in @('-h', '--help', '-Help', '/?')) { Show-Help; exit 0 }
+    elseif ($s -eq '--all') { $flagAll = $true }
+    elseif (-not $s.StartsWith('--')) { [void]$positional.Add($s) }
 }
 
 if ($positional.Count -gt 0) {

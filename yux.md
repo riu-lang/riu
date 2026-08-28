@@ -1,6 +1,6 @@
 # yux-lang 架构图
 
-本文件汇总 yux-lang 仓库的关键架构图，便于快速上手与跨模块讨论。图示用 Mermaid，配合 [RULES.md](RULES.md) / [rules/directory.md](rules/directory.md) / [rules/sema-codegen.md](rules/sema-codegen.md) 阅读。
+本文件汇总 yux-lang 仓库的关键架构图，便于快速上手与跨模块讨论。图示用 Mermaid，配合 [RULES.md](RULES.md) / [rules/sema-codegen.md](rules/sema-codegen.md) 阅读。
 
 权威源：`yux/ast/yux*.g4`（语法）、`yux/` C++ 源码、`BUILD.gn` / `build/`（构建拓扑）。图与代码冲突时以代码为准，**回头更新本文档**而非反过来。
 
@@ -211,7 +211,7 @@ flowchart LR
 
 ## 7. 仓库目录速览
 
-详见 [rules/directory.md](rules/directory.md)。一句话版：
+详见 [RULES.md](RULES.md) 目录。一句话版：
 
 - `yux/`：编译器实现（`yux/` 零 LLVM；`yux/yux/compiler/` 全 LLVM；`yux/analyzer/` 语义检查；`yux/lsp/` LSP；`yux/frontend/tools/` 工具）
 - `sdk/yux/`：自举 runtime（独立 yux 项目 → `yux.lib`）

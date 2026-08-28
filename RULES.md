@@ -1,47 +1,70 @@
 # RULES
 
-本项目规则入口，每会话自动加载。不要擅自决定/改动任务方向，遇到问题停下来。
+每会话入口。不要擅自改任务方向；卡住就停下来问。规范没写 = 不允许。不要用 Rust / C++ / Go 语义套 yux。
 
-## 规则来源
+`yux/ast/yux*.g4` **只读**。任务看起来要改语法 → 立刻停，列问题给用户。权威：g4 + 编译器源码 > docs（冲突时改 docs）。路径 / 测试名 / 命令参数查实际文件，不凭命名猜。
 
-本项目的事实源拆为两类，开始任何任务前**都要看**，不要凭文件名或 README 推测项目约定：
+## 工作文件
 
-- [rules/README.md](rules/README.md) —— **硬性规则**，每会话通过本文件加载。[rules/behavior.md](rules/behavior.md) 是核心决策框架——什么情况该做什么、什么时候必须停下来；[rules/engineering.md](rules/engineering.md) 是工程环境与测试流程。
-- 手册（`rules/manuals/` + `rules/yux-syntax.md` 等）—— 按需读，触发条件见 behavior.md 强制触发表。
+| 文件 | 用途 | git |
+|------|------|-----|
+| `CURRENT.md` / `CURRENT-*.md` | 多步任务计划 | 否 |
+| `BUGS.md` | 与当前任务无关 / 需大量排查的 bug | 否 |
+| `MILESTONE.md` | 稳定版目标 | 是 |
 
-## 核心工作文件
+多步任务写入 `CURRENT.md`，阶段更新，完成后删条目；单步小修不写。新 bug 用 `BUGS.md` 模板。进度和 bug 不混。语言面变更才写 `docs/dev/<topic>-impl-log.md`（里面把 BUGS 改写成 TODO 简述）；纯工程进度归 MILESTONE.md。
 
-这几个文件是工作核心，不随会话中断消失。项目初期 BUG 多、会话一换任务就丢，走文件才可靠：
+继续旧任务：读 CURRENT + BUGS，确认能编过。撞到可能是旧 bug：`git stash` → `./build.ps1` → 跑相关测试。基线也挂 → 记 BUGS.md 后绕过；基线过 → 当前引入，修掉。工作区干净 + CURRENT/BUGS 空 = 上一任务已完结。质量优先，不强制关 CURRENT。
 
-| 文件 | 内容 | 入 git |
-|------|------|--------|
-| `CURRENT.md` | 当前多步任务的分阶段计划与进展 | 否（本地） |
-| `CURRENT-*.md` | 并行的其它多步任务 | 否（本地） |
-| `BUGS.md` | 开发中发现的 bug（与当前任务无关 / 需大量排查 / 临时绕过） | 否（本地） |
-| `MILESTONE.md` | 里程碑，当前稳定版目标与已完成目标 | 是 |
+## 按需（动手前读）
 
-### 多步任务 → `CURRENT.md`
+| 场景 | 文件 |
+|------|------|
+| 写 `*.yux` | [rules/yux-syntax.md](rules/yux-syntax.md) |
+| 改 `yux/frontend/sema/` 或 `yux/yux/compiler/` | [rules/sema-codegen.md](rules/sema-codegen.md) |
+| 改语言特性 / 语法 / ABI | [rules/spec-writeback.md](rules/spec-writeback.md) |
+| CLI / 脚本参数 | `yux --help`、`yux build --help`、`./build.ps1 --help` 等，不维护手册 md |
 
-接到多步任务，先在 `CURRENT.md` 写入分阶段计划（参照现有条目），每完成一个阶段就地更新；整个任务完成后删除该条目。单步小修不必写。
+## 环境 / 构建
 
-### 新发现 bug → `BUGS.md`
+Windows + Clang（无 MSVC 作编译器；仍需 VS 的 Windows SDK / STL）。`build/windows/x64/debug/bin` 在 PATH。`yux-check` 独立 exe，`./build.ps1 yux` 不会编它。
 
-按 `BUGS.md` 内模板填写，暂停相关任务向用户说明。**进度 → CURRENT.md，bug → BUGS.md，两者不混用**。
+| 改动 | 重编 |
+|------|------|
+| `yux/yux/compiler/` | `./build.ps1 yux` |
+| `yux/frontend/` | `./build.ps1 yux yux-check` |
+| `yux/ast/` | `./build.ps1 yux yux-check yux-ast` |
+| `yux/lsp/` | `./build.ps1 yux-lsp` |
+| `yux/test-runner/` | `./build.ps1 yux-test-runner` |
+| `yux/ast/yux*.g4` | `./gen-antlr.ps1` → 上面全部 |
 
-### 版本日志 → `docs/dev/`
+## 验证
 
-`docs/dev/<topic>-impl-log.md` 只用于标准 / 语言面变更（spec 条款、AST 节点 / 注解形态、ABI 协议、内置类型语义等触发 spec-writeback 的工作）。纯工程交付不写 impl-log，进度归到 MILESTONE.md。
+中途（`sdk/yux/`）：`yux test`（`--verbose` / `--test-mod <M>` / `--threads N`）。
 
-实施日志中引用 BUGS.md 的位置改写为 TODO 简述（如"TODO：Array 声明拷贝漏 retain"），因为 BUGS.md 不入库。
+收尾：`./build.ps1 yux-check` → `yux-check test tests/check-cases/` → `./build.ps1 test`（`-Jobs 1` 串行）。
 
-## 最低限度阅读
+测试崩溃：DLL 无摘要行 → `--verbose` → `--test-mod` → `yux build --test -d`。
 
-开始任务前至少看：
-- [rules/behavior.md](rules/behavior.md) — 决策框架（强制）
-- [rules/directory.md](rules/directory.md) — 目录结构
+改完 C++ 立刻 `./format.ps1`；完成修改+测试通过后 `./lint.ps1` **0 warnings**。注释中文；`// ====` 分区；未完成 / 待验证写 `// TODO:`。
 
-## 其他参考
+## 目录
 
-- [docs/index.md](docs/index.md) — 语言文档索引（中文）
-- [yux/ast/yuxParser.g4](yux/ast/yuxParser.g4) / [yux/ast/yuxLexer.g4](yux/ast/yuxLexer.g4) — 权威 ANTLR4 语法（**只读**）
-- [README.md](README.md) — 面向用户的概述
+```
+yux/                 构建子系统（各自 BUILD.gn）
+  yux/compiler/      LLVM IR（yux.exe）
+  yux/cli/           build / test / format
+  rt/                C99 运行时 yuxrt.lib
+  ast/               ANTLR4 + AST；gen/ 与 yux*.g4 不要手改
+  analyzer/          语义分析器
+  frontend/          sema + tools + formatter（0 LLVM）
+  check/             yux-check
+  lsp/               yux-lsp
+  test-runner/       yux test 内部 spawn
+sdk/yux/src/yux/core/  自举 runtime + *.test.yux
+docs/spec/           语言规范；docs/dev/ 实施日志
+tests/projects/      项目回归；tests/check-cases/ 诊断用例
+build/               GN；plugins/ 编辑器；third_party/ 依赖
+rules/               按需规则（syntax / sema / spec-writeback）
+*.ps1                build / sync-deps / gen-antlr / lint / format
+```

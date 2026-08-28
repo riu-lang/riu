@@ -117,7 +117,7 @@ struct S {
 
 ### 6.1 编译器（`src/`）
 
-- `src/yuxParser.g4` / `gen/`：`exprDotCall` 加可选 `('@' ID genericDef?)`（**改 g4，按 behavior.md 高风险，先与用户确认形态**）。
+- `src/yuxParser.g4` / `gen/`：`exprDotCall` 加可选 `('@' ID genericDef?)`（**改 g4，按 RULES.md 高风险，先与用户确认形态**）。
 - `src/ast/ast_builder_expr.cpp`（或 callsite 对应文件）：`visitExprDotCall` 命中 `@ID` 时填 `CallNode::specQualifier`。
 - `src/ast/node/call_node.{h,cpp}`：加 `optional<string> specQualifier`。
 - `src/sema/sema_pass.cpp` / `src/sema/call_resolve.cpp`：dot-call 解析路径上加 `@SpecA` 分支：T 的 `#Impl` 列表查 SpecA → SpecA 签名表查 m → 默认体存在性校验。

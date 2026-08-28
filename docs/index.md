@@ -45,7 +45,7 @@ yux 是一门独立的编译型语言，具有以下特性：
 ### 更多资源
 
 - [语法文件](../yux/ast/yuxParser.g4) / [词法文件](../yux/ast/yuxLexer.g4) - 权威的 ANTLR4 语法定义
-- [rules/README.md](../rules/README.md) - 编译器开发规则（行为约束、任务/bug 记录、目录结构、sema 协议）
+- [RULES.md](../RULES.md) - 编译器开发规则
 - [README.md](../README.md) - 项目概述
 
 ## 快速开始

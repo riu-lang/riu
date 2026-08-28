@@ -79,7 +79,7 @@ letGlobal:
     (letAnnos+=letAnno)* Let name=ID type? (SymbolEq expr)? LineEnd ;
 ```
 
-> **改 g4 属高风险动作**，按 `behavior.md` 须先与用户对齐再改。本草案要求该改动，落地前 review。
+> **改 g4 属高风险动作**，按 [RULES.md](../../../RULES.md) 须先与用户对齐再改。本草案要求该改动，落地前 review。
 
 sema 在 `ast_builder_decl.cpp::visitLetGlobal` 内对 `expr` 走 const-eval 校验；非 const 子树报 `E3140`。
 
