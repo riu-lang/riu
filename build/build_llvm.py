@@ -141,6 +141,12 @@ def wipe_cmake_tree(build: str) -> None:
     shutil.rmtree(build)
 
 
+def wipe_llvm_build_tree(build: str) -> None:
+    if not os.path.isdir(build):
+        return
+    print("[llvm] removing stale GN build tree (source commit changed)", flush=True)
+    shutil.rmtree(build)
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", required=True, help="third_party/llvm (monorepo root)")
@@ -178,7 +184,18 @@ def main() -> int:
     stamped = read_stamp(stamp) or read_stamp(src_stamp)
     src_dirty = stamped != src_commit
 
-    wipe_cmake_tree(build)
+    if src_dirty:
+        if stamped:
+            print(
+                f"[llvm] source commit changed: {stamped[:8]} → {src_commit[:8]}",
+                flush=True,
+            )
+        else:
+            print("[llvm] no source stamp; will gn gen / ninja", flush=True)
+        wipe_cmake_tree(build)
+        wipe_llvm_build_tree(build)
+    else:
+        wipe_cmake_tree(build)
 
     args_gn = os.path.join(build, "args.gn")
     args_changed = write_args_gn(
@@ -193,14 +210,6 @@ def main() -> int:
     os.makedirs(build, exist_ok=True)
     need_gen = args_changed or not os.path.isfile(ninja_file) or src_dirty
     if need_gen:
-        if src_dirty:
-            if stamped:
-                print(
-                    f"[llvm] source commit changed: {stamped[:8]} → {src_commit[:8]}",
-                    flush=True,
-                )
-            else:
-                print("[llvm] no source stamp; will gn gen / ninja", flush=True)
         run(
             [
                 gn,

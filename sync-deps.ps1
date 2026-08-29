@@ -39,6 +39,16 @@ function Get-LlvmHead {
 
 $llvmBefore = if ($touchesLlvm -and -not $isDryRun) { Get-LlvmHead } else { $null }
 
+function Write-LlvmSyncCommit([string]$Commit) {
+    if ([string]::IsNullOrWhiteSpace($Commit)) { return }
+    $stamp = Join-Path $ProjectRoot 'third_party\llvm.sync_commit'
+    $parent = Split-Path -Parent $stamp
+    if (-not (Test-Path -LiteralPath $parent)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
+    [System.IO.File]::WriteAllText($stamp, $Commit.Trim() + "`n")
+}
+
 & $Tool `
     -DepsFile (Join-Path $ProjectRoot 'DEPS.json') `
     -SyncDir (Join-Path $ProjectRoot 'third_party') `
@@ -49,6 +59,7 @@ if ($code -ne 0) { exit $code }
 
 if ($touchesLlvm -and -not $isDryRun) {
     $llvmAfter = Get-LlvmHead
+    if ($llvmAfter) { Write-LlvmSyncCommit $llvmAfter }
     if ($llvmAfter -and $llvmAfter -ne $llvmBefore) {
         $beforeShort = if ($llvmBefore) { $llvmBefore.Substring(0, [Math]::Min(8, $llvmBefore.Length)) } else { 'none' }
         $afterShort = $llvmAfter.Substring(0, [Math]::Min(8, $llvmAfter.Length))

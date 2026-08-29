@@ -55,6 +55,7 @@ action("build_llvm") {
   inputs = [
     "//build/build_llvm.py",
     "//build/llvm_cl_wrapper.py",
+    "//third_party/llvm.sync_commit",
   ]
   outputs = [
     _stamp,
