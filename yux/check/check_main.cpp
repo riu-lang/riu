@@ -130,8 +130,7 @@ static vector<string> scanYuxFiles(const string& dir, bool recursive) {
             }
         }
     } else {
-        for (auto it = filesystem::directory_iterator(dir, ec);
-             it != filesystem::directory_iterator(); ++it) {
+        for (auto it = filesystem::directory_iterator(dir, ec); it != filesystem::directory_iterator(); ++it) {
             if (ec) break;
             if (it->is_regular_file() && it->path().extension() == ".yux") {
                 result.push_back(filesystem::absolute(it->path()).string());
@@ -148,9 +147,9 @@ static vector<string> scanYuxFiles(const string& dir, bool recursive) {
 // ============================================================================
 
 struct CheckResult {
-    bool ok = true;                  // false = 有错误 (semaError 或 otherError)
-    optional<YuxError> semaError;    // SemaPass 抛出的 YuxError
-    string otherError;               // 非 YuxError 的错误信息 (parse / AST 阶段失败)
+    bool ok = true;               // false = 有错误 (semaError 或 otherError)
+    optional<YuxError> semaError; // SemaPass 抛出的 YuxError
+    string otherError;            // 非 YuxError 的错误信息 (parse / AST 阶段失败)
 };
 
 // 对单个 .yux 文件执行完整检查流水线。
@@ -224,9 +223,9 @@ static CheckResult runSemaOnFile(const string& absPath, const string& sdkPath) {
 // 单文件测试结果
 // NOLINTNEXTLINE(bugprone-exception-escape) — map 成员可能导致移动/拷贝抛异常, 但本 struct 仅作本地数据容器
 struct TestFileResult {
-    string filename;                     // 仅文件名 (用于显示)
+    string filename; // 仅文件名 (用于显示)
     bool passed = false;
-    string failReason;                   // 失败原因 (可能多行)
+    string failReason;                       // 失败原因 (可能多行)
     map<size_t, vector<string>> annotations; // 解析出的注解
 };
 
@@ -276,16 +275,14 @@ static TestFileResult evaluateOneFileWithYux(const string& absPath, Yux& yux) {
     } else if (!hasAnnotations && hasSemaError) {
         tfr.passed = false;
         ostringstream oss;
-        oss << "  unexpected " << cr.semaError->getCode()
-            << " at line " << cr.semaError->getLineNumber()
-            << ": " << cr.semaError->what() << '\n';
+        oss << "  unexpected " << cr.semaError->getCode() << " at line " << cr.semaError->getLineNumber() << ": "
+            << cr.semaError->what() << '\n';
         tfr.failReason = oss.str();
     } else if (hasAnnotations && !hasSemaError) {
         tfr.passed = false;
         ostringstream oss;
         for (auto& [line, codes] : tfr.annotations) {
-            oss << "  line " << line << ": expected "
-                << formatCodesComma(codes) << ", got no error\n";
+            oss << "  line " << line << ": expected " << formatCodesComma(codes) << ", got no error\n";
         }
         tfr.failReason = oss.str();
     } else {
@@ -298,7 +295,10 @@ static TestFileResult evaluateOneFileWithYux(const string& absPath, Yux& yux) {
             auto& expected = it->second;
             bool matched = false;
             for (auto& ec : expected) {
-                if (ec == errCode) { matched = true; break; }
+                if (ec == errCode) {
+                    matched = true;
+                    break;
+                }
             }
 
             if (matched) {
@@ -306,15 +306,14 @@ static TestFileResult evaluateOneFileWithYux(const string& absPath, Yux& yux) {
             } else {
                 tfr.passed = false;
                 ostringstream oss;
-                oss << "  line " << errLine << ": expected "
-                    << formatCodesComma(expected) << ", got " << errCode << '\n';
+                oss << "  line " << errLine << ": expected " << formatCodesComma(expected) << ", got " << errCode
+                    << '\n';
                 tfr.failReason = oss.str();
             }
         } else {
             tfr.passed = false;
             ostringstream oss;
-            oss << "  line " << errLine << ": unexpected " << errCode
-                << " (" << err.what() << ")";
+            oss << "  line " << errLine << ": unexpected " << errCode << " (" << err.what() << ")";
             if (tfr.annotations.size() == 1) {
                 auto& [line, codes] = *tfr.annotations.begin();
                 oss << ", expected " << formatCodesComma(codes) << " at line " << line;
@@ -405,8 +404,10 @@ static int runCheckTest(const string& dir, bool recursive) {
     size_t passed = 0;
     size_t failed = 0;
     for (auto& r : results) {
-        if (r.passed) ++passed;
-        else ++failed;
+        if (r.passed)
+            ++passed;
+        else
+            ++failed;
     }
 
     // 输出结果
@@ -420,14 +421,12 @@ static int runCheckTest(const string& dir, bool recursive) {
     }
 
     // 总耗时
-    auto elapsed = chrono::duration_cast<chrono::milliseconds>(
-        chrono::steady_clock::now() - t0).count();
+    auto elapsed = chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - t0).count();
     auto sec = elapsed / 1000;
     auto ms = elapsed % 1000;
 
     cout << '\n';
-    cout << "  Summary: " << passed << " passed, " << failed << " failed, "
-         << results.size() << " total"
+    cout << "  Summary: " << passed << " passed, " << failed << " failed, " << results.size() << " total"
          << " [" << sec << '.' << (ms / 100) % 10 << (ms / 10) % 10 << ms % 10 << "s]\n";
 
     return failed == 0 ? 0 : 1;
@@ -437,7 +436,8 @@ static int runCheckTest(const string& dir, bool recursive) {
 // main
 // ============================================================================
 
-int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape) — main 入口点, filesystem API 可能抛 system_error
+int main(int argc,
+         char* argv[]) { // NOLINT(bugprone-exception-escape) — main 入口点, filesystem API 可能抛 system_error
 #ifdef _WIN32
     SetConsoleCP(CP_UTF8);
     SetConsoleOutputCP(CP_UTF8);
@@ -522,8 +522,7 @@ int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape) — main
         // SDK 找不到时不致命 —— 仅打印警告并继续 (退化为 yux-check 阶段 0 行为).
         string sdkPath = sdk_loader::findSdkPath();
         if (sdkPath.empty()) {
-            cerr << "warning: SDK not found (yux.core 未加载); 仅做 builtin 范围内的 sema 检查"
-                      << '\n';
+            cerr << "warning: SDK not found (yux.core 未加载); 仅做 builtin 范围内的 sema 检查" << '\n';
         } else {
             sdk_loader::parseSdkDir(sdkPath, yux);
         }

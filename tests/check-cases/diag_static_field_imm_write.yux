@@ -1,0 +1,10 @@
+; 写入非 #Mut 静态字段（Phase C statement 层 E3151）
+
+struct Counter {
+  #Static
+  DEFAULT i32 = 42
+}
+
+fn main() {
+  Counter::DEFAULT = 1  ; check: E3151
+}

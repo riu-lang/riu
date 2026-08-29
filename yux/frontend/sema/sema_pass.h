@@ -86,10 +86,17 @@ private:
     void visitFn(p<FnNode> fn);
     void visitStmt(p<StatementNode> stmt);
     void visitBlock(p<StatementBlockNode> block);
-    void visitExpr(p<ExprNode> expr);
+    // expected：赋值 / 声明 / 返回 / 嵌套数组的目标类型。非空时数组字面量按
+    // 靶向类型递归检查（E3009 / E3012），不再走无上下文的 getType。
+    void visitExpr(p<ExprNode> expr, const TypeInfo* expected = nullptr);
 
     // Phase C：t 剥 Ref/Heap/Rc 后是否为当前模板的类型参数。
     [[nodiscard]] bool isCurrentTypeParam(const TypeInfo& t) const;
+
+    // Phase C：带 target-type 的数组字面量 / 填充检查（E3009 / E3012）。
+    void checkArrayLiteral(p<class ExprArrayNode> n, const TypeInfo& expected);
+    void checkArrayInit(p<class ExprArrayInitNode> n, const TypeInfo* expected);
+    void checkArrayElemAgainst(p<ExprNode> elem, const TypeInfo& want, int line, int col);
 
     // DRAFT-spec-default-body Phase 2：spec 默认体占位符号校验
     // ([#1.S])。仅识别 `$.method(args)` 形态, 验证 method 在 spec 自身签名集

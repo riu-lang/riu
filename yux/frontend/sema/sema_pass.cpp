@@ -41,11 +41,10 @@
 
 namespace {
 // Phase B 反转白名单：默认重抛 getType 的 YuxError。仅下列码 SemaPass 缺上下文，
-// 仍交给 Compiler（Phase C 收口后删除）。
-//   E3009: 嵌套数组字面量需要 target-type（SemaPass 无上下文，假阳性）
+// 仍交给 Compiler。
 //   E3095: 方法点 / 类型名当 callee 时 getType 过早抛「不是函数」，挡住 E1101/E1140 等更精确诊断
-constexpr std::array<std::string_view, 2> kDeferredCodes = {
-    "E3009",
+// E3009 已由 visitExpr 靶向类型路径接管（Phase C）。
+constexpr std::array<std::string_view, 1> kDeferredCodes = {
     "E3095",
 };
 
@@ -119,6 +118,27 @@ bool isFreshHandleExpr(p<ExprNode> expr) {
     if (dynamic_cast<p<LambdaExprNode>>(expr)) return true;     // lambda 字面量
     if (dynamic_cast<p<ExprStructLitNode>>(expr)) return true;  // struct 字面量 (Self { ... })
     return false;
+}
+
+// 空数组字面量 `[]`：getType 为 `[__empty * 0]`，有靶向类型时应接受。
+bool isEmptyArrayType(const TypeInfo& t) {
+    return t.isArray() && t.elementType && t.elementType->name == "__empty";
+}
+
+// 数组填充值是 LiteralNode，不是 ExprNode，不能走 tryInferIntType。
+void inferFillLiteralInt(p<LiteralNode> lit, const TypeInfo& target) {
+    if (!lit) return;
+    if (auto ilit = dynamic_cast<p<LiteralIntNode>>(lit)) {
+        if (!ilit->hasSuffix() && isIntTypeName(target.name)) {
+            ilit->setType(target);
+        }
+    }
+}
+
+sp<TypeInfo> arrayElemTarget(const TypeInfo& t) {
+    if (t.isArray()) return t.elementType;
+    if (t.isArrayGeneric()) return t.arrayGenericElementType();
+    return nullptr;
 }
 
 bool isDeferredCode(const char* code) {
@@ -470,7 +490,32 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         visitExpr(set->arrayExpr());
         for (auto& idx : set->indices())
             visitExpr(idx);
-        visitExpr(set->valueExpr());
+        TypeInfo elemStorage;
+        const TypeInfo* elemExpected = nullptr;
+        if (!set->indices().empty()) {
+            try {
+                TypeInfo at = set->arrayExpr()->hasResolvedType() ? set->arrayExpr()->resolvedType()
+                                                                  : set->arrayExpr()->getType();
+                at = at.peelRef();
+                if (at.isArrayGeneric()) {
+                    if (auto e = at.arrayGenericElementType()) {
+                        elemStorage = *e;
+                        elemExpected = &elemStorage;
+                    }
+                } else if (at.isArray()) {
+                    if (at.elementType) {
+                        elemStorage = *at.elementType;
+                        elemExpected = &elemStorage;
+                    }
+                } else {
+                    throw YuxError(set->getLineNumber(), set->getColumn(), ErrorCode::E3062, at.name);
+                }
+            } catch (const YuxError&) {
+                throw;
+            } catch (...) { // NOLINT(bugprone-empty-catch)
+            }
+        }
+        visitExpr(set->valueExpr(), elemExpected);
         // v0.16 闭包捕获: lambda body 内对捕获变量赋值 → E2030。
         // StatementSetNode 覆盖简单变量 `a = 20` / 复合赋值 `a += 1` / 索引赋值 `a[i] = x`。
         // LHS arrayExpr 抽取变量名后按 StatementAssignNode 同款规则判定。
@@ -692,7 +737,25 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                 }
             }
         }
-        if (as->expr()) visitExpr(as->expr());
+        TypeInfo assignExpected;
+        const TypeInfo* assignExpPtr = nullptr;
+        if (as->subs().empty() && _currentFn && as->expr()) {
+            string objName = as->obj().getText();
+            if (objName != "$") {
+                SymbolInfo* sym = nullptr;
+                if (auto sc = as->findNearestScope()) {
+                    sym = sc->lookupSymbol(objName);
+                }
+                if (!sym) {
+                    sym = _currentFn->lookupSymbol(objName);
+                }
+                if (sym) {
+                    assignExpected = sym->type.peelRef();
+                    assignExpPtr = &assignExpected;
+                }
+            }
+        }
+        if (as->expr()) visitExpr(as->expr(), assignExpPtr);
         return;
     }
     if (auto tup = dynamic_cast<p<StatementDeclareAssignTupleNode>>(stmt)) {
@@ -706,7 +769,18 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                                    std::to_string(tup->names().size()), std::to_string(tn->elements().size()));
                 }
             }
-            visitExpr(tup->expr());
+            TypeInfo texp;
+            const TypeInfo* tp = nullptr;
+            if (tup->varType()) {
+                try {
+                    texp = tup->varType()->getType();
+                    tp = &texp;
+                } catch (const YuxError&) {
+                    throw;
+                } catch (...) { // NOLINT(bugprone-empty-catch)
+                }
+            }
+            visitExpr(tup->expr(), tp);
         }
         return;
     }
@@ -724,10 +798,25 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         // 但 lambda 形参 / retType 可能在调用点才反推; sema 阶段 _currentFn 仍是
         // 外层 fn, E3020/E3022 以 _currentFn 的 retType 为准会误报。整个 check
         // skip, 留 codegen 在 emitLambdaFunction 内兜底。
+        TypeInfo retExpected;
+        const TypeInfo* retExpPtr = nullptr;
+        if (!_currentLambda && _currentFn && ret->expr()) {
+            auto header = _currentFn->header();
+            if (header && header->retType()) {
+                try {
+                    retExpected = header->retType()->getType();
+                    retExpPtr = &retExpected;
+                } catch (const YuxError&) {
+                    throw;
+                } catch (...) { // NOLINT(bugprone-empty-catch)
+                }
+            }
+        }
         if (_currentLambda) {
             if (ret->expr()) visitExpr(ret->expr());
             return;
         }
+        if (ret->expr()) visitExpr(ret->expr(), retExpPtr);
         if (_currentFn && ret->expr()) {
             auto header = _currentFn->header();
             bool hasFallible = header && header->getAnnoArg("Fallible").has_value();
@@ -773,7 +862,6 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                 }
             }
         }
-        if (ret->expr()) visitExpr(ret->expr());
         // v0.16 闭包捕获: lambda 字面量直接作 ret expr 且含 T& 捕获 → E4022
         // (spec §8.7.6.5 不可逃逸)。仅拦截直接形 (lambda 字面量), 穿透检测
         // (ret 变量名 / 调用结果含 lambda) 留 codegen 兜底。
@@ -819,6 +907,25 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                 // 留 Compiler 兜底
             }
         }
+        TypeInfo daExpected;
+        const TypeInfo* daExpPtr = nullptr;
+        if (da->varType()) {
+            try {
+                daExpected = da->varType()->getType();
+                daExpPtr = &daExpected;
+            } catch (const YuxError&) {
+                throw;
+            } catch (...) { // NOLINT(bugprone-empty-catch)
+            }
+        }
+        if (dynamic_cast<p<ExprArrayInitNode>>(da->expr())) {
+            if (!da->varType()) {
+                throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3067, " with size");
+            }
+            if (daExpPtr && !daExpPtr->isArray()) {
+                throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3067, "");
+            }
+        }
         if (da->varType() && _currentFn && da->expr()) {
             auto varType = da->varType()->getType();
             // Bucket 6 收口+ (CURRENT-check.md): 目标类型驱动的形态校验.
@@ -826,13 +933,17 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             // 镜像 compiler_stmt.cpp:773 / 740. 复杂路径 (alias / 嵌套数组目标类型)
             // 留 Compiler 兜底. lambda 体 sema 不下钻.
             try {
-                if (varType.isArray()) {
+                if (varType.isArray() && !dynamic_cast<p<ExprArrayNode>>(da->expr()) &&
+                    !dynamic_cast<p<ExprArrayInitNode>>(da->expr())) {
                     auto exprType = da->expr()->getType();
-                    // exprType.arraySize == 0 → ExprArrayInit fill 形态 (`[v ...]`),
-                    // 实际大小靠 target-type 推断, 跳过比较留 Compiler 兜底.
                     if (exprType.isArray() && exprType.arraySize > 0 && varType.arraySize != exprType.arraySize) {
                         throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3012, varType.arraySize,
                                        exprType.arraySize);
+                    }
+                    if (exprType.isArray() && varType.elementType && exprType.elementType &&
+                        *varType.elementType != *exprType.elementType) {
+                        throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3009,
+                                       varType.elementType->getFullName(), exprType.elementType->getFullName());
                     }
                 } else if (varType.isNullable()) {
                     auto innerType = varType.nullableInnerType();
@@ -925,7 +1036,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                 }
             }
         }
-        if (da->expr()) visitExpr(da->expr());
+        if (da->expr()) visitExpr(da->expr(), daExpPtr);
         // v0.16 闭包捕获: lambda 字面量直接作 var/val 初始化值且含 T& 捕获 → E4022
         // (spec §8.7.6.5 不可逃逸：fn 值不可被存储到寿命外延的变量)。
         // 仅拦截直接形 (lambda 字面量), 穿透检测 (右值 wrapper 调用结果等) 留 codegen 兜底。
@@ -958,13 +1069,75 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         if (se->expr()) visitExpr(se->expr());
         return;
     }
+    if (auto sf = dynamic_cast<p<StatementStaticFieldSetNode>>(stmt)) {
+        string typeName = sf->typeName().getText();
+        string fieldName = sf->fieldName().getText();
+        auto* structDecl = _names.lookupStruct(typeName, true);
+        if (!structDecl) {
+            throw YuxError(sf->getLineNumber(), sf->getColumn(), ErrorCode::E3030, typeName);
+        }
+        const auto* field = structDecl->staticField(fieldName);
+        if (!field) {
+            throw YuxError(sf->getLineNumber(), sf->getColumn(), ErrorCode::E3030, typeName + "::" + fieldName);
+        }
+        if (!field->isMutable) {
+            throw YuxError(sf->getLineNumber(), sf->getColumn(), ErrorCode::E3151, typeName + "::" + fieldName);
+        }
+        TypeInfo ft;
+        const TypeInfo* fp = nullptr;
+        if (field->type) {
+            try {
+                ft = field->type->getType();
+                fp = &ft;
+            } catch (const YuxError&) {
+                throw;
+            } catch (...) { // NOLINT(bugprone-empty-catch)
+            }
+        }
+        visitExpr(sf->valueExpr(), fp);
+        return;
+    }
     // 兜底：未识别的 stmt 直接跳过, 不抛错 —— SemaPass 当前是 no-op, 漏处理
     // 不应阻塞 codegen; 3.2 起开始有实际写入后再改成 assert(false)。
 }
 
-void SemaPass::visitExpr(p<ExprNode> expr) {
+void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
     if (!expr) return;
-    // Phase B：getType 诊断默认由 SemaPass 重抛。kDeferredCodes（E3009 / E3095）
+
+    // Phase C：有靶向类型时，数组 / 元组字面量先按 expected 走，避免 getType
+    // 用首元素推断造成 E3009 假阳性（嵌套 Array<Array<T>>、灵活整数、空数组）。
+    if (expected) {
+        TypeInfo want = expected->peelRef();
+        if (isFlexibleIntExpr(expr) && isIntTypeName(want.name)) {
+            tryInferIntType(expr, want);
+        }
+        if (isFlexibleNullExpr(expr) && want.isNullable()) {
+            tryInferNullType(expr, want);
+        }
+        if (auto n = dynamic_cast<p<ExprArrayNode>>(expr)) {
+            if (want.isArray() || want.isArrayGeneric()) {
+                checkArrayLiteral(n, want);
+                return;
+            }
+        }
+        if (auto n = dynamic_cast<p<ExprArrayInitNode>>(expr)) {
+            checkArrayInit(n, &want);
+            return;
+        }
+        if (auto n = dynamic_cast<p<ExprTupleNode>>(expr)) {
+            if (want.isTuple()) {
+                const auto& w = want.tupleElements();
+                const auto& src = n->elements();
+                for (size_t i = 0; i < src.size(); ++i) {
+                    visitExpr(src[i], (i < w.size() && w[i]) ? w[i].get() : nullptr);
+                }
+                n->setResolvedType(want);
+                return;
+            }
+        }
+    }
+
+    // Phase B：getType 诊断默认由 SemaPass 重抛。kDeferredCodes（E3095）
     // 仍缺上下文或会挡住更精确诊断，吞掉留给后续 handler / Compiler。
     // Phase C：泛型模板体内再吞依赖 T 具体化的码；形态检查仍重抛。
     try {
@@ -2415,11 +2588,9 @@ void SemaPass::visitExpr(p<ExprNode> expr) {
         }
         return;
     }
-    // Phase 3.4.f.1: ExprArrayInitNode 显式化 —— 无子表达式可递。
-    // E3009（explicitType vs value）在 kDeferredCodes：SemaPass 缺 target-type
-    // 上下文会假阳性，留给 Compiler（Phase C）。
+    // Phase C：ExprArrayInitNode 无靶向类型时仍校验 explicitType vs fill（E3009）。
     if (auto n = dynamic_cast<p<ExprArrayInitNode>>(expr)) {
-        (void)n;
+        checkArrayInit(n, nullptr);
         return;
     }
     // 其余未识别节点 3.2 起补 assert。
@@ -2473,4 +2644,88 @@ bool SemaPass::isCurrentTypeParam(const TypeInfo& t) const {
     TypeInfo peeled = t.peelAutoDeref();
     if (!peeled.isNormal() || peeled.name.empty()) return false;
     return _currentTypeParams.count(peeled.name) > 0;
+}
+
+void SemaPass::checkArrayElemAgainst(p<ExprNode> elem, const TypeInfo& want, int line, int col) {
+    if (!elem) return;
+    if (isCurrentTypeParam(want)) return;
+    if (isFlexibleIntExpr(elem) && isIntTypeName(want.name)) return;
+    if (want.isNullable() && isFlexibleNullExpr(elem)) return;
+
+    TypeInfo got;
+    if (elem->hasResolvedType()) {
+        got = elem->resolvedType();
+    } else {
+        try {
+            got = elem->getType();
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+            return;
+        }
+    }
+    if (isEmptyArrayType(got)) return;
+    if (got == want) return;
+    if (got.peelRef() == want) return;
+    if (want.isNullable()) {
+        if (auto inner = want.nullableInnerType()) {
+            if (got == *inner || got.peelRef() == *inner) return;
+        }
+    }
+    throw YuxError(line, col, ErrorCode::E3009, want.getFullName(), got.getFullName());
+}
+
+void SemaPass::checkArrayLiteral(p<ExprArrayNode> n, const TypeInfo& expected) {
+    if (!n) return;
+    TypeInfo want = expected.peelRef();
+    if (want.isArray() && want.arraySize != n->elements().size()) {
+        throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3012, want.arraySize,
+                       n->elements().size());
+    }
+    auto elemWant = arrayElemTarget(want);
+    for (auto& e : n->elements()) {
+        visitExpr(e, elemWant ? elemWant.get() : nullptr);
+        if (!elemWant) continue;
+        int eline = e->resolveLineNumber();
+        int ecol = e->resolveColumn();
+        if (eline <= 0) eline = n->resolveLineNumber();
+        if (ecol < 0) ecol = n->resolveColumn();
+        checkArrayElemAgainst(e, *elemWant, eline, ecol);
+    }
+    n->setResolvedType(want);
+}
+
+void SemaPass::checkArrayInit(p<ExprArrayInitNode> n, const TypeInfo* expected) {
+    if (!n) return;
+    TypeInfo elemType;
+    if (n->explicitType()) {
+        elemType = n->explicitType()->getType();
+        inferFillLiteralInt(n->value(), elemType);
+        auto fillType = n->value()->getType();
+        if (fillType != elemType) {
+            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3009, elemType.getFullName(),
+                           fillType.getFullName());
+        }
+    } else {
+        elemType = n->value()->getType();
+        if (expected) {
+            if (auto wantElem = arrayElemTarget(expected->peelRef())) {
+                inferFillLiteralInt(n->value(), *wantElem);
+                elemType = n->value()->getType();
+            }
+        }
+    }
+
+    if (expected) {
+        TypeInfo want = expected->peelRef();
+        if (auto wantElem = arrayElemTarget(want)) {
+            if (!isCurrentTypeParam(*wantElem) && elemType != *wantElem) {
+                throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3009, wantElem->getFullName(),
+                               elemType.getFullName());
+            }
+            n->setResolvedType(want);
+            return;
+        }
+    }
+    n->setResolvedType(TypeInfo(make_shared<TypeInfo>(elemType), 0));
 }

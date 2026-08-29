@@ -1,0 +1,6 @@
+; 对非数组做索引赋值（Phase C StatementSet E3062）
+
+fn main() {
+  #Mut let x i32 = 10
+  x[0] = 1  ; check: E3062
+}

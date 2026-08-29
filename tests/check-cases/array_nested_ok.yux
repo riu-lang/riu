@@ -1,0 +1,6 @@
+; require-sdk
+; 嵌套 Array<Array<i32>> 字面量按靶向类型接受（内层不是 [i32 * N] 固定数组）
+
+fn main() {
+  let rows Array<Array<i32>> = [[1, 2], [3, 4]]
+}

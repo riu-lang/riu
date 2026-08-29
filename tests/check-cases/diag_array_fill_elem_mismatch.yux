@@ -1,0 +1,5 @@
+; 数组填充 explicitType 与 fill 值类型不匹配（Phase C E3009，不再退回 Compiler）
+
+fn main() {
+  let a [i32 * 3] = [true ... i32]  ; check: E3009
+}

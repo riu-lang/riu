@@ -432,12 +432,11 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         emitLambdaFunction(static_cast<p<LambdaExprNode>>(litLambda), litLambda->getType());
     }
 
-    // 处理数组填充表达式 ([N; value] 语法)
+    // 处理数组填充表达式 ([N; value] 语法)。E3067 由 SemaPass 先抛；此处防 IR 空指针。
     if (auto arrayInitNode = dynamic_cast<ExprArrayInitNode*>(expr)) {
         if (!node->varType()) {
             throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3067, " with size");
         }
-
         TypeInfo varType = node->varType()->getType();
         if (!varType.isArray()) {
             throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3067, "");
@@ -826,12 +825,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                     throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3012, varType.arraySize,
                                    exprType.arraySize);
                 }
-                if (varType.elementType && exprType.elementType) {
-                    if (*varType.elementType != *exprType.elementType) {
-                        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3009,
-                                       varType.elementType->name, exprType.elementType->name);
-                    }
-                }
+                // E3009 元素类型：SemaPass 带 target-type 已查
             }
 
             // 通用类型匹配检查：声明类型与表达式类型必须严格一致
@@ -1953,11 +1947,7 @@ void Compiler::compileStaticFieldSetStatement(p<StatementStaticFieldSetNode> nod
     if (!sf) {
         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, typeName + "::" + fieldName);
     }
-
-    // 查 #Mut 位：非 #Mut 静态字段禁写
-    if (!sf->isMutable) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3151, typeName + "::" + fieldName);
-    }
+    // E3151 非 #Mut 写：SemaPass 已查
 
     string ownerMod = _file->moduleName();
     // 跨模块：若 struct 由 wildcard import 引入，取其归属模块

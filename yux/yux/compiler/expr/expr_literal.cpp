@@ -32,18 +32,12 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
     auto literalType = literal->getType();
     auto text = literal->getValue().getText();
 
-    // 确定元素类型
+    // 确定元素类型。E3009 由 SemaPass 带 target-type 检查。
     TypeInfo elementType;
     if (node->explicitType()) {
         elementType = node->explicitType()->getType();
     } else {
         elementType = literalType;
-    }
-
-    // 验证元素类型与目标数组类型匹配
-    if (targetType.elementType && *targetType.elementType != elementType) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3009, targetType.elementType->name,
-                       elementType.name);
     }
 
     DEBUG_LOG_VAL("    Expr: ArrayInit", targetType.name);
