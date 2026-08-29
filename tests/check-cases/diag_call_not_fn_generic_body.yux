@@ -1,0 +1,10 @@
+; 泛型模板体内 ID-literal E3095 仍是形态检查（不依赖 T 具体化）
+
+fn wrap<T>(x T) T {
+  let n = 1
+  n()  ; check: E3095
+  ret x
+}
+
+fn main() {
+}

@@ -1,0 +1,6 @@
+; 非函数变量当 callee → E3095（Phase C，ID-literal 不再吞给 Compiler）
+
+fn main() {
+  let x = 1
+  x()  ; check: E3095
+}

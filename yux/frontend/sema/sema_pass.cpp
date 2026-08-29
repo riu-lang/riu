@@ -7,9 +7,10 @@
 // 覆盖范围扩到 file 顶层 fn body + struct impl 的方法/析构 body。
 // #Builtin 仍跳过。Phase C：泛型模板体也 walk（类型参数不透明）。
 //
-// Phase B：SemaPass 为 getType 诊断的权威抛出点。默认重抛所有 YuxError；
-// 仅 kDeferredCodes 里缺 Sema 上下文的码仍吞掉、留给 Compiler。
+// Phase B：SemaPass 为 getType 诊断的权威抛出点。默认重抛所有 YuxError。
 // Phase C：泛型 fn/impl 体再吞一批依赖 T 具体化的码（见 isMorphologicalGenericCode）。
+// 方法点 callee 的 E3095 仍吞：getType 会把找不到的方法回落成基类型再抛
+// 「不是函数」，挡住 E1101/E1140。ID-literal 的 E3095（类型名 / 非函数当 callee）重抛。
 // 非 YuxError 在 debug 下 assert，禁止静默吞。
 
 #include "sema/sema_pass.h"
@@ -41,13 +42,12 @@
 #include "types.h"
 
 namespace {
-// Phase B 反转白名单：默认重抛 getType 的 YuxError。仅下列码 SemaPass 缺上下文，
-// 仍交给 Compiler。
-//   E3095: 方法点 / 类型名当 callee 时 getType 过早抛「不是函数」，挡住 E1101/E1140 等更精确诊断
-// E3009 已由 visitExpr 靶向类型路径接管（Phase C）。
-constexpr std::array<std::string_view, 1> kDeferredCodes = {
-    "E3095",
-};
+// getType 对方法点 callee 会把「找不到的方法」回落成基类型，再按非函数符号抛 E3095。
+// 该形态留给后面的 Dot 分支报 E1101/E1140；ID-literal 的 E3095 不走这里。
+bool isMethodPointCall(ExprNode* expr) {
+    auto* call = dynamic_cast<ExprCallNode*>(expr);
+    return call && dynamic_cast<ExprDotNode*>(call->getCalleeExpr());
+}
 
 // Phase 3.3.2.f: 与 Compiler::isBuiltinMethod 等价的本地版本.
 // 仅查 sdkFile 的 struct impl (内建运算符方法都注册在 SDK 上), 不存在
@@ -142,21 +142,12 @@ sp<TypeInfo> arrayElemTarget(const TypeInfo& t) {
     return nullptr;
 }
 
-bool isDeferredCode(const char* code) {
-    if (!code) return false;
-    std::string_view sv(code);
-    for (auto c : kDeferredCodes) {
-        if (sv == c) return true;
-    }
-    return false;
-}
-
 // Phase C：泛型模板体内仍从 getType 重抛的形态码（不依赖 T 具体化）。
 // 其余类型错（E3001 / E3041 / E6016 等）等实例化后再查，此处吞掉。
 bool isMorphologicalGenericCode(const char* code) {
     if (!code) return false;
     std::string_view sv(code);
-    constexpr std::array<std::string_view, 15> kKeep = {
+    constexpr std::array<std::string_view, 16> kKeep = {
         "E3030",          // 未定义符号
         "E6010", "E6011", // 泛型 arity
         "E4031", "E4032", // #NoCopy
@@ -168,6 +159,7 @@ bool isMorphologicalGenericCode(const char* code) {
         "E3128",          // #Static 体内 $
         "E2030",          // lambda 捕获赋值
         "E4033",          // use-after-move
+        "E3095",          // 类型名 / 非函数当 callee（方法点仍在 visitExpr 按形态吞）
     };
     for (auto c : kKeep) {
         if (sv == c) return true;
@@ -1361,15 +1353,16 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
         }
     }
 
-    // Phase B：getType 诊断默认由 SemaPass 重抛。kDeferredCodes（E3095）
-    // 仍缺上下文或会挡住更精确诊断，吞掉留给后续 handler / Compiler。
+    // Phase B：getType 诊断默认由 SemaPass 重抛。
     // Phase C：泛型模板体内再吞依赖 T 具体化的码；形态检查仍重抛。
+    // 方法点 E3095 吞给后面的 Dot 分支（E1101/E1140）；ID-literal 的 E3095 重抛。
     try {
         expr->setResolvedType(expr->getType());
     } catch (const YuxError& e) {
-        // 吞：kDeferredCodes，以及泛型模板体内依赖 T 具体化的类型错。
+        const bool methodPointE3095 =
+            isMethodPointCall(expr) && e.getCode() && std::string_view(e.getCode()) == "E3095";
         const bool swallow =
-            isDeferredCode(e.getCode()) || (!_currentTypeParams.empty() && !isMorphologicalGenericCode(e.getCode()));
+            methodPointE3095 || (!_currentTypeParams.empty() && !isMorphologicalGenericCode(e.getCode()));
         if (!swallow) throw;
     } catch (...) { // NOLINT(bugprone-empty-catch) — release 仍吞非 YuxError；debug 下 assert
 #ifndef NDEBUG

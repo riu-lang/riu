@@ -1,0 +1,9 @@
+; 类型名当 callee 且无构造函数 → E3095（Phase C）
+
+struct Foo {
+  x i32
+}
+
+fn main() {
+  Foo(1)  ; check: E3095
+}

@@ -398,8 +398,8 @@ void validatePrivateFieldAccess(StructDeclNode* structDecl, const string& fieldN
 //
 // 内部走 `compileGetRefExpr` 同款链路: scope.lookupSymbol(obj) → 剥 ref → 逐
 // sub 解析 struct decl (含 rc-deref) → fieldIndex → validatePrivateFieldAccess.
-// E3030/E3040/E3041/E3043/E3097 由 ExprGetRefNode::getType() 抛 (SemaPass 默认重抛,
-// 不在 kDeferredCodes 内), helper 仅补 E3042.
+// E3030/E3040/E3041/E3043/E3097 由 ExprGetRefNode::getType() 抛 (SemaPass 默认重抛),
+// helper 仅补 E3042.
 //
 // scope 取自 node->findNearestScope(); 若拿不到则静默返回 (留 Compiler 兜底).
 // SemaPass 调用时可传当前 `_currentStructName`, Compiler 调用时传当前
