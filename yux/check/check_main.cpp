@@ -10,7 +10,7 @@
 //
 // 设计意图: 日常写 demo / 改代码时快速跑诊断, 避免每次 xmake build 编 LLVM.
 // **报错不与 yux build 等价**: 仅检出 SemaPass 当前能接管的错误码; 漏的部分
-// (泛型实例化期类型错 / 部分 T& 赋值链) 由 yux build 兜底.
+// (泛型实例化期类型错) 由 yux build 兜底.
 //
 // 详见 CURRENT.md "yux-check 最小可用 exe" 一节.
 //

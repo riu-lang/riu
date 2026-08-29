@@ -1,0 +1,30 @@
+; 合法 T& store-through / 经 T& 的字段写 / `$` 字段写（Phase C）
+struct Point {
+  x i32
+  y i32
+
+  fn set_x(v i32) {
+    $.x = v
+  }
+}
+
+fn bump(r i32&) {
+  r = r + 1
+}
+
+fn main() {
+  #Mut let x i32 = 1
+  let r i32& = &x
+  r = 2
+  r = r + 1
+  bump(r)
+
+  #Mut let p = Point {
+    .x = 1
+    .y = 2
+  }
+  let rp Point& = &p
+  rp.x = 3
+  p.set_x(4)
+  ret;
+}

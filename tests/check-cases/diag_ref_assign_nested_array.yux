@@ -1,0 +1,14 @@
+; require-sdk
+; 经 T& 的嵌套数组赋值按内层类型检查（Phase C E3009）
+
+struct Box {
+  rows Array<Array<i32>>
+}
+
+fn main() {
+  #Mut let b = Box {
+    .rows = [[1, 2], [3, 4]]
+  }
+  let r Box& = &b
+  r.rows = [[1, 2], [3, "x"]]  ; check: E3009
+}

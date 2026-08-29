@@ -1,0 +1,12 @@
+; `$`（Self&）成员赋值类型不匹配 → E3014（Phase C）
+struct Point {
+  x i32
+
+  fn set_bad() {
+    $.x = true  ; check: E3014
+  }
+}
+
+fn main() {
+  ret;
+}

@@ -22,6 +22,7 @@
 #include <array>
 #include <cassert>
 #include <cstddef>
+#include <format>
 #include <optional>
 #include <set>
 #include <string_view>
@@ -433,6 +434,76 @@ void checkRetExpr(p<ExprNode> expr, const TypeInfo& declRet, bool hasDeclRet, in
     } else if (!retType.empty()) {
         throw YuxError(line, ErrorCode::E3014, "void", retType.getFullName());
     }
+}
+
+bool isAssignTypeParam(const TypeInfo& t, const std::set<std::string>& typeParams) {
+    if (typeParams.empty()) return false;
+    TypeInfo peeled = t.peelAutoDeref();
+    return peeled.isNormal() && !peeled.name.empty() && typeParams.count(peeled.name) > 0;
+}
+
+bool isKnownAssignType(const TypeInfo& t, FileNode* file, FileNode* sdk) {
+    if (t.isTuple() || t.isArray() || t.isArrayGeneric() || t.isNullable() || t.isRc() || t.isWeak() || t.isHeap() ||
+        t.isFn() || t.isRef() || t.isPtr() || t.isDyn())
+        return true;
+    if (t.name.empty() || t.isSelf()) return false;
+    if (isBuiltinType(t.name)) return true;
+    if (file && (file->getStructDecl(t.name) || file->getEnumDecl(t.name))) return true;
+    if (sdk && sdk != file && (sdk->getStructDecl(t.name) || sdk->getEnumDecl(t.name))) return true;
+    return false;
+}
+
+// Phase C：赋值 RHS 相对存储槽类型的 E3014。
+// T& 局部 / `$`（Self&）是 store-through：caller 已 peelRef，want 是内层 T。
+// Nullable wrap / Rc wrap / 空数组 / 灵活整数与 Compiler 赋值路径对齐。
+void checkAssignRhs(p<ExprNode> expr, const TypeInfo& want, int line, int col, FileNode* file, FileNode* sdk,
+                    const std::set<std::string>& typeParams) {
+    if (!expr) return;
+    if (want.empty() || want.isSelf() || want.isFn()) return;
+    if (isAssignTypeParam(want, typeParams)) return;
+    if (!typeParams.empty() && !want.genericArgs.empty()) return;
+    if (isFlexibleIntExpr(expr) && isIntTypeName(want.name)) return;
+
+    TypeInfo got;
+    if (!tryGetExprType(expr, got)) return;
+    if (got.empty() || got.isSelf() || isAssignTypeParam(got, typeParams)) return;
+    if (!typeParams.empty() && !got.genericArgs.empty()) return;
+
+    auto g = sema::resolveAlias(got, file, sdk);
+    auto w = sema::resolveAlias(want, file, sdk);
+    if (g == w) return;
+    if (isEmptyArrayType(g) && (w.isArray() || w.isArrayGeneric())) return;
+    if (w.isNullable()) {
+        if (isFlexibleNullExpr(expr)) return;
+        if (auto inner = w.nullableInnerType()) {
+            auto in = sema::resolveAlias(*inner, file, sdk);
+            if (isIntTypeName(in.name) && isFlexibleIntExpr(expr)) {
+                tryInferIntType(expr, in);
+                if (sema::resolveAlias(expr->getType(), file, sdk) == in) return;
+            }
+            if (g == in) return;
+        }
+        throw YuxError(line, col, ErrorCode::E3014, want.getFullName(), got.getFullName())
+            .withHint(std::format("赋值目标为 `{}`，表达式为 `{}`；T? 只接受 `null` / 内层 T / 同型 T?",
+                                  want.getFullName(), got.getFullName()));
+    }
+    if (w.isRc()) {
+        if (auto inner = w.rcElementType()) {
+            auto in = sema::resolveAlias(*inner, file, sdk);
+            if (isIntTypeName(in.name) && isFlexibleIntExpr(expr)) {
+                tryInferIntType(expr, in);
+                if (sema::resolveAlias(expr->getType(), file, sdk) == in) return;
+            }
+            if (g == in) return;
+        }
+        throw YuxError(line, col, ErrorCode::E3014, want.getFullName(), got.getFullName())
+            .withHint(std::format("赋值目标为 `{}`，表达式为 `{}`；Rc<T> 只接受同型句柄或内层 T", want.getFullName(),
+                                  got.getFullName()));
+    }
+    if (!isKnownAssignType(w, file, sdk) || !isKnownAssignType(g, file, sdk)) return;
+    throw YuxError(line, col, ErrorCode::E3014, want.getFullName(), got.getFullName())
+        .withHint(std::format("赋值目标类型为 `{}`，但表达式类型为 `{}`；yux 无隐式类型转换", want.getFullName(),
+                              got.getFullName()));
 }
 
 // 块体末位无 `;` 的裸表达式语句（隐式尾值），不含 ret / 声明 / 赋值子类。
@@ -864,6 +935,10 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             }
         }
         visitExpr(set->valueExpr(), elemExpected);
+        if (elemExpected) {
+            checkAssignRhs(set->valueExpr(), *elemExpected, set->getLineNumber(), set->getColumn(), _file, _sdkFile,
+                           _currentTypeParams);
+        }
         // v0.16 闭包捕获: lambda body 内对捕获变量赋值 → E2030。
         // StatementSetNode 覆盖简单变量 `a = 20` / 复合赋值 `a += 1` / 索引赋值 `a[i] = x`。
         // LHS arrayExpr 抽取变量名后按 StatementAssignNode 同款规则判定。
@@ -1018,134 +1093,145 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         //   * E3046 中段非纯 struct:  walk 到非末段, interType 命中
         //                          Rc/Array/Ref/Nullable/Weak/Ptr/builtin
         // 跳过策略 (留 Compiler 兜底):
-        //   * objName == "$" (sema 不跟踪 $)
         //   * lookupSymbol 失败 (E3031 Compiler 抢先)
         //   * 起点 / 中段是泛型 struct (Compiler applySubst, sema 不替换泛型实参)
         //   * 中段 typeNeedsDestructor (递归 RC 字段扫描, 复杂, 留 Compiler)
         //   * 非纯数字下标命中 tuple 形态.
+        // `$` 在方法体登记为 Self&，lookup 即可（T& 赋值链）。
         if (!as->subs().empty() && _currentFn) {
             string objName = as->obj().getText();
-            if (objName != "$") {
-                SymbolInfo* sym = nullptr;
-                if (auto sc = as->findNearestScope()) {
-                    sym = sc->lookupSymbol(objName);
+            SymbolInfo* sym = nullptr;
+            if (auto sc = as->findNearestScope()) {
+                sym = sc->lookupSymbol(objName);
+            }
+            if (!sym) {
+                sym = _currentFn->lookupSymbol(objName);
+            }
+            if (sym) {
+                TypeInfo curType = sym->type;
+                if (curType.isRef()) {
+                    if (auto inner = curType.refElementType()) curType = *inner;
                 }
-                if (!sym) {
-                    sym = _currentFn->lookupSymbol(objName);
+                if (curType.isRc()) {
+                    if (auto inner = curType.rcElementType()) curType = *inner;
                 }
-                if (sym) {
-                    TypeInfo curType = sym->type;
-                    if (curType.isRef()) {
-                        if (auto inner = curType.refElementType()) curType = *inner;
-                    }
-                    if (curType.isRc()) {
-                        if (auto inner = curType.rcElementType()) curType = *inner;
-                    }
-                    const auto& subs = as->subs();
-                    auto isPureDigits = [](const string& s) {
-                        return !s.empty() && std::ranges::all_of(s, [](char c) { return c >= '0' && c <= '9'; });
-                    };
-                    if (curType.isTuple()) {
-                        // tuple 链: 仅 OOB (E3100), 中段非 tuple / 非纯数字 留 Compiler
-                        bool stop = false;
-                        for (size_t i = 0; i < subs.size() && !stop; ++i) {
-                            string memberText = subs[i].getText();
-                            if (!isPureDigits(memberText)) {
-                                stop = true;
-                                break;
-                            }
-                            if (!curType.isTuple()) {
-                                stop = true;
-                                break;
-                            }
-                            const auto& elems = curType.tupleElements();
-                            auto idx = static_cast<size_t>(std::stoul(memberText));
-                            if (idx >= elems.size()) {
-                                throw YuxError(as->getLineNumber(), as->getColumn(), ErrorCode::E3100, memberText,
-                                               curType.getFullName(), std::to_string(elems.size()));
-                            }
-                            if (i + 1 < subs.size()) curType = *elems[idx];
+                const auto& subs = as->subs();
+                auto isPureDigits = [](const string& s) {
+                    return !s.empty() && std::ranges::all_of(s, [](char c) { return c >= '0' && c <= '9'; });
+                };
+                if (curType.isTuple()) {
+                    // tuple 链: 仅 OOB (E3100), 中段非 tuple / 非纯数字 留 Compiler
+                    bool stop = false;
+                    for (size_t i = 0; i < subs.size() && !stop; ++i) {
+                        string memberText = subs[i].getText();
+                        if (!isPureDigits(memberText)) {
+                            stop = true;
+                            break;
                         }
-                    } else if (!curType.name.empty() && !isBuiltinType(curType.name)) {
-                        // struct 链: 中段 E3046 (Rc/Array/Ref/Nullable/Weak/Ptr/builtin)
-                        StructDeclNode* decl = _file ? _file->getStructDecl(curType.name) : nullptr;
-                        if (!decl && _sdkFile) decl = _sdkFile->getStructDecl(curType.name);
-                        // 泛型 struct 留 Compiler (applySubst)
-                        if (decl && !decl->isGeneric()) {
-                            for (size_t i = 0; i + 1 < subs.size(); ++i) {
-                                string memberText = subs[i].getText();
-                                int fi = decl->fieldIndex(memberText);
-                                if (fi < 0) break; // E3040 Compiler 抢先
-                                auto interType = decl->fields()[fi]->getType();
-                                if (interType.isRc() || interType.isArrayGeneric() || interType.isRef() ||
-                                    interType.isNullable() || interType.isWeak() || interType.isPtr() ||
-                                    isBuiltinType(interType.name)) {
-                                    throw YuxError(as->getLineNumber(), as->getColumn(), ErrorCode::E3046)
-                                        .withHint("嵌套成员赋值中间字段需为纯 struct（不含 Rc/Array/Ref/RC "
-                                                  "等）；可拆方法或在中段先 `var t = $.field` 落地后再写");
-                                }
-                                StructDeclNode* nextDecl = _file ? _file->getStructDecl(interType.name) : nullptr;
-                                if (!nextDecl && _sdkFile) nextDecl = _sdkFile->getStructDecl(interType.name);
-                                if (!nextDecl || nextDecl->isGeneric()) break;
-                                decl = nextDecl;
+                        if (!curType.isTuple()) {
+                            stop = true;
+                            break;
+                        }
+                        const auto& elems = curType.tupleElements();
+                        auto idx = static_cast<size_t>(std::stoul(memberText));
+                        if (idx >= elems.size()) {
+                            throw YuxError(as->getLineNumber(), as->getColumn(), ErrorCode::E3100, memberText,
+                                           curType.getFullName(), std::to_string(elems.size()));
+                        }
+                        if (i + 1 < subs.size()) curType = *elems[idx];
+                    }
+                } else if (!curType.name.empty() && !isBuiltinType(curType.name)) {
+                    // struct 链: 中段 E3046 (Rc/Array/Ref/Nullable/Weak/Ptr/builtin)
+                    StructDeclNode* decl = _file ? _file->getStructDecl(curType.name) : nullptr;
+                    if (!decl && _sdkFile) decl = _sdkFile->getStructDecl(curType.name);
+                    // 泛型 struct 留 Compiler (applySubst)
+                    if (decl && !decl->isGeneric()) {
+                        for (size_t i = 0; i + 1 < subs.size(); ++i) {
+                            string memberText = subs[i].getText();
+                            int fi = decl->fieldIndex(memberText);
+                            if (fi < 0) break; // E3040 Compiler 抢先
+                            auto interType = decl->fields()[fi]->getType();
+                            if (interType.isRc() || interType.isArrayGeneric() || interType.isRef() ||
+                                interType.isNullable() || interType.isWeak() || interType.isPtr() ||
+                                isBuiltinType(interType.name)) {
+                                throw YuxError(as->getLineNumber(), as->getColumn(), ErrorCode::E3046)
+                                    .withHint("嵌套成员赋值中间字段需为纯 struct（不含 Rc/Array/Ref/RC "
+                                              "等）；可拆方法或在中段先 `var t = $.field` 落地后再写");
                             }
+                            StructDeclNode* nextDecl = _file ? _file->getStructDecl(interType.name) : nullptr;
+                            if (!nextDecl && _sdkFile) nextDecl = _sdkFile->getStructDecl(interType.name);
+                            if (!nextDecl || nextDecl->isGeneric()) break;
+                            decl = nextDecl;
                         }
                     }
                 }
             }
         }
         TypeInfo assignExpected;
+        TypeInfo assignStorage;
         const TypeInfo* assignExpPtr = nullptr;
+        bool haveStorage = false;
         if (_currentFn && as->expr()) {
             string objName = as->obj().getText();
-            if (objName != "$") {
-                SymbolInfo* sym = nullptr;
-                if (auto sc = as->findNearestScope()) {
-                    sym = sc->lookupSymbol(objName);
-                }
-                if (!sym) {
-                    sym = _currentFn->lookupSymbol(objName);
-                }
-                if (sym) {
-                    TypeInfo cur = sym->type.peelAutoDeref();
-                    bool ok = true;
-                    auto isPureDigits = [](const string& s) {
-                        return !s.empty() && std::ranges::all_of(s, [](char c) { return c >= '0' && c <= '9'; });
-                    };
-                    for (size_t i = 0; i < as->subs().size() && ok; ++i) {
-                        string mem = as->subs()[i].getText();
-                        if (cur.isTuple() && isPureDigits(mem)) {
-                            auto idx = static_cast<size_t>(std::stoul(mem));
-                            const auto& elems = cur.tupleElements();
-                            if (idx >= elems.size() || !elems[idx]) {
-                                ok = false;
-                                break;
-                            }
-                            cur = elems[idx]->peelAutoDeref();
-                        } else if (!cur.name.empty() && !isBuiltinType(cur.name)) {
-                            StructDeclNode* decl = _names.lookupStruct(cur.name);
-                            if (!decl || decl->isGeneric()) {
-                                ok = false;
-                                break;
-                            }
-                            int fi = decl->fieldIndex(mem);
-                            if (fi < 0) {
-                                ok = false;
-                                break;
-                            }
-                            cur = decl->fields()[static_cast<size_t>(fi)]->getType().peelAutoDeref();
-                        } else {
+            SymbolInfo* sym = nullptr;
+            if (auto sc = as->findNearestScope()) {
+                sym = sc->lookupSymbol(objName);
+            }
+            if (!sym) {
+                sym = _currentFn->lookupSymbol(objName);
+            }
+            if (sym) {
+                // expected：peelAutoDeref，给嵌套字面量 / 灵活整数（含 Rc<T> 的 T wrap）。
+                // storage：只 peelRef（T& store-through）；末字段保持声明类型，供 E3014。
+                TypeInfo cur = sym->type.peelAutoDeref();
+                TypeInfo lastRaw = sym->type.peelRef();
+                bool ok = true;
+                auto isPureDigits = [](const string& s) {
+                    return !s.empty() && std::ranges::all_of(s, [](char c) { return c >= '0' && c <= '9'; });
+                };
+                for (size_t i = 0; i < as->subs().size() && ok; ++i) {
+                    string mem = as->subs()[i].getText();
+                    TypeInfo fieldTy;
+                    if (cur.isTuple() && isPureDigits(mem)) {
+                        auto idx = static_cast<size_t>(std::stoul(mem));
+                        const auto& elems = cur.tupleElements();
+                        if (idx >= elems.size() || !elems[idx]) {
                             ok = false;
+                            break;
                         }
+                        fieldTy = *elems[idx];
+                    } else if (!cur.name.empty() && !isBuiltinType(cur.name)) {
+                        StructDeclNode* decl = _names.lookupStruct(cur.name);
+                        if (!decl || decl->isGeneric()) {
+                            ok = false;
+                            break;
+                        }
+                        int fi = decl->fieldIndex(mem);
+                        if (fi < 0) {
+                            ok = false;
+                            break;
+                        }
+                        fieldTy = decl->fields()[static_cast<size_t>(fi)]->getType();
+                    } else {
+                        ok = false;
+                        break;
                     }
-                    if (ok) {
-                        assignExpected = cur.peelRef();
-                        assignExpPtr = &assignExpected;
-                    }
+                    lastRaw = fieldTy;
+                    cur = fieldTy.peelAutoDeref();
+                }
+                if (ok) {
+                    assignExpected = cur.peelRef();
+                    assignExpPtr = &assignExpected;
+                    assignStorage = lastRaw;
+                    haveStorage = true;
                 }
             }
         }
         if (as->expr()) visitExpr(as->expr(), assignExpPtr);
+        if (haveStorage) {
+            checkAssignRhs(as->expr(), assignStorage, as->getLineNumber(), as->getColumn(), _file, _sdkFile,
+                           _currentTypeParams);
+        }
         return;
     }
     if (auto tup = dynamic_cast<p<StatementDeclareAssignTupleNode>>(stmt)) {
@@ -1493,6 +1579,10 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             }
         }
         visitExpr(sf->valueExpr(), fp);
+        if (fp) {
+            checkAssignRhs(sf->valueExpr(), *fp, sf->getLineNumber(), sf->getColumn(), _file, _sdkFile,
+                           _currentTypeParams);
+        }
         return;
     }
     // 兜底：未识别的 stmt 直接跳过, 不抛错 —— SemaPass 当前是 no-op, 漏处理
@@ -1526,6 +1616,14 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
         }
         if (isFlexibleIntExpr(expr) && isIntTypeName(want.name)) {
             tryInferIntType(expr, want);
+        } else if (isFlexibleIntExpr(expr) && want.isNullable()) {
+            if (auto inner = want.nullableInnerType()) {
+                if (isIntTypeName(inner->name)) tryInferIntType(expr, *inner);
+            }
+        } else if (isFlexibleIntExpr(expr) && want.isRc()) {
+            if (auto inner = want.rcElementType()) {
+                if (isIntTypeName(inner->name)) tryInferIntType(expr, *inner);
+            }
         }
         if (isFlexibleNullExpr(expr) && want.isNullable()) {
             tryInferNullType(expr, want);

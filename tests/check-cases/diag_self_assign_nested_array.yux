@@ -1,0 +1,14 @@
+; require-sdk
+; `$` 成员赋值按末字段类型检查嵌套数组（Phase C E3009）
+
+struct Box {
+  rows Array<Array<i32>>
+
+  fn set_bad() {
+    $.rows = [[1, 2], [3, "x"]]  ; check: E3009
+  }
+}
+
+fn main() {
+  ret;
+}

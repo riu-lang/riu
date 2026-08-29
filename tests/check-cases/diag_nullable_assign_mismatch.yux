@@ -1,0 +1,6 @@
+; Nullable 赋值既不是 null / T / T? → E3014（Phase C）
+fn main() {
+  #Mut let o i32? = 1
+  o = true  ; check: E3014
+  ret;
+}

@@ -1,0 +1,6 @@
+; 索引赋值元素类型不匹配 → E3014（Phase C）
+fn main() {
+  #Mut let a [i32 * 2] = [1, 2]
+  a[0] = true  ; check: E3014
+  ret;
+}
