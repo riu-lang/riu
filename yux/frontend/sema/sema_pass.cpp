@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cstddef>
 #include <set>
 #include <string_view>
 
@@ -172,6 +173,95 @@ bool isMorphologicalGenericCode(const char* code) {
         if (sv == c) return true;
     }
     return false;
+}
+
+void collectOverloadsBoth(FileNode* file, FileNode* sdk, const string& name, vector<FnSymbolInfo*>& out) {
+    if (file) file->collectFnOverloads(name, out);
+    if (sdk && sdk != file) sdk->collectFnOverloads(name, out);
+}
+
+bool sameFnSig(const FnSymbolInfo* a, const FnSymbolInfo* b) {
+    if (!a || !b) return a == b;
+    if (a->moduleName != b->moduleName) return false;
+    if (a->params.size() != b->params.size()) return false;
+    for (size_t i = 0; i < a->params.size(); ++i) {
+        if (!(a->params[i] == b->params[i])) return false;
+    }
+    return true;
+}
+
+// 恰好一个（语义去重后）arity 匹配的候选；同 arity 重载 → nullptr。
+FnSymbolInfo* uniqueArityCandidate(const vector<FnSymbolInfo*>& cands, size_t wantArity) {
+    FnSymbolInfo* unique = nullptr;
+    for (auto* c : cands) {
+        if (!c || c->params.size() != wantArity) continue;
+        if (unique) {
+            if (sameFnSig(unique, c)) continue;
+            return nullptr;
+        }
+        unique = c;
+    }
+    return unique;
+}
+
+vector<TypeInfo> paramsSkippingReceiver(FnSymbolInfo* fn, size_t skip) {
+    vector<TypeInfo> out;
+    if (!fn || skip > fn->params.size()) return out;
+    out.assign(fn->params.begin() + static_cast<std::ptrdiff_t>(skip), fn->params.end());
+    return out;
+}
+
+// 镜像 Compiler::compileCallExpr / compileDeclareAssignStatement：把 Fn 期望类型
+// 写到 lambda，并回填 bodyScope 未标注形参，让随后下钻能做形态检查。
+void applyLambdaFnExpected(p<LambdaExprNode> lam, const TypeInfo& fnTy) {
+    if (!lam || !fnTy.isFn()) return;
+    lam->setInferredFnType(fnTy);
+    auto sc = lam->bodyScope();
+    if (!sc) return;
+    const auto& fps = fnTy.fnParamTypes();
+    for (size_t k = 0; k < lam->params().size() && k < fps.size(); ++k) {
+        if (lam->params()[k].type) continue;
+        if (auto* psym = sc->lookupSymbol(lam->params()[k].name.getText())) {
+            if (fps[k]) psym->type = *fps[k];
+        }
+    }
+}
+
+bool uniqueStaticMethodParams(FileNode* file, FileNode* sdk, const string& lhs, const string& rhs,
+                              vector<TypeInfo>& out) {
+    StructDeclNode* sd = file ? file->getStructDecl(lhs, true) : nullptr;
+    if (!sd && sdk && sdk != file) sd = sdk->getStructDecl(lhs, true);
+    if (!sd || sd->isGeneric()) return false;
+    StructImplNode* impl = file ? file->getStructImpl(lhs) : nullptr;
+    if (!impl && sdk && sdk != file) impl = sdk->getStructImpl(lhs);
+    if (!impl || impl->isGeneric()) return false;
+    FnHeaderNode* found = nullptr;
+    for (auto& m : impl->methods()) {
+        auto header = m->header();
+        if (!header || header->name().getText() != rhs || !header->isStatic()) continue;
+        if (header->isGeneric()) return false;
+        if (found) return false;
+        found = header;
+    }
+    if (!found) return false;
+    out.clear();
+    for (auto p : found->params()) {
+        if (!p || !p->type()) return false;
+        try {
+            out.push_back(p->type()->getType());
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+            return false;
+        }
+    }
+    return true;
+}
+
+void copyFnParamTypes(const TypeInfo& fnTy, vector<TypeInfo>& out) {
+    out.clear();
+    if (!fnTy.isFn()) return;
+    for (auto& sp : fnTy.fnParamTypes()) {
+        out.push_back(sp ? *sp : TypeInfo());
+    }
 }
 } // namespace
 
@@ -739,7 +829,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         }
         TypeInfo assignExpected;
         const TypeInfo* assignExpPtr = nullptr;
-        if (as->subs().empty() && _currentFn && as->expr()) {
+        if (_currentFn && as->expr()) {
             string objName = as->obj().getText();
             if (objName != "$") {
                 SymbolInfo* sym = nullptr;
@@ -750,8 +840,41 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                     sym = _currentFn->lookupSymbol(objName);
                 }
                 if (sym) {
-                    assignExpected = sym->type.peelRef();
-                    assignExpPtr = &assignExpected;
+                    TypeInfo cur = sym->type.peelAutoDeref();
+                    bool ok = true;
+                    auto isPureDigits = [](const string& s) {
+                        return !s.empty() && std::ranges::all_of(s, [](char c) { return c >= '0' && c <= '9'; });
+                    };
+                    for (size_t i = 0; i < as->subs().size() && ok; ++i) {
+                        string mem = as->subs()[i].getText();
+                        if (cur.isTuple() && isPureDigits(mem)) {
+                            auto idx = static_cast<size_t>(std::stoul(mem));
+                            const auto& elems = cur.tupleElements();
+                            if (idx >= elems.size() || !elems[idx]) {
+                                ok = false;
+                                break;
+                            }
+                            cur = elems[idx]->peelAutoDeref();
+                        } else if (!cur.name.empty() && !isBuiltinType(cur.name)) {
+                            StructDeclNode* decl = _names.lookupStruct(cur.name);
+                            if (!decl || decl->isGeneric()) {
+                                ok = false;
+                                break;
+                            }
+                            int fi = decl->fieldIndex(mem);
+                            if (fi < 0) {
+                                ok = false;
+                                break;
+                            }
+                            cur = decl->fields()[static_cast<size_t>(fi)]->getType().peelAutoDeref();
+                        } else {
+                            ok = false;
+                        }
+                    }
+                    if (ok) {
+                        assignExpected = cur.peelRef();
+                        assignExpPtr = &assignExpected;
+                    }
                 }
             }
         }
@@ -1101,6 +1224,14 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
     // 不应阻塞 codegen; 3.2 起开始有实际写入后再改成 assert(false)。
 }
 
+void SemaPass::visitExprList(const vector<p<ExprNode>>& args, const vector<TypeInfo>* expected) {
+    for (size_t i = 0; i < args.size(); ++i) {
+        const TypeInfo* exp = nullptr;
+        if (expected && i < expected->size() && !(*expected)[i].empty()) exp = &(*expected)[i];
+        visitExpr(args[i], exp);
+    }
+}
+
 void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
     if (!expr) return;
 
@@ -1108,6 +1239,16 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
     // 用首元素推断造成 E3009 假阳性（嵌套 Array<Array<T>>、灵活整数、空数组）。
     if (expected) {
         TypeInfo want = expected->peelRef();
+        if (auto paren = dynamic_cast<p<ExprParenNode>>(expr)) {
+            visitExpr(paren->expr(), expected);
+            if (paren->expr() && paren->expr()->hasResolvedType()) {
+                paren->setResolvedType(paren->expr()->resolvedType());
+            }
+            return;
+        }
+        if (auto lam = dynamic_cast<p<LambdaExprNode>>(expr)) {
+            if (want.isFn()) applyLambdaFnExpected(lam, want);
+        }
         if (isFlexibleIntExpr(expr) && isIntTypeName(want.name)) {
             tryInferIntType(expr, want);
         }
@@ -1355,8 +1496,92 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
     }
     if (auto n = dynamic_cast<p<ExprCallNode>>(expr)) {
         visitExpr(n->getCalleeExpr());
-        for (auto& a : n->getArgs())
-            visitExpr(a);
+
+        // Phase C：重载前实参靶向类型。仅当能在不看实参类型的情况下唯一确定形参
+        // （单 arity 非泛型候选 / Fn 值 callee / 非泛型方法）时下钻；同 arity 重载跳过。
+        vector<TypeInfo> callArgExpected;
+        const vector<TypeInfo>* callArgExpPtr = nullptr;
+        const bool hasTypeArgs = !n->getTypeArgs().empty();
+        if (!hasTypeArgs) {
+            if (auto lit = dynamic_cast<p<ExprLiteralNode>>(n->getCalleeExpr())) {
+                if (auto obj = dynamic_cast<p<LiteralObjNode>>(lit->literal())) {
+                    string fnName = obj->getValue().getText();
+                    auto* structDecl = _names.lookupStruct(fnName);
+                    if (structDecl && !structDecl->isGeneric()) {
+                        vector<FnSymbolInfo*> cands;
+                        collectOverloadsBoth(_file, _sdkFile, fnName + "." + fnName, cands);
+                        if (auto* u = uniqueArityCandidate(cands, n->getArgs().size() + 1)) {
+                            callArgExpected = paramsSkippingReceiver(u, 1);
+                            callArgExpPtr = &callArgExpected;
+                        }
+                    } else if (!structDecl && !_file->getGenericFunction(fnName).first) {
+                        vector<FnSymbolInfo*> cands;
+                        collectOverloadsBoth(_file, _sdkFile, fnName, cands);
+                        if (auto* u = uniqueArityCandidate(cands, n->getArgs().size())) {
+                            callArgExpected = u->params;
+                            callArgExpPtr = &callArgExpected;
+                        }
+                    }
+                    if (!callArgExpPtr) {
+                        // 函数名 getType 可能只编码某一个重载，不能当靶向类型。
+                        // 仅局部 / 形参上的 Fn 值可以。
+                        SymbolInfo* sym = nullptr;
+                        if (auto sc = lit->findNearestScope()) {
+                            sym = sc->lookupSymbol(fnName);
+                        }
+                        if (!sym && _currentFn) {
+                            sym = _currentFn->lookupSymbol(fnName);
+                        }
+                        if (sym && sym->kind == SymbolKind::Variable && sym->type.isFn()) {
+                            copyFnParamTypes(sym->type, callArgExpected);
+                            callArgExpPtr = &callArgExpected;
+                        }
+                    }
+                }
+            } else if (auto dotCallee = dynamic_cast<p<ExprDotNode>>(n->getCalleeExpr())) {
+                TypeInfo baseType;
+                bool baseOk = true;
+                try {
+                    baseType = dotCallee->baseExpr()->hasResolvedType() ? dotCallee->baseExpr()->resolvedType()
+                                                                        : dotCallee->baseExpr()->getType();
+                    if (dotCallee->isSafe() && baseType.isNullable()) {
+                        if (auto inner = baseType.nullableInnerType()) baseType = *inner;
+                    }
+                    baseType = baseType.peelAutoDeref();
+                } catch (...) { // NOLINT(bugprone-empty-catch)
+                    baseOk = false;
+                }
+                if (baseOk && !baseType.name.empty() && !isBuiltinType(baseType.name) && !baseType.isArrayGeneric() &&
+                    !baseType.isPtr() && !baseType.isDyn()) {
+                    if (auto* sd = _names.lookupStruct(baseType.name)) {
+                        if (!sd->isGeneric()) {
+                            string member = dotCallee->member();
+                            if (dotCallee->hasSpecQualifier()) {
+                                member = member + "__at__" + dotCallee->specQualifier();
+                            }
+                            vector<FnSymbolInfo*> cands;
+                            collectOverloadsBoth(_file, _sdkFile, baseType.name + "." + member, cands);
+                            if (auto* u = uniqueArityCandidate(cands, n->getArgs().size() + 1)) {
+                                callArgExpected = paramsSkippingReceiver(u, 1);
+                                callArgExpPtr = &callArgExpected;
+                            }
+                        }
+                    }
+                }
+            } else {
+                TypeInfo calleeType;
+                try {
+                    calleeType = n->getCalleeExpr()->hasResolvedType() ? n->getCalleeExpr()->resolvedType()
+                                                                       : n->getCalleeExpr()->getType();
+                } catch (...) { // NOLINT(bugprone-empty-catch)
+                }
+                if (calleeType.isFn()) {
+                    copyFnParamTypes(calleeType, callArgExpected);
+                    callArgExpPtr = &callArgExpected;
+                }
+            }
+        }
+        visitExprList(n->getArgs(), callArgExpPtr);
 
         // E4025 (DRAFT-heap-types §8.3a.5.1): 容器构造 turbofish 内嵌 Heap 拦截.
         // 形态: `Rc:<Heap<T>>(...)` / `Weak:<Heap<T>>(...)` / `Array:<Heap<T>>(...)`
@@ -2041,8 +2266,16 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
         _currentLambda = n;
         _currentLambdaHasRefCapture = false;
 
+        const TypeInfo* bodyExp = nullptr;
+        TypeInfo bodyRetStorage;
+        if (n->inferredFnType().isFn()) {
+            if (auto rt = n->inferredFnType().fnReturnType()) {
+                bodyRetStorage = *rt;
+                bodyExp = &bodyRetStorage;
+            }
+        }
         if (n->bodyExpr()) {
-            visitExpr(n->bodyExpr());
+            visitExpr(n->bodyExpr(), bodyExp);
         } else {
             for (auto& stmt : n->bodyStmts()) {
                 visitStmt(stmt);
@@ -2096,7 +2329,16 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
             if (!seen.insert(fname).second) {
                 throw YuxError(fline, fcol, ErrorCode::E3127, fname);
             }
-            visitExpr(fi->value());
+            TypeInfo fieldExpected;
+            const TypeInfo* fieldExpPtr = nullptr;
+            if (!decl->isGeneric()) {
+                int fieldIdx = decl->fieldIndex(fname);
+                if (fieldIdx >= 0) {
+                    fieldExpected = decl->fields()[static_cast<size_t>(fieldIdx)]->getType();
+                    fieldExpPtr = &fieldExpected;
+                }
+            }
+            visitExpr(fi->value(), fieldExpPtr);
             // Phase B-1: #NoCopy 字段不可从现有变量隐式复制
             if (decl) {
                 int fieldIdx = decl->fieldIndex(fname);
@@ -2122,8 +2364,13 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
         return;
     }
     if (auto n = dynamic_cast<p<ExprPathCallNode>>(expr)) {
-        for (auto& a : n->args())
-            visitExpr(a);
+        vector<TypeInfo> pathArgExpected;
+        const vector<TypeInfo>* pathArgExpPtr = nullptr;
+        if (n->lhsTypeArgs().empty() && uniqueStaticMethodParams(_file, _sdkFile, n->enumName().getText(),
+                                                                 n->variantName().getText(), pathArgExpected)) {
+            pathArgExpPtr = &pathArgExpected;
+        }
+        visitExprList(n->args(), pathArgExpPtr);
 
         // Phase B：Array:<T>::with_capacity 形态校验（E6011 / E3131）。
         // 泛型 struct 的 #Static fn 路径 skipTypeCheck，必须在此单独接管。

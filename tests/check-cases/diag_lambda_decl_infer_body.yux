@@ -1,0 +1,5 @@
+; 声明处 Function 类型反推 lambda 形参后，体类型错由 SemaPass 报（Phase C）
+
+fn main() {
+  let f Function<i32, i32> = (x) i32 => x + true  ; check: E3001
+}

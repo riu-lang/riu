@@ -1,0 +1,17 @@
+; require-sdk
+; #Static fn 实参带靶向类型（Phase C E3009）
+
+struct Maker {
+  rows Array<Array<i32>>
+
+  #Static
+  fn of(rows Array<Array<i32>>) Maker {
+    ret Self {
+      .rows = rows
+    }
+  }
+}
+
+fn main() {
+  Maker::of([[1, 2], [3, "x"]])  ; check: E3009
+}

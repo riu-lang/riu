@@ -1,0 +1,9 @@
+; require-sdk
+; 唯一候选形参 Array<Array<i32>> 接受嵌套字面量（Phase C 调用实参靶向类型）
+
+fn take(rows Array<Array<i32>>) {
+}
+
+fn main() {
+  take([[1, 2], [3, 4]])
+}

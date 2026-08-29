@@ -1,0 +1,12 @@
+; require-sdk
+; struct 字面量字段按字段类型检查嵌套数组（Phase C E3009）
+
+struct Box {
+  rows Array<Array<i32>>
+}
+
+fn main() {
+  let b = Box {
+    .rows = [[1, 2], [3, "x"]]  ; check: E3009
+  }
+}

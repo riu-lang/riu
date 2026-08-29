@@ -1,0 +1,9 @@
+; require-sdk
+; 调用实参在唯一非泛型候选上带靶向类型（Phase C E3009）
+
+fn take(rows Array<Array<i32>>) {
+}
+
+fn main() {
+  take([[1, 2], [3, "x"]])  ; check: E3009
+}
