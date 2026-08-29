@@ -23,6 +23,7 @@
 #include <cassert>
 #include <cstddef>
 #include <format>
+#include <map>
 #include <optional>
 #include <set>
 #include <string_view>
@@ -504,6 +505,143 @@ void checkAssignRhs(p<ExprNode> expr, const TypeInfo& want, int line, int col, F
     throw YuxError(line, col, ErrorCode::E3014, want.getFullName(), got.getFullName())
         .withHint(std::format("赋值目标类型为 `{}`，但表达式类型为 `{}`；yux 无隐式类型转换", want.getFullName(),
                               got.getFullName()));
+}
+
+// Phase C：调用实参相对实例化后形参的 E3014。
+// 与赋值的差别：实参不自动解引用（T& 传给 T 要 copy_of）；值传给 T& 允许自动取址。
+void checkCallArgAgainst(p<ExprNode> arg, const TypeInfo& want, int line, int col, FileNode* file, FileNode* sdk,
+                         const std::set<std::string>& typeParams) {
+    if (!arg || want.empty() || want.isSelf() || want.isFn()) return;
+    if (isAssignTypeParam(want, typeParams)) return;
+    if (!typeParams.empty() && !want.genericArgs.empty()) return;
+
+    TypeInfo peeledWant = want.peelRef();
+    if (isFlexibleIntExpr(arg) && isIntTypeName(peeledWant.name)) return;
+
+    TypeInfo got;
+    if (!tryGetExprType(arg, got)) return;
+    if (got.empty() || got.isSelf() || isAssignTypeParam(got, typeParams)) return;
+    if (!typeParams.empty() && !got.genericArgs.empty()) return;
+
+    auto g = sema::resolveAlias(got, file, sdk);
+    auto w = sema::resolveAlias(want, file, sdk);
+    if (g == w) return;
+    if (w.isRef()) {
+        if (auto inner = w.refElementType()) {
+            if (g == sema::resolveAlias(*inner, file, sdk)) return;
+        }
+    }
+    if (g.isRef() && !w.isRef()) {
+        auto inner = g.refElementType();
+        throw YuxError(line, col, ErrorCode::E3014, want.getFullName(), got.getFullName())
+            .withHint(std::format("实参类型为 `{}&`（借用），形参期望 `{}`；"
+                                  "若需取值请用 `copy_of:<{}>(...)` 或先 `let tmp {} = expr`",
+                                  inner ? inner->name : "?", want.getFullName(), inner ? inner->name : "?",
+                                  inner ? inner->name : "?"));
+    }
+    if (isEmptyArrayType(g) && (w.isArray() || w.isArrayGeneric())) return;
+    if (w.isNullable()) {
+        if (isFlexibleNullExpr(arg)) return;
+        if (auto inner = w.nullableInnerType()) {
+            auto in = sema::resolveAlias(*inner, file, sdk);
+            if (isIntTypeName(in.name) && isFlexibleIntExpr(arg)) return;
+            if (g == in) return;
+        }
+    }
+    if (!isKnownAssignType(w, file, sdk) || !isKnownAssignType(g, file, sdk)) return;
+    int eline = arg->resolveLineNumber();
+    int ecol = arg->resolveColumn();
+    if (eline <= 0) eline = line;
+    if (ecol < 0) ecol = col;
+    throw YuxError(eline, ecol, ErrorCode::E3014, want.getFullName(), got.getFullName())
+        .withHint(std::format("实参类型 `{}` 与形参类型 `{}` 不匹配", got.getFullName(), want.getFullName()));
+}
+
+bool fillSubstFromTypeNodes(const vector<string>& typeParams, const vector<p<TypeNode>>& typeArgNodes,
+                            map<string, TypeInfo>& subst) {
+    if (typeParams.size() != typeArgNodes.size()) return false;
+    subst.clear();
+    for (size_t i = 0; i < typeParams.size(); ++i) {
+        try {
+            subst[typeParams[i]] = typeArgNodes[i]->getType();
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+            return false;
+        }
+    }
+    return true;
+}
+
+bool fillSubstFromGenericArgs(const vector<string>& typeParams, const vector<sp<TypeInfo>>& genericArgs,
+                              map<string, TypeInfo>& subst) {
+    if (typeParams.size() != genericArgs.size()) return false;
+    subst.clear();
+    for (size_t i = 0; i < typeParams.size(); ++i) {
+        if (!genericArgs[i] || genericArgs[i]->empty()) return false;
+        subst[typeParams[i]] = *genericArgs[i];
+    }
+    return true;
+}
+
+bool substHeaderParams(FnHeaderNode* header, const map<string, TypeInfo>& subst, vector<TypeInfo>& out) {
+    if (!header) return false;
+    out.clear();
+    for (auto p : header->params()) {
+        if (!p || !p->type()) return false;
+        try {
+            out.push_back(p->type()->getType().substitute(subst));
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+            return false;
+        }
+    }
+    return true;
+}
+
+FnNode* uniqueNonBuiltinGenericFn(FileNode* file, const string& name) {
+    if (!file) return nullptr;
+    vector<pair<FnNode*, FileNode*>> fns;
+    file->collectGenericFunctions(name, fns, file);
+    FnNode* found = nullptr;
+    for (auto& [fn, _] : fns) {
+        if (!fn || !fn->header() || fn->header()->hasAnno("Builtin")) continue;
+        if (found) return nullptr;
+        found = fn;
+    }
+    return found;
+}
+
+StructImplNode* lookupStructImpl(FileNode* file, FileNode* sdk, const string& name) {
+    if (file) {
+        if (auto* i = file->getStructImpl(name)) return i;
+    }
+    if (sdk && sdk != file) {
+        if (auto* i = sdk->getStructImpl(name)) return i;
+    }
+    return nullptr;
+}
+
+// 同名同 arity 唯一方法。多个重载不猜。
+FnHeaderNode* uniqueMethodHeader(StructImplNode* impl, const string& name, size_t arity, bool wantStatic) {
+    if (!impl) return nullptr;
+    FnHeaderNode* found = nullptr;
+    for (auto& m : impl->methods()) {
+        auto h = m->header();
+        if (!h || h->name().getText() != name) continue;
+        if (h->isStatic() != wantStatic) continue;
+        if (h->hasAnno("Builtin")) continue;
+        if (h->params().size() != arity) continue;
+        if (found) return nullptr;
+        found = h;
+    }
+    return found;
+}
+
+bool substGenericCallParams(FnHeaderNode* header, const vector<string>& typeParams, const vector<TypeInfo>& typeArgs,
+                            vector<TypeInfo>& out) {
+    if (!header || typeParams.size() != typeArgs.size()) return false;
+    map<string, TypeInfo> subst;
+    for (size_t i = 0; i < typeParams.size(); ++i)
+        subst[typeParams[i]] = typeArgs[i];
+    return substHeaderParams(header, subst, out);
 }
 
 // Phase C：match 各臂结果类型须一致（镜像 compileMatchExpr）。流终止臂跳过。
@@ -1906,83 +2044,106 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
         // Phase C：重载前实参靶向类型。不看实参类型即可确定的形参才下钻：
         // 单 arity 非泛型候选 / Fn 值 callee / 非泛型方法，以及同 arity 重载
         // 各位都相同的类型。不一致的位置留空，不猜候选。
+        // 泛型：显式 typeArgs 替换后的形参；接收者已带 typeArgs 的泛型 struct 方法。
         vector<TypeInfo> callArgExpected;
         const vector<TypeInfo>* callArgExpPtr = nullptr;
         const bool hasTypeArgs = !n->getTypeArgs().empty();
-        if (!hasTypeArgs) {
+        if (hasTypeArgs) {
             if (auto lit = dynamic_cast<p<ExprLiteralNode>>(n->getCalleeExpr())) {
                 if (auto obj = dynamic_cast<p<LiteralObjNode>>(lit->literal())) {
                     string fnName = obj->getValue().getText();
-                    auto* structDecl = _names.lookupStruct(fnName);
-                    if (structDecl && !structDecl->isGeneric()) {
+                    if (auto* genFn = uniqueNonBuiltinGenericFn(_file, fnName)) {
+                        map<string, TypeInfo> subst;
+                        if (fillSubstFromTypeNodes(genFn->header()->typeParams(), n->getTypeArgs(), subst) &&
+                            substHeaderParams(genFn->header(), subst, callArgExpected)) {
+                            callArgExpPtr = &callArgExpected;
+                        }
+                    }
+                }
+            }
+        } else if (auto lit = dynamic_cast<p<ExprLiteralNode>>(n->getCalleeExpr())) {
+            if (auto obj = dynamic_cast<p<LiteralObjNode>>(lit->literal())) {
+                string fnName = obj->getValue().getText();
+                auto* structDecl = _names.lookupStruct(fnName);
+                if (structDecl && !structDecl->isGeneric()) {
+                    vector<FnSymbolInfo*> cands;
+                    collectOverloadsBoth(_file, _sdkFile, fnName + "." + fnName, cands);
+                    if (agreedArityParamTypes(cands, n->getArgs().size() + 1, 1, callArgExpected)) {
+                        callArgExpPtr = &callArgExpected;
+                    }
+                } else if (!structDecl && !_file->getGenericFunction(fnName).first) {
+                    vector<FnSymbolInfo*> cands;
+                    collectOverloadsBoth(_file, _sdkFile, fnName, cands);
+                    if (agreedArityParamTypes(cands, n->getArgs().size(), 0, callArgExpected)) {
+                        callArgExpPtr = &callArgExpected;
+                    }
+                }
+                if (!callArgExpPtr) {
+                    // 函数名 getType 可能只编码某一个重载，不能当靶向类型。
+                    // 仅局部 / 形参上的 Fn 值可以。
+                    SymbolInfo* sym = nullptr;
+                    if (auto sc = lit->findNearestScope()) {
+                        sym = sc->lookupSymbol(fnName);
+                    }
+                    if (!sym && _currentFn) {
+                        sym = _currentFn->lookupSymbol(fnName);
+                    }
+                    if (sym && sym->kind == SymbolKind::Variable && sym->type.isFn()) {
+                        copyFnParamTypes(sym->type, callArgExpected);
+                        callArgExpPtr = &callArgExpected;
+                    }
+                }
+            }
+        } else if (auto dotCallee = dynamic_cast<p<ExprDotNode>>(n->getCalleeExpr())) {
+            TypeInfo baseType;
+            bool baseOk = true;
+            try {
+                baseType = dotCallee->baseExpr()->hasResolvedType() ? dotCallee->baseExpr()->resolvedType()
+                                                                    : dotCallee->baseExpr()->getType();
+                if (dotCallee->isSafe() && baseType.isNullable()) {
+                    if (auto inner = baseType.nullableInnerType()) baseType = *inner;
+                }
+                baseType = baseType.peelAutoDeref();
+            } catch (...) { // NOLINT(bugprone-empty-catch)
+                baseOk = false;
+            }
+            if (baseOk && !baseType.name.empty() && !isBuiltinType(baseType.name) && !baseType.isArrayGeneric() &&
+                !baseType.isPtr() && !baseType.isDyn()) {
+                if (auto* sd = _names.lookupStruct(baseType.name)) {
+                    string member = dotCallee->member();
+                    if (dotCallee->hasSpecQualifier()) {
+                        member = member + "__at__" + dotCallee->specQualifier();
+                    }
+                    if (!sd->isGeneric()) {
                         vector<FnSymbolInfo*> cands;
-                        collectOverloadsBoth(_file, _sdkFile, fnName + "." + fnName, cands);
+                        collectOverloadsBoth(_file, _sdkFile, baseType.name + "." + member, cands);
                         if (agreedArityParamTypes(cands, n->getArgs().size() + 1, 1, callArgExpected)) {
                             callArgExpPtr = &callArgExpected;
                         }
-                    } else if (!structDecl && !_file->getGenericFunction(fnName).first) {
-                        vector<FnSymbolInfo*> cands;
-                        collectOverloadsBoth(_file, _sdkFile, fnName, cands);
-                        if (agreedArityParamTypes(cands, n->getArgs().size(), 0, callArgExpected)) {
-                            callArgExpPtr = &callArgExpected;
-                        }
-                    }
-                    if (!callArgExpPtr) {
-                        // 函数名 getType 可能只编码某一个重载，不能当靶向类型。
-                        // 仅局部 / 形参上的 Fn 值可以。
-                        SymbolInfo* sym = nullptr;
-                        if (auto sc = lit->findNearestScope()) {
-                            sym = sc->lookupSymbol(fnName);
-                        }
-                        if (!sym && _currentFn) {
-                            sym = _currentFn->lookupSymbol(fnName);
-                        }
-                        if (sym && sym->kind == SymbolKind::Variable && sym->type.isFn()) {
-                            copyFnParamTypes(sym->type, callArgExpected);
-                            callArgExpPtr = &callArgExpected;
-                        }
-                    }
-                }
-            } else if (auto dotCallee = dynamic_cast<p<ExprDotNode>>(n->getCalleeExpr())) {
-                TypeInfo baseType;
-                bool baseOk = true;
-                try {
-                    baseType = dotCallee->baseExpr()->hasResolvedType() ? dotCallee->baseExpr()->resolvedType()
-                                                                        : dotCallee->baseExpr()->getType();
-                    if (dotCallee->isSafe() && baseType.isNullable()) {
-                        if (auto inner = baseType.nullableInnerType()) baseType = *inner;
-                    }
-                    baseType = baseType.peelAutoDeref();
-                } catch (...) { // NOLINT(bugprone-empty-catch)
-                    baseOk = false;
-                }
-                if (baseOk && !baseType.name.empty() && !isBuiltinType(baseType.name) && !baseType.isArrayGeneric() &&
-                    !baseType.isPtr() && !baseType.isDyn()) {
-                    if (auto* sd = _names.lookupStruct(baseType.name)) {
-                        if (!sd->isGeneric()) {
-                            string member = dotCallee->member();
-                            if (dotCallee->hasSpecQualifier()) {
-                                member = member + "__at__" + dotCallee->specQualifier();
-                            }
-                            vector<FnSymbolInfo*> cands;
-                            collectOverloadsBoth(_file, _sdkFile, baseType.name + "." + member, cands);
-                            if (agreedArityParamTypes(cands, n->getArgs().size() + 1, 1, callArgExpected)) {
-                                callArgExpPtr = &callArgExpected;
+                    } else {
+                        map<string, TypeInfo> subst;
+                        if (fillSubstFromGenericArgs(sd->typeParams(), baseType.genericArgs, subst)) {
+                            auto* impl = lookupStructImpl(_file, _sdkFile, baseType.name);
+                            if (auto* hdr = uniqueMethodHeader(impl, dotCallee->member(), n->getArgs().size(),
+                                                               /*wantStatic=*/false)) {
+                                if (substHeaderParams(hdr, subst, callArgExpected)) {
+                                    callArgExpPtr = &callArgExpected;
+                                }
                             }
                         }
                     }
                 }
-            } else {
-                TypeInfo calleeType;
-                try {
-                    calleeType = n->getCalleeExpr()->hasResolvedType() ? n->getCalleeExpr()->resolvedType()
-                                                                       : n->getCalleeExpr()->getType();
-                } catch (...) { // NOLINT(bugprone-empty-catch)
-                }
-                if (calleeType.isFn()) {
-                    copyFnParamTypes(calleeType, callArgExpected);
-                    callArgExpPtr = &callArgExpected;
-                }
+            }
+        } else {
+            TypeInfo calleeType;
+            try {
+                calleeType = n->getCalleeExpr()->hasResolvedType() ? n->getCalleeExpr()->resolvedType()
+                                                                   : n->getCalleeExpr()->getType();
+            } catch (...) { // NOLINT(bugprone-empty-catch)
+            }
+            if (calleeType.isFn()) {
+                copyFnParamTypes(calleeType, callArgExpected);
+                callArgExpPtr = &callArgExpected;
             }
         }
         visitExprList(n->getArgs(), callArgExpPtr);
@@ -2252,13 +2413,21 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                         if (typeArgsOk && typeArgs.size() == genericFn->header()->typeParams().size()) {
                             sema::validateGenericTypeArgsSpecBound(&_yux->specRegistry(), &_yux->specImplChecker(),
                                                                    fnOwner, genericFn->header(), typeArgs, line, col);
+                            // Phase C：typeArgs 已知后按替换后的形参检查实参（E3014）。
+                            vector<TypeInfo> instParams;
+                            if (substGenericCallParams(genericFn->header(), genericFn->header()->typeParams(), typeArgs,
+                                                       instParams)) {
+                                for (size_t i = 0; i < n->getArgs().size() && i < instParams.size(); ++i) {
+                                    checkCallArgAgainst(n->getArgs()[i], instParams[i], line, col, _file, _sdkFile,
+                                                        _currentTypeParams);
+                                }
+                            }
                         }
                     }
                 }
 
                 // 仅在无显式 typeArgs + 非泛型路径上才驱动重载解析:
-                // 泛型 fn/ctor 走 Compiler 的 substitute 推断, 灵活整数推断由
-                // 那条路径自行完成; SemaPass 暂不接入泛型实例化.
+                // 泛型 fn 的 typeArgs 替换后实参检查在上方；非泛型走 resolveFnOverload。
                 if (!hasTypeArgs) {
                     // getFunctionWithOwner 已搜索 wildcardImports
                     auto [genFn3, _] = _file->getFunctionWithOwner(fnName);
@@ -2562,6 +2731,25 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                     if (methodSymbol) n->setResolvedFn(methodSymbol);
                     sema::validateStructMethodVisibility(methodSymbol, _currentStructName, baseType.name,
                                                          dotCallee->member(), n->getLineNumber(), n->getColumn());
+                    // Phase C：泛型 struct 实例方法，用接收者 typeArgs 替换形参后检查实参
+                    if (auto* sd = _names.lookupStruct(baseType.name)) {
+                        if (sd->isGeneric()) {
+                            map<string, TypeInfo> subst;
+                            if (fillSubstFromGenericArgs(sd->typeParams(), baseType.genericArgs, subst)) {
+                                auto* impl = lookupStructImpl(_file, _sdkFile, baseType.name);
+                                if (auto* hdr = uniqueMethodHeader(impl, dotCallee->member(), n->getArgs().size(),
+                                                                   /*wantStatic=*/false)) {
+                                    vector<TypeInfo> instParams;
+                                    if (substHeaderParams(hdr, subst, instParams)) {
+                                        for (size_t i = 0; i < n->getArgs().size() && i < instParams.size(); ++i) {
+                                            checkCallArgAgainst(n->getArgs()[i], instParams[i], n->getLineNumber(),
+                                                                n->getColumn(), _file, _sdkFile, _currentTypeParams);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     // Phase B-1: 方法调用的 #NoCopy 按值传参检查
                     if (methodSymbol) {
                         for (size_t i = 0; i < n->getArgs().size() && i < methodSymbol->params.size(); ++i) {
@@ -2845,6 +3033,22 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
             agreedStaticMethodParams(_file, _sdkFile, n->enumName().getText(), n->variantName().getText(),
                                      n->args().size(), pathArgExpected)) {
             pathArgExpPtr = &pathArgExpected;
+        } else if (!n->lhsTypeArgs().empty()) {
+            // Phase C：泛型 struct #Static fn + turbofish，替换后的形参作靶向类型
+            string lhsName = n->enumName().getText();
+            auto* sd = _names.lookupStruct(lhsName);
+            if (sd && sd->isGeneric()) {
+                map<string, TypeInfo> subst;
+                if (fillSubstFromTypeNodes(sd->typeParams(), n->lhsTypeArgs(), subst)) {
+                    auto* impl = lookupStructImpl(_file, _sdkFile, lhsName);
+                    if (auto* hdr = uniqueMethodHeader(impl, n->variantName().getText(), n->args().size(),
+                                                       /*wantStatic=*/true)) {
+                        if (substHeaderParams(hdr, subst, pathArgExpected)) {
+                            pathArgExpPtr = &pathArgExpected;
+                        }
+                    }
+                }
+            }
         }
         visitExprList(n->args(), pathArgExpPtr);
 
@@ -2926,15 +3130,18 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                 }
                 // Bucket 4 收口 (CURRENT-check.md): #Static fn 调用站点的 arity +
                 // 类型校验 (E3131). 镜像 compiler_expr.cpp::compileEnumCtorExpr 的
-                // #Static fn 分派 (2343-2377). 仅在非泛型 struct + 无 turbofish 时接管;
-                // 泛型 struct 的 applySubst 留 Compiler 兜底 (sema 无替换栈).
-                bool skipTypeCheck = !n->lhsTypeArgs().empty();
-                if (!skipTypeCheck) {
-                    auto* structDecl = _file ? _file->getStructDecl(lhsName) : nullptr;
-                    if (!structDecl && _sdkFile && _sdkFile != _file) {
-                        structDecl = _sdkFile->getStructDecl(lhsName);
+                // #Static fn 分派 (2343-2377). 泛型 struct 在 turbofish 齐时
+                // TypeInfo::substitute 替换形参，不再 skip。
+                bool skipTypeCheck = false;
+                map<string, TypeInfo> staticSubst;
+                auto* structDecl = _file ? _file->getStructDecl(lhsName) : nullptr;
+                if (!structDecl && _sdkFile && _sdkFile != _file) {
+                    structDecl = _sdkFile->getStructDecl(lhsName);
+                }
+                if (structDecl && structDecl->isGeneric()) {
+                    if (!fillSubstFromTypeNodes(structDecl->typeParams(), n->lhsTypeArgs(), staticSubst)) {
+                        skipTypeCheck = true;
                     }
-                    if (structDecl && structDecl->isGeneric()) skipTypeCheck = true;
                 }
                 if (!skipTypeCheck) {
                     vector<TypeInfo> paramTypes;
@@ -2942,7 +3149,9 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                     for (auto p : methodHeader->params()) {
                         if (p->type()) {
                             try {
-                                paramTypes.push_back(p->type()->getType());
+                                TypeInfo pt = p->type()->getType();
+                                if (!staticSubst.empty()) pt = pt.substitute(staticSubst);
+                                paramTypes.push_back(std::move(pt));
                             } catch (...) {
                                 paramTypesOk = false;
                                 break;

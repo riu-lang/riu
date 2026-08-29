@@ -1,0 +1,8 @@
+; 泛型 fn 推断 typeArgs 后，非 T 形参仍按具体类型检查 → E3014（Phase C）
+fn wrap<T>(x i32, y T) {
+}
+
+fn main() {
+  wrap(true, 1)  ; check: E3014
+  ret;
+}

@@ -1,0 +1,9 @@
+; 泛型 fn 显式 typeArgs 后实参类型不匹配 → E3014（Phase C 签名实例化）
+fn id<T>(x T) T {
+  x
+}
+
+fn main() {
+  let r i32 = id:<i32>(true)  ; check: E3014
+  ret;
+}

@@ -1,0 +1,9 @@
+; require-sdk
+; 泛型 fn 显式 typeArgs 后嵌套数组实参带靶向类型 → E3009（Phase C）
+
+fn take<T>(rows Array<Array<T>>) {
+}
+
+fn main() {
+  take:<i32>([[1, 2], [3, "x"]])  ; check: E3009
+}
