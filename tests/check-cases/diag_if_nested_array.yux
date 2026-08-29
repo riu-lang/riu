@@ -1,0 +1,11 @@
+; require-sdk
+; if-else 块末尾值带声明靶向类型（Phase C E3009）
+
+fn main() {
+  let c bool = true
+  let rows Array<i32> = if c {
+    [true]  ; check: E3009
+  } else {
+    [false]
+  }
+}

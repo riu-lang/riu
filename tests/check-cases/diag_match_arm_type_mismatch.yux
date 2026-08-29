@@ -1,0 +1,13 @@
+; match 臂结果类型不一致 → E3014（Phase C）
+enum Color {
+  Red
+  Green
+}
+
+fn main() {
+  let c Color = Color::Red
+  let result bool = match c {
+    Color::Red => true
+    Color::Green => 1  ; check: E3014
+  }
+}

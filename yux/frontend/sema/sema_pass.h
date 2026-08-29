@@ -85,9 +85,10 @@ private:
 
     void visitFn(p<FnNode> fn);
     void visitStmt(p<StatementNode> stmt);
-    void visitBlock(p<StatementBlockNode> block);
-    // expected：赋值 / 声明 / 返回 / 调用实参 / 嵌套数组的目标类型。非空时数组字面量按
-    // 靶向类型递归检查（E3009 / E3012），不再走无上下文的 getType。
+    // expected：块末尾值（if / match / try 表达式）的靶向类型，传给 resultExpr。
+    void visitBlock(p<StatementBlockNode> block, const TypeInfo* expected = nullptr);
+    // expected：赋值 / 声明 / 返回 / 调用实参 / 嵌套数组 / if·match 臂 的目标类型。
+    // 非空时数组字面量按靶向类型递归检查（E3009 / E3012），不再走无上下文的 getType。
     void visitExpr(p<ExprNode> expr, const TypeInfo* expected = nullptr);
     // 实参列表：expected 非空且下标有具体类型时带靶向类型下钻。
     void visitExprList(const vector<p<ExprNode>>& args, const vector<TypeInfo>* expected = nullptr);

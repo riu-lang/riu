@@ -1,0 +1,14 @@
+; require-sdk
+; 临时 Rc<E> 直接 match → E2022（Phase C）
+
+enum Color {
+  Red
+  Green
+}
+
+fn main() {
+  let n i32 = match rc:<Color>(Color::Red) {  ; check: E2022
+    Color::Red => 1
+    Color::Green => 2
+  }
+}

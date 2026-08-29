@@ -1,0 +1,7 @@
+; require-sdk
+; 单行 if-else 带声明靶向类型（Phase C E3009）
+
+fn main() {
+  let c bool = true
+  let rows Array<i32> = if c { [true] } else { [false] }  ; check: E3009
+}

@@ -1,0 +1,15 @@
+; require-sdk
+; match 臂带声明靶向类型检查嵌套/元素类型（Phase C E3009）
+
+enum Color {
+  Red
+  Green
+}
+
+fn main() {
+  let c Color = Color::Red
+  let rows Array<i32> = match c {
+    Color::Red => [true]  ; check: E3009
+    Color::Green => [1]
+  }
+}

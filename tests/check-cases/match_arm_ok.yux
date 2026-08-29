@@ -1,0 +1,34 @@
+; require-sdk
+; match 各臂类型一致 / Rc<E> 落地后再 match（Phase C）
+
+enum Color {
+  Red
+  Green
+}
+
+fn as_i32(c Color) i32 {
+  ret match c {
+    Color::Red => 1
+    Color::Green => 2
+  }
+}
+
+fn as_bool(c Color) bool {
+  ret match c {
+    Color::Red => true
+    Color::Green => {
+      false
+    }
+  }
+}
+
+fn main() {
+  as_i32(Color::Red)
+  as_bool(Color::Green)
+  let b Rc<Color> = Color::Red
+  let n i32 = match b {
+    Color::Red => 1
+    Color::Green => 2
+  }
+  ret;
+}

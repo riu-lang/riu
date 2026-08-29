@@ -506,6 +506,36 @@ void checkAssignRhs(p<ExprNode> expr, const TypeInfo& want, int line, int col, F
                               got.getFullName()));
 }
 
+// Phase C：match 各臂结果类型须一致（镜像 compileMatchExpr）。流终止臂跳过。
+// 模板体里类型参数 / 含 T 的复合类型不下钻，留给实例化期。
+void checkMatchArmTypes(const vector<p<MatchArmNode>>& arms, const std::set<std::string>& typeParams) {
+    TypeInfo first;
+    bool firstSet = false;
+    for (auto& arm : arms) {
+        if (!arm || arm->skipsTypeMerge()) continue;
+        TypeInfo t;
+        try {
+            t = arm->resultType();
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+            return;
+        }
+        if (isAssignTypeParam(t, typeParams)) return;
+        if (!typeParams.empty() && !t.genericArgs.empty()) return;
+        if (!firstSet) {
+            first = t;
+            firstSet = true;
+            continue;
+        }
+        if (t != first) {
+            throw YuxError(arm->resultLine(), arm->resultCol(), ErrorCode::E3014, first.getFullName(), t.getFullName())
+                .withHint(std::format("match 各臂结果类型须一致：先前臂为 `{}`，此臂为 `{}`", first.getFullName(),
+                                      t.getFullName()));
+        }
+    }
+}
+
 // 块体末位无 `;` 的裸表达式语句（隐式尾值），不含 ret / 声明 / 赋值子类。
 bool isBareTailExprStmt(p<StatementNode> s) {
     auto se = dynamic_cast<p<StatementExprNode>>(s);
@@ -875,13 +905,13 @@ void SemaPass::visitFn(p<FnNode> fn) {
     _currentFn = savedFn;
 }
 
-void SemaPass::visitBlock(p<StatementBlockNode> block) {
+void SemaPass::visitBlock(p<StatementBlockNode> block, const TypeInfo* expected) {
     if (!block) return;
     for (auto& s : block->statements()) {
         visitStmt(s);
     }
     if (block->hasResult()) {
-        visitExpr(block->resultExpr());
+        visitExpr(block->resultExpr(), expected);
     }
 }
 
@@ -2624,22 +2654,23 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
     if (auto n = dynamic_cast<p<ExprIfElseNode>>(expr)) {
         visitExpr(n->condition());
         // Phase B-1: 分支 _movedVars 汇合 — 各分支分别从 saved 出发，最后取并集
+        // Phase C：块末尾值带靶向类型（嵌套数组 E3009）。
         auto savedMoved = _movedVars;
-        visitBlock(n->thenBlock());
+        visitBlock(n->thenBlock(), expected);
         auto afterThenMoved = std::move(_movedVars);
         _movedVars = savedMoved;
 
         for (auto& el : n->elifs()) {
             visitExpr(el->condition());
             auto savedElif = _movedVars;
-            visitBlock(el->block());
+            visitBlock(el->block(), expected);
             for (auto& v : _movedVars)
                 afterThenMoved.insert(v);
             _movedVars = savedElif;
         }
 
         if (n->elseBlock()) {
-            visitBlock(n->elseBlock());
+            visitBlock(n->elseBlock(), expected);
             for (auto& v : afterThenMoved)
                 _movedVars.insert(v);
         } else {
@@ -2649,8 +2680,8 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
     }
     if (auto n = dynamic_cast<p<ExprOneLineIfElseNode>>(expr)) {
         visitExpr(n->condition());
-        visitExpr(n->trueValue());
-        visitExpr(n->falseValue());
+        visitExpr(n->trueValue(), expected);
+        visitExpr(n->falseValue(), expected);
         return;
     }
     if (auto n = dynamic_cast<p<ExprGetNode>>(expr)) {
@@ -3012,32 +3043,45 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
         visitExpr(n->scrutinee());
         for (auto& arm : n->arms()) {
             if (arm->hasBlock())
-                visitBlock(arm->block());
+                visitBlock(arm->block(), expected);
             else
-                visitExpr(arm->body());
+                visitExpr(arm->body(), expected);
         }
+        checkMatchArmTypes(n->arms(), _currentTypeParams);
 
-        // Phase 3.4.b: SemaPass 接管 E2019/E2020/E2023/E2024/E2025/E2026/E2027.
-        // 仅在 scrut 直接是 enum 名 (非 Rc/E / 非 alias 链) 时接入: 那两条路径
-        // Compiler 端走 isFreshHandleExpr / resolveAlias (递归), SemaPass 暂未镜像,
-        // 跳过留 Compiler 兜底. scrutType getType 抛错 (lambda 形参等) 时也跳过.
+        // Phase C：scrut 别名 / Rc<E> / Heap<E> / E& 与 compileMatchExpr 对齐。
+        // 内层是 enum 才剥 wrapper；临时 Rc/Heap 直接 match → E2022。
         try {
-            TypeInfo scrutType = n->scrutinee()->getType();
-            // v0.16: [] 返回 T&——match scrutinee 自动剥 Ref 检查底层 enum 类型
-            TypeInfo checkType = scrutType.peelRef();
-            // Rc<E> 自动 deref 走 Compiler 兜底, 不在此处接入
-            if (!checkType.isRc()) {
-                auto* enumDecl = _names.lookupEnum(checkType.name);
-                if (enumDecl) {
-                    sema::validateMatchArms(enumDecl, checkType.name, n, _file);
-                } else if (isBuiltinType(checkType.name) || checkType.isString()) {
-                    // Bucket 6 (CURRENT-check.md): E2022 scrutinee 非 enum.
-                    // 仅在 builtin 原型 / String 时接管 — 复杂路径 (alias 链 /
-                    // Box<E> / fresh Rc) 留 Compiler 兜底.
-                    int line = n->getLineNumber();
-                    int col = n->getColumn();
-                    throw YuxError(line, col, ErrorCode::E2022, checkType.name);
+            TypeInfo checkType = sema::resolveAlias(n->scrutinee()->getType(), _file, _sdkFile);
+            int line = n->getLineNumber();
+            int col = n->getColumn();
+            auto peelEnumWrapper = [&](bool isRc) {
+                auto inner = isRc ? checkType.rcElementType() : checkType.heapElementType();
+                if (!inner) return;
+                TypeInfo in = sema::resolveAlias(*inner, _file, _sdkFile);
+                if (!_names.lookupEnum(in.name)) return;
+                if (isFreshHandleExpr(n->scrutinee())) {
+                    throw YuxError(line, col, ErrorCode::E2022, checkType.name)
+                        .withHint(isRc ? "不支持对临时 Rc<E> 直接 match；先 `let b Rc<E> = ...` 落地再 match b"
+                                       : "不支持对临时 Heap<E> 直接 match；先 `let h Heap<E> = ...` 落地再 match h");
                 }
+                checkType = in;
+            };
+            if (checkType.isRc()) {
+                peelEnumWrapper(true);
+            } else if (checkType.isHeap()) {
+                peelEnumWrapper(false);
+            } else if (checkType.isRef()) {
+                if (auto inner = checkType.refElementType()) {
+                    TypeInfo in = sema::resolveAlias(*inner, _file, _sdkFile);
+                    if (_names.lookupEnum(in.name)) checkType = in;
+                }
+            }
+            auto* enumDecl = _names.lookupEnum(checkType.name);
+            if (enumDecl) {
+                sema::validateMatchArms(enumDecl, checkType.name, n, _file);
+            } else if (isBuiltinType(checkType.name) || checkType.isString()) {
+                throw YuxError(line, col, ErrorCode::E2022, checkType.name);
             }
         } catch (const YuxError&) {
             throw;
@@ -3072,7 +3116,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
         }
 
         _tryStack.emplace_back();
-        visitBlock(n->tryBlock());
+        visitBlock(n->tryBlock(), expected);
         vector<string> seenErrTypes = std::move(_tryStack.back());
         _tryStack.pop_back();
 
@@ -3090,7 +3134,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
         }
 
         for (auto& c : n->catches())
-            visitBlock(c->body());
+            visitBlock(c->body(), expected);
 
         // Bucket 6 (CURRENT-check.md): SemaPass 接管 E7010 (catch arm body 末
         // 表达式类型必须与 try block 末表达式类型一致).
