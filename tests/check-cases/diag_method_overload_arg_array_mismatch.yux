@@ -1,0 +1,19 @@
+; require-sdk
+; 非泛型方法同 arity 重载在约定形参上带靶向类型（Phase C E3009）
+
+struct Box {
+  n i32
+
+  fn take(tag i32, rows Array<Array<i32>>) {
+  }
+
+  fn take(tag str, rows Array<Array<i32>>) {
+  }
+}
+
+fn main() {
+  let b = Box {
+    .n = 0
+  }
+  b.take(1, [[1, 2], [3, "x"]])  ; check: E3009
+}

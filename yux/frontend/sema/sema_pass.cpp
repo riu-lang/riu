@@ -182,25 +182,42 @@ bool sameFnSig(const FnSymbolInfo* a, const FnSymbolInfo* b) {
     return true;
 }
 
-// 恰好一个（语义去重后）arity 匹配的候选；同 arity 重载 → nullptr。
-FnSymbolInfo* uniqueArityCandidate(const vector<FnSymbolInfo*>& cands, size_t wantArity) {
-    FnSymbolInfo* unique = nullptr;
+// 同 arity（语义去重后）候选在 skip 之后各位形参的约定类型。
+// 仅一位 → 用它的全部形参；多位时只填各位都相同的类型，不一致留空
+// （visitExprList 会跳过空位）。没有任何可填位置 → false。
+// 不猜重载：各位类型不一致时不下钻，避免绑错候选。
+bool agreedArityParamTypes(const vector<FnSymbolInfo*>& cands, size_t wantArity, size_t skip, vector<TypeInfo>& out) {
+    vector<FnSymbolInfo*> uniq;
     for (auto* c : cands) {
         if (!c || c->params.size() != wantArity) continue;
-        if (unique) {
-            if (sameFnSig(unique, c)) continue;
-            return nullptr;
+        bool dup = false;
+        for (auto* u : uniq) {
+            if (sameFnSig(u, c)) {
+                dup = true;
+                break;
+            }
         }
-        unique = c;
+        if (!dup) uniq.push_back(c);
     }
-    return unique;
-}
-
-vector<TypeInfo> paramsSkippingReceiver(FnSymbolInfo* fn, size_t skip) {
-    vector<TypeInfo> out;
-    if (!fn || skip > fn->params.size()) return out;
-    out.assign(fn->params.begin() + static_cast<std::ptrdiff_t>(skip), fn->params.end());
-    return out;
+    if (uniq.empty() || skip > wantArity) return false;
+    const size_t n = wantArity - skip;
+    out.assign(n, TypeInfo());
+    bool any = false;
+    for (size_t i = 0; i < n; ++i) {
+        const TypeInfo& t0 = uniq[0]->params[skip + i];
+        bool all = true;
+        for (size_t k = 1; k < uniq.size(); ++k) {
+            if (!(uniq[k]->params[skip + i] == t0)) {
+                all = false;
+                break;
+            }
+        }
+        if (all && !t0.empty()) {
+            out[i] = t0;
+            any = true;
+        }
+    }
+    return any;
 }
 
 // 镜像 Compiler::compileCallExpr / compileDeclareAssignStatement：把 Fn 期望类型
@@ -289,7 +306,9 @@ bool isBareTailExprStmt(p<StatementNode> s) {
     return true;
 }
 
-bool uniqueStaticMethodParams(FileNode* file, FileNode* sdk, const string& lhs, const string& rhs,
+// #Static fn 同名候选：过滤 wantArity，各位约定类型与 agreedArityParamTypes 同款。
+// 任一同名泛型静态方法 → 不猜。
+bool agreedStaticMethodParams(FileNode* file, FileNode* sdk, const string& lhs, const string& rhs, size_t wantArity,
                               vector<TypeInfo>& out) {
     StructDeclNode* sd = file ? file->getStructDecl(lhs, true) : nullptr;
     if (!sd && sdk && sdk != file) sd = sdk->getStructDecl(lhs, true);
@@ -297,25 +316,62 @@ bool uniqueStaticMethodParams(FileNode* file, FileNode* sdk, const string& lhs, 
     StructImplNode* impl = file ? file->getStructImpl(lhs) : nullptr;
     if (!impl && sdk && sdk != file) impl = sdk->getStructImpl(lhs);
     if (!impl || impl->isGeneric()) return false;
-    FnHeaderNode* found = nullptr;
+    vector<vector<TypeInfo>> uniq;
     for (auto& m : impl->methods()) {
         auto header = m->header();
         if (!header || header->name().getText() != rhs || !header->isStatic()) continue;
         if (header->isGeneric()) return false;
-        if (found) return false;
-        found = header;
+        if (header->params().size() != wantArity) continue;
+        vector<TypeInfo> ps;
+        bool ok = true;
+        for (auto p : header->params()) {
+            if (!p || !p->type()) {
+                ok = false;
+                break;
+            }
+            try {
+                ps.push_back(p->type()->getType());
+            } catch (...) { // NOLINT(bugprone-empty-catch)
+                ok = false;
+                break;
+            }
+        }
+        if (!ok) continue;
+        bool dup = false;
+        for (auto& u : uniq) {
+            if (u.size() != ps.size()) continue;
+            bool same = true;
+            for (size_t i = 0; i < u.size(); ++i) {
+                if (u[i] != ps[i]) {
+                    same = false;
+                    break;
+                }
+            }
+            if (same) {
+                dup = true;
+                break;
+            }
+        }
+        if (!dup) uniq.push_back(std::move(ps));
     }
-    if (!found) return false;
-    out.clear();
-    for (auto p : found->params()) {
-        if (!p || !p->type()) return false;
-        try {
-            out.push_back(p->type()->getType());
-        } catch (...) { // NOLINT(bugprone-empty-catch)
-            return false;
+    if (uniq.empty()) return false;
+    out.assign(wantArity, TypeInfo());
+    bool any = false;
+    for (size_t i = 0; i < wantArity; ++i) {
+        const TypeInfo& t0 = uniq[0][i];
+        bool all = true;
+        for (size_t k = 1; k < uniq.size(); ++k) {
+            if (uniq[k][i] != t0) {
+                all = false;
+                break;
+            }
+        }
+        if (all && !t0.empty()) {
+            out[i] = t0;
+            any = true;
         }
     }
-    return true;
+    return any;
 }
 
 void copyFnParamTypes(const TypeInfo& fnTy, vector<TypeInfo>& out) {
@@ -1573,8 +1629,9 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
     if (auto n = dynamic_cast<p<ExprCallNode>>(expr)) {
         visitExpr(n->getCalleeExpr());
 
-        // Phase C：重载前实参靶向类型。仅当能在不看实参类型的情况下唯一确定形参
-        // （单 arity 非泛型候选 / Fn 值 callee / 非泛型方法）时下钻；同 arity 重载跳过。
+        // Phase C：重载前实参靶向类型。不看实参类型即可确定的形参才下钻：
+        // 单 arity 非泛型候选 / Fn 值 callee / 非泛型方法，以及同 arity 重载
+        // 各位都相同的类型。不一致的位置留空，不猜候选。
         vector<TypeInfo> callArgExpected;
         const vector<TypeInfo>* callArgExpPtr = nullptr;
         const bool hasTypeArgs = !n->getTypeArgs().empty();
@@ -1586,15 +1643,13 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                     if (structDecl && !structDecl->isGeneric()) {
                         vector<FnSymbolInfo*> cands;
                         collectOverloadsBoth(_file, _sdkFile, fnName + "." + fnName, cands);
-                        if (auto* u = uniqueArityCandidate(cands, n->getArgs().size() + 1)) {
-                            callArgExpected = paramsSkippingReceiver(u, 1);
+                        if (agreedArityParamTypes(cands, n->getArgs().size() + 1, 1, callArgExpected)) {
                             callArgExpPtr = &callArgExpected;
                         }
                     } else if (!structDecl && !_file->getGenericFunction(fnName).first) {
                         vector<FnSymbolInfo*> cands;
                         collectOverloadsBoth(_file, _sdkFile, fnName, cands);
-                        if (auto* u = uniqueArityCandidate(cands, n->getArgs().size())) {
-                            callArgExpected = u->params;
+                        if (agreedArityParamTypes(cands, n->getArgs().size(), 0, callArgExpected)) {
                             callArgExpPtr = &callArgExpected;
                         }
                     }
@@ -1637,8 +1692,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                             }
                             vector<FnSymbolInfo*> cands;
                             collectOverloadsBoth(_file, _sdkFile, baseType.name + "." + member, cands);
-                            if (auto* u = uniqueArityCandidate(cands, n->getArgs().size() + 1)) {
-                                callArgExpected = paramsSkippingReceiver(u, 1);
+                            if (agreedArityParamTypes(cands, n->getArgs().size() + 1, 1, callArgExpected)) {
                                 callArgExpPtr = &callArgExpected;
                             }
                         }
@@ -2458,8 +2512,9 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
     if (auto n = dynamic_cast<p<ExprPathCallNode>>(expr)) {
         vector<TypeInfo> pathArgExpected;
         const vector<TypeInfo>* pathArgExpPtr = nullptr;
-        if (n->lhsTypeArgs().empty() && uniqueStaticMethodParams(_file, _sdkFile, n->enumName().getText(),
-                                                                 n->variantName().getText(), pathArgExpected)) {
+        if (n->lhsTypeArgs().empty() &&
+            agreedStaticMethodParams(_file, _sdkFile, n->enumName().getText(), n->variantName().getText(),
+                                     n->args().size(), pathArgExpected)) {
             pathArgExpPtr = &pathArgExpected;
         }
         visitExprList(n->args(), pathArgExpPtr);

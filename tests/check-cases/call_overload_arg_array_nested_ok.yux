@@ -1,0 +1,12 @@
+; require-sdk
+; 同 arity 重载约定形参 Array<Array<i32>> 接受嵌套字面量（Phase C）
+
+fn take(tag i32, rows Array<Array<i32>>) {
+}
+
+fn take(tag str, rows Array<Array<i32>>) {
+}
+
+fn main() {
+  take(1, [[1, 2], [3, 4]])
+}
