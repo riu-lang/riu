@@ -1,0 +1,19 @@
+; Nullable 返回：null / T wrap / T? 整值拷贝（Phase C）
+fn none() i32? {
+  ret null
+}
+
+fn wrap() i32? {
+  ret 1
+}
+
+fn copy(x i32?) i32? {
+  ret x
+}
+
+fn main() {
+  none()
+  wrap()
+  copy(null)
+  ret;
+}

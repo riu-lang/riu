@@ -1,0 +1,17 @@
+; #Fallible 错误通道类型不对 → E3014（Phase C）
+enum ParseErr {
+  Empty
+}
+
+enum IoErr {
+  NotFound
+}
+
+#Fallible(ParseErr)
+fn parse() i32 {
+  ret IoErr::NotFound  ; check: E3014
+}
+
+fn main() {
+  ret;
+}

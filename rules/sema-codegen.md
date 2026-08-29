@@ -8,7 +8,8 @@
 - 数组 / 元组字面量：`visitExpr` 带 target-type（声明 / 赋值 / 返回 / 调用实参 / 字段 / 嵌套），E3009 / E3012 由 SemaPass 抛。
 - 调用实参：唯一 arity 非泛型候选（及 Fn 值 / 非泛型方法 / `#Static fn`）在重载前带形参类型下钻；同 arity 重载只对各位都相同的类型下钻，不一致的位置不猜。
 - lambda：`expected` 为 Fn 时 `setInferredFnType` + bodyScope 形参回填（声明 / 上述调用点）；表达式体带返回类型下钻并做 E3014；块体 `ret` / 末位无 `;` 的尾表达式按 lambda 标注或反推返回类型检查，不用外层 fn。
+- `ret`：Fallible 成功/错误双通道、T& 内层类型、Nullable wrap、别名 `resolveAlias`、灵活整数推断 → E3014。非法 T& 源形态由 analyzer E4001/E4020 先报。T& 局部 `&expr` 内层 E3014。
 - 新 AST / 表达式：`SemaPass::visitExpr` 必须加分支（可 `return;`），否则整棵子树被 skip。
-- 缺口（sema 不报、靠 codegen）：泛型实例化期类型错；部分 T& / Fallible。这些路径的 throw 写 Compiler。
+- 缺口（sema 不报、靠 codegen）：泛型实例化期类型错；部分 T& 赋值链。这些路径的 throw 写 Compiler。
 
 `yux-check <file>` 是 `yux build` 报错的**子集**。

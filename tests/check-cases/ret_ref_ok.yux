@@ -1,0 +1,12 @@
+; 合法 T& 返回：形参透传 / 方法 `$`（Phase C）
+struct Foo {
+  n i32
+
+  fn me() Self& = $
+}
+
+fn alias(p i32&) i32& = p
+
+fn main() {
+  ret;
+}

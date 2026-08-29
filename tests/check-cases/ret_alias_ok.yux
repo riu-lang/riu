@@ -1,0 +1,17 @@
+; 别名返回：展开后带靶向类型推断灵活整数（Phase C）
+L = i64
+IPair = (i32, i32)
+
+fn as_l() L {
+  ret 1
+}
+
+fn as_pair() IPair {
+  ret (1, 2)
+}
+
+fn main() {
+  as_l()
+  as_pair()
+  ret;
+}

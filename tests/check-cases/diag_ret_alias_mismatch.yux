@@ -1,0 +1,10 @@
+; 别名展开后的返回类型不匹配 → E3014（Phase C）
+I = i32
+
+fn bad() I {
+  ret true  ; check: E3014
+}
+
+fn main() {
+  bad()
+}

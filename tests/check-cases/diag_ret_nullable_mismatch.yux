@@ -1,0 +1,8 @@
+; Nullable 返回类型既不是 T 也不是 T? → E3014（Phase C）
+fn wrap() i32? {
+  ret true  ; check: E3014
+}
+
+fn main() {
+  wrap()
+}

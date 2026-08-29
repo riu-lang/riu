@@ -1,0 +1,13 @@
+; #Fallible 的 ret 既不是成功类型也不是错误枚举 → E3014（Phase C）
+enum ParseErr {
+  Empty
+}
+
+#Fallible(ParseErr)
+fn parse() i32 {
+  ret true  ; check: E3014
+}
+
+fn main() {
+  ret;
+}

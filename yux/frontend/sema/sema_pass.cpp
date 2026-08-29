@@ -275,34 +275,159 @@ bool lambdaExpectedRetType(p<LambdaExprNode> lam, TypeInfo& out) {
     return false;
 }
 
-bool isAliasTypeName(FileNode* file, FileNode* sdk, const string& n) {
-    if (n.empty()) return false;
-    if (file && file->getAliasDecl(n)) return true;
-    if (sdk && sdk != file && sdk->getAliasDecl(n)) return true;
-    return false;
+struct RetCheck {
+    FileNode* file = nullptr;
+    FileNode* sdk = nullptr;
+    FnNode* fn = nullptr;
+    string structName;
+    string fallibleErr; // 空 = 非 #Fallible
+};
+
+TypeInfo substSelfType(TypeInfo t, const string& structName) {
+    if (structName.empty()) return t;
+    if (t.isSelf()) {
+        t.name = structName;
+        return t;
+    }
+    if (t.isRef() && t.genericArgs.size() == 1 && t.genericArgs[0] && t.genericArgs[0]->isSelf()) {
+        auto inner = *t.genericArgs[0];
+        inner.name = structName;
+        return TypeInfo("Ref", {make_shared<TypeInfo>(std::move(inner))});
+    }
+    return t;
 }
 
-// 简单形态 E3014：跳过 T& / Nullable / Self / 灵活整数 / alias（与 fn ret 同款，无 Fallible）。
-void checkSimpleRetType(p<ExprNode> expr, const TypeInfo& declRet, bool hasDeclRet, int line, FileNode* file,
-                        FileNode* sdk) {
-    if (!expr) return;
-    bool skip = (hasDeclRet && (declRet.isRef() || declRet.isNullable() || declRet.isSelf())) ||
-                (hasDeclRet && isFlexibleIntExpr(expr)) || (hasDeclRet && isAliasTypeName(file, sdk, declRet.name));
-    if (skip) return;
-    TypeInfo retType;
-    bool gotType = true;
-    try {
-        retType = expr->hasResolvedType() ? expr->resolvedType() : expr->getType();
-    } catch (...) {
-        gotType = false;
+TypeInfo resolveForRet(const TypeInfo& t, const RetCheck& ctx) {
+    return sema::resolveAlias(substSelfType(t, ctx.structName), ctx.file, ctx.sdk);
+}
+
+bool tryGetExprType(p<ExprNode> expr, TypeInfo& out) {
+    if (!expr) return false;
+    if (expr->hasResolvedType()) {
+        out = expr->resolvedType();
+        return true;
     }
-    if (!gotType) return;
-    if (hasDeclRet && isAliasTypeName(file, sdk, retType.name)) return;
+    try {
+        out = expr->getType();
+        return true;
+    } catch (const YuxError&) {
+        throw;
+    } catch (...) { // NOLINT(bugprone-empty-catch)
+        return false;
+    }
+}
+
+SymbolInfo* lookupRetVar(const string& name, p<Node> n, FnNode* fn) {
+    if (n) {
+        if (auto sc = n->findNearestScope()) {
+            if (auto* s = sc->lookupSymbol(name)) return s;
+        }
+    }
+    return fn ? fn->lookupSymbol(name) : nullptr;
+}
+
+// 形态上合法的 T& 返回源：`$` / T& 变量 / `&expr` / 类型本身就是 T&（调用等）。
+// 成功时 srcInner 为剥 Ref 后的内层；找不到源 → false。
+bool refRetSourceInner(p<ExprNode> expr, FnNode* fn, TypeInfo& srcInner) {
+    if (auto litExpr = dynamic_cast<p<ExprLiteralNode>>(expr)) {
+        if (auto objLit = dynamic_cast<p<LiteralObjNode>>(litExpr->literal())) {
+            auto vname = objLit->getValue().getText();
+            auto* sym = lookupRetVar(vname, expr, fn);
+            const bool isDollar = (vname == "$");
+            const bool isRefVar = sym && sym->type.isRef();
+            if (isDollar || isRefVar) {
+                if (isDollar) {
+                    srcInner = sym ? sym->type : TypeInfo();
+                    if (srcInner.isRef()) {
+                        if (auto in = srcInner.refElementType()) srcInner = *in;
+                    }
+                } else if (auto in = sym->type.refElementType()) {
+                    srcInner = *in;
+                }
+                return true;
+            }
+        }
+    }
+    if (auto getRef = dynamic_cast<p<ExprGetRefNode>>(expr)) {
+        TypeInfo t;
+        if (!tryGetExprType(getRef, t)) return false;
+        if (t.isRef()) {
+            if (auto in = t.refElementType()) srcInner = *in;
+        }
+        return true;
+    }
+    TypeInfo t;
+    if (!tryGetExprType(expr, t) || !t.isRef()) return false;
+    if (auto in = t.refElementType()) srcInner = *in;
+    return true;
+}
+
+// Phase C：ret 表达式 E3014。Fallible 成功/错误双通道、T& 形态、Nullable wrap、
+// 别名 resolveAlias、灵活整数推断。spec 体里未解析的 Self 仍跳过。
+void checkRetExpr(p<ExprNode> expr, const TypeInfo& declRet, bool hasDeclRet, int line, const RetCheck& ctx) {
+    if (!expr) return;
+    if (hasDeclRet && declRet.isSelf() && ctx.structName.empty()) return;
+
+    if (hasDeclRet) {
+        auto resolvedDecl = resolveForRet(declRet, ctx);
+        if (isIntTypeName(resolvedDecl.name) && isFlexibleIntExpr(expr)) {
+            tryInferIntType(expr, resolvedDecl);
+        }
+        if (resolvedDecl.isNullable()) {
+            if (auto inner = resolvedDecl.nullableInnerType()) {
+                if (isIntTypeName(inner->name) && isFlexibleIntExpr(expr)) tryInferIntType(expr, *inner);
+            }
+        }
+    }
+
+    TypeInfo retType;
+    if (!tryGetExprType(expr, retType)) return;
+
+    if (!ctx.fallibleErr.empty()) {
+        auto resolvedRet = resolveForRet(retType, ctx);
+        bool isSuccess = hasDeclRet && (resolvedRet == resolveForRet(declRet, ctx));
+        bool isError = (resolvedRet.name == ctx.fallibleErr);
+        if (!isSuccess && !isError) {
+            throw YuxError(line, ErrorCode::E3014, hasDeclRet ? declRet.getFullName() : string("void"),
+                           retType.getFullName());
+        }
+        return;
+    }
+
+    if (hasDeclRet && declRet.isRef()) {
+        TypeInfo srcInner;
+        if (!refRetSourceInner(expr, ctx.fn, srcInner)) {
+            throw YuxError(line, ErrorCode::E3014, declRet.getFullName(), retType.getFullName())
+                .withHint("返回 T& 时，ret 表达式应为 `$` / T& 变量 / `&expr` / 返回 T& 的调用");
+        }
+        auto declInner = substSelfType(declRet, ctx.structName).refElementType();
+        TypeInfo declInnerResolved = declInner ? resolveForRet(*declInner, ctx) : TypeInfo();
+        srcInner = resolveForRet(srcInner, ctx);
+        if (declInner && !srcInner.empty() && declInnerResolved != srcInner) {
+            throw YuxError(line, ErrorCode::E3014, declRet.getFullName(), (srcInner.name + "&"));
+        }
+        return;
+    }
+
+    if (hasDeclRet && declRet.isNullable()) {
+        auto resolvedDecl = resolveForRet(declRet, ctx);
+        auto innerType = resolvedDecl.nullableInnerType();
+        if (innerType && isFlexibleNullExpr(expr)) return;
+        if (innerType) {
+            auto resolvedRet = resolveForRet(retType, ctx);
+            bool wholeCopy = resolvedRet.isNullable() && resolvedRet == resolvedDecl;
+            bool wrap = resolvedRet == resolveForRet(*innerType, ctx);
+            if (wholeCopy || wrap) return;
+        }
+        throw YuxError(line, ErrorCode::E3014, declRet.getFullName(),
+                       retType.empty() ? string("void") : retType.getFullName());
+    }
+
     if (hasDeclRet) {
         if (retType.empty()) {
             throw YuxError(line, ErrorCode::E3014, declRet.getFullName(), "void");
         }
-        if (retType != declRet) {
+        if (resolveForRet(retType, ctx) != resolveForRet(declRet, ctx)) {
             throw YuxError(line, ErrorCode::E3014, declRet.getFullName(), retType.getFullName());
         }
     } else if (!retType.empty()) {
@@ -1050,85 +1175,51 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         return;
     }
     if (auto ret = dynamic_cast<p<StatementRetNode>>(stmt)) {
-        // Bucket 2 收口 (CURRENT-check.md): E3020 / E3022 return 类型校验.
-        // 只覆盖"简单形态" —— 跳过以下复杂路径, 交 Compiler 兜底:
-        //   * declRetType.isRef()       —— T& 返回, 走 borrow 溯源 + getRef compile
-        //   * Fallible(E) 注解          —— 成功 / 错误双通道, 复用 E3020 但多分支
-        //   * declRetType.isNullable()  —— null 字面量 / T 值自动 wrap
-        //   * isFlexibleIntExpr(expr)   —— 灵活整数推断后再比, sema 不改写 expr 类型
-        //   * declRetType.isSelf() —— 方法上下文 Self 解析需 currentStructName 替换
-        // 普通 case: `fn add() i32 { ret true }` (E3020) /
-        //           `fn foo() { ret 42 }` (E3022).
-        // Phase C：lambda 体内用 lambda 自身标注 / 反推返回类型，不用外层 fn
-        // （否则 E3014 会按外层 retType 误报）。无期望时仍只下钻、不比类型。
+        // Phase C：ret E3014（Fallible 双通道 / T& 形态 / Nullable wrap / 别名 /
+        // 灵活整数）。lambda 用自身标注或反推返回类型，不用外层 fn。
+        // spec 体未解析 Self、以及 T& 的 borrow 溯源（E4020）仍交 analyzer / Compiler。
         TypeInfo retExpected;
+        TypeInfo retExpectedResolved;
         const TypeInfo* retExpPtr = nullptr;
         bool lambdaHasExpected = false;
+        RetCheck retCtx{
+            .file = _file, .sdk = _sdkFile, .fn = _currentFn, .structName = _currentStructName, .fallibleErr = {}};
         if (_currentLambda) {
             lambdaHasExpected = lambdaExpectedRetType(_currentLambda, retExpected);
-            if (lambdaHasExpected) retExpPtr = &retExpected;
+            if (lambdaHasExpected) {
+                retExpectedResolved = resolveForRet(retExpected, retCtx);
+                retExpPtr = &retExpectedResolved;
+            }
         } else if (_currentFn && ret->expr()) {
             auto header = _currentFn->header();
             if (header && header->retType()) {
                 try {
                     retExpected = header->retType()->getType();
-                    retExpPtr = &retExpected;
+                    retExpectedResolved = resolveForRet(retExpected, retCtx);
+                    retExpPtr = &retExpectedResolved;
                 } catch (const YuxError&) {
                     throw;
                 } catch (...) { // NOLINT(bugprone-empty-catch)
                 }
             }
+            if (header) {
+                if (auto e = header->getAnnoArg("Fallible")) retCtx.fallibleErr = *e;
+            }
         }
         if (ret->expr()) visitExpr(ret->expr(), retExpPtr);
-        if (_currentLambda) {
-            if (lambdaHasExpected && ret->expr()) {
-                int line = ret->getLineNumber();
-                if (line < 0) line = ret->expr()->resolveLineNumber();
-                checkSimpleRetType(ret->expr(), retExpected, !retExpected.empty(), line, _file, _sdkFile);
-            }
-        } else if (_currentFn && ret->expr()) {
-            auto header = _currentFn->header();
-            bool hasFallible = header && header->getAnnoArg("Fallible").has_value();
-            bool hasDeclRet = header && header->retType();
-            TypeInfo declRetType;
-            if (hasDeclRet) declRetType = header->retType()->getType();
-            // 灵活整数推断仅在有 declRetType 时影响匹配 (Compiler 会先 tryInferIntType
-            // 改写 expr 类型再比); 无 decl 时 (E3022 路径) 不构成 skip 理由.
-            // alias 形态 (`IPair = (i32, i32)` 等) `TypeInfo==` 会假阳性 (`IPair` vs `(i32,i32)`),
-            // sema 暂未做 resolveAlias 递归比对, 任一侧名称命中 alias 即 skip 留 Compiler 兜底.
-            auto isAliased = [&](const string& n) -> bool {
-                if (!_file) return false;
-                return _file->getAliasDecl(n) != nullptr;
-            };
-            bool skip = hasFallible || (hasDeclRet && (declRetType.isRef() || declRetType.isNullable())) ||
-                        (hasDeclRet && declRetType.isSelf()) || (hasDeclRet && isFlexibleIntExpr(ret->expr())) ||
-                        (hasDeclRet && isAliased(declRetType.name));
-            if (!skip) {
-                TypeInfo retType;
-                bool gotType = true;
-                try {
-                    retType = ret->expr()->getType();
-                } catch (...) {
-                    gotType = false;
+        if (ret->expr() && (_currentLambda ? lambdaHasExpected : _currentFn != nullptr)) {
+            int line = ret->getLineNumber();
+            if (line < 0) line = ret->expr()->resolveLineNumber();
+            if (_currentLambda) {
+                checkRetExpr(ret->expr(), retExpected, !retExpected.empty(), line, retCtx);
+            } else {
+                TypeInfo decl;
+                bool hasDecl = false;
+                if (_currentFn->header() && _currentFn->header()->retType()) {
+                    decl = _currentFn->header()->retType()->getType();
+                    hasDecl = true;
                 }
-                if (gotType && !(hasDeclRet && isAliased(retType.name))) {
-                    int line = ret->getLineNumber();
-                    if (line < 0) line = ret->expr()->resolveLineNumber();
-                    if (hasDeclRet) {
-                        if (retType.empty()) {
-                            throw YuxError(line, ErrorCode::E3014, declRetType.getFullName(), "void");
-                        }
-                        // TypeInfo== —— 不做 resolveAlias (sema 暂无该 helper);
-                        // alias 形态 / Self 已在 skip 排除, 这里假阴性可接受 (Compiler 兜底).
-                        if (retType != declRetType) {
-                            throw YuxError(line, ErrorCode::E3014, declRetType.getFullName(), retType.getFullName());
-                        }
-                    } else {
-                        if (!retType.empty()) {
-                            throw YuxError(line, ErrorCode::E3014, "void", retType.getFullName());
-                        }
-                    }
-                }
+                checkRetExpr(ret->expr(), decl, hasDecl, line, retCtx);
             }
         }
         // v0.16 闭包捕获: lambda 字面量直接作 ret expr 且含 T& 捕获 → E4022
@@ -1144,11 +1235,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         return;
     }
     if (auto da = dynamic_cast<p<StatementDeclareAssignNode>>(stmt)) {
-        // Bucket 6 (CURRENT-check.md): T& 局部声明初始化形态校验 (E3018).
-        // 只接管"低风险"分支: expr 是 ID-literal (LiteralObjNode) 且 varType 为 ref —
-        //   srcName 必须查到符号, 且符号本身是 T&, refElementType 与声明 inner 一致.
-        //   不满足 → 抛 E3018 (与 compiler_stmt.cpp:484-499 同款 hint).
-        // 其它形态 (ExprGetRef E3017 / ExprCall as_ref E3019 / 复杂 expr) 留 Compiler 兜底.
+        // T& 局部初始化：ID copy-bind E3018、`&expr` 内层 E3014、其余非法形态 E3019.
         // lambda 体 sema 不下钻 — 这里检查 _currentFn 非空再做.
         // Bucket 4 起步 (CURRENT-check.md): E6011 (泛型 struct arity 不匹配).
         // 不依赖 expr / _currentFn, 仅 varType 形态. varType.name 命中已知 struct decl,
@@ -1240,16 +1327,23 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             if (varType.isRef()) {
                 auto innerType = varType.refElementType();
                 if (innerType) {
-                    if (auto litExpr = dynamic_cast<p<ExprLiteralNode>>(da->expr())) {
+                    auto* rhs = da->expr();
+                    if (auto getRef = dynamic_cast<p<ExprGetRefNode>>(rhs)) {
+                        TypeInfo getTy;
+                        if (tryGetExprType(getRef, getTy)) {
+                            auto innerOfGetRef = getTy.refElementType();
+                            if (!innerOfGetRef || *innerOfGetRef != *innerType) {
+                                throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3014, innerType->name,
+                                               innerOfGetRef ? innerOfGetRef->name : "?")
+                                    .withHint(std::format(
+                                        "&expr 的内层类型必须与声明一致；预期 `&<{}>`，源表达式给出 `&<{}>`",
+                                        innerType->name, innerOfGetRef ? innerOfGetRef->name : "?"));
+                            }
+                        }
+                    } else if (auto litExpr = dynamic_cast<p<ExprLiteralNode>>(rhs)) {
                         if (auto litObj = dynamic_cast<p<LiteralObjNode>>(litExpr->literal())) {
                             string srcName = litObj->getValue().getText();
-                            SymbolInfo* sym = nullptr;
-                            if (auto sc = da->findNearestScope()) {
-                                sym = sc->lookupSymbol(srcName);
-                            }
-                            if (!sym && _currentFn) {
-                                sym = _currentFn->lookupSymbol(srcName);
-                            }
+                            SymbolInfo* sym = lookupRetVar(srcName, da, _currentFn);
                             if (!sym || !sym->type.isRef() || !sym->type.refElementType() ||
                                 *sym->type.refElementType() != *innerType) {
                                 throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3018, srcName,
@@ -1258,7 +1352,42 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                                                           "`&<expr-of-{}>` 或先声明同类型 T&",
                                                           srcName, innerType->name, innerType->name));
                             }
+                        } else {
+                            throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3019)
+                                .withHint("T& 局部初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量），或 "
+                                          "`val r T& = as_ref(box)`");
                         }
+                    } else if (auto callExpr = dynamic_cast<p<ExprCallNode>>(rhs)) {
+                        string calleeName;
+                        if (auto litCallee = dynamic_cast<p<ExprLiteralNode>>(callExpr->getCalleeExpr())) {
+                            if (auto obj = dynamic_cast<p<LiteralObjNode>>(litCallee->literal())) {
+                                calleeName = obj->getValue().getText();
+                            }
+                        }
+                        TypeInfo callTy;
+                        bool callRetIsRef = tryGetExprType(callExpr, callTy) && callTy.isRef();
+                        if (calleeName != "as_ref" && !callRetIsRef) {
+                            throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3019)
+                                .withHint(
+                                    "T& 局部初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量）、`val r "
+                                    "T& = as_ref(box)` 或返回 T& 的方法/函数调用");
+                        }
+                    } else if (auto pathCall = dynamic_cast<p<ExprPathCallNode>>(rhs)) {
+                        TypeInfo pathTy;
+                        if (!tryGetExprType(pathCall, pathTy) || !pathTy.isRef()) {
+                            throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3019)
+                                .withHint("静态路径不返回 T& 类型，无法初始化 T& 局部");
+                        }
+                    } else if (auto getNode = dynamic_cast<p<ExprGetNode>>(rhs)) {
+                        TypeInfo getTy;
+                        if (!tryGetExprType(getNode, getTy) || !getTy.isRef()) {
+                            throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3019)
+                                .withHint("数组索引不返回 T& 类型，无法初始化 T& 局部");
+                        }
+                    } else {
+                        throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3019)
+                            .withHint("T& 局部初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量），或 "
+                                      "`val r T& = as_ref(box)`");
                     }
                 }
             }
@@ -2459,12 +2588,20 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
 
         const TypeInfo* bodyExp = nullptr;
         TypeInfo bodyRetStorage;
-        if (lambdaExpectedRetType(n, bodyRetStorage)) bodyExp = &bodyRetStorage;
+        TypeInfo bodyRetResolved;
+        if (lambdaExpectedRetType(n, bodyRetStorage)) {
+            bodyRetResolved = resolveForRet(
+                bodyRetStorage,
+                RetCheck{.file = _file, .sdk = _sdkFile, .fn = _currentFn, .structName = _currentStructName});
+            bodyExp = &bodyRetResolved;
+        }
         if (n->bodyExpr()) {
             visitExpr(n->bodyExpr(), bodyExp);
             if (bodyExp) {
                 int line = n->bodyExpr()->resolveLineNumber();
-                checkSimpleRetType(n->bodyExpr(), bodyRetStorage, !bodyRetStorage.empty(), line, _file, _sdkFile);
+                checkRetExpr(
+                    n->bodyExpr(), bodyRetStorage, !bodyRetStorage.empty(), line,
+                    RetCheck{.file = _file, .sdk = _sdkFile, .fn = _currentFn, .structName = _currentStructName});
             }
         } else {
             const auto& stmts = n->bodyStmts();
@@ -2482,7 +2619,9 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                     }
                     visitExpr(se->expr(), bodyExp);
                     int line = se->expr()->resolveLineNumber();
-                    checkSimpleRetType(se->expr(), bodyRetStorage, !bodyRetStorage.empty(), line, _file, _sdkFile);
+                    checkRetExpr(
+                        se->expr(), bodyRetStorage, !bodyRetStorage.empty(), line,
+                        RetCheck{.file = _file, .sdk = _sdkFile, .fn = _currentFn, .structName = _currentStructName});
                 } else {
                     visitStmt(stmts[i]);
                 }
