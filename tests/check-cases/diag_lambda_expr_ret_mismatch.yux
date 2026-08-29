@@ -1,0 +1,5 @@
+; 表达式体 lambda 显式返回类型与体类型不匹配由 SemaPass 报（Phase C）
+
+fn main() {
+  let f = () i32 => true  ; check: E3014
+}

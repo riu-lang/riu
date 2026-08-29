@@ -1,0 +1,7 @@
+; 块体末位无分号的尾表达式按反推返回类型检查（Phase C）
+
+fn main() {
+  let f Function<i32> = () => {
+    true  ; check: E3014
+  }
+}

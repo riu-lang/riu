@@ -1,0 +1,8 @@
+; require-sdk
+; 块体 lambda ret 嵌套数组字面量带靶向类型（Phase C E3009）
+
+fn main() {
+  let f Function<Array<Array<i32>>> = () => {
+    ret [[1, 2], [3, "x"]]  ; check: E3009
+  }
+}

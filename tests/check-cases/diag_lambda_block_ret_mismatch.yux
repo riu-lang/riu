@@ -1,0 +1,7 @@
+; 块体 lambda 显式返回类型，ret 表达式类型错由 SemaPass 报（Phase C）
+
+fn main() {
+  let f = () i32 => {
+    ret true  ; check: E3014
+  }
+}

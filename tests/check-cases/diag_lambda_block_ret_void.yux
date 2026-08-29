@@ -1,0 +1,7 @@
+; 块体 lambda 期望非 void 时 `ret;` 由 SemaPass 报 E3014（Phase C）
+
+fn main() {
+  let f = () i32 => {
+    ret;  ; check: E3014
+  }
+}

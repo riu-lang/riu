@@ -227,6 +227,76 @@ void applyLambdaFnExpected(p<LambdaExprNode> lam, const TypeInfo& fnTy) {
     }
 }
 
+// 显式 retType 优先，否则用上下文反推的 Fn 返回类型（nullptr = void）。
+// 两者都没有 → false（尚无期望，不比类型）。
+bool lambdaExpectedRetType(p<LambdaExprNode> lam, TypeInfo& out) {
+    if (!lam) return false;
+    if (lam->retType()) {
+        try {
+            out = lam->retType()->getType();
+            return true;
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+            return false;
+        }
+    }
+    if (lam->inferredFnType().isFn()) {
+        if (auto rt = lam->inferredFnType().fnReturnType())
+            out = *rt;
+        else
+            out = TypeInfo();
+        return true;
+    }
+    return false;
+}
+
+bool isAliasTypeName(FileNode* file, FileNode* sdk, const string& n) {
+    if (n.empty()) return false;
+    if (file && file->getAliasDecl(n)) return true;
+    if (sdk && sdk != file && sdk->getAliasDecl(n)) return true;
+    return false;
+}
+
+// 简单形态 E3014：跳过 T& / Nullable / Self / 灵活整数 / alias（与 fn ret 同款，无 Fallible）。
+void checkSimpleRetType(p<ExprNode> expr, const TypeInfo& declRet, bool hasDeclRet, int line, FileNode* file,
+                        FileNode* sdk) {
+    if (!expr) return;
+    bool skip = (hasDeclRet && (declRet.isRef() || declRet.isNullable() || declRet.isSelf())) ||
+                (hasDeclRet && isFlexibleIntExpr(expr)) || (hasDeclRet && isAliasTypeName(file, sdk, declRet.name));
+    if (skip) return;
+    TypeInfo retType;
+    bool gotType = true;
+    try {
+        retType = expr->hasResolvedType() ? expr->resolvedType() : expr->getType();
+    } catch (...) {
+        gotType = false;
+    }
+    if (!gotType) return;
+    if (hasDeclRet && isAliasTypeName(file, sdk, retType.name)) return;
+    if (hasDeclRet) {
+        if (retType.empty()) {
+            throw YuxError(line, ErrorCode::E3014, declRet.getFullName(), "void");
+        }
+        if (retType != declRet) {
+            throw YuxError(line, ErrorCode::E3014, declRet.getFullName(), retType.getFullName());
+        }
+    } else if (!retType.empty()) {
+        throw YuxError(line, ErrorCode::E3014, "void", retType.getFullName());
+    }
+}
+
+// 块体末位无 `;` 的裸表达式语句（隐式尾值），不含 ret / 声明 / 赋值子类。
+bool isBareTailExprStmt(p<StatementNode> s) {
+    auto se = dynamic_cast<p<StatementExprNode>>(s);
+    if (!se || se->hasSemicolon() || !se->expr()) return false;
+    if (dynamic_cast<p<StatementRetNode>>(s)) return false;
+    if (dynamic_cast<p<StatementDeclareAssignNode>>(s)) return false;
+    if (dynamic_cast<p<StatementDeclareAssignTupleNode>>(s)) return false;
+    if (dynamic_cast<p<StatementAssignNode>>(s)) return false;
+    return true;
+}
+
 bool uniqueStaticMethodParams(FileNode* file, FileNode* sdk, const string& lhs, const string& rhs,
                               vector<TypeInfo>& out) {
     StructDeclNode* sd = file ? file->getStructDecl(lhs, true) : nullptr;
@@ -664,7 +734,16 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         }
         return;
     }
-    if (dynamic_cast<p<StatementRetVoidNode>>(stmt)) return;
+    if (auto rv = dynamic_cast<p<StatementRetVoidNode>>(stmt)) {
+        // Phase C：lambda 期望非 void 时 `ret;` → E3014（镜像 compileRetVoidStatement）。
+        if (_currentLambda) {
+            TypeInfo want;
+            if (lambdaExpectedRetType(_currentLambda, want) && !want.empty()) {
+                throw YuxError(rv->getLineNumber(), rv->getColumn(), ErrorCode::E3014, want.getFullName(), "void");
+            }
+        }
+        return;
+    }
     if (auto d = dynamic_cast<p<StatementDeclareNode>>(stmt)) {
         // Bucket 4 起步 (CURRENT-check.md): E6011 (泛型 struct arity).
         // 无 init 形态 (`let p Pair<i32>`), 仅 varType, 同款检查.
@@ -917,13 +996,15 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         //   * declRetType.isSelf() —— 方法上下文 Self 解析需 currentStructName 替换
         // 普通 case: `fn add() i32 { ret true }` (E3020) /
         //           `fn foo() { ret 42 }` (E3022).
-        // v0.16: lambda body 内 ret 的返回类型校验依赖 lambda 自身的 retType,
-        // 但 lambda 形参 / retType 可能在调用点才反推; sema 阶段 _currentFn 仍是
-        // 外层 fn, E3020/E3022 以 _currentFn 的 retType 为准会误报。整个 check
-        // skip, 留 codegen 在 emitLambdaFunction 内兜底。
+        // Phase C：lambda 体内用 lambda 自身标注 / 反推返回类型，不用外层 fn
+        // （否则 E3014 会按外层 retType 误报）。无期望时仍只下钻、不比类型。
         TypeInfo retExpected;
         const TypeInfo* retExpPtr = nullptr;
-        if (!_currentLambda && _currentFn && ret->expr()) {
+        bool lambdaHasExpected = false;
+        if (_currentLambda) {
+            lambdaHasExpected = lambdaExpectedRetType(_currentLambda, retExpected);
+            if (lambdaHasExpected) retExpPtr = &retExpected;
+        } else if (_currentFn && ret->expr()) {
             auto header = _currentFn->header();
             if (header && header->retType()) {
                 try {
@@ -935,12 +1016,14 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                 }
             }
         }
-        if (_currentLambda) {
-            if (ret->expr()) visitExpr(ret->expr());
-            return;
-        }
         if (ret->expr()) visitExpr(ret->expr(), retExpPtr);
-        if (_currentFn && ret->expr()) {
+        if (_currentLambda) {
+            if (lambdaHasExpected && ret->expr()) {
+                int line = ret->getLineNumber();
+                if (line < 0) line = ret->expr()->resolveLineNumber();
+                checkSimpleRetType(ret->expr(), retExpected, !retExpected.empty(), line, _file, _sdkFile);
+            }
+        } else if (_currentFn && ret->expr()) {
             auto header = _currentFn->header();
             bool hasFallible = header && header->getAnnoArg("Fallible").has_value();
             bool hasDeclRet = header && header->retType();
@@ -2268,17 +2351,33 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
 
         const TypeInfo* bodyExp = nullptr;
         TypeInfo bodyRetStorage;
-        if (n->inferredFnType().isFn()) {
-            if (auto rt = n->inferredFnType().fnReturnType()) {
-                bodyRetStorage = *rt;
-                bodyExp = &bodyRetStorage;
-            }
-        }
+        if (lambdaExpectedRetType(n, bodyRetStorage)) bodyExp = &bodyRetStorage;
         if (n->bodyExpr()) {
             visitExpr(n->bodyExpr(), bodyExp);
+            if (bodyExp) {
+                int line = n->bodyExpr()->resolveLineNumber();
+                checkSimpleRetType(n->bodyExpr(), bodyRetStorage, !bodyRetStorage.empty(), line, _file, _sdkFile);
+            }
         } else {
-            for (auto& stmt : n->bodyStmts()) {
-                visitStmt(stmt);
+            const auto& stmts = n->bodyStmts();
+            for (size_t i = 0; i < stmts.size(); ++i) {
+                const bool lastBare = (i + 1 == stmts.size()) && isBareTailExprStmt(stmts[i]);
+                if (lastBare && bodyExp) {
+                    auto se = dynamic_cast<p<StatementExprNode>>(stmts[i]);
+                    if (!se || !se->expr()) {
+                        visitStmt(stmts[i]);
+                        continue;
+                    }
+                    if (auto ma = dynamic_cast<p<ExprMoveAssignNode>>(se->expr())) {
+                        DiagnosticEngine::emit(
+                            _sourcePath, YuxError(ma->resolveLineNumber(), ma->resolveColumn(), ErrorCode::E4030));
+                    }
+                    visitExpr(se->expr(), bodyExp);
+                    int line = se->expr()->resolveLineNumber();
+                    checkSimpleRetType(se->expr(), bodyRetStorage, !bodyRetStorage.empty(), line, _file, _sdkFile);
+                } else {
+                    visitStmt(stmts[i]);
+                }
             }
         }
 

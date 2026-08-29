@@ -1,0 +1,11 @@
+; 调用点 Function 形参反推块体 lambda 后，ret 类型错由 SemaPass 报（Phase C）
+
+fn apply(f Function<i32>) i32 {
+  ret f()
+}
+
+fn main() {
+  apply(() => {
+    ret true  ; check: E3014
+  })
+}

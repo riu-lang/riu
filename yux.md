@@ -118,7 +118,7 @@ flowchart TB
     ast[AST] --> sema{SemaPass.visit*}
 
     sema -- "getType YuxError<br/>默认重抛" --> throwSema[throw YuxError]
-    sema -- "kDeferredCodes / 缺口<br/>(E3095 / 实例化期 / lambda)" --> skip[交给 Compiler]
+    sema -- "kDeferredCodes / 缺口<br/>(E3095 / 实例化期)" --> skip[交给 Compiler]
 
     throwSema --> userErr[(诊断输出)]
     skip --> compiler[Compiler<br/>compiler_*.cpp]
