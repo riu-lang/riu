@@ -1,0 +1,12 @@
+; 未知方法：getType 回落成基类型后报 E3095（Phase C 方法点延迟重抛）
+
+struct Foo {
+  x i32
+}
+
+fn main() {
+  let f = Foo {
+    .x = 1
+  }
+  f.nope()  ; check: E3095
+}

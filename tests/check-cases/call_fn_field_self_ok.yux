@@ -1,0 +1,20 @@
+; 方法体内 `$.h(...)` Function 字段调用不是 E3095（Phase C 方法点）
+
+fn add(a i32, b i32) i32 {
+  ret a + b
+}
+
+struct Box {
+  h Function<i32, i32>
+
+  fn run(a i32, b i32) i32 {
+    ret $.h(a, b)
+  }
+}
+
+fn main() {
+  let b = Box {
+    .h = add
+  }
+  let n = b.run(1, 2)
+}

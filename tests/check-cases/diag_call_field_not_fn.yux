@@ -1,0 +1,12 @@
+; 字段当 callee 且类型不是 Fn → E3095（Phase C 方法点）
+
+struct Foo {
+  x i32
+}
+
+fn main() {
+  let f = Foo {
+    .x = 1
+  }
+  f.x()  ; check: E3095
+}

@@ -1,0 +1,16 @@
+; 泛型模板体内对具体类型调未知方法：形态 E3095，不依赖 T
+
+struct Foo {
+  x i32
+}
+
+fn wrap<T>(x T) T {
+  let f = Foo {
+    .x = 1
+  }
+  f.nope()  ; check: E3095
+  ret x
+}
+
+fn main() {
+}

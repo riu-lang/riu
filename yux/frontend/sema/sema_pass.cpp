@@ -9,8 +9,9 @@
 //
 // Phase B：SemaPass 为 getType 诊断的权威抛出点。默认重抛所有 YuxError。
 // Phase C：泛型 fn/impl 体再吞一批依赖 T 具体化的码（见 isMorphologicalGenericCode）。
-// 方法点 callee 的 E3095 仍吞：getType 会把找不到的方法回落成基类型再抛
-// 「不是函数」，挡住 E1101/E1140。ID-literal 的 E3095（类型名 / 非函数当 callee）重抛。
+// 方法点 callee 的 E3095：getType 会把找不到的方法回落成基类型再抛「不是函数」，
+// 挡住 E1101/E1140，故先按形态记下，Dot 分支校验 @Spec 后再决定重抛。
+// 字段非 Fn 值由 Dot 分支直接报 E3095。ID-literal 的 E3095 仍立即重抛。
 // 非 YuxError 在 debug 下 assert，禁止静默吞。
 
 #include "sema/sema_pass.h"
@@ -21,6 +22,7 @@
 #include <array>
 #include <cassert>
 #include <cstddef>
+#include <optional>
 #include <set>
 #include <string_view>
 
@@ -43,10 +45,23 @@
 
 namespace {
 // getType 对方法点 callee 会把「找不到的方法」回落成基类型，再按非函数符号抛 E3095。
-// 该形态留给后面的 Dot 分支报 E1101/E1140；ID-literal 的 E3095 不走这里。
+// visitExpr 先记下，Dot 分支报完 E1101/E1140 后再决定是否重抛。ID-literal 不走这里。
 bool isMethodPointCall(ExprNode* expr) {
     auto* call = dynamic_cast<ExprCallNode*>(expr);
     return call && dynamic_cast<ExprDotNode*>(call->getCalleeExpr());
+}
+
+// 字段 / 变量当 callee 时：Fn / Rc<Fn> / Ref<Fn> / 别名展开后的 Fn 才是合法调用。
+bool isFnCalleeType(const TypeInfo& t, FileNode* file, FileNode* sdkFile) {
+    TypeInfo u = sema::resolveAlias(t, file, sdkFile);
+    if (u.isFn()) return true;
+    if (u.isRc()) {
+        if (auto inner = u.rcElementType()) return sema::resolveAlias(*inner, file, sdkFile).isFn();
+    }
+    if (u.isRef()) {
+        if (auto inner = u.refElementType()) return sema::resolveAlias(*inner, file, sdkFile).isFn();
+    }
+    return false;
 }
 
 // Phase 3.3.2.f: 与 Compiler::isBuiltinMethod 等价的本地版本.
@@ -159,7 +174,7 @@ bool isMorphologicalGenericCode(const char* code) {
         "E3128",          // #Static 体内 $
         "E2030",          // lambda 捕获赋值
         "E4033",          // use-after-move
-        "E3095",          // 类型名 / 非函数当 callee（方法点仍在 visitExpr 按形态吞）
+        "E3095",          // 类型名 / 非函数当 callee（方法点在 Dot 分支延迟重抛）
     };
     for (auto c : kKeep) {
         if (sv == c) return true;
@@ -1411,7 +1426,8 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
 
     // Phase B：getType 诊断默认由 SemaPass 重抛。
     // Phase C：泛型模板体内再吞依赖 T 具体化的码；形态检查仍重抛。
-    // 方法点 E3095 吞给后面的 Dot 分支（E1101/E1140）；ID-literal 的 E3095 重抛。
+    // 方法点 E3095 先记下，给后面的 Dot 分支报 E1101/E1140；ID-literal 的 E3095 重抛。
+    std::optional<YuxError> deferredMethodE3095;
     try {
         expr->setResolvedType(expr->getType());
     } catch (const YuxError& e) {
@@ -1420,6 +1436,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
         const bool swallow =
             methodPointE3095 || (!_currentTypeParams.empty() && !isMorphologicalGenericCode(e.getCode()));
         if (!swallow) throw;
+        if (methodPointE3095) deferredMethodE3095 = e;
     } catch (...) { // NOLINT(bugprone-empty-catch) — release 仍吞非 YuxError；debug 下 assert
 #ifndef NDEBUG
         assert(false && "getType threw non-YuxError; SemaPass must not swallow unknown failures");
@@ -2111,6 +2128,27 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                     } // end else (non-Dyn)
                 }
             }
+            // Phase C：字段当 callee 且类型不是 Fn 值 → E3095。
+            // @Spec 已在上面报完 E1101/E1140；未知方法的 getType 假阳性不走这里。
+            if (!dotCallee->hasSpecQualifier()) {
+                bool isField = false;
+                try {
+                    isField = dotCallee->isFieldAccess();
+                } catch (...) { // NOLINT(bugprone-empty-catch)
+                }
+                if (isField) {
+                    TypeInfo fieldTy;
+                    bool tyOk = true;
+                    try {
+                        fieldTy = dotCallee->hasResolvedType() ? dotCallee->resolvedType() : dotCallee->getType();
+                    } catch (...) { // NOLINT(bugprone-empty-catch)
+                        tyOk = false;
+                    }
+                    if (tyOk && !fieldTy.empty() && !isFnCalleeType(fieldTy, _file, _sdkFile)) {
+                        throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3095, fieldTy.getFullName());
+                    }
+                }
+            }
             vector<TypeInfo> argTypes;
             bool ok = true;
             for (auto& a : n->getArgs()) {
@@ -2284,6 +2322,29 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                 throw;
             } catch (...) { // NOLINT(bugprone-empty-catch)
                 // getType 失败或符号查找失败——留 Compiler 兜底
+            }
+        }
+        // 未知方法等：getType 回落成基类型抛的 E3095，@Spec / TypeParam 已排除。
+        if (deferredMethodE3095) {
+            auto* dot = dynamic_cast<p<ExprDotNode>>(n->getCalleeExpr());
+            if (dot && !dot->hasSpecQualifier()) {
+                TypeInfo baseType;
+                bool baseOk = true;
+                try {
+                    baseType = dot->baseExpr()->hasResolvedType() ? dot->baseExpr()->resolvedType()
+                                                                  : dot->baseExpr()->getType();
+                    baseType = baseType.peelAutoDeref();
+                } catch (...) { // NOLINT(bugprone-empty-catch)
+                    baseOk = false;
+                }
+                if (!(baseOk && isCurrentTypeParam(baseType))) {
+                    bool isField = false;
+                    try {
+                        isField = dot->isFieldAccess();
+                    } catch (...) { // NOLINT(bugprone-empty-catch)
+                    }
+                    if (!isField) throw *deferredMethodE3095;
+                }
             }
         }
         return;

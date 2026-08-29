@@ -1,0 +1,16 @@
+; 方法体内 `$.field()` 且字段不是 Fn → E3095（Phase C 方法点）
+
+struct Foo {
+  x i32
+
+  fn boom() {
+    $.x()  ; check: E3095
+  }
+}
+
+fn main() {
+  let f = Foo {
+    .x = 1
+  }
+  f.boom()
+}
