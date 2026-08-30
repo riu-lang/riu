@@ -90,26 +90,15 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         llvm::Value* val = compileExpr(node->expr());
 
         // Phase 8e: 同既有路径，先释放临时帧再构 retStruct + CreateRet
-        // 注意：成功路径若返回堆句柄，仍需 move-return retain；本段保留同样逻辑
         bool didMoveRetainHandle = false;
         if (isSuccess && hasDeclaredRetType) {
-            if (declRetType.isRc() || declRetType.isWeak()) {
-                if (!isFreshHandleExpr(node->expr())) {
-                    retainHandleAtCallSite(val, declRetType);
-                } else {
-                    consumeTemp(val);
-                }
-                didMoveRetainHandle = true;
-            } else if (typeNeedsDestructor(declRetType) && isFreshHandleExpr(node->expr())) {
-                consumeTemp(val);
-            }
+            didMoveRetainHandle =
+                returnValue(val, declRetType, node->expr(), declRetType.isRc() || declRetType.isWeak());
         }
         // 错误通道：ErrEnum payload 由 enum 构造路径自带 +1（[#10.C]），不重复 retain；
         // 但 fresh enum value 需要 consumeTemp 避免双析构（与 success 同型）。
         if (isError) {
-            if (typeNeedsDestructor(retType) && isFreshHandleExpr(node->expr())) {
-                consumeTemp(val);
-            }
+            returnValue(val, retType, node->expr(), false);
         }
         if (!didMoveRetainHandle) {
             if (auto litNode = dynamic_cast<ExprLiteralNode*>(node->expr())) {
@@ -292,27 +281,11 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         DEBUG_LOG("    Created return value");
     }
 
-    // Phase 3b: move-return retain
-    // 堆句柄返回类型（Rc / Array / Weak）在返回前 retain 一次，配合 callee-clean
-    // 局部变量 release（callDestructorsForScope）让调用方接住净 +1 句柄；
-    // 不做 peephole（DRAFT §7.3）——纯局部 var 路径下 retain+release 互抵，函数调用
-    // 临时值的多余 retain 由 Phase 8 临时值清单负责。
-    // Phase 8c: fresh retVal（call/array literal）已自带 +1，跳过 retain
+    // Phase 3b: move-return — Rc/Weak/Fn 走 takeOwnership；其余需析构且 fresh 只 consumeTemp
     bool didMoveRetainHandle = false;
     if (retVal && hasDeclaredRetType && !nullableWrap) {
-        if (declRetType.isRc() || declRetType.isWeak() || declRetType.isFn()) {
-            if (!isFreshHandleExpr(node->expr())) {
-                retainHandleAtCallSite(retVal, declRetType);
-            } else {
-                // Phase 8d.1: fresh 返回值的 +1 直接交给调用方，从临时帧消费
-                consumeTemp(retVal);
-            }
-            didMoveRetainHandle = true;
-        } else if (typeNeedsDestructor(declRetType) && isFreshHandleExpr(node->expr())) {
-            // Phase 8e: fresh 含 RC 字段 struct value 返回（如 i64.to_string() 的 String）：
-            // +1 直接交给调用方，从临时帧消费，避免 popAndReleaseTempFrame 调 dtor 双释放。
-            consumeTemp(retVal);
-        }
+        didMoveRetainHandle = returnValue(retVal, declRetType, node->expr(),
+                                          declRetType.isRc() || declRetType.isWeak() || declRetType.isFn());
     }
 
     // 从作用域变量列表中移除返回的变量 (避免重复析构)
@@ -570,29 +543,9 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
 
             auto rcStructType = getLLVMType(varType);
             auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-            auto ptrTy = llvm::PointerType::get(_context, 0);
 
             if (exprType.isRc() && exprType.rcElementType() && *exprType.rcElementType() == *elemType) {
-                // Rc -> Rc 复制：复制 handle 并 retain（DRAFT §7.3 callee-clean 还在 Phase 3，但句柄共享 retain 必须在
-                // 1a 启用） exprVal 是源 Rc 的 struct 值，先存 tmp alloca 才能 GEP 取 handle 字段
-                auto tmpAlloca = _builder.CreateAlloca(rcStructType, nullptr, "rc_src_tmp");
-                _builder.CreateStore(exprVal, tmpAlloca);
-                auto srcHandleField = _builder.CreateGEP(rcStructType, tmpAlloca, {zero, zero}, "src_handle_field");
-                auto srcHandle = _builder.CreateLoad(ptrTy, srcHandleField, "src_handle");
-
-                // 句柄复制 = retain（_box_retain 内部哨兵跳过 .rodata 字面量）
-                // Phase 8b: fresh 来源（call/method/ctor 调用）已在 callee ret 处 move-return retain，跳过
-                // Phase 8d.1: fresh 来源的 +1 转给新 var，从临时帧消费
-                if (!isFreshHandleExpr(expr)) {
-                    auto retainFn = runtime::getRcRetainFn(_module, _builder);
-                    _builder.CreateCall(retainFn, {srcHandle});
-                } else {
-                    consumeTemp(exprVal);
-                }
-
-                // 写入新 Rc 的 handle 字段
-                auto handleField = _builder.CreateGEP(rcStructType, alloca, {zero, zero}, "handle_field");
-                _builder.CreateStore(srcHandle, handleField);
+                storeIntoSlot(alloca, exprVal, varType, expr, SlotStore::Init);
             } else if (exprType == *elemType) {
                 // 由值构造 Rc：分配 Block，把 payload 存入 block+8
                 auto elemLLVMType = getLLVMType(*elemType);
@@ -715,12 +668,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                     throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3064);
                 }
                 auto exprVal = compileExpr(expr);
-                if (!isFreshHandleExpr(expr)) {
-                    retainHandleAtCallSite(exprVal, exprType);
-                } else {
-                    consumeTemp(exprVal);
-                }
-                _builder.CreateStore(exprVal, alloca);
+                storeIntoSlot(alloca, exprVal, varType, expr, SlotStore::Init);
             }
 
         }
@@ -759,24 +707,10 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 auto exprVal = compileExpr(expr);
 
                 if (exprType.isNullable() && exprType == varType) {
-                    // 整体复制 Nullable<T>：若内层含 Rc/Weak/fn 需 retain（与 struct 声明路径对称）
-                    if (typeNeedsDestructor(*innerType)) {
-                        if (!isFreshHandleExpr(expr)) {
-                            retainHandleAtCallSite(exprVal, *innerType);
-                        } else {
-                            consumeTemp(exprVal);
-                        }
-                    }
+                    takeOwnership(exprVal, *innerType, expr);
                     _builder.CreateStore(exprVal, alloca);
                 } else if (exprType == *innerType) {
-                    // 隐式包装：T → Nullable<T>：若 T 含 Rc/Weak/fn 需 retain
-                    if (typeNeedsDestructor(*innerType)) {
-                        if (!isFreshHandleExpr(expr)) {
-                            retainHandleAtCallSite(exprVal, *innerType);
-                        } else {
-                            consumeTemp(exprVal);
-                        }
-                    }
+                    takeOwnership(exprVal, *innerType, expr);
                     _builder.CreateStore(_builder.getInt1(true), hasField);
                     _builder.CreateStore(exprVal, valueField);
                 } else {
@@ -856,55 +790,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 }
             }
 
-            _builder.CreateStore(exprVal, alloca);
-
-            // Phase B-1: E4031 #NoCopy let 绑定检查已迁入 SemaPass，Compiler 端不再重复。
-
-            // 结构体/枚举类型需要加入作用域变量列表
-            auto structDecl = _file->getStructDecl(varType.name);
-            if (!structDecl && _yux) {
-                structDecl = _yux->sdkFile()->getStructDecl(varType.name);
-            }
-            p<EnumDeclNode> enumDecl = nullptr;
-            if (!structDecl) {
-                enumDecl = _file->getEnumDecl(varType.name);
-                if (!enumDecl && _yux) {
-                    enumDecl = _yux->sdkFile()->getEnumDecl(varType.name);
-                }
-            }
-            if (structDecl || enumDecl) {
-                // Phase 3d: 含 RC 字段 struct/enum 从已有变量复制时必须 retain 内部字段
-                // （与赋值路径 compiler_stmt.cpp:1220-1227 对称）
-                // Phase 8d.4: fresh 含 RC 字段 struct/enum value 的 +1 已转给 var slot；
-                // 从临时帧消费，避免帧弹出时再调 dtor 双释放
-                if (typeNeedsDestructor(varType)) {
-                    if (!isFreshHandleExpr(expr)) {
-                        retainHandleAtCallSite(exprVal, varType);
-                    } else {
-                        consumeTemp(exprVal);
-                    }
-                }
-            }
-            // fn 类型：fat-ptr 的 captures 字段是 Rc 句柄，需在作用域尾释放
-            // resolveAlias：类型别名（如 Callback = fn(s String)bool）的 isFn() 对别名返回 false
-            if (resolveAlias(varType).isFn()) {
-                if (typeNeedsDestructor(resolveAlias(varType))) {
-                    if (!isFreshHandleExpr(expr)) {
-                        retainHandleAtCallSite(exprVal, resolveAlias(varType));
-                    } else {
-                        consumeTemp(exprVal);
-                    }
-                }
-            }
-            // Dyn<D> owned：非 struct/enum 名，上面 structDecl 分支进不去；拷贝须 retain data，
-            // 否则 `let d = h.inner` 与 h 析构双释放（yux.core.dyn.test 顺序跑炸堆）。
-            if (varType.isDynOwned()) {
-                if (!isFreshHandleExpr(expr)) {
-                    retainHandleAtCallSite(exprVal, varType);
-                } else {
-                    consumeTemp(exprVal);
-                }
-            }
+            storeIntoSlot(alloca, exprVal, resolveAlias(varType), expr, SlotStore::Init);
         }
     }
 }
@@ -1122,9 +1008,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                     auto elemType = sym->type.arrayGenericElementType();
                     // 走统一 helper：含嵌套 Array<Array<U>> 字面量按外层 elemType 递归编译
                     auto block = buildArrayLiteralBlock(arrayNode, elemType ? *elemType : TypeInfo("i8"));
-                    // Phase 3d: 释放旧 handle 后再写入新 handle
-                    releaseAtPtr(it->second, sym->type);
-                    _builder.CreateStore(block, it->second);
+                    storeIntoSlot(it->second, block, sym->type, expr, SlotStore::Replace);
                     return;
                 }
             }
@@ -1147,31 +1031,9 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             auto exprType = expr->getType();
             auto rcStructType = getLLVMType(sym->type);
             auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
-            auto ptrTy = llvm::PointerType::get(_context, 0);
 
             if (exprType.isRc() && exprType.rcElementType() && *exprType.rcElementType() == *elemType) {
-                // Rc -> Rc 复制：复制 handle 并 retain
-                // exprVal 是源 Rc 的 struct 值，先存 tmp alloca 才能 GEP 取 handle 字段
-                auto tmpAlloca = _builder.CreateAlloca(rcStructType, nullptr, "rc_src_tmp");
-                _builder.CreateStore(exprVal, tmpAlloca);
-                auto srcHandleField = _builder.CreateGEP(rcStructType, tmpAlloca, {zero, zero}, "src_handle_field");
-                auto srcHandle = _builder.CreateLoad(ptrTy, srcHandleField, "src_handle");
-
-                // Phase 8b: fresh 来源已在 callee ret 处 move-return retain，跳过
-                // Phase 8d.1: fresh 来源的 +1 转给新 var，从临时帧消费
-                if (!isFreshHandleExpr(expr)) {
-                    auto retainFn = runtime::getRcRetainFn(_module, _builder);
-                    _builder.CreateCall(retainFn, {srcHandle});
-                } else {
-                    consumeTemp(exprVal);
-                }
-
-                // 释放旧 Rc
-                releaseAtPtr(it->second, sym->type);
-
-                // 写入新 Rc 的 handle 字段
-                auto handleField = _builder.CreateGEP(rcStructType, it->second, {zero, zero}, "handle_field");
-                _builder.CreateStore(srcHandle, handleField);
+                storeIntoSlot(it->second, exprVal, sym->type, expr, SlotStore::Replace);
             } else if (exprType == *elemType) {
                 // 由值构造 Rc：分配 Block，把 payload 存入 block+8
                 auto elemLLVMType = getLLVMType(*elemType);
@@ -1256,20 +1118,11 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             valToStore = createCast(exprVal, exprType, sym->type);
         }
 
-        // Phase 3d: RC 类型 / 含 RC 字段 struct 的赋值 → retain new → release old → store
-        // 自赋值 / 别名安全：先 retain 再 release，避免计数过早归零
-        // Phase 8b: fresh 来源（call/method/ctor 调用）已 +1，跳过 retain；旧值仍需 release
-        // Phase 8d.1: fresh 来源从临时帧消费
-        if (assignOp == AssignOp::Eq && typeNeedsDestructor(sym->type)) {
-            if (!isFreshHandleExpr(expr)) {
-                retainHandleAtCallSite(valToStore, sym->type);
-            } else {
-                consumeTemp(valToStore);
-            }
-            releaseAtPtr(_localVarPtrs[objName], sym->type);
+        if (assignOp == AssignOp::Eq) {
+            storeIntoSlot(_localVarPtrs[objName], valToStore, sym->type, expr, SlotStore::Replace);
+        } else {
+            _builder.CreateStore(valToStore, _localVarPtrs[objName]);
         }
-
-        _builder.CreateStore(valToStore, _localVarPtrs[objName]);
     } else {
         // 处理成员访问赋值 (obj.field = value)
         auto sym = lookupVarSymbol(objName, node);
@@ -1562,10 +1415,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                         auto elemType = fieldType.arrayGenericElementType();
                         // 走统一 helper：含嵌套 Array<Array<U>> 字面量按外层 elemType 递归编译
                         auto block = buildArrayLiteralBlock(arrayNode, elemType ? *elemType : TypeInfo("i8"));
-                        // Phase 3d: 释放旧 handle 后再写入新 handle
-                        releaseAtPtr(fieldPtr, fieldType);
-                        // fieldPtr 指向 Array<T> 实例（{ ptr _data, i64 _len, i64 _cap }）；handle 在 offset 0
-                        _builder.CreateStore(block, fieldPtr);
+                        storeIntoSlot(fieldPtr, block, fieldType, expr, SlotStore::Replace);
                         return;
                     }
                 }
@@ -1583,19 +1433,11 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                     valToStore = createCast(exprVal, exprType, fieldType);
                 }
 
-                // Phase 3d: RC 字段 / 含 RC 字段 struct 字段 → retain new → release old → store
-                // Phase 8b: fresh 来源跳过 retain
-                // Phase 8d.1: fresh 来源从临时帧消费
-                if (assignOp == AssignOp::Eq && typeNeedsDestructor(fieldType)) {
-                    if (!isFreshHandleExpr(expr)) {
-                        retainHandleAtCallSite(valToStore, fieldType);
-                    } else {
-                        consumeTemp(valToStore);
-                    }
-                    releaseAtPtr(fieldPtr, fieldType);
+                if (assignOp == AssignOp::Eq) {
+                    storeIntoSlot(fieldPtr, valToStore, fieldType, expr, SlotStore::Replace);
+                } else {
+                    _builder.CreateStore(valToStore, fieldPtr);
                 }
-
-                _builder.CreateStore(valToStore, fieldPtr);
             } else {
                 // 中间段：当前仅支持纯 struct 嵌套（不含 Rc/Array/Ref/Nullable/RC 字段）
                 // 中段若是 RC / Rc / Array / Ref / Nullable，自动 deref / 写穿语义未对齐，先拒收。
@@ -1888,19 +1730,7 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
 
         auto valueVal = compileExpr(node->valueExpr());
 
-        // Phase 3d: RC 元素 / 含 RC 字段 struct 元素 → retain new → release old → store
-        // Phase 8b: fresh 来源跳过 retain
-        // Phase 8d.1: fresh 来源从临时帧消费
-        if (typeNeedsDestructor(*elemType)) {
-            if (!isFreshHandleExpr(node->valueExpr())) {
-                retainHandleAtCallSite(valueVal, *elemType);
-            } else {
-                consumeTemp(valueVal);
-            }
-            releaseAtPtr(elemPtr, *elemType);
-        }
-
-        _builder.CreateStore(valueVal, elemPtr);
+        storeIntoSlot(elemPtr, valueVal, *elemType, node->valueExpr(), SlotStore::Replace);
         return;
     }
 

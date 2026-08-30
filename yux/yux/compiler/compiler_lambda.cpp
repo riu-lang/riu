@@ -405,9 +405,7 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
                     auto zeroVal = llvm::ConstantAggregateZero::get(valLLVMTy);
                     _builder.CreateStore(zeroVal, it->second);
                 } else if (typeNeedsDestructor(cap.type)) {
-                    // 堆句柄按 callee-clean 习惯 retain（与 retainHandleAtCallSite 同款逻辑）
-                    // —— 仅 Rc 路径需要；栈嵌入路径已在前面拒绝了 needs-dtor 字段
-                    retainHandleAtCallSite(srcVal, cap.type);
+                    passAsArg(srcVal, cap.type, nullptr);
                 }
             }
         }
@@ -488,8 +486,7 @@ llvm::Value* Compiler::compileFnValueCall(p<ExprCallNode> node) {
     for (size_t idx = 0; idx < node->getArgs().size() && idx < expectedParams.size(); ++idx) {
         try {
             auto argType = node->getArgs()[idx]->getType();
-            if (expectedParams[idx] && !argType.name.empty() && !argType.isSelf() &&
-                !expectedParams[idx]->isSelf()) {
+            if (expectedParams[idx] && !argType.name.empty() && !argType.isSelf() && !expectedParams[idx]->isSelf()) {
                 // Ref<T> 实参传给值类型形参 T：类型不匹配
                 if (argType.isRef() && !expectedParams[idx]->isRef()) {
                     auto inner = argType.refElementType();
@@ -583,8 +580,7 @@ llvm::Value* Compiler::compileRcFnValueCall(p<ExprCallNode> node, const TypeInfo
     for (size_t idx = 0; idx < node->getArgs().size() && idx < expectedParams.size(); ++idx) {
         try {
             auto argType = node->getArgs()[idx]->getType();
-            if (expectedParams[idx] && !argType.name.empty() && !argType.isSelf() &&
-                !expectedParams[idx]->isSelf()) {
+            if (expectedParams[idx] && !argType.name.empty() && !argType.isSelf() && !expectedParams[idx]->isSelf()) {
                 if (argType.isRef() && !expectedParams[idx]->isRef()) {
                     auto inner = argType.refElementType();
                     throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014,
@@ -671,8 +667,7 @@ llvm::Value* Compiler::compileRefFnValueCall(p<ExprCallNode> node, const TypeInf
     for (size_t idx = 0; idx < node->getArgs().size() && idx < expectedParams.size(); ++idx) {
         try {
             auto argType = node->getArgs()[idx]->getType();
-            if (expectedParams[idx] && !argType.name.empty() && !argType.isSelf() &&
-                !expectedParams[idx]->isSelf()) {
+            if (expectedParams[idx] && !argType.name.empty() && !argType.isSelf() && !expectedParams[idx]->isSelf()) {
                 if (argType.isRef() && !expectedParams[idx]->isRef()) {
                     auto inner = argType.refElementType();
                     throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014,

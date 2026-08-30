@@ -822,10 +822,6 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             callArgs.push_back(args[i]);
             continue;
         }
-        // Phase 3a: Rc/Array/Weak 实参传前 retain（callee-clean）
-        // Phase 8c: fresh 实参（call/array literal）已自带 +1，跳过 retain
-        // Phase 8d.1: fresh 实参的 +1 移交给 callee，从临时帧消费掉，避免帧末多余 release
-        bool isFresh = isFreshHandleExpr(callNode->getArgs()[i]);
 
         // Nullable<T> 形参 + T 值实参：自动包装 T → {_has=true, _value=T}
         // 必须在 typeNeedsDestructor(at) 检查之前：内层 T 含 RC 字段时
@@ -834,13 +830,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
         if (at.isNullable() && !argTypes[i].isNullable() && !argTypes[i].isPtr()) {
             auto inner = at.nullableInnerType();
             if (inner && *inner == argTypes[i]) {
-                if (typeNeedsDestructor(*inner)) {
-                    if (!isFresh) {
-                        retainHandleAtCallSite(args[i], *inner);
-                    } else {
-                        consumeTemp(args[i]);
-                    }
-                }
+                passAsArg(args[i], *inner, callNode->getArgs()[i]);
                 auto nullableLLVMTy = getLLVMType(at);
                 llvm::Value* wrapped = llvm::UndefValue::get(nullableLLVMTy);
                 wrapped = _builder.CreateInsertValue(wrapped, _builder.getInt1(true), {0});
@@ -852,11 +842,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
 
         // Phase B-1: E4031 #NoCopy 按值传参检查已迁入 SemaPass，Compiler 端不再重复。
         if (typeNeedsDestructor(at)) {
-            if (!isFresh) {
-                retainHandleAtCallSite(args[i], at);
-            } else {
-                consumeTemp(args[i]);
-            }
+            passAsArg(args[i], at, callNode->getArgs()[i]);
             // B-4: Array<T> 等既需析构又需按指针传参的类型，做指针转换再 push
             if (structParamUsesPointer(at)) {
                 auto structType = getLLVMType(at);
@@ -1084,13 +1070,8 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
             !argTypes[i].isPtr()) {
             auto inner = fnSymbol->params[i].nullableInnerType();
             if (inner && *inner == argTypes[i]) {
-                // 若内层 T 含 RC/Weak/fn 需要 retain（对齐 compileDeclareAssignStatement nullable 路径）
-                if (typeNeedsDestructor(*inner)) {
-                    if (i < callNode->getArgs().size() && !isFreshHandleExpr(callNode->getArgs()[i])) {
-                        retainHandleAtCallSite(args[i], *inner);
-                    } else if (i < callNode->getArgs().size()) {
-                        consumeTemp(args[i]);
-                    }
+                if (i < callNode->getArgs().size()) {
+                    passAsArg(args[i], *inner, callNode->getArgs()[i]);
                 }
                 auto nullableLLVMTy = getLLVMType(fnSymbol->params[i]);
                 llvm::Value* wrapped = llvm::UndefValue::get(nullableLLVMTy);
@@ -1106,28 +1087,16 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
         // Phase 8d.1: fresh 实参的 +1 移交给 callee，从临时帧消费掉
         // Phase B-1: E4031 #NoCopy 按值传参检查已迁入 SemaPass，Compiler 端不再重复。
         bool paramNeedsPtr = structParamUsesPointer(fnSymbol->params[i]);
+        if (typeNeedsDestructor(argTypes[i]) && i < callNode->getArgs().size()) {
+            passAsArg(args[i], argTypes[i], callNode->getArgs()[i]);
+        }
         if (typeNeedsDestructor(argTypes[i]) && !paramNeedsPtr) {
-            if (i < callNode->getArgs().size() && !isFreshHandleExpr(callNode->getArgs()[i])) {
-                retainHandleAtCallSite(args[i], argTypes[i]);
-            } else if (i < callNode->getArgs().size()) {
-                consumeTemp(args[i]);
-            }
             callArgs.push_back(args[i]);
             continue;
         }
 
         if (paramNeedsPtr) {
             DEBUG_LOG_VAL("    Passing struct by pointer", "arg " << i << " : " << fnSymbol->params[i].name);
-            // B-4: Array<T> 等 struct-by-pointer 实参也需要 consumeTemp（避免 temp frame
-            // 末尾重复释放已在 callee 中移入 Rc 的 _data 缓冲）。
-            // 对齐 compileMethodCall 的 typeNeedsDestructor + structParamUsesPointer 双检模式。
-            if (typeNeedsDestructor(argTypes[i])) {
-                if (i < callNode->getArgs().size() && !isFreshHandleExpr(callNode->getArgs()[i])) {
-                    retainHandleAtCallSite(args[i], argTypes[i]);
-                } else if (i < callNode->getArgs().size()) {
-                    consumeTemp(args[i]);
-                }
-            }
             auto structType = getLLVMType(argTypes[i]);
             auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");
             _builder.CreateStore(args[i], alloca);

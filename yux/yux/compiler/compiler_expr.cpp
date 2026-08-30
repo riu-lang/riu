@@ -319,13 +319,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
                 if (innerType && exprType == *innerType) {
                     // T → Nullable<T> 隐式包装：_has=true, 值写入 value 槽
                     auto val = compileExpr(fi->value());
-                    if (fdecl && val && typeNeedsDestructor(*innerType)) {
-                        if (isFreshHandleExpr(fi->value())) {
-                            consumeTemp(val);
-                        } else {
-                            retainHandleAtCallSite(val, *innerType);
-                        }
-                    }
+                    takeOwnership(val, *innerType, fi->value());
                     _builder.CreateStore(_builder.getInt1(true), hasPtr);
                     _builder.CreateStore(val, valuePtr);
                     isNullableWrapDone = true;
@@ -345,10 +339,10 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
                 //   - 非 fresh 源 (let / 字段读取等): retain 一次, 让源句柄与字段都各持 +1
                 // Phase 3d.3: Heap<T>? 字段 + lvalue 源 = move-out, 跳过 retain.
                 if (fdecl && val && typeNeedsDestructor(fieldType)) {
-                    if (isFreshHandleExpr(fi->value())) {
-                        consumeTemp(val);
-                    } else if (!(isHeapNullableField && heapBdangSrcSlot)) {
-                        retainHandleAtCallSite(val, fieldType);
+                    if (isHeapNullableField && heapBdangSrcSlot) {
+                        if (isFreshHandleExpr(fi->value())) consumeTemp(val);
+                    } else {
+                        takeOwnership(val, fieldType, fi->value());
                     }
                 }
                 _builder.CreateStore(val, fieldPtr);
@@ -606,11 +600,7 @@ llvm::Value* Compiler::compileMoveAssignExpr(p<ExprMoveAssignNode> node) {
     if (typeNeedsDestructor(leftType)) {
         bool isArrayLiteral = leftType.isArrayGeneric() && dynamic_cast<ExprArrayNode*>(rightNode);
         if (!isArrayLiteral) {
-            if (isFreshHandleExpr(rightNode)) {
-                consumeTemp(valToStore);
-            } else {
-                retainHandleAtCallSite(valToStore, leftType);
-            }
+            takeOwnership(valToStore, leftType, rightNode);
         }
     }
 

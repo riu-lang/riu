@@ -209,13 +209,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
     for (size_t i = 0; i < callArgs.size(); ++i) {
         auto& at = argTypes[i];
         auto argVal = compileExpr(callArgs[i]);
-        if (typeNeedsDestructor(at)) {
-            if (!isFreshHandleExpr(callArgs[i])) {
-                retainHandleAtCallSite(argVal, at);
-            } else {
-                consumeTemp(argVal);
-            }
-        }
+        passAsArg(argVal, at, callArgs[i]);
         size_t mpi = i + 1;
         bool needsAutoRef = mpi < mparams.size() && mparams[mpi].isRef() && !at.isRef();
         if (needsAutoRef || structParamUsesPointer(at)) {
@@ -697,12 +691,8 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         auto elemVal = args[0];
         // 与 arr[i]=expr 对齐：fresh 实参（move / 字面量）从临时帧摘走，避免
         // 语句末 popAndReleaseTempFrame 把已写入缓冲的 Array._data 再 free。
-        if (elemType && typeNeedsDestructor(*elemType) && !callNode->getArgs().empty()) {
-            if (!isFreshHandleExpr(callNode->getArgs()[0])) {
-                retainHandleAtCallSite(elemVal, *elemType);
-            } else {
-                consumeTemp(elemVal);
-            }
+        if (elemType && !callNode->getArgs().empty()) {
+            passAsArg(elemVal, *elemType, callNode->getArgs()[0]);
         }
         auto lenVal = _builder.CreateLoad(sizeTy, lenFieldPtr, "a.len");
         auto capVal = _builder.CreateLoad(sizeTy, capFieldPtr, "a.cap");
@@ -1248,13 +1238,8 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
                     methodArgs.push_back(basePtr);
                     for (size_t i = 0; i < args.size(); ++i) {
                         auto& at = argTypes[i];
-                        // Phase 3a/8c/8d.1: callee-clean 调用约定
-                        if (typeNeedsDestructor(at)) {
-                            if (i < callNode->getArgs().size() && !isFreshHandleExpr(callNode->getArgs()[i])) {
-                                retainHandleAtCallSite(args[i], at);
-                            } else if (i < callNode->getArgs().size()) {
-                                consumeTemp(args[i]);
-                            }
+                        if (i < callNode->getArgs().size()) {
+                            passAsArg(args[i], at, callNode->getArgs()[i]);
                         }
                         if (structParamUsesPointer(at)) {
                             auto structType = getLLVMType(at);
@@ -1385,14 +1370,8 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
         methodArgs.push_back(receiverArg);
         for (size_t i = 0; i < args.size(); ++i) {
             auto& at = argTypes[i];
-            // Phase 3a/8c/8d.1: callee-clean 调用约定 —— fresh 实参消费临时帧所有权转移，
-            // 非 fresh 实参 retain 后传参。对齐 compileKnownFunctionCall。
-            if (typeNeedsDestructor(at)) {
-                if (i < callNode->getArgs().size() && !isFreshHandleExpr(callNode->getArgs()[i])) {
-                    retainHandleAtCallSite(args[i], at);
-                } else if (i < callNode->getArgs().size()) {
-                    consumeTemp(args[i]);
-                }
+            if (i < callNode->getArgs().size()) {
+                passAsArg(args[i], at, callNode->getArgs()[i]);
             }
             // auto-ref: 方法形参为 T& 但实参为 T（by-value）时，取址传指针
             size_t mpi = i + 1; // 跳 receiver（mparams[0]）

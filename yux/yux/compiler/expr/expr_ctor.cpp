@@ -355,16 +355,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                 // (compiler_call.cpp:667-670). 不做这步会让 callee 拿到 caller 唯一 +1,
                 // callee 析构释放后 caller 的 alloca 变成 use-after-free.
                 for (size_t i = 0; i < argVals.size() && i < paramTypes.size(); ++i) {
-                    // Phase 4c: 静态 fn 调用点的句柄实参所有权转移，与 ExprCallNode 路径对齐
-                    // (compiler_call.cpp:667-670). 不做这步会让 callee 拿到 caller 唯一 +1,
-                    // callee 析构释放后 caller 的 alloca 变成 use-after-free.
-                    if (typeNeedsDestructor(paramTypes[i])) {
-                        if (!isFreshHandleExpr(node->args()[i])) {
-                            retainHandleAtCallSite(argVals[i], paramTypes[i]);
-                        } else {
-                            consumeTemp(argVals[i]);
-                        }
-                    }
+                    passAsArg(argVals[i], paramTypes[i], node->args()[i]);
                     // B-4: Array<T> 等 struct-by-pointer 实参做指针转换,
                     // 对齐 getMethodFunction 中 structParamUsesPointer 的 LLVM 签名。
                     // 优先复用源变量 alloca（避免副本导致 caller 析构时 double-free），
@@ -465,22 +456,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
             }
             auto fieldPtr =
                 _builder.CreateStructGEP(payloadStruct, payloadBufPtr, static_cast<unsigned>(i), "enum.payload.elem");
-            _builder.CreateStore(argVal, fieldPtr);
-            // 若实参类型需要析构（Rc/Array/Weak/fn/含RC字段struct/enum），
-            // 非 fresh 源需 retain——否则源变量和 enum 共享同一句柄但 strong 只记 1，
-            // 任一侧先析构即导致对侧 use-after-free。
-            // fresh 源（调用/构造/数组字面量）已持 +1，直接转移所有权给 enum payload。
-            if (typeNeedsDestructor(argType)) {
-                if (!isFreshHandleExpr(argExpr)) {
-                    retainHandleAtCallSite(argVal, argType);
-                } else {
-                    consumeTemp(argVal);
-                }
-            } else {
-                // 实参作为 fresh 临时若已入帧，需消费掉：所有权随构造转交给 enum 值，
-                // 否则帧弹出时会 release 一次导致 use-after-free
-                consumeTemp(argVal);
-            }
+            storeIntoSlot(fieldPtr, argVal, argType, argExpr, SlotStore::Init);
         }
     }
 
@@ -621,11 +597,7 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
         auto handleField = _builder.CreateGEP(rcLLVMTy, tmp, {zero, zero}, "dyn.src.handle.ptr");
         dataPtr = _builder.CreateLoad(ptrTy, handleField, "dyn.src.handle");
 
-        // 偷取 fresh Rc 的 +1，否则 retain
-        bool consumed = consumeTemp(argVal);
-        if (!consumed) {
-            _builder.CreateCall(runtime::getRcRetainFn(_module, _builder), {dataPtr});
-        }
+        passAsArg(argVal, argType, argExpr);
     } else if (argType.isRef()) {
         // U& 已是裸指针类型，直接用
         dataPtr = argVal;

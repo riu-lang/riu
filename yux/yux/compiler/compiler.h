@@ -289,6 +289,18 @@ private:
     void generateEnumDestructor(p<EnumDeclNode> decl, p<FileNode> owner); // Phase 5: 合成 __enum_drop_<E>(p*) 实现
     void compileEnumDtors(); // Phase 5: 在主流水线中为本文件 enum 生成 dtor 定义
 
+    // ==================== OwnershipOps（三个入口）====================
+    // 复制语义：fresh → consumeTemp；否则 typeNeedsDestructor 则 retain。
+    // 调用点走下面三个；retainHandleAtCallSite / consumeTemp / isFreshHandleExpr
+    // 是本层实现细节（深拷循环 / 内建 / 临时帧仍可直接用）。
+    enum class SlotStore : u8 { Init, Replace };
+    void takeOwnership(llvm::Value* val, const TypeInfo& type, p<ExprNode> expr);
+    void storeIntoSlot(llvm::Value* slotPtr, llvm::Value* val, const TypeInfo& type, p<ExprNode> expr, SlotStore kind);
+    void passAsArg(llvm::Value* val, const TypeInfo& type, p<ExprNode> expr);
+    // retainHandle=true：Rc/Weak（及非 Fallible 的 Fn）走 takeOwnership，返回 true。
+    // 否则仅在需析构且 fresh 时 consumeTemp，返回 false。
+    bool returnValue(llvm::Value* val, const TypeInfo& type, p<ExprNode> expr, bool retainHandle);
+
     // Phase 3a: callee-clean 调用约定
     // 给 Rc/Array/Weak 实参在传入前 retain；callee 末尾析构 release 抵消
     // 非堆句柄类型 no-op；返回 true 表示已发出 retain

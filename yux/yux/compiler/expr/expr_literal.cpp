@@ -734,16 +734,7 @@ llvm::Value* Compiler::buildArrayLiteralBlock(ExprArrayNode* arrayNode, const Ty
 
         auto idx = llvm::ConstantInt::get(sizeTy, i);
         auto elemPtr = _builder.CreateGEP(elemLLVMType, data, {idx}, "lit.elem.ptr");
-        // RC 元素：fresh 来源（call/构造/数组字面量）已 +1，跳过 retain，并尝试从临时帧消费；
-        // 非 fresh（已有 var/field 读出）走复制 retain。
-        if (typeNeedsDestructor(elemType)) {
-            if (!isFreshHandleExpr(elements[i])) {
-                retainHandleAtCallSite(elemVal, elemType);
-            } else {
-                consumeTemp(elemVal);
-            }
-        }
-        _builder.CreateStore(elemVal, elemPtr);
+        storeIntoSlot(elemPtr, elemVal, elemType, elements[i], SlotStore::Init);
     }
     return _builder.CreateLoad(arrayLLVMType, arrayAlloca, "array.lit.load");
 }

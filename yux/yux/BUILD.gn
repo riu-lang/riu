@@ -26,6 +26,7 @@ executable("yux") {
     "compiler/compiler.cpp",
     "compiler/compiler_call.cpp",
     "compiler/compiler_destructor.cpp",
+    "compiler/compiler_ownership.cpp",
     "compiler/compiler_dyn_vtable.cpp",
     "compiler/compiler_expr.cpp",
     "compiler/compiler_globals.cpp",
