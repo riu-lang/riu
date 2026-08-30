@@ -10,7 +10,8 @@
 //
 // 设计意图: 日常写 demo / 改代码时快速跑诊断, 避免每次 xmake build 编 LLVM.
 // **报错不与 yux build 等价**: 仅检出 SemaPass 当前能接管的错误码; 漏的部分
-// (源码从未写出 `S<Concrete>` 的泛型 struct 方法体) 两边都不查，与未调用泛型 fn 一致。
+// (源码从未写出 `S<Concrete>` 的泛型 struct 方法体、未调用泛型 fn 体内嵌套推断)
+// 两边都不查，与未调用泛型 fn 一致。
 //
 // 详见 CURRENT.md "yux-check 最小可用 exe" 一节.
 //

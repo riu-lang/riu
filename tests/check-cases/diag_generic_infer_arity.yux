@@ -1,0 +1,9 @@
+; 泛型 fn 无显式 typeArgs：实参个数对不上 → E6012（Phase C）
+fn id<T>(x T) T {
+  x
+}
+
+fn main() {
+  id()  ; check: E6012
+  ret;
+}

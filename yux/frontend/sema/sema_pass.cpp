@@ -2431,9 +2431,9 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                 // 的 #Builtin 分支镜像).
                 // 限制:
                 //   * 仅在 callee 是 ID-literal 且解析到泛型 fn 且 fn 头部 hasAnno(Builtin) 时接管;
-                //   * typeArgs 仅在显式 (`f:<T>(...)`) 时由 SemaPass 取; 无显式 typeArgs (推断路径)
-                //     需要 sema::inferGenericFnTypeArgs, 它会抛 E6012/E6013, 而这两码当前仍归 Compiler
-                //     兜底 (3.3.1.b 未让 SemaPass 接管). 推断路径整体跳过, 留 Compiler 抛.
+                //   * typeArgs 仅在显式 (`f:<T>(...)`) 时由 SemaPass 取; 无显式 typeArgs 的 Builtin
+                //     推断仍跳过（as_ref(Heap<T>) 等特例在 Compiler）. 非 Builtin 的 E6012/E6013
+                //     由下方 infer 在调用点 / 实例化后重抛.
                 //   * argTypes 经 getType() 计算, 任一 arg 未推断 (lambda 形参) 时跳过.
                 if (!structDecl) {
                     auto [genFn, _] = _file->getGenericFunction(fnName);
@@ -2503,9 +2503,9 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
 
                 // Bucket 4 收口 (CURRENT-check.md): 泛型 fn typeArgs 的 spec bound
                 // 校验 (E1106, E3032 由 helper 内部抛 draft 名未声明). 显式 typeArgs
-                // 直接收取; 隐式 typeArgs 走 sema::inferGenericFnTypeArgs (它抛
-                // E6012/E6013, 由内部 try/catch 吞掉留 Compiler 兜底 — 这两码当前
-                // 仍归 Compiler, 接管会破坏既有协议).
+                // 直接收取; 隐式 typeArgs 走 sema::inferGenericFnTypeArgs.
+                // E6012/E6013：调用点与实例化复查重抛；未实例化的模板体内吞掉
+                // （与未调用泛型 fn 一致，yux-check 是 yux build 的子集）.
                 if (_yux && !structDecl) {
                     // 收集所有同名泛型重载（如 print<T>(x T) + print<T>(x T&)），
                     // 用 resolveBestGenericOverload 选最佳匹配后再 infer + spec-bound 校验。
@@ -2554,26 +2554,34 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                             }
                         }
                         // BUG5: 非泛型重载优先 (call_fn.cpp Phase 4b)；
-                        // 同名存在严格匹配的非泛型时，spec-bound 校验不应越过重载消歧
-                        // 触发 E1106。命中非泛型即跳过整段校验。
+                        // 同名存在严格匹配的非泛型时，spec-bound / infer 不应越过重载消歧。
+                        // 泛型自身的符号表项（形参与声明一致，含 `wrap<U>(x i32)` 这种
+                        // T 不出现在形参里的）不当成非泛型。
                         if (argTypesOk && !hasTypeArgs) {
                             auto* nonGen = _file->lookupFnSymbolWithParams(fnName, argTypes);
                             if (!nonGen && _sdkFile && _sdkFile != _file) {
                                 nonGen = _sdkFile->lookupFnSymbolWithParams(fnName, argTypes);
                             }
                             if (nonGen) {
-                                bool isGenericSym = false;
-                                for (auto& tp : genericFn->header()->typeParams()) {
-                                    for (auto& p : nonGen->params) {
-                                        if (p.name == tp) {
-                                            isGenericSym = true;
+                                bool isGenericOwnSym = false;
+                                for (auto& [gFn, _] : genericFns) {
+                                    auto gp = gFn->header()->params();
+                                    if (nonGen->params.size() != gp.size()) continue;
+                                    bool paramsMatch = true;
+                                    for (size_t i = 0; i < gp.size(); ++i) {
+                                        if (!gp[i]->type()) continue;
+                                        if (nonGen->params[i] != gp[i]->type()->getType()) {
+                                            paramsMatch = false;
                                             break;
                                         }
                                     }
-                                    if (isGenericSym) break;
+                                    if (paramsMatch) {
+                                        isGenericOwnSym = true;
+                                        break;
+                                    }
                                 }
-                                if (!isGenericSym) {
-                                    argTypesOk = false; // 触发跳过下方校验
+                                if (!isGenericOwnSym) {
+                                    argTypesOk = false; // 真非泛型命中，跳过泛型 infer
                                 }
                             }
                         }
@@ -2592,7 +2600,9 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                                 for (auto& t : typeArgs)
                                     t = applyInstSubst(t);
                             } catch (const YuxError&) {
-                                // E6012/E6013 留 Compiler 兜底 (3.3.1.b 未让 SemaPass 接管)
+                                // 调用点 / 实例化后：E6012 arity、E6013 无法反推。
+                                // 未实例化模板体内仍吞（Compiler 同样不编未调用泛型体）.
+                                if (_currentTypeParams.empty() || !_instSubst.empty()) throw;
                                 typeArgsOk = false;
                             } catch (...) {
                                 typeArgsOk = false;

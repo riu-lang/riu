@@ -1,0 +1,9 @@
+; 泛型 fn 无显式 typeArgs：从实参推断 T（Phase C）
+fn id<T>(x T) T {
+  x
+}
+
+fn main() {
+  let a i32 = id(1)
+  ret;
+}

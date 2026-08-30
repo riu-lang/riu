@@ -1,0 +1,14 @@
+; 泛型 fn 体实例化后，嵌套泛型调用 arity 不对 → E6012（Phase C）
+fn id<T>(x T) T {
+  x
+}
+
+fn caller<U>(x U) {
+  id()  ; check: E6012
+  ret;
+}
+
+fn main() {
+  caller(1)
+  ret;
+}

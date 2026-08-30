@@ -1,0 +1,8 @@
+; 泛型 fn 类型参数无法从实参反推 → E6013（Phase C）
+fn wrap<U>(x i32) {
+}
+
+fn main() {
+  wrap(1)  ; check: E6013
+  ret;
+}
