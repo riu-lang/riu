@@ -11,16 +11,18 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace yux::cli {
 
 struct BuildCmdOptions {
-    bool projectMode = false; // buildCmd->parsed()
-    bool emitIr = false;      // --emit-ir
-    bool testMode = false;    // --test：编译 .test.yux 为独立 test exe (build/tests/)
-    std::string testMod;      // --test-mod：只编译指定模块的 test（如 yux.core.array）
-    std::string emitIrDir;    // --emit-ir-dir (IR 输出目录, 默认 build/)
-    std::string buildNameArg; // `yux build <name>` 可选名 (与 yux.toml.name 校验)
+    bool projectMode = false;          // buildCmd->parsed()
+    bool emitIr = false;               // --emit-ir
+    bool testMode = false;             // --test：编译 .test.yux 为独立 test exe (build/tests/)
+    std::vector<std::string> testMods; // --test-mod：可重复；只编译这些测试模块
+    int threads = 0;                   // --threads：测试编译并行度（0 = CPU 核数；1 = 进程内串行）
+    std::string emitIrDir;             // --emit-ir-dir (IR 输出目录, 默认 build/)
+    std::string buildNameArg;          // `yux build <name>` 可选名 (与 yux.toml.name 校验)
 };
 
 // 运行 build 流程。

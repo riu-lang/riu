@@ -19,6 +19,7 @@ executable("yux") {
     "main.cpp",
     "cli/build_cmd.cpp",
     "cli/format_cmd.cpp",
+    "cli/process.cpp",
     "cli/sdk_compile.cpp",
     "cli/test_cmd.cpp",
     "compiler/call/call_fn.cpp",

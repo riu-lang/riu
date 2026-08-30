@@ -71,6 +71,12 @@ private:
 // 计算当前 yux.exe 的指纹（mtime_ns + size，TAB 分隔）。
 std::string computeYuxFingerprint();
 
+// 单文件 stamp：与 PkgCache 同指纹规则，但每源文件一份，供并行编译互不抢写。
+// 格式两行：`<fingerprint>\n<mtime_ns>\t<size>\n`
+bool isStampFresh(const std::string& stampPath, const std::string& srcAbs, const std::string& objPath,
+                  const std::string& fingerprint);
+void writeStamp(const std::string& stampPath, const std::string& srcAbs, const std::string& fingerprint);
+
 // 把源文件相对项目根的相对路径镜像到 buildDir 下，得到 obj/ir 路径（不含扩展名的 base）。
 //   `<projectRoot>/src/A/B/foo.yux` -> `<buildDir>/src/A/B/foo`
 // 调用方再拼 `.obj` / `.ll`。

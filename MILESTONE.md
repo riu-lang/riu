@@ -92,8 +92,7 @@
 
 - **反射补全**：`Field.type` / `offset`；显式 receiver `other::fields[0].value`；`Self::type` / `Self::fields`；`methods` / `variants` 数组填充；`#Reflect` 命名参数（待 anno-struct）。
 
-- **模块声明文件 + 并行编译**：parse 后写二进制模块声明（接口 + 泛型体源文本）；`use` 读声明、不拉依赖整棵 AST；`yux test` 按测试文件 spawn 编译 job。声明失效键是格式版本 + 源码 hash，**重编编译器不重 parse**。v0.20 收口后再编号。
-  - **依赖**：v0.20 SemaPass 为语义权威（进行中）。
+- **模块声明文件（`.decl`）**：parse 后写二进制模块声明（接口 + 泛型体源文本）；`use` 读声明、不拉依赖整棵 AST。声明失效键是格式版本 + 源码 hash，**重编编译器不重 parse**。`yux test` 按文件 spawn 已并入 v0.20；`.decl` 是同版本后半（让 spawn 不再重 parse SDK）。
   - **不含**：YAML AST；深拷编译器会话；进程内并行 SemaPass。
 
 - **工具链与编辑器支持**：LSP / IDE 插件（高亮、补全、跳转）；测试框架（约定 + runner）；文档生成（从源码注释 / spec 抽取）。
@@ -106,7 +105,7 @@
 
 ### v0.20.0-alpha — 编译器结构收口
 
-**主题**：语义检查收口到 SemaPass；TypeInfo 谓词与名字查找去重；所有权三个入口；Builtin 方法表驱动。不加新语法。
+**主题**：语义检查收口到 SemaPass；TypeInfo 谓词与名字查找去重；所有权三个入口；Builtin 方法表驱动；`yux test` 并行编译。不加新语法。
 
 **范围（草稿）**：
 
@@ -114,8 +113,9 @@
 - 调用 / 方法 / 构造 / statement / 泛型体语义 throw 迁入 SemaPass；反转 `kMigratedCodes`
 - OwnershipOps：`storeIntoSlot` / `passAsArg` / `returnValue`
 - Array / String `#Builtin` 方法改表驱动
+- `yux build --test` 按测试文件 spawn 编译 job（`--threads`，默认 CPU 核数；`1` 为进程内串行）；增量跳过新鲜 dll
 
-**不在范围**：完整 HIR；Compiler 拆成多类；AST visitor；改 g4；`continue` / `for in`；泛型 enum；错误模型 v2；`Map` / `format` / IO。
+**不在范围**：完整 HIR；Compiler 拆成多类；AST visitor；改 g4；`continue` / `for in`；泛型 enum；错误模型 v2；`Map` / `format` / IO；YAML AST；进程内并行 SemaPass。模块 `.decl` 为同版本后半（不阻塞本条 spawn 退出）。
 
 **退出标准**：
 
@@ -123,6 +123,7 @@
 - [ ] 正常路径下 Compiler 不再抛语义错；`yux-check` 覆盖与 `yux build` 对齐（仍缺的列进 TODO）
 - [x] 所有权三个入口收口 retain / release 协议
 - [x] Array / String `#Builtin` 方法表驱动（`kBuiltinMethods`：类型谓词 × 方法名 → arity + lowering）
+- [x] `yux build --test` 按测试文件并行 spawn；`--threads 1` 串行；新鲜 dll 不 spawn
 - [ ] `yux test` / `yux-check test` / `./build.ps1 test` 全绿
 - [ ] `./lint.ps1` 0 warnings
 - [ ] CHANGELOG 收口

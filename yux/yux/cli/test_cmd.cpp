@@ -1,12 +1,9 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 
-#include <windows.h>
-
-#undef ERROR
-
-#include "types.h"
 #include "test_cmd.h"
+#include "process.h"
+#include "types.h"
 
 #include <algorithm>
 #include <array>
@@ -28,99 +25,6 @@
 namespace yux::cli {
 
 namespace {
-
-// 取当前进程 exe 全路径 (用于派发 yux build --test 子进程)
-std::string getSelfExePath() {
-    std::array<wchar_t, MAX_PATH> buf{};
-    DWORD n = GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
-    if (n == 0 || n >= MAX_PATH) return {};
-    int sz = WideCharToMultiByte(CP_UTF8, 0, buf.data(), static_cast<int>(n), nullptr, 0, nullptr, nullptr);
-    std::string out(sz, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, buf.data(), static_cast<int>(n), out.data(), sz, nullptr, nullptr);
-    return out;
-}
-
-std::wstring toWide(const std::string& s) {
-    if (s.empty()) return {};
-    int sz = MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0);
-    std::wstring out(sz, 0);
-    MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), out.data(), sz);
-    return out;
-}
-
-// spawn 子进程，等待完成，返回退出码。
-// spawn 失败时返回 MAXDWORD（调用方自行决定是否 exit）。
-DWORD spawnAndWait(const std::wstring& cmdLine, const std::wstring& workingDir = {}) {
-    std::vector<wchar_t> cmdBuf(cmdLine.begin(), cmdLine.end());
-    cmdBuf.push_back(0);
-
-    STARTUPINFOW si{};
-    si.cb = sizeof(si);
-    PROCESS_INFORMATION pi{};
-
-    BOOL ok = CreateProcessW(nullptr, cmdBuf.data(), nullptr, nullptr, FALSE, 0, nullptr,
-                             workingDir.empty() ? nullptr : workingDir.c_str(), &si, &pi);
-    if (!ok) {
-        std::cerr << "Error: failed to spawn (GLE=" << GetLastError() << ") — cmd: ";
-        std::wcerr << cmdLine << L"\n";
-        return MAXDWORD;
-    }
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD code = 0;
-    GetExitCodeProcess(pi.hProcess, &code);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-    return code;
-}
-
-// spawn 子进程，stdout/stderr 重定向到指定日志文件（覆盖）。
-// 返回退出码。spawn 失败时返回 MAXDWORD。
-DWORD spawnToLog(const std::wstring& cmdLine, const std::wstring& logPath, const std::wstring& workingDir = {}) {
-    std::vector<wchar_t> cmdBuf(cmdLine.begin(), cmdLine.end());
-    cmdBuf.push_back(0);
-
-    // 确保父目录存在
-    {
-        std::filesystem::path lp(logPath);
-        std::error_code ec;
-        std::filesystem::create_directories(lp.parent_path(), ec);
-    }
-
-    SECURITY_ATTRIBUTES sa{.nLength = sizeof(sa), .lpSecurityDescriptor = nullptr, .bInheritHandle = TRUE};
-    HANDLE hLog = CreateFileW(logPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, &sa, CREATE_ALWAYS,
-                              FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (hLog == INVALID_HANDLE_VALUE) {
-        std::cerr << "Error: cannot create log file " << std::string(logPath.begin(), logPath.end())
-                  << " (GLE=" << GetLastError() << ")\n";
-        return MAXDWORD;
-    }
-
-    STARTUPINFOW si{};
-    si.cb = sizeof(si);
-    si.hStdOutput = hLog;
-    si.hStdError = hLog;
-    si.dwFlags |= STARTF_USESTDHANDLES;
-
-    PROCESS_INFORMATION pi{};
-    BOOL ok = CreateProcessW(nullptr, cmdBuf.data(), nullptr, nullptr, TRUE, 0, nullptr,
-                             workingDir.empty() ? nullptr : workingDir.c_str(), &si, &pi);
-
-    // 关闭父进程侧的文件句柄（子进程已继承副本）
-    CloseHandle(hLog);
-
-    if (!ok) {
-        std::cerr << "Error: failed to spawn (GLE=" << GetLastError() << ") — cmd: ";
-        std::wcerr << cmdLine << L"\n";
-        return MAXDWORD;
-    }
-
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD code = 0;
-    GetExitCodeProcess(pi.hProcess, &code);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-    return code;
-}
 
 // 从日志文件中提取摘要行（包含 "passed" 和 "failed" 的末行）
 std::string extractSummary(const std::string& logPath) {
@@ -172,10 +76,13 @@ std::string formatElapsed(std::chrono::steady_clock::time_point t0) {
         if (!opts.testMod.empty()) {
             cmd += L" --test-mod " + toWide(opts.testMod);
         }
-        DWORD code = spawnAndWait(cmd, toWide(cwd));
+        if (opts.threads > 0) {
+            cmd += L" --threads " + std::to_wstring(opts.threads);
+        }
+        std::uint32_t code = spawnAndWait(cmd, toWide(cwd));
         if (code != 0) {
             std::cerr << "Error: yux build --test failed (exit code " << code << ")\n";
-            _exit(code == MAXDWORD ? 1 : static_cast<int>(code));
+            _exit(code == kSpawnFailed ? 1 : static_cast<int>(code));
         }
     }
 
@@ -302,8 +209,7 @@ std::string formatElapsed(std::chrono::steady_clock::time_point t0) {
         std::cout.flush();
         std::string runnerExe = "yux-test-runner";
 
-        int maxParallel = opts.threads > 0 ? opts.threads : static_cast<int>(std::thread::hardware_concurrency());
-        if (maxParallel < 1) maxParallel = 1;
+        int maxParallel = resolveThreadCount(opts.threads);
 
         std::cout << "Running " << dllPaths.size() << " DLL(s) with " << maxParallel << " parallel worker(s)...\n";
         if (opts.verbose) std::cout << "  Logs: " << logsDir << "/\n";
@@ -333,7 +239,7 @@ std::string formatElapsed(std::chrono::steady_clock::time_point t0) {
 
                 // 日志路径：build/tests/logs/<dllName>.log
                 std::string logPath = logsDir;
-                logPath += "/";
+                logPath += '/';
                 logPath += dllName;
                 logPath += ".log";
 
@@ -341,7 +247,7 @@ std::string formatElapsed(std::chrono::steady_clock::time_point t0) {
                 std::wstring cmdLine = L"\"" + toWide(runnerExe) + L"\" \"" + toWide(dllPath) + L"\"";
                 if (opts.verbose) cmdLine += L" --verbose";
 
-                DWORD code = spawnToLog(cmdLine, toWide(logPath), toWide(cwd));
+                std::uint32_t code = spawnToLog(cmdLine, toWide(logPath), toWide(cwd));
 
                 // 提取 runner 输出的摘要行
                 std::string summary = extractSummary(logPath);

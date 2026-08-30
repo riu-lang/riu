@@ -7,9 +7,9 @@
 
 #include "build_cmd.h"
 
+#include "process.h"
 #include "sdk_compile.h"
 
-#include "types.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/fn_node.h"
 #include "ast/yux.h"
@@ -17,6 +17,7 @@
 #include "tools/diagnostic.h"
 #include "tools/pkg_cache.h"
 #include "tools/sdk_loader.h"
+#include "types.h"
 
 #include <lld/Common/Driver.h>
 #include <llvm/IR/IRBuilder.h>
@@ -29,10 +30,15 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <map>
 #include <memory>
+#include <mutex>
+#include <set>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -40,12 +46,69 @@ LLD_HAS_DRIVER(coff)
 
 namespace yux::cli {
 
+// `yux.core.array.test` → `yux.core.array`（给 --test-mod）
+static std::string stripTestSuffix(const std::string& mod) {
+    if (mod.size() > 5 && mod.substr(mod.size() - 5) == ".test") {
+        return mod.substr(0, mod.size() - 5);
+    }
+    return mod;
+}
+
+static std::string joinUnder(const std::string& dir, const std::string& stem, const std::string& suffix) {
+    std::string p = dir;
+    p += '/';
+    p += stem;
+    p += suffix;
+    return p;
+}
+
+static std::string testDllFileStem(const std::string& testMod) {
+    std::string dllFileName = testMod;
+    for (auto& c : dllFileName)
+        if (c == '.') c = '_';
+    return dllFileName;
+}
+
+// DLL 是否仍新于 test obj + 全部非 test obj + sdk/yuxrt（保守：任一用户模块变了就 relink）
+static bool isTestDllFresh(const std::string& dllPath, const std::string& testObj,
+                           const std::map<std::string, std::string>& allObjMap, const std::string& sdkLibPath,
+                           const std::string& yuxrtLibPath) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (!fs::exists(dllPath, ec) || !fs::exists(testObj, ec)) return false;
+    try {
+        auto dllTime = fs::last_write_time(dllPath);
+        if (fs::last_write_time(testObj) > dllTime) return false;
+        for (auto& [_, o] : allObjMap) {
+            if (fs::exists(o) && fs::last_write_time(o) > dllTime) return false;
+        }
+        if (!sdkLibPath.empty() && fs::exists(sdkLibPath) && fs::last_write_time(sdkLibPath) > dllTime) {
+            return false;
+        }
+        if (!yuxrtLibPath.empty() && fs::exists(yuxrtLibPath) && fs::last_write_time(yuxrtLibPath) > dllTime) {
+            return false;
+        }
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+static bool matchesTestModFilter(const std::string& mod, const std::vector<std::string>& filters) {
+    if (filters.empty()) return true;
+    std::string base = stripTestSuffix(mod);
+    for (auto& f : filters) {
+        if (base == f || mod == f) return true;
+    }
+    return false;
+}
+
 // ====== buildTestDlls：lib 与 exe 模式共用的 test DLL 构建逻辑 ======
 // allObjMap: modName → obj path（所有非 test 模块的 obj，由调用方预编译后传入）
 static void buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const std::string& buildDir,
                           const std::string& irDir, bool emitIr, const std::string& sdkLibPath,
-                          const std::string& yuxrtLibPath, const std::string& testModFilter,
-                          const std::map<std::string, std::string>& allObjMap) {
+                          const std::string& yuxrtLibPath, const std::vector<std::string>& testModFilters,
+                          const std::map<std::string, std::string>& allObjMap, int threads) {
     namespace fs = std::filesystem;
 
     // 构建 test 专用产物目录
@@ -53,18 +116,6 @@ static void buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const s
     std::string testsObjDir = testsDir + "/obj";
     ensureBuildDir(testsDir);
     ensureBuildDir(testsObjDir);
-
-    // 清理上次构建可能残留的失败标记文件
-    {
-        std::error_code ec2;
-        for (auto it = fs::directory_iterator(testsDir, ec2); it != fs::directory_iterator(); ++it) {
-            if (ec2) break;
-            if (!it->is_regular_file()) continue;
-            if (it->path().extension() == ".failed") {
-                fs::remove(it->path(), ec2);
-            }
-        }
-    }
 
     // 递归扫 src/ 下 *.test.yux
     std::vector<std::pair<std::string, std::string>> testFiles; // {abs, modName}
@@ -85,182 +136,315 @@ static void buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const s
     }
     std::ranges::sort(testFiles);
 
-    // --test-mod 过滤：只编译指定模块的测试
-    if (!testModFilter.empty()) {
+    // --test-mod 过滤：只编译指定模块的测试（可重复）
+    if (!testModFilters.empty()) {
         std::vector<std::pair<std::string, std::string>> filtered;
         for (auto& [abs, mod] : testFiles) {
-            std::string base = mod;
-            // 去掉 trailing ".test"
-            if (base.size() > 5 && base.substr(base.size() - 5) == ".test") {
-                base = base.substr(0, base.size() - 5);
-            }
-            if (base == testModFilter || mod == testModFilter) {
+            if (matchesTestModFilter(mod, testModFilters)) {
                 filtered.emplace_back(abs, mod);
             }
         }
         if (filtered.empty()) {
-            std::cerr << "Error: no test file matches --test-mod " << testModFilter << "\n";
+            std::cerr << "Error: no test file matches --test-mod";
+            for (auto& f : testModFilters)
+                std::cerr << " " << f;
+            std::cerr << "\n";
         }
         testFiles = std::move(filtered);
     }
 
-    // 测试 obj 缓存（与 lib 缓存隔离：testsObjDir 下独立 .cache 文件）
-    PkgCacheRegistry testCaches(yux.projectRoot(), testsObjDir);
+    // 清失败标记：全量编清全部；--test-mod 只清本模块（并行子进程互不删别人的）
+    {
+        std::error_code rmEc;
+        if (testModFilters.empty()) {
+            for (auto it = fs::directory_iterator(testsDir, rmEc); it != fs::directory_iterator(); ++it) {
+                if (rmEc) break;
+                if (!it->is_regular_file()) continue;
+                if (it->path().extension() == ".failed") {
+                    fs::remove(it->path(), rmEc);
+                }
+            }
+        } else {
+            for (auto& [_, testMod] : testFiles) {
+                std::string failPath = joinUnder(testsDir, testDllFileStem(testMod), ".test.failed");
+                fs::remove(failPath, rmEc);
+            }
+        }
+    }
+
+    std::string fingerprint = computeYuxFingerprint();
+    auto stampOf = [&](const std::string& testAbs) {
+        return mirroredOutputBase(yux.projectRoot(), testsObjDir, testAbs) + ".cache";
+    };
+    auto objOf = [&](const std::string& testAbs) {
+        return mirroredOutputBase(yux.projectRoot(), testsObjDir, testAbs) + ".obj";
+    };
 
     size_t testExeCount = 0;
     size_t testFailCount = 0;
-    for (auto& [testAbs, testMod] : testFiles) {
-        // 计算 DLL 文件名（后续多处使用，也用于失败标记文件路径）
-        std::string dllFileName = testMod;
-        for (auto& c : dllFileName)
-            if (c == '.') c = '_';
 
-        // 构建失败时写标记文件 + 删除旧 DLL（避免 test 扫描时重复计入）
-        auto markAsFailed = [&](const std::string& reason) {
-            std::string failPath = std::string(testsDir).append("/").append(dllFileName).append(".test.failed");
-            std::ofstream failFile(failPath);
-            if (failFile) failFile << reason << "\n";
-            // 删除旧 DLL：如果上次构建成功但本次失败，旧 DLL 已过时
-            std::string oldDll = std::string(testsDir).append("/").append(dllFileName).append(".test.dll");
-            std::error_code rmEc;
-            fs::remove(oldDll, rmEc);
-            ++testFailCount;
-        };
+    std::string self = getSelfExePath();
+    int maxParallel = resolveThreadCount(threads);
+    bool useParallel = maxParallel > 1 && testFiles.size() > 1 && testModFilters.empty() && !self.empty();
 
-        // 解析测试文件 AST
-        std::string testModName = testMod;
-        try {
-            yux.loadMainFile(testAbs, testModName);
-        } catch (std::runtime_error& e) {
-            reportRuntimeError(testAbs, e, testModName + ": ");
-            markAsFailed(e.what());
-            continue;
+    if (useParallel) {
+        std::vector<std::pair<std::string, std::string>> stale;
+        for (auto& [testAbs, testMod] : testFiles) {
+            std::string stem = testDllFileStem(testMod);
+            std::string testObj = objOf(testAbs);
+            std::string dllPath = joinUnder(testsDir, stem, ".test.dll");
+            if (isStampFresh(stampOf(testAbs), testAbs, testObj, fingerprint) &&
+                isTestDllFresh(dllPath, testObj, allObjMap, sdkLibPath, yuxrtLibPath)) {
+                ++testExeCount;
+            } else {
+                stale.emplace_back(testAbs, testMod);
+            }
         }
 
-        // Codegen 测试模块（isTestDll=true）
-        auto testFile = yux.module(testModName);
-        if (!testFile) {
-            markAsFailed("module not found after parse");
-            continue;
+        if (!stale.empty()) {
+            std::string logsDir = testsDir + "/logs";
+            {
+                std::error_code ec2;
+                fs::create_directories(logsDir, ec2);
+            }
+            std::string cwd = fs::current_path().string();
+
+            // 按 worker 分片：每个子进程 parse 一次 SDK，再串行编自己那一份。
+            // 一文件一进程会把 SDK parse 重复 stale.size() 次，CPU 涨、墙钟不变。
+            int nJobs = std::min(maxParallel, static_cast<int>(stale.size()));
+            std::vector<std::vector<std::pair<std::string, std::string>>> shards(static_cast<size_t>(nJobs));
+            for (size_t i = 0; i < stale.size(); ++i) {
+                shards[i % static_cast<size_t>(nJobs)].push_back(stale[i]);
+            }
+
+            std::cout.flush();
+            std::cout << "Compiling " << stale.size() << " test file(s) in " << nJobs << " job(s)";
+            if (testExeCount > 0) std::cout << " (" << testExeCount << " up-to-date)";
+            std::cout << "...\n";
+            std::cout.flush();
+
+            std::mutex printMtx;
+            std::vector<std::thread> waiters;
+            waiters.reserve(static_cast<size_t>(nJobs));
+
+            for (int job = 0; job < nJobs; ++job) {
+                // NOLINTNEXTLINE(bugprone-exception-escape)
+                waiters.emplace_back([&, job, shard = shards[static_cast<size_t>(job)]]() {
+                    std::string logPath = logsDir;
+                    logPath += '/';
+                    logPath += "job-";
+                    logPath += std::to_string(job);
+                    logPath += ".compile.log";
+
+                    std::wstring cmd = L"\"" + toWide(self) + L"\" build --test --threads 1";
+                    for (auto& [_, testMod] : shard) {
+                        cmd += L" --test-mod ";
+                        cmd += toWide(stripTestSuffix(testMod));
+                    }
+                    if (emitIr) {
+                        cmd += L" --emit-ir --emit-ir-dir \"" + toWide(irDir) + L"\"";
+                    }
+#ifdef _DEBUG
+                    if (debug) cmd += L" -d";
+#endif
+
+                    std::uint32_t code = spawnToLog(cmd, toWide(logPath), toWide(cwd));
+
+                    std::scoped_lock lock(printMtx);
+                    for (auto& [testAbs, testMod] : shard) {
+                        std::string stem = testDllFileStem(testMod);
+                        std::string failPath = joinUnder(testsDir, stem, ".test.failed");
+                        std::string dllPath = joinUnder(testsDir, stem, ".test.dll");
+
+                        bool failed = false;
+                        std::string failReason;
+                        {
+                            std::error_code ec3;
+                            if (fs::exists(failPath, ec3)) {
+                                failed = true;
+                            } else if (!fs::exists(dllPath, ec3)) {
+                                failed = true;
+                                failReason = code == kSpawnFailed ? "compile job spawn failed"
+                                             : code != 0          ? ("compile job exit " + std::to_string(code))
+                                                                  : "compile job produced no dll";
+                            }
+                        }
+
+                        if (failed && !failReason.empty()) {
+                            std::ofstream failFile(failPath);
+                            if (failFile) failFile << failReason << "\n";
+                            std::error_code rmEc;
+                            fs::remove(dllPath, rmEc);
+                        }
+
+                        if (failed) {
+                            ++testFailCount;
+                            std::cout << "Compile " << testMod << " FAIL (log: " << logPath << ")\n";
+                        } else {
+                            ++testExeCount;
+                            std::cout << "Compile " << testMod << " ok\n";
+                        }
+                    }
+                    std::cout.flush();
+                });
+            }
+
+            for (auto& t : waiters)
+                t.join();
         }
+    } else {
+        // 测试 obj 每文件 stamp（与 lib 缓存隔离：testsObjDir 下独立 .cache）
+        for (auto& [testAbs, testMod] : testFiles) {
+            // 计算 DLL 文件名（后续多处使用，也用于失败标记文件路径）
+            std::string dllFileName = testDllFileStem(testMod);
 
-        std::string testObj = mirroredOutputBase(yux.projectRoot(), testsObjDir, testAbs) + ".obj";
-        fs::create_directories(fs::path(testObj).parent_path());
+            // 构建失败时写标记文件 + 删除旧 DLL（避免 test 扫描时重复计入）
+            auto markAsFailed = [&](const std::string& reason) {
+                std::string failPath = std::string(testsDir).append("/").append(dllFileName).append(".test.failed");
+                std::ofstream failFile(failPath);
+                if (failFile) failFile << reason << "\n";
+                // 删除旧 DLL：如果上次构建成功但本次失败，旧 DLL 已过时
+                std::string oldDll = std::string(testsDir).append("/").append(dllFileName).append(".test.dll");
+                std::error_code rmEc;
+                fs::remove(oldDll, rmEc);
+                ++testFailCount;
+            };
 
-        // 缓存检查：test obj 新鲜则跳过 codegen
-        if (!testCaches.isFresh(testAbs, testObj)) {
-            auto tCtx = std::make_unique<llvm::LLVMContext>();
-            auto tMod = std::make_unique<llvm::Module>(testModName, *tCtx);
-            llvm::IRBuilder<> tBuilder(*tCtx);
+            // 解析测试文件 AST
+            std::string testModName = testMod;
             try {
-                Compiler compiler(*tCtx, tBuilder, tMod.get(), testFile, &yux, false, true); // isTestDll=true
-                compiler.compile(testFile);
+                yux.loadMainFile(testAbs, testModName);
             } catch (std::runtime_error& e) {
                 reportRuntimeError(testAbs, e, testModName + ": ");
                 markAsFailed(e.what());
                 continue;
             }
 
-            if (emitIr) {
-                std::string testIr = mirroredOutputBase(yux.projectRoot(), irDir, testAbs) + ".ll";
-                fs::create_directories(fs::path(testIr).parent_path());
-                std::error_code ec2;
-                llvm::raw_fd_ostream irFile(testIr, ec2);
-                if (ec2) {
-                    std::cerr << "Error opening test IR file: " << ec2.message() << '\n';
-                } else {
-                    tMod->print(irFile, nullptr);
-                    irFile.flush();
-                    std::cout << "Write test IR: " << testIr << '\n';
-                }
-            }
-
-            if (!compileIRToObj(tMod.get(), testObj)) {
-                std::cerr << "Error: failed to compile test IR: " << testObj << '\n';
-                markAsFailed("compile IR to obj failed: " + testObj);
+            // Codegen 测试模块（isTestDll=true）
+            auto testFile = yux.module(testModName);
+            if (!testFile) {
+                markAsFailed("module not found after parse");
                 continue;
             }
-            std::cout << "Write test obj: " << testObj << '\n';
-            testCaches.mark(testAbs);
-        }
 
-        // 收集依赖 obj（从 yux.loadOrder — 测试模块引用的依赖）
-        std::vector<std::string> linkObjs = {testObj};
-        std::set<std::string> seenMods;
-        for (auto& depMod : yux.loadOrder()) {
-            if (seenMods.count(depMod)) continue;
-            seenMods.insert(depMod);
-            auto it = allObjMap.find(depMod);
-            if (it != allObjMap.end()) {
-                linkObjs.push_back(it->second);
-            }
-        }
-        // SDK lib
-        if (!sdkLibPath.empty()) linkObjs.push_back(sdkLibPath);
+            std::string testObj = objOf(testAbs);
+            fs::create_directories(fs::path(testObj).parent_path());
+            std::string stampPath = stampOf(testAbs);
 
-        // LLD 链接 test dll（dllFileName 已在循环顶部计算）
-        std::string testDllPath = testsDir;
-        testDllPath += "/";
-        testDllPath += dllFileName;
-        testDllPath += ".test.dll";
+            // 缓存检查：test obj 新鲜则跳过 codegen
+            if (!isStampFresh(stampPath, testAbs, testObj, fingerprint)) {
+                auto tCtx = std::make_unique<llvm::LLVMContext>();
+                auto tMod = std::make_unique<llvm::Module>(testModName, *tCtx);
+                llvm::IRBuilder<> tBuilder(*tCtx);
+                try {
+                    Compiler compiler(*tCtx, tBuilder, tMod.get(), testFile, &yux, false, true); // isTestDll=true
+                    compiler.compile(testFile);
+                } catch (std::runtime_error& e) {
+                    reportRuntimeError(testAbs, e, testModName + ": ");
+                    markAsFailed(e.what());
+                    continue;
+                }
 
-        // 检查 DLL 是否需要重新链接（DLL 比所有输入 obj 都新则跳过）
-        bool needLink = true;
-        if (fs::exists(testDllPath)) {
-            needLink = false;
-            try {
-                auto dllTime = fs::last_write_time(testDllPath);
-                for (auto& o : linkObjs) {
-                    if (fs::exists(o) && fs::last_write_time(o) > dllTime) {
-                        needLink = true;
-                        break;
+                if (emitIr) {
+                    std::string testIr = mirroredOutputBase(yux.projectRoot(), irDir, testAbs) + ".ll";
+                    fs::create_directories(fs::path(testIr).parent_path());
+                    std::error_code ec2;
+                    llvm::raw_fd_ostream irFile(testIr, ec2);
+                    if (ec2) {
+                        std::cerr << "Error opening test IR file: " << ec2.message() << '\n';
+                    } else {
+                        tMod->print(irFile, nullptr);
+                        irFile.flush();
+                        std::cout << "Write test IR: " << testIr << '\n';
                     }
                 }
-            } catch (...) {
-                needLink = true;
-            }
-        }
 
-        if (needLink) {
-            std::string dllOut = "/out:" + testDllPath;
-            // DLL 模式：/dll，无需 /entry /subsystem /kernel32.lib
-            std::vector<const char*> linkArgs = {"lld-link", dllOut.c_str(), "/dll", "/noentry", "kernel32.lib"};
-            for (auto& o : linkObjs)
-                linkArgs.insert(linkArgs.begin() + 1, o.c_str());
-            // yuxrt 运行时库
-            if (!yuxrtLibPath.empty()) linkArgs.push_back(yuxrtLibPath.c_str());
-            // 项目级 [link].libs（yux.toml）
-            std::vector<std::string> projLibArgs;
-            for (auto& lib : yux.projectLinkLibs()) {
-                projLibArgs.push_back(lib + ".lib");
-            }
-            for (auto& lib : projLibArgs) {
-                linkArgs.push_back(lib.c_str());
+                if (!compileIRToObj(tMod.get(), testObj)) {
+                    std::cerr << "Error: failed to compile test IR: " << testObj << '\n';
+                    markAsFailed("compile IR to obj failed: " + testObj);
+                    continue;
+                }
+                std::cout << "Write test obj: " << testObj << '\n';
+                writeStamp(stampPath, testAbs, fingerprint);
             }
 
-            std::string outStr, errStr;
-            llvm::raw_string_ostream oOS(outStr), eOS(errStr);
-            std::cout << "Link test dll: " << testDllPath << '\n';
-            lld::DriverDef dd = {.f = lld::WinLink, .d = &lld::coff::link};
-            lld::Result r = lldMain(linkArgs, oOS, eOS, llvm::ArrayRef{dd});
-            if (r.retCode) {
-                std::cerr << "Error: test dll link failed for " << testMod << "\n" << errStr;
-                markAsFailed("link failed: " + errStr);
-                continue;
+            // 收集依赖 obj（从 yux.loadOrder — 测试模块引用的依赖）
+            std::vector<std::string> linkObjs = {testObj};
+            std::set<std::string> seenMods;
+            for (auto& depMod : yux.loadOrder()) {
+                if (seenMods.count(depMod)) continue;
+                seenMods.insert(depMod);
+                auto it = allObjMap.find(depMod);
+                if (it != allObjMap.end()) {
+                    linkObjs.push_back(it->second);
+                }
             }
+            // SDK lib
+            if (!sdkLibPath.empty()) linkObjs.push_back(sdkLibPath);
+
+            // LLD 链接 test dll（dllFileName 已在循环顶部计算）
+            std::string testDllPath = testsDir;
+            testDllPath += '/';
+            testDllPath += dllFileName;
+            testDllPath += ".test.dll";
+
+            // 检查 DLL 是否需要重新链接（DLL 比所有输入 obj 都新则跳过）
+            bool needLink = true;
+            if (fs::exists(testDllPath)) {
+                needLink = false;
+                try {
+                    auto dllTime = fs::last_write_time(testDllPath);
+                    for (auto& o : linkObjs) {
+                        if (fs::exists(o) && fs::last_write_time(o) > dllTime) {
+                            needLink = true;
+                            break;
+                        }
+                    }
+                } catch (...) {
+                    needLink = true;
+                }
+            }
+
+            if (needLink) {
+                std::string dllOut = "/out:" + testDllPath;
+                // DLL 模式：/dll，无需 /entry /subsystem /kernel32.lib
+                std::vector<const char*> linkArgs = {"lld-link", dllOut.c_str(), "/dll", "/noentry", "kernel32.lib"};
+                for (auto& o : linkObjs)
+                    linkArgs.insert(linkArgs.begin() + 1, o.c_str());
+                // yuxrt 运行时库
+                if (!yuxrtLibPath.empty()) linkArgs.push_back(yuxrtLibPath.c_str());
+                // 项目级 [link].libs（yux.toml）
+                std::vector<std::string> projLibArgs;
+                for (auto& lib : yux.projectLinkLibs()) {
+                    projLibArgs.push_back(lib + ".lib");
+                }
+                for (auto& lib : projLibArgs) {
+                    linkArgs.push_back(lib.c_str());
+                }
+
+                std::string outStr, errStr;
+                llvm::raw_string_ostream oOS(outStr), eOS(errStr);
+                std::cout << "Link test dll: " << testDllPath << '\n';
+                lld::DriverDef dd = {.f = lld::WinLink, .d = &lld::coff::link};
+                lld::Result r = lldMain(linkArgs, oOS, eOS, llvm::ArrayRef{dd});
+                if (r.retCode) {
+                    std::cerr << "Error: test dll link failed for " << testMod << "\n" << errStr;
+                    markAsFailed("link failed: " + errStr);
+                    continue;
+                }
+            }
+            // 构建成功，清除可能存在的旧失败标记
+            std::string oldFailPath = std::string(testsDir).append("/").append(dllFileName).append(".test.failed");
+            std::error_code rmEc;
+            fs::remove(oldFailPath, rmEc);
+            ++testExeCount;
         }
-        // 构建成功，清除可能存在的旧失败标记
-        std::string oldFailPath = std::string(testsDir).append("/").append(dllFileName).append(".test.failed");
-        std::error_code rmEc;
-        fs::remove(oldFailPath, rmEc);
-        ++testExeCount;
     }
-    testCaches.flushAll();
     if (testExeCount > 0) {
         std::cout << "Built " << testExeCount << " test dll(s) into " << testsDir << '\n';
     } else if (!testFiles.empty()) {
         std::cout << "no test dll built (all failed)\n";
-    } else if (testModFilter.empty()) {
+    } else if (testModFilters.empty()) {
         std::cout << "no *.test.yux files found\n";
     }
     if (testFailCount > 0) {
@@ -362,7 +546,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         namespace fs = std::filesystem;
         sdkPath = fs::absolute(sdkPath).string();
         // SDK 静态库路径推导：sdkRoot = sdkPath 向上到含 yux.toml 的目录
-        fs::path sdkRoot = fs::path(sdkPath).parent_path().parent_path().parent_path(); // sdk/yux/src/yux/core → sdk/yux
+        fs::path sdkRoot =
+            fs::path(sdkPath).parent_path().parent_path().parent_path(); // sdk/yux/src/yux/core → sdk/yux
         sdkLibPath = (sdkRoot / "build" / "yux.lib").string();
 
         // 解析 SDK 源码获取符号表（_sdkFile + 各模块 AST）
@@ -589,7 +774,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 std::string obj = mirroredOutputBase(yux.projectRoot(), buildDir, abs) + ".obj";
                 allObjMap[mn] = obj;
             }
-            buildTestDlls(yux, srcDir, buildDir, irDir, emitIr, sdkLibPath, yuxrtLibPath, opts.testMod, allObjMap);
+            buildTestDlls(yux, srcDir, buildDir, irDir, emitIr, sdkLibPath, yuxrtLibPath, opts.testMods, allObjMap,
+                          opts.threads);
         }
 
         std::cout.flush();
@@ -698,7 +884,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             std::string obj = mirroredOutputBase(yux.projectRoot(), buildDir, abs) + ".obj";
             allObjMap[mn] = obj;
         }
-        buildTestDlls(yux, srcDir, buildDir, irDir, emitIr, sdkLibPath, yuxrtLibPath, opts.testMod, allObjMap);
+        buildTestDlls(yux, srcDir, buildDir, irDir, emitIr, sdkLibPath, yuxrtLibPath, opts.testMods, allObjMap,
+                      opts.threads);
 
         std::cout.flush();
         std::cerr.flush();

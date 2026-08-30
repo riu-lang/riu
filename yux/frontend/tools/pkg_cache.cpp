@@ -130,7 +130,7 @@ bool PkgCache::flush(const std::string& fingerprint) {
 
     std::string tmpPath = _cachePath + ".tmp";
     {
-        std::ofstream f(tmpPath, std::ios::binary | std::ios::trunc);
+        std::ofstream f(tmpPath, std::ios::binary | std::ios::trunc); // NOLINT(bugprone-signed-bitwise)
         if (!f.is_open()) return false;
         f << fingerprint << '\n';
         for (auto& [filename, value] : _entries) {
@@ -187,5 +187,40 @@ void PkgCacheRegistry::mark(const std::string& srcAbs) {
 void PkgCacheRegistry::flushAll() {
     for (auto& [_, cache] : _caches) {
         cache.flush(_fingerprint);
+    }
+}
+
+// ==================== 单文件 stamp ====================
+
+bool isStampFresh(const std::string& stampPath, const std::string& srcAbs, const std::string& objPath,
+                  const std::string& fingerprint) {
+    std::error_code ec;
+    if (!fs::exists(objPath, ec)) return false;
+    std::ifstream f(stampPath, std::ios::binary);
+    if (!f.is_open()) return false;
+    std::string line;
+    if (!std::getline(f, line) || line != fingerprint) return false;
+    if (!std::getline(f, line)) return false;
+    return line == entryValue(mtimeNs(srcAbs), fsize(srcAbs));
+}
+
+void writeStamp(const std::string& stampPath, const std::string& srcAbs, const std::string& fingerprint) {
+    std::error_code ec;
+    fs::create_directories(fs::path(stampPath).parent_path(), ec);
+
+    std::string tmpPath = stampPath + ".tmp";
+    {
+        std::ofstream f(tmpPath, std::ios::binary | std::ios::trunc); // NOLINT(bugprone-signed-bitwise)
+        if (!f.is_open()) return;
+        f << fingerprint << '\n';
+        f << entryValue(mtimeNs(srcAbs), fsize(srcAbs)) << '\n';
+        f.flush();
+        if (!f.good()) return;
+    }
+    fs::rename(tmpPath, stampPath, ec);
+    if (ec) {
+        fs::remove(stampPath, ec);
+        ec.clear();
+        fs::rename(tmpPath, stampPath, ec);
     }
 }

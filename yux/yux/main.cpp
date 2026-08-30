@@ -101,8 +101,11 @@ int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windo
     buildCmd->add_option("--emit-ir-dir", emitIrDir, "Output directory for .ll files (default: build/)");
     bool testMode = false;
     buildCmd->add_flag("--test", testMode, "Build test executables for *.test.yux into build/tests/");
-    std::string buildTestMod;
-    buildCmd->add_option("--test-mod", buildTestMod, "Build only the specified test module (e.g. yux.core.array)");
+    std::vector<std::string> buildTestMods;
+    buildCmd->add_option("--test-mod", buildTestMods,
+                         "Build only specified test module(s); repeatable (e.g. yux.core.array)");
+    int buildThreads = 0;
+    buildCmd->add_option("--threads", buildThreads, "Parallel test compile jobs (default: CPU cores; 1 = serial)");
     buildCmd->fallthrough(); // 允许 --warn / --allow / --deny / -Werror 在 build 子命令上使用
 
 #ifdef _DEBUG
@@ -116,7 +119,7 @@ int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windo
     testCmd->add_flag("-v,--verbose", testVerbose,
                       "Print captured stdout/stderr for every test (default: only on failure)");
     int testThreads = 0;
-    testCmd->add_option("--threads", testThreads, "Thread count (default: CPU cores)");
+    testCmd->add_option("--threads", testThreads, "Parallel compile and runner jobs (default: CPU cores; 1 = serial)");
     std::string testTestMod;
     testCmd->add_option("--test-mod", testTestMod,
                         "Build and run only the specified test module (e.g. yux.core.array)");
@@ -184,7 +187,8 @@ int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windo
     BuildCmdOptions bopts;
     bopts.projectMode = buildCmd->parsed();
     bopts.testMode = testMode;
-    bopts.testMod = buildTestMod;
+    bopts.testMods = std::move(buildTestMods);
+    bopts.threads = buildThreads;
     bopts.emitIr = emitIr;
     bopts.emitIrDir = emitIrDir;
     bopts.buildNameArg = buildNameArg;
