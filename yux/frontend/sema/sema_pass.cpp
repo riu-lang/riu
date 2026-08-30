@@ -38,6 +38,7 @@
 #include "ast/node/file_node.h"
 #include "ast/node/fn_node.h"
 #include "ast/node/literal_node.h"
+#include "ast/node/spec_node.h"
 #include "ast/node/statement_node.h"
 #include "ast/node/struct_node.h"
 #include "ast/node/type_node.h"
@@ -182,6 +183,107 @@ bool isMorphologicalGenericCode(const char* code) {
         if (sv == c) return true;
     }
     return false;
+}
+
+bool isKnownArrayMethod(const string& member) {
+    return member == "get" || member == "first" || member == "last" || member == "pop" || member == "len" ||
+           member == "cap" || member == "is_empty" || member == "push" || member == "clear" || member == "set_len" ||
+           member == "reserve" || member == "clone";
+}
+
+bool typeParamBoundHasMethod(FnNode* fn, FileNode* file, FileNode* sdk, const string& typeParam, const string& member);
+
+// 实例化后方法返回类型。nullopt = 方法不存在。
+std::optional<TypeInfo> instantiatedMethodRet(FnNode* fn, FileNode* file, FileNode* sdk, const TypeInfo& rawRecv,
+                                              const TypeInfo& instRecv, const string& member) {
+    TypeInfo peeledRaw = rawRecv.peelAutoDeref();
+    if (typeParamBoundHasMethod(fn, file, sdk, peeledRaw.name, member) && fn && fn->header()) {
+        auto hdr = fn->header();
+        const auto& tps = hdr->typeParams();
+        const auto& bounds = hdr->typeParamBounds();
+        size_t idx = SIZE_MAX;
+        for (size_t i = 0; i < tps.size(); ++i) {
+            if (tps[i] == peeledRaw.name) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx != SIZE_MAX && idx < bounds.size()) {
+            for (auto& dname : bounds[idx]) {
+                SpecDeclNode* draft = file ? file->getSpecDecl(dname) : nullptr;
+                if (!draft && sdk && sdk != file) draft = sdk->getSpecDecl(dname);
+                if (!draft) continue;
+                for (auto& sig : draft->signatures()) {
+                    if (!sig || sig->name().getText() != member) continue;
+                    if (sig->retType()) return sig->retType()->getType();
+                    return TypeInfo();
+                }
+            }
+        }
+    }
+    TypeInfo t = instRecv.peelAutoDeref();
+    if (t.isArray() || t.isArrayGeneric()) {
+        if (member == "len" || member == "cap") return TypeInfo("usize");
+        if (member == "is_empty") return TypeInfo("bool");
+        if (member == "clone") return t;
+        sp<TypeInfo> elem = t.isArray() ? t.elementType : t.arrayGenericElementType();
+        if (member == "get" || member == "first" || member == "last") {
+            if (elem) return TypeInfo("Ref", {elem});
+        }
+        if (member == "pop") {
+            if (elem) return *elem;
+        }
+        if (isKnownArrayMethod(member)) return TypeInfo();
+        return std::nullopt;
+    }
+    if (member.starts_with("to_")) {
+        string dst = member.substr(3);
+        if (isBuiltinType(dst)) return TypeInfo(dst);
+    }
+    if (t.name.empty()) return std::nullopt;
+    auto* fsym = sema::NameResolver(file, sdk).lookupFn(t.name + "." + member);
+    if (!fsym) return std::nullopt;
+    return fsym->retType;
+}
+
+bool receiverHasMethod(const TypeInfo& recv, const string& member, FileNode* file, FileNode* sdk) {
+    return instantiatedMethodRet(nullptr, file, sdk, recv, recv, member).has_value();
+}
+
+// `<T : D>` 边界上的方法：实例化后仍按边界认，不要求具体类型自己登记同名方法。
+bool typeParamBoundHasMethod(FnNode* fn, FileNode* file, FileNode* sdk, const string& typeParam, const string& member) {
+    if (!fn || !fn->header() || member.empty()) return false;
+    auto hdr = fn->header();
+    const auto& tps = hdr->typeParams();
+    const auto& bounds = hdr->typeParamBounds();
+    size_t idx = SIZE_MAX;
+    for (size_t i = 0; i < tps.size(); ++i) {
+        if (tps[i] == typeParam) {
+            idx = i;
+            break;
+        }
+    }
+    if (idx == SIZE_MAX || idx >= bounds.size()) return false;
+    for (auto& dname : bounds[idx]) {
+        SpecDeclNode* draft = file ? file->getSpecDecl(dname) : nullptr;
+        if (!draft && sdk && sdk != file) draft = sdk->getSpecDecl(dname);
+        if (!draft) continue;
+        for (auto& sig : draft->signatures()) {
+            if (sig && sig->name().getText() == member) return true;
+        }
+    }
+    return false;
+}
+
+const char* binOpE3001Kind(const string& methodName) {
+    if (methodName == "plus" || methodName == "minus") return "arithmetic";
+    if (methodName == "mul" || methodName == "div" || methodName == "mod") return "mul/div/mod";
+    if (methodName == "and" || methodName == "or" || methodName == "xor" || methodName == "shl" || methodName == "shr")
+        return "bitwise";
+    if (methodName == "eq" || methodName == "ne" || methodName == "lt" || methodName == "le" || methodName == "gt" ||
+        methodName == "ge")
+        return "comparison";
+    return "arithmetic";
 }
 
 void collectOverloadsBoth(FileNode* file, FileNode* sdk, const string& name, vector<FnSymbolInfo*>& out) {
@@ -2664,6 +2766,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                     bool baseOk = true;
                     try {
                         baseType = dotCallee->baseExpr()->getType();
+                        baseType = applyInstSubst(baseType);
                     } catch (...) {
                         baseOk = false;
                     }
@@ -2762,14 +2865,25 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
         // 中的 validateStructMethodVisibility 同义，构成双重保障。
         if (auto dotCallee = dynamic_cast<p<ExprDotNode>>(n->getCalleeExpr())) {
             try {
-                TypeInfo baseType = dotCallee->baseExpr()->getType();
-                if (baseType.isRef()) {
-                    if (auto inner = baseType.refElementType()) baseType = *inner;
+                TypeInfo rawBase = dotCallee->baseExpr()->getType();
+                if (rawBase.isRef()) {
+                    if (auto inner = rawBase.refElementType()) rawBase = *inner;
                 }
-                if (baseType.isRc()) {
-                    if (auto inner = baseType.rcElementType()) baseType = *inner;
+                if (rawBase.isRc()) {
+                    if (auto inner = rawBase.rcElementType()) rawBase = *inner;
                 }
-                baseType = applyInstSubst(baseType);
+                TypeInfo baseType = applyInstSubst(rawBase);
+                // Phase C：实例化后 TypeParam 已换成具体类型，查方法是否存在。
+                // 模板期 raw 仍是 T → 跳过。`<T : D>` 边界方法按边界认。
+                if (!isCurrentTypeParam(baseType) && !_instSubst.empty() && isCurrentTypeParam(rawBase) &&
+                    !baseType.isDyn() && !baseType.isPtr() && !baseType.name.empty()) {
+                    string member = dotCallee->member();
+                    auto rt = instantiatedMethodRet(_currentFn, _file, _sdkFile, rawBase, baseType, member);
+                    if (!rt) {
+                        throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3095, baseType.getFullName());
+                    }
+                    n->setResolvedType(*rt);
+                }
                 if (isCurrentTypeParam(baseType)) {
                     // Phase C：不透明 TypeParam，方法存在性等实例化后再查
                 } else if (!baseType.name.empty() && !baseType.isDyn() && !isBuiltinType(baseType.name) &&
@@ -2847,7 +2961,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                 try {
                     baseType = dot->baseExpr()->hasResolvedType() ? dot->baseExpr()->resolvedType()
                                                                   : dot->baseExpr()->getType();
-                    baseType = baseType.peelAutoDeref();
+                    baseType = applyInstSubst(baseType.peelAutoDeref());
                 } catch (...) { // NOLINT(bugprone-empty-catch)
                     baseOk = false;
                 }
@@ -2857,7 +2971,10 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                         isField = dot->isFieldAccess();
                     } catch (...) { // NOLINT(bugprone-empty-catch)
                     }
-                    if (!isField) throw *deferredMethodE3095;
+                    // 实例化后接收者已有该方法：getType 仍按 T 抛的 E3095 不重抛。
+                    if (!isField && !(baseOk && receiverHasMethod(baseType, dot->member(), _file, _sdkFile))) {
+                        throw *deferredMethodE3095;
+                    }
                 }
             }
         }
@@ -3624,15 +3741,31 @@ void SemaPass::tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExp
     // `!isBuiltinType(leftType.name) → compileCustomTypeBinaryOp` 一致, 但
     // 进一步把容器类排除 (容器走专属 codegen / sema 路径, 不该走到 method 解析):
     //   * Ref / Rc / Array / Heap / Weak / Nullable / Ptr / Tuple
-    // 进而要求 struct decl 实际存在且非泛型 — 泛型 struct 需 applySubst, 留
-    // Compiler; 模板形参 T 自然 getStructDecl 不到, 也被排除.
+    // 泛型 struct 实例仍跳过（方法解析要完整 subst）；模板形参 T 等实例化后再查。
     // leftType / rightType getType 抛错 (lambda 形参等) 跳过, 留 Compiler 兜底.
     if (methodName.empty()) return;
     try {
-        TypeInfo leftType = leftExpr->getType();
-        TypeInfo rightType = rightExpr->getType();
+        TypeInfo leftType = applyInstSubst(leftExpr->getType()).peelAutoDeref();
+        TypeInfo rightType = applyInstSubst(rightExpr->getType()).peelAutoDeref();
         if (isCurrentTypeParam(leftType) || isCurrentTypeParam(rightType)) return;
-        if (leftType.name.empty() || isBuiltinType(leftType.name)) return;
+        // String + 任意：getType 整链结果即 String，不走 E3001。
+        if (methodName == "plus" && (leftType.isString() || rightType.isString())) return;
+        // 实例化后内置类型：镜像 ExprAddSubNode::getType 的 E3001。
+        if (isBuiltinType(leftType.name)) {
+            if (leftType != rightType) {
+                if (isIntTypeName(leftType.name) && isFlexibleIntExpr(rightExpr)) {
+                    tryInferIntType(rightExpr, leftType);
+                    return;
+                }
+                if (isIntTypeName(rightType.name) && isFlexibleIntExpr(leftExpr)) {
+                    tryInferIntType(leftExpr, rightType);
+                    return;
+                }
+                throw YuxError(line, col, ErrorCode::E3001, binOpE3001Kind(methodName), leftType.name, rightType.name);
+            }
+            return;
+        }
+        if (leftType.name.empty()) return;
         // String 走 StringBuilder 特殊 lowering / 其它 builtin-handled 路径,
         // 没有用户可见的 plus/eq/... 方法签名, 不能走 customBinaryOp 解析.
         if (leftType.isString()) return;

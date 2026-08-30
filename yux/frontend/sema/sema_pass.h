@@ -126,8 +126,9 @@ private:
     // ExprMulDivMod / ExprBinOp / ExprCompare 四个 visit 分支共用.
     //
     // 仅在 leftType 是非 builtin / 非 Ref/Rc/Array/Heap/Weak/Nullable/Ptr/Tuple
-    // 容器 / 已知非泛型 struct 时调用; 泛型 struct / 模板形参 / lambda 形参 (getType
-    // 抛错) 一律跳过, 留 Compiler 兜底. methodName 由调用方按 op 映射 (plus/minus/...).
+    // 容器 / 已知非泛型 struct 时走方法解析; 泛型 struct 仍跳过。
+    // 实例化后内置类型走 E3001（与 getType 对齐）；模板形参 / lambda 形参跳过。
+    // methodName 由调用方按 op 映射 (plus/minus/...).
     void tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExpr, const string& methodName, int line,
                                 int col);
 };

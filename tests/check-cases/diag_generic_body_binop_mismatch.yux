@@ -1,0 +1,9 @@
+; 泛型 fn 体：T 实例化为 bool 后与 i32 相加 → E3001（Phase C 运算符）
+fn add_i32<T>(a T, b i32) {
+  a + b  ; check: E3001
+}
+
+fn main() {
+  add_i32:<bool>(true, 1)
+  ret;
+}

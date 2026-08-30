@@ -1,0 +1,19 @@
+; 泛型 fn 体：T 实例化为带 len 的 struct 时方法调用合法（Phase C）
+struct HasLen {
+  n i32
+
+  fn len() usize {
+    0
+  }
+}
+
+fn len_of<T>(x T) usize {
+  x.len()
+}
+
+fn main() {
+  let n usize = len_of:<HasLen>(HasLen {
+    .n = 1
+  })
+  ret;
+}

@@ -1,0 +1,9 @@
+; 泛型 fn 体：T 实例化为 i32 后 x.len() 不存在 → E3095（Phase C 方法分派）
+fn len_of<T>(x T) usize {
+  x.len()  ; check: E3095
+}
+
+fn main() {
+  len_of:<i32>(1)
+  ret;
+}
