@@ -92,6 +92,10 @@
 
 - **反射补全**：`Field.type` / `offset`；显式 receiver `other::fields[0].value`；`Self::type` / `Self::fields`；`methods` / `variants` 数组填充；`#Reflect` 命名参数（待 anno-struct）。
 
+- **模块声明文件 + 并行编译**：parse 后写二进制模块声明（接口 + 泛型体源文本）；`use` 读声明、不拉依赖整棵 AST；`yux test` 按测试文件 spawn 编译 job。声明失效键是格式版本 + 源码 hash，**重编编译器不重 parse**。v0.20 收口后再编号。
+  - **依赖**：v0.20 SemaPass 为语义权威（进行中）。
+  - **不含**：YAML AST；深拷编译器会话；进程内并行 SemaPass。
+
 - **工具链与编辑器支持**：LSP / IDE 插件（高亮、补全、跳转）；测试框架（约定 + runner）；文档生成（从源码注释 / spec 抽取）。
 
 - **条件编译 + 注解可扩展**：条件编译指令；用户自定义注解雏形（仅元数据，尚不允许执行）。
