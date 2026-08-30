@@ -283,6 +283,8 @@ struct RetCheck {
     FnNode* fn = nullptr;
     string structName;
     string fallibleErr; // 空 = 非 #Fallible
+    const std::set<std::string>* typeParams = nullptr;
+    const std::map<std::string, TypeInfo>* subst = nullptr;
 };
 
 TypeInfo substSelfType(TypeInfo t, const string& structName) {
@@ -364,14 +366,47 @@ bool refRetSourceInner(p<ExprNode> expr, FnNode* fn, TypeInfo& srcInner) {
     return true;
 }
 
+bool isAssignTypeParam(const TypeInfo& t, const std::set<std::string>& typeParams) {
+    if (typeParams.empty()) return false;
+    TypeInfo peeled = t.peelAutoDeref();
+    return peeled.isNormal() && !peeled.name.empty() && typeParams.count(peeled.name) > 0;
+}
+
+TypeInfo applySubstMap(const TypeInfo& t, const std::map<std::string, TypeInfo>* subst) {
+    if (!subst || subst->empty()) return t;
+    return t.substitute(*subst);
+}
+
+// 模板体：T / Array<T> 等仍不透明。实例化后 subst 已把 T 换成具体类型，继续比。
+bool stillTemplateType(const TypeInfo& t, const std::set<std::string>& typeParams,
+                       const std::map<std::string, TypeInfo>* subst) {
+    if (isAssignTypeParam(t, typeParams)) return true;
+    if (subst && !subst->empty()) return false;
+    return !typeParams.empty() && !t.genericArgs.empty();
+}
+
+string genericInstKey(const void* p, const std::map<std::string, TypeInfo>& subst) {
+    string k = std::format("{}", p);
+    k += '{';
+    for (auto& [name, ty] : subst) {
+        k += name;
+        k += '=';
+        k += ty.getMangleName();
+        k += ',';
+    }
+    k += '}';
+    return k;
+}
+
 // Phase C：ret 表达式 E3014。Fallible 成功/错误双通道、T& 形态、Nullable wrap、
 // 别名 resolveAlias、灵活整数推断。spec 体里未解析的 Self 仍跳过。
 void checkRetExpr(p<ExprNode> expr, const TypeInfo& declRet, bool hasDeclRet, int line, const RetCheck& ctx) {
     if (!expr) return;
-    if (hasDeclRet && declRet.isSelf() && ctx.structName.empty()) return;
+    TypeInfo decl = applySubstMap(declRet, ctx.subst);
+    if (hasDeclRet && decl.isSelf() && ctx.structName.empty()) return;
 
     if (hasDeclRet) {
-        auto resolvedDecl = resolveForRet(declRet, ctx);
+        auto resolvedDecl = resolveForRet(decl, ctx);
         if (isIntTypeName(resolvedDecl.name) && isFlexibleIntExpr(expr)) {
             tryInferIntType(expr, resolvedDecl);
         }
@@ -384,35 +419,41 @@ void checkRetExpr(p<ExprNode> expr, const TypeInfo& declRet, bool hasDeclRet, in
 
     TypeInfo retType;
     if (!tryGetExprType(expr, retType)) return;
+    retType = applySubstMap(retType, ctx.subst);
+    if (ctx.typeParams) {
+        if (hasDeclRet && stillTemplateType(decl, *ctx.typeParams, ctx.subst)) return;
+        if (stillTemplateType(retType, *ctx.typeParams, ctx.subst)) return;
+    }
 
     if (!ctx.fallibleErr.empty()) {
         auto resolvedRet = resolveForRet(retType, ctx);
-        bool isSuccess = hasDeclRet && (resolvedRet == resolveForRet(declRet, ctx));
+        bool isSuccess = hasDeclRet && (resolvedRet == resolveForRet(decl, ctx));
         bool isError = (resolvedRet.name == ctx.fallibleErr);
         if (!isSuccess && !isError) {
-            throw YuxError(line, ErrorCode::E3014, hasDeclRet ? declRet.getFullName() : string("void"),
+            throw YuxError(line, ErrorCode::E3014, hasDeclRet ? decl.getFullName() : string("void"),
                            retType.getFullName());
         }
         return;
     }
 
-    if (hasDeclRet && declRet.isRef()) {
+    if (hasDeclRet && decl.isRef()) {
         TypeInfo srcInner;
         if (!refRetSourceInner(expr, ctx.fn, srcInner)) {
-            throw YuxError(line, ErrorCode::E3014, declRet.getFullName(), retType.getFullName())
+            throw YuxError(line, ErrorCode::E3014, decl.getFullName(), retType.getFullName())
                 .withHint("返回 T& 时，ret 表达式应为 `$` / T& 变量 / `&expr` / 返回 T& 的调用");
         }
-        auto declInner = substSelfType(declRet, ctx.structName).refElementType();
+        srcInner = applySubstMap(srcInner, ctx.subst);
+        auto declInner = substSelfType(decl, ctx.structName).refElementType();
         TypeInfo declInnerResolved = declInner ? resolveForRet(*declInner, ctx) : TypeInfo();
         srcInner = resolveForRet(srcInner, ctx);
         if (declInner && !srcInner.empty() && declInnerResolved != srcInner) {
-            throw YuxError(line, ErrorCode::E3014, declRet.getFullName(), (srcInner.name + "&"));
+            throw YuxError(line, ErrorCode::E3014, decl.getFullName(), (srcInner.name + "&"));
         }
         return;
     }
 
-    if (hasDeclRet && declRet.isNullable()) {
-        auto resolvedDecl = resolveForRet(declRet, ctx);
+    if (hasDeclRet && decl.isNullable()) {
+        auto resolvedDecl = resolveForRet(decl, ctx);
         auto innerType = resolvedDecl.nullableInnerType();
         if (innerType && isFlexibleNullExpr(expr)) return;
         if (innerType) {
@@ -421,26 +462,20 @@ void checkRetExpr(p<ExprNode> expr, const TypeInfo& declRet, bool hasDeclRet, in
             bool wrap = resolvedRet == resolveForRet(*innerType, ctx);
             if (wholeCopy || wrap) return;
         }
-        throw YuxError(line, ErrorCode::E3014, declRet.getFullName(),
+        throw YuxError(line, ErrorCode::E3014, decl.getFullName(),
                        retType.empty() ? string("void") : retType.getFullName());
     }
 
     if (hasDeclRet) {
         if (retType.empty()) {
-            throw YuxError(line, ErrorCode::E3014, declRet.getFullName(), "void");
+            throw YuxError(line, ErrorCode::E3014, decl.getFullName(), "void");
         }
-        if (resolveForRet(retType, ctx) != resolveForRet(declRet, ctx)) {
-            throw YuxError(line, ErrorCode::E3014, declRet.getFullName(), retType.getFullName());
+        if (resolveForRet(retType, ctx) != resolveForRet(decl, ctx)) {
+            throw YuxError(line, ErrorCode::E3014, decl.getFullName(), retType.getFullName());
         }
     } else if (!retType.empty()) {
         throw YuxError(line, ErrorCode::E3014, "void", retType.getFullName());
     }
-}
-
-bool isAssignTypeParam(const TypeInfo& t, const std::set<std::string>& typeParams) {
-    if (typeParams.empty()) return false;
-    TypeInfo peeled = t.peelAutoDeref();
-    return peeled.isNormal() && !peeled.name.empty() && typeParams.count(peeled.name) > 0;
 }
 
 bool isKnownAssignType(const TypeInfo& t, FileNode* file, FileNode* sdk) {
@@ -458,20 +493,20 @@ bool isKnownAssignType(const TypeInfo& t, FileNode* file, FileNode* sdk) {
 // T& 局部 / `$`（Self&）是 store-through：caller 已 peelRef，want 是内层 T。
 // Nullable wrap / Rc wrap / 空数组 / 灵活整数与 Compiler 赋值路径对齐。
 void checkAssignRhs(p<ExprNode> expr, const TypeInfo& want, int line, int col, FileNode* file, FileNode* sdk,
-                    const std::set<std::string>& typeParams) {
+                    const std::set<std::string>& typeParams, const std::map<std::string, TypeInfo>* subst = nullptr) {
     if (!expr) return;
-    if (want.empty() || want.isSelf() || want.isFn()) return;
-    if (isAssignTypeParam(want, typeParams)) return;
-    if (!typeParams.empty() && !want.genericArgs.empty()) return;
-    if (isFlexibleIntExpr(expr) && isIntTypeName(want.name)) return;
+    TypeInfo w0 = applySubstMap(want, subst);
+    if (w0.empty() || w0.isSelf() || w0.isFn()) return;
+    if (stillTemplateType(w0, typeParams, subst)) return;
+    if (isFlexibleIntExpr(expr) && isIntTypeName(w0.name)) return;
 
     TypeInfo got;
     if (!tryGetExprType(expr, got)) return;
-    if (got.empty() || got.isSelf() || isAssignTypeParam(got, typeParams)) return;
-    if (!typeParams.empty() && !got.genericArgs.empty()) return;
+    TypeInfo g0 = applySubstMap(got, subst);
+    if (g0.empty() || g0.isSelf() || stillTemplateType(g0, typeParams, subst)) return;
 
-    auto g = sema::resolveAlias(got, file, sdk);
-    auto w = sema::resolveAlias(want, file, sdk);
+    auto g = sema::resolveAlias(g0, file, sdk);
+    auto w = sema::resolveAlias(w0, file, sdk);
     if (g == w) return;
     if (isEmptyArrayType(g) && (w.isArray() || w.isArrayGeneric())) return;
     if (w.isNullable()) {
@@ -484,9 +519,9 @@ void checkAssignRhs(p<ExprNode> expr, const TypeInfo& want, int line, int col, F
             }
             if (g == in) return;
         }
-        throw YuxError(line, col, ErrorCode::E3014, want.getFullName(), got.getFullName())
+        throw YuxError(line, col, ErrorCode::E3014, w0.getFullName(), g0.getFullName())
             .withHint(std::format("赋值目标为 `{}`，表达式为 `{}`；T? 只接受 `null` / 内层 T / 同型 T?",
-                                  want.getFullName(), got.getFullName()));
+                                  w0.getFullName(), g0.getFullName()));
     }
     if (w.isRc()) {
         if (auto inner = w.rcElementType()) {
@@ -497,34 +532,36 @@ void checkAssignRhs(p<ExprNode> expr, const TypeInfo& want, int line, int col, F
             }
             if (g == in) return;
         }
-        throw YuxError(line, col, ErrorCode::E3014, want.getFullName(), got.getFullName())
-            .withHint(std::format("赋值目标为 `{}`，表达式为 `{}`；Rc<T> 只接受同型句柄或内层 T", want.getFullName(),
-                                  got.getFullName()));
+        throw YuxError(line, col, ErrorCode::E3014, w0.getFullName(), g0.getFullName())
+            .withHint(std::format("赋值目标为 `{}`，表达式为 `{}`；Rc<T> 只接受同型句柄或内层 T", w0.getFullName(),
+                                  g0.getFullName()));
     }
     if (!isKnownAssignType(w, file, sdk) || !isKnownAssignType(g, file, sdk)) return;
-    throw YuxError(line, col, ErrorCode::E3014, want.getFullName(), got.getFullName())
-        .withHint(std::format("赋值目标类型为 `{}`，但表达式类型为 `{}`；yux 无隐式类型转换", want.getFullName(),
-                              got.getFullName()));
+    throw YuxError(line, col, ErrorCode::E3014, w0.getFullName(), g0.getFullName())
+        .withHint(std::format("赋值目标类型为 `{}`，但表达式类型为 `{}`；yux 无隐式类型转换", w0.getFullName(),
+                              g0.getFullName()));
 }
 
 // Phase C：调用实参相对实例化后形参的 E3014。
 // 与赋值的差别：实参不自动解引用（T& 传给 T 要 copy_of）；值传给 T& 允许自动取址。
 void checkCallArgAgainst(p<ExprNode> arg, const TypeInfo& want, int line, int col, FileNode* file, FileNode* sdk,
-                         const std::set<std::string>& typeParams) {
-    if (!arg || want.empty() || want.isSelf() || want.isFn()) return;
-    if (isAssignTypeParam(want, typeParams)) return;
-    if (!typeParams.empty() && !want.genericArgs.empty()) return;
+                         const std::set<std::string>& typeParams,
+                         const std::map<std::string, TypeInfo>* subst = nullptr) {
+    if (!arg) return;
+    TypeInfo w0 = applySubstMap(want, subst);
+    if (w0.empty() || w0.isSelf() || w0.isFn()) return;
+    if (stillTemplateType(w0, typeParams, subst)) return;
 
-    TypeInfo peeledWant = want.peelRef();
+    TypeInfo peeledWant = w0.peelRef();
     if (isFlexibleIntExpr(arg) && isIntTypeName(peeledWant.name)) return;
 
     TypeInfo got;
     if (!tryGetExprType(arg, got)) return;
-    if (got.empty() || got.isSelf() || isAssignTypeParam(got, typeParams)) return;
-    if (!typeParams.empty() && !got.genericArgs.empty()) return;
+    TypeInfo g0 = applySubstMap(got, subst);
+    if (g0.empty() || g0.isSelf() || stillTemplateType(g0, typeParams, subst)) return;
 
-    auto g = sema::resolveAlias(got, file, sdk);
-    auto w = sema::resolveAlias(want, file, sdk);
+    auto g = sema::resolveAlias(g0, file, sdk);
+    auto w = sema::resolveAlias(w0, file, sdk);
     if (g == w) return;
     if (w.isRef()) {
         if (auto inner = w.refElementType()) {
@@ -533,10 +570,10 @@ void checkCallArgAgainst(p<ExprNode> arg, const TypeInfo& want, int line, int co
     }
     if (g.isRef() && !w.isRef()) {
         auto inner = g.refElementType();
-        throw YuxError(line, col, ErrorCode::E3014, want.getFullName(), got.getFullName())
+        throw YuxError(line, col, ErrorCode::E3014, w0.getFullName(), g0.getFullName())
             .withHint(std::format("实参类型为 `{}&`（借用），形参期望 `{}`；"
                                   "若需取值请用 `copy_of:<{}>(...)` 或先 `let tmp {} = expr`",
-                                  inner ? inner->name : "?", want.getFullName(), inner ? inner->name : "?",
+                                  inner ? inner->name : "?", w0.getFullName(), inner ? inner->name : "?",
                                   inner ? inner->name : "?"));
     }
     if (isEmptyArrayType(g) && (w.isArray() || w.isArrayGeneric())) return;
@@ -553,8 +590,8 @@ void checkCallArgAgainst(p<ExprNode> arg, const TypeInfo& want, int line, int co
     int ecol = arg->resolveColumn();
     if (eline <= 0) eline = line;
     if (ecol < 0) ecol = col;
-    throw YuxError(eline, ecol, ErrorCode::E3014, want.getFullName(), got.getFullName())
-        .withHint(std::format("实参类型 `{}` 与形参类型 `{}` 不匹配", got.getFullName(), want.getFullName()));
+    throw YuxError(eline, ecol, ErrorCode::E3014, w0.getFullName(), g0.getFullName())
+        .withHint(std::format("实参类型 `{}` 与形参类型 `{}` 不匹配", g0.getFullName(), w0.getFullName()));
 }
 
 bool fillSubstFromTypeNodes(const vector<string>& typeParams, const vector<p<TypeNode>>& typeArgNodes,
@@ -646,21 +683,21 @@ bool substGenericCallParams(FnHeaderNode* header, const vector<string>& typePara
 
 // Phase C：match 各臂结果类型须一致（镜像 compileMatchExpr）。流终止臂跳过。
 // 模板体里类型参数 / 含 T 的复合类型不下钻，留给实例化期。
-void checkMatchArmTypes(const vector<p<MatchArmNode>>& arms, const std::set<std::string>& typeParams) {
+void checkMatchArmTypes(const vector<p<MatchArmNode>>& arms, const std::set<std::string>& typeParams,
+                        const std::map<std::string, TypeInfo>* subst = nullptr) {
     TypeInfo first;
     bool firstSet = false;
     for (auto& arm : arms) {
         if (!arm || arm->skipsTypeMerge()) continue;
         TypeInfo t;
         try {
-            t = arm->resultType();
+            t = applySubstMap(arm->resultType(), subst);
         } catch (const YuxError&) {
             throw;
         } catch (...) { // NOLINT(bugprone-empty-catch)
             return;
         }
-        if (isAssignTypeParam(t, typeParams)) return;
-        if (!typeParams.empty() && !t.genericArgs.empty()) return;
+        if (stillTemplateType(t, typeParams, subst)) return;
         if (!firstSet) {
             first = t;
             firstSet = true;
@@ -1105,7 +1142,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         visitExpr(set->valueExpr(), elemExpected);
         if (elemExpected) {
             checkAssignRhs(set->valueExpr(), *elemExpected, set->getLineNumber(), set->getColumn(), _file, _sdkFile,
-                           _currentTypeParams);
+                           _currentTypeParams, &_instSubst);
         }
         // v0.16 闭包捕获: lambda body 内对捕获变量赋值 → E2030。
         // StatementSetNode 覆盖简单变量 `a = 20` / 复合赋值 `a += 1` / 索引赋值 `a[i] = x`。
@@ -1370,9 +1407,21 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                         fieldTy = *elems[idx];
                     } else if (!cur.name.empty() && !isBuiltinType(cur.name)) {
                         StructDeclNode* decl = _names.lookupStruct(cur.name);
-                        if (!decl || decl->isGeneric()) {
+                        if (!decl) {
                             ok = false;
                             break;
+                        }
+                        map<string, TypeInfo> fieldSubst = _instSubst;
+                        if (decl->isGeneric()) {
+                            if (fieldSubst.empty() &&
+                                !fillSubstFromGenericArgs(decl->typeParams(), cur.genericArgs, fieldSubst)) {
+                                ok = false;
+                                break;
+                            }
+                            if (fieldSubst.empty()) {
+                                ok = false;
+                                break;
+                            }
                         }
                         int fi = decl->fieldIndex(mem);
                         if (fi < 0) {
@@ -1380,6 +1429,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                             break;
                         }
                         fieldTy = decl->fields()[static_cast<size_t>(fi)]->getType();
+                        if (!fieldSubst.empty()) fieldTy = fieldTy.substitute(fieldSubst);
                     } else {
                         ok = false;
                         break;
@@ -1390,7 +1440,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                 if (ok) {
                     assignExpected = cur.peelRef();
                     assignExpPtr = &assignExpected;
-                    assignStorage = lastRaw;
+                    assignStorage = std::move(lastRaw);
                     haveStorage = true;
                 }
             }
@@ -1398,7 +1448,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         if (as->expr()) visitExpr(as->expr(), assignExpPtr);
         if (haveStorage) {
             checkAssignRhs(as->expr(), assignStorage, as->getLineNumber(), as->getColumn(), _file, _sdkFile,
-                           _currentTypeParams);
+                           _currentTypeParams, &_instSubst);
         }
         return;
     }
@@ -1436,11 +1486,17 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         TypeInfo retExpectedResolved;
         const TypeInfo* retExpPtr = nullptr;
         bool lambdaHasExpected = false;
-        RetCheck retCtx{
-            .file = _file, .sdk = _sdkFile, .fn = _currentFn, .structName = _currentStructName, .fallibleErr = {}};
+        RetCheck retCtx{.file = _file,
+                        .sdk = _sdkFile,
+                        .fn = _currentFn,
+                        .structName = _currentStructName,
+                        .fallibleErr = {},
+                        .typeParams = &_currentTypeParams,
+                        .subst = &_instSubst};
         if (_currentLambda) {
             lambdaHasExpected = lambdaExpectedRetType(_currentLambda, retExpected);
             if (lambdaHasExpected) {
+                retExpected = applyInstSubst(retExpected);
                 retExpectedResolved = resolveForRet(retExpected, retCtx);
                 retExpPtr = &retExpectedResolved;
             }
@@ -1448,7 +1504,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             auto header = _currentFn->header();
             if (header && header->retType()) {
                 try {
-                    retExpected = header->retType()->getType();
+                    retExpected = applyInstSubst(header->retType()->getType());
                     retExpectedResolved = resolveForRet(retExpected, retCtx);
                     retExpPtr = &retExpectedResolved;
                 } catch (const YuxError&) {
@@ -1521,8 +1577,15 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         const TypeInfo* daExpPtr = nullptr;
         if (da->varType()) {
             try {
-                daExpected = da->varType()->getType();
+                daExpected = applyInstSubst(da->varType()->getType());
                 daExpPtr = &daExpected;
+                map<string, TypeInfo> implSubst;
+                if (auto* sd = _names.lookupStruct(daExpected.name)) {
+                    if (sd->isGeneric() &&
+                        fillSubstFromGenericArgs(sd->typeParams(), daExpected.genericArgs, implSubst)) {
+                        checkGenericImplInst(lookupStructImpl(_file, _sdkFile, daExpected.name), implSubst);
+                    }
+                }
             } catch (const YuxError&) {
                 throw;
             } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -1537,7 +1600,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             }
         }
         if (da->varType() && _currentFn && da->expr()) {
-            auto varType = da->varType()->getType();
+            auto varType = applyInstSubst(da->varType()->getType());
             // Bucket 6 收口+ (CURRENT-check.md): 目标类型驱动的形态校验.
             // E3012 (fixed-array 大小不匹配) / E3015 (Nullable 内部类型不匹配).
             // 镜像 compiler_stmt.cpp:773 / 740. 复杂路径 (alias / 嵌套数组目标类型)
@@ -1663,7 +1726,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                 varType.genericArgs.empty() && !isFlexibleIntExpr(da->expr()) && !isAliasName(varType.name) &&
                 !dynamic_cast<p<ExprPathCallNode>>(da->expr())) {
                 try {
-                    auto exprType = da->expr()->getType();
+                    auto exprType = applyInstSubst(da->expr()->getType());
                     // 跳过泛型形参 / 未解析类型（如 T, U 等）：此时尚未实例化，比较无意义
                     auto isKnownType = [&](const TypeInfo& t) -> bool {
                         if (isBuiltinType(t.name)) return true;
@@ -1701,7 +1764,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         }
         // Phase B-1: #NoCopy 类型不可从现有变量隐式复制（let 绑定）
         if (da->varType() && da->expr()) {
-            auto varType = da->varType()->getType();
+            auto varType = applyInstSubst(da->varType()->getType());
             if (isNoCopyTypeIn(varType, _file, _sdkFile) && !varType.isRef()) {
                 if (!isFreshHandleExpr(da->expr())) {
                     throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E4031, varType.name, "let 绑定",
@@ -1749,7 +1812,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         visitExpr(sf->valueExpr(), fp);
         if (fp) {
             checkAssignRhs(sf->valueExpr(), *fp, sf->getLineNumber(), sf->getColumn(), _file, _sdkFile,
-                           _currentTypeParams);
+                           _currentTypeParams, &_instSubst);
         }
         return;
     }
@@ -2359,7 +2422,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                         vector<TypeInfo> argTypes;
                         for (auto& a : n->getArgs()) {
                             try {
-                                argTypes.push_back(a->getType());
+                                argTypes.push_back(applyInstSubst(a->getType()));
                             } catch (...) {
                                 argTypesOk = false;
                                 break;
@@ -2393,7 +2456,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                         if (hasTypeArgs) {
                             try {
                                 for (auto& tn : n->getTypeArgs()) {
-                                    typeArgs.push_back(tn->getType());
+                                    typeArgs.push_back(applyInstSubst(tn->getType()));
                                 }
                             } catch (...) {
                                 typeArgsOk = false;
@@ -2401,6 +2464,8 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                         } else if (argTypesOk) {
                             try {
                                 sema::inferGenericFnTypeArgs(n, genericFn, fnName, argTypes, typeArgs);
+                                for (auto& t : typeArgs)
+                                    t = applyInstSubst(t);
                             } catch (const YuxError&) {
                                 // E6012/E6013 留 Compiler 兜底 (3.3.1.b 未让 SemaPass 接管)
                                 typeArgsOk = false;
@@ -2419,9 +2484,10 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                                                        instParams)) {
                                 for (size_t i = 0; i < n->getArgs().size() && i < instParams.size(); ++i) {
                                     checkCallArgAgainst(n->getArgs()[i], instParams[i], line, col, _file, _sdkFile,
-                                                        _currentTypeParams);
+                                                        _currentTypeParams, &_instSubst);
                                 }
                             }
+                            checkGenericFnInst(genericFn, typeArgs);
                         }
                     }
                 }
@@ -2703,6 +2769,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                 if (baseType.isRc()) {
                     if (auto inner = baseType.rcElementType()) baseType = *inner;
                 }
+                baseType = applyInstSubst(baseType);
                 if (isCurrentTypeParam(baseType)) {
                     // Phase C：不透明 TypeParam，方法存在性等实例化后再查
                 } else if (!baseType.name.empty() && !baseType.isDyn() && !isBuiltinType(baseType.name) &&
@@ -2743,10 +2810,12 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                                     if (substHeaderParams(hdr, subst, instParams)) {
                                         for (size_t i = 0; i < n->getArgs().size() && i < instParams.size(); ++i) {
                                             checkCallArgAgainst(n->getArgs()[i], instParams[i], n->getLineNumber(),
-                                                                n->getColumn(), _file, _sdkFile, _currentTypeParams);
+                                                                n->getColumn(), _file, _sdkFile, _currentTypeParams,
+                                                                &_instSubst);
                                         }
                                     }
                                 }
+                                checkGenericImplInst(impl, subst);
                             }
                         }
                     }
@@ -3040,6 +3109,8 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
             if (sd && sd->isGeneric()) {
                 map<string, TypeInfo> subst;
                 if (fillSubstFromTypeNodes(sd->typeParams(), n->lhsTypeArgs(), subst)) {
+                    for (auto& [_, t] : subst)
+                        t = applyInstSubst(t);
                     auto* impl = lookupStructImpl(_file, _sdkFile, lhsName);
                     if (auto* hdr = uniqueMethodHeader(impl, n->variantName().getText(), n->args().size(),
                                                        /*wantStatic=*/true)) {
@@ -3141,6 +3212,9 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                 if (structDecl && structDecl->isGeneric()) {
                     if (!fillSubstFromTypeNodes(structDecl->typeParams(), n->lhsTypeArgs(), staticSubst)) {
                         skipTypeCheck = true;
+                    } else {
+                        for (auto& [_, t] : staticSubst)
+                            t = applyInstSubst(t);
                     }
                 }
                 if (!skipTypeCheck) {
@@ -3230,6 +3304,9 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                         }
                     }
                 }
+                if (!staticSubst.empty()) {
+                    checkGenericImplInst(structImpl, staticSubst);
+                }
                 return;
             }
         }
@@ -3256,7 +3333,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
             else
                 visitExpr(arm->body(), expected);
         }
-        checkMatchArmTypes(n->arms(), _currentTypeParams);
+        checkMatchArmTypes(n->arms(), _currentTypeParams, &_instSubst);
 
         // Phase C：scrut 别名 / Rc<E> / Heap<E> / E& 与 compileMatchExpr 对齐。
         // 内层是 enum 才剥 wrapper；临时 Rc/Heap 直接 match → E2022。
@@ -3591,11 +3668,72 @@ bool SemaPass::isCurrentTypeParam(const TypeInfo& t) const {
     return _currentTypeParams.count(peeled.name) > 0;
 }
 
+TypeInfo SemaPass::applyInstSubst(const TypeInfo& t) const {
+    return _instSubst.empty() ? t : t.substitute(_instSubst);
+}
+
+void SemaPass::checkGenericFnInst(p<FnNode> fn, const vector<TypeInfo>& typeArgs) {
+    if (!fn || !fn->header() || fn->header()->hasAnno("Builtin")) return;
+    const auto& tps = fn->header()->typeParams();
+    if (tps.empty() || tps.size() != typeArgs.size()) return;
+    map<string, TypeInfo> subst;
+    for (size_t i = 0; i < tps.size(); ++i) {
+        TypeInfo a = applyInstSubst(typeArgs[i]);
+        if (isCurrentTypeParam(a)) return;
+        subst[tps[i]] = std::move(a);
+    }
+    checkGenericBodyInst(fn, subst, "");
+}
+
+void SemaPass::checkGenericImplInst(StructImplNode* impl, const map<string, TypeInfo>& subst) {
+    if (!impl || subst.empty()) return;
+    for (auto& [_, t] : subst) {
+        if (isCurrentTypeParam(t)) return;
+    }
+    string key = genericInstKey(impl, subst);
+    if (!_checkedGenericInst.insert(key).second) return;
+    for (auto& m : impl->methods()) {
+        if (!m || !m->header() || m->header()->hasAnno("Builtin")) continue;
+        checkGenericBodyInst(m, subst, impl->structName());
+    }
+    if (impl->hasDestructor()) checkGenericBodyInst(impl->destructor(), subst, impl->structName());
+}
+
+void SemaPass::checkGenericBodyInst(p<FnNode> fn, const map<string, TypeInfo>& subst, const string& structName) {
+    if (!fn || subst.empty()) return;
+    string key = genericInstKey(fn, subst);
+    if (!_checkedGenericInst.insert(key).second) return;
+
+    auto savedFn = _currentFn;
+    auto savedStruct = _currentStructName;
+    auto savedParams = _currentTypeParams;
+    auto savedSubst = _instSubst;
+    auto savedMoved = _movedVars;
+
+    _currentFn = fn;
+    _currentStructName = structName;
+    _instSubst = subst;
+    _currentTypeParams.clear();
+    for (auto& [k, _] : subst)
+        _currentTypeParams.insert(k);
+    _movedVars.clear();
+
+    for (auto& stmt : fn->body())
+        visitStmt(stmt);
+
+    _movedVars = std::move(savedMoved);
+    _instSubst = std::move(savedSubst);
+    _currentTypeParams = std::move(savedParams);
+    _currentStructName = std::move(savedStruct);
+    _currentFn = savedFn;
+}
+
 void SemaPass::checkArrayElemAgainst(p<ExprNode> elem, const TypeInfo& want, int line, int col) {
     if (!elem) return;
-    if (isCurrentTypeParam(want)) return;
-    if (isFlexibleIntExpr(elem) && isIntTypeName(want.name)) return;
-    if (want.isNullable() && isFlexibleNullExpr(elem)) return;
+    TypeInfo w0 = applyInstSubst(want);
+    if (isCurrentTypeParam(w0)) return;
+    if (isFlexibleIntExpr(elem) && isIntTypeName(w0.name)) return;
+    if (w0.isNullable() && isFlexibleNullExpr(elem)) return;
 
     TypeInfo got;
     if (elem->hasResolvedType()) {
@@ -3609,15 +3747,16 @@ void SemaPass::checkArrayElemAgainst(p<ExprNode> elem, const TypeInfo& want, int
             return;
         }
     }
+    got = applyInstSubst(got);
     if (isEmptyArrayType(got)) return;
-    if (got == want) return;
-    if (got.peelRef() == want) return;
-    if (want.isNullable()) {
-        if (auto inner = want.nullableInnerType()) {
+    if (got == w0) return;
+    if (got.peelRef() == w0) return;
+    if (w0.isNullable()) {
+        if (auto inner = w0.nullableInnerType()) {
             if (got == *inner || got.peelRef() == *inner) return;
         }
     }
-    throw YuxError(line, col, ErrorCode::E3009, want.getFullName(), got.getFullName());
+    throw YuxError(line, col, ErrorCode::E3009, w0.getFullName(), got.getFullName());
 }
 
 void SemaPass::checkArrayLiteral(p<ExprArrayNode> n, const TypeInfo& expected) {

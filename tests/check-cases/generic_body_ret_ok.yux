@@ -1,0 +1,9 @@
+; 泛型 fn 体：T 实例化为 i32 时 ret 合法（Phase C）
+fn as_i32<T>(x T) i32 {
+  x
+}
+
+fn main() {
+  let n i32 = as_i32:<i32>(1)
+  ret;
+}

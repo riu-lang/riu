@@ -1,0 +1,9 @@
+; 泛型 fn 体：实例化后 ret 类型不匹配 → E3014（Phase C）
+fn as_i32<T>(x T) i32 {
+  x  ; check: E3014
+}
+
+fn main() {
+  as_i32:<bool>(true)
+  ret;
+}

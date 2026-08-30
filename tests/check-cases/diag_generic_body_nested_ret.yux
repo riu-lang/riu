@@ -1,0 +1,13 @@
+; 泛型 fn 体：外层实例化带动内层体检查 → E3014（Phase C）
+fn inner<T>(x T) i32 {
+  x  ; check: E3014
+}
+
+fn outer<T>(x T) i32 {
+  inner(x)
+}
+
+fn main() {
+  outer:<bool>(true)
+  ret;
+}

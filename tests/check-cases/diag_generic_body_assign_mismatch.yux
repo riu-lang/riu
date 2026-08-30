@@ -1,0 +1,9 @@
+; 泛型 fn 体：实例化后声明赋值类型不匹配 → E3014（Phase C）
+fn store<T>(x T) {
+  let n i32 = x  ; check: E3014
+}
+
+fn main() {
+  store:<bool>(true)
+  ret;
+}

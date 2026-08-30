@@ -7,6 +7,8 @@
 #include "ast/node/file_node.h"
 #include "sema/name_resolver.h"
 
+#include <map>
+
 class ExprNode;
 class StatementNode;
 class StatementBlockNode;
@@ -69,6 +71,10 @@ private:
     // 类型参数当不透明 TypeParam：依赖 T 具体化的 getType 诊断吞掉；
     // 形态检查（#NoCopy / 未定义符号 / arity）仍报。
     std::set<std::string> _currentTypeParams;
+    // Phase C：泛型体实例化替换（T → 具体类型）。非空 = 正在复查某次实例。
+    // 模板期仍把 T 当不透明；ret / 赋值在 substitute 后再比。
+    std::map<std::string, TypeInfo> _instSubst;
+    std::set<std::string> _checkedGenericInst;
 
     // v0.16 闭包捕获: 当前正在遍历的 lambda 节点 (非空 = 在 lambda body 内).
     // 与 Compiler 的 `_currentLambdaForCapture` 功能对等但 0 LLVM 依赖.
@@ -95,6 +101,13 @@ private:
 
     // Phase C：t 剥 Ref/Heap/Rc 后是否为当前模板的类型参数。
     [[nodiscard]] bool isCurrentTypeParam(const TypeInfo& t) const;
+    // Phase C：把当前实例化替换应用到类型；无替换时原样返回。
+    [[nodiscard]] TypeInfo applyInstSubst(const TypeInfo& t) const;
+    // 调用点 typeArgs 已知后复查泛型 fn 体（ret / 赋值）。
+    void checkGenericFnInst(p<FnNode> fn, const vector<TypeInfo>& typeArgs);
+    // 泛型 impl 实例化：复查该 impl 全部非 Builtin 方法体。
+    void checkGenericImplInst(class StructImplNode* impl, const std::map<std::string, TypeInfo>& subst);
+    void checkGenericBodyInst(p<FnNode> fn, const std::map<std::string, TypeInfo>& subst, const string& structName);
 
     // Phase C：带 target-type 的数组字面量 / 填充检查（E3009 / E3012）。
     void checkArrayLiteral(p<class ExprArrayNode> n, const TypeInfo& expected);
