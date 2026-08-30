@@ -34,20 +34,6 @@ static TypeInfo makeCallFnType(TypeInfo ret) {
     return TypeInfo(FnTag{}, {}, std::move(rt));
 }
 
-static TypeInfo arrayMethodFnType(const string& member, const TypeInfo& elemTy) {
-    if (member == "get" || member == "first" || member == "last") {
-        TypeInfo refTy("Ref", {std::make_shared<TypeInfo>(elemTy)});
-        return makeCallFnType(std::move(refTy));
-    }
-    if (member == "pop") return makeCallFnType(elemTy);
-    if (member == "len" || member == "cap") return makeCallFnType(TypeInfo("usize"));
-    if (member == "is_empty") return makeCallFnType(TypeInfo("bool"));
-    if (member == "push" || member == "clear" || member == "set_len" || member == "reserve") {
-        return makeCallFnType({});
-    }
-    return {};
-}
-
 static FileNode* enclosingFileFrom(const Node* n) {
     const Node* cur = n;
     while (cur) {
@@ -876,17 +862,9 @@ TypeInfo ExprDotNode::getType() const {
                 }
             }
 
-            if (actualType.isArrayGeneric()) {
-                if (member == "clone") return makeCallFnType(actualType);
-                if (auto elemType = actualType.arrayGenericElementType()) {
-                    auto fnTy = arrayMethodFnType(member, *elemType);
-                    if (fnTy.isFn()) return fnTy;
-                }
-            }
-            if (actualType.isArray()) {
-                if (auto elemType = actualType.elementType) {
-                    auto fnTy = arrayMethodFnType(member, *elemType);
-                    if (fnTy.isFn()) return fnTy;
+            if (actualType.isArrayGeneric() || actualType.isArray()) {
+                if (auto* spec = sema::lookupInstanceBuiltin(actualType, member)) {
+                    return makeCallFnType(sema::builtinMethodReturnType(*spec, actualType));
                 }
             }
 
@@ -1277,19 +1255,9 @@ TypeInfo ExprDotNode::getType() const {
     }
 
     // Array<T> 方法调用（[T * N] 是 Array<T> 的语法糖）。
-    if (actualType.isArray()) {
-        if (auto elemType = actualType.elementType) {
-            auto fnTy = arrayMethodFnType(member, *elemType);
-            if (fnTy.isFn()) return fnTy;
-        }
-        return _baseExpr->getType();
-    }
-
-    if (actualType.isArrayGeneric()) {
-        if (member == "clone") return makeCallFnType(actualType);
-        if (auto elemType = actualType.arrayGenericElementType()) {
-            auto fnTy = arrayMethodFnType(member, *elemType);
-            if (fnTy.isFn()) return fnTy;
+    if (actualType.isArray() || actualType.isArrayGeneric()) {
+        if (auto* spec = sema::lookupInstanceBuiltin(actualType, member)) {
+            return makeCallFnType(sema::builtinMethodReturnType(*spec, actualType));
         }
         return _baseExpr->getType();
     }

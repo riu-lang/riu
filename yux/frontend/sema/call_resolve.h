@@ -8,6 +8,7 @@
 #include "ast/node/file_node.h"
 #include "ast/node/fn_node.h"
 #include "ast/node/spec_node.h"
+#include "sema/builtin_methods.h"
 #include "sema/name_resolver.h"
 
 class Yux;
@@ -271,20 +272,7 @@ void validateOperatorMethodCall(const string& member, const TypeInfo& baseType, 
 void validateFreeIntrinsicArity(const string& fnName, size_t argsCount, int line, int col);
 
 // Array<T> 方法调用的静态形态校验 (Phase 3.3.2.a).
-//
-// 覆盖 Array<T> 内置方法 (len/cap/is_empty/at/first/last/pop/push/set_len/clear)
-// 的 arity + elemType + lvalue 校验:
-//   - E3055: baseType.arrayGenericElementType() 缺 (除 len/cap 之外都需要)
-//   - E6042: pop/push/set_len/clear 在 rvalue 上
-//   - E6027: at/set_len/push arity != 1
-//
-// `baseIsLvalue` 由调用方算: Compiler 看 arrayPtr != nullptr (即 baseExpr 是
-// 局部变量或 struct 字段链能解析到栈/堆指针); SemaPass 后续 (3.3.2.f) 走镜像逻辑.
-//
-// 未知方法名时不抛错, 调用方 (Compiler::compileArrayMethodCall) 返回 nullptr
-// 让上层 fall-through 到 builtin-type method / sdk method 路径.
-//
-// 纯 TypeInfo / 字符串比较, 无 LLVM 依赖.
+// 查 kBuiltinMethods：E3055 / E6042 / E6027。未知方法名不抛错.
 void validateArrayMethodCall(const TypeInfo& baseType, const string& member, size_t argsCount, bool baseIsLvalue,
                              int line, int col);
 

@@ -379,10 +379,12 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
         }
     }
 
-    // 处理数组方法（用 Rc 解引用后的 actualType 做分发）
-    if (actualType.isArrayGeneric()) {
-        auto result = compileArrayMethodCall(callNode, baseExpr, baseType, member, args, argTypes);
-        if (result) return result;
+    // 表驱动：类型谓词 × 方法名（kBuiltinMethods）
+    if (auto* spec = sema::lookupInstanceBuiltin(actualType, member)) {
+        if (spec->recv == sema::BuiltinRecv::Array && actualType.isArrayGeneric()) {
+            auto result = compileArrayMethodCall(callNode, baseExpr, baseType, member, args, argTypes);
+            if (result) return result;
+        }
     }
 
     // 处理结构体方法
@@ -507,8 +509,10 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         arrayPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.payload");
     }
 
-    // Phase 3.3.2.a: Array<T> 方法形态校验 (E3055/E6042/E6027)
-    // 用 arrType（Rc 解引用后）而非 baseType，确保 elemType 提取正确
+    auto* spec = sema::lookupInstanceBuiltin(arrType, member);
+    if (!spec) return nullptr;
+
+    // Phase 3.3.2.a: Array<T> 方法形态校验 (E3050/E6042/E6027)
     sema::validateArrayMethodCall(arrType, member, args.size(), arrayPtr != nullptr, callNode->getLineNumber(),
                                   callNode->getColumn());
 
@@ -550,27 +554,29 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         return _builder.CreateLoad(ptrTy, arrayDataFieldPtr(ptr, "arr"), "array.data");
     };
 
-    if (member == "len") {
+    llvm::Type* elemLLVMType = nullptr;
+    if (spec->needsElemType && elemType) {
+        elemLLVMType = getLLVMType(*elemType);
+    }
+
+    auto voidResult = [&]() -> llvm::Value* { return llvm::ConstantInt::get(_builder.getInt32Ty(), 0); };
+
+    switch (spec->lower) {
+    case sema::BuiltinLower::ArrayLen:
         DEBUG_LOG("    Expr: Array.len()");
         return loadLen(getReadPtr());
-    }
-    if (member == "cap") {
+    case sema::BuiltinLower::ArrayCap: {
         DEBUG_LOG("    Expr: Array.cap()");
         auto ptr = getReadPtr();
         return _builder.CreateLoad(sizeTy, arrayCapFieldPtr(ptr, "arr"), "array.cap");
     }
-
-    // E3055 已由 sema::validateArrayMethodCall 在函数顶部抛出 (顶部 helper 保证 elemType 非空)
-    auto elemLLVMType = getLLVMType(*elemType);
-
-    if (member == "is_empty") {
+    case sema::BuiltinLower::ArrayIsEmpty: {
         DEBUG_LOG("    Expr: Array.is_empty()");
         auto lenVal = loadLen(getReadPtr());
         auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
         return _builder.CreateICmpEQ(lenVal, zeroSize, "array.is_empty");
     }
-
-    if (member == "get") {
+    case sema::BuiltinLower::ArrayGet: {
         DEBUG_LOG("    Expr: Array.get() → T&");
         auto ptr = getReadPtr();
         auto dataPtr = loadData(ptr);
@@ -580,8 +586,7 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         }
         return elemPtr;
     }
-
-    if (member == "first") {
+    case sema::BuiltinLower::ArrayFirst: {
         DEBUG_LOG("    Expr: Array.first()");
         auto ptr = getReadPtr();
         auto dataPtr = loadData(ptr);
@@ -589,8 +594,7 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {zeroSize}, "first.elem.ptr");
         return _builder.CreateLoad(elemLLVMType, elemPtr, "first.elem");
     }
-
-    if (member == "last") {
+    case sema::BuiltinLower::ArrayLast: {
         DEBUG_LOG("    Expr: Array.last()");
         auto ptr = getReadPtr();
         auto lenVal = loadLen(ptr);
@@ -600,8 +604,7 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {lastIdx}, "last.elem.ptr");
         return _builder.CreateLoad(elemLLVMType, elemPtr, "last.elem");
     }
-
-    if (member == "pop") {
+    case sema::BuiltinLower::ArrayPop: {
         DEBUG_LOG("    Expr: Array.pop()");
         auto lenFieldPtr = arrayLenFieldPtr(arrayPtr, "arr");
         auto lenVal = _builder.CreateLoad(sizeTy, lenFieldPtr, "a.len");
@@ -615,27 +618,26 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         _builder.CreateStore(lastIdx, lenFieldPtr);
         return elemVal;
     }
-
-    if (member == "push" || member == "set_len" || member == "clear" || member == "reserve") {
-        // E6042 已由 sema::validateArrayMethodCall 保证 arrayPtr != nullptr (lvalue)
+    case sema::BuiltinLower::ArrayClear:
+    case sema::BuiltinLower::ArraySetLen:
+    case sema::BuiltinLower::ArrayReserve:
+    case sema::BuiltinLower::ArrayPush: {
         auto lenFieldPtr = arrayLenFieldPtr(arrayPtr, "arr");
         auto capFieldPtr = arrayCapFieldPtr(arrayPtr, "arr");
         auto dataFieldPtr = arrayDataFieldPtr(arrayPtr, "arr");
 
-        auto voidResult = [&]() -> llvm::Value* { return llvm::ConstantInt::get(_builder.getInt32Ty(), 0); };
-
-        if (member == "clear") {
+        if (spec->lower == sema::BuiltinLower::ArrayClear) {
             DEBUG_LOG("    Expr: Array.clear()");
             auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
             _builder.CreateStore(zeroSize, lenFieldPtr);
             return voidResult();
         }
-        if (member == "set_len") {
+        if (spec->lower == sema::BuiltinLower::ArraySetLen) {
             DEBUG_LOG("    Expr: Array.set_len()");
             _builder.CreateStore(args[0], lenFieldPtr);
             return voidResult();
         }
-        if (member == "reserve") {
+        if (spec->lower == sema::BuiltinLower::ArrayReserve) {
             DEBUG_LOG("    Expr: Array.reserve()");
             auto additional = args[0];
             auto lenVal = _builder.CreateLoad(sizeTy, lenFieldPtr, "a.len");
@@ -749,7 +751,7 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         return voidResult();
     }
 
-    if (member == "clone") {
+    case sema::BuiltinLower::ArrayClone: {
         DEBUG_LOG("    Expr: Array.clone() → Array<T> 深拷贝");
         // BUGS #1: Array 深拷贝唯一入口，替代 copy_of（copy_of 不再接受 Array）
         // 深拷贝语义：分配新缓冲 + 逐元素 copy + retain + Heap 深拷
@@ -830,34 +832,40 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
 
         return resultPhi;
     }
-
-    return nullptr;
+    case sema::BuiltinLower::None:
+    case sema::BuiltinLower::ArrayWithCapacity:
+    default:
+        return nullptr;
+    }
 }
 
 llvm::Value* Compiler::compileArrayWithCapacity(p<ExprPathCallNode> node) {
+    auto* spec = sema::lookupStaticBuiltin("Array", "with_capacity");
+    const size_t expectArity = spec ? static_cast<size_t>(spec->arity) : 1;
+    const char* expectArg0 = spec && spec->arg0Type ? spec->arg0Type : "usize";
     int line = node->getLineNumber();
     int col = node->getColumn();
     const auto& lhsTArgs = node->lhsTypeArgs();
     if (lhsTArgs.size() != 1) {
         throw YuxError(line, col, ErrorCode::E6011, "Array", static_cast<size_t>(1), lhsTArgs.size());
     }
-    if (node->args().size() != 1) {
+    if (node->args().size() != expectArity) {
         string got;
         for (size_t i = 0; i < node->args().size(); ++i) {
             if (i) got += ", ";
             got += node->args()[i]->getType().getFullName();
         }
-        throw YuxError(line, col, ErrorCode::E3131, "Array", "with_capacity", static_cast<size_t>(1), "usize",
+        throw YuxError(line, col, ErrorCode::E3131, "Array", "with_capacity", expectArity, expectArg0,
                        node->args().size(), got);
     }
 
     TypeInfo elemType = lhsTArgs[0]->getType();
     TypeInfo arrType("Array", {make_shared<TypeInfo>(elemType)});
-    TypeInfo usizeTy("usize");
-    tryInferIntType(node->args()[0], usizeTy);
+    TypeInfo expectTy(expectArg0);
+    tryInferIntType(node->args()[0], expectTy);
     auto actualTy = node->args()[0]->getType();
-    if (!actualTy.empty() && !(actualTy == usizeTy)) {
-        throw YuxError(line, col, ErrorCode::E3131, "Array", "with_capacity", static_cast<size_t>(1), "usize",
+    if (!actualTy.empty() && !(actualTy == expectTy)) {
+        throw YuxError(line, col, ErrorCode::E3131, "Array", "with_capacity", expectArity, expectArg0,
                        static_cast<size_t>(1), actualTy.getFullName());
     }
 

@@ -2,6 +2,7 @@
 // MPL-2.0
 
 #include "file_node.h"
+#include "sema/builtin_methods.h"
 
 FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::move(moduleName)) {
     // 注册基本类型为 struct 占位符，并预声明方法符号
@@ -82,59 +83,46 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
         registerFnSymbol(fullName, {"not", "", {}, TypeInfo("bool")});
     }
 
-    // Array 内建方法符号（供泛型方法调用返回类型推导，codegen 由 compileArrayMethodCall 接管）。
-    // 返回值中的 T 是类型参数占位符，与 Array struct 声明的 typeParams[0] 同名；
-    // ExprDotNode::getType 构造 Fn 时按元素类型替换。
+    // Array 内建方法符号：与 kBuiltinMethods 同一张表（codegen 由 compileArrayMethodCall 接管）。
     {
-        TypeInfo tpT("T");                                    // 类型参数占位符
-        TypeInfo tpRefT("Ref", {make_shared<TypeInfo>(tpT)}); // T&
+        TypeInfo tpT("T");
+        TypeInfo tpRefT("Ref", {make_shared<TypeInfo>(tpT)});
         TypeInfo tpusize("usize");
-        TypeInfo tpVoid; // void（空 TypeInfo）
+        TypeInfo tpVoid;
         TypeInfo tpBool("bool");
+        TypeInfo tpArrayT("Array", {make_shared<TypeInfo>(tpT)});
 
-        // Array.get(i usize) → T&
-        registerSymbol("Array.get", {SymbolKind::Function, "get", tpRefT});
-        registerFnSymbol("Array.get", {"get", "", {tpusize}, tpRefT});
-
-        // Array.first() → T&
-        registerSymbol("Array.first", {SymbolKind::Function, "first", tpRefT});
-        registerFnSymbol("Array.first", {"first", "", {}, tpRefT});
-
-        // Array.last() → T&
-        registerSymbol("Array.last", {SymbolKind::Function, "last", tpRefT});
-        registerFnSymbol("Array.last", {"last", "", {}, tpRefT});
-
-        // Array.pop() → T
-        registerSymbol("Array.pop", {SymbolKind::Function, "pop", tpT});
-        registerFnSymbol("Array.pop", {"pop", "", {}, tpT});
-
-        // Array.push(x T) → void
-        registerSymbol("Array.push", {SymbolKind::Function, "push", tpVoid});
-        registerFnSymbol("Array.push", {"push", "", {tpT}, tpVoid});
-
-        // Array.len() → usize
-        registerSymbol("Array.len", {SymbolKind::Function, "len", tpusize});
-        registerFnSymbol("Array.len", {"len", "", {}, tpusize});
-
-        // Array.cap() → usize
-        registerSymbol("Array.cap", {SymbolKind::Function, "cap", tpusize});
-        registerFnSymbol("Array.cap", {"cap", "", {}, tpusize});
-
-        // Array.is_empty() → bool
-        registerSymbol("Array.is_empty", {SymbolKind::Function, "is_empty", tpBool});
-        registerFnSymbol("Array.is_empty", {"is_empty", "", {}, tpBool});
-
-        // Array.clear() → void
-        registerSymbol("Array.clear", {SymbolKind::Function, "clear", tpVoid});
-        registerFnSymbol("Array.clear", {"clear", "", {}, tpVoid});
-
-        // Array.reserve(n usize) → void
-        registerSymbol("Array.reserve", {SymbolKind::Function, "reserve", tpVoid});
-        registerFnSymbol("Array.reserve", {"reserve", "", {tpusize}, tpVoid});
-
-        // Array.set_len(n usize) → void
-        registerSymbol("Array.set_len", {SymbolKind::Function, "set_len", tpVoid});
-        registerFnSymbol("Array.set_len", {"set_len", "", {tpusize}, tpVoid});
+        for (const auto& spec : sema::kBuiltinMethods) {
+            if (spec.recv != sema::BuiltinRecv::Array || spec.isStatic) continue;
+            TypeInfo ret;
+            switch (spec.ret) {
+            case sema::BuiltinRet::Void:
+                ret = tpVoid;
+                break;
+            case sema::BuiltinRet::Usize:
+                ret = tpusize;
+                break;
+            case sema::BuiltinRet::Bool:
+                ret = tpBool;
+                break;
+            case sema::BuiltinRet::Elem:
+                ret = tpT;
+                break;
+            case sema::BuiltinRet::ElemRef:
+                ret = tpRefT;
+                break;
+            case sema::BuiltinRet::Self:
+                ret = tpArrayT;
+                break;
+            }
+            vector<TypeInfo> params;
+            if (spec.arity == 1) {
+                params.push_back(spec.arg0Type ? TypeInfo(spec.arg0Type) : tpT);
+            }
+            string full = string("Array.") + spec.name;
+            registerSymbol(full, {SymbolKind::Function, spec.name, ret});
+            registerFnSymbol(full, {spec.name, "", std::move(params), ret});
+        }
     }
 }
 

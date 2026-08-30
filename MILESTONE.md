@@ -119,9 +119,10 @@
 
 **退出标准**：
 
-- [ ] NameResolver 为 struct / enum / fn / alias 唯一查找；Compiler 不再双跑 `validateAliases`
+- [x] NameResolver 为 struct / enum / fn / alias 唯一查找；Compiler 不再双跑 `validateAliases`
 - [ ] 正常路径下 Compiler 不再抛语义错；`yux-check` 覆盖与 `yux build` 对齐（仍缺的列进 TODO）
-- [ ] 所有权三个入口收口 retain / release 协议
+- [x] 所有权三个入口收口 retain / release 协议
+- [x] Array / String `#Builtin` 方法表驱动（`kBuiltinMethods`：类型谓词 × 方法名 → arity + lowering）
 - [ ] `yux test` / `yux-check test` / `./build.ps1 test` 全绿
 - [ ] `./lint.ps1` 0 warnings
 - [ ] CHANGELOG 收口

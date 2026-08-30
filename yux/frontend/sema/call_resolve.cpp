@@ -1080,42 +1080,11 @@ void validateFreeIntrinsicArity(const string& fnName, size_t argsCount, int line
 }
 
 // ==================== Array<T> 方法形态校验 (Phase 3.3.2.a) ====================
-// 原 `compileArrayMethodCall` 散落的 6 处 throw 收口为一个 helper.
-// 调用方仅需在函数顶部传 (baseType, member, argsCount, baseIsLvalue) 即可一次性校验.
 void validateArrayMethodCall(const TypeInfo& baseType, const string& member, size_t argsCount, bool baseIsLvalue,
                              int line, int col) {
-    // len / cap 在 RC 头, 不需要 elemType, 也不需要 lvalue
-    if (member == "len" || member == "cap") return;
-
-    auto elemType = baseType.arrayGenericElementType();
-    if (!elemType) {
-        throw YuxError(line, col, ErrorCode::E3050);
-    }
-
-    if (member == "is_empty" || member == "first" || member == "last") return;
-    if (member == "clone") return; // 深拷贝，无需 lvalue，0 参 → Array<T>
-    if (member == "get") {
-        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, member, static_cast<size_t>(1));
-        return;
-    }
-    if (member == "pop") {
-        if (!baseIsLvalue) throw YuxError(line, col, ErrorCode::E6042, member);
-        return;
-    }
-    if (member == "push" || member == "set_len" || member == "clear" || member == "reserve") {
-        if (!baseIsLvalue) {
-            throw YuxError(line, col, ErrorCode::E6042, member);
-        }
-        if (member == "clear") return;
-        if (member == "set_len") {
-            if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, member, static_cast<size_t>(1));
-            return;
-        }
-        // push / reserve
-        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, member, static_cast<size_t>(1));
-        return;
-    }
-    // 未知 member: 由 Compiler 端返回 nullptr fall-through 到 builtin/sdk 方法路径
+    auto* spec = lookupInstanceBuiltin(baseType, member);
+    if (!spec) return;
+    validateBuiltinMethodCall(*spec, baseType, argsCount, baseIsLvalue, line, col);
 }
 
 // ==================== Builtin intrinsic 类型形态校验 (Phase 3.3.2.d) ====================
@@ -1770,13 +1739,16 @@ void validateStringTemplateInterps(FileNode* file, FileNode* sdkFile, StringTemp
 
 void validateArrayWithCapacity(p<ExprPathCallNode> node) {
     if (!node) return;
+    auto* spec = lookupStaticBuiltin("Array", "with_capacity");
     int line = node->getLineNumber();
     int col = node->getColumn();
     const auto& lhsTArgs = node->lhsTypeArgs();
     if (lhsTArgs.size() != 1) {
         throw YuxError(line, col, ErrorCode::E6011, "Array", static_cast<size_t>(1), lhsTArgs.size());
     }
-    if (node->args().size() != 1) {
+    const size_t expectArity = spec ? static_cast<size_t>(spec->arity) : 1;
+    const char* expectArg0 = spec && spec->arg0Type ? spec->arg0Type : "usize";
+    if (node->args().size() != expectArity) {
         string got;
         for (size_t i = 0; i < node->args().size(); ++i) {
             if (i) got += ", ";
@@ -1786,11 +1758,11 @@ void validateArrayWithCapacity(p<ExprPathCallNode> node) {
                 got += "?";
             }
         }
-        throw YuxError(line, col, ErrorCode::E3131, "Array", "with_capacity", static_cast<size_t>(1), "usize",
+        throw YuxError(line, col, ErrorCode::E3131, "Array", "with_capacity", expectArity, expectArg0,
                        node->args().size(), got);
     }
-    TypeInfo usizeTy("usize");
-    tryInferIntType(node->args()[0], usizeTy);
+    TypeInfo expectTy(expectArg0);
+    tryInferIntType(node->args()[0], expectTy);
     TypeInfo actualTy;
     try {
         actualTy = node->args()[0]->getType();
@@ -1799,8 +1771,8 @@ void validateArrayWithCapacity(p<ExprPathCallNode> node) {
     } catch (...) { // NOLINT(bugprone-empty-catch)
         return;
     }
-    if (!actualTy.empty() && !(actualTy == usizeTy)) {
-        throw YuxError(line, col, ErrorCode::E3131, "Array", "with_capacity", static_cast<size_t>(1), "usize",
+    if (!actualTy.empty() && !(actualTy == expectTy)) {
+        throw YuxError(line, col, ErrorCode::E3131, "Array", "with_capacity", expectArity, expectArg0,
                        static_cast<size_t>(1), actualTy.getFullName());
     }
 }

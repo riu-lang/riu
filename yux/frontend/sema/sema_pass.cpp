@@ -15,6 +15,7 @@
 // 非 YuxError 在 debug 下 assert，禁止静默吞。
 
 #include "sema/sema_pass.h"
+#include "sema/builtin_methods.h"
 #include "sema/call_resolve.h"
 #include "sema/name_resolver.h"
 
@@ -185,12 +186,6 @@ bool isMorphologicalGenericCode(const char* code) {
     return false;
 }
 
-bool isKnownArrayMethod(const string& member) {
-    return member == "get" || member == "first" || member == "last" || member == "pop" || member == "len" ||
-           member == "cap" || member == "is_empty" || member == "push" || member == "clear" || member == "set_len" ||
-           member == "reserve" || member == "clone";
-}
-
 bool typeParamBoundHasMethod(FnNode* fn, FileNode* file, FileNode* sdk, const string& typeParam, const string& member);
 
 // 实例化后方法返回类型。nullopt = 方法不存在。
@@ -223,17 +218,9 @@ std::optional<TypeInfo> instantiatedMethodRet(FnNode* fn, FileNode* file, FileNo
     }
     TypeInfo t = instRecv.peelAutoDeref();
     if (t.isArray() || t.isArrayGeneric()) {
-        if (member == "len" || member == "cap") return TypeInfo("usize");
-        if (member == "is_empty") return TypeInfo("bool");
-        if (member == "clone") return t;
-        sp<TypeInfo> elem = t.isArray() ? t.elementType : t.arrayGenericElementType();
-        if (member == "get" || member == "first" || member == "last") {
-            if (elem) return TypeInfo("Ref", {elem});
+        if (auto* spec = sema::lookupInstanceBuiltin(t, member)) {
+            return sema::builtinMethodReturnType(*spec, t);
         }
-        if (member == "pop") {
-            if (elem) return *elem;
-        }
-        if (isKnownArrayMethod(member)) return TypeInfo();
         return std::nullopt;
     }
     if (member.starts_with("to_")) {

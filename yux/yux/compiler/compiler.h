@@ -490,8 +490,8 @@ private:
     // ==================== 特殊类型方法编译 ====================
     llvm::Value* compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType,
                                         const string& member, vector<llvm::Value*>& args,
-                                        vector<TypeInfo>& argTypes); // 编译数组方法调用
-    // Array:<T>::with_capacity(n) — #Builtin #Static 工厂，调用点内联合成
+                                        vector<TypeInfo>& argTypes); // 查 kBuiltinMethods 后 lowering
+    // Array:<T>::with_capacity(n) — 表里 ArrayWithCapacity 的 lowering
     llvm::Value* compileArrayWithCapacity(p<ExprPathCallNode> node);
     llvm::Value* compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType,
                                               const string& member, vector<llvm::Value*>& args,

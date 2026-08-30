@@ -259,10 +259,14 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                 throw YuxError(line, col, ErrorCode::E3121, lhsRaw, methodName);
             }
             // Array 是 #Builtin 空字段结构体，Self { ... } 不适用；
-            // #Builtin #Static 工厂在调用点内联合成，不走 getMethodFunction。
-            if (methodHeader->hasAnno("Builtin") && lhsRaw == "Array" && methodName == "with_capacity") {
-                DEBUG_LOG("    Expr: Array::with_capacity");
-                return compileArrayWithCapacity(node);
+            // #Builtin #Static 工厂走 kBuiltinMethods，调用点内联合成。
+            if (methodHeader->hasAnno("Builtin") && methodHeader->isStatic()) {
+                if (auto* spec = sema::lookupStaticBuiltin(lhsRaw, methodName)) {
+                    if (spec->lower == sema::BuiltinLower::ArrayWithCapacity) {
+                        DEBUG_LOG("    Expr: Array::with_capacity");
+                        return compileArrayWithCapacity(node);
+                    }
+                }
             }
             // Phase 6E.4-B: 泛型 struct turbofish 形态 `Type:<T>::name(...)`
             // 消费 lhsTypeArgs, 触发 ensureStructInstance, 切到实例 mangled 名;
