@@ -1,0 +1,12 @@
+; 已知 struct 成员赋值缺字段 → E3040（Phase C）
+struct Point {
+  x i32
+}
+
+fn main() {
+  #Mut let p = Point {
+    .x = 1
+  }
+  p.z = 1  ; check: E3040
+  ret;
+}

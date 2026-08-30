@@ -1,0 +1,16 @@
+; 泛型 fn 体：T 实例化为 Point 后 a.z = v → E3040（Phase C）
+struct Point {
+  x i32
+}
+
+fn set_at<T>(a T, v i32) {
+  a.z = v  ; check: E3040
+  ret;
+}
+
+fn main() {
+  set_at:<Point>(Point {
+    .x = 1
+  }, 2)
+  ret;
+}

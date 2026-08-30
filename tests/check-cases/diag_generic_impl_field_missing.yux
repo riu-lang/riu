@@ -1,0 +1,13 @@
+; 泛型 impl 体：Self 缺字段不依赖 T → E3040（Phase C 形态）
+struct Slot<T> {
+  val T
+
+  fn poke() {
+    $.missing = 1  ; check: E3040
+    ret;
+  }
+}
+
+fn main() {
+  ret;
+}

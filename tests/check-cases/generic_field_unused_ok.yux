@@ -1,0 +1,14 @@
+; 未调用的泛型 fn 体内字段访问：两边都不查（与未调用泛型 fn 一致）
+fn unused<U>(x U) {
+  x.foo = 1
+  ret;
+}
+
+fn unused_ref<U>(x U) {
+  &x.foo
+  ret;
+}
+
+fn main() {
+  ret;
+}

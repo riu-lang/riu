@@ -1,0 +1,16 @@
+; 泛型 fn 体：T 实例化为 Point 时写字段合法（Phase C）
+struct Point {
+  x i32
+}
+
+fn set_x<T>(a T, v i32) {
+  a.x = v
+  ret;
+}
+
+fn main() {
+  set_x:<Point>(Point {
+    .x = 1
+  }, 2)
+  ret;
+}

@@ -144,6 +144,11 @@ private:
     // 索引基类型：subst + peelRef 后须是 [N]T / Array<T>，否则 E3062。
     // 模板形参 / 取类型失败跳过。与 ExprGetNode::getType / compileArraySet 对齐。
     void tryValidateIndexBase(p<ExprNode> arrayExpr, int line, int col);
+
+    // 成员链：subst + peelAutoDeref 后查字段。已知 struct 缺字段 → E3040；
+    // 实例写/取静态字段 → E3152；非 struct → E3041。模板形参跳过。
+    // 与 compileAssignStatement / ExprGetRefNode::getType 对齐。
+    void tryValidateFieldChain(const TypeInfo& start, const vector<string>& members, int line, int col);
 };
 
 #endif // YUX_LANG_SEMA_PASS_H

@@ -1521,8 +1521,15 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             if (sym) {
                 // expected：peelAutoDeref，给嵌套字面量 / 灵活整数（含 Rc<T> 的 T wrap）。
                 // storage：只 peelRef（T& store-through）；末字段保持声明类型，供 E3014。
-                TypeInfo cur = sym->type.peelAutoDeref();
-                TypeInfo lastRaw = sym->type.peelRef();
+                if (!as->subs().empty()) {
+                    vector<string> members;
+                    members.reserve(as->subs().size());
+                    for (auto& t : as->subs())
+                        members.push_back(t.getText());
+                    tryValidateFieldChain(sym->type, members, as->getLineNumber(), as->getColumn());
+                }
+                TypeInfo cur = applyInstSubst(sym->type).peelAutoDeref();
+                TypeInfo lastRaw = applyInstSubst(sym->type).peelRef();
                 bool ok = true;
                 auto isPureDigits = [](const string& s) {
                     return !s.empty() && std::ranges::all_of(s, [](char c) { return c >= '0' && c <= '9'; });
@@ -3517,7 +3524,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
                         .withHint(isRc ? "不支持对临时 Rc<E> 直接 match；先 `let b Rc<E> = ...` 落地再 match b"
                                        : "不支持对临时 Heap<E> 直接 match；先 `let h Heap<E> = ...` 落地再 match h");
                 }
-                checkType = in;
+                checkType = std::move(in);
             };
             if (checkType.isRc()) {
                 peelEnumWrapper(true);
@@ -3526,7 +3533,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
             } else if (checkType.isRef()) {
                 if (auto inner = checkType.refElementType()) {
                     TypeInfo in = sema::resolveAlias(*inner, _file, _sdkFile);
-                    if (_names.lookupEnum(in.name)) checkType = in;
+                    if (_names.lookupEnum(in.name)) checkType = std::move(in);
                 }
             }
             auto* enumDecl = _names.lookupEnum(checkType.name);
@@ -3774,6 +3781,24 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
         } catch (...) { // NOLINT(bugprone-empty-catch)
             // 防御性
         }
+        // Phase C：实例化后字段链 E3040 / E3041（getType 在模板体吞掉）。
+        if (!n->subs().empty() && _currentFn) {
+            string objName = n->obj().getText();
+            SymbolInfo* sym = nullptr;
+            if (auto sc = n->findNearestScope()) {
+                sym = sc->lookupSymbol(objName);
+            }
+            if (!sym) {
+                sym = _currentFn->lookupSymbol(objName);
+            }
+            if (sym) {
+                vector<string> members;
+                members.reserve(n->subs().size());
+                for (auto& t : n->subs())
+                    members.push_back(t.getText());
+                tryValidateFieldChain(sym->type, members, n->resolveLineNumber(), n->resolveColumn());
+            }
+        }
         return;
     }
     // Phase C：ExprArrayInitNode 无靶向类型时仍校验 explicitType vs fill（E3009）。
@@ -3901,6 +3926,63 @@ void SemaPass::tryValidateIndexBase(p<ExprNode> arrayExpr, int line, int col) {
         throw;
     } catch (...) { // NOLINT(bugprone-empty-catch)
         // getType 内部异常: 留 Compiler 兜底
+    }
+}
+
+void SemaPass::tryValidateFieldChain(const TypeInfo& start, const vector<string>& members, int line, int col) {
+    // 与 compileAssignStatement 成员赋值 / ExprGetRefNode::getType 同款。
+    // 模板形参等实例化后再查；已知 struct 的缺字段不依赖 T，模板期也报。
+    if (members.empty()) return;
+    auto peel = [this](TypeInfo t) {
+        t = substSelfType(applyInstSubst(t), _currentStructName).peelAutoDeref();
+        try {
+            t = sema::resolveAlias(t, _file, _sdkFile).peelAutoDeref();
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+        }
+        return t;
+    };
+    TypeInfo cur = peel(start);
+    auto isPureDigits = [](const string& s) {
+        return !s.empty() && std::ranges::all_of(s, [](char c) { return c >= '0' && c <= '9'; });
+    };
+    for (const auto& mem : members) {
+        if (isCurrentTypeParam(cur)) return;
+        // DRAFT-spec-reflect §6: Field.value 写/取由 codegen 改写，不按 struct 字段查。
+        if (cur.name == "Field" && mem == "value") return;
+        if (cur.isTuple()) {
+            if (!isPureDigits(mem)) {
+                throw YuxError(line, col, ErrorCode::E3040, cur.getFullName(), mem);
+            }
+            auto idx = static_cast<size_t>(std::stoul(mem));
+            const auto& elems = cur.tupleElements();
+            if (idx >= elems.size() || !elems[idx]) return; // E3100 已报
+            cur = peel(*elems[idx]);
+            continue;
+        }
+        if (cur.name.empty()) return;
+        if (isBuiltinType(cur.name)) {
+            throw YuxError(line, col, ErrorCode::E3041, cur.name);
+        }
+        StructDeclNode* decl = _names.lookupStruct(cur.name);
+        if (!decl) {
+            throw YuxError(line, col, ErrorCode::E3041, cur.name);
+        }
+        if (decl->staticField(mem)) {
+            throw YuxError(line, col, ErrorCode::E3152, mem, cur.name, cur.name, mem);
+        }
+        int fi = decl->fieldIndex(mem);
+        if (fi < 0) {
+            throw YuxError(line, col, ErrorCode::E3040, cur.name, mem);
+        }
+        TypeInfo fieldTy = decl->fields()[static_cast<size_t>(fi)]->getType();
+        map<string, TypeInfo> fieldSubst = _instSubst;
+        if (decl->isGeneric() && fieldSubst.empty()) {
+            fillSubstFromGenericArgs(decl->typeParams(), cur.genericArgs, fieldSubst);
+        }
+        if (!fieldSubst.empty()) fieldTy = fieldTy.substitute(fieldSubst);
+        cur = peel(fieldTy);
     }
 }
 

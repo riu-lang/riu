@@ -1,0 +1,8 @@
+; 元组别名成员赋值合法（Phase C：resolveAlias 后再查）
+IPair = (i32, i32)
+
+fn main() {
+  #Mut let p IPair = (1, 2)
+  p.0 = 100
+  ret;
+}
