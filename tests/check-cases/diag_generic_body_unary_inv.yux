@@ -1,0 +1,10 @@
+; 泛型 fn 体：T 实例化为 f64 后 ~a → E3070（Phase C）
+fn inv_of<T>(a T) {
+  ~a  ; check: E3070
+  ret;
+}
+
+fn main() {
+  inv_of:<f64>(1.0)
+  ret;
+}

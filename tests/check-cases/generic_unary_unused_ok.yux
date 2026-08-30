@@ -1,0 +1,9 @@
+; 未调用的泛型 fn 体内一元运算符：两边都不查（与未调用泛型 fn 一致）
+fn unused<U>(x U) {
+  -x
+  ret;
+}
+
+fn main() {
+  ret;
+}

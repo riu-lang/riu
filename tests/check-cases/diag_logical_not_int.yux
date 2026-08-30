@@ -1,0 +1,6 @@
+; 对非 bool 使用逻辑非 → E3071（Phase C）
+fn main() {
+  let x i32 = 1
+  let y = !x  ; check: E3071
+  ret;
+}

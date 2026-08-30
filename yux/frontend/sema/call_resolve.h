@@ -469,6 +469,15 @@ void validateCompareOpForm(const TypeInfo& leftType, ExprCompareNode::Op op, int
 void validateBinOpMethodResolution(FileNode* file, FileNode* sdkFile, const TypeInfo& leftType,
                                    const TypeInfo& rightType, const string& methodName, int line, int col);
 
+// 一元运算符自定义类型方法解析 (E3074).
+//
+// 与 Compiler::compileCustomTypeUnaryOp 同款查找: `Type.neg` / `Type.inv` / `Type.not`，
+// 形参仅为接收者。找不到 → E3074。调用方负责剥 Ref/Heap/Rc、跳过 builtin / 泛型 struct。
+//
+// `sdkFile` 允许为 nullptr。纯 AST 查表，无 LLVM 依赖。
+void validateUnaryOpMethodResolution(FileNode* file, FileNode* sdkFile, const TypeInfo& operandType,
+                                     const string& methodName, int line, int col);
+
 // Bucket 6 单点 (CURRENT-check.md): 字符串模板插值类型校验 (E3026).
 //
 // 对每个 interp 计算 getType(), 若不是 String 且既不在 file 也不在 sdkFile

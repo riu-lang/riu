@@ -1,0 +1,12 @@
+; 自定义类型未实现 neg → E3074（Phase C）
+struct Point {
+  x i32
+}
+
+fn main() {
+  let p Point = Point {
+    .x = 1
+  }
+  let q = -p  ; check: E3074
+  ret;
+}

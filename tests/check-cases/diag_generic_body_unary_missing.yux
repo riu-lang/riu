@@ -1,0 +1,16 @@
+; 泛型 fn 体：T 实例化为无 neg 的 struct 后 -a → E3074（Phase C）
+struct Point {
+  x i32
+}
+
+fn neg_of<T>(a T) {
+  -a  ; check: E3074
+  ret;
+}
+
+fn main() {
+  neg_of:<Point>(Point {
+    .x = 1
+  })
+  ret;
+}

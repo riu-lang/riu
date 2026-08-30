@@ -3109,6 +3109,19 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
     }
     if (auto n = dynamic_cast<p<ExprUnaryNode>>(expr)) {
         visitExpr(n->right());
+        string m;
+        switch (n->op()) {
+        case ExprUnaryNode::Op::Neg:
+            m = "neg";
+            break;
+        case ExprUnaryNode::Op::Rev:
+            m = "inv";
+            break;
+        case ExprUnaryNode::Op::Not:
+            m = "not";
+            break;
+        }
+        tryValidateUnaryOpMethod(n->right(), m, n->getLineNumber(), n->getColumn());
         return;
     }
     if (auto n = dynamic_cast<p<LambdaExprNode>>(expr)) {
@@ -3821,6 +3834,48 @@ void SemaPass::tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExp
         if (!decl || decl->isGeneric()) return;
         TypeInfo effRightType = rightType.peelAutoDeref();
         sema::validateBinOpMethodResolution(_file, _sdkFile, resolvedLeftType, effRightType, methodName, line, col);
+    } catch (const YuxError&) {
+        throw;
+    } catch (...) { // NOLINT(bugprone-empty-catch)
+        // getType 内部异常: 留 Compiler 兜底
+    }
+}
+
+void SemaPass::tryValidateUnaryOpMethod(p<ExprNode> rightExpr, const string& methodName, int line, int col) {
+    // gate 与 Compiler::compileUnaryExpr 内 `!isBuiltinType → compileCustomTypeUnaryOp` 一致,
+    // 并排除容器（与 tryValidateBinOpMethod 同款）。模板形参等实例化后再查。
+    if (methodName.empty()) return;
+    try {
+        TypeInfo rightType = applyInstSubst(rightExpr->getType()).peelAutoDeref();
+        if (isCurrentTypeParam(rightType)) return;
+        if (isBuiltinType(rightType.name)) {
+            if (methodName == "inv" && rightType.isFloat()) {
+                throw YuxError(line, col, ErrorCode::E3070, rightType.name);
+            }
+            if (methodName == "not" && rightType.name != "bool") {
+                throw YuxError(line, col, ErrorCode::E3071, rightType.name);
+            }
+            return;
+        }
+        if (rightType.name.empty()) return;
+        if (rightType.isString()) return;
+        if (rightType.isRef() || rightType.isArrayGeneric() || rightType.isWeak() || rightType.isNullable() ||
+            rightType.isPtr() || rightType.isTuple())
+            return;
+        TypeInfo resolved = rightType;
+        if (rightType.isHeap()) {
+            auto heapInner = rightType.heapElementType();
+            if (!heapInner) return;
+            resolved = *heapInner;
+        }
+        if (rightType.isRc()) {
+            auto rcInner = rightType.rcElementType();
+            if (!rcInner) return;
+            resolved = *rcInner;
+        }
+        StructDeclNode* decl = _names.lookupStruct(resolved.name);
+        if (!decl || decl->isGeneric()) return;
+        sema::validateUnaryOpMethodResolution(_file, _sdkFile, resolved, methodName, line, col);
     } catch (const YuxError&) {
         throw;
     } catch (...) { // NOLINT(bugprone-empty-catch)

@@ -1,0 +1,18 @@
+; 自定义类型实现 neg 后一元取负合法（Phase C）
+struct Vec {
+  x i32
+
+  fn neg() Vec {
+    Vec {
+      .x = -$.x
+    }
+  }
+}
+
+fn main() {
+  let v Vec = Vec {
+    .x = 1
+  }
+  let w Vec = -v
+  ret;
+}

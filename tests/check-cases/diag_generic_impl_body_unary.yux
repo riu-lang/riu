@@ -1,0 +1,22 @@
+; 泛型 impl 体：T 实例化为 i32 后 !$.val → E3071（Phase C）
+struct Slot<T> {
+  val T
+
+  #Static
+  fn make(v T) Self {
+    Self {
+      .val = v
+    }
+  }
+
+  fn flip() {
+    !$.val  ; check: E3071
+    ret;
+  }
+}
+
+fn main() {
+  let s Slot<i32> = Slot:<i32>::make(1)
+  s.flip()
+  ret;
+}

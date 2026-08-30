@@ -1,0 +1,10 @@
+; 泛型 fn 体：T 实例化为 i32 后 !a → E3071（Phase C）
+fn not_of<T>(a T) {
+  !a  ; check: E3071
+  ret;
+}
+
+fn main() {
+  not_of:<i32>(1)
+  ret;
+}

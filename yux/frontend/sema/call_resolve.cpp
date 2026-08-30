@@ -1724,6 +1724,27 @@ void validateBinOpMethodResolution(FileNode* file, FileNode* sdkFile, const Type
     throw YuxError(line, col, ErrorCode::E3073, leftType.name, opSym, methodName);
 }
 
+// 一元运算符：`Type.neg` / `Type.inv` / `Type.not`，形参仅为接收者（与 compileCustomTypeUnaryOp 对齐）。
+void validateUnaryOpMethodResolution(FileNode* file, FileNode* sdkFile, const TypeInfo& operandType,
+                                     const string& methodName, int line, int col) {
+    string methodFullName = operandType.name + "." + methodName;
+    vector<TypeInfo> methodParamTypes;
+    methodParamTypes.push_back(operandType);
+
+    FnSymbolInfo* methodSymbol = nullptr;
+    if (file) methodSymbol = file->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
+    if (!methodSymbol && sdkFile && sdkFile != file) {
+        methodSymbol = sdkFile->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
+    }
+    if (methodSymbol) return;
+
+    const char* opSym = methodName == "neg"   ? "-"
+                        : methodName == "inv" ? "~"
+                        : methodName == "not" ? "!"
+                                              : methodName.c_str();
+    throw YuxError(line, col, ErrorCode::E3074, operandType.name, opSym, methodName);
+}
+
 // Bucket 6 单点: 字符串模板插值 ToString 校验 (E3026).
 void validateStringTemplateInterps(FileNode* file, FileNode* sdkFile, StringTemplateNode* tpl) {
     if (!tpl) return;

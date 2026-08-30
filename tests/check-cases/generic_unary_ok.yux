@@ -1,0 +1,9 @@
+; 泛型 fn 体：T 实例化为 i32 时取负合法（Phase C）
+fn neg_of<T>(a T) T {
+  -a
+}
+
+fn main() {
+  let n i32 = neg_of:<i32>(1)
+  ret;
+}
