@@ -1,0 +1,15 @@
+; 泛型 struct：源码写出 Slot<bool> 作形参即复查方法体 → E3014（Phase C）
+struct Slot<T> {
+  val T
+
+  fn as_i32() i32 {
+    $.val  ; check: E3014
+  }
+}
+
+fn take(s Slot<bool>) {
+}
+
+fn main() {
+  ret;
+}

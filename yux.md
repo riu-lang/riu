@@ -118,7 +118,7 @@ flowchart TB
     ast[AST] --> sema{SemaPass.visit*}
 
     sema -- "getType YuxError<br/>默认重抛" --> throwSema[throw YuxError]
-    sema -- "缺口<br/>(未实例化泛型 struct 体)" --> skip[交给 Compiler]
+    sema -- "缺口<br/>(无具体实例的泛型 struct 体)" --> skip[两边都不查]
 
     throwSema --> userErr[(诊断输出)]
     skip --> compiler[Compiler<br/>compiler_*.cpp]

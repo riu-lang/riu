@@ -101,8 +101,12 @@ private:
 
     // Phase C：t 剥 Ref/Heap/Rc 后是否为当前模板的类型参数。
     [[nodiscard]] bool isCurrentTypeParam(const TypeInfo& t) const;
+    // Phase C：替换后是否仍含当前模板形参（含嵌套 genericArgs）。
+    [[nodiscard]] bool typeStillTemplate(const TypeInfo& t) const;
     // Phase C：把当前实例化替换应用到类型；无替换时原样返回。
     [[nodiscard]] TypeInfo applyInstSubst(const TypeInfo& t) const;
+    // 源码写出的具体 `S<Concrete>`：复查该泛型 struct 方法体（形参 / 返回 / 字段 / let）。
+    void noteConcreteGenericType(const TypeInfo& t);
     // 调用点 typeArgs 已知后复查泛型 fn 体（ret / 赋值）。
     void checkGenericFnInst(p<FnNode> fn, const vector<TypeInfo>& typeArgs);
     // 泛型 impl 实例化：复查该 impl 全部非 Builtin 方法体。

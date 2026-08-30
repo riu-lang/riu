@@ -912,14 +912,39 @@ void SemaPass::run() {
     // E4025 / E1132：struct 字段上的 Rc/Weak/Array 内嵌 Heap、Rc/Weak 内嵌 Dyn
     for (auto& sd : _file->getStructDecls()) {
         if (!sd) continue;
+        auto savedFieldParams = _currentTypeParams;
+        for (const auto& tp : sd->typeParams()) {
+            _currentTypeParams.insert(tp);
+        }
         for (auto& f : sd->fields()) {
             if (!f || !f->type()) continue;
             try {
-                validateContainerBansAt(f->type()->getType(), f->type(), f->getLineNumber(), f->getColumn());
+                auto ft = f->type()->getType();
+                validateContainerBansAt(ft, f->type(), f->getLineNumber(), f->getColumn());
+                noteConcreteGenericType(ft);
             } catch (const YuxError&) {
                 throw;
             } catch (...) { // NOLINT(bugprone-empty-catch)
             }
+        }
+        for (auto& sf : sd->staticFields()) {
+            if (!sf.type) continue;
+            try {
+                noteConcreteGenericType(sf.type->getType());
+            } catch (const YuxError&) {
+                throw;
+            } catch (...) { // NOLINT(bugprone-empty-catch)
+            }
+        }
+        _currentTypeParams = std::move(savedFieldParams);
+    }
+    for (auto& gc : _file->getGlobalConsts()) {
+        if (!gc) continue;
+        try {
+            noteConcreteGenericType(gc->getType());
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
         }
     }
     for (auto& fn : _file->getFunctions()) {
@@ -1151,9 +1176,10 @@ void SemaPass::visitFn(p<FnNode> fn) {
         for (auto& param : hdr->params()) {
             if (!param || !param->type()) continue;
             try {
-                validateContainerBansAt(param->type()->getType(), param->type(),
-                                        static_cast<int>(param->name().getLine()),
+                auto pt = param->type()->getType();
+                validateContainerBansAt(pt, param->type(), static_cast<int>(param->name().getLine()),
                                         static_cast<int>(param->name().getCharPositionInLine()));
+                noteConcreteGenericType(pt);
             } catch (const YuxError&) {
                 throw;
             } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -1161,7 +1187,9 @@ void SemaPass::visitFn(p<FnNode> fn) {
         }
         if (auto rt = hdr->retType()) {
             try {
-                validateContainerBansAt(rt->getType(), rt, fn->getLineNumber(), fn->getColumn());
+                auto rtt = rt->getType();
+                validateContainerBansAt(rtt, rt, fn->getLineNumber(), fn->getColumn());
+                noteConcreteGenericType(rtt);
             } catch (const YuxError&) {
                 throw;
             } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -1320,6 +1348,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         if (d->varType()) {
             try {
                 auto vt = d->varType()->getType();
+                noteConcreteGenericType(vt);
                 if (!vt.name.empty() && !isBuiltinType(vt.name) && !vt.isRef() && !vt.isFn() && !vt.isTuple()) {
                     if (auto* sd = _names.lookupStruct(vt.name, true)) {
                         size_t want = sd->typeParams().size();
@@ -1681,13 +1710,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             try {
                 daExpected = applyInstSubst(da->varType()->getType());
                 daExpPtr = &daExpected;
-                map<string, TypeInfo> implSubst;
-                if (auto* sd = _names.lookupStruct(daExpected.name)) {
-                    if (sd->isGeneric() &&
-                        fillSubstFromGenericArgs(sd->typeParams(), daExpected.genericArgs, implSubst)) {
-                        checkGenericImplInst(lookupStructImpl(_file, _sdkFile, daExpected.name), implSubst);
-                    }
-                }
+                noteConcreteGenericType(daExpected);
             } catch (const YuxError&) {
                 throw;
             } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -3805,6 +3828,65 @@ TypeInfo SemaPass::applyInstSubst(const TypeInfo& t) const {
     return _instSubst.empty() ? t : t.substitute(_instSubst);
 }
 
+bool SemaPass::typeStillTemplate(const TypeInfo& t) const {
+    TypeInfo t0 = applyInstSubst(t);
+    if (isCurrentTypeParam(t0)) return true;
+    for (auto& a : t0.genericArgs) {
+        if (a && typeStillTemplate(*a)) return true;
+    }
+    if (t0.elementType && typeStillTemplate(*t0.elementType)) return true;
+    return false;
+}
+
+void SemaPass::noteConcreteGenericType(const TypeInfo& t) {
+    TypeInfo t0 = applyInstSubst(t);
+    if (t0.empty() || typeStillTemplate(t0)) return;
+
+    auto noteInner = [this](const sp<TypeInfo>& inner) {
+        if (inner) noteConcreteGenericType(*inner);
+    };
+
+    if (t0.isRef()) {
+        noteInner(t0.refElementType());
+        return;
+    }
+    if (t0.isPtr()) {
+        noteInner(t0.ptrElementType());
+        return;
+    }
+    if (t0.isNullable()) {
+        noteInner(t0.nullableInnerType());
+        return;
+    }
+    if (t0.isArray()) {
+        noteInner(t0.elementType);
+        return;
+    }
+    if (t0.isTuple()) {
+        for (auto& e : t0.tupleElements())
+            noteInner(e);
+        return;
+    }
+    if (t0.isFn()) {
+        for (auto& p : t0.fnParamTypes())
+            noteInner(p);
+        noteInner(t0.fnReturnType());
+        return;
+    }
+    if (t0.isRc()) noteInner(t0.rcElementType());
+    if (t0.isHeap()) noteInner(t0.heapElementType());
+    if (t0.isWeak()) noteInner(t0.weakElementType());
+    if (t0.isArrayGeneric()) noteInner(t0.arrayGenericElementType());
+    for (auto& a : t0.genericArgs)
+        noteInner(a);
+
+    auto* sd = _names.lookupStruct(t0.name);
+    if (!sd || !sd->isGeneric()) return;
+    map<string, TypeInfo> subst;
+    if (!fillSubstFromGenericArgs(sd->typeParams(), t0.genericArgs, subst)) return;
+    checkGenericImplInst(lookupStructImpl(_file, _sdkFile, t0.name), subst);
+}
+
 void SemaPass::checkGenericFnInst(p<FnNode> fn, const vector<TypeInfo>& typeArgs) {
     if (!fn || !fn->header() || fn->header()->hasAnno("Builtin")) return;
     const auto& tps = fn->header()->typeParams();
@@ -3851,6 +3933,12 @@ void SemaPass::checkGenericBodyInst(p<FnNode> fn, const map<string, TypeInfo>& s
         _currentTypeParams.insert(k);
     _movedVars.clear();
 
+    if (auto hdr = fn->header()) {
+        for (auto& param : hdr->params()) {
+            if (param && param->type()) noteConcreteGenericType(param->type()->getType());
+        }
+        if (auto rt = hdr->retType()) noteConcreteGenericType(rt->getType());
+    }
     for (auto& stmt : fn->body())
         visitStmt(stmt);
 
