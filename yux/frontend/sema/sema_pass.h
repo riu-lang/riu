@@ -140,6 +140,10 @@ private:
     // 非 builtin / 非容器 / 非泛型 struct 走 E3074（neg/inv/not 方法不存在）。
     // 模板形参 / lambda 形参跳过。methodName 为 neg / inv / not。
     void tryValidateUnaryOpMethod(p<ExprNode> rightExpr, const string& methodName, int line, int col);
+
+    // 索引基类型：subst + peelRef 后须是 [N]T / Array<T>，否则 E3062。
+    // 模板形参 / 取类型失败跳过。与 ExprGetNode::getType / compileArraySet 对齐。
+    void tryValidateIndexBase(p<ExprNode> arrayExpr, int line, int col);
 };
 
 #endif // YUX_LANG_SEMA_PASS_H

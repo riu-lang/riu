@@ -1,0 +1,10 @@
+; 泛型 fn 体：T 实例化为 [i32 * 3] 时索引合法（Phase C）
+fn at<T>(a T) {
+  a[0]
+  ret;
+}
+
+fn main() {
+  at([1, 2, 3])
+  ret;
+}

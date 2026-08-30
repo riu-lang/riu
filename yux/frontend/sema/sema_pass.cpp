@@ -1250,8 +1250,10 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             try {
                 TypeInfo at = set->arrayExpr()->hasResolvedType() ? set->arrayExpr()->resolvedType()
                                                                   : set->arrayExpr()->getType();
-                at = at.peelRef();
-                if (at.isArrayGeneric()) {
+                at = applyInstSubst(at).peelRef();
+                if (isCurrentTypeParam(at)) {
+                    // 未实例化模板体：两边都不查（与未调用泛型 fn 一致）
+                } else if (at.isArrayGeneric()) {
                     if (auto e = at.arrayGenericElementType()) {
                         elemStorage = *e;
                         elemExpected = &elemStorage;
@@ -1261,7 +1263,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                         elemStorage = *at.elementType;
                         elemExpected = &elemStorage;
                     }
-                } else {
+                } else if (!at.name.empty()) {
                     throw YuxError(set->getLineNumber(), set->getColumn(), ErrorCode::E3062, at.name);
                 }
             } catch (const YuxError&) {
@@ -3095,6 +3097,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
         visitExpr(n->arrayExpr());
         for (auto& i : n->indices())
             visitExpr(i);
+        tryValidateIndexBase(n->arrayExpr(), n->resolveLineNumber(), n->resolveColumn());
         return;
     }
     if (auto n = dynamic_cast<p<ExprArrayNode>>(expr)) {
@@ -3876,6 +3879,24 @@ void SemaPass::tryValidateUnaryOpMethod(p<ExprNode> rightExpr, const string& met
         StructDeclNode* decl = _names.lookupStruct(resolved.name);
         if (!decl || decl->isGeneric()) return;
         sema::validateUnaryOpMethodResolution(_file, _sdkFile, resolved, methodName, line, col);
+    } catch (const YuxError&) {
+        throw;
+    } catch (...) { // NOLINT(bugprone-empty-catch)
+        // getType 内部异常: 留 Compiler 兜底
+    }
+}
+
+void SemaPass::tryValidateIndexBase(p<ExprNode> arrayExpr, int line, int col) {
+    // 与 ExprGetNode::getType / compileArraySetStatement 同款：只剥 Ref。
+    // 模板形参等实例化后再查。
+    if (!arrayExpr) return;
+    try {
+        TypeInfo at = arrayExpr->hasResolvedType() ? arrayExpr->resolvedType() : arrayExpr->getType();
+        at = applyInstSubst(at).peelRef();
+        if (isCurrentTypeParam(at)) return;
+        if (at.isArrayGeneric() || at.isArray()) return;
+        if (at.name.empty()) return;
+        throw YuxError(line, col, ErrorCode::E3062, at.name);
     } catch (const YuxError&) {
         throw;
     } catch (...) { // NOLINT(bugprone-empty-catch)

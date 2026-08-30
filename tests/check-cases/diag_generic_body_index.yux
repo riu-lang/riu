@@ -1,0 +1,10 @@
+; 泛型 fn 体：T 实例化为 i32 后 a[0] → E3062（Phase C）
+fn at<T>(a T) {
+  a[0]  ; check: E3062
+  ret;
+}
+
+fn main() {
+  at:<i32>(1)
+  ret;
+}
