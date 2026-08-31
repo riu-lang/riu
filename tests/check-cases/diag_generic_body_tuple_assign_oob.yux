@@ -1,0 +1,11 @@
+; 泛型 fn 体：T 实例化为 (i32, i32) 后赋值 t.2 越界 → E3100（Phase C）
+fn poke<T>(t T) {
+  t.2 = 9  ; check: E3100
+  ret;
+}
+
+fn main() {
+  #Mut let p (i32, i32) = (1, 2)
+  poke(p)
+  ret;
+}

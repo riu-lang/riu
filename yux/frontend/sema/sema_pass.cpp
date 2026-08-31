@@ -4091,7 +4091,12 @@ void SemaPass::tryValidateFieldChain(const TypeInfo& start, const vector<string>
             }
             auto idx = static_cast<size_t>(std::stoul(mem));
             const auto& elems = cur.tupleElements();
-            if (idx >= elems.size() || !elems[idx]) return; // E3100 已报
+            // Phase C：读 / 赋值 / `&obj.N` 越界都在此抛。getType 对非泛型已报；
+            // 模板体 T 不是元组，实例化后 subst 才看见具体元组，必须在这里查。
+            if (idx >= elems.size()) {
+                throw YuxError(line, col, ErrorCode::E3100, mem, cur.getFullName(), std::to_string(elems.size()));
+            }
+            if (!elems[idx]) return;
             cur = peel(*elems[idx]);
             continue;
         }

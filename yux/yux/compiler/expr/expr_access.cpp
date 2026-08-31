@@ -145,6 +145,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
         if (baseTypeResolved.isTuple()) {
             auto& elems = baseTypeResolved.tupleElements();
             auto idx = static_cast<size_t>(std::stoul(member));
+            // E3100 由 SemaPass tryValidateFieldChain 先抛；此处防 IR ExtractValue 越界。
             if (idx >= elems.size()) {
                 throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3100, member,
                                baseTypeRaw.getFullName(), std::to_string(elems.size()));

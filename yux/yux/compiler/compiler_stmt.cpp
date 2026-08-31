@@ -1176,6 +1176,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                     }
                     auto& elems = resolvedCur.tupleElements();
                     auto idx = static_cast<size_t>(std::stoul(memberText));
+                    // E3100 由 SemaPass tryValidateFieldChain 先抛；此处防 IR GEP 越界。
                     if (idx >= elems.size()) {
                         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3100, memberText,
                                        curType.getFullName(), std::to_string(elems.size()));

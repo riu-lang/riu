@@ -147,8 +147,9 @@ private:
     void tryValidateIndexBase(p<ExprNode> arrayExpr, int line, int col);
 
     // 成员链：subst + peelAutoDeref 后查字段。已知 struct 缺字段 → E3040；
-    // 实例写/取静态字段 → E3152；非 struct → E3041。模板形参跳过。
-    // 与 compileAssignStatement / ExprGetRefNode::getType / 读路径 ExprDotNode 对齐。
+    // 实例写/取静态字段 → E3152；非 struct → E3041；元组 `.N` 越界 → E3100。
+    // 模板形参跳过（实例化后再查 E3100）。与 compileAssignStatement /
+    // ExprGetRefNode::getType / 读路径 ExprDotNode 对齐。
     void tryValidateFieldChain(const TypeInfo& start, const vector<string>& members, int line, int col);
 };
 

@@ -1,0 +1,11 @@
+; 泛型 fn 体：T 实例化为 (i32, i32) 后 x.0 合法（Phase C）
+fn at<T>(x T) {
+  x.0
+  ret;
+}
+
+fn main() {
+  let p (i32, i32) = (1, 2)
+  at(p)
+  ret;
+}

@@ -1,0 +1,9 @@
+; 元组别名 .N 读合法（Phase C：resolveAlias 后再查）
+IPair = (i32, i32)
+
+fn main() {
+  let p IPair = (1, 2)
+  p.0
+  p.1
+  ret;
+}
