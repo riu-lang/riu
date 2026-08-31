@@ -1,0 +1,9 @@
+; 元组别名解构合法（Phase C：resolveAlias 后再查）
+IPair = (i32, i32)
+
+fn main() {
+  let p IPair = (1, 2)
+  let (a, b) = p
+  let (c, d) IPair = p
+  ret;
+}

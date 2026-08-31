@@ -1,0 +1,5 @@
+; 元组解构 RHS 不是元组 → E3101（Phase C）
+fn main() {
+  let (a, b) = 1  ; check: E3101
+  ret;
+}

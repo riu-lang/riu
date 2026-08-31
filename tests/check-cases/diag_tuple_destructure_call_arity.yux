@@ -1,0 +1,9 @@
+; 元组解构：调用返回 2 元 vs 3 个名字 → E3102（Phase C，非字面量）
+fn pair() (i32, i32) {
+  ret (1, 2)
+}
+
+fn main() {
+  let (a, b, c) = pair()  ; check: E3102
+  ret;
+}

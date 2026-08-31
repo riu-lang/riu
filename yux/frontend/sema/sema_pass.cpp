@@ -474,6 +474,42 @@ bool stillTemplateType(const TypeInfo& t, const std::set<std::string>& typeParam
     return !typeParams.empty() && !t.genericArgs.empty();
 }
 
+// Phase C：元组解构 E3101 / E3102。
+// 与 compileDeclareAssignTupleStatement / loop init 对齐：
+//   标注类型优先，否则 RHS 推断；subst + resolveAlias 后再判 isTuple。
+//   非元组 → E3101；元素数 ≠ 名字数 → E3102。
+// 模板形参 T（含 T& / Rc<T> 剥后仍是 T）等实例化后再查；Array<T> 永远不是元组，模板期也报。
+void checkTupleDestructure(p<ExprNode> expr, p<TypeNode> annotated, size_t nameCount, int line, int col, FileNode* file,
+                           FileNode* sdk, const std::set<std::string>& typeParams,
+                           const std::map<std::string, TypeInfo>* subst) {
+    TypeInfo raw;
+    if (annotated) {
+        try {
+            raw = annotated->getType();
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+            return;
+        }
+    } else if (!tryGetExprType(expr, raw)) {
+        return;
+    }
+    raw = applySubstMap(raw, subst);
+    if (raw.empty()) return;
+    auto resolved = sema::resolveAlias(raw, file, sdk);
+    if (resolved.empty()) return;
+    if (isAssignTypeParam(resolved, typeParams)) return;
+    if (!resolved.isTuple()) {
+        string shown = raw.getFullName();
+        if (shown.empty()) shown = raw.name;
+        throw YuxError(line, col, ErrorCode::E3101, shown);
+    }
+    const auto& elems = resolved.tupleElements();
+    if (elems.size() != nameCount) {
+        throw YuxError(line, col, ErrorCode::E3102, std::to_string(nameCount), std::to_string(elems.size()));
+    }
+}
+
 string genericInstKey(const void* p, const std::map<std::string, TypeInfo>& subst) {
     string k = std::format("{}", p);
     k += '{';
@@ -1270,7 +1306,23 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         }
         _loopLabelStack.push_back(label); // 空 Token = 无 label
         if (loop->hasInit()) {
-            visitExpr(loop->initExpr());
+            TypeInfo texp;
+            const TypeInfo* tp = nullptr;
+            if (loop->initType()) {
+                try {
+                    texp = sema::resolveAlias(applyInstSubst(loop->initType()->getType()), _file, _sdkFile);
+                    tp = &texp;
+                } catch (const YuxError&) {
+                    throw;
+                } catch (...) { // NOLINT(bugprone-empty-catch)
+                }
+            }
+            visitExpr(loop->initExpr(), tp);
+            if (loop->initNames().size() > 1) {
+                checkTupleDestructure(loop->initExpr(), loop->initType(), loop->initNames().size(),
+                                      loop->getLineNumber(), loop->getColumn(), _file, _sdkFile, _currentTypeParams,
+                                      &_instSubst);
+            }
         }
         visitBlock(loop->block());
         _loopLabelStack.pop_back();
@@ -1629,21 +1681,13 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         return;
     }
     if (auto tup = dynamic_cast<p<StatementDeclareAssignTupleNode>>(stmt)) {
-        // Bucket 2: 元组解构 LHS 数量 vs RHS 元组实际元素数 (E3102).
-        // 简化策略 —— 仅在 RHS 直接是 ExprTupleNode 字面量时校验, 因为此时元素
-        // 数从 AST 直接可得, 无需走 applySubst. 类型标注路径 (varType) 留 Compiler.
+        // Phase C：元组解构 E3101 / E3102（标注或 RHS；别名 resolveAlias；泛型体 subst）。
         if (tup->expr()) {
-            if (auto tn = dynamic_cast<p<ExprTupleNode>>(tup->expr())) {
-                if (tn->elements().size() != tup->names().size()) {
-                    throw YuxError(tup->getLineNumber(), tup->getColumn(), ErrorCode::E3102,
-                                   std::to_string(tup->names().size()), std::to_string(tn->elements().size()));
-                }
-            }
             TypeInfo texp;
             const TypeInfo* tp = nullptr;
             if (tup->varType()) {
                 try {
-                    texp = tup->varType()->getType();
+                    texp = sema::resolveAlias(applyInstSubst(tup->varType()->getType()), _file, _sdkFile);
                     tp = &texp;
                 } catch (const YuxError&) {
                     throw;
@@ -1651,6 +1695,8 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                 }
             }
             visitExpr(tup->expr(), tp);
+            checkTupleDestructure(tup->expr(), tup->varType(), tup->names().size(), tup->getLineNumber(),
+                                  tup->getColumn(), _file, _sdkFile, _currentTypeParams, &_instSubst);
         }
         return;
     }

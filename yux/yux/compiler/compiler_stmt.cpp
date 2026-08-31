@@ -814,6 +814,7 @@ void Compiler::compileDeclareAssignTupleStatement(p<StatementDeclareAssignTupleN
         wholeType = expr->getType();
     }
     auto resolved = applySubst(wholeType);
+    // E3101 / E3102 由 SemaPass 先抛；此处防 IR 把非元组当 ExtractValue。
     if (!resolved.isTuple()) {
         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3101, wholeType.name);
     }
@@ -1524,6 +1525,7 @@ void Compiler::compileLoopStatement(p<StatementLoopNode> node) {
                 wholeType = initExprNode->getType();
             }
             auto resolved = applySubst(wholeType);
+            // E3101 / E3102 由 SemaPass 先抛；此处防 IR 把非元组当 ExtractValue。
             if (!resolved.isTuple()) {
                 throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3101, wholeType.name);
             }

@@ -1,0 +1,10 @@
+; 泛型 fn 体：T 实例化为 i32 后解构不是元组 → E3101（Phase C）
+fn unpack<T>(x T) {
+  let (a, b) = x  ; check: E3101
+  ret;
+}
+
+fn main() {
+  unpack:<i32>(1)
+  ret;
+}

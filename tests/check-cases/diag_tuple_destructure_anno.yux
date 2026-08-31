@@ -1,0 +1,5 @@
+; 元组解构标注不是元组 → E3101（Phase C）
+fn main() {
+  let (a, b) i32 = (1, 2)  ; check: E3101
+  ret;
+}
