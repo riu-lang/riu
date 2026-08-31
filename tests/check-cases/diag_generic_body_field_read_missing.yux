@@ -1,0 +1,16 @@
+; 泛型 fn 体：T 实例化为 Point 后 a.z → E3040（Phase C 读路径）
+struct Point {
+  x i32
+}
+
+fn at<T>(a T) {
+  a.z  ; check: E3040
+  ret;
+}
+
+fn main() {
+  at:<Point>(Point {
+    .x = 1
+  })
+  ret;
+}

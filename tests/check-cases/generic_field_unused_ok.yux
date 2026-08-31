@@ -9,6 +9,11 @@ fn unused_ref<U>(x U) {
   ret;
 }
 
+fn unused_read<U>(x U) {
+  x.foo
+  ret;
+}
+
 fn main() {
   ret;
 }

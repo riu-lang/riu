@@ -1,0 +1,22 @@
+; 泛型 impl 体：T 实例化为 i32 后 $.val.foo → E3041（Phase C 读路径）
+struct Slot<T> {
+  val T
+
+  #Static
+  fn make(v T) Self {
+    Self {
+      .val = v
+    }
+  }
+
+  fn peek() {
+    $.val.foo  ; check: E3041
+    ret;
+  }
+}
+
+fn main() {
+  let s Slot<i32> = Slot:<i32>::make(1)
+  s.peek()
+  ret;
+}

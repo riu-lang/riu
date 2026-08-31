@@ -1,0 +1,6 @@
+; 读路径对非 struct 取成员 → E3041（Phase C）
+fn main() {
+  let n = 1
+  n.foo  ; check: E3041
+  ret;
+}

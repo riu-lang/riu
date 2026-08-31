@@ -1,0 +1,15 @@
+; 读路径实例碰静态字段 → E3152（Phase C）
+struct Foo {
+  x i32
+
+  #Static
+  BAR i32 = 42
+}
+
+fn main() {
+  let obj = Foo {
+    .x = 1
+  }
+  obj.BAR  ; check: E3152
+  ret;
+}

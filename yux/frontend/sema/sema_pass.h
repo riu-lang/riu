@@ -95,7 +95,8 @@ private:
     void visitBlock(p<StatementBlockNode> block, const TypeInfo* expected = nullptr);
     // expected：赋值 / 声明 / 返回 / 调用实参 / 嵌套数组 / if·match 臂 的目标类型。
     // 非空时数组字面量按靶向类型递归检查（E3009 / E3012），不再走无上下文的 getType。
-    void visitExpr(p<ExprNode> expr, const TypeInfo* expected = nullptr);
+    // callCallee：当前节点是调用的 callee（`x.foo()` 的 Dot），读路径字段检查跳过。
+    void visitExpr(p<ExprNode> expr, const TypeInfo* expected = nullptr, bool callCallee = false);
     // 实参列表：expected 非空且下标有具体类型时带靶向类型下钻。
     void visitExprList(const vector<p<ExprNode>>& args, const vector<TypeInfo>* expected = nullptr);
 
@@ -147,7 +148,7 @@ private:
 
     // 成员链：subst + peelAutoDeref 后查字段。已知 struct 缺字段 → E3040；
     // 实例写/取静态字段 → E3152；非 struct → E3041。模板形参跳过。
-    // 与 compileAssignStatement / ExprGetRefNode::getType 对齐。
+    // 与 compileAssignStatement / ExprGetRefNode::getType / 读路径 ExprDotNode 对齐。
     void tryValidateFieldChain(const TypeInfo& start, const vector<string>& members, int line, int col);
 };
 

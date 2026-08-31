@@ -1949,7 +1949,7 @@ void SemaPass::visitExprList(const vector<p<ExprNode>>& args, const vector<TypeI
     }
 }
 
-void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
+void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCallee) {
     if (!expr) return;
 
     // Phase C：有靶向类型时，数组 / 元组字面量先按 expected 走，避免 getType
@@ -2223,7 +2223,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
         return;
     }
     if (auto n = dynamic_cast<p<ExprCallNode>>(expr)) {
-        visitExpr(n->getCalleeExpr());
+        visitExpr(n->getCalleeExpr(), nullptr, true);
 
         // Phase C：重载前实参靶向类型。不看实参类型即可确定的形参才下钻：
         // 单 arity 非泛型候选 / Fn 值 callee / 非泛型方法，以及同 arity 重载
@@ -3051,6 +3051,49 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected) {
             throw;
         } catch (...) { // NOLINT(bugprone-empty-catch)
             // 防御性
+        }
+
+        // Phase C：读路径字段（非调用 callee）。`x.foo()` 留给调用路径；
+        // `to_*` 是内置转换；模块 / 包链不按字段查。
+        if (!callCallee && !n->isSafe()) {
+            string mem = n->member();
+            bool skipField = mem.starts_with("to_");
+            if (!skipField && n->hasResolvedType()) {
+                const TypeInfo& rt = n->resolvedType();
+                if (rt.isFn() || rt.isDyn() || rt.name == "fn_overload" || rt.name == "pkg_chain") {
+                    skipField = true;
+                }
+            }
+            if (!skipField) {
+                string aliasName;
+                vector<string> segs;
+                if (ExprDotNode::parseChain(n, aliasName, segs)) {
+                    SymbolInfo* sym = nullptr;
+                    if (auto sc = n->findNearestScope()) {
+                        sym = sc->lookupSymbol(aliasName);
+                    }
+                    if (sym && (sym->kind == SymbolKind::Module || sym->kind == SymbolKind::Package)) {
+                        skipField = true;
+                    }
+                }
+            }
+            if (!skipField) {
+                try {
+                    auto* base = n->baseExpr();
+                    TypeInfo bt = base->hasResolvedType() ? base->resolvedType() : base->getType();
+                    TypeInfo peeled = applyInstSubst(bt).peelAutoDeref();
+                    const bool isMethod = receiverHasMethod(peeled, mem, _file, _sdkFile) ||
+                                          (isCurrentTypeParam(peeled) &&
+                                           typeParamBoundHasMethod(_currentFn, _file, _sdkFile, peeled.name, mem));
+                    if (!isMethod) {
+                        tryValidateFieldChain(bt, {mem}, n->resolveLineNumber(), n->resolveColumn());
+                    }
+                } catch (const YuxError&) {
+                    throw;
+                } catch (...) { // NOLINT(bugprone-empty-catch)
+                    // getType 失败，留 Compiler
+                }
+            }
         }
         return;
     }
@@ -3917,7 +3960,7 @@ void SemaPass::tryValidateIndexBase(p<ExprNode> arrayExpr, int line, int col) {
 }
 
 void SemaPass::tryValidateFieldChain(const TypeInfo& start, const vector<string>& members, int line, int col) {
-    // 与 compileAssignStatement 成员赋值 / ExprGetRefNode::getType 同款。
+    // 与 compileAssignStatement 成员赋值 / ExprGetRefNode::getType / 读路径 Dot 同款。
     // 模板形参等实例化后再查；已知 struct 的缺字段不依赖 T，模板期也报。
     if (members.empty()) return;
     auto peel = [this](TypeInfo t) {
@@ -3952,7 +3995,8 @@ void SemaPass::tryValidateFieldChain(const TypeInfo& start, const vector<string>
         if (isBuiltinType(cur.name)) {
             throw YuxError(line, col, ErrorCode::E3041, cur.name);
         }
-        StructDeclNode* decl = _names.lookupStruct(cur.name);
+        // Type / Field / String 等是 #Builtin 占位 struct，与 compileDotExpr 一样要看见。
+        StructDeclNode* decl = _names.lookupStruct(cur.name, /*includeBuiltin=*/true);
         if (!decl) {
             throw YuxError(line, col, ErrorCode::E3041, cur.name);
         }
