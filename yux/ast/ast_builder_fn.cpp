@@ -7,12 +7,12 @@
 // 拆自原 ast_builder.cpp（P1 Phase 2），方法体一字不动。
 // 结构体内方法 / 析构 / spec 见 ast_builder_struct.cpp。
 
-#include "types.h"
 #include "ast_builder.h"
 #include "ast_builder_helpers.h"
 #include "node/expr_node.h"
 #include "node/literal_node.h"
 #include "node/statement_node.h"
+#include "types.h"
 #include <algorithm>
 
 std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
@@ -20,6 +20,7 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
     auto header = any_cast_p<FnHeaderNode>(visitFnHeader(ctx->fnHeader()));
     auto fn = createWithLine<FnNode>(ctx, file, header);
     fn->setParentScope(file);
+    fn->setSourceText(ctxSource(ctx));
     file->addFunction(fn);
 
     DEBUG_LOG_VAL("Visit: Function", header->name().getText());
@@ -36,8 +37,7 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
         int annoCol = header->getColumn();
 
         if (!_isTestFile) {
-            throw YuxError(annoLine, annoCol, ErrorCode::E2014,
-                           _sourcePath.empty() ? _moduleName : _sourcePath);
+            throw YuxError(annoLine, annoCol, ErrorCode::E2014, _sourcePath.empty() ? _moduleName : _sourcePath);
         }
         if (header->hasAnno("Builtin")) {
             throw YuxError(annoLine, annoCol, ErrorCode::E2013, fnName);
@@ -56,8 +56,7 @@ std::any ASTBuilder::visitFn(yux::yuxParser::FnContext* ctx) {
         }
     }
 
-
-stack.emplace_back(fn);
+    stack.emplace_back(fn);
     _scopeStack.push_back(fn);
 
     for (auto& tp : header->typeParams()) {
@@ -74,15 +73,13 @@ stack.emplace_back(fn);
             si.isFrozen = true;
         }
         fn->registerSymbol(param->name().getText(), si);
-        DEBUG_LOG_VAL("  Param", param->name().getText() << " : " << paramType.name
-                                                         << (param->isFrozen() ? " #Frozen" : ""));
+        DEBUG_LOG_VAL("  Param", param->name().getText()
+                                     << " : " << paramType.name << (param->isFrozen() ? " #Frozen" : ""));
     }
 
     if (!ctx->fnBody()) {
         if (!header->hasAnno("Builtin")) {
-            throw YuxError(
-                header->getLineNumber(), header->getColumn(),
-                ErrorCode::E2006, header->name().getText())
+            throw YuxError(header->getLineNumber(), header->getColumn(), ErrorCode::E2006, header->name().getText())
                 .withHint("普通函数必须有函数体；若仅声明（由编译器内部提供实现），在签名上加 `#Builtin` 注解");
         }
         DEBUG_LOG("  Body: (compiler-synthesized)");
@@ -166,7 +163,7 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
         }
         header->setTypeParams(typeParams);
         header->setTypeParamBounds(typeParamBounds);
-        for (const auto & i : header->typeParams()) {
+        for (const auto& i : header->typeParams()) {
             DEBUG_LOG_VAL("    TypeParam", i);
         }
     }
@@ -218,8 +215,7 @@ bool readParamAnnos(const std::vector<yux::yuxParser::ParamAnnoContext*>& annos)
             frozen = true;
         } else {
             auto* tk = a->SymbolHash()->getSymbol();
-            throw YuxError(static_cast<int>(tk->getLine()),
-                           static_cast<int>(tk->getCharPositionInLine()) + 1,
+            throw YuxError(static_cast<int>(tk->getLine()), static_cast<int>(tk->getCharPositionInLine()) + 1,
                            ErrorCode::E3105, name);
         }
     }
@@ -232,8 +228,7 @@ std::any ASTBuilder::visitFnParamStd(yux::yuxParser::FnParamStdContext* ctx) {
     p<Node> parent = any_cast_p<FnHeaderNode>(stack.back());
     auto type = buildTypeWithRef(ctx->typeWithRef(), parent);
     bool frozen = readParamAnnos(ctx->paramAnnos);
-    DEBUG_LOG_VAL("    Param", ctx->name->getText() << " : " << type->getType().name
-                                                    << (frozen ? " #Frozen" : ""));
+    DEBUG_LOG_VAL("    Param", ctx->name->getText() << " : " << type->getType().name << (frozen ? " #Frozen" : ""));
 
     vector<p<FnParamNode>> params;
     auto node = (createWithLine<FnParamNode>(ctx, parent, ctx->name, type));
@@ -249,8 +244,8 @@ std::any ASTBuilder::visitFnParamGroup(yux::yuxParser::FnParamGroupContext* ctx)
 
     vector<p<FnParamNode>> params;
     for (auto nameToken : ctx->names) {
-        DEBUG_LOG_VAL("    Param (group)", nameToken->getText() << " : " << type->getType().name
-                                                                << (frozen ? " #Frozen" : ""));
+        DEBUG_LOG_VAL("    Param (group)", nameToken->getText()
+                                               << " : " << type->getType().name << (frozen ? " #Frozen" : ""));
         auto node = (createWithLine<FnParamNode>(ctx, parent, nameToken, type));
         node->setFrozen(frozen);
         params.push_back(node);

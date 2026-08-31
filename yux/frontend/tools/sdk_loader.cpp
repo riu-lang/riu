@@ -14,6 +14,7 @@
 #include <array>
 
 #include "ast/ast_builder.h"
+#include "ast/mod_decl.h"
 #include "ast/node/file_node.h"
 #include "ast/node/node.h"
 #include "ast/yux.h"
@@ -89,7 +90,7 @@ void registerSdkPkgAliases(Yux& yux, const std::map<std::string, SdkPkgEntry>& p
     }
 }
 
-void parseSdkDir(const std::string& sdkDir, Yux& yux) {
+void parseSdkDir(const std::string& sdkDir, Yux& yux, bool allowDecl) {
     auto pkgMap = readSdkPkg(sdkDir);
 
     std::vector<std::string> yuxFiles;
@@ -106,11 +107,27 @@ void parseSdkDir(const std::string& sdkDir, Yux& yux) {
     // 创建 _sdkFile 空壳作为父作用域（不再合并 AST）
     auto sdk = yux.createSdkFile();
 
+    // .decl 落在 SDK 项目 build/ 下；源码 hash 变了才重 parse，重编 yux.exe 不重 parse
+    fs::path sdkRoot;
+    {
+        fs::path p = fs::absolute(sdkDir);
+        while (true) {
+            if (fs::exists(p / "yux.toml")) {
+                sdkRoot = p;
+                break;
+            }
+            auto parent = p.parent_path();
+            if (parent == p) break;
+            p = parent;
+        }
+    }
+    std::string declRoot = sdkRoot.empty() ? std::string() : sdkRoot.string();
+    std::string declBuild = sdkRoot.empty() ? std::string() : (sdkRoot / "build").string();
+
     // 单遍：每个文件独立 FileNode，通过 wildcardImport + parentScope 双向关联 _sdkFile
     for (const auto& yuxFile : yuxFiles) {
         std::string stem = fs::path(yuxFile).stem().string();
         auto it = pkgMap.find(stem);
-        bool isFlatDep = (it == pkgMap.end()) || it->second.isFlat;
 
         // 分配 moduleName: 命名空间文件沿用 pkg 指定的全名，其余统一用 yux.core.<stem>
         std::string moduleName;
@@ -120,7 +137,18 @@ void parseSdkDir(const std::string& sdkDir, Yux& yux) {
             moduleName = "yux.core." + stem;
         }
 
-        auto fileNode = yux.loadMainFile(fs::absolute(yuxFile).string(), moduleName);
+        std::string abs = fs::absolute(yuxFile).string();
+        p<FileNode> fileNode = nullptr;
+        if (allowDecl && !declRoot.empty()) {
+            auto dpath = mod_decl::pathFor(declRoot, declBuild, abs);
+            fileNode = mod_decl::tryLoad(yux, dpath, abs, moduleName);
+        }
+        if (!fileNode) {
+            fileNode = yux.loadMainFile(abs, moduleName);
+            if (!declRoot.empty()) {
+                mod_decl::write(fileNode, abs, mod_decl::pathFor(declRoot, declBuild, abs));
+            }
+        }
 
         // 所有 SDK 文件双向关联 _sdkFile：
         // 1) fileNode 设 _sdkFile 为 parentScope → 可通过 parentScope 链找到其他 SDK 文件

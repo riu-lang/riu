@@ -17,6 +17,8 @@ class ASTBuilder : public yux::yuxParserBaseVisitor {
     bool _isTestFile = false;
     string _moduleName;
     string _sourcePath; // 用于 #Test 在非 *.test.yux 文件中的诊断
+    // 非空：visitProgram 往这个 FileNode 里填（.decl skeleton 再 parse），不 createFile
+    FileNode* _targetFile = nullptr;
 
     vector<std::any> stack;
     vector<p<Node>> _nodes;
@@ -68,6 +70,9 @@ public:
     static bool exprContainsTryCatch(p<ExprNode> expr);
 
     p<FileNode> build(yux::yuxParser::ProgramContext* ctx);
+
+    // .decl skeleton：往已有 FileNode 追加声明（不 createFile）
+    void setTargetFile(FileNode* file) { _targetFile = file; }
 
     // 递归预加载包 `pkgModName` 下的所有 .yux 后代模块，按点分相对路径（相对于 pkgModName）
     // 注册到 `file` 的 packageChild 表下（键形如 "a.b.inner"）。中间子目录不单独注册。

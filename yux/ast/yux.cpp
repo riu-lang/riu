@@ -12,6 +12,7 @@
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
 #include "ast_builder.h"
+#include "mod_decl.h"
 #include "tools/syntax_error_listener.h"
 #include "yux/yuxLexer.h"
 #include "yux/yuxParser.h"
@@ -27,10 +28,25 @@ Yux::Yux() : _sdkFile(nullptr) {}
 
 Yux::~Yux() {
     _moduleBuilders.clear();
+    _declOwners.clear();
     for (auto file : _files) {
         delete file;
     }
     delete _sdkFile;
+}
+
+void Yux::keepBuilder(std::unique_ptr<ASTBuilder> builder) {
+    _moduleBuilders.push_back(std::move(builder));
+}
+
+void Yux::adoptDeclOwner(std::unique_ptr<mod_decl::NodeOwner> owner) {
+    _declOwners.push_back(std::move(owner));
+}
+
+void Yux::bindModule(p<FileNode> file, const string& absPath, const string& moduleName) {
+    _modules[moduleName] = file;
+    _modulePaths[moduleName] = absPath;
+    _specImplValidated = false;
 }
 
 void Yux::addFile(const p<FileNode>& file) {
@@ -220,6 +236,21 @@ p<FileNode> Yux::_parseFile(const string& absPath, const string& moduleName, int
     return fileNode;
 }
 
+bool Yux::declCacheEnabled() const {
+    return !_projectName.empty();
+}
+
+string Yux::declPathFor(const string& srcAbs) const {
+    auto buildDir = (std::filesystem::path(_projectRoot) / "build").string();
+    return mod_decl::pathFor(_projectRoot, buildDir, srcAbs);
+}
+
+void Yux::writeDeclIfPossible(FileNode* file, const string& srcAbs) {
+    if (!file || srcAbs.empty() || !declCacheEnabled()) return;
+    if (srcAbs.size() >= 9 && srcAbs.ends_with(".test.yux")) return;
+    mod_decl::write(file, srcAbs, declPathFor(srcAbs));
+}
+
 p<FileNode> Yux::loadMainFile(const string& absPath, const string& moduleName) {
     auto fileNode = _parseFile(absPath, moduleName, 1);
     _modules[moduleName] = fileNode;
@@ -228,7 +259,16 @@ p<FileNode> Yux::loadMainFile(const string& absPath, const string& moduleName) {
     // validate, 此时 _seen 还没有该文件里的 `Type : Draft` 登记; 后续
     // boundSatisfied 调用必须重新跑 validate, 否则误判为不满足 → E1106.
     _specImplValidated = false;
+    writeDeclIfPossible(fileNode, absPath);
     return fileNode;
+}
+
+p<FileNode> Yux::ensureFullAst(const string& absPath, const string& moduleName) {
+    auto it = _modules.find(moduleName);
+    if (it != _modules.end() && it->second && !it->second->isFromDecl()) {
+        return it->second;
+    }
+    return loadMainFile(absPath, moduleName);
 }
 
 Yux::ModulePathKind Yux::modulePathKind(const string& moduleName) const {
@@ -405,7 +445,13 @@ p<FileNode> Yux::loadModule(const string& moduleName, int errorLine) {
     _loadStack.push_back(moduleName);
     p<FileNode> fileNode = nullptr;
     try {
-        fileNode = _parseFile(absPath, moduleName, errorLine);
+        if (declCacheEnabled()) {
+            fileNode = mod_decl::tryLoad(*this, declPathFor(absPath), absPath, moduleName);
+        }
+        if (!fileNode) {
+            fileNode = _parseFile(absPath, moduleName, errorLine);
+            writeDeclIfPossible(fileNode, absPath);
+        }
     } catch (...) {
         _loadStack.pop_back();
         throw;

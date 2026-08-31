@@ -35,6 +35,8 @@ void registerSdkPkgAliases(Yux& yux, const std::map<std::string, SdkPkgEntry>& p
 
 // 把 sdkDir 下所有非 .test.yux 解析进 yux。出错抛 YuxError (含解析失败 / AST 错误)。
 // 错误时附带的 sourcePath 是触发错误的具体 .yux 文件。
-void parseSdkDir(const std::string& sdkDir, Yux& yux);
+// allowDecl：true 时优先读 .decl（依赖方只要接口 + 泛型体）；false 时整文件 parse
+// （SDK 自构建且 obj 过期，需要非泛型体去做 codegen）。
+void parseSdkDir(const std::string& sdkDir, Yux& yux, bool allowDecl = true);
 
-}  // namespace sdk_loader
+} // namespace sdk_loader

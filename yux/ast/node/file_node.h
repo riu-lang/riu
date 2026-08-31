@@ -25,6 +25,7 @@ class FileNode : public ScopeNode {
     vector<p<EnumDeclNode>> _enumDecls;
     map<string, p<EnumDeclNode>> _enumMap;
     string _moduleName;
+    bool _fromDecl = false;
 
 public:
     explicit FileNode(string moduleName = "");
@@ -76,6 +77,10 @@ public:
 
     void setModuleName(const string& name) { _moduleName = name; }
     [[nodiscard]] const string& moduleName() const { return _moduleName; }
+
+    // .decl 重建的接口树：无非泛型体，不能拿去 codegen；obj 过期时需 loadMainFile 重 parse
+    void setFromDecl(bool v) { _fromDecl = v; }
+    [[nodiscard]] bool isFromDecl() const { return _fromDecl; }
 
     // 隐式/显式导入的模块名列表。yux 模块默认导入。
     // 预留扩展点以便后续支持 import/use 语法。

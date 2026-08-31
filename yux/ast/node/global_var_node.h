@@ -33,6 +33,7 @@ class GlobalVarNode : public Node, public Named, public Typed {
     bool _isMutable; // #Mut 档（Phase 2），Phase 1 始终 false
     // Phase 3: const-eval 优先分流 —— 成功求值时存储，codegen 用 ConstantInitializer
     std::optional<ConstantValue> _constValue;
+    string _sourceText; // letGlobal 的 ctx->getText()，供 .decl skeleton
 
 public:
     GlobalVarNode(const p<Node>& parent, const Token& name, p<TypeNode> type, p<ExprNode> value, bool isMutable = false)
@@ -44,6 +45,9 @@ public:
     [[nodiscard]] p<ExprNode> value() const { return _value; }
     [[nodiscard]] bool isPrivate() const { return _isPrivate; }
     [[nodiscard]] bool isMutable() const { return _isMutable; }
+
+    void setSourceText(string s) { _sourceText = std::move(s); }
+    [[nodiscard]] const string& sourceText() const { return _sourceText; }
 
     // Phase 3: const-eval 优先分流
     void setConstValue(ConstantValue v) { _constValue = std::move(v); }

@@ -68,6 +68,7 @@ private:
     bool _isPrivate;
     // DRAFT-static-vars Phase 4: 静态字段（命名空间内，与实例字段独立）
     vector<StaticFieldEntry> _staticFields;
+    string _sourceText; // 整段 structDecl 的 ctx->getText()，供 .decl skeleton
 
 public:
     StructDeclNode(const p<Node>& parent, const Token& name) : ScopeNode(parent), Named(name) {
@@ -93,6 +94,9 @@ public:
     void setTypeParams(vector<string> params) { _typeParams = std::move(params); }
     [[nodiscard]] const vector<string>& typeParams() const { return _typeParams; }
     [[nodiscard]] bool isGeneric() const { return !_typeParams.empty(); }
+
+    void setSourceText(string s) { _sourceText = std::move(s); }
+    [[nodiscard]] const string& sourceText() const { return _sourceText; }
 
     // DRAFT-static-vars Phase 4: 静态字段
     void addStaticField(StaticFieldEntry sf) { _staticFields.push_back(std::move(sf)); }

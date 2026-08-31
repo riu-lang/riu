@@ -16,11 +16,11 @@
 // 本文件留：ctor / dtor / build / preloadPackageChildren / visitProgram。
 
 #include "ast_builder.h"
-#include "types.h"
 #include "ast_builder_helpers.h"
 #include "node/expr_node.h"
 #include "node/literal_node.h"
 #include "node/statement_node.h"
+#include "types.h"
 #include <algorithm>
 
 ASTBuilder::ASTBuilder(Yux& yux, string moduleName, bool isTestFile, string sourcePath)
@@ -72,7 +72,7 @@ void ASTBuilder::preloadPackageChildren(FileNode* file, const string& alias, con
 
 std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
     DEBUG_LOG("Visit: Program");
-    auto file = _yux.createFile(_moduleName);
+    auto file = _targetFile ? _targetFile : _yux.createFile(_moduleName);
 
     auto moduleName = file->moduleName();
 

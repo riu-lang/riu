@@ -104,6 +104,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
         auto draft = createWithLine<SpecDeclNode>(ctx, file, stCtx->name);
         draft->setAnnos(annos.names, annos.args);
         draft->setTypeParams(typeParams);
+        draft->setSourceText(ctxSource(ctx));
 
         stack.emplace_back(draft);
         _scopeStack.push_back(draft);
@@ -202,6 +203,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
     // === Step 3: 普通 struct 分支 — 字段
     auto structDecl = createWithLine<StructDeclNode>(ctx, file, stCtx->name);
     structDecl->setAnnos(annos.names, annos.args);
+    structDecl->setSourceText(ctxSource(ctx));
     structDecl->setTypeParams(typeParams);
 
     stack.emplace_back(structDecl);

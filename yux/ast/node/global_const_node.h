@@ -12,7 +12,8 @@ class GlobalConstNode : public Node, public Named, public Typed {
     p<TypeNode> _type;
     p<ExprNode> _value;
     bool _isPrivate;
-    bool _isInline; // #Inline 注解：不产生 GlobalVariable，使用处直接替换常量值（类似 C #define）
+    bool _isInline;     // #Inline 注解：不产生 GlobalVariable，使用处直接替换常量值（类似 C #define）
+    string _sourceText; // letGlobal 的 ctx->getText()，供 .decl skeleton
 
 public:
     GlobalConstNode(const p<Node>& parent, const Token& name, p<TypeNode> type, p<ExprNode> value,
@@ -25,6 +26,9 @@ public:
     [[nodiscard]] p<ExprNode> value() const;
     [[nodiscard]] bool isPrivate() const;
     [[nodiscard]] bool isInline() const { return _isInline; }
+
+    void setSourceText(string s) { _sourceText = std::move(s); }
+    [[nodiscard]] const string& sourceText() const { return _sourceText; }
 
     [[nodiscard]] TypeInfo getType() const override;
 };

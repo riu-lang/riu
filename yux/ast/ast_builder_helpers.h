@@ -16,11 +16,21 @@
 #ifndef YUX_LANG_AST_BUILDER_HELPERS_H
 #define YUX_LANG_AST_BUILDER_HELPERS_H
 
-#include "types.h"
 #include "node/fn_node.h"
+#include "types.h"
 #include "yux/yuxParser.h"
 
+#include "misc/Interval.h"
+
 namespace {
+
+// 含隐藏通道空白的源片段（ctx->getText() 会把 `let x i32` 拼成 `letxi32`）
+inline string ctxSource(antlr4::ParserRuleContext* ctx) {
+    if (!ctx || !ctx->getStart() || !ctx->getStop()) return {};
+    auto* input = ctx->getStart()->getInputStream();
+    if (!input) return ctx->getText();
+    return input->getText(antlr4::misc::Interval(ctx->getStart()->getStartIndex(), ctx->getStop()->getStopIndex()));
+}
 
 // 已知的构建注解名字白名单；未知注解在 AST 构建期报错
 // NoReturn / Fallible 由 DRAFT-错误.md 引入（spec §11.5.1）：

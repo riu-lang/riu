@@ -20,6 +20,7 @@ class SpecDeclNode : public ScopeNode, public Named, public Annotated {
     // (type-bound 契约, [#1.Q] 例外 / [#1.Z]). instance 字段段仍拒 (E2011).
     vector<p<StructFieldNode>> _staticFields;
     bool _isPrivate;
+    string _sourceText; // 整段 #Spec struct 的 ctx->getText()，供 .decl skeleton
 
 public:
     SpecDeclNode(const p<Node>& parent, const Token& name) : ScopeNode(parent), Named(name) {
@@ -50,6 +51,9 @@ public:
 
     [[nodiscard]] bool isPrivate() const { return _isPrivate; }
     [[nodiscard]] bool isDraftLike() const { return hasAnno("DraftLike"); }
+
+    void setSourceText(string s) { _sourceText = std::move(s); }
+    [[nodiscard]] const string& sourceText() const { return _sourceText; }
 };
 
 // spec 引用：`#Impl(D1 + D2) struct X` 中每个 D 的解析结果（v0.5 仅按名 + 类型实参字串记录）。

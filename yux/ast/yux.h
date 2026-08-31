@@ -12,6 +12,10 @@ class ASTBuilder;
 class SpecRegistry;
 class SpecImplChecker;
 
+namespace mod_decl {
+class NodeOwner;
+}
+
 // pkg 文件导出项
 struct PkgExportItem {
     string name;   // 源模块名（如 "add"）
@@ -31,6 +35,8 @@ class Yux {
 
     // 持有导入模块的 ASTBuilder，使 AST 节点存活至 Yux 析构
     vector<std::unique_ptr<ASTBuilder>> _moduleBuilders;
+    // .decl 重建的节点（不经 ASTBuilder）
+    vector<std::unique_ptr<mod_decl::NodeOwner>> _declOwners;
 
     // 项目根目录（含 `yux.toml` 的最近祖先目录；否则为主文件所在目录）
     string _projectRoot;
@@ -53,6 +59,11 @@ public:
     void addFile(const p<FileNode>& file);
     p<FileNode> createFile(const string& moduleName);
     p<FileNode> createSdkFile();
+
+    // .decl 加载：把已构造的 FileNode 登记为模块（不 parse）
+    void bindModule(p<FileNode> file, const string& absPath, const string& moduleName);
+    void keepBuilder(std::unique_ptr<ASTBuilder> builder);
+    void adoptDeclOwner(std::unique_ptr<mod_decl::NodeOwner> owner);
 
     [[nodiscard]] p<FileNode> sdkFile() const { return _sdkFile; }
     // 设置外部 SDK 文件（不转移所有权）。用于批量测试中多文件共享一次 SDK 加载。
@@ -100,6 +111,10 @@ public:
     // 产生的 ASTBuilder 被 Yux 持有，AST 节点在 Yux 析构前有效。
     p<FileNode> loadMainFile(const string& absPath, const string& moduleName);
 
+    // codegen 用：若当前是 .decl 重建的接口树，则整文件 parse 出带体的 AST。
+    // 调用方已持有的 wildcard / alias 指针仍指向旧 FileNode（接口足够）；返回值给 codegen。
+    p<FileNode> ensureFullAst(const string& absPath, const string& moduleName);
+
     // 从文件路径初始化项目根和源码根（不解析 yux.toml）。
     // 设 _projectRoot = _sourceRoot = 文件所在目录，用于 yux-check / LSP
     // 等工具的单文件快速检查。
@@ -132,6 +147,11 @@ public:
 private:
     // 底层解析 + ASTBuilder。内部用。
     p<FileNode> _parseFile(const string& absPath, const string& moduleName, int errorLine);
+
+    // 项目模式（有 yux.toml / _projectName）才读写 `.decl`；yux-check 单文件不写。
+    [[nodiscard]] bool declCacheEnabled() const;
+    [[nodiscard]] string declPathFor(const string& srcAbs) const;
+    void writeDeclIfPossible(FileNode* file, const string& srcAbs);
 
     std::unique_ptr<SpecRegistry> _specRegistry;
     std::unique_ptr<SpecImplChecker> _specImplChecker;

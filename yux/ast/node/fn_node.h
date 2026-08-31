@@ -68,6 +68,7 @@ public:
 class FnNode : public ScopeNode, public Typed {
     p<FnHeaderNode> _header;
     vector<p<StatementNode>> _body;
+    string _sourceText; // 顶层 fn 的 ctx->getText()，供 .decl skeleton
 
 public:
     explicit FnNode(const p<Node>& parent, p<FnHeaderNode> header);
@@ -76,6 +77,9 @@ public:
 
     [[nodiscard]] const vector<p<StatementNode>>& body() const;
     [[nodiscard]] const p<FnHeaderNode>& header() const;
+
+    void setSourceText(string s) { _sourceText = std::move(s); }
+    [[nodiscard]] const string& sourceText() const { return _sourceText; }
 
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] string getLocation() const override;

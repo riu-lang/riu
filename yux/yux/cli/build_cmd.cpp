@@ -551,8 +551,25 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         sdkLibPath = (sdkRoot / "build" / "yux.lib").string();
 
         // 解析 SDK 源码获取符号表（_sdkFile + 各模块 AST）
+        // SDK 自构建且 obj 过期时必须整文件 parse（.decl 无非泛型体，不能拿去 codegen）
+        bool allowDecl = true;
+        if (isSdkSelfBuild) {
+            PkgCacheRegistry probe(yux.projectRoot(), buildDir);
+            for (const auto& entry : fs::directory_iterator(sdkPath)) {
+                if (!entry.is_regular_file()) continue;
+                auto fname = entry.path().filename().string();
+                if (fname.size() <= 4 || !fname.ends_with(".yux")) continue;
+                if (fname.size() >= 9 && fname.ends_with(".test.yux")) continue;
+                string abs = fs::absolute(entry.path()).string();
+                string obj = mirroredOutputBase(yux.projectRoot(), buildDir, abs) + ".obj";
+                if (!probe.isFresh(abs, obj)) {
+                    allowDecl = false;
+                    break;
+                }
+            }
+        }
         try {
-            sdk_loader::parseSdkDir(sdkPath, yux);
+            sdk_loader::parseSdkDir(sdkPath, yux, allowDecl);
         } catch (std::runtime_error& e) {
             reportRuntimeError(sdkPath, e, "Error in SDK: ");
             return 1;
@@ -716,6 +733,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             }
 
             if (!libCaches.isFresh(abs, obj)) {
+                file = yux.ensureFullAst(abs, mn);
+                if (!file) continue;
                 if (!codegenTo(file, mn, obj, ir, isSdkRuntime)) {
                     anyCodegenError = true;
                     continue; // 跳过 cache 更新与 obj 收集；继续下一个模块
@@ -865,6 +884,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             }
 
             if (!exeTestCaches.isFresh(abs, obj)) {
+                file = yux.ensureFullAst(abs, mn);
+                if (!file) continue;
                 if (!codegenTo(file, mn, obj, ir, isSdkRuntime)) {
                     anyCodegenError = true;
                     continue;
@@ -942,6 +963,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             std::filesystem::create_directories(std::filesystem::path(modIr).parent_path());
         }
         if (!exeCaches.isFresh(modSrc, modObj)) {
+            modFile = yux.ensureFullAst(modSrc, modName);
+            if (!modFile) continue;
             if (!codegenTo(modFile, modName, modObj, modIr)) {
                 anyCodegenError = true;
                 continue; // 继续尝试下一个模块的 codegen
