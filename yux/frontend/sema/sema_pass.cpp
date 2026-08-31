@@ -631,6 +631,55 @@ void checkAssignRhs(p<ExprNode> expr, const TypeInfo& want, int line, int col, F
                               g0.getFullName()));
 }
 
+// Phase C：声明处 Rc / Weak / Array 构造形态。
+// 与 compileDeclareAssignStatement 对齐：
+//   Rc：同型句柄或内层 T 包装 → E3014（走 checkAssignRhs）
+//   Weak：仅 Rc<T> / Weak<T> → E3016
+//   Array<T>：仅 Array 表达式或数组字面量 → E3064（不查元素类型，与 Compiler 一致）
+// Heap 声明非 `heap:<T>(...)` 由 borrow checker E4024 先报，不在这里重复。
+// 模板形参等实例化后再查。须在 visitExpr 带靶向类型之后调用。
+void checkDeclareHandleRhs(p<ExprNode> expr, const TypeInfo& want, int line, int col, FileNode* file, FileNode* sdk,
+                           const std::set<std::string>& typeParams,
+                           const std::map<std::string, TypeInfo>* subst = nullptr) {
+    if (!expr) return;
+    TypeInfo w0 = applySubstMap(want, subst);
+    if (w0.empty()) return;
+    if (stillTemplateType(w0, typeParams, subst)) return;
+
+    if (w0.isRc()) {
+        checkAssignRhs(expr, want, line, col, file, sdk, typeParams, subst);
+        return;
+    }
+    if (w0.isWeak()) {
+        auto elem = w0.weakElementType();
+        if (!elem) return;
+        if (stillTemplateType(*elem, typeParams, subst)) return;
+        TypeInfo got;
+        if (!tryGetExprType(expr, got)) return;
+        TypeInfo g0 = applySubstMap(got, subst);
+        if (g0.empty() || stillTemplateType(g0, typeParams, subst)) return;
+        auto g = sema::resolveAlias(g0, file, sdk);
+        auto in = sema::resolveAlias(*elem, file, sdk);
+        const bool fromRc = g.isRc() && g.rcElementType() && sema::resolveAlias(*g.rcElementType(), file, sdk) == in;
+        const bool fromWeak =
+            g.isWeak() && g.weakElementType() && sema::resolveAlias(*g.weakElementType(), file, sdk) == in;
+        if (!fromRc && !fromWeak) {
+            throw YuxError(line, col, ErrorCode::E3016, in.name, in.name, in.name);
+        }
+        return;
+    }
+    if (w0.isArrayGeneric()) {
+        if (dynamic_cast<ExprArrayNode*>(expr)) return;
+        TypeInfo got;
+        if (!tryGetExprType(expr, got)) return;
+        TypeInfo g0 = applySubstMap(got, subst);
+        if (g0.empty() || stillTemplateType(g0, typeParams, subst)) return;
+        auto g = sema::resolveAlias(g0, file, sdk);
+        if (g.isArrayGeneric() || g.name == "Array") return;
+        throw YuxError(line, col, ErrorCode::E3064);
+    }
+}
+
 // Phase C：调用实参相对实例化后形参的 E3014。
 // 与赋值的差别：实参不自动解引用（T& 传给 T 要 copy_of）；值传给 T& 允许自动取址。
 void checkCallArgAgainst(p<ExprNode> arg, const TypeInfo& want, int line, int col, FileNode* file, FileNode* sdk,
@@ -1873,6 +1922,15 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             }
         }
         if (da->expr()) visitExpr(da->expr(), daExpPtr);
+        // Phase C：句柄声明形态必须在 visitExpr 带靶向类型之后——
+        // if/match 块末尾数组字面量先走 E3009，再查非 Array 的 E3064。
+        if (da->varType() && _currentFn && da->expr()) {
+            auto handleTy = applyInstSubst(da->varType()->getType());
+            if (handleTy.isRc() || handleTy.isWeak() || handleTy.isArrayGeneric()) {
+                checkDeclareHandleRhs(da->expr(), handleTy, da->getLineNumber(), da->getColumn(), _file, _sdkFile,
+                                      _currentTypeParams, &_instSubst);
+            }
+        }
         // v0.16 闭包捕获: lambda 字面量直接作 var/val 初始化值且含 T& 捕获 → E4022
         // (spec §8.7.6.5 不可逃逸：fn 值不可被存储到寿命外延的变量)。
         // 仅拦截直接形 (lambda 字面量), 穿透检测 (右值 wrapper 调用结果等) 留 codegen 兜底。

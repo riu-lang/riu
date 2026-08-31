@@ -1,0 +1,5 @@
+; 声明 Array<T> 不能从非 Array 表达式初始化 → E3064（Phase C）
+fn main() {
+  let a Array<i32> = 1  ; check: E3064
+  ret;
+}

@@ -1,0 +1,12 @@
+; 声明处句柄构造合法路径：Rc 包装 T、Weak 从 Rc、Array 字面量（Phase C）
+fn wrap<T>(x T) {
+  let r Rc<T> = x
+  let w Weak<T> = r
+  let a Array<i32> = [1, 2]
+  ret;
+}
+
+fn main() {
+  wrap:<i32>(1)
+  ret;
+}

@@ -1,0 +1,5 @@
+; 声明 Weak<T> 不能从内层值构造 → E3016（Phase C）
+fn main() {
+  let w Weak<i32> = 1  ; check: E3016
+  ret;
+}

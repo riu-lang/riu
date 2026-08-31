@@ -1,0 +1,5 @@
+; 声明 Rc<T> 既不是同型句柄也不是内层 T → E3014（Phase C）
+fn main() {
+  let r Rc<i32> = true  ; check: E3014
+  ret;
+}
