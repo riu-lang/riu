@@ -19,6 +19,7 @@
 //   yux-check <input.yux>           ; 退出码: 0 = 无错, 1 = 文件 / 语法 / 语义错
 //   yux-check test <dir>            ; 批量测试目录下所有 .yux (非递归)
 //   yux-check test <dir> -r         ; 递归子目录
+//   yux-check test <dir> --threads N ; 0 = 核数（默认）；1 = 串行
 
 // windows.h 必须在拉入 yux frontend (经由 include/types.h 做了 `using namespace
 // std`) 之前 #include, 否则 std::byte 与 winapi byte 冲突 (rpcndr.h).
@@ -41,7 +42,9 @@
 #include <CLI/CLI.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -49,6 +52,8 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <thread>
+#include <utility>
 #include <vector>
 
 using namespace yux;
@@ -343,62 +348,248 @@ static bool fileRequiresSdk(const string& filePath) {
     return false;
 }
 
-static int runCheckTest(const string& dir, bool recursive) {
+// 0 → hardware_concurrency（至少 1）。
+static int resolveThreadCount(int threads) {
+    if (threads > 0) return threads;
+    unsigned n = thread::hardware_concurrency();
+    return n < 1 ? 1 : static_cast<int>(n);
+}
+
+static string getSelfExePath() {
+#ifdef _WIN32
+    array<wchar_t, MAX_PATH> buf{};
+    DWORD n = GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
+    if (n == 0 || n >= MAX_PATH) return {};
+    int sz = WideCharToMultiByte(CP_UTF8, 0, buf.data(), static_cast<int>(n), nullptr, 0, nullptr, nullptr);
+    string out(sz, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, buf.data(), static_cast<int>(n), out.data(), sz, nullptr, nullptr);
+    return out;
+#else
+    return {};
+#endif
+}
+
+static wstring toWide(const string& s) {
+#ifdef _WIN32
+    if (s.empty()) return {};
+    int sz = MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0);
+    wstring out(sz, 0);
+    MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), out.data(), sz);
+    return out;
+#else
+    return wstring(s.begin(), s.end());
+#endif
+}
+
+static constexpr uint32_t kSpawnFailed = 0xFFFFFFFFu;
+
+static uint32_t spawnToLog(const wstring& cmdLine, const wstring& logPath, const wstring& workingDir) {
+#ifdef _WIN32
+    vector<wchar_t> cmdBuf(cmdLine.begin(), cmdLine.end());
+    cmdBuf.push_back(0);
+
+    {
+        filesystem::path lp(logPath);
+        error_code ec;
+        filesystem::create_directories(lp.parent_path(), ec);
+    }
+
+    SECURITY_ATTRIBUTES sa{.nLength = sizeof(sa), .lpSecurityDescriptor = nullptr, .bInheritHandle = TRUE};
+    HANDLE hLog = CreateFileW(logPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, &sa, CREATE_ALWAYS,
+                              FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (hLog == INVALID_HANDLE_VALUE) return kSpawnFailed;
+
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    si.hStdOutput = hLog;
+    si.hStdError = hLog;
+    si.dwFlags |= STARTF_USESTDHANDLES;
+
+    PROCESS_INFORMATION pi{};
+    BOOL ok = CreateProcessW(nullptr, cmdBuf.data(), nullptr, nullptr, TRUE, 0, nullptr,
+                             workingDir.empty() ? nullptr : workingDir.c_str(), &si, &pi);
+    CloseHandle(hLog);
+    if (!ok) return kSpawnFailed;
+
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD code = 0;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    return code;
+#else
+    (void)cmdLine;
+    (void)logPath;
+    (void)workingDir;
+    return kSpawnFailed;
+#endif
+}
+
+static vector<TestFileResult> parseJobLog(const string& logPath) {
+    vector<TestFileResult> out;
+    ifstream in(logPath);
+    if (!in) return out;
+    string line;
+    while (getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.starts_with("  [PASS] ")) {
+            TestFileResult r;
+            r.filename = line.substr(9);
+            r.passed = true;
+            out.push_back(std::move(r));
+        } else if (line.starts_with("  [FAIL] ")) {
+            TestFileResult r;
+            r.filename = line.substr(9);
+            r.passed = false;
+            out.push_back(std::move(r));
+        } else if (!out.empty() && !out.back().passed && line.starts_with("  ") && !line.starts_with("  Summary:")) {
+            out.back().failReason += line;
+            out.back().failReason += '\n';
+        }
+    }
+    return out;
+}
+
+// parseSdkDir 默认 allowDecl：有 .decl 就读，没有则 parse 并写出。
+static bool loadSdkInto(Yux& sdkYux, const string& anyFilePath) {
+    string sdkPath = sdk_loader::findSdkPath();
+    if (sdkPath.empty()) return false;
+    sdkYux.initFileRoot(anyFilePath);
+    sdk_loader::parseSdkDir(sdkPath, sdkYux);
+    return sdkYux.sdkFile() != nullptr;
+}
+
+static TestFileResult checkFileWithOptionalSdk(const string& absPath, Yux* sdkYux) {
+    Yux yux;
+    yux.initFileRoot(absPath);
+    bool attached = sdkYux && sdkYux->sdkFile();
+    if (attached) {
+        yux.setSdkFile(sdkYux->sdkFile());
+    }
+    auto tfr = evaluateOneFileWithYux(absPath, yux);
+    // 解除共享引用，避免 Yux 析构时 delete 不属于它的 SDK FileNode
+    if (attached) {
+        yux.setSdkFile(nullptr);
+    }
+    return tfr;
+}
+
+static void runSerialChecks(const vector<string>& files, vector<TestFileResult>& results) {
+    namespace fs = filesystem;
+    Yux sdkYux;
+    Yux* sdkPtr = nullptr;
+    bool sdkTried = false;
+    for (size_t i = 0; i < files.size(); ++i) {
+        try {
+            if (fileRequiresSdk(files[i]) && !sdkTried) {
+                sdkTried = true;
+                if (loadSdkInto(sdkYux, files[i])) sdkPtr = &sdkYux;
+            }
+            Yux* use = fileRequiresSdk(files[i]) ? sdkPtr : nullptr;
+            results[i] = checkFileWithOptionalSdk(files[i], use);
+        } catch (const exception& e) {
+            results[i].filename = fs::path(files[i]).filename().string();
+            results[i].passed = false;
+            results[i].failReason = string("  error: ") + e.what() + "\n";
+        }
+    }
+}
+
+static int runCheckTest(const string& dir, bool recursive, int threads, const vector<string>& explicitFiles) {
     namespace fs = filesystem;
     auto t0 = chrono::steady_clock::now();
 
-    if (!fs::is_directory(dir)) {
-        cerr << "Error: not a directory: " << dir << '\n';
-        return 1;
+    vector<string> files;
+    if (!explicitFiles.empty()) {
+        for (auto& f : explicitFiles)
+            files.push_back(fs::absolute(f).string());
+    } else {
+        if (!fs::is_directory(dir)) {
+            cerr << "Error: not a directory: " << dir << '\n';
+            return 1;
+        }
+        files = scanYuxFiles(dir, recursive);
     }
-
-    // diag 文件不依赖 SDK 类型，跳过 SDK 加载消除 ~4s/线程 启动开销。
-    // 对确实需要 SDK 的用例，后续可通过文件头注解（如 ; require-sdk）按需加载。
-
-    auto files = scanYuxFiles(dir, recursive);
     if (files.empty()) {
-        cout << "No .yux files found in " << fs::absolute(dir).string() << '\n';
+        cout << "No .yux files found in " << (dir.empty() ? string(".") : fs::absolute(dir).string()) << '\n';
         return 0;
     }
 
-    // 单线程处理，每文件独立 Yux 实例，避免跨文件状态累积（BUG#3）。
-    // 对标注了 "; require-sdk" 的文件，SDK 只加载一次到模板 Yux，
-    // 各文件通过共享 _sdkFile 指针获得 SDK 符号可见性。
+    // 每文件独立 Yux（BUG#3）。`; require-sdk` 在本进程 parseSdkDir 一次（走 .decl）。
+    // 并行：按 worker 分片 spawn（每进程 --threads 1），避免进程内 ANTLR 抢 DFA。
     size_t fileCount = files.size();
     vector<TestFileResult> results(fileCount);
 
-    // 预加载 SDK（一次性），后续各文件共享其 _sdkFile
-    Yux sdkYux;
-    bool sdkLoaded = false;
-    {
-        string sdkPath;
-        for (size_t i = 0; i < fileCount && !sdkLoaded; ++i) {
-            if (fileRequiresSdk(files[i])) {
-                sdkPath = sdk_loader::findSdkPath();
-                if (!sdkPath.empty()) {
-                    sdkYux.initFileRoot(files[0]);
-                    sdk_loader::parseSdkDir(sdkPath, sdkYux);
-                    sdkLoaded = true;
-                }
-                break;
-            }
-        }
+    int maxParallel = resolveThreadCount(threads);
+    if (std::cmp_greater(maxParallel, fileCount)) {
+        maxParallel = static_cast<int>(fileCount);
     }
 
-    for (size_t i = 0; i < fileCount; ++i) {
-        Yux yux;
-        yux.initFileRoot(files[i]);
+    string self = getSelfExePath();
+    bool useParallel = maxParallel > 1 && fileCount > 1 && explicitFiles.empty() && !self.empty();
 
-        if (fileRequiresSdk(files[i]) && sdkLoaded) {
-            yux.setSdkFile(sdkYux.sdkFile());
+    if (!useParallel) {
+        runSerialChecks(files, results);
+    } else {
+        int nJobs = maxParallel;
+        vector<vector<size_t>> shards(static_cast<size_t>(nJobs));
+        for (size_t i = 0; i < fileCount; ++i)
+            shards[i % static_cast<size_t>(nJobs)].push_back(i);
+
+        string logsDir = (fs::temp_directory_path() / "yux-check-jobs").string();
+        string cwd = fs::current_path().string();
+        cout << "Checking " << fileCount << " file(s) in " << nJobs << " job(s)...\n";
+        cout.flush();
+
+        vector<thread> waiters;
+        waiters.reserve(static_cast<size_t>(nJobs));
+        for (int job = 0; job < nJobs; ++job) {
+            // NOLINTNEXTLINE(bugprone-exception-escape)
+            waiters.emplace_back([&, job]() {
+                auto& shard = shards[static_cast<size_t>(job)];
+                if (shard.empty()) return;
+
+                string logPath = logsDir + "/job-" + std::to_string(job) + ".log";
+                wstring cmd = L"\"" + toWide(self) + L"\" test \"" + toWide(dir) + L"\" --threads 1";
+                for (size_t idx : shard) {
+                    cmd += L" --file \"";
+                    cmd += toWide(files[idx]);
+                    cmd += L'"';
+                }
+
+                uint32_t code = spawnToLog(cmd, toWide(logPath), toWide(cwd));
+                auto parsed = parseJobLog(logPath);
+                for (size_t k = 0; k < shard.size(); ++k) {
+                    size_t i = shard[k];
+                    string expectName = fs::path(files[i]).filename().string();
+                    if (k < parsed.size() && parsed[k].filename == expectName) {
+                        results[i] = std::move(parsed[k]);
+                    } else {
+                        results[i].filename = expectName;
+                        results[i].passed = false;
+                        string reason;
+                        if (code == kSpawnFailed) {
+                            reason = "  check job spawn failed\n";
+                        } else if (code != 0) {
+                            reason = "  check job exit ";
+                            reason += std::to_string(code);
+                            reason += " (log: ";
+                            reason += logPath;
+                            reason += ")\n";
+                        } else {
+                            reason = "  check job missing result for ";
+                            reason += expectName;
+                            reason += " (log: ";
+                            reason += logPath;
+                            reason += ")\n";
+                        }
+                        results[i].failReason = std::move(reason);
+                    }
+                }
+            });
         }
-
-        results[i] = evaluateOneFileWithYux(files[i], yux);
-
-        // 解除共享引用，避免 Yux 析构时 delete 不属于它的 SDK FileNode
-        if (fileRequiresSdk(files[i]) && sdkLoaded) {
-            yux.setSdkFile(nullptr);
-        }
+        for (auto& w : waiters)
+            w.join();
     }
 
     // 统计 (results 已按 files 的序号排列, 即按文件名排序)
@@ -437,8 +628,8 @@ static int runCheckTest(const string& dir, bool recursive) {
 // main
 // ============================================================================
 
-int main(int argc,
-         char* argv[]) { // NOLINT(bugprone-exception-escape) — main 入口点, filesystem API 可能抛 system_error
+// NOLINTNEXTLINE(bugprone-exception-escape) — main 入口点, filesystem API 可能抛 system_error
+int main(int argc, char* argv[]) {
 #ifdef _WIN32
     SetConsoleCP(CP_UTF8);
     SetConsoleOutputCP(CP_UTF8);
@@ -468,12 +659,16 @@ int main(int argc,
     testCmd->add_option("dir", testDir, "Directory containing .yux test files")->required();
     bool testRecursive = false;
     testCmd->add_flag("-r,--recursive", testRecursive, "Scan subdirectories recursively");
+    int testThreads = 0;
+    testCmd->add_option("--threads", testThreads, "Parallel check jobs (default: CPU cores; 1 = serial)");
+    vector<string> testFiles;
+    testCmd->add_option("--file", testFiles, "Check specific .yux files (repeatable; used by parallel workers)");
 
     CLI11_PARSE(app, argc, argv);
 
     // ---- test 子命令分支 ----
     if (testCmd->parsed()) {
-        return runCheckTest(testDir, testRecursive);
+        return runCheckTest(testDir, testRecursive, testThreads, testFiles);
     }
 
     // ==== 单文件模式 (原逻辑) ====

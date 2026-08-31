@@ -23,7 +23,9 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cctype>
+#include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -680,7 +682,11 @@ void write(FileNode* file, const std::string& srcAbs, const std::string& declPat
 
     std::error_code ec;
     fs::create_directories(fs::path(declPath).parent_path(), ec);
-    string tmp = declPath + ".tmp";
+    static std::atomic<uint32_t> tmpSeq{0};
+    string tmp = declPath + ".tmp.";
+    tmp += std::to_string(static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()));
+    tmp += '.';
+    tmp += std::to_string(tmpSeq.fetch_add(1, std::memory_order_relaxed));
     {
         std::ofstream f(tmp, std::ios::binary | std::ios::trunc); // NOLINT(bugprone-signed-bitwise)
         if (!f) return;
