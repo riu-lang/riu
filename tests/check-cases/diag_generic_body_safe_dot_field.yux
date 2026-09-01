@@ -1,0 +1,17 @@
+; 泛型 fn 体：T 实例化为 Point 后 a?.z → E3040（Phase C）
+struct Point {
+  x i32
+}
+
+fn at<T>(a T?) {
+  a?.z  ; check: E3040
+  ret;
+}
+
+fn main() {
+  let p Point? = Point {
+    .x = 1
+  }
+  at(p)
+  ret;
+}

@@ -1,0 +1,10 @@
+; 泛型 fn 体：T 实例化为 i32 时 x ?? d 合法（Phase C）
+fn or_default<T>(x T?, d T) T {
+  ret x ?? d
+}
+
+fn main() {
+  let a i32? = 1
+  or_default(a, 0)
+  ret;
+}

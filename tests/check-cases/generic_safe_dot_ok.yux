@@ -1,0 +1,17 @@
+; 泛型 fn 体：T 实例化为 Point 时 a?.x 合法（Phase C）
+struct Point {
+  x i32
+}
+
+fn peek<T>(a T?) {
+  a?.x
+  ret;
+}
+
+fn main() {
+  let p Point? = Point {
+    .x = 1
+  }
+  peek(p)
+  ret;
+}

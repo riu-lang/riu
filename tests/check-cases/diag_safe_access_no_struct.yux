@@ -1,0 +1,6 @@
+; E3044: ?. 内层不是 struct
+fn main() {
+  let x i32? = 10
+  x?.foo  ; check: E3044
+  ret;
+}

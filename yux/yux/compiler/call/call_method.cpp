@@ -28,6 +28,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
     auto member = dotNode->member();
     auto baseType = resolvedOrInferredType(baseExpr);
 
+    // E3024 由 SemaPass tryValidateSafeDot 先抛；此处防 IR 走空路径。
     if (!baseType.isNullable()) {
         throw YuxError(dotNode->resolveLineNumber(), dotNode->resolveColumn(), ErrorCode::E3024, baseType.name);
     }

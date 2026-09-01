@@ -1,0 +1,11 @@
+; 泛型 fn 体：T 实例化为 i32 后 a?.foo 内层无 struct → E3044（Phase C）
+fn at<T>(a T?) {
+  a?.foo  ; check: E3044
+  ret;
+}
+
+fn main() {
+  let x i32? = 1
+  at(x)
+  ret;
+}

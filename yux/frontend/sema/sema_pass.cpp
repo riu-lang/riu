@@ -237,6 +237,27 @@ bool receiverHasMethod(const TypeInfo& recv, const string& member, FileNode* fil
     return instantiatedMethodRet(nullptr, file, sdk, recv, recv, member).has_value();
 }
 
+// `?.` / `??`：剥 Ref<Nullable<T>>（下标返回 T?&）。
+TypeInfo peelRefIfNullable(TypeInfo t) {
+    if (t.isRef()) {
+        if (auto inner = t.refElementType(); inner && inner->isNullable()) return *inner;
+    }
+    return t;
+}
+
+// `?.` 接收者：已确认 Nullable 后，取内层并 Rc 自动 deref（与 getType / compileSafeDotExpr 同款）。
+TypeInfo peelSafeDotInner(TypeInfo t) {
+    t = peelRefIfNullable(t);
+    if (!t.isNullable()) return t;
+    auto inner = t.nullableInnerType();
+    if (!inner) return t;
+    t = *inner;
+    if (t.isRc()) {
+        if (auto rc = t.rcElementType()) t = *rc;
+    }
+    return t;
+}
+
 // `<T : D>` 边界上的方法：实例化后仍按边界认，不要求具体类型自己登记同名方法。
 bool typeParamBoundHasMethod(FnNode* fn, FileNode* file, FileNode* sdk, const string& typeParam, const string& member) {
     if (!fn || !fn->header() || member.empty()) return false;
@@ -2388,9 +2409,8 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
             try {
                 baseType = dotCallee->baseExpr()->hasResolvedType() ? dotCallee->baseExpr()->resolvedType()
                                                                     : dotCallee->baseExpr()->getType();
-                if (dotCallee->isSafe() && baseType.isNullable()) {
-                    if (auto inner = baseType.nullableInnerType()) baseType = *inner;
-                }
+                baseType = applyInstSubst(baseType);
+                if (dotCallee->isSafe()) baseType = peelSafeDotInner(baseType);
                 baseType = baseType.peelAutoDeref();
             } catch (...) { // NOLINT(bugprone-empty-catch)
                 baseOk = false;
@@ -2900,6 +2920,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                     try {
                         baseType = dotCallee->baseExpr()->getType();
                         baseType = applyInstSubst(baseType);
+                        if (dotCallee->isSafe()) baseType = peelSafeDotInner(baseType);
                     } catch (...) {
                         baseOk = false;
                     }
@@ -3006,6 +3027,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                     if (auto inner = rawBase.rcElementType()) rawBase = *inner;
                 }
                 TypeInfo baseType = applyInstSubst(rawBase);
+                if (dotCallee->isSafe()) baseType = peelSafeDotInner(baseType);
                 // Phase C：实例化后 TypeParam 已换成具体类型，查方法是否存在。
                 // 模板期 raw 仍是 T → 跳过。`<T : D>` 边界方法按边界认。
                 if (!isCurrentTypeParam(baseType) && !_instSubst.empty() && isCurrentTypeParam(rawBase) &&
@@ -3095,6 +3117,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                     baseType = dot->baseExpr()->hasResolvedType() ? dot->baseExpr()->resolvedType()
                                                                   : dot->baseExpr()->getType();
                     baseType = applyInstSubst(baseType.peelAutoDeref());
+                    if (dot->isSafe()) baseType = peelSafeDotInner(baseType);
                 } catch (...) { // NOLINT(bugprone-empty-catch)
                     baseOk = false;
                 }
@@ -3157,9 +3180,15 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
             // 防御性
         }
 
+        // Phase C：`?.` 在 subst 后查 Nullable / 内层字段（getType 在模板体吞掉）。
+        if (n->isSafe()) {
+            tryValidateSafeDot(n);
+            return;
+        }
+
         // Phase C：读路径字段（非调用 callee）。`x.foo()` 留给调用路径；
         // `to_*` 是内置转换；模块 / 包链不按字段查。
-        if (!callCallee && !n->isSafe()) {
+        if (!callCallee) {
             string mem = n->member();
             bool skipField = mem.starts_with("to_");
             if (!skipField && n->hasResolvedType()) {
@@ -3828,29 +3857,31 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
     if (auto n = dynamic_cast<p<ExprNullElseNode>>(expr)) {
         visitExpr(n->left());
         visitExpr(n->right());
-        // Bucket 6 收口+ (CURRENT-check.md): E3024 (左侧非 Nullable) + E3023 (右侧
-        // 类型不匹配). 镜像 compiler_expr.cpp:1955-2000. 复杂路径 (alias / Self) 由
-        // getType 抛错时跳过, 留 Compiler 兜底.
+        // Bucket 6 收口+ (CURRENT-check.md): E3024 (左侧非 Nullable) + E3014 (右侧
+        // 类型不匹配). 镜像 compileNullElseExpr. 模板形参等实例化后再查.
         try {
-            auto leftType = n->left()->getType();
-            // Array<Nullable<T>> 下标返回 Ref<Nullable<T>>（T?&），剥 Ref 后校验
-            if (leftType.isRef()) {
-                if (auto refInner = leftType.refElementType(); refInner && refInner->isNullable()) {
-                    leftType = *refInner;
-                }
-            }
+            auto leftType = n->left()->hasResolvedType() ? n->left()->resolvedType() : n->left()->getType();
+            leftType = peelRefIfNullable(applyInstSubst(leftType));
+            if (isCurrentTypeParam(leftType)) return;
             if (!leftType.isNullable()) {
-                throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3024, leftType.name);
+                if (!leftType.name.empty()) {
+                    throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3024, leftType.name);
+                }
+                return;
             }
             auto innerType = leftType.nullableInnerType();
             if (!innerType) return;
-            if (isIntTypeName(innerType->name) && isFlexibleIntExpr(n->right())) {
-                tryInferIntType(n->right(), *innerType);
+            TypeInfo inner = applyInstSubst(*innerType);
+            if (isCurrentTypeParam(inner)) return;
+            if (isIntTypeName(inner.name) && isFlexibleIntExpr(n->right())) {
+                tryInferIntType(n->right(), inner);
             }
-            tryInferNullType(n->right(), *innerType);
-            auto rightType = n->right()->getType();
-            if (!(rightType == *innerType)) {
-                throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3014, innerType->name,
+            tryInferNullType(n->right(), inner);
+            // 推断写在字面量上，必须重新 getType，不能用 visit 时记下的 resolvedType。
+            auto rightType = applyInstSubst(n->right()->getType());
+            if (isCurrentTypeParam(rightType)) return;
+            if (!(rightType == inner)) {
+                throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3014, inner.name,
                                rightType.name);
             }
         } catch (const YuxError&) {
@@ -4123,6 +4154,46 @@ void SemaPass::tryValidateFieldChain(const TypeInfo& start, const vector<string>
         }
         if (!fieldSubst.empty()) fieldTy = fieldTy.substitute(fieldSubst);
         cur = peel(fieldTy);
+    }
+}
+
+void SemaPass::tryValidateSafeDot(p<ExprDotNode> n) {
+    // 与 ExprDotNode::getType / compileSafeDotExpr 同款。
+    // 模板形参等实例化后再查；getType 在模板体把 E3024/E3044/E3040 吞掉。
+    if (!n || !n->isSafe() || !n->baseExpr()) return;
+    try {
+        auto* base = n->baseExpr();
+        TypeInfo bt = base->hasResolvedType() ? base->resolvedType() : base->getType();
+        bt = peelRefIfNullable(applyInstSubst(bt));
+        if (isCurrentTypeParam(bt)) return;
+        if (bt.name.empty()) return;
+        if (!bt.isNullable()) {
+            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3024, bt.name);
+        }
+        auto inner = bt.nullableInnerType();
+        if (!inner) return;
+        TypeInfo actual = applyInstSubst(*inner);
+        if (actual.isRc()) {
+            if (auto rc = actual.rcElementType()) actual = applyInstSubst(*rc);
+        }
+        if (isCurrentTypeParam(actual)) return;
+        if (actual.name.empty()) return;
+
+        string mem = n->member();
+        if (mem.starts_with("to_")) return;
+        if (receiverHasMethod(actual, mem, _file, _sdkFile)) return;
+
+        StructDeclNode* decl = _names.lookupStruct(actual.name, /*includeBuiltin=*/true);
+        if (!decl) {
+            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3044, actual.name);
+        }
+        if (decl->fieldIndex(mem) < 0) {
+            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3040, actual.name, mem);
+        }
+    } catch (const YuxError&) {
+        throw;
+    } catch (...) { // NOLINT(bugprone-empty-catch)
+        // getType 内部异常: 留 Compiler 兜底
     }
 }
 

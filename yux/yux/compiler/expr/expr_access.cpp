@@ -346,6 +346,7 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
     auto member = node->member();
     auto baseType = baseExpr->getType();
 
+    // E3024 / E3044 / E3040 由 SemaPass tryValidateSafeDot 先抛；此处防 IR 走空路径。
     if (!baseType.isNullable()) {
         throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3024, baseType.name);
     }
@@ -468,6 +469,7 @@ llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
         }
     }
 
+    // E3024 / E3014 由 SemaPass NullElse 先抛；此处防 IR extractvalue 走空路径。
     if (!leftType.isNullable()) {
         throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3024, leftType.name);
     }

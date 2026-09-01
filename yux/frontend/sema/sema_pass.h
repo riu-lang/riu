@@ -151,6 +151,11 @@ private:
     // 模板形参跳过（实例化后再查 E3100）。与 compileAssignStatement /
     // ExprGetRefNode::getType / 读路径 ExprDotNode 对齐。
     void tryValidateFieldChain(const TypeInfo& start, const vector<string>& members, int line, int col);
+
+    // `?.`：subst + 剥 Ref 后须是 Nullable，否则 E3024。内层无 struct → E3044，
+    // 缺字段 → E3040。方法 / `to_*` 不按字段查。模板形参跳过。
+    // 与 ExprDotNode::getType / compileSafeDotExpr 对齐。
+    void tryValidateSafeDot(p<class ExprDotNode> n);
 };
 
 #endif // YUX_LANG_SEMA_PASS_H
