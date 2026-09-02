@@ -431,8 +431,7 @@ i64 parseIntLiteral(const string& text, int line = 0, int col = 0);
 // (SemaPass 默认重抛), 这里仅做 leftType 单边形态校验.
 //
 // 调用方:
-//   - Compiler::compileCompareExpr 在 leftType / rightType 计算后调用
-//   - SemaPass.visitExpr ExprCompareNode 分支 (leftType getType 抛错时跳过)
+//   - SemaPass::tryValidateCompareForm（subst + peelAutoDeref 后；模板形参跳过）
 //
 // 纯 TypeInfo / 枚举判定, 无 LLVM 依赖.
 void validateCompareOpForm(const TypeInfo& leftType, ExprCompareNode::Op op, int line, int col);

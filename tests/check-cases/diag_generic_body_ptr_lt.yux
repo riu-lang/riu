@@ -1,0 +1,13 @@
+; require-sdk
+; 泛型 fn 体：T 实例化为 Ptr 后 a < b → E3073（Phase C）
+fn lt_t<T>(a T, b T) {
+  a < b  ; check: E3073
+  ret;
+}
+
+fn main() {
+  #Mut let a Ptr = GetStdHandle(-11i32)
+  #Mut let b Ptr = GetStdHandle(-12i32)
+  lt_t:<Ptr>(a, b)
+  ret;
+}

@@ -1,0 +1,9 @@
+; 泛型 fn 体：Weak<T> 的 == 与内层 T 无关 → E3078（模板期即可报）
+fn unused<T>(a Weak<T>, b Weak<T>) {
+  a == b  ; check: E3078
+  ret;
+}
+
+fn main() {
+  ret;
+}

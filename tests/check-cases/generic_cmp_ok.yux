@@ -1,0 +1,14 @@
+; 泛型 fn 体：T 实例化为 i32 时 == / < 合法（Phase C）
+fn eq_t<T>(a T, b T) bool {
+  ret a == b
+}
+
+fn lt_t<T>(a T, b T) bool {
+  ret a < b
+}
+
+fn main() {
+  eq_t:<i32>(1, 2)
+  lt_t:<i32>(1, 2)
+  ret;
+}

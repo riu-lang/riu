@@ -1,0 +1,10 @@
+; 未调用的泛型 fn 体内依赖 T 的比较：两边都不查（与未调用泛型 fn 一致）
+fn unused<T>(a T, b T) {
+  a == b
+  a < b
+  ret;
+}
+
+fn main() {
+  ret;
+}

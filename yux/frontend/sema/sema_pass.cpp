@@ -2304,16 +2304,8 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
     if (auto n = dynamic_cast<p<ExprCompareNode>>(expr)) {
         visitExpr(n->left());
         visitExpr(n->right());
-        // Bucket 6 (CURRENT-check.md): leftType 形态校验 (E3078 Weak ==/!= /
-        // E3073 Ptr ordering). leftType getType 抛错 (lambda 形参等) 跳过.
-        try {
-            TypeInfo leftType = n->left()->getType();
-            sema::validateCompareOpForm(leftType, n->op(), n->getLineNumber(), n->getColumn());
-        } catch (const YuxError&) {
-            throw;
-        } catch (...) { // NOLINT(bugprone-empty-catch)
-            // getType 内部异常: 留 Compiler 兜底
-        }
+        // Phase C：subst 后再查 Weak ==/!= / Ptr 排序（模板形参跳过）。
+        tryValidateCompareForm(n);
         // Bucket 6 单点: 自定义 struct 比较运算符方法解析 (E3073 + byval hint).
         // AndAnd / OrOr 是逻辑短路, 无方法名映射, 跳过.
         string m;
@@ -3936,6 +3928,21 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         return;
     }
     // 其余未识别节点 3.2 起补 assert。
+}
+
+void SemaPass::tryValidateCompareForm(p<ExprCompareNode> n) {
+    // 与 validateCompareOpForm 对齐：Weak ==/!= → E3078，Ptr 排序 → E3073。
+    // 模板形参等实例化后再查；Weak<T> / Ptr 形态与内层 T 无关，模板期也报。
+    if (!n || !n->left()) return;
+    try {
+        TypeInfo leftType = applyInstSubst(n->left()->getType()).peelAutoDeref();
+        if (isCurrentTypeParam(leftType)) return;
+        sema::validateCompareOpForm(leftType, n->op(), n->getLineNumber(), n->getColumn());
+    } catch (const YuxError&) {
+        throw;
+    } catch (...) { // NOLINT(bugprone-empty-catch)
+        // getType 内部异常: 留 Compiler 兜底
+    }
 }
 
 void SemaPass::tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExpr, const string& methodName, int line,
