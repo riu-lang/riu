@@ -1,0 +1,13 @@
+; 泛型 fn 体：与 T 无关的 if 分支类型不匹配 → E3005（模板期即可报）
+fn unused<T>() {
+  if true {  ; check: E3005
+    1
+  } else {
+    "hello"
+  }
+  ret;
+}
+
+fn main() {
+  ret;
+}

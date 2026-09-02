@@ -3256,12 +3256,14 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         } else {
             _movedVars = std::move(afterThenMoved);
         }
+        tryValidateIfElse(n);
         return;
     }
     if (auto n = dynamic_cast<p<ExprOneLineIfElseNode>>(expr)) {
         visitExpr(n->condition());
         visitExpr(n->trueValue(), expected);
         visitExpr(n->falseValue(), expected);
+        tryValidateOneLineIfElse(n);
         return;
     }
     if (auto n = dynamic_cast<p<ExprGetNode>>(expr)) {
@@ -4205,6 +4207,71 @@ void SemaPass::tryValidateSafeDot(p<ExprDotNode> n) {
         throw;
     } catch (...) { // NOLINT(bugprone-empty-catch)
         // getType 内部异常: 留 Compiler 兜底
+    }
+}
+
+void SemaPass::tryValidateIfElse(p<ExprIfElseNode> n) {
+    // 与 ExprIfElseNode::getType 对齐：then 无结果则不是值 if；elif 无结果同样放弃；
+    // 无 else 结果时 getType 返回空，不报。模板形参等实例化后再查。
+    if (!n) return;
+    auto branchType = [this](p<StatementBlockNode> block, TypeInfo& out) -> bool {
+        if (!block || !block->hasResult() || !block->resultExpr()) return false;
+        p<ExprNode> e = block->resultExpr();
+        try {
+            out = e->hasResolvedType() ? e->resolvedType() : e->getType();
+        } catch (const YuxError&) {
+            return false;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+            return false;
+        }
+        out = applyInstSubst(out);
+        return true;
+    };
+    TypeInfo resultType;
+    if (!branchType(n->thenBlock(), resultType)) return;
+    if (typeStillTemplate(resultType)) return;
+    for (auto& el : n->elifs()) {
+        if (!el) return;
+        TypeInfo elifType;
+        if (!branchType(el->block(), elifType)) return;
+        if (typeStillTemplate(elifType)) return;
+        if (elifType != resultType) {
+            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3005, resultType.name,
+                           elifType.name);
+        }
+    }
+    if (n->elseBlock() && n->elseBlock()->hasResult()) {
+        TypeInfo elseType;
+        if (!branchType(n->elseBlock(), elseType)) return;
+        if (typeStillTemplate(elseType)) return;
+        if (elseType != resultType) {
+            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3005, resultType.name,
+                           elseType.name);
+        }
+    }
+}
+
+void SemaPass::tryValidateOneLineIfElse(p<ExprOneLineIfElseNode> n) {
+    // 与 ExprOneLineIfElseNode::getType 对齐。模板形参等实例化后再查。
+    if (!n) return;
+    auto exprType = [this](p<ExprNode> e, TypeInfo& out) -> bool {
+        if (!e) return false;
+        try {
+            out = e->hasResolvedType() ? e->resolvedType() : e->getType();
+        } catch (const YuxError&) {
+            return false;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+            return false;
+        }
+        out = applyInstSubst(out);
+        return true;
+    };
+    TypeInfo trueType;
+    TypeInfo falseType;
+    if (!exprType(n->trueValue(), trueType) || !exprType(n->falseValue(), falseType)) return;
+    if (typeStillTemplate(trueType) || typeStillTemplate(falseType)) return;
+    if (trueType != falseType) {
+        throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3005, trueType.name, falseType.name);
     }
 }
 

@@ -1,0 +1,13 @@
+; 泛型 fn 体：T 实例化为 i32 时 if 两臂同为 T 合法（Phase C）
+fn pick<T>(a T, b T) T {
+  ret if true {
+    a
+  } else {
+    b
+  }
+}
+
+fn main() {
+  pick:<i32>(1, 2)
+  ret;
+}

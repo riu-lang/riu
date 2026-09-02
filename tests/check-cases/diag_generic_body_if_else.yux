@@ -1,0 +1,14 @@
+; 泛型 fn 体：T 实例化为 i32 后 if 分支 i32 vs String → E3005（Phase C）
+fn pick<T>(x T) {
+  if true {  ; check: E3005
+    x
+  } else {
+    "hello"
+  }
+  ret;
+}
+
+fn main() {
+  pick:<i32>(1)
+  ret;
+}

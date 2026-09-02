@@ -168,6 +168,12 @@ private:
 
     // `+` 结果为 String 时沿左脊展开叶子，逐叶 tryValidateToString。
     void tryValidateStringPlus(p<class ExprAddSubNode> n);
+
+    // if / elif / else 块末尾值：subst 后类型须一致，否则 E3005。
+    // 模板形参跳过。与 ExprIfElseNode::getType 对齐。
+    void tryValidateIfElse(p<class ExprIfElseNode> n);
+    // 一行 `if c { a } else { b }`：subst 后 a / b 类型须一致，否则 E3005。
+    void tryValidateOneLineIfElse(p<class ExprOneLineIfElseNode> n);
 };
 
 #endif // YUX_LANG_SEMA_PASS_H
