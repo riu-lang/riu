@@ -1,0 +1,6 @@
+; lambda 捕获 Fn 值 → E2029（Phase C）
+fn main() {
+  let g Function<i32, i32> = (x i32) i32 => x
+  let f = () => g  ; check: E2029
+  ret;
+}

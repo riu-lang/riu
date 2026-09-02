@@ -1,0 +1,13 @@
+; require-sdk
+; T& 与堆句柄混捕 → E2029（栈嵌入路径不能混析构字段）
+fn main() {
+  #Mut let n i32 = 1
+  let r i32& = &n
+  let b Rc<i32> = 1
+  let f = () => {  ; check: E2029
+    r
+    b
+    ret;
+  }
+  ret;
+}

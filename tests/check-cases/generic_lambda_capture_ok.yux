@@ -1,0 +1,10 @@
+; 泛型 fn 体：T 实例化为 i32 时捕获形参合法（Phase C）
+fn wrap<T>(x T) T {
+  let f = () T => x
+  ret f()
+}
+
+fn main() {
+  wrap:<i32>(1)
+  ret;
+}

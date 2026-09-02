@@ -1,0 +1,12 @@
+; lambda 捕获用户 struct → E2029（Phase C）
+struct Point {
+  x i32
+}
+
+fn main() {
+  let p = Point {
+    .x = 1
+  }
+  let f = () => p  ; check: E2029
+  ret;
+}

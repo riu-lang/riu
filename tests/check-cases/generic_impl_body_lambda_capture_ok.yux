@@ -1,0 +1,22 @@
+; 泛型 impl 体：写出 Slot<i32> 后捕获形参 T 合法（Phase C）
+struct Slot<T> {
+  val T
+
+  #Static
+  fn make(v T) Self {
+    Self {
+      .val = v
+    }
+  }
+
+  fn wrap(x T) T {
+    let f = () T => x
+    ret f()
+  }
+}
+
+fn main() {
+  let s Slot<i32> = Slot:<i32>::make(1)
+  s.wrap(2)
+  ret;
+}

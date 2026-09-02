@@ -1,0 +1,17 @@
+; 泛型 fn 体：T 实例化为用户 struct 后捕获 x → E2029（Phase C）
+struct Point {
+  x i32
+}
+
+fn wrap<T>(x T) {
+  let f = () => x  ; check: E2029
+  ret;
+}
+
+fn main() {
+  let p = Point {
+    .x = 1
+  }
+  wrap:<Point>(p)
+  ret;
+}

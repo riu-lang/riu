@@ -1,0 +1,16 @@
+; 泛型 fn 体：捕获用户 struct 与 T 无关 → E2029（模板期即可报）
+struct Point {
+  x i32
+}
+
+fn unused<T>() {
+  let p = Point {
+    .x = 1
+  }
+  let f = () => p  ; check: E2029
+  ret;
+}
+
+fn main() {
+  ret;
+}

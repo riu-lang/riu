@@ -161,6 +161,34 @@ sp<TypeInfo> arrayElemTarget(const TypeInfo& t) {
     return nullptr;
 }
 
+// 符号定义在 FileNode（本文件 / SDK / wildcard）上 → 全局，不是闭包捕获。
+bool isOuterLocalCapture(ScopeNode* from, SymbolInfo* sym, const string& name) {
+    if (!from || !sym) return false;
+    for (auto* sc = from; sc; sc = sc->parentScope()) {
+        const auto& locs = sc->localSymbols();
+        auto it = locs.find(name);
+        if (it != locs.end() && &it->second == sym) {
+            return dynamic_cast<FileNode*>(sc) == nullptr;
+        }
+    }
+    return false;
+}
+
+// 与 compileLiteralExpr 捕获门控对齐：标量 / 堆句柄 / T& / Heap? 可捕，其余 E2029。
+enum class LambdaCapKind : std::uint8_t { Skip, Scalar, Handle, Ref, HeapNullable, Unsupported };
+
+LambdaCapKind classifyLambdaCapture(const TypeInfo& t) {
+    if (t.isNormal() && t.name.empty()) return LambdaCapKind::Skip;
+    if (t.isNormal() && isBuiltinType(t.name)) return LambdaCapKind::Scalar;
+    if (t.isRcHandle()) return LambdaCapKind::Handle;
+    if (t.isRef()) return LambdaCapKind::Ref;
+    if (t.isNullable()) {
+        auto inner = t.nullableInnerType();
+        if (inner && inner->isHeap()) return LambdaCapKind::HeapNullable;
+    }
+    return LambdaCapKind::Unsupported;
+}
+
 // Phase C：泛型模板体内仍从 getType 重抛的形态码（不依赖 T 具体化）。
 // 其余类型错（E3001 / E3041 / E6016 等）等实例化后再查，此处吞掉。
 bool isMorphologicalGenericCode(const char* code) {
@@ -2187,6 +2215,8 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         // v0.16 闭包捕获: lambda body 内标识符引用检查。
         // - 引用外层 Heap<T> (非空) 变量 → E4024 (Heap 按值捕获禁止, §7.3 / [#18])
         // - 引用外层 T& 变量 → 标记 hasRefCapture (E4022 数据收集)
+        // - 不支持的捕获类型（struct / enum / Fn 等）→ E2029；堆句柄记下供
+        //   退出 lambda 时与 T& 混捕对打。
         // 非 ID-obj / 全局 / template 插值等其它字面量形态不触发捕获, 跳过。
         // $ 在方法体内 lambda 是 Self&, 同样标记 hasRefCapture。
         // 查找起点：lambda body 的 *父* 作用域（块作用域后 let 不在 FnNode 上；
@@ -2204,12 +2234,15 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                 }
                 if (!isParam) {
                     SymbolInfo* sym = nullptr;
+                    ScopeNode* lookupFrom = nullptr;
                     if (auto body = _currentLambda->bodyScope()) {
-                        if (auto parent = body->parentScope()) {
-                            sym = parent->lookupSymbol(varName);
+                        lookupFrom = body->parentScope();
+                        if (lookupFrom) {
+                            sym = lookupFrom->lookupSymbol(varName);
                         }
                     }
                     if (!sym) {
+                        lookupFrom = _currentFn;
                         sym = _currentFn->lookupSymbol(varName);
                     }
                     if (sym) {
@@ -2224,6 +2257,24 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                         }
                         if (isVarOrParam && t.isRef()) {
                             _currentLambdaHasRefCapture = true;
+                        }
+                        // E2029：仅外层 local（非全局）。模板形参等实例化后再查。
+                        if (sym->kind == SymbolKind::Variable && isOuterLocalCapture(lookupFrom, sym, varName)) {
+                            TypeInfo capTy = applyInstSubst(t);
+                            if (!isCurrentTypeParam(capTy)) {
+                                auto kind = classifyLambdaCapture(capTy);
+                                if (kind == LambdaCapKind::Unsupported) {
+                                    throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E2029,
+                                                   varName, capTy.name);
+                                }
+                                if (kind == LambdaCapKind::Handle || kind == LambdaCapKind::HeapNullable) {
+                                    if (!_currentLambdaHasHandleCapture) {
+                                        _currentLambdaHasHandleCapture = true;
+                                        _currentLambdaHandleCapName = varName;
+                                        _currentLambdaHandleCapTypeName = capTy.getFullName();
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -3296,12 +3347,18 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         // v0.16 闭包捕获: sema 下钻 lambda body (策略 2b 宽松模式)。
         // - 形参类型可能缺 (由调用点反推), 不依赖形参类型的检查 deferred 给 codegen。
         // - 不依赖形参类型的检查在此完成: E2030 (捕获写禁) / E4024 (Heap 非空捕获禁) /
-        //   E4022 数据收集 (hasRefCapture)。
+        //   E2029 (不支持的捕获 / T& 混堆句柄) / E4022 数据收集 (hasRefCapture)。
         // - 下钻前保存外层 lambda 状态, 支持嵌套闭包。
         auto savedLambda = _currentLambda;
         auto savedHasRef = _currentLambdaHasRefCapture;
+        auto savedHasHandle = _currentLambdaHasHandleCapture;
+        auto savedHandleName = _currentLambdaHandleCapName;
+        auto savedHandleType = _currentLambdaHandleCapTypeName;
         _currentLambda = n;
         _currentLambdaHasRefCapture = false;
+        _currentLambdaHasHandleCapture = false;
+        _currentLambdaHandleCapName.clear();
+        _currentLambdaHandleCapTypeName.clear();
 
         const TypeInfo* bodyExp = nullptr;
         TypeInfo bodyRetStorage;
@@ -3345,6 +3402,12 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
             }
         }
 
+        // 4c：栈嵌入路径不能混入堆句柄字段（混合释放未实现）→ E2029。
+        if (_currentLambdaHasRefCapture && _currentLambdaHasHandleCapture) {
+            throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E2029, _currentLambdaHandleCapName,
+                           _currentLambdaHandleCapTypeName);
+        }
+
         // 将 hasRefCapture 写回 LambdaExprNode, 供 E4022 检查 (StatementRetNode /
         // StatementDeclareAssignNode) 读取。
         if (_currentLambdaHasRefCapture) {
@@ -3353,6 +3416,9 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
 
         _currentLambda = savedLambda;
         _currentLambdaHasRefCapture = savedHasRef;
+        _currentLambdaHasHandleCapture = savedHasHandle;
+        _currentLambdaHandleCapName = std::move(savedHandleName);
+        _currentLambdaHandleCapTypeName = std::move(savedHandleType);
         return;
     }
     if (auto n = dynamic_cast<p<ExprStructLitNode>>(expr)) {

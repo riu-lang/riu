@@ -84,6 +84,11 @@ private:
     // visitExpr 遇 LambdaExprNode 时重置为 false, body 遍历过程中由
     // ExprLiteralNode handler 置 true; 退出 lambda 后据此写 hasRefCapture.
     bool _currentLambdaHasRefCapture = false;
+    // 同趟遍历是否捕获了堆句柄（Rc / Weak / Array / String / Heap?）。
+    // 与 hasRefCapture 同时成立 → E2029（栈嵌入路径不能混析构字段）。
+    bool _currentLambdaHasHandleCapture = false;
+    string _currentLambdaHandleCapName;
+    string _currentLambdaHandleCapTypeName;
 
     // Phase B-1: move 追踪 — 已被 move 的变量名 (E4033 判定依据).
     // visitFn 入口 clear，move intrinsic 调用处 insert，if/else 汇合取并集。
