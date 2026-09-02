@@ -1,0 +1,19 @@
+; 泛型 fn 体：T 实例化为 Color 后未知变体 → E2020（Phase C）
+enum Color {
+  Red
+  Green
+}
+
+fn at<T>(x T) {
+  match x {
+    Color::Red => 1
+    Color::Blue => 2  ; check: E2020
+    else => 0
+  }
+  ret;
+}
+
+fn main() {
+  at(Color::Red)
+  ret;
+}

@@ -187,7 +187,8 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto scrutinee = node->scrutinee();
     auto rawScrutType = scrutinee->getType();
-    auto scrutType = resolveAlias(rawScrutType);
+    // applySubst 含别名展开；泛型体实例化后 T → Color 才能按 enum 编译。
+    auto scrutType = applySubst(rawScrutType);
     int line = node->getLineNumber();
     int col = node->getColumn();
 
@@ -242,7 +243,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
         }
     }
 
-    // 1. 必须是 enum
+    // 1. 必须是 enum。E2022 由 SemaPass tryValidateMatchScrut 先抛；此处防 IR 走空路径。
     p<FileNode> enumOwner = nullptr;
     auto enumDecl = names().lookupEnum(scrutType.name, &enumOwner);
     if (!enumDecl) {

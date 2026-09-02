@@ -3670,46 +3670,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                 visitExpr(arm->body(), expected);
         }
         checkMatchArmTypes(n->arms(), _currentTypeParams, &_instSubst);
-
-        // Phase C：scrut 别名 / Rc<E> / Heap<E> / E& 与 compileMatchExpr 对齐。
-        // 内层是 enum 才剥 wrapper；临时 Rc/Heap 直接 match → E2022。
-        try {
-            TypeInfo checkType = sema::resolveAlias(n->scrutinee()->getType(), _file, _sdkFile);
-            int line = n->getLineNumber();
-            int col = n->getColumn();
-            auto peelEnumWrapper = [&](bool isRc) {
-                auto inner = isRc ? checkType.rcElementType() : checkType.heapElementType();
-                if (!inner) return;
-                TypeInfo in = sema::resolveAlias(*inner, _file, _sdkFile);
-                if (!_names.lookupEnum(in.name)) return;
-                if (isFreshHandleExpr(n->scrutinee())) {
-                    throw YuxError(line, col, ErrorCode::E2022, checkType.name)
-                        .withHint(isRc ? "不支持对临时 Rc<E> 直接 match；先 `let b Rc<E> = ...` 落地再 match b"
-                                       : "不支持对临时 Heap<E> 直接 match；先 `let h Heap<E> = ...` 落地再 match h");
-                }
-                checkType = std::move(in);
-            };
-            if (checkType.isRc()) {
-                peelEnumWrapper(true);
-            } else if (checkType.isHeap()) {
-                peelEnumWrapper(false);
-            } else if (checkType.isRef()) {
-                if (auto inner = checkType.refElementType()) {
-                    TypeInfo in = sema::resolveAlias(*inner, _file, _sdkFile);
-                    if (_names.lookupEnum(in.name)) checkType = std::move(in);
-                }
-            }
-            auto* enumDecl = _names.lookupEnum(checkType.name);
-            if (enumDecl) {
-                sema::validateMatchArms(enumDecl, checkType.name, n, _file);
-            } else if (isBuiltinType(checkType.name) || checkType.isString()) {
-                throw YuxError(line, col, ErrorCode::E2022, checkType.name);
-            }
-        } catch (const YuxError&) {
-            throw;
-        } catch (...) { // NOLINT(bugprone-empty-catch)
-            // getType 等内部异常: 留 Compiler 兜底
-        }
+        tryValidateMatchScrut(n);
         return;
     }
     if (auto n = dynamic_cast<p<ExprTryCatchNode>>(expr)) {
@@ -4154,6 +4115,55 @@ void SemaPass::tryValidateFieldChain(const TypeInfo& start, const vector<string>
         }
         if (!fieldSubst.empty()) fieldTy = fieldTy.substitute(fieldSubst);
         cur = peel(fieldTy);
+    }
+}
+
+void SemaPass::tryValidateMatchScrut(p<ExprMatchNode> n) {
+    // 与 compileMatchExpr 同款。模板形参等实例化后再查；先前只对 builtin / String
+    // 报 E2022，用户 struct 与泛型体 subst 后的非 enum 会漏给 codegen。
+    if (!n || !n->scrutinee()) return;
+    try {
+        auto* scrut = n->scrutinee();
+        TypeInfo checkType = scrut->hasResolvedType() ? scrut->resolvedType() : scrut->getType();
+        checkType = sema::resolveAlias(applyInstSubst(checkType), _file, _sdkFile);
+        int line = n->getLineNumber();
+        int col = n->getColumn();
+        auto peelEnumWrapper = [&](bool isRc) {
+            auto inner = isRc ? checkType.rcElementType() : checkType.heapElementType();
+            if (!inner) return;
+            TypeInfo in = sema::resolveAlias(applyInstSubst(*inner), _file, _sdkFile);
+            if (isCurrentTypeParam(in)) return;
+            if (!_names.lookupEnum(in.name)) return;
+            if (isFreshHandleExpr(n->scrutinee())) {
+                throw YuxError(line, col, ErrorCode::E2022, checkType.name)
+                    .withHint(isRc ? "不支持对临时 Rc<E> 直接 match；先 `let b Rc<E> = ...` 落地再 match b"
+                                   : "不支持对临时 Heap<E> 直接 match；先 `let h Heap<E> = ...` 落地再 match h");
+            }
+            checkType = std::move(in);
+        };
+        if (checkType.isRc()) {
+            peelEnumWrapper(true);
+        } else if (checkType.isHeap()) {
+            peelEnumWrapper(false);
+        } else if (checkType.isRef()) {
+            if (auto inner = checkType.refElementType()) {
+                TypeInfo in = sema::resolveAlias(applyInstSubst(*inner), _file, _sdkFile);
+                if (_names.lookupEnum(in.name)) checkType = std::move(in);
+            }
+        }
+        if (isCurrentTypeParam(checkType)) return;
+        if (checkType.name.empty()) return;
+
+        auto* enumDecl = _names.lookupEnum(checkType.name);
+        if (enumDecl) {
+            sema::validateMatchArms(enumDecl, checkType.name, n, _file);
+        } else {
+            throw YuxError(line, col, ErrorCode::E2022, checkType.name);
+        }
+    } catch (const YuxError&) {
+        throw;
+    } catch (...) { // NOLINT(bugprone-empty-catch)
+        // getType 内部异常: 留 Compiler 兜底
     }
 }
 

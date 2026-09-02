@@ -1,0 +1,17 @@
+; 泛型 fn 体：T 实例化为 Color 时 match 合法（Phase C）
+enum Color {
+  Red
+  Green
+}
+
+fn as_i32<T>(x T) i32 {
+  ret match x {
+    Color::Red => 1
+    Color::Green => 2
+  }
+}
+
+fn main() {
+  as_i32(Color::Red)
+  ret;
+}

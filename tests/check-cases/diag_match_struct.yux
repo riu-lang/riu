@@ -1,0 +1,14 @@
+; match 用户 struct（非 enum）→ E2022（Phase C）
+struct Point {
+  x i32
+}
+
+fn main() {
+  let p Point = Point {
+    .x = 1
+  }
+  match p {  ; check: E2022
+    else => 0
+  }
+  ret;
+}

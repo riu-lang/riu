@@ -1,0 +1,11 @@
+; 未调用的泛型 fn 体内 match T：两边都不查（与未调用泛型 fn 一致）
+fn unused<T>(x T) {
+  match x {
+    else => 0
+  }
+  ret;
+}
+
+fn main() {
+  ret;
+}

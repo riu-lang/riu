@@ -156,6 +156,11 @@ private:
     // 缺字段 → E3040。方法 / `to_*` 不按字段查。模板形参跳过。
     // 与 ExprDotNode::getType / compileSafeDotExpr 对齐。
     void tryValidateSafeDot(p<class ExprDotNode> n);
+
+    // match scrut：subst + 别名 / Rc<E> / Heap<E> / E& 剥到 enum。临时 Rc/Heap
+    // 直接 match → E2022；非 enum（含用户 struct）→ E2022。模板形参跳过。
+    // 实例化为 enum 后走 validateMatchArms。与 compileMatchExpr 对齐。
+    void tryValidateMatchScrut(p<class ExprMatchNode> n);
 };
 
 #endif // YUX_LANG_SEMA_PASS_H
