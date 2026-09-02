@@ -123,6 +123,9 @@ private:
     void checkArrayLiteral(p<class ExprArrayNode> n, const TypeInfo& expected);
     void checkArrayInit(p<class ExprArrayInitNode> n, const TypeInfo* expected);
     void checkArrayElemAgainst(p<ExprNode> elem, const TypeInfo& want, int line, int col);
+    // 空 `[]`：仅 Array<T> 靶向合法，否则 E3063。模板形参跳过。
+    // 与 compileArrayLiteralExpr 对齐（固定数组空字面量先于 E3012）。
+    void checkEmptyArrayLiteral(p<class ExprArrayNode> n, const TypeInfo* expected);
 
     // DRAFT-spec-default-body Phase 2：spec 默认体占位符号校验
     // ([#1.S])。仅识别 `$.method(args)` 形态, 验证 method 在 spec 自身签名集
@@ -154,6 +157,7 @@ private:
 
     // 索引基类型：subst + peelRef 后须是 [N]T / Array<T>，否则 E3062。
     // 模板形参 / 取类型失败跳过。与 ExprGetNode::getType / compileArraySet 对齐。
+    // 赋值另查形态：空下标 E3060（g4 死防御）；非变量 / 非 obj.field → E3061。
     void tryValidateIndexBase(p<ExprNode> arrayExpr, int line, int col);
 
     // 成员链：subst + peelAutoDeref 后查字段。已知 struct 缺字段 → E3040；

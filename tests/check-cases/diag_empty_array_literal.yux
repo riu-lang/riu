@@ -1,0 +1,5 @@
+; 无靶向类型的空数组字面量 → E3063（Phase C）
+fn main() {
+  let a = []  ; check: E3063
+  ret;
+}

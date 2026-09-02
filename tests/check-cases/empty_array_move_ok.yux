@@ -1,0 +1,10 @@
+; `a <- []` 用左侧 Array<T> 当下靶，空字面量合法（Phase C）
+fn take(x Array<i32>) {
+  ret;
+}
+
+fn main() {
+  #Mut let a Array<i32> = [1]
+  take(a <- [])
+  ret;
+}

@@ -1,0 +1,10 @@
+; 泛型 fn 体：T 实例化为 Array<i32> 后 `let a T = []` 合法（Phase C）
+fn make_empty<T>() {
+  let a T = []
+  ret;
+}
+
+fn main() {
+  make_empty:<Array<i32>>()
+  ret;
+}

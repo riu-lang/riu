@@ -1,0 +1,7 @@
+; 索引赋值基是调用结果 → E3061（Phase C）
+fn foo() [i32 * 3] = [1, 2, 3]
+
+fn main() {
+  foo()[0] = 1  ; check: E3061
+  ret;
+}

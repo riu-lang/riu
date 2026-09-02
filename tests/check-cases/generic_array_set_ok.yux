@@ -1,0 +1,10 @@
+; 泛型 fn 体：T 实例化为 [i32 * 3] 时参数是 lvalue，索引赋值合法（Phase C）
+fn set_at<T>(a T, v i32) {
+  a[0] = v
+  ret;
+}
+
+fn main() {
+  set_at([1, 2, 3], 9)
+  ret;
+}

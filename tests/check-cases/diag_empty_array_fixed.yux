@@ -1,0 +1,5 @@
+; 固定数组靶向的空字面量：Compiler 先于 E3012 报 E3063（Phase C）
+fn main() {
+  let a [i32 * 3] = []  ; check: E3063
+  ret;
+}

@@ -1,0 +1,5 @@
+; Array<T> 靶向的空字面量合法（Phase C）
+fn main() {
+  let a Array<i32> = []
+  ret;
+}

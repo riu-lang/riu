@@ -1,0 +1,9 @@
+; 泛型 fn 体：无靶向类型的 `[]` 与 T 无关 → E3063（模板期即可报）
+fn unused<T>() {
+  let a = []  ; check: E3063
+  ret;
+}
+
+fn main() {
+  ret;
+}

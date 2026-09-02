@@ -104,6 +104,24 @@ bool isLvalueArrayBase(ExprNode* baseExpr) {
     return false;
 }
 
+// 索引赋值 lvalue：与 compileArraySetStatement 同款，只认
+//   * 简单变量（LiteralObj）
+//   * 单层 `obj.field`（base 也是 LiteralObj）
+// 比 isLvalueArrayBase 更严（方法调用允许 Dot 链）；多层 `a.b.c[i] =` 与调用结果 /
+// 字面量一样走 E3061。
+bool isArraySetLvalue(ExprNode* arrayExpr) {
+    if (!arrayExpr) return false;
+    if (auto lit = dynamic_cast<ExprLiteralNode*>(arrayExpr)) {
+        return dynamic_cast<LiteralObjNode*>(lit->literal()) != nullptr;
+    }
+    if (auto dot = dynamic_cast<ExprDotNode*>(arrayExpr)) {
+        if (auto baseLit = dynamic_cast<ExprLiteralNode*>(dot->baseExpr())) {
+            return dynamic_cast<LiteralObjNode*>(baseLit->literal()) != nullptr;
+        }
+    }
+    return false;
+}
+
 void validateContainerBansAt(const TypeInfo& t, p<TypeNode> tn, int fallbackLine, int fallbackCol) {
     if (!tn) return;
     int line = tn->getLineNumber();
@@ -1381,6 +1399,14 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         visitExpr(set->arrayExpr());
         for (auto& idx : set->indices())
             visitExpr(idx);
+        // 与 compileArraySetStatement 同序：空下标 E3060 → 非 lvalue E3061 → 非数组 E3062。
+        // E3060：g4 强制 args+=expr，死防御。E3061 与 T 无关，模板期也报。
+        if (set->indices().empty()) {
+            throw YuxError(set->getLineNumber(), set->getColumn(), ErrorCode::E3060, "assignment");
+        }
+        if (!isArraySetLvalue(set->arrayExpr())) {
+            throw YuxError(set->getLineNumber(), set->getColumn(), ErrorCode::E3061, "assignment");
+        }
         TypeInfo elemStorage;
         const TypeInfo* elemExpected = nullptr;
         if (!set->indices().empty()) {
@@ -3313,12 +3339,17 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         visitExpr(n->arrayExpr());
         for (auto& i : n->indices())
             visitExpr(i);
+        // 与 compileArrayGetExpr 同款：空下标 E3060（g4 死防御）。读路径不要求 lvalue。
+        if (n->indices().empty()) {
+            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3060, "access");
+        }
         tryValidateIndexBase(n->arrayExpr(), n->resolveLineNumber(), n->resolveColumn());
         return;
     }
     if (auto n = dynamic_cast<p<ExprArrayNode>>(expr)) {
         for (auto& e : n->elements())
             visitExpr(e);
+        checkEmptyArrayLiteral(n, expected);
         return;
     }
     if (auto n = dynamic_cast<p<ExprTupleNode>>(expr)) {
@@ -3915,7 +3946,14 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
     }
     if (auto n = dynamic_cast<p<ExprMoveAssignNode>>(expr)) {
         visitExpr(n->left());
-        visitExpr(n->right());
+        // 与 compileMoveAssignExpr 对齐：空 `[]` 用左侧类型当下靶（否则 E3063）。
+        TypeInfo leftTy;
+        const TypeInfo* rightExp = nullptr;
+        if (tryGetExprType(n->left(), leftTy)) {
+            leftTy = applyInstSubst(leftTy);
+            rightExp = &leftTy;
+        }
+        visitExpr(n->right(), rightExp);
         // 校验 left 为合法 lvalue + 类型兼容。
         // left 必须是变量引用 ($ / a.b / a[ ... ]) 等可赋值表达式。
         // right 类型必须能与 left 类型兼容（相同或灵活整数字面量）。
@@ -4127,6 +4165,18 @@ void SemaPass::tryValidateUnaryOpMethod(p<ExprNode> rightExpr, const string& met
     } catch (...) { // NOLINT(bugprone-empty-catch)
         // getType 内部异常: 留 Compiler 兜底
     }
+}
+
+void SemaPass::checkEmptyArrayLiteral(p<ExprArrayNode> n, const TypeInfo* expected) {
+    // 与 compileArrayLiteralExpr 对齐：空 `[]` 仅 Array<T> 靶向合法；固定数组 /
+    // 无注解 / 非数组靶向 → E3063。模板形参等实例化后再查（`let a T = []`）。
+    if (!n || !n->elements().empty()) return;
+    if (expected) {
+        TypeInfo want = applyInstSubst(expected->peelRef());
+        if (want.isArrayGeneric()) return;
+        if (isCurrentTypeParam(want)) return;
+    }
+    throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3063);
 }
 
 void SemaPass::tryValidateIndexBase(p<ExprNode> arrayExpr, int line, int col) {
@@ -4589,6 +4639,7 @@ void SemaPass::checkArrayElemAgainst(p<ExprNode> elem, const TypeInfo& want, int
 void SemaPass::checkArrayLiteral(p<ExprArrayNode> n, const TypeInfo& expected) {
     if (!n) return;
     TypeInfo want = expected.peelRef();
+    checkEmptyArrayLiteral(n, &want);
     if (want.isArray() && want.arraySize != n->elements().size()) {
         throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3012, want.arraySize,
                        n->elements().size());

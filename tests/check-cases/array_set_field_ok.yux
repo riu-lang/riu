@@ -1,0 +1,12 @@
+; 单层 obj.field[i] = 是 lvalue，不报 E3061（Phase C）
+struct Box {
+  arr [i32 * 3]
+}
+
+fn main() {
+  #Mut let b = Box {
+    .arr = [1, 2, 3]
+  }
+  b.arr[0] = 9
+  ret;
+}

@@ -1,0 +1,10 @@
+; 泛型 fn 体：T 实例化为 [i32 * 3] 后 `let a T = []` → E3063（Phase C）
+fn make_empty<T>(x T) {
+  let a T = []  ; check: E3063
+  ret;
+}
+
+fn main() {
+  make_empty([1, 2, 3])
+  ret;
+}
