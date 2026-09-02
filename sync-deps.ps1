@@ -17,14 +17,13 @@ if (-not (Test-Path -LiteralPath $Tool)) {
 }
 
 # Accept JS-style --dry-run for compatibility with old docs.
-# Wrap in @() so a single arg stays a string[], not a scalar (splat-safe).
 $forward = @(
     foreach ($a in $args) {
         if ($a -eq '--dry-run') { '-DryRun' } else { $a }
     }
 )
 
-$isDryRun = $forward -contains '-DryRun'
+$isDryRun = ($forward -contains '-DryRun') -or ($forward -contains '-n')
 $touchesLlvm = ($forward.Count -eq 0) -or ($forward -contains 'llvm')
 
 function Get-LlvmHead {
@@ -49,11 +48,26 @@ function Write-LlvmSyncCommit([string]$Commit) {
     [System.IO.File]::WriteAllText($stamp, $Commit.Trim() + "`n")
 }
 
-& $Tool `
-    -DepsFile (Join-Path $ProjectRoot 'DEPS.json') `
-    -SyncDir (Join-Path $ProjectRoot 'third_party') `
-    -BinDir (Join-Path $ProjectRoot 'bin') `
-    @forward
+# Layout is in DEPS.json. Pass names as -Name so they are not bound as SyncDir.
+$params = @{ DepsFile = Join-Path $ProjectRoot 'DEPS.json' }
+$names = @()
+foreach ($a in $forward) {
+    if ($a -eq '-DryRun' -or $a -eq '-n') {
+        $params['DryRun'] = $true
+        continue
+    }
+    if ($a -eq '-Name') { continue }
+    if ([string]$a -like '-*') {
+        Write-Host "Unknown argument: $a" -ForegroundColor Red
+        exit 1
+    }
+    $names += $a
+}
+if (@($names).Count -gt 0) {
+    $params['Name'] = @($names)
+}
+
+& $Tool @params
 $code = $LASTEXITCODE
 if ($code -ne 0) { exit $code }
 

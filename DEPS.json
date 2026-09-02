@@ -1,4 +1,7 @@
 {
+  "sync_dir": "third_party",
+  "bin_dir": "bin",
+  "download_dir": ".cache/deps",
   "binaries": {
     "antlr4-jar": {
       "url": "https://www.antlr.org/download/antlr-4.13.2-complete.jar",
