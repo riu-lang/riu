@@ -1,0 +1,9 @@
+; 泛型 fn 体：与 T 无关的 && 两侧类型不匹配 → E3001（模板期即可报）
+fn unused<T>() {
+  true && 1  ; check: E3001
+  ret;
+}
+
+fn main() {
+  ret;
+}

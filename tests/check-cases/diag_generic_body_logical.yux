@@ -1,0 +1,10 @@
+; 泛型 fn 体：T 实例化为 i32 后 x && true → E3001（Phase C）
+fn and_true<T>(x T) {
+  x && true  ; check: E3001
+  ret;
+}
+
+fn main() {
+  and_true:<i32>(1)
+  ret;
+}

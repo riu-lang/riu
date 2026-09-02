@@ -1,0 +1,5 @@
+; && / || 两侧类型不一致 → E3001（与比较同码，kind=comparison）
+fn main() {
+  let a = true && 1  ; check: E3001
+  ret;
+}

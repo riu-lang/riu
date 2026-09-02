@@ -1,0 +1,10 @@
+; 未调用的泛型 fn 体内依赖 T 的 && / ||：两边都不查（与未调用泛型 fn 一致）
+fn unused<T>(x T) {
+  x && true
+  x || false
+  ret;
+}
+
+fn main() {
+  ret;
+}

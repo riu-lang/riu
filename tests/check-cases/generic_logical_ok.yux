@@ -1,0 +1,14 @@
+; 泛型 fn 体：T 实例化为 bool 时 && / || 合法（Phase C）
+fn and_t<T>(a T, b T) bool {
+  ret a && b
+}
+
+fn or_t<T>(a T, b T) bool {
+  ret a || b
+}
+
+fn main() {
+  and_t:<bool>(true, false)
+  or_t:<bool>(false, true)
+  ret;
+}

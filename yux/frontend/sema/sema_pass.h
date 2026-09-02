@@ -138,7 +138,8 @@ private:
                                 int col);
 
     // 比较形态：subst + peelAutoDeref 后 Weak ==/!= → E3078，Ptr 排序 → E3073。
-    // 模板形参跳过。与 validateCompareOpForm 对齐。
+    // && / ||：subst 后两侧类型须一致（内置跨类型 → E3001 comparison），
+    // 与 ExprCompareNode::getType / compileCompareExpr 对齐。模板形参跳过。
     void tryValidateCompareForm(p<class ExprCompareNode> n);
 
     // 一元运算符：实例化后内置类型走 E3070/E3071（与 getType 对齐）；

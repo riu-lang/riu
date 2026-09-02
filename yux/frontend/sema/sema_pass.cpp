@@ -2304,10 +2304,10 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
     if (auto n = dynamic_cast<p<ExprCompareNode>>(expr)) {
         visitExpr(n->left());
         visitExpr(n->right());
-        // Phase C：subst 后再查 Weak ==/!= / Ptr 排序（模板形参跳过）。
+        // Phase C：subst 后再查 Weak ==/!= / Ptr 排序 / &&·|| 两侧类型（模板形参跳过）。
         tryValidateCompareForm(n);
         // Bucket 6 单点: 自定义 struct 比较运算符方法解析 (E3073 + byval hint).
-        // AndAnd / OrOr 是逻辑短路, 无方法名映射, 跳过.
+        // AndAnd / OrOr 是逻辑短路, 无方法名映射, 类型一致性由 tryValidateCompareForm 查.
         string m;
         switch (n->op()) {
         case ExprCompareNode::Op::Eq:
@@ -3932,12 +3932,28 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
 
 void SemaPass::tryValidateCompareForm(p<ExprCompareNode> n) {
     // 与 validateCompareOpForm 对齐：Weak ==/!= → E3078，Ptr 排序 → E3073。
+    // && / ||：镜像 ExprCompareNode::getType / compileCompareExpr 的 E3001。
     // 模板形参等实例化后再查；Weak<T> / Ptr 形态与内层 T 无关，模板期也报。
-    if (!n || !n->left()) return;
+    if (!n || !n->left() || !n->right()) return;
     try {
         TypeInfo leftType = applyInstSubst(n->left()->getType()).peelAutoDeref();
         if (isCurrentTypeParam(leftType)) return;
         sema::validateCompareOpForm(leftType, n->op(), n->getLineNumber(), n->getColumn());
+        if (n->op() != ExprCompareNode::Op::AndAnd && n->op() != ExprCompareNode::Op::OrOr) return;
+        TypeInfo rightType = applyInstSubst(n->right()->getType()).peelAutoDeref();
+        if (isCurrentTypeParam(rightType)) return;
+        if (leftType == rightType) return;
+        if (isIntTypeName(leftType.name) && isFlexibleIntExpr(n->right())) {
+            tryInferIntType(n->right(), leftType);
+            return;
+        }
+        if (isIntTypeName(rightType.name) && isFlexibleIntExpr(n->left())) {
+            tryInferIntType(n->left(), rightType);
+            return;
+        }
+        if (!isBuiltinType(leftType.name)) return;
+        throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3001, "comparison", leftType.name,
+                       rightType.name);
     } catch (const YuxError&) {
         throw;
     } catch (...) { // NOLINT(bugprone-empty-catch)
