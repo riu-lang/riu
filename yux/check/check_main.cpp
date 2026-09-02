@@ -16,10 +16,11 @@
 // 详见 CURRENT.md "yux-check 最小可用 exe" 一节.
 //
 // 用法:
-//   yux-check <input.yux>           ; 退出码: 0 = 无错, 1 = 文件 / 语法 / 语义错
-//   yux-check test <dir>            ; 批量测试目录下所有 .yux (非递归)
-//   yux-check test <dir> -r         ; 递归子目录
-//   yux-check test <dir> --threads N ; 0 = 核数（默认）；1 = 串行
+//   yux-check <input.yux>            ; 退出码: 0 = 无错, 1 = 文件 / 语法 / 语义错
+//   yux-check test <dir>             ; 批量测试目录下所有 .yux (非递归)
+//   yux-check test <dir>/c*          ; 通配当前目录 (c 前缀)
+//   yux-check test <dir>/**/*        ; 递归子目录
+//   yux-check test <path> --threads N ; 0 = 核数（默认）；1 = 串行
 
 // windows.h 必须在拉入 yux frontend (经由 include/types.h 做了 `using namespace
 // std`) 之前 #include, 否则 std::byte 与 winapi byte 冲突 (rpcndr.h).
@@ -52,6 +53,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -117,35 +119,165 @@ static string formatCodesComma(const vector<string>& codes) {
 }
 
 // ============================================================================
-// 目录扫描
+// 目录扫描 / 通配展开
 // ============================================================================
 
-// 扫描目录下的 .yux 文件。
-// recursive=false: 仅当前目录; recursive=true: 递归子目录。
-// 结果按文件名排序, 保证输出确定性。
-static vector<string> scanYuxFiles(const string& dir, bool recursive) {
+// 扫描目录下的 .yux 文件（仅当前目录）。结果按路径排序, 保证输出确定性。
+static vector<string> scanYuxFiles(const string& dir) {
     vector<string> result;
     error_code ec;
 
-    if (recursive) {
-        for (auto it = filesystem::recursive_directory_iterator(dir, ec);
-             it != filesystem::recursive_directory_iterator(); ++it) {
-            if (ec) break;
-            if (it->is_regular_file() && it->path().extension() == ".yux") {
-                result.push_back(filesystem::absolute(it->path()).string());
-            }
-        }
-    } else {
-        for (auto it = filesystem::directory_iterator(dir, ec); it != filesystem::directory_iterator(); ++it) {
-            if (ec) break;
-            if (it->is_regular_file() && it->path().extension() == ".yux") {
-                result.push_back(filesystem::absolute(it->path()).string());
-            }
+    for (auto it = filesystem::directory_iterator(dir, ec); it != filesystem::directory_iterator(); ++it) {
+        if (ec) break;
+        if (it->is_regular_file() && it->path().extension() == ".yux") {
+            result.push_back(filesystem::absolute(it->path()).string());
         }
     }
 
     ranges::sort(result);
     return result;
+}
+
+static bool hasGlobMeta(string_view s) {
+    return s.find_first_of("*?") != string_view::npos;
+}
+
+static string toGenericSlashes(string s) {
+    for (char& c : s) {
+        if (c == '\\') c = '/';
+    }
+    return s;
+}
+
+static char globFold(char c) {
+#ifdef _WIN32
+    if (c >= 'A' && c <= 'Z') return static_cast<char>(c - 'A' + 'a');
+#endif
+    return c;
+}
+
+// `*` 不跨目录; `**` 跨任意层; `?` 单字符（不含 `/`）。
+static bool globMatchAt(string_view pat, size_t pi, string_view text, size_t ti) {
+    while (pi < pat.size()) {
+        if (pi + 1 < pat.size() && pat[pi] == '*' && pat[pi + 1] == '*') {
+            size_t pj = pi + 2;
+            while (pj < pat.size() && pat[pj] == '*')
+                ++pj;
+            size_t rest = (pj < pat.size() && pat[pj] == '/') ? pj + 1 : pj;
+            if (globMatchAt(pat, rest, text, ti)) return true;
+            for (size_t k = ti; k < text.size(); ++k) {
+                if (globMatchAt(pat, rest, text, k + 1)) return true;
+            }
+            return false;
+        }
+        if (pat[pi] == '*') {
+            ++pi;
+            if (globMatchAt(pat, pi, text, ti)) return true;
+            while (ti < text.size() && text[ti] != '/') {
+                ++ti;
+                if (globMatchAt(pat, pi, text, ti)) return true;
+            }
+            return false;
+        }
+        if (pat[pi] == '?') {
+            if (ti >= text.size() || text[ti] == '/') return false;
+            ++pi;
+            ++ti;
+            continue;
+        }
+        if (ti >= text.size() || globFold(pat[pi]) != globFold(text[ti])) return false;
+        ++pi;
+        ++ti;
+    }
+    return ti >= text.size();
+}
+
+static bool globMatch(string_view pat, string_view text) {
+    return globMatchAt(pat, 0, text, 0);
+}
+
+// 通配根目录 = 第一个 * / ? 之前的最后一层目录; 其余为相对模式。
+static pair<string, string> splitGlobRoot(const string& pattern) {
+    size_t meta = pattern.find_first_of("*?");
+    size_t slash = pattern.rfind('/', meta);
+    if (slash == string::npos) return {".", pattern};
+    string root = pattern.substr(0, slash);
+    string rel = pattern.substr(slash + 1);
+    if (root.empty()) root = "/";
+#ifdef _WIN32
+    if (root.size() == 2 && root[1] == ':') root += '/';
+#endif
+    return {root, rel};
+}
+
+static vector<string> expandYuxGlob(const string& raw) {
+    namespace fs = filesystem;
+    string gen = toGenericSlashes(raw);
+    while (gen.size() > 1 && gen.back() == '/')
+        gen.pop_back();
+
+    auto [root, relPat] = splitGlobRoot(gen);
+    vector<string> result;
+    error_code ec;
+    fs::path rootPath(root);
+    if (!fs::is_directory(rootPath, ec)) return result;
+
+    auto opts = fs::directory_options::skip_permission_denied;
+    for (auto it = fs::recursive_directory_iterator(rootPath, opts, ec); it != fs::recursive_directory_iterator();
+         it.increment(ec)) {
+        if (ec) break;
+        bool regular = it->is_regular_file(ec);
+        if (ec || !regular || it->path().extension() != ".yux") {
+            ec.clear();
+            continue;
+        }
+        fs::path rel = fs::relative(it->path(), rootPath, ec);
+        if (ec) continue;
+        if (globMatch(relPat, rel.generic_string())) {
+            result.push_back(fs::absolute(it->path()).string());
+        }
+    }
+    return result;
+}
+
+struct CollectTestFilesResult {
+    vector<string> files;
+    string error;
+};
+
+// paths: 目录 / .yux 文件 / 通配（`*` `?` `**`）。多路径去重。
+static CollectTestFilesResult collectTestFiles(const vector<string>& paths) {
+    namespace fs = filesystem;
+    CollectTestFilesResult out;
+    for (const auto& p : paths) {
+        error_code ec;
+        if (hasGlobMeta(p)) {
+            string gen = toGenericSlashes(p);
+            while (gen.size() > 1 && gen.back() == '/')
+                gen.pop_back();
+            string root = splitGlobRoot(gen).first;
+            if (!fs::is_directory(root, ec)) {
+                out.error = "Error: not a directory: " + root + '\n';
+                out.files.clear();
+                return out;
+            }
+            auto got = expandYuxGlob(p);
+            out.files.insert(out.files.end(), got.begin(), got.end());
+        } else if (fs::is_directory(p, ec)) {
+            auto got = scanYuxFiles(p);
+            out.files.insert(out.files.end(), got.begin(), got.end());
+        } else if (fs::is_regular_file(p, ec)) {
+            out.files.push_back(fs::absolute(p).string());
+        } else {
+            out.error = "Error: path not found: " + p + '\n';
+            out.files.clear();
+            return out;
+        }
+    }
+    ranges::sort(out.files);
+    auto u = ranges::unique(out.files);
+    out.files.erase(u.begin(), u.end());
+    return out;
 }
 
 // ============================================================================
@@ -495,7 +627,7 @@ static void runSerialChecks(const vector<string>& files, vector<TestFileResult>&
     }
 }
 
-static int runCheckTest(const string& dir, bool recursive, int threads, const vector<string>& explicitFiles) {
+static int runCheckTest(const vector<string>& paths, int threads, const vector<string>& explicitFiles) {
     namespace fs = filesystem;
     auto t0 = chrono::steady_clock::now();
 
@@ -504,14 +636,24 @@ static int runCheckTest(const string& dir, bool recursive, int threads, const ve
         for (auto& f : explicitFiles)
             files.push_back(fs::absolute(f).string());
     } else {
-        if (!fs::is_directory(dir)) {
-            cerr << "Error: not a directory: " << dir << '\n';
+        auto collected = collectTestFiles(paths);
+        if (!collected.error.empty()) {
+            cerr << collected.error;
             return 1;
         }
-        files = scanYuxFiles(dir, recursive);
+        files = std::move(collected.files);
     }
     if (files.empty()) {
-        cout << "No .yux files found in " << (dir.empty() ? string(".") : fs::absolute(dir).string()) << '\n';
+        ostringstream oss;
+        if (paths.empty()) {
+            oss << ".";
+        } else {
+            for (size_t i = 0; i < paths.size(); ++i) {
+                if (i > 0) oss << ", ";
+                oss << paths[i];
+            }
+        }
+        cout << "No .yux files found matching " << oss.str() << '\n';
         return 0;
     }
 
@@ -550,7 +692,8 @@ static int runCheckTest(const string& dir, bool recursive, int threads, const ve
                 if (shard.empty()) return;
 
                 string logPath = logsDir + "/job-" + std::to_string(job) + ".log";
-                wstring cmd = L"\"" + toWide(self) + L"\" test \"" + toWide(dir) + L"\" --threads 1";
+                string spawnPath = paths.empty() ? string(".") : paths[0];
+                wstring cmd = L"\"" + toWide(self) + L"\" test \"" + toWide(spawnPath) + L"\" --threads 1";
                 for (size_t idx : shard) {
                     cmd += L" --file \"";
                     cmd += toWide(files[idx]);
@@ -655,10 +798,10 @@ int main(int argc, char* argv[]) {
 
     // ---- test 子命令 ----
     auto* testCmd = app.add_subcommand("test", "Batch test .yux files with ; check: annotations");
-    string testDir;
-    testCmd->add_option("dir", testDir, "Directory containing .yux test files")->required();
-    bool testRecursive = false;
-    testCmd->add_flag("-r,--recursive", testRecursive, "Scan subdirectories recursively");
+    vector<string> testPaths;
+    testCmd
+        ->add_option("path", testPaths, "Directory, .yux file, or glob (* ? **; e.g. diag_* or **/*.yux). Repeatable.")
+        ->required();
     int testThreads = 0;
     testCmd->add_option("--threads", testThreads, "Parallel check jobs (default: CPU cores; 1 = serial)");
     vector<string> testFiles;
@@ -668,7 +811,7 @@ int main(int argc, char* argv[]) {
 
     // ---- test 子命令分支 ----
     if (testCmd->parsed()) {
-        return runCheckTest(testDir, testRecursive, testThreads, testFiles);
+        return runCheckTest(testPaths, testThreads, testFiles);
     }
 
     // ==== 单文件模式 (原逻辑) ====

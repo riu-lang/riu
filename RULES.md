@@ -43,7 +43,7 @@ Windows + Clang（无 MSVC 作编译器；仍需 VS 的 Windows SDK / STL）。`
 | 做什么 | cwd | 命令 |
 |--------|-----|------|
 | 单文件诊断 | 任意 | `yux-check <file.yux>` |
-| 诊断回归 | 仓库根 | `yux-check test tests/check-cases/` |
+| 诊断回归 | 仓库根 | `yux-check test tests/check-cases/`（子集 `diag_*` / `**/*`；`*` 不跨目录，递归用 `**`，无 `-r`） |
 | SDK `#Test` | `sdk/yux/` | `yux test`（`--verbose` / `--test-mod <M>` / `--threads N`） |
 | 项目回归 | 仓库根 | `./build.ps1 test`（`-Jobs 1` 串行） |
 
