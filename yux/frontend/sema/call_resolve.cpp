@@ -1714,16 +1714,17 @@ void validateUnaryOpMethodResolution(FileNode* file, FileNode* sdkFile, const Ty
     throw YuxError(line, col, ErrorCode::E3074, operandType.name, opSym, methodName);
 }
 
+bool typeImplementsToString(FileNode* file, FileNode* sdkFile, const TypeInfo& t) {
+    if (t.isString() || t.name == "String") return true;
+    string fullName = t.name + ".to_string";
+    if (sdkFile && sdkFile->lookupFnSymbol(fullName)) return true;
+    if (file && file->lookupFnSymbol(fullName)) return true;
+    return false;
+}
+
 // Bucket 6 单点: 字符串模板插值 ToString 校验 (E3026).
 void validateStringTemplateInterps(FileNode* file, FileNode* sdkFile, StringTemplateNode* tpl) {
     if (!tpl) return;
-    auto canToString = [&](const TypeInfo& t) -> bool {
-        if (t.isString()) return true;
-        string fullName = t.name + ".to_string";
-        if (sdkFile && sdkFile->lookupFnSymbol(fullName)) return true;
-        if (file && file->lookupFnSymbol(fullName)) return true;
-        return false;
-    };
     for (auto& e : tpl->interps()) {
         TypeInfo t;
         try {
@@ -1731,7 +1732,7 @@ void validateStringTemplateInterps(FileNode* file, FileNode* sdkFile, StringTemp
         } catch (...) {
             continue; // lambda 形参等未推断, 留 Compiler 兜底
         }
-        if (!canToString(t)) {
+        if (!typeImplementsToString(file, sdkFile, t)) {
             throw YuxError(e->getLineNumber(), e->getColumn(), ErrorCode::E3026, t.name);
         }
     }

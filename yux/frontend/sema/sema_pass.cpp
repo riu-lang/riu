@@ -2179,10 +2179,10 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         }
         // 字符串模板含插值表达式; 其余字面量无子表达式
         if (auto tpl = dynamic_cast<p<StringTemplateNode>>(n->literal())) {
-            for (auto& e : tpl->interps())
+            for (auto& e : tpl->interps()) {
                 visitExpr(e);
-            // Bucket 6 (CURRENT-check.md): E3026 插值类型必须实现 ToString.
-            sema::validateStringTemplateInterps(_file, _sdkFile, tpl);
+                tryValidateToString(e);
+            }
         }
         // v0.16 闭包捕获: lambda body 内标识符引用检查。
         // - 引用外层 Heap<T> (非空) 变量 → E4024 (Heap 按值捕获禁止, §7.3 / [#18])
@@ -2256,6 +2256,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         // Bucket 6 单点: 自定义 struct 二元运算符方法解析 (E3073 + byval hint).
         string m = (n->op() == ExprAddSubNode::Op::Add) ? "plus" : "minus";
         tryValidateBinOpMethod(n->left(), n->right(), m, n->getLineNumber(), n->getColumn());
+        tryValidateStringPlus(n);
         return;
     }
     if (auto n = dynamic_cast<p<ExprMulDivModNode>>(expr)) {
@@ -4200,6 +4201,66 @@ void SemaPass::tryValidateSafeDot(p<ExprDotNode> n) {
         if (decl->fieldIndex(mem) < 0) {
             throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3040, actual.name, mem);
         }
+    } catch (const YuxError&) {
+        throw;
+    } catch (...) { // NOLINT(bugprone-empty-catch)
+        // getType 内部异常: 留 Compiler 兜底
+    }
+}
+
+void SemaPass::tryValidateToString(p<ExprNode> e) {
+    // 与 compileStringPlusChain / compileStringTemplate 同款。
+    // 模板形参等实例化后再查；getType 在模板体把依赖 T 的类型吞掉。
+    if (!e) return;
+    try {
+        TypeInfo t = e->hasResolvedType() ? e->resolvedType() : e->getType();
+        t = applyInstSubst(t);
+        if (isCurrentTypeParam(t)) return;
+        if (t.name.empty()) return;
+        if (sema::typeImplementsToString(_file, _sdkFile, t)) return;
+        throw YuxError(e->getLineNumber(), e->getColumn(), ErrorCode::E3026, t.name);
+    } catch (const YuxError&) {
+        throw;
+    } catch (...) { // NOLINT(bugprone-empty-catch)
+        // getType 内部异常: 留 Compiler 兜底
+    }
+}
+
+void SemaPass::tryValidateStringPlus(p<ExprAddSubNode> n) {
+    // 与 compileStringPlusChain 同款：`+` 结果为 String 时沿左脊展开叶子。
+    // `"a" + x` 在模板期 x 是 T，跳过；实例化后再查 E3026。
+    if (!n || n->op() != ExprAddSubNode::Op::Add) return;
+    try {
+        auto exprTypeOf = [&](p<ExprNode> e) -> TypeInfo {
+            TypeInfo t = e->hasResolvedType() ? e->resolvedType() : e->getType();
+            return applyInstSubst(t);
+        };
+        TypeInfo result = exprTypeOf(n);
+        TypeInfo lt = exprTypeOf(n->left()).peelAutoDeref();
+        TypeInfo rt = exprTypeOf(n->right()).peelAutoDeref();
+        if (!(result.isString() || result.name == "String" || lt.isString() || rt.isString())) return;
+
+        vector<p<ExprNode>> leaves;
+        ExprAddSubNode* cur = n;
+        while (true) {
+            leaves.push_back(cur->right());
+            auto leftExpr = cur->left();
+            auto* innerAdd = dynamic_cast<ExprAddSubNode*>(leftExpr);
+            bool isStringAdd = false;
+            if (innerAdd && innerAdd->op() == ExprAddSubNode::Op::Add) {
+                TypeInfo innerT = exprTypeOf(innerAdd);
+                isStringAdd = innerT.isString() || innerT.name == "String";
+            }
+            if (isStringAdd) {
+                cur = innerAdd;
+                continue;
+            }
+            leaves.push_back(leftExpr);
+            break;
+        }
+        std::ranges::reverse(leaves);
+        for (auto& leaf : leaves)
+            tryValidateToString(leaf);
     } catch (const YuxError&) {
         throw;
     } catch (...) { // NOLINT(bugprone-empty-catch)

@@ -496,8 +496,13 @@ llvm::Value* Compiler::compileStringTemplate(StringTemplateNode* node) {
         }
         if (i < interps.size()) {
             auto interpExpr = interps[i];
+            auto interpTy = applySubst(interpExpr->getType());
+            // E3026 由 SemaPass tryValidateToString 先抛；此处防 IR 合成不存在的 to_string。
+            if (!sema::typeImplementsToString(_file, _yux ? _yux->sdkFile() : nullptr, interpTy)) {
+                throw YuxError(interpExpr->getLineNumber(), interpExpr->getColumn(), ErrorCode::E3026, interpTy.name);
+            }
             llvm::Value* strVal;
-            if (interpExpr->getType().name == "String") {
+            if (interpTy.isString() || interpTy.name == "String") {
                 strVal = compileExpr(interpExpr);
             } else {
                 Token memberTok("to_string", static_cast<size_t>(interpExpr->getLineNumber()));
@@ -563,19 +568,12 @@ llvm::Value* Compiler::compileStringPlusChain(ExprAddSubNode* node) {
         std::ranges::reverse(leaves);
     }
 
-    // 2. 类型校验：每个叶子必须是 String 或实现 ToString
-    auto canToString = [&](const TypeInfo& t) -> bool {
-        if (t.name == "String") return true;
-        string fullName = t.name + ".to_string";
-        if (_yux && _yux->sdkFile() && _yux->sdkFile()->lookupFnSymbol(fullName)) {
-            return true;
-        }
-        if (_file && _file->lookupFnSymbol(fullName)) return true;
-        return false;
-    };
+    // 2. 类型校验：每个叶子必须是 String 或实现 ToString。
+    // applySubst：泛型体 T → i32 才能找到 i32.to_string。E3026 由 SemaPass 先抛。
+    FileNode* sdk = _yux ? _yux->sdkFile() : nullptr;
     for (const auto& leaf : leaves) {
-        auto t = leaf->getType();
-        if (!canToString(t)) {
+        auto t = applySubst(leaf->getType());
+        if (!sema::typeImplementsToString(_file, sdk, t)) {
             throw YuxError(leaf->getLineNumber(), leaf->getColumn(), ErrorCode::E3026, t.name);
         }
     }
@@ -600,7 +598,7 @@ llvm::Value* Compiler::compileStringPlusChain(ExprAddSubNode* node) {
     vector<std::unique_ptr<Node>> synthHolder;
     for (const auto& leaf : leaves) {
         llvm::Value* strVal;
-        if (leaf->getType().name == "String") {
+        if (applySubst(leaf->getType()).name == "String") {
             strVal = compileExpr(leaf);
         } else {
             Token memberTok("to_string", static_cast<size_t>(leaf->getLineNumber()));

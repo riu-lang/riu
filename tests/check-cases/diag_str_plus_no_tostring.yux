@@ -1,0 +1,12 @@
+; 非泛型 String + 叶子未实现 ToString → E3026（Phase C）
+struct S {
+  n i32
+}
+
+fn main() {
+  let x S = S {
+    .n = 1
+  }
+  "a" + x  ; check: E3026
+  ret;
+}

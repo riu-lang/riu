@@ -1,0 +1,16 @@
+; 泛型 fn 体：T 实例化为 S 后 "a" + x → E3026（Phase C）
+struct S {
+  n i32
+}
+
+fn at<T>(x T) {
+  "a" + x  ; check: E3026
+  ret;
+}
+
+fn main() {
+  at:<S>(S {
+    .n = 1
+  })
+  ret;
+}

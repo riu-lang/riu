@@ -161,6 +161,13 @@ private:
     // 直接 match → E2022；非 enum（含用户 struct）→ E2022。模板形参跳过。
     // 实例化为 enum 后走 validateMatchArms。与 compileMatchExpr 对齐。
     void tryValidateMatchScrut(p<class ExprMatchNode> n);
+
+    // 插值 / String+ 叶子：subst 后须是 String 或有 `<T>.to_string`，否则 E3026。
+    // 模板形参跳过。与 compileStringTemplate / compileStringPlusChain 对齐。
+    void tryValidateToString(p<ExprNode> e);
+
+    // `+` 结果为 String 时沿左脊展开叶子，逐叶 tryValidateToString。
+    void tryValidateStringPlus(p<class ExprAddSubNode> n);
 };
 
 #endif // YUX_LANG_SEMA_PASS_H

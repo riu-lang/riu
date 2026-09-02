@@ -466,16 +466,20 @@ void validateBinOpMethodResolution(FileNode* file, FileNode* sdkFile, const Type
 void validateUnaryOpMethodResolution(FileNode* file, FileNode* sdkFile, const TypeInfo& operandType,
                                      const string& methodName, int line, int col);
 
+// String / ToString：`t` 是 String，或 file / sdkFile 有 `<TypeName>.to_string`。
+// 与 compileStringPlusChain / validateStringTemplateInterps 同款查表。
+bool typeImplementsToString(FileNode* file, FileNode* sdkFile, const TypeInfo& t);
+
 // Bucket 6 单点 (CURRENT-check.md): 字符串模板插值类型校验 (E3026).
 //
 // 对每个 interp 计算 getType(), 若不是 String 且既不在 file 也不在 sdkFile
 // 注册到 `<TypeName>.to_string` 自由函数 → 抛 E3026 (要求实现 ToString).
 //
 // interp getType 抛错时跳过该 interp (lambda 形参等), 留 Compiler 兜底.
+// 泛型体 subst 后的复查由 SemaPass::tryValidateToString 做（本函数不 subst）。
 //
 // 调用方:
-//   - Compiler::compileStringTemplate 顶部
-//   - SemaPass.visitExpr ExprLiteralNode/StringTemplate 分支
+//   - SemaPass.visitExpr ExprLiteralNode/StringTemplate 分支（非 subst 路径仍可走）
 //
 // 纯 AST / 字符串查表, 无 LLVM 依赖.
 void validateStringTemplateInterps(FileNode* file, FileNode* sdkFile, StringTemplateNode* tpl);
