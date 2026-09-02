@@ -14,6 +14,10 @@
 - 元组解构（`let (a, b) = expr` / `loop (a, b) = expr`）：标注优先否则 RHS，经 subst + `resolveAlias` 后非元组 → E3101；元素数 ≠ 名字数 → E3102。模板形参 T 跳过；`Array<T>` 等永远不是元组，模板期也报。
 - match：各臂结果类型一致 → E3014（流终止臂跳过）。scrut 经 subst + 别名 / Rc<E> / Heap<E> / E& 剥到 enum；临时 Rc/Heap 直接 match → E2022；非 enum（含用户 struct、实例化后的 T）→ E2022（模板形参跳过）。实例化为 enum 后走臂校验（E2019 / E2020 / E2023 等）。if / match / try 块末尾值带靶向类型（嵌套数组 E3009）。if / elif / else 与一行 `if c { a } else { b }`：subst 后分支类型须一致 → E3005（模板形参跳过；与 T 无关的不匹配模板期也报）。比较：subst + peelAutoDeref 后 Weak ==/!= → E3078，Ptr 排序 → E3073（模板形参跳过；`Weak<T>` 参数等与 T 无关的形态模板期也报）。`&&` / `||`：subst 后两侧类型须一致，内置跨类型 → E3001 comparison（模板形参跳过；与 T 无关的不匹配模板期也报）。
 - 新 AST / 表达式：`SemaPass::visitExpr` 必须加分支（可 `return;`），否则整棵子树被 skip。
-- 缺口（sema 不报、靠 codegen）：源码从未写出 `S<Concrete>` 且无调用时，泛型 struct 方法体内依赖 T 的类型错两边都不查（与未调用泛型 fn 一致）。未调用的泛型 fn 体内嵌套调用的 E6012/E6013 同样两边都不查。写出 `S<Concrete>` 的类型位置（形参 / 返回 / 字段 / let / 声明 / 全局常量）由 SemaPass 复查方法体。调用点签名替换、ret / 赋值、声明处 Rc / Weak / Array、元组解构（E3101 / E3102）、实例化后的方法分派 / 内置与一元运算符 / 索引（E3062）/ 成员链（E3040 / E3041 / E3152 / E3100，含读路径与元组 `.N`）/ `?.`（E3024 / E3044 / E3040）/ `??`（E3024 / E3014）/ match 非 enum（E2022）与实例化后的臂校验、if 分支（E3005）、字符串插值与 `String +`（E3026）、比较形态（E3078 / E3073）、`&&` / `||`（E3001）、以及调用点 / 实例化后的 typeArgs 推断（E6012/E6013）已由 SemaPass 做。其余依赖 T 具体化且未在调用点实例化的路径，throw 写 Compiler。
+- 缺口：
+  - 两边都不查（与未调用泛型 fn 一致）：源码从未写出 `S<Concrete>` 且无调用时，泛型 struct 方法体内依赖 T 的类型错；未调用泛型 fn 体内嵌套推断 E6012/E6013。
+  - SemaPass 未接、Compiler 仍报：lambda 捕获 E2028 / E2029；数组索引形态 E3060 / E3061；空数组字面量 E3063；不支持的点表达式 E3090（读路径已迁，残留兜底）；`Field.value` E3133 / E3134；`variants` 非 enum E3135；T& 绑非局部 E4004；`assert_eq` E6030 / E6031。
+  - 已覆盖码的 Compiler 副本仍 throw，删掉、不双跑。E3140 由 AST builder 抛；E0000 / E3072 / E3080 / E3091 / E3092 / E3096 / E3098 / E3099 / E6019 为内部或 LLVM 兜底。
+  - 写出 `S<Concrete>` 的类型位置（形参 / 返回 / 字段 / let / 声明 / 全局常量）由 SemaPass 复查方法体。调用点签名替换、ret / 赋值、声明处 Rc / Weak / Array、元组解构（E3101 / E3102）、实例化后的方法分派 / 内置与一元运算符 / 索引（E3062）/ 成员链（E3040 / E3041 / E3152 / E3100，含读路径与元组 `.N`）/ `?.`（E3024 / E3044 / E3040）/ `??`（E3024 / E3014）/ match 非 enum（E2022）与实例化后的臂校验、if 分支（E3005）、字符串插值与 `String +`（E3026）、比较形态（E3078 / E3073）、`&&` / `||`（E3001）、以及调用点 / 实例化后的 typeArgs 推断（E6012/E6013）已由 SemaPass 做。其余依赖 T 具体化且未在调用点实例化的路径，throw 写 Compiler。
 
 `yux-check <file>` 是 `yux build` 报错的**子集**。
