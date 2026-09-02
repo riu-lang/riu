@@ -27,7 +27,7 @@
 
 ## 环境 / 构建
 
-Windows + Clang（无 MSVC 作编译器；仍需 VS 的 Windows SDK / STL）。`build/windows/x64/debug/bin` 在 PATH。`yux-check` 独立 exe，`./build.ps1 yux` 不会编它。
+Windows + Clang（无 MSVC 作编译器；仍需 VS 的 Windows SDK / STL）。`build/windows/x64/debug/bin` 在 PATH。`yux-check` 独立 exe，`./build.ps1 yux` 不会编它。`yux` 只有 `build` / `test` / `format`，没有 `yux file.yux`；仓库根没有 `yux.toml`，`yux build` / `yux test` 不能在仓库根跑。
 
 | 改动 | 重编 |
 |------|------|
@@ -40,11 +40,16 @@ Windows + Clang（无 MSVC 作编译器；仍需 VS 的 Windows SDK / STL）。`
 
 ## 验证
 
-中途（`sdk/yux/`）：`yux test`（`--verbose` / `--test-mod <M>` / `--threads N`）。
+| 做什么 | cwd | 命令 |
+|--------|-----|------|
+| 单文件诊断 | 任意 | `yux-check <file.yux>` |
+| 诊断回归 | 仓库根 | `yux-check test tests/check-cases/` |
+| SDK `#Test` | `sdk/yux/` | `yux test`（`--verbose` / `--test-mod <M>` / `--threads N`） |
+| 项目回归 | 仓库根 | `./build.ps1 test`（`-Jobs 1` 串行） |
 
-收尾：`./build.ps1 yux-check` → `yux-check test tests/check-cases/` → `./build.ps1 test`（`-Jobs 1` 串行）。
+中途：改了什么跑什么。收尾：先按「改动 / 重编」把 exe 编好，再跑上表三套回归。
 
-测试崩溃：DLL 无摘要行 → `--verbose` → `--test-mod` → `yux build --test -d`。
+测试崩溃：DLL 无摘要行 → 在 `sdk/yux/` 下 `--verbose` → `--test-mod` → `yux build --test -d`。
 
 改完 C++ 立刻 `./format.ps1`；完成修改+测试通过后 `./lint.ps1` **0 warnings**。注释中文；`// ====` 分区；未完成 / 待验证写 `// TODO:`。
 
