@@ -893,12 +893,10 @@ string Compiler::ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& type
         if (it != _fnInstances.end()) return mangledName;
     }
 
-    // 验证类型参数数量
+    // E6010 由 SemaPass validateGenericTypeArgsArity 先抛。
     auto& typeParams = baseFn->header()->typeParams();
     if (typeArgs.size() != typeParams.size()) {
-        throw YuxError(sourceLine, ErrorCode::E6010, baseName, typeParams.size(), typeArgs.size())
-            .withHint(std::format("实例化时的类型实参个数需与声明匹配；调用处补齐 {} 个类型 `:<{}>`", typeParams.size(),
-                                  std::string(typeParams.size() == 1 ? "T" : "T1, T2, ...")));
+        throwSemaGap(static_cast<size_t>(sourceLine));
     }
 
     // 创建实例记录

@@ -219,7 +219,7 @@ std::pair<FnNode*, FileNode*> resolveBestGenericOverload(const std::vector<std::
 //   assert_eq, size_of, upgrade, same_ref, ptr_of, as_ref, copy_of, weak
 //
 // E6019 (size_of typeArg getLLVMType 失败) 依赖 LLVM, 留在 codegen.
-// E6028 / E6029 / E6032 是类型形态校验, 留给 3.3.2.d.
+// E6028 / E6029 / E6032 由 validateBuiltinIntrinsicTypeShape 抛（SemaPass 显式 typeArgs 与推断后都查）.
 //
 // 纯字符串 + size 比较, 无 LLVM 依赖.
 void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, size_t argsCount, int line, int col);
@@ -245,8 +245,7 @@ void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, s
 //
 // 不覆盖:
 //   - E6019 (size_of llvm getLLVMType 失败) — 依赖 LLVM, 留 codegen
-//   - extractRawPtr 内 _localVarPtrs 查不到的 E6028 fallback — 依赖 Compiler 局部
-//     变量符号表, 不在 AST 上, 留 inline
+//   - extractRawPtr 内 _localVarPtrs 查不到：sema 已校验 AST 形态，Compiler 改 throwSemaGap
 //
 // `file` / `sdkFile` 用于 copy_of 的 struct 字段深度递归; 为 nullptr 时按"找不到声明 → 保守放过"处理.
 void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeInfo>& typeArgs,

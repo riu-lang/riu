@@ -1,0 +1,24 @@
+; require-sdk
+; 泛型 impl 体：写出 Slot<i32> 后 same_ref($.v, $.v) → E6029（Phase C）
+
+struct Slot<T> {
+  v T
+
+  #Static
+  fn make(v T) Self {
+    Self {
+      .v = v
+    }
+  }
+
+  fn peek() {
+    same_ref($.v, $.v)  ; check: E6029
+    ret;
+  }
+}
+
+fn main() {
+  let s Slot<i32> = Slot:<i32>::make(1)
+  s.peek()
+  ret;
+}

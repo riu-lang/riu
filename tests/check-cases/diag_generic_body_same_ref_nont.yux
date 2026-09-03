@@ -1,0 +1,11 @@
+; require-sdk
+; 泛型 fn 体：same_ref(1, 2) 与 T 无关，模板期也报 E6029
+
+fn unused<T>() {
+  same_ref(1, 2)  ; check: E6029
+  ret;
+}
+
+fn main() {
+  ret;
+}

@@ -1,0 +1,12 @@
+; require-sdk
+; 泛型 fn 体：T 实例化为 i32 后 same_ref(a, b) → E6029（Phase C）
+
+fn cmp<T>(a T, b T) {
+  same_ref(a, b)  ; check: E6029
+  ret;
+}
+
+fn main() {
+  cmp:<i32>(1, 2)
+  ret;
+}

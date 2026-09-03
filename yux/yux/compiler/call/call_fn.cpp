@@ -201,8 +201,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
         // unify 不能从 Heap<T> arg 反推 T (Rc<T> ≠ Heap<T>), 在此前直接抽 Heap 内层.
         auto inner = argTypes[0].heapElementType();
         if (!inner) {
-            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6029, fnName,
-                           argTypes[0].getFullName());
+            // E6029 由 SemaPass as_ref(Heap) 抽内层先抛。
+            throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
         }
         typeArgs.push_back(*inner);
     } else {
@@ -336,7 +336,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             // Phase 7：地址相等 / 显式取裸指针 builtin
             // T 必须是堆句柄类型 (Rc / Weak / Array / String) 或 T&
             // E6028 AST 形态 / E6029 T 必须堆句柄 已由 sema::validateBuiltinIntrinsicTypeShape 校验 (3.3.2.d)
-            // 下方 extractRawPtr 内残留的 E6028 / E6029 是兜底防御 (sema 抢先抛, 几乎不可达)
+            // 下方 extractRawPtr 残留路径改 throwSemaGap
             // E6026 / E6027 已由 sema::validateBuiltinIntrinsicShape 校验
             auto& T = typeArgs[0];
             auto ptrTy = llvm::PointerType::get(_context, 0);
@@ -381,7 +381,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
                     if (auto refExpr = dynamic_cast<ExprGetRefNode*>(argNode)) {
                         return compileGetRefExpr(refExpr);
                     }
-                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6028, fnName);
+                    // E6028 由 SemaPass validateBuiltinIntrinsicTypeShape 先抛。
+                    throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
                 }
                 // Phase 8a: ptr_of:<Heap<U>>(h) FFI handoff (DRAFT-heap-types §8.3a)
                 // args[i] = Heap<U> = 裸 U* (无 wrapper), 直接作为 Ptr 返回; 调用点摘除 source slot.
@@ -404,8 +405,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
                         return compileGetRefExpr(refExpr);
                     }
                 }
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6029, fnName,
-                               T.getFullName());
+                // E6029 由 SemaPass validateBuiltinIntrinsicTypeShape 先抛。
+                throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
             };
 
             if (fnName == "same_ref") {
@@ -448,8 +449,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             }
             // 实参必须是 Rc<T>（不接受 Rc<T>?、Array、String、Weak 等）
             if (!argType.isRc() || argType.isNullable()) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6029, fnName,
-                               argType.getFullName());
+                // E6029 由 SemaPass validateBuiltinIntrinsicTypeShape 先抛。
+                throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
             }
             // args[0] 为 Rc<T> = { ptr handle } 结构体值；ExtractValue 0 取 handle
             auto handle = _builder.CreateExtractValue(args[0], {0}, "as_ref.handle");
@@ -469,8 +470,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             if (T.isHeap()) {
                 auto innerSp = T.heapElementType();
                 if (!innerSp) {
-                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6029, fnName,
-                                   T.getFullName());
+                    throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
                 }
                 const auto& innerType = *innerSp;
                 auto innerLLVMType = getLLVMType(innerType);
@@ -493,8 +493,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
                     const auto& innerHeapType = *innerNullSp;
                     auto innerElemSp = innerHeapType.heapElementType();
                     if (!innerElemSp) {
-                        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6029, fnName,
-                                       T.getFullName());
+                        throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
                     }
                     const auto& innerType = *innerElemSp;
                     auto innerLLVMType = getLLVMType(innerType);
@@ -546,8 +545,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
 
             // Phase B-1: #NoCopy 类型（含 Array<T>）拒绝 copy_of，深拷贝统一用 .clone()
             if (isNoCopyType(T)) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E4031, T.name, "copy_of",
-                               T.name);
+                // E4031 由 SemaPass copy_of #NoCopy 先抛。
+                throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
             }
 
             // 把所有 RC 子结构 +1：Rc/Array/Weak 抽 handle 调对应 retain；
@@ -585,15 +584,13 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             } else if (argType.isNullable()) {
                 auto inner = argType.nullableInnerType();
                 if (!inner || !inner->isRc()) {
-                    throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6029, fnName,
-                                   argType.getFullName());
+                    throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
                 }
                 auto hasFlag = _builder.CreateExtractValue(args[0], {0}, "weak.has");
                 auto innerHandle = _builder.CreateExtractValue(args[0], {1, 0}, "weak.inner.handle");
                 srcHandle = _builder.CreateSelect(hasFlag, innerHandle, nullPtr, "weak.handle");
             } else {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6029, fnName,
-                               argType.getFullName());
+                throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
             }
 
             // _weak_retain(handle)：null / 哨兵跳过；否则 weak++
@@ -628,7 +625,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
                 }
             }
             if (!srcAlloca) {
-                throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6028, fnName);
+                // E4034 / E6028 由 SemaPass move / same_ref·ptr_of 形态先抛。
+                throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
             }
 
             // Load T 值（不 retain，所有权转移）
@@ -753,9 +751,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             DEBUG_LOG_VAL("    Builtin: rc", T.name);
             return _builder.CreateLoad(rcStructType, resultAlloca, "rc.val");
         }
-        // E6017 (未知 Builtin intrinsic) 已由 sema::validateBuiltinIntrinsicShape
-        // 在分派前抛出, 不会到这里; 留 unreachable assert 防御.
-        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6017, fnName);
+        // E6017 由 SemaPass validateBuiltinIntrinsicShape 先抛。
+        throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
     }
 
     // §6.4.4.4 / §12.4 边界单态化校验 (Phase 3.3): 对每个 <T : D1 + D2>,

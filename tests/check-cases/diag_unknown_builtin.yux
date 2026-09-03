@@ -1,0 +1,11 @@
+; 用户 #Builtin 不在内建清单 → E6017（Phase C）
+
+#Builtin
+fn mystery<T>(x T) {
+  ret;
+}
+
+fn main() {
+  mystery:<i32>(1)  ; check: E6017
+  ret;
+}

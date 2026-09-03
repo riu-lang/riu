@@ -1141,7 +1141,7 @@ void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeIn
         }
         if (T.isRef() || isHeapForPtrOf || argIsRef) {
             // 取源裸指针仅支持: ID-literal (栈/堆变量) 或 ExprGetRefNode (`&x` 字面)
-            // _localVarPtrs 查不到的 fallback 仍由 Compiler 抛 E6028.
+            // _localVarPtrs 查不到：sema 已校验 AST 形态，Compiler 改 throwSemaGap.
             // Phase 8a: Heap move-out 也只接受 ID-literal (槽要 null 化 / 摘除 _scopeVars).
             size_t expectedArgs = (fnName == "same_ref" ? 2u : 1u);
             for (size_t i = 0; i < expectedArgs && i < argNodes.size(); ++i) {

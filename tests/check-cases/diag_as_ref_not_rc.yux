@@ -1,0 +1,7 @@
+; require-sdk
+; as_ref:<i32> 实参不是 Rc / Heap → E6029（Phase C）
+
+fn main() {
+  as_ref:<i32>(1)  ; check: E6029
+  ret;
+}

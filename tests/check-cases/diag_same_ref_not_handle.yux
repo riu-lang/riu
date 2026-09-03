@@ -1,0 +1,7 @@
+; require-sdk
+; same_ref 推断 T=i32，非堆句柄 / T& → E6029（Phase C）
+
+fn main() {
+  same_ref(1, 2)  ; check: E6029
+  ret;
+}

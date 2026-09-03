@@ -1,0 +1,7 @@
+; require-sdk
+; ptr_of(Heap) 只接受局部变量，表达式 → E6028（Phase C）
+
+fn main() {
+  ptr_of(heap:<i32>(1))  ; check: E6028
+  ret;
+}
