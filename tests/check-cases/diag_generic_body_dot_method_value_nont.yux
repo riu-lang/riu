@@ -1,0 +1,20 @@
+; 泛型 fn 体：Point.mag 当值与 T 无关，模板期也报 E3090
+struct Point {
+  x i32
+
+  fn mag() i32 {
+    ret $.x
+  }
+}
+
+fn unused<T>() {
+  let p Point = Point {
+    .x = 1
+  }
+  p.mag  ; check: E3090
+  ret;
+}
+
+fn main() {
+  ret;
+}

@@ -1,0 +1,16 @@
+; 方法当值（非调用）→ E3090（Phase C 读路径残留兜底）
+struct Point {
+  x i32
+
+  fn mag() i32 {
+    ret $.x
+  }
+}
+
+fn main() {
+  let p Point = Point {
+    .x = 1
+  }
+  p.mag  ; check: E3090
+  ret;
+}

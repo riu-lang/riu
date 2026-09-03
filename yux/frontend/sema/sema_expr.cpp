@@ -1217,12 +1217,17 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
 
         // Phase C：读路径字段（非调用 callee）。`x.foo()` 留给调用路径；
         // `to_*` 是内置转换；模块 / 包链不按字段查。
+        // 方法当值 / 非字段 Fn·Dyn → E3090。模块/包链是路径前缀，不报。
         if (!callCallee) {
             string mem = n->member();
             bool skipField = mem.starts_with("to_");
+            bool skipPkg = false;
             if (!skipField && n->hasResolvedType()) {
                 const TypeInfo& rt = n->resolvedType();
-                if (rt.isFn() || rt.isDyn() || rt.name == "fn_overload" || rt.name == "pkg_chain") {
+                if (rt.name == "pkg_chain") {
+                    skipField = true;
+                    skipPkg = true;
+                } else if (rt.isFn() || rt.isDyn() || rt.name == "fn_overload") {
                     skipField = true;
                 }
             }
@@ -1236,17 +1241,19 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                     }
                     if (sym && (sym->kind == SymbolKind::Module || sym->kind == SymbolKind::Package)) {
                         skipField = true;
+                        skipPkg = true;
                     }
                 }
             }
+            bool isMethod = false;
             if (!skipField) {
                 try {
                     auto* base = n->baseExpr();
                     TypeInfo bt = base->hasResolvedType() ? base->resolvedType() : base->getType();
                     TypeInfo peeled = applyInstSubst(bt).peelAutoDeref();
-                    const bool isMethod = receiverHasMethod(peeled, mem, _file, _sdkFile) ||
-                                          (isCurrentTypeParam(peeled) &&
-                                           typeParamBoundHasMethod(_currentFn, _file, _sdkFile, peeled.name, mem));
+                    isMethod = receiverHasMethod(peeled, mem, _file, _sdkFile) ||
+                               (isCurrentTypeParam(peeled) &&
+                                typeParamBoundHasMethod(_currentFn, _file, _sdkFile, peeled.name, mem));
                     if (!isMethod) {
                         tryValidateFieldChain(bt, {mem}, n->resolveLineNumber(), n->resolveColumn());
                     }
@@ -1254,6 +1261,19 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                     throw;
                 } catch (...) { // NOLINT(bugprone-empty-catch)
                     // getType 失败，留 Compiler
+                }
+            }
+            // 方法当值 / 非字段 Fn·Dyn：E3090。模块/包链是 `pkg.mod.fn()` 的路径前缀，不报。
+            if ((skipField || isMethod) && !mem.starts_with("to_") && !skipPkg) {
+                bool isField = false;
+                try {
+                    isField = n->isFieldAccess();
+                } catch (const YuxError&) {
+                    throw;
+                } catch (...) { // NOLINT(bugprone-empty-catch)
+                }
+                if (!isField) {
+                    throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3090);
                 }
             }
         }

@@ -1,0 +1,20 @@
+; 泛型 fn 体：T 实例化为 Point 后 a.mag 是方法当值 → E3090
+struct Point {
+  x i32
+
+  fn mag() i32 {
+    ret $.x
+  }
+}
+
+fn at<T>(a T) {
+  a.mag  ; check: E3090
+  ret;
+}
+
+fn main() {
+  at:<Point>(Point {
+    .x = 1
+  })
+  ret;
+}

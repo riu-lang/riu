@@ -73,6 +73,11 @@ sp<TypeInfo> arrayElemTarget(const TypeInfo& t);
 // 符号定义在 FileNode（本文件 / SDK / wildcard）上 → 全局，不是闭包捕获。
 bool isOuterLocalCapture(ScopeNode* from, SymbolInfo* sym, const string& name);
 
+// 与 Compiler `_localVarPtrs.contains` 对齐：当前 codegen 帧内的槽
+// （形参含 `$`、本帧局部、lambda 形参与 lambda 体局部）。
+// 全局（FileNode）与 lambda 外层局部 / 外层 `$` 为 false。
+bool isCodegenFrameLocal(const string& name, p<Node> from, LambdaExprNode* lambda);
+
 // 与 compileLiteralExpr 捕获门控对齐：标量 / 堆句柄 / T& / Heap? 可捕，其余 E2029。
 enum class LambdaCapKind : std::uint8_t { Skip, Scalar, Handle, Ref, HeapNullable, Unsupported };
 

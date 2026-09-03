@@ -642,6 +642,12 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                                                           "`&<expr-of-{}>` 或先声明同类型 T&",
                                                           srcName, innerType->name, innerType->name));
                             }
+                            // 与 compileDeclareAssignStatement `_localVarPtrs` 对齐：
+                            // 形参 / 本帧局部可拷绑；全局与 lambda 外层 T& → E4004。
+                            if (!isCodegenFrameLocal(srcName, da, _currentLambda)) {
+                                throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E4004, srcName)
+                                    .withHint("T& 只能绑定到当前函数内的局部变量；不可绑参数、全局符号或外层闭包变量");
+                            }
                         } else {
                             throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3019)
                                 .withHint("T& 局部初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量），或 "

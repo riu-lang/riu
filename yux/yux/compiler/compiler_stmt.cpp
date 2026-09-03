@@ -480,6 +480,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 auto srcName = litObj->getValue().getText();
                 auto it = _localVarPtrs.find(srcName);
                 if (it == _localVarPtrs.end()) {
+                    // E4004 由 SemaPass 先抛；此处防 IR 绑到非本帧槽。
                     throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E4004, srcName)
                         .withHint("T& 只能绑定到当前函数内的局部变量；不可绑参数、全局符号或外层闭包变量");
                 }

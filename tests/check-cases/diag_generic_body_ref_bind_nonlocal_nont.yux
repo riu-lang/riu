@@ -1,0 +1,18 @@
+; 泛型 fn 体：lambda 拷绑外层 T& 与 T 无关，模板期也报 E4004
+fn sink(f Function<i32>) i32 {
+  ret f()
+}
+
+fn unused<T>() {
+  let x i32 = 1
+  let r i32& = &x
+  sink(() => {
+    let r2 i32& = r  ; check: E4004
+    ret 0
+  })
+  ret;
+}
+
+fn main() {
+  ret;
+}

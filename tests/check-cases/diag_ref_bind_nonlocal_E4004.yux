@@ -1,0 +1,14 @@
+; lambda 内拷绑外层 T& → E4004（Phase C；与 Compiler `_localVarPtrs` 对齐）
+fn sink(f Function<i32>) i32 {
+  ret f()
+}
+
+fn main() {
+  let x i32 = 1
+  let r i32& = &x
+  sink(() => {
+    let r2 i32& = r  ; check: E4004
+    ret 0
+  })
+  ret;
+}

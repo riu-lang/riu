@@ -166,6 +166,21 @@ bool isOuterLocalCapture(ScopeNode* from, SymbolInfo* sym, const string& name) {
     return false;
 }
 
+bool isCodegenFrameLocal(const string& name, p<Node> from, LambdaExprNode* lambda) {
+    if (!from || name.empty()) return false;
+    ScopeNode* start = from->findNearestScope();
+    ScopeNode* stopParent = nullptr;
+    if (lambda && lambda->bodyScope()) {
+        stopParent = lambda->bodyScope()->parentScope();
+    }
+    for (auto* sc = start; sc && sc != stopParent; sc = sc->parentScope()) {
+        if (sc->localSymbols().contains(name)) {
+            return dynamic_cast<FileNode*>(sc) == nullptr;
+        }
+    }
+    return false;
+}
+
 LambdaCapKind classifyLambdaCapture(const TypeInfo& t) {
     if (t.isNormal() && t.name.empty()) return LambdaCapKind::Skip;
     if (t.isNormal() && isBuiltinType(t.name)) return LambdaCapKind::Scalar;

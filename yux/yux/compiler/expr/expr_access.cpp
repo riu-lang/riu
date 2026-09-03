@@ -334,6 +334,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
             }
         }
     }
+    // E3090 由 SemaPass 读路径先抛（方法当值 / 非字段点表达式）；此处防 IR 无成员可降。
     throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3090);
 }
 
