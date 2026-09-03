@@ -54,3 +54,7 @@ fn run_ptr_ffi() {
   demo_ptr_basics()
   println("=== ptr_ffi 完成 ===")
 }
+
+fn main() {
+  run_ptr_ffi()
+}

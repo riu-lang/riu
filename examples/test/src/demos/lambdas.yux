@@ -138,3 +138,7 @@ fn run_lambdas() {
   demo_returning_lambda()
   println("=== lambdas 完成 ===")
 }
+
+fn main() {
+  run_lambdas()
+}

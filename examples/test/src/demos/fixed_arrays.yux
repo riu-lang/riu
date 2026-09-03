@@ -67,3 +67,7 @@ fn run_fixed_arrays() {
   demo_fixed_arrays()
   println("=== fixed_arrays 完成 ===")
 }
+
+fn main() {
+  run_fixed_arrays()
+}

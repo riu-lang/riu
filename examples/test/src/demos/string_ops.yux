@@ -9,13 +9,13 @@ fn demo_string_basics() {
   let s String = "Hello"
   println(s)
 
-  ; 长度
-  let n i64 = s.len()
+  ; 长度（usize）
+  let n usize = s.len()
   println("len: ")
-  println(n)
+  println(n.to_i64())
 
-  ; 取码点（方法调用参数需精确类型后缀：0i64）
-  let c u32 = s.get(0i64)
+  ; 取码点（索引为 usize，可写 0 或 0usize）
+  let c u32 = s.get(0)
   println("get(0) = 'H': ")
   println(c)
 
@@ -24,9 +24,12 @@ fn demo_string_basics() {
   println("== 'Hello': ")
   println(eq)
 
-  ; starts_with / contains: SDK 已定义但链接时缺失符号（待 SDK 重编）
-  ; let sw bool = s.starts_with("Hel")
-  ; let has bool = s.contains("ell")
+  let sw bool = s.starts_with("Hel")
+  let has bool = s.contains("ell")
+  println("starts_with('Hel'): ")
+  println(sw)
+  println("contains('ell'): ")
+  println(has)
 
   ; to_bytes (UTF-8)
   let bytes Array<u8> = s.to_bytes()
@@ -116,7 +119,7 @@ fn demo_string_from_buffer() {
   #Mut let buf Array<u32> = []
   buf.push(c'h')
   buf.push(c'i')
-  let s String = String::from(buf)
+  let s String = String::from(&buf)
   println(s)
   println("len: ")
   println(s.len())
@@ -131,4 +134,8 @@ fn run_string_ops() {
   demo_stringbuilder()
   demo_string_from_buffer()
   println("=== string_ops 完成 ===")
+}
+
+fn main() {
+  run_string_ops()
 }

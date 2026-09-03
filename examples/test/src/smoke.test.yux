@@ -115,11 +115,11 @@ fn test_enum_match() {
 #Test
 fn test_array_push_len() {
   #Mut let a Array<i32> = []
-  assert_eq(a.len(), 0i64)
+  assert_eq(a.len(), 0)
   a.push(10)
   a.push(20)
   a.push(30)
-  assert_eq(a.len(), 3i64)
+  assert_eq(a.len(), 3)
 }
 
 #Test
@@ -181,8 +181,8 @@ fn test_move_assign_swap() {
 fn test_move_assign_array() {
   #Mut let xs Array<i32> = [1, 2, 3]
   let old Array<i32> = xs <- []
-  assert_eq(old.len(), 3i64)
-  assert_eq(xs.len(), 0i64)
+  assert_eq(old.len(), 3)
+  assert_eq(xs.len(), 0)
 }
 
 ; ==================== StringBuilder ====================

@@ -1,11 +1,13 @@
 ; main.yux — examples/test 入口
 ; 运行：cd examples/test && yux build && build/example.exe
 ; 测试：cd examples/test && yux test
-; 各独立 demo 在 demos/ 子目录，通过改 yux.toml entry 单独运行
+; 各 demo 在 src/demos/，改 yux.toml entry 即可单独运行，例如：
+;   entry = "demos/basics.yux"
 use yux.core.*
 
 fn main() {
   println("yux examples/test")
-  println("  主示例在 demos/ 子目录，编辑 yux.toml entry 指向对应文件即可单独运行。")
+  println("  demo 在 src/demos/，编辑 yux.toml 的 entry 指向对应文件即可单独运行。")
+  println("  例：entry = \"demos/basics.yux\"")
   println("  测试：yux test")
 }

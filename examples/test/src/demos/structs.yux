@@ -56,7 +56,11 @@ struct Point {
 
   #Static
   fn origin() Point {
-    ret Point::make(0.0, 0.0)
+    ret Self::make(0.0, 0.0)
+  }
+
+  fn translated(dx f64, dy f64) Point {
+    ret Self::make($.x + dx, $.y + dy)
   }
 
   fn plus(other Point&) Point {
@@ -76,6 +80,14 @@ fn demo_struct_literal() {
   }
 
   let p3 Point = p1 + p2
+
+  ; Self::make 在实例方法中等价于 Point::make
+  let p4 Point = p1.translated(10.0, 20.0)
+  println("p4.x (translated): ")
+  println(p4.x)
+  println("p4.y (translated): ")
+  println(p4.y)
+
   println("p3.x: ")
   println(p3.x)
   println("p3.y: ")
@@ -96,7 +108,7 @@ struct Config {
     }
   }
 
-  fn name_len() i64 {
+  fn name_len() usize {
     $.name.len()
   }
 }
@@ -178,4 +190,8 @@ fn run_structs() {
   demo_field_annotations()
   demo_static_fields()
   println("=== structs 完成 ===")
+}
+
+fn main() {
+  run_structs()
 }

@@ -241,3 +241,7 @@ fn run_basics() {
 
   println("=== basics 完成 ===")
 }
+
+fn main() {
+  run_basics()
+}
