@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-09-03 —— v0.20 编译器结构收口（实现归档）
+
+- **SemaPass 收口**：调用 / 方法 / statement / 泛型体 / target-type 上下文语义检查迁入 `yux/frontend/sema/`；`kMigratedCodes` 反转；已覆盖码 Compiler 副本改 `throwSemaGap`（E3091）。残余 LLVM/内部兜底与未实例化泛型体策略见 `rules/sema-codegen.md`。
+- **基础设施**：NameResolver 唯一查找；OwnershipOps 三入口；Array/String `#Builtin` 表驱动；`yux build --test --threads` 分片 spawn；模块 `.decl` + `yux-check test --threads`。
+- **冲突 / 兼容**：无用户可见语法/语义破坏。`yux-check` 与用户路径语义对齐；已知慢迁项不挡 v0.20 退出。
+
 ## 2026-09-03 —— `<-` LHS 形态报 E4036
 
 - **修改 §4.13.2.2 / 附录 D**：`<-` 左侧不是变量 / `$` / 字段 / 元组 `.N`（含索引）报 E4036。原先 Compiler 用占位 E0000，`yux-check` 漏报。

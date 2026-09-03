@@ -61,7 +61,7 @@
 
 ### v1.0 候选 — 规范定稿 + ABI 冻结
 
-> **现状提示**：v1.0 仍远（当前 v0.20-alpha）。spec 残留 Open Issues 已审计并关/转/留；本节标准是终态门槛，不是近期目标。下方"后续主题"里的待编号工作要先落，才进 v1.0 候选。
+> **现状提示**：v1.0 仍远（当前 v0.21-alpha）。spec 残留 Open Issues 已审计并关/转/留；本节标准是终态门槛，不是近期目标。下方"后续主题"里的待编号工作要先落，才进 v1.0 候选。
 
 **退出标准**：
 
@@ -103,7 +103,58 @@
 
 - **性能与 layout 优化**：String 专属 FAM Block（`{strong, weak, len_cps, u32 data[]}`）；Array Block 内联小尺寸优化；内联策略与裁剪；基准测试无回归。
 
-### v0.20.0-alpha — 编译器结构收口
+### v0.21.0-alpha — 可用性：SDK + 控制流 + FFI
+
+**主题**：从「语言能跑测试」切到「能写简单独立程序」。重心在 SDK（IO / 集合 / 字符串）、日常控制流语法、C 互操作收口；编译器内部 Sema 残余对齐**不阻塞**本版（慢迁）。
+
+**动机（v0.20 之后仍缺的）**：
+- 只有 `print` / `println`，无 stdin / 文件读写 → 写不了 CLI
+- 无 `continue` / `for-in`，循环只能 `loop` + `break` + `if` 包裹
+- FFI 能力在 `base.yux` / `ptr_ffi` 测试里，缺用户向包装与示例项目
+- `examples/` 以语法 demo 为主，缺「完整小程序」样板
+
+**范围（草稿）**：
+
+**A. SDK — IO 与进程**
+- 新模块 `yux.io`（或 `core.io`）：`read_line()`（stdin）、`read_file` / `write_file` / `append_file`（最小路径 API）
+- 接通 stderr（`eprint` / `eprintln` 走 `_stderr_write`，补 spec §8.6 待办）
+- `exit(code)` 已有；评估 `fn main() i32` 返回退出码（可选，不阻塞）
+
+**B. SDK — 字符串与集合**
+- `Map<K, V>`：v1 允许纯 yux 实现（`Array<(K,V)>` + 线性探测或有序数组二分）；不要求编译器新 builtin
+- String 高频补：`trim` / `trim_left` / `trim_right`；`lines()` 迭代器预备（可先返 `Array<String>`）
+- `${}` 插值已有；**不做** `format("{:04}")` 类 printf 格式（推后续主题）
+
+**C. 控制流语法（改 g4）**
+- `continue` / `continue@label`（与 `break@label` 对称；附录 A 同步）
+- `for item in expr`：v1 **仅** `Array<T>` 与 `[T*N]` 定长数组（lower 为索引 `loop`）；不引入 `Iter<T>` spec / 泛型 enum
+- sema：循环变量遮蔽、break/continue 目标校验（复用 E3022 族）
+
+**D. C / FFI 收口**
+- `extern` 白名单与边界类型表写入 spec §6.6 / §9（与实现对齐）
+- 补全 `String` / `Array<T>` / `Ref<T>` → `Ptr` 自动转换的**用户向**包装与诊断例（扩 `ptr_ffi` / `examples`）
+- `yux.toml [link]` + `#CName` 示例：项目调 Win32 API 或小型 `.lib`（不必新链接器特性）
+- **不做**：`extern fn` 上 `#Fallible`、函数类型跨 FFI、`fn` 值回调（推错误模型 Phase 7 / v0.22+）
+
+**E. 示例与文档**
+- `examples/` 新增 3+ 可运行小程序：`echo`（参数/stdin）、`cat`（文件读）、`guess`（read_line + loop）
+- 用户向「第一个程序」短文（`docs/` 或 `examples/README`）
+- `yux build` + `yux test` 在 examples 项目 CI 可跑
+
+**不在范围**：v0.20 Sema LLVM 兜底慢迁；完整 HIR / visitor；泛型 enum；错误模型 v2；`Map` 哈希 builtin / O(1) 保证；`format` printf；`while`；包管理 / 远程依赖；多平台（仍 Windows-first）；LSP 大改；进程内并行 SemaPass。
+
+**退出标准**：
+
+- [ ] 不依赖手写 C 即可编写并运行 ≥3 个独立 CLI 示例（stdin/stdout/文件/退出码）
+- [ ] `continue` + `for-in`（Array / 定长数组）有 SDK 测试与 spec 条款
+- [ ] `yux.io`（或等价）read/write 有 SDK 测试；stderr 通道可用
+- [ ] `Map<K,V>` 基本 get/insert/contains 可用（性能不承诺）
+- [ ] FFI 示例项目 + extern 边界文档与 `yux test` / `yux-check test` / `./build.ps1 test` 全绿
+- [ ] `./lint.ps1` 0 warnings；CHANGELOG 收口
+
+**依赖**：v0.20 已完成（spawn、`.decl`、SemaPass 收口）。
+
+### v0.20.0 — 编译器结构收口 ✅ 已完成（2026-09-03）
 
 **主题**：语义检查收口到 SemaPass；TypeInfo 谓词与名字查找去重；所有权三个入口；Builtin 方法表驱动；`yux test` 并行编译。不加新语法。
 
@@ -120,13 +171,14 @@
 **退出标准**：
 
 - [x] NameResolver 为 struct / enum / fn / alias 唯一查找；Compiler 不再双跑 `validateAliases`
-- [ ] 正常路径下 Compiler 不再抛语义错；`yux-check` 覆盖与 `yux build` 对齐（仍缺的列进 TODO）
+- [x] 用户可见语义码迁入 SemaPass；已覆盖码 Compiler 副本改 `throwSemaGap`（E3091）。残余 LLVM/内部兜底（E3080/E3096/E3098/E6019 等）与未实例化泛型体策略记入 `rules/sema-codegen.md`，慢迁不挡退出
 - [x] 所有权三个入口收口 retain / release 协议
 - [x] Array / String `#Builtin` 方法表驱动（`kBuiltinMethods`：类型谓词 × 方法名 → arity + lowering）
 - [x] `yux build --test` 按测试文件并行 spawn；`--threads 1` 串行；新鲜 dll 不 spawn
-- [ ] `yux test` / `yux-check test` / `./build.ps1 test` 全绿
-- [ ] `./lint.ps1` 0 warnings
-- [ ] CHANGELOG 收口
+- [x] 模块 `.decl`：SDK / `use` 读声明；`yux-check test --threads` spawn
+- [x] `yux test` / `yux-check test` / `./build.ps1 test` 全绿
+- [x] `./lint.ps1` 0 warnings
+- [x] CHANGELOG 收口
 
 ### v0.19.0-alpha — 遗留实现收口 + SDK 方法补全 + Array 工厂 ✅ 已完成（2026-08-28）
 
