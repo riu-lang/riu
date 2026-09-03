@@ -168,6 +168,12 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
         }
     }
 
+    if (ctx->errType) {
+        header->setFallibleErrType(any_cast_p<TypeNode>(visit(ctx->errType)));
+    }
+    checkFallibleDualDecl(header);
+    checkFallibleRetMismatch(header);
+
     stack.emplace_back(header);
 
     if (auto fnParamsCtx = ctx->fnParams()) {

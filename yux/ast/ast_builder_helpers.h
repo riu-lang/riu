@@ -185,7 +185,7 @@ AnnoList collectAnnosExternFn(const AnnoVec& annos) {
 // Phase 10d-1：`#NoReturn` 头部级语义校验（E7012 / E7013）
 // 不依赖 fn body，仅看 header 注解 + retType。E7014（流终止）与调用点流终止注册推 10d-2。
 //   E7012 — `#NoReturn` 函数声明带返回类型
-//   E7013 — `#NoReturn` 与 `#Fallible(E)` 互斥
+//   E7013 — `#NoReturn` 与 `#Fallible(E)` / `T ! E` 互斥
 static void checkNoReturnHeader(p<FnHeaderNode> header) {
     if (!header->hasAnno("NoReturn")) return;
     int line = header->getLineNumber();
@@ -193,11 +193,24 @@ static void checkNoReturnHeader(p<FnHeaderNode> header) {
     if (header->retType()) {
         throw YuxError(line, col, ErrorCode::E7012, header->name().getText());
     }
-    if (header->hasAnno("Fallible")) {
-        // 取 #Fallible 的单参 E（若解析得到则填，否则空字符串）
-        auto eOpt = header->getAnnoArg("Fallible");
-        string e = eOpt.value_or("");
-        throw YuxError(line, col, ErrorCode::E7013, e);
+    if (!header->resolvedFallibleErr().empty()) {
+        throw YuxError(line, col, ErrorCode::E7013, header->resolvedFallibleErr());
+    }
+}
+
+static void checkFallibleDualDecl(p<FnHeaderNode> header) {
+    if (!header->hasAnno("Fallible")) return;
+    if (!header->fallibleErrTypeNode()) return;
+    throw YuxError(header->getLineNumber(), header->getColumn(), ErrorCode::E7019,
+                   header->resolvedFallibleErr());
+}
+
+static void checkFallibleRetMismatch(p<FnHeaderNode> header) {
+    const string err = header->resolvedFallibleErr();
+    if (err.empty() || !header->retType()) return;
+    const TypeInfo retType = header->retType()->getType();
+    if (retType.name == err) {
+        throw YuxError(header->getLineNumber(), header->getColumn(), ErrorCode::E7008, retType.name, err);
     }
 }
 

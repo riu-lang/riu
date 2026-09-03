@@ -338,7 +338,7 @@ void registerTopFn(FileNode* file, FnNode* fn) {
     FnSymbolInfo info{name, file->moduleName(), params, ret};
     info.isNoReturn = h->hasAnno("NoReturn");
     info.isConst = h->hasAnno("Const");
-    if (auto e = h->getAnnoArg("Fallible")) info.fallibleErrType = *e;
+    info.fallibleErrType = h->resolvedFallibleErr();
     if (auto e = h->getAnnoArg("CName")) info.cName = *e;
     file->registerFnSymbol(name, info);
 
@@ -375,7 +375,7 @@ void registerMethod(FileNode* file, StructImplNode* impl, FnNode* method) {
     FnSymbolInfo methodFnSym{fullName, file->moduleName(), paramTypes, retType};
     methodFnSym.isNoReturn = method->header()->hasAnno("NoReturn");
     methodFnSym.isConst = method->header()->hasAnno("Const");
-    if (auto e = method->header()->getAnnoArg("Fallible")) methodFnSym.fallibleErrType = *e;
+    methodFnSym.fallibleErrType = method->header()->resolvedFallibleErr();
     file->registerFnSymbol(fullName, methodFnSym);
 
     method->setParentScope(file);

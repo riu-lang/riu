@@ -161,6 +161,21 @@ std::any ASTBuilder::visitTypeUnit(yux::yuxParser::TypeUnitContext* ctx) {
     return static_cast<p<TypeNode>>(createWithLine<TypeTupleNode>(ctx, parent, vector<p<TypeNode>>{}));
 }
 
+// T ! E 类型位
+std::any ASTBuilder::visitTypeFallible(yux::yuxParser::TypeFallibleContext* ctx) {
+    p<Node> parent = currentScope();
+    auto base = any_cast_p<TypeNode>(visit(ctx->base));
+    auto err = any_cast_p<TypeNode>(visit(ctx->errType));
+    if (err->getType().isNullable()) {
+        auto* tok = ctx->SymbolExcl()->getSymbol();
+        throw YuxError(tok ? static_cast<int>(tok->getLine()) : 0,
+                       tok ? static_cast<int>(tok->getCharPositionInLine()) + 1 : 0, ErrorCode::E2001)
+            .withHint("`T ! E?` is invalid — error type `E` must not be nullable");
+    }
+    DEBUG_LOG_VAL("    Type: Fallible", base->getType().getFullName() << " ! " << err->getType().name);
+    return static_cast<p<TypeNode>>(createWithLine<TypeFallibleNode>(ctx, parent, base, err));
+}
+
 // Phase 4a: typeWithRef → TypeNode；SymbolAnd 存在则包成 Ref<inner>
 // 语法已改：typeWithRef 现有 4 个分支，与 type 的 4 个分支结构对应，但每个内部位置（generic args / array elem）
 // 也允许带 &，从而支持 Rc<i32&> 这类嵌套引用类型作为参数 / 局部 var 类型。

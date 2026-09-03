@@ -128,6 +128,26 @@ public:
     void setNullable(bool v) { _nullable = v; }
 };
 
+class TypeFallibleNode : public TypeNode {
+    p<TypeNode> _base;
+    p<TypeNode> _errType;
+
+public:
+    TypeFallibleNode(const p<Node>& parent, p<TypeNode> base, p<TypeNode> errType)
+        : TypeNode(parent), _base(std::move(base)), _errType(std::move(errType)) {}
+
+    [[nodiscard]] TypeInfo getType() const override {
+        auto base = _base->getType();
+        auto err = _errType->getType();
+        TypeInfo ti = base;
+        ti.name = base.getFullName() + "!" + err.name;
+        return ti;
+    }
+
+    [[nodiscard]] p<TypeNode> baseType() const { return _base; }
+    [[nodiscard]] p<TypeNode> errType() const { return _errType; }
+};
+
 // 元组类型节点 (T1, T2, ...)
 class TypeTupleNode : public TypeNode {
     vector<p<TypeNode>> _elementTypes;

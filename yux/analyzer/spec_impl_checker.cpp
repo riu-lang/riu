@@ -345,9 +345,7 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
         FnSymbolInfo methodFnSym{fullName, implFile->moduleName(), paramTypes, retType};
         methodFnSym.isNoReturn = dsig->hasAnno("NoReturn");
         methodFnSym.isConst = dsig->hasAnno("Const");
-        if (auto eOpt = dsig->getAnnoArg("Fallible")) {
-            methodFnSym.fallibleErrType = *eOpt;
-        }
+        methodFnSym.fallibleErrType = dsig->resolvedFallibleErr();
         implFile->registerFnSymbol(fullName, methodFnSym);
     }
 
@@ -395,9 +393,7 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
             FnSymbolInfo methodFnSym2{fullName2, implFile->moduleName(), paramTypes2, retType2};
             methodFnSym2.isNoReturn = dsig->hasAnno("NoReturn");
             methodFnSym2.isConst = dsig->hasAnno("Const");
-            if (auto eOpt = dsig->getAnnoArg("Fallible")) {
-                methodFnSym2.fallibleErrType = *eOpt;
-            }
+            methodFnSym2.fallibleErrType = dsig->resolvedFallibleErr();
             implFile->registerFnSymbol(fullName2, methodFnSym2);
 
             impl->addSpecDisambigEmit({.spec = spec, .sigIdx = sigIdx, .subst = subst, .emitMethodName = emitName});

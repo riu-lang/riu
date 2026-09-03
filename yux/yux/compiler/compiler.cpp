@@ -154,9 +154,7 @@ void Compiler::compile(p<FileNode> file) {
                 // 10g-7：main 是否标 #Fallible(E)？
                 string mainFallibleErr;
                 if (mainFn->header()) {
-                    if (auto e = mainFn->header()->getAnnoArg("Fallible")) {
-                        mainFallibleErr = *e;
-                    }
+                    mainFallibleErr = mainFn->header()->resolvedFallibleErr();
                 }
                 if (!mainFallibleErr.empty()) {
                     DEBUG_LOG_VAL("Emitting main startup (Fallible)", mainFallibleErr);
@@ -555,7 +553,7 @@ void Compiler::compileStructImpls() {
                 retType = method->header()->retType()->getType();
             }
             string mFallibleErr;
-            if (auto e = method->header()->getAnnoArg("Fallible")) mFallibleErr = *e;
+            mFallibleErr = method->header()->resolvedFallibleErr();
             auto func = getMethodFunction(structName, methodName, paramTypes, retType, mFallibleErr, isStatic);
             compileMethod(method, func, structName, false, isStatic);
         }
@@ -692,7 +690,7 @@ void Compiler::emitSpecDefaultBodyMethod(SpecDeclNode* spec, size_t sigIdx, cons
     TypeInfo retType;
     if (header->retType()) retType = header->retType()->getType();
     string mFallibleErr;
-    if (auto e = header->getAnnoArg("Fallible")) mFallibleErr = *e;
+    mFallibleErr = header->resolvedFallibleErr();
     bool isStatic = header->isStatic();
 
     // === 4) compileMethod ===
@@ -832,7 +830,7 @@ void Compiler::emitInstanceMethods() {
                         throwSemaGap(static_cast<size_t>(method->header()->getLineNumber()));
                     }
                     string mFallibleErr;
-                    if (auto e = method->header()->getAnnoArg("Fallible")) mFallibleErr = *e;
+                    mFallibleErr = method->header()->resolvedFallibleErr();
                     auto func = getMethodFunction(structName, methodName, paramTypes, retType, mFallibleErr, isStatic);
                     compileMethod(method, func, structName, false, isStatic);
                 }
@@ -990,7 +988,7 @@ void Compiler::emitFnInstances() {
                         }
                     }
                     string fallibleErr;
-                    if (auto e = baseFn->header()->getAnnoArg("Fallible")) fallibleErr = *e;
+                    fallibleErr = baseFn->header()->resolvedFallibleErr();
                     auto llvmRetType = wrapFallibleRetType(retType, fallibleErr);
                     auto fnType = llvm::FunctionType::get(llvmRetType, llvmParamTypes, false);
                     fn = llvm::Function::Create(fnType, llvm::Function::LinkOnceODRLinkage, mangledFnName, _module);
@@ -1079,7 +1077,7 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
         // #Fallible(E) void-return 函数体走到末尾：补隐式成功-void ret struct
         // （与 compileRetVoidStatement 同形；[#10.A] T_ok=void）
         string fallibleErrName;
-        if (auto e = node->header()->getAnnoArg("Fallible")) fallibleErrName = *e;
+        fallibleErrName = node->header()->resolvedFallibleErr();
         bool fnRetVoid = !node->header()->retType();
         if (!fallibleErrName.empty() && fnRetVoid) {
             callDestructorsForScope();
@@ -1194,7 +1192,7 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
     if (!_builder.GetInsertBlock()->getTerminator()) {
         // 方法上的 #Fallible(E) void：补隐式成功-void ret struct（与 fn 同型）
         string fallibleErrName;
-        if (auto e = node->header()->getAnnoArg("Fallible")) fallibleErrName = *e;
+        fallibleErrName = node->header()->resolvedFallibleErr();
         bool methRetVoid = !node->header()->retType();
         if (!fallibleErrName.empty() && methRetVoid && !isDestructor) {
             callDestructorsForScope();

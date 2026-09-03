@@ -139,6 +139,8 @@ type:
       ID #typeNormal
     // [PROBE static-fn] Self 类型字面量；struct / #Spec body 内合法，体外由 sema 拒
     | SelfType #typeSelf
+    // T ! E 须在 typeNullable 之前，以支持 i32? ! E
+    | base=type SymbolExcl errType=type #typeFallible
     | type SymbolQuest        #typeNullable
     // A<T> B<T1, T2>
     | ID genericDef           #typeGeneric
@@ -260,7 +262,9 @@ fnHeader:
     ParStart LineEnd*
         fnParams?
     ParEnd
-    (retType=typeWithRef)?
+    ( retType=typeWithRef (SymbolExcl errType=type)?
+    | SymbolExcl errType=type
+    )?
     ;
 
 // 单行 a i32, b i32
@@ -327,7 +331,9 @@ lambdaBody: expr;
 trailingLambda:
     BlockStart LineEnd*
       ParStart lambdaParams? ParEnd
-      retType=typeWithRef?
+      ( retType=typeWithRef (SymbolExcl errType=type)?
+      | SymbolExcl errType=type
+      )?
       SymbolEqMt
       LineEnd*
       (statement|LineEnd)*
@@ -394,7 +400,9 @@ expr:
     // body 走 lambdaBody 包装规则：避免 ANTLR4 左递归把 `(a, b) => a + b` 误切成 `((a, b) => a) + b`
     // 语句体走 statementBlock；`{ stmts }` 不再单独作为 lambda 表达式（尾随见 trailingLambda）
       ParStart lambdaParams? ParEnd
-      retType=typeWithRef?
+      ( retType=typeWithRef (SymbolExcl errType=type)?
+      | SymbolExcl errType=type
+      )?
       SymbolEqMt
       (statementBlock | body=lambdaBody)  # exprLambdaParen
     // [PROBE static-fn] 结构体字段字面量：Self { \n .x = e \n .y = e \n }

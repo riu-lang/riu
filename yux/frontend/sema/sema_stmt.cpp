@@ -509,7 +509,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                 }
             }
             if (header) {
-                if (auto e = header->getAnnoArg("Fallible")) retCtx.fallibleErr = *e;
+                retCtx.fallibleErr = header->resolvedFallibleErr();
             }
         }
         if (ret->expr()) visitExpr(ret->expr(), retExpPtr);

@@ -34,6 +34,12 @@ TypeInfo FnHeaderNode::getType() const {
     return {};
 }
 
+string FnHeaderNode::resolvedFallibleErr() const {
+    if (_fallibleErrType) return _fallibleErrType->getType().name;
+    if (auto e = getAnnoArg("Fallible")) return *e;
+    return {};
+}
+
 FnNode::FnNode(const p<Node>& parent, p<FnHeaderNode> header) : ScopeNode(parent), _header(header) {}
 
 void FnNode::addStatement(p<StatementNode> stmt) {

@@ -1,0 +1,12 @@
+; 成功类型 == 错误类型 → E7008（T ! E 路径）
+enum ParseErr {
+  Empty
+}
+
+fn parse() ParseErr ! ParseErr {  ; check: E7008
+  ret ParseErr::Empty
+}
+
+fn main() {
+  ret;
+}

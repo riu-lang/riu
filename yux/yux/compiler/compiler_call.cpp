@@ -699,7 +699,7 @@ llvm::Value* Compiler::handleFallibleCallResult(llvm::Value* callResult, const s
     string callerErr;
     TypeInfo callerRetType;
     if (_currentFnNode && _currentFnNode->header()) {
-        if (auto e = _currentFnNode->header()->getAnnoArg("Fallible")) callerErr = *e;
+        callerErr = _currentFnNode->header()->resolvedFallibleErr();
         if (_currentFnNode->header()->retType()) {
             callerRetType = _currentFnNode->header()->retType()->getType();
         }

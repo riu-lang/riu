@@ -806,7 +806,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
             }
         }
         string gFallibleErr;
-        if (auto e = genericFn->header()->getAnnoArg("Fallible")) gFallibleErr = *e;
+        gFallibleErr = genericFn->header()->resolvedFallibleErr();
         auto retType = wrapFallibleRetType(instRetType, gFallibleErr);
         auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
         fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, cName, _module);

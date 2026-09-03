@@ -69,7 +69,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
     // 析构序与成功路径完全一致（[#10.B] U1）：构 retStruct 后调 callDestructorsForScope。
     string fallibleErrName;
     if (_currentFnNode && _currentFnNode->header()) {
-        if (auto e = _currentFnNode->header()->getAnnoArg("Fallible")) fallibleErrName = *e;
+        fallibleErrName = _currentFnNode->header()->resolvedFallibleErr();
     }
     if (!fallibleErrName.empty()) {
         // 灵活整数：成功通道按 declRetType 推断（与下方非 Fallible 路径同型）
@@ -332,7 +332,7 @@ void Compiler::compileRetVoidStatement(p<StatementRetVoidNode> node) {
     // 构 { false, zero(ErrEnum) }（字段 0 = isErr, 字段 1 = ErrEnum）
     string fallibleErrName;
     if (_currentFnNode && _currentFnNode->header()) {
-        if (auto e = _currentFnNode->header()->getAnnoArg("Fallible")) fallibleErrName = *e;
+        fallibleErrName = _currentFnNode->header()->resolvedFallibleErr();
     }
     if (!fallibleErrName.empty()) {
         auto retStructTy = getFallibleRetStructType(TypeInfo(), fallibleErrName);

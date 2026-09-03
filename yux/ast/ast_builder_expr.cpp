@@ -158,6 +158,27 @@ p<ScopeNode> makeLambdaBodyScope(const p<ScopeNode>& parentScope, const vector<L
 }
 } // namespace
 
+namespace {
+
+void applyLambdaFallibleSuffix(ASTBuilder* self, yux::yuxParser::TypeContext* errCtx, p<LambdaExprNode>& node,
+                               p<TypeNode> retType) {
+    if (!errCtx) return;
+    auto errType = any_cast_p<TypeNode>(self->visit(errCtx));
+    if (errType->getType().isNullable()) {
+        throw YuxError(errType->getLineNumber(), errType->getColumn(), ErrorCode::E2001)
+            .withHint("`T ! E?` is invalid — error type `E` must not be nullable");
+    }
+    node->setFallibleErrType(errType);
+    if (retType) {
+        const string err = errType->getType().name;
+        if (retType->getType().name == err) {
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E7008, retType->getType().name, err);
+        }
+    }
+}
+
+} // namespace
+
 // Lambda 前缀：(args) RetT? => expr  或  (args) RetT? => { stmts }
 std::any ASTBuilder::visitExprLambdaParen(yux::yuxParser::ExprLambdaParenContext* ctx) {
     auto scope = currentScope();
@@ -183,6 +204,7 @@ std::any ASTBuilder::visitExprLambdaParen(yux::yuxParser::ExprLambdaParenContext
         node = createWithLine<LambdaExprNode>(ctx, scope, LambdaExprNode::Form::Expr, std::move(params), retType,
                                               bodyExpr, vector<p<StatementNode>>{});
     }
+    applyLambdaFallibleSuffix(this, ctx->errType, node, retType);
     _scopeStack.pop_back();
     node->setBodyScope(bodyScope);
     return static_cast<p<ExprNode>>(node);
@@ -204,6 +226,7 @@ p<LambdaExprNode> ASTBuilder::makeTrailingLambda(yux::yuxParser::TrailingLambdaC
     _scopeStack.pop_back();
     auto node = createWithLine<LambdaExprNode>(tl, scope, LambdaExprNode::Form::Block, std::move(params), retType,
                                                nullptr, std::move(stmts));
+    applyLambdaFallibleSuffix(this, tl->errType, node, retType);
     node->setBodyScope(bodyScope);
     return node;
 }

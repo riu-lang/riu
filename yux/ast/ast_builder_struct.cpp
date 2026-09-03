@@ -439,12 +439,10 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
         FnSymbolInfo methodFnSym{fullName, moduleName, paramTypes, retType};
         methodFnSym.isNoReturn = method->header()->hasAnno("NoReturn");
         methodFnSym.isConst = method->header()->hasAnno("Const");
-        if (auto eOpt = method->header()->getAnnoArg("Fallible")) {
-            methodFnSym.fallibleErrType = *eOpt;
-            if (!methodFnSym.fallibleErrType.empty() && retType.name == methodFnSym.fallibleErrType) {
-                throw YuxError(method->header()->getLineNumber(), method->header()->getColumn(), ErrorCode::E7008,
-                               retType.name, methodFnSym.fallibleErrType);
-            }
+        methodFnSym.fallibleErrType = method->header()->resolvedFallibleErr();
+        if (!methodFnSym.fallibleErrType.empty() && retType.name == methodFnSym.fallibleErrType) {
+            throw YuxError(method->header()->getLineNumber(), method->header()->getColumn(), ErrorCode::E7008,
+                           retType.name, methodFnSym.fallibleErrType);
         }
         file->registerFnSymbol(fullName, methodFnSym);
     }

@@ -153,6 +153,7 @@ public:
     std::any visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) override;
     std::any visitTypeArray(yux::yuxParser::TypeArrayContext* ctx) override;
     std::any visitTypeNullable(yux::yuxParser::TypeNullableContext* ctx) override;
+    std::any visitTypeFallible(yux::yuxParser::TypeFallibleContext* ctx) override;
     std::any visitTypeTuple(yux::yuxParser::TypeTupleContext* ctx) override;
     std::any visitTypeUnit(yux::yuxParser::TypeUnitContext* ctx) override;
 

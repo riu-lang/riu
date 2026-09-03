@@ -41,10 +41,15 @@ protected:
     // 空 vector 表示该类型形参无 bound。spec §12 / §6.4.4。
     vector<vector<string>> _typeParamBounds;
     p<TypeNode> _retType;
+    p<TypeNode> _fallibleErrType;
 
 public:
     FnHeaderNode(const p<Node>& parent, Token name, p<TypeNode> retType)
-        : Node(parent), Named(std::move(name)), _retType(retType) {}
+        : Node(parent), Named(std::move(name)), _retType(retType), _fallibleErrType(nullptr) {}
+
+    void setFallibleErrType(p<TypeNode> errType) { _fallibleErrType = std::move(errType); }
+    [[nodiscard]] p<TypeNode> fallibleErrTypeNode() const { return _fallibleErrType; }
+    [[nodiscard]] string resolvedFallibleErr() const;
 
     void addParam(p<FnParamNode> param);
 

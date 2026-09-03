@@ -114,8 +114,7 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         file->registerSymbol(fnName, fnSym);
 
         FnSymbolInfo fnFnSym{fnName, moduleName, paramTypes, retType};
-        // 预扫 #NoReturn / #Fallible(E)：避免在头部注册阶段重复 collectAnnos 校验
-        // Phase 10e：#Fallible(E) 单参 → 错误 enum 类型名（按字符串存）
+        string annoFallibleErr;
         for (auto* a : header->buildAnnos) {
             string aname = a->name->getText();
             if (aname == "NoReturn") {
@@ -123,10 +122,20 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
             } else if (aname == "Const") {
                 fnFnSym.isConst = true;
             } else if (aname == "Fallible" && a->annoArg()) {
-                fnFnSym.fallibleErrType = getBuildAnnoArgText(a);
+                annoFallibleErr = getBuildAnnoArgText(a);
             }
         }
-        // E7008：成功值类型 == #Fallible 错误类型（编译器无法分流 `ret` 通道）
+        string suffixFallibleErr;
+        if (header->errType) {
+            auto errNode = any_cast_p<TypeNode>(visit(header->errType));
+            suffixFallibleErr = errNode->getType().name;
+        }
+        if (!annoFallibleErr.empty() && !suffixFallibleErr.empty()) {
+            throw YuxError(static_cast<int>(header->name->getLine()),
+                           static_cast<int>(header->name->getCharPositionInLine()) + 1, ErrorCode::E7019,
+                           suffixFallibleErr);
+        }
+        fnFnSym.fallibleErrType = !suffixFallibleErr.empty() ? suffixFallibleErr : annoFallibleErr;
         if (!fnFnSym.fallibleErrType.empty() && retType.name == fnFnSym.fallibleErrType) {
             throw YuxError(static_cast<int>(header->name->getLine()),
                            static_cast<int>(header->name->getCharPositionInLine()) + 1, ErrorCode::E7008, retType.name,

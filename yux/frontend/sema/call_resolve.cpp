@@ -572,9 +572,7 @@ FnHeaderNode* resolveDynMethodSig(SpecDeclNode* specDecl, const string& specQual
 void checkBangWithoutFallibleCaller(FnNode* currentFnNode, p<ExprCallNode> callNode) {
     string callerErr;
     if (currentFnNode) {
-        if (auto eOpt = currentFnNode->header()->getAnnoArg("Fallible")) {
-            callerErr = *eOpt;
-        }
+        callerErr = currentFnNode->header()->resolvedFallibleErr();
     }
     if (callerErr.empty()) {
         throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E7001);
@@ -591,9 +589,7 @@ void checkErrPropagateForIdCall(FnNode* currentFnNode, p<ExprCallNode> callNode,
     bool hasBang = callNode->errPropagate();
     string callerErr;
     if (currentFnNode) {
-        if (auto eOpt = currentFnNode->header()->getAnnoArg("Fallible")) {
-            callerErr = *eOpt;
-        }
+        callerErr = currentFnNode->header()->resolvedFallibleErr();
     }
     string calleeErr = calleeSym ? calleeSym->fallibleErrType : "";
 

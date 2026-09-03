@@ -423,6 +423,7 @@ private:
     Form _form;
     vector<LambdaParamSlot> _params;
     p<TypeNode> _retType;                // 仅 Paren 显式标注；其余 nullptr
+    p<TypeNode> _fallibleErrType = nullptr;
     p<ExprNode> _bodyExpr;               // Form::Expr
     vector<p<StatementNode>> _bodyStmts; // Form::Block
     // body 编译用的内层作用域；持有 lambda 形参符号。AST builder 在构建时填充，
@@ -483,6 +484,8 @@ public:
     [[nodiscard]] const vector<LambdaParamSlot>& params() const { return _params; }
     [[nodiscard]] vector<LambdaParamSlot>& mutableParams() { return _params; }
     [[nodiscard]] const p<TypeNode>& retType() const { return _retType; }
+    void setFallibleErrType(p<TypeNode> t) { _fallibleErrType = t; }
+    [[nodiscard]] const p<TypeNode>& fallibleErrTypeNode() const { return _fallibleErrType; }
     [[nodiscard]] const p<ExprNode>& bodyExpr() const { return _bodyExpr; }
     [[nodiscard]] const vector<p<StatementNode>>& bodyStmts() const { return _bodyStmts; }
 

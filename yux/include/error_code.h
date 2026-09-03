@@ -441,6 +441,8 @@ DEF_ERR(7008, "function return type `{}` cannot equal its `#Fallible` type `{}` 
 DEF_ERR(7012, "`#NoReturn` function `{}` cannot declare a return type — remove the return type or remove `#NoReturn`")
 DEF_ERR(7013, "`#NoReturn` and `#Fallible({})` are mutually exclusive on the same function — a non-returning function "
               "cannot also propagate errors")
+DEF_ERR(7019, "`#Fallible({})` and `T ! E` are mutually exclusive on the same function — use `T ! E` in the signature "
+              "only")
 DEF_ERR(7014, "`#NoReturn` function `{}` may reach end of body — control flow must terminate via `panic`-class call, "
               "another `#NoReturn` call, or unconditional infinite loop")
 // E7002 / E7009 / E7010 / E7011 / E7015-E7018 由 Phase 10f 启用（try-catch 块）

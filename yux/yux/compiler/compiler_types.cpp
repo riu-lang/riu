@@ -662,10 +662,7 @@ llvm::FunctionType* Compiler::getLLVMFunctionType(p<FnHeaderNode> header) {
     auto retType = header->retType();
     TypeInfo retTypeInfo = retType ? retType->getType() : TypeInfo();
     // DRAFT-错误.md [#10.A]：#Fallible(E) 函数返回类型包成 { i1, T_ok?, ErrEnum }
-    string fallibleErr;
-    if (auto e = header->getAnnoArg("Fallible")) {
-        fallibleErr = *e;
-    }
+    string fallibleErr = header->resolvedFallibleErr();
     auto llvmRetType = wrapFallibleRetType(retTypeInfo, fallibleErr);
     DEBUG_LOG_VAL("    return type", (retTypeInfo.empty() ? "void" : retTypeInfo.name)
                                          << (fallibleErr.empty() ? "" : (string(" #Fallible(") + fallibleErr + ")")));

@@ -1,0 +1,15 @@
+; T ! E 签名语法（F2）：与 #Fallible 语义等价
+enum ParseErr {
+  Empty
+}
+
+fn parse(n i32) i32 ! ParseErr {
+  if n == 0 {
+    ret ParseErr::Empty
+  }
+  ret n
+}
+
+fn main() {
+  ret;
+}

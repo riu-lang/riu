@@ -251,7 +251,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
                 genRetType = bindStructSelfType(genRetType, actualType.name, genericEffName);
             }
             string mFallibleErr;
-            if (auto e = genericMethodNode->header()->getAnnoArg("Fallible")) mFallibleErr = *e;
+            mFallibleErr = genericMethodNode->header()->resolvedFallibleErr();
             auto llvmRetType = wrapFallibleRetType(genRetType, mFallibleErr);
             auto fnType = llvm::FunctionType::get(llvmRetType, paramTypes, false);
             llvmFn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
@@ -1291,7 +1291,7 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
                             retType = bindStructSelfType(retType, inst.baseDecl->name().getText(), effName);
                         }
                         string mFallibleErr;
-                        if (auto e = chosen->header()->getAnnoArg("Fallible")) mFallibleErr = *e;
+                        mFallibleErr = chosen->header()->resolvedFallibleErr();
                         auto llvmRetType = wrapFallibleRetType(retType, mFallibleErr);
                         auto fnType = llvm::FunctionType::get(llvmRetType, paramTypes, false);
                         fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);

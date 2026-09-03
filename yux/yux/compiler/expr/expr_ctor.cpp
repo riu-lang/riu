@@ -348,7 +348,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                 TypeInfo retType;
                 if (methodHeader->retType()) retType = applySubst(methodHeader->retType()->getType());
                 string mFallibleErr;
-                if (auto e = methodHeader->getAnnoArg("Fallible")) mFallibleErr = *e;
+                mFallibleErr = methodHeader->resolvedFallibleErr();
                 auto fn = getMethodFunction(effLhs, methodName, paramTypes, retType, mFallibleErr, /*isStatic=*/true);
                 vector<llvm::Value*> argVals;
                 argVals.reserve(node->args().size());

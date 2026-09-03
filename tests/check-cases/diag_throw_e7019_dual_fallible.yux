@@ -1,0 +1,13 @@
+; #Fallible(E) 与 T ! E 并存 → E7019
+enum ParseErr {
+  Empty
+}
+
+#Fallible(ParseErr)
+fn parse() i32 ! ParseErr {  ; check: E7019
+  ret 0i32
+}
+
+fn main() {
+  ret;
+}
