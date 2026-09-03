@@ -792,7 +792,8 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
     // 泛型实例：使用消费方模块作为符号前缀（与 emitFnInstances 一致，每个使用方模块各自一份 IR）
     auto& fi = _fnInstances[mangledName];
     string ownerModForMangle = fi.consumerModule.empty() ? fnOwner->moduleName() : fi.consumerModule;
-    string cName = Mangler::function(ownerModForMangle, mangledName, instParamTypes, isPrivate);
+    string cName = Mangler::function(ownerModForMangle, mangledName, instParamTypes, isPrivate, instRetType,
+                                     genericFn->header()->resolvedFallibleErr());
     DEBUG_LOG_VAL("    Expr: GenericFunctionCall", fnName << " -> " << cName);
 
     auto fn = _module->getFunction(cName);
@@ -893,7 +894,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
     } else {
         string ownerMod = fnSymbol->moduleName.empty() ? _file->moduleName() : fnSymbol->moduleName;
         bool isPriv = !fnName.empty() && fnName[0] == '_';
-        cName = Mangler::function(ownerMod, fnName, fnSymbol->params, isPriv);
+        cName = Mangler::function(ownerMod, fnName, fnSymbol->params, isPriv, fnSymbol->retType, fnSymbol->fallibleErrType);
     }
 
     DEBUG_LOG_VAL("    Expr: FunctionCall", fnName << " -> " << cName);

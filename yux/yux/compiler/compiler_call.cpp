@@ -46,8 +46,13 @@ llvm::Function* Compiler::getFunction(p<FnHeaderNode> header) {
                 paramTypes.push_back(applySubst(param->type()->getType()));
             }
         }
+        TypeInfo retType;
+        if (header->retType()) {
+            retType = applySubst(header->retType()->getType());
+        }
+        string fallibleErr = header->resolvedFallibleErr();
         bool isPriv = !name.empty() && name[0] == '_';
-        name = Mangler::function(_file->moduleName(), name, paramTypes, isPriv);
+        name = Mangler::function(_file->moduleName(), name, paramTypes, isPriv, retType, fallibleErr);
         DEBUG_LOG_VAL("    -> mangled name", name);
     }
 
@@ -94,9 +99,10 @@ llvm::Function* Compiler::getMethodFunction(const string& structName, const stri
     // 生成 mangle 名称
     string mangledName;
     if (isStatic) {
-        mangledName = Mangler::staticMethod(ownerModule, structName, methodName, paramTypes);
+        mangledName = Mangler::staticMethod(ownerModule, structName, methodName, paramTypes, retType, fallibleErrType);
     } else {
-        mangledName = Mangler::method(ownerModule, structName, methodName, paramTypes, isPriv);
+        mangledName =
+            Mangler::method(ownerModule, structName, methodName, paramTypes, isPriv, retType, fallibleErrType);
     }
     DEBUG_LOG_VAL("    -> mangled name", mangledName);
 

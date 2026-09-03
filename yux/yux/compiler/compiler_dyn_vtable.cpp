@@ -161,10 +161,14 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(const TypeInfo& concreteType,
             for (auto& param : implMethod->header()->params()) {
                 paramTypes.push_back(param->type()->getType());
             }
+            TypeInfo retType;
+            if (implMethod->header()->retType()) retType = implMethod->header()->retType()->getType();
+            string fallibleErr = implMethod->header()->resolvedFallibleErr();
             bool isPriv = !methodName.empty() && methodName[0] == '_';
             // 用 impl 所在文件的模块名（内置类型的 impl 在 SDK 模块里，
             // findStructOwnerModule 拿到空 uModule 时会错指）。
-            std::string mangled = Mangler::method(impl.ownerModule, uStruct, methodName, paramTypes, isPriv);
+            std::string mangled =
+                Mangler::method(impl.ownerModule, uStruct, methodName, paramTypes, isPriv, retType, fallibleErr);
 
             // 内置类型 U（i32 / i64 / bool / ...）的 SDK 方法实际签名是
             // (<U> by-value, P1, ..., Pn) -> R（见 compileMethod / getMethodFunction 的 builtin 分支）;
@@ -215,8 +219,12 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(const TypeInfo& concreteType,
                 if (!p || !p->type()) continue;
                 paramTypes.push_back(p->type()->getType());
             }
+            TypeInfo retType;
+            if (sig->retType()) retType = sig->retType()->getType();
+            string fallibleErr = sig->resolvedFallibleErr();
             bool isPriv = !methodName.empty() && methodName[0] == '_';
-            std::string mangled = Mangler::method(uModule, uStruct, methodName, paramTypes, isPriv);
+            std::string mangled =
+                Mangler::method(uModule, uStruct, methodName, paramTypes, isPriv, retType, fallibleErr);
             auto* fn = _module->getFunction(mangled);
             if (!fn) {
                 std::vector<llvm::Type*> llvmParamTypes;

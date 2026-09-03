@@ -1,0 +1,53 @@
+; F4: fallible fn/method mangle 末位追加 T!E / !E（ABI 不变）
+enum ParseErr {
+  Empty
+}
+
+fn ok_only(n i32) i32 {
+  ret n
+}
+
+fn fallible_fn(n i32) i32 ! ParseErr {
+  if n == 0 {
+    ret ParseErr::Empty
+  }
+  ret n
+}
+
+fn void_fallible() ! ParseErr {
+  ret ParseErr::Empty
+}
+
+struct S {
+  _pad i32
+
+  fn ok() i32 {
+    ret 1
+  }
+
+  #Fallible(ParseErr)
+  fn fallible() i32 {
+    ret ParseErr::Empty
+  }
+}
+
+fn main() {
+  let _ i32 = ok_only(1)
+  try {
+    fallible_fn(2)
+  } catch e ParseErr {
+  }
+  try {
+    void_fallible()
+  } catch e ParseErr {
+  }
+  let s S = S {
+    ._pad = 0
+  }
+  let _ i32 = s.ok()
+  try {
+    s.fallible()
+  } catch e ParseErr {
+  }
+  ret;
+}

@@ -196,7 +196,14 @@ void Compiler::emitTestRegistrations() {
     for (auto& fn : _file->getFunctions()) {
         if (!fn->header()->hasAnno("Test")) continue;
         std::string fnName = fn->header()->name().getText();
-        std::string sym = Mangler::function(_file->moduleName(), fnName, {}, false);
+        vector<TypeInfo> paramTypes;
+        for (auto param : fn->header()->params()) {
+            if (param->type()) paramTypes.push_back(param->type()->getType());
+        }
+        TypeInfo retType;
+        if (fn->header()->retType()) retType = fn->header()->retType()->getType();
+        std::string sym =
+            Mangler::function(_file->moduleName(), fnName, paramTypes, false, retType, fn->header()->resolvedFallibleErr());
         testFns.push_back({.fnName = fnName, .mangledName = sym});
     }
 
@@ -955,17 +962,18 @@ void Compiler::emitFnInstances() {
                     }
                 }
 
-                // 计算实例化后的返回类型
                 TypeInfo retType;
                 if (baseFn->header()->retType()) {
                     retType = applySubst(baseFn->header()->retType()->getType());
                 }
+                string fallibleErr = baseFn->header()->resolvedFallibleErr();
 
                 // 生成 mangle 后的函数名
                 // 泛型实例：使用消费方模块（每个使用方模块各自生成一份实例 IR，避免重复符号）
                 bool isPrivate = !inst.mangledName.empty() && inst.mangledName[0] == '_';
                 string ownerMod = inst.consumerModule.empty() ? inst.ownerFile->moduleName() : inst.consumerModule;
-                string mangledFnName = Mangler::function(ownerMod, inst.mangledName, paramTypes, isPrivate);
+                string mangledFnName =
+                    Mangler::function(ownerMod, inst.mangledName, paramTypes, isPrivate, retType, fallibleErr);
 
                 // 获取或创建 LLVM 函数
                 auto fn = _module->getFunction(mangledFnName);
@@ -987,8 +995,6 @@ void Compiler::emitFnInstances() {
                             }
                         }
                     }
-                    string fallibleErr;
-                    fallibleErr = baseFn->header()->resolvedFallibleErr();
                     auto llvmRetType = wrapFallibleRetType(retType, fallibleErr);
                     auto fnType = llvm::FunctionType::get(llvmRetType, llvmParamTypes, false);
                     fn = llvm::Function::Create(fnType, llvm::Function::LinkOnceODRLinkage, mangledFnName, _module);

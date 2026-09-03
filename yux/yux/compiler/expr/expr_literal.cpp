@@ -175,7 +175,8 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             if (fnSym) {
                 string ownerMod = fnSym->moduleName.empty() ? _file->moduleName() : fnSym->moduleName;
                 bool isPriv = !varName.empty() && varName[0] == '_';
-                string fnMangled = Mangler::function(ownerMod, varName, fnSym->params, isPriv);
+                string fnMangled =
+                    Mangler::function(ownerMod, varName, fnSym->params, isPriv, fnSym->retType, fnSym->fallibleErrType);
                 auto func = _module->getFunction(fnMangled);
                 if (func) {
                     DEBUG_LOG_VAL("    Expr: FunctionValue (fat-ptr)", varName << " -> " << fnMangled);
