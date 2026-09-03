@@ -121,7 +121,8 @@ FnHeaderNode* resolveDynMethodSig(SpecDeclNode* specDecl, const string& specQual
 //
 // 当前 Compiler 端是唯一调用方 (compileCallExpr 入口的两处 else 分支);
 // SemaPass 暂未跟踪 try block, 不能直接调用.
-void checkBangWithoutFallibleCaller(FnNode* currentFnNode, p<ExprCallNode> callNode);
+void checkBangWithoutFallibleCaller(FnNode* currentFnNode, p<ExprCallNode> callNode,
+                                    LambdaExprNode* currentLambda = nullptr);
 
 // ID-callee 错误传播语义校验 (Phase 10e/10f).
 //
@@ -139,7 +140,7 @@ void checkBangWithoutFallibleCaller(FnNode* currentFnNode, p<ExprCallNode> callN
 // emit 会按 line:col 形态渲染. emit 内部按 (file, code, line, col, message) 5 元组去重.
 void checkErrPropagateForIdCall(FnNode* currentFnNode, p<ExprCallNode> callNode, const string& fnName,
                                 const FnSymbolInfo* calleeSym, vector<string>* tryBlockSeenErrs,
-                                const string& sourcePath = "");
+                                const string& sourcePath = "", LambdaExprNode* currentLambda = nullptr);
 
 // 包/模块别名调用解析 (Phase 3.3.1.a).
 //

@@ -277,8 +277,8 @@ TypeInfo Compiler::typeInfoForNamedStruct(const string& name) const {
 // 将 TypeInfo 转换为 LLVM 类型
 // 处理基本类型、数组、指针、引用、结构体、泛型实例等
 llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
-    // 先应用类型替换
-    auto type = applySubst(rawType);
+    // fallible 签名位 T ! E 的 ABI 仍按成功类型 T；剥后缀再映射 LLVM
+    auto type = applySubst(rawType.withoutFallible());
     DEBUG_LOG_VAL("  getLLVMType", type.name << " (kind=" << static_cast<int>(type.kind) << ")");
 
     // E4025 / E1132：别名展开与泛型 subst 之后拦截 Rc/Weak 内嵌 Heap/Dyn

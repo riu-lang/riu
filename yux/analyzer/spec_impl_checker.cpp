@@ -418,7 +418,8 @@ bool SpecImplChecker::sigEquivalent(FnHeaderNode* implMethod, FnHeaderNode* spec
     TypeInfo ir = implMethod->retType() ? implMethod->retType()->getType() : TypeInfo();
     TypeInfo dr = specSig->retType() ? specSig->retType()->getType() : TypeInfo();
     TypeInfo drSub = dr.substitute(subst);
-    return ir == drSub;
+    if (ir != drSub) return false;
+    return implMethod->resolvedFallibleErr() == specSig->resolvedFallibleErr();
 }
 
 bool SpecImplChecker::typeSatisfiesSpec(const std::string& typeBareName, SpecDeclNode* draft,

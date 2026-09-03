@@ -496,6 +496,11 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                 retExpectedResolved = resolveForRet(retExpected, retCtx);
                 retExpPtr = &retExpectedResolved;
             }
+            if (_currentLambda->fallibleErrTypeNode()) {
+                retCtx.fallibleErr = _currentLambda->fallibleErrTypeNode()->getType().name;
+            } else if (retExpected.isFallible()) {
+                retCtx.fallibleErr = retExpected.fallibleErr;
+            }
         } else if (_currentFn && ret->expr()) {
             auto header = _currentFn->header();
             if (header && header->retType()) {

@@ -137,10 +137,8 @@ public:
         : TypeNode(parent), _base(std::move(base)), _errType(std::move(errType)) {}
 
     [[nodiscard]] TypeInfo getType() const override {
-        auto base = _base->getType();
-        auto err = _errType->getType();
-        TypeInfo ti = base;
-        ti.name = base.getFullName() + "!" + err.name;
+        TypeInfo ti = _base->getType();
+        ti.attachFallibleErr(_errType->getType().name);
         return ti;
     }
 

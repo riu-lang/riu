@@ -60,7 +60,9 @@ TypeInfo Compiler::resolvedOrInferredType(p<ExprNode> node) const {
 // 创建类型转换
 // 处理整数、浮点数、指针、引用等类型之间的转换
 // NOLINTBEGIN(bugprone-branch-clone)
-llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& srcType, const TypeInfo& dstType) {
+llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& rawSrc, const TypeInfo& rawDst) {
+    const TypeInfo srcType = rawSrc.withoutFallible();
+    const TypeInfo dstType = rawDst.withoutFallible();
     // 相同类型无需转换（含透明别名：IntUnOp = Function<i32, i32>）
     if (srcType == dstType || resolveAlias(srcType) == resolveAlias(dstType)) {
         DEBUG_LOG_VAL("    Cast: no-op", srcType.name);

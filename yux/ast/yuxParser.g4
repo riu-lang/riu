@@ -160,6 +160,8 @@ typeWithRef:
     // 注意：typeNullableWithRef 必须排在 typeNormalWithRef 前面 ——
     // 否则 `T?` 会被 typeNormalWithRef 吃掉 `T` 后把 `?` 漏给外层 typeNullable
       type SymbolQuest SymbolAnd?       #typeNullableWithRef
+    // T ! E（Function<..., T ! E> 末位等）；base 走 type 以支持 T? ! E
+    | base=type SymbolExcl errType=type SymbolAnd? #typeFallibleWithRef
     | ID SymbolAnd? #typeNormalWithRef
     // [PROBE static-fn] Self&
     | SelfType SymbolAnd? #typeSelfWithRef

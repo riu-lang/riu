@@ -507,15 +507,15 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                 }
                 const FnSymbolInfo* sym = cands.empty() ? nullptr : cands.front();
                 vector<string>* seen = _tryStack.empty() ? nullptr : &_tryStack.back();
-                sema::checkErrPropagateForIdCall(_currentFn, n, fnNameProp, sym, seen, _sourcePath);
+                sema::checkErrPropagateForIdCall(_currentFn, n, fnNameProp, sym, seen, _sourcePath, _currentLambda);
             } else if (n->errPropagate()) {
                 if (_tryStack.empty()) {
-                    sema::checkBangWithoutFallibleCaller(_currentFn, n);
+                    sema::checkBangWithoutFallibleCaller(_currentFn, n, _currentLambda);
                 }
             }
         } else if (n->errPropagate() && !dynamic_cast<p<ExprDotNode>>(calleeExpr)) {
             if (_tryStack.empty()) {
-                sema::checkBangWithoutFallibleCaller(_currentFn, n);
+                sema::checkBangWithoutFallibleCaller(_currentFn, n, _currentLambda);
             }
         }
 
@@ -1389,13 +1389,23 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                 RetCheck{.file = _file, .sdk = _sdkFile, .fn = _currentFn, .structName = _currentStructName});
             bodyExp = &bodyRetResolved;
         }
+        RetCheck lamRetCtx{.file = _file,
+                           .sdk = _sdkFile,
+                           .fn = _currentFn,
+                           .structName = _currentStructName,
+                           .fallibleErr = {},
+                           .typeParams = &_currentTypeParams,
+                           .subst = &_instSubst};
+        if (n->fallibleErrTypeNode()) {
+            lamRetCtx.fallibleErr = n->fallibleErrTypeNode()->getType().name;
+        } else if (bodyRetStorage.isFallible()) {
+            lamRetCtx.fallibleErr = bodyRetStorage.fallibleErr;
+        }
         if (n->bodyExpr()) {
             visitExpr(n->bodyExpr(), bodyExp);
             if (bodyExp) {
                 int line = n->bodyExpr()->resolveLineNumber();
-                checkRetExpr(
-                    n->bodyExpr(), bodyRetStorage, !bodyRetStorage.empty(), line,
-                    RetCheck{.file = _file, .sdk = _sdkFile, .fn = _currentFn, .structName = _currentStructName});
+                checkRetExpr(n->bodyExpr(), bodyRetStorage, !bodyRetStorage.empty(), line, lamRetCtx);
             }
         } else {
             const auto& stmts = n->bodyStmts();
@@ -1413,9 +1423,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                     }
                     visitExpr(se->expr(), bodyExp);
                     int line = se->expr()->resolveLineNumber();
-                    checkRetExpr(
-                        se->expr(), bodyRetStorage, !bodyRetStorage.empty(), line,
-                        RetCheck{.file = _file, .sdk = _sdkFile, .fn = _currentFn, .structName = _currentStructName});
+                    checkRetExpr(se->expr(), bodyRetStorage, !bodyRetStorage.empty(), line, lamRetCtx);
                 } else {
                     visitStmt(stmts[i]);
                 }

@@ -238,18 +238,19 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
             TryCatchCtx* tryCtx = _tryCatchStack.empty() ? nullptr : &_tryCatchStack.back();
             string srcPath = (_yux && _file) ? _yux->modulePath(_file->moduleName()) : "";
             sema::checkErrPropagateForIdCall(_currentFnNode, node, fnName, sym,
-                                             tryCtx ? &tryCtx->seenErrTypes : nullptr, srcPath);
+                                             tryCtx ? &tryCtx->seenErrTypes : nullptr, srcPath,
+                                             _currentLambdaForCapture);
         } else if (node->errPropagate()) {
             // 非 ID-literal 但带 `!`：极少见路径（如 nullable 字面量调用），按 caller / try 状态判 E7001
             // 在 try block 内 → 暂放过（路由到 catch 由 10g 实施）
             if (_tryCatchStack.empty()) {
-                sema::checkBangWithoutFallibleCaller(_currentFnNode, node);
+                sema::checkBangWithoutFallibleCaller(_currentFnNode, node, _currentLambdaForCapture);
             }
         }
     } else if (node->errPropagate() && !dynamic_cast<ExprDotNode*>(calleeExpr)) {
         // fn-value 调用 + `!`：caller 未 fallible 且不在 try 内时报 E7001
         if (_tryCatchStack.empty()) {
-            sema::checkBangWithoutFallibleCaller(_currentFnNode, node);
+            sema::checkBangWithoutFallibleCaller(_currentFnNode, node, _currentLambdaForCapture);
         }
     }
 

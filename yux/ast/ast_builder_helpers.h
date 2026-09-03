@@ -17,6 +17,7 @@
 #define YUX_LANG_AST_BUILDER_HELPERS_H
 
 #include "node/fn_node.h"
+#include "node/type_node.h"
 #include "types.h"
 #include "yux/yuxParser.h"
 
@@ -208,10 +209,19 @@ static void checkFallibleDualDecl(p<FnHeaderNode> header) {
 static void checkFallibleRetMismatch(p<FnHeaderNode> header) {
     const string err = header->resolvedFallibleErr();
     if (err.empty() || !header->retType()) return;
-    const TypeInfo retType = header->retType()->getType();
+    const TypeInfo retType = header->retType()->getType().withoutFallible();
     if (retType.name == err) {
         throw YuxError(header->getLineNumber(), header->getColumn(), ErrorCode::E7008, retType.name, err);
     }
+}
+
+// typeFallibleWithRef 在 fn / lambda 返回位会把 `T ! E` 合成单节点；拆回 base + err 槽。
+inline std::pair<p<TypeNode>, p<TypeNode>> peelFallibleRetType(p<TypeNode> retType) {
+    if (!retType) return {nullptr, nullptr};
+    if (auto* f = dynamic_cast<TypeFallibleNode*>(retType)) {
+        return {f->baseType(), f->errType()};
+    }
+    return {retType, nullptr};
 }
 
 // DRAFT-let-unify §3.4：`let` 注解只允许 #Mut / #Frozen / #Cval / #Inline，互斥；其他报 E3112。

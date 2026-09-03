@@ -161,18 +161,32 @@ p<ScopeNode> makeLambdaBodyScope(const p<ScopeNode>& parentScope, const vector<L
 namespace {
 
 void applyLambdaFallibleSuffix(ASTBuilder* self, yux::yuxParser::TypeContext* errCtx, p<LambdaExprNode>& node,
-                               p<TypeNode> retType) {
-    if (!errCtx) return;
-    auto errType = any_cast_p<TypeNode>(self->visit(errCtx));
-    if (errType->getType().isNullable()) {
-        throw YuxError(errType->getLineNumber(), errType->getColumn(), ErrorCode::E2001)
-            .withHint("`T ! E?` is invalid — error type `E` must not be nullable");
-    }
-    node->setFallibleErrType(errType);
-    if (retType) {
-        const string err = errType->getType().name;
-        if (retType->getType().name == err) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E7008, retType->getType().name, err);
+                               p<TypeNode> retType, p<TypeNode> retFallibleFromType) {
+    if (errCtx) {
+        auto errType = any_cast_p<TypeNode>(self->visit(errCtx));
+        if (errType->getType().isNullable()) {
+            throw YuxError(errType->getLineNumber(), errType->getColumn(), ErrorCode::E2001)
+                .withHint("`T ! E?` is invalid — error type `E` must not be nullable");
+        }
+        if (retFallibleFromType) {
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E7019, errType->getType().name);
+        }
+        node->setFallibleErrType(errType);
+        if (retType) {
+            const string err = errType->getType().name;
+            if (retType->getType().name == err) {
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E7008, retType->getType().name,
+                               err);
+            }
+        }
+    } else if (retFallibleFromType) {
+        node->setFallibleErrType(retFallibleFromType);
+        if (retType) {
+            const string err = retFallibleFromType->getType().name;
+            if (retType->getType().name == err) {
+                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E7008, retType->getType().name,
+                               err);
+            }
         }
     }
 }
@@ -184,8 +198,10 @@ std::any ASTBuilder::visitExprLambdaParen(yux::yuxParser::ExprLambdaParenContext
     auto scope = currentScope();
     auto params = collectLambdaParams(this, ctx->lambdaParams(), scope, &ASTBuilder::buildTypeWithRef);
     p<TypeNode> retType = nullptr;
+    p<TypeNode> retFallibleFromType = nullptr;
     if (ctx->retType) {
-        retType = buildTypeWithRef(ctx->retType, scope);
+        auto parsed = buildTypeWithRef(ctx->retType, scope);
+        std::tie(retType, retFallibleFromType) = peelFallibleRetType(parsed);
     }
     auto bodyScope = makeLambdaBodyScope(scope, params);
     _scopeStack.push_back(bodyScope);
@@ -204,7 +220,7 @@ std::any ASTBuilder::visitExprLambdaParen(yux::yuxParser::ExprLambdaParenContext
         node = createWithLine<LambdaExprNode>(ctx, scope, LambdaExprNode::Form::Expr, std::move(params), retType,
                                               bodyExpr, vector<p<StatementNode>>{});
     }
-    applyLambdaFallibleSuffix(this, ctx->errType, node, retType);
+    applyLambdaFallibleSuffix(this, ctx->errType, node, retType, retFallibleFromType);
     _scopeStack.pop_back();
     node->setBodyScope(bodyScope);
     return static_cast<p<ExprNode>>(node);
@@ -214,8 +230,10 @@ p<LambdaExprNode> ASTBuilder::makeTrailingLambda(yux::yuxParser::TrailingLambdaC
     auto scope = currentScope();
     auto params = collectLambdaParams(this, tl->lambdaParams(), scope, &ASTBuilder::buildTypeWithRef);
     p<TypeNode> retType = nullptr;
+    p<TypeNode> retFallibleFromType = nullptr;
     if (tl->retType) {
-        retType = buildTypeWithRef(tl->retType, scope);
+        auto parsed = buildTypeWithRef(tl->retType, scope);
+        std::tie(retType, retFallibleFromType) = peelFallibleRetType(parsed);
     }
     auto bodyScope = makeLambdaBodyScope(scope, params);
     _scopeStack.push_back(bodyScope);
@@ -226,7 +244,7 @@ p<LambdaExprNode> ASTBuilder::makeTrailingLambda(yux::yuxParser::TrailingLambdaC
     _scopeStack.pop_back();
     auto node = createWithLine<LambdaExprNode>(tl, scope, LambdaExprNode::Form::Block, std::move(params), retType,
                                                nullptr, std::move(stmts));
-    applyLambdaFallibleSuffix(this, tl->errType, node, retType);
+    applyLambdaFallibleSuffix(this, tl->errType, node, retType, retFallibleFromType);
     node->setBodyScope(bodyScope);
     return node;
 }

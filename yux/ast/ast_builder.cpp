@@ -104,9 +104,15 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
             }
         }
         TypeInfo retType;
+        string suffixFallibleErr;
         if (header->retType) {
             auto typeNode = buildTypeWithRef(header->retType, file);
-            retType = typeNode->getType();
+            if (auto* fallible = dynamic_cast<TypeFallibleNode*>(typeNode)) {
+                suffixFallibleErr = fallible->errType()->getType().name;
+                retType = fallible->baseType()->getType();
+            } else {
+                retType = typeNode->getType();
+            }
         }
         DEBUG_LOG_VAL("  Register function", fnName);
         SymbolInfo fnSym(SymbolKind::Function, fnName, retType);
@@ -125,7 +131,6 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
                 annoFallibleErr = getBuildAnnoArgText(a);
             }
         }
-        string suffixFallibleErr;
         if (header->errType) {
             auto errNode = any_cast_p<TypeNode>(visit(header->errType));
             suffixFallibleErr = errNode->getType().name;

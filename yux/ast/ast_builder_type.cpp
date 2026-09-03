@@ -219,6 +219,17 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
         auto qt = nul->SymbolQuest()->getSymbol();
         inner = applyNullableSuffix(nul, parent, innerT, qt);
         andTok = nul->SymbolAnd();
+    } else if (auto f = dynamic_cast<yuxParser::TypeFallibleWithRefContext*>(twr)) {
+        auto base = any_cast_p<TypeNode>(visit(f->base));
+        auto err = any_cast_p<TypeNode>(visit(f->errType));
+        if (err->getType().isNullable()) {
+            auto* tok = f->SymbolExcl()->getSymbol();
+            throw YuxError(tok ? static_cast<int>(tok->getLine()) : 0,
+                           tok ? static_cast<int>(tok->getCharPositionInLine()) + 1 : 0, ErrorCode::E2001)
+                .withHint("`T ! E?` is invalid — error type `E` must not be nullable");
+        }
+        inner = static_cast<p<TypeNode>>(createWithLine<TypeFallibleNode>(f, parent, base, err));
+        andTok = f->SymbolAnd();
     } else if (auto g = dynamic_cast<yuxParser::TypeGenericWithRefContext*>(twr)) {
         auto baseName = g->ID()->getSymbol();
         vector<p<TypeNode>> typeArgs;

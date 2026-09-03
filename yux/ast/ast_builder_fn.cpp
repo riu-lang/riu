@@ -122,9 +122,13 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
     }
 
     p<TypeNode> retType = nullptr;
+    p<TypeNode> retFallibleFromType = nullptr;
     if (ctx->retType) {
-        retType = buildTypeWithRef(ctx->retType, file);
-        DEBUG_LOG_VAL("    Return type", retType->getType().getFullName());
+        auto parsed = buildTypeWithRef(ctx->retType, file);
+        std::tie(retType, retFallibleFromType) = peelFallibleRetType(parsed);
+        if (retType) {
+            DEBUG_LOG_VAL("    Return type", retType->getType().getFullName());
+        }
     }
 
     auto header = createWithLine<FnHeaderNode>(ctx, file, ctx->name, retType);
@@ -170,6 +174,8 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
 
     if (ctx->errType) {
         header->setFallibleErrType(any_cast_p<TypeNode>(visit(ctx->errType)));
+    } else if (retFallibleFromType) {
+        header->setFallibleErrType(retFallibleFromType);
     }
     checkFallibleDualDecl(header);
     checkFallibleRetMismatch(header);

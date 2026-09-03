@@ -416,6 +416,9 @@ bool lambdaExpectedRetType(p<LambdaExprNode> lam, TypeInfo& out) {
     if (lam->retType()) {
         try {
             out = lam->retType()->getType();
+            if (lam->fallibleErrTypeNode()) {
+                out.attachFallibleErr(lam->fallibleErrTypeNode()->getType().name);
+            }
             return true;
         } catch (const YuxError&) {
             throw;
@@ -609,7 +612,9 @@ void checkRetExpr(p<ExprNode> expr, const TypeInfo& declRet, bool hasDeclRet, in
 
     if (!ctx.fallibleErr.empty()) {
         auto resolvedRet = resolveForRet(retType, ctx);
-        bool isSuccess = hasDeclRet && (resolvedRet == resolveForRet(decl, ctx));
+        TypeInfo declOk = hasDeclRet ? decl.withoutFallible() : TypeInfo();
+        bool isSuccess =
+            hasDeclRet && (resolvedRet.withoutFallible() == resolveForRet(declOk, ctx));
         bool isError = (resolvedRet.name == ctx.fallibleErr);
         if (!isSuccess && !isError) {
             throw YuxError(line, ErrorCode::E3014, hasDeclRet ? decl.getFullName() : string("void"),

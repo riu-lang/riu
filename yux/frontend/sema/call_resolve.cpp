@@ -13,6 +13,7 @@
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
 #include "ast/node/enum_node.h"
+#include "ast/node/expr_node.h"
 #include "ast/yux.h"
 #include "tools/diagnostic.h"
 #include "types.h"
@@ -566,17 +567,28 @@ FnHeaderNode* resolveDynMethodSig(SpecDeclNode* specDecl, const string& specQual
     return sig;
 }
 
+namespace {
+
+string callerFallibleErr(FnNode* fn, LambdaExprNode* lam) {
+    if (fn && fn->header()) {
+        string e = fn->header()->resolvedFallibleErr();
+        if (!e.empty()) return e;
+    }
+    if (lam && lam->fallibleErrTypeNode()) {
+        return lam->fallibleErrTypeNode()->getType().name;
+    }
+    return {};
+}
+
+} // namespace
+
 // ==================== 非-ID callee `!` fallback 校验 (Phase 3.3 前置.3d) ====================
 // 原 compileCallExpr 入口两处 else 分支的内联 E7001 throw 抠成共享 helper.
 // 调用方 (Compiler) 已确认: callee 非 ID-literal + `errPropagate()` + 不在 try block.
-void checkBangWithoutFallibleCaller(FnNode* currentFnNode, p<ExprCallNode> callNode) {
-    string callerErr;
-    if (currentFnNode) {
-        callerErr = currentFnNode->header()->resolvedFallibleErr();
-    }
-    if (callerErr.empty()) {
-        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E7001);
-    }
+void checkBangWithoutFallibleCaller(FnNode* currentFnNode, p<ExprCallNode> callNode,
+                                    LambdaExprNode* currentLambda) {
+    if (!callerFallibleErr(currentFnNode, currentLambda).empty()) return;
+    throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E7001);
 }
 
 // ==================== ID-callee 错误传播校验 (Phase 10e/10f) ====================
@@ -585,12 +597,9 @@ void checkBangWithoutFallibleCaller(FnNode* currentFnNode, p<ExprCallNode> callN
 // (原 TryCatchCtx 内含 llvm::BasicBlock*, 函数体只读 seenErrTypes).
 void checkErrPropagateForIdCall(FnNode* currentFnNode, p<ExprCallNode> callNode, const string& fnName,
                                 const FnSymbolInfo* calleeSym, vector<string>* tryBlockSeenErrs,
-                                const string& sourcePath) {
+                                const string& sourcePath, LambdaExprNode* currentLambda) {
     bool hasBang = callNode->errPropagate();
-    string callerErr;
-    if (currentFnNode) {
-        callerErr = currentFnNode->header()->resolvedFallibleErr();
-    }
+    string callerErr = callerFallibleErr(currentFnNode, currentLambda);
     string calleeErr = calleeSym ? calleeSym->fallibleErrType : "";
 
     // Phase 10f: try block 内的 #Fallible 调用 → 路由到 catch 子句

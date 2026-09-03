@@ -1559,6 +1559,9 @@ TypeInfo LambdaExprNode::getType() const {
     sp<TypeInfo> rt = nullptr;
     if (_retType) {
         rt = make_shared<TypeInfo>(_retType->getType());
+        if (_fallibleErrType) {
+            rt->attachFallibleErr(_fallibleErrType->getType().name);
+        }
     } else if (_bodyExpr) {
         auto bt = _bodyExpr->getType();
         if (!bt.empty()) rt = make_shared<TypeInfo>(bt);

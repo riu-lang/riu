@@ -1,0 +1,16 @@
+; F3: Function<..., T ! E> 类型位 + fallible lambda 结构等同
+enum ParseErr {
+  Empty
+}
+
+fn parse_int(n i32) i32 ! ParseErr {
+  if n == 0 {
+    ret ParseErr::Empty
+  }
+  ret n
+}
+
+fn main() {
+  let f Function<i32, i32 ! ParseErr> = (x i32) i32 ! ParseErr => parse_int(x)!
+  ret;
+}

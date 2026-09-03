@@ -299,6 +299,7 @@ struct TypeInfo {
     sp<TypeInfo> elementType = nullptr; // Array 元素类型 / Fn 返回类型（unit 时为 nullptr）
     vector<sp<TypeInfo>> genericArgs;   // Generic 实参 / Tuple 元素 / Fn 形参类型列表
     bool fnNullable = false;            // Fn: Function<...>? 可空（仍 16 字节 fat-ptr，不套 Nullable）
+    string fallibleErr;                 // T ! E 的错误类型 E；空 = 非 fallible 签名位
 
     TypeInfo() = default;
 
@@ -348,12 +349,35 @@ struct TypeInfo {
         name = "Function<";
         for (size_t i = 0; i < genericArgs.size(); ++i) {
             if (i > 0) name += ',';
-            name += genericArgs[i] ? genericArgs[i]->name : "?";
+            name += genericArgs[i] ? genericArgs[i]->getFullName() : "?";
         }
         if (!genericArgs.empty()) name += ',';
-        name += elementType ? elementType->name : "()";
+        name += elementType ? elementType->getFullName() : "()";
         name += '>';
         if (fnNullable) name += '?';
+    }
+
+    // T ! E 签名位：fallibleErr 非空即 fallible 类型（ABI 仍按成功类型 T）
+    [[nodiscard]] bool isFallible() const { return !fallibleErr.empty(); }
+
+    // 剥掉 fallible 后缀，保留成功类型 T（供 LLVM / 值类型判等）
+    [[nodiscard]] TypeInfo withoutFallible() const {
+        if (fallibleErr.empty()) return *this;
+        TypeInfo t = *this;
+        const string suffix = "!" + fallibleErr;
+        if (t.name.size() >= suffix.size() && t.name.ends_with(suffix)) {
+            t.name.resize(t.name.size() - suffix.size());
+        }
+        t.fallibleErr.clear();
+        return t;
+    }
+
+    // 在成功类型上附加 fallible 后缀，刷新 name
+    void attachFallibleErr(string err) {
+        fallibleErr = std::move(err);
+        if (fallibleErr.empty()) return;
+        const string base = withoutFallible().getFullName();
+        name = base + "!" + fallibleErr;
     }
 
     [[nodiscard]] bool isArray() const { return kind == TypeKind::Array; }
@@ -545,6 +569,10 @@ struct TypeInfo {
         if (kind == TypeKind::Fn) {
             return formatFnGeneric(false);
         }
+        if (!fallibleErr.empty()) {
+            const string suffix = "!" + fallibleErr;
+            if (!name.ends_with(suffix)) return name + suffix;
+        }
         return name;
     }
 
@@ -576,6 +604,10 @@ struct TypeInfo {
         // 函数：Function<P...,Ret> / Function<...>?
         if (kind == TypeKind::Fn) {
             return formatFnGeneric(true);
+        }
+        if (!fallibleErr.empty()) {
+            const string suffix = "!" + fallibleErr;
+            if (!name.ends_with(suffix)) return name + suffix;
         }
         return name;
     }
@@ -654,7 +686,7 @@ struct TypeInfo {
 
     bool operator==(const TypeInfo& other) const {
         if (kind != other.kind) return false;
-        if (name != other.name) return false;
+        if (fallibleErr != other.fallibleErr) return false;
         if (kind == TypeKind::Array) {
             if (arraySize != other.arraySize) return false;
             if (!elementType && !other.elementType) return true;
@@ -681,6 +713,11 @@ struct TypeInfo {
             if (!elementType && !other.elementType) return true;
             if (!elementType || !other.elementType) return false;
             return *elementType == *other.elementType;
+        }
+        if (kind == TypeKind::Normal || kind == TypeKind::Ptr) {
+            if (withoutFallible().name != other.withoutFallible().name) return false;
+        } else if (!hasGenericArgs() && kind != TypeKind::Tuple) {
+            if (name != other.name) return false;
         }
         return true;
     }
