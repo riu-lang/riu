@@ -1,0 +1,16 @@
+; 泛型 fn 体：变量作数组 fill → E3080（与 T 无关，模板期也报；Phase C）
+fn poke<T>(x T) {
+  let a [T * 3] = [x ...]  ; check: E3080
+  ret;
+}
+
+fn main() {
+  poke(1)
+  ret;
+}
+
+
+fn main() {
+  poke(1)
+  ret;
+}

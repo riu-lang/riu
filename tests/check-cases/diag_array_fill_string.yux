@@ -1,0 +1,6 @@
+; require-sdk
+; 数组填充 string 字面量 → E3080（Phase C；类型相符仍拒）
+fn main() {
+  let a [String * 2] = ["hi" ...]  ; check: E3080
+  ret;
+}

@@ -1,0 +1,9 @@
+; 未调用的泛型 fn：变量作数组 fill 仍报 E3080（形态，与 T 无关；Phase C）
+fn unused<T>(x T) {
+  let a [T * 3] = [x ...]  ; check: E3080
+  ret;
+}
+
+fn main() {
+  ret;
+}

@@ -76,7 +76,8 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
         fillValue = llvm::ConstantInt::get(getLLVMType(elementType), intFillVal, false);
         isZeroFill = !boolVal; // false 值优化
     } else {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3080);
+        // E3080 由 SemaPass checkArrayInit 先抛；此处防 IR 对 string / 变量 fill memset。
+        throwSemaGap(node->getLineNumber(), node->getColumn());
     }
 
     // 填充数组

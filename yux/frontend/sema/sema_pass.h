@@ -120,6 +120,7 @@ private:
     void checkGenericBodyInst(p<FnNode> fn, const std::map<std::string, TypeInfo>& subst, const string& structName);
 
     // Phase C：带 target-type 的数组字面量 / 填充检查（E3009 / E3012）。
+    // 填充值须是 int / float / bool 字面量，否则 E3080（与 T 无关，模板期也报）。
     void checkArrayLiteral(p<class ExprArrayNode> n, const TypeInfo& expected);
     void checkArrayInit(p<class ExprArrayInitNode> n, const TypeInfo* expected);
     void checkArrayElemAgainst(p<ExprNode> elem, const TypeInfo& want, int line, int col);

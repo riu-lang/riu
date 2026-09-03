@@ -553,6 +553,19 @@ void SemaPass::checkArrayInit(p<ExprArrayInitNode> n, const TypeInfo* expected) 
         }
     }
 
+    auto rejectUnsupportedFill = [&]() {
+        // Phase C：fill 须是 int / float / bool 字面量（与 compileArrayInitExpr 对齐）。
+        // string / null / 码点 / 变量（literalObj）→ E3080。与 T 无关，模板期也报。
+        // 类型不符仍先走上面的 E3009（`[true ... i32]`）。
+        auto fill = n->value();
+        if (!fill) return;
+        if (dynamic_cast<LiteralIntNode*>(fill) || dynamic_cast<LiteralFloatNode*>(fill) ||
+            dynamic_cast<LiteralBoolNode*>(fill)) {
+            return;
+        }
+        throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3080);
+    };
+
     if (expected) {
         TypeInfo want = expected->peelRef();
         if (auto wantElem = arrayElemTarget(want)) {
@@ -560,10 +573,12 @@ void SemaPass::checkArrayInit(p<ExprArrayInitNode> n, const TypeInfo* expected) 
                 throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3009, wantElem->getFullName(),
                                elemType.getFullName());
             }
+            rejectUnsupportedFill();
             n->setResolvedType(want);
             return;
         }
     }
+    rejectUnsupportedFill();
     n->setResolvedType(TypeInfo(make_shared<TypeInfo>(elemType), 0));
 }
 

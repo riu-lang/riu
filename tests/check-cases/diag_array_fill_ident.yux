@@ -1,0 +1,6 @@
+; 数组填充 fill 须是 int/float/bool 字面量；变量 → E3080（Phase C）
+fn main() {
+  let x i32 = 1
+  let a [i32 * 3] = [x ...]  ; check: E3080
+  ret;
+}
