@@ -30,7 +30,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
 
     // E3024 由 SemaPass tryValidateSafeDot 先抛；此处防 IR 走空路径。
     if (!baseType.isNullable()) {
-        throw YuxError(dotNode->resolveLineNumber(), dotNode->resolveColumn(), ErrorCode::E3024, baseType.name);
+        throwSemaGap(dotNode->resolveLineNumber(), dotNode->resolveColumn());
     }
     auto innerType = baseType.nullableInnerType();
     if (!innerType) {
@@ -856,8 +856,7 @@ llvm::Value* Compiler::compileArrayWithCapacity(p<ExprPathCallNode> node) {
             if (i) got += ", ";
             got += node->args()[i]->getType().getFullName();
         }
-        throw YuxError(line, col, ErrorCode::E3131, "Array", "with_capacity", expectArity, expectArg0,
-                       node->args().size(), got);
+        throwSemaGap(line, col);
     }
 
     TypeInfo elemType = lhsTArgs[0]->getType();
@@ -866,8 +865,7 @@ llvm::Value* Compiler::compileArrayWithCapacity(p<ExprPathCallNode> node) {
     tryInferIntType(node->args()[0], expectTy);
     auto actualTy = node->args()[0]->getType();
     if (!actualTy.empty() && !(actualTy == expectTy)) {
-        throw YuxError(line, col, ErrorCode::E3131, "Array", "with_capacity", expectArity, expectArg0,
-                       static_cast<size_t>(1), actualTy.getFullName());
+        throwSemaGap(line, col);
     }
 
     auto capVal = compileExpr(node->args()[0]);

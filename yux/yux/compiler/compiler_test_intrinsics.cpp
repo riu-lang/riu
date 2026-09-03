@@ -101,7 +101,7 @@ llvm::Value* Compiler::compileTestAssertEq(p<ExprCallNode> callNode, vector<llvm
 
     if (!(isInt || isBool || isFloat)) {
         // E6030 由 SemaPass validateBuiltinIntrinsicTypeShape 先抛；此处防 IR 走进非标量 icmp。
-        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6030, actualTypeArg.getFullName());
+        throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
     }
 
     // 两个实参必须 LLVM 类型一致：unify 漏配 / 显式 turbofish 与字面量不匹配 / 等情况
@@ -110,8 +110,7 @@ llvm::Value* Compiler::compileTestAssertEq(p<ExprCallNode> callNode, vector<llvm
     // 用 LLVM 类型比较（而非 TypeInfo），以便类型别名 / 同底层类型不同别名 仍视为相等
     // E6031 由 SemaPass 按位宽组先抛；此处防 IR icmp 类型不一致。
     if (args[0]->getType() != args[1]->getType()) {
-        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6031, argTypes[0].getFullName(),
-                       argTypes[1].getFullName());
+        throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
     }
 
     llvm::Value* eq;

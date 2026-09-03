@@ -278,7 +278,7 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
                 if (inner && inner->isHeap()) isHeapNullable = true;
             }
             if (!isScalar && !isHandle && !isRef && !isHeapNullable) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E2029, varName, t.name);
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
             // 已捕获 → 复用槽位；首次 → 追加
             // 槽位字节数: handle 形态 / 标量 / T& 都是 8; Heap<T>? = {i1, ptr} 实际 16
@@ -499,7 +499,7 @@ llvm::Value* Compiler::compileStringTemplate(StringTemplateNode* node) {
             auto interpTy = applySubst(interpExpr->getType());
             // E3026 由 SemaPass tryValidateToString 先抛；此处防 IR 合成不存在的 to_string。
             if (!sema::typeImplementsToString(_file, _yux ? _yux->sdkFile() : nullptr, interpTy)) {
-                throw YuxError(interpExpr->getLineNumber(), interpExpr->getColumn(), ErrorCode::E3026, interpTy.name);
+                throwSemaGap(interpExpr->getLineNumber(), interpExpr->getColumn());
             }
             llvm::Value* strVal;
             if (interpTy.isString() || interpTy.name == "String") {
@@ -574,7 +574,7 @@ llvm::Value* Compiler::compileStringPlusChain(ExprAddSubNode* node) {
     for (const auto& leaf : leaves) {
         auto t = applySubst(leaf->getType());
         if (!sema::typeImplementsToString(_file, sdk, t)) {
-            throw YuxError(leaf->getLineNumber(), leaf->getColumn(), ErrorCode::E3026, t.name);
+            throwSemaGap(leaf->getLineNumber(), leaf->getColumn());
         }
     }
 
@@ -755,7 +755,7 @@ llvm::Value* Compiler::compileArrayLiteralExpr(p<ExprArrayNode> node) {
 
     // 固定大小数组 [N]T 字面量
     if (elements.empty()) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3063);
+        throwSemaGap(node->getLineNumber(), node->getColumn());
     }
 
     auto alloca = _builder.CreateAlloca(llvmArrayType, nullptr, "array.literal");

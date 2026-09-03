@@ -83,8 +83,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         if (!isSuccess && !isError) {
             int ln = node->getLineNumber();
             if (ln < 0) ln = node->expr()->resolveLineNumber();
-            throw YuxError(ln, ErrorCode::E3014, hasDeclaredRetType ? declRetType.getFullName() : string("void"),
-                           retType.getFullName());
+            throwSemaGap(ln);
         }
         // 求值表达式（错误 / 成功通道复用现有 enum / value 求值路径）
         llvm::Value* val = compileExpr(node->expr());
@@ -189,8 +188,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
             }
         }
         if (!refPtr) {
-            throw YuxError(lineNum, ErrorCode::E3014, declRetType.getFullName(), retType.getFullName())
-                .withHint("返回 T& 时，ret 表达式应为 `$` / T& 变量 / `&expr` / 返回 T& 的调用");
+            throwSemaGap(lineNum);
         }
         // 内层类型校验：declRetType 的 inner 必须等于 srcInner（v1 不做协变）。
         // 方法上下文中 `Self` 解析为当前结构体名（applySubst 不覆盖该映射）。
@@ -200,7 +198,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
             declInnerResolved.name = _currentStructName;
         }
         if (declInner && !srcInner.empty() && declInnerResolved != srcInner) {
-            throw YuxError(lineNum, ErrorCode::E3014, declRetType.getFullName(), (srcInner.name + "&"));
+            throwSemaGap(lineNum);
         }
         popAndReleaseTempFrame();
         pushTempFrame();
@@ -241,14 +239,14 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
     // 类型检查
     if (hasDeclaredRetType) {
         if (retType.empty()) {
-            throw YuxError(lineNum, ErrorCode::E3014, declRetType.getFullName(), "void");
+            throwSemaGap(lineNum);
         }
         if (!nullableWrap && resolveAlias(retType) != resolveAlias(declRetType)) {
-            throw YuxError(lineNum, ErrorCode::E3014, declRetType.getFullName(), retType.getFullName());
+            throwSemaGap(lineNum);
         }
     } else {
         if (!retType.empty()) {
-            throw YuxError(lineNum, ErrorCode::E3014, "void", retType.getFullName());
+            throwSemaGap(lineNum);
         }
     }
 
@@ -324,8 +322,7 @@ void Compiler::compileRetVoidStatement(p<StatementRetVoidNode> node) {
     if (_currentLambdaForCapture) {
         auto ft = _currentLambdaForCapture->getType();
         if (ft.isFn() && ft.fnReturnType() && !ft.fnReturnType()->empty()) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, ft.fnReturnType()->getFullName(),
-                           "void");
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
     }
     // Phase 8e: 同上，先释放临时帧再 CreateRetVoid（pop+push 保持栈平衡）
@@ -408,11 +405,11 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
     // 处理数组填充表达式 ([N; value] 语法)。E3067 由 SemaPass 先抛；此处防 IR 空指针。
     if (auto arrayInitNode = dynamic_cast<ExprArrayInitNode*>(expr)) {
         if (!node->varType()) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3067, " with size");
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
         TypeInfo varType = node->varType()->getType();
         if (!varType.isArray()) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3067, "");
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
 
         DEBUG_LOG_VAL("  Statement: Declare (ArrayFill)", varName << " : " << varType.name);
@@ -469,10 +466,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 // 校验 &expr 内层类型与声明 inner 一致
                 auto innerOfGetRef = getRefNode->getType().refElementType();
                 if (!innerOfGetRef || *innerOfGetRef != *innerType) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, innerType->name,
-                                   innerOfGetRef ? innerOfGetRef->name : "?")
-                        .withHint(std::format("&expr 的内层类型必须与声明一致；预期 `&<{}>`，源表达式给出 `&<{}>`",
-                                              innerType->name, innerOfGetRef ? innerOfGetRef->name : "?"));
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
             } else if (auto litExpr = dynamic_cast<ExprLiteralNode*>(expr);
                        litExpr && dynamic_cast<LiteralObjNode*>(litExpr->literal())) {
@@ -481,8 +475,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 auto it = _localVarPtrs.find(srcName);
                 if (it == _localVarPtrs.end()) {
                     // E4004 由 SemaPass 先抛；此处防 IR 绑到非本帧槽。
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E4004, srcName)
-                        .withHint("T& 只能绑定到当前函数内的局部变量；不可绑参数、全局符号或外层闭包变量");
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
                 rhsPtr = it->second;
             } else if (auto callExpr = dynamic_cast<ExprCallNode*>(expr)) {
@@ -496,32 +489,26 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 // §8.3.5.5 as_ref(box) 与 §8.6.X 用户函数返回 T&：调用结果直接是指针。
                 bool callRetIsRef = callExpr->getType().isRef();
                 if (calleeName != "as_ref" && !callRetIsRef) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3019)
-                        .withHint("T& 局部初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量）、`val r T& "
-                                  "= as_ref(box)` 或返回 T& 的方法/函数调用");
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
                 auto callValue = compileExpr(expr);
                 rhsPtr = callValue;
             } else if (auto pathCall = dynamic_cast<ExprPathCallNode*>(expr)) {
                 // Static path returning T& (e.g. Counter::fields → [Field& * N]&)
                 if (!pathCall->getType().isRef()) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3019)
-                        .withHint("静态路径不返回 T& 类型，无法初始化 T& 局部");
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
                 auto pathValue = compileExpr(expr);
                 rhsPtr = pathValue;
             } else if (auto getNode = dynamic_cast<ExprGetNode*>(expr)) {
                 // Array indexing returning T& (e.g. fs[0] where fs: [T& * N]&)
                 if (!getNode->getType().isRef()) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3019)
-                        .withHint("数组索引不返回 T& 类型，无法初始化 T& 局部");
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
                 auto getValue = compileExpr(expr);
                 rhsPtr = getValue;
             } else {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3019)
-                    .withHint("T& 局部初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量），或 `val r T& = "
-                              "as_ref(box)`");
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
             registerLocalVar(varName, rhsPtr, varType);
             return;
@@ -570,8 +557,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                     consumeTemp(exprVal);
                 }
             } else {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, elemType->name,
-                               exprType.name);
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
 
         }
@@ -588,8 +574,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             bool fromRc = exprType.isRc() && exprType.rcElementType() && *exprType.rcElementType() == *elemType;
             bool fromWeak = exprType.isWeak() && exprType.weakElementType() && *exprType.weakElementType() == *elemType;
             if (!fromRc && !fromWeak) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3016, elemType->name,
-                               elemType->name, elemType->name);
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
 
             auto srcStructType = getLLVMType(exprType);
@@ -666,7 +651,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 // Phase 8d.1: fresh 来源从临时帧消费
                 auto exprType = expr->getType();
                 if (!exprType.isArrayGeneric() && exprType.name != "Array") {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3064);
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
                 auto exprVal = compileExpr(expr);
                 storeIntoSlot(alloca, exprVal, varType, expr, SlotStore::Init);
@@ -715,8 +700,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                     _builder.CreateStore(_builder.getInt1(true), hasField);
                     _builder.CreateStore(exprVal, valueField);
                 } else {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, exprType.name,
-                                   innerType->name);
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
             }
         }
@@ -726,13 +710,11 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         else if (varType.isHeap()) {
             auto elemType = varType.heapElementType();
             if (!elemType) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, std::string("?"),
-                               std::string("?"));
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
             auto exprType = expr->getType();
             if (!exprType.isHeap() || !(*exprType.heapElementType() == *elemType)) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, elemType->name,
-                               std::string("Heap<") + elemType->name + ">", exprType.getFullName());
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
             auto exprVal = compileExpr(expr);
             _builder.CreateStore(exprVal, alloca);
@@ -744,21 +726,13 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
             // Ref 类型不能隐式转换为值类型（yux 无隐式转换）
             // 例：let v i32 = arr[0] — arr[0] 返回 i32&，不能隐式转 i32
             if (exprType.isRef() && !varType.isRef()) {
-                auto inner = exprType.refElementType();
-                auto innerName = inner ? inner->name : "?";
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, varType.name,
-                               exprType.getFullName())
-                    .withHint(std::format("表达式类型为 `{}&`（借用），不能隐式转为 `{}`；"
-                                          "若需绑定引用请写 `let r {}& = ...`，"
-                                          "若需取值请用 `copy_of:<{}>(...)`",
-                                          innerName, varType.name, innerName, innerName));
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
 
             // 数组类型检查
             if (varType.isArray() && exprType.isArray()) {
                 if (varType.arraySize != exprType.arraySize) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3012, varType.arraySize,
-                                   exprType.arraySize);
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
                 // E3009 元素类型：SemaPass 带 target-type 已查
             }
@@ -783,11 +757,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 cmpVarType.genericArgs.empty() && cmpExprType.genericArgs.empty() && isKnownTypeName(cmpVarType.name) &&
                 isKnownTypeName(cmpExprType.name) && !isFlexibleIntExpr(expr)) {
                 if (cmpVarType != cmpExprType) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, varType.getFullName(),
-                                   exprType.getFullName())
-                        .withHint(
-                            std::format("声明类型为 `{}`，但表达式类型为 `{}`；yux 无隐式类型转换，类型必须严格匹配",
-                                        varType.getFullName(), exprType.getFullName()));
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
             }
 
@@ -817,12 +787,11 @@ void Compiler::compileDeclareAssignTupleStatement(p<StatementDeclareAssignTupleN
     auto resolved = applySubst(wholeType);
     // E3101 / E3102 由 SemaPass 先抛；此处防 IR 把非元组当 ExtractValue。
     if (!resolved.isTuple()) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3101, wholeType.name);
+        throwSemaGap(node->getLineNumber(), node->getColumn());
     }
     const auto& elems = resolved.tupleElements();
     if (elems.size() != names.size()) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3102, std::to_string(names.size()),
-                       std::to_string(elems.size()));
+        throwSemaGap(node->getLineNumber(), node->getColumn());
     }
 
     // 编译 expr 得元组 struct value
@@ -930,7 +899,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             string mangledName = Mangler::global(ownerMod, objName, globPriv);
             if (auto globalVar = _module->getGlobalVariable(mangledName, true)) {
                 if (!sym->writeable) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3151, objName);
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
                 auto exprVal = compileExpr(expr);
                 auto exprType = expr->getType();
@@ -950,7 +919,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         // Phase 4b: T& 赋值是 store-through（改被引对象），不是 rebind；
         // T& 形参 / val 局部 T& 的 writeable=false 不影响"写被引"，写权由源对象决定（4d 校验）
         if (!sym->writeable && !sym->type.isRef()) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3093, objName);
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
 
         DEBUG_LOG_VAL("  Statement: Assign", objName << " : " << sym->type.name);
@@ -1026,7 +995,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
 
             auto it = _localVarPtrs.find(objName);
             if (it == _localVarPtrs.end()) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E4004, objName);
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
 
             auto exprVal = compileExpr(expr);
@@ -1056,8 +1025,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                 auto handleField = _builder.CreateGEP(rcStructType, it->second, {zero, zero}, "handle_field");
                 _builder.CreateStore(block, handleField);
             } else {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, elemType->name,
-                               exprType.name);
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
             return;
         }
@@ -1100,8 +1068,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                     _builder.CreateStore(_builder.getInt1(true), hasField);
                     _builder.CreateStore(exprVal, valueField);
                 } else {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014, exprType.name,
-                                   innerType->name);
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
             }
             return;
@@ -1166,21 +1133,18 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                     auto memberText = subs[i].getText();
                     if (!isPureDigits(memberText)) {
                         // 元组段必须是数字索引
-                        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3040,
-                                       curType.getFullName(), memberText);
+                        throwSemaGap(node->getLineNumber(), node->getColumn());
                     }
                     auto resolvedCur = applySubst(curType);
                     if (!resolvedCur.isTuple()) {
                         // 链中段已不是 tuple（嵌套 struct/数组等）暂不支持
-                        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3041,
-                                       curType.getFullName());
+                        throwSemaGap(node->getLineNumber(), node->getColumn());
                     }
                     auto& elems = resolvedCur.tupleElements();
                     auto idx = static_cast<size_t>(std::stoul(memberText));
                     // E3100 由 SemaPass tryValidateFieldChain 先抛；此处防 IR GEP 越界。
                     if (idx >= elems.size()) {
-                        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3100, memberText,
-                                       curType.getFullName(), std::to_string(elems.size()));
+                        throwSemaGap(node->getLineNumber(), node->getColumn());
                     }
                     auto elemType = *elems[idx];
                     auto llvmTupleType = getLLVMType(resolvedCur);
@@ -1218,7 +1182,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         // 直接追踪 let 绑定链路，避免构建临时 AST 节点
         if (actualType.name == "Field" && subs.size() == 1 && subs[0].getText() == "value") {
             if (!_currentFnNode) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3134);
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
             // 追踪变量 f 的 let 定义，提取 struct 名和字段索引
             const StructDeclNode* sd = nullptr;
@@ -1311,15 +1275,15 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             }
             if (!sd || fieldIdx < 0) {
                 // E3133 由 SemaPass tryValidateReflectFieldValueWrite 先抛；此处防 IR 无字段可写。
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3133);
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
             if (_currentStructName.empty()) {
                 // E3134 由 SemaPass 先抛；此处防 IR 无 `$`。
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3134);
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
             auto selfIt = _localVarPtrs.find("$");
             if (selfIt == _localVarPtrs.end()) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3134);
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
             auto structType = getLLVMType(typeInfoForNamedStruct(_currentStructName));
             auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
@@ -1361,7 +1325,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             structDecl = _yux->sdkFile()->getStructDecl(actualType.name);
         }
         if (!structDecl) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3041, actualType.name);
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
 
         DEBUG_LOG_VAL("  Statement: MemberAssign", objName << "." << subs[0].getText());
@@ -1392,10 +1356,9 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             if (fieldIndex < 0) {
                 // E3152: 实例写静态字段 (DRAFT-static-vars §4.4)
                 if (structDecl->staticField(memberName)) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3152, memberName,
-                                   actualType.name, actualType.name, memberName);
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3040, actualType.name, memberName);
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
 
             auto field = structDecl->fields()[fieldIndex];
@@ -1450,16 +1413,14 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                 if (interType.isRc() || interType.isArrayGeneric() || interType.isRef() || interType.isNullable() ||
                     interType.isWeak() || interType.isPtr() || isBuiltinType(interType.name) ||
                     typeNeedsDestructor(interType)) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3046)
-                        .withHint("嵌套成员赋值中间字段需为纯 struct（不含 Rc/Array/Ref/RC 等）；可拆方法或在中段先 "
-                                  "`var t = $.field` 落地后再写");
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
                 auto interStructDecl = _file->getStructDecl(interType.name);
                 if (!interStructDecl && _yux && _yux->sdkFile()) {
                     interStructDecl = _yux->sdkFile()->getStructDecl(interType.name);
                 }
                 if (!interStructDecl) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3041, interType.name);
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
                 auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
                 auto idx = llvm::ConstantInt::get(_builder.getInt32Ty(), fieldIndex);
@@ -1531,12 +1492,11 @@ void Compiler::compileLoopStatement(p<StatementLoopNode> node) {
             auto resolved = applySubst(wholeType);
             // E3101 / E3102 由 SemaPass 先抛；此处防 IR 把非元组当 ExtractValue。
             if (!resolved.isTuple()) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3101, wholeType.name);
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
             const auto& elems = resolved.tupleElements();
             if (elems.size() != names.size()) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3102, std::to_string(names.size()),
-                               std::to_string(elems.size()));
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
 
             for (size_t i = 0; i < names.size(); ++i) {
@@ -1601,7 +1561,7 @@ void Compiler::compileBreakStatement(p<StatementBreakNode> node) {
     DEBUG_LOG("  Statement: Break" << (brLabel.getText().empty() ? "" : " (label: " + brLabel.getText() + ")"));
 
     if (_loopExitBlocks.empty()) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3094);
+        throwSemaGap(node->getLineNumber(), node->getColumn());
     }
 
     const LoopExitInfo* target = nullptr;
@@ -1615,7 +1575,7 @@ void Compiler::compileBreakStatement(p<StatementBreakNode> node) {
             }
         }
         if (!target) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3025, brLabel.getText());
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
     }
 
@@ -1638,7 +1598,7 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
 
     auto& indices = node->indices();
     if (indices.empty()) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3060, "assignment");
+        throwSemaGap(node->getLineNumber(), node->getColumn());
     }
 
     DEBUG_LOG_VAL("  Statement: ArraySet", arrayType.name);
@@ -1709,14 +1669,13 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
                 currentPtr = _builder.CreateGEP(outerLLVM, dataPtr, indicesF, "array.field.ptr");
             } else if (outerStructDecl->staticField(dotExpr->member())) {
                 // E3152: 实例写静态字段 (DRAFT-static-vars §4.4)
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3152, dotExpr->member(),
-                               outerActual.name, outerActual.name, dotExpr->member());
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
         }
     }
 
     if (!currentPtr) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3061, "assignment");
+        throwSemaGap(node->getLineNumber(), node->getColumn());
     }
 
     // 处理动态数组 Array<T>（B-3：字段内联，直接访问 _data）
@@ -1742,7 +1701,7 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
 
     // 处理固定大小数组 [N]T
     if (!arrayType.isArray()) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3062, arrayType.name);
+        throwSemaGap(node->getLineNumber(), node->getColumn());
     }
 
     // 支持多维数组索引

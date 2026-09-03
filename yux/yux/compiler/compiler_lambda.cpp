@@ -329,8 +329,7 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
         if (stackEmbedded) {
             for (const auto& cap : caps) {
                 if (typeNeedsDestructor(cap.type)) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E2029, cap.name,
-                                   cap.type.getFullName());
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
             }
         }
@@ -489,20 +488,11 @@ llvm::Value* Compiler::compileFnValueCall(p<ExprCallNode> node) {
             if (expectedParams[idx] && !argType.name.empty() && !argType.isSelf() && !expectedParams[idx]->isSelf()) {
                 // Ref<T> 实参传给值类型形参 T：类型不匹配
                 if (argType.isRef() && !expectedParams[idx]->isRef()) {
-                    auto inner = argType.refElementType();
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014,
-                                   expectedParams[idx]->getFullName(), argType.getFullName())
-                        .withHint(std::format("实参类型为 `{}&`（借用），形参期望 `{}`；"
-                                              "若需取值请用 `copy_of:<{}>(...)` 或先 `let tmp {} = expr`",
-                                              inner ? inner->name : "?", expectedParams[idx]->getFullName(),
-                                              inner ? inner->name : "?", inner ? inner->name : "?"));
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
                 // 值类型实参与值类型形参不匹配
                 if (!argType.isRef() && !expectedParams[idx]->isRef() && argType != *expectedParams[idx]) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014,
-                                   expectedParams[idx]->getFullName(), argType.getFullName())
-                        .withHint(std::format("实参类型 `{}` 与形参类型 `{}` 不匹配", argType.getFullName(),
-                                              expectedParams[idx]->getFullName()));
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
             }
         } catch (const YuxError&) {
@@ -582,19 +572,10 @@ llvm::Value* Compiler::compileRcFnValueCall(p<ExprCallNode> node, const TypeInfo
             auto argType = node->getArgs()[idx]->getType();
             if (expectedParams[idx] && !argType.name.empty() && !argType.isSelf() && !expectedParams[idx]->isSelf()) {
                 if (argType.isRef() && !expectedParams[idx]->isRef()) {
-                    auto inner = argType.refElementType();
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014,
-                                   expectedParams[idx]->getFullName(), argType.getFullName())
-                        .withHint(std::format("实参类型为 `{}&`（借用），形参期望 `{}`；"
-                                              "若需取值请用 `copy_of:<{}>(...)` 或先 `let tmp {} = expr`",
-                                              inner ? inner->name : "?", expectedParams[idx]->getFullName(),
-                                              inner ? inner->name : "?", inner ? inner->name : "?"));
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
                 if (!argType.isRef() && !expectedParams[idx]->isRef() && argType != *expectedParams[idx]) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014,
-                                   expectedParams[idx]->getFullName(), argType.getFullName())
-                        .withHint(std::format("实参类型 `{}` 与形参类型 `{}` 不匹配", argType.getFullName(),
-                                              expectedParams[idx]->getFullName()));
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
             }
         } catch (const YuxError&) {
@@ -669,19 +650,10 @@ llvm::Value* Compiler::compileRefFnValueCall(p<ExprCallNode> node, const TypeInf
             auto argType = node->getArgs()[idx]->getType();
             if (expectedParams[idx] && !argType.name.empty() && !argType.isSelf() && !expectedParams[idx]->isSelf()) {
                 if (argType.isRef() && !expectedParams[idx]->isRef()) {
-                    auto inner = argType.refElementType();
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014,
-                                   expectedParams[idx]->getFullName(), argType.getFullName())
-                        .withHint(std::format("实参类型为 `{}&`（借用），形参期望 `{}`；"
-                                              "若需取值请用 `copy_of:<{}>(...)` 或先 `let tmp {} = expr`",
-                                              inner ? inner->name : "?", expectedParams[idx]->getFullName(),
-                                              inner ? inner->name : "?", inner ? inner->name : "?"));
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
                 if (!argType.isRef() && !expectedParams[idx]->isRef() && argType != *expectedParams[idx]) {
-                    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3014,
-                                   expectedParams[idx]->getFullName(), argType.getFullName())
-                        .withHint(std::format("实参类型 `{}` 与形参类型 `{}` 不匹配", argType.getFullName(),
-                                              expectedParams[idx]->getFullName()));
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
             }
         } catch (const YuxError&) {

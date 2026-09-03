@@ -29,7 +29,7 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
     auto& indices = node->indices();
     if (indices.empty()) {
         // Phase 3.4.g: yux*.g4 强制 indices >= 1, 该分支不可达; 保留作 dead 防御。
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3060, "access");
+        throwSemaGap(node->getLineNumber(), node->getColumn());
     }
 
     DEBUG_LOG_VAL("    Expr: ArrayGet", arrayType.name);
@@ -77,7 +77,7 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
     if (!currentPtr) {
         auto baseVal = compileExpr(arrayExpr);
         if (!baseVal) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3061, "access");
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
         auto valTy = getLLVMType(arrayType);
         auto alloca = _builder.CreateAlloca(valTy, nullptr, "array.base");
@@ -147,8 +147,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
             auto idx = static_cast<size_t>(std::stoul(member));
             // E3100 由 SemaPass tryValidateFieldChain 先抛；此处防 IR ExtractValue 越界。
             if (idx >= elems.size()) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3100, member,
-                               baseTypeRaw.getFullName(), std::to_string(elems.size()));
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
             DEBUG_LOG_VAL("    Expr: TupleMemberAccess", baseTypeResolved.name << "." << member);
             auto baseVal = compileExpr(baseExpr);
@@ -182,15 +181,15 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
         int fieldIdx = node->reflectFieldIndex();
         if (!sd || fieldIdx < 0) {
             // E3133 由 SemaPass tryValidateReflectFieldValueRead 先抛；此处防 IR 无字段可读。
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3133);
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
         if (_currentStructName.empty()) {
             // E3134 由 SemaPass 先抛；此处防 IR 无 `$`。
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3134);
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
         auto selfIt = _localVarPtrs.find("$");
         if (selfIt == _localVarPtrs.end()) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3134);
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
         auto structType = getLLVMType(typeInfoForNamedStruct(_currentStructName));
         auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
@@ -319,8 +318,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
         // E3152: 实例访问静态字段 (DRAFT-static-vars §4.4)
         // obj.FIELD 形态 —— FIELD 是 #Static 字段，不挂在实例上
         if (structDecl->staticField(member)) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3152, member, actualType.name,
-                           actualType.name, member);
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
     }
 
@@ -335,7 +333,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
         }
     }
     // E3090 由 SemaPass 读路径先抛（方法当值 / 非字段点表达式）；此处防 IR 无成员可降。
-    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3090);
+    throwSemaGap(node->getLineNumber(), node->getColumn());
 }
 
 // 编译 a?.b 安全成员访问
@@ -351,7 +349,7 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
 
     // E3024 / E3044 / E3040 由 SemaPass tryValidateSafeDot 先抛；此处防 IR 走空路径。
     if (!baseType.isNullable()) {
-        throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3024, baseType.name);
+        throwSemaGap(node->resolveLineNumber(), node->resolveColumn());
     }
     auto innerType = baseType.nullableInnerType();
     // Phase 5: Rc<T>? 自动 deref —— 把 Rc<U> 视为 U 进字段查
@@ -369,11 +367,11 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
         innerStructDecl = _yux->sdkFile()->getStructDecl(innerType->name, /*includeBuiltin=*/true);
     }
     if (!innerStructDecl) {
-        throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3044, innerType->name);
+        throwSemaGap(node->resolveLineNumber(), node->resolveColumn());
     }
     int fieldIdx = innerStructDecl->fieldIndex(member);
     if (fieldIdx < 0) {
-        throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3040, innerType->name, member);
+        throwSemaGap(node->resolveLineNumber(), node->resolveColumn());
     }
     auto fieldType = innerStructDecl->fields()[fieldIdx]->getType();
     if (innerType->isGeneric() && innerStructDecl->isGeneric() &&
@@ -474,7 +472,7 @@ llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
 
     // E3024 / E3014 由 SemaPass NullElse 先抛；此处防 IR extractvalue 走空路径。
     if (!leftType.isNullable()) {
-        throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3024, leftType.name);
+        throwSemaGap(node->resolveLineNumber(), node->resolveColumn());
     }
     auto innerType = leftType.nullableInnerType();
     if (!innerType) {
@@ -521,8 +519,7 @@ llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
     auto rightType = node->right()->getType();
     auto rightVal = compileBranchResultNormalized(node->right(), *innerType);
     if (rightType != *innerType) {
-        throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3014, innerType->name,
-                       rightType.name);
+        throwSemaGap(node->resolveLineNumber(), node->resolveColumn());
     }
     auto elseEndBB = _builder.GetInsertBlock();
     _builder.CreateBr(mergeBB);

@@ -28,6 +28,13 @@
 #include "compiler_runtime.h"
 #include "sema/const_eval.h"
 #include "sema/name_resolver.h"
+#include "types.h"
+
+// SemaPass 已覆盖的语义错若仍走到 codegen：内部缺口，抛 E3091，不再抛原码。
+[[noreturn]] inline void throwSemaGap(size_t line, int col = 0) {
+    if (col != 0) throw YuxError(line, col, ErrorCode::E3091);
+    throw YuxError(line, ErrorCode::E3091);
+}
 
 // 类型转换信息
 // 用于延迟处理类型转换 (如 .to_i32() 方法调用)

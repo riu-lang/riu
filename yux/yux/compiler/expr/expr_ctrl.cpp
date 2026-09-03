@@ -202,8 +202,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
             p<FileNode> tmpOwner = nullptr;
             if (names().lookupEnum(inner->name, &tmpOwner)) {
                 if (isFreshHandleExpr(scrutinee)) {
-                    throw YuxError(line, col, ErrorCode::E2022, scrutType.name)
-                        .withHint("不支持对临时 Rc<E> 直接 match；先 `var b Rc<E> = ...` 落地再 match b");
+                    throwSemaGap(line, col);
                 }
                 rcDeref = true;
                 rcOuterType = scrutType;
@@ -220,8 +219,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
             p<FileNode> tmpOwner = nullptr;
             if (names().lookupEnum(inner->name, &tmpOwner)) {
                 if (isFreshHandleExpr(scrutinee)) {
-                    throw YuxError(line, col, ErrorCode::E2022, scrutType.name)
-                        .withHint("不支持对临时 Heap<E> 直接 match；先 `var h Heap<E> = ...` 落地再 match h");
+                    throwSemaGap(line, col);
                 }
                 heapDeref = true;
                 scrutType = *inner;
@@ -247,7 +245,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
     p<FileNode> enumOwner = nullptr;
     auto enumDecl = names().lookupEnum(scrutType.name, &enumOwner);
     if (!enumDecl) {
-        throw YuxError(line, col, ErrorCode::E2022, scrutType.name);
+        throwSemaGap(line, col);
     }
     string enumName = scrutType.name;
 
@@ -277,7 +275,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
             continue;
         }
         if (t != resultType) {
-            throw YuxError(arm->resultLine(), arm->resultCol(), ErrorCode::E3014, resultType.name, t.name);
+            throwSemaGap(arm->resultLine(), arm->resultCol());
         }
     }
     bool hasResult = !resultType.empty();

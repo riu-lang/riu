@@ -465,7 +465,7 @@ llvm::Value* Compiler::compileLvalueAddr(p<ExprNode> node) {
             if (name == "$") {
                 auto it = _localVarPtrs.find("$");
                 if (it == _localVarPtrs.end()) {
-                    throw YuxError(line, col, ErrorCode::E3128);
+                    throwSemaGap(line, col);
                 }
                 return it->second;
             }
@@ -518,8 +518,7 @@ llvm::Value* Compiler::compileLvalueAddr(p<ExprNode> node) {
                 auto& elems = resolved.tupleElements();
                 auto idx = static_cast<size_t>(std::stoul(member));
                 if (idx >= elems.size()) {
-                    throw YuxError(line, col, ErrorCode::E3100, member, baseType.getFullName(),
-                                   std::to_string(elems.size()));
+                    throwSemaGap(line, col);
                 }
                 // Ref<T> 的 lvalue addr 存的是引用值（ptr），需先 Load 再 GEP 到元组元素
                 if (wasRef) {
@@ -547,7 +546,7 @@ llvm::Value* Compiler::compileLvalueAddr(p<ExprNode> node) {
         }
         int idx = decl->fieldIndex(member);
         if (idx < 0) {
-            throw YuxError(line, col, ErrorCode::E3040, baseType.name, member);
+            throwSemaGap(line, col);
         }
         return _builder.CreateStructGEP(structType, baseAddr, static_cast<unsigned>(idx), "move.lhs.gep");
     }

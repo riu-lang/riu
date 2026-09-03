@@ -171,29 +171,8 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(p<ExprNode> leftExpr, p<ExprNod
     } else if (refMatches.size() == 1) {
         methodSymbol = refMatches[0];
     } else {
-        // sema tryValidateBinOpMethod 可能跳过容器类型（Nullable/Rc/Array 等），
-        // codegen 端无匹配方法 → 抛 E3073 而非访问空 vector 崩溃。
-        // methodFullName 形如 "Nullable.ne"，拆出操作符符号名
-        auto dotPos = methodFullName.find('.');
-        string mName = dotPos != string::npos ? methodFullName.substr(dotPos + 1) : methodName;
-        const char* opSym = mName == "eq"      ? "=="
-                            : mName == "ne"    ? "!="
-                            : mName == "lt"    ? "<"
-                            : mName == "le"    ? "<="
-                            : mName == "gt"    ? ">"
-                            : mName == "ge"    ? ">="
-                            : mName == "plus"  ? "+"
-                            : mName == "minus" ? "-"
-                            : mName == "mul"   ? "*"
-                            : mName == "div"   ? "/"
-                            : mName == "mod"   ? "%"
-                            : mName == "and"   ? "and"
-                            : mName == "or"    ? "or"
-                            : mName == "xor"   ? "xor"
-                            : mName == "shl"   ? "<<"
-                            : mName == "shr"   ? ">>"
-                                               : mName.c_str();
-        throw YuxError(lineNum, ErrorCode::E3073, effLeftType.name, opSym, mName);
+        // E3073：SemaPass tryValidateBinOpMethod 已查；此处防 IR 无方法可降。
+        throwSemaGap(lineNum);
     }
 
     // 准备方法参数
@@ -473,8 +452,7 @@ llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
         }
         return _builder.CreateSRem(left, right);
     }
-    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3001, "mul/div/mod", effLeftType.name,
-                   applySubst(node->right()->getType()).name);
+    throwSemaGap(node->getLineNumber(), node->getColumn());
 }
 
 llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
@@ -600,8 +578,7 @@ llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
         }
         return _builder.CreateAShr(left, right);
     }
-    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3001, opStr, effLeftType.name,
-                   applySubst(node->right()->getType()).name);
+    throwSemaGap(node->getLineNumber(), node->getColumn());
 }
 
 llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
@@ -647,8 +624,7 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
         // spec §7.2.3.3: 非内置类型允许跨类型比较，类型匹配由方法解析完成；
         // 内置类型跨类型时 getType 已抛 E3004（SemaPass 默认重抛），此处不可达。
         if (isBuiltinType(effLeftType.name)) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3001, "comparison", effLeftType.name,
-                           effRightType.name);
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
     }
 
@@ -876,6 +852,5 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
     default:
         break;
     }
-    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3001, "comparison", effLeftType.name,
-                   applySubst(node->right()->getType()).name);
+    throwSemaGap(node->getLineNumber(), node->getColumn());
 }

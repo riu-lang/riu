@@ -153,7 +153,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                 // DRAFT-spec-reflect §2: variants 仅 enum 可访问; struct 上访问 → E3135.
                 // E3135 由 SemaPass PathCall 先抛；此处防 IR 把 struct::variants 当 reflect 槽。
                 if (rhsName == "variants") {
-                    throw YuxError(line, col, ErrorCode::E3135, lhsRaw);
+                    throwSemaGap(line, col);
                 }
 
                 llvm::GlobalVariable* fieldsRefGV = nullptr;
@@ -334,8 +334,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                         if (i) got += ", ";
                         got += node->args()[i]->getType().getFullName();
                     }
-                    throw YuxError(line, col, ErrorCode::E3131, lhsRaw, methodName, paramTypes.size(), expected,
-                                   node->args().size(), got);
+                    throwSemaGap(line, col);
                 }
                 for (size_t i = 0; i < node->args().size(); ++i) {
                     auto actualTy = node->args()[i]->getType();
@@ -349,8 +348,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                             if (j) got += ", ";
                             got += node->args()[j]->getType().getFullName();
                         }
-                        throw YuxError(line, col, ErrorCode::E3131, lhsRaw, methodName, paramTypes.size(), expected,
-                                       node->args().size(), got);
+                        throwSemaGap(line, col);
                     }
                 }
                 for (auto& a : node->args()) {

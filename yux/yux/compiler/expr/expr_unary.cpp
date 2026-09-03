@@ -80,12 +80,7 @@ llvm::Value* Compiler::compileCustomTypeUnaryOp(p<ExprNode> expr, const TypeInfo
     }
 
     if (!methodSymbol) {
-        throw YuxError(lineNum, ErrorCode::E3074, effType.name,
-                       methodName == "neg"   ? "-"
-                       : methodName == "inv" ? "~"
-                       : methodName == "not" ? "!"
-                                             : methodName,
-                       methodName);
+        throwSemaGap(lineNum);
     }
 
     // 获取或创建方法函数
