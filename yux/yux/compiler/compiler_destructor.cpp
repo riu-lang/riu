@@ -1067,11 +1067,12 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
     // 泛型 subst、以及 Rc<Rc<Heap<T>>> 递归）。本函数不可达这两类内层。
     // 禁止回退 generic _box_release：那会跳过 HeapFree / Dyn vtable dtor，造成泄漏。
     if (inner->isHeap()) {
-        auto sp = inner->heapElementType();
-        throw YuxError(1, ErrorCode::E4025, std::string("Rc"), sp ? sp->name : std::string("?"));
+        // E4025 由 SemaPass / getLLVMType 先抛。
+        throwSemaGap(1);
     }
     if (inner->isDyn()) {
-        throw YuxError(1, ErrorCode::E1132, std::string("Rc<") + inner->getFullName() + ">");
+        // E1132 由 SemaPass / getLLVMType 先抛。
+        throwSemaGap(1);
     }
 
     // 构造 mangled name：__yux_box_release.T.<type>

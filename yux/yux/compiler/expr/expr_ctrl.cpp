@@ -542,7 +542,8 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
         if (!enumDecl) {
             int aline = arm->getLineNumber() > 0 ? arm->getLineNumber() : line;
             int acol = arm->getColumn() > 0 ? arm->getColumn() : col;
-            throw YuxError(aline, acol, ErrorCode::E7011, arm->errName().getText(), errType, errType);
+            // E7011 由 SemaPass try/catch 先抛。
+            throwSemaGap(aline, acol);
         }
         ctx.catchTypes.push_back(errType);
 
@@ -594,7 +595,8 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
             }
         }
         if (!covered) {
-            throw YuxError(line, col, ErrorCode::E7002, seen, string("<unknown>"), seen);
+            // E7002 由 SemaPass try 穷尽性先抛。
+            throwSemaGap(line, col);
         }
     }
 

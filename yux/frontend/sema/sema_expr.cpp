@@ -495,7 +495,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         // 取第一候选, 10e 视多重载为同质); 非 ID-literal + ! + 不在 try 内
         // 走 checkBangWithoutFallibleCaller. _tryStack 顶端的 vector* 用作
         // tryBlockSeenErrs (callee 是 #Fallible 时把 errType append 进去,
-        // 供 E7002 穷尽性使用; SemaPass 暂不读它, 由 Compiler 走 E7002).
+        // 供下方 try/catch 分支的 E7002 穷尽性使用).
         auto calleeExpr = n->getCalleeExpr();
         if (auto litCallee = dynamic_cast<p<ExprLiteralNode>>(calleeExpr)) {
             if (auto objLit = dynamic_cast<p<LiteralObjNode>>(litCallee->literal())) {
@@ -1448,7 +1448,6 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         //   * 已知字段: `.name` 必须是所属结构体的字段 (E3126).
         //   * 唯一: 同名 `.field` 出现两次报 (E3127).
         // DRAFT-const-eval Phase 5: TypeName{...} 形态放行至任意 expr 位.
-        // codegen 仍走 E0000 占位 (Phase 3 接管).
         int line = n->resolveLineNumber();
         int col = n->resolveColumn();
         string structName;
@@ -1631,6 +1630,13 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                 auto* structDecl = _file ? _file->getStructDecl(lhsName) : nullptr;
                 if (!structDecl && _sdkFile && _sdkFile != _file) {
                     structDecl = _sdkFile->getStructDecl(lhsName);
+                }
+                // 非泛型 struct 写 `Type:<T>::name`：expects 0。与 T 无关，模板期也报。
+                // 原先 Compiler 用占位 E0000。
+                if (structDecl && !structDecl->isGeneric() && !n->lhsTypeArgs().empty()) {
+                    throw YuxError(line, col, ErrorCode::E6011, lhsName, static_cast<size_t>(0),
+                                   n->lhsTypeArgs().size())
+                        .withHint(std::format("非泛型 struct `{}` 不能写 `:<...>` turbofish，去掉类型实参", lhsName));
                 }
                 if (structDecl && structDecl->isGeneric()) {
                     const auto& lhsTArgs = n->lhsTypeArgs();

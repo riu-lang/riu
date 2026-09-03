@@ -827,11 +827,9 @@ void Compiler::emitInstanceMethods() {
                         retType = applySubst(method->header()->retType()->getType());
                     }
                     bool isStatic = method->header()->isStatic();
-                    // Phase 6D-tail：同名 ctor 已砍 (E3130)；泛型 impl 在实例化时
-                    // 兜底拦截同名非 #Static 方法（sema 跳过 generic impl，故只能在这里抓）。
+                    // E3130 由 SemaPass impl 定义点先抛（含泛型 impl）。
                     if (!isStatic && methodName == baseName) {
-                        throw YuxError(method->header()->getLineNumber(), ErrorCode::E3130, baseName, baseName,
-                                       baseName);
+                        throwSemaGap(static_cast<size_t>(method->header()->getLineNumber()));
                     }
                     string mFallibleErr;
                     if (auto e = method->header()->getAnnoArg("Fallible")) mFallibleErr = *e;
@@ -864,10 +862,10 @@ string Compiler::ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& type
     // 生成 mangle 名称: foo<i32,i64>
     string mangledName = baseName + "<";
     for (size_t i = 0; i < typeArgs.size(); ++i) {
-        if (i > 0) mangledName += ",";
+        if (i > 0) mangledName += ',';
         mangledName += typeArgs[i].getMangleName();
     }
-    mangledName += ">";
+    mangledName += '>';
 
     // 检查是否已存在。
     // 同名泛型不同重载（如 print<T>(x T) vs print<T>(x T&)）共享同一 baseName+typeArgs

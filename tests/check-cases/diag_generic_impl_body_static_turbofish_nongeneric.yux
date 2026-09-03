@@ -1,0 +1,24 @@
+; 泛型 impl 体：非泛型 struct turbofish 与 T 无关 → E6011（模板期即可报）
+struct Point {
+  x i32
+
+  #Static
+  fn make(x i32) Self {
+    Self {
+      .x = x
+    }
+  }
+}
+
+struct Slot<T> {
+  val T
+
+  fn bump() {
+    let p = Point:<i32>::make(1)  ; check: E6011
+    ret;
+  }
+}
+
+fn main() {
+  ret;
+}

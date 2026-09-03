@@ -282,7 +282,8 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                     baseOwner = _yux->sdkFile();
                 }
                 if (!baseDecl || !baseDecl->isGeneric()) {
-                    throw YuxError(line, col, ErrorCode::E0000, "turbofish 形态需泛型 struct: " + lhsRaw);
+                    // E6011 由 SemaPass 非泛型 struct turbofish 先抛。
+                    throwSemaGap(line, col);
                 }
                 if (lhsTArgs.size() != baseDecl->typeParams().size()) {
                     // E6011 由 SemaPass #Static turbofish 先抛。
@@ -522,20 +523,20 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
         }
     }
     if (!specDecl) {
-        // E1131: 内层不是已知 draft 名 (可能是结构体 / 类型别名 / 不存在符号)
-        throw YuxError(line, col, ErrorCode::E1131, specBareName.empty() ? std::string("?") : specBareName);
+        // E1131 由 SemaPass Dyn 构造先抛。
+        throwSemaGap(line, col);
     }
 
-    // E1132: Dyn<Dyn<...>> — 内层 draft 位置不能再是 Dyn
+    // E1132 由 SemaPass 先抛（内层仍是 Dyn）。
     if (specInner && specInner->isDyn()) {
-        throw YuxError(line, col, ErrorCode::E1132, resultType.getFullName());
+        throwSemaGap(line, col);
     }
 
-    // E1134: 对象安全
+    // E1134 由 SemaPass 先抛（对象安全）。
     if (_yux) {
         auto& checker = _yux->specImplChecker();
         if (!checker.specIsObjectSafe(specDecl)) {
-            throw YuxError(line, col, ErrorCode::E1134, specQualified, specQualified, specQualified);
+            throwSemaGap(line, col);
         }
     }
 
@@ -561,7 +562,8 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
         }
     }
     if (concreteBare.empty()) {
-        throw YuxError(line, col, ErrorCode::E1133, specQualified, argType.getFullName(), specQualified);
+        // E1133 由 SemaPass Dyn 构造先抛（参数形态）。
+        throwSemaGap(line, col);
     }
     if (_yux) {
         auto& checker = _yux->specImplChecker();
@@ -569,7 +571,7 @@ llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
         // boundSatisfied 同时覆盖显式 impl (_seen) 与 #DraftLike 结构匹配
         std::vector<TypeInfo> specTypeArgs;
         if (!checker.boundSatisfied(concreteTI, specDecl, specQualified, specTypeArgs)) {
-            throw YuxError(line, col, ErrorCode::E1133, specQualified, argType.getFullName(), specQualified);
+            throwSemaGap(line, col);
         }
     }
 

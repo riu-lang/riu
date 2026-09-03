@@ -1,0 +1,16 @@
+; 非泛型 struct 写 `Type:<T>::name` → E6011（Phase C；原 Compiler E0000）
+struct Point {
+  x i32
+
+  #Static
+  fn make(x i32) Self {
+    Self {
+      .x = x
+    }
+  }
+}
+
+fn main() {
+  let p = Point:<i32>::make(1)  ; check: E6011
+  ret;
+}

@@ -234,8 +234,8 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
             structName = _currentStructName;
         }
         if (structName.empty()) {
-            throw YuxError(line, col, ErrorCode::E0000,
-                           "`{ ... }` 字段字面量 codegen 找不到所属结构体 (sema 应已拦截)");
+            // E3124 由 SemaPass Self/TypeName 字面量先抛。
+            throwSemaGap(line, col);
         }
         // Phase 6E.4-C: 泛型 struct #Static fn 体内 `Self {...}` —
         // _currentStructName 是 mangled (`GH$i32`), getStructDecl 查不到; 走
@@ -251,7 +251,8 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
             }
         }
         if (!decl) {
-            throw YuxError(line, col, ErrorCode::E0000, "`Self { ... }` codegen 找不到 struct decl: " + structName);
+            // E3124 由 SemaPass 先抛；此处防 IR 无 decl 可 GEP。
+            throwSemaGap(line, col);
         }
         auto llvmStructType = getLLVMType(typeInfoForNamedStruct(structName));
         if (!llvmStructType) {
