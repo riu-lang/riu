@@ -1,0 +1,8 @@
+; `<-` 左侧是调用结果 → E4036（Phase C）
+fn foo() i32 = 1
+
+fn main() {
+  #Mut let x i32 = 2
+  let old = foo() <- x  ; check: E4036
+  ret;
+}

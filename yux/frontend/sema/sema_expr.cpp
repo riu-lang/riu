@@ -1951,6 +1951,11 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
     }
     if (auto n = dynamic_cast<p<ExprMoveAssignNode>>(expr)) {
         visitExpr(n->left());
+        // 与 compileLvalueAddr 同款：LHS 须是变量 / `$` / 字段 / 元组 `.N`。
+        // 与 T 无关的形态模板期也报（字面量 / 调用 / 索引）。
+        if (!isMoveAssignLvalue(n->left())) {
+            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E4036);
+        }
         // 与 compileMoveAssignExpr 对齐：空 `[]` 用左侧类型当下靶（否则 E3063）。
         TypeInfo leftTy;
         const TypeInfo* rightExp = nullptr;
@@ -1959,9 +1964,8 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
             rightExp = &leftTy;
         }
         visitExpr(n->right(), rightExp);
-        // 校验 left 为合法 lvalue + 类型兼容。
-        // left 必须是变量引用 ($ / a.b / a[ ... ]) 等可赋值表达式。
-        // right 类型必须能与 left 类型兼容（相同或灵活整数字面量）。
+        // 类型兼容：right 须能赋给 left（相同或灵活整数字面量）。
+        // LHS 形态已在上方按 compileLvalueAddr 查过（E4036）。
         try {
             auto leftType = n->left()->getType();
             if (isIntTypeName(leftType.name) && isFlexibleIntExpr(n->right())) {

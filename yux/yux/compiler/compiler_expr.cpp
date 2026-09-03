@@ -488,7 +488,8 @@ llvm::Value* Compiler::compileLvalueAddr(p<ExprNode> node) {
             // E3030 由 SemaPass getType 先抛。
             throwSemaGap(line, col);
         }
-        throw YuxError(line, col, ErrorCode::E0000, "<- 左侧不是有效 lvalue（字面量不可赋值）");
+        // E4036 由 SemaPass isMoveAssignLvalue 先抛；此处防 IR 把字面量当槽。
+        throwSemaGap(line, col);
     }
 
     // 字段访问: ExprDotNode(base, member)
@@ -543,7 +544,8 @@ llvm::Value* Compiler::compileLvalueAddr(p<ExprNode> node) {
             decl = _yux->sdkFile()->getStructDecl(baseType.name);
         }
         if (!decl) {
-            throw YuxError(line, col, ErrorCode::E0000, "<- 左侧字段访问找不到 struct decl: " + baseType.name);
+            // E3041 / E3043 由 SemaPass 读路径先抛；此处防 IR 无 decl 可 GEP。
+            throwSemaGap(line, col);
         }
         int idx = decl->fieldIndex(member);
         if (idx < 0) {
@@ -552,7 +554,8 @@ llvm::Value* Compiler::compileLvalueAddr(p<ExprNode> node) {
         return _builder.CreateStructGEP(structType, baseAddr, static_cast<unsigned>(idx), "move.lhs.gep");
     }
 
-    throw YuxError(line, col, ErrorCode::E0000, "<- 左侧仅支持变量、$、字段访问（暂不支持索引）");
+    // E4036 由 SemaPass isMoveAssignLvalue 先抛；此处防 IR 走进不支持的 LHS 形态。
+    throwSemaGap(line, col);
 }
 
 // 编译 a <- b：移出旧值、替换新值、返回旧值

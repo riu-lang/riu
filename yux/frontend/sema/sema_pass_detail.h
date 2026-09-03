@@ -51,6 +51,12 @@ bool isLvalueArrayBase(ExprNode* baseExpr);
 // 字面量一样走 E3061。
 bool isArraySetLvalue(ExprNode* arrayExpr);
 
+// `<-` LHS：与 compileLvalueAddr 同款，只认
+//   * 简单变量 / `$`（LiteralObj）
+//   * 递归 Dot 链（字段 `a.b` / `$.x`、元组 `.N`）
+// 字面量 / 调用 / 索引 / 括号等走 E4036。与 T 无关，模板期也报。
+bool isMoveAssignLvalue(ExprNode* expr);
+
 void validateContainerBansAt(const TypeInfo& t, p<TypeNode> tn, int fallbackLine, int fallbackCol);
 
 // Phase B-1: 与 Compiler::isNoCopyType 等价的本地版本（0 LLVM 依赖）。

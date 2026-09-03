@@ -363,6 +363,8 @@ DEF_ERR(4032, "Struct `{}` contains `#NoCopy` field `{}` and must itself be anno
 DEF_ERR(4033, "Cannot use `{}` after move; ownership has been transferred")
 DEF_ERR(4034, "`move` argument must be T&, got `{}` (spec §3g)")
 DEF_ERR(4035, "Type parameter of `move` must not itself be a reference (spec §3g)")
+DEF_ERR(4036, "`<-` left-hand side must be a variable, `$`, field, or tuple member "
+              "(index not yet supported; spec §4.13.2.2)")
 
 // ── E5xxx 模块 / 包 ───────────────────────────────────────────────────
 DEF_ERR(5001, "yux.toml not found in {}")

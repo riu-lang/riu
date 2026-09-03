@@ -96,6 +96,21 @@ bool isArraySetLvalue(ExprNode* arrayExpr) {
     return false;
 }
 
+// `<-` LHS：与 compileLvalueAddr 同款。
+bool isMoveAssignLvalue(ExprNode* expr) {
+    while (expr) {
+        if (auto lit = dynamic_cast<ExprLiteralNode*>(expr)) {
+            return dynamic_cast<LiteralObjNode*>(lit->literal()) != nullptr;
+        }
+        if (auto dot = dynamic_cast<ExprDotNode*>(expr)) {
+            expr = dot->baseExpr();
+            continue;
+        }
+        return false;
+    }
+    return false;
+}
+
 void validateContainerBansAt(const TypeInfo& t, p<TypeNode> tn, int fallbackLine, int fallbackCol) {
     if (!tn) return;
     int line = tn->getLineNumber();

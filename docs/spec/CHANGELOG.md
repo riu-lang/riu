@@ -15,6 +15,11 @@
 
 ---
 
+## 2026-09-03 —— `<-` LHS 形态报 E4036
+
+- **修改 §4.13.2.2 / 附录 D**：`<-` 左侧不是变量 / `$` / 字段 / 元组 `.N`（含索引）报 E4036。原先 Compiler 用占位 E0000，`yux-check` 漏报。
+- **冲突 / 兼容**：无用户破坏；非法 `<-` 左侧从内部码改为正式诊断。
+
 ## 2026-08-28 —— String：`to_upper` / `to_lower` / `ends_with` / `split`
 
 - **修改 §9.3.4**：方法表补 `starts_with` / `contains`（v0.18 已落地、表未列）以及 `ends_with` / `to_upper` / `to_lower` / `split`。`to_upper` / `to_lower` 仅 ASCII `a-z` ↔ `A-Z`（§9.3.4.3）；`split` 语义见 §9.3.4.4。

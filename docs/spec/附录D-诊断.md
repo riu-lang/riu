@@ -294,6 +294,7 @@ static-vars（E3150..E3157；引入自 [draft/DRAFT-static-vars.md](draft/DRAFT-
 | E4033 | `Cannot use \`{}\` after move; ownership has been transferred` |
 | E4034 | `\`move\` argument must be T&, got \`{}\` (spec §3g)` |
 | E4035 | `Type parameter of \`move\` must not itself be a reference (spec §3g)` |
+| E4036 | `` `<-` left-hand side must be a variable, `$`, field, or tuple member (index not yet supported; spec §4.13.2.2) `` |
 
 ### D.3.5 E5xxx — 模块 / 包
 

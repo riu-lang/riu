@@ -1,0 +1,5 @@
+; `<-` 左侧是字面量 → E4036（Phase C）
+fn main() {
+  let old = 1 <- 2  ; check: E4036
+  ret;
+}
