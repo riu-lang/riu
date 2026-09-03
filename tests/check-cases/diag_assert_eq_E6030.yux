@@ -1,0 +1,14 @@
+; require-sdk
+; assert_eq:<T> 仅数值 / bool；用户 struct → E6030（Phase C）
+
+struct Point {
+  x i32
+}
+
+fn main() {
+  let p Point = Point {
+    .x = 1
+  }
+  assert_eq:<Point>(p, p)  ; check: E6030
+  ret;
+}

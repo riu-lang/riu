@@ -543,44 +543,72 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                 if (!structDecl && _sdkFile) structDecl = _sdkFile->getStructDecl(fnName);
 
                 // Phase 3.3.2.f: Builtin 泛型 intrinsic 的 shape + type-shape 校验.
-                // 接管 E6017/E6018/E6026-E6029/E6032 实际抛出点 (与 Compiler::compileGenericFunctionCall
-                // 的 #Builtin 分支镜像).
+                // 接管 E6017/E6018/E6026-E6029/E6030/E6031/E6032 实际抛出点 (与
+                // Compiler::compileGenericFunctionCall 的 #Builtin 分支镜像).
                 // 限制:
                 //   * 仅在 callee 是 ID-literal 且解析到泛型 fn 且 fn 头部 hasAnno(Builtin) 时接管;
-                //   * typeArgs 仅在显式 (`f:<T>(...)`) 时由 SemaPass 取; 无显式 typeArgs 的 Builtin
-                //     推断仍跳过（as_ref(Heap<T>) 等特例在 Compiler）. 非 Builtin 的 E6012/E6013
-                //     由下方 infer 在调用点 / 实例化后重抛.
+                //   * typeArgs 一般仅在显式 (`f:<T>(...)`) 时收取; 无显式 typeArgs 的 Builtin
+                //     推断仍跳过（as_ref(Heap<T>) 等特例在 Compiler），assert_eq 除外：
+                //     无 turbofish 时 infer 后再查 E6030 / E6031（String& 非泛型重载优先）.
                 //   * argTypes 经 getType() 计算, 任一 arg 未推断 (lambda 形参) 时跳过.
                 if (!structDecl) {
                     auto [genFn, _] = _file->getGenericFunction(fnName);
                     // getGenericFunction 已搜索 wildcardImports，不再需要手动 SDK 回退
-                    if (genFn && genFn->header()->hasAnno("Builtin") && hasTypeArgs) {
-                        vector<TypeInfo> typeArgs;
-                        bool typeArgsOk = true;
-                        try {
-                            for (auto& tn : n->getTypeArgs())
-                                typeArgs.push_back(tn->getType());
-                        } catch (...) {
-                            typeArgsOk = false;
-                        }
-
+                    if (genFn && genFn->header()->hasAnno("Builtin") && (hasTypeArgs || fnName == "assert_eq")) {
                         vector<TypeInfo> argTypes;
                         bool argTypesOk = true;
                         for (auto& a : n->getArgs()) {
                             try {
-                                argTypes.push_back(a->getType());
+                                argTypes.push_back(applyInstSubst(a->getType()));
                             } catch (...) {
                                 argTypesOk = false;
                                 break;
                             }
                         }
 
-                        if (typeArgsOk) {
+                        vector<TypeInfo> typeArgs;
+                        bool typeArgsOk = true;
+                        if (hasTypeArgs) {
+                            try {
+                                for (auto& tn : n->getTypeArgs())
+                                    typeArgs.push_back(applyInstSubst(tn->getType()));
+                            } catch (...) {
+                                typeArgsOk = false;
+                            }
+                        } else if (fnName == "assert_eq") {
+                            // String& 非泛型重载优先（call_fn.cpp Phase 4b），不走 #Builtin。
+                            auto peelStr = [](TypeInfo t) {
+                                if (t.isRef() && t.refElementType()) t = *t.refElementType();
+                                return t;
+                            };
+                            const bool stringOverload = argTypesOk && argTypes.size() >= 2 &&
+                                                        peelStr(argTypes[0]).isString() &&
+                                                        peelStr(argTypes[1]).isString();
+                            if (!argTypesOk || stringOverload) {
+                                typeArgsOk = false;
+                            } else {
+                                try {
+                                    sema::inferGenericFnTypeArgs(n, genFn, fnName, argTypes, typeArgs);
+                                    for (auto& t : typeArgs)
+                                        t = applyInstSubst(t);
+                                } catch (const YuxError&) {
+                                    if (_currentTypeParams.empty() || !_instSubst.empty()) throw;
+                                    typeArgsOk = false;
+                                } catch (...) {
+                                    typeArgsOk = false;
+                                }
+                            }
+                        }
+
+                        if (typeArgsOk && !typeArgs.empty()) {
                             sema::validateBuiltinIntrinsicShape(fnName, typeArgs.size(), n->getArgs().size(), line,
                                                                 col);
                             if (argTypesOk) {
-                                sema::validateBuiltinIntrinsicTypeShape(fnName, typeArgs, argTypes, n->getArgs(), _file,
-                                                                        _sdkFile, line, col);
+                                const bool skipAssertEqT = fnName == "assert_eq" && isCurrentTypeParam(typeArgs[0]);
+                                if (!skipAssertEqT) {
+                                    sema::validateBuiltinIntrinsicTypeShape(fnName, typeArgs, argTypes, n->getArgs(),
+                                                                            _file, _sdkFile, line, col);
+                                }
 
                                 // Phase B-1: copy_of 拒绝 #NoCopy 类型（含 Array<T>，深拷贝统一用 .clone()）
                                 if (fnName == "copy_of" && !typeArgs.empty()) {

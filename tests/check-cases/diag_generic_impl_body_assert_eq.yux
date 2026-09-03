@@ -1,0 +1,30 @@
+; require-sdk
+; 泛型 impl 体：写出 Slot<Point> 后 assert_eq($.v, $.v) → E6030（Phase C）
+
+struct Point {
+  x i32
+}
+
+struct Slot<T> {
+  v T
+
+  #Static
+  fn make(v T) Self {
+    Self {
+      .v = v
+    }
+  }
+
+  fn peek() {
+    assert_eq($.v, $.v)  ; check: E6030
+    ret;
+  }
+}
+
+fn main() {
+  let s Slot<Point> = Slot:<Point>::make(Point {
+    .x = 1
+  })
+  s.peek()
+  ret;
+}

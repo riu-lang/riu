@@ -1,0 +1,9 @@
+; require-sdk
+; assert_eq:<i32> 实参 i64 vs i32 → E6031（Phase C）
+
+fn main() {
+  let a i64 = 1
+  let b i32 = 2
+  assert_eq:<i32>(a, b)  ; check: E6031
+  ret;
+}

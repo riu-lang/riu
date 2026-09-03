@@ -238,6 +238,10 @@ void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, s
 //       * E6029: argType[0] 必须是 Rc 或 Rc?, 若 Nullable 其 inner 必须是 Rc
 //   - copy_of:
 //       * E6032: T 深度含有 Ref<U> 字段, 拒绝 (DRAFT-const-mut §5.3 决议 #2)
+//   - assert_eq:
+//       * E6030: T 剥 Ref/Heap 后须是数值 / bool（与 compileTestAssertEq 同款）
+//       * E6031: 两实参剥 Ref/Heap 后 LLVM 位宽组不一致（别名 resolveAlias；
+//         灵活整数字面量按 T 收束）。isize/usize 与 i64/u64 同组（x64）
 //
 // 不覆盖:
 //   - E6019 (size_of llvm getLLVMType 失败) — 依赖 LLVM, 留 codegen

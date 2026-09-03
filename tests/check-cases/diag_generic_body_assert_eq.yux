@@ -1,0 +1,19 @@
+; require-sdk
+; 泛型 fn 体：T 实例化为 Point 后 assert_eq(a, b) → E6030（Phase C）
+
+struct Point {
+  x i32
+}
+
+fn eq_t<T>(a T, b T) {
+  assert_eq(a, b)  ; check: E6030
+  ret;
+}
+
+fn main() {
+  let p Point = Point {
+    .x = 1
+  }
+  eq_t:<Point>(p, p)
+  ret;
+}

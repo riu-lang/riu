@@ -1,0 +1,18 @@
+; require-sdk
+; 泛型 fn 体：assert_eq:<Point> 与 T 无关，模板期也报 E6030
+
+struct Point {
+  x i32
+}
+
+fn unused<T>() {
+  let p Point = Point {
+    .x = 1
+  }
+  assert_eq:<Point>(p, p)  ; check: E6030
+  ret;
+}
+
+fn main() {
+  ret;
+}

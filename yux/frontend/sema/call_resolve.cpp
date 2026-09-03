@@ -1088,8 +1088,8 @@ void validateArrayMethodCall(const TypeInfo& baseType, const string& member, siz
 }
 
 // ==================== Builtin intrinsic 类型形态校验 (Phase 3.3.2.d) ====================
-// 原 compileGenericFunctionCall 的 #Builtin 分支内散落的 E6028 / E6029 / E6032
-// 校验 (跨 same_ref / ptr_of / as_ref / weak / copy_of 五个 fnName) 收口到单一 helper.
+// 原 compileGenericFunctionCall 的 #Builtin 分支内散落的 E6028 / E6029 / E6032 / E6030 / E6031
+// 校验 (跨 same_ref / ptr_of / as_ref / weak / copy_of / assert_eq) 收口到单一 helper.
 void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeInfo>& typeArgs,
                                        const vector<TypeInfo>& argTypes, const vector<p<ExprNode>>& argNodes,
                                        FileNode* file, FileNode* sdkFile, int line, int col) {
@@ -1259,7 +1259,70 @@ void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeIn
         // 类型校验由 codegen 端在 CreateStore 前做（对齐 Rc 初始化路径）
         return;
     }
-    // 其他 intrinsic (assert_eq / size_of / upgrade) 无类型形态校验, no-op
+    // assert_eq:<T>(actual, expected)：T 须是数值 / bool；两实参 LLVM 位宽组须一致。
+    // 与 compileTestAssertEq 对齐。模板形参由 caller 跳过。
+    if (fnName == "assert_eq") {
+        if (typeArgs.empty()) return;
+        auto peelT = [](TypeInfo t) {
+            if (t.isRef() && t.refElementType()) t = *t.refElementType();
+            if (t.isHeap()) {
+                if (auto inner = t.heapElementType()) t = *inner;
+            }
+            return t;
+        };
+        auto peelArg = [](TypeInfo t) {
+            if (t.isHeap()) {
+                if (auto inner = t.heapElementType()) return *inner;
+            } else if (t.isRef() && t.refElementType()) {
+                t = *t.refElementType();
+            }
+            return t;
+        };
+        auto llvmGroup = [](const TypeInfo& t) -> const char* {
+            const string& n = t.name;
+            if (n == "i8" || n == "u8") return "i8";
+            if (n == "i16" || n == "u16") return "i16";
+            if (n == "i32" || n == "u32") return "i32";
+            if (n == "i64" || n == "u64" || n == "isize" || n == "usize") return "i64";
+            if (n == "f32") return "f32";
+            if (n == "f64") return "f64";
+            if (n == "bool") return "i1";
+            return nullptr;
+        };
+        TypeInfo t = peelT(typeArgs[0]);
+        try {
+            t = resolveAlias(t, file, sdkFile);
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+        }
+        t = peelT(t);
+        const string& tname = t.name;
+        const bool okScalar = isIntTypeName(tname) || tname == "bool" || t.isFloat();
+        if (!okScalar) {
+            throw YuxError(line, col, ErrorCode::E6030, t.getFullName());
+        }
+        if (argTypes.size() < 2 || argNodes.size() < 2) return;
+        TypeInfo a0 = peelArg(argTypes[0]);
+        TypeInfo a1 = peelArg(argTypes[1]);
+        try {
+            a0 = peelArg(resolveAlias(a0, file, sdkFile));
+            a1 = peelArg(resolveAlias(a1, file, sdkFile));
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+        }
+        if (isFlexibleIntExpr(argNodes[0]) && isIntTypeName(t.name)) a0 = t;
+        if (isFlexibleIntExpr(argNodes[1]) && isIntTypeName(t.name)) a1 = t;
+        const char* g0 = llvmGroup(a0);
+        const char* g1 = llvmGroup(a1);
+        if (!g0 || !g1) return;
+        if (g0 != g1) {
+            throw YuxError(line, col, ErrorCode::E6031, a0.getFullName(), a1.getFullName());
+        }
+        return;
+    }
+    // 其他 intrinsic (size_of / upgrade) 无类型形态校验, no-op
 }
 
 // ==================== Builtin 操作符方法 arity / 类型域 (Phase 3.3.2.e) ====================

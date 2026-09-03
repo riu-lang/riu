@@ -100,6 +100,7 @@ llvm::Value* Compiler::compileTestAssertEq(p<ExprCallNode> callNode, vector<llvm
     bool isFloat = actualTypeArg.isFloat();
 
     if (!(isInt || isBool || isFloat)) {
+        // E6030 由 SemaPass validateBuiltinIntrinsicTypeShape 先抛；此处防 IR 走进非标量 icmp。
         throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6030, actualTypeArg.getFullName());
     }
 
@@ -107,6 +108,7 @@ llvm::Value* Compiler::compileTestAssertEq(p<ExprCallNode> callNode, vector<llvm
     // 这里若不拦，LLVM 的 CreateICmpEQ / CreateFCmpOEQ 会触发 same-type 断言导致编译器崩溃
     // 典型触发：`assert_eq(arr.len(), 3)` —— len() 返 i64，字面量 3 默认 i32
     // 用 LLVM 类型比较（而非 TypeInfo），以便类型别名 / 同底层类型不同别名 仍视为相等
+    // E6031 由 SemaPass 按位宽组先抛；此处防 IR icmp 类型不一致。
     if (args[0]->getType() != args[1]->getType()) {
         throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6031, argTypes[0].getFullName(),
                        argTypes[1].getFullName());
