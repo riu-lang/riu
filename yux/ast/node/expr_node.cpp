@@ -922,19 +922,8 @@ TypeInfo ExprDotNode::getType() const {
                     auto* base = dot->baseExpr();
                     auto* path = dynamic_cast<ExprPathCallNode*>(base);
                     if (path && path->variantName().getText() == "fields") {
-                        std::string sn = path->enumName().getText();
-                        // Resolve "Self" by walking up to enclosing StructDeclNode
-                        if (sn == "Self") {
-                            auto* s = expr->findNearestScope();
-                            while (s) {
-                                if (auto* sd = dynamic_cast<StructDeclNode*>(s)) {
-                                    sn = sd->name().getText();
-                                    break;
-                                }
-                                s = s->parentScope();
-                            }
-                            if (sn == "Self") return {nullptr, -1};
-                        }
+                        std::string sn = path->resolvedLhsName();
+                        if (sn == "Self") return {nullptr, -1};
                         // Evaluate the index argument as a compile-time integer
                         auto* idxExpr = call->getArgs()[0];
                         if (auto* idxLit = dynamic_cast<ExprLiteralNode*>(idxExpr)) {
@@ -987,18 +976,8 @@ TypeInfo ExprDotNode::getType() const {
                 if (get->indices().size() == 1) {
                     auto* path = dynamic_cast<ExprPathCallNode*>(get->arrayExpr());
                     if (path && path->variantName().getText() == "fields") {
-                        std::string sn = path->enumName().getText();
-                        if (sn == "Self") {
-                            auto* s = expr->findNearestScope();
-                            while (s) {
-                                if (auto* sd2 = dynamic_cast<StructDeclNode*>(s)) {
-                                    sn = sd2->name().getText();
-                                    break;
-                                }
-                                s = s->parentScope();
-                            }
-                            if (sn == "Self") return {nullptr, -1};
-                        }
+                        std::string sn = path->resolvedLhsName();
+                        if (sn == "Self") return {nullptr, -1};
                         auto* idxExpr = get->indices()[0];
                         if (auto* idxLit = dynamic_cast<ExprLiteralNode*>(idxExpr)) {
                             if (auto* intLit = dynamic_cast<LiteralIntNode*>(idxLit->literal())) {
@@ -1911,8 +1890,22 @@ TypeInfo ExprStructLitNode::getType() const {
     return _structName.empty() ? TypeInfo() : TypeInfo(_structName);
 }
 
-TypeInfo ExprPathCallNode::getType() const {
+string ExprPathCallNode::resolvedLhsName() const {
     string n = _enumName.getText();
+    if (n != "Self") return n;
+    p<Node> cur = parent();
+    while (cur) {
+        if (auto* impl = dynamic_cast<StructImplNode*>(cur)) return impl->structName();
+        cur = cur->parent();
+    }
+    for (auto* s = findNearestScope(); s; s = s->parentScope()) {
+        if (auto* impl = dynamic_cast<StructImplNode*>(s)) return impl->structName();
+    }
+    return n;
+}
+
+TypeInfo ExprPathCallNode::getType() const {
+    string n = resolvedLhsName();
     auto* scope = parent() ? parent()->findNearestScope() : nullptr;
     FileNode* file = nullptr;
     while (scope) {

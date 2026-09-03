@@ -612,12 +612,12 @@ struct TypeInfo {
         return result;
     }
 
-    // 应用类型形参替换。Normal 类型若匹配 subst 键则整体替换（可被替换为 Generic/Array 等）。
+    // 应用类型形参替换。无类型实参的具名类型（Normal / Ptr / 空 Generic）匹配 subst 键则整体替换。
     [[nodiscard]] TypeInfo substitute(const std::map<std::string, TypeInfo>& subst) const {
-        if (kind == TypeKind::Normal || kind == TypeKind::Ptr) {
+        if (kind == TypeKind::Normal || kind == TypeKind::Ptr || (kind == TypeKind::Generic && genericArgs.empty())) {
             auto it = subst.find(name);
             if (it != subst.end()) return it->second;
-            return *this;
+            if (kind != TypeKind::Generic) return *this;
         }
         if (hasGenericArgs() && !genericArgs.empty()) {
             vector<sp<TypeInfo>> newArgs;

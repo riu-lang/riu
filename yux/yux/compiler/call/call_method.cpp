@@ -126,10 +126,15 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
                     subst[structDecl->typeParams()[i]] = a ? *a : TypeInfo();
                 }
                 retType = retType.substitute(subst);
+                if (structDecl) {
+                    string eff = actualType.getMangleName();
+                    retType = bindStructSelfType(retType, structDecl->name().getText(), eff);
+                }
             }
         }
     } else if (genericMethodNode && genericMethodNode->header()->retType()) {
         retType = genericMethodNode->header()->retType()->getType().substitute(genericSubst);
+        retType = bindStructSelfType(retType, actualType.name, genericEffName);
     }
     if (retType.empty()) retType = TypeInfo(TupleTag{}, {});
 
@@ -243,6 +248,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
             TypeInfo genRetType;
             if (genericMethodNode->header()->retType()) {
                 genRetType = genericMethodNode->header()->retType()->getType().substitute(genericSubst);
+                genRetType = bindStructSelfType(genRetType, actualType.name, genericEffName);
             }
             string mFallibleErr;
             if (auto e = genericMethodNode->header()->getAnnoArg("Fallible")) mFallibleErr = *e;
@@ -1282,6 +1288,7 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
                         TypeInfo retType;
                         if (chosen->header()->retType()) {
                             retType = chosen->header()->retType()->getType().substitute(subst);
+                            retType = bindStructSelfType(retType, inst.baseDecl->name().getText(), effName);
                         }
                         string mFallibleErr;
                         if (auto e = chosen->header()->getAnnoArg("Fallible")) mFallibleErr = *e;

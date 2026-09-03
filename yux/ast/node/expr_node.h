@@ -539,6 +539,9 @@ public:
     [[nodiscard]] const vector<p<ExprNode>>& args() const { return _args; }
     [[nodiscard]] const vector<p<TypeNode>>& lhsTypeArgs() const { return _lhsTypeArgs; }
     [[nodiscard]] const vector<p<TypeNode>>& rhsTypeArgs() const { return _rhsTypeArgs; }
+    // `Self::name`：沿 parent 链找到 enclosing StructImplNode 的源码名；
+    // 体外仍返回 "Self"（SemaPass 报 E3123）。非 Self LHS 原样返回 token 文本。
+    [[nodiscard]] string resolvedLhsName() const;
     [[nodiscard]] TypeInfo getType() const override;
 };
 

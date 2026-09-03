@@ -1,0 +1,9 @@
+; 泛型 fn 体（非 struct）：`Self::name` → E3123（模板期即可报）
+fn unused<T>() {
+  let p = Self::make(1)  ; check: E3123
+  ret;
+}
+
+fn main() {
+  ret;
+}

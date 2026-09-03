@@ -1,0 +1,13 @@
+; 泛型 impl 体：`Self::name` 缺失与 T 无关 → E3121（模板期即可报）
+struct Slot<T> {
+  val T
+
+  fn bad() {
+    Self::nope()  ; check: E3121
+    ret;
+  }
+}
+
+fn main() {
+  ret;
+}

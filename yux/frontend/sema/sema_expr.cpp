@@ -1512,15 +1512,16 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         return;
     }
     if (auto n = dynamic_cast<p<ExprPathCallNode>>(expr)) {
+        const bool selfForm = n->enumName().getText() == "Self";
+        string lhsName = n->resolvedLhsName();
+        if (selfForm && !_currentStructName.empty()) lhsName = _currentStructName;
         vector<TypeInfo> pathArgExpected;
         const vector<TypeInfo>* pathArgExpPtr = nullptr;
-        if (n->lhsTypeArgs().empty() &&
-            agreedStaticMethodParams(_file, _sdkFile, n->enumName().getText(), n->variantName().getText(),
-                                     n->args().size(), pathArgExpected)) {
+        if (n->lhsTypeArgs().empty() && agreedStaticMethodParams(_file, _sdkFile, lhsName, n->variantName().getText(),
+                                                                 n->args().size(), pathArgExpected)) {
             pathArgExpPtr = &pathArgExpected;
         } else if (!n->lhsTypeArgs().empty()) {
             // Phase C：泛型 struct #Static fn + turbofish，替换后的形参作靶向类型
-            string lhsName = n->enumName().getText();
             auto* sd = _names.lookupStruct(lhsName);
             if (sd && sd->isGeneric()) {
                 map<string, TypeInfo> subst;
@@ -1539,9 +1540,14 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         }
         visitExprList(n->args(), pathArgExpPtr);
 
+        // §7.10.2.3：`Self::name` 仅 struct body 内合法。
+        if (selfForm && lhsName == "Self") {
+            throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3123);
+        }
+
         // Phase B：Array:<T>::with_capacity 形态校验（E6011 / E3131）。
         // 泛型 struct 的 #Static fn 路径 skipTypeCheck，必须在此单独接管。
-        if (n->enumName().getText() == "Array" && n->variantName().getText() == "with_capacity") {
+        if (lhsName == "Array" && n->variantName().getText() == "with_capacity") {
             sema::validateArrayWithCapacity(n);
         }
 
@@ -1549,7 +1555,6 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         // `<Struct>::methods` / `<Struct>::variants` reflect 静态访问.
         // 优先于 impl-method / enum-ctor 分流 (struct 无需 impl 也能取反射元数据).
         {
-            string lhsName = n->enumName().getText();
             string rhsName = n->variantName().getText();
             if (n->args().empty() &&
                 (rhsName == "type" || rhsName == "fields" || rhsName == "methods" || rhsName == "variants")) {
@@ -1570,7 +1575,6 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         //   * LHS 是 enum   -> 走原 validateEnumCtorShape 路径 (E2019/E2020/E2021/E2032).
         // struct/enum 重名在 yux 里非法 (E2017), 此处直接按 lhsName 查 struct 优先.
         {
-            string lhsName = n->enumName().getText();
 
             // DRAFT-static-vars Phase 4: 零参且 LHS 是 struct 且 RHS 是静态字段 → 放行
             // includeBuiltin=true：允许 #Builtin struct（如 i8）上的静态字段访问（如 i8::MAX）
@@ -1650,7 +1654,26 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                                             lhsName, std::string(want == 1 ? "T" : "T1, T2, ..."), want));
                     }
                     if (!fillSubstFromTypeNodes(structDecl->typeParams(), lhsTArgs, staticSubst)) {
-                        skipTypeCheck = true;
+                        // `Self::name` 无 turbofish：实例化复查绑当前单态（§7.10.2.3 / §7.10.3.1）。
+                        bool boundSelf = false;
+                        if (selfForm && lhsTArgs.empty() && !_instSubst.empty()) {
+                            boundSelf = true;
+                            staticSubst.clear();
+                            for (auto& tp : structDecl->typeParams()) {
+                                auto it = _instSubst.find(tp);
+                                if (it == _instSubst.end()) {
+                                    boundSelf = false;
+                                    break;
+                                }
+                                staticSubst[tp] = it->second;
+                            }
+                        }
+                        if (!boundSelf) {
+                            skipTypeCheck = true;
+                        } else {
+                            for (auto& [_, t] : staticSubst)
+                                t = applyInstSubst(t);
+                        }
                     } else {
                         for (auto& [_, t] : staticSubst)
                             t = applyInstSubst(t);
@@ -1687,6 +1710,11 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                             }
                             return s;
                         };
+                        // 与形参同一张 subst：turbofish 用 staticSubst，`Self::name` 绑当前单态。
+                        auto substArgType = [&](const TypeInfo& t) {
+                            return !staticSubst.empty() ? t.substitute(staticSubst) : applyInstSubst(t);
+                        };
+                        const map<string, TypeInfo>* cmpSubst = !staticSubst.empty() ? &staticSubst : &_instSubst;
                         // arity 校验
                         if (n->args().size() != paramTypes.size()) {
                             string expected = renderTypes(paramTypes);
@@ -1694,7 +1722,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                             bool ok = true;
                             for (auto& a : n->args()) {
                                 try {
-                                    argTypesRaw.push_back(a->getType());
+                                    argTypesRaw.push_back(substArgType(a->getType()));
                                 } catch (...) {
                                     ok = false;
                                     break;
@@ -1709,7 +1737,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                         bool argOk = true;
                         for (auto& a : n->args()) {
                             try {
-                                argTypes.push_back(a->getType());
+                                argTypes.push_back(substArgType(a->getType()));
                             } catch (...) {
                                 argOk = false;
                                 break;
@@ -1718,6 +1746,8 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                         if (argOk) {
                             for (size_t i = 0; i < argTypes.size(); ++i) {
                                 if (argTypes[i].empty()) continue;
+                                // 实例化后仍是模板形参（`Self::make(v)` 的 v:T）跳过，与 checkCallArgAgainst 一致。
+                                if (stillTemplateType(argTypes[i], _currentTypeParams, cmpSubst)) continue;
                                 if (!(argTypes[i] == paramTypes[i])) {
                                     // Nullable<T> 形参接受 T 值实参（自动包装）
                                     bool nullableMatch = false;

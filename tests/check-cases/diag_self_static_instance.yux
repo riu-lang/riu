@@ -1,0 +1,22 @@
+; struct body 内 `Self::` 调实例方法 → E3120
+struct Point {
+  x i32
+
+  #Static
+  fn make(x i32) Self {
+    Self {
+      .x = x
+    }
+  }
+
+  fn get_x() i32 = $.x
+
+  fn bump() {
+    let v = Self::get_x()  ; check: E3120
+    ret;
+  }
+}
+
+fn main() {
+  ret;
+}

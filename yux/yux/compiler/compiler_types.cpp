@@ -63,17 +63,31 @@ string Compiler::formatInstantiationContext() const {
 // 应用当前类型替换
 // 用于泛型实例化过程中的类型参数替换；最后再走透明别名解析，使所有
 // 后续 LLVM 类型查找 / 结构体查找看到的都是规范化后的目标类型
+TypeInfo Compiler::bindStructSelfType(const TypeInfo& t, const string& baseName, const string& effName) const {
+    if (effName.empty()) return t;
+    if (t.isSelf() || (t.kind == TypeKind::Normal && !baseName.empty() && t.name == baseName)) {
+        return typeInfoForNamedStruct(effName);
+    }
+    return t;
+}
+
 TypeInfo Compiler::applySubst(const TypeInfo& t) const {
     TypeInfo result = t;
     if (!_substStack.empty()) {
-        auto& frame = _substStack.back();
-        // 使用 TypeInfo::substitute 进行类型参数替换
-        result = result.substitute(frame.subst);
-        // 特殊处理: 将泛型原名替换为实例名
-        // 例如: Rc -> Rc$i32
-        if (result.kind == TypeKind::Normal && !frame.baseStructName.empty() && result.name == frame.baseStructName) {
-            result.name = frame.effStructName;
+        // 从栈底到栈顶依次 substitute：实例方法体内若再压一帧泛型 fn（baseStructName
+        // 为空），只看 back() 会丢掉 struct 单态的 T→concrete，`Self` / 裸 `Slot` 也绑不上。
+        for (const auto& frame : _substStack) {
+            result = result.substitute(frame.subst);
         }
+        for (auto it = _substStack.rbegin(); it != _substStack.rend(); ++it) {
+            TypeInfo bound = bindStructSelfType(result, it->baseStructName, it->effStructName);
+            if (bound.kind != result.kind || bound.name != result.name) {
+                result = std::move(bound);
+                break;
+            }
+        }
+    } else if (result.isSelf() && !_currentStructName.empty()) {
+        result = typeInfoForNamedStruct(_currentStructName);
     }
     // 顶层透明类型别名替换：alias 名透明等价于目标类型
     return resolveAlias(result);
@@ -505,6 +519,20 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         // 泛型 struct 但用法没带 `<T>`：避免落进 getOrCreateStructType 把未实例化的类型参数当成
         // 实类型 → 字段类型 null → llvm::StructType::create 段错误
         if (structDecl->isGeneric()) {
+            // 裸名 `Slot` 出现在当前单态方法体内（`Self` / TypeSelfNode.getType）时，
+            // 应对应已建好的实例 LLVM 类型，而不是按未实例化泛型建类型。
+            auto instLlvm = [&](const string& key) -> llvm::Type* {
+                if (key.empty()) return nullptr;
+                auto instIt = _structInstances.find(key);
+                if (instIt == _structInstances.end() || !instIt->second.baseDecl) return nullptr;
+                if (instIt->second.baseDecl->name().getText() != structDecl->name().getText()) return nullptr;
+                auto cit = _structTypes.find(key);
+                return cit != _structTypes.end() ? cit->second : nullptr;
+            };
+            for (auto it = _substStack.rbegin(); it != _substStack.rend(); ++it) {
+                if (auto* ty = instLlvm(it->effStructName)) return ty;
+            }
+            if (auto* ty = instLlvm(_currentStructName)) return ty;
             int errLine = static_cast<int>(structDecl->name().getLine());
             if (errLine <= 0) errLine = 1;
             // E6011 由 SemaPass 声明处先抛；此处防 IR 对缺 typeArgs 的泛型 struct 建 LLVM 类型。

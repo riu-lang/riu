@@ -1,0 +1,20 @@
+; struct body 内 `Self::` 调用不存在的静态 fn → E3121
+struct Point {
+  x i32
+
+  #Static
+  fn make(x i32) Self {
+    Self {
+      .x = x
+    }
+  }
+
+  fn bump() {
+    let p = Self::nope()  ; check: E3121
+    ret;
+  }
+}
+
+fn main() {
+  ret;
+}

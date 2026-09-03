@@ -1,0 +1,16 @@
+; struct body 外写 `Self::name` → E3123（Phase C；原 AST E0000）
+struct Point {
+  x i32
+
+  #Static
+  fn make(x i32) Self {
+    Self {
+      .x = x
+    }
+  }
+}
+
+fn main() {
+  let p = Self::make(1)  ; check: E3123
+  ret;
+}

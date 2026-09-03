@@ -1,0 +1,13 @@
+; 泛型 impl 体：`Self::` 缺静态 fn 与 T 无关 → E3121（模板期即可报）
+struct Slot<T> {
+  val T
+
+  fn bump() {
+    let p = Self::nope()  ; check: E3121
+    ret;
+  }
+}
+
+fn main() {
+  ret;
+}

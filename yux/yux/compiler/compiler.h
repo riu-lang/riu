@@ -112,6 +112,8 @@ class Compiler {
 
     // ==================== 泛型实例化 ====================
     [[nodiscard]] TypeInfo applySubst(const TypeInfo& t) const; // 应用当前类型替换（含别名透明替换）
+    // `Self` / 泛型原名 → 当前单态 TypeInfo（如 `Slot<i32>`）
+    [[nodiscard]] TypeInfo bindStructSelfType(const TypeInfo& t, const string& baseName, const string& effName) const;
     // 顶层透明类型别名解析；递归把 alias 名替换为目标类型，遇环抛 E2016
     [[nodiscard]] TypeInfo resolveAlias(const TypeInfo& t) const;
     // 本文件 → SDK → wildcard（0 LLVM，与 SemaPass 共用）

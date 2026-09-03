@@ -133,6 +133,22 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
     int line = node->getLineNumber();
     int col = node->getColumn();
 
+    const bool selfLhs = node->enumName().getText() == "Self";
+    string lookupLhs = node->resolvedLhsName();
+    if (selfLhs) {
+        if (!_currentStructName.empty()) {
+            auto instIt = _structInstances.find(_currentStructName);
+            if (instIt != _structInstances.end() && instIt->second.baseDecl) {
+                lookupLhs = instIt->second.baseDecl->name().getText();
+            } else if (lookupLhs == "Self") {
+                lookupLhs = _currentStructName;
+            }
+        } else if (lookupLhs == "Self") {
+            // E3123 由 SemaPass PathCall 先抛。
+            throwSemaGap(line, col);
+        }
+    }
+
     // DRAFT-spec-reflect Phase 4: `<Struct>::type` / `<Struct>::fields` /
     // `<Struct>::methods` / `<Struct>::variants`
     //   * type     → 整个 reflect Type 全局值 (by-value 拷贝)
@@ -141,7 +157,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
     //   * variants → Type 的第 3 槽 ([Variant& * 0]&, 当前 null)
     // sema 已校验 LHS 是已知 struct, 这里直接 emit load.
     {
-        string lhsRaw = node->enumName().getText();
+        string lhsRaw = lookupLhs;
         string rhsName = node->variantName().getText();
         if (node->args().empty() &&
             (rhsName == "type" || rhsName == "fields" || rhsName == "methods" || rhsName == "variants")) {
@@ -193,7 +209,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
     // Phase 3c 构造模型重构: 若 LHS 是 struct, 走 #Static fn 调用路径.
     // sema 已先做形态校验 (#Static 命中 / 缺失 / 实例方法误用), 这里直接 emit call.
     {
-        string lhsRaw = node->enumName().getText();
+        string lhsRaw = lookupLhs;
         auto* structImpl = _file ? _file->getStructImpl(lhsRaw) : nullptr;
         FileNode* sdk = _yux ? _yux->sdkFile() : nullptr;
         if (!structImpl && sdk && sdk != _file) {
@@ -305,6 +321,23 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                                                  .sourceFile = _file ? _file->moduleName() : "",
                                                  .sourceLine = line});
                 pushedFrame = true;
+            } else if (selfLhs) {
+                // 泛型实例方法体内 `Self::name`：绑当前单态 mangled 名。
+                // 从栈顶向下找 struct 实例帧（跳过压在上面的泛型 fn 帧）。
+                for (auto it = _substStack.rbegin(); it != _substStack.rend(); ++it) {
+                    if (it->baseStructName == lhsRaw && !it->effStructName.empty()) {
+                        effLhs = it->effStructName;
+                        break;
+                    }
+                }
+                if (effLhs == lhsRaw) {
+                    auto instIt = _structInstances.find(_currentStructName);
+                    if (instIt != _structInstances.end()) {
+                        if (!instIt->second.baseDecl || instIt->second.baseDecl->name().getText() == lhsRaw) {
+                            effLhs = _currentStructName;
+                        }
+                    }
+                }
             }
             // SubstFrame 在异常路径上必须 pop, 否则后续 applySubst 误用本帧 → 类型污染.
             try {
@@ -326,29 +359,11 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                 // Phase 6E: 调用站点实参 arity / 类型校验 (替代 6D 删除的 E6033).
                 // 先抛 E3131 比让 LLVM signature-mismatch 断言崩好得多.
                 if (node->args().size() != paramTypes.size()) {
-                    string expected, got;
-                    for (size_t i = 0; i < paramTypes.size(); ++i) {
-                        if (i) expected += ", ";
-                        expected += paramTypes[i].getFullName();
-                    }
-                    for (size_t i = 0; i < node->args().size(); ++i) {
-                        if (i) got += ", ";
-                        got += node->args()[i]->getType().getFullName();
-                    }
                     throwSemaGap(line, col);
                 }
                 for (size_t i = 0; i < node->args().size(); ++i) {
-                    auto actualTy = node->args()[i]->getType();
+                    auto actualTy = applySubst(node->args()[i]->getType());
                     if (!actualTy.empty() && !(actualTy == paramTypes[i])) {
-                        string expected, got;
-                        for (size_t j = 0; j < paramTypes.size(); ++j) {
-                            if (j) expected += ", ";
-                            expected += paramTypes[j].getFullName();
-                        }
-                        for (size_t j = 0; j < node->args().size(); ++j) {
-                            if (j) got += ", ";
-                            got += node->args()[j]->getType().getFullName();
-                        }
                         throwSemaGap(line, col);
                     }
                 }

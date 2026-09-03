@@ -723,17 +723,12 @@ std::any ASTBuilder::visitExprArrayInit(yux::yuxParser::ExprArrayInitContext* ct
 // AST 阶段仅做形态过滤；枚举 / 静态符号解析、arity 匹配等留到 sema / codegen
 // 别名透传（C::V => E::V）由 ExprPathCallNode::getType 在查询时解析
 //
-// Phase 1a：仅放行原 enum 形态；Self LHS / turbofish 形态报"未实现"，待 Phase 2 接管
+// Self::name 与 Type::name 同节点；sema 把 Self 解析成 enclosing struct（E3123 体外）。
 std::any ASTBuilder::visitExprEnumCtor(yux::yuxParser::ExprEnumCtorContext* ctx) {
-    // 形态过滤：Self LHS / turbofish 暂不接管
-    if (ctx->selfLhs != nullptr) {
-        throw YuxError(static_cast<int>(ctx->selfLhs->getLine()),
-                       static_cast<int>(ctx->selfLhs->getCharPositionInLine()) + 1, ErrorCode::E0000,
-                       "Self::name(...) 静态调用未实现 (Phase 2)");
-    }
-    DEBUG_LOG_VAL("    Expr: EnumCtor", ctx->enumName->getText() << "::" << ctx->variant->getText());
+    Token lhsTok = ctx->selfLhs != nullptr ? ctx->selfLhs : ctx->enumName;
+    DEBUG_LOG_VAL("    Expr: PathCall", lhsTok.getText() << "::" << ctx->variant->getText());
     auto scope = currentScope();
-    auto node = createWithLine<ExprPathCallNode>(ctx, scope, ctx->enumName, ctx->variant);
+    auto node = createWithLine<ExprPathCallNode>(ctx, scope, lhsTok, ctx->variant);
 
     // Phase 6E.4: turbofish 形态 `Type:<T>::name:<U>(args)` 解析 LHS / RHS 类型实参.
     // 类型引用位不允许 bounds (与 visitTypeGeneric 同条款), 命中即 E2015.

@@ -5,6 +5,7 @@
 ;   - 多个 static factory 方法共存（make / make_double 等）
 ;   - 基础构造、零值、负值等边界输入
 ;   - Self { ... } 字段字面量构造
+;   - struct body 内 `Self::name(...)`（§7.10.2.3）
 ;
 ; 已知缺口：无——#Static fn 当前仅支持 struct 构造函数模式，
 ; 泛型 struct 的 #Static fn 见 generic_name_conflict / generic_method_ref_return。
@@ -21,6 +22,15 @@ struct Point {
       .x = x
       .y = y
     }
+  }
+
+  #Static
+  fn origin() Point {
+    ret Self::make(0, 0)
+  }
+
+  fn translated(dx i32, dy i32) Point {
+    ret Self::make($.x + dx, $.y + dy)
   }
 
   fn sum() i32 = $.x + $.y
@@ -49,6 +59,22 @@ fn test_static_make_negative() {
   assert_eq(p.y, 10)
 }
 
+; 验证：#Static 体内 `Self::make` 等同 `Point::make`
+#Test
+fn test_self_static_from_static() {
+  let p Point = Point::origin()
+  assert_eq(p.sum(), 0)
+}
+
+; 验证：实例方法体内 `Self::make` 等同当前类型静态调用
+#Test
+fn test_self_static_from_instance() {
+  let p Point = Point::make(3, 4)
+  let q Point = p.translated(1, 2)
+  assert_eq(q.x, 4)
+  assert_eq(q.y, 6)
+}
+
 ; ==================== 多个 static factory（迁自 bug_hunt） ====================
 
 struct BHStaticTest {
@@ -74,4 +100,32 @@ fn test_static_fn_make_double() {
   ; 验证：多个 static factory 方法共存
   let d BHStaticTest = BHStaticTest::make_double(21)
   assert_eq(d.val, 42)
+}
+
+; ==================== 泛型 `Self::name` 绑当前单态 ====================
+
+struct Slot<T> {
+  val T
+
+  #Static
+  fn make(v T) Self {
+    Self {
+      .val = v
+    }
+  }
+
+  #Static
+  fn wrap(v T) Self = Self::make(v)
+
+  fn dup() Self {
+    ret Self::make($.val)
+  }
+}
+
+#Test
+fn test_self_static_generic() {
+  let s Slot<i32> = Slot:<i32>::wrap(9)
+  assert_eq(s.val, 9)
+  let t Slot<i32> = s.dup()
+  assert_eq(t.val, 9)
 }

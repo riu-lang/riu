@@ -213,19 +213,20 @@ LambdaCapKind classifyLambdaCapture(const TypeInfo& t) {
 bool isMorphologicalGenericCode(const char* code) {
     if (!code) return false;
     std::string_view sv(code);
-    constexpr std::array<std::string_view, 16> kKeep = {
-        "E3030",          // 未定义符号
-        "E6010", "E6011", // 泛型 arity
-        "E4031", "E4032", // #NoCopy
-        "E3103",          // 整数字面量越界
-        "E2033",          // 非法转义
-        "E4025", "E1132", // 容器禁令
-        "E2016", "E2017", // 别名
-        "E3130",          // 同名 ctor 定义
-        "E3128",          // #Static 体内 $
-        "E2030",          // lambda 捕获赋值
-        "E4033",          // use-after-move
-        "E3095",          // 类型名 / 非函数当 callee（方法点在 Dot 分支延迟重抛）
+    constexpr std::array<std::string_view, 19> kKeep = {
+        "E3030",                   // 未定义符号
+        "E6010", "E6011",          // 泛型 arity
+        "E4031", "E4032",          // #NoCopy
+        "E3103",                   // 整数字面量越界
+        "E2033",                   // 非法转义
+        "E4025", "E1132",          // 容器禁令
+        "E2016", "E2017",          // 别名
+        "E3130",                   // 同名 ctor 定义
+        "E3120", "E3121", "E3123", // Self:: / Type:: 静态调用形态
+        "E3128",                   // #Static 体内 $
+        "E2030",                   // lambda 捕获赋值
+        "E4033",                   // use-after-move
+        "E3095",                   // 类型名 / 非函数当 callee（方法点在 Dot 分支延迟重抛）
     };
     for (auto c : kKeep) {
         if (sv == c) return true;
@@ -1037,15 +1038,6 @@ std::pair<const StructDeclNode*, int> tryResolveReflectField(ExprNode* expr) {
         }
         return nullptr;
     };
-    auto resolveSelf = [](string sn, Node* from) -> string {
-        if (sn != "Self") return sn;
-        auto* s = from->findNearestScope();
-        while (s) {
-            if (auto* sd = dynamic_cast<StructDeclNode*>(s)) return sd->name().getText();
-            s = s->parentScope();
-        }
-        return sn;
-    };
     auto lookupStruct = [](FileNode* file, const string& sn) -> StructDeclNode* {
         if (!file) return nullptr;
         if (auto* sd = file->getStructDecl(sn)) return sd;
@@ -1086,7 +1078,7 @@ std::pair<const StructDeclNode*, int> tryResolveReflectField(ExprNode* expr) {
             if (dot && dot->member() == "get") {
                 auto* path = dynamic_cast<ExprPathCallNode*>(dot->baseExpr());
                 if (path && path->variantName().getText() == "fields") {
-                    string sn = resolveSelf(path->enumName().getText(), expr);
+                    string sn = path->resolvedLhsName();
                     if (sn != "Self") {
                         if (auto idx = literalIndex(call->getArgs()[0])) {
                             if (auto* sd = lookupStruct(fileOf(expr), sn)) {
@@ -1105,7 +1097,7 @@ std::pair<const StructDeclNode*, int> tryResolveReflectField(ExprNode* expr) {
         if (get->indices().size() == 1) {
             auto* path = dynamic_cast<ExprPathCallNode*>(get->arrayExpr());
             if (path && path->variantName().getText() == "fields") {
-                string sn = resolveSelf(path->enumName().getText(), expr);
+                string sn = path->resolvedLhsName();
                 if (sn != "Self") {
                     if (auto idx = literalIndex(get->indices()[0])) {
                         if (auto* sd = lookupStruct(fileOf(expr), sn)) {
