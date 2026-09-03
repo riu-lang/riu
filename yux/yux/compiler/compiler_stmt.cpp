@@ -1309,9 +1309,11 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                 }
             }
             if (!sd || fieldIdx < 0) {
+                // E3133 由 SemaPass tryValidateReflectFieldValueWrite 先抛；此处防 IR 无字段可写。
                 throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3133);
             }
             if (_currentStructName.empty()) {
+                // E3134 由 SemaPass 先抛；此处防 IR 无 `$`。
                 throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3134);
             }
             auto selfIt = _localVarPtrs.find("$");

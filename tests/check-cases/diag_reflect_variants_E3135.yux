@@ -6,5 +6,5 @@ struct Counter {
 }
 
 fn main() {
-  Counter::variants  ; check: E3014
+  Counter::variants  ; check: E3135
 }

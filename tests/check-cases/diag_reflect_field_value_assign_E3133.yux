@@ -1,0 +1,12 @@
+; Field.value 写：下标非字面量 → E3133
+
+struct Point {
+  x i32
+}
+
+fn main() {
+  let i usize = 0
+  let f = Point::fields[i]
+  f.value = 1  ; check: E3133
+  ret;
+}

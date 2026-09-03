@@ -151,6 +151,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
             if (!sd && sdkF && sdkF != _file) sd = sdkF->getStructDecl(lhsRaw);
             if (sd) {
                 // DRAFT-spec-reflect §2: variants 仅 enum 可访问; struct 上访问 → E3135.
+                // E3135 由 SemaPass PathCall 先抛；此处防 IR 把 struct::variants 当 reflect 槽。
                 if (rhsName == "variants") {
                     throw YuxError(line, col, ErrorCode::E3135, lhsRaw);
                 }

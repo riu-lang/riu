@@ -1,0 +1,10 @@
+; Field.value 改名需要方法体内 `$`；自由函数无 receiver → E3134
+
+struct Point {
+  x i32
+}
+
+fn main() {
+  Point::fields[0].value  ; check: E3134
+  ret;
+}

@@ -181,9 +181,11 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
         auto* sd = node->reflectStructDecl();
         int fieldIdx = node->reflectFieldIndex();
         if (!sd || fieldIdx < 0) {
+            // E3133 由 SemaPass tryValidateReflectFieldValueRead 先抛；此处防 IR 无字段可读。
             throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3133);
         }
         if (_currentStructName.empty()) {
+            // E3134 由 SemaPass 先抛；此处防 IR 无 `$`。
             throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3134);
         }
         auto selfIt = _localVarPtrs.find("$");

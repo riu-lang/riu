@@ -1182,6 +1182,11 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
             return;
         }
 
+        // Phase C：Field.value 读路径 E3133 / E3134（getType 对 E3134 不报）。
+        if (!callCallee) {
+            tryValidateReflectFieldValueRead(n);
+        }
+
         // Phase C：读路径字段（非调用 callee）。`x.foo()` 留给调用路径；
         // `to_*` 是内置转换；模块 / 包链不按字段查。
         if (!callCallee) {
@@ -1493,7 +1498,13 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                 (rhsName == "type" || rhsName == "fields" || rhsName == "methods" || rhsName == "variants")) {
                 auto* sd = _file ? _file->getStructDecl(lhsName) : nullptr;
                 if (!sd && _sdkFile && _sdkFile != _file) sd = _sdkFile->getStructDecl(lhsName);
-                if (sd) return;
+                if (sd) {
+                    // DRAFT-spec-reflect §2：variants 仅 enum；struct 上访问 → E3135。
+                    if (rhsName == "variants") {
+                        throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3135, lhsName);
+                    }
+                    return;
+                }
             }
         }
 
@@ -1948,6 +1959,8 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                 for (auto& t : n->subs())
                     members.push_back(t.getText());
                 tryValidateFieldChain(sym->type, members, n->resolveLineNumber(), n->resolveColumn());
+                tryValidateReflectFieldValueWrite(objName, sym->type, members, n->resolveLineNumber(),
+                                                  n->resolveColumn());
             }
         }
         return;

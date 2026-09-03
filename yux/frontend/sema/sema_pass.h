@@ -188,6 +188,14 @@ private:
     void tryValidateIfElse(p<class ExprIfElseNode> n);
     // 一行 `if c { a } else { b }`：subst 后 a / b 类型须一致，否则 E3005。
     void tryValidateOneLineIfElse(p<class ExprOneLineIfElseNode> n);
+
+    // Field.value：编译期可定且有 `$` 才合法。否则 E3133 / E3134。
+    // 模板形参跳过；与 T 无关的运行期 Field / 无 receiver 模板期也报。
+    // 与 ExprDotNode::getType / compileDotExpr / compileAssignStatement 对齐。
+    [[nodiscard]] bool hasFieldValueReceiver() const;
+    void tryValidateReflectFieldValueRead(p<class ExprDotNode> n);
+    void tryValidateReflectFieldValueWrite(const string& objName, const TypeInfo& objType,
+                                           const vector<string>& members, int line, int col);
 };
 
 #endif // YUX_LANG_SEMA_PASS_H

@@ -1,0 +1,14 @@
+; 泛型 impl 体：struct::variants 与 T 无关，模板期也报 E3135
+
+struct Bag<T> {
+  v T
+
+  fn peek() {
+    Bag::variants  ; check: E3135
+    ret;
+  }
+}
+
+fn main() {
+  ret;
+}

@@ -1,0 +1,11 @@
+; Field.value：下标非字面量，f 运行期才能定 → E3133
+
+struct Point {
+  x i32
+}
+
+fn main() {
+  let i usize = 0
+  Point::fields[i].value  ; check: E3133
+  ret;
+}

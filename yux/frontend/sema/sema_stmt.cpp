@@ -370,6 +370,8 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                     for (auto& t : as->subs())
                         members.push_back(t.getText());
                     tryValidateFieldChain(sym->type, members, as->getLineNumber(), as->getColumn());
+                    tryValidateReflectFieldValueWrite(objName, sym->type, members, as->getLineNumber(),
+                                                      as->getColumn());
                 }
                 TypeInfo cur = applyInstSubst(sym->type).peelAutoDeref();
                 TypeInfo lastRaw = applyInstSubst(sym->type).peelRef();

@@ -1,0 +1,11 @@
+; Field.value 写：自由函数无 `$` → E3134
+
+struct Point {
+  x i32
+}
+
+fn main() {
+  let f = Point::fields[0]
+  f.value = 1  ; check: E3134
+  ret;
+}

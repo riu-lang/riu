@@ -1,0 +1,14 @@
+; 泛型 fn 体：struct::variants 与 T 无关，模板期也报 E3135
+
+struct Point {
+  x i32
+}
+
+fn id<T>(x T) T {
+  Point::variants  ; check: E3135
+  ret x
+}
+
+fn main() {
+  ret;
+}

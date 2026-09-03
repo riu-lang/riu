@@ -11,7 +11,9 @@
 #include <array>
 #include <cstddef>
 #include <format>
+#include <optional>
 #include <string_view>
+#include <utility>
 
 #include "analyzer/spec_registry.h"
 #include "ast/node/spec_node.h"
@@ -992,6 +994,121 @@ void copyFnParamTypes(const TypeInfo& fnTy, vector<TypeInfo>& out) {
     for (auto& sp : fnTy.fnParamTypes()) {
         out.push_back(sp ? *sp : TypeInfo());
     }
+}
+
+std::pair<const StructDeclNode*, int> tryResolveReflectField(ExprNode* expr) {
+    if (!expr) return {nullptr, -1};
+
+    auto fileOf = [](Node* n) -> FileNode* {
+        auto* s = n->findNearestScope();
+        while (s) {
+            if (auto* f = dynamic_cast<FileNode*>(s)) return f;
+            s = s->parentScope();
+        }
+        return nullptr;
+    };
+    auto resolveSelf = [](string sn, Node* from) -> string {
+        if (sn != "Self") return sn;
+        auto* s = from->findNearestScope();
+        while (s) {
+            if (auto* sd = dynamic_cast<StructDeclNode*>(s)) return sd->name().getText();
+            s = s->parentScope();
+        }
+        return sn;
+    };
+    auto lookupStruct = [](FileNode* file, const string& sn) -> StructDeclNode* {
+        if (!file) return nullptr;
+        if (auto* sd = file->getStructDecl(sn)) return sd;
+        auto* p = dynamic_cast<ScopeNode*>(file);
+        while (p) {
+            p = dynamic_cast<ScopeNode*>(p->parentScope());
+            if (auto* pf = dynamic_cast<FileNode*>(p)) {
+                if (auto* sd = pf->getStructDecl(sn)) return sd;
+            }
+        }
+        return nullptr;
+    };
+    auto fieldAtIndex = [](StructDeclNode* sd, i64 idx) -> int {
+        int n = 0;
+        for (auto& f : sd->fields()) {
+            if (f->isStatic()) continue;
+            if (n == idx) return sd->fieldIndex(f->name().getText());
+            ++n;
+        }
+        return -1;
+    };
+    auto literalIndex = [](ExprNode* idxExpr) -> std::optional<i64> {
+        auto* idxLit = dynamic_cast<ExprLiteralNode*>(idxExpr);
+        if (!idxLit) return std::nullopt;
+        auto* intLit = dynamic_cast<LiteralIntNode*>(idxLit->literal());
+        if (!intLit) return std::nullopt;
+        Token tok = intLit->getValue();
+        i64 idx = sema::parseIntLiteral(tok.getText(), static_cast<int>(tok.getLine()),
+                                        static_cast<int>(tok.getCharPositionInLine()) + 1);
+        if (idx < 0) return std::nullopt;
+        return idx;
+    };
+
+    // `Type::fields.get(N)`
+    if (auto* call = dynamic_cast<ExprCallNode*>(expr)) {
+        if (call->getArgs().size() == 1) {
+            auto* dot = dynamic_cast<ExprDotNode*>(call->getCalleeExpr());
+            if (dot && dot->member() == "get") {
+                auto* path = dynamic_cast<ExprPathCallNode*>(dot->baseExpr());
+                if (path && path->variantName().getText() == "fields") {
+                    string sn = resolveSelf(path->enumName().getText(), expr);
+                    if (sn != "Self") {
+                        if (auto idx = literalIndex(call->getArgs()[0])) {
+                            if (auto* sd = lookupStruct(fileOf(expr), sn)) {
+                                int fi = fieldAtIndex(sd, *idx);
+                                if (fi >= 0) return {sd, fi};
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // `Type::fields[N]`
+    if (auto* get = dynamic_cast<ExprGetNode*>(expr)) {
+        if (get->indices().size() == 1) {
+            auto* path = dynamic_cast<ExprPathCallNode*>(get->arrayExpr());
+            if (path && path->variantName().getText() == "fields") {
+                string sn = resolveSelf(path->enumName().getText(), expr);
+                if (sn != "Self") {
+                    if (auto idx = literalIndex(get->indices()[0])) {
+                        if (auto* sd = lookupStruct(fileOf(expr), sn)) {
+                            int fi = fieldAtIndex(sd, *idx);
+                            if (fi >= 0) return {sd, fi};
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // let 绑定：与 getType / compileAssignStatement 一样只搜所在 fn 体。
+    if (auto* exLit = dynamic_cast<ExprLiteralNode*>(expr)) {
+        if (auto* objLit = dynamic_cast<LiteralObjNode*>(exLit->literal())) {
+            string varName = objLit->getValue().getText();
+            auto* s = expr->findNearestScope();
+            while (s) {
+                if (auto* fn = dynamic_cast<FnNode*>(s)) {
+                    for (auto& stmt : fn->body()) {
+                        if (auto* letStmt = dynamic_cast<StatementDeclareAssignNode*>(stmt)) {
+                            if (letStmt->name().getText() == varName) {
+                                return tryResolveReflectField(letStmt->expr());
+                            }
+                        }
+                    }
+                    break;
+                }
+                s = s->parentScope();
+            }
+        }
+    }
+    return {nullptr, -1};
 }
 
 } // namespace sema::pass

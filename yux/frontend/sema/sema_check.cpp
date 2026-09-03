@@ -566,3 +566,65 @@ void SemaPass::checkArrayInit(p<ExprArrayInitNode> n, const TypeInfo* expected) 
     }
     n->setResolvedType(TypeInfo(make_shared<TypeInfo>(elemType), 0));
 }
+
+bool SemaPass::hasFieldValueReceiver() const {
+    // 与 compileDotExpr 对齐：要有当前 struct 且 `$` 可用（非 #Static）。
+    if (_currentStructName.empty()) return false;
+    if (_currentFn && _currentFn->header() && _currentFn->header()->isStatic()) return false;
+    return true;
+}
+
+void SemaPass::tryValidateReflectFieldValueRead(p<ExprDotNode> n) {
+    // 与 ExprDotNode::getType / compileDotExpr 对齐。
+    // getType 对运行期 Field 已抛 E3133；模板体吞掉后这里再报。
+    // 编译期可定但无 `$` → E3134（getType 会成功改写，codegen 才报）。
+    if (!n || n->member() != "value") return;
+    try {
+        if (n->isReflectFieldValue()) {
+            if (!hasFieldValueReceiver()) {
+                throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3134);
+            }
+            return;
+        }
+        auto* base = n->baseExpr();
+        if (!base) return;
+        TypeInfo bt = base->hasResolvedType() ? base->resolvedType() : base->getType();
+        TypeInfo peeled = applyInstSubst(bt).peelAutoDeref();
+        if (peeled.name == "Field") {
+            throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3133);
+        }
+    } catch (const YuxError&) {
+        throw;
+    } catch (...) { // NOLINT(bugprone-empty-catch)
+        // getType 失败，留 Compiler
+    }
+}
+
+void SemaPass::tryValidateReflectFieldValueWrite(const string& objName, const TypeInfo& objType,
+                                                 const vector<string>& members, int line, int col) {
+    // 与 compileAssignStatement 的 Field.value 写路径对齐：只搜 fn 体 let。
+    if (members.size() != 1 || members[0] != "value") return;
+    TypeInfo peeled = applyInstSubst(objType).peelAutoDeref();
+    if (peeled.name != "Field") return;
+    p<ExprNode> init = nullptr;
+    if (_currentFn) {
+        for (auto& stmt : _currentFn->body()) {
+            if (auto* letStmt = dynamic_cast<StatementDeclareAssignNode*>(stmt)) {
+                if (letStmt->name().getText() == objName) {
+                    init = letStmt->expr();
+                    break;
+                }
+            }
+        }
+    }
+    if (init) {
+        auto [sd, idx] = tryResolveReflectField(init);
+        if (sd && idx >= 0) {
+            if (!hasFieldValueReceiver()) {
+                throw YuxError(line, col, ErrorCode::E3134);
+            }
+            return;
+        }
+    }
+    throw YuxError(line, col, ErrorCode::E3133);
+}

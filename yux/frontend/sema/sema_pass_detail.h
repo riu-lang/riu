@@ -19,6 +19,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <utility>
 
 namespace sema::pass {
 
@@ -218,6 +219,11 @@ bool agreedStaticMethodParams(FileNode* file, FileNode* sdk, const string& lhs, 
                               vector<TypeInfo>& out);
 
 void copyFnParamTypes(const TypeInfo& fnTy, vector<TypeInfo>& out);
+
+// DRAFT-spec-reflect §6：把 Field 表达式追溯到 `{structDecl, fieldIndex}`。
+// 认 `Type::fields[N]` / `Type::fields.get(N)`（N 字面量）以及 fn 体内 let 绑定。
+// 对不上 → `{nullptr, -1}`（运行期 Field → E3133）。
+std::pair<const StructDeclNode*, int> tryResolveReflectField(ExprNode* expr);
 
 } // namespace sema::pass
 
