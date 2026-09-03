@@ -8,7 +8,6 @@
 #include "../compiler_runtime.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
-#include "analyzer/symbol_suggest.h"
 #include "ast/mangler.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
@@ -124,16 +123,15 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
         currentPtr = it->second;
         sym = lookupVarSymbol(objName, node);
         if (!sym) {
-            SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
-                                               ErrorCode::E3030, objName);
+            // E3030 由 ExprGetRefNode::getType 先抛。
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
     } else {
         // —— 全局变量路径（DRAFT-static-ref） ——
         // 全局变量不在 _localVarPtrs 中，通过文件级符号表查找，再走 Mangler 获取 LLVM GlobalVariable
         sym = lookupVarSymbol(objName, node);
         if (!sym) {
-            SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
-                                               ErrorCode::E3030, objName);
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
         string ownerMod = (!sym->moduleName.empty()) ? sym->moduleName : _file->moduleName();
         bool globPriv = !objName.empty() && objName[0] == '_';
@@ -141,14 +139,14 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
 
         // #Inline #Cval：无 GlobalVariable 存储地址，无法取址。报 E3118 提示改用普通 #Cval。
         if (_inlineConstantValues.contains(mangledName)) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3118, objName);
+            // E3118 由 SemaPass GetRef 先抛。
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
 
         auto globalVar = _module->getGlobalVariable(mangledName, true);
         if (!globalVar) {
-            // 非全局变量也非局部变量（如闭包外层变量）→ 保留原有 E3031 语义
-            SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
-                                               ErrorCode::E3030, objName);
+            // 非全局变量也非局部变量（如闭包外层变量）→ SemaPass getType 已报 E3030。
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
         currentPtr = globalVar;
     }

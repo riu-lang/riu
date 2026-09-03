@@ -8,7 +8,6 @@
 #include "../compiler_runtime.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
-#include "analyzer/symbol_suggest.h"
 #include "ast/mangler.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
@@ -151,27 +150,12 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(p<ExprNode> leftExpr, p<ExprNod
         }
     }
 
-    if (exactMatches.size() > 1) {
-        string sigs;
-        for (auto* m : exactMatches) {
-            if (!sigs.empty()) sigs += " | ";
-            sigs += effLeftType.name + "." + methodName + "(" + m->params[1].name + ")";
-        }
-        throw YuxError(lineNum, ErrorCode::E6014, methodFullName, effRightType.name, exactMatches.size(), sigs);
-    }
     if (exactMatches.size() == 1) {
         methodSymbol = exactMatches[0];
-    } else if (refMatches.size() > 1) {
-        string sigs;
-        for (auto* m : refMatches) {
-            if (!sigs.empty()) sigs += " | ";
-            sigs += effLeftType.name + "." + methodName + "(" + m->params[1].name + ")";
-        }
-        throw YuxError(lineNum, ErrorCode::E6014, methodFullName, effRightType.name, refMatches.size(), sigs);
-    } else if (refMatches.size() == 1) {
+    } else if (exactMatches.empty() && refMatches.size() == 1) {
         methodSymbol = refMatches[0];
     } else {
-        // E3073：SemaPass tryValidateBinOpMethod 已查；此处防 IR 无方法可降。
+        // E6014 歧义 / E3073 无匹配：SemaPass tryValidateBinOpMethod 先抛。
         throwSemaGap(lineNum);
     }
 

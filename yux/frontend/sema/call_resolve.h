@@ -213,7 +213,7 @@ std::pair<FnNode*, FileNode*> resolveBestGenericOverload(const std::vector<std::
 //   - E6026: upgrade typeArgs != 1
 //   - E6027: upgrade args != 1
 //   - E6026: assert_eq / same_ref / ptr_of / as_ref / copy_of / weak typeArgs != 1
-//   - E6027: same_ref args != 2; ptr_of / as_ref / copy_of / weak args != 1
+//   - E6027: assert_eq args != 2; same_ref args != 2; ptr_of / as_ref / copy_of / weak args != 1
 //
 // 内建清单 (按当前 SDK assert.yux / mem.yux / ref.yux / weak.yux):
 //   assert_eq, size_of, upgrade, same_ref, ptr_of, as_ref, copy_of, weak
@@ -266,7 +266,7 @@ void validateOperatorMethodCall(const string& member, const TypeInfo& baseType, 
 // 自由内建 intrinsic 的 arity 校验 (Phase 3.3.2.b).
 //
 // 覆盖 compileExternalOrSdkFunctionCall 顶部的纯 arity 分派:
-//   - E6027: ptr_from_addr/rc_leak_count/_ptr_offset arity 不匹配
+//   - E6027: assert_eq/assert_true/assert_false/fail/ptr_from_addr/rc_leak_count/_ptr_offset arity 不匹配
 //
 // 命中的 fnName 才会校验, 其他 fnName 是 no-op (调用方继续 fall-through 到
 // fnSymbol / generic / external 路径). E6023 (_ptr_offset 跨模块私有) 与 E6006

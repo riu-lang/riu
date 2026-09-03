@@ -72,7 +72,8 @@ void emitAssertFailureBranch(llvm::IRBuilder<>& builder, llvm::Module* module, l
 llvm::Value* Compiler::compileTestAssertEq(p<ExprCallNode> callNode, vector<llvm::Value*>& args,
                                            vector<TypeInfo>& argTypes, const TypeInfo& typeArg) {
     if (args.size() != 2) {
-        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6027, "assert_eq", 2);
+        // E6027 由 SemaPass validateFreeIntrinsicArity 先抛。
+        throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
     }
 
     TypeInfo actualTypeArg = typeArg;
@@ -129,7 +130,7 @@ llvm::Value* Compiler::compileTestAssertEq(p<ExprCallNode> callNode, vector<llvm
 llvm::Value* Compiler::compileTestAssertTrue(p<ExprCallNode> callNode, vector<llvm::Value*>& args,
                                              vector<TypeInfo>& argTypes) {
     if (args.size() != 1) {
-        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6027, "assert_true", 1);
+        throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
     }
     // Rc<T> auto-deref: 从 Rc struct { ptr handle } 提取 payload 内 T 值
     if (argTypes[0].isRc()) {
@@ -152,7 +153,7 @@ llvm::Value* Compiler::compileTestAssertTrue(p<ExprCallNode> callNode, vector<ll
 llvm::Value* Compiler::compileTestAssertFalse(p<ExprCallNode> callNode, vector<llvm::Value*>& args,
                                               vector<TypeInfo>& argTypes) {
     if (args.size() != 1) {
-        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6027, "assert_false", 1);
+        throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
     }
     // Rc<T> auto-deref: 从 Rc struct { ptr handle } 提取 payload 内 T 值
     if (argTypes[0].isRc()) {
@@ -180,7 +181,7 @@ llvm::Value* Compiler::compileTestAssertFalse(p<ExprCallNode> callNode, vector<l
 llvm::Value* Compiler::compileTestFail(p<ExprCallNode> callNode, vector<llvm::Value*>& args,
                                        vector<TypeInfo>& /*argTypes*/) {
     if (args.size() != 1) {
-        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6027, "fail", 1);
+        throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
     }
     // 直接走失败路径：恒真条件
     auto trueCond = llvm::ConstantInt::getTrue(_context);

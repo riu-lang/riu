@@ -1,0 +1,9 @@
+; 泛型 fn 体：赋值左侧未定义与 T 无关，模板期也报 E3030
+fn unused<T>() {
+  nope = 1  ; check: E3030
+  ret;
+}
+
+fn main() {
+  ret;
+}

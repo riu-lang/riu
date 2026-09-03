@@ -367,7 +367,8 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
         for (const auto& cap : caps) {
             auto it = _localVarPtrs.find(cap.name);
             if (it == _localVarPtrs.end()) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, cap.name);
+                // E3030 由 SemaPass 捕获校验先抛；此处防 IR 槽表漏登记。
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
             auto offset = _builder.getInt64(16 + static_cast<i64>(cap.byteOffset));
             auto dstAddr = _builder.CreateGEP(i8Ty, baseHandle, {offset}, "cap.dst");

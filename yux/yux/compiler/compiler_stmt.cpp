@@ -11,7 +11,6 @@
 // - break 语句
 // - 数组元素赋值语句
 
-#include "analyzer/symbol_suggest.h"
 #include "ast/mangler.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
@@ -458,7 +457,8 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         if (varType.isRef()) {
             auto innerType = varType.refElementType();
             if (!innerType) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3050);
+                // E3050：SemaPass / TypeInfo 构造已保证包装类型有内层；此处防 IR 走空路径。
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
             llvm::Value* rhsPtr = nullptr;
             if (auto getRefNode = dynamic_cast<ExprGetRefNode*>(expr)) {
@@ -523,7 +523,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         if (varType.isRc()) {
             auto elemType = varType.rcElementType();
             if (!elemType) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3050);
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
 
             auto exprVal = compileExpr(expr);
@@ -565,7 +565,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         else if (varType.isWeak()) {
             auto elemType = varType.weakElementType();
             if (!elemType) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3050);
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
 
             auto exprVal = compileExpr(expr);
@@ -633,7 +633,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         else if (varType.isArrayGeneric()) {
             auto elemType = varType.arrayGenericElementType();
             if (!elemType) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3050);
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
 
             auto elemLLVMType = getLLVMType(*elemType);
@@ -666,7 +666,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
         else if (varType.isNullable()) {
             auto innerType = varType.nullableInnerType();
             if (!innerType) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3050);
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
 
             auto nullableStructType = getLLVMType(varType);
@@ -887,8 +887,8 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
     if (subs.empty()) {
         auto sym = lookupVarSymbol(objName, node);
         if (!sym) {
-            SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
-                                               ErrorCode::E3030, objName);
+            // E3030 由 SemaPass 赋值 LHS / getType 先抛；此处防 IR 槽表与符号表不一致。
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
 
         // DRAFT-static-vars Phase 2: 全局变量 —— 先于 _localVarPtrs 路径独立处理。
@@ -929,7 +929,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         if (sym->type.isRef()) {
             auto innerType = sym->type.refElementType();
             if (!innerType) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3050);
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
             llvm::Value* targetPtr = _localVarPtrs[objName];
             auto innerLLVMType = getLLVMType(*innerType);
@@ -990,7 +990,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         if (assignOp == AssignOp::Eq && sym->type.isRc()) {
             auto elemType = sym->type.rcElementType();
             if (!elemType) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3050);
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
 
             auto it = _localVarPtrs.find(objName);
@@ -1038,7 +1038,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         if (assignOp == AssignOp::Eq && sym->type.isNullable()) {
             auto innerType = sym->type.nullableInnerType();
             if (!innerType) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3050);
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
 
             auto nullableStructType = getLLVMType(sym->type);
@@ -1096,8 +1096,8 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
         // 处理成员访问赋值 (obj.field = value)
         auto sym = lookupVarSymbol(objName, node);
         if (!sym) {
-            SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
-                                               ErrorCode::E3030, objName);
+            // E3030 由 SemaPass 赋值 LHS / getType 先抛；此处防 IR 槽表与符号表不一致。
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
 
         TypeInfo actualType = sym->type;
@@ -1117,8 +1117,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             if (resolvedTop.isTuple()) {
                 auto it = _localVarPtrs.find(objName);
                 if (it == _localVarPtrs.end()) {
-                    SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
-                                                       ErrorCode::E3030, objName);
+                    throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
                 llvm::Value* curPtr = it->second;
                 TypeInfo curType = resolvedTop;
@@ -1332,8 +1331,8 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
 
         auto it = _localVarPtrs.find(objName);
         if (it == _localVarPtrs.end()) {
-            SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
-                                               ErrorCode::E3030, objName);
+            // E3030 由 SemaPass 赋值 LHS / getType 先抛；此处防 IR 槽表与符号表不一致。
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
 
         llvm::Value* structPtr = it->second;
@@ -1613,7 +1612,8 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
             auto varName = objLiteral->getValue().getText();
             auto it = _localVarPtrs.find(varName);
             if (it == _localVarPtrs.end()) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, varName);
+                // E3030 由 SemaPass getType 先抛；此处防 IR 槽表漏登记。
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
             currentPtr = it->second;
         }
@@ -1682,7 +1682,7 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
     if (arrayType.isArrayGeneric()) {
         auto elemType = arrayType.arrayGenericElementType();
         if (!elemType) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3050);
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
 
         auto elemLLVMType = getLLVMType(*elemType);
@@ -1735,12 +1735,13 @@ void Compiler::compileStaticFieldSetStatement(p<StatementStaticFieldSetNode> nod
     StructDeclNode* structDecl = _file->getStructDecl(typeName);
     if (!structDecl) {
         // TODO: 支持跨模块路径（如 mod.Type::FIELD），当前仅限本模块 + wildcard imports
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, typeName);
+        // E3030 由 SemaPass 静态字段写先抛。
+        throwSemaGap(node->getLineNumber(), node->getColumn());
     }
 
     const auto* sf = structDecl->staticField(fieldName);
     if (!sf) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, typeName + "::" + fieldName);
+        throwSemaGap(node->getLineNumber(), node->getColumn());
     }
     // E3151 非 #Mut 写：SemaPass 已查
 
@@ -1755,7 +1756,7 @@ void Compiler::compileStaticFieldSetStatement(p<StatementStaticFieldSetNode> nod
     auto mangledName = Mangler::staticField(ownerMod, typeName, fieldName);
     auto* gv = _module->getGlobalVariable(mangledName, true);
     if (!gv) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, typeName + "::" + fieldName);
+        throwSemaGap(node->getLineNumber(), node->getColumn());
     }
 
     auto exprVal = compileExpr(node->valueExpr());

@@ -8,7 +8,6 @@
 #include "../compiler_runtime.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
-#include "analyzer/symbol_suggest.h"
 #include "ast/mangler.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
@@ -255,9 +254,9 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                     break;
                 }
             }
-            // sema Phase 2c 已拦 E3120/E3121; 这里幂等防御性兜底
+            // E3120/E3121 由 SemaPass PathCall 先抛；此处防 IR 无 #Static 可降。
             if (!methodHeader || !methodHeader->isStatic()) {
-                throw YuxError(line, col, ErrorCode::E3121, lhsRaw, methodName);
+                throwSemaGap(line, col);
             }
             // Array 是 #Builtin 空字段结构体，Self { ... } 不适用；
             // #Builtin #Static 工厂走 kBuiltinMethods，调用点内联合成。
@@ -286,7 +285,8 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                     throw YuxError(line, col, ErrorCode::E0000, "turbofish 形态需泛型 struct: " + lhsRaw);
                 }
                 if (lhsTArgs.size() != baseDecl->typeParams().size()) {
-                    throw YuxError(line, col, ErrorCode::E6011, lhsRaw, baseDecl->typeParams().size(), lhsTArgs.size());
+                    // E6011 由 SemaPass #Static turbofish 先抛。
+                    throwSemaGap(line, col);
                 }
                 vector<sp<TypeInfo>> instArgs;
                 instArgs.reserve(lhsTArgs.size());

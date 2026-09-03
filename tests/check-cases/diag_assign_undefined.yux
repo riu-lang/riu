@@ -1,0 +1,5 @@
+; 赋值左侧未定义变量 → E3030（Phase C：LHS 根不是表达式，须单独查）
+fn main() {
+  nope = 1  ; check: E3030
+  ret;
+}

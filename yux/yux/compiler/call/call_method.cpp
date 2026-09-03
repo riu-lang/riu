@@ -34,7 +34,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
     }
     auto innerType = baseType.nullableInnerType();
     if (!innerType) {
-        throw YuxError(dotNode->resolveLineNumber(), dotNode->resolveColumn(), ErrorCode::E3050);
+        throwSemaGap(dotNode->resolveLineNumber(), dotNode->resolveColumn());
     }
     // Phase 5: Rc<T>? 自动 deref
     bool innerIsRc = innerType->isRc();
@@ -42,7 +42,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
     if (innerIsRc) {
         auto rcInner = innerType->rcElementType();
         if (!rcInner) {
-            throw YuxError(dotNode->resolveLineNumber(), dotNode->resolveColumn(), ErrorCode::E3050);
+            throwSemaGap(dotNode->resolveLineNumber(), dotNode->resolveColumn());
         }
         innerType = rcInner;
     }
@@ -279,7 +279,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
     }
 
     if (!llvmFn) {
-        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6015);
+        throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
     }
     if (llvmFn->getReturnType()->isVoidTy()) {
         _builder.CreateCall(llvmFn, methodArgs);
@@ -848,7 +848,8 @@ llvm::Value* Compiler::compileArrayWithCapacity(p<ExprPathCallNode> node) {
     int col = node->getColumn();
     const auto& lhsTArgs = node->lhsTypeArgs();
     if (lhsTArgs.size() != 1) {
-        throw YuxError(line, col, ErrorCode::E6011, "Array", static_cast<size_t>(1), lhsTArgs.size());
+        // E6011 由 SemaPass validateArrayWithCapacity 先抛。
+        throwSemaGap(line, col);
     }
     if (node->args().size() != expectArity) {
         string got;
@@ -1199,7 +1200,8 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
         return _builder.CreateCall(fn, methodArgs);
     }
 
-    throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6016, member, baseType.name);
+    // E6016 / E3095 由 SemaPass 方法分派先抛；此处防 IR 无 builtin 方法可降。
+    throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
 }
 
 llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType,

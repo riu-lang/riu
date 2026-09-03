@@ -17,7 +17,6 @@
 
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
-#include "analyzer/symbol_suggest.h"
 #include "ast/mangler.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
@@ -282,7 +281,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
                 if (auto arrayNode = dynamic_cast<ExprArrayNode*>(fi->value())) {
                     auto elemType = fieldType.arrayGenericElementType();
                     if (!elemType) {
-                        throw YuxError(line, col, ErrorCode::E3050);
+                        throwSemaGap(line, col);
                     }
                     auto block = buildArrayLiteralBlock(arrayNode, *elemType);
                     _builder.CreateStore(block, fieldPtr);
@@ -480,12 +479,14 @@ llvm::Value* Compiler::compileLvalueAddr(p<ExprNode> node) {
             string mangledName = Mangler::global(ownerMod, name, globPriv);
             // #Inline #Cval：无存储地址，不可作为 lvalue
             if (_inlineConstantValues.contains(mangledName)) {
-                throw YuxError(line, col, ErrorCode::E3118, name);
+                // E3118 由 SemaPass GetRef / 读路径先抛。
+                throwSemaGap(line, col);
             }
             if (auto gv = _module->getGlobalVariable(mangledName, true)) {
                 return gv;
             }
-            throw YuxError(line, col, ErrorCode::E3030, name);
+            // E3030 由 SemaPass getType 先抛。
+            throwSemaGap(line, col);
         }
         throw YuxError(line, col, ErrorCode::E0000, "<- 左侧不是有效 lvalue（字面量不可赋值）");
     }
@@ -534,7 +535,7 @@ llvm::Value* Compiler::compileLvalueAddr(p<ExprNode> node) {
 
         auto structType = getLLVMType(baseType);
         if (!structType) {
-            throw YuxError(line, col, ErrorCode::E3042, baseType.name, member);
+            throwSemaGap(line, col);
         }
         // 找字段索引
         auto* decl = _file ? _file->getStructDecl(baseType.name) : nullptr;

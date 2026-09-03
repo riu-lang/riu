@@ -24,6 +24,7 @@
 #include "analyzer/flow_terminate_checker.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
+#include "analyzer/symbol_suggest.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
 #include "ast/node/file_node.h"
@@ -220,6 +221,23 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         if (as->obj().getText() == "$" && _currentFn && _currentFn->header()->isStatic()) {
             throw YuxError(as->obj().getLine(), static_cast<int>(as->obj().getCharPositionInLine()), ErrorCode::E3128);
         }
+        // Phase C：LHS 根不是表达式，visitExpr 走不到；未定义 → E3030（与 getType 读路径对齐）。
+        if (_currentFn) {
+            string assignObj = as->obj().getText();
+            SymbolInfo* assignSym = nullptr;
+            if (auto sc = as->findNearestScope()) {
+                assignSym = sc->lookupSymbol(assignObj);
+            }
+            if (!assignSym) {
+                assignSym = _currentFn->lookupSymbol(assignObj);
+            }
+            if (!assignSym) {
+                ScopeNode* scope = as->findNearestScope();
+                if (!scope) scope = _currentFn;
+                SymbolSuggest::throwSymbolNotFound(scope, as->getLineNumber(), as->getColumn(), ErrorCode::E3030,
+                                                   assignObj);
+            }
+        }
         // Bucket 2 收口 (CURRENT-check.md): 简单变量赋值 (subs 为空) 的写可见性校验
         // (E3093). 与 compiler_stmt.cpp:952 同款条件: !writeable && !type.isRef().
         // T& 形参 / val 局部 T& 的 writeable=false 不影响"写被引", 由 borrow 检查
@@ -274,7 +292,6 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         //   * E3046 中段非纯 struct:  walk 到非末段, interType 命中
         //                          Rc/Array/Ref/Nullable/Weak/Ptr/builtin
         // 跳过策略 (留 Compiler 兜底):
-        //   * lookupSymbol 失败 (E3031 Compiler 抢先)
         //   * 起点 / 中段是泛型 struct (Compiler applySubst, sema 不替换泛型实参)
         //   * 中段 typeNeedsDestructor (递归 RC 字段扫描, 复杂, 留 Compiler)
         //   * 非纯数字下标命中 tuple 形态.

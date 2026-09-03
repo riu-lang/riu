@@ -1,0 +1,7 @@
+; require-sdk
+; assert_true 缺实参 → E6027（Phase C）
+
+fn main() {
+  assert_true()  ; check: E6027
+  ret;
+}

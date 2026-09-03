@@ -8,7 +8,6 @@
 #include "../compiler_runtime.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
-#include "analyzer/symbol_suggest.h"
 #include "ast/mangler.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
@@ -53,7 +52,8 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
             auto varName = objLiteral->getValue().getText();
             auto it = _localVarPtrs.find(varName);
             if (it == _localVarPtrs.end()) {
-                throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, varName);
+                // E3030 由 SemaPass getType 先抛；此处防 IR 槽表漏登记。
+                throwSemaGap(node->getLineNumber(), node->getColumn());
             }
             currentPtr = it->second;
         }
@@ -358,7 +358,7 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
     if (innerIsRc) {
         auto rcInner = innerType->rcElementType();
         if (!rcInner) {
-            throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3050);
+            throwSemaGap(node->resolveLineNumber(), node->resolveColumn());
         }
         innerType = rcInner;
     }
@@ -476,7 +476,7 @@ llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
     }
     auto innerType = leftType.nullableInnerType();
     if (!innerType) {
-        throw YuxError(node->resolveLineNumber(), node->resolveColumn(), ErrorCode::E3050);
+        throwSemaGap(node->resolveLineNumber(), node->resolveColumn());
     }
     auto innerLLVMType = getLLVMType(*innerType);
 

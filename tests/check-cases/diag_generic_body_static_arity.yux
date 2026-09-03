@@ -1,0 +1,22 @@
+; 泛型 fn 体：#Static turbofish arity 与 T 无关，模板期也报 E6011
+struct Pair<T, U> {
+  a T
+  b U
+
+  #Static
+  fn make(a T, b U) Self {
+    Self {
+      .a = a
+      .b = b
+    }
+  }
+}
+
+fn unused<V>() {
+  let p = Pair:<i32>::make(1, 2)  ; check: E6011
+  ret;
+}
+
+fn main() {
+  ret;
+}

@@ -980,6 +980,7 @@ void validateFnSymbolVisibility(const FnSymbolInfo* fnSymbol, const string& curr
 void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, size_t argsCount, int line, int col) {
     if (fnName == "assert_eq") {
         if (typeArgsCount != 1) throw YuxError(line, col, ErrorCode::E6026, fnName, static_cast<size_t>(1));
+        if (argsCount != 2) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(2));
         return;
     }
     if (fnName == "size_of") {
@@ -1065,6 +1066,14 @@ void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, s
 // 原 `compileExternalOrSdkFunctionCall` 顶部三处 inline 分派 (line 724-752) 收口.
 // 仅命中清单内的 fnName 才校验, 其他 fnName 是 no-op.
 void validateFreeIntrinsicArity(const string& fnName, size_t argsCount, int line, int col) {
+    if (fnName == "assert_eq") {
+        if (argsCount != 2) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(2));
+        return;
+    }
+    if (fnName == "assert_true" || fnName == "assert_false" || fnName == "fail") {
+        if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
+        return;
+    }
     if (fnName == "ptr_from_addr") {
         if (argsCount != 1) throw YuxError(line, col, ErrorCode::E6027, fnName, static_cast<size_t>(1));
         return;

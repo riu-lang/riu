@@ -1623,7 +1623,17 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                     structDecl = _sdkFile->getStructDecl(lhsName);
                 }
                 if (structDecl && structDecl->isGeneric()) {
-                    if (!fillSubstFromTypeNodes(structDecl->typeParams(), n->lhsTypeArgs(), staticSubst)) {
+                    const auto& lhsTArgs = n->lhsTypeArgs();
+                    size_t want = structDecl->typeParams().size();
+                    // 写出了 turbofish 但个数不对：模板期也报（E6011 是形态码）。
+                    // 无 turbofish 仍 skip（推断 / 实例化后再查）。
+                    if (!lhsTArgs.empty() && lhsTArgs.size() != want) {
+                        throw YuxError(line, col, ErrorCode::E6011, lhsName, want, lhsTArgs.size())
+                            .withHint(
+                                std::format("实例化时的类型实参个数需与声明匹配；改写为 `{}<{}>` 形式补齐 {} 个类型",
+                                            lhsName, std::string(want == 1 ? "T" : "T1, T2, ..."), want));
+                    }
+                    if (!fillSubstFromTypeNodes(structDecl->typeParams(), lhsTArgs, staticSubst)) {
                         skipTypeCheck = true;
                     } else {
                         for (auto& [_, t] : staticSubst)

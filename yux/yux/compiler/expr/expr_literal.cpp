@@ -8,7 +8,6 @@
 #include "../compiler_runtime.h"
 #include "analyzer/spec_impl_checker.h"
 #include "analyzer/spec_registry.h"
-#include "analyzer/symbol_suggest.h"
 #include "ast/mangler.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
@@ -258,8 +257,8 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
         }
 
         if (_currentFnNode) {
-            SymbolSuggest::throwSymbolNotFound(_currentFnNode, node->getLineNumber(), node->getColumn(),
-                                               ErrorCode::E3030, varName);
+            // E3030 由 SemaPass getType 先抛。
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
         // lambda body 内引用外层 local：Phase 4a / 4a-2 闭包识别（spec §6.1 / §6.2）
         // - 找到 sym 但不在 _localVarPtrs 也无 globalVar → 外层 local
@@ -322,7 +321,7 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
         if (_currentLambdaBodyScope && sym && sym->kind == SymbolKind::Variable) {
             throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E2028, varName);
         }
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3030, varName);
+        throwSemaGap(node->getLineNumber(), node->getColumn());
     } else if (auto cpLiteral = dynamic_cast<LiteralCodePointNode*>(literal)) {
         DEBUG_LOG_VAL("    Expr: CodePointLiteral", text << " : u32");
         return llvm::ConstantInt::get(getLLVMType(type), cpLiteral->codePoint(), false);

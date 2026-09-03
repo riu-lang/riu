@@ -1,0 +1,18 @@
+; 泛型 struct #Static turbofish 类型实参个数不对 → E6011（Phase C）
+struct Pair<T, U> {
+  a T
+  b U
+
+  #Static
+  fn make(a T, b U) Self {
+    Self {
+      .a = a
+      .b = b
+    }
+  }
+}
+
+fn main() {
+  let p = Pair:<i32>::make(1, 2)  ; check: E6011
+  ret;
+}

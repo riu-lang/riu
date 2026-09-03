@@ -1,0 +1,7 @@
+; require-sdk
+; assert_eq:<T> 实参个数不对 → E6027（Phase C）
+
+fn main() {
+  assert_eq:<i32>(1)  ; check: E6027
+  ret;
+}

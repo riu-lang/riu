@@ -649,7 +649,8 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
         }
     }
 
-    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E6015);
+    // E6015 不支持的 callee 形态：SemaPass 调用解析先抛（E3095 / E6016 / E6027 等）。
+    throwSemaGap(node->getLineNumber(), node->getColumn());
 }
 
 // ==================== #Fallible 调用侧分流 ====================

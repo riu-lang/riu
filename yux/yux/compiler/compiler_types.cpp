@@ -136,10 +136,8 @@ string Compiler::ensureStructInstance(p<StructDeclNode> baseDecl, const vector<s
         // 调用方未提供位置（getLLVMType 路径常见）时，退回到 struct 声明行，避免 assert(line>0) 触发 abort
         int errLine = sourceLine > 0 ? sourceLine : static_cast<int>(baseDecl->name().getLine());
         if (errLine <= 0) errLine = 1;
-        throw YuxError(errLine, ErrorCode::E6011, baseName, baseDecl->typeParams().size(), args.size())
-            .withHint(std::format("实例化时的类型实参个数需与声明匹配；改写为 `{}<{}>` 形式补齐 {} 个类型", baseName,
-                                  std::string(baseDecl->typeParams().size() == 1 ? "T" : "T1, T2, ..."),
-                                  baseDecl->typeParams().size()));
+        // E6011 由 SemaPass 声明处 / turbofish 先抛；此处防 IR 实例化 arity 不一致。
+        throwSemaGap(errLine);
     }
 
     // 创建实例记录
@@ -297,9 +295,10 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             {"Ptr", 0},
         }};
         for (auto [bname, arity] : kBuiltinGenerics) {
+            (void)arity;
             if (type.name == bname) {
-                throw YuxError(1, ErrorCode::E6011, type.name, arity, static_cast<size_t>(0))
-                    .withHint(std::format("`{}` 是泛型类型，使用时须带类型实参：改写为 `{}<T>`", type.name, type.name));
+                // E6011 由 SemaPass 声明处先抛；此处防 IR 对缺 typeArgs 的内置泛型建 LLVM 类型。
+                throwSemaGap(1);
             }
         }
     }
@@ -508,10 +507,8 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         if (structDecl->isGeneric()) {
             int errLine = static_cast<int>(structDecl->name().getLine());
             if (errLine <= 0) errLine = 1;
-            throw YuxError(errLine, ErrorCode::E6011, type.name, structDecl->typeParams().size(),
-                           static_cast<size_t>(0))
-                .withHint(std::format("`{}` 是泛型类型，使用时须带类型实参：改写为 `{}<{}>`", type.name, type.name,
-                                      std::string(structDecl->typeParams().size() == 1 ? "T" : "T1, T2, ...")));
+            // E6011 由 SemaPass 声明处先抛；此处防 IR 对缺 typeArgs 的泛型 struct 建 LLVM 类型。
+            throwSemaGap(errLine);
         }
         DEBUG_LOG_VAL("    -> Struct (creating on demand)", type.name);
         auto structType = getOrCreateStructType(structDecl, sourceFile);
