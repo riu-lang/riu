@@ -5,6 +5,7 @@
 //
 // 二进制接口 + 泛型体 / spec 默认体 / 全局 init 的源文本 skeleton。
 // 失效键：kFormatVersion + 源码 FNV-1a-64。重编 yux.exe 不使 .decl 作废。
+// v2：fn header 与 TypeInfo 写入 fallibleErr（`T ! E`），否则跨模块调用 mangle 丢 `!E`。
 
 #ifndef YUX_LANG_MOD_DECL_H
 #define YUX_LANG_MOD_DECL_H
@@ -21,7 +22,7 @@ class Node;
 
 namespace mod_decl {
 
-inline constexpr uint32_t kFormatVersion = 1;
+inline constexpr uint32_t kFormatVersion = 2;
 
 // 重建节点的所有者，生命周期跟 Yux。
 class NodeOwner {

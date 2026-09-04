@@ -15,6 +15,11 @@
 
 ---
 
+## 2026-09-04 —— SDK `yux.core.io` 文件 / stdin IO
+
+- **新增 §10.4.1.4**：`io.yux`（逻辑名 `yux.core.io`，`pkg` `io.*`）提供 `IoErr` + `read_line` / `read_file` / `write_file` / `append_file`；错误通道 `T ! IoErr`；路径 UTF-16、内容 UTF-8。`eprint` / `eprintln` 仍在 `base.yux`。
+- **冲突 / 兼容**：纯增量。隐式 `yux.core` 即可裸调；`use yux.core.io.*` 可选。
+
 ## 2026-09-04 —— Fallible 签名 `T ! E` 删除 `#Fallible` 注解（F6）
 
 - **修改 §6.7**：标题改为「失败签名 `T ! E`」；失败声明从 `#Fallible(E)` 注解迁移为签名后缀 `fn f(...) T ! E` / `fn main() ! E`（void 成功）。

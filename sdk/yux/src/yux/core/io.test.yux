@@ -1,0 +1,143 @@
+; yux.core.io：write/read/append 回合 + 缺文件 NotFound
+; 不调用 read_line（会堵 stdin）。临时文件名互不抢；失败路径可能留文件，gitignore 兜底。
+; void 的 try/catch 块内调用须带 `;`，避免把 void 调用当成块值。
+
+use yux.core.io.*
+
+extern {
+  fn DeleteFileW(lpFileName Ptr) i32
+}
+
+fn _ascii_wide(path String&) Array<u16> {
+  #Mut let w Array<u16> = []
+  loop i usize = 0 {
+    if i >= path.len() {
+      break;
+    }
+    w.push(path.get(i).to_u16())
+    i += 1
+  }
+  w.push(0u16)
+  w
+}
+
+fn _cleanup(path String&) {
+  let w Array<u16> = _ascii_wide(path)
+  DeleteFileW(w);
+}
+
+fn _fail_io(op String&, e IoErr) {
+  match e {
+    IoErr::Eof => fail("${op}: Eof")
+    IoErr::NotFound => fail("${op}: NotFound")
+    IoErr::AccessDenied => fail("${op}: AccessDenied")
+    IoErr::InvalidUtf8 => fail("${op}: InvalidUtf8")
+    IoErr::Other(code) => fail("${op}: Other(${code})")
+  }
+}
+
+; 验证：write_file 后 read_file 读回 ASCII
+#Test
+fn test_write_read_roundtrip() {
+  let path String = "_yux_io_rw.txt"
+  try {
+    write_file(&path, "hello");
+  } catch e IoErr {
+    _fail_io("write", e);
+  }
+  let s String = try {
+    read_file(&path)
+  } catch e IoErr {
+    _cleanup(&path);
+    _fail_io("read", e);
+    ""
+  }
+  _cleanup(&path);
+  assert_eq(s, "hello")
+}
+
+; 验证：中文内容按 UTF-8 往返
+#Test
+fn test_write_read_chinese() {
+  let path String = "_yux_io_zh.txt"
+  try {
+    write_file(&path, "你好");
+  } catch e IoErr {
+    _fail_io("write_zh", e);
+  }
+  let s String = try {
+    read_file(&path)
+  } catch e IoErr {
+    _cleanup(&path);
+    _fail_io("read_zh", e);
+    ""
+  }
+  _cleanup(&path);
+  assert_eq(s, "你好")
+}
+
+; 验证：append_file 接在已有内容后面
+#Test
+fn test_append_file() {
+  let path String = "_yux_io_append.txt"
+  try {
+    write_file(&path, "ab");
+  } catch e IoErr {
+    _fail_io("write_ab", e);
+  }
+  try {
+    append_file(&path, "cd");
+  } catch e IoErr {
+    _cleanup(&path);
+    _fail_io("append", e);
+  }
+  let s String = try {
+    read_file(&path)
+  } catch e IoErr {
+    _cleanup(&path);
+    _fail_io("read_append", e);
+    ""
+  }
+  _cleanup(&path);
+  assert_eq(s, "abcd")
+}
+
+; 验证：空内容写出后读回空串
+#Test
+fn test_write_read_empty() {
+  let path String = "_yux_io_empty.txt"
+  try {
+    write_file(&path, "");
+  } catch e IoErr {
+    _fail_io("write_empty", e);
+  }
+  let s String = try {
+    read_file(&path)
+  } catch e IoErr {
+    _cleanup(&path);
+    _fail_io("read_empty", e);
+    ""
+  }
+  _cleanup(&path);
+  assert_eq(s, "")
+}
+
+; 验证：缺文件 → IoErr::NotFound
+#Test
+fn test_read_missing_not_found() {
+  let path String = "_yux_io_no_such_file.txt"
+  _cleanup(&path);
+  try {
+    let _s String = read_file(&path)
+    fail("missing file should error");
+  } catch e IoErr {
+    match e {
+      IoErr::NotFound => {
+      }
+      IoErr::Eof => fail("missing: Eof")
+      IoErr::AccessDenied => fail("missing: AccessDenied")
+      IoErr::InvalidUtf8 => fail("missing: InvalidUtf8")
+      IoErr::Other(code) => fail("missing: Other(${code})")
+    };
+  }
+}

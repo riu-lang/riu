@@ -120,6 +120,7 @@ void writeType(Writer& w, const TypeInfo& t) {
         }
     }
     w.u8(t.fnNullable ? 1 : 0);
+    w.str(t.fallibleErr);
 }
 
 TypeInfo readType(Reader& r) {
@@ -140,6 +141,7 @@ TypeInfo readType(Reader& r) {
         }
     }
     t.fnNullable = r.u8() != 0;
+    t.fallibleErr = r.str();
     return t;
 }
 
@@ -206,6 +208,7 @@ void writeHeader(Writer& w, FnHeaderNode* h) {
     } else {
         w.u8(0);
     }
+    w.str(h->resolvedFallibleErr());
 }
 
 p<TypeNode> typeNodeFromInfo(NodeOwner& own, Node* parent, const TypeInfo& t, int line) {
@@ -418,6 +421,7 @@ struct HeaderData {
     vector<Param> params;
     bool hasRet = false;
     TypeInfo ret;
+    string fallibleErr;
 };
 
 HeaderData readHeaderData(Reader& r) {
@@ -443,6 +447,7 @@ HeaderData readHeaderData(Reader& r) {
     }
     d.hasRet = r.u8() != 0;
     if (d.hasRet) d.ret = readType(r);
+    d.fallibleErr = r.str();
     return d;
 }
 
@@ -459,6 +464,9 @@ FnHeaderNode* makeHeader(NodeOwner& own, Node* parent, const HeaderData& d) {
         param->setLocation(pd.line, pd.col);
         param->setFrozen(pd.frozen);
         header->addParam(param);
+    }
+    if (!d.fallibleErr.empty()) {
+        header->setFallibleErrType(typeNodeFromInfo(own, header, TypeInfo(d.fallibleErr), d.line));
     }
     return header;
 }

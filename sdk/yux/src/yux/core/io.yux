@@ -1,0 +1,284 @@
+; yux SDK - 文件 / stdin IO（v0.21 Phase A）
+; 路径走 CreateFileW（UTF-16）；文件内容 UTF-8。错误通道 T ! IoErr。
+; 公开符号经 pkg `io.*` 扁平进 yux.core（与 println 相同，也可 `use yux.core.io.*`）。
+
+extern {
+  ; `_` 前缀避免本文件符号再经 sdk 通配导入后与自身构成 E6014
+  #CName("CreateFileW")
+  fn _CreateFileW(lpFileName Ptr, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes Ptr, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile Ptr) Ptr
+  #CName("ReadFile")
+  fn _ReadFile(hFile Ptr, lpBuffer Ptr, nNumberOfBytesToRead u32, lpNumberOfBytesRead Ptr, lpOverlapped Ptr) i32
+  #CName("CloseHandle")
+  fn _CloseHandle(hObject Ptr) i32
+  #CName("GetLastError")
+  fn _GetLastError() u32
+  #CName("SetFilePointer")
+  fn _SetFilePointer(hFile Ptr, lDistanceToMove i32, lpDistanceToMoveHigh Ptr, dwMoveMethod u32) u32
+}
+
+; Win32 常量（文件作用域）
+#Cval
+let _GENERIC_READ u32 = 0x80000000u32
+#Cval
+let _GENERIC_WRITE u32 = 0x40000000u32
+#Cval
+let _FILE_SHARE_RW u32 = 3
+#Cval
+let _CREATE_ALWAYS u32 = 2
+#Cval
+let _OPEN_EXISTING u32 = 3
+#Cval
+let _OPEN_ALWAYS u32 = 4
+#Cval
+let _FILE_ATTRIBUTE_NORMAL u32 = 128
+#Cval
+let _FILE_END u32 = 2
+#Cval
+let _STD_INPUT_HANDLE i32 = -10
+#Cval
+let _INVALID_HANDLE u64 = 0xFFFFFFFFFFFFFFFFu64
+#Cval
+let _INVALID_SET_PTR u32 = 0xFFFFFFFFu32
+#Cval
+let _ERROR_FILE_NOT_FOUND u32 = 2
+#Cval
+let _ERROR_PATH_NOT_FOUND u32 = 3
+#Cval
+let _ERROR_ACCESS_DENIED u32 = 5
+#Cval
+let _ERROR_HANDLE_EOF u32 = 38
+
+enum IoErr {
+  Eof
+  NotFound
+  AccessDenied
+  InvalidUtf8
+  Other(u32)
+}
+
+fn _bad_handle(h Ptr) bool {
+  let a u64 = h.to_int()
+  a == 0 || a == _INVALID_HANDLE
+}
+
+fn _map_err(code u32) IoErr {
+  if code == _ERROR_FILE_NOT_FOUND || code == _ERROR_PATH_NOT_FOUND {
+    ret IoErr::NotFound
+  }
+  if code == _ERROR_ACCESS_DENIED {
+    ret IoErr::AccessDenied
+  }
+  if code == _ERROR_HANDLE_EOF {
+    ret IoErr::Eof
+  }
+  ret IoErr::Other(code)
+}
+
+fn _map_last_err() IoErr {
+  _map_err(_GetLastError())
+}
+
+; String 码点 → NUL 结尾 UTF-16（CreateFileW）
+fn _to_wide(path String&) Array<u16> {
+  #Mut let w Array<u16> = []
+  loop i usize = 0 {
+    if i >= path.len() {
+      break;
+    }
+    let cp u32 = path.get(i)
+    if cp < 65536 {
+      w.push(cp.to_u16())
+    } else {
+      let u u32 = cp - 65536
+      w.push((55296u32 + (u >> 10u32)).to_u16())
+      w.push((56320u32 + (u & 1023u32)).to_u16())
+    }
+    i += 1
+  }
+  w.push(0u16)
+  w
+}
+
+fn _from_utf8(bytes Array<u8>&) String ! IoErr {
+  #Mut let cps Array<u32> = []
+  #Mut let i usize = 0
+  let n usize = bytes.len()
+  loop {
+    if i >= n {
+      break;
+    }
+    let b0 u8 = copy_of(bytes[i])
+    if b0 < 128u8 {
+      cps.push(b0.to_u32())
+      i += 1
+    } elif b0 >= 194u8 && b0 < 224u8 {
+      if i + 1 >= n {
+        ret IoErr::InvalidUtf8
+      }
+      let b1 u8 = copy_of(bytes[i + 1])
+      if b1 < 128u8 || b1 >= 192u8 {
+        ret IoErr::InvalidUtf8
+      }
+      let cp u32 = ((b0.to_u32() - 192u32) << 6u32) + (b1.to_u32() - 128u32)
+      cps.push(cp)
+      i += 2
+    } elif b0 >= 224u8 && b0 < 240u8 {
+      if i + 2 >= n {
+        ret IoErr::InvalidUtf8
+      }
+      let b1 u8 = copy_of(bytes[i + 1])
+      let b2 u8 = copy_of(bytes[i + 2])
+      if b1 < 128u8 || b1 >= 192u8 || b2 < 128u8 || b2 >= 192u8 {
+        ret IoErr::InvalidUtf8
+      }
+      let cp u32 = ((b0.to_u32() - 224u32) << 12u32) + ((b1.to_u32() - 128u32) << 6u32) + (b2.to_u32() - 128u32)
+      cps.push(cp)
+      i += 3
+    } elif b0 >= 240u8 && b0 < 248u8 {
+      if i + 3 >= n {
+        ret IoErr::InvalidUtf8
+      }
+      let b1 u8 = copy_of(bytes[i + 1])
+      let b2 u8 = copy_of(bytes[i + 2])
+      let b3 u8 = copy_of(bytes[i + 3])
+      if b1 < 128u8 || b1 >= 192u8 || b2 < 128u8 || b2 >= 192u8 || b3 < 128u8 || b3 >= 192u8 {
+        ret IoErr::InvalidUtf8
+      }
+      let cp u32 = ((b0.to_u32() - 240u32) << 18u32) + ((b1.to_u32() - 128u32) << 12u32) + ((b2.to_u32() - 128u32) << 6u32) + (b3.to_u32() - 128u32)
+      cps.push(cp)
+      i += 4
+    } else {
+      ret IoErr::InvalidUtf8
+    }
+  }
+  ret String::from(&cps)
+}
+
+fn _open(path String&, access u32, disp u32) Ptr ! IoErr {
+  #Mut let wide Array<u16> = _to_wide(path)
+  let h Ptr = _CreateFileW(wide, access, _FILE_SHARE_RW, null, disp, _FILE_ATTRIBUTE_NORMAL, null)
+  if _bad_handle(h) {
+    ret _map_last_err()
+  }
+  ret h
+}
+
+fn _read_and_close(h Ptr) Array<u8> ! IoErr {
+  #Mut let out Array<u8> = []
+  loop {
+    #Mut let chunk [u8 * 256] = [0u8 ...]
+    #Mut let written u32 = 0
+    let ok i32 = _ReadFile(h, &chunk, 256, &written, null)
+    if ok == 0 {
+      let err u32 = _GetLastError()
+      if err == _ERROR_HANDLE_EOF {
+        break;
+      }
+      _CloseHandle(h);
+      ret _map_err(err)
+    }
+    if written == 0 {
+      break;
+    }
+    loop i usize = 0 {
+      if i.to_u32() >= written {
+        break;
+      }
+      out.push(copy_of(chunk[i]))
+      i += 1
+    }
+  }
+  _CloseHandle(h);
+  ret out
+}
+
+fn _write_handle(h Ptr, content String&) ! IoErr {
+  #Mut let bytes Array<u8> = content.to_bytes()
+  if bytes.is_empty() {
+    ret;
+  }
+  #Mut let written u32 = 0
+  let n u32 = bytes.len().to_u32()
+  let ok i32 = WriteFile(h, bytes, n, &written, null)
+  if ok == 0 {
+    ret _map_last_err()
+  }
+  if written != n {
+    ret IoErr::Other(0u32)
+  }
+  ret;
+}
+
+fn read_file(path String&) String ! IoErr {
+  let h Ptr = _open(path, _GENERIC_READ, _OPEN_EXISTING)!
+  let bytes Array<u8> = _read_and_close(h)!
+  ret _from_utf8(&bytes)!
+}
+
+fn write_file(path String&, content String&) ! IoErr {
+  let h Ptr = _open(path, _GENERIC_WRITE, _CREATE_ALWAYS)!
+    try {
+    _write_handle(h, content);
+  } catch e IoErr {
+    _CloseHandle(h);
+    ret e
+  }
+  _CloseHandle(h);
+}
+
+fn append_file(path String&, content String&) ! IoErr {
+  let h Ptr = _open(path, _GENERIC_WRITE, _OPEN_ALWAYS)!
+  let pos u32 = _SetFilePointer(h, 0, null, _FILE_END)
+  if pos == _INVALID_SET_PTR {
+    let err u32 = _GetLastError()
+    if err != 0 {
+      _CloseHandle(h);
+      ret _map_err(err)
+    }
+  }
+  try {
+    _write_handle(h, content);
+  } catch e IoErr {
+    _CloseHandle(h);
+    ret e
+  }
+  _CloseHandle(h);
+}
+
+; stdin 读到换行（不含）；去掉尾随 CR。一开始就 EOF → IoErr::Eof。
+fn read_line() String ! IoErr {
+  #Mut let h Ptr = GetStdHandle(_STD_INPUT_HANDLE)
+  if _bad_handle(h) {
+    ret _map_last_err()
+  }
+  #Mut let raw Array<u8> = []
+  loop {
+    #Mut let b [u8 * 1] = [0u8]
+    #Mut let written u32 = 0
+    let ok i32 = _ReadFile(h, &b, 1, &written, null)
+    if ok == 0 {
+      if raw.is_empty() {
+        ret _map_last_err()
+      }
+      break;
+    }
+    if written == 0 {
+      if raw.is_empty() {
+        ret IoErr::Eof
+      }
+      break;
+    }
+    let c u8 = copy_of(b[0])
+    if c == 10u8 {
+      break;
+    }
+    raw.push(c)
+  }
+  if !raw.is_empty() {
+    let last usize = raw.len() - 1
+    if copy_of(raw[last]) == 13u8 {
+      raw.pop()
+    }
+  }
+  ret _from_utf8(&raw)!
+}
