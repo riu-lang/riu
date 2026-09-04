@@ -800,9 +800,10 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         return;
     }
     if (auto sf = dynamic_cast<p<StatementStaticFieldSetNode>>(stmt)) {
-        string typeName = sf->typeName().getText();
+        auto r = sema::resolveExprTypeLhs(_file, _yux, sf->typePath(), sf->getLineNumber(), sf->getColumn());
+        string typeName = r.type.name;
         string fieldName = sf->fieldName().getText();
-        auto* structDecl = _names.lookupStruct(typeName, true);
+        auto* structDecl = r.structDecl ? r.structDecl : _names.lookupStruct(r.type, true);
         if (!structDecl) {
             throw YuxError(sf->getLineNumber(), sf->getColumn(), ErrorCode::E3030, typeName);
         }

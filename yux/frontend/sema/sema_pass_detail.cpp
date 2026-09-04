@@ -933,13 +933,11 @@ FnNode* uniqueNonBuiltinGenericFn(FileNode* file, const string& name) {
 }
 
 StructImplNode* lookupStructImpl(FileNode* file, FileNode* sdk, const string& name) {
-    if (file) {
-        if (auto* i = file->getStructImpl(name)) return i;
-    }
-    if (sdk && sdk != file) {
-        if (auto* i = sdk->getStructImpl(name)) return i;
-    }
-    return nullptr;
+    return sema::NameResolver(file, sdk).lookupStructImpl(name);
+}
+
+StructImplNode* lookupStructImpl(FileNode* file, FileNode* sdk, const TypeInfo& t) {
+    return sema::NameResolver(file, sdk).lookupStructImpl(t);
 }
 
 // 同名同 arity 唯一方法。多个重载不猜。
@@ -1012,13 +1010,12 @@ bool isBareTailExprStmt(p<StatementNode> s) {
 
 // #Static fn 同名候选：过滤 wantArity，各位约定类型与 agreedArityParamTypes 同款。
 // 任一同名泛型静态方法 → 不猜。
-bool agreedStaticMethodParams(FileNode* file, FileNode* sdk, const string& lhs, const string& rhs, size_t wantArity,
+bool agreedStaticMethodParams(FileNode* file, FileNode* sdk, const TypeInfo& lhs, const string& rhs, size_t wantArity,
                               vector<TypeInfo>& out) {
-    StructDeclNode* sd = file ? file->getStructDecl(lhs, true) : nullptr;
-    if (!sd && sdk && sdk != file) sd = sdk->getStructDecl(lhs, true);
+    sema::NameResolver nr(file, sdk);
+    StructDeclNode* sd = nr.lookupStruct(lhs, true);
     if (!sd || sd->isGeneric()) return false;
-    StructImplNode* impl = file ? file->getStructImpl(lhs) : nullptr;
-    if (!impl && sdk && sdk != file) impl = sdk->getStructImpl(lhs);
+    StructImplNode* impl = nr.lookupStructImpl(lhs);
     if (!impl || impl->isGeneric()) return false;
     vector<vector<TypeInfo>> uniq;
     for (auto& m : impl->methods()) {

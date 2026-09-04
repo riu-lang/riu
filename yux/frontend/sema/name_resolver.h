@@ -40,6 +40,14 @@ struct NameResolver {
                                                    FileNode** outOwner = nullptr) const;
     // 已加载模块中按 moduleName 找 FileNode；不 loadModule
     [[nodiscard]] FileNode* fileForOwner(const string& ownerModule) const;
+    [[nodiscard]] StructImplNode* lookupStructImpl(const string& name, FileNode** outOwner = nullptr) const;
+    [[nodiscard]] StructImplNode* lookupStructImpl(const TypeInfo& t, FileNode** outOwner = nullptr) const;
+    // recv.ownerModule 非空时只在该模块查 `Name.method`
+    [[nodiscard]] FnSymbolInfo* lookupMethod(const TypeInfo& recv, const string& methodName,
+                                             FileNode** outOwner = nullptr) const;
+    [[nodiscard]] FnSymbolInfo* lookupMethodWithParams(const TypeInfo& recv, const string& methodName,
+                                                       const vector<TypeInfo>& paramTypes,
+                                                       FileNode** outOwner = nullptr) const;
 };
 
 // 透明别名解析（完整版：递归 generic / array / tuple / fn）。遇环抛 E2016。
@@ -62,6 +70,10 @@ struct TypePathResult {
 };
 
 TypePathResult resolveTypePath(FileNode* file, Yux* yux, const TypePath& path, int line = 0, int col = 0);
+
+// 表达式 LHS：resolveTypePath 后再展开别名，填 structDecl / enumDecl。
+// Self 由调用方处理，不要把 "Self" 丢进来当路径。
+TypePathResult resolveExprTypeLhs(FileNode* file, Yux* yux, const TypePath& path, int line = 0, int col = 0);
 
 } // namespace sema
 

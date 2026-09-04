@@ -554,6 +554,8 @@ public:
     // `Self::name`：沿 parent 链找到 enclosing StructImplNode 的源码名；
     // 体外仍返回 "Self"（SemaPass 报 E3123）。非 Self LHS 原样返回 token 文本。
     [[nodiscard]] string resolvedLhsName() const;
+    // 限定路径走 resolveExprTypeLhs（含 ownerModule）；Self 用 enclosing struct。
+    [[nodiscard]] TypeInfo resolvedLhsType() const;
     [[nodiscard]] TypeInfo getType() const override;
 };
 

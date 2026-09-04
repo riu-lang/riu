@@ -135,6 +135,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
 
     const bool selfLhs = node->enumName().getText() == "Self";
     string lookupLhs = node->resolvedLhsName();
+    TypeInfo lhsTy = node->resolvedLhsType();
     if (selfLhs) {
         if (!_currentStructName.empty()) {
             auto instIt = _structInstances.find(_currentStructName);
@@ -147,7 +148,13 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
             // E3123 由 SemaPass PathCall 先抛。
             throwSemaGap(line, col);
         }
+        lhsTy = TypeInfo(lookupLhs);
+        if (_file) lhsTy.ownerModule = _file->moduleName();
+    } else {
+        lookupLhs = lhsTy.name;
     }
+
+    string lhsOwnerMod = lhsTy.ownerModule;
 
     // DRAFT-spec-reflect Phase 4: `<Struct>::type` / `<Struct>::fields` /
     // `<Struct>::methods` / `<Struct>::variants`
@@ -162,7 +169,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
         if (node->args().empty() &&
             (rhsName == "type" || rhsName == "fields" || rhsName == "methods" || rhsName == "variants")) {
             FileNode* sdkF = _yux ? _yux->sdkFile() : nullptr;
-            auto* sd = _file ? _file->getStructDecl(lhsRaw) : nullptr;
+            auto* sd = names().lookupStruct(lhsTy);
             if (!sd && sdkF && sdkF != _file) sd = sdkF->getStructDecl(lhsRaw);
             if (sd) {
                 // DRAFT-spec-reflect §2: variants 仅 enum 可访问; struct 上访问 → E3135.
@@ -210,18 +217,15 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
     // sema 已先做形态校验 (#Static 命中 / 缺失 / 实例方法误用), 这里直接 emit call.
     {
         string lhsRaw = lookupLhs;
-        auto* structImpl = _file ? _file->getStructImpl(lhsRaw) : nullptr;
+        auto* structImpl = names().lookupStructImpl(lhsTy);
         FileNode* sdk = _yux ? _yux->sdkFile() : nullptr;
-        if (!structImpl && sdk && sdk != _file) {
-            structImpl = sdk->getStructImpl(lhsRaw);
-        }
 
         // DRAFT-static-vars Phase 4: 静态字段读路径
         // 若 LHS 是 struct 且 RHS 无 args（零参无括号），先查静态字段
         if (node->args().empty()) {
             string fieldName = node->variantName().getText();
             // includeBuiltin=true：允许 #Builtin struct（如 i8）上的静态字段
-            auto* structDecl = _file ? _file->getStructDecl(lhsRaw, /*includeBuiltin=*/true) : nullptr;
+            auto* structDecl = names().lookupStruct(lhsTy, /*includeBuiltin=*/true);
             if (!structDecl && sdk && sdk != _file) {
                 structDecl = sdk->getStructDecl(lhsRaw, /*includeBuiltin=*/true);
             }
@@ -239,24 +243,16 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                         // 求值失败是编译器 bug（#Cval 字段的 init 必须是 const-evaluable）
                         throw YuxError(line, col, ErrorCode::E3140, lhsRaw + "::" + fieldName);
                     }
-                    string ownerMod = _file ? _file->moduleName() : "";
+                    string ownerMod = lhsOwnerMod;
+                    FileNode* structOwner = nullptr;
+                    if (names().lookupStruct(lhsTy, true, &structOwner) && structOwner) {
+                        ownerMod = structOwner->moduleName();
+                    }
+                    if (ownerMod.empty()) ownerMod = _file ? _file->moduleName() : "";
                     auto mangledName = Mangler::staticField(ownerMod, lhsRaw, fieldName);
-                    auto* gv = _module->getGlobalVariable(mangledName, true);
-                    if (!gv && sdk) {
-                        // 静态字段在 SDK 模块中（跨模块访问）：用 SDK 模块名查找
-                        string sdkMod = sdk->moduleName();
-                        mangledName = Mangler::staticField(sdkMod, lhsRaw, fieldName);
-                        gv = _module->getGlobalVariable(mangledName, true);
-                        if (!gv) {
-                            // 跨文件引用：创建外部声明供链接时解析
-                            auto llvmType = getLLVMType(sf->type->getType());
-                            gv = new llvm::GlobalVariable(*_module, llvmType, true, llvm::GlobalValue::ExternalLinkage,
-                                                          nullptr, mangledName);
-                        }
-                    }
-                    if (gv) {
-                        return _builder.CreateLoad(gv->getValueType(), gv, "static.field.load");
-                    }
+                    auto llvmType = getLLVMType(sf->type->getType());
+                    auto* gv = getOrDeclareStaticFieldGV(mangledName, llvmType, !sf->isMutable);
+                    return _builder.CreateLoad(gv->getValueType(), gv, "static.field.load");
                 }
             }
         }
@@ -291,8 +287,8 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
             bool pushedFrame = false;
             const auto& lhsTArgs = node->lhsTypeArgs();
             if (!lhsTArgs.empty()) {
-                p<StructDeclNode> baseDecl = _file ? _file->getStructDecl(lhsRaw) : nullptr;
                 p<FileNode> baseOwner = _file;
+                p<StructDeclNode> baseDecl = names().lookupStruct(lhsTy, false, &baseOwner);
                 if (!baseDecl && _yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
                     baseDecl = _yux->sdkFile()->getStructDecl(lhsRaw);
                     baseOwner = _yux->sdkFile();
@@ -349,7 +345,8 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                 if (methodHeader->retType()) retType = applySubst(methodHeader->retType()->getType());
                 string mFallibleErr;
                 mFallibleErr = methodHeader->resolvedFallibleErr();
-                auto fn = getMethodFunction(effLhs, methodName, paramTypes, retType, mFallibleErr, /*isStatic=*/true);
+                auto fn = getMethodFunction(effLhs, methodName, paramTypes, retType, mFallibleErr, /*isStatic=*/true,
+                                            lhsOwnerMod);
                 vector<llvm::Value*> argVals;
                 argVals.reserve(node->args().size());
                 // Phase 6E: 灵活整数字面量按形参类型回填 (如 `S::make(1)` 推 1 为 i64)
@@ -416,7 +413,8 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
     }
 
     p<FileNode> owner = nullptr;
-    auto enumDecl = names().lookupEnum(enumName, &owner);
+    TypeInfo enumTy = node->getType();
+    auto enumDecl = names().lookupEnum(enumTy, &owner);
     auto variant = enumDecl->variant(variantName);
 
     size_t givenArity = node->args().size();
@@ -424,7 +422,6 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
     (void)givenArity; // arity 已由 sema::validateEnumCtorShape 校验
 
     int tagIndex = enumDecl->variantIndex(variantName);
-    TypeInfo enumTy(enumName);
     auto enumLLVMType = getLLVMType(enumTy);
     if (!enumLLVMType) {
         throw YuxError(line, col, ErrorCode::E3096, enumName);

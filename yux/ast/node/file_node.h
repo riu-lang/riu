@@ -70,6 +70,8 @@ public:
     [[nodiscard]] EnumDeclNode* localEnumDecl(const string& name) const;
     [[nodiscard]] AliasDeclNode* localAliasDecl(const string& name) const;
     [[nodiscard]] StructImplNode* getStructImpl(const string& name) const;
+    // 仅本文件 impl（不含 wildcard）。ownerModule 消歧用。
+    [[nodiscard]] StructImplNode* localStructImpl(const string& name) const;
     [[nodiscard]] FnNode* getFunction(const string& name) const;
     // 同 getFunction，同时返回所属 FileNode；搜索范围扩展到 wildcardImports
     [[nodiscard]] pair<FnNode*, FileNode*> getFunctionWithOwner(const string& name) const;
@@ -134,7 +136,13 @@ public:
     // 顺序查找。未找到返回 nullptr。
     FileNode* getStructOwner(const string& name);
 
+    // 已关联模块：本文件 / 通配导入 / 模块别名 / 包孩子 / 父作用域（SDK）。
+    // 不 loadModule。fileForOwner 用：`use geom` 的 geom.Point 要能找到 geom。
+    [[nodiscard]] FileNode* relatedFile(const string& moduleName) const;
+
 private:
+    [[nodiscard]] FileNode* relatedFileHere(const string& moduleName) const;
+
     vector<string> _imports;
     vector<UseSpec> _useSpecs;
     vector<FileNode*> _wildcardImports;

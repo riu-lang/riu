@@ -259,7 +259,23 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         // Phase 6E.4-C: 泛型 struct #Static fn 体内 `Self {...}` —
         // _currentStructName 是 mangled (`GH$i32`), getStructDecl 查不到; 走
         // _structInstances 拿 baseDecl, llvmStructType 仍按 mangled 名解析.
-        auto* decl = _file ? _file->getStructDecl(structName) : nullptr;
+        TypeInfo litTy = typeInfoForNamedStruct(structName);
+        StructDeclNode* decl = nullptr;
+        if (!structLitNode->isSelfForm()) {
+            auto r = sema::resolveExprTypeLhs(_file, _yux, structLitNode->typePath(), line, col);
+            if (!r.type.empty()) {
+                litTy = r.type;
+                structName = r.type.name;
+            }
+            decl = r.structDecl;
+            if (!decl) decl = names().lookupStruct(litTy);
+        }
+        if (!decl) {
+            decl = names().lookupStruct(litTy);
+        }
+        if (!decl && _file) {
+            decl = _file->getStructDecl(structName);
+        }
         if (!decl && _yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
             decl = _yux->sdkFile()->getStructDecl(structName);
         }
@@ -273,7 +289,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
             // E3124 由 SemaPass 先抛；此处防 IR 无 decl 可 GEP。
             throwSemaGap(line, col);
         }
-        auto llvmStructType = getLLVMType(typeInfoForNamedStruct(structName));
+        auto llvmStructType = getLLVMType(litTy);
         if (!llvmStructType) {
             throw YuxError(line, col, ErrorCode::E3096, structName);
         }

@@ -373,7 +373,7 @@ void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, p<ExprPathCallNode
 //     非 Rc/非 alias 时才接入; 否则跳过, 由 Compiler 兜底)
 //
 // 纯 AST / 字符串, 无 LLVM 依赖.
-void validateMatchArms(EnumDeclNode* enumDecl, const string& enumName, p<ExprMatchNode> node, FileNode* file);
+void validateMatchArms(EnumDeclNode* enumDecl, const TypeInfo& enumType, p<ExprMatchNode> node, FileNode* file);
 
 // 私有字段可见性校验 (Phase 3.4.d.2).
 //

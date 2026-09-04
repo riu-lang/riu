@@ -217,7 +217,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
         auto inner = scrutType.rcElementType();
         if (inner) {
             p<FileNode> tmpOwner = nullptr;
-            if (names().lookupEnum(inner->name, &tmpOwner)) {
+            if (names().lookupEnum(*inner, &tmpOwner)) {
                 if (isFreshHandleExpr(scrutinee)) {
                     throwSemaGap(line, col);
                 }
@@ -234,7 +234,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
         auto inner = scrutType.heapElementType();
         if (inner) {
             p<FileNode> tmpOwner = nullptr;
-            if (names().lookupEnum(inner->name, &tmpOwner)) {
+            if (names().lookupEnum(*inner, &tmpOwner)) {
                 if (isFreshHandleExpr(scrutinee)) {
                     throwSemaGap(line, col);
                 }
@@ -251,7 +251,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
         auto inner = scrutType.refElementType();
         if (inner) {
             p<FileNode> tmpOwner = nullptr;
-            if (names().lookupEnum(inner->name, &tmpOwner)) {
+            if (names().lookupEnum(*inner, &tmpOwner)) {
                 refDeref = true;
                 scrutType = *inner;
             }
@@ -260,7 +260,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
 
     // 1. 必须是 enum。E2022 由 SemaPass tryValidateMatchScrut 先抛；此处防 IR 走空路径。
     p<FileNode> enumOwner = nullptr;
-    auto enumDecl = names().lookupEnum(scrutType.name, &enumOwner);
+    auto enumDecl = names().lookupEnum(scrutType, &enumOwner);
     if (!enumDecl) {
         throwSemaGap(line, col);
     }

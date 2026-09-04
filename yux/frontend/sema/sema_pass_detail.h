@@ -213,6 +213,8 @@ FnNode* uniqueNonBuiltinGenericFn(FileNode* file, const string& name);
 
 StructImplNode* lookupStructImpl(FileNode* file, FileNode* sdk, const string& name);
 
+StructImplNode* lookupStructImpl(FileNode* file, FileNode* sdk, const TypeInfo& t);
+
 // 同名同 arity 唯一方法。多个重载不猜。
 FnHeaderNode* uniqueMethodHeader(StructImplNode* impl, const string& name, size_t arity, bool wantStatic);
 
@@ -229,7 +231,7 @@ bool isBareTailExprStmt(p<StatementNode> s);
 
 // #Static fn 同名候选：过滤 wantArity，各位约定类型与 agreedArityParamTypes 同款。
 // 任一同名泛型静态方法 → 不猜。
-bool agreedStaticMethodParams(FileNode* file, FileNode* sdk, const string& lhs, const string& rhs, size_t wantArity,
+bool agreedStaticMethodParams(FileNode* file, FileNode* sdk, const TypeInfo& lhs, const string& rhs, size_t wantArity,
                               vector<TypeInfo>& out);
 
 void copyFnParamTypes(const TypeInfo& fnTy, vector<TypeInfo>& out);

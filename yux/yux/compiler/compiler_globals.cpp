@@ -128,8 +128,8 @@ void Compiler::compileGlobalVars() {
         // #Cval #Inline：纯内联常量（类似 C #define），不产生 GlobalVariable / 符号。
         // 使用处由 compileEnumCtorExpr 直接求值替换，跨文件访问同样走 AST 内联。
         if (sf.isCval && sf.isInline) {
-            DEBUG_LOG_VAL("  StaticField (inline)", sfs.structName << "::" << fieldName << " : " << type.name
-                                                                   << " [inline, no GlobalVariable]");
+            DEBUG_LOG_VAL("  StaticField (inline)",
+                          sfs.structName << "::" << fieldName << " : " << type.name << " [inline, no GlobalVariable]");
             continue;
         }
 
@@ -151,8 +151,11 @@ void Compiler::compileGlobalVars() {
         }
 
         bool isConst = isConstEval && !sf.isMutable;
-        auto* gv = new llvm::GlobalVariable(*_module, llvmType, isConst, llvm::GlobalValue::InternalLinkage, init,
-                                            mangledName);
+        // 非私有静态字段 ExternalLinkage：跨模块 `Mod.Struct::FIELD` 读/写要链到定义。
+        // 私有（`_` 前缀）仍 Internal，与全局 #Cval 一致。
+        bool isPriv = !fieldName.empty() && fieldName[0] == '_';
+        auto linkage = isPriv ? llvm::GlobalValue::InternalLinkage : llvm::GlobalValue::ExternalLinkage;
+        auto* gv = new llvm::GlobalVariable(*_module, llvmType, isConst, linkage, init, mangledName);
         DEBUG_LOG_VAL("  StaticField", sfs.structName << "::" << fieldName << " : " << type.name << " -> "
                                                       << mangledName << (isConstEval ? " [const]" : " [runtime]"));
 
@@ -196,4 +199,13 @@ void Compiler::compileGlobalVars() {
     _currentFnNode = savedFnNode;
 
     DEBUG_LOG_VAL("  Emitted global init function", fnName << " (" << runtimeItems.size() << " runtime items)");
+}
+
+llvm::GlobalVariable* Compiler::getOrDeclareStaticFieldGV(const string& mangledName, llvm::Type* llvmType,
+                                                          bool isConstant) {
+    if (auto* gv = _module->getGlobalVariable(mangledName, true)) {
+        return gv;
+    }
+    return new llvm::GlobalVariable(*_module, llvmType, isConstant, llvm::GlobalValue::ExternalLinkage, nullptr,
+                                    mangledName);
 }

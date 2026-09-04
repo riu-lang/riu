@@ -69,12 +69,8 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
     vector<TypeInfo> methodParamTypes;
     methodParamTypes.push_back(actualType);
     methodParamTypes.insert(methodParamTypes.end(), argTypes.begin(), argTypes.end());
-    string methodFullName = actualType.name + "." + member;
 
-    FnSymbolInfo* methodSymbol = _file->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
-    if (!methodSymbol && _yux && _yux->sdkFile()) {
-        methodSymbol = _yux->sdkFile()->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
-    }
+    FnSymbolInfo* methodSymbol = names().lookupMethodWithParams(actualType, member, methodParamTypes);
 
     // 泛型 struct 实例方法
     p<FnNode> genericMethodNode = nullptr;
@@ -1308,7 +1304,7 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
     for (auto& t : argTypes) {
         methodParamTypes.push_back(t);
     }
-    auto methodSymbol = _file->lookupFnSymbolWithParams(methodFullName, methodParamTypes);
+    auto methodSymbol = names().lookupMethodWithParams(actualType, member, methodParamTypes);
 
     if (methodSymbol) {
         DEBUG_LOG_VAL("    Expr: MethodCall", methodFullName);

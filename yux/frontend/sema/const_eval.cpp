@@ -3,12 +3,13 @@
 
 #include "const_eval.h"
 
-#include "error_code.h"
 #include "ast/node/file_node.h"
 #include "ast/node/fn_node.h"
 #include "ast/node/statement_node.h"
 #include "ast/node/struct_node.h"
 #include "call_resolve.h"
+#include "error_code.h"
+#include "name_resolver.h"
 
 // DRAFT-const-eval Phase 1. 详 const_eval.h 注释。本文件只负责"叶节点 + 算术"
 // 求值, 不接 ast_builder, 不抛错码。
@@ -21,16 +22,20 @@ bool isSignedIntType(const TypeInfo& t) {
     return t.name == "i8" || t.name == "i16" || t.name == "i32" || t.name == "i64" || t.name == "isize";
 }
 
-bool isUnsignedIntType(const TypeInfo& t) { return t.isUnsigned(); }
+bool isUnsignedIntType(const TypeInfo& t) {
+    return t.isUnsigned();
+}
 
 bool isIntType(const TypeInfo& t) {
     return isSignedIntType(t) || isUnsignedIntType(t);
 }
 
-bool isFloatType(const TypeInfo& t) { return t.isFloat(); }
+bool isFloatType(const TypeInfo& t) {
+    return t.isFloat();
+}
 
 int intBitWidth(const TypeInfo& t) {
-    if (t.name == "i8"  || t.name == "u8")  return 8;
+    if (t.name == "i8" || t.name == "u8") return 8;
     if (t.name == "i16" || t.name == "u16") return 16;
     if (t.name == "i32" || t.name == "u32") return 32;
     if (t.name == "i64" || t.name == "u64") return 64;
@@ -214,8 +219,7 @@ std::optional<ConstantValue> ConstEvaluator::evalAddSub(const p<ExprAddSubNode>&
         return ConstantValue::makeInt(truncateBits(res, *t), *t);
     }
     if (isFloatType(*t)) {
-        f64 res = node->op() == ExprAddSubNode::Op::Add ? (l->floatVal + r->floatVal)
-                                                       : (l->floatVal - r->floatVal);
+        f64 res = node->op() == ExprAddSubNode::Op::Add ? (l->floatVal + r->floatVal) : (l->floatVal - r->floatVal);
         if (t->name == "f32") res = static_cast<f32>(res);
         return ConstantValue::makeFloat(res, *t);
     }
@@ -261,9 +265,14 @@ std::optional<ConstantValue> ConstEvaluator::evalMulDivMod(const p<ExprMulDivMod
     if (isFloatType(*t)) {
         f64 res = 0;
         switch (node->op()) {
-        case ExprMulDivModNode::Op::Mul: res = l->floatVal * r->floatVal; break;
-        case ExprMulDivModNode::Op::Div: res = l->floatVal / r->floatVal; break;
-        case ExprMulDivModNode::Op::Mod: return std::nullopt; // 浮点 % 非常量友好
+        case ExprMulDivModNode::Op::Mul:
+            res = l->floatVal * r->floatVal;
+            break;
+        case ExprMulDivModNode::Op::Div:
+            res = l->floatVal / r->floatVal;
+            break;
+        case ExprMulDivModNode::Op::Mod:
+            return std::nullopt; // 浮点 % 非常量友好
         }
         if (t->name == "f32") res = static_cast<f32>(res);
         return ConstantValue::makeFloat(res, *t);
@@ -300,10 +309,17 @@ std::optional<ConstantValue> ConstEvaluator::evalBinOp(const p<ExprBinOpNode>& n
 
     u64 res = 0;
     switch (node->op()) {
-    case ExprBinOpNode::Op::And: res = l->intBits & r->intBits; break;
-    case ExprBinOpNode::Op::Or:  res = l->intBits | r->intBits; break;
-    case ExprBinOpNode::Op::Xor: res = l->intBits ^ r->intBits; break;
-    default: return std::nullopt;
+    case ExprBinOpNode::Op::And:
+        res = l->intBits & r->intBits;
+        break;
+    case ExprBinOpNode::Op::Or:
+        res = l->intBits | r->intBits;
+        break;
+    case ExprBinOpNode::Op::Xor:
+        res = l->intBits ^ r->intBits;
+        break;
+    default:
+        return std::nullopt;
     }
     return ConstantValue::makeInt(truncateBits(res, *t), *t);
 }
@@ -336,22 +352,20 @@ std::optional<ConstantValue> ConstEvaluator::evalCall(const p<ExprCallNode>& cal
 
     // 类型白名单
     auto isWhitelisted = [](const TypeInfo& t) {
-        return t.name == "bool" || t.name == "i8"  || t.name == "i16" || t.name == "i32" || t.name == "i64" ||
-               t.name == "u8"   || t.name == "u16" || t.name == "u32" || t.name == "u64" ||
-               t.name == "f32"  || t.name == "f64" ||
-               t.name == "isize" || t.name == "usize";
+        return t.name == "bool" || t.name == "i8" || t.name == "i16" || t.name == "i32" || t.name == "i64" ||
+               t.name == "u8" || t.name == "u16" || t.name == "u32" || t.name == "u64" || t.name == "f32" ||
+               t.name == "f64" || t.name == "isize" || t.name == "usize";
     };
     TypeInfo retT = header->retType() ? header->retType()->getType() : TypeInfo();
     if (!isWhitelisted(retT)) {
-        throw YuxError(call->resolveLineNumber(), call->resolveColumn(),
-                       ErrorCode::E3144, fname, "return", retT.name);
+        throw YuxError(call->resolveLineNumber(), call->resolveColumn(), ErrorCode::E3144, fname, "return", retT.name);
     }
     auto params = header->params();
     for (auto& pn : params) {
         TypeInfo pt = pn->type() ? pn->type()->getType() : TypeInfo();
         if (!isWhitelisted(pt)) {
-            throw YuxError(call->resolveLineNumber(), call->resolveColumn(),
-                           ErrorCode::E3144, fname, "parameter", pt.name);
+            throw YuxError(call->resolveLineNumber(), call->resolveColumn(), ErrorCode::E3144, fname, "parameter",
+                           pt.name);
         }
     }
 
@@ -377,8 +391,10 @@ std::optional<ConstantValue> ConstEvaluator::evalCall(const p<ExprCallNode>& cal
     };
     auto restoreEnv = [&]() {
         for (auto& [n, prev] : savedEnv) {
-            if (prev) _env[n] = *prev;
-            else _env.erase(n);
+            if (prev)
+                _env[n] = *prev;
+            else
+                _env.erase(n);
         }
     };
 
@@ -390,9 +406,15 @@ std::optional<ConstantValue> ConstEvaluator::evalCall(const p<ExprCallNode>& cal
     std::optional<ConstantValue> result;
     for (auto& s : fn->body()) {
         if (auto da = dynamic_cast<StatementDeclareAssignNode*>(s)) {
-            if (!da->isConst()) { result.reset(); break; }
+            if (!da->isConst()) {
+                result.reset();
+                break;
+            }
             auto v = eval(da->expr());
-            if (!v) { result.reset(); break; }
+            if (!v) {
+                result.reset();
+                break;
+            }
             saveAndSet(da->name().getText(), *v);
             continue;
         }
@@ -417,10 +439,21 @@ std::optional<ConstantValue> ConstEvaluator::evalCall(const p<ExprCallNode>& cal
 // - 任一字段子表达式 const 求值失败 -> 整体 nullopt
 std::optional<ConstantValue> ConstEvaluator::evalStructLit(const p<ExprStructLitNode>& node) {
     if (!node || !_file) return std::nullopt;
-    const string& sName = node->structName();
-    if (sName.empty()) return std::nullopt;
-
-    StructDeclNode* decl = _file->getStructDecl(sName);
+    auto r = sema::resolveExprTypeLhs(_file, nullptr, node->isSelfForm() ? TypePath() : node->typePath(),
+                                      node->getLineNumber(), node->getColumn());
+    StructDeclNode* decl = nullptr;
+    TypeInfo sTy;
+    if (node->isSelfForm()) {
+        const string& sName = node->structName();
+        if (sName.empty()) return std::nullopt;
+        sTy = TypeInfo(sName);
+        sTy.ownerModule = _file->moduleName();
+        decl = _file->getStructDecl(sName);
+    } else {
+        sTy = r.type;
+        decl = r.structDecl;
+        if (!decl) decl = sema::NameResolver(_file, nullptr).lookupStruct(sTy);
+    }
     if (!decl) return std::nullopt;
 
     const auto& declFields = decl->fields();
@@ -439,7 +472,7 @@ std::optional<ConstantValue> ConstEvaluator::evalStructLit(const p<ExprStructLit
     for (bool f : filled) {
         if (!f) return std::nullopt;
     }
-    return ConstantValue::makeStruct(std::move(vals), TypeInfo(sName));
+    return ConstantValue::makeStruct(std::move(vals), sTy);
 }
 
 std::optional<ConstantValue> ConstEvaluator::evalCompare(const p<ExprCompareNode>& node) {
@@ -452,7 +485,7 @@ std::optional<ConstantValue> ConstEvaluator::evalCompare(const p<ExprCompareNode
         if (!l || !l->isBool()) return std::nullopt;
         // 短路
         if (op == Op::AndAnd && !l->boolVal) return ConstantValue::makeBool(false);
-        if (op == Op::OrOr  &&  l->boolVal) return ConstantValue::makeBool(true);
+        if (op == Op::OrOr && l->boolVal) return ConstantValue::makeBool(true);
         auto r = eval(node->right());
         if (!r || !r->isBool()) return std::nullopt;
         return ConstantValue::makeBool(r->boolVal);
@@ -482,36 +515,57 @@ std::optional<ConstantValue> ConstEvaluator::evalCompare(const p<ExprCompareNode
             i64 a = signExtend(l->intBits, *t);
             i64 b = signExtend(r->intBits, *t);
             switch (op) {
-            case Op::Eq: return ConstantValue::makeBool(a == b);
-            case Op::Ne: return ConstantValue::makeBool(a != b);
-            case Op::Lt: return ConstantValue::makeBool(a <  b);
-            case Op::Le: return ConstantValue::makeBool(a <= b);
-            case Op::Gt: return ConstantValue::makeBool(a >  b);
-            case Op::Ge: return ConstantValue::makeBool(a >= b);
-            default: return std::nullopt;
+            case Op::Eq:
+                return ConstantValue::makeBool(a == b);
+            case Op::Ne:
+                return ConstantValue::makeBool(a != b);
+            case Op::Lt:
+                return ConstantValue::makeBool(a < b);
+            case Op::Le:
+                return ConstantValue::makeBool(a <= b);
+            case Op::Gt:
+                return ConstantValue::makeBool(a > b);
+            case Op::Ge:
+                return ConstantValue::makeBool(a >= b);
+            default:
+                return std::nullopt;
             }
         }
         u64 a = l->intBits, b = r->intBits;
         switch (op) {
-        case Op::Eq: return ConstantValue::makeBool(a == b);
-        case Op::Ne: return ConstantValue::makeBool(a != b);
-        case Op::Lt: return ConstantValue::makeBool(a <  b);
-        case Op::Le: return ConstantValue::makeBool(a <= b);
-        case Op::Gt: return ConstantValue::makeBool(a >  b);
-        case Op::Ge: return ConstantValue::makeBool(a >= b);
-        default: return std::nullopt;
+        case Op::Eq:
+            return ConstantValue::makeBool(a == b);
+        case Op::Ne:
+            return ConstantValue::makeBool(a != b);
+        case Op::Lt:
+            return ConstantValue::makeBool(a < b);
+        case Op::Le:
+            return ConstantValue::makeBool(a <= b);
+        case Op::Gt:
+            return ConstantValue::makeBool(a > b);
+        case Op::Ge:
+            return ConstantValue::makeBool(a >= b);
+        default:
+            return std::nullopt;
         }
     }
     if (isFloatType(*t)) {
         f64 a = l->floatVal, b = r->floatVal;
         switch (op) {
-        case Op::Eq: return ConstantValue::makeBool(a == b);
-        case Op::Ne: return ConstantValue::makeBool(a != b);
-        case Op::Lt: return ConstantValue::makeBool(a <  b);
-        case Op::Le: return ConstantValue::makeBool(a <= b);
-        case Op::Gt: return ConstantValue::makeBool(a >  b);
-        case Op::Ge: return ConstantValue::makeBool(a >= b);
-        default: return std::nullopt;
+        case Op::Eq:
+            return ConstantValue::makeBool(a == b);
+        case Op::Ne:
+            return ConstantValue::makeBool(a != b);
+        case Op::Lt:
+            return ConstantValue::makeBool(a < b);
+        case Op::Le:
+            return ConstantValue::makeBool(a <= b);
+        case Op::Gt:
+            return ConstantValue::makeBool(a > b);
+        case Op::Ge:
+            return ConstantValue::makeBool(a >= b);
+        default:
+            return std::nullopt;
         }
     }
     return std::nullopt;

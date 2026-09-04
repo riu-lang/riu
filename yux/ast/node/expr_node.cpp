@@ -12,6 +12,7 @@
 #include "file_node.h"
 #include "fn_node.h"
 #include "sema/call_resolve.h"
+#include "sema/name_resolver.h"
 #include "spec_node.h"
 #include "statement_node.h"
 #include "struct_node.h"
@@ -62,6 +63,19 @@ static FileNode* enclosingFileFrom(const Node* n) {
         scope = scope->parentScope();
     }
     return nullptr;
+}
+
+static sema::NameResolver namesFromFile(FileNode* file) {
+    FileNode* sdk = nullptr;
+    if (file) {
+        for (auto* s = file->parentScope(); s; s = s->parentScope()) {
+            if (auto* pf = dynamic_cast<FileNode*>(s)) {
+                sdk = pf;
+                break;
+            }
+        }
+    }
+    return {file, sdk};
 }
 
 static void unwrapRecvType(TypeInfo& t) {
@@ -760,16 +774,7 @@ bool ExprDotNode::isFieldAccess() const {
     unwrapRecvType(baseT);
     auto* file = enclosingFileFrom(this);
     if (!file) return false;
-    auto sd = file->getStructDecl(baseT.name, /*includeBuiltin=*/true);
-    if (!sd) {
-        ScopeNode* p = file->parentScope();
-        while (p && !sd) {
-            if (auto pf = dynamic_cast<FileNode*>(p)) {
-                sd = pf->getStructDecl(baseT.name, /*includeBuiltin=*/true);
-            }
-            p = p->parentScope();
-        }
-    }
+    auto sd = namesFromFile(file).lookupStruct(baseT, /*includeBuiltin=*/true);
     return sd && sd->field(member()) != nullptr;
 }
 
@@ -885,17 +890,7 @@ TypeInfo ExprDotNode::getType() const {
             }
 
             // 结构体方法
-            string methodFullName = actualType.name + "." + member;
-            auto methodSym = file->lookupFnSymbol(methodFullName);
-            if (!methodSym) {
-                ScopeNode* p = file->parentScope();
-                while (p && !methodSym) {
-                    if (auto pf = dynamic_cast<FileNode*>(p)) {
-                        methodSym = pf->lookupFnSymbol(methodFullName);
-                    }
-                    p = p->parentScope();
-                }
-            }
+            auto methodSym = namesFromFile(file).lookupMethod(actualType, member);
             if (methodSym) {
                 auto rt = methodSym->retType;
                 if (!genSubst.empty()) rt = rt.substitute(genSubst);
@@ -1268,16 +1263,7 @@ TypeInfo ExprDotNode::getType() const {
             // file 自身找不到时走父 FileNode (SDK) 链, 与 lookupSpecBoundMethodRetType
             // 同款; 不打通会导致 t.<SdkStructField> getType 回落到 baseExpr type
             // (sema 不知道字段实类型, 重载解析挑错).
-            auto structDecl = file->getStructDecl(actualType.name, /*includeBuiltin=*/true);
-            if (!structDecl) {
-                ScopeNode* p = file->parentScope();
-                while (p && !structDecl) {
-                    if (auto pf = dynamic_cast<FileNode*>(p)) {
-                        structDecl = pf->getStructDecl(actualType.name, /*includeBuiltin=*/true);
-                    }
-                    p = p->parentScope();
-                }
-            }
+            auto structDecl = namesFromFile(file).lookupStruct(actualType, /*includeBuiltin=*/true);
 
             // 若 actualType 是泛型实例，构造 T→具体 的替换表
             map<string, TypeInfo> genSubst;
@@ -1300,17 +1286,7 @@ TypeInfo ExprDotNode::getType() const {
                 }
             }
 
-            string methodFullName = actualType.name + "." + member;
-            auto methodSym = file->lookupFnSymbol(methodFullName);
-            if (!methodSym) {
-                ScopeNode* p = file->parentScope();
-                while (p && !methodSym) {
-                    if (auto pf = dynamic_cast<FileNode*>(p)) {
-                        methodSym = pf->lookupFnSymbol(methodFullName);
-                    }
-                    p = p->parentScope();
-                }
-            }
+            auto methodSym = namesFromFile(file).lookupMethod(actualType, member);
             if (methodSym) {
                 auto rt = methodSym->retType;
                 if (!genSubst.empty()) rt = rt.substitute(genSubst);
@@ -1696,7 +1672,7 @@ TypeInfo ExprGetRefNode::getType() const {
             if (auto inner = lookupType.rcElementType()) lookupType = *inner;
         }
 
-        auto structDecl = file->getStructDecl(lookupType.name);
+        auto structDecl = namesFromFile(file).lookupStruct(lookupType);
         if (!structDecl) {
             throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3041, lookupType.name);
         }
@@ -1911,7 +1887,14 @@ TypeInfo ExprDynCtorNode::getType() const {
 
 // Phase 3b: 类型 = 所属结构体, structName 由 ast_builder 扫 _scopeStack 时填入
 TypeInfo ExprStructLitNode::getType() const {
-    return _structName.empty() ? TypeInfo() : TypeInfo(_structName);
+    if (_isSelfForm) {
+        if (_structName.empty()) return {};
+        TypeInfo t(_structName);
+        if (auto* f = enclosingFile()) t.ownerModule = f->moduleName();
+        return t;
+    }
+    auto r = sema::resolveExprTypeLhs(enclosingFile(), nullptr, _typePath, getLineNumber(), getColumn());
+    return r.type;
 }
 
 string ExprPathCallNode::resolvedLhsName() const {
@@ -1928,35 +1911,39 @@ string ExprPathCallNode::resolvedLhsName() const {
     return n;
 }
 
-TypeInfo ExprPathCallNode::getType() const {
-    string n = resolvedLhsName();
-    auto* scope = parent() ? parent()->findNearestScope() : nullptr;
-    FileNode* file = nullptr;
-    while (scope) {
-        file = dynamic_cast<FileNode*>(scope);
-        if (file) break;
-        scope = scope->parentScope();
+TypeInfo ExprPathCallNode::resolvedLhsType() const {
+    if (_enumName.getText() == "Self") {
+        string n = resolvedLhsName();
+        TypeInfo t(n);
+        if (auto* f = enclosingFile()) t.ownerModule = f->moduleName();
+        return t;
     }
-    if (file) {
-        std::set<std::string> visited;
-        while (true) {
-            if (visited.count(n)) break;
-            visited.insert(n);
-            auto* a = file->getAliasDecl(n);
-            if (!a || !a->target()) break;
-            auto t = a->target()->getType();
-            if (t.kind != TypeKind::Normal) break;
-            n = t.name;
-        }
+    auto r = sema::resolveExprTypeLhs(enclosingFile(), nullptr, _lhsPath, getLineNumber(), getColumn());
+    return r.type;
+}
 
-        // DRAFT-static-vars Phase 4: 若零参且 RHS 是 struct 静态字段，返回字段类型
-        // includeBuiltin=true：允许 #Builtin struct 上的静态字段（如 i8::MAX）
-        if (_args.empty()) {
-            auto* structDecl = file->getStructDecl(n, /*includeBuiltin=*/true);
-            if (structDecl) {
-                if (auto* sf = structDecl->staticField(_variantName.getText())) {
-                    return sf->type->getType();
-                }
+TypeInfo ExprPathCallNode::getType() const {
+    TypeInfo lhs = resolvedLhsType();
+    string n = lhs.name;
+    FileNode* file = enclosingFile();
+    FileNode* sdk = nullptr;
+    if (file) {
+        for (auto* s = file->parentScope(); s; s = s->parentScope()) {
+            if (auto* pf = dynamic_cast<FileNode*>(s)) {
+                sdk = pf;
+                break;
+            }
+        }
+    }
+    sema::NameResolver nr(file, sdk);
+
+    // DRAFT-static-vars Phase 4: 若零参且 RHS 是 struct 静态字段，返回字段类型
+    // includeBuiltin=true：允许 #Builtin struct 上的静态字段（如 i8::MAX）
+    if (_args.empty()) {
+        auto* structDecl = nr.lookupStruct(lhs, /*includeBuiltin=*/true);
+        if (structDecl) {
+            if (auto* sf = structDecl->staticField(_variantName.getText())) {
+                return sf->type->getType();
             }
         }
     }
@@ -1966,19 +1953,7 @@ TypeInfo ExprPathCallNode::getType() const {
     // LHS 必须是 struct (有 StructDecl), 才能区分于 enum::variant.
     string rhs = _variantName.getText();
     if (_args.empty() && (rhs == "type" || rhs == "fields" || rhs == "methods" || rhs == "variants")) {
-        auto findStruct = [&](const string& sn) -> StructDeclNode* {
-            if (!file) return nullptr;
-            if (auto* sd = file->getStructDecl(sn)) return sd;
-            ScopeNode* p = file->parentScope();
-            while (p) {
-                if (auto* pf = dynamic_cast<FileNode*>(p)) {
-                    if (auto* sd = pf->getStructDecl(sn)) return sd;
-                }
-                p = p->parentScope();
-            }
-            return nullptr;
-        };
-        if (auto* sd = findStruct(n)) {
+        if (auto* sd = nr.lookupStruct(lhs)) {
             if (rhs == "type") return TypeInfo("Type");
             // fields / methods / variants → [T& * N]&
             auto withArrayRef = [&](const string& elemTypeName) -> TypeInfo {
@@ -2015,21 +1990,15 @@ TypeInfo ExprPathCallNode::getType() const {
     // #Static fn：返回类型是方法 retType，不是 LHS 结构体名。
     // 工厂 `Type::make` 碰巧返回 Self，旧实现 `return TypeInfo(n)` 蒙对；
     // `Type::parse(...) i32 ! E` 必须查签名。enum 构造无 StructImpl，落到下面的 LHS 名。
-    auto findImpl = [&](FileNode* f) -> StructImplNode* { return f ? f->getStructImpl(n) : nullptr; };
-    StructImplNode* impl = findImpl(file);
-    if (!impl && file) {
-        for (auto* s = file->parentScope(); s && !impl; s = s->parentScope()) {
-            if (auto* pf = dynamic_cast<FileNode*>(s)) impl = findImpl(pf);
-        }
-    }
+    StructImplNode* impl = nr.lookupStructImpl(lhs);
     if (impl) {
-        const string rhs = _variantName.getText();
+        const string rhsName = _variantName.getText();
         const size_t arity = _args.size();
         p<FnHeaderNode> found = nullptr;
         int nfound = 0;
         for (auto& m : impl->methods()) {
             auto h = m->header();
-            if (!h || h->name().getText() != rhs || !h->isStatic()) continue;
+            if (!h || h->name().getText() != rhsName || !h->isStatic()) continue;
             if (h->params().size() != arity) continue;
             found = h;
             ++nfound;
@@ -2048,13 +2017,15 @@ TypeInfo ExprPathCallNode::getType() const {
                     for (auto& ta : _lhsTypeArgs) {
                         args.push_back(make_shared<TypeInfo>(ta->getType()));
                     }
-                    return {n, std::move(args)};
+                    TypeInfo inst{n, std::move(args)};
+                    inst.ownerModule = lhs.ownerModule;
+                    return inst;
                 }
-                return TypeInfo(n);
+                return lhs;
             }
             return rt;
         }
     }
 
-    return TypeInfo(n);
+    return lhs;
 }

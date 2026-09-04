@@ -1437,13 +1437,14 @@ string fmtTypeFriendly(const TypeInfo& t) {
 
 void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, p<ExprPathCallNode> node) {
     if (!node) return;
-    string enumName = node->getType().name;          // 经别名解析后的真实 enum 名
-    string enumNameRaw = node->enumName().getText(); // 用户写法
+    TypeInfo enumTy = node->getType();
+    string enumName = enumTy.name; // 经别名 / 路径解析后的真实 enum 名
+    string enumNameRaw = node->lhsPath().empty() ? node->enumName().getText() : node->lhsPath().dotted();
     string variantName = node->variantName().getText();
     int line = node->getLineNumber();
     int col = node->getColumn();
 
-    auto* enumDecl = NameResolver(file, sdkFile).lookupEnum(enumName);
+    auto* enumDecl = NameResolver(file, sdkFile).lookupEnum(enumTy);
     if (!enumDecl) {
         throw YuxError(line, col, ErrorCode::E2019, enumNameRaw, enumNameRaw, variantName);
     }
@@ -1482,11 +1483,12 @@ void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, p<ExprPathCallNode
 
 // ========== Phase 3.4.b: match arm 静态校验 ==========
 
-void validateMatchArms(EnumDeclNode* enumDecl, const string& enumName, p<ExprMatchNode> node, FileNode* file) {
+void validateMatchArms(EnumDeclNode* enumDecl, const TypeInfo& enumType, p<ExprMatchNode> node, FileNode* file) {
     if (!enumDecl || !node) return;
     auto& arms = node->arms();
     int line = node->getLineNumber();
     int col = node->getColumn();
+    const string& enumName = enumType.name;
 
     if (arms.empty()) {
         throw YuxError(line, col, ErrorCode::E2023, enumName, string("(none)"));
@@ -1504,25 +1506,18 @@ void validateMatchArms(EnumDeclNode* enumDecl, const string& enumName, p<ExprMat
             hasElse = true;
             continue;
         }
-        string patEnumName = pat->enumName().getText();
-        // 与 Compiler 端等价: 直接相等 OK; 否则尝试 file 上一步 alias 解析.
-        // 多步 alias 链留 Compiler 兜底 (resolveAlias 递归), 此处仅做一步避免假阳性.
-        if (patEnumName != enumName) {
-            bool aliasOk = false;
-            if (file) {
-                if (auto* alias = file->getAliasDecl(patEnumName)) {
-                    if (!alias->isGeneric() && alias->target()) {
-                        try {
-                            if (alias->target()->getType().name == enumName) aliasOk = true;
-                        } catch (...) { // NOLINT(bugprone-empty-catch)
-                        }
-                    }
-                }
-            }
-            if (!aliasOk) {
-                throw YuxError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2019, patEnumName, patEnumName,
+        TypeInfo patTy;
+        if (!pat->enumPath().empty()) {
+            auto r = resolveExprTypeLhs(file, nullptr, pat->enumPath(), pat->getLineNumber(), pat->getColumn());
+            patTy = r.type;
+            if (!r.resolved || patTy.name != enumName || !patTy.sameOwner(enumType)) {
+                string patShown = pat->enumPath().dotted();
+                throw YuxError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2019, patShown, patShown,
                                pat->variantName().getText());
             }
+        } else if (pat->enumName().getText() != enumName) {
+            throw YuxError(pat->getLineNumber(), pat->getColumn(), ErrorCode::E2019, pat->enumName().getText(),
+                           pat->enumName().getText(), pat->variantName().getText());
         }
 
         string vName = pat->variantName().getText();

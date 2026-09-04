@@ -285,6 +285,13 @@ StructImplNode* FileNode::getStructImpl(const string& name) const {
     return nullptr;
 }
 
+StructImplNode* FileNode::localStructImpl(const string& name) const {
+    for (auto& impl : _structImpls) {
+        if (impl->structName() == name) return impl;
+    }
+    return nullptr;
+}
+
 FnNode* FileNode::getFunction(const string& name) const {
     for (auto& fn : _functions) {
         if (fn->header()->name().getText() == name) {
@@ -525,6 +532,35 @@ FileNode* FileNode::getStructOwner(const string& name) {
     }
     for (auto* imp : _wildcardImports) {
         if (imp->getStructDecl(name) || imp->getStructImpl(name)) return imp;
+    }
+    return nullptr;
+}
+
+FileNode* FileNode::relatedFileHere(const string& moduleName) const {
+    if (moduleName.empty()) return nullptr;
+    if (_moduleName == moduleName) return const_cast<FileNode*>(this);
+    for (auto* imp : _wildcardImports) {
+        if (imp && imp->moduleName() == moduleName) return imp;
+    }
+    for (auto& [_, target] : _moduleAliases) {
+        if (target && target->moduleName() == moduleName) return target;
+    }
+    for (auto& [_, kids] : _packageChildren) {
+        for (auto& [_, child] : kids) {
+            if (child && child->moduleName() == moduleName) return child;
+        }
+    }
+    return nullptr;
+}
+
+FileNode* FileNode::relatedFile(const string& moduleName) const {
+    if (auto* hit = relatedFileHere(moduleName)) return hit;
+    ScopeNode* parent = const_cast<FileNode*>(this)->parentScope();
+    while (parent) {
+        if (auto* pf = dynamic_cast<FileNode*>(parent)) {
+            if (auto* hit = pf->relatedFileHere(moduleName)) return hit;
+        }
+        parent = parent->parentScope();
     }
     return nullptr;
 }

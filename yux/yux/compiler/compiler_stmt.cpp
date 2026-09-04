@@ -1768,13 +1768,12 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
 // 语法形态: Type::FIELD = expr
 // 查找对应 struct 的静态字段 GlobalVariable，check #Mut 位后 emit StoreInst
 void Compiler::compileStaticFieldSetStatement(p<StatementStaticFieldSetNode> node) {
-    auto typeName = node->typeName().getText();
+    auto r = sema::resolveExprTypeLhs(_file, _yux, node->typePath(), node->getLineNumber(), node->getColumn());
+    auto typeName = r.type.name;
     auto fieldName = node->fieldName().getText();
 
-    // 跨模块查 struct（含 wildcard imports）
-    StructDeclNode* structDecl = _file->getStructDecl(typeName);
+    StructDeclNode* structDecl = r.structDecl ? r.structDecl : names().lookupStruct(r.type, true);
     if (!structDecl) {
-        // TODO: 支持跨模块路径（如 mod.Type::FIELD），当前仅限本模块 + wildcard imports
         // E3030 由 SemaPass 静态字段写先抛。
         throwSemaGap(node->getLineNumber(), node->getColumn());
     }
@@ -1785,19 +1784,17 @@ void Compiler::compileStaticFieldSetStatement(p<StatementStaticFieldSetNode> nod
     }
     // E3151 非 #Mut 写：SemaPass 已查
 
-    string ownerMod = _file->moduleName();
-    // 跨模块：若 struct 由 wildcard import 引入，取其归属模块
-    if (auto* owner = _file->getStructOwner(typeName)) {
-        if (owner != _file) {
-            ownerMod = owner->moduleName();
-        }
+    string ownerMod = r.type.ownerModule;
+    if (ownerMod.empty() && r.owner) ownerMod = r.owner->moduleName();
+    if (ownerMod.empty()) {
+        FileNode* owner = nullptr;
+        if (names().lookupStruct(r.type, true, &owner) && owner) ownerMod = owner->moduleName();
     }
+    if (ownerMod.empty()) ownerMod = _file->moduleName();
 
     auto mangledName = Mangler::staticField(ownerMod, typeName, fieldName);
-    auto* gv = _module->getGlobalVariable(mangledName, true);
-    if (!gv) {
-        throwSemaGap(node->getLineNumber(), node->getColumn());
-    }
+    auto llvmType = getLLVMType(sf->type->getType());
+    auto* gv = getOrDeclareStaticFieldGV(mangledName, llvmType, !sf->isMutable);
 
     auto exprVal = compileExpr(node->valueExpr());
     auto exprType = node->valueExpr()->getType();

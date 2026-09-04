@@ -15,6 +15,7 @@
 #include "node/expr_node.h"
 #include "node/literal_node.h"
 #include "node/statement_node.h"
+#include "sema/name_resolver.h"
 #include "types.h"
 #include <algorithm>
 
@@ -891,34 +892,11 @@ std::any ASTBuilder::visitMatchArm(yux::yuxParser::MatchArmContext* ctx) {
         // 找 enum decl：本文件 -> SDK -> 别名解析后再尝试
         auto file = _scopeStack.empty() ? nullptr : dynamic_cast<FileNode*>(_scopeStack[0]);
         EnumDeclNode* enumDecl = nullptr;
-        string enumName = pattern->enumName().getText();
-        auto resolveDecl = [&](const string& nm) -> EnumDeclNode* {
-            if (file) {
-                if (auto* d = file->getEnumDecl(nm)) return d;
-                if (_yux.sdkFile() && _yux.sdkFile() != file) {
-                    if (auto* d = _yux.sdkFile()->getEnumDecl(nm)) return d;
-                }
-                for (auto* imp : file->wildcardImports()) {
-                    if (auto* d = imp->getEnumDecl(nm)) return d;
-                }
-            }
-            return nullptr;
-        };
-        enumDecl = resolveDecl(enumName);
+        auto r =
+            sema::resolveExprTypeLhs(file, &_yux, pattern->enumPath(), pattern->getLineNumber(), pattern->getColumn());
+        enumDecl = r.enumDecl;
         if (!enumDecl && file) {
-            // 别名透传：跟随别名链最多一层（Phase 5 ctor 同处理）
-            std::set<std::string> visited;
-            string n = enumName;
-            while (true) {
-                if (visited.count(n)) break;
-                visited.insert(n);
-                auto* a = file->getAliasDecl(n);
-                if (!a || !a->target()) break;
-                auto t = a->target()->getType();
-                if (t.kind != TypeKind::Normal) break;
-                n = t.name;
-            }
-            enumDecl = resolveDecl(n);
+            enumDecl = sema::NameResolver(file, _yux.sdkFile()).lookupEnum(r.type);
         }
 
         EnumVariantNode* variant = enumDecl ? enumDecl->variant(pattern->variantName().getText()) : nullptr;

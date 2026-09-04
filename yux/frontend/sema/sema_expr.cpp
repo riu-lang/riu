@@ -429,7 +429,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
             }
             if (baseOk && !baseType.name.empty() && !isBuiltinType(baseType.name) && !baseType.isArrayGeneric() &&
                 !baseType.isPtr() && !baseType.isDyn()) {
-                if (auto* sd = _names.lookupStruct(baseType.name)) {
+                if (auto* sd = _names.lookupStruct(baseType)) {
                     string member = dotCallee->member();
                     if (dotCallee->hasSpecQualifier()) {
                         member = member + "__at__" + dotCallee->specQualifier();
@@ -443,7 +443,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                     } else {
                         map<string, TypeInfo> subst;
                         if (fillSubstFromGenericArgs(sd->typeParams(), baseType.genericArgs, subst)) {
-                            auto* impl = lookupStructImpl(_file, _sdkFile, baseType.name);
+                            auto* impl = lookupStructImpl(_file, _sdkFile, baseType);
                             if (auto* hdr = uniqueMethodHeader(impl, dotCallee->member(), n->getArgs().size(),
                                                                /*wantStatic=*/false)) {
                                 if (substHeaderParams(hdr, subst, callArgExpected)) {
@@ -1120,11 +1120,11 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                     sema::validateStructMethodVisibility(methodSymbol, _currentStructName, baseType.name,
                                                          dotCallee->member(), n->getLineNumber(), n->getColumn());
                     // Phase C：泛型 struct 实例方法，用接收者 typeArgs 替换形参后检查实参
-                    if (auto* sd = _names.lookupStruct(baseType.name)) {
+                    if (auto* sd = _names.lookupStruct(baseType)) {
                         if (sd->isGeneric()) {
                             map<string, TypeInfo> subst;
                             if (fillSubstFromGenericArgs(sd->typeParams(), baseType.genericArgs, subst)) {
-                                auto* impl = lookupStructImpl(_file, _sdkFile, baseType.name);
+                                auto* impl = lookupStructImpl(_file, _sdkFile, baseType);
                                 if (auto* hdr = uniqueMethodHeader(impl, dotCallee->member(), n->getArgs().size(),
                                                                    /*wantStatic=*/false)) {
                                     vector<TypeInfo> instParams;
@@ -1479,17 +1479,21 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         int line = n->resolveLineNumber();
         int col = n->resolveColumn();
         string structName;
+        TypeInfo structTy;
+        StructDeclNode* decl = nullptr;
         if (n->isSelfForm()) {
             if (!_currentFn || !_currentFn->header()->isStatic() || _currentStructName.empty()) {
                 throw YuxError(line, col, ErrorCode::E3124);
             }
             structName = _currentStructName;
+            structTy = TypeInfo(structName);
+            if (_file) structTy.ownerModule = _file->moduleName();
+            decl = _names.lookupStruct(structTy);
         } else {
-            structName = n->structName();
-        }
-        StructDeclNode* decl = _file ? _file->getStructDecl(structName) : nullptr;
-        if (!decl && _sdkFile && _sdkFile != _file) {
-            decl = _sdkFile->getStructDecl(structName);
+            auto r = sema::resolveExprTypeLhs(_file, _yux, n->typePath(), line, col);
+            structTy = r.type;
+            structName = structTy.name;
+            decl = r.structDecl ? r.structDecl : _names.lookupStruct(structTy);
         }
         if (!decl) {
             throw YuxError(line, col, ErrorCode::E3124);
@@ -1541,22 +1545,26 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
     }
     if (auto n = dynamic_cast<p<ExprPathCallNode>>(expr)) {
         const bool selfForm = n->enumName().getText() == "Self";
-        string lhsName = n->resolvedLhsName();
-        if (selfForm && !_currentStructName.empty()) lhsName = _currentStructName;
+        TypeInfo lhsTy = n->resolvedLhsType();
+        if (selfForm && !_currentStructName.empty()) {
+            lhsTy = TypeInfo(_currentStructName);
+            if (_file) lhsTy.ownerModule = _file->moduleName();
+        }
+        string lhsName = lhsTy.name;
         vector<TypeInfo> pathArgExpected;
         const vector<TypeInfo>* pathArgExpPtr = nullptr;
-        if (n->lhsTypeArgs().empty() && agreedStaticMethodParams(_file, _sdkFile, lhsName, n->variantName().getText(),
+        if (n->lhsTypeArgs().empty() && agreedStaticMethodParams(_file, _sdkFile, lhsTy, n->variantName().getText(),
                                                                  n->args().size(), pathArgExpected)) {
             pathArgExpPtr = &pathArgExpected;
         } else if (!n->lhsTypeArgs().empty()) {
             // Phase C：泛型 struct #Static fn + turbofish，替换后的形参作靶向类型
-            auto* sd = _names.lookupStruct(lhsName);
+            auto* sd = _names.lookupStruct(lhsTy);
             if (sd && sd->isGeneric()) {
                 map<string, TypeInfo> subst;
                 if (fillSubstFromTypeNodes(sd->typeParams(), n->lhsTypeArgs(), subst)) {
                     for (auto& [_, t] : subst)
                         t = applyInstSubst(t);
-                    auto* impl = lookupStructImpl(_file, _sdkFile, lhsName);
+                    auto* impl = lookupStructImpl(_file, _sdkFile, lhsTy);
                     if (auto* hdr = uniqueMethodHeader(impl, n->variantName().getText(), n->args().size(),
                                                        /*wantStatic=*/true)) {
                         if (substHeaderParams(hdr, subst, pathArgExpected)) {
@@ -1586,8 +1594,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
             string rhsName = n->variantName().getText();
             if (n->args().empty() &&
                 (rhsName == "type" || rhsName == "fields" || rhsName == "methods" || rhsName == "variants")) {
-                auto* sd = _file ? _file->getStructDecl(lhsName) : nullptr;
-                if (!sd && _sdkFile && _sdkFile != _file) sd = _sdkFile->getStructDecl(lhsName);
+                auto* sd = _names.lookupStruct(lhsTy);
                 if (sd) {
                     // DRAFT-spec-reflect §2：variants 仅 enum；struct 上访问 → E3135。
                     if (rhsName == "variants") {
@@ -1607,10 +1614,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
             // DRAFT-static-vars Phase 4: 零参且 LHS 是 struct 且 RHS 是静态字段 → 放行
             // includeBuiltin=true：允许 #Builtin struct（如 i8）上的静态字段访问（如 i8::MAX）
             if (n->args().empty()) {
-                auto* structDecl = _file ? _file->getStructDecl(lhsName, /*includeBuiltin=*/true) : nullptr;
-                if (!structDecl && _sdkFile && _sdkFile != _file) {
-                    structDecl = _sdkFile->getStructDecl(lhsName, /*includeBuiltin=*/true);
-                }
+                auto* structDecl = _names.lookupStruct(lhsTy, /*includeBuiltin=*/true);
                 if (structDecl) {
                     if (auto* sf = structDecl->staticField(n->variantName().getText())) {
                         // 设置正确类型（字段类型而非 struct 类型）
@@ -1620,19 +1624,13 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                 }
             }
 
-            auto* structImpl = _file ? _file->getStructImpl(lhsName) : nullptr;
-            if (!structImpl && _sdkFile && _sdkFile != _file) {
-                structImpl = _sdkFile->getStructImpl(lhsName);
-            }
+            auto* structImpl = _names.lookupStructImpl(lhsTy);
             if (structImpl) {
                 string rhsName = n->variantName().getText();
 
                 // DRAFT-static-vars Phase 4: 若零参且 RHS 是静态字段名 → 放行
                 if (n->args().empty()) {
-                    auto* structDecl = _file ? _file->getStructDecl(lhsName, /*includeBuiltin=*/true) : nullptr;
-                    if (!structDecl && _sdkFile && _sdkFile != _file) {
-                        structDecl = _sdkFile->getStructDecl(lhsName, /*includeBuiltin=*/true);
-                    }
+                    auto* structDecl = _names.lookupStruct(lhsTy, /*includeBuiltin=*/true);
                     if (structDecl && structDecl->staticField(rhsName)) {
                         return; // 静态字段读，放行
                     }
@@ -1659,10 +1657,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                 // TypeInfo::substitute 替换形参，不再 skip。
                 bool skipTypeCheck = false;
                 map<string, TypeInfo> staticSubst;
-                auto* structDecl = _file ? _file->getStructDecl(lhsName) : nullptr;
-                if (!structDecl && _sdkFile && _sdkFile != _file) {
-                    structDecl = _sdkFile->getStructDecl(lhsName);
-                }
+                auto* structDecl = _names.lookupStruct(lhsTy);
                 // 非泛型 struct 写 `Type:<T>::name`：expects 0。与 T 无关，模板期也报。
                 // 原先 Compiler 用占位 E0000。
                 if (structDecl && !structDecl->isGeneric() && !n->lhsTypeArgs().empty()) {

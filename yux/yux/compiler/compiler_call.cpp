@@ -71,7 +71,7 @@ llvm::Function* Compiler::getFunction(p<FnHeaderNode> header) {
 // 方法名包含结构体名，如 "Foo.bar"
 llvm::Function* Compiler::getMethodFunction(const string& structName, const string& methodName,
                                             const vector<TypeInfo>& paramTypes, const TypeInfo& retType,
-                                            const string& fallibleErrType, bool isStatic) {
+                                            const string& fallibleErrType, bool isStatic, string ownerModuleHint) {
     DEBUG_LOG_VAL("  getMethodFunction", structName << "." << methodName << (isStatic ? " [#Static]" : ""));
 
     bool isPriv = !methodName.empty() && methodName[0] == '_';
@@ -82,6 +82,8 @@ llvm::Function* Compiler::getMethodFunction(const string& structName, const stri
     string ownerModule = _file->moduleName();
     if (auto instIt = _structInstances.find(structName); instIt != _structInstances.end()) {
         ownerModule = instIt->second.consumerModule;
+    } else if (!ownerModuleHint.empty()) {
+        ownerModule = std::move(ownerModuleHint);
     } else {
         auto* owner = _file->getStructOwner(structName);
         if (owner && owner != _file) {

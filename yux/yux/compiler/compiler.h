@@ -262,8 +262,8 @@ private:
     llvm::Function* getFunction(p<FnHeaderNode> header); // 获取或创建函数
     llvm::Function* getMethodFunction(
         const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes, const TypeInfo& retType,
-        const string& fallibleErrType = "",
-        bool isStatic = false); // 获取或创建方法函数 (isStatic=true 走 Mangler::staticMethod, 无 receiver 形参)
+        const string& fallibleErrType = "", bool isStatic = false,
+        string ownerModuleHint = {}); // isStatic=true 走 Mangler::staticMethod；ownerModuleHint 用于路径 LHS
     llvm::Function* getDestructorFunction(const string& structName); // 获取或创建析构函数
 
     // ==================== 表达式编译 ====================
@@ -547,6 +547,8 @@ public:
     void compile(p<FileNode> file); // 编译文件 (主入口)
     void compileGlobalConsts();     // 编译全局常量
     void compileGlobalVars();       // 编译全局变量（DRAFT-static-vars Phase 1）
+    // 跨模块静态字段：本模块无定义时声明 ExternalLinkage GV（定义在 owner 模块）。
+    llvm::GlobalVariable* getOrDeclareStaticFieldGV(const string& mangledName, llvm::Type* llvmType, bool isConstant);
     // DRAFT-const-eval Phase 5: ConstantValue -> llvm::Constant 翻译 (递归; 支持 Struct 嵌套).
     // 失败 (含未支持的 kind / 字段类型不匹配) 返回 nullptr, 调用方报错.
     llvm::Constant* buildLLVMConstantFromValue(const ConstantValue& v, llvm::Type* expectedTy);

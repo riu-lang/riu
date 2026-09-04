@@ -281,7 +281,7 @@ void SemaPass::tryValidateMatchScrut(p<ExprMatchNode> n) {
             if (!inner) return;
             TypeInfo in = sema::resolveAlias(applyInstSubst(*inner), _file, _sdkFile);
             if (isCurrentTypeParam(in)) return;
-            if (!_names.lookupEnum(in.name)) return;
+            if (!_names.lookupEnum(in)) return;
             if (isFreshHandleExpr(n->scrutinee())) {
                 throw YuxError(line, col, ErrorCode::E2022, checkType.name)
                     .withHint(isRc ? "不支持对临时 Rc<E> 直接 match；先 `let b Rc<E> = ...` 落地再 match b"
@@ -296,15 +296,15 @@ void SemaPass::tryValidateMatchScrut(p<ExprMatchNode> n) {
         } else if (checkType.isRef()) {
             if (auto inner = checkType.refElementType()) {
                 TypeInfo in = sema::resolveAlias(applyInstSubst(*inner), _file, _sdkFile);
-                if (_names.lookupEnum(in.name)) checkType = std::move(in);
+                if (_names.lookupEnum(in)) checkType = std::move(in);
             }
         }
         if (isCurrentTypeParam(checkType)) return;
         if (checkType.name.empty()) return;
 
-        auto* enumDecl = _names.lookupEnum(checkType.name);
+        auto* enumDecl = _names.lookupEnum(checkType);
         if (enumDecl) {
-            sema::validateMatchArms(enumDecl, checkType.name, n, _file);
+            sema::validateMatchArms(enumDecl, checkType, n, _file);
         } else {
             throw YuxError(line, col, ErrorCode::E2022, checkType.name);
         }

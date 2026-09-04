@@ -1,0 +1,27 @@
+; T3：模块别名路径上的 struct 字面量 / :: / match / 静态字段
+
+struct Point {
+    x i32
+    y i32
+
+    #Static
+    fn origin() Point {
+        ret Self {
+            .x = 0
+            .y = 0
+        }
+    }
+
+    fn sum() i32 = $.x + $.y
+}
+
+enum Color {
+    Red
+    Blue
+}
+
+struct Counter {
+    #Mut
+    #Static
+    TOTAL i32 = 0
+}

@@ -194,18 +194,11 @@ FnSymbolInfo* NameResolver::lookupFnWithParams(const string& name, const vector<
 
 FileNode* NameResolver::fileForOwner(const string& ownerModule) const {
     if (ownerModule.empty()) return nullptr;
-    auto hit = [&](FileNode* f) { return f && f->moduleName() == ownerModule; };
-    if (hit(file)) return file;
     if (file) {
-        for (auto* imp : file->wildcardImports()) {
-            if (hit(imp)) return imp;
-        }
+        if (auto* f = file->relatedFile(ownerModule)) return f;
     }
     if (sdkFile) {
-        if (hit(sdkFile)) return sdkFile;
-        for (auto* imp : sdkFile->wildcardImports()) {
-            if (hit(imp)) return imp;
-        }
+        if (auto* f = sdkFile->relatedFile(ownerModule)) return f;
     }
     return nullptr;
 }
@@ -232,6 +225,49 @@ EnumDeclNode* NameResolver::lookupEnum(const TypeInfo& t, FileNode** outOwner) c
         }
     }
     return lookupEnum(t.name, outOwner);
+}
+
+StructImplNode* NameResolver::lookupStructImpl(const string& name, FileNode** outOwner) const {
+    return lookup3<StructImplNode>(file, sdkFile, [&](FileNode* f) { return f->getStructImpl(name); }, outOwner);
+}
+
+StructImplNode* NameResolver::lookupStructImpl(const TypeInfo& t, FileNode** outOwner) const {
+    if (!t.ownerModule.empty()) {
+        if (auto* f = fileForOwner(t.ownerModule)) {
+            if (auto* d = f->localStructImpl(t.baseStructName())) {
+                if (outOwner) *outOwner = f;
+                return d;
+            }
+        }
+    }
+    return lookupStructImpl(t.name, outOwner);
+}
+
+FnSymbolInfo* NameResolver::lookupMethod(const TypeInfo& recv, const string& methodName, FileNode** outOwner) const {
+    string full = recv.baseStructName() + "." + methodName;
+    if (!recv.ownerModule.empty()) {
+        if (auto* f = fileForOwner(recv.ownerModule)) {
+            if (auto* s = f->lookupFnSymbol(full)) {
+                if (outOwner) *outOwner = f;
+                return s;
+            }
+        }
+    }
+    return lookupFn(full, outOwner);
+}
+
+FnSymbolInfo* NameResolver::lookupMethodWithParams(const TypeInfo& recv, const string& methodName,
+                                                   const vector<TypeInfo>& paramTypes, FileNode** outOwner) const {
+    string full = recv.baseStructName() + "." + methodName;
+    if (!recv.ownerModule.empty()) {
+        if (auto* f = fileForOwner(recv.ownerModule)) {
+            if (auto* s = f->lookupFnSymbolWithParams(full, paramTypes)) {
+                if (outOwner) *outOwner = f;
+                return s;
+            }
+        }
+    }
+    return lookupFnWithParams(full, paramTypes, outOwner);
 }
 
 TypePathResult resolveTypePath(FileNode* file, Yux* yux, const TypePath& path, int line, int col) {
@@ -343,6 +379,34 @@ void validateAliases(p<FileNode> file, p<FileNode> sdkFile) {
 
     // 函数符号表 params / retType 透明别名归一化（原 Compiler::validateAliases 副作用）
     file->normalizeFnSymbolTypes([&](const TypeInfo& t) { return resolveAlias(t, file, sdkFile); });
+}
+
+namespace {
+TypePathResult realizeTypePathResult(TypePathResult r, FileNode* file, FileNode* sdkFile) {
+    if (!r.aliasDecl || !r.aliasDecl->target()) return r;
+    TypeInfo t = r.aliasDecl->target()->getType();
+    FileNode* search = r.owner ? r.owner : file;
+    t = resolveAlias(t, search, sdkFile);
+    NameResolver nr(file, sdkFile);
+    TypePathResult out;
+    out.type = t;
+    FileNode* owner = nullptr;
+    out.structDecl = nr.lookupStruct(t, true, &owner);
+    if (owner) out.owner = owner;
+    if (!out.structDecl) {
+        owner = nullptr;
+        out.enumDecl = nr.lookupEnum(t, &owner);
+        if (owner) out.owner = owner;
+    }
+    out.resolved = out.structDecl || out.enumDecl || r.resolved;
+    return out;
+}
+} // namespace
+
+TypePathResult resolveExprTypeLhs(FileNode* file, Yux* yux, const TypePath& path, int line, int col) {
+    auto r = resolveTypePath(file, yux, path, line, col);
+    FileNode* sdk = yux ? yux->sdkFile() : parentFileOf(file);
+    return realizeTypePathResult(std::move(r), file, sdk);
 }
 
 } // namespace sema
