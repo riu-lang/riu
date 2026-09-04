@@ -142,6 +142,13 @@ void checkErrPropagateForIdCall(FnNode* currentFnNode, p<ExprCallNode> callNode,
                                 const FnSymbolInfo* calleeSym, vector<string>* tryBlockSeenErrs,
                                 const string& sourcePath = "", LambdaExprNode* currentLambda = nullptr);
 
+// fn-value callee 错误传播语义校验 (Phase F7).
+// calleeFnType 须为 isFn()；fallible 元数据取自 fnReturnType().fallibleErr。
+// 抛错码与 checkErrPropagateForIdCall 同族 (E7001/E7004/E7006/E7016)。
+void checkErrPropagateForFnValueCall(FnNode* currentFnNode, p<ExprCallNode> callNode, const TypeInfo& calleeFnType,
+                                     vector<string>* tryBlockSeenErrs, const string& sourcePath = "",
+                                     LambdaExprNode* currentLambda = nullptr);
+
 // 包/模块别名调用解析 (Phase 3.3.1.a).
 //
 // 识别两种调用形态:

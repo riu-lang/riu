@@ -241,15 +241,20 @@ private:
     void emitTestRegistrations();
 
     llvm::Type* wrapFallibleRetType(const TypeInfo& retType, const string& errTypeName);
+    // fallible 函数成功通道 ret：{ false, T_ok, zero(E) }
+    llvm::Value* wrapFallibleSuccessRet(llvm::Value* okVal, const TypeInfo& successType, const string& fallibleErr);
     // 同上，但强制返回 StructType* 用于 ret 路径构造 insertvalue。errTypeName 必须非空。
     llvm::StructType* getFallibleRetStructType(const TypeInfo& retType, const string& errTypeName);
     // [#10.A] / [#10.C] 调用侧 `!` 透传：callee 是 #Fallible 时，分流 isErr 位 →
     //   - 错误分支：构外层 fn 错误返回 struct + ret（透传到 caller 的 #Fallible 通道）
     //   - 成功分支：extract T_ok，caller 在 okBB 继续编译；返回 T_ok（void 时 nullptr）
     // calleeFallibleErr 空时直接返回 callResult（普通调用同行为）。
-    // 仅 ID-callee 路径调用本 helper（10g-4 范围）；方法 / 泛型 / fn-value 推后续子项。
     llvm::Value* handleFallibleCallResult(llvm::Value* callResult, const string& calleeFallibleErr,
                                           const TypeInfo& calleeRetType, p<ExprCallNode> callNode);
+    // fn-value 调用：Fn TypeInfo → LLVM 返回类型（含 T ! E ABI 包装）
+    llvm::Type* llvmRetTypeForFnValue(const TypeInfo& fnType);
+    // fn-value 调用完成后走 handleFallibleCallResult
+    llvm::Value* finishFnValueFallibleCall(llvm::Value* callResult, const TypeInfo& fnType, p<ExprCallNode> callNode);
     llvm::StructType* getOrCreateStructType(p<StructDeclNode> structDecl,
                                             p<FileNode> sourceFile = nullptr); // 获取或创建结构体类型
 

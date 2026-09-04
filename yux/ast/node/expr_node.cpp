@@ -362,7 +362,7 @@ TypeInfo ExprCallNode::getType() const {
     // 调用结果即 fn 返回类型；unit 时返回空 TypeInfo。
     if (type.isFn()) {
         TypeInfo retType;
-        if (auto rt = type.fnReturnType()) retType = *rt;
+        if (auto rt = type.fnReturnType()) retType = rt->withoutFallible();
 
         if (auto literalNode = dynamic_cast<ExprLiteralNode*>(_calleeExpr)) {
             if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literalNode->literal())) {
@@ -392,7 +392,7 @@ TypeInfo ExprCallNode::getType() const {
     // Phase 3c: callee 为 Rc<fn(...)R>，自动解引取 fat-ptr 调用，结果同 fn 返回类型
     if (type.isRc()) {
         if (auto inner = type.rcElementType(); inner && inner->isFn()) {
-            if (auto rt = inner->fnReturnType()) return *rt;
+            if (auto rt = inner->fnReturnType()) return rt->withoutFallible();
             return {};
         }
     }
@@ -400,7 +400,7 @@ TypeInfo ExprCallNode::getType() const {
     // v0.16: [] 返回 T&——callee 为 Ref<fn(...)R> 时自动解引用，取 fn 返回类型
     if (type.isRef()) {
         if (auto inner = type.refElementType(); inner && inner->isFn()) {
-            if (auto rt = inner->fnReturnType()) return *rt;
+            if (auto rt = inner->fnReturnType()) return rt->withoutFallible();
             return {};
         }
     }

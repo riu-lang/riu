@@ -681,6 +681,25 @@ llvm::Type* Compiler::wrapFallibleRetType(const TypeInfo& retType, const string&
     return getFallibleRetStructType(retType, errTypeName);
 }
 
+llvm::Value* Compiler::wrapFallibleSuccessRet(llvm::Value* okVal, const TypeInfo& successType,
+                                              const string& fallibleErr) {
+    if (fallibleErr.empty()) return okVal;
+    auto retStructTy = getFallibleRetStructType(successType, fallibleErr);
+    TypeInfo errTy(fallibleErr);
+    auto errLLVMTy = getLLVMType(errTy);
+    llvm::Value* retStruct = llvm::UndefValue::get(retStructTy);
+    retStruct = _builder.CreateInsertValue(retStruct, _builder.getInt1(false), {0});
+    unsigned errFieldIdx;
+    if (!successType.empty()) {
+        retStruct = _builder.CreateInsertValue(retStruct, okVal, {1});
+        errFieldIdx = 2;
+    } else {
+        errFieldIdx = 1;
+    }
+    retStruct = _builder.CreateInsertValue(retStruct, llvm::Constant::getNullValue(errLLVMTy), {errFieldIdx});
+    return retStruct;
+}
+
 llvm::StructType* Compiler::getFallibleRetStructType(const TypeInfo& retType, const string& errTypeName) {
     // ErrEnum 必为已声明 enum（10e 静态层已校 + E7011）；通过 TypeInfo 走 getLLVMType
     TypeInfo errType(errTypeName);

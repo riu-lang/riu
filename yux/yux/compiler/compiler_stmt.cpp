@@ -37,7 +37,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         } else {
             auto ft = _currentLambdaForCapture->getType();
             if (ft.isFn() && ft.fnReturnType() && !ft.fnReturnType()->empty()) {
-                declRetType = *ft.fnReturnType();
+                declRetType = ft.fnReturnType()->withoutFallible();
                 hasDeclaredRetType = true;
             }
         }
@@ -70,6 +70,15 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
     string fallibleErrName;
     if (_currentFnNode && _currentFnNode->header()) {
         fallibleErrName = _currentFnNode->header()->resolvedFallibleErr();
+    } else if (_currentLambdaForCapture) {
+        if (_currentLambdaForCapture->fallibleErrTypeNode()) {
+            fallibleErrName = _currentLambdaForCapture->fallibleErrTypeNode()->getType().name;
+        } else {
+            auto ft = _currentLambdaForCapture->getType();
+            if (ft.isFn() && ft.fnReturnType() && !ft.fnReturnType()->fallibleErr.empty()) {
+                fallibleErrName = ft.fnReturnType()->fallibleErr;
+            }
+        }
     }
     if (!fallibleErrName.empty()) {
         // 灵活整数：成功通道按 declRetType 推断（与下方非 Fallible 路径同型）
@@ -333,6 +342,15 @@ void Compiler::compileRetVoidStatement(p<StatementRetVoidNode> node) {
     string fallibleErrName;
     if (_currentFnNode && _currentFnNode->header()) {
         fallibleErrName = _currentFnNode->header()->resolvedFallibleErr();
+    } else if (_currentLambdaForCapture) {
+        if (_currentLambdaForCapture->fallibleErrTypeNode()) {
+            fallibleErrName = _currentLambdaForCapture->fallibleErrTypeNode()->getType().name;
+        } else {
+            auto ft = _currentLambdaForCapture->getType();
+            if (ft.isFn() && ft.fnReturnType() && !ft.fnReturnType()->fallibleErr.empty()) {
+                fallibleErrName = ft.fnReturnType()->fallibleErr;
+            }
+        }
     }
     if (!fallibleErrName.empty()) {
         auto retStructTy = getFallibleRetStructType(TypeInfo(), fallibleErrName);

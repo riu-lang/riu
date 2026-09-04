@@ -241,3 +241,45 @@ fn helper_catch_ret(n i32) i32 {
   }
   ret x
 }
+
+; ==================== F7: fallible lambda / fn-value ====================
+
+fn call_parse(f Function<i32, i32 ! ParseErr>, n i32) i32 ! ParseErr {
+  ret f(n)!
+}
+
+; 验证：fallible lambda 赋值给 Function<..., T ! E> 并调用
+#Test
+fn test_fallible_lambda_fn_value_call() {
+  let f Function<i32, i32 ! ParseErr> = (x i32) i32 ! ParseErr => parse_pos(x)!
+  let y i32 = try {
+    f(7)
+  } catch e ParseErr {
+    -1
+  }
+  assert_eq(y, 7)
+}
+
+; 验证：Function<..., T ! E> 形参 + `!` 透传
+#Test
+fn test_fallible_fn_value_bang_propagate() {
+  let f Function<i32, i32 ! ParseErr> = (x i32) i32 ! ParseErr => parse_pos(x)!
+  let y i32 = try {
+    call_parse(f, 0)
+  } catch e ParseErr {
+    42
+  }
+  assert_eq(y, 42)
+}
+
+; 验证：fallible lambda 内 `!` 同类型透传
+#Test
+fn test_fallible_lambda_bang_inside() {
+  let d Function<i32, i32 ! ParseErr> = (n i32) i32 ! ParseErr => parse_double(n)!
+  let y i32 = try {
+    d(3)
+  } catch e ParseErr {
+    0
+  }
+  assert_eq(y, 6)
+}

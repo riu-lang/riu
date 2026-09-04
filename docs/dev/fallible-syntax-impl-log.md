@@ -12,7 +12,7 @@
 | F4 | LLVM 符号 `!E` mangle | ✅ |
 | F5 | `#Fallible` 弃用 E7020 + 测试迁移 | ✅ |
 | F6 | 删除 `#Fallible` → E2005；spec 回写 | ✅ |
-| F7 | lambda / fn-value 闭合 | 见 CURRENT.md |
+| F7 | lambda / fn-value 闭合 | ✅ |
 
 ## F6 要点
 

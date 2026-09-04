@@ -297,6 +297,12 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
                 }
             }
             if (!isFnNameLiteral && !isMethodDot) {
+                TryCatchCtx* tryCtx = _tryCatchStack.empty() ? nullptr : &_tryCatchStack.back();
+                string srcPath = (_yux && _file) ? _yux->modulePath(_file->moduleName()) : "";
+                TypeInfo fnCalleeType = calleeStaticType.isFn() ? calleeStaticType : resolveAlias(calleeStaticType);
+                sema::checkErrPropagateForFnValueCall(_currentFnNode, node, fnCalleeType,
+                                                      tryCtx ? &tryCtx->seenErrTypes : nullptr, srcPath,
+                                                      _currentLambdaForCapture);
                 return compileFnValueCall(node);
             }
         }
@@ -304,6 +310,11 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
             auto inner = calleeStaticType.isRc() ? calleeStaticType.rcElementType()
                                                  : resolveAlias(calleeStaticType).rcElementType();
             if (inner && inner->isFn()) {
+                TryCatchCtx* tryCtx = _tryCatchStack.empty() ? nullptr : &_tryCatchStack.back();
+                string srcPath = (_yux && _file) ? _yux->modulePath(_file->moduleName()) : "";
+                sema::checkErrPropagateForFnValueCall(_currentFnNode, node, *inner,
+                                                      tryCtx ? &tryCtx->seenErrTypes : nullptr, srcPath,
+                                                      _currentLambdaForCapture);
                 return compileRcFnValueCall(node, *inner);
             }
         }
@@ -311,6 +322,11 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
             auto inner = calleeStaticType.isRef() ? calleeStaticType.refElementType()
                                                   : resolveAlias(calleeStaticType).refElementType();
             if (inner && inner->isFn()) {
+                TryCatchCtx* tryCtx = _tryCatchStack.empty() ? nullptr : &_tryCatchStack.back();
+                string srcPath = (_yux && _file) ? _yux->modulePath(_file->moduleName()) : "";
+                sema::checkErrPropagateForFnValueCall(_currentFnNode, node, *inner,
+                                                      tryCtx ? &tryCtx->seenErrTypes : nullptr, srcPath,
+                                                      _currentLambdaForCapture);
                 return compileRefFnValueCall(node, *inner);
             }
         }
@@ -709,6 +725,23 @@ llvm::Value* Compiler::handleFallibleCallResult(llvm::Value* callResult, const s
         callerErr = _currentFnNode->header()->resolvedFallibleErr();
         if (_currentFnNode->header()->retType()) {
             callerRetType = _currentFnNode->header()->retType()->getType();
+        }
+    } else if (_currentLambdaForCapture) {
+        if (_currentLambdaForCapture->fallibleErrTypeNode()) {
+            callerErr = _currentLambdaForCapture->fallibleErrTypeNode()->getType().name;
+        } else {
+            auto ft = _currentLambdaForCapture->getType();
+            if (ft.isFn() && ft.fnReturnType() && !ft.fnReturnType()->fallibleErr.empty()) {
+                callerErr = ft.fnReturnType()->fallibleErr;
+            }
+        }
+        if (_currentLambdaForCapture->retType()) {
+            callerRetType = _currentLambdaForCapture->retType()->getType();
+        } else {
+            auto ft = _currentLambdaForCapture->getType();
+            if (ft.isFn() && ft.fnReturnType()) {
+                callerRetType = ft.fnReturnType()->withoutFallible();
+            }
         }
     }
     if (!callerErr.empty()) {

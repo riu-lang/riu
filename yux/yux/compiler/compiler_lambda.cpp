@@ -82,10 +82,15 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     // 解析返回类型（spec §4.11.3）：
     // 显式标注优先；否则用期望函数类型；再否则从 body 推断；都没有则为 void。
     TypeInfo retType;
+    string fallibleErr;
     if (node->retType()) {
         retType = node->retType()->getType();
+        if (node->fallibleErrTypeNode()) {
+            fallibleErr = node->fallibleErrTypeNode()->getType().name;
+        }
     } else if (expectedFnType.isFn() && expectedFnType.fnReturnType()) {
-        retType = *expectedFnType.fnReturnType();
+        retType = expectedFnType.fnReturnType()->withoutFallible();
+        fallibleErr = expectedFnType.fnReturnType()->fallibleErr;
     } else if (node->bodyExpr()) {
         auto bt = node->bodyExpr()->getType();
         if (!bt.empty()) retType = bt;
@@ -110,7 +115,7 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     for (auto& pt : paramTypes) {
         llvmParamTypes.push_back(getLLVMType(pt));
     }
-    auto llvmRet = retType.empty() ? _builder.getVoidTy() : getLLVMType(retType);
+    auto llvmRet = wrapFallibleRetType(retType, fallibleErr);
     auto fnType = llvm::FunctionType::get(llvmRet, llvmParamTypes, false);
 
     auto func = llvm::Function::Create(fnType, llvm::Function::InternalLinkage, mangled, _module);
@@ -178,10 +183,13 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     if (node->bodyExpr()) {
         auto val = compileExpr(node->bodyExpr());
         if (!_builder.GetInsertBlock()->getTerminator()) {
-            if (retType.empty()) {
+            if (retType.empty() && fallibleErr.empty()) {
                 popAndReleaseTempFrame();
                 _builder.CreateRetVoid();
             } else {
+                if (!fallibleErr.empty()) {
+                    val = wrapFallibleSuccessRet(val, retType, fallibleErr);
+                }
                 popAndReleaseTempFrame();
                 _builder.CreateRet(val);
             }
@@ -207,9 +215,12 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
         if (!_builder.GetInsertBlock()->getTerminator()) {
             if (tailExpr) {
                 auto val = compileExpr(tailExpr);
+                if (!fallibleErr.empty()) {
+                    val = wrapFallibleSuccessRet(val, retType, fallibleErr);
+                }
                 popAndReleaseTempFrame();
                 _builder.CreateRet(val);
-            } else if (retType.empty()) {
+            } else if (retType.empty() && fallibleErr.empty()) {
                 popAndReleaseTempFrame();
                 _builder.CreateRetVoid();
             } else {
@@ -475,10 +486,7 @@ llvm::Value* Compiler::compileFnValueCall(p<ExprCallNode> node) {
         }
         llvmParamTypes.push_back(getLLVMType(*pt));
     }
-    llvm::Type* llvmRet = _builder.getVoidTy();
-    if (auto rt = fnType.fnReturnType()) {
-        llvmRet = getLLVMType(*rt);
-    }
+    llvm::Type* llvmRet = llvmRetTypeForFnValue(fnType);
     auto llvmFnType = llvm::FunctionType::get(llvmRet, llvmParamTypes, false);
 
     // 实参类型校验：实参类型必须与形参类型严格匹配
@@ -510,7 +518,8 @@ llvm::Value* Compiler::compileFnValueCall(p<ExprCallNode> node) {
         callArgs.push_back(compileExpr(i));
     }
 
-    return _builder.CreateCall(llvmFnType, fnPtrVal, callArgs);
+    auto callResult = _builder.CreateCall(llvmFnType, fnPtrVal, callArgs);
+    return finishFnValueFallibleCall(callResult, fnType, node);
 }
 
 // ==================== compileRcFnValueCall ====================
@@ -561,10 +570,7 @@ llvm::Value* Compiler::compileRcFnValueCall(p<ExprCallNode> node, const TypeInfo
         }
         llvmParamTypes.push_back(getLLVMType(*pt));
     }
-    llvm::Type* llvmRet = _builder.getVoidTy();
-    if (auto rt = innerFnType.fnReturnType()) {
-        llvmRet = getLLVMType(*rt);
-    }
+    llvm::Type* llvmRet = llvmRetTypeForFnValue(innerFnType);
     auto llvmFnType = llvm::FunctionType::get(llvmRet, llvmParamTypes, false);
 
     // 实参类型校验（与 compileFnValueCall 同款检查）
@@ -593,7 +599,8 @@ llvm::Value* Compiler::compileRcFnValueCall(p<ExprCallNode> node, const TypeInfo
         callArgs.push_back(compileExpr(i));
     }
 
-    return _builder.CreateCall(llvmFnType, fnPtrVal, callArgs);
+    auto callResult = _builder.CreateCall(llvmFnType, fnPtrVal, callArgs);
+    return finishFnValueFallibleCall(callResult, innerFnType, node);
 }
 
 // v0.16: callee 为 Ref<fn(...)R>（如 arr[i] 返回 fn&）的调用站点：
@@ -639,10 +646,7 @@ llvm::Value* Compiler::compileRefFnValueCall(p<ExprCallNode> node, const TypeInf
         }
         llvmParamTypes2.push_back(getLLVMType(*pt));
     }
-    llvm::Type* llvmRet2 = _builder.getVoidTy();
-    if (auto rt = innerFnType.fnReturnType()) {
-        llvmRet2 = getLLVMType(*rt);
-    }
+    llvm::Type* llvmRet2 = llvmRetTypeForFnValue(innerFnType);
     auto llvmFnType2 = llvm::FunctionType::get(llvmRet2, llvmParamTypes2, false);
 
     // 实参类型校验（与 compileFnValueCall 同款检查）
@@ -671,5 +675,30 @@ llvm::Value* Compiler::compileRefFnValueCall(p<ExprCallNode> node, const TypeInf
         callArgs2.push_back(compileExpr(i));
     }
 
-    return _builder.CreateCall(llvmFnType2, fnPtrVal2, callArgs2);
+    auto callResult2 = _builder.CreateCall(llvmFnType2, fnPtrVal2, callArgs2);
+    return finishFnValueFallibleCall(callResult2, innerFnType, node);
+}
+
+// ==================== fn-value fallible 辅助 ====================
+
+llvm::Type* Compiler::llvmRetTypeForFnValue(const TypeInfo& fnType) {
+    if (!fnType.isFn()) return _builder.getVoidTy();
+    TypeInfo successRet;
+    string fallibleErr;
+    if (auto rt = fnType.fnReturnType()) {
+        successRet = rt->withoutFallible();
+        fallibleErr = rt->fallibleErr;
+    }
+    return wrapFallibleRetType(successRet, fallibleErr);
+}
+
+llvm::Value* Compiler::finishFnValueFallibleCall(llvm::Value* callResult, const TypeInfo& fnType,
+                                                 p<ExprCallNode> callNode) {
+    string fallibleErr;
+    TypeInfo successRet;
+    if (auto rt = fnType.fnReturnType()) {
+        fallibleErr = rt->fallibleErr;
+        successRet = rt->withoutFallible();
+    }
+    return handleFallibleCallResult(callResult, fallibleErr, successRet, callNode);
 }

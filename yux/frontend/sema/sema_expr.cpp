@@ -1012,6 +1012,8 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                     }
                 }
                 if (!isFnNameLiteral) {
+                    vector<string>* seen = _tryStack.empty() ? nullptr : &_tryStack.back();
+                    sema::checkErrPropagateForFnValueCall(_currentFn, n, calleeType, seen, _sourcePath, _currentLambda);
                     const auto& expectedParams = calleeType.fnParamTypes();
                     for (size_t idx = 0; idx < n->getArgs().size() && idx < expectedParams.size(); ++idx) {
                         try {
