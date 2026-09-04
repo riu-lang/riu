@@ -1,0 +1,19 @@
+; `Self { ... }` 同名字段出现两次应报 E3127
+
+struct P {
+  x i32
+  y i32
+
+  #Static
+  fn make() P {
+    ret Self {
+      .x = 1
+      .x = 2  ; check: E3127
+      .y = 3
+    }
+  }
+}
+
+fn main() i32 {
+  ret 0i32
+}

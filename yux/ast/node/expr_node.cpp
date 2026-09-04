@@ -26,9 +26,13 @@ static TypeInfo wrapAsNullable(TypeInfo inner) {
 
 // 方法点的静态类型：真实 TypeKind::Fn，仅编码返回类型（形参空）。
 // ExprCallNode::getType 走 isFn() 取 fnReturnType()；这不是 fat-ptr 一等函数值。
-static TypeInfo makeCallFnType(TypeInfo ret) {
+// fallibleErr 非空时挂到返回类型上，供 checkErrPropagateForFnValueCall 认 T ! E。
+static TypeInfo makeCallFnType(TypeInfo ret, const string& fallibleErr = "") {
+    if (!fallibleErr.empty()) {
+        ret.attachFallibleErr(fallibleErr);
+    }
     sp<TypeInfo> rt = nullptr;
-    if (!ret.empty() && ret.name != "()") {
+    if (ret.isFallible() || (!ret.empty() && ret.name != "()")) {
         rt = make_shared<TypeInfo>(std::move(ret));
     }
     return TypeInfo(FnTag{}, {}, std::move(rt));
@@ -896,7 +900,7 @@ TypeInfo ExprDotNode::getType() const {
                 auto rt = methodSym->retType;
                 if (!genSubst.empty()) rt = rt.substitute(genSubst);
                 DEBUG_LOG_VAL("ExprDotNode::getType - safe method, returning Fn", rt.getFullName());
-                return makeCallFnType(std::move(rt));
+                return makeCallFnType(std::move(rt), methodSym->fallibleErrType);
             }
 
             // §12.4: dyn 边界方法
@@ -1311,7 +1315,7 @@ TypeInfo ExprDotNode::getType() const {
                 auto rt = methodSym->retType;
                 if (!genSubst.empty()) rt = rt.substitute(genSubst);
                 DEBUG_LOG_VAL("ExprDotNode::getType - found method, returning Fn", rt.getFullName());
-                return makeCallFnType(std::move(rt));
+                return makeCallFnType(std::move(rt), methodSym->fallibleErrType);
             }
         }
     }
@@ -2006,6 +2010,46 @@ TypeInfo ExprPathCallNode::getType() const {
             args.push_back(make_shared<TypeInfo>(ta->getType()));
         }
         return {n, std::move(args)};
+    }
+
+    // #Static fn：返回类型是方法 retType，不是 LHS 结构体名。
+    // 工厂 `Type::make` 碰巧返回 Self，旧实现 `return TypeInfo(n)` 蒙对；
+    // `Type::parse(...) i32 ! E` 必须查签名。enum 构造无 StructImpl，落到下面的 LHS 名。
+    auto findImpl = [&](FileNode* f) -> StructImplNode* { return f ? f->getStructImpl(n) : nullptr; };
+    StructImplNode* impl = findImpl(file);
+    if (!impl && file) {
+        for (auto* s = file->parentScope(); s && !impl; s = s->parentScope()) {
+            if (auto* pf = dynamic_cast<FileNode*>(s)) impl = findImpl(pf);
+        }
+    }
+    if (impl) {
+        const string rhs = _variantName.getText();
+        const size_t arity = _args.size();
+        p<FnHeaderNode> found = nullptr;
+        int nfound = 0;
+        for (auto& m : impl->methods()) {
+            auto h = m->header();
+            if (!h || h->name().getText() != rhs || !h->isStatic()) continue;
+            if (h->params().size() != arity) continue;
+            found = h;
+            ++nfound;
+        }
+        if (nfound == 1 && found) {
+            TypeInfo rt;
+            if (found->retType()) rt = found->retType()->getType();
+            if (rt.isSelf()) {
+                if (!_lhsTypeArgs.empty()) {
+                    vector<sp<TypeInfo>> args;
+                    args.reserve(_lhsTypeArgs.size());
+                    for (auto& ta : _lhsTypeArgs) {
+                        args.push_back(make_shared<TypeInfo>(ta->getType()));
+                    }
+                    return {n, std::move(args)};
+                }
+                return TypeInfo(n);
+            }
+            return rt;
+        }
     }
 
     return TypeInfo(n);

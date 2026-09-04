@@ -407,7 +407,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                 if (pushedFrame) {
                     _substStack.pop_back();
                 }
-                return callResult;
+                return handleFallibleCallResult(callResult, mFallibleErr, retType, nullptr);
             } catch (...) {
                 if (pushedFrame) _substStack.pop_back();
                 throw;

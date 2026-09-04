@@ -1,0 +1,25 @@
+; 实例方法 T ! E 在 try 外裸调应报 E7006
+
+enum E {
+  Boom
+}
+
+struct P {
+  n i32
+
+  #Static
+  fn make(n i32) P {
+    ret Self {
+      .n = n
+    }
+  }
+
+  fn boom() i32 ! E {
+    ret E::Boom
+  }
+}
+
+fn main() {
+  let p P = P::make(1)
+  p.boom()  ; check: E7006
+}

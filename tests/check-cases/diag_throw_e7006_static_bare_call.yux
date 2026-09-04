@@ -1,0 +1,18 @@
+; #Static T ! E 在 try 外裸调应报 E7006（路径调用无 `!` 后缀）
+
+enum E {
+  Boom
+}
+
+struct P {
+  n i32
+
+  #Static
+  fn parse(n i32) i32 ! E {
+    ret n
+  }
+}
+
+fn main() {
+  P::parse(1)  ; check: E7006
+}

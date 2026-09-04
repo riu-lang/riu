@@ -261,9 +261,8 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
         bool methPriv = !member.empty() && member[0] == '_';
         vector<TypeInfo> declaredParams(mparams.size() > 1 ? mparams.begin() + 1 : mparams.begin(), mparams.end());
         if (mparams.size() <= 1) declaredParams.clear();
-        string mangledName =
-            Mangler::method(ownerMod, actualType.name, member, declaredParams, methPriv, methodSymbol->retType,
-                            methodSymbol->fallibleErrType);
+        string mangledName = Mangler::method(ownerMod, actualType.name, member, declaredParams, methPriv,
+                                             methodSymbol->retType, methodSymbol->fallibleErrType);
         llvmFn = _module->getFunction(mangledName);
         if (!llvmFn) {
             vector<llvm::Type*> paramTypes;
@@ -408,8 +407,8 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
             if (fnSymbol) {
                 string ownerMod = fnSymbol->moduleName.empty() ? _file->moduleName() : fnSymbol->moduleName;
                 bool fnPriv = !objName.empty() && objName[0] == '_';
-                auto cName =
-                    Mangler::function(ownerMod, objName, argTypes, fnPriv, fnSymbol->retType, fnSymbol->fallibleErrType);
+                auto cName = Mangler::function(ownerMod, objName, argTypes, fnPriv, fnSymbol->retType,
+                                               fnSymbol->fallibleErrType);
                 DEBUG_LOG_VAL("    Expr: InnerFnCall (dot)", objName << " -> " << cName);
                 auto fn = _module->getFunction(cName);
                 if (!fn) {
@@ -1194,9 +1193,8 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
         string ownerMod =
             sdkMethodSymbol->moduleName.empty() ? _yux->sdkFile()->moduleName() : sdkMethodSymbol->moduleName;
         bool methPriv = !member.empty() && member[0] == '_';
-        string mangledName =
-            Mangler::method(ownerMod, lookupType.name, member, argTypes, methPriv, sdkMethodSymbol->retType,
-                            sdkMethodSymbol->fallibleErrType);
+        string mangledName = Mangler::method(ownerMod, lookupType.name, member, argTypes, methPriv,
+                                             sdkMethodSymbol->retType, sdkMethodSymbol->fallibleErrType);
         auto fn = _module->getFunction(mangledName);
         if (!fn) {
             vector<llvm::Type*> paramTypes;
@@ -1302,7 +1300,10 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
                         auto fnType = llvm::FunctionType::get(llvmRetType, paramTypes, false);
                         fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
                     }
-                    return _builder.CreateCall(fn, methodArgs);
+                    auto callResult = _builder.CreateCall(fn, methodArgs, genRetType.empty() ? "" : member + ".ret");
+                    auto v = handleFallibleCallResult(callResult, mFallibleErr, genRetType, callNode);
+                    // void / fallible-void 成功路径是 nullptr；compileMethodCall 用空指针表示未命中
+                    return v ? v : llvm::UndefValue::get(_builder.getInt8Ty());
                 }
             }
         }
@@ -1415,9 +1416,8 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
                                               mparams.end());
         // 若 mparams 仅含 receiver（无参方法如 len()），methodDeclaredParams 为空
         if (mparams.size() <= 1) methodDeclaredParams.clear();
-        string mangledName =
-            Mangler::method(ownerMod, actualType.name, member, methodDeclaredParams, methPriv, methodSymbol->retType,
-                            methodSymbol->fallibleErrType);
+        string mangledName = Mangler::method(ownerMod, actualType.name, member, methodDeclaredParams, methPriv,
+                                             methodSymbol->retType, methodSymbol->fallibleErrType);
         auto fn = _module->getFunction(mangledName);
         if (!fn) {
             vector<llvm::Type*> paramTypes;
@@ -1438,7 +1438,10 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
             auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
             fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
         }
-        return _builder.CreateCall(fn, methodArgs);
+        auto callResult = _builder.CreateCall(fn, methodArgs, methodSymbol->retType.empty() ? "" : member + ".ret");
+        auto v = handleFallibleCallResult(callResult, methodSymbol->fallibleErrType, methodSymbol->retType, callNode);
+        // void / fallible-void 成功路径是 nullptr；compileMethodCall 用空指针表示未命中
+        return v ? v : llvm::UndefValue::get(_builder.getInt8Ty());
     }
 
     return nullptr;

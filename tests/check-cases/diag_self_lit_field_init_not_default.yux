@@ -1,0 +1,18 @@
+; 实例字段 `x i32 = 0` 不是默认值：Self { } 缺 .x 仍报 E3125
+; （filedDecl 与 #Static 字段共用可选 init；实例字段 init 被丢弃）
+
+struct P {
+  x i32 = 0
+  y i32
+
+  #Static
+  fn make() P {
+    ret Self {  ; check: E3125
+      .y = 1
+    }
+  }
+}
+
+fn main() i32 {
+  ret 0i32
+}

@@ -1804,6 +1804,17 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                 if (!staticSubst.empty()) {
                     checkGenericImplInst(structImpl, staticSubst);
                 }
+                // 路径调用无 `!` 后缀（g4 exprEnumCtor）；T ! E 的 #Static 只能在 try 内裸调。
+                {
+                    string calleeErr = methodHeader->resolvedFallibleErr();
+                    if (!calleeErr.empty()) {
+                        if (!_tryStack.empty()) {
+                            _tryStack.back().push_back(calleeErr);
+                        } else {
+                            throw YuxError(line, col, ErrorCode::E7006, lhsName + "::" + rhsName);
+                        }
+                    }
+                }
                 return;
             }
         }
