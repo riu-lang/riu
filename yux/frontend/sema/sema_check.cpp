@@ -41,7 +41,7 @@
 using namespace sema::pass;
 
 void SemaPass::tryValidateCompareForm(p<ExprCompareNode> n) {
-    // 与 validateCompareOpForm 对齐：Weak ==/!= → E3078，Ptr 排序 → E3073。
+    // 与 validateCompareOpForm 对齐：Weak ==/!= → E3078，Ptr 排序 / Function == → E3073。
     // && / ||：镜像 ExprCompareNode::getType / compileCompareExpr 的 E3001。
     // 模板形参等实例化后再查；Weak<T> / Ptr 形态与内层 T 无关，模板期也报。
     if (!n || !n->left() || !n->right()) return;

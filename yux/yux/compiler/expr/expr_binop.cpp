@@ -738,6 +738,10 @@ llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
 
     // 检查是否为自定义类型（用剥 Ref 后的标量名）
     if (!isBuiltinType(effLeftType.name)) {
+        if (effLeftType.isFn()) {
+            // E3073：SemaPass validateCompareOpForm（§3.11.8 Function 无 == / !=）
+            throwSemaGap(node->getLineNumber(), node->getColumn());
+        }
         string methodName;
         switch (node->op()) {
         case ExprCompareNode::Op::Eq:

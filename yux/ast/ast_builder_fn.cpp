@@ -134,6 +134,14 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
     auto header = createWithLine<FnHeaderNode>(ctx, file, ctx->name, retType);
     {
         auto al = collectAnnos(ctx->buildAnnos);
+        for (size_t i = 0; i < al.names.size(); ++i) {
+            const string& name = al.names[i];
+            if (name == "Spec" || name == "Impl" || name == "Reflect") {
+                auto* a = ctx->buildAnnos[i];
+                throw YuxError(static_cast<int>(a->name->getLine()),
+                               static_cast<int>(a->name->getCharPositionInLine()) + 1, ErrorCode::E1110);
+            }
+        }
         header->setAnnos(std::move(al.names), std::move(al.args));
     }
 

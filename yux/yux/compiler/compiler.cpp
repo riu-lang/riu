@@ -202,8 +202,8 @@ void Compiler::emitTestRegistrations() {
         }
         TypeInfo retType;
         if (fn->header()->retType()) retType = fn->header()->retType()->getType();
-        std::string sym =
-            Mangler::function(_file->moduleName(), fnName, paramTypes, false, retType, fn->header()->resolvedFallibleErr());
+        std::string sym = Mangler::function(_file->moduleName(), fnName, paramTypes, false, retType,
+                                            fn->header()->resolvedFallibleErr());
         testFns.push_back({.fnName = fnName, .mangledName = sym});
     }
 
@@ -1084,7 +1084,7 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
         // （与 compileRetVoidStatement 同形；[#10.A] T_ok=void）
         string fallibleErrName;
         fallibleErrName = node->header()->resolvedFallibleErr();
-        bool fnRetVoid = !node->header()->retType();
+        bool fnRetVoid = !node->header()->retType() || node->header()->retType()->getType().isUnit();
         if (!fallibleErrName.empty() && fnRetVoid) {
             callDestructorsForScope();
             auto retStructTy = getFallibleRetStructType(TypeInfo(), fallibleErrName);

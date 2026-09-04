@@ -146,7 +146,7 @@ private:
     void tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExpr, const string& methodName, int line,
                                 int col);
 
-    // 比较形态：subst + peelAutoDeref 后 Weak ==/!= → E3078，Ptr 排序 → E3073。
+    // 比较形态：subst + peelAutoDeref 后 Weak ==/!= → E3078，Ptr 排序 / Function == → E3073。
     // && / ||：subst 后两侧类型须一致（内置跨类型 → E3001 comparison），
     // 与 ExprCompareNode::getType / compileCompareExpr 对齐。模板形参跳过。
     void tryValidateCompareForm(p<class ExprCompareNode> n);

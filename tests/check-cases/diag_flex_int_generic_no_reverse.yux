@@ -1,0 +1,9 @@
+; 泛型不从目标类型反向推断灵活整数（§3.2.4.4）
+; identity(100) 的 T 为 i32，不能赋给 i64
+
+fn identity<T>(x T) T = x
+
+fn main() {
+  let a i64 = identity(100)  ; check: E3014
+  ret;
+}

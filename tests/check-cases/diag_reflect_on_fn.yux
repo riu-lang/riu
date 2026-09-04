@@ -1,0 +1,5 @@
+; #Reflect 仅可附着 structDecl → E1110（§11.12.1.2）
+#Reflect  ; check: E1110
+fn main() {
+  ret;
+}

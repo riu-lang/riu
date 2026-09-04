@@ -96,6 +96,7 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
             }
         }
     }
+    if (retType.isUnit()) retType = TypeInfo();
     // retType.empty() == void
 
     // 构造 LLVM 函数签名：(Ptr captures, P1, ..., Pn) → R

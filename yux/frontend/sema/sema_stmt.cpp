@@ -604,6 +604,11 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                 if (varType.isArray() && !dynamic_cast<p<ExprArrayNode>>(da->expr()) &&
                     !dynamic_cast<p<ExprArrayInitNode>>(da->expr())) {
                     auto exprType = da->expr()->getType();
+                    if (exprType.isArrayGeneric()) {
+                        throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3014, varType.getFullName(),
+                                       exprType.getFullName())
+                            .withHint("[T * N] and Array<T> are distinct types and are not interchangeable");
+                    }
                     if (exprType.isArray() && exprType.arraySize > 0 && varType.arraySize != exprType.arraySize) {
                         throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3012, varType.arraySize,
                                        exprType.arraySize);

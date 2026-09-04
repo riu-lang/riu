@@ -1,0 +1,10 @@
+; 灵活整数对多个整型重载歧义 → E6014（§3.2.4.5）
+
+fn rest_ov(x i8) i8 = x
+
+fn rest_ov(x i16) i16 = x
+
+fn main() {
+  rest_ov(42)  ; check: E6014
+  ret;
+}

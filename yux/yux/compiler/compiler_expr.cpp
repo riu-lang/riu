@@ -570,12 +570,24 @@ llvm::Value* Compiler::compileLvalueAddr(p<ExprNode> node) {
     throwSemaGap(line, col);
 }
 
+// 是否为 ident / ident.field... 左值（与 isMoveAssignLvalue 形态对齐）。
+static bool isMoveLvalueExpr(p<ExprNode> node) {
+    while (auto* dot = dynamic_cast<ExprDotNode*>(node)) {
+        node = dot->baseExpr();
+    }
+    auto* lit = dynamic_cast<ExprLiteralNode*>(node);
+    if (!lit) return false;
+    return dynamic_cast<LiteralObjNode*>(lit->literal()) != nullptr;
+}
+
 // 编译 a <- b：移出旧值、替换新值、返回旧值
 // 1. 取 LHS 地址 → load 旧值
 // 2. 编译 RHS (新值)
 // 3. RC 所有权管理：旧值不移 retain（ownership 转给结果），新值 retain（多一个 owner）
 // 4. Store 新值到 LHS 地址
-// 5. 返回旧值；若含 RC 字段则 recordTemp（结果持 ownership +1）
+// 5. Array / Heap / #NoCopy：非 fresh 左值 RHS 无 RC 可 retain，须把源槽写成零值，
+//    否则与 LHS 共享缓冲 → 双重释放（§8.7.7.3 / §9.2.1.3 O(1) 转移）
+// 6. 返回旧值；若含 RC 字段则 recordTemp（结果持 ownership +1）
 llvm::Value* Compiler::compileMoveAssignExpr(p<ExprMoveAssignNode> node) {
     int line = node->resolveLineNumber();
     int col = node->resolveColumn();
@@ -622,7 +634,15 @@ llvm::Value* Compiler::compileMoveAssignExpr(p<ExprMoveAssignNode> node) {
     // 4. 写入新值
     _builder.CreateStore(valToStore, addr);
 
-    // 5. 旧值返回（不含 retain：ownership 从 LHS 移交给结果）
+    // 5. 无 RC 的独占类型：非 fresh 左值 RHS 置空（含 a <- a），完成 O(1) 所有权转移
+    if ((isNoCopyType(leftType) || leftType.isHeap()) && !isFreshHandleExpr(rightNode)) {
+        if (isMoveLvalueExpr(rightNode)) {
+            auto rhsAddr = compileLvalueAddr(rightNode);
+            _builder.CreateStore(llvm::Constant::getNullValue(llvmType), rhsAddr);
+        }
+    }
+
+    // 6. 旧值返回（不含 retain：ownership 从 LHS 移交给结果）
     if (typeNeedsDestructor(leftType)) {
         recordTemp(oldVal, leftType);
     }

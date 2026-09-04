@@ -291,7 +291,8 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
 
     // 编译返回值表达式
     llvm::Value* retVal = nullptr;
-    if (retType.empty()) {
+    const bool declIsUnit = hasDeclaredRetType && declRetType.isUnit();
+    if (retType.empty() || declIsUnit) {
         compileExpr(node->expr());
         DEBUG_LOG("    Expression compiled as void return");
     } else if (nullableWrap) {

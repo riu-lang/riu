@@ -1,0 +1,10 @@
+; require-sdk
+; as_ref(Rc) 借用期内句柄重赋 → E4003（§8.6.5.5）
+
+fn main() {
+  #Mut let b Rc<i32> = 7
+  let r i32& = as_ref(b)
+  b = 9  ; check: E4003
+  println(r)
+  ret;
+}

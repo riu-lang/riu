@@ -437,6 +437,7 @@ i64 parseIntLiteral(const string& text, int line = 0, int col = 0);
 // 覆盖:
 //   - E3078: Weak<T> 不支持 == / != (DRAFT §5 v1 不暴露 handle 比较)
 //   - E3073: Ptr 不支持 < / <= / > / >= (仅开放 == / !=)
+//   - E3073: Function 值不支持 == / !=（§3.11.8）
 //
 // rightType 与 leftType 类型不匹配 (E3004) 已由 ExprCompareNode::getType 抢先抛
 // (SemaPass 默认重抛), 这里仅做 leftType 单边形态校验.

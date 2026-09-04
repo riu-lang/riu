@@ -401,6 +401,9 @@ struct TypeInfo {
 
     [[nodiscard]] bool empty() const { return name.empty(); }
 
+    // 零元素元组 `()`：与省略 retType 的 unit / void 等同（§3.8.1.0）
+    [[nodiscard]] bool isUnit() const { return kind == TypeKind::Tuple && genericArgs.empty(); }
+
     // 标量浮点 f32/f64（不靠 name[0]=='f'，避免用户类型名误命中）
     [[nodiscard]] bool isFloat() const { return kind == TypeKind::Normal && (name == "f32" || name == "f64"); }
 

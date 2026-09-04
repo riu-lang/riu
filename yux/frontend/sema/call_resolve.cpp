@@ -1724,6 +1724,14 @@ void validateCompareOpForm(const TypeInfo& leftType, ExprCompareNode::Op op, int
                 .withHint("先 `upgrade(weak)` 取得 Rc<T>?，再用 `?.` / `??` / 相等比较判定目标对象");
         }
     }
+    if (leftType.isFn()) {
+        if (op == ExprCompareNode::Op::Eq || op == ExprCompareNode::Op::Ne) {
+            const char* opSym = op == ExprCompareNode::Op::Eq ? "==" : "!=";
+            const char* mname = op == ExprCompareNode::Op::Eq ? "eq" : "ne";
+            throw YuxError(line, col, ErrorCode::E3073, leftType.getFullName(), opSym, mname)
+                .withHint("function values have no equality; address comparison is not provided");
+        }
+    }
     if (leftType.isPtr()) {
         if (op == ExprCompareNode::Op::Eq || op == ExprCompareNode::Op::Ne) return;
         if (op == ExprCompareNode::Op::AndAnd || op == ExprCompareNode::Op::OrOr) return;

@@ -1,0 +1,8 @@
+; require-sdk
+; `[T * N]` 与 `Array<T>` 不得互换（§3.2.2 / §3.4）
+
+fn main() {
+  let a Array<i32> = [1, 2, 3]
+  let b [i32 * 3] = a  ; check: E3014
+  ret;
+}

@@ -676,7 +676,7 @@ llvm::FunctionType* Compiler::getLLVMFunctionType(p<FnHeaderNode> header) {
 llvm::Type* Compiler::wrapFallibleRetType(const TypeInfo& retType, const string& errTypeName) {
     if (errTypeName.empty()) {
         // 普通函数 / 非 Fallible：保持原行为
-        return retType.empty() ? _builder.getVoidTy() : getLLVMType(retType);
+        return retType.empty() || retType.isUnit() ? _builder.getVoidTy() : getLLVMType(retType);
     }
     return getFallibleRetStructType(retType, errTypeName);
 }

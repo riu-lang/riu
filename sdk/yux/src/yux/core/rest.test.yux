@@ -1,0 +1,162 @@
+; §3 / §8–13 其余已落地形态（Slice 4）。
+; 标量 / 句柄主路径见 tuple / lambda / type_inference / type_cast / move_assign /
+; string / array / num_const / nullable / borrow / reflect / spec。
+
+; ==================== 辅助 ====================
+
+fn rest_use_ref<T>(x T&) {
+}
+
+fn rest_unit() () {
+}
+
+fn rest_add_pair(p (i32, i32)) i32 {
+  ret p.0 + p.1
+}
+
+fn rest_give_arr() Array<i32> {
+  ret [8, 9, 10]
+}
+
+struct RestPt {
+  x i32
+  y i32
+
+  #Static
+  fn make(x i32, y i32) RestPt {
+    ret Self {
+      .x = x
+      .y = y
+    }
+  }
+
+  fn sum_via_self_fields() i32 {
+    ret Self::fields[0].value + Self::fields[1].value
+  }
+}
+
+; ==================== §3 灵活整数 / 转换 ====================
+
+; 验证：对侧类型驱动灵活整数（加法 / 比较）
+#Test
+fn test_flex_int_binop_compare() {
+  let a u8 = 1
+  let s u8 = a + 1
+  assert_eq(s, 2)
+  let x i16 = 5
+  assert_true(x == 5)
+  assert_true(x < 6)
+}
+
+; 验证：to_i8 截断；isize / usize 窄化
+#Test
+fn test_to_i8_and_isize_narrow() {
+  let a i32 = 200
+  assert_eq(a.to_i8(), -56i8)
+  let z isize = 7
+  assert_eq(z.to_i32(), 7)
+  let u usize = 9
+  assert_eq(u.to_u32(), 9u32)
+}
+
+; 验证：isize / usize 关联常量
+#Test
+fn test_isize_usize_max_min() {
+  assert_eq(isize::MAX, 9223372036854775807isize)
+  assert_eq(isize::MIN, -9223372036854775808isize)
+  assert_eq(usize::MAX, 18446744073709551615usize)
+  assert_eq(usize::MIN, 0usize)
+}
+
+; ==================== §8 / §9 句柄形态 ====================
+
+; 验证：`<-` 移入 Array（源槽置空，O(1) 转移，无双重释放）
+#Test
+fn test_move_assign_array() {
+  #Mut let a Array<i32> = [1, 2]
+  #Mut let b Array<i32> = [8, 9, 10]
+  let old Array<i32> = a <- b
+  assert_eq(old.len(), 2)
+  assert_eq(old[0], 1)
+  assert_eq(a.len(), 3)
+  assert_eq(a[0], 8)
+  assert_eq(b.len(), 0)
+}
+
+; 验证：`<-` 右值数组字面量
+#Test
+fn test_move_assign_array_literal() {
+  #Mut let a Array<i32> = [1]
+  let old Array<i32> = a <- [8, 9]
+  assert_eq(old.len(), 1)
+  assert_eq(a.len(), 2)
+  assert_eq(a[0], 8)
+}
+
+; 验证：`<-` 右值调用 fresh Array
+#Test
+fn test_move_assign_array_call() {
+  #Mut let a Array<i32> = [1]
+  let old Array<i32> = a <- rest_give_arr()
+  assert_eq(old.len(), 1)
+  assert_eq(a.len(), 3)
+  assert_eq(a[0], 8)
+}
+
+; 验证：Array 自移入 `a <- a`：源槽置空，旧值交给结果
+#Test
+fn test_move_assign_array_self() {
+  #Mut let a Array<i32> = [1, 2, 3]
+  let old Array<i32> = a <- a
+  assert_eq(old.len(), 3)
+  assert_eq(old[0], 1)
+  assert_eq(a.len(), 0)
+}
+
+; 验证：`use_ref(as_ref(Rc))` 泛型 T&
+#Test
+fn test_as_ref_generic_use_ref() {
+  let b Rc<i32> = 7
+  rest_use_ref(as_ref(b))
+}
+
+; 验证：String.to_bytes UTF-8
+#Test
+fn test_string_to_bytes() {
+  let ascii String = "hi"
+  let ab Array<u8> = ascii.to_bytes()
+  assert_eq(ab.len(), 2)
+  assert_eq(ab[0], 104u8)
+  assert_eq(ab[1], 105u8)
+  let han String = "中"
+  let hb Array<u8> = han.to_bytes()
+  assert_eq(hb.len(), 3)
+  assert_eq(hb[0], 228u8)
+  assert_eq(hb[1], 184u8)
+  assert_eq(hb[2], 173u8)
+}
+
+; ==================== §3 Function / unit ====================
+
+; 验证：空体 `fn () ()` 可调用（unit ≡ void，不占局部槽）
+#Test
+fn test_unit_fn_call() {
+  rest_unit()
+  assert_true(true)
+}
+
+; 验证：Function 形参为元组
+#Test
+fn test_fn_tuple_param() {
+  let f Function<(i32, i32), i32> = (p (i32, i32)) i32 => rest_add_pair(p)
+  assert_eq(f((3, 4)), 7)
+}
+
+; ==================== §13 Self::fields ====================
+
+; 验证：方法体内 `Self::fields[N].value`
+#Test
+fn test_reflect_self_fields() {
+  let p RestPt = RestPt::make(3, 4)
+  assert_eq(p.sum_via_self_fields(), 7)
+}

@@ -1,0 +1,9 @@
+; require-sdk
+; Function 值禁止 == / !=（§3.11.8）
+
+fn main() {
+  let f Function<i32> = () i32 => 1
+  let g Function<i32> = () i32 => 2
+  let x bool = f == g  ; check: E3073
+  ret;
+}
