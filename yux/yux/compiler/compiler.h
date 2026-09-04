@@ -357,7 +357,7 @@ private:
     // Phase 8d.3: 在指定 BB 末尾对一个 RC 句柄 value 发 retain（用于分支汇合归一为 fresh）
     void emitRetainOnHandleValue(llvm::Value* val, const TypeInfo& type);
     // Phase 8d.3: 编译"分支结果表达式"——push 子帧、compile、consume 结果、pop 释放中间临时；
-    // 若 expectedType 是 RC 句柄（Rc/Array/Weak）且结果非 fresh，发 retain 归一为 +1。
+    // 若 expectedType 是 RC 句柄（Rc/Array/Weak/String）且结果非 fresh，发 retain 归一为 +1。
     // 调用方在 phi 汇合后应 recordTemp(phi, expectedType) 把统一 +1 句柄交给外层 statement frame
     llvm::Value* compileBranchResultNormalized(p<ExprNode> expr, const TypeInfo& expectedType);
 

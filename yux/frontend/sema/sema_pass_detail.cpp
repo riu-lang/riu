@@ -186,6 +186,13 @@ bool isEmptyArrayType(const TypeInfo& t) {
     return t.isArray() && t.elementType && t.elementType->name == "__empty";
 }
 
+bool blockMergeTypesEq(const TypeInfo& a, const TypeInfo& b) {
+    if (a == b) return true;
+    if (isEmptyArrayType(a) && (b.isArrayGeneric() || b.isArray())) return true;
+    if (isEmptyArrayType(b) && (a.isArrayGeneric() || a.isArray())) return true;
+    return false;
+}
+
 // 数组填充值是 LiteralNode，不是 ExprNode，不能走 tryInferIntType。
 void inferFillLiteralInt(p<LiteralNode> lit, const TypeInfo& target) {
     if (!lit) return;
@@ -978,11 +985,13 @@ void checkMatchArmTypes(const vector<p<MatchArmNode>>& arms, const std::set<std:
             firstSet = true;
             continue;
         }
-        if (t != first) {
-            throw YuxError(arm->resultLine(), arm->resultCol(), ErrorCode::E3014, first.getFullName(), t.getFullName())
-                .withHint(std::format("match 各臂结果类型须一致：先前臂为 `{}`，此臂为 `{}`", first.getFullName(),
-                                      t.getFullName()));
+        if (blockMergeTypesEq(t, first)) {
+            if (isEmptyArrayType(first) && !isEmptyArrayType(t)) first = t;
+            continue;
         }
+        throw YuxError(arm->resultLine(), arm->resultCol(), ErrorCode::E3014, first.getFullName(), t.getFullName())
+            .withHint(std::format("match 各臂结果类型须一致：先前臂为 `{}`，此臂为 `{}`", first.getFullName(),
+                                  t.getFullName()));
     }
 }
 

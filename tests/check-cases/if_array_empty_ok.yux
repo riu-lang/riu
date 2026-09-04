@@ -1,0 +1,18 @@
+; require-sdk
+; if 一支空字面量、一支 Array 调用：靶向 Array，不当 E3005
+enum E {
+  Boom
+}
+
+fn give() Array<i32> {
+  ret [1]
+}
+
+fn main() {
+  let _ Array<i32> = if true {
+    []
+  } else {
+    give()
+  }
+  ret;
+}

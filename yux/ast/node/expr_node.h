@@ -41,6 +41,9 @@ public:
     void setResolvedType(TypeInfo t) { _resolvedType = std::move(t); }
     [[nodiscard]] bool hasResolvedType() const { return _resolvedType.has_value(); }
     [[nodiscard]] const TypeInfo& resolvedType() const { return *_resolvedType; }
+    // 块值汇合（if / match / try）优先读 SemaPass 靶向后的 resolved，避免 `[]` 的
+    // getType `[__empty * 0]` 与 `Array<T>` 假阳性失配。
+    [[nodiscard]] TypeInfo resolvedOrGetType() const { return hasResolvedType() ? resolvedType() : getType(); }
 
     void setResolvedSymbol(ResolvedSymbol s) { _resolvedSymbol = s; }
     void setResolvedVar(SymbolInfo* v) { _resolvedSymbol = ResolvedSymbol{.var = v, .fn = nullptr}; }
@@ -422,7 +425,7 @@ public:
 private:
     Form _form;
     vector<LambdaParamSlot> _params;
-    p<TypeNode> _retType;                // 仅 Paren 显式标注；其余 nullptr
+    p<TypeNode> _retType; // 仅 Paren 显式标注；其余 nullptr
     p<TypeNode> _fallibleErrType = nullptr;
     p<ExprNode> _bodyExpr;               // Form::Expr
     vector<p<StatementNode>> _bodyStmts; // Form::Block

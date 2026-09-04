@@ -1,0 +1,32 @@
+; require-sdk
+; match 臂 `=> expr` / `=> { expr }` / `=> { ret e }` 绑 Array
+enum Color {
+  Red
+  Green
+  Blue
+}
+
+fn give() Array<i32> {
+  ret [1]
+}
+
+fn give2() Array<i32> {
+  ret [2]
+}
+
+fn pick(c Color) Array<i32> {
+  ret match c {
+    Color::Red => give()
+    Color::Green => {
+      give2()
+    }
+    Color::Blue => {
+      ret [9]
+    }
+  }
+}
+
+fn main() {
+  let _ Array<i32> = pick(Color::Red)
+  ret;
+}

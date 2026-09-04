@@ -34,6 +34,18 @@ static TypeInfo makeCallFnType(TypeInfo ret) {
     return TypeInfo(FnTag{}, {}, std::move(rt));
 }
 
+static bool isEmptyArrayLitType(const TypeInfo& t) {
+    return t.isArray() && t.elementType && t.elementType->name == "__empty";
+}
+
+// 块值汇合：空 `[]` 可与 Array<T> / [T*N] 同型（靶向后 resolved 已是 Array）。
+static bool blockValueTypesMatch(const TypeInfo& a, const TypeInfo& b) {
+    if (a == b) return true;
+    if (isEmptyArrayLitType(a) && (b.isArrayGeneric() || b.isArray())) return true;
+    if (isEmptyArrayLitType(b) && (a.isArrayGeneric() || a.isArray())) return true;
+    return false;
+}
+
 static FileNode* enclosingFileFrom(const Node* n) {
     const Node* cur = n;
     while (cur) {
@@ -1407,23 +1419,25 @@ TypeInfo ExprIfElseNode::getType() const {
     if (!_thenBlock->hasResult()) {
         return {};
     }
-    TypeInfo resultType = _thenBlock->resultExpr()->getType();
+    TypeInfo resultType = _thenBlock->resultExpr()->resolvedOrGetType();
 
     for (auto& elif : _elifs) {
         if (!elif->block()->hasResult()) {
             return {};
         }
-        auto elifType = elif->block()->resultExpr()->getType();
-        if (elifType != resultType) {
+        auto elifType = elif->block()->resultExpr()->resolvedOrGetType();
+        if (!blockValueTypesMatch(elifType, resultType)) {
             throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3005, resultType.name, elifType.name);
         }
+        if (isEmptyArrayLitType(resultType) && !isEmptyArrayLitType(elifType)) resultType = elifType;
     }
 
     if (_elseBlock && _elseBlock->hasResult()) {
-        auto elseType = _elseBlock->resultExpr()->getType();
-        if (elseType != resultType) {
+        auto elseType = _elseBlock->resultExpr()->resolvedOrGetType();
+        if (!blockValueTypesMatch(elseType, resultType)) {
             throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3005, resultType.name, elseType.name);
         }
+        if (isEmptyArrayLitType(resultType) && !isEmptyArrayLitType(elseType)) resultType = elseType;
     } else if (!_elseBlock || !_elseBlock->hasResult()) {
         return {};
     }
@@ -1442,11 +1456,12 @@ int ExprIfElseNode::resolveColumn() const {
 }
 
 TypeInfo ExprOneLineIfElseNode::getType() const {
-    auto trueType = _trueValue->getType();
-    auto falseType = _falseValue->getType();
-    if (trueType != falseType) {
+    auto trueType = _trueValue->resolvedOrGetType();
+    auto falseType = _falseValue->resolvedOrGetType();
+    if (!blockValueTypesMatch(trueType, falseType)) {
         throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3005, trueType.name, falseType.name);
     }
+    if (isEmptyArrayLitType(trueType) && !isEmptyArrayLitType(falseType)) return falseType;
     return trueType;
 }
 
@@ -1811,9 +1826,9 @@ int ExprNullElseNode::resolveColumn() const {
 TypeInfo MatchArmNode::resultType() const {
     if (_block) {
         if (!_block->hasResult() || !_block->resultExpr()) return {};
-        return _block->resultExpr()->getType();
+        return _block->resultExpr()->resolvedOrGetType();
     }
-    if (_body) return _body->getType();
+    if (_body) return _body->resolvedOrGetType();
     return {};
 }
 
@@ -1854,10 +1869,11 @@ TypeInfo ExprMatchNode::getType() const {
             firstSet = true;
             continue;
         }
-        if (t != first) {
+        if (!blockValueTypesMatch(t, first)) {
             // 不在 getType 抛错，留给编译期更稳：返回首个，编译期再校验
             return first;
         }
+        if (isEmptyArrayLitType(first) && !isEmptyArrayLitType(t)) first = t;
     }
     return first;
 }
@@ -1870,12 +1886,13 @@ TypeInfo ExprTryCatchNode::getType() const {
     if (!_tryBlock->hasResult()) {
         return {};
     }
-    TypeInfo first = _tryBlock->resultExpr()->getType();
+    TypeInfo first = _tryBlock->resultExpr()->resolvedOrGetType();
     for (auto& arm : _catches) {
         // body 无 result（以 ret / panic 终结）→ 流终止 arm，跳过类型合并
         if (!arm->body()->hasResult()) continue;
-        auto t = arm->body()->resultExpr()->getType();
-        if (t != first) return first;
+        auto t = arm->body()->resultExpr()->resolvedOrGetType();
+        if (!blockValueTypesMatch(t, first)) return first;
+        if (isEmptyArrayLitType(first) && !isEmptyArrayLitType(t)) first = t;
     }
     return first;
 }

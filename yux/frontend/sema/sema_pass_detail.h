@@ -71,6 +71,9 @@ bool isFreshHandleExpr(p<ExprNode> expr);
 // 空数组字面量 `[]`：getType 为 `[__empty * 0]`，有靶向类型时应接受。
 bool isEmptyArrayType(const TypeInfo& t);
 
+// 块值汇合：`[]` 可与 Array<T> / [T*N] 同型（E3005 / E7010 / match 臂）。
+bool blockMergeTypesEq(const TypeInfo& a, const TypeInfo& b);
+
 // 数组填充值是 LiteralNode，不是 ExprNode，不能走 tryInferIntType。
 void inferFillLiteralInt(p<LiteralNode> lit, const TypeInfo& target);
 

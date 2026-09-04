@@ -841,7 +841,7 @@ bool Compiler::consumeTemp(llvm::Value* val) {
 
 // Phase 8d.3: 编译分支体的结果表达式：用子帧吃掉中间 fresh 临时；非 fresh 结果发 retain 归一
 llvm::Value* Compiler::compileBranchResultNormalized(p<ExprNode> expr, const TypeInfo& expectedType) {
-    bool isRcHandle = expectedType.isRc() || expectedType.isArrayGeneric() || expectedType.isWeak();
+    bool isRcHandle = expectedType.isRcHandle();
     if (!isRcHandle) {
         return compileExpr(expr);
     }
@@ -864,6 +864,8 @@ void Compiler::emitRetainOnHandleValue(llvm::Value* val, const TypeInfo& type) {
         _builder.CreateCall(runtime::getRcRetainFn(_module, _builder), {handle});
     } else if (type.isArrayGeneric()) {
         // B-3: Array 无 RC，跳过 retain
+    } else if (type.isString()) {
+        retainHandleAtCallSite(val, type);
     } else if (type.isWeak()) {
         auto handle = _builder.CreateExtractValue(val, {0}, "merge.weak.handle");
         _builder.CreateCall(runtime::getWeakRetainFn(_module, _builder), {handle});

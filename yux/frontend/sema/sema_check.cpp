@@ -380,16 +380,17 @@ void SemaPass::tryValidateIfElse(p<ExprIfElseNode> n) {
         TypeInfo elifType;
         if (!branchType(el->block(), elifType)) return;
         if (typeStillTemplate(elifType)) return;
-        if (elifType != resultType) {
+        if (!blockMergeTypesEq(elifType, resultType)) {
             throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3005, resultType.name,
                            elifType.name);
         }
+        if (isEmptyArrayType(resultType) && !isEmptyArrayType(elifType)) resultType = elifType;
     }
     if (n->elseBlock() && n->elseBlock()->hasResult()) {
         TypeInfo elseType;
         if (!branchType(n->elseBlock(), elseType)) return;
         if (typeStillTemplate(elseType)) return;
-        if (elseType != resultType) {
+        if (!blockMergeTypesEq(elseType, resultType)) {
             throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3005, resultType.name,
                            elseType.name);
         }
@@ -415,7 +416,7 @@ void SemaPass::tryValidateOneLineIfElse(p<ExprOneLineIfElseNode> n) {
     TypeInfo falseType;
     if (!exprType(n->trueValue(), trueType) || !exprType(n->falseValue(), falseType)) return;
     if (typeStillTemplate(trueType) || typeStillTemplate(falseType)) return;
-    if (trueType != falseType) {
+    if (!blockMergeTypesEq(trueType, falseType)) {
         throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3005, trueType.name, falseType.name);
     }
 }

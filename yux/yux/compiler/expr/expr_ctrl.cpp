@@ -22,7 +22,7 @@
 
 llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
-    auto resultType = node->getType();
+    auto resultType = resolvedOrInferredType(node);
     bool hasResult = !resultType.empty();
 
     DEBUG_LOG_VAL("    Expr: IfElse",
@@ -118,7 +118,7 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
     if (hasResult) {
         DEBUG_LOG("      Returning phi node");
         // Phase 8d.3: 各分支已归一为 +1，phi 整体作为 fresh 句柄交给外层 statement frame
-        if (resultType.isRc() || resultType.isArrayGeneric() || resultType.isWeak()) {
+        if (resultType.isRcHandle()) {
             recordTemp(phi, resultType);
         }
         return phi;
@@ -128,7 +128,7 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
 
 llvm::Value* Compiler::compileOneLineIfElseExpr(p<ExprOneLineIfElseNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
-    auto resultType = node->getType();
+    auto resultType = resolvedOrInferredType(node);
     bool hasResult = !resultType.empty();
 
     DEBUG_LOG_VAL("    Expr: OneLineIfElse", "type=" << (hasResult ? resultType.name : "void"));
@@ -175,7 +175,7 @@ llvm::Value* Compiler::compileOneLineIfElseExpr(p<ExprOneLineIfElseNode> node) {
     phi->addIncoming(falseVal, elseEndBB);
 
     // Phase 8d.3: 两支已归一 +1，phi 作 fresh 句柄登记外层
-    if (resultType.isRc() || resultType.isArrayGeneric() || resultType.isWeak()) {
+    if (resultType.isRcHandle()) {
         recordTemp(phi, resultType);
     }
     return phi;
@@ -280,19 +280,24 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
         seenVariants.insert(pat->variantName().getText());
     }
 
-    // 3. 结果类型一致性（流终止块臂不参与，与 if / try-catch 同档）
+    // 3. 结果类型：优先 SemaPass 靶向后的 resolved（空 `[]` / `[T*N]` 字面量 → Array<T>）。
     TypeInfo resultType;
     bool firstSet = false;
-    for (auto& arm : arms) {
-        if (arm->skipsTypeMerge()) continue;
-        auto t = arm->resultType();
-        if (!firstSet) {
-            resultType = t;
-            firstSet = true;
-            continue;
-        }
-        if (t != resultType) {
-            throwSemaGap(arm->resultLine(), arm->resultCol());
+    if (node->hasResolvedType() && !node->resolvedType().empty()) {
+        resultType = node->resolvedType();
+        firstSet = true;
+    } else {
+        for (auto& arm : arms) {
+            if (arm->skipsTypeMerge()) continue;
+            auto t = arm->resultType();
+            if (!firstSet) {
+                resultType = t;
+                firstSet = true;
+                continue;
+            }
+            if (t != resultType) {
+                throwSemaGap(arm->resultLine(), arm->resultCol());
+            }
         }
     }
     bool hasResult = !resultType.empty();
@@ -514,7 +519,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
         }
         // RC 句柄结果由 compileBranchResultNormalized 已归一为 fresh +1，
         // 登记到外层 statement frame
-        if (resultType.isRc() || resultType.isArrayGeneric() || resultType.isWeak()) {
+        if (resultType.isRcHandle()) {
             recordTemp(phi, resultType);
         }
         return phi;
@@ -599,12 +604,9 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
     if (tryBlock->hasResult() && tryBlock->resultExpr()) {
         try {
             auto* re = tryBlock->resultExpr();
-            resultType = re->getType();
-            if (re->hasResolvedType()) {
-                const auto& resolved = re->resolvedType();
-                if (resolved.isArrayGeneric() && resultType.isArray()) {
-                    resultType = resolved;
-                }
+            resultType = resolvedOrInferredType(re);
+            if (node->hasResolvedType() && !node->resolvedType().empty()) {
+                resultType = node->resolvedType();
             }
         } catch (...) { // NOLINT(bugprone-empty-catch) — getType 失败: 仍编译 resultExpr，异常留上层
         }
@@ -716,7 +718,7 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
         for (auto& inc : phiIncoming) {
             phi->addIncoming(inc.first, inc.second);
         }
-        if (resultType.isRc() || resultType.isArrayGeneric() || resultType.isWeak()) {
+        if (resultType.isRcHandle()) {
             recordTemp(phi, resultType);
         }
         return phi;

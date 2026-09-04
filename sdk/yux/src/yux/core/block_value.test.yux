@@ -1,11 +1,32 @@
 ; if / try / match 块值：void 不建 phi、fallible void 隐式成功、Array 经 try 绑定、ret []
+; Slice 0：Array 字面量靶向、单行 if、match 臂形态、catch []、Rc/String 句柄、嵌套
 
 enum BlockErr {
   Boom
 }
 
+enum Pick {
+  A
+  B
+  C
+}
+
+struct BlockCell {
+  n i32
+
+  #Static
+  fn make(n i32) BlockCell {
+    ret Self {
+      .n = n
+    }
+  }
+}
+
 fn void_ok() ! BlockErr {
   ret;
+}
+
+fn do_nothing() {
 }
 
 ; 成功通道无显式 `ret;`：末尾无 else 的 if 包成隐式 ret <void-if>
@@ -19,8 +40,78 @@ fn give_arr() Array<i32> ! BlockErr {
   ret [1, 2]
 }
 
+fn give_arr2() Array<i32> ! BlockErr {
+  ret [3]
+}
+
 fn empty_arr() Array<i32> ! BlockErr {
   ret []
+}
+
+fn give_plain() Array<i32> {
+  ret [1, 2]
+}
+
+fn give_plain2() Array<i32> {
+  ret [8]
+}
+
+fn give_str() String ! BlockErr {
+  ret "ok"
+}
+
+fn give_str2() String {
+  ret "fb"
+}
+
+fn give_cell(n i32) Rc<BlockCell> ! BlockErr {
+  #Mut let c Rc<BlockCell> = BlockCell::make(n)
+  ret c
+}
+
+fn give_cell_plain(n i32) Rc<BlockCell> {
+  #Mut let c Rc<BlockCell> = BlockCell::make(n)
+  ret c
+}
+
+fn pick_match(p Pick) Array<i32> {
+  ret match p {
+    Pick::A => give_plain()
+    Pick::B => {
+      give_plain2()
+    }
+    Pick::C => {
+      ret [9]
+    }
+  }
+}
+
+fn nested_if_try(c bool) Array<i32> {
+  ret if c {
+    try {
+      give_arr()
+    } catch e BlockErr {
+      []
+    }
+  } else {
+    give_plain2()
+  }
+}
+
+fn nested_try_match(p Pick) Array<i32> {
+  ret try {
+    match p {
+      Pick::A => give_arr()
+      Pick::B => {
+        give_arr2()
+      }
+      Pick::C => {
+        ret [9]
+      }
+    }
+  } catch e BlockErr {
+    []
+  }
 }
 
 ; 验证：void try/catch 末调用不写 `;` 不当成有值 phi
@@ -70,4 +161,184 @@ fn test_ret_empty_array_fallible() {
     fail("empty_arr should succeed");
   }
   assert_eq(a.len(), 0)
+}
+
+; 验证：两支都是 fresh 调用，绑 Array
+#Test
+fn test_if_array_call_fresh() {
+  let a Array<i32> = if true {
+    give_plain()
+  } else {
+    give_plain2()
+  }
+  assert_eq(a.len(), 2)
+  assert_eq(a[0], 1)
+  let b Array<i32> = if false {
+    give_plain()
+  } else {
+    give_plain2()
+  }
+  assert_eq(b.len(), 1)
+  assert_eq(b[0], 8)
+}
+
+; 验证：空字面量靶向 Array，phi 类型是 Array 不是 `[__empty * 0]`
+#Test
+fn test_if_array_empty_literal() {
+  let a Array<i32> = if false {
+    []
+  } else {
+    give_plain()
+  }
+  assert_eq(a.len(), 2)
+  let b Array<i32> = if true {
+    []
+  } else {
+    give_plain()
+  }
+  assert_eq(b.len(), 0)
+}
+
+; 验证：非空字面量靶向 Array
+#Test
+fn test_if_array_nonempty_literal() {
+  let a Array<i32> = if true {
+    [1]
+  } else {
+    [2]
+  }
+  assert_eq(a.len(), 1)
+  assert_eq(a[0], 1)
+  let b Array<i32> = if false {
+    [1]
+  } else {
+    [2]
+  }
+  assert_eq(b.len(), 1)
+  assert_eq(b[0], 2)
+}
+
+; 验证：单行 if 绑 Array
+#Test
+fn test_oneline_if_array() {
+  let a Array<i32> = if true { give_plain() } else { give_plain2() }
+  assert_eq(a.len(), 2)
+  assert_eq(a[0], 1)
+  let b Array<i32> = if false { give_plain() } else { give_plain2() }
+  assert_eq(b.len(), 1)
+  assert_eq(b[0], 8)
+}
+
+; 验证：match 臂 `=> expr` / `=> { expr }` / `=> { ret e }` 绑 Array
+#Test
+fn test_match_arm_array() {
+  let a Array<i32> = pick_match(Pick::A)
+  assert_eq(a.len(), 2)
+  assert_eq(a[0], 1)
+  let b Array<i32> = pick_match(Pick::B)
+  assert_eq(b.len(), 1)
+  assert_eq(b[0], 8)
+  let c Array<i32> = pick_match(Pick::C)
+  assert_eq(c.len(), 1)
+  assert_eq(c[0], 9)
+}
+
+; 验证：try 成功通道是调用，catch 空字面量靶向 Array（E7010 须用 resolved）
+#Test
+fn test_try_array_catch_empty() {
+  let a Array<i32> = try {
+    give_arr()
+  } catch e BlockErr {
+    []
+  }
+  assert_eq(a.len(), 2)
+  assert_eq(a[0], 1)
+}
+
+; 验证：普通（非 fallible）`ret [1, 2]` 靶向 Array
+#Test
+fn test_ret_nonempty_array_plain() {
+  let a Array<i32> = give_plain()
+  assert_eq(a.len(), 2)
+  assert_eq(a[0], 1)
+  assert_eq(a[1], 2)
+}
+
+; 验证：void 单行 if / 块形 if 末调用不写 `;`
+#Test
+fn test_void_if_without_semicolon() {
+  if true {
+    do_nothing()
+  } else {
+    do_nothing()
+  }
+  if false { do_nothing() } else { do_nothing() }
+}
+
+; 验证：void match 臂不写 `;`
+#Test
+fn test_void_match_arm_without_semicolon() {
+  let p Pick = Pick::A
+  match p {
+    Pick::A => do_nothing()
+    Pick::B => {
+      do_nothing()
+    }
+    Pick::C => do_nothing()
+  }
+}
+
+; 验证：String 经 if / try 绑定（字面量、调用、phi retain）
+#Test
+fn test_string_if_try() {
+  let a String = if true { "yes" } else { "no" }
+  assert_eq(a, "yes")
+  let b String = if false { "yes" } else { give_str2() }
+  assert_eq(b, "fb")
+  let existing String = "keep"
+  let c String = if true { existing } else { "other" }
+  assert_eq(c, "keep")
+  assert_eq(existing, "keep")
+  let d String = try {
+    give_str()
+  } catch e BlockErr {
+    "fb"
+  }
+  assert_eq(d, "ok")
+}
+
+; 验证：Rc 经 if / try 绑定（句柄 phi + retain 归一）
+#Test
+fn test_rc_if_try() {
+  let a Rc<BlockCell> = if true {
+    give_cell_plain(1)
+  } else {
+    give_cell_plain(2)
+  }
+  assert_eq(a.n, 1)
+  let b Rc<BlockCell> = try {
+    give_cell(7)
+  } catch e BlockErr {
+    give_cell_plain(0)
+  }
+  assert_eq(b.n, 7)
+}
+
+; 验证：if 里 try、try 里 match 作块值
+#Test
+fn test_nested_if_try_match() {
+  let a Array<i32> = nested_if_try(true)
+  assert_eq(a.len(), 2)
+  assert_eq(a[0], 1)
+  let b Array<i32> = nested_if_try(false)
+  assert_eq(b.len(), 1)
+  assert_eq(b[0], 8)
+  let c Array<i32> = nested_try_match(Pick::A)
+  assert_eq(c.len(), 2)
+  let d Array<i32> = nested_try_match(Pick::B)
+  assert_eq(d.len(), 1)
+  assert_eq(d[0], 3)
+  let e Array<i32> = nested_try_match(Pick::C)
+  assert_eq(e.len(), 1)
+  assert_eq(e[0], 9)
 }

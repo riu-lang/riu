@@ -111,21 +111,37 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
     // Phase B：getType 诊断默认由 SemaPass 重抛。
     // Phase C：泛型模板体内再吞依赖 T 具体化的码；形态检查仍重抛。
     // 方法点 E3095 先记下，给后面的 Dot 分支报 E1101/E1140；ID-literal 的 E3095 重抛。
+    // if / match / try：先下钻子树带靶向（空 `[]` → Array<T>），再 getType 汇合，
+    // 否则 `[]` 的 `[__empty * 0]` 会在子节点 resolved 写好之前假阳性 E3005/E7010。
     std::optional<YuxError> deferredMethodE3095;
-    try {
-        expr->setResolvedType(expr->getType());
-    } catch (const YuxError& e) {
-        const bool methodPointE3095 =
-            isMethodPointCall(expr) && e.getCode() && std::string_view(e.getCode()) == "E3095";
-        const bool swallow =
-            methodPointE3095 || (!_currentTypeParams.empty() && !isMorphologicalGenericCode(e.getCode()));
-        if (!swallow) throw;
-        if (methodPointE3095) deferredMethodE3095 = e;
-    } catch (...) { // NOLINT(bugprone-empty-catch) — release 仍吞非 YuxError；debug 下 assert
+    const bool delayCtrlResolved = dynamic_cast<p<ExprIfElseNode>>(expr) ||
+                                   dynamic_cast<p<ExprOneLineIfElseNode>>(expr) ||
+                                   dynamic_cast<p<ExprMatchNode>>(expr) || dynamic_cast<p<ExprTryCatchNode>>(expr);
+    auto writeResolvedFromGetType = [&](p<ExprNode> n) {
+        try {
+            n->setResolvedType(n->getType());
+        } catch (const YuxError& e) {
+            const bool methodPointE3095 =
+                isMethodPointCall(n) && e.getCode() && std::string_view(e.getCode()) == "E3095";
+            const bool swallow =
+                methodPointE3095 || (!_currentTypeParams.empty() && !isMorphologicalGenericCode(e.getCode()));
+            if (!swallow) throw;
+            if (methodPointE3095) deferredMethodE3095 = e;
+        } catch (...) { // NOLINT(bugprone-empty-catch) — release 仍吞非 YuxError；debug 下 assert
 #ifndef NDEBUG
-        assert(false && "getType threw non-YuxError; SemaPass must not swallow unknown failures");
+            assert(false && "getType threw non-YuxError; SemaPass must not swallow unknown failures");
 #endif
-    }
+        }
+    };
+    auto finishCtrlResolved = [&](p<ExprNode> n) {
+        writeResolvedFromGetType(n);
+        if (!expected || !n->hasResolvedType()) return;
+        TypeInfo want = expected->peelRef();
+        if (!want.isArrayGeneric()) return;
+        auto got = n->resolvedType();
+        if (isEmptyArrayType(got) || got.isArray()) n->setResolvedType(want);
+    };
+    if (!delayCtrlResolved) writeResolvedFromGetType(expr);
 
     if (auto n = dynamic_cast<p<ExprLiteralNode>>(expr)) {
         // Phase 2e 构造模型重构: `#Static fn` 体内禁用 `$` (E3128).
@@ -1316,6 +1332,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         } else {
             _movedVars = std::move(afterThenMoved);
         }
+        finishCtrlResolved(n);
         tryValidateIfElse(n);
         return;
     }
@@ -1323,6 +1340,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         visitExpr(n->condition());
         visitExpr(n->trueValue(), expected);
         visitExpr(n->falseValue(), expected);
+        finishCtrlResolved(n);
         tryValidateOneLineIfElse(n);
         return;
     }
@@ -1812,6 +1830,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
             else
                 visitExpr(arm->body(), expected);
         }
+        finishCtrlResolved(n);
         checkMatchArmTypes(n->arms(), _currentTypeParams, &_instSubst);
         tryValidateMatchScrut(n);
         return;
@@ -1862,33 +1881,24 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         for (auto& c : n->catches())
             visitBlock(c->body(), expected);
 
-        // Bucket 6 (CURRENT-check.md): SemaPass 接管 E7010 (catch arm body 末
-        // 表达式类型必须与 try block 末表达式类型一致).
-        //
-        // 仅在 try block hasResult 且 result expr getType 成功时启用; 任一 arm
-        // 的 getType 抛错 (lambda 形参等) 跳过该 arm, 留 Compiler 兜底. 流终止
-        // arm 自然 hasResult=false, 此处略过. 与 Compiler 端 (compiler_expr.cpp
-        // E7010 throw) 同语义按 .name 比对.
+        finishCtrlResolved(n);
+
+        // E7010：catch arm 末类型与 try 块一致。须用 resolved（空 `[]` 的 getType）
+        // 是 `[__empty * 0]`，靶向后 resolved 才是 Array<T>）。
         if (n->tryBlock()->hasResult() && n->tryBlock()->resultExpr()) {
-            try {
-                auto resultType = n->tryBlock()->resultExpr()->getType();
+            TypeInfo resultType;
+            if (tryGetExprType(n->tryBlock()->resultExpr(), resultType)) {
+                resultType = applyInstSubst(resultType);
                 for (auto& arm : n->catches()) {
                     if (!arm->body()->hasResult() || !arm->body()->resultExpr()) continue;
-                    try {
-                        auto armT = arm->body()->resultExpr()->getType();
-                        if (armT.name != resultType.name) {
-                            int aline = arm->getLineNumber() > 0 ? arm->getLineNumber() : line;
-                            int acol = arm->getColumn() > 0 ? arm->getColumn() : col;
-                            throw YuxError(aline, acol, ErrorCode::E7010, armT.name, resultType.name);
-                        }
-                    } catch (const YuxError&) {
-                        throw;
-                    } catch (...) { // NOLINT(bugprone-empty-catch) — arm getType 失败: 留 Compiler 兜底
-                    }
+                    TypeInfo armT;
+                    if (!tryGetExprType(arm->body()->resultExpr(), armT)) continue;
+                    armT = applyInstSubst(armT);
+                    if (blockMergeTypesEq(armT, resultType)) continue;
+                    int aline = arm->getLineNumber() > 0 ? arm->getLineNumber() : line;
+                    int acol = arm->getColumn() > 0 ? arm->getColumn() : col;
+                    throw YuxError(aline, acol, ErrorCode::E7010, armT.name, resultType.name);
                 }
-            } catch (const YuxError&) {
-                throw;
-            } catch (...) { // NOLINT(bugprone-empty-catch) — try result getType 失败: 留 Compiler 兜底
             }
         }
         return;

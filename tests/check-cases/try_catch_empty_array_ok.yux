@@ -1,0 +1,18 @@
+; require-sdk
+; try 成功通道 Array 调用，catch 空字面量：E7010 须用 resolved，不能比 getType 名
+enum E {
+  Boom
+}
+
+fn give() Array<i32> ! E {
+  ret [1]
+}
+
+fn main() {
+  let _ Array<i32> = try {
+    give()
+  } catch e E {
+    []
+  }
+  ret;
+}
