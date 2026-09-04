@@ -153,6 +153,15 @@ void put(OverrideMap& m, antlr4::Token* tok, TT kind, int mods = 0) {
     m[tok->getTokenIndex()] = {static_cast<int>(kind), mods};
 }
 
+void putTypePath(OverrideMap& m, ::yux::yuxParser::TypePathContext* path, TT lastKind, int lastMods = 0) {
+    if (!path) return;
+    const auto& segs = path->segs;
+    for (size_t i = 0; i < segs.size(); ++i) {
+        bool last = i + 1 == segs.size();
+        put(m, segs[i], last ? lastKind : TT::Class, last ? lastMods : 0);
+    }
+}
+
 // 后序遍历：子节点先处理。Phase 6D 后 N(...) 同名 ctor 已被 E3130 拦截,
 // 无需再额外维护 structNames 用于 ExprCall 着色。
 void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
@@ -207,23 +216,23 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
             put(out, tok, TT::Property, 0);
     } else if (auto* c = dynamic_cast<P::ExprStructLitContext*>(node)) {
         // Self { .x = 1 .y = 2 } 或 Name { .x = 1 } —— 类型名按 Class，字段名按 Property
-        if (c->typeName) put(out, c->typeName, TT::Class, 0);
+        if (c->typeName) putTypePath(out, c->typeName, TT::Class, 0);
         for (auto* fi : c->fieldInits) {
             if (fi && fi->name) put(out, fi->name, TT::Property, 0);
         }
     } else if (auto* c = dynamic_cast<P::StatementStaticFieldSetContext*>(node)) {
         // Type::FIELD = expr —— 类型名按 Class，字段名按 Property
-        if (c->typeName) put(out, c->typeName, TT::Class, 0);
+        if (c->typeName) putTypePath(out, c->typeName, TT::Class, 0);
         if (c->fieldName) put(out, c->fieldName, TT::Property, 0);
     } else if (auto* c = dynamic_cast<P::TypeNormalContext*>(node)) {
-        if (auto* term = c->ID()) put(out, term->getSymbol(), TT::Class, 0);
+        putTypePath(out, c->typePath(), TT::Class, 0);
     } else if (auto* c = dynamic_cast<P::TypeGenericContext*>(node)) {
-        if (auto* term = c->ID()) put(out, term->getSymbol(), TT::Class, 0);
+        putTypePath(out, c->typePath(), TT::Class, 0);
     } else if (auto* c = dynamic_cast<P::TypeNormalWithRefContext*>(node)) {
         // 函数参数 / 返回类型的 typeWithRef 入口；之前漏覆盖导致 i32 等被当 Variable
-        if (auto* term = c->ID()) put(out, term->getSymbol(), TT::Class, 0);
+        putTypePath(out, c->typePath(), TT::Class, 0);
     } else if (auto* c = dynamic_cast<P::TypeGenericWithRefContext*>(node)) {
-        if (auto* term = c->ID()) put(out, term->getSymbol(), TT::Class, 0);
+        putTypePath(out, c->typePath(), TT::Class, 0);
         // TypeNullable / TypeArray / TypeTuple 及对应 WithRef 变体本身不持有
         // 顶层 ID（仅是结构容器），其内部嵌套的 type / typeWithRef 由父级遍历递归覆盖
         // Function<...> 走 TypeGeneric / TypeGenericWithRef
@@ -241,7 +250,7 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
         // E::V / T::foo：枚举构造与静态函数调用共用此节点。
         // 枚举 variant 按惯例大写开头（PascalCase），函数/方法小写开头（camelCase）；
         // 语法层以此启发式分流着色。
-        if (c->enumName) put(out, c->enumName, TT::Enum, 0);
+        if (c->enumName) putTypePath(out, c->enumName, TT::Enum, 0);
         if (c->variant) {
             std::string vName = c->variant->getText();
             bool isUpper = !vName.empty() && (vName[0] >= 'A' && vName[0] <= 'Z');
@@ -249,7 +258,7 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
         }
     } else if (auto* c = dynamic_cast<P::PatternEnumContext*>(node)) {
         // match 模式 E::V(a, b)：a/b 是新引入绑定，按 Parameter 染色
-        if (c->enumName) put(out, c->enumName, TT::Enum, 0);
+        if (c->enumName) putTypePath(out, c->enumName, TT::Enum, 0);
         if (c->variant) put(out, c->variant, TT::EnumMember, 0);
         for (auto* tok : c->binds)
             put(out, tok, TT::Parameter, MOD_DECLARATION);

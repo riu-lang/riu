@@ -101,6 +101,8 @@ struct ResolvedSymbol {
 
 class ScopeNode;
 
+class FileNode;
+
 class Node {
 protected:
     p<Node> _parent;
@@ -117,6 +119,9 @@ public:
     [[nodiscard]] p<Node> parent() const;
 
     [[nodiscard]] p<ScopeNode> findNearestScope() const;
+
+    // 沿 parent / parentScope 找到所属 FileNode；合成节点可能为空
+    [[nodiscard]] FileNode* enclosingFile() const;
 
     void setLineNumber(int line) { _line = line; }
 

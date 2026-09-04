@@ -64,6 +64,10 @@ public:
     // 占位由编译器合成不需要走 decl 查找。SemaPass 做泛型 arity 校验 (E6011) 等仅需
     // 看到声明形态的场景要显式传 true, 否则 Rc<T> 查不到, arity 校验静默漏报。
     [[nodiscard]] StructDeclNode* getStructDecl(const string& name, bool includeBuiltin = false) const;
+    // 仅本文件声明（不含 wildcard）。resolveTypePath 分层查找用。
+    [[nodiscard]] StructDeclNode* localStructDecl(const string& name, bool includeBuiltin = false) const;
+    [[nodiscard]] EnumDeclNode* localEnumDecl(const string& name) const;
+    [[nodiscard]] AliasDeclNode* localAliasDecl(const string& name) const;
     [[nodiscard]] StructImplNode* getStructImpl(const string& name) const;
     [[nodiscard]] FnNode* getFunction(const string& name) const;
     // 同 getFunction，同时返回所属 FileNode；搜索范围扩展到 wildcardImports
@@ -107,8 +111,8 @@ public:
     void addModuleAlias(const string& alias, FileNode* file);
     [[nodiscard]] FileNode* moduleAlias(const string& alias) const;
 
-    // `use a.b` 中 a.b 是目录 → 包别名 `b` 指向点分路径 "a.b"，并记录直接 .yux 子项
-    // 对应的 FileNode。支持 `b.child.fn()` 形式调用（单层子模块）。
+    // `use a.b` 中 a.b 是目录 → 包别名 `b` 指向点分路径 "a.b"，并记录子 .yux
+    // （键可为 `child` 或 `sub.inner`）。查找沿 parent scope（SDK 上的 `yux` 包）。
     void addPackageAlias(const string& alias, const string& dottedPath);
     [[nodiscard]] const string* packageAlias(const string& alias) const;
     void addPackageChild(const string& alias, const string& child, FileNode* file);

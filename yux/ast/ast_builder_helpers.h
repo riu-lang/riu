@@ -33,6 +33,23 @@ inline string ctxSource(antlr4::ParserRuleContext* ctx) {
     return input->getText(antlr4::misc::Interval(ctx->getStart()->getStartIndex(), ctx->getStop()->getStopIndex()));
 }
 
+inline TypePath typePathFromCtx(yux::yuxParser::TypePathContext* ctx) {
+    TypePath p;
+    if (!ctx) return p;
+    p.segs.reserve(ctx->segs.size());
+    for (auto* id : ctx->segs)
+        p.segs.emplace_back(id);
+    return p;
+}
+
+inline string typeNormalLastName(yux::yuxParser::TypeNormalContext* tn) {
+    return typePathFromCtx(tn ? tn->typePath() : nullptr).lastName();
+}
+
+inline string typeGenericLastName(yux::yuxParser::TypeGenericContext* tg) {
+    return typePathFromCtx(tg ? tg->typePath() : nullptr).lastName();
+}
+
 // 已知的构建注解名字白名单；未知注解在 AST 构建期报错
 // #NoReturn 由 DRAFT-错误.md 引入（spec §11.5.1）：
 //   #NoReturn        零参；标在 fn / structImpl 内方法上
@@ -41,8 +58,8 @@ inline string ctxSource(antlr4::ParserRuleContext* ctx) {
 //   #Spec            零参；标在 struct 上 — 把声明转为 spec（仅签名）
 //   #Impl(SpecName)  单参；标在 struct 上 — 实现关系，替代旧 `: D1 + D2` 头部槽
 inline const set<string>& knownAnnos() {
-    static const set<string> s = {"Builtin", "Test", "DraftLike", "NoReturn", "Const",
-                                  "Static",  "Spec", "Impl",      "Reflect",  "NoCopy",   "CName"};
+    static const set<string> s = {"Builtin", "Test", "DraftLike", "NoReturn", "Const", "Static",
+                                  "Spec",    "Impl", "Reflect",   "NoCopy",   "CName"};
     return s;
 }
 

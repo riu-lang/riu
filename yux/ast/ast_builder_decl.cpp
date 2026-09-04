@@ -257,17 +257,14 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
 std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
     auto file = any_cast_p<FileNode>(stack.back());
 
-    string modName;
-    for (size_t i = 0; i < ctx->pkgs.size(); ++i) {
-        if (i > 0) modName += '.';
-        modName += ctx->pkgs[i]->getText();
-    }
+    auto path = typePathFromCtx(ctx->typePath());
+    string modName = path.dotted();
     bool wildcard = ctx->useAll != nullptr;
     int line = ctx->getStart() ? static_cast<int>(ctx->getStart()->getLine()) : 0;
 
     string alias;
-    if (!wildcard && !ctx->pkgs.empty()) {
-        alias = ctx->pkgs.back()->getText();
+    if (!wildcard && !path.empty()) {
+        alias = path.lastName();
     }
 
     DEBUG_LOG_VAL("  Visit: Import", modName << (wildcard ? ".*" : ""));
@@ -357,7 +354,9 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
                             string sname = decl->name().getText();
                             if (sname.empty() || sname[0] == '_') continue;
                             if (file->lookupSymbol(sname)) continue;
-                            file->registerSymbol(sname, {SymbolKind::Struct, sname, TypeInfo(sname)});
+                            SymbolInfo sym{SymbolKind::Struct, sname, TypeInfo(sname, target->moduleName())};
+                            sym.moduleName = target->moduleName();
+                            file->registerSymbol(sname, sym);
                             DEBUG_LOG_VAL("    inject struct (from pkg export)", sname << " from " << childMod);
                         }
 
@@ -523,7 +522,9 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
         string sname = decl->name().getText();
         if (sname.empty() || sname[0] == '_') continue; // 私有结构体不注入
         if (file->lookupSymbol(sname)) continue;        // 已有同名符号则跳过
-        file->registerSymbol(sname, {SymbolKind::Struct, sname, TypeInfo(sname)});
+        SymbolInfo sym{SymbolKind::Struct, sname, TypeInfo(sname, imported->moduleName())};
+        sym.moduleName = imported->moduleName();
+        file->registerSymbol(sname, sym);
         DEBUG_LOG_VAL("    inject imported struct", sname << " from " << imported->moduleName());
     }
 
@@ -546,7 +547,7 @@ std::any ASTBuilder::visitAliasDecl(yux::yuxParser::AliasDeclContext* ctx) {
                                ErrorCode::E2015);
             }
             if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(pCtx->type(0))) {
-                typeParams.push_back(tn->ID()->getText());
+                typeParams.push_back(typeNormalLastName(tn));
             }
         }
     }

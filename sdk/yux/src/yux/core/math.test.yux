@@ -10,6 +10,12 @@ fn test_math_abs_f64_neg() {
   assert_eq(math.abs(-3.14), 3.14)
 }
 
+; 验证：全限定 yux.core.math.abs
+#Test
+fn test_math_fq_abs() {
+  assert_eq(yux.core.math.abs(-3.14), 3.14)
+}
+
 ; 验证：f64 类型的绝对值计算正确性
 #Test
 fn test_math_abs_f64_positive() {

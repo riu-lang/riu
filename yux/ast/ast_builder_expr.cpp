@@ -766,10 +766,19 @@ std::any ASTBuilder::visitExprArrayInit(yux::yuxParser::ExprArrayInitContext* ct
 //
 // Self::name 与 Type::name 同节点；sema 把 Self 解析成 enclosing struct（E3123 体外）。
 std::any ASTBuilder::visitExprEnumCtor(yux::yuxParser::ExprEnumCtorContext* ctx) {
-    Token lhsTok = ctx->selfLhs != nullptr ? ctx->selfLhs : ctx->enumName;
-    DEBUG_LOG_VAL("    Expr: PathCall", lhsTok.getText() << "::" << ctx->variant->getText());
+    TypePath lhsPath;
+    Token lhsTok;
+    if (ctx->selfLhs != nullptr) {
+        lhsTok = ctx->selfLhs;
+        lhsPath = TypePath(lhsTok);
+    } else {
+        lhsPath = typePathFromCtx(ctx->enumName);
+        lhsTok = lhsPath.last();
+    }
+    DEBUG_LOG_VAL("    Expr: PathCall", lhsPath.dotted() << "::" << ctx->variant->getText());
     auto scope = currentScope();
     auto node = createWithLine<ExprPathCallNode>(ctx, scope, lhsTok, ctx->variant);
+    node->setLhsPath(std::move(lhsPath));
 
     // Phase 6E.4: turbofish 形态 `Type:<T>::name:<U>(args)` 解析 LHS / RHS 类型实参.
     // 类型引用位不允许 bounds (与 visitTypeGeneric 同条款), 命中即 E2015.
@@ -804,18 +813,21 @@ std::any ASTBuilder::visitExprEnumCtor(yux::yuxParser::ExprEnumCtorContext* ctx)
 std::any ASTBuilder::visitExprStructLit(yux::yuxParser::ExprStructLitContext* ctx) {
     DEBUG_LOG("    Expr: StructLit { ... }");
     auto scope = currentScope();
-    // DRAFT-const-eval Phase 5: LHS 可为 Self 或通用 ID (typeName)
+    // DRAFT-const-eval Phase 5: LHS 可为 Self 或 typePath
     bool isSelfForm = ctx->selfLhs != nullptr;
     Token leadTk;
     string structName;
+    TypePath path;
     if (isSelfForm) {
         leadTk = ctx->selfLhs;
         structName = findEnclosingStructName();
     } else {
-        leadTk = ctx->typeName;
-        structName = ctx->typeName->getText();
+        path = typePathFromCtx(ctx->typeName);
+        leadTk = path.last();
+        structName = path.lastName();
     }
     auto node = createWithLine<ExprStructLitNode>(ctx, scope, leadTk, structName, isSelfForm);
+    if (!isSelfForm) node->setTypePath(std::move(path));
     for (auto* fCtx : ctx->fieldInits) {
         node->addField(any_cast_p<FieldInitNode>(visit(fCtx)));
     }
@@ -832,13 +844,16 @@ std::any ASTBuilder::visitFieldInit(yux::yuxParser::FieldInitContext* ctx) {
 // match 模式：E::V / E::V() / E::V(b1, b2, ...)
 // 绑定名重复在 ast 阶段不查（v1 留给 codegen 报 E2027）
 std::any ASTBuilder::visitPatternEnum(yux::yuxParser::PatternEnumContext* ctx) {
-    DEBUG_LOG_VAL("    Pattern: Enum", ctx->enumName->getText() << "::" << ctx->variant->getText());
+    auto path = typePathFromCtx(ctx->enumName);
+    DEBUG_LOG_VAL("    Pattern: Enum", path.dotted() << "::" << ctx->variant->getText());
     auto scope = currentScope();
     vector<Token> binds;
     binds.reserve(ctx->binds.size());
     for (auto* tk : ctx->binds)
         binds.emplace_back(tk);
-    return (createWithLine<EnumPatternNode>(ctx, scope, ctx->enumName, ctx->variant, std::move(binds)));
+    auto node = createWithLine<EnumPatternNode>(ctx, scope, path.last(), ctx->variant, std::move(binds));
+    node->setEnumPath(std::move(path));
+    return node;
 }
 
 // match 模式：else 兜底

@@ -158,7 +158,7 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
             // 形参名：取 typeParam.type 的 typeNormal 分支 ID
             string paramName;
             if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(pCtx->type(0))) {
-                paramName = tn->ID()->getText();
+                paramName = typeNormalLastName(tn);
             }
             typeParams.push_back(paramName);
 
@@ -166,9 +166,9 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
             vector<string> bounds;
             for (auto bCtx : pCtx->bounds) {
                 if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(bCtx)) {
-                    bounds.push_back(tn->ID()->getText());
+                    bounds.push_back(typeNormalLastName(tn));
                 } else if (auto tg = dynamic_cast<yux::yuxParser::TypeGenericContext*>(bCtx)) {
-                    bounds.push_back(tg->ID()->getText());
+                    bounds.push_back(typeGenericLastName(tg));
                 }
             }
             typeParamBounds.push_back(std::move(bounds));

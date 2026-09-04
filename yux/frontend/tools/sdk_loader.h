@@ -30,8 +30,11 @@ std::string findSdkPath();
 // 读 <sdkDir>/pkg 文件, 解析为 stem → SdkPkgEntry。
 std::map<std::string, SdkPkgEntry> readSdkPkg(const std::string& sdkDir);
 
-// 给非平铺导出在 _sdkFile 上登记模块别名。
-void registerSdkPkgAliases(Yux& yux, const std::map<std::string, SdkPkgEntry>& pkgMap);
+// 在 _sdkFile 上登记默认已导入的 `yux.core` 路径前缀：
+// - 每个 `yux.core.<stem>` 的末段别名（`map.Map` / `math.abs`）
+// - 包根 `yux` 只挂 `core.<stem>` 子路径（`yux.core.map.Map`）
+// 不把 `yux` 做成可点任意子包的根：未 use 的包（日后的 `yux.io`）不能靠包根漏出来。
+void registerSdkModulePaths(Yux& yux);
 
 // 把 sdkDir 下所有非 .test.yux 解析进 yux。出错抛 YuxError (含解析失败 / AST 错误)。
 // 错误时附带的 sourcePath 是触发错误的具体 .yux 文件。

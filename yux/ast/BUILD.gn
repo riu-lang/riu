@@ -37,6 +37,7 @@ static_library("yux_ast") {
     "node/node.cpp",
     "node/statement_node.cpp",
     "node/struct_node.cpp",
+    "node/type_node.cpp",
     "gen/yux/yuxLexer.cpp",
     "gen/yux/yuxParser.cpp",
     "gen/yux/yuxParserBaseVisitor.cpp",

@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-09-04 —— SDK 子模块别名与全限定路径
+
+- **新增 §10.4.1.3.1**：每个 `yux.core.<stem>` 在 parent scope 登记末段模块别名（`io.read_file` / `math.abs`）与全限定包路径（`yux.core.io.read_file`，隐式包别名 `yux`）。`pkg` `name.*` 扁平与别名并存。用户项目 `use yux.core.io` 命中已加载 SDK 模块，不走用户源根。类型名仍为单 `ID`（不写 `io.IoErr`）。
+- **修改 §10.4.1.4 / §10.4.1.5**：IO / Map 用法补别名与全限定；类型名仍靠扁平。
+- **冲突 / 兼容**：纯增量。原先裸名 / `use yux.core.io.*` 不变。
+
 ## 2026-09-04 —— SDK String trim/lines 与 `Map<K, V>`
 
 - **修改 §9.3.4 / 新增 §9.3.4.5**：`trim` / `trim_left` / `trim_right` / `lines()`。空白为 ASCII U+0009–U+000D 与空格；`lines` 按 `\n` 切、`\r\n` 归一，末尾换行不产生空段。§9.3.4.1「不提供」清单去掉 `trim`（仍不提供 `substring` / `repeat`）。

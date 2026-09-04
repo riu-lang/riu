@@ -26,9 +26,10 @@ program:
 // 导入
 /////////
 
-// use a.b.c.*
+// use a.b.c / use a.b.c.* / use a.b.MyType
+// 末段是否类型由 sema 分流（先当模块路径，否则当父模块里的类型）；产生式与 typePath 同形
 imports:
-    Use pkgs+=ID (SymbolDot pkgs+=ID)*
+    Use typePath
     (SymbolDot useAll=SymbolMul)?
     LineEnd
     ;
@@ -135,15 +136,20 @@ numInt: INT;
 // 浮点数
 numFloat: FLOAT;
 
+// 限定类型路径：裸名 `Map` 或 `yux.core.map.Map`。身份解析在 sema（T2）。
+typePath:
+    segs+=ID (SymbolDot segs+=ID)*
+    ;
+
 type:
-      ID #typeNormal
+      typePath #typeNormal
     // [PROBE static-fn] Self 类型字面量；struct / #Spec body 内合法，体外由 sema 拒
     | SelfType #typeSelf
     // T ! E 须在 typeNullable 之前，以支持 i32? ! E
     | base=type SymbolExcl errType=type #typeFallible
     | type SymbolQuest        #typeNullable
-    // A<T> B<T1, T2>
-    | ID genericDef           #typeGeneric
+    // A<T> B<T1, T2>；可带路径前缀 `yux.core.map.Map<i32>`
+    | typePath genericDef           #typeGeneric
     // [ type * count ]
     | GetStart
         type SymbolMul INT
@@ -162,11 +168,11 @@ typeWithRef:
       type SymbolQuest SymbolAnd?       #typeNullableWithRef
     // T ! E（Function<..., T ! E> 末位等）；base 走 type 以支持 T? ! E
     | base=type SymbolExcl errType=type SymbolAnd? #typeFallibleWithRef
-    | ID SymbolAnd? #typeNormalWithRef
+    | typePath SymbolAnd? #typeNormalWithRef
     // [PROBE static-fn] Self&
     | SelfType SymbolAnd? #typeSelfWithRef
     // A<T> B<T1, T2>；函数类型 Function<P..., Ret> 走此支（特殊泛型）
-    | ID genericDefWithRef SymbolAnd?   #typeGenericWithRef
+    | typePath genericDefWithRef SymbolAnd?   #typeGenericWithRef
     // [ type * count ]
     | GetStart
         typeWithRef SymbolMul INT
@@ -409,8 +415,8 @@ expr:
       (statementBlock | body=lambdaBody)  # exprLambdaParen
     // [PROBE static-fn] 结构体字段字面量：Self { \n .x = e \n .y = e \n }
     // DRAFT-const-eval Phase 5: LHS 放宽到通用 ID（如 Point { .x = 1 .y = 2 }）
-    // 多行强制；`.field=` 前缀标明字段项
-    | (selfLhs=SelfType | typeName=ID) BlockStart LineEnd
+    // 限定路径：yux.core.map.Map { ... }；多行强制；`.field=` 前缀标明字段项
+    | (selfLhs=SelfType | typeName=typePath) BlockStart LineEnd
         (fieldInits+=fieldInit|LineEnd)*
       BlockEnd                            # exprStructLit
     // ( e )
@@ -458,11 +464,11 @@ expr:
         )+
       BlockEnd                #exprMatch
     // 路径调用：承载两种语义，由 sema 按 LHS 类型分流
-    //   - 枚举构造：E::V / E::V() / E::V(args)
+    //   - 枚举构造：E::V / E::V() / E::V(args) / path.E::V
     //   - 静态函数调用：Type::name(args) / Type:<T>::name:<U>(args) / Self::name(args)
     // 零参 variant 写带不带括号等价；类型别名 C 处亦合法（C::V 解析期等价 E::V）
     // [PROBE static-fn] LHS 加 Self 入口；前后各加可选 turbofish
-    | (enumName=ID | selfLhs=SelfType)
+    | (enumName=typePath | selfLhs=SelfType)
       (SymbolColon lhsGenerics=genericDef)?
       SymbolColonColon variant=ID
       (SymbolColon rhsGenerics=genericDef)?
@@ -606,7 +612,7 @@ matchArm: pattern=enumPattern SymbolEqMt (statementBlock | body=expr);
 //   E::V(a, b, ...)  按位置绑定 payload 元素到不可变名
 //   else             兜底分支，必须出现在最后一条
 enumPattern:
-    enumName=ID SymbolColonColon variant=ID
+    enumName=typePath SymbolColonColon variant=ID
         (
           ParStart
              binds+=ID (SymbolComma binds+=ID)*
@@ -643,8 +649,8 @@ statement:
       SymbolEq
       value=expr
       LineEnd?                         # statementSet
-    // Type::FIELD = expr 静态字段写（DRAFT-static-vars Phase 5）
-    | typeName=ID SymbolColonColon fieldName=ID
+    // Type::FIELD = expr 静态字段写（DRAFT-static-vars Phase 5）；LHS 可为 typePath
+    | typeName=typePath SymbolColonColon fieldName=ID
       SymbolEq
       value=expr
       LineEnd?                         # statementStaticFieldSet

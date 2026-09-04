@@ -1,0 +1,31 @@
+; 用户项目：`use yux.core.io` 命中 SDK 已加载模块；全限定不靠扁平
+
+use yux.core.io
+
+fn show_missing(tag String, e IoErr) {
+  match e {
+    IoErr::NotFound => println(tag)
+    IoErr::Eof => println("eof")
+    IoErr::AccessDenied => println("denied")
+    IoErr::InvalidUtf8 => println("utf8")
+    IoErr::Other(code) => println("other")
+  }
+}
+
+fn main() {
+  let aliasPath String = "_yux_proj_alias_nope.txt"
+  try {
+    io.read_file(&aliasPath)
+    println("unexpected-alias")
+  } catch e IoErr {
+    show_missing("ok-alias", e)
+  }
+  let fqPath String = "_yux_proj_fq_nope.txt"
+  try {
+    yux.core.io.read_file(&fqPath)
+    println("unexpected-fq")
+  } catch e IoErr {
+    show_missing("ok-fq", e)
+  }
+  println(yux.core.math.abs(-4))
+}

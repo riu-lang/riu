@@ -151,16 +151,19 @@ public:
 // 非 #Mut 写由 codegen 抛 E3151。
 class StatementStaticFieldSetNode : public StatementNode {
 protected:
-    Token _typeName;
+    TypePath _typePath;
     Token _fieldName;
     p<ExprNode> _valueExpr;
 
 public:
     StatementStaticFieldSetNode(const p<Node>& parent, Token typeName, Token fieldName, p<ExprNode> valueExpr)
-        : StatementNode(parent), _typeName(std::move(typeName)), _fieldName(std::move(fieldName)),
+        : StatementStaticFieldSetNode(parent, TypePath(std::move(typeName)), std::move(fieldName), valueExpr) {}
+    StatementStaticFieldSetNode(const p<Node>& parent, TypePath typePath, Token fieldName, p<ExprNode> valueExpr)
+        : StatementNode(parent), _typePath(std::move(typePath)), _fieldName(std::move(fieldName)),
           _valueExpr(valueExpr) {}
 
-    [[nodiscard]] Token typeName() const { return _typeName; }
+    [[nodiscard]] Token typeName() const { return _typePath.last(); }
+    [[nodiscard]] const TypePath& typePath() const { return _typePath; }
     [[nodiscard]] Token fieldName() const { return _fieldName; }
     [[nodiscard]] const p<ExprNode>& valueExpr() const { return _valueExpr; }
 };

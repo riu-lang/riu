@@ -2,6 +2,7 @@
 // MPL-2.0
 
 #include "node.h"
+#include "file_node.h"
 
 string Node::getLocation() const {
     return "";
@@ -142,6 +143,20 @@ p<ScopeNode> Node::findNearestScope() const {
             return scope;
         }
         current = current->_parent;
+    }
+    return nullptr;
+}
+
+FileNode* Node::enclosingFile() const {
+    const Node* cur = this;
+    while (cur) {
+        if (auto f = dynamic_cast<const FileNode*>(cur)) return const_cast<FileNode*>(f);
+        cur = cur->parent();
+    }
+    auto scope = findNearestScope();
+    while (scope) {
+        if (auto f = dynamic_cast<FileNode*>(scope)) return f;
+        scope = scope->parentScope();
     }
     return nullptr;
 }

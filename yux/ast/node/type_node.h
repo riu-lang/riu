@@ -22,37 +22,39 @@ public:
 class TypeSelfNode : public TypeNode {
     Token _selfTok;
     string _structName;
+    // 空 = 用 enclosingFile 的模块。spec 默认体 fall-through 时 spec 与 impl
+    // 不在同一文件，必须改写成 impl 模块，否则 Self& 带上 spec 的 owner，
+    // 与 impl 上登记的 `eq(other NEq&)` 对不上（T2 类型身份）。
+    string _ownerModule;
 
 public:
     TypeSelfNode(const p<Node>& parent, Token selfTok, string structName)
         : TypeNode(parent), _selfTok(std::move(selfTok)), _structName(std::move(structName)) {}
 
-    [[nodiscard]] TypeInfo getType() const override {
-        // structName 为空 (typically spec 体内): 返回名为 "Self" 的占位 TypeInfo,
-        // 由 SpecImplChecker::sigEquivalent 通过 subst["Self"] 替换为 impl 具体类型;
-        // 默认体 fall-through 编译时由 Compiler::compileInheritedDefaults 临时
-        // setStructName 走真实 codegen.
-        return _structName.empty() ? TypeInfo("Self") : TypeInfo(_structName);
-    }
+    [[nodiscard]] TypeInfo getType() const override;
 
     [[nodiscard]] const Token& selfToken() const { return _selfTok; }
     [[nodiscard]] const string& structName() const { return _structName; }
+    [[nodiscard]] const string& ownerModule() const { return _ownerModule; }
 
     // DRAFT-spec-default-body Phase 3：spec 默认体 fall-through 编译时, 把
     // spec 体内"无归属"的 TypeSelfNode 临时改写到具体实现类型, 编完再还原.
     // 不要在常规路径使用 — 仅供 compiler 的 fall-through 临时 patch.
     void setStructName(string s) { _structName = std::move(s); }
+    void setOwnerModule(string o) { _ownerModule = std::move(o); }
 };
 
 class TypeNormalNode : public TypeNode {
-    Token _typeName;
+    TypePath _path;
 
 public:
-    TypeNormalNode(const p<Node>& parent, Token typeName) : TypeNode(parent), _typeName(std::move(typeName)) {}
+    TypeNormalNode(const p<Node>& parent, Token typeName) : TypeNormalNode(parent, TypePath(std::move(typeName))) {}
+    TypeNormalNode(const p<Node>& parent, TypePath path) : TypeNode(parent), _path(std::move(path)) {}
 
-    [[nodiscard]] TypeInfo getType() const override { return TypeInfo(_typeName.getText()); }
+    [[nodiscard]] TypeInfo getType() const override;
 
-    [[nodiscard]] Token typeNameToken() const { return _typeName; }
+    [[nodiscard]] Token typeNameToken() const { return _path.last(); }
+    [[nodiscard]] const TypePath& path() const { return _path; }
 };
 
 class TypeArrayNode : public TypeNode {
@@ -78,23 +80,19 @@ public:
 };
 
 class TypeGenericNode : public TypeNode {
-    Token _baseName;
+    TypePath _path;
     vector<p<TypeNode>> _typeArgs;
 
 public:
     TypeGenericNode(const p<Node>& parent, Token baseName, vector<p<TypeNode>> typeArgs)
-        : TypeNode(parent), _baseName(std::move(baseName)), _typeArgs(std::move(typeArgs)) {}
+        : TypeGenericNode(parent, TypePath(std::move(baseName)), std::move(typeArgs)) {}
+    TypeGenericNode(const p<Node>& parent, TypePath path, vector<p<TypeNode>> typeArgs)
+        : TypeNode(parent), _path(std::move(path)), _typeArgs(std::move(typeArgs)) {}
 
-    [[nodiscard]] TypeInfo getType() const override {
-        vector<sp<TypeInfo>> args;
-        args.reserve(_typeArgs.size());
-        for (auto& typeArg : _typeArgs) {
-            args.push_back(make_shared<TypeInfo>(typeArg->getType()));
-        }
-        return {_baseName.getText(), args};
-    }
+    [[nodiscard]] TypeInfo getType() const override;
 
-    [[nodiscard]] Token baseName() const { return _baseName; }
+    [[nodiscard]] Token baseName() const { return _path.last(); }
+    [[nodiscard]] const TypePath& path() const { return _path; }
 
     [[nodiscard]] const vector<p<TypeNode>>& typeArgs() const { return _typeArgs; }
 };

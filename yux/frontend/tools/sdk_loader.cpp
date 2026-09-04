@@ -75,18 +75,35 @@ std::map<std::string, SdkPkgEntry> readSdkPkg(const std::string& sdkDir) {
     return r;
 }
 
-void registerSdkPkgAliases(Yux& yux, const std::map<std::string, SdkPkgEntry>& pkgMap) {
+void registerSdkModulePaths(Yux& yux) {
     auto sdk = yux.sdkFile();
     if (!sdk) return;
-    for (auto& [stem, info] : pkgMap) {
-        if (info.isFlat) continue;
-        auto target = yux.module(info.moduleName);
-        if (!target) continue;
-        if (sdk->lookupSymbol(stem)) continue;
-        SymbolInfo aliasSym(SymbolKind::Module, stem, TypeInfo());
-        aliasSym.moduleName = info.moduleName;
-        sdk->registerSymbol(stem, aliasSym);
-        sdk->addModuleAlias(stem, target);
+
+    // 默认 `use yux.core.*`：只打开 core 子树。包根 `yux` 仅用于已导入的
+    // `yux.core.<stem>` 消歧（`yux.core.map.Map`）。禁止「有 yux 就能点任意子包」。
+    if (!sdk->localSymbols().contains("yux")) {
+        SymbolInfo yuxSym(SymbolKind::Package, "yux", TypeInfo());
+        yuxSym.moduleName = "yux";
+        sdk->registerSymbol("yux", yuxSym);
+        sdk->addPackageAlias("yux", "yux");
+    }
+
+    for (auto& file : yux.files()) {
+        if (!file || file == sdk) continue;
+        const string& mn = file->moduleName();
+        // 只登记 yux.core 直接子模块，不扫 yux.* 任意包
+        if (mn.size() <= 9 || !mn.starts_with("yux.core.")) continue;
+        string stem = mn.substr(9);
+        if (stem.empty() || stem.find('.') != string::npos) continue;
+
+        // 末段别名：扁平导出的 map 也登记，才能写 `map.Map`（与 `math.abs` 同形）
+        if (!sdk->localSymbols().contains(stem)) {
+            SymbolInfo aliasSym(SymbolKind::Module, stem, TypeInfo());
+            aliasSym.moduleName = mn;
+            sdk->registerSymbol(stem, aliasSym);
+            sdk->addModuleAlias(stem, file);
+        }
+        sdk->addPackageChild("yux", "core." + stem, file);
     }
 }
 
@@ -160,7 +177,7 @@ void parseSdkDir(const std::string& sdkDir, Yux& yux, bool allowDecl) {
         }
     }
 
-    registerSdkPkgAliases(yux, pkgMap);
+    registerSdkModulePaths(yux);
 }
 
 } // namespace sdk_loader

@@ -132,7 +132,8 @@ void FileNode::addFunction(const p<FnNode>& function) {
 
 void FileNode::addStructDecl(const p<StructDeclNode>& structDecl) {
     _structDecls.push_back(structDecl);
-    SymbolInfo sym(SymbolKind::Struct, structDecl->name().getText(), TypeInfo(structDecl->name().getText()));
+    SymbolInfo sym(SymbolKind::Struct, structDecl->name().getText(),
+                   TypeInfo(structDecl->name().getText(), _moduleName));
     sym.moduleName = _moduleName;
     registerSymbol(structDecl->name().getText(), sym);
 }
@@ -146,7 +147,7 @@ void FileNode::addSpecDecl(const p<SpecDeclNode>& specDecl) {
     // draft 名按 §10 共享顶层符号命名空间
     string n = specDecl->name().getText();
     if (!lookupSymbol(n)) {
-        SymbolInfo sym(SymbolKind::Struct, n, TypeInfo(n));
+        SymbolInfo sym(SymbolKind::Struct, n, TypeInfo(n, _moduleName));
         sym.moduleName = _moduleName;
         registerSymbol(n, sym);
     }
@@ -165,7 +166,7 @@ void FileNode::addEnumDecl(const p<EnumDeclNode>& enumDecl) {
     _enumMap[name] = enumDecl;
     // enum 名进类型命名空间（与 struct 同等地位）；variant 名不进顶层
     if (!lookupSymbol(name)) {
-        SymbolInfo sym(SymbolKind::Struct, name, TypeInfo(name));
+        SymbolInfo sym(SymbolKind::Struct, name, TypeInfo(name, _moduleName));
         sym.moduleName = _moduleName;
         registerSymbol(name, sym);
     }
@@ -247,6 +248,27 @@ StructDeclNode* FileNode::getStructDecl(const string& name, bool includeBuiltin)
         }
     }
     return nullptr;
+}
+
+StructDeclNode* FileNode::localStructDecl(const string& name, bool includeBuiltin) const {
+    auto matches = [&](const p<StructDeclNode>& decl) {
+        if (decl->name().getText() != name) return false;
+        return includeBuiltin || !decl->hasAnno("Builtin");
+    };
+    for (auto& decl : _structDecls) {
+        if (matches(decl)) return decl;
+    }
+    return nullptr;
+}
+
+EnumDeclNode* FileNode::localEnumDecl(const string& name) const {
+    auto it = _enumMap.find(name);
+    return it != _enumMap.end() ? it->second : nullptr;
+}
+
+AliasDeclNode* FileNode::localAliasDecl(const string& name) const {
+    auto it = _aliasMap.find(name);
+    return it != _aliasMap.end() ? it->second : nullptr;
 }
 
 StructImplNode* FileNode::getStructImpl(const string& name) const {
@@ -423,6 +445,14 @@ void FileNode::addPackageAlias(const string& alias, const string& dottedPath) {
 const string* FileNode::packageAlias(const string& alias) const {
     auto it = _packageAliases.find(alias);
     if (it != _packageAliases.end()) return &it->second;
+    ScopeNode* parent = const_cast<FileNode*>(this)->parentScope();
+    while (parent) {
+        if (auto* parentFile = dynamic_cast<FileNode*>(parent)) {
+            auto pit = parentFile->_packageAliases.find(alias);
+            if (pit != parentFile->_packageAliases.end()) return &pit->second;
+        }
+        parent = parent->parentScope();
+    }
     return nullptr;
 }
 
@@ -432,10 +462,22 @@ void FileNode::addPackageChild(const string& alias, const string& child, FileNod
 
 FileNode* FileNode::packageChild(const string& alias, const string& child) const {
     auto it = _packageChildren.find(alias);
-    if (it == _packageChildren.end()) return nullptr;
-    auto jt = it->second.find(child);
-    if (jt == it->second.end()) return nullptr;
-    return jt->second;
+    if (it != _packageChildren.end()) {
+        auto jt = it->second.find(child);
+        if (jt != it->second.end()) return jt->second;
+    }
+    ScopeNode* parent = const_cast<FileNode*>(this)->parentScope();
+    while (parent) {
+        if (auto* parentFile = dynamic_cast<FileNode*>(parent)) {
+            auto pit = parentFile->_packageChildren.find(alias);
+            if (pit != parentFile->_packageChildren.end()) {
+                auto jt = pit->second.find(child);
+                if (jt != pit->second.end()) return jt->second;
+            }
+        }
+        parent = parent->parentScope();
+    }
+    return nullptr;
 }
 
 void FileNode::addWildcardAliasSource(const string& alias, const string& sourceModule) {

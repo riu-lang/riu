@@ -591,8 +591,9 @@ void Compiler::compileStructImpls() {
 // 临时 patch 成"属于 impl structName"再走常规 compileMethod, 编完原样还原.
 //
 // patch 范围:
-//   1. 默认体 header 的 params + retType 中所有 TypeSelfNode 的 structName.
-//   2. defaultBody scope 内 `$` 符号: Ref<Self> → Ref<structName>.
+//   1. 默认体 header 的 params + retType 中所有 TypeSelfNode 的 structName
+//      与 ownerModule（spec 与 impl 可能不在同一文件，不能用 spec 的 enclosingFile）。
+//   2. defaultBody scope 内 `$` 符号: Ref<Self> → Ref<structName>（带 impl owner）.
 //   3. Self& 形参符号同理.
 //
 // 限制: 默认体内部 (statement / expr 局部) 的 TypeSelfNode 不在 patch 范围 — 写
@@ -650,12 +651,24 @@ void Compiler::emitSpecDefaultBodyMethod(SpecDeclNode* spec, size_t sigIdx, cons
     }
     collectSelfTypesInTypeNode(header->retType(), selfNodes);
 
+    const string implOwner = _file ? _file->moduleName() : string();
     vector<string> savedSelfNames;
+    vector<string> savedSelfOwners;
     savedSelfNames.reserve(selfNodes.size());
+    savedSelfOwners.reserve(selfNodes.size());
     for (auto* s : selfNodes) {
         savedSelfNames.push_back(s->structName());
+        savedSelfOwners.push_back(s->ownerModule());
         s->setStructName(structName);
+        s->setOwnerModule(implOwner);
     }
+
+    auto restoreSelfNodes = [&]() {
+        for (size_t i = 0; i < selfNodes.size(); ++i) {
+            selfNodes[i]->setStructName(savedSelfNames[i]);
+            selfNodes[i]->setOwnerModule(savedSelfOwners[i]);
+        }
+    };
 
     // === 2a) 临时把 body 的 parentScope 换成 user FileNode (_file) ===
     auto savedBodyParent = body->parentScope();
@@ -668,7 +681,7 @@ void Compiler::emitSpecDefaultBodyMethod(SpecDeclNode* spec, size_t sigIdx, cons
         savedDollar = *dollar;
         hadDollar = true;
         vector<sp<TypeInfo>> args;
-        args.push_back(make_shared<TypeInfo>(structName));
+        args.push_back(make_shared<TypeInfo>(structName, implOwner));
         *dollar = SymbolInfo{SymbolKind::Variable, "$", TypeInfo("Ref", args)};
     }
 
@@ -707,9 +720,7 @@ void Compiler::emitSpecDefaultBodyMethod(SpecDeclNode* spec, size_t sigIdx, cons
         compileMethod(body, func, structName, false, isStatic);
         emitOk = true;
     } catch (...) {
-        for (size_t i = 0; i < selfNodes.size(); ++i) {
-            selfNodes[i]->setStructName(savedSelfNames[i]);
-        }
+        restoreSelfNodes();
         if (hadDollar) {
             if (auto* dollar = body->lookupSymbol("$")) *dollar = savedDollar;
         }
@@ -722,9 +733,7 @@ void Compiler::emitSpecDefaultBodyMethod(SpecDeclNode* spec, size_t sigIdx, cons
 
     // === 5) 正常路径: restore ===
     (void)emitOk;
-    for (size_t i = 0; i < selfNodes.size(); ++i) {
-        selfNodes[i]->setStructName(savedSelfNames[i]);
-    }
+    restoreSelfNodes();
     if (hadDollar) {
         if (auto* dollar = body->lookupSymbol("$")) *dollar = savedDollar;
     }

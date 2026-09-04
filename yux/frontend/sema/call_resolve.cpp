@@ -740,7 +740,6 @@ ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux, p<ExprCallNode>
     }
 
     // 模块别名调用: module.fn(args)
-    // yux 为 nullptr 时整段路径跳过 (SemaPass 早期可能拿不到 Yux*, 留给 Compiler 兜底).
     if (auto baseLit = dynamic_cast<ExprLiteralNode*>(dotNode->baseExpr()); yux && baseLit) {
         if (auto objLit = dynamic_cast<LiteralObjNode*>(baseLit->literal())) {
             auto aliasName = objLit->getValue().getText();

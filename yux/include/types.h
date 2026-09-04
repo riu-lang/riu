@@ -112,6 +112,29 @@ public:
 
 using Token = TokenInfo;
 
+// 源码限定类型路径 `a.b.T`（g4 typePath）。身份是 TypeInfo.ownerModule + 短名；
+// TypeInfo.name 只用末段短名，路径不进 name。
+struct TypePath {
+    vector<Token> segs;
+
+    TypePath() = default;
+    explicit TypePath(Token bare) { segs.push_back(std::move(bare)); }
+    explicit TypePath(vector<Token> s) : segs(std::move(s)) {}
+
+    [[nodiscard]] bool empty() const { return segs.empty(); }
+    [[nodiscard]] bool isBare() const { return segs.size() == 1; }
+    [[nodiscard]] const Token& last() const { return segs.back(); }
+    [[nodiscard]] string lastName() const { return empty() ? string() : segs.back().getText(); }
+    [[nodiscard]] string dotted() const {
+        string s;
+        for (size_t i = 0; i < segs.size(); ++i) {
+            if (i > 0) s += '.';
+            s += segs[i].getText();
+        }
+        return s;
+    }
+};
+
 // 源码位置：line 为 1-based 行号，col 为 1-based 列号。col == 0 表示未知（合成节点 / 旧路径）。
 struct SourceLocation {
     int line = 0;
@@ -295,6 +318,8 @@ inline TypeKind kindForBuiltinWrapper(const string& name) {
 struct TypeInfo {
     TypeKind kind = TypeKind::Normal;
     string name;
+    // 声明模块（点分）。空 = 内建 / 未解析。身份是 (ownerModule, 短名)；路径不进 name。
+    string ownerModule;
     u64 arraySize = 0;
     sp<TypeInfo> elementType = nullptr; // Array 元素类型 / Fn 返回类型（unit 时为 nullptr）
     vector<sp<TypeInfo>> genericArgs;   // Generic 实参 / Tuple 元素 / Fn 形参类型列表
@@ -305,7 +330,8 @@ struct TypeInfo {
 
     // 普通具名类型构造（内置标量 / 用户 struct 名 / Self）
     // "Ptr" 自动识别为 TypeKind::Ptr（null 字面量类型）
-    explicit TypeInfo(string n) : name(std::move(n)) {
+    // owner：声明模块；空 = 内建或尚未 resolveTypePath
+    explicit TypeInfo(string n, string owner = {}) : name(std::move(n)), ownerModule(std::move(owner)) {
         if (name == "Ptr") kind = TypeKind::Ptr;
     }
 
@@ -400,6 +426,17 @@ struct TypeInfo {
     [[nodiscard]] sp<TypeInfo> fnReturnType() const { return elementType; }
 
     [[nodiscard]] bool empty() const { return name.empty(); }
+
+    // 两边都有 owner 才比模块；任一侧为空则只比短名（未解析 / 内建兼容）
+    [[nodiscard]] bool sameOwner(const TypeInfo& other) const {
+        return ownerModule.empty() || other.ownerModule.empty() || ownerModule == other.ownerModule;
+    }
+
+    // LLVM 缓存 / mangle 用：(owner, 短名)；owner 空则短名
+    [[nodiscard]] string identityKey() const {
+        if (ownerModule.empty()) return name;
+        return ownerModule + "." + name;
+    }
 
     // 零元素元组 `()`：与省略 retType 的 unit / void 等同（§3.8.1.0）
     [[nodiscard]] bool isUnit() const { return kind == TypeKind::Tuple && genericArgs.empty(); }
@@ -581,6 +618,8 @@ struct TypeInfo {
 
     // LLVM 符号用 mangle 名（与 yux 源码写法一致）：
     // 泛型 Base<Arg1,Arg2>，元组 (T1,T2)，函数 Function<P...,Ret>，数组 [E*N]
+    // 短名：owner 尚未处处填满，identityKey 进函数签名会把 String / yux.core.string.String
+    // 拆成两个实例键。结构体 LLVM 名由 Mangler::structType(owner, name) 按身份区分。
     [[nodiscard]] string getMangleName() const {
         if (hasGenericArgs() && !genericArgs.empty()) {
             string result = name + "<";
@@ -660,7 +699,9 @@ struct TypeInfo {
             for (auto& a : genericArgs) {
                 newArgs.push_back(std::make_shared<TypeInfo>(a ? a->substitute(subst) : TypeInfo()));
             }
-            return {name, std::move(newArgs)};
+            TypeInfo r{name, std::move(newArgs)};
+            r.ownerModule = ownerModule;
+            return r;
         }
         if (kind == TypeKind::Array && elementType) {
             auto sub = elementType->substitute(subst);
@@ -703,6 +744,10 @@ struct TypeInfo {
                 if (!genericArgs[i] || !other.genericArgs[i]) return false;
                 if (*genericArgs[i] != *other.genericArgs[i]) return false;
             }
+            if (kind == TypeKind::Generic) {
+                if (name != other.name) return false;
+                if (!sameOwner(other)) return false;
+            }
         }
         if (kind == TypeKind::Fn) {
             if (fnNullable != other.fnNullable) return false;
@@ -719,8 +764,10 @@ struct TypeInfo {
         }
         if (kind == TypeKind::Normal || kind == TypeKind::Ptr) {
             if (withoutFallible().name != other.withoutFallible().name) return false;
+            if (!sameOwner(other)) return false;
         } else if (!hasGenericArgs() && kind != TypeKind::Tuple) {
             if (name != other.name) return false;
+            if (!sameOwner(other)) return false;
         }
         return true;
     }

@@ -61,7 +61,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
                 if (auto* gd = aa->genericDef()) {
                     for (auto* pCtx : gd->params) {
                         if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(pCtx->type(0))) {
-                            r.typeArgs.emplace_back(tn->ID()->getText());
+                            r.typeArgs.emplace_back(typeNormalLastName(tn));
                         }
                         // 复杂泛型实参押后
                     }
@@ -88,7 +88,7 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
     vector<string> typeParams;
     for (auto tCtx : stCtx->types) {
         if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(tCtx)) {
-            typeParams.push_back(tn->ID()->getText());
+            typeParams.push_back(typeNormalLastName(tn));
         }
     }
 

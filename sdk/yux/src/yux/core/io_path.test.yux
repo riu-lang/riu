@@ -1,0 +1,40 @@
+; yux.core.io：模块别名 `io.fn` 与全限定 `yux.core.io.fn`
+; 不写 `use yux.core.io` / `use yux.core.io.*`（靠 SDK parent 登记）
+
+; 验证：末段别名 io.read_file（缺文件 → NotFound）
+#Test
+fn test_io_alias_missing() {
+  let path String = "_yux_io_alias_nope.txt"
+  try {
+    let _s String = io.read_file(&path)
+    fail("alias missing file should error")
+  } catch e IoErr {
+    match e {
+      IoErr::NotFound => {
+      }
+      IoErr::Eof => fail("alias missing: Eof")
+      IoErr::AccessDenied => fail("alias missing: AccessDenied")
+      IoErr::InvalidUtf8 => fail("alias missing: InvalidUtf8")
+      IoErr::Other(code) => fail("alias missing: Other(${code})")
+    }
+  }
+}
+
+; 验证：全限定 yux.core.io.read_file（缺文件 → NotFound）
+#Test
+fn test_io_fq_missing() {
+  let path String = "_yux_io_fq_nope.txt"
+  try {
+    let _s String = yux.core.io.read_file(&path)
+    fail("fq missing file should error")
+  } catch e IoErr {
+    match e {
+      IoErr::NotFound => {
+      }
+      IoErr::Eof => fail("fq missing: Eof")
+      IoErr::AccessDenied => fail("fq missing: AccessDenied")
+      IoErr::InvalidUtf8 => fail("fq missing: InvalidUtf8")
+      IoErr::Other(code) => fail("fq missing: Other(${code})")
+    }
+  }
+}

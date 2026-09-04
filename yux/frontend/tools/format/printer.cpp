@@ -98,6 +98,7 @@ private:
     Doc externDelcDoc(yuxParser::ExternDelcContext* ctx);
 
     // 类型 / 泛型 / 形参
+    Doc typePathDoc(yuxParser::TypePathContext* ctx);
     Doc typeDoc(yuxParser::TypeContext* ctx);
     Doc typeWithRefDoc(yuxParser::TypeWithRefContext* ctx);
     Doc genericDefDoc(yuxParser::GenericDefContext* ctx);
@@ -130,11 +131,7 @@ private:
 Doc Printer::importsDoc(yuxParser::ImportsContext* ctx) {
     std::vector<Doc> parts;
     parts.push_back(text("use "));
-    const auto& pkgs = ctx->pkgs;
-    for (std::size_t i = 0; i < pkgs.size(); ++i) {
-        if (i > 0) parts.push_back(text("."));
-        parts.push_back(text(pkgs[i]->getText()));
-    }
+    parts.push_back(typePathDoc(ctx->typePath()));
     if (ctx->useAll != nullptr) {
         parts.push_back(text(".*"));
     }
@@ -202,15 +199,26 @@ Doc Printer::aliasDeclDoc(yuxParser::AliasDeclContext* ctx) {
 
 // ==================== 类型节点 ====================
 
+Doc Printer::typePathDoc(yuxParser::TypePathContext* ctx) {
+    if (!ctx) return text("");
+    std::vector<Doc> parts;
+    const auto& segs = ctx->segs;
+    for (std::size_t i = 0; i < segs.size(); ++i) {
+        if (i > 0) parts.push_back(text("."));
+        parts.push_back(text(segs[i]->getText()));
+    }
+    return concat(std::move(parts));
+}
+
 Doc Printer::typeDoc(yuxParser::TypeContext* ctx) {
     if (auto* n = dynamic_cast<yuxParser::TypeNormalContext*>(ctx)) {
-        return text(n->ID()->getText());
+        return typePathDoc(n->typePath());
     }
     if (auto* n = dynamic_cast<yuxParser::TypeNullableContext*>(ctx)) {
         return concat({typeDoc(n->type()), text("?")});
     }
     if (auto* n = dynamic_cast<yuxParser::TypeGenericContext*>(ctx)) {
-        return concat({text(n->ID()->getText()), genericDefDoc(n->genericDef())});
+        return concat({typePathDoc(n->typePath()), genericDefDoc(n->genericDef())});
     }
     if (auto* n = dynamic_cast<yuxParser::TypeArrayContext*>(ctx)) {
         return concat({
@@ -238,14 +246,14 @@ Doc Printer::typeDoc(yuxParser::TypeContext* ctx) {
 Doc Printer::typeWithRefDoc(yuxParser::TypeWithRefContext* ctx) {
     auto refSuffix = [](antlr4::tree::TerminalNode* andTok) -> Doc { return andTok != nullptr ? text("&") : text(""); };
     if (auto* n = dynamic_cast<yuxParser::TypeNormalWithRefContext*>(ctx)) {
-        return concat({text(n->ID()->getText()), refSuffix(n->SymbolAnd())});
+        return concat({typePathDoc(n->typePath()), refSuffix(n->SymbolAnd())});
     }
     if (auto* n = dynamic_cast<yuxParser::TypeNullableWithRefContext*>(ctx)) {
         return concat({typeDoc(n->type()), text("?"), refSuffix(n->SymbolAnd())});
     }
     if (auto* n = dynamic_cast<yuxParser::TypeGenericWithRefContext*>(ctx)) {
         return concat({
-            text(n->ID()->getText()),
+            typePathDoc(n->typePath()),
             genericDefWithRefDoc(n->genericDefWithRef()),
             refSuffix(n->SymbolAnd()),
         });
@@ -522,7 +530,11 @@ Doc Printer::exprDoc(yuxParser::ExprContext* ctx) {
     }
     if (auto* n = dynamic_cast<yuxParser::ExprEnumCtorContext*>(ctx)) {
         std::vector<Doc> parts;
-        parts.push_back(text(n->enumName->getText()));
+        if (n->selfLhs != nullptr) {
+            parts.push_back(text(n->selfLhs->getText()));
+        } else {
+            parts.push_back(typePathDoc(n->enumName));
+        }
         parts.push_back(text("::"));
         parts.push_back(text(n->variant->getText()));
         if (n->ParStart() != nullptr) {

@@ -17,19 +17,20 @@
 
 std::any ASTBuilder::visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) {
     p<Node> parent = currentScope();
-    auto* sym = ctx->ID()->getSymbol();
+    auto path = typePathFromCtx(ctx->typePath());
+    Token last = path.last();
     // DRAFT-heap-types §9 (Phase 3b): 裸 Arc 形态也走占名拒绝
-    if (sym->getText() == "Arc") {
-        throw YuxError(static_cast<int>(sym->getLine()), static_cast<int>(sym->getCharPositionInLine()) + 1,
+    if (path.isBare() && last.getText() == "Arc") {
+        throw YuxError(static_cast<int>(last.getLine()), static_cast<int>(last.getCharPositionInLine()) + 1,
                        ErrorCode::E4029, std::string("?"));
     }
-    if (sym->getText() == "Function") {
-        throw YuxError(static_cast<int>(sym->getLine()), static_cast<int>(sym->getCharPositionInLine()) + 1,
+    if (path.isBare() && last.getText() == "Function") {
+        throw YuxError(static_cast<int>(last.getLine()), static_cast<int>(last.getCharPositionInLine()) + 1,
                        ErrorCode::E6011, std::string("Function"), static_cast<size_t>(1), static_cast<size_t>(0))
             .withHint("`Function` 是特殊泛型，须写 `Function<Ret>` 或 `Function<P1, P2, ..., Ret>`（末位为返回类型）");
     }
-    DEBUG_LOG_VAL("    Type: Normal", sym->getText());
-    return static_cast<p<TypeNode>>(createWithLine<TypeNormalNode>(ctx, parent, sym));
+    DEBUG_LOG_VAL("    Type: Normal", path.dotted());
+    return static_cast<p<TypeNode>>(createWithLine<TypeNormalNode>(ctx, parent, std::move(path)));
 }
 
 // Self 类型字面量 (Phase 2b): 构造 TypeSelfNode 占位.
@@ -55,7 +56,8 @@ string ASTBuilder::findEnclosingStructName() const {
 
 std::any ASTBuilder::visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) {
     p<Node> parent = currentScope();
-    auto baseName = ctx->ID()->getSymbol();
+    auto path = typePathFromCtx(ctx->typePath());
+    Token last = path.last();
 
     vector<p<TypeNode>> typeArgs;
     for (auto pCtx : ctx->genericDef()->params) {
@@ -70,22 +72,22 @@ std::any ASTBuilder::visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) {
 
     // DRAFT-heap-types §9 (Phase 3b): Arc<T> 占名，v1.x 多线程主题落地后实装。
     // 此处先在类型解析点直接拒绝，避免后续路径把 Arc 误当作未知 struct 报泛错。
-    if (baseName->getText() == "Arc") {
+    if (path.isBare() && last.getText() == "Arc") {
         std::string innerName = typeArgs.empty() ? std::string("?") : typeArgs[0]->getType().name;
-        throw YuxError(static_cast<int>(baseName->getLine()), static_cast<int>(baseName->getCharPositionInLine()) + 1,
+        throw YuxError(static_cast<int>(last.getLine()), static_cast<int>(last.getCharPositionInLine()) + 1,
                        ErrorCode::E4029, innerName);
     }
 
     // Weak<Function<...>> 禁（§3.7）：函数值是值类型，无 RC 头，不能 weak
-    if (baseName->getText() == "Weak" && typeArgs.size() == 1) {
+    if (path.isBare() && last.getText() == "Weak" && typeArgs.size() == 1) {
         if (dynamic_cast<TypeFnNode*>(typeArgs[0]) || typeArgs[0]->getType().isFn()) {
-            throw YuxError(static_cast<int>(baseName->getLine()),
-                           static_cast<int>(baseName->getCharPositionInLine()) + 1, ErrorCode::E2001)
+            throw YuxError(static_cast<int>(last.getLine()), static_cast<int>(last.getCharPositionInLine()) + 1,
+                           ErrorCode::E2001)
                 .withHint("函数值不是堆句柄、无 RC 头，不能用 Weak<...> 包裹（spec §3.7 / §5.5）");
         }
     }
 
-    if (baseName->getText() == "Function") {
+    if (path.isBare() && last.getText() == "Function") {
         return static_cast<p<TypeNode>>(makeFunctionType(ctx, parent, std::move(typeArgs), false));
     }
 
@@ -94,9 +96,9 @@ std::any ASTBuilder::visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) {
         if (i > 0) argsStr += ", ";
         argsStr += typeArgs[i]->getType().name;
     }
-    DEBUG_LOG_VAL("    Type: Generic", baseName->getText() << "<" << argsStr << ">");
+    DEBUG_LOG_VAL("    Type: Generic", path.dotted() << "<" << argsStr << ">");
 
-    return static_cast<p<TypeNode>>(createWithLine<TypeGenericNode>(ctx, parent, baseName, typeArgs));
+    return static_cast<p<TypeNode>>(createWithLine<TypeGenericNode>(ctx, parent, std::move(path), typeArgs));
 }
 
 std::any ASTBuilder::visitTypeArray(yux::yuxParser::TypeArrayContext* ctx) {
@@ -185,20 +187,20 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
     antlr4::tree::TerminalNode* andTok = nullptr;
 
     if (auto n = dynamic_cast<yuxParser::TypeNormalWithRefContext*>(twr)) {
+        auto path = typePathFromCtx(n->typePath());
+        Token last = path.last();
         // DRAFT-heap-types §9 (Phase 3b): Arc 占名（含裸 Arc 形态）
-        if (n->ID()->getSymbol()->getText() == "Arc") {
-            throw YuxError(static_cast<int>(n->ID()->getSymbol()->getLine()),
-                           static_cast<int>(n->ID()->getSymbol()->getCharPositionInLine()) + 1, ErrorCode::E4029,
-                           std::string("?"));
+        if (path.isBare() && last.getText() == "Arc") {
+            throw YuxError(static_cast<int>(last.getLine()), static_cast<int>(last.getCharPositionInLine()) + 1,
+                           ErrorCode::E4029, std::string("?"));
         }
-        if (n->ID()->getSymbol()->getText() == "Function") {
-            throw YuxError(static_cast<int>(n->ID()->getSymbol()->getLine()),
-                           static_cast<int>(n->ID()->getSymbol()->getCharPositionInLine()) + 1, ErrorCode::E6011,
-                           std::string("Function"), static_cast<size_t>(1), static_cast<size_t>(0))
+        if (path.isBare() && last.getText() == "Function") {
+            throw YuxError(static_cast<int>(last.getLine()), static_cast<int>(last.getCharPositionInLine()) + 1,
+                           ErrorCode::E6011, std::string("Function"), static_cast<size_t>(1), static_cast<size_t>(0))
                 .withHint(
                     "`Function` 是特殊泛型，须写 `Function<Ret>` 或 `Function<P1, P2, ..., Ret>`（末位为返回类型）");
         }
-        inner = static_cast<p<TypeNode>>(createWithLine<TypeNormalNode>(n, parent, n->ID()->getSymbol()));
+        inner = static_cast<p<TypeNode>>(createWithLine<TypeNormalNode>(n, parent, std::move(path)));
         andTok = n->SymbolAnd();
     } else if (auto s = dynamic_cast<yuxParser::TypeSelfWithRefContext*>(twr)) {
         // Phase 2b: Self& —— 结构体方法返回 / 形参可写 `Self&`.
@@ -231,29 +233,30 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
         inner = static_cast<p<TypeNode>>(createWithLine<TypeFallibleNode>(f, parent, base, err));
         andTok = f->SymbolAnd();
     } else if (auto g = dynamic_cast<yuxParser::TypeGenericWithRefContext*>(twr)) {
-        auto baseName = g->ID()->getSymbol();
+        auto path = typePathFromCtx(g->typePath());
+        Token last = path.last();
         vector<p<TypeNode>> typeArgs;
         for (auto innerCtx : g->genericDefWithRef()->types) {
             typeArgs.push_back(buildTypeWithRef(innerCtx, parent));
         }
         // DRAFT-heap-types §9 (Phase 3b): Arc<T> 占名
-        if (baseName->getText() == "Arc") {
+        if (path.isBare() && last.getText() == "Arc") {
             std::string innerName = typeArgs.empty() ? std::string("?") : typeArgs[0]->getType().name;
-            throw YuxError(static_cast<int>(baseName->getLine()),
-                           static_cast<int>(baseName->getCharPositionInLine()) + 1, ErrorCode::E4029, innerName);
+            throw YuxError(static_cast<int>(last.getLine()), static_cast<int>(last.getCharPositionInLine()) + 1,
+                           ErrorCode::E4029, innerName);
         }
         // Weak<Function<...>> 禁（§3.7）
-        if (baseName->getText() == "Weak" && typeArgs.size() == 1) {
+        if (path.isBare() && last.getText() == "Weak" && typeArgs.size() == 1) {
             if (dynamic_cast<TypeFnNode*>(typeArgs[0]) || typeArgs[0]->getType().isFn()) {
-                throw YuxError(static_cast<int>(baseName->getLine()),
-                               static_cast<int>(baseName->getCharPositionInLine()) + 1, ErrorCode::E2001)
+                throw YuxError(static_cast<int>(last.getLine()), static_cast<int>(last.getCharPositionInLine()) + 1,
+                               ErrorCode::E2001)
                     .withHint("函数值不是堆句柄、无 RC 头，不能用 Weak<...> 包裹（spec §3.7 / §5.5）");
             }
         }
-        if (baseName->getText() == "Function") {
+        if (path.isBare() && last.getText() == "Function") {
             inner = makeFunctionType(g, parent, std::move(typeArgs), false);
         } else {
-            inner = static_cast<p<TypeNode>>(createWithLine<TypeGenericNode>(g, parent, baseName, typeArgs));
+            inner = static_cast<p<TypeNode>>(createWithLine<TypeGenericNode>(g, parent, std::move(path), typeArgs));
         }
         andTok = g->SymbolAnd();
     } else if (auto a = dynamic_cast<yuxParser::TypeArrayWithRefContext*>(twr)) {

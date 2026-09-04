@@ -9,8 +9,10 @@
 class AliasDeclNode;
 class EnumDeclNode;
 class StructDeclNode;
+class Yux;
 struct FnSymbolInfo;
 struct TypeInfo;
+struct TypePath;
 
 // 跨文件名字查找（0 LLVM）：本文件 → SDK → wildcard imports。
 // FileNode::get* 已含本文件 wildcard；此处再补 SDK，并保留第三段
@@ -27,11 +29,17 @@ struct NameResolver {
     // includeBuiltin：是否命中 `#Builtin` 占位 struct（Rc/Array 等）。Sema arity 校验传 true。
     [[nodiscard]] StructDeclNode* lookupStruct(const string& name, bool includeBuiltin = false,
                                                FileNode** outOwner = nullptr) const;
+    // ownerModule 非空时只在该模块的本地声明里找（身份消歧）
+    [[nodiscard]] StructDeclNode* lookupStruct(const TypeInfo& t, bool includeBuiltin = false,
+                                               FileNode** outOwner = nullptr) const;
     [[nodiscard]] EnumDeclNode* lookupEnum(const string& name, FileNode** outOwner = nullptr) const;
+    [[nodiscard]] EnumDeclNode* lookupEnum(const TypeInfo& t, FileNode** outOwner = nullptr) const;
     [[nodiscard]] AliasDeclNode* lookupAlias(const string& name, FileNode** outOwner = nullptr) const;
     [[nodiscard]] FnSymbolInfo* lookupFn(const string& name, FileNode** outOwner = nullptr) const;
     [[nodiscard]] FnSymbolInfo* lookupFnWithParams(const string& name, const vector<TypeInfo>& paramTypes,
                                                    FileNode** outOwner = nullptr) const;
+    // 已加载模块中按 moduleName 找 FileNode；不 loadModule
+    [[nodiscard]] FileNode* fileForOwner(const string& ownerModule) const;
 };
 
 // 透明别名解析（完整版：递归 generic / array / tuple / fn）。遇环抛 E2016。
@@ -40,6 +48,20 @@ struct NameResolver {
 // 顶层别名一次性校验：E2017 名字冲突 + E2016 环 + fn 符号表归一化。
 // SemaPass::run 起始处调一次；Compiler 不再双跑。
 void validateAliases(p<FileNode> file, p<FileNode> sdkFile = nullptr);
+
+// 类型路径解析（对称 resolveModuleFnCall）。不调用 loadModule：只走已 use/load
+// 的模块别名与 packageChild。裸名 L1 本文件 → L3 通配（含默认 yux.core.*）。
+// 未解析时 type 仅末段短名、ownerModule 空（与 T2 前 getType 行为兼容）。
+struct TypePathResult {
+    TypeInfo type;
+    FileNode* owner = nullptr;
+    StructDeclNode* structDecl = nullptr;
+    EnumDeclNode* enumDecl = nullptr;
+    AliasDeclNode* aliasDecl = nullptr;
+    bool resolved = false;
+};
+
+TypePathResult resolveTypePath(FileNode* file, Yux* yux, const TypePath& path, int line = 0, int col = 0);
 
 } // namespace sema
 

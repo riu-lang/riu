@@ -269,9 +269,16 @@ TypeInfo Compiler::typeInfoForNamedStruct(const string& name) const {
         for (const auto& a : instIt->second.args) {
             args.push_back(std::make_shared<TypeInfo>(a));
         }
-        return {instIt->second.baseDecl->name().getText(), std::move(args)};
+        TypeInfo t{instIt->second.baseDecl->name().getText(), std::move(args)};
+        if (instIt->second.ownerFile) t.ownerModule = instIt->second.ownerFile->moduleName();
+        return t;
     }
-    return TypeInfo(name);
+    TypeInfo t(name);
+    FileNode* owner = nullptr;
+    if (names().lookupStruct(name, /*includeBuiltin=*/false, &owner) && owner) {
+        t.ownerModule = owner->moduleName();
+    }
+    return t;
 }
 
 // 将 TypeInfo 转换为 LLVM 类型
@@ -444,7 +451,11 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     // 泛型类型实例 (如 Rc<i32>)
     if (type.isGeneric()) {
         p<FileNode> owner = nullptr;
-        auto baseDecl = names().lookupStruct(type.name, /*includeBuiltin=*/false, &owner);
+        auto baseDecl = names().lookupStruct(type, /*includeBuiltin=*/false, &owner);
+        if (!owner && _yux && !type.ownerModule.empty()) {
+            owner = _yux->module(type.ownerModule);
+            if (owner) baseDecl = owner->localStructDecl(type.baseStructName(), /*includeBuiltin=*/false);
+        }
         if (baseDecl && baseDecl->isGeneric()) {
             // 确保实例存在
             string mangled = ensureStructInstance(baseDecl, type.genericArgs, owner ? owner : _file);
@@ -468,10 +479,13 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         return basicIt->second;
     }
 
-    // 结构体类型 (从缓存查找)
-    auto it = _structTypes.find(type.name);
-    if (it != _structTypes.end()) {
-        DEBUG_LOG_VAL("    -> Struct (cached)", type.name);
+    // 结构体类型 (从缓存查找：身份键优先，短名回退——未填 owner 与已填必须同一 LLVM 类型)
+    if (auto it = _structTypes.find(type.identityKey()); it != _structTypes.end()) {
+        DEBUG_LOG_VAL("    -> Struct (cached)", type.identityKey());
+        return it->second;
+    }
+    if (auto it = _structTypes.find(type.name); it != _structTypes.end()) {
+        DEBUG_LOG_VAL("    -> Struct (cached short)", type.name);
         return it->second;
     }
 
@@ -512,7 +526,12 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
 
     // 尝试查找并创建结构体类型
     p<FileNode> sourceFile = nullptr;
-    auto structDecl = names().lookupStruct(type.name, /*includeBuiltin=*/false, &sourceFile);
+    StructDeclNode* structDecl = nullptr;
+    if (!type.ownerModule.empty() && _yux) {
+        sourceFile = _yux->module(type.ownerModule);
+        if (sourceFile) structDecl = sourceFile->localStructDecl(type.name, /*includeBuiltin=*/false);
+    }
+    if (!structDecl) structDecl = names().lookupStruct(type, /*includeBuiltin=*/false, &sourceFile);
     if (!sourceFile) sourceFile = _file;
 
     if (structDecl) {
@@ -549,15 +568,26 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     // tag 按声明顺序从 0 起编号；payload 缓冲取所有 variant 的 tuple-payload 中最大字节数
     // 全部零参 variant 时省略 payload 字段（N==0）。详见 docs/spec/draft/DRAFT-枚举.md §6
     {
-        string cacheKey = "$enum$" + type.name;
+        string shortKey = "$enum$" + type.name;
+        string idKey = "$enum$" + type.identityKey();
         // 先查缓存：泛型实例方法 emit 时 _file 会切到 SDK，lookupEnum 找不到用户文件里的 enum，
         // 但 LLVM 类型其实已经在用户文件 emit 阶段建过缓存，直接返回即可，避免落到 null 上层崩。
-        if (auto cit = _structTypes.find(cacheKey); cit != _structTypes.end()) {
+        // 身份键与短名必须指向同一 LLVM 类型，否则 InsertValue 会因 owner 填/未填拆成两种 enum。
+        if (auto cit = _structTypes.find(idKey); cit != _structTypes.end()) {
             DEBUG_LOG_VAL("    -> Enum (cached)", type.name);
             return cit->second;
         }
+        if (auto cit = _structTypes.find(shortKey); cit != _structTypes.end()) {
+            DEBUG_LOG_VAL("    -> Enum (cached short)", type.name);
+            return cit->second;
+        }
         p<FileNode> enumOwner = nullptr;
-        auto enumDecl = names().lookupEnum(type.name, &enumOwner);
+        EnumDeclNode* enumDecl = nullptr;
+        if (!type.ownerModule.empty() && _yux) {
+            enumOwner = _yux->module(type.ownerModule);
+            if (enumOwner) enumDecl = enumOwner->localEnumDecl(type.name);
+        }
+        if (!enumDecl) enumDecl = names().lookupEnum(type, &enumOwner);
         if (enumDecl) {
             // 计算 max payload 字节数
             u64 maxPayload = 0;
@@ -585,7 +615,8 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             string prefix = enumOwner && !enumOwner->moduleName().empty() ? enumOwner->moduleName() + "." : "";
             string mangled = prefix + type.name;
             auto enumType = llvm::StructType::create(_context, fields, mangled);
-            _structTypes[cacheKey] = enumType;
+            _structTypes[idKey] = enumType;
+            _structTypes[shortKey] = enumType;
             DEBUG_LOG_VAL("    -> Enum (created)", mangled << " payload=" << maxPayload);
             return enumType;
         }
@@ -616,8 +647,12 @@ llvm::StructType* Compiler::getOrCreateStructType(p<StructDeclNode> structDecl, 
     auto file = sourceFile ? sourceFile : _file;
     string mangledName = Mangler::structType(file->moduleName(), name);
 
-    // 检查缓存
-    auto it = _structTypes.find(name);
+    // 检查缓存（身份键 + 短名回退）
+    auto it = _structTypes.find(mangledName);
+    if (it != _structTypes.end()) {
+        return it->second;
+    }
+    it = _structTypes.find(name);
     if (it != _structTypes.end()) {
         return it->second;
     }
@@ -630,6 +665,7 @@ llvm::StructType* Compiler::getOrCreateStructType(p<StructDeclNode> structDecl, 
 
     // 创建结构体类型
     auto structType = llvm::StructType::create(_context, fieldTypes, mangledName);
+    _structTypes[mangledName] = structType;
     _structTypes[name] = structType;
 
     DEBUG_LOG_VAL("Created struct type", mangledName);

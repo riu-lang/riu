@@ -957,7 +957,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                 }
             }
             if (ok) {
-                auto modCall = sema::resolveModuleFnCall(_file, nullptr, n, dotCallee, argTypes);
+                auto modCall = sema::resolveModuleFnCall(_file, _yux, n, dotCallee, argTypes);
                 if (!modCall.matched) {
                     // Phase 3.3.2.f: 镜像 Compiler::compileMethodCall 的 baseType 派发,
                     // 主动调用 3.3.2.a / 3.3.2.e 抠出的 helper.

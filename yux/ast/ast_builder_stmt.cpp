@@ -336,13 +336,13 @@ std::any ASTBuilder::visitStatementSet(yux::yuxParser::StatementSetContext* ctx)
 // DRAFT-static-vars Phase 5：静态字段写语句（Type::FIELD = expr）
 std::any ASTBuilder::visitStatementStaticFieldSet(yux::yuxParser::StatementStaticFieldSetContext* ctx) {
     auto scope = currentScope();
-    Token typeName(ctx->typeName);
+    auto typePath = typePathFromCtx(ctx->typeName);
     Token fieldName(ctx->fieldName);
     auto valueExpr = any_cast_p<ExprNode>(visit(ctx->value));
 
-    DEBUG_LOG_VAL("  Statement: StaticFieldSet", typeName.getText() << "::" << fieldName.getText() << " = ...");
+    DEBUG_LOG_VAL("  Statement: StaticFieldSet", typePath.dotted() << "::" << fieldName.getText() << " = ...");
     return static_cast<p<StatementNode>>(
-        createWithLine<StatementStaticFieldSetNode>(ctx, scope, typeName, fieldName, valueExpr));
+        createWithLine<StatementStaticFieldSetNode>(ctx, scope, std::move(typePath), fieldName, valueExpr));
 }
 
 std::any ASTBuilder::visitStatementBlock(yux::yuxParser::StatementBlockContext* ctx) {

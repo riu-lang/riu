@@ -150,6 +150,7 @@ void checkErrPropagateForFnValueCall(FnNode* currentFnNode, p<ExprCallNode> call
                                      LambdaExprNode* currentLambda = nullptr);
 
 // 包/模块别名调用解析 (Phase 3.3.1.a).
+// 类型路径见 sema::resolveTypePath（name_resolver.h）：对称的已 use 前缀查找，不 loadModule.
 //
 // 识别两种调用形态:
 //   1. 包别名: `pkg.mod.fn(args)` —— ExprDotNode::parseChain 拿到 (aliasName, segs),

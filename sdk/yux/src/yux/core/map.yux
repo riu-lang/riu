@@ -1,6 +1,7 @@
 ; yux SDK - Map<K, V>（v0.21 Phase B）
 ; 纯 yux：平行 Array 线性查找。K 须可 ==（标量或 String）；不承诺 O(1) / 哈希。
-; 公开符号经 pkg `map.*` 扁平进 yux.core。
+; 公开符号经 pkg `map.*` 扁平进 yux.core；类型名 `Map` 走扁平（g4 `type` 为单 ID）。
+; 模块路径 `map` / `yux.core.map` 已登记，供该文件内自由函数使用。
 
 struct Map<K, V> {
   _keys Array<K>

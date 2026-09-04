@@ -524,6 +524,7 @@ public:
 // arity / 变体匹配 / 静态分流均在 sema 阶段校验.
 // 访问器名沿用 enumName / variantName, 留待 2c 与 struct 分流一并改名.
 class ExprPathCallNode : public ExprNode {
+    TypePath _lhsPath; // 限定路径；Self / 裸名时仅一段。末段与 _enumName 相同
     Token _enumName;
     Token _variantName;
     vector<p<ExprNode>> _args;
@@ -534,13 +535,18 @@ class ExprPathCallNode : public ExprNode {
 
 public:
     ExprPathCallNode(const p<Node>& parent, Token enumName, Token variantName)
-        : ExprNode(parent), _enumName(std::move(enumName)), _variantName(std::move(variantName)) {}
+        : ExprNode(parent), _lhsPath(enumName), _enumName(std::move(enumName)), _variantName(std::move(variantName)) {}
 
     void addArg(p<ExprNode> a) { _args.push_back(a); }
     void setLhsTypeArgs(vector<p<TypeNode>> a) { _lhsTypeArgs = std::move(a); }
     void setRhsTypeArgs(vector<p<TypeNode>> a) { _rhsTypeArgs = std::move(a); }
+    void setLhsPath(TypePath p) {
+        _lhsPath = std::move(p);
+        if (!_lhsPath.empty()) _enumName = _lhsPath.last();
+    }
 
     [[nodiscard]] const Token& enumName() const { return _enumName; }
+    [[nodiscard]] const TypePath& lhsPath() const { return _lhsPath; }
     [[nodiscard]] const Token& variantName() const { return _variantName; }
     [[nodiscard]] const vector<p<ExprNode>>& args() const { return _args; }
     [[nodiscard]] const vector<p<TypeNode>>& lhsTypeArgs() const { return _lhsTypeArgs; }
@@ -574,6 +580,7 @@ class ExprStructLitNode : public ExprNode {
     // DRAFT-const-eval Phase 5: true=Self{...} (受 #Static fn 限制),
     // false=TypeName{...} (任意 expr 位, 含全局 #Cval 初始化器)
     bool _isSelfForm;
+    TypePath _typePath; // 非 Self 形态的 LHS；Self 时为空
     vector<p<FieldInitNode>> _fields;
 
 public:
@@ -581,10 +588,12 @@ public:
         : ExprNode(parent), _selfTok(std::move(selfTok)), _structName(std::move(structName)), _isSelfForm(isSelfForm) {}
 
     void addField(p<FieldInitNode> f) { _fields.push_back(f); }
+    void setTypePath(TypePath p) { _typePath = std::move(p); }
 
     [[nodiscard]] const Token& selfToken() const { return _selfTok; }
     [[nodiscard]] const string& structName() const { return _structName; }
     [[nodiscard]] bool isSelfForm() const { return _isSelfForm; }
+    [[nodiscard]] const TypePath& typePath() const { return _typePath; }
     [[nodiscard]] const vector<p<FieldInitNode>>& fields() const { return _fields; }
     [[nodiscard]] TypeInfo getType() const override;
 };
@@ -594,6 +603,7 @@ public:
 // - isElse=false：`E::V` / `E::V()` / `E::V(b1, b2, ...)`
 class EnumPatternNode : public Node {
     bool _isElse;
+    TypePath _enumPath;
     Token _enumName;
     Token _variantName;
     vector<Token> _binds;
@@ -604,11 +614,17 @@ public:
         : Node(parent), _isElse(true), _enumName(elseTok), _variantName(elseTok) {}
     // enum 模式
     EnumPatternNode(const p<Node>& parent, Token enumName, Token variantName, vector<Token> binds)
-        : Node(parent), _isElse(false), _enumName(std::move(enumName)), _variantName(std::move(variantName)),
-          _binds(std::move(binds)) {}
+        : Node(parent), _isElse(false), _enumPath(enumName), _enumName(std::move(enumName)),
+          _variantName(std::move(variantName)), _binds(std::move(binds)) {}
+
+    void setEnumPath(TypePath p) {
+        _enumPath = std::move(p);
+        if (!_enumPath.empty()) _enumName = _enumPath.last();
+    }
 
     [[nodiscard]] bool isElse() const { return _isElse; }
     [[nodiscard]] const Token& enumName() const { return _enumName; }
+    [[nodiscard]] const TypePath& enumPath() const { return _enumPath; }
     [[nodiscard]] const Token& variantName() const { return _variantName; }
     [[nodiscard]] const vector<Token>& binds() const { return _binds; }
 };
