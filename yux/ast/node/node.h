@@ -120,7 +120,8 @@ public:
 
     [[nodiscard]] p<ScopeNode> findNearestScope() const;
 
-    // 沿 parent / parentScope 找到所属 FileNode；合成节点可能为空
+    // 沿 parent / parentScope 找到所属 FileNode；合成节点可能为空。
+    // spec 默认体 fall-through 只临时改 parentScope，parent 仍指向 spec 文件。
     [[nodiscard]] FileNode* enclosingFile() const;
 
     void setLineNumber(int line) { _line = line; }
@@ -149,6 +150,9 @@ public:
 
     [[nodiscard]] virtual SourceLocation resolveLocation() const;
 };
+
+// 把出错节点所属文件路径写入 YuxError（已有路径则不动）。
+void attachDiagFile(YuxError& e, const Node* n);
 
 class Named {
 protected:

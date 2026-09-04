@@ -558,6 +558,9 @@ public:
     void compileFn(p<FnNode> node, llvm::Function* func); // 编译函数
     void compileMethod(p<FnNode> node, llvm::Function* func, const string& structName, bool isDestructor = false,
                        bool isStatic = false); // 编译方法 (isStatic=true 跳过 $ 注入与 ctor 零初始化)
+    // compileMethod 本体；外层 compileMethod 捕获 YuxError 后按方法节点所属文件补路径
+    void compileMethodImpl(p<FnNode> node, llvm::Function* func, const string& structName, bool isDestructor,
+                           bool isStatic);
     // DRAFT-spec-default-body Phase 3: 把该 impl 登记的 InheritedDefault 按 spec 默认体编出来.
     // 用 spec 默认体 FnNode 直接走 compileMethod, 期间临时 patch TypeSelfNode 与 $/形参符号表
     // 到 structName, 编完原样还原. 同步处理 DRAFT-spec-disambig-at 的 @-tagged 发射点.

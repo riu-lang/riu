@@ -20,16 +20,16 @@
 // ==================== DiagPolicy 全局状态 ====================
 
 namespace {
-    // 单一全局策略；编译器进程内共享。LSP 多 session 用 reset() 清理。
-    std::map<string, DiagSeverity>& policyOverrides() {
-        static std::map<string, DiagSeverity> m;
-        return m;
-    }
-    bool& policyWerrorRef() {
-        static bool w = false;
-        return w;
-    }
+// 单一全局策略；编译器进程内共享。LSP 多 session 用 reset() 清理。
+std::map<string, DiagSeverity>& policyOverrides() {
+    static std::map<string, DiagSeverity> m;
+    return m;
 }
+bool& policyWerrorRef() {
+    static bool w = false;
+    return w;
+}
+} // namespace
 
 bool DiagPolicy::setSeverityOverride(const string& code, DiagSeverity defaultSev, DiagSeverity newSev) {
     // 不可降级：默认就是 Error 的码不允许通过 --warn / --allow 改成更低
@@ -112,42 +112,37 @@ int displayWidthOfCodepoint(char32_t cp) {
     if (cp < 0x20 || cp == 0x7F) return 0;
 
     // 组合标记 / 零宽
-    if ((cp >= 0x0300 && cp <= 0x036F) ||  // Combining Diacritical Marks
-        (cp >= 0x0483 && cp <= 0x0489) ||
-        (cp >= 0x200B && cp <= 0x200F) ||  // ZWSP / ZWNJ / ZWJ / LRM / RLM
-        cp == 0x2028 || cp == 0x2029 ||
-        (cp >= 0x202A && cp <= 0x202E) ||
-        (cp >= 0xFE00 && cp <= 0xFE0F) ||  // Variation Selectors
-        (cp >= 0xE0100 && cp <= 0xE01EF))  // VS Supplement
+    if ((cp >= 0x0300 && cp <= 0x036F) ||                                   // Combining Diacritical Marks
+        (cp >= 0x0483 && cp <= 0x0489) || (cp >= 0x200B && cp <= 0x200F) || // ZWSP / ZWNJ / ZWJ / LRM / RLM
+        cp == 0x2028 || cp == 0x2029 || (cp >= 0x202A && cp <= 0x202E) ||
+        (cp >= 0xFE00 && cp <= 0xFE0F) || // Variation Selectors
+        (cp >= 0xE0100 && cp <= 0xE01EF)) // VS Supplement
         return 0;
 
     // 全宽 / CJK / 韩文 / 假名 / 全角符号
-    if ((cp >= 0x1100 && cp <= 0x115F) ||  // Hangul Jamo
-        (cp >= 0x2E80 && cp <= 0x303E) ||  // CJK Radicals / Kangxi / Symbols
-        (cp >= 0x3041 && cp <= 0x33FF) ||  // Hiragana / Katakana / Bopomofo / Compat
-        (cp >= 0x3400 && cp <= 0x4DBF) ||  // CJK Ext A
-        (cp >= 0x4E00 && cp <= 0x9FFF) ||  // CJK Unified
-        (cp >= 0xA000 && cp <= 0xA4CF) ||  // Yi
-        (cp >= 0xAC00 && cp <= 0xD7A3) ||  // Hangul Syllables
-        (cp >= 0xF900 && cp <= 0xFAFF) ||  // CJK Compat Ideographs
-        (cp >= 0xFE30 && cp <= 0xFE4F) ||  // CJK Compat Forms
-        (cp >= 0xFF00 && cp <= 0xFF60) ||  // Fullwidth Forms
-        (cp >= 0xFFE0 && cp <= 0xFFE6) ||  // Fullwidth Signs
-        (cp >= 0x20000 && cp <= 0x2FFFD) ||  // CJK Ext B-F
-        (cp >= 0x30000 && cp <= 0x3FFFD))    // CJK Ext G+
+    if ((cp >= 0x1100 && cp <= 0x115F) ||   // Hangul Jamo
+        (cp >= 0x2E80 && cp <= 0x303E) ||   // CJK Radicals / Kangxi / Symbols
+        (cp >= 0x3041 && cp <= 0x33FF) ||   // Hiragana / Katakana / Bopomofo / Compat
+        (cp >= 0x3400 && cp <= 0x4DBF) ||   // CJK Ext A
+        (cp >= 0x4E00 && cp <= 0x9FFF) ||   // CJK Unified
+        (cp >= 0xA000 && cp <= 0xA4CF) ||   // Yi
+        (cp >= 0xAC00 && cp <= 0xD7A3) ||   // Hangul Syllables
+        (cp >= 0xF900 && cp <= 0xFAFF) ||   // CJK Compat Ideographs
+        (cp >= 0xFE30 && cp <= 0xFE4F) ||   // CJK Compat Forms
+        (cp >= 0xFF00 && cp <= 0xFF60) ||   // Fullwidth Forms
+        (cp >= 0xFFE0 && cp <= 0xFFE6) ||   // Fullwidth Signs
+        (cp >= 0x20000 && cp <= 0x2FFFD) || // CJK Ext B-F
+        (cp >= 0x30000 && cp <= 0x3FFFD))   // CJK Ext G+
         return 2;
 
     // 常见 emoji 段（粗略覆盖；不区分 text/emoji presentation）
-    if ((cp >= 0x2600 && cp <= 0x27BF) ||    // Misc Symbols / Dingbats
-        (cp >= 0x1F300 && cp <= 0x1F5FF) ||  // Misc Symbols and Pictographs
-        (cp >= 0x1F600 && cp <= 0x1F64F) ||  // Emoticons
-        (cp >= 0x1F680 && cp <= 0x1F6FF) ||  // Transport and Map
-        (cp >= 0x1F700 && cp <= 0x1F77F) ||
-        (cp >= 0x1F780 && cp <= 0x1F7FF) ||
-        (cp >= 0x1F800 && cp <= 0x1F8FF) ||
-        (cp >= 0x1F900 && cp <= 0x1F9FF) ||  // Supplemental Symbols and Pictographs
-        (cp >= 0x1FA00 && cp <= 0x1FA6F) ||
-        (cp >= 0x1FA70 && cp <= 0x1FAFF))    // Symbols and Pictographs Ext-A
+    if ((cp >= 0x2600 && cp <= 0x27BF) ||   // Misc Symbols / Dingbats
+        (cp >= 0x1F300 && cp <= 0x1F5FF) || // Misc Symbols and Pictographs
+        (cp >= 0x1F600 && cp <= 0x1F64F) || // Emoticons
+        (cp >= 0x1F680 && cp <= 0x1F6FF) || // Transport and Map
+        (cp >= 0x1F700 && cp <= 0x1F77F) || (cp >= 0x1F780 && cp <= 0x1F7FF) || (cp >= 0x1F800 && cp <= 0x1F8FF) ||
+        (cp >= 0x1F900 && cp <= 0x1F9FF) ||                                   // Supplemental Symbols and Pictographs
+        (cp >= 0x1FA00 && cp <= 0x1FA6F) || (cp >= 0x1FA70 && cp <= 0x1FAFF)) // Symbols and Pictographs Ext-A
         return 2;
 
     return 1;
@@ -190,7 +185,8 @@ string caretPaddingFromCol(const string& srcLine, int col) {
             continue;
         }
         int w = displayWidthOfCodepoint(cp);
-        for (int i = 0; i < w; ++i) out.push_back(' ');
+        for (int i = 0; i < w; ++i)
+            out.push_back(' ');
         ++cpCount;
     }
     return out;
@@ -198,11 +194,19 @@ string caretPaddingFromCol(const string& srcLine, int col) {
 
 const char* severityLabel(DiagSeverity s) {
     switch (s) {
-        case DiagSeverity::Note:    return "note";
-        case DiagSeverity::Warning: return "warning";
-        case DiagSeverity::Error:   return "error";
+    case DiagSeverity::Note:
+        return "note";
+    case DiagSeverity::Warning:
+        return "warning";
+    case DiagSeverity::Error:
+        return "error";
     }
     return "error";
+}
+
+// 跨文件 AST：出错节点自带路径时优先于正在编译的入口文件
+string diagnosticFile(const string& sourcePath, const YuxError& err) {
+    return err.file().empty() ? sourcePath : err.file();
 }
 
 } // namespace
@@ -230,7 +234,7 @@ void DiagnosticEngine::render(std::ostream& out, const Diagnostic& diagIn) {
     // 源码片段（仅在 file + line + col 都有效时显示）
     if (!diag.file.empty() && diag.line > 0) {
         const auto* lines = loadSource(diag.file);
-        if (lines && std::cmp_less_equal(diag.line ,lines->size())) {
+        if (lines && std::cmp_less_equal(diag.line, lines->size())) {
             const string& srcLine = (*lines)[diag.line - 1];
             string lineNoStr = std::to_string(diag.line);
             string gutter(lineNoStr.size(), ' ');
@@ -256,22 +260,20 @@ void DiagnosticEngine::render(std::ostream& out, const Diagnostic& diagIn) {
 }
 
 namespace {
-    // emit 去重 set：(file, code, line, col, message)
-    // 同一站点可能从不同路径 emit；按 5 元组去重即可
-    using EmitKey = std::tuple<string, string, size_t, int, string>;
-    std::set<EmitKey>& emitDedup() {
-        static std::set<EmitKey> s;
-        return s;
-    }
+// emit 去重 set：(file, code, line, col, message)
+// 同一站点可能从不同路径 emit；按 5 元组去重即可
+using EmitKey = std::tuple<string, string, size_t, int, string>;
+std::set<EmitKey>& emitDedup() {
+    static std::set<EmitKey> s;
+    return s;
 }
+} // namespace
 
 void DiagnosticEngine::resetEmitDedup() {
     emitDedup().clear();
 }
 
-void DiagnosticEngine::emit(std::ostream& out,
-                            const string& sourcePath,
-                            const YuxError& err) {
+void DiagnosticEngine::emit(std::ostream& out, const string& sourcePath, const YuxError& err) {
     DiagSeverity defaultSev = err.getSeverity();
     // emit 仅服务 warning / note；默认 Error 的码应当 throw 走 renderYuxError 路径
     assert(defaultSev != DiagSeverity::Error &&
@@ -279,8 +281,9 @@ void DiagnosticEngine::emit(std::ostream& out,
 
     string code = err.getCode() ? err.getCode() : "E0000";
     DiagSeverity sev = DiagPolicy::effectiveSeverity(code, defaultSev);
+    string path = diagnosticFile(sourcePath, err);
 
-    EmitKey key{sourcePath, code, err.getLineNumber(), err.getColumn(), err.what()};
+    EmitKey key{path, code, err.getLineNumber(), err.getColumn(), err.what()};
     bool firstSeen = emitDedup().insert(key).second;
 
     // 升级到 Error 时：不在 emit 内渲染, 直接 throw 让顶层 catch 走 renderYuxError
@@ -295,7 +298,7 @@ void DiagnosticEngine::emit(std::ostream& out,
     Diagnostic d;
     d.severity = sev;
     d.code = code;
-    d.file = sourcePath;
+    d.file = path;
     d.line = err.getLineNumber();
     d.col = err.getColumn();
     d.message = err.what();
@@ -308,13 +311,11 @@ void DiagnosticEngine::emit(const string& sourcePath, const YuxError& err) {
     emit(std::cerr, sourcePath, err);
 }
 
-void DiagnosticEngine::renderYuxError(std::ostream& out,
-                                      const string& sourcePath,
-                                      const YuxError& err) {
+void DiagnosticEngine::renderYuxError(std::ostream& out, const string& sourcePath, const YuxError& err) {
     Diagnostic d;
     d.severity = err.getSeverity();
     d.code = err.getCode() ? err.getCode() : "E0000";
-    d.file = sourcePath;
+    d.file = diagnosticFile(sourcePath, err);
     d.line = err.getLineNumber();
     d.col = err.getColumn();
     d.message = err.what();

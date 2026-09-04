@@ -25,6 +25,7 @@ class FileNode : public ScopeNode {
     vector<p<EnumDeclNode>> _enumDecls;
     map<string, p<EnumDeclNode>> _enumMap;
     string _moduleName;
+    string _sourcePath; // 该 FileNode 对应的源文件绝对路径；空壳 SDK 父作用域可空
     bool _fromDecl = false;
 
 public:
@@ -81,6 +82,9 @@ public:
 
     void setModuleName(const string& name) { _moduleName = name; }
     [[nodiscard]] const string& moduleName() const { return _moduleName; }
+
+    void setSourcePath(string p) { _sourcePath = std::move(p); }
+    [[nodiscard]] const string& sourcePath() const { return _sourcePath; }
 
     // .decl 重建的接口树：无非泛型体，不能拿去 codegen；obj 过期时需 loadMainFile 重 parse
     void setFromDecl(bool v) { _fromDecl = v; }

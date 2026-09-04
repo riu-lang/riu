@@ -65,8 +65,9 @@ public:
 class DiagnosticEngine {
 public:
     // 把 YuxError 转成 Diagnostic 并渲染到 out。
-    // sourcePath 决定文件名前缀；若为空，前缀只剩 line:col。
-    // 引擎内部按 sourcePath 缓存源文件内容（同一个引擎实例多次调用同一文件不重复读）。
+    // sourcePath 是正在编译的入口文件（回退用）；若 err.file() 非空，用出错节点
+    // 所属文件（spec 默认体 fall-through 等跨文件 AST）。
+    // 引擎内部按最终路径缓存源文件内容（同一个引擎实例多次调用同一文件不重复读）。
     static void renderYuxError(std::ostream& out, const string& sourcePath, const YuxError& err);
 
     // 通用渲染入口

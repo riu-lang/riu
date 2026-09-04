@@ -161,6 +161,12 @@ FileNode* Node::enclosingFile() const {
     return nullptr;
 }
 
+void attachDiagFile(YuxError& e, const Node* n) {
+    if (!e.file().empty() || !n) return;
+    auto* f = n->enclosingFile();
+    if (f && !f->sourcePath().empty()) e.setFile(f->sourcePath());
+}
+
 int Node::resolveLineNumber() const {
     return _line;
 }

@@ -23,7 +23,7 @@ void ensureBuildDir(const std::string& buildDir);
 bool compileIRToObj(llvm::Module* module, const std::string& outputPath);
 
 // 把 runtime_error 渲染成统一格式的诊断到 stderr。
-// sourcePath 提供文件名 (可空), 用于源码片段查找与错误头打印。
+// sourcePath 提供正在编译的入口文件 (可空)；YuxError 若自带 file() 则优先用节点所属文件。
 // prefix 为可选前缀, 写在诊断头之前; 对非 YuxError 异常仅打印 prefix + msg。
 void reportRuntimeError(const std::string& sourcePath, const std::runtime_error& e, const std::string& prefix = "");
 

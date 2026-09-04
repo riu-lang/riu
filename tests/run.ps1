@@ -2,7 +2,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  项目编译+运行 / 格式化回归（原 xmake test）。
+  项目编译+运行 / 格式化回归 / 预期编译失败（原 xmake test）。
 
 .PARAMETER Jobs
   并行用例数。0 / 省略 = CPU 核数；1 = 串行。
@@ -69,9 +69,11 @@ function Get-Cases {
         if (-not (Test-Path -LiteralPath $toml)) { return }
         $expected = Join-Path $d 'expected.txt'
         $fmt = Join-Path $d 'expected_format'
+        $fail = Join-Path $d 'expected_fail.txt'
         $kind = $null
         if (Test-Path -LiteralPath $expected) { $kind = 'project' }
         elseif (Test-Path -LiteralPath $fmt) { $kind = 'format' }
+        elseif (Test-Path -LiteralPath $fail) { $kind = 'fail' }
         if (-not $kind) { return }
         $list += [pscustomobject]@{
             Name = $_.Name
@@ -152,6 +154,30 @@ function Invoke-OneCase {
                     $err = "run failed exit $($run.ExitCode)`n$($run.Stderr)$($run.Stdout)"
                 } elseif ($run.Stdout -ne $expected) {
                     $err = "output mismatch`n--- expected ---`n$expected`n--- actual ---`n$($run.Stdout)"
+                } else {
+                    $ok = $true
+                }
+            }
+            if (Test-Path -LiteralPath $buildDir) {
+                Remove-Item -LiteralPath $buildDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        } elseif ($Case.Kind -eq 'fail') {
+            $buildDir = Join-Path $Case.Dir 'build'
+            if (Test-Path -LiteralPath $buildDir) { Remove-Item -LiteralPath $buildDir -Recurse -Force }
+            $r = Invoke-Capture $YuxExe @('build', $Case.Name) $Case.Dir
+            $combined = (Strip-Cr "$($r.Stderr)$($r.Stdout)")
+            if ($r.ExitCode -eq 0) {
+                $err = "expected compile failure, got exit 0`n$combined"
+            } else {
+                $needles = Get-Content -LiteralPath (Join-Path $Case.Dir 'expected_fail.txt')
+                $missing = @()
+                foreach ($line in $needles) {
+                    $t = $line.Trim()
+                    if ($t.Length -eq 0 -or $t.StartsWith('#')) { continue }
+                    if ($combined.IndexOf($t) -lt 0) { $missing += $t }
+                }
+                if ($missing.Count -gt 0) {
+                    $err = "stderr missing:`n$($missing -join "`n")`n--- actual ---`n$combined"
                 } else {
                     $ok = $true
                 }

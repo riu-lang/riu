@@ -168,6 +168,7 @@ class YuxError : public std::runtime_error {
     DiagSeverity _sev = DiagSeverity::Error; // 默认严重等级（来源于 ErrorCodeDef.defaultSev）
     vector<string> _hints;                   // 修复建议（"= help: ..."），可链式 withHint 追加
     vector<string> _notes;                   // 附加说明（"= note: ..."），可链式 withNote 追加
+    string _file;                            // 出错节点所属源文件；空 = 由渲染入口 sourcePath 决定
 
 public:
     explicit YuxError(const string& msg, size_t line) : runtime_error(msg), _line(line) {
@@ -231,6 +232,8 @@ public:
 
     void setColumn(int col) { _col = col; }
 
+    void setFile(string f) { _file = std::move(f); }
+
     [[nodiscard]] size_t getLineNumber() const { return _line; }
 
     [[nodiscard]] int getColumn() const { return _col; }
@@ -240,6 +243,18 @@ public:
     [[nodiscard]] const char* getCode() const { return _code; }
 
     [[nodiscard]] DiagSeverity getSeverity() const { return _sev; }
+
+    // 出错节点所属源文件。空 = 渲染时回退到入口传入的正在编译文件。
+    [[nodiscard]] const string& file() const { return _file; }
+
+    YuxError& withFile(string f) & {
+        _file = std::move(f);
+        return *this;
+    }
+    YuxError&& withFile(string f) && {
+        _file = std::move(f);
+        return std::move(*this);
+    }
 
     // 链式追加 help / note：支持 `throw YuxError(...).withHint("...")` 形态
     YuxError& withHint(string h) & {
@@ -264,10 +279,12 @@ public:
 
     // 显式声明拷贝 / 移动构造 noexcept：throw YuxError 在抛出栈展开期间不允许再次抛异常；
     // 真正的 OOM 走 std::terminate（语义上等价于 runtime_error 自身的承诺）
+    // NOLINTBEGIN(bugprone-exception-escape)
     YuxError(const YuxError&) noexcept = default;
     YuxError(YuxError&&) noexcept = default;
     YuxError& operator=(const YuxError&) noexcept = default;
     YuxError& operator=(YuxError&&) noexcept = default;
+    // NOLINTEND(bugprone-exception-escape)
 };
 
 template <typename T>

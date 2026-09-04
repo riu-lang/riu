@@ -21,7 +21,7 @@ N | <源码行原文>
 
 约束：
 
-- `file` 为相对或绝对路径，由命令行入口决定；缺失时回退为 `line N` 或省略。
+- `file` 为出错节点所属源文件的相对或绝对路径（跨文件 AST，如 spec 默认体 fall-through，**应当**指向节点 `enclosingFile`，而不是正在编译的入口文件）；未知时回退到命令行入口路径；仍缺失时回退为 `line N` 或省略。
 - `line` 为 1-based 行号；`col` 为 1-based **字符**列号（按 Unicode codepoint 计数，与 ANTLR `getCharPositionInLine() + 1` 同源）。一个 CJK 字 / 一个 emoji 计 1 列；BMP 外的码点（如组合表情 + 变体选择子）按各自的 codepoint 数计列。
 - 源码片段下的插入符（`^`）按**显示列宽**对齐：插入符前的 padding 不再是单纯的列号空格，而是按源码行中各 codepoint 的视觉宽度展开（CJK / 全角 / 常见 emoji 计 2 列宽，组合标记 / 零宽字符计 0 列宽，Tab 原样保留以让终端按相同 tab stop 扩展）。这样 `^` 在等宽终端中始终落在出错字符的正下方，不受多字节字符前缀影响。
 - `code` 形如 `EXXXX`，与 `ErrorCode::EXXXX.code` 同字面值；占位错误码 `E0000` 表示尚未挂码的位置，迁移完成后**不应**再出现。

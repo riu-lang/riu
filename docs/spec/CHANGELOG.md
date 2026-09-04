@@ -15,6 +15,11 @@
 
 ---
 
+## 2026-09-04 —— 跨文件诊断路径用出错节点所属文件
+
+- **修改 D.1.1**：诊断 `file` 取 AST 节点 `enclosingFile` 的源路径；spec 默认体 fall-through 等跨文件 codegen 不再把 spec 行号绑到正在编译的入口文件。入口路径仅作回退。
+- **冲突 / 兼容**：纯诊断呈现；错误码与行号不变。
+
 ## 2026-09-04 —— SDK 子模块别名与全限定路径
 
 - **新增 §10.4.1.3.1**：每个 `yux.core.<stem>` 在 parent scope 登记末段模块别名（`io.read_file` / `math.abs`）与全限定包路径（`yux.core.io.read_file`，隐式包别名 `yux`）。`pkg` `name.*` 扁平与别名并存。用户项目 `use yux.core.io` 命中已加载 SDK 模块，不走用户源根。类型名仍为单 `ID`（不写 `io.IoErr`）。

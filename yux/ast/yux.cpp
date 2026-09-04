@@ -46,6 +46,7 @@ void Yux::adoptDeclOwner(std::unique_ptr<mod_decl::NodeOwner> owner) {
 void Yux::bindModule(p<FileNode> file, const string& absPath, const string& moduleName) {
     _modules[moduleName] = file;
     _modulePaths[moduleName] = absPath;
+    if (file) file->setSourcePath(absPath);
     _specImplValidated = false;
 }
 
@@ -232,6 +233,7 @@ p<FileNode> Yux::_parseFile(const string& absPath, const string& moduleName, int
     bool isTestFile = absPath.size() >= 9 && absPath.ends_with(".test.yux");
     auto astBuilder = std::make_unique<ASTBuilder>(*this, moduleName, isTestFile, absPath);
     auto fileNode = astBuilder->build(program);
+    if (fileNode) fileNode->setSourcePath(absPath);
     _moduleBuilders.push_back(std::move(astBuilder));
     return fileNode;
 }
@@ -255,6 +257,7 @@ p<FileNode> Yux::loadMainFile(const string& absPath, const string& moduleName) {
     auto fileNode = _parseFile(absPath, moduleName, 1);
     _modules[moduleName] = fileNode;
     _modulePaths[moduleName] = absPath;
+    if (fileNode) fileNode->setSourcePath(absPath);
     // 新文件加入后, 旧的 draft impl 校验结果失效: 例如 SDK 预编译触发了一次
     // validate, 此时 _seen 还没有该文件里的 `Type : Draft` 登记; 后续
     // boundSatisfied 调用必须重新跑 validate, 否则误判为不满足 → E1106.
@@ -460,6 +463,7 @@ p<FileNode> Yux::loadModule(const string& moduleName, int errorLine) {
 
     _modules[moduleName] = fileNode;
     _modulePaths[moduleName] = absPath;
+    if (fileNode) fileNode->setSourcePath(absPath);
     _loadOrder.push_back(moduleName);
     return fileNode;
 }

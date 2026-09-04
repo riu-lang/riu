@@ -73,6 +73,7 @@ void ASTBuilder::preloadPackageChildren(FileNode* file, const string& alias, con
 std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
     DEBUG_LOG("Visit: Program");
     auto file = _targetFile ? _targetFile : _yux.createFile(_moduleName);
+    if (!_sourcePath.empty()) file->setSourcePath(_sourcePath);
 
     auto moduleName = file->moduleName();
 

@@ -1,0 +1,8 @@
+use yux.core.*
+
+; spec 默认体有类型错；sema 推迟到 impl 单态化，由 main.yux 的 fall-through codegen 触发
+#Spec
+struct BadEq {
+    fn eq(other Self&) bool
+    fn ne(other Self&) bool = 1 + true ; diag-cross-file-anchor
+}

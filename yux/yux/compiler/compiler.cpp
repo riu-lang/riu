@@ -719,6 +719,18 @@ void Compiler::emitSpecDefaultBodyMethod(SpecDeclNode* spec, size_t sigIdx, cons
         auto func = getMethodFunction(structName, emitMethodName, paramTypes, retType, mFallibleErr, isStatic);
         compileMethod(body, func, structName, false, isStatic);
         emitOk = true;
+    } catch (YuxError& e) {
+        // 默认体 AST 属于 spec 源文件；parentScope 此时指向 impl 文件，但 parent 未改
+        attachDiagFile(e, body);
+        restoreSelfNodes();
+        if (hadDollar) {
+            if (auto* dollar = body->lookupSymbol("$")) *dollar = savedDollar;
+        }
+        for (auto& pp : paramPatches) {
+            if (auto* sym = body->lookupSymbol(pp.name)) *sym = pp.saved;
+        }
+        body->setParentScope(savedBodyParent);
+        throw;
     } catch (...) {
         restoreSelfNodes();
         if (hadDollar) {
@@ -1118,6 +1130,16 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
 // 与普通函数类似，但需要处理当前实例参数（`$`）
 void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string& structName, bool isDestructor,
                              bool isStatic) {
+    try {
+        compileMethodImpl(node, func, structName, isDestructor, isStatic);
+    } catch (YuxError& e) {
+        attachDiagFile(e, node);
+        throw;
+    }
+}
+
+void Compiler::compileMethodImpl(p<FnNode> node, llvm::Function* func, const string& structName, bool isDestructor,
+                                 bool isStatic) {
     _currentFn = func;
     _currentFnNode = node;
     _currentStructName = structName;
