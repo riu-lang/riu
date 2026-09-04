@@ -1,0 +1,6 @@
+; §5.1.2：#Frozen 局部不可重赋 → E3093
+fn main() {
+  #Frozen let k i32 = 1
+  k = 2  ; check: E3093
+  ret;
+}

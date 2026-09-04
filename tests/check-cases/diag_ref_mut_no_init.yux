@@ -1,0 +1,5 @@
+; §5.1.3.1：T& 必须 init；#Mut 延后赋值例外不适用于引用 → E3114
+fn main() {
+  #Mut let e i32&  ; check: E3114
+  ret;
+}

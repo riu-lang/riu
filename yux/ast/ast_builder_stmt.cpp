@@ -32,11 +32,6 @@ std::any ASTBuilder::visitStatementLet(yux::yuxParser::StatementLetContext* ctx)
         throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
                        ErrorCode::E3113, name->getText());
     }
-    // 仅 #Mut 允许 `let x T`（延后赋值）；默认 val / #Cval / #Frozen 强制 init。
-    if (hasType && !hasInit && !flags.isMut) {
-        throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
-                       ErrorCode::E3114, name->getText());
-    }
 
     bool isMut = flags.isMut;
     bool isConst = flags.isCval;
@@ -44,6 +39,17 @@ std::any ASTBuilder::visitStatementLet(yux::yuxParser::StatementLetContext* ctx)
     p<TypeNode> type = nullptr;
     if (hasType) {
         type = buildTypeWithRef(ctx->typeWithRef(), scope);
+    }
+
+    // §5.1.3.1：T& 必须 init（写穿 vs 重指向歧义）；#Mut 延后赋值例外不适用于引用。
+    if (hasType && !hasInit && type->getType().isRef()) {
+        throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
+                       ErrorCode::E3114, name->getText());
+    }
+    // 仅 #Mut 允许 `let x T`（延后赋值）；默认 val / #Cval / #Frozen 强制 init。
+    if (hasType && !hasInit && !flags.isMut) {
+        throw YuxError(static_cast<int>(name->getLine()), static_cast<int>(name->getCharPositionInLine()) + 1,
+                       ErrorCode::E3114, name->getText());
     }
 
     // #Mut 延后赋形态：`#Mut let x T` 走 StatementDeclareNode（无 init）。
@@ -67,6 +73,9 @@ std::any ASTBuilder::visitStatementLet(yux::yuxParser::StatementLetContext* ctx)
     if (scope) {
         SymbolInfo sym(SymbolKind::Variable, name->getText(), varType, isMut);
         if (isConst) sym.isConst = true;
+        if (flags.isFrozen) {
+            sym.isFrozen = true;
+        }
         scope->registerSymbol(name->getText(), sym);
     }
 
@@ -74,7 +83,7 @@ std::any ASTBuilder::visitStatementLet(yux::yuxParser::StatementLetContext* ctx)
         createWithLine<StatementDeclareAssignNode>(ctx, scope, isMut, isConst, name, type, expr));
 }
 
-// DRAFT-let-unify §3：let 元组解构（默认 → 不可重赋 / #Mut → isMut=true / #Cval → isConst=true）。
+// DRAFT-let-unify §3：let 元组解构（默认 → 不可重赋 / #Mut → isMut=true / #Cval → isConst=true / #Frozen → isFrozen）。
 // 注解 → bool 标志复用 readLetAnnos；后续 alias / 元素类型登记逻辑与 visitStatementLet 同。
 std::any ASTBuilder::visitStatementLetTuple(yux::yuxParser::StatementLetTupleContext* ctx) {
     auto scope = currentScope();
@@ -110,14 +119,24 @@ std::any ASTBuilder::visitStatementLetTuple(yux::yuxParser::StatementLetTupleCon
         names.emplace_back(idTok);
     }
 
+    auto registerLetName = [&](const string& n, TypeInfo t) {
+        SymbolInfo sym(SymbolKind::Variable, n, std::move(t), isMut);
+        if (isConst) {
+            sym.isConst = true;
+        }
+        if (flags.isFrozen) {
+            sym.isFrozen = true;
+        }
+        scope->registerSymbol(n, std::move(sym));
+    };
     if (scope && wholeType.isTuple() && wholeType.tupleElements().size() == names.size()) {
         const auto& elems = wholeType.tupleElements();
         for (size_t i = 0; i < names.size(); ++i) {
-            scope->registerSymbol(names[i].getText(), {SymbolKind::Variable, names[i].getText(), *elems[i], isMut});
+            registerLetName(names[i].getText(), *elems[i]);
         }
     } else if (scope) {
         for (auto& n : names) {
-            scope->registerSymbol(n.getText(), {SymbolKind::Variable, n.getText(), TypeInfo(), isMut});
+            registerLetName(n.getText(), TypeInfo());
         }
     }
 

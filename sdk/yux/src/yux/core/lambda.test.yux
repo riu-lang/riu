@@ -399,7 +399,6 @@ fn test_fn_type_container() {
   #Mut let arr Array<Function<i32>> = []
   #Mut let b Rc<Function<i32>> = () i32 => 42
   #Mut let p (Function<i32>, i32)
-  #Mut let fr Function<i32, i32>&
   #Mut let nested Array<Function<Function<i32, i32>>> = []
 
   assert_true(true)

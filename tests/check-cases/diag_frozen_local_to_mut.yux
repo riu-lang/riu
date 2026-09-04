@@ -1,0 +1,19 @@
+; §5.1.2 / const-mut：#Frozen 局部拷给 #Mut → E3107
+struct Point {
+  x i32
+  y i32
+
+  #Static
+  fn make(x i32, y i32) Point {
+    ret Self {
+      .x = x
+      .y = y
+    }
+  }
+}
+
+fn main() {
+  #Frozen let p Point = Point::make(1, 2)
+  #Mut let q Point = p  ; check: E3107
+  ret;
+}

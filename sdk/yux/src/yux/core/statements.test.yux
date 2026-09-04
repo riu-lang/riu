@@ -1,0 +1,251 @@
+; §5 语句与控制流（Slice 2）：let 各档 / 赋值 / 索引赋值 / loop+break 析构 / ret / 块作用域
+; 标量 loop、复合赋值、T& 写穿、全局 let 见既有专项文件。
+
+struct StmtPt {
+  x i32
+  y i32
+
+  #Static
+  fn make(x i32, y i32) StmtPt {
+    ret Self {
+      .x = x
+      .y = y
+    }
+  }
+
+  fn bump_x() {
+    $.x += 1
+  }
+}
+
+struct StmtCell {
+  n i32
+
+  #Static
+  fn make(n i32) StmtCell {
+    ret Self {
+      .n = n
+    }
+  }
+}
+
+struct StmtBuf {
+  data Array<i32>
+
+  #Static
+  fn make(data Array<i32>) StmtBuf {
+    ret Self {
+      .data = move(data)
+    }
+  }
+}
+
+fn give_arr() Array<i32> {
+  ret [1, 2]
+}
+
+fn give_str() String {
+  ret "hi"
+}
+
+fn loop_ret_arr() Array<i32> {
+  loop {
+    let a Array<i32> = [9, 8]
+    ret a
+  }
+}
+
+fn loop_ret_drop_rc() i32 {
+  loop {
+    #Mut let r Rc<StmtCell> = StmtCell::make(1)
+    ret 7
+  }
+}
+
+fn loop_ret_void() {
+  loop {
+    let s String = "x"
+    ret;
+  }
+}
+
+; ==================== let 各档 ====================
+
+; 验证：默认 let 元组解构浅不可变，元素可读
+#Test
+fn test_let_tuple_imm() {
+  let (a, b) = (10, 20)
+  assert_eq(a, 10)
+  assert_eq(b, 20)
+}
+
+; 验证：#Frozen 局部标量可读
+#Test
+fn test_frozen_local_scalar() {
+  #Frozen let k i32 = 42
+  assert_eq(k, 42)
+}
+
+; 验证：#Mut 延后赋值 Array / String
+#Test
+fn test_delayed_handle_assign() {
+  #Mut let a Array<i32>
+  a = give_arr()
+  assert_eq(a.len(), 2)
+  assert_eq(a[0], 1)
+  a = [3]
+  assert_eq(a.len(), 1)
+  assert_eq(a[0], 3)
+
+  #Mut let s String
+  s = give_str()
+  assert_eq(s, "hi")
+  s = "ok"
+  assert_eq(s, "ok")
+}
+
+; 验证：#Cval let 可出现在 if 块内并作为块值
+#Test
+fn test_cval_in_if_block() {
+  let x i32 = if true {
+    #Cval let k i32 = 3 + 4
+    k
+  } else {
+    0
+  }
+  assert_eq(x, 7)
+}
+
+; ==================== 赋值 / 索引赋值 ====================
+
+; 验证：结构体字段复合赋值与 $.x +=
+#Test
+fn test_field_compound_assign() {
+  #Mut let p StmtPt = StmtPt::make(1, 2)
+  p.x += 10
+  p.y -= 1
+  assert_eq(p.x, 11)
+  assert_eq(p.y, 1)
+  p.bump_x()
+  assert_eq(p.x, 12)
+}
+
+; 验证：Array<String> 下标赋值
+#Test
+fn test_array_string_index_set() {
+  #Mut let arr Array<String> = ["a", "b"]
+  arr[0] = "x"
+  arr[1] = give_str()
+  assert_eq(arr[0], "x")
+  assert_eq(arr[1], "hi")
+}
+
+; 验证：obj.field[i] = 字段内 Array 下标写
+#Test
+fn test_field_array_index_set() {
+  #Mut let data Array<i32> = [1, 2, 3]
+  #Mut let b StmtBuf = StmtBuf::make(move(data))
+  b.data[1] = 99
+  assert_eq(b.data[0], 1)
+  assert_eq(b.data[1], 99)
+  assert_eq(b.data[2], 3)
+}
+
+; ==================== loop + break / ret 析构 ====================
+
+; 验证：loop 体内 Rc / String / Array 在 break 时释放
+#Test
+fn test_loop_break_releases_handles() {
+  #Mut let base i64 = rc_leak_count()
+  loop {
+    #Mut let r Rc<StmtCell> = StmtCell::make(1)
+    let s String = "hi"
+    let a Array<i32> = [1, 2]
+    assert_eq(r.n, 1)
+    assert_eq(s, "hi")
+    assert_eq(a.len(), 2)
+    break;
+  }
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+; 验证：labeled break 跨层析构内层句柄
+#Test
+fn test_labeled_break_releases_inner() {
+  #Mut let base i64 = rc_leak_count()
+  outer: loop {
+    loop {
+      #Mut let r Rc<StmtCell> = StmtCell::make(2)
+      let s String = "in"
+      break@outer;
+    }
+  }
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+; 验证：break 穿过 if 块时释放块内句柄
+#Test
+fn test_break_through_if_releases() {
+  #Mut let base i64 = rc_leak_count()
+  loop {
+    if true {
+      #Mut let r Rc<StmtCell> = StmtCell::make(3)
+      let a Array<i32> = [7]
+      break;
+    }
+  }
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+; 验证：loop 内 ret 标量时释放未返回的局部句柄
+#Test
+fn test_loop_ret_drops_local_rc() {
+  #Mut let base i64 = rc_leak_count()
+  assert_eq(loop_ret_drop_rc(), 7)
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+; 验证：loop 内 ret Array（move-return）
+#Test
+fn test_loop_ret_array() {
+  let a Array<i32> = loop_ret_arr()
+  assert_eq(a.len(), 2)
+  assert_eq(a[0], 9)
+  assert_eq(a[1], 8)
+}
+
+; 验证：loop 内 ret; 释放局部 String
+#Test
+fn test_loop_ret_void_string() {
+  #Mut let base i64 = rc_leak_count()
+  loop_ret_void()
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+; ==================== 块作用域 ====================
+
+; 验证：loop 体内 let 遮蔽外层同名；出块后仍是外层值
+#Test
+fn test_loop_body_shadow_outer() {
+  let x i32 = 1
+  loop {
+    let x i32 = 42
+    assert_eq(x, 42)
+    break;
+  }
+  assert_eq(x, 1)
+}
+
+; 验证：if 体内 String 遮蔽外层
+#Test
+fn test_if_shadow_string() {
+  let s String = "outer"
+  let inner String = if true {
+    let s String = "inner"
+    s
+  } else {
+    "else"
+  }
+  assert_eq(inner, "inner")
+  assert_eq(s, "outer")
+}
