@@ -147,6 +147,14 @@ struct ValWithMethod {
   fn nest() ValWithMethod {
     ret ValWithMethod::make($.v)
   }
+
+  fn opt() i32? {
+    ret $.v
+  }
+
+  fn opt_null() i32? {
+    ret null
+  }
 }
 
 ; 验证：可选链式调用在存在值时正确调用方法
@@ -301,4 +309,94 @@ fn test_safe_method_i32_to_string_null() {
   #Mut let n i32? = null
   #Mut let r String? = n?.to_string()
   assert_eq(r ?? "none", "none")
+}
+
+; ==================== ?? 右结合 / 短路 / 句柄 / ?. 不拍平 ====================
+
+; 验证：a ?? b ?? c 右结合为 a ?? (b ?? c)
+#Test
+fn test_null_else_right_assoc() {
+  let a i32? = null
+  let b i32? = 7
+  let c i32 = a ?? b ?? 99
+  assert_eq(c, 7)
+
+  let d i32? = 1
+  let e i32? = 2
+  let f i32 = d ?? e ?? 99
+  assert_eq(f, 1)
+}
+
+; 验证：?? 左侧有值时不求值 RHS
+#Test
+fn test_null_else_short_circuit_some() {
+  #Mut let c TickCounter = TickCounter::make(0)
+  let n i32? = 42
+  let r i32 = n ?? c.tick()
+  assert_eq(r, 42)
+  assert_eq(c.n, 0)
+}
+
+; 验证：?? 左侧为空时求值 RHS
+#Test
+fn test_null_else_eval_when_null() {
+  #Mut let c TickCounter = TickCounter::make(0)
+  let n i32? = null
+  let r i32 = n ?? c.tick()
+  assert_eq(r, 1)
+  assert_eq(c.n, 1)
+}
+
+; 验证：右结合下左侧有值时内层 ?? 整枝不求值
+#Test
+fn test_null_else_right_assoc_short_circuit() {
+  #Mut let c TickCounter = TickCounter::make(0)
+  let d i32? = 1
+  let e i32? = null
+  let f i32 = d ?? e ?? c.tick()
+  assert_eq(f, 1)
+  assert_eq(c.n, 0)
+}
+
+; 验证：?.method 返回 V? 时整体为 V??，不拍平
+#Test
+fn test_safe_method_ret_nullable_not_flatten() {
+  #Mut let v ValWithMethod = ValWithMethod::make(7)
+  #Mut let maybe ValWithMethod? = v
+  #Mut let r i32?? = maybe?.opt()
+  assert_true(r.has())
+  assert_eq(r.get() ?? -1, 7)
+
+  #Mut let r_none i32?? = maybe?.opt_null()
+  assert_true(r_none.has())
+  assert_true(r_none.get() == null)
+
+  #Mut let n ValWithMethod? = null
+  #Mut let r_null i32?? = n?.opt()
+  assert_false(r_null.has())
+}
+
+fn none_arr() Array<i32>? {
+  ret null
+}
+
+; 验证：?? 绑 Array，空字面量走靶向（左侧须是 fresh，变量 #NoCopy 会 E4031）
+#Test
+fn test_null_else_array_empty_literal() {
+  let r Array<i32> = none_arr() ?? []
+  assert_eq(r.len(), 0)
+}
+
+; 验证：?? 绑 Rc 句柄
+#Test
+fn test_null_else_rc_handle() {
+  #Mut let fb Rc<ValWithMethod> = ValWithMethod::make(3)
+  #Mut let a Rc<ValWithMethod>? = null
+  let r Rc<ValWithMethod> = a ?? fb
+  assert_eq(r.v, 3)
+
+  #Mut let v Rc<ValWithMethod> = ValWithMethod::make(9)
+  #Mut let some Rc<ValWithMethod>? = v
+  let r2 Rc<ValWithMethod> = some ?? fb
+  assert_eq(r2.v, 9)
 }

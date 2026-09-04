@@ -283,3 +283,51 @@ fn test_fallible_lambda_bang_inside() {
   }
   assert_eq(y, 6)
 }
+
+; ==================== 尾随 lambda + `!`（§4.12.1.5）====================
+
+fn run_or_fail(n i32, f Function<i32, i32>) i32 ! ParseErr {
+  let v i32 = parse_pos(n)!
+  ret f(v)
+}
+
+fn run0_or_fail(f Function<i32>) i32 ! ParseErr {
+  ret parse_pos(f())!
+}
+
+fn wrap_trailing(n i32) i32 ! ParseErr {
+  ret run_or_fail(n){ (x) => x * 2 }!
+}
+
+fn wrap_trailing_only() i32 ! ParseErr {
+  ret run0_or_fail { () => 7 }!
+}
+
+; 验证：`f(a){ lam }!` 成功 / 透传
+#Test
+fn test_trailing_lambda_bang() {
+  let ok i32 = try {
+    wrap_trailing(3)
+  } catch e ParseErr {
+    -1
+  }
+  assert_eq(ok, 6)
+
+  let err i32 = try {
+    wrap_trailing(0)
+  } catch e ParseErr {
+    99
+  }
+  assert_eq(err, 99)
+}
+
+; 验证：`f { lam }!` trailing-only
+#Test
+fn test_trailing_only_lambda_bang() {
+  let ok i32 = try {
+    wrap_trailing_only()
+  } catch e ParseErr {
+    -1
+  }
+  assert_eq(ok, 7)
+}

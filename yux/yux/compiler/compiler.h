@@ -473,8 +473,8 @@ private:
     // v0.16：callee 为 Ref<fn(...)R>（如 arr[i] 返回 fn&），Load 引用得 fat-ptr 后按同款 ABI 调用
     // innerFnType 为 Ref 元素类型（Fn TypeInfo），用于实参反推 / 形参类型 / 返回类型
     llvm::Value* compileRefFnValueCall(p<ExprCallNode> node, const TypeInfo& innerFnType);
-    // 实参位置 lambda 类型反推：用 fnParamTypes()[i] 回填 LambdaExprNode 形参缺失类型
-    // 在调用点正式 compileExpr(args) 之前调用
+    // 实参位置 lambda：把期望 Fn 类型写到 inferredFnType，并回填 bodyScope 未标注形参。
+    // 泛型调用须在 typeArgs 替换之后再调，避免 Function<T,...> 进入 emitLambdaFunction。
     void inferLambdaParamsFromFnType(p<class LambdaExprNode> lambda, const TypeInfo& expectedFnType);
     llvm::Value* compileGetRefExpr(p<ExprGetRefNode> node);         // 编译取引用表达式
     llvm::Value* compileUnaryExpr(p<ExprUnaryNode> node);           // 编译一元表达式

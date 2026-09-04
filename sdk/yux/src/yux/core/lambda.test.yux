@@ -589,6 +589,44 @@ fn test_closure_ret_borrow_param() {
 
 ; ==================== 语句体 / 尾随 / 推断 / 单行块 ====================
 
+fn call_arr(c bool, f Function<bool, Array<i32>>) Array<i32> {
+  ret f(c)
+}
+
+fn call_g<T>(x T, f Function<T, T>) T {
+  ret f(x)
+}
+
+fn apply0_g<T>(f Function<T>) T {
+  ret f()
+}
+
+fn wrap_opt(ok bool, f Function<i32>) i32? {
+  if ok {
+    ret f()
+  }
+  ret null
+}
+
+fn call_color(c Color, f Function<Color, i32>) i32 {
+  ret f(c)
+}
+
+struct LamRunner {
+  v i32
+
+  #Static
+  fn make(v i32) LamRunner {
+    ret Self {
+      .v = v
+    }
+  }
+
+  fn run(f Function<i32, i32>) i32 {
+    ret f($.v)
+  }
+}
+
 fn one_line_add(a i32, b i32) i32 { ret a + b }
 
 ; 验证：返回类型由表达式体推断
@@ -619,6 +657,134 @@ fn test_lambda_trailing() {
   assert_eq(r2, 7)
   let r3 = apply0 { () => 8 }
   assert_eq(r3, 8)
+}
+
+; 验证：尾随 lambda 显式形参 / 返回类型
+#Test
+fn test_lambda_trailing_explicit_types() {
+  let r = call_with(5){ (x i32) i32 => x * 2 }
+  assert_eq(r, 10)
+}
+
+; 验证：尾随 lambda 语句体（g4：`=>` 后直接 stmts，外层 `{ }` 即块）
+#Test
+fn test_lambda_trailing_stmt_body() {
+  let r = call_with(5){ (x i32) i32 =>
+    let y = x + 1
+    ret y
+  }
+  assert_eq(r, 6)
+}
+
+; 验证：尾随 lambda + turbofish（typeArgs 替换后再编 lambda，见 compileGenericFunctionCall）
+#Test
+fn test_lambda_trailing_turbofish() {
+  let r = call_g:<i32>(5){ (x) => x + 1 }
+  assert_eq(r, 6)
+  let r2 = apply0_g:<i32> { () => 42 }
+  assert_eq(r2, 42)
+  let r3 = apply0_g:<i32>(){ () => 7 }
+  assert_eq(r3, 7)
+}
+
+; 验证：尾随 lambda 由实参推断泛型
+#Test
+fn test_lambda_trailing_generic_infer() {
+  let r = call_g(5){ (x) => x + 1 }
+  assert_eq(r, 6)
+}
+
+; 验证：尾随 lambda 体为 if 表达式（尾随块是语句体，用 ret 接表达式）
+#Test
+fn test_lambda_trailing_if_body() {
+  let r = call_with(5){ (x) =>
+    ret if x > 0 { x + 1 } else { x }
+  }
+  assert_eq(r, 6)
+  let r2 = call_with(0 - 3){ (x) =>
+    ret if x > 0 { x + 1 } else { x }
+  }
+  assert_eq(r2, 0 - 3)
+}
+
+; 验证：尾随 lambda 体为 match
+#Test
+fn test_lambda_trailing_match_body() {
+  let r = call_color(Color::Blue){ (c) =>
+    ret match c {
+      Color::Red   => 10
+      Color::Green => 20
+      Color::Blue  => 30
+    }
+  }
+  assert_eq(r, 30)
+}
+
+; 验证：lambda 表达式体 if 绑 Array（codegen 靶向）
+#Test
+fn test_lambda_if_array_body() {
+  let pick = (c bool) Array<i32> => if c { [1] } else { [2] }
+  assert_eq(pick(true)[0], 1)
+  assert_eq(pick(false)[0], 2)
+}
+
+; 验证：lambda 表达式体 match 绑 Array
+#Test
+fn test_lambda_match_array_body() {
+  let pick = (c Color) Array<i32> => match c {
+    Color::Red   => [1]
+    Color::Green => [2]
+    Color::Blue  => [3]
+  }
+  assert_eq(pick(Color::Red)[0], 1)
+  assert_eq(pick(Color::Blue)[0], 3)
+}
+
+; 验证：尾随 lambda if 绑 Array
+#Test
+fn test_lambda_trailing_if_array() {
+  let a = call_arr(true){ (c) =>
+    ret if c { [1] } else { [2] }
+  }
+  assert_eq(a[0], 1)
+  let b = call_arr(false){ (c) =>
+    ret if c { [] } else { [9] }
+  }
+  assert_eq(b[0], 9)
+}
+
+; 验证：lambda 语句体含 if + ret
+#Test
+fn test_lambda_stmt_body_if_ret() {
+  let abs1 = (x i32) i32 => {
+    if x > 0 {
+      ret x
+    }
+    ret 0 - x
+  }
+  assert_eq(abs1(5), 5)
+  assert_eq(abs1(0 - 7), 7)
+}
+
+; 验证：尾随 lambda 调用结果接 `??`
+#Test
+fn test_lambda_trailing_null_else() {
+  let r i32 = wrap_opt(true){ () => 7 } ?? -1
+  assert_eq(r, 7)
+  let r2 i32 = wrap_opt(false){ () => 7 } ?? -1
+  assert_eq(r2, -1)
+}
+
+; 验证：`?.method` 尾随 lambda（有值 / 空短路）
+#Test
+fn test_lambda_trailing_safe_dot() {
+  #Mut let r LamRunner? = LamRunner::make(10)
+  #Mut let x i32? = r?.run { (n) => n + 1 }
+  assert_eq(x ?? -1, 11)
+
+  #Mut let n LamRunner? = null
+  #Mut let y i32? = n?.run { (n) => n + 1 }
+  assert_eq(y ?? -1, -1)
 }
 
 ; 验证：函数体 / if 可写成一行

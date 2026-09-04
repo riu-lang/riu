@@ -1970,11 +1970,25 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
     // 类型校验由 sema::validateBuiltinIntrinsicShape/TypeShape 覆盖，不在此处重复。
     if (auto n = dynamic_cast<p<ExprNullElseNode>>(expr)) {
         visitExpr(n->left());
-        visitExpr(n->right());
+        // 右侧按左侧 Nullable 内层靶向：`a ?? []` 的 `[]` 须是 Array<T>，否则 E3063。
+        // 与 compileMoveAssignExpr / if 块值同一套 visitExpr(..., expected)。
+        TypeInfo inner;
+        const TypeInfo* rightExp = nullptr;
+        TypeInfo leftType;
+        if (tryGetExprType(n->left(), leftType)) {
+            leftType = peelRefIfNullable(applyInstSubst(leftType));
+            if (leftType.isNullable()) {
+                if (auto innerType = leftType.nullableInnerType()) {
+                    inner = applyInstSubst(*innerType);
+                    if (!isCurrentTypeParam(inner)) rightExp = &inner;
+                }
+            }
+        }
+        visitExpr(n->right(), rightExp);
         // Bucket 6 收口+ (CURRENT-check.md): E3024 (左侧非 Nullable) + E3014 (右侧
         // 类型不匹配). 镜像 compileNullElseExpr. 模板形参等实例化后再查.
         try {
-            auto leftType = n->left()->hasResolvedType() ? n->left()->resolvedType() : n->left()->getType();
+            if (!tryGetExprType(n->left(), leftType)) return;
             leftType = peelRefIfNullable(applyInstSubst(leftType));
             if (isCurrentTypeParam(leftType)) return;
             if (!leftType.isNullable()) {
@@ -1985,14 +1999,16 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
             }
             auto innerType = leftType.nullableInnerType();
             if (!innerType) return;
-            TypeInfo inner = applyInstSubst(*innerType);
+            inner = applyInstSubst(*innerType);
             if (isCurrentTypeParam(inner)) return;
             if (isIntTypeName(inner.name) && isFlexibleIntExpr(n->right())) {
                 tryInferIntType(n->right(), inner);
             }
             tryInferNullType(n->right(), inner);
-            // 推断写在字面量上，必须重新 getType，不能用 visit 时记下的 resolvedType。
-            auto rightType = applyInstSubst(n->right()->getType());
+            // 空 `[]` 的 getType 是 `[__empty * 0]`，比对必须读 resolved。
+            TypeInfo rightType;
+            if (!tryGetExprType(n->right(), rightType)) return;
+            rightType = applyInstSubst(rightType);
             if (isCurrentTypeParam(rightType)) return;
             if (!(rightType == inner)) {
                 throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3014, inner.name,

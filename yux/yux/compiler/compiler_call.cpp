@@ -520,41 +520,40 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
     // arg[i] 是 LambdaExprNode，则按 params[i] 预先 emit lambda function（mangle 缓存）。
     // 多重载场景：当前先按 args.size() 唯一匹配；若多匹配，靠后面的 lookupFnSymbolWithParams
     // 进一步消歧（lambda arg 在重载解析中按 Fn 类型已统一）。
+    // 泛型 callee：形参仍是 Function<T,...>，此时不 emit；compileGenericFunctionCall
+    // 在 typeArgs 替换后再绑具体 Function 并 compileExpr。
+    bool delayGenericLambdaArgs = false;
     if (auto calleeLit = dynamic_cast<ExprLiteralNode*>(calleeExpr)) {
         if (auto objLit = dynamic_cast<LiteralObjNode*>(calleeLit->literal())) {
             string fnName = objLit->getValue().getText();
-            vector<FnSymbolInfo*> candidates;
-            _file->collectFnOverloads(fnName, candidates);
-            if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
-                _yux->sdkFile()->collectFnOverloads(fnName, candidates);
+            auto [genericFnForArgs, genericOwner] = _file->getGenericFunction(fnName);
+            (void)genericOwner;
+            if (genericFnForArgs && genericFnForArgs->header()->isGeneric() &&
+                !genericFnForArgs->header()->hasAnno("Builtin")) {
+                delayGenericLambdaArgs = true;
             }
-            // 按实参 arity 过滤
-            vector<FnSymbolInfo*> aritied;
-            for (auto* c : candidates) {
-                if (c->params.size() == node->getArgs().size()) aritied.push_back(c);
-            }
-            if (aritied.size() == 1) {
-                auto* fnSym = aritied[0];
-                for (size_t i = 0; i < node->getArgs().size(); ++i) {
-                    auto lambdaArg = dynamic_cast<LambdaExprNode*>(node->getArgs()[i]);
-                    if (!lambdaArg) continue;
-                    if (i >= fnSym->params.size()) break;
-                    if (!fnSym->params[i].isFn()) continue;
-                    // 设置反推类型，让后续 lambdaArg->getType() 返回完整 Fn TypeInfo
-                    // （影响 argTypes 收集 / lookupFnSymbolWithParams 重载消歧）
-                    lambdaArg->setInferredFnType(fnSym->params[i]);
-                    // 同步刷新 body scope 中形参符号的 type，让 body 内符号查找拿到正确类型
-                    if (auto sc = lambdaArg->bodyScope()) {
-                        const auto& fps = fnSym->params[i].fnParamTypes();
-                        for (size_t k = 0; k < lambdaArg->params().size() && k < fps.size(); ++k) {
-                            if (lambdaArg->params()[k].type) continue; // 显式标注尊重源
-                            if (auto* psym = sc->lookupSymbol(lambdaArg->params()[k].name.getText())) {
-                                if (fps[k]) psym->type = *fps[k];
-                            }
-                        }
+            if (!delayGenericLambdaArgs) {
+                vector<FnSymbolInfo*> candidates;
+                _file->collectFnOverloads(fnName, candidates);
+                if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
+                    _yux->sdkFile()->collectFnOverloads(fnName, candidates);
+                }
+                // 按实参 arity 过滤
+                vector<FnSymbolInfo*> aritied;
+                for (auto* c : candidates) {
+                    if (c->params.size() == node->getArgs().size()) aritied.push_back(c);
+                }
+                if (aritied.size() == 1) {
+                    auto* fnSym = aritied[0];
+                    for (size_t i = 0; i < node->getArgs().size(); ++i) {
+                        auto lambdaArg = dynamic_cast<LambdaExprNode*>(node->getArgs()[i]);
+                        if (!lambdaArg) continue;
+                        if (i >= fnSym->params.size()) break;
+                        if (!fnSym->params[i].isFn()) continue;
+                        inferLambdaParamsFromFnType(lambdaArg, fnSym->params[i]);
+                        // 预 emit；后续 compileLambdaExpr 走 mangle 缓存命中同一 Function*
+                        emitLambdaFunction(lambdaArg, fnSym->params[i]);
                     }
-                    // 预 emit；后续 compileLambdaExpr 走 mangle 缓存命中同一 Function*
-                    emitLambdaFunction(lambdaArg, fnSym->params[i]);
                 }
             }
         }
@@ -612,6 +611,11 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
         auto argType = arg->getType();
         argTypes.push_back(argType);
         if (delaySafeMethodArgs) continue;
+        // 泛型 callee 的 lambda 实参推迟到 typeArgs 替换之后（见 compileGenericFunctionCall）
+        if (delayGenericLambdaArgs && dynamic_cast<LambdaExprNode*>(arg)) {
+            args.push_back(nullptr);
+            continue;
+        }
 
         bool passByPtr = false;
         if (isGenericCtorCall && ctorStructImpl) {

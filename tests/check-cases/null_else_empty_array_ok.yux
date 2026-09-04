@@ -1,0 +1,9 @@
+; ?? 右侧空数组字面量按左侧 Nullable 内层 Array<T> 靶向；左侧须 fresh（调用）
+fn none_arr() Array<i32>? {
+  ret null
+}
+
+fn main() {
+  let r Array<i32> = none_arr() ?? []
+  ret;
+}

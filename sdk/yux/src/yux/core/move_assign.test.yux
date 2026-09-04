@@ -86,6 +86,14 @@ struct MvHolder {
       .tag = tag
     }
   }
+
+  fn replace_tag(v i32) i32 {
+    ret $.tag <- v
+  }
+
+  fn replace_bx(p Rc<MvPair>) Rc<MvPair> {
+    ret $.bx <- p
+  }
 }
 
 ; 验证：字段级 move 赋值，旧值被取出并修改，新值被写入，原引用保持不变
@@ -246,5 +254,49 @@ fn test_move_assign_looser_than_null_else() {
   ; 若 (x <- y) ?? 99：y 是 i32?，与 x 的 i32 不能 <-
   assert_eq(old, 10)
   assert_eq(x, 99)
+}
+
+; ==================== String 句柄 / $.field / if 表达式值 ====================
+
+; 验证：String 句柄 <- 返回旧值且无 double-free
+#Test
+fn test_move_assign_string_swap() {
+  #Mut let a String = "old"
+  #Mut let b String = "new"
+  let prev String = a <- b
+  assert_eq(prev, "old")
+  assert_eq(a, "new")
+  assert_eq(b, "new")
+}
+
+; 验证：方法体内 `$.field <-` 返回旧字段值
+#Test
+fn test_move_assign_this_field() {
+  #Mut let p1 Rc<MvPair> = MvPair::make(1, 2)
+  #Mut let p2 Rc<MvPair> = MvPair::make(3, 4)
+  #Mut let h MvHolder = MvHolder::make(p1, 7)
+  let old_tag = h.replace_tag(99)
+  assert_eq(old_tag, 7)
+  assert_eq(h.tag, 99)
+
+  let old_bx Rc<MvPair> = h.replace_bx(p2)
+  assert_eq(old_bx.a, 1)
+  assert_eq(h.bx.a, 3)
+}
+
+; 验证：<- 作为 if 表达式值
+#Test
+fn test_move_assign_as_if_expr() {
+  #Mut let a i32 = 1
+  #Mut let b i32 = 2
+  let old = if true { a <- b } else { 0 }
+  assert_eq(old, 1)
+  assert_eq(a, 2)
+
+  #Mut let s String = "x"
+  #Mut let t String = "y"
+  let prev String = if true { s <- t } else { "z" }
+  assert_eq(prev, "x")
+  assert_eq(s, "y")
 }
 ; TODO: Heap<T>? <- 交换需要 heap_some/heap_null builtin（见 Phase 3l）

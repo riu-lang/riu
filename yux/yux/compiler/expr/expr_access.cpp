@@ -516,7 +516,8 @@ llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
     // else: 取右侧默认值（用子帧 + 归一）
     func->insert(func->end(), elseBB);
     _builder.SetInsertPoint(elseBB);
-    auto rightType = node->right()->getType();
+    // 空 `[]` 的 getType 是 `[__empty * 0]`；SemaPass 已按内层靶向写 resolved。
+    auto rightType = node->right()->hasResolvedType() ? node->right()->resolvedType() : node->right()->getType();
     auto rightVal = compileBranchResultNormalized(node->right(), *innerType);
     if (rightType != *innerType) {
         throwSemaGap(node->resolveLineNumber(), node->resolveColumn());

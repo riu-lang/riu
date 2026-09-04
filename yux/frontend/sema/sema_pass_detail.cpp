@@ -178,6 +178,10 @@ bool isFreshHandleExpr(p<ExprNode> expr) {
         }
         return true;
     }
+    // `??`：两侧都 fresh 时整体 fresh（`give() ?? []`）；变量左侧仍是复制，E4031。
+    if (auto* ne = dynamic_cast<p<ExprNullElseNode>>(expr)) {
+        return isFreshHandleExpr(ne->left()) && isFreshHandleExpr(ne->right());
+    }
     return false;
 }
 

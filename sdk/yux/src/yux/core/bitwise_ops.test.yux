@@ -245,3 +245,17 @@ fn test_shift_binds_tighter_than_bitwise() {
   ; (8 >> 1) & 3 = 0；若 & 更紧则为 8 >> (1 & 3) = 4
   assert_eq(8 >> 1 & 3, 0)
 }
+
+; ==================== bool 非短路位运算（§4.4.2.1）====================
+
+; 验证：bool 上 `&` `|` `^` 是非短路布尔运算
+#Test
+fn test_bool_bitwise_ops() {
+  assert_eq(true & true, true)
+  assert_eq(true & false, false)
+  assert_eq(false & true, false)
+  assert_eq(true | false, true)
+  assert_eq(false | false, false)
+  assert_eq(true ^ true, false)
+  assert_eq(true ^ false, true)
+}

@@ -480,6 +480,17 @@ fn test_string_template_mixed_kind_interp() {
   assert_eq(s, "yux v7")
 }
 
+; 验证：`${}` 内为完整 if 表达式（§4.3.1.5）
+#Test
+fn test_string_template_if_expr_interp() {
+  let n i32 = 1
+  let s String = "v=${if n > 0 { 1 } else { 0 }}"
+  assert_eq(s, "v=1")
+  let n2 i32 = 0 - 3
+  let s2 String = "v=${if n2 > 0 { 1 } else { 0 }}"
+  assert_eq(s2, "v=0")
+}
+
 ; ==================== String + 链式连接 ====================
 
 ; 验证：String 链式连接操作

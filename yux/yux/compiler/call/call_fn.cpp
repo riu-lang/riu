@@ -210,6 +210,34 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
         sema::inferGenericFnTypeArgs(callNode, genericFn, fnName, argTypes, typeArgs);
     }
 
+    // 泛型 typeArgs 就绪后，按替换后的 Function<...> 再编 lambda 实参。
+    // compiler_call 对泛型 callee 推迟 compileExpr，避免 emitLambdaFunction 走到未替换的 T。
+    {
+        auto params = genericFn->header()->params();
+        map<string, TypeInfo> lamSubst;
+        for (size_t j = 0; j < typeParams.size() && j < typeArgs.size(); ++j) {
+            lamSubst[typeParams[j]] = typeArgs[j];
+        }
+        for (size_t i = 0; i < params.size() && i < callNode->getArgs().size(); ++i) {
+            auto lambdaArg = dynamic_cast<LambdaExprNode*>(callNode->getArgs()[i]);
+            if (!lambdaArg) continue;
+            auto paramTypeNode = params[i]->type();
+            if (!paramTypeNode) continue;
+            TypeInfo pt = paramTypeNode->getType().substitute(lamSubst);
+            if (!pt.isFn()) continue;
+            inferLambdaParamsFromFnType(lambdaArg, pt);
+            emitLambdaFunction(lambdaArg, pt);
+            if (i >= args.size()) {
+                args.push_back(compileExpr(lambdaArg));
+            } else {
+                args[i] = compileExpr(lambdaArg);
+            }
+            if (i < argTypes.size()) {
+                argTypes[i] = lambdaArg->getType();
+            }
+        }
+    }
+
     // 泛型类型推断完成后，按推断出的类型参数为灵活整数实参推断具体类型并重编译
     // 典型场景：assert_eq(a_i8, 42) — T 由 a 推断为 i8，42 默认 i32 需要按 T=i8 收束
     {
@@ -894,7 +922,8 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
     } else {
         string ownerMod = fnSymbol->moduleName.empty() ? _file->moduleName() : fnSymbol->moduleName;
         bool isPriv = !fnName.empty() && fnName[0] == '_';
-        cName = Mangler::function(ownerMod, fnName, fnSymbol->params, isPriv, fnSymbol->retType, fnSymbol->fallibleErrType);
+        cName =
+            Mangler::function(ownerMod, fnName, fnSymbol->params, isPriv, fnSymbol->retType, fnSymbol->fallibleErrType);
     }
 
     DEBUG_LOG_VAL("    Expr: FunctionCall", fnName << " -> " << cName);
@@ -967,6 +996,10 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
 
     vector<llvm::Value*> callArgs;
     for (size_t i = 0; i < args.size() && i < fnSymbol->params.size(); ++i) {
+        if (!args[i] && i < callNode->getArgs().size()) {
+            args[i] = compileExpr(callNode->getArgs()[i]);
+            if (i < argTypes.size()) argTypes[i] = callNode->getArgs()[i]->getType();
+        }
         DEBUG_LOG_VAL("    Param", i << " argType=" << argTypes[i].name << " paramType=" << fnSymbol->params[i].name);
         DEBUG_LOG_VAL("    Param isPtr", argTypes[i].isPtr() << " paramIsPtr=" << fnSymbol->params[i].isPtr());
         recordBdangIfEligible(i);

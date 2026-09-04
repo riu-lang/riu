@@ -430,21 +430,11 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
     // Phase 4c：lambda 字面量直接作 var/val 初始化值时，反推 fn 类型到 lambda
     // 以支持 0 参块 / 缺标注 lambda 的 retType 上下文反推。
     if (auto litLambda = dynamic_cast<LambdaExprNode*>(expr)) {
-        // BUG#0 修复：显式 fn 类型反推到 lambda，让 0 参块 / 缺标注 lambda 的 retType 走上下文反推。
-        // 镜像 compiler_call.cpp:538 的 setInferredFnType + bodyScope 形参 type 回填路径。
+        // 显式 fn 类型反推到 lambda，让 0 参块 / 缺标注 lambda 的 retType 走上下文反推。
         if (node->varType()) {
             auto declType = node->varType()->getType();
             if (declType.isFn()) {
-                litLambda->setInferredFnType(declType);
-                if (auto sc = litLambda->bodyScope()) {
-                    const auto& fps = declType.fnParamTypes();
-                    for (size_t k = 0; k < litLambda->params().size() && k < fps.size(); ++k) {
-                        if (litLambda->params()[k].type) continue;
-                        if (auto* psym = sc->lookupSymbol(litLambda->params()[k].name.getText())) {
-                            if (fps[k]) psym->type = *fps[k];
-                        }
-                    }
-                }
+                inferLambdaParamsFromFnType(litLambda, declType);
             }
         }
         emitLambdaFunction(static_cast<p<LambdaExprNode>>(litLambda), litLambda->getType());

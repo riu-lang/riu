@@ -1,0 +1,6 @@
+; 变量 Array? 上 ?? 会隐式复制 #NoCopy 内层 → E4031
+fn main() {
+  let a Array<i32>? = null
+  let r Array<i32> = a ?? []  ; check: E4031
+  ret;
+}

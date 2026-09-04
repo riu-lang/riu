@@ -27,26 +27,16 @@
 // expectedFnType 必须是 isFn() 才会动作；否则 no-op。
 void Compiler::inferLambdaParamsFromFnType(p<LambdaExprNode> lambda, const TypeInfo& expectedFnType) {
     if (!lambda || !expectedFnType.isFn()) return;
-    auto& slots = lambda->mutableParams();
-    const auto& expectedParams = expectedFnType.fnParamTypes();
-    // arity 不一致由 sema 报错（Phase 2c），这里仅按位置回填能填的部分
-    size_t n = std::min(slots.size(), expectedParams.size());
-    for (size_t i = 0; i < n; ++i) {
-        if (slots[i].type) continue;      // 已标注：尊重源
-        if (!expectedParams[i]) continue; // 期望也是空：不回填
-        // 把 TypeInfo 包成 TypeNormalNode 占位（codegen 仅取 getType()，name 即可定位 LLVM 类型）
-        // 注意：复杂类型（Generic/Array/Tuple/Fn）经 getFullName 后字符串无法被 TypeNormalNode
-        // 还原；Phase 2b 仅覆盖 Normal/Generic 通过名称还原的常见情形。
-        // TODO: 引入"已解析 TypeInfo 直挂载"的 TypeNode 变体，让任意 TypeInfo 都能反推
-        Token tok = lambda->params()[i].name;
-        tok = Token(tok); // 复制，作为占位
-        // 直接重写 token 文本为期望类型 name
-        // 这里用字符串名能覆盖 i32/u32/bool/String/struct 等 Normal 类型；
-        // 对 Generic/Array/Fn 形参当前无法精确还原，留 TODO
+    lambda->setInferredFnType(expectedFnType);
+    auto sc = lambda->bodyScope();
+    if (!sc) return;
+    const auto& fps = expectedFnType.fnParamTypes();
+    for (size_t k = 0; k < lambda->params().size() && k < fps.size(); ++k) {
+        if (lambda->params()[k].type) continue; // 显式标注尊重源
+        if (auto* psym = sc->lookupSymbol(lambda->params()[k].name.getText())) {
+            if (fps[k]) psym->type = *fps[k];
+        }
     }
-    // Phase 2b：暂不真的回填（避免引入伪 TypeNode）；emitLambdaFunction 走"直接看 expectedFnType"
-    // 路径，从 expectedFnType.fnParamTypes() 拿类型即可。这里函数仅占位，便于未来扩展。
-    (void)expectedFnType;
 }
 
 // ==================== emitLambdaFunction ====================
@@ -179,6 +169,18 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     // 编译 body
     // - Form::Expr：单表达式 → ret expr（void 返回类型时 ret void）
     // - Form::Block：语句序列；retType 非 void 时末位无 `;` 的 ExprStmt 作 tail-expr 返回
+    // 非 void 返回须走 returnValue（consumeTemp），否则 popAndReleaseTempFrame
+    // 会把 Array / Rc 等 fresh 句柄析掉，CreateRet 拿到悬空值（`=> if { [1] } else { [2] }`）。
+    auto finishLambdaRet = [&](llvm::Value* val, p<ExprNode> src) {
+        if (val && !retType.empty()) {
+            returnValue(val, retType, src, retType.isRc() || retType.isWeak() || retType.isFn());
+        }
+        if (!fallibleErr.empty()) {
+            val = wrapFallibleSuccessRet(val, retType, fallibleErr);
+        }
+        popAndReleaseTempFrame();
+        _builder.CreateRet(val);
+    };
     pushTempFrame();
     if (node->bodyExpr()) {
         auto val = compileExpr(node->bodyExpr());
@@ -187,11 +189,7 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
                 popAndReleaseTempFrame();
                 _builder.CreateRetVoid();
             } else {
-                if (!fallibleErr.empty()) {
-                    val = wrapFallibleSuccessRet(val, retType, fallibleErr);
-                }
-                popAndReleaseTempFrame();
-                _builder.CreateRet(val);
+                finishLambdaRet(val, node->bodyExpr());
             }
         } else {
             popAndReleaseTempFrame();
@@ -215,11 +213,7 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
         if (!_builder.GetInsertBlock()->getTerminator()) {
             if (tailExpr) {
                 auto val = compileExpr(tailExpr);
-                if (!fallibleErr.empty()) {
-                    val = wrapFallibleSuccessRet(val, retType, fallibleErr);
-                }
-                popAndReleaseTempFrame();
-                _builder.CreateRet(val);
+                finishLambdaRet(val, tailExpr);
             } else if (retType.empty() && fallibleErr.empty()) {
                 popAndReleaseTempFrame();
                 _builder.CreateRetVoid();
