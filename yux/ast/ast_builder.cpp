@@ -120,27 +120,19 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         file->registerSymbol(fnName, fnSym);
 
         FnSymbolInfo fnFnSym{fnName, moduleName, paramTypes, retType};
-        string annoFallibleErr;
         for (auto* a : header->buildAnnos) {
             string aname = a->name->getText();
             if (aname == "NoReturn") {
                 fnFnSym.isNoReturn = true;
             } else if (aname == "Const") {
                 fnFnSym.isConst = true;
-            } else if (aname == "Fallible" && a->annoArg()) {
-                annoFallibleErr = getBuildAnnoArgText(a);
             }
         }
         if (header->errType) {
             auto errNode = any_cast_p<TypeNode>(visit(header->errType));
             suffixFallibleErr = errNode->getType().name;
         }
-        if (!annoFallibleErr.empty() && !suffixFallibleErr.empty()) {
-            throw YuxError(static_cast<int>(header->name->getLine()),
-                           static_cast<int>(header->name->getCharPositionInLine()) + 1, ErrorCode::E7019,
-                           suffixFallibleErr);
-        }
-        fnFnSym.fallibleErrType = !suffixFallibleErr.empty() ? suffixFallibleErr : annoFallibleErr;
+        fnFnSym.fallibleErrType = suffixFallibleErr;
         if (!fnFnSym.fallibleErrType.empty() && retType.name == fnFnSym.fallibleErrType) {
             throw YuxError(static_cast<int>(header->name->getLine()),
                            static_cast<int>(header->name->getCharPositionInLine()) + 1, ErrorCode::E7008, retType.name,

@@ -41,18 +41,19 @@
 - 析构 / 构造**不**参与错误传播：析构出错 → panic；构造失败 → 改写为返回错误 enum 的工厂函数（普通方法 / `init` 不允许 `#Fallible`）。
 - 每个函数最多一个 `#Fallible(E)`；多类错误聚合用嵌套 enum + try-catch 显式 wrap。
 
-## 3. 失败声明：`#Fallible(E)` 注解
+## 3. 失败声明：签名后缀 `T ! E`
+
+> **修订 [#3.C]（2026-09-04，F6）**：废止 §3.4「错误通道不挤占类型语法」。失败声明从 `#Fallible(E)` 注解迁移为签名后缀 `fn f(...) T ! E` / `fn main() ! E`；旧注解删除，报 E2005。下文若仍出现 `#Fallible` 表述，按 `T ! E` 理解。
 
 ### 3.1 形态
 
 ```yux
 enum ParseErr { Empty, Invalid(String) }
 
-#Fallible(ParseErr)
-fn parse_int(s String) i32 { ... }
+fn parse_int(s String) i32 ! ParseErr { ... }
 ```
 
-`#Fallible(E)` 是注解，**不**改函数返回类型语法 —— `T` 仍是成功值类型。错误通道独立由 `#Fallible(E)` 承载。
+`T ! E` 写在签名末位：`T` 是成功值类型，`E` 是错误 enum。void 成功：`fn main() ! AppErr`（无 `retType`，仅 `! E`）。
 
 ### 3.2 出现位置（白名单）
 
@@ -80,9 +81,10 @@ fn parse_int(s String) i32 { ... }
 
 ### 3.4 与函数其余部分的关系
 
-- 不写 `T!E`、不写 `T throws E`、不写 `Result<T,E>` 类型形态。错误通道**不挤占**类型语法。
-- 普通函数 = "无错误"。**不**引入 `#Fallible()` 形态（无错误就不写注解）。
-- 声明 `#Fallible(E)` 但函数体内未实际产生错误：**允许**（接口先行 / 未来兼容），不报错。
+- 失败声明形态为签名后缀 `T ! E`（见 [DRAFT-fallible-sig.md](DRAFT-fallible-sig.md)）；**不**写 `T throws E`、**不**写 `Result<T,E>` 类型形态。
+- 普通函数 = "无错误"。无 `! E` 即不可失败。
+- 声明 `T ! E` 但函数体内未实际产生错误：**允许**（接口先行 / 未来兼容），不报错。
+- 旧 `#Fallible(E)` 注解已于 v0.21 删除。
 
 ### 3.5 注解参数语法解禁（§11 同步）
 

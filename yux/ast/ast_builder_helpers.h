@@ -34,21 +34,21 @@ inline string ctxSource(antlr4::ParserRuleContext* ctx) {
 }
 
 // 已知的构建注解名字白名单；未知注解在 AST 构建期报错
-// NoReturn / Fallible 由 DRAFT-错误.md 引入（spec §11.5.1）：
+// #NoReturn 由 DRAFT-错误.md 引入（spec §11.5.1）：
 //   #NoReturn        零参；标在 fn / structImpl 内方法上
-//   #Fallible(E)     单参；E 为错误 enum 类型名（语义校验推 10e）
+// 可失败签名 `T ! E` 走 fnHeader / lambda 后缀，不再使用 `#Fallible` 注解（F6 删除）。
 // spec-unify v1（[#1.AD]）新增：
 //   #Spec            零参；标在 struct 上 — 把声明转为 spec（仅签名）
 //   #Impl(SpecName)  单参；标在 struct 上 — 实现关系，替代旧 `: D1 + D2` 头部槽
 inline const set<string>& knownAnnos() {
-    static const set<string> s = {"Builtin", "Test", "DraftLike", "NoReturn", "Fallible", "Const",
+    static const set<string> s = {"Builtin", "Test", "DraftLike", "NoReturn", "Const",
                                   "Static",  "Spec", "Impl",      "Reflect",  "NoCopy",   "CName"};
     return s;
 }
 
 // 单参注解白名单（spec §11.1.1.1）。其它注解出现 (arg) 形式视为非法（E2005 形式错配）。
 inline const set<string>& argAnnos() {
-    static const set<string> s = {"Fallible", "Impl", "CName"};
+    static const set<string> s = {"Impl", "CName"};
     return s;
 }
 
@@ -108,6 +108,11 @@ AnnoList collectAnnos(const AnnoVec& annos) {
     AnnoList out;
     for (auto* a : annos) {
         string name = a->name->getText();
+        if (name == "Fallible") {
+            throw YuxError(static_cast<int>(a->name->getLine()), static_cast<int>(a->name->getCharPositionInLine()) + 1,
+                           ErrorCode::E2005, name)
+                .withHint("removed; declare failure with `T ! E` in the function signature instead");
+        }
         if (!knownAnnos().contains(name)) {
             throw YuxError(static_cast<int>(a->name->getLine()), static_cast<int>(a->name->getCharPositionInLine()) + 1,
                            ErrorCode::E2005, name);
@@ -131,6 +136,11 @@ AnnoList collectAnnosForSpec(const AnnoVec& annos) {
     AnnoList out;
     for (auto* a : annos) {
         string name = a->name->getText();
+        if (name == "Fallible") {
+            throw YuxError(static_cast<int>(a->name->getLine()), static_cast<int>(a->name->getCharPositionInLine()) + 1,
+                           ErrorCode::E2005, name)
+                .withHint("removed; declare failure with `T ! E` in the function signature instead");
+        }
         if (!knownAnnos().contains(name)) {
             throw YuxError(static_cast<int>(a->name->getLine()), static_cast<int>(a->name->getCharPositionInLine()) + 1,
                            ErrorCode::E2005, name);
@@ -164,7 +174,7 @@ AnnoList collectAnnosNonFn(const AnnoVec& annos) {
 }
 
 // 用于 extern 块内 fnHeader：允许 `Builtin` 与 `#NoReturn`（DRAFT-错误.md §8.3）。
-// `#Fallible` 在 extern 上仍被推迟（[#7]），不在白名单。
+// 可失败签名 `T ! E` 在 extern 上仍被推迟（[#7]），不在白名单。
 inline const set<string>& externFnAllowedAnnos() {
     static const set<string> s = {"Builtin", "NoReturn", "CName"};
     return s;
@@ -186,7 +196,7 @@ AnnoList collectAnnosExternFn(const AnnoVec& annos) {
 // Phase 10d-1：`#NoReturn` 头部级语义校验（E7012 / E7013）
 // 不依赖 fn body，仅看 header 注解 + retType。E7014（流终止）与调用点流终止注册推 10d-2。
 //   E7012 — `#NoReturn` 函数声明带返回类型
-//   E7013 — `#NoReturn` 与 `#Fallible(E)` / `T ! E` 互斥
+//   E7013 — `#NoReturn` 与 `T ! E` 互斥
 static void checkNoReturnHeader(p<FnHeaderNode> header) {
     if (!header->hasAnno("NoReturn")) return;
     int line = header->getLineNumber();
@@ -197,13 +207,6 @@ static void checkNoReturnHeader(p<FnHeaderNode> header) {
     if (!header->resolvedFallibleErr().empty()) {
         throw YuxError(line, col, ErrorCode::E7013);
     }
-}
-
-static void checkFallibleDualDecl(p<FnHeaderNode> header) {
-    if (!header->hasAnno("Fallible")) return;
-    if (!header->fallibleErrTypeNode()) return;
-    throw YuxError(header->getLineNumber(), header->getColumn(), ErrorCode::E7019,
-                   header->resolvedFallibleErr());
 }
 
 static void checkFallibleRetMismatch(p<FnHeaderNode> header) {

@@ -1,0 +1,13 @@
+; #Fallible(E) 已删除（F6）→ E2005 + hint 指向 T ! E
+enum ParseErr {
+  Empty
+}
+
+#Fallible(ParseErr)  ; check: E2005
+fn parse() i32 {
+  ret 0i32
+}
+
+fn main() {
+  ret;
+}

@@ -442,8 +442,7 @@ DEF_ERR(7008, "success type `{}` cannot equal error type `{}` in `T ! E` signatu
 DEF_ERR(7012, "`#NoReturn` function `{}` cannot declare a return type — remove the return type or remove `#NoReturn`")
 DEF_ERR(7013, "`#NoReturn` and `T ! E` are mutually exclusive on the same function — a non-returning function cannot "
               "also propagate errors")
-DEF_ERR(7019, "`#Fallible({})` and `T ! E` are mutually exclusive on the same function — use `T ! E` in the signature "
-              "only")
+DEF_ERR(7019, "duplicate fallible error type `! {}` in signature — use `T ! E` once")
 DEF_ERR(7014, "`#NoReturn` function `{}` may reach end of body — control flow must terminate via `panic`-class call, "
               "another `#NoReturn` call, or unconditional infinite loop")
 // E7002 / E7009 / E7010 / E7011 / E7015-E7018 由 Phase 10f 启用（try-catch 块）
@@ -457,7 +456,6 @@ DEF_WARN(7015, "redundant `catch` clause: no call in `try` block can throw `{}` 
                "`catch` clause")
 DEF_WARN(7016, "`!` is redundant inside `try` block: bare call to `T ! E` function `{}` already routes to the matching "
                "`catch e {}` clause — remove `!`")
-DEF_WARN(7020, "`#Fallible({})` is deprecated: use `T ! E` in the signature instead")
 DEF_WARN(
     7017,
     "redundant `try-catch`: no call in `try` block can throw any error — remove the entire `try` and use a plain block")

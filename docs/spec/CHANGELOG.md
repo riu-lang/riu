@@ -15,6 +15,13 @@
 
 ---
 
+## 2026-09-04 —— Fallible 签名 `T ! E` 删除 `#Fallible` 注解（F6）
+
+- **修改 §6.7**：标题改为「失败签名 `T ! E`」；失败声明从 `#Fallible(E)` 注解迁移为签名后缀 `fn f(...) T ! E` / `fn main() ! E`（void 成功）。
+- **修改 §11.5.1**：删除 `#Fallible(E)` 行；§11.1.1.1 单参数糖示例不再列举 `#Fallible`。
+- **修改 附录 D**：删除 E7020（过渡弃用 warning）；E7019 改为重复 `! E` 后缀；E7001–E7008 / E7013 / E7016–E7017 措辞统一为 `T ! E`。
+- **冲突 / 兼容**：**破坏**旧写法 `#Fallible(E) fn f() T`；迁移为 `fn f() T ! E`。旧注解报 E2005 + hint。
+
 ## 2026-09-03 —— v0.20 编译器结构收口（实现归档）
 
 - **SemaPass 收口**：调用 / 方法 / statement / 泛型体 / target-type 上下文语义检查迁入 `yux/frontend/sema/`；`kMigratedCodes` 反转；已覆盖码 Compiler 副本改 `throwSemaGap`（E3091）。残余 LLVM/内部兜底与未实例化泛型体策略见 `rules/sema-codegen.md`。

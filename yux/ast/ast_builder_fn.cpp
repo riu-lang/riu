@@ -177,7 +177,6 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
     } else if (retFallibleFromType) {
         header->setFallibleErrType(retFallibleFromType);
     }
-    checkFallibleDualDecl(header);
     checkFallibleRetMismatch(header);
 
     stack.emplace_back(header);
