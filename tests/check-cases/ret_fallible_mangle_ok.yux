@@ -25,8 +25,7 @@ struct S {
     ret 1
   }
 
-  #Fallible(ParseErr)
-  fn fallible() i32 {
+  fn fallible() i32 ! ParseErr {
     ret ParseErr::Empty
   }
 }

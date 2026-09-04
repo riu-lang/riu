@@ -1,4 +1,4 @@
-; try 块内调用 #Fallible(IoErr) 函数，但 catch 子句只声明 ParseErr → E7002
+; try 块内调用 IoErr ! E 函数，但 catch 子句只声明 ParseErr → E7002
 enum IoErr {
   NotFound
 }
@@ -7,8 +7,7 @@ enum ParseErr {
   Empty
 }
 
-#Fallible(IoErr)
-fn read() i32 {
+fn read() i32 ! IoErr {
   ret 0i32
 }
 

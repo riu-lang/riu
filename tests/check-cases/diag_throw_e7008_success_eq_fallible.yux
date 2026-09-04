@@ -1,10 +1,9 @@
-; 函数返回类型与 #Fallible 错误类型相等 → E7008（DRAFT-错误.md [#4.A]）
+; 成功类型与 T ! E 错误类型相等 → E7008（DRAFT-错误.md [#4.A]）
 enum ParseErr {
   Empty
 }
 
-#Fallible(ParseErr)
-fn parse() ParseErr {  ; check: E7008
+fn parse() ParseErr ! ParseErr {  ; check: E7008
   ret ParseErr::Empty
 }
 

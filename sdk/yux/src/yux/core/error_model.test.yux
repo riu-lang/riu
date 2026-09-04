@@ -1,10 +1,10 @@
 ; 错误模型 (Phase 10g) 合法形态行为测试
 ;
 ; 覆盖：
-;   - #Fallible(E) 函数成功通道：ret 成功值、try block 提取
+;   - T ! E 函数成功通道：ret 成功值、try block 提取
 ;   - 错误通道零参 variant：ret E::V、try-catch 捕获
 ;   - 错误通道 payload variant：ret E::V(payload)、catch arm 内 match e 解构
-;   - `!` 同类型透传：#Fallible 函数内调用同类型 #Fallible callee
+;   - `!` 同类型透传：T ! E 函数内调用同类型 callee
 ;   - try-catch 表达式合并：成功路径与 catch 路径 phi 值
 ;   - 多 catch arm：不同错误类型分别路由
 ;   - 嵌套 try-catch wrap-rethrow：跨类型错误显式包装
@@ -25,8 +25,7 @@ enum AppErr {
   Io(IoErr)
 }
 
-#Fallible(ParseErr)
-fn parse_pos(n i32) i32 {
+fn parse_pos(n i32) i32 ! ParseErr {
   if n == 0 {
     ret ParseErr::Empty
   }
@@ -36,8 +35,7 @@ fn parse_pos(n i32) i32 {
   ret n
 }
 
-#Fallible(IoErr)
-fn read_code(code i32) i32 {
+fn read_code(code i32) i32 ! IoErr {
   if code == 404 {
     ret IoErr::NotFound
   }
@@ -47,9 +45,8 @@ fn read_code(code i32) i32 {
   ret code
 }
 
-; `!` 同类型透传：caller 与 callee 同 #Fallible(ParseErr)
-#Fallible(ParseErr)
-fn parse_double(n i32) i32 {
+; `!` 同类型透传：caller 与 callee 同 ParseErr
+fn parse_double(n i32) i32 ! ParseErr {
   let v i32 = parse_pos(n)!
   ret v * 2
 }
@@ -135,10 +132,10 @@ fn test_try_phi_merges_success_and_catch() {
   assert_eq(err, 11)
 }
 
-; 验证：try 块内不同 #Fallible 类型的错误分别路由到对应的 catch arm
+; 验证：try 块内不同 T ! E 类型的错误分别路由到对应的 catch arm
 #Test
 fn test_try_multi_catch_routes_by_type() {
-  ; 单 try 内不同 #Fallible 类型，各自路由到对应 catch arm
+  ; 单 try 内不同 T ! E 类型，各自路由到对应 catch arm
   let a i32 = try {
     let p i32 = parse_pos(5)
     let r i32 = read_code(p)
@@ -174,8 +171,7 @@ fn test_try_multi_catch_routes_by_type() {
 }
 
 ; 跨类型错误显式包装：catch arm 把 ParseErr / IoErr 包成 AppErr 透传给外层
-#Fallible(AppErr)
-fn process(n i32) i32 {
+fn process(n i32) i32 ! AppErr {
   let p i32 = try {
     parse_pos(n)
   } catch e ParseErr {

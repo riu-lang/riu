@@ -235,22 +235,19 @@ enum AppErr {
   Io(IoErr)
 }
 
-#Fallible(MathErr)
-fn safe_divide(a i32, b i32) i32 {
+fn safe_divide(a i32, b i32) i32 ! MathErr {
   if b == 0 {
     ret MathErr::DivByZero
   }
   ret a / b
 }
 
-#Fallible(MathErr)
-fn double_div(a i32, b i32) i32 {
+fn double_div(a i32, b i32) i32 ! MathErr {
   let v i32 = safe_divide(a, b)!
   ret v * 2
 }
 
-#Fallible(AppErr)
-fn compute(a i32, b i32) i32 {
+fn compute(a i32, b i32) i32 ! AppErr {
   let v i32 = try {
     safe_divide(a, b)
   } catch e MathErr {

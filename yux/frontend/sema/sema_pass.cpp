@@ -311,6 +311,16 @@ void SemaPass::visitFn(p<FnNode> fn) {
         }
     }
 
+    // F5：#Fallible(E) 弃用 → E7020 warning（双轨仍合法直至 F6）
+    if (auto hdr = fn->header()) {
+        if (hdr->hasAnno("Fallible")) {
+            if (auto errArg = hdr->getAnnoArg("Fallible")) {
+                DiagnosticEngine::emit(_sourcePath,
+                                       YuxError(hdr->getLineNumber(), hdr->getColumn(), ErrorCode::E7020, *errArg));
+            }
+        }
+    }
+
     // E4025 / E1132：形参 / 返回类型上的容器禁令（getLLVMType 同款，补 yux-check）
     if (auto hdr = fn->header()) {
         for (auto& param : hdr->params()) {

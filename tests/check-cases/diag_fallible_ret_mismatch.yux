@@ -1,10 +1,9 @@
-; #Fallible 的 ret 既不是成功类型也不是错误枚举 → E3014（Phase C）
+; T ! E 的 ret 既不是成功类型也不是错误枚举 → E3014（Phase C）
 enum ParseErr {
   Empty
 }
 
-#Fallible(ParseErr)
-fn parse() i32 {
+fn parse() i32 ! ParseErr {
   ret true  ; check: E3014
 }
 

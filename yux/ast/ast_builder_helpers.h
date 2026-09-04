@@ -195,7 +195,7 @@ static void checkNoReturnHeader(p<FnHeaderNode> header) {
         throw YuxError(line, col, ErrorCode::E7012, header->name().getText());
     }
     if (!header->resolvedFallibleErr().empty()) {
-        throw YuxError(line, col, ErrorCode::E7013, header->resolvedFallibleErr());
+        throw YuxError(line, col, ErrorCode::E7013);
     }
 }
 

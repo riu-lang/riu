@@ -3,8 +3,7 @@ enum ParseErr {
   Empty
 }
 
-#Fallible(ParseErr)
-fn parse() i32 {
+fn parse() i32 ! ParseErr {
   ret 0i32
 }
 

@@ -610,7 +610,7 @@ void checkErrPropagateForIdCall(FnNode* currentFnNode, p<ExprCallNode> callNode,
             // -Werror / --deny=E7016 升级为 Error 时 emit 内部会 rethrow).
             // emit 按 (file, code, line, col, msg) 去重.
             DiagnosticEngine::emit(sourcePath, YuxError(callNode->getLineNumber(), callNode->getColumn(),
-                                                        ErrorCode::E7016, calleeErr, fnName, calleeErr));
+                                                        ErrorCode::E7016, fnName, calleeErr));
         }
         return;
     }

@@ -3,8 +3,7 @@ enum IoErr {
   NotFound
 }
 
-#Fallible(IoErr)
-fn read() i32 {
+fn read() i32 ! IoErr {
   ret 0i32
 }
 

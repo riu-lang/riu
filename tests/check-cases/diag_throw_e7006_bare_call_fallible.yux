@@ -1,15 +1,13 @@
-; 调用 #Fallible 函数但未加 `!` → E7006（DRAFT-错误.md [#4.B]）
+; 调用 T ! E 函数但未加 `!` → E7006（DRAFT-错误.md [#4.B]）
 enum ParseErr {
   Empty
 }
 
-#Fallible(ParseErr)
-fn parse() i32 {
+fn parse() i32 ! ParseErr {
   ret 0i32
 }
 
-#Fallible(ParseErr)
-fn run() i32 {
+fn run() i32 ! ParseErr {
   #Mut let x i32 = parse()  ; check: E7006
   ret x
 }

@@ -427,20 +427,21 @@ DEF_ERR(6042, "Array.{}() requires an lvalue array")
 // ── E7xxx 错误模型 / panic（DRAFT-错误.md） ─────────────────────────────
 // 附录 D §D.3.7 之后段位；E7001-E7014 默认 Error，E7015-E7018 默认 Warning（Phase 10d+ 启用）
 // E7012 / E7013 / E7014 由 Phase 10d 启用；E7001 / E7004 / E7006 / E7008 由 Phase 10e 启用；其余诊断码留 10f
-DEF_ERR(7001, "`!` used outside of `#Fallible(E)` function and outside of `try` block — wrap call in `try {{ ... }} "
-              "catch e E {{ ... }}` or declare the enclosing function with `#Fallible(E)`")
+DEF_ERR(7001, "`!` used outside of a `T ! E` function and outside of `try` block — wrap call in `try {{ ... }} "
+              "catch e E {{ ... }}` or declare the enclosing function with `T ! E`")
 DEF_ERR(
     7004,
-    "cannot propagate error of type `{}` through `!`: caller declares `#Fallible({})`, types differ — wrap the call in "
-    "`try {{ ... }} catch e {} {{ ret {}::Variant... }}`, or wrap in a function whose `#Fallible` matches `{}`")
-DEF_ERR(7006, "call to fallible function `{}` outside `try` block must propagate via `!` (same error type) — bare call "
-              "is forbidden outside `try` (inside `try`, bare call is correct; `!` would be redundant)")
-DEF_ERR(7008, "function return type `{}` cannot equal its `#Fallible` type `{}` (the compiler cannot disambiguate "
+    "cannot propagate error of type `{}` through `!`: caller returns `T ! {}`, types differ — wrap the call in "
+    "`try {{ ... }} catch e {} {{ ret {}::Variant... }}`, or wrap in a function whose `T ! E` matches `{}`")
+DEF_ERR(7006, "call to `T ! E` function `{}` outside `try` block must propagate via `!` (same error type) or "
+              "`try-catch` — bare call is forbidden outside `try` (inside `try`, bare call is correct; `!` would be "
+              "redundant)")
+DEF_ERR(7008, "success type `{}` cannot equal error type `{}` in `T ! E` signature (the compiler cannot disambiguate "
               "`ret` between success and error channels) — split into two enums (one for the success result type, one "
               "for the error type) and rethrow / wrap explicitly")
 DEF_ERR(7012, "`#NoReturn` function `{}` cannot declare a return type — remove the return type or remove `#NoReturn`")
-DEF_ERR(7013, "`#NoReturn` and `#Fallible({})` are mutually exclusive on the same function — a non-returning function "
-              "cannot also propagate errors")
+DEF_ERR(7013, "`#NoReturn` and `T ! E` are mutually exclusive on the same function — a non-returning function cannot "
+              "also propagate errors")
 DEF_ERR(7019, "`#Fallible({})` and `T ! E` are mutually exclusive on the same function — use `T ! E` in the signature "
               "only")
 DEF_ERR(7014, "`#NoReturn` function `{}` may reach end of body — control flow must terminate via `panic`-class call, "
@@ -454,8 +455,9 @@ DEF_ERR(7010, "`catch` body must end with `ret`, `panic`-class terminator, or an
 DEF_ERR(7011, "`catch e {}` type `{}` must be a declared enum; got `{}`")
 DEF_WARN(7015, "redundant `catch` clause: no call in `try` block can throw `{}` declared by `catch e {}` — remove this "
                "`catch` clause")
-DEF_WARN(7016, "`!` is redundant inside `try` block: bare call to `#Fallible({})` function `{}` already routes to the "
-               "matching `catch e {}` clause — remove `!`")
+DEF_WARN(7016, "`!` is redundant inside `try` block: bare call to `T ! E` function `{}` already routes to the matching "
+               "`catch e {}` clause — remove `!`")
+DEF_WARN(7020, "`#Fallible({})` is deprecated: use `T ! E` in the signature instead")
 DEF_WARN(
     7017,
     "redundant `try-catch`: no call in `try` block can throw any error — remove the entire `try` and use a plain block")

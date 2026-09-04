@@ -1,10 +1,9 @@
-; #Fallible 成功通道与错误通道都合法（Phase C）
+; T ! E 成功通道与错误通道都合法（Phase C）
 enum ParseErr {
   Empty
 }
 
-#Fallible(ParseErr)
-fn parse(n i32) i32 {
+fn parse(n i32) i32 ! ParseErr {
   if n == 0 {
     ret ParseErr::Empty
   }
