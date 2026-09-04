@@ -1,0 +1,73 @@
+; if / try / match 块值：void 不建 phi、fallible void 隐式成功、Array 经 try 绑定、ret []
+
+enum BlockErr {
+  Boom
+}
+
+fn void_ok() ! BlockErr {
+  ret;
+}
+
+; 成功通道无显式 `ret;`：末尾无 else 的 if 包成隐式 ret <void-if>
+fn void_maybe(should_fail bool) ! BlockErr {
+  if should_fail {
+    ret BlockErr::Boom
+  }
+}
+
+fn give_arr() Array<i32> ! BlockErr {
+  ret [1, 2]
+}
+
+fn empty_arr() Array<i32> ! BlockErr {
+  ret []
+}
+
+; 验证：void try/catch 末调用不写 `;` 不当成有值 phi
+#Test
+fn test_void_try_without_semicolon() {
+  try {
+    void_ok()
+  } catch e BlockErr {
+    fail("void_ok should succeed")
+  }
+}
+
+; 验证：fallible void 以 `if cond { ret E::V }` 结尾（无随后 ret;）走成功通道
+#Test
+fn test_fallible_void_if_no_final_ret() {
+  try {
+    void_maybe(false)
+  } catch e BlockErr {
+    fail("void_maybe(false) should succeed")
+  }
+  try {
+    void_maybe(true);
+    fail("void_maybe(true) should error");
+  } catch e BlockErr {
+  }
+}
+
+; 验证：#NoCopy Array 经 try-catch 绑定到 let（catch 流终止）
+#Test
+fn test_let_array_from_try() {
+  let a Array<i32> = try {
+    give_arr()
+  } catch e BlockErr {
+    fail("give_arr should succeed");
+  }
+  assert_eq(a.len(), 2)
+  assert_eq(a[0], 1)
+  assert_eq(a[1], 2)
+}
+
+; 验证：fallible 成功通道 `ret []`
+#Test
+fn test_ret_empty_array_fallible() {
+  let a Array<i32> = try {
+    empty_arr()
+  } catch e BlockErr {
+    fail("empty_arr should succeed");
+  }
+  assert_eq(a.len(), 0)
+}

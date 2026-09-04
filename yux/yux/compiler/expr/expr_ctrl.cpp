@@ -44,7 +44,12 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
 
     llvm::PHINode* phi = nullptr;
     if (hasResult) {
-        phi = llvm::PHINode::Create(getLLVMType(resultType), 2, "if.result", mergeBB);
+        auto ty = getLLVMType(resultType);
+        if (!ty || ty->isVoidTy()) {
+            hasResult = false;
+        } else {
+            phi = llvm::PHINode::Create(ty, 2, "if.result", mergeBB);
+        }
     }
 
     // Phase B-1: 条件 move 保守追踪 — 保存 then 前的 moved 状态，
@@ -124,8 +129,9 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
 llvm::Value* Compiler::compileOneLineIfElseExpr(p<ExprOneLineIfElseNode> node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto resultType = node->getType();
+    bool hasResult = !resultType.empty();
 
-    DEBUG_LOG_VAL("    Expr: OneLineIfElse", "type=" << resultType.name);
+    DEBUG_LOG_VAL("    Expr: OneLineIfElse", "type=" << (hasResult ? resultType.name : "void"));
 
     auto condVal = compileExpr(node->condition());
     auto condBool = _builder.CreateICmpNE(condVal, llvm::ConstantInt::get(_builder.getInt1Ty(), 0), "if.cond");
@@ -139,18 +145,30 @@ llvm::Value* Compiler::compileOneLineIfElseExpr(p<ExprOneLineIfElseNode> node) {
     _builder.CreateCondBr(condBool, thenBB, elseBB);
 
     _builder.SetInsertPoint(thenBB);
-    auto trueVal = compileBranchResultNormalized(node->trueValue(), resultType);
+    llvm::Value* trueVal = nullptr;
+    if (hasResult) {
+        trueVal = compileBranchResultNormalized(node->trueValue(), resultType);
+    } else {
+        (void)compileExpr(node->trueValue());
+    }
     _builder.CreateBr(mergeBB);
     auto thenEndBB = _builder.GetInsertBlock();
 
     func->insert(func->end(), elseBB);
     _builder.SetInsertPoint(elseBB);
-    auto falseVal = compileBranchResultNormalized(node->falseValue(), resultType);
+    llvm::Value* falseVal = nullptr;
+    if (hasResult) {
+        falseVal = compileBranchResultNormalized(node->falseValue(), resultType);
+    } else {
+        (void)compileExpr(node->falseValue());
+    }
     _builder.CreateBr(mergeBB);
     auto elseEndBB = _builder.GetInsertBlock();
 
     func->insert(func->end(), mergeBB);
     _builder.SetInsertPoint(mergeBB);
+
+    if (!hasResult) return nullptr;
 
     auto phi = llvm::PHINode::Create(getLLVMType(resultType), 2, "if.result", mergeBB);
     phi->addIncoming(trueVal, thenEndBB);
@@ -361,8 +379,12 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
     // 6. 编译每个 arm
     llvm::PHINode* phi = nullptr;
     if (hasResult) {
-        phi =
-            llvm::PHINode::Create(getLLVMType(resultType), static_cast<unsigned>(arms.size()), "match.result", mergeBB);
+        auto ty = getLLVMType(resultType);
+        if (!ty || ty->isVoidTy()) {
+            hasResult = false;
+        } else {
+            phi = llvm::PHINode::Create(ty, static_cast<unsigned>(arms.size()), "match.result", mergeBB);
+        }
     }
 
     auto resultLLVMType = hasResult ? getLLVMType(resultType) : nullptr;
@@ -568,15 +590,37 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
         compileStatement(stmt);
     }
 
-    bool hasResult = tryBlock->hasResult();
+    // 与 if / match 对齐：有值当且仅当类型非空。语法 hasResult（末表达式无 `;`）
+    // 在 void 调用上仍为 true，但不能 CreatePHI(void, ..., "name")（LLVM assert）。
     TypeInfo resultType;
+    bool hasValue = false;
+    llvm::Type* resultLLVMType = nullptr;
     llvm::Value* tryResult = nullptr;
-    if (hasResult) {
+    if (tryBlock->hasResult() && tryBlock->resultExpr()) {
         try {
-            resultType = tryBlock->resultExpr()->getType();
+            auto* re = tryBlock->resultExpr();
+            resultType = re->getType();
+            if (re->hasResolvedType()) {
+                const auto& resolved = re->resolvedType();
+                if (resolved.isArrayGeneric() && resultType.isArray()) {
+                    resultType = resolved;
+                }
+            }
         } catch (...) { // NOLINT(bugprone-empty-catch) — getType 失败: 仍编译 resultExpr，异常留上层
         }
-        tryResult = compileExpr(tryBlock->resultExpr());
+        hasValue = !resultType.empty();
+        if (hasValue) {
+            resultLLVMType = getLLVMType(resultType);
+            if (!resultLLVMType || resultLLVMType->isVoidTy()) {
+                hasValue = false;
+                resultLLVMType = nullptr;
+            }
+        }
+        if (hasValue) {
+            tryResult = compileBranchResultNormalized(tryBlock->resultExpr(), resultType);
+        } else {
+            (void)compileExpr(tryBlock->resultExpr());
+        }
     }
 
     auto trySuccessEndBB = _builder.GetInsertBlock();
@@ -605,7 +649,7 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
     // try 成功路径末尾跳 join（若未被流终止语句抢占 terminator）
     vector<std::pair<llvm::Value*, llvm::BasicBlock*>> phiIncoming;
     if (!trySuccessEndBB->getTerminator()) {
-        if (hasResult && tryResult) {
+        if (hasValue && tryResult) {
             phiIncoming.emplace_back(tryResult, trySuccessEndBB);
         }
         _builder.SetInsertPoint(trySuccessEndBB);
@@ -613,8 +657,6 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
     }
 
     // 5) 编译每个 catch arm
-    auto resultLLVMType = hasResult ? getLLVMType(resultType) : nullptr;
-
     for (size_t i = 0; i < node->catches().size(); ++i) {
         auto& arm = node->catches()[i];
         auto armBB = ctx.armEntryBBs[i];
@@ -634,8 +676,12 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
         }
 
         llvm::Value* armResult = nullptr;
-        if (arm->body()->hasResult()) {
-            armResult = compileExpr(arm->body()->resultExpr());
+        if (arm->body()->hasResult() && arm->body()->resultExpr()) {
+            if (hasValue) {
+                armResult = compileBranchResultNormalized(arm->body()->resultExpr(), resultType);
+            } else {
+                (void)compileExpr(arm->body()->resultExpr());
+            }
         }
 
         auto armEndBB = _builder.GetInsertBlock();
@@ -648,10 +694,15 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
 
         // 跳 join（若未被流终止抢占 terminator）
         if (!armEndBB->getTerminator()) {
-            if (hasResult && armResult) {
+            if (hasValue && armResult) {
                 phiIncoming.emplace_back(armResult, armEndBB);
+                _builder.CreateBr(joinBB);
+            } else if (hasValue) {
+                // 有值 try 的无块值 arm 不参与 phi；未 ret 则视为不可达汇合
+                _builder.CreateUnreachable();
+            } else {
+                _builder.CreateBr(joinBB);
             }
-            _builder.CreateBr(joinBB);
         }
     }
 
@@ -660,14 +711,17 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
     _builder.SetInsertPoint(joinBB);
 
     // 表达式合并：若有结果，phi；若所有路径都流终止，joinBB 不可达
-    if (hasResult && !phiIncoming.empty()) {
+    if (hasValue && !phiIncoming.empty()) {
         auto phi = _builder.CreatePHI(resultLLVMType, static_cast<unsigned>(phiIncoming.size()), "trycatch.result");
         for (auto& inc : phiIncoming) {
             phi->addIncoming(inc.first, inc.second);
         }
+        if (resultType.isRc() || resultType.isArrayGeneric() || resultType.isWeak()) {
+            recordTemp(phi, resultType);
+        }
         return phi;
     }
-    if (hasResult) {
+    if (hasValue) {
         // 所有分支都流终止，joinBB 不可达；emit unreachable 防 verifier
         _builder.CreateUnreachable();
         return llvm::UndefValue::get(resultLLVMType);

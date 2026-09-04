@@ -1,0 +1,18 @@
+; fallible void 成功通道：函数体以无 else 的 `if cond { ret E::V }` 结尾
+enum E {
+  Boom
+}
+
+fn f(flag bool) ! E {
+  if flag {
+    ret E::Boom
+  }
+}
+
+fn main() {
+  try {
+    f(false)
+  } catch e E {
+  }
+  ret;
+}

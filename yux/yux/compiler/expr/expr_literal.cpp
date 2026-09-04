@@ -739,9 +739,11 @@ llvm::Value* Compiler::buildArrayLiteralBlock(ExprArrayNode* arrayNode, const Ty
 }
 
 llvm::Value* Compiler::compileArrayLiteralExpr(p<ExprArrayNode> node) {
+    // 空 `[]` 的 getType 是 `[__empty * 0]`；有靶向时 SemaPass 已把 resolvedType 写成 Array<T>。
+    // 必须读 resolved，否则 ret [] / 表达式位置的空字面量会走固定数组分支抛 E3091。
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto& elements = node->elements();
-    auto arrayType = node->getType();
+    auto arrayType = node->resolvedType();
     auto llvmArrayType = getLLVMType(arrayType);
 
     DEBUG_LOG_VAL("    Expr: ArrayLiteral", arrayType.name);

@@ -1,0 +1,17 @@
+; Array 经 try 绑定：成功通道是调用结果（fresh），catch 流终止
+enum E {
+  Boom
+}
+
+fn give() Array<i32> ! E {
+  ret [1]
+}
+
+fn main() {
+  let _ Array<i32> = try {
+    give()
+  } catch e E {
+    ret;
+  }
+  ret;
+}

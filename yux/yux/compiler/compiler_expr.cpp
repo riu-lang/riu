@@ -45,10 +45,13 @@ TypeInfo Compiler::resolvedOrInferredType(p<ExprNode> node) const {
 #ifndef NDEBUG
         const auto& resolved = node->resolvedType();
         auto inferred = node->getType();
+        // 数组字面量 getType 是 `[T * N]` / `[__empty * 0]`；SemaPass 按靶向可写成 Array<T>。
+        const bool arrayLitToGeneric = inferred.isArray() && resolved.isArrayGeneric();
         // 透明 alias (spec §3.9.1.2 / §3.9.3.1): SemaPass 缓存的 resolvedType 与 codegen
         // 阶段 getType() 重新计算的结果, 在字面上可能一侧是别名名 (`IPair`), 另一侧已被
         // 解开 (`(i32,i32)`). 两者按 alias 归一后应一致; 仅当归一后仍不等才视为真冲突.
-        assert(resolveAlias(resolved) == resolveAlias(inferred) && "resolvedType / getType inconsistent");
+        assert((resolveAlias(resolved) == resolveAlias(inferred) || arrayLitToGeneric) &&
+               "resolvedType / getType inconsistent");
 #endif
         return node->resolvedType();
     }

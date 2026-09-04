@@ -58,7 +58,22 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         inferFlexibleInts(node->expr(), declRetType);
     }
 
-    auto retType = node->expr()->getType();
+    TypeInfo retType = node->expr()->getType();
+    // 数组字面量 getType 是 `[T * N]` / `[__empty * 0]`；靶向 Array<T> 时用 resolved / 声明类型。
+    if (node->expr()->hasResolvedType()) {
+        const auto& resolved = node->expr()->resolvedType();
+        if (resolved.isArrayGeneric() && retType.isArray()) {
+            retType = resolved;
+        }
+    }
+    if (hasDeclaredRetType && declRetType.isArrayGeneric()) {
+        if (auto arr = dynamic_cast<ExprArrayNode*>(node->expr())) {
+            if (arr->elements().empty()) {
+                arr->setResolvedType(declRetType);
+                retType = declRetType;
+            }
+        }
+    }
 
     // ==================== #Fallible(E) 错误返回路径（DRAFT-错误.md [#10.A] / [#10.B]） ====================
     // 当前 fn 标 #Fallible(E) 时，函数 LLVM 返回类型已被 wrapFallibleRetType 包成
@@ -91,6 +106,22 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         if (!isSuccess && !isError) {
             int ln = node->getLineNumber();
             if (ln < 0) ln = node->expr()->resolveLineNumber();
+            // fallible void：`ret <void-expr>` 与 `ret;` 同义（先求值再成功-void 返回）。
+            if (!hasDeclaredRetType && retType.empty()) {
+                compileExpr(node->expr());
+                popAndReleaseTempFrame();
+                pushTempFrame();
+                callDestructorsForScope();
+                auto retStructTy = getFallibleRetStructType(TypeInfo(), fallibleErrName);
+                TypeInfo voidErrType(fallibleErrName);
+                auto errLLVMTy = getLLVMType(voidErrType);
+                llvm::Value* retStruct = llvm::UndefValue::get(retStructTy);
+                retStruct = _builder.CreateInsertValue(retStruct, _builder.getInt1(false), {0});
+                retStruct = _builder.CreateInsertValue(retStruct, llvm::Constant::getNullValue(errLLVMTy), {1});
+                _builder.CreateRet(retStruct);
+                DEBUG_LOG("    Created #Fallible void-success return from void expr");
+                return;
+            }
             throwSemaGap(ln);
         }
         // 求值表达式（错误 / 成功通道复用现有 enum / value 求值路径）

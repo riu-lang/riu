@@ -1,6 +1,5 @@
 ; yux.core.io：write/read/append 回合 + 缺文件 NotFound
 ; 不调用 read_line（会堵 stdin）。临时文件名互不抢；失败路径可能留文件，gitignore 兜底。
-; void 的 try/catch 块内调用须带 `;`，避免把 void 调用当成块值。
 
 use yux.core.io.*
 
@@ -41,9 +40,9 @@ fn _fail_io(op String&, e IoErr) {
 fn test_write_read_roundtrip() {
   let path String = "_yux_io_rw.txt"
   try {
-    write_file(&path, "hello");
+    write_file(&path, "hello")
   } catch e IoErr {
-    _fail_io("write", e);
+    _fail_io("write", e)
   }
   let s String = try {
     read_file(&path)
@@ -61,9 +60,9 @@ fn test_write_read_roundtrip() {
 fn test_write_read_chinese() {
   let path String = "_yux_io_zh.txt"
   try {
-    write_file(&path, "你好");
+    write_file(&path, "你好")
   } catch e IoErr {
-    _fail_io("write_zh", e);
+    _fail_io("write_zh", e)
   }
   let s String = try {
     read_file(&path)
@@ -81,15 +80,15 @@ fn test_write_read_chinese() {
 fn test_append_file() {
   let path String = "_yux_io_append.txt"
   try {
-    write_file(&path, "ab");
+    write_file(&path, "ab")
   } catch e IoErr {
-    _fail_io("write_ab", e);
+    _fail_io("write_ab", e)
   }
   try {
-    append_file(&path, "cd");
+    append_file(&path, "cd")
   } catch e IoErr {
     _cleanup(&path);
-    _fail_io("append", e);
+    _fail_io("append", e)
   }
   let s String = try {
     read_file(&path)
@@ -107,9 +106,9 @@ fn test_append_file() {
 fn test_write_read_empty() {
   let path String = "_yux_io_empty.txt"
   try {
-    write_file(&path, "");
+    write_file(&path, "")
   } catch e IoErr {
-    _fail_io("write_empty", e);
+    _fail_io("write_empty", e)
   }
   let s String = try {
     read_file(&path)

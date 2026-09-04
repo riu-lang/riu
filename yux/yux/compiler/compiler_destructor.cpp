@@ -887,6 +887,41 @@ bool Compiler::isFreshHandleExpr(p<ExprNode> expr) {
     if (dynamic_cast<LambdaExprNode*>(expr)) return true;
     // B-1: struct 字面量 Self { ... } 创建新的 struct 值，是 +1 fresh
     if (dynamic_cast<ExprStructLitNode*>(expr)) return true;
+    // if / match / try：phi 各值产生分支均 fresh 时整体 fresh（流终止臂不参与）。
+    // Array 无 RC，不能靠 retain 归一；非 fresh 分支仍须 E4031。
+    auto blockFresh = [this](p<StatementBlockNode> block) -> bool {
+        if (!block || !block->hasResult() || !block->resultExpr()) return true;
+        return isFreshHandleExpr(block->resultExpr());
+    };
+    if (auto* ifn = dynamic_cast<ExprIfElseNode*>(expr)) {
+        if (!blockFresh(ifn->thenBlock())) return false;
+        for (auto& el : ifn->elifs()) {
+            if (el && !blockFresh(el->block())) return false;
+        }
+        if (ifn->elseBlock() && !blockFresh(ifn->elseBlock())) return false;
+        return true;
+    }
+    if (auto* ol = dynamic_cast<ExprOneLineIfElseNode*>(expr)) {
+        return isFreshHandleExpr(ol->trueValue()) && isFreshHandleExpr(ol->falseValue());
+    }
+    if (auto* mn = dynamic_cast<ExprMatchNode*>(expr)) {
+        for (auto& arm : mn->arms()) {
+            if (!arm || arm->skipsTypeMerge()) continue;
+            if (arm->hasBlock()) {
+                if (!blockFresh(arm->block())) return false;
+            } else if (!isFreshHandleExpr(arm->body())) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (auto* tn = dynamic_cast<ExprTryCatchNode*>(expr)) {
+        if (!blockFresh(tn->tryBlock())) return false;
+        for (auto& arm : tn->catches()) {
+            if (arm && !blockFresh(arm->body())) return false;
+        }
+        return true;
+    }
     return false;
 }
 

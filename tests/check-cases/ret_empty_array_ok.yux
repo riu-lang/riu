@@ -1,0 +1,16 @@
+; fallible 成功通道 `ret []`（空数组字面量按声明 Array<T> 靶向）
+enum E {
+  Boom
+}
+
+fn empty() Array<i32> ! E {
+  ret []
+}
+
+fn main() {
+  try {
+    let _ Array<i32> = empty()
+  } catch e E {
+  }
+  ret;
+}

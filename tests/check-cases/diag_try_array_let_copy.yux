@@ -1,0 +1,14 @@
+; Array 经 try 绑定非 fresh 源（已有变量）→ E4031
+enum E {
+  Boom
+}
+
+fn main() {
+  let existing Array<i32> = [1]
+  let a Array<i32> = try {  ; check: E4031
+    existing
+  } catch e E {
+    ret;
+  }
+  ret;
+}

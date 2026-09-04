@@ -144,6 +144,40 @@ bool isFreshHandleExpr(p<ExprNode> expr) {
     if (dynamic_cast<p<ExprMoveAssignNode>>(expr)) return true; // move-assign 结果
     if (dynamic_cast<p<LambdaExprNode>>(expr)) return true;     // lambda 字面量
     if (dynamic_cast<p<ExprStructLitNode>>(expr)) return true;  // struct 字面量 (Self { ... })
+    // if / match / try：与 Compiler::isFreshHandleExpr 同步 — 各值产生分支均 fresh。
+    auto blockFresh = [](p<StatementBlockNode> block) -> bool {
+        if (!block || !block->hasResult() || !block->resultExpr()) return true;
+        return isFreshHandleExpr(block->resultExpr());
+    };
+    if (auto* ifn = dynamic_cast<p<ExprIfElseNode>>(expr)) {
+        if (!blockFresh(ifn->thenBlock())) return false;
+        for (auto& el : ifn->elifs()) {
+            if (el && !blockFresh(el->block())) return false;
+        }
+        if (ifn->elseBlock() && !blockFresh(ifn->elseBlock())) return false;
+        return true;
+    }
+    if (auto* ol = dynamic_cast<p<ExprOneLineIfElseNode>>(expr)) {
+        return isFreshHandleExpr(ol->trueValue()) && isFreshHandleExpr(ol->falseValue());
+    }
+    if (auto* mn = dynamic_cast<p<ExprMatchNode>>(expr)) {
+        for (auto& arm : mn->arms()) {
+            if (!arm || arm->skipsTypeMerge()) continue;
+            if (arm->hasBlock()) {
+                if (!blockFresh(arm->block())) return false;
+            } else if (!isFreshHandleExpr(arm->body())) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (auto* tn = dynamic_cast<p<ExprTryCatchNode>>(expr)) {
+        if (!blockFresh(tn->tryBlock())) return false;
+        for (auto& arm : tn->catches()) {
+            if (arm && !blockFresh(arm->body())) return false;
+        }
+        return true;
+    }
     return false;
 }
 
@@ -613,10 +647,16 @@ void checkRetExpr(p<ExprNode> expr, const TypeInfo& declRet, bool hasDeclRet, in
     if (!ctx.fallibleErr.empty()) {
         auto resolvedRet = resolveForRet(retType, ctx);
         TypeInfo declOk = hasDeclRet ? decl.withoutFallible() : TypeInfo();
-        bool isSuccess =
-            hasDeclRet && (resolvedRet.withoutFallible() == resolveForRet(declOk, ctx));
+        auto resolvedOk = resolveForRet(declOk, ctx);
+        bool isSuccess = hasDeclRet && (resolvedRet.withoutFallible() == resolvedOk);
+        if (!isSuccess && hasDeclRet && isEmptyArrayType(resolvedRet) && resolvedOk.isArrayGeneric()) {
+            isSuccess = true;
+        }
         bool isError = (resolvedRet.name == ctx.fallibleErr);
         if (!isSuccess && !isError) {
+            // fallible void 成功通道：`ret <void-expr>` 与 `ret;` 同义（先求副作用）。
+            // 典型：`fn f() ! E { if c { ret E::V } }` 块末 if 无 else，被包成隐式 ret。
+            if (!hasDeclRet && resolvedRet.empty()) return;
             throw YuxError(line, ErrorCode::E3014, hasDeclRet ? decl.getFullName() : string("void"),
                            retType.getFullName());
         }
@@ -658,6 +698,7 @@ void checkRetExpr(p<ExprNode> expr, const TypeInfo& declRet, bool hasDeclRet, in
             throw YuxError(line, ErrorCode::E3014, decl.getFullName(), "void");
         }
         if (resolveForRet(retType, ctx) != resolveForRet(decl, ctx)) {
+            if (isEmptyArrayType(retType) && resolveForRet(decl, ctx).isArrayGeneric()) return;
             throw YuxError(line, ErrorCode::E3014, decl.getFullName(), retType.getFullName());
         }
     } else if (!retType.empty()) {
