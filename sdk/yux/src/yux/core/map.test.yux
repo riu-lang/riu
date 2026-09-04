@@ -1,0 +1,64 @@
+; Map<K, V>：线性查找字典
+;
+; 覆盖：
+;   - i32 → i32：insert / get / contains / remove / 覆盖
+;   - String → i32：键比较走 String.eq
+;   - i32 → String：值句柄复制
+;   - 空 Map、未命中 get/remove、len / is_empty
+
+#Test
+fn test_map_i32_insert_get() {
+  #Mut let m Map<i32, i32> = Map:<i32, i32>::make()
+  assert_true(m.is_empty())
+  m.insert(1, 10)
+  m.insert(2, 20)
+  assert_eq(m.len(), 2)
+  assert_true(m.contains(1))
+  assert_false(m.contains(3))
+  let g1 i32? = m.get(1)
+  assert_eq(g1 ?? -1, 10)
+  let g2 i32? = m.get(2)
+  assert_eq(g2 ?? -1, 20)
+  let miss i32? = m.get(3)
+  assert_false(miss.has())
+  m.insert(1, 99)
+  let g1b i32? = m.get(1)
+  assert_eq(g1b ?? -1, 99)
+  assert_eq(m.len(), 2)
+  let r2 i32? = m.remove(2)
+  assert_eq(r2 ?? -1, 20)
+  assert_false(m.contains(2))
+  assert_eq(m.len(), 1)
+  let gone i32? = m.remove(2)
+  assert_false(gone.has())
+}
+
+#Test
+fn test_map_string_key() {
+  #Mut let m Map<String, i32> = Map:<String, i32>::make()
+  m.insert("a", 1)
+  m.insert("b", 2)
+  assert_eq(m.len(), 2)
+  assert_true(m.contains("a"))
+  assert_true(m.contains("b"))
+  assert_false(m.contains("c"))
+  m.insert("a", 9)
+  let ga i32? = m.get("a")
+  assert_eq(ga ?? 0, 9)
+  assert_true(m.remove("b").has())
+  assert_false(m.contains("b"))
+  assert_eq(m.len(), 1)
+}
+
+#Test
+fn test_map_string_value() {
+  #Mut let m Map<i32, String> = Map:<i32, String>::make()
+  m.insert(1, "one")
+  m.insert(2, "two")
+  let v1 String? = m.get(1)
+  assert_eq(v1 ?? "", "one")
+  let r2 String? = m.remove(2)
+  assert_eq(r2 ?? "", "two")
+  assert_false(m.contains(2))
+  assert_eq(m.len(), 1)
+}

@@ -208,6 +208,101 @@ struct String {
     String::_take_buf(move(buf))
   }
 
+  ; ASCII 空白：U+0009..U+000D（\t \n \v \f \r）与空格 U+0020
+  fn _is_ascii_ws(cp u32) bool {
+    (cp >= 9 && cp <= 13) || cp == 32
+  }
+
+  ; 去掉两端 ASCII 空白；全空白 / 空串 → ""
+  fn trim() String {
+    let a Array<u32>& = as_ref($._buf)
+    #Mut let start usize = 0
+    #Mut let end usize = a.len()
+    loop {
+      if start >= end {
+        break;
+      }
+      if !$._is_ascii_ws(copy_of(a[start])) {
+        break;
+      }
+      start += 1
+    }
+    loop {
+      if start >= end {
+        break;
+      }
+      if !$._is_ascii_ws(copy_of(a[end - 1])) {
+        break;
+      }
+      end -= 1
+    }
+    String::_from_range(&a, start, end)
+  }
+
+  fn trim_left() String {
+    let a Array<u32>& = as_ref($._buf)
+    #Mut let start usize = 0
+    loop {
+      if start >= a.len() {
+        break;
+      }
+      if !$._is_ascii_ws(copy_of(a[start])) {
+        break;
+      }
+      start += 1
+    }
+    String::_from_range(&a, start, a.len())
+  }
+
+  fn trim_right() String {
+    let a Array<u32>& = as_ref($._buf)
+    #Mut let end usize = a.len()
+    loop {
+      if end == 0 {
+        break;
+      }
+      if !$._is_ascii_ws(copy_of(a[end - 1])) {
+        break;
+      }
+      end -= 1
+    }
+    String::_from_range(&a, 0, end)
+  }
+
+  ; 按 \n 切行；\r\n 视为一个换行；末尾换行不产生空段
+  ; 空串 → []；"\n" → [""]
+  fn lines() Array<String> {
+    let a Array<u32>& = as_ref($._buf)
+    let hlen usize = a.len()
+    #Mut let parts Array<String> = []
+    if hlen == 0 {
+      ret parts
+    }
+    #Mut let start usize = 0
+    #Mut let i usize = 0
+    loop {
+      if i >= hlen {
+        break;
+      }
+      let cp u32 = copy_of(a[i])
+      if cp == 10 {
+        parts.push(String::_from_range(&a, start, i))
+        i += 1
+        start = i
+      } elif cp == 13 && i + 1 < hlen && copy_of(a[i + 1]) == 10 {
+        parts.push(String::_from_range(&a, start, i))
+        i += 2
+        start = i
+      } else {
+        i += 1
+      }
+    }
+    if start < hlen {
+      parts.push(String::_from_range(&a, start, hlen))
+    }
+    ret parts
+  }
+
   ; 按 sep 切分；空 sep 按码点切开；连续 / 首尾 sep 产生空段
   ; 空接收者 + 非空 sep → [""]；空接收者 + 空 sep → []
   fn split(sep String&) Array<String> {

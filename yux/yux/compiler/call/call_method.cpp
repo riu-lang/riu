@@ -1252,29 +1252,17 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
                         basePtr = alloca;
                     }
 
-                    vector<llvm::Value*> methodArgs;
-                    methodArgs.push_back(basePtr);
-                    for (size_t i = 0; i < args.size(); ++i) {
-                        auto& at = argTypes[i];
-                        if (i < callNode->getArgs().size()) {
-                            passAsArg(args[i], at, callNode->getArgs()[i]);
-                        }
-                        if (structParamUsesPointer(at)) {
-                            auto structType = getLLVMType(at);
-                            auto alloca = _builder.CreateAlloca(structType, nullptr, "struct_arg_tmp");
-                            _builder.CreateStore(args[i], alloca);
-                            methodArgs.push_back(alloca);
-                        } else {
-                            methodArgs.push_back(args[i]);
-                        }
-                    }
-
-                    // 泛型实例方法：用消费方模块作为前缀（与 emit 端一致）
-                    string ownerMod = inst.consumerModule;
-                    bool methPriv = !member.empty() && member[0] == '_';
                     map<string, TypeInfo> subst;
                     for (size_t i = 0; i < inst.args.size(); ++i) {
                         subst[inst.baseDecl->typeParams()[i]] = inst.args[i];
+                    }
+                    // 与 emitInstanceMethods / 非泛型路径一致：mangle 与 LLVM 签名用替换后的
+                    // 形参类型，不用调用点实参（否则 K& 工厂被 mangle 成 `K`，T& 被调成 `i32`）。
+                    vector<TypeInfo> formalTypes;
+                    for (auto p : chosen->header()->params()) {
+                        if (p->type()) {
+                            formalTypes.push_back(p->type()->getType().substitute(subst));
+                        }
                     }
                     TypeInfo genRetType;
                     if (chosen->header()->retType()) {
@@ -1282,24 +1270,28 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
                         genRetType = bindStructSelfType(genRetType, inst.baseDecl->name().getText(), effName);
                     }
                     string mFallibleErr = chosen->header()->resolvedFallibleErr();
-                    string mangledName =
-                        Mangler::method(ownerMod, effName, member, argTypes, methPriv, genRetType, mFallibleErr);
-                    auto fn = _module->getFunction(mangledName);
-                    if (!fn) {
-                        vector<llvm::Type*> paramTypes;
-                        paramTypes.push_back(llvm::PointerType::get(_context, 0));
-                        for (auto& t : argTypes) {
-                            if (structParamUsesPointer(t)) {
-                                paramTypes.push_back(llvm::PointerType::get(_context, 0));
-                            } else {
-                                paramTypes.push_back(getLLVMType(t));
-                            }
+
+                    vector<llvm::Value*> methodArgs;
+                    methodArgs.push_back(basePtr);
+                    for (size_t i = 0; i < args.size(); ++i) {
+                        TypeInfo at = i < argTypes.size() ? applySubst(argTypes[i]) : TypeInfo();
+                        TypeInfo formal = i < formalTypes.size() ? formalTypes[i] : at;
+                        if (i < callNode->getArgs().size()) {
+                            passAsArg(args[i], at, callNode->getArgs()[i]);
                         }
-                        TypeInfo retType = genRetType;
-                        auto llvmRetType = wrapFallibleRetType(retType, mFallibleErr);
-                        auto fnType = llvm::FunctionType::get(llvmRetType, paramTypes, false);
-                        fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, mangledName, _module);
+                        bool needsAutoRef = formal.isRef() && !at.isRef();
+                        if (needsAutoRef || structParamUsesPointer(formal)) {
+                            auto slotTy = getLLVMType(needsAutoRef ? at : formal);
+                            auto alloca = _builder.CreateAlloca(slotTy, nullptr, "struct_arg_tmp");
+                            _builder.CreateStore(args[i], alloca);
+                            methodArgs.push_back(alloca);
+                        } else {
+                            methodArgs.push_back(args[i]);
+                        }
                     }
+
+                    auto fn = getMethodFunction(effName, member, formalTypes, genRetType, mFallibleErr,
+                                                /*isStatic=*/false);
                     auto callResult = _builder.CreateCall(fn, methodArgs, genRetType.empty() ? "" : member + ".ret");
                     auto v = handleFallibleCallResult(callResult, mFallibleErr, genRetType, callNode);
                     // void / fallible-void 成功路径是 nullptr；compileMethodCall 用空指针表示未命中

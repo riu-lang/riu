@@ -239,8 +239,16 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
         int line = structLitNode->resolveLineNumber();
         int col = structLitNode->resolveColumn();
         // DRAFT-const-eval Phase 5: TypeName{...} 形态从节点 structName() 取;
-        // Self{...} 形态优先用节点内已记录的名称, 否则回退 _currentStructName
+        // Self{...}：泛型实例方法里 AST 记的是模板名（`Map`），LLVM 类型在
+        // `_structInstances` 里键为 mangled（`Map<i32,i32>`）。优先用当前单态名。
         string structName = structLitNode->structName();
+        if (structLitNode->isSelfForm() && !_currentStructName.empty()) {
+            auto instIt = _structInstances.find(_currentStructName);
+            if (instIt != _structInstances.end() && instIt->second.baseDecl &&
+                (structName.empty() || instIt->second.baseDecl->name().getText() == structName)) {
+                structName = _currentStructName;
+            }
+        }
         if (structName.empty()) {
             structName = _currentStructName;
         }

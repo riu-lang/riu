@@ -5,6 +5,7 @@
 ;   - contains / starts_with / ends_with（含 String& 形参直接调用）
 ;   - to_upper / to_lower（ASCII；非 ASCII 码点不变）
 ;   - split（空 sep、连续 sep、首尾 sep、Unicode）
+;   - trim / trim_left / trim_right（ASCII 空白）；lines（\n / \r\n）
 ;   - 转义序列与原始字符串（\n \t \r \0 \v \b \\ \" \' \$ \xNN \uNNNN r"..."）
 ;   - \$ 转义与字符串模板插值（$id / ${expr} / UTF-8）
 ;   - ToString 自动分发（i32 / i64 / u64 / bool / f64）
@@ -241,6 +242,89 @@ fn test_string_split_utf8() {
   assert_eq(parts[1], "世界")
 }
 
+; ==================== trim / trim_left / trim_right ====================
+
+#Test
+fn test_string_trim_both() {
+  assert_eq("  hi  ".trim(), "hi")
+  assert_eq("\t hi \n".trim(), "hi")
+  assert_eq("hi".trim(), "hi")
+  assert_eq("".trim(), "")
+  assert_eq("   ".trim(), "")
+}
+
+#Test
+fn test_string_trim_left() {
+  assert_eq("  hi  ".trim_left(), "hi  ")
+  assert_eq("hi".trim_left(), "hi")
+  assert_eq("".trim_left(), "")
+}
+
+#Test
+fn test_string_trim_right() {
+  assert_eq("  hi  ".trim_right(), "  hi")
+  assert_eq("hi".trim_right(), "hi")
+  assert_eq("".trim_right(), "")
+}
+
+#Test
+fn test_string_trim_crlf_ws() {
+  assert_eq("\r\nfoo\r\n".trim(), "foo")
+}
+
+; ==================== lines ====================
+
+#Test
+fn test_string_lines_lf() {
+  let parts Array<String> = "a\nb\nc".lines()
+  assert_eq(parts.len(), 3)
+  assert_eq(parts[0], "a")
+  assert_eq(parts[1], "b")
+  assert_eq(parts[2], "c")
+}
+
+#Test
+fn test_string_lines_crlf() {
+  let parts Array<String> = "a\r\nb\r\nc".lines()
+  assert_eq(parts.len(), 3)
+  assert_eq(parts[0], "a")
+  assert_eq(parts[1], "b")
+  assert_eq(parts[2], "c")
+}
+
+#Test
+fn test_string_lines_trailing_nl() {
+  let parts Array<String> = "a\nb\n".lines()
+  assert_eq(parts.len(), 2)
+  assert_eq(parts[0], "a")
+  assert_eq(parts[1], "b")
+}
+
+#Test
+fn test_string_lines_empty_and_lone_nl() {
+  let empty Array<String> = "".lines()
+  assert_eq(empty.len(), 0)
+  let one Array<String> = "\n".lines()
+  assert_eq(one.len(), 1)
+  assert_eq(one[0], "")
+}
+
+#Test
+fn test_string_lines_blank_middle() {
+  let parts Array<String> = "a\n\nb".lines()
+  assert_eq(parts.len(), 3)
+  assert_eq(parts[0], "a")
+  assert_eq(parts[1], "")
+  assert_eq(parts[2], "b")
+}
+
+#Test
+fn test_string_lines_no_nl() {
+  let parts Array<String> = "abc".lines()
+  assert_eq(parts.len(), 1)
+  assert_eq(parts[0], "abc")
+}
+
 ; ==================== 转义序列 ====================
 
 ; 验证：字符串转义序列 \n 的长度和内容
@@ -469,6 +553,22 @@ fn test_string_template_f64_interp() {
   let s String = "${f}"
   ; "3.140000" — f64 固定 6 位小数
   assert_eq(s.len(), 8)
+}
+
+; 验证：f32 插值走 ToString（委派 f64，6 位小数）
+#Test
+fn test_string_template_f32_interp() {
+  let f f32 = 2.5f32
+  let s String = "${f}"
+  assert_eq(s, "2.500000")
+}
+
+; 验证：usize 插值走 ToString
+#Test
+fn test_string_template_usize_interp() {
+  let n usize = 8
+  let s String = "n=${n}"
+  assert_eq(s, "n=8")
 }
 
 ; 验证：字符串模板混合类型插值

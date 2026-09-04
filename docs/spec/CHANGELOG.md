@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-09-04 —— SDK String trim/lines 与 `Map<K, V>`
+
+- **修改 §9.3.4 / 新增 §9.3.4.5**：`trim` / `trim_left` / `trim_right` / `lines()`。空白为 ASCII U+0009–U+000D 与空格；`lines` 按 `\n` 切、`\r\n` 归一，末尾换行不产生空段。§9.3.4.1「不提供」清单去掉 `trim`（仍不提供 `substring` / `repeat`）。
+- **新增 §10.4.1.5**：`map.yux`（`pkg` `map.*`）纯 yux `Map<K, V>`：`make` / `insert` / `get` / `contains` / `remove`；线性查找；`K` 须可 `==`；不承诺 O(1) / 哈希。
+- **冲突 / 兼容**：纯增量。
+
 ## 2026-09-04 —— SDK `yux.core.io` 文件 / stdin IO
 
 - **新增 §10.4.1.4**：`io.yux`（逻辑名 `yux.core.io`，`pkg` `io.*`）提供 `IoErr` + `read_line` / `read_file` / `write_file` / `append_file`；错误通道 `T ! IoErr`；路径 UTF-16、内容 UTF-8。`eprint` / `eprintln` 仍在 `base.yux`。

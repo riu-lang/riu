@@ -2037,7 +2037,11 @@ TypeInfo ExprPathCallNode::getType() const {
         if (nfound == 1 && found) {
             TypeInfo rt;
             if (found->retType()) rt = found->retType()->getType();
-            if (rt.isSelf()) {
+            // TypeSelfNode.getType 灌入所属 struct 名，`isSelf()`（name=="Self"）为 false。
+            // 无 turbofish 时旧实现 `return TypeInfo(n)` 对非泛型工厂蒙对；泛型工厂若仍
+            // 返回裸名，调用点 recordTemp 会对含 Array 字段的实例走 getLLVMType(裸名) → E3091。
+            const bool selfRet = rt.isSelf() || (rt.kind == TypeKind::Normal && rt.name == n && rt.genericArgs.empty());
+            if (selfRet) {
                 if (!_lhsTypeArgs.empty()) {
                     vector<sp<TypeInfo>> args;
                     args.reserve(_lhsTypeArgs.size());
