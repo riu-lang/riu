@@ -1,14 +1,14 @@
-; 用户项目：`use yux.core.io` 命中 SDK 已加载模块；全限定不靠扁平
+; 用户项目：`use yux.io` 命中 SDK 已加载模块；全限定不靠扁平
 
-use yux.core.io
+use yux.io
 
-fn show_missing(tag String, e IoErr) {
+fn show_missing(tag String, e io.IoErr) {
   match e {
-    IoErr::NotFound => println(tag)
-    IoErr::Eof => println("eof")
-    IoErr::AccessDenied => println("denied")
-    IoErr::InvalidUtf8 => println("utf8")
-    IoErr::Other(code) => println("other")
+    io.IoErr::NotFound => println(tag)
+    io.IoErr::Eof => println("eof")
+    io.IoErr::AccessDenied => println("denied")
+    io.IoErr::InvalidUtf8 => println("utf8")
+    io.IoErr::Other(code) => println("other")
   }
 }
 
@@ -17,14 +17,14 @@ fn main() {
   try {
     io.read_file(&aliasPath)
     println("unexpected-alias")
-  } catch e IoErr {
+  } catch e io.IoErr {
     show_missing("ok-alias", e)
   }
   let fqPath String = "_yux_proj_fq_nope.txt"
   try {
-    yux.core.io.read_file(&fqPath)
+    yux.io.read_file(&fqPath)
     println("unexpected-fq")
-  } catch e IoErr {
+  } catch e io.IoErr {
     show_missing("ok-fq", e)
   }
   println(yux.core.math.abs(-4))

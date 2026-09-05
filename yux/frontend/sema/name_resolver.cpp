@@ -10,6 +10,7 @@
 #include "types.h"
 #include <map>
 #include <set>
+#include <vector>
 
 namespace sema {
 
@@ -133,6 +134,35 @@ FileNode* parentFileOf(FileNode* file) {
         ps = ps->parentScope();
     }
     return nullptr;
+}
+
+string typeIdentity(FileNode* owner, const string& typeName) {
+    if (!owner) return typeName;
+    return owner->moduleName() + "." + typeName;
+}
+
+[[noreturn]] void throwAmbiguousBareType(const string& name, const vector<TypePathResult>& cands, int line, int col) {
+    string sources;
+    for (size_t i = 0; i < cands.size(); ++i) {
+        if (i) sources += " and ";
+        sources += typeIdentity(cands[i].owner, name);
+    }
+    int ln = line > 0 ? line : 1;
+    throw YuxError(static_cast<size_t>(ln), col, ErrorCode::E5015, name, sources);
+}
+
+void addUniqueTypeCand(vector<TypePathResult>& cands, std::set<string>& seen, TypePathResult hit,
+                       const string& typeName) {
+    if (!hit.resolved) return;
+    string id = typeIdentity(hit.owner, typeName);
+    if (!seen.insert(id).second) return;
+    cands.push_back(std::move(hit));
+}
+
+TypePathResult pickUniqueOrAmbiguous(const string& name, vector<TypePathResult> cands, int line, int col) {
+    if (cands.size() > 1) throwAmbiguousBareType(name, cands, line, col);
+    if (cands.size() == 1) return cands[0];
+    return {};
 }
 
 TypePathResult bindTypeInFile(FileNode* target, const string& typeName) {
@@ -286,20 +316,45 @@ TypePathResult resolveTypePath(FileNode* file, Yux* yux, const TypePath& path, i
         if (file) {
             auto local = bindTypeInFile(file, last);
             if (local.resolved) return local;
-            for (auto* imp : file->wildcardImports()) {
-                auto hit = bindTypeInFile(imp, last);
-                if (hit.resolved) return hit;
+            auto* named = file->namedTypeImports(last);
+            if (named && !named->empty()) {
+                vector<TypePathResult> cands;
+                std::set<string> seen;
+                for (auto* owner : *named) {
+                    addUniqueTypeCand(cands, seen, bindTypeInFile(owner, last), last);
+                }
+                auto picked = pickUniqueOrAmbiguous(last, std::move(cands), line, col);
+                if (picked.resolved) return picked;
             }
+            {
+                vector<TypePathResult> cands;
+                std::set<string> seen;
+                for (auto* imp : file->wildcardImports()) {
+                    addUniqueTypeCand(cands, seen, bindTypeInFile(imp, last), last);
+                }
+                FileNode* sdk = parentFileOf(file);
+                if (!sdk && yux) sdk = yux->sdkFile();
+                if (sdk && sdk != file) {
+                    for (auto* imp : sdk->wildcardImports()) {
+                        addUniqueTypeCand(cands, seen, bindTypeInFile(imp, last), last);
+                    }
+                    addUniqueTypeCand(cands, seen, bindTypeInFile(sdk, last), last);
+                }
+                auto picked = pickUniqueOrAmbiguous(last, std::move(cands), line, col);
+                if (picked.resolved) return picked;
+            }
+            return r;
         }
-        FileNode* sdk = file ? parentFileOf(file) : nullptr;
-        if (!sdk && yux) sdk = yux->sdkFile();
-        if (sdk && sdk != file) {
+        FileNode* sdk = yux ? yux->sdkFile() : nullptr;
+        if (sdk) {
+            vector<TypePathResult> cands;
+            std::set<string> seen;
             for (auto* imp : sdk->wildcardImports()) {
-                auto hit = bindTypeInFile(imp, last);
-                if (hit.resolved) return hit;
+                addUniqueTypeCand(cands, seen, bindTypeInFile(imp, last), last);
             }
-            auto hit = bindTypeInFile(sdk, last);
-            if (hit.resolved) return hit;
+            addUniqueTypeCand(cands, seen, bindTypeInFile(sdk, last), last);
+            auto picked = pickUniqueOrAmbiguous(last, std::move(cands), line, col);
+            if (picked.resolved) return picked;
         }
         return r;
     }

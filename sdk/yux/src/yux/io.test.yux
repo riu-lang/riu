@@ -1,7 +1,7 @@
-; yux.core.io：write/read/append 回合 + 缺文件 NotFound
+; yux.io：write/read/append 回合 + 缺文件 NotFound
 ; 不调用 read_line（会堵 stdin）。临时文件名互不抢；失败路径可能留文件，gitignore 兜底。
 
-use yux.core.io.*
+use yux.io.*
 
 extern {
   fn DeleteFileW(lpFileName Ptr) i32

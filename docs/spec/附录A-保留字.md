@@ -46,7 +46,7 @@
 | `Rc` `Weak` `Array` `String` `StringBuilder` `Nullable` `Ref` `Ptr` | 内置泛型 / 堆句柄 / 引用类型 | §3.3 / §9 |
 | `$` | 方法接收者 / 当前实例 | §7.2.2 / §B.6 `exprThis` |
 
-§A.2.1 上述名称由 `base.yux` 注册；用户重新定义同名顶层符号**应当**编译报错（§10.4.3.2）。
+§A.2.1 上述名称由 `base.yux` 注册。用户**可以**在本文件定义同名顶层符号：裸名走 §10.2.5（L1 盖住默认 `yux.core.*`）；SDK 侧用路径（§10.4.4.2）。
 
 §A.2.2 `$` 是 lexer token `SymbolThis`，不是 `ID`；语法层只能在 `exprThis` / `exprGetRef` 头位 / `statementAssign` 头位出现。
 

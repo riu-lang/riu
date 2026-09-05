@@ -1,7 +1,8 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 //
-// SDK 加载工具：把 sdk/yux/src/yux/core 下的源文件 parse + ASTBuild 到 Yux 中。
+// SDK 加载工具：把 sdk/yux/src/yux/core 下的源文件 parse + ASTBuild 到 Yux 中，
+// 并加载独立包 `yux.io`（`../io.yux`，不扁平进 core）。
 // 0 LLVM 依赖, 主程序与 yux-check 共用。
 //
 // 错误处理: 解析失败抛 YuxError (路径见 sourcePath()), 调用方决定如何渲染 / exit.

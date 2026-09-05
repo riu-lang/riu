@@ -20,7 +20,7 @@ program        ::= LineEnd*
 codeLineEnd    ::= LineEndComment? LineEnd
                    ; LineEndComment 走 HIDDEN，parser 只看见 LineEnd（§2.2.3）
 
-imports        ::= 'use' ID ('.' ID)* ('.' '*')? codeLineEnd
+imports        ::= 'use' typePath ('.' '*')? codeLineEnd
 
 externDecl     ::= buildAnno* 'extern' '{'
                        ( fnHeader | comment | codeLineEnd )*
@@ -45,16 +45,18 @@ annoArg        ::= ID ('<' typeParam (',' typeParam)* '>')?
 ## B.2 类型
 
 ```
-type           ::= ID                              # typeNormal
+typePath       ::= ID ('.' ID)*                    ; 类型 / use 路径；末段是否类型由 sema 分流
+
+type           ::= typePath                        # typeNormal
                  | type '?'                        # typeNullable
-                 | ID genericDef                   # typeGeneric
+                 | typePath genericDef             # typeGeneric
                  | '[' type '*' INT ']'            # typeArray
                  | '(' ')'                        # typeUnit
                  | '(' type (',' type)+ ')'        # typeTuple
 
 typeWithRef    ::= type '?' '&'?                   # typeNullableWithRef
-                 | ID '&'?                         # typeNormalWithRef
-                 | ID genericDefWithRef '&'?       # typeGenericWithRef
+                 | typePath '&'?                   # typeNormalWithRef
+                 | typePath genericDefWithRef '&'? # typeGenericWithRef
                  | '[' typeWithRef '*' INT ']' '&'?# typeArrayWithRef
                  | '(' ')'                        # typeUnitWithRef
                  | '(' typeWithRef (',' typeWithRef)+ ')' # typeTupleWithRef

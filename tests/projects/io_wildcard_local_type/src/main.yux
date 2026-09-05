@@ -1,0 +1,19 @@
+use yux.core.*
+use yux.io.*
+
+enum IoErr {
+  Mine
+}
+
+fn show(e IoErr) {
+  match e {
+    IoErr::Mine => println(1)
+  }
+}
+
+fn take_sdk(e io.IoErr) {
+}
+
+fn main() {
+  show(IoErr::Mine)
+}

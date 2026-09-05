@@ -1,0 +1,11 @@
+use yux.core.*
+use a.b.Point
+
+fn main() {
+  let p = Point {
+    .x = 3
+    .y = 4
+  }
+  println(3)
+  println(4)
+}

@@ -390,7 +390,9 @@ void registerMethod(FileNode* file, StructImplNode* impl, FnNode* method) {
     }
     {
         vector<sp<TypeInfo>> selfArgs;
-        selfArgs.push_back(std::make_shared<TypeInfo>(structName));
+        auto selfInner = std::make_shared<TypeInfo>(structName);
+        selfInner->ownerModule = file->moduleName();
+        selfArgs.push_back(std::move(selfInner));
         method->registerSymbol("$", {SymbolKind::Variable, "$", TypeInfo("Ref", selfArgs)});
     }
     for (auto param : method->header()->params()) {

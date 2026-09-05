@@ -382,6 +382,10 @@ DEF_ERR(5012, "module not found: {} (expected file {})")
 DEF_ERR(5013, "yux.toml `entry` must be a relative path under `src/`, got absolute path: {}")
 DEF_WARN(5014, "yux.toml `entry` resolves outside `src/` (`{}`): convention is that all sources live under `src/`; obj "
                "path layout may also be inconsistent")
+// 裸名分层 / 路径单用（限定类型路径）。E2010–E2012 已占用，故用 E5xxx。
+DEF_ERR(5015, "ambiguous bare name `{}`: candidates {}")
+DEF_ERR(5016, "cannot use module or package `{}` as a value")
+DEF_ERR(5017, "cannot use type `{}` as a value")
 
 // ── E6xxx 内置 / 调用 ─────────────────────────────────────────────────
 DEF_ERR(6001, "module `{}` not found in package `{}`")
@@ -429,10 +433,9 @@ DEF_ERR(6042, "Array.{}() requires an lvalue array")
 // E7012 / E7013 / E7014 由 Phase 10d 启用；E7001 / E7004 / E7006 / E7008 由 Phase 10e 启用；其余诊断码留 10f
 DEF_ERR(7001, "`!` used outside of a `T ! E` function and outside of `try` block — wrap call in `try {{ ... }} "
               "catch e E {{ ... }}` or declare the enclosing function with `T ! E`")
-DEF_ERR(
-    7004,
-    "cannot propagate error of type `{}` through `!`: caller returns `T ! {}`, types differ — wrap the call in "
-    "`try {{ ... }} catch e {} {{ ret {}::Variant... }}`, or wrap in a function whose `T ! E` matches `{}`")
+DEF_ERR(7004,
+        "cannot propagate error of type `{}` through `!`: caller returns `T ! {}`, types differ — wrap the call in "
+        "`try {{ ... }} catch e {} {{ ret {}::Variant... }}`, or wrap in a function whose `T ! E` matches `{}`")
 DEF_ERR(7006, "call to `T ! E` function `{}` outside `try` block must propagate via `!` (same error type) or "
               "`try-catch` — bare call is forbidden outside `try` (inside `try`, bare call is correct; `!` would be "
               "redundant)")

@@ -245,7 +245,7 @@ void SemaPass::tryValidateFieldChain(const TypeInfo& start, const vector<string>
             throw YuxError(line, col, ErrorCode::E3041, cur.name);
         }
         // Type / Field / String 等是 #Builtin 占位 struct，与 compileDotExpr 一样要看见。
-        StructDeclNode* decl = _names.lookupStruct(cur.name, /*includeBuiltin=*/true);
+        StructDeclNode* decl = _names.lookupStruct(cur, /*includeBuiltin=*/true);
         if (!decl) {
             throw YuxError(line, col, ErrorCode::E3041, cur.name);
         }
@@ -341,7 +341,7 @@ void SemaPass::tryValidateSafeDot(p<ExprDotNode> n) {
         if (mem.starts_with("to_")) return;
         if (receiverHasMethod(actual, mem, _file, _sdkFile)) return;
 
-        StructDeclNode* decl = _names.lookupStruct(actual.name, /*includeBuiltin=*/true);
+        StructDeclNode* decl = _names.lookupStruct(actual, /*includeBuiltin=*/true);
         if (!decl) {
             throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3044, actual.name);
         }

@@ -519,6 +519,21 @@ void FileNode::throwAmbiguousAlias(const string& alias, int line) const {
     throw YuxError(line, ErrorCode::E2008, alias, sources);
 }
 
+void FileNode::addNamedTypeImport(const string& name, FileNode* owner) {
+    if (name.empty() || !owner) return;
+    auto& owners = _namedTypeImports[name];
+    for (auto* o : owners) {
+        if (o == owner) return;
+    }
+    owners.push_back(owner);
+}
+
+const vector<FileNode*>* FileNode::namedTypeImports(const string& name) const {
+    auto it = _namedTypeImports.find(name);
+    if (it == _namedTypeImports.end()) return nullptr;
+    return &it->second;
+}
+
 void FileNode::addWildcardImport(FileNode* file) {
     if (!file || file == this) return;
     for (auto* f : _wildcardImports)
@@ -548,6 +563,11 @@ FileNode* FileNode::relatedFileHere(const string& moduleName) const {
     for (auto& [_, kids] : _packageChildren) {
         for (auto& [_, child] : kids) {
             if (child && child->moduleName() == moduleName) return child;
+        }
+    }
+    for (auto& [_, owners] : _namedTypeImports) {
+        for (auto* o : owners) {
+            if (o && o->moduleName() == moduleName) return o;
         }
     }
     return nullptr;

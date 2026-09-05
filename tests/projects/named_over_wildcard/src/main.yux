@@ -1,0 +1,19 @@
+use yux.core.*
+use a.*
+use b.Ty
+
+fn main() {
+  let t = Ty {
+    .y = 7
+  }
+  let fromA = a.Ty {
+    .x = 3
+  }
+  let fromB = b.Ty {
+    .y = 4
+  }
+  println(7)
+  println(3)
+  println(4)
+  println(mark_a())
+}

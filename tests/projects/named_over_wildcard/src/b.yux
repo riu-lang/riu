@@ -1,0 +1,5 @@
+struct Ty {
+  y i32
+}
+
+fn mark_b() i32 = 2

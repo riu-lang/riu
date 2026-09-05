@@ -1,6 +1,6 @@
 ; yux SDK - 文件 / stdin IO（v0.21 Phase A）
 ; 路径走 CreateFileW（UTF-16）；文件内容 UTF-8。错误通道 T ! IoErr。
-; 公开符号经 pkg `io.*` 扁平进 yux.core；也可用末段别名 `io.fn` 与全限定 `yux.core.io.fn`。
+; 独立包 yux.io：须 `use yux.io` / `use yux.io.*` 后才有 `io.fn` / `yux.io.fn`。
 
 extern {
   ; `_` 前缀避免本文件符号再经 sdk 通配导入后与自身构成 E6014

@@ -314,6 +314,9 @@ static-vars（E3150..E3157；引入自 [draft/DRAFT-static-vars.md](draft/DRAFT-
 | E5012 | `module not found: {} (expected file {})` |
 | E5013 | `yux.toml \`entry\` must be a relative path under \`src/\`, got absolute path: {}` |
 | E5014 | `yux.toml \`entry\` resolves outside \`src/\` (\`{}\`): convention is that all sources live under \`src/\`; obj path layout may also be inconsistent`（默认 warning） |
+| E5015 | `ambiguous bare name \`{}\`: candidates {}` |
+| E5016 | `cannot use module or package \`{}\` as a value` |
+| E5017 | `cannot use type \`{}\` as a value` |
 
 ### D.3.6 E6xxx — 内置 / 调用
 

@@ -1,0 +1,7 @@
+; require-sdk
+; 未 use yux.io：全限定不引入
+
+fn main() {
+  let p String = "nope.txt"
+  yux.io.read_file(&p)  ; check: E6001
+}

@@ -58,7 +58,8 @@ struct NameResolver {
 void validateAliases(p<FileNode> file, p<FileNode> sdkFile = nullptr);
 
 // 类型路径解析（对称 resolveModuleFnCall）。不调用 loadModule：只走已 use/load
-// 的模块别名与 packageChild。裸名 L1 本文件 → L3 通配（含默认 yux.core.*）。
+// 的模块别名与 packageChild。裸名 L1 本文件 → L2 具名导入 → L3 通配（含默认
+// yux.core.*）。同层多候选（身份去重后）抛 E5015。
 // 未解析时 type 仅末段短名、ownerModule 空（与 T2 前 getType 行为兼容）。
 struct TypePathResult {
     TypeInfo type;

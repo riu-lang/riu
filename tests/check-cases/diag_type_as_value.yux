@@ -1,0 +1,9 @@
+; 类型当值 → E5017
+
+struct Point {
+  x i32
+}
+
+fn main() {
+  let x = Point  ; check: E5017
+}

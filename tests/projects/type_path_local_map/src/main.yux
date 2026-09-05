@@ -1,0 +1,18 @@
+; 本文件 struct Map 盖住裸名；SDK Map 走路径（类型位）
+
+struct Map {
+  n i32
+}
+
+fn take_stem(m map.Map<i32, i32>) {
+}
+
+fn take_fq(m yux.core.map.Map<i32, i32>) {
+}
+
+fn main() {
+  let mine = Map {
+    .n = 1
+  }
+  println(mine.n)
+}

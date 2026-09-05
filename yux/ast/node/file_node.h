@@ -97,12 +97,11 @@ public:
     void addImport(const string& mod);
     [[nodiscard]] const vector<string>& imports() const { return _imports; }
 
-    // `use` 指令（源码显式导入）。wildcard=true 表示 `use a.b.*`，
-    // 语义为"导入模块 a.b 的所有非私有成员"。wildcard=false 表示
-    // `use a.b.c`，语义为"引入模块别名 c 指向 a.b.c"（暂未实现，见 BUGS.md）。
+    // `use` 指令。wildcard=true 表示 `use a.b.*`（扁平 + 末段别名）。
+    // wildcard=false：`use a.b` 路径前缀，或 `use a.b.MyType` 具名类型（L2）。
     struct UseSpec {
         string moduleName;     // 点分，如 "yux.net"
-        string alias;          // 最后一段，如 "net"；wildcard 时未使用
+        string alias;          // 最后一段；wildcard 时也填末段
         bool wildcard = false; // 是否 `.*`
         int line = 0;          // 源码行号，用于报错
     };
@@ -132,6 +131,10 @@ public:
     // 查找点若发现 alias 歧义，调用此方法抛出带候选列表的错误。
     [[noreturn]] void throwAmbiguousAlias(const string& alias, int line) const;
 
+    // `use a.b.MyType`：把公开类型注入裸名 L2。同名可有多个来源（使用点 E5015）。
+    void addNamedTypeImport(const string& name, FileNode* owner);
+    [[nodiscard]] const vector<FileNode*>* namedTypeImports(const string& name) const;
+
     // 给定结构体名，返回其所属的 FileNode；本地优先，其次按 wildcardImports
     // 顺序查找。未找到返回 nullptr。
     FileNode* getStructOwner(const string& name);
@@ -150,6 +153,7 @@ private:
     map<string, string> _packageAliases;                  // alias → dotted path
     map<string, map<string, FileNode*>> _packageChildren; // alias → { child file name → FileNode }
     map<string, vector<string>> _wildcardAliasSources;    // alias → 注入过该别名的源模块点分路径列表
+    map<string, vector<FileNode*>> _namedTypeImports;     // 裸名 → `use path.Name` 的声明模块
 };
 
 #endif // YUX_LANG_FILE_NODE_H

@@ -93,6 +93,8 @@ private:
     // Phase B-1: move 追踪 — 已被 move 的变量名 (E4033 判定依据).
     // visitFn 入口 clear，move intrinsic 调用处 insert，if/else 汇合取并集。
     std::set<std::string> _movedVars;
+    // 正在访问 Dot 的 base：路径前缀 ident / 中间段不算「当值」。
+    bool _inDotBase = false;
 
     void visitFn(p<FnNode> fn);
     void visitStmt(p<StatementNode> stmt);

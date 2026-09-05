@@ -567,6 +567,14 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                     break;
                 }
             }
+            if (allowDecl) {
+                fs::path ioFile = fs::path(sdkPath).parent_path() / "io.yux";
+                if (fs::is_regular_file(ioFile)) {
+                    string abs = fs::absolute(ioFile).string();
+                    string obj = mirroredOutputBase(yux.projectRoot(), buildDir, abs) + ".obj";
+                    if (!probe.isFresh(abs, obj)) allowDecl = false;
+                }
+            }
         }
         try {
             sdk_loader::parseSdkDir(sdkPath, yux, allowDecl);

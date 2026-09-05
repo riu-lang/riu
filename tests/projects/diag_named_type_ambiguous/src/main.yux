@@ -1,0 +1,8 @@
+use a.Ty
+use b.Ty
+
+fn take(x Ty) {
+}
+
+fn main() {
+}

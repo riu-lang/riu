@@ -46,6 +46,38 @@
 
 using namespace sema::pass;
 
+namespace {
+
+bool hasPublicTypeIn(FileNode* f, const string& name) {
+    if (!f || name.empty() || name[0] == '_') return false;
+    return f->localStructDecl(name, true) || f->localEnumDecl(name) || f->localAliasDecl(name);
+}
+
+bool symbolIsPathPrefix(SymbolInfo* s) {
+    return s && (s->kind == SymbolKind::Module || s->kind == SymbolKind::Package);
+}
+
+bool hasLocalValueNamed(ExprNode* n, const string& name) {
+    for (auto* sc = n->findNearestScope(); sc; sc = sc->parentScope()) {
+        if (dynamic_cast<FileNode*>(sc)) break;
+        auto it = sc->localSymbols().find(name);
+        if (it == sc->localSymbols().end()) continue;
+        auto k = it->second.kind;
+        if (k == SymbolKind::Variable || k == SymbolKind::Function) return true;
+    }
+    return false;
+}
+
+// 泛型方法体在调用方文件上实例化时，Self 的 owner 是声明模块，不是 _file。
+FileNode* fnDeclFile(FnNode* fn, FileNode* fallback) {
+    if (fn) {
+        if (auto* f = fn->enclosingFile()) return f;
+    }
+    return fallback;
+}
+
+} // namespace
+
 void SemaPass::visitExprList(const vector<p<ExprNode>>& args, const vector<TypeInfo>* expected) {
     for (size_t i = 0; i < args.size(); ++i) {
         const TypeInfo* exp = nullptr;
@@ -265,6 +297,14 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                     sym = _currentFn->lookupSymbol(varName);
                 }
                 if (sym) n->setResolvedVar(sym);
+                if (sym && !callCallee && !_inDotBase) {
+                    if (symbolIsPathPrefix(sym)) {
+                        throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E5016, varName);
+                    }
+                    if (sym->kind == SymbolKind::Struct) {
+                        throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E5017, varName);
+                    }
+                }
             }
         }
         return;
@@ -1189,7 +1229,10 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         return;
     }
     if (auto n = dynamic_cast<p<ExprDotNode>>(expr)) {
+        bool savedDotBase = _inDotBase;
+        _inDotBase = true;
         visitExpr(n->baseExpr());
+        _inDotBase = savedDotBase;
 
         // DRAFT-spec-reflect Phase 4: 实例形访问 `c.type` / `c.fields` / `c.methods` /
         // `c.variants` / `$.type` / `$.fields` 拦截 (草案 §5 / [#1.AB]);
@@ -1243,19 +1286,77 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
             tryValidateReflectFieldValueRead(n);
         }
 
+        // 点链首段既是路径前缀又是局部值：调用与取值都 E5015（不靠 callCallee）。
+        // E5016/E5017 仍只在非调用取值时报（`io.read_file()` 合法）。
+        if (!_inDotBase && _file) {
+            string aliasName;
+            vector<string> segs;
+            if (ExprDotNode::parseChain(n, aliasName, segs)) {
+                auto* pathSym = _file->lookupSymbol(aliasName);
+                if (symbolIsPathPrefix(pathSym) && hasLocalValueNamed(n, aliasName)) {
+                    throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E5015, aliasName,
+                                   string("path prefix and local value"));
+                }
+                if (!callCallee) {
+                    if (pathSym && pathSym->kind == SymbolKind::Module) {
+                        FileNode* target = _file->moduleAlias(aliasName);
+                        if (!target && _yux) target = _yux->module(pathSym->moduleName);
+                        if (target && segs.size() == 1) {
+                            const string& mem = segs[0];
+                            if (hasPublicTypeIn(target, mem)) {
+                                throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E5017,
+                                               aliasName + "." + mem);
+                            }
+                            if (!target->lookupFnSymbol(mem)) {
+                                throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E5016, aliasName);
+                            }
+                        }
+                    } else if (pathSym && pathSym->kind == SymbolKind::Package) {
+                        if (segs.size() == 1) {
+                            string dotted = aliasName + "." + segs[0];
+                            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E5016, dotted);
+                        }
+                        string childKey;
+                        for (size_t i = 0; i + 1 < segs.size(); ++i) {
+                            if (i) childKey += '.';
+                            childKey += segs[i];
+                        }
+                        auto* target = _file->packageChild(aliasName, childKey);
+                        if (!target) {
+                            string dotted = aliasName;
+                            for (auto& s : segs) {
+                                dotted += '.';
+                                dotted += s;
+                            }
+                            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E5016, dotted);
+                        }
+                        const string& last = segs.back();
+                        if (hasPublicTypeIn(target, last)) {
+                            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E5017,
+                                           aliasName + "." + childKey + "." + last);
+                        }
+                        if (!target->lookupFnSymbol(last)) {
+                            string dotted = aliasName + "." + childKey;
+                            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E5016, dotted);
+                        }
+                    }
+                }
+            }
+        }
+
         // Phase C：读路径字段（非调用 callee）。`x.foo()` 留给调用路径；
         // `to_*` 是内置转换；模块 / 包链不按字段查。
-        // 方法当值 / 非字段 Fn·Dyn → E3090。模块/包链是路径前缀，不报。
+        // 方法当值 / 非字段 Fn·Dyn → E3090。模块函数值 `io.read_file` 是 fn_overload，不报。
         if (!callCallee) {
             string mem = n->member();
             bool skipField = mem.starts_with("to_");
             bool skipPkg = false;
             if (!skipField && n->hasResolvedType()) {
                 const TypeInfo& rt = n->resolvedType();
-                if (rt.name == "pkg_chain") {
+                if (rt.name == "pkg_chain" || rt.name == "fn_overload") {
                     skipField = true;
                     skipPkg = true;
-                } else if (rt.isFn() || rt.isDyn() || rt.name == "fn_overload") {
+                } else if (rt.isFn() || rt.isDyn()) {
                     skipField = true;
                 }
             }
@@ -1487,7 +1588,9 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
             }
             structName = _currentStructName;
             structTy = TypeInfo(structName);
-            if (_file) structTy.ownerModule = _file->moduleName();
+            if (auto* ownerFile = fnDeclFile(_currentFn, _file)) {
+                structTy.ownerModule = ownerFile->moduleName();
+            }
             decl = _names.lookupStruct(structTy);
         } else {
             auto r = sema::resolveExprTypeLhs(_file, _yux, n->typePath(), line, col);
@@ -1548,7 +1651,9 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         TypeInfo lhsTy = n->resolvedLhsType();
         if (selfForm && !_currentStructName.empty()) {
             lhsTy = TypeInfo(_currentStructName);
-            if (_file) lhsTy.ownerModule = _file->moduleName();
+            if (auto* ownerFile = fnDeclFile(_currentFn, _file)) {
+                lhsTy.ownerModule = ownerFile->moduleName();
+            }
         }
         string lhsName = lhsTy.name;
         vector<TypeInfo> pathArgExpected;
@@ -1856,14 +1961,14 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         int line = n->getLineNumber();
         int col = n->getColumn();
         for (auto& arm : n->catches()) {
-            const string& errType = arm->errType();
-            auto* enumDecl = _names.lookupEnum(errType);
+            const auto& errTi = arm->errTypeInfo();
+            auto* enumDecl = _names.lookupEnum(errTi);
             if (!enumDecl) {
                 int aline = arm->getLineNumber() > 0 ? arm->getLineNumber() : line;
                 int acol = arm->getColumn() > 0 ? arm->getColumn() : col;
-                throw YuxError(aline, acol, ErrorCode::E7011, arm->errName().getText(), errType, errType);
+                throw YuxError(aline, acol, ErrorCode::E7011, arm->errName().getText(), arm->errType(), arm->errType());
             }
-            catchTypes.push_back(errType);
+            catchTypes.push_back(arm->errType());
         }
 
         _tryStack.emplace_back();

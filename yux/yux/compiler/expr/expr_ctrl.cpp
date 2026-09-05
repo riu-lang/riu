@@ -563,20 +563,20 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
     ctx.armEAllocas.reserve(node->catches().size());
 
     for (auto& arm : node->catches()) {
-        const string& errType = arm->errType();
+        const auto& errTi = arm->errTypeInfo();
         p<FileNode> owner = nullptr;
-        auto enumDecl = names().lookupEnum(errType, &owner);
+        auto enumDecl = names().lookupEnum(errTi, &owner);
         if (!enumDecl) {
             int aline = arm->getLineNumber() > 0 ? arm->getLineNumber() : line;
             int acol = arm->getColumn() > 0 ? arm->getColumn() : col;
             // E7011 由 SemaPass try/catch 先抛。
             throwSemaGap(aline, acol);
         }
-        ctx.catchTypes.push_back(errType);
+        ctx.catchTypes.push_back(arm->errType());
 
         // 为 e 绑定分配 alloca（类型 = enum）；命名带 arm 错误名便于 IR 阅读
         const string& bn = arm->errName().getText();
-        TypeInfo catchErrTy(errType);
+        const TypeInfo& catchErrTy = errTi;
         auto eAlloca = _builder.CreateAlloca(getLLVMType(catchErrTy), nullptr, ("catch.e." + bn).c_str());
         ctx.armEAllocas.push_back(eAlloca);
 

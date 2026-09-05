@@ -952,14 +952,14 @@ std::any ASTBuilder::visitCatchArm(yux::yuxParser::CatchArmContext* ctx) {
     DEBUG_LOG("    CatchArm");
     auto outer = currentScope();
     auto typeNode = any_cast_p<TypeNode>(visit(ctx->type()));
-    string errType = typeNode->getType().name;
+    TypeInfo errType = typeNode->getType();
     Token errName = ctx->err;
 
     // 先建空 body 的 arm（占位 nullptr 不便），与 visitMatchArm 风格一致：先 push scope visit body
     auto arm = createWithLine<CatchArmNode>(ctx, outer, errName, errType, static_cast<p<StatementBlockNode>>(nullptr));
     arm->setParentScope(outer);
     // 在 arm scope 注册绑定符号（错误值类型 = errType；按已声明 enum 处理）
-    arm->registerSymbol(errName.getText(), {SymbolKind::Variable, errName.getText(), TypeInfo(errType), false});
+    arm->registerSymbol(errName.getText(), {SymbolKind::Variable, errName.getText(), errType, false});
 
     _scopeStack.push_back(arm);
     auto body = any_cast_p<StatementBlockNode>(visit(ctx->statementBlock()));

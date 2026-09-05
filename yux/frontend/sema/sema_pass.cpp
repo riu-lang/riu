@@ -469,6 +469,19 @@ void SemaPass::checkGenericBodyInst(p<FnNode> fn, const map<string, TypeInfo>& s
 
     _currentFn = fn;
     _currentStructName = structName;
+    // `$` 的 Self 类型在 .decl / 旧 AST 上可能没有 ownerModule；实例化时补上声明模块，
+    // 避免调用方文件里的同名 struct 抢走字段查找。
+    if (auto* owner = fn->enclosingFile()) {
+        if (auto* dollar = fn->lookupSymbol("$")) {
+            if (dollar->type.isRef()) {
+                if (auto inner = dollar->type.refElementType()) {
+                    if (inner->ownerModule.empty()) inner->ownerModule = owner->moduleName();
+                }
+            } else if (dollar->type.ownerModule.empty()) {
+                dollar->type.ownerModule = owner->moduleName();
+            }
+        }
+    }
     _instSubst = subst;
     _currentTypeParams.clear();
     for (auto& [k, _] : subst)

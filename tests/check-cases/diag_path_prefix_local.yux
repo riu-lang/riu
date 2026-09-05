@@ -1,0 +1,7 @@
+; require-sdk
+; 路径前缀与同名局部值点链首段双关 → E5015
+
+fn main() {
+  let math i32 = 1
+  math.abs(-1)  ; check: E5015
+}

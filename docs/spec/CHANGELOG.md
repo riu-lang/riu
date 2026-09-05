@@ -15,6 +15,17 @@
 
 ---
 
+## 2026-09-05 —— 限定类型路径、裸名分层、`yux.io` 独立包
+
+- **新增 §3.2.5**：类型位为 `typePath`；身份 = 声明模块 + 短名；全限定只消歧、不引入。
+- **修改 §10.2.1 / 新增 §10.2.2.3**：`use a.b.MyType` 具名类型导入；`use a.b.*` 同时登记末段别名。
+- **改写 §10.2.5**：裸名 L1→L2→L3；同层多候选 [E5015]；废止先到优先。模块/包当值 [E5016]、类型当值 [E5017]。点链首段路径前缀 vs 局部值 [E5015]。
+- **修改 §10.4.1.3.1 / §10.4.1.4**：IO 迁出为文件模块 `yux.io`（`sdk/yux/src/yux/io.yux`）；默认只 `yux.core.*`。未 `use yux.io` 时 `yux.io.xxx` 非法；用户可自定义 `io`。
+- **修改 §10.4.4.2 / 附录 A.2.1**：允许与 core 同名的本文件声明；裸名用自己的，SDK 走路径。
+- **修改 附录 B**：`type` / `typeWithRef` / `imports` 走 `typePath`。
+- **修改 附录 D**：E5015 / E5016 / E5017。
+- **冲突 / 兼容**：**破坏**无 use 的 `yux.core.io.fn` / 裸名 `read_file`（须 `use yux.io` 或 `use yux.io.*`）。迁移：`use yux.io` 后写 `io.read_file` / `yux.io.read_file` / `io.IoErr`。
+
 ## 2026-09-04 —— 跨文件诊断路径用出错节点所属文件
 
 - **修改 D.1.1**：诊断 `file` 取 AST 节点 `enclosingFile` 的源路径；spec 默认体 fall-through 等跨文件 codegen 不再把 spec 行号绑到正在编译的入口文件。入口路径仅作回退。

@@ -361,8 +361,10 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
         }
 
         {
+            auto selfInner = make_shared<TypeInfo>(structName);
+            if (file) selfInner->ownerModule = file->moduleName();
             vector<sp<TypeInfo>> selfArgs;
-            selfArgs.push_back(make_shared<TypeInfo>(structName));
+            selfArgs.push_back(std::move(selfInner));
             fn->registerSymbol("$", {SymbolKind::Variable, "$", TypeInfo("Ref", selfArgs)});
         }
 
@@ -475,7 +477,9 @@ std::any ASTBuilder::visitFnClean(yux::yuxParser::FnCleanContext* ctx) {
     if (!structName.empty()) {
         // Phase 4e: 析构函数 receiver 同 §4e：Self&
         vector<sp<TypeInfo>> selfArgs;
-        selfArgs.push_back(make_shared<TypeInfo>(structName));
+        auto selfInner = make_shared<TypeInfo>(structName);
+        if (file) selfInner->ownerModule = file->moduleName();
+        selfArgs.push_back(std::move(selfInner));
         fn->registerSymbol("$", {SymbolKind::Variable, "$", TypeInfo("Ref", selfArgs)});
     }
 

@@ -1,0 +1,9 @@
+use yux.core.*
+use a.*
+use b.*
+
+fn take(x Item) {
+}
+
+fn main() {
+}

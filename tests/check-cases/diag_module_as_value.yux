@@ -1,0 +1,6 @@
+; require-sdk
+; 模块当值 → E5016（默认已登记末段别名 math）
+
+fn main() {
+  let x = math  ; check: E5016
+}

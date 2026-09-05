@@ -16,6 +16,55 @@
 #include "types.h"
 #include <algorithm>
 
+namespace {
+
+bool isPublicTypeName(const string& name) {
+    return !name.empty() && name[0] != '_';
+}
+
+bool hasPublicType(FileNode* f, const string& name) {
+    if (!f || !isPublicTypeName(name)) return false;
+    return f->localStructDecl(name, true) || f->localEnumDecl(name) || f->localAliasDecl(name);
+}
+
+// `yux.io.xxx` 需要当前文件上的 packageChild("yux","io")；不覆盖已有末段别名。
+void registerFqPrefix(FileNode* file, const TypePath& path, FileNode* target) {
+    if (!file || !target || path.segs.size() < 2) return;
+    string first = path.segs[0].getText();
+    string childKey;
+    for (size_t i = 1; i < path.segs.size(); ++i) {
+        if (i > 1) childKey += '.';
+        childKey += path.segs[i].getText();
+    }
+    auto* firstSym = file->lookupSymbol(first);
+    if (firstSym && firstSym->kind == SymbolKind::Package) {
+        file->addPackageChild(first, childKey, target);
+        return;
+    }
+    if (!file->localSymbols().contains(first)) {
+        SymbolInfo pkg(SymbolKind::Package, first, TypeInfo());
+        pkg.moduleName = first;
+        file->registerSymbol(first, pkg);
+        file->addPackageAlias(first, first);
+        file->addPackageChild(first, childKey, target);
+    }
+}
+
+void registerLastSegModuleAlias(FileNode* file, const string& alias, FileNode* target, const string& modName, int line,
+                                bool failIfExists) {
+    if (!file || !target || alias.empty()) return;
+    if (file->localSymbols().contains(alias)) {
+        if (failIfExists) throw YuxError(line, ErrorCode::E2004, alias);
+        return;
+    }
+    SymbolInfo aliasSym(SymbolKind::Module, alias, TypeInfo());
+    aliasSym.moduleName = modName;
+    file->registerSymbol(alias, aliasSym);
+    file->addModuleAlias(alias, target);
+}
+
+} // namespace
+
 std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
     DEBUG_LOG("Visit: ExternDelc");
     auto file = any_cast_p<FileNode>(stack.back());
@@ -263,7 +312,7 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
     int line = ctx->getStart() ? static_cast<int>(ctx->getStart()->getLine()) : 0;
 
     string alias;
-    if (!wildcard && !path.empty()) {
+    if (!path.empty()) {
         alias = path.lastName();
     }
 
@@ -283,6 +332,9 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
     }
 
     auto pathKind = _yux.modulePathKind(modName);
+    if (pathKind == Yux::ModulePathKind::NotFound && _yux.module(modName)) {
+        pathKind = Yux::ModulePathKind::File;
+    }
     if (pathKind == Yux::ModulePathKind::Conflict) {
         throw YuxError(line, ErrorCode::E2003, modName, modName, modName);
     }
@@ -291,7 +343,13 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
         // 命名空间别名导入：`use a.b.c` 把 `c` 作为指向 a.b.c 的模块/包别名。
         // 冲突检测：仅看当前文件的本地符号（允许覆盖 SDK 在父作用域注册的同名别名）
         if (file->localSymbols().contains(alias)) {
-            throw YuxError(line, ErrorCode::E2004, alias);
+            auto kind = file->localSymbols().at(alias).kind;
+            bool l1Type =
+                file->localStructDecl(alias, true) || file->localEnumDecl(alias) || file->localAliasDecl(alias);
+            // 通配注入的类型不挡 `use b.Ty`（L2 具名压过 L3）。模块/包别名与 L1 仍冲突。
+            if (l1Type || kind == SymbolKind::Module || kind == SymbolKind::Package || kind == SymbolKind::Function) {
+                throw YuxError(line, ErrorCode::E2004, alias);
+            }
         }
         if (pathKind == Yux::ModulePathKind::Package) {
             // 目录作为包别名：`use math` 其中 math/ 是目录。
@@ -304,11 +362,34 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
             DEBUG_LOG_VAL("    register package alias", alias << " -> " << modName);
             return nullptr;
         }
+        // `use a.b.MyType`：先当模块路径，不存在再当父模块里的公开类型。
+        if (path.segs.size() >= 2 && pathKind == Yux::ModulePathKind::NotFound) {
+            TypePath parentPath = path;
+            parentPath.segs.pop_back();
+            string parentMod = parentPath.dotted();
+            string typeName = path.lastName();
+            FileNode* parent = _yux.module(parentMod);
+            auto parentKind = _yux.modulePathKind(parentMod);
+            if (parentKind == Yux::ModulePathKind::NotFound && parent) {
+                parentKind = Yux::ModulePathKind::File;
+            }
+            if (!parent && parentKind == Yux::ModulePathKind::File) {
+                parent = _yux.loadModule(parentMod, line);
+            }
+            if (parent && hasPublicType(parent, typeName)) {
+                registerLastSegModuleAlias(file, parentPath.lastName(), parent, parent->moduleName(), line, false);
+                registerFqPrefix(file, parentPath, parent);
+                file->addNamedTypeImport(typeName, parent);
+                DEBUG_LOG_VAL("    named type import", typeName << " from " << parentMod);
+                return nullptr;
+            }
+        }
         auto target = _yux.loadModule(modName, line);
         SymbolInfo aliasSym(SymbolKind::Module, alias, TypeInfo());
         aliasSym.moduleName = modName;
         file->registerSymbol(alias, aliasSym);
         file->addModuleAlias(alias, target);
+        registerFqPrefix(file, path, target);
         DEBUG_LOG_VAL("    register module alias", alias << " -> " << modName);
         return nullptr;
     }
@@ -353,7 +434,10 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
                             if (!decl) continue;
                             string sname = decl->name().getText();
                             if (sname.empty() || sname[0] == '_') continue;
-                            if (file->lookupSymbol(sname)) continue;
+                            if (file->localStructDecl(sname, true) || file->localEnumDecl(sname) ||
+                                file->localAliasDecl(sname))
+                                continue;
+                            if (file->localSymbols().count(sname)) continue;
                             SymbolInfo sym{SymbolKind::Struct, sname, TypeInfo(sname, target->moduleName())};
                             sym.moduleName = target->moduleName();
                             file->registerSymbol(sname, sym);
@@ -521,12 +605,16 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
         // 注意：decl->name() 按值返回 Token，绑定 .getText() 的引用会悬空，需复制成 string。
         string sname = decl->name().getText();
         if (sname.empty() || sname[0] == '_') continue; // 私有结构体不注入
-        if (file->lookupSymbol(sname)) continue;        // 已有同名符号则跳过
+        if (file->localStructDecl(sname, true) || file->localEnumDecl(sname) || file->localAliasDecl(sname)) continue;
+        if (file->localSymbols().count(sname)) continue;
         SymbolInfo sym{SymbolKind::Struct, sname, TypeInfo(sname, imported->moduleName())};
         sym.moduleName = imported->moduleName();
         file->registerSymbol(sname, sym);
         DEBUG_LOG_VAL("    inject imported struct", sname << " from " << imported->moduleName());
     }
+
+    registerLastSegModuleAlias(file, alias, imported, modName, line, false);
+    registerFqPrefix(file, path, imported);
 
     return nullptr;
 }

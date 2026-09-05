@@ -676,15 +676,16 @@ public:
 // 可沿 scope 链解析到绑定类型（与 MatchArmNode 同档）
 class CatchArmNode : public ScopeNode {
     Token _errName;
-    string _errType; // 错误 enum 类型名（按 ID 取，等待 visitProgram 阶段校验为已声明 enum）
+    TypeInfo _errType; // typePath 解析后的错误 enum（含 ownerModule）
     p<StatementBlockNode> _body;
 
 public:
-    CatchArmNode(const p<Node>& parent, Token errName, string errType, p<StatementBlockNode> body)
+    CatchArmNode(const p<Node>& parent, Token errName, TypeInfo errType, p<StatementBlockNode> body)
         : ScopeNode(parent), _errName(std::move(errName)), _errType(std::move(errType)), _body(body) {}
 
     [[nodiscard]] const Token& errName() const { return _errName; }
-    [[nodiscard]] const string& errType() const { return _errType; }
+    [[nodiscard]] const string& errType() const { return _errType.name; }
+    [[nodiscard]] const TypeInfo& errTypeInfo() const { return _errType; }
     [[nodiscard]] const p<StatementBlockNode>& body() const { return _body; }
 };
 

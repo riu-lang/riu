@@ -141,19 +141,7 @@ void parseSdkDir(const std::string& sdkDir, Yux& yux, bool allowDecl) {
     std::string declRoot = sdkRoot.empty() ? std::string() : sdkRoot.string();
     std::string declBuild = sdkRoot.empty() ? std::string() : (sdkRoot / "build").string();
 
-    // 单遍：每个文件独立 FileNode，通过 wildcardImport + parentScope 双向关联 _sdkFile
-    for (const auto& yuxFile : yuxFiles) {
-        std::string stem = fs::path(yuxFile).stem().string();
-        auto it = pkgMap.find(stem);
-
-        // 分配 moduleName: 命名空间文件沿用 pkg 指定的全名，其余统一用 yux.core.<stem>
-        std::string moduleName;
-        if (it != pkgMap.end() && !it->second.moduleName.empty() && !it->second.isFlat) {
-            moduleName = it->second.moduleName;
-        } else {
-            moduleName = "yux.core." + stem;
-        }
-
+    auto loadOne = [&](const std::string& yuxFile, const std::string& moduleName, bool flattenToCore) {
         std::string abs = fs::absolute(yuxFile).string();
         p<FileNode> fileNode = nullptr;
         if (allowDecl && !declRoot.empty()) {
@@ -166,15 +154,30 @@ void parseSdkDir(const std::string& sdkDir, Yux& yux, bool allowDecl) {
                 mod_decl::write(fileNode, abs, mod_decl::pathFor(declRoot, declBuild, abs));
             }
         }
-
-        // 所有 SDK 文件双向关联 _sdkFile：
-        // 1) fileNode 设 _sdkFile 为 parentScope → 可通过 parentScope 链找到其他 SDK 文件
-        // 2) _sdkFile 设 fileNode 为 wildcardImport → lookupFnSymbol/collectFnOverloads 可回退到这里
         if (sdk && sdk != fileNode) {
             fileNode->setParentScope(sdk);
             fileNode->addImport("yux.core");
-            sdk->addWildcardImport(fileNode);
+            if (flattenToCore) sdk->addWildcardImport(fileNode);
         }
+    };
+
+    for (const auto& yuxFile : yuxFiles) {
+        std::string stem = fs::path(yuxFile).stem().string();
+        auto it = pkgMap.find(stem);
+
+        std::string moduleName;
+        if (it != pkgMap.end() && !it->second.moduleName.empty() && !it->second.isFlat) {
+            moduleName = it->second.moduleName;
+        } else {
+            moduleName = "yux.core." + stem;
+        }
+        loadOne(yuxFile, moduleName, true);
+    }
+
+    // 独立包 yux.io：不扁平进 core，未 use 时不可点 `yux.io` / 裸名 IoErr。
+    fs::path ioFile = fs::path(sdkDir).parent_path() / "io.yux";
+    if (fs::is_regular_file(ioFile)) {
+        loadOne(ioFile.string(), "yux.io", false);
     }
 
     registerSdkModulePaths(yux);

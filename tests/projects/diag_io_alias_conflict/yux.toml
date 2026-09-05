@@ -1,0 +1,3 @@
+name = "diag_io_alias_conflict"
+version = "1.0.0"
+entry = "main.yux"

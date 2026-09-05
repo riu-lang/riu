@@ -1,0 +1,14 @@
+use yux.core.*
+use a.b
+
+struct Box {
+  b i32
+}
+
+fn main() {
+  let obj = Box {
+    .b = 8
+  }
+  println(obj.b)
+  println(b.ping())
+}
