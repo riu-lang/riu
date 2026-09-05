@@ -257,7 +257,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
             throwSemaGap(line, col);
         }
         // Phase 6E.4-C: 泛型 struct #Static fn 体内 `Self {...}` —
-        // _currentStructName 是 mangled (`GH$i32`), getStructDecl 查不到; 走
+        // _currentStructName 是实例全限定名, getStructDecl 查不到; 走
         // _structInstances 拿 baseDecl, llvmStructType 仍按 mangled 名解析.
         TypeInfo litTy = typeInfoForNamedStruct(structName);
         StructDeclNode* decl = nullptr;

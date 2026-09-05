@@ -633,18 +633,24 @@ struct TypeInfo {
         return name;
     }
 
-    // LLVM 符号用 mangle 名（与 yux 源码写法一致）：
-    // 泛型 Base<Arg1,Arg2>，元组 (T1,T2)，函数 Function<P...,Ret>，数组 [E*N]
-    // 短名：owner 尚未处处填满，identityKey 进函数签名会把 String / yux.core.string.String
-    // 拆成两个实例键。结构体 LLVM 名由 Mangler::structType(owner, name) 按身份区分。
+    // LLVM 符号用 mangle 名（与 yux 声明/调用写法同形）：
+    // 有 owner → `mod.Name` / `mod.Name<Arg1,Arg2>`；内建无 owner → 短名。
+    // 元组 (T1,T2)，函数 Function<P...,Ret>，数组 [E*N]。分隔只用 `.` `::` `<>` `()` `@`。
     [[nodiscard]] string getMangleName() const {
+        auto head = [this]() -> string {
+            const string n = withoutFallible().name;
+            if (kind == TypeKind::Array || kind == TypeKind::Tuple || kind == TypeKind::Fn) return n;
+            if (ownerModule.empty()) return n;
+            return ownerModule + "." + n;
+        };
         if (hasGenericArgs() && !genericArgs.empty()) {
-            string result = name + "<";
+            string result = head() + "<";
             for (size_t i = 0; i < genericArgs.size(); ++i) {
                 if (i > 0) result += ',';
-                result += genericArgs[i]->getMangleName();
+                result += genericArgs[i] ? genericArgs[i]->getMangleName() : string("?");
             }
             result += '>';
+            if (!fallibleErr.empty()) result += "!" + fallibleErr;
             return result;
         }
         if (kind == TypeKind::Array && elementType) {
@@ -664,11 +670,8 @@ struct TypeInfo {
         if (kind == TypeKind::Fn) {
             return formatFnGeneric(true);
         }
-        if (!fallibleErr.empty()) {
-            const string suffix = "!" + fallibleErr;
-            if (!name.ends_with(suffix)) return name + suffix;
-        }
-        return name;
+        if (!fallibleErr.empty()) return head() + "!" + fallibleErr;
+        return head();
     }
 
     // struct decl 查找用基名：剥 `Foo<Arg>` / `Foo$Arg` 修饰。

@@ -86,7 +86,7 @@ llvm::Value* Compiler::compileCustomTypeUnaryOp(p<ExprNode> expr, const TypeInfo
     string ownerMod = methodSymbol->moduleName.empty() ? _file->moduleName() : methodSymbol->moduleName;
     bool methPriv = !methodName.empty() && methodName[0] == '_';
     vector<TypeInfo> argTypes;
-    string mangledName = Mangler::method(ownerMod, effType.name, methodName, argTypes, methPriv);
+    string mangledName = mangleMethod(ownerMod, effType.name, methodName, argTypes, methPriv);
 
     auto fn = _module->getFunction(mangledName);
     if (!fn) {

@@ -800,28 +800,26 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
     for (size_t i = 0; i < typeParams.size(); ++i) {
         subst[typeParams[i]] = typeArgs[i];
     }
-    _substStack.push_back(SubstFrame{.subst = subst, .baseStructName = "", .effStructName = ""});
-
+    // 只用本实例 subst 展开 callee 形参：applySubst 会先吃外层同名 T（println<i32> 体内
+    // 再调 println<String> 会变成 println<String>(Ref<i32>)）。
     vector<TypeInfo> instParamTypes;
     for (auto param : genericFn->header()->params()) {
         if (param->type()) {
-            instParamTypes.push_back(applySubst(param->type()->getType()));
+            instParamTypes.push_back(param->type()->getType().substitute(subst));
         }
     }
 
     TypeInfo instRetType;
     if (genericFn->header()->retType()) {
-        instRetType = applySubst(genericFn->header()->retType()->getType());
+        instRetType = genericFn->header()->retType()->getType().substitute(subst);
     }
 
-    _substStack.pop_back();
-
     bool isPrivate = !fnName.empty() && fnName[0] == '_';
-    // 泛型实例：使用消费方模块作为符号前缀（与 emitFnInstances 一致，每个使用方模块各自一份 IR）
+    // 泛型实例：定义模块作符号前缀（与 emitFnInstances 一致；多 TU 靠 linkonce_odr 合并）
     auto& fi = _fnInstances[mangledName];
-    string ownerModForMangle = fi.consumerModule.empty() ? fnOwner->moduleName() : fi.consumerModule;
-    string cName = Mangler::function(ownerModForMangle, mangledName, instParamTypes, isPrivate, instRetType,
-                                     genericFn->header()->resolvedFallibleErr());
+    string ownerModForMangle = fi.ownerFile ? fi.ownerFile->moduleName() : fnOwner->moduleName();
+    string cName = mangleFunction(ownerModForMangle, fi.mangledName, instParamTypes, isPrivate, instRetType,
+                                  genericFn->header()->resolvedFallibleErr());
     DEBUG_LOG_VAL("    Expr: GenericFunctionCall", fnName << " -> " << cName);
 
     auto fn = _module->getFunction(cName);
@@ -923,7 +921,7 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
         string ownerMod = fnSymbol->moduleName.empty() ? _file->moduleName() : fnSymbol->moduleName;
         bool isPriv = !fnName.empty() && fnName[0] == '_';
         cName =
-            Mangler::function(ownerMod, fnName, fnSymbol->params, isPriv, fnSymbol->retType, fnSymbol->fallibleErrType);
+            mangleFunction(ownerMod, fnName, fnSymbol->params, isPriv, fnSymbol->retType, fnSymbol->fallibleErrType);
     }
 
     DEBUG_LOG_VAL("    Expr: FunctionCall", fnName << " -> " << cName);

@@ -351,7 +351,7 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
 
     // DRAFT-spec-disambig-at: 为每个 (spec, 默认体 method) 预登记 @-tagged 发射点.
     // 即便 impl 覆盖了同名方法 (escape hatch), `$.m@SpecA()` 也直接命中此符号 -> spec 默认体.
-    // emitMethodName = origName + "__at__" + dref.name (单名, 与 g4 `@ID` 单名约束对齐).
+    // emitMethodName = origName + "@" + dref.name (单名, 与 g4 `@ID` 单名约束对齐).
     impl->clearSpecDisambigEmits();
     for (auto& dref : impl->specRefs()) {
         auto resolved = reg.resolve(dref.name, implFile);
@@ -371,7 +371,7 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
             if (!spec->hasDefaultBody(sigIdx)) continue;
             auto& dsig = dsigs[sigIdx];
             std::string origName = dsig->name().getText();
-            origName += "__at__";
+            origName += "@";
             origName += dref.name;
             std::string emitName = origName;
             std::string fullName2 = typeBare;

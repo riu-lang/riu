@@ -37,7 +37,7 @@ void Compiler::rethrowWithInstantiationContext(const YuxError& e) const {
 }
 
 // 格式化泛型实例化上下文信息
-// 返回类似 "instantiated as 'Rc$i32' at module:line" 的字符串
+// 返回类似 "instantiated as 'Rc<i32>' at module:line" 的字符串
 string Compiler::formatInstantiationContext() const {
     if (_substStack.empty()) return "";
     string result;
@@ -126,6 +126,93 @@ TypeInfo Compiler::resolveAlias(const TypeInfo& t) const {
     return sema::resolveAlias(t, _file, _yux ? _yux->sdkFile() : nullptr);
 }
 
+namespace {
+bool skipMangleOwnerFill(const TypeInfo& t) {
+    if (t.name.empty()) return true;
+    if (isBuiltinType(t.name)) return true;
+    if (t.name == "Ptr" || t.name == "Self" || t.name == "Function") return true;
+    if (kindForBuiltinWrapper(t.name) != TypeKind::Generic) return true;
+    if (t.kind == TypeKind::Tuple || t.kind == TypeKind::Fn || t.kind == TypeKind::Array) return true;
+    return false;
+}
+} // namespace
+
+FileNode* Compiler::fileForMangleModule(const string& module) const {
+    if (_yux && !module.empty()) {
+        if (auto f = _yux->module(module)) return f;
+        if (auto sdk = _yux->sdkFile()) {
+            if (auto f = sdk->relatedFile(module)) return f;
+        }
+    }
+    if (_file) {
+        if (!module.empty() && _file->moduleName() == module) return _file;
+        if (auto f = _file->relatedFile(module)) return f;
+    }
+    return _file;
+}
+
+TypeInfo Compiler::withMangleOwners(const TypeInfo& t, FileNode* fromFile) const {
+    FileNode* search = fromFile ? fromFile : _file;
+    TypeInfo r = sema::resolveAlias(t, search, _yux ? _yux->sdkFile() : nullptr);
+    if (r.elementType) {
+        r.elementType = make_shared<TypeInfo>(withMangleOwners(*r.elementType, fromFile));
+    }
+    if (!r.genericArgs.empty()) {
+        vector<sp<TypeInfo>> args;
+        args.reserve(r.genericArgs.size());
+        for (auto& a : r.genericArgs) {
+            args.push_back(make_shared<TypeInfo>(a ? withMangleOwners(*a, fromFile) : TypeInfo()));
+        }
+        r.genericArgs = std::move(args);
+    }
+    if (r.ownerModule.empty() && !skipMangleOwnerFill(r)) {
+        FileNode* search = fromFile ? fromFile : _file;
+        sema::NameResolver nr(search, _yux ? _yux->sdkFile() : nullptr);
+        if (auto* d = nr.lookupStruct(r, /*includeBuiltin=*/false, nullptr)) {
+            if (auto* ef = d->enclosingFile()) r.ownerModule = ef->moduleName();
+        } else if (auto* e = nr.lookupEnum(r, nullptr)) {
+            if (auto* ef = e->enclosingFile()) r.ownerModule = ef->moduleName();
+        }
+    }
+    return r;
+}
+
+vector<TypeInfo> Compiler::withMangleOwners(const vector<TypeInfo>& ts, FileNode* fromFile) const {
+    vector<TypeInfo> out;
+    out.reserve(ts.size());
+    for (const auto& t : ts)
+        out.push_back(withMangleOwners(t, fromFile));
+    return out;
+}
+
+string Compiler::mangleFallibleErr(const string& err, FileNode* fromFile) const {
+    if (err.empty()) return err;
+    return withMangleOwners(TypeInfo(err), fromFile).getMangleName();
+}
+
+string Compiler::mangleFunction(const string& module, const string& name, const vector<TypeInfo>& params,
+                                bool isPrivate, const TypeInfo& retType, const string& fallibleErrType) const {
+    FileNode* from = fileForMangleModule(module);
+    return Mangler::function(module, name, withMangleOwners(params, from), isPrivate, withMangleOwners(retType, from),
+                             mangleFallibleErr(fallibleErrType, from));
+}
+
+string Compiler::mangleMethod(const string& module, const string& structName, const string& methodName,
+                              const vector<TypeInfo>& params, bool isPrivate, const TypeInfo& retType,
+                              const string& fallibleErrType) const {
+    FileNode* from = fileForMangleModule(module);
+    return Mangler::method(module, structName, methodName, withMangleOwners(params, from), isPrivate,
+                           withMangleOwners(retType, from), mangleFallibleErr(fallibleErrType, from));
+}
+
+string Compiler::mangleStaticMethod(const string& module, const string& structName, const string& methodName,
+                                    const vector<TypeInfo>& params, const TypeInfo& retType,
+                                    const string& fallibleErrType) const {
+    FileNode* from = fileForMangleModule(module);
+    return Mangler::staticMethod(module, structName, methodName, withMangleOwners(params, from),
+                                 withMangleOwners(retType, from), mangleFallibleErr(fallibleErrType, from));
+}
+
 // ==================== 泛型结构体实例化 ====================
 
 // 确保泛型结构体实例存在
@@ -133,11 +220,16 @@ TypeInfo Compiler::resolveAlias(const TypeInfo& t) const {
 string Compiler::ensureStructInstance(p<StructDeclNode> baseDecl, const vector<sp<TypeInfo>>& args,
                                       p<FileNode> ownerFile, int sourceLine) {
     string baseName = baseDecl->name().getText();
-    // 生成 mangle 名称: StructName<T1,T2>
-    string mangledName = baseName + "<";
+    // 实例 key / LLVM 类型名：定义模块全限定 + `<>`（与 yux 类型写法同形）
+    p<FileNode> instOwner = ownerFile ? ownerFile : _file;
+    string mangledName;
+    if (instOwner && !instOwner->moduleName().empty()) {
+        mangledName = instOwner->moduleName() + ".";
+    }
+    mangledName += baseName + "<";
     for (size_t i = 0; i < args.size(); ++i) {
         if (i > 0) mangledName += ",";
-        mangledName += args[i] ? args[i]->getMangleName() : string("?");
+        mangledName += args[i] ? withMangleOwners(*args[i], instOwner).getMangleName() : string("?");
     }
     mangledName += ">";
 
@@ -169,10 +261,8 @@ string Compiler::ensureStructInstance(p<StructDeclNode> baseDecl, const vector<s
         inst.args.push_back(a ? *a : TypeInfo());
     inst.sourceFile = _file ? _file->moduleName() : "";
     inst.sourceLine = sourceLine;
-    // 关键：把当前编译模块记下来，作为本实例 IR 的符号前缀。
-    // 即便后续 emitInstanceMethods 为了可见性把 _file 切到 ownerFile，
-    // 实例方法的符号名仍用此处记录的消费方模块。
-    inst.consumerModule = _file ? _file->moduleName() : "";
+    // 符号前缀用定义模块（与 yux 全限定同形）。多 TU 各发一份时靠 linkonce_odr + COMDAT 合并。
+    inst.consumerModule = inst.ownerFile ? inst.ownerFile->moduleName() : (_file ? _file->moduleName() : "");
 
     // 建立类型参数替换映射
     map<string, TypeInfo> subst;
@@ -205,11 +295,10 @@ string Compiler::ensureStructInstance(p<StructDeclNode> baseDecl, const vector<s
         rethrowWithInstantiationContext(e);
     }
 
-    // 创建 LLVM 结构体类型
-    string fullMangled = Mangler::structType(inst.ownerFile->moduleName(), mangledName);
-    auto structType = llvm::StructType::create(_context, fieldTypes, fullMangled);
+    // 创建 LLVM 结构体类型（mangledName 已是定义模块全限定）
+    auto structType = llvm::StructType::create(_context, fieldTypes, mangledName);
     _structTypes[mangledName] = structType;
-    DEBUG_LOG_VAL("Created generic struct instance", fullMangled);
+    DEBUG_LOG_VAL("Created generic struct instance", mangledName);
 
     _substStack.pop_back();
 
@@ -286,7 +375,10 @@ TypeInfo Compiler::typeInfoForNamedStruct(const string& name) const {
 llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     // fallible 签名位 T ! E 的 ABI 仍按成功类型 T；剥后缀再映射 LLVM
     auto type = applySubst(rawType.withoutFallible());
-    DEBUG_LOG_VAL("  getLLVMType", type.name << " (kind=" << static_cast<int>(type.kind) << ")");
+    // 补声明模块：`IoErr` 与 `yux.io.IoErr` 必须是同一 LLVM 类型，否则
+    // InsertValue 会因 owner 填/未填拆成两种 layout 而 abort。
+    type = withMangleOwners(type, _file);
+    DEBUG_LOG_VAL("  getLLVMType", type.identityKey() << " (kind=" << static_cast<int>(type.kind) << ")");
 
     // E4025 / E1132：别名展开与泛型 subst 之后拦截 Rc/Weak 内嵌 Heap/Dyn
     // （含 Rc<Rc<Heap<T>>>）。typed release 依赖此门，禁止回退 generic _box_release。
@@ -479,49 +571,42 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
         return basicIt->second;
     }
 
-    // 结构体类型 (从缓存查找：身份键优先，短名回退——未填 owner 与已填必须同一 LLVM 类型)
+    // 结构体类型：身份键优先；有 owner 时不回退短名（本文件 Map 与 SDK Map 不能共用 LLVM 类型）
     if (auto it = _structTypes.find(type.identityKey()); it != _structTypes.end()) {
         DEBUG_LOG_VAL("    -> Struct (cached)", type.identityKey());
         return it->second;
     }
-    if (auto it = _structTypes.find(type.name); it != _structTypes.end()) {
-        DEBUG_LOG_VAL("    -> Struct (cached short)", type.name);
-        return it->second;
+    if (type.ownerModule.empty()) {
+        if (auto it = _structTypes.find(type.name); it != _structTypes.end()) {
+            DEBUG_LOG_VAL("    -> Struct (cached short)", type.name);
+            return it->second;
+        }
     }
 
     // DRAFT-spec-reflect: Type / Field / Method / Variant — #Builtin struct,
     // LLVM layout 由编译器硬编码 (SDK 声明仅 name String 字段可见, 其余 slot 隐藏).
-    {
+    if (type.name == "Field" || type.name == "Method" || type.name == "Variant" || type.name == "Type") {
+        if (auto it = _structTypes.find(type.name); it != _structTypes.end()) {
+            _structTypes[type.identityKey()] = it->second;
+            return it->second;
+        }
         auto* ptrTy = llvm::PointerType::get(_context, 0);
-        // B-4: Resolve String LLVM type: try cache first, then getLLVMType, then build directly.
-        // String = { Rc<Array<u32>> } = { { ptr } }（仍为 {ptr} 形状，含 Rc handle）
         auto* stringTy = [&]() -> llvm::Type* {
             auto cit = _structTypes.find("String");
             if (cit != _structTypes.end()) return cit->second;
             auto* resolved = getLLVMType(TypeInfo("String"));
             if (resolved) return resolved;
-            // Fallback: build String type directly (test context, SDK not yet loaded)
-            // String = { _buf: Rc<Array<u32>> } = { { ptr } } — 8 字节
-            vector<llvm::Type*> rcFields = {ptrTy}; // Rc<Array<u32>> = { ptr handle }
+            vector<llvm::Type*> rcFields = {ptrTy};
             auto* rcTy = llvm::StructType::get(_context, rcFields);
-            vector<llvm::Type*> strFields = {rcTy}; // String = { Rc<Array<u32>> }
+            vector<llvm::Type*> strFields = {rcTy};
             return llvm::StructType::get(_context, strFields);
         }();
-        if (type.name == "Field" || type.name == "Method" || type.name == "Variant") {
-            vector<llvm::Type*> fields = {stringTy};
-            auto* st = llvm::StructType::create(_context, fields, "reflect." + type.name);
-            _structTypes[type.name] = st;
-            DEBUG_LOG_VAL("    -> Reflect struct (builtin)", type.name);
-            return st;
-        }
-        if (type.name == "Type") {
-            // layout: { String name } — fields/methods/variants refs 为独立全局
-            vector<llvm::Type*> fields = {stringTy};
-            auto* st = llvm::StructType::create(_context, fields, "reflect.Type");
-            _structTypes[type.name] = st;
-            DEBUG_LOG_VAL("    -> Reflect Type struct (builtin)", "Type");
-            return st;
-        }
+        vector<llvm::Type*> fields = {stringTy};
+        auto* st = llvm::StructType::create(_context, fields, "reflect." + type.name);
+        _structTypes[type.name] = st;
+        _structTypes[type.identityKey()] = st;
+        DEBUG_LOG_VAL("    -> Reflect struct (builtin)", type.name);
+        return st;
     }
 
     // 尝试查找并创建结构体类型
@@ -570,16 +655,16 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     {
         string shortKey = "$enum$" + type.name;
         string idKey = "$enum$" + type.identityKey();
-        // 先查缓存：泛型实例方法 emit 时 _file 会切到 SDK，lookupEnum 找不到用户文件里的 enum，
-        // 但 LLVM 类型其实已经在用户文件 emit 阶段建过缓存，直接返回即可，避免落到 null 上层崩。
-        // 身份键与短名必须指向同一 LLVM 类型，否则 InsertValue 会因 owner 填/未填拆成两种 enum。
+        // 有 owner 只走身份键，避免本文件 enum IoErr 与 yux.io.IoErr 共用 LLVM 类型
         if (auto cit = _structTypes.find(idKey); cit != _structTypes.end()) {
             DEBUG_LOG_VAL("    -> Enum (cached)", type.name);
             return cit->second;
         }
-        if (auto cit = _structTypes.find(shortKey); cit != _structTypes.end()) {
-            DEBUG_LOG_VAL("    -> Enum (cached short)", type.name);
-            return cit->second;
+        if (type.ownerModule.empty()) {
+            if (auto cit = _structTypes.find(shortKey); cit != _structTypes.end()) {
+                DEBUG_LOG_VAL("    -> Enum (cached short)", type.name);
+                return cit->second;
+            }
         }
         p<FileNode> enumOwner = nullptr;
         EnumDeclNode* enumDecl = nullptr;
@@ -616,7 +701,12 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
             string mangled = prefix + type.name;
             auto enumType = llvm::StructType::create(_context, fields, mangled);
             _structTypes[idKey] = enumType;
-            _structTypes[shortKey] = enumType;
+            // 声明身份键：无 owner 的首次创建也登记 `mod.Name`，后续带 owner 的查找命中同一类型
+            string declIdKey = "$enum$" + mangled;
+            _structTypes[declIdKey] = enumType;
+            if (!_structTypes.contains(shortKey)) {
+                _structTypes[shortKey] = enumType;
+            }
             DEBUG_LOG_VAL("    -> Enum (created)", mangled << " payload=" << maxPayload);
             return enumType;
         }
@@ -647,14 +737,16 @@ llvm::StructType* Compiler::getOrCreateStructType(p<StructDeclNode> structDecl, 
     auto file = sourceFile ? sourceFile : _file;
     string mangledName = Mangler::structType(file->moduleName(), name);
 
-    // 检查缓存（身份键 + 短名回退）
+    // 检查缓存（身份键；短名仅在尚未被其它同名类型占用时作未填 owner 的回退）
     auto it = _structTypes.find(mangledName);
     if (it != _structTypes.end()) {
         return it->second;
     }
-    it = _structTypes.find(name);
-    if (it != _structTypes.end()) {
-        return it->second;
+    if (file->moduleName().empty()) {
+        it = _structTypes.find(name);
+        if (it != _structTypes.end()) {
+            return it->second;
+        }
     }
 
     // 计算字段类型
@@ -666,7 +758,9 @@ llvm::StructType* Compiler::getOrCreateStructType(p<StructDeclNode> structDecl, 
     // 创建结构体类型
     auto structType = llvm::StructType::create(_context, fieldTypes, mangledName);
     _structTypes[mangledName] = structType;
-    _structTypes[name] = structType;
+    if (!_structTypes.contains(name)) {
+        _structTypes[name] = structType;
+    }
 
     DEBUG_LOG_VAL("Created struct type", mangledName);
     return structType;
@@ -721,7 +815,7 @@ llvm::Value* Compiler::wrapFallibleSuccessRet(llvm::Value* okVal, const TypeInfo
                                               const string& fallibleErr) {
     if (fallibleErr.empty()) return okVal;
     auto retStructTy = getFallibleRetStructType(successType, fallibleErr);
-    TypeInfo errTy(fallibleErr);
+    TypeInfo errTy = withMangleOwners(TypeInfo(fallibleErr), _file);
     auto errLLVMTy = getLLVMType(errTy);
     llvm::Value* retStruct = llvm::UndefValue::get(retStructTy);
     retStruct = _builder.CreateInsertValue(retStruct, _builder.getInt1(false), {0});
@@ -737,8 +831,9 @@ llvm::Value* Compiler::wrapFallibleSuccessRet(llvm::Value* okVal, const TypeInfo
 }
 
 llvm::StructType* Compiler::getFallibleRetStructType(const TypeInfo& retType, const string& errTypeName) {
-    // ErrEnum 必为已声明 enum（10e 静态层已校 + E7011）；通过 TypeInfo 走 getLLVMType
-    TypeInfo errType(errTypeName);
+    // ErrEnum 必为已声明 enum（10e 静态层已校 + E7011）；走 withMangleOwners 再 getLLVMType，
+    // 避免短名 `IoErr` 与全限定拆成两种 LLVM 类型（InsertValue abort）。
+    TypeInfo errType = withMangleOwners(TypeInfo(errTypeName), _file);
     auto errLLVMType = getLLVMType(errType);
     vector<llvm::Type*> fields;
     fields.push_back(_builder.getInt1Ty()); // 字段 0：isErr

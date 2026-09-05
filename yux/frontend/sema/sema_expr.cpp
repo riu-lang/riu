@@ -472,7 +472,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                 if (auto* sd = _names.lookupStruct(baseType)) {
                     string member = dotCallee->member();
                     if (dotCallee->hasSpecQualifier()) {
-                        member = member + "__at__" + dotCallee->specQualifier();
+                        member = member + "@" + dotCallee->specQualifier();
                     }
                     if (!sd->isGeneric()) {
                         vector<FnSymbolInfo*> cands;
@@ -1137,7 +1137,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                            !baseType.isArrayGeneric() && !baseType.isPtr()) {
                     string member = dotCallee->member();
                     if (dotCallee->hasSpecQualifier()) {
-                        member = member + "__at__" + dotCallee->specQualifier();
+                        member = member + "@" + dotCallee->specQualifier();
                     }
                     // Phase B：与 compileCallExpr 对齐，方法重载 + 灵活整数推断进 SemaPass。
                     sema::resolveMethodOverload(_file, _sdkFile, baseType.name, member, n->getArgs(),

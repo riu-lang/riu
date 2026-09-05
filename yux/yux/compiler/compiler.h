@@ -62,17 +62,15 @@ class Compiler {
     int _castCounter = 0;                        // 类型转换计数器，用于生成唯一名称
 
     // ==================== 泛型单态化 ====================
-    // 泛型结构体单态化：key = 实例 mangle 名（如 "A$i32"）
+    // 泛型结构体单态化：key = 定义模块全限定实例名（如 "yux.core.map.Map<i32,i32>"）
     struct StructInstance {
         p<StructDeclNode> baseDecl; // 泛型结构体声明
         p<StructImplNode> baseImpl; // 泛型结构体实现 (包含方法)
         p<FileNode> ownerFile;      // 定义该结构体的文件
         vector<TypeInfo> args;      // 类型参数实例化参数
         string mangledName;         // mangle 后的实例名
-        // 实例的"消费方"模块名，即触发该实例化的当前编译模块。
-        // 每个用到泛型实例的模块各自生成一份 IR，符号名以本字段为前缀，
-        // 不再共用 baseDecl owner 的前缀，避免 SDK + 用户模块同时实例化
-        // 相同 Nullable<T> 时出现 lld-link duplicate symbol。
+        // 定义该泛型的模块名（与 LLVM 符号前缀一致）。多 TU 各发一份 IR 时
+        // 同名符号靠 linkonce_odr + COMDAT 合并，不再用消费方模块当分隔。
         string consumerModule;
         bool methodsEmitted = false; // 方法是否已生成
         string sourceFile;           // 实例化发生的源文件 (用于错误报告)
@@ -80,17 +78,14 @@ class Compiler {
     };
     map<string, StructInstance> _structInstances;
 
-    // 泛型函数单态化：key = 实例 mangle 名（如 "foo$i32"）
+    // 泛型函数单态化：key = `name<Args>(params)`（如 "println<i32>(i32)"）
     struct FnInstance {
         p<FnNode> baseFn;          // 泛型函数定义
         p<FileNode> ownerFile;     // 定义该函数的文件
         vector<TypeInfo> typeArgs; // 类型参数实例化参数
         string mangledName;        // mangle 后的实例名
         bool emitted = false;      // 是否已生成 IR
-        // 实例的"消费方"模块名，即触发该实例化的当前编译模块。
-        // 每个用到泛型实例的模块各自生成一份 IR，符号名以本字段为前缀，
-        // 不再共用 ownerFile 的前缀，避免 SDK + 用户模块同时实例化
-        // 相同泛型函数时出现 lld-link duplicate symbol。
+        // 定义该泛型函数的模块名（与 LLVM 符号前缀一致）。多 TU 靠 linkonce_odr 合并。
         string consumerModule;
     };
     map<string, FnInstance> _fnInstances;
@@ -100,7 +95,7 @@ class Compiler {
     struct SubstFrame {
         map<string, TypeInfo> subst; // 类型参数 -> 实际类型 的映射
         string baseStructName;       // 泛型原名，如 "Foo2"
-        string effStructName;        // 实例名，如 "Foo2$i32"
+        string effStructName;        // 实例名，如 "yux.core.map.Map<i32,i32>"
         string sourceFile;           // 实例化发生的源文件
         int sourceLine = 0;          // 实例化发生的行号
     };
@@ -118,6 +113,22 @@ class Compiler {
     [[nodiscard]] TypeInfo resolveAlias(const TypeInfo& t) const;
     // 本文件 → SDK → wildcard（0 LLVM，与 SemaPass 共用）
     [[nodiscard]] sema::NameResolver names() const { return {_file, _yux ? _yux->sdkFile() : nullptr}; }
+    // LLVM 符号里的类型用定义模块视角补 owner，避免 `Ref<String>` 与
+    // `Ref<yux.core.string.String>` 裂成两个链接名。查找不要走调用方文件
+    // （用户本地同名 struct 会抢 SDK 类型）。
+    [[nodiscard]] TypeInfo withMangleOwners(const TypeInfo& t, FileNode* fromFile) const;
+    [[nodiscard]] vector<TypeInfo> withMangleOwners(const vector<TypeInfo>& ts, FileNode* fromFile) const;
+    [[nodiscard]] FileNode* fileForMangleModule(const string& module) const;
+    [[nodiscard]] string mangleFallibleErr(const string& err, FileNode* fromFile) const;
+    [[nodiscard]] string mangleFunction(const string& module, const string& name, const vector<TypeInfo>& params,
+                                        bool isPrivate, const TypeInfo& retType = TypeInfo(),
+                                        const string& fallibleErrType = "") const;
+    [[nodiscard]] string mangleMethod(const string& module, const string& structName, const string& methodName,
+                                      const vector<TypeInfo>& params, bool isPrivate,
+                                      const TypeInfo& retType = TypeInfo(), const string& fallibleErrType = "") const;
+    [[nodiscard]] string mangleStaticMethod(const string& module, const string& structName, const string& methodName,
+                                            const vector<TypeInfo>& params, const TypeInfo& retType = TypeInfo(),
+                                            const string& fallibleErrType = "") const;
     string ensureStructInstance(p<StructDeclNode> baseDecl, const vector<sp<TypeInfo>>& args, p<FileNode> ownerFile,
                                 int sourceLine = 0); // 确保结构体实例存在
     string ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& typeArgs, p<FileNode> ownerFile,
@@ -264,7 +275,8 @@ private:
         const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes, const TypeInfo& retType,
         const string& fallibleErrType = "", bool isStatic = false,
         string ownerModuleHint = {}); // isStatic=true 走 Mangler::staticMethod；ownerModuleHint 用于路径 LHS
-    llvm::Function* getDestructorFunction(const string& structName); // 获取或创建析构函数
+    llvm::Function* getDestructorFunction(const string& structName,
+                                          string ownerModuleHint = {}); // ownerModuleHint：有 owner 时不再短名找错模块
 
     // ==================== 表达式编译 ====================
     llvm::Value* compileExpr(p<ExprNode> node); // 编译表达式 (主入口)
@@ -299,8 +311,9 @@ private:
     bool enumNeedsDestructor(const string& enumName);            // Phase 5: 任一 variant payload 需析构则枚举需析构
     bool enumNeedsDestructor(const TypeInfo& type);              // 非 Normal 直接 false；identity 不走裸名重建
     bool enumDeclNeedsDestructor(p<EnumDeclNode> decl);          // Phase 5: 同上，按声明节点
-    llvm::Function* getEnumDestructorFunction(const string& enumName);    // Phase 5: 获取或创建 __enum_drop_<E>
-    void generateEnumDestructor(p<EnumDeclNode> decl, p<FileNode> owner); // Phase 5: 合成 __enum_drop_<E>(p*) 实现
+    llvm::Function* getEnumDestructorFunction(const string& enumName,
+                                              string ownerModuleHint = {}); // Phase 5: 获取或创建 enum dtor
+    void generateEnumDestructor(p<EnumDeclNode> decl, p<FileNode> owner);   // Phase 5: 合成 __enum_drop_<E>(p*) 实现
     void compileEnumDtors(); // Phase 5: 在主流水线中为本文件 enum 生成 dtor 定义
 
     // ==================== OwnershipOps（三个入口）====================
@@ -434,7 +447,7 @@ private:
     llvm::Value* compileDynCtorExpr(p<class ExprDynCtorNode> node);
 
     // Phase 3a：为 (concreteType U, specQualified D) 获取或合成 vtable 全局
-    // 符号：__yux_vtable_<U_mod>_<U_struct>__<D_qualified>，linkonce_odr。
+    // 符号：`__yux_vtable.<U全限定>.<D全限定>`，linkonce_odr。
     // 布局：i8* 数组，长度 = 1 + D.signatures().size()
     //   - 槽 0：U 的析构函数指针；U 无需析构 → null
     //   - 槽 1..N：U 实现 D 各方法的 fn ptr（按 D 声明序），跨文件 impl 块定位

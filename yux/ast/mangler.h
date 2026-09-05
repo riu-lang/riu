@@ -61,8 +61,9 @@ public:
 private:
     static string paramList(const vector<TypeInfo>& params, const TypeInfo& retType = TypeInfo(),
                             const string& fallibleErrType = "");
-    static string modPrefix(const string& module);                                 // 返回 module + "."
     static string modStructPrefix(const string& module, const string& structName); // mod.Struct
+    // name 已是 `module.` 前缀的全限定时不加第二层模块
+    static string qualify(const string& module, const string& name);
 };
 
 #endif // YUX_LANG_MANGLER_H

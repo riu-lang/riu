@@ -61,7 +61,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
     if (dotNode->hasSpecQualifier()) {
         auto bt = dotNode->baseExpr()->getType();
         if (!bt.isDyn()) {
-            member = member + "__at__" + dotNode->specQualifier();
+            member = member + "@" + dotNode->specQualifier();
         }
     }
 
@@ -221,7 +221,9 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
     // 获取或创建 LLVM 函数
     llvm::Function* llvmFn = nullptr;
     if (genericMethodNode) {
-        string ownerMod = _structInstances[genericEffName].consumerModule;
+        string ownerMod = _structInstances[genericEffName].ownerFile
+                              ? _structInstances[genericEffName].ownerFile->moduleName()
+                              : _structInstances[genericEffName].consumerModule;
         bool methPriv = !member.empty() && member[0] == '_';
         TypeInfo genRetType;
         if (genericMethodNode->header()->retType()) {
@@ -230,7 +232,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
         }
         string mFallibleErr = genericMethodNode->header()->resolvedFallibleErr();
         string mangledName =
-            Mangler::method(ownerMod, genericEffName, member, argTypes, methPriv, genRetType, mFallibleErr);
+            mangleMethod(ownerMod, genericEffName, member, argTypes, methPriv, genRetType, mFallibleErr);
         llvmFn = _module->getFunction(mangledName);
         if (!llvmFn) {
             vector<llvm::Type*> paramTypes;
@@ -251,8 +253,8 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
         bool methPriv = !member.empty() && member[0] == '_';
         vector<TypeInfo> declaredParams(mparams.size() > 1 ? mparams.begin() + 1 : mparams.begin(), mparams.end());
         if (mparams.size() <= 1) declaredParams.clear();
-        string mangledName = Mangler::method(ownerMod, actualType.name, member, declaredParams, methPriv,
-                                             methodSymbol->retType, methodSymbol->fallibleErrType);
+        string mangledName = mangleMethod(ownerMod, actualType.name, member, declaredParams, methPriv,
+                                          methodSymbol->retType, methodSymbol->fallibleErrType);
         llvmFn = _module->getFunction(mangledName);
         if (!llvmFn) {
             vector<llvm::Type*> paramTypes;
@@ -310,12 +312,12 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
     auto baseExpr = dotNode->baseExpr();
     auto member = dotNode->member();
     // DRAFT-spec-disambig-at: `$.m@SpecA()` / `obj.m@SpecA()` 把 member 重写为
-    // `m__at__<specShort>`, 由 spec_impl_checker 预登记的 @-tagged fnSymbol 命中.
+    // `m@<specShort>`, 由 spec_impl_checker 预登记的 @-tagged fnSymbol 命中.
     // 例外: Dyn<D> 上 `d.m@D()` 走 vtable dispatch (sema 已校验 @D 匹配), 不重写.
     if (dotNode->hasSpecQualifier()) {
         auto bt = baseExpr->getType();
         if (!bt.isDyn()) {
-            member = member + "__at__" + dotNode->specQualifier();
+            member = member + "@" + dotNode->specQualifier();
         }
     }
 
@@ -397,8 +399,8 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
             if (fnSymbol) {
                 string ownerMod = fnSymbol->moduleName.empty() ? _file->moduleName() : fnSymbol->moduleName;
                 bool fnPriv = !objName.empty() && objName[0] == '_';
-                auto cName = Mangler::function(ownerMod, objName, argTypes, fnPriv, fnSymbol->retType,
-                                               fnSymbol->fallibleErrType);
+                auto cName =
+                    mangleFunction(ownerMod, objName, argTypes, fnPriv, fnSymbol->retType, fnSymbol->fallibleErrType);
                 DEBUG_LOG_VAL("    Expr: InnerFnCall (dot)", objName << " -> " << cName);
                 auto fn = _module->getFunction(cName);
                 if (!fn) {
@@ -1180,8 +1182,8 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
         string ownerMod =
             sdkMethodSymbol->moduleName.empty() ? _yux->sdkFile()->moduleName() : sdkMethodSymbol->moduleName;
         bool methPriv = !member.empty() && member[0] == '_';
-        string mangledName = Mangler::method(ownerMod, lookupType.name, member, argTypes, methPriv,
-                                             sdkMethodSymbol->retType, sdkMethodSymbol->fallibleErrType);
+        string mangledName = mangleMethod(ownerMod, lookupType.name, member, argTypes, methPriv,
+                                          sdkMethodSymbol->retType, sdkMethodSymbol->fallibleErrType);
         auto fn = _module->getFunction(mangledName);
         if (!fn) {
             vector<llvm::Type*> paramTypes;
@@ -1392,8 +1394,8 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
                                               mparams.end());
         // 若 mparams 仅含 receiver（无参方法如 len()），methodDeclaredParams 为空
         if (mparams.size() <= 1) methodDeclaredParams.clear();
-        string mangledName = Mangler::method(ownerMod, actualType.name, member, methodDeclaredParams, methPriv,
-                                             methodSymbol->retType, methodSymbol->fallibleErrType);
+        string mangledName = mangleMethod(ownerMod, actualType.name, member, methodDeclaredParams, methPriv,
+                                          methodSymbol->retType, methodSymbol->fallibleErrType);
         auto fn = _module->getFunction(mangledName);
         if (!fn) {
             vector<llvm::Type*> paramTypes;

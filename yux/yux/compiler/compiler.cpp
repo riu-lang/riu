@@ -202,8 +202,8 @@ void Compiler::emitTestRegistrations() {
         }
         TypeInfo retType;
         if (fn->header()->retType()) retType = fn->header()->retType()->getType();
-        std::string sym = Mangler::function(_file->moduleName(), fnName, paramTypes, false, retType,
-                                            fn->header()->resolvedFallibleErr());
+        std::string sym = mangleFunction(_file->moduleName(), fnName, paramTypes, false, retType,
+                                         fn->header()->resolvedFallibleErr());
         testFns.push_back({.fnName = fnName, .mangledName = sym});
     }
 
@@ -632,7 +632,7 @@ void collectSelfTypesInTypeNode(TypeNode* tn, vector<TypeSelfNode*>& out) {
 
 // 抽取 compileInheritedDefaults 单条记录的 emit 逻辑, 与 compileSpecDisambigEmits 共用.
 // emitMethodName 决定 LLVM 函数符号 + fnSymbol 表 key; 默认 = header 上的方法名 (fall-through),
-// 也可传入 "m__at__SpecA" 形态 (DRAFT-spec-disambig-at escape hatch).
+// 也可传入 "m@SpecA" 形态 (DRAFT-spec-disambig-at escape hatch).
 void Compiler::emitSpecDefaultBodyMethod(SpecDeclNode* spec, size_t sigIdx, const string& structName,
                                          const string& emitMethodName) {
     if (!spec) return;
@@ -770,7 +770,7 @@ void Compiler::compileInheritedDefaults(StructImplNode* impl, const string& stru
     }
 
     // DRAFT-spec-disambig-at: 同步发射每条 @-tagged 副本 (即便 impl 覆盖了 m, escape hatch
-    // 走 `S.m__at__SpecA`).
+    // 走 `S.m@SpecA`).
     const auto& disambigs = impl->specDisambigEmits();
     if (!disambigs.empty()) {
         DEBUG_LOG_VAL("    Compiling spec @-disambig emits", disambigs.size() << " methods on " << structName);
@@ -825,10 +825,17 @@ void Compiler::emitInstanceMethods() {
             }
 
             try {
+                auto markGenericOdr = [&](llvm::Function* f) {
+                    if (!f) return;
+                    f->setLinkage(llvm::Function::LinkOnceODRLinkage);
+                    f->setVisibility(llvm::GlobalValue::DefaultVisibility);
+                    f->setComdat(_module->getOrInsertComdat(std::string(f->getName())));
+                };
                 // 编译析构函数 (如果有)
                 if (inst.baseImpl->hasDestructor()) {
                     auto destructor = inst.baseImpl->destructor();
                     auto func = getDestructorFunction(structName);
+                    markGenericOdr(func);
                     compileMethod(destructor, func, structName, true);
                 }
 
@@ -860,12 +867,14 @@ void Compiler::emitInstanceMethods() {
                     string mFallibleErr;
                     mFallibleErr = method->header()->resolvedFallibleErr();
                     auto func = getMethodFunction(structName, methodName, paramTypes, retType, mFallibleErr, isStatic);
+                    markGenericOdr(func);
                     compileMethod(method, func, structName, false, isStatic);
                 }
 
                 // 如果没有显式析构函数但需要，生成默认析构函数
                 if (!inst.baseImpl->hasDestructor() && structNeedsDestructor(structName)) {
                     generateDefaultDestructor(structName);
+                    markGenericOdr(getDestructorFunction(structName));
                 }
             } catch (const YuxError& e) {
                 _file = savedFile;
@@ -885,37 +894,32 @@ void Compiler::emitInstanceMethods() {
 string Compiler::ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& typeArgs, p<FileNode> ownerFile,
                                   int sourceLine) {
     string baseName = baseFn->header()->name().getText();
-    // 生成 mangle 名称: foo<i32,i64>
-    string mangledName = baseName + "<";
+    // LLVM 函数名用 `foo<i32,i64>`（Mangler 再加模块与形参表）
+    string instName = baseName + "<";
     for (size_t i = 0; i < typeArgs.size(); ++i) {
-        if (i > 0) mangledName += ',';
-        mangledName += typeArgs[i].getMangleName();
+        if (i > 0) instName += ',';
+        instName += withMangleOwners(typeArgs[i], ownerFile).getMangleName();
     }
-    mangledName += '>';
+    instName += '>';
 
-    // 检查是否已存在。
-    // 同名泛型不同重载（如 print<T>(x T) vs print<T>(x T&)）共享同一 baseName+typeArgs
-    // 但 baseFn 不同 → 追加形参签名以区分，避免先注册者盖掉后者导致后者实例未 emit。
-    auto it = _fnInstances.find(mangledName);
-    if (it != _fnInstances.end()) {
-        if (it->second.baseFn == baseFn) return mangledName;
-        // 碰撞：同名不同参泛型。追加实例化后的形参签名作为消歧后缀。
-        const auto& tps = baseFn->header()->typeParams();
-        std::map<std::string, TypeInfo> tmpSubst;
-        for (size_t i = 0; i < tps.size() && i < typeArgs.size(); ++i) {
-            tmpSubst[tps[i]] = typeArgs[i];
-        }
-        string overloadSuffix;
-        for (auto& p : baseFn->header()->params()) {
-            if (p->type()) {
-                auto pt = p->type()->getType().substitute(tmpSubst);
-                overloadSuffix += "_" + pt.getMangleName();
-            }
-        }
-        mangledName += overloadSuffix;
-        it = _fnInstances.find(mangledName);
-        if (it != _fnInstances.end()) return mangledName;
+    // 同名泛型不同重载（print<T>(T) vs print<T>(T&)）用 yux 形参表作实例 key，不用 `_` 分隔
+    const auto& tps = baseFn->header()->typeParams();
+    std::map<std::string, TypeInfo> tmpSubst;
+    for (size_t i = 0; i < tps.size() && i < typeArgs.size(); ++i) {
+        tmpSubst[tps[i]] = typeArgs[i];
     }
+    string key = instName + "(";
+    bool firstParam = true;
+    for (auto& p : baseFn->header()->params()) {
+        if (!p->type()) continue;
+        if (!firstParam) key += ',';
+        firstParam = false;
+        key += withMangleOwners(p->type()->getType().substitute(tmpSubst), ownerFile).getMangleName();
+    }
+    key += ')';
+
+    auto it = _fnInstances.find(key);
+    if (it != _fnInstances.end()) return key;
 
     // E6010 由 SemaPass validateGenericTypeArgsArity 先抛。
     auto& typeParams = baseFn->header()->typeParams();
@@ -928,15 +932,12 @@ string Compiler::ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& type
     inst.baseFn = baseFn;
     inst.ownerFile = ownerFile ? ownerFile : _file;
     inst.typeArgs = typeArgs;
-    inst.mangledName = mangledName;
-    // 关键：把当前编译模块记下来，作为本实例 IR 的符号前缀。
-    // 即便后续 emitFnInstances 为了编译把 _file 切到 ownerFile，
-    // 实例的符号名仍用此处记录的消费方模块（与 StructInstance 对齐）。
-    inst.consumerModule = _file ? _file->moduleName() : "";
+    inst.mangledName = instName;
+    inst.consumerModule = inst.ownerFile ? inst.ownerFile->moduleName() : (_file ? _file->moduleName() : "");
 
-    _fnInstances[mangledName] = std::move(inst);
-    DEBUG_LOG_VAL("Created generic function instance", mangledName);
-    return mangledName;
+    _fnInstances[key] = std::move(inst);
+    DEBUG_LOG_VAL("Created generic function instance", key);
+    return key;
 }
 
 // ==================== 泛型函数实例生成 ====================
@@ -989,12 +990,11 @@ void Compiler::emitFnInstances() {
                 }
                 string fallibleErr = baseFn->header()->resolvedFallibleErr();
 
-                // 生成 mangle 后的函数名
-                // 泛型实例：使用消费方模块（每个使用方模块各自生成一份实例 IR，避免重复符号）
+                // 生成 mangle 后的函数名（定义模块全限定；多 TU 靠 linkonce_odr 合并）
                 bool isPrivate = !inst.mangledName.empty() && inst.mangledName[0] == '_';
-                string ownerMod = inst.consumerModule.empty() ? inst.ownerFile->moduleName() : inst.consumerModule;
+                string ownerMod = inst.ownerFile ? inst.ownerFile->moduleName() : inst.consumerModule;
                 string mangledFnName =
-                    Mangler::function(ownerMod, inst.mangledName, paramTypes, isPrivate, retType, fallibleErr);
+                    mangleFunction(ownerMod, inst.mangledName, paramTypes, isPrivate, retType, fallibleErr);
 
                 // 获取或创建 LLVM 函数
                 auto fn = _module->getFunction(mangledFnName);

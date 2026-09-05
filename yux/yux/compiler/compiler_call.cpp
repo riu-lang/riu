@@ -52,7 +52,7 @@ llvm::Function* Compiler::getFunction(p<FnHeaderNode> header) {
         }
         string fallibleErr = header->resolvedFallibleErr();
         bool isPriv = !name.empty() && name[0] == '_';
-        name = Mangler::function(_file->moduleName(), name, paramTypes, isPriv, retType, fallibleErr);
+        name = mangleFunction(_file->moduleName(), name, paramTypes, isPriv, retType, fallibleErr);
         DEBUG_LOG_VAL("    -> mangled name", name);
     }
 
@@ -77,11 +77,11 @@ llvm::Function* Compiler::getMethodFunction(const string& structName, const stri
     bool isPriv = !methodName.empty() && methodName[0] == '_';
 
     // 确定方法所属的模块
-    // 泛型实例：使用消费方模块（每个使用方模块各自生成一份实例 IR，避免重复符号）
-    // 普通结构体：使用 baseDecl owner 模块（跨模块仍引用同一份定义）
+    // 泛型实例：定义模块（符号与 yux 全限定同形；多 TU 靠 linkonce_odr 合并）
+    // 普通结构体：baseDecl owner 模块
     string ownerModule = _file->moduleName();
     if (auto instIt = _structInstances.find(structName); instIt != _structInstances.end()) {
-        ownerModule = instIt->second.consumerModule;
+        ownerModule = instIt->second.ownerFile ? instIt->second.ownerFile->moduleName() : instIt->second.consumerModule;
     } else if (!ownerModuleHint.empty()) {
         ownerModule = std::move(ownerModuleHint);
     } else {
@@ -101,10 +101,9 @@ llvm::Function* Compiler::getMethodFunction(const string& structName, const stri
     // 生成 mangle 名称
     string mangledName;
     if (isStatic) {
-        mangledName = Mangler::staticMethod(ownerModule, structName, methodName, paramTypes, retType, fallibleErrType);
+        mangledName = mangleStaticMethod(ownerModule, structName, methodName, paramTypes, retType, fallibleErrType);
     } else {
-        mangledName =
-            Mangler::method(ownerModule, structName, methodName, paramTypes, isPriv, retType, fallibleErrType);
+        mangledName = mangleMethod(ownerModule, structName, methodName, paramTypes, isPriv, retType, fallibleErrType);
     }
     DEBUG_LOG_VAL("    -> mangled name", mangledName);
 
@@ -148,15 +147,16 @@ llvm::Function* Compiler::getMethodFunction(const string& structName, const stri
 }
 
 // 获取或创建析构函数
-llvm::Function* Compiler::getDestructorFunction(const string& structName) {
+llvm::Function* Compiler::getDestructorFunction(const string& structName, string ownerModuleHint) {
     DEBUG_LOG_VAL("  getDestructorFunction", structName);
 
     // 确定析构函数所属的模块
-    // 泛型实例：用消费方模块（每个使用方模块各自一份）
-    // 普通结构体：仍走 owner 模块
+    // 泛型实例：定义模块；普通结构体：owner 模块或 hint
     string ownerModule = _file->moduleName();
     if (auto instIt = _structInstances.find(structName); instIt != _structInstances.end()) {
-        ownerModule = instIt->second.consumerModule;
+        ownerModule = instIt->second.ownerFile ? instIt->second.ownerFile->moduleName() : instIt->second.consumerModule;
+    } else if (!ownerModuleHint.empty()) {
+        ownerModule = std::move(ownerModuleHint);
     } else {
         auto* owner = _file->getStructOwner(structName);
         if (owner && owner != _file) {
@@ -595,7 +595,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
             if (dotNode->hasSpecQualifier()) {
                 auto bt = dotNode->baseExpr()->getType();
                 if (!bt.isDyn()) {
-                    member = member + "__at__" + dotNode->specQualifier();
+                    member = member + "@" + dotNode->specQualifier();
                 }
             }
             sema::resolveMethodOverload(_file, _yux ? _yux->sdkFile() : nullptr, effectiveTypeName, member,

@@ -201,7 +201,7 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(p<ExprNode> leftExpr, p<ExprNod
     bool methPriv = !methodName.empty() && methodName[0] == '_';
     vector<TypeInfo> argTypes;
     argTypes.push_back(declaredRhsType);
-    string mangledName = Mangler::method(ownerMod, effLeftType.name, methodName, argTypes, methPriv);
+    string mangledName = mangleMethod(ownerMod, effLeftType.name, methodName, argTypes, methPriv);
 
     auto fn = _module->getFunction(mangledName);
     if (!fn) {

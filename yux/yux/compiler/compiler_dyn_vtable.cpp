@@ -11,8 +11,7 @@
 //   [1..] D 的方法实现，按 D 声明序，指向 U 在 `Type:D { ... }` 或
 //         普通方法块 `Type { ... }` 中提供的具体 FnNode 对应 LLVM Function
 //
-// 符号：`__yux_vtable_<U_module>_<U_struct>__<D_qualified>`，
-//       linkonce_odr，允许多 TU 共享去重。
+// 符号：`__yux_vtable.<U全限定>.<D全限定>`，linkonce_odr，允许多 TU 共享去重。
 //
 // 调用方先经 SpecImplChecker 的 boundSatisfied / E1133 校验，
 // 这里假定 U 满足 D 的全部签名；找不到方法实现视为编译器内部一致性失败。
@@ -33,13 +32,15 @@
 
 namespace {
 
-// 把 draft 完全限定名（"yux.core.ToString" / "Greet"）转成符号安全形式：
-// '.' 保留（LLVM quoted identifier 合法），其它 ASCII 标识符字符直通；非常规字符按 '_' 兜底。
+// 把类型/限定名转成符号安全形式：yux 语法字符直通（LLVM quoted identifier 合法）；
+// 其它非常规字符按 '_' 兜底（仅辅助符号，非用户声明）。
 std::string sanitizeForSymbol(const std::string& s) {
     std::string out;
     out.reserve(s.size());
     for (char c : s) {
-        bool keep = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.';
+        bool keep = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' ||
+                    c == '.' || c == '<' || c == '>' || c == ',' || c == '(' || c == ')' || c == ':' || c == '&' ||
+                    c == '!' || c == '?' || c == '@';
         out += keep ? c : '_';
     }
     return out;
@@ -110,17 +111,12 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(const TypeInfo& concreteType,
 
     const std::string& uStruct = concreteType.name;
     std::string uModule = findStructOwnerModule(_yux, uStruct);
+    if (uModule.empty() && !concreteType.ownerModule.empty()) uModule = concreteType.ownerModule;
 
-    // 符号名：__yux_vtable.<uMod>.<uStruct>.<dQualified>
-    // uMod 为空（罕见，类型未在已加载模块中找到）时退化为仅 struct 名。
-    std::string symName = "__yux_vtable.";
-    if (!uModule.empty()) {
-        symName += sanitizeForSymbol(uModule);
-        symName += ".";
-    }
-    symName += sanitizeForSymbol(uStruct);
-    symName += ".";
-    symName += sanitizeForSymbol(specQualified);
+    // 符号：`__yux_vtable.<U全限定>.<D全限定>`，与 yux 类型路径同形
+    std::string uMangle = concreteType.getMangleName();
+    if (uMangle == uStruct && !uModule.empty()) uMangle = uModule + "." + uStruct;
+    std::string symName = "__yux_vtable." + sanitizeForSymbol(uMangle) + "." + sanitizeForSymbol(specQualified);
 
     if (auto* existing = _module->getNamedGlobal(symName)) {
         return existing;
@@ -140,7 +136,8 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(const TypeInfo& concreteType,
     // 复用现有 struct dtor 入口；trivial 类型 → null（release 路径据此跳过 dispatch）
     llvm::Constant* dtorSlot = nullPtr;
     if (structNeedsDestructor(concreteType)) {
-        auto* dtorFn = getDestructorFunction(concreteType.isGeneric() ? concreteType.getMangleName() : uStruct);
+        auto* dtorFn = getDestructorFunction(concreteType.isGeneric() ? concreteType.getMangleName() : uStruct,
+                                             concreteType.ownerModule);
         if (dtorFn) {
             dtorSlot = dtorFn;
         }
@@ -168,7 +165,7 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(const TypeInfo& concreteType,
             // 用 impl 所在文件的模块名（内置类型的 impl 在 SDK 模块里，
             // findStructOwnerModule 拿到空 uModule 时会错指）。
             std::string mangled =
-                Mangler::method(impl.ownerModule, uStruct, methodName, paramTypes, isPriv, retType, fallibleErr);
+                mangleMethod(impl.ownerModule, uStruct, methodName, paramTypes, isPriv, retType, fallibleErr);
 
             // 内置类型 U（i32 / i64 / bool / ...）的 SDK 方法实际签名是
             // (<U> by-value, P1, ..., Pn) -> R（见 compileMethod / getMethodFunction 的 builtin 分支）;
@@ -223,8 +220,7 @@ llvm::GlobalVariable* Compiler::getOrEmitDynVTable(const TypeInfo& concreteType,
             if (sig->retType()) retType = sig->retType()->getType();
             string fallibleErr = sig->resolvedFallibleErr();
             bool isPriv = !methodName.empty() && methodName[0] == '_';
-            std::string mangled =
-                Mangler::method(uModule, uStruct, methodName, paramTypes, isPriv, retType, fallibleErr);
+            std::string mangled = mangleMethod(uModule, uStruct, methodName, paramTypes, isPriv, retType, fallibleErr);
             auto* fn = _module->getFunction(mangled);
             if (!fn) {
                 std::vector<llvm::Type*> llvmParamTypes;
@@ -284,7 +280,7 @@ llvm::Function* Compiler::getOrEmitDynPrimitiveThunk(const TypeInfo& concreteTyp
 
     const std::string methodName = sig->name().getText();
     std::string thunkName = "__yux_dyn_thunk.";
-    thunkName += sanitizeForSymbol(concreteType.name);
+    thunkName += sanitizeForSymbol(concreteType.getMangleName());
     thunkName += ".";
     thunkName += sanitizeForSymbol(specQualified);
     thunkName += ".";

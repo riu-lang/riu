@@ -105,10 +105,10 @@ static bool matchesTestModFilter(const std::string& mod, const std::vector<std::
 
 // ====== buildTestDlls：lib 与 exe 模式共用的 test DLL 构建逻辑 ======
 // allObjMap: modName → obj path（所有非 test 模块的 obj，由调用方预编译后传入）
-static void buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const std::string& buildDir,
-                          const std::string& irDir, bool emitIr, const std::string& sdkLibPath,
-                          const std::string& yuxrtLibPath, const std::vector<std::string>& testModFilters,
-                          const std::map<std::string, std::string>& allObjMap, int threads) {
+static int buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const std::string& buildDir,
+                         const std::string& irDir, bool emitIr, const std::string& sdkLibPath,
+                         const std::string& yuxrtLibPath, const std::vector<std::string>& testModFilters,
+                         const std::map<std::string, std::string>& allObjMap, int threads) {
     namespace fs = std::filesystem;
 
     // 构建 test 专用产物目录
@@ -260,9 +260,11 @@ static void buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const s
                         std::string failReason;
                         {
                             std::error_code ec3;
+                            bool stampOk = isStampFresh(stampOf(testAbs), testAbs, objOf(testAbs), fingerprint);
                             if (fs::exists(failPath, ec3)) {
                                 failed = true;
-                            } else if (!fs::exists(dllPath, ec3)) {
+                            } else if (!fs::exists(dllPath, ec3) || !stampOk) {
+                                // job abort/assert 时旧 dll 仍在；stamp 未刷新就不能算本轮成功
                                 failed = true;
                                 failReason = code == kSpawnFailed ? "compile job spawn failed"
                                              : code != 0          ? ("compile job exit " + std::to_string(code))
@@ -451,6 +453,7 @@ static void buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const s
         std::cout << testFailCount << " test file(s) failed to build\n";
     }
     // --test-mod 无匹配时已在上面输出 stderr，不再重复 stdout
+    return static_cast<int>(testFailCount);
 }
 
 int runBuildCommand(const BuildCmdOptions& opts) {
@@ -801,8 +804,11 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 std::string obj = mirroredOutputBase(yux.projectRoot(), buildDir, abs) + ".obj";
                 allObjMap[mn] = obj;
             }
-            buildTestDlls(yux, srcDir, buildDir, irDir, emitIr, sdkLibPath, yuxrtLibPath, opts.testMods, allObjMap,
-                          opts.threads);
+            int testFails = buildTestDlls(yux, srcDir, buildDir, irDir, emitIr, sdkLibPath, yuxrtLibPath, opts.testMods,
+                                          allObjMap, opts.threads);
+            std::cout.flush();
+            std::cerr.flush();
+            _exit(testFails > 0 ? 1 : 0);
         }
 
         std::cout.flush();
@@ -913,12 +919,12 @@ int runBuildCommand(const BuildCmdOptions& opts) {
             std::string obj = mirroredOutputBase(yux.projectRoot(), buildDir, abs) + ".obj";
             allObjMap[mn] = obj;
         }
-        buildTestDlls(yux, srcDir, buildDir, irDir, emitIr, sdkLibPath, yuxrtLibPath, opts.testMods, allObjMap,
-                      opts.threads);
+        int testFails = buildTestDlls(yux, srcDir, buildDir, irDir, emitIr, sdkLibPath, yuxrtLibPath, opts.testMods,
+                                      allObjMap, opts.threads);
 
         std::cout.flush();
         std::cerr.flush();
-        _exit(0);
+        _exit(testFails > 0 ? 1 : 0);
     }
 
     // ====== exe 模式：原流程 ======

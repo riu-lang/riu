@@ -171,7 +171,7 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
 
     // Phase 5: enum 类型 —— 走合成的 __enum_drop_<E> 按 tag dispatch
     if (enumNeedsDestructor(type)) {
-        auto dtorFn = getEnumDestructorFunction(type.name);
+        auto dtorFn = getEnumDestructorFunction(type.name, type.ownerModule);
         if (dtorFn) {
             _builder.CreateCall(dtorFn, {slotPtr});
         }
@@ -180,7 +180,7 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
 
     // 结构体：调其析构函数（默认析构按字段逆序 release）
     if (structNeedsDestructor(type)) {
-        auto dtorFn = getDestructorFunction(type.isGeneric() ? type.getMangleName() : type.name);
+        auto dtorFn = getDestructorFunction(type.isGeneric() ? type.getMangleName() : type.name, type.ownerModule);
         if (dtorFn) {
             _builder.CreateCall(dtorFn, {slotPtr});
         }
@@ -437,7 +437,7 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
         } else if (!isBuiltinType(fieldType.name)) {
             // 结构体字段: 调用其析构函数
             const string fieldKey = fieldType.isGeneric() ? fieldType.getMangleName() : fieldType.name;
-            auto fieldDtorsFn = getDestructorFunction(fieldKey);
+            auto fieldDtorsFn = getDestructorFunction(fieldKey, fieldType.ownerModule);
             if (fieldDtorsFn) {
                 _builder.CreateCall(fieldDtorsFn, {fieldPtr});
             }
@@ -986,7 +986,7 @@ bool Compiler::structParamUsesPointer(const TypeInfo& ti) {
     if (structDecl) return false;
 
     // 泛型实例 → by-value（3c.2.c）；实例 key 走 mangle，不走裸 name
-    const string instKey = ti.isGeneric() ? ti.getMangleName() : ti.name;
+    const string instKey = ti.getMangleName();
     if (_structInstances.find(instKey) != _structInstances.end()) return false;
 
     // 仅在 LLVM 类型表中注册的（跨模块未通配导入等）保守按指针
@@ -1120,7 +1120,7 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
     if (!func->empty()) return func;
 
     // 获取 T 的析构函数
-    auto dtorFn = getDestructorFunction(inner->isGeneric() ? inner->getMangleName() : inner->name);
+    auto dtorFn = getDestructorFunction(inner->isGeneric() ? inner->getMangleName() : inner->name, inner->ownerModule);
 
     // 保存当前插入点
     auto* savedBB = _builder.GetInsertBlock();
@@ -1218,19 +1218,27 @@ bool Compiler::enumNeedsDestructor(const string& enumName) {
 
 bool Compiler::enumNeedsDestructor(const TypeInfo& type) {
     if (!type.isNormal()) return false;
-    return enumNeedsDestructor(type.name);
+    p<FileNode> owner = nullptr;
+    auto decl = names().lookupEnum(type, &owner);
+    if (!decl) return false;
+    return enumDeclNeedsDestructor(decl);
 }
 
-// 获取或创建 __enum_drop_<E> 函数声明（mangled 含 owner 模块名）
-// 与 struct dtor 同模型：定义只在 owner 模块发射，consumer 拿到 extern decl
-llvm::Function* Compiler::getEnumDestructorFunction(const string& enumName) {
+// 获取或创建 enum dtor 声明（mangled 含 owner 模块名）
+// 与 struct dtor 同模型：`mod.Enum::~()`；有 owner 时不按短名找错模块
+llvm::Function* Compiler::getEnumDestructorFunction(const string& enumName, string ownerModuleHint) {
     p<FileNode> owner = nullptr;
-    auto decl = names().lookupEnum(enumName, &owner);
+    EnumDeclNode* decl = nullptr;
+    if (!ownerModuleHint.empty() && _yux) {
+        owner = _yux->module(ownerModuleHint);
+        if (owner) decl = owner->localEnumDecl(enumName);
+    }
+    if (!decl) decl = names().lookupEnum(enumName, &owner);
     if (!decl) return nullptr;
 
-    string ownerModule = owner ? owner->moduleName() : _file->moduleName();
-    // mangling: module.EnumName::~()  与 struct dtor 形态一致
-    string mangled = ownerModule + "." + enumName + "::~()";
+    string ownerModule =
+        !ownerModuleHint.empty() ? ownerModuleHint : (owner ? owner->moduleName() : _file->moduleName());
+    string mangled = Mangler::dtor(ownerModule, enumName);
 
     auto func = _module->getFunction(mangled);
     if (func) return func;
@@ -1248,10 +1256,11 @@ void Compiler::generateEnumDestructor(p<EnumDeclNode> decl, p<FileNode> owner) {
     string enumName = decl->name().getText();
     DEBUG_LOG_VAL("  Generating enum dtor for", enumName);
 
-    auto fn = getEnumDestructorFunction(enumName);
+    auto fn = getEnumDestructorFunction(enumName, owner ? owner->moduleName() : "");
     if (!fn || !fn->empty()) return; // 已有定义则不重复
 
     TypeInfo enumTy(enumName);
+    if (owner) enumTy.ownerModule = owner->moduleName();
     auto enumLLVMType = getLLVMType(enumTy);
     if (!enumLLVMType) return;
 

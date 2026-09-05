@@ -39,20 +39,21 @@ string Mangler::paramList(const vector<TypeInfo>& params, const TypeInfo& retTyp
     return s;
 }
 
-string Mangler::modPrefix(const string& module) {
-    if (module.empty()) return "";
-    return module + ".";
+string Mangler::qualify(const string& module, const string& name) {
+    if (module.empty()) return name;
+    const string p = module + ".";
+    if (name.starts_with(p)) return name;
+    return p + name;
 }
 
 string Mangler::modStructPrefix(const string& module, const string& structName) {
-    if (module.empty()) return structName;
-    return module + "." + structName;
+    return qualify(module, structName);
 }
 
 string Mangler::function(const string& module, const string& name, const vector<TypeInfo>& params, bool /*isPrivate*/,
                          const TypeInfo& retType, const string& fallibleErrType) {
     // 私有符号源名已带前导 "_"（如 _foo），与模块 "." 自然形成 mod._foo
-    return modPrefix(module) + name + paramList(params, retType, fallibleErrType);
+    return qualify(module, name) + paramList(params, retType, fallibleErrType);
 }
 
 string Mangler::method(const string& module, const string& structName, const string& methodName,
@@ -79,13 +80,13 @@ string Mangler::dtor(const string& module, const string& structName) {
 }
 
 string Mangler::structType(const string& module, const string& structName) {
-    return modPrefix(module) + structName;
+    return qualify(module, structName);
 }
 
 string Mangler::global(const string& module, const string& name, bool /*isPrivate*/) {
-    return modPrefix(module) + name;
+    return qualify(module, name);
 }
 
 string Mangler::lambda(const string& module, int line, int col) {
-    return modPrefix(module) + "__lambda_" + std::to_string(line) + "_" + std::to_string(col);
+    return qualify(module, "__lambda_" + std::to_string(line) + "_" + std::to_string(col));
 }

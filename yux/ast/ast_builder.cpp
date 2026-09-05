@@ -171,6 +171,7 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
     }
 
     visitChildren(ctx);
+    file->syncFnSymbolsFromAst();
     _scopeStack.pop_back();
     stack.pop_back();
     DEBUG_LOG("Finished: Program");

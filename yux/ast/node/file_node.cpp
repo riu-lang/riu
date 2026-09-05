@@ -130,6 +130,66 @@ void FileNode::addFunction(const p<FnNode>& function) {
     _functions.push_back(function);
 }
 
+void FileNode::syncFnSymbolsFromAst() {
+    auto namesMatch = [](const vector<TypeInfo>& a, const vector<TypeInfo>& b) {
+        if (a.size() != b.size()) return false;
+        for (size_t i = 0; i < a.size(); ++i) {
+            if (a[i].getFullName() != b[i].getFullName()) return false;
+        }
+        return true;
+    };
+    auto apply = [&](const string& key, vector<TypeInfo> params, TypeInfo ret, const string& fallible) {
+        auto it = _fnSymbols.find(key);
+        if (it == _fnSymbols.end()) return;
+        FnSymbolInfo* target = nullptr;
+        for (auto& cand : it->second) {
+            if (namesMatch(cand.params, params)) {
+                target = &cand;
+                break;
+            }
+        }
+        if (!target) {
+            FnSymbolInfo* only = nullptr;
+            int n = 0;
+            for (auto& cand : it->second) {
+                if (cand.params.size() == params.size()) {
+                    only = &cand;
+                    ++n;
+                }
+            }
+            if (n == 1) target = only;
+        }
+        if (!target) return;
+        target->params = std::move(params);
+        target->retType = std::move(ret);
+        target->fallibleErrType = fallible;
+    };
+
+    for (auto* fn : _functions) {
+        auto* h = fn->header();
+        vector<TypeInfo> params;
+        for (auto p : h->params()) {
+            params.push_back(p->type() ? p->type()->getType() : TypeInfo());
+        }
+        TypeInfo ret = h->retType() ? h->retType()->getType() : TypeInfo();
+        apply(h->name().getText(), std::move(params), std::move(ret), h->resolvedFallibleErr());
+    }
+    for (auto* impl : _structImpls) {
+        for (auto* method : impl->methods()) {
+            auto* h = method->header();
+            vector<TypeInfo> params;
+            TypeInfo recv(impl->structName(), _moduleName);
+            params.push_back(std::move(recv));
+            for (auto p : h->params()) {
+                params.push_back(p->type() ? p->type()->getType() : TypeInfo());
+            }
+            TypeInfo ret = h->retType() ? h->retType()->getType() : TypeInfo();
+            apply(impl->structName() + "." + h->name().getText(), std::move(params), std::move(ret),
+                  h->resolvedFallibleErr());
+        }
+    }
+}
+
 void FileNode::addStructDecl(const p<StructDeclNode>& structDecl) {
     _structDecls.push_back(structDecl);
     SymbolInfo sym(SymbolKind::Struct, structDecl->name().getText(),

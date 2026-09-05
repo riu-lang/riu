@@ -408,7 +408,7 @@ let r Dyn<D&>    = Dyn:<D&>(ref)     ; U& 或 Rc<U> → Dyn<D&>，借用
 §12.9.7.1 每个 `(具体类型 U, spec D)` 对生成一份静态 vtable：
 
 ```
-__yux_vtable_<U_mangled>__<D_qualified_mangled>:
+__yux_vtable.<U全限定>.<D全限定>:
   [0] dtor:        fn(ptr) void          ; U 的类型特定析构
   [1] D.method_0:  fn(ptr, ...) -> R     ; 按 D 声明序
   ...
@@ -587,7 +587,7 @@ struct S {
 - `d.m@D()` 合法且等价于 `d.m()`（dyn 携带 D 的 vtable，`@D` 仅作显式标注，仍按 vtable dispatch）。
 - `d.m@OtherSpec()` 拒（dyn 只携带 D 的 vtable，无法 dispatch 到其它 spec）；复用 **E1101** 语义类（"Type 'Dyn' does not implement spec method"）。
 
-§12.10.8.5 codegen：实现者类型 `S` 对每条 (spec, 带默认体的签名) 在 §12.10.4 fall-through 路径之外**额外合成一份** `S.m__at__<spec>` 符号；`$.m@SpecA()` / `obj.m@SpecA()` 调用点 codegen 期把 member 名重写为 `m__at__<spec>` 后走常规 dispatch。该额外符号仅在 `S` 实际参与 spec 实现宣告校验时合成，调用约定 / 借用语义与常规方法 + fall-through 等价（§8.6 / §8.5）。Mangler 不引入新规则——`__at__` 是合法 identifier 字串，沿用 `Mangler::method`。
+§12.10.8.5 codegen：实现者类型 `S` 对每条 (spec, 带默认体的签名) 在 §12.10.4 fall-through 路径之外**额外合成一份** `S.m@<spec>` 符号；`$.m@SpecA()` / `obj.m@SpecA()` 调用点 codegen 期把 member 名重写为 `m@<spec>` 后走常规 dispatch。该额外符号仅在 `S` 实际参与 spec 实现宣告校验时合成，调用约定 / 借用语义与常规方法 + fall-through 等价（§8.6 / §8.5）。Mangler 不引入新规则——`@` 嵌在方法名里，沿用 `Mangler::method`，与源码 `@Spec` 同形。
 
 §12.10.8.6 不在本节范围：
 

@@ -157,7 +157,7 @@ public:
 
     // DRAFT-spec-disambig-at: 为 `$.m@SpecA()` 形态 (即便 S 覆盖了 m, 也走 spec 默认体)
     // 预登记的"@-tagged" 方法发射点. 每个 (spec, sigIdx with default body) 一条;
-    // emitMethodName = origName + "__at__" + specShortName, 与 fall-through 的同名 fnSymbol
+    // emitMethodName = origName + "@" + specShortName, 与 fall-through 的同名 fnSymbol
     // 共存. 由 SpecImplChecker::validateImpl 登记; 由 Compiler::compileSpecDisambigEmits
     // 在常规方法 + fall-through 编完后逐条 emit.
     // NOLINTNEXTLINE(bugprone-exception-escape) — 同 InheritedDefault, 经 map / string 可能 bad_alloc.

@@ -9,6 +9,7 @@
 
 #include <csignal>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -22,6 +23,10 @@
 #include "utf8.h"
 
 #include "CLI/CLI.hpp"
+
+#ifdef _DEBUG
+#include <crtdbg.h>
+#endif
 
 using namespace yux;
 using namespace yux::cli;
@@ -44,6 +49,16 @@ void handleCrash(int signal) {
 int wmain(int argc, wchar_t* argv[]) { // NOLINT(modernize-avoid-c-arrays) Windows wmain signature
     SetConsoleCP(CP_UTF8);
     SetConsoleOutputCP(CP_UTF8);
+
+#ifdef _DEBUG
+    // Debug CRT 默认 assert/abort 弹框；`yux test` 并行 job 会挂起且父进程仍可能当成功。
+    // 改写 stderr 后走 SIGABRT → handleCrash → _exit(1)。
+    _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+    _set_abort_behavior(0, _WRITE_ABORT_MSG);
+#endif
 
     // --version：在 CLI11 解析之前手动处理，避免 require_subcommand 冲突。
     // CLI11 仍注册同名 flag 以确保 -h 显示 --version。

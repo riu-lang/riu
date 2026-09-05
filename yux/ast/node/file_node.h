@@ -73,6 +73,8 @@ public:
     // 仅本文件 impl（不含 wildcard）。ownerModule 消歧用。
     [[nodiscard]] StructImplNode* localStructImpl(const string& name) const;
     [[nodiscard]] FnNode* getFunction(const string& name) const;
+    // 声明齐备后用 header.getType() 回填 fn/method 符号的 owner（预登记时 enum/struct 可能还没进表）
+    void syncFnSymbolsFromAst();
     // 同 getFunction，同时返回所属 FileNode；搜索范围扩展到 wildcardImports
     [[nodiscard]] pair<FnNode*, FileNode*> getFunctionWithOwner(const string& name) const;
     // 仅返回 generic 重载（用于 dispatcher：与 lookupFnSymbolWithParams 命中的非泛型重载竞争优先级时用到）
