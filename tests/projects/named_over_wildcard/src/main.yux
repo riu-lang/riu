@@ -12,8 +12,8 @@ fn main() {
   let fromB = b.Ty {
     .y = 4
   }
-  println(7)
-  println(3)
-  println(4)
+  println(t.y)
+  println(fromA.x)
+  println(fromB.y)
   println(mark_a())
 }

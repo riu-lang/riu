@@ -813,17 +813,7 @@ TypeInfo ExprDotNode::getType() const {
             return {};
         }
 
-        // 查找 struct decl：先在本 FileNode 查，再沿 parentScope（SDK）链找
-        auto sd = file->getStructDecl(innerType->name, /*includeBuiltin=*/true);
-        if (!sd) {
-            ScopeNode* p = file->parentScope();
-            while (p && !sd) {
-                if (auto pf = dynamic_cast<FileNode*>(p)) {
-                    sd = pf->getStructDecl(innerType->name, /*includeBuiltin=*/true);
-                }
-                p = p->parentScope();
-            }
-        }
+        auto sd = namesFromFile(file).lookupStruct(*innerType, /*includeBuiltin=*/true);
 
         // 创建泛型替换表（innerType 有泛型实参时使用）
         map<string, TypeInfo> genSubst;

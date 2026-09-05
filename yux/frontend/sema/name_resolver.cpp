@@ -39,6 +39,22 @@ T* lookup3(FileNode* file, FileNode* sdkFile, Getter get, FileNode** outOwner) {
     return nullptr;
 }
 
+// `use a.b.Name`：裸名命中声明模块的本地类型，outOwner 是声明方（不是消费方）。
+template <typename T, typename Getter>
+T* lookupNamedType(FileNode* file, const string& name, Getter localGet, FileNode** outOwner) {
+    if (!file) return nullptr;
+    auto* named = file->namedTypeImports(name);
+    if (!named) return nullptr;
+    for (auto* owner : *named) {
+        if (!owner) continue;
+        if (auto* d = localGet(owner)) {
+            if (outOwner) *outOwner = owner;
+            return d;
+        }
+    }
+    return nullptr;
+}
+
 TypeInfo resolveAliasImpl(const TypeInfo& t, const NameResolver& nr, std::set<std::string>& visited) {
     if (!nr.file) return t;
     if (t.kind == TypeKind::Normal) {
@@ -200,15 +216,45 @@ TypePathResult bindTypeInFile(FileNode* target, const string& typeName) {
 } // namespace
 
 StructDeclNode* NameResolver::lookupStruct(const string& name, bool includeBuiltin, FileNode** outOwner) const {
+    if (file) {
+        if (auto* d = file->localStructDecl(name, includeBuiltin)) {
+            if (outOwner) *outOwner = file;
+            return d;
+        }
+        if (auto* d = lookupNamedType<StructDeclNode>(
+                file, name, [&](FileNode* f) { return f->localStructDecl(name, includeBuiltin); }, outOwner)) {
+            return d;
+        }
+    }
     return lookup3<StructDeclNode>(
         file, sdkFile, [&](FileNode* f) { return f->getStructDecl(name, includeBuiltin); }, outOwner);
 }
 
 EnumDeclNode* NameResolver::lookupEnum(const string& name, FileNode** outOwner) const {
+    if (file) {
+        if (auto* d = file->localEnumDecl(name)) {
+            if (outOwner) *outOwner = file;
+            return d;
+        }
+        if (auto* d = lookupNamedType<EnumDeclNode>(
+                file, name, [&](FileNode* f) { return f->localEnumDecl(name); }, outOwner)) {
+            return d;
+        }
+    }
     return lookup3<EnumDeclNode>(file, sdkFile, [&](FileNode* f) { return f->getEnumDecl(name); }, outOwner);
 }
 
 AliasDeclNode* NameResolver::lookupAlias(const string& name, FileNode** outOwner) const {
+    if (file) {
+        if (auto* d = file->localAliasDecl(name)) {
+            if (outOwner) *outOwner = file;
+            return d;
+        }
+        if (auto* d = lookupNamedType<AliasDeclNode>(
+                file, name, [&](FileNode* f) { return f->localAliasDecl(name); }, outOwner)) {
+            return d;
+        }
+    }
     return lookup3<AliasDeclNode>(file, sdkFile, [&](FileNode* f) { return f->getAliasDecl(name); }, outOwner);
 }
 
@@ -258,6 +304,16 @@ EnumDeclNode* NameResolver::lookupEnum(const TypeInfo& t, FileNode** outOwner) c
 }
 
 StructImplNode* NameResolver::lookupStructImpl(const string& name, FileNode** outOwner) const {
+    if (file) {
+        if (auto* d = file->localStructImpl(name)) {
+            if (outOwner) *outOwner = file;
+            return d;
+        }
+        if (auto* d = lookupNamedType<StructImplNode>(
+                file, name, [&](FileNode* f) { return f->localStructImpl(name); }, outOwner)) {
+            return d;
+        }
+    }
     return lookup3<StructImplNode>(file, sdkFile, [&](FileNode* f) { return f->getStructImpl(name); }, outOwner);
 }
 

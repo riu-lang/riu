@@ -14,7 +14,7 @@ struct FnSymbolInfo;
 struct TypeInfo;
 struct TypePath;
 
-// 跨文件名字查找（0 LLVM）：本文件 → SDK → wildcard imports。
+// 跨文件名字查找（0 LLVM）：L1 本文件本地 → L2 具名导入 → SDK / L3 wildcard。
 // FileNode::get* 已含本文件 wildcard；此处再补 SDK，并保留第三段
 // `imp->get*`（导入文件自己的 wildcard，与历史 lookupEnumDecl 一致）。
 namespace sema {

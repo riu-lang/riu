@@ -6,6 +6,6 @@ fn main() {
     .x = 3
     .y = 4
   }
-  println(3)
-  println(4)
+  println(p.x)
+  println(p.y)
 }

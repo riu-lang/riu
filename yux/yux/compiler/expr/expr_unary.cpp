@@ -175,9 +175,9 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
             if (auto inner = currentType.rcElementType()) currentType = *inner;
         }
 
-        auto structDecl = _file->getStructDecl(currentType.name);
-        if (!structDecl && _yux && _yux->sdkFile()) {
-            structDecl = _yux->sdkFile()->getStructDecl(currentType.name);
+        auto structDecl = names().lookupStruct(currentType);
+        if (!structDecl) {
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
         int fieldIndex = structDecl->fieldIndex(memberName);
         auto field = structDecl->fields()[fieldIndex];

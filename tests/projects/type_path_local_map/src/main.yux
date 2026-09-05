@@ -1,4 +1,4 @@
-; 本文件 struct Map 盖住裸名；SDK Map 走路径（类型位）
+; 本文件 struct Map 盖住裸名；SDK Map 走路径（含方法实例化）
 
 struct Map {
   n i32
@@ -15,4 +15,8 @@ fn main() {
     .n = 1
   }
   println(mine.n)
+  let m = map.Map:<i32, i32>::make()
+  if m.is_empty() {
+    println(1)
+  }
 }

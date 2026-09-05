@@ -575,10 +575,7 @@ llvm::Value* Compiler::compileLvalueAddr(p<ExprNode> node) {
             throwSemaGap(line, col);
         }
         // 找字段索引
-        auto* decl = _file ? _file->getStructDecl(baseType.name) : nullptr;
-        if (!decl && _yux && _yux->sdkFile()) {
-            decl = _yux->sdkFile()->getStructDecl(baseType.name);
-        }
+        auto* decl = names().lookupStruct(baseType);
         if (!decl) {
             // E3041 / E3043 由 SemaPass 读路径先抛；此处防 IR 无 decl 可 GEP。
             throwSemaGap(line, col);

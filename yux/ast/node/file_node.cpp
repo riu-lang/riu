@@ -545,6 +545,11 @@ FileNode* FileNode::getStructOwner(const string& name) {
     for (auto& decl : _structDecls) {
         if (decl->name().getText() == name) return this;
     }
+    if (auto* named = namedTypeImports(name)) {
+        for (auto* o : *named) {
+            if (o && (o->localStructDecl(name) || o->localStructImpl(name))) return o;
+        }
+    }
     for (auto* imp : _wildcardImports) {
         if (imp->getStructDecl(name) || imp->getStructImpl(name)) return imp;
     }

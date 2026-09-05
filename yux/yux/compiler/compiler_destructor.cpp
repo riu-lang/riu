@@ -330,10 +330,7 @@ bool Compiler::tryHeapNullableLvalueSlot(ExprNode* expr, llvm::Value*& outSlot, 
         if (bit == _localVarPtrs.end()) return false;
         auto baseType = applySubst(baseE->getType());
         if (baseType.isRef() || baseType.isRc()) return false;
-        StructDeclNode* sd = _file ? _file->getStructDecl(baseType.name) : nullptr;
-        if (!sd && _yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
-            sd = _yux->sdkFile()->getStructDecl(baseType.name);
-        }
+        StructDeclNode* sd = names().lookupStruct(baseType);
         if (!sd) {
             auto instIt = _structInstances.find(baseType.name);
             if (instIt != _structInstances.end()) sd = instIt->second.baseDecl;

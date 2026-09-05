@@ -77,12 +77,9 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
     string genericEffName;
     map<string, TypeInfo> genericSubst;
     if (!methodSymbol && actualType.hasGenericArgs()) {
-        auto baseDecl = _file->getStructDecl(actualType.name);
-        p<FileNode> owner = _file;
-        if (!baseDecl && _yux && _yux->sdkFile()) {
-            baseDecl = _yux->sdkFile()->getStructDecl(actualType.name);
-            if (baseDecl) owner = _yux->sdkFile();
-        }
+        FileNode* owner = _file;
+        auto baseDecl = names().lookupStruct(actualType, /*includeBuiltin=*/false, &owner);
+        if (!owner) owner = _file;
         if (baseDecl && baseDecl->isGeneric()) {
             genericEffName = ensureStructInstance(baseDecl, actualType.genericArgs, owner);
             auto& inst = _structInstances[genericEffName];
@@ -110,10 +107,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
         retType = methodSymbol->retType;
         // 泛型替换
         if (actualType.hasGenericArgs() && !actualType.genericArgs.empty()) {
-            StructDeclNode* structDecl = _file->getStructDecl(actualType.name, /*includeBuiltin=*/true);
-            if (!structDecl && _yux && _yux->sdkFile()) {
-                structDecl = _yux->sdkFile()->getStructDecl(actualType.name, /*includeBuiltin=*/true);
-            }
+            StructDeclNode* structDecl = names().lookupStruct(actualType, /*includeBuiltin=*/true);
             if (structDecl && structDecl->isGeneric() &&
                 structDecl->typeParams().size() == actualType.genericArgs.size()) {
                 map<string, TypeInfo> subst;
@@ -477,10 +471,7 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
                 }
             }
         }
-        auto outerStructDecl = _file->getStructDecl(outerActual.name);
-        if (!outerStructDecl && _yux && _yux->sdkFile()) {
-            outerStructDecl = _yux->sdkFile()->getStructDecl(outerActual.name);
-        }
+        auto outerStructDecl = names().lookupStruct(outerActual);
         if (outerPtr && outerStructDecl) {
             int fi = outerStructDecl->fieldIndex(dotBase->member());
             if (fi >= 0) {
@@ -1214,12 +1205,9 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
                                                vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
 
     if (actualType.hasGenericArgs()) {
-        auto baseDecl = _file->getStructDecl(actualType.name);
-        p<FileNode> owner = _file;
-        if (!baseDecl && _yux && _yux->sdkFile()) {
-            baseDecl = _yux->sdkFile()->getStructDecl(actualType.name);
-            if (baseDecl) owner = _yux->sdkFile();
-        }
+        FileNode* owner = _file;
+        auto baseDecl = names().lookupStruct(actualType, /*includeBuiltin=*/false, &owner);
+        if (!owner) owner = _file;
         if (baseDecl && baseDecl->isGeneric()) {
             string effName = ensureStructInstance(baseDecl, actualType.genericArgs, owner);
             auto& inst = _structInstances[effName];

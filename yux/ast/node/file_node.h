@@ -135,8 +135,8 @@ public:
     void addNamedTypeImport(const string& name, FileNode* owner);
     [[nodiscard]] const vector<FileNode*>* namedTypeImports(const string& name) const;
 
-    // 给定结构体名，返回其所属的 FileNode；本地优先，其次按 wildcardImports
-    // 顺序查找。未找到返回 nullptr。
+    // 给定结构体名，返回其所属的 FileNode；本地优先，其次具名导入，再 wildcardImports。
+    // 未找到返回 nullptr。
     FileNode* getStructOwner(const string& name);
 
     // 已关联模块：本文件 / 通配导入 / 模块别名 / 包孩子 / 父作用域（SDK）。

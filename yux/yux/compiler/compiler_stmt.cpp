@@ -1246,11 +1246,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                                                     static_cast<int>(intLit->getValue().getLine()),
                                                     static_cast<int>(intLit->getValue().getCharPositionInLine()) + 1);
                                                 if (idx >= 0) {
-                                                    auto* file = _file;
-                                                    sd = file->getStructDecl(structName);
-                                                    if (!sd && _yux && _yux->sdkFile()) {
-                                                        sd = _yux->sdkFile()->getStructDecl(structName);
-                                                    }
+                                                    sd = names().lookupStruct(structName);
                                                     if (sd) {
                                                         int nonStaticCount = 0;
                                                         for (auto& f : sd->fields()) {
@@ -1285,11 +1281,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                                                         static_cast<int>(intLit->getValue().getCharPositionInLine()) +
                                                             1);
                                                     if (idx >= 0) {
-                                                        auto* file = _file;
-                                                        sd = file->getStructDecl(structName);
-                                                        if (!sd && _yux && _yux->sdkFile()) {
-                                                            sd = _yux->sdkFile()->getStructDecl(structName);
-                                                        }
+                                                        sd = names().lookupStruct(structName);
                                                         if (sd) {
                                                             int nonStaticCount = 0;
                                                             for (auto& f : sd->fields()) {
@@ -1359,10 +1351,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
             }
         }
 
-        auto structDecl = _file->getStructDecl(actualType.name);
-        if (!structDecl && _yux && _yux->sdkFile()) {
-            structDecl = _yux->sdkFile()->getStructDecl(actualType.name);
-        }
+        auto structDecl = names().lookupStruct(actualType);
         if (!structDecl) {
             throwSemaGap(node->getLineNumber(), node->getColumn());
         }
@@ -1454,10 +1443,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                     typeNeedsDestructor(interType)) {
                     throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
-                auto interStructDecl = _file->getStructDecl(interType.name);
-                if (!interStructDecl && _yux && _yux->sdkFile()) {
-                    interStructDecl = _yux->sdkFile()->getStructDecl(interType.name);
-                }
+                auto interStructDecl = names().lookupStruct(interType);
                 if (!interStructDecl) {
                     throwSemaGap(node->getLineNumber(), node->getColumn());
                 }
@@ -1684,10 +1670,7 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
             }
         }
 
-        auto outerStructDecl = _file->getStructDecl(outerActual.name);
-        if (!outerStructDecl && _yux && _yux->sdkFile()) {
-            outerStructDecl = _yux->sdkFile()->getStructDecl(outerActual.name);
-        }
+        auto outerStructDecl = names().lookupStruct(outerActual);
 
         if (outerPtr && outerStructDecl) {
             int fi = outerStructDecl->fieldIndex(dotExpr->member());

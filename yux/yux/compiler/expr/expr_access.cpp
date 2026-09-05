@@ -62,7 +62,7 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
         auto baseType = dotNode->baseExpr()->getType();
         auto member = dotNode->member();
 
-        auto structDecl = _file->getStructDecl(baseType.name);
+        auto structDecl = names().lookupStruct(baseType);
         if (structDecl) {
             int fieldIndex = structDecl->fieldIndex(member);
             if (fieldIndex >= 0) {
@@ -227,10 +227,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
         }
     }
 
-    auto structDecl = _file->getStructDecl(actualType.name, /*includeBuiltin=*/true);
-    if (!structDecl && _yux && _yux->sdkFile()) {
-        structDecl = _yux->sdkFile()->getStructDecl(actualType.name, /*includeBuiltin=*/true);
-    }
+    auto structDecl = names().lookupStruct(actualType, /*includeBuiltin=*/true);
 
     if (structDecl) {
 
@@ -362,10 +359,7 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
         }
         innerType = rcInner;
     }
-    auto innerStructDecl = _file->getStructDecl(innerType->name);
-    if (!innerStructDecl && _yux && _yux->sdkFile()) {
-        innerStructDecl = _yux->sdkFile()->getStructDecl(innerType->name, /*includeBuiltin=*/true);
-    }
+    auto innerStructDecl = names().lookupStruct(*innerType, /*includeBuiltin=*/true);
     if (!innerStructDecl) {
         throwSemaGap(node->resolveLineNumber(), node->resolveColumn());
     }
