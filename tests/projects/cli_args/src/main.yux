@@ -1,0 +1,6 @@
+; 无额外参数时 argc 为 1（argv[0] 由宿主填，内容不保证）
+
+fn main() {
+  let a Array<String> = args()
+  println(a.len())
+}

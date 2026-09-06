@@ -15,6 +15,13 @@
 
 ---
 
+## 2026-09-06 —— CLI：`args()` / `tick_ms()` / `String.parse_i32`
+
+- **新增 §10.4.1.6**：`args() Array<String>`（含 argv[0]）、`tick_ms() u32`；`fn main() i32` 仍不做，非零退出走 `exit`。
+- **新增 §9.3.4.6**：`String.parse_i32() i32?`；可选 `+`/`-`，不吃空白，溢出 / 非法为 `null`。
+- **附录 C**：`args()`。
+- **冲突 / 兼容**：纯增量。链接默认加 `shell32.lib`（`CommandLineToArgvW`）。
+
 ## 2026-09-06 —— FFI D2：C API 操作 yux 仍持有的 Rc / Nullable / String
 
 - **新增 §8.7.4.7 / §9.7.2.9**：`yuxrt.lib` 手写 `yux_rc.h` / `yux_nullable.h` / `yux_string.h`。C 可读 payload、extra retain/release；**不**从 `Ptr` 重建 yux 类型；最后一次 strong 归零且 `T` 含嵌套堆字段时必须走 yux typed release。

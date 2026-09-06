@@ -426,7 +426,8 @@ static int buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const st
             if (needLink) {
                 std::string dllOut = "/out:" + testDllPath;
                 // DLL 模式：/dll，无需 /entry /subsystem /kernel32.lib
-                std::vector<const char*> linkArgs = {"lld-link", dllOut.c_str(), "/dll", "/noentry", "kernel32.lib"};
+                std::vector<const char*> linkArgs = {"lld-link", dllOut.c_str(), "/dll",
+                                                     "/noentry", "kernel32.lib", "shell32.lib"};
                 for (auto& o : linkObjs)
                     linkArgs.insert(linkArgs.begin() + 1, o.c_str());
                 // yuxrt 运行时库
@@ -1035,8 +1036,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
     if (needLink) {
         auto exeOut = "/out:" + exePath;
 
-        std::vector<const char*> args = {"lld-link",           objPath.c_str(),      exeOut.c_str(),
-                                         "/subsystem:console", "/entry:mainStartup", "kernel32.lib"};
+        std::vector<const char*> args = {"lld-link",           objPath.c_str(), exeOut.c_str(), "/subsystem:console",
+                                         "/entry:mainStartup", "kernel32.lib",  "shell32.lib"};
 
         if (!sdkLibPath.empty()) {
             args.insert(args.begin() + 2, sdkLibPath.c_str());

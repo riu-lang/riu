@@ -11,6 +11,7 @@
 ;   - ToString 自动分发（i32 / i64 / u64 / bool / f64）
 ;   - String + 链式连接（含左右非 String、混合类型链）
 ;   - 边界条件（空字符串、纯插值）
+;   - parse_i32（十进制 / 符号 / 溢出 / 非法）
 
 ; ==================== 等值比较 ====================
 
@@ -687,4 +688,38 @@ fn test_string_single_char() {
   ; 验证：单字符字符串 len() == 1
   let s String = "x"
   assert_eq(s.len(), 1)
+}
+
+; ==================== parse_i32 ====================
+
+#Test
+fn test_parse_i32_basic() {
+  let z i32? = "0".parse_i32()
+  assert_eq(z.get(), 0)
+  let p i32? = "42".parse_i32()
+  assert_eq(p.get(), 42)
+  let n i32? = "-1".parse_i32()
+  assert_eq(n.get(), -1)
+  let plus i32? = "+7".parse_i32()
+  assert_eq(plus.get(), 7)
+}
+
+#Test
+fn test_parse_i32_bounds() {
+  let mx i32? = "2147483647".parse_i32()
+  assert_eq(mx.get(), 2147483647)
+  let mn i32? = "-2147483648".parse_i32()
+  assert_eq(mn.get(), -2147483648)
+}
+
+#Test
+fn test_parse_i32_invalid() {
+  assert_false("".parse_i32().has())
+  assert_false("-".parse_i32().has())
+  assert_false("+".parse_i32().has())
+  assert_false("12a".parse_i32().has())
+  assert_false(" 1".parse_i32().has())
+  assert_false("1 ".parse_i32().has())
+  assert_false("2147483648".parse_i32().has())
+  assert_false("-2147483649".parse_i32().has())
 }

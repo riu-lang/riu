@@ -351,6 +351,70 @@ struct String {
     ret parts
   }
 
+  ; 十进制有符号 i32。可选前导 `+` / `-`；不吃空白。空 / 非数字 / 溢出 → null。
+  fn parse_i32() i32? {
+    let a Array<u32>& = as_ref($._buf)
+    let n usize = a.len()
+    if n == 0 {
+      ret null
+    }
+    #Mut let i usize = 0
+    #Mut let neg bool = false
+    let first u32 = copy_of(a[0])
+    if first == c'-' {
+      neg = true
+      i = 1
+      if i >= n {
+        ret null
+      }
+    } elif first == c'+' {
+      i = 1
+      if i >= n {
+        ret null
+      }
+    }
+    #Mut let acc i32 = 0
+    #Mut let any bool = false
+    loop {
+      if i >= n {
+        break;
+      }
+      let cp u32 = copy_of(a[i])
+      if cp < c'0' || cp > c'9' {
+        ret null
+      }
+      let d i32 = (cp - c'0').to_i32()
+      any = true
+      if acc > 214748364 {
+        ret null
+      }
+      if acc == 214748364 {
+        if neg && d == 8 {
+          i += 1
+          if i != n {
+            ret null
+          }
+          ret -2147483648
+        }
+        if !neg && d > 7 {
+          ret null
+        }
+        if neg && d > 8 {
+          ret null
+        }
+      }
+      acc = acc * 10 + d
+      i += 1
+    }
+    if !any {
+      ret null
+    }
+    if neg {
+      ret -acc
+    }
+    ret acc
+  }
+
   ; 转为 UTF-8 字节数组
   fn to_bytes() Array<u8> {
     let a Array<u32>& = as_ref($._buf)

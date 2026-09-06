@@ -108,6 +108,7 @@
 | same_ref | same_ref | §8.7.5.2 / §10 | 地址相等 builtin |
 | ptr_of | ptr_of | §8.7.4.4 / §9.7.2.4 | 显式转 `Ptr` builtin |
 | c_string / from_c_chars | C string copy | §9.7.2.8 | UTF-8+NUL 拷贝；不 wrap `Ptr` |
+| `args()` | process args | §10.4.1.6 | 命令行 `Array<String>`；`[0]` 为 exe |
 
 ## C.6 模块 / 注解
 

@@ -8,6 +8,16 @@ extern {
   #NoReturn
   fn ExitProcess(uExitCode u32)
 
+  ; 命令行 / 时钟（`_` + #CName：避免扁平进 core 后与自身 E6014）
+  #CName("GetCommandLineW")
+  fn _GetCommandLineW() Ptr
+  #CName("CommandLineToArgvW")
+  fn _CommandLineToArgvW(lpCmdLine Ptr, pNumArgs Ptr) Ptr
+  #CName("LocalFree")
+  fn _LocalFree(hMem Ptr) Ptr
+  #CName("GetTickCount")
+  fn _GetTickCount() u32
+
   ; yuxrt 内存管理（替代 Win32 HeapAlloc/HeapFree）
   fn yuxrt_alloc(size u64) Ptr
   fn yuxrt_alloc_zeroed(size u64) Ptr
@@ -506,4 +516,68 @@ fn from_c_chars(p Ptr) String {
     }
   }
   String::from(&cps)
+}
+
+; UTF-16 NUL 结尾（LPWSTR）→ String。不合法代理对按 U+FFFD。p 为 null → 空串。
+fn _from_wide_chars(p Ptr) String {
+  if p.to_int() == 0u64 {
+    ret String::empty()
+  }
+  #Mut let cps Array<u32> = []
+  #Mut let cur Ptr = p
+  loop {
+    let w0 u16& = _ptr_as_ref:<u16>(cur)
+    let x u16 = copy_of(w0)
+    if x == 0u16 {
+      break;
+    }
+    if x >= 55296u16 && x < 56320u16 {
+      cur = _ptr_offset(cur, 2i64)
+      let w1 u16& = _ptr_as_ref:<u16>(cur)
+      let y u16 = copy_of(w1)
+      if y >= 56320u16 && y < 57344u16 {
+        let cp u32 = 65536u32 + ((x.to_u32() - 55296u32) << 10u32) + (y.to_u32() - 56320u32)
+        cps.push(cp)
+        cur = _ptr_offset(cur, 2i64)
+      } else {
+        cps.push(65533u32)
+        if y == 0u16 {
+          break;
+        }
+        cur = _ptr_offset(cur, 2i64)
+      }
+    } else {
+      cps.push(x.to_u32())
+      cur = _ptr_offset(cur, 2i64)
+    }
+  }
+  String::from(&cps)
+}
+
+; 进程命令行。含 argv[0]（exe 路径）；用户参数从 [1] 起。失败 → []。
+fn args() Array<String> {
+  let cmd Ptr = _GetCommandLineW()
+  #Mut let n i32 = 0
+  let argv Ptr = _CommandLineToArgvW(cmd, &n)
+  if argv.to_int() == 0u64 {
+    ret []
+  }
+  #Mut let out Array<String> = []
+  loop i usize = 0 {
+    if i.to_i32() >= n {
+      break;
+    }
+    let slot Ptr = _ptr_offset(argv, i.to_i64() * 8i64)
+    let addr u64& = _ptr_as_ref:<u64>(slot)
+    let wstr Ptr = ptr_from_addr(copy_of(addr))
+    out.push(_from_wide_chars(wstr))
+    i += 1
+  }
+  _LocalFree(argv);
+  ret out
+}
+
+; 自开机起的毫秒（GetTickCount，约 49 天回绕）。CLI 种子用，不承诺单调高精度。
+fn tick_ms() u32 {
+  _GetTickCount()
 }

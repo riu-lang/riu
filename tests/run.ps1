@@ -167,7 +167,15 @@ function Invoke-OneCase {
                 if ($r.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $exe)) {
                     $err = "compile failed`n$($r.Stderr)$($r.Stdout)"
                 } else {
-                    $run = Invoke-Capture $exe @() $Case.Dir
+                    $exeArgs = @()
+                    $runArgsFile = Join-Path $Case.Dir 'run_args.txt'
+                    if (Test-Path -LiteralPath $runArgsFile) {
+                        $exeArgs = @(
+                            Get-Content -LiteralPath $runArgsFile |
+                                Where-Object { $_.Trim().Length -gt 0 -and -not $_.Trim().StartsWith('#') }
+                        )
+                    }
+                    $run = Invoke-Capture $exe $exeArgs $Case.Dir
                     $expected = [IO.File]::ReadAllText((Join-Path $Case.Dir 'expected.txt'))
                     if ($run.ExitCode -ne 0) {
                         $err = "run failed exit $($run.ExitCode)`n$($run.Stderr)$($run.Stdout)"

@@ -145,12 +145,12 @@
 
 **退出标准**：
 
-- [ ] 不依赖手写 C 即可编写并运行 ≥3 个独立 CLI 示例（stdin/stdout/文件/退出码）
-- [ ] `continue` + `for-in`（Array / 定长数组）有 SDK 测试与 spec 条款
+- [x] 不依赖手写 C 即可编写并运行 ≥3 个独立 CLI 示例（stdin/stdout/文件/退出码）
+- [x] `continue` + `for-in`（Array / 定长数组）有 SDK 测试与 spec 条款
 - [x] `yux.io`（或等价）read/write 有 SDK 测试；stderr 通道可用
 - [x] `Map<K,V>` 基本 get/insert/contains 可用（性能不承诺）
-- [ ] FFI 示例项目 + extern 边界文档与 `yux test` / `yux-check test` / `./build.ps1 test` 全绿
-- [ ] `./lint.ps1` 0 warnings；CHANGELOG 收口
+- [x] FFI 示例项目 + extern 边界文档与 `yux test` / `yux-check test` / `./build.ps1 test` 全绿
+- [x] `./lint.ps1` 0 warnings；CHANGELOG 收口
 
 **依赖**：v0.20 已完成（spawn、`.decl`、SemaPass 收口）。
 
