@@ -60,6 +60,7 @@ class Compiler {
     map<string, llvm::Value*> _localVarPtrs;     // 局部变量名 -> 栈上地址 (alloca)
     map<string, CastInfo> _castFunctions;        // 延迟类型转换缓存
     int _castCounter = 0;                        // 类型转换计数器，用于生成唯一名称
+    int _forInSerial = 0;                        // for-in 临时集合名
 
     // ==================== 泛型单态化 ====================
     // 泛型结构体单态化：key = 定义模块全限定实例名（如 "yux.core.map.Map<i32,i32>"）
@@ -190,9 +191,11 @@ class Compiler {
     struct LoopExitInfo {
         string label;
         llvm::BasicBlock* exitBB;
-        size_t frameDepthBeforeLoop = 0; // break 时 unwind 到此深度（含销毁 loop-init 帧）
+        llvm::BasicBlock* continueBB = nullptr; // 下一轮入口（loop=condBB；for-in=incBB）
+        size_t frameDepthBeforeLoop = 0;        // break 时 unwind 到此深度（含销毁 loop-init 帧）
+        size_t frameDepthBeforeBody = 0;        // continue 时 unwind 到此深度（保留 init）
     };
-    vector<LoopExitInfo> _loopExitBlocks; // 循环退出块栈 (用于 break / break@label)
+    vector<LoopExitInfo> _loopExitBlocks; // 循环退出块栈 (用于 break / continue / @label)
 
 public:
     // DRAFT-错误.md [#4.H]：try-catch 块栈
@@ -407,7 +410,9 @@ private:
     void compileDeclareAssignTupleStatement(p<StatementDeclareAssignTupleNode> node); // 编译元组解构声明语句
     void compileAssignStatement(p<StatementAssignNode> node);                         // 编译赋值语句
     void compileLoopStatement(p<StatementLoopNode> node);                             // 编译 loop 语句
+    void compileForInStatement(p<StatementForInNode> node);                           // 编译 for-in 语句
     void compileBreakStatement(p<StatementBreakNode> node);                           // 编译 break 语句
+    void compileContinueStatement(p<StatementContinueNode> node);                     // 编译 continue 语句
     void compileArraySetStatement(p<StatementSetNode> node);                          // 编译数组元素赋值语句
     void compileStaticFieldSetStatement(p<StatementStaticFieldSetNode> node);         // 编译静态字段写语句 (Phase 5)
 

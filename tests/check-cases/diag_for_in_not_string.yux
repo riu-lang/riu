@@ -1,0 +1,7 @@
+; require-sdk
+fn main() {
+    let s String = "hi"
+    for x in s { ; check: E3160
+        break;
+    }
+}

@@ -61,7 +61,9 @@
 | Null 兜底 | null-coalescing | §4.6 / `exprNullElse` | `a ?? b` |
 | 表达式语句 | expression statement | §5.3 | `expr ';'? codeLineEnd` |
 | 声明语句 | declaration statement | §5.1 | `let`（默认 / `#Mut` / `#Cval` / `#Frozen` 档位） |
-| 控制流 | control flow | §5.4 / §5.5 | `if` / `loop` / `break` / `ret` |
+| 控制流 | control flow | §5.4 / §5.5 | `if` / `loop` / `for-in` / `break` / `continue` / `ret` |
+| continue | continue | §5.5.3 | 跳到最近一层（或 `@label`）`loop` / `for` 的下一轮 |
+| for-in | for-in | §5.5.4 | `for item in expr`；仅 `Array<T>` / `[T*N]`；`item` 为元素 `T&` |
 | 作用域 | scope | §5.7 | 词法块；析构按声明逆序 |
 
 ## C.4 函数

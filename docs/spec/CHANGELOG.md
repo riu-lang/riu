@@ -15,6 +15,14 @@
 
 ---
 
+## 2026-09-06 —— `continue` / `for-in`（v0.21 Phase C）
+
+- **新增 §5.5.3 / §5.5.4**：`continue` / `continue@label;` 与 `for item in expr`（item 为 `T&`；仅 `Array<T>` / `[T*N]`，可 peelRef；长度入口拍照）。
+- **修改 §5.5.1–§5.5.2 / §5.5.5 / §5.7**：`break`/`continue` 作用于 `loop` 与 `for`；label 共用栈（E3022 / E3025 / E3094）。
+- **修改 §1.5 / 附录 A / 附录 B §B.7**：关键字 `continue` / `for` / `in`；产生式 `statementContinue` / `statementForIn`。
+- **修改 附录 C / 附录 D**：控制流术语；E3025 / E3094 文案泛化；新增 E3160。
+- **冲突 / 兼容**：`for` / `in` / `continue` 升关键字，不得再作标识符。无 `while` / C 风格 `for(;;)` / `Iter<T>`。
+
 ## 2026-09-05 —— LLVM 符号与全限定 / yux 声明调用同形
 
 - **修改 §6.5.6**：用户/SDK 符号用定义模块全限定；形参类型带 owner；静态方法 `::`；泛型 `<>`；`@Spec` 写作 `m@Spec`。不用 `$` / `_` 当路径分隔。泛型实例多 TU 靠 `linkonce_odr` 合并。

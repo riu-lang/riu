@@ -445,7 +445,9 @@ private:
             throw YuxError(s->getLineNumber(), s->getColumn(), ErrorCode::E3141, _fnName, what);
         };
         if (dynamic_cast<p<StatementLoopNode>>(s)) throwE("loop");
+        if (dynamic_cast<p<StatementForInNode>>(s)) throwE("for-in");
         if (dynamic_cast<p<StatementBreakNode>>(s)) throwE("break");
+        if (dynamic_cast<p<StatementContinueNode>>(s)) throwE("continue");
         // StatementAssignNode / StatementSetNode 写本地 cval = E3093 (compiler 端);
         // 写参数 / $ / 全局 = E3110 (checkConstFnWrite/Set). 不在此层抢报, 让既有错码生效.
         if (dynamic_cast<p<StatementAssignNode>>(s)) return;
@@ -480,6 +482,10 @@ private:
         }
         if (auto loop = dynamic_cast<p<StatementLoopNode>>(s)) {
             visitBlock(loop->block());
+            return;
+        }
+        if (auto forin = dynamic_cast<p<StatementForInNode>>(s)) {
+            visitBlock(forin->block());
             return;
         }
         if (auto dn = dynamic_cast<p<StatementDeclareNode>>(s)) {

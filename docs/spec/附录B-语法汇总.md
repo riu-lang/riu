@@ -294,11 +294,13 @@ statement ::=
   | expr '[' expr (',' expr)* ']' '=' expr codeLineEnd?                   # statementSet
   | ID '::' ID '=' expr codeLineEnd?                                      # statementStaticFieldSet
   | (ID ':')? 'loop' loopInit? statementBlock codeLineEnd?                # statementLoop
+  | (ID ':')? 'for' ID 'in' expr statementBlock codeLineEnd?               # statementForIn
   | (ID | '$') ('.' ID | DOT_NUM)* opAssign expr codeLineEnd?   # statementAssign
   | expr ';'? codeLineEnd?                                      # statementExpr
   | 'ret' expr codeLineEnd?                                     # statementRet
   | 'ret' ';' codeLineEnd?                                      # statementRetVoid
   | 'break' ('@' ID)? ';' codeLineEnd?                          # statementBreak
+  | 'continue' ('@' ID)? ';' codeLineEnd?                       # statementContinue
 
 statementBlock ::= '{' LineEnd*
                        (statement | comment | codeLineEnd)*

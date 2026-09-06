@@ -124,9 +124,9 @@ N | <源码行原文>
 | E3016 | `Weak<{}> 仅支持从 Rc<{}> 或 Weak<{}> 构造` | |
 | E3018 | `T& copy-bind source type mismatch: '{}' is not {}&` | |
 | E3019 | `T& local initializer must be &expr or copy-bind from a T& variable` | |
-| E3022 | `Duplicate loop label '{}': already used by an enclosing loop` | labeled break（v0.18）|
+| E3022 | `Duplicate loop label '{}': already used by an enclosing loop` | labeled loop / for（v0.18 / v0.21）|
 | E3024 | `Operator requires Nullable<T> on the left, got {}` | 原 E3024-E3025 合并 |
-| E3025 | `break@label '{}' target not found: no enclosing loop with that label` | labeled break（v0.18）|
+| E3025 | `` `{}`@label '{}' target not found: no enclosing loop with that label `` | `break` / `continue`@label |
 | E3026 | `` String template interpolation requires type implementing ToString, got '{}' `` | |
 
 符号查找：
@@ -190,7 +190,7 @@ N | <源码行原文>
 | E3091 | `Unknown expression type` |
 | E3092 | `Unknown statement type` |
 | E3093 | `Cannot assign to immutable variable: {}` |
-| E3094 | `break statement not within a loop` |
+| E3094 | `` `{}` statement not within a loop `` |
 | E3095 | `Type {} is not a Function` |
 | E3096 | `Cannot get LLVM type for '{}'` |
 | E3097 | `Cannot determine type for reference expression: no scope` |
@@ -251,6 +251,12 @@ static-vars（E3150..E3157；引入自 [draft/DRAFT-static-vars.md](draft/DRAFT-
 | E3157 | `#Static field '{}' on generic struct '{}' is not allowed (DRAFT-static-vars §4.3; v1 prohibits static fields on generic structs)` |
 
 > E3152（实例访问静态字段 `obj.FIELD`）与 E3158（读未初始化的 `#Mut` 全局）在 v1 占位未启用；当前实例走静态字段时由既有字段查找路径报 `E3040`。
+
+for-in（E3160；§5.5.4）：
+
+| 码 | 模板 |
+|---|---|
+| E3160 | `` `for-in` iterable must be Array<T> or [T*N], got '{}' `` |
 
 构造模型重构（E3120..E3128；引入自 [draft/DRAFT-static-fn.md](draft/DRAFT-static-fn.md)，落地章节 §7.10）：
 

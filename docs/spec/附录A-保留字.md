@@ -8,17 +8,20 @@
 
 | 关键字 | g4 token | 说明 | 章节 |
 |---|---|---|---|
-| `break` | `Break` | 跳出 `loop` | §5.5 |
+| `break` | `Break` | 跳出 `loop` / `for` | §5.5 |
 | `catch` | `Catch` | 错误路由块的捕获子句（草案） | DRAFT-错误.md §5 |
+| `continue` | `Continue` | 跳到 `loop` / `for` 下一轮 | §5.5 |
 | `elif` | `Elif` | 多分支条件 | §4.9 / §5.4 |
 | `else` | `Else` | 条件分支兜底 / `match` 兜底 | §4.9 / §5.4 / §3.10 |
 | `enum` | `Enum` | 枚举声明 | §3.10 |
 | `extern` | `Extern` | 外部声明块 | §6.6 |
 | `false` | `False` | 布尔字面量 | §1.6.4 |
 | `fn` | `Fn` | 函数声明 | §6 |
+| `for` | `For` | `for item in expr` 遍历 | §5.5.4 |
 | `if` | `If` | 条件表达式 / 语句 | §4.9 / §5.4 |
+| `in` | `In` | `for` 的遍历介词 | §5.5.4 |
 | `let` | `Let` | 局部 / 全局变量声明（含 `#Mut` / `#Cval` / `#Frozen` 注解修饰档位） | §5.1 |
-| `loop` | `Loop` | 循环 | §5.5 |
+| `loop` | `Loop` | 无限循环 | §5.5 |
 | `match` | `Match` | 模式匹配（仅 enum） | §3.10 / §4 |
 | `null` | `Null` | 空字面量 | §3.6.1.3 / §1.6.7 |
 | `ret` | `Ret` | 返回语句 / 错误抛出（草案） | §5.6 / DRAFT-错误.md §4.1 |
@@ -31,8 +34,6 @@
 §A.1.1 `let` 是局部 / 全局变量声明的唯一引入符（[DRAFT-let-unify](draft/DRAFT-let-unify.md)）；可变性 / 编译期常量 / 深不可变档位由 inline 注解 `#Mut` / `#Cval` / `#Frozen` 修饰，详见 §5.1。旧 `var` / `val` / `cval` 关键字已在 let-unify 落地时从 lexer 移除；字段段保留独立形态（不在 let-unify 范围）。
 
 §A.1.2 关键字**不得**用作 `ID`（标识符）。`yux.g4` 的 lexer 优先级保证关键字命中先于 `ID`。
-
-§A.1.3 v1 **没有** `continue` 关键字；循环只能通过 `break` 中断（§5.5）。
 
 ## A.2 上下文标识符
 
@@ -151,7 +152,7 @@
 - `draft`：v0.x 接口契约关键字，spec-unify v1（2026-05-19）删除；由 `#Spec` 注解承载（§12.1）；
 - `case`：v1 `match` 用 `=>` + `else` 兜底，无 `case` 关键字（§3.10）；
 - `async` / `await`：v1 无并发原语；
-- `for` / `while` / `do`：v1 循环只用 `loop`（§5.5）；
-- `continue`：v1 不提供（§A.1.3）。
+- `while` / `do`：v1 循环用 `loop` 与 `for-in`（§5.5）；
+- `return` / `type`：v1 不引入。
 
 §A.6.3 上述名称未来如引入**应当**升格为关键字并同步更新本附录与 `yux.g4`。

@@ -176,7 +176,7 @@ DEF_ERR(3019, "T& local initializer must be &expr or copy-bind from a T& variabl
 // E3020 已退役 → E3014
 // E3024: 统一 Nullable 操作符左侧类型要求（原 E3024 + E3025 合并）
 DEF_ERR(3024, "Operator requires Nullable<T> on the left, got {}")
-DEF_ERR(3025, "break@label '{}' target not found: no enclosing loop with that label")
+DEF_ERR(3025, "`{}`@label '{}' target not found: no enclosing loop with that label")
 DEF_ERR(3022, "Duplicate loop label '{}': already used by an enclosing loop")
 DEF_ERR(3026, "String template interpolation requires type implementing ToString, got '{}' (impl `Type : ToString {{ "
               "fn to_string() String {{ ... }} }}`)")
@@ -229,7 +229,7 @@ DEF_ERR(3090, "Unsupported dot expression")
 DEF_ERR(3091, "Unknown expression type")
 DEF_ERR(3092, "Unknown statement type")
 DEF_ERR(3093, "Cannot assign to immutable variable: {}")
-DEF_ERR(3094, "break statement not within a loop")
+DEF_ERR(3094, "`{}` statement not within a loop")
 DEF_ERR(3095, "Type {} is not a Function")
 DEF_ERR(3096, "Cannot get LLVM type for '{}'")
 DEF_ERR(3097, "Cannot determine type for reference expression: no scope")
@@ -295,6 +295,7 @@ DEF_ERR(3152, "Cannot access static field '{}' through an instance of '{}'; use 
               "(DRAFT-static-vars §4.4)")
 DEF_ERR(3158, "Cannot read uninitialized #Mut global '{}' (DRAFT-static-vars §6; #Mut globals must be initialized "
               "before first read)")
+DEF_ERR(3160, "`for-in` iterable must be Array<T> or [T*N], got '{}'")
 
 // ── E315x DRAFT-static-vars Phase 6（跨模块 init 顺序） ──────────────────
 DEF_ERR(3153, "Circular module dependency detected involving '{}'; cannot determine global init order "

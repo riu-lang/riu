@@ -48,6 +48,10 @@ bool stmtsHaveOwnBreak(const vector<p<StatementNode>>& stmts, const string& forL
             if (!forLabel.empty() && blockHasOwnBreak(nestedLoop->block(), forLabel)) return true;
             continue;
         }
+        if (auto nestedFor = dynamic_cast<p<StatementForInNode>>(s)) {
+            if (!forLabel.empty() && blockHasOwnBreak(nestedFor->block(), forLabel)) return true;
+            continue;
+        }
         if (auto se = dynamic_cast<p<StatementExprNode>>(s)) {
             auto e = se->expr();
             if (auto ife = dynamic_cast<p<ExprIfElseNode>>(e)) {

@@ -148,6 +148,15 @@ void walkStmtForSpecDefault(const p<StatementNode>& s, SpecDeclNode* spec) {
         }
         return;
     }
+    if (auto n = dynamic_cast<p<StatementForInNode>>(s)) {
+        walkExprForSpecDefault(n->expr(), spec);
+        if (auto blk = n->block()) {
+            for (auto& st : blk->statements())
+                walkStmtForSpecDefault(st, spec);
+            if (blk->hasResult()) walkExprForSpecDefault(blk->resultExpr(), spec);
+        }
+        return;
+    }
     // Block / Declare(无 init) / RetVoid / Break 等 Phase 2 不处理
 }
 } // namespace

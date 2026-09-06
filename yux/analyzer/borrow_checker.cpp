@@ -369,6 +369,22 @@ private:
             return;
         }
 
+        if (auto forin = dynamic_cast<StatementForInNode*>(s)) {
+            visitExpr(forin->expr());
+            pushScope();
+            declare(forin->item().getText());
+            if (auto blk = forin->block()) {
+                for (auto& st : blk->statements()) {
+                    visitStmt(st);
+                }
+                if (blk->hasResult() && blk->resultExpr()) {
+                    visitExpr(blk->resultExpr());
+                }
+            }
+            popScope();
+            return;
+        }
+
         if (auto decl = dynamic_cast<StatementDeclareNode*>(s)) {
             declare(decl->name().getText());
             return;

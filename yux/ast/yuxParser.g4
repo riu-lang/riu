@@ -656,6 +656,8 @@ statement:
       LineEnd?                         # statementStaticFieldSet
     // 循环
     | (ID SymbolColon)? Loop loopInit? statementBlock LineEnd?     # statementLoop
+    // label: for a in e
+    | (ID SymbolColon)? For ID In expr statementBlock LineEnd?     # statementForIn
     // obj.member = expr
     | obj=(ID|SymbolThis)
       (SymbolDot subs+=ID | subs+=DOT_NUM)*
@@ -668,7 +670,8 @@ statement:
     // ret; 返回空，强制尾随;表示空返回
     | Ret SymbolSemicolon LineEnd?     # statementRetVoid
     // break; 强制尾随;不返回任何值
-    | Break (SymbolAt ID)? SymbolSemicolon LineEnd?   # statementBreak
+    | Break (SymbolAt ID)? SymbolSemicolon LineEnd?     # statementBreak
+    | Continue (SymbolAt ID)? SymbolSemicolon LineEnd?  # statementContinue
     ;
 
 // `{` 后 / 语句后 / `}` 前换行均可省：`fn f() { ret 1 }`、`if c { a } else { b }` 合法。

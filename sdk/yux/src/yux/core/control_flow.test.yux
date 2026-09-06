@@ -284,3 +284,147 @@ fn test_block_scope_labeled_break() {
   }
   assert_eq(n, 2)
 }
+
+; ==================== continue / continue@label ====================
+
+; 验证：continue 跳过本轮剩余语句
+#Test
+fn test_continue_skips_rest() {
+  #Mut let sum i32 = 0
+  loop i = 0 {
+    if i >= 5 {
+      break;
+    }
+    i = i + 1
+    if i == 3 {
+      continue;
+    }
+    sum = sum + i
+  }
+  assert_eq(sum, 12)
+}
+
+; 验证：continue@label 跳到外层循环下一轮
+#Test
+fn test_continue_label_outer() {
+  #Mut let i i32 = 0
+  outer: loop {
+    if i >= 3 {
+      break;
+    }
+    loop {
+      i = i + 1
+      continue@outer;
+    }
+  }
+  assert_eq(i, 3)
+}
+
+; ==================== for-in ====================
+
+; 验证：for-in 遍历 Array<i32>，item 为 T&，运算符自动解包
+#Test
+fn test_for_in_array_sum() {
+  let arr Array<i32> = [1i32, 2i32, 3i32]
+  #Mut let sum i32 = 0
+  for x in arr {
+    sum = sum + x
+  }
+  assert_eq(sum, 6)
+}
+
+; 验证：定长数组 [T * N]
+#Test
+fn test_for_in_fixed_array() {
+  let buf [i32 * 3] = [1i32, 2i32, 3i32]
+  #Mut let sum i32 = 0
+  for x in buf {
+    sum = sum + x
+  }
+  assert_eq(sum, 6)
+}
+
+; 验证：空数组零轮
+#Test
+fn test_for_in_empty_array() {
+  let arr Array<i32> = []
+  #Mut let n i32 = 0
+  for x in arr {
+    n = n + 1
+  }
+  assert_eq(n, 0)
+}
+
+; 验证：Array<T>& 可迭代
+#Test
+fn test_for_in_array_ref() {
+  let arr Array<i32> = [4i32, 5i32]
+  let r Array<i32>& = &arr
+  #Mut let sum i32 = 0
+  for x in r {
+    sum = sum + x
+  }
+  assert_eq(sum, 9)
+}
+
+; 验证：#Mut 数组经 for-in 的 T& 写穿
+#Test
+fn test_for_in_write_through() {
+  #Mut let arr Array<i32> = [1i32, 2i32, 3i32]
+  for x in arr {
+    x = x + 10
+  }
+  assert_eq(arr[0], 11i32)
+  assert_eq(arr[1], 12i32)
+  assert_eq(arr[2], 13i32)
+}
+
+; 验证：嵌套 for，内层 break/continue 不穿外层
+#Test
+fn test_for_in_nested_break_continue() {
+  let a Array<i32> = [1i32, 2i32]
+  let b Array<i32> = [10i32, 20i32, 30i32]
+  #Mut let sum i32 = 0
+  for x in a {
+    for y in b {
+      if y == 20 {
+        continue;
+      }
+      if y == 30 {
+        break;
+      }
+      sum = sum + x + y
+    }
+  }
+  ; 每轮 x 只加 y=10：1+10 与 2+10
+  assert_eq(sum, 23)
+}
+
+; 验证：break@outer 穿过内层 for
+#Test
+fn test_for_in_break_outer() {
+  let a Array<i32> = [1i32, 2i32, 3i32]
+  let b Array<i32> = [1i32, 2i32]
+  #Mut let n i32 = 0
+  outer: for x in a {
+    for y in b {
+      n = n + 1
+      break@outer;
+    }
+  }
+  assert_eq(n, 1)
+}
+
+; 验证：for-in 内 continue 跳过元素
+#Test
+fn test_for_in_continue() {
+  let arr Array<i32> = [1i32, 2i32, 3i32, 4i32]
+  #Mut let sum i32 = 0
+  for x in arr {
+    if x == 2 {
+      continue;
+    }
+    sum = sum + x
+  }
+  assert_eq(sum, 8)
+}

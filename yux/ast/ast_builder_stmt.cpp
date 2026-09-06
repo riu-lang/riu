@@ -4,8 +4,8 @@
 // ast_builder 语句族实现：
 //   - visitStatementLet / visitStatementLetTuple / visitStatementAssign
 //   - visitStatementExpr / visitStatementRet / visitStatementRetVoid
-//   - visitStatementLoop / visitStatementBreak / visitStatementSet
-//   - visitStatementBlock
+//   - visitStatementLoop / visitStatementForIn / visitStatementBreak / visitStatementContinue
+//   - visitStatementSet / visitStatementBlock
 // 拆自原 ast_builder.cpp（P1 Phase 2），方法体一字不动。
 
 #include "ast_builder.h"
@@ -15,6 +15,7 @@
 #include "node/statement_node.h"
 #include "types.h"
 #include <algorithm>
+#include <memory>
 
 // DRAFT-let-unify §3：局部 `let` 声明。
 // 注解映射：默认 → isMut=false（不可重赋）；#Mut → isMut=true；#Cval → isConst=true；
@@ -314,6 +315,80 @@ std::any ASTBuilder::visitStatementBreak(yux::yuxParser::StatementBreakContext* 
     }
     DEBUG_LOG("  Statement: Break" << (ctx->ID() ? " (label: " + label.getText() + ")" : ""));
     return static_cast<p<StatementNode>>(createWithLine<StatementBreakNode>(ctx, scope, label));
+}
+
+std::any ASTBuilder::visitStatementContinue(yux::yuxParser::StatementContinueContext* ctx) {
+    auto scope = currentScope();
+    Token label;
+    if (ctx->ID()) {
+        label = Token(ctx->ID()->getText(), static_cast<int>(ctx->ID()->getSymbol()->getLine()));
+    }
+    DEBUG_LOG("  Statement: Continue" << (ctx->ID() ? " (label: " + label.getText() + ")" : ""));
+    return static_cast<p<StatementNode>>(createWithLine<StatementContinueNode>(ctx, scope, label));
+}
+
+std::any ASTBuilder::visitStatementForIn(yux::yuxParser::StatementForInContext* ctx) {
+    auto outerScope = currentScope();
+
+    Token label;
+    Token item;
+    auto ids = ctx->ID();
+    if (ctx->SymbolColon() && ids.size() >= 2) {
+        label = Token(ids[0]->getText(), static_cast<int>(ids[0]->getSymbol()->getLine()));
+        item = Token(ids[1]->getText(), static_cast<int>(ids[1]->getSymbol()->getLine()));
+    } else {
+        item = Token(ids[0]->getText(), static_cast<int>(ids[0]->getSymbol()->getLine()));
+    }
+
+    auto collExpr = any_cast_p<ExprNode>(visit(ctx->expr()));
+
+    auto blockCtx = ctx->statementBlock();
+    auto block = createWithLine<StatementBlockNode>(blockCtx, outerScope, vector<p<StatementNode>>{}, nullptr, false);
+    block->setParentScope(outerScope);
+    _scopeStack.push_back(block);
+
+    TypeInfo collType = collExpr->getType();
+    TypeInfo peeled = collType.peelRef();
+    sp<TypeInfo> elem;
+    if (peeled.isArrayGeneric()) {
+        elem = peeled.arrayGenericElementType();
+    } else if (peeled.isArray() && peeled.elementType) {
+        elem = peeled.elementType;
+    }
+    TypeInfo itemType = elem ? TypeInfo("Ref", {std::make_shared<TypeInfo>(*elem)}) : TypeInfo();
+    // T& 写穿不依赖 writeable；禁重绑定
+    block->registerSymbol(item.getText(), SymbolInfo(SymbolKind::Variable, item.getText(), itemType, /*w=*/false));
+
+    vector<p<StatementNode>> statements;
+    for (auto stmtCtx : blockCtx->statement()) {
+        statements.push_back(any_cast_p<StatementNode>(visit(stmtCtx)));
+    }
+
+    p<ExprNode> resultExpr = nullptr;
+    bool hasResult = false;
+    if (!statements.empty()) {
+        if (auto exprStmt = dynamic_cast<StatementExprNode*>(statements.back())) {
+            if (!exprStmt->hasSemicolon()) {
+                resultExpr = exprStmt->expr();
+                hasResult = true;
+                statements.pop_back();
+            }
+        }
+    }
+
+    _scopeStack.pop_back();
+
+    auto filled =
+        createWithLine<StatementBlockNode>(blockCtx, outerScope, std::move(statements), resultExpr, hasResult);
+    filled->setParentScope(outerScope);
+    for (auto& [name, sym] : block->localSymbols()) {
+        filled->registerSymbol(name, sym);
+    }
+
+    DEBUG_LOG("  Statement: ForIn item=" << item.getText()
+                                         << (label.getText().empty() ? "" : " label=" + label.getText()));
+    return static_cast<p<StatementNode>>(
+        createWithLine<StatementForInNode>(ctx, outerScope, filled, std::move(item), collExpr, std::move(label)));
 }
 
 std::any ASTBuilder::visitStatementSet(yux::yuxParser::StatementSetContext* ctx) {

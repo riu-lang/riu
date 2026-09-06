@@ -7,8 +7,8 @@
 // - return 语句 (有返回值和无返回值)
 // - 变量声明语句
 // - 赋值语句 (普通赋值和复合赋值)
-// - loop 循环语句
-// - break 语句
+// - loop / for-in 循环语句
+// - break / continue 语句
 // - 数组元素赋值语句
 
 #include "ast/mangler.h"
@@ -19,6 +19,7 @@
 #include "compiler_runtime.h"
 #include "sema/call_resolve.h"
 #include <algorithm>
+#include <memory>
 
 // ==================== Return 语句编译 ====================
 
@@ -1553,8 +1554,12 @@ void Compiler::compileLoopStatement(p<StatementLoopNode> node) {
     func->insert(func->end(), bodyBB);
     _builder.SetInsertPoint(bodyBB);
 
-    _loopExitBlocks.push_back(
-        {.label = node->label().getText(), .exitBB = exitBB, .frameDepthBeforeLoop = frameDepthBeforeLoop});
+    const size_t frameDepthBeforeBody = scopeFrameDepth();
+    _loopExitBlocks.push_back({.label = node->label().getText(),
+                               .exitBB = exitBB,
+                               .continueBB = condBB,
+                               .frameDepthBeforeLoop = frameDepthBeforeLoop,
+                               .frameDepthBeforeBody = frameDepthBeforeBody});
 
     // 体：compileStatementBlock 推 body 帧，每轮尾（br cond 前）析构体 let
     compileStatementBlock(node->block());
@@ -1611,6 +1616,165 @@ void Compiler::compileBreakStatement(p<StatementBreakNode> node) {
     llvm::Function* func = _builder.GetInsertBlock()->getParent();
     llvm::BasicBlock* unreachableBB = llvm::BasicBlock::Create(_context, "unreachable", func);
     _builder.SetInsertPoint(unreachableBB);
+}
+
+void Compiler::compileContinueStatement(p<StatementContinueNode> node) {
+    const auto& cLabel = node->label();
+    DEBUG_LOG("  Statement: Continue" << (cLabel.getText().empty() ? "" : " (label: " + cLabel.getText() + ")"));
+
+    if (_loopExitBlocks.empty()) {
+        throwSemaGap(node->getLineNumber(), node->getColumn());
+    }
+
+    const LoopExitInfo* target = nullptr;
+    if (cLabel.getText().empty()) {
+        target = &_loopExitBlocks.back();
+    } else {
+        for (auto it = _loopExitBlocks.rbegin(); it != _loopExitBlocks.rend(); ++it) {
+            if (it->label == cLabel.getText()) {
+                target = &(*it);
+                break;
+            }
+        }
+        if (!target) {
+            throwSemaGap(node->getLineNumber(), node->getColumn());
+        }
+    }
+
+    emitDestructorsAbove(target->frameDepthBeforeBody);
+    _builder.CreateBr(target->continueBB);
+
+    llvm::Function* func = _builder.GetInsertBlock()->getParent();
+    llvm::BasicBlock* unreachableBB = llvm::BasicBlock::Create(_context, "unreachable", func);
+    _builder.SetInsertPoint(unreachableBB);
+}
+
+void Compiler::compileForInStatement(p<StatementForInNode> node) {
+    DEBUG_LOG("  Statement: ForIn item=" << node->item().getText());
+
+    llvm::Function* func = _builder.GetInsertBlock()->getParent();
+    const size_t frameDepthBeforeLoop = scopeFrameDepth();
+    pushScopeFrame(); // 集合临时 / 索引
+    const size_t frameDepthBeforeBody = scopeFrameDepth();
+
+    auto collExpr = node->expr();
+    TypeInfo collType = collExpr->hasResolvedType() ? collExpr->resolvedType() : collExpr->getType();
+    collType = applySubst(collType);
+    const bool isRefColl = collType.isRef();
+    TypeInfo peeled = collType.peelRef();
+
+    llvm::Value* collPtr = nullptr;
+    if (auto literalNode = dynamic_cast<ExprLiteralNode*>(collExpr)) {
+        if (auto objLiteral = dynamic_cast<LiteralObjNode*>(literalNode->literal())) {
+            auto varName = objLiteral->getValue().getText();
+            auto it = _localVarPtrs.find(varName);
+            if (it != _localVarPtrs.end()) {
+                collPtr = it->second;
+            }
+        }
+    }
+    if (!collPtr) {
+        auto baseVal = compileExpr(collExpr);
+        if (!baseVal) {
+            throwSemaGap(node->getLineNumber(), node->getColumn());
+        }
+        auto valTy = getLLVMType(collType);
+        auto alloca = _builder.CreateAlloca(valTy, nullptr, "for.coll");
+        _builder.CreateStore(baseVal, alloca);
+        if (isRefColl) {
+            collPtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), alloca, "for.coll.ref");
+        } else {
+            collPtr = alloca;
+            if (typeNeedsDestructor(resolveAlias(collType))) {
+                registerLocalVar(".for.coll." + std::to_string(_forInSerial++), alloca, collType);
+            }
+        }
+    }
+
+    auto* sizeTy = getSizeType();
+    llvm::Value* lenVal = nullptr;
+    if (peeled.isArrayGeneric()) {
+        lenVal = _builder.CreateLoad(sizeTy, arrayLenFieldPtr(collPtr, "for"), "for.len");
+    } else if (peeled.isArray()) {
+        lenVal = llvm::ConstantInt::get(sizeTy, peeled.arraySize);
+    } else {
+        throwSemaGap(node->getLineNumber(), node->getColumn());
+    }
+
+    auto iAlloca = _builder.CreateAlloca(sizeTy, nullptr, "for.i");
+    _builder.CreateStore(llvm::ConstantInt::get(sizeTy, 0), iAlloca);
+
+    llvm::BasicBlock* condBB = llvm::BasicBlock::Create(_context, "for.cond");
+    llvm::BasicBlock* bodyBB = llvm::BasicBlock::Create(_context, "for.body");
+    llvm::BasicBlock* incBB = llvm::BasicBlock::Create(_context, "for.inc");
+    llvm::BasicBlock* exitBB = llvm::BasicBlock::Create(_context, "for.exit");
+
+    _builder.CreateBr(condBB);
+
+    func->insert(func->end(), condBB);
+    _builder.SetInsertPoint(condBB);
+    auto iCur = _builder.CreateLoad(sizeTy, iAlloca, "for.i.cur");
+    auto done = _builder.CreateICmpUGE(iCur, lenVal, "for.done");
+    _builder.CreateCondBr(done, exitBB, bodyBB);
+
+    func->insert(func->end(), bodyBB);
+    _builder.SetInsertPoint(bodyBB);
+
+    auto iBody = _builder.CreateLoad(sizeTy, iAlloca, "for.i.body");
+    llvm::Value* elemPtr = nullptr;
+    TypeInfo elemTy;
+    if (peeled.isArrayGeneric()) {
+        auto et = peeled.arrayGenericElementType();
+        if (!et) {
+            throwSemaGap(node->getLineNumber(), node->getColumn());
+        }
+        elemTy = *et;
+        auto elemLLVM = getLLVMType(elemTy);
+        auto dataPtr =
+            _builder.CreateLoad(llvm::PointerType::get(_context, 0), arrayDataFieldPtr(collPtr, "for"), "for.data");
+        elemPtr = _builder.CreateGEP(elemLLVM, dataPtr, {iBody}, "for.elem");
+    } else {
+        if (!peeled.elementType) {
+            throwSemaGap(node->getLineNumber(), node->getColumn());
+        }
+        elemTy = *peeled.elementType;
+        auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+        auto llvmArr = getLLVMType(peeled);
+        elemPtr = _builder.CreateGEP(llvmArr, collPtr, {zero, iBody}, "for.elem");
+        if (elemTy.isRef()) {
+            elemPtr = _builder.CreateLoad(getLLVMType(elemTy), elemPtr, "for.elem.ref");
+        }
+    }
+
+    TypeInfo itemTy("Ref", {std::make_shared<TypeInfo>(elemTy)});
+    registerLocalVar(node->item().getText(), elemPtr, itemTy);
+
+    _loopExitBlocks.push_back({.label = node->label().getText(),
+                               .exitBB = exitBB,
+                               .continueBB = incBB,
+                               .frameDepthBeforeLoop = frameDepthBeforeLoop,
+                               .frameDepthBeforeBody = frameDepthBeforeBody});
+
+    compileStatementBlock(node->block());
+    _loopExitBlocks.pop_back();
+
+    if (!_builder.GetInsertBlock()->getTerminator()) {
+        _builder.CreateBr(incBB);
+    }
+
+    func->insert(func->end(), incBB);
+    _builder.SetInsertPoint(incBB);
+    auto iInc = _builder.CreateLoad(sizeTy, iAlloca, "for.i.inc");
+    auto iNext = _builder.CreateAdd(iInc, llvm::ConstantInt::get(sizeTy, 1), "for.i.next");
+    _builder.CreateStore(iNext, iAlloca);
+    _builder.CreateBr(condBB);
+
+    func->insert(func->end(), exitBB);
+    _builder.SetInsertPoint(exitBB);
+    unwindScopeFramesTo(frameDepthBeforeLoop);
+    if (!exitBB->hasNPredecessorsOrMore(1)) {
+        _builder.CreateUnreachable();
+    }
 }
 
 // ==================== 数组元素赋值语句编译 ====================
@@ -1814,8 +1978,12 @@ void Compiler::compileStatement(p<StatementNode> node) {
         compileExpr(exprNode->expr());
     } else if (auto loopNode = dynamic_cast<StatementLoopNode*>(node)) {
         compileLoopStatement(loopNode);
+    } else if (auto forInNode = dynamic_cast<StatementForInNode*>(node)) {
+        compileForInStatement(forInNode);
     } else if (auto breakNode = dynamic_cast<StatementBreakNode*>(node)) {
         compileBreakStatement(breakNode);
+    } else if (auto continueNode = dynamic_cast<StatementContinueNode*>(node)) {
+        compileContinueStatement(continueNode);
     } else if (auto setNode = dynamic_cast<StatementSetNode*>(node)) {
         compileArraySetStatement(setNode);
     } else if (auto staticFieldSetNode = dynamic_cast<StatementStaticFieldSetNode*>(node)) {

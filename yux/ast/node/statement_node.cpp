@@ -37,6 +37,14 @@ const p<StatementBlockNode>& StatementLoopNode::block() const {
     return _block;
 }
 
+StatementForInNode::StatementForInNode(const p<Node>& parent, p<StatementBlockNode> block, Token item, p<ExprNode> expr,
+                                       Token label)
+    : StatementNode(parent), _block(block), _label(std::move(label)), _item(std::move(item)), _expr(expr) {}
+
+const p<StatementBlockNode>& StatementForInNode::block() const {
+    return _block;
+}
+
 const p<ExprNode>& StatementSetNode::arrayExpr() const {
     return _arrayExpr;
 }

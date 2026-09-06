@@ -110,7 +110,7 @@
         },
         {
           "name": "keyword.control.loop.yux",
-          "match": "\\b(loop|break)\\b"
+          "match": "\\b(loop|break|continue|for|in)\\b"
         },
         {
           "name": "keyword.control.flow.yux",

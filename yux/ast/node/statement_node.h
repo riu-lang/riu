@@ -146,6 +146,34 @@ public:
     [[nodiscard]] const Token& label() const { return _label; }
 };
 
+class StatementContinueNode : public StatementNode {
+protected:
+    Token _label; // 空 Token = 无 label（continue@label;）
+
+public:
+    explicit StatementContinueNode(const p<Node>& parent, Token label = {})
+        : StatementNode(parent), _label(std::move(label)) {}
+    [[nodiscard]] const Token& label() const { return _label; }
+};
+
+// `for item in expr { }`：item 为元素 T&；expr 须为 Array<T> / [T*N]（可 peelRef）
+class StatementForInNode : public StatementNode {
+protected:
+    p<StatementBlockNode> _block;
+    Token _label;
+    Token _item;
+    p<ExprNode> _expr;
+
+public:
+    explicit StatementForInNode(const p<Node>& parent, p<StatementBlockNode> block, Token item, p<ExprNode> expr,
+                                Token label = {});
+
+    [[nodiscard]] const p<StatementBlockNode>& block() const;
+    [[nodiscard]] const Token& label() const { return _label; }
+    [[nodiscard]] const Token& item() const { return _item; }
+    [[nodiscard]] const p<ExprNode>& expr() const { return _expr; }
+};
+
 // DRAFT-static-vars Phase 5：静态字段写语句（Type::FIELD = expr）
 // 语法形态 `TypeName::fieldName = value`，仅当字段为 #Mut 时合法；
 // 非 #Mut 写由 codegen 抛 E3151。

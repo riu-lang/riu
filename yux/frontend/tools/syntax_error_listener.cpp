@@ -3,8 +3,8 @@
 
 #include "syntax_error_listener.h"
 
-#include "error_code.h"
 #include "diagnostic.h"
+#include "error_code.h"
 
 #include "Lexer.h"
 #include "TokenStream.h"
@@ -18,19 +18,15 @@ SyntaxErrorListener::SyntaxErrorListener(string sourcePath, std::ostream& out)
 namespace {
 bool isYuxKeyword(const std::string& s) {
     static const std::unordered_set<std::string> kws = {
-        "break", "catch", "draft", "elif", "else",
-        "enum", "extern", "false", "fn", "if", "let", "loop", "match", "null",
-        "ret", "struct", "true", "try", "use",
+        "break", "catch", "continue", "draft", "elif",  "else", "enum", "extern", "false", "fn",  "for",
+        "if",    "in",    "let",      "loop",  "match", "null", "ret",  "struct", "true",  "try", "use",
     };
     return kws.count(s) > 0;
 }
-}
+} // namespace
 
-void SyntaxErrorListener::syntaxError(antlr4::Recognizer* recognizer,
-                                      antlr4::Token* offending,
-                                      size_t line, size_t charPositionInLine,
-                                      const std::string& msg,
-                                      std::exception_ptr /*e*/) {
+void SyntaxErrorListener::syntaxError(antlr4::Recognizer* recognizer, antlr4::Token* offending, size_t line,
+                                      size_t charPositionInLine, const std::string& msg, std::exception_ptr /*e*/) {
     ++_errorCount;
 
     // recognizer 是 Lexer → 词法（E1001）；否则视为文法（E1002）。
@@ -53,15 +49,17 @@ void SyntaxErrorListener::syntaxError(antlr4::Recognizer* recognizer,
             if (!at.empty() && at.back() == '\'') at.pop_back();
             // 转义 '\n' / '\r' / '\t' 文本形态 + 真实白空格
             bool whitespaceOnly = !at.empty();
-            for (size_t i = 0; i < at.size(); ) {
-                if (at[i] == '\\' && i + 1 < at.size()
-                    && (at[i+1] == 'n' || at[i+1] == 'r' || at[i+1] == 't')) {
-                    i += 2; continue;
+            for (size_t i = 0; i < at.size();) {
+                if (at[i] == '\\' && i + 1 < at.size() && (at[i + 1] == 'n' || at[i + 1] == 'r' || at[i + 1] == 't')) {
+                    i += 2;
+                    continue;
                 }
                 if (at[i] == ' ' || at[i] == '\t' || at[i] == '\n' || at[i] == '\r') {
-                    ++i; continue;
+                    ++i;
+                    continue;
                 }
-                whitespaceOnly = false; break;
+                whitespaceOnly = false;
+                break;
             }
             if (whitespaceOnly) return;
         }
@@ -82,14 +80,15 @@ void SyntaxErrorListener::syntaxError(antlr4::Recognizer* recognizer,
     if (!isLexer) {
         // 优先：offending 是 yux 关键字 + 期望 ID → 关键字误作标识符
         std::string offText = offending ? offending->getText() : std::string();
-        bool keywordAsId = !offText.empty() && isYuxKeyword(offText)
-                           && msg.find("ID") != std::string::npos;
+        bool keywordAsId = !offText.empty() && isYuxKeyword(offText) && msg.find("ID") != std::string::npos;
         if (keywordAsId) {
             d.hints.push_back("`" + offText + "` 是 yux 关键字，不能用作标识符；换一个名字（如 `" + offText + "_`）");
         } else if (offText == "ret" || msg.find("'ret") != std::string::npos) {
             d.hints.emplace_back("空返回 `ret;` 必须带 `;`（void 返回）；如需返回值，使用 `ret 表达式`");
         } else if (offText == "break" || msg.find("'break") != std::string::npos) {
             d.hints.emplace_back("`break;` 必须带 `;`");
+        } else if (offText == "continue" || msg.find("'continue") != std::string::npos) {
+            d.hints.emplace_back("`continue;` 必须带 `;`");
         } else if (msg.find("';'") != std::string::npos || msg.find("missing ';'") != std::string::npos) {
             // 尝试从 token 流回溯前一个非隐藏 token，判断是否为 ret / break
             std::string prevText;
@@ -108,12 +107,15 @@ void SyntaxErrorListener::syntaxError(antlr4::Recognizer* recognizer,
                 d.hints.emplace_back("空返回 `ret;` 必须带 `;`（void 返回）；如需返回值，使用 `ret 表达式`");
             } else if (prevText == "break") {
                 d.hints.emplace_back("`break;` 必须带 `;`");
+            } else if (prevText == "continue") {
+                d.hints.emplace_back("`continue;` 必须带 `;`");
             } else {
-                d.hints.emplace_back("语句末尾需要 `;`；表达式带 `;` 表示舍弃返回值，不带 `;` 才会作为返回值（参见 docs/基础语法.md）");
+                d.hints.emplace_back(
+                    "语句末尾需要 `;`；表达式带 `;` 表示舍弃返回值，不带 `;` 才会作为返回值（参见 docs/基础语法.md）");
             }
-        } else if (msg.find("extraneous input") != std::string::npos
-                   || msg.find("mismatched input") != std::string::npos
-                   || msg.find("no viable alternative") != std::string::npos) {
+        } else if (msg.find("extraneous input") != std::string::npos ||
+                   msg.find("mismatched input") != std::string::npos ||
+                   msg.find("no viable alternative") != std::string::npos) {
             d.hints.emplace_back("检查空格规则：关键字后、二元运算符两侧、`,` 后必须有空格；`()` `[]` 内部不留空格");
         }
     }

@@ -1,7 +1,7 @@
 // Copyright (c) 2026. Yin-Jinlong@github
 // MPL-2.0
 
-// 语句语义检查：visitStmt（loop / break / 声明 / 赋值 / ret / 表达式语句）。
+// 语句语义检查：visitStmt（loop / for-in / break / continue / 声明 / 赋值 / ret / 表达式语句）。
 
 #include "sema/builtin_methods.h"
 #include "sema/call_resolve.h"
@@ -15,9 +15,11 @@
 #include <cstddef>
 #include <format>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string_view>
+#include <utility>
 
 #include "analyzer/borrow_checker.h"
 #include "analyzer/const_mut_checker.h"
@@ -40,19 +42,50 @@
 
 using namespace sema::pass;
 
+namespace {
+void pushLoopLabel(vector<Token>& stack, const Token& label, int line, int col) {
+    if (!label.getText().empty()) {
+        for (const auto& existing : stack) {
+            if (existing.getText() == label.getText()) {
+                throw YuxError(line, col, ErrorCode::E3022, label.getText());
+            }
+        }
+    }
+    stack.push_back(label);
+}
+
+void checkLoopJump(const vector<Token>& stack, const Token& jumpLabel, int line, int col, const char* kw) {
+    if (jumpLabel.getText().empty()) {
+        if (stack.empty()) {
+            throw YuxError(line, col, ErrorCode::E3094, kw);
+        }
+        return;
+    }
+    bool found = false;
+    for (auto it = stack.rbegin(); it != stack.rend(); ++it) {
+        if (it->getText() == jumpLabel.getText()) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        throw YuxError(line, col, ErrorCode::E3025, kw, jumpLabel.getText());
+    }
+}
+
+// 从 Array<T> / [T*N] 抽出元素类型；非迭代类型返回 nullptr。
+sp<TypeInfo> forInElementType(const TypeInfo& coll) {
+    if (coll.isArrayGeneric()) return coll.arrayGenericElementType();
+    if (coll.isArray()) return coll.elementType;
+    return nullptr;
+}
+} // namespace
+
 void SemaPass::visitStmt(p<StatementNode> stmt) {
     if (!stmt) return;
     if (auto loop = dynamic_cast<p<StatementLoopNode>>(stmt)) {
         const auto& label = loop->label();
-        // 检测重复 label：同名 label 不可在外层 loop 栈中出现
-        if (!label.getText().empty()) {
-            for (const auto& existing : _loopLabelStack) {
-                if (existing.getText() == label.getText()) {
-                    throw YuxError(loop->getLineNumber(), loop->getColumn(), ErrorCode::E3022, label.getText());
-                }
-            }
-        }
-        _loopLabelStack.push_back(label); // 空 Token = 无 label
+        pushLoopLabel(_loopLabelStack, label, loop->getLineNumber(), loop->getColumn());
         if (loop->hasInit()) {
             TypeInfo texp;
             const TypeInfo* tp = nullptr;
@@ -157,25 +190,46 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         return;
     }
     if (auto br = dynamic_cast<p<StatementBreakNode>>(stmt)) {
-        const auto& brLabel = br->label();
-        if (brLabel.getText().empty()) {
-            // 无 label 的 break：检查是否有外层 loop
-            if (_loopLabelStack.empty()) {
-                throw YuxError(br->getLineNumber(), br->getColumn(), ErrorCode::E3094);
+        checkLoopJump(_loopLabelStack, br->label(), br->getLineNumber(), br->getColumn(), "break");
+        return;
+    }
+    if (auto cont = dynamic_cast<p<StatementContinueNode>>(stmt)) {
+        checkLoopJump(_loopLabelStack, cont->label(), cont->getLineNumber(), cont->getColumn(), "continue");
+        return;
+    }
+    if (auto forin = dynamic_cast<p<StatementForInNode>>(stmt)) {
+        const auto& label = forin->label();
+        pushLoopLabel(_loopLabelStack, label, forin->getLineNumber(), forin->getColumn());
+        try {
+            visitExpr(forin->expr());
+            TypeInfo at;
+            try {
+                at = forin->expr()->hasResolvedType() ? forin->expr()->resolvedType() : forin->expr()->getType();
+                at = applyInstSubst(at).peelRef();
+                at = sema::resolveAlias(at, _file, _sdkFile);
+            } catch (const YuxError&) {
+                throw;
+            } catch (...) { // NOLINT(bugprone-empty-catch)
             }
-        } else {
-            // break@label：从内向外搜索匹配 label
-            bool found = false;
-            for (auto it = _loopLabelStack.rbegin(); it != _loopLabelStack.rend(); ++it) {
-                if (it->getText() == brLabel.getText()) {
-                    found = true;
-                    break;
+            if (isCurrentTypeParam(at)) {
+                // 模板形参：等实例化后再查 E3160
+            } else if (auto elem = forInElementType(at)) {
+                TypeInfo itemTy("Ref", {std::make_shared<TypeInfo>(*elem)});
+                if (auto blk = forin->block()) {
+                    if (auto* sym = blk->lookupSymbol(forin->item().getText())) {
+                        sym->type = std::move(itemTy);
+                    }
                 }
+            } else {
+                throw YuxError(forin->getLineNumber(), forin->getColumn(), ErrorCode::E3160,
+                               at.getFullName().empty() ? "<unknown>" : at.getFullName());
             }
-            if (!found) {
-                throw YuxError(br->getLineNumber(), br->getColumn(), ErrorCode::E3025, brLabel.getText());
-            }
+            visitBlock(forin->block());
+        } catch (...) {
+            _loopLabelStack.pop_back();
+            throw;
         }
+        _loopLabelStack.pop_back();
         return;
     }
     if (auto rv = dynamic_cast<p<StatementRetVoidNode>>(stmt)) {

@@ -1,0 +1,7 @@
+fn main() {
+    outer: loop {
+        outer: for x in [1i32, 2i32] { ; check: E3022
+            break@outer;
+        }
+    }
+}

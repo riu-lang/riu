@@ -767,6 +767,24 @@ Doc Printer::statementDoc(yuxParser::StatementContext* ctx, int indentLevel) {
         parts.push_back(statementBlockDoc(n->statementBlock(), indentLevel));
         return concat(std::move(parts));
     }
+    if (auto* n = dynamic_cast<yuxParser::StatementForInContext*>(ctx)) {
+        std::vector<Doc> parts;
+        auto ids = n->ID();
+        if (n->SymbolColon() && ids.size() >= 2) {
+            parts.push_back(text(ids[0]->getText()));
+            parts.push_back(text(": "));
+            parts.push_back(text("for "));
+            parts.push_back(text(ids[1]->getText()));
+        } else {
+            parts.push_back(text("for "));
+            parts.push_back(text(ids[0]->getText()));
+        }
+        parts.push_back(text(" in "));
+        parts.push_back(exprDoc(n->expr()));
+        parts.push_back(text(" "));
+        parts.push_back(statementBlockDoc(n->statementBlock(), indentLevel));
+        return concat(std::move(parts));
+    }
     if (auto* n = dynamic_cast<yuxParser::StatementAssignContext*>(ctx)) {
         // obj (.id|DOT_NUM)* opAssign expr
         std::vector<Doc> parts;
@@ -802,6 +820,12 @@ Doc Printer::statementDoc(yuxParser::StatementContext* ctx, int indentLevel) {
             return concat({text("break@"), text(n->ID()->getText()), text(";")});
         }
         return text("break;");
+    }
+    if (auto* n = dynamic_cast<yuxParser::StatementContinueContext*>(ctx)) {
+        if (n->ID()) {
+            return concat({text("continue@"), text(n->ID()->getText()), text(";")});
+        }
+        return text("continue;");
     }
     // 兜底（语法演化时保护）
     std::size_t srcCol = ctx->start->getCharPositionInLine();

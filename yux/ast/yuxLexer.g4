@@ -29,13 +29,16 @@ LineEnd : '\r'? '\n' | '\n' | EOF;
 
 Break : 'break';
 Catch: 'catch';
+Continue : 'continue';
 Elif : 'elif';
 Else : 'else';
 Enum : 'enum';
 Extern : 'extern';
 False : 'false';
 Fn : 'fn';
+For : 'for';
 If : 'if';
+In : 'in';
 Let : 'let';
 Loop: 'loop';
 Match : 'match';
