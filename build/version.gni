@@ -3,4 +3,4 @@
 #
 # 版本号权威源（原 xmake.lua set_version）。开发中标 -alpha，完成后去掉。
 
-yux_version = "0.21.0-alpha"
+yux_version = "0.21.0"

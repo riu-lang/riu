@@ -725,27 +725,42 @@ void FileNode::collectFnOverloads(const string& name, vector<FnSymbolInfo*>& out
     // visitImportDecl 会将导入函数拷贝到本地 _fnSymbols，同时 addWildcardImport，
     // 导致同一函数以不同 FnSymbolInfo 副本存在于本地和 wildcardImport 两端。
     // 指针去重无法覆盖此场景（不同对象），需要按模块名+形参去重。
+    auto sameParams = [](FnSymbolInfo* a, FnSymbolInfo* b) -> bool {
+        if (a->params.size() != b->params.size()) return false;
+        for (size_t i = 0; i < a->params.size(); ++i) {
+            if (!(a->params[i] == b->params[i])) return false;
+        }
+        return true;
+    };
     auto hasSemanticDup = [&](FnSymbolInfo* target) -> bool {
         for (auto* existing : out) {
-            if (existing->moduleName != target->moduleName) continue;
-            if (existing->params.size() != target->params.size()) continue;
-            bool same = true;
-            for (size_t i = 0; i < target->params.size(); ++i) {
-                if (!(existing->params[i] == target->params[i])) {
-                    same = false;
-                    break;
-                }
+            if (!sameParams(existing, target)) continue;
+            if (existing->moduleName == target->moduleName) return true;
+            // 多模块重复声明同一 C 函数：yux 名按模块分区，LLVM 只认链接名
+            if (existing->isExternal && target->isExternal && existing->externLinkName() == target->externLinkName() &&
+                existing->sameExternCSig(*target)) {
+                return true;
             }
-            if (same) return true;
         }
         return false;
     };
 
-    // 1) 本地 _fnSymbols（含 visitImportDecl 注入的拷贝）
+    // 1) 本地 _fnSymbols：本模块声明优先于 `use` 注入的副本（同 C ABI 不构成重载）
     auto it = _fnSymbols.find(name);
     if (it != _fnSymbols.end()) {
-        for (auto& fn : it->second)
-            addIfNew(&fn);
+        vector<FnSymbolInfo*> own;
+        vector<FnSymbolInfo*> injected;
+        for (auto& fn : it->second) {
+            if (fn.moduleName.empty() || fn.moduleName == _moduleName)
+                own.push_back(&fn);
+            else
+                injected.push_back(&fn);
+        }
+        for (auto* fn : own)
+            addIfNew(fn);
+        for (auto* fn : injected) {
+            if (!hasSemanticDup(fn)) addIfNew(fn);
+        }
     }
 
     // 2) wildcardImports 的直接 _fnSymbols（仅浅层，避免递归回到自己）
@@ -757,8 +772,13 @@ void FileNode::collectFnOverloads(const string& name, vector<FnSymbolInfo*>& out
         }
     }
 
-    // 3) parentScope 链（虚调用——若 parent 是 FileNode 则继续扩展 wildcardImports）
+    // 3) parentScope 链：先收到独立列表再按 C ABI / 模块+形参去重，避免 SDK
+    // 与本模块同签名 extern 被当成两个重载（E6014）。
     if (_parentScope) {
-        _parentScope->collectFnOverloads(name, out);
+        vector<FnSymbolInfo*> fromParent;
+        _parentScope->collectFnOverloads(name, fromParent);
+        for (auto* fn : fromParent) {
+            if (!hasSemanticDup(fn)) addIfNew(fn);
+        }
     }
 }

@@ -1,0 +1,22 @@
+; 与 SDK 同 yux 名、同 C 签名：不冲突。裸名走本地，限定名走其它模块；LLVM 同一 C 符号。
+
+use yux.core.*
+use helper
+
+extern {
+  fn GetStdHandle(nStdHandle i32) Ptr
+}
+
+fn flag(p Ptr) i32 {
+  let n u64 = p.to_int()
+  if n == 0 {
+    ret 0
+  }
+  ret 1
+}
+
+fn main() {
+  println(flag(GetStdHandle(-11)))
+  println(flag(helper.GetStdHandle(-12)))
+  println(flag(yux.core.GetStdHandle(-11)))
+}

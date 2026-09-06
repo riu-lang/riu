@@ -81,6 +81,22 @@ struct FnSymbolInfo {
         if (moduleName.empty()) return name;
         return moduleName + "_" + name;
     }
+
+    // extern 的链接名：`#CName` 否则 yux 声明名。非 extern 为空。
+    [[nodiscard]] string externLinkName() const {
+        if (!isExternal) return {};
+        return cName.empty() ? name : cName;
+    }
+
+    // 形参 + 返回是否同一 C 签名（§6.6.1：同链接名须同签名）。
+    [[nodiscard]] bool sameExternCSig(const FnSymbolInfo& other) const {
+        if (!(retType == other.retType)) return false;
+        if (params.size() != other.params.size()) return false;
+        for (size_t i = 0; i < params.size(); ++i) {
+            if (!(params[i] == other.params[i])) return false;
+        }
+        return true;
+    }
 };
 
 // Phase 2.3 Sema/Codegen 拆分：表达式经语义检查后定位到的符号引用。

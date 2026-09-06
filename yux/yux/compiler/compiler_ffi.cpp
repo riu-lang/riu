@@ -8,6 +8,8 @@
 
 #include "ast/node/node.h"
 #include "compiler.h"
+#include "error_code.h"
+#include "types.h"
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/CallingConv.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -87,8 +89,6 @@ llvm::Value* Compiler::coerceFromExternRet(llvm::Value* v, const ExternAbiSlot& 
 }
 
 llvm::Function* Compiler::getOrCreateExternFunction(const string& cName, const FnSymbolInfo& fnSymbol) {
-    if (auto* existed = _module->getFunction(cName)) return existed;
-
     ExternAbiSlot retSlot = externAbiSlot(fnSymbol.retType);
     const bool retSret = retSlot.indirect;
 
@@ -111,6 +111,13 @@ llvm::Function* Compiler::getOrCreateExternFunction(const string& cName, const F
     }
 
     auto* fnTy = llvm::FunctionType::get(llvmRet, paramTys, false);
+    if (auto* existed = _module->getFunction(cName)) {
+        if (existed->getFunctionType() != fnTy) {
+            const int line = fnSymbol.declLine > 0 ? fnSymbol.declLine : 1;
+            throw YuxError(line, ErrorCode::E2036, cName);
+        }
+        return existed;
+    }
     auto* fn = llvm::Function::Create(fnTy, llvm::Function::ExternalLinkage, cName, _module);
     fn->setCallingConv(llvm::CallingConv::C);
 

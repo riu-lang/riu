@@ -531,6 +531,46 @@ void SemaPass::validateExternFns() {
             }
         }
     }
+
+    // 同一 C 链接名须同一签名（§6.6.1）：先登记 SDK / 通配已见声明，再查本模块。
+    map<string, const FnSymbolInfo*> byLink;
+    auto consider = [&](const FnSymbolInfo& fn) {
+        if (!fn.isExternal) return;
+        string link = fn.externLinkName();
+        if (link.empty()) return;
+        auto it = byLink.find(link);
+        if (it == byLink.end()) {
+            byLink[link] = &fn;
+            return;
+        }
+        if (!it->second->sameExternCSig(fn)) {
+            const int line = fn.declLine > 0 ? fn.declLine : 1;
+            throw YuxError(line, ErrorCode::E2036, link);
+        }
+    };
+    auto walkFile = [&](FileNode* f) {
+        if (!f) return;
+        for (auto& [_, overloads] : f->localFnSymbols()) {
+            for (auto& fn : overloads)
+                consider(fn);
+        }
+    };
+    for (ScopeNode* p = _file->parentScope(); p; p = p->parentScope()) {
+        if (auto* pf = dynamic_cast<FileNode*>(p)) {
+            walkFile(pf);
+            for (auto* imp : pf->wildcardImports())
+                walkFile(imp);
+        }
+    }
+    for (auto* imp : _file->wildcardImports())
+        walkFile(imp);
+    for (auto& [_, overloads] : _file->localFnSymbols()) {
+        for (auto& fn : overloads) {
+            if (!fn.isExternal) continue;
+            if (!fn.moduleName.empty() && fn.moduleName != mod) continue;
+            consider(fn);
+        }
+    }
 }
 
 void SemaPass::checkExternCLayoutType(const TypeInfo& raw, const string& fnName, const char* where, int line) {

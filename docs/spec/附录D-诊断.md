@@ -111,6 +111,7 @@ N | <源码行原文>
 | E2033 | `invalid string escape sequence \`{}\`` |
 | E2034 | `extern fn \`{}\` cannot use type \`{}\` in {} (not C ABI; spec §6.6.2)` |
 | E2035 | `struct \`{}\` cannot appear in extern signature: field \`{}\` has type \`{}\` (not C-layout; spec §7.5.3)` |
+| E2036 | `extern C symbol \`{}\` has incompatible signatures (spec §6.6.1)` |
 
 ### D.3.3 E3xxx — 类型
 

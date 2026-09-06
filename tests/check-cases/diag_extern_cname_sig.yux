@@ -1,0 +1,9 @@
+; require-sdk
+; 与 SDK `GetStdHandle(i32) Ptr` 同 C 名但签名不同 → E2036
+
+extern {
+  fn GetStdHandle() i32  ; check: E2036
+}
+
+fn main() {
+}

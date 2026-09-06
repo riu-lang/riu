@@ -15,6 +15,13 @@
 
 ---
 
+## 2026-09-06 —— extern：yux 名按模块分区，LLVM 只认 C ABI 名
+
+- **修改 §6.6.1.2–§6.6.1.4**：`extern fn` 在 yux 层与普通 `fn` 一样按模块分区；链接 / LLVM 只用 `#CName`（或声明名）。多模块可重复声明同一 C 签名；无限定名优先本模块；签名不同 → E2036。
+- **修改 §10.4.1.3.1**：扁平进 `yux.core` 的成员可写 `yux.core.name`（如 `yux.core.GetStdHandle`）。
+- **附录 D**：E2036。
+- **冲突 / 兼容**：原先本模块再声明 SDK 已有的同名 extern 会 E6014；现可声明并调用，或用 `yux.core.fn` / `mod.fn` 选另一份声明。
+
 ## 2026-09-06 —— CLI：`args()` / `tick_ms()` / `String.parse_i32`
 
 - **新增 §10.4.1.6**：`args() Array<String>`（含 argv[0]）、`tick_ms() u32`；`fn main() i32` 仍不做，非零退出走 `exit`。

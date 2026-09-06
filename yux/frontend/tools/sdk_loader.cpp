@@ -105,6 +105,10 @@ void registerSdkModulePaths(Yux& yux) {
         }
         sdk->addPackageChild("yux", "core." + stem, file);
     }
+
+    // 扁平进 yux.core 的成员（base.GetStdHandle 等）也可写 `yux.core.fn`：
+    // 包孩子 `core` 指向 SDK 壳，lookup 走 wildcardImports。
+    sdk->addPackageChild("yux", "core", sdk);
 }
 
 void parseSdkDir(const std::string& sdkDir, Yux& yux, bool allowDecl) {
