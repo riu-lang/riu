@@ -4,6 +4,7 @@
 ;   - Box<T> 泛型 struct：get_val() 返回 T&、set_val(T) 写字段
 ;   - Box<i32> 实例化后 T& → i32& 正确替换
 ;   - 通过返回的 T& 引用修改源字段（写穿验证）
+;   - Array<Box<T>>[i].method() 走元素方法并写穿
 ;
 ; 已知缺口：无——本文件为 BUG 回归（泛型 struct 方法体内 T& 字段类型/表达式类型替换缺失）的专项验证。
 ; 泛型名冲突综合场景见 generic_name_conflict.test.yux。
@@ -42,4 +43,15 @@ fn test_box_get_ref_and_modify() {
   #Mut let r i32& = b.get_val()
   r = 99
   assert_eq(b.val, 99)
+}
+
+; 验证：Array<Box<T>>[i].method() 走元素方法并写穿
+#Test
+fn test_array_box_index_method() {
+  #Mut let arr Array<Box<i32>> = []
+  arr.push(Box:<i32>::make(10))
+  arr.push(Box:<i32>::make(20))
+  arr[0].set_val(99)
+  assert_eq(arr[0].val, 99)
+  assert_eq(arr[1].val, 20)
 }

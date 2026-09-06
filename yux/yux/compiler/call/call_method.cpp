@@ -1232,10 +1232,15 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
                     }
                     if (!basePtr) {
                         auto baseVal = compileExpr(baseExpr);
-                        auto structType = _structTypes[effName];
-                        auto alloca = _builder.CreateAlloca(structType, nullptr, "method_tmp");
-                        _builder.CreateStore(baseVal, alloca);
-                        basePtr = alloca;
+                        // [] / get() / 调用返 T&：compileExpr 已是 T*，不能当 struct 值 store
+                        if (baseExpr->getType().isRef()) {
+                            basePtr = baseVal;
+                        } else {
+                            auto structType = _structTypes[effName];
+                            auto alloca = _builder.CreateAlloca(structType, nullptr, "method_tmp");
+                            _builder.CreateStore(baseVal, alloca);
+                            basePtr = alloca;
+                        }
                     }
 
                     map<string, TypeInfo> subst;
@@ -1317,8 +1322,9 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
         bool heapFromLocal = false;
         if (!basePtr) {
             auto baseVal = compileExpr(baseExpr);
-            if (baseType.isHeap()) {
-                // Heap<T>: compileExpr 返回 T*，直接用作 struct 指针
+            if (baseType.isHeap() || baseExpr->getType().isRef()) {
+                // Heap<T>：compileExpr 返回 T*
+                // [] / get() / 调用返 T&：compileExpr 已是 T*，直接当 Self&
                 basePtr = baseVal;
             } else {
                 auto structType = getLLVMType(actualType);

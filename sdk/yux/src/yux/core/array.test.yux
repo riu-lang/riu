@@ -6,6 +6,7 @@
 ;   - Array:<T>::with_capacity 静态工厂
 ;   - f64 元素链式加法（回归 v0.18 LLVM crash）
 ;   - bool / String 元素
+;   - Array<String>[i].len() / Array<struct>[i].method()（下标后走元素方法）
 ;   - clear / clone
 ;   - 函数返回 move、传参共享语义
 ;   - Array<Rc<T>> 元素重赋值 retain/release
@@ -217,6 +218,48 @@ fn test_array_bool_elements() {
 fn test_array_of_string() {
   #Mut let arr Array<String> = ["hello", "world"]
   assert_eq(arr.len(), 2)
+}
+
+; 验证：Array<String>[i].len() / get(i).len() 走 String.len，不是外层 Array.len
+#Test
+fn test_array_string_index_method() {
+  #Mut let arr Array<String> = ["hello", "world"]
+  assert_eq(arr[0].len(), 5)
+  assert_eq(arr[1].len(), 5)
+  assert_eq(arr.get(0).len(), 5)
+}
+
+struct ElemMeth {
+  a i32
+  b i32
+
+  #Static
+  fn make(a i32, b i32) ElemMeth {
+    ret Self {
+      .a = a
+      .b = b
+    }
+  }
+
+  fn sum() i32 {
+    $.a + $.b
+  }
+
+  fn set_a(v i32) {
+    $.a = v
+  }
+}
+
+; 验证：下标后调用户 struct 方法，读 + 写穿元素
+#Test
+fn test_array_struct_index_method() {
+  #Mut let arr Array<ElemMeth> = [ElemMeth::make(1, 2), ElemMeth::make(3, 4)]
+  assert_eq(arr[0].sum(), 3)
+  assert_eq(arr[1].sum(), 7)
+  arr[0].set_a(10)
+  assert_eq(arr[0].a, 10)
+  assert_eq(arr[0].sum(), 12)
+  assert_eq(arr[1].a, 3)
 }
 
 ; ==================== clear / clone ====================
