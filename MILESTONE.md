@@ -61,7 +61,7 @@
 
 ### v1.0 候选 — 规范定稿 + ABI 冻结
 
-> **现状提示**：v1.0 仍远（当前 v0.21）。spec 残留 Open Issues 已审计并关/转/留；本节标准是终态门槛，不是近期目标。下方"后续主题"里的待编号工作要先落，才进 v1.0 候选。
+> **现状提示**：v1.0 仍远（当前 v0.22-alpha）。spec 残留 Open Issues 已审计并关/转/留；本节标准是终态门槛，不是近期目标。下方"后续主题"里的待编号工作要先落，才进 v1.0 候选。
 
 **退出标准**：
 
@@ -80,20 +80,15 @@
   - **依赖**：v0.9 错误模型 v1（已完成）；可能还需泛型 enum / Self 类型 / 函数值的错误通道支持（[#22]）。
   - **不含**：unwind / SEH / personality（yux 不引入异常机制，永久拒绝）。
 
-- **SDK 第一轮剩余**：
-  - `Map<K, V>`
-  - 基础 IO 改进（行读取、文件 API 雏形）
-  - `format` 类格式化（候选 `?` / `{}`，配合 SDK 一并做）
-  - `math.*` / `String.starts_with` / `contains` / `Array.clone()` 已在 v0.18；`to_upper` / `split` 等进 v0.19
+- **SDK 向 v1**：高频 API / 包公开面 / 小程序可用性进 **v0.22**（清单不锁死）。`format` 类 printf 格式（候选 `?` / `{}`）**不**在 v0.22。`Map` / `yux.io` / `continue` / `for-in`（Array / `[T*N]`）已在 v0.21。
 
-- **控制流语法（需改 g4，开工前拍板）**：`continue` / `continue@label`（名称 continue vs next 待决议）；`for in` 迭代（`Iter<T>` draft + Array / 定长数组特例 lowering）。当前 `yuxParser.g4` **无** `statementForIn` 骨架（v0.6 曾占位，后已删除）。
+- **`Iter<T>` / 泛型 for-in**：`for-in` 目前只 lower Array / 定长数组。完整迭代器 spec 与 Map 直接 `for` 推后。
 
 - **泛型 enum**：enum 类型参数 / 方法 / spec 实现 / struct-style payload（§3.10.2.6）。错误模型 v2 可能依赖此项。
 
 - **反射补全**：`Field.type` / `offset`；显式 receiver `other::fields[0].value`；`Self::type` / `Self::fields`；`methods` / `variants` 数组填充；`#Reflect` 命名参数（待 anno-struct）。
 
-- **模块声明文件（`.decl`）**：parse 后写二进制模块声明（接口 + 泛型体源文本）；`use` 读声明、不拉依赖整棵 AST。声明失效键是格式版本 + 源码 hash，**重编编译器不重 parse**。`yux test` 按文件 spawn 已并入 v0.20；`.decl` 是同版本后半（让 spawn 不再重 parse SDK）。
-  - **不含**：YAML AST；深拷编译器会话；进程内并行 SemaPass。
+- **模块声明文件（`.decl`）**：已随 v0.20 落地。YAML AST / 深拷编译器会话 / 进程内并行 SemaPass 仍不做。
 
 - **工具链与编辑器支持**：LSP / IDE 插件（高亮、补全、跳转）；测试框架（约定 + runner）；文档生成（从源码注释 / spec 抽取）。
 
@@ -102,6 +97,45 @@
 - **代码生成代码（实验）**：注解预处理 / 编译期生成；类 Java 注解处理 / 类 Rust 派生宏的最小子集；仅允许产出代码、不允许任意副作用。退出标准示例：派生 `ToString` 可用。
 
 - **性能与 layout 优化**：String 专属 FAM Block（`{strong, weak, len_cps, u32 data[]}`）；Array Block 内联小尺寸优化；内联策略与裁剪；基准测试无回归。
+
+### v0.22.0-alpha — SDK 完善 + pkg 可见性收口
+
+**主题**：补全 SDK、向 v1 靠拢。唯一预提交的语言面是模块 / `pkg` 可见性收口。其余语法只在写 SDK 被卡住时按需补；**不改** `yux*.g4`（`pkg` 文件不是 yux 语法）。改 g4 必须先停下来拍板。
+
+**动机（v0.21 之后仍缺的）**：
+- `pkg` 不能藏内部模块：未列出的子模块仍可用全名钻入（§10.2.4.6）；SDK 壳把 core 下每个 `.yux` 都扁平进去，`assert` / `panic` / `exit` 虽不在清单里也会漏到裸名
+- 没有包级「只给指定外部包用」的定向导出，SDK 拆内部文件会被迫公开或靠 `_` 前缀（只挡符号、不挡模块）
+- 写独立小程序还缺路径 / 环境 / 若干 String·Array·Map 方法；`Array<T>[i].method()` 会误命中外层 `Array` 方法
+
+**范围（草稿，API 清单不锁死）**：
+
+**A. 模块 / pkg（必做）**
+- 无 `pkg`：仍按模块定义访问（`use a.c` / `a.c.xxx`）
+- 有 `pkg`：包外只能走清单；未列出的不能 `a.c.xxx` / `use a.c`
+- 同目录兄弟 `.yux` 为包内，不受清单挡；子目录包与其它包为包外
+- 新行：`c as xxx to fq.pkg; other.mod`（`as` / `to` 均可选）；`to` 目标须在当前项目或已加载依赖（含 SDK）中存在
+- 友方只认 pkg 定义的名字（有别名则只用别名）
+- `name.*` 只做扁平公开导出；不做 `name.* to` / `name.* as alias`
+- 收回 §10.2.4.6；§10.3.3.2 包级私有在本版落地一截（仍不引入 `pub` / `private`）
+
+**B. SDK**
+- 公开面与 `yux.core/pkg`（及 `yux.io`）对齐：只扁平 `name.*`；stdlib（`assert` / `panic` / `exit` 等）进清单；内部模块不进 parent scope，需要时 `to yux.io`
+- 按「写小程序还缺什么」补 String / Array / Map / IO / 路径 / 环境；Map 遍历走 `keys()` 再 `for`，不引入 `Iter<T>`
+- 修 `Array<T>[i].method()` 按元素类型分派
+- 核对 `#Inline #Cval` 跨文件常量（`math.PI`）；普通 `#Cval` 仅在 SDK 真正需要时再放开
+- 示例按新 API 加 1–2 个即可
+
+**不在范围**：异步；泛型 enum；错误模型 v2；反射补全；`while`；`Iter<T>`；远程包管理；`format("{:04}")` 类 printf；LSP 大改；改 `yux*.g4`（除非 SDK 卡住并先拍板）。
+
+**退出标准**：
+
+- [ ] 有 `pkg` 时包外不能直达未导出模块；`to` 按名单放行；无 `pkg` 行为不变
+- [ ] SDK 用户可见符号与 pkg 清单一致，内部模块不再漏到裸名
+- [ ] 用纯 yux 能写「参数 + 文件 + 环境/路径」类小程序，不必手写 C
+- [ ] `Array[i].method()` 对内层元素类型正确
+- [ ] `yux test` / `yux-check test` / `./build.ps1 test` 全绿；`./lint.ps1` 0 warnings；CHANGELOG 收口
+
+**依赖**：v0.21 已完成。
 
 ### v0.21.0 — 可用性：SDK + 控制流 + FFI ✅ 已完成（2026-09-06）
 
