@@ -119,10 +119,12 @@
 | 项目 | project | §10.1 | `yux.toml` 标记的根 |
 | 入口 | entry | §10.1.1 | `yux.toml` 的 `entry` 字段 |
 | 源根 | source root | §10.1.3 | `<projectRoot>/src/`，模块解析起点 |
-| `pkg` 文件 | pkg file | §10.2.4 | 包目录的再导出清单 |
+| `pkg` 文件 | pkg file | §10.2.4 | 包目录的再导出清单；有 `pkg` 时同时是包外可见性边界 |
 | 文件模块 | file module | §10.1.3 / §10.2.2 | 由单个 `.yux` 文件构成的模块 |
 | 包模块 | package module | §10.1.3 / §10.2.4 | 由含 `pkg` / 多个 `.yux` 的目录构成的模块 |
 | 通配导入 | wildcard import | §10.2.3 | `use a.b.*` 扁平化导入 |
+| 导出名 | exported name | §10.2.4.7 | `pkg` 行给出的名字；有 `as` 则只用别名 |
+| 定向开放 | directed export | §10.2.4 | `pkg` 行 `to`：只对名单内的包 / 模块可见 |
 | `_` 前缀私有 | underscore-private | §10.3.2 | 仅当前模块可见 |
 | `yux.core` | yux core SDK | §10.4 | 内置 SDK 模块名 |
 | `base.yux` | SDK base | §10.4 | 内置类型 / 内置函数声明源 |

@@ -49,7 +49,7 @@ N | <源码行原文>
 | E2xxx | 语法 / AST 结构     | §2     | 文法接受但语义级 AST 构造拒绝；纯文法错误归 E1xxx   |
 | E3xxx | 类型                | §3 §4  | 类型不匹配 / 符号查找 / 字段访问 / 泛型实参等       |
 | E4xxx | 所有权 / 借用       | §8     | `T&` 借用合法性、`$` 字段 DA/DAA、构造器返回限制    |
-| E5xxx | 模块 / 包           | §10    | `yux.toml` 解析、模块发现、循环依赖                 |
+| E5xxx | 模块 / 包           | §10    | `yux.toml` 解析、模块发现、循环依赖、`pkg` 可见性 |
 | E6xxx | 内置 / 调用         | §6 §9  | 函数 / 方法调用、`#Builtin`、内置类型方法     |
 | E7xxx | 错误处理 / panic    | §6 §8  | `#Fallible` / `!` / try-catch / `#NoReturn` / `panic` 边界（详见 DRAFT-错误.md / 待 spec 落地后补 §引用） |
 | E11xx | draft / 接口        | §12    | draft 实现穷尽性 / `#DraftLike` 误用 / orphan / 边界 |
@@ -326,6 +326,11 @@ for-in（E3160；§5.5.4）：
 | E5015 | `ambiguous bare name \`{}\`: candidates {}` |
 | E5016 | `cannot use module or package \`{}\` as a value` |
 | E5017 | `cannot use type \`{}\` as a value` |
+| E5018 | `module \`{}\` is not exported from package \`{}\`` |
+| E5019 | `pkg \`to\` target \`{}\` does not exist` |
+| E5020 | `invalid pkg line in \`{}\`: {}` |
+
+> E5018：有 `pkg` 时包外访问未列出项、`to` 名单不含调用方、或有 `as` 却写源名（§10.2.4.3 / §10.2.4.7）。E5019：`to` 目标不在当前项目源树或已加载依赖（含 SDK）。E5020：`name.* to` / `name.* as`、同一子模块多行、空 `to` 列表等非法行（§10.2.4.2.3）。码已分配；诊断站点随 v0.22 实现接入。
 
 ### D.3.6 E6xxx — 内置 / 调用
 

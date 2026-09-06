@@ -1,5 +1,5 @@
 CompileFlags:
-  CompilationDatabase: .
+  CompilationDatabase: ./build/windows/x64/debug
   Add:
     - "-Wno-language-extension-token"
     - "-std=c++23"

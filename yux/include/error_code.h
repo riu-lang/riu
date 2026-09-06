@@ -390,6 +390,10 @@ DEF_WARN(5014, "yux.toml `entry` resolves outside `src/` (`{}`): convention is t
 DEF_ERR(5015, "ambiguous bare name `{}`: candidates {}")
 DEF_ERR(5016, "cannot use module or package `{}` as a value")
 DEF_ERR(5017, "cannot use type `{}` as a value")
+// pkg 排他 / to（§10.2.4）。站点随 v0.22 接入。
+DEF_ERR(5018, "module `{}` is not exported from package `{}`")
+DEF_ERR(5019, "pkg `to` target `{}` does not exist")
+DEF_ERR(5020, "invalid pkg line in `{}`: {}")
 
 // ── E6xxx 内置 / 调用 ─────────────────────────────────────────────────
 DEF_ERR(6001, "module `{}` not found in package `{}`")
