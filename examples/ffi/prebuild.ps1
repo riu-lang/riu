@@ -30,7 +30,9 @@ $clang = Find-LlvmBin 'clang-cl'
 $lld = Find-LlvmBin 'lld-link'
 $obj = Join-Path $LibDir 'ffi_demo.obj'
 $lib = Join-Path $LibDir 'ffi_demo.lib'
-& $clang /c /GS- /I$CDir /Fo$obj (Join-Path $CDir 'ffi_demo.c')
+$RepoRoot = Split-Path -Parent (Split-Path -Parent $Root)
+$RtInc = Join-Path $RepoRoot 'yux\rt'
+& $clang /c /GS- "/I$CDir" "/I$RtInc" /Fo$obj (Join-Path $CDir 'ffi_demo.c')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & $lld /lib "/out:$lib" $obj
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -102,8 +102,7 @@ void Compiler::compile(p<FileNode> file) {
     DEBUG_LOG("Compiling enum destructors...");
     compileEnumDtors();
 
-    // SDK 需要生成运行时辅助函数
-    // 这些函数用于 Rc、Array 等类型的内存管理
+    // SDK 需要生成运行时辅助函数（Weak / Heap / Array free；Rc alloc/retain/release 在 yuxrt）
     if (_isSdk) {
         DEBUG_LOG("Emitting runtime helpers (yux module)");
         runtime::emitRuntimeHelpers(_builder, _module);

@@ -3,6 +3,9 @@
 #ifndef YUXRT_H
 #define YUXRT_H
 
+#include "ffi/yux_nullable.h"
+#include "ffi/yux_rc.h"
+#include "ffi/yux_string.h"
 #include "math/math.h"
 #include "mem/mem.h"
 

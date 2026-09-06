@@ -43,8 +43,12 @@ llvm::Function* getYuxrtAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder
 llvm::Function* getYuxrtReallocFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 llvm::Function* getYuxrtFreeFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 
+// yuxrt ffi：Rc 计数协议（yux_rc_*）。alloc/retain/release 不再 emit IR 体。
+llvm::Function* getYuxRcReleaseNeedDtorFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+llvm::Function* getYuxRcDropBlockFn(llvm::Module* module, llvm::IRBuilder<>& builder);
+
 // 全局 rc_block_count 增减（Phase 8a leak 检测）
-// delta: +1（alloc）或 -1（free）
+// 定义在 yuxrt（yux_rc.c）；IR 只 extern。delta: +1（alloc）或 -1（free）
 void emitRcBlockCountAdd(llvm::IRBuilder<>& builder, llvm::Module* module, int64_t delta);
 
 // 生成 _box_release_<T> 的函数体（Phase B-2）
@@ -67,12 +71,11 @@ void emitRcReleaseForArrayFn(llvm::LLVMContext& context, llvm::IRBuilder<>& buil
 void emitRcReleaseForInlineDtorFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
                                   llvm::Function* func, TypeKind kind, llvm::Function* payloadReleaseFn);
 
+// yux_rc_alloc / yux_rc_retain / yux_rc_release（yuxrt.lib；与旧 __yux_box_* 同协议）
 llvm::Function* getRcAllocFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 llvm::Function* getRcRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder);
-// _box_release(handle) -> void
-// Phase 1d.1：strong--；归零时 weak--，weak 也归零时 free 整个 block；null/哨兵跳过
-// payload 析构仍由调用方在 IR 内联（在 _box_release 之前），因此外部 Weak 在 strong=0 后
-// upgrade 必须读 strong 来判活而非 payload；Weak 自身仅维护 block 存活
+// yux_rc_release(handle) -> void
+// strong--；归零时 weak--，weak 也归零时 free；null/哨兵跳过。不跑 payload 析构。
 llvm::Function* getRcReleaseFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 
 // _dyn_release(data, vtable) -> void  (Phase 3e, DRAFT-dyn-draft §12.9)
@@ -132,8 +135,7 @@ llvm::Function* getHeapHandleAllocFn(llvm::Module* module, llvm::IRBuilder<>& bu
 llvm::Function* getHeapHandleFreeFn(llvm::Module* module, llvm::IRBuilder<>& builder);
 
 // ==================== leak 检测（Phase 8a） ====================
-// 全局 i64 `_rc_block_count`：每次 alloc Block ++，每次实际 free Block --
-// 程序结束时 != 0 表示泄漏。SDK 模块定义；其他模块通过 extern 声明引用
+// 全局 i64 `__yux_rc_block_count`：定义在 yuxrt；IR 仅 extern
 llvm::GlobalVariable* getRcBlockCountGlobal(llvm::Module* module, llvm::IRBuilder<>& builder);
 
 // ==================== 运行时辅助函数生成 ====================

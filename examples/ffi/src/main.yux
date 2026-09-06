@@ -1,4 +1,4 @@
-; examples/ffi — yux → C：标量、POD struct copy、ptr_of 传入、Ptr handle 回传 C。
+; examples/ffi — yux → C：标量、POD struct、ptr_of、Ptr handle；D2：C 读 yux 仍持有的 Rc/Nullable/String。
 ; 先 ./prebuild.ps1（clang-cl → lib/ffi_demo.lib），再 yux build。
 
 struct Point {
@@ -39,6 +39,18 @@ extern {
   fn ffi_nlen(s Ptr) i32
   #CName("ffi_hello")
   fn ffi_hello() Ptr
+  #CName("ffi_rc_i32_get")
+  fn ffi_rc_i32_get(p Ptr) i32
+  #CName("ffi_rc_i32_set")
+  fn ffi_rc_i32_set(p Ptr, v i32)
+  #CName("ffi_rc_i32_peek_retain")
+  fn ffi_rc_i32_peek_retain(p Ptr) i32
+  #CName("ffi_nullable_i32_or")
+  fn ffi_nullable_i32_or(p Ptr, fallback i32) i32
+  #CName("ffi_string_len")
+  fn ffi_string_len(p Ptr) i32
+  #CName("ffi_string_first")
+  fn ffi_string_first(p Ptr) i32
 }
 
 fn main() {
@@ -68,4 +80,16 @@ fn main() {
   #Mut let bytes Array<u8> = c_string("hi")
   println(ffi_nlen(bytes))
   println(from_c_chars(ffi_hello()))
+  #Mut let r Rc<i32> = 42
+  println(ffi_rc_i32_get(r))
+  ffi_rc_i32_set(r, 7)
+  println(ffi_rc_i32_get(r))
+  println(ffi_rc_i32_peek_retain(r))
+  #Mut let opt i32? = 11
+  println(ffi_nullable_i32_or(&opt, 0))
+  #Mut let empty i32? = null
+  println(ffi_nullable_i32_or(&empty, -1))
+  let s String = "hi"
+  println(ffi_string_len(&s))
+  println(ffi_string_first(&s))
 }

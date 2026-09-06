@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-09-06 —— FFI D2：C API 操作 yux 仍持有的 Rc / Nullable / String
+
+- **新增 §8.7.4.7 / §9.7.2.9**：`yuxrt.lib` 手写 `yux_rc.h` / `yux_nullable.h` / `yux_string.h`。C 可读 payload、extra retain/release；**不**从 `Ptr` 重建 yux 类型；最后一次 strong 归零且 `T` 含嵌套堆字段时必须走 yux typed release。
+- **修改 §6.5.6.6 / §8.8.4.1**：Rc 计数协议符号改为 `yux_rc_*`；`__yux_rc_block_count` 定义在 yuxrt。
+- **冲突 / 兼容**：IR 不再定义 `__yux_box_alloc` / `__yux_box_retain` / `__yux_box_release`；链接 yuxrt 即可。用户 yux 代码无破坏。
+
 ## 2026-09-06 —— FFI D1：extern 白名单 + C-layout struct + `Ptr` 不透明
 
 - **改写 §6.6.2**：允许表 = 标量 / `bool` / `Ptr` / C-layout struct / void；`Heap` E4028、`Function` E2031、`Dyn` E1136、其余堆句柄/`T&`/enum E2034；字段 E2035。白名单强制。
