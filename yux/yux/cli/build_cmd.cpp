@@ -69,6 +69,22 @@ static std::string testDllFileStem(const std::string& testMod) {
     return dllFileName;
 }
 
+// [link] lib_dirs + libs → lld-link。storage 必须在 lldMain 返回前存活。
+static void appendProjectLinkArgs(Yux& yux, std::vector<std::string>& storage, std::vector<const char*>& args) {
+    namespace fs = std::filesystem;
+    for (auto& d : yux.projectLinkLibDirs()) {
+        fs::path p(d);
+        if (!p.is_absolute()) p = fs::path(yux.projectRoot()) / p;
+        storage.push_back("/libpath:" + p.lexically_normal().string());
+    }
+    for (auto& lib : yux.projectLinkLibs()) {
+        storage.push_back(lib + ".lib");
+    }
+    for (auto& s : storage) {
+        args.push_back(s.c_str());
+    }
+}
+
 // DLL 是否仍新于 test obj + 全部非 test obj + sdk/yuxrt（保守：任一用户模块变了就 relink）
 static bool isTestDllFresh(const std::string& dllPath, const std::string& testObj,
                            const std::map<std::string, std::string>& allObjMap, const std::string& sdkLibPath,
@@ -415,14 +431,8 @@ static int buildTestDlls(Yux& yux, const std::filesystem::path& srcDir, const st
                     linkArgs.insert(linkArgs.begin() + 1, o.c_str());
                 // yuxrt 运行时库
                 if (!yuxrtLibPath.empty()) linkArgs.push_back(yuxrtLibPath.c_str());
-                // 项目级 [link].libs（yux.toml）
                 std::vector<std::string> projLibArgs;
-                for (auto& lib : yux.projectLinkLibs()) {
-                    projLibArgs.push_back(lib + ".lib");
-                }
-                for (auto& lib : projLibArgs) {
-                    linkArgs.push_back(lib.c_str());
-                }
+                appendProjectLinkArgs(yux, projLibArgs, linkArgs);
 
                 std::string outStr, errStr;
                 llvm::raw_string_ostream oOS(outStr), eOS(errStr);
@@ -1036,14 +1046,8 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         }
         // yuxrt 运行时库
         if (!yuxrtLibPath.empty()) args.push_back(yuxrtLibPath.c_str());
-        // 项目级 [link].libs（yux.toml）
         std::vector<std::string> projLibArgs;
-        for (auto& lib : yux.projectLinkLibs()) {
-            projLibArgs.push_back(lib + ".lib");
-        }
-        for (auto& lib : projLibArgs) {
-            args.push_back(lib.c_str());
-        }
+        appendProjectLinkArgs(yux, projLibArgs, args);
 
         std::string stdoutStr, stderrStr;
         llvm::raw_string_ostream stdoutOS(stdoutStr), stderrOS(stderrStr);

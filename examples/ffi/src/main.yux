@@ -1,0 +1,71 @@
+; examples/ffi — yux → C：标量、POD struct copy、ptr_of 传入、Ptr handle 回传 C。
+; 先 ./prebuild.ps1（clang-cl → lib/ffi_demo.lib），再 yux build。
+
+struct Point {
+  x i32
+  y i32
+}
+
+struct Triple {
+  a i32
+  b i32
+  c i32
+}
+
+extern {
+  #CName("ffi_add")
+  fn ffi_add(a i32, b i32) i32
+  #CName("ffi_gt")
+  fn ffi_gt(a i32, b i32) bool
+  #CName("ffi_make_point")
+  fn ffi_make_point(x i32, y i32) Point
+  #CName("ffi_point_sum")
+  fn ffi_point_sum(p Point) i32
+  #CName("ffi_point_bump")
+  fn ffi_point_bump(p Ptr)
+  #CName("ffi_make_triple")
+  fn ffi_make_triple(a i32, b i32, c i32) Triple
+  #CName("ffi_triple_sum")
+  fn ffi_triple_sum(t Triple) i32
+  #CName("ffi_handle_open")
+  fn ffi_handle_open(id i32) Ptr
+  #CName("ffi_handle_id")
+  fn ffi_handle_id(p Ptr) i32
+  #CName("ffi_handle_close")
+  fn ffi_handle_close(p Ptr)
+  #CName("ffi_write_i32")
+  fn ffi_write_i32(p Ptr, v i32)
+  #CName("ffi_nlen")
+  fn ffi_nlen(s Ptr) i32
+  #CName("ffi_hello")
+  fn ffi_hello() Ptr
+}
+
+fn main() {
+  println(ffi_add(2, 3))
+  if ffi_gt(5, 1) {
+    println(1)
+  } else {
+    println(0)
+  }
+  let pt Point = ffi_make_point(10, 20)
+  println(ffi_point_sum(pt))
+  #Mut let local Point = Point {
+    .x = 1
+    .y = 2
+  }
+  ffi_point_bump(ptr_of(&local))
+  println(local.x)
+  println(local.y)
+  let t Triple = ffi_make_triple(1, 2, 3)
+  println(ffi_triple_sum(t))
+  let h Ptr = ffi_handle_open(42)
+  println(ffi_handle_id(h))
+  ffi_handle_close(h)
+  #Mut let n i32 = 0
+  ffi_write_i32(ptr_of(&n), 99)
+  println(n)
+  #Mut let bytes Array<u8> = c_string("hi")
+  println(ffi_nlen(bytes))
+  println(from_c_chars(ffi_hello()))
+}

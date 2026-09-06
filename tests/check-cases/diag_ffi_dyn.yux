@@ -1,0 +1,13 @@
+; D1：Dyn 不得跨 extern 边界 → E1136
+
+#Spec
+struct Greet {
+  fn hi()
+}
+
+extern {
+  fn ffi_take_dyn(d Dyn<Greet>)  ; check: E1136
+}
+
+fn main() {
+}

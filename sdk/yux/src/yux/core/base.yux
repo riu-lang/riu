@@ -203,9 +203,9 @@ fn heap_null<T>() Heap<T>?
 #Builtin
 fn heap<T>(v T) Heap<T>
 
-; _heap_take:<T>(p Ptr) Heap<T>：从裸 Ptr 接管所有权（私有；FFI 互转）
+; _heap_take:<T>(p Ptr) Heap<T>：从裸 Ptr 接管所有权（SDK 私有，不在用户 FFI 契约里）
 ; 编译器 intrinsic：直接返回 Ptr 作为 Heap<T> 句柄，作用域尾走 Heap<T> dtor
-; 调用方保证 Ptr 由 yuxrt 兼容的 allocator 分配
+; 调用方保证 Ptr 由 yuxrt 兼容的 allocator 分配；C 返回的 Ptr 不得走这条路径（§9.7.2.7）
 #Builtin
 fn _heap_take<T>(p Ptr) Heap<T>
 
@@ -422,4 +422,88 @@ struct Method {
 struct Variant {
   #Frozen
   name String
+}
+
+; ==================== FFI 字符串拷贝（§9.7.2.8）====================
+; 不 wrap Ptr：c_string 产出带 NUL 的 UTF-8 Array<u8>；from_c_chars 从 C 缓冲拷成 String。
+
+fn c_string(s String&) Array<u8> {
+  #Mut let b Array<u8> = s.to_bytes()
+  b.push(0u8)
+  ret b
+}
+
+fn from_c_chars(p Ptr) String {
+  if p.to_int() == 0u64 {
+    ret String::empty()
+  }
+  #Mut let bytes Array<u8> = []
+  #Mut let cur Ptr = p
+  loop {
+    let b u8& = _ptr_as_ref:<u8>(cur)
+    if b == 0u8 {
+      break;
+    }
+    bytes.push(copy_of(b))
+    cur = _ptr_offset(cur, 1i64)
+  }
+  #Mut let cps Array<u32> = []
+  #Mut let i usize = 0
+  let n usize = bytes.len()
+  loop {
+    if i >= n {
+      break;
+    }
+    let b0 u8 = copy_of(bytes[i])
+    if b0 < 128u8 {
+      cps.push(b0.to_u32())
+      i += 1
+    } elif b0 >= 194u8 && b0 < 224u8 {
+      if i + 1 >= n {
+        cps.push(65533u32)
+        break;
+      }
+      let b1 u8 = copy_of(bytes[i + 1])
+      if b1 < 128u8 || b1 >= 192u8 {
+        cps.push(65533u32)
+        i += 1
+      } else {
+        cps.push(((b0.to_u32() - 192u32) << 6u32) + (b1.to_u32() - 128u32))
+        i += 2
+      }
+    } elif b0 >= 224u8 && b0 < 240u8 {
+      if i + 2 >= n {
+        cps.push(65533u32)
+        break;
+      }
+      let b1 u8 = copy_of(bytes[i + 1])
+      let b2 u8 = copy_of(bytes[i + 2])
+      if b1 < 128u8 || b1 >= 192u8 || b2 < 128u8 || b2 >= 192u8 {
+        cps.push(65533u32)
+        i += 1
+      } else {
+        cps.push(((b0.to_u32() - 224u32) << 12u32) + ((b1.to_u32() - 128u32) << 6u32) + (b2.to_u32() - 128u32))
+        i += 3
+      }
+    } elif b0 >= 240u8 && b0 < 245u8 {
+      if i + 3 >= n {
+        cps.push(65533u32)
+        break;
+      }
+      let b1 u8 = copy_of(bytes[i + 1])
+      let b2 u8 = copy_of(bytes[i + 2])
+      let b3 u8 = copy_of(bytes[i + 3])
+      if b1 < 128u8 || b1 >= 192u8 || b2 < 128u8 || b2 >= 192u8 || b3 < 128u8 || b3 >= 192u8 {
+        cps.push(65533u32)
+        i += 1
+      } else {
+        cps.push(((b0.to_u32() - 240u32) << 18u32) + ((b1.to_u32() - 128u32) << 12u32) + ((b2.to_u32() - 128u32) << 6u32) + (b3.to_u32() - 128u32))
+        i += 4
+      }
+    } else {
+      cps.push(65533u32)
+      i += 1
+    }
+  }
+  String::from(&cps)
 }

@@ -23,3 +23,5 @@
 /.*.toml
 /.mcp.json
 /.*code/
+/examples/ffi/lib/
+/tests/projects/ffi/lib/

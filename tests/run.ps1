@@ -143,23 +143,43 @@ function Invoke-OneCase {
         if ($Case.Kind -eq 'project') {
             $buildDir = Join-Path $Case.Dir 'build'
             if (Test-Path -LiteralPath $buildDir) { Remove-Item -LiteralPath $buildDir -Recurse -Force }
-            $r = Invoke-Capture $YuxExe @('build', $Case.Name) $Case.Dir
-            $exe = Join-Path $buildDir "$($Case.Name).exe"
-            if ($r.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $exe)) {
-                $err = "compile failed`n$($r.Stderr)$($r.Stdout)"
-            } else {
-                $run = Invoke-Capture $exe @() $Case.Dir
-                $expected = [IO.File]::ReadAllText((Join-Path $Case.Dir 'expected.txt'))
-                if ($run.ExitCode -ne 0) {
-                    $err = "run failed exit $($run.ExitCode)`n$($run.Stderr)$($run.Stdout)"
-                } elseif ($run.Stdout -ne $expected) {
-                    $err = "output mismatch`n--- expected ---`n$expected`n--- actual ---`n$($run.Stdout)"
+            $pre = Join-Path $Case.Dir 'prebuild.ps1'
+            if (Test-Path -LiteralPath $pre) {
+                $env:YuxExe = $YuxExe
+                $pwsh = $null
+                $cmd = Get-Command pwsh -ErrorAction SilentlyContinue
+                if ($cmd) { $pwsh = $cmd.Source } else {
+                    $cmd = Get-Command powershell -ErrorAction SilentlyContinue
+                    if ($cmd) { $pwsh = $cmd.Source }
+                }
+                if (-not $pwsh) {
+                    $err = "prebuild.ps1 present but pwsh/powershell not found"
                 } else {
-                    $ok = $true
+                    $preR = Invoke-Capture $pwsh @('-NoProfile', '-File', $pre) $Case.Dir
+                    if ($preR.ExitCode -ne 0) {
+                        $err = "prebuild failed`n$($preR.Stderr)$($preR.Stdout)"
+                    }
                 }
             }
-            if (Test-Path -LiteralPath $buildDir) {
-                Remove-Item -LiteralPath $buildDir -Recurse -Force -ErrorAction SilentlyContinue
+            if ($err -eq '') {
+                $r = Invoke-Capture $YuxExe @('build', $Case.Name) $Case.Dir
+                $exe = Join-Path $buildDir "$($Case.Name).exe"
+                if ($r.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $exe)) {
+                    $err = "compile failed`n$($r.Stderr)$($r.Stdout)"
+                } else {
+                    $run = Invoke-Capture $exe @() $Case.Dir
+                    $expected = [IO.File]::ReadAllText((Join-Path $Case.Dir 'expected.txt'))
+                    if ($run.ExitCode -ne 0) {
+                        $err = "run failed exit $($run.ExitCode)`n$($run.Stderr)$($run.Stdout)"
+                    } elseif ($run.Stdout -ne $expected) {
+                        $err = "output mismatch`n--- expected ---`n$expected`n--- actual ---`n$($run.Stdout)"
+                    } else {
+                        $ok = $true
+                    }
+                }
+                if (Test-Path -LiteralPath $buildDir) {
+                    Remove-Item -LiteralPath $buildDir -Recurse -Force -ErrorAction SilentlyContinue
+                }
             }
         } elseif ($Case.Kind -eq 'fail') {
             $buildDir = Join-Path $Case.Dir 'build'

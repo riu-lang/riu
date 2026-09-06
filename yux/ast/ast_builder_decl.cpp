@@ -113,29 +113,35 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
             retType = typeNode->getType();
         }
 
-        // Phase 4f / spec §7：extern fn 形参 / 返回值不得含 Function<...> 类型
-        // （含捕获 lambda 的 fat-ptr 与 C 函数指针 ABI 不兼容；零捕获静态判定推到 v0.x+1）
-        for (auto& pt : paramTypes) {
-            if (pt.isFn()) {
-                throw YuxError(header->getStart()->getLine(), ErrorCode::E2031, fnName, "parameters");
+        const int declLine = static_cast<int>(header->getStart()->getLine());
+        auto throwExternKind = [&](const TypeInfo& t, const char* where) {
+            if (t.empty()) return;
+            if (t.isPtr()) return;
+            if (t.isFallible()) {
+                throw YuxError(declLine, ErrorCode::E2034, fnName, t.getFullName(), where);
             }
-        }
-        if (retType.isFn()) {
-            throw YuxError(header->getStart()->getLine(), ErrorCode::E2031, fnName, "return type");
-        }
-
-        // DRAFT-heap-types §8b (Phase 3a): Heap<T> 不是 ABI 稳定形态,
-        // extern fn 形参 / 返回类型禁出现 Heap; 跨 FFI 走 Ptr.
-        for (auto& pt : paramTypes) {
-            if (pt.isHeap()) {
-                auto inner = pt.heapElementType();
-                throw YuxError(header->getStart()->getLine(), ErrorCode::E4028, inner ? inner->name : std::string("?"));
+            if (t.isNormal() && isBuiltinType(t.name)) return;
+            if (t.isFn()) {
+                throw YuxError(declLine, ErrorCode::E2031, fnName, where);
             }
+            if (t.isHeap()) {
+                auto inner = t.heapElementType();
+                throw YuxError(declLine, ErrorCode::E4028, inner ? inner->name : std::string("?"));
+            }
+            if (t.isDyn()) {
+                auto spec = t.dynSpecType();
+                throw YuxError(declLine, ErrorCode::E1136, spec ? spec->getFullName() : t.getFullName());
+            }
+            if (t.isRc() || t.isWeak() || t.isNullable() || t.isArrayGeneric() || t.isRef() || t.isTuple() ||
+                t.isString() || t.isStringBuilder()) {
+                throw YuxError(declLine, ErrorCode::E2034, fnName, t.getFullName(), where);
+            }
+            // 用户 struct / Generic / 未解析名：SemaPass 查 C-layout / enum
+        };
+        for (auto& pt : paramTypes) {
+            throwExternKind(pt, "parameters");
         }
-        if (retType.isHeap()) {
-            auto inner = retType.heapElementType();
-            throw YuxError(header->getStart()->getLine(), ErrorCode::E4028, inner ? inner->name : std::string("?"));
-        }
+        throwExternKind(retType, "return type");
 
         DEBUG_LOG_VAL("  Register external function", fnName);
         SymbolInfo fnSym(SymbolKind::Function, fnName, retType);
@@ -146,6 +152,7 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
         FnSymbolInfo fnFnSym{fnName, file->moduleName(), paramTypes, retType};
         fnFnSym.isExternal = true;
         fnFnSym.isNoReturn = externNoReturn;
+        fnFnSym.declLine = declLine;
         // #CName("link_symbol")：extern fn 的链接时符号名（§6.6.1.2）
         for (size_t i = 0; i < headerAnnos.names.size(); ++i) {
             if (headerAnnos.names[i] == "CName") {

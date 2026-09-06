@@ -16,6 +16,7 @@
 #include <cassert>
 #include <cstddef>
 #include <format>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -169,6 +170,7 @@ void SemaPass::run() {
     if (!_file) return;
     // 顶层类型别名一次性校验 (E2017 / E2016) + fn 符号表归一化
     sema::validateAliases(_file, _sdkFile);
+    validateExternFns();
     // E4025 / E1132：struct 字段上的 Rc/Weak/Array 内嵌 Heap、Rc/Weak 内嵌 Dyn
     for (auto& sd : _file->getStructDecls()) {
         if (!sd) continue;
@@ -511,4 +513,102 @@ void SemaPass::checkGenericBodyInst(p<FnNode> fn, const map<string, TypeInfo>& s
     _currentTypeParams = std::move(savedParams);
     _currentStructName = std::move(savedStruct);
     _currentFn = savedFn;
+}
+
+void SemaPass::validateExternFns() {
+    if (!_file) return;
+    const string& mod = _file->moduleName();
+    for (auto& [name, overloads] : _file->localFnSymbols()) {
+        for (auto& fn : overloads) {
+            if (!fn.isExternal) continue;
+            if (!fn.moduleName.empty() && fn.moduleName != mod) continue;
+            const int line = fn.declLine > 0 ? fn.declLine : 1;
+            for (auto& p : fn.params) {
+                checkExternCLayoutType(p, fn.name, "parameters", line);
+            }
+            if (!fn.retType.empty()) {
+                checkExternCLayoutType(fn.retType, fn.name, "return type", line);
+            }
+        }
+    }
+}
+
+void SemaPass::checkExternCLayoutType(const TypeInfo& raw, const string& fnName, const char* where, int line) {
+    TypeInfo t = sema::resolveAlias(raw, _file, _sdkFile);
+    if (t.empty() || t.isPtr()) return;
+    if (t.isFallible()) {
+        throw YuxError(line, ErrorCode::E2034, fnName, t.getFullName(), where);
+    }
+    if (t.isNormal() && isBuiltinType(t.name)) return;
+    if (t.isHeap() || t.isFn() || t.isDyn() || t.isRc() || t.isWeak() || t.isNullable() || t.isArrayGeneric() ||
+        t.isRef() || t.isTuple() || t.isString() || t.isStringBuilder() || t.isArray()) {
+        if (t.isHeap()) {
+            auto inner = t.heapElementType();
+            throw YuxError(line, ErrorCode::E4028, inner ? inner->name : std::string("?"));
+        }
+        if (t.isFn()) throw YuxError(line, ErrorCode::E2031, fnName, where);
+        if (t.isDyn()) {
+            auto spec = t.dynSpecType();
+            throw YuxError(line, ErrorCode::E1136, spec ? spec->getFullName() : t.getFullName());
+        }
+        throw YuxError(line, ErrorCode::E2034, fnName, t.getFullName(), where);
+    }
+    if (_names.lookupEnum(t)) {
+        throw YuxError(line, ErrorCode::E2034, fnName, t.getFullName(), where);
+    }
+    auto* sd = _names.lookupStruct(t);
+    if (!sd) {
+        throw YuxError(line, ErrorCode::E2034, fnName, t.getFullName(), where);
+    }
+    std::set<string> visiting;
+    checkCLayoutFields(t, sd, line, visiting);
+}
+
+void SemaPass::checkCLayoutFields(const TypeInfo& structTy, StructDeclNode* sd, int line, std::set<string>& visiting) {
+    const string key = structTy.identityKey();
+    if (visiting.contains(key)) {
+        throw YuxError(line, ErrorCode::E2035, structTy.getFullName(), "?", structTy.getFullName());
+    }
+    visiting.insert(key);
+
+    std::map<string, TypeInfo> subst;
+    if (sd->isGeneric()) {
+        const auto& tps = sd->typeParams();
+        if (structTy.genericArgs.size() != tps.size()) {
+            throw YuxError(line, ErrorCode::E2035, structTy.getFullName(), "?", structTy.getFullName());
+        }
+        for (size_t i = 0; i < tps.size(); ++i) {
+            if (structTy.genericArgs[i]) subst[tps[i]] = *structTy.genericArgs[i];
+        }
+    }
+
+    std::function<void(const TypeInfo&, const string&)> checkFieldTy;
+    checkFieldTy = [&](const TypeInfo& rawFt, const string& fieldName) {
+        TypeInfo ft = sema::resolveAlias(rawFt.substitute(subst), _file, _sdkFile);
+        if (ft.isPtr()) return;
+        if (ft.isNormal() && isBuiltinType(ft.name) && ft.name != "bool") return;
+        if (ft.isArray()) {
+            if (ft.elementType) checkFieldTy(*ft.elementType, fieldName);
+            return;
+        }
+        if (ft.isHeap() || ft.isFn() || ft.isDyn() || ft.isRc() || ft.isWeak() || ft.isNullable() ||
+            ft.isArrayGeneric() || ft.isRef() || ft.isTuple() || ft.isString() || ft.isStringBuilder() ||
+            (ft.isNormal() && ft.name == "bool") || ft.isFallible()) {
+            throw YuxError(line, ErrorCode::E2035, structTy.getFullName(), fieldName, ft.getFullName());
+        }
+        if (_names.lookupEnum(ft)) {
+            throw YuxError(line, ErrorCode::E2035, structTy.getFullName(), fieldName, ft.getFullName());
+        }
+        auto* nested = _names.lookupStruct(ft);
+        if (!nested) {
+            throw YuxError(line, ErrorCode::E2035, structTy.getFullName(), fieldName, ft.getFullName());
+        }
+        checkCLayoutFields(ft, nested, line, visiting);
+    };
+
+    for (auto& f : sd->fields()) {
+        if (!f) continue;
+        checkFieldTy(f->getType(), f->name().getText());
+    }
+    visiting.erase(key);
 }

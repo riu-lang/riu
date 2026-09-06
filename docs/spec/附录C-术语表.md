@@ -33,7 +33,8 @@
 | 复合 move / 局部 move（C 档） | local / composite move | §8.3a.4.4 / §7.4.6.6 | `Heap<T>?` 左值赋值搬移；含 Heap 复合可空 slot 按值搬移 |
 | 生命传染 | Heap-life propagation | §9.5a.1.4 | 含 Heap 子项的复合按 Heap 生命计；`Array<Heap<T>>` 不走 retain |
 | 借用 | borrow | §3.2.3 / §8.6 | `T&`，非空指针，不参与 RC |
-| FFI 指针 | FFI pointer | §3.3 / §9.7 | `Ptr`，等价 C `void*` |
+| FFI 指针 | FFI pointer | §3.3 / §9.7 | `Ptr`，等价 C `void*`；C 返回的是不透明 handle |
+| C-layout | C layout | §7.5.3.4 / §6.6.2 | 可进 `extern` 的 struct：声明序 + 标量（无 bool 字段）/`Ptr`/嵌套 C-layout/`[T*N]` |
 | 名义类型 | nominal type | §3.4.1 | 用户 struct 按声明源判等 |
 | 可赋值性 | assignability | §3.4.2 | 何种赋值合法（无隐式标量转换） |
 | 隐式包装 | implicit wrapping | §3.6.4 | `T` → `T?` 自动构造 `Nullable<T>` |
@@ -106,6 +107,7 @@
 | DAA | definite assignment analysis | §7.3.3 | 字段定性赋值分析（v1 退化为 `Self { ... }` 全字段覆盖规则） |
 | same_ref | same_ref | §8.7.5.2 / §10 | 地址相等 builtin |
 | ptr_of | ptr_of | §8.7.4.4 / §9.7.2.4 | 显式转 `Ptr` builtin |
+| c_string / from_c_chars | C string copy | §9.7.2.8 | UTF-8+NUL 拷贝；不 wrap `Ptr` |
 
 ## C.6 模块 / 注解
 

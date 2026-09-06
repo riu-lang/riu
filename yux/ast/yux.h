@@ -51,6 +51,8 @@ class Yux {
     string _projectLibType;
     // [link].libs：系统库名列表（不含 .lib 后缀），如 ["user32", "shell32"]
     vector<string> _projectLinkLibs;
+    // [link].lib_dirs：额外库搜索路径（相对项目根或绝对）
+    vector<string> _projectLinkLibDirs;
 
 public:
     Yux();
@@ -136,6 +138,7 @@ public:
     [[nodiscard]] const string& projectLibType() const { return _projectLibType; }
     // [link].libs：项目级系统库名列表
     [[nodiscard]] const vector<string>& projectLinkLibs() const { return _projectLinkLibs; }
+    [[nodiscard]] const vector<string>& projectLinkLibDirs() const { return _projectLinkLibDirs; }
 
     // 已成功加载的用户模块名列表（按首次加载顺序）。
     [[nodiscard]] const vector<string>& loadOrder() const { return _loadOrder; }

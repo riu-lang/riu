@@ -391,6 +391,20 @@ private:
     // 调用方必须传完整 TypeInfo；禁止从裸名重建（会丢掉 genericArgs，Array/Rc 变成错误 kind）
     bool structParamUsesPointer(const TypeInfo& ti);
 
+    // extern Win64 C ABI（§8.7.4.2）：bool→i8；小聚合当整数；大聚合 byval/sret
+    struct ExternAbiSlot {
+        llvm::Type* abiTy = nullptr;   // LLVM 函数签名里的类型
+        llvm::Type* valueTy = nullptr; // yux 值类型
+        bool boolExt = false;          // i1 ↔ i8
+        bool integerAgg = false;       // 1/2/4/8 字节聚合按整数
+        bool indirect = false;         // 大聚合：实参 byval / 返回 sret
+    };
+    ExternAbiSlot externAbiSlot(const TypeInfo& t);
+    llvm::Value* coerceToExternArg(llvm::Value* v, const ExternAbiSlot& slot);
+    llvm::Value* coerceFromExternRet(llvm::Value* v, const ExternAbiSlot& slot, llvm::Value* sretAlloca);
+    llvm::Function* getOrCreateExternFunction(const string& cName, const FnSymbolInfo& fnSymbol);
+    void applyExternCallAttrs(llvm::CallInst* ci, const FnSymbolInfo& fnSymbol);
+
     // Phase 3c.2.c: 解析结构体字段类型清单
     // 普通 struct → 直接取 fields().getType()
     // 泛型实例 (`_structInstances`) → 取 baseDecl 字段并按实例 args 套替换

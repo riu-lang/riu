@@ -109,6 +109,8 @@ N | <源码行原文>
 | E2030 | `lambda body cannot assign to captured variable \`{}\` (spec §6.2.1: captures are immutable in v1)` |
 | E2031 | `extern fn \`{}\` cannot use Function<...> types in {} (function values are not ABI-compatible with C; spec §7)` |
 | E2033 | `invalid string escape sequence \`{}\`` |
+| E2034 | `extern fn \`{}\` cannot use type \`{}\` in {} (not C ABI; spec §6.6.2)` |
+| E2035 | `struct \`{}\` cannot appear in extern signature: field \`{}\` has type \`{}\` (not C-layout; spec §7.5.3)` |
 
 ### D.3.3 E3xxx — 类型
 
@@ -416,7 +418,7 @@ Array 内置方法（E6042）：
 | E1133  | `` Cannot construct `Dyn<{}>` from `{}`: argument must be `Rc<U>` (owned) or `U&` (borrow) where `U` implements `{}` `` | `Dyn:<D>(x)` 构造源不满足 D（§12.9.5.3） |
 | E1134  | `` Draft `{}` is not object-safe: signatures contain `Self` or the draft's own name in non-receiver position; `Dyn<{}>` / `Dyn<{}&>` is not allowed `` | draft 非对象安全（§12.9.4） |
 | E1135  | `` `Dyn<D>?` (nullable dyn) is not supported in v1 `` | `Dyn<D>?` 形态（§12.9.3.3） |
-| E1136  | `` `Dyn<{}>` cannot cross `extern` boundary: vtable layout is internal ABI `` | `Dyn` 跨 `extern` 边界（§12.9.10） |
+| E1136  | `` `Dyn<{}>` cannot cross `extern` boundary: vtable layout is internal ABI `` | `Dyn` 跨 `extern` 边界（§12.9.10）；v0.21 强制 |
 | E1137  | `` Type `{}` does not implement spec method `{}` (declared in `#Impl({})`) `` | `#Impl(D)` 缺方法且 D 中无默认体（spec-unify v1，与 E1101 同语义类） |
 | E1138  | `` Cannot access static member `{}` on instance of `{}`; use `{}::{}` instead `` | 实例形访问 `#Static fn`（§12.2.4.1） |
 | E1139  | *（已退役）* | DRAFT-spec-default-body 落地（§12.10）解锁 spec body 方法带 body，编号保留不复用 |

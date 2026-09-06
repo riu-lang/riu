@@ -64,6 +64,8 @@ struct FnSymbolInfo {
     // 非空时 codegen 用此字符串声明 LLVM Function 而非 yux 声明名。
     // 空字符串表示使用 yux 声明名（当前行为）。
     string cName;
+    // extern 声明行（1-based）；非 extern 为 0。SemaPass 白名单诊断用。
+    int declLine = 0;
 
     FnSymbolInfo() = default;
     FnSymbolInfo(string n, string mod, vector<TypeInfo> p, TypeInfo r)

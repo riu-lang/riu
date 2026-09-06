@@ -1,0 +1,7 @@
+name = "ffi"
+version = "1.0.0"
+entry = "main.yux"
+
+[link]
+libs = ["ffi_demo"]
+lib_dirs = ["lib"]

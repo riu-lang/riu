@@ -199,6 +199,12 @@ private:
     void tryValidateReflectFieldValueRead(p<class ExprDotNode> n);
     void tryValidateReflectFieldValueWrite(const string& objName, const TypeInfo& objType,
                                            const vector<string>& members, int line, int col);
+
+    // §6.6.2 / §7.5.3.4：本文件 extern fn 的用户 struct / enum 白名单（形参+返回）。
+    // 类型 kind 禁令已在 ast_builder 抛 E4028/E2031/E1136/E2034。
+    void validateExternFns();
+    void checkExternCLayoutType(const TypeInfo& t, const string& fnName, const char* where, int line);
+    void checkCLayoutFields(const TypeInfo& structTy, StructDeclNode* sd, int line, std::set<string>& visiting);
 };
 
 #endif // YUX_LANG_SEMA_PASS_H

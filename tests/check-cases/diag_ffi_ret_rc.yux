@@ -1,0 +1,8 @@
+; D1：extern 不得返回 Rc → E2034
+
+extern {
+  fn ffi_make() Rc<i32>  ; check: E2034
+}
+
+fn main() {
+}

@@ -159,6 +159,8 @@ DEF_ERR(2031,
 DEF_ERR(2032, "Enum variant `{}::{}` payload #{} type mismatch: expected `{}`, got `{}` (no implicit conversion; for "
               "`Rc<T>` payload, bind `var b Rc<T> = T(...)` first then pass `b`)")
 DEF_ERR(2033, "invalid string escape sequence `{}`")
+DEF_ERR(2034, "extern fn `{}` cannot use type `{}` in {} (not C ABI; spec §6.6.2)")
+DEF_ERR(2035, "struct `{}` cannot appear in extern signature: field `{}` has type `{}` (not C-layout; spec §7.5.3)")
 
 // ── E3xxx 类型 — 类型不匹配 ───────────────────────────────────────────
 // E3001: 统一二元运算类型不匹配（原 E3001-E3004, E3075-E3077 合并）

@@ -557,6 +557,8 @@ struct TypeInfo {
     // 堆句柄 String（B-4：`{ _buf: Rc<Array<u32>> }`），不是用户 struct 名碰巧叫 String
     [[nodiscard]] bool isString() const { return kind == TypeKind::Normal && name == "String"; }
 
+    [[nodiscard]] bool isStringBuilder() const { return kind == TypeKind::Normal && name == "StringBuilder"; }
+
     // 8 字节堆句柄：Rc / Weak / Array<T> / String。不含 Heap（单所有权裸指针）
     [[nodiscard]] bool isRcHandle() const { return isRc() || isWeak() || isArrayGeneric() || isString(); }
 
@@ -638,7 +640,7 @@ struct TypeInfo {
     // 元组 (T1,T2)，函数 Function<P...,Ret>，数组 [E*N]。分隔只用 `.` `::` `<>` `()` `@`。
     [[nodiscard]] string getMangleName() const {
         auto head = [this]() -> string {
-            const string n = withoutFallible().name;
+            string n = withoutFallible().name;
             if (kind == TypeKind::Array || kind == TypeKind::Tuple || kind == TypeKind::Fn) return n;
             if (ownerModule.empty()) return n;
             return ownerModule + "." + n;

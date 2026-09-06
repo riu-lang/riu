@@ -15,6 +15,15 @@
 
 ---
 
+## 2026-09-06 —— FFI D1：extern 白名单 + C-layout struct + `Ptr` 不透明
+
+- **改写 §6.6.2**：允许表 = 标量 / `bool` / `Ptr` / C-layout struct / void；`Heap` E4028、`Function` E2031、`Dyn` E1136、其余堆句柄/`T&`/enum E2034；字段 E2035。白名单强制。
+- **修改 §8.7.4 / §7.5.3 / §9.7.2 / §8.3a.5.3 / §9.5a.2.2 / §12.9.10**：Win64 C ABI（`bool` 边界 i8；小聚合当整数、大聚合 `byval`/`sret`）；C 返回 `Ptr` 不透明，禁止转成 `T&`/`Heap`/`Rc`；取消用户向 `Heap:<T>(Ptr)` 接管。
+- **修改 §10.1.1.6**：`[link] lib_dirs`。
+- **新增 §9.7.2.8**：`c_string` / `from_c_chars` 拷贝，不 wrap `Ptr`。
+- **附录 C / D**：C-layout 术语；E2034 / E2035。
+- **冲突 / 兼容**：原先能写进 `extern` 的 `Rc`/`String`/`T&`/非 C-layout struct 现报错；迁移：签名改 `Ptr` + `ptr_of`，或把 struct 收成标量/`Ptr`/`[T*N]`。
+
 ## 2026-09-06 —— `continue` / `for-in`（v0.21 Phase C）
 
 - **新增 §5.5.3 / §5.5.4**：`continue` / `continue@label;` 与 `for item in expr`（item 为 `T&`；仅 `Array<T>` / `[T*N]`，可 peelRef；长度入口拍照）。

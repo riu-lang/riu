@@ -925,7 +925,12 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
     }
 
     DEBUG_LOG_VAL("    Expr: FunctionCall", fnName << " -> " << cName);
-    auto fn = _module->getFunction(cName);
+    llvm::Function* fn = nullptr;
+    if (fnSymbol->isExternal) {
+        fn = getOrCreateExternFunction(cName, *fnSymbol);
+    } else {
+        fn = _module->getFunction(cName);
+    }
 
     bool needPtrConversion = fnSymbol->isExternal;
     for (auto& param : fnSymbol->params) {
@@ -1134,6 +1139,23 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
         }
 
         callArgs.push_back(args[i]);
+    }
+
+    if (fnSymbol->isExternal) {
+        auto retSlot = externAbiSlot(fnSymbol->retType);
+        vector<llvm::Value*> abiArgs;
+        llvm::Value* sretAlloca = nullptr;
+        if (retSlot.indirect && retSlot.valueTy) {
+            sretAlloca = _builder.CreateAlloca(retSlot.valueTy, nullptr, "ffi.sret");
+            abiArgs.push_back(sretAlloca);
+        }
+        for (size_t i = 0; i < callArgs.size() && i < fnSymbol->params.size(); ++i) {
+            auto slot = externAbiSlot(fnSymbol->params[i]);
+            abiArgs.push_back(coerceToExternArg(callArgs[i], slot));
+        }
+        auto* callResult = _builder.CreateCall(fn, abiArgs);
+        applyExternCallAttrs(callResult, *fnSymbol);
+        return coerceFromExternRet(callResult, retSlot, sretAlloca);
     }
 
     auto callResult = _builder.CreateCall(fn, callArgs);

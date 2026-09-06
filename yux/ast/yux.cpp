@@ -181,6 +181,13 @@ void Yux::initProjectFromDir(const string& rootDir) {
                     }
                 }
             }
+            if (link.contains("lib_dirs") && link.at("lib_dirs").is_array()) {
+                for (const auto& d : link.at("lib_dirs").as_array()) {
+                    if (d.is_string()) {
+                        _projectLinkLibDirs.push_back(d.as_string());
+                    }
+                }
+            }
         }
 
         // lib 与 entry 互斥

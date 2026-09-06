@@ -1,0 +1,12 @@
+; D1：C-layout struct 字段不得含 Rc → E2035
+
+struct Bad {
+  x Rc<i32>
+}
+
+extern {
+  fn ffi_take(b Bad)  ; check: E2035
+}
+
+fn main() {
+}
