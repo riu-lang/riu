@@ -1,0 +1,2 @@
+; 公开导出名 addition；secret 未列出，不得挂到包别名
+add as addition

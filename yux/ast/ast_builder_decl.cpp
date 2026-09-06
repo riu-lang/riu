@@ -63,6 +63,35 @@ void registerLastSegModuleAlias(FileNode* file, const string& alias, FileNode* t
     file->addModuleAlias(alias, target);
 }
 
+// `name.*` 扁平：把文件模块的公开成员注入当前文件。
+void injectFileWildcard(FileNode* file, FileNode* target, const string& childMod) {
+    for (auto& [name, overloads] : target->localFnSymbols()) {
+        for (auto& fnInfo : overloads) {
+            if (fnInfo.moduleName != target->moduleName()) continue;
+            if (fnInfo.isPrivate) continue;
+            file->registerFnSymbol(name, fnInfo);
+        }
+    }
+    for (auto& [name, sym] : target->localSymbols()) {
+        if (sym.moduleName != target->moduleName()) continue;
+        if (sym.isPrivate) continue;
+        if (file->localSymbols().count(name)) continue;
+        file->registerSymbol(name, sym);
+    }
+    file->addWildcardImport(target);
+    for (auto* decl : target->getStructDecls()) {
+        if (!decl) continue;
+        string sname = decl->name().getText();
+        if (sname.empty() || sname[0] == '_') continue;
+        if (file->localStructDecl(sname, true) || file->localEnumDecl(sname) || file->localAliasDecl(sname)) continue;
+        if (file->localSymbols().count(sname)) continue;
+        SymbolInfo sym{SymbolKind::Struct, sname, TypeInfo(sname, target->moduleName())};
+        sym.moduleName = target->moduleName();
+        file->registerSymbol(sname, sym);
+        DEBUG_LOG_VAL("    inject struct (from pkg export)", sname << " from " << childMod);
+    }
+}
+
 } // namespace
 
 std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
@@ -310,6 +339,108 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
     return globalVar;
 }
 
+void ASTBuilder::expandPackageWildcard(FileNode* file, const string& pkgModName, int line) {
+    if (_yux.hasPkgFile(pkgModName)) {
+        for (const auto& exportItem : _yux.parsePkgFile(pkgModName)) {
+            if (!pkgExportIsPublic(exportItem)) {
+                DEBUG_LOG_VAL("    skip directed export", exportItem.name);
+                continue;
+            }
+            string childMod = pkgModName + "." + exportItem.name;
+
+            if (exportItem.wildcard) {
+                auto childKind = _yux.modulePathKind(childMod);
+                if (childKind == Yux::ModulePathKind::File) {
+                    auto target = _yux.loadModule(childMod, line);
+                    injectFileWildcard(file, target, childMod);
+                    DEBUG_LOG_VAL("    export module wildcard", exportItem.name << ".* -> " << childMod);
+                } else if (childKind == Yux::ModulePathKind::Package) {
+                    expandPackageWildcard(file, childMod, line);
+                    DEBUG_LOG_VAL("    export package wildcard", exportItem.name << ".* -> " << childMod);
+                }
+            } else {
+                string exportedName = pkgExportName(exportItem);
+                auto childPathKind = _yux.modulePathKind(childMod);
+                bool alreadyWildcard = file->wildcardAliasSources(exportedName) != nullptr;
+
+                if (!alreadyWildcard && file->hasSymbol(exportedName)) {
+                    DEBUG_LOG_VAL("    skip export (symbol exists)", exportedName);
+                    continue;
+                }
+
+                if (childPathKind == Yux::ModulePathKind::File) {
+                    if (!alreadyWildcard) {
+                        auto target = _yux.loadModule(childMod, line);
+                        SymbolInfo aliasSym(SymbolKind::Module, exportedName, TypeInfo());
+                        aliasSym.moduleName = childMod;
+                        file->registerSymbol(exportedName, aliasSym);
+                        file->addModuleAlias(exportedName, target);
+                        DEBUG_LOG_VAL("    export module", exportedName << " -> " << childMod);
+                    }
+                    file->addWildcardAliasSource(exportedName, childMod);
+                } else if (childPathKind == Yux::ModulePathKind::Package) {
+                    if (!alreadyWildcard) {
+                        SymbolInfo aliasSym(SymbolKind::Package, exportedName, TypeInfo());
+                        aliasSym.moduleName = childMod;
+                        file->registerSymbol(exportedName, aliasSym);
+                        file->addPackageAlias(exportedName, childMod);
+                        preloadPackageChildren(file, exportedName, childMod, "", line);
+                        DEBUG_LOG_VAL("    export package", exportedName << " -> " << childMod);
+                    }
+                    file->addWildcardAliasSource(exportedName, childMod);
+                }
+            }
+        }
+        return;
+    }
+
+    // 没有 pkg：导出所有 .yux 和子目录（默认别名，不扁平）
+    // 通配注入的别名在 _wildcardAliasSources 中记录来源；已注入过的同名别名不
+    // 立即报错，而是追加来源，留到使用点检查歧义（Phase 5）。
+    for (auto& child : _yux.listPackageYuxChildren(pkgModName)) {
+        string childMod = pkgModName;
+        childMod += '.';
+        childMod += child;
+        bool alreadyWildcard = file->wildcardAliasSources(child) != nullptr;
+        auto existingSym = file->lookupSymbol(child);
+        bool canOverride = false;
+        // TODO 歧义报错，而不是允许覆盖
+        if (existingSym && (existingSym->kind == SymbolKind::Function || existingSym->kind == SymbolKind::Variable)) {
+            canOverride = true;
+        }
+        if (!alreadyWildcard && existingSym && !canOverride) continue;
+        if (!alreadyWildcard) {
+            auto target = _yux.loadModule(childMod, line);
+            SymbolInfo aliasSym(SymbolKind::Module, child, TypeInfo());
+            aliasSym.moduleName = childMod;
+            file->registerSymbol(child, aliasSym);
+            file->addModuleAlias(child, target);
+            DEBUG_LOG_VAL("    register module alias (from pkg.*)", child << " -> " << childMod);
+        } else {
+            DEBUG_LOG_VAL("    alias collision (pkg.*), mark ambiguous", child << " <- " << childMod);
+        }
+        file->addWildcardAliasSource(child, childMod);
+    }
+    for (auto& sub : _yux.listPackageSubdirs(pkgModName)) {
+        string subMod = pkgModName;
+        subMod += '.';
+        subMod += sub;
+        bool alreadyWildcard = file->wildcardAliasSources(sub) != nullptr;
+        if (!alreadyWildcard && file->hasSymbol(sub)) continue;
+        if (!alreadyWildcard) {
+            SymbolInfo subSym(SymbolKind::Package, sub, TypeInfo());
+            subSym.moduleName = subMod;
+            file->registerSymbol(sub, subSym);
+            file->addPackageAlias(sub, subMod);
+            preloadPackageChildren(file, sub, subMod, "", line);
+            DEBUG_LOG_VAL("    register package alias (from pkg.*)", sub << " -> " << subMod);
+        } else {
+            DEBUG_LOG_VAL("    alias collision (pkg.*), mark ambiguous", sub << " <- " << subMod);
+        }
+        file->addWildcardAliasSource(sub, subMod);
+    }
+}
+
 std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
     auto file = any_cast_p<FileNode>(stack.back());
 
@@ -360,7 +491,7 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
         }
         if (pathKind == Yux::ModulePathKind::Package) {
             // 目录作为包别名：`use math` 其中 math/ 是目录。
-            // 注册 Package 符号，并递归加载所有子孙 .yux（点分子路径为 key）。
+            // 注册 Package 符号；有 pkg 时只挂公开孩子（§10.2.4.6）。
             SymbolInfo aliasSym(SymbolKind::Package, alias, TypeInfo());
             aliasSym.moduleName = modName;
             file->registerSymbol(alias, aliasSym);
@@ -401,183 +532,9 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
         return nullptr;
     }
 
-    // 目录（包）通配导入：`use pkg.*` 根据 pkg 文件决定导出内容
-    // 如果存在 pkg 文件，则按其内容导出；否则导出所有 .yux 和子目录
+    // 目录（包）通配导入：`use pkg.*`
     if (pathKind == Yux::ModulePathKind::Package) {
-        // 检查是否有 pkg 文件
-        if (_yux.hasPkgFile(modName)) {
-            // 根据 pkg 文件内容导出
-            auto exports = _yux.parsePkgFile(modName);
-            for (const auto& exportItem : exports) {
-                string childMod = modName + "." + exportItem.name;
-
-                if (exportItem.wildcard) {
-                    // modName.* 形式：导出模块的所有非私有成员（类似文件模块通配导入）
-                    auto pathKind = _yux.modulePathKind(childMod);
-                    if (pathKind == Yux::ModulePathKind::File) {
-                        // 文件模块通配导入
-                        auto target = _yux.loadModule(childMod, line);
-
-                        // 注入函数符号
-                        for (auto& [name, overloads] : target->localFnSymbols()) {
-                            for (auto& fnInfo : overloads) {
-                                if (fnInfo.moduleName != target->moduleName()) continue;
-                                if (fnInfo.isPrivate) continue;
-                                file->registerFnSymbol(name, fnInfo);
-                            }
-                        }
-
-                        // 注入值符号
-                        for (auto& [name, sym] : target->localSymbols()) {
-                            if (sym.moduleName != target->moduleName()) continue;
-                            if (sym.isPrivate) continue;
-                            if (file->localSymbols().count(name)) continue;
-                            file->registerSymbol(name, sym);
-                        }
-
-                        // 注入结构体
-                        file->addWildcardImport(target);
-                        for (auto* decl : target->getStructDecls()) {
-                            if (!decl) continue;
-                            string sname = decl->name().getText();
-                            if (sname.empty() || sname[0] == '_') continue;
-                            if (file->localStructDecl(sname, true) || file->localEnumDecl(sname) ||
-                                file->localAliasDecl(sname))
-                                continue;
-                            if (file->localSymbols().count(sname)) continue;
-                            SymbolInfo sym{SymbolKind::Struct, sname, TypeInfo(sname, target->moduleName())};
-                            sym.moduleName = target->moduleName();
-                            file->registerSymbol(sname, sym);
-                            DEBUG_LOG_VAL("    inject struct (from pkg export)", sname << " from " << childMod);
-                        }
-
-                        DEBUG_LOG_VAL("    export module wildcard", exportItem.name << ".* -> " << childMod);
-                    } else if (pathKind == Yux::ModulePathKind::Package) {
-                        // 子包通配导出：递归导出子包的所有成员
-                        for (auto& child : _yux.listPackageYuxChildren(childMod)) {
-                            string grandchildMod = childMod;
-                            grandchildMod += '.';
-                            grandchildMod += child;
-                            bool alreadyWildcard = file->wildcardAliasSources(child) != nullptr;
-                            if (!alreadyWildcard && file->hasSymbol(child)) continue;
-                            if (!alreadyWildcard) {
-                                auto target = _yux.loadModule(grandchildMod, line);
-                                SymbolInfo aliasSym(SymbolKind::Module, child, TypeInfo());
-                                aliasSym.moduleName = grandchildMod;
-                                file->registerSymbol(child, aliasSym);
-                                file->addModuleAlias(child, target);
-                                DEBUG_LOG_VAL("    register module alias (from pkg.*)",
-                                              child << " -> " << grandchildMod);
-                            }
-                            file->addWildcardAliasSource(child, grandchildMod);
-                        }
-                        for (auto& sub : _yux.listPackageSubdirs(childMod)) {
-                            string subsubMod = childMod;
-                            subsubMod += '.';
-                            subsubMod += sub;
-                            bool alreadyWildcard = file->wildcardAliasSources(sub) != nullptr;
-                            if (!alreadyWildcard && file->hasSymbol(sub)) continue;
-                            if (!alreadyWildcard) {
-                                SymbolInfo subSym(SymbolKind::Package, sub, TypeInfo());
-                                subSym.moduleName = subsubMod;
-                                file->registerSymbol(sub, subSym);
-                                file->addPackageAlias(sub, subsubMod);
-                                preloadPackageChildren(file, sub, subsubMod, "", line);
-                                DEBUG_LOG_VAL("    register package alias (from pkg.*)", sub << " -> " << subsubMod);
-                            }
-                            file->addWildcardAliasSource(sub, subsubMod);
-                        }
-                        DEBUG_LOG_VAL("    export package wildcard", exportItem.name << ".* -> " << childMod);
-                    }
-                } else {
-                    // modName 形式：导出为模块别名或包别名
-                    // rename 非空时以 rename 作为导出名（name as alias）
-                    string exportedName = exportItem.rename.empty() ? exportItem.name : exportItem.rename;
-                    auto childPathKind = _yux.modulePathKind(childMod);
-                    bool alreadyWildcard = file->wildcardAliasSources(exportedName) != nullptr;
-
-                    if (!alreadyWildcard && file->hasSymbol(exportedName)) {
-                        DEBUG_LOG_VAL("    skip export (symbol exists)", exportedName);
-                        continue;
-                    }
-
-                    if (childPathKind == Yux::ModulePathKind::File) {
-                        // 文件模块：注册为模块别名
-                        if (!alreadyWildcard) {
-                            auto target = _yux.loadModule(childMod, line);
-                            SymbolInfo aliasSym(SymbolKind::Module, exportedName, TypeInfo());
-                            aliasSym.moduleName = childMod;
-                            file->registerSymbol(exportedName, aliasSym);
-                            file->addModuleAlias(exportedName, target);
-                            DEBUG_LOG_VAL("    export module", exportedName << " -> " << childMod);
-                        }
-                        file->addWildcardAliasSource(exportedName, childMod);
-                    } else if (childPathKind == Yux::ModulePathKind::Package) {
-                        // 包：注册为包别名
-                        if (!alreadyWildcard) {
-                            SymbolInfo aliasSym(SymbolKind::Package, exportedName, TypeInfo());
-                            aliasSym.moduleName = childMod;
-                            file->registerSymbol(exportedName, aliasSym);
-                            file->addPackageAlias(exportedName, childMod);
-                            preloadPackageChildren(file, exportedName, childMod, "", line);
-                            DEBUG_LOG_VAL("    export package", exportedName << " -> " << childMod);
-                        }
-                        file->addWildcardAliasSource(exportedName, childMod);
-                    }
-                }
-            }
-        } else {
-            // 没有 pkg 文件：导出所有 .yux 和子目录（原有逻辑）
-            // 通配注入的别名在 _wildcardAliasSources 中记录来源；已注入过的同名别名不
-            // 立即报错，而是追加来源，留到使用点检查歧义（Phase 5）。
-            for (auto& child : _yux.listPackageYuxChildren(modName)) {
-                string childMod = modName;
-                childMod += '.';
-                childMod += child;
-                bool alreadyWildcard = file->wildcardAliasSources(child) != nullptr;
-                // 检查现有符号的类型
-                auto existingSym = file->lookupSymbol(child);
-                bool canOverride = false;
-                // TODO 歧义报错，而不是允许覆盖
-                if (existingSym &&
-                    (existingSym->kind == SymbolKind::Function || existingSym->kind == SymbolKind::Variable)) {
-                    // 函数/变量符号可以被模块别名覆盖（使用方式不同，不会产生歧义）
-                    canOverride = true;
-                }
-                // 非通配来源（本地声明 / `use X.Y` 非通配引入）优先，直接跳过。
-                // 但函数/值符号可以被模块别名覆盖。
-                if (!alreadyWildcard && existingSym && !canOverride) continue;
-                if (!alreadyWildcard) {
-                    auto target = _yux.loadModule(childMod, line);
-                    SymbolInfo aliasSym(SymbolKind::Module, child, TypeInfo());
-                    aliasSym.moduleName = childMod;
-                    file->registerSymbol(child, aliasSym);
-                    file->addModuleAlias(child, target);
-                    DEBUG_LOG_VAL("    register module alias (from pkg.*)", child << " -> " << childMod);
-                } else {
-                    DEBUG_LOG_VAL("    alias collision (pkg.*), mark ambiguous", child << " <- " << childMod);
-                }
-                file->addWildcardAliasSource(child, childMod);
-            }
-            for (auto& sub : _yux.listPackageSubdirs(modName)) {
-                string subMod = modName;
-                subMod += '.';
-                subMod += sub;
-                bool alreadyWildcard = file->wildcardAliasSources(sub) != nullptr;
-                if (!alreadyWildcard && file->hasSymbol(sub)) continue;
-                if (!alreadyWildcard) {
-                    SymbolInfo subSym(SymbolKind::Package, sub, TypeInfo());
-                    subSym.moduleName = subMod;
-                    file->registerSymbol(sub, subSym);
-                    file->addPackageAlias(sub, subMod);
-                    preloadPackageChildren(file, sub, subMod, "", line);
-                    DEBUG_LOG_VAL("    register package alias (from pkg.*)", sub << " -> " << subMod);
-                } else {
-                    DEBUG_LOG_VAL("    alias collision (pkg.*), mark ambiguous", sub << " <- " << subMod);
-                }
-                file->addWildcardAliasSource(sub, subMod);
-            }
-        }
+        expandPackageWildcard(file, modName, line);
         return nullptr;
     }
 

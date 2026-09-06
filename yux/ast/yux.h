@@ -24,6 +24,14 @@ struct PkgExportItem {
     vector<string> toTargets; // 空 = 公开；非空 = 定向开放（`to t1; t2`）
 };
 
+[[nodiscard]] inline string pkgExportName(const PkgExportItem& item) {
+    return item.rename.empty() ? item.name : item.rename;
+}
+
+[[nodiscard]] inline bool pkgExportIsPublic(const PkgExportItem& item) {
+    return item.toTargets.empty();
+}
+
 // 解析给定路径的 pkg 文件。文件不存在或不是普通文件 → 空列表。
 // 非法行抛 E5020（§10.2.4.2.3），不再静默跳过。
 [[nodiscard]] vector<PkgExportItem> parsePkgFileAt(const string& pkgPath);

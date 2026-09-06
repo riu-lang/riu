@@ -38,19 +38,37 @@ p<FileNode> ASTBuilder::build(yux::yuxParser::ProgramContext* ctx) {
 
 void ASTBuilder::preloadPackageChildren(FileNode* file, const string& alias, const string& pkgModName,
                                         const string& relPrefix, int errorLine) {
+    auto childKey = [&](const string& name) -> string {
+        if (relPrefix.empty()) return name;
+        return relPrefix + "." + name;
+    };
+
+    if (_yux.hasPkgFile(pkgModName)) {
+        for (const auto& item : _yux.parsePkgFile(pkgModName)) {
+            if (!pkgExportIsPublic(item)) {
+                DEBUG_LOG_VAL("    skip directed package child", item.name);
+                continue;
+            }
+            string childMod = pkgModName + "." + item.name;
+            string key = childKey(pkgExportName(item));
+            auto kind = _yux.modulePathKind(childMod);
+            if (kind == Yux::ModulePathKind::File) {
+                auto childFile = _yux.loadModule(childMod, errorLine);
+                file->addPackageChild(alias, key, childFile);
+                DEBUG_LOG_VAL("    register package child", alias << "." << key << " -> " << childMod);
+            } else if (kind == Yux::ModulePathKind::Package) {
+                preloadPackageChildren(file, alias, childMod, key, errorLine);
+            }
+        }
+        return;
+    }
+
     for (auto& child : _yux.listPackageYuxChildren(pkgModName)) {
         string childMod = pkgModName;
         childMod += '.';
         childMod += child;
         auto childFile = _yux.loadModule(childMod, errorLine);
-        string key;
-        if (relPrefix.empty()) {
-            key = child;
-        } else {
-            key = relPrefix;
-            key += '.';
-            key += child;
-        }
+        string key = childKey(child);
         file->addPackageChild(alias, key, childFile);
         DEBUG_LOG_VAL("    register package child", alias << "." << key << " -> " << childMod);
     }
@@ -58,15 +76,7 @@ void ASTBuilder::preloadPackageChildren(FileNode* file, const string& alias, con
         string subMod = pkgModName;
         subMod += '.';
         subMod += sub;
-        string nextPrefix;
-        if (relPrefix.empty()) {
-            nextPrefix = sub;
-        } else {
-            nextPrefix = relPrefix;
-            nextPrefix += '.';
-            nextPrefix += sub;
-        }
-        preloadPackageChildren(file, alias, subMod, nextPrefix, errorLine);
+        preloadPackageChildren(file, alias, subMod, childKey(sub), errorLine);
     }
 }
 

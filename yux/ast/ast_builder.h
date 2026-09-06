@@ -59,6 +59,10 @@ class ASTBuilder : public yux::yuxParserBaseVisitor {
     // 用于 TypeSelfNode / ExprStructLitNode 构造时锁定所属结构体; 体外返回空串.
     [[nodiscard]] string findEnclosingStructName() const;
 
+    // `use pkg.*`：有 pkg 只展开公开项（跳过 `to`）；无 pkg 默认别名导出直系孩子。
+    // `name.*` 指向子包时递归按该子包清单（或无清单默认规则）展开。
+    void expandPackageWildcard(FileNode* file, const string& pkgModName, int line);
+
 public:
     explicit ASTBuilder(Yux& yux, string moduleName = "", bool isTestFile = false, string sourcePath = "");
     ~ASTBuilder() override;
@@ -74,8 +78,9 @@ public:
     // .decl skeleton：往已有 FileNode 追加声明（不 createFile）
     void setTargetFile(FileNode* file) { _targetFile = file; }
 
-    // 递归预加载包 `pkgModName` 下的所有 .yux 后代模块，按点分相对路径（相对于 pkgModName）
-    // 注册到 `file` 的 packageChild 表下（键形如 "a.b.inner"）。中间子目录不单独注册。
+    // 预加载包 `pkgModName` 的孩子到 `file` 的 packageChild 表（键相对 pkgModName，形如 "a.b.inner"）。
+    // 有 pkg：只挂公开项（空 toTargets），键用导出名（`as` 别名）；子包按各自清单递归。
+    // 无 pkg：递归加载全部子孙 .yux。中间子目录不单独注册。
     void preloadPackageChildren(FileNode* file, const string& alias, const string& pkgModName, const string& relPrefix,
                                 int errorLine);
 
