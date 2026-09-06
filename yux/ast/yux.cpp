@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <map>
+#include <optional>
 
 #include <toml.hpp>
 
@@ -346,76 +348,163 @@ bool Yux::hasPkgFile(const string& moduleName) const {
     return fs::exists(pkgPath) && fs::is_regular_file(pkgPath);
 }
 
-vector<PkgExportItem> Yux::parsePkgFile(const string& moduleName) const {
+namespace {
+
+bool pkgIsWs(char c) {
+    return c == ' ' || c == '\t';
+}
+
+void pkgSkipWs(const string& s, size_t& i) {
+    while (i < s.size() && pkgIsWs(s[i]))
+        ++i;
+}
+
+string pkgTakeToken(const string& s, size_t& i) {
+    size_t start = i;
+    while (i < s.size() && !pkgIsWs(s[i]) && s[i] != ';')
+        ++i;
+    return s.substr(start, i - start);
+}
+
+[[noreturn]] void throwPkgInvalid(const string& pkgPath, int line, int col, const string& reason) {
+    throw YuxError(static_cast<size_t>(line), col, ErrorCode::E5020, pkgPath, reason).withFile(pkgPath);
+}
+
+int pkgCol(size_t i) {
+    return static_cast<int>(i) + 1;
+}
+
+// 解析一行。空行 / 整行注释 → nullopt。非法 → E5020。
+std::optional<PkgExportItem> parsePkgLine(const string& pkgPath, int lineNo, string line) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+
+    size_t i = 0;
+    pkgSkipWs(line, i);
+    if (i >= line.size() || line[i] == ';') return std::nullopt;
+
+    const int nameCol = pkgCol(i);
+    string nameTok = pkgTakeToken(line, i);
+    if (nameTok.empty()) return std::nullopt;
+
+    PkgExportItem item;
+    if (nameTok.size() >= 2 && nameTok.ends_with(".*")) {
+        item.wildcard = true;
+        item.name = nameTok.substr(0, nameTok.size() - 2);
+    } else {
+        item.name = nameTok;
+    }
+    if (item.name.empty()) {
+        throwPkgInvalid(pkgPath, lineNo, nameCol, "missing module name");
+    }
+
+    auto rejectWildcardAsTo = [&](size_t kwStart) {
+        if (item.wildcard) {
+            throwPkgInvalid(pkgPath, lineNo, pkgCol(kwStart), "`name.*` cannot use `as` or `to`");
+        }
+    };
+
+    auto atCommentOrEnd = [&]() {
+        pkgSkipWs(line, i);
+        return i >= line.size() || line[i] == ';';
+    };
+
+    if (atCommentOrEnd()) return item;
+
+    size_t kwStart = i;
+    string kw = pkgTakeToken(line, i);
+    if (kw == "as") {
+        rejectWildcardAsTo(kwStart);
+        pkgSkipWs(line, i);
+        if (i >= line.size() || line[i] == ';') {
+            throwPkgInvalid(pkgPath, lineNo, pkgCol(kwStart), "missing alias after `as`");
+        }
+        size_t aliasStart = i;
+        string alias = pkgTakeToken(line, i);
+        if (alias.empty()) {
+            throwPkgInvalid(pkgPath, lineNo, pkgCol(aliasStart), "missing alias after `as`");
+        }
+        item.rename = std::move(alias);
+        if (atCommentOrEnd()) return item;
+        kwStart = i;
+        kw = pkgTakeToken(line, i);
+    }
+
+    if (kw == "to") {
+        rejectWildcardAsTo(kwStart);
+        pkgSkipWs(line, i);
+        string rest = (i < line.size()) ? line.substr(i) : string();
+        while (!rest.empty() && (rest.back() == ' ' || rest.back() == '\t' || rest.back() == '\r')) {
+            rest.pop_back();
+        }
+        if (rest.empty()) {
+            throwPkgInvalid(pkgPath, lineNo, pkgCol(kwStart), "empty `to` list");
+        }
+        size_t p = 0;
+        while (p <= rest.size()) {
+            size_t semi = rest.find(';', p);
+            string part = (semi == string::npos) ? rest.substr(p) : rest.substr(p, semi - p);
+            size_t a = part.find_first_not_of(" \t");
+            if (a == string::npos) {
+                // 末尾多余 `;`（已有至少一个目标）忽略；中间空段仍非法
+                if (semi == string::npos && !item.toTargets.empty()) break;
+                throwPkgInvalid(pkgPath, lineNo, pkgCol(i + p), "empty `to` target");
+            }
+            size_t b = part.find_last_not_of(" \t");
+            item.toTargets.push_back(part.substr(a, b - a + 1));
+            if (semi == string::npos) break;
+            p = semi + 1;
+        }
+        if (item.toTargets.empty()) {
+            throwPkgInvalid(pkgPath, lineNo, pkgCol(kwStart), "empty `to` list");
+        }
+        return item;
+    }
+
+    if (!kw.empty()) {
+        throwPkgInvalid(pkgPath, lineNo, pkgCol(kwStart), "unexpected `" + kw + "`");
+    }
+    return item;
+}
+
+} // namespace
+
+vector<PkgExportItem> parsePkgFileAt(const string& pkgPath) {
     namespace fs = std::filesystem;
     vector<PkgExportItem> items;
+    fs::path p(pkgPath);
+    if (!fs::exists(p) || !fs::is_regular_file(p)) return items;
 
+    std::ifstream file(p);
+    if (!file.is_open()) return items;
+
+    map<string, int> seenNameLine;
+    string line;
+    int lineNo = 0;
+    while (std::getline(file, line)) {
+        ++lineNo;
+        auto parsed = parsePkgLine(pkgPath, lineNo, line);
+        if (!parsed) continue;
+        auto it = seenNameLine.find(parsed->name);
+        if (it != seenNameLine.end()) {
+            throw YuxError(static_cast<size_t>(lineNo), 1, ErrorCode::E5020, pkgPath,
+                           "submodule `" + parsed->name + "` appears more than once")
+                .withFile(pkgPath)
+                .withNote("first listed at line " + std::to_string(it->second));
+        }
+        seenNameLine[parsed->name] = lineNo;
+        items.push_back(std::move(*parsed));
+    }
+    return items;
+}
+
+vector<PkgExportItem> Yux::parsePkgFile(const string& moduleName) const {
+    namespace fs = std::filesystem;
     string rel = moduleName;
     for (auto& c : rel)
         if (c == '.') c = '/';
     fs::path root = _sourceRoot.empty() ? fs::path() : fs::path(_sourceRoot);
     fs::path dirPath = root.empty() ? fs::path(rel) : (root / rel);
-    fs::path pkgPath = dirPath / "pkg";
-
-    if (!fs::exists(pkgPath) || !fs::is_regular_file(pkgPath)) {
-        return items;
-    }
-
-    std::ifstream file(pkgPath);
-    if (!file.is_open()) {
-        return items;
-    }
-
-    string line;
-    while (std::getline(file, line)) {
-        // 去除首尾空白
-        size_t start = line.find_first_not_of(" \t\r\n");
-        if (start == string::npos) continue; // 空行
-        size_t end = line.find_last_not_of(" \t\r\n");
-        line = line.substr(start, end - start + 1);
-
-        // 跳过空行和注释行（以 ; 开头）
-        if (line.empty() || line[0] == ';') continue;
-
-        // 解析导出项：支持 name / name.* / name as alias
-        PkgExportItem item;
-
-        // 检查是否有 " as " 重命名子句
-        auto asPos = line.find(" as ");
-        string namePart = line;
-        string aliasPart;
-        if (asPos != string::npos) {
-            namePart = line.substr(0, asPos);
-            aliasPart = line.substr(asPos + 4); // " as " 长度 4
-            // 对 alias 部分 trim
-            size_t aStart = aliasPart.find_first_not_of(" \t");
-            if (aStart != string::npos) {
-                size_t aEnd = aliasPart.find_last_not_of(" \t");
-                aliasPart = aliasPart.substr(aStart, aEnd - aStart + 1);
-            }
-            if (aliasPart.empty()) continue; // "add as " → 无有效别名，跳过
-        }
-
-        if (namePart.size() >= 2 && namePart.substr(namePart.size() - 2) == ".*") {
-            namePart = namePart.substr(0, namePart.size() - 2);
-            if (!aliasPart.empty()) {
-                // "name.* as alias" 无效组合（wildcard 扁平导出无法重命名），跳过
-                DEBUG_LOG_VAL("    skip invalid pkg line (wildcard+rename)", line);
-                continue;
-            }
-            item.wildcard = true;
-        } else {
-            item.wildcard = false;
-        }
-        item.name = namePart;
-        item.rename = aliasPart;
-
-        if (!item.name.empty()) {
-            items.push_back(item);
-        }
-    }
-
-    return items;
+    return parsePkgFileAt((dirPath / "pkg").string());
 }
 
 p<FileNode> Yux::loadModule(const string& moduleName, int errorLine) {

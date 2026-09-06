@@ -24,7 +24,6 @@
 
 #include <algorithm>
 #include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <vector>
 
@@ -53,24 +52,10 @@ std::string findSdkPath() {
 
 std::map<std::string, SdkPkgEntry> readSdkPkg(const std::string& sdkDir) {
     std::map<std::string, SdkPkgEntry> r;
-    fs::path pkgPath = fs::path(sdkDir) / "pkg";
-    if (!fs::exists(pkgPath)) return r;
-    std::ifstream f(pkgPath);
-    std::string line;
-    while (std::getline(f, line)) {
-        size_t s = line.find_first_not_of(" \t\r\n");
-        if (s == std::string::npos) continue;
-        size_t e = line.find_last_not_of(" \t\r\n");
-        line = line.substr(s, e - s + 1);
-        if (line.empty() || line[0] == ';') continue;
-        bool wild = false;
-        std::string name = line;
-        if (name.size() >= 2 && name.substr(name.size() - 2) == ".*") {
-            wild = true;
-            name = name.substr(0, name.size() - 2);
-        }
-        if (name.empty()) continue;
-        r[name] = {.moduleName = wild ? std::string("yux.core") : ("yux.core." + name), .isFlat = wild};
+    auto items = parsePkgFileAt((fs::path(sdkDir) / "pkg").string());
+    for (const auto& item : items) {
+        r[item.name] = {.moduleName = item.wildcard ? std::string("yux.core") : ("yux.core." + item.name),
+                        .isFlat = item.wildcard};
     }
     return r;
 }

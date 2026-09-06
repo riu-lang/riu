@@ -28,7 +28,8 @@ namespace sdk_loader {
 // 定位 SDK 目录 (返回 .../sdk/yux/src/yux/core), 找不到返回 "". Windows 专用。
 std::string findSdkPath();
 
-// 读 <sdkDir>/pkg 文件, 解析为 stem → SdkPkgEntry。
+// 读 <sdkDir>/pkg 文件（与 Yux::parsePkgFile 共用 parsePkgFileAt）。
+// 按源模块 stem 建表；`as` / `to` 由解析器认，本表仍以源名（文件 stem）为键。
 std::map<std::string, SdkPkgEntry> readSdkPkg(const std::string& sdkDir);
 
 // 在 _sdkFile 上登记默认已导入的 `yux.core` 路径前缀：

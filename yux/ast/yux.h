@@ -16,12 +16,17 @@ namespace mod_decl {
 class NodeOwner;
 }
 
-// pkg 文件导出项
+// pkg 文件导出项（§10.2.4.2）
 struct PkgExportItem {
-    string name;   // 源模块名（如 "add"）
-    string rename; // 重命名导出别名（空 = 用 name 本身，如 "addition"）
-    bool wildcard; // true 表示 "name.*"，false 表示 "name"
+    string name;              // 源模块名（如 "add"）
+    string rename;            // 重命名导出别名（空 = 用 name 本身，如 "addition"）
+    bool wildcard = false;    // true 表示 "name.*"，false 表示 "name"
+    vector<string> toTargets; // 空 = 公开；非空 = 定向开放（`to t1; t2`）
 };
+
+// 解析给定路径的 pkg 文件。文件不存在或不是普通文件 → 空列表。
+// 非法行抛 E5020（§10.2.4.2.3），不再静默跳过。
+[[nodiscard]] vector<PkgExportItem> parsePkgFileAt(const string& pkgPath);
 
 class Yux {
     vector<p<FileNode>> _files;
@@ -106,7 +111,7 @@ public:
     // pkg 文件相关
     // 检查包目录下是否存在 pkg 文件
     [[nodiscard]] bool hasPkgFile(const string& moduleName) const;
-    // 解析 pkg 文件，返回导出项列表。文件不存在或为空返回空列表。
+    // 解析包目录下的 pkg 文件（走 parsePkgFileAt）。文件不存在或为空返回空列表。
     [[nodiscard]] vector<PkgExportItem> parsePkgFile(const string& moduleName) const;
 
     // 解析主入口 `.yux` 文件（不走 moduleName → path 映射）。

@@ -1,4 +1,4 @@
 ; add as addition — 重命名导出
-add as addition
+add as addition    ; 重命名
 ; sub — 保持原名导出
-sub.*
+sub.*              ; 扁平
