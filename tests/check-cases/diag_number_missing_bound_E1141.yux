@@ -1,0 +1,9 @@
+; require-sdk
+; Number 的 MIN / MAX 是 spec 静态字段契约，实现者不能只声明 #Impl(Number).
+
+#Impl(Number)  ; check: E1141
+struct MissingBounds {
+}
+
+fn main() {
+}

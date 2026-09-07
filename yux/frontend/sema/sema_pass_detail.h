@@ -111,6 +111,10 @@ TypeInfo peelSafeDotInner(TypeInfo t);
 // `<T : D>` 边界上的方法：实例化后仍按边界认，不要求具体类型自己登记同名方法。
 bool typeParamBoundHasMethod(FnNode* fn, FileNode* file, FileNode* sdk, const string& typeParam, const string& member);
 
+// `<T : D>` 边界上的关联静态字段。返回已把 Self 替换为 T 的字段类型。
+std::optional<TypeInfo> typeParamBoundStaticFieldType(FnNode* fn, FileNode* file, FileNode* sdk,
+                                                      const string& typeParam, const string& field);
+
 const char* binOpE3001Kind(const string& methodName);
 
 void collectOverloadsBoth(FileNode* file, FileNode* sdk, const string& name, vector<FnSymbolInfo*>& out);

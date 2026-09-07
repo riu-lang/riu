@@ -302,7 +302,10 @@ std::optional<TypeInfo> instantiatedMethodRet(FnNode* fn, FileNode* file, FileNo
                 if (!draft) continue;
                 for (auto& sig : draft->signatures()) {
                     if (!sig || sig->name().getText() != member) continue;
-                    if (sig->retType()) return sig->retType()->getType();
+                    if (sig->retType()) {
+                        auto ret = sig->retType()->getType();
+                        return ret.substitute({{"Self", instRecv.peelAutoDeref()}});
+                    }
                     return TypeInfo();
                 }
             }
@@ -373,6 +376,32 @@ bool typeParamBoundHasMethod(FnNode* fn, FileNode* file, FileNode* sdk, const st
         }
     }
     return false;
+}
+
+std::optional<TypeInfo> typeParamBoundStaticFieldType(FnNode* fn, FileNode* file, FileNode* sdk,
+                                                      const string& typeParam, const string& field) {
+    if (!fn || !fn->header() || field.empty()) return std::nullopt;
+    auto hdr = fn->header();
+    const auto& tps = hdr->typeParams();
+    const auto& bounds = hdr->typeParamBounds();
+    size_t idx = SIZE_MAX;
+    for (size_t i = 0; i < tps.size(); ++i) {
+        if (tps[i] == typeParam) {
+            idx = i;
+            break;
+        }
+    }
+    if (idx == SIZE_MAX || idx >= bounds.size()) return std::nullopt;
+    for (auto& dname : bounds[idx]) {
+        SpecDeclNode* spec = file ? file->getSpecDecl(dname) : nullptr;
+        if (!spec && sdk && sdk != file) spec = sdk->getSpecDecl(dname);
+        if (!spec) continue;
+        for (auto& sf : spec->staticFields()) {
+            if (!sf || sf->name().getText() != field) continue;
+            return sf->getType().substitute({{"Self", TypeInfo(typeParam)}});
+        }
+    }
+    return std::nullopt;
 }
 
 const char* binOpE3001Kind(const string& methodName) {

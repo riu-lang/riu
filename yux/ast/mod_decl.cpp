@@ -262,6 +262,9 @@ bool fnHasRealBody(FnNode* fn) {
 
 bool specNeedsSkeleton(SpecDeclNode* s) {
     if (!s) return false;
+    // 静态字段契约包含字段注解（#Cval / #Inline 等），
+    // 与默认方法体一样保留源码骨架，避免 .decl 丢失契约。
+    if (!s->staticFields().empty()) return true;
     for (size_t i = 0; i < s->signatures().size(); ++i) {
         if (s->hasDefaultBody(i)) return true;
     }

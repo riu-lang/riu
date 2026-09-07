@@ -2,6 +2,7 @@
 ; 编译器特例化：方法体由 #Builtin 标注，编译器在调用点合成 IR
 ; to_<类型> 方法、算术/比较/位/一元运算符均为编译器 intrinsic
 
+#Impl(Number)
 #Impl(ToString)
 #Builtin
 struct i8 {
@@ -51,68 +52,35 @@ struct i8 {
   fn plus(other i8) i8
 
   #Builtin
-  fn plus(other i8&) i8
-
-  #Builtin
   fn minus(other i8) i8
-
-  #Builtin
-  fn minus(other i8&) i8
 
   #Builtin
   fn mul(other i8) i8
 
   #Builtin
-  fn mul(other i8&) i8
-
-  #Builtin
   fn div(other i8) i8
 
   #Builtin
-  fn div(other i8&) i8
-
-  #Builtin
   fn mod(other i8) i8
-
-  #Builtin
-  fn mod(other i8&) i8
 
   ; 比较运算符
   #Builtin
   fn eq(other i8) bool
 
   #Builtin
-  fn eq(other i8&) bool
-
-  #Builtin
   fn ne(other i8) bool
-
-  #Builtin
-  fn ne(other i8&) bool
 
   #Builtin
   fn lt(other i8) bool
 
   #Builtin
-  fn lt(other i8&) bool
-
-  #Builtin
   fn le(other i8) bool
-
-  #Builtin
-  fn le(other i8&) bool
 
   #Builtin
   fn gt(other i8) bool
 
   #Builtin
-  fn gt(other i8&) bool
-
-  #Builtin
   fn ge(other i8) bool
-
-  #Builtin
-  fn ge(other i8&) bool
 
   ; 位运算符
   #Builtin
@@ -157,6 +125,7 @@ struct i8 {
   }
 }
 
+#Impl(Number)
 #Impl(ToString)
 #Builtin
 struct u8 {
@@ -187,6 +156,9 @@ struct u8 {
   fn to_u32() u32
 
   #Builtin
+  fn to_i64() i64
+
+  #Builtin
   fn to_u64() u64
 
   #Builtin
@@ -203,68 +175,35 @@ struct u8 {
   fn plus(other u8) u8
 
   #Builtin
-  fn plus(other u8&) u8
-
-  #Builtin
   fn minus(other u8) u8
-
-  #Builtin
-  fn minus(other u8&) u8
 
   #Builtin
   fn mul(other u8) u8
 
   #Builtin
-  fn mul(other u8&) u8
-
-  #Builtin
   fn div(other u8) u8
 
   #Builtin
-  fn div(other u8&) u8
-
-  #Builtin
   fn mod(other u8) u8
-
-  #Builtin
-  fn mod(other u8&) u8
 
   ; 比较运算符
   #Builtin
   fn eq(other u8) bool
 
   #Builtin
-  fn eq(other u8&) bool
-
-  #Builtin
   fn ne(other u8) bool
-
-  #Builtin
-  fn ne(other u8&) bool
 
   #Builtin
   fn lt(other u8) bool
 
   #Builtin
-  fn lt(other u8&) bool
-
-  #Builtin
   fn le(other u8) bool
-
-  #Builtin
-  fn le(other u8&) bool
 
   #Builtin
   fn gt(other u8) bool
 
   #Builtin
-  fn gt(other u8&) bool
-
-  #Builtin
   fn ge(other u8) bool
-
-  #Builtin
-  fn ge(other u8&) bool
 
   ; 位运算符
   #Builtin
@@ -309,6 +248,7 @@ struct u8 {
   }
 }
 
+#Impl(Number)
 #Impl(ToString)
 #Builtin
 struct i16 {
@@ -339,6 +279,9 @@ struct i16 {
   fn to_u32() u32
 
   #Builtin
+  fn to_i64() i64
+
+  #Builtin
   fn to_u64() u64
 
   #Builtin
@@ -355,68 +298,35 @@ struct i16 {
   fn plus(other i16) i16
 
   #Builtin
-  fn plus(other i16&) i16
-
-  #Builtin
   fn minus(other i16) i16
-
-  #Builtin
-  fn minus(other i16&) i16
 
   #Builtin
   fn mul(other i16) i16
 
   #Builtin
-  fn mul(other i16&) i16
-
-  #Builtin
   fn div(other i16) i16
 
   #Builtin
-  fn div(other i16&) i16
-
-  #Builtin
   fn mod(other i16) i16
-
-  #Builtin
-  fn mod(other i16&) i16
 
   ; 比较运算符
   #Builtin
   fn eq(other i16) bool
 
   #Builtin
-  fn eq(other i16&) bool
-
-  #Builtin
   fn ne(other i16) bool
-
-  #Builtin
-  fn ne(other i16&) bool
 
   #Builtin
   fn lt(other i16) bool
 
   #Builtin
-  fn lt(other i16&) bool
-
-  #Builtin
   fn le(other i16) bool
-
-  #Builtin
-  fn le(other i16&) bool
 
   #Builtin
   fn gt(other i16) bool
 
   #Builtin
-  fn gt(other i16&) bool
-
-  #Builtin
   fn ge(other i16) bool
-
-  #Builtin
-  fn ge(other i16&) bool
 
   ; 位运算符
   #Builtin
@@ -461,6 +371,7 @@ struct i16 {
   }
 }
 
+#Impl(Number)
 #Impl(ToString)
 #Builtin
 struct u16 {
@@ -491,6 +402,9 @@ struct u16 {
   fn to_u32() u32
 
   #Builtin
+  fn to_i64() i64
+
+  #Builtin
   fn to_u64() u64
 
   #Builtin
@@ -507,68 +421,35 @@ struct u16 {
   fn plus(other u16) u16
 
   #Builtin
-  fn plus(other u16&) u16
-
-  #Builtin
   fn minus(other u16) u16
-
-  #Builtin
-  fn minus(other u16&) u16
 
   #Builtin
   fn mul(other u16) u16
 
   #Builtin
-  fn mul(other u16&) u16
-
-  #Builtin
   fn div(other u16) u16
 
   #Builtin
-  fn div(other u16&) u16
-
-  #Builtin
   fn mod(other u16) u16
-
-  #Builtin
-  fn mod(other u16&) u16
 
   ; 比较运算符
   #Builtin
   fn eq(other u16) bool
 
   #Builtin
-  fn eq(other u16&) bool
-
-  #Builtin
   fn ne(other u16) bool
-
-  #Builtin
-  fn ne(other u16&) bool
 
   #Builtin
   fn lt(other u16) bool
 
   #Builtin
-  fn lt(other u16&) bool
-
-  #Builtin
   fn le(other u16) bool
-
-  #Builtin
-  fn le(other u16&) bool
 
   #Builtin
   fn gt(other u16) bool
 
   #Builtin
-  fn gt(other u16&) bool
-
-  #Builtin
   fn ge(other u16) bool
-
-  #Builtin
-  fn ge(other u16&) bool
 
   ; 位运算符
   #Builtin
@@ -613,6 +494,7 @@ struct u16 {
   }
 }
 
+#Impl(Number)
 #Impl(ToString)
 #Builtin
 struct i32 {
@@ -643,6 +525,9 @@ struct i32 {
   fn to_u32() u32
 
   #Builtin
+  fn to_i64() i64
+
+  #Builtin
   fn to_u64() u64
 
   #Builtin
@@ -659,68 +544,35 @@ struct i32 {
   fn plus(other i32) i32
 
   #Builtin
-  fn plus(other i32&) i32
-
-  #Builtin
   fn minus(other i32) i32
-
-  #Builtin
-  fn minus(other i32&) i32
 
   #Builtin
   fn mul(other i32) i32
 
   #Builtin
-  fn mul(other i32&) i32
-
-  #Builtin
   fn div(other i32) i32
 
   #Builtin
-  fn div(other i32&) i32
-
-  #Builtin
   fn mod(other i32) i32
-
-  #Builtin
-  fn mod(other i32&) i32
 
   ; 比较运算符
   #Builtin
   fn eq(other i32) bool
 
   #Builtin
-  fn eq(other i32&) bool
-
-  #Builtin
   fn ne(other i32) bool
-
-  #Builtin
-  fn ne(other i32&) bool
 
   #Builtin
   fn lt(other i32) bool
 
   #Builtin
-  fn lt(other i32&) bool
-
-  #Builtin
   fn le(other i32) bool
-
-  #Builtin
-  fn le(other i32&) bool
 
   #Builtin
   fn gt(other i32) bool
 
   #Builtin
-  fn gt(other i32&) bool
-
-  #Builtin
   fn ge(other i32) bool
-
-  #Builtin
-  fn ge(other i32&) bool
 
   ; 位运算符
   #Builtin
@@ -765,6 +617,7 @@ struct i32 {
   }
 }
 
+#Impl(Number)
 #Impl(ToString)
 #Builtin
 struct u32 {
@@ -795,6 +648,9 @@ struct u32 {
   fn to_u32() u32
 
   #Builtin
+  fn to_i64() i64
+
+  #Builtin
   fn to_u64() u64
 
   #Builtin
@@ -814,68 +670,35 @@ struct u32 {
   fn plus(other u32) u32
 
   #Builtin
-  fn plus(other u32&) u32
-
-  #Builtin
   fn minus(other u32) u32
-
-  #Builtin
-  fn minus(other u32&) u32
 
   #Builtin
   fn mul(other u32) u32
 
   #Builtin
-  fn mul(other u32&) u32
-
-  #Builtin
   fn div(other u32) u32
 
   #Builtin
-  fn div(other u32&) u32
-
-  #Builtin
   fn mod(other u32) u32
-
-  #Builtin
-  fn mod(other u32&) u32
 
   ; 比较运算符
   #Builtin
   fn eq(other u32) bool
 
   #Builtin
-  fn eq(other u32&) bool
-
-  #Builtin
   fn ne(other u32) bool
-
-  #Builtin
-  fn ne(other u32&) bool
 
   #Builtin
   fn lt(other u32) bool
 
   #Builtin
-  fn lt(other u32&) bool
-
-  #Builtin
   fn le(other u32) bool
-
-  #Builtin
-  fn le(other u32&) bool
 
   #Builtin
   fn gt(other u32) bool
 
   #Builtin
-  fn gt(other u32&) bool
-
-  #Builtin
   fn ge(other u32) bool
-
-  #Builtin
-  fn ge(other u32&) bool
 
   ; 位运算符
   #Builtin
@@ -920,6 +743,7 @@ struct u32 {
   }
 }
 
+#Impl(Number)
 #Impl(ToString)
 #Builtin
 struct i64 {
@@ -950,6 +774,9 @@ struct i64 {
   fn to_u32() u32
 
   #Builtin
+  fn to_i64() i64
+
+  #Builtin
   fn to_u64() u64
 
   #Builtin
@@ -966,68 +793,35 @@ struct i64 {
   fn plus(other i64) i64
 
   #Builtin
-  fn plus(other i64&) i64
-
-  #Builtin
   fn minus(other i64) i64
-
-  #Builtin
-  fn minus(other i64&) i64
 
   #Builtin
   fn mul(other i64) i64
 
   #Builtin
-  fn mul(other i64&) i64
-
-  #Builtin
   fn div(other i64) i64
 
   #Builtin
-  fn div(other i64&) i64
-
-  #Builtin
   fn mod(other i64) i64
-
-  #Builtin
-  fn mod(other i64&) i64
 
   ; 比较运算符
   #Builtin
   fn eq(other i64) bool
 
   #Builtin
-  fn eq(other i64&) bool
-
-  #Builtin
   fn ne(other i64) bool
-
-  #Builtin
-  fn ne(other i64&) bool
 
   #Builtin
   fn lt(other i64) bool
 
   #Builtin
-  fn lt(other i64&) bool
-
-  #Builtin
   fn le(other i64) bool
-
-  #Builtin
-  fn le(other i64&) bool
 
   #Builtin
   fn gt(other i64) bool
 
   #Builtin
-  fn gt(other i64&) bool
-
-  #Builtin
   fn ge(other i64) bool
-
-  #Builtin
-  fn ge(other i64&) bool
 
   ; 位运算符
   #Builtin
@@ -1106,6 +900,7 @@ struct i64 {
   }
 }
 
+#Impl(Number)
 #Impl(ToString)
 #Builtin
 struct u64 {
@@ -1136,6 +931,9 @@ struct u64 {
   fn to_u32() u32
 
   #Builtin
+  fn to_i64() i64
+
+  #Builtin
   fn to_u64() u64
 
   #Builtin
@@ -1155,68 +953,35 @@ struct u64 {
   fn plus(other u64) u64
 
   #Builtin
-  fn plus(other u64&) u64
-
-  #Builtin
   fn minus(other u64) u64
-
-  #Builtin
-  fn minus(other u64&) u64
 
   #Builtin
   fn mul(other u64) u64
 
   #Builtin
-  fn mul(other u64&) u64
-
-  #Builtin
   fn div(other u64) u64
 
   #Builtin
-  fn div(other u64&) u64
-
-  #Builtin
   fn mod(other u64) u64
-
-  #Builtin
-  fn mod(other u64&) u64
 
   ; 比较运算符
   #Builtin
   fn eq(other u64) bool
 
   #Builtin
-  fn eq(other u64&) bool
-
-  #Builtin
   fn ne(other u64) bool
-
-  #Builtin
-  fn ne(other u64&) bool
 
   #Builtin
   fn lt(other u64) bool
 
   #Builtin
-  fn lt(other u64&) bool
-
-  #Builtin
   fn le(other u64) bool
-
-  #Builtin
-  fn le(other u64&) bool
 
   #Builtin
   fn gt(other u64) bool
 
   #Builtin
-  fn gt(other u64&) bool
-
-  #Builtin
   fn ge(other u64) bool
-
-  #Builtin
-  fn ge(other u64&) bool
 
   ; 位运算符
   #Builtin
@@ -1288,6 +1053,7 @@ struct u64 {
   }
 }
 
+#Impl(Number)
 #Impl(ToString)
 #Builtin
 struct isize {
@@ -1343,68 +1109,35 @@ struct isize {
   fn plus(other isize) isize
 
   #Builtin
-  fn plus(other isize&) isize
-
-  #Builtin
   fn minus(other isize) isize
-
-  #Builtin
-  fn minus(other isize&) isize
 
   #Builtin
   fn mul(other isize) isize
 
   #Builtin
-  fn mul(other isize&) isize
-
-  #Builtin
   fn div(other isize) isize
 
   #Builtin
-  fn div(other isize&) isize
-
-  #Builtin
   fn mod(other isize) isize
-
-  #Builtin
-  fn mod(other isize&) isize
 
   ; 比较运算符
   #Builtin
   fn eq(other isize) bool
 
   #Builtin
-  fn eq(other isize&) bool
-
-  #Builtin
   fn ne(other isize) bool
-
-  #Builtin
-  fn ne(other isize&) bool
 
   #Builtin
   fn lt(other isize) bool
 
   #Builtin
-  fn lt(other isize&) bool
-
-  #Builtin
   fn le(other isize) bool
-
-  #Builtin
-  fn le(other isize&) bool
 
   #Builtin
   fn gt(other isize) bool
 
   #Builtin
-  fn gt(other isize&) bool
-
-  #Builtin
   fn ge(other isize) bool
-
-  #Builtin
-  fn ge(other isize&) bool
 
   ; 位运算符
   #Builtin
@@ -1449,6 +1182,7 @@ struct isize {
   }
 }
 
+#Impl(Number)
 #Impl(ToString)
 #Builtin
 struct usize {
@@ -1504,68 +1238,35 @@ struct usize {
   fn plus(other usize) usize
 
   #Builtin
-  fn plus(other usize&) usize
-
-  #Builtin
   fn minus(other usize) usize
-
-  #Builtin
-  fn minus(other usize&) usize
 
   #Builtin
   fn mul(other usize) usize
 
   #Builtin
-  fn mul(other usize&) usize
-
-  #Builtin
   fn div(other usize) usize
 
   #Builtin
-  fn div(other usize&) usize
-
-  #Builtin
   fn mod(other usize) usize
-
-  #Builtin
-  fn mod(other usize&) usize
 
   ; 比较运算符
   #Builtin
   fn eq(other usize) bool
 
   #Builtin
-  fn eq(other usize&) bool
-
-  #Builtin
   fn ne(other usize) bool
-
-  #Builtin
-  fn ne(other usize&) bool
 
   #Builtin
   fn lt(other usize) bool
 
   #Builtin
-  fn lt(other usize&) bool
-
-  #Builtin
   fn le(other usize) bool
-
-  #Builtin
-  fn le(other usize&) bool
 
   #Builtin
   fn gt(other usize) bool
 
   #Builtin
-  fn gt(other usize&) bool
-
-  #Builtin
   fn ge(other usize) bool
-
-  #Builtin
-  fn ge(other usize&) bool
 
   ; 位运算符
   #Builtin
@@ -1610,6 +1311,7 @@ struct usize {
   }
 }
 
+#Impl(Number)
 #Impl(ToString)
 #Builtin
 struct f64 {
@@ -1640,6 +1342,9 @@ struct f64 {
   fn to_u32() u32
 
   #Builtin
+  fn to_i64() i64
+
+  #Builtin
   fn to_u64() u64
 
   #Builtin
@@ -1659,68 +1364,35 @@ struct f64 {
   fn plus(other f64) f64
 
   #Builtin
-  fn plus(other f64&) f64
-
-  #Builtin
   fn minus(other f64) f64
-
-  #Builtin
-  fn minus(other f64&) f64
 
   #Builtin
   fn mul(other f64) f64
 
   #Builtin
-  fn mul(other f64&) f64
-
-  #Builtin
   fn div(other f64) f64
 
   #Builtin
-  fn div(other f64&) f64
-
-  #Builtin
   fn mod(other f64) f64
-
-  #Builtin
-  fn mod(other f64&) f64
 
   ; 比较运算符
   #Builtin
   fn eq(other f64) bool
 
   #Builtin
-  fn eq(other f64&) bool
-
-  #Builtin
   fn ne(other f64) bool
-
-  #Builtin
-  fn ne(other f64&) bool
 
   #Builtin
   fn lt(other f64) bool
 
   #Builtin
-  fn lt(other f64&) bool
-
-  #Builtin
   fn le(other f64) bool
-
-  #Builtin
-  fn le(other f64&) bool
 
   #Builtin
   fn gt(other f64) bool
 
   #Builtin
-  fn gt(other f64&) bool
-
-  #Builtin
   fn ge(other f64) bool
-
-  #Builtin
-  fn ge(other f64&) bool
 
   ; 一元运算符
   #Builtin
@@ -1761,6 +1433,7 @@ struct f64 {
   }
 }
 
+#Impl(Number)
 #Impl(ToString)
 #Builtin
 struct f32 {
@@ -1791,6 +1464,9 @@ struct f32 {
   fn to_u32() u32
 
   #Builtin
+  fn to_i64() i64
+
+  #Builtin
   fn to_u64() u64
 
   #Builtin
@@ -1810,68 +1486,35 @@ struct f32 {
   fn plus(other f32) f32
 
   #Builtin
-  fn plus(other f32&) f32
-
-  #Builtin
   fn minus(other f32) f32
-
-  #Builtin
-  fn minus(other f32&) f32
 
   #Builtin
   fn mul(other f32) f32
 
   #Builtin
-  fn mul(other f32&) f32
-
-  #Builtin
   fn div(other f32) f32
 
   #Builtin
-  fn div(other f32&) f32
-
-  #Builtin
   fn mod(other f32) f32
-
-  #Builtin
-  fn mod(other f32&) f32
 
   ; 比较运算符
   #Builtin
   fn eq(other f32) bool
 
   #Builtin
-  fn eq(other f32&) bool
-
-  #Builtin
   fn ne(other f32) bool
-
-  #Builtin
-  fn ne(other f32&) bool
 
   #Builtin
   fn lt(other f32) bool
 
   #Builtin
-  fn lt(other f32&) bool
-
-  #Builtin
   fn le(other f32) bool
-
-  #Builtin
-  fn le(other f32&) bool
 
   #Builtin
   fn gt(other f32) bool
 
   #Builtin
-  fn gt(other f32&) bool
-
-  #Builtin
   fn ge(other f32) bool
-
-  #Builtin
-  fn ge(other f32&) bool
 
   ; 一元运算符
   #Builtin

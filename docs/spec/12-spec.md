@@ -1,6 +1,6 @@
 # §12 spec（接口与约束）
 
-本章规范 yux 的 **spec**（接口契约）机制：通过 `#Spec` 注解声明仅含方法签名的契约类型、通过 `#Impl(D)` 顶行注解在 struct 声明上宣告实现关系、泛型边界 `<T : D1 + D2>`、跨包 orphan 限制，以及内置 `ToString` / `copy_of`。本章对应草案 [`draft/DRAFT-spec-unify.md`](draft/DRAFT-spec-unify.md)（v1 已落地）。
+本章规范 yux 的 **spec**（接口契约）机制：通过 `#Spec` 注解声明方法签名与静态字段契约、通过 `#Impl(D)` 顶行注解在 struct 声明上宣告实现关系、泛型边界 `<T : D1 + D2>`、跨包 orphan 限制，以及内置 `ToString` / `Number` / `copy_of`。本章对应草案 [`draft/DRAFT-spec-unify.md`](draft/DRAFT-spec-unify.md)（v1 已落地）。
 
 > 设计基调：**默认严格 / 显式优先 / 零运行时开销**。spec 是封闭契约，必须由 `#Impl(D)` 显式宣告并由 struct body 提供方法实现。v1 一律单态化静态分发，无 vtable、无隐式签名表参数。运行时多态形态另由 §12.9 `Dyn<D>` 提供。
 
@@ -16,13 +16,14 @@
 specDecl  ::= '#' 'Spec' codeLineEnd
               ( '#' ID ( '(' ID genericDef? ')' )? codeLineEnd )*
               'struct' ID genericDef? '{'
-                  ( fnSig | comment | codeLineEnd )*
+                  ( fnSig | specStaticField | comment | codeLineEnd )*
               '}'
 
 fnSig     ::= buildAnno* 'fn' ID '(' fnParams? ')' (retType=type)?
+specStaticField ::= fieldAnno* ID type codeLineEnd
 ```
 
-§12.1.1.1 `#Spec` 顶行注解把一个 `structDecl` 转为一个 **spec**：一组方法签名集合（每个签名可选附带"默认方法体"，见 §12.10）。spec body 内**不得**出现实例字段、`#Static fn`、或析构函数 `fn ~()`；违反报 **E2011**（spec body 含字段或析构）。例外：`#Static #Frozen` 字段段**允许**（§11.11 / §11.7），用于承载编译期常量（内置 spec `Reflect` 的 `type` / `fields` / `methods` / `variants` 即以此形态声明，见 §13）。
+§12.1.1.1 `#Spec` 顶行注解把一个 `structDecl` 转为一个 **spec**：一组方法签名（可附带默认体，见 §12.10）与静态字段契约。spec body 内**不得**出现实例字段、`#Static fn`、或析构函数 `fn ~()`；违反报 **E2011**。允许的字段形态为 `#Static #Frozen` 类型元数据（§13）和 `#Cval #Inline` 关联常量；在 spec 中它们只声明名称、类型与存储属性，不带初值。
 
 §12.1.1.2 签名集**允许为空**（无方法的 spec 合法，但 v1 不再内置 `Any`——见 §12.7.2）。
 
@@ -74,9 +75,10 @@ draftBound ::= modulePath? ID genericDef?     ; 例：ToString / pkg.Display / T
 
 ### §12.2.2 穷尽性
 
-§12.2.2.1 对 struct `S` 上每个 `#Impl(D)`：S body 内提供的方法集**应当**覆盖 D 的全部签名（按 §12.3 等价规则）：
+§12.2.2.1 对 struct `S` 上每个 `#Impl(D)`：S body 内提供的成员**应当**覆盖 D 的全部方法签名与静态字段契约：
 
-- 缺任一 D 签名 → 报 **E1137**（"未实现 spec 方法"）。
+- 缺任一 D 签名 → 报 **E1137**（“未实现 spec 方法”）。
+- 缺静态字段，或字段类型 / `#Cval` / `#Inline` 属性不满足 D 的要求 → 报 **E1141**。字段类型中的 `Self` 在比对时替换为 S。
 
 §12.2.2.2 v1 **不再**对 "多余于 D 的方法" 报错——struct body 内未命中任何 `#Impl(D)` 的方法**应当**视为该类型自身的普通方法，照常存在并参与普通方法分发。早期 `E1102`（"多余"）已废弃；严格的 spec 隔离待 [`draft/DRAFT-extension-blocks.md`](draft/DRAFT-extension-blocks.md) 落地后回归。
 
@@ -96,7 +98,7 @@ draftBound ::= modulePath? ID genericDef?     ; 例：ToString / pkg.Display / T
 
 ### §12.2.4 实例形访问静态成员（误用拦截）
 
-§12.2.4.1 spec body 内**不得**含 `#Static fn`（v1 spec 仅实例方法签名，与 §12.8 项 4 关联类型 / 关联常量同语义档）。对 struct body 内通过实例形访问 `#Static fn`（如 `obj.factory()`、`$.factory()`）报 **E1138**——静态调用须走 `Type::factory(...)`（§7.10）。
+§12.2.4.1 spec body 内**不得**含 `#Static fn`；§12.1.1.1 所列静态字段契约不受此限。对 struct body 内通过实例形访问 `#Static fn`（如 `obj.factory()`、`$.factory()`）报 **E1138**——静态调用须走 `Type::factory(...)`（§7.10）。
 
 ## §12.3 签名等价
 
@@ -301,6 +303,52 @@ struct ToJson {
 
 §12.7.4.3 v1 **不**引入独立 `Stringify` spec。`ToString` 只服务插值（§12.7.1）；断言失败打印实参值的窗口在 §11.3.5.4。
 
+### §12.7.5 `Number`
+
+§12.7.5.1 SDK 在 `base.yux` 声明 `Number` 作为所有内置数字类型的公共边界；`i8` / `u8` / `i16` / `u16` / `i32` / `u32` / `i64` / `u64` / `isize` / `usize` / `f64` / `f32` 均显式 `#Impl(Number)`。
+
+```yux
+#Spec
+struct Number {
+  #Cval
+  #Inline
+  MAX Self
+  #Cval
+  #Inline
+  MIN Self
+
+  fn to_i8() i8
+  fn to_u8() u8
+  fn to_i16() i16
+  fn to_u16() u16
+  fn to_i32() i32
+  fn to_u32() u32
+  fn to_i64() i64
+  fn to_u64() u64
+  fn to_f64() f64
+  fn to_f32() f32
+
+  fn plus(other Self) Self
+  fn minus(other Self) Self
+  fn mul(other Self) Self
+  fn div(other Self) Self
+  fn mod(other Self) Self
+  fn eq(other Self) bool
+  fn ne(other Self) bool
+  fn lt(other Self) bool
+  fn le(other Self) bool
+  fn gt(other Self) bool
+  fn ge(other Self) bool
+  fn neg() Self
+}
+```
+
+§12.7.5.2 数值运算与比较契约使用**按值** `Self` 参数，直接由 `num.yux` 的 `#Builtin` intrinsic 实现。这些方法不提供 `$ + other` / `$ == other` 形式的默认体：运算符本身就会分发到 `plus` / `eq` 等同名方法，默认体会形成递归。
+
+§12.7.5.3 `to_bool` 不属于 `Number`；它是具体数字类型的便利转换，不作为数值泛型契约。`to_string` 由独立 `ToString` spec 承担；`to_bits` / `to_isize` / `to_usize` 及位运算方法不是全部内置数字的交集，也不进入 `Number`。
+
+§12.7.5.4 在 `<T : Number>` 中可使用 `T::MIN` / `T::MAX`、上述转换方法及运算方法；单态化时 `Self` 替换为具体数字类型。
+
 ## §12.8 不在范围
 
 v1 / v0.5 **明确不做**：
@@ -308,7 +356,7 @@ v1 / v0.5 **明确不做**：
 1. ~~**`dyn Draft` / 运行时多态**（mangling 留位但不实现）。~~ → v0.5.x **已实现**，见 §12.9。
 2. ~~**spec 默认方法体**（占位 → [`draft/DRAFT-spec-default-body.md`](draft/DRAFT-spec-default-body.md)）。~~ → 2026-05-22 **已落地**，见 §12.10。
 3. **spec 体内方法本地泛型**（spec 自身可泛型）。
-4. **关联类型 / 关联常量**（占位 → [`draft/DRAFT-assoc-types.md`](draft/DRAFT-assoc-types.md)）。
+4. **关联类型 / 通用关联项语法**（占位 → [`draft/DRAFT-assoc-types.md`](draft/DRAFT-assoc-types.md)）。静态字段契约与 `#Cval #Inline` 关联常量子集已由 §12.1.1.1 / §12.2.2.1 落地。
 5. **跨外部包为外部类型实现外部 spec**（§12.5；语法层自然落实）。
 6. **操作符 spec**（`Add` / `Index` 等语法糖绑定；留后续版本；当前运算符走 §7.2.3 重载）。`Eq` / `Ord` 作为方法契约已落地（§12.7.4 / §12.10.6）；方法名与运算符重载重合，但运算符不因 `#Impl` 自动绑定。
 7. ~~**运行时反射 / `is` / `as` 类型测试**~~ → 编译期反射已落地，见 §13。**运行时 `is` / `as` / 类型擦除 `AnyRef`** 仍留后续版本。
@@ -318,7 +366,7 @@ v1 / v0.5 **明确不做**：
 11. **`<T : D>` 在调用点 turbofish 处回写边界**（仅声明位允许）。
 12. **结构化匹配 / `#DraftLike`**（§12.4.3 已废弃；所有满足关系均显式 `#Impl(D)`）。
 13. **`where` 子句、`T : D1 | D2` or 约束**（§6.4.4.2）。
-14. ~~**spec body 内字段 / 静态成员 / 关联常量**（占位）~~ → `#Static #Frozen` 字段段（仅编译期常量，不含 `#Static fn` / 实例字段）已在 §13 反射（内置 spec `Reflect`）中落地；关联常量仍留 `DRAFT-data-struct.md`。
+14. ~~**spec body 内字段 / 静态成员 / 关联常量**（占位）~~ → `#Static #Frozen` 字段段与 `#Cval #Inline` 关联常量已落地；`#Static fn` 与实例字段仍禁止（§12.1.1.1）。
 15. **按字段递归的自动 derive 默认体**（如 `ToJson.to_json` 自动遍历字段）—— spec-unify v1 明确**永不引入**。
 16. **`#Inline for` 编译期循环 unroll / IR-before unroll pass** —— spec-unify v1 明确**永不引入**。
 
@@ -368,7 +416,7 @@ v1 / v0.5 **明确不做**：
 
 §12.9.4.2 v1 第一轮**不**为自反方法（`Self` / spec-name 返回）生成 thunk；用 `<T : D>` 单态化路径替代。Thunk 解锁留 v0.X+1。
 
-§12.9.4.3 §12.3.2 已禁止 spec 方法本地泛型，§12.8 项 4 已禁止关联类型 / 关联常量；二者**自动满足**对象安全无新规则。
+§12.9.4.3 §12.3.2 已禁止 spec 方法本地泛型，§12.8 项 4 已禁止关联类型；静态字段契约不进入 vtable，不改变对象安全判定。
 
 ### §12.9.5 构造
 
@@ -480,7 +528,7 @@ struct Ord {
 
 ### §12.10.2 不引入 `#Derive`
 
-§12.10.2.1 v0.X **不引入** `#Derive(Spec)` 独立注解。`#Impl(D) struct S { ... }` 不写 `D` 的某方法即视为采用默认体（若该方法在 D 内有默认体）；该形态足够覆盖 SDK 5 件套（§12.10.5）与用户场景。
+§12.10.2.1 v0.X **不引入** `#Derive(Spec)` 独立注解。`#Impl(D) struct S { ... }` 不写 `D` 的某方法即视为采用默认体（若该方法在 D 内有默认体）；该形态足够覆盖 SDK 内置 spec（§12.10.6）与用户场景。
 
 §12.10.2.2 永远**不引入**"按字段递归自动 derive 默认体"（如 `ToJson.to_json` 自动遍历字段填 JSON）。这类需求由实现者手写体、或通过 §12.8 项 7 落地后的反射 API 显式展开。
 
@@ -527,11 +575,12 @@ struct Ord {
 
 ### §12.10.6 SDK 内置 spec
 
-§12.10.6.1 `sdk/yux/src/yux/core/base.yux` 中 4 件套（`ToString` / `ToJson` / `Eq` / `Ord`）按本节落地：
+§12.10.6.1 `sdk/yux/src/yux/core/base.yux` 中 5 个内置 spec（`ToString` / `ToJson` / `Eq` / `Ord` / `Number`）的方法体策略如下：
 
 - `Ord.lt` / `Ord.le` / `Ord.gt` / `Ord.ge` 由 `Ord.cmp` 默认体推导；
 - `Eq.ne` 由 `Eq.eq` 默认体推导；
 - `ToJson.to_json` / `Eq.eq` / `Ord.cmp` / `ToString.to_string` 维持**纯抽象签名**（按 §12.10.2.2 永不按字段递归自动 derive）。
+- `Number` 的转换、运算与比较方法均为**纯抽象按值签名**，由数字类型的 `#Builtin` intrinsic 实现；不使用会回调同名运算方法的默认体（§12.7.5）。
 
 §12.10.6.2 用户类型只需写 `#Impl(Ord) struct N { ... fn cmp(...) i32 { ... } }`，`lt/le/gt/ge` 自动 fall-through，无需重复实现。
 
@@ -542,7 +591,7 @@ struct Ord {
 - ~~显式消歧调用语法（`a.SpecA::m(args)`）—— 留 v0.X+1。~~ → 2026-05-23 **已落地**（形态改为 `$.m@SpecA()` dot-call 后缀），见 §12.10.8。
 - 按字段递归自动 derive 默认体（如 `ToJson.to_json` 字段遍历）—— §12.10.2.2 永不引入。
 - `#Inline for` 编译期循环 unroll —— §12.8 项 16 永不引入。
-- spec 体内字段 / `#Static fn` / 关联类型 / 关联常量 —— §12.1.1.1 / §12.8 项 4 / §12.8 项 14。
+- spec 体内的实例字段 / `#Static fn` / 关联类型 —— §12.1.1.1 / §12.8 项 4；静态字段契约和 `#Cval #Inline` 关联常量已落地。
 
 ### §12.10.8 消歧调用 `@SpecA` 后缀
 
@@ -597,4 +646,4 @@ struct S {
 
 ## Open Issues
 
-（无。操作符 spec 语法糖转后续版本，运算符维持 §7.2.3；`Eq` / `Ord` / `ToJson` 方法契约已落地。`Stringify` 与 `assert_eq` 用户类型见 §11（v1 不引入；转后续版本）。跨编译单元边界 IR：v1 调用方需可见函数体（§6.4.2.3）。`Reflect` 编译期已落地（§13）；`is` / `as` / `AnyRef` 转后续版本。扩展实现块 / `extend` 转 v1.x 包管理。）
+（无。操作符 spec 语法糖转后续版本，运算符维持 §7.2.3；`Eq` / `Ord` / `ToJson` / `Number` 方法契约已落地。`Stringify` 与 `assert_eq` 用户类型见 §11（v1 不引入；转后续版本）。跨编译单元边界 IR：v1 调用方需可见函数体（§6.4.2.3）。`Reflect` 编译期已落地（§13）；`is` / `as` / `AnyRef` 转后续版本。扩展实现块 / `extend` 转 v1.x 包管理。）

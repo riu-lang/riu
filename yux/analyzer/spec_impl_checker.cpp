@@ -190,6 +190,13 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
     const std::string typeQualified = typeOwnerMod.empty() ? typeBare : (typeOwnerMod + "." + typeBare);
 
     const auto& implMethods = impl->methods();
+    StructDeclNode* structDecl = nullptr;
+    for (auto& decl : implFile->getStructDecls()) {
+        if (decl->name().getText() == typeBare) {
+            structDecl = decl;
+            break;
+        }
+    }
 
     // DRAFT-spec-default-body Phase 3: 每次 validateImpl 都清一遍, 否则
     // 多次 validate (例: 冷启动 SDK 跑一次 → loadMainFile 后再跑一次) 会累积重复.
@@ -258,6 +265,21 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
         // spec `Self&` 与 impl `Type&` 视为同型). Phase 3 Spec 默认体 fall-through
         // 也共用同一签名等价规则.
         subst["Self"] = TypeInfo(typeBare);
+
+        // spec 静态字段是类型边界的一部分：实现者必须提供同名、
+        // 同型的字段。#Cval / #Inline 是可观测的存储语义，因此
+        // spec 显式要求时实现字段也必须保留对应属性。
+        for (auto& required : draft->staticFields()) {
+            const std::string fieldName = required->name().getText();
+            const auto* provided = structDecl ? structDecl->staticField(fieldName) : nullptr;
+            const TypeInfo requiredType = required->getType().substitute(subst);
+            const bool qualifiersMatch =
+                provided && (!required->isCval() || provided->isCval) && (!required->isInline() || provided->isInline);
+            if (!provided || provided->type->getType() != requiredType || !qualifiersMatch) {
+                throw YuxError(impl->getLineNumber(), impl->getColumn(), ErrorCode::E1141, typeQualified, fieldName,
+                               specQualified);
+            }
+        }
 
         // Phase 4: 收集本 spec 的所有签名条目到 sigGroups; 实际处理放二轮.
         const auto& dsigs = draft->signatures();

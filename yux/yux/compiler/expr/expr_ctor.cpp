@@ -151,6 +151,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
         lhsTy = TypeInfo(lookupLhs);
         if (_file) lhsTy.ownerModule = _file->moduleName();
     } else {
+        lhsTy = applySubst(lhsTy);
         lookupLhs = lhsTy.name;
     }
 

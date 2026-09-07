@@ -271,7 +271,10 @@ static TypeInfo lookupSpecBoundMethodRetType(Node* contextParent, const string& 
         if (!draft) continue;
         for (auto& sig : draft->signatures()) {
             if (sig->name().getText() != methodName) continue;
-            if (sig->retType()) return sig->retType()->getType();
+            if (sig->retType()) {
+                auto ret = sig->retType()->getType();
+                return ret.substitute({{"Self", TypeInfo(typeParamName)}});
+            }
             return {};
         }
     }

@@ -182,15 +182,18 @@ spec 声明形态共用 §B.5 `structDecl`，由 `#Spec` 顶行注解切换：
 ```yux
 #Spec
 struct D {
+  #Cval
+  #Inline
+  LIMIT Self
   fn m1(...) R
-  fn m2(...) R
+  fn m2(...) R = ...
   ; ...
 }
 ```
 
 约束：
 
-- spec body 内**只允许 `fn` 签名**（不带函数体），违反报 `E1139`；字段 / 析构 `fn ~()` 禁用，违反报 `E2011`；详见 §12.1.1.1。
+- spec body 允许 `fn` 签名（可带默认体），以及 `#Static #Frozen` / `#Cval #Inline` 静态字段契约；实例字段 / `#Static fn` / 析构 `fn ~()` 禁用，违反报 `E2011`；详见 §12.1.1.1。
 - spec 签名集**允许为空**（§12.1.1.2）。
 - spec 自身可携带 `genericDef`，但 spec 体内单个 `fn` **不得**再引入泛型形参（§12.3.2 / `E1104`）。
 - spec 声明上**禁带** `#Impl(D)`（§11.4.1.4）。

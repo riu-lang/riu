@@ -42,9 +42,17 @@
 // 按子系统迁移到 SemaPass 时统一切换。
 TypeInfo Compiler::resolvedOrInferredType(p<ExprNode> node) const {
     if (node->hasResolvedType()) {
+        // 泛型 AST 会被多个具体实例复用，节点上的 resolvedType 只保存最近一次
+        // SemaPass 复查结果；当前 codegen 帧能替换出类型时以本帧为准。
+        if (!_substStack.empty()) {
+            auto inferred = node->getType();
+            auto instantiated = applySubst(inferred);
+            if (resolveAlias(inferred) != resolveAlias(instantiated)) return instantiated;
+        }
 #ifndef NDEBUG
         const auto& resolved = node->resolvedType();
         auto inferred = node->getType();
+        auto instantiatedInferred = applySubst(inferred);
         // 数组字面量 getType 是 `[T * N]` / `[__empty * 0]`；SemaPass 按靶向可写成 Array<T>。
         const bool arrayLitToGeneric = inferred.isArray() && resolved.isArrayGeneric();
         // if / match / try 汇合：子节点已按靶向写成 Array，节点自身 getType 在写 resolved 前
@@ -56,8 +64,10 @@ TypeInfo Compiler::resolvedOrInferredType(p<ExprNode> node) const {
         // 透明 alias (spec §3.9.1.2 / §3.9.3.1): SemaPass 缓存的 resolvedType 与 codegen
         // 阶段 getType() 重新计算的结果, 在字面上可能一侧是别名名 (`IPair`), 另一侧已被
         // 解开 (`(i32,i32)`). 两者按 alias 归一后应一致; 仅当归一后仍不等才视为真冲突.
-        assert((resolveAlias(resolved) == resolveAlias(inferred) || arrayLitToGeneric || ctrlArrayTarget) &&
-               "resolvedType / getType inconsistent");
+        const bool consistent = resolveAlias(resolved) == resolveAlias(inferred) ||
+                                resolveAlias(resolved) == resolveAlias(instantiatedInferred) || arrayLitToGeneric ||
+                                ctrlArrayTarget;
+        assert(consistent && "resolvedType / getType inconsistent");
 #endif
         return node->resolvedType();
     }

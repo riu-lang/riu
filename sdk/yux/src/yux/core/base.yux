@@ -74,6 +74,46 @@ struct Ord {
   fn ge(other Self&) bool = $.cmp(&other) >= 0
 }
 
+; Number：内置数字类型的公共边界。
+; 签名直接由各类型已有的按值 #Builtin intrinsic 满足；不用 `$ + other`
+; 一类默认体，因为运算符本身会再次分发到 plus 等方法。
+#Spec
+struct Number {
+  #Cval
+  #Inline
+  MAX Self
+
+  #Cval
+  #Inline
+  MIN Self
+
+  fn to_i8() i8
+  fn to_u8() u8
+  fn to_i16() i16
+  fn to_u16() u16
+  fn to_i32() i32
+  fn to_u32() u32
+  fn to_i64() i64
+  fn to_u64() u64
+  fn to_f64() f64
+  fn to_f32() f32
+
+  fn plus(other Self) Self
+  fn minus(other Self) Self
+  fn mul(other Self) Self
+  fn div(other Self) Self
+  fn mod(other Self) Self
+
+  fn eq(other Self) bool
+  fn ne(other Self) bool
+  fn lt(other Self) bool
+  fn le(other Self) bool
+  fn gt(other Self) bool
+  fn ge(other Self) bool
+
+  fn neg() Self
+}
+
 ; ToJson：纯抽象签名；按字段递归 derive 永不引入（DRAFT [#1.AE]）
 #Spec
 struct ToJson {

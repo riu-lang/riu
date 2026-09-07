@@ -1654,7 +1654,8 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
     }
     if (auto n = dynamic_cast<p<ExprPathCallNode>>(expr)) {
         const bool selfForm = n->enumName().getText() == "Self";
-        TypeInfo lhsTy = n->resolvedLhsType();
+        TypeInfo rawLhsTy = n->resolvedLhsType();
+        TypeInfo lhsTy = applyInstSubst(rawLhsTy);
         if (selfForm && !_currentStructName.empty()) {
             lhsTy = TypeInfo(_currentStructName);
             if (auto* ownerFile = fnDeclFile(_currentFn, _file)) {
@@ -1730,6 +1731,14 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                     if (auto* sf = structDecl->staticField(n->variantName().getText())) {
                         // 设置正确类型（字段类型而非 struct 类型）
                         n->setResolvedType(sf->type->getType());
+                        return;
+                    }
+                }
+                if (isCurrentTypeParam(lhsTy)) {
+                    auto fieldType = typeParamBoundStaticFieldType(_currentFn, _file, _sdkFile, lhsTy.name,
+                                                                   n->variantName().getText());
+                    if (fieldType) {
+                        n->setResolvedType(*fieldType);
                         return;
                     }
                 }

@@ -276,6 +276,42 @@ fn test_scalar_plus_ref_literal() {
   assert_eq(z, 15)
 }
 
+; ==================== Number spec 泛型边界 ====================
+
+fn number_add<T : Number>(a T, b T) T {
+  a.plus(b)
+}
+
+fn number_equal<T : Number>(a T, b T) bool {
+  a.eq(b)
+}
+
+fn number_min<T : Number>() T {
+  T::MIN
+}
+
+fn number_max<T : Number>() T {
+  T::MAX
+}
+
+fn number_to_i64<T : Number>(value T) i64 {
+  value.to_i64()
+}
+
+; 验证：整数与浮点数都显式实现 Number，且泛型调用直接命中按值 builtin。
+#Test
+fn test_number_bound() {
+  assert_eq(number_add(17, 25), 42)
+  assert_true(number_equal(17, 17))
+  assert_eq(number_min:<i32>(), i32::MIN)
+  assert_eq(number_max:<i32>(), i32::MAX)
+  assert_eq(number_to_i64(255u8), 255i64)
+
+  assert_eq(number_add(1.25f64, 2.75f64), 4.0f64)
+  assert_false(number_equal(1.25f64, 2.75f64))
+  assert_eq(number_min:<f64>(), f64::MIN)
+}
+
 ; ==================== f64 特殊值（迁自 bug_hunt） ====================
 
 #Test
