@@ -1425,6 +1425,78 @@ bool StatementBlockNode::hasResult() const {
     return _hasResult;
 }
 
+bool callIsNoReturn(p<ScopeNode> scope, p<ExprCallNode> call) {
+    if (!call) return false;
+    if (call->hasResolvedSymbol() && call->resolvedSymbol().isFn() && call->resolvedSymbol().fn &&
+        call->resolvedSymbol().fn->isNoReturn) {
+        return true;
+    }
+    auto callee = call->getCalleeExpr();
+    auto litCallee = dynamic_cast<p<ExprLiteralNode>>(callee);
+    if (!litCallee) return false;
+    auto obj = dynamic_cast<p<LiteralObjNode>>(litCallee->literal());
+    if (!obj) return false;
+    p<ScopeNode> sc = scope ? scope : call->findNearestScope();
+    if (!sc) return false;
+    auto* sym = sc->lookupFnSymbol(obj->getValue().getText());
+    return sym && sym->isNoReturn;
+}
+
+static bool stmtTerminatesFlow(p<ScopeNode> scope, p<StatementNode> stmt);
+
+bool exprTerminatesFlow(p<ScopeNode> scope, p<ExprNode> expr) {
+    if (!expr) return false;
+    p<ScopeNode> sc = scope ? scope : expr->findNearestScope();
+    if (auto call = dynamic_cast<p<ExprCallNode>>(expr)) {
+        return callIsNoReturn(sc, call);
+    }
+    if (auto ife = dynamic_cast<p<ExprIfElseNode>>(expr)) {
+        if (!ife->elseBlock()) return false;
+        if (!blockTerminatesFlow(sc, ife->thenBlock())) return false;
+        for (auto& el : ife->elifs()) {
+            if (!blockTerminatesFlow(sc, el->block())) return false;
+        }
+        return blockTerminatesFlow(sc, ife->elseBlock());
+    }
+    if (auto ol = dynamic_cast<p<ExprOneLineIfElseNode>>(expr)) {
+        return exprTerminatesFlow(sc, ol->trueValue()) && exprTerminatesFlow(sc, ol->falseValue());
+    }
+    if (auto m = dynamic_cast<p<ExprMatchNode>>(expr)) {
+        if (m->arms().empty()) return false;
+        for (auto& arm : m->arms()) {
+            if (!arm) return false;
+            if (arm->hasBlock()) {
+                if (!blockTerminatesFlow(sc, arm->block())) return false;
+            } else if (!exprTerminatesFlow(sc, arm->body())) {
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+static bool stmtTerminatesFlow(p<ScopeNode> scope, p<StatementNode> stmt) {
+    if (!stmt) return false;
+    if (dynamic_cast<p<StatementRetNode>>(stmt) || dynamic_cast<p<StatementRetVoidNode>>(stmt)) return true;
+    if (auto se = dynamic_cast<p<StatementExprNode>>(stmt)) {
+        return exprTerminatesFlow(scope, se->expr());
+    }
+    return false;
+}
+
+bool blockTerminatesFlow(p<ScopeNode> scope, p<StatementBlockNode> block) {
+    if (!block) return false;
+    p<ScopeNode> sc = scope ? scope : block;
+    for (auto& s : block->statements()) {
+        if (stmtTerminatesFlow(sc, s)) return true;
+    }
+    if (block->hasResult() && block->resultExpr()) {
+        return exprTerminatesFlow(sc, block->resultExpr());
+    }
+    return false;
+}
+
 const p<ExprNode>& ExprElIfNode::condition() const {
     return _condition;
 }
@@ -1450,33 +1522,38 @@ const p<StatementBlockNode>& ExprIfElseNode::elseBlock() const {
 }
 
 TypeInfo ExprIfElseNode::getType() const {
-    if (!_thenBlock->hasResult()) {
-        return {};
-    }
-    TypeInfo resultType = _thenBlock->resultExpr()->resolvedOrGetType();
+    // §4.9.3.5：ret / #NoReturn 臂流终止，不参与类型合并；其余无尾值则整体 void。
+    p<ScopeNode> sc = findNearestScope();
+    TypeInfo resultType;
+    bool haveValue = false;
 
+    auto consider = [&](p<StatementBlockNode> block) -> bool {
+        if (!block) return false;
+        if (blockTerminatesFlow(sc, block)) return true;
+        if (!block->hasResult() || !block->resultExpr()) return false;
+        auto t = block->resultExpr()->resolvedOrGetType();
+        if (!haveValue) {
+            resultType = std::move(t);
+            haveValue = true;
+            return true;
+        }
+        if (!blockValueTypesMatch(t, resultType)) {
+            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3005, resultType.name, t.name);
+        }
+        if (isEmptyArrayLitType(resultType) && !isEmptyArrayLitType(t)) resultType = std::move(t);
+        return true;
+    };
+
+    if (!consider(_thenBlock)) return {};
     for (auto& elif : _elifs) {
-        if (!elif->block()->hasResult()) {
-            return {};
-        }
-        auto elifType = elif->block()->resultExpr()->resolvedOrGetType();
-        if (!blockValueTypesMatch(elifType, resultType)) {
-            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3005, resultType.name, elifType.name);
-        }
-        if (isEmptyArrayLitType(resultType) && !isEmptyArrayLitType(elifType)) resultType = elifType;
+        if (!consider(elif->block())) return {};
     }
-
-    if (_elseBlock && _elseBlock->hasResult()) {
-        auto elseType = _elseBlock->resultExpr()->resolvedOrGetType();
-        if (!blockValueTypesMatch(elseType, resultType)) {
-            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3005, resultType.name, elseType.name);
-        }
-        if (isEmptyArrayLitType(resultType) && !isEmptyArrayLitType(elseType)) resultType = elseType;
-    } else if (!_elseBlock || !_elseBlock->hasResult()) {
+    if (_elseBlock) {
+        if (!consider(_elseBlock)) return {};
+    } else if (haveValue) {
         return {};
     }
-
-    return resultType;
+    return haveValue ? resultType : TypeInfo{};
 }
 
 int ExprIfElseNode::resolveLineNumber() const {
@@ -1490,6 +1567,13 @@ int ExprIfElseNode::resolveColumn() const {
 }
 
 TypeInfo ExprOneLineIfElseNode::getType() const {
+    p<ScopeNode> sc = findNearestScope();
+    bool trueTerm = exprTerminatesFlow(sc, _trueValue);
+    bool falseTerm = exprTerminatesFlow(sc, _falseValue);
+    if (trueTerm && falseTerm) return {};
+    if (trueTerm) return _falseValue->resolvedOrGetType();
+    if (falseTerm) return _trueValue->resolvedOrGetType();
+
     auto trueType = _trueValue->resolvedOrGetType();
     auto falseType = _falseValue->resolvedOrGetType();
     if (!blockValueTypesMatch(trueType, falseType)) {
@@ -1867,10 +1951,9 @@ TypeInfo MatchArmNode::resultType() const {
 }
 
 bool MatchArmNode::skipsTypeMerge() const {
-    if (!_block || _block->hasResult()) return false;
-    for (auto& s : _block->statements()) {
-        if (dynamic_cast<StatementRetNode*>(s) || dynamic_cast<StatementRetVoidNode*>(s)) return true;
-    }
+    auto* sc = const_cast<MatchArmNode*>(this);
+    if (_block) return blockTerminatesFlow(sc, _block);
+    if (_body) return exprTerminatesFlow(sc, _body);
     return false;
 }
 
@@ -1917,18 +2000,29 @@ TypeInfo ExprMatchNode::getType() const {
 // 与 if-else / match 同档：若任何参与方为 void 则整体 void，类型不一致返回首个，
 // 编译期再校验（保持与 ExprMatchNode::getType 一致风格）。
 TypeInfo ExprTryCatchNode::getType() const {
-    if (!_tryBlock->hasResult()) {
+    p<ScopeNode> sc = findNearestScope();
+    if (!blockTerminatesFlow(sc, _tryBlock) && (!_tryBlock->hasResult() || !_tryBlock->resultExpr())) {
         return {};
     }
-    TypeInfo first = _tryBlock->resultExpr()->resolvedOrGetType();
+    TypeInfo first;
+    bool have = false;
+    auto consider = [&](p<StatementBlockNode> block) {
+        if (!block || blockTerminatesFlow(sc, block)) return;
+        if (!block->hasResult() || !block->resultExpr()) return;
+        auto t = block->resultExpr()->resolvedOrGetType();
+        if (!have) {
+            first = std::move(t);
+            have = true;
+            return;
+        }
+        if (!blockValueTypesMatch(t, first)) return;
+        if (isEmptyArrayLitType(first) && !isEmptyArrayLitType(t)) first = std::move(t);
+    };
+    consider(_tryBlock);
     for (auto& arm : _catches) {
-        // body 无 result（以 ret / panic 终结）→ 流终止 arm，跳过类型合并
-        if (!arm->body()->hasResult()) continue;
-        auto t = arm->body()->resultExpr()->resolvedOrGetType();
-        if (!blockValueTypesMatch(t, first)) return first;
-        if (isEmptyArrayLitType(first) && !isEmptyArrayLitType(t)) first = t;
+        if (arm) consider(arm->body());
     }
-    return first;
+    return have ? first : TypeInfo{};
 }
 
 // Dyn<D>(x) / Dyn<D&>(x) 的整体类型 = `Dyn<D>` 或 `Dyn<D&>`。

@@ -889,7 +889,8 @@ bool Compiler::isFreshHandleExpr(p<ExprNode> expr) {
     // if / match / try：phi 各值产生分支均 fresh 时整体 fresh（流终止臂不参与）。
     // Array 无 RC，不能靠 retain 归一；非 fresh 分支仍须 E4031。
     auto blockFresh = [this](p<StatementBlockNode> block) -> bool {
-        if (!block || !block->hasResult() || !block->resultExpr()) return true;
+        if (!block || blockTerminatesFlow(block, block)) return true;
+        if (!block->hasResult() || !block->resultExpr()) return true;
         return isFreshHandleExpr(block->resultExpr());
     };
     if (auto* ifn = dynamic_cast<ExprIfElseNode*>(expr)) {
@@ -901,6 +902,12 @@ bool Compiler::isFreshHandleExpr(p<ExprNode> expr) {
         return true;
     }
     if (auto* ol = dynamic_cast<ExprOneLineIfElseNode*>(expr)) {
+        p<ScopeNode> sc = ol->findNearestScope();
+        bool tTerm = exprTerminatesFlow(sc, ol->trueValue());
+        bool fTerm = exprTerminatesFlow(sc, ol->falseValue());
+        if (tTerm && fTerm) return true;
+        if (tTerm) return isFreshHandleExpr(ol->falseValue());
+        if (fTerm) return isFreshHandleExpr(ol->trueValue());
         return isFreshHandleExpr(ol->trueValue()) && isFreshHandleExpr(ol->falseValue());
     }
     if (auto* mn = dynamic_cast<ExprMatchNode*>(expr)) {

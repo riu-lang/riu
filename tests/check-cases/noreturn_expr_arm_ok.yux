@@ -1,0 +1,53 @@
+; require-sdk
+; §4.9.1.4 / §4.9.3.5 / §4.12.2.3：#NoReturn 臂流终止，不参与类型合并
+
+enum Color {
+  Red
+  Green
+}
+
+enum Boom {
+  X
+}
+
+fn give() String ! Boom {
+  ret "ok"
+}
+
+#NoReturn
+fn die() {
+  exit(1)
+}
+
+fn main() {
+  let a String = if true { "a" } else { exit(1) }
+  let b String = if true { "b" } else { die() }
+  let c String = if true {
+    "c"
+  } else {
+    exit(1);
+  }
+  let k Color = Color::Red
+  let d String = match k {
+    Color::Red => "d"
+    Color::Green => exit(1)
+  }
+  let e String = match k {
+    Color::Red => "e"
+    Color::Green => {
+      die();
+    }
+  }
+  let f String = try {
+    give()
+  } catch e Boom {
+    exit(1)
+  }
+  println(a)
+  println(b)
+  println(c)
+  println(d)
+  println(e)
+  println(f)
+  ret;
+}

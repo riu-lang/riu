@@ -2009,13 +2009,15 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
 
         finishCtrlResolved(n);
 
-        // E7010：catch arm 末类型与 try 块一致。须用 resolved（空 `[]` 的 getType）
-        // 是 `[__empty * 0]`，靶向后 resolved 才是 Array<T>）。
-        if (n->tryBlock()->hasResult() && n->tryBlock()->resultExpr()) {
+        // E7010：catch arm 末类型与 try 块一致。流终止臂（ret / #NoReturn）不参与。
+        // 须用 resolved（空 `[]` 的 getType 是 `[__empty * 0]`，靶向后才是 Array<T>）。
+        p<ScopeNode> trySc = n->findNearestScope();
+        if (!blockTerminatesFlow(trySc, n->tryBlock()) && n->tryBlock()->hasResult() && n->tryBlock()->resultExpr()) {
             TypeInfo resultType;
             if (tryGetExprType(n->tryBlock()->resultExpr(), resultType)) {
                 resultType = applyInstSubst(resultType);
                 for (auto& arm : n->catches()) {
+                    if (blockTerminatesFlow(trySc, arm->body())) continue;
                     if (!arm->body()->hasResult() || !arm->body()->resultExpr()) continue;
                     TypeInfo armT;
                     if (!tryGetExprType(arm->body()->resultExpr(), armT)) continue;

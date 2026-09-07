@@ -10,7 +10,7 @@ fn main() {
     cwd()
   } catch e IoErr {
     eprintln("ls: cannot read cwd")
-    exit(1);
+    exit(1)
   }
   if a.len() >= 2 {
     dir = copy_of(a[1])
@@ -23,7 +23,7 @@ fn main() {
     list_dir(&dir)
   } catch e IoErr {
     eprintln("ls: cannot list")
-    exit(1);
+    exit(1)
   }
   for n in names {
     println(n)

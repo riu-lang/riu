@@ -10,21 +10,6 @@
 
 namespace {
 
-// 通过 callee 表达式的字面量名查到 FnSymbolInfo，判断是否带 #NoReturn。
-// 简化：只看顶层身份引用（如 `panic("x")`）；方法调用、Rc 调用等暂不参与
-// 流终止判定（保守判 false，不错杀但可能漏报）。
-bool callIsNoReturn(p<ScopeNode> scope, p<ExprCallNode> call) {
-    if (!scope || !call) return false;
-    auto callee = call->getCalleeExpr();
-    auto litCallee = dynamic_cast<p<ExprLiteralNode>>(callee);
-    if (!litCallee) return false;
-    auto obj = dynamic_cast<p<LiteralObjNode>>(litCallee->literal());
-    if (!obj) return false;
-    auto name = obj->getValue().getText();
-    auto* sym = scope->lookupFnSymbol(name);
-    return sym && sym->isNoReturn;
-}
-
 bool blockTerminates(p<ScopeNode> scope, p<StatementBlockNode> block);
 bool stmtTerminates(p<ScopeNode> scope, p<StatementNode> stmt);
 bool exprTerminates(p<ScopeNode> scope, p<ExprNode> expr);
@@ -91,6 +76,9 @@ bool exprTerminates(p<ScopeNode> scope, p<ExprNode> expr) {
             if (!blockTerminates(scope, el->block())) return false;
         }
         return blockTerminates(scope, ife->elseBlock());
+    }
+    if (auto ol = dynamic_cast<p<ExprOneLineIfElseNode>>(expr)) {
+        return exprTerminates(scope, ol->trueValue()) && exprTerminates(scope, ol->falseValue());
     }
     if (auto m = dynamic_cast<p<ExprMatchNode>>(expr)) {
         if (m->arms().empty()) return false;

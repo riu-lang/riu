@@ -120,6 +120,9 @@ llvm::Function* Compiler::getOrCreateExternFunction(const string& cName, const F
     }
     auto* fn = llvm::Function::Create(fnTy, llvm::Function::ExternalLinkage, cName, _module);
     fn->setCallingConv(llvm::CallingConv::C);
+    if (fnSymbol.isNoReturn) {
+        fn->addFnAttr(llvm::Attribute::NoReturn);
+    }
 
     unsigned idx = 0;
     auto addAlign = [&](unsigned i, llvm::Type* ty) {

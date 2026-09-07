@@ -146,33 +146,50 @@ llvm::Value* Compiler::compileOneLineIfElseExpr(p<ExprOneLineIfElseNode> node) {
 
     _builder.SetInsertPoint(thenBB);
     llvm::Value* trueVal = nullptr;
-    if (hasResult) {
+    bool thenToMerge = false;
+    if (hasResult && !exprTerminatesFlow(node->findNearestScope(), node->trueValue())) {
         trueVal = compileBranchResultNormalized(node->trueValue(), resultType);
     } else {
         (void)compileExpr(node->trueValue());
     }
-    _builder.CreateBr(mergeBB);
+    if (!_builder.GetInsertBlock()->getTerminator()) {
+        _builder.CreateBr(mergeBB);
+        thenToMerge = true;
+    }
     auto thenEndBB = _builder.GetInsertBlock();
 
     func->insert(func->end(), elseBB);
     _builder.SetInsertPoint(elseBB);
     llvm::Value* falseVal = nullptr;
-    if (hasResult) {
+    bool elseToMerge = false;
+    if (hasResult && !exprTerminatesFlow(node->findNearestScope(), node->falseValue())) {
         falseVal = compileBranchResultNormalized(node->falseValue(), resultType);
     } else {
         (void)compileExpr(node->falseValue());
     }
-    _builder.CreateBr(mergeBB);
+    if (!_builder.GetInsertBlock()->getTerminator()) {
+        _builder.CreateBr(mergeBB);
+        elseToMerge = true;
+    }
     auto elseEndBB = _builder.GetInsertBlock();
 
     func->insert(func->end(), mergeBB);
     _builder.SetInsertPoint(mergeBB);
 
     if (!hasResult) return nullptr;
+    if (!thenToMerge && !elseToMerge) {
+        _builder.CreateUnreachable();
+        return llvm::UndefValue::get(getLLVMType(resultType));
+    }
 
     auto phi = llvm::PHINode::Create(getLLVMType(resultType), 2, "if.result", mergeBB);
-    phi->addIncoming(trueVal, thenEndBB);
-    phi->addIncoming(falseVal, elseEndBB);
+    auto llvmTy = getLLVMType(resultType);
+    if (thenToMerge) {
+        phi->addIncoming(trueVal ? trueVal : llvm::UndefValue::get(llvmTy), thenEndBB);
+    }
+    if (elseToMerge) {
+        phi->addIncoming(falseVal ? falseVal : llvm::UndefValue::get(llvmTy), elseEndBB);
+    }
 
     // Phase 8d.3: 两支已归一 +1，phi 作 fresh 句柄登记外层
     if (resultType.isRcHandle()) {
@@ -459,6 +476,8 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
             } else {
                 compileStatementBlock(arm->block());
             }
+        } else if (exprTerminatesFlow(arm->findNearestScope(), arm->body())) {
+            (void)compileExpr(arm->body());
         } else if (hasResult) {
             bodyVal = compileBranchResultNormalized(arm->body(), resultType);
         } else {
@@ -618,7 +637,7 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
                 resultLLVMType = nullptr;
             }
         }
-        if (hasValue) {
+        if (hasValue && !exprTerminatesFlow(tryBlock, tryBlock->resultExpr())) {
             tryResult = compileBranchResultNormalized(tryBlock->resultExpr(), resultType);
         } else {
             (void)compileExpr(tryBlock->resultExpr());
@@ -679,7 +698,7 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
 
         llvm::Value* armResult = nullptr;
         if (arm->body()->hasResult() && arm->body()->resultExpr()) {
-            if (hasValue) {
+            if (hasValue && !exprTerminatesFlow(arm->body(), arm->body()->resultExpr())) {
                 armResult = compileBranchResultNormalized(arm->body()->resultExpr(), resultType);
             } else {
                 (void)compileExpr(arm->body()->resultExpr());

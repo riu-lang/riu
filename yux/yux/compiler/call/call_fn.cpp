@@ -14,8 +14,21 @@
 #include "sema/call_resolve.h"
 #include <algorithm>
 #include <functional>
+#include <llvm/IR/Attributes.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
+
+namespace {
+void emitNoReturnTail(llvm::IRBuilder<>& builder, llvm::Function* fn, bool isNoReturn) {
+    if (!isNoReturn) return;
+    if (fn && !fn->hasFnAttribute(llvm::Attribute::NoReturn)) {
+        fn->addFnAttr(llvm::Attribute::NoReturn);
+    }
+    if (!builder.GetInsertBlock()->getTerminator()) {
+        builder.CreateUnreachable();
+    }
+}
+} // namespace
 
 llvm::Value* Compiler::compileFunctionCall(p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args,
                                            vector<TypeInfo>& argTypes) {
@@ -959,6 +972,9 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
         }
         auto fnType = llvm::FunctionType::get(retType, paramTypes, false);
         fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, cName, _module);
+        if (fnSymbol->isNoReturn) {
+            fn->addFnAttr(llvm::Attribute::NoReturn);
+        }
     }
 
     DEBUG_LOG_VAL("    Function signature check", "numParams=" << fn->getFunctionType()->getNumParams());
@@ -1155,10 +1171,18 @@ llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const 
         }
         auto* callResult = _builder.CreateCall(fn, abiArgs);
         applyExternCallAttrs(callResult, *fnSymbol);
+        if (fnSymbol->isNoReturn) {
+            emitNoReturnTail(_builder, fn, true);
+            return nullptr;
+        }
         return coerceFromExternRet(callResult, retSlot, sretAlloca);
     }
 
     auto callResult = _builder.CreateCall(fn, callArgs);
+    if (fnSymbol->isNoReturn) {
+        emitNoReturnTail(_builder, fn, true);
+        return nullptr;
+    }
 
     // Phase 3d.2: B 档 nullable move 写回 —— callee 接管 `Heap<T>?` byval 后,
     // 调用方 slot 写 {_has=false, _value=null}, 让作用域尾析构 / 后续读都视作 null.

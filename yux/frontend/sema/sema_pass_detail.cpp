@@ -146,7 +146,8 @@ bool isFreshHandleExpr(p<ExprNode> expr) {
     if (dynamic_cast<p<ExprStructLitNode>>(expr)) return true;  // struct 字面量 (Self { ... })
     // if / match / try：与 Compiler::isFreshHandleExpr 同步 — 各值产生分支均 fresh。
     auto blockFresh = [](p<StatementBlockNode> block) -> bool {
-        if (!block || !block->hasResult() || !block->resultExpr()) return true;
+        if (!block || blockTerminatesFlow(block, block)) return true;
+        if (!block->hasResult() || !block->resultExpr()) return true;
         return isFreshHandleExpr(block->resultExpr());
     };
     if (auto* ifn = dynamic_cast<p<ExprIfElseNode>>(expr)) {
@@ -158,6 +159,12 @@ bool isFreshHandleExpr(p<ExprNode> expr) {
         return true;
     }
     if (auto* ol = dynamic_cast<p<ExprOneLineIfElseNode>>(expr)) {
+        p<ScopeNode> sc = ol->findNearestScope();
+        bool tTerm = exprTerminatesFlow(sc, ol->trueValue());
+        bool fTerm = exprTerminatesFlow(sc, ol->falseValue());
+        if (tTerm && fTerm) return true;
+        if (tTerm) return isFreshHandleExpr(ol->falseValue());
+        if (fTerm) return isFreshHandleExpr(ol->trueValue());
         return isFreshHandleExpr(ol->trueValue()) && isFreshHandleExpr(ol->falseValue());
     }
     if (auto* mn = dynamic_cast<p<ExprMatchNode>>(expr)) {

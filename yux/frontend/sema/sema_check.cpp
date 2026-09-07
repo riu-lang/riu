@@ -356,50 +356,56 @@ void SemaPass::tryValidateSafeDot(p<ExprDotNode> n) {
 }
 
 void SemaPass::tryValidateIfElse(p<ExprIfElseNode> n) {
-    // 与 ExprIfElseNode::getType 对齐：then 无结果则不是值 if；elif 无结果同样放弃；
-    // 无 else 结果时 getType 返回空，不报。模板形参等实例化后再查。
+    // 与 ExprIfElseNode::getType 对齐：流终止臂跳过；非终止且无尾值则不是值 if，不报。
+    // 模板形参等实例化后再查。
     if (!n) return;
-    auto branchType = [this](p<StatementBlockNode> block, TypeInfo& out) -> bool {
-        if (!block || !block->hasResult() || !block->resultExpr()) return false;
+    p<ScopeNode> sc = n->findNearestScope();
+    auto branchKind = [this, sc](p<StatementBlockNode> block, TypeInfo& out) -> int {
+        // 0 流终止跳过；1 有值；-1 无值（语句形态）
+        if (!block) return -1;
+        if (blockTerminatesFlow(sc, block)) return 0;
+        if (!block->hasResult() || !block->resultExpr()) return -1;
         p<ExprNode> e = block->resultExpr();
         try {
             out = e->hasResolvedType() ? e->resolvedType() : e->getType();
         } catch (const YuxError&) {
-            return false;
+            return -1;
         } catch (...) { // NOLINT(bugprone-empty-catch)
-            return false;
+            return -1;
         }
         out = applyInstSubst(out);
-        return true;
+        return 1;
     };
     TypeInfo resultType;
-    if (!branchType(n->thenBlock(), resultType)) return;
-    if (typeStillTemplate(resultType)) return;
+    bool have = false;
+    auto consider = [&](p<StatementBlockNode> block) -> bool {
+        TypeInfo t;
+        int k = branchKind(block, t);
+        if (k == 0) return true;
+        if (k < 0) return false;
+        if (typeStillTemplate(t)) return false;
+        if (!have) {
+            resultType = std::move(t);
+            have = true;
+            return true;
+        }
+        if (!blockMergeTypesEq(t, resultType)) {
+            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3005, resultType.name, t.name);
+        }
+        if (isEmptyArrayType(resultType) && !isEmptyArrayType(t)) resultType = std::move(t);
+        return true;
+    };
+    if (!consider(n->thenBlock())) return;
     for (auto& el : n->elifs()) {
-        if (!el) return;
-        TypeInfo elifType;
-        if (!branchType(el->block(), elifType)) return;
-        if (typeStillTemplate(elifType)) return;
-        if (!blockMergeTypesEq(elifType, resultType)) {
-            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3005, resultType.name,
-                           elifType.name);
-        }
-        if (isEmptyArrayType(resultType) && !isEmptyArrayType(elifType)) resultType = elifType;
+        if (!el || !consider(el->block())) return;
     }
-    if (n->elseBlock() && n->elseBlock()->hasResult()) {
-        TypeInfo elseType;
-        if (!branchType(n->elseBlock(), elseType)) return;
-        if (typeStillTemplate(elseType)) return;
-        if (!blockMergeTypesEq(elseType, resultType)) {
-            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3005, resultType.name,
-                           elseType.name);
-        }
-    }
+    if (n->elseBlock() && !consider(n->elseBlock())) return;
 }
 
 void SemaPass::tryValidateOneLineIfElse(p<ExprOneLineIfElseNode> n) {
-    // 与 ExprOneLineIfElseNode::getType 对齐。模板形参等实例化后再查。
+    // 与 ExprOneLineIfElseNode::getType 对齐。流终止臂跳过。模板形参等实例化后再查。
     if (!n) return;
+    p<ScopeNode> sc = n->findNearestScope();
     auto exprType = [this](p<ExprNode> e, TypeInfo& out) -> bool {
         if (!e) return false;
         try {
@@ -412,6 +418,9 @@ void SemaPass::tryValidateOneLineIfElse(p<ExprOneLineIfElseNode> n) {
         out = applyInstSubst(out);
         return true;
     };
+    bool trueTerm = exprTerminatesFlow(sc, n->trueValue());
+    bool falseTerm = exprTerminatesFlow(sc, n->falseValue());
+    if (trueTerm || falseTerm) return;
     TypeInfo trueType;
     TypeInfo falseType;
     if (!exprType(n->trueValue(), trueType) || !exprType(n->falseValue(), falseType)) return;

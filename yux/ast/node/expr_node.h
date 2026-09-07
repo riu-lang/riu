@@ -762,4 +762,10 @@ public:
     [[nodiscard]] int resolveColumn() const override;
 };
 
+// §4.9.1.4 / §4.9.3.5：调用点是 `#NoReturn` 时该表达式流终止，不参与 if / match / try 类型合并。
+// 只认顶层身份引用（`panic("x")` / `exit(1)`）；方法调用暂不参与（与 E7014 同一保守策略）。
+bool callIsNoReturn(p<ScopeNode> scope, p<ExprCallNode> call);
+bool exprTerminatesFlow(p<ScopeNode> scope, p<ExprNode> expr);
+bool blockTerminatesFlow(p<ScopeNode> scope, p<StatementBlockNode> block);
+
 #endif // YUX_LANG_EXPR_NODE_H

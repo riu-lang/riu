@@ -19,6 +19,7 @@
 #include "compiler_runtime.h"
 #include "sema/call_resolve.h"
 #include <functional>
+#include <llvm/IR/Attributes.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 
@@ -63,6 +64,9 @@ llvm::Function* Compiler::getFunction(p<FnHeaderNode> header) {
         DEBUG_LOG("    -> created new function");
     } else {
         DEBUG_LOG("    -> found existing function");
+    }
+    if (header->hasAnno("NoReturn") && !func->hasFnAttribute(llvm::Attribute::NoReturn)) {
+        func->addFnAttr(llvm::Attribute::NoReturn);
     }
     return func;
 }

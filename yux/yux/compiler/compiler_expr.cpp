@@ -480,9 +480,23 @@ llvm::Value* Compiler::compileStatementBlockWithResult(p<StatementBlockNode> blo
     }
 
     if (block->hasResult()) {
+        // 尾表达式是 #NoReturn / 全分支终止时不当值：只编译调用（内部 emit unreachable），不进 phi。
+        if (exprTerminatesFlow(block, block->resultExpr())) {
+            (void)compileExpr(block->resultExpr());
+            if (scopeFrameDepth() == myDepth) {
+                popScopeFrameNoDestroy();
+            }
+            return nullptr;
+        }
         // Phase 8d.3: RC 句柄分支结果走子帧 + 归一 retain；非 RC 沿用旧行为
         auto resultVal = compileBranchResultNormalized(block->resultExpr(), resultType);
-        if (phi && !resultType.empty()) {
+        if (_builder.GetInsertBlock()->getTerminator()) {
+            if (scopeFrameDepth() == myDepth) {
+                popScopeFrameNoDestroy();
+            }
+            return nullptr;
+        }
+        if (phi && !resultType.empty() && resultVal) {
             phi->addIncoming(resultVal, _builder.GetInsertBlock());
         }
     }
