@@ -7,6 +7,8 @@
 ; 构造唯一通道：#Static 工厂 (String::empty / String::from / String::_take_buf)
 ; B-4: {_buf Rc<Array<u32>>} — Rc 提供 retain/release，字面量走 sentinel RC Block
 #Impl(ToString)
+#Impl(Eq)
+#Impl(Ord)
 struct String {
   _buf Rc<Array<u32>>
   ; 无显式 ~()：编译器对含 Rc 字段的 struct 自动生成析构 → _box_release(_buf.handle)
@@ -58,6 +60,85 @@ struct String {
     String::_take_buf(move(buf))
   }
 
+  ; 单码点构造；不校验是否合法 Unicode 标量
+  #Static
+  fn from_codepoint(cp u32) String {
+    #Mut let buf Array<u32> = []
+    buf.push(cp)
+    String::_take_buf(move(buf))
+  }
+
+  ; 用 sep 拼接；空 parts → ""；单段不加 sep
+  ; sep 按值：静态方法不自动取址，字面量 `","` 才能直接传入
+  #Static
+  fn join(parts Array<String>&, sep String) String {
+    let n usize = parts.len()
+    if n == 0 {
+      ret String::empty()
+    }
+    if n == 1 {
+      ret copy_of(parts[0])
+    }
+    #Mut let buf Array<u32> = []
+    #Mut let first bool = true
+    for p in parts {
+      if !first {
+        let sbuf Array<u32>& = as_ref(sep._buf)
+        loop si usize = 0 {
+          if si >= sbuf.len() {
+            break;
+          }
+          buf.push(copy_of(sbuf[si]))
+          si += 1
+        }
+      }
+      first = false
+      let pbuf Array<u32>& = as_ref(p._buf)
+      loop pi usize = 0 {
+        if pi >= pbuf.len() {
+          break;
+        }
+        buf.push(copy_of(pbuf[pi]))
+        pi += 1
+      }
+    }
+    String::_take_buf(move(buf))
+  }
+
+  ; 从 start 起把 a 收到的十进制数字收成 u64；须至少一位；非数字 / 溢出 → null
+  #Static
+  fn _parse_u64_from(a Array<u32>&, start usize) u64? {
+    let n usize = a.len()
+    if start >= n {
+      ret null
+    }
+    #Mut let acc u64 = 0
+    #Mut let i usize = start
+    #Mut let any bool = false
+    let limit u64 = u64::MAX / 10
+    let last u64 = u64::MAX % 10
+    loop {
+      if i >= n {
+        break;
+      }
+      let cp u32 = copy_of(a[i])
+      if cp < c'0' || cp > c'9' {
+        ret null
+      }
+      let d u64 = (cp - c'0').to_u64()
+      any = true
+      if acc > limit || (acc == limit && d > last) {
+        ret null
+      }
+      acc = acc * 10 + d
+      i += 1
+    }
+    if !any {
+      ret null
+    }
+    ret acc
+  }
+
   fn len() usize {
     let a Array<u32>& = as_ref($._buf)
     a.len()
@@ -70,6 +151,26 @@ struct String {
     let a Array<u32>& = as_ref($._buf)
     copy_of(a[i])
   }
+
+  ; [start, end) 拷贝；端点夹到 len；start > end 得 ""
+  fn slice(start usize, end usize) String {
+    let a Array<u32>& = as_ref($._buf)
+    let n usize = a.len()
+    #Mut let s usize = start
+    #Mut let e usize = end
+    if s > n {
+      s = n
+    }
+    if e > n {
+      e = n
+    }
+    if s >= e {
+      ret String::empty()
+    }
+    String::_from_range(&a, s, e)
+  }
+
+  fn slice_from(start usize) String = $.slice(start, $.len())
 
   ; 等值比较：长度相同且每个码点相同
   fn eq(other String&) bool {
@@ -94,24 +195,61 @@ struct String {
     !$.eq(&other)
   }
 
+  ; 码点字典序：小于 -1、相等 0、大于 1
+  fn cmp(other String&) i32 {
+    let a Array<u32>& = as_ref($._buf)
+    let b Array<u32>& = as_ref(other._buf)
+    let na usize = a.len()
+    let nb usize = b.len()
+    #Mut let n usize = na
+    if nb < n {
+      n = nb
+    }
+    loop i usize = 0 {
+      if i >= n {
+        break;
+      }
+      let ca u32 = copy_of(a[i])
+      let cb u32 = copy_of(b[i])
+      if ca < cb {
+        ret -1
+      }
+      if ca > cb {
+        ret 1
+      }
+      i += 1
+    }
+    if na < nb {
+      ret -1
+    }
+    if na > nb {
+      ret 1
+    }
+    0
+  }
+
+  ; a[i .. i+b.len()) 是否与 b 逐码点相等；调用方保证不越界
+  fn _eq_at(a Array<u32>&, b Array<u32>&, i usize) bool {
+    loop j usize = 0 {
+      if j >= b.len() {
+        ret true
+      }
+      if a[i + j] != b[j] {
+        ret false
+      }
+      j += 1
+    }
+    true
+  }
+
   ; 是否以 prefix 开头：长度足够且前 plen 个码点逐位相等
   fn starts_with(prefix String&) bool {
     let a Array<u32>& = as_ref($._buf)
     let b Array<u32>& = as_ref(prefix._buf)
-    let plen usize = b.len()
-    if plen > a.len() {
+    if b.len() > a.len() {
       ret false
     }
-    loop i usize = 0 {
-      if i >= plen {
-        break;
-      }
-      if a[i] != b[i] {
-        ret false
-      }
-      i += 1
-    }
-    true
+    $._eq_at(&a, &b, 0)
   }
 
   ; 是否以 suffix 结尾：长度足够且后 slen 个码点逐位相等
@@ -124,54 +262,76 @@ struct String {
     if slen > hlen {
       ret false
     }
-    let off usize = hlen - slen
-    loop i usize = 0 {
-      if i >= slen {
-        break;
-      }
-      if a[off + i] != b[i] {
-        ret false
-      }
-      i += 1
-    }
-    true
+    $._eq_at(&a, &b, hlen - slen)
   }
 
   ; 是否包含 needle 子串：朴素 O(n*m) 滑窗匹配
   ; 空 needle 视为匹配任何字符串（与 starts_with("") 一致）
-  fn contains(needle String&) bool {
+  fn contains(needle String&) bool = $.index_of(&needle).has()
+
+  ; 首次出现位置；空 needle → 0；未找到 → null
+  fn index_of(needle String&) usize? {
     let a Array<u32>& = as_ref($._buf)
     let b Array<u32>& = as_ref(needle._buf)
     let nlen usize = b.len()
-    if nlen == 0 {
-      ret true
-    }
     let hlen usize = a.len()
+    if nlen == 0 {
+      ret 0
+    }
     if nlen > hlen {
-      ret false
+      ret null
     }
     loop i usize = 0 {
       if i + nlen > hlen {
         break;
       }
-      #Mut let j usize = 0
-      #Mut let hit bool = true
-      loop {
-        if j >= nlen {
-          break;
-        }
-        if a[i + j] != b[j] {
-          hit = false
-          break;
-        }
-        j += 1
-      }
-      if hit {
-        ret true
+      if $._eq_at(&a, &b, i) {
+        ret i
       }
       i += 1
     }
-    false
+    null
+  }
+
+  ; 末次出现位置；空 needle → len；未找到 → null
+  fn last_index_of(needle String&) usize? {
+    let a Array<u32>& = as_ref($._buf)
+    let b Array<u32>& = as_ref(needle._buf)
+    let nlen usize = b.len()
+    let hlen usize = a.len()
+    if nlen == 0 {
+      ret hlen
+    }
+    if nlen > hlen {
+      ret null
+    }
+    #Mut let i usize = hlen - nlen
+    loop {
+      if $._eq_at(&a, &b, i) {
+        ret i
+      }
+      if i == 0 {
+        break;
+      }
+      i -= 1
+    }
+    null
+  }
+
+  ; 去掉前缀；不匹配 → null（空前缀得自身）
+  fn strip_prefix(prefix String&) String? {
+    if !$.starts_with(&prefix) {
+      ret null
+    }
+    ret $.slice_from(prefix.len())
+  }
+
+  ; 去掉后缀；不匹配 → null（空后缀得自身）
+  fn strip_suffix(suffix String&) String? {
+    if !$.ends_with(&suffix) {
+      ret null
+    }
+    ret $.slice(0, $.len() - suffix.len())
   }
 
   ; ASCII 大写：a-z → A-Z，其余码点不变（含非 ASCII）；返回新 String
@@ -329,19 +489,7 @@ struct String {
       if i + slen > hlen {
         break;
       }
-      #Mut let j usize = 0
-      #Mut let hit bool = true
-      loop {
-        if j >= slen {
-          break;
-        }
-        if a[i + j] != b[j] {
-          hit = false
-          break;
-        }
-        j += 1
-      }
-      if hit {
+      if $._eq_at(&a, &b, i) {
         parts.push(String::_from_range(&a, start, i))
         i += slen
         start = i
@@ -369,19 +517,7 @@ struct String {
       if i + flen > hlen {
         break;
       }
-      #Mut let j usize = 0
-      #Mut let hit bool = true
-      loop {
-        if j >= flen {
-          break;
-        }
-        if a[i + j] != b[j] {
-          hit = false
-          break;
-        }
-        j += 1
-      }
-      if hit {
+      if $._eq_at(&a, &b, i) {
         loop k usize = 0 {
           if k >= t.len() {
             break;
@@ -428,8 +564,8 @@ struct String {
     String::_take_buf(move(buf))
   }
 
-  ; 十进制有符号 i32。可选前导 `+` / `-`；不吃空白。空 / 非数字 / 溢出 → null。
-  fn parse_i32() i32? {
+  ; 十进制有符号。可选前导 `+` / `-`；不吃空白。空 / 非数字 / 溢出 → null。
+  fn _parse_signed_i64() i64? {
     let a Array<u32>& = as_ref($._buf)
     let n usize = a.len()
     if n == 0 {
@@ -441,55 +577,95 @@ struct String {
     if first == c'-' {
       neg = true
       i = 1
-      if i >= n {
-        ret null
-      }
     } elif first == c'+' {
       i = 1
-      if i >= n {
-        ret null
-      }
     }
-    #Mut let acc i32 = 0
-    #Mut let any bool = false
-    loop {
-      if i >= n {
-        break;
-      }
-      let cp u32 = copy_of(a[i])
-      if cp < c'0' || cp > c'9' {
-        ret null
-      }
-      let d i32 = (cp - c'0').to_i32()
-      any = true
-      if acc > 214748364 {
-        ret null
-      }
-      if acc == 214748364 {
-        if neg && d == 8 {
-          i += 1
-          if i != n {
-            ret null
-          }
-          ret -2147483648
-        }
-        if !neg && d > 7 {
-          ret null
-        }
-        if neg && d > 8 {
-          ret null
-        }
-      }
-      acc = acc * 10 + d
-      i += 1
-    }
-    if !any {
+    let mag u64? = String::_parse_u64_from(&a, i)
+    if !mag.has() {
       ret null
     }
+    let v u64 = mag.get()
+    let max_pos u64 = i64::MAX.to_u64()
     if neg {
-      ret -acc
+      if v > max_pos + 1 {
+        ret null
+      }
+      if v == max_pos + 1 {
+        ret i64::MIN
+      }
+      ret 0i64 - v.to_i64()
     }
-    ret acc
+    if v > max_pos {
+      ret null
+    }
+    ret v.to_i64()
+  }
+
+  fn _parse_unsigned_u64() u64? {
+    let a Array<u32>& = as_ref($._buf)
+    let n usize = a.len()
+    if n == 0 {
+      ret null
+    }
+    #Mut let i usize = 0
+    let first u32 = copy_of(a[0])
+    if first == c'+' {
+      i = 1
+    } elif first == c'-' {
+      ret null
+    }
+    String::_parse_u64_from(&a, i)
+  }
+
+  fn parse_i32() i32? {
+    let v i64? = $._parse_signed_i64()
+    if !v.has() {
+      ret null
+    }
+    let x i64 = v.get()
+    if x < i32::MIN.to_i64() || x > i32::MAX.to_i64() {
+      ret null
+    }
+    ret x.to_i32()
+  }
+
+  fn parse_i64() i64? = $._parse_signed_i64()
+
+  fn parse_u32() u32? {
+    let v u64? = $._parse_unsigned_u64()
+    if !v.has() {
+      ret null
+    }
+    let x u64 = v.get()
+    if x > u32::MAX.to_u64() {
+      ret null
+    }
+    ret x.to_u32()
+  }
+
+  fn parse_u64() u64? = $._parse_unsigned_u64()
+
+  fn parse_usize() usize? {
+    let v u64? = $._parse_unsigned_u64()
+    if !v.has() {
+      ret null
+    }
+    let x u64 = v.get()
+    if x > usize::MAX.to_u64() {
+      ret null
+    }
+    ret x.to_usize()
+  }
+
+  ; 精确 `"true"` / `"false"`；其余 → null
+  fn parse_bool() bool? {
+    if $ == "true" {
+      ret true
+    }
+    if $ == "false" {
+      ret false
+    }
+    ret null
   }
 
   ; 转为 UTF-8 字节数组

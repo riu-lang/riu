@@ -11,8 +11,12 @@
 ;   - ToString 自动分发（i32 / i64 / u64 / bool / f64）
 ;   - String + 链式连接（含左右非 String、混合类型链）
 ;   - 边界条件（空字符串、纯插值）
-;   - parse_i32（十进制 / 符号 / 溢出 / 非法）
+;   - parse_i32 / parse_i64 / parse_u32 / parse_u64 / parse_usize / parse_bool
 ;   - is_empty / replace / repeat
+;   - slice / slice_from（越界夹取）
+;   - index_of / last_index_of / strip_prefix / strip_suffix
+;   - String::from_codepoint / String::join
+;   - cmp / < <= > >=
 
 ; ==================== 等值比较 ====================
 
@@ -763,4 +767,194 @@ fn test_string_repeat() {
   assert_eq("x".repeat(1), "x")
   assert_eq("ab".repeat(0), "")
   assert_eq("".repeat(5), "")
+}
+
+; ==================== slice / slice_from ====================
+
+#Test
+fn test_string_slice_basic() {
+  let s String = "hello"
+  assert_eq(s.slice(1, 4), "ell")
+  assert_eq(s.slice(0, 5), "hello")
+  assert_eq(s.slice(2, 2), "")
+  assert_eq(s.slice(0, 0), "")
+}
+
+#Test
+fn test_string_slice_clamp() {
+  let s String = "abcd"
+  assert_eq(s.slice(3, 99), "d")
+  assert_eq(s.slice(10, 20), "")
+  assert_eq(s.slice(3, 1), "")
+  assert_eq(s.slice(0, 99), "abcd")
+}
+
+#Test
+fn test_string_slice_from() {
+  let s String = "--name=foo"
+  assert_eq(s.slice_from(7), "foo")
+  assert_eq(s.slice_from(0), "--name=foo")
+  assert_eq(s.slice_from(11), "")
+  assert_eq("".slice_from(0), "")
+  assert_eq("ab".slice_from(99), "")
+}
+
+#Test
+fn test_string_slice_utf8() {
+  assert_eq("你好世界".slice(1, 3), "好世")
+  assert_eq("你好世界".slice_from(2), "世界")
+}
+
+; ==================== index_of / last_index_of ====================
+
+#Test
+fn test_string_index_of_basic() {
+  let i usize? = "hello".index_of("ll")
+  assert_eq(i.get(), 2)
+  let miss usize? = "hello".index_of("z")
+  assert_false(miss.has())
+  let head usize? = "abc".index_of("a")
+  assert_eq(head.get(), 0)
+}
+
+#Test
+fn test_string_index_of_empty() {
+  let z usize? = "ab".index_of("")
+  assert_eq(z.get(), 0)
+  let empty usize? = "".index_of("")
+  assert_eq(empty.get(), 0)
+}
+
+#Test
+fn test_string_last_index_of() {
+  let i usize? = "ababa".last_index_of("ab")
+  assert_eq(i.get(), 2)
+  let one usize? = "aaa".last_index_of("a")
+  assert_eq(one.get(), 2)
+  let miss usize? = "hello".last_index_of("z")
+  assert_false(miss.has())
+  let empty usize? = "ab".last_index_of("")
+  assert_eq(empty.get(), 2)
+}
+
+#Test
+fn test_string_index_of_utf8() {
+  let i usize? = "你好世界".index_of("世界")
+  assert_eq(i.get(), 2)
+}
+
+; ==================== strip_prefix / strip_suffix ====================
+
+#Test
+fn test_string_strip_prefix() {
+  let v String? = "--name=foo".strip_prefix("--name=")
+  assert_eq(v.get(), "foo")
+  let miss String? = "foo".strip_prefix("--")
+  assert_false(miss.has())
+  let empty String? = "abc".strip_prefix("")
+  assert_eq(empty.get(), "abc")
+  let all String? = "abc".strip_prefix("abc")
+  assert_eq(all.get(), "")
+}
+
+#Test
+fn test_string_strip_suffix() {
+  let v String? = "file.yux".strip_suffix(".yux")
+  assert_eq(v.get(), "file")
+  let miss String? = "file.yux".strip_suffix(".exe")
+  assert_false(miss.has())
+  let empty String? = "abc".strip_suffix("")
+  assert_eq(empty.get(), "abc")
+}
+
+; ==================== from_codepoint / join ====================
+
+#Test
+fn test_string_from_codepoint() {
+  assert_eq(String::from_codepoint(c'A'), "A")
+  assert_eq(String::from_codepoint(c'中'), "中")
+  assert_eq(String::from_codepoint(45), "-")
+}
+
+#Test
+fn test_string_join() {
+  let parts Array<String> = ["a", "b", "c"]
+  assert_eq(String::join(&parts, ","), "a,b,c")
+  assert_eq(String::join(&parts, ""), "abc")
+  let one Array<String> = ["only"]
+  assert_eq(String::join(&one, ","), "only")
+  let empty Array<String> = []
+  assert_eq(String::join(&empty, ","), "")
+  let utf Array<String> = ["你", "好"]
+  assert_eq(String::join(&utf, "·"), "你·好")
+}
+
+; ==================== cmp / 排序比较 ====================
+
+#Test
+fn test_string_cmp() {
+  assert_eq("abc".cmp("abc"), 0)
+  assert_true("abc".cmp("abd") < 0)
+  assert_true("abd".cmp("abc") > 0)
+  assert_true("ab".cmp("abc") < 0)
+  assert_true("abc".cmp("ab") > 0)
+  assert_true("".cmp("a") < 0)
+}
+
+#Test
+fn test_string_ord_ops() {
+  assert_true("a" < "b")
+  assert_true("a" <= "a")
+  assert_true("b" > "a")
+  assert_true("b" >= "b")
+  assert_false("b" < "a")
+  assert_true("abc" < "abd")
+  assert_true("ab" < "abc")
+}
+
+; ==================== parse_i64 / u32 / u64 / usize / bool ====================
+
+#Test
+fn test_parse_i64_basic() {
+  let p i64? = "9223372036854775807".parse_i64()
+  assert_eq(p.get(), 9223372036854775807i64)
+  let n i64? = "-9223372036854775808".parse_i64()
+  assert_eq(n.get(), -9223372036854775808i64)
+  let small i64? = "-1".parse_i64()
+  assert_eq(small.get(), -1i64)
+}
+
+#Test
+fn test_parse_i64_invalid() {
+  assert_false("9223372036854775808".parse_i64().has())
+  assert_false("-9223372036854775809".parse_i64().has())
+  assert_false("12a".parse_i64().has())
+}
+
+#Test
+fn test_parse_u32_u64_usize() {
+  let u u32? = "4294967295".parse_u32()
+  assert_eq(u.get(), 4294967295u32)
+  assert_false("4294967296".parse_u32().has())
+  assert_false("-1".parse_u32().has())
+  let plus u32? = "+7".parse_u32()
+  assert_eq(plus.get(), 7u32)
+  let big u64? = "18446744073709551615".parse_u64()
+  assert_eq(big.get(), 18446744073709551615u64)
+  assert_false("18446744073709551616".parse_u64().has())
+  let z usize? = "0".parse_usize()
+  assert_eq(z.get(), 0)
+  let n usize? = "8".parse_usize()
+  assert_eq(n.get(), 8)
+}
+
+#Test
+fn test_parse_bool() {
+  let t bool? = "true".parse_bool()
+  assert_eq(t.get(), true)
+  let f bool? = "false".parse_bool()
+  assert_eq(f.get(), false)
+  assert_false("True".parse_bool().has())
+  assert_false("1".parse_bool().has())
+  assert_false("".parse_bool().has())
 }

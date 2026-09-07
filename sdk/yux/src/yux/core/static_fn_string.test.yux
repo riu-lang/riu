@@ -16,6 +16,13 @@ fn test_string_static_empty() {
   assert_eq(s, "")
 }
 
+; 验证：单码点工厂
+#Test
+fn test_string_static_from_codepoint() {
+  assert_eq(String::from_codepoint(c'x'), "x")
+  assert_eq(String::from_codepoint(0), "\0")
+}
+
 ; 验证：String::from() 方法从缓冲区创建字符串并进行深拷贝
 #Test
 fn test_string_static_from_buf() {

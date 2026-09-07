@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-09-07 —— `String` 切片 / 查找 / 解析 / `Ord`
+
+- **修改 §9.3.3 / §9.3.4 / §9.3.5**：公开 `slice` / `slice_from`（夹取与 `Array.slice` 相同）、`index_of` / `last_index_of`、`strip_prefix` / `strip_suffix`、`from_codepoint` / `join`、`cmp`；`parse_i64` / `parse_u32` / `parse_u64` / `parse_usize` / `parse_bool`。`String` `#Impl(Eq)` / `#Impl(Ord)`，于是 `"a" < "b"` 合法。
+- **修改 §9.3.4.1**：切段用 `slice`，仍不提供 `substring` 别名。
+- **冲突 / 兼容**：纯增量。`get(i)` 越界仍终止。
+
 ## 2026-09-07 —— `yux.io` 路径类型与链接
 
 - **修改 §10.4.1.4**：公开 `basename` / `abs` / `is_dir` / `is_file` / `is_link` / `remove_all` / `symlink` / `hardlink` / `junction`。
