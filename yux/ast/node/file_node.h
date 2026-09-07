@@ -13,6 +13,8 @@
 #include "spec_node.h"
 #include "struct_node.h"
 
+class Yux;
+
 class FileNode : public ScopeNode {
     vector<p<FnNode>> _functions;
     vector<p<StructDeclNode>> _structDecls;
@@ -27,9 +29,12 @@ class FileNode : public ScopeNode {
     string _moduleName;
     string _sourcePath; // 该 FileNode 对应的源文件绝对路径；空壳 SDK 父作用域可空
     bool _fromDecl = false;
+    Yux* _yux = nullptr; // 非持有；类型路径的包边界检查使用所属 Yux。
 
 public:
     explicit FileNode(string moduleName = "");
+    void setYux(Yux* yux) { _yux = yux; }
+    [[nodiscard]] Yux* yux() const { return _yux; }
 
     // 覆写：搜索范围扩展到 wildcardImports（与 getStructDecl/getEnumDecl/getAliasDecl 一致）
     SymbolInfo* lookupSymbol(const string& name) override;

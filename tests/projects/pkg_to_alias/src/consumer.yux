@@ -1,0 +1,2 @@
+use a.friend
+fn run() i32 = a.friend.f() + friend.f()

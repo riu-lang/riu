@@ -44,16 +44,12 @@ void ASTBuilder::preloadPackageChildren(FileNode* file, const string& alias, con
     };
 
     if (_yux.hasPkgFile(pkgModName)) {
-        for (const auto& item : _yux.parsePkgFile(pkgModName)) {
-            if (!pkgExportIsPublic(item)) {
-                DEBUG_LOG_VAL("    skip directed package child", item.name);
-                continue;
-            }
+        for (const auto& item : _yux.visiblePkgItems(file, pkgModName)) {
             string childMod = pkgModName + "." + item.name;
             string key = childKey(pkgExportName(item));
             auto kind = _yux.modulePathKind(childMod);
             if (kind == Yux::ModulePathKind::File) {
-                auto childFile = _yux.loadModule(childMod, errorLine);
+                auto childFile = childMod == file->moduleName() ? file : _yux.loadModule(childMod, errorLine);
                 file->addPackageChild(alias, key, childFile);
                 DEBUG_LOG_VAL("    register package child", alias << "." << key << " -> " << childMod);
             } else if (kind == Yux::ModulePathKind::Package) {
@@ -67,7 +63,7 @@ void ASTBuilder::preloadPackageChildren(FileNode* file, const string& alias, con
         string childMod = pkgModName;
         childMod += '.';
         childMod += child;
-        auto childFile = _yux.loadModule(childMod, errorLine);
+        auto childFile = childMod == file->moduleName() ? file : _yux.loadModule(childMod, errorLine);
         string key = childKey(child);
         file->addPackageChild(alias, key, childFile);
         DEBUG_LOG_VAL("    register package child", alias << "." << key << " -> " << childMod);

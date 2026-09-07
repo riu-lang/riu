@@ -1,0 +1,2 @@
+use consumer.*
+fn main() { run(0) }

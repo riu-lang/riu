@@ -1,0 +1,2 @@
+use a.api
+fn run<T>(v T) { println(api.value()) }

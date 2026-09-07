@@ -1,0 +1,2 @@
+use pkg_visibility.friend
+fn probe() i32 = friend.value()

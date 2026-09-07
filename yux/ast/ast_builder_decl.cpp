@@ -341,12 +341,9 @@ std::any ASTBuilder::visitLetGlobal(yux::yuxParser::LetGlobalContext* ctx) {
 
 void ASTBuilder::expandPackageWildcard(FileNode* file, const string& pkgModName, int line) {
     if (_yux.hasPkgFile(pkgModName)) {
-        for (const auto& exportItem : _yux.parsePkgFile(pkgModName)) {
-            if (!pkgExportIsPublic(exportItem)) {
-                DEBUG_LOG_VAL("    skip directed export", exportItem.name);
-                continue;
-            }
+        for (const auto& exportItem : _yux.visiblePkgItems(file, pkgModName)) {
             string childMod = pkgModName + "." + exportItem.name;
+            if (childMod == file->moduleName()) continue;
 
             if (exportItem.wildcard) {
                 auto childKind = _yux.modulePathKind(childMod);
@@ -469,6 +466,7 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
         return nullptr;
     }
 
+    modName = _yux.resolvePkgPath(file, modName, line);
     auto pathKind = _yux.modulePathKind(modName);
     if (pathKind == Yux::ModulePathKind::NotFound && _yux.module(modName)) {
         pathKind = Yux::ModulePathKind::File;
@@ -497,6 +495,26 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
             file->registerSymbol(alias, aliasSym);
             file->addPackageAlias(alias, modName);
             preloadPackageChildren(file, alias, modName, "", line);
+            // 限定包导入也登记原书写前缀，不能把重命名后的源路径泄露给调用方。
+            if (path.segs.size() > 1) {
+                string first = path.segs.front().getText();
+                string childKey;
+                for (size_t i = 1; i < path.segs.size(); ++i) {
+                    if (!childKey.empty()) childKey += '.';
+                    childKey += path.segs[i].getText();
+                }
+                auto* firstSym = file->lookupSymbol(first);
+                if (!firstSym) {
+                    SymbolInfo prefix(SymbolKind::Package, first, TypeInfo());
+                    prefix.moduleName = first;
+                    file->registerSymbol(first, prefix);
+                    file->addPackageAlias(first, first);
+                    firstSym = file->lookupSymbol(first);
+                }
+                if (firstSym && firstSym->kind == SymbolKind::Package) {
+                    preloadPackageChildren(file, first, modName, childKey, line);
+                }
+            }
             DEBUG_LOG_VAL("    register package alias", alias << " -> " << modName);
             return nullptr;
         }
@@ -504,7 +522,7 @@ std::any ASTBuilder::visitImports(yux::yuxParser::ImportsContext* ctx) {
         if (path.segs.size() >= 2 && pathKind == Yux::ModulePathKind::NotFound) {
             TypePath parentPath = path;
             parentPath.segs.pop_back();
-            string parentMod = parentPath.dotted();
+            string parentMod = _yux.resolvePkgPath(file, parentPath.dotted(), line);
             string typeName = path.lastName();
             FileNode* parent = _yux.module(parentMod);
             auto parentKind = _yux.modulePathKind(parentMod);

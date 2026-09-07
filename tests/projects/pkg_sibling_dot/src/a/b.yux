@@ -1,0 +1,2 @@
+use a
+fn value() i32 = a.secret.value()

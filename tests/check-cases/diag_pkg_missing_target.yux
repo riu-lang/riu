@@ -1,0 +1,3 @@
+; 错误定位到 pkg 第二行。
+use pkg_missing_target ; check: E5019
+fn main() {}

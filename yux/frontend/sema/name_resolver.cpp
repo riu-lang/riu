@@ -357,6 +357,7 @@ FnSymbolInfo* NameResolver::lookupMethodWithParams(const TypeInfo& recv, const s
 }
 
 TypePathResult resolveTypePath(FileNode* file, Yux* yux, const TypePath& path, int line, int col) {
+    if (!yux && file) yux = file->yux();
     TypePathResult r;
     (void)col;
     if (path.empty()) return r;
@@ -432,6 +433,7 @@ TypePathResult resolveTypePath(FileNode* file, Yux* yux, const TypePath& path, i
                 if (!childKey.empty()) childKey += '.';
                 childKey += path.segs[i].getText();
             }
+            if (yux) (void)yux->resolvePkgPath(file, childKey, line, aliasSym->moduleName);
             target = file->packageChild(first, childKey);
         }
     } else if (aliasSym && aliasSym->kind == SymbolKind::Module) {

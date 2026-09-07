@@ -1,0 +1,2 @@
+use pkg_visibility.secret ; check: E5018
+fn main() {}

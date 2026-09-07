@@ -1,0 +1,4 @@
+use pkg_visibility
+fn main() {
+    pkg_visibility.secret.value() ; check: E5018
+}

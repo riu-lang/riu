@@ -1,0 +1,2 @@
+use a.c
+fn run() i32 = c.f()

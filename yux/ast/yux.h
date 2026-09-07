@@ -22,6 +22,7 @@ struct PkgExportItem {
     string rename;            // 重命名导出别名（空 = 用 name 本身，如 "addition"）
     bool wildcard = false;    // true 表示 "name.*"，false 表示 "name"
     vector<string> toTargets; // 空 = 公开；非空 = 定向开放（`to t1; t2`）
+    int sourceLine = 1;       // pkg 诊断定位。
 };
 
 [[nodiscard]] inline string pkgExportName(const PkgExportItem& item) {
@@ -121,6 +122,11 @@ public:
     [[nodiscard]] bool hasPkgFile(const string& moduleName) const;
     // 解析包目录下的 pkg 文件（走 parsePkgFileAt）。文件不存在或为空返回空列表。
     [[nodiscard]] vector<PkgExportItem> parsePkgFile(const string& moduleName) const;
+    // 调用方可见清单：包内补入未列出的兄弟；包外仅公开项和定向项。
+    [[nodiscard]] vector<PkgExportItem> visiblePkgItems(const FileNode* caller, const string& package) const;
+    // 导出路径转源路径；每跨一层包边界检查清单，保留末尾类型名。
+    [[nodiscard]] string resolvePkgPath(const FileNode* caller, const string& path, int line,
+                                        const string& package = "") const;
 
     // 解析主入口 `.yux` 文件（不走 moduleName → path 映射）。
     // 产生的 ASTBuilder 被 Yux 持有，AST 节点在 Yux 析构前有效。
@@ -161,6 +167,8 @@ public:
     [[nodiscard]] string modulePath(const string& moduleName) const;
 
 private:
+    [[nodiscard]] string packageSourceDir(const string& package) const;
+    [[nodiscard]] bool isInsidePackage(const FileNode* caller, const string& package) const;
     // 底层解析 + ASTBuilder。内部用。
     p<FileNode> _parseFile(const string& absPath, const string& moduleName, int errorLine);
 

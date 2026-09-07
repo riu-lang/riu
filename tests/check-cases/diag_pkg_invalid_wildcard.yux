@@ -1,0 +1,2 @@
+use pkg_invalid_wildcard ; check: E5020
+fn main() {}

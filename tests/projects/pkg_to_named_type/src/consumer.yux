@@ -1,0 +1,3 @@
+use a.api.Item
+fn accept(item Item) {}
+fn run() i32 = a.api.value()

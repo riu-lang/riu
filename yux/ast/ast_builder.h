@@ -79,7 +79,7 @@ public:
     void setTargetFile(FileNode* file) { _targetFile = file; }
 
     // 预加载包 `pkgModName` 的孩子到 `file` 的 packageChild 表（键相对 pkgModName，形如 "a.b.inner"）。
-    // 有 pkg：只挂公开项（空 toTargets），键用导出名（`as` 别名）；子包按各自清单递归。
+    // 有 pkg：只挂调用方可见项，键用导出名（`as` 别名）；子包按各自清单递归。
     // 无 pkg：递归加载全部子孙 .yux。中间子目录不单独注册。
     void preloadPackageChildren(FileNode* file, const string& alias, const string& pkgModName, const string& relPrefix,
                                 int errorLine);

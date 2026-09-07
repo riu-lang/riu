@@ -1,0 +1,2 @@
+use pkg_visibility
+fn probe(x pkg_visibility.secret.Item) {} ; check: E5018

@@ -708,6 +708,7 @@ ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux, p<ExprCallNode>
                     if (i) childKey += ".";
                     childKey += segs[i];
                 }
+                if (yux) (void)yux->resolvePkgPath(file, childKey, callNode->getLineNumber(), aliasSym->moduleName);
                 auto* target = file->packageChild(aliasName, childKey);
                 if (!target) {
                     throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6001, childKey,

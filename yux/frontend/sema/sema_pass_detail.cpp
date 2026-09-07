@@ -258,7 +258,7 @@ LambdaCapKind classifyLambdaCapture(const TypeInfo& t) {
 bool isMorphologicalGenericCode(const char* code) {
     if (!code) return false;
     std::string_view sv(code);
-    constexpr std::array<std::string_view, 19> kKeep = {
+    constexpr std::array<std::string_view, 20> kKeep = {
         "E3030",                   // 未定义符号
         "E6010", "E6011",          // 泛型 arity
         "E4031", "E4032",          // #NoCopy
@@ -272,6 +272,7 @@ bool isMorphologicalGenericCode(const char* code) {
         "E2030",                   // lambda 捕获赋值
         "E4033",                   // use-after-move
         "E3095",                   // 类型名 / 非函数当 callee（方法点在 Dot 分支延迟重抛）
+        "E5018",                   // 包边界不依赖泛型实参。
     };
     for (auto c : kKeep) {
         if (sv == c) return true;

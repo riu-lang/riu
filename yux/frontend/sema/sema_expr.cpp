@@ -1313,6 +1313,9 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                         }
                     } else if (pathSym && pathSym->kind == SymbolKind::Package) {
                         if (segs.size() == 1) {
+                            if (_yux) {
+                                (void)_yux->resolvePkgPath(_file, segs[0], n->resolveLineNumber(), pathSym->moduleName);
+                            }
                             string dotted = aliasName + "." + segs[0];
                             throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E5016, dotted);
                         }
@@ -1320,6 +1323,9 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                         for (size_t i = 0; i + 1 < segs.size(); ++i) {
                             if (i) childKey += '.';
                             childKey += segs[i];
+                        }
+                        if (_yux) {
+                            (void)_yux->resolvePkgPath(_file, childKey, n->resolveLineNumber(), pathSym->moduleName);
                         }
                         auto* target = _file->packageChild(aliasName, childKey);
                         if (!target) {

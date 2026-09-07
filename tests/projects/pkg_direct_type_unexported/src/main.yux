@@ -1,0 +1,2 @@
+use a.c.Thing
+fn main() {}

@@ -1,0 +1,2 @@
+use a.b
+fn main() { println(b.value()) }

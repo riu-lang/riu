@@ -46,6 +46,7 @@ void Yux::adoptDeclOwner(std::unique_ptr<mod_decl::NodeOwner> owner) {
 }
 
 void Yux::bindModule(p<FileNode> file, const string& absPath, const string& moduleName) {
+    if (file) file->setYux(this);
     _modules[moduleName] = file;
     _modulePaths[moduleName] = absPath;
     if (file) file->setSourcePath(absPath);
@@ -53,6 +54,7 @@ void Yux::bindModule(p<FileNode> file, const string& absPath, const string& modu
 }
 
 void Yux::addFile(const p<FileNode>& file) {
+    if (file) file->setYux(this);
     _files.push_back(file);
 }
 
@@ -87,6 +89,7 @@ SpecImplChecker& Yux::specImplChecker() {
 
 p<FileNode> Yux::createFile(const string& moduleName) {
     auto file = new FileNode(moduleName);
+    file->setYux(this);
 
     // 用户模块默认导入 yux.core 模块（`use yux.core.*` 的等价效果）。
     // 通过把 sdk 文件设为 parent scope，使得符号查找在本模块未命中时
@@ -111,6 +114,7 @@ p<FileNode> Yux::createSdkFile() {
         return _sdkFile;
     }
     _sdkFile = new FileNode("yux.core");
+    _sdkFile->setYux(this);
     _modules["yux.core"] = _sdkFile;
     return _sdkFile;
 }
@@ -339,13 +343,94 @@ vector<string> Yux::listPackageSubdirs(const string& moduleName) const {
 
 bool Yux::hasPkgFile(const string& moduleName) const {
     namespace fs = std::filesystem;
-    string rel = moduleName;
-    for (auto& c : rel)
-        if (c == '.') c = '/';
-    fs::path root = _sourceRoot.empty() ? fs::path() : fs::path(_sourceRoot);
-    fs::path dirPath = root.empty() ? fs::path(rel) : (root / rel);
-    fs::path pkgPath = dirPath / "pkg";
+    fs::path pkgPath = fs::path(packageSourceDir(moduleName)) / "pkg";
     return fs::exists(pkgPath) && fs::is_regular_file(pkgPath);
+}
+
+string Yux::packageSourceDir(const string& package) const {
+    namespace fs = std::filesystem;
+    string rel = package;
+    std::ranges::replace(rel, '.', '/');
+    fs::path local = fs::path(_sourceRoot) / rel;
+    if (fs::is_directory(local)) return local.string();
+    // 已加载依赖的源路径也能定位包，不为检查可见性加载额外模块。
+    for (const auto& [name, path] : _modulePaths) {
+        if (!name.starts_with(package + ".")) continue;
+        auto dir = fs::path(path).parent_path();
+        auto suffix = name.substr(package.size() + 1);
+        for (char c : suffix)
+            if (c == '.') dir = dir.parent_path();
+        return dir.string();
+    }
+    // yux-check 批量检查共享 SDK；依赖目录仍由其所属上下文定位。
+    if (_sdkFile && _sdkFile->yux() && _sdkFile->yux() != this) {
+        auto dependencyDir = _sdkFile->yux()->packageSourceDir(package);
+        if (fs::is_directory(dependencyDir)) return dependencyDir;
+    }
+    return local.string();
+}
+
+bool Yux::isInsidePackage(const FileNode* caller, const string& package) const {
+    if (!caller || caller->sourcePath().empty()) return false;
+    namespace fs = std::filesystem;
+    return fs::weakly_canonical(fs::path(caller->sourcePath()).parent_path()) ==
+           fs::weakly_canonical(packageSourceDir(package));
+}
+
+vector<PkgExportItem> Yux::visiblePkgItems(const FileNode* caller, const string& package) const {
+    auto items = parsePkgFile(package);
+    if (isInsidePackage(caller, package)) {
+        // 包内沿用物理兄弟名；显式导出别名仍可使用。
+        auto addSibling = [&](const string& name) {
+            if (std::ranges::none_of(items, [&](const auto& item) { return pkgExportName(item) == name; })) {
+                PkgExportItem item;
+                item.name = name;
+                items.push_back(std::move(item));
+            }
+        };
+        for (const auto& name : listPackageYuxChildren(package))
+            addSibling(name);
+        for (const auto& name : listPackageSubdirs(package))
+            addSibling(name);
+        return items;
+    }
+    std::erase_if(items, [&](const auto& item) {
+        if (pkgExportIsPublic(item)) return false;
+        return std::ranges::none_of(item.toTargets, [&](const string& target) {
+            return caller && (caller->moduleName() == target || isInsidePackage(caller, target));
+        });
+    });
+    return items;
+}
+
+string Yux::resolvePkgPath(const FileNode* caller, const string& path, int line, const string& package) const {
+    string resolved = package;
+    size_t start = 0;
+    while (start < path.size()) {
+        auto end = path.find('.', start);
+        string name = path.substr(start, end == string::npos ? string::npos : end - start);
+        if (!resolved.empty() && hasPkgFile(resolved)) {
+            auto items = visiblePkgItems(caller, resolved);
+            // 包内物理名优先，避免被同名导出别名改写。
+            bool sibling = false;
+            if (isInsidePackage(caller, resolved)) {
+                string sourcePath = resolved;
+                sourcePath += '.';
+                sourcePath += name;
+                sibling = modulePathKind(sourcePath) != ModulePathKind::NotFound;
+            }
+            if (!sibling) {
+                auto it = std::ranges::find_if(items, [&](const auto& item) { return pkgExportName(item) == name; });
+                if (it == items.end()) throw YuxError(line, ErrorCode::E5018, name, resolved);
+                name = it->name;
+            }
+        }
+        if (!resolved.empty()) resolved += '.';
+        resolved += name;
+        if (end == string::npos) break;
+        start = end + 1;
+    }
+    return resolved;
 }
 
 namespace {
@@ -484,6 +569,7 @@ vector<PkgExportItem> parsePkgFileAt(const string& pkgPath) {
         ++lineNo;
         auto parsed = parsePkgLine(pkgPath, lineNo, line);
         if (!parsed) continue;
+        parsed->sourceLine = lineNo;
         auto it = seenNameLine.find(parsed->name);
         if (it != seenNameLine.end()) {
             throw YuxError(static_cast<size_t>(lineNo), 1, ErrorCode::E5020, pkgPath,
@@ -499,12 +585,18 @@ vector<PkgExportItem> parsePkgFileAt(const string& pkgPath) {
 
 vector<PkgExportItem> Yux::parsePkgFile(const string& moduleName) const {
     namespace fs = std::filesystem;
-    string rel = moduleName;
-    for (auto& c : rel)
-        if (c == '.') c = '/';
-    fs::path root = _sourceRoot.empty() ? fs::path() : fs::path(_sourceRoot);
-    fs::path dirPath = root.empty() ? fs::path(rel) : (root / rel);
-    return parsePkgFileAt((dirPath / "pkg").string());
+    auto path = (fs::path(packageSourceDir(moduleName)) / "pkg").string();
+    auto items = parsePkgFileAt(path);
+    for (const auto& item : items) {
+        for (const auto& target : item.toTargets) {
+            if (modulePathKind(target) != ModulePathKind::NotFound || module(target)) continue;
+            if (target == "yux.core" && _sdkFile) continue;
+            if (_sdkFile && _sdkFile->yux() && _sdkFile->yux()->module(target)) continue;
+            if (fs::is_directory(packageSourceDir(target))) continue;
+            throw YuxError(item.sourceLine, ErrorCode::E5019, target).withFile(path);
+        }
+    }
+    return items;
 }
 
 p<FileNode> Yux::loadModule(const string& moduleName, int errorLine) {
