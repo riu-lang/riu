@@ -9,6 +9,9 @@
 ;   - Array<String>[i].len() / Array<struct>[i].method()（下标后走元素方法）
 ;   - clear / clone
 ;   - slice / concat / contains
+;   - index_of / last_index_of / get_or_null / first_or_null / last_or_null
+;   - insert / remove_at / reverse
+;   - take / drop
 ;   - 函数返回 move、传参共享语义
 ;   - Array<Rc<T>> 元素重赋值 retain/release
 ;   - 嵌套 Array<Array<T>> 字面量
@@ -658,4 +661,162 @@ fn test_array_contains_string() {
   let arr Array<String> = ["a", "b", "c"]
   assert_true(arr.contains("b"))
   assert_false(arr.contains("z"))
+}
+
+; ==================== index_of / last_index_of ====================
+
+#Test
+fn test_array_index_of() {
+  let arr Array<i32> = [10, 20, 30, 20]
+  let i usize? = arr.index_of(20)
+  assert_true(i.has())
+  assert_eq(i.get(), 1)
+  let miss usize? = arr.index_of(9)
+  assert_false(miss.has())
+  let empty Array<i32> = []
+  assert_false(empty.index_of(1).has())
+}
+
+#Test
+fn test_array_last_index_of() {
+  let arr Array<i32> = [10, 20, 30, 20]
+  let i usize? = arr.last_index_of(20)
+  assert_true(i.has())
+  assert_eq(i.get(), 3)
+  let one usize? = arr.last_index_of(10)
+  assert_eq(one.get(), 0)
+  assert_false(arr.last_index_of(9).has())
+}
+
+#Test
+fn test_array_index_of_string() {
+  let arr Array<String> = ["a", "b", "a"]
+  assert_eq(arr.index_of("a").get(), 0)
+  assert_eq(arr.last_index_of("a").get(), 2)
+  assert_false(arr.index_of("z").has())
+}
+
+; ==================== get_or_null / first_or_null / last_or_null ====================
+
+#Test
+fn test_array_get_or_null() {
+  let arr Array<i32> = [10, 20, 30]
+  let v i32? = arr.get_or_null(1)
+  assert_true(v.has())
+  assert_eq(v.get(), 20)
+  assert_false(arr.get_or_null(3).has())
+  assert_false(arr.get_or_null(99).has())
+}
+
+#Test
+fn test_array_first_last_or_null() {
+  let arr Array<i32> = [10, 20, 30]
+  assert_eq(arr.first_or_null().get(), 10)
+  assert_eq(arr.last_or_null().get(), 30)
+  let empty Array<i32> = []
+  assert_false(empty.first_or_null().has())
+  assert_false(empty.last_or_null().has())
+}
+
+#Test
+fn test_array_first_or_null_string() {
+  let arr Array<String> = ["hello", "world"]
+  assert_eq(arr.first_or_null().get(), "hello")
+  assert_eq(arr.last_or_null().get(), "world")
+}
+
+; ==================== insert / remove_at / reverse ====================
+
+#Test
+fn test_array_insert() {
+  #Mut let arr Array<i32> = [10, 30]
+  arr.insert(1, 20)
+  assert_eq(arr.len(), 3)
+  assert_eq(arr[0], 10)
+  assert_eq(arr[1], 20)
+  assert_eq(arr[2], 30)
+  arr.insert(0, 5)
+  assert_eq(arr[0], 5)
+  assert_eq(arr.len(), 4)
+  arr.insert(4, 40)
+  assert_eq(arr[4], 40)
+  assert_eq(arr.len(), 5)
+}
+
+#Test
+fn test_array_insert_empty() {
+  #Mut let arr Array<i32> = []
+  arr.insert(0, 7)
+  assert_eq(arr.len(), 1)
+  assert_eq(arr[0], 7)
+}
+
+#Test
+fn test_array_remove_at() {
+  #Mut let arr Array<i32> = [10, 20, 30, 40]
+  assert_eq(arr.remove_at(1), 20)
+  assert_eq(arr.len(), 3)
+  assert_eq(arr[0], 10)
+  assert_eq(arr[1], 30)
+  assert_eq(arr[2], 40)
+  assert_eq(arr.remove_at(0), 10)
+  assert_eq(arr[0], 30)
+  assert_eq(arr.remove_at(1), 40)
+  assert_eq(arr.len(), 1)
+  assert_eq(arr[0], 30)
+}
+
+#Test
+fn test_array_reverse() {
+  #Mut let arr Array<i32> = [1, 2, 3, 4]
+  arr.reverse()
+  assert_eq(arr[0], 4)
+  assert_eq(arr[1], 3)
+  assert_eq(arr[2], 2)
+  assert_eq(arr[3], 1)
+  #Mut let odd Array<i32> = [1, 2, 3]
+  odd.reverse()
+  assert_eq(odd[0], 3)
+  assert_eq(odd[1], 2)
+  assert_eq(odd[2], 1)
+  #Mut let one Array<i32> = [9]
+  one.reverse()
+  assert_eq(one[0], 9)
+  #Mut let empty Array<i32> = []
+  empty.reverse()
+  assert_true(empty.is_empty())
+}
+
+#Test
+fn test_array_insert_remove_string() {
+  #Mut let arr Array<String> = ["a", "c"]
+  arr.insert(1, "b")
+  assert_eq(arr[1], "b")
+  assert_eq(arr.remove_at(0), "a")
+  assert_eq(arr[0], "b")
+  arr.reverse()
+  assert_eq(arr[0], "c")
+  assert_eq(arr[1], "b")
+}
+
+; ==================== take / drop ====================
+
+#Test
+fn test_array_take_drop() {
+  let arr Array<i32> = [10, 20, 30, 40]
+  let t Array<i32> = arr.take(2)
+  assert_eq(t.len(), 2)
+  assert_eq(t[0], 10)
+  assert_eq(t[1], 20)
+  let d Array<i32> = arr.drop(2)
+  assert_eq(d.len(), 2)
+  assert_eq(d[0], 30)
+  assert_eq(d[1], 40)
+  assert_eq(arr.len(), 4)
+  let over Array<i32> = arr.take(99)
+  assert_eq(over.len(), 4)
+  let none Array<i32> = arr.drop(99)
+  assert_true(none.is_empty())
+  let z Array<i32> = arr.take(0)
+  assert_true(z.is_empty())
 }

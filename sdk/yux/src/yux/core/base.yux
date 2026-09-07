@@ -303,6 +303,40 @@ struct Array<T> {
   ; T 须可 ==（标量或 String，与 Map 键相同）
   #Builtin
   fn contains(item T&) bool
+
+  #Builtin
+  fn index_of(item T&) usize?
+
+  #Builtin
+  fn last_index_of(item T&) usize?
+
+  ; 越界 null（get 仍终止）；命中走 copy_of
+  #Builtin
+  fn get_or_null(i usize) T?
+
+  #Builtin
+  fn first_or_null() T?
+
+  #Builtin
+  fn last_or_null() T?
+
+  ; 按值移入；i == len 等价 push；i > len 终止
+  #Builtin
+  fn insert(i usize, value T)
+
+  ; 保序左移；越界终止
+  #Builtin
+  fn remove_at(i usize) T
+
+  #Builtin
+  fn reverse()
+
+  ; slice(0, n) / slice(n, len) 包装，新缓冲
+  #Builtin
+  fn take(n usize) Array<T>
+
+  #Builtin
+  fn drop(n usize) Array<T>
 }
 
 ; Nullable<T> - 可空包装类型

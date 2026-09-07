@@ -91,6 +91,8 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
         TypeInfo tpVoid;
         TypeInfo tpBool("bool");
         TypeInfo tpArrayT("Array", {make_shared<TypeInfo>(tpT)});
+        TypeInfo tpElemNull("Nullable", {make_shared<TypeInfo>(tpT)});
+        TypeInfo tpUsizeNull("Nullable", {make_shared<TypeInfo>("usize")});
 
         for (const auto& spec : sema::kBuiltinMethods) {
             if (spec.recv != sema::BuiltinRecv::Array || spec.isStatic) continue;
@@ -113,6 +115,12 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
                 break;
             case sema::BuiltinRet::Self:
                 ret = tpArrayT;
+                break;
+            case sema::BuiltinRet::ElemNullable:
+                ret = tpElemNull;
+                break;
+            case sema::BuiltinRet::UsizeNullable:
+                ret = tpUsizeNull;
                 break;
             }
             vector<TypeInfo> params;

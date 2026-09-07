@@ -15,6 +15,11 @@
 
 ---
 
+## 2026-09-07 —— `Array` 查询 / 改位方法
+
+- **修改 §9.2.3 / §9.2.3.2**：公开 `index_of` / `last_index_of`（`T&` → `usize?`）、`get_or_null` / `first_or_null` / `last_or_null`（`T?`，命中走 `copy_of`）、`insert` / `remove_at` / `reverse`（`#Mut` 接收者）、`take` / `drop`（`slice` 包装）。`insert` 在 `i == len` 时等价 `push`；`i > len` 与 `remove_at` 越界终止。
+- **冲突 / 兼容**：纯增量。`get` / `first` / `last` 越界仍终止。
+
 ## 2026-09-07 —— `String` 切片 / 查找 / 解析 / `Ord`
 
 - **修改 §9.3.3 / §9.3.4 / §9.3.5**：公开 `slice` / `slice_from`（夹取与 `Array.slice` 相同）、`index_of` / `last_index_of`、`strip_prefix` / `strip_suffix`、`from_codepoint` / `join`、`cmp`；`parse_i64` / `parse_u32` / `parse_u64` / `parse_usize` / `parse_bool`。`String` `#Impl(Eq)` / `#Impl(Ord)`，于是 `"a" < "b"` 合法。

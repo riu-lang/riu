@@ -559,6 +559,149 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
 
     auto voidResult = [&]() -> llvm::Value* { return llvm::ConstantInt::get(_builder.getInt32Ty(), 0); };
 
+    auto copyElem = [&](llvm::Value* v) -> llvm::Value* {
+        retainHandleAtCallSite(v, *elemType);
+        if (!isBuiltinType(elemType->name) && structNeedsDestructor(*elemType)) {
+            v = copyOfStructFields(v, elemType->isGeneric() ? elemType->getMangleName() : elemType->name);
+        }
+        return v;
+    };
+
+    auto wrapNullable = [&](llvm::Value* has, llvm::Value* val, llvm::Type* nty) -> llvm::Value* {
+        llvm::Value* r = llvm::UndefValue::get(nty);
+        r = _builder.CreateInsertValue(r, has, {0}, "null.has");
+        r = _builder.CreateInsertValue(r, val, {1}, "null.val");
+        return r;
+    };
+
+    auto loadNeedle = [&]() -> llvm::Value* {
+        llvm::Value* needle = args[0];
+        const bool needleIsPtr = needle->getType()->isPointerTy();
+        const bool argIsRef = !argTypes.empty() && argTypes[0].isRef();
+        if (needleIsPtr && (argIsRef || !elemLLVMType->isPointerTy())) {
+            needle = _builder.CreateLoad(elemLLVMType, needle, "arr.needle");
+        }
+        return needle;
+    };
+
+    auto elemEq = [&](llvm::Value* elemVal, llvm::Value* needle, const char* tag) -> llvm::Value* {
+        if (elemType->isFloat()) {
+            return _builder.CreateFCmpOEQ(elemVal, needle, (string(tag) + ".eq").c_str());
+        }
+        if (isBuiltinType(elemType->name)) {
+            return _builder.CreateICmpEQ(elemVal, needle, (string(tag) + ".eq").c_str());
+        }
+        if (elemType->isString()) {
+            auto strTy = getLLVMType(*elemType);
+            auto lhsA = _builder.CreateAlloca(strTy, nullptr, (string(tag) + ".lhs").c_str());
+            auto rhsA = _builder.CreateAlloca(strTy, nullptr, (string(tag) + ".rhs").c_str());
+            _builder.CreateStore(elemVal, lhsA);
+            _builder.CreateStore(needle, rhsA);
+            TypeInfo strRef("Ref", {make_shared<TypeInfo>("String")});
+            auto eqFn = getMethodFunction("String", "eq", {strRef}, TypeInfo("bool"));
+            return _builder.CreateCall(eqFn, {lhsA, rhsA}, (string(tag) + ".str.eq").c_str());
+        }
+        auto bytes = _module->getDataLayout().getTypeStoreSize(elemLLVMType);
+        auto memPtrTy = llvm::PointerType::get(_context, 0);
+        auto memcmpTy =
+            llvm::FunctionType::get(_builder.getInt32Ty(), {memPtrTy, memPtrTy, _builder.getInt64Ty()}, false);
+        auto memcmpFn = _module->getOrInsertFunction("yuxrt_memcmp", memcmpTy);
+        auto lhsA = _builder.CreateAlloca(elemLLVMType, nullptr, (string(tag) + ".lhs").c_str());
+        auto rhsA = _builder.CreateAlloca(elemLLVMType, nullptr, (string(tag) + ".rhs").c_str());
+        _builder.CreateStore(elemVal, lhsA);
+        _builder.CreateStore(needle, rhsA);
+        auto cmp = _builder.CreateCall(memcmpFn, {lhsA, rhsA, llvm::ConstantInt::get(_builder.getInt64Ty(), bytes)},
+                                       (string(tag) + ".memcmp").c_str());
+        return _builder.CreateICmpEQ(cmp, _builder.getInt32(0), (string(tag) + ".eq").c_str());
+    };
+
+    auto emitOobExit = [&](llvm::Value* oob, const char* okName) {
+        auto* fn = _builder.GetInsertBlock()->getParent();
+        auto* dieBB = llvm::BasicBlock::Create(_context, "arr.oob", fn);
+        auto* okBB = llvm::BasicBlock::Create(_context, okName, fn);
+        _builder.CreateCondBr(oob, dieBB, okBB);
+        _builder.SetInsertPoint(dieBB);
+        auto exitFn = runtime::getOrCreateWindowsAPI(_module, _builder, "ExitProcess");
+        _builder.CreateCall(exitFn, {_builder.getInt32(1)});
+        _builder.CreateUnreachable();
+        _builder.SetInsertPoint(okBB);
+    };
+
+    auto emitSlice = [&](llvm::Value* startRaw, llvm::Value* endRaw) -> llvm::Value* {
+        auto ptr = getReadPtr();
+        auto oldData = loadData(ptr);
+        auto oldLen = loadLen(ptr);
+        auto resultTy = arrayStructType;
+        auto startV = _builder.CreateZExtOrTrunc(startRaw, sizeTy, "slice.start");
+        auto endV = _builder.CreateZExtOrTrunc(endRaw, sizeTy, "slice.end");
+        auto umin = [&](llvm::Value* a, llvm::Value* b, const char* nm) {
+            return _builder.CreateSelect(_builder.CreateICmpULT(a, b, "slice.lt"), a, b, nm);
+        };
+        auto sClamped = umin(startV, oldLen, "slice.s");
+        auto eClamped = umin(endV, oldLen, "slice.e");
+        auto startIdx = umin(sClamped, eClamped, "slice.start_idx");
+        auto count = _builder.CreateSub(eClamped, startIdx, "slice.n");
+
+        auto* fn = _builder.GetInsertBlock()->getParent();
+        auto* startBB = _builder.GetInsertBlock();
+        llvm::Value* emptyArr = llvm::UndefValue::get(resultTy);
+        emptyArr = _builder.CreateInsertValue(emptyArr, nullPtr, {0}, "slice.empty.data");
+        emptyArr = _builder.CreateInsertValue(emptyArr, llvm::ConstantInt::get(sizeTy, 0), {1}, "slice.empty.len");
+        emptyArr = _builder.CreateInsertValue(emptyArr, llvm::ConstantInt::get(sizeTy, 0), {2}, "slice.empty.cap");
+
+        auto* allocBB = llvm::BasicBlock::Create(_context, "slice.alloc", fn);
+        auto* loopHdrBB = llvm::BasicBlock::Create(_context, "slice.loop.hdr", fn);
+        auto* loopBodyBB = llvm::BasicBlock::Create(_context, "slice.loop.body", fn);
+        auto* loopLatchBB = llvm::BasicBlock::Create(_context, "slice.loop.latch", fn);
+        auto* loopExitBB = llvm::BasicBlock::Create(_context, "slice.loop.exit", fn);
+        auto* doneBB = llvm::BasicBlock::Create(_context, "slice.done", fn);
+
+        auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
+        auto nIsZero = _builder.CreateICmpEQ(count, zeroSize, "slice.is_empty");
+        _builder.CreateCondBr(nIsZero, doneBB, allocBB);
+
+        _builder.SetInsertPoint(allocBB);
+        auto elemSizeVal = _builder.getInt64(_module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
+        auto countI64 = _builder.CreateZExtOrTrunc(count, _builder.getInt64Ty(), "slice.n.i64");
+        auto startI64 = _builder.CreateZExtOrTrunc(startIdx, _builder.getInt64Ty(), "slice.start.i64");
+        auto newSize = _builder.CreateMul(countI64, elemSizeVal, "slice.new_size");
+        auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
+        auto newData = _builder.CreateCall(allocFn, {newSize}, "slice.new_data");
+        _builder.CreateBr(loopHdrBB);
+
+        _builder.SetInsertPoint(loopHdrBB);
+        auto loopPhi = _builder.CreatePHI(_builder.getInt64Ty(), 2, "slice.i");
+        loopPhi->addIncoming(_builder.getInt64(0), allocBB);
+        auto loopCond = _builder.CreateICmpULT(loopPhi, countI64, "slice.loop.cond");
+        _builder.CreateCondBr(loopCond, loopBodyBB, loopExitBB);
+
+        _builder.SetInsertPoint(loopBodyBB);
+        auto srcIdx = _builder.CreateAdd(startI64, loopPhi, "slice.src.idx");
+        auto oldElemPtr = _builder.CreateInBoundsGEP(elemLLVMType, oldData, {srcIdx}, "slice.old.ptr");
+        llvm::Value* elemVal = copyElem(_builder.CreateLoad(elemLLVMType, oldElemPtr, "slice.elem"));
+        auto newElemPtr = _builder.CreateInBoundsGEP(elemLLVMType, newData, {loopPhi}, "slice.new.ptr");
+        _builder.CreateStore(elemVal, newElemPtr);
+        _builder.CreateBr(loopLatchBB);
+
+        _builder.SetInsertPoint(loopLatchBB);
+        auto iNext = _builder.CreateAdd(loopPhi, _builder.getInt64(1), "slice.i.next");
+        loopPhi->addIncoming(iNext, loopLatchBB);
+        _builder.CreateBr(loopHdrBB);
+
+        _builder.SetInsertPoint(loopExitBB);
+        llvm::Value* newArr = llvm::UndefValue::get(resultTy);
+        newArr = _builder.CreateInsertValue(newArr, newData, {0}, "slice.res.data");
+        newArr = _builder.CreateInsertValue(newArr, count, {1}, "slice.res.len");
+        newArr = _builder.CreateInsertValue(newArr, count, {2}, "slice.res.cap");
+        _builder.CreateBr(doneBB);
+
+        _builder.SetInsertPoint(doneBB);
+        auto resultPhi = _builder.CreatePHI(resultTy, 2, "slice.result");
+        resultPhi->addIncoming(emptyArr, startBB);
+        resultPhi->addIncoming(newArr, loopExitBB);
+        return resultPhi;
+    };
+
     switch (spec->lower) {
     case sema::BuiltinLower::ArrayLen:
         DEBUG_LOG("    Expr: Array.len()");
@@ -833,82 +976,17 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
 
     case sema::BuiltinLower::ArraySlice: {
         DEBUG_LOG("    Expr: Array.slice() → Array<T>");
-        auto ptr = getReadPtr();
-        auto oldData = loadData(ptr);
-        auto oldLen = loadLen(ptr);
-        auto resultTy = arrayStructType;
-        auto startV = _builder.CreateZExtOrTrunc(args[0], sizeTy, "slice.start");
-        auto endV = _builder.CreateZExtOrTrunc(args[1], sizeTy, "slice.end");
-        auto umin = [&](llvm::Value* a, llvm::Value* b, const char* nm) {
-            return _builder.CreateSelect(_builder.CreateICmpULT(a, b, "slice.lt"), a, b, nm);
-        };
-        auto sClamped = umin(startV, oldLen, "slice.s");
-        auto eClamped = umin(endV, oldLen, "slice.e");
-        auto startIdx = umin(sClamped, eClamped, "slice.start_idx");
-        auto count = _builder.CreateSub(eClamped, startIdx, "slice.n");
+        return emitSlice(args[0], args[1]);
+    }
 
-        auto* fn = _builder.GetInsertBlock()->getParent();
-        auto* startBB = _builder.GetInsertBlock();
-        llvm::Value* emptyArr = llvm::UndefValue::get(resultTy);
-        emptyArr = _builder.CreateInsertValue(emptyArr, nullPtr, {0}, "slice.empty.data");
-        emptyArr = _builder.CreateInsertValue(emptyArr, llvm::ConstantInt::get(sizeTy, 0), {1}, "slice.empty.len");
-        emptyArr = _builder.CreateInsertValue(emptyArr, llvm::ConstantInt::get(sizeTy, 0), {2}, "slice.empty.cap");
+    case sema::BuiltinLower::ArrayTake: {
+        DEBUG_LOG("    Expr: Array.take() → Array<T>");
+        return emitSlice(llvm::ConstantInt::get(sizeTy, 0), args[0]);
+    }
 
-        auto* allocBB = llvm::BasicBlock::Create(_context, "slice.alloc", fn);
-        auto* loopHdrBB = llvm::BasicBlock::Create(_context, "slice.loop.hdr", fn);
-        auto* loopBodyBB = llvm::BasicBlock::Create(_context, "slice.loop.body", fn);
-        auto* loopLatchBB = llvm::BasicBlock::Create(_context, "slice.loop.latch", fn);
-        auto* loopExitBB = llvm::BasicBlock::Create(_context, "slice.loop.exit", fn);
-        auto* doneBB = llvm::BasicBlock::Create(_context, "slice.done", fn);
-
-        auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
-        auto nIsZero = _builder.CreateICmpEQ(count, zeroSize, "slice.is_empty");
-        _builder.CreateCondBr(nIsZero, doneBB, allocBB);
-
-        _builder.SetInsertPoint(allocBB);
-        auto elemSizeVal = _builder.getInt64(_module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
-        auto countI64 = _builder.CreateZExtOrTrunc(count, _builder.getInt64Ty(), "slice.n.i64");
-        auto startI64 = _builder.CreateZExtOrTrunc(startIdx, _builder.getInt64Ty(), "slice.start.i64");
-        auto newSize = _builder.CreateMul(countI64, elemSizeVal, "slice.new_size");
-        auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
-        auto newData = _builder.CreateCall(allocFn, {newSize}, "slice.new_data");
-        _builder.CreateBr(loopHdrBB);
-
-        _builder.SetInsertPoint(loopHdrBB);
-        auto loopPhi = _builder.CreatePHI(_builder.getInt64Ty(), 2, "slice.i");
-        loopPhi->addIncoming(_builder.getInt64(0), allocBB);
-        auto loopCond = _builder.CreateICmpULT(loopPhi, countI64, "slice.loop.cond");
-        _builder.CreateCondBr(loopCond, loopBodyBB, loopExitBB);
-
-        _builder.SetInsertPoint(loopBodyBB);
-        auto srcIdx = _builder.CreateAdd(startI64, loopPhi, "slice.src.idx");
-        auto oldElemPtr = _builder.CreateInBoundsGEP(elemLLVMType, oldData, {srcIdx}, "slice.old.ptr");
-        llvm::Value* elemVal = _builder.CreateLoad(elemLLVMType, oldElemPtr, "slice.elem");
-        retainHandleAtCallSite(elemVal, *elemType);
-        if (!isBuiltinType(elemType->name) && structNeedsDestructor(*elemType)) {
-            elemVal = copyOfStructFields(elemVal, elemType->isGeneric() ? elemType->getMangleName() : elemType->name);
-        }
-        auto newElemPtr = _builder.CreateInBoundsGEP(elemLLVMType, newData, {loopPhi}, "slice.new.ptr");
-        _builder.CreateStore(elemVal, newElemPtr);
-        _builder.CreateBr(loopLatchBB);
-
-        _builder.SetInsertPoint(loopLatchBB);
-        auto iNext = _builder.CreateAdd(loopPhi, _builder.getInt64(1), "slice.i.next");
-        loopPhi->addIncoming(iNext, loopLatchBB);
-        _builder.CreateBr(loopHdrBB);
-
-        _builder.SetInsertPoint(loopExitBB);
-        llvm::Value* newArr = llvm::UndefValue::get(resultTy);
-        newArr = _builder.CreateInsertValue(newArr, newData, {0}, "slice.res.data");
-        newArr = _builder.CreateInsertValue(newArr, count, {1}, "slice.res.len");
-        newArr = _builder.CreateInsertValue(newArr, count, {2}, "slice.res.cap");
-        _builder.CreateBr(doneBB);
-
-        _builder.SetInsertPoint(doneBB);
-        auto resultPhi = _builder.CreatePHI(resultTy, 2, "slice.result");
-        resultPhi->addIncoming(emptyArr, startBB);
-        resultPhi->addIncoming(newArr, loopExitBB);
-        return resultPhi;
+    case sema::BuiltinLower::ArrayDrop: {
+        DEBUG_LOG("    Expr: Array.drop() → Array<T>");
+        return emitSlice(args[0], loadLen(getReadPtr()));
     }
 
     case sema::BuiltinLower::ArrayConcat: {
@@ -1020,12 +1098,7 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         auto ptr = getReadPtr();
         auto dataPtr = loadData(ptr);
         auto lenVal = loadLen(ptr);
-        llvm::Value* needle = args[0];
-        const bool needleIsPtr = needle->getType()->isPointerTy();
-        const bool argIsRef = !argTypes.empty() && argTypes[0].isRef();
-        if (needleIsPtr && (argIsRef || !elemLLVMType->isPointerTy())) {
-            needle = _builder.CreateLoad(elemLLVMType, needle, "contains.needle");
-        }
+        llvm::Value* needle = loadNeedle();
 
         auto* fn = _builder.GetInsertBlock()->getParent();
         auto* startBB = _builder.GetInsertBlock();
@@ -1035,7 +1108,6 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         auto* foundBB = llvm::BasicBlock::Create(_context, "contains.found", fn);
         auto* doneBB = llvm::BasicBlock::Create(_context, "contains.done", fn);
 
-        auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
         auto lenI64 = _builder.CreateZExtOrTrunc(lenVal, _builder.getInt64Ty(), "contains.len.i64");
         _builder.CreateBr(hdrBB);
 
@@ -1048,34 +1120,7 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         _builder.SetInsertPoint(bodyBB);
         auto elemPtr = _builder.CreateInBoundsGEP(elemLLVMType, dataPtr, {iPhi}, "contains.elem.ptr");
         llvm::Value* elemVal = _builder.CreateLoad(elemLLVMType, elemPtr, "contains.elem");
-        llvm::Value* eqv = nullptr;
-        if (elemType->isFloat()) {
-            eqv = _builder.CreateFCmpOEQ(elemVal, needle, "contains.eq");
-        } else if (isBuiltinType(elemType->name)) {
-            eqv = _builder.CreateICmpEQ(elemVal, needle, "contains.eq");
-        } else if (elemType->isString()) {
-            auto strTy = getLLVMType(*elemType);
-            auto lhsA = _builder.CreateAlloca(strTy, nullptr, "contains.lhs");
-            auto rhsA = _builder.CreateAlloca(strTy, nullptr, "contains.rhs");
-            _builder.CreateStore(elemVal, lhsA);
-            _builder.CreateStore(needle, rhsA);
-            TypeInfo strRef("Ref", {make_shared<TypeInfo>("String")});
-            auto eqFn = getMethodFunction("String", "eq", {strRef}, TypeInfo("bool"));
-            eqv = _builder.CreateCall(eqFn, {lhsA, rhsA}, "contains.str.eq");
-        } else {
-            auto bytes = _module->getDataLayout().getTypeStoreSize(elemLLVMType);
-            auto ptrTy2 = llvm::PointerType::get(_context, 0);
-            auto memcmpTy =
-                llvm::FunctionType::get(_builder.getInt32Ty(), {ptrTy2, ptrTy2, _builder.getInt64Ty()}, false);
-            auto memcmpFn = _module->getOrInsertFunction("yuxrt_memcmp", memcmpTy);
-            auto lhsA = _builder.CreateAlloca(elemLLVMType, nullptr, "contains.lhs");
-            auto rhsA = _builder.CreateAlloca(elemLLVMType, nullptr, "contains.rhs");
-            _builder.CreateStore(elemVal, lhsA);
-            _builder.CreateStore(needle, rhsA);
-            auto cmp = _builder.CreateCall(memcmpFn, {lhsA, rhsA, llvm::ConstantInt::get(_builder.getInt64Ty(), bytes)},
-                                           "contains.memcmp");
-            eqv = _builder.CreateICmpEQ(cmp, _builder.getInt32(0), "contains.eq");
-        }
+        auto eqv = elemEq(elemVal, needle, "contains");
         _builder.CreateCondBr(eqv, foundBB, latchBB);
 
         _builder.SetInsertPoint(latchBB);
@@ -1091,6 +1136,298 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         resultPhi->addIncoming(llvm::ConstantInt::getFalse(_context), hdrBB);
         resultPhi->addIncoming(llvm::ConstantInt::getTrue(_context), foundBB);
         return resultPhi;
+    }
+
+    case sema::BuiltinLower::ArrayIndexOf:
+    case sema::BuiltinLower::ArrayLastIndexOf: {
+        const bool last = spec->lower == sema::BuiltinLower::ArrayLastIndexOf;
+        if (last) {
+            DEBUG_LOG("    Expr: Array.last_index_of()");
+        } else {
+            DEBUG_LOG("    Expr: Array.index_of()");
+        }
+        auto ptr = getReadPtr();
+        auto dataPtr = loadData(ptr);
+        auto lenVal = loadLen(ptr);
+        llvm::Value* needle = loadNeedle();
+        TypeInfo usizeNullTy("Nullable", {make_shared<TypeInfo>("usize")});
+        auto nty = getLLVMType(usizeNullTy);
+        auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
+        auto noneVal = wrapNullable(_builder.getInt1(false), zeroSize, nty);
+
+        auto* fn = _builder.GetInsertBlock()->getParent();
+        auto* startBB = _builder.GetInsertBlock();
+        auto* hdrBB = llvm::BasicBlock::Create(_context, "idxof.hdr", fn);
+        auto* bodyBB = llvm::BasicBlock::Create(_context, "idxof.body", fn);
+        auto* latchBB = llvm::BasicBlock::Create(_context, "idxof.latch", fn);
+        auto* foundBB = llvm::BasicBlock::Create(_context, "idxof.found", fn);
+        auto* doneBB = llvm::BasicBlock::Create(_context, "idxof.done", fn);
+
+        auto lenI64 = _builder.CreateZExtOrTrunc(lenVal, _builder.getInt64Ty(), "idxof.len.i64");
+        if (last) {
+            auto empty = _builder.CreateICmpEQ(lenVal, zeroSize, "idxof.empty");
+            auto* initBB = llvm::BasicBlock::Create(_context, "idxof.init", fn);
+            _builder.CreateCondBr(empty, doneBB, initBB);
+            _builder.SetInsertPoint(initBB);
+            auto lastI = _builder.CreateSub(lenI64, _builder.getInt64(1), "idxof.last");
+            _builder.CreateBr(hdrBB);
+
+            _builder.SetInsertPoint(hdrBB);
+            auto iPhi = _builder.CreatePHI(_builder.getInt64Ty(), 2, "idxof.i");
+            iPhi->addIncoming(lastI, initBB);
+            _builder.CreateBr(bodyBB);
+
+            _builder.SetInsertPoint(bodyBB);
+            auto elemPtr = _builder.CreateInBoundsGEP(elemLLVMType, dataPtr, {iPhi}, "idxof.elem.ptr");
+            llvm::Value* elemVal = _builder.CreateLoad(elemLLVMType, elemPtr, "idxof.elem");
+            auto eqv = elemEq(elemVal, needle, "idxof");
+            _builder.CreateCondBr(eqv, foundBB, latchBB);
+
+            _builder.SetInsertPoint(latchBB);
+            auto atZero = _builder.CreateICmpEQ(iPhi, _builder.getInt64(0), "idxof.at0");
+            auto iPrev = _builder.CreateSub(iPhi, _builder.getInt64(1), "idxof.i.prev");
+            iPhi->addIncoming(iPrev, latchBB);
+            _builder.CreateCondBr(atZero, doneBB, hdrBB);
+
+            _builder.SetInsertPoint(foundBB);
+            auto foundUsize = _builder.CreateZExtOrTrunc(iPhi, sizeTy, "idxof.found.usize");
+            auto someVal = wrapNullable(_builder.getInt1(true), foundUsize, nty);
+            _builder.CreateBr(doneBB);
+
+            _builder.SetInsertPoint(doneBB);
+            auto resultPhi = _builder.CreatePHI(nty, 3, "idxof.result");
+            resultPhi->addIncoming(noneVal, startBB);
+            resultPhi->addIncoming(noneVal, latchBB);
+            resultPhi->addIncoming(someVal, foundBB);
+            return resultPhi;
+        }
+
+        _builder.CreateBr(hdrBB);
+        _builder.SetInsertPoint(hdrBB);
+        auto iPhi = _builder.CreatePHI(_builder.getInt64Ty(), 2, "idxof.i");
+        iPhi->addIncoming(_builder.getInt64(0), startBB);
+        auto more = _builder.CreateICmpULT(iPhi, lenI64, "idxof.more");
+        _builder.CreateCondBr(more, bodyBB, doneBB);
+
+        _builder.SetInsertPoint(bodyBB);
+        auto elemPtr = _builder.CreateInBoundsGEP(elemLLVMType, dataPtr, {iPhi}, "idxof.elem.ptr");
+        llvm::Value* elemVal = _builder.CreateLoad(elemLLVMType, elemPtr, "idxof.elem");
+        auto eqv = elemEq(elemVal, needle, "idxof");
+        _builder.CreateCondBr(eqv, foundBB, latchBB);
+
+        _builder.SetInsertPoint(latchBB);
+        auto iNext = _builder.CreateAdd(iPhi, _builder.getInt64(1), "idxof.i.next");
+        iPhi->addIncoming(iNext, latchBB);
+        _builder.CreateBr(hdrBB);
+
+        _builder.SetInsertPoint(foundBB);
+        auto foundUsize = _builder.CreateZExtOrTrunc(iPhi, sizeTy, "idxof.found.usize");
+        auto someVal = wrapNullable(_builder.getInt1(true), foundUsize, nty);
+        _builder.CreateBr(doneBB);
+
+        _builder.SetInsertPoint(doneBB);
+        auto resultPhi = _builder.CreatePHI(nty, 2, "idxof.result");
+        resultPhi->addIncoming(noneVal, hdrBB);
+        resultPhi->addIncoming(someVal, foundBB);
+        return resultPhi;
+    }
+
+    case sema::BuiltinLower::ArrayGetOrNull:
+    case sema::BuiltinLower::ArrayFirstOrNull:
+    case sema::BuiltinLower::ArrayLastOrNull: {
+        DEBUG_LOG("    Expr: Array.*_or_null() → T?");
+        auto ptr = getReadPtr();
+        auto dataPtr = loadData(ptr);
+        auto lenVal = loadLen(ptr);
+        auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
+        TypeInfo elemNullTy("Nullable", {elemType});
+        auto nty = getLLVMType(elemNullTy);
+        auto noneVal = wrapNullable(_builder.getInt1(false), llvm::Constant::getNullValue(elemLLVMType), nty);
+
+        llvm::Value* miss = nullptr;
+        llvm::Value* idx = nullptr;
+        if (spec->lower == sema::BuiltinLower::ArrayGetOrNull) {
+            idx = _builder.CreateZExtOrTrunc(args[0], sizeTy, "gon.i");
+            miss = _builder.CreateICmpUGE(idx, lenVal, "gon.oob");
+        } else if (spec->lower == sema::BuiltinLower::ArrayFirstOrNull) {
+            idx = zeroSize;
+            miss = _builder.CreateICmpEQ(lenVal, zeroSize, "fon.empty");
+        } else {
+            auto oneSize = llvm::ConstantInt::get(sizeTy, 1);
+            idx = _builder.CreateSub(lenVal, oneSize, "lon.idx");
+            miss = _builder.CreateICmpEQ(lenVal, zeroSize, "lon.empty");
+        }
+
+        auto* fn = _builder.GetInsertBlock()->getParent();
+        auto* startBB = _builder.GetInsertBlock();
+        auto* hitBB = llvm::BasicBlock::Create(_context, "ornull.hit", fn);
+        auto* doneBB = llvm::BasicBlock::Create(_context, "ornull.done", fn);
+        _builder.CreateCondBr(miss, doneBB, hitBB);
+
+        _builder.SetInsertPoint(hitBB);
+        auto idxI64 = _builder.CreateZExtOrTrunc(idx, _builder.getInt64Ty(), "ornull.i64");
+        auto elemPtr = _builder.CreateInBoundsGEP(elemLLVMType, dataPtr, {idxI64}, "ornull.ptr");
+        llvm::Value* copied = copyElem(_builder.CreateLoad(elemLLVMType, elemPtr, "ornull.elem"));
+        auto someVal = wrapNullable(_builder.getInt1(true), copied, nty);
+        _builder.CreateBr(doneBB);
+
+        _builder.SetInsertPoint(doneBB);
+        auto resultPhi = _builder.CreatePHI(nty, 2, "ornull.result");
+        resultPhi->addIncoming(noneVal, startBB);
+        resultPhi->addIncoming(someVal, hitBB);
+        return resultPhi;
+    }
+
+    case sema::BuiltinLower::ArrayInsert: {
+        DEBUG_LOG("    Expr: Array.insert()");
+        auto lenFieldPtr = arrayLenFieldPtr(arrayPtr, "arr");
+        auto capFieldPtr = arrayCapFieldPtr(arrayPtr, "arr");
+        auto dataFieldPtr = arrayDataFieldPtr(arrayPtr, "arr");
+        auto idx = _builder.CreateZExtOrTrunc(args[0], sizeTy, "ins.i");
+        auto elemVal = args[1];
+        if (elemType && callNode->getArgs().size() >= 2) {
+            passAsArg(elemVal, *elemType, callNode->getArgs()[1]);
+        }
+        auto lenVal = _builder.CreateLoad(sizeTy, lenFieldPtr, "a.len");
+        auto oob = _builder.CreateICmpUGT(idx, lenVal, "ins.oob");
+        emitOobExit(oob, "ins.ok");
+
+        auto capVal = _builder.CreateLoad(sizeTy, capFieldPtr, "a.cap");
+        auto needGrow = _builder.CreateICmpUGE(lenVal, capVal, "ins.need_grow");
+        auto* fn = _builder.GetInsertBlock()->getParent();
+        auto* growBB = llvm::BasicBlock::Create(_context, "ins.grow", fn);
+        auto* shiftBB = llvm::BasicBlock::Create(_context, "ins.shift", fn);
+        _builder.CreateCondBr(needGrow, growBB, shiftBB);
+
+        _builder.SetInsertPoint(growBB);
+        auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
+        auto capIsZero = _builder.CreateICmpEQ(capVal, zeroSize, "ins.cap0");
+        auto doubled = _builder.CreateMul(capVal, llvm::ConstantInt::get(sizeTy, 2), "ins.cap.dbl");
+        auto newCap = _builder.CreateSelect(capIsZero, llvm::ConstantInt::get(sizeTy, 4), doubled, "ins.new.cap");
+        auto elemSize = _module->getDataLayout().getTypeAllocSize(elemLLVMType);
+        auto elemSizeVal = llvm::ConstantInt::get(sizeTy, elemSize);
+        auto newByteSize = _builder.CreateMul(newCap, elemSizeVal, "ins.new.bytes");
+        auto oldData = _builder.CreateLoad(ptrTy, dataFieldPtr, "ins.old.data");
+        auto allocFn = runtime::getYuxrtAllocFn(_module, _builder);
+        auto reallocFn = runtime::getYuxrtReallocFn(_module, _builder);
+        auto dataIsNull = _builder.CreateICmpEQ(oldData, nullPtr, "ins.data.null");
+        auto* allocBB = llvm::BasicBlock::Create(_context, "ins.alloc", fn);
+        auto* reallocBB = llvm::BasicBlock::Create(_context, "ins.realloc", fn);
+        auto* growDoneBB = llvm::BasicBlock::Create(_context, "ins.grow_done", fn);
+        _builder.CreateCondBr(dataIsNull, allocBB, reallocBB);
+        _builder.SetInsertPoint(allocBB);
+        auto alloced = _builder.CreateCall(allocFn, {newByteSize}, "ins.alloced");
+        _builder.CreateBr(growDoneBB);
+        _builder.SetInsertPoint(reallocBB);
+        auto realloced = _builder.CreateCall(reallocFn, {oldData, newByteSize}, "ins.realloced");
+        _builder.CreateBr(growDoneBB);
+        _builder.SetInsertPoint(growDoneBB);
+        auto dataPhi = _builder.CreatePHI(ptrTy, 2, "ins.new.data");
+        dataPhi->addIncoming(alloced, allocBB);
+        dataPhi->addIncoming(realloced, reallocBB);
+        _builder.CreateStore(dataPhi, dataFieldPtr);
+        _builder.CreateStore(newCap, capFieldPtr);
+        _builder.CreateBr(shiftBB);
+
+        _builder.SetInsertPoint(shiftBB);
+        auto curData = _builder.CreateLoad(ptrTy, dataFieldPtr, "ins.data");
+        auto idxI64 = _builder.CreateZExtOrTrunc(idx, _builder.getInt64Ty(), "ins.i64");
+        auto lenI64 = _builder.CreateZExtOrTrunc(lenVal, _builder.getInt64Ty(), "ins.len.i64");
+        auto* shdr = llvm::BasicBlock::Create(_context, "ins.sh.hdr", fn);
+        auto* sbody = llvm::BasicBlock::Create(_context, "ins.sh.body", fn);
+        auto* storeBB = llvm::BasicBlock::Create(_context, "ins.store", fn);
+        _builder.CreateBr(shdr);
+        _builder.SetInsertPoint(shdr);
+        auto jPhi = _builder.CreatePHI(_builder.getInt64Ty(), 2, "ins.j");
+        jPhi->addIncoming(lenI64, shiftBB);
+        auto needShift = _builder.CreateICmpUGT(jPhi, idxI64, "ins.need_shift");
+        _builder.CreateCondBr(needShift, sbody, storeBB);
+        _builder.SetInsertPoint(sbody);
+        auto jPrev = _builder.CreateSub(jPhi, _builder.getInt64(1), "ins.j.prev");
+        auto srcPtr = _builder.CreateInBoundsGEP(elemLLVMType, curData, {jPrev}, "ins.src");
+        auto dstPtr = _builder.CreateInBoundsGEP(elemLLVMType, curData, {jPhi}, "ins.dst");
+        _builder.CreateStore(_builder.CreateLoad(elemLLVMType, srcPtr, "ins.moved"), dstPtr);
+        jPhi->addIncoming(jPrev, sbody);
+        _builder.CreateBr(shdr);
+
+        _builder.SetInsertPoint(storeBB);
+        auto hole = _builder.CreateInBoundsGEP(elemLLVMType, curData, {idxI64}, "ins.hole");
+        _builder.CreateStore(elemVal, hole);
+        auto newLen = _builder.CreateAdd(lenVal, llvm::ConstantInt::get(sizeTy, 1), "ins.new.len");
+        _builder.CreateStore(newLen, lenFieldPtr);
+        return voidResult();
+    }
+
+    case sema::BuiltinLower::ArrayRemoveAt: {
+        DEBUG_LOG("    Expr: Array.remove_at()");
+        auto lenFieldPtr = arrayLenFieldPtr(arrayPtr, "arr");
+        auto dataFieldPtr = arrayDataFieldPtr(arrayPtr, "arr");
+        auto idx = _builder.CreateZExtOrTrunc(args[0], sizeTy, "rm.i");
+        auto lenVal = _builder.CreateLoad(sizeTy, lenFieldPtr, "a.len");
+        auto oob = _builder.CreateICmpUGE(idx, lenVal, "rm.oob");
+        emitOobExit(oob, "rm.ok");
+
+        auto dataPtr = _builder.CreateLoad(ptrTy, dataFieldPtr, "rm.data");
+        auto idxI64 = _builder.CreateZExtOrTrunc(idx, _builder.getInt64Ty(), "rm.i64");
+        auto lenI64 = _builder.CreateZExtOrTrunc(lenVal, _builder.getInt64Ty(), "rm.len.i64");
+        auto outPtr = _builder.CreateInBoundsGEP(elemLLVMType, dataPtr, {idxI64}, "rm.out.ptr");
+        auto outVal = _builder.CreateLoad(elemLLVMType, outPtr, "rm.out");
+
+        auto* fn = _builder.GetInsertBlock()->getParent();
+        auto* shiftStart = _builder.GetInsertBlock();
+        auto* shdr = llvm::BasicBlock::Create(_context, "rm.sh.hdr", fn);
+        auto* sbody = llvm::BasicBlock::Create(_context, "rm.sh.body", fn);
+        auto* doneBB = llvm::BasicBlock::Create(_context, "rm.done", fn);
+        _builder.CreateBr(shdr);
+        _builder.SetInsertPoint(shdr);
+        auto jPhi = _builder.CreatePHI(_builder.getInt64Ty(), 2, "rm.j");
+        jPhi->addIncoming(idxI64, shiftStart);
+        auto last = _builder.CreateSub(lenI64, _builder.getInt64(1), "rm.last");
+        auto needShift = _builder.CreateICmpULT(jPhi, last, "rm.need_shift");
+        _builder.CreateCondBr(needShift, sbody, doneBB);
+        _builder.SetInsertPoint(sbody);
+        auto jNext = _builder.CreateAdd(jPhi, _builder.getInt64(1), "rm.j.next");
+        auto srcPtr = _builder.CreateInBoundsGEP(elemLLVMType, dataPtr, {jNext}, "rm.src");
+        auto dstPtr = _builder.CreateInBoundsGEP(elemLLVMType, dataPtr, {jPhi}, "rm.dst");
+        _builder.CreateStore(_builder.CreateLoad(elemLLVMType, srcPtr, "rm.moved"), dstPtr);
+        jPhi->addIncoming(jNext, sbody);
+        _builder.CreateBr(shdr);
+
+        _builder.SetInsertPoint(doneBB);
+        _builder.CreateStore(last, lenFieldPtr);
+        return outVal;
+    }
+
+    case sema::BuiltinLower::ArrayReverse: {
+        DEBUG_LOG("    Expr: Array.reverse()");
+        auto lenVal = _builder.CreateLoad(sizeTy, arrayLenFieldPtr(arrayPtr, "arr"), "a.len");
+        auto dataPtr = _builder.CreateLoad(ptrTy, arrayDataFieldPtr(arrayPtr, "arr"), "a.data");
+        auto lenI64 = _builder.CreateZExtOrTrunc(lenVal, _builder.getInt64Ty(), "rev.len.i64");
+        auto* fn = _builder.GetInsertBlock()->getParent();
+        auto* startBB = _builder.GetInsertBlock();
+        auto* hdrBB = llvm::BasicBlock::Create(_context, "rev.hdr", fn);
+        auto* bodyBB = llvm::BasicBlock::Create(_context, "rev.body", fn);
+        auto* doneBB = llvm::BasicBlock::Create(_context, "rev.done", fn);
+        _builder.CreateBr(hdrBB);
+        _builder.SetInsertPoint(hdrBB);
+        auto iPhi = _builder.CreatePHI(_builder.getInt64Ty(), 2, "rev.i");
+        iPhi->addIncoming(_builder.getInt64(0), startBB);
+        auto twoI = _builder.CreateAdd(iPhi, iPhi, "rev.2i");
+        auto cont = _builder.CreateICmpULT(twoI, lenI64, "rev.cont");
+        _builder.CreateCondBr(cont, bodyBB, doneBB);
+        _builder.SetInsertPoint(bodyBB);
+        auto j = _builder.CreateSub(_builder.CreateSub(lenI64, _builder.getInt64(1), "rev.nm1"), iPhi, "rev.j");
+        auto ip = _builder.CreateInBoundsGEP(elemLLVMType, dataPtr, {iPhi}, "rev.ip");
+        auto jp = _builder.CreateInBoundsGEP(elemLLVMType, dataPtr, {j}, "rev.jp");
+        auto iv = _builder.CreateLoad(elemLLVMType, ip, "rev.iv");
+        auto jv = _builder.CreateLoad(elemLLVMType, jp, "rev.jv");
+        _builder.CreateStore(jv, ip);
+        _builder.CreateStore(iv, jp);
+        auto iNext = _builder.CreateAdd(iPhi, _builder.getInt64(1), "rev.i.next");
+        iPhi->addIncoming(iNext, bodyBB);
+        _builder.CreateBr(hdrBB);
+        _builder.SetInsertPoint(doneBB);
+        return voidResult();
     }
 
     case sema::BuiltinLower::None:

@@ -50,7 +50,8 @@ class BorrowChecker {
 
     // §8.4.2.5 Array<T> 借用期不可调用的修改方法名单
     static const std::set<std::string>& arrayMutatingMethods() {
-        static const std::set<std::string> s = {"push", "pop", "clear", "set_len", "insert", "remove"};
+        static const std::set<std::string> s = {"push",   "pop",       "clear",   "set_len", "insert",
+                                                "remove", "remove_at", "reverse", "reserve"};
         return s;
     }
 
