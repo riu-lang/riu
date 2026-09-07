@@ -1,28 +1,13 @@
 ; yux.io：write/read/append 回合 + 缺文件 NotFound
-; 不调用 read_line（会堵 stdin）。临时文件名互不抢；失败路径可能留文件，gitignore 兜底。
+; 路径 / 环境 / 目录。不调用 read_line（会堵 stdin）。临时文件名互不抢；失败路径可能留文件，gitignore 兜底。
 
 use yux.io.*
 
-extern {
-  fn DeleteFileW(lpFileName Ptr) i32
-}
-
-fn _ascii_wide(path String&) Array<u16> {
-  #Mut let w Array<u16> = []
-  loop i usize = 0 {
-    if i >= path.len() {
-      break;
-    }
-    w.push(path.get(i).to_u16())
-    i += 1
-  }
-  w.push(0u16)
-  w
-}
-
 fn _cleanup(path String&) {
-  let w Array<u16> = _ascii_wide(path)
-  DeleteFileW(w);
+  try {
+    remove(path)
+  } catch e IoErr {
+  }
 }
 
 fn _fail_io(op String&, e IoErr) {
@@ -138,5 +123,105 @@ fn test_read_missing_not_found() {
       IoErr::InvalidUtf8 => fail("missing: InvalidUtf8")
       IoErr::Other(code) => fail("missing: Other(${code})")
     };
+  }
+}
+
+; ==================== 路径 ====================
+
+#Test
+fn test_join_dirname() {
+  assert_eq(join("a", "b"), "a\\b")
+  assert_eq(join("a\\", "b"), "a\\b")
+  assert_eq(join("a", "\\b"), "a\\b")
+  assert_eq(join("", "b"), "b")
+  assert_eq(join("a", ""), "a")
+  assert_eq(dirname("a\\b\\c"), "a\\b")
+  assert_eq(dirname("a"), ".")
+  assert_eq(dirname("\\foo"), "\\")
+  assert_eq(dirname("a\\"), ".")
+}
+
+; ==================== exists / remove / mkdir / list_dir / cwd / env ====================
+
+#Test
+fn test_exists_missing() {
+  let path String = "_yux_io_exists_nope.txt"
+  _cleanup(&path);
+  assert_false(exists(&path))
+}
+
+#Test
+fn test_cwd_nonempty() {
+  try {
+    let d String = cwd()
+    assert_true(d.len() > 0)
+  } catch e IoErr {
+    _fail_io("cwd", e)
+  }
+}
+
+#Test
+fn test_env_path() {
+  let v String? = env("PATH")
+  assert_true(v.has())
+  assert_true(v.get().len() > 0)
+  let miss String? = env("YUX_NO_SUCH_ENV_VAR_ZXQ")
+  assert_false(miss.has())
+}
+
+#Test
+fn test_mkdir_list_remove() {
+  let dir String = "_yux_io_dir"
+  let file String = join(&dir, "a.txt")
+  _cleanup(&file);
+  _cleanup(&dir);
+  try {
+    mkdir(&dir)
+  } catch e IoErr {
+    _fail_io("mkdir", e)
+  }
+  assert_true(exists(&dir))
+  try {
+    write_file(&file, "x")
+  } catch e IoErr {
+    _cleanup(&file);
+    _cleanup(&dir);
+    _fail_io("write_in_dir", e)
+  }
+  let names Array<String> = try {
+    list_dir(&dir)
+  } catch e IoErr {
+    _cleanup(&file);
+    _cleanup(&dir);
+    _fail_io("list_dir", e);
+    []
+  }
+  #Mut let found bool = false
+  for n in names {
+    if n == "a.txt" {
+      found = true
+    }
+  }
+  _cleanup(&file);
+  _cleanup(&dir);
+  assert_true(found)
+}
+
+#Test
+fn test_list_dir_missing() {
+  let dir String = "_yux_io_dir_nope"
+  _cleanup(&dir);
+  try {
+    list_dir(&dir);
+    fail("missing dir should error")
+  } catch e IoErr {
+    match e {
+      IoErr::NotFound => {
+      }
+      IoErr::Eof => fail("list missing: Eof")
+      IoErr::AccessDenied => fail("list missing: AccessDenied")
+      IoErr::InvalidUtf8 => fail("list missing: InvalidUtf8")
+      IoErr::Other(code) => fail("list missing: Other(${code})")
+    }
   }
 }

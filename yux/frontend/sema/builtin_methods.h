@@ -34,6 +34,9 @@ enum class BuiltinLower : u8 {
     ArrayReserve,
     ArrayClone,
     ArrayWithCapacity,
+    ArraySlice,
+    ArrayConcat,
+    ArrayContains,
 };
 
 struct BuiltinMethodSpec {
@@ -43,7 +46,8 @@ struct BuiltinMethodSpec {
     bool needsLvalue;     // 修改 receiver（push / pop / clear …）
     bool isStatic;        // Type::name 工厂
     bool needsElemType;   // Array 需 T；len/cap/with_capacity 否
-    const char* arg0Type; // 非空则第 0 实参须为此名（如 "usize"）；空 = T / 不查
+    const char* arg0Type; // 非空则第 0 实参须为此名（如 "usize"）；"Array" = Array<T>&；空 = T / 不查
+    const char* arg1Type; // 第 1 实参（slice 的 end）；空则无或与 arg0 相同规则
     BuiltinRet ret;
     BuiltinLower lower;
 };
@@ -76,6 +80,7 @@ inline constexpr std::array kBuiltinMethods = {
                       .isStatic = false,
                       .needsElemType = false,
                       .arg0Type = nullptr,
+                      .arg1Type = nullptr,
                       .ret = BuiltinRet::Usize,
                       .lower = BuiltinLower::ArrayLen},
     BuiltinMethodSpec{.recv = BuiltinRecv::Array,
@@ -177,6 +182,34 @@ inline constexpr std::array kBuiltinMethods = {
                       .arg0Type = nullptr,
                       .ret = BuiltinRet::Self,
                       .lower = BuiltinLower::ArrayClone},
+    BuiltinMethodSpec{.recv = BuiltinRecv::Array,
+                      .name = "slice",
+                      .arity = 2,
+                      .needsLvalue = false,
+                      .isStatic = false,
+                      .needsElemType = true,
+                      .arg0Type = "usize",
+                      .arg1Type = "usize",
+                      .ret = BuiltinRet::Self,
+                      .lower = BuiltinLower::ArraySlice},
+    BuiltinMethodSpec{.recv = BuiltinRecv::Array,
+                      .name = "concat",
+                      .arity = 1,
+                      .needsLvalue = false,
+                      .isStatic = false,
+                      .needsElemType = true,
+                      .arg0Type = "Array",
+                      .ret = BuiltinRet::Self,
+                      .lower = BuiltinLower::ArrayConcat},
+    BuiltinMethodSpec{.recv = BuiltinRecv::Array,
+                      .name = "contains",
+                      .arity = 1,
+                      .needsLvalue = false,
+                      .isStatic = false,
+                      .needsElemType = true,
+                      .arg0Type = nullptr,
+                      .ret = BuiltinRet::Bool,
+                      .lower = BuiltinLower::ArrayContains},
     BuiltinMethodSpec{.recv = BuiltinRecv::Array,
                       .name = "with_capacity",
                       .arity = 1,

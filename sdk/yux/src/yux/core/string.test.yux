@@ -12,6 +12,7 @@
 ;   - String + 链式连接（含左右非 String、混合类型链）
 ;   - 边界条件（空字符串、纯插值）
 ;   - parse_i32（十进制 / 符号 / 溢出 / 非法）
+;   - is_empty / replace / repeat
 
 ; ==================== 等值比较 ====================
 
@@ -722,4 +723,44 @@ fn test_parse_i32_invalid() {
   assert_false("1 ".parse_i32().has())
   assert_false("2147483648".parse_i32().has())
   assert_false("-2147483649".parse_i32().has())
+}
+
+; ==================== is_empty / replace / repeat ====================
+
+#Test
+fn test_string_is_empty() {
+  assert_true("".is_empty())
+  assert_false("a".is_empty())
+  assert_false(" ".is_empty())
+}
+
+#Test
+fn test_string_replace_basic() {
+  assert_eq("hello world".replace("world", "yux"), "hello yux")
+  assert_eq("aaa".replace("a", "b"), "bbb")
+  assert_eq("ababa".replace("ab", "X"), "XXa")
+}
+
+#Test
+fn test_string_replace_empty_from() {
+  assert_eq("ab".replace("", "x"), "ab")
+  assert_eq("".replace("", "x"), "")
+}
+
+#Test
+fn test_string_replace_missing() {
+  assert_eq("hello".replace("z", "q"), "hello")
+}
+
+#Test
+fn test_string_replace_unicode() {
+  assert_eq("你好世界".replace("世界", "yux"), "你好yux")
+}
+
+#Test
+fn test_string_repeat() {
+  assert_eq("ab".repeat(3), "ababab")
+  assert_eq("x".repeat(1), "x")
+  assert_eq("ab".repeat(0), "")
+  assert_eq("".repeat(5), "")
 }

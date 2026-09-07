@@ -116,8 +116,15 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
                 break;
             }
             vector<TypeInfo> params;
-            if (spec.arity == 1) {
-                params.push_back(spec.arg0Type ? TypeInfo(spec.arg0Type) : tpT);
+            if (spec.arity >= 1) {
+                if (spec.arg0Type && string(spec.arg0Type) == "Array") {
+                    params.push_back(TypeInfo("Ref", {make_shared<TypeInfo>(tpArrayT)}));
+                } else {
+                    params.push_back(spec.arg0Type ? TypeInfo(spec.arg0Type) : tpT);
+                }
+            }
+            if (spec.arity >= 2) {
+                params.push_back(spec.arg1Type ? TypeInfo(spec.arg1Type) : tpT);
             }
             string full = string("Array.") + spec.name;
             registerSymbol(full, {SymbolKind::Function, spec.name, ret});

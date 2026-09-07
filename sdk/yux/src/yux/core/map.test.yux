@@ -5,6 +5,7 @@
 ;   - String → i32：键比较走 String.eq
 ;   - i32 → String：值句柄复制
 ;   - 空 Map、未命中 get/remove、len / is_empty
+;   - keys / values / clear；遍历走 keys() 再 for
 
 #Test
 fn test_map_i32_insert_get() {
@@ -61,4 +62,30 @@ fn test_map_string_value() {
   assert_eq(r2 ?? "", "two")
   assert_false(m.contains(2))
   assert_eq(m.len(), 1)
+}
+
+#Test
+fn test_map_keys_values_clear() {
+  #Mut let m Map<i32, i32> = Map:<i32, i32>::make()
+  m.insert(1, 10)
+  m.insert(2, 20)
+  m.insert(3, 30)
+  let ks Array<i32> = m.keys()
+  assert_eq(ks.len(), 3)
+  #Mut let sum_k i32 = 0
+  for k in ks {
+    sum_k = sum_k + k
+  }
+  assert_eq(sum_k, 6)
+  let vs Array<i32> = m.values()
+  assert_eq(vs.len(), 3)
+  #Mut let sum_v i32 = 0
+  for v in vs {
+    sum_v = sum_v + v
+  }
+  assert_eq(sum_v, 60)
+  m.clear()
+  assert_true(m.is_empty())
+  assert_eq(m.len(), 0)
+  assert_false(m.contains(1))
 }

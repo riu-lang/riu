@@ -292,6 +292,17 @@ struct Array<T> {
   ; Array 深拷贝唯一入口，替代 copy_of（copy_of 不再接受 Array）
   #Builtin
   fn clone() Array<T>
+
+  ; [start, end) 拷贝；越界端点夹到 len；start > end 得空
+  #Builtin
+  fn slice(start usize, end usize) Array<T>
+
+  #Builtin
+  fn concat(other Array<T>&) Array<T>
+
+  ; T 须可 ==（标量或 String，与 Map 键相同）
+  #Builtin
+  fn contains(item T&) bool
 }
 
 ; Nullable<T> - 可空包装类型

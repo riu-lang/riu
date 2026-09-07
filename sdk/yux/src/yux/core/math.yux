@@ -1,8 +1,8 @@
 ; yux SDK - 数学函数
 ; 超越函数（sin/cos/exp/log/pow/sqrt 等）走 yuxrt（musl libm 移植），
 ; 精度和正确性久经验证。纯 yux 实现的函数（abs/min/max/clamp/sign/pow_int）保留。
-; 注：#Cval 常量当前为文件作用域，跨文件不可见（编译器限制）。常量仅可在 math.yux 内部使用。
-; 未来跨文件常量访问机制落地后，math.PI 等路径将可用。
+; `#Inline #Cval` 常量（PI / TAU / E 等）可跨文件：`use yux.core.math.*` 后裸名 `PI`。
+; `math.PI` 点链会把模块当值（E5016）；`math.abs` 一类函数点链仍合法。
 
 ; ==================== yuxrt 数学函数 extern 声明 ====================
 
@@ -273,7 +273,6 @@ fn exp(v f64) f64 = yuxrt_exp(v)
 
 ; ==================== pow（整数指数快速幂） ====================
 ; 指数为负时返回 1 / pow(base, -exp)
-; TODO: pow_f64(base f64, exp f64) f64 — 分数指数需 ln（exp(exp * ln(base))），ln 待实现
 
 fn pow_int(base f64, exp i32) f64 {
   if exp == 0 {

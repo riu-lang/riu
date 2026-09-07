@@ -1,0 +1,31 @@
+; ls — 列出目录（默认 cwd）。用 exists / list_dir / cwd / join。
+; 运行：cd examples/ls && yux build && ./build/ls.exe
+;       ./build/ls.exe 某目录
+
+use yux.io.*
+
+fn main() {
+  let a Array<String> = args()
+  #Mut let dir String = try {
+    cwd()
+  } catch e IoErr {
+    eprintln("ls: cannot read cwd")
+    exit(1);
+  }
+  if a.len() >= 2 {
+    dir = copy_of(a[1])
+  }
+  if !exists(&dir) {
+    eprintln("ls: not found")
+    exit(1)
+  }
+  let names Array<String> = try {
+    list_dir(&dir)
+  } catch e IoErr {
+    eprintln("ls: cannot list")
+    exit(1);
+  }
+  for n in names {
+    println(n)
+  }
+}

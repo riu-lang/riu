@@ -8,6 +8,7 @@
 ;   - bool / String 元素
 ;   - Array<String>[i].len() / Array<struct>[i].method()（下标后走元素方法）
 ;   - clear / clone
+;   - slice / concat / contains
 ;   - 函数返回 move、传参共享语义
 ;   - Array<Rc<T>> 元素重赋值 retain/release
 ;   - 嵌套 Array<Array<T>> 字面量
@@ -607,4 +608,54 @@ fn test_array_f64_first_last() {
   #Mut let arr Array<f64> = [1.0f64, 2.0f64, 3.0f64]
   assert_eq(arr.first(), 1.0f64)
   assert_eq(arr.last(), 3.0f64)
+}
+
+; ==================== slice / concat / contains ====================
+
+#Test
+fn test_array_slice() {
+  let arr Array<i32> = [10, 20, 30, 40]
+  let mid Array<i32> = arr.slice(1, 3)
+  assert_eq(mid.len(), 2)
+  assert_eq(mid[0], 20)
+  assert_eq(mid[1], 30)
+  let empty Array<i32> = arr.slice(2, 2)
+  assert_true(empty.is_empty())
+  let clamp Array<i32> = arr.slice(3, 99)
+  assert_eq(clamp.len(), 1)
+  assert_eq(clamp[0], 40)
+  let flipped Array<i32> = arr.slice(3, 1)
+  assert_true(flipped.is_empty())
+}
+
+#Test
+fn test_array_concat() {
+  let a Array<i32> = [1, 2]
+  let b Array<i32> = [3, 4, 5]
+  let c Array<i32> = a.concat(&b)
+  assert_eq(c.len(), 5)
+  assert_eq(c[0], 1)
+  assert_eq(c[4], 5)
+  assert_eq(a.len(), 2)
+  assert_eq(b.len(), 3)
+  let empty Array<i32> = []
+  let d Array<i32> = a.concat(&empty)
+  assert_eq(d.len(), 2)
+  assert_eq(d[1], 2)
+}
+
+#Test
+fn test_array_contains() {
+  let arr Array<i32> = [1, 2, 3]
+  assert_true(arr.contains(2))
+  assert_false(arr.contains(9))
+  let empty Array<i32> = []
+  assert_false(empty.contains(1))
+}
+
+#Test
+fn test_array_contains_string() {
+  let arr Array<String> = ["a", "b", "c"]
+  assert_true(arr.contains("b"))
+  assert_false(arr.contains("z"))
 }

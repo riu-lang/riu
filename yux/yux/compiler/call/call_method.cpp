@@ -830,6 +830,269 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
 
         return resultPhi;
     }
+
+    case sema::BuiltinLower::ArraySlice: {
+        DEBUG_LOG("    Expr: Array.slice() → Array<T>");
+        auto ptr = getReadPtr();
+        auto oldData = loadData(ptr);
+        auto oldLen = loadLen(ptr);
+        auto resultTy = arrayStructType;
+        auto startV = _builder.CreateZExtOrTrunc(args[0], sizeTy, "slice.start");
+        auto endV = _builder.CreateZExtOrTrunc(args[1], sizeTy, "slice.end");
+        auto umin = [&](llvm::Value* a, llvm::Value* b, const char* nm) {
+            return _builder.CreateSelect(_builder.CreateICmpULT(a, b, "slice.lt"), a, b, nm);
+        };
+        auto sClamped = umin(startV, oldLen, "slice.s");
+        auto eClamped = umin(endV, oldLen, "slice.e");
+        auto startIdx = umin(sClamped, eClamped, "slice.start_idx");
+        auto count = _builder.CreateSub(eClamped, startIdx, "slice.n");
+
+        auto* fn = _builder.GetInsertBlock()->getParent();
+        auto* startBB = _builder.GetInsertBlock();
+        llvm::Value* emptyArr = llvm::UndefValue::get(resultTy);
+        emptyArr = _builder.CreateInsertValue(emptyArr, nullPtr, {0}, "slice.empty.data");
+        emptyArr = _builder.CreateInsertValue(emptyArr, llvm::ConstantInt::get(sizeTy, 0), {1}, "slice.empty.len");
+        emptyArr = _builder.CreateInsertValue(emptyArr, llvm::ConstantInt::get(sizeTy, 0), {2}, "slice.empty.cap");
+
+        auto* allocBB = llvm::BasicBlock::Create(_context, "slice.alloc", fn);
+        auto* loopHdrBB = llvm::BasicBlock::Create(_context, "slice.loop.hdr", fn);
+        auto* loopBodyBB = llvm::BasicBlock::Create(_context, "slice.loop.body", fn);
+        auto* loopLatchBB = llvm::BasicBlock::Create(_context, "slice.loop.latch", fn);
+        auto* loopExitBB = llvm::BasicBlock::Create(_context, "slice.loop.exit", fn);
+        auto* doneBB = llvm::BasicBlock::Create(_context, "slice.done", fn);
+
+        auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
+        auto nIsZero = _builder.CreateICmpEQ(count, zeroSize, "slice.is_empty");
+        _builder.CreateCondBr(nIsZero, doneBB, allocBB);
+
+        _builder.SetInsertPoint(allocBB);
+        auto elemSizeVal = _builder.getInt64(_module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
+        auto countI64 = _builder.CreateZExtOrTrunc(count, _builder.getInt64Ty(), "slice.n.i64");
+        auto startI64 = _builder.CreateZExtOrTrunc(startIdx, _builder.getInt64Ty(), "slice.start.i64");
+        auto newSize = _builder.CreateMul(countI64, elemSizeVal, "slice.new_size");
+        auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
+        auto newData = _builder.CreateCall(allocFn, {newSize}, "slice.new_data");
+        _builder.CreateBr(loopHdrBB);
+
+        _builder.SetInsertPoint(loopHdrBB);
+        auto loopPhi = _builder.CreatePHI(_builder.getInt64Ty(), 2, "slice.i");
+        loopPhi->addIncoming(_builder.getInt64(0), allocBB);
+        auto loopCond = _builder.CreateICmpULT(loopPhi, countI64, "slice.loop.cond");
+        _builder.CreateCondBr(loopCond, loopBodyBB, loopExitBB);
+
+        _builder.SetInsertPoint(loopBodyBB);
+        auto srcIdx = _builder.CreateAdd(startI64, loopPhi, "slice.src.idx");
+        auto oldElemPtr = _builder.CreateInBoundsGEP(elemLLVMType, oldData, {srcIdx}, "slice.old.ptr");
+        llvm::Value* elemVal = _builder.CreateLoad(elemLLVMType, oldElemPtr, "slice.elem");
+        retainHandleAtCallSite(elemVal, *elemType);
+        if (!isBuiltinType(elemType->name) && structNeedsDestructor(*elemType)) {
+            elemVal = copyOfStructFields(elemVal, elemType->isGeneric() ? elemType->getMangleName() : elemType->name);
+        }
+        auto newElemPtr = _builder.CreateInBoundsGEP(elemLLVMType, newData, {loopPhi}, "slice.new.ptr");
+        _builder.CreateStore(elemVal, newElemPtr);
+        _builder.CreateBr(loopLatchBB);
+
+        _builder.SetInsertPoint(loopLatchBB);
+        auto iNext = _builder.CreateAdd(loopPhi, _builder.getInt64(1), "slice.i.next");
+        loopPhi->addIncoming(iNext, loopLatchBB);
+        _builder.CreateBr(loopHdrBB);
+
+        _builder.SetInsertPoint(loopExitBB);
+        llvm::Value* newArr = llvm::UndefValue::get(resultTy);
+        newArr = _builder.CreateInsertValue(newArr, newData, {0}, "slice.res.data");
+        newArr = _builder.CreateInsertValue(newArr, count, {1}, "slice.res.len");
+        newArr = _builder.CreateInsertValue(newArr, count, {2}, "slice.res.cap");
+        _builder.CreateBr(doneBB);
+
+        _builder.SetInsertPoint(doneBB);
+        auto resultPhi = _builder.CreatePHI(resultTy, 2, "slice.result");
+        resultPhi->addIncoming(emptyArr, startBB);
+        resultPhi->addIncoming(newArr, loopExitBB);
+        return resultPhi;
+    }
+
+    case sema::BuiltinLower::ArrayConcat: {
+        DEBUG_LOG("    Expr: Array.concat() → Array<T>");
+        auto ptr = getReadPtr();
+        auto oldData = loadData(ptr);
+        auto oldLen = loadLen(ptr);
+        llvm::Value* otherPtr = args[0];
+        if (!otherPtr->getType()->isPointerTy()) {
+            auto tmp = _builder.CreateAlloca(arrayStructType, nullptr, "concat.other_tmp");
+            _builder.CreateStore(args[0], tmp);
+            otherPtr = tmp;
+        }
+        auto otherData = loadData(otherPtr);
+        auto otherLen = loadLen(otherPtr);
+        auto count = _builder.CreateAdd(oldLen, otherLen, "concat.n");
+        auto resultTy = arrayStructType;
+
+        auto* fn = _builder.GetInsertBlock()->getParent();
+        auto* startBB = _builder.GetInsertBlock();
+        llvm::Value* emptyArr = llvm::UndefValue::get(resultTy);
+        emptyArr = _builder.CreateInsertValue(emptyArr, nullPtr, {0}, "concat.empty.data");
+        emptyArr = _builder.CreateInsertValue(emptyArr, llvm::ConstantInt::get(sizeTy, 0), {1}, "concat.empty.len");
+        emptyArr = _builder.CreateInsertValue(emptyArr, llvm::ConstantInt::get(sizeTy, 0), {2}, "concat.empty.cap");
+
+        auto* allocBB = llvm::BasicBlock::Create(_context, "concat.alloc", fn);
+        auto* loop1HdrBB = llvm::BasicBlock::Create(_context, "concat.l1.hdr", fn);
+        auto* loop1BodyBB = llvm::BasicBlock::Create(_context, "concat.l1.body", fn);
+        auto* loop1LatchBB = llvm::BasicBlock::Create(_context, "concat.l1.latch", fn);
+        auto* loop2HdrBB = llvm::BasicBlock::Create(_context, "concat.l2.hdr", fn);
+        auto* loop2BodyBB = llvm::BasicBlock::Create(_context, "concat.l2.body", fn);
+        auto* loop2LatchBB = llvm::BasicBlock::Create(_context, "concat.l2.latch", fn);
+        auto* loopExitBB = llvm::BasicBlock::Create(_context, "concat.exit", fn);
+        auto* doneBB = llvm::BasicBlock::Create(_context, "concat.done", fn);
+
+        auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
+        auto nIsZero = _builder.CreateICmpEQ(count, zeroSize, "concat.is_empty");
+        _builder.CreateCondBr(nIsZero, doneBB, allocBB);
+
+        _builder.SetInsertPoint(allocBB);
+        auto elemSizeVal = _builder.getInt64(_module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
+        auto countI64 = _builder.CreateZExtOrTrunc(count, _builder.getInt64Ty(), "concat.n.i64");
+        auto len1I64 = _builder.CreateZExtOrTrunc(oldLen, _builder.getInt64Ty(), "concat.len1.i64");
+        auto len2I64 = _builder.CreateZExtOrTrunc(otherLen, _builder.getInt64Ty(), "concat.len2.i64");
+        auto newSize = _builder.CreateMul(countI64, elemSizeVal, "concat.new_size");
+        auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
+        auto newData = _builder.CreateCall(allocFn, {newSize}, "concat.new_data");
+        _builder.CreateBr(loop1HdrBB);
+
+        auto copyElem = [&](llvm::Value* srcData, llvm::Value* srcIdx, llvm::Value* dstIdx, const char* tag) {
+            auto oldElemPtr =
+                _builder.CreateInBoundsGEP(elemLLVMType, srcData, {srcIdx}, (string(tag) + ".old.ptr").c_str());
+            llvm::Value* elemVal = _builder.CreateLoad(elemLLVMType, oldElemPtr, (string(tag) + ".elem").c_str());
+            retainHandleAtCallSite(elemVal, *elemType);
+            if (!isBuiltinType(elemType->name) && structNeedsDestructor(*elemType)) {
+                elemVal =
+                    copyOfStructFields(elemVal, elemType->isGeneric() ? elemType->getMangleName() : elemType->name);
+            }
+            auto newElemPtr =
+                _builder.CreateInBoundsGEP(elemLLVMType, newData, {dstIdx}, (string(tag) + ".new.ptr").c_str());
+            _builder.CreateStore(elemVal, newElemPtr);
+        };
+
+        _builder.SetInsertPoint(loop1HdrBB);
+        auto i1 = _builder.CreatePHI(_builder.getInt64Ty(), 2, "concat.i1");
+        i1->addIncoming(_builder.getInt64(0), allocBB);
+        auto c1 = _builder.CreateICmpULT(i1, len1I64, "concat.l1.cond");
+        _builder.CreateCondBr(c1, loop1BodyBB, loop2HdrBB);
+
+        _builder.SetInsertPoint(loop1BodyBB);
+        copyElem(oldData, i1, i1, "concat.l1");
+        _builder.CreateBr(loop1LatchBB);
+        _builder.SetInsertPoint(loop1LatchBB);
+        auto i1n = _builder.CreateAdd(i1, _builder.getInt64(1), "concat.i1.next");
+        i1->addIncoming(i1n, loop1LatchBB);
+        _builder.CreateBr(loop1HdrBB);
+
+        _builder.SetInsertPoint(loop2HdrBB);
+        auto i2 = _builder.CreatePHI(_builder.getInt64Ty(), 2, "concat.i2");
+        i2->addIncoming(_builder.getInt64(0), loop1HdrBB);
+        auto c2 = _builder.CreateICmpULT(i2, len2I64, "concat.l2.cond");
+        _builder.CreateCondBr(c2, loop2BodyBB, loopExitBB);
+
+        _builder.SetInsertPoint(loop2BodyBB);
+        auto dst2 = _builder.CreateAdd(len1I64, i2, "concat.dst2");
+        copyElem(otherData, i2, dst2, "concat.l2");
+        _builder.CreateBr(loop2LatchBB);
+        _builder.SetInsertPoint(loop2LatchBB);
+        auto i2n = _builder.CreateAdd(i2, _builder.getInt64(1), "concat.i2.next");
+        i2->addIncoming(i2n, loop2LatchBB);
+        _builder.CreateBr(loop2HdrBB);
+
+        _builder.SetInsertPoint(loopExitBB);
+        llvm::Value* newArr = llvm::UndefValue::get(resultTy);
+        newArr = _builder.CreateInsertValue(newArr, newData, {0}, "concat.res.data");
+        newArr = _builder.CreateInsertValue(newArr, count, {1}, "concat.res.len");
+        newArr = _builder.CreateInsertValue(newArr, count, {2}, "concat.res.cap");
+        _builder.CreateBr(doneBB);
+
+        _builder.SetInsertPoint(doneBB);
+        auto resultPhi = _builder.CreatePHI(resultTy, 2, "concat.result");
+        resultPhi->addIncoming(emptyArr, startBB);
+        resultPhi->addIncoming(newArr, loopExitBB);
+        return resultPhi;
+    }
+
+    case sema::BuiltinLower::ArrayContains: {
+        DEBUG_LOG("    Expr: Array.contains()");
+        auto ptr = getReadPtr();
+        auto dataPtr = loadData(ptr);
+        auto lenVal = loadLen(ptr);
+        llvm::Value* needle = args[0];
+        const bool needleIsPtr = needle->getType()->isPointerTy();
+        const bool argIsRef = !argTypes.empty() && argTypes[0].isRef();
+        if (needleIsPtr && (argIsRef || !elemLLVMType->isPointerTy())) {
+            needle = _builder.CreateLoad(elemLLVMType, needle, "contains.needle");
+        }
+
+        auto* fn = _builder.GetInsertBlock()->getParent();
+        auto* startBB = _builder.GetInsertBlock();
+        auto* hdrBB = llvm::BasicBlock::Create(_context, "contains.hdr", fn);
+        auto* bodyBB = llvm::BasicBlock::Create(_context, "contains.body", fn);
+        auto* latchBB = llvm::BasicBlock::Create(_context, "contains.latch", fn);
+        auto* foundBB = llvm::BasicBlock::Create(_context, "contains.found", fn);
+        auto* doneBB = llvm::BasicBlock::Create(_context, "contains.done", fn);
+
+        auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
+        auto lenI64 = _builder.CreateZExtOrTrunc(lenVal, _builder.getInt64Ty(), "contains.len.i64");
+        _builder.CreateBr(hdrBB);
+
+        _builder.SetInsertPoint(hdrBB);
+        auto iPhi = _builder.CreatePHI(_builder.getInt64Ty(), 2, "contains.i");
+        iPhi->addIncoming(_builder.getInt64(0), startBB);
+        auto more = _builder.CreateICmpULT(iPhi, lenI64, "contains.more");
+        _builder.CreateCondBr(more, bodyBB, doneBB);
+
+        _builder.SetInsertPoint(bodyBB);
+        auto elemPtr = _builder.CreateInBoundsGEP(elemLLVMType, dataPtr, {iPhi}, "contains.elem.ptr");
+        llvm::Value* elemVal = _builder.CreateLoad(elemLLVMType, elemPtr, "contains.elem");
+        llvm::Value* eqv = nullptr;
+        if (elemType->isFloat()) {
+            eqv = _builder.CreateFCmpOEQ(elemVal, needle, "contains.eq");
+        } else if (isBuiltinType(elemType->name)) {
+            eqv = _builder.CreateICmpEQ(elemVal, needle, "contains.eq");
+        } else if (elemType->isString()) {
+            auto strTy = getLLVMType(*elemType);
+            auto lhsA = _builder.CreateAlloca(strTy, nullptr, "contains.lhs");
+            auto rhsA = _builder.CreateAlloca(strTy, nullptr, "contains.rhs");
+            _builder.CreateStore(elemVal, lhsA);
+            _builder.CreateStore(needle, rhsA);
+            TypeInfo strRef("Ref", {make_shared<TypeInfo>("String")});
+            auto eqFn = getMethodFunction("String", "eq", {strRef}, TypeInfo("bool"));
+            eqv = _builder.CreateCall(eqFn, {lhsA, rhsA}, "contains.str.eq");
+        } else {
+            auto bytes = _module->getDataLayout().getTypeStoreSize(elemLLVMType);
+            auto ptrTy2 = llvm::PointerType::get(_context, 0);
+            auto memcmpTy =
+                llvm::FunctionType::get(_builder.getInt32Ty(), {ptrTy2, ptrTy2, _builder.getInt64Ty()}, false);
+            auto memcmpFn = _module->getOrInsertFunction("yuxrt_memcmp", memcmpTy);
+            auto lhsA = _builder.CreateAlloca(elemLLVMType, nullptr, "contains.lhs");
+            auto rhsA = _builder.CreateAlloca(elemLLVMType, nullptr, "contains.rhs");
+            _builder.CreateStore(elemVal, lhsA);
+            _builder.CreateStore(needle, rhsA);
+            auto cmp = _builder.CreateCall(memcmpFn, {lhsA, rhsA, llvm::ConstantInt::get(_builder.getInt64Ty(), bytes)},
+                                           "contains.memcmp");
+            eqv = _builder.CreateICmpEQ(cmp, _builder.getInt32(0), "contains.eq");
+        }
+        _builder.CreateCondBr(eqv, foundBB, latchBB);
+
+        _builder.SetInsertPoint(latchBB);
+        auto iNext = _builder.CreateAdd(iPhi, _builder.getInt64(1), "contains.i.next");
+        iPhi->addIncoming(iNext, latchBB);
+        _builder.CreateBr(hdrBB);
+
+        _builder.SetInsertPoint(foundBB);
+        _builder.CreateBr(doneBB);
+
+        _builder.SetInsertPoint(doneBB);
+        auto resultPhi = _builder.CreatePHI(_builder.getInt1Ty(), 2, "contains.result");
+        resultPhi->addIncoming(llvm::ConstantInt::getFalse(_context), hdrBB);
+        resultPhi->addIncoming(llvm::ConstantInt::getTrue(_context), foundBB);
+        return resultPhi;
+    }
+
     case sema::BuiltinLower::None:
     case sema::BuiltinLower::ArrayWithCapacity:
     default:

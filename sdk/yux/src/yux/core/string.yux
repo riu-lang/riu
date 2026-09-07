@@ -63,6 +63,8 @@ struct String {
     a.len()
   }
 
+  fn is_empty() bool = $.len() == 0
+
   ; 取码点
   fn get(i usize) u32 {
     let a Array<u32>& = as_ref($._buf)
@@ -349,6 +351,81 @@ struct String {
     }
     parts.push(String::_from_range(&a, start, hlen))
     ret parts
+  }
+
+  ; 全部替换非重叠 from；空 from 返回自身（避免无限插入）
+  fn replace(from String&, to String&) String {
+    let a Array<u32>& = as_ref($._buf)
+    let b Array<u32>& = as_ref(from._buf)
+    let t Array<u32>& = as_ref(to._buf)
+    let flen usize = b.len()
+    if flen == 0 {
+      ret $
+    }
+    let hlen usize = a.len()
+    #Mut let buf Array<u32> = []
+    #Mut let i usize = 0
+    loop {
+      if i + flen > hlen {
+        break;
+      }
+      #Mut let j usize = 0
+      #Mut let hit bool = true
+      loop {
+        if j >= flen {
+          break;
+        }
+        if a[i + j] != b[j] {
+          hit = false
+          break;
+        }
+        j += 1
+      }
+      if hit {
+        loop k usize = 0 {
+          if k >= t.len() {
+            break;
+          }
+          buf.push(copy_of(t[k]))
+          k += 1
+        }
+        i += flen
+      } else {
+        buf.push(copy_of(a[i]))
+        i += 1
+      }
+    }
+    loop {
+      if i >= hlen {
+        break;
+      }
+      buf.push(copy_of(a[i]))
+      i += 1
+    }
+    String::_take_buf(move(buf))
+  }
+
+  ; 重复 n 次；n == 0 或空串 → ""
+  fn repeat(n usize) String {
+    if n == 0 || $.is_empty() {
+      ret String::empty()
+    }
+    let a Array<u32>& = as_ref($._buf)
+    #Mut let buf Array<u32> = []
+    loop k usize = 0 {
+      if k >= n {
+        break;
+      }
+      loop i usize = 0 {
+        if i >= a.len() {
+          break;
+        }
+        buf.push(copy_of(a[i]))
+        i += 1
+      }
+      k += 1
+    }
+    String::_take_buf(move(buf))
   }
 
   ; 十进制有符号 i32。可选前导 `+` / `-`；不吃空白。空 / 非数字 / 溢出 → null。

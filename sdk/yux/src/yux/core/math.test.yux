@@ -1,5 +1,16 @@
 ; math 标准库测试（Step 1：泛化基础函数）
-; #Inline #Cval 常量的跨文件显式通配导入见 math_int.test.yux。
+; `#Inline #Cval` 经 `use yux.core.math.*` 裸名可见（与 math_int.test.yux 相同）。
+; `math.PI` 点链会把模块当值（E5016）；函数点链 `math.abs` 仍合法。
+
+use yux.core.math.*
+
+; ==================== #Inline #Cval 跨文件常量 ====================
+
+#Test
+fn test_math_pi_const() {
+  assert_eq(PI, 3.141592653589793)
+  assert_eq(E, 2.718281828459045)
+}
 
 ; ==================== abs f64 ====================
 

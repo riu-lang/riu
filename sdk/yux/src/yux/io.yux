@@ -16,6 +16,24 @@ extern {
   fn _GetLastError() u32
   #CName("SetFilePointer")
   fn _SetFilePointer(hFile Ptr, lDistanceToMove i32, lpDistanceToMoveHigh Ptr, dwMoveMethod u32) u32
+  #CName("GetFileAttributesW")
+  fn _GetFileAttributesW(lpFileName Ptr) u32
+  #CName("DeleteFileW")
+  fn _DeleteFileW(lpFileName Ptr) i32
+  #CName("RemoveDirectoryW")
+  fn _RemoveDirectoryW(lpPathName Ptr) i32
+  #CName("CreateDirectoryW")
+  fn _CreateDirectoryW(lpPathName Ptr, lpSecurityAttributes Ptr) i32
+  #CName("GetCurrentDirectoryW")
+  fn _GetCurrentDirectoryW(nBufferLength u32, lpBuffer Ptr) u32
+  #CName("GetEnvironmentVariableW")
+  fn _GetEnvironmentVariableW(lpName Ptr, lpBuffer Ptr, nSize u32) u32
+  #CName("FindFirstFileW")
+  fn _FindFirstFileW(lpFileName Ptr, lpFindFileData Ptr) Ptr
+  #CName("FindNextFileW")
+  fn _FindNextFileW(hFindFile Ptr, lpFindFileData Ptr) i32
+  #CName("FindClose")
+  fn _FindClose(hFindFile Ptr) i32
 }
 
 ; Win32 常量（文件作用域）
@@ -49,6 +67,10 @@ let _ERROR_PATH_NOT_FOUND u32 = 3
 let _ERROR_ACCESS_DENIED u32 = 5
 #Cval
 let _ERROR_HANDLE_EOF u32 = 38
+#Cval
+let _INVALID_FILE_ATTRIBUTES u32 = 0xFFFFFFFFu32
+#Cval
+let _ERROR_NO_MORE_FILES u32 = 18
 
 enum IoErr {
   Eof
@@ -283,4 +305,220 @@ fn read_line() String ! IoErr {
     }
   }
   ret _from_utf8(&raw)!
+}
+
+fn _is_sep(cp u32) bool {
+  cp == c'/' || cp == c'\\'
+}
+
+fn _from_u16(buf Array<u16>&, n usize) String {
+  #Mut let cps Array<u32> = []
+  #Mut let i usize = 0
+  loop {
+    if i >= n {
+      break;
+    }
+    let x u16 = copy_of(buf[i])
+    if x == 0u16 {
+      break;
+    }
+    if x >= 55296u16 && x < 56320u16 {
+      i += 1
+      if i >= n {
+        cps.push(65533u32)
+        break;
+      }
+      let y u16 = copy_of(buf[i])
+      if y >= 56320u16 && y < 57344u16 {
+        let cp u32 = 65536u32 + ((x.to_u32() - 55296u32) << 10u32) + (y.to_u32() - 56320u32)
+        cps.push(cp)
+        i += 1
+      } else {
+        cps.push(65533u32)
+      }
+    } else {
+      cps.push(x.to_u32())
+      i += 1
+    }
+  }
+  ret String::from(&cps)
+}
+
+fn _cps_range(s String&, start usize, end usize) String {
+  #Mut let buf Array<u32> = []
+  loop i usize = start {
+    if i >= end {
+      break;
+    }
+    buf.push(s.get(i))
+    i += 1
+  }
+  ret String::from(&buf)
+}
+
+fn join(a String&, b String&) String {
+  if a.is_empty() {
+    ret b.to_string()
+  }
+  if b.is_empty() {
+    ret a.to_string()
+  }
+  if _is_sep(a.get(a.len() - 1)) || _is_sep(b.get(0)) {
+    ret a + b
+  }
+  ret a + "\\" + b
+}
+
+fn dirname(path String&) String {
+  #Mut let end usize = path.len()
+  loop {
+    if end == 0 {
+      break;
+    }
+    if !_is_sep(path.get(end - 1)) {
+      break;
+    }
+    end -= 1
+  }
+  if end == 0 {
+    if path.len() == 0 {
+      ret "."
+    }
+    ret _cps_range(path, 0, 1)
+  }
+  #Mut let sep usize? = null
+  loop i usize = 0 {
+    if i >= end {
+      break;
+    }
+    if _is_sep(path.get(i)) {
+      sep = i
+    }
+    i += 1
+  }
+  if !sep.has() {
+    ret "."
+  }
+  let s usize = sep.get()
+  if s == 0 {
+    ret _cps_range(path, 0, 1)
+  }
+  ret _cps_range(path, 0, s)
+}
+
+fn exists(path String&) bool {
+  #Mut let wide Array<u16> = _to_wide(path)
+  let attr u32 = _GetFileAttributesW(wide)
+  ret attr != _INVALID_FILE_ATTRIBUTES
+}
+
+fn remove(path String&) ! IoErr {
+  #Mut let wide Array<u16> = _to_wide(path)
+  let ok i32 = _DeleteFileW(wide)
+  if ok != 0 {
+    ret;
+  }
+  let okd i32 = _RemoveDirectoryW(wide)
+  if okd != 0 {
+    ret;
+  }
+  ret _map_last_err()
+}
+
+fn mkdir(path String&) ! IoErr {
+  #Mut let wide Array<u16> = _to_wide(path)
+  let ok i32 = _CreateDirectoryW(wide, null)
+  if ok == 0 {
+    ret _map_last_err()
+  }
+}
+
+fn cwd() String ! IoErr {
+  let need u32 = _GetCurrentDirectoryW(0, null)
+  if need == 0 {
+    ret _map_last_err()
+  }
+  let n usize = need.to_usize()
+  #Mut let buf Array<u16> = Array:<u16>::with_capacity(n)
+  loop i usize = 0 {
+    if i >= n {
+      break;
+    }
+    buf.push(0u16)
+    i += 1
+  }
+  let got u32 = _GetCurrentDirectoryW(need, buf)
+  if got == 0 {
+    ret _map_last_err()
+  }
+  ret _from_u16(&buf, got.to_usize())
+}
+
+fn env(name String&) String? {
+  #Mut let wname Array<u16> = _to_wide(name)
+  let need u32 = _GetEnvironmentVariableW(wname, null, 0)
+  if need == 0 {
+    ret null
+  }
+  let n usize = need.to_usize()
+  #Mut let buf Array<u16> = Array:<u16>::with_capacity(n)
+  loop i usize = 0 {
+    if i >= n {
+      break;
+    }
+    buf.push(0u16)
+    i += 1
+  }
+  let got u32 = _GetEnvironmentVariableW(wname, buf, need)
+  if got == 0 {
+    ret null
+  }
+  ret _from_u16(&buf, got.to_usize())
+}
+
+fn _find_name(data [u8 * 592]&) String {
+  #Mut let w Array<u16> = []
+  #Mut let off usize = 44
+  loop {
+    if off + 1 >= 592 {
+      break;
+    }
+    let lo u16 = copy_of(data[off]).to_u16()
+    let hi u16 = copy_of(data[off + 1]).to_u16()
+    let x u16 = lo + (hi << 8u16)
+    if x == 0u16 {
+      break;
+    }
+    w.push(x)
+    off += 2
+  }
+  ret _from_u16(&w, w.len())
+}
+
+fn list_dir(path String&) Array<String> ! IoErr {
+  let pattern String = join(path, "*")
+  #Mut let wide Array<u16> = _to_wide(&pattern)
+  #Mut let data [u8 * 592] = [0u8 ...]
+  let h Ptr = _FindFirstFileW(wide, &data)
+  if _bad_handle(h) {
+    ret _map_last_err()
+  }
+  #Mut let out Array<String> = []
+  loop {
+    let name String = _find_name(&data)
+    if name != "." && name != ".." {
+      out.push(name)
+    }
+    let ok i32 = _FindNextFileW(h, &data)
+    if ok == 0 {
+      let err u32 = _GetLastError()
+      if err != _ERROR_NO_MORE_FILES && err != 0 {
+        _FindClose(h);
+        ret _map_err(err)
+      }
+      break;
+    }
+  }
+  _FindClose(h);
+  ret out
 }

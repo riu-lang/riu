@@ -79,4 +79,17 @@ struct Map<K, V> {
     $._vals.pop()
     ret out
   }
+
+  fn keys() Array<K> {
+    ret $._keys.clone()
+  }
+
+  fn values() Array<V> {
+    ret $._vals.clone()
+  }
+
+  fn clear() {
+    $._keys.clear()
+    $._vals.clear()
+  }
 }
