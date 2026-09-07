@@ -20,7 +20,9 @@ class Yux;
 
 struct SdkPkgEntry {
     std::string moduleName;
+    std::string exportName;
     bool isFlat;
+    bool isPublic;
 };
 
 namespace sdk_loader {
@@ -29,14 +31,14 @@ namespace sdk_loader {
 std::string findSdkPath();
 
 // 读 <sdkDir>/pkg 文件（与 Yux::parsePkgFile 共用 parsePkgFileAt）。
-// 按源模块 stem 建表；`as` / `to` 由解析器认，本表仍以源名（文件 stem）为键。
+// 按源模块 stem 建表；保留导出名、扁平形态与是否公开，供 SDK parent scope 注册使用。
 std::map<std::string, SdkPkgEntry> readSdkPkg(const std::string& sdkDir);
 
 // 在 _sdkFile 上登记默认已导入的 `yux.core` 路径前缀：
-// - 每个 `yux.core.<stem>` 的末段别名（`map.Map` / `math.abs`）
-// - 包根 `yux` 只挂 `core.<stem>` 子路径（`yux.core.map.Map`）
+// - 仅公开清单项登记导出名别名（`map.Map` / `math.abs`）
+// - 包根 `yux` 只挂公开的 `core.<导出名>` 子路径（`yux.core.map.Map`）
 // 不把 `yux` 做成可点任意子包的根：未 use 的包（日后的 `yux.io`）不能靠包根漏出来。
-void registerSdkModulePaths(Yux& yux);
+void registerSdkModulePaths(Yux& yux, const std::map<std::string, SdkPkgEntry>& pkgMap);
 
 // 把 sdkDir 下所有非 .test.yux 解析进 yux。出错抛 YuxError (含解析失败 / AST 错误)。
 // 错误时附带的 sourcePath 是触发错误的具体 .yux 文件。

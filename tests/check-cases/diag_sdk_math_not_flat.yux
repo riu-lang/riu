@@ -1,0 +1,4 @@
+; require-sdk
+fn main() {
+  abs(-1)  ; check: E3030
+}

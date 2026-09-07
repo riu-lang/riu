@@ -1,23 +1,10 @@
 ; yux SDK - 自举运行时
 ; 使用 Windows API 进行 I/O
 
-; 外部函数声明（I/O + 进程退出仍走 Win32，内存管理走 yuxrt）
+use yux.core.helper.*
+
+; 外部函数声明（内存管理走 yuxrt；Win32 声明在定向开放的 helper.yux）
 extern {
-  fn GetStdHandle(nStdHandle i32) Ptr
-  fn WriteFile(hFile Ptr, lpBuffer Ptr, nNumberOfBytesToWrite u32, lpNumberOfBytesWritten Ptr, lpOverlapped Ptr) i32
-  #NoReturn
-  fn ExitProcess(uExitCode u32)
-
-  ; 命令行 / 时钟（`_` + #CName：避免扁平进 core 后与自身 E6014）
-  #CName("GetCommandLineW")
-  fn _GetCommandLineW() Ptr
-  #CName("CommandLineToArgvW")
-  fn _CommandLineToArgvW(lpCmdLine Ptr, pNumArgs Ptr) Ptr
-  #CName("LocalFree")
-  fn _LocalFree(hMem Ptr) Ptr
-  #CName("GetTickCount")
-  fn _GetTickCount() u32
-
   ; yuxrt 内存管理（替代 Win32 HeapAlloc/HeapFree）
   fn yuxrt_alloc(size u64) Ptr
   fn yuxrt_alloc_zeroed(size u64) Ptr
@@ -556,9 +543,9 @@ fn _from_wide_chars(p Ptr) String {
 
 ; 进程命令行。含 argv[0]（exe 路径）；用户参数从 [1] 起。失败 → []。
 fn args() Array<String> {
-  let cmd Ptr = _GetCommandLineW()
+  let cmd Ptr = GetCommandLineW()
   #Mut let n i32 = 0
-  let argv Ptr = _CommandLineToArgvW(cmd, &n)
+  let argv Ptr = CommandLineToArgvW(cmd, &n)
   if argv.to_int() == 0u64 {
     ret []
   }
@@ -573,11 +560,11 @@ fn args() Array<String> {
     out.push(_from_wide_chars(wstr))
     i += 1
   }
-  _LocalFree(argv);
+  LocalFree(argv);
   ret out
 }
 
 ; 自开机起的毫秒（GetTickCount，约 49 天回绕）。CLI 种子用，不承诺单调高精度。
 fn tick_ms() u32 {
-  _GetTickCount()
+  GetTickCount()
 }

@@ -1,8 +1,8 @@
 ; require-sdk
-; 与 SDK `GetStdHandle(i32) Ptr` 同 C 名但签名不同 → E2036
+; 与 SDK 公开 base 的 `yuxrt_alloc(u64) Ptr` 同 C 名但签名不同 → E2036
 
 extern {
-  fn GetStdHandle() i32  ; check: E2036
+  fn yuxrt_alloc() i32  ; check: E2036
 }
 
 fn main() {

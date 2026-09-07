@@ -54,13 +54,15 @@ std::map<std::string, SdkPkgEntry> readSdkPkg(const std::string& sdkDir) {
     std::map<std::string, SdkPkgEntry> r;
     auto items = parsePkgFileAt((fs::path(sdkDir) / "pkg").string());
     for (const auto& item : items) {
-        r[item.name] = {.moduleName = item.wildcard ? std::string("yux.core") : ("yux.core." + item.name),
-                        .isFlat = item.wildcard};
+        r[item.name] = {.moduleName = "yux.core." + item.name,
+                        .exportName = pkgExportName(item),
+                        .isFlat = item.wildcard,
+                        .isPublic = pkgExportIsPublic(item)};
     }
     return r;
 }
 
-void registerSdkModulePaths(Yux& yux) {
+void registerSdkModulePaths(Yux& yux, const std::map<std::string, SdkPkgEntry>& pkgMap) {
     auto sdk = yux.sdkFile();
     if (!sdk) return;
 
@@ -73,31 +75,35 @@ void registerSdkModulePaths(Yux& yux) {
         sdk->addPackageAlias("yux", "yux");
     }
 
-    for (auto& file : yux.files()) {
-        if (!file || file == sdk) continue;
-        const string& mn = file->moduleName();
-        // 只登记 yux.core 直接子模块，不扫 yux.* 任意包
-        if (mn.size() <= 9 || !mn.starts_with("yux.core.")) continue;
-        string stem = mn.substr(9);
-        if (stem.empty() || stem.find('.') != string::npos) continue;
+    for (const auto& pair : pkgMap) {
+        const auto& entry = pair.second;
+        if (!entry.isPublic) continue;
+        auto file = yux.module(entry.moduleName);
+        if (!file) continue;
+        const string& exportedName = entry.exportName;
 
-        // 末段别名：扁平导出的 map 也登记，才能写 `map.Map`（与 `math.abs` 同形）
-        if (!sdk->localSymbols().contains(stem)) {
-            SymbolInfo aliasSym(SymbolKind::Module, stem, TypeInfo());
-            aliasSym.moduleName = mn;
-            sdk->registerSymbol(stem, aliasSym);
-            sdk->addModuleAlias(stem, file);
+        // 末段别名：扁平导出的 map 也登记，才能写 `map.Map`（与 `math.abs` 同形）。
+        if (!sdk->localSymbols().contains(exportedName)) {
+            SymbolInfo aliasSym(SymbolKind::Module, exportedName, TypeInfo());
+            aliasSym.moduleName = entry.moduleName;
+            sdk->registerSymbol(exportedName, aliasSym);
+            sdk->addModuleAlias(exportedName, file);
         }
-        sdk->addPackageChild("yux", "core." + stem, file);
+        sdk->addPackageChild("yux", "core." + exportedName, file);
     }
 
-    // 扁平进 yux.core 的成员（base.GetStdHandle 等）也可写 `yux.core.fn`：
+    // 扁平进 yux.core 的成员（base.println 等）也可写 `yux.core.fn`：
     // 包孩子 `core` 指向 SDK 壳，lookup 走 wildcardImports。
     sdk->addPackageChild("yux", "core", sdk);
 }
 
 void parseSdkDir(const std::string& sdkDir, Yux& yux, bool allowDecl) {
     auto pkgMap = readSdkPkg(sdkDir);
+
+    fs::path ioFile = fs::path(sdkDir).parent_path() / "io.yux";
+    if (fs::is_regular_file(ioFile)) {
+        yux.registerModulePath(fs::absolute(ioFile).string(), "yux.io");
+    }
 
     std::vector<std::string> yuxFiles;
     for (const auto& entry : fs::directory_iterator(sdkDir)) {
@@ -109,6 +115,15 @@ void parseSdkDir(const std::string& sdkDir, Yux& yux, bool allowDecl) {
         }
     }
     std::ranges::sort(yuxFiles);
+    // 定向／未公开模块先加载，使同包公开模块在解析 `use yux.core.<name>` 时
+    // 能命中已加载模块；它们仍不会进入用户 parent scope。
+    std::ranges::stable_sort(yuxFiles, [&](const std::string& lhs, const std::string& rhs) {
+        auto priority = [&](const std::string& path) {
+            auto it = pkgMap.find(fs::path(path).stem().string());
+            return it == pkgMap.end() || !it->second.isPublic ? 0 : 1;
+        };
+        return priority(lhs) < priority(rhs);
+    });
 
     // 创建 _sdkFile 空壳作为父作用域（不再合并 AST）
     auto sdk = yux.createSdkFile();
@@ -155,21 +170,21 @@ void parseSdkDir(const std::string& sdkDir, Yux& yux, bool allowDecl) {
         auto it = pkgMap.find(stem);
 
         std::string moduleName;
-        if (it != pkgMap.end() && !it->second.moduleName.empty() && !it->second.isFlat) {
+        if (it != pkgMap.end() && !it->second.moduleName.empty()) {
             moduleName = it->second.moduleName;
         } else {
             moduleName = "yux.core." + stem;
         }
-        loadOne(yuxFile, moduleName, true);
+        bool flattenToCore = it != pkgMap.end() && it->second.isPublic && it->second.isFlat;
+        loadOne(yuxFile, moduleName, flattenToCore);
     }
 
     // 独立包 yux.io：不扁平进 core，未 use 时不可点 `yux.io` / 裸名 IoErr。
-    fs::path ioFile = fs::path(sdkDir).parent_path() / "io.yux";
     if (fs::is_regular_file(ioFile)) {
         loadOne(ioFile.string(), "yux.io", false);
     }
 
-    registerSdkModulePaths(yux);
+    registerSdkModulePaths(yux, pkgMap);
 }
 
 } // namespace sdk_loader

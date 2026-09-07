@@ -17,7 +17,7 @@ struct Slot<T> {
 }
 
 fn main() {
-  let s Slot<Ptr> = Slot:<Ptr>::make(GetStdHandle(-11i32))
-  s.lt_val(GetStdHandle(-12i32))
+  let s Slot<Ptr> = Slot:<Ptr>::make(ptr_from_addr(1u64))
+  s.lt_val(ptr_from_addr(2u64))
   ret;
 }

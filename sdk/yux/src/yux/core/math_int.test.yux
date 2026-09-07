@@ -9,6 +9,8 @@
 ; 已知缺口：无符号类型（u8/u16/u32/u64/u128）abs 不适用，
 ; min/max 对无符号类型未覆盖；更多 math.*（sqrt/sin/cos/log 等）见 math.test.yux。
 
+use yux.core.math.*
+
 ; ==================== abs i8 ====================
 
 ; 验证：负数 i8 类型的 abs 函数返回正数

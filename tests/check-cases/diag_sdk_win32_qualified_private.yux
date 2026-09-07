@@ -1,0 +1,4 @@
+; require-sdk
+fn main() {
+  yux.core.GetStdHandle(-11)  ; check: E6002
+}

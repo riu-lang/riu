@@ -1,0 +1,4 @@
+; require-sdk
+fn main() {
+  GetStdHandle(-11)  ; check: E3030
+}

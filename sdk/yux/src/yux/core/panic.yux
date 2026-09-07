@@ -11,6 +11,8 @@
 ; stderr 模板（DRAFT-错误.md §8.6）：`panic: <msg>\n` → 走 _stderr_write 通道，
 ; 与 stdout 业务输出隔离；用户重定向 `2>` 才能拿到。
 
+use yux.core.helper.*
+
 #NoReturn
 fn _yux_panic_failed(msg String) {
   eprint("panic: ")

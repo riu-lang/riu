@@ -13,7 +13,7 @@ fn yes_no(b bool) String {
 
 ; ptr_eq_null：验证 Ptr == null / != null
 fn test_eq_null() {
-  #Mut let h Ptr = GetStdHandle(-11i32)
+  #Mut let h Ptr = ptr_from_addr(1u64)
   if h == null {
     println("null")
   } else {

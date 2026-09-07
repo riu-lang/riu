@@ -78,6 +78,8 @@ public:
 
     // .decl 加载：把已构造的 FileNode 登记为模块（不 parse）
     void bindModule(p<FileNode> file, const string& absPath, const string& moduleName);
+    // SDK 自举等场景先登记已知依赖路径，供 pkg `to` 目标校验使用；不代表模块已加载。
+    void registerModulePath(const string& absPath, const string& moduleName);
     void keepBuilder(std::unique_ptr<ASTBuilder> builder);
     void adoptDeclOwner(std::unique_ptr<mod_decl::NodeOwner> owner);
 

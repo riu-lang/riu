@@ -1,0 +1,3 @@
+use yux.core.helper
+
+fn main() {}

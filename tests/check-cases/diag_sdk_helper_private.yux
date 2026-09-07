@@ -1,0 +1,4 @@
+; require-sdk
+use yux.core.helper  ; check: E5018
+
+fn main() {}

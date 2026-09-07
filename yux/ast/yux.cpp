@@ -53,6 +53,10 @@ void Yux::bindModule(p<FileNode> file, const string& absPath, const string& modu
     _specImplValidated = false;
 }
 
+void Yux::registerModulePath(const string& absPath, const string& moduleName) {
+    _modulePaths[moduleName] = absPath;
+}
+
 void Yux::addFile(const p<FileNode>& file) {
     if (file) file->setYux(this);
     _files.push_back(file);
@@ -590,6 +594,7 @@ vector<PkgExportItem> Yux::parsePkgFile(const string& moduleName) const {
     for (const auto& item : items) {
         for (const auto& target : item.toTargets) {
             if (modulePathKind(target) != ModulePathKind::NotFound || module(target)) continue;
+            if (!modulePath(target).empty()) continue;
             if (target == "yux.core" && _sdkFile) continue;
             if (_sdkFile && _sdkFile->yux() && _sdkFile->yux()->module(target)) continue;
             if (fs::is_directory(packageSourceDir(target))) continue;

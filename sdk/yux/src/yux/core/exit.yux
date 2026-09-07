@@ -4,6 +4,8 @@
 ; 直接调 Win32 ExitProcess（已标 #NoReturn），不经 _exit 包装：u32 与 ExitProcess
 ; 形参类型一致，省一次 to_i32() / to_u32() 来回。
 
+use yux.core.helper.*
+
 #NoReturn
 fn exit(code u32) {
   ExitProcess(code);
