@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-09-07 —— `yux.io` 路径类型与链接
+
+- **修改 §10.4.1.4**：公开 `basename` / `abs` / `is_dir` / `is_file` / `is_link` / `remove_all` / `symlink` / `hardlink` / `junction`。
+- **兼容**：既有 IO API 不变。`remove` 仍只删文件或空目录；树删除走 `remove_all`。软链失败时由调用方决定是否改 `junction`（`examples/wln`）。
+- **冲突 / 兼容**：无破坏。
+
 ## 2026-09-07 —— SDK `Number` spec 与静态字段契约
 
 - **新增 §12.7.5**：`Number` 统一 `MIN` / `MAX`、固定数值转换（不含 `to_bool`）、算术、比较与取负方法；12 个内置数字类型显式 `#Impl(Number)`。

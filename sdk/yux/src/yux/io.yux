@@ -34,6 +34,16 @@ extern {
   fn _FindNextFileW(hFindFile Ptr, lpFindFileData Ptr) i32
   #CName("FindClose")
   fn _FindClose(hFindFile Ptr) i32
+  #CName("SetFileAttributesW")
+  fn _SetFileAttributesW(lpFileName Ptr, dwFileAttributes u32) i32
+  #CName("GetFullPathNameW")
+  fn _GetFullPathNameW(lpFileName Ptr, nBufferLength u32, lpBuffer Ptr, lpFilePart Ptr) u32
+  #CName("CreateHardLinkW")
+  fn _CreateHardLinkW(lpFileName Ptr, lpExistingFileName Ptr, lpSecurityAttributes Ptr) i32
+  #CName("CreateSymbolicLinkW")
+  fn _CreateSymbolicLinkW(lpSymlinkFileName Ptr, lpTargetFileName Ptr, dwFlags u32) i32
+  #CName("DeviceIoControl")
+  fn _DeviceIoControl(hDevice Ptr, dwIoControlCode u32, lpInBuffer Ptr, nInBufferSize u32, lpOutBuffer Ptr, nOutBufferSize u32, lpBytesReturned Ptr, lpOverlapped Ptr) i32
 }
 
 ; Win32 常量（文件作用域）
@@ -71,6 +81,26 @@ let _ERROR_HANDLE_EOF u32 = 38
 let _INVALID_FILE_ATTRIBUTES u32 = 0xFFFFFFFFu32
 #Cval
 let _ERROR_NO_MORE_FILES u32 = 18
+#Cval
+let _ERROR_PRIVILEGE_NOT_HELD u32 = 1314
+#Cval
+let _FILE_ATTRIBUTE_READONLY u32 = 1
+#Cval
+let _FILE_ATTRIBUTE_DIRECTORY u32 = 16
+#Cval
+let _FILE_ATTRIBUTE_REPARSE_POINT u32 = 1024
+#Cval
+let _FILE_FLAG_OPEN_REPARSE_POINT u32 = 0x00200000
+#Cval
+let _FILE_FLAG_BACKUP_SEMANTICS u32 = 0x02000000
+#Cval
+let _SYMBOLIC_LINK_DIRECTORY u32 = 1
+#Cval
+let _SYMBOLIC_LINK_UNPRIVILEGED u32 = 2
+#Cval
+let _IO_REPARSE_TAG_MOUNT_POINT u32 = 0xA0000003
+#Cval
+let _FSCTL_SET_REPARSE_POINT u32 = 0x000900A4
 
 enum IoErr {
   Eof
@@ -521,4 +551,277 @@ fn list_dir(path String&) Array<String> ! IoErr {
   }
   _FindClose(h);
   ret out
+}
+
+fn _attrs(path String&) u32 {
+  #Mut let wide Array<u16> = _to_wide(path)
+  ret _GetFileAttributesW(wide)
+}
+
+fn _clear_readonly(path String&) {
+  let attr u32 = _attrs(path)
+  if attr != _INVALID_FILE_ATTRIBUTES && (attr & _FILE_ATTRIBUTE_READONLY) != 0 {
+    #Mut let wide Array<u16> = _to_wide(path)
+    _SetFileAttributesW(wide, attr & ~_FILE_ATTRIBUTE_READONLY);
+  }
+}
+
+fn _push_u16_le(buf Array<u8>&, v u16) {
+  buf.push((v & 255u16).to_u8())
+  buf.push((v >> 8u16).to_u8())
+}
+
+fn _push_u32_le(buf Array<u8>&, v u32) {
+  buf.push((v & 255u32).to_u8())
+  buf.push(((v >> 8u32) & 255u32).to_u8())
+  buf.push(((v >> 16u32) & 255u32).to_u8())
+  buf.push(((v >> 24u32) & 255u32).to_u8())
+}
+
+fn _push_wide(buf Array<u8>&, w Array<u16>&) {
+  loop i usize = 0 {
+    if i >= w.len() {
+      break;
+    }
+    _push_u16_le(buf, copy_of(w[i]))
+    i += 1
+  }
+}
+
+fn _wide_bytes(w Array<u16>&) usize {
+  if w.len() == 0 {
+    ret 0
+  }
+  ret (w.len() - 1) * 2
+}
+
+fn basename(path String&) String {
+  #Mut let end usize = path.len()
+  loop {
+    if end == 0 {
+      break;
+    }
+    if !_is_sep(path.get(end - 1)) {
+      break;
+    }
+    end -= 1
+  }
+  if end == 0 {
+    if path.len() == 0 {
+      ret ""
+    }
+    ret _cps_range(path, 0, 1)
+  }
+  #Mut let start usize = 0
+  loop i usize = 0 {
+    if i >= end {
+      break;
+    }
+    if _is_sep(path.get(i)) {
+      start = i + 1
+    }
+    i += 1
+  }
+  if start >= end {
+    ret path.to_string()
+  }
+  ret _cps_range(path, start, end)
+}
+
+fn is_dir(path String&) bool {
+  let attr u32 = _attrs(path)
+  ret attr != _INVALID_FILE_ATTRIBUTES && (attr & _FILE_ATTRIBUTE_DIRECTORY) != 0
+}
+
+fn is_file(path String&) bool {
+  let attr u32 = _attrs(path)
+  ret attr != _INVALID_FILE_ATTRIBUTES && (attr & _FILE_ATTRIBUTE_DIRECTORY) == 0
+}
+
+fn is_link(path String&) bool {
+  let attr u32 = _attrs(path)
+  ret attr != _INVALID_FILE_ATTRIBUTES && (attr & _FILE_ATTRIBUTE_REPARSE_POINT) != 0
+}
+
+fn abs(path String&) String ! IoErr {
+  #Mut let wide Array<u16> = _to_wide(path)
+  let need u32 = _GetFullPathNameW(wide, 0, null, null)
+  if need == 0 {
+    ret _map_last_err()
+  }
+  let n usize = need.to_usize()
+  #Mut let buf Array<u16> = Array:<u16>::with_capacity(n)
+  loop i usize = 0 {
+    if i >= n {
+      break;
+    }
+    buf.push(0u16)
+    i += 1
+  }
+  let got u32 = _GetFullPathNameW(wide, need, buf, null)
+  if got == 0 {
+    ret _map_last_err()
+  }
+  ret _from_u16(&buf, got.to_usize())
+}
+
+fn remove_all(path String&) ! IoErr {
+  let attr u32 = _attrs(path)
+  if attr == _INVALID_FILE_ATTRIBUTES {
+    let err u32 = _GetLastError()
+    if err == _ERROR_FILE_NOT_FOUND || err == _ERROR_PATH_NOT_FOUND {
+      ret;
+    }
+    ret _map_err(err)
+  }
+  _clear_readonly(path);
+  #Mut let wide Array<u16> = _to_wide(path)
+  if (attr & _FILE_ATTRIBUTE_REPARSE_POINT) != 0 {
+    #Mut let ok i32 = 0
+    if (attr & _FILE_ATTRIBUTE_DIRECTORY) != 0 {
+      ok = _RemoveDirectoryW(wide)
+    } else {
+      ok = _DeleteFileW(wide)
+    }
+    if ok == 0 {
+      ret _map_last_err()
+    }
+    ret;
+  }
+  if (attr & _FILE_ATTRIBUTE_DIRECTORY) != 0 {
+    let names Array<String> = list_dir(path)!
+    for n in names {
+      let child String = join(path, n)
+      remove_all(&child)!
+    }
+    let okd i32 = _RemoveDirectoryW(wide)
+    if okd == 0 {
+      ret _map_last_err()
+    }
+    ret;
+  }
+  let okf i32 = _DeleteFileW(wide)
+  if okf == 0 {
+    ret _map_last_err()
+  }
+}
+
+fn hardlink(target String&, link String&) ! IoErr {
+  if is_dir(target) {
+    ret IoErr::Other(1u32)
+  }
+  #Mut let tw Array<u16> = _to_wide(target)
+  #Mut let lw Array<u16> = _to_wide(link)
+  let ok i32 = _CreateHardLinkW(lw, tw, null)
+  if ok == 0 {
+    ret _map_last_err()
+  }
+}
+
+fn symlink(target String&, link String&) ! IoErr {
+  #Mut let flags u32 = _SYMBOLIC_LINK_UNPRIVILEGED
+  if is_dir(target) {
+    flags = flags | _SYMBOLIC_LINK_DIRECTORY
+  }
+  #Mut let tw Array<u16> = _to_wide(target)
+  #Mut let lw Array<u16> = _to_wide(link)
+  let ok i32 = _CreateSymbolicLinkW(lw, tw, flags)
+  if ok == 0 {
+    ret _map_last_err()
+  }
+}
+
+fn _win32_absolute(path String&) String ! IoErr {
+  let raw String = abs(path)!
+  #Mut let buf Array<u32> = []
+  loop i usize = 0 {
+    if i >= raw.len() {
+      break;
+    }
+    #Mut let cp u32 = raw.get(i)
+    if cp == c'/' {
+      cp = c'\\'
+    }
+    buf.push(cp)
+    i += 1
+  }
+  loop {
+    if buf.len() <= 3 {
+      break;
+    }
+    let last u32 = copy_of(buf[buf.len() - 1])
+    if last != c'\\' {
+      break;
+    }
+    buf.pop()
+  }
+  ret String::from(&buf)
+}
+
+fn _write_junction(target String&, link String&) ! IoErr {
+  let print0 String = _win32_absolute(target)!
+  #Mut let subst String = ""
+  #Mut let print String = ""
+  if print0.starts_with("\\\\?\\UNC\\") {
+    print = "\\\\" + _cps_range(&print0, 8, print0.len())
+    subst = "\\??\\UNC\\" + _cps_range(&print, 2, print.len())
+  } elif print0.starts_with("\\\\?\\") {
+    print = _cps_range(&print0, 4, print0.len())
+    subst = "\\??\\" + print
+  } elif print0.starts_with("\\\\") {
+    print = print0.to_string()
+    subst = "\\??\\UNC\\" + _cps_range(&print0, 2, print0.len())
+  } else {
+    print = print0.to_string()
+    subst = "\\??\\" + print0
+  }
+  #Mut let lw Array<u16> = _to_wide(link)
+  let mk i32 = _CreateDirectoryW(lw, null)
+  if mk == 0 {
+    ret _map_last_err()
+  }
+  let h Ptr = _CreateFileW(lw, _GENERIC_WRITE, 0u32, null, _OPEN_EXISTING, _FILE_FLAG_BACKUP_SEMANTICS | _FILE_FLAG_OPEN_REPARSE_POINT, null)
+  if _bad_handle(h) {
+    let err IoErr = _map_last_err()
+    _RemoveDirectoryW(lw);
+    ret err
+  }
+  #Mut let sw Array<u16> = _to_wide(&subst)
+  #Mut let pw Array<u16> = _to_wide(&print)
+  let subst_bytes usize = _wide_bytes(&sw)
+  let print_bytes usize = _wide_bytes(&pw)
+  let path_bytes usize = subst_bytes + 2 + print_bytes + 2
+  if path_bytes + 8 > 65535 {
+    _CloseHandle(h);
+    _RemoveDirectoryW(lw);
+    ret IoErr::Other(0u32)
+  }
+  #Mut let buf Array<u8> = []
+  _push_u32_le(&buf, _IO_REPARSE_TAG_MOUNT_POINT);
+  _push_u16_le(&buf, (8 + path_bytes).to_u16());
+  _push_u16_le(&buf, 0u16);
+  _push_u16_le(&buf, 0u16);
+  _push_u16_le(&buf, subst_bytes.to_u16());
+  _push_u16_le(&buf, (subst_bytes + 2).to_u16());
+  _push_u16_le(&buf, print_bytes.to_u16());
+  _push_wide(&buf, &sw);
+  _push_wide(&buf, &pw);
+  #Mut let returned u32 = 0
+  let ok i32 = _DeviceIoControl(h, _FSCTL_SET_REPARSE_POINT, buf, buf.len().to_u32(), null, 0u32, &returned, null)
+  #Mut let err u32 = 0
+  if ok == 0 {
+    err = _GetLastError()
+  }
+  _CloseHandle(h);
+  if ok == 0 {
+    _RemoveDirectoryW(lw);
+    ret _map_err(err)
+  }
+}
+
+fn junction(target String&, link String&) ! IoErr {
+  if !is_dir(target) {
+    ret IoErr::Other(1u32)
+  }
+  _write_junction(target, link)!
 }

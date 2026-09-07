@@ -10,6 +10,13 @@ fn _cleanup(path String&) {
   }
 }
 
+fn _cleanup_all(path String&) {
+  try {
+    remove_all(path)
+  } catch e IoErr {
+  }
+}
+
 fn _fail_io(op String&, e IoErr) {
   match e {
     IoErr::Eof => fail("${op}: Eof")
@@ -224,4 +231,209 @@ fn test_list_dir_missing() {
       IoErr::Other(code) => fail("list missing: Other(${code})")
     }
   }
+}
+
+#Test
+fn test_basename() {
+  assert_eq(basename("a\\b\\c"), "c")
+  assert_eq(basename("a/b/c"), "c")
+  assert_eq(basename("a\\b\\c\\"), "c")
+  assert_eq(basename("a"), "a")
+  assert_eq(basename(""), "")
+  assert_eq(basename("\\foo"), "foo")
+}
+
+#Test
+fn test_is_dir_file() {
+  let dir String = "_yux_io_kind_dir"
+  let file String = join(&dir, "f.txt")
+  _cleanup_all(&dir);
+  try {
+    mkdir(&dir)
+  } catch e IoErr {
+    _fail_io("mkdir_kind", e)
+  }
+  try {
+    write_file(&file, "x")
+  } catch e IoErr {
+    _cleanup_all(&dir);
+    _fail_io("write_kind", e)
+  }
+  assert_true(is_dir(&dir))
+  assert_false(is_file(&dir))
+  assert_true(is_file(&file))
+  assert_false(is_dir(&file))
+  assert_false(is_dir("_yux_io_kind_nope"))
+  assert_false(is_file("_yux_io_kind_nope"))
+  assert_false(is_link(&file))
+  _cleanup_all(&dir);
+}
+
+#Test
+fn test_abs_exists() {
+  let path String = "_yux_io_abs.txt"
+  _cleanup(&path);
+  try {
+    write_file(&path, "a")
+  } catch e IoErr {
+    _fail_io("write_abs", e)
+  }
+  let full String = try {
+    abs(&path)
+  } catch e IoErr {
+    _cleanup(&path);
+    _fail_io("abs", e);
+    ""
+  }
+  _cleanup(&path);
+  assert_true(full.len() > path.len())
+  assert_true(full.contains("_yux_io_abs.txt"))
+}
+
+#Test
+fn test_remove_all_tree() {
+  let dir String = "_yux_io_rm_tree"
+  let nested String = join(&dir, "sub")
+  let file String = join(&nested, "a.txt")
+  _cleanup_all(&dir);
+  try {
+    mkdir(&dir)
+    mkdir(&nested)
+    write_file(&file, "x")
+  } catch e IoErr {
+    _cleanup_all(&dir);
+    _fail_io("setup_rm_tree", e)
+  }
+  try {
+    remove_all(&dir)
+  } catch e IoErr {
+    _fail_io("remove_all", e)
+  }
+  assert_false(exists(&dir))
+}
+
+#Test
+fn test_hardlink_roundtrip() {
+  let a String = "_yux_io_hl_a.txt"
+  let b String = "_yux_io_hl_b.txt"
+  _cleanup(&a);
+  _cleanup(&b);
+  try {
+    write_file(&a, "hi")
+  } catch e IoErr {
+    _fail_io("write_hl", e)
+  }
+  try {
+    hardlink(&a, &b)
+  } catch e IoErr {
+    _cleanup(&a);
+    _cleanup(&b);
+    _fail_io("hardlink", e)
+  }
+  let s String = try {
+    read_file(&b)
+  } catch e IoErr {
+    _cleanup(&a);
+    _cleanup(&b);
+    _fail_io("read_hl", e);
+    ""
+  }
+  _cleanup(&b);
+  _cleanup(&a);
+  assert_eq(s, "hi")
+}
+
+#Test
+fn test_junction_roundtrip() {
+  let dir String = "_yux_io_jn_dir"
+  let link String = "_yux_io_jn_link"
+  let file String = join(&dir, "x.txt")
+  _cleanup_all(&link);
+  _cleanup_all(&dir);
+  try {
+    mkdir(&dir)
+    write_file(&file, "z")
+    junction(&dir, &link)
+  } catch e IoErr {
+    _cleanup_all(&link);
+    _cleanup_all(&dir);
+    _fail_io("junction", e)
+  }
+  assert_true(is_dir(&link))
+  assert_true(is_link(&link))
+  let via String = join(&link, "x.txt")
+  let s String = try {
+    read_file(&via)
+  } catch e IoErr {
+    _cleanup_all(&link);
+    _cleanup_all(&dir);
+    _fail_io("read_jn", e);
+    ""
+  }
+  try {
+    remove_all(&link)
+  } catch e IoErr {
+    _cleanup_all(&link);
+    _cleanup_all(&dir);
+    _fail_io("remove_jn", e)
+  }
+  assert_true(exists(&file))
+  _cleanup_all(&dir);
+  assert_eq(s, "z")
+}
+
+#Test
+fn test_symlink_file_or_skip() {
+  let a String = "_yux_io_sy_a.txt"
+  let b String = "_yux_io_sy_b.txt"
+  _cleanup(&a);
+  _cleanup(&b);
+  try {
+    write_file(&a, "sy")
+  } catch e IoErr {
+    _fail_io("write_sy", e)
+  }
+  try {
+    symlink(&a, &b)
+  } catch e IoErr {
+    match e {
+      IoErr::AccessDenied => {
+        _cleanup(&a);
+        ret;
+      }
+      IoErr::Other(code) => {
+        if code == 1314u32 {
+          _cleanup(&a);
+          ret;
+        }
+        _cleanup(&a);
+        _cleanup(&b);
+        _fail_io("symlink", e)
+      }
+      IoErr::Eof => {
+        _cleanup(&a);
+        _fail_io("symlink", e)
+      }
+      IoErr::NotFound => {
+        _cleanup(&a);
+        _fail_io("symlink", e)
+      }
+      IoErr::InvalidUtf8 => {
+        _cleanup(&a);
+        _fail_io("symlink", e)
+      }
+    }
+  }
+  let s String = try {
+    read_file(&b)
+  } catch e IoErr {
+    _cleanup(&a);
+    _cleanup(&b);
+    _fail_io("read_sy", e);
+    ""
+  }
+  assert_true(is_link(&b))
+  _cleanup(&b);
+  _cleanup(&a);
+  assert_eq(s, "sy")
 }

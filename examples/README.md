@@ -16,6 +16,7 @@ yux build
 | [cat](cat/) | 读文件到 stdout（`yux.io.read_file`） |
 | [guess](guess/) | stdin 猜数字（`read_line` + `parse_i32`） |
 | [ls](ls/) | 列目录（`cwd` / `exists` / `list_dir`） |
+| [wln](wln/) | 创建软链 / 硬链 / junction（`yux.io.symlink` 等） |
 | [test](test/) | 语法 demo + `yux test` |
 | [ffi](ffi/) | yux 调 C / C 读 yux 对象（先 `./prebuild.ps1`） |
 
