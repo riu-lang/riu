@@ -6,6 +6,7 @@
 ;   - .has() / .get()：判空与取值
 ;   - null 赋值：将 Nullable 重设为空
 ;   - Nullable<struct>：含字段访问 + ?? 链
+;   - struct 字段 T? 赋值：i32? / String? 三路包装（值 / null / 已是 T?）
 ;
 ; 已知缺口：Nullable 嵌套 ?? BUG（见 BUGS.md / Phase 2c）；
 ; Nullable 链式操作扩展见 nullable_chain.test.yux。
@@ -444,6 +445,115 @@ fn test_nullable_field_null() {
   ; 验证：struct 的 Nullable<String> 字段 has() = false
   let s BHNullableField = BHNullableField::make_null()
   assert_true(!s.label.has())
+}
+
+; ==================== struct 字段 T? 赋值（MemberAssign 三路包装） ====================
+
+struct NF_I32 {
+  n i32?
+}
+
+struct NF_Str {
+  name String?
+
+  fn set_name(s String) {
+    $.name = s
+  }
+}
+
+#Test
+fn test_struct_field_assign_i32_from_value() {
+  ; 验证：i32? 字段从 i32 隐式包装
+  #Mut let a NF_I32 = NF_I32 {
+    .n = null
+  }
+  a.n = 42
+  assert_true(a.n.has())
+  assert_eq(a.n.get(), 42)
+}
+
+#Test
+fn test_struct_field_assign_i32_from_null() {
+  ; 验证：i32? 字段赋 null
+  #Mut let a NF_I32 = NF_I32 {
+    .n = 1
+  }
+  a.n = null
+  assert_true(!a.n.has())
+}
+
+#Test
+fn test_struct_field_assign_i32_from_nullable() {
+  ; 验证：i32? 字段从 i32? 整份拷
+  #Mut let a NF_I32 = NF_I32 {
+    .n = null
+  }
+  let src i32? = 7
+  a.n = src
+  assert_eq(a.n.get(), 7)
+}
+
+#Test
+fn test_struct_field_assign_string_from_value() {
+  ; 验证：String? 字段从 String 变量包装（原先 LLVM assert）
+  #Mut let a NF_Str = NF_Str {
+    .name = null
+  }
+  let s String = "hello"
+  a.name = s
+  assert_true(a.name.has())
+  assert_eq(a.name ?? "", "hello")
+}
+
+#Test
+fn test_struct_field_assign_string_from_literal() {
+  ; 验证：String? 字段从字符串字面量包装
+  #Mut let a NF_Str = NF_Str {
+    .name = null
+  }
+  a.name = "world"
+  assert_eq(a.name ?? "", "world")
+}
+
+#Test
+fn test_struct_field_assign_string_from_null() {
+  ; 验证：String? 字段赋 null 释放旧值
+  #Mut let a NF_Str = NF_Str {
+    .name = "x"
+  }
+  a.name = null
+  assert_true(!a.name.has())
+}
+
+#Test
+fn test_struct_field_assign_string_from_nullable() {
+  ; 验证：String? 字段从 String? 整份拷
+  #Mut let a NF_Str = NF_Str {
+    .name = null
+  }
+  let src String? = "z"
+  a.name = src
+  assert_eq(a.name ?? "", "z")
+}
+
+#Test
+fn test_struct_field_reassign_string() {
+  ; 验证：String? 字段重赋覆盖旧句柄
+  #Mut let a NF_Str = NF_Str {
+    .name = "old"
+  }
+  a.name = "new"
+  assert_eq(a.name ?? "", "new")
+}
+
+#Test
+fn test_struct_field_assign_string_via_self() {
+  ; 验证：方法内 $.field = String 同样走包装
+  #Mut let a NF_Str = NF_Str {
+    .name = null
+  }
+  a.set_name("via-self")
+  assert_eq(a.name ?? "", "via-self")
 }
 
 ; ==================== String→String? 自动包装（迁自 bug_hunt） ====================

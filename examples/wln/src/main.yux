@@ -91,9 +91,9 @@ fn _same_path(a String&, b String&) bool {
   ret na.to_lower() == nb.to_lower()
 }
 
-fn _link_name(target String&, has_name bool, name String&) String {
-  if has_name {
-    ret name.to_string()
+fn _link_name(target String&, name String?) String {
+  if name.has() {
+    ret name ?? ""
   }
   let file String = basename(target)
   if file.is_empty() || file == "." || file == ".." {
@@ -151,8 +151,7 @@ struct Args {
   yes bool
   hard bool
   junction bool
-  has_name bool
-  name String
+  name String?
   path String
 }
 
@@ -163,8 +162,7 @@ fn main() {
     .yes = false
     .hard = false
     .junction = false
-    .has_name = false
-    .name = ""
+    .name = null
     .path = ""
   }
   #Mut let i usize = 1
@@ -206,13 +204,11 @@ fn main() {
       if i >= argv.len() {
         _die("Missing value for ${s}")
       }
-      a.has_name = true
       a.name = copy_of(argv[i])
       i += 1
       continue;
     }
     if s.starts_with("--name=") {
-      a.has_name = true
       a.name = _slice_from(&s, 7)
       i += 1
       continue;
@@ -234,7 +230,6 @@ fn main() {
           a.junction = true
         } elif ch == c'n' {
           if k + 1 < s.len() {
-            a.has_name = true
             a.name = _slice_from(&s, k + 1)
             k = s.len()
           } else {
@@ -242,7 +237,6 @@ fn main() {
             if i >= argv.len() {
               _die("Missing value for -n")
             }
-            a.has_name = true
             a.name = copy_of(argv[i])
             k = s.len()
           }
@@ -282,7 +276,7 @@ fn main() {
     _die("Target does not exist: ${a.path}")
   }
 
-  let link String = _link_name(&a.path, a.has_name, &a.name)
+  let link String = _link_name(&a.path, a.name)
   if _same_path(&a.path, &link) {
     _die("Link path cannot be the target itself: ${link}")
   }

@@ -1410,7 +1410,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                 std::array<llvm::Value*, 2> indices{zero, idx};
 
                 auto fieldPtr = _builder.CreateGEP(structType, structPtr, indices, "struct.field");
-                auto fieldType = field->getType();
+                auto fieldType = applySubst(field->getType());
 
                 // 处理 Array<T> 字段赋值（Phase 1b：分配 Block 并把 handle 写入字段）
                 // Phase 3d: 新 handle 来自 _array_alloc（strong=1），无需 retain；旧 handle 必须 release
@@ -1422,6 +1422,56 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
                         storeIntoSlot(fieldPtr, block, fieldType, expr, SlotStore::Replace);
                         return;
                     }
+                }
+
+                // Nullable<T> 字段赋值：与局部赋值相同的三路包装
+                //   1) null 字面量 → { _has=false, _value=zeroinit }
+                //   2) T 值 → 隐式包装为 { _has=true, _value=expr }
+                //   3) 已是 Nullable<T> → 整体结构体复制
+                // 不能 createCast(T → Nullable)：LLVM cast<Ty>() 会 abort（结构体字段 String? 赋值）
+                if (assignOp == AssignOp::Eq && fieldType.isNullable()) {
+                    auto innerType = fieldType.nullableInnerType();
+                    if (!innerType) {
+                        throwSemaGap(node->getLineNumber(), node->getColumn());
+                    }
+
+                    auto nullableStructType = getLLVMType(fieldType);
+                    auto innerLLVMType = getLLVMType(*innerType);
+                    auto nZero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+                    auto nOne = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
+
+                    llvm::Value* hasField =
+                        _builder.CreateGEP(nullableStructType, fieldPtr, {nZero, nZero}, "nullable_has");
+                    llvm::Value* valueField =
+                        _builder.CreateGEP(nullableStructType, fieldPtr, {nZero, nOne}, "nullable_value");
+
+                    if (isFlexibleNullExpr(expr)) {
+                        if (typeNeedsDestructor(fieldType)) {
+                            releaseAtPtr(fieldPtr, fieldType);
+                        }
+                        _builder.CreateStore(_builder.getInt1(false), hasField);
+                        _builder.CreateStore(llvm::Constant::getNullValue(innerLLVMType), valueField);
+                    } else {
+                        if (isIntTypeName(innerType->name) && isFlexibleIntExpr(expr)) {
+                            tryInferIntType(expr, *innerType);
+                        }
+                        auto exprType = expr->getType();
+                        auto exprVal = compileExpr(expr);
+
+                        if (exprType.isNullable() && exprType == fieldType) {
+                            storeIntoSlot(fieldPtr, exprVal, fieldType, expr, SlotStore::Replace);
+                        } else if (exprType == *innerType) {
+                            takeOwnership(exprVal, *innerType, expr);
+                            if (typeNeedsDestructor(fieldType)) {
+                                releaseAtPtr(fieldPtr, fieldType);
+                            }
+                            _builder.CreateStore(_builder.getInt1(true), hasField);
+                            _builder.CreateStore(exprVal, valueField);
+                        } else {
+                            throwSemaGap(node->getLineNumber(), node->getColumn());
+                        }
+                    }
+                    return;
                 }
 
                 auto exprVal = compileExpr(expr);
