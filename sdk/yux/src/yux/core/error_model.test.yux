@@ -51,6 +51,19 @@ fn parse_double(n i32) i32 ! ParseErr {
   ret v * 2
 }
 
+; Array 失败通道：RHS 未 store 时槽须可安全析构
+fn arr_or_err(fail bool) Array<i32> ! ParseErr {
+  if fail {
+    ret ParseErr::Empty
+  }
+  ret [1, 2]
+}
+
+fn arr_via_bang(fail bool) Array<i32> ! ParseErr {
+  let a Array<i32> = arr_or_err(fail)!
+  ret a
+}
+
 ; 验证：正常情况下，try 块中的成功值能够穿越并赋值给外部变量
 #Test
 fn test_fallible_success_path() {
@@ -330,4 +343,47 @@ fn test_trailing_only_lambda_bang() {
     -1
   }
   assert_eq(ok, 7)
+}
+
+; 验证：try 内 `let arr Array<T> = fallible()` 错误路径进 catch，不因未初始化槽析构崩溃
+#Test
+fn test_let_array_fallible_error_in_try() {
+  try {
+    let _n Array<i32> = arr_or_err(true)
+    fail("arr_or_err(true) should error");
+  } catch e ParseErr {
+  }
+}
+
+; 验证：同上形态成功路径仍能绑到 Array
+#Test
+fn test_let_array_fallible_ok_in_try() {
+  try {
+    let n Array<i32> = arr_or_err(false)
+    assert_eq(n.len(), 2)
+    assert_eq(n[0], 1)
+  } catch e ParseErr {
+    fail("arr_or_err(false) should succeed")
+  }
+}
+
+; 验证：`let arr = fallible()!` 错误透传同样不崩溃
+#Test
+fn test_let_array_bang_propagate_error() {
+  try {
+    arr_via_bang(true);
+    fail("arr_via_bang(true) should error");
+  } catch e ParseErr {
+  }
+}
+
+; 验证：`let arr = fallible()!` 成功透传
+#Test
+fn test_let_array_bang_propagate_ok() {
+  let n Array<i32> = try {
+    arr_via_bang(false)
+  } catch e ParseErr {
+    fail("arr_via_bang(false) should succeed");
+  }
+  assert_eq(n.len(), 2)
 }

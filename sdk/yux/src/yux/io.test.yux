@@ -212,8 +212,8 @@ fn test_list_dir_missing() {
   let dir String = "_yux_io_dir_nope"
   _cleanup(&dir);
   try {
-    list_dir(&dir);
-    fail("missing dir should error")
+    let _n Array<String> = list_dir(&dir)
+    fail("missing dir should error");
   } catch e IoErr {
     match e {
       IoErr::NotFound => {

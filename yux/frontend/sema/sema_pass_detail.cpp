@@ -860,9 +860,9 @@ void checkDeclareHandleRhs(p<ExprNode> expr, const TypeInfo& want, int line, int
         if (!tryGetExprType(expr, got)) return;
         TypeInfo g0 = applySubstMap(got, subst);
         if (g0.empty() || stillTemplateType(g0, typeParams, subst)) return;
-        auto g = sema::resolveAlias(g0, file, sdk);
+        auto g = sema::resolveAlias(g0, file, sdk).withoutFallible();
         if (g.isArrayGeneric() || g.name == "Array") return;
-        throw YuxError(line, col, ErrorCode::E3064);
+        throw YuxError(line, col, ErrorCode::E3064).withHint(std::format("表达式类型为 `{}`", g.getFullName()));
     }
 }
 

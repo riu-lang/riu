@@ -557,6 +557,13 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
 
         auto llvmType = getLLVMType(varType);
         auto alloca = _builder.CreateAlloca(llvmType, nullptr, varName);
+        // RHS 求值前零填充：错误通道（try-catch / `!` 透传）会跳过后续 store，
+        // 作用域尾仍析构此槽。未初始化的 Array._data 等是栈垃圾，free 即崩溃
+        // （BUGS：try 里 `let arr Array<T> = fallible()` 失败路径）。
+        // 与 compileDeclareStatement Phase 3a 同款；成功路径 Init store 覆盖，不 release 旧值。
+        if (typeNeedsDestructor(resolveAlias(varType))) {
+            _builder.CreateStore(llvm::Constant::getNullValue(llvmType), alloca);
+        }
         registerLocalVar(varName, alloca, varType);
 
         // 处理 Rc<T> 类型（Phase 1a 新布局：单 handle 指针 + Block 单分配）

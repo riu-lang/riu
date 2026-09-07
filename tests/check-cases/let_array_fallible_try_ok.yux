@@ -1,0 +1,16 @@
+; try 内 `let arr Array<T> = fallible()`：成功通道是 Array，失败进 catch
+enum E {
+  Boom
+}
+
+fn give() Array<i32> ! E {
+  ret [1]
+}
+
+fn main() {
+  try {
+    let _n Array<i32> = give()
+  } catch e E {
+  }
+  ret;
+}
