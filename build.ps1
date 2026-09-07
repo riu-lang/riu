@@ -166,7 +166,9 @@ if ($DoTest) {
     $yuxExe = Join-Path $OutDir 'bin\yux.exe'
     $runner = Join-Path $ProjectRoot 'tests\run.ps1'
     if ($Forward.Count -gt 0) {
-        & $runner -YuxExe $yuxExe @($Forward.ToArray())
+        $runnerArgs = @('-YuxExe', $yuxExe)
+        $runnerArgs += $Forward.ToArray()
+        & $runner @runnerArgs
     } else {
         & $runner -YuxExe $yuxExe
     }

@@ -173,6 +173,57 @@ static TypeInfo substGenericFnRet(const Node* from, const vector<p<TypeNode>>& t
     return retType;
 }
 
+// 已解析到目标模块的泛型函数时，直接按该声明替换返回类型。
+// 模块点调用不能复用上面的名字查找：调用方 scope 中只有模块别名，没有目标函数符号。
+static TypeInfo substResolvedGenericFnRet(const FnNode* fnNode, const vector<p<TypeNode>>& typeArgs,
+                                          const vector<p<ExprNode>>& args, TypeInfo retType) {
+    if (!fnNode || !fnNode->header() || !fnNode->header()->isGeneric()) return retType;
+
+    const auto& typeParams = fnNode->header()->typeParams();
+    std::map<std::string, TypeInfo> subst;
+    if (!typeArgs.empty() && typeParams.size() == typeArgs.size()) {
+        for (size_t i = 0; i < typeArgs.size(); ++i) {
+            subst[typeParams[i]] = typeArgs[i]->getType();
+        }
+    } else if (typeArgs.empty()) {
+        std::function<void(const TypeInfo&, const TypeInfo&)> unify = [&](const TypeInfo& param, const TypeInfo& arg) {
+            if (param.isNormal() && std::ranges::find(typeParams, param.name) != typeParams.end()) {
+                subst[param.name] = arg;
+                return;
+            }
+            if (param.hasGenericArgs() && arg.hasGenericArgs() && param.kind == arg.kind && param.name == arg.name &&
+                param.genericArgs.size() == arg.genericArgs.size()) {
+                for (size_t i = 0; i < param.genericArgs.size(); ++i) {
+                    if (param.genericArgs[i] && arg.genericArgs[i]) unify(*param.genericArgs[i], *arg.genericArgs[i]);
+                }
+            }
+            if (param.isRef()) {
+                if (auto elem = param.refElementType()) {
+                    if (arg.isRef()) {
+                        if (auto argElem = arg.refElementType()) unify(*elem, *argElem);
+                    } else {
+                        unify(*elem, arg);
+                    }
+                }
+            }
+            if (param.isNullable()) {
+                if (auto inner = param.nullableInnerType()) {
+                    if (arg.isNullable()) {
+                        if (auto argInner = arg.nullableInnerType()) unify(*inner, *argInner);
+                    } else {
+                        unify(*inner, arg);
+                    }
+                }
+            }
+        };
+        auto params = fnNode->header()->params();
+        for (size_t i = 0; i < params.size() && i < args.size(); ++i) {
+            if (params[i]->type()) unify(params[i]->type()->getType(), args[i]->getType());
+        }
+    }
+    return subst.empty() ? retType : retType.substitute(subst);
+}
+
 // §12.4：在生成式 AST 中遇到 `x.m()`（x:T 为泛型形参）时，
 // 用形参声明位的 draft 边界查 m 的返回类型；走包含 SDK 回退的 file 链。
 static TypeInfo lookupSpecBoundMethodRetType(Node* contextParent, const string& typeParamName,
@@ -486,6 +537,11 @@ TypeInfo ExprCallNode::getType() const {
                                 argTypes.push_back(arg->getType());
                             auto* fn = target->lookupFnSymbolWithParams(segs.back(), argTypes);
                             if (fn) return fn->retType;
+                            auto [genericFn, _] = target->getGenericFunction(segs.back());
+                            if (genericFn && genericFn->header()->retType()) {
+                                return substResolvedGenericFnRet(genericFn, _typeArgs, _args,
+                                                                 genericFn->header()->retType()->getType());
+                            }
                         }
                     }
                 }
@@ -511,6 +567,11 @@ TypeInfo ExprCallNode::getType() const {
                             }
                             auto* fn = target->lookupFnSymbolWithParams(dotNode->member(), argTypes);
                             if (fn) return fn->retType;
+                            auto [genericFn, _] = target->getGenericFunction(dotNode->member());
+                            if (genericFn && genericFn->header()->retType()) {
+                                return substResolvedGenericFnRet(genericFn, _typeArgs, _args,
+                                                                 genericFn->header()->retType()->getType());
+                            }
                         }
                     }
                 }

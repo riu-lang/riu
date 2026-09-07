@@ -5,7 +5,8 @@
 //
 // 一个目录视为一个"包"，缓存文件落在该包对应的 build 目录下，名为 `<pkgname>.cache`。
 // 文件首行为编译器指纹（yux.exe mtime + size），重编 yux 即整文件作废；
-// 后续每行 `<filename>\t<src-mtime-ns>\t<src-size>` 记录该目录中单个 .yux 源文件的元信息。
+// 后续每行 `<filename>\t<src-mtime-ns>\t<src-size>` 记录该目录中单个 .yux 源文件的元信息，
+// 另以保留键记录同目录 `pkg` 文件（含不存在状态）的元信息。
 //
 // 用法：
 //   PkgCacheRegistry caches(projectRoot, buildDir);
@@ -23,11 +24,11 @@ class PkgCache {
 public:
     PkgCache() = default;
     // 加载 cachePath 下的缓存。指纹不匹配或文件缺失则置 _valid = false（即所有 isFresh 返回 false）。
-    void load(const std::string& cachePath, const std::string& expectedFingerprint);
+    void load(const std::string& cachePath, const std::string& expectedFingerprint, const std::string& pkgPath);
     // src 是否仍与缓存条目一致，且 obj 存在。
     [[nodiscard]] bool isFresh(const std::string& srcAbs, const std::string& objPath) const;
     // 写入/更新条目。
-    void mark(const std::string& srcAbs);
+    void mark(const std::string& srcAbs, const std::string& pkgPath);
     // 是否需要写回。
     [[nodiscard]] bool dirty() const { return _dirty; }
     // 原子写回到 cachePath。
@@ -36,6 +37,7 @@ public:
 private:
     std::string _cachePath;
     bool _valid = false;
+    bool _pkgFresh = false;
     bool _dirty = false;
     // filename(basename of src) -> "mtime_ns\tsize"
     std::unordered_map<std::string, std::string> _entries;

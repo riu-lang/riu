@@ -6,6 +6,7 @@
 // 文件格式（行分隔，TAB 分隔字段）：
 //   <yux.exe-mtime-ns>\t<yux.exe-size>     ; 第 1 行：编译器指纹
 //   <filename>\t<src-mtime-ns>\t<src-size> ; 后续行：包内每个 .yux 源文件
+//   <pkg-key>\t<pkg-mtime-ns>\t<pkg-size>   ; 保留键：同目录 pkg（不存在为 0/0）
 //
 // 第 1 行不匹配当前 yux.exe → 整 cache 作废，等同空文件。
 // 写入用 tmp + rename 原子替换。
@@ -28,6 +29,9 @@
 #include <windows.h>
 
 namespace fs = std::filesystem;
+
+// Windows 文件名不能包含尖括号，因此不会与真实源文件 basename 冲突。
+static constexpr const char* PKG_ENTRY_KEY = "<pkg>";
 
 // ==================== 工具 ====================
 
@@ -76,9 +80,10 @@ std::string mirroredOutputBase(const std::string& projectRoot, const std::string
 
 // ==================== PkgCache ====================
 
-void PkgCache::load(const std::string& cachePath, const std::string& expectedFingerprint) {
+void PkgCache::load(const std::string& cachePath, const std::string& expectedFingerprint, const std::string& pkgPath) {
     _cachePath = cachePath;
     _valid = false;
+    _pkgFresh = false;
     _dirty = false;
     _entries.clear();
 
@@ -99,10 +104,12 @@ void PkgCache::load(const std::string& cachePath, const std::string& expectedFin
         _entries.emplace(std::move(filename), std::move(value));
     }
     _valid = true;
+    auto pkgIt = _entries.find(PKG_ENTRY_KEY);
+    _pkgFresh = pkgIt != _entries.end() && pkgIt->second == entryValue(mtimeNs(pkgPath), fsize(pkgPath));
 }
 
 bool PkgCache::isFresh(const std::string& srcAbs, const std::string& objPath) const {
-    if (!_valid) return false;
+    if (!_valid || !_pkgFresh) return false;
     std::error_code ec;
     if (!fs::exists(objPath, ec)) return false;
     std::string filename = fs::path(srcAbs).filename().string();
@@ -111,12 +118,18 @@ bool PkgCache::isFresh(const std::string& srcAbs, const std::string& objPath) co
     return it->second == entryValue(mtimeNs(srcAbs), fsize(srcAbs));
 }
 
-void PkgCache::mark(const std::string& srcAbs) {
+void PkgCache::mark(const std::string& srcAbs, const std::string& pkgPath) {
     std::string filename = fs::path(srcAbs).filename().string();
     std::string val = entryValue(mtimeNs(srcAbs), fsize(srcAbs));
     auto it = _entries.find(filename);
     if (it == _entries.end() || it->second != val) {
         _entries[filename] = std::move(val);
+        _dirty = true;
+    }
+    std::string pkgVal = entryValue(mtimeNs(pkgPath), fsize(pkgPath));
+    auto pkgIt = _entries.find(PKG_ENTRY_KEY);
+    if (pkgIt == _entries.end() || pkgIt->second != pkgVal) {
+        _entries[PKG_ENTRY_KEY] = std::move(pkgVal);
         _dirty = true;
     }
 }
@@ -171,7 +184,8 @@ PkgCache& PkgCacheRegistry::getOrLoad(const std::string& srcAbs) {
     auto it = _caches.find(cp);
     if (it != _caches.end()) return it->second;
     PkgCache cache;
-    cache.load(cp, _fingerprint);
+    std::string pkgPath = (fs::path(srcAbs).parent_path() / "pkg").string();
+    cache.load(cp, _fingerprint, pkgPath);
     auto [ins, _] = _caches.emplace(cp, std::move(cache));
     return ins->second;
 }
@@ -181,7 +195,8 @@ bool PkgCacheRegistry::isFresh(const std::string& srcAbs, const std::string& obj
 }
 
 void PkgCacheRegistry::mark(const std::string& srcAbs) {
-    getOrLoad(srcAbs).mark(srcAbs);
+    std::string pkgPath = (fs::path(srcAbs).parent_path() / "pkg").string();
+    getOrLoad(srcAbs).mark(srcAbs, pkgPath);
 }
 
 void PkgCacheRegistry::flushAll() {
