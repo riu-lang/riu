@@ -741,6 +741,18 @@ struct StringBuilder {
     }
   }
 
+  ; 追加常用标量的文本表示；u8 / u32 保留上面的 byte / 码点语义
+  fn append(value i8) { $.append(value.to_string()) }
+  fn append(value i16) { $.append(value.to_string()) }
+  fn append(value u16) { $.append(value.to_string()) }
+  fn append(value i32) { $.append(value.to_string()) }
+  fn append(value i64) { $.append(value.to_string()) }
+  fn append(value u64) { $.append(value.to_string()) }
+  fn append(value usize) { $.append(value.to_string()) }
+  fn append(value f32) { $.append(value.to_string()) }
+  fn append(value f64) { $.append(value.to_string()) }
+  fn append(value bool) { $.append(value.to_string()) }
+
   ; 清空缓冲
   fn clear() {
     $.data = []

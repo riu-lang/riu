@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-09-08 —— `StringBuilder.append` 标量文本重载
+
+- **修改 §9.4.2**：`StringBuilder.append` 新增 `i8` / `i16` / `u16` / `i32` / `i64` / `u64` / `usize` / `f32` / `f64` / `bool` 重载，追加对应 `to_string()` 文本。
+- **语义保留**：`u8` 仍按 ASCII 字节追加，`u32` 仍按 Unicode 码点追加；二者需要十进制文本时显式调用 `to_string()`。
+- **冲突 / 兼容**：纯增量；既有 `u8` / `u32` / `String` 重载行为不变。
+
 ## 2026-09-08 —— SDK `Set<T>` 与 Map `get_or`
 
 - **修改 §10.4.1.5**：新增纯 yux `Set<T>`，内嵌 `Map<T, bool>` 去重，公开 `make` / `insert` / `contains` / `remove` / `len` / `is_empty` / `keys` / `clear`。
