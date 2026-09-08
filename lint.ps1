@@ -14,7 +14,7 @@ $ErrorActionPreference = 'Stop'
 $ProjectRoot = $PSScriptRoot
 $SrcExts = @('.h', '.hpp', '.cpp', '.cc', '.cxx')
 $OutDir = Join-Path $ProjectRoot 'build\windows\x64\debug'
-if ($env:YUX_OUT_DIR) { $OutDir = $env:YUX_OUT_DIR }
+$CompileCommands = Join-Path $OutDir 'compile_commands.json'
 
 function Write-Log([string]$Message, [ConsoleColor]$Color = [ConsoleColor]::White) {
     Write-Host $Message -ForegroundColor $Color
@@ -76,11 +76,10 @@ function Filter-Cxx([string[]]$Files) {
 }
 
 function Get-CompileCommandsFiles {
-    $cc = Join-Path $OutDir 'compile_commands.json'
-    if (-not (Test-Path -LiteralPath $cc)) {
-        throw "compile_commands.json not found. Run ./build.ps1 --gen-only first."
+    if (-not (Test-Path -LiteralPath $CompileCommands)) {
+        throw "Debug compile_commands.json not found at $CompileCommands. Run ./build.ps1 --gen-only first."
     }
-    $json = Get-Content -LiteralPath $cc -Raw -Encoding utf8 | ConvertFrom-Json
+    $json = Get-Content -LiteralPath $CompileCommands -Raw -Encoding utf8 | ConvertFrom-Json
     $result = New-Object System.Collections.Generic.List[string]
     $seen = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($e in $json) {
@@ -105,7 +104,7 @@ function Show-Help {
   ./lint.ps1 yux/x.cpp    指定文件
   ./lint.ps1 -h / --help  帮助
 
-需要 compile_commands.json（./build.ps1 --gen-only）。提交须 0 warnings。
+固定使用 build/windows/x64/debug/compile_commands.json（./build.ps1 --gen-only）。提交须 0 warnings。
 '@
 }
 
@@ -139,13 +138,13 @@ if (-not $tidy) {
     Write-Log 'clang-tidy not found in PATH; aborting.' Red
     exit 2
 }
-if (-not (Test-Path -LiteralPath (Join-Path $OutDir 'compile_commands.json'))) {
-    Write-Log 'compile_commands.json missing. Run ./build.ps1 --gen-only' Red
+if (-not (Test-Path -LiteralPath $CompileCommands)) {
+    Write-Log "Debug compile_commands.json missing at $CompileCommands. Run ./build.ps1 --gen-only" Red
     exit 2
 }
 
 Write-Log "clang-tidy: $tidy" DarkGray
-Write-Log "compile_commands: $OutDir`n" DarkGray
+Write-Log "compile_commands: $CompileCommands`n" DarkGray
 
 Push-Location $ProjectRoot
 try {
