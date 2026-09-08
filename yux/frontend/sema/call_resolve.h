@@ -288,6 +288,12 @@ void validateFreeIntrinsicArity(const string& fnName, size_t argsCount, int line
 void validateArrayMethodCall(const TypeInfo& baseType, const string& member, size_t argsCount, bool baseIsLvalue,
                              int line, int col);
 
+// Array 高阶方法的类型实参与 Function 形参检查；返回调用结果类型。
+// map<U> 无显式 U 时从 Function<T&, U> 的返回类型反推。
+TypeInfo validateArrayMethodTypes(const TypeInfo& baseType, const string& member,
+                                  const vector<TypeInfo>& methodTypeArgs, const vector<TypeInfo>& argTypes, int line,
+                                  int col);
+
 // `_ptr_offset` 跨模块私有访问检查 (Phase 3.3.3.a, E6023).
 //
 // 私有 `_`-prefixed 内建 fn 仅允许在声明所在模块内调用. 语义上与 E6006

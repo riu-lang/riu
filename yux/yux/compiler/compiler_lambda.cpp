@@ -161,6 +161,12 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     for (size_t i = 0; i < paramTypes.size(); ++i, ++argIt) {
         auto paramName = node->params()[i].name.getText();
         argIt->setName(paramName);
+        if (paramTypes[i].isRef()) {
+            // 与普通 fn / method 一致：T& 的 LLVM 实参本身就是底层 T*。
+            // 若再 alloca 一个 ptr 槽，变量读取会把指针低位误当成 T 值。
+            _localVarPtrs[paramName] = &*argIt;
+            continue;
+        }
         auto llvmType = getLLVMType(paramTypes[i]);
         auto alloca = _builder.CreateAlloca(llvmType, nullptr, paramName);
         _builder.CreateStore(&*argIt, alloca);

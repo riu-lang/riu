@@ -1,0 +1,8 @@
+; require-sdk
+; Array.map 只有一个方法类型实参 U
+
+fn main() {
+  let values Array<i32> = [1, 2, 3]
+  values.map:<i32, bool>((x i32&) i32 => x)  ; check: E6010
+  ret;
+}

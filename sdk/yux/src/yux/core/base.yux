@@ -304,6 +304,21 @@ struct Array<T> {
   #Builtin
   fn contains(item T&) bool
 
+  ; 急切高阶查询；predicate 每个元素至多调用一次，元素以 T& 借用
+  #Builtin
+  fn any(predicate Function<T&, bool>) bool
+
+  #Builtin
+  fn all(predicate Function<T&, bool>) bool
+
+  ; 急切构造新数组；命中元素走 copy_of，不共享接收者缓冲
+  #Builtin
+  fn filter(predicate Function<T&, bool>) Array<T>
+
+  ; U 可由 transform 的 Function 返回类型推断，也可在调用点显式写 map:<U>
+  #Builtin
+  fn map<U>(transform Function<T&, U>) Array<U>
+
   #Builtin
   fn index_of(item T&) usize?
 

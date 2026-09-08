@@ -442,6 +442,31 @@ const std::vector<p<ExprNode>>& ExprCallNode::getArgs() const {
 TypeInfo ExprCallNode::getType() const {
     auto type = _calleeExpr->getType();
 
+    // Array.map<U> 的返回类型依赖方法自己的 U；方法点只编码占位返回，
+    // 在调用节点用显式类型实参或 Function<T&, U> 实参补全。
+    if (auto dot = dynamic_cast<ExprDotNode*>(_calleeExpr)) {
+        TypeInfo recv;
+        try {
+            recv = dot->baseExpr()->getType().peelAutoDeref();
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+        }
+        if (recv.isArrayGeneric() || recv.isArray()) {
+            if (auto* spec = sema::lookupInstanceBuiltin(recv, dot->member());
+                spec && spec->ret == sema::BuiltinRet::TypeArg0Array) {
+                vector<TypeInfo> methodTypeArgs;
+                methodTypeArgs.reserve(_typeArgs.size());
+                for (auto& tn : _typeArgs)
+                    methodTypeArgs.push_back(tn->getType());
+                vector<TypeInfo> argTypes;
+                argTypes.reserve(_args.size());
+                for (auto& arg : _args)
+                    argTypes.push_back(arg->getType());
+                auto ret = sema::builtinMethodCallReturnType(*spec, recv, methodTypeArgs, argTypes);
+                if (!ret.empty()) return ret;
+            }
+        }
+    }
+
     // callee 为 TypeKind::Fn：lambda / fn 变量 / 字段 / 方法点（方法只编码返回类型）。
     // 调用结果即 fn 返回类型；unit 时返回空 TypeInfo。
     if (type.isFn()) {

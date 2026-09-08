@@ -17,7 +17,7 @@ namespace sema {
 
 enum class BuiltinRecv : u8 { Array, String };
 
-enum class BuiltinRet : u8 { Void, Usize, Bool, Elem, ElemRef, Self, ElemNullable, UsizeNullable };
+enum class BuiltinRet : u8 { Void, Usize, Bool, Elem, ElemRef, Self, ElemNullable, UsizeNullable, TypeArg0Array };
 
 enum class BuiltinLower : u8 {
     None,
@@ -37,6 +37,10 @@ enum class BuiltinLower : u8 {
     ArraySlice,
     ArrayConcat,
     ArrayContains,
+    ArrayAny,
+    ArrayAll,
+    ArrayFilter,
+    ArrayMap,
     ArrayIndexOf,
     ArrayLastIndexOf,
     ArrayGetOrNull,
@@ -60,6 +64,7 @@ struct BuiltinMethodSpec {
     const char* arg1Type; // 第 1 实参（slice 的 end）；空则无或与 arg0 相同规则
     BuiltinRet ret;
     BuiltinLower lower;
+    u8 typeArity = 0; // 方法自己的泛型形参数；当前仅 Array.map<U>
 };
 
 inline bool recvMatches(BuiltinRecv r, const TypeInfo& t) {
@@ -221,6 +226,47 @@ inline constexpr std::array kBuiltinMethods = {
                       .arg1Type = nullptr,
                       .ret = BuiltinRet::Bool,
                       .lower = BuiltinLower::ArrayContains},
+    BuiltinMethodSpec{.recv = BuiltinRecv::Array,
+                      .name = "any",
+                      .arity = 1,
+                      .needsLvalue = false,
+                      .isStatic = false,
+                      .needsElemType = true,
+                      .arg0Type = "Predicate",
+                      .arg1Type = nullptr,
+                      .ret = BuiltinRet::Bool,
+                      .lower = BuiltinLower::ArrayAny},
+    BuiltinMethodSpec{.recv = BuiltinRecv::Array,
+                      .name = "all",
+                      .arity = 1,
+                      .needsLvalue = false,
+                      .isStatic = false,
+                      .needsElemType = true,
+                      .arg0Type = "Predicate",
+                      .arg1Type = nullptr,
+                      .ret = BuiltinRet::Bool,
+                      .lower = BuiltinLower::ArrayAll},
+    BuiltinMethodSpec{.recv = BuiltinRecv::Array,
+                      .name = "filter",
+                      .arity = 1,
+                      .needsLvalue = false,
+                      .isStatic = false,
+                      .needsElemType = true,
+                      .arg0Type = "Predicate",
+                      .arg1Type = nullptr,
+                      .ret = BuiltinRet::Self,
+                      .lower = BuiltinLower::ArrayFilter},
+    BuiltinMethodSpec{.recv = BuiltinRecv::Array,
+                      .name = "map",
+                      .arity = 1,
+                      .needsLvalue = false,
+                      .isStatic = false,
+                      .needsElemType = true,
+                      .arg0Type = "Transform",
+                      .arg1Type = nullptr,
+                      .ret = BuiltinRet::TypeArg0Array,
+                      .lower = BuiltinLower::ArrayMap,
+                      .typeArity = 1},
     BuiltinMethodSpec{.recv = BuiltinRecv::Array,
                       .name = "index_of",
                       .arity = 1,
@@ -384,6 +430,42 @@ inline TypeInfo builtinMethodReturnType(const BuiltinMethodSpec& spec, const Typ
     }
     case BuiltinRet::UsizeNullable:
         return TypeInfo("Nullable", {make_shared<TypeInfo>("usize")});
+    case BuiltinRet::TypeArg0Array:
+        return TypeInfo("Array", {make_shared<TypeInfo>("U")});
+    }
+    return {};
+}
+
+// 高阶 Array 方法的单一函数形参类型。其它方法仍沿用现有 arg0Type 形态检查。
+inline TypeInfo builtinHigherOrderArgType(const BuiltinMethodSpec& spec, const TypeInfo& recv,
+                                          const TypeInfo* methodTypeArg = nullptr) {
+    if (spec.lower != BuiltinLower::ArrayAny && spec.lower != BuiltinLower::ArrayAll &&
+        spec.lower != BuiltinLower::ArrayFilter && spec.lower != BuiltinLower::ArrayMap) {
+        return {};
+    }
+    auto elem = recv.isArrayGeneric() ? recv.arrayGenericElementType() : recv.elementType;
+    if (!elem) return {};
+    auto elemRef = make_shared<TypeInfo>("Ref", vector<sp<TypeInfo>>{elem});
+    sp<TypeInfo> ret;
+    if (spec.lower == BuiltinLower::ArrayMap) {
+        if (!methodTypeArg) return {};
+        ret = make_shared<TypeInfo>(*methodTypeArg);
+    } else {
+        ret = make_shared<TypeInfo>("bool");
+    }
+    return TypeInfo(FnTag{}, {std::move(elemRef)}, std::move(ret));
+}
+
+inline TypeInfo builtinMethodCallReturnType(const BuiltinMethodSpec& spec, const TypeInfo& recv,
+                                            const vector<TypeInfo>& methodTypeArgs, const vector<TypeInfo>& argTypes) {
+    if (spec.ret != BuiltinRet::TypeArg0Array) return builtinMethodReturnType(spec, recv);
+    if (!methodTypeArgs.empty()) {
+        return TypeInfo("Array", {make_shared<TypeInfo>(methodTypeArgs[0])});
+    }
+    if (!argTypes.empty() && argTypes[0].isFn()) {
+        if (auto ret = argTypes[0].fnReturnType(); ret && !ret->empty()) {
+            return TypeInfo("Array", {make_shared<TypeInfo>(ret->withoutFallible())});
+        }
     }
     return {};
 }

@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-09-08 —— `Array` 急切高阶方法
+
+- **修改 §9.2.3 / 新增 §9.2.3.5**：公开 `any` / `all` / `filter` / `map<U>`；回调元素统一为 `T&`。`any` / `all` 短路，`filter` / `map` 急切返回独立新数组，不引入惰性迭代器。
+- **类型实参**：`map` 可写 `arr.map:<U>(transform)`；当实参已有明确 `Function<T&, U>` 类型时可反推 `U`。
+- **冲突 / 兼容**：纯增量；既有 `Array` 方法和所有权规则不变。
+
 ## 2026-09-07 —— `Array` 查询 / 改位方法
 
 - **修改 §9.2.3 / §9.2.3.2**：公开 `index_of` / `last_index_of`（`T&` → `usize?`）、`get_or_null` / `first_or_null` / `last_or_null`（`T?`，命中走 `copy_of`）、`insert` / `remove_at` / `reverse`（`#Mut` 接收者）、`take` / `drop`（`slice` 包装）。`insert` 在 `i == len` 时等价 `push`；`i > len` 与 `remove_at` 越界终止。

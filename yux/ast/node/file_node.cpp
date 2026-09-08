@@ -91,6 +91,7 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
         TypeInfo tpVoid;
         TypeInfo tpBool("bool");
         TypeInfo tpArrayT("Array", {make_shared<TypeInfo>(tpT)});
+        TypeInfo tpArrayU("Array", {make_shared<TypeInfo>("U")});
         TypeInfo tpElemNull("Nullable", {make_shared<TypeInfo>(tpT)});
         TypeInfo tpUsizeNull("Nullable", {make_shared<TypeInfo>("usize")});
 
@@ -122,11 +123,18 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
             case sema::BuiltinRet::UsizeNullable:
                 ret = tpUsizeNull;
                 break;
+            case sema::BuiltinRet::TypeArg0Array:
+                ret = tpArrayU;
+                break;
             }
             vector<TypeInfo> params;
             if (spec.arity >= 1) {
                 if (spec.arg0Type && string(spec.arg0Type) == "Array") {
                     params.push_back(TypeInfo("Ref", {make_shared<TypeInfo>(tpArrayT)}));
+                } else if (spec.arg0Type && string(spec.arg0Type) == "Predicate") {
+                    params.push_back(TypeInfo(FnTag{}, {make_shared<TypeInfo>(tpRefT)}, make_shared<TypeInfo>(tpBool)));
+                } else if (spec.arg0Type && string(spec.arg0Type) == "Transform") {
+                    params.push_back(TypeInfo(FnTag{}, {make_shared<TypeInfo>(tpRefT)}, make_shared<TypeInfo>("U")));
                 } else {
                     params.push_back(spec.arg0Type ? TypeInfo(spec.arg0Type) : tpT);
                 }

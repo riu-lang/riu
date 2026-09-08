@@ -1149,6 +1149,40 @@ void validateArrayMethodCall(const TypeInfo& baseType, const string& member, siz
     validateBuiltinMethodCall(*spec, baseType, argsCount, baseIsLvalue, line, col);
 }
 
+TypeInfo validateArrayMethodTypes(const TypeInfo& baseType, const string& member,
+                                  const vector<TypeInfo>& methodTypeArgs, const vector<TypeInfo>& argTypes, int line,
+                                  int col) {
+    auto* spec = lookupInstanceBuiltin(baseType, member);
+    if (!spec) return {};
+
+    if (!methodTypeArgs.empty() || spec->typeArity == 0) {
+        validateGenericTypeArgsArity(member, spec->typeArity, methodTypeArgs.size(), line, col);
+    }
+
+    TypeInfo methodTypeArg;
+    const TypeInfo* methodTypeArgPtr = nullptr;
+    if (spec->typeArity == 1) {
+        if (!methodTypeArgs.empty()) {
+            methodTypeArg = methodTypeArgs[0];
+        } else if (!argTypes.empty() && argTypes[0].isFn()) {
+            if (auto ret = argTypes[0].fnReturnType(); ret && !ret->empty()) {
+                methodTypeArg = ret->withoutFallible();
+            }
+        }
+        if (methodTypeArg.empty()) {
+            throw YuxError(line, col, ErrorCode::E6013, "U", member);
+        }
+        methodTypeArgPtr = &methodTypeArg;
+    }
+
+    auto expected = builtinHigherOrderArgType(*spec, baseType, methodTypeArgPtr);
+    if (!expected.empty() && !argTypes.empty() && argTypes[0] != expected) {
+        throw YuxError(line, col, ErrorCode::E3014, expected.getFullName(), argTypes[0].getFullName());
+    }
+
+    return builtinMethodCallReturnType(*spec, baseType, methodTypeArgs, argTypes);
+}
+
 // ==================== Builtin intrinsic 类型形态校验 (Phase 3.3.2.d) ====================
 // 原 compileGenericFunctionCall 的 #Builtin 分支内散落的 E6028 / E6029 / E6032 / E6030 / E6031
 // 校验 (跨 same_ref / ptr_of / as_ref / weak / copy_of / assert_eq) 收口到单一 helper.

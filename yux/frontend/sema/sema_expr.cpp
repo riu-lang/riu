@@ -422,6 +422,28 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                     }
                 }
             }
+            if (!callArgExpPtr) {
+                if (auto dotCallee = dynamic_cast<p<ExprDotNode>>(n->getCalleeExpr())) {
+                    TypeInfo baseType;
+                    try {
+                        baseType = dotCallee->baseExpr()->hasResolvedType() ? dotCallee->baseExpr()->resolvedType()
+                                                                            : dotCallee->baseExpr()->getType();
+                        baseType = applyInstSubst(baseType).peelAutoDeref();
+                    } catch (...) { // NOLINT(bugprone-empty-catch)
+                    }
+                    if (baseType.isArrayGeneric() || baseType.isArray()) {
+                        if (auto* spec = sema::lookupInstanceBuiltin(baseType, dotCallee->member());
+                            spec && spec->typeArity == 1 && !n->getTypeArgs().empty()) {
+                            auto methodTypeArg = applyInstSubst(n->getTypeArgs()[0]->getType());
+                            auto expected = sema::builtinHigherOrderArgType(*spec, baseType, &methodTypeArg);
+                            if (!expected.empty()) {
+                                callArgExpected.push_back(std::move(expected));
+                                callArgExpPtr = &callArgExpected;
+                            }
+                        }
+                    }
+                }
+            }
         } else if (auto lit = dynamic_cast<p<ExprLiteralNode>>(n->getCalleeExpr())) {
             if (auto obj = dynamic_cast<p<LiteralObjNode>>(lit->literal())) {
                 string fnName = obj->getValue().getText();
@@ -467,8 +489,22 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
             } catch (...) { // NOLINT(bugprone-empty-catch)
                 baseOk = false;
             }
-            if (baseOk && !baseType.name.empty() && !isBuiltinType(baseType.name) && !baseType.isArrayGeneric() &&
-                !baseType.isPtr() && !baseType.isDyn()) {
+            if (baseOk && (baseType.isArrayGeneric() || baseType.isArray())) {
+                if (auto* spec = sema::lookupInstanceBuiltin(baseType, dotCallee->member())) {
+                    TypeInfo methodTypeArg;
+                    const TypeInfo* methodTypeArgPtr = nullptr;
+                    if (spec->typeArity == 1 && n->getTypeArgs().size() == 1) {
+                        methodTypeArg = applyInstSubst(n->getTypeArgs()[0]->getType());
+                        methodTypeArgPtr = &methodTypeArg;
+                    }
+                    auto expected = sema::builtinHigherOrderArgType(*spec, baseType, methodTypeArgPtr);
+                    if (!expected.empty()) {
+                        callArgExpected.push_back(std::move(expected));
+                        callArgExpPtr = &callArgExpected;
+                    }
+                }
+            } else if (baseOk && !baseType.name.empty() && !isBuiltinType(baseType.name) &&
+                       !baseType.isArrayGeneric() && !baseType.isPtr() && !baseType.isDyn()) {
                 if (auto* sd = _names.lookupStruct(baseType)) {
                     string member = dotCallee->member();
                     if (dotCallee->hasSpecQualifier()) {
@@ -1022,6 +1058,14 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                         if (baseType.isArrayGeneric()) {
                             bool baseIsLvalue = isLvalueArrayBase(dotCallee->baseExpr());
                             sema::validateArrayMethodCall(baseType, member, argsCount, baseIsLvalue, dline, dcol);
+                            vector<TypeInfo> methodTypeArgs;
+                            methodTypeArgs.reserve(n->getTypeArgs().size());
+                            for (auto& tn : n->getTypeArgs()) {
+                                methodTypeArgs.push_back(applyInstSubst(tn->getType()));
+                            }
+                            auto ret =
+                                sema::validateArrayMethodTypes(baseType, member, methodTypeArgs, argTypes, dline, dcol);
+                            if (!ret.empty()) n->setResolvedType(ret);
                         } else if (isBuiltinType(baseType.name) && isBuiltinMethodIn(_sdkFile, baseType.name, member)) {
                             sema::validateOperatorMethodCall(member, baseType, argsCount, dline, dcol);
                         } else if (baseType.isDyn() && _yux) {

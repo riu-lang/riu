@@ -1093,6 +1093,235 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         return resultPhi;
     }
 
+    case sema::BuiltinLower::ArrayAny:
+    case sema::BuiltinLower::ArrayAll: {
+        const bool isAny = spec->lower == sema::BuiltinLower::ArrayAny;
+        if (isAny) {
+            DEBUG_LOG("    Expr: Array.any()");
+        } else {
+            DEBUG_LOG("    Expr: Array.all()");
+        }
+        auto ptr = getReadPtr();
+        auto dataPtr = loadData(ptr);
+        auto lenVal = loadLen(ptr);
+        auto lenI64 = _builder.CreateZExtOrTrunc(lenVal, _builder.getInt64Ty(), "higher.len.i64");
+        auto predicate = args[0];
+        passAsArg(predicate, argTypes[0], callNode->getArgs()[0]);
+        auto predicateSlot = _builder.CreateAlloca(getLLVMType(argTypes[0]), nullptr, "higher.fn.arg");
+        _builder.CreateStore(predicate, predicateSlot);
+        auto predicatePtr = _builder.CreateExtractValue(predicate, {0}, "higher.fn.ptr");
+        auto captures = _builder.CreateExtractValue(predicate, {1}, "higher.fn.captures");
+        auto predicateType = llvm::FunctionType::get(_builder.getInt1Ty(), {ptrTy, ptrTy}, false);
+
+        auto* fn = _builder.GetInsertBlock()->getParent();
+        auto* startBB = _builder.GetInsertBlock();
+        auto* hdrBB = llvm::BasicBlock::Create(_context, "higher.hdr", fn);
+        auto* bodyBB = llvm::BasicBlock::Create(_context, "higher.body", fn);
+        auto* latchBB = llvm::BasicBlock::Create(_context, "higher.latch", fn);
+        auto* shortBB = llvm::BasicBlock::Create(_context, "higher.short", fn);
+        auto* doneBB = llvm::BasicBlock::Create(_context, "higher.done", fn);
+
+        _builder.CreateBr(hdrBB);
+        _builder.SetInsertPoint(hdrBB);
+        auto iPhi = _builder.CreatePHI(_builder.getInt64Ty(), 2, "higher.i");
+        iPhi->addIncoming(_builder.getInt64(0), startBB);
+        auto more = _builder.CreateICmpULT(iPhi, lenI64, "higher.more");
+        _builder.CreateCondBr(more, bodyBB, doneBB);
+
+        _builder.SetInsertPoint(bodyBB);
+        auto elemPtr = _builder.CreateInBoundsGEP(elemLLVMType, dataPtr, {iPhi}, "higher.elem.ptr");
+        auto matched = _builder.CreateCall(predicateType, predicatePtr, {captures, elemPtr}, "higher.match");
+        _builder.CreateCondBr(isAny ? matched : _builder.CreateNot(matched, "higher.failed"), shortBB, latchBB);
+
+        _builder.SetInsertPoint(latchBB);
+        auto iNext = _builder.CreateAdd(iPhi, _builder.getInt64(1), "higher.i.next");
+        iPhi->addIncoming(iNext, latchBB);
+        _builder.CreateBr(hdrBB);
+
+        _builder.SetInsertPoint(shortBB);
+        _builder.CreateBr(doneBB);
+
+        _builder.SetInsertPoint(doneBB);
+        auto result = _builder.CreatePHI(_builder.getInt1Ty(), 2, "higher.result");
+        result->addIncoming(llvm::ConstantInt::get(_builder.getInt1Ty(), isAny ? 0 : 1), hdrBB);
+        result->addIncoming(llvm::ConstantInt::get(_builder.getInt1Ty(), isAny ? 1 : 0), shortBB);
+        releaseAtPtr(predicateSlot, argTypes[0]);
+        return result;
+    }
+
+    case sema::BuiltinLower::ArrayFilter: {
+        DEBUG_LOG("    Expr: Array.filter()");
+        auto ptr = getReadPtr();
+        auto oldData = loadData(ptr);
+        auto oldLen = loadLen(ptr);
+        auto lenI64 = _builder.CreateZExtOrTrunc(oldLen, _builder.getInt64Ty(), "filter.len.i64");
+        auto predicate = args[0];
+        passAsArg(predicate, argTypes[0], callNode->getArgs()[0]);
+        auto predicateSlot = _builder.CreateAlloca(getLLVMType(argTypes[0]), nullptr, "filter.fn.arg");
+        _builder.CreateStore(predicate, predicateSlot);
+        auto predicatePtr = _builder.CreateExtractValue(predicate, {0}, "filter.fn.ptr");
+        auto captures = _builder.CreateExtractValue(predicate, {1}, "filter.fn.captures");
+        auto predicateType = llvm::FunctionType::get(_builder.getInt1Ty(), {ptrTy, ptrTy}, false);
+
+        llvm::Value* emptyArr = llvm::UndefValue::get(arrayStructType);
+        emptyArr = _builder.CreateInsertValue(emptyArr, nullPtr, {0}, "filter.empty.data");
+        emptyArr = _builder.CreateInsertValue(emptyArr, llvm::ConstantInt::get(sizeTy, 0), {1}, "filter.empty.len");
+        emptyArr = _builder.CreateInsertValue(emptyArr, llvm::ConstantInt::get(sizeTy, 0), {2}, "filter.empty.cap");
+
+        auto* fn = _builder.GetInsertBlock()->getParent();
+        auto* startBB = _builder.GetInsertBlock();
+        auto* allocBB = llvm::BasicBlock::Create(_context, "filter.alloc", fn);
+        auto* hdrBB = llvm::BasicBlock::Create(_context, "filter.hdr", fn);
+        auto* bodyBB = llvm::BasicBlock::Create(_context, "filter.body", fn);
+        auto* matchBB = llvm::BasicBlock::Create(_context, "filter.match", fn);
+        auto* skipBB = llvm::BasicBlock::Create(_context, "filter.skip", fn);
+        auto* latchBB = llvm::BasicBlock::Create(_context, "filter.latch", fn);
+        auto* finishBB = llvm::BasicBlock::Create(_context, "filter.finish", fn);
+        auto* doneBB = llvm::BasicBlock::Create(_context, "filter.done", fn);
+
+        auto isEmpty = _builder.CreateICmpEQ(oldLen, llvm::ConstantInt::get(sizeTy, 0), "filter.is_empty");
+        _builder.CreateCondBr(isEmpty, doneBB, allocBB);
+
+        _builder.SetInsertPoint(allocBB);
+        auto elemBytes = _builder.getInt64(_module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
+        auto totalBytes = _builder.CreateMul(lenI64, elemBytes, "filter.bytes");
+        auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
+        auto newData = _builder.CreateCall(allocFn, {totalBytes}, "filter.data");
+        _builder.CreateBr(hdrBB);
+
+        _builder.SetInsertPoint(hdrBB);
+        auto iPhi = _builder.CreatePHI(_builder.getInt64Ty(), 2, "filter.i");
+        auto outPhi = _builder.CreatePHI(_builder.getInt64Ty(), 2, "filter.out");
+        iPhi->addIncoming(_builder.getInt64(0), allocBB);
+        outPhi->addIncoming(_builder.getInt64(0), allocBB);
+        auto more = _builder.CreateICmpULT(iPhi, lenI64, "filter.more");
+        _builder.CreateCondBr(more, bodyBB, finishBB);
+
+        _builder.SetInsertPoint(bodyBB);
+        auto srcPtr = _builder.CreateInBoundsGEP(elemLLVMType, oldData, {iPhi}, "filter.src.ptr");
+        auto matched = _builder.CreateCall(predicateType, predicatePtr, {captures, srcPtr}, "filter.keep");
+        _builder.CreateCondBr(matched, matchBB, skipBB);
+
+        _builder.SetInsertPoint(matchBB);
+        auto elemVal = copyElem(_builder.CreateLoad(elemLLVMType, srcPtr, "filter.elem"));
+        auto dstPtr = _builder.CreateInBoundsGEP(elemLLVMType, newData, {outPhi}, "filter.dst.ptr");
+        _builder.CreateStore(elemVal, dstPtr);
+        auto outNext = _builder.CreateAdd(outPhi, _builder.getInt64(1), "filter.out.next");
+        _builder.CreateBr(latchBB);
+
+        _builder.SetInsertPoint(skipBB);
+        _builder.CreateBr(latchBB);
+
+        _builder.SetInsertPoint(latchBB);
+        auto outAfter = _builder.CreatePHI(_builder.getInt64Ty(), 2, "filter.out.after");
+        outAfter->addIncoming(outNext, matchBB);
+        outAfter->addIncoming(outPhi, skipBB);
+        auto iNext = _builder.CreateAdd(iPhi, _builder.getInt64(1), "filter.i.next");
+        iPhi->addIncoming(iNext, latchBB);
+        outPhi->addIncoming(outAfter, latchBB);
+        _builder.CreateBr(hdrBB);
+
+        _builder.SetInsertPoint(finishBB);
+        auto outLen = _builder.CreateZExtOrTrunc(outPhi, sizeTy, "filter.out.len");
+        llvm::Value* newArr = llvm::UndefValue::get(arrayStructType);
+        newArr = _builder.CreateInsertValue(newArr, newData, {0}, "filter.res.data");
+        newArr = _builder.CreateInsertValue(newArr, outLen, {1}, "filter.res.len");
+        newArr = _builder.CreateInsertValue(newArr, oldLen, {2}, "filter.res.cap");
+        _builder.CreateBr(doneBB);
+
+        _builder.SetInsertPoint(doneBB);
+        auto result = _builder.CreatePHI(arrayStructType, 2, "filter.result");
+        result->addIncoming(emptyArr, startBB);
+        result->addIncoming(newArr, finishBB);
+        releaseAtPtr(predicateSlot, argTypes[0]);
+        return result;
+    }
+
+    case sema::BuiltinLower::ArrayMap: {
+        DEBUG_LOG("    Expr: Array.map()");
+        TypeInfo mappedElem;
+        if (!callNode->getTypeArgs().empty()) {
+            mappedElem = applySubst(callNode->getTypeArgs()[0]->getType());
+        } else if (!argTypes.empty() && argTypes[0].isFn()) {
+            if (auto ret = argTypes[0].fnReturnType()) mappedElem = ret->withoutFallible();
+        }
+        if (mappedElem.empty()) {
+            throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
+        }
+        TypeInfo mappedArrayType("Array", {make_shared<TypeInfo>(mappedElem)});
+        auto mappedArrayLLVM = getLLVMType(mappedArrayType);
+        auto mappedElemLLVM = getLLVMType(mappedElem);
+        callNode->setResolvedType(mappedArrayType);
+
+        auto ptr = getReadPtr();
+        auto oldData = loadData(ptr);
+        auto oldLen = loadLen(ptr);
+        auto lenI64 = _builder.CreateZExtOrTrunc(oldLen, _builder.getInt64Ty(), "map.len.i64");
+        auto transform = args[0];
+        passAsArg(transform, argTypes[0], callNode->getArgs()[0]);
+        auto transformSlot = _builder.CreateAlloca(getLLVMType(argTypes[0]), nullptr, "map.fn.arg");
+        _builder.CreateStore(transform, transformSlot);
+        auto transformPtr = _builder.CreateExtractValue(transform, {0}, "map.fn.ptr");
+        auto captures = _builder.CreateExtractValue(transform, {1}, "map.fn.captures");
+        auto transformType = llvm::FunctionType::get(mappedElemLLVM, {ptrTy, ptrTy}, false);
+
+        llvm::Value* emptyArr = llvm::UndefValue::get(mappedArrayLLVM);
+        emptyArr = _builder.CreateInsertValue(emptyArr, nullPtr, {0}, "map.empty.data");
+        emptyArr = _builder.CreateInsertValue(emptyArr, llvm::ConstantInt::get(sizeTy, 0), {1}, "map.empty.len");
+        emptyArr = _builder.CreateInsertValue(emptyArr, llvm::ConstantInt::get(sizeTy, 0), {2}, "map.empty.cap");
+
+        auto* fn = _builder.GetInsertBlock()->getParent();
+        auto* startBB = _builder.GetInsertBlock();
+        auto* allocBB = llvm::BasicBlock::Create(_context, "map.alloc", fn);
+        auto* hdrBB = llvm::BasicBlock::Create(_context, "map.hdr", fn);
+        auto* bodyBB = llvm::BasicBlock::Create(_context, "map.body", fn);
+        auto* latchBB = llvm::BasicBlock::Create(_context, "map.latch", fn);
+        auto* finishBB = llvm::BasicBlock::Create(_context, "map.finish", fn);
+        auto* doneBB = llvm::BasicBlock::Create(_context, "map.done", fn);
+
+        auto isEmpty = _builder.CreateICmpEQ(oldLen, llvm::ConstantInt::get(sizeTy, 0), "map.is_empty");
+        _builder.CreateCondBr(isEmpty, doneBB, allocBB);
+
+        _builder.SetInsertPoint(allocBB);
+        auto elemBytes = _builder.getInt64(_module->getDataLayout().getTypeAllocSize(mappedElemLLVM).getFixedValue());
+        auto totalBytes = _builder.CreateMul(lenI64, elemBytes, "map.bytes");
+        auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
+        auto newData = _builder.CreateCall(allocFn, {totalBytes}, "map.data");
+        _builder.CreateBr(hdrBB);
+
+        _builder.SetInsertPoint(hdrBB);
+        auto iPhi = _builder.CreatePHI(_builder.getInt64Ty(), 2, "map.i");
+        iPhi->addIncoming(_builder.getInt64(0), allocBB);
+        auto more = _builder.CreateICmpULT(iPhi, lenI64, "map.more");
+        _builder.CreateCondBr(more, bodyBB, finishBB);
+
+        _builder.SetInsertPoint(bodyBB);
+        auto srcPtr = _builder.CreateInBoundsGEP(elemLLVMType, oldData, {iPhi}, "map.src.ptr");
+        auto mapped = _builder.CreateCall(transformType, transformPtr, {captures, srcPtr}, "map.elem");
+        auto dstPtr = _builder.CreateInBoundsGEP(mappedElemLLVM, newData, {iPhi}, "map.dst.ptr");
+        _builder.CreateStore(mapped, dstPtr);
+        _builder.CreateBr(latchBB);
+
+        _builder.SetInsertPoint(latchBB);
+        auto iNext = _builder.CreateAdd(iPhi, _builder.getInt64(1), "map.i.next");
+        iPhi->addIncoming(iNext, latchBB);
+        _builder.CreateBr(hdrBB);
+
+        _builder.SetInsertPoint(finishBB);
+        llvm::Value* newArr = llvm::UndefValue::get(mappedArrayLLVM);
+        newArr = _builder.CreateInsertValue(newArr, newData, {0}, "map.res.data");
+        newArr = _builder.CreateInsertValue(newArr, oldLen, {1}, "map.res.len");
+        newArr = _builder.CreateInsertValue(newArr, oldLen, {2}, "map.res.cap");
+        _builder.CreateBr(doneBB);
+
+        _builder.SetInsertPoint(doneBB);
+        auto result = _builder.CreatePHI(mappedArrayLLVM, 2, "map.result");
+        result->addIncoming(emptyArr, startBB);
+        result->addIncoming(newArr, finishBB);
+        releaseAtPtr(transformSlot, argTypes[0]);
+        return result;
+    }
+
     case sema::BuiltinLower::ArrayContains: {
         DEBUG_LOG("    Expr: Array.contains()");
         auto ptr = getReadPtr();

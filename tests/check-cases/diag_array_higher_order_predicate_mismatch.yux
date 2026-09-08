@@ -1,0 +1,10 @@
+; require-sdk
+; Array 高阶方法只接受 Function<T&, bool>，值形参不能替代借用形参
+
+fn positive_by_value(x i32) bool = x > 0
+
+fn main() {
+  let values Array<i32> = [1, 2, 3]
+  values.any(positive_by_value)  ; check: E3014
+  ret;
+}
