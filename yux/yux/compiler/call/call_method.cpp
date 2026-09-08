@@ -16,6 +16,22 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 
+namespace {
+
+// 方法 receiver 是局部变量或字段链时，应直接传原存储地址。
+// 调用结果等临时值仍走备用 alloca，不把其误当左值。
+bool isAddressableMethodReceiver(p<ExprNode> node) {
+    bool hasField = false;
+    while (auto* dot = dynamic_cast<ExprDotNode*>(node)) {
+        hasField = true;
+        node = dot->baseExpr();
+    }
+    auto* literal = dynamic_cast<ExprLiteralNode*>(node);
+    return hasField && literal && dynamic_cast<LiteralObjNode*>(literal->literal());
+}
+
+} // namespace
+
 // ==================== 安全方法调用编译 (a?.foo()) ====================
 // 编译 a?.foo(args) 安全方法调用表达式
 // 语义：a 是 Nullable<T>，T 有方法 foo
@@ -2059,6 +2075,9 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
                             if (it != _localVarPtrs.end()) basePtr = it->second;
                         }
                     }
+                    if (!basePtr && isAddressableMethodReceiver(baseExpr)) {
+                        basePtr = compileLvalueAddr(baseExpr);
+                    }
                     if (!basePtr) {
                         auto baseVal = compileExpr(baseExpr);
                         // [] / get() / 调用返 T&：compileExpr 已是 T*，不能当 struct 值 store
@@ -2146,6 +2165,9 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
                     basePtr = it->second;
                 }
             }
+        }
+        if (!basePtr && isAddressableMethodReceiver(baseExpr)) {
+            basePtr = compileLvalueAddr(baseExpr);
         }
 
         bool heapFromLocal = false;

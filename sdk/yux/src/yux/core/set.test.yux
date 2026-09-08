@@ -1,0 +1,61 @@
+; Set<T>：基于 Map<T, bool> 的线性查找集合
+;
+; 覆盖：
+;   - i32：insert / contains / remove / 重复插入
+;   - String：键比较与删除
+;   - len / is_empty / keys / clear
+;   - keys() 返回独立克隆，可直接 for-in
+
+#Test
+fn test_set_i32_insert_remove() {
+  #Mut let s Set<i32> = Set:<i32>::make()
+  assert_true(s.is_empty())
+  s.insert(1)
+  s.insert(2)
+  s.insert(1)
+  assert_eq(s.len(), 2)
+  assert_true(s.contains(1))
+  assert_true(s.contains(2))
+  assert_false(s.contains(3))
+  assert_true(s.remove(1))
+  assert_false(s.remove(1))
+  assert_false(s.contains(1))
+  assert_eq(s.len(), 1)
+}
+
+#Test
+fn test_set_string() {
+  #Mut let s Set<String> = Set:<String>::make()
+  s.insert("alpha")
+  s.insert("beta")
+  s.insert("alpha")
+  assert_eq(s.len(), 2)
+  assert_true(s.contains("alpha"))
+  assert_true(s.remove("beta"))
+  assert_false(s.contains("beta"))
+  assert_eq(s.len(), 1)
+}
+
+#Test
+fn test_set_keys_and_clear() {
+  #Mut let s Set<i32> = Set:<i32>::make()
+  s.insert(1)
+  s.insert(2)
+  s.insert(3)
+
+  #Mut let sum i32 = 0
+  for item in s.keys() {
+    sum += item
+  }
+  assert_eq(sum, 6)
+
+  let snapshot Array<i32> = s.keys()
+  assert_true(s.remove(2))
+  assert_eq(snapshot.len(), 3)
+  assert_true(snapshot.contains(2))
+
+  s.clear()
+  assert_true(s.is_empty())
+  assert_eq(s.len(), 0)
+  assert_false(s.contains(1))
+}

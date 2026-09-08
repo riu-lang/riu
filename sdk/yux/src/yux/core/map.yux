@@ -3,6 +3,7 @@
 ; 公开符号经 pkg `map.*` 扁平进 yux.core；类型名 `Map` 走扁平（g4 `type` 为单 ID）。
 ; 模块路径 `map` / `yux.core.map` 已登记，供该文件内自由函数使用。
 
+#NoCopy
 struct Map<K, V> {
   _keys Array<K>
   _vals Array<V>
@@ -57,6 +58,15 @@ struct Map<K, V> {
     let i usize? = $._index_of(key)
     if !i.has() {
       ret null
+    }
+    let idx usize = i.get()
+    ret copy_of:<V>($._vals[idx])
+  }
+
+  fn get_or(key K&, default V) V {
+    let i usize? = $._index_of(key)
+    if !i.has() {
+      ret default
     }
     let idx usize = i.get()
     ret copy_of:<V>($._vals[idx])

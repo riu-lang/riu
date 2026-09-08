@@ -1226,8 +1226,9 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                     }
                     // Phase B-1: 方法调用的 #NoCopy 按值传参检查
                     if (methodSymbol) {
-                        for (size_t i = 0; i < n->getArgs().size() && i < methodSymbol->params.size(); ++i) {
-                            const auto& pt = methodSymbol->params[i];
+                        // params[0] 是隐式 receiver，用户实参从 params[1] 开始对齐。
+                        for (size_t i = 0; i < n->getArgs().size() && i + 1 < methodSymbol->params.size(); ++i) {
+                            const auto& pt = methodSymbol->params[i + 1];
                             if (isNoCopyTypeIn(pt, _file, _sdkFile)) {
                                 if (!isFreshHandleExpr(n->getArgs()[i])) {
                                     throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E4031, pt.name,

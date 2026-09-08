@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-09-08 —— SDK `Set<T>` 与 Map `get_or`
+
+- **修改 §10.4.1.5**：新增纯 yux `Set<T>`，内嵌 `Map<T, bool>` 去重，公开 `make` / `insert` / `contains` / `remove` / `len` / `is_empty` / `keys` / `clear`。
+- **Map 小补**：新增 `get_or(key K&, default V) V`；`Map` 与 `Set` 明确为 `#NoCopy`。
+- **冲突 / 兼容**：`Set` 与 `get_or` 为纯增量。`Map` 的所有权约束收紧：既有隐式复制需改为 `move`；此约束与其内含 `Array` 的实际存储语义对齐。
+
 ## 2026-09-08 —— `Array` 急切高阶方法
 
 - **修改 §9.2.3 / 新增 §9.2.3.5**：公开 `any` / `all` / `filter` / `map<U>`；回调元素统一为 `T&`。`any` / `all` 短路，`filter` / `map` 急切返回独立新数组，不引入惰性迭代器。

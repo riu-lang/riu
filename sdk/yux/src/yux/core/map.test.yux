@@ -4,6 +4,7 @@
 ;   - i32 → i32：insert / get / contains / remove / 覆盖
 ;   - String → i32：键比较走 String.eq
 ;   - i32 → String：值句柄复制
+;   - get_or：命中复制值，未命中返回 default
 ;   - 空 Map、未命中 get/remove、len / is_empty
 ;   - keys / values / clear；遍历走 keys() 再 for
 
@@ -62,6 +63,21 @@ fn test_map_string_value() {
   assert_eq(r2 ?? "", "two")
   assert_false(m.contains(2))
   assert_eq(m.len(), 1)
+}
+
+#Test
+fn test_map_get_or() {
+  #Mut let ints Map<i32, i32> = Map:<i32, i32>::make()
+  ints.insert(1, 10)
+  assert_eq(ints.get_or(1, -1), 10)
+  assert_eq(ints.get_or(9, -1), -1)
+
+  #Mut let strings Map<i32, String> = Map:<i32, String>::make()
+  strings.insert(1, "one")
+  let fallback String = "missing"
+  assert_eq(strings.get_or(1, fallback), "one")
+  assert_eq(strings.get_or(9, fallback), "missing")
+  assert_eq(fallback, "missing")
 }
 
 #Test

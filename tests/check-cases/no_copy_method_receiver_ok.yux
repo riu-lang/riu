@@ -1,0 +1,18 @@
+; require-sdk
+; #NoCopy 实例方法的隐式 receiver 不是用户按值实参
+
+#NoCopy
+struct Counter {
+  value i32
+
+  fn set(value i32) {
+    $.value = value
+  }
+}
+
+fn main() {
+  #Mut let counter Counter = Counter {
+    .value = 0
+  }
+  counter.set(42)
+}

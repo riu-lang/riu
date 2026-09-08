@@ -1,0 +1,43 @@
+; yux SDK - Set<T>
+; 纯 yux：内嵌 Map<T, bool> 去重。T 与 Map 键相同（标量或 String）。
+; keys() 返回克隆的 Array<T>；遍历不借出 Set 内部存储。
+
+#NoCopy
+struct Set<T> {
+  _items Map<T, bool>
+
+  #Static
+  fn make() Self {
+    ret Self {
+      ._items = Map:<T, bool>::make()
+    }
+  }
+
+  fn insert(item T) {
+    $._items.insert(item, true)
+  }
+
+  fn contains(item T&) bool {
+    ret $._items.contains(item)
+  }
+
+  fn remove(item T&) bool {
+    ret $._items.remove(item).has()
+  }
+
+  fn len() usize {
+    ret $._items.len()
+  }
+
+  fn is_empty() bool {
+    ret $._items.is_empty()
+  }
+
+  fn keys() Array<T> {
+    ret $._items.keys()
+  }
+
+  fn clear() {
+    $._items.clear()
+  }
+}
