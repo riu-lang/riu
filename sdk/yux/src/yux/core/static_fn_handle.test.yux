@@ -9,6 +9,11 @@
 ; 已知缺口：无——本文件为 BUGS #4（Self 句柄字段 retain 回归）的专项验证。
 ; 基础 #Static fn 见 static_fn.test.yux。
 
+enum BufErr {
+  Failed
+}
+
+#NoCopy
 struct Buf {
   data Array<u32>
 
@@ -34,6 +39,13 @@ struct Buf {
   fn empty() Buf {
     ret Self {
       .data = []
+    }
+  }
+
+  #Static
+  fn fallible() Buf ! BufErr {
+    ret Self {
+      .data = [7u32, 8u32]
     }
   }
 
@@ -68,4 +80,18 @@ fn test_buf_empty_via_empty_literal() {
   ; BUGS #3 验证: Self {...} 内嵌空数组 [] 既能 parse 也能 codegen
   let b Buf = Buf::empty()
   assert_eq(b.len(), 0)
+}
+
+; 验证：带析构 struct 作为 try 块值时，所有权转交给外层绑定，不提前析构。
+#Test
+fn test_buf_fallible_factory_via_try() {
+  let b Buf = try {
+    Buf::fallible()
+  } catch e BufErr {
+    fail("fallible factory should succeed")
+    Buf::empty()
+  }
+  assert_eq(b.len(), 2)
+  assert_eq(b.get(0), 7u32)
+  assert_eq(b.get(1), 8u32)
 }

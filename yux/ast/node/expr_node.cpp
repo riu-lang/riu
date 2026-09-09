@@ -30,7 +30,10 @@ static TypeInfo wrapAsNullable(TypeInfo inner) {
 // fallibleErr 非空时挂到返回类型上，供 checkErrPropagateForFnValueCall 认 T ! E。
 static TypeInfo makeCallFnType(TypeInfo ret, const string& fallibleErr = "") {
     if (!fallibleErr.empty()) {
-        ret.attachFallibleErr(fallibleErr);
+        // 方法符号把成功类型与错误类型分开保存。这里只需把错误类型挂回返回值；
+        // attachFallibleErr 会把 Array<T> 的完整显示名写进 name，随后
+        // withoutFallible 再叠加 genericArgs，错误得到 Array<T><T>。
+        ret.fallibleErr = fallibleErr;
     }
     sp<TypeInfo> rt = nullptr;
     if (ret.isFallible() || (!ret.empty() && ret.name != "()")) {

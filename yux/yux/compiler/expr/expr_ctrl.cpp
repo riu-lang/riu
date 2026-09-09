@@ -118,7 +118,7 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
     if (hasResult) {
         DEBUG_LOG("      Returning phi node");
         // Phase 8d.3: 各分支已归一为 +1，phi 整体作为 fresh 句柄交给外层 statement frame
-        if (resultType.isRcHandle()) {
+        if (typeNeedsDestructor(resultType)) {
             recordTemp(phi, resultType);
         }
         return phi;
@@ -192,7 +192,7 @@ llvm::Value* Compiler::compileOneLineIfElseExpr(p<ExprOneLineIfElseNode> node) {
     }
 
     // Phase 8d.3: 两支已归一 +1，phi 作 fresh 句柄登记外层
-    if (resultType.isRcHandle()) {
+    if (typeNeedsDestructor(resultType)) {
         recordTemp(phi, resultType);
     }
     return phi;
@@ -538,7 +538,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
         }
         // RC 句柄结果由 compileBranchResultNormalized 已归一为 fresh +1，
         // 登记到外层 statement frame
-        if (resultType.isRcHandle()) {
+        if (typeNeedsDestructor(resultType)) {
             recordTemp(phi, resultType);
         }
         return phi;
@@ -737,7 +737,7 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
         for (auto& inc : phiIncoming) {
             phi->addIncoming(inc.first, inc.second);
         }
-        if (resultType.isRcHandle()) {
+        if (typeNeedsDestructor(resultType)) {
             recordTemp(phi, resultType);
         }
         return phi;

@@ -890,10 +890,11 @@ bool Compiler::consumeTemp(llvm::Value* val) {
     return false;
 }
 
-// Phase 8d.3: 编译分支体的结果表达式：用子帧吃掉中间 fresh 临时；非 fresh 结果发 retain 归一
+// Phase 8d.3: 编译分支体的结果表达式：用子帧吃掉中间 fresh 临时；非 fresh 结果发 retain 归一。
+// 不只处理 Rc/Array/String：带显式析构的 #NoCopy struct 也会作为分支值汇合，
+// 若不把分支临时转交给 phi，子帧退出时会提前析构其 OS 句柄等资源。
 llvm::Value* Compiler::compileBranchResultNormalized(p<ExprNode> expr, const TypeInfo& expectedType) {
-    bool isRcHandle = expectedType.isRcHandle();
-    if (!isRcHandle) {
+    if (!typeNeedsDestructor(expectedType)) {
         return compileExpr(expr);
     }
     pushTempFrame();
@@ -901,7 +902,7 @@ llvm::Value* Compiler::compileBranchResultNormalized(p<ExprNode> expr, const Typ
     bool wasFresh = consumeTemp(val);
     popAndReleaseTempFrame();
     if (!wasFresh && val) {
-        emitRetainOnHandleValue(val, expectedType);
+        retainHandleAtCallSite(val, expectedType);
     }
     return val;
 }

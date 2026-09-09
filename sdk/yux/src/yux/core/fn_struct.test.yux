@@ -63,6 +63,21 @@ struct FsCell {
   }
 }
 
+struct FsFallibleArray {
+  n i32
+
+  #Static
+  fn make() FsFallibleArray {
+    ret Self {
+      .n = 0
+    }
+  }
+
+  fn values() Array<i32> ! FsErr {
+    ret [1, 2]
+  }
+}
+
 struct FsBuf {
   data Array<i32>
   tag i32
@@ -71,6 +86,19 @@ struct FsBuf {
 struct FsNamed {
   name String
   n i32
+}
+
+struct FsValString {
+  #Val
+  text String
+
+  #Static
+  fn from(raw String&) FsValString {
+    let owned String = raw.slice(0usize, raw.len())
+    ret Self {
+      .text = move(owned)
+    }
+  }
 }
 
 struct FsRect {
@@ -389,6 +417,20 @@ fn test_static_fallible() {
   assert_eq(err, 99)
 }
 
+; 验证：实例方法的 fallible Array<T> 返回不会重复拼接泛型实参。
+#Test
+fn test_method_fallible_array() {
+  let source FsFallibleArray = FsFallibleArray::make()
+  let values Array<i32> = try {
+    source.values()
+  } catch e FsErr {
+    fail("fallible Array method should succeed")
+    []
+  }
+  assert_eq(values.len(), 2)
+  assert_eq(values[1], 2)
+}
+
 ; 验证：实例方法 `!` 同类型透传
 #Test
 fn test_method_fallible_bang() {
@@ -432,6 +474,15 @@ fn test_struct_lit_string_field() {
   let s FsNamed = fs_named_lit()
   assert_eq(s.name, "ok")
   assert_eq(s.n, 1)
+}
+
+; 验证：#Val 句柄字段在静态工厂返回后仍持有自己的 Rc 引用。
+#Test
+fn test_val_string_field_factory() {
+  let raw String = "he" + "llo"
+  let value FsValString = FsValString::from(&raw)
+  assert_eq(value.text, "hello")
+  assert_eq(raw, "hello")
 }
 
 ; 验证：普通 fn 内 TypeName 字面量含 Array 字段（fresh 字面量）

@@ -697,9 +697,12 @@ struct String {
     r
   }
 
-  ; B-4: String 自身实现 ToString — 浅复制 Rc，共享底层缓冲
+  ; B-4: String 自身实现 ToString — 浅复制 Rc，共享底层缓冲（返回值独立持有引用）
   fn to_string() String {
-    ret $
+    let buf Rc<Array<u32>> = $._buf
+    ret String {
+      ._buf = move(buf)
+    }
   }
 }
 
