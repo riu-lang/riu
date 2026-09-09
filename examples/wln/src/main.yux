@@ -29,6 +29,7 @@ fn _err_text(e IoErr) String {
     IoErr::NotFound => "NotFound"
     IoErr::AccessDenied => "AccessDenied"
     IoErr::InvalidUtf8 => "InvalidUtf8"
+    IoErr::Closed => "Closed"
     IoErr::Other(code) => "Win32 ${code}"
   }
 }
@@ -45,6 +46,7 @@ fn _is_priv(e IoErr) bool {
     IoErr::Eof => false
     IoErr::NotFound => false
     IoErr::InvalidUtf8 => false
+    IoErr::Closed => false
   }
 }
 

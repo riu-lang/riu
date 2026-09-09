@@ -480,6 +480,21 @@ static bool fileRequiresSdk(const string& filePath) {
     return false;
 }
 
+// 独立 SDK 模块（如 yux.io）不仅依赖 sdkFile 父作用域，还依赖当前 Yux 的
+// 模块表与 package child。此类用例须在自己的 Yux 中完整加载 SDK。
+static bool fileRequiresSdkModules(const string& filePath) {
+    ifstream in(filePath);
+    if (!in.is_open()) return false;
+
+    string line;
+    for (int i = 0; i < 10 && getline(in, line); ++i) {
+        if (line.find("; require-sdk-modules") != string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // 0 → hardware_concurrency（至少 1）。
 static int resolveThreadCount(int threads) {
     if (threads > 0) return threads;
@@ -594,8 +609,12 @@ static bool loadSdkInto(Yux& sdkYux, const string& anyFilePath) {
 static TestFileResult checkFileWithOptionalSdk(const string& absPath, Yux* sdkYux) {
     Yux yux;
     yux.initFileRoot(absPath);
-    bool attached = sdkYux && sdkYux->sdkFile();
-    if (attached) {
+    const bool fullSdk = fileRequiresSdkModules(absPath);
+    bool attached = !fullSdk && sdkYux && sdkYux->sdkFile();
+    if (fullSdk) {
+        string sdkPath = sdk_loader::findSdkPath();
+        if (!sdkPath.empty()) sdk_loader::parseSdkDir(sdkPath, yux);
+    } else if (attached) {
         yux.setSdkFile(sdkYux->sdkFile());
     }
     auto tfr = evaluateOneFileWithYux(absPath, yux);
@@ -675,8 +694,11 @@ static int runCheckTest(const vector<string>& paths, int threads, const vector<s
     } else {
         int nJobs = maxParallel;
         vector<vector<size_t>> shards(static_cast<size_t>(nJobs));
-        for (size_t i = 0; i < fileCount; ++i)
+        for (size_t i = 0; i < fileCount; ++i) {
             shards[i % static_cast<size_t>(nJobs)].push_back(i);
+            results[i].filename = fs::path(files[i]).filename().string();
+            results[i].failReason = "  check worker failed before producing result\n";
+        }
 
         string logsDir = (fs::temp_directory_path() / "yux-check-jobs").string();
         string cwd = fs::current_path().string();
@@ -686,48 +708,53 @@ static int runCheckTest(const vector<string>& paths, int threads, const vector<s
         vector<thread> waiters;
         waiters.reserve(static_cast<size_t>(nJobs));
         for (int job = 0; job < nJobs; ++job) {
-            // NOLINTNEXTLINE(bugprone-exception-escape)
-            waiters.emplace_back([&, job]() {
-                auto& shard = shards[static_cast<size_t>(job)];
-                if (shard.empty()) return;
+            waiters.emplace_back([&, job]() noexcept {
+                try {
+                    auto& shard = shards[static_cast<size_t>(job)];
+                    if (shard.empty()) return;
 
-                string logPath = logsDir + "/job-" + std::to_string(job) + ".log";
-                string spawnPath = paths.empty() ? string(".") : paths[0];
-                wstring cmd = L"\"" + toWide(self) + L"\" test \"" + toWide(spawnPath) + L"\" --threads 1";
-                for (size_t idx : shard) {
-                    cmd += L" --file \"";
-                    cmd += toWide(files[idx]);
-                    cmd += L'"';
-                }
-
-                uint32_t code = spawnToLog(cmd, toWide(logPath), toWide(cwd));
-                auto parsed = parseJobLog(logPath);
-                for (size_t k = 0; k < shard.size(); ++k) {
-                    size_t i = shard[k];
-                    string expectName = fs::path(files[i]).filename().string();
-                    if (k < parsed.size() && parsed[k].filename == expectName) {
-                        results[i] = std::move(parsed[k]);
-                    } else {
-                        results[i].filename = expectName;
-                        results[i].passed = false;
-                        string reason;
-                        if (code == kSpawnFailed) {
-                            reason = "  check job spawn failed\n";
-                        } else if (code != 0) {
-                            reason = "  check job exit ";
-                            reason += std::to_string(code);
-                            reason += " (log: ";
-                            reason += logPath;
-                            reason += ")\n";
-                        } else {
-                            reason = "  check job missing result for ";
-                            reason += expectName;
-                            reason += " (log: ";
-                            reason += logPath;
-                            reason += ")\n";
-                        }
-                        results[i].failReason = std::move(reason);
+                    string logPath = logsDir + "/job-" + std::to_string(job) + ".log";
+                    string spawnPath = paths.empty() ? string(".") : paths[0];
+                    wstring cmd = L"\"" + toWide(self) + L"\" test \"" + toWide(spawnPath) + L"\" --threads 1";
+                    for (size_t idx : shard) {
+                        cmd += L" --file \"";
+                        cmd += toWide(files[idx]);
+                        cmd += L'"';
                     }
+
+                    uint32_t code = spawnToLog(cmd, toWide(logPath), toWide(cwd));
+                    auto parsed = parseJobLog(logPath);
+                    for (size_t k = 0; k < shard.size(); ++k) {
+                        size_t i = shard[k];
+                        string expectName = fs::path(files[i]).filename().string();
+                        if (k < parsed.size() && parsed[k].filename == expectName) {
+                            results[i] = std::move(parsed[k]);
+                        } else {
+                            results[i].filename = expectName;
+                            results[i].passed = false;
+                            string reason;
+                            if (code == kSpawnFailed) {
+                                reason = "  check job spawn failed\n";
+                            } else if (code != 0) {
+                                reason = "  check job exit ";
+                                reason += std::to_string(code);
+                                reason += " (log: ";
+                                reason += logPath;
+                                reason += ")\n";
+                            } else {
+                                reason = "  check job missing result for ";
+                                reason += expectName;
+                                reason += " (log: ";
+                                reason += logPath;
+                                reason += ")\n";
+                            }
+                            results[i].failReason = std::move(reason);
+                        }
+                    }
+                } catch (...) {
+                    // 结果已预置为失败；线程入口不得让异常越过 std::thread 的 noexcept 边界。
+                    for (size_t idx : shards[static_cast<size_t>(job)])
+                        results[idx].passed = false;
                 }
             });
         }

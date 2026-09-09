@@ -17,6 +17,7 @@ fn test_io_alias_missing() {
       io.IoErr::Eof => fail("alias missing: Eof")
       io.IoErr::AccessDenied => fail("alias missing: AccessDenied")
       io.IoErr::InvalidUtf8 => fail("alias missing: InvalidUtf8")
+      io.IoErr::Closed => fail("alias missing: Closed")
       io.IoErr::Other(code) => fail("alias missing: Other(${code})")
     }
   }
@@ -36,6 +37,7 @@ fn test_io_fq_missing() {
       io.IoErr::Eof => fail("fq missing: Eof")
       io.IoErr::AccessDenied => fail("fq missing: AccessDenied")
       io.IoErr::InvalidUtf8 => fail("fq missing: InvalidUtf8")
+      io.IoErr::Closed => fail("fq missing: Closed")
       io.IoErr::Other(code) => fail("fq missing: Other(${code})")
     }
   }

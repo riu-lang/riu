@@ -18,6 +18,7 @@ fn show_sdk(e io.IoErr) {
     io.IoErr::Eof => println(3)
     io.IoErr::AccessDenied => println(4)
     io.IoErr::InvalidUtf8 => println(5)
+    io.IoErr::Closed => println(6)
     io.IoErr::Other(code) => println(code)
   }
 }

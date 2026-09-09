@@ -1,5 +1,5 @@
-; yux SDK - 文件 / stdin IO（v0.21 Phase A）
-; 路径走 CreateFileW（UTF-16）；文件内容 UTF-8。错误通道 T ! IoErr。
+; yux SDK - 文件 / stdin IO（v0.21 Phase A，分层文件 API）
+; 路径走 CreateFileW（UTF-16）；文件内容 UTF-8；错误通道为 T ! IoErr。
 ; 独立包 yux.io：须 `use yux.io` / `use yux.io.*` 后才有 `io.fn` / `yux.io.fn`。
 
 use yux.core.helper.*
@@ -12,12 +12,16 @@ extern {
   fn _ReadFile(hFile Ptr, lpBuffer Ptr, nNumberOfBytesToRead u32, lpNumberOfBytesRead Ptr, lpOverlapped Ptr) i32
   #CName("CloseHandle")
   fn _CloseHandle(hObject Ptr) i32
+  #CName("FlushFileBuffers")
+  fn _FlushFileBuffers(hFile Ptr) i32
   #CName("GetLastError")
   fn _GetLastError() u32
   #CName("SetFilePointer")
   fn _SetFilePointer(hFile Ptr, lDistanceToMove i32, lpDistanceToMoveHigh Ptr, dwMoveMethod u32) u32
   #CName("GetFileAttributesW")
   fn _GetFileAttributesW(lpFileName Ptr) u32
+  #CName("GetFileAttributesExW")
+  fn _GetFileAttributesExW(lpFileName Ptr, fInfoLevelId u32, lpFileInformation Ptr) i32
   #CName("DeleteFileW")
   fn _DeleteFileW(lpFileName Ptr) i32
   #CName("RemoveDirectoryW")
@@ -90,6 +94,8 @@ let _FILE_ATTRIBUTE_DIRECTORY u32 = 16
 #Cval
 let _FILE_ATTRIBUTE_REPARSE_POINT u32 = 1024
 #Cval
+let _FILE_ATTRIBUTE_DEVICE u32 = 64
+#Cval
 let _FILE_FLAG_OPEN_REPARSE_POINT u32 = 0x00200000
 #Cval
 let _FILE_FLAG_BACKUP_SEMANTICS u32 = 0x02000000
@@ -107,6 +113,7 @@ enum IoErr {
   NotFound
   AccessDenied
   InvalidUtf8
+  Closed
   Other(u32)
 }
 
@@ -185,10 +192,16 @@ fn _from_utf8(bytes Array<u8>&) String ! IoErr {
       if b1 < 128u8 || b1 >= 192u8 || b2 < 128u8 || b2 >= 192u8 {
         ret IoErr::InvalidUtf8
       }
+      if b0 == 224u8 && b1 < 160u8 {
+        ret IoErr::InvalidUtf8
+      }
+      if b0 == 237u8 && b1 >= 160u8 {
+        ret IoErr::InvalidUtf8
+      }
       let cp u32 = ((b0.to_u32() - 224u32) << 12u32) + ((b1.to_u32() - 128u32) << 6u32) + (b2.to_u32() - 128u32)
       cps.push(cp)
       i += 3
-    } elif b0 >= 240u8 && b0 < 248u8 {
+    } elif b0 >= 240u8 && b0 < 245u8 {
       if i + 3 >= n {
         ret IoErr::InvalidUtf8
       }
@@ -196,6 +209,12 @@ fn _from_utf8(bytes Array<u8>&) String ! IoErr {
       let b2 u8 = copy_of(bytes[i + 2])
       let b3 u8 = copy_of(bytes[i + 3])
       if b1 < 128u8 || b1 >= 192u8 || b2 < 128u8 || b2 >= 192u8 || b3 < 128u8 || b3 >= 192u8 {
+        ret IoErr::InvalidUtf8
+      }
+      if b0 == 240u8 && b1 < 144u8 {
+        ret IoErr::InvalidUtf8
+      }
+      if b0 == 244u8 && b1 >= 144u8 {
         ret IoErr::InvalidUtf8
       }
       let cp u32 = ((b0.to_u32() - 240u32) << 18u32) + ((b1.to_u32() - 128u32) << 12u32) + ((b2.to_u32() - 128u32) << 6u32) + (b3.to_u32() - 128u32)
@@ -217,18 +236,40 @@ fn _open(path String&, access u32, disp u32) Ptr ! IoErr {
   ret h
 }
 
-fn _read_and_close(h Ptr) Array<u8> ! IoErr {
+fn _close_handle(h Ptr) ! IoErr {
+  if _bad_handle(h) {
+    ret;
+  }
+  if _CloseHandle(h) == 0 {
+    ret _map_last_err()
+  }
+}
+
+fn _close_best_effort(h Ptr) {
+  if !_bad_handle(h) {
+    _CloseHandle(h);
+  }
+}
+
+; 从当前游标最多读取 max_bytes；不拥有也不关闭句柄。
+fn _read_handle(h Ptr, max_bytes usize) Array<u8> ! IoErr {
   #Mut let out Array<u8> = []
   loop {
+    if out.len() >= max_bytes {
+      break;
+    }
+    #Mut let request usize = max_bytes - out.len()
+    if request > 256 {
+      request = 256
+    }
     #Mut let chunk [u8 * 256] = [0u8 ...]
     #Mut let written u32 = 0
-    let ok i32 = _ReadFile(h, &chunk, 256, &written, null)
+    let ok i32 = _ReadFile(h, &chunk, request.to_u32(), &written, null)
     if ok == 0 {
       let err u32 = _GetLastError()
       if err == _ERROR_HANDLE_EOF {
         break;
       }
-      _CloseHandle(h);
       ret _map_err(err)
     }
     if written == 0 {
@@ -242,61 +283,387 @@ fn _read_and_close(h Ptr) Array<u8> ! IoErr {
       i += 1
     }
   }
-  _CloseHandle(h);
   ret out
 }
 
-fn _write_handle(h Ptr, content String&) ! IoErr {
-  #Mut let bytes Array<u8> = content.to_bytes()
-  if bytes.is_empty() {
-    ret;
+; 从当前游标读到 EOF；不拥有也不关闭句柄。
+fn _read_to_end_handle(h Ptr) Array<u8> ! IoErr {
+  #Mut let out Array<u8> = []
+  loop {
+    #Mut let chunk [u8 * 256] = [0u8 ...]
+    #Mut let written u32 = 0
+    let ok i32 = _ReadFile(h, &chunk, 256, &written, null)
+    if ok == 0 {
+      let err u32 = _GetLastError()
+      if err == _ERROR_HANDLE_EOF {
+        break;
+      }
+      ret _map_err(err)
+    }
+    if written == 0 {
+      break;
+    }
+    loop i usize = 0 {
+      if i.to_u32() >= written {
+        break;
+      }
+      out.push(copy_of(chunk[i]))
+      i += 1
+    }
   }
-  #Mut let written u32 = 0
-  let n u32 = bytes.len().to_u32()
-  let ok i32 = WriteFile(h, bytes, n, &written, null)
-  if ok == 0 {
+  ret out
+}
+
+; 循环处理短写；不拥有也不关闭句柄。
+fn _write_bytes_handle(h Ptr, bytes Array<u8>&) ! IoErr {
+  #Mut let offset usize = 0
+  loop {
+    if offset >= bytes.len() {
+      break;
+    }
+    #Mut let request usize = bytes.len() - offset
+    if request > 256 {
+      request = 256
+    }
+    #Mut let chunk [u8 * 256] = [0u8 ...]
+    loop i usize = 0 {
+      if i >= request {
+        break;
+      }
+      chunk[i] = copy_of(bytes[offset + i])
+      i += 1
+    }
+    #Mut let written u32 = 0
+    let ok i32 = WriteFile(h, &chunk, request.to_u32(), &written, null)
+    if ok == 0 {
+      ret _map_last_err()
+    }
+    if written == 0 {
+      ret IoErr::Other(0u32)
+    }
+    offset += written.to_usize()
+  }
+}
+
+fn _write_string_handle(h Ptr, content String&) ! IoErr {
+  let bytes Array<u8> = content.to_bytes()
+  _write_bytes_handle(h, &bytes)!
+}
+
+enum FileKind {
+  Regular
+  Directory
+  Link
+  Other
+}
+
+struct FileInfo {
+  #Val
+  kind FileKind
+  #Val
+  size u64
+  #Val
+  readonly bool
+}
+
+struct Path {
+  ; 路径值持有自己的 String 引用，不借用构造参数。
+  #Val
+  _raw String
+
+  #Static
+  fn from(raw String&) Path {
+    let owned String = raw.to_string()
+    ret Self {
+      ._raw = move(owned)
+    }
+  }
+
+  #Static
+  fn cwd() Path ! IoErr {
+    let raw String = cwd()!
+    ret Path::from(&raw)
+  }
+
+  fn to_string() String {
+    ret $._raw.to_string()
+  }
+
+  fn join(child String&) Path {
+    let base String = $._raw.to_string()
+    let raw String = _join_path(&base, child)
+    ret Path {
+      ._raw = move(raw)
+    }
+  }
+
+  fn parent() Path {
+    let base String = $._raw.to_string()
+    let raw String = dirname(&base)
+    ret Path {
+      ._raw = move(raw)
+    }
+  }
+
+  fn name() String {
+    let base String = $._raw.to_string()
+    ret basename(&base)
+  }
+
+  fn absolute() Path ! IoErr {
+    let base String = $._raw.to_string()
+    let raw String = abs(&base)!
+    ret Path {
+      ._raw = move(raw)
+    }
+  }
+}
+
+; 按 Win32 文件属性结构的小端布局读取字段。
+fn _read_u32_le(data [u8 * 36]&, offset usize) u32 {
+  let b0 u32 = copy_of(data[offset]).to_u32()
+  let b1 u32 = copy_of(data[offset + 1]).to_u32()
+  let b2 u32 = copy_of(data[offset + 2]).to_u32()
+  let b3 u32 = copy_of(data[offset + 3]).to_u32()
+  ret b0 | (b1 << 8u32) | (b2 << 16u32) | (b3 << 24u32)
+}
+
+fn _combine_file_size(high u32, low u32) u64 {
+  ret (high.to_u64() << 32u64) | low.to_u64()
+}
+
+fn _file_info(path String&) FileInfo ! IoErr {
+  #Mut let wide Array<u16> = _to_wide(path)
+  #Mut let data [u8 * 36] = [0u8 ...]
+  if _GetFileAttributesExW(wide, 0u32, &data) == 0 {
     ret _map_last_err()
   }
-  if written != n {
-    ret IoErr::Other(0u32)
+  let attrs u32 = _read_u32_le(&data, 0usize)
+  #Mut let kind FileKind = FileKind::Regular
+  if (attrs & _FILE_ATTRIBUTE_REPARSE_POINT) != 0 {
+    kind = FileKind::Link
+  } elif (attrs & _FILE_ATTRIBUTE_DIRECTORY) != 0 {
+    kind = FileKind::Directory
+  } elif (attrs & _FILE_ATTRIBUTE_DEVICE) != 0 {
+    kind = FileKind::Other
   }
-  ret;
+  let high u32 = _read_u32_le(&data, 28usize)
+  let low u32 = _read_u32_le(&data, 32usize)
+  ret FileInfo {
+    .kind = kind
+    .size = _combine_file_size(high, low)
+    .readonly = (attrs & _FILE_ATTRIBUTE_READONLY) != 0
+  }
+}
+
+struct File {
+  #Val
+  _path Path
+
+  #Static
+  fn at(path Path&) File {
+    ret Self {
+      ._path = copy_of:<Path>(path)
+    }
+  }
+
+  #Static
+  fn from(raw String&) File {
+    ret Self {
+      ._path = Path::from(&raw)
+    }
+  }
+
+  fn path() Path {
+    ret copy_of:<Path>(&$._path)
+  }
+
+  fn exists() bool {
+    let raw String = $._path.to_string()
+    ret exists(&raw)
+  }
+
+  fn info() FileInfo ! IoErr {
+    let raw String = $._path.to_string()
+    ret _file_info(&raw)!
+  }
+
+  fn list() Array<File> ! IoErr {
+    let parent String = $._path.to_string()
+    let names Array<String> = list_dir(&parent)!
+    #Mut let out Array<File> = []
+    for name in names {
+      let raw String = join(&parent, name)
+      out.push(File::from(&raw))
+    }
+    ret out
+  }
+
+  fn mkdir() ! IoErr {
+    let raw String = $._path.to_string()
+    mkdir(&raw)!
+  }
+
+  fn remove() ! IoErr {
+    let raw String = $._path.to_string()
+    remove(&raw)!
+  }
+
+  fn remove_all() ! IoErr {
+    let raw String = $._path.to_string()
+    remove_all(&raw)!
+  }
+}
+
+#NoCopy
+struct FileInputStream {
+  _handle Ptr
+
+  fn ~() {
+    _close_best_effort($._handle)
+    $._handle = null
+  }
+
+  #Static
+  fn open(path Path&) FileInputStream ! IoErr {
+    let raw String = path.to_string()
+    let h Ptr = _open(&raw, _GENERIC_READ, _OPEN_EXISTING)!
+    ret Self {
+      ._handle = h
+    }
+  }
+
+  fn is_open() bool {
+    ret !_bad_handle($._handle)
+  }
+
+  fn close() ! IoErr {
+    let h Ptr = $._handle
+    $._handle = null
+    _close_handle(h)!
+  }
+
+  fn read(max_bytes usize) Array<u8> ! IoErr {
+    if !$.is_open() {
+      ret IoErr::Closed
+    }
+    ret _read_handle($._handle, max_bytes)!
+  }
+
+  fn read_to_end() Array<u8> ! IoErr {
+    if !$.is_open() {
+      ret IoErr::Closed
+    }
+    ret _read_to_end_handle($._handle)!
+  }
+
+  fn read_to_string() String ! IoErr {
+    let bytes Array<u8> = $.read_to_end()!
+    ret _from_utf8(&bytes)!
+  }
+}
+
+#NoCopy
+struct FileOutputStream {
+  _handle Ptr
+
+  fn ~() {
+    _close_best_effort($._handle)
+    $._handle = null
+  }
+
+  #Static
+  fn create(path Path&) FileOutputStream ! IoErr {
+    let raw String = path.to_string()
+    let h Ptr = _open(&raw, _GENERIC_WRITE, _CREATE_ALWAYS)!
+    ret Self {
+      ._handle = h
+    }
+  }
+
+  #Static
+  fn append(path Path&) FileOutputStream ! IoErr {
+    let raw String = path.to_string()
+    let h Ptr = _open(&raw, _GENERIC_WRITE, _OPEN_ALWAYS)!
+    let pos u32 = _SetFilePointer(h, 0, null, _FILE_END)
+    if pos == _INVALID_SET_PTR {
+      let err u32 = _GetLastError()
+      if err != 0 {
+        _close_best_effort(h)
+        ret _map_err(err)
+      }
+    }
+    ret Self {
+      ._handle = h
+    }
+  }
+
+  fn is_open() bool {
+    ret !_bad_handle($._handle)
+  }
+
+  fn close() ! IoErr {
+    let h Ptr = $._handle
+    $._handle = null
+    _close_handle(h)!
+  }
+
+  fn write(bytes Array<u8>&) ! IoErr {
+    if !$.is_open() {
+      ret IoErr::Closed
+    }
+    _write_bytes_handle($._handle, bytes)!
+  }
+
+  fn write_string(content String&) ! IoErr {
+    if !$.is_open() {
+      ret IoErr::Closed
+    }
+    _write_string_handle($._handle, content)!
+  }
+
+  fn flush() ! IoErr {
+    if !$.is_open() {
+      ret IoErr::Closed
+    }
+    if _FlushFileBuffers($._handle) == 0 {
+      ret _map_last_err()
+    }
+  }
 }
 
 fn read_file(path String&) String ! IoErr {
-  let h Ptr = _open(path, _GENERIC_READ, _OPEN_EXISTING)!
-  let bytes Array<u8> = _read_and_close(h)!
-  ret _from_utf8(&bytes)!
+  let p Path = Path::from(&path)
+  let stream FileInputStream = try {
+    FileInputStream::open(&p)
+  } catch e IoErr {
+    ret e
+  }
+  let content String = stream.read_to_string()!
+  stream.close()!
+  ret content
 }
 
 fn write_file(path String&, content String&) ! IoErr {
-  let h Ptr = _open(path, _GENERIC_WRITE, _CREATE_ALWAYS)!
-    try {
-    _write_handle(h, content);
+  let p Path = Path::from(&path)
+  let stream FileOutputStream = try {
+    FileOutputStream::create(&p)
   } catch e IoErr {
-    _CloseHandle(h);
     ret e
   }
-  _CloseHandle(h);
+  stream.write_string(content)!
+  stream.close()!
 }
 
 fn append_file(path String&, content String&) ! IoErr {
-  let h Ptr = _open(path, _GENERIC_WRITE, _OPEN_ALWAYS)!
-  let pos u32 = _SetFilePointer(h, 0, null, _FILE_END)
-  if pos == _INVALID_SET_PTR {
-    let err u32 = _GetLastError()
-    if err != 0 {
-      _CloseHandle(h);
-      ret _map_err(err)
-    }
-  }
-  try {
-    _write_handle(h, content);
+  let p Path = Path::from(&path)
+  let stream FileOutputStream = try {
+    FileOutputStream::append(&p)
   } catch e IoErr {
-    _CloseHandle(h);
     ret e
   }
-  _CloseHandle(h);
+  stream.write_string(content)!
+  stream.close()!
 }
 
 ; stdin 读到换行（不含）；去掉尾随 CR。一开始就 EOF → IoErr::Eof。
@@ -386,7 +753,7 @@ fn _cps_range(s String&, start usize, end usize) String {
   ret String::from(&buf)
 }
 
-fn join(a String&, b String&) String {
+fn _join_path(a String&, b String&) String {
   if a.is_empty() {
     ret b.to_string()
   }
@@ -397,6 +764,10 @@ fn join(a String&, b String&) String {
     ret a + b
   }
   ret a + "\\" + b
+}
+
+fn join(a String&, b String&) String {
+  ret _join_path(a, b)
 }
 
 fn dirname(path String&) String {

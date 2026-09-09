@@ -8,6 +8,7 @@ fn show_missing(tag String, e io.IoErr) {
     io.IoErr::Eof => println("eof")
     io.IoErr::AccessDenied => println("denied")
     io.IoErr::InvalidUtf8 => println("utf8")
+    io.IoErr::Closed => println("closed")
     io.IoErr::Other(code) => println("other")
   }
 }
