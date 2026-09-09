@@ -25,7 +25,7 @@
 
 // 编译带返回值的 return 语句
 // 检查返回类型是否匹配函数声明，调用析构函数后返回
-void Compiler::compileRetStatement(p<StatementRetNode> node) {
+void Compiler::compileRetStatement(StatementRetNode* node) {
     DEBUG_LOG("  Statement: Return");
 
     // 获取函数声明的返回类型（lambda 体内用 lambda 自身的 Ret，不用外层 fn）
@@ -211,7 +211,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
         }
         if (!refPtr) {
             if (auto getRef = dynamic_cast<ExprGetRefNode*>(node->expr())) {
-                refPtr = compileGetRefExpr(static_cast<p<ExprGetRefNode>>(getRef));
+                refPtr = compileGetRefExpr(static_cast<ExprGetRefNode*>(getRef));
                 srcInner = applySubst(getRef->getType());
                 if (srcInner.isRef()) {
                     if (auto in = srcInner.refElementType()) srcInner = *in;
@@ -358,7 +358,7 @@ void Compiler::compileRetStatement(p<StatementRetNode> node) {
 }
 
 // 编译无返回值的 return; 语句
-void Compiler::compileRetVoidStatement(p<StatementRetVoidNode> node) {
+void Compiler::compileRetVoidStatement(StatementRetVoidNode* node) {
     DEBUG_LOG("  Statement: Return Void");
     if (_currentLambdaForCapture) {
         auto ft = _currentLambdaForCapture->getType();
@@ -404,7 +404,7 @@ void Compiler::compileRetVoidStatement(p<StatementRetVoidNode> node) {
 
 // 编译变量声明语句（无初始化）
 // 为变量分配栈空间，但不进行初始化
-void Compiler::compileDeclareStatement(p<StatementDeclareNode> node) {
+void Compiler::compileDeclareStatement(StatementDeclareNode* node) {
     auto varName = node->name().getText();
     TypeInfo varType = node->varType()->getType();
 
@@ -425,7 +425,7 @@ void Compiler::compileDeclareStatement(p<StatementDeclareNode> node) {
 
 // 编译变量声明并赋值语句
 // 处理普通变量、数组初始化、Rc 类型、Array<T> 类型
-void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node) {
+void Compiler::compileDeclareAssignStatement(StatementDeclareAssignNode* node) {
     auto expr = node->expr();
     auto varName = node->name().getText();
 
@@ -439,7 +439,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
                 inferLambdaParamsFromFnType(litLambda, declType);
             }
         }
-        emitLambdaFunction(static_cast<p<LambdaExprNode>>(litLambda), litLambda->getType());
+        emitLambdaFunction(static_cast<LambdaExprNode*>(litLambda), litLambda->getType());
     }
 
     // 处理数组填充表达式 ([N; value] 语法)。E3067 由 SemaPass 先抛；此处防 IR 空指针。
@@ -821,7 +821,7 @@ void Compiler::compileDeclareAssignStatement(p<StatementDeclareAssignNode> node)
 //   2. applySubst 解析 expr 类型 / 标注类型，要求是 Tuple
 //   3. 元素数与 names 数对齐校验（E3102）
 //   4. 逐元素 alloca + ExtractValue + Store；同步注册 _localVarPtrs / 符号表类型
-void Compiler::compileDeclareAssignTupleStatement(p<StatementDeclareAssignTupleNode> node) {
+void Compiler::compileDeclareAssignTupleStatement(StatementDeclareAssignTupleNode* node) {
     auto expr = node->expr();
     const auto& names = node->names();
 
@@ -876,7 +876,7 @@ void Compiler::compileDeclareAssignTupleStatement(p<StatementDeclareAssignTupleN
 
 // 编译赋值语句
 // 支持普通赋值和复合赋值 (+=, -=, *=, /=, %=, ^=, <<=, >>=)
-void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
+void Compiler::compileAssignStatement(StatementAssignNode* node) {
     auto objName = node->obj().getText();
     auto expr = node->expr();
     auto& subs = node->subs();
@@ -1522,7 +1522,7 @@ void Compiler::compileAssignStatement(p<StatementAssignNode> node) {
 // 编译 loop 循环语句
 // 生成无限循环结构，配合 break 语句使用
 // loopInit 可选：loop name = expr { } / loop (a, b) = expr { }
-void Compiler::compileLoopStatement(p<StatementLoopNode> node) {
+void Compiler::compileLoopStatement(StatementLoopNode* node) {
     DEBUG_LOG("  Statement: Loop" << (node->hasInit() ? " (with init)" : ""));
 
     llvm::Function* func = _builder.GetInsertBlock()->getParent();
@@ -1643,7 +1643,7 @@ void Compiler::compileLoopStatement(p<StatementLoopNode> node) {
 
 // 编译 break 语句
 // 跳出当前循环
-void Compiler::compileBreakStatement(p<StatementBreakNode> node) {
+void Compiler::compileBreakStatement(StatementBreakNode* node) {
     const auto& brLabel = node->label();
     DEBUG_LOG("  Statement: Break" << (brLabel.getText().empty() ? "" : " (label: " + brLabel.getText() + ")"));
 
@@ -1675,7 +1675,7 @@ void Compiler::compileBreakStatement(p<StatementBreakNode> node) {
     _builder.SetInsertPoint(unreachableBB);
 }
 
-void Compiler::compileContinueStatement(p<StatementContinueNode> node) {
+void Compiler::compileContinueStatement(StatementContinueNode* node) {
     const auto& cLabel = node->label();
     DEBUG_LOG("  Statement: Continue" << (cLabel.getText().empty() ? "" : " (label: " + cLabel.getText() + ")"));
 
@@ -1706,7 +1706,7 @@ void Compiler::compileContinueStatement(p<StatementContinueNode> node) {
     _builder.SetInsertPoint(unreachableBB);
 }
 
-void Compiler::compileForInStatement(p<StatementForInNode> node) {
+void Compiler::compileForInStatement(StatementForInNode* node) {
     DEBUG_LOG("  Statement: ForIn item=" << node->item().getText());
 
     llvm::Function* func = _builder.GetInsertBlock()->getParent();
@@ -1838,7 +1838,7 @@ void Compiler::compileForInStatement(p<StatementForInNode> node) {
 
 // 编译数组元素赋值语句 (arr[idx] = value)
 // 支持固定大小数组、动态数组(Array<T>)、结构体字段中的数组
-void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
+void Compiler::compileArraySetStatement(StatementSetNode* node) {
     auto arrayExpr = node->arrayExpr();
     auto arrayType = arrayExpr->getType();
 
@@ -1971,7 +1971,7 @@ void Compiler::compileArraySetStatement(p<StatementSetNode> node) {
 // 编译静态字段写语句（DRAFT-static-vars Phase 5）
 // 语法形态: Type::FIELD = expr
 // 查找对应 struct 的静态字段 GlobalVariable，check #Mut 位后 emit StoreInst
-void Compiler::compileStaticFieldSetStatement(p<StatementStaticFieldSetNode> node) {
+void Compiler::compileStaticFieldSetStatement(StatementStaticFieldSetNode* node) {
     auto r = sema::resolveExprTypeLhs(_file, _yux, node->typePath(), node->getLineNumber(), node->getColumn());
     auto typeName = r.type.name;
     auto fieldName = node->fieldName().getText();
@@ -2013,7 +2013,7 @@ void Compiler::compileStaticFieldSetStatement(p<StatementStaticFieldSetNode> nod
 
 // 编译语句的主入口
 // 根据语句类型分发到对应的编译函数
-void Compiler::compileStatement(p<StatementNode> node) {
+void Compiler::compileStatement(StatementNode* node) {
     // Phase 8d.1: 入口 push 临时帧；分发完成后 pop+release 未消费的 fresh RC 句柄
     pushTempFrame();
 

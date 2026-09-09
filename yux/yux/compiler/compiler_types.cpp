@@ -96,7 +96,7 @@ TypeInfo Compiler::applySubst(const TypeInfo& t) const {
 // 从 target type 递归推断灵活整数类型（含 tuple/泛型别名展开）
 // 当 target 解析为 tuple 且 expr 为 tuple 字面量时，逐元素递归推断；
 // 否则委托给 AST 层的 tryInferIntType。
-void Compiler::inferFlexibleInts(p<ExprNode> expr, const TypeInfo& target) {
+void Compiler::inferFlexibleInts(ExprNode* expr, const TypeInfo& target) {
     // 先展开别名（Triple<i64> → (i64,i64,i64)）
     TypeInfo resolved = applySubst(target);
     // tuple 目标 + tuple 字面量 → 逐元素递归
@@ -217,11 +217,11 @@ string Compiler::mangleStaticMethod(const string& module, const string& structNa
 
 // 确保泛型结构体实例存在
 // 返回 mangle 后的实例名 (如 "Rc<i32>")
-string Compiler::ensureStructInstance(p<StructDeclNode> baseDecl, const vector<sp<TypeInfo>>& args,
-                                      p<FileNode> ownerFile, int sourceLine) {
+string Compiler::ensureStructInstance(StructDeclNode* baseDecl, const vector<sp<TypeInfo>>& args, FileNode* ownerFile,
+                                      int sourceLine) {
     string baseName = baseDecl->name().getText();
     // 实例 key / LLVM 类型名：定义模块全限定 + `<>`（与 yux 类型写法同形）
-    p<FileNode> instOwner = ownerFile ? ownerFile : _file;
+    FileNode* instOwner = ownerFile ? ownerFile : _file;
     string mangledName;
     if (instOwner && !instOwner->moduleName().empty()) {
         mangledName = instOwner->moduleName() + ".";
@@ -542,7 +542,7 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
 
     // 泛型类型实例 (如 Rc<i32>)
     if (type.isGeneric()) {
-        p<FileNode> owner = nullptr;
+        FileNode* owner = nullptr;
         auto baseDecl = names().lookupStruct(type, /*includeBuiltin=*/false, &owner);
         if (!owner && _yux && !type.ownerModule.empty()) {
             owner = _yux->module(type.ownerModule);
@@ -610,7 +610,7 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
     }
 
     // 尝试查找并创建结构体类型
-    p<FileNode> sourceFile = nullptr;
+    FileNode* sourceFile = nullptr;
     StructDeclNode* structDecl = nullptr;
     if (!type.ownerModule.empty() && _yux) {
         sourceFile = _yux->module(type.ownerModule);
@@ -666,7 +666,7 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
                 return cit->second;
             }
         }
-        p<FileNode> enumOwner = nullptr;
+        FileNode* enumOwner = nullptr;
         EnumDeclNode* enumDecl = nullptr;
         if (!type.ownerModule.empty() && _yux) {
             enumOwner = _yux->module(type.ownerModule);
@@ -719,7 +719,7 @@ llvm::Type* Compiler::getLLVMType(const TypeInfo& rawType) {
 // ==================== 结构体类型管理 ====================
 
 // 获取或创建结构体类型
-llvm::StructType* Compiler::getOrCreateStructType(p<StructDeclNode> structDecl, p<FileNode> sourceFile) {
+llvm::StructType* Compiler::getOrCreateStructType(StructDeclNode* structDecl, FileNode* sourceFile) {
     string name = structDecl->name().getText();
 
     // 跳过内置类型
@@ -769,7 +769,7 @@ llvm::StructType* Compiler::getOrCreateStructType(p<StructDeclNode> structDecl, 
 // ==================== 函数类型生成 ====================
 
 // 获取函数的 LLVM 类型
-llvm::FunctionType* Compiler::getLLVMFunctionType(p<FnHeaderNode> header) {
+llvm::FunctionType* Compiler::getLLVMFunctionType(FnHeaderNode* header) {
     DEBUG_LOG_VAL("  getLLVMFunctionType", header->name().getText());
 
     vector<llvm::Type*> paramTypes;
@@ -924,7 +924,7 @@ void Compiler::emitMainStartupFallible(const string& fallibleErrName) {
     auto tag = _builder.CreateExtractValue(errVal, {0}, "main.err.tag");
 
     // 查 enum decl 拿 variant 列表（含模块名修饰）
-    p<FileNode> enumOwner = nullptr;
+    FileNode* enumOwner = nullptr;
     auto enumDecl = names().lookupEnum(fallibleErrName, &enumOwner);
     if (!enumDecl) {
         // 防御：10e 已校 #Fallible 类型存在；走 unreachable 兜底

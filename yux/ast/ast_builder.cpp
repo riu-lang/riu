@@ -32,7 +32,7 @@ ASTBuilder::~ASTBuilder() {
     }
 }
 
-p<FileNode> ASTBuilder::build(yux::yuxParser::ProgramContext* ctx) {
+FileNode* ASTBuilder::build(yux::yuxParser::ProgramContext* ctx) {
     return any_cast_p<FileNode>(visitProgram(ctx));
 }
 

@@ -3,11 +3,11 @@
 
 #include "global_const_node.h"
 
-p<TypeNode> GlobalConstNode::typeNode() const {
+TypeNode* GlobalConstNode::typeNode() const {
     return _type;
 }
 
-p<ExprNode> GlobalConstNode::value() const {
+ExprNode* GlobalConstNode::value() const {
     return _value;
 }
 

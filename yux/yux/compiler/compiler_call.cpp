@@ -30,7 +30,7 @@
 
 // 获取或创建 LLVM 函数
 // 处理 main 函数重命名为 yux_main
-llvm::Function* Compiler::getFunction(p<FnHeaderNode> header) {
+llvm::Function* Compiler::getFunction(FnHeaderNode* header) {
     auto name = header->name().getText();
     DEBUG_LOG_VAL("  getFunction", name);
 
@@ -231,7 +231,7 @@ bool Compiler::isBuiltinMethod(const string& structName, const string& methodNam
 // yux/frontend/sema/call_resolve.cpp 的 sema::checkErrPropagateForIdCall, 形参改成
 // `vector<string>* tryBlockSeenErrs` 解开 Compiler::TryCatchCtx 的 LLVM 耦合.
 
-llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
+llvm::Value* Compiler::compileCallExpr(ExprCallNode* node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto calleeExpr = node->getCalleeExpr();
 
@@ -399,7 +399,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
             } else {
                 // 检查是否为泛型结构体构造函数
                 auto structDecl = _file->getStructDecl(fnName);
-                p<FileNode> structOwner = _file;
+                FileNode* structOwner = _file;
                 if (!structDecl && _yux && _yux->sdkFile()) {
                     auto sdkDecl = _yux->sdkFile()->getStructDecl(fnName);
                     if (sdkDecl) {
@@ -480,15 +480,15 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
 
     bool isGenericCtorCall = false;
     map<string, TypeInfo> ctorSubst;
-    p<StructImplNode> ctorStructImpl;
-    p<FileNode> ctorStructOwner;
+    StructImplNode* ctorStructImpl;
+    FileNode* ctorStructOwner;
     string ctorFnName;
 
     if (auto calleeLiteral = dynamic_cast<ExprLiteralNode*>(calleeExpr)) {
         if (auto objLiteral = dynamic_cast<LiteralObjNode*>(calleeLiteral->literal())) {
             ctorFnName = objLiteral->getValue().getText();
             auto structDecl = _file->getStructDecl(ctorFnName);
-            p<FileNode> structOwner = _file;
+            FileNode* structOwner = _file;
             if (!structDecl && _yux && _yux->sdkFile()) {
                 auto sdkDecl = _yux->sdkFile()->getStructDecl(ctorFnName);
                 if (sdkDecl) {
@@ -696,7 +696,7 @@ llvm::Value* Compiler::compileCallExpr(p<ExprCallNode> node) {
 // 10g-4 仅覆盖 `!` 透传 + ID-callee；try-catch 错误路由推 10g-5（届时根据
 // _tryCatchStack 把 errBB 改为跳到匹配的 catch arm entry block）。
 llvm::Value* Compiler::handleFallibleCallResult(llvm::Value* callResult, const string& calleeFallibleErr,
-                                                const TypeInfo& calleeRetType, p<ExprCallNode> callNode) {
+                                                const TypeInfo& calleeRetType, ExprCallNode* callNode) {
     if (calleeFallibleErr.empty()) return callResult;
 
     auto isErr = _builder.CreateExtractValue(callResult, {0}, "call.isErr");

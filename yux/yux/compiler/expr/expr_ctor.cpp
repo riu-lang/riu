@@ -26,7 +26,7 @@
 // #Cval #Inline 静态字段 init 直接求值为 llvm::Constant*。
 // 不经过 ConstEvaluator，避免其内部 parseIntLiteral 对大 u64 字面量（>= 2^63）
 // 走 stoll 溢出导致返回 nullopt。直接按字段类型决定 signedness 解析。
-llvm::Constant* Compiler::evalInlineFieldInit(p<ExprNode> init, const TypeInfo& fieldType, llvm::Type* llvmType) {
+llvm::Constant* Compiler::evalInlineFieldInit(ExprNode* init, const TypeInfo& fieldType, llvm::Type* llvmType) {
     if (!init || !llvmType) return nullptr;
 
     // ---- 处理一元负号（ExprUnaryNode Neg）：用于 MIN = -128 等形式 ----
@@ -126,7 +126,7 @@ llvm::Constant* Compiler::evalInlineFieldInit(p<ExprNode> init, const TypeInfo& 
 //    入参规则下，Rc/Array/Weak 已是 +1 fresh 句柄，直接交付给 enum 拥有）
 // 6. 零参 variant 不动 payload buffer（spec §6.5）
 // 7. 加载整体 struct value 作为表达式结果返回
-llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
+llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     string enumName = node->getType().name; // 经别名解析后的真实 enum 名
     string variantName = node->variantName().getText();
@@ -260,7 +260,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
 
         if (structImpl) {
             string methodName = node->variantName().getText();
-            p<FnHeaderNode> methodHeader = nullptr;
+            FnHeaderNode* methodHeader = nullptr;
             for (auto& m : structImpl->methods()) {
                 if (m->header()->name().getText() == methodName) {
                     methodHeader = m->header();
@@ -288,8 +288,8 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
             bool pushedFrame = false;
             const auto& lhsTArgs = node->lhsTypeArgs();
             if (!lhsTArgs.empty()) {
-                p<FileNode> baseOwner = _file;
-                p<StructDeclNode> baseDecl = names().lookupStruct(lhsTy, false, &baseOwner);
+                FileNode* baseOwner = _file;
+                StructDeclNode* baseDecl = names().lookupStruct(lhsTy, false, &baseOwner);
                 if (!baseDecl && _yux && _yux->sdkFile() && _yux->sdkFile() != _file) {
                     baseDecl = _yux->sdkFile()->getStructDecl(lhsRaw);
                     baseOwner = _yux->sdkFile();
@@ -413,7 +413,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
         }
     }
 
-    p<FileNode> owner = nullptr;
+    FileNode* owner = nullptr;
     TypeInfo enumTy = node->getType();
     auto enumDecl = names().lookupEnum(enumTy, &owner);
     auto variant = enumDecl->variant(variantName);
@@ -501,7 +501,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
 // 注：未做 retain / RC 转移。owned 形态意味着接管 Rc 的 +1，本应消费临时帧或 retain；
 // 真路由（构造消费 Rc）随 vtable 落地一起补，所以这里 Rc 句柄"裸抽"——Phase 1c
 // 的 smoke 只看编译能否过、IR 是否成型，不验运行时所有权。
-llvm::Value* Compiler::compileDynCtorExpr(p<ExprDynCtorNode> node) {
+llvm::Value* Compiler::compileDynCtorExpr(ExprDynCtorNode* node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto resultType = resolvedOrInferredType(node);
     int line = node->getLineNumber();

@@ -69,7 +69,7 @@ void emitAssertFailureBranch(llvm::IRBuilder<>& builder, llvm::Module* module, l
 // bool: ICmpEQ on i1
 // 其他: E6030
 
-llvm::Value* Compiler::compileTestAssertEq(p<ExprCallNode> callNode, vector<llvm::Value*>& args,
+llvm::Value* Compiler::compileTestAssertEq(ExprCallNode* callNode, vector<llvm::Value*>& args,
                                            vector<TypeInfo>& argTypes, const TypeInfo& typeArg) {
     if (args.size() != 2) {
         // E6027 由 SemaPass validateFreeIntrinsicArity 先抛。
@@ -127,7 +127,7 @@ llvm::Value* Compiler::compileTestAssertEq(p<ExprCallNode> callNode, vector<llvm
 
 // ==================== assert_true(bool) ====================
 
-llvm::Value* Compiler::compileTestAssertTrue(p<ExprCallNode> callNode, vector<llvm::Value*>& args,
+llvm::Value* Compiler::compileTestAssertTrue(ExprCallNode* callNode, vector<llvm::Value*>& args,
                                              vector<TypeInfo>& argTypes) {
     if (args.size() != 1) {
         throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
@@ -150,7 +150,7 @@ llvm::Value* Compiler::compileTestAssertTrue(p<ExprCallNode> callNode, vector<ll
 
 // ==================== assert_false(bool) ====================
 
-llvm::Value* Compiler::compileTestAssertFalse(p<ExprCallNode> callNode, vector<llvm::Value*>& args,
+llvm::Value* Compiler::compileTestAssertFalse(ExprCallNode* callNode, vector<llvm::Value*>& args,
                                               vector<TypeInfo>& argTypes) {
     if (args.size() != 1) {
         throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
@@ -178,7 +178,7 @@ llvm::Value* Compiler::compileTestAssertFalse(p<ExprCallNode> callNode, vector<l
 // 简化处理：args[0] 是栈上结构体值，无显式释放需求；fail 触发 RaiseException 后
 // 该测试函数被 SEH 拆栈，本就没有正常的析构机会（与崩溃测试一致）。
 
-llvm::Value* Compiler::compileTestFail(p<ExprCallNode> callNode, vector<llvm::Value*>& args,
+llvm::Value* Compiler::compileTestFail(ExprCallNode* callNode, vector<llvm::Value*>& args,
                                        vector<TypeInfo>& /*argTypes*/) {
     if (args.size() != 1) {
         throwSemaGap(callNode->getLineNumber(), callNode->getColumn());

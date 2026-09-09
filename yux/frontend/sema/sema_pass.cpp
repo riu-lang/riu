@@ -45,10 +45,10 @@ using namespace sema::pass;
 namespace {
 // 判定 e 是不是字面量 `$`（spec 默认体里 self 句柄, ast_builder 构成
 // ExprLiteralNode(LiteralObjNode("$")))。
-bool isBareSelf(const p<ExprNode>& e) {
-    auto lit = dynamic_cast<p<ExprLiteralNode>>(e);
+bool isBareSelf(ExprNode* e) {
+    auto lit = dynamic_cast<ExprLiteralNode*>(e);
     if (!lit) return false;
-    auto obj = dynamic_cast<p<LiteralObjNode>>(lit->literal());
+    auto obj = dynamic_cast<LiteralObjNode*>(lit->literal());
     return obj && obj->getValue().getText() == "$";
 }
 
@@ -56,10 +56,10 @@ bool isBareSelf(const p<ExprNode>& e) {
 // 形态调用; 命中则验证 method 是否在 spec 自身签名集内, 不在则抛 E1140。
 // 仅覆盖常见表达式形态; lambda / try-catch / match 等复杂形态在 Phase 2
 // 主动 skip (留待 Phase 3 单态化时机的完整 typecheck)。
-void walkExprForSpecDefault(const p<ExprNode>& e, SpecDeclNode* spec) {
+void walkExprForSpecDefault(ExprNode* e, SpecDeclNode* spec) {
     if (!e) return;
-    if (auto n = dynamic_cast<p<ExprCallNode>>(e)) {
-        if (auto dot = dynamic_cast<p<ExprDotNode>>(n->getCalleeExpr())) {
+    if (auto n = dynamic_cast<ExprCallNode*>(e)) {
+        if (auto dot = dynamic_cast<ExprDotNode*>(n->getCalleeExpr())) {
             if (isBareSelf(dot->baseExpr())) {
                 const std::string m = dot->member();
                 bool found = false;
@@ -81,35 +81,35 @@ void walkExprForSpecDefault(const p<ExprNode>& e, SpecDeclNode* spec) {
             walkExprForSpecDefault(a, spec);
         return;
     }
-    if (auto n = dynamic_cast<p<ExprDotNode>>(e)) {
+    if (auto n = dynamic_cast<ExprDotNode*>(e)) {
         walkExprForSpecDefault(n->baseExpr(), spec);
         return;
     }
-    if (auto n = dynamic_cast<p<ExprAddSubNode>>(e)) {
+    if (auto n = dynamic_cast<ExprAddSubNode*>(e)) {
         walkExprForSpecDefault(n->left(), spec);
         walkExprForSpecDefault(n->right(), spec);
         return;
     }
-    if (auto n = dynamic_cast<p<ExprMulDivModNode>>(e)) {
+    if (auto n = dynamic_cast<ExprMulDivModNode*>(e)) {
         walkExprForSpecDefault(n->left(), spec);
         walkExprForSpecDefault(n->right(), spec);
         return;
     }
-    if (auto n = dynamic_cast<p<ExprBinOpNode>>(e)) {
+    if (auto n = dynamic_cast<ExprBinOpNode*>(e)) {
         walkExprForSpecDefault(n->left(), spec);
         walkExprForSpecDefault(n->right(), spec);
         return;
     }
-    if (auto n = dynamic_cast<p<ExprCompareNode>>(e)) {
+    if (auto n = dynamic_cast<ExprCompareNode*>(e)) {
         walkExprForSpecDefault(n->left(), spec);
         walkExprForSpecDefault(n->right(), spec);
         return;
     }
-    if (auto n = dynamic_cast<p<ExprParenNode>>(e)) {
+    if (auto n = dynamic_cast<ExprParenNode*>(e)) {
         walkExprForSpecDefault(n->expr(), spec);
         return;
     }
-    if (auto n = dynamic_cast<p<ExprUnaryNode>>(e)) {
+    if (auto n = dynamic_cast<ExprUnaryNode*>(e)) {
         walkExprForSpecDefault(n->right(), spec);
         return;
     }
@@ -118,38 +118,38 @@ void walkExprForSpecDefault(const p<ExprNode>& e, SpecDeclNode* spec) {
 }
 
 // 递归扫描 stmt 中的所有表达式入口。
-void walkStmtForSpecDefault(const p<StatementNode>& s, SpecDeclNode* spec) {
+void walkStmtForSpecDefault(StatementNode* s, SpecDeclNode* spec) {
     if (!s) return;
-    if (auto n = dynamic_cast<p<StatementRetNode>>(s)) {
+    if (auto n = dynamic_cast<StatementRetNode*>(s)) {
         walkExprForSpecDefault(n->expr(), spec);
         return;
     }
-    if (auto n = dynamic_cast<p<StatementAssignNode>>(s)) {
+    if (auto n = dynamic_cast<StatementAssignNode*>(s)) {
         walkExprForSpecDefault(n->expr(), spec);
         return;
     }
-    if (auto n = dynamic_cast<p<StatementSetNode>>(s)) {
+    if (auto n = dynamic_cast<StatementSetNode*>(s)) {
         walkExprForSpecDefault(n->arrayExpr(), spec);
         for (auto& idx : n->indices())
             walkExprForSpecDefault(idx, spec);
         walkExprForSpecDefault(n->valueExpr(), spec);
         return;
     }
-    if (auto n = dynamic_cast<p<StatementDeclareAssignNode>>(s)) {
+    if (auto n = dynamic_cast<StatementDeclareAssignNode*>(s)) {
         walkExprForSpecDefault(n->expr(), spec);
         return;
     }
-    if (auto n = dynamic_cast<p<StatementExprNode>>(s)) {
+    if (auto n = dynamic_cast<StatementExprNode*>(s)) {
         walkExprForSpecDefault(n->expr(), spec);
         return;
     }
-    if (auto n = dynamic_cast<p<StatementLoopNode>>(s)) {
+    if (auto n = dynamic_cast<StatementLoopNode*>(s)) {
         if (n->hasInit()) {
             walkExprForSpecDefault(n->initExpr(), spec);
         }
         return;
     }
-    if (auto n = dynamic_cast<p<StatementForInNode>>(s)) {
+    if (auto n = dynamic_cast<StatementForInNode*>(s)) {
         walkExprForSpecDefault(n->expr(), spec);
         if (auto blk = n->block()) {
             for (auto& st : blk->statements())
@@ -162,7 +162,7 @@ void walkStmtForSpecDefault(const p<StatementNode>& s, SpecDeclNode* spec) {
 }
 } // namespace
 
-SemaPass::SemaPass(p<FileNode> file, Yux* yux)
+SemaPass::SemaPass(FileNode* file, Yux* yux)
     : _file(file), _yux(yux), _sdkFile(yux ? yux->sdkFile() : nullptr),
       _sourcePath((yux && file) ? yux->modulePath(file->moduleName()) : ""), _names(_file, _sdkFile) {}
 
@@ -306,7 +306,7 @@ void SemaPass::visitSpecDefaults() {
     }
 }
 
-void SemaPass::visitFn(p<FnNode> fn) {
+void SemaPass::visitFn(FnNode* fn) {
     if (!fn) return;
     // Phase 3.3 前置.4: 进入 fn 时记 _currentFn, 让 visitExpr 里的
     // checkErrPropagateForIdCall / checkBangWithoutFallibleCaller 能拿到
@@ -361,7 +361,7 @@ void SemaPass::visitFn(p<FnNode> fn) {
     _currentFn = savedFn;
 }
 
-void SemaPass::visitBlock(p<StatementBlockNode> block, const TypeInfo* expected) {
+void SemaPass::visitBlock(StatementBlockNode* block, const TypeInfo* expected) {
     if (!block) return;
     for (auto& s : block->statements()) {
         visitStmt(s);
@@ -440,7 +440,7 @@ void SemaPass::noteConcreteGenericType(const TypeInfo& t) {
     checkGenericImplInst(lookupStructImpl(_file, _sdkFile, t0.name), subst);
 }
 
-void SemaPass::checkGenericFnInst(p<FnNode> fn, const vector<TypeInfo>& typeArgs) {
+void SemaPass::checkGenericFnInst(FnNode* fn, const vector<TypeInfo>& typeArgs) {
     if (!fn || !fn->header() || fn->header()->hasAnno("Builtin")) return;
     const auto& tps = fn->header()->typeParams();
     if (tps.empty() || tps.size() != typeArgs.size()) return;
@@ -467,7 +467,7 @@ void SemaPass::checkGenericImplInst(StructImplNode* impl, const map<string, Type
     if (impl->hasDestructor()) checkGenericBodyInst(impl->destructor(), subst, impl->structName());
 }
 
-void SemaPass::checkGenericBodyInst(p<FnNode> fn, const map<string, TypeInfo>& subst, const string& structName) {
+void SemaPass::checkGenericBodyInst(FnNode* fn, const map<string, TypeInfo>& subst, const string& structName) {
     if (!fn || subst.empty()) return;
     string key = genericInstKey(fn, subst);
     if (!_checkedGenericInst.insert(key).second) return;

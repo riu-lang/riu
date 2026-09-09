@@ -49,7 +49,7 @@ class Compiler {
     llvm::LLVMContext& _context; // LLVM 上下文，管理类型和常量
     llvm::IRBuilder<>& _builder; // IR 构建器，用于生成指令
     llvm::Module* _module;       // LLVM 模块，包含所有函数和全局变量
-    p<FileNode> _file;           // 当前编译的源文件 AST
+    FileNode* _file;             // 当前编译的源文件 AST
     Yux* _yux = nullptr;         // 编译器主驱动，用于访问 SDK 等全局资源
     bool _isSdk = false;         // 是否正在编译 SDK (core.yux)
     bool _isTestDll = false;     // 是否为 test DLL 模式（影响断言内建 + 导出）
@@ -65,11 +65,11 @@ class Compiler {
     // ==================== 泛型单态化 ====================
     // 泛型结构体单态化：key = 定义模块全限定实例名（如 "yux.core.map.Map<i32,i32>"）
     struct StructInstance {
-        p<StructDeclNode> baseDecl; // 泛型结构体声明
-        p<StructImplNode> baseImpl; // 泛型结构体实现 (包含方法)
-        p<FileNode> ownerFile;      // 定义该结构体的文件
-        vector<TypeInfo> args;      // 类型参数实例化参数
-        string mangledName;         // mangle 后的实例名
+        StructDeclNode* baseDecl; // 泛型结构体声明
+        StructImplNode* baseImpl; // 泛型结构体实现 (包含方法)
+        FileNode* ownerFile;      // 定义该结构体的文件
+        vector<TypeInfo> args;    // 类型参数实例化参数
+        string mangledName;       // mangle 后的实例名
         // 定义该泛型的模块名（与 LLVM 符号前缀一致）。多 TU 各发一份 IR 时
         // 同名符号靠 linkonce_odr + COMDAT 合并，不再用消费方模块当分隔。
         string consumerModule;
@@ -81,8 +81,8 @@ class Compiler {
 
     // 泛型函数单态化：key = `name<Args>(params)`（如 "println<i32>(i32)"）
     struct FnInstance {
-        p<FnNode> baseFn;          // 泛型函数定义
-        p<FileNode> ownerFile;     // 定义该函数的文件
+        FnNode* baseFn;            // 泛型函数定义
+        FileNode* ownerFile;       // 定义该函数的文件
         vector<TypeInfo> typeArgs; // 类型参数实例化参数
         string mangledName;        // mangle 后的实例名
         string methodStructName;   // 非空表示方法实例；值为 receiver 的实际 struct 名
@@ -132,12 +132,12 @@ class Compiler {
     [[nodiscard]] string mangleStaticMethod(const string& module, const string& structName, const string& methodName,
                                             const vector<TypeInfo>& params, const TypeInfo& retType = TypeInfo(),
                                             const string& fallibleErrType = "") const;
-    string ensureStructInstance(p<StructDeclNode> baseDecl, const vector<sp<TypeInfo>>& args, p<FileNode> ownerFile,
+    string ensureStructInstance(StructDeclNode* baseDecl, const vector<sp<TypeInfo>>& args, FileNode* ownerFile,
                                 int sourceLine = 0); // 确保结构体实例存在
-    string ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& typeArgs, p<FileNode> ownerFile,
+    string ensureFnInstance(FnNode* baseFn, const vector<TypeInfo>& typeArgs, FileNode* ownerFile,
                             int sourceLine); // 确保函数实例存在
-    string ensureMethodInstance(p<FnNode> baseMethod, const string& structName, const vector<TypeInfo>& typeArgs,
-                                p<FileNode> ownerFile,
+    string ensureMethodInstance(FnNode* baseMethod, const string& structName, const vector<TypeInfo>& typeArgs,
+                                FileNode* ownerFile,
                                 int sourceLine); // 确保泛型方法实例存在
     void emitInstanceMethods();                  // 生成所有泛型结构体实例的方法
     void emitFnInstances();                      // 生成所有泛型函数实例
@@ -163,13 +163,13 @@ class Compiler {
     void pushScopeVar(const string& name, const TypeInfo& type, llvm::Value* prevPtr, bool needsDtor);
     void eraseScopeVar(const string& name); // 从所有帧摘除（move-out / ret 移出）
     // 局部变量符号：优先 from 的词法 scope（块作用域），再回退 FnNode（参数 / 旧路径）
-    SymbolInfo* lookupVarSymbol(const string& name, p<Node> from);
+    SymbolInfo* lookupVarSymbol(const string& name, Node* from);
     // Phase B-1: move 语义 — 已被 move 的变量名集合 (不可再访问，析构时跳过)
     set<string> _movedVars;
 
     // ==================== 当前编译状态 ====================
     llvm::Function* _currentFn = nullptr; // 当前正在编译的函数
-    p<FnNode> _currentFnNode = nullptr;   // 当前函数的 AST 节点
+    FnNode* _currentFnNode = nullptr;     // 当前函数的 AST 节点
     string _currentStructName;            // 当前方法所属的结构体名
     // String 字面量发射缓存（per-module，避免跨测试状态泄漏）
     llvm::GlobalVariable* _strEmptyBlock = nullptr; // 空 String sentinel block 复用
@@ -182,7 +182,7 @@ class Compiler {
     std::map<std::string, llvm::Constant*> _inlineConstantValues;
     // Phase 2c：当前正在编译的 lambda body 作用域（emitLambdaFunction 期间有效）
     // 非空时 compileLiteralExpr 的 LiteralObj 路径启用 FV 校验 / 捕获识别。
-    p<ScopeNode> _currentLambdaBodyScope = nullptr;
+    ScopeNode* _currentLambdaBodyScope = nullptr;
     // Phase 4a：当前正在编译的 lambda 节点（emitLambdaFunction 期间有效）
     // 非空时 compileLiteralExpr 命中外层 local 标识符 → addCapture + GEP 读 captures。
     // 捕获通路未启走 throwSemaGap；不支持的捕获类型由 SemaPass 报 E2029。
@@ -246,7 +246,7 @@ private:
     // 把 ExprArrayNode 按 Array<elemType> 字面量编译，直接分配数据缓冲并填充元素，
     // 返回 Array<T> struct 值。处理元素 retain / consumeTemp，嵌套 Array 递归。
     llvm::Value* buildArrayLiteralBlock(ExprArrayNode* arrayNode, const TypeInfo& elemType);
-    llvm::FunctionType* getLLVMFunctionType(p<FnHeaderNode> header); // 获取函数的 LLVM 类型
+    llvm::FunctionType* getLLVMFunctionType(FnHeaderNode* header); // 获取函数的 LLVM 类型
     // DRAFT-错误.md [#10.A]：把 #Fallible(E) 函数的成功返回类型包成
     //   { i1 isErr, T_ok, ErrEnum }（T_ok = void 时退化为 { i1, ErrEnum }）。
     // errTypeName 为空时直接返回 raw return type（成功 / 普通函数同行为）。
@@ -269,16 +269,16 @@ private:
     //   - 成功分支：extract T_ok，caller 在 okBB 继续编译；返回 T_ok（void 时 nullptr）
     // calleeFallibleErr 空时直接返回 callResult（普通调用同行为）。
     llvm::Value* handleFallibleCallResult(llvm::Value* callResult, const string& calleeFallibleErr,
-                                          const TypeInfo& calleeRetType, p<ExprCallNode> callNode);
+                                          const TypeInfo& calleeRetType, ExprCallNode* callNode);
     // fn-value 调用：Fn TypeInfo → LLVM 返回类型（含 T ! E ABI 包装）
     llvm::Type* llvmRetTypeForFnValue(const TypeInfo& fnType);
     // fn-value 调用完成后走 handleFallibleCallResult
-    llvm::Value* finishFnValueFallibleCall(llvm::Value* callResult, const TypeInfo& fnType, p<ExprCallNode> callNode);
-    llvm::StructType* getOrCreateStructType(p<StructDeclNode> structDecl,
-                                            p<FileNode> sourceFile = nullptr); // 获取或创建结构体类型
+    llvm::Value* finishFnValueFallibleCall(llvm::Value* callResult, const TypeInfo& fnType, ExprCallNode* callNode);
+    llvm::StructType* getOrCreateStructType(StructDeclNode* structDecl,
+                                            FileNode* sourceFile = nullptr); // 获取或创建结构体类型
 
     // ==================== 函数获取 ====================
-    llvm::Function* getFunction(p<FnHeaderNode> header); // 获取或创建函数
+    llvm::Function* getFunction(FnHeaderNode* header); // 获取或创建函数
     llvm::Function* getMethodFunction(
         const string& structName, const string& methodName, const vector<TypeInfo>& paramTypes, const TypeInfo& retType,
         const string& fallibleErrType = "", bool isStatic = false,
@@ -287,18 +287,18 @@ private:
                                           string ownerModuleHint = {}); // ownerModuleHint：有 owner 时不再短名找错模块
 
     // ==================== 表达式编译 ====================
-    llvm::Value* compileExpr(p<ExprNode> node); // 编译表达式 (主入口)
+    llvm::Value* compileExpr(ExprNode* node); // 编译表达式 (主入口)
     // Phase 2.4 / Phase B：codegen 读类型的统一入口。
     // 优先返回 SemaPass / compile<Foo>Expr 已写入的 resolvedType；尚未走过该路径
     // 的节点回退到 getType()。debug 构建下若两者均可得，校验一致。
-    [[nodiscard]] TypeInfo resolvedOrInferredType(p<ExprNode> node) const;
-    llvm::Value* compileArrayInitExpr(p<ExprArrayInitNode> node, const TypeInfo& targetType,
+    [[nodiscard]] TypeInfo resolvedOrInferredType(ExprNode* node) const;
+    llvm::Value* compileArrayInitExpr(ExprArrayInitNode* node, const TypeInfo& targetType,
                                       llvm::Value* destPtr = nullptr);                           // 编译数组初始化表达式
     llvm::Value* createCast(llvm::Value* val, const TypeInfo& srcType, const TypeInfo& dstType); // 创建类型转换
 
     // ==================== 语句块编译 ====================
-    void compileStatementBlock(p<StatementBlockNode> block); // 编译语句块 (无返回值)
-    llvm::Value* compileStatementBlockWithResult(p<StatementBlockNode> block, llvm::BasicBlock* continueBlock,
+    void compileStatementBlock(StatementBlockNode* block); // 编译语句块 (无返回值)
+    llvm::Value* compileStatementBlockWithResult(StatementBlockNode* block, llvm::BasicBlock* continueBlock,
                                                  llvm::PHINode* phi,
                                                  const TypeInfo& resultType); // 编译语句块 (有返回值)
 
@@ -322,10 +322,10 @@ private:
     [[nodiscard]] bool isNoCopyType(const TypeInfo& type) const; // 查 struct decl 的 #NoCopy 注解
     bool enumNeedsDestructor(const string& enumName);            // Phase 5: 任一 variant payload 需析构则枚举需析构
     bool enumNeedsDestructor(const TypeInfo& type);              // 非 Normal 直接 false；identity 不走裸名重建
-    bool enumDeclNeedsDestructor(p<EnumDeclNode> decl);          // Phase 5: 同上，按声明节点
+    bool enumDeclNeedsDestructor(EnumDeclNode* decl);            // Phase 5: 同上，按声明节点
     llvm::Function* getEnumDestructorFunction(const string& enumName,
                                               const string& ownerModuleHint = {}); // Phase 5: 获取或创建 enum dtor
-    void generateEnumDestructor(p<EnumDeclNode> decl, p<FileNode> owner); // Phase 5: 合成 __enum_drop_<E>(p*) 实现
+    void generateEnumDestructor(EnumDeclNode* decl, FileNode* owner); // Phase 5: 合成 __enum_drop_<E>(p*) 实现
     void compileEnumDtors(); // Phase 5: 在主流水线中为本文件 enum 生成 dtor 定义
 
     // ==================== OwnershipOps（三个入口）====================
@@ -333,12 +333,12 @@ private:
     // 调用点走下面三个；retainHandleAtCallSite / consumeTemp / isFreshHandleExpr
     // 是本层实现细节（深拷循环 / 内建 / 临时帧仍可直接用）。
     enum class SlotStore : u8 { Init, Replace };
-    void takeOwnership(llvm::Value* val, const TypeInfo& type, p<ExprNode> expr);
-    void storeIntoSlot(llvm::Value* slotPtr, llvm::Value* val, const TypeInfo& type, p<ExprNode> expr, SlotStore kind);
-    void passAsArg(llvm::Value* val, const TypeInfo& type, p<ExprNode> expr);
+    void takeOwnership(llvm::Value* val, const TypeInfo& type, ExprNode* expr);
+    void storeIntoSlot(llvm::Value* slotPtr, llvm::Value* val, const TypeInfo& type, ExprNode* expr, SlotStore kind);
+    void passAsArg(llvm::Value* val, const TypeInfo& type, ExprNode* expr);
     // retainHandle=true：Rc/Weak（及非 Fallible 的 Fn）走 takeOwnership，返回 true。
     // 否则仅在需析构且 fresh 时 consumeTemp，返回 false。
-    bool returnValue(llvm::Value* val, const TypeInfo& type, p<ExprNode> expr, bool retainHandle);
+    bool returnValue(llvm::Value* val, const TypeInfo& type, ExprNode* expr, bool retainHandle);
 
     // Phase 3a: callee-clean 调用约定
     // 给 Rc/Array/Weak 实参在传入前 retain；callee 末尾析构 release 抵消
@@ -384,14 +384,14 @@ private:
     // Phase 8d.3: 编译"分支结果表达式"——push 子帧、compile、consume 结果、pop 释放中间临时；
     // 若 expectedType 是 RC 句柄（Rc/Array/Weak/String）且结果非 fresh，发 retain 归一为 +1。
     // 调用方在 phi 汇合后应 recordTemp(phi, expectedType) 把统一 +1 句柄交给外层 statement frame
-    llvm::Value* compileBranchResultNormalized(p<ExprNode> expr, const TypeInfo& expectedType);
+    llvm::Value* compileBranchResultNormalized(ExprNode* expr, const TypeInfo& expectedType);
 
     // Phase 8b: 识别 +1 所有权（"fresh"）表达式
     // - 函数 / 方法 / 构造器调用：callee 已在 ret 处 move-return retain，结果是 +1 所有权句柄
     // - 数组字面量：_array_alloc 给 strong=1
     // - 其他（变量引用 / 字段访问 / if-else / ?? 等）：视作借用，复制语义需 retain
     // 用于在 declare-assign / assign / 字面量元素写入等"复制语义"路径上跳过多余 retain
-    bool isFreshHandleExpr(p<ExprNode> expr);
+    bool isFreshHandleExpr(ExprNode* expr);
 
     // Phase 3c.1/3c.2: 结构体形参 ABI 判定
     // 返回 true 表示该结构体形参按指针传递（保守路径），false 则按 LLVM by-value
@@ -423,24 +423,24 @@ private:
     // 从 target type 递归推断灵活整数类型（含 tuple/泛型别名展开）
     // 当 target 解析为 tuple 且 expr 为 tuple 字面量时，逐元素递归推断；
     // 否则委托给 AST 层的 tryInferIntType。
-    void inferFlexibleInts(p<ExprNode> expr, const TypeInfo& target);
+    void inferFlexibleInts(ExprNode* expr, const TypeInfo& target);
 
     // ==================== 语句编译 ====================
-    void compileRetStatement(p<StatementRetNode> node);                               // 编译 return 语句
-    void compileRetVoidStatement(p<StatementRetVoidNode> node);                       // 编译 return; 语句
-    void compileDeclareStatement(p<StatementDeclareNode> node);                       // 编译变量声明语句（无初始化）
-    void compileDeclareAssignStatement(p<StatementDeclareAssignNode> node);           // 编译变量声明语句
-    void compileDeclareAssignTupleStatement(p<StatementDeclareAssignTupleNode> node); // 编译元组解构声明语句
-    void compileAssignStatement(p<StatementAssignNode> node);                         // 编译赋值语句
-    void compileLoopStatement(p<StatementLoopNode> node);                             // 编译 loop 语句
-    void compileForInStatement(p<StatementForInNode> node);                           // 编译 for-in 语句
-    void compileBreakStatement(p<StatementBreakNode> node);                           // 编译 break 语句
-    void compileContinueStatement(p<StatementContinueNode> node);                     // 编译 continue 语句
-    void compileArraySetStatement(p<StatementSetNode> node);                          // 编译数组元素赋值语句
-    void compileStaticFieldSetStatement(p<StatementStaticFieldSetNode> node);         // 编译静态字段写语句 (Phase 5)
+    void compileRetStatement(StatementRetNode* node);                               // 编译 return 语句
+    void compileRetVoidStatement(StatementRetVoidNode* node);                       // 编译 return; 语句
+    void compileDeclareStatement(StatementDeclareNode* node);                       // 编译变量声明语句（无初始化）
+    void compileDeclareAssignStatement(StatementDeclareAssignNode* node);           // 编译变量声明语句
+    void compileDeclareAssignTupleStatement(StatementDeclareAssignTupleNode* node); // 编译元组解构声明语句
+    void compileAssignStatement(StatementAssignNode* node);                         // 编译赋值语句
+    void compileLoopStatement(StatementLoopNode* node);                             // 编译 loop 语句
+    void compileForInStatement(StatementForInNode* node);                           // 编译 for-in 语句
+    void compileBreakStatement(StatementBreakNode* node);                           // 编译 break 语句
+    void compileContinueStatement(StatementContinueNode* node);                     // 编译 continue 语句
+    void compileArraySetStatement(StatementSetNode* node);                          // 编译数组元素赋值语句
+    void compileStaticFieldSetStatement(StatementStaticFieldSetNode* node);         // 编译静态字段写语句 (Phase 5)
 
     // ==================== 表达式编译 (具体类型) ====================
-    llvm::Value* compileLiteralExpr(p<ExprLiteralNode> node); // 编译字面量表达式
+    llvm::Value* compileLiteralExpr(ExprLiteralNode* node); // 编译字面量表达式
     llvm::Value* emitStringLiteralValue(
         const vector<u32>& codePoints); // B-4: 由码点向量发射 sentinel Rc<Array<u32>> 包装的 String 值
     // B-4: 由码点向量发射 sentinel RC Block 全局常量。
@@ -456,23 +456,23 @@ private:
     compileStringTemplate(StringTemplateNode* node); // v0.6 Phase 2a：StringTemplateNode → StringBuilder lower
     llvm::Value* compileStringPlusChain(
         ExprAddSubNode* node); // v0.6 Phase 2c：连续 String + ... 整链 lower 为单条 StringBuilder 累加
-    llvm::Value* compileAddSubExpr(p<ExprAddSubNode> node);               // 编译加减表达式
-    llvm::Value* compileMulDivModExpr(p<ExprMulDivModNode> node);         // 编译乘除取模表达式
-    llvm::Value* compileBinOpExpr(p<ExprBinOpNode> node);                 // 编译位运算表达式
-    llvm::Value* compileParenExpr(p<ExprParenNode> node);                 // 编译括号表达式
-    llvm::Value* compileCallExpr(p<ExprCallNode> node);                   // 编译函数调用表达式
-    llvm::Value* compileDotExpr(p<ExprDotNode> node);                     // 编译成员访问表达式
-    llvm::Value* compileCompareExpr(p<ExprCompareNode> node);             // 编译比较表达式
-    llvm::Value* compileIfElseExpr(p<ExprIfElseNode> node);               // 编译 if-else 表达式
-    llvm::Value* compileOneLineIfElseExpr(p<ExprOneLineIfElseNode> node); // 编译单行 if-else 表达式
-    llvm::Value* compileArrayGetExpr(p<ExprGetNode> node);                // 编译数组索引表达式
-    llvm::Value* compileArrayLiteralExpr(p<ExprArrayNode> node);          // 编译数组字面量表达式
-    llvm::Value* compileTupleExpr(p<ExprTupleNode> node);                 // 编译元组构造表达式 (e1, e2, ...)
-    llvm::Value* compileEnumCtorExpr(p<ExprPathCallNode> node);           // 编译枚举构造表达式 E::V / E::V(args)
+    llvm::Value* compileAddSubExpr(ExprAddSubNode* node);               // 编译加减表达式
+    llvm::Value* compileMulDivModExpr(ExprMulDivModNode* node);         // 编译乘除取模表达式
+    llvm::Value* compileBinOpExpr(ExprBinOpNode* node);                 // 编译位运算表达式
+    llvm::Value* compileParenExpr(ExprParenNode* node);                 // 编译括号表达式
+    llvm::Value* compileCallExpr(ExprCallNode* node);                   // 编译函数调用表达式
+    llvm::Value* compileDotExpr(ExprDotNode* node);                     // 编译成员访问表达式
+    llvm::Value* compileCompareExpr(ExprCompareNode* node);             // 编译比较表达式
+    llvm::Value* compileIfElseExpr(ExprIfElseNode* node);               // 编译 if-else 表达式
+    llvm::Value* compileOneLineIfElseExpr(ExprOneLineIfElseNode* node); // 编译单行 if-else 表达式
+    llvm::Value* compileArrayGetExpr(ExprGetNode* node);                // 编译数组索引表达式
+    llvm::Value* compileArrayLiteralExpr(ExprArrayNode* node);          // 编译数组字面量表达式
+    llvm::Value* compileTupleExpr(ExprTupleNode* node);                 // 编译元组构造表达式 (e1, e2, ...)
+    llvm::Value* compileEnumCtorExpr(ExprPathCallNode* node);           // 编译枚举构造表达式 E::V / E::V(args)
     // Dyn<D>(x) 构造表达式（DRAFT-dyn-draft / 拟 §12.9）
     // Phase 1c：仅 emit { vtable=null, data=src.handle } 占位 fat ptr，
     // 真 vtable 与对象安全检查留 Phase 2/3
-    llvm::Value* compileDynCtorExpr(p<class ExprDynCtorNode> node);
+    llvm::Value* compileDynCtorExpr(class ExprDynCtorNode* node);
 
     // Phase 3a：为 (concreteType U, specQualified D) 获取或合成 vtable 全局
     // 符号：`__yux_vtable.<U全限定>.<D全限定>`，linkonce_odr。
@@ -489,88 +489,86 @@ private:
     // 仅在 vtable 槽内调用; 普通直接方法调用走 compileStructMethodCall 的 by-value 分支.
     llvm::Function* getOrEmitDynPrimitiveThunk(const TypeInfo& concreteType, const std::string& specQualified,
                                                class FnHeaderNode* sig, const std::string& sdkMangled);
-    llvm::Value* compileMatchExpr(p<ExprMatchNode> node); // Phase 6: 编译 match 表达式（switch on tag + 绑定 + arm 体）
+    llvm::Value* compileMatchExpr(ExprMatchNode* node); // Phase 6: 编译 match 表达式（switch on tag + 绑定 + arm 体）
     llvm::Value* compileTryCatchExpr(
-        p<ExprTryCatchNode> node); // Phase 10f: 编译 try-catch 表达式（10f 仅占位 + 语义校验，IR 路由推 10g）
+        ExprTryCatchNode* node); // Phase 10f: 编译 try-catch 表达式（10f 仅占位 + 语义校验，IR 路由推 10g）
 
     // ==================== Lambda（spec §4 / Phase 2b：零捕获） ====================
     // compileLambdaExpr：把 LambdaExprNode 编译为 16 字节 fat-ptr 值 { fn_ptr, captures }；
     // captures 永远为 null（捕获留给 Phase 4）。底层 Function 由 emitLambdaFunction 生成。
-    llvm::Value* compileLambdaExpr(p<class LambdaExprNode> node);
+    llvm::Value* compileLambdaExpr(class LambdaExprNode* node);
     // emitLambdaFunction：取 LambdaExprNode + 期望 Fn 类型，按 captures-leading ABI
     // (Ptr captures, P1, ..., Pn) → R 生成顶层 LLVM Function。
     // expectedFnType 用于回填实例化后的形参类型（lambda 形参可省类型；调用者必须先反推）。
     // 同 (node, mangledName) 已生成则直接返回缓存。
-    llvm::Function* emitLambdaFunction(p<class LambdaExprNode> node, const TypeInfo& expectedFnType);
+    llvm::Function* emitLambdaFunction(class LambdaExprNode* node, const TypeInfo& expectedFnType);
     // Phase 4a-2：为含堆句柄 captures 的 lambda 合成析构函数。
     // 签名 void __captures_dtor_<mangle>(ptr fields_base)，逐 capture 字段调 releaseAtPtr。
     // 全标量 captures（无字段需 release）→ 返回 nullptr，调用方在 dtor 槽存 null。
-    llvm::Function* emitCapturesDtorFunction(p<class LambdaExprNode> node, const string& lambdaMangled);
+    llvm::Function* emitCapturesDtorFunction(class LambdaExprNode* node, const string& lambdaMangled);
     // 调用 fn-typed 值：从 fat-ptr 提取 fn_ptr / captures，按 ABI 调用
-    llvm::Value* compileFnValueCall(p<ExprCallNode> node);
+    llvm::Value* compileFnValueCall(ExprCallNode* node);
     // Phase 3c：callee 为 Rc<fn(...)R>，从 Rc payload load fat-ptr 后按同款 ABI 调用
     // innerFnType 为 Rc 元素类型（Fn TypeInfo），用于实参反推 / 形参类型 / 返回类型
-    llvm::Value* compileRcFnValueCall(p<ExprCallNode> node, const TypeInfo& innerFnType);
+    llvm::Value* compileRcFnValueCall(ExprCallNode* node, const TypeInfo& innerFnType);
     // v0.16：callee 为 Ref<fn(...)R>（如 arr[i] 返回 fn&），Load 引用得 fat-ptr 后按同款 ABI 调用
     // innerFnType 为 Ref 元素类型（Fn TypeInfo），用于实参反推 / 形参类型 / 返回类型
-    llvm::Value* compileRefFnValueCall(p<ExprCallNode> node, const TypeInfo& innerFnType);
+    llvm::Value* compileRefFnValueCall(ExprCallNode* node, const TypeInfo& innerFnType);
     // 实参位置 lambda：把期望 Fn 类型写到 inferredFnType，并回填 bodyScope 未标注形参。
     // 泛型调用须在 typeArgs 替换之后再调，避免 Function<T,...> 进入 emitLambdaFunction。
-    void inferLambdaParamsFromFnType(p<class LambdaExprNode> lambda, const TypeInfo& expectedFnType);
-    llvm::Value* compileGetRefExpr(p<ExprGetRefNode> node);         // 编译取引用表达式
-    llvm::Value* compileUnaryExpr(p<ExprUnaryNode> node);           // 编译一元表达式
-    llvm::Value* compileNullElseExpr(p<ExprNullElseNode> node);     // 编译 a ?? b：a 持值则取 a.get()，否则取 b
-    llvm::Value* compileMoveAssignExpr(p<ExprMoveAssignNode> node); // 编译 a <- b：移出旧值、替换新值、返回旧值
-    llvm::Value* compileLvalueAddr(p<ExprNode> node);               // 取 lvalue 表达式的地址 (alloca/GEP)
-    llvm::Value* compileSafeDotExpr(p<ExprDotNode> node); // 编译 a?.b：a 持值则包一层 Nullable<a.get().b>，否则空
+    void inferLambdaParamsFromFnType(class LambdaExprNode* lambda, const TypeInfo& expectedFnType);
+    llvm::Value* compileGetRefExpr(ExprGetRefNode* node);         // 编译取引用表达式
+    llvm::Value* compileUnaryExpr(ExprUnaryNode* node);           // 编译一元表达式
+    llvm::Value* compileNullElseExpr(ExprNullElseNode* node);     // 编译 a ?? b：a 持值则取 a.get()，否则取 b
+    llvm::Value* compileMoveAssignExpr(ExprMoveAssignNode* node); // 编译 a <- b：移出旧值、替换新值、返回旧值
+    llvm::Value* compileLvalueAddr(ExprNode* node);               // 取 lvalue 表达式的地址 (alloca/GEP)
+    llvm::Value* compileSafeDotExpr(ExprDotNode* node); // 编译 a?.b：a 持值则包一层 Nullable<a.get().b>，否则空
 
     // ==================== 自定义类型运算符方法调用 ====================
-    llvm::Value* compileCustomTypeBinaryOp(p<ExprNode> leftExpr, p<ExprNode> rightExpr, const TypeInfo& leftType,
+    llvm::Value* compileCustomTypeBinaryOp(ExprNode* leftExpr, ExprNode* rightExpr, const TypeInfo& leftType,
                                            const string& methodName, int lineNum); // 编译自定义类型二元运算符
-    llvm::Value* compileCustomTypeUnaryOp(p<ExprNode> expr, const TypeInfo& type, const string& methodName,
+    llvm::Value* compileCustomTypeUnaryOp(ExprNode* expr, const TypeInfo& type, const string& methodName,
                                           int lineNum); // 编译自定义类型一元运算符
 
     // ==================== 方法/函数调用编译 ====================
     bool isBuiltinMethod(const string& structName, const string& methodName); // 检查是否为编译器内部方法
-    llvm::Value* compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode> dotNode, vector<llvm::Value*>& args,
+    llvm::Value* compileMethodCall(ExprCallNode* callNode, ExprDotNode* dotNode, vector<llvm::Value*>& args,
                                    vector<TypeInfo>& argTypes); // 编译方法调用
-    llvm::Value* compileSafeDotMethodCall(p<ExprCallNode> callNode, p<ExprDotNode> dotNode,
+    llvm::Value* compileSafeDotMethodCall(ExprCallNode* callNode, ExprDotNode* dotNode,
                                           vector<TypeInfo>& argTypes); // 编译 a?.foo() 安全方法调用
-    llvm::Value* compileFunctionCall(p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args,
+    llvm::Value* compileFunctionCall(ExprCallNode* callNode, const string& fnName, vector<llvm::Value*>& args,
                                      vector<TypeInfo>& argTypes); // 编译函数调用
-    llvm::Value* compileKnownFunctionCall(p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args,
+    llvm::Value* compileKnownFunctionCall(ExprCallNode* callNode, const string& fnName, vector<llvm::Value*>& args,
                                           vector<TypeInfo>& argTypes,
                                           FnSymbolInfo* fnSymbol); // 编译已知函数调用
 
     // ==================== 特殊类型方法编译 ====================
-    llvm::Value* compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType,
+    llvm::Value* compileArrayMethodCall(ExprCallNode* callNode, ExprNode* baseExpr, const TypeInfo& baseType,
                                         const string& member, vector<llvm::Value*>& args,
                                         vector<TypeInfo>& argTypes); // 查 kBuiltinMethods 后 lowering
     // Array:<T>::with_capacity(n) — 表里 ArrayWithCapacity 的 lowering
-    llvm::Value* compileArrayWithCapacity(p<ExprPathCallNode> node);
-    llvm::Value* compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType,
+    llvm::Value* compileArrayWithCapacity(ExprPathCallNode* node);
+    llvm::Value* compileBuiltinTypeMethodCall(ExprCallNode* callNode, ExprNode* baseExpr, const TypeInfo& baseType,
                                               const string& member, vector<llvm::Value*>& args,
                                               vector<TypeInfo>& argTypes); // 编译内置类型方法调用
-    llvm::Value* compileStructMethodCall(p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType,
+    llvm::Value* compileStructMethodCall(ExprCallNode* callNode, ExprNode* baseExpr, const TypeInfo& baseType,
                                          const TypeInfo& actualType, const string& member, vector<llvm::Value*>& args,
                                          vector<TypeInfo>& argTypes); // 编译结构体方法调用
-    llvm::Value* compileDynMethodCall(p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType,
+    llvm::Value* compileDynMethodCall(ExprCallNode* callNode, ExprNode* baseExpr, const TypeInfo& baseType,
                                       const string& member, vector<llvm::Value*>& args,
                                       vector<TypeInfo>& argTypes); // Phase 2d/3d: Dyn<D> 方法调用
-    llvm::Value* compileGenericFunctionCall(p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args,
-                                            vector<TypeInfo>& argTypes, p<FnNode> genericFn,
-                                            p<FileNode> fnOwner); // 编译泛型函数调用
+    llvm::Value* compileGenericFunctionCall(ExprCallNode* callNode, const string& fnName, vector<llvm::Value*>& args,
+                                            vector<TypeInfo>& argTypes, FnNode* genericFn,
+                                            FileNode* fnOwner); // 编译泛型函数调用
 
     // ==================== 测试断言内建（compiler_test_intrinsics.cpp）====================
     // assert_eq:<T> 失败时合成 stdout 写入 + 调 _yux_test_assert_failed → RaiseException
     // 详见 docs/spec/11-编译期注解.md §11.3.5
-    llvm::Value* compileTestAssertEq(p<ExprCallNode> callNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
+    llvm::Value* compileTestAssertEq(ExprCallNode* callNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
                                      const TypeInfo& typeArg);
-    llvm::Value* compileTestAssertTrue(p<ExprCallNode> callNode, vector<llvm::Value*>& args,
-                                       vector<TypeInfo>& argTypes);
-    llvm::Value* compileTestAssertFalse(p<ExprCallNode> callNode, vector<llvm::Value*>& args,
-                                        vector<TypeInfo>& argTypes);
-    llvm::Value* compileTestFail(p<ExprCallNode> callNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
+    llvm::Value* compileTestAssertTrue(ExprCallNode* callNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
+    llvm::Value* compileTestAssertFalse(ExprCallNode* callNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
+    llvm::Value* compileTestFail(ExprCallNode* callNode, vector<llvm::Value*>& args, vector<TypeInfo>& argTypes);
 
 public:
     // ==================== 构造函数 ====================
@@ -581,13 +579,13 @@ public:
     // @param yux        编译器主驱动 (可选)
     // @param isSdk      是否为 SDK 编译
     // @param isTestDll  是否为 test DLL 模式（断言走 _yux_test_throw_failure + dllexport）
-    Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, p<FileNode> file,
+    Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, FileNode* file,
              Yux* yux = nullptr, bool isSdk = false, bool isTestDll = false);
 
     // ==================== 编译入口 ====================
-    void compile(p<FileNode> file); // 编译文件 (主入口)
-    void compileGlobalConsts();     // 编译全局常量
-    void compileGlobalVars();       // 编译全局变量（DRAFT-static-vars Phase 1）
+    void compile(FileNode* file); // 编译文件 (主入口)
+    void compileGlobalConsts();   // 编译全局常量
+    void compileGlobalVars();     // 编译全局变量（DRAFT-static-vars Phase 1）
     // 跨模块静态字段：本模块无定义时声明 ExternalLinkage GV（定义在 owner 模块）。
     llvm::GlobalVariable* getOrDeclareStaticFieldGV(const string& mangledName, llvm::Type* llvmType, bool isConstant);
     // DRAFT-const-eval Phase 5: ConstantValue -> llvm::Constant 翻译 (递归; 支持 Struct 嵌套).
@@ -595,14 +593,14 @@ public:
     llvm::Constant* buildLLVMConstantFromValue(const ConstantValue& v, llvm::Type* expectedTy);
     // #Cval #Inline 字段 init 直接求值为 llvm::Constant*（不经过 ConstEvaluator，
     // 避免 parseIntLiteral 对大 u64 字面量 stoll 溢出问题）
-    llvm::Constant* evalInlineFieldInit(p<ExprNode> init, const TypeInfo& fieldType, llvm::Type* llvmType);
-    void compileStructDecls();                            // 编译结构体声明
-    void compileStructImpls();                            // 编译结构体实现 (方法、析构函数)
-    void compileFn(p<FnNode> node, llvm::Function* func); // 编译函数
-    void compileMethod(p<FnNode> node, llvm::Function* func, const string& structName, bool isDestructor = false,
+    llvm::Constant* evalInlineFieldInit(ExprNode* init, const TypeInfo& fieldType, llvm::Type* llvmType);
+    void compileStructDecls();                          // 编译结构体声明
+    void compileStructImpls();                          // 编译结构体实现 (方法、析构函数)
+    void compileFn(FnNode* node, llvm::Function* func); // 编译函数
+    void compileMethod(FnNode* node, llvm::Function* func, const string& structName, bool isDestructor = false,
                        bool isStatic = false); // 编译方法 (isStatic=true 跳过 $ 注入与 ctor 零初始化)
     // compileMethod 本体；外层 compileMethod 捕获 YuxError 后按方法节点所属文件补路径
-    void compileMethodImpl(p<FnNode> node, llvm::Function* func, const string& structName, bool isDestructor,
+    void compileMethodImpl(FnNode* node, llvm::Function* func, const string& structName, bool isDestructor,
                            bool isStatic);
     // DRAFT-spec-default-body Phase 3: 把该 impl 登记的 InheritedDefault 按 spec 默认体编出来.
     // 用 spec 默认体 FnNode 直接走 compileMethod, 期间临时 patch TypeSelfNode 与 $/形参符号表
@@ -612,7 +610,7 @@ public:
     // LLVM 函数符号 + fnSymbol 表 key.
     void emitSpecDefaultBodyMethod(SpecDeclNode* spec, size_t sigIdx, const string& structName,
                                    const string& emitMethodName);
-    void compileStatement(p<StatementNode> node); // 编译语句 (分发函数)
+    void compileStatement(StatementNode* node); // 编译语句 (分发函数)
 };
 
 #endif // YUX_LANG_COMPILER_H

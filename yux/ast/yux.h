@@ -38,11 +38,11 @@ struct PkgExportItem {
 [[nodiscard]] vector<PkgExportItem> parsePkgFileAt(const string& pkgPath);
 
 class Yux {
-    vector<p<FileNode>> _files;
-    p<FileNode> _sdkFile;
+    vector<FileNode*> _files;
+    FileNode* _sdkFile;
 
     // 已加载的用户模块：key = 模块名（点分，如 "utils.math.mini"）
-    map<string, p<FileNode>> _modules;
+    map<string, FileNode*> _modules;
     map<string, string> _modulePaths; // 模块名 → 绝对路径
     vector<string> _loadOrder;        // 首次加载顺序，用于后续 codegen 与链接
     vector<string> _loadStack;        // 加载栈，用于循环依赖检测
@@ -72,23 +72,23 @@ public:
     Yux();
     ~Yux();
 
-    void addFile(const p<FileNode>& file);
-    p<FileNode> createFile(const string& moduleName);
-    p<FileNode> createSdkFile();
+    void addFile(FileNode* file);
+    FileNode* createFile(const string& moduleName);
+    FileNode* createSdkFile();
 
     // .decl 加载：把已构造的 FileNode 登记为模块（不 parse）
-    void bindModule(p<FileNode> file, const string& absPath, const string& moduleName);
+    void bindModule(FileNode* file, const string& absPath, const string& moduleName);
     // SDK 自举等场景先登记已知依赖路径，供 pkg `to` 目标校验使用；不代表模块已加载。
     void registerModulePath(const string& absPath, const string& moduleName);
     void keepBuilder(std::unique_ptr<ASTBuilder> builder);
     void adoptDeclOwner(std::unique_ptr<mod_decl::NodeOwner> owner);
 
-    [[nodiscard]] p<FileNode> sdkFile() const { return _sdkFile; }
+    [[nodiscard]] FileNode* sdkFile() const { return _sdkFile; }
     // 设置外部 SDK 文件（不转移所有权）。用于批量测试中多文件共享一次 SDK 加载。
     // 调用方负责保证 sdkFile 在 Yux 使用期间存活，并在 Yux 析构前调用
     // setSdkFile(nullptr) 避免 double-free。
-    void setSdkFile(p<FileNode> sdkFile) { _sdkFile = sdkFile; }
-    [[nodiscard]] const vector<p<FileNode>>& files() const { return _files; }
+    void setSdkFile(FileNode* sdkFile) { _sdkFile = sdkFile; }
+    [[nodiscard]] const vector<FileNode*>& files() const { return _files; }
 
     // draft 注册表 (spec §12). 首次访问时按当前已加载的 _files + _sdkFile
     // 全量索引一次. 后续如新增动态加载模块, 调用 rebuildSpecRegistry().
@@ -107,7 +107,7 @@ public:
 
     // 按模块名加载 `.yux` 文件。首次加载解析并注册，后续命中缓存。
     // errorLine 仅用于错误报告。未找到文件 / 循环依赖时抛 YuxError。
-    p<FileNode> loadModule(const string& moduleName, int errorLine = 0);
+    FileNode* loadModule(const string& moduleName, int errorLine = 0);
 
     // 模块名在文件系统中对应的形态。
     enum class ModulePathKind : std::uint8_t { NotFound, File, Package, Conflict };
@@ -132,11 +132,11 @@ public:
 
     // 解析主入口 `.yux` 文件（不走 moduleName → path 映射）。
     // 产生的 ASTBuilder 被 Yux 持有，AST 节点在 Yux 析构前有效。
-    p<FileNode> loadMainFile(const string& absPath, const string& moduleName);
+    FileNode* loadMainFile(const string& absPath, const string& moduleName);
 
     // codegen 用：若当前是 .decl 重建的接口树，则整文件 parse 出带体的 AST。
     // 调用方已持有的 wildcard / alias 指针仍指向旧 FileNode（接口足够）；返回值给 codegen。
-    p<FileNode> ensureFullAst(const string& absPath, const string& moduleName);
+    FileNode* ensureFullAst(const string& absPath, const string& moduleName);
 
     // 从文件路径初始化项目根和源码根（不解析 yux.toml）。
     // 设 _projectRoot = _sourceRoot = 文件所在目录，用于 yux-check / LSP
@@ -164,7 +164,7 @@ public:
     // 已成功加载的用户模块名列表（按首次加载顺序）。
     [[nodiscard]] const vector<string>& loadOrder() const { return _loadOrder; }
     // 按模块名取 FileNode；不存在返回 nullptr。
-    [[nodiscard]] p<FileNode> module(const string& moduleName) const;
+    [[nodiscard]] FileNode* module(const string& moduleName) const;
     // 模块源文件绝对路径；不存在返回空串。
     [[nodiscard]] string modulePath(const string& moduleName) const;
 
@@ -172,7 +172,7 @@ private:
     [[nodiscard]] string packageSourceDir(const string& package) const;
     [[nodiscard]] bool isInsidePackage(const FileNode* caller, const string& package) const;
     // 底层解析 + ASTBuilder。内部用。
-    p<FileNode> _parseFile(const string& absPath, const string& moduleName, int errorLine);
+    FileNode* _parseFile(const string& absPath, const string& moduleName, int errorLine);
 
     // 项目模式（有 yux.toml / _projectName）才读写 `.decl`；yux-check 单文件不写。
     [[nodiscard]] bool declCacheEnabled() const;

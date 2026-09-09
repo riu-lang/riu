@@ -45,7 +45,7 @@ static bool paramAccepts(const TypeInfo& param, const TypeInfo& argType) {
 
 // 灵活的函数重载匹配
 // 对灵活整数字面量 (如 42) 允许匹配任何整数类型
-static bool overloadMatchesFlexible(const vector<p<ExprNode>>& args, const vector<TypeInfo>& params) {
+static bool overloadMatchesFlexible(const vector<ExprNode*>& args, const vector<TypeInfo>& params) {
     if (params.size() != args.size()) return false;
     for (size_t i = 0; i < args.size(); ++i) {
         if (isFlexibleIntExpr(args[i])) {
@@ -82,7 +82,7 @@ static bool overloadMatchesFlexible(const vector<p<ExprNode>>& args, const vecto
 
 // 默认的函数重载匹配
 // 灵活整数字面量默认匹配 i32
-static bool overloadMatchesDefault(const vector<p<ExprNode>>& args, const vector<TypeInfo>& params) {
+static bool overloadMatchesDefault(const vector<ExprNode*>& args, const vector<TypeInfo>& params) {
     if (params.size() != args.size()) return false;
     TypeInfo i32Type("i32");
     TypeInfo ptrType("Ptr");
@@ -109,7 +109,7 @@ static bool overloadMatchesDefault(const vector<p<ExprNode>>& args, const vector
 // 接收者（结构体类型本身）。匹配时跳过 params[0]，按用户写的实参列表推断未带后缀
 // 的整数字面量类型，避免后续在 LLVM 后端因 i32→i64 形参不匹配而走到外部函数路径
 // 触发 `isSized` 断言（见 BUGS.md「构造函数 i64 形参传 untyped int 字面量」）。
-void resolveCtorOverload(FileNode* file, const string& structName, const vector<p<ExprNode>>& args, int line) {
+void resolveCtorOverload(FileNode* file, const string& structName, const vector<ExprNode*>& args, int line) {
     string ctorFullName = structName + "." + structName;
     vector<FnSymbolInfo*> candidates;
     file->collectFnOverloads(ctorFullName, candidates);
@@ -261,7 +261,7 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
 // 与 resolveCtorOverload 同思路，但方法在符号表中以 `TypeName.methodName` 注册，
 // params[0] 是接收者；匹配时跳过 params[0]，按用户写的实参列表推断未带后缀的整数字面量类型。
 void resolveMethodOverload(FileNode* file, FileNode* sdkFile, const string& baseTypeName, const string& member,
-                           const vector<p<ExprNode>>& args, int line) {
+                           const vector<ExprNode*>& args, int line) {
     string methodFullName = baseTypeName + "." + member;
     vector<FnSymbolInfo*> candidates;
     if (file) file->collectFnOverloads(methodFullName, candidates);
@@ -408,7 +408,7 @@ void resolveMethodOverload(FileNode* file, FileNode* sdkFile, const string& base
 // ==================== 函数重载解析 ====================
 // 解析函数重载，确定应该调用哪个版本
 // 如果有歧义，抛出错误要求用户添加类型后缀
-void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName, const vector<p<ExprNode>>& args,
+void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName, const vector<ExprNode*>& args,
                        int line) {
     (void)sdkFile;
     vector<FnSymbolInfo*> candidates;
@@ -597,7 +597,7 @@ string fnTypeFallibleErr(const TypeInfo& fnTy) {
 // ==================== 非-ID callee `!` fallback 校验 (Phase 3.3 前置.3d) ====================
 // 原 compileCallExpr 入口两处 else 分支的内联 E7001 throw 抠成共享 helper.
 // 调用方 (Compiler) 已确认: callee 非 ID-literal + `errPropagate()` + 不在 try block.
-void checkBangWithoutFallibleCaller(FnNode* currentFnNode, p<ExprCallNode> callNode, LambdaExprNode* currentLambda) {
+void checkBangWithoutFallibleCaller(FnNode* currentFnNode, ExprCallNode* callNode, LambdaExprNode* currentLambda) {
     if (!callerFallibleErr(currentFnNode, currentLambda).empty()) return;
     throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E7001);
 }
@@ -606,7 +606,7 @@ void checkBangWithoutFallibleCaller(FnNode* currentFnNode, p<ExprCallNode> callN
 // 原位于 `yux/yux/compiler/compiler_call.cpp` 的 static 自由函数, 形参从
 // `Compiler::TryCatchCtx*` 改成 `vector<string>* tryBlockSeenErrs` 以解开 LLVM 耦合
 // (原 TryCatchCtx 内含 llvm::BasicBlock*, 函数体只读 seenErrTypes).
-void checkErrPropagateForIdCall(FnNode* currentFnNode, p<ExprCallNode> callNode, const string& fnName,
+void checkErrPropagateForIdCall(FnNode* currentFnNode, ExprCallNode* callNode, const string& fnName,
                                 const FnSymbolInfo* calleeSym, vector<string>* tryBlockSeenErrs,
                                 const string& sourcePath, LambdaExprNode* currentLambda) {
     bool hasBang = callNode->errPropagate();
@@ -645,7 +645,7 @@ void checkErrPropagateForIdCall(FnNode* currentFnNode, p<ExprCallNode> callNode,
     }
 }
 
-void checkErrPropagateForPathCall(FnNode* currentFnNode, p<ExprPathCallNode> callNode, const string& fnName,
+void checkErrPropagateForPathCall(FnNode* currentFnNode, ExprPathCallNode* callNode, const string& fnName,
                                   const string& calleeErr, vector<string>* tryBlockSeenErrs, const string& sourcePath,
                                   LambdaExprNode* currentLambda) {
     bool hasBang = callNode->errPropagate();
@@ -676,7 +676,7 @@ void checkErrPropagateForPathCall(FnNode* currentFnNode, p<ExprPathCallNode> cal
 // ==================== fn-value callee 错误传播校验 (Phase F7) ====================
 // 镜像 checkErrPropagateForIdCall：callee 的 fallible 元数据来自静态 Fn TypeInfo（Function<..., T ! E> /
 // fallible lambda），而非 FnSymbolInfo。
-void checkErrPropagateForFnValueCall(FnNode* currentFnNode, p<ExprCallNode> callNode, const TypeInfo& calleeFnType,
+void checkErrPropagateForFnValueCall(FnNode* currentFnNode, ExprCallNode* callNode, const TypeInfo& calleeFnType,
                                      vector<string>* tryBlockSeenErrs, const string& sourcePath,
                                      LambdaExprNode* currentLambda) {
     if (!calleeFnType.isFn()) return;
@@ -715,7 +715,7 @@ void checkErrPropagateForFnValueCall(FnNode* currentFnNode, p<ExprCallNode> call
 // 抠到 sema 层. 命中其中一种时返回 {matched=true, fnName, fnSym}, 调用方
 // 走 compileKnownFunctionCall; 未命中返回 {matched=false} 由调用方继续.
 // 纯 AST 符号查 + 字符串拼接, 无 LLVM 依赖.
-ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux, p<ExprCallNode> callNode, p<ExprDotNode> dotNode,
+ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux, ExprCallNode* callNode, ExprDotNode* dotNode,
                                        const vector<TypeInfo>& argTypes) {
     ModuleFnCallResult result;
     auto member = dotNode->member();
@@ -810,7 +810,7 @@ ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux, p<ExprCallNode>
 // ==================== 泛型函数 typeArgs 推断 (Phase 3.3.1.b) ====================
 // 原 `compileGenericFunctionCall` 的 else 分支 (无显式 typeArgs 路径) 整体抠出.
 // arity / 推断 / unify 全部纯 TypeInfo, 无 LLVM 依赖.
-void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn, const string& fnName,
+void inferGenericFnTypeArgs(ExprCallNode* callNode, FnNode* genericFn, const string& fnName,
                             const vector<TypeInfo>& argTypes, vector<TypeInfo>& outTypeArgs) {
     const auto& typeParams = genericFn->header()->typeParams();
     auto params = genericFn->header()->params();
@@ -948,7 +948,7 @@ void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn, const
 // 泛型重载消歧 (Phase 3.3.1.a+)：从多个同名泛型函数中选最佳匹配。
 // 逐个 inferGenericFnTypeArgs 推断 typeArgs，成功则按形参/实参 Ref 一致性打分。
 std::pair<FnNode*, FileNode*> resolveBestGenericOverload(const std::vector<std::pair<FnNode*, FileNode*>>& genericFns,
-                                                         p<ExprCallNode> callNode, const std::string& fnName,
+                                                         ExprCallNode* callNode, const std::string& fnName,
                                                          const std::vector<TypeInfo>& argTypes) {
     if (genericFns.empty()) return {nullptr, nullptr};
     if (genericFns.size() == 1) return genericFns[0];
@@ -1215,7 +1215,7 @@ TypeInfo validateArrayMethodTypes(const TypeInfo& baseType, const string& member
 // 原 compileGenericFunctionCall 的 #Builtin 分支内散落的 E6028 / E6029 / E6032 / E6030 / E6031
 // 校验 (跨 same_ref / ptr_of / as_ref / weak / copy_of / assert_eq) 收口到单一 helper.
 void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeInfo>& typeArgs,
-                                       const vector<TypeInfo>& argTypes, const vector<p<ExprNode>>& argNodes,
+                                       const vector<TypeInfo>& argTypes, const vector<ExprNode*>& argNodes,
                                        FileNode* file, FileNode* sdkFile, int line, int col) {
     if (fnName == "same_ref" || fnName == "ptr_of") {
         // arity / typeArgs 计数已由 validateBuiltinIntrinsicShape 保证
@@ -1498,7 +1498,7 @@ string fmtTypeFriendly(const TypeInfo& t) {
 }
 } // namespace
 
-void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, p<ExprPathCallNode> node) {
+void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, ExprPathCallNode* node) {
     if (!node) return;
     TypeInfo enumTy = node->getType();
     string enumName = enumTy.name; // 经别名 / 路径解析后的真实 enum 名
@@ -1546,7 +1546,7 @@ void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, p<ExprPathCallNode
 
 // ========== Phase 3.4.b: match arm 静态校验 ==========
 
-void validateMatchArms(EnumDeclNode* enumDecl, const TypeInfo& enumType, p<ExprMatchNode> node, FileNode* file) {
+void validateMatchArms(EnumDeclNode* enumDecl, const TypeInfo& enumType, ExprMatchNode* node, FileNode* file) {
     if (!enumDecl || !node) return;
     auto& arms = node->arms();
     int line = node->getLineNumber();
@@ -1650,8 +1650,7 @@ void validatePrivateFieldAccess(StructDeclNode* structDecl, const string& fieldN
     throw YuxError(line, col, ErrorCode::E3042, fieldName, baseTypeName);
 }
 
-void validateGetRefPrivacy(FileNode* file, FileNode* sdkFile, p<ExprGetRefNode> node,
-                           const string& accessorStructName) {
+void validateGetRefPrivacy(FileNode* file, FileNode* sdkFile, ExprGetRefNode* node, const string& accessorStructName) {
     if (!node) return;
     auto scope = node->findNearestScope();
     if (!scope) return;
@@ -1696,7 +1695,7 @@ void validateGetRefPrivacy(FileNode* file, FileNode* sdkFile, p<ExprGetRefNode> 
     }
 }
 
-void validateDotFieldPrivacy(FileNode* file, FileNode* sdkFile, p<ExprDotNode> node, const string& accessorStructName) {
+void validateDotFieldPrivacy(FileNode* file, FileNode* sdkFile, ExprDotNode* node, const string& accessorStructName) {
     if (!node) return;
     if (node->isSafe()) return; // safe `?.` 走 getType 路径, 不在此处校验
 
@@ -1928,7 +1927,7 @@ void validateStringTemplateInterps(FileNode* file, FileNode* sdkFile, StringTemp
     }
 }
 
-void validateArrayWithCapacity(p<ExprPathCallNode> node) {
+void validateArrayWithCapacity(ExprPathCallNode* node) {
     if (!node) return;
     auto* spec = lookupStaticBuiltin("Array", "with_capacity");
     int line = node->getLineNumber();

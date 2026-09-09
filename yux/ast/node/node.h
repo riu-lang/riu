@@ -123,20 +123,20 @@ class FileNode;
 
 class Node {
 protected:
-    p<Node> _parent;
+    Node* _parent;
     int _line = 0;
     int _col = 0; // 1-based 列号；0 表示未知（合成节点 / 旧路径）
 
 public:
-    explicit Node(const p<Node>& parent) : _parent(parent) {}
+    explicit Node(Node* parent) : _parent(parent) {}
 
     virtual ~Node() = default;
 
     [[nodiscard]] virtual string getLocation() const;
 
-    [[nodiscard]] p<Node> parent() const;
+    [[nodiscard]] Node* parent() const;
 
-    [[nodiscard]] p<ScopeNode> findNearestScope() const;
+    [[nodiscard]] ScopeNode* findNearestScope() const;
 
     // 沿 parent / parentScope 找到所属 FileNode；合成节点可能为空。
     // spec 默认体 fall-through 只临时改 parentScope，parent 仍指向 spec 文件。
@@ -236,13 +236,13 @@ class ScopeNode : public Node {
 protected:
     map<string, SymbolInfo> _symbols;
     map<string, vector<FnSymbolInfo>> _fnSymbols;
-    p<ScopeNode> _parentScope = nullptr;
+    ScopeNode* _parentScope = nullptr;
 
     // 参数匹配辅助：检查 fnInfo.params 是否与 paramTypes 兼容
     [[nodiscard]] bool matchFnParams(const FnSymbolInfo& fnInfo, const vector<TypeInfo>& paramTypes) const;
 
 public:
-    explicit ScopeNode(const p<Node>& parent) : Node(parent) {}
+    explicit ScopeNode(Node* parent) : Node(parent) {}
 
     void registerSymbol(const string& name, SymbolInfo info);
 
@@ -250,7 +250,7 @@ public:
 
     void registerFnSymbol(const string& name, FnSymbolInfo info);
 
-    void setParentScope(const p<ScopeNode>& scope);
+    void setParentScope(ScopeNode* scope);
 
     virtual SymbolInfo* lookupSymbol(const string& name);
 
@@ -266,7 +266,7 @@ public:
 
     [[nodiscard]] const map<string, SymbolInfo>& localSymbols() const;
     [[nodiscard]] const map<string, vector<FnSymbolInfo>>& localFnSymbols() const;
-    [[nodiscard]] p<ScopeNode> parentScope() const;
+    [[nodiscard]] ScopeNode* parentScope() const;
 
     // 用 resolver 把每个 fn 符号的 params / retType 透明替换（v0.6 类型别名落地）
     template <typename Resolver>

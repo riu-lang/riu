@@ -16,7 +16,7 @@
 #include <algorithm>
 
 std::any ASTBuilder::visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) {
-    p<Node> parent = currentScope();
+    Node* parent = currentScope();
     auto path = typePathFromCtx(ctx->typePath());
     Token last = path.last();
     // DRAFT-heap-types §9 (Phase 3b): 裸 Arc 形态也走占名拒绝
@@ -30,18 +30,18 @@ std::any ASTBuilder::visitTypeNormal(yux::yuxParser::TypeNormalContext* ctx) {
             .withHint("`Function` 是特殊泛型，须写 `Function<Ret>` 或 `Function<P1, P2, ..., Ret>`（末位为返回类型）");
     }
     DEBUG_LOG_VAL("    Type: Normal", path.dotted());
-    return static_cast<p<TypeNode>>(createWithLine<TypeNormalNode>(ctx, parent, std::move(path)));
+    return static_cast<TypeNode*>(createWithLine<TypeNormalNode>(ctx, parent, std::move(path)));
 }
 
 // Self 类型字面量 (Phase 2b): 构造 TypeSelfNode 占位.
 // 构造时扫 _scopeStack 找 enclosing StructImplNode 灌入 structName;
 // 体外出现时 structName 留空, sema 在 Phase 2d 抛 E3115.
 std::any ASTBuilder::visitTypeSelf(yux::yuxParser::TypeSelfContext* ctx) {
-    p<Node> parent = currentScope();
+    Node* parent = currentScope();
     DEBUG_LOG("    Type: Self");
     auto* tk = ctx->SelfType()->getSymbol();
     string structName = findEnclosingStructName();
-    return static_cast<p<TypeNode>>(createWithLine<TypeSelfNode>(ctx, parent, tk, structName));
+    return static_cast<TypeNode*>(createWithLine<TypeSelfNode>(ctx, parent, tk, structName));
 }
 
 // 扫 _scopeStack 找最内层 StructImplNode 的 structName, 找不到返回空串.
@@ -55,11 +55,11 @@ string ASTBuilder::findEnclosingStructName() const {
 }
 
 std::any ASTBuilder::visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) {
-    p<Node> parent = currentScope();
+    Node* parent = currentScope();
     auto path = typePathFromCtx(ctx->typePath());
     Token last = path.last();
 
-    vector<p<TypeNode>> typeArgs;
+    vector<TypeNode*> typeArgs;
     for (auto pCtx : ctx->genericDef()->params) {
         // 类型引用位不允许 bound（spec §B.2 / §12 仅声明位允许）
         if (!pCtx->bounds.empty()) {
@@ -88,7 +88,7 @@ std::any ASTBuilder::visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) {
     }
 
     if (path.isBare() && last.getText() == "Function") {
-        return static_cast<p<TypeNode>>(makeFunctionType(ctx, parent, std::move(typeArgs), false));
+        return static_cast<TypeNode*>(makeFunctionType(ctx, parent, std::move(typeArgs), false));
     }
 
     string argsStr;
@@ -98,20 +98,20 @@ std::any ASTBuilder::visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) {
     }
     DEBUG_LOG_VAL("    Type: Generic", path.dotted() << "<" << argsStr << ">");
 
-    return static_cast<p<TypeNode>>(createWithLine<TypeGenericNode>(ctx, parent, std::move(path), typeArgs));
+    return static_cast<TypeNode*>(createWithLine<TypeGenericNode>(ctx, parent, std::move(path), typeArgs));
 }
 
 std::any ASTBuilder::visitTypeArray(yux::yuxParser::TypeArrayContext* ctx) {
-    p<Node> parent = currentScope();
+    Node* parent = currentScope();
     auto elementType = any_cast_p<TypeNode>(visit(ctx->type()));
     auto count = ctx->INT()->getSymbol();
     DEBUG_LOG_VAL("    Type: Array", "[" << count->getText() << "]");
-    return static_cast<p<TypeNode>>(createWithLine<TypeArrayNode>(ctx, parent, elementType, count));
+    return static_cast<TypeNode*>(createWithLine<TypeArrayNode>(ctx, parent, elementType, count));
 }
 
 // Function<P..., Ret> → TypeFnNode。末位永远是返回类型；() 表 unit。
-p<TypeNode> ASTBuilder::makeFunctionType(antlr4::ParserRuleContext* ctx, p<Node> parent, vector<p<TypeNode>> typeArgs,
-                                         bool nullable) {
+TypeNode* ASTBuilder::makeFunctionType(antlr4::ParserRuleContext* ctx, Node* parent, vector<TypeNode*> typeArgs,
+                                       bool nullable) {
     if (typeArgs.empty()) {
         auto* start = ctx ? ctx->getStart() : nullptr;
         throw YuxError(start ? static_cast<int>(start->getLine()) : 1,
@@ -119,18 +119,18 @@ p<TypeNode> ASTBuilder::makeFunctionType(antlr4::ParserRuleContext* ctx, p<Node>
                        std::string("Function"), static_cast<size_t>(1), static_cast<size_t>(0))
             .withHint("`Function` 须带类型实参：`Function<Ret>` 或 `Function<P1, P2, ..., Ret>`");
     }
-    p<TypeNode> retType = typeArgs.back();
-    vector<p<TypeNode>> paramTypes(typeArgs.begin(), typeArgs.end() - 1);
+    TypeNode* retType = typeArgs.back();
+    vector<TypeNode*> paramTypes(typeArgs.begin(), typeArgs.end() - 1);
     if (auto* tup = dynamic_cast<TypeTupleNode*>(retType)) {
         if (tup->elementTypes().empty()) retType = nullptr;
     }
     DEBUG_LOG_VAL("    Type: Function", (nullable ? "Function<...>?" : "Function<...>")
                                             << " params=" << paramTypes.size());
-    return static_cast<p<TypeNode>>(createWithLine<TypeFnNode>(ctx, parent, std::move(paramTypes), retType, nullable));
+    return static_cast<TypeNode*>(createWithLine<TypeFnNode>(ctx, parent, std::move(paramTypes), retType, nullable));
 }
 
-p<TypeNode> ASTBuilder::applyNullableSuffix(antlr4::ParserRuleContext* ctx, p<Node> parent, p<TypeNode> inner,
-                                            antlr4::Token* questTok) {
+TypeNode* ASTBuilder::applyNullableSuffix(antlr4::ParserRuleContext* ctx, Node* parent, TypeNode* inner,
+                                          antlr4::Token* questTok) {
     if (auto* fn = dynamic_cast<TypeFnNode*>(inner)) {
         if (!fn->nullable()) {
             fn->setNullable(true);
@@ -138,34 +138,34 @@ p<TypeNode> ASTBuilder::applyNullableSuffix(antlr4::ParserRuleContext* ctx, p<No
         }
     }
     Token nullableName(string("Nullable"), questTok ? questTok->getLine() : 0);
-    vector<p<TypeNode>> args;
+    vector<TypeNode*> args;
     args.push_back(inner);
-    return static_cast<p<TypeNode>>(createWithLine<TypeGenericNode>(ctx, parent, nullableName, args));
+    return static_cast<TypeNode*>(createWithLine<TypeGenericNode>(ctx, parent, nullableName, args));
 }
 
 // 元组类型 (T1, T2, ...)
 // 元素列表至少 2 个（g4 语法保证），递归 visit 每个 type 子节点
 std::any ASTBuilder::visitTypeTuple(yux::yuxParser::TypeTupleContext* ctx) {
-    p<Node> parent = currentScope();
-    vector<p<TypeNode>> elementTypes;
+    Node* parent = currentScope();
+    vector<TypeNode*> elementTypes;
     elementTypes.reserve(ctx->types.size());
     for (auto* tCtx : ctx->types) {
         elementTypes.push_back(any_cast_p<TypeNode>(visit(tCtx)));
     }
     DEBUG_LOG_VAL("    Type: Tuple", "elements=" << elementTypes.size());
-    return static_cast<p<TypeNode>>(createWithLine<TypeTupleNode>(ctx, parent, std::move(elementTypes)));
+    return static_cast<TypeNode*>(createWithLine<TypeTupleNode>(ctx, parent, std::move(elementTypes)));
 }
 
 // unit 类型 () —— 0 元素元组
 std::any ASTBuilder::visitTypeUnit(yux::yuxParser::TypeUnitContext* ctx) {
-    p<Node> parent = currentScope();
+    Node* parent = currentScope();
     DEBUG_LOG_VAL("    Type: Unit", "()");
-    return static_cast<p<TypeNode>>(createWithLine<TypeTupleNode>(ctx, parent, vector<p<TypeNode>>{}));
+    return static_cast<TypeNode*>(createWithLine<TypeTupleNode>(ctx, parent, vector<TypeNode*>{}));
 }
 
 // T ! E 类型位
 std::any ASTBuilder::visitTypeFallible(yux::yuxParser::TypeFallibleContext* ctx) {
-    p<Node> parent = currentScope();
+    Node* parent = currentScope();
     auto base = any_cast_p<TypeNode>(visit(ctx->base));
     auto err = any_cast_p<TypeNode>(visit(ctx->errType));
     if (err->getType().isNullable()) {
@@ -175,15 +175,15 @@ std::any ASTBuilder::visitTypeFallible(yux::yuxParser::TypeFallibleContext* ctx)
             .withHint("`T ! E?` is invalid — error type `E` must not be nullable");
     }
     DEBUG_LOG_VAL("    Type: Fallible", base->getType().getFullName() << " ! " << err->getType().name);
-    return static_cast<p<TypeNode>>(createWithLine<TypeFallibleNode>(ctx, parent, base, err));
+    return static_cast<TypeNode*>(createWithLine<TypeFallibleNode>(ctx, parent, base, err));
 }
 
 // Phase 4a: typeWithRef → TypeNode；SymbolAnd 存在则包成 Ref<inner>
 // 语法已改：typeWithRef 现有 4 个分支，与 type 的 4 个分支结构对应，但每个内部位置（generic args / array elem）
 // 也允许带 &，从而支持 Rc<i32&> 这类嵌套引用类型作为参数 / 局部 var 类型。
-p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr, p<Node> parent) {
+TypeNode* ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr, Node* parent) {
     using namespace yux;
-    p<TypeNode> inner;
+    TypeNode* inner;
     antlr4::tree::TerminalNode* andTok = nullptr;
 
     if (auto n = dynamic_cast<yuxParser::TypeNormalWithRefContext*>(twr)) {
@@ -200,14 +200,14 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
                 .withHint(
                     "`Function` 是特殊泛型，须写 `Function<Ret>` 或 `Function<P1, P2, ..., Ret>`（末位为返回类型）");
         }
-        inner = static_cast<p<TypeNode>>(createWithLine<TypeNormalNode>(n, parent, std::move(path)));
+        inner = static_cast<TypeNode*>(createWithLine<TypeNormalNode>(n, parent, std::move(path)));
         andTok = n->SymbolAnd();
     } else if (auto s = dynamic_cast<yuxParser::TypeSelfWithRefContext*>(twr)) {
         // Phase 2b: Self& —— 结构体方法返回 / 形参可写 `Self&`.
         // 出现在 impl 体外由 sema (Phase 2d) 拒收.
         auto* tk = s->SelfType()->getSymbol();
         string structName = findEnclosingStructName();
-        inner = static_cast<p<TypeNode>>(createWithLine<TypeSelfNode>(s, parent, tk, structName));
+        inner = static_cast<TypeNode*>(createWithLine<TypeSelfNode>(s, parent, tk, structName));
         andTok = s->SymbolAnd();
     } else if (auto nul = dynamic_cast<yuxParser::TypeNullableWithRefContext*>(twr)) {
         // 内层是 type（不带 &），直接复用 visitType* 通路
@@ -230,12 +230,12 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
                            tok ? static_cast<int>(tok->getCharPositionInLine()) + 1 : 0, ErrorCode::E2001)
                 .withHint("`T ! E?` is invalid — error type `E` must not be nullable");
         }
-        inner = static_cast<p<TypeNode>>(createWithLine<TypeFallibleNode>(f, parent, base, err));
+        inner = static_cast<TypeNode*>(createWithLine<TypeFallibleNode>(f, parent, base, err));
         andTok = f->SymbolAnd();
     } else if (auto g = dynamic_cast<yuxParser::TypeGenericWithRefContext*>(twr)) {
         auto path = typePathFromCtx(g->typePath());
         Token last = path.last();
-        vector<p<TypeNode>> typeArgs;
+        vector<TypeNode*> typeArgs;
         for (auto innerCtx : g->genericDefWithRef()->types) {
             typeArgs.push_back(buildTypeWithRef(innerCtx, parent));
         }
@@ -256,27 +256,27 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
         if (path.isBare() && last.getText() == "Function") {
             inner = makeFunctionType(g, parent, std::move(typeArgs), false);
         } else {
-            inner = static_cast<p<TypeNode>>(createWithLine<TypeGenericNode>(g, parent, std::move(path), typeArgs));
+            inner = static_cast<TypeNode*>(createWithLine<TypeGenericNode>(g, parent, std::move(path), typeArgs));
         }
         andTok = g->SymbolAnd();
     } else if (auto a = dynamic_cast<yuxParser::TypeArrayWithRefContext*>(twr)) {
         auto elemType = buildTypeWithRef(a->typeWithRef(), parent);
         auto count = a->INT()->getSymbol();
-        inner = static_cast<p<TypeNode>>(createWithLine<TypeArrayNode>(a, parent, elemType, count));
+        inner = static_cast<TypeNode*>(createWithLine<TypeArrayNode>(a, parent, elemType, count));
         andTok = a->SymbolAnd();
     } else if (auto u = dynamic_cast<yuxParser::TypeUnitWithRefContext*>(twr)) {
         // unit 类型 () 在 typeWithRef 位（如 fn 返回类型显式标注 ()）
-        inner = static_cast<p<TypeNode>>(createWithLine<TypeTupleNode>(u, parent, vector<p<TypeNode>>{}));
+        inner = static_cast<TypeNode*>(createWithLine<TypeTupleNode>(u, parent, vector<TypeNode*>{}));
         andTok = nullptr;
     } else if (auto t = dynamic_cast<yuxParser::TypeTupleWithRefContext*>(twr)) {
         // 元组 (T1, T2, ...)；每个元素本身可带 & 引用
         // 元组本身不带尾随 &（g4 中 typeTupleWithRef 没有 SymbolAnd?）
-        vector<p<TypeNode>> elementTypes;
+        vector<TypeNode*> elementTypes;
         elementTypes.reserve(t->types.size());
         for (auto* eCtx : t->types) {
             elementTypes.push_back(buildTypeWithRef(eCtx, parent));
         }
-        inner = static_cast<p<TypeNode>>(createWithLine<TypeTupleNode>(t, parent, std::move(elementTypes)));
+        inner = static_cast<TypeNode*>(createWithLine<TypeTupleNode>(t, parent, std::move(elementTypes)));
         andTok = nullptr;
     } else {
         throw YuxError(1, ErrorCode::E2002);
@@ -285,9 +285,9 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
     if (andTok) {
         auto sym = andTok->getSymbol();
         Token refName(string("Ref"), sym ? sym->getLine() : 0);
-        vector<p<TypeNode>> args;
+        vector<TypeNode*> args;
         args.push_back(inner);
-        return static_cast<p<TypeNode>>(createWithLine<TypeGenericNode>(twr, parent, refName, args));
+        return static_cast<TypeNode*>(createWithLine<TypeGenericNode>(twr, parent, refName, args));
     }
     return inner;
 }
@@ -296,7 +296,7 @@ p<TypeNode> ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr
 // 直接构造 TypeGenericNode("Nullable", [T])，复用现有泛型实例化通路
 // "Nullable" 名字 token 用合成构造，line 取自 SymbolQuest
 std::any ASTBuilder::visitTypeNullable(yux::yuxParser::TypeNullableContext* ctx) {
-    p<Node> parent = currentScope();
+    Node* parent = currentScope();
     auto inner = any_cast_p<TypeNode>(visit(ctx->type()));
 
     auto questTok = ctx->SymbolQuest()->getSymbol();

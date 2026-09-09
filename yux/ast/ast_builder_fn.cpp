@@ -121,8 +121,8 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
         file = any_cast_p<FileNode>(stack.back());
     }
 
-    p<TypeNode> retType = nullptr;
-    p<TypeNode> retFallibleFromType = nullptr;
+    TypeNode* retType = nullptr;
+    TypeNode* retFallibleFromType = nullptr;
     if (ctx->retType) {
         auto parsed = buildTypeWithRef(ctx->retType, file);
         std::tie(retType, retFallibleFromType) = peelFallibleRetType(parsed);
@@ -190,7 +190,7 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
     stack.emplace_back(header);
 
     if (auto fnParamsCtx = ctx->fnParams()) {
-        auto params = any_cast_v<vector<p<FnParamNode>>>(visit(fnParamsCtx));
+        auto params = any_cast_v<vector<FnParamNode*>>(visit(fnParamsCtx));
         for (auto param : params) {
             header->addParam(param);
         }
@@ -202,10 +202,10 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
 }
 
 std::any ASTBuilder::visitFnParams(yux::yuxParser::FnParamsContext* ctx) {
-    vector<p<FnParamNode>> allParams;
+    vector<FnParamNode*> allParams;
 
     for (auto paramCtx : ctx->fnParam()) {
-        auto params = any_cast_v<vector<p<FnParamNode>>>(visit(paramCtx));
+        auto params = any_cast_v<vector<FnParamNode*>>(visit(paramCtx));
         allParams.insert(allParams.end(), params.begin(), params.end());
     }
 
@@ -219,7 +219,7 @@ std::any ASTBuilder::visitFnParam(yux::yuxParser::FnParamContext* ctx) {
     if (auto groupCtx = ctx->fnParamGroup()) {
         return visit(groupCtx);
     }
-    return vector<p<FnParamNode>>();
+    return vector<FnParamNode*>();
 }
 
 namespace {
@@ -244,12 +244,12 @@ bool readParamAnnos(const std::vector<yux::yuxParser::ParamAnnoContext*>& annos)
 } // namespace
 
 std::any ASTBuilder::visitFnParamStd(yux::yuxParser::FnParamStdContext* ctx) {
-    p<Node> parent = any_cast_p<FnHeaderNode>(stack.back());
+    Node* parent = any_cast_p<FnHeaderNode>(stack.back());
     auto type = buildTypeWithRef(ctx->typeWithRef(), parent);
     bool frozen = readParamAnnos(ctx->paramAnnos);
     DEBUG_LOG_VAL("    Param", ctx->name->getText() << " : " << type->getType().name << (frozen ? " #Frozen" : ""));
 
-    vector<p<FnParamNode>> params;
+    vector<FnParamNode*> params;
     auto node = (createWithLine<FnParamNode>(ctx, parent, ctx->name, type));
     node->setFrozen(frozen);
     params.push_back(node);
@@ -257,11 +257,11 @@ std::any ASTBuilder::visitFnParamStd(yux::yuxParser::FnParamStdContext* ctx) {
 }
 
 std::any ASTBuilder::visitFnParamGroup(yux::yuxParser::FnParamGroupContext* ctx) {
-    p<Node> parent = any_cast_p<FnHeaderNode>(stack.back());
+    Node* parent = any_cast_p<FnHeaderNode>(stack.back());
     auto type = buildTypeWithRef(ctx->typeWithRef(), parent);
     bool frozen = readParamAnnos(ctx->paramAnnos);
 
-    vector<p<FnParamNode>> params;
+    vector<FnParamNode*> params;
     for (auto nameToken : ctx->names) {
         DEBUG_LOG_VAL("    Param (group)", nameToken->getText()
                                                << " : " << type->getType().name << (frozen ? " #Frozen" : ""));

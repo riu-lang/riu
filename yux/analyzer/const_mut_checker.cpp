@@ -15,7 +15,7 @@
 namespace {
 
 // 拿到表达式所属作用域：优先 expr 自身的 findNearestScope，失败则回退到附近 stmt。
-p<ScopeNode> exprScope(p<ExprNode> e, p<ScopeNode> fallback) {
+ScopeNode* exprScope(ExprNode* e, ScopeNode* fallback) {
     if (e) {
         if (auto sc = e->findNearestScope()) return sc;
     }
@@ -25,55 +25,55 @@ p<ScopeNode> exprScope(p<ExprNode> e, p<ScopeNode> fallback) {
 // 判定一个表达式是否符合 §3.3 的"常量表达式"。
 // 不通过时抛 E3104，errExpr 指向最里层不合规子表达式。
 // scope 用于解析 LiteralObjNode 的符号引用（必须是 cval）。
-void requireConstExpr(p<ExprNode> e, p<ScopeNode> scope);
+void requireConstExpr(ExprNode* e, ScopeNode* scope);
 
-void throwNonConst(p<ExprNode> e, const std::string& what) {
+void throwNonConst(ExprNode* e, const std::string& what) {
     int line = e->resolveLineNumber();
     int col = e->resolveColumn();
     throw YuxError(line, col, ErrorCode::E3104, what);
 }
 
-void requireConstExpr(p<ExprNode> e, p<ScopeNode> scope) {
+void requireConstExpr(ExprNode* e, ScopeNode* scope) {
     if (!e) return;
 
-    if (auto paren = dynamic_cast<p<ExprParenNode>>(e)) {
+    if (auto paren = dynamic_cast<ExprParenNode*>(e)) {
         requireConstExpr(paren->expr(), scope);
         return;
     }
-    if (auto u = dynamic_cast<p<ExprUnaryNode>>(e)) {
+    if (auto u = dynamic_cast<ExprUnaryNode*>(e)) {
         requireConstExpr(u->right(), scope);
         return;
     }
-    if (auto b = dynamic_cast<p<ExprAddSubNode>>(e)) {
+    if (auto b = dynamic_cast<ExprAddSubNode*>(e)) {
         requireConstExpr(b->left(), scope);
         requireConstExpr(b->right(), scope);
         return;
     }
-    if (auto b = dynamic_cast<p<ExprMulDivModNode>>(e)) {
+    if (auto b = dynamic_cast<ExprMulDivModNode*>(e)) {
         requireConstExpr(b->left(), scope);
         requireConstExpr(b->right(), scope);
         return;
     }
-    if (auto b = dynamic_cast<p<ExprBinOpNode>>(e)) {
+    if (auto b = dynamic_cast<ExprBinOpNode*>(e)) {
         requireConstExpr(b->left(), scope);
         requireConstExpr(b->right(), scope);
         return;
     }
-    if (auto b = dynamic_cast<p<ExprCompareNode>>(e)) {
+    if (auto b = dynamic_cast<ExprCompareNode*>(e)) {
         requireConstExpr(b->left(), scope);
         requireConstExpr(b->right(), scope);
         return;
     }
 
-    if (auto le = dynamic_cast<p<ExprLiteralNode>>(e)) {
+    if (auto le = dynamic_cast<ExprLiteralNode*>(e)) {
         auto lit = le->literal();
-        if (dynamic_cast<p<LiteralIntNode>>(lit)) return;
-        if (dynamic_cast<p<LiteralFloatNode>>(lit)) return;
-        if (dynamic_cast<p<LiteralBoolNode>>(lit)) return;
-        if (dynamic_cast<p<LiteralNullNode>>(lit)) return;
-        if (dynamic_cast<p<LiteralStringNode>>(lit)) return;
-        if (dynamic_cast<p<LiteralCodePointNode>>(lit)) return;
-        if (auto obj = dynamic_cast<p<LiteralObjNode>>(lit)) {
+        if (dynamic_cast<LiteralIntNode*>(lit)) return;
+        if (dynamic_cast<LiteralFloatNode*>(lit)) return;
+        if (dynamic_cast<LiteralBoolNode*>(lit)) return;
+        if (dynamic_cast<LiteralNullNode*>(lit)) return;
+        if (dynamic_cast<LiteralStringNode*>(lit)) return;
+        if (dynamic_cast<LiteralCodePointNode*>(lit)) return;
+        if (auto obj = dynamic_cast<LiteralObjNode*>(lit)) {
             auto name = obj->getValue().getText();
             auto sc = exprScope(e, scope);
             SymbolInfo* sym = sc ? sc->lookupSymbol(name) : nullptr;
@@ -81,7 +81,7 @@ void requireConstExpr(p<ExprNode> e, p<ScopeNode> scope) {
             // Phase 4 (DRAFT-const-eval §4): #Const fn 体内, 参数与默认 (non-cval) 局部
             // 也可作 const 表达式的子项 —— 实际值绑定由 ConstEvaluator 在调用点注入 _env。
             // 这里只放行符号查找; const-evaluability 由后续 eval 真正判定。
-            p<Node> cur = e;
+            Node* cur = e;
             while (cur) {
                 if (auto* fn = dynamic_cast<FnNode*>(cur)) {
                     if (fn->header() && fn->header()->hasAnno("Const")) return;
@@ -91,22 +91,22 @@ void requireConstExpr(p<ExprNode> e, p<ScopeNode> scope) {
             }
             throwNonConst(e, "reference to non-`cval` symbol `" + name + "`");
         }
-        if (dynamic_cast<p<StringTemplateNode>>(lit)) {
+        if (dynamic_cast<StringTemplateNode*>(lit)) {
             throwNonConst(e, "string template interpolation");
         }
         throwNonConst(e, "unsupported literal");
     }
 
-    if (auto call = dynamic_cast<p<ExprCallNode>>(e)) {
+    if (auto call = dynamic_cast<ExprCallNode*>(e)) {
         // Phase 4 (DRAFT-const-eval §4): #Const fn 调用允许进入 const 表达式。
         // 仅识别裸自由函数形态：callee = LiteralObj("name")。其它形态（方法 / 路径 /
         // lambda）当前不接 const-eval，仍按 E3104 拒。
         bool ok = false;
-        if (auto cle = dynamic_cast<p<ExprLiteralNode>>(call->getCalleeExpr())) {
-            if (auto obj = dynamic_cast<p<LiteralObjNode>>(cle->literal())) {
+        if (auto cle = dynamic_cast<ExprLiteralNode*>(call->getCalleeExpr())) {
+            if (auto obj = dynamic_cast<LiteralObjNode*>(cle->literal())) {
                 string fname = obj->getValue().getText();
                 // 沿 scope 链向上找 FileNode → 查 #Const fn 符号
-                p<Node> cur = e;
+                Node* cur = e;
                 FileNode* file = nullptr;
                 while (cur) {
                     if (auto* fl = dynamic_cast<FileNode*>(cur)) {
@@ -132,20 +132,20 @@ void requireConstExpr(p<ExprNode> e, p<ScopeNode> scope) {
             requireConstExpr(a, scope);
         return;
     }
-    if (dynamic_cast<p<ExprDotNode>>(e)) throwNonConst(e, "member access");
-    if (dynamic_cast<p<ExprGetNode>>(e)) throwNonConst(e, "array indexing");
-    if (dynamic_cast<p<ExprGetRefNode>>(e)) throwNonConst(e, "address-of (&) expression");
-    if (dynamic_cast<p<ExprArrayNode>>(e)) throwNonConst(e, "array literal");
-    if (dynamic_cast<p<ExprArrayInitNode>>(e)) throwNonConst(e, "array fill expression");
-    if (dynamic_cast<p<ExprTupleNode>>(e)) throwNonConst(e, "tuple construction");
-    if (dynamic_cast<p<ExprIfElseNode>>(e)) throwNonConst(e, "if-else expression");
-    if (dynamic_cast<p<ExprOneLineIfElseNode>>(e)) throwNonConst(e, "if-else expression");
-    if (dynamic_cast<p<ExprMatchNode>>(e)) throwNonConst(e, "match expression");
-    if (dynamic_cast<p<ExprTryCatchNode>>(e)) throwNonConst(e, "try-catch expression");
-    if (dynamic_cast<p<ExprPathCallNode>>(e)) throwNonConst(e, "enum constructor");
-    if (dynamic_cast<p<ExprDynCtorNode>>(e)) throwNonConst(e, "Dyn<...> construction");
-    if (dynamic_cast<p<ExprNullElseNode>>(e)) throwNonConst(e, "`??` expression");
-    if (dynamic_cast<p<LambdaExprNode>>(e)) throwNonConst(e, "lambda expression");
+    if (dynamic_cast<ExprDotNode*>(e)) throwNonConst(e, "member access");
+    if (dynamic_cast<ExprGetNode*>(e)) throwNonConst(e, "array indexing");
+    if (dynamic_cast<ExprGetRefNode*>(e)) throwNonConst(e, "address-of (&) expression");
+    if (dynamic_cast<ExprArrayNode*>(e)) throwNonConst(e, "array literal");
+    if (dynamic_cast<ExprArrayInitNode*>(e)) throwNonConst(e, "array fill expression");
+    if (dynamic_cast<ExprTupleNode*>(e)) throwNonConst(e, "tuple construction");
+    if (dynamic_cast<ExprIfElseNode*>(e)) throwNonConst(e, "if-else expression");
+    if (dynamic_cast<ExprOneLineIfElseNode*>(e)) throwNonConst(e, "if-else expression");
+    if (dynamic_cast<ExprMatchNode*>(e)) throwNonConst(e, "match expression");
+    if (dynamic_cast<ExprTryCatchNode*>(e)) throwNonConst(e, "try-catch expression");
+    if (dynamic_cast<ExprPathCallNode*>(e)) throwNonConst(e, "enum constructor");
+    if (dynamic_cast<ExprDynCtorNode*>(e)) throwNonConst(e, "Dyn<...> construction");
+    if (dynamic_cast<ExprNullElseNode*>(e)) throwNonConst(e, "`??` expression");
+    if (dynamic_cast<LambdaExprNode*>(e)) throwNonConst(e, "lambda expression");
 
     throwNonConst(e, "unsupported expression");
 }
@@ -156,13 +156,13 @@ void requireConstExpr(p<ExprNode> e, p<ScopeNode> scope) {
 //   §5.3 — 拒收 `s.f = ...` / `s[i] = ...`（s 是 frozen）；
 //   §5.4 — 拒收"可写槽位"承接 frozen 表达式（顶层 ID 形态）。
 // 子表达式（如 `f(frozen)`）暂不深扫，等 callsite 校验上线再补。
-bool isFrozenIdRef(p<ExprNode> e, p<ScopeNode> scope) {
+bool isFrozenIdRef(ExprNode* e, ScopeNode* scope) {
     if (!e) return false;
-    if (auto paren = dynamic_cast<p<ExprParenNode>>(e)) {
+    if (auto paren = dynamic_cast<ExprParenNode*>(e)) {
         return isFrozenIdRef(paren->expr(), scope);
     }
-    if (auto le = dynamic_cast<p<ExprLiteralNode>>(e)) {
-        if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
+    if (auto le = dynamic_cast<ExprLiteralNode*>(e)) {
+        if (auto obj = dynamic_cast<LiteralObjNode*>(le->literal())) {
             auto sc = exprScope(e, scope);
             SymbolInfo* sym = sc ? sc->lookupSymbol(obj->getValue().getText()) : nullptr;
             return sym && sym->isFrozen;
@@ -172,12 +172,12 @@ bool isFrozenIdRef(p<ExprNode> e, p<ScopeNode> scope) {
 }
 
 // `e` 是否是 `copy_of:<T>(arg)` 调用（§5.3 唯一脱 const 出口）。
-bool isCopyOfCall(p<ExprNode> e) {
-    auto call = dynamic_cast<p<ExprCallNode>>(e);
+bool isCopyOfCall(ExprNode* e) {
+    auto call = dynamic_cast<ExprCallNode*>(e);
     if (!call) return false;
     auto callee = call->getCalleeExpr();
-    if (auto le = dynamic_cast<p<ExprLiteralNode>>(callee)) {
-        if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
+    if (auto le = dynamic_cast<ExprLiteralNode*>(callee)) {
+        if (auto obj = dynamic_cast<LiteralObjNode*>(le->literal())) {
             return obj->getValue().getText() == "copy_of";
         }
     }
@@ -187,14 +187,14 @@ bool isCopyOfCall(p<ExprNode> e) {
 // §5.4：RHS 是否携带 frozen，且不是 copy_of 脱出。
 // P1-3 简化版：仅识别顶层 frozen ID / paren 包裹的 frozen ID；
 // 复杂表达式（含调用、运算、字段访问等）暂按"不携带" —— 留 P1-3-followup。
-bool carriesFrozenTopLevel(p<ExprNode> e, p<ScopeNode> scope) {
+bool carriesFrozenTopLevel(ExprNode* e, ScopeNode* scope) {
     if (!e) return false;
     if (isCopyOfCall(e)) return false;
     return isFrozenIdRef(e, scope);
 }
 
 // 取 LHS（StatementAssignNode）的 SymbolInfo*；找不到返回 nullptr。
-SymbolInfo* lookupLhsSym(p<StatementAssignNode> a, p<ScopeNode> scope) {
+SymbolInfo* lookupLhsSym(StatementAssignNode* a, ScopeNode* scope) {
     auto sc = scope;
     if (!sc) sc = a->findNearestScope();
     return sc ? sc->lookupSymbol(a->obj().getText()) : nullptr;
@@ -215,9 +215,9 @@ struct FnContext {
     bool isDestructor = false;
 };
 
-FnContext resolveFnContext(p<FnNode> fn) {
+FnContext resolveFnContext(FnNode* fn) {
     FnContext c;
-    p<Node> cur = fn->parent();
+    Node* cur = fn->parent();
     while (cur) {
         if (auto* si = dynamic_cast<StructImplNode*>(cur)) {
             if (!c.impl) c.impl = si;
@@ -250,7 +250,7 @@ StructDeclNode* findStructDecl(FileNode* file, const string& typeName) {
 // §6.2 字段写白名单（非构造函数禁写 #Val/#Frozen 字段）由本 walker 抛 E3109。
 class ConstMutWalker {
 public:
-    void run(p<FnNode> fn) {
+    void run(FnNode* fn) {
         _ctx = resolveFnContext(fn);
         _isConstFn = fn->header()->hasAnno("Const");
         _fnName = fn->header()->name().getText();
@@ -270,7 +270,7 @@ private:
     // - subs.empty(): rebind 形态。lhs 是 param / $ 时按 yux 规则不可重赋（E3093 已兜底），
     //   这里只拦"全局变量重赋"——§4.2.3。
     // - subs.size()>=1: 字段写 / 数组写。lhs 是本地 → 允许；否则按 (1)/(2)/(3) 拒收。
-    void checkConstFnWrite(p<StatementAssignNode> as, p<ScopeNode> scope) {
+    void checkConstFnWrite(StatementAssignNode* as, ScopeNode* scope) {
         if (!_isConstFn) return;
         string name = as->obj().getText();
         if (_localNames.contains(name)) return;
@@ -295,15 +295,15 @@ private:
         throw YuxError(as->getLineNumber(), as->getColumn(), ErrorCode::E3110, _fnName, what, detail);
     }
 
-    void checkConstFnSet(p<StatementSetNode> st, p<ScopeNode> scope) {
+    void checkConstFnSet(StatementSetNode* st, ScopeNode* scope) {
         if (!_isConstFn) return;
         // arrayExpr 形态：单 ID 时按上面规则；复杂表达式（链式）按"写非本地"判定
-        p<ExprNode> ae = st->arrayExpr();
-        while (auto paren = dynamic_cast<p<ExprParenNode>>(ae))
+        ExprNode* ae = st->arrayExpr();
+        while (auto paren = dynamic_cast<ExprParenNode*>(ae))
             ae = paren->expr();
         string name;
-        if (auto le = dynamic_cast<p<ExprLiteralNode>>(ae)) {
-            if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
+        if (auto le = dynamic_cast<ExprLiteralNode*>(ae)) {
+            if (auto obj = dynamic_cast<LiteralObjNode*>(le->literal())) {
                 name = obj->getValue().getText();
             }
         }
@@ -326,8 +326,8 @@ private:
     }
 
     // 取 fn 所在 file（沿 parent chain 找 FileNode），用于跨自由函数/方法符号查表。
-    FileNode* fileOf(p<Node> n) const {
-        p<Node> cur = n;
+    FileNode* fileOf(Node* n) const {
+        Node* cur = n;
         while (cur) {
             if (auto* fl = dynamic_cast<FileNode*>(cur)) return fl;
             cur = cur->parent();
@@ -350,15 +350,15 @@ private:
     //   - 自由函数：callee 是 LiteralObjNode（裸标识符）。
     //   - 方法：callee 是 ExprDotNode，receiver 是变量字面量；按 receiver 类型查 `Type.method`。
     // 其他形态（链式 dot、调用结果再调用、enum ctor、lambda 等）暂按"未知" 放行。
-    void checkConstFnCall(p<ExprCallNode> call) {
+    void checkConstFnCall(ExprCallNode* call) {
         if (!_isConstFn) return;
         auto callee = call->getCalleeExpr();
         auto scope = call->findNearestScope();
         FileNode* file = fileOf(call);
 
         // 自由函数形态
-        if (auto le = dynamic_cast<p<ExprLiteralNode>>(callee)) {
-            if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
+        if (auto le = dynamic_cast<ExprLiteralNode*>(callee)) {
+            if (auto obj = dynamic_cast<LiteralObjNode*>(le->literal())) {
                 string fname = obj->getValue().getText();
                 // 若是本地符号引用（Rc/Array 等通过变量调用，不在此处覆盖），跳过
                 if (_localNames.contains(fname)) return;
@@ -373,12 +373,12 @@ private:
             }
         }
         // 方法形态：receiver.method(...)
-        if (auto dot = dynamic_cast<p<ExprDotNode>>(callee)) {
+        if (auto dot = dynamic_cast<ExprDotNode*>(callee)) {
             // receiver 必须是简单变量字面量（包含 `$`），否则跳过
             auto base = dot->baseExpr();
             string recvName;
-            if (auto le = dynamic_cast<p<ExprLiteralNode>>(base)) {
-                if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
+            if (auto le = dynamic_cast<ExprLiteralNode*>(base)) {
+                if (auto obj = dynamic_cast<LiteralObjNode*>(le->literal())) {
                     recvName = obj->getValue().getText();
                 }
             }
@@ -401,7 +401,7 @@ private:
     //   - subs.size() == 1：写的就是字段本身，#Val 或 #Frozen 一律拒（构造期外）。
     //   - subs.size() >  1：深写，#Frozen 拒（深传染），#Val 放行（浅）。
     // obj 的类型从 scope 取，跨模块走 getStructOwner。
-    void checkFieldWrite(p<StatementAssignNode> as, p<ScopeNode> scope) {
+    void checkFieldWrite(StatementAssignNode* as, ScopeNode* scope) {
         if (_ctx.isDestructor) return; // 析构不受 const-mut 约束（§6.2 / [#1.L]）
         if (as->subs().empty()) return;
         auto sc = scope ? scope : as->findNearestScope();
@@ -426,7 +426,7 @@ private:
         throw YuxError(as->getLineNumber(), as->getColumn(), ErrorCode::E3109, fieldName, tag, sd->name().getText());
     }
 
-    void visitBlock(p<StatementBlockNode> blk) {
+    void visitBlock(StatementBlockNode* blk) {
         if (!blk) return;
         for (auto& s : blk->statements())
             visitStmt(s);
@@ -439,60 +439,60 @@ private:
     //       StatementDeclareNode(isConst) （后者罕见，留作 defensive）
     // 拒收：loop / break / 局部 mutate / 普通 expr-stmt / nested block / match / try-catch /
     //       非 #Cval 局部 let / 元组解构 let / array set
-    void rejectIfDisallowedInConstFn(p<StatementNode> s) {
+    void rejectIfDisallowedInConstFn(StatementNode* s) {
         if (!_isConstFn) return;
         auto throwE = [&](const char* what) {
             throw YuxError(s->getLineNumber(), s->getColumn(), ErrorCode::E3141, _fnName, what);
         };
-        if (dynamic_cast<p<StatementLoopNode>>(s)) throwE("loop");
-        if (dynamic_cast<p<StatementForInNode>>(s)) throwE("for-in");
-        if (dynamic_cast<p<StatementBreakNode>>(s)) throwE("break");
-        if (dynamic_cast<p<StatementContinueNode>>(s)) throwE("continue");
+        if (dynamic_cast<StatementLoopNode*>(s)) throwE("loop");
+        if (dynamic_cast<StatementForInNode*>(s)) throwE("for-in");
+        if (dynamic_cast<StatementBreakNode*>(s)) throwE("break");
+        if (dynamic_cast<StatementContinueNode*>(s)) throwE("continue");
         // StatementAssignNode / StatementSetNode 写本地 cval = E3093 (compiler 端);
         // 写参数 / $ / 全局 = E3110 (checkConstFnWrite/Set). 不在此层抢报, 让既有错码生效.
-        if (dynamic_cast<p<StatementAssignNode>>(s)) return;
-        if (dynamic_cast<p<StatementSetNode>>(s)) return;
-        if (auto da = dynamic_cast<p<StatementDeclareAssignNode>>(s)) {
+        if (dynamic_cast<StatementAssignNode*>(s)) return;
+        if (dynamic_cast<StatementSetNode*>(s)) return;
+        if (auto da = dynamic_cast<StatementDeclareAssignNode*>(s)) {
             if (!da->isConst()) throwE("non-`#Cval` local `let`");
             return;
         }
-        if (dynamic_cast<p<StatementDeclareAssignTupleNode>>(s)) throwE("tuple destructure `let`");
-        if (auto dn = dynamic_cast<p<StatementDeclareNode>>(s)) {
+        if (dynamic_cast<StatementDeclareAssignTupleNode*>(s)) throwE("tuple destructure `let`");
+        if (auto dn = dynamic_cast<StatementDeclareNode*>(s)) {
             if (!dn->isConst()) throwE("uninitialized local `let`");
             return;
         }
-        if (auto se = dynamic_cast<p<StatementExprNode>>(s)) {
-            if (dynamic_cast<p<StatementRetNode>>(s)) return; // ret 允许
-            p<ExprNode> e = se->expr();
-            if (dynamic_cast<p<ExprMatchNode>>(e)) throwE("match expression");
-            if (dynamic_cast<p<ExprTryCatchNode>>(e)) throwE("try-catch expression");
+        if (auto se = dynamic_cast<StatementExprNode*>(s)) {
+            if (dynamic_cast<StatementRetNode*>(s)) return; // ret 允许
+            ExprNode* e = se->expr();
+            if (dynamic_cast<ExprMatchNode*>(e)) throwE("match expression");
+            if (dynamic_cast<ExprTryCatchNode*>(e)) throwE("try-catch expression");
             throwE("expression statement");
         }
-        if (dynamic_cast<p<StatementBlockNode>>(s)) throwE("nested block statement");
+        if (dynamic_cast<StatementBlockNode*>(s)) throwE("nested block statement");
     }
 
-    void visitStmt(p<StatementNode> s) {
+    void visitStmt(StatementNode* s) {
         if (!s) return;
 
         rejectIfDisallowedInConstFn(s);
 
-        if (auto blk = dynamic_cast<p<StatementBlockNode>>(s)) {
+        if (auto blk = dynamic_cast<StatementBlockNode*>(s)) {
             visitBlock(blk);
             return;
         }
-        if (auto loop = dynamic_cast<p<StatementLoopNode>>(s)) {
+        if (auto loop = dynamic_cast<StatementLoopNode*>(s)) {
             visitBlock(loop->block());
             return;
         }
-        if (auto forin = dynamic_cast<p<StatementForInNode>>(s)) {
+        if (auto forin = dynamic_cast<StatementForInNode*>(s)) {
             visitBlock(forin->block());
             return;
         }
-        if (auto dn = dynamic_cast<p<StatementDeclareNode>>(s)) {
+        if (auto dn = dynamic_cast<StatementDeclareNode*>(s)) {
             _localNames.insert(dn->name().getText());
             return;
         }
-        if (auto da = dynamic_cast<p<StatementDeclareAssignNode>>(s)) {
+        if (auto da = dynamic_cast<StatementDeclareAssignNode*>(s)) {
             _localNames.insert(da->name().getText());
             auto scope = s->findNearestScope();
             if (da->isConst() && da->expr()) {
@@ -502,12 +502,12 @@ private:
                 int line = s->getLineNumber();
                 int col = s->getColumn();
                 // RHS 一定是 frozen ID（顶层），取名字塞进消息。
-                p<ExprNode> e = da->expr();
-                while (auto paren = dynamic_cast<p<ExprParenNode>>(e))
+                ExprNode* e = da->expr();
+                while (auto paren = dynamic_cast<ExprParenNode*>(e))
                     e = paren->expr();
                 string srcName = "<frozen>";
-                if (auto le = dynamic_cast<p<ExprLiteralNode>>(e)) {
-                    if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
+                if (auto le = dynamic_cast<ExprLiteralNode*>(e)) {
+                    if (auto obj = dynamic_cast<LiteralObjNode*>(le->literal())) {
                         srcName = obj->getValue().getText();
                     }
                 }
@@ -516,7 +516,7 @@ private:
             if (da->expr()) visitExpr(da->expr());
             return;
         }
-        if (auto as = dynamic_cast<p<StatementAssignNode>>(s)) {
+        if (auto as = dynamic_cast<StatementAssignNode*>(s)) {
             auto scope = s->findNearestScope();
             if (!as->subs().empty()) {
                 // §5.3：`obj.f.g = rhs` 或 `obj.f = rhs`；obj 为 frozen 时拒收。
@@ -540,12 +540,12 @@ private:
                 if (!lhsFrozen && as->expr() && carriesFrozenTopLevel(as->expr(), scope)) {
                     int line = s->getLineNumber();
                     int col = s->getColumn();
-                    p<ExprNode> e = as->expr();
-                    while (auto paren = dynamic_cast<p<ExprParenNode>>(e))
+                    ExprNode* e = as->expr();
+                    while (auto paren = dynamic_cast<ExprParenNode*>(e))
                         e = paren->expr();
                     string srcName = "<frozen>";
-                    if (auto le = dynamic_cast<p<ExprLiteralNode>>(e)) {
-                        if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
+                    if (auto le = dynamic_cast<ExprLiteralNode*>(e)) {
+                        if (auto obj = dynamic_cast<LiteralObjNode*>(le->literal())) {
                             srcName = obj->getValue().getText();
                         }
                     }
@@ -555,7 +555,7 @@ private:
             if (as->expr()) visitExpr(as->expr());
             return;
         }
-        if (auto sfs = dynamic_cast<p<StatementStaticFieldSetNode>>(s)) {
+        if (auto sfs = dynamic_cast<StatementStaticFieldSetNode*>(s)) {
             // DRAFT-static-vars Phase 5：静态字段写 Type::FIELD = expr
             // §4.2：#Const fn 体内禁写静态字段
             if (_isConstFn) {
@@ -565,18 +565,18 @@ private:
             visitExpr(sfs->valueExpr());
             return;
         }
-        if (auto st = dynamic_cast<p<StatementSetNode>>(s)) {
+        if (auto st = dynamic_cast<StatementSetNode*>(s)) {
             // §5.3：`s[i] = X`；arrayExpr 是 frozen ID 时拒收。
             auto scope = s->findNearestScope();
             if (isFrozenIdRef(st->arrayExpr(), scope)) {
                 int line = s->getLineNumber();
                 int col = s->getColumn();
                 string objName = "<expr>";
-                p<ExprNode> ae = st->arrayExpr();
-                while (auto paren = dynamic_cast<p<ExprParenNode>>(ae))
+                ExprNode* ae = st->arrayExpr();
+                while (auto paren = dynamic_cast<ExprParenNode*>(ae))
                     ae = paren->expr();
-                if (auto le = dynamic_cast<p<ExprLiteralNode>>(ae)) {
-                    if (auto obj = dynamic_cast<p<LiteralObjNode>>(le->literal())) {
+                if (auto le = dynamic_cast<ExprLiteralNode*>(ae)) {
+                    if (auto obj = dynamic_cast<LiteralObjNode*>(le->literal())) {
                         objName = obj->getValue().getText();
                     }
                 }
@@ -590,7 +590,7 @@ private:
             visitExpr(st->valueExpr());
             return;
         }
-        if (auto se = dynamic_cast<p<StatementExprNode>>(s)) {
+        if (auto se = dynamic_cast<StatementExprNode*>(s)) {
             if (se->expr()) visitExpr(se->expr());
             return;
         }
@@ -600,9 +600,9 @@ private:
 
     // 表达式遍历仅深入可能嵌套语句块的结构，便于覆盖 if-else / lambda / 调用实参 / 块表达式
     // 中的 cval 声明。
-    void visitExpr(p<ExprNode> e) {
+    void visitExpr(ExprNode* e) {
         if (!e) return;
-        if (auto ie = dynamic_cast<p<ExprIfElseNode>>(e)) {
+        if (auto ie = dynamic_cast<ExprIfElseNode*>(e)) {
             visitExpr(ie->condition());
             visitBlock(ie->thenBlock());
             for (auto& el : ie->elifs()) {
@@ -613,26 +613,26 @@ private:
             visitBlock(ie->elseBlock());
             return;
         }
-        if (auto ol = dynamic_cast<p<ExprOneLineIfElseNode>>(e)) {
+        if (auto ol = dynamic_cast<ExprOneLineIfElseNode*>(e)) {
             visitExpr(ol->condition());
             visitExpr(ol->trueValue());
             visitExpr(ol->falseValue());
             return;
         }
-        if (auto call = dynamic_cast<p<ExprCallNode>>(e)) {
+        if (auto call = dynamic_cast<ExprCallNode*>(e)) {
             checkConstFnCall(call);
             visitExpr(call->getCalleeExpr());
             for (auto& a : call->getArgs())
                 visitExpr(a);
             return;
         }
-        if (auto lam = dynamic_cast<p<LambdaExprNode>>(e)) {
+        if (auto lam = dynamic_cast<LambdaExprNode*>(e)) {
             if (lam->bodyExpr()) visitExpr(lam->bodyExpr());
             for (auto& s : lam->bodyStmts())
                 visitStmt(s);
             return;
         }
-        if (auto m = dynamic_cast<p<ExprMatchNode>>(e)) {
+        if (auto m = dynamic_cast<ExprMatchNode*>(e)) {
             visitExpr(m->scrutinee());
             for (auto& arm : m->arms()) {
                 if (!arm) continue;
@@ -643,7 +643,7 @@ private:
             }
             return;
         }
-        if (auto tc = dynamic_cast<p<ExprTryCatchNode>>(e)) {
+        if (auto tc = dynamic_cast<ExprTryCatchNode*>(e)) {
             visitBlock(tc->tryBlock());
             for (auto& c : tc->catches()) {
                 if (c) visitBlock(c->body());
@@ -656,7 +656,7 @@ private:
 
 } // namespace
 
-void checkConstMut(p<FnNode> fn) {
+void checkConstMut(FnNode* fn) {
     ConstMutWalker w;
     w.run(fn);
 }

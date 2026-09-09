@@ -58,7 +58,7 @@ TypeInfo LiteralBoolNode::getType() const {
     return TypeInfo("bool");
 }
 
-LiteralObjNode::LiteralObjNode(const p<Node>& parent, const Token& value) : LiteralNode(value) {
+LiteralObjNode::LiteralObjNode(Node* parent, const Token& value) : LiteralNode(value) {
     _parent = parent;
 }
 
@@ -245,7 +245,7 @@ TypeInfo LiteralStringNode::getType() const {
     return TypeInfo("String");
 }
 
-StringTemplateNode::StringTemplateNode(const Token& openTok, vector<string> parts, vector<p<ExprNode>> interps)
+StringTemplateNode::StringTemplateNode(const Token& openTok, vector<string> parts, vector<ExprNode*> interps)
     : LiteralNode(openTok), _parts(std::move(parts)), _interps(std::move(interps)) {}
 
 TypeInfo StringTemplateNode::getType() const {

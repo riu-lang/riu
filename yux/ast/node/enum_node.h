@@ -25,15 +25,15 @@
 // 单个 variant: 短名 + 可选 tuple-style payload
 // payloadTypes 为空表示零参 variant
 class EnumVariantNode : public Node, public Named {
-    vector<p<TypeNode>> _payloadTypes;
+    vector<TypeNode*> _payloadTypes;
 
 public:
-    EnumVariantNode(const p<Node>& parent, Token name) : Node(parent), Named(std::move(name)) {}
+    EnumVariantNode(Node* parent, Token name) : Node(parent), Named(std::move(name)) {}
 
-    void addPayloadType(p<TypeNode> ty) { _payloadTypes.push_back(ty); }
-    void setPayloadTypes(vector<p<TypeNode>> tys) { _payloadTypes = std::move(tys); }
+    void addPayloadType(TypeNode* ty) { _payloadTypes.push_back(ty); }
+    void setPayloadTypes(vector<TypeNode*> tys) { _payloadTypes = std::move(tys); }
 
-    [[nodiscard]] const vector<p<TypeNode>>& payloadTypes() const { return _payloadTypes; }
+    [[nodiscard]] const vector<TypeNode*>& payloadTypes() const { return _payloadTypes; }
     [[nodiscard]] bool hasPayload() const { return !_payloadTypes.empty(); }
     [[nodiscard]] size_t payloadArity() const { return _payloadTypes.size(); }
 };
@@ -41,17 +41,17 @@ public:
 // enum 声明节点
 // variant 顺序即 tag 编号顺序（0..N-1），用户不可观测
 class EnumDeclNode : public ScopeNode, public Named, public Annotated {
-    vector<p<EnumVariantNode>> _variants;
+    vector<EnumVariantNode*> _variants;
     map<string, size_t> _variantIndices;
     bool _isPrivate;
 
 public:
-    EnumDeclNode(const p<Node>& parent, const Token& name) : ScopeNode(parent), Named(name) {
+    EnumDeclNode(Node* parent, const Token& name) : ScopeNode(parent), Named(name) {
         _isPrivate = !name.getText().empty() && name.getText()[0] == '_';
     }
 
     // 返回 false 表示重名 variant，调用方负责报错
-    bool addVariant(p<EnumVariantNode> variant) {
+    bool addVariant(EnumVariantNode* variant) {
         // 注意：name() 按值返回 Token，getText() 引用其内部 string；
         // 不能用 const string& 否则绑定到临时对象悬空，按值拷贝
         string vn = variant->name().getText();
@@ -61,7 +61,7 @@ public:
         return true;
     }
 
-    [[nodiscard]] const vector<p<EnumVariantNode>>& variants() const { return _variants; }
+    [[nodiscard]] const vector<EnumVariantNode*>& variants() const { return _variants; }
 
     [[nodiscard]] int variantIndex(const string& name) const {
         auto it = _variantIndices.find(name);

@@ -17,17 +17,17 @@ class ExprNode;
 class FnParamNode : public Node {
 protected:
     Token _name;
-    p<TypeNode> _type;
+    TypeNode* _type;
     // P1-3 const-mut §5：#Frozen 形参——体内不可重赋 / 不可写字段 / 不可传给可写形参；
     // 仅 copy_of 可作为脱 const 出口。
     bool _isFrozen = false;
 
 public:
-    explicit FnParamNode(const p<Node>& parent, Token name, p<TypeNode> type)
+    explicit FnParamNode(Node* parent, Token name, TypeNode* type)
         : Node(parent), _name(std::move(name)), _type(type) {}
 
     [[nodiscard]] Token name() const;
-    [[nodiscard]] p<TypeNode> type() const;
+    [[nodiscard]] TypeNode* type() const;
 
     void setFrozen(bool v) { _isFrozen = v; }
     [[nodiscard]] bool isFrozen() const { return _isFrozen; }
@@ -35,23 +35,23 @@ public:
 
 class FnHeaderNode : public Node, public Named, public Typed, public Annotated {
 protected:
-    vector<p<FnParamNode>> _params;
+    vector<FnParamNode*> _params;
     vector<string> _typeParams;
     // 与 _typeParams 等长；每个槽位的 draft 边界名（如 ["ToString", "Eq"]）。
     // 空 vector 表示该类型形参无 bound。spec §12 / §6.4.4。
     vector<vector<string>> _typeParamBounds;
-    p<TypeNode> _retType;
-    p<TypeNode> _fallibleErrType;
+    TypeNode* _retType;
+    TypeNode* _fallibleErrType;
 
 public:
-    FnHeaderNode(const p<Node>& parent, Token name, p<TypeNode> retType)
+    FnHeaderNode(Node* parent, Token name, TypeNode* retType)
         : Node(parent), Named(std::move(name)), _retType(retType), _fallibleErrType(nullptr) {}
 
-    void setFallibleErrType(p<TypeNode> errType) { _fallibleErrType = std::move(errType); }
-    [[nodiscard]] p<TypeNode> fallibleErrTypeNode() const { return _fallibleErrType; }
+    void setFallibleErrType(TypeNode* errType) { _fallibleErrType = std::move(errType); }
+    [[nodiscard]] TypeNode* fallibleErrTypeNode() const { return _fallibleErrType; }
     [[nodiscard]] string resolvedFallibleErr() const;
 
-    void addParam(p<FnParamNode> param);
+    void addParam(FnParamNode* param);
 
     void setTypeParams(vector<string> params) { _typeParams = std::move(params); }
     [[nodiscard]] const vector<string>& typeParams() const { return _typeParams; }
@@ -61,8 +61,8 @@ public:
     [[nodiscard]] const vector<vector<string>>& typeParamBounds() const { return _typeParamBounds; }
 
     [[nodiscard]] Token name() const override;
-    [[nodiscard]] p<TypeNode> retType() const;
-    [[nodiscard]] vector<p<FnParamNode>> params() const;
+    [[nodiscard]] TypeNode* retType() const;
+    [[nodiscard]] vector<FnParamNode*> params() const;
     [[nodiscard]] TypeInfo getType() const override;
 
     // 构造模型重构：`#Static fn` 是关联函数（无 receiver $），调用形态 `Type::name(...)`
@@ -71,17 +71,17 @@ public:
 };
 
 class FnNode : public ScopeNode, public Typed {
-    p<FnHeaderNode> _header;
-    vector<p<StatementNode>> _body;
+    FnHeaderNode* _header;
+    vector<StatementNode*> _body;
     string _sourceText; // 顶层 fn 的 ctx->getText()，供 .decl skeleton
 
 public:
-    explicit FnNode(const p<Node>& parent, p<FnHeaderNode> header);
+    explicit FnNode(Node* parent, FnHeaderNode* header);
 
-    void addStatement(p<StatementNode> stmt);
+    void addStatement(StatementNode* stmt);
 
-    [[nodiscard]] const vector<p<StatementNode>>& body() const;
-    [[nodiscard]] const p<FnHeaderNode>& header() const;
+    [[nodiscard]] const vector<StatementNode*>& body() const;
+    [[nodiscard]] FnHeaderNode* header() const;
 
     void setSourceText(string s) { _sourceText = std::move(s); }
     [[nodiscard]] const string& sourceText() const { return _sourceText; }

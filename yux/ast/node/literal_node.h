@@ -43,6 +43,7 @@ class LiteralFloatNode : public LiteralNumberNode {
 protected:
     TypeInfo _type;
     bool _hasSuffix = false;
+
 public:
     explicit LiteralFloatNode(const Token& value);
     [[nodiscard]] TypeInfo getType() const override;
@@ -58,9 +59,9 @@ public:
 
 class LiteralObjNode : public LiteralNode {
 public:
-    explicit LiteralObjNode(const p<Node>& parent,const Token& value);
+    explicit LiteralObjNode(Node* parent, const Token& value);
     [[nodiscard]] TypeInfo getType() const override;
-   [[nodiscard]] string getLocation() const override;
+    [[nodiscard]] string getLocation() const override;
 };
 
 class LiteralNullNode : public LiteralNode {
@@ -75,6 +76,7 @@ public:
 
 class LiteralCodePointNode : public LiteralNode {
     u32 _codePoint = 0;
+
 public:
     explicit LiteralCodePointNode(const Token& value);
     [[nodiscard]] TypeInfo getType() const override;
@@ -83,6 +85,7 @@ public:
 
 class LiteralStringNode : public LiteralNode {
     vector<u32> _codePoints;
+
 public:
     explicit LiteralStringNode(const Token& value, bool raw = false);
     [[nodiscard]] TypeInfo getType() const override;
@@ -97,12 +100,13 @@ public:
 // TODO: codegen 在 Phase 2 lower 为 StringBuilder 链式 append。
 class StringTemplateNode : public LiteralNode {
     vector<string> _parts;
-    vector<p<ExprNode>> _interps;
+    vector<ExprNode*> _interps;
+
 public:
-    StringTemplateNode(const Token& openTok, vector<string> parts, vector<p<ExprNode>> interps);
+    StringTemplateNode(const Token& openTok, vector<string> parts, vector<ExprNode*> interps);
     [[nodiscard]] TypeInfo getType() const override;
     [[nodiscard]] const vector<string>& parts() const { return _parts; }
-    [[nodiscard]] const vector<p<ExprNode>>& interps() const { return _interps; }
+    [[nodiscard]] const vector<ExprNode*>& interps() const { return _interps; }
 };
 
-#endif //YUX_LANG_LITERAL_NODE_H
+#endif // YUX_LANG_LITERAL_NODE_H

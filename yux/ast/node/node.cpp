@@ -8,7 +8,7 @@ string Node::getLocation() const {
     return "";
 }
 
-p<Node> Node::parent() const {
+Node* Node::parent() const {
     return _parent;
 }
 
@@ -28,7 +28,7 @@ void ScopeNode::registerFnSymbol(const string& name, FnSymbolInfo info) {
     _fnSymbols[name].push_back(std::move(info));
 }
 
-void ScopeNode::setParentScope(const p<ScopeNode>& scope) {
+void ScopeNode::setParentScope(ScopeNode* scope) {
     _parentScope = scope;
 }
 
@@ -132,12 +132,12 @@ const map<string, vector<FnSymbolInfo>>& ScopeNode::localFnSymbols() const {
     return _fnSymbols;
 }
 
-p<ScopeNode> ScopeNode::parentScope() const {
+ScopeNode* ScopeNode::parentScope() const {
     return _parentScope;
 }
 
-p<ScopeNode> Node::findNearestScope() const {
-    p<Node> current = _parent;
+ScopeNode* Node::findNearestScope() const {
+    Node* current = _parent;
     while (current) {
         if (auto scope = dynamic_cast<ScopeNode*>(current)) {
             return scope;

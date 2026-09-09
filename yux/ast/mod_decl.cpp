@@ -211,7 +211,7 @@ void writeHeader(Writer& w, FnHeaderNode* h) {
     w.str(h->resolvedFallibleErr());
 }
 
-p<TypeNode> typeNodeFromInfo(NodeOwner& own, Node* parent, const TypeInfo& t, int line) {
+TypeNode* typeNodeFromInfo(NodeOwner& own, Node* parent, const TypeInfo& t, int line) {
     if (t.empty() && t.kind == TypeKind::Normal) return nullptr;
     size_t ln = line > 0 ? static_cast<size_t>(line) : 1;
     Token tok(t.name, ln);
@@ -221,7 +221,7 @@ p<TypeNode> typeNodeFromInfo(NodeOwner& own, Node* parent, const TypeInfo& t, in
         return own.make<TypeArrayNode>(parent, elem, TokenInfo(std::to_string(t.arraySize), ln));
     }
     case TypeKind::Tuple: {
-        vector<p<TypeNode>> elems;
+        vector<TypeNode*> elems;
         elems.reserve(t.genericArgs.size());
         for (auto& e : t.genericArgs) {
             elems.push_back(e ? typeNodeFromInfo(own, parent, *e, line) : nullptr);
@@ -229,12 +229,12 @@ p<TypeNode> typeNodeFromInfo(NodeOwner& own, Node* parent, const TypeInfo& t, in
         return own.make<TypeTupleNode>(parent, std::move(elems));
     }
     case TypeKind::Fn: {
-        vector<p<TypeNode>> params;
+        vector<TypeNode*> params;
         params.reserve(t.genericArgs.size());
         for (auto& e : t.genericArgs) {
             params.push_back(e ? typeNodeFromInfo(own, parent, *e, line) : nullptr);
         }
-        p<TypeNode> ret = t.elementType ? typeNodeFromInfo(own, parent, *t.elementType, line) : nullptr;
+        TypeNode* ret = t.elementType ? typeNodeFromInfo(own, parent, *t.elementType, line) : nullptr;
         return own.make<TypeFnNode>(parent, std::move(params), ret, t.fnNullable);
     }
     case TypeKind::Normal:
@@ -244,7 +244,7 @@ p<TypeNode> typeNodeFromInfo(NodeOwner& own, Node* parent, const TypeInfo& t, in
         if (t.genericArgs.empty()) return own.make<TypeNormalNode>(parent, tok);
         [[fallthrough]];
     default: {
-        vector<p<TypeNode>> args;
+        vector<TypeNode*> args;
         args.reserve(t.genericArgs.size());
         for (auto& e : t.genericArgs) {
             args.push_back(e ? typeNodeFromInfo(own, parent, *e, line) : nullptr);
@@ -457,14 +457,14 @@ HeaderData readHeaderData(Reader& r) {
 }
 
 FnHeaderNode* makeHeader(NodeOwner& own, Node* parent, const HeaderData& d) {
-    p<TypeNode> ret = d.hasRet ? typeNodeFromInfo(own, parent, d.ret, d.line) : nullptr;
+    TypeNode* ret = d.hasRet ? typeNodeFromInfo(own, parent, d.ret, d.line) : nullptr;
     auto* header = own.make<FnHeaderNode>(parent, Token(d.name, static_cast<size_t>(d.line > 0 ? d.line : 1)), ret);
     header->setLocation(d.line, d.col);
     header->setAnnos(d.annos, d.annoArgs);
     header->setTypeParams(d.typeParams);
     header->setTypeParamBounds(d.bounds);
     for (auto& pd : d.params) {
-        p<TypeNode> ty = pd.hasType ? typeNodeFromInfo(own, header, pd.type, pd.line) : nullptr;
+        TypeNode* ty = pd.hasType ? typeNodeFromInfo(own, header, pd.type, pd.line) : nullptr;
         auto* param = own.make<FnParamNode>(header, Token(pd.name, static_cast<size_t>(pd.line > 0 ? pd.line : 1)), ty);
         param->setLocation(pd.line, pd.col);
         param->setFrozen(pd.frozen);

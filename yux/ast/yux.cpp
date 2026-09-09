@@ -45,7 +45,7 @@ void Yux::adoptDeclOwner(std::unique_ptr<mod_decl::NodeOwner> owner) {
     _declOwners.push_back(std::move(owner));
 }
 
-void Yux::bindModule(p<FileNode> file, const string& absPath, const string& moduleName) {
+void Yux::bindModule(FileNode* file, const string& absPath, const string& moduleName) {
     if (file) file->setYux(this);
     _modules[moduleName] = file;
     _modulePaths[moduleName] = absPath;
@@ -57,7 +57,7 @@ void Yux::registerModulePath(const string& absPath, const string& moduleName) {
     _modulePaths[moduleName] = absPath;
 }
 
-void Yux::addFile(const p<FileNode>& file) {
+void Yux::addFile(FileNode* file) {
     if (file) file->setYux(this);
     _files.push_back(file);
 }
@@ -91,7 +91,7 @@ SpecImplChecker& Yux::specImplChecker() {
     return *_specImplChecker;
 }
 
-p<FileNode> Yux::createFile(const string& moduleName) {
+FileNode* Yux::createFile(const string& moduleName) {
     auto file = new FileNode(moduleName);
     file->setYux(this);
 
@@ -111,7 +111,7 @@ p<FileNode> Yux::createFile(const string& moduleName) {
     return file;
 }
 
-p<FileNode> Yux::createSdkFile() {
+FileNode* Yux::createSdkFile() {
     // SDK 自举运行时。文件 sdk/yux/core/*.yux，模块名 "yux.core"。
     // 如果 _sdkFile 已存在，返回现有的，避免多个 SDK 文件互相覆盖。
     if (_sdkFile) {
@@ -215,7 +215,7 @@ string Yux::projectName() const {
     return _projectName;
 }
 
-p<FileNode> Yux::module(const string& moduleName) const {
+FileNode* Yux::module(const string& moduleName) const {
     auto it = _modules.find(moduleName);
     if (it != _modules.end()) return it->second;
     return nullptr;
@@ -227,7 +227,7 @@ string Yux::modulePath(const string& moduleName) const {
     return {};
 }
 
-p<FileNode> Yux::_parseFile(const string& absPath, const string& moduleName, int errorLine) {
+FileNode* Yux::_parseFile(const string& absPath, const string& moduleName, int errorLine) {
     antlr4::ANTLRFileStream stream;
     stream.loadFromFile(absPath);
     yux::yuxLexer lexer(&stream);
@@ -270,7 +270,7 @@ void Yux::writeDeclIfPossible(FileNode* file, const string& srcAbs) {
     mod_decl::write(file, srcAbs, declPathFor(srcAbs));
 }
 
-p<FileNode> Yux::loadMainFile(const string& absPath, const string& moduleName) {
+FileNode* Yux::loadMainFile(const string& absPath, const string& moduleName) {
     auto fileNode = _parseFile(absPath, moduleName, 1);
     _modules[moduleName] = fileNode;
     _modulePaths[moduleName] = absPath;
@@ -283,7 +283,7 @@ p<FileNode> Yux::loadMainFile(const string& absPath, const string& moduleName) {
     return fileNode;
 }
 
-p<FileNode> Yux::ensureFullAst(const string& absPath, const string& moduleName) {
+FileNode* Yux::ensureFullAst(const string& absPath, const string& moduleName) {
     auto it = _modules.find(moduleName);
     if (it != _modules.end() && it->second && !it->second->isFromDecl()) {
         return it->second;
@@ -604,7 +604,7 @@ vector<PkgExportItem> Yux::parsePkgFile(const string& moduleName) const {
     return items;
 }
 
-p<FileNode> Yux::loadModule(const string& moduleName, int errorLine) {
+FileNode* Yux::loadModule(const string& moduleName, int errorLine) {
     // 命中缓存
     auto it = _modules.find(moduleName);
     if (it != _modules.end()) return it->second;
@@ -639,7 +639,7 @@ p<FileNode> Yux::loadModule(const string& moduleName, int errorLine) {
     string absPath = std::filesystem::absolute(fullPath).string();
 
     _loadStack.push_back(moduleName);
-    p<FileNode> fileNode = nullptr;
+    FileNode* fileNode = nullptr;
     try {
         if (declCacheEnabled()) {
             fileNode = mod_decl::tryLoad(*this, declPathFor(absPath), absPath, moduleName);

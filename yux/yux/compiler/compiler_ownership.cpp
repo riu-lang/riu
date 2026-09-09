@@ -13,7 +13,7 @@
 
 #include "compiler.h"
 
-void Compiler::takeOwnership(llvm::Value* val, const TypeInfo& type, p<ExprNode> expr) {
+void Compiler::takeOwnership(llvm::Value* val, const TypeInfo& type, ExprNode* expr) {
     if (!val) return;
     if (expr && isFreshHandleExpr(expr)) {
         consumeTemp(val);
@@ -24,7 +24,7 @@ void Compiler::takeOwnership(llvm::Value* val, const TypeInfo& type, p<ExprNode>
     }
 }
 
-void Compiler::storeIntoSlot(llvm::Value* slotPtr, llvm::Value* val, const TypeInfo& type, p<ExprNode> expr,
+void Compiler::storeIntoSlot(llvm::Value* slotPtr, llvm::Value* val, const TypeInfo& type, ExprNode* expr,
                              SlotStore kind) {
     takeOwnership(val, type, expr);
     if (kind == SlotStore::Replace && typeNeedsDestructor(type)) {
@@ -33,11 +33,11 @@ void Compiler::storeIntoSlot(llvm::Value* slotPtr, llvm::Value* val, const TypeI
     _builder.CreateStore(val, slotPtr);
 }
 
-void Compiler::passAsArg(llvm::Value* val, const TypeInfo& type, p<ExprNode> expr) {
+void Compiler::passAsArg(llvm::Value* val, const TypeInfo& type, ExprNode* expr) {
     takeOwnership(val, type, expr);
 }
 
-bool Compiler::returnValue(llvm::Value* val, const TypeInfo& type, p<ExprNode> expr, bool retainHandle) {
+bool Compiler::returnValue(llvm::Value* val, const TypeInfo& type, ExprNode* expr, bool retainHandle) {
     if (!val || !expr) return false;
     if (retainHandle) {
         takeOwnership(val, type, expr);

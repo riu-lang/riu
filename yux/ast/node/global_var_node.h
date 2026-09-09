@@ -27,8 +27,8 @@
 #include "constant_value.h"
 
 class GlobalVarNode : public Node, public Named, public Typed {
-    p<TypeNode> _type;
-    p<ExprNode> _value;
+    TypeNode* _type;
+    ExprNode* _value;
     bool _isPrivate;
     bool _isMutable; // #Mut 档（Phase 2），Phase 1 始终 false
     // Phase 3: const-eval 优先分流 —— 成功求值时存储，codegen 用 ConstantInitializer
@@ -36,13 +36,13 @@ class GlobalVarNode : public Node, public Named, public Typed {
     string _sourceText; // letGlobal 的 ctx->getText()，供 .decl skeleton
 
 public:
-    GlobalVarNode(const p<Node>& parent, const Token& name, p<TypeNode> type, p<ExprNode> value, bool isMutable = false)
+    GlobalVarNode(Node* parent, const Token& name, TypeNode* type, ExprNode* value, bool isMutable = false)
         : Node(parent), Named(name), _type(type), _value(value), _isMutable(isMutable) {
         _isPrivate = !name.getText().empty() && name.getText()[0] == '_';
     }
 
-    [[nodiscard]] p<TypeNode> typeNode() const { return _type; }
-    [[nodiscard]] p<ExprNode> value() const { return _value; }
+    [[nodiscard]] TypeNode* typeNode() const { return _type; }
+    [[nodiscard]] ExprNode* value() const { return _value; }
     [[nodiscard]] bool isPrivate() const { return _isPrivate; }
     [[nodiscard]] bool isMutable() const { return _isMutable; }
 

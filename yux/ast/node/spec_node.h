@@ -13,27 +13,27 @@
 class StructFieldNode;
 
 class SpecDeclNode : public ScopeNode, public Named, public Annotated {
-    vector<p<FnHeaderNode>> _signatures;
-    vector<p<FnNode>> _defaultBodies;
+    vector<FnHeaderNode*> _signatures;
+    vector<FnNode*> _defaultBodies;
     vector<string> _typeParams;
     // DRAFT-spec-reflect Phase 1: spec body 内允许的 `#Static` 字段段
     // (type-bound 契约, [#1.Q] 例外 / [#1.Z]). instance 字段段仍拒 (E2011).
-    vector<p<StructFieldNode>> _staticFields;
+    vector<StructFieldNode*> _staticFields;
     bool _isPrivate;
     string _sourceText; // 整段 #Spec struct 的 ctx->getText()，供 .decl skeleton
 
 public:
-    SpecDeclNode(const p<Node>& parent, const Token& name) : ScopeNode(parent), Named(name) {
+    SpecDeclNode(Node* parent, const Token& name) : ScopeNode(parent), Named(name) {
         _isPrivate = !name.getText().empty() && name.getText()[0] == '_';
     }
 
-    void addSignature(p<FnHeaderNode> sig, p<FnNode> defaultBody = nullptr) {
+    void addSignature(FnHeaderNode* sig, FnNode* defaultBody = nullptr) {
         _signatures.push_back(sig);
         _defaultBodies.push_back(defaultBody);
     }
-    [[nodiscard]] const vector<p<FnHeaderNode>>& signatures() const { return _signatures; }
-    [[nodiscard]] const vector<p<FnNode>>& defaultBodies() const { return _defaultBodies; }
-    [[nodiscard]] p<FnNode> defaultBody(size_t idx) const {
+    [[nodiscard]] const vector<FnHeaderNode*>& signatures() const { return _signatures; }
+    [[nodiscard]] const vector<FnNode*>& defaultBodies() const { return _defaultBodies; }
+    [[nodiscard]] FnNode* defaultBody(size_t idx) const {
         return idx < _defaultBodies.size() ? _defaultBodies[idx] : nullptr;
     }
     [[nodiscard]] bool hasDefaultBody(size_t idx) const {
@@ -46,8 +46,8 @@ public:
 
     // DRAFT-spec-reflect Phase 1: `#Static` 字段段承载 (Phase 3 起填充 Reflect spec 的
     // type/fields/methods/variants 4 个字段; 用户 spec 亦可用作 type-bound 契约).
-    void addStaticField(p<StructFieldNode> field) { _staticFields.push_back(field); }
-    [[nodiscard]] const vector<p<StructFieldNode>>& staticFields() const { return _staticFields; }
+    void addStaticField(StructFieldNode* field) { _staticFields.push_back(field); }
+    [[nodiscard]] const vector<StructFieldNode*>& staticFields() const { return _staticFields; }
 
     [[nodiscard]] bool isPrivate() const { return _isPrivate; }
     [[nodiscard]] bool isDraftLike() const { return hasAnno("DraftLike"); }

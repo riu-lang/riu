@@ -81,9 +81,9 @@ sp<TypeInfo> forInElementType(const TypeInfo& coll) {
 }
 } // namespace
 
-void SemaPass::visitStmt(p<StatementNode> stmt) {
+void SemaPass::visitStmt(StatementNode* stmt) {
     if (!stmt) return;
-    if (auto loop = dynamic_cast<p<StatementLoopNode>>(stmt)) {
+    if (auto loop = dynamic_cast<StatementLoopNode*>(stmt)) {
         const auto& label = loop->label();
         pushLoopLabel(_loopLabelStack, label, loop->getLineNumber(), loop->getColumn());
         if (loop->hasInit()) {
@@ -109,7 +109,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         _loopLabelStack.pop_back();
         return;
     }
-    if (auto set = dynamic_cast<p<StatementSetNode>>(stmt)) {
+    if (auto set = dynamic_cast<StatementSetNode*>(stmt)) {
         visitExpr(set->arrayExpr());
         for (auto& idx : set->indices())
             visitExpr(idx);
@@ -157,9 +157,9 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         // StatementSetNode 覆盖简单变量 `a = 20` / 复合赋值 `a += 1` / 索引赋值 `a[i] = x`。
         // LHS arrayExpr 抽取变量名后按 StatementAssignNode 同款规则判定。
         if (_currentLambda && _currentFn && set->indices().empty()) {
-            auto lhsLit = dynamic_cast<p<ExprLiteralNode>>(set->arrayExpr());
+            auto lhsLit = dynamic_cast<ExprLiteralNode*>(set->arrayExpr());
             if (lhsLit) {
-                auto lhsObj = dynamic_cast<p<LiteralObjNode>>(lhsLit->literal());
+                auto lhsObj = dynamic_cast<LiteralObjNode*>(lhsLit->literal());
                 if (lhsObj) {
                     string objName = lhsObj->getValue().getText();
                     if (objName != "$") {
@@ -189,15 +189,15 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         }
         return;
     }
-    if (auto br = dynamic_cast<p<StatementBreakNode>>(stmt)) {
+    if (auto br = dynamic_cast<StatementBreakNode*>(stmt)) {
         checkLoopJump(_loopLabelStack, br->label(), br->getLineNumber(), br->getColumn(), "break");
         return;
     }
-    if (auto cont = dynamic_cast<p<StatementContinueNode>>(stmt)) {
+    if (auto cont = dynamic_cast<StatementContinueNode*>(stmt)) {
         checkLoopJump(_loopLabelStack, cont->label(), cont->getLineNumber(), cont->getColumn(), "continue");
         return;
     }
-    if (auto forin = dynamic_cast<p<StatementForInNode>>(stmt)) {
+    if (auto forin = dynamic_cast<StatementForInNode*>(stmt)) {
         const auto& label = forin->label();
         pushLoopLabel(_loopLabelStack, label, forin->getLineNumber(), forin->getColumn());
         try {
@@ -232,7 +232,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         _loopLabelStack.pop_back();
         return;
     }
-    if (auto rv = dynamic_cast<p<StatementRetVoidNode>>(stmt)) {
+    if (auto rv = dynamic_cast<StatementRetVoidNode*>(stmt)) {
         // Phase C：lambda 期望非 void 时 `ret;` → E3014（镜像 compileRetVoidStatement）。
         if (_currentLambda) {
             TypeInfo want;
@@ -242,7 +242,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         }
         return;
     }
-    if (auto d = dynamic_cast<p<StatementDeclareNode>>(stmt)) {
+    if (auto d = dynamic_cast<StatementDeclareNode*>(stmt)) {
         // Bucket 4 起步 (CURRENT-check.md): E6011 (泛型 struct arity).
         // 无 init 形态 (`let p Pair<i32>`), 仅 varType, 同款检查.
         if (d->varType()) {
@@ -269,7 +269,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         }
         return;
     }
-    if (auto as = dynamic_cast<p<StatementAssignNode>>(stmt)) {
+    if (auto as = dynamic_cast<StatementAssignNode*>(stmt)) {
         // Phase 2e: `$.field = ...` 在 `#Static fn` 体内禁用 (E3128).
         // StatementAssign 的 `obj` (LHS 根) 不会被 visitExpr 递归, 这里单独拦截.
         if (as->obj().getText() == "$" && _currentFn && _currentFn->header()->isStatic()) {
@@ -508,7 +508,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         }
         return;
     }
-    if (auto tup = dynamic_cast<p<StatementDeclareAssignTupleNode>>(stmt)) {
+    if (auto tup = dynamic_cast<StatementDeclareAssignTupleNode*>(stmt)) {
         // Phase C：元组解构 E3101 / E3102（标注或 RHS；别名 resolveAlias；泛型体 subst）。
         if (tup->expr()) {
             TypeInfo texp;
@@ -528,7 +528,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         }
         return;
     }
-    if (auto ret = dynamic_cast<p<StatementRetNode>>(stmt)) {
+    if (auto ret = dynamic_cast<StatementRetNode*>(stmt)) {
         // Phase C：ret E3014（Fallible 双通道 / T& 形态 / Nullable wrap / 别名 /
         // 灵活整数）。lambda 用自身标注或反推返回类型，不用外层 fn。
         // spec 体未解析 Self、以及 T& 的 borrow 溯源（E4020）仍交 analyzer / Compiler。
@@ -591,7 +591,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         // (spec §8.7.6.5 不可逃逸)。仅拦截直接形 (lambda 字面量), 穿透检测
         // (ret 变量名 / 调用结果含 lambda) 留 codegen 兜底。
         if (ret->expr()) {
-            if (auto litLambda = dynamic_cast<p<LambdaExprNode>>(ret->expr())) {
+            if (auto litLambda = dynamic_cast<LambdaExprNode*>(ret->expr())) {
                 if (litLambda->hasRefCapture()) {
                     throw YuxError(litLambda->getLineNumber(), litLambda->getColumn(), ErrorCode::E4022);
                 }
@@ -599,7 +599,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         }
         return;
     }
-    if (auto da = dynamic_cast<p<StatementDeclareAssignNode>>(stmt)) {
+    if (auto da = dynamic_cast<StatementDeclareAssignNode*>(stmt)) {
         // T& 局部初始化：ID copy-bind E3018、`&expr` 内层 E3014、其余非法形态 E3019.
         // lambda 体 sema 不下钻 — 这里检查 _currentFn 非空再做.
         // Bucket 4 起步 (CURRENT-check.md): E6011 (泛型 struct arity 不匹配).
@@ -640,7 +640,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             } catch (...) { // NOLINT(bugprone-empty-catch)
             }
         }
-        if (dynamic_cast<p<ExprArrayInitNode>>(da->expr())) {
+        if (dynamic_cast<ExprArrayInitNode*>(da->expr())) {
             if (!da->varType()) {
                 throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3067, " with size");
             }
@@ -655,8 +655,8 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             // 镜像 compiler_stmt.cpp:773 / 740. 复杂路径 (alias / 嵌套数组目标类型)
             // 留 Compiler 兜底. lambda 体 sema 不下钻.
             try {
-                if (varType.isArray() && !dynamic_cast<p<ExprArrayNode>>(da->expr()) &&
-                    !dynamic_cast<p<ExprArrayInitNode>>(da->expr())) {
+                if (varType.isArray() && !dynamic_cast<ExprArrayNode*>(da->expr()) &&
+                    !dynamic_cast<ExprArrayInitNode*>(da->expr())) {
                     auto exprType = da->expr()->getType();
                     if (exprType.isArrayGeneric()) {
                         throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3014, varType.getFullName(),
@@ -699,7 +699,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                 auto innerType = varType.refElementType();
                 if (innerType) {
                     auto* rhs = da->expr();
-                    if (auto getRef = dynamic_cast<p<ExprGetRefNode>>(rhs)) {
+                    if (auto getRef = dynamic_cast<ExprGetRefNode*>(rhs)) {
                         TypeInfo getTy;
                         if (tryGetExprType(getRef, getTy)) {
                             auto innerOfGetRef = getTy.refElementType();
@@ -711,8 +711,8 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                                         innerType->name, innerOfGetRef ? innerOfGetRef->name : "?"));
                             }
                         }
-                    } else if (auto litExpr = dynamic_cast<p<ExprLiteralNode>>(rhs)) {
-                        if (auto litObj = dynamic_cast<p<LiteralObjNode>>(litExpr->literal())) {
+                    } else if (auto litExpr = dynamic_cast<ExprLiteralNode*>(rhs)) {
+                        if (auto litObj = dynamic_cast<LiteralObjNode*>(litExpr->literal())) {
                             string srcName = litObj->getValue().getText();
                             SymbolInfo* sym = lookupRetVar(srcName, da, _currentFn);
                             if (!sym || !sym->type.isRef() || !sym->type.refElementType() ||
@@ -734,10 +734,10 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                                 .withHint("T& 局部初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量），或 "
                                           "`val r T& = as_ref(box)`");
                         }
-                    } else if (auto callExpr = dynamic_cast<p<ExprCallNode>>(rhs)) {
+                    } else if (auto callExpr = dynamic_cast<ExprCallNode*>(rhs)) {
                         string calleeName;
-                        if (auto litCallee = dynamic_cast<p<ExprLiteralNode>>(callExpr->getCalleeExpr())) {
-                            if (auto obj = dynamic_cast<p<LiteralObjNode>>(litCallee->literal())) {
+                        if (auto litCallee = dynamic_cast<ExprLiteralNode*>(callExpr->getCalleeExpr())) {
+                            if (auto obj = dynamic_cast<LiteralObjNode*>(litCallee->literal())) {
                                 calleeName = obj->getValue().getText();
                             }
                         }
@@ -749,13 +749,13 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
                                     "T& 局部初始化形如 `val r T& = &x`、`val r2 T& = r1`（拷绑已有 T& 变量）、`val r "
                                     "T& = as_ref(box)` 或返回 T& 的方法/函数调用");
                         }
-                    } else if (auto pathCall = dynamic_cast<p<ExprPathCallNode>>(rhs)) {
+                    } else if (auto pathCall = dynamic_cast<ExprPathCallNode*>(rhs)) {
                         TypeInfo pathTy;
                         if (!tryGetExprType(pathCall, pathTy) || !pathTy.isRef()) {
                             throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3019)
                                 .withHint("静态路径不返回 T& 类型，无法初始化 T& 局部");
                         }
-                    } else if (auto getNode = dynamic_cast<p<ExprGetNode>>(rhs)) {
+                    } else if (auto getNode = dynamic_cast<ExprGetNode*>(rhs)) {
                         TypeInfo getTy;
                         if (!tryGetExprType(getNode, getTy) || !getTy.isRef()) {
                             throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3019)
@@ -784,7 +784,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
             if (!varType.isRef() && !varType.isArray() && !varType.isNullable() && !varType.isRc() &&
                 !varType.isWeak() && !varType.isArrayGeneric() && !varType.isHeap() && !varType.isFn() &&
                 varType.genericArgs.empty() && !isFlexibleIntExpr(da->expr()) && !isAliasName(varType.name) &&
-                !dynamic_cast<p<ExprPathCallNode>>(da->expr())) {
+                !dynamic_cast<ExprPathCallNode*>(da->expr())) {
                 try {
                     auto exprType = applyInstSubst(da->expr()->getType());
                     // 跳过泛型形参 / 未解析类型（如 T, U 等）：此时尚未实例化，比较无意义
@@ -825,7 +825,7 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         // (spec §8.7.6.5 不可逃逸：fn 值不可被存储到寿命外延的变量)。
         // 仅拦截直接形 (lambda 字面量), 穿透检测 (右值 wrapper 调用结果等) 留 codegen 兜底。
         if (da->expr()) {
-            if (auto litLambda = dynamic_cast<p<LambdaExprNode>>(da->expr())) {
+            if (auto litLambda = dynamic_cast<LambdaExprNode*>(da->expr())) {
                 if (litLambda->hasRefCapture()) {
                     throw YuxError(litLambda->getLineNumber(), litLambda->getColumn(), ErrorCode::E4022);
                 }
@@ -843,17 +843,17 @@ void SemaPass::visitStmt(p<StatementNode> stmt) {
         }
         return;
     }
-    if (auto se = dynamic_cast<p<StatementExprNode>>(stmt)) {
+    if (auto se = dynamic_cast<StatementExprNode*>(stmt)) {
         // 覆盖 StatementExprNode / Ret / DeclareAssign / DeclareAssignTuple / Assign
         // E4030: `a <- b` 作为表达式语句时结果被丢弃，建议改用 `a = b`
-        if (auto ma = dynamic_cast<p<ExprMoveAssignNode>>(se->expr())) {
+        if (auto ma = dynamic_cast<ExprMoveAssignNode*>(se->expr())) {
             DiagnosticEngine::emit(_sourcePath,
                                    YuxError(ma->resolveLineNumber(), ma->resolveColumn(), ErrorCode::E4030));
         }
         if (se->expr()) visitExpr(se->expr());
         return;
     }
-    if (auto sf = dynamic_cast<p<StatementStaticFieldSetNode>>(stmt)) {
+    if (auto sf = dynamic_cast<StatementStaticFieldSetNode*>(stmt)) {
         auto r = sema::resolveExprTypeLhs(_file, _yux, sf->typePath(), sf->getLineNumber(), sf->getColumn());
         string typeName = r.type.name;
         string fieldName = sf->fieldName().getText();

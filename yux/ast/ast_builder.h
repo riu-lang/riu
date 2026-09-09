@@ -21,11 +21,11 @@ class ASTBuilder : public yux::yuxParserBaseVisitor {
     FileNode* _targetFile = nullptr;
 
     vector<std::any> stack;
-    vector<p<Node>> _nodes;
-    vector<p<ScopeNode>> _scopeStack;
+    vector<Node*> _nodes;
+    vector<ScopeNode*> _scopeStack;
 
     template <typename T, typename Ctx, typename... Args>
-    p<T> createWithLine(Ctx ctx, Args&&... args) {
+    T* createWithLine(Ctx ctx, Args&&... args) {
         auto node = new T(std::forward<Args>(args)...);
         _nodes.push_back(node);
         if (ctx) {
@@ -38,22 +38,21 @@ class ASTBuilder : public yux::yuxParserBaseVisitor {
         return node;
     }
 
-    [[nodiscard]] p<ScopeNode> currentScope() const {
+    [[nodiscard]] ScopeNode* currentScope() const {
         if (_scopeStack.empty()) return nullptr;
         return _scopeStack.back();
     }
 
     // Phase 4a: typeWithRef -> TypeNode；若 SymbolAnd 存在，包成 Ref<inner>
-    p<TypeNode> buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr, p<Node> parent);
-    p<LambdaExprNode> makeTrailingLambda(yux::yuxParser::TrailingLambdaContext* tl);
+    TypeNode* buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr, Node* parent);
+    LambdaExprNode* makeTrailingLambda(yux::yuxParser::TrailingLambdaContext* tl);
 
     // Function<P..., Ret> → TypeFnNode；末位为返回类型，() 表 unit
-    p<TypeNode> makeFunctionType(antlr4::ParserRuleContext* ctx, p<Node> parent, vector<p<TypeNode>> typeArgs,
-                                 bool nullable);
+    TypeNode* makeFunctionType(antlr4::ParserRuleContext* ctx, Node* parent, vector<TypeNode*> typeArgs, bool nullable);
 
     // T?：Function 折叠为 TypeFnNode.nullable；其余包 Nullable<T>
-    p<TypeNode> applyNullableSuffix(antlr4::ParserRuleContext* ctx, p<Node> parent, p<TypeNode> inner,
-                                    antlr4::Token* questTok);
+    TypeNode* applyNullableSuffix(antlr4::ParserRuleContext* ctx, Node* parent, TypeNode* inner,
+                                  antlr4::Token* questTok);
 
     // Phase 2b 构造模型重构: 从 _scopeStack 找最内层 StructImplNode 的 structName.
     // 用于 TypeSelfNode / ExprStructLitNode 构造时锁定所属结构体; 体外返回空串.
@@ -71,9 +70,9 @@ public:
     [[nodiscard]] const string& sourcePath() const { return _sourcePath; }
 
     // 递归检查表达式树是否包含 try/catch 节点（E3155 校验用）
-    static bool exprContainsTryCatch(p<ExprNode> expr);
+    static bool exprContainsTryCatch(ExprNode* expr);
 
-    p<FileNode> build(yux::yuxParser::ProgramContext* ctx);
+    FileNode* build(yux::yuxParser::ProgramContext* ctx);
 
     // .decl skeleton：往已有 FileNode 追加声明（不 createFile）
     void setTargetFile(FileNode* file) { _targetFile = file; }

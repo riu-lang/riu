@@ -147,7 +147,7 @@ void parseSdkDir(const std::string& sdkDir, Yux& yux, bool allowDecl) {
 
     auto loadOne = [&](const std::string& yuxFile, const std::string& moduleName, bool flattenToCore) {
         std::string abs = fs::absolute(yuxFile).string();
-        p<FileNode> fileNode = nullptr;
+        FileNode* fileNode = nullptr;
         if (allowDecl && !declRoot.empty()) {
             auto dpath = mod_decl::pathFor(declRoot, declBuild, abs);
             fileNode = mod_decl::tryLoad(yux, dpath, abs, moduleName);

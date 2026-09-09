@@ -38,9 +38,6 @@ using f64 = double;
 template <typename T>
 using sp = shared_ptr<T>;
 
-template <typename T>
-using p = T*;
-
 #ifdef _DEBUG
 
 extern bool debug;
@@ -288,8 +285,8 @@ public:
 };
 
 template <typename T>
-p<T> any_cast_p(const std::any& a) {
-    return std::any_cast<p<T>>(a);
+T* any_cast_p(const std::any& a) {
+    return std::any_cast<T*>(a);
 }
 
 template <typename T>

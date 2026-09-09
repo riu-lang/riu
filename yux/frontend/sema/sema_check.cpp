@@ -40,7 +40,7 @@
 
 using namespace sema::pass;
 
-void SemaPass::tryValidateCompareForm(p<ExprCompareNode> n) {
+void SemaPass::tryValidateCompareForm(ExprCompareNode* n) {
     // 与 validateCompareOpForm 对齐：Weak ==/!= → E3078，Ptr 排序 / Function == → E3073。
     // && / ||：镜像 ExprCompareNode::getType / compileCompareExpr 的 E3001。
     // 模板形参等实例化后再查；Weak<T> / Ptr 形态与内层 T 无关，模板期也报。
@@ -71,7 +71,7 @@ void SemaPass::tryValidateCompareForm(p<ExprCompareNode> n) {
     }
 }
 
-void SemaPass::tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExpr, const string& methodName, int line,
+void SemaPass::tryValidateBinOpMethod(ExprNode* leftExpr, ExprNode* rightExpr, const string& methodName, int line,
                                       int col) {
     // gate 与 Compiler::compileAddSubExpr / MulDivMod / BinOp / Compare 内
     // `!isBuiltinType(leftType.name) → compileCustomTypeBinaryOp` 一致, 但
@@ -131,7 +131,7 @@ void SemaPass::tryValidateBinOpMethod(p<ExprNode> leftExpr, p<ExprNode> rightExp
     }
 }
 
-void SemaPass::tryValidateUnaryOpMethod(p<ExprNode> rightExpr, const string& methodName, int line, int col) {
+void SemaPass::tryValidateUnaryOpMethod(ExprNode* rightExpr, const string& methodName, int line, int col) {
     // gate 与 Compiler::compileUnaryExpr 内 `!isBuiltinType → compileCustomTypeUnaryOp` 一致,
     // 并排除容器（与 tryValidateBinOpMethod 同款）。模板形参等实例化后再查。
     if (methodName.empty()) return;
@@ -173,7 +173,7 @@ void SemaPass::tryValidateUnaryOpMethod(p<ExprNode> rightExpr, const string& met
     }
 }
 
-void SemaPass::checkEmptyArrayLiteral(p<ExprArrayNode> n, const TypeInfo* expected) {
+void SemaPass::checkEmptyArrayLiteral(ExprArrayNode* n, const TypeInfo* expected) {
     // 与 compileArrayLiteralExpr 对齐：空 `[]` 仅 Array<T> 靶向合法；固定数组 /
     // 无注解 / 非数组靶向 → E3063。模板形参等实例化后再查（`let a T = []`）。
     if (!n || !n->elements().empty()) return;
@@ -185,7 +185,7 @@ void SemaPass::checkEmptyArrayLiteral(p<ExprArrayNode> n, const TypeInfo* expect
     throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3063);
 }
 
-void SemaPass::tryValidateIndexBase(p<ExprNode> arrayExpr, int line, int col) {
+void SemaPass::tryValidateIndexBase(ExprNode* arrayExpr, int line, int col) {
     // 与 ExprGetNode::getType / compileArraySetStatement 同款：只剥 Ref。
     // 模板形参等实例化后再查。
     if (!arrayExpr) return;
@@ -266,7 +266,7 @@ void SemaPass::tryValidateFieldChain(const TypeInfo& start, const vector<string>
     }
 }
 
-void SemaPass::tryValidateMatchScrut(p<ExprMatchNode> n) {
+void SemaPass::tryValidateMatchScrut(ExprMatchNode* n) {
     // 与 compileMatchExpr 同款。模板形参等实例化后再查；先前只对 builtin / String
     // 报 E2022，用户 struct 与泛型体 subst 后的非 enum 会漏给 codegen。
     if (!n || !n->scrutinee()) return;
@@ -315,7 +315,7 @@ void SemaPass::tryValidateMatchScrut(p<ExprMatchNode> n) {
     }
 }
 
-void SemaPass::tryValidateSafeDot(p<ExprDotNode> n) {
+void SemaPass::tryValidateSafeDot(ExprDotNode* n) {
     // 与 ExprDotNode::getType / compileSafeDotExpr 同款。
     // 模板形参等实例化后再查；getType 在模板体把 E3024/E3044/E3040 吞掉。
     if (!n || !n->isSafe() || !n->baseExpr()) return;
@@ -355,17 +355,17 @@ void SemaPass::tryValidateSafeDot(p<ExprDotNode> n) {
     }
 }
 
-void SemaPass::tryValidateIfElse(p<ExprIfElseNode> n) {
+void SemaPass::tryValidateIfElse(ExprIfElseNode* n) {
     // 与 ExprIfElseNode::getType 对齐：流终止臂跳过；非终止且无尾值则不是值 if，不报。
     // 模板形参等实例化后再查。
     if (!n) return;
-    p<ScopeNode> sc = n->findNearestScope();
-    auto branchKind = [this, sc](p<StatementBlockNode> block, TypeInfo& out) -> int {
+    ScopeNode* sc = n->findNearestScope();
+    auto branchKind = [this, sc](StatementBlockNode* block, TypeInfo& out) -> int {
         // 0 流终止跳过；1 有值；-1 无值（语句形态）
         if (!block) return -1;
         if (blockTerminatesFlow(sc, block)) return 0;
         if (!block->hasResult() || !block->resultExpr()) return -1;
-        p<ExprNode> e = block->resultExpr();
+        ExprNode* e = block->resultExpr();
         try {
             out = e->hasResolvedType() ? e->resolvedType() : e->getType();
         } catch (const YuxError&) {
@@ -378,7 +378,7 @@ void SemaPass::tryValidateIfElse(p<ExprIfElseNode> n) {
     };
     TypeInfo resultType;
     bool have = false;
-    auto consider = [&](p<StatementBlockNode> block) -> bool {
+    auto consider = [&](StatementBlockNode* block) -> bool {
         TypeInfo t;
         int k = branchKind(block, t);
         if (k == 0) return true;
@@ -402,11 +402,11 @@ void SemaPass::tryValidateIfElse(p<ExprIfElseNode> n) {
     if (n->elseBlock() && !consider(n->elseBlock())) return;
 }
 
-void SemaPass::tryValidateOneLineIfElse(p<ExprOneLineIfElseNode> n) {
+void SemaPass::tryValidateOneLineIfElse(ExprOneLineIfElseNode* n) {
     // 与 ExprOneLineIfElseNode::getType 对齐。流终止臂跳过。模板形参等实例化后再查。
     if (!n) return;
-    p<ScopeNode> sc = n->findNearestScope();
-    auto exprType = [this](p<ExprNode> e, TypeInfo& out) -> bool {
+    ScopeNode* sc = n->findNearestScope();
+    auto exprType = [this](ExprNode* e, TypeInfo& out) -> bool {
         if (!e) return false;
         try {
             out = e->hasResolvedType() ? e->resolvedType() : e->getType();
@@ -430,7 +430,7 @@ void SemaPass::tryValidateOneLineIfElse(p<ExprOneLineIfElseNode> n) {
     }
 }
 
-void SemaPass::tryValidateToString(p<ExprNode> e) {
+void SemaPass::tryValidateToString(ExprNode* e) {
     // 与 compileStringPlusChain / compileStringTemplate 同款。
     // 模板形参等实例化后再查；getType 在模板体把依赖 T 的类型吞掉。
     if (!e) return;
@@ -448,12 +448,12 @@ void SemaPass::tryValidateToString(p<ExprNode> e) {
     }
 }
 
-void SemaPass::tryValidateStringPlus(p<ExprAddSubNode> n) {
+void SemaPass::tryValidateStringPlus(ExprAddSubNode* n) {
     // 与 compileStringPlusChain 同款：`+` 结果为 String 时沿左脊展开叶子。
     // `"a" + x` 在模板期 x 是 T，跳过；实例化后再查 E3026。
     if (!n || n->op() != ExprAddSubNode::Op::Add) return;
     try {
-        auto exprTypeOf = [&](p<ExprNode> e) -> TypeInfo {
+        auto exprTypeOf = [&](ExprNode* e) -> TypeInfo {
             TypeInfo t = e->hasResolvedType() ? e->resolvedType() : e->getType();
             return applyInstSubst(t);
         };
@@ -462,7 +462,7 @@ void SemaPass::tryValidateStringPlus(p<ExprAddSubNode> n) {
         TypeInfo rt = exprTypeOf(n->right()).peelAutoDeref();
         if (!(result.isString() || result.name == "String" || lt.isString() || rt.isString())) return;
 
-        vector<p<ExprNode>> leaves;
+        vector<ExprNode*> leaves;
         ExprAddSubNode* cur = n;
         while (true) {
             leaves.push_back(cur->right());
@@ -490,7 +490,7 @@ void SemaPass::tryValidateStringPlus(p<ExprAddSubNode> n) {
     }
 }
 
-void SemaPass::checkArrayElemAgainst(p<ExprNode> elem, const TypeInfo& want, int line, int col) {
+void SemaPass::checkArrayElemAgainst(ExprNode* elem, const TypeInfo& want, int line, int col) {
     if (!elem) return;
     TypeInfo w0 = applyInstSubst(want);
     if (isCurrentTypeParam(w0)) return;
@@ -521,7 +521,7 @@ void SemaPass::checkArrayElemAgainst(p<ExprNode> elem, const TypeInfo& want, int
     throw YuxError(line, col, ErrorCode::E3009, w0.getFullName(), got.getFullName());
 }
 
-void SemaPass::checkArrayLiteral(p<ExprArrayNode> n, const TypeInfo& expected) {
+void SemaPass::checkArrayLiteral(ExprArrayNode* n, const TypeInfo& expected) {
     if (!n) return;
     TypeInfo want = expected.peelRef();
     checkEmptyArrayLiteral(n, &want);
@@ -542,7 +542,7 @@ void SemaPass::checkArrayLiteral(p<ExprArrayNode> n, const TypeInfo& expected) {
     n->setResolvedType(want);
 }
 
-void SemaPass::checkArrayInit(p<ExprArrayInitNode> n, const TypeInfo* expected) {
+void SemaPass::checkArrayInit(ExprArrayInitNode* n, const TypeInfo* expected) {
     if (!n) return;
     TypeInfo elemType;
     if (n->explicitType()) {
@@ -599,7 +599,7 @@ bool SemaPass::hasFieldValueReceiver() const {
     return true;
 }
 
-void SemaPass::tryValidateReflectFieldValueRead(p<ExprDotNode> n) {
+void SemaPass::tryValidateReflectFieldValueRead(ExprDotNode* n) {
     // 与 ExprDotNode::getType / compileDotExpr 对齐。
     // getType 对运行期 Field 已抛 E3133；模板体吞掉后这里再报。
     // 编译期可定但无 `$` → E3134（getType 会成功改写，codegen 才报）。
@@ -631,7 +631,7 @@ void SemaPass::tryValidateReflectFieldValueWrite(const string& objName, const Ty
     if (members.size() != 1 || members[0] != "value") return;
     TypeInfo peeled = applyInstSubst(objType).peelAutoDeref();
     if (peeled.name != "Field") return;
-    p<ExprNode> init = nullptr;
+    ExprNode* init = nullptr;
     if (_currentFn) {
         for (auto& stmt : _currentFn->body()) {
             if (auto* letStmt = dynamic_cast<StatementDeclareAssignNode*>(stmt)) {

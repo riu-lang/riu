@@ -459,7 +459,7 @@ TypeInfo resolveAlias(const TypeInfo& t, FileNode* file, FileNode* sdkFile) {
     return resolveAliasImpl(t, NameResolver(file, sdkFile), visited);
 }
 
-void validateAliases(p<FileNode> file, p<FileNode> sdkFile) {
+void validateAliases(FileNode* file, FileNode* sdkFile) {
     if (!file) return;
     auto& aliases = file->getAliasDecls();
 

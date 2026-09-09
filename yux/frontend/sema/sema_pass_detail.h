@@ -57,16 +57,16 @@ bool isArraySetLvalue(ExprNode* arrayExpr);
 // 字面量 / 调用 / 索引 / 括号等走 E4036。与 T 无关，模板期也报。
 bool isMoveAssignLvalue(ExprNode* expr);
 
-void validateContainerBansAt(const TypeInfo& t, p<TypeNode> tn, int fallbackLine, int fallbackCol);
+void validateContainerBansAt(const TypeInfo& t, TypeNode* tn, int fallbackLine, int fallbackCol);
 
 // Phase B-1: 与 Compiler::isNoCopyType 等价的本地版本（0 LLVM 依赖）。
 // 判定类型是否为 #NoCopy：Array<T> 隐含，或 struct decl 显式标注 #NoCopy。
-bool isNoCopyTypeIn(const TypeInfo& type, p<FileNode> file, p<FileNode> sdkFile);
+bool isNoCopyTypeIn(const TypeInfo& type, FileNode* file, FileNode* sdkFile);
 
 // Phase B-1: 与 Compiler::isFreshHandleExpr（compiler_destructor.cpp）等价的本地版本（0 LLVM 依赖）。
 // fresh 表达式自带 +1 所有权，隐式复制路径可安全跳过 retain。
 // !! 两处须保持同步 — 新增 case 需两边同时添加 !!
-bool isFreshHandleExpr(p<ExprNode> expr);
+bool isFreshHandleExpr(ExprNode* expr);
 
 // 空数组字面量 `[]`：getType 为 `[__empty * 0]`，有靶向类型时应接受。
 bool isEmptyArrayType(const TypeInfo& t);
@@ -75,7 +75,7 @@ bool isEmptyArrayType(const TypeInfo& t);
 bool blockMergeTypesEq(const TypeInfo& a, const TypeInfo& b);
 
 // 数组填充值是 LiteralNode，不是 ExprNode，不能走 tryInferIntType。
-void inferFillLiteralInt(p<LiteralNode> lit, const TypeInfo& target);
+void inferFillLiteralInt(LiteralNode* lit, const TypeInfo& target);
 
 sp<TypeInfo> arrayElemTarget(const TypeInfo& t);
 
@@ -85,7 +85,7 @@ bool isOuterLocalCapture(ScopeNode* from, SymbolInfo* sym, const string& name);
 // 与 Compiler `_localVarPtrs.contains` 对齐：当前 codegen 帧内的槽
 // （形参含 `$`、本帧局部、lambda 形参与 lambda 体局部）。
 // 全局（FileNode）与 lambda 外层局部 / 外层 `$` 为 false。
-bool isCodegenFrameLocal(const string& name, p<Node> from, LambdaExprNode* lambda);
+bool isCodegenFrameLocal(const string& name, Node* from, LambdaExprNode* lambda);
 
 // 与 compileLiteralExpr 捕获门控对齐：标量 / 堆句柄 / T& / Heap? 可捕，其余 E2029。
 enum class LambdaCapKind : std::uint8_t { Skip, Scalar, Handle, Ref, HeapNullable, Unsupported };
@@ -129,11 +129,11 @@ bool agreedArityParamTypes(const vector<FnSymbolInfo*>& cands, size_t wantArity,
 
 // 镜像 Compiler::compileCallExpr / compileDeclareAssignStatement：把 Fn 期望类型
 // 写到 lambda，并回填 bodyScope 未标注形参，让随后下钻能做形态检查。
-void applyLambdaFnExpected(p<LambdaExprNode> lam, const TypeInfo& fnTy);
+void applyLambdaFnExpected(LambdaExprNode* lam, const TypeInfo& fnTy);
 
 // 显式 retType 优先，否则用上下文反推的 Fn 返回类型（nullptr = void）。
 // 两者都没有 → false（尚无期望，不比类型）。
-bool lambdaExpectedRetType(p<LambdaExprNode> lam, TypeInfo& out);
+bool lambdaExpectedRetType(LambdaExprNode* lam, TypeInfo& out);
 
 struct RetCheck {
     FileNode* file = nullptr;
@@ -149,13 +149,13 @@ TypeInfo substSelfType(TypeInfo t, const string& structName);
 
 TypeInfo resolveForRet(const TypeInfo& t, const RetCheck& ctx);
 
-bool tryGetExprType(p<ExprNode> expr, TypeInfo& out);
+bool tryGetExprType(ExprNode* expr, TypeInfo& out);
 
-SymbolInfo* lookupRetVar(const string& name, p<Node> n, FnNode* fn);
+SymbolInfo* lookupRetVar(const string& name, Node* n, FnNode* fn);
 
 // 形态上合法的 T& 返回源：`$` / T& 变量 / `&expr` / 类型本身就是 T&（调用等）。
 // 成功时 srcInner 为剥 Ref 后的内层；找不到源 → false。
-bool refRetSourceInner(p<ExprNode> expr, FnNode* fn, TypeInfo& srcInner);
+bool refRetSourceInner(ExprNode* expr, FnNode* fn, TypeInfo& srcInner);
 
 bool isAssignTypeParam(const TypeInfo& t, const std::set<std::string>& typeParams);
 
@@ -170,7 +170,7 @@ bool stillTemplateType(const TypeInfo& t, const std::set<std::string>& typeParam
 //   标注类型优先，否则 RHS 推断；subst + resolveAlias 后再判 isTuple。
 //   非元组 → E3101；元素数 ≠ 名字数 → E3102。
 // 模板形参 T（含 T& / Rc<T> 剥后仍是 T）等实例化后再查；Array<T> 永远不是元组，模板期也报。
-void checkTupleDestructure(p<ExprNode> expr, p<TypeNode> annotated, size_t nameCount, int line, int col, FileNode* file,
+void checkTupleDestructure(ExprNode* expr, TypeNode* annotated, size_t nameCount, int line, int col, FileNode* file,
                            FileNode* sdk, const std::set<std::string>& typeParams,
                            const std::map<std::string, TypeInfo>* subst);
 
@@ -178,14 +178,14 @@ string genericInstKey(const void* p, const std::map<std::string, TypeInfo>& subs
 
 // Phase C：ret 表达式 E3014。Fallible 成功/错误双通道、T& 形态、Nullable wrap、
 // 别名 resolveAlias、灵活整数推断。spec 体里未解析的 Self 仍跳过。
-void checkRetExpr(p<ExprNode> expr, const TypeInfo& declRet, bool hasDeclRet, int line, const RetCheck& ctx);
+void checkRetExpr(ExprNode* expr, const TypeInfo& declRet, bool hasDeclRet, int line, const RetCheck& ctx);
 
 bool isKnownAssignType(const TypeInfo& t, FileNode* file, FileNode* sdk);
 
 // Phase C：赋值 RHS 相对存储槽类型的 E3014。
 // T& 局部 / `$`（Self&）是 store-through：caller 已 peelRef，want 是内层 T。
 // Nullable wrap / Rc wrap / 空数组 / 灵活整数与 Compiler 赋值路径对齐。
-void checkAssignRhs(p<ExprNode> expr, const TypeInfo& want, int line, int col, FileNode* file, FileNode* sdk,
+void checkAssignRhs(ExprNode* expr, const TypeInfo& want, int line, int col, FileNode* file, FileNode* sdk,
                     const std::set<std::string>& typeParams, const std::map<std::string, TypeInfo>* subst = nullptr);
 
 // Phase C：声明处 Rc / Weak / Array 构造形态。
@@ -195,17 +195,17 @@ void checkAssignRhs(p<ExprNode> expr, const TypeInfo& want, int line, int col, F
 //   Array<T>：仅 Array 表达式或数组字面量 → E3064（不查元素类型，与 Compiler 一致）
 // Heap 声明非 `heap:<T>(...)` 由 borrow checker E4024 先报，不在这里重复。
 // 模板形参等实例化后再查。须在 visitExpr 带靶向类型之后调用。
-void checkDeclareHandleRhs(p<ExprNode> expr, const TypeInfo& want, int line, int col, FileNode* file, FileNode* sdk,
+void checkDeclareHandleRhs(ExprNode* expr, const TypeInfo& want, int line, int col, FileNode* file, FileNode* sdk,
                            const std::set<std::string>& typeParams,
                            const std::map<std::string, TypeInfo>* subst = nullptr);
 
 // Phase C：调用实参相对实例化后形参的 E3014。
 // 与赋值的差别：实参不自动解引用（T& 传给 T 要 copy_of）；值传给 T& 允许自动取址。
-void checkCallArgAgainst(p<ExprNode> arg, const TypeInfo& want, int line, int col, FileNode* file, FileNode* sdk,
+void checkCallArgAgainst(ExprNode* arg, const TypeInfo& want, int line, int col, FileNode* file, FileNode* sdk,
                          const std::set<std::string>& typeParams,
                          const std::map<std::string, TypeInfo>* subst = nullptr);
 
-bool fillSubstFromTypeNodes(const vector<string>& typeParams, const vector<p<TypeNode>>& typeArgNodes,
+bool fillSubstFromTypeNodes(const vector<string>& typeParams, const vector<TypeNode*>& typeArgNodes,
                             map<string, TypeInfo>& subst);
 
 bool fillSubstFromGenericArgs(const vector<string>& typeParams, const vector<sp<TypeInfo>>& genericArgs,
@@ -227,11 +227,11 @@ bool substGenericCallParams(FnHeaderNode* header, const vector<string>& typePara
 
 // Phase C：match 各臂结果类型须一致（镜像 compileMatchExpr）。流终止臂跳过。
 // 模板体里类型参数 / 含 T 的复合类型不下钻，留给实例化期。
-void checkMatchArmTypes(const vector<p<MatchArmNode>>& arms, const std::set<std::string>& typeParams,
+void checkMatchArmTypes(const vector<MatchArmNode*>& arms, const std::set<std::string>& typeParams,
                         const std::map<std::string, TypeInfo>* subst = nullptr);
 
 // 块体末位无 `;` 的裸表达式语句（隐式尾值），不含 ret / 声明 / 赋值子类。
-bool isBareTailExprStmt(p<StatementNode> s);
+bool isBareTailExprStmt(StatementNode* s);
 
 // #Static fn 同名候选：过滤 wantArity，各位约定类型与 agreedArityParamTypes 同款。
 // 任一同名泛型静态方法 → 不猜。

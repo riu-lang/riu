@@ -10,6 +10,6 @@
 // 借用期内根对象不可重赋（§8.6.5.5）。
 // 在 compileFn / compileMethod 入口处调用一次。
 // selfStructName 非空表示方法（注册 `$` 作为有效根对象名）。
-void checkBorrows(p<FnNode> fn, const std::string& selfStructName = "");
+void checkBorrows(FnNode* fn, const std::string& selfStructName = "");
 
 #endif // YUX_LANG_BORROW_CHECKER_H

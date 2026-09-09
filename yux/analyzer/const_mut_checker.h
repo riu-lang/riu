@@ -51,6 +51,6 @@
 //   字段深链 `$.f.g = ...` 中第二层及以后字段的 #Val/#Frozen 解析（需逐级类型推断）。
 //
 // 在 compileFn / compileMethod 入口处调用一次，位置与 checkBorrows / checkFlowTerminate 同档。
-void checkConstMut(p<FnNode> fn);
+void checkConstMut(FnNode* fn);
 
 #endif // YUX_LANG_CONST_MUT_CHECKER_H

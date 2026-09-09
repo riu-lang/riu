@@ -111,7 +111,7 @@ bool isMoveAssignLvalue(ExprNode* expr) {
     return false;
 }
 
-void validateContainerBansAt(const TypeInfo& t, p<TypeNode> tn, int fallbackLine, int fallbackCol) {
+void validateContainerBansAt(const TypeInfo& t, TypeNode* tn, int fallbackLine, int fallbackCol) {
     if (!tn) return;
     int line = tn->getLineNumber();
     int col = tn->getColumn();
@@ -122,7 +122,7 @@ void validateContainerBansAt(const TypeInfo& t, p<TypeNode> tn, int fallbackLine
 
 // Phase B-1: 与 Compiler::isNoCopyType 等价的本地版本（0 LLVM 依赖）。
 // 判定类型是否为 #NoCopy：Array<T> 隐含，或 struct decl 显式标注 #NoCopy。
-bool isNoCopyTypeIn(const TypeInfo& type, p<FileNode> file, p<FileNode> sdkFile) {
+bool isNoCopyTypeIn(const TypeInfo& type, FileNode* file, FileNode* sdkFile) {
     if (isBuiltinType(type.name)) return false;
     if (type.isRc() || type.isWeak() || type.isHeap()) return false;
     if (type.isRef() || type.isPtr()) return false;
@@ -136,21 +136,21 @@ bool isNoCopyTypeIn(const TypeInfo& type, p<FileNode> file, p<FileNode> sdkFile)
 // Phase B-1: 与 Compiler::isFreshHandleExpr（compiler_destructor.cpp）等价的本地版本（0 LLVM 依赖）。
 // fresh 表达式自带 +1 所有权，隐式复制路径可安全跳过 retain。
 // !! 两处须保持同步 — 新增 case 需两边同时添加 !!
-bool isFreshHandleExpr(p<ExprNode> expr) {
+bool isFreshHandleExpr(ExprNode* expr) {
     if (!expr) return false;
-    if (dynamic_cast<p<ExprCallNode>>(expr)) return true;       // 函数调用结果 / builtin intrinsic
-    if (dynamic_cast<p<ExprArrayNode>>(expr)) return true;      // 数组字面量
-    if (dynamic_cast<p<ExprPathCallNode>>(expr)) return true;   // 枚举构造器 / #Static fn 调用
-    if (dynamic_cast<p<ExprMoveAssignNode>>(expr)) return true; // move-assign 结果
-    if (dynamic_cast<p<LambdaExprNode>>(expr)) return true;     // lambda 字面量
-    if (dynamic_cast<p<ExprStructLitNode>>(expr)) return true;  // struct 字面量 (Self { ... })
+    if (dynamic_cast<ExprCallNode*>(expr)) return true;       // 函数调用结果 / builtin intrinsic
+    if (dynamic_cast<ExprArrayNode*>(expr)) return true;      // 数组字面量
+    if (dynamic_cast<ExprPathCallNode*>(expr)) return true;   // 枚举构造器 / #Static fn 调用
+    if (dynamic_cast<ExprMoveAssignNode*>(expr)) return true; // move-assign 结果
+    if (dynamic_cast<LambdaExprNode*>(expr)) return true;     // lambda 字面量
+    if (dynamic_cast<ExprStructLitNode*>(expr)) return true;  // struct 字面量 (Self { ... })
     // if / match / try：与 Compiler::isFreshHandleExpr 同步 — 各值产生分支均 fresh。
-    auto blockFresh = [](p<StatementBlockNode> block) -> bool {
+    auto blockFresh = [](StatementBlockNode* block) -> bool {
         if (!block || blockTerminatesFlow(block, block)) return true;
         if (!block->hasResult() || !block->resultExpr()) return true;
         return isFreshHandleExpr(block->resultExpr());
     };
-    if (auto* ifn = dynamic_cast<p<ExprIfElseNode>>(expr)) {
+    if (auto* ifn = dynamic_cast<ExprIfElseNode*>(expr)) {
         if (!blockFresh(ifn->thenBlock())) return false;
         for (auto& el : ifn->elifs()) {
             if (el && !blockFresh(el->block())) return false;
@@ -158,8 +158,8 @@ bool isFreshHandleExpr(p<ExprNode> expr) {
         if (ifn->elseBlock() && !blockFresh(ifn->elseBlock())) return false;
         return true;
     }
-    if (auto* ol = dynamic_cast<p<ExprOneLineIfElseNode>>(expr)) {
-        p<ScopeNode> sc = ol->findNearestScope();
+    if (auto* ol = dynamic_cast<ExprOneLineIfElseNode*>(expr)) {
+        ScopeNode* sc = ol->findNearestScope();
         bool tTerm = exprTerminatesFlow(sc, ol->trueValue());
         bool fTerm = exprTerminatesFlow(sc, ol->falseValue());
         if (tTerm && fTerm) return true;
@@ -167,7 +167,7 @@ bool isFreshHandleExpr(p<ExprNode> expr) {
         if (fTerm) return isFreshHandleExpr(ol->trueValue());
         return isFreshHandleExpr(ol->trueValue()) && isFreshHandleExpr(ol->falseValue());
     }
-    if (auto* mn = dynamic_cast<p<ExprMatchNode>>(expr)) {
+    if (auto* mn = dynamic_cast<ExprMatchNode*>(expr)) {
         for (auto& arm : mn->arms()) {
             if (!arm || arm->skipsTypeMerge()) continue;
             if (arm->hasBlock()) {
@@ -178,7 +178,7 @@ bool isFreshHandleExpr(p<ExprNode> expr) {
         }
         return true;
     }
-    if (auto* tn = dynamic_cast<p<ExprTryCatchNode>>(expr)) {
+    if (auto* tn = dynamic_cast<ExprTryCatchNode*>(expr)) {
         if (!blockFresh(tn->tryBlock())) return false;
         for (auto& arm : tn->catches()) {
             if (arm && !blockFresh(arm->body())) return false;
@@ -186,7 +186,7 @@ bool isFreshHandleExpr(p<ExprNode> expr) {
         return true;
     }
     // `??`：两侧都 fresh 时整体 fresh（`give() ?? []`）；变量左侧仍是复制，E4031。
-    if (auto* ne = dynamic_cast<p<ExprNullElseNode>>(expr)) {
+    if (auto* ne = dynamic_cast<ExprNullElseNode*>(expr)) {
         return isFreshHandleExpr(ne->left()) && isFreshHandleExpr(ne->right());
     }
     return false;
@@ -205,9 +205,9 @@ bool blockMergeTypesEq(const TypeInfo& a, const TypeInfo& b) {
 }
 
 // 数组填充值是 LiteralNode，不是 ExprNode，不能走 tryInferIntType。
-void inferFillLiteralInt(p<LiteralNode> lit, const TypeInfo& target) {
+void inferFillLiteralInt(LiteralNode* lit, const TypeInfo& target) {
     if (!lit) return;
-    if (auto ilit = dynamic_cast<p<LiteralIntNode>>(lit)) {
+    if (auto ilit = dynamic_cast<LiteralIntNode*>(lit)) {
         if (!ilit->hasSuffix() && isIntTypeName(target.name)) {
             ilit->setType(target);
         }
@@ -233,7 +233,7 @@ bool isOuterLocalCapture(ScopeNode* from, SymbolInfo* sym, const string& name) {
     return false;
 }
 
-bool isCodegenFrameLocal(const string& name, p<Node> from, LambdaExprNode* lambda) {
+bool isCodegenFrameLocal(const string& name, Node* from, LambdaExprNode* lambda) {
     if (!from || name.empty()) return false;
     ScopeNode* start = from->findNearestScope();
     ScopeNode* stopParent = nullptr;
@@ -477,7 +477,7 @@ bool agreedArityParamTypes(const vector<FnSymbolInfo*>& cands, size_t wantArity,
 
 // 镜像 Compiler::compileCallExpr / compileDeclareAssignStatement：把 Fn 期望类型
 // 写到 lambda，并回填 bodyScope 未标注形参，让随后下钻能做形态检查。
-void applyLambdaFnExpected(p<LambdaExprNode> lam, const TypeInfo& fnTy) {
+void applyLambdaFnExpected(LambdaExprNode* lam, const TypeInfo& fnTy) {
     if (!lam || !fnTy.isFn()) return;
     lam->setInferredFnType(fnTy);
     auto sc = lam->bodyScope();
@@ -493,7 +493,7 @@ void applyLambdaFnExpected(p<LambdaExprNode> lam, const TypeInfo& fnTy) {
 
 // 显式 retType 优先，否则用上下文反推的 Fn 返回类型（nullptr = void）。
 // 两者都没有 → false（尚无期望，不比类型）。
-bool lambdaExpectedRetType(p<LambdaExprNode> lam, TypeInfo& out) {
+bool lambdaExpectedRetType(LambdaExprNode* lam, TypeInfo& out) {
     if (!lam) return false;
     if (lam->retType()) {
         try {
@@ -536,7 +536,7 @@ TypeInfo resolveForRet(const TypeInfo& t, const RetCheck& ctx) {
     return sema::resolveAlias(substSelfType(t, ctx.structName), ctx.file, ctx.sdk);
 }
 
-bool tryGetExprType(p<ExprNode> expr, TypeInfo& out) {
+bool tryGetExprType(ExprNode* expr, TypeInfo& out) {
     if (!expr) return false;
     if (expr->hasResolvedType()) {
         out = expr->resolvedType();
@@ -552,7 +552,7 @@ bool tryGetExprType(p<ExprNode> expr, TypeInfo& out) {
     }
 }
 
-SymbolInfo* lookupRetVar(const string& name, p<Node> n, FnNode* fn) {
+SymbolInfo* lookupRetVar(const string& name, Node* n, FnNode* fn) {
     if (n) {
         if (auto sc = n->findNearestScope()) {
             if (auto* s = sc->lookupSymbol(name)) return s;
@@ -563,9 +563,9 @@ SymbolInfo* lookupRetVar(const string& name, p<Node> n, FnNode* fn) {
 
 // 形态上合法的 T& 返回源：`$` / T& 变量 / `&expr` / 类型本身就是 T&（调用等）。
 // 成功时 srcInner 为剥 Ref 后的内层；找不到源 → false。
-bool refRetSourceInner(p<ExprNode> expr, FnNode* fn, TypeInfo& srcInner) {
-    if (auto litExpr = dynamic_cast<p<ExprLiteralNode>>(expr)) {
-        if (auto objLit = dynamic_cast<p<LiteralObjNode>>(litExpr->literal())) {
+bool refRetSourceInner(ExprNode* expr, FnNode* fn, TypeInfo& srcInner) {
+    if (auto litExpr = dynamic_cast<ExprLiteralNode*>(expr)) {
+        if (auto objLit = dynamic_cast<LiteralObjNode*>(litExpr->literal())) {
             auto vname = objLit->getValue().getText();
             auto* sym = lookupRetVar(vname, expr, fn);
             const bool isDollar = (vname == "$");
@@ -583,7 +583,7 @@ bool refRetSourceInner(p<ExprNode> expr, FnNode* fn, TypeInfo& srcInner) {
             }
         }
     }
-    if (auto getRef = dynamic_cast<p<ExprGetRefNode>>(expr)) {
+    if (auto getRef = dynamic_cast<ExprGetRefNode*>(expr)) {
         TypeInfo t;
         if (!tryGetExprType(getRef, t)) return false;
         if (t.isRef()) {
@@ -621,7 +621,7 @@ bool stillTemplateType(const TypeInfo& t, const std::set<std::string>& typeParam
 //   标注类型优先，否则 RHS 推断；subst + resolveAlias 后再判 isTuple。
 //   非元组 → E3101；元素数 ≠ 名字数 → E3102。
 // 模板形参 T（含 T& / Rc<T> 剥后仍是 T）等实例化后再查；Array<T> 永远不是元组，模板期也报。
-void checkTupleDestructure(p<ExprNode> expr, p<TypeNode> annotated, size_t nameCount, int line, int col, FileNode* file,
+void checkTupleDestructure(ExprNode* expr, TypeNode* annotated, size_t nameCount, int line, int col, FileNode* file,
                            FileNode* sdk, const std::set<std::string>& typeParams,
                            const std::map<std::string, TypeInfo>* subst) {
     TypeInfo raw;
@@ -667,7 +667,7 @@ string genericInstKey(const void* p, const std::map<std::string, TypeInfo>& subs
 
 // Phase C：ret 表达式 E3014。Fallible 成功/错误双通道、T& 形态、Nullable wrap、
 // 别名 resolveAlias、灵活整数推断。spec 体里未解析的 Self 仍跳过。
-void checkRetExpr(p<ExprNode> expr, const TypeInfo& declRet, bool hasDeclRet, int line, const RetCheck& ctx) {
+void checkRetExpr(ExprNode* expr, const TypeInfo& declRet, bool hasDeclRet, int line, const RetCheck& ctx) {
     if (!expr) return;
     TypeInfo decl = applySubstMap(declRet, ctx.subst);
     if (hasDeclRet && decl.isSelf() && ctx.structName.empty()) return;
@@ -768,7 +768,7 @@ bool isKnownAssignType(const TypeInfo& t, FileNode* file, FileNode* sdk) {
 // Phase C：赋值 RHS 相对存储槽类型的 E3014。
 // T& 局部 / `$`（Self&）是 store-through：caller 已 peelRef，want 是内层 T。
 // Nullable wrap / Rc wrap / 空数组 / 灵活整数与 Compiler 赋值路径对齐。
-void checkAssignRhs(p<ExprNode> expr, const TypeInfo& want, int line, int col, FileNode* file, FileNode* sdk,
+void checkAssignRhs(ExprNode* expr, const TypeInfo& want, int line, int col, FileNode* file, FileNode* sdk,
                     const std::set<std::string>& typeParams, const std::map<std::string, TypeInfo>* subst) {
     if (!expr) return;
     TypeInfo w0 = applySubstMap(want, subst);
@@ -825,7 +825,7 @@ void checkAssignRhs(p<ExprNode> expr, const TypeInfo& want, int line, int col, F
 //   Array<T>：仅 Array 表达式或数组字面量 → E3064（不查元素类型，与 Compiler 一致）
 // Heap 声明非 `heap:<T>(...)` 由 borrow checker E4024 先报，不在这里重复。
 // 模板形参等实例化后再查。须在 visitExpr 带靶向类型之后调用。
-void checkDeclareHandleRhs(p<ExprNode> expr, const TypeInfo& want, int line, int col, FileNode* file, FileNode* sdk,
+void checkDeclareHandleRhs(ExprNode* expr, const TypeInfo& want, int line, int col, FileNode* file, FileNode* sdk,
                            const std::set<std::string>& typeParams, const std::map<std::string, TypeInfo>* subst) {
     if (!expr) return;
     TypeInfo w0 = applySubstMap(want, subst);
@@ -868,7 +868,7 @@ void checkDeclareHandleRhs(p<ExprNode> expr, const TypeInfo& want, int line, int
 
 // Phase C：调用实参相对实例化后形参的 E3014。
 // 与赋值的差别：实参不自动解引用（T& 传给 T 要 copy_of）；值传给 T& 允许自动取址。
-void checkCallArgAgainst(p<ExprNode> arg, const TypeInfo& want, int line, int col, FileNode* file, FileNode* sdk,
+void checkCallArgAgainst(ExprNode* arg, const TypeInfo& want, int line, int col, FileNode* file, FileNode* sdk,
                          const std::set<std::string>& typeParams, const std::map<std::string, TypeInfo>* subst) {
     if (!arg) return;
     TypeInfo w0 = applySubstMap(want, subst);
@@ -917,7 +917,7 @@ void checkCallArgAgainst(p<ExprNode> arg, const TypeInfo& want, int line, int co
         .withHint(std::format("实参类型 `{}` 与形参类型 `{}` 不匹配", g0.getFullName(), w0.getFullName()));
 }
 
-bool fillSubstFromTypeNodes(const vector<string>& typeParams, const vector<p<TypeNode>>& typeArgNodes,
+bool fillSubstFromTypeNodes(const vector<string>& typeParams, const vector<TypeNode*>& typeArgNodes,
                             map<string, TypeInfo>& subst) {
     if (typeParams.size() != typeArgNodes.size()) return false;
     subst.clear();
@@ -1004,7 +1004,7 @@ bool substGenericCallParams(FnHeaderNode* header, const vector<string>& typePara
 
 // Phase C：match 各臂结果类型须一致（镜像 compileMatchExpr）。流终止臂跳过。
 // 模板体里类型参数 / 含 T 的复合类型不下钻，留给实例化期。
-void checkMatchArmTypes(const vector<p<MatchArmNode>>& arms, const std::set<std::string>& typeParams,
+void checkMatchArmTypes(const vector<MatchArmNode*>& arms, const std::set<std::string>& typeParams,
                         const std::map<std::string, TypeInfo>* subst) {
     TypeInfo first;
     bool firstSet = false;
@@ -1035,13 +1035,13 @@ void checkMatchArmTypes(const vector<p<MatchArmNode>>& arms, const std::set<std:
 }
 
 // 块体末位无 `;` 的裸表达式语句（隐式尾值），不含 ret / 声明 / 赋值子类。
-bool isBareTailExprStmt(p<StatementNode> s) {
-    auto se = dynamic_cast<p<StatementExprNode>>(s);
+bool isBareTailExprStmt(StatementNode* s) {
+    auto se = dynamic_cast<StatementExprNode*>(s);
     if (!se || se->hasSemicolon() || !se->expr()) return false;
-    if (dynamic_cast<p<StatementRetNode>>(s)) return false;
-    if (dynamic_cast<p<StatementDeclareAssignNode>>(s)) return false;
-    if (dynamic_cast<p<StatementDeclareAssignTupleNode>>(s)) return false;
-    if (dynamic_cast<p<StatementAssignNode>>(s)) return false;
+    if (dynamic_cast<StatementRetNode*>(s)) return false;
+    if (dynamic_cast<StatementDeclareAssignNode*>(s)) return false;
+    if (dynamic_cast<StatementDeclareAssignTupleNode*>(s)) return false;
+    if (dynamic_cast<StatementAssignNode*>(s)) return false;
     return true;
 }
 

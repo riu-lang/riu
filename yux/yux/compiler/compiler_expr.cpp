@@ -40,7 +40,7 @@
 //     已按 2.2 在入口写过 resolvedType，回到主 switch 时一定可读。
 // 其余 compile<Foo>Expr 内部对 node->getType() 的现地复读保持原样，留待 Phase 3
 // 按子系统迁移到 SemaPass 时统一切换。
-TypeInfo Compiler::resolvedOrInferredType(p<ExprNode> node) const {
+TypeInfo Compiler::resolvedOrInferredType(ExprNode* node) const {
     if (node->hasResolvedType()) {
         // 泛型 AST 会被多个具体实例复用，节点上的 resolvedType 只保存最近一次
         // SemaPass 复查结果；当前 codegen 帧能替换出类型时以本帧为准。
@@ -188,7 +188,7 @@ llvm::Value* Compiler::createCast(llvm::Value* val, const TypeInfo& rawSrc, cons
 // NOLINTEND(bugprone-branch-clone)
 
 // NOLINTBEGIN(bugprone-branch-clone)
-llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
+llvm::Value* Compiler::compileExpr(ExprNode* node) {
     auto type = node->getType();
     DEBUG_LOG_VAL("  compileExpr", "type=" << (type.empty() ? "void" : type.name));
     // Phase B：dispatch 后的 recordTemp 等读 resolvedOrInferredType；此处 type 仅 DEBUG_LOG。
@@ -440,7 +440,7 @@ llvm::Value* Compiler::compileExpr(p<ExprNode> node) {
 }
 // NOLINTEND(bugprone-branch-clone)
 
-void Compiler::compileStatementBlock(p<StatementBlockNode> block) {
+void Compiler::compileStatementBlock(StatementBlockNode* block) {
     DEBUG_LOG_VAL("  compileStatementBlock", block->statements().size()
                                                  << " statements, hasResult=" << block->hasResult());
     pushScopeFrame();
@@ -463,7 +463,7 @@ void Compiler::compileStatementBlock(p<StatementBlockNode> block) {
     }
 }
 
-llvm::Value* Compiler::compileStatementBlockWithResult(p<StatementBlockNode> block, llvm::BasicBlock* continueBlock,
+llvm::Value* Compiler::compileStatementBlockWithResult(StatementBlockNode* block, llvm::BasicBlock* continueBlock,
                                                        llvm::PHINode* phi, const TypeInfo& resultType) {
     pushScopeFrame();
     const size_t myDepth = scopeFrameDepth();
@@ -512,7 +512,7 @@ llvm::Value* Compiler::compileStatementBlockWithResult(p<StatementBlockNode> blo
 
 // 取 lvalue 表达式的地址（alloca / GEP）。
 // 仅支持简单变量、$、$.field / a.b 链式字段访问。
-llvm::Value* Compiler::compileLvalueAddr(p<ExprNode> node) {
+llvm::Value* Compiler::compileLvalueAddr(ExprNode* node) {
     auto line = node->resolveLineNumber();
     auto col = node->resolveColumn();
 
@@ -616,7 +616,7 @@ llvm::Value* Compiler::compileLvalueAddr(p<ExprNode> node) {
 }
 
 // 是否为 ident / ident.field... 左值（与 isMoveAssignLvalue 形态对齐）。
-static bool isMoveLvalueExpr(p<ExprNode> node) {
+static bool isMoveLvalueExpr(ExprNode* node) {
     while (auto* dot = dynamic_cast<ExprDotNode*>(node)) {
         node = dot->baseExpr();
     }
@@ -633,7 +633,7 @@ static bool isMoveLvalueExpr(p<ExprNode> node) {
 // 5. Array / Heap / #NoCopy：非 fresh 左值 RHS 无 RC 可 retain，须把源槽写成零值，
 //    否则与 LHS 共享缓冲 → 双重释放（§8.7.7.3 / §9.2.1.3 O(1) 转移）
 // 6. 返回旧值；若含 RC 字段则 recordTemp（结果持 ownership +1）
-llvm::Value* Compiler::compileMoveAssignExpr(p<ExprMoveAssignNode> node) {
+llvm::Value* Compiler::compileMoveAssignExpr(ExprMoveAssignNode* node) {
     int line = node->resolveLineNumber();
     int col = node->resolveColumn();
 

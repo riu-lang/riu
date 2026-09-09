@@ -13,17 +13,17 @@
 // 别名是编译期等价（非 newtype）；解析时透明替换为目标类型
 class AliasDeclNode : public ScopeNode, public Named {
     vector<string> _typeParams;
-    p<TypeNode> _target;
+    TypeNode* _target;
 
 public:
-    AliasDeclNode(const p<Node>& parent, Token name, p<TypeNode> target)
+    AliasDeclNode(Node* parent, Token name, TypeNode* target)
         : ScopeNode(parent), Named(std::move(name)), _target(target) {}
 
     void setTypeParams(vector<string> params) { _typeParams = std::move(params); }
-    void setTarget(p<TypeNode> target) { _target = target; }
+    void setTarget(TypeNode* target) { _target = target; }
     [[nodiscard]] const vector<string>& typeParams() const { return _typeParams; }
     [[nodiscard]] bool isGeneric() const { return !_typeParams.empty(); }
-    [[nodiscard]] p<TypeNode> target() const { return _target; }
+    [[nodiscard]] TypeNode* target() const { return _target; }
 };
 
 #endif // YUX_LANG_ALIAS_NODE_H

@@ -149,7 +149,7 @@ FileNode::FileNode(string moduleName) : ScopeNode(nullptr), _moduleName(std::mov
     }
 }
 
-void FileNode::addFunction(const p<FnNode>& function) {
+void FileNode::addFunction(FnNode* function) {
     _functions.push_back(function);
 }
 
@@ -213,7 +213,7 @@ void FileNode::syncFnSymbolsFromAst() {
     }
 }
 
-void FileNode::addStructDecl(const p<StructDeclNode>& structDecl) {
+void FileNode::addStructDecl(StructDeclNode* structDecl) {
     _structDecls.push_back(structDecl);
     SymbolInfo sym(SymbolKind::Struct, structDecl->name().getText(),
                    TypeInfo(structDecl->name().getText(), _moduleName));
@@ -221,11 +221,11 @@ void FileNode::addStructDecl(const p<StructDeclNode>& structDecl) {
     registerSymbol(structDecl->name().getText(), sym);
 }
 
-void FileNode::addStructImpl(const p<StructImplNode>& structImpl) {
+void FileNode::addStructImpl(StructImplNode* structImpl) {
     _structImpls.push_back(structImpl);
 }
 
-void FileNode::addSpecDecl(const p<SpecDeclNode>& specDecl) {
+void FileNode::addSpecDecl(SpecDeclNode* specDecl) {
     _specDecls.push_back(specDecl);
     // draft 名按 §10 共享顶层符号命名空间
     string n = specDecl->name().getText();
@@ -236,14 +236,14 @@ void FileNode::addSpecDecl(const p<SpecDeclNode>& specDecl) {
     }
 }
 
-void FileNode::addAliasDecl(const p<AliasDeclNode>& aliasDecl) {
+void FileNode::addAliasDecl(AliasDeclNode* aliasDecl) {
     _aliasDecls.push_back(aliasDecl);
     // 注意：aliasDecl->name() 返回 Token 值类型，需复制为 string，避免 .getText() 引用绑定到临时对象悬空
     string key = aliasDecl->name().getText();
     _aliasMap[key] = aliasDecl;
 }
 
-void FileNode::addEnumDecl(const p<EnumDeclNode>& enumDecl) {
+void FileNode::addEnumDecl(EnumDeclNode* enumDecl) {
     _enumDecls.push_back(enumDecl);
     string name = enumDecl->name().getText();
     _enumMap[name] = enumDecl;
@@ -287,7 +287,7 @@ SpecDeclNode* FileNode::getSpecDecl(const string& name) const {
     return nullptr;
 }
 
-void FileNode::addGlobalConst(const p<GlobalConstNode>& globalConst) {
+void FileNode::addGlobalConst(GlobalConstNode* globalConst) {
     _globalConsts.push_back(globalConst);
     string name = globalConst->name().getText();
     if (!lookupSymbol(name)) {
@@ -298,7 +298,7 @@ void FileNode::addGlobalConst(const p<GlobalConstNode>& globalConst) {
 }
 
 // DRAFT-static-vars Phase 1: 运行期初始化全局变量
-void FileNode::addGlobalVar(const p<GlobalVarNode>& globalVar) {
+void FileNode::addGlobalVar(GlobalVarNode* globalVar) {
     _globalVars.push_back(globalVar);
     string name = globalVar->name().getText();
     if (!lookupSymbol(name)) {
@@ -309,7 +309,7 @@ void FileNode::addGlobalVar(const p<GlobalVarNode>& globalVar) {
     }
 }
 
-const vector<p<FnNode>>& FileNode::getFunctions() const {
+const vector<FnNode*>& FileNode::getFunctions() const {
     return _functions;
 }
 
@@ -318,7 +318,7 @@ StructDeclNode* FileNode::getStructDecl(const string& name, bool includeBuiltin)
     // 它们的布局与方法由编译器合成，对用户结构体逻辑不可见。默认过滤掉它们 ——
     // Compiler 端用户结构体查找不应命中。SemaPass 走 arity / 形态校验时需要看到
     // 这些占位 (否则 Rc/Ref 查不到), 显式传 includeBuiltin=true。
-    auto matches = [&](const p<StructDeclNode>& decl) {
+    auto matches = [&](StructDeclNode* decl) {
         if (decl->name().getText() != name) return false;
         return includeBuiltin || !decl->hasAnno("Builtin");
     };
@@ -334,7 +334,7 @@ StructDeclNode* FileNode::getStructDecl(const string& name, bool includeBuiltin)
 }
 
 StructDeclNode* FileNode::localStructDecl(const string& name, bool includeBuiltin) const {
-    auto matches = [&](const p<StructDeclNode>& decl) {
+    auto matches = [&](StructDeclNode* decl) {
         if (decl->name().getText() != name) return false;
         return includeBuiltin || !decl->hasAnno("Builtin");
     };

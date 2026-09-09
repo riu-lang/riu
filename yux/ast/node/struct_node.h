@@ -11,7 +11,7 @@
 
 class StructFieldNode : public Node {
     Token _name;
-    p<TypeNode> _type;
+    TypeNode* _type;
     bool _isPrivate;
     // P1-4 DRAFT-const-mut §6.1：字段三档 (default var / #Val 浅 / #Frozen 深)。
     // 互斥；同时出现 → ast_builder 抛 E3105。
@@ -26,13 +26,12 @@ class StructFieldNode : public Node {
     bool _isInline = false;
 
 public:
-    StructFieldNode(const p<Node>& parent, const Token& name, p<TypeNode> type)
-        : Node(parent), _name(name), _type(type) {
+    StructFieldNode(Node* parent, const Token& name, TypeNode* type) : Node(parent), _name(name), _type(type) {
         _isPrivate = !name.getText().empty() && name.getText()[0] == '_';
     }
 
     [[nodiscard]] Token name() const { return _name; }
-    [[nodiscard]] p<TypeNode> type() const { return _type; }
+    [[nodiscard]] TypeNode* type() const { return _type; }
     [[nodiscard]] TypeInfo getType() const { return _type->getType(); }
     [[nodiscard]] bool isPrivate() const { return _isPrivate; }
 
@@ -53,8 +52,8 @@ public:
     // DRAFT-static-vars Phase 4: struct 命名空间内静态字段条目
     struct StaticFieldEntry {
         Token name;
-        p<TypeNode> type;
-        p<ExprNode> init;       // v1 必须非空（E3150）
+        TypeNode* type;
+        ExprNode* init;         // v1 必须非空（E3150）
         bool isMutable = false; // #Mut 叠加
         bool isPrivate = false;
         bool isCval = false;   // #Cval：编译期常量，不产生 GlobalVariable
@@ -62,7 +61,7 @@ public:
     };
 
 private:
-    vector<p<StructFieldNode>> _fields;
+    vector<StructFieldNode*> _fields;
     map<string, size_t> _fieldIndices;
     vector<string> _typeParams;
     bool _isPrivate;
@@ -71,16 +70,16 @@ private:
     string _sourceText; // 整段 structDecl 的 ctx->getText()，供 .decl skeleton
 
 public:
-    StructDeclNode(const p<Node>& parent, const Token& name) : ScopeNode(parent), Named(name) {
+    StructDeclNode(Node* parent, const Token& name) : ScopeNode(parent), Named(name) {
         _isPrivate = !name.getText().empty() && name.getText()[0] == '_';
     }
 
-    void addField(p<StructFieldNode> field) {
+    void addField(StructFieldNode* field) {
         _fieldIndices[field->name().getText()] = _fields.size();
         _fields.push_back(field);
     }
 
-    [[nodiscard]] const vector<p<StructFieldNode>>& fields() const { return _fields; }
+    [[nodiscard]] const vector<StructFieldNode*>& fields() const { return _fields; }
     [[nodiscard]] int fieldIndex(const string& name) const {
         auto it = _fieldIndices.find(name);
         return it != _fieldIndices.end() ? static_cast<int>(it->second) : -1;
@@ -110,21 +109,21 @@ public:
 };
 
 class StructImplNode : public ScopeNode, public Named, public Annotated {
-    vector<p<FnNode>> _methods;
-    p<FnNode> _destructor = nullptr;
+    vector<FnNode*> _methods;
+    FnNode* _destructor = nullptr;
     vector<string> _typeParams;
     string _structName;
 
 public:
-    StructImplNode(const p<Node>& parent, const Token& structName)
+    StructImplNode(Node* parent, const Token& structName)
         : ScopeNode(parent), Named(structName), _structName(structName.getText()) {}
 
-    void addMethod(p<FnNode> method) { _methods.push_back(method); }
+    void addMethod(FnNode* method) { _methods.push_back(method); }
 
-    void setDestructor(p<FnNode> destructor) { _destructor = destructor; }
+    void setDestructor(FnNode* destructor) { _destructor = destructor; }
 
-    [[nodiscard]] const vector<p<FnNode>>& methods() const { return _methods; }
-    [[nodiscard]] const p<FnNode>& destructor() const { return _destructor; }
+    [[nodiscard]] const vector<FnNode*>& methods() const { return _methods; }
+    [[nodiscard]] FnNode* destructor() const { return _destructor; }
     [[nodiscard]] bool hasDestructor() const { return _destructor != nullptr; }
     [[nodiscard]] const string& structName() const { return _structName; }
 

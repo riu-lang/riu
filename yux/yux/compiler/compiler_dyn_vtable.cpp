@@ -69,7 +69,7 @@ std::string findStructOwnerModule(Yux* yux, const std::string& structName) {
 // 内置类型（i32 / bool / ...）的 ToString 等 impl 写在 SDK base.yux 里，
 // 必须用 impl 所在文件的模块名（如 `yux.core`）才能拿到正确的链接符号。
 struct ImplLookup {
-    p<FnNode> method;
+    FnNode* method;
     std::string ownerModule;
 };
 

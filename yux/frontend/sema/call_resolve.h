@@ -27,19 +27,19 @@ namespace sema {
 
 // 解析普通函数 / 模块函数的重载.
 // 命中多个候选时抛 E6014 (ambiguous overload).
-void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName, const vector<p<ExprNode>>& args,
+void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName, const vector<ExprNode*>& args,
                        int line);
 
 // 解析构造器重载 (在符号表中以 `S.S` 注册, params[0] 是接收者).
 // 命中多个候选时抛 E6014.
-void resolveCtorOverload(FileNode* file, const string& structName, const vector<p<ExprNode>>& args, int line);
+void resolveCtorOverload(FileNode* file, const string& structName, const vector<ExprNode*>& args, int line);
 
 // 解析结构体方法调用的重载 (在符号表中以 `TypeName.methodName` 注册, params[0] 是接收者).
 // 与 resolveCtorOverload 同思路，但方法名由调用方拼接 `baseTypeName + "." + member`.
 // 命中多个候选时抛 E6014；无候选时 no-op.
 // sdkFile 为可选的 SDK 回退查找 (允许 nullptr).
 void resolveMethodOverload(FileNode* file, FileNode* sdkFile, const string& baseTypeName, const string& member,
-                           const vector<p<ExprNode>>& args, int line);
+                           const vector<ExprNode*>& args, int line);
 
 // 泛型函数 / 泛型构造器调用点的类型实参 arity 校验 (Phase 3.3 前置.3c).
 //
@@ -121,7 +121,7 @@ FnHeaderNode* resolveDynMethodSig(SpecDeclNode* specDecl, const string& specQual
 //
 // 当前 Compiler 端是唯一调用方 (compileCallExpr 入口的两处 else 分支);
 // SemaPass 暂未跟踪 try block, 不能直接调用.
-void checkBangWithoutFallibleCaller(FnNode* currentFnNode, p<ExprCallNode> callNode,
+void checkBangWithoutFallibleCaller(FnNode* currentFnNode, ExprCallNode* callNode,
                                     LambdaExprNode* currentLambda = nullptr);
 
 // ID-callee 错误传播语义校验 (Phase 10e/10f).
@@ -138,20 +138,20 @@ void checkBangWithoutFallibleCaller(FnNode* currentFnNode, p<ExprCallNode> callN
 //
 // sourcePath: 仅用于 E7016 warning 渲染时的 file:line:col 前缀; 空串 = 无路径,
 // emit 会按 line:col 形态渲染. emit 内部按 (file, code, line, col, message) 5 元组去重.
-void checkErrPropagateForIdCall(FnNode* currentFnNode, p<ExprCallNode> callNode, const string& fnName,
+void checkErrPropagateForIdCall(FnNode* currentFnNode, ExprCallNode* callNode, const string& fnName,
                                 const FnSymbolInfo* calleeSym, vector<string>* tryBlockSeenErrs,
                                 const string& sourcePath = "", LambdaExprNode* currentLambda = nullptr);
 
 // fn-value callee 错误传播语义校验 (Phase F7).
 // calleeFnType 须为 isFn()；fallible 元数据取自 fnReturnType().fallibleErr。
 // 抛错码与 checkErrPropagateForIdCall 同族 (E7001/E7004/E7006/E7016)。
-void checkErrPropagateForFnValueCall(FnNode* currentFnNode, p<ExprCallNode> callNode, const TypeInfo& calleeFnType,
+void checkErrPropagateForFnValueCall(FnNode* currentFnNode, ExprCallNode* callNode, const TypeInfo& calleeFnType,
                                      vector<string>* tryBlockSeenErrs, const string& sourcePath = "",
                                      LambdaExprNode* currentLambda = nullptr);
 
 // `Type::name(...)!` 静态方法路径调用的错误传播校验。
 // 语义与 ID-callee 相同；callee 错误类型直接来自已解析的静态方法签名。
-void checkErrPropagateForPathCall(FnNode* currentFnNode, p<ExprPathCallNode> callNode, const string& fnName,
+void checkErrPropagateForPathCall(FnNode* currentFnNode, ExprPathCallNode* callNode, const string& fnName,
                                   const string& calleeErr, vector<string>* tryBlockSeenErrs,
                                   const string& sourcePath = "", LambdaExprNode* currentLambda = nullptr);
 
@@ -187,7 +187,7 @@ struct ModuleFnCallResult {
     FileNode* genericOwner = nullptr;
 };
 
-ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux, p<ExprCallNode> callNode, p<ExprDotNode> dotNode,
+ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux, ExprCallNode* callNode, ExprDotNode* dotNode,
                                        const vector<TypeInfo>& argTypes);
 
 // 泛型函数调用的 typeArgs 推断 (Phase 3.3.1.b).
@@ -201,7 +201,7 @@ ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux, p<ExprCallNode>
 //
 // 输出: outTypeArgs 按 typeParams 顺序追加推断结果 (调用方应保证传入为空 vector).
 // 纯 TypeInfo unify + map 查表, 无 LLVM 依赖.
-void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn, const string& fnName,
+void inferGenericFnTypeArgs(ExprCallNode* callNode, FnNode* genericFn, const string& fnName,
                             const vector<TypeInfo>& argTypes, vector<TypeInfo>& outTypeArgs);
 
 // 泛型重载消歧：从多个同名泛型函数中选最佳匹配 (Phase 3.3.1.a+).
@@ -217,7 +217,7 @@ void inferGenericFnTypeArgs(p<ExprCallNode> callNode, p<FnNode> genericFn, const
 //   - SemaPass::visitExpr (Bucket 4 泛型 spec-bound 校验前)
 //   - Compiler::compileFunctionCall (泛型消歧块)
 std::pair<FnNode*, FileNode*> resolveBestGenericOverload(const std::vector<std::pair<FnNode*, FileNode*>>& genericFns,
-                                                         p<ExprCallNode> callNode, const std::string& fnName,
+                                                         ExprCallNode* callNode, const std::string& fnName,
                                                          const std::vector<TypeInfo>& argTypes);
 
 // Builtin 泛型 intrinsic 的 typeArgs / args arity 校验 (Phase 3.3.2.c).
@@ -264,7 +264,7 @@ void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, s
 //
 // `file` / `sdkFile` 用于 copy_of 的 struct 字段深度递归; 为 nullptr 时按"找不到声明 → 保守放过"处理.
 void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeInfo>& typeArgs,
-                                       const vector<TypeInfo>& argTypes, const vector<p<ExprNode>>& argNodes,
+                                       const vector<TypeInfo>& argTypes, const vector<ExprNode*>& argNodes,
                                        FileNode* file, FileNode* sdkFile, int line, int col);
 
 // Builtin 操作符方法的 arity / 类型域校验 (Phase 3.3.2.e).
@@ -358,7 +358,7 @@ void validateFnSymbolVisibility(const FnSymbolInfo* fnSymbol, const string& curr
 // 纯 AST / TypeInfo, 无 LLVM 依赖. 调用方:
 //   - Compiler::compileEnumCtorExpr 在 setResolvedType 后立即调用
 //   - SemaPass.visitExpr ExprPathCallNode 分支调用
-void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, p<ExprPathCallNode> node);
+void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, ExprPathCallNode* node);
 
 // match 表达式 arm 静态校验 (Phase 3.4.b).
 //
@@ -385,7 +385,7 @@ void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, p<ExprPathCallNode
 //     非 Rc/非 alias 时才接入; 否则跳过, 由 Compiler 兜底)
 //
 // 纯 AST / 字符串, 无 LLVM 依赖.
-void validateMatchArms(EnumDeclNode* enumDecl, const TypeInfo& enumType, p<ExprMatchNode> node, FileNode* file);
+void validateMatchArms(EnumDeclNode* enumDecl, const TypeInfo& enumType, ExprMatchNode* node, FileNode* file);
 
 // 私有字段可见性校验 (Phase 3.4.d.2).
 //
@@ -418,7 +418,7 @@ void validatePrivateFieldAccess(StructDeclNode* structDecl, const string& fieldN
 // `_currentStructName` (含 `$<...>` 后缀也行, helper 内部剥).
 //
 // 纯 AST / 字符串, 无 LLVM 依赖.
-void validateGetRefPrivacy(FileNode* file, FileNode* sdkFile, p<ExprGetRefNode> node, const string& accessorStructName);
+void validateGetRefPrivacy(FileNode* file, FileNode* sdkFile, ExprGetRefNode* node, const string& accessorStructName);
 
 // ExprDotNode 单层字段访问可见性校验 (Phase 3.4.d.2).
 //
@@ -429,7 +429,7 @@ void validateGetRefPrivacy(FileNode* file, FileNode* sdkFile, p<ExprGetRefNode> 
 // SemaPass 调用方传 `_currentStructName`; Compiler 类似.
 //
 // 纯 AST / 字符串, 无 LLVM 依赖.
-void validateDotFieldPrivacy(FileNode* file, FileNode* sdkFile, p<ExprDotNode> node, const string& accessorStructName);
+void validateDotFieldPrivacy(FileNode* file, FileNode* sdkFile, ExprDotNode* node, const string& accessorStructName);
 
 // 整数字面量解析 + 越界校验 (Phase 3.4.f.2).
 //
@@ -512,7 +512,7 @@ void validateStringTemplateInterps(FileNode* file, FileNode* sdkFile, StringTemp
 //   - E6011: turbofish 必须恰好 1 个类型实参
 //   - E3131: 恰好 1 个 usize 值实参（灵活整数按 usize 回填）
 // Compiler::compileArrayWithCapacity 同款检查；SemaPass 接管后正常路径不可达。
-void validateArrayWithCapacity(p<ExprPathCallNode> node);
+void validateArrayWithCapacity(ExprPathCallNode* node);
 
 } // namespace sema
 

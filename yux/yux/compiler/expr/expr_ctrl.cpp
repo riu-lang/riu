@@ -20,7 +20,7 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <set>
 
-llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
+llvm::Value* Compiler::compileIfElseExpr(ExprIfElseNode* node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto resultType = resolvedOrInferredType(node);
     bool hasResult = !resultType.empty();
@@ -126,7 +126,7 @@ llvm::Value* Compiler::compileIfElseExpr(p<ExprIfElseNode> node) {
     return nullptr;
 }
 
-llvm::Value* Compiler::compileOneLineIfElseExpr(p<ExprOneLineIfElseNode> node) {
+llvm::Value* Compiler::compileOneLineIfElseExpr(ExprOneLineIfElseNode* node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto resultType = resolvedOrInferredType(node);
     bool hasResult = !resultType.empty();
@@ -217,7 +217,7 @@ llvm::Value* Compiler::compileOneLineIfElseExpr(p<ExprOneLineIfElseNode> node) {
 //   依赖普通赋值路径自身的 retain，仅 Rc/Array/Weak 走 compileBranchResultNormalized
 //   归一）
 // - arm body：`=> expr` 或 `=> { stmts }`（块末无 `;` 的表达式即块值，与 if 同）
-llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
+llvm::Value* Compiler::compileMatchExpr(ExprMatchNode* node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto scrutinee = node->scrutinee();
     auto rawScrutType = scrutinee->getType();
@@ -233,7 +233,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
     if (scrutType.isRc()) {
         auto inner = scrutType.rcElementType();
         if (inner) {
-            p<FileNode> tmpOwner = nullptr;
+            FileNode* tmpOwner = nullptr;
             if (names().lookupEnum(*inner, &tmpOwner)) {
                 if (isFreshHandleExpr(scrutinee)) {
                     throwSemaGap(line, col);
@@ -250,7 +250,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
     if (scrutType.isHeap()) {
         auto inner = scrutType.heapElementType();
         if (inner) {
-            p<FileNode> tmpOwner = nullptr;
+            FileNode* tmpOwner = nullptr;
             if (names().lookupEnum(*inner, &tmpOwner)) {
                 if (isFreshHandleExpr(scrutinee)) {
                     throwSemaGap(line, col);
@@ -267,7 +267,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
     if (scrutType.isRef()) {
         auto inner = scrutType.refElementType();
         if (inner) {
-            p<FileNode> tmpOwner = nullptr;
+            FileNode* tmpOwner = nullptr;
             if (names().lookupEnum(*inner, &tmpOwner)) {
                 refDeref = true;
                 scrutType = *inner;
@@ -276,7 +276,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
     }
 
     // 1. 必须是 enum。E2022 由 SemaPass tryValidateMatchScrut 先抛；此处防 IR 走空路径。
-    p<FileNode> enumOwner = nullptr;
+    FileNode* enumOwner = nullptr;
     auto enumDecl = names().lookupEnum(scrutType, &enumOwner);
     if (!enumDecl) {
         throwSemaGap(line, col);
@@ -567,7 +567,7 @@ llvm::Value* Compiler::compileMatchExpr(p<ExprMatchNode> node) {
 //   - compileCallExpr 检测到 #Fallible callee 时把 callee 错误类型 append 到 ctx.seenErrTypes；
 //   - lambda body 在 emitLambdaFunction 内有独立编译流，与外层 _tryCatchStack 隔离 →
 //     穷尽性自然不下钻 lambda 内部。
-llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
+llvm::Value* Compiler::compileTryCatchExpr(ExprTryCatchNode* node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     int line = node->getLineNumber();
     int col = node->getColumn();
@@ -583,7 +583,7 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
 
     for (auto& arm : node->catches()) {
         const auto& errTi = arm->errTypeInfo();
-        p<FileNode> owner = nullptr;
+        FileNode* owner = nullptr;
         auto enumDecl = names().lookupEnum(errTi, &owner);
         if (!enumDecl) {
             int aline = arm->getLineNumber() > 0 ? arm->getLineNumber() : line;
@@ -609,7 +609,7 @@ llvm::Value* Compiler::compileTryCatchExpr(p<ExprTryCatchNode> node) {
 
     // 2) 编译 try block，_tryCatchStack 顶为本 try 的 ctx
     _tryCatchStack.push_back(ctx);
-    auto& tryBlock = node->tryBlock();
+    auto* tryBlock = node->tryBlock();
     for (auto& stmt : tryBlock->statements()) {
         compileStatement(stmt);
     }

@@ -16,16 +16,16 @@
 class Yux;
 
 class FileNode : public ScopeNode {
-    vector<p<FnNode>> _functions;
-    vector<p<StructDeclNode>> _structDecls;
-    vector<p<StructImplNode>> _structImpls;
-    vector<p<GlobalConstNode>> _globalConsts;
-    vector<p<GlobalVarNode>> _globalVars; // DRAFT-static-vars Phase 1: 运行期初始化全局变量
-    vector<p<SpecDeclNode>> _specDecls;
-    vector<p<AliasDeclNode>> _aliasDecls;
-    map<string, p<AliasDeclNode>> _aliasMap;
-    vector<p<EnumDeclNode>> _enumDecls;
-    map<string, p<EnumDeclNode>> _enumMap;
+    vector<FnNode*> _functions;
+    vector<StructDeclNode*> _structDecls;
+    vector<StructImplNode*> _structImpls;
+    vector<GlobalConstNode*> _globalConsts;
+    vector<GlobalVarNode*> _globalVars; // DRAFT-static-vars Phase 1: 运行期初始化全局变量
+    vector<SpecDeclNode*> _specDecls;
+    vector<AliasDeclNode*> _aliasDecls;
+    map<string, AliasDeclNode*> _aliasMap;
+    vector<EnumDeclNode*> _enumDecls;
+    map<string, EnumDeclNode*> _enumMap;
     string _moduleName;
     string _sourcePath; // 该 FileNode 对应的源文件绝对路径；空壳 SDK 父作用域可空
     bool _fromDecl = false;
@@ -42,25 +42,25 @@ public:
     FnSymbolInfo* lookupFnSymbolWithParams(const string& name, const vector<TypeInfo>& paramTypes) override;
     void collectFnOverloads(const string& name, vector<FnSymbolInfo*>& out) override;
 
-    void addFunction(const p<FnNode>& function);
-    void addStructDecl(const p<StructDeclNode>& structDecl);
-    void addStructImpl(const p<StructImplNode>& structImpl);
-    void addGlobalConst(const p<GlobalConstNode>& globalConst);
-    void addGlobalVar(const p<GlobalVarNode>& globalVar); // DRAFT-static-vars Phase 1
-    void addSpecDecl(const p<SpecDeclNode>& specDecl);
-    void addAliasDecl(const p<AliasDeclNode>& aliasDecl);
-    void addEnumDecl(const p<EnumDeclNode>& enumDecl);
+    void addFunction(FnNode* function);
+    void addStructDecl(StructDeclNode* structDecl);
+    void addStructImpl(StructImplNode* structImpl);
+    void addGlobalConst(GlobalConstNode* globalConst);
+    void addGlobalVar(GlobalVarNode* globalVar); // DRAFT-static-vars Phase 1
+    void addSpecDecl(SpecDeclNode* specDecl);
+    void addAliasDecl(AliasDeclNode* aliasDecl);
+    void addEnumDecl(EnumDeclNode* enumDecl);
 
-    [[nodiscard]] const vector<p<FnNode>>& getFunctions() const;
-    [[nodiscard]] const vector<p<StructDeclNode>>& getStructDecls() const { return _structDecls; }
-    [[nodiscard]] const vector<p<StructImplNode>>& getStructImpls() const { return _structImpls; }
-    [[nodiscard]] const vector<p<GlobalConstNode>>& getGlobalConsts() const { return _globalConsts; }
-    [[nodiscard]] const vector<p<GlobalVarNode>>& getGlobalVars() const {
+    [[nodiscard]] const vector<FnNode*>& getFunctions() const;
+    [[nodiscard]] const vector<StructDeclNode*>& getStructDecls() const { return _structDecls; }
+    [[nodiscard]] const vector<StructImplNode*>& getStructImpls() const { return _structImpls; }
+    [[nodiscard]] const vector<GlobalConstNode*>& getGlobalConsts() const { return _globalConsts; }
+    [[nodiscard]] const vector<GlobalVarNode*>& getGlobalVars() const {
         return _globalVars;
     } // DRAFT-static-vars Phase 1
-    [[nodiscard]] const vector<p<SpecDeclNode>>& getSpecDecls() const { return _specDecls; }
-    [[nodiscard]] const vector<p<AliasDeclNode>>& getAliasDecls() const { return _aliasDecls; }
-    [[nodiscard]] const vector<p<EnumDeclNode>>& getEnumDecls() const { return _enumDecls; }
+    [[nodiscard]] const vector<SpecDeclNode*>& getSpecDecls() const { return _specDecls; }
+    [[nodiscard]] const vector<AliasDeclNode*>& getAliasDecls() const { return _aliasDecls; }
+    [[nodiscard]] const vector<EnumDeclNode*>& getEnumDecls() const { return _enumDecls; }
     [[nodiscard]] SpecDeclNode* getSpecDecl(const string& name) const;
     [[nodiscard]] AliasDeclNode* getAliasDecl(const string& name) const;
     [[nodiscard]] EnumDeclNode* getEnumDecl(const string& name) const;

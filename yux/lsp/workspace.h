@@ -73,7 +73,7 @@ private:
     std::string _rootDir;  // 原始 rootDir（项目模式）
     std::string _mainPath; // 主文件绝对路径
     std::unique_ptr<Yux> _yux;
-    p<FileNode> _mainFile;
+    FileNode* _mainFile;
     std::map<std::string, FileNode*> _byPath;
     std::string _buildError;
     bool _ok = false;

@@ -94,10 +94,10 @@ static void unwrapRecvType(TypeInfo& t) {
 }
 
 // 泛型函数调用：把 ret 按 typeParams → 显式实参 / 从实参 unify 推断 替换。
-static TypeInfo substGenericFnRet(const Node* from, const vector<p<TypeNode>>& typeArgs,
-                                  const vector<p<ExprNode>>& args, const string& fnName, TypeInfo retType) {
-    p<FileNode> file = enclosingFileFrom(from);
-    p<FnNode> fnNode = nullptr;
+static TypeInfo substGenericFnRet(const Node* from, const vector<TypeNode*>& typeArgs, const vector<ExprNode*>& args,
+                                  const string& fnName, TypeInfo retType) {
+    FileNode* file = enclosingFileFrom(from);
+    FnNode* fnNode = nullptr;
     if (file) {
         fnNode = file->getFunction(fnName);
         if (!fnNode) {
@@ -178,8 +178,8 @@ static TypeInfo substGenericFnRet(const Node* from, const vector<p<TypeNode>>& t
 
 // 已解析到目标模块的泛型函数时，直接按该声明替换返回类型。
 // 模块点调用不能复用上面的名字查找：调用方 scope 中只有模块别名，没有目标函数符号。
-static TypeInfo substResolvedGenericFnRet(const FnNode* fnNode, const vector<p<TypeNode>>& typeArgs,
-                                          const vector<p<ExprNode>>& args, TypeInfo retType) {
+static TypeInfo substResolvedGenericFnRet(const FnNode* fnNode, const vector<TypeNode*>& typeArgs,
+                                          const vector<ExprNode*>& args, TypeInfo retType) {
     if (!fnNode || !fnNode->header() || !fnNode->header()->isGeneric()) return retType;
 
     const auto& typeParams = fnNode->header()->typeParams();
@@ -232,7 +232,7 @@ static TypeInfo substResolvedGenericFnRet(const FnNode* fnNode, const vector<p<T
 static TypeInfo lookupSpecBoundMethodRetType(Node* contextParent, const string& typeParamName,
                                              const string& methodName) {
     Node* cur = contextParent;
-    p<FnHeaderNode> header = nullptr;
+    FnHeaderNode* header = nullptr;
     while (cur) {
         if (auto fn = dynamic_cast<FnNode*>(cur)) {
             header = fn->header();
@@ -349,14 +349,14 @@ static bool isBuiltinMethod(ScopeNode* scope, const string& structName, const st
     return false;
 }
 
-static p<ExprNode> unwrapParen(p<ExprNode> e) {
+static ExprNode* unwrapParen(ExprNode* e) {
     while (auto paren = dynamic_cast<ExprParenNode*>(e)) {
         e = paren->expr();
     }
     return e;
 }
 
-bool isFlexibleIntExpr(p<ExprNode> expr) {
+bool isFlexibleIntExpr(ExprNode* expr) {
     expr = unwrapParen(expr);
     if (auto lit = dynamic_cast<ExprLiteralNode*>(expr)) {
         if (auto ilit = dynamic_cast<LiteralIntNode*>(lit->literal())) {
@@ -379,7 +379,7 @@ bool isFlexibleIntExpr(p<ExprNode> expr) {
     return false;
 }
 
-bool tryInferIntType(p<ExprNode> expr, const TypeInfo& target) {
+bool tryInferIntType(ExprNode* expr, const TypeInfo& target) {
     if (!isIntTypeName(target.name)) return false;
     expr = unwrapParen(expr);
     if (auto lit = dynamic_cast<ExprLiteralNode*>(expr)) {
@@ -414,7 +414,7 @@ bool tryInferIntType(p<ExprNode> expr, const TypeInfo& target) {
 
 // ==================== null 字面量灵活类型推断 ====================
 
-bool isFlexibleNullExpr(p<ExprNode> expr) {
+bool isFlexibleNullExpr(ExprNode* expr) {
     expr = unwrapParen(expr);
     if (auto lit = dynamic_cast<ExprLiteralNode*>(expr)) {
         return dynamic_cast<LiteralNullNode*>(lit->literal()) != nullptr;
@@ -422,7 +422,7 @@ bool isFlexibleNullExpr(p<ExprNode> expr) {
     return false;
 }
 
-bool tryInferNullType(p<ExprNode> expr, const TypeInfo& nullableTarget) {
+bool tryInferNullType(ExprNode* expr, const TypeInfo& nullableTarget) {
     if (!nullableTarget.isNullable()) return false;
     expr = unwrapParen(expr);
     if (auto lit = dynamic_cast<ExprLiteralNode*>(expr)) {
@@ -434,11 +434,11 @@ bool tryInferNullType(p<ExprNode> expr, const TypeInfo& nullableTarget) {
     return false;
 }
 
-const p<ExprNode>& ExprCallNode::getCalleeExpr() const {
+ExprNode* ExprCallNode::getCalleeExpr() const {
     return _calleeExpr;
 }
 
-const std::vector<p<ExprNode>>& ExprCallNode::getArgs() const {
+const std::vector<ExprNode*>& ExprCallNode::getArgs() const {
     return _args;
 }
 
@@ -651,7 +651,7 @@ TypeInfo ExprCallNode::getType() const {
     return type;
 }
 
-const p<LiteralNode>& ExprLiteralNode::literal() const {
+LiteralNode* ExprLiteralNode::literal() const {
     return _literal;
 }
 
@@ -663,11 +663,11 @@ ExprAddSubNode::Op ExprAddSubNode::op() const {
     return _op;
 }
 
-const p<ExprNode>& ExprAddSubNode::left() const {
+ExprNode* ExprAddSubNode::left() const {
     return _left;
 }
 
-const p<ExprNode>& ExprAddSubNode::right() const {
+ExprNode* ExprAddSubNode::right() const {
     return _right;
 }
 
@@ -715,11 +715,11 @@ ExprMulDivModNode::Op ExprMulDivModNode::op() const {
     return _op;
 }
 
-const p<ExprNode>& ExprMulDivModNode::left() const {
+ExprNode* ExprMulDivModNode::left() const {
     return _left;
 }
 
-const p<ExprNode>& ExprMulDivModNode::right() const {
+ExprNode* ExprMulDivModNode::right() const {
     return _right;
 }
 
@@ -761,11 +761,11 @@ ExprBinOpNode::Op ExprBinOpNode::op() const {
     return _op;
 }
 
-const p<ExprNode>& ExprBinOpNode::left() const {
+ExprNode* ExprBinOpNode::left() const {
     return _left;
 }
 
-const p<ExprNode>& ExprBinOpNode::right() const {
+ExprNode* ExprBinOpNode::right() const {
     return _right;
 }
 
@@ -803,7 +803,7 @@ int ExprBinOpNode::resolveColumn() const {
     return _right->resolveColumn();
 }
 
-const p<ExprNode>& ExprParenNode::expr() const {
+ExprNode* ExprParenNode::expr() const {
     return _inner;
 }
 
@@ -811,7 +811,7 @@ TypeInfo ExprParenNode::getType() const {
     return _inner->getType();
 }
 
-const p<ExprNode>& ExprDotNode::baseExpr() const {
+ExprNode* ExprDotNode::baseExpr() const {
     return _baseExpr;
 }
 
@@ -1005,11 +1005,11 @@ TypeInfo ExprDotNode::getType() const {
     // then falls back to type-based check for non-compile-time-known Field references.
     if (member == "value") {
         // Helper: trace an expression to {structDecl, fieldIndex}.
-        std::function<std::pair<const StructDeclNode*, int>(const p<ExprNode>&)> tryResolve;
-        tryResolve = [&](const p<ExprNode>& expr) -> std::pair<const StructDeclNode*, int> {
+        std::function<std::pair<const StructDeclNode*, int>(ExprNode*)> tryResolve;
+        tryResolve = [&](ExprNode* expr) -> std::pair<const StructDeclNode*, int> {
             // Case 1: Direct .get(N) call on a static fields array
             if (auto* call = dynamic_cast<ExprCallNode*>(expr)) {
-                auto& callee = call->getCalleeExpr();
+                auto* callee = call->getCalleeExpr();
                 auto* dot = dynamic_cast<ExprDotNode*>(callee);
                 if (dot && dot->member() == "get" && call->getArgs().size() == 1) {
                     auto* base = dot->baseExpr();
@@ -1395,11 +1395,11 @@ ExprCompareNode::Op ExprCompareNode::op() const {
     return _op;
 }
 
-const p<ExprNode>& ExprCompareNode::left() const {
+ExprNode* ExprCompareNode::left() const {
     return _left;
 }
 
-const p<ExprNode>& ExprCompareNode::right() const {
+ExprNode* ExprCompareNode::right() const {
     return _right;
 }
 
@@ -1437,15 +1437,15 @@ int ExprCompareNode::resolveColumn() const {
     return _right->resolveColumn();
 }
 
-StatementBlockNode::StatementBlockNode(const p<Node>& parent, vector<p<StatementNode>> statements,
-                                       p<ExprNode> resultExpr, bool hasResult)
+StatementBlockNode::StatementBlockNode(Node* parent, vector<StatementNode*> statements, ExprNode* resultExpr,
+                                       bool hasResult)
     : ScopeNode(parent), _statements(std::move(statements)), _resultExpr(resultExpr), _hasResult(hasResult) {}
 
-const vector<p<StatementNode>>& StatementBlockNode::statements() const {
+const vector<StatementNode*>& StatementBlockNode::statements() const {
     return _statements;
 }
 
-const p<ExprNode>& StatementBlockNode::resultExpr() const {
+ExprNode* StatementBlockNode::resultExpr() const {
     return _resultExpr;
 }
 
@@ -1453,32 +1453,32 @@ bool StatementBlockNode::hasResult() const {
     return _hasResult;
 }
 
-bool callIsNoReturn(p<ScopeNode> scope, p<ExprCallNode> call) {
+bool callIsNoReturn(ScopeNode* scope, ExprCallNode* call) {
     if (!call) return false;
     if (call->hasResolvedSymbol() && call->resolvedSymbol().isFn() && call->resolvedSymbol().fn &&
         call->resolvedSymbol().fn->isNoReturn) {
         return true;
     }
     auto callee = call->getCalleeExpr();
-    auto litCallee = dynamic_cast<p<ExprLiteralNode>>(callee);
+    auto litCallee = dynamic_cast<ExprLiteralNode*>(callee);
     if (!litCallee) return false;
-    auto obj = dynamic_cast<p<LiteralObjNode>>(litCallee->literal());
+    auto obj = dynamic_cast<LiteralObjNode*>(litCallee->literal());
     if (!obj) return false;
-    p<ScopeNode> sc = scope ? scope : call->findNearestScope();
+    ScopeNode* sc = scope ? scope : call->findNearestScope();
     if (!sc) return false;
     auto* sym = sc->lookupFnSymbol(obj->getValue().getText());
     return sym && sym->isNoReturn;
 }
 
-static bool stmtTerminatesFlow(p<ScopeNode> scope, p<StatementNode> stmt);
+static bool stmtTerminatesFlow(ScopeNode* scope, StatementNode* stmt);
 
-bool exprTerminatesFlow(p<ScopeNode> scope, p<ExprNode> expr) {
+bool exprTerminatesFlow(ScopeNode* scope, ExprNode* expr) {
     if (!expr) return false;
-    p<ScopeNode> sc = scope ? scope : expr->findNearestScope();
-    if (auto call = dynamic_cast<p<ExprCallNode>>(expr)) {
+    ScopeNode* sc = scope ? scope : expr->findNearestScope();
+    if (auto call = dynamic_cast<ExprCallNode*>(expr)) {
         return callIsNoReturn(sc, call);
     }
-    if (auto ife = dynamic_cast<p<ExprIfElseNode>>(expr)) {
+    if (auto ife = dynamic_cast<ExprIfElseNode*>(expr)) {
         if (!ife->elseBlock()) return false;
         if (!blockTerminatesFlow(sc, ife->thenBlock())) return false;
         for (auto& el : ife->elifs()) {
@@ -1486,10 +1486,10 @@ bool exprTerminatesFlow(p<ScopeNode> scope, p<ExprNode> expr) {
         }
         return blockTerminatesFlow(sc, ife->elseBlock());
     }
-    if (auto ol = dynamic_cast<p<ExprOneLineIfElseNode>>(expr)) {
+    if (auto ol = dynamic_cast<ExprOneLineIfElseNode*>(expr)) {
         return exprTerminatesFlow(sc, ol->trueValue()) && exprTerminatesFlow(sc, ol->falseValue());
     }
-    if (auto m = dynamic_cast<p<ExprMatchNode>>(expr)) {
+    if (auto m = dynamic_cast<ExprMatchNode*>(expr)) {
         if (m->arms().empty()) return false;
         for (auto& arm : m->arms()) {
             if (!arm) return false;
@@ -1504,18 +1504,18 @@ bool exprTerminatesFlow(p<ScopeNode> scope, p<ExprNode> expr) {
     return false;
 }
 
-static bool stmtTerminatesFlow(p<ScopeNode> scope, p<StatementNode> stmt) {
+static bool stmtTerminatesFlow(ScopeNode* scope, StatementNode* stmt) {
     if (!stmt) return false;
-    if (dynamic_cast<p<StatementRetNode>>(stmt) || dynamic_cast<p<StatementRetVoidNode>>(stmt)) return true;
-    if (auto se = dynamic_cast<p<StatementExprNode>>(stmt)) {
+    if (dynamic_cast<StatementRetNode*>(stmt) || dynamic_cast<StatementRetVoidNode*>(stmt)) return true;
+    if (auto se = dynamic_cast<StatementExprNode*>(stmt)) {
         return exprTerminatesFlow(scope, se->expr());
     }
     return false;
 }
 
-bool blockTerminatesFlow(p<ScopeNode> scope, p<StatementBlockNode> block) {
+bool blockTerminatesFlow(ScopeNode* scope, StatementBlockNode* block) {
     if (!block) return false;
-    p<ScopeNode> sc = scope ? scope : block;
+    ScopeNode* sc = scope ? scope : block;
     for (auto& s : block->statements()) {
         if (stmtTerminatesFlow(sc, s)) return true;
     }
@@ -1525,37 +1525,37 @@ bool blockTerminatesFlow(p<ScopeNode> scope, p<StatementBlockNode> block) {
     return false;
 }
 
-const p<ExprNode>& ExprElIfNode::condition() const {
+ExprNode* ExprElIfNode::condition() const {
     return _condition;
 }
 
-const p<StatementBlockNode>& ExprElIfNode::block() const {
+StatementBlockNode* ExprElIfNode::block() const {
     return _block;
 }
 
-const p<ExprNode>& ExprIfElseNode::condition() const {
+ExprNode* ExprIfElseNode::condition() const {
     return _condition;
 }
 
-const p<StatementBlockNode>& ExprIfElseNode::thenBlock() const {
+StatementBlockNode* ExprIfElseNode::thenBlock() const {
     return _thenBlock;
 }
 
-const vector<p<ExprElIfNode>>& ExprIfElseNode::elifs() const {
+const vector<ExprElIfNode*>& ExprIfElseNode::elifs() const {
     return _elifs;
 }
 
-const p<StatementBlockNode>& ExprIfElseNode::elseBlock() const {
+StatementBlockNode* ExprIfElseNode::elseBlock() const {
     return _elseBlock;
 }
 
 TypeInfo ExprIfElseNode::getType() const {
     // §4.9.3.5：ret / #NoReturn 臂流终止，不参与类型合并；其余无尾值则整体 void。
-    p<ScopeNode> sc = findNearestScope();
+    ScopeNode* sc = findNearestScope();
     TypeInfo resultType;
     bool haveValue = false;
 
-    auto consider = [&](p<StatementBlockNode> block) -> bool {
+    auto consider = [&](StatementBlockNode* block) -> bool {
         if (!block) return false;
         if (blockTerminatesFlow(sc, block)) return true;
         if (!block->hasResult() || !block->resultExpr()) return false;
@@ -1595,7 +1595,7 @@ int ExprIfElseNode::resolveColumn() const {
 }
 
 TypeInfo ExprOneLineIfElseNode::getType() const {
-    p<ScopeNode> sc = findNearestScope();
+    ScopeNode* sc = findNearestScope();
     bool trueTerm = exprTerminatesFlow(sc, _trueValue);
     bool falseTerm = exprTerminatesFlow(sc, _falseValue);
     if (trueTerm && falseTerm) return {};
@@ -1621,11 +1621,11 @@ int ExprOneLineIfElseNode::resolveColumn() const {
     return _condition->resolveColumn();
 }
 
-const p<ExprNode>& ExprGetNode::arrayExpr() const {
+ExprNode* ExprGetNode::arrayExpr() const {
     return _arrayExpr;
 }
 
-const vector<p<ExprNode>>& ExprGetNode::indices() const {
+const vector<ExprNode*>& ExprGetNode::indices() const {
     return _indices;
 }
 
@@ -1674,7 +1674,7 @@ int ExprGetNode::resolveColumn() const {
     return _arrayExpr->resolveColumn();
 }
 
-const vector<p<ExprNode>>& ExprArrayNode::elements() const {
+const vector<ExprNode*>& ExprArrayNode::elements() const {
     return _elements;
 }
 
@@ -1772,11 +1772,11 @@ int ExprArrayNode::resolveColumn() const {
     return 0;
 }
 
-const p<LiteralNode>& ExprArrayInitNode::value() const {
+LiteralNode* ExprArrayInitNode::value() const {
     return _value;
 }
 
-const p<TypeNode>& ExprArrayInitNode::explicitType() const {
+TypeNode* ExprArrayInitNode::explicitType() const {
     return _explicitType;
 }
 
@@ -1881,7 +1881,7 @@ ExprUnaryNode::Op ExprUnaryNode::op() const {
     return _op;
 }
 
-const p<ExprNode>& ExprUnaryNode::right() const {
+ExprNode* ExprUnaryNode::right() const {
     return _right;
 }
 
@@ -2028,13 +2028,13 @@ TypeInfo ExprMatchNode::getType() const {
 // 与 if-else / match 同档：若任何参与方为 void 则整体 void，类型不一致返回首个，
 // 编译期再校验（保持与 ExprMatchNode::getType 一致风格）。
 TypeInfo ExprTryCatchNode::getType() const {
-    p<ScopeNode> sc = findNearestScope();
+    ScopeNode* sc = findNearestScope();
     if (!blockTerminatesFlow(sc, _tryBlock) && (!_tryBlock->hasResult() || !_tryBlock->resultExpr())) {
         return {};
     }
     TypeInfo first;
     bool have = false;
-    auto consider = [&](p<StatementBlockNode> block) {
+    auto consider = [&](StatementBlockNode* block) {
         if (!block || blockTerminatesFlow(sc, block)) return;
         if (!block->hasResult() || !block->resultExpr()) return;
         auto t = block->resultExpr()->resolvedOrGetType();
@@ -2076,7 +2076,7 @@ TypeInfo ExprStructLitNode::getType() const {
 string ExprPathCallNode::resolvedLhsName() const {
     string n = _enumName.getText();
     if (n != "Self") return n;
-    p<Node> cur = parent();
+    Node* cur = parent();
     while (cur) {
         if (auto* impl = dynamic_cast<StructImplNode*>(cur)) return impl->structName();
         cur = cur->parent();
@@ -2170,7 +2170,7 @@ TypeInfo ExprPathCallNode::getType() const {
     if (impl) {
         const string rhsName = _variantName.getText();
         const size_t arity = _args.size();
-        p<FnHeaderNode> found = nullptr;
+        FnHeaderNode* found = nullptr;
         int nfound = 0;
         for (auto& m : impl->methods()) {
             auto h = m->header();

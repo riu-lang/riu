@@ -30,7 +30,7 @@ void emitNoReturnTail(llvm::IRBuilder<>& builder, llvm::Function* fn, bool isNoR
 }
 } // namespace
 
-llvm::Value* Compiler::compileFunctionCall(p<ExprCallNode> callNode, const string& fnName, vector<llvm::Value*>& args,
+llvm::Value* Compiler::compileFunctionCall(ExprCallNode* callNode, const string& fnName, vector<llvm::Value*>& args,
                                            vector<TypeInfo>& argTypes) {
     if (_castFunctions.contains(fnName)) {
         DEBUG_LOG_VAL("    Expr: CastFunction", fnName);
@@ -194,9 +194,9 @@ llvm::Value* Compiler::compileFunctionCall(p<ExprCallNode> callNode, const strin
     return callResult;
 }
 
-llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, const string& fnName,
+llvm::Value* Compiler::compileGenericFunctionCall(ExprCallNode* callNode, const string& fnName,
                                                   vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
-                                                  p<FnNode> genericFn, p<FileNode> fnOwner) {
+                                                  FnNode* genericFn, FileNode* fnOwner) {
 
     const auto& typeParams = genericFn->header()->typeParams();
     vector<TypeInfo> typeArgs;
@@ -922,7 +922,7 @@ llvm::Value* Compiler::compileGenericFunctionCall(p<ExprCallNode> callNode, cons
     return callResult;
 }
 
-llvm::Value* Compiler::compileKnownFunctionCall(p<ExprCallNode> callNode, const string& fnName,
+llvm::Value* Compiler::compileKnownFunctionCall(ExprCallNode* callNode, const string& fnName,
                                                 vector<llvm::Value*>& args, vector<TypeInfo>& argTypes,
                                                 FnSymbolInfo* fnSymbol) {
     string cName;

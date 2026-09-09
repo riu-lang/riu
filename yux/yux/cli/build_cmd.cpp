@@ -628,7 +628,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
 
     bool compiled = false;
 
-    auto codegenTo = [&](p<FileNode> file, const std::string& moduleName, const std::string& objOut,
+    auto codegenTo = [&](FileNode* file, const std::string& moduleName, const std::string& objOut,
                          const std::string& irOut, bool isSdk = false) -> bool {
         std::cout << "Compile IR... (module: " << moduleName << ")" << '\n';
         auto ctx = std::make_unique<llvm::LLVMContext>();
@@ -944,7 +944,7 @@ int runBuildCommand(const BuildCmdOptions& opts) {
         mirroredOutputBase(yux.projectRoot(), buildDir, std::filesystem::absolute(inputFile).string()) + ".obj";
     std::filesystem::create_directories(std::filesystem::path(objPath).parent_path());
 
-    p<FileNode> mainFile = nullptr;
+    FileNode* mainFile = nullptr;
     try {
         mainFile = yux.loadMainFile(inputFile, baseName);
     } catch (runtime_error& e) {

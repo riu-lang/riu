@@ -24,7 +24,7 @@
 
 // 编译自定义类型的二元运算符方法调用
 // 将运算符表达式转换为方法调用，如 a + b -> a.plus(b)
-llvm::Value* Compiler::compileCustomTypeBinaryOp(p<ExprNode> leftExpr, p<ExprNode> rightExpr, const TypeInfo& leftType,
+llvm::Value* Compiler::compileCustomTypeBinaryOp(ExprNode* leftExpr, ExprNode* rightExpr, const TypeInfo& leftType,
                                                  const string& methodName, int lineNum) {
 
     DEBUG_LOG_VAL("    Expr: CustomTypeBinaryOp", leftType.name << "." << methodName);
@@ -220,7 +220,7 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(p<ExprNode> leftExpr, p<ExprNod
     return _builder.CreateCall(fn, methodArgs);
 }
 
-llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
+llvm::Value* Compiler::compileAddSubExpr(ExprAddSubNode* node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     // v0.6 Phase 2b: 透明别名解析，使 `A = i32` 后 `A + A` 仍走内置算子路径
     auto type = applySubst(node->getType());
@@ -315,7 +315,7 @@ llvm::Value* Compiler::compileAddSubExpr(p<ExprAddSubNode> node) {
     }
 }
 
-llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
+llvm::Value* Compiler::compileMulDivModExpr(ExprMulDivModNode* node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto type = applySubst(node->getType());
     auto leftType = applySubst(node->left()->getType());
@@ -439,7 +439,7 @@ llvm::Value* Compiler::compileMulDivModExpr(p<ExprMulDivModNode> node) {
     throwSemaGap(node->getLineNumber(), node->getColumn());
 }
 
-llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
+llvm::Value* Compiler::compileBinOpExpr(ExprBinOpNode* node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto type = applySubst(node->getType());
     auto leftType = applySubst(node->left()->getType());
@@ -565,7 +565,7 @@ llvm::Value* Compiler::compileBinOpExpr(p<ExprBinOpNode> node) {
     throwSemaGap(node->getLineNumber(), node->getColumn());
 }
 
-llvm::Value* Compiler::compileCompareExpr(p<ExprCompareNode> node) {
+llvm::Value* Compiler::compileCompareExpr(ExprCompareNode* node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     (void)node->getType();
     auto leftType = applySubst(node->left()->getType());

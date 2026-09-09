@@ -71,7 +71,7 @@ public:
     // 主入口：对任意 ExprNode 试求值。失败返回 nullopt（含：不支持的节点 / 名字
     // 查不到 / 类型不匹配 / 溢出等运行期错形态）。本 Phase 不区分原因；Phase 2
     // 接入后由 caller 据失败点抛错码。
-    std::optional<ConstantValue> eval(const p<ExprNode>& expr);
+    std::optional<ConstantValue> eval(ExprNode* expr);
 
 private:
     std::map<string, ConstantValue> _env;
@@ -80,16 +80,16 @@ private:
     std::set<string> _callStack;
 
     // 分支调度（按 expr_node.h 中的具体类型）。
-    std::optional<ConstantValue> evalLiteral(const p<LiteralNode>& lit);
-    std::optional<ConstantValue> evalLiteralObj(const p<LiteralObjNode>& obj);
-    std::optional<ConstantValue> evalUnary(const p<ExprUnaryNode>& node);
-    std::optional<ConstantValue> evalAddSub(const p<ExprAddSubNode>& node);
-    std::optional<ConstantValue> evalMulDivMod(const p<ExprMulDivModNode>& node);
-    std::optional<ConstantValue> evalBinOp(const p<ExprBinOpNode>& node);
-    std::optional<ConstantValue> evalCompare(const p<ExprCompareNode>& node);
-    std::optional<ConstantValue> evalCall(const p<ExprCallNode>& call);
+    std::optional<ConstantValue> evalLiteral(LiteralNode* lit);
+    std::optional<ConstantValue> evalLiteralObj(LiteralObjNode* obj);
+    std::optional<ConstantValue> evalUnary(ExprUnaryNode* node);
+    std::optional<ConstantValue> evalAddSub(ExprAddSubNode* node);
+    std::optional<ConstantValue> evalMulDivMod(ExprMulDivModNode* node);
+    std::optional<ConstantValue> evalBinOp(ExprBinOpNode* node);
+    std::optional<ConstantValue> evalCompare(ExprCompareNode* node);
+    std::optional<ConstantValue> evalCall(ExprCallNode* call);
     // DRAFT-const-eval Phase 5: struct 字面量.
-    std::optional<ConstantValue> evalStructLit(const p<ExprStructLitNode>& node);
+    std::optional<ConstantValue> evalStructLit(ExprStructLitNode* node);
 };
 
 #endif // YUX_LANG_CONST_EVAL_H

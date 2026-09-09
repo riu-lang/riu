@@ -24,8 +24,7 @@
 
 // 编译数组填充表达式 ([value ... Type] 语法)
 // 使用指定值填充整个数组
-llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const TypeInfo& targetType,
-                                            llvm::Value* destPtr) {
+llvm::Value* Compiler::compileArrayInitExpr(ExprArrayInitNode* node, const TypeInfo& targetType, llvm::Value* destPtr) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto literal = node->value();
     auto literalType = literal->getType();
@@ -111,7 +110,7 @@ llvm::Value* Compiler::compileArrayInitExpr(p<ExprArrayInitNode> node, const Typ
 
 // 编译字面量表达式
 // 处理整数、浮点数、布尔值、对象名等
-llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
+llvm::Value* Compiler::compileLiteralExpr(ExprLiteralNode* node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto literal = node->literal();
     auto type = literal->getType();
@@ -507,7 +506,7 @@ llvm::Value* Compiler::compileStringTemplate(StringTemplateNode* node) {
                 strVal = compileExpr(interpExpr);
             } else {
                 Token memberTok("to_string", static_cast<size_t>(interpExpr->getLineNumber()));
-                p<Node> synthParent = interpExpr->parent();
+                Node* synthParent = interpExpr->parent();
                 auto dotNode = new ExprDotNode(synthParent, interpExpr, memberTok);
                 synthHolder.emplace_back(dotNode);
                 auto callNode = new ExprCallNode(synthParent, dotNode);
@@ -550,7 +549,7 @@ llvm::Value* Compiler::compileStringPlusChain(ExprAddSubNode* node) {
     DEBUG_LOG("    Expr: String + chain -> StringBuilder lowering");
 
     // 1. 扁平化左脊：得到从左到右的叶子序列（shared_ptr，复用 AST 持有的所有权）
-    vector<p<ExprNode>> leaves;
+    vector<ExprNode*> leaves;
     {
         ExprAddSubNode* cur = node;
         while (true) {
@@ -603,7 +602,7 @@ llvm::Value* Compiler::compileStringPlusChain(ExprAddSubNode* node) {
             strVal = compileExpr(leaf);
         } else {
             Token memberTok("to_string", static_cast<size_t>(leaf->getLineNumber()));
-            p<Node> synthParent = leaf->parent();
+            Node* synthParent = leaf->parent();
             auto dotNode = new ExprDotNode(synthParent, leaf, memberTok);
             synthHolder.emplace_back(dotNode);
             auto callNode = new ExprCallNode(synthParent, dotNode);
@@ -628,7 +627,7 @@ llvm::Value* Compiler::compileStringPlusChain(ExprAddSubNode* node) {
 // 编译元组构造表达式 (e1, e2, ...)
 // Phase 3：透明 layout，按声明顺序构造一个匿名 struct 值；元素递归编译
 // 实现：从 undef 起，逐个 CreateInsertValue 写入；返回 struct 值（非指针）
-llvm::Value* Compiler::compileTupleExpr(p<ExprTupleNode> node) {
+llvm::Value* Compiler::compileTupleExpr(ExprTupleNode* node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto tupleType = node->getType();
     auto llvmTy = getLLVMType(tupleType);
@@ -738,7 +737,7 @@ llvm::Value* Compiler::buildArrayLiteralBlock(ExprArrayNode* arrayNode, const Ty
     return _builder.CreateLoad(arrayLLVMType, arrayAlloca, "array.lit.load");
 }
 
-llvm::Value* Compiler::compileArrayLiteralExpr(p<ExprArrayNode> node) {
+llvm::Value* Compiler::compileArrayLiteralExpr(ExprArrayNode* node) {
     // 空 `[]` 的 getType 是 `[__empty * 0]`；有靶向时 SemaPass 已把 resolvedType 写成 Array<T>。
     // 必须读 resolved，否则 ret [] / 表达式位置的空字面量会走固定数组分支抛 E3091。
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());

@@ -20,7 +20,7 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <set>
 
-llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
+llvm::Value* Compiler::compileArrayGetExpr(ExprGetNode* node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto arrayExpr = node->arrayExpr();
     auto arrayType = arrayExpr->getType();
@@ -128,7 +128,7 @@ llvm::Value* Compiler::compileArrayGetExpr(p<ExprGetNode> node) {
     return currentPtr;
 }
 
-llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
+llvm::Value* Compiler::compileDotExpr(ExprDotNode* node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     // 安全访问 a?.b：单独走分支
     if (node->isSafe()) {
@@ -339,7 +339,7 @@ llvm::Value* Compiler::compileDotExpr(p<ExprDotNode> node) {
 //   - a 不持值 → Nullable<U>{ has=false, value=zero }
 // 当前实现覆盖字段访问；方法调用 a?.foo() 走 compileSafeDotMethodCall
 // 链式 a?.b?.c 自然递归（每层 base 类型为 Nullable<X>，仍走同分支）
-llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
+llvm::Value* Compiler::compileSafeDotExpr(ExprDotNode* node) {
     auto baseExpr = node->baseExpr();
     auto member = node->member();
     auto baseType = baseExpr->getType();
@@ -450,7 +450,7 @@ llvm::Value* Compiler::compileSafeDotExpr(p<ExprDotNode> node) {
 //   then: br merge (carry %v)
 //   else: %r = compile(b); br merge (carry %r)
 //   merge: phi T [%v, then] [%r, else]
-llvm::Value* Compiler::compileNullElseExpr(p<ExprNullElseNode> node) {
+llvm::Value* Compiler::compileNullElseExpr(ExprNullElseNode* node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto leftType = node->left()->getType();
 

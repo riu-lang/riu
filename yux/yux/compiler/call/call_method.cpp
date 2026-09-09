@@ -20,7 +20,7 @@ namespace {
 
 // 方法 receiver 是局部变量或字段链时，应直接传原存储地址。
 // 调用结果等临时值仍走备用 alloca，不把其误当左值。
-bool isAddressableMethodReceiver(p<ExprNode> node) {
+bool isAddressableMethodReceiver(ExprNode* node) {
     bool hasField = false;
     while (auto* dot = dynamic_cast<ExprDotNode*>(node)) {
         hasField = true;
@@ -38,7 +38,7 @@ bool isAddressableMethodReceiver(p<ExprNode> node) {
 //   - a 持值 → 求值实参并调用 a._value.foo(args)，结果包装为 Nullable<ret>
 //   - a 不持值 → 不求值实参（§4.1.1.3 短路），Nullable<ret>{ has=false, value=zero }
 // 模式与 compileSafeDotExpr 一致：extractvalue + br + then/else/merge BB
-llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<ExprDotNode> dotNode,
+llvm::Value* Compiler::compileSafeDotMethodCall(ExprCallNode* callNode, ExprDotNode* dotNode,
                                                 vector<TypeInfo>& argTypes) {
     auto baseExpr = dotNode->baseExpr();
     auto member = dotNode->member();
@@ -89,7 +89,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
     FnSymbolInfo* methodSymbol = names().lookupMethodWithParams(actualType, member, methodParamTypes);
 
     // 泛型 struct 实例方法
-    p<FnNode> genericMethodNode = nullptr;
+    FnNode* genericMethodNode = nullptr;
     string genericEffName;
     map<string, TypeInfo> genericSubst;
     if (!methodSymbol && actualType.hasGenericArgs()) {
@@ -323,7 +323,7 @@ llvm::Value* Compiler::compileSafeDotMethodCall(p<ExprCallNode> callNode, p<Expr
 // ==================== 方法调用编译 ====================
 // 编译方法调用表达式 (obj.method(args))
 // 处理多种情况: 包别名调用、模块别名调用、内置类型方法、数组方法、结构体方法
-llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode> dotNode, vector<llvm::Value*>& args,
+llvm::Value* Compiler::compileMethodCall(ExprCallNode* callNode, ExprDotNode* dotNode, vector<llvm::Value*>& args,
                                          vector<TypeInfo>& argTypes) {
     auto baseExpr = dotNode->baseExpr();
     auto member = dotNode->member();
@@ -435,7 +435,7 @@ llvm::Value* Compiler::compileMethodCall(p<ExprCallNode> callNode, p<ExprDotNode
     return nullptr;
 }
 
-llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType,
+llvm::Value* Compiler::compileArrayMethodCall(ExprCallNode* callNode, ExprNode* baseExpr, const TypeInfo& baseType,
                                               const string& member, vector<llvm::Value*>& args,
                                               vector<TypeInfo>& argTypes) {
 
@@ -1684,7 +1684,7 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
     }
 }
 
-llvm::Value* Compiler::compileArrayWithCapacity(p<ExprPathCallNode> node) {
+llvm::Value* Compiler::compileArrayWithCapacity(ExprPathCallNode* node) {
     auto* spec = sema::lookupStaticBuiltin("Array", "with_capacity");
     const size_t expectArity = spec ? static_cast<size_t>(spec->arity) : 1;
     const char* expectArg0 = spec && spec->arg0Type ? spec->arg0Type : "usize";
@@ -1755,7 +1755,7 @@ llvm::Value* Compiler::compileArrayWithCapacity(p<ExprPathCallNode> node) {
     return phi;
 }
 
-llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<ExprNode> baseExpr,
+llvm::Value* Compiler::compileBuiltinTypeMethodCall(ExprCallNode* callNode, ExprNode* baseExpr,
                                                     const TypeInfo& baseType, const string& member,
                                                     vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
 
@@ -2049,7 +2049,7 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(p<ExprCallNode> callNode, p<
     throwSemaGap(callNode->getLineNumber(), callNode->getColumn());
 }
 
-llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType,
+llvm::Value* Compiler::compileStructMethodCall(ExprCallNode* callNode, ExprNode* baseExpr, const TypeInfo& baseType,
                                                const TypeInfo& actualType, const string& member,
                                                vector<llvm::Value*>& args, vector<TypeInfo>& argTypes) {
 
@@ -2061,7 +2061,7 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
             string effName = ensureStructInstance(baseDecl, actualType.genericArgs, owner);
             auto& inst = _structInstances[effName];
             if (inst.baseImpl) {
-                p<FnNode> chosen = nullptr;
+                FnNode* chosen = nullptr;
                 for (auto m : inst.baseImpl->methods()) {
                     if (m->header()->name().getText() != member) continue;
                     if (m->header()->params().size() != argTypes.size()) continue;
@@ -2153,10 +2153,10 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
 
     // 普通方法严格匹配失败后，尝试方法自身的泛型重载。方法模板不在
     // compileStructImpls 中直接发射，而是在这里取得类型实参后进入延迟单态化队列。
-    p<FileNode> genericOwner = _file;
+    FileNode* genericOwner = _file;
     vector<pair<FnNode*, FileNode*>> genericMethods;
     if (!methodSymbol) {
-        p<FileNode> structOwner = _file;
+        FileNode* structOwner = _file;
         auto* structDecl = names().lookupStruct(actualType, /*includeBuiltin=*/false, &structOwner);
         if (structDecl && structOwner) {
             if (auto* impl = structOwner->getStructImpl(structDecl->name().getText())) {
@@ -2170,7 +2170,7 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
         }
     }
 
-    p<FnNode> genericMethod = nullptr;
+    FnNode* genericMethod = nullptr;
     if (!genericMethods.empty()) {
         if (genericMethods.size() == 1) {
             genericMethod = genericMethods[0].first;
@@ -2414,7 +2414,7 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
 //      (后续 4c 落 E3xxx 明确码; 此处先用通用 E6015 + hint, 保证 Phase 2d 闭环).
 //   5. Phase 2d 不接 codegen: 命中合法调用统一抛 E6015 + hint「Phase 3d pending」.
 //      Phase 3d 把第 5 步替换为 load vtable[i] + indirect call.
-llvm::Value* Compiler::compileDynMethodCall(p<ExprCallNode> callNode, p<ExprNode> baseExpr, const TypeInfo& baseType,
+llvm::Value* Compiler::compileDynMethodCall(ExprCallNode* callNode, ExprNode* baseExpr, const TypeInfo& baseType,
                                             const string& member, vector<llvm::Value*>& args,
                                             vector<TypeInfo>& argTypes) {
     int line = callNode->getLineNumber();

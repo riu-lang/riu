@@ -55,7 +55,7 @@ struct NameResolver {
 
 // 顶层别名一次性校验：E2017 名字冲突 + E2016 环 + fn 符号表归一化。
 // SemaPass::run 起始处调一次；Compiler 不再双跑。
-void validateAliases(p<FileNode> file, p<FileNode> sdkFile = nullptr);
+void validateAliases(FileNode* file, FileNode* sdkFile = nullptr);
 
 // 类型路径解析（对称 resolveModuleFnCall）。不调用 loadModule：只走已 use/load
 // 的模块别名与 packageChild。裸名 L1 本文件 → L2 具名导入 → L3 通配（含默认

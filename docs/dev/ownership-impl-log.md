@@ -234,7 +234,7 @@
 
 ### 8b — declare-assign / assign 路径接入 fresh 判定
 
-- 新增 `Compiler::isFreshHandleExpr(p<ExprNode>)`：`ExprCallNode`（callee 已 move-return retain）+ `ExprArrayNode`（数组字面量，`_array_alloc` 给 strong=1）→ true；变量引用 / 字段访问 / if-else / `??` / 一元等借用语义 → false
+- 新增 `Compiler::isFreshHandleExpr(ExprNode*)`：`ExprCallNode`（callee 已 move-return retain）+ `ExprArrayNode`（数组字面量，`_array_alloc` 给 strong=1）→ true；变量引用 / 字段访问 / if-else / `??` / 一元等借用语义 → false
 - declare-assign：Box copy / Array from-expression / Weak from-Weak（weak++ 包在 `needWeakInc` 条件下，仅 fromWeak 复用 fresh 跳过；fromBox 始终 weak++）
 - assign：简单 var assign / 字段 assign retain 处加 fresh 跳过；旧值 release 仍无条件执行（自赋值 / 别名安全靠先 retain 再 release，fresh 路径直接 release，新值带入的 +1 抵消）
 - 数组字面量元素写入 + `compileArraySetStatement`：每个元素表达式独立 fresh 判定

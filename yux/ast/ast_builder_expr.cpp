@@ -23,7 +23,7 @@ std::any ASTBuilder::visitExprParen(yux::yuxParser::ExprParenContext* ctx) {
     DEBUG_LOG("    Expr: Paren");
     auto scope = currentScope();
     auto inner = any_cast_p<ExprNode>(visit(ctx->expr()));
-    return static_cast<p<ExprNode>>(createWithLine<ExprParenNode>(ctx, scope, inner));
+    return static_cast<ExprNode*>(createWithLine<ExprParenNode>(ctx, scope, inner));
 }
 
 namespace {
@@ -33,15 +33,15 @@ namespace {
 //   - lambdaParamGroup：names+= ID (',' names+= ID)+ typeWithRef?  → 组糖，N 形参共享同类型
 //   - lambdaParamStd：name=ID typeWithRef?                          → 单形参可省类型
 // 类型省时 type=nullptr，由调用 / 赋值点的 fn 类型反推（Phase 2b）
-vector<LambdaParamSlot>
-collectLambdaParams(ASTBuilder* self, yux::yuxParser::LambdaParamsContext* params, p<Node> parent,
-                    p<TypeNode> (ASTBuilder::*buildTwr)(yux::yuxParser::TypeWithRefContext*, p<Node>)) {
+vector<LambdaParamSlot> collectLambdaParams(ASTBuilder* self, yux::yuxParser::LambdaParamsContext* params, Node* parent,
+                                            TypeNode* (ASTBuilder::*buildTwr)(yux::yuxParser::TypeWithRefContext*,
+                                                                              Node*)) {
     vector<LambdaParamSlot> out;
     if (!params) return out;
     for (auto* lp : params->lambdaParam()) {
         if (auto* g = dynamic_cast<yux::yuxParser::LambdaParamGroupContext*>(lp)) {
             // a, b T → 展开为 N 份相同类型；类型可省（→ nullptr）
-            p<TypeNode> sharedType = nullptr;
+            TypeNode* sharedType = nullptr;
             if (auto* twr = g->typeWithRef()) {
                 sharedType = (self->*buildTwr)(twr, parent);
             }
@@ -50,7 +50,7 @@ collectLambdaParams(ASTBuilder* self, yux::yuxParser::LambdaParamsContext* param
                                               .type = sharedType});
             }
         } else if (auto* s = dynamic_cast<yux::yuxParser::LambdaParamStdContext*>(lp)) {
-            p<TypeNode> ty = nullptr;
+            TypeNode* ty = nullptr;
             if (auto* twr = s->typeWithRef()) {
                 ty = (self->*buildTwr)(twr, parent);
             }
@@ -75,7 +75,7 @@ std::any ASTBuilder::visitExprCall(yux::yuxParser::ExprCallContext* ctx) {
         call->addArg(any_cast_p<ExprNode>(visit(arg)));
     }
     if (auto gd = ctx->genericDef()) {
-        vector<p<TypeNode>> typeArgs;
+        vector<TypeNode*> typeArgs;
         for (auto pCtx : gd->params) {
             // turbofish 不允许 bound（spec §6.4.4.3）
             if (!pCtx->bounds.empty()) {
@@ -91,7 +91,7 @@ std::any ASTBuilder::visitExprCall(yux::yuxParser::ExprCallContext* ctx) {
     // 尾随 lambda 糖：f(args){ (params) => stmts } → 等价 f(args, (params) => { stmts })
     if (auto* tl = ctx->trailing) {
         auto lambda = makeTrailingLambda(tl);
-        if (lambda) call->addArg(static_cast<p<ExprNode>>(lambda));
+        if (lambda) call->addArg(static_cast<ExprNode*>(lambda));
     }
     // Phase 10e：后缀 `!` 错误传播标记（DRAFT-错误.md [#4.B]）
     if (ctx->errPropagate) call->setErrPropagate(true);
@@ -107,12 +107,12 @@ std::any ASTBuilder::visitExprCall(yux::yuxParser::ExprCallContext* ctx) {
                     auto argExpr = call->getArgs()[0];
                     bool isBorrow = specTypeNode->getType().isRef();
                     auto dyn = createWithLine<ExprDynCtorNode>(ctx, scope, specTypeNode, argExpr, isBorrow);
-                    return static_cast<p<ExprNode>>(dyn);
+                    return static_cast<ExprNode*>(dyn);
                 }
             }
         }
     }
-    return static_cast<p<ExprNode>>(call);
+    return static_cast<ExprNode*>(call);
 }
 
 // 尾随 lambda 唯一实参糖：f { ... } → f({ ... })
@@ -121,7 +121,7 @@ std::any ASTBuilder::visitExprCallTrailingOnly(yux::yuxParser::ExprCallTrailingO
     auto callee = any_cast_p<ExprNode>(visit(ctx->left));
     auto call = createWithLine<ExprCallNode>(ctx, scope, callee);
     if (auto gd = ctx->genericDef()) {
-        vector<p<TypeNode>> typeArgs;
+        vector<TypeNode*> typeArgs;
         for (auto pCtx : gd->params) {
             if (!pCtx->bounds.empty()) {
                 auto* tk = pCtx->SymbolColon();
@@ -134,10 +134,10 @@ std::any ASTBuilder::visitExprCallTrailingOnly(yux::yuxParser::ExprCallTrailingO
         call->setTypeArgs(std::move(typeArgs));
     }
     auto lambda = makeTrailingLambda(ctx->trailing);
-    if (lambda) call->addArg(static_cast<p<ExprNode>>(lambda));
+    if (lambda) call->addArg(static_cast<ExprNode*>(lambda));
     // Phase 10e：后缀 `!` 错误传播标记（DRAFT-错误.md [#4.B]）
     if (ctx->errPropagate) call->setErrPropagate(true);
-    return static_cast<p<ExprNode>>(call);
+    return static_cast<ExprNode*>(call);
 }
 
 // 创建 lambda body 的内层作用域，登记形参符号；caller 负责 push/pop _scopeStack。
@@ -145,11 +145,11 @@ std::any ASTBuilder::visitExprCallTrailingOnly(yux::yuxParser::ExprCallTrailingO
 namespace {
 class LambdaScopeNode : public ScopeNode {
 public:
-    explicit LambdaScopeNode(const p<Node>& parent) : ScopeNode(parent) {}
+    explicit LambdaScopeNode(Node* parent) : ScopeNode(parent) {}
 };
 
-p<ScopeNode> makeLambdaBodyScope(const p<ScopeNode>& parentScope, const vector<LambdaParamSlot>& params) {
-    auto scope = static_cast<p<LambdaScopeNode>>(new LambdaScopeNode(parentScope));
+ScopeNode* makeLambdaBodyScope(ScopeNode* parentScope, const vector<LambdaParamSlot>& params) {
+    auto scope = static_cast<LambdaScopeNode*>(new LambdaScopeNode(parentScope));
     scope->setParentScope(parentScope);
     for (auto& slot : params) {
         TypeInfo t = slot.type ? slot.type->getType() : TypeInfo();
@@ -161,8 +161,8 @@ p<ScopeNode> makeLambdaBodyScope(const p<ScopeNode>& parentScope, const vector<L
 
 namespace {
 
-void applyLambdaFallibleSuffix(ASTBuilder* self, yux::yuxParser::TypeContext* errCtx, p<LambdaExprNode>& node,
-                               p<TypeNode> retType, p<TypeNode> retFallibleFromType) {
+void applyLambdaFallibleSuffix(ASTBuilder* self, yux::yuxParser::TypeContext* errCtx, LambdaExprNode*& node,
+                               TypeNode* retType, TypeNode* retFallibleFromType) {
     if (errCtx) {
         auto errType = any_cast_p<TypeNode>(self->visit(errCtx));
         if (errType->getType().isNullable()) {
@@ -198,17 +198,17 @@ void applyLambdaFallibleSuffix(ASTBuilder* self, yux::yuxParser::TypeContext* er
 std::any ASTBuilder::visitExprLambdaParen(yux::yuxParser::ExprLambdaParenContext* ctx) {
     auto scope = currentScope();
     auto params = collectLambdaParams(this, ctx->lambdaParams(), scope, &ASTBuilder::buildTypeWithRef);
-    p<TypeNode> retType = nullptr;
-    p<TypeNode> retFallibleFromType = nullptr;
+    TypeNode* retType = nullptr;
+    TypeNode* retFallibleFromType = nullptr;
     if (ctx->retType) {
         auto parsed = buildTypeWithRef(ctx->retType, scope);
         std::tie(retType, retFallibleFromType) = peelFallibleRetType(parsed);
     }
     auto bodyScope = makeLambdaBodyScope(scope, params);
     _scopeStack.push_back(bodyScope);
-    p<LambdaExprNode> node;
+    LambdaExprNode* node;
     if (auto* block = ctx->statementBlock()) {
-        vector<p<StatementNode>> stmts;
+        vector<StatementNode*> stmts;
         for (auto* s : block->statement()) {
             stmts.push_back(any_cast_p<StatementNode>(visit(s)));
         }
@@ -219,26 +219,26 @@ std::any ASTBuilder::visitExprLambdaParen(yux::yuxParser::ExprLambdaParenContext
         auto bodyExpr = any_cast_p<ExprNode>(visit(ctx->body->expr()));
         DEBUG_LOG_VAL("    Expr: LambdaParenExpr", "params=" << params.size());
         node = createWithLine<LambdaExprNode>(ctx, scope, LambdaExprNode::Form::Expr, std::move(params), retType,
-                                              bodyExpr, vector<p<StatementNode>>{});
+                                              bodyExpr, vector<StatementNode*>{});
     }
     applyLambdaFallibleSuffix(this, ctx->errType, node, retType, retFallibleFromType);
     _scopeStack.pop_back();
     node->setBodyScope(bodyScope);
-    return static_cast<p<ExprNode>>(node);
+    return static_cast<ExprNode*>(node);
 }
 
-p<LambdaExprNode> ASTBuilder::makeTrailingLambda(yux::yuxParser::TrailingLambdaContext* tl) {
+LambdaExprNode* ASTBuilder::makeTrailingLambda(yux::yuxParser::TrailingLambdaContext* tl) {
     auto scope = currentScope();
     auto params = collectLambdaParams(this, tl->lambdaParams(), scope, &ASTBuilder::buildTypeWithRef);
-    p<TypeNode> retType = nullptr;
-    p<TypeNode> retFallibleFromType = nullptr;
+    TypeNode* retType = nullptr;
+    TypeNode* retFallibleFromType = nullptr;
     if (tl->retType) {
         auto parsed = buildTypeWithRef(tl->retType, scope);
         std::tie(retType, retFallibleFromType) = peelFallibleRetType(parsed);
     }
     auto bodyScope = makeLambdaBodyScope(scope, params);
     _scopeStack.push_back(bodyScope);
-    vector<p<StatementNode>> stmts;
+    vector<StatementNode*> stmts;
     for (auto* s : tl->statement()) {
         stmts.push_back(any_cast_p<StatementNode>(visit(s)));
     }
@@ -259,7 +259,7 @@ std::any ASTBuilder::visitExprAddSub(yux::yuxParser::ExprAddSubContext* ctx) {
     auto op = (opText == "+") ? ExprAddSubNode::Op::Add : ExprAddSubNode::Op::Sub;
 
     DEBUG_LOG_VAL("    Expr: AddSub", opText);
-    return static_cast<p<ExprNode>>(createWithLine<ExprAddSubNode>(ctx, scope, op, left, right));
+    return static_cast<ExprNode*>(createWithLine<ExprAddSubNode>(ctx, scope, op, left, right));
 }
 
 std::any ASTBuilder::visitExprMulDivMod(yux::yuxParser::ExprMulDivModContext* ctx) {
@@ -278,7 +278,7 @@ std::any ASTBuilder::visitExprMulDivMod(yux::yuxParser::ExprMulDivModContext* ct
     }
 
     DEBUG_LOG_VAL("    Expr: MulDivMod", opText);
-    return static_cast<p<ExprNode>>(createWithLine<ExprMulDivModNode>(ctx, scope, op, left, right));
+    return static_cast<ExprNode*>(createWithLine<ExprMulDivModNode>(ctx, scope, op, left, right));
 }
 
 std::any ASTBuilder::visitExprBinOp(yux::yuxParser::ExprBinOpContext* ctx) {
@@ -297,7 +297,7 @@ std::any ASTBuilder::visitExprBinOp(yux::yuxParser::ExprBinOpContext* ctx) {
     }
 
     DEBUG_LOG_VAL("    Expr: BinOp", opText);
-    return static_cast<p<ExprNode>>(createWithLine<ExprBinOpNode>(ctx, scope, op, left, right));
+    return static_cast<ExprNode*>(createWithLine<ExprBinOpNode>(ctx, scope, op, left, right));
 }
 
 std::any ASTBuilder::visitExprShift(yux::yuxParser::ExprShiftContext* ctx) {
@@ -309,14 +309,14 @@ std::any ASTBuilder::visitExprShift(yux::yuxParser::ExprShiftContext* ctx) {
     ExprBinOpNode::Op op = (opText == "<<") ? ExprBinOpNode::Op::Shl : ExprBinOpNode::Op::Shr;
 
     DEBUG_LOG_VAL("    Expr: Shift", opText);
-    return static_cast<p<ExprNode>>(createWithLine<ExprBinOpNode>(ctx, scope, op, left, right));
+    return static_cast<ExprNode*>(createWithLine<ExprBinOpNode>(ctx, scope, op, left, right));
 }
 
 std::any ASTBuilder::visitExprLiteral(yux::yuxParser::ExprLiteralContext* ctx) {
     DEBUG_LOG("    Expr: Literal");
     auto scope = currentScope();
     auto literal = any_cast_p<LiteralNode>(visit(ctx->literal()));
-    return static_cast<p<ExprNode>>(createWithLine<ExprLiteralNode>(ctx, scope, literal));
+    return static_cast<ExprNode*>(createWithLine<ExprLiteralNode>(ctx, scope, literal));
 }
 
 std::any ASTBuilder::visitExprDot(yux::yuxParser::ExprDotContext* ctx) {
@@ -340,7 +340,7 @@ std::any ASTBuilder::visitExprDot(yux::yuxParser::ExprDotContext* ctx) {
         DEBUG_LOG_VAL("    Expr: Dot - spec qualifier", specQual);
     }
     auto result =
-        static_cast<p<ExprNode>>(createWithLine<ExprDotNode>(ctx, scope, base, ctx->member.back(), safe, specQual));
+        static_cast<ExprNode*>(createWithLine<ExprDotNode>(ctx, scope, base, ctx->member.back(), safe, specQual));
     DEBUG_LOG_VAL("    Expr: Dot - result type", typeid(*result).name());
     return result;
 }
@@ -364,7 +364,7 @@ std::any ASTBuilder::visitExprCompare(yux::yuxParser::ExprCompareContext* ctx) {
     }
 
     DEBUG_LOG_VAL("    Expr: Compare", opText);
-    return static_cast<p<ExprNode>>(createWithLine<ExprCompareNode>(ctx, scope, op, left, right));
+    return static_cast<ExprNode*>(createWithLine<ExprCompareNode>(ctx, scope, op, left, right));
 }
 
 // 相等: == !=
@@ -377,7 +377,7 @@ std::any ASTBuilder::visitExprEq(yux::yuxParser::ExprEqContext* ctx) {
     ExprCompareNode::Op op = (opText == "==") ? ExprCompareNode::Op::Eq : ExprCompareNode::Op::Ne;
 
     DEBUG_LOG_VAL("    Expr: Eq", opText);
-    return static_cast<p<ExprNode>>(createWithLine<ExprCompareNode>(ctx, scope, op, left, right));
+    return static_cast<ExprNode*>(createWithLine<ExprCompareNode>(ctx, scope, op, left, right));
 }
 
 // 短路逻辑: && ||
@@ -390,7 +390,7 @@ std::any ASTBuilder::visitExprBool(yux::yuxParser::ExprBoolContext* ctx) {
     ExprCompareNode::Op op = (opText == "&&") ? ExprCompareNode::Op::AndAnd : ExprCompareNode::Op::OrOr;
 
     DEBUG_LOG_VAL("    Expr: Bool", opText);
-    return static_cast<p<ExprNode>>(createWithLine<ExprCompareNode>(ctx, scope, op, left, right));
+    return static_cast<ExprNode*>(createWithLine<ExprCompareNode>(ctx, scope, op, left, right));
 }
 
 std::any ASTBuilder::visitLiteralNumber(yux::yuxParser::LiteralNumberContext* ctx) {
@@ -401,24 +401,24 @@ std::any ASTBuilder::visitLiteralNumber(yux::yuxParser::LiteralNumberContext* ct
 std::any ASTBuilder::visitLiteralBool(yux::yuxParser::LiteralBoolContext* ctx) {
     auto token = ctx->True() ? ctx->True()->getSymbol() : ctx->False()->getSymbol();
     DEBUG_LOG_VAL("      Literal: Bool", (ctx->True() ? "true" : "false"));
-    return static_cast<p<LiteralNode>>(createWithLine<LiteralBoolNode>(ctx, token));
+    return static_cast<LiteralNode*>(createWithLine<LiteralBoolNode>(ctx, token));
 }
 
 std::any ASTBuilder::visitLiteralNull(yux::yuxParser::LiteralNullContext* ctx) {
     DEBUG_LOG("      Literal: Null");
-    return static_cast<p<LiteralNode>>(createWithLine<LiteralNullNode>(ctx, ctx->Null()->getSymbol()));
+    return static_cast<LiteralNode*>(createWithLine<LiteralNullNode>(ctx, ctx->Null()->getSymbol()));
 }
 
 std::any ASTBuilder::visitLiteralObj(yux::yuxParser::LiteralObjContext* ctx) {
     auto scope = currentScope();
     DEBUG_LOG_VAL("      Literal: Object", ctx->name->getText());
-    return static_cast<p<LiteralNode>>(createWithLine<LiteralObjNode>(ctx, scope, ctx->name));
+    return static_cast<LiteralNode*>(createWithLine<LiteralObjNode>(ctx, scope, ctx->name));
 }
 
 std::any ASTBuilder::visitLiteralStringLineRaw(yux::yuxParser::LiteralStringLineRawContext* ctx) {
     auto token = ctx->STR_LINE_RAW()->getSymbol();
     DEBUG_LOG_VAL("      Literal: StringRaw", token->getText());
-    return static_cast<p<LiteralNode>>(createWithLine<LiteralStringNode>(ctx, token, true));
+    return static_cast<LiteralNode*>(createWithLine<LiteralStringNode>(ctx, token, true));
 }
 
 std::any ASTBuilder::visitLiteralStringTpl(yux::yuxParser::LiteralStringTplContext* ctx) {
@@ -569,7 +569,7 @@ std::any ASTBuilder::visitStringTemplate(yux::yuxParser::StringTemplateContext* 
     auto scope = currentScope();
 
     vector<string> parts;
-    vector<p<ExprNode>> interps;
+    vector<ExprNode*> interps;
     string current;
 
     auto flushText = [&]() {
@@ -590,8 +590,8 @@ std::any ASTBuilder::visitStringTemplate(yux::yuxParser::StringTemplateContext* 
             if (!text.empty() && text[0] == '$') text = text.substr(1);
             Token synTok(text, tok->getLine());
             auto obj = createWithLine<LiteralObjNode>(part, scope, synTok);
-            auto expr = createWithLine<ExprLiteralNode>(part, scope, static_cast<p<LiteralNode>>(obj));
-            interps.push_back(static_cast<p<ExprNode>>(expr));
+            auto expr = createWithLine<ExprLiteralNode>(part, scope, static_cast<LiteralNode*>(obj));
+            interps.push_back(static_cast<ExprNode*>(expr));
         } else if (auto* in = dynamic_cast<yux::yuxParser::TplInterpContext*>(part)) {
             flushText();
             auto e = any_cast_p<ExprNode>(visit(in->expr()));
@@ -604,27 +604,27 @@ std::any ASTBuilder::visitStringTemplate(yux::yuxParser::StringTemplateContext* 
     if (interps.empty()) {
         const string& body = parts.empty() ? string() : parts[0];
         Token synTok("\"" + body + "\"", openTok->getLine());
-        return static_cast<p<LiteralNode>>(createWithLine<LiteralStringNode>(ctx, synTok, true));
+        return static_cast<LiteralNode*>(createWithLine<LiteralStringNode>(ctx, synTok, true));
     }
 
-    return static_cast<p<LiteralNode>>(
+    return static_cast<LiteralNode*>(
         createWithLine<StringTemplateNode>(ctx, Token(openTok), std::move(parts), std::move(interps)));
 }
 
 std::any ASTBuilder::visitLiteralCodePoint(yux::yuxParser::LiteralCodePointContext* ctx) {
     auto token = ctx->CODE_POINT()->getSymbol();
     DEBUG_LOG_VAL("      Literal: CodePoint", token->getText());
-    return static_cast<p<LiteralNode>>(createWithLine<LiteralCodePointNode>(ctx, token));
+    return static_cast<LiteralNode*>(createWithLine<LiteralCodePointNode>(ctx, token));
 }
 
 std::any ASTBuilder::visitNumInt(yux::yuxParser::NumIntContext* ctx) {
     DEBUG_LOG_VAL("        Num: Int", ctx->INT()->getSymbol()->getText());
-    return static_cast<p<LiteralNode>>(createWithLine<LiteralIntNode>(ctx, Token(ctx->INT()->getSymbol())));
+    return static_cast<LiteralNode*>(createWithLine<LiteralIntNode>(ctx, Token(ctx->INT()->getSymbol())));
 }
 
 std::any ASTBuilder::visitNumFloat(yux::yuxParser::NumFloatContext* ctx) {
     DEBUG_LOG_VAL("        Num: Float", ctx->FLOAT()->getSymbol()->getText());
-    return static_cast<p<LiteralNode>>(createWithLine<LiteralFloatNode>(ctx, ctx->FLOAT()->getSymbol()));
+    return static_cast<LiteralNode*>(createWithLine<LiteralFloatNode>(ctx, ctx->FLOAT()->getSymbol()));
 }
 
 std::any ASTBuilder::visitExprIfElse(yux::yuxParser::ExprIfElseContext* ctx) {
@@ -633,20 +633,20 @@ std::any ASTBuilder::visitExprIfElse(yux::yuxParser::ExprIfElseContext* ctx) {
     auto condition = any_cast_p<ExprNode>(visit(ctx->condition));
     auto thenBlock = any_cast_p<StatementBlockNode>(visit(ctx->statementBlock()));
 
-    vector<p<ExprElIfNode>> elifs;
+    vector<ExprElIfNode*> elifs;
     DEBUG_LOG_VAL("      Elif count", ctx->elifs.size());
     for (auto elifCtx : ctx->elifs) {
         auto elif = any_cast_p<ExprElIfNode>(visit(elifCtx));
         elifs.push_back(elif);
     }
 
-    p<StatementBlockNode> elseBlock = nullptr;
+    StatementBlockNode* elseBlock = nullptr;
     if (ctx->exprElse()) {
         DEBUG_LOG("      Has else block");
         elseBlock = any_cast_p<StatementBlockNode>(visit(ctx->exprElse()));
     }
 
-    return static_cast<p<ExprNode>>(createWithLine<ExprIfElseNode>(ctx, scope, condition, thenBlock, elifs, elseBlock));
+    return static_cast<ExprNode*>(createWithLine<ExprIfElseNode>(ctx, scope, condition, thenBlock, elifs, elseBlock));
 }
 
 std::any ASTBuilder::visitExprOneLineIfElse(yux::yuxParser::ExprOneLineIfElseContext* ctx) {
@@ -656,8 +656,7 @@ std::any ASTBuilder::visitExprOneLineIfElse(yux::yuxParser::ExprOneLineIfElseCon
     auto trueValue = any_cast_p<ExprNode>(visit(ctx->trueValue));
     auto falseValue = any_cast_p<ExprNode>(visit(ctx->falseValue));
 
-    return static_cast<p<ExprNode>>(
-        createWithLine<ExprOneLineIfElseNode>(ctx, scope, condition, trueValue, falseValue));
+    return static_cast<ExprNode*>(createWithLine<ExprOneLineIfElseNode>(ctx, scope, condition, trueValue, falseValue));
 }
 
 std::any ASTBuilder::visitExprElIf(yux::yuxParser::ExprElIfContext* ctx) {
@@ -679,12 +678,12 @@ std::any ASTBuilder::visitExprGet(yux::yuxParser::ExprGetContext* ctx) {
     auto exprs = ctx->expr();
     auto arrayExpr = any_cast_p<ExprNode>(visit(exprs[0]));
 
-    vector<p<ExprNode>> indices;
+    vector<ExprNode*> indices;
     for (size_t i = 1; i < exprs.size(); ++i) {
         indices.push_back(any_cast_p<ExprNode>(visit(exprs[i])));
     }
 
-    return static_cast<p<ExprNode>>(createWithLine<ExprGetNode>(ctx, scope, arrayExpr, indices));
+    return static_cast<ExprNode*>(createWithLine<ExprGetNode>(ctx, scope, arrayExpr, indices));
 }
 
 std::any ASTBuilder::visitExprGetRef(yux::yuxParser::ExprGetRefContext* ctx) {
@@ -698,20 +697,20 @@ std::any ASTBuilder::visitExprGetRef(yux::yuxParser::ExprGetRefContext* ctx) {
         subs.emplace_back(sub);
     }
 
-    return static_cast<p<ExprNode>>(createWithLine<ExprGetRefNode>(ctx, scope, obj, subs));
+    return static_cast<ExprNode*>(createWithLine<ExprGetRefNode>(ctx, scope, obj, subs));
 }
 
 std::any ASTBuilder::visitExprArray(yux::yuxParser::ExprArrayContext* ctx) {
     DEBUG_LOG_VAL("    Expr: Array", "elements: " << ctx->velues.size());
     auto scope = currentScope();
-    vector<p<ExprNode>> elements;
+    vector<ExprNode*> elements;
 
     elements.reserve(ctx->velues.size());
     for (auto elemCtx : ctx->velues) {
         elements.push_back(any_cast_p<ExprNode>(visit(elemCtx)));
     }
 
-    return static_cast<p<ExprNode>>(createWithLine<ExprArrayNode>(ctx, scope, elements));
+    return static_cast<ExprNode*>(createWithLine<ExprArrayNode>(ctx, scope, elements));
 }
 
 // 元组构造表达式 (e1, e2, ...)
@@ -719,19 +718,19 @@ std::any ASTBuilder::visitExprArray(yux::yuxParser::ExprArrayContext* ctx) {
 std::any ASTBuilder::visitExprTuple(yux::yuxParser::ExprTupleContext* ctx) {
     DEBUG_LOG_VAL("    Expr: Tuple", "elements: " << ctx->values.size());
     auto scope = currentScope();
-    vector<p<ExprNode>> elements;
+    vector<ExprNode*> elements;
     elements.reserve(ctx->values.size());
     for (auto* eCtx : ctx->values) {
         elements.push_back(any_cast_p<ExprNode>(visit(eCtx)));
     }
-    return static_cast<p<ExprNode>>(createWithLine<ExprTupleNode>(ctx, scope, std::move(elements)));
+    return static_cast<ExprNode*>(createWithLine<ExprTupleNode>(ctx, scope, std::move(elements)));
 }
 
 // unit 值 () —— 0 元素元组构造
 std::any ASTBuilder::visitExprUnit(yux::yuxParser::ExprUnitContext* ctx) {
     DEBUG_LOG_VAL("    Expr: Unit", "()");
     auto scope = currentScope();
-    return static_cast<p<ExprNode>>(createWithLine<ExprTupleNode>(ctx, scope, vector<p<ExprNode>>{}));
+    return static_cast<ExprNode*>(createWithLine<ExprTupleNode>(ctx, scope, vector<ExprNode*>{}));
 }
 
 // 元组成员访问 a.0
@@ -741,7 +740,7 @@ std::any ASTBuilder::visitExprTupleMember(yux::yuxParser::ExprTupleMemberContext
     DEBUG_LOG_VAL("    Expr: TupleMember", "member: " << ctx->member->getText());
     auto scope = currentScope();
     auto base = any_cast_p<ExprNode>(visit(ctx->left));
-    return static_cast<p<ExprNode>>(createWithLine<ExprDotNode>(ctx, scope, base, ctx->member, false));
+    return static_cast<ExprNode*>(createWithLine<ExprDotNode>(ctx, scope, base, ctx->member, false));
 }
 
 std::any ASTBuilder::visitExprArrayInit(yux::yuxParser::ExprArrayInitContext* ctx) {
@@ -751,12 +750,12 @@ std::any ASTBuilder::visitExprArrayInit(yux::yuxParser::ExprArrayInitContext* ct
     auto literalCtx = ctx->literal();
     auto literal = any_cast_p<LiteralNode>(visit(literalCtx));
 
-    p<TypeNode> explicitType = nullptr;
+    TypeNode* explicitType = nullptr;
     if (ctx->type()) {
         explicitType = any_cast_p<TypeNode>(visit(ctx->type()));
     }
 
-    return static_cast<p<ExprNode>>(createWithLine<ExprArrayInitNode>(ctx, scope, literal, explicitType));
+    return static_cast<ExprNode*>(createWithLine<ExprArrayInitNode>(ctx, scope, literal, explicitType));
 }
 
 // 路径调用表达式：承载两条语义，由 sema 按 LHS 类型分流
@@ -784,7 +783,7 @@ std::any ASTBuilder::visitExprEnumCtor(yux::yuxParser::ExprEnumCtorContext* ctx)
     // Phase 6E.4: turbofish 形态 `Type:<T>::name:<U>(args)` 解析 LHS / RHS 类型实参.
     // 类型引用位不允许 bounds (与 visitTypeGeneric 同条款), 命中即 E2015.
     auto parseTurbofish = [&](yux::yuxParser::GenericDefContext* g) {
-        vector<p<TypeNode>> args;
+        vector<TypeNode*> args;
         for (auto* pCtx : g->params) {
             if (!pCtx->bounds.empty()) {
                 auto* tk = pCtx->SymbolColon();
@@ -809,7 +808,7 @@ std::any ASTBuilder::visitExprEnumCtor(yux::yuxParser::ExprEnumCtorContext* ctx)
     for (auto* aCtx : ctx->args) {
         node->addArg(any_cast_p<ExprNode>(visit(aCtx)));
     }
-    return static_cast<p<ExprNode>>(node);
+    return static_cast<ExprNode*>(node);
 }
 
 // 结构体字段字面量：Self { \n .field = value \n ... }
@@ -835,7 +834,7 @@ std::any ASTBuilder::visitExprStructLit(yux::yuxParser::ExprStructLitContext* ct
     for (auto* fCtx : ctx->fieldInits) {
         node->addField(any_cast_p<FieldInitNode>(visit(fCtx)));
     }
-    return static_cast<p<ExprNode>>(node);
+    return static_cast<ExprNode*>(node);
 }
 
 // 字段初始化项：.name = value
@@ -887,7 +886,7 @@ std::any ASTBuilder::visitMatchArm(yux::yuxParser::MatchArmContext* ctx) {
 
     // 先建空 body 的 arm 节点（body 占位 nullptr 不便），但 createWithLine 要参数齐全；
     // 改用先 push 临时 arm，然后 visit body 拿到真实 body 节点
-    auto arm = createWithLine<MatchArmNode>(ctx, outer, pattern, static_cast<p<ExprNode>>(nullptr));
+    auto arm = createWithLine<MatchArmNode>(ctx, outer, pattern, static_cast<ExprNode*>(nullptr));
     arm->setParentScope(outer);
 
     // 给 pattern 的 binding 在 arm scope 上注册符号（按 payload 元素类型）
@@ -915,8 +914,8 @@ std::any ASTBuilder::visitMatchArm(yux::yuxParser::MatchArmContext* ctx) {
 
     // 在 arm scope 下 visit body，使其内部 binding 引用走 arm scope -> outer 链
     _scopeStack.push_back(arm);
-    p<ExprNode> body = nullptr;
-    p<StatementBlockNode> block = nullptr;
+    ExprNode* body = nullptr;
+    StatementBlockNode* block = nullptr;
     if (auto* blk = ctx->statementBlock()) {
         block = any_cast_p<StatementBlockNode>(visit(blk));
     } else if (ctx->body) {
@@ -940,12 +939,12 @@ std::any ASTBuilder::visitExprMatch(yux::yuxParser::ExprMatchContext* ctx) {
     DEBUG_LOG("    Expr: Match");
     auto scope = currentScope();
     auto scrutinee = any_cast_p<ExprNode>(visit(ctx->expr()));
-    vector<p<MatchArmNode>> arms;
+    vector<MatchArmNode*> arms;
     arms.reserve(ctx->arms.size());
     for (auto* armCtx : ctx->arms) {
         arms.push_back(any_cast_p<MatchArmNode>(visit(armCtx)));
     }
-    return static_cast<p<ExprNode>>(createWithLine<ExprMatchNode>(ctx, scope, scrutinee, std::move(arms)));
+    return static_cast<ExprNode*>(createWithLine<ExprMatchNode>(ctx, scope, scrutinee, std::move(arms)));
 }
 
 // catch arm: `catch <绑定名> <错误 enum 类型> { body }`
@@ -959,7 +958,7 @@ std::any ASTBuilder::visitCatchArm(yux::yuxParser::CatchArmContext* ctx) {
     Token errName = ctx->err;
 
     // 先建空 body 的 arm（占位 nullptr 不便），与 visitMatchArm 风格一致：先 push scope visit body
-    auto arm = createWithLine<CatchArmNode>(ctx, outer, errName, errType, static_cast<p<StatementBlockNode>>(nullptr));
+    auto arm = createWithLine<CatchArmNode>(ctx, outer, errName, errType, static_cast<StatementBlockNode*>(nullptr));
     arm->setParentScope(outer);
     // 在 arm scope 注册绑定符号（错误值类型 = errType；按已声明 enum 处理）
     arm->registerSymbol(errName.getText(), {SymbolKind::Variable, errName.getText(), errType, false});
@@ -983,12 +982,12 @@ std::any ASTBuilder::visitExprTryCatch(yux::yuxParser::ExprTryCatchContext* ctx)
     DEBUG_LOG("    Expr: TryCatch");
     auto scope = currentScope();
     auto tryBlock = any_cast_p<StatementBlockNode>(visit(ctx->tryBlock));
-    vector<p<CatchArmNode>> catches;
+    vector<CatchArmNode*> catches;
     catches.reserve(ctx->catchs.size());
     for (auto* armCtx : ctx->catchs) {
         catches.push_back(any_cast_p<CatchArmNode>(visit(armCtx)));
     }
-    return static_cast<p<ExprNode>>(createWithLine<ExprTryCatchNode>(ctx, scope, tryBlock, std::move(catches)));
+    return static_cast<ExprNode*>(createWithLine<ExprTryCatchNode>(ctx, scope, tryBlock, std::move(catches)));
 }
 
 std::any ASTBuilder::visitExprUnary(yux::yuxParser::ExprUnaryContext* ctx) {
@@ -1006,7 +1005,7 @@ std::any ASTBuilder::visitExprUnary(yux::yuxParser::ExprUnaryContext* ctx) {
     }
 
     DEBUG_LOG_VAL("    Expr: Unary", opText);
-    return static_cast<p<ExprNode>>(createWithLine<ExprUnaryNode>(ctx, scope, op, right));
+    return static_cast<ExprNode*>(createWithLine<ExprUnaryNode>(ctx, scope, op, right));
 }
 
 // a ?? b
@@ -1016,7 +1015,7 @@ std::any ASTBuilder::visitExprNullElse(yux::yuxParser::ExprNullElseContext* ctx)
     auto left = any_cast_p<ExprNode>(visit(exprs[0]));
     auto right = any_cast_p<ExprNode>(visit(exprs[1]));
     DEBUG_LOG("    Expr: NullElse a??b");
-    return static_cast<p<ExprNode>>(createWithLine<ExprNullElseNode>(ctx, scope, left, right));
+    return static_cast<ExprNode*>(createWithLine<ExprNullElseNode>(ctx, scope, left, right));
 }
 
 // a <- b：移出旧值、替换新值、返回旧值
@@ -1027,7 +1026,7 @@ std::any ASTBuilder::visitExprMoveAssign(yux::yuxParser::ExprMoveAssignContext* 
     auto left = any_cast_p<ExprNode>(visit(exprs[0]));
     auto right = any_cast_p<ExprNode>(visit(exprs[1]));
     DEBUG_LOG("    Expr: MoveAssign a <- b");
-    return static_cast<p<ExprNode>>(createWithLine<ExprMoveAssignNode>(ctx, scope, left, right));
+    return static_cast<ExprNode*>(createWithLine<ExprMoveAssignNode>(ctx, scope, left, right));
 }
 
 // `$` 单独表达式：当前实例引用
@@ -1036,6 +1035,6 @@ std::any ASTBuilder::visitExprThis(yux::yuxParser::ExprThisContext* ctx) {
     auto scope = currentScope();
     DEBUG_LOG("    Expr: This ($)");
     auto line = ctx->getStart()->getLine();
-    auto literal = static_cast<p<LiteralNode>>(createWithLine<LiteralObjNode>(ctx, scope, Token("$", line)));
-    return static_cast<p<ExprNode>>(createWithLine<ExprLiteralNode>(ctx, scope, literal));
+    auto literal = static_cast<LiteralNode*>(createWithLine<LiteralObjNode>(ctx, scope, Token("$", line)));
+    return static_cast<ExprNode*>(createWithLine<ExprLiteralNode>(ctx, scope, literal));
 }

@@ -622,7 +622,7 @@ std::any ASTBuilder::visitAliasDecl(yux::yuxParser::AliasDeclContext* ctx) {
         }
     }
 
-    auto aliasDecl = createWithLine<AliasDeclNode>(ctx, file, nameTok, static_cast<p<TypeNode>>(nullptr));
+    auto aliasDecl = createWithLine<AliasDeclNode>(ctx, file, nameTok, static_cast<TypeNode*>(nullptr));
     aliasDecl->setTypeParams(typeParams);
 
     // 类型形参纳入别名作用域，使 `Pair<T> = (T, T)` 的目标类型解析能识别 T
@@ -687,7 +687,7 @@ std::any ASTBuilder::visitEnumVariant(yux::yuxParser::EnumVariantContext* ctx) {
 
 // 递归检查表达式树中是否包含 try/catch 节点
 // 用于全局 let 和 #Static 字段 init 表达式校验（DRAFT-static-vars §6）
-bool ASTBuilder::exprContainsTryCatch(p<ExprNode> expr) {
+bool ASTBuilder::exprContainsTryCatch(ExprNode* expr) {
     if (!expr) return false;
 
     // 直接命中 try/catch
@@ -750,7 +750,7 @@ bool ASTBuilder::exprContainsTryCatch(p<ExprNode> expr) {
         if (exprContainsTryCatch(m->scrutinee())) return true;
         for (auto& arm : m->arms()) {
             if (arm->hasBlock()) {
-                auto& blk = arm->block();
+                auto* blk = arm->block();
                 if (blk->hasResult() && exprContainsTryCatch(blk->resultExpr())) return true;
                 for (auto& s : blk->statements()) {
                     if (auto se = dynamic_cast<StatementExprNode*>(s)) {

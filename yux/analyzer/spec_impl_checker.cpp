@@ -304,7 +304,7 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
         // 实现命中: 任一 impl 方法与该组任一 entry §12.3.1 等价 → 视为已实现.
         bool implemented = false;
         for (size_t i = 0; i < implMethods.size() && !implemented; ++i) {
-            auto& m = implMethods[i]->header();
+            auto* m = implMethods[i]->header();
             if (m->name().getText() != name) continue;
             for (auto& e : entries) {
                 auto& sig = e.spec->signatures()[e.sigIdx];

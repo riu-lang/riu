@@ -67,7 +67,7 @@ bool readFileText(const std::string& absPath, std::string& out) {
     return true;
 }
 
-std::string typeText(const p<TypeNode>& t) {
+std::string typeText(TypeNode* t) {
     if (!t) return "<?>";
     return typeInfoDisplay(t->getType());
 }

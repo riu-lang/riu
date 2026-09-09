@@ -25,7 +25,7 @@
 // 实参位置 lambda 反推：把 fn(...) 期望类型的形参列表回填到 LambdaExprNode 形参槽位。
 // 仅当槽位 type==nullptr 时回填；retType 同理（仅在 expectedFnType 显式标注且 lambda 未标注时回填）。
 // expectedFnType 必须是 isFn() 才会动作；否则 no-op。
-void Compiler::inferLambdaParamsFromFnType(p<LambdaExprNode> lambda, const TypeInfo& expectedFnType) {
+void Compiler::inferLambdaParamsFromFnType(LambdaExprNode* lambda, const TypeInfo& expectedFnType) {
     if (!lambda || !expectedFnType.isFn()) return;
     lambda->setInferredFnType(expectedFnType);
     auto sc = lambda->bodyScope();
@@ -43,7 +43,7 @@ void Compiler::inferLambdaParamsFromFnType(p<LambdaExprNode> lambda, const TypeI
 // 给定 LambdaExprNode 与"上下文期望类型"，生成顶层匿名 fn 函数。
 // 期望类型给出形参 LLVM 类型（lambda 形参缺类型时按它取）；返回类型同理。
 // 同一 LambdaExprNode 多次求值（罕见）按 mangle 名缓存；返回 llvm::Function*。
-llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeInfo& expectedFnType) {
+llvm::Function* Compiler::emitLambdaFunction(LambdaExprNode* node, const TypeInfo& expectedFnType) {
     int line = node->getLineNumber();
     int col = node->getColumn();
     string mod = _file ? _file->moduleName() : string();
@@ -178,7 +178,7 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     // - Form::Block：语句序列；retType 非 void 时末位无 `;` 的 ExprStmt 作 tail-expr 返回
     // 非 void 返回须走 returnValue（consumeTemp），否则 popAndReleaseTempFrame
     // 会把 Array / Rc 等 fresh 句柄析掉，CreateRet 拿到悬空值（`=> if { [1] } else { [2] }`）。
-    auto finishLambdaRet = [&](llvm::Value* val, p<ExprNode> src) {
+    auto finishLambdaRet = [&](llvm::Value* val, ExprNode* src) {
         if (val && !retType.empty()) {
             returnValue(val, retType, src, retType.isRc() || retType.isWeak() || retType.isFn());
         }
@@ -204,7 +204,7 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
     } else {
         const auto& stmts = node->bodyStmts();
         // BUG#0：peel 末位无 `;` 的 ExprStmt 当 tail-expr return；仅在 retType 非 void 时启用
-        p<ExprNode> tailExpr = nullptr;
+        ExprNode* tailExpr = nullptr;
         size_t nStmts = stmts.size();
         if (!retType.empty() && nStmts > 0) {
             if (auto exprStmt = dynamic_cast<StatementExprNode*>(stmts.back())) {
@@ -259,7 +259,7 @@ llvm::Function* Compiler::emitLambdaFunction(p<LambdaExprNode> node, const TypeI
 // 签名：void __captures_dtor_<lambdaMangle>(ptr fields_base)
 // fields_base 指向 capture 字段区起点（= block handle + 16），逐 capture 调
 // releaseAtPtr 释放槽内的句柄字段。
-llvm::Function* Compiler::emitCapturesDtorFunction(p<LambdaExprNode> node, const string& lambdaMangled) {
+llvm::Function* Compiler::emitCapturesDtorFunction(LambdaExprNode* node, const string& lambdaMangled) {
     bool anyNeedsDtor = false;
     for (const auto& cap : node->captures()) {
         if (typeNeedsDestructor(cap.type)) {
@@ -314,7 +314,7 @@ llvm::Function* Compiler::emitCapturesDtorFunction(p<LambdaExprNode> node, const
 //
 // 含堆句柄 captures：调用站点 retain 后写入槽位；strong 归零时 _box_release_dtor
 // 调 dtor 释放每个堆句柄字段，再 free。多 fat-ptr 副本共享 Rc 时不会过早析构。
-llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
+llvm::Value* Compiler::compileLambdaExpr(LambdaExprNode* node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     // 静态类型即 Fn TypeInfo（lambda 形参类型可能缺）
     auto fnType = node->getType();
@@ -448,7 +448,7 @@ llvm::Value* Compiler::compileLambdaExpr(p<LambdaExprNode> node) {
 // 2) 编译 callee 得到 fat-ptr 值
 // 3) extractvalue 取 fn_ptr / captures
 // 4) 编译实参 + CreateCall(fnType, fn_ptr, [captures, args...])
-llvm::Value* Compiler::compileFnValueCall(p<ExprCallNode> node) {
+llvm::Value* Compiler::compileFnValueCall(ExprCallNode* node) {
     auto calleeExpr = node->getCalleeExpr();
     auto fnType = resolveAlias(calleeExpr->getType());
     if (!fnType.isFn()) {
@@ -530,7 +530,7 @@ llvm::Value* Compiler::compileFnValueCall(p<ExprCallNode> node) {
 // 2) 编译 callee 得到 Rc 值（{ ptr handle }），extractvalue 取 handle
 // 3) payload_ptr = handle + 8；load fat-ptr 16 字节
 // 4) 走与 compileFnValueCall 相同的 extractvalue + CreateCall 路径
-llvm::Value* Compiler::compileRcFnValueCall(p<ExprCallNode> node, const TypeInfo& innerFnType) {
+llvm::Value* Compiler::compileRcFnValueCall(ExprCallNode* node, const TypeInfo& innerFnType) {
     if (!innerFnType.isFn()) {
         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3091);
     }
@@ -610,7 +610,7 @@ llvm::Value* Compiler::compileRcFnValueCall(p<ExprCallNode> node, const TypeInfo
 // 3) Load fat-ptr 16 字节 { fn_ptr, captures }
 // 4) extractvalue 取 fn_ptr / captures
 // 5) 编译实参 + CreateCall(fnType, fn_ptr, [captures, args...])
-llvm::Value* Compiler::compileRefFnValueCall(p<ExprCallNode> node, const TypeInfo& innerFnType) {
+llvm::Value* Compiler::compileRefFnValueCall(ExprCallNode* node, const TypeInfo& innerFnType) {
     if (!innerFnType.isFn()) {
         throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3091);
     }
@@ -694,7 +694,7 @@ llvm::Type* Compiler::llvmRetTypeForFnValue(const TypeInfo& fnType) {
 }
 
 llvm::Value* Compiler::finishFnValueFallibleCall(llvm::Value* callResult, const TypeInfo& fnType,
-                                                 p<ExprCallNode> callNode) {
+                                                 ExprCallNode* callNode) {
     string fallibleErr;
     TypeInfo successRet;
     if (auto rt = fnType.fnReturnType()) {

@@ -82,7 +82,7 @@ void ConstEvaluator::setNamedConst(const string& name, ConstantValue value) {
     _env[name] = std::move(value);
 }
 
-std::optional<ConstantValue> ConstEvaluator::eval(const p<ExprNode>& expr) {
+std::optional<ConstantValue> ConstEvaluator::eval(ExprNode* expr) {
     if (!expr) return std::nullopt;
 
     // 叶 ——
@@ -123,7 +123,7 @@ std::optional<ConstantValue> ConstEvaluator::eval(const p<ExprNode>& expr) {
     return std::nullopt;
 }
 
-std::optional<ConstantValue> ConstEvaluator::evalLiteral(const p<LiteralNode>& lit) {
+std::optional<ConstantValue> ConstEvaluator::evalLiteral(LiteralNode* lit) {
     if (!lit) return std::nullopt;
 
     if (auto i = dynamic_cast<LiteralIntNode*>(lit)) {
@@ -164,7 +164,7 @@ std::optional<ConstantValue> ConstEvaluator::evalLiteral(const p<LiteralNode>& l
     return std::nullopt;
 }
 
-std::optional<ConstantValue> ConstEvaluator::evalLiteralObj(const p<LiteralObjNode>& obj) {
+std::optional<ConstantValue> ConstEvaluator::evalLiteralObj(LiteralObjNode* obj) {
     string name = obj->getValue().getText();
     if (auto it = _env.find(name); it != _env.end()) {
         return it->second;
@@ -174,7 +174,7 @@ std::optional<ConstantValue> ConstEvaluator::evalLiteralObj(const p<LiteralObjNo
     return std::nullopt;
 }
 
-std::optional<ConstantValue> ConstEvaluator::evalUnary(const p<ExprUnaryNode>& node) {
+std::optional<ConstantValue> ConstEvaluator::evalUnary(ExprUnaryNode* node) {
     auto inner = eval(node->right());
     if (!inner) return std::nullopt;
 
@@ -205,7 +205,7 @@ std::optional<ConstantValue> ConstEvaluator::evalUnary(const p<ExprUnaryNode>& n
     return std::nullopt;
 }
 
-std::optional<ConstantValue> ConstEvaluator::evalAddSub(const p<ExprAddSubNode>& node) {
+std::optional<ConstantValue> ConstEvaluator::evalAddSub(ExprAddSubNode* node) {
     auto l = eval(node->left());
     auto r = eval(node->right());
     if (!l || !r) return std::nullopt;
@@ -226,7 +226,7 @@ std::optional<ConstantValue> ConstEvaluator::evalAddSub(const p<ExprAddSubNode>&
     return std::nullopt;
 }
 
-std::optional<ConstantValue> ConstEvaluator::evalMulDivMod(const p<ExprMulDivModNode>& node) {
+std::optional<ConstantValue> ConstEvaluator::evalMulDivMod(ExprMulDivModNode* node) {
     auto l = eval(node->left());
     auto r = eval(node->right());
     if (!l || !r) return std::nullopt;
@@ -280,7 +280,7 @@ std::optional<ConstantValue> ConstEvaluator::evalMulDivMod(const p<ExprMulDivMod
     return std::nullopt;
 }
 
-std::optional<ConstantValue> ConstEvaluator::evalBinOp(const p<ExprBinOpNode>& node) {
+std::optional<ConstantValue> ConstEvaluator::evalBinOp(ExprBinOpNode* node) {
     auto l = eval(node->left());
     auto r = eval(node->right());
     if (!l || !r) return std::nullopt;
@@ -332,7 +332,7 @@ std::optional<ConstantValue> ConstEvaluator::evalBinOp(const p<ExprBinOpNode>& n
 // - body 仅识别 #Cval StatementDeclareAssignNode + StatementRetNode；其它统一 nullopt。
 //   （此约束由 Phase 3 E3141 在 fn 定义点保障）。
 // - 参数 / 局部绑定注入 _env，调用结束完整恢复。
-std::optional<ConstantValue> ConstEvaluator::evalCall(const p<ExprCallNode>& call) {
+std::optional<ConstantValue> ConstEvaluator::evalCall(ExprCallNode* call) {
     if (!_file || !call) return std::nullopt;
 
     // callee 形态：仅 LiteralObj（裸自由 fn 名）
@@ -437,7 +437,7 @@ std::optional<ConstantValue> ConstEvaluator::evalCall(const p<ExprCallNode>& cal
 // - 按声明序填字段 -> ConstantValue::Struct; sema 已保证字段全列 / 无重复 / 无未知,
 //   这里再做一次字段名 → 索引映射 (保险)
 // - 任一字段子表达式 const 求值失败 -> 整体 nullopt
-std::optional<ConstantValue> ConstEvaluator::evalStructLit(const p<ExprStructLitNode>& node) {
+std::optional<ConstantValue> ConstEvaluator::evalStructLit(ExprStructLitNode* node) {
     if (!node || !_file) return std::nullopt;
     auto r = sema::resolveExprTypeLhs(_file, nullptr, node->isSelfForm() ? TypePath() : node->typePath(),
                                       node->getLineNumber(), node->getColumn());
@@ -475,7 +475,7 @@ std::optional<ConstantValue> ConstEvaluator::evalStructLit(const p<ExprStructLit
     return ConstantValue::makeStruct(std::move(vals), sTy);
 }
 
-std::optional<ConstantValue> ConstEvaluator::evalCompare(const p<ExprCompareNode>& node) {
+std::optional<ConstantValue> ConstEvaluator::evalCompare(ExprCompareNode* node) {
     using Op = ExprCompareNode::Op;
     Op op = node->op();
 

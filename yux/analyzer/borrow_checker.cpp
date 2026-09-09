@@ -56,10 +56,10 @@ class BorrowChecker {
     }
 
     // DRAFT-static-ref: 持有当前函数节点，用于 lookupSymbol 判断名字是否文件级全局
-    p<FnNode> _fn = nullptr;
+    FnNode* _fn = nullptr;
 
 public:
-    void run(p<FnNode> fn, const std::string& selfStructName) {
+    void run(FnNode* fn, const std::string& selfStructName) {
         _fn = fn;
         pushScope();
         bool isMethod = !selfStructName.empty();
@@ -188,7 +188,7 @@ private:
     //   - `ret as_ref(box)`     → 根 = box 的根
     //   - `ret recv.foo(...)` / `ret f(args)` 返 T& → P3 扩展（rootFromRefInit 暂不识别会抛 E4001，
     //     由 P3 在 ExprCallNode 分支补齐）
-    std::string rootFromRetExpr(p<ExprNode> expr, int line) { return rootFromRefInit(expr, line); }
+    std::string rootFromRetExpr(ExprNode* expr, int line) { return rootFromRefInit(expr, line); }
 
     // Phase 2e: `val d Dyn<D&> = Dyn:<D&>(x)` 的根推导.
     // 期望 RHS 是 ExprDynCtorNode(isBorrow=true); x 形态在 Phase 2b 限定为:
@@ -196,7 +196,7 @@ private:
     //   - Rc<U> 形态 (LiteralObj 变量名) → 根 = 该 Rc 变量自身
     //   (其它形态构造站已 E1133 拒绝; 这里到不了)
     // 非 DynCtor RHS (例如 Dyn<D&> 参数 / 局部之间的拷绑) 走 refToRoot 链.
-    std::string rootFromDynBorrowInit(p<ExprNode> expr, int line) {
+    std::string rootFromDynBorrowInit(ExprNode* expr, int line) {
         if (auto ctor = dynamic_cast<ExprDynCtorNode*>(expr)) {
             auto inner = ctor->arg();
             if (auto getRef = dynamic_cast<ExprGetRefNode*>(inner)) {
@@ -224,7 +224,7 @@ private:
     // - &x.f.f → 根 = x
     // - 现有 T& 拷绑（LiteralObj 单 ID）→ 根 = 该 ref 的链上根
     // 其他形式（grammar 不允许，到这里也兜底报错）。
-    std::string rootFromRefInit(p<ExprNode> expr, int line) {
+    std::string rootFromRefInit(ExprNode* expr, int line) {
         if (auto getRef = dynamic_cast<ExprGetRefNode*>(expr)) {
             auto name = getRef->obj().getText();
             auto resolved = resolveRoot(name);
@@ -332,7 +332,7 @@ private:
 
     // ------- 遍历 -------
 
-    void visitBlock(p<StatementBlockNode> blk) {
+    void visitBlock(StatementBlockNode* blk) {
         if (!blk) return;
         pushScope();
         for (auto& s : blk->statements()) {
@@ -344,11 +344,11 @@ private:
         popScope();
     }
 
-    void visitStmt(p<StatementNode> s) {
+    void visitStmt(StatementNode* s) {
         if (!s) return;
 
         if (auto blk = dynamic_cast<StatementBlockNode*>(s)) {
-            visitBlock(static_cast<p<StatementBlockNode>>(blk));
+            visitBlock(static_cast<StatementBlockNode*>(blk));
             return;
         }
 
@@ -563,7 +563,7 @@ private:
 
     // 表达式仅遍历可能包含嵌套块的位置。完整 AST 遍历不必要——
     // 我们只在乎 if/else 表达式块里隐藏的 borrow 声明 / 重赋语句。
-    void visitExpr(p<ExprNode> e) {
+    void visitExpr(ExprNode* e) {
         if (!e) return;
 
         if (auto ie = dynamic_cast<ExprIfElseNode*>(e)) {
@@ -721,7 +721,7 @@ private:
 
 } // namespace
 
-void checkBorrows(p<FnNode> fn, const std::string& selfStructName) {
+void checkBorrows(FnNode* fn, const std::string& selfStructName) {
     if (!fn) return;
     BorrowChecker bc;
     bc.run(fn, selfStructName);

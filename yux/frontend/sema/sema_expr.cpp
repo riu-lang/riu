@@ -78,7 +78,7 @@ FileNode* fnDeclFile(FnNode* fn, FileNode* fallback) {
 
 } // namespace
 
-void SemaPass::visitExprList(const vector<p<ExprNode>>& args, const vector<TypeInfo>* expected) {
+void SemaPass::visitExprList(const vector<ExprNode*>& args, const vector<TypeInfo>* expected) {
     for (size_t i = 0; i < args.size(); ++i) {
         const TypeInfo* exp = nullptr;
         if (expected && i < expected->size() && !(*expected)[i].empty()) exp = &(*expected)[i];
@@ -86,21 +86,21 @@ void SemaPass::visitExprList(const vector<p<ExprNode>>& args, const vector<TypeI
     }
 }
 
-void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCallee) {
+void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCallee) {
     if (!expr) return;
 
     // Phase C：有靶向类型时，数组 / 元组字面量先按 expected 走，避免 getType
     // 用首元素推断造成 E3009 假阳性（嵌套 Array<Array<T>>、灵活整数、空数组）。
     if (expected) {
         TypeInfo want = expected->peelRef();
-        if (auto paren = dynamic_cast<p<ExprParenNode>>(expr)) {
+        if (auto paren = dynamic_cast<ExprParenNode*>(expr)) {
             visitExpr(paren->expr(), expected);
             if (paren->expr() && paren->expr()->hasResolvedType()) {
                 paren->setResolvedType(paren->expr()->resolvedType());
             }
             return;
         }
-        if (auto lam = dynamic_cast<p<LambdaExprNode>>(expr)) {
+        if (auto lam = dynamic_cast<LambdaExprNode*>(expr)) {
             if (want.isFn()) applyLambdaFnExpected(lam, want);
         }
         if (isFlexibleIntExpr(expr) && isIntTypeName(want.name)) {
@@ -117,17 +117,17 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         if (isFlexibleNullExpr(expr) && want.isNullable()) {
             tryInferNullType(expr, want);
         }
-        if (auto n = dynamic_cast<p<ExprArrayNode>>(expr)) {
+        if (auto n = dynamic_cast<ExprArrayNode*>(expr)) {
             if (want.isArray() || want.isArrayGeneric()) {
                 checkArrayLiteral(n, want);
                 return;
             }
         }
-        if (auto n = dynamic_cast<p<ExprArrayInitNode>>(expr)) {
+        if (auto n = dynamic_cast<ExprArrayInitNode*>(expr)) {
             checkArrayInit(n, &want);
             return;
         }
-        if (auto n = dynamic_cast<p<ExprTupleNode>>(expr)) {
+        if (auto n = dynamic_cast<ExprTupleNode*>(expr)) {
             if (want.isTuple()) {
                 const auto& w = want.tupleElements();
                 const auto& src = n->elements();
@@ -146,10 +146,9 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
     // if / match / try：先下钻子树带靶向（空 `[]` → Array<T>），再 getType 汇合，
     // 否则 `[]` 的 `[__empty * 0]` 会在子节点 resolved 写好之前假阳性 E3005/E7010。
     std::optional<YuxError> deferredMethodE3095;
-    const bool delayCtrlResolved = dynamic_cast<p<ExprIfElseNode>>(expr) ||
-                                   dynamic_cast<p<ExprOneLineIfElseNode>>(expr) ||
-                                   dynamic_cast<p<ExprMatchNode>>(expr) || dynamic_cast<p<ExprTryCatchNode>>(expr);
-    auto writeResolvedFromGetType = [&](p<ExprNode> n) {
+    const bool delayCtrlResolved = dynamic_cast<ExprIfElseNode*>(expr) || dynamic_cast<ExprOneLineIfElseNode*>(expr) ||
+                                   dynamic_cast<ExprMatchNode*>(expr) || dynamic_cast<ExprTryCatchNode*>(expr);
+    auto writeResolvedFromGetType = [&](ExprNode* n) {
         try {
             n->setResolvedType(n->getType());
         } catch (const YuxError& e) {
@@ -165,7 +164,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
 #endif
         }
     };
-    auto finishCtrlResolved = [&](p<ExprNode> n) {
+    auto finishCtrlResolved = [&](ExprNode* n) {
         writeResolvedFromGetType(n);
         if (!expected || !n->hasResolvedType()) return;
         TypeInfo want = expected->peelRef();
@@ -175,11 +174,11 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
     };
     if (!delayCtrlResolved) writeResolvedFromGetType(expr);
 
-    if (auto n = dynamic_cast<p<ExprLiteralNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprLiteralNode*>(expr)) {
         // Phase 2e 构造模型重构: `#Static fn` 体内禁用 `$` (E3128).
         // `$` 在 ast_builder 里生成 ExprLiteralNode(LiteralObjNode("$")),
         // `$.field` / `$.method()` 读路径会递归到此, 一处拦截即覆盖.
-        if (auto obj = dynamic_cast<p<LiteralObjNode>>(n->literal())) {
+        if (auto obj = dynamic_cast<LiteralObjNode*>(n->literal())) {
             if (obj->getValue().getText() == "$" && _currentFn && _currentFn->header()->isStatic()) {
                 throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3128);
             }
@@ -206,7 +205,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
             }
         }
         // 字符串模板含插值表达式; 其余字面量无子表达式
-        if (auto tpl = dynamic_cast<p<StringTemplateNode>>(n->literal())) {
+        if (auto tpl = dynamic_cast<StringTemplateNode*>(n->literal())) {
             for (auto& e : tpl->interps()) {
                 visitExpr(e);
                 tryValidateToString(e);
@@ -222,7 +221,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         // 查找起点：lambda body 的 *父* 作用域（块作用域后 let 不在 FnNode 上；
         // 也避免把 lambda 体内 / 嵌套块的本地 Heap let 误判为捕获）。
         if (_currentLambda && _currentFn) {
-            auto obj2 = dynamic_cast<p<LiteralObjNode>>(n->literal());
+            auto obj2 = dynamic_cast<LiteralObjNode*>(n->literal());
             if (obj2) {
                 string varName = obj2->getValue().getText();
                 bool isParam = false;
@@ -282,11 +281,11 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         }
         // Phase 3.4.f.2: int 字面量越界 (E3103) — getType 仅返回类型不解析值,
         // 这里主动调 sema::parseIntLiteral 触发越界 / 非法格式校验.
-        if (auto intLit = dynamic_cast<p<LiteralIntNode>>(n->literal())) {
+        if (auto intLit = dynamic_cast<LiteralIntNode*>(n->literal())) {
             (void)sema::parseIntLiteral(intLit->getValue().getText(), n->getLineNumber(), n->getColumn());
         }
         // Phase B：标识符解析挂到 AST，codegen 读 resolvedSymbol。
-        if (auto objSym = dynamic_cast<p<LiteralObjNode>>(n->literal())) {
+        if (auto objSym = dynamic_cast<LiteralObjNode*>(n->literal())) {
             string varName = objSym->getValue().getText();
             if (varName != "$") {
                 SymbolInfo* sym = nullptr;
@@ -309,7 +308,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         }
         return;
     }
-    if (auto n = dynamic_cast<p<ExprAddSubNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprAddSubNode*>(expr)) {
         visitExpr(n->left());
         visitExpr(n->right());
         // Bucket 6 单点: 自定义 struct 二元运算符方法解析 (E3073 + byval hint).
@@ -318,7 +317,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         tryValidateStringPlus(n);
         return;
     }
-    if (auto n = dynamic_cast<p<ExprMulDivModNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprMulDivModNode*>(expr)) {
         visitExpr(n->left());
         visitExpr(n->right());
         string m;
@@ -336,7 +335,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         tryValidateBinOpMethod(n->left(), n->right(), m, n->getLineNumber(), n->getColumn());
         return;
     }
-    if (auto n = dynamic_cast<p<ExprBinOpNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprBinOpNode*>(expr)) {
         visitExpr(n->left());
         visitExpr(n->right());
         string m;
@@ -360,7 +359,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         tryValidateBinOpMethod(n->left(), n->right(), m, n->getLineNumber(), n->getColumn());
         return;
     }
-    if (auto n = dynamic_cast<p<ExprCompareNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprCompareNode*>(expr)) {
         visitExpr(n->left());
         visitExpr(n->right());
         // Phase C：subst 后再查 Weak ==/!= / Ptr 排序 / &&·|| 两侧类型（模板形参跳过）。
@@ -395,11 +394,11 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         }
         return;
     }
-    if (auto n = dynamic_cast<p<ExprParenNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprParenNode*>(expr)) {
         visitExpr(n->expr());
         return;
     }
-    if (auto n = dynamic_cast<p<ExprCallNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprCallNode*>(expr)) {
         visitExpr(n->getCalleeExpr(), nullptr, true);
 
         // Phase C：重载前实参靶向类型。不看实参类型即可确定的形参才下钻：
@@ -410,8 +409,8 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         const vector<TypeInfo>* callArgExpPtr = nullptr;
         const bool hasTypeArgs = !n->getTypeArgs().empty();
         if (hasTypeArgs) {
-            if (auto lit = dynamic_cast<p<ExprLiteralNode>>(n->getCalleeExpr())) {
-                if (auto obj = dynamic_cast<p<LiteralObjNode>>(lit->literal())) {
+            if (auto lit = dynamic_cast<ExprLiteralNode*>(n->getCalleeExpr())) {
+                if (auto obj = dynamic_cast<LiteralObjNode*>(lit->literal())) {
                     string fnName = obj->getValue().getText();
                     if (auto* genFn = uniqueNonBuiltinGenericFn(_file, fnName)) {
                         map<string, TypeInfo> subst;
@@ -423,7 +422,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                 }
             }
             if (!callArgExpPtr) {
-                if (auto dotCallee = dynamic_cast<p<ExprDotNode>>(n->getCalleeExpr())) {
+                if (auto dotCallee = dynamic_cast<ExprDotNode*>(n->getCalleeExpr())) {
                     TypeInfo baseType;
                     try {
                         baseType = dotCallee->baseExpr()->hasResolvedType() ? dotCallee->baseExpr()->resolvedType()
@@ -444,8 +443,8 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                     }
                 }
             }
-        } else if (auto lit = dynamic_cast<p<ExprLiteralNode>>(n->getCalleeExpr())) {
-            if (auto obj = dynamic_cast<p<LiteralObjNode>>(lit->literal())) {
+        } else if (auto lit = dynamic_cast<ExprLiteralNode*>(n->getCalleeExpr())) {
+            if (auto obj = dynamic_cast<LiteralObjNode*>(lit->literal())) {
                 string fnName = obj->getValue().getText();
                 auto* structDecl = _names.lookupStruct(fnName);
                 if (structDecl && !structDecl->isGeneric()) {
@@ -477,7 +476,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                     }
                 }
             }
-        } else if (auto dotCallee = dynamic_cast<p<ExprDotNode>>(n->getCalleeExpr())) {
+        } else if (auto dotCallee = dynamic_cast<ExprDotNode*>(n->getCalleeExpr())) {
             TypeInfo baseType;
             bool baseOk = true;
             try {
@@ -552,8 +551,8 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
             int eline = n->getLineNumber();
             int ecol = n->getColumn();
             string calleeName;
-            if (auto lit = dynamic_cast<p<ExprLiteralNode>>(n->getCalleeExpr())) {
-                if (auto obj = dynamic_cast<p<LiteralObjNode>>(lit->literal())) {
+            if (auto lit = dynamic_cast<ExprLiteralNode*>(n->getCalleeExpr())) {
+                if (auto obj = dynamic_cast<LiteralObjNode*>(lit->literal())) {
                     calleeName = obj->getValue().getText();
                 }
             }
@@ -589,8 +588,8 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         // tryBlockSeenErrs (callee 是 #Fallible 时把 errType append 进去,
         // 供下方 try/catch 分支的 E7002 穷尽性使用).
         auto calleeExpr = n->getCalleeExpr();
-        if (auto litCallee = dynamic_cast<p<ExprLiteralNode>>(calleeExpr)) {
-            if (auto objLit = dynamic_cast<p<LiteralObjNode>>(litCallee->literal())) {
+        if (auto litCallee = dynamic_cast<ExprLiteralNode*>(calleeExpr)) {
+            if (auto objLit = dynamic_cast<LiteralObjNode*>(litCallee->literal())) {
                 string fnNameProp = objLit->getValue().getText();
                 vector<FnSymbolInfo*> cands;
                 _file->collectFnOverloads(fnNameProp, cands);
@@ -605,7 +604,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                     sema::checkBangWithoutFallibleCaller(_currentFn, n, _currentLambda);
                 }
             }
-        } else if (n->errPropagate() && !dynamic_cast<p<ExprDotNode>>(calleeExpr)) {
+        } else if (n->errPropagate() && !dynamic_cast<ExprDotNode*>(calleeExpr)) {
             if (_tryStack.empty()) {
                 sema::checkBangWithoutFallibleCaller(_currentFn, n, _currentLambda);
             }
@@ -619,8 +618,8 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         // 副作用幂等性: tryInferIntType 仅在 isFlexibleIntExpr 为真时改写; SemaPass
         // 跑完后字面量已带类型, Compiler 端再次调用 resolve* 时 isFlexibleIntExpr 返回 false,
         // 不会重复推断 (见 call_resolve.h 的契约说明).
-        if (auto lit = dynamic_cast<p<ExprLiteralNode>>(n->getCalleeExpr())) {
-            if (auto obj = dynamic_cast<p<LiteralObjNode>>(lit->literal())) {
+        if (auto lit = dynamic_cast<ExprLiteralNode*>(n->getCalleeExpr())) {
+            if (auto obj = dynamic_cast<LiteralObjNode*>(lit->literal())) {
                 string fnName = obj->getValue().getText();
                 int line = n->getLineNumber();
                 int col = n->getColumn();
@@ -730,8 +729,8 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
 
                 // Phase B-1: move:<T>(var) — 标记源变量为 moved (E4033 判定依据)
                 if (_currentFn && fnName == "move" && !n->getArgs().empty()) {
-                    if (auto argLit = dynamic_cast<p<ExprLiteralNode>>(n->getArgs()[0])) {
-                        if (auto argObj = dynamic_cast<p<LiteralObjNode>>(argLit->literal())) {
+                    if (auto argLit = dynamic_cast<ExprLiteralNode*>(n->getArgs()[0])) {
+                        if (auto argObj = dynamic_cast<LiteralObjNode*>(argLit->literal())) {
                             _movedVars.insert(argObj->getValue().getText());
                         }
                     }
@@ -759,7 +758,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                     vector<pair<FnNode*, FileNode*>> genericFns;
                     _file->collectGenericFunctions(fnName, genericFns, _file);
                     FnNode* genericFn = nullptr;
-                    p<FileNode> fnOwner = _file;
+                    FileNode* fnOwner = _file;
                     if (!genericFns.empty()) {
                         // 多泛型重载消歧：用实参类型驱动，选 Ref/Ref 匹配最佳者
                         if (genericFns.size() > 1) {
@@ -928,7 +927,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         // Phase 3.3.1.a: Dot-callee 包/模块别名调用 (E6001-E6005).
         // 与 compileMethodCall line 195-254 同款条件; argTypes 经 getType()
         // 计算, 任一参数未推断时跳过, 交给 Compiler 兜底.
-        if (auto dotCallee = dynamic_cast<p<ExprDotNode>>(n->getCalleeExpr())) {
+        if (auto dotCallee = dynamic_cast<ExprDotNode*>(n->getCalleeExpr())) {
             // DRAFT-spec-disambig-at §3.3: `$.m@SpecA()` / `obj.m@SpecA()` 显式消歧.
             // 校验三件: (1) baseType T 必须在 #Impl 列表里出现 SpecA; (2) SpecA 必须
             // 含名为 m 的签名; (3) SpecA.m 必须带默认体 (纯抽象签名无法 disambiguate).
@@ -1153,7 +1152,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         // struct 方法私有可见性检查（E6007）——因 yux-check 不跑 LLVM
         // codegen，必须在 sema 阶段独立校验。与 codegen compileStructMethodCall
         // 中的 validateStructMethodVisibility 同义，构成双重保障。
-        if (auto dotCallee = dynamic_cast<p<ExprDotNode>>(n->getCalleeExpr())) {
+        if (auto dotCallee = dynamic_cast<ExprDotNode*>(n->getCalleeExpr())) {
             try {
                 TypeInfo rawBase = dotCallee->baseExpr()->getType();
                 if (rawBase.isRef()) {
@@ -1246,7 +1245,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         }
         // 未知方法等：getType 回落成基类型抛的 E3095，@Spec / TypeParam 已排除。
         if (deferredMethodE3095) {
-            auto* dot = dynamic_cast<p<ExprDotNode>>(n->getCalleeExpr());
+            auto* dot = dynamic_cast<ExprDotNode*>(n->getCalleeExpr());
             if (dot && !dot->hasSpecQualifier()) {
                 TypeInfo baseType;
                 bool baseOk = true;
@@ -1273,7 +1272,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         }
         return;
     }
-    if (auto n = dynamic_cast<p<ExprDotNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprDotNode*>(expr)) {
         bool savedDotBase = _inDotBase;
         _inDotBase = true;
         visitExpr(n->baseExpr());
@@ -1459,7 +1458,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         }
         return;
     }
-    if (auto n = dynamic_cast<p<ExprIfElseNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprIfElseNode*>(expr)) {
         visitExpr(n->condition());
         // Phase B-1: 分支 _movedVars 汇合 — 各分支分别从 saved 出发，最后取并集
         // Phase C：块末尾值带靶向类型（嵌套数组 E3009）。
@@ -1488,7 +1487,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         tryValidateIfElse(n);
         return;
     }
-    if (auto n = dynamic_cast<p<ExprOneLineIfElseNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprOneLineIfElseNode*>(expr)) {
         visitExpr(n->condition());
         visitExpr(n->trueValue(), expected);
         visitExpr(n->falseValue(), expected);
@@ -1496,7 +1495,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         tryValidateOneLineIfElse(n);
         return;
     }
-    if (auto n = dynamic_cast<p<ExprGetNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprGetNode*>(expr)) {
         visitExpr(n->arrayExpr());
         for (auto& i : n->indices())
             visitExpr(i);
@@ -1507,18 +1506,18 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         tryValidateIndexBase(n->arrayExpr(), n->resolveLineNumber(), n->resolveColumn());
         return;
     }
-    if (auto n = dynamic_cast<p<ExprArrayNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprArrayNode*>(expr)) {
         for (auto& e : n->elements())
             visitExpr(e);
         checkEmptyArrayLiteral(n, expected);
         return;
     }
-    if (auto n = dynamic_cast<p<ExprTupleNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprTupleNode*>(expr)) {
         for (auto& e : n->elements())
             visitExpr(e);
         return;
     }
-    if (auto n = dynamic_cast<p<ExprUnaryNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprUnaryNode*>(expr)) {
         visitExpr(n->right());
         string m;
         switch (n->op()) {
@@ -1535,7 +1534,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         tryValidateUnaryOpMethod(n->right(), m, n->getLineNumber(), n->getColumn());
         return;
     }
-    if (auto n = dynamic_cast<p<LambdaExprNode>>(expr)) {
+    if (auto n = dynamic_cast<LambdaExprNode*>(expr)) {
         // v0.16 闭包捕获: sema 下钻 lambda body (策略 2b 宽松模式)。
         // - 形参类型可能缺 (由调用点反推), 不依赖形参类型的检查 deferred 给 codegen。
         // - 不依赖形参类型的检查在此完成: E2030 (捕获写禁) / E4024 (Heap 非空捕获禁) /
@@ -1584,12 +1583,12 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
             for (size_t i = 0; i < stmts.size(); ++i) {
                 const bool lastBare = (i + 1 == stmts.size()) && isBareTailExprStmt(stmts[i]);
                 if (lastBare && bodyExp) {
-                    auto se = dynamic_cast<p<StatementExprNode>>(stmts[i]);
+                    auto se = dynamic_cast<StatementExprNode*>(stmts[i]);
                     if (!se || !se->expr()) {
                         visitStmt(stmts[i]);
                         continue;
                     }
-                    if (auto ma = dynamic_cast<p<ExprMoveAssignNode>>(se->expr())) {
+                    if (auto ma = dynamic_cast<ExprMoveAssignNode*>(se->expr())) {
                         DiagnosticEngine::emit(
                             _sourcePath, YuxError(ma->resolveLineNumber(), ma->resolveColumn(), ErrorCode::E4030));
                     }
@@ -1621,7 +1620,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         _currentLambdaHandleCapTypeName = std::move(savedHandleType);
         return;
     }
-    if (auto n = dynamic_cast<p<ExprStructLitNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprStructLitNode*>(expr)) {
         // Phase 2d 构造模型重构: `Self { ... }` 字段字面量校验.
         //   * 出现位: 仅 `#Static fn` 体内 (E3124, 仅 Self 形态).
         //   * 完整性: 必须列全所属结构体所有字段 (E3125).
@@ -1697,7 +1696,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         }
         return;
     }
-    if (auto n = dynamic_cast<p<ExprPathCallNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprPathCallNode*>(expr)) {
         const bool selfForm = n->enumName().getText() == "Self";
         TypeInfo rawLhsTy = n->resolvedLhsType();
         TypeInfo lhsTy = applyInstSubst(rawLhsTy);
@@ -1810,7 +1809,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                     }
                 }
 
-                p<FnHeaderNode> methodHeader = nullptr;
+                FnHeaderNode* methodHeader = nullptr;
                 for (auto& m : structImpl->methods()) {
                     if (m->header()->name().getText() == rhsName) {
                         methodHeader = m->header();
@@ -2000,7 +1999,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         }
         return;
     }
-    if (auto n = dynamic_cast<p<ExprMatchNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprMatchNode*>(expr)) {
         visitExpr(n->scrutinee());
         for (auto& arm : n->arms()) {
             if (arm->hasBlock())
@@ -2013,7 +2012,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         tryValidateMatchScrut(n);
         return;
     }
-    if (auto n = dynamic_cast<p<ExprTryCatchNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprTryCatchNode*>(expr)) {
         // Phase 3.3 前置.5: SemaPass 接管 E7011 (catch 类型必须是已声明 enum)
         // 与 E7002 (try block 内 callee 错误类型未被任一 catch 覆盖).
         //
@@ -2063,7 +2062,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
 
         // E7010：catch arm 末类型与 try 块一致。流终止臂（ret / #NoReturn）不参与。
         // 须用 resolved（空 `[]` 的 getType 是 `[__empty * 0]`，靶向后才是 Array<T>）。
-        p<ScopeNode> trySc = n->findNearestScope();
+        ScopeNode* trySc = n->findNearestScope();
         if (!blockTerminatesFlow(trySc, n->tryBlock()) && n->tryBlock()->hasResult() && n->tryBlock()->resultExpr()) {
             TypeInfo resultType;
             if (tryGetExprType(n->tryBlock()->resultExpr(), resultType)) {
@@ -2083,7 +2082,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         }
         return;
     }
-    if (auto n = dynamic_cast<p<ExprDynCtorNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprDynCtorNode*>(expr)) {
         visitExpr(n->arg());
         // Bucket 4 收口 (CURRENT-check.md): Dyn<D>(x) 构造的 E1131/E1132/E1134/E1133
         // 接管. 镜像 compiler_expr.cpp::compileDynCtorExpr 顶部 (line 2497-2576).
@@ -2148,7 +2147,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
     }
     // heap:<T>(v) / rc:<T>(v) 由 #Builtin generic 路径在 call_fn.cpp 处理，
     // 类型校验由 sema::validateBuiltinIntrinsicShape/TypeShape 覆盖，不在此处重复。
-    if (auto n = dynamic_cast<p<ExprNullElseNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprNullElseNode*>(expr)) {
         visitExpr(n->left());
         // 右侧按左侧 Nullable 内层靶向：`a ?? []` 的 `[]` 须是 Array<T>，否则 E3063。
         // 与 compileMoveAssignExpr / if 块值同一套 visitExpr(..., expected)。
@@ -2201,7 +2200,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         }
         return;
     }
-    if (auto n = dynamic_cast<p<ExprMoveAssignNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprMoveAssignNode*>(expr)) {
         visitExpr(n->left());
         // 与 compileLvalueAddr 同款：LHS 须是变量 / `$` / 字段 / 元组 `.N`。
         // 与 T 无关的形态模板期也报（字面量 / 调用 / 索引）。
@@ -2243,14 +2242,14 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
     // E3040/E3041 (SemaPass 默认重抛), 由此 Compiler 端
     // compileGetRefExpr 的 1656/1661 内联 throw 在正常 codepath 下不可达。
     // Phase 3.4.d.2: 补 E3042 链式私有字段可见性校验.
-    if (auto n = dynamic_cast<p<ExprGetRefNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprGetRefNode*>(expr)) {
         // Phase 2e: `&$.x` 在 `#Static fn` 体内禁用 (E3128).
         if (n->obj().getText() == "$" && _currentFn && _currentFn->header()->isStatic()) {
             throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E3128);
         }
         // #Inline #Cval 检查：内联常量无存储地址，不可取址。
         // 先查本文件，再查 SDK 文件的全局常量列表。
-        auto checkInlineConst = [&](p<FileNode> f) {
+        auto checkInlineConst = [&](FileNode* f) {
             if (!f) return;
             for (const auto& gc : f->getGlobalConsts()) {
                 if (gc->name().getText() == n->obj().getText() && gc->isInline()) {
@@ -2290,7 +2289,7 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
         return;
     }
     // Phase C：ExprArrayInitNode 无靶向类型时仍校验 explicitType vs fill（E3009）。
-    if (auto n = dynamic_cast<p<ExprArrayInitNode>>(expr)) {
+    if (auto n = dynamic_cast<ExprArrayInitNode*>(expr)) {
         checkArrayInit(n, nullptr);
         return;
     }

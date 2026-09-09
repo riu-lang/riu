@@ -11,6 +11,6 @@
 //   ret / ret void、loop {} 无 break、if-else 全分支终止、match 全 arm 终止、
 //   或调用一个 `#NoReturn` 函数。
 // 在 compileFn / compileMethod 入口与 borrow_checker 同档调用一次。
-void checkFlowTerminate(p<FnNode> fn);
+void checkFlowTerminate(FnNode* fn);
 
 #endif // YUX_LANG_FLOW_TERMINATE_CHECKER_H

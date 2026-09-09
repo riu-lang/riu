@@ -214,7 +214,7 @@ AnnoList collectAnnosExternFn(const AnnoVec& annos) {
 // 不依赖 fn body，仅看 header 注解 + retType。E7014（流终止）与调用点流终止注册推 10d-2。
 //   E7012 — `#NoReturn` 函数声明带返回类型
 //   E7013 — `#NoReturn` 与 `T ! E` 互斥
-static void checkNoReturnHeader(p<FnHeaderNode> header) {
+static void checkNoReturnHeader(FnHeaderNode* header) {
     if (!header->hasAnno("NoReturn")) return;
     int line = header->getLineNumber();
     int col = header->getColumn();
@@ -226,7 +226,7 @@ static void checkNoReturnHeader(p<FnHeaderNode> header) {
     }
 }
 
-static void checkFallibleRetMismatch(p<FnHeaderNode> header) {
+static void checkFallibleRetMismatch(FnHeaderNode* header) {
     const string err = header->resolvedFallibleErr();
     if (err.empty() || !header->retType()) return;
     const TypeInfo retType = header->retType()->getType().withoutFallible();
@@ -236,7 +236,7 @@ static void checkFallibleRetMismatch(p<FnHeaderNode> header) {
 }
 
 // typeFallibleWithRef 在 fn / lambda 返回位会把 `T ! E` 合成单节点；拆回 base + err 槽。
-inline std::pair<p<TypeNode>, p<TypeNode>> peelFallibleRetType(p<TypeNode> retType) {
+inline std::pair<TypeNode*, TypeNode*> peelFallibleRetType(TypeNode* retType) {
     if (!retType) return {nullptr, nullptr};
     if (auto* f = dynamic_cast<TypeFallibleNode*>(retType)) {
         return {f->baseType(), f->errType()};

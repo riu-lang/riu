@@ -22,7 +22,7 @@
 
 // 编译自定义类型的一元运算符方法调用
 // 将运算符表达式转换为方法调用，如 -a -> a.neg()
-llvm::Value* Compiler::compileCustomTypeUnaryOp(p<ExprNode> expr, const TypeInfo& type, const string& methodName,
+llvm::Value* Compiler::compileCustomTypeUnaryOp(ExprNode* expr, const TypeInfo& type, const string& methodName,
                                                 int lineNum) {
 
     // v0.16: [] 返回 T&——剥 Ref 用于方法名查找
@@ -100,13 +100,13 @@ llvm::Value* Compiler::compileCustomTypeUnaryOp(p<ExprNode> expr, const TypeInfo
     return _builder.CreateCall(fn, {ptr});
 }
 
-llvm::Value* Compiler::compileParenExpr(p<ExprParenNode> node) {
+llvm::Value* Compiler::compileParenExpr(ExprParenNode* node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     DEBUG_LOG("    Expr: Paren");
     return compileExpr(node->expr());
 }
 
-llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
+llvm::Value* Compiler::compileGetRefExpr(ExprGetRefNode* node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto objName = node->obj().getText();
     auto& subs = node->subs();
@@ -205,7 +205,7 @@ llvm::Value* Compiler::compileGetRefExpr(p<ExprGetRefNode> node) {
     return currentPtr;
 }
 
-llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
+llvm::Value* Compiler::compileUnaryExpr(ExprUnaryNode* node) {
     if (!node->hasResolvedType()) node->setResolvedType(node->getType());
     auto type = node->getType();
     auto rightType = node->right()->getType();

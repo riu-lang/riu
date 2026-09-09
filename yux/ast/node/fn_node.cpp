@@ -7,11 +7,11 @@ Token FnParamNode::name() const {
     return _name;
 }
 
-p<TypeNode> FnParamNode::type() const {
+TypeNode* FnParamNode::type() const {
     return _type;
 }
 
-void FnHeaderNode::addParam(p<FnParamNode> param) {
+void FnHeaderNode::addParam(FnParamNode* param) {
     _params.push_back(param);
 }
 
@@ -19,11 +19,11 @@ Token FnHeaderNode::name() const {
     return _name;
 }
 
-p<TypeNode> FnHeaderNode::retType() const {
+TypeNode* FnHeaderNode::retType() const {
     return _retType;
 }
 
-vector<p<FnParamNode>> FnHeaderNode::params() const {
+vector<FnParamNode*> FnHeaderNode::params() const {
     return _params;
 }
 
@@ -39,17 +39,17 @@ string FnHeaderNode::resolvedFallibleErr() const {
     return {};
 }
 
-FnNode::FnNode(const p<Node>& parent, p<FnHeaderNode> header) : ScopeNode(parent), _header(header) {}
+FnNode::FnNode(Node* parent, FnHeaderNode* header) : ScopeNode(parent), _header(header) {}
 
-void FnNode::addStatement(p<StatementNode> stmt) {
+void FnNode::addStatement(StatementNode* stmt) {
     _body.push_back(stmt);
 }
 
-const vector<p<StatementNode>>& FnNode::body() const {
+const vector<StatementNode*>& FnNode::body() const {
     return _body;
 }
 
-const p<FnHeaderNode>& FnNode::header() const {
+FnHeaderNode* FnNode::header() const {
     return _header;
 }
 

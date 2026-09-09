@@ -35,8 +35,8 @@
 
 // ==================== 构造函数 ====================
 // 初始化编译器，建立基本类型到 LLVM 类型的映射
-Compiler::Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, p<FileNode> file,
-                   Yux* yux, bool isSdk, bool isTestDll)
+Compiler::Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* mod, FileNode* file, Yux* yux,
+                   bool isSdk, bool isTestDll)
     : _context(context), _builder(builder), _module(mod), _file(file), _yux(yux), _isSdk(isSdk), _isTestDll(isTestDll) {
     // 初始化基本类型映射表
     // 注意: i8/u8, i16/u16 等使用相同的 LLVM 类型，语义区分在 TypeInfo 中
@@ -69,7 +69,7 @@ Compiler::Compiler(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm:
 // 6. 生成泛型实例的方法
 // 7. 生成泛型函数实例
 // 8. 如果不是 SDK 且有 main 函数，生成启动代码
-void Compiler::compile(p<FileNode> file) {
+void Compiler::compile(FileNode* file) {
     DEBUG_LOG("=== Starting compilation ===");
     DEBUG_LOG_VAL("  isSdk", _isSdk);
 
@@ -904,7 +904,7 @@ void Compiler::emitInstanceMethods() {
 // ==================== 泛型函数实例管理 ====================
 // 确保泛型函数实例存在，返回 mangle 后的名称
 // 如果实例不存在，创建一个新的实例记录
-string Compiler::ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& typeArgs, p<FileNode> ownerFile,
+string Compiler::ensureFnInstance(FnNode* baseFn, const vector<TypeInfo>& typeArgs, FileNode* ownerFile,
                                   int sourceLine) {
     string baseName = baseFn->header()->name().getText();
     // LLVM 函数名用 `foo<i32,i64>`（Mangler 再加模块与形参表）
@@ -953,8 +953,8 @@ string Compiler::ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& type
     return key;
 }
 
-string Compiler::ensureMethodInstance(p<FnNode> baseMethod, const string& structName, const vector<TypeInfo>& typeArgs,
-                                      p<FileNode> ownerFile, int sourceLine) {
+string Compiler::ensureMethodInstance(FnNode* baseMethod, const string& structName, const vector<TypeInfo>& typeArgs,
+                                      FileNode* ownerFile, int sourceLine) {
     const string baseName = baseMethod->header()->name().getText();
     string instName = baseName + "<";
     for (size_t i = 0; i < typeArgs.size(); ++i) {
@@ -1117,7 +1117,7 @@ void Compiler::emitFnInstances() {
 // ==================== 函数编译 ====================
 // 编译一个函数的完整实现
 // 包括参数处理、函数体编译、隐式返回等
-void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
+void Compiler::compileFn(FnNode* node, llvm::Function* func) {
     _currentFn = func;
     _currentFnNode = node;
     _currentStructName.clear();
@@ -1203,7 +1203,7 @@ void Compiler::compileFn(p<FnNode> node, llvm::Function* func) {
 // ==================== 方法编译 ====================
 // 编译结构体方法
 // 与普通函数类似，但需要处理当前实例参数（`$`）
-void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string& structName, bool isDestructor,
+void Compiler::compileMethod(FnNode* node, llvm::Function* func, const string& structName, bool isDestructor,
                              bool isStatic) {
     try {
         compileMethodImpl(node, func, structName, isDestructor, isStatic);
@@ -1213,7 +1213,7 @@ void Compiler::compileMethod(p<FnNode> node, llvm::Function* func, const string&
     }
 }
 
-void Compiler::compileMethodImpl(p<FnNode> node, llvm::Function* func, const string& structName, bool isDestructor,
+void Compiler::compileMethodImpl(FnNode* node, llvm::Function* func, const string& structName, bool isDestructor,
                                  bool isStatic) {
     _currentFn = func;
     _currentFnNode = node;
@@ -1344,7 +1344,7 @@ llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t, llvm:
     if (t.kind != TypeKind::Normal || t.name.empty()) return nullptr;
 
     // 找声明 struct 的 file (决定 mod)
-    p<FileNode> ownerFile = nullptr;
+    FileNode* ownerFile = nullptr;
     if (_file && _file->getStructDecl(t.name)) {
         ownerFile = _file;
     } else if (_yux && _yux->sdkFile() && _yux->sdkFile() != _file && _yux->sdkFile()->getStructDecl(t.name)) {
@@ -1409,7 +1409,7 @@ llvm::GlobalVariable* Compiler::ensureReflectTypeGlobal(const TypeInfo& t, llvm:
     gv->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
 
     // ==== Fields: 收集 instance 字段 (不含 #Static) ====
-    p<StructDeclNode> decl = ownerFile->getStructDecl(t.name);
+    StructDeclNode* decl = ownerFile->getStructDecl(t.name);
     vector<llvm::Constant*> fieldConsts;
     if (decl) {
         for (auto& f : decl->fields()) {

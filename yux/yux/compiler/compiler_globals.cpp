@@ -57,7 +57,7 @@ static llvm::Constant* llvmConstantFromValue(llvm::LLVMContext& ctx, const Const
 // 统一表示一组需要 runtime init 的项（来自 global let 或 struct 静态字段）
 struct RuntimeItem {
     llvm::GlobalVariable* gv;
-    p<ExprNode> initExpr;
+    ExprNode* initExpr;
 };
 
 // ==================== Compiler::compileGlobalVars ====================

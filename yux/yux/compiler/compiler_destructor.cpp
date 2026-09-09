@@ -329,7 +329,7 @@ void Compiler::eraseScopeVar(const string& name) {
     }
 }
 
-SymbolInfo* Compiler::lookupVarSymbol(const string& name, p<Node> from) {
+SymbolInfo* Compiler::lookupVarSymbol(const string& name, Node* from) {
     if (from) {
         if (auto sc = from->findNearestScope()) {
             if (auto* s = sc->lookupSymbol(name)) return s;
@@ -600,7 +600,7 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
     // 直接合成 __enum_copy_<E> 比 inline 展开更省 IR；Phase 5 先用 inline 实现，
     // copy helper 押后到后续优化。
     if (!isBuiltinType(argType.name) && enumNeedsDestructor(argType)) {
-        p<FileNode> owner = nullptr;
+        FileNode* owner = nullptr;
         auto decl = names().lookupEnum(argType.name, &owner);
         if (!decl) return false;
 
@@ -893,7 +893,7 @@ bool Compiler::consumeTemp(llvm::Value* val) {
 // Phase 8d.3: 编译分支体的结果表达式：用子帧吃掉中间 fresh 临时；非 fresh 结果发 retain 归一。
 // 不只处理 Rc/Array/String：带显式析构的 #NoCopy struct 也会作为分支值汇合，
 // 若不把分支临时转交给 phi，子帧退出时会提前析构其 OS 句柄等资源。
-llvm::Value* Compiler::compileBranchResultNormalized(p<ExprNode> expr, const TypeInfo& expectedType) {
+llvm::Value* Compiler::compileBranchResultNormalized(ExprNode* expr, const TypeInfo& expectedType) {
     if (!typeNeedsDestructor(expectedType)) {
         return compileExpr(expr);
     }
@@ -929,7 +929,7 @@ void Compiler::emitRetainOnHandleValue(llvm::Value* val, const TypeInfo& type) {
 // 识别 +1 所有权（fresh）表达式：调用结果（函数 / 方法 / 构造器）+ 数组字面量 + move-assign + lambda
 // 用于在复制语义 retain 路径上跳过多余 retain，避免 leak（DRAFT §7.6 / §8）
 // !! 与 sema_pass_detail.cpp::isFreshHandleExpr 须保持同步 — 新增 case 需两边同时添加 !!
-bool Compiler::isFreshHandleExpr(p<ExprNode> expr) {
+bool Compiler::isFreshHandleExpr(ExprNode* expr) {
     if (!expr) return false;
     if (dynamic_cast<ExprCallNode*>(expr)) return true;
     if (dynamic_cast<ExprArrayNode*>(expr)) return true;
@@ -943,7 +943,7 @@ bool Compiler::isFreshHandleExpr(p<ExprNode> expr) {
     if (dynamic_cast<ExprStructLitNode*>(expr)) return true;
     // if / match / try：phi 各值产生分支均 fresh 时整体 fresh（流终止臂不参与）。
     // Array 无 RC，不能靠 retain 归一；非 fresh 分支仍须 E4031。
-    auto blockFresh = [this](p<StatementBlockNode> block) -> bool {
+    auto blockFresh = [this](StatementBlockNode* block) -> bool {
         if (!block || blockTerminatesFlow(block, block)) return true;
         if (!block->hasResult() || !block->resultExpr()) return true;
         return isFreshHandleExpr(block->resultExpr());
@@ -957,7 +957,7 @@ bool Compiler::isFreshHandleExpr(p<ExprNode> expr) {
         return true;
     }
     if (auto* ol = dynamic_cast<ExprOneLineIfElseNode*>(expr)) {
-        p<ScopeNode> sc = ol->findNearestScope();
+        ScopeNode* sc = ol->findNearestScope();
         bool tTerm = exprTerminatesFlow(sc, ol->trueValue());
         bool fTerm = exprTerminatesFlow(sc, ol->falseValue());
         if (tTerm && fTerm) return true;
@@ -1257,7 +1257,7 @@ vector<TypeInfo> Compiler::resolveStructFieldTypes(const string& structName) {
 // ==================== Phase 5: 枚举析构 ====================
 
 // 任一 variant 的 payload 元素需析构则枚举需析构
-bool Compiler::enumDeclNeedsDestructor(p<EnumDeclNode> decl) {
+bool Compiler::enumDeclNeedsDestructor(EnumDeclNode* decl) {
     if (!decl) return false;
     for (auto v : decl->variants()) {
         if (!v->hasPayload()) continue;
@@ -1271,7 +1271,7 @@ bool Compiler::enumDeclNeedsDestructor(p<EnumDeclNode> decl) {
 // 按名查 enum 决议是否需析构；非 enum 名返回 false
 bool Compiler::enumNeedsDestructor(const string& enumName) {
     if (enumName.empty()) return false;
-    p<FileNode> owner = nullptr;
+    FileNode* owner = nullptr;
     auto decl = names().lookupEnum(enumName, &owner);
     if (!decl) return false;
     return enumDeclNeedsDestructor(decl);
@@ -1279,7 +1279,7 @@ bool Compiler::enumNeedsDestructor(const string& enumName) {
 
 bool Compiler::enumNeedsDestructor(const TypeInfo& type) {
     if (!type.isNormal()) return false;
-    p<FileNode> owner = nullptr;
+    FileNode* owner = nullptr;
     auto decl = names().lookupEnum(type, &owner);
     if (!decl) return false;
     return enumDeclNeedsDestructor(decl);
@@ -1288,7 +1288,7 @@ bool Compiler::enumNeedsDestructor(const TypeInfo& type) {
 // 获取或创建 enum dtor 声明（mangled 含 owner 模块名）
 // 与 struct dtor 同模型：`mod.Enum::~()`；有 owner 时不按短名找错模块
 llvm::Function* Compiler::getEnumDestructorFunction(const string& enumName, const string& ownerModuleHint) {
-    p<FileNode> owner = nullptr;
+    FileNode* owner = nullptr;
     EnumDeclNode* decl = nullptr;
     if (!ownerModuleHint.empty() && _yux) {
         owner = _yux->module(ownerModuleHint);
@@ -1312,7 +1312,7 @@ llvm::Function* Compiler::getEnumDestructorFunction(const string& enumName, cons
 
 // 合成 __enum_drop_<E>(p*) 实现：switch on tag → 各 case 释放对应 variant 的 RC payload 字段
 // 全 POD enum 不会进到这里（compileEnumDtors 提前过滤）
-void Compiler::generateEnumDestructor(p<EnumDeclNode> decl, p<FileNode> owner) {
+void Compiler::generateEnumDestructor(EnumDeclNode* decl, FileNode* owner) {
     if (!decl) return;
     string enumName = decl->name().getText();
     DEBUG_LOG_VAL("  Generating enum dtor for", enumName);
