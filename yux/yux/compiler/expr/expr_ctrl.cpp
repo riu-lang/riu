@@ -325,7 +325,7 @@ llvm::Value* Compiler::compileMatchExpr(ExprMatchNode* node) {
     // 4. 求值 scrutinee 并落 alloca；fresh 时 consume 拿走所有权
     auto enumLLVMType = getLLVMType(scrutType);
     if (!enumLLVMType) {
-        throw YuxError(line, col, ErrorCode::E3096, enumName);
+        throwSemaGap(line, col);
     }
 
     auto scrutVal = compileExpr(scrutinee);

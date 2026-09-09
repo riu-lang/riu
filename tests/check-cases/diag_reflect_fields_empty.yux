@@ -1,0 +1,9 @@
+; 无实例字段的 struct::fields 发不出反射数组 → E6019
+
+struct Empty {
+}
+
+fn main() {
+  let f = Empty::fields  ; check: E6019
+  ret;
+}

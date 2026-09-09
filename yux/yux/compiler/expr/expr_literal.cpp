@@ -632,8 +632,7 @@ llvm::Value* Compiler::compileTupleExpr(ExprTupleNode* node) {
     auto tupleType = node->getType();
     auto llvmTy = getLLVMType(tupleType);
     if (!llvmTy) {
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3098, tupleType.name, string("(tuple)"),
-                       string("(tuple)"));
+        throwSemaGap(node->getLineNumber(), node->getColumn());
     }
     DEBUG_LOG_VAL("    Expr: Tuple", tupleType.name);
 

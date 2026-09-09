@@ -284,9 +284,7 @@ string Compiler::ensureStructInstance(StructDeclNode* baseDecl, const vector<sp<
             auto fieldType = field->getType();
             auto llvmTy = getLLVMType(fieldType);
             if (!llvmTy) {
-                auto substituted = applySubst(fieldType);
-                throw YuxError(static_cast<int>(field->name().getLine()), ErrorCode::E3098, substituted.getFullName(),
-                               field->name().getText(), baseName);
+                throwSemaGap(static_cast<size_t>(field->name().getLine()));
             }
             fieldTypes.push_back(llvmTy);
         }

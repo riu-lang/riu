@@ -1,0 +1,13 @@
+; 写出 Box<NoSuch> 后字段替换类型未知 → E3098（报在字段声明行）
+
+struct Box<T> {
+  val T  ; check: E3098
+}
+
+fn take(x Box<NoSuch>) {
+  ret;
+}
+
+fn main() {
+  ret;
+}

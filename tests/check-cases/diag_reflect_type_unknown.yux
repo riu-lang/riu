@@ -1,0 +1,7 @@
+; require-sdk
+; __yux_reflect_type:<T> T 不是已知 struct → E6019
+
+fn main() {
+  let t Type = __yux_reflect_type:<NoSuch>()  ; check: E6019
+  ret;
+}

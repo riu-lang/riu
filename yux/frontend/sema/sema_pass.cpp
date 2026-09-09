@@ -183,6 +183,16 @@ void SemaPass::run() {
             try {
                 auto ft = f->type()->getType();
                 validateContainerBansAt(ft, f->type(), f->getLineNumber(), f->getColumn());
+                if (!typeStillTemplate(ft) && !sema::typeHasLlvmLayout(ft, _file, _sdkFile, _currentTypeParams)) {
+                    auto* fieldSd = _names.lookupStruct(ft);
+                    if (!(fieldSd && fieldSd->isGeneric())) {
+                        if (sd->isGeneric()) {
+                            throw YuxError(static_cast<int>(f->name().getLine()), ErrorCode::E3098, ft.getFullName(),
+                                           f->name().getText(), sd->name().getText());
+                        }
+                        throw YuxError(static_cast<int>(f->name().getLine()), ErrorCode::E3096, ft.getFullName());
+                    }
+                }
                 noteConcreteGenericType(ft);
             } catch (const YuxError&) {
                 throw;
@@ -323,6 +333,7 @@ void SemaPass::visitFn(FnNode* fn) {
     }
 
     // E4025 / E1132：形参 / 返回类型上的容器禁令（getLLVMType 同款，补 yux-check）
+    // 形参 / 返回不报 E3096：同 arity 重载用未声明名（如 `str`）作标签，不建布局。
     if (auto hdr = fn->header()) {
         for (auto& param : hdr->params()) {
             if (!param || !param->type()) continue;
@@ -437,6 +448,7 @@ void SemaPass::noteConcreteGenericType(const TypeInfo& t) {
     if (!sd || !sd->isGeneric()) return;
     map<string, TypeInfo> subst;
     if (!fillSubstFromGenericArgs(sd->typeParams(), t0.genericArgs, subst)) return;
+    sema::validateGenericStructFieldLayouts(sd, subst, _file, _sdkFile, _currentTypeParams);
     checkGenericImplInst(lookupStructImpl(_file, _sdkFile, t0.name), subst);
 }
 

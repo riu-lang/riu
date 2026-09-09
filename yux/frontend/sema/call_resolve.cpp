@@ -14,13 +14,16 @@
 #include "analyzer/spec_registry.h"
 #include "ast/node/enum_node.h"
 #include "ast/node/expr_node.h"
+#include "ast/node/struct_node.h"
 #include "ast/yux.h"
 #include "tools/diagnostic.h"
 #include "types.h"
 #include <algorithm>
 #include <format>
 #include <functional>
+#include <map>
 #include <regex>
+#include <set>
 
 namespace sema {
 
@@ -1211,6 +1214,112 @@ TypeInfo validateArrayMethodTypes(const TypeInfo& baseType, const string& member
     return builtinMethodCallReturnType(*spec, baseType, methodTypeArgs, argTypes);
 }
 
+// ==================== LLVM 布局（0 LLVM，镜像 getLLVMType 成败）====================
+
+namespace {
+bool optimisticSdkName(const string& name) {
+    return name == "String" || name == "StringBuilder" || name == "Type" || name == "Field" || name == "Method" ||
+           name == "Variant";
+}
+} // namespace
+
+bool typeHasLlvmLayout(const TypeInfo& raw, FileNode* file, FileNode* sdkFile,
+                       const std::set<std::string>& typeParams) {
+    NameResolver nr(file, sdkFile);
+    std::set<string> visiting;
+    std::function<bool(TypeInfo)> rec = [&](TypeInfo t) -> bool {
+        try {
+            t = resolveAlias(t, file, sdkFile);
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+            return false;
+        }
+        t = t.withoutFallible();
+        if (t.empty()) return true;
+        if (t.isNormal() && typeParams.contains(t.name)) return true;
+        // 句柄 / fat-ptr：LLVM 布局不依赖内层（与 getLLVMType 一致）
+        if (t.isPtr() || t.isRef() || t.isRc() || t.isWeak() || t.isHeap() || t.isDyn() || t.isFn() ||
+            t.isArrayGeneric()) {
+            return true;
+        }
+        if (t.isNullable()) {
+            auto inner = t.nullableInnerType();
+            return inner && rec(*inner);
+        }
+        if (t.isArray()) {
+            return t.elementType && rec(*t.elementType);
+        }
+        if (t.isTuple()) {
+            for (auto& e : t.tupleElements()) {
+                if (!e || !rec(*e)) return false;
+            }
+            return true;
+        }
+        if (isBuiltinType(t.name)) return true;
+        if (t.name == "Ptr" || t.name == "Self" || t.name == "Function") return true;
+        if (t.name == "Type" || t.name == "Field" || t.name == "Method" || t.name == "Variant") return true;
+
+        const string key = t.identityKey();
+        if (!visiting.insert(key).second) return true;
+
+        auto finish = [&](bool ok) {
+            visiting.erase(key);
+            return ok;
+        };
+
+        auto* sd = nr.lookupStruct(t);
+        if (sd) {
+            if (sd->isGeneric()) {
+                if (t.genericArgs.size() != sd->typeParams().size()) return finish(true); // E6011
+                map<string, TypeInfo> subst;
+                for (size_t i = 0; i < sd->typeParams().size(); ++i) {
+                    if (!t.genericArgs[i] || t.genericArgs[i]->empty()) return finish(true);
+                    subst[sd->typeParams()[i]] = *t.genericArgs[i];
+                }
+                for (auto* f : sd->fields()) {
+                    if (!f || f->isStatic()) continue;
+                    TypeInfo ft = f->getType().substitute(subst);
+                    if (!rec(std::move(ft))) return finish(false);
+                }
+                return finish(true);
+            }
+            for (auto* f : sd->fields()) {
+                if (!f || f->isStatic()) continue;
+                if (!rec(f->getType())) return finish(false);
+            }
+            return finish(true);
+        }
+        auto* ed = nr.lookupEnum(t);
+        if (ed) {
+            for (auto* v : ed->variants()) {
+                if (!v || !v->hasPayload()) continue;
+                for (auto* pt : v->payloadTypes()) {
+                    if (!pt || !rec(pt->getType())) return finish(false);
+                }
+            }
+            return finish(true);
+        }
+        visiting.erase(key);
+        return !sdkFile && optimisticSdkName(t.name);
+    };
+    return rec(raw);
+}
+
+void validateGenericStructFieldLayouts(StructDeclNode* sd, const std::map<std::string, TypeInfo>& subst, FileNode* file,
+                                       FileNode* sdkFile, const std::set<std::string>& typeParams) {
+    if (!sd || subst.empty()) return;
+    const string baseName = sd->name().getText();
+    for (auto* f : sd->fields()) {
+        if (!f || f->isStatic()) continue;
+        TypeInfo ft = f->getType().substitute(subst);
+        if (ft.isNormal() && typeParams.contains(ft.name)) continue;
+        if (typeHasLlvmLayout(ft, file, sdkFile, typeParams)) continue;
+        throw YuxError(static_cast<int>(f->name().getLine()), ErrorCode::E3098, ft.getFullName(), f->name().getText(),
+                       baseName);
+    }
+}
+
 // ==================== Builtin intrinsic 类型形态校验 (Phase 3.3.2.d) ====================
 // 原 compileGenericFunctionCall 的 #Builtin 分支内散落的 E6028 / E6029 / E6032 / E6030 / E6031
 // 校验 (跨 same_ref / ptr_of / as_ref / weak / copy_of / assert_eq) 收口到单一 helper.
@@ -1446,7 +1555,23 @@ void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeIn
         }
         return;
     }
-    // 其他 intrinsic (size_of / upgrade) 无类型形态校验, no-op
+    if (fnName == "size_of") {
+        // 镜像 compileGenericFunctionCall：getLLVMType 失败 → E6019
+        static const std::set<string> kNoTypeParams;
+        if (!typeHasLlvmLayout(typeArgs[0], file, sdkFile, kNoTypeParams)) {
+            throw YuxError(line, col, ErrorCode::E6019, typeArgs[0].getFullName());
+        }
+        return;
+    }
+    if (fnName == "__yux_reflect_type") {
+        // 镜像 ensureReflectTypeGlobal：仅 Normal 用户 / SDK struct
+        const auto& T = typeArgs[0];
+        if (T.kind != TypeKind::Normal || T.name.empty() || !NameResolver(file, sdkFile).lookupStruct(T)) {
+            throw YuxError(line, col, ErrorCode::E6019, T.getFullName());
+        }
+        return;
+    }
+    // 其他 intrinsic (upgrade 等) 无类型形态校验, no-op
 }
 
 // ==================== Builtin 操作符方法 arity / 类型域 (Phase 3.3.2.e) ====================

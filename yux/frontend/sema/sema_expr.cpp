@@ -698,8 +698,9 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                                                                 col);
                             if (argTypesOk) {
                                 bool skipTypeShape = false;
-                                if (isCurrentTypeParam(typeArgs[0]) && (fnName == "assert_eq" || fnName == "same_ref" ||
-                                                                        fnName == "ptr_of" || fnName == "copy_of")) {
+                                if (isCurrentTypeParam(typeArgs[0]) &&
+                                    (fnName == "assert_eq" || fnName == "same_ref" || fnName == "ptr_of" ||
+                                     fnName == "copy_of" || fnName == "size_of" || fnName == "__yux_reflect_type")) {
                                     skipTypeShape = true;
                                 }
                                 if (!argTypes.empty() && isCurrentTypeParam(argTypes[0]) &&
@@ -1515,6 +1516,16 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
     if (auto n = dynamic_cast<ExprTupleNode*>(expr)) {
         for (auto& e : n->elements())
             visitExpr(e);
+        try {
+            auto tt = applyInstSubst(n->hasResolvedType() ? n->resolvedType() : n->getType());
+            if (!typeStillTemplate(tt) && !sema::typeHasLlvmLayout(tt, _file, _sdkFile, _currentTypeParams)) {
+                throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3098, tt.name, string("(tuple)"),
+                               string("(tuple)"));
+            }
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+        }
         return;
     }
     if (auto n = dynamic_cast<ExprUnaryNode*>(expr)) {
@@ -1755,6 +1766,20 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                     // DRAFT-spec-reflect §2：variants 仅 enum；struct 上访问 → E3135。
                     if (rhsName == "variants") {
                         throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3135, lhsName);
+                    }
+                    // 无实例字段时 Compiler 发不出 fields 全局 → E6019。
+                    if (rhsName == "fields") {
+                        bool hasInst = false;
+                        for (auto* f : sd->fields()) {
+                            if (f && !f->isStatic()) {
+                                hasInst = true;
+                                break;
+                            }
+                        }
+                        if (!hasInst) {
+                            throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E6019,
+                                           lhsName + ".fields (no instance fields)");
+                        }
                     }
                     return;
                 }

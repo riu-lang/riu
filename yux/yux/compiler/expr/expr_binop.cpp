@@ -58,7 +58,7 @@ llvm::Value* Compiler::compileCustomTypeBinaryOp(ExprNode* leftExpr, ExprNode* r
             auto leftVal = compileExpr(leftExpr);
             auto structType = getLLVMType(leftType);
             if (!structType) {
-                throw YuxError(lineNum, ErrorCode::E3096, leftType.name);
+                throwSemaGap(lineNum);
             }
             auto alloca = _builder.CreateAlloca(structType, nullptr, "op_lhs_tmp");
             _builder.CreateStore(leftVal, alloca);

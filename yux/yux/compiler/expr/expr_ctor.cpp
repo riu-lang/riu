@@ -165,7 +165,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
     //   * variants → Type 的第 3 槽 ([Variant& * 0]&, 当前 null)
     // sema 已校验 LHS 是已知 struct, 这里直接 emit load.
     {
-        string lhsRaw = lookupLhs;
+        const string& lhsRaw = lookupLhs;
         string rhsName = node->variantName().getText();
         if (node->args().empty() &&
             (rhsName == "type" || rhsName == "fields" || rhsName == "methods" || rhsName == "variants")) {
@@ -182,7 +182,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
                 llvm::GlobalVariable* fieldsRefGV = nullptr;
                 auto* gv = ensureReflectTypeGlobal(TypeInfo(lhsRaw), &fieldsRefGV);
                 if (!gv) {
-                    throw YuxError(line, col, ErrorCode::E6019, lhsRaw);
+                    throwSemaGap(line, col);
                 }
                 if (rhsName == "type") {
                     auto typeStructTy = getLLVMType(TypeInfo("Type"));
@@ -192,7 +192,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
                 // fieldsRefGV 是 [N x ptr] 全局常量, 其地址即为数组引用.
                 if (rhsName == "fields") {
                     if (!fieldsRefGV) {
-                        throw YuxError(line, col, ErrorCode::E6019, lhsRaw + ".fields (no instance fields)");
+                        throwSemaGap(line, col);
                     }
                     return fieldsRefGV;
                 }
@@ -425,7 +425,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
     int tagIndex = enumDecl->variantIndex(variantName);
     auto enumLLVMType = getLLVMType(enumTy);
     if (!enumLLVMType) {
-        throw YuxError(line, col, ErrorCode::E3096, enumName);
+        throwSemaGap(line, col);
     }
 
     // 在栈上 alloca、写入 tag
@@ -443,11 +443,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
         for (auto t : variant->payloadTypes()) {
             auto ll = getLLVMType(t->getType());
             if (!ll) {
-                std::string msg = enumName;
-                msg += "::";
-                msg += variantName;
-                msg += " payload";
-                throw YuxError(line, col, ErrorCode::E3096, msg);
+                throwSemaGap(line, col);
             }
             elemTys.push_back(ll);
         }
@@ -464,12 +460,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(ExprPathCallNode* node) {
             auto argType = argExpr->getType();
             auto argVal = compileExpr(argExpr);
             if (!argVal) {
-                std::string msg = enumName;
-                msg += "::";
-                msg += variantName;
-                msg += " arg#";
-                msg += std::to_string(i);
-                throw YuxError(line, col, ErrorCode::E3096, msg);
+                throwSemaGap(line, col);
             }
             auto fieldPtr =
                 _builder.CreateStructGEP(payloadStruct, payloadBufPtr, static_cast<unsigned>(i), "enum.payload.elem");

@@ -301,7 +301,7 @@ llvm::Value* Compiler::compileExpr(ExprNode* node) {
         }
         auto llvmStructType = getLLVMType(litTy);
         if (!llvmStructType) {
-            throw YuxError(line, col, ErrorCode::E3096, structName);
+            throwSemaGap(line, col);
         }
         auto alloca = _builder.CreateAlloca(llvmStructType, nullptr, structName + ".lit");
         // 零初始化, 与 ctor 入口保持一致, 避免遗漏字段 (实际上 sema 已强制全列)
@@ -645,7 +645,7 @@ llvm::Value* Compiler::compileMoveAssignExpr(ExprMoveAssignNode* node) {
     auto addr = compileLvalueAddr(leftNode);
     auto llvmType = getLLVMType(leftType);
     if (!llvmType) {
-        throw YuxError(line, col, ErrorCode::E3096, leftType.name);
+        throwSemaGap(line, col);
     }
     auto oldVal = _builder.CreateLoad(llvmType, addr, "move.old");
 

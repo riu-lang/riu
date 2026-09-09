@@ -11,6 +11,9 @@
 #include "sema/builtin_methods.h"
 #include "sema/name_resolver.h"
 
+#include <map>
+#include <set>
+
 class Yux;
 class SpecRegistry;
 class SpecImplChecker;
@@ -233,7 +236,8 @@ std::pair<FnNode*, FileNode*> resolveBestGenericOverload(const std::vector<std::
 // 内建清单 (按当前 SDK assert.yux / mem.yux / ref.yux / weak.yux):
 //   assert_eq, size_of, upgrade, same_ref, ptr_of, as_ref, copy_of, weak
 //
-// E6019 (size_of typeArg getLLVMType 失败) 依赖 LLVM, 留在 codegen.
+// E6019：size_of typeArg 无 LLVM 布局、`__yux_reflect_type` 非已知 struct，
+// 由 validateBuiltinIntrinsicTypeShape 抛（0 LLVM，镜像 getLLVMType 成败）。
 // E6028 / E6029 / E6032 由 validateBuiltinIntrinsicTypeShape 抛（SemaPass 显式 typeArgs 与推断后都查）.
 //
 // 纯字符串 + size 比较, 无 LLVM 依赖.
@@ -257,15 +261,28 @@ void validateBuiltinIntrinsicShape(const string& fnName, size_t typeArgsCount, s
 //       * E6030: T 剥 Ref/Heap 后须是数值 / bool（与 compileTestAssertEq 同款）
 //       * E6031: 两实参剥 Ref/Heap 后 LLVM 位宽组不一致（别名 resolveAlias；
 //         灵活整数字面量按 T 收束）。isize/usize 与 i64/u64 同组（x64）
+//   - size_of:
+//       * E6019: T 无 LLVM 布局（未知名 / Nullable 无内层 / 元组元素未知）
+//   - __yux_reflect_type:
+//       * E6019: T 不是已知 Normal struct（内置标量 / Rc / 未声明名）
 //
 // 不覆盖:
-//   - E6019 (size_of llvm getLLVMType 失败) — 依赖 LLVM, 留 codegen
 //   - extractRawPtr 内 _localVarPtrs 查不到：sema 已校验 AST 形态，Compiler 改 throwSemaGap
 //
 // `file` / `sdkFile` 用于 copy_of 的 struct 字段深度递归; 为 nullptr 时按"找不到声明 → 保守放过"处理.
 void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeInfo>& typeArgs,
                                        const vector<TypeInfo>& argTypes, const vector<ExprNode*>& argNodes,
                                        FileNode* file, FileNode* sdkFile, int line, int col);
+
+// 镜像 Compiler::getLLVMType 成败（不建 LLVM 类型）：句柄包装恒有布局；
+// Nullable / [N]T / 元组 / 具名 struct·enum 要内层或字段可降。模板形参当不透明。
+// 无 SDK 时 String / StringBuilder 乐观放行（与 yux-check 无 `; require-sdk` 对齐）。
+[[nodiscard]] bool typeHasLlvmLayout(const TypeInfo& t, FileNode* file, FileNode* sdkFile,
+                                     const std::set<std::string>& typeParams);
+
+// 泛型 struct 实例化后字段类型未知 → E3098（镜像 ensureStructInstance）。
+void validateGenericStructFieldLayouts(class StructDeclNode* sd, const std::map<std::string, TypeInfo>& subst,
+                                       FileNode* file, FileNode* sdkFile, const std::set<std::string>& typeParams);
 
 // Builtin 操作符方法的 arity / 类型域校验 (Phase 3.3.2.e).
 //
@@ -377,7 +394,7 @@ void validateEnumCtorShape(FileNode* file, FileNode* sdkFile, ExprPathCallNode* 
 //     lookupEnum 失败时抛, 涉及 rc-deref / alias / isFreshHandleExpr; SemaPass 暂跳过
 //   - E3027 (arm body 结果类型不一致) —— 跨 arm body getType 计算, 可能因 lambda
 //     形参未推断而误判, 留 Compiler
-//   - E3091/E3096 —— codegen 兜底
+//   - E3091/E3096 —— SemaPass 已覆盖未知类型；codegen 走 throwSemaGap
 //
 // 调用方:
 //   - Compiler::compileMatchExpr 在 enumDecl 取到后立即调用

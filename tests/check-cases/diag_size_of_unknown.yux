@@ -1,0 +1,7 @@
+; require-sdk
+; size_of:<T> T 无 LLVM 布局 → E6019
+
+fn main() {
+  let n u64 = size_of:<NoSuch>()  ; check: E6019
+  ret;
+}

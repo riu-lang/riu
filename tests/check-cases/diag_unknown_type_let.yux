@@ -1,0 +1,6 @@
+; 未知类型名无 LLVM 布局 → E3096
+
+fn main() {
+  #Mut let x NoSuch  ; check: E3096
+  ret;
+}

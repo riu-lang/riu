@@ -248,6 +248,12 @@ void SemaPass::visitStmt(StatementNode* stmt) {
         if (d->varType()) {
             try {
                 auto vt = d->varType()->getType();
+                if (!typeStillTemplate(vt) && !sema::typeHasLlvmLayout(vt, _file, _sdkFile, _currentTypeParams)) {
+                    auto* sd = _names.lookupStruct(vt);
+                    if (!(sd && sd->isGeneric())) {
+                        throw YuxError(d->getLineNumber(), d->getColumn(), ErrorCode::E3096, vt.getFullName());
+                    }
+                }
                 noteConcreteGenericType(vt);
                 if (!vt.name.empty() && !isBuiltinType(vt.name) && !vt.isRef() && !vt.isFn() && !vt.isTuple()) {
                     if (auto* sd = _names.lookupStruct(vt.name, true)) {
@@ -633,6 +639,14 @@ void SemaPass::visitStmt(StatementNode* stmt) {
         if (da->varType()) {
             try {
                 daExpected = applyInstSubst(da->varType()->getType());
+                if (!typeStillTemplate(daExpected) &&
+                    !sema::typeHasLlvmLayout(daExpected, _file, _sdkFile, _currentTypeParams)) {
+                    auto* sd = _names.lookupStruct(daExpected);
+                    if (!(sd && sd->isGeneric())) {
+                        throw YuxError(da->getLineNumber(), da->getColumn(), ErrorCode::E3096,
+                                       daExpected.getFullName());
+                    }
+                }
                 daExpPtr = &daExpected;
                 noteConcreteGenericType(daExpected);
             } catch (const YuxError&) {
