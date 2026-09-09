@@ -319,9 +319,9 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
             }
             return _builder.CreateLoad(getLLVMType(t), capAddr, "cap.load");
         }
-        // 兜底：lambda body 命中 sym 但禁用捕获（_currentLambdaForCapture 未启） → 旧 E2028
+        // 兜底：lambda body 命中 sym 但捕获通路未启。E2028 为历史码；sema 报 E2029。
         if (_currentLambdaBodyScope && sym && sym->kind == SymbolKind::Variable) {
-            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E2028, varName);
+            throwSemaGap(node->getLineNumber(), node->getColumn());
         }
         throwSemaGap(node->getLineNumber(), node->getColumn());
     } else if (auto cpLiteral = dynamic_cast<LiteralCodePointNode*>(literal)) {
@@ -352,7 +352,7 @@ llvm::Value* Compiler::compileLiteralExpr(p<ExprLiteralNode> node) {
     } else if (auto tplLiteral = dynamic_cast<StringTemplateNode*>(literal)) {
         return compileStringTemplate(tplLiteral);
     }
-    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3080);
+    throwSemaGap(node->getLineNumber(), node->getColumn());
 }
 
 // B-4: 由码点向量发射 sentinel RC Block 全局常量。

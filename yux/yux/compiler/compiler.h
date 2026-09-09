@@ -184,8 +184,8 @@ class Compiler {
     // 非空时 compileLiteralExpr 的 LiteralObj 路径启用 FV 校验 / 捕获识别。
     p<ScopeNode> _currentLambdaBodyScope = nullptr;
     // Phase 4a：当前正在编译的 lambda 节点（emitLambdaFunction 期间有效）
-    // 非空时 compileLiteralExpr 命中外层 local 标识符 → addCapture + GEP 读 captures
-    // 而非抛 E2028。Phase 4a 仅识别标量；非标量类型仍报 E2028（堆句柄推到 4a-2）。
+    // 非空时 compileLiteralExpr 命中外层 local 标识符 → addCapture + GEP 读 captures。
+    // 捕获通路未启走 throwSemaGap；不支持的捕获类型由 SemaPass 报 E2029。
     LambdaExprNode* _currentLambdaForCapture = nullptr;
     // captures 指针：emit lambda body 时缓存"当前 lambda 函数的第 0 形参（captures Ptr）"，
     // compileLiteralExpr 命中捕获时用作 GEP base

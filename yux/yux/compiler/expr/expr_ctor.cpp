@@ -242,7 +242,7 @@ llvm::Value* Compiler::compileEnumCtorExpr(p<ExprPathCallNode> node) {
                             return constVal;
                         }
                         // 求值失败是编译器 bug（#Cval 字段的 init 必须是 const-evaluable）
-                        throw YuxError(line, col, ErrorCode::E3140, lhsRaw + "::" + fieldName);
+                        throwSemaGap(line, col);
                     }
                     string ownerMod = lhsOwnerMod;
                     FileNode* structOwner = nullptr;

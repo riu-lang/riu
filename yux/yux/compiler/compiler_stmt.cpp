@@ -2047,7 +2047,7 @@ void Compiler::compileStatement(p<StatementNode> node) {
         compileStaticFieldSetStatement(staticFieldSetNode);
     } else {
         popAndReleaseTempFrame();
-        throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3092);
+        throwSemaGap(node->getLineNumber(), node->getColumn());
     }
 
     popAndReleaseTempFrame();

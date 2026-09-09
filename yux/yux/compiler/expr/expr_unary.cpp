@@ -287,6 +287,6 @@ llvm::Value* Compiler::compileUnaryExpr(p<ExprUnaryNode> node) {
         return _builder.CreateNot(right, "lnot");
     }
 
-    // Phase 3.4.h: switch default unreachable, 上面三个 case 已覆盖全部 Op; 兜底。
-    throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3072);
+    // switch default unreachable：上面三个 case 已覆盖全部 Op。
+    throwSemaGap(node->getLineNumber(), node->getColumn());
 }

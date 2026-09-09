@@ -323,7 +323,8 @@ void Compiler::compileGlobalConsts() {
 
         auto value = ev.eval(globalConst->value());
         if (!value) {
-            throw YuxError(globalConst->getLineNumber(), globalConst->getColumn(), ErrorCode::E3140, name);
+            // E3140 由 ASTBuilder::visitLetGlobal 先抛；此处防再求值失败。
+            throwSemaGap(globalConst->getLineNumber(), globalConst->getColumn());
         }
         // 后续 globals 可引用本 const
         ev.setNamedConst(name, *value);
@@ -344,15 +345,15 @@ void Compiler::compileGlobalConsts() {
             // 字段按 StructDeclNode 声明序排列, 元素类型从 LLVM struct type 取
             initValue = buildLLVMConstantFromValue(*value, llvmType);
             if (!initValue) {
-                throw YuxError(globalConst->getLineNumber(), globalConst->getColumn(), ErrorCode::E3080);
+                throwSemaGap(globalConst->getLineNumber(), globalConst->getColumn());
             }
             break;
         }
         case ConstantValue::Kind::Null:
         case ConstantValue::Kind::String:
-            // Phase 6: String 常量仅通过 ensureReflectTypeGlobal / buildLLVMConstantFromValue 间接使用;
-            // 全局 #Cval let 暂不支持 String 类型.
-            throw YuxError(globalConst->getLineNumber(), globalConst->getColumn(), ErrorCode::E3080);
+            // 全局 #Cval 的 String / null 字面量 ConstEvaluator 尚未求值（→ AST E3140）。
+            // 此处若仍走到说明求值器与 emit 不一致。
+            throwSemaGap(globalConst->getLineNumber(), globalConst->getColumn());
         }
 
         // #Inline #Cval：存入 _inlineConstantValues 表，同文件使用处由

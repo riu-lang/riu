@@ -8,7 +8,6 @@
 
 #include "ast/node/node.h"
 #include "compiler.h"
-#include "error_code.h"
 #include "types.h"
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/CallingConv.h>
@@ -113,8 +112,9 @@ llvm::Function* Compiler::getOrCreateExternFunction(const string& cName, const F
     auto* fnTy = llvm::FunctionType::get(llvmRet, paramTys, false);
     if (auto* existed = _module->getFunction(cName)) {
         if (existed->getFunctionType() != fnTy) {
+            // E2036 由 SemaPass::validateExternFns 先抛；此处防 IR 链入冲突签名。
             const int line = fnSymbol.declLine > 0 ? fnSymbol.declLine : 1;
-            throw YuxError(line, ErrorCode::E2036, cName);
+            throwSemaGap(static_cast<size_t>(line));
         }
         return existed;
     }
