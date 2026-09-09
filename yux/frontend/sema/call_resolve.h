@@ -163,8 +163,11 @@ void checkErrPropagateForPathCall(FnNode* currentFnNode, ExprPathCallNode* callN
 //
 // 识别两种调用形态:
 //   1. 包别名: `pkg.mod.fn(args)` —— ExprDotNode::parseChain 拿到 (aliasName, segs),
-//      segs.size() >= 2, aliasName 在 file 符号表登记为 Package
+//      segs.size() >= 2, aliasName 在 enclosing 文件符号表登记为 Package
 //   2. 模块别名: `mod.fn(args)` —— baseExpr 是 ID literal, aliasName 登记为 Module
+//
+// 别名查表优先用表达式 enclosingFile（泛型实例 emit 时 Compiler::_file 是调用点
+// TU，`use` 别名挂在定义文件上）。`file` 仅在 enclosing 为空时回退。
 //
 // 命中其中一种时返回 `matched = true`, 填充 fnName + fnSym, 调用方据此走
 // compileKnownFunctionCall 路径; 未命中时返回 `matched = false`, 调用方继续后续

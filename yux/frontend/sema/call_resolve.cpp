@@ -722,16 +722,20 @@ ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux, ExprCallNode* c
                                        const vector<TypeInfo>& argTypes) {
     ModuleFnCallResult result;
     auto member = dotNode->member();
+    // 泛型实例体仍挂在定义文件 AST 上；`file` 在 emitFnInstances 里是调用点 TU。
+    FileNode* lookupFile = dotNode->enclosingFile();
+    if (!lookupFile) lookupFile = file;
+    if (!lookupFile) return result;
 
     // 包别名调用: package.module.fn(args)
     {
         string aliasName;
         vector<string> segs;
         if (ExprDotNode::parseChain(dotNode, aliasName, segs) && segs.size() >= 2) {
-            auto aliasSym = file->lookupSymbol(aliasName);
+            auto aliasSym = lookupFile->lookupSymbol(aliasName);
             if (aliasSym && (aliasSym->kind == SymbolKind::Package || aliasSym->kind == SymbolKind::Module) &&
-                file->isAmbiguousAlias(aliasName)) {
-                file->throwAmbiguousAlias(aliasName, callNode->getLineNumber());
+                lookupFile->isAmbiguousAlias(aliasName)) {
+                lookupFile->throwAmbiguousAlias(aliasName, callNode->getLineNumber());
             }
             if (aliasSym && aliasSym->kind == SymbolKind::Package) {
                 string childKey;
@@ -739,8 +743,9 @@ ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux, ExprCallNode* c
                     if (i) childKey += '.';
                     childKey += segs[i];
                 }
-                if (yux) (void)yux->resolvePkgPath(file, childKey, callNode->getLineNumber(), aliasSym->moduleName);
-                auto* target = file->packageChild(aliasName, childKey);
+                if (yux)
+                    (void)yux->resolvePkgPath(lookupFile, childKey, callNode->getLineNumber(), aliasSym->moduleName);
+                auto* target = lookupFile->packageChild(aliasName, childKey);
                 if (!target) {
                     throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E6001, childKey,
                                    aliasSym->moduleName);
@@ -775,7 +780,7 @@ ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux, ExprCallNode* c
     if (auto baseLit = dynamic_cast<ExprLiteralNode*>(dotNode->baseExpr()); yux && baseLit) {
         if (auto objLit = dynamic_cast<LiteralObjNode*>(baseLit->literal())) {
             auto aliasName = objLit->getValue().getText();
-            auto aliasSym = file->lookupSymbol(aliasName);
+            auto aliasSym = lookupFile->lookupSymbol(aliasName);
             if (aliasSym && aliasSym->kind == SymbolKind::Module) {
                 auto targetMod = yux->module(aliasSym->moduleName);
                 if (!targetMod) {
