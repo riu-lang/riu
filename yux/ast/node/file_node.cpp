@@ -397,6 +397,12 @@ FileNode* parentFileNode(const FileNode* f) {
     }
     return nullptr;
 }
+
+// `use foo.*` 会把源模块符号拷进 foo 的表；通配查找只暴露 foo 自己的声明，
+// 不把 foo 的 use 再导出。与 injectFileWildcard 的 moduleName 过滤对齐。
+bool isOwnModuleName(const FileNode* file, const string& moduleName) {
+    return file && moduleName == file->moduleName();
+}
 } // namespace
 
 // 同 getFunction，同时返回所属 FileNode；搜索范围：本地 + wildcardImports + parent scope 链
@@ -687,7 +693,7 @@ SymbolInfo* FileNode::lookupSymbol(const string& name) {
     }
     for (auto* imp : _wildcardImports) {
         auto jt = imp->_symbols.find(name);
-        if (jt != imp->_symbols.end()) {
+        if (jt != imp->_symbols.end() && isOwnModuleName(imp, jt->second.moduleName)) {
             return &jt->second;
         }
     }
@@ -704,8 +710,10 @@ FnSymbolInfo* FileNode::lookupFnSymbol(const string& name) {
     }
     for (auto* imp : _wildcardImports) {
         auto jt = imp->_fnSymbols.find(name);
-        if (jt != imp->_fnSymbols.end() && !jt->second.empty()) {
-            return &jt->second[0];
+        if (jt != imp->_fnSymbols.end()) {
+            for (auto& fn : jt->second) {
+                if (isOwnModuleName(imp, fn.moduleName)) return &fn;
+            }
         }
     }
     if (_parentScope) {
@@ -725,7 +733,7 @@ FnSymbolInfo* FileNode::lookupFnSymbolWithParams(const string& name, const vecto
         auto jt = imp->_fnSymbols.find(name);
         if (jt != imp->_fnSymbols.end()) {
             for (auto& fnInfo : jt->second) {
-                if (matchFnParams(fnInfo, paramTypes)) return &fnInfo;
+                if (isOwnModuleName(imp, fnInfo.moduleName) && matchFnParams(fnInfo, paramTypes)) return &fnInfo;
             }
         }
     }
@@ -786,12 +794,13 @@ void FileNode::collectFnOverloads(const string& name, vector<FnSymbolInfo*>& out
         }
     }
 
-    // 2) wildcardImports 的直接 _fnSymbols（仅浅层，避免递归回到自己）
+    // 2) wildcardImports 的直接 _fnSymbols（仅浅层，避免递归回到自己）。
+    // 只收该文件自己的声明，不把其对别人的 `use` 注入再导出。
     for (auto* imp : _wildcardImports) {
         auto jt = imp->_fnSymbols.find(name);
         if (jt != imp->_fnSymbols.end()) {
             for (auto& fn : jt->second)
-                if (!hasSemanticDup(&fn)) addIfNew(&fn);
+                if (isOwnModuleName(imp, fn.moduleName) && !hasSemanticDup(&fn)) addIfNew(&fn);
         }
     }
 
