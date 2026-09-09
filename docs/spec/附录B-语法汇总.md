@@ -215,7 +215,7 @@ expr ::=
   | 'try' statementBlock catchArm+                               # exprTryCatch  ; DRAFT-错误.md §5
   | ID '::' ID ( '(' codeLineEnd*
                      (expr (',' LineEnd* expr)* ','? codeLineEnd*)?
-                 ')' )?                                          # exprEnumCtor
+                 ')' )? '!'?                                     # exprEnumCtor  ; `!` 仅在静态方法分流时合法
   | '[' literal '.' '.' '.' type? ']'                            # exprArrayInit
   | expr LineEnd* '?'? '.' ID ('@' ID)?                          # exprDot  ; `@ID` = spec 默认体消歧后缀（§12.10.8）
   | expr LineEnd* DOT_NUM                                        # exprTupleMember
@@ -276,13 +276,13 @@ enumPattern    ::= ID '::' ID ( '(' ID (',' ID)* ')' )?          # patternEnum
 
 `exprMatch` / `exprEnumCtor` / `matchArm` / `enumPattern` 见 §3.10 与草案 [draft/DRAFT-枚举.md](draft/DRAFT-枚举.md) §4 / §5。
 
-`exprTryCatch` / `catchArm`、以及 `exprCall` / `exprCallTrailingOnly` 末尾的 `'!'?` 槽（错误传播）见草案 [draft/DRAFT-错误.md](draft/DRAFT-错误.md) §4 / §5；语义层约束（穷尽性 / 类型一致性 / 跨类型 E7004 / 冗余 E7016）由编译器分析。
+`exprTryCatch` / `catchArm`、以及 `exprCall` / `exprCallTrailingOnly` / 静态方法分流的 `exprEnumCtor` 末尾 `'!'?` 槽（错误传播）见草案 [draft/DRAFT-错误.md](draft/DRAFT-错误.md) §4 / §5；语义层约束（穷尽性 / 类型一致性 / 跨类型 E7004 / 冗余 E7016）由编译器分析。
 
-- 后缀 `!` **仅**附着在 `exprCall` / `exprCallTrailingOnly` 末尾（产生式内嵌槽 `errPropagate=SymbolExcl?`），不构成独立产生式；非调用位置出现的 `!` 由 `exprUnary` 解析为布尔取反，不进入错误传播路径。
+- 后缀 `!` **仅**附着在 `exprCall` / `exprCallTrailingOnly` / `exprEnumCtor` 末尾（产生式内嵌槽 `errPropagate=SymbolExcl?`），不构成独立产生式；`exprEnumCtor` 分流为 enum 构造或静态字段时使用该槽报 E7001。其它非调用位置出现的 `!` 由 `exprUnary` 解析为布尔取反，不进入错误传播路径。
 - `f(a){ (x) => body }!` 与 `f { () => body }!` 合法（trailing lambda 与 `!` 槽并存于产生式末尾），详见 DRAFT-错误.md §4.4。
 - `!` 与 `=` / `==` 之间需空白或换行（避免被吞为 `SymbolExclEq`）。
 
-- `exprEnumCtor`：`E::V` 与 `E::V()` 等价；类型别名 `C = E` 后 `C::V` 在解析期归一为 `E::V`。
+- `exprEnumCtor`：`E::V` 与 `E::V()` 等价；类型别名 `C = E` 后 `C::V` 在解析期归一为 `E::V`；同一产生式分流为 `Type::static_fn(...)` 时允许尾随 `!`。
 - `exprMatch`：arm 体为 `=> expr` 或 `=> { stmts }`（块可单行，值规则同 §5.4.4）；arm 顺序对穷尽语义无影响，仅 `else` **应当**为最后一条；穷尽性 / binding arity / 重复 variant 由语义层校验。
 - `enumPattern` 的 binding 位仅接受 ID（不可变值绑定）；不支持 `_` 通配、字面量、嵌套、多模式合并 `|`、守卫 `if`、`@` 绑定（§3.10 / 草案 §5.3）。
 

@@ -49,8 +49,21 @@ struct Buf {
     }
   }
 
+  #Static
+  fn fails() Buf ! BufErr {
+    ret BufErr::Failed
+  }
+
   fn len() usize = $.data.len()
   fn get(i usize) u32 = copy_of($.data[i])
+}
+
+fn propagated_buf() Buf ! BufErr {
+  ret Buf::fallible()!
+}
+
+fn propagated_failure() Buf ! BufErr {
+  ret Buf::fails()!
 }
 
 ; 验证：从现有数组创建缓冲区并保持数据一致性
@@ -86,7 +99,7 @@ fn test_buf_empty_via_empty_literal() {
 #Test
 fn test_buf_fallible_factory_via_try() {
   let b Buf = try {
-    Buf::fallible()
+    propagated_buf()
   } catch e BufErr {
     fail("fallible factory should succeed")
     Buf::empty()
@@ -94,4 +107,15 @@ fn test_buf_fallible_factory_via_try() {
   assert_eq(b.len(), 2)
   assert_eq(b.get(0), 7u32)
   assert_eq(b.get(1), 8u32)
+}
+
+; 验证：静态 fallible 调用的错误值经 `!` 原样传播。
+#Test
+fn test_buf_fallible_factory_error_propagates() {
+  let b Buf = try {
+    propagated_failure()
+  } catch e BufErr {
+    Buf::empty()
+  }
+  assert_eq(b.len(), 0)
 }

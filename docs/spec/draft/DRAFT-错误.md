@@ -135,9 +135,9 @@ fn parse_int(s String) i32 {
 
 ### 4.4 词法 / 优先级 / trailing lambda 协同
 
-§4.4.1 **`!` 是 `exprCall` 的内嵌后缀槽**（产生式末尾 `errPropagate=SymbolExcl?`），不是独立 `expr '!'` 产生式。语法层意味着：
+§4.4.1 **`!` 是调用产生式的内嵌后缀槽**（产生式末尾 `errPropagate=SymbolExcl?`），不是独立 `expr '!'` 产生式。该槽位于 `exprCall`、`exprCallTrailingOnly`，以及分流到静态方法调用的 `exprEnumCtor`。语法层意味着：
 
-- `!` **只能**附在调用末尾；非调用位置写的 `!` 由 `exprUnary` 解析为布尔取反（`!cond`），不进入错误传播路径。`(a + b)!` / `arr[i]!` / `obj.field!` 等形态语法层就拒绝（不构成 `exprCall`，前置 `!` 也会被解析为 `exprUnary`）。
+- `!` **只能**附在调用末尾；静态方法可写 `Type::name(args)!`。`exprEnumCtor` 分流为 enum 构造或静态字段时使用后缀报 E7001。其它非调用位置写的 `!` 由 `exprUnary` 解析为布尔取反（`!cond`），不进入错误传播路径。`(a + b)!` / `arr[i]!` / `obj.field!` 等形态语法层就拒绝。
 - 优先级与 `exprCall` / `[]` 同档（最高一档）；高于一切二元 / 三元 / `??` coalesce。例：`call() ?? -1` 是纯调用 + coalesce；`call()! ?? -1` 是错误透传后 nullable 与 -1 折叠。
 - 与 `=` / `==` 之间**强制空白或换行**，否则被贪婪匹配为 `SymbolExclEq`。`x!=0` 永远是"不等于"；写"传播后比较"用 `x! == 0` 或先绑变量。
 

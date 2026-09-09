@@ -802,6 +802,9 @@ std::any ASTBuilder::visitExprEnumCtor(yux::yuxParser::ExprEnumCtorContext* ctx)
     if (ctx->rhsGenerics != nullptr) {
         node->setRhsTypeArgs(parseTurbofish(ctx->rhsGenerics));
     }
+    if (ctx->errPropagate != nullptr) {
+        node->setErrPropagate(true);
+    }
 
     for (auto* aCtx : ctx->args) {
         node->addArg(any_cast_p<ExprNode>(visit(aCtx)));

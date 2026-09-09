@@ -1774,6 +1774,9 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                 auto* structDecl = _names.lookupStruct(lhsTy, /*includeBuiltin=*/true);
                 if (structDecl) {
                     if (auto* sf = structDecl->staticField(n->variantName().getText())) {
+                        if (n->errPropagate()) {
+                            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E7001);
+                        }
                         // 设置正确类型（字段类型而非 struct 类型）
                         n->setResolvedType(sf->type->getType());
                         return;
@@ -1783,6 +1786,9 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                     auto fieldType = typeParamBoundStaticFieldType(_currentFn, _file, _sdkFile, lhsTy.name,
                                                                    n->variantName().getText());
                     if (fieldType) {
+                        if (n->errPropagate()) {
+                            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E7001);
+                        }
                         n->setResolvedType(*fieldType);
                         return;
                     }
@@ -1797,6 +1803,9 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                 if (n->args().empty()) {
                     auto* structDecl = _names.lookupStruct(lhsTy, /*includeBuiltin=*/true);
                     if (structDecl && structDecl->staticField(rhsName)) {
+                        if (n->errPropagate()) {
+                            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E7001);
+                        }
                         return; // 静态字段读，放行
                     }
                 }
@@ -1964,19 +1973,17 @@ void SemaPass::visitExpr(p<ExprNode> expr, const TypeInfo* expected, bool callCa
                 if (!staticSubst.empty()) {
                     checkGenericImplInst(structImpl, staticSubst);
                 }
-                // 路径调用无 `!` 后缀（g4 exprEnumCtor）；T ! E 的 #Static 只能在 try 内裸调。
-                {
-                    string calleeErr = methodHeader->resolvedFallibleErr();
-                    if (!calleeErr.empty()) {
-                        if (!_tryStack.empty()) {
-                            _tryStack.back().push_back(calleeErr);
-                        } else {
-                            throw YuxError(line, col, ErrorCode::E7006, lhsName + "::" + rhsName);
-                        }
-                    }
-                }
+                vector<string>* seen = _tryStack.empty() ? nullptr : &_tryStack.back();
+                sema::checkErrPropagateForPathCall(_currentFn, n, lhsName + "::" + rhsName,
+                                                   methodHeader->resolvedFallibleErr(), seen, _sourcePath,
+                                                   _currentLambda);
                 return;
             }
+        }
+
+        if (n->errPropagate()) {
+            // 路径产生式还承载 enum 构造；它不是可失败调用，不能传播。
+            throw YuxError(n->resolveLineNumber(), n->resolveColumn(), ErrorCode::E7001);
         }
 
         // Phase 3.4.a: SemaPass 接管 E2019/E2020/E2021/E2032.

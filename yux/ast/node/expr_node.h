@@ -532,6 +532,8 @@ class ExprPathCallNode : public ExprNode {
     // 单 Type 名时为空; 用于驱动 Compiler::ensureStructInstance + applySubst.
     vector<p<TypeNode>> _lhsTypeArgs;
     vector<p<TypeNode>> _rhsTypeArgs;
+    // 静态 fallible 调用可写 `Type::name(...)!`；enum 构造命中时由 sema 拒绝。
+    bool _errPropagate = false;
 
 public:
     ExprPathCallNode(const p<Node>& parent, Token enumName, Token variantName)
@@ -540,6 +542,7 @@ public:
     void addArg(p<ExprNode> a) { _args.push_back(a); }
     void setLhsTypeArgs(vector<p<TypeNode>> a) { _lhsTypeArgs = std::move(a); }
     void setRhsTypeArgs(vector<p<TypeNode>> a) { _rhsTypeArgs = std::move(a); }
+    void setErrPropagate(bool v) { _errPropagate = v; }
     void setLhsPath(TypePath p) {
         _lhsPath = std::move(p);
         if (!_lhsPath.empty()) _enumName = _lhsPath.last();
@@ -551,6 +554,7 @@ public:
     [[nodiscard]] const vector<p<ExprNode>>& args() const { return _args; }
     [[nodiscard]] const vector<p<TypeNode>>& lhsTypeArgs() const { return _lhsTypeArgs; }
     [[nodiscard]] const vector<p<TypeNode>>& rhsTypeArgs() const { return _rhsTypeArgs; }
+    [[nodiscard]] bool errPropagate() const { return _errPropagate; }
     // `Self::name`：沿 parent 链找到 enclosing StructImplNode 的源码名；
     // 体外仍返回 "Self"（SemaPass 报 E3123）。非 Self LHS 原样返回 token 文本。
     [[nodiscard]] string resolvedLhsName() const;

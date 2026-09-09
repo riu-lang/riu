@@ -545,6 +545,7 @@ Doc Printer::exprDoc(yuxParser::ExprContext* ctx) {
             }
             parts.push_back(text(")"));
         }
+        if (n->errPropagate != nullptr) parts.push_back(text("!"));
         return concat(std::move(parts));
     }
     // ----- lambda（表达式体走 Doc；语句体走 raw）-----

@@ -1,0 +1,9 @@
+; enum 构造不是 fallible 调用，不能使用传播后缀 → E7001
+
+enum E {
+  Value
+}
+
+fn main() {
+  E::Value()!  ; check: E7001
+}

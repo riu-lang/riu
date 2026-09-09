@@ -645,6 +645,34 @@ void checkErrPropagateForIdCall(FnNode* currentFnNode, p<ExprCallNode> callNode,
     }
 }
 
+void checkErrPropagateForPathCall(FnNode* currentFnNode, p<ExprPathCallNode> callNode, const string& fnName,
+                                  const string& calleeErr, vector<string>* tryBlockSeenErrs, const string& sourcePath,
+                                  LambdaExprNode* currentLambda) {
+    bool hasBang = callNode->errPropagate();
+    string callerErr = callerFallibleErr(currentFnNode, currentLambda);
+
+    if (tryBlockSeenErrs && !calleeErr.empty()) {
+        tryBlockSeenErrs->push_back(calleeErr);
+        if (hasBang) {
+            DiagnosticEngine::emit(sourcePath, YuxError(callNode->getLineNumber(), callNode->getColumn(),
+                                                        ErrorCode::E7016, fnName, calleeErr));
+        }
+        return;
+    }
+
+    if (hasBang) {
+        if (callerErr.empty()) {
+            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E7001);
+        }
+        if (!calleeErr.empty() && calleeErr != callerErr) {
+            throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E7004, calleeErr, callerErr,
+                           calleeErr, callerErr, calleeErr);
+        }
+    } else if (!calleeErr.empty()) {
+        throw YuxError(callNode->getLineNumber(), callNode->getColumn(), ErrorCode::E7006, fnName);
+    }
+}
+
 // ==================== fn-value callee 错误传播校验 (Phase F7) ====================
 // 镜像 checkErrPropagateForIdCall：callee 的 fallible 元数据来自静态 Fn TypeInfo（Function<..., T ! E> /
 // fallible lambda），而非 FnSymbolInfo。

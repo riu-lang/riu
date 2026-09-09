@@ -481,7 +481,8 @@ expr:
                 LineEnd*
             )?
         ParEnd
-      )?                      # exprEnumCtor
+      )?
+      errPropagate=SymbolExcl? # exprEnumCtor
     // [0 ...] [1u8 ... u8] 填充数组
     | GetStart
         value=literal
@@ -692,4 +693,3 @@ loopInit:
     typeWithRef?
     SymbolEq expr
     ;
-

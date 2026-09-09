@@ -20,6 +20,11 @@ fn foo(a i32, b i32) i32 {
   a + b
 }
 
+; ====== format_static_fallible: 静态调用传播后缀 ======
+fn propagate() i32 ! ParseErr {
+  Parser::parse(1)!
+}
+
 ; ====== format_enum: enum 构造：E::V / E::V() / E::V(args) ======
 enum Shape {
   Point

@@ -149,6 +149,12 @@ void checkErrPropagateForFnValueCall(FnNode* currentFnNode, p<ExprCallNode> call
                                      vector<string>* tryBlockSeenErrs, const string& sourcePath = "",
                                      LambdaExprNode* currentLambda = nullptr);
 
+// `Type::name(...)!` 静态方法路径调用的错误传播校验。
+// 语义与 ID-callee 相同；callee 错误类型直接来自已解析的静态方法签名。
+void checkErrPropagateForPathCall(FnNode* currentFnNode, p<ExprPathCallNode> callNode, const string& fnName,
+                                  const string& calleeErr, vector<string>* tryBlockSeenErrs,
+                                  const string& sourcePath = "", LambdaExprNode* currentLambda = nullptr);
+
 // 包/模块别名调用解析 (Phase 3.3.1.a).
 // 类型路径见 sema::resolveTypePath（name_resolver.h）：对称的已 use 前缀查找，不 loadModule.
 //
