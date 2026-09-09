@@ -218,7 +218,7 @@ int main(int argc, char* argv[]) { // NOLINT(bugprone-exception-escape)
                 std::array<char, 16> hexBuf{};
                 std::snprintf(hexBuf.data(), hexBuf.size(), "%08lX", sehCode);
                 errorMsg += hexBuf.data();
-                errorMsg += ")";
+                errorMsg += ')';
             }
         }
 

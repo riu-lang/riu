@@ -151,14 +151,14 @@ LiteralCodePointNode::LiteralCodePointNode(const Token& value) : LiteralNode(val
         }
     } else {
         u8 c = static_cast<u8>(content[0]);
-        if ((c & 0xE0) == 0xC0 && content.size() >= 2) {
-            _codePoint = ((c & 0x1F) << 6) | (static_cast<u8>(content[1]) & 0x3F);
-        } else if ((c & 0xF0) == 0xE0 && content.size() >= 3) {
-            _codePoint =
-                ((c & 0x0F) << 12) | ((static_cast<u8>(content[1]) & 0x3F) << 6) | (static_cast<u8>(content[2]) & 0x3F);
-        } else if ((c & 0xF8) == 0xF0 && content.size() >= 4) {
-            _codePoint = ((c & 0x07) << 18) | ((static_cast<u8>(content[1]) & 0x3F) << 12) |
-                         ((static_cast<u8>(content[2]) & 0x3F) << 6) | (static_cast<u8>(content[3]) & 0x3F);
+        if ((c & 0xE0u) == 0xC0u && content.size() >= 2) {
+            _codePoint = ((c & 0x1Fu) << 6u) | (static_cast<u8>(content[1]) & 0x3Fu);
+        } else if ((c & 0xF0u) == 0xE0u && content.size() >= 3) {
+            _codePoint = ((c & 0x0Fu) << 12u) | ((static_cast<u8>(content[1]) & 0x3Fu) << 6u) |
+                         (static_cast<u8>(content[2]) & 0x3Fu);
+        } else if ((c & 0xF8u) == 0xF0u && content.size() >= 4) {
+            _codePoint = ((c & 0x07u) << 18u) | ((static_cast<u8>(content[1]) & 0x3Fu) << 12u) |
+                         ((static_cast<u8>(content[2]) & 0x3Fu) << 6u) | (static_cast<u8>(content[3]) & 0x3Fu);
         } else {
             // 单字节 ASCII 或非法 utf-8 起始字节兜底
             _codePoint = c;
@@ -219,16 +219,16 @@ LiteralStringNode::LiteralStringNode(const Token& value, bool raw) : LiteralNode
                 i++;
             } else {
                 u8 c = static_cast<u8>(content[i]);
-                if ((c & 0xE0) == 0xC0 && i + 1 < content.size()) {
-                    cp = ((c & 0x1F) << 6) | (static_cast<u8>(content[i + 1]) & 0x3F);
+                if ((c & 0xE0u) == 0xC0u && i + 1 < content.size()) {
+                    cp = ((c & 0x1Fu) << 6u) | (static_cast<u8>(content[i + 1]) & 0x3Fu);
                     i += 2;
-                } else if ((c & 0xF0) == 0xE0 && i + 2 < content.size()) {
-                    cp = ((c & 0x0F) << 12) | ((static_cast<u8>(content[i + 1]) & 0x3F) << 6) |
-                         (static_cast<u8>(content[i + 2]) & 0x3F);
+                } else if ((c & 0xF0u) == 0xE0u && i + 2 < content.size()) {
+                    cp = ((c & 0x0Fu) << 12u) | ((static_cast<u8>(content[i + 1]) & 0x3Fu) << 6u) |
+                         (static_cast<u8>(content[i + 2]) & 0x3Fu);
                     i += 3;
-                } else if ((c & 0xF8) == 0xF0 && i + 3 < content.size()) {
-                    cp = ((c & 0x07) << 18) | ((static_cast<u8>(content[i + 1]) & 0x3F) << 12) |
-                         ((static_cast<u8>(content[i + 2]) & 0x3F) << 6) | (static_cast<u8>(content[i + 3]) & 0x3F);
+                } else if ((c & 0xF8u) == 0xF0u && i + 3 < content.size()) {
+                    cp = ((c & 0x07u) << 18u) | ((static_cast<u8>(content[i + 1]) & 0x3Fu) << 12u) |
+                         ((static_cast<u8>(content[i + 2]) & 0x3Fu) << 6u) | (static_cast<u8>(content[i + 3]) & 0x3Fu);
                     i += 4;
                 } else {
                     // 单字节 ASCII 或非法 utf-8 起始字节兜底

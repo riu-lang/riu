@@ -47,7 +47,7 @@ std::string urlDecode(const std::string& s) {
             int hi = hexVal(s[i + 1]);
             int lo = hexVal(s[i + 2]);
             if (hi >= 0 && lo >= 0) {
-                out.push_back(static_cast<char>((hi << 4) | lo));
+                out.push_back(static_cast<char>((static_cast<unsigned>(hi) << 4u) | static_cast<unsigned>(lo)));
                 i += 2;
                 continue;
             }

@@ -32,10 +32,10 @@ string Mangler::paramList(const vector<TypeInfo>& params, const TypeInfo& retTyp
     const auto sig = fnSignatureTypes(params, retType, fallibleErrType);
     string s = "(";
     for (size_t i = 0; i < sig.size(); ++i) {
-        if (i > 0) s += ",";
+        if (i > 0) s += ',';
         s += sig[i].getMangleName();
     }
-    s += ")";
+    s += ')';
     return s;
 }
 

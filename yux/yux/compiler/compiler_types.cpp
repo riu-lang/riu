@@ -228,10 +228,10 @@ string Compiler::ensureStructInstance(StructDeclNode* baseDecl, const vector<sp<
     }
     mangledName += baseName + "<";
     for (size_t i = 0; i < args.size(); ++i) {
-        if (i > 0) mangledName += ",";
+        if (i > 0) mangledName += ',';
         mangledName += args[i] ? withMangleOwners(*args[i], instOwner).getMangleName() : string("?");
     }
-    mangledName += ">";
+    mangledName += '>';
 
     // 检查是否已存在
     auto it = _structInstances.find(mangledName);
@@ -965,7 +965,7 @@ void Compiler::emitMainStartupFallible(const string& fallibleErrName) {
         if (variant->hasPayload()) {
             msg += "(...)";
         }
-        msg += "\n";
+        msg += '\n';
 
         // .rodata 全局字符串（不带 NUL；len 单独传）
         auto strConst = llvm::ConstantDataArray::getString(_context, msg, /*addNull*/ false);

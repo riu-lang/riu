@@ -206,7 +206,7 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
                 if (i > 1) sigs += ", ";
                 sigs += m->params[i].name;
             }
-            sigs += ")";
+            sigs += ')';
         }
         string argSigs;
         for (size_t i = 0; i < args.size(); ++i) {
@@ -214,7 +214,7 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
             try {
                 argSigs += args[i]->getType().name;
             } catch (...) {
-                argSigs += "?";
+                argSigs += '?';
             }
         }
         throw YuxError(line, ErrorCode::E6014, structName, argSigs, matches.size(), sigs);
@@ -247,7 +247,7 @@ void resolveCtorOverload(FileNode* file, const string& structName, const vector<
                     if (i > 1) sigs += ", ";
                     sigs += c->params[i].name;
                 }
-                sigs += ")";
+                sigs += ')';
             }
             throw YuxError(line, ErrorCode::E6027, structName, *arities.begin())
                 .withHint(std::format("实参 {} 个，候选重载有 {} 种参数个数；声明的重载:{}", args.size(),
@@ -367,7 +367,7 @@ void resolveMethodOverload(FileNode* file, FileNode* sdkFile, const string& base
                 if (i > 1) sigs += ", ";
                 sigs += m->params[i].name;
             }
-            sigs += ")";
+            sigs += ')';
         }
         string argSigs;
         for (size_t i = 0; i < args.size(); ++i) {
@@ -375,7 +375,7 @@ void resolveMethodOverload(FileNode* file, FileNode* sdkFile, const string& base
             try {
                 argSigs += args[i]->getType().name;
             } catch (...) {
-                argSigs += "?";
+                argSigs += '?';
             }
         }
         throw YuxError(line, ErrorCode::E6014, methodFullName, argSigs, matches.size(), sigs);
@@ -457,7 +457,7 @@ void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName, 
                 if (i) sigs += ", ";
                 sigs += m->params[i].name;
             }
-            sigs += ")";
+            sigs += ')';
         }
         string argSigs;
         for (size_t i = 0; i < args.size(); ++i) {
@@ -465,7 +465,7 @@ void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName, 
             try {
                 argSigs += args[i]->getType().name;
             } catch (...) {
-                argSigs += "?";
+                argSigs += '?';
             }
         }
         throw YuxError(line, ErrorCode::E6014, fnName, argSigs, matches.size(), sigs);
@@ -500,7 +500,7 @@ void resolveFnOverload(FileNode* file, FileNode* sdkFile, const string& fnName, 
                     if (i) sigs += ", ";
                     sigs += c->params[i].name;
                 }
-                sigs += ")";
+                sigs += ')';
             }
             throw YuxError(line, ErrorCode::E6027, fnName, *arities.begin())
                 .withHint(std::format("实参 {} 个，候选重载有 {} 种参数个数；声明的重载:{}", args.size(),
@@ -733,7 +733,7 @@ ModuleFnCallResult resolveModuleFnCall(FileNode* file, Yux* yux, ExprCallNode* c
             if (aliasSym && aliasSym->kind == SymbolKind::Package) {
                 string childKey;
                 for (size_t i = 0; i + 1 < segs.size(); ++i) {
-                    if (i) childKey += ".";
+                    if (i) childKey += '.';
                     childKey += segs[i];
                 }
                 if (yux) (void)yux->resolvePkgPath(file, childKey, callNode->getLineNumber(), aliasSym->moduleName);
@@ -1437,7 +1437,7 @@ void validateBuiltinIntrinsicTypeShape(const string& fnName, const vector<TypeIn
         } catch (...) { // NOLINT(bugprone-empty-catch)
         }
         if (isFlexibleIntExpr(argNodes[0]) && isIntTypeName(t.name)) a0 = t;
-        if (isFlexibleIntExpr(argNodes[1]) && isIntTypeName(t.name)) a1 = t;
+        if (isFlexibleIntExpr(argNodes[1]) && isIntTypeName(t.name)) a1 = std::move(t);
         const char* g0 = llvmGroup(a0);
         const char* g1 = llvmGroup(a1);
         if (!g0 || !g1) return;
@@ -1488,7 +1488,7 @@ string fmtTypeFriendly(const TypeInfo& t) {
             if (j) r += ", ";
             r += t.genericArgs[j] ? fmtTypeFriendly(*t.genericArgs[j]) : string("?");
         }
-        r += ">";
+        r += '>';
         return r;
     }
     if (t.kind == TypeKind::Array && t.elementType) {
@@ -1945,7 +1945,7 @@ void validateArrayWithCapacity(ExprPathCallNode* node) {
             try {
                 got += node->args()[i]->getType().getFullName();
             } catch (...) {
-                got += "?";
+                got += '?';
             }
         }
         throw YuxError(line, col, ErrorCode::E3131, "Array", "with_capacity", expectArity, expectArg0,

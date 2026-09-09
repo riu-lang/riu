@@ -46,14 +46,14 @@ int intBitWidth(const TypeInfo& t) {
 
 u64 intMask(int width) {
     if (width >= 64) return ~static_cast<u64>(0);
-    return (static_cast<u64>(1) << width) - 1;
+    return (static_cast<u64>(1) << static_cast<unsigned>(width)) - 1;
 }
 
 // 按 type 把 bits 解释为有符号 i64（符号扩展）。
 i64 signExtend(u64 bits, const TypeInfo& t) {
     int w = intBitWidth(t);
     if (w >= 64) return static_cast<i64>(bits);
-    u64 signBit = static_cast<u64>(1) << (w - 1);
+    u64 signBit = static_cast<u64>(1) << static_cast<unsigned>(w - 1);
     if (bits & signBit) {
         // 设置高位 1
         return static_cast<i64>(bits | ~intMask(w));
@@ -288,7 +288,7 @@ std::optional<ConstantValue> ConstEvaluator::evalBinOp(ExprBinOpNode* node) {
     // 移位允许 RHS 为任意整型, LHS 决定结果类型
     if (node->op() == ExprBinOpNode::Op::Shl || node->op() == ExprBinOpNode::Op::Shr) {
         if (!l->isInt() || !r->isInt()) return std::nullopt;
-        u64 shift = r->intBits & 0x3F; // 截 6 bit
+        u64 shift = r->intBits & 0x3Fu; // 截 6 bit
         u64 res = 0;
         if (node->op() == ExprBinOpNode::Op::Shl) {
             res = l->intBits << shift;
@@ -296,7 +296,8 @@ std::optional<ConstantValue> ConstEvaluator::evalBinOp(ExprBinOpNode* node) {
             // 右移：unsigned → 逻辑右移; signed → 算术右移
             if (isSignedIntType(l->type)) {
                 i64 v = signExtend(l->intBits, l->type);
-                res = static_cast<u64>(v >> shift);
+                res =
+                    static_cast<u64>(static_cast<i64>(v) >> static_cast<int>(shift)); // NOLINT(bugprone-signed-bitwise)
             } else {
                 res = l->intBits >> shift;
             }

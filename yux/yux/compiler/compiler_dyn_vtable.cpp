@@ -281,9 +281,9 @@ llvm::Function* Compiler::getOrEmitDynPrimitiveThunk(const TypeInfo& concreteTyp
     const std::string methodName = sig->name().getText();
     std::string thunkName = "__yux_dyn_thunk.";
     thunkName += sanitizeForSymbol(concreteType.getMangleName());
-    thunkName += ".";
+    thunkName += '.';
     thunkName += sanitizeForSymbol(specQualified);
-    thunkName += ".";
+    thunkName += '.';
     thunkName += sanitizeForSymbol(methodName);
 
     if (auto* existing = _module->getFunction(thunkName)) {

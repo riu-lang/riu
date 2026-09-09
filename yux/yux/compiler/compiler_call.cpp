@@ -418,10 +418,10 @@ llvm::Value* Compiler::compileCallExpr(ExprCallNode* node) {
                         }
                         string effName = fnName + "<";
                         for (size_t i = 0; i < instArgs.size(); ++i) {
-                            if (i > 0) effName += ",";
+                            if (i > 0) effName += ',';
                             effName += instArgs[i]->getMangleName();
                         }
-                        effName += ">";
+                        effName += '>';
 
                         map<string, TypeInfo> subst;
                         for (size_t i = 0; i < structDecl->typeParams().size(); ++i) {

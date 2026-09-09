@@ -393,11 +393,11 @@ void SpecImplChecker::validateImpl(FileNode* implFile, StructImplNode* impl) {
             if (!spec->hasDefaultBody(sigIdx)) continue;
             auto& dsig = dsigs[sigIdx];
             std::string origName = dsig->name().getText();
-            origName += "@";
+            origName += '@';
             origName += dref.name;
             std::string emitName = origName;
             std::string fullName2 = typeBare;
-            fullName2 += ".";
+            fullName2 += '.';
             fullName2 += emitName;
 
             std::vector<TypeInfo> paramTypes2;
@@ -504,12 +504,12 @@ bool SpecImplChecker::boundSatisfied(const TypeInfo& typeArg, SpecDeclNode* draf
     // 拼 specKey: 与 validateImpl 写入 _seen 时一致.
     std::string specKey = specQualified;
     if (!specTypeArgs.empty()) {
-        specKey += "<";
+        specKey += '<';
         for (size_t i = 0; i < specTypeArgs.size(); ++i) {
-            if (i) specKey += ",";
+            if (i) specKey += ',';
             specKey += specTypeArgs[i].getFullName();
         }
-        specKey += ">";
+        specKey += '>';
     }
 
     if (_seen.find({typeQualified, specKey}) != _seen.end()) {
@@ -818,9 +818,9 @@ std::string SpecImplChecker::specTypeArgsSuffix(const SpecRef& ref) {
     if (ref.typeArgs.empty()) return {};
     std::string s = "<";
     for (size_t i = 0; i < ref.typeArgs.size(); ++i) {
-        if (i) s += ",";
+        if (i) s += ',';
         s += ref.typeArgs[i].getFullName();
     }
-    s += ">";
+    s += '>';
     return s;
 }

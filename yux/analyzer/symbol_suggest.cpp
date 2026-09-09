@@ -99,7 +99,7 @@ string SymbolSuggest::buildHint(ScopeNode* scope, const string& target,
         if (i) s += ", ";
         s += "`" + cands[i] + "`";
     }
-    s += "?";
+    s += '?';
     return s;
 }
 

@@ -37,7 +37,7 @@ enum class TT : u8 {
     EnumMember = 14,
 };
 
-constexpr int MOD_DECLARATION = 1 << 0;
+constexpr unsigned MOD_DECLARATION = 1u << 0u;
 
 // 返回值 < 0 表示该 token 不参与高亮（空白、标点等）。
 int classify(size_t type) {

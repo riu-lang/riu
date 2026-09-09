@@ -558,7 +558,7 @@ TypeInfo ExprCallNode::getType() const {
                     if (sym && sym->kind == SymbolKind::Package) {
                         string childKey;
                         for (size_t i = 0; i + 1 < segs.size(); ++i) {
-                            if (i) childKey += ".";
+                            if (i) childKey += '.';
                             childKey += segs[i];
                         }
                         if (auto* target = file->packageChild(aliasName, childKey)) {
@@ -1196,7 +1196,7 @@ TypeInfo ExprDotNode::getType() const {
                     if (file && segs.size() >= 2) {
                         string childKey;
                         for (size_t i = 0; i + 1 < segs.size(); ++i) {
-                            if (i) childKey += ".";
+                            if (i) childKey += '.';
                             childKey += segs[i];
                         }
                         if (file->packageChild(aliasName, childKey)) {

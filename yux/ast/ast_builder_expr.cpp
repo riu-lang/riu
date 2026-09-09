@@ -432,17 +432,17 @@ void appendUtf8(string& out, u32 cp) {
     if (cp < 0x80) {
         out += static_cast<char>(cp);
     } else if (cp < 0x800) {
-        out += static_cast<char>(0xC0 | (cp >> 6));
-        out += static_cast<char>(0x80 | (cp & 0x3F));
+        out += static_cast<char>(0xC0u | (cp >> 6u));
+        out += static_cast<char>(0x80u | (cp & 0x3Fu));
     } else if (cp < 0x10000) {
-        out += static_cast<char>(0xE0 | (cp >> 12));
-        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-        out += static_cast<char>(0x80 | (cp & 0x3F));
+        out += static_cast<char>(0xE0u | (cp >> 12u));
+        out += static_cast<char>(0x80u | ((cp >> 6u) & 0x3Fu));
+        out += static_cast<char>(0x80u | (cp & 0x3Fu));
     } else {
-        out += static_cast<char>(0xF0 | (cp >> 18));
-        out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
-        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-        out += static_cast<char>(0x80 | (cp & 0x3F));
+        out += static_cast<char>(0xF0u | (cp >> 18u));
+        out += static_cast<char>(0x80u | ((cp >> 12u) & 0x3Fu));
+        out += static_cast<char>(0x80u | ((cp >> 6u) & 0x3Fu));
+        out += static_cast<char>(0x80u | (cp & 0x3Fu));
     }
 }
 
@@ -454,7 +454,7 @@ u32 parseHex(const string& s, size_t pos, size_t n) {
     u32 v = 0;
     for (size_t k = 0; k < n; ++k) {
         char c = s[pos + k];
-        v <<= 4;
+        v <<= 4u;
         if (c >= '0' && c <= '9')
             v |= static_cast<u32>(c - '0');
         else if (c >= 'a' && c <= 'f')
@@ -469,11 +469,11 @@ int utf8CodepointsBefore(const string& s, size_t byteEnd) {
     int n = 0;
     for (size_t j = 0; j < byteEnd && j < s.size();) {
         auto c = static_cast<unsigned char>(s[j]);
-        if ((c & 0xE0) == 0xC0)
+        if ((c & 0xE0u) == 0xC0u)
             j += 2;
-        else if ((c & 0xF0) == 0xE0)
+        else if ((c & 0xF0u) == 0xE0u)
             j += 3;
-        else if ((c & 0xF8) == 0xF0)
+        else if ((c & 0xF8u) == 0xF0u)
             j += 4;
         else
             j += 1; // ASCII 或非法起始字节

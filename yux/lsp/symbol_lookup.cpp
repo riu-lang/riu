@@ -84,7 +84,7 @@ std::string typeInfoDisplay(const TypeInfo& info) {
             s += a ? typeInfoDisplay(*a) : "?";
             first = false;
         }
-        s += ">";
+        s += '>';
         return s;
     }
     if (info.kind == TypeKind::Array && info.elementType) {
