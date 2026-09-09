@@ -540,6 +540,12 @@ void Compiler::compileStructImpls() {
         for (auto method : methods) {
             string methodName = method->header()->name().getText();
 
+            // 泛型方法模板在调用点拿到类型实参后单态化，不能对裸 TypeParam 生成 IR。
+            if (method->header()->isGeneric()) {
+                DEBUG_LOG_VAL("        Skipping generic method template", structName << "." << methodName);
+                continue;
+            }
+
             // Builtin 方法由编译器特殊处理，不生成 IR
             if (method->header()->hasAnno("Builtin")) {
                 DEBUG_LOG_VAL("        Skipping #Builtin method (compiler handles)", structName << "." << methodName);
@@ -840,6 +846,13 @@ void Compiler::emitInstanceMethods() {
 
                 // 编译所有方法
                 for (auto method : inst.baseImpl->methods()) {
+                    // 方法自身的类型参数不属于 struct 实例替换帧，仍须在调用点单独单态化。
+                    if (method->header()->isGeneric()) {
+                        DEBUG_LOG_VAL("        Skipping generic method template",
+                                      baseName << "." << method->header()->name().getText());
+                        continue;
+                    }
+
                     // 跳过 Builtin 方法
                     if (method->header()->hasAnno("Builtin")) {
                         DEBUG_LOG_VAL("        Skipping #Builtin method (compiler handles)",
@@ -939,6 +952,53 @@ string Compiler::ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& type
     return key;
 }
 
+string Compiler::ensureMethodInstance(p<FnNode> baseMethod, const string& structName, const vector<TypeInfo>& typeArgs,
+                                      p<FileNode> ownerFile, int sourceLine) {
+    const string baseName = baseMethod->header()->name().getText();
+    string instName = baseName + "<";
+    for (size_t i = 0; i < typeArgs.size(); ++i) {
+        if (i > 0) instName += ',';
+        instName += withMangleOwners(typeArgs[i], ownerFile).getMangleName();
+    }
+    instName += '>';
+
+    const auto& typeParams = baseMethod->header()->typeParams();
+    if (typeArgs.size() != typeParams.size()) {
+        throwSemaGap(static_cast<size_t>(sourceLine));
+    }
+
+    map<string, TypeInfo> subst;
+    for (size_t i = 0; i < typeParams.size(); ++i) {
+        subst[typeParams[i]] = typeArgs[i];
+    }
+
+    string key = "method:";
+    if (ownerFile) key += ownerFile->moduleName();
+    key += ':' + structName + '.' + instName + '(';
+    bool firstParam = true;
+    for (auto& param : baseMethod->header()->params()) {
+        if (!param->type()) continue;
+        if (!firstParam) key += ',';
+        firstParam = false;
+        key += withMangleOwners(param->type()->getType().substitute(subst), ownerFile).getMangleName();
+    }
+    key += ')';
+
+    if (_fnInstances.contains(key)) return key;
+
+    FnInstance inst;
+    inst.baseFn = baseMethod;
+    inst.ownerFile = ownerFile ? ownerFile : _file;
+    inst.typeArgs = typeArgs;
+    inst.mangledName = std::move(instName);
+    inst.methodStructName = structName;
+    inst.methodIsStatic = baseMethod->header()->isStatic();
+    inst.consumerModule = inst.ownerFile ? inst.ownerFile->moduleName() : (_file ? _file->moduleName() : "");
+    _fnInstances[key] = std::move(inst);
+    DEBUG_LOG_VAL("Created generic method instance", key);
+    return key;
+}
+
 // ==================== 泛型函数实例生成 ====================
 // 生成所有泛型函数实例的 IR
 // 使用迭代方式处理，因为一个函数可能调用另一个泛型函数
@@ -968,11 +1028,12 @@ void Compiler::emitFnInstances() {
             }
 
             string srcFile = _file ? _file->moduleName() : "";
-            _substStack.push_back(SubstFrame{.subst = subst,
-                                             .baseStructName = "",
-                                             .effStructName = inst.mangledName,
-                                             .sourceFile = srcFile,
-                                             .sourceLine = 0});
+            _substStack.push_back(
+                SubstFrame{.subst = subst,
+                           .baseStructName = inst.methodStructName,
+                           .effStructName = inst.methodStructName.empty() ? inst.mangledName : inst.methodStructName,
+                           .sourceFile = srcFile,
+                           .sourceLine = 0});
 
             try {
                 // 计算实例化后的参数类型
@@ -988,6 +1049,20 @@ void Compiler::emitFnInstances() {
                     retType = applySubst(baseFn->header()->retType()->getType());
                 }
                 string fallibleErr = baseFn->header()->resolvedFallibleErr();
+
+                if (!inst.methodStructName.empty()) {
+                    string ownerMod = inst.ownerFile ? inst.ownerFile->moduleName() : inst.consumerModule;
+                    auto fn = getMethodFunction(inst.methodStructName, inst.mangledName, paramTypes, retType,
+                                                fallibleErr, inst.methodIsStatic, ownerMod);
+                    fn->setLinkage(llvm::Function::LinkOnceODRLinkage);
+                    fn->setVisibility(llvm::GlobalValue::DefaultVisibility);
+                    fn->setComdat(_module->getOrInsertComdat(std::string(fn->getName())));
+                    DEBUG_LOG_VAL("  Emitting generic method instance",
+                                  inst.methodStructName << "." << inst.mangledName);
+                    compileMethod(baseFn, fn, inst.methodStructName, false, inst.methodIsStatic);
+                    _substStack.pop_back();
+                    continue;
+                }
 
                 // 生成 mangle 后的函数名（定义模块全限定；多 TU 靠 linkonce_odr 合并）
                 bool isPrivate = !inst.mangledName.empty() && inst.mangledName[0] == '_';

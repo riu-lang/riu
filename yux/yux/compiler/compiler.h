@@ -85,7 +85,9 @@ class Compiler {
         p<FileNode> ownerFile;     // 定义该函数的文件
         vector<TypeInfo> typeArgs; // 类型参数实例化参数
         string mangledName;        // mangle 后的实例名
-        bool emitted = false;      // 是否已生成 IR
+        string methodStructName;   // 非空表示方法实例；值为 receiver 的实际 struct 名
+        bool methodIsStatic = false;
+        bool emitted = false; // 是否已生成 IR
         // 定义该泛型函数的模块名（与 LLVM 符号前缀一致）。多 TU 靠 linkonce_odr 合并。
         string consumerModule;
     };
@@ -134,8 +136,11 @@ class Compiler {
                                 int sourceLine = 0); // 确保结构体实例存在
     string ensureFnInstance(p<FnNode> baseFn, const vector<TypeInfo>& typeArgs, p<FileNode> ownerFile,
                             int sourceLine); // 确保函数实例存在
-    void emitInstanceMethods();              // 生成所有泛型结构体实例的方法
-    void emitFnInstances();                  // 生成所有泛型函数实例
+    string ensureMethodInstance(p<FnNode> baseMethod, const string& structName, const vector<TypeInfo>& typeArgs,
+                                p<FileNode> ownerFile,
+                                int sourceLine); // 确保泛型方法实例存在
+    void emitInstanceMethods();                  // 生成所有泛型结构体实例的方法
+    void emitFnInstances();                      // 生成所有泛型函数实例
 
     // ==================== 作用域管理（§5.7 块级帧栈）====================
     // 每帧 = 一个 statementBlock / fn 顶层 / loop-init 内需析构的局部变量。

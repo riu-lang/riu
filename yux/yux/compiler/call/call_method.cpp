@@ -2151,6 +2151,124 @@ llvm::Value* Compiler::compileStructMethodCall(p<ExprCallNode> callNode, p<ExprN
     }
     auto methodSymbol = names().lookupMethodWithParams(actualType, member, methodParamTypes);
 
+    // 普通方法严格匹配失败后，尝试方法自身的泛型重载。方法模板不在
+    // compileStructImpls 中直接发射，而是在这里取得类型实参后进入延迟单态化队列。
+    p<FileNode> genericOwner = _file;
+    vector<pair<FnNode*, FileNode*>> genericMethods;
+    if (!methodSymbol) {
+        p<FileNode> structOwner = _file;
+        auto* structDecl = names().lookupStruct(actualType, /*includeBuiltin=*/false, &structOwner);
+        if (structDecl && structOwner) {
+            if (auto* impl = structOwner->getStructImpl(structDecl->name().getText())) {
+                for (auto* method : impl->methods()) {
+                    if (!method->header()->isGeneric() || method->header()->isStatic()) continue;
+                    if (method->header()->name().getText() != member) continue;
+                    if (method->header()->params().size() != argTypes.size()) continue;
+                    genericMethods.emplace_back(method, structOwner);
+                }
+            }
+        }
+    }
+
+    p<FnNode> genericMethod = nullptr;
+    if (!genericMethods.empty()) {
+        if (genericMethods.size() == 1) {
+            genericMethod = genericMethods[0].first;
+            genericOwner = genericMethods[0].second;
+        } else {
+            auto [best, owner] = sema::resolveBestGenericOverload(genericMethods, callNode, member, argTypes);
+            genericMethod = best;
+            genericOwner = owner;
+        }
+    }
+
+    if (genericMethod) {
+        const auto& typeParams = genericMethod->header()->typeParams();
+        vector<TypeInfo> typeArgs;
+        if (!callNode->getTypeArgs().empty()) {
+            sema::validateGenericTypeArgsArity(member, typeParams.size(), callNode->getTypeArgs().size(),
+                                               callNode->getLineNumber(), callNode->getColumn());
+            for (auto& typeArg : callNode->getTypeArgs()) {
+                typeArgs.push_back(applySubst(typeArg->getType()));
+            }
+        } else {
+            sema::inferGenericFnTypeArgs(callNode, genericMethod, member, argTypes, typeArgs);
+        }
+        if (_yux) {
+            sema::validateGenericTypeArgsSpecBound(&_yux->specRegistry(), &_yux->specImplChecker(), genericOwner,
+                                                   genericMethod->header(), typeArgs, callNode->getLineNumber(),
+                                                   callNode->getColumn());
+        }
+
+        map<string, TypeInfo> subst;
+        for (size_t i = 0; i < typeParams.size(); ++i) {
+            subst[typeParams[i]] = typeArgs[i];
+        }
+        vector<TypeInfo> formalTypes;
+        for (auto* param : genericMethod->header()->params()) {
+            if (param->type()) formalTypes.push_back(param->type()->getType().substitute(subst));
+        }
+        TypeInfo retType;
+        if (genericMethod->header()->retType()) {
+            retType = genericMethod->header()->retType()->getType().substitute(subst);
+        }
+        const string fallibleErr = genericMethod->header()->resolvedFallibleErr();
+        const string instanceKey =
+            ensureMethodInstance(genericMethod, actualType.name, typeArgs, genericOwner, callNode->getLineNumber());
+        const string& instanceName = _fnInstances[instanceKey].mangledName;
+
+        llvm::Value* basePtr = nullptr;
+        if (auto* baseLiteral = dynamic_cast<ExprLiteralNode*>(baseExpr)) {
+            if (auto* objLiteral = dynamic_cast<LiteralObjNode*>(baseLiteral->literal())) {
+                auto it = _localVarPtrs.find(objLiteral->getValue().getText());
+                if (it != _localVarPtrs.end()) basePtr = it->second;
+            }
+        }
+        if (!basePtr && isAddressableMethodReceiver(baseExpr)) basePtr = compileLvalueAddr(baseExpr);
+        if (!basePtr) {
+            auto* baseVal = compileExpr(baseExpr);
+            if (baseType.isHeap() || baseExpr->getType().isRef()) {
+                basePtr = baseVal;
+            } else {
+                auto* structType = getLLVMType(actualType);
+                basePtr = _builder.CreateAlloca(structType, nullptr, "method_tmp");
+                _builder.CreateStore(baseVal, basePtr);
+            }
+        } else if (baseType.isHeap()) {
+            basePtr = _builder.CreateLoad(llvm::PointerType::get(_context, 0), basePtr, "heap.ptr");
+        } else if (baseType.isRc()) {
+            auto* rcStructType = getLLVMType(baseType);
+            auto* zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
+            auto* handleField = _builder.CreateGEP(rcStructType, basePtr, {zero, zero}, "rc.handle_field");
+            auto* handle = _builder.CreateLoad(llvm::PointerType::get(_context, 0), handleField, "rc.handle");
+            basePtr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "rc.payload");
+        }
+
+        vector<llvm::Value*> methodArgs;
+        methodArgs.push_back(basePtr);
+        for (size_t i = 0; i < args.size(); ++i) {
+            TypeInfo actual = i < argTypes.size() ? applySubst(argTypes[i]) : TypeInfo();
+            TypeInfo formal = i < formalTypes.size() ? formalTypes[i] : actual;
+            if (i < callNode->getArgs().size()) passAsArg(args[i], actual, callNode->getArgs()[i]);
+            const bool needsAutoRef = formal.isRef() && !actual.isRef();
+            if (needsAutoRef || structParamUsesPointer(formal)) {
+                auto* slotType = getLLVMType(needsAutoRef ? actual : formal);
+                auto* slot = _builder.CreateAlloca(slotType, nullptr, "generic_method_arg_tmp");
+                _builder.CreateStore(args[i], slot);
+                methodArgs.push_back(slot);
+            } else {
+                methodArgs.push_back(args[i]);
+            }
+        }
+
+        string ownerModule = genericOwner ? genericOwner->moduleName() : _file->moduleName();
+        auto* fn = getMethodFunction(actualType.name, instanceName, formalTypes, retType, fallibleErr,
+                                     /*isStatic=*/false, ownerModule);
+        auto* callResult = _builder.CreateCall(fn, methodArgs, retType.empty() ? "" : member + ".ret");
+        auto* value = handleFallibleCallResult(callResult, fallibleErr, retType, callNode);
+        return value ? value : llvm::UndefValue::get(_builder.getInt8Ty());
+    }
+
     if (methodSymbol) {
         DEBUG_LOG_VAL("    Expr: MethodCall", methodFullName);
 
