@@ -302,7 +302,11 @@ private:
     void callDestructorsForScope();                                             // 调用当前作用域所有变量的析构函数
     void callFieldDestructor(llvm::Value* structPtr, const string& structName); // 调用结构体字段的析构函数
     void generateDefaultDestructor(const string& structName);                   // 生成默认析构函数
-    bool typeNeedsDestructor(const TypeInfo& type);                             // 检查类型是否需要析构
+    void releaseArrayElements(llvm::Value* arrayPtr, const TypeInfo& arrayType, llvm::Value* beginIndex,
+                              llvm::Value* endIndex);                              // 逆序析构 Array 的 [begin, end)
+    void releaseArrayAtPtr(llvm::Value* arrayPtr, const TypeInfo& arrayType);      // 析构有效元素并释放缓冲区
+    llvm::Function* getOrCreateArrayDestructorFunction(const TypeInfo& arrayType); // Rc<Array<T>> 共用析构入口
+    bool typeNeedsDestructor(const TypeInfo& type);                                // 检查类型是否需要析构
     bool structNeedsDestructor(const string& structName); // 检查结构体是否需要析构（decl / 实例 key）
     bool structNeedsDestructor(const TypeInfo& type);     // 泛型用 baseStructName 仅查 decl，实例身份走 mangle
     // Phase B-2: 获取或创建 Rc<T> 的 typed release 函数
@@ -315,8 +319,8 @@ private:
     bool enumNeedsDestructor(const TypeInfo& type);              // 非 Normal 直接 false；identity 不走裸名重建
     bool enumDeclNeedsDestructor(p<EnumDeclNode> decl);          // Phase 5: 同上，按声明节点
     llvm::Function* getEnumDestructorFunction(const string& enumName,
-                                              string ownerModuleHint = {}); // Phase 5: 获取或创建 enum dtor
-    void generateEnumDestructor(p<EnumDeclNode> decl, p<FileNode> owner);   // Phase 5: 合成 __enum_drop_<E>(p*) 实现
+                                              const string& ownerModuleHint = {}); // Phase 5: 获取或创建 enum dtor
+    void generateEnumDestructor(p<EnumDeclNode> decl, p<FileNode> owner); // Phase 5: 合成 __enum_drop_<E>(p*) 实现
     void compileEnumDtors(); // Phase 5: 在主流水线中为本文件 enum 生成 dtor 定义
 
     // ==================== OwnershipOps（三个入口）====================

@@ -18,6 +18,67 @@
 
 // ==================== 析构函数调用 ====================
 
+// 逆序析构 Array<T> 的 [beginIndex, endIndex)。调用方维护 len；移出数组的槽位不在范围内。
+void Compiler::releaseArrayElements(llvm::Value* arrayPtr, const TypeInfo& arrayType, llvm::Value* beginIndex,
+                                    llvm::Value* endIndex) {
+    auto elemSp = arrayType.arrayGenericElementType();
+    if (!elemSp || !typeNeedsDestructor(*elemSp)) return;
+
+    auto elemLLVMType = getLLVMType(*elemSp);
+    auto ptrTy = llvm::PointerType::get(_context, 0);
+    auto data = _builder.CreateLoad(ptrTy, arrayDataFieldPtr(arrayPtr, "drop.array"), "drop.array.data");
+    auto* fn = _builder.GetInsertBlock()->getParent();
+    auto* startBB = _builder.GetInsertBlock();
+    auto* headerBB = llvm::BasicBlock::Create(_context, "drop.array.header", fn);
+    auto* bodyBB = llvm::BasicBlock::Create(_context, "drop.array.body", fn);
+    auto* doneBB = llvm::BasicBlock::Create(_context, "drop.array.done", fn);
+    _builder.CreateBr(headerBB);
+
+    _builder.SetInsertPoint(headerBB);
+    auto index = _builder.CreatePHI(endIndex->getType(), 2, "drop.array.index");
+    index->addIncoming(endIndex, startBB);
+    auto hasElement = _builder.CreateICmpUGT(index, beginIndex, "drop.array.has_element");
+    _builder.CreateCondBr(hasElement, bodyBB, doneBB);
+
+    _builder.SetInsertPoint(bodyBB);
+    auto previous = _builder.CreateSub(index, llvm::ConstantInt::get(index->getType(), 1), "drop.array.previous");
+    auto elemPtr = _builder.CreateInBoundsGEP(elemLLVMType, data, {previous}, "drop.array.elem");
+    releaseAtPtr(elemPtr, *elemSp);
+    auto* bodyExitBB = _builder.GetInsertBlock();
+    index->addIncoming(previous, bodyExitBB);
+    _builder.CreateBr(headerBB);
+
+    _builder.SetInsertPoint(doneBB);
+}
+
+// Array<T> 析构：只处理当前 [0, len) 的有效元素，再释放独占数据缓冲区。
+void Compiler::releaseArrayAtPtr(llvm::Value* arrayPtr, const TypeInfo& arrayType) {
+    auto len = _builder.CreateLoad(_builder.getInt64Ty(), arrayLenFieldPtr(arrayPtr, "drop.array"), "drop.array.len");
+    releaseArrayElements(arrayPtr, arrayType, _builder.getInt64(0), len);
+    auto data = _builder.CreateLoad(llvm::PointerType::get(_context, 0), arrayDataFieldPtr(arrayPtr, "drop.array"),
+                                    "drop.array.data.free");
+    _builder.CreateCall(runtime::getArrayFreeDataFn(_module, _builder), {data});
+}
+
+// Rc<Array<T>> 在 strong 归零时需要一个普通 `fn(ptr) void` 析构入口。
+llvm::Function* Compiler::getOrCreateArrayDestructorFunction(const TypeInfo& arrayType) {
+    const string name = "__yux_array_drop." + arrayType.getMangleName();
+    if (auto* existing = _module->getFunction(name)) return existing;
+
+    auto fnType = llvm::FunctionType::get(_builder.getVoidTy(), {llvm::PointerType::get(_context, 0)}, false);
+    auto* fn = llvm::Function::Create(fnType, llvm::Function::LinkOnceODRLinkage, name, _module);
+    auto* savedBB = _builder.GetInsertBlock();
+    auto savedIP = savedBB ? _builder.GetInsertPoint() : llvm::BasicBlock::iterator();
+
+    auto* entry = llvm::BasicBlock::Create(_context, "entry", fn);
+    _builder.SetInsertPoint(entry);
+    releaseArrayAtPtr(&*fn->arg_begin(), arrayType);
+    _builder.CreateRetVoid();
+
+    if (savedBB) _builder.SetInsertPoint(savedBB, savedIP);
+    return fn;
+}
+
 // Phase 3d: 在槽位地址上释放 RC 值
 // 对 Rc/Array/Weak: 从 { ptr handle } 槽 load handle 调对应 release
 // 含 RC 字段 struct: 调其默认析构（字段逆序 release）；
@@ -46,11 +107,7 @@ void Compiler::releaseAtPtr(llvm::Value* slotPtr, const TypeInfo& type) {
         return;
     }
     if (type.isArrayGeneric()) {
-        // B-3: Array 析构 — 直接 free _data buffer（GEP 走三字段 layout）
-        auto ptrTy = llvm::PointerType::get(_context, 0);
-        auto dataField = arrayDataFieldPtr(slotPtr, "old.array");
-        auto data = _builder.CreateLoad(ptrTy, dataField, "old.array.data");
-        _builder.CreateCall(runtime::getArrayFreeDataFn(_module, _builder), {data});
+        releaseArrayAtPtr(slotPtr, type);
         return;
     }
 
@@ -397,10 +454,7 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
             auto weakReleaseFn = runtime::getWeakReleaseFn(_module, _builder);
             _builder.CreateCall(weakReleaseFn, {handle});
         } else if (fieldType.isArrayGeneric()) {
-            // B-3: Array 字段析构 — 调用 _array_free_data（GEP 走三字段 layout）
-            auto dataField = arrayDataFieldPtr(fieldPtr, "fld.arr");
-            auto data = _builder.CreateLoad(llvm::PointerType::get(_context, 0), dataField, "fld.arr.data");
-            _builder.CreateCall(runtime::getArrayFreeDataFn(_module, _builder), {data});
+            releaseArrayAtPtr(fieldPtr, fieldType);
         } else if (fieldType.isHeap()) {
             // Heap<T> 字段（DRAFT-heap-types §8.3a）：load 裸 T*，T 自身析构后 __yux_heap_free
             auto elemSp = fieldType.heapElementType();
@@ -1052,16 +1106,15 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
         return runtime::getRcReleaseFn(_module, _builder);
     }
 
-    // B-4: Array<T> 内层 → 生成 typed release，在 strong==0 时内联 _array_free_data
+    // Array<T> 内层：strong==0 时先逐元素析构并释放 Array 数据，再释放 Rc block。
     if (inner->isArrayGeneric()) {
-        // 构造 mangled name
-        string arrInnerName = inner->arrayGenericElementType() ? inner->arrayGenericElementType()->name : "T";
-        string mangledName = "__yux_box_release.Array." + arrInnerName;
+        string mangledName = "__yux_box_release." + inner->getMangleName();
         auto func = runtime::getRcReleaseTypedFn(_module, _builder, mangledName);
         if (func->empty()) {
             auto* savedBB = _builder.GetInsertBlock();
             auto savedIP = savedBB ? _builder.GetInsertPoint() : llvm::BasicBlock::iterator();
-            runtime::emitRcReleaseForArrayFn(_context, _builder, _module, func);
+            auto* dtorFn = getOrCreateArrayDestructorFunction(*inner);
+            runtime::emitRcReleaseTypedFn(_context, _builder, _module, func, dtorFn);
             if (savedBB) {
                 _builder.SetInsertPoint(savedBB, savedIP);
             }
@@ -1233,7 +1286,7 @@ bool Compiler::enumNeedsDestructor(const TypeInfo& type) {
 
 // 获取或创建 enum dtor 声明（mangled 含 owner 模块名）
 // 与 struct dtor 同模型：`mod.Enum::~()`；有 owner 时不按短名找错模块
-llvm::Function* Compiler::getEnumDestructorFunction(const string& enumName, string ownerModuleHint) {
+llvm::Function* Compiler::getEnumDestructorFunction(const string& enumName, const string& ownerModuleHint) {
     p<FileNode> owner = nullptr;
     EnumDeclNode* decl = nullptr;
     if (!ownerModuleHint.empty() && _yux) {

@@ -895,3 +895,81 @@ fn test_array_higher_order_releases_captures() {
   array_higher_order_capture_smoke()
   assert_eq(rc_leak_count() - base, 0)
 }
+
+fn array_string_drop_scope() {
+  let ints Array<i32> = [1, 2]
+  let strings Array<String> = ints.map:<String>((x) => x.to_string())
+  assert_eq(strings.len(), 2)
+}
+
+#Test
+fn test_array_drops_live_string_elements() {
+  #Mut let base i64 = rc_leak_count()
+  array_string_drop_scope()
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+fn array_string_drop_empty_scope() {
+  let strings Array<String> = []
+  assert_true(strings.is_empty())
+}
+
+#Test
+fn test_array_drop_empty_is_noop() {
+  #Mut let base i64 = rc_leak_count()
+  array_string_drop_empty_scope()
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+fn array_string_clear_scope() {
+  let ints Array<i32> = [1, 2]
+  #Mut let strings Array<String> = ints.map:<String>((x) => x.to_string())
+  strings.clear()
+}
+
+#Test
+fn test_array_clear_drops_removed_string_elements() {
+  #Mut let base i64 = rc_leak_count()
+  array_string_clear_scope()
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+fn array_string_move_out_scope() {
+  let ints Array<i32> = [1, 2, 3]
+  #Mut let strings Array<String> = ints.map:<String>((x) => x.to_string())
+  let popped String = strings.pop()
+  let removed String = strings.remove_at(0usize)
+  assert_eq(popped, "3")
+  assert_eq(removed, "1")
+  assert_eq(strings[0], "2")
+}
+
+#Test
+fn test_array_drop_ignores_moved_out_slots() {
+  #Mut let base i64 = rc_leak_count()
+  array_string_move_out_scope()
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+struct ArrayDropValue {
+  text String
+
+  #Static
+  fn make(value i32) ArrayDropValue {
+    ret Self {
+      .text = value.to_string()
+    }
+  }
+}
+
+fn array_struct_drop_scope() {
+  let values Array<ArrayDropValue> = [ArrayDropValue::make(1), ArrayDropValue::make(2)]
+  assert_eq(values[1].text, "2")
+}
+
+#Test
+fn test_array_drops_struct_elements() {
+  #Mut let base i64 = rc_leak_count()
+  array_struct_drop_scope()
+  assert_eq(rc_leak_count() - base, 0)
+}

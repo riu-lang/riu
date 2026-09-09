@@ -146,3 +146,18 @@ fn test_rc_dtor_rc_array() {
   }
   assert_eq(rc_leak_count() - base, 0)
 }
+
+fn rc_string_array_drop_scope() {
+  let ints Array<i32> = [1, 2]
+  #Mut let strings Array<String> = ints.map:<String>((x) => x.to_string())
+  #Mut let owned Rc<Array<String>> = move(strings)
+  assert_eq(owned.len(), 2)
+}
+
+; 验证：Rc<Array<String>> 的 typed release 会先析构数组元素
+#Test
+fn test_rc_dtor_array_string_elements() {
+  #Mut let base i64 = rc_leak_count()
+  rc_string_array_drop_scope()
+  assert_eq(rc_leak_count() - base, 0)
+}

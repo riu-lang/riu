@@ -786,6 +786,8 @@ llvm::Value* Compiler::compileArrayMethodCall(p<ExprCallNode> callNode, p<ExprNo
         if (spec->lower == sema::BuiltinLower::ArrayClear) {
             DEBUG_LOG("    Expr: Array.clear()");
             auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
+            auto oldLen = _builder.CreateLoad(sizeTy, lenFieldPtr, "clear.old_len");
+            releaseArrayElements(arrayPtr, arrType, zeroSize, oldLen);
             _builder.CreateStore(zeroSize, lenFieldPtr);
             return voidResult();
         }

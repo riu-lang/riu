@@ -56,12 +56,6 @@ void emitRcBlockCountAdd(llvm::IRBuilder<>& builder, llvm::Module* module, int64
 void emitRcReleaseTypedFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
                           llvm::Function* func, llvm::Function* dtorFn);
 
-// B-4: 生成 Rc<Array<T>> 的 typed release 函数体
-// 与 emitRcReleaseTypedFn 同形，但 strong==0 时不调 dtorFn，
-// 而是内联 Array data 释放：load payload._data → _array_free_data(data)
-void emitRcReleaseForArrayFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
-                             llvm::Function* func);
-
 // B-2 inline-dtor: Rc<T> 其中 T 为 Rc/Weak/fn 等无独立 dtor 函数的内联析构类型。
 // kind 决定 payload 布局；payloadReleaseFn 为 strong==0 时对内层 handle 调用的释放函数：
 //   TypeKind::Rc   → payload[0] 内层 handle → 内层 Rc 的 typed release（可递归，Rc<Rc<Rc<T>>>）
@@ -114,7 +108,7 @@ llvm::Function* getWeakRetainFn(llvm::Module* module, llvm::IRBuilder<>& builder
 
 // ==================== Array<T> 动态数组支持（B-3）====================
 // B-3: Array 去 Builtin/去 Block，layout = { ptr _data, u64 _len, u64 _cap }。
-// _data 是直接 HeapAlloc 的数据缓冲指针；析构只需 free _data。
+// _data 是直接 HeapAlloc 的数据缓冲指针；元素析构由 Compiler 按具体 T 发射。
 
 // _array_free_data(data Ptr) → void
 //   null 安全：data == null 跳过；否则 HeapFree(GetProcessHeap(), 0, data)

@@ -533,19 +533,6 @@ void emitRcReleaseTypedFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder
     });
 }
 
-// ==================== B-4: Rc<Array<T>> typed release ====================
-// strong==0 时内联 Array data 释放：load payload[0]._data → _array_free_data(data)
-void emitRcReleaseForArrayFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
-                             llvm::Function* func) {
-    emitReleaseViaC(context, builder, module, func, [&](llvm::Value* block) {
-        auto ptrTy = llvm::PointerType::get(context, 0);
-        auto payloadPtr = builder.CreateGEP(builder.getInt8Ty(), block, {builder.getInt64(8)}, "arr_payload");
-        auto dataPtrAddr = builder.CreateBitCast(payloadPtr, llvm::PointerType::get(context, 0), "arr_data_addr");
-        auto data = builder.CreateLoad(ptrTy, dataPtrAddr, "arr_data");
-        builder.CreateCall(getArrayFreeDataFn(module, builder), {data});
-    });
-}
-
 // ==================== B-2 inline-dtor: Rc<inline-type> typed release ====================
 // Rc<T> 其中 T 为 Rc/Weak/fn 等无独立 dtor 函数的内联析构类型。
 void emitRcReleaseForInlineDtorFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
