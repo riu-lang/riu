@@ -10,7 +10,7 @@
 //   - ast_builder_fn.cpp     (fn / fnHeader / fnParam*)
 //   - ast_builder_stmt.cpp   (statement*)
 //   - ast_builder_expr.cpp   (expr* / literal* / lambda / match / try-catch)
-//   - ast_builder_type.cpp   (type* / buildTypeWithRef / findEnclosingStructName)
+//   - ast_builder_type.cpp   (type* / wrapRefIfAnd / findEnclosingStructName)
 // 注解 / 校验 helper 抽到 ast_builder_helpers.h（匿名命名空间 inline）。
 //
 // 本文件留：ctor / dtor / build / preloadPackageChildren / visitProgram。
@@ -96,13 +96,13 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         if (auto fnParamsCtx = header->fnParams()) {
             for (auto paramCtx : fnParamsCtx->fnParam()) {
                 if (auto stdCtx = paramCtx->fnParamStd()) {
-                    if (auto twr = stdCtx->typeWithRef(); twr) {
-                        auto typeNode = buildTypeWithRef(twr, file);
+                    if (auto t = stdCtx->type(); t) {
+                        auto typeNode = any_cast_p<TypeNode>(visit(t));
                         paramTypes.push_back(typeNode->getType());
                     }
                 } else if (auto groupCtx = paramCtx->fnParamGroup()) {
-                    if (auto twr = groupCtx->typeWithRef(); twr) {
-                        auto typeNode = buildTypeWithRef(twr, file);
+                    if (auto t = groupCtx->type(); t) {
+                        auto typeNode = any_cast_p<TypeNode>(visit(t));
                         for (size_t i = 0; i < groupCtx->names.size(); ++i) {
                             paramTypes.push_back(typeNode->getType());
                         }
@@ -113,7 +113,7 @@ std::any ASTBuilder::visitProgram(yux::yuxParser::ProgramContext* ctx) {
         TypeInfo retType;
         string suffixFallibleErr;
         if (header->retType) {
-            auto typeNode = buildTypeWithRef(header->retType, file);
+            auto typeNode = any_cast_p<TypeNode>(visit(header->retType));
             if (auto* fallible = dynamic_cast<TypeFallibleNode*>(typeNode)) {
                 suffixFallibleErr = fallible->errType()->getType().name;
                 retType = fallible->baseType()->getType();

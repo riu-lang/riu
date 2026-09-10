@@ -288,7 +288,7 @@ for-in（E3160；§5.5.4）：
 | E4012 | `field '$.{}' is not initialized at constructor exit (§8.2)` |
 | E4013 | `cannot return $ from constructor (§8.3)` |
 | E4020 | `return T& root must be {}, got '{}' (§8.6)` |
-| E4021 | `function returning T& requires at most one T& parameter source: \`$\` (method) or 0–1 T& parameter (free fn); ≥2 T& parameters is an error (§8.6.10.3)` |
+| E4021 | `function returning T& cannot use a parameter as the source; only \`$` (method) or \`$rodata\` (static)` |
 | E4022 | `lambda value with \`T&\` capture cannot escape current frame (cannot be returned, stored to global, or assigned to outer variable; spec §6.2.1, DRAFT-closure-capture §4.3)` |
 | E4023 | `Heap<T> '{}' escapes its scope: ret position requires NRVO (§8.3a.4.1)` |
 | E4024 | `Heap<T> '{}' cannot be moved by value; declare as Heap<T>? for movable slots (§8.3a.3.2)` |
@@ -306,6 +306,7 @@ for-in（E3160；§5.5.4）：
 | E4036 | `` `<-` left-hand side must be a variable, `$`, field, or tuple member (index not yet supported; spec §4.13.2.2) `` |
 | E4037 | `type argument of '{}' cannot be a borrow (\`T&\`) (§8.6.7.1)` |
 | E4038 | `` `Dyn<D&>` cannot appear in owned type position (field, alias, or container element) (§12.9.2.2) `` |
+| E4039 | `cannot store borrow (\`T&\`) in field, alias, global, or enum payload (§3.2.3.2)` |
 
 ### D.3.5 E5xxx — 模块 / 包
 

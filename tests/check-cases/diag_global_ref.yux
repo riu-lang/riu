@@ -1,0 +1,7 @@
+; 全局不得持有裸 T& → E4039
+let G i32 = 1
+let R i32& = &G  ; check: E4039
+
+fn main() {
+  ret;
+}

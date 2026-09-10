@@ -1,7 +1,7 @@
-; 自由函数返回 T& 且有多于一个 T& 形参 → E4021（v1 单源约束）
+; 自由函数不得把 T& 形参当返回源 → E4020
 
-fn pick(a i32&, b i32&) i32& {  ; check: E4021
-  ret a
+fn pick(a i32&, b i32&) i32& {
+  ret a  ; check: E4020
 }
 
 fn main() {

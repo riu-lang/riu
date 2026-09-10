@@ -91,6 +91,8 @@ void SemaPass::visitStmt(StatementNode* stmt) {
             const TypeInfo* tp = nullptr;
             if (loop->initType()) {
                 try {
+                    validateContainerBansAt(loop->initType()->getType(), loop->initType(), loop->getLineNumber(),
+                                            loop->getColumn(), true);
                     texp = sema::resolveAlias(applyInstSubst(loop->initType()->getType()), _file, _sdkFile);
                     tp = &texp;
                 } catch (const YuxError&) {

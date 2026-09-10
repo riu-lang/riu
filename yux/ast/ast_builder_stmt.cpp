@@ -26,7 +26,7 @@ std::any ASTBuilder::visitStatementLet(yux::yuxParser::StatementLetContext* ctx)
     auto name = ctx->name;
     auto flags = readLetAnnos(ctx->letAnnos);
 
-    bool hasType = ctx->typeWithRef() != nullptr;
+    bool hasType = ctx->type() != nullptr;
     bool hasInit = ctx->expr() != nullptr;
 
     if (!hasType && !hasInit) {
@@ -39,7 +39,7 @@ std::any ASTBuilder::visitStatementLet(yux::yuxParser::StatementLetContext* ctx)
 
     TypeNode* type = nullptr;
     if (hasType) {
-        type = buildTypeWithRef(ctx->typeWithRef(), scope);
+        type = any_cast_p<TypeNode>(visit(ctx->type()));
     }
 
     // §5.1.3.1：T& 必须 init（写穿 vs 重指向歧义）；#Mut 延后赋值例外不适用于引用。
@@ -95,8 +95,8 @@ std::any ASTBuilder::visitStatementLetTuple(yux::yuxParser::StatementLetTupleCon
     bool isConst = flags.isCval;
 
     TypeNode* type = nullptr;
-    if (auto twr = ctx->typeWithRef(); twr) {
-        type = buildTypeWithRef(twr, scope);
+    if (auto t = ctx->type(); t) {
+        type = any_cast_p<TypeNode>(visit(t));
     }
 
     TypeInfo wholeType = type ? type->getType() : expr->getType();
@@ -242,8 +242,8 @@ std::any ASTBuilder::visitStatementLoop(yux::yuxParser::StatementLoopContext* ct
         }
 
         // 可选类型标注
-        if (auto twr = initCtx->typeWithRef(); twr) {
-            initType = buildTypeWithRef(twr, outerScope);
+        if (auto t = initCtx->type(); t) {
+            initType = any_cast_p<TypeNode>(visit(t));
         }
 
         // init 表达式

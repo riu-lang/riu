@@ -236,17 +236,19 @@ struct Greeter {
 
 ### 返回 `T&` 的允许源
 
-lambda 返回 `T&` 时，允许源集 = lambda 自身**形参**为 `T&` 者；**捕获来的 `T&` 不进允许源集**：
+lambda 返回 `T&` 时，允许源集只有 `$rodata`（静态 / 全局）；**形参透传与捕获都不进允许源集**：
 
 ```yux
-let pick = (a i32&, b i32&) i32& => a   ; ✅ a 是形参 T&
+let G i32 = 1
+let pick = (a i32&) i32& => &G   ; ✅ 静态根
 
 fn outer(c i32&) {
-  let bad = () i32& => c   ; ❌ E4020：c 是捕获，不在允许源
+  let bad = () i32& => c   ; ❌ E4020：捕获
+  let also = (p i32&) i32& => p   ; ❌ E4020：形参透传
 }
 ```
 
-与 spec §8.6.10 fn 返回 `T&` 溯源规则同构。
+与 spec §8.6.10 自由函数 / lambda 返回 `T&` 溯源规则同构。方法仍可用 `$` / `&$.x`。
 
 ### Heap 捕获
 

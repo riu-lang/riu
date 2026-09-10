@@ -66,20 +66,13 @@ public:
         if (isMethod) {
             declare("$");
         }
-        std::vector<std::string> refParams;
         for (auto& param : fn->header()->params()) {
             auto pname = param->name().getText();
             declare(pname);
             if (param->type()) {
                 auto ty = param->type()->getType();
-                // T& 参数：根对象就是参数自身——参数作用域 ⊇ 函数体内任何借用
-                if (ty.isRef()) {
-                    _refToRoot[pname] = pname;
-                    refParams.push_back(pname);
-                } else if (ty.isDynBorrow()) {
-                    // Phase 2e: Dyn<D&> 参数视作借用，根即参数自身.
-                    // 与 T& 不同, Dyn<D&> 不是 Ref<T>, 不能用作 `T&` 返回源,
-                    // 故只登记 refToRoot, 不入 refParams.
+                // T& / Dyn<D&> 形参：根即参数自身。Dyn<D&> 不是 Ref<T>，不能作 T& 返回源。
+                if (ty.isRef() || ty.isDynBorrow()) {
                     _refToRoot[pname] = pname;
                 } else {
                     _rootType[pname] = ty;
@@ -95,28 +88,18 @@ public:
             _returnHeapInnerName = inner ? inner->name : std::string("?");
         }
 
-        // 返回 T& 的溯源约束（spec §8.6.X / E4021）：v1 单源——
-        //   - 方法：源恒为 `$`；T& 形参不允许作为返回根（避免调用点歧义）
-        //   - 自由函数：恰好 1 个 T& 形参，源即该形参
+        // 返回 T& 的溯源约束（spec §8.6.10）：
+        //   - 方法：源恒为 `$`（Self& / 字段 T&）；T& 形参不可作返回根
+        //   - 自由函数 / lambda：只允许 `$rodata`（静态 / 全局）；形参透传改 E4020
         if (fn->header()->retType() && fn->header()->retType()->getType().isRef()) {
             _returnsRef = true;
             if (isMethod) {
                 _returnAllowedSources.insert("$");
                 _returnAllowedDesc = "`$`";
             } else {
-                // DRAFT-static-ref: 放宽单源约束——0 或 1 个 T& 形参均可（$rodata 永不过期）
-                if (refParams.size() > 1) {
-                    int line = fn->header()->getLineNumber();
-                    throw YuxError(line, ErrorCode::E4021);
-                }
-                if (refParams.size() == 1) {
-                    _returnAllowedSources.insert(refParams[0]);
-                    _returnAllowedDesc = "T& parameter `" + refParams[0] + "`";
-                } else {
-                    _returnAllowedDesc = "global/static reference";
-                }
+                _returnAllowedDesc = "global/static reference";
             }
-            // DRAFT-static-ref: $rodata (全局/静态引用) 永不过期，始终允许作为 T& 返回源
+            // $rodata (全局/静态引用) 永不过期，始终允许作为 T& 返回源
             _returnAllowedSources.insert("$rodata");
         }
 
@@ -612,9 +595,8 @@ private:
     }
 
     // Phase 4e（spec §6.5）：lambda body 借用检查。
-    // - lambda 的允许源集 = lambda 自身的 T& 形参（捕获来的 T& 不进允许源集，spec §6.5）
-    // - 若 lambda retType 是 T& 而无（或多个）T& 形参 → 单源约束 E4021
-    // - lambda body ret 表达式根 ∉ 允许源集 → E4020
+    // - 捕获来的 T& 不进允许源集
+    // - lambda 返回 T& 只允许 `$rodata`；形参透传 → E4020
     void visitLambda(LambdaExprNode* lam) {
         if (!lam) return;
         pushScope();
@@ -628,7 +610,6 @@ private:
         _returnAllowedDesc.clear();
 
         // 注册 lambda 形参：T& 形参参与 refToRoot，与外层 fn 同路径处理
-        std::vector<std::string> lamRefParams;
         std::vector<std::string> addedRefs; // 待回滚
         for (auto& slot : lam->params()) {
             auto pname = slot.name.getText();
@@ -638,7 +619,6 @@ private:
                 if (ty.isRef()) {
                     _refToRoot[pname] = pname;
                     addedRefs.push_back(pname);
-                    lamRefParams.push_back(pname);
                 } else {
                     _rootType[pname] = ty;
                 }
@@ -647,19 +627,8 @@ private:
 
         bool lamReturnsRef = lam->retType() && lam->retType()->getType().isRef();
         if (lamReturnsRef) {
-            // DRAFT-static-ref: 放宽单源约束——0 或 1 个 T& 形参均可（$rodata 全局引用永不过期）
-            // >1 仍拒绝（歧义源）
-            if (lamRefParams.size() > 1) {
-                throw YuxError(lam->getLineNumber(), ErrorCode::E4021);
-            }
             _returnsRef = true;
-            if (lamRefParams.size() == 1) {
-                _returnAllowedSources.insert(lamRefParams[0]);
-                _returnAllowedDesc = "lambda T& parameter `" + lamRefParams[0] + "`";
-            } else {
-                _returnAllowedDesc = "global/static reference";
-            }
-            // DRAFT-static-ref: $rodata 永不过期，始终允许
+            _returnAllowedDesc = "global/static reference";
             _returnAllowedSources.insert("$rodata");
         }
 

@@ -1,0 +1,14 @@
+; 临时位允许 Array<T&> / [T& * N]（形参 / 局部）
+fn take_arr(xs Array<i32&>) {
+  ret;
+}
+
+fn take_fixed(xs [i32& * 2]) {
+  ret;
+}
+
+fn main() {
+  #Mut let xs Array<i32&>
+  #Mut let ys [i32& * 2]
+  ret;
+}

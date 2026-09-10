@@ -349,7 +349,7 @@ DEF_ERR(4011, "field '$.{}' must be initialized before {} (§8.2)")
 DEF_ERR(4012, "field '$.{}' is not initialized at constructor exit (§8.2)")
 DEF_ERR(4013, "cannot return `$` from constructor (§8.3)")
 DEF_ERR(4020, "return T& root must be {}, got '{}' (§8.6)")
-DEF_ERR(4021, "function returning T& requires exactly one source: `$` (method) or a single T& parameter (free fn)")
+DEF_ERR(4021, "function returning T& cannot use a parameter as the source; only `$` (method) or `$rodata` (static)")
 DEF_ERR(4022, "lambda value with `T&` capture cannot escape current frame (cannot be returned, stored to "
               "var/field/container/Rc; only consumable inline as call argument; spec §6.3)")
 DEF_ERR(4023, "Heap<{}> '{}' escapes its scope: ret position requires NRVO (§8.3a.4.1)")
@@ -372,6 +372,7 @@ DEF_ERR(4036, "`<-` left-hand side must be a variable, `$`, field, or tuple memb
               "(index not yet supported; spec §4.13.2.2)")
 DEF_ERR(4037, "type argument of '{}' cannot be a borrow (`T&`) (§8.6.7.1)")
 DEF_ERR(4038, "`Dyn<D&>` cannot appear in owned type position (field, alias, or container element) (§12.9.2.2)")
+DEF_ERR(4039, "cannot store borrow (`T&`) in field, alias, global, or enum payload (§3.2.3.2)")
 
 // ── E5xxx 模块 / 包 ───────────────────────────────────────────────────
 DEF_ERR(5001, "yux.toml not found in {}")

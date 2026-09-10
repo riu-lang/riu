@@ -1,5 +1,4 @@
-; Phase 4e §6.5：lambda 返回 T& 的允许源集 = 自身 T& 形参；
-; 捕获来的 T& 不进允许源集 → E4020
+; Phase 4e：lambda 返回 T& 只允许 `$rodata`；捕获不进允许源集 → E4020
 
 fn use_lambda(f Function<i32&, i32&>) {
   ; 不调用 f

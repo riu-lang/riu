@@ -1,6 +1,6 @@
-; Array 类型实参不得为 T& → E4037
+; 字段 Array<T&> 不得持有借用 → E4039
 struct Hold {
-  a Array<i32&>  ; check: E4037
+  a Array<i32&>  ; check: E4039
 }
 
 fn main() {

@@ -12,7 +12,7 @@
 // - 已接入 fnExprkBody（`fn name() T = <expr>` 体）
 //
 // Phase 3 范围:
-// - 类型节点全套：type / typeWithRef 的 Normal / Generic / Nullable / Array
+// - 类型节点全套：type 的 Normal / Generic / Nullable / Array
 //   / Tuple 各变体，统一处理后置 `&` 借用标记
 // - genericDef / genericDefWithRef / fnParams / fnParam 全套
 // - fnHeader / fnBody 框架：fnHeader 用 Doc 重排参数；fnBody 表达式体走
@@ -100,7 +100,6 @@ private:
     // 类型 / 泛型 / 形参
     Doc typePathDoc(yuxParser::TypePathContext* ctx);
     Doc typeDoc(yuxParser::TypeContext* ctx);
-    Doc typeWithRefDoc(yuxParser::TypeWithRefContext* ctx);
     Doc genericDefDoc(yuxParser::GenericDefContext* ctx);
     Doc genericDefWithRefDoc(yuxParser::GenericDefWithRefContext* ctx);
     Doc fnParamsDoc(yuxParser::FnParamsContext* ctx);
@@ -211,14 +210,25 @@ Doc Printer::typePathDoc(yuxParser::TypePathContext* ctx) {
 }
 
 Doc Printer::typeDoc(yuxParser::TypeContext* ctx) {
+    auto refSuffix = [](antlr4::tree::TerminalNode* andTok) -> Doc { return andTok != nullptr ? text("&") : text(""); };
     if (auto* n = dynamic_cast<yuxParser::TypeNormalContext*>(ctx)) {
-        return typePathDoc(n->typePath());
+        return concat({typePathDoc(n->typePath()), refSuffix(n->SymbolAnd())});
+    }
+    if (auto* n = dynamic_cast<yuxParser::TypeSelfContext*>(ctx)) {
+        return concat({text(n->SelfType()->getText()), refSuffix(n->SymbolAnd())});
     }
     if (auto* n = dynamic_cast<yuxParser::TypeNullableContext*>(ctx)) {
-        return concat({typeDoc(n->type()), text("?")});
+        return concat({typeDoc(n->type()), text("?"), refSuffix(n->SymbolAnd())});
+    }
+    if (auto* n = dynamic_cast<yuxParser::TypeFallibleContext*>(ctx)) {
+        return concat({typeDoc(n->base), text(" ! "), typeDoc(n->errType), refSuffix(n->SymbolAnd())});
     }
     if (auto* n = dynamic_cast<yuxParser::TypeGenericContext*>(ctx)) {
-        return concat({typePathDoc(n->typePath()), genericDefWithRefDoc(n->genericDefWithRef())});
+        return concat({
+            typePathDoc(n->typePath()),
+            genericDefWithRefDoc(n->genericDefWithRef()),
+            refSuffix(n->SymbolAnd()),
+        });
     }
     if (auto* n = dynamic_cast<yuxParser::TypeArrayContext*>(ctx)) {
         return concat({
@@ -227,7 +237,12 @@ Doc Printer::typeDoc(yuxParser::TypeContext* ctx) {
             text(" * "),
             text(n->INT()->getText()),
             text("]"),
+            refSuffix(n->SymbolAnd()),
         });
+    }
+    if (auto* n = dynamic_cast<yuxParser::TypeUnitContext*>(ctx)) {
+        (void)n;
+        return text("()");
     }
     if (auto* n = dynamic_cast<yuxParser::TypeTupleContext*>(ctx)) {
         std::vector<Doc> parts;
@@ -235,46 +250,6 @@ Doc Printer::typeDoc(yuxParser::TypeContext* ctx) {
         for (std::size_t i = 0; i < n->types.size(); ++i) {
             if (i > 0) parts.push_back(text(", "));
             parts.push_back(typeDoc(n->types[i]));
-        }
-        parts.push_back(text(")"));
-        return concat(std::move(parts));
-    }
-    // 兜底：未识别变体，使用原文
-    return text(rawSpan(tokens_, ctx));
-}
-
-Doc Printer::typeWithRefDoc(yuxParser::TypeWithRefContext* ctx) {
-    auto refSuffix = [](antlr4::tree::TerminalNode* andTok) -> Doc { return andTok != nullptr ? text("&") : text(""); };
-    if (auto* n = dynamic_cast<yuxParser::TypeNormalWithRefContext*>(ctx)) {
-        return concat({typePathDoc(n->typePath()), refSuffix(n->SymbolAnd())});
-    }
-    if (auto* n = dynamic_cast<yuxParser::TypeNullableWithRefContext*>(ctx)) {
-        return concat({typeDoc(n->type()), text("?"), refSuffix(n->SymbolAnd())});
-    }
-    if (auto* n = dynamic_cast<yuxParser::TypeGenericWithRefContext*>(ctx)) {
-        return concat({
-            typePathDoc(n->typePath()),
-            genericDefWithRefDoc(n->genericDefWithRef()),
-            refSuffix(n->SymbolAnd()),
-        });
-    }
-    if (auto* n = dynamic_cast<yuxParser::TypeArrayWithRefContext*>(ctx)) {
-        return concat({
-            text("["),
-            typeWithRefDoc(n->typeWithRef()),
-            text(" * "),
-            text(n->INT()->getText()),
-            text("]"),
-            refSuffix(n->SymbolAnd()),
-        });
-    }
-    if (auto* n = dynamic_cast<yuxParser::TypeTupleWithRefContext*>(ctx)) {
-        // 语法上 typeTupleWithRef 没有外层 `&`：(T1, T2) 不可借用整体
-        std::vector<Doc> parts;
-        parts.push_back(text("("));
-        for (std::size_t i = 0; i < n->types.size(); ++i) {
-            if (i > 0) parts.push_back(text(", "));
-            parts.push_back(typeWithRefDoc(n->types[i]));
         }
         parts.push_back(text(")"));
         return concat(std::move(parts));
@@ -310,7 +285,7 @@ Doc Printer::genericDefWithRefDoc(yuxParser::GenericDefWithRefContext* ctx) {
     parts.push_back(text("<"));
     for (std::size_t i = 0; i < ctx->types.size(); ++i) {
         if (i > 0) parts.push_back(text(", "));
-        parts.push_back(typeWithRefDoc(ctx->types[i]));
+        parts.push_back(typeDoc(ctx->types[i]));
     }
     parts.push_back(text(">"));
     return concat(std::move(parts));
@@ -329,7 +304,7 @@ Doc Printer::fnParamsDoc(yuxParser::FnParamsContext* ctx) {
 Doc Printer::fnParamDoc(yuxParser::FnParamContext* ctx) {
     if (ctx->fnParamStd() != nullptr) {
         auto* n = ctx->fnParamStd();
-        return concat({text(n->ID()->getText()), text(" "), typeWithRefDoc(n->typeWithRef())});
+        return concat({text(n->ID()->getText()), text(" "), typeDoc(n->type())});
     }
     if (ctx->fnParamGroup() != nullptr) {
         auto* n = ctx->fnParamGroup();
@@ -339,7 +314,7 @@ Doc Printer::fnParamDoc(yuxParser::FnParamContext* ctx) {
             parts.push_back(text(n->names[i]->getText()));
         }
         parts.push_back(text(" "));
-        parts.push_back(typeWithRefDoc(n->typeWithRef()));
+        parts.push_back(typeDoc(n->type()));
         return concat(std::move(parts));
     }
     return text(rawSpan(tokens_, ctx));
@@ -351,9 +326,9 @@ Doc Printer::lambdaParamDoc(yuxParser::LambdaParamContext* ctx) {
     if (auto* n = dynamic_cast<yuxParser::LambdaParamStdContext*>(ctx)) {
         std::vector<Doc> parts;
         parts.push_back(text(n->name->getText()));
-        if (n->typeWithRef() != nullptr) {
+        if (n->type() != nullptr) {
             parts.push_back(text(" "));
-            parts.push_back(typeWithRefDoc(n->typeWithRef()));
+            parts.push_back(typeDoc(n->type()));
         }
         return concat(std::move(parts));
     }
@@ -363,9 +338,9 @@ Doc Printer::lambdaParamDoc(yuxParser::LambdaParamContext* ctx) {
             if (i > 0) parts.push_back(text(", "));
             parts.push_back(text(n->names[i]->getText()));
         }
-        if (n->typeWithRef() != nullptr) {
+        if (n->type() != nullptr) {
             parts.push_back(text(" "));
-            parts.push_back(typeWithRefDoc(n->typeWithRef()));
+            parts.push_back(typeDoc(n->type()));
         }
         return concat(std::move(parts));
     }
@@ -516,7 +491,7 @@ Doc Printer::exprDoc(yuxParser::ExprContext* ctx) {
         return concat(std::move(parts));
     }
     if (auto* n = dynamic_cast<yuxParser::ExprArrayInitContext*>(ctx)) {
-        // [literal ... typeWithRef?]
+        // [literal ... type?]
         std::vector<Doc> parts;
         parts.push_back(text("["));
         parts.push_back(text(rawSpan(tokens_, n->value)));
@@ -561,7 +536,7 @@ Doc Printer::exprDoc(yuxParser::ExprContext* ctx) {
         parts.push_back(text(")"));
         if (n->retType != nullptr) {
             parts.push_back(text(" "));
-            parts.push_back(typeWithRefDoc(n->retType));
+            parts.push_back(typeDoc(n->retType));
         }
         parts.push_back(text(" => "));
         parts.push_back(exprDoc(n->body->expr()));
@@ -592,7 +567,7 @@ Doc Printer::fnHeaderDoc(yuxParser::FnHeaderContext* ctx) {
     parts.push_back(text(")"));
     if (ctx->retType != nullptr) {
         parts.push_back(text(" "));
-        parts.push_back(typeWithRefDoc(ctx->retType));
+        parts.push_back(typeDoc(ctx->retType));
     }
     return concat(std::move(parts));
 }
@@ -687,9 +662,9 @@ Doc Printer::statementDoc(yuxParser::StatementContext* ctx, int indentLevel) {
         }
         parts.push_back(text("let "));
         parts.push_back(text(n->name->getText()));
-        if (n->typeWithRef() != nullptr) {
+        if (n->type() != nullptr) {
             parts.push_back(text(" "));
-            parts.push_back(typeWithRefDoc(n->typeWithRef()));
+            parts.push_back(typeDoc(n->type()));
         }
         if (n->expr() != nullptr) {
             parts.push_back(text(" = "));
@@ -710,9 +685,9 @@ Doc Printer::statementDoc(yuxParser::StatementContext* ctx, int indentLevel) {
             parts.push_back(text(n->names[i]->getText()));
         }
         parts.push_back(text(")"));
-        if (n->typeWithRef() != nullptr) {
+        if (n->type() != nullptr) {
             parts.push_back(text(" "));
-            parts.push_back(typeWithRefDoc(n->typeWithRef()));
+            parts.push_back(typeDoc(n->type()));
         }
         parts.push_back(text(" = "));
         parts.push_back(exprDoc(n->expr()));
@@ -742,9 +717,9 @@ Doc Printer::statementDoc(yuxParser::StatementContext* ctx, int indentLevel) {
             if (initCtx->name) {
                 // 单变量：loop i = expr
                 parts.push_back(text(initCtx->name->getText()));
-                if (auto twr = initCtx->typeWithRef(); twr) {
+                if (auto t = initCtx->type(); t) {
                     parts.push_back(text(" "));
-                    parts.push_back(typeWithRefDoc(twr));
+                    parts.push_back(typeDoc(t));
                 }
                 parts.push_back(text(" = "));
                 parts.push_back(exprDoc(initCtx->expr()));
@@ -756,9 +731,9 @@ Doc Printer::statementDoc(yuxParser::StatementContext* ctx, int indentLevel) {
                     parts.push_back(text(initCtx->names[i]->getText()));
                 }
                 parts.push_back(text(")"));
-                if (auto twr = initCtx->typeWithRef(); twr) {
+                if (auto t = initCtx->type(); t) {
                     parts.push_back(text(" "));
-                    parts.push_back(typeWithRefDoc(twr));
+                    parts.push_back(typeDoc(t));
                 }
                 parts.push_back(text(" = "));
                 parts.push_back(exprDoc(initCtx->expr()));

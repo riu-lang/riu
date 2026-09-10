@@ -1,11 +1,17 @@
-; 合法 T& 返回：形参透传 / 方法 `$`（Phase C）
+; 合法 T& 返回：方法 `$` / 字段 T&；自由函数只允许静态
 struct Foo {
   n i32
 
   fn me() Self& = $
+  fn n_ref() i32& = &$.n
 }
 
-fn alias(p i32&) i32& = p
+let G_VAL i32 = 1
+
+fn from_static() i32& = &G_VAL
+
+; 有 T& 形参但返回静态仍合法
+fn param_or_g(p i32&) i32& = &G_VAL
 
 fn main() {
   ret;

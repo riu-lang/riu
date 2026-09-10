@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-09-10 —— 合并 `type` / `typeWithRef`
+
+- **修改 g4**：删 `typeWithRef`，`type` 尾部可选 `&`。持有位（字段 / 别名 / 全局 / enum payload）裸 `T&` / `Array<T&>` / `[T& * N]` → **E4039**。`Array<T&>` 可作形参 / 局部。
+- **修改 §8.6.10**：自由函数 / lambda 返回 `T&` 只允许 `$rodata`；形参透传 → E4020。方法仍是 `$` + 静态。不再按 T& 形参个数报 E4021。
+- **冲突 / 兼容**：`fn alias(p T&) T& = p` 从合法变为 E4020。字段 `i32&` 从 ANTLR 语法错变为 E4039。
+
 ## 2026-09-10 —— `<>` 内 `T&` 从语法迁到语义
 
 - **修改 g4**：`typeGeneric`、调用站 turbofish（`exprCall` / `exprCallTrailingOnly` / `Type:<T>::`）接 `genericDefWithRef`。声明头 `fn f<T : D>` 仍走 `genericDef`。不合并 `type` / `typeWithRef`。

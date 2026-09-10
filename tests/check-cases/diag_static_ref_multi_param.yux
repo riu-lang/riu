@@ -1,12 +1,10 @@
 ; require-sdk
-; DRAFT-static-ref: ≥2 T& 形参 → E4021（单源约束保留）
+; 自由函数不得把 T& 形参当返回源 → E4020（不再在函数头报 E4021）
 
-fn pick(a i32&, b i32&) i32& = a  ; check: E4021
+fn pick(a i32&, b i32&) i32& = a  ; check: E4020
 
 fn main() {
   let r i32& = &_VAL
-  let r2 i32& = pick(r, r2)
-  println(r2)
   ret;
 }
 

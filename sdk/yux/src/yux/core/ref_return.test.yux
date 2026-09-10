@@ -3,12 +3,10 @@
 ; 覆盖：
 ;   - 方法返回字段引用（&$.field）
 ;   - 方法返回 Self&（$）
-;   - 自由函数透传 T& 形参
 ;   - 通过返回的引用修改源 struct 字段（写穿）
 ;
-; 已知缺口：返回 T& 的生命周期检查（不能返回局部变量的引用）当前依赖 sema 诊断，
-; 正面用例覆盖不足；泛型 struct 方法返回 T& 见 generic_method_ref_return.test.yux。
-; T& 借用基础见 ref.test.yux。
+; 自由函数透传 T& 形参已收：只允许 `$rodata`。泛型 struct 方法返回 T&
+; 见 generic_method_ref_return.test.yux。T& 借用基础见 ref.test.yux。
 
 struct P {
   x i32
@@ -29,9 +27,6 @@ struct P {
   fn me() Self& = $
 }
 
-; 自由函数：单个 T& 形参，透传
-fn alias(p P&) P& = p
-
 ; 验证：方法返回字段引用
 #Test
 fn test_method_field_ref() {
@@ -49,14 +44,6 @@ fn test_method_self_ref() {
   assert_eq(r.y, 2)
 }
 
-; 验证：别名参数传递与修改
-#Test
-fn test_freefn_alias_param() {
-  #Mut let a P = P::make(11, 22)
-  let r P& = alias(&a)
-  assert_eq(r.x, 11)
-}
-
 ; ==================== ref 返回后修改源值（迁自 bug_hunt） ====================
 
 struct BHRefData {
@@ -68,17 +55,15 @@ struct BHRefData {
       .val = val
     }
   }
-}
 
-fn bh_ref_get_val(s BHRefData&) i32& {
-  ret &s.val
+  fn get_val() i32& = &$.val
 }
 
 #Test
 fn test_ref_return_modify() {
-  ; 验证：通过返回的 ref 修改源 struct 字段
+  ; 验证：通过返回的 ref 修改源字段
   #Mut let s BHRefData = BHRefData::make(42)
-  #Mut let r i32& = bh_ref_get_val(&s)
+  #Mut let r i32& = s.get_val()
   r = 99
   assert_eq(s.val, 99)
 }
@@ -89,7 +74,7 @@ fn test_ref_return_modify() {
 fn test_ref_return_zero_value() {
   ; 验证：ref 返回零值字段
   #Mut let s BHRefData = BHRefData::make(0)
-  #Mut let r i32& = bh_ref_get_val(&s)
+  #Mut let r i32& = s.get_val()
   assert_eq(r, 0)
   r = -1
   assert_eq(s.val, -1)

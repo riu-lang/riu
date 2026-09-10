@@ -43,8 +43,9 @@ class ASTBuilder : public yux::yuxParserBaseVisitor {
         return _scopeStack.back();
     }
 
-    // Phase 4a: typeWithRef -> TypeNode；若 SymbolAnd 存在，包成 Ref<inner>
-    TypeNode* buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr, Node* parent);
+    // 尾部 `&` 包成 Ref<inner>（原 typeWithRef）
+    TypeNode* wrapRefIfAnd(antlr4::ParserRuleContext* ctx, Node* parent, TypeNode* inner,
+                           antlr4::tree::TerminalNode* andTok);
     // typeGeneric / turbofish 共用：genericDefWithRef 实参列表（可含 T&）
     vector<TypeNode*> typeArgsFromGenericDefWithRef(yux::yuxParser::GenericDefWithRefContext* gd, Node* parent);
     LambdaExprNode* makeTrailingLambda(yux::yuxParser::TrailingLambdaContext* tl);

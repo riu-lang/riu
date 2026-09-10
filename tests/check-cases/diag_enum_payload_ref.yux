@@ -1,0 +1,8 @@
+; enum payload 不得持有裸 T& → E4039
+enum E {
+  V(i32&)  ; check: E4039
+}
+
+fn main() {
+  ret;
+}

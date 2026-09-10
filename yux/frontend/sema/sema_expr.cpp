@@ -1583,6 +1583,26 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
         _currentLambdaHandleCapName.clear();
         _currentLambdaHandleCapTypeName.clear();
 
+        for (auto& slot : n->params()) {
+            if (!slot.type) continue;
+            try {
+                validateContainerBansAt(slot.type->getType(), slot.type, static_cast<int>(slot.name.getLine()),
+                                        static_cast<int>(slot.name.getCharPositionInLine()), true);
+            } catch (const YuxError&) {
+                throw;
+            } catch (...) { // NOLINT(bugprone-empty-catch)
+            }
+        }
+        if (n->retType()) {
+            try {
+                validateContainerBansAt(n->retType()->getType(), n->retType(), n->getLineNumber(), n->getColumn(),
+                                        true);
+            } catch (const YuxError&) {
+                throw;
+            } catch (...) { // NOLINT(bugprone-empty-catch)
+            }
+        }
+
         const TypeInfo* bodyExp = nullptr;
         TypeInfo bodyRetStorage;
         TypeInfo bodyRetResolved;

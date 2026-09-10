@@ -30,20 +30,19 @@ namespace {
 
 // 收集 lambdaParams 上下文为 LambdaParamSlot 列表
 // g4 lambdaParam 两 alt：
-//   - lambdaParamGroup：names+= ID (',' names+= ID)+ typeWithRef?  → 组糖，N 形参共享同类型
-//   - lambdaParamStd：name=ID typeWithRef?                          → 单形参可省类型
+//   - lambdaParamGroup：names+= ID (',' names+= ID)+ type?  → 组糖，N 形参共享同类型
+//   - lambdaParamStd：name=ID type?                          → 单形参可省类型
 // 类型省时 type=nullptr，由调用 / 赋值点的 fn 类型反推（Phase 2b）
-vector<LambdaParamSlot> collectLambdaParams(ASTBuilder* self, yux::yuxParser::LambdaParamsContext* params, Node* parent,
-                                            TypeNode* (ASTBuilder::*buildTwr)(yux::yuxParser::TypeWithRefContext*,
-                                                                              Node*)) {
+vector<LambdaParamSlot> collectLambdaParams(ASTBuilder* self, yux::yuxParser::LambdaParamsContext* params,
+                                            Node* parent) {
     vector<LambdaParamSlot> out;
+    (void)parent;
     if (!params) return out;
     for (auto* lp : params->lambdaParam()) {
         if (auto* g = dynamic_cast<yux::yuxParser::LambdaParamGroupContext*>(lp)) {
-            // a, b T → 展开为 N 份相同类型；类型可省（→ nullptr）
             TypeNode* sharedType = nullptr;
-            if (auto* twr = g->typeWithRef()) {
-                sharedType = (self->*buildTwr)(twr, parent);
+            if (auto* t = g->type()) {
+                sharedType = any_cast_p<TypeNode>(self->visit(t));
             }
             for (auto* idTok : g->names) {
                 out.push_back(LambdaParamSlot{.name = Token(idTok->getText(), static_cast<int>(idTok->getLine())),
@@ -51,8 +50,8 @@ vector<LambdaParamSlot> collectLambdaParams(ASTBuilder* self, yux::yuxParser::La
             }
         } else if (auto* s = dynamic_cast<yux::yuxParser::LambdaParamStdContext*>(lp)) {
             TypeNode* ty = nullptr;
-            if (auto* twr = s->typeWithRef()) {
-                ty = (self->*buildTwr)(twr, parent);
+            if (auto* t = s->type()) {
+                ty = any_cast_p<TypeNode>(self->visit(t));
             }
             out.push_back(
                 LambdaParamSlot{.name = Token(s->name->getText(), static_cast<int>(s->name->getLine())), .type = ty});
@@ -176,11 +175,11 @@ void applyLambdaFallibleSuffix(ASTBuilder* self, yux::yuxParser::TypeContext* er
 // Lambda 前缀：(args) RetT? => expr  或  (args) RetT? => { stmts }
 std::any ASTBuilder::visitExprLambdaParen(yux::yuxParser::ExprLambdaParenContext* ctx) {
     auto scope = currentScope();
-    auto params = collectLambdaParams(this, ctx->lambdaParams(), scope, &ASTBuilder::buildTypeWithRef);
+    auto params = collectLambdaParams(this, ctx->lambdaParams(), scope);
     TypeNode* retType = nullptr;
     TypeNode* retFallibleFromType = nullptr;
     if (ctx->retType) {
-        auto parsed = buildTypeWithRef(ctx->retType, scope);
+        auto parsed = any_cast_p<TypeNode>(visit(ctx->retType));
         std::tie(retType, retFallibleFromType) = peelFallibleRetType(parsed);
     }
     auto bodyScope = makeLambdaBodyScope(scope, params);
@@ -208,11 +207,11 @@ std::any ASTBuilder::visitExprLambdaParen(yux::yuxParser::ExprLambdaParenContext
 
 LambdaExprNode* ASTBuilder::makeTrailingLambda(yux::yuxParser::TrailingLambdaContext* tl) {
     auto scope = currentScope();
-    auto params = collectLambdaParams(this, tl->lambdaParams(), scope, &ASTBuilder::buildTypeWithRef);
+    auto params = collectLambdaParams(this, tl->lambdaParams(), scope);
     TypeNode* retType = nullptr;
     TypeNode* retFallibleFromType = nullptr;
     if (tl->retType) {
-        auto parsed = buildTypeWithRef(tl->retType, scope);
+        auto parsed = any_cast_p<TypeNode>(visit(tl->retType));
         std::tie(retType, retFallibleFromType) = peelFallibleRetType(parsed);
     }
     auto bodyScope = makeLambdaBodyScope(scope, params);

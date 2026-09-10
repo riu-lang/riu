@@ -26,7 +26,7 @@ externDecl     ::= buildAnno* 'extern' '{'
                        ( fnHeader | comment | codeLineEnd )*
                    '}'
 
-globalConst    ::= buildAnno* 'let' ID typeWithRef? '=' expr codeLineEnd
+globalConst    ::= buildAnno* 'let' ID type? '=' expr codeLineEnd
                    ; 按注解分三档：无注解=val（运行期 init）/ #Mut=var（运行期 init，可变）/ #Cval=const（编译期求值）
                    ; 三者互斥（E3115）；缺 init→E3154（val/#Mut）或 E3114（#Cval）
                    ; RHS expr 语义按档位分流（#Cval→常量表达式，val/#Mut→任意 expr，§5.1.4）
@@ -47,39 +47,33 @@ annoArg        ::= ID ('<' typeParam (',' typeParam)* '>')?
 ```
 typePath       ::= ID ('.' ID)*                    ; 类型 / use 路径；末段是否类型由 sema 分流
 
-type           ::= typePath                        # typeNormal
-                 | type '?'                        # typeNullable
-                 | typePath genericDefWithRef      # typeGeneric
-                 | '[' type '*' INT ']'            # typeArray
-                 | '(' ')'                        # typeUnit
-                 | '(' type (',' type)+ ')'        # typeTuple
+type           ::= type '!' type '&'?              # typeFallible
+                 | type '?' '&'?                   # typeNullable
+                 | typePath genericDefWithRef '&'?  # typeGeneric
+                 | typePath '&'?                    # typeNormal
+                 | 'Self' '&'?                      # typeSelf
+                 | '[' type '*' INT ']' '&'?        # typeArray
+                 | '(' ')'                         # typeUnit
+                 | '(' type (',' type)+ ')'         # typeTuple
 
-typeWithRef    ::= type '?' '&'?                   # typeNullableWithRef
-                 | typePath '&'?                   # typeNormalWithRef
-                 | typePath genericDefWithRef '&'? # typeGenericWithRef
-                 | '[' typeWithRef '*' INT ']' '&'?# typeArrayWithRef
-                 | '(' ')'                        # typeUnitWithRef
-                 | '(' typeWithRef (',' typeWithRef)+ ')' # typeTupleWithRef
+genericDef        ::= '<' typeParam (',' typeParam)* '>'
+genericDefWithRef ::= '<' type (',' type)* '>'
 
-genericDef        ::= '<' typeParam        (',' typeParam)*        '>'
-genericDefWithRef ::= '<' typeParamWithRef (',' typeParamWithRef)* '>'
-
-typeParam         ::= type        (':' draftBound ('+' draftBound)*)?
-typeParamWithRef  ::= typeWithRef (':' draftBound ('+' draftBound)*)?
+typeParam         ::= type (':' draftBound ('+' type)*)?
 draftBound        ::= modulePath? ID genericDef?     # 例：ToString / pkg.Display / To<i32>
 ```
 
 约束：
 
-- `typeWithRef` 仅出现在函数参数与局部变量声明位置（§3.2 / §8.3.1）；其它位置只能用 `type`。字段不能写 `i32&`，但 `typeGeneric` 的实参槽接 `genericDefWithRef`，故 `Function<i32&, ()>` 可作字段。
-- `typeParam` 的 spec 边界仅出现在**声明位**（`fn` / `struct` / `#Spec struct` 头部的 `genericDef` 槽位）；调用点 turbofish 走 `genericDefWithRef`，不得写边界（§6.4.4.3）。
-- `Array<T&>` / `Rc<T&>` / 用户 `Foo<T&>` / 用户 fn `f:<i32&>` 由语义层拒（E4037）。`Dyn<D&>` 出现在 owned 位（字段 / 别名 / 容器元素）报 E4038。
+- `type` 尾部可选 `&`。持有位（字段 / 别名 / 全局 / enum payload）的裸 `T&` / `Array<T&>` / `[T& * N]` 报 **E4039**。`Function<i32&, ()>` 是 owned，可作字段。
+- `typeParam` 的 spec 边界仅出现在**声明位**（`fn` / `struct` / `#Spec struct` 头部的 `genericDef` 槽位）；调用点 turbofish 走 `genericDefWithRef`，不得写边界（§6.4.4.3）。声明头 `fn f<T&>` 本轮不支持。
+- `Rc<T&>` / 用户 `Foo<T&>` / 用户 fn `f:<i32&>` 由语义层拒（E4037）。`Array<T&>` 仅临时位合法。`Dyn<D&>` 出现在 owned 位报 E4038。
 
 > 上述边界产生式 spec-unify v1 已落地 `yux/ast/yux.g4`；`draftBound` 产生式名沿用历史 token 名，语义为"spec 边界"（§12）。
 
 ## B.2a `Dyn<D>` / `Dyn<D&>`（v0.5+）
 
-`Dyn` 是编译器内置类型名（非关键字）。`Dyn<D>` 与 `Dyn<D&>` 作为 `typeGeneric` / `typeGenericWithRef` 形态出现；语义见 §12.9。约束：
+`Dyn` 是编译器内置类型名（非关键字）。`Dyn<D>` 与 `Dyn<D&>` 作为 `typeGeneric` 形态出现；语义见 §12.9。约束：
 
 - `Dyn<D&>` 中 `&` 在 `genericDefWithRef` 实参槽可解析；owned 位（字段 / 别名 / `Array` 元素 / `Rc` 内层）由语义层拒（E4038）；
 - `Dyn<...>` 不得嵌套 `Dyn` / `Rc<Dyn>` / `Weak<Dyn>` / `Dyn<D>?`（语义层拒绝，E1132 / E1135）。
@@ -88,12 +82,12 @@ draftBound        ::= modulePath? ID genericDef?     # 例：ToString / pkg.Disp
 
 ## B.2b `Function<P..., Ret>`（函数类型）
 
-`Function` 是编译器内置类型名（非关键字），走 `typeGeneric` / `typeGenericWithRef`。语义见 §3.11。
+`Function` 是编译器内置类型名（非关键字），走 `typeGeneric`。语义见 §3.11。
 
 - 末位类型实参永远是返回类型；至少 1 个实参。`Function<()>` = 0 参 unit 返回。
 - 可空走标准 `?`：`Function<i32, i32>?`。布局仍是 16 字节 fat-ptr（`fn_ptr == null` 表空），不套 `Nullable` 外壳。
 - `Weak<Function<...>>` 禁。`extern fn` 形参 / 返回禁。
-- 含 `T&` 的类型实参在 `genericDefWithRef` 槽可解析（`typeGeneric` 与 turbofish 同槽）。`Function<…>` 允许；`Array` / `Rc` / 用户泛型由 E4037 拒。
+- 含 `T&` 的类型实参在 `genericDefWithRef` 槽可解析。`Function<…>` 允许；`Array<T&>` 仅临时位；`Rc` / 用户泛型由 E4037 拒。
 
 ## B.3 字面量
 
@@ -127,8 +121,8 @@ fnHeader       ::= buildAnno*
 
 fnParams       ::= fnParam (',' LineEnd* fnParam)* ','? LineEnd*
 fnParam        ::= fnParamStd | fnParamGroup
-fnParamStd     ::= paramAnno* ID typeWithRef
-fnParamGroup   ::= paramAnno* (ID ',')* ID typeWithRef
+fnParamStd     ::= paramAnno* ID type
+fnParamGroup   ::= paramAnno* (ID ',')* ID type
 paramAnno      ::= '#' ID LineEnd?
 
 fnBody         ::= fnExprkBody | fnBlockBody
@@ -172,7 +166,7 @@ enumVariant    ::= ID ( '(' type (',' type)* ')' )?
 ```
 
 - variant 一行一个、行尾**不写** `,`（§3.10.2.2）。
-- payload 类型用 `type`（不接 `typeWithRef`，§3.10.3.2）；零参 variant 不写括号。
+- payload 类型用 `type`；持有位裸 `T&` / `Array<T&>` / `[T& * N]` 报 E4039（§3.10.3.2）。零参 variant 不写括号。
 - 空 enum（无 variant）由语义层拒绝（§3.10.2.5）。
 - enum 值的读取仅经 `match`（B.6 `exprMatch`）；构造仅经 B.6 `exprEnumCtor`。
 
@@ -230,7 +224,7 @@ expr ::=
         '!'?                                                     # exprCall  ; 末尾 `!` = 错误传播（DRAFT-错误.md §4.2）
   | expr (':' genericDef)? trailingLambda
         '!'?                                                     # exprCallTrailingOnly  ; 末尾 `!` 同 `exprCall`
-  | '(' lambdaParams? ')' (retType=typeWithRef)? '=>'
+  | '(' lambdaParams? ')' (retType=type)? '=>'
         (statementBlock | lambdaBody)                            # exprLambdaParen
   | ('-' | '~' | '!') expr                                       # exprUnary
   | expr opShift expr                                            # exprShift
@@ -263,11 +257,11 @@ matchArm       ::= enumPattern '=>' (statementBlock | expr)
 
 lambdaBody     ::= expr                                          ; 非左递归包装：迫使内部 expr 以新优先级启动
 lambdaParams   ::= lambdaParam (',' LineEnd* lambdaParam)* ','? LineEnd*
-lambdaParam    ::= (ID ',' LineEnd*)+ ID typeWithRef?            # lambdaParamGroup
-                 | ID typeWithRef?                               # lambdaParamStd
+lambdaParam    ::= (ID ',' LineEnd*)+ ID type?            # lambdaParamGroup
+                 | ID type?                               # lambdaParamStd
 
 trailingLambda ::= '{' LineEnd*
-                       '(' lambdaParams? ')' (retType=typeWithRef)? '=>'
+                       '(' lambdaParams? ')' (retType=type)? '=>'
                        LineEnd*
                        (statement | comment | codeLineEnd)*
                    '}'                                           ; 仅挂在调用上（§4.8.4）
@@ -293,8 +287,8 @@ enumPattern    ::= ID '::' ID ( '(' ID (',' ID)* ')' )?          # patternEnum
 
 ```
 statement ::=
-    letAnno* 'let' ID typeWithRef? ('=' expr)? codeLineEnd?               # statementLet
-  | letAnno* 'let' '(' ID (',' ID)+ ')' typeWithRef? '=' expr codeLineEnd? # statementLetTuple
+    letAnno* 'let' ID type? ('=' expr)? codeLineEnd?               # statementLet
+  | letAnno* 'let' '(' ID (',' ID)+ ')' type? '=' expr codeLineEnd? # statementLetTuple
   | expr '[' expr (',' expr)* ']' '=' expr codeLineEnd?                   # statementSet
   | ID '::' ID '=' expr codeLineEnd?                                      # statementStaticFieldSet
   | (ID ':')? 'loop' loopInit? statementBlock codeLineEnd?                # statementLoop

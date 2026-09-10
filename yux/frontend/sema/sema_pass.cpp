@@ -224,6 +224,18 @@ void SemaPass::run() {
         } catch (...) { // NOLINT(bugprone-empty-catch)
         }
     }
+    for (auto& gv : _file->getGlobalVars()) {
+        if (!gv) continue;
+        try {
+            if (gv->typeNode()) {
+                validateContainerBansAt(gv->getType(), gv->typeNode(), gv->getLineNumber(), gv->getColumn(), false);
+            }
+            noteConcreteGenericType(gv->getType());
+        } catch (const YuxError&) {
+            throw;
+        } catch (...) { // NOLINT(bugprone-empty-catch)
+        }
+    }
     for (auto& ed : _file->getEnumDecls()) {
         if (!ed) continue;
         for (auto& v : ed->variants()) {

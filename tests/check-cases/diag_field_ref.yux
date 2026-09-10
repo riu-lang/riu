@@ -1,0 +1,8 @@
+; 字段不得持有裸 T& → E4039
+struct Hold {
+  x i32&  ; check: E4039
+}
+
+fn main() {
+  ret;
+}

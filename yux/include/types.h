@@ -909,8 +909,28 @@ inline void validateRcContainerBans(const TypeInfo& t, int line, int col) {
     validateNoDynInRcWeak(t, line, col);
 }
 
-// `<>` 内 T&：Function 形参 / 返回允许；Dyn<D&> 仅 typeWithRef 位；
-// Array / Rc / Weak / Heap / 用户泛型的实参必须 owned（§8.6.7.1 / E4037）。
+// 裸 T& / Array<T&> / [T& * N] / 含它们的元组或 Nullable：持有位（字段 / 别名 /
+// 全局 / enum payload）报 E4039。Function 是 owned fat-ptr，即使槽里有 T& 也不算持有。
+inline bool typeHoldsBorrowedValue(const TypeInfo& t) {
+    if (t.isFn()) return false;
+    if (t.isRef()) return true;
+    if (t.isArray() && t.elementType) return typeHoldsBorrowedValue(*t.elementType);
+    if (t.isArrayGeneric()) {
+        if (auto e = t.arrayGenericElementType()) return typeHoldsBorrowedValue(*e);
+    }
+    if (t.isTuple()) {
+        for (const auto& e : t.tupleElements()) {
+            if (e && typeHoldsBorrowedValue(*e)) return true;
+        }
+    }
+    if (t.isNullable()) {
+        if (auto inner = t.nullableInnerType()) return typeHoldsBorrowedValue(*inner);
+    }
+    return false;
+}
+
+// `<>` 内 T&：Function 形参 / 返回允许；Dyn<D&> 仅临时位；
+// Array<T&> 仅临时位；Rc / Weak / Heap / 用户泛型的实参必须 owned（E4037）。
 inline void validateTypeArgRefPolicy(const TypeInfo& t, int line, int col, bool allowDynBorrow) {
     if (t.isFn()) {
         for (const auto& p : t.fnParamTypes()) {
@@ -918,6 +938,11 @@ inline void validateTypeArgRefPolicy(const TypeInfo& t, int line, int col, bool 
         }
         if (auto ret = t.fnReturnType()) validateTypeArgRefPolicy(*ret, line, col, true);
         return;
+    }
+    if (!allowDynBorrow && typeHoldsBorrowedValue(t)) {
+        throw YuxError(line, col, ErrorCode::E4039)
+            .withHint("`T&` / `Array<T&>` / `[T& * N]` 只能出现在形参、局部 `let` 和返回类型；"
+                      "`Function<…>` 里的 `T&` 槽是 owned fat-ptr，可作字段");
     }
     if (t.isDyn()) {
         if (t.isDynBorrow() && !allowDynBorrow) {
@@ -934,7 +959,8 @@ inline void validateTypeArgRefPolicy(const TypeInfo& t, int line, int col, bool 
         return;
     }
     if (t.isRef()) {
-        if (auto inner = t.refElementType()) validateTypeArgRefPolicy(*inner, line, col, false);
+        // 临时位的 `U&` 其 referent 仍按临时位查（`[Field& * N]&` 是局部 T&）。
+        if (auto inner = t.refElementType()) validateTypeArgRefPolicy(*inner, line, col, allowDynBorrow);
         return;
     }
     if (t.isTuple()) {
@@ -955,9 +981,14 @@ inline void validateTypeArgRefPolicy(const TypeInfo& t, int line, int col, bool 
     for (const auto& g : t.genericArgs) {
         if (!g) continue;
         if (g->isRef()) {
+            // Array<T&> 临时位放行；持有位已由 typeHoldsBorrowedValue / E4039 拒。
+            if (t.isArrayGeneric() && allowDynBorrow) {
+                validateTypeArgRefPolicy(*g, line, col, true);
+                continue;
+            }
             throw YuxError(line, col, ErrorCode::E4037, t.name)
                 .withHint("类型实参须为 owned（值类型 / 堆句柄 / Ptr）；借用写在形参上，如 `fn f<T>(x T&)`。"
-                          "`Function` 形参和 typeWithRef 位的 `Dyn<D&>` 可以写 `&`");
+                          "`Function` 形参和临时位的 `Dyn<D&>` / `Array<T&>` 可以写 `&`");
         }
         validateTypeArgRefPolicy(*g, line, col, false);
     }

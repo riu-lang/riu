@@ -228,14 +228,8 @@ void collectOverrides(antlr4::tree::ParseTree* node, CollectState& state) {
         putTypePath(out, c->typePath(), TT::Class, 0);
     } else if (auto* c = dynamic_cast<P::TypeGenericContext*>(node)) {
         putTypePath(out, c->typePath(), TT::Class, 0);
-    } else if (auto* c = dynamic_cast<P::TypeNormalWithRefContext*>(node)) {
-        // 函数参数 / 返回类型的 typeWithRef 入口；之前漏覆盖导致 i32 等被当 Variable
-        putTypePath(out, c->typePath(), TT::Class, 0);
-    } else if (auto* c = dynamic_cast<P::TypeGenericWithRefContext*>(node)) {
-        putTypePath(out, c->typePath(), TT::Class, 0);
-        // TypeNullable / TypeArray / TypeTuple 及对应 WithRef 变体本身不持有
-        // 顶层 ID（仅是结构容器），其内部嵌套的 type / typeWithRef 由父级遍历递归覆盖
-        // Function<...> 走 TypeGeneric / TypeGenericWithRef
+        // TypeNullable / TypeArray / TypeTuple 本身不持有顶层 ID
+        // Function<...> 走 TypeGeneric
     } else if (auto* c = dynamic_cast<P::AliasDeclContext*>(node)) {
         // 类型别名 `Name = T` / `Pair<T> = (T, T)`：左侧名字按用户类型染色
         if (auto* term = c->ID()) put(out, term->getSymbol(), TT::Class, MOD_DECLARATION);

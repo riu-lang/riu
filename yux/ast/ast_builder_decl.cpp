@@ -122,13 +122,13 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
         if (auto fnParamsCtx = header->fnParams()) {
             for (auto paramCtx : fnParamsCtx->fnParam()) {
                 if (auto stdCtx = paramCtx->fnParamStd()) {
-                    if (auto twr = stdCtx->typeWithRef(); twr) {
-                        auto typeNode = buildTypeWithRef(twr, file);
+                    if (auto t = stdCtx->type(); t) {
+                        auto typeNode = any_cast_p<TypeNode>(visit(t));
                         paramTypes.push_back(typeNode->getType());
                     }
                 } else if (auto groupCtx = paramCtx->fnParamGroup()) {
-                    if (auto twr = groupCtx->typeWithRef(); twr) {
-                        auto typeNode = buildTypeWithRef(twr, file);
+                    if (auto t = groupCtx->type(); t) {
+                        auto typeNode = any_cast_p<TypeNode>(visit(t));
                         for (size_t i = 0; i < groupCtx->names.size(); ++i) {
                             paramTypes.push_back(typeNode->getType());
                         }
@@ -138,7 +138,7 @@ std::any ASTBuilder::visitExternDelc(yux::yuxParser::ExternDelcContext* ctx) {
         }
         TypeInfo retType;
         if (header->retType) {
-            auto typeNode = buildTypeWithRef(header->retType, file);
+            auto typeNode = any_cast_p<TypeNode>(visit(header->retType));
             retType = typeNode->getType();
         }
 

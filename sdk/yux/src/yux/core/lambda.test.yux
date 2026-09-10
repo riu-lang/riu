@@ -573,16 +573,18 @@ fn test_closure_borrow_capture_call_arg() {
   assert_eq(use_borrow_capture(&n), 305)
 }
 
-; ==================== lambda T& 形参返回 T&（合法路径） ====================
+; ==================== lambda 返回静态 T&（有形参仍只允许 $rodata） ====================
+
+let LAM_G i32 = 7
 
 fn use_lambda_borrow_ret(f Function<i32&, i32&>) {
-  ; 不调用 f，仅验证 borrow checker 接受此形态
+  ; 不调用 f，仅验证 borrow checker 接受静态根
 }
 
-; 验证：闭包返回借用参数
+; 验证：闭包返回静态借用（形参透传已收，见 diag_lambda_ret_param）
 #Test
-fn test_closure_ret_borrow_param() {
-  use_lambda_borrow_ret((r i32&) i32& => r)
+fn test_closure_ret_static_ref() {
+  use_lambda_borrow_ret((r i32&) i32& => &LAM_G)
   assert_true(true)
 }
 

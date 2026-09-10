@@ -124,7 +124,7 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
     TypeNode* retType = nullptr;
     TypeNode* retFallibleFromType = nullptr;
     if (ctx->retType) {
-        auto parsed = buildTypeWithRef(ctx->retType, file);
+        auto parsed = any_cast_p<TypeNode>(visit(ctx->retType));
         std::tie(retType, retFallibleFromType) = peelFallibleRetType(parsed);
         if (retType) {
             DEBUG_LOG_VAL("    Return type", retType->getType().getFullName());
@@ -245,7 +245,7 @@ bool readParamAnnos(const std::vector<yux::yuxParser::ParamAnnoContext*>& annos)
 
 std::any ASTBuilder::visitFnParamStd(yux::yuxParser::FnParamStdContext* ctx) {
     Node* parent = any_cast_p<FnHeaderNode>(stack.back());
-    auto type = buildTypeWithRef(ctx->typeWithRef(), parent);
+    auto type = any_cast_p<TypeNode>(visit(ctx->type()));
     bool frozen = readParamAnnos(ctx->paramAnnos);
     DEBUG_LOG_VAL("    Param", ctx->name->getText() << " : " << type->getType().name << (frozen ? " #Frozen" : ""));
 
@@ -258,7 +258,7 @@ std::any ASTBuilder::visitFnParamStd(yux::yuxParser::FnParamStdContext* ctx) {
 
 std::any ASTBuilder::visitFnParamGroup(yux::yuxParser::FnParamGroupContext* ctx) {
     Node* parent = any_cast_p<FnHeaderNode>(stack.back());
-    auto type = buildTypeWithRef(ctx->typeWithRef(), parent);
+    auto type = any_cast_p<TypeNode>(visit(ctx->type()));
     bool frozen = readParamAnnos(ctx->paramAnnos);
 
     vector<FnParamNode*> params;

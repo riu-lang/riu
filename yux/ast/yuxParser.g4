@@ -141,52 +141,33 @@ typePath:
     segs+=ID (SymbolDot segs+=ID)*
     ;
 
+// 唯一类型产生式：尾部可选 `&`（原 type）。持有位（字段 / 别名 / 全局 /
+// enum payload）的裸 T& / Array<T&> / [T& * N] 由 sema E4039 拒，不在语法层拆。
+// 选择支顺序：
+//   - typeFallible 在 typeNullable 之前，以支持 `i32? ! E`
+//   - typeNullable 在 typeNormal 之前，否则 `T?` 被 typePath 吃掉 T 后把 `?` 漏掉
 type:
-      typePath #typeNormal
-    // [PROBE static-fn] Self 类型字面量；struct / #Spec body 内合法，体外由 sema 拒
-    | SelfType #typeSelf
-    // T ! E 须在 typeNullable 之前，以支持 i32? ! E
-    | base=type SymbolExcl errType=type #typeFallible
-    | type SymbolQuest        #typeNullable
+    // T ! E（Function<..., T ! E> 末位等）；base 走 type 以支持 T? ! E
+      base=type SymbolExcl errType=type SymbolAnd? #typeFallible
+    // T? / T?&
+    | type SymbolQuest SymbolAnd?       #typeNullable
     // A<T> B<T1, T2>；可带路径前缀 `yux.core.map.Map<i32>`
-    // 实参槽接 genericDefWithRef：允许 `Function<i32&, ()>` / `Array<i32&>` 进 AST，
-    // 后者由 sema 按外层类型拒（E4037）；声明头仍走 genericDef（名字 + 边界）。
-    | typePath genericDefWithRef    #typeGeneric
-    // [ type * count ]
+    // 实参槽接 genericDefWithRef：允许 `Function<i32&, ()>` / `Array<i32&>` 进 AST。
+    | typePath genericDefWithRef SymbolAnd?   #typeGeneric
+    | typePath SymbolAnd?              #typeNormal
+    // [PROBE static-fn] Self / Self&
+    | SelfType SymbolAnd?             #typeSelf
+    // [ type * count ] / [T& * N] / 外层再 &
     | GetStart
         type SymbolMul INT
-      GetEnd                   #typeArray
-    // () → unit 类型
-    | ParStart ParEnd          #typeUnit
-    // (T1, T2)
+      GetEnd
+      SymbolAnd?                       #typeArray
+    // () → unit 类型（不接尾部 &）
+    | ParStart ParEnd                  #typeUnit
+    // (T1, T2)；元素可带 &，元组本身不接尾部 &
     | ParStart types+=type
         (SymbolComma types+=type)+
-      ParEnd                   #typeTuple
-    ;
-
-typeWithRef:
-    // 注意：typeNullableWithRef 必须排在 typeNormalWithRef 前面 ——
-    // 否则 `T?` 会被 typeNormalWithRef 吃掉 `T` 后把 `?` 漏给外层 typeNullable
-      type SymbolQuest SymbolAnd?       #typeNullableWithRef
-    // T ! E（Function<..., T ! E> 末位等）；base 走 type 以支持 T? ! E
-    | base=type SymbolExcl errType=type SymbolAnd? #typeFallibleWithRef
-    | typePath SymbolAnd? #typeNormalWithRef
-    // [PROBE static-fn] Self&
-    | SelfType SymbolAnd? #typeSelfWithRef
-    // A<T> B<T1, T2>；函数类型 Function<P..., Ret> 走此支（特殊泛型）
-    | typePath genericDefWithRef SymbolAnd?   #typeGenericWithRef
-    // [ type * count ]
-    | GetStart
-        typeWithRef SymbolMul INT
-      GetEnd
-      SymbolAnd?                        #typeArrayWithRef
-    // () → unit 类型
-    | ParStart ParEnd                   #typeUnitWithRef
-    // (T1, T2)
-    | ParStart
-        types+=typeWithRef
-        (SymbolComma types+=typeWithRef)+
-      ParEnd                            #typeTupleWithRef
+      ParEnd                           #typeTuple
     ;
 
 // typeParam: 声明位类型形参（fn / struct / #Spec 头部 genericDef）。
@@ -210,8 +191,8 @@ genericDef:
 
 genericDefWithRef:
     SymbolLt
-        types+=typeWithRef
-        (SymbolComma types+=typeWithRef)*
+        types+=type
+        (SymbolComma types+=type)*
     SymbolMt
     ;
 
@@ -272,7 +253,7 @@ fnHeader:
     ParStart LineEnd*
         fnParams?
     ParEnd
-    ( retType=typeWithRef (SymbolExcl errType=type)?
+    ( retType=type (SymbolExcl errType=type)?
     | SymbolExcl errType=type
     )?
     ;
@@ -303,7 +284,7 @@ paramAnno:
 // a i32
 fnParamStd:
     (paramAnnos+=paramAnno)*
-    name=ID typeWithRef
+    name=ID type
     ;
 
 // a, b i32
@@ -313,7 +294,7 @@ fnParamGroup:
     (paramAnnos+=paramAnno)*
     (names+=ID SymbolComma)*
     names+=ID
-    typeWithRef
+    type
     ;
 
 // lambda 形参：类型可省（由上下文推断）；允许组糖 a, b T
@@ -328,8 +309,8 @@ lambdaParams:
 
 lambdaParam:
       (names+=ID SymbolComma LineEnd*)+
-      names+=ID typeWithRef?          # lambdaParamGroup
-    | name=ID typeWithRef?            # lambdaParamStd
+      names+=ID type?          # lambdaParamGroup
+    | name=ID type?            # lambdaParamStd
     ;
 
 // lambda 单表达式体的非左递归包装：迫使内部 expr 以新优先级 0 启动，
@@ -341,7 +322,7 @@ lambdaBody: expr;
 trailingLambda:
     BlockStart LineEnd*
       ParStart lambdaParams? ParEnd
-      ( retType=typeWithRef (SymbolExcl errType=type)?
+      ( retType=type (SymbolExcl errType=type)?
       | SymbolExcl errType=type
       )?
       SymbolEqMt
@@ -410,7 +391,7 @@ expr:
     // body 走 lambdaBody 包装规则：避免 ANTLR4 左递归把 `(a, b) => a + b` 误切成 `((a, b) => a) + b`
     // 语句体走 statementBlock；`{ stmts }` 不再单独作为 lambda 表达式（尾随见 trailingLambda）
       ParStart lambdaParams? ParEnd
-      ( retType=typeWithRef (SymbolExcl errType=type)?
+      ( retType=type (SymbolExcl errType=type)?
       | SymbolExcl errType=type
       )?
       SymbolEqMt
@@ -634,14 +615,14 @@ statement:
     // type / init 同时缺失由 ast_builder 报 E3113；type 在但 init 缺由 E3114
     // #Mut 例外：允许 `#Mut let x T` 无 init（延后赋值，等价旧 `var x T`）
       (letAnnos+=letAnno)*
-      Let name=ID typeWithRef? (SymbolEq expr)? LineEnd?   #statementLet
+      Let name=ID type? (SymbolEq expr)? LineEnd?   #statementLet
     // DRAFT-let-unify §3：let 元组解构。注解语义与 statementLet 同（默认→val / #Mut→var / #Cval→cval）。
     | (letAnnos+=letAnno)*
       Let
       ParStart
         names+=ID (SymbolComma names+=ID)+
       ParEnd
-      typeWithRef?
+      type?
       SymbolEq expr LineEnd?                               #statementLetTuple
     // e[a, b, c] = e 实际应为成员函数set的快捷调用
     | obj=expr
@@ -688,10 +669,10 @@ statementBlock:
 // 不以 LineEnd 结尾 —— '{' 充当终结符（类似 if cond { 中的 cond）
 loopInit:
     // 单变量：loop i = 0 { } / loop i i64 = 0 { }
-    name=ID typeWithRef? SymbolEq expr
+    name=ID type? SymbolEq expr
     |
     // tuple 解构：loop (i, n) = (0, arr.len()) { }
     ParStart names+=ID (SymbolComma names+=ID)+ ParEnd
-    typeWithRef?
+    type?
     SymbolEq expr
     ;

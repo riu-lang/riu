@@ -1,0 +1,7 @@
+; 自由函数透传唯一 T& 形参 → E4020
+
+fn alias(p i32&) i32& = p  ; check: E4020
+
+fn main() {
+  ret;
+}
