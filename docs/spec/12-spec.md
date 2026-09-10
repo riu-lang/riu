@@ -393,7 +393,7 @@ v1 / v0.5 **明确不做**：
 
 §12.9.2.2 `Dyn<D&>` 仅出现在 `typeWithRef` 位（函数参数 / 返回类型、`let ... = ...` 初值形态）；**不**进结构体字段（字段不持借用，§7.4.4）、**不**进 `Array<...>` 元素（Array 为 owned 容器）。
 
-§12.9.2.3 上述限制由现有 `genericDef` / `genericDefWithRef` 实参槽语法自然落实，**不**需要改 g4。
+§12.9.2.3 `Dyn<D&>` 在 owned 位（字段 / 别名 / 容器元素）由语义层拒绝（**E4038**）。`typeGeneric` 与 turbofish 接 `genericDefWithRef`，故 `Dyn:<D&>(x)` 与 `let r Dyn<D&> = …` 可写。
 
 ### §12.9.3 静态检查
 
@@ -436,8 +436,6 @@ let r Dyn<D&>    = Dyn:<D&>(ref)     ; U& 或 Rc<U> → Dyn<D&>，借用
 - `Dyn<D&>(x)`：`x` **应当**为 `U&` 或 `Rc<U>`，`U` 满足 `D`；结果为借用形态，按 §8.6 进借用栈。
 
 §12.9.5.4 **不**走隐式 coercion，**不**引入 `as_dyn` builtin。
-
-> *informative*：当前实施约束 — g4 `genericDef` 实参不允许 `Type&`，故 `Dyn:<D&>(...)` 调用站语法暂不可表达；`Dyn<D&>` 仅在形参 / 返回 / declareAssign 类型位出现。该限制不影响规范正文，待实施期解锁。
 
 ### §12.9.6 方法分派
 

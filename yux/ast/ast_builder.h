@@ -45,6 +45,8 @@ class ASTBuilder : public yux::yuxParserBaseVisitor {
 
     // Phase 4a: typeWithRef -> TypeNode；若 SymbolAnd 存在，包成 Ref<inner>
     TypeNode* buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr, Node* parent);
+    // typeGeneric / turbofish 共用：genericDefWithRef 实参列表（可含 T&）
+    vector<TypeNode*> typeArgsFromGenericDefWithRef(yux::yuxParser::GenericDefWithRefContext* gd, Node* parent);
     LambdaExprNode* makeTrailingLambda(yux::yuxParser::TrailingLambdaContext* tl);
 
     // Function<P..., Ret> → TypeFnNode；末位为返回类型，() 表 unit

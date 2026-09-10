@@ -1,0 +1,12 @@
+; 用户泛型 struct 类型实参不得为 T& → E4037
+struct Box<T> {
+  x T
+}
+
+struct Hold {
+  b Box<i32&>  ; check: E4037
+}
+
+fn main() {
+  ret;
+}

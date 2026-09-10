@@ -1,0 +1,28 @@
+; Dyn:<D&>(x) 调用站构造（turbofish 接 genericDefWithRef）
+#Spec
+struct Greet {
+  fn hi() i32
+}
+
+#Impl(Greet)
+struct N {
+  v i32
+
+  #Static
+  fn make(v i32) N {
+    ret Self {
+      .v = v
+    }
+  }
+
+  fn hi() i32 {
+    $.v
+  }
+}
+
+fn main() {
+  #Mut let n N = N::make(7)
+  let d Dyn<Greet&> = Dyn:<Greet&>(&n)
+  let _x i32 = d.hi()
+  ret;
+}

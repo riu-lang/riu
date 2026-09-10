@@ -488,6 +488,9 @@ void validateAliases(FileNode* file, FileNode* sdkFile) {
         std::set<std::string> visited;
         visited.insert(a->name().getText());
         (void)resolveAliasImpl(a->target()->getType(), nr, visited);
+        int aline = static_cast<int>(a->name().getLine());
+        int acol = static_cast<int>(a->name().getCharPositionInLine()) + 1;
+        validateTypeArgRefPolicy(a->target()->getType(), aline, acol, false);
     }
 
     // 函数符号表 params / retType 透明别名归一化（原 Compiler::validateAliases 副作用）

@@ -182,7 +182,7 @@ void SemaPass::run() {
             if (!f || !f->type()) continue;
             try {
                 auto ft = f->type()->getType();
-                validateContainerBansAt(ft, f->type(), f->getLineNumber(), f->getColumn());
+                validateContainerBansAt(ft, f->type(), f->getLineNumber(), f->getColumn(), false);
                 if (!typeStillTemplate(ft) && !sema::typeHasLlvmLayout(ft, _file, _sdkFile, _currentTypeParams)) {
                     auto* fieldSd = _names.lookupStruct(ft);
                     if (!(fieldSd && fieldSd->isGeneric())) {
@@ -202,7 +202,9 @@ void SemaPass::run() {
         for (auto& sf : sd->staticFields()) {
             if (!sf.type) continue;
             try {
-                noteConcreteGenericType(sf.type->getType());
+                auto sft = sf.type->getType();
+                validateContainerBansAt(sft, sf.type, sf.type->getLineNumber(), sf.type->getColumn(), false);
+                noteConcreteGenericType(sft);
             } catch (const YuxError&) {
                 throw;
             } catch (...) { // NOLINT(bugprone-empty-catch)
@@ -213,10 +215,28 @@ void SemaPass::run() {
     for (auto& gc : _file->getGlobalConsts()) {
         if (!gc) continue;
         try {
+            if (gc->typeNode()) {
+                validateContainerBansAt(gc->getType(), gc->typeNode(), gc->getLineNumber(), gc->getColumn(), false);
+            }
             noteConcreteGenericType(gc->getType());
         } catch (const YuxError&) {
             throw;
         } catch (...) { // NOLINT(bugprone-empty-catch)
+        }
+    }
+    for (auto& ed : _file->getEnumDecls()) {
+        if (!ed) continue;
+        for (auto& v : ed->variants()) {
+            if (!v) continue;
+            for (auto* pt : v->payloadTypes()) {
+                if (!pt) continue;
+                try {
+                    validateContainerBansAt(pt->getType(), pt, v->getLineNumber(), v->getColumn(), false);
+                } catch (const YuxError&) {
+                    throw;
+                } catch (...) { // NOLINT(bugprone-empty-catch)
+                }
+            }
         }
     }
     for (auto& fn : _file->getFunctions()) {
@@ -340,7 +360,7 @@ void SemaPass::visitFn(FnNode* fn) {
             try {
                 auto pt = param->type()->getType();
                 validateContainerBansAt(pt, param->type(), static_cast<int>(param->name().getLine()),
-                                        static_cast<int>(param->name().getCharPositionInLine()));
+                                        static_cast<int>(param->name().getCharPositionInLine()), true);
                 noteConcreteGenericType(pt);
             } catch (const YuxError&) {
                 throw;
@@ -350,7 +370,7 @@ void SemaPass::visitFn(FnNode* fn) {
         if (auto rt = hdr->retType()) {
             try {
                 auto rtt = rt->getType();
-                validateContainerBansAt(rtt, rt, fn->getLineNumber(), fn->getColumn());
+                validateContainerBansAt(rtt, rt, fn->getLineNumber(), fn->getColumn(), true);
                 noteConcreteGenericType(rtt);
             } catch (const YuxError&) {
                 throw;

@@ -218,7 +218,7 @@ Doc Printer::typeDoc(yuxParser::TypeContext* ctx) {
         return concat({typeDoc(n->type()), text("?")});
     }
     if (auto* n = dynamic_cast<yuxParser::TypeGenericContext*>(ctx)) {
-        return concat({typePathDoc(n->typePath()), genericDefDoc(n->genericDef())});
+        return concat({typePathDoc(n->typePath()), genericDefWithRefDoc(n->genericDefWithRef())});
     }
     if (auto* n = dynamic_cast<yuxParser::TypeArrayContext*>(ctx)) {
         return concat({
@@ -477,9 +477,9 @@ Doc Printer::exprDoc(yuxParser::ExprContext* ctx) {
         }
         std::vector<Doc> parts;
         parts.push_back(exprDoc(n->left));
-        if (n->genericDef() != nullptr) {
+        if (n->genericDefWithRef() != nullptr) {
             parts.push_back(text(":"));
-            parts.push_back(genericDefDoc(n->genericDef()));
+            parts.push_back(genericDefWithRefDoc(n->genericDefWithRef()));
         }
         parts.push_back(text("("));
         for (std::size_t i = 0; i < n->args.size(); ++i) {

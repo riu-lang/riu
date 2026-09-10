@@ -111,13 +111,14 @@ bool isMoveAssignLvalue(ExprNode* expr) {
     return false;
 }
 
-void validateContainerBansAt(const TypeInfo& t, TypeNode* tn, int fallbackLine, int fallbackCol) {
+void validateContainerBansAt(const TypeInfo& t, TypeNode* tn, int fallbackLine, int fallbackCol, bool allowDynBorrow) {
     if (!tn) return;
     int line = tn->getLineNumber();
     int col = tn->getColumn();
     if (line <= 0) line = fallbackLine > 0 ? fallbackLine : 1;
     if (col < 0) col = fallbackCol;
     validateRcContainerBans(t, line, col);
+    validateTypeArgRefPolicy(t, line, col, allowDynBorrow);
 }
 
 // Phase B-1: 与 Compiler::isNoCopyType 等价的本地版本（0 LLVM 依赖）。
@@ -265,21 +266,21 @@ LambdaCapKind classifyLambdaCapture(const TypeInfo& t) {
 bool isMorphologicalGenericCode(const char* code) {
     if (!code) return false;
     std::string_view sv(code);
-    constexpr std::array<std::string_view, 20> kKeep = {
-        "E3030",                   // 未定义符号
-        "E6010", "E6011",          // 泛型 arity
-        "E4031", "E4032",          // #NoCopy
-        "E3103",                   // 整数字面量越界
-        "E2033",                   // 非法转义
-        "E4025", "E1132",          // 容器禁令
-        "E2016", "E2017",          // 别名
-        "E3130",                   // 同名 ctor 定义
-        "E3120", "E3121", "E3123", // Self:: / Type:: 静态调用形态
-        "E3128",                   // #Static 体内 $
-        "E2030",                   // lambda 捕获赋值
-        "E4033",                   // use-after-move
-        "E3095",                   // 类型名 / 非函数当 callee（方法点在 Dot 分支延迟重抛）
-        "E5018",                   // 包边界不依赖泛型实参。
+    constexpr std::array<std::string_view, 22> kKeep = {
+        "E3030",                            // 未定义符号
+        "E6010", "E6011",                   // 泛型 arity
+        "E4031", "E4032",                   // #NoCopy
+        "E3103",                            // 整数字面量越界
+        "E2033",                            // 非法转义
+        "E4025", "E1132", "E4037", "E4038", // 容器禁令 / <> 内 T&
+        "E2016", "E2017",                   // 别名
+        "E3130",                            // 同名 ctor 定义
+        "E3120", "E3121", "E3123",          // Self:: / Type:: 静态调用形态
+        "E3128",                            // #Static 体内 $
+        "E2030",                            // lambda 捕获赋值
+        "E4033",                            // use-after-move
+        "E3095",                            // 类型名 / 非函数当 callee（方法点在 Dot 分支延迟重抛）
+        "E5018",                            // 包边界不依赖泛型实参。
     };
     for (auto c : kKeep) {
         if (sv == c) return true;

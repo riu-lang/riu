@@ -590,12 +590,10 @@ llvm::Value* Compiler::compileDynCtorExpr(ExprDynCtorNode* node) {
 
     auto argVal = compileExpr(argExpr);
 
-    // 抽取 data 槽：Rc<U> 取 handle 字段；U& 直接用
-    // Phase 3e RC 交接：
-    //   owned (Rc<U>) 形态：源 Rc 若是 fresh 临时（G() 直构），consumeTemp 偷取 +1；
-    //     否则（命名变量 / 字段读出）调 _box_retain 拷一份 +1，源 Rc 自己照常 release。
-    //     Dyn 在自身 scope 退出时走 _dyn_release 抵消。
-    //   borrow (U&) 形态：data_ptr 借用，不动 RC（由源 owner 维持）。
+    // 抽取 data 槽：
+    //   owned Dyn<D>(Rc<U>)：data = RC handle（dispatch +8）；retain / consumeTemp。
+    //   borrow Dyn<D&>(U&)：data = 裸实例指针，不动 RC。
+    //   borrow Dyn<D&>(Rc<U>)：data = handle+8（payload），不动 RC（源 Rc 维持寿命）。
     llvm::Value* dataPtr = nullPtr;
     if (argType.isRc()) {
         // Rc layout = { ptr handle }；handle 指向 [RC head | payload]
@@ -604,9 +602,15 @@ llvm::Value* Compiler::compileDynCtorExpr(ExprDynCtorNode* node) {
         _builder.CreateStore(argVal, tmp);
         auto zero = llvm::ConstantInt::get(_builder.getInt32Ty(), 0);
         auto handleField = _builder.CreateGEP(rcLLVMTy, tmp, {zero, zero}, "dyn.src.handle.ptr");
-        dataPtr = _builder.CreateLoad(ptrTy, handleField, "dyn.src.handle");
-
-        passAsArg(argVal, argType, argExpr);
+        auto handle = _builder.CreateLoad(ptrTy, handleField, "dyn.src.handle");
+        if (isBorrow) {
+            // Dyn<D&>(Rc<U>)：data 是实例指针（跳 RC 头），与 U& 同款；不动 RC。
+            dataPtr = _builder.CreateGEP(_builder.getInt8Ty(), handle, {_builder.getInt64(8)}, "dyn.src.payload");
+        } else {
+            // Dyn<D>(Rc<U>)：data 指向 RC block；dispatch 再 +8。源 Rc retain / 偷 +1。
+            dataPtr = handle;
+            passAsArg(argVal, argType, argExpr);
+        }
     } else if (argType.isRef()) {
         // U& 已是裸指针类型，直接用
         dataPtr = argVal;

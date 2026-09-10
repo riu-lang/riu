@@ -149,7 +149,9 @@ type:
     | base=type SymbolExcl errType=type #typeFallible
     | type SymbolQuest        #typeNullable
     // A<T> B<T1, T2>；可带路径前缀 `yux.core.map.Map<i32>`
-    | typePath genericDef           #typeGeneric
+    // 实参槽接 genericDefWithRef：允许 `Function<i32&, ()>` / `Array<i32&>` 进 AST，
+    // 后者由 sema 按外层类型拒（E4037）；声明头仍走 genericDef（名字 + 边界）。
+    | typePath genericDefWithRef    #typeGeneric
     // [ type * count ]
     | GetStart
         type SymbolMul INT
@@ -187,9 +189,9 @@ typeWithRef:
       ParEnd                            #typeTupleWithRef
     ;
 
-// typeParam: 单个类型形参 / 类型实参槽位。
-// 仅在**声明位**（fn / struct 的 genericDef 槽位）允许 `:` 边界；
-// 类型引用位（如 Rc<T>）与调用点 turbofish 处必须无 bounds，由 semantic 层拒绝。
+// typeParam: 声明位类型形参（fn / struct / #Spec 头部 genericDef）。
+// 类型引用与调用点 turbofish 走 genericDefWithRef（可含 T&），不再走 typeParam；
+// 声明位 `:` 边界仍只出现在本产生式。
 typeParam:
     type
     (
@@ -469,9 +471,9 @@ expr:
     // 零参 variant 写带不带括号等价；类型别名 C 处亦合法（C::V 解析期等价 E::V）
     // [PROBE static-fn] LHS 加 Self 入口；前后各加可选 turbofish
     | (enumName=typePath | selfLhs=SelfType)
-      (SymbolColon lhsGenerics=genericDef)?
+      (SymbolColon lhsGenerics=genericDefWithRef)?
       SymbolColonColon variant=ID
-      (SymbolColon rhsGenerics=genericDef)?
+      (SymbolColon rhsGenerics=genericDefWithRef)?
       (
         ParStart LineEnd*
             (
@@ -505,7 +507,7 @@ expr:
         )?
       GetEnd                                                  # exprArray
     // e() e(e) e(e,e) e<T>() / 尾随 lambda： e(args){ (params) => stmts } 或 e { () => stmts }（唯一实参时省括号）
-    | left=expr (SymbolColon genericDef)? ParStart LineEnd*
+    | left=expr (SymbolColon genericDefWithRef)? ParStart LineEnd*
         ( args+=expr
             (SymbolComma LineEnd* args+=expr)*
             SymbolComma? LineEnd*
@@ -514,7 +516,7 @@ expr:
         trailing=trailingLambda?
         errPropagate=SymbolExcl?                              # exprCall
     | left=expr
-        (SymbolColon genericDef)?
+        (SymbolColon genericDefWithRef)?
       trailing=trailingLambda
       errPropagate=SymbolExcl?                                # exprCallTrailingOnly
     // !e ~e -e 没有空格，低于成员访问优先级

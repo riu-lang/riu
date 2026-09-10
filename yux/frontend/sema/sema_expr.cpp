@@ -871,6 +871,9 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                             typeArgsOk = false;
                         }
                         if (typeArgsOk && typeArgs.size() == genericFn->header()->typeParams().size()) {
+                            if (hasTypeArgs) {
+                                validateOwnedTypeArgs(fnName, typeArgs, line, col);
+                            }
                             sema::validateGenericTypeArgsSpecBound(&_yux->specRegistry(), &_yux->specImplChecker(),
                                                                    fnOwner, genericFn->header(), typeArgs, line, col);
                             // Phase C：typeArgs 已知后按替换后的形参检查实参（E3014）。
@@ -1896,6 +1899,14 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                             .withHint(
                                 std::format("实例化时的类型实参个数需与声明匹配；改写为 `{}<{}>` 形式补齐 {} 个类型",
                                             lhsName, std::string(want == 1 ? "T" : "T1, T2, ..."), want));
+                    }
+                    if (!lhsTArgs.empty()) {
+                        vector<TypeInfo> owned;
+                        owned.reserve(lhsTArgs.size());
+                        for (auto* tn : lhsTArgs) {
+                            if (tn) owned.push_back(applyInstSubst(tn->getType()));
+                        }
+                        validateOwnedTypeArgs(lhsName, owned, line, col);
                     }
                     if (!fillSubstFromTypeNodes(structDecl->typeParams(), lhsTArgs, staticSubst)) {
                         // `Self::name` 无 turbofish：实例化复查绑当前单态（§7.10.2.3 / §7.10.3.1）。

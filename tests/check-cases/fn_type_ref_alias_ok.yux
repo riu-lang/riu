@@ -1,0 +1,9 @@
+; 别名右侧 Function 含 T& 合法
+Pred = Function<i32&, bool>
+
+fn is_pos(x i32&) bool = x > 0
+
+fn main() {
+  let p Pred = is_pos
+  ret;
+}

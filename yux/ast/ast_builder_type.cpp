@@ -59,16 +59,7 @@ std::any ASTBuilder::visitTypeGeneric(yux::yuxParser::TypeGenericContext* ctx) {
     auto path = typePathFromCtx(ctx->typePath());
     Token last = path.last();
 
-    vector<TypeNode*> typeArgs;
-    for (auto pCtx : ctx->genericDef()->params) {
-        // 类型引用位不允许 bound（spec §B.2 / §12 仅声明位允许）
-        if (!pCtx->bounds.empty()) {
-            auto* tk = pCtx->SymbolColon();
-            throw YuxError(tk ? static_cast<int>(tk->getSymbol()->getLine()) : 0,
-                           tk ? static_cast<int>(tk->getSymbol()->getCharPositionInLine()) + 1 : 0, ErrorCode::E2015);
-        }
-        typeArgs.push_back(any_cast_p<TypeNode>(visit(pCtx->type(0))));
-    }
+    auto typeArgs = typeArgsFromGenericDefWithRef(ctx->genericDefWithRef(), parent);
 
     // DRAFT-heap-types §9 (Phase 3b): Arc<T> 占名，v1.x 多线程主题落地后实装。
     // 此处先在类型解析点直接拒绝，避免后续路径把 Arc 误当作未知 struct 报泛错。
@@ -181,6 +172,16 @@ std::any ASTBuilder::visitTypeFallible(yux::yuxParser::TypeFallibleContext* ctx)
 // Phase 4a: typeWithRef → TypeNode；SymbolAnd 存在则包成 Ref<inner>
 // 语法已改：typeWithRef 现有 4 个分支，与 type 的 4 个分支结构对应，但每个内部位置（generic args / array elem）
 // 也允许带 &，从而支持 Rc<i32&> 这类嵌套引用类型作为参数 / 局部 var 类型。
+vector<TypeNode*> ASTBuilder::typeArgsFromGenericDefWithRef(yux::yuxParser::GenericDefWithRefContext* gd,
+                                                            Node* parent) {
+    vector<TypeNode*> typeArgs;
+    if (!gd) return typeArgs;
+    for (auto innerCtx : gd->types) {
+        typeArgs.push_back(buildTypeWithRef(innerCtx, parent));
+    }
+    return typeArgs;
+}
+
 TypeNode* ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr, Node* parent) {
     using namespace yux;
     TypeNode* inner;
@@ -235,10 +236,7 @@ TypeNode* ASTBuilder::buildTypeWithRef(yux::yuxParser::TypeWithRefContext* twr, 
     } else if (auto g = dynamic_cast<yuxParser::TypeGenericWithRefContext*>(twr)) {
         auto path = typePathFromCtx(g->typePath());
         Token last = path.last();
-        vector<TypeNode*> typeArgs;
-        for (auto innerCtx : g->genericDefWithRef()->types) {
-            typeArgs.push_back(buildTypeWithRef(innerCtx, parent));
-        }
+        auto typeArgs = typeArgsFromGenericDefWithRef(g->genericDefWithRef(), parent);
         // DRAFT-heap-types §9 (Phase 3b): Arc<T> 占名
         if (path.isBare() && last.getText() == "Arc") {
             std::string innerName = typeArgs.empty() ? std::string("?") : typeArgs[0]->getType().name;

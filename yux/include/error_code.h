@@ -370,6 +370,8 @@ DEF_ERR(4034, "`move` argument must be T&, got `{}` (spec §3g)")
 DEF_ERR(4035, "Type parameter of `move` must not itself be a reference (spec §3g)")
 DEF_ERR(4036, "`<-` left-hand side must be a variable, `$`, field, or tuple member "
               "(index not yet supported; spec §4.13.2.2)")
+DEF_ERR(4037, "type argument of '{}' cannot be a borrow (`T&`) (§8.6.7.1)")
+DEF_ERR(4038, "`Dyn<D&>` cannot appear in owned type position (field, alias, or container element) (§12.9.2.2)")
 
 // ── E5xxx 模块 / 包 ───────────────────────────────────────────────────
 DEF_ERR(5001, "yux.toml not found in {}")

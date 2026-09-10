@@ -798,6 +798,24 @@ struct FnBox {
   f Function<String>
 }
 
+struct FnRefBox {
+  f Function<i32&, i32>
+}
+
+fn run_fn_ref_field(h FnRefBox, x i32&) i32 {
+  h.f(x)
+}
+
+; 验证：含 T& 形参的 Function 可作 struct 字段并调用
+#Test
+fn test_fn_ref_field_call() {
+  let h FnRefBox = FnRefBox {
+    .f = (r i32&) i32 => r + 1
+  }
+  #Mut let n i32 = 10
+  assert_eq(run_fn_ref_field(h, &n), 11)
+}
+
 fn struct_fn_field_drop_scope() {
   let s String = "hello"
   let h FnBox = FnBox {

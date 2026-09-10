@@ -1,0 +1,10 @@
+; 用户泛型 fn turbofish 不得绑 T& → E4037
+fn id<T>(x T) T {
+  x
+}
+
+fn main() {
+  #Mut let n i32 = 1
+  let r i32 = id:<i32&>(&n)  ; check: E4037
+  ret;
+}

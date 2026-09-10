@@ -1,0 +1,17 @@
+; Function<T&, …> 是 owned fat-ptr，可作 struct 字段（<> 内 T& 语义化）
+struct Holder {
+  f Function<i32&, i32>
+}
+
+fn run(h Holder, x i32&) i32 {
+  h.f(x)
+}
+
+fn main() {
+  let h Holder = Holder {
+    .f = (r i32&) i32 => r + 1
+  }
+  #Mut let n i32 = 10
+  let _r i32 = run(h, &n)
+  ret;
+}

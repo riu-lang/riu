@@ -1,0 +1,8 @@
+; Rc 类型实参不得为 T& → E4037
+struct Hold {
+  r Rc<i32&>  ; check: E4037
+}
+
+fn main() {
+  ret;
+}

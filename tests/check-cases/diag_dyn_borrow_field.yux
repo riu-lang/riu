@@ -1,0 +1,13 @@
+; Dyn<D&> 不能作 struct 字段 → E4038
+#Spec
+struct Greet {
+  fn hi()
+}
+
+struct Hold {
+  d Dyn<Greet&>  ; check: E4038
+}
+
+fn main() {
+  ret;
+}

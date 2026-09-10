@@ -49,7 +49,7 @@ typePath       ::= ID ('.' ID)*                    ; 类型 / use 路径；末�
 
 type           ::= typePath                        # typeNormal
                  | type '?'                        # typeNullable
-                 | typePath genericDef             # typeGeneric
+                 | typePath genericDefWithRef      # typeGeneric
                  | '[' type '*' INT ']'            # typeArray
                  | '(' ')'                        # typeUnit
                  | '(' type (',' type)+ ')'        # typeTuple
@@ -71,8 +71,9 @@ draftBound        ::= modulePath? ID genericDef?     # 例：ToString / pkg.Disp
 
 约束：
 
-- `typeWithRef` 仅出现在函数参数与局部变量声明位置（§3.2 / §8.3.1）；其它位置只能用 `type`。
-- `typeParam` 的 spec 边界仅出现在**声明位**（`fn` / `struct` / `#Spec struct` 头部的 `genericDef` 槽位）；调用点 turbofish `f:<T>(args)` 处**不得**写边界（§6.4.4.3）。
+- `typeWithRef` 仅出现在函数参数与局部变量声明位置（§3.2 / §8.3.1）；其它位置只能用 `type`。字段不能写 `i32&`，但 `typeGeneric` 的实参槽接 `genericDefWithRef`，故 `Function<i32&, ()>` 可作字段。
+- `typeParam` 的 spec 边界仅出现在**声明位**（`fn` / `struct` / `#Spec struct` 头部的 `genericDef` 槽位）；调用点 turbofish 走 `genericDefWithRef`，不得写边界（§6.4.4.3）。
+- `Array<T&>` / `Rc<T&>` / 用户 `Foo<T&>` / 用户 fn `f:<i32&>` 由语义层拒（E4037）。`Dyn<D&>` 出现在 owned 位（字段 / 别名 / 容器元素）报 E4038。
 
 > 上述边界产生式 spec-unify v1 已落地 `yux/ast/yux.g4`；`draftBound` 产生式名沿用历史 token 名，语义为"spec 边界"（§12）。
 
@@ -80,7 +81,7 @@ draftBound        ::= modulePath? ID genericDef?     # 例：ToString / pkg.Disp
 
 `Dyn` 是编译器内置类型名（非关键字）。`Dyn<D>` 与 `Dyn<D&>` 作为 `typeGeneric` / `typeGenericWithRef` 形态出现；语义见 §12.9。约束：
 
-- `Dyn<D&>` 中 `&` 仅在 `genericDefWithRef` 实参槽合法（即 `typeWithRef` 位）；
+- `Dyn<D&>` 中 `&` 在 `genericDefWithRef` 实参槽可解析；owned 位（字段 / 别名 / `Array` 元素 / `Rc` 内层）由语义层拒（E4038）；
 - `Dyn<...>` 不得嵌套 `Dyn` / `Rc<Dyn>` / `Weak<Dyn>` / `Dyn<D>?`（语义层拒绝，E1132 / E1135）。
 
 构造形态走 `exprCall` 的 turbofish 形：`Dyn:<D>(box_u)` / `Dyn:<D&>(u_ref)`；无 `:` 写法 `Dyn<D>` 仅在类型位有效。
@@ -92,7 +93,7 @@ draftBound        ::= modulePath? ID genericDef?     # 例：ToString / pkg.Disp
 - 末位类型实参永远是返回类型；至少 1 个实参。`Function<()>` = 0 参 unit 返回。
 - 可空走标准 `?`：`Function<i32, i32>?`。布局仍是 16 字节 fat-ptr（`fn_ptr == null` 表空），不套 `Nullable` 外壳。
 - `Weak<Function<...>>` 禁。`extern fn` 形参 / 返回禁。
-- 含 `T&` 的类型实参仅 `genericDefWithRef` 槽合法（与 `Dyn<D&>` 同）。
+- 含 `T&` 的类型实参在 `genericDefWithRef` 槽可解析（`typeGeneric` 与 turbofish 同槽）。`Function<…>` 允许；`Array` / `Rc` / 用户泛型由 E4037 拒。
 
 ## B.3 字面量
 

@@ -1,8 +1,5 @@
 ; Phase 4a — Dyn<D> 运行时多态端到端
-; 覆盖：内置类型 + ToString 走 fat ptr + vtable / 自定义 draft 多方法 / 跨 fn 形参传递 / dtor 路径
-;
-; 注：Dyn<D&> 借用形态目前 ast_builder 仅识别 owned `Dyn:<D>`（g4 `genericDef` 实参槽不允许 `&`），
-; 借用调用路径俟构造解锁后再补；本文件只覆盖 owned `Dyn<D>`。
+; 覆盖：owned Dyn:<D> / 借用 Dyn:<D&> 构造、vtable 分发、跨 fn 形参、dtor
 
 ; ---------- 用户类型走 ToString：Dyn<ToString>(Rc<DynCounter>) ----------
 
@@ -44,6 +41,22 @@ fn test_dyn_to_string_counter_zero() {
   let b Rc<DynCounter> = DynCounter::make(0)
   let d Dyn<ToString> = Dyn:<ToString>(b)
   assert_eq(d.to_string(), "0")
+}
+
+; 验证：Dyn:<D&>(U&) 借用构造
+#Test
+fn test_dyn_borrow_ctor_ref() {
+  #Mut let c DynCounter = DynCounter::make(42)
+  let d Dyn<ToString&> = Dyn:<ToString&>(&c)
+  assert_eq(d.to_string(), "42")
+}
+
+; 验证：Dyn:<D&>(Rc<U>) 借用构造（不移交 RC）
+#Test
+fn test_dyn_borrow_ctor_from_rc() {
+  let b Rc<DynCounter> = DynCounter::make(1)
+  let d Dyn<ToString&> = Dyn:<ToString&>(b)
+  assert_eq(d.to_string(), "1")
 }
 
 ; ---------- 自定义 draft + struct，多方法 ----------

@@ -613,7 +613,7 @@ void SemaPass::visitStmt(StatementNode* stmt) {
         if (da->varType()) {
             try {
                 auto vt = da->varType()->getType();
-                validateContainerBansAt(vt, da->varType(), da->getLineNumber(), da->getColumn());
+                validateContainerBansAt(vt, da->varType(), da->getLineNumber(), da->getColumn(), true);
                 if (!vt.name.empty() && !isBuiltinType(vt.name) && !vt.isRef() && !vt.isFn() && !vt.isTuple()) {
                     if (auto* sd = _names.lookupStruct(vt.name, true)) {
                         size_t want = sd->typeParams().size();

@@ -74,19 +74,8 @@ std::any ASTBuilder::visitExprCall(yux::yuxParser::ExprCallContext* ctx) {
     for (auto arg : ctx->args) {
         call->addArg(any_cast_p<ExprNode>(visit(arg)));
     }
-    if (auto gd = ctx->genericDef()) {
-        vector<TypeNode*> typeArgs;
-        for (auto pCtx : gd->params) {
-            // turbofish 不允许 bound（spec §6.4.4.3）
-            if (!pCtx->bounds.empty()) {
-                auto* tk = pCtx->SymbolColon();
-                throw YuxError(tk ? static_cast<int>(tk->getSymbol()->getLine()) : 0,
-                               tk ? static_cast<int>(tk->getSymbol()->getCharPositionInLine()) + 1 : 0,
-                               ErrorCode::E2015);
-            }
-            typeArgs.push_back(any_cast_p<TypeNode>(visit(pCtx->type(0))));
-        }
-        call->setTypeArgs(std::move(typeArgs));
+    if (auto gd = ctx->genericDefWithRef()) {
+        call->setTypeArgs(typeArgsFromGenericDefWithRef(gd, scope));
     }
     // 尾随 lambda 糖：f(args){ (params) => stmts } → 等价 f(args, (params) => { stmts })
     if (auto* tl = ctx->trailing) {
@@ -98,7 +87,7 @@ std::any ASTBuilder::visitExprCall(yux::yuxParser::ExprCallContext* ctx) {
 
     // Dyn<D>(x) 类型构造（DRAFT-dyn-draft / 拟 §12.9）—— 单点拦截 ExprCallNode 重写为 ExprDynCtorNode
     // 命中条件：callee = LiteralObj("Dyn") + 恰好 1 个 typeArg + 恰好 1 个 arg + 无 errPropagate / 无 trailing lambda
-    // 注：`Dyn<D&>(x)` 因 g4 `genericDef` 实参不允许内嵌 `&` 而无法解析到这里（Phase 1c 仅 owned）
+    // `Dyn:<D&>(x)`：typeArg 为 Ref 时 isBorrow=true（sema / borrow checker / codegen 已接）
     if (!call->errPropagate() && call->getArgs().size() == 1 && call->getTypeArgs().size() == 1) {
         if (auto calleeLit = dynamic_cast<ExprLiteralNode*>(call->getCalleeExpr())) {
             if (auto obj = dynamic_cast<LiteralObjNode*>(calleeLit->literal())) {
@@ -120,18 +109,8 @@ std::any ASTBuilder::visitExprCallTrailingOnly(yux::yuxParser::ExprCallTrailingO
     auto scope = currentScope();
     auto callee = any_cast_p<ExprNode>(visit(ctx->left));
     auto call = createWithLine<ExprCallNode>(ctx, scope, callee);
-    if (auto gd = ctx->genericDef()) {
-        vector<TypeNode*> typeArgs;
-        for (auto pCtx : gd->params) {
-            if (!pCtx->bounds.empty()) {
-                auto* tk = pCtx->SymbolColon();
-                throw YuxError(tk ? static_cast<int>(tk->getSymbol()->getLine()) : 0,
-                               tk ? static_cast<int>(tk->getSymbol()->getCharPositionInLine()) + 1 : 0,
-                               ErrorCode::E2015);
-            }
-            typeArgs.push_back(any_cast_p<TypeNode>(visit(pCtx->type(0))));
-        }
-        call->setTypeArgs(std::move(typeArgs));
+    if (auto gd = ctx->genericDefWithRef()) {
+        call->setTypeArgs(typeArgsFromGenericDefWithRef(gd, scope));
     }
     auto lambda = makeTrailingLambda(ctx->trailing);
     if (lambda) call->addArg(static_cast<ExprNode*>(lambda));
@@ -780,26 +759,12 @@ std::any ASTBuilder::visitExprEnumCtor(yux::yuxParser::ExprEnumCtorContext* ctx)
     auto node = createWithLine<ExprPathCallNode>(ctx, scope, lhsTok, ctx->variant);
     node->setLhsPath(std::move(lhsPath));
 
-    // Phase 6E.4: turbofish 形态 `Type:<T>::name:<U>(args)` 解析 LHS / RHS 类型实参.
-    // 类型引用位不允许 bounds (与 visitTypeGeneric 同条款), 命中即 E2015.
-    auto parseTurbofish = [&](yux::yuxParser::GenericDefContext* g) {
-        vector<TypeNode*> args;
-        for (auto* pCtx : g->params) {
-            if (!pCtx->bounds.empty()) {
-                auto* tk = pCtx->SymbolColon();
-                throw YuxError(tk ? static_cast<int>(tk->getSymbol()->getLine()) : 0,
-                               tk ? static_cast<int>(tk->getSymbol()->getCharPositionInLine()) + 1 : 0,
-                               ErrorCode::E2015);
-            }
-            args.push_back(any_cast_p<TypeNode>(visit(pCtx->type(0))));
-        }
-        return args;
-    };
+    // Phase 6E.4: turbofish `Type:<T>::name:<U>(args)`；实参槽可含 T&，owned 约束由 sema E4037。
     if (ctx->lhsGenerics != nullptr) {
-        node->setLhsTypeArgs(parseTurbofish(ctx->lhsGenerics));
+        node->setLhsTypeArgs(typeArgsFromGenericDefWithRef(ctx->lhsGenerics, scope));
     }
     if (ctx->rhsGenerics != nullptr) {
-        node->setRhsTypeArgs(parseTurbofish(ctx->rhsGenerics));
+        node->setRhsTypeArgs(typeArgsFromGenericDefWithRef(ctx->rhsGenerics, scope));
     }
     if (ctx->errPropagate != nullptr) {
         node->setErrPropagate(true);

@@ -57,7 +57,8 @@ bool isArraySetLvalue(ExprNode* arrayExpr);
 // 字面量 / 调用 / 索引 / 括号等走 E4036。与 T 无关，模板期也报。
 bool isMoveAssignLvalue(ExprNode* expr);
 
-void validateContainerBansAt(const TypeInfo& t, TypeNode* tn, int fallbackLine, int fallbackCol);
+void validateContainerBansAt(const TypeInfo& t, TypeNode* tn, int fallbackLine, int fallbackCol,
+                             bool allowDynBorrow = false);
 
 // Phase B-1: 与 Compiler::isNoCopyType 等价的本地版本（0 LLVM 依赖）。
 // 判定类型是否为 #NoCopy：Array<T> 隐含，或 struct decl 显式标注 #NoCopy。

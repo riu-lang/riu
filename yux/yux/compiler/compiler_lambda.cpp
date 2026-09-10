@@ -454,6 +454,25 @@ llvm::Value* Compiler::compileLambdaExpr(LambdaExprNode* node) {
     return fat;
 }
 
+// fn-value 实参：T& 形参不能走 compileExpr 的自动解引用（会变成 T 值，CreateCall 签名对不上）。
+// 与 call_fn.cpp named-fn 路径同款：本帧 ident → _localVarPtrs；已是 ptr 则透传；否则 alloca 临时。
+llvm::Value* Compiler::compileFnValueArg(ExprNode* arg, const TypeInfo* expected) {
+    if (expected && expected->isRef()) {
+        if (auto* lit = dynamic_cast<ExprLiteralNode*>(arg)) {
+            if (auto* obj = dynamic_cast<LiteralObjNode*>(lit->literal())) {
+                auto it = _localVarPtrs.find(obj->getValue().getText());
+                if (it != _localVarPtrs.end()) return it->second;
+            }
+        }
+        auto val = compileExpr(arg);
+        if (val->getType()->isPointerTy()) return val;
+        auto tmp = _builder.CreateAlloca(val->getType(), nullptr, "fn.ref_arg");
+        _builder.CreateStore(val, tmp);
+        return tmp;
+    }
+    return compileExpr(arg);
+}
+
 // ==================== compileFnValueCall ====================
 // callee 静态类型为 Fn(...)R 的调用站点：
 // 1) 实参位置 lambda 走 inferLambdaParamsFromFnType 反推（如有）
@@ -524,11 +543,12 @@ llvm::Value* Compiler::compileFnValueCall(ExprCallNode* node) {
         }
     }
 
-    // 编译实参（含 lambda → 构造 fat-ptr）
+    // 编译实参（含 lambda → 构造 fat-ptr；T& 形参见 compileFnValueArg）
     vector<llvm::Value*> callArgs;
     callArgs.push_back(captures);
-    for (auto i : node->getArgs()) {
-        callArgs.push_back(compileExpr(i));
+    for (size_t i = 0; i < node->getArgs().size(); ++i) {
+        const TypeInfo* exp = i < expectedParams.size() ? expectedParams[i].get() : nullptr;
+        callArgs.push_back(compileFnValueArg(node->getArgs()[i], exp));
     }
 
     auto callResult = _builder.CreateCall(llvmFnType, fnPtrVal, callArgs);
@@ -605,11 +625,12 @@ llvm::Value* Compiler::compileRcFnValueCall(ExprCallNode* node, const TypeInfo& 
         }
     }
 
-    // 编译实参
+    // 编译实参（T& 形参见 compileFnValueArg）
     vector<llvm::Value*> callArgs;
     callArgs.push_back(captures);
-    for (auto i : node->getArgs()) {
-        callArgs.push_back(compileExpr(i));
+    for (size_t i = 0; i < node->getArgs().size(); ++i) {
+        const TypeInfo* exp = i < expectedParams.size() ? expectedParams[i].get() : nullptr;
+        callArgs.push_back(compileFnValueArg(node->getArgs()[i], exp));
     }
 
     auto callResult = _builder.CreateCall(llvmFnType, fnPtrVal, callArgs);
@@ -681,11 +702,12 @@ llvm::Value* Compiler::compileRefFnValueCall(ExprCallNode* node, const TypeInfo&
         }
     }
 
-    // 编译实参
+    // 编译实参（T& 形参见 compileFnValueArg）
     vector<llvm::Value*> callArgs2;
     callArgs2.push_back(captures2);
-    for (auto i : node->getArgs()) {
-        callArgs2.push_back(compileExpr(i));
+    for (size_t i = 0; i < node->getArgs().size(); ++i) {
+        const TypeInfo* exp = i < expectedParams.size() ? expectedParams[i].get() : nullptr;
+        callArgs2.push_back(compileFnValueArg(node->getArgs()[i], exp));
     }
 
     auto callResult2 = _builder.CreateCall(llvmFnType2, fnPtrVal2, callArgs2);

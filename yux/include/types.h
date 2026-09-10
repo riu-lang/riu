@@ -908,3 +908,68 @@ inline void validateRcContainerBans(const TypeInfo& t, int line, int col) {
     validateNoNestedHeap(t, line, col);
     validateNoDynInRcWeak(t, line, col);
 }
+
+// `<>` 内 T&：Function 形参 / 返回允许；Dyn<D&> 仅 typeWithRef 位；
+// Array / Rc / Weak / Heap / 用户泛型的实参必须 owned（§8.6.7.1 / E4037）。
+inline void validateTypeArgRefPolicy(const TypeInfo& t, int line, int col, bool allowDynBorrow) {
+    if (t.isFn()) {
+        for (const auto& p : t.fnParamTypes()) {
+            if (p) validateTypeArgRefPolicy(*p, line, col, true);
+        }
+        if (auto ret = t.fnReturnType()) validateTypeArgRefPolicy(*ret, line, col, true);
+        return;
+    }
+    if (t.isDyn()) {
+        if (t.isDynBorrow() && !allowDynBorrow) {
+            throw YuxError(line, col, ErrorCode::E4038)
+                .withHint("`Dyn<D&>` 只出现在形参 / 返回 / `let` 类型位；字段、别名和容器元素用 `Dyn<D>`");
+        }
+        if (auto spec = t.dynSpecType()) {
+            TypeInfo inner = *spec;
+            if (inner.isRef()) {
+                if (auto peeled = inner.refElementType()) inner = *peeled;
+            }
+            validateTypeArgRefPolicy(inner, line, col, false);
+        }
+        return;
+    }
+    if (t.isRef()) {
+        if (auto inner = t.refElementType()) validateTypeArgRefPolicy(*inner, line, col, false);
+        return;
+    }
+    if (t.isTuple()) {
+        for (const auto& e : t.tupleElements()) {
+            if (e) validateTypeArgRefPolicy(*e, line, col, allowDynBorrow);
+        }
+        return;
+    }
+    if (t.isArray()) {
+        if (t.elementType) validateTypeArgRefPolicy(*t.elementType, line, col, allowDynBorrow);
+        return;
+    }
+
+    const bool ownedSlots =
+        t.isArrayGeneric() || t.isRc() || t.isWeak() || t.isHeap() || t.isNullable() || t.isGeneric();
+    if (!ownedSlots) return;
+
+    for (const auto& g : t.genericArgs) {
+        if (!g) continue;
+        if (g->isRef()) {
+            throw YuxError(line, col, ErrorCode::E4037, t.name)
+                .withHint("类型实参须为 owned（值类型 / 堆句柄 / Ptr）；借用写在形参上，如 `fn f<T>(x T&)`。"
+                          "`Function` 形参和 typeWithRef 位的 `Dyn<D&>` 可以写 `&`");
+        }
+        validateTypeArgRefPolicy(*g, line, col, false);
+    }
+}
+
+// 用户泛型 fn / 泛型 struct turbofish：每个实参须 owned（Dyn:<D&> 走构造节点，不走这里）。
+inline void validateOwnedTypeArgs(const string& host, const vector<TypeInfo>& typeArgs, int line, int col) {
+    for (const auto& a : typeArgs) {
+        if (a.isRef()) {
+            throw YuxError(line, col, ErrorCode::E4037, host)
+                .withHint("类型实参须为 owned（值类型 / 堆句柄 / Ptr）；借用写在形参上，如 `fn f<T>(x T&)`");
+        }
+        validateTypeArgRefPolicy(a, line, col, false);
+    }
+}

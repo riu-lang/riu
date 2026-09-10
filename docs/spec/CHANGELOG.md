@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-09-10 —— `<>` 内 `T&` 从语法迁到语义
+
+- **修改 g4**：`typeGeneric`、调用站 turbofish（`exprCall` / `exprCallTrailingOnly` / `Type:<T>::`）接 `genericDefWithRef`。声明头 `fn f<T : D>` 仍走 `genericDef`。不合并 `type` / `typeWithRef`。
+- **修改 §3.2.3.2 / §3.11.6.1 / §8.6.7.1 / §12.9.5 / 附录 B**：`Function<i32&, ()>` 可作字段与别名；`Dyn:<D&>(x)` 可写。`Array<T&>` / `Rc<T&>` / 用户 `Foo<T&>` / `f:<i32&>` → **E4037**；owned 位的 `Dyn<D&>` → **E4038**。
+- **冲突 / 兼容**：纯增。原先这些形态是 ANTLR 语法错；字段 `i32&`、全局 `T&`、`T& &` 仍语法拒。
+
 ## 2026-09-09 —— 静态 fallible 调用支持 `!` 传播
 
 - **修改 §4.2.1 / §4.12.1 / §7.10.2 / 附录 B**：`Type::static_fn(args)!` 与 `Self::static_fn(args)!` 支持在同错误类型的 `T ! E` 调用方中直接传播；诊断规则与普通调用一致。
