@@ -1,0 +1,6 @@
+; 声明头不得写 T& → E4037
+fn id<T&>(x T) T = x  ; check: E4037
+
+fn main() {
+  ret;
+}

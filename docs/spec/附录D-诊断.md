@@ -307,6 +307,7 @@ for-in（E3160；§5.5.4）：
 | E4037 | `type argument of '{}' cannot be a borrow (\`T&\`) (§8.6.7.1)` |
 | E4038 | `` `Dyn<D&>` cannot appear in owned type position (field, alias, or container element) (§12.9.2.2) `` |
 | E4039 | `cannot store borrow (\`T&\`) in field, alias, global, or enum payload (§3.2.3.2)` |
+| E4040 | `cannot return a container of borrows (\`Array<T&>\` / \`[T& * N]\`); return \`T&\` (§8.6.10)` |
 
 ### D.3.5 E5xxx — 模块 / 包
 

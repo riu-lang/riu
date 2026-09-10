@@ -50,6 +50,19 @@ inline string typeGenericLastName(yux::yuxParser::TypeGenericContext* tg) {
     return typePathFromCtx(tg ? tg->typePath() : nullptr).lastName();
 }
 
+// 声明头 `<T>` 必须是裸名；`fn f<T&>` / `struct Foo<i32&>` 报 E4037。
+inline string requireBareTypeParamName(yux::yuxParser::TypeContext* t) {
+    auto* start = (t && t->getStart()) ? t->getStart() : nullptr;
+    int line = start ? static_cast<int>(start->getLine()) : 1;
+    int col = start ? static_cast<int>(start->getCharPositionInLine()) + 1 : 1;
+    auto* tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(t);
+    if (!tn || tn->SymbolAnd()) {
+        throw YuxError(line, col, ErrorCode::E4037, std::string("type parameter"))
+            .withHint("声明头写 `<T>`，借用写在形参上：`fn f<T>(x T&)`");
+    }
+    return typeNormalLastName(tn);
+}
+
 // 已知的构建注解名字白名单；未知注解在 AST 构建期报错
 // #NoReturn 由 DRAFT-错误.md 引入（spec §11.5.1）：
 //   #NoReturn        零参；标在 fn / structImpl 内方法上

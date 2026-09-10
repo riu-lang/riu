@@ -266,9 +266,9 @@ private:
                     }
                 }
             }
-            // §8.6.X 用户函数返回 T&：v1 单源约束保证唯一来源——
+            // 用户函数返回 T&：
             //   方法调用 recv.foo(...) → 根 = recv 的根（方法源恒为 $）
-            //   自由函数调用 f(args)   → 根 = 唯一 T& 形参对应实参的根
+            //   自由函数调用 f(args)   → 根 = `$rodata`
             if (callExpr->getType().isRef()) {
                 if (auto dot = dynamic_cast<ExprDotNode*>(callExpr->getCalleeExpr())) {
                     if (auto litBase = dynamic_cast<ExprLiteralNode*>(dot->baseExpr())) {
@@ -278,33 +278,9 @@ private:
                     }
                     // 复杂 receiver（嵌套调用 / 字段链）：v1 不支持，落到错误兜底
                 } else {
-                    // 自由函数：在实参中找形态为 `&x.f...` 或 T& 变量的那个，取根。
-                    for (auto& a : callExpr->getArgs()) {
-                        if (auto getRef = dynamic_cast<ExprGetRefNode*>(a)) {
-                            auto root = resolveRoot(getRef->obj().getText());
-                            // DRAFT-static-ref: 若实参根是全局变量 → $rodata
-                            if (_declared.find(root) == _declared.end() && _fn && _fn->lookupSymbol(root)) {
-                                return "$rodata";
-                            }
-                            return root;
-                        }
-                        if (auto litArg = dynamic_cast<ExprLiteralNode*>(a)) {
-                            if (auto obj = dynamic_cast<LiteralObjNode*>(litArg->literal())) {
-                                auto nm = obj->getValue().getText();
-                                if (_refToRoot.find(nm) != _refToRoot.end()) {
-                                    auto root = resolveRoot(nm);
-                                    // DRAFT-static-ref: 若 T& 变量的终极根是全局 → $rodata
-                                    if (_declared.find(root) == _declared.end() && _fn && _fn->lookupSymbol(root)) {
-                                        return "$rodata";
-                                    }
-                                    return root;
-                                }
-                            }
-                        }
-                    }
+                    // 自由函数定义侧只允许 `$rodata`；调用点不再把 T& 实参当返回根
+                    return "$rodata";
                 }
-                // DRAFT-static-ref: 自由函数返回 T& 且无显式 T& 实参可溯源 → 源必为 $rodata
-                // （函数定义侧 E4020 已确保 ret expr 根 ∈ allowed sources）
                 return "$rodata";
             }
         }

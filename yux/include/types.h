@@ -929,6 +929,15 @@ inline bool typeHoldsBorrowedValue(const TypeInfo& t) {
     return false;
 }
 
+// 返回类型：裸 T& 由 borrow checker 管；Array<T&> / [T& * N] / 含它们的元组不可作为返回值。
+inline void validateReturnTypeBorrowPolicy(const TypeInfo& t, int line, int col) {
+    if (t.isRef()) return;
+    if (typeHoldsBorrowedValue(t)) {
+        throw YuxError(line, col, ErrorCode::E4040)
+            .withHint("返回单个 `T&`（方法 `$` 或静态 `$rodata`）；容器里的借用不能随返回值逃逸");
+    }
+}
+
 // `<>` 内 T&：Function 形参 / 返回允许；Dyn<D&> 仅临时位；
 // Array<T&> 仅临时位；Rc / Weak / Heap / 用户泛型的实参必须 owned（E4037）。
 inline void validateTypeArgRefPolicy(const TypeInfo& t, int line, int col, bool allowDynBorrow) {

@@ -1,0 +1,12 @@
+; 方法内 lambda 不得把 `&$.field` 当返回源 → E4020
+struct S {
+  n i32
+
+  fn leak() Function<(), i32&> {
+    ret () i32& => &$.n  ; check: E4020
+  }
+}
+
+fn main() {
+  ret;
+}

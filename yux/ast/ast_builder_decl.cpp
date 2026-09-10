@@ -616,9 +616,7 @@ std::any ASTBuilder::visitAliasDecl(yux::yuxParser::AliasDeclContext* ctx) {
                                tk ? static_cast<int>(tk->getSymbol()->getCharPositionInLine()) + 1 : 0,
                                ErrorCode::E2015);
             }
-            if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(pCtx->type(0))) {
-                typeParams.push_back(typeNormalLastName(tn));
-            }
+            typeParams.push_back(requireBareTypeParamName(pCtx->type(0)));
         }
     }
 

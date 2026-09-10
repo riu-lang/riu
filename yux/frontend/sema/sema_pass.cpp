@@ -383,6 +383,7 @@ void SemaPass::visitFn(FnNode* fn) {
             try {
                 auto rtt = rt->getType();
                 validateContainerBansAt(rtt, rt, fn->getLineNumber(), fn->getColumn(), true);
+                validateReturnTypeBorrowPolicy(rtt, fn->getLineNumber(), fn->getColumn());
                 noteConcreteGenericType(rtt);
             } catch (const YuxError&) {
                 throw;

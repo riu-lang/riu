@@ -1597,6 +1597,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
             try {
                 validateContainerBansAt(n->retType()->getType(), n->retType(), n->getLineNumber(), n->getColumn(),
                                         true);
+                validateReturnTypeBorrowPolicy(n->retType()->getType(), n->getLineNumber(), n->getColumn());
             } catch (const YuxError&) {
                 throw;
             } catch (...) { // NOLINT(bugprone-empty-catch)

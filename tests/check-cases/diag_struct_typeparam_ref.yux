@@ -1,0 +1,8 @@
+; struct 声明头不得写 T& → E4037
+struct Box<T&> {  ; check: E4037
+  x T
+}
+
+fn main() {
+  ret;
+}

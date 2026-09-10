@@ -86,10 +86,9 @@ std::any ASTBuilder::visitStructDecl(yux::yuxParser::StructDeclContext* ctx) {
     }
 
     vector<string> typeParams;
+    typeParams.reserve(stCtx->types.size());
     for (auto tCtx : stCtx->types) {
-        if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(tCtx)) {
-            typeParams.push_back(typeNormalLastName(tn));
-        }
+        typeParams.push_back(requireBareTypeParamName(tCtx));
     }
 
     // === Step 2: #Spec 分支 — 构造 DraftDeclNode（v1 仅签名 + Phase 1 起 #Static 字段段）

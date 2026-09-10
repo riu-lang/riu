@@ -155,12 +155,8 @@ std::any ASTBuilder::visitFnHeader(yux::yuxParser::FnHeaderContext* ctx) {
         vector<string> typeParams;
         vector<vector<string>> typeParamBounds;
         for (auto pCtx : gd->params) {
-            // 形参名：取 typeParam.type 的 typeNormal 分支 ID
-            string paramName;
-            if (auto tn = dynamic_cast<yux::yuxParser::TypeNormalContext*>(pCtx->type(0))) {
-                paramName = typeNormalLastName(tn);
-            }
-            typeParams.push_back(paramName);
+            // 形参名：裸 typeNormal，拒绝 `T&`
+            typeParams.push_back(requireBareTypeParamName(pCtx->type(0)));
 
             // 边界：typeParam.bounds 中每个 type → 取名（仅支持 typeNormal / typeGeneric 的基名）
             vector<string> bounds;

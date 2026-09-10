@@ -1,0 +1,8 @@
+; 不得返回 Array<T&> 容器 → E4040
+fn leak(a i32&, b i32&) Array<i32&> {  ; check: E4040
+  ret;
+}
+
+fn main() {
+  ret;
+}

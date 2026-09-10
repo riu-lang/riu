@@ -1,0 +1,12 @@
+; 自由函数不得返回参数字段借用 → E4020
+struct S {
+  n i32
+}
+
+fn leak(s S) i32& {
+  ret &s.n  ; check: E4020
+}
+
+fn main() {
+  ret;
+}
