@@ -86,6 +86,19 @@ void SemaPass::visitExprList(const vector<ExprNode*>& args, const vector<TypeInf
     }
 }
 
+void SemaPass::rejectEscapingRefCaptureLambda(ExprNode* expr) {
+    while (auto* paren = dynamic_cast<ExprParenNode*>(expr)) {
+        expr = paren->expr();
+        if (!expr) return;
+    }
+    if (!expr) return;
+    if (auto* lam = dynamic_cast<LambdaExprNode*>(expr)) {
+        if (lam->hasRefCapture()) {
+            throw YuxError(lam->getLineNumber(), lam->getColumn(), ErrorCode::E4022);
+        }
+    }
+}
+
 void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCallee) {
     if (!expr) return;
 
@@ -133,6 +146,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                 const auto& src = n->elements();
                 for (size_t i = 0; i < src.size(); ++i) {
                     visitExpr(src[i], (i < w.size() && w[i]) ? w[i].get() : nullptr);
+                    rejectEscapingRefCaptureLambda(src[i]);
                 }
                 n->setResolvedType(want);
                 return;
@@ -1508,14 +1522,18 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
         return;
     }
     if (auto n = dynamic_cast<ExprArrayNode*>(expr)) {
-        for (auto& e : n->elements())
+        for (auto& e : n->elements()) {
             visitExpr(e);
+            rejectEscapingRefCaptureLambda(e);
+        }
         checkEmptyArrayLiteral(n, expected);
         return;
     }
     if (auto n = dynamic_cast<ExprTupleNode*>(expr)) {
-        for (auto& e : n->elements())
+        for (auto& e : n->elements()) {
             visitExpr(e);
+            rejectEscapingRefCaptureLambda(e);
+        }
         try {
             auto tt = applyInstSubst(n->hasResolvedType() ? n->resolvedType() : n->getType());
             if (!typeStillTemplate(tt) && !sema::typeHasLlvmLayout(tt, _file, _sdkFile, _currentTypeParams)) {
@@ -1623,6 +1641,10 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
         if (_currentLambdaHasRefCapture) {
             n->setHasRefCapture(true);
         }
+        // 表达式体若是另一个 T& 捕获 lambda，返回值会带着栈嵌入 captures 逃逸。
+        if (n->bodyExpr()) {
+            rejectEscapingRefCaptureLambda(n->bodyExpr());
+        }
 
         _currentLambda = savedLambda;
         _currentLambdaHasRefCapture = savedHasRef;
@@ -1683,6 +1705,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                 }
             }
             visitExpr(fi->value(), fieldExpPtr);
+            rejectEscapingRefCaptureLambda(fi->value());
             // Phase B-1: #NoCopy 字段不可从现有变量隐式复制
             if (decl) {
                 int fieldIdx = decl->fieldIndex(fname);

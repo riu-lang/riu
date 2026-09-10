@@ -106,6 +106,8 @@ private:
     void visitExpr(ExprNode* expr, const TypeInfo* expected = nullptr, bool callCallee = false);
     // 实参列表：expected 非空且下标有具体类型时带靶向类型下钻。
     void visitExprList(const vector<ExprNode*>& args, const vector<TypeInfo>* expected = nullptr);
+    // T& 捕获 lambda 不可写入变量 / 字段 / 容器 / 返回值（E4022）。须在 visitExpr 该节点之后调用。
+    void rejectEscapingRefCaptureLambda(ExprNode* expr);
 
     // Phase C：t 剥 Ref/Heap/Rc 后是否为当前模板的类型参数。
     [[nodiscard]] bool isCurrentTypeParam(const TypeInfo& t) const;

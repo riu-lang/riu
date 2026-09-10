@@ -10,6 +10,7 @@
 
 #include "compiler_runtime.h"
 #include "ast/yux.h"
+#include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 
@@ -559,7 +560,20 @@ void emitRcReleaseForInlineDtorFn(llvm::LLVMContext& context, llvm::IRBuilder<>&
             auto capturesPtr =
                 builder.CreateBitCast(capturesAddr, llvm::PointerType::get(context, 0), "fn_captures_ptr");
             auto captures = builder.CreateLoad(ptrTy, capturesPtr, "fn_captures");
+            auto i64Ty = builder.getInt64Ty();
+            auto capInt = builder.CreatePtrToInt(captures, i64Ty, "fn.cap.asint");
+            auto isStack = builder.CreateICmpNE(builder.CreateAnd(capInt, builder.getInt64(1)), builder.getInt64(0),
+                                                "fn.cap.isstack");
+            auto isNull = builder.CreateICmpEQ(captures, llvm::ConstantPointerNull::get(ptrTy), "fn.cap.isnull");
+            auto skip = builder.CreateOr(isStack, isNull, "fn.cap.skip");
+            auto* pf = builder.GetInsertBlock()->getParent();
+            auto* relBB = llvm::BasicBlock::Create(context, "fn.cap.rel", pf);
+            auto* contBB = llvm::BasicBlock::Create(context, "fn.cap.cont", pf);
+            builder.CreateCondBr(skip, contBB, relBB);
+            builder.SetInsertPoint(relBB);
             builder.CreateCall(payloadReleaseFn, {captures});
+            builder.CreateBr(contBB);
+            builder.SetInsertPoint(contBB);
         }
     });
 }

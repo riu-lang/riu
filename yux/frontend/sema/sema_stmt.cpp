@@ -149,6 +149,7 @@ void SemaPass::visitStmt(StatementNode* stmt) {
             }
         }
         visitExpr(set->valueExpr(), elemExpected);
+        rejectEscapingRefCaptureLambda(set->valueExpr());
         if (elemExpected) {
             checkAssignRhs(set->valueExpr(), *elemExpected, set->getLineNumber(), set->getColumn(), _file, _sdkFile,
                            _currentTypeParams, &_instSubst);
@@ -508,6 +509,7 @@ void SemaPass::visitStmt(StatementNode* stmt) {
             }
         }
         if (as->expr()) visitExpr(as->expr(), assignExpPtr);
+        if (as->expr()) rejectEscapingRefCaptureLambda(as->expr());
         if (haveStorage) {
             checkAssignRhs(as->expr(), assignStorage, as->getLineNumber(), as->getColumn(), _file, _sdkFile,
                            _currentTypeParams, &_instSubst);
@@ -597,11 +599,7 @@ void SemaPass::visitStmt(StatementNode* stmt) {
         // (spec §8.7.6.5 不可逃逸)。仅拦截直接形 (lambda 字面量), 穿透检测
         // (ret 变量名 / 调用结果含 lambda) 留 codegen 兜底。
         if (ret->expr()) {
-            if (auto litLambda = dynamic_cast<LambdaExprNode*>(ret->expr())) {
-                if (litLambda->hasRefCapture()) {
-                    throw YuxError(litLambda->getLineNumber(), litLambda->getColumn(), ErrorCode::E4022);
-                }
-            }
+            rejectEscapingRefCaptureLambda(ret->expr());
         }
         return;
     }
@@ -839,11 +837,7 @@ void SemaPass::visitStmt(StatementNode* stmt) {
         // (spec §8.7.6.5 不可逃逸：fn 值不可被存储到寿命外延的变量)。
         // 仅拦截直接形 (lambda 字面量), 穿透检测 (右值 wrapper 调用结果等) 留 codegen 兜底。
         if (da->expr()) {
-            if (auto litLambda = dynamic_cast<LambdaExprNode*>(da->expr())) {
-                if (litLambda->hasRefCapture()) {
-                    throw YuxError(litLambda->getLineNumber(), litLambda->getColumn(), ErrorCode::E4022);
-                }
-            }
+            rejectEscapingRefCaptureLambda(da->expr());
         }
         // Phase B-1: #NoCopy 类型不可从现有变量隐式复制（let 绑定）
         if (da->varType() && da->expr()) {

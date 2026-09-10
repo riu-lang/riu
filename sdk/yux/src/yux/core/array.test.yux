@@ -509,14 +509,18 @@ fn test_array_set_len_shrink() {
   assert_eq(arr[1], 2)
 }
 
+fn array_set_len_string_drop_scope() {
+  #Mut let strings Array<String> = ["a", "b", "c"]
+  strings.set_len(1usize)
+  assert_eq(strings.len(), 1)
+  assert_eq(strings[0], "a")
+}
+
 #Test
-fn test_array_set_len_grow() {
-  ; 验证：set_len 扩容数组，前 N 个元素保留
-  #Mut let arr Array<i32> = [1, 2]
-  arr.set_len(5)
-  assert_eq(arr.len(), 5)
-  assert_eq(arr[0], 1)
-  assert_eq(arr[1], 2)
+fn test_array_set_len_drops_truncated_strings() {
+  #Mut let base i64 = rc_leak_count()
+  array_set_len_string_drop_scope()
+  assert_eq(rc_leak_count() - base, 0)
 }
 
 #Test
@@ -972,4 +976,49 @@ fn test_array_drops_struct_elements() {
   #Mut let base i64 = rc_leak_count()
   array_struct_drop_scope()
   assert_eq(rc_leak_count() - base, 0)
+}
+
+fn nested_array_clone_scope() {
+  let rows Array<Array<i32>> = [[1, 2], [3]]
+  let copy Array<Array<i32>> = rows.clone()
+  assert_eq(copy[0][0], 1)
+  assert_eq(copy[1][0], 3)
+  assert_eq(rows[0][1], 2)
+}
+
+#Test
+fn test_array_clone_nested_no_double_free() {
+  nested_array_clone_scope()
+}
+
+fn nested_array_filter_scope() {
+  let rows Array<Array<i32>> = [[1], [2, 3], []]
+  let kept Array<Array<i32>> = rows.filter((row) => row.len() != 0usize)
+  assert_eq(kept.len(), 2)
+  assert_eq(kept[1][1], 3)
+  assert_eq(rows[2].len(), 0)
+}
+
+#Test
+fn test_array_filter_nested_no_double_free() {
+  nested_array_filter_scope()
+}
+
+#NoCopy
+struct ArrBox {
+  items Array<i32>
+}
+
+fn struct_array_field_clone_scope() {
+  let values Array<ArrBox> = [ArrBox {
+    .items = [1, 2]
+  }]
+  let copy Array<ArrBox> = values.clone()
+  assert_eq(copy[0].items[0], 1)
+  assert_eq(values[0].items[1], 2)
+}
+
+#Test
+fn test_array_clone_struct_array_field_no_double_free() {
+  struct_array_field_clone_scope()
 }

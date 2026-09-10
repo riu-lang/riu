@@ -575,13 +575,7 @@ llvm::Value* Compiler::compileArrayMethodCall(ExprCallNode* callNode, ExprNode* 
 
     auto voidResult = [&]() -> llvm::Value* { return llvm::ConstantInt::get(_builder.getInt32Ty(), 0); };
 
-    auto copyElem = [&](llvm::Value* v) -> llvm::Value* {
-        retainHandleAtCallSite(v, *elemType);
-        if (!isBuiltinType(elemType->name) && structNeedsDestructor(*elemType)) {
-            v = copyOfStructFields(v, elemType->isGeneric() ? elemType->getMangleName() : elemType->name);
-        }
-        return v;
-    };
+    auto copyElem = [&](llvm::Value* v) -> llvm::Value* { return copyOwnedValue(v, *elemType); };
 
     auto wrapNullable = [&](llvm::Value* has, llvm::Value* val, llvm::Type* nty) -> llvm::Value* {
         llvm::Value* r = llvm::UndefValue::get(nty);
@@ -736,35 +730,50 @@ llvm::Value* Compiler::compileArrayMethodCall(ExprCallNode* callNode, ExprNode* 
     case sema::BuiltinLower::ArrayGet: {
         DEBUG_LOG("    Expr: Array.get() → T&");
         auto ptr = getReadPtr();
+        auto lenVal = loadLen(ptr);
+        auto idx = _builder.CreateZExtOrTrunc(args[0], sizeTy, "get.i");
+        emitOobExit(_builder.CreateICmpUGE(idx, lenVal, "get.oob"), "get.ok");
         auto dataPtr = loadData(ptr);
-        auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {args[0]}, "get.elem.ptr");
+        auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {idx}, "get.elem.ptr");
         if (elemType) {
             callNode->setResolvedType(TypeInfo("Ref", {elemType}));
         }
         return elemPtr;
     }
     case sema::BuiltinLower::ArrayFirst: {
-        DEBUG_LOG("    Expr: Array.first()");
-        auto ptr = getReadPtr();
-        auto dataPtr = loadData(ptr);
-        auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
-        auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {zeroSize}, "first.elem.ptr");
-        return _builder.CreateLoad(elemLLVMType, elemPtr, "first.elem");
-    }
-    case sema::BuiltinLower::ArrayLast: {
-        DEBUG_LOG("    Expr: Array.last()");
+        DEBUG_LOG("    Expr: Array.first() → T&");
         auto ptr = getReadPtr();
         auto lenVal = loadLen(ptr);
+        auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
+        emitOobExit(_builder.CreateICmpEQ(lenVal, zeroSize, "first.empty"), "first.ok");
+        auto dataPtr = loadData(ptr);
+        auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {zeroSize}, "first.elem.ptr");
+        if (elemType) {
+            callNode->setResolvedType(TypeInfo("Ref", {elemType}));
+        }
+        return elemPtr;
+    }
+    case sema::BuiltinLower::ArrayLast: {
+        DEBUG_LOG("    Expr: Array.last() → T&");
+        auto ptr = getReadPtr();
+        auto lenVal = loadLen(ptr);
+        auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
+        emitOobExit(_builder.CreateICmpEQ(lenVal, zeroSize, "last.empty"), "last.ok");
         auto oneSize = llvm::ConstantInt::get(sizeTy, 1);
         auto lastIdx = _builder.CreateSub(lenVal, oneSize, "last.idx");
         auto dataPtr = loadData(ptr);
         auto elemPtr = _builder.CreateGEP(elemLLVMType, dataPtr, {lastIdx}, "last.elem.ptr");
-        return _builder.CreateLoad(elemLLVMType, elemPtr, "last.elem");
+        if (elemType) {
+            callNode->setResolvedType(TypeInfo("Ref", {elemType}));
+        }
+        return elemPtr;
     }
     case sema::BuiltinLower::ArrayPop: {
         DEBUG_LOG("    Expr: Array.pop()");
         auto lenFieldPtr = arrayLenFieldPtr(arrayPtr, "arr");
         auto lenVal = _builder.CreateLoad(sizeTy, lenFieldPtr, "a.len");
+        auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
+        emitOobExit(_builder.CreateICmpEQ(lenVal, zeroSize, "pop.empty"), "pop.ok");
         auto oneSize = llvm::ConstantInt::get(sizeTy, 1);
         auto lastIdx = _builder.CreateSub(lenVal, oneSize, "pop.idx");
 
@@ -793,7 +802,11 @@ llvm::Value* Compiler::compileArrayMethodCall(ExprCallNode* callNode, ExprNode* 
         }
         if (spec->lower == sema::BuiltinLower::ArraySetLen) {
             DEBUG_LOG("    Expr: Array.set_len()");
-            _builder.CreateStore(args[0], lenFieldPtr);
+            auto newLen = _builder.CreateZExtOrTrunc(args[0], sizeTy, "set_len.n");
+            auto oldLen = _builder.CreateLoad(sizeTy, lenFieldPtr, "set_len.old_len");
+            emitOobExit(_builder.CreateICmpUGT(newLen, oldLen, "set_len.grow"), "set_len.ok");
+            releaseArrayElements(arrayPtr, arrType, newLen, oldLen);
+            _builder.CreateStore(newLen, lenFieldPtr);
             return voidResult();
         }
         if (spec->lower == sema::BuiltinLower::ArrayReserve) {
@@ -912,84 +925,7 @@ llvm::Value* Compiler::compileArrayMethodCall(ExprCallNode* callNode, ExprNode* 
 
     case sema::BuiltinLower::ArrayClone: {
         DEBUG_LOG("    Expr: Array.clone() → Array<T> 深拷贝");
-        // BUGS #1: Array 深拷贝唯一入口，替代 copy_of（copy_of 不再接受 Array）
-        // 深拷贝语义：分配新缓冲 + 逐元素 copy + retain + Heap 深拷
-        auto ptr = getReadPtr();
-        auto oldData = loadData(ptr);
-        auto oldLen = loadLen(ptr);
-        auto resultTy = arrayStructType;
-
-        auto* fn = _builder.GetInsertBlock()->getParent();
-        auto* startBB = _builder.GetInsertBlock();
-
-        // 空 Array 结果
-        llvm::Value* emptyArr = llvm::UndefValue::get(resultTy);
-        emptyArr = _builder.CreateInsertValue(emptyArr, nullPtr, {0}, "clone.empty.data");
-        emptyArr = _builder.CreateInsertValue(emptyArr, llvm::ConstantInt::get(sizeTy, 0), {1}, "clone.empty.len");
-        emptyArr = _builder.CreateInsertValue(emptyArr, llvm::ConstantInt::get(sizeTy, 0), {2}, "clone.empty.cap");
-
-        auto* allocBB = llvm::BasicBlock::Create(_context, "clone.alloc", fn);
-        auto* loopHdrBB = llvm::BasicBlock::Create(_context, "clone.loop.hdr", fn);
-        auto* loopBodyBB = llvm::BasicBlock::Create(_context, "clone.loop.body", fn);
-        auto* loopLatchBB = llvm::BasicBlock::Create(_context, "clone.loop.latch", fn);
-        auto* loopExitBB = llvm::BasicBlock::Create(_context, "clone.loop.exit", fn);
-        auto* doneBB = llvm::BasicBlock::Create(_context, "clone.done", fn);
-
-        // len == 0 → 直接返回空数组
-        auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
-        auto lenIsZero = _builder.CreateICmpEQ(oldLen, zeroSize, "clone.is_empty");
-        _builder.CreateCondBr(lenIsZero, doneBB, allocBB);
-
-        // allocBB: 分配新数据缓冲 newData = HeapAlloc(len * sizeof(T))
-        _builder.SetInsertPoint(allocBB);
-        auto elemSizeVal = _builder.getInt64(_module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
-        // oldLen 是 usize (sizeTy)，elemSizeVal 是 i64；统一为 i64 做乘法
-        auto oldLenI64 = _builder.CreateZExtOrTrunc(oldLen, _builder.getInt64Ty(), "clone.len.i64");
-        auto newSize = _builder.CreateMul(oldLenI64, elemSizeVal, "clone.new_size");
-        auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
-        auto newData = _builder.CreateCall(allocFn, {newSize}, "clone.new_data");
-        _builder.CreateBr(loopHdrBB);
-
-        // loopHdrBB: for i (0..len-1)，使用 i64 索引 (GEP 需要)
-        _builder.SetInsertPoint(loopHdrBB);
-        auto loopPhi = _builder.CreatePHI(_builder.getInt64Ty(), 2, "clone.i");
-        loopPhi->addIncoming(_builder.getInt64(0), allocBB);
-        auto loopCond = _builder.CreateICmpULT(loopPhi, oldLenI64, "clone.loop.cond");
-        _builder.CreateCondBr(loopCond, loopBodyBB, loopExitBB);
-
-        // loopBodyBB: 拷贝元素 + retain + Heap 深拷
-        _builder.SetInsertPoint(loopBodyBB);
-        auto oldElemPtr = _builder.CreateInBoundsGEP(elemLLVMType, oldData, {loopPhi}, "clone.old.ptr");
-        llvm::Value* elemVal = _builder.CreateLoad(elemLLVMType, oldElemPtr, "clone.elem");
-        retainHandleAtCallSite(elemVal, *elemType);
-        if (!isBuiltinType(elemType->name) && structNeedsDestructor(*elemType)) {
-            elemVal = copyOfStructFields(elemVal, elemType->isGeneric() ? elemType->getMangleName() : elemType->name);
-        }
-        auto newElemPtr = _builder.CreateInBoundsGEP(elemLLVMType, newData, {loopPhi}, "clone.new.ptr");
-        _builder.CreateStore(elemVal, newElemPtr);
-        _builder.CreateBr(loopLatchBB);
-
-        // loopLatchBB: i++
-        _builder.SetInsertPoint(loopLatchBB);
-        auto iNext = _builder.CreateAdd(loopPhi, _builder.getInt64(1), "clone.i.next");
-        loopPhi->addIncoming(iNext, loopLatchBB);
-        _builder.CreateBr(loopHdrBB);
-
-        // loopExitBB: 构造新 Array { newData, len, len }（cap == len 紧凑）
-        _builder.SetInsertPoint(loopExitBB);
-        llvm::Value* newArr = llvm::UndefValue::get(resultTy);
-        newArr = _builder.CreateInsertValue(newArr, newData, {0}, "clone.res.data");
-        newArr = _builder.CreateInsertValue(newArr, oldLen, {1}, "clone.res.len");
-        newArr = _builder.CreateInsertValue(newArr, oldLen, {2}, "clone.res.cap"); // cap == len 紧凑
-        _builder.CreateBr(doneBB);
-
-        // doneBB: phi 汇聚空 / 非空两条路径
-        _builder.SetInsertPoint(doneBB);
-        auto resultPhi = _builder.CreatePHI(resultTy, 2, "clone.result");
-        resultPhi->addIncoming(emptyArr, startBB);
-        resultPhi->addIncoming(newArr, loopExitBB);
-
-        return resultPhi;
+        return cloneArrayAtPtr(getReadPtr(), arrType);
     }
 
     case sema::BuiltinLower::ArraySlice: {
@@ -1054,15 +990,11 @@ llvm::Value* Compiler::compileArrayMethodCall(ExprCallNode* callNode, ExprNode* 
         auto newData = _builder.CreateCall(allocFn, {newSize}, "concat.new_data");
         _builder.CreateBr(loop1HdrBB);
 
-        auto copyElem = [&](llvm::Value* srcData, llvm::Value* srcIdx, llvm::Value* dstIdx, const char* tag) {
+        auto copyElemAt = [&](llvm::Value* srcData, llvm::Value* srcIdx, llvm::Value* dstIdx, const char* tag) {
             auto oldElemPtr =
                 _builder.CreateInBoundsGEP(elemLLVMType, srcData, {srcIdx}, (string(tag) + ".old.ptr").c_str());
-            llvm::Value* elemVal = _builder.CreateLoad(elemLLVMType, oldElemPtr, (string(tag) + ".elem").c_str());
-            retainHandleAtCallSite(elemVal, *elemType);
-            if (!isBuiltinType(elemType->name) && structNeedsDestructor(*elemType)) {
-                elemVal =
-                    copyOfStructFields(elemVal, elemType->isGeneric() ? elemType->getMangleName() : elemType->name);
-            }
+            llvm::Value* loaded = _builder.CreateLoad(elemLLVMType, oldElemPtr, (string(tag) + ".elem").c_str());
+            llvm::Value* elemVal = copyOwnedValue(loaded, *elemType);
             auto newElemPtr =
                 _builder.CreateInBoundsGEP(elemLLVMType, newData, {dstIdx}, (string(tag) + ".new.ptr").c_str());
             _builder.CreateStore(elemVal, newElemPtr);
@@ -1075,7 +1007,7 @@ llvm::Value* Compiler::compileArrayMethodCall(ExprCallNode* callNode, ExprNode* 
         _builder.CreateCondBr(c1, loop1BodyBB, loop2HdrBB);
 
         _builder.SetInsertPoint(loop1BodyBB);
-        copyElem(oldData, i1, i1, "concat.l1");
+        copyElemAt(oldData, i1, i1, "concat.l1");
         _builder.CreateBr(loop1LatchBB);
         _builder.SetInsertPoint(loop1LatchBB);
         auto i1n = _builder.CreateAdd(i1, _builder.getInt64(1), "concat.i1.next");
@@ -1090,7 +1022,7 @@ llvm::Value* Compiler::compileArrayMethodCall(ExprCallNode* callNode, ExprNode* 
 
         _builder.SetInsertPoint(loop2BodyBB);
         auto dst2 = _builder.CreateAdd(len1I64, i2, "concat.dst2");
-        copyElem(otherData, i2, dst2, "concat.l2");
+        copyElemAt(otherData, i2, dst2, "concat.l2");
         _builder.CreateBr(loop2LatchBB);
         _builder.SetInsertPoint(loop2LatchBB);
         auto i2n = _builder.CreateAdd(i2, _builder.getInt64(1), "concat.i2.next");
@@ -1225,6 +1157,7 @@ llvm::Value* Compiler::compileArrayMethodCall(ExprCallNode* callNode, ExprNode* 
         auto dstPtr = _builder.CreateInBoundsGEP(elemLLVMType, newData, {outPhi}, "filter.dst.ptr");
         _builder.CreateStore(elemVal, dstPtr);
         auto outNext = _builder.CreateAdd(outPhi, _builder.getInt64(1), "filter.out.next");
+        auto* matchExitBB = _builder.GetInsertBlock();
         _builder.CreateBr(latchBB);
 
         _builder.SetInsertPoint(skipBB);
@@ -1232,7 +1165,7 @@ llvm::Value* Compiler::compileArrayMethodCall(ExprCallNode* callNode, ExprNode* 
 
         _builder.SetInsertPoint(latchBB);
         auto outAfter = _builder.CreatePHI(_builder.getInt64Ty(), 2, "filter.out.after");
-        outAfter->addIncoming(outNext, matchBB);
+        outAfter->addIncoming(outNext, matchExitBB);
         outAfter->addIncoming(outPhi, skipBB);
         auto iNext = _builder.CreateAdd(iPhi, _builder.getInt64(1), "filter.i.next");
         iPhi->addIncoming(iNext, latchBB);
@@ -1516,12 +1449,13 @@ llvm::Value* Compiler::compileArrayMethodCall(ExprCallNode* callNode, ExprNode* 
         auto elemPtr = _builder.CreateInBoundsGEP(elemLLVMType, dataPtr, {idxI64}, "ornull.ptr");
         llvm::Value* copied = copyElem(_builder.CreateLoad(elemLLVMType, elemPtr, "ornull.elem"));
         auto someVal = wrapNullable(_builder.getInt1(true), copied, nty);
+        auto* hitExitBB = _builder.GetInsertBlock();
         _builder.CreateBr(doneBB);
 
         _builder.SetInsertPoint(doneBB);
         auto resultPhi = _builder.CreatePHI(nty, 2, "ornull.result");
         resultPhi->addIncoming(noneVal, startBB);
-        resultPhi->addIncoming(someVal, hitBB);
+        resultPhi->addIncoming(someVal, hitExitBB);
         return resultPhi;
     }
 

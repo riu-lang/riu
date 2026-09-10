@@ -60,7 +60,7 @@ void emitRcReleaseTypedFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder
 // kind 决定 payload 布局；payloadReleaseFn 为 strong==0 时对内层 handle 调用的释放函数：
 //   TypeKind::Rc   → payload[0] 内层 handle → 内层 Rc 的 typed release（可递归，Rc<Rc<Rc<T>>>）
 //   TypeKind::Weak → payload[0] 内层 handle → _weak_release
-//   TypeKind::Fn   → payload[8] captures ptr → _box_release (null-safe)
+//   TypeKind::Fn   → payload[8] captures ptr → _box_release_dtor（null / 栈嵌入 LSB 跳过）
 // payloadReleaseFn 为 null 时跳过 payload 析构（安全退化：仅释放本层 RC block）。
 void emitRcReleaseForInlineDtorFn(llvm::LLVMContext& context, llvm::IRBuilder<>& builder, llvm::Module* module,
                                   llvm::Function* func, TypeKind kind, llvm::Function* payloadReleaseFn);

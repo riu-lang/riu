@@ -179,13 +179,23 @@ llvm::Function* Compiler::emitLambdaFunction(LambdaExprNode* node, const TypeInf
     // 非 void 返回须走 returnValue（consumeTemp），否则 popAndReleaseTempFrame
     // 会把 Array / Rc 等 fresh 句柄析掉，CreateRet 拿到悬空值（`=> if { [1] } else { [2] }`）。
     auto finishLambdaRet = [&](llvm::Value* val, ExprNode* src) {
+        bool didMoveRetainHandle = false;
         if (val && !retType.empty()) {
-            returnValue(val, retType, src, retType.isRc() || retType.isWeak() || retType.isFn());
+            didMoveRetainHandle = returnValue(val, retType, src, retType.isRc() || retType.isWeak() || retType.isFn());
+        }
+        // 与 compileRetStatement 对齐：尾 ident 从作用域摘走，避免随后析构双释放。
+        if (!didMoveRetainHandle && src) {
+            if (auto litNode = dynamic_cast<ExprLiteralNode*>(src)) {
+                if (auto objLit = dynamic_cast<LiteralObjNode*>(litNode->literal())) {
+                    eraseScopeVar(objLit->getValue().getText());
+                }
+            }
         }
         if (!fallibleErr.empty()) {
             val = wrapFallibleSuccessRet(val, retType, fallibleErr);
         }
         popAndReleaseTempFrame();
+        callDestructorsForScope();
         _builder.CreateRet(val);
     };
     pushTempFrame();
@@ -194,6 +204,7 @@ llvm::Function* Compiler::emitLambdaFunction(LambdaExprNode* node, const TypeInf
         if (!_builder.GetInsertBlock()->getTerminator()) {
             if (retType.empty() && fallibleErr.empty()) {
                 popAndReleaseTempFrame();
+                callDestructorsForScope();
                 _builder.CreateRetVoid();
             } else {
                 finishLambdaRet(val, node->bodyExpr());
@@ -223,6 +234,7 @@ llvm::Function* Compiler::emitLambdaFunction(LambdaExprNode* node, const TypeInf
                 finishLambdaRet(val, tailExpr);
             } else if (retType.empty() && fallibleErr.empty()) {
                 popAndReleaseTempFrame();
+                callDestructorsForScope();
                 _builder.CreateRetVoid();
             } else {
                 // 缺显式 ret 且非 void：报错。Phase 2c 由 sema 更早拒

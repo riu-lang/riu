@@ -14,6 +14,7 @@
 #include "ast/node/literal_node.h"
 #include "compiler.h"
 #include <algorithm>
+#include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Instructions.h>
 
 // ==================== 析构函数调用 ====================
@@ -463,14 +464,10 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
                 releaseAtPtr(payload, *elemSp);
             }
             _builder.CreateCall(runtime::getHeapHandleFreeFn(_module, _builder), {payload});
-        } else if (fieldType.isFn()) {
-            // Phase 3a / 4a-2: fn 字段：fat-ptr 的 captures（offset 1）走 _box_release_dtor，
-            // 让 strong 归零时 dispatch 到 lambda 自己的 captures 字段析构。
-            auto fnStructType = getLLVMType(fieldType);
-            auto one = llvm::ConstantInt::get(_builder.getInt32Ty(), 1);
-            auto capField = _builder.CreateGEP(fnStructType, fieldPtr, {zero, one});
-            auto cap = _builder.CreateLoad(llvm::PointerType::get(_context, 0), capField);
-            _builder.CreateCall(runtime::getRcReleaseDtorFn(_module, _builder), {cap});
+        } else if (fieldType.isFn() || fieldType.isNullable()) {
+            // Fn：null / 栈嵌入 LSB 跳过；Nullable：走 releaseAtPtr 内联分支，
+            // 避免 fallthrough 把 "Function" / "Nullable" 当 struct 名查 dtor。
+            releaseAtPtr(fieldPtr, fieldType);
         } else if (fieldType.isDynOwned()) {
             // Phase 4b: owned Dyn<D> 字段 —— { vtable, data } 走 _dyn_release，
             // 由 vtable[0] dispatch U 的 dtor；与 releaseAtPtr 同形（避免落到下面把 "Dyn" 当 struct 名查 dtor）。
@@ -483,11 +480,6 @@ void Compiler::callFieldDestructor(llvm::Value* structPtr, const string& structN
             _builder.CreateCall(runtime::getDynReleaseFn(_module, _builder), {data, vtable});
         } else if (fieldType.isDynBorrow()) {
             // 借用 Dyn<D&>：不动 RC，等价 no-op
-        } else if (fieldType.isNullable()) {
-            // Phase 3d.3: Nullable<T> 字段 — 走 releaseAtPtr 内联分支
-            // (覆盖 Nullable<Heap<T>> / Nullable<Rc<T>> / Nullable<String> 等),
-            // 避免 fallthrough 误查 bare `Nullable_~()` dtor.
-            releaseAtPtr(fieldPtr, fieldType);
         } else if (!isBuiltinType(fieldType.name)) {
             // 结构体字段: 调用其析构函数
             const string fieldKey = fieldType.isGeneric() ? fieldType.getMangleName() : fieldType.name;
@@ -677,6 +669,10 @@ bool Compiler::retainHandleAtCallSite(llvm::Value* argVal, const TypeInfo& argTy
                     auto ll = getLLVMType(fieldType);
                     auto fieldVal = _builder.CreateLoad(ll, fieldPtr, "arg.enum.nested.val");
                     retainHandleAtCallSite(fieldVal, fieldType);
+                } else if (fieldType.isFn()) {
+                    auto ll = getLLVMType(fieldType);
+                    auto fieldVal = _builder.CreateLoad(ll, fieldPtr, "arg.enum.fn.val");
+                    retainHandleAtCallSite(fieldVal, fieldType);
                 } else if (fieldType.isDynOwned()) {
                     // Dyn<D> owned payload：{ vtable, data } fat ptr，retain data
                     auto dynStructType = getLLVMType(fieldType);
@@ -719,19 +715,9 @@ void Compiler::retainStructFieldsAtCallSite(llvm::Value* argVal, const string& s
                 retainFn = runtime::getWeakRetainFn(_module, _builder);
             _builder.CreateCall(retainFn, {handle});
         } else if (ft.isFn()) {
-            // Phase 3a: fn 字段 fat-ptr，按 captures 字段 retain（null guard）
+            // 与顶层 Fn retain 同款：null / 栈嵌入 LSB 跳过
             auto fieldVal = _builder.CreateExtractValue(argVal, {static_cast<unsigned>(i)}, "field.fn");
-            auto cap = _builder.CreateExtractValue(fieldVal, {1}, "field.fn.captures");
-            auto ptrTy = llvm::PointerType::get(_context, 0);
-            auto isNull = _builder.CreateICmpEQ(cap, llvm::ConstantPointerNull::get(ptrTy), "field.fn.isnull");
-            auto* fn = _builder.GetInsertBlock()->getParent();
-            auto* retainBB = llvm::BasicBlock::Create(_context, "field.fn.retain", fn);
-            auto* contBB = llvm::BasicBlock::Create(_context, "field.fn.cont", fn);
-            _builder.CreateCondBr(isNull, contBB, retainBB);
-            _builder.SetInsertPoint(retainBB);
-            _builder.CreateCall(runtime::getRcRetainFn(_module, _builder), {cap});
-            _builder.CreateBr(contBB);
-            _builder.SetInsertPoint(contBB);
+            retainHandleAtCallSite(fieldVal, ft);
         } else if (ft.isDynOwned()) {
             // Dyn<D> owned 字段：{ vtable, data } fat ptr，data 指向 RC block，需 retain
             auto fieldVal = _builder.CreateExtractValue(argVal, {static_cast<unsigned>(i)}, "field.dyn");
@@ -774,8 +760,13 @@ llvm::Value* Compiler::copyOfStructFields(llvm::Value* structVal, const string& 
             // 替换 struct 中的 Heap 指针
             structVal =
                 _builder.CreateInsertValue(structVal, newPayload, {static_cast<unsigned>(i)}, "cof.heap.inserted");
+        } else if (ft.isArrayGeneric()) {
+            // Array 字段无 RC：bitwise 拷贝会共享 _data → 双释放。深拷一份独立缓冲。
+            auto fieldVal = _builder.CreateExtractValue(structVal, {static_cast<unsigned>(i)}, "cof.array");
+            auto cloned = cloneArrayValue(fieldVal, ft);
+            structVal = _builder.CreateInsertValue(structVal, cloned, {static_cast<unsigned>(i)}, "cof.array.inserted");
         } else if (!isBuiltinType(ft.name) && structNeedsDestructor(ft)) {
-            // 嵌套 struct：递归处理其中的 Heap 字段
+            // 嵌套 struct：递归处理其中的 Heap / Array 字段
             auto fieldVal = _builder.CreateExtractValue(structVal, {static_cast<unsigned>(i)}, "cof.struct");
             auto newFieldVal = copyOfStructFields(fieldVal, ft.isGeneric() ? ft.getMangleName() : ft.name);
             if (newFieldVal != fieldVal) {
@@ -783,9 +774,103 @@ llvm::Value* Compiler::copyOfStructFields(llvm::Value* structVal, const string& 
                                                        "cof.struct.inserted");
             }
         }
-        // Rc/Weak/fn/Dyn/Array：已由 retainHandleAtCallSite 处理，这里跳过
+        // Rc/Weak/fn/Dyn：已由 retainHandleAtCallSite 处理，这里跳过
     }
     return structVal;
+}
+
+llvm::Value* Compiler::cloneArrayValue(llvm::Value* arrayVal, const TypeInfo& arrayType) {
+    if (!arrayVal) return arrayVal;
+    auto llvmTy = getLLVMType(arrayType);
+    auto tmp = _builder.CreateAlloca(llvmTy, nullptr, "clone.arr.spill");
+    _builder.CreateStore(arrayVal, tmp);
+    return cloneArrayAtPtr(tmp, arrayType);
+}
+
+llvm::Value* Compiler::cloneArrayAtPtr(llvm::Value* arrayPtr, const TypeInfo& arrayType) {
+    auto elemSp = arrayType.arrayGenericElementType();
+    auto resultTy = getLLVMType(arrayType);
+    auto ptrTy = llvm::PointerType::get(_context, 0);
+    auto sizeTy = getSizeType();
+    auto nullPtr = llvm::ConstantPointerNull::get(ptrTy);
+    auto zeroSize = llvm::ConstantInt::get(sizeTy, 0);
+
+    llvm::Value* emptyArr = llvm::UndefValue::get(resultTy);
+    emptyArr = _builder.CreateInsertValue(emptyArr, nullPtr, {0}, "clone.empty.data");
+    emptyArr = _builder.CreateInsertValue(emptyArr, zeroSize, {1}, "clone.empty.len");
+    emptyArr = _builder.CreateInsertValue(emptyArr, zeroSize, {2}, "clone.empty.cap");
+    if (!elemSp) return emptyArr;
+
+    auto elemLLVMType = getLLVMType(*elemSp);
+    auto oldData = _builder.CreateLoad(ptrTy, arrayDataFieldPtr(arrayPtr, "clone.array"), "clone.old.data");
+    auto oldLen = _builder.CreateLoad(sizeTy, arrayLenFieldPtr(arrayPtr, "clone.array"), "clone.old.len");
+
+    auto* fn = _builder.GetInsertBlock()->getParent();
+    auto* startBB = _builder.GetInsertBlock();
+    auto* allocBB = llvm::BasicBlock::Create(_context, "clone.alloc", fn);
+    auto* loopHdrBB = llvm::BasicBlock::Create(_context, "clone.loop.hdr", fn);
+    auto* loopBodyBB = llvm::BasicBlock::Create(_context, "clone.loop.body", fn);
+    auto* loopLatchBB = llvm::BasicBlock::Create(_context, "clone.loop.latch", fn);
+    auto* loopExitBB = llvm::BasicBlock::Create(_context, "clone.loop.exit", fn);
+    auto* doneBB = llvm::BasicBlock::Create(_context, "clone.done", fn);
+
+    auto lenIsZero = _builder.CreateICmpEQ(oldLen, zeroSize, "clone.is_empty");
+    _builder.CreateCondBr(lenIsZero, doneBB, allocBB);
+
+    _builder.SetInsertPoint(allocBB);
+    auto elemSizeVal = _builder.getInt64(_module->getDataLayout().getTypeAllocSize(elemLLVMType).getFixedValue());
+    auto oldLenI64 = _builder.CreateZExtOrTrunc(oldLen, _builder.getInt64Ty(), "clone.len.i64");
+    auto newSize = _builder.CreateMul(oldLenI64, elemSizeVal, "clone.new_size");
+    auto allocFn = runtime::getHeapHandleAllocFn(_module, _builder);
+    auto newData = _builder.CreateCall(allocFn, {newSize}, "clone.new_data");
+    _builder.CreateBr(loopHdrBB);
+
+    _builder.SetInsertPoint(loopHdrBB);
+    auto loopPhi = _builder.CreatePHI(_builder.getInt64Ty(), 2, "clone.i");
+    loopPhi->addIncoming(_builder.getInt64(0), allocBB);
+    auto loopCond = _builder.CreateICmpULT(loopPhi, oldLenI64, "clone.loop.cond");
+    _builder.CreateCondBr(loopCond, loopBodyBB, loopExitBB);
+
+    _builder.SetInsertPoint(loopBodyBB);
+    auto oldElemPtr = _builder.CreateInBoundsGEP(elemLLVMType, oldData, {loopPhi}, "clone.old.ptr");
+    llvm::Value* elemVal = copyOwnedValue(_builder.CreateLoad(elemLLVMType, oldElemPtr, "clone.elem"), *elemSp);
+    auto newElemPtr = _builder.CreateInBoundsGEP(elemLLVMType, newData, {loopPhi}, "clone.new.ptr");
+    _builder.CreateStore(elemVal, newElemPtr);
+    _builder.CreateBr(loopLatchBB);
+
+    _builder.SetInsertPoint(loopLatchBB);
+    auto iNext = _builder.CreateAdd(loopPhi, _builder.getInt64(1), "clone.i.next");
+    loopPhi->addIncoming(iNext, loopLatchBB);
+    _builder.CreateBr(loopHdrBB);
+
+    _builder.SetInsertPoint(loopExitBB);
+    llvm::Value* newArr = llvm::UndefValue::get(resultTy);
+    newArr = _builder.CreateInsertValue(newArr, newData, {0}, "clone.res.data");
+    newArr = _builder.CreateInsertValue(newArr, oldLen, {1}, "clone.res.len");
+    newArr = _builder.CreateInsertValue(newArr, oldLen, {2}, "clone.res.cap");
+    _builder.CreateBr(doneBB);
+
+    _builder.SetInsertPoint(doneBB);
+    auto resultPhi = _builder.CreatePHI(resultTy, 2, "clone.result");
+    resultPhi->addIncoming(emptyArr, startBB);
+    resultPhi->addIncoming(newArr, loopExitBB);
+    return resultPhi;
+}
+
+llvm::Value* Compiler::copyOwnedValue(llvm::Value* val, const TypeInfo& type) {
+    if (!val) return val;
+    if (type.isArrayGeneric()) {
+        return cloneArrayValue(val, type);
+    }
+    retainHandleAtCallSite(val, type);
+    if (type.isFn() || type.isRc() || type.isWeak() || type.isDyn() || type.isHeap() || type.isNullable() ||
+        type.isRef() || type.isPtr()) {
+        return val;
+    }
+    if (!isBuiltinType(type.name) && structNeedsDestructor(type)) {
+        val = copyOfStructFields(val, type.isGeneric() ? type.getMangleName() : type.name);
+    }
+    return val;
 }
 
 // ==================== Phase 8d.1: per-statement 临时清单 ====================
@@ -1155,8 +1240,9 @@ llvm::Function* Compiler::getOrCreateRcTypedReleaseFn(const TypeInfo& rcType) {
         if (func->empty()) {
             auto* savedBB = _builder.GetInsertBlock();
             auto savedIP = savedBB ? _builder.GetInsertPoint() : llvm::BasicBlock::iterator();
+            // captures 是 lambda Rc，strong 归零须跑字段 dtor，不能走 generic _box_release。
             runtime::emitRcReleaseForInlineDtorFn(_context, _builder, _module, func, TypeKind::Fn,
-                                                  runtime::getRcReleaseFn(_module, _builder));
+                                                  runtime::getRcReleaseDtorFn(_module, _builder));
             if (savedBB) _builder.SetInsertPoint(savedBB, savedIP);
         }
         return func;

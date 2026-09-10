@@ -793,3 +793,37 @@ fn test_one_line_block() {
   let v = if true { 1 } else { 0 }
   assert_eq(v, 1)
 }
+
+struct FnBox {
+  f Function<String>
+}
+
+fn struct_fn_field_drop_scope() {
+  let s String = "hello"
+  let h FnBox = FnBox {
+    .f = () String => s
+  }
+  assert_eq(h.f(), "hello")
+}
+
+#Test
+fn test_struct_fn_field_drops_captures() {
+  #Mut let base i64 = rc_leak_count()
+  struct_fn_field_drop_scope()
+  assert_eq(rc_leak_count() - base, 0)
+}
+
+fn array_fn_clone_scope() {
+  let s String = "ab"
+  let fs Array<Function<i32>> = [() i32 => s.len().to_i32()]
+  let copy Array<Function<i32>> = fs.clone()
+  assert_eq(copy[0](), 2)
+  assert_eq(fs[0](), 2)
+}
+
+#Test
+fn test_array_fn_clone_no_double_free() {
+  #Mut let base i64 = rc_leak_count()
+  array_fn_clone_scope()
+  assert_eq(rc_leak_count() - base, 0)
+}

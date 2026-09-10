@@ -1,0 +1,9 @@
+; T& 捕获 lambda 写入数组字面量不可逃逸（DRAFT-closure-capture §7.2）
+
+fn make(r i32&) Array<Function<i32>> {
+  ret [() i32 => r + 0]  ; check: E4022
+}
+
+fn main() {
+  ret;
+}

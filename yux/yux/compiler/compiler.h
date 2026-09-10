@@ -351,6 +351,10 @@ private:
     // Phase 3c.2.b: copy_of 专用 — 深拷 struct 所有字段，含 Heap 新分配 + Dyn retain
     // 返回可能被 InsertValue 替换了 Heap 指针的新 struct value
     llvm::Value* copyOfStructFields(llvm::Value* structVal, const string& structName);
+    // 拥有型拷贝：Array 走 clone（递归元素）；其余 retain + 结构体 Heap/Array 字段深拷。
+    llvm::Value* copyOwnedValue(llvm::Value* val, const TypeInfo& type);
+    llvm::Value* cloneArrayAtPtr(llvm::Value* arrayPtr, const TypeInfo& arrayType);
+    llvm::Value* cloneArrayValue(llvm::Value* arrayVal, const TypeInfo& arrayType);
 
     // Phase 3d: 释放槽位（变量 / 字段 / 元素地址）当前持有的 RC 值
     // Rc/Array/Weak: load handle 后调对应 release；含 RC 字段 struct: 调其析构（字段逆序 release）

@@ -532,6 +532,7 @@ void SemaPass::checkArrayLiteral(ExprArrayNode* n, const TypeInfo& expected) {
     auto elemWant = arrayElemTarget(want);
     for (auto& e : n->elements()) {
         visitExpr(e, elemWant ? elemWant.get() : nullptr);
+        rejectEscapingRefCaptureLambda(e);
         if (!elemWant) continue;
         int eline = e->resolveLineNumber();
         int ecol = e->resolveColumn();
