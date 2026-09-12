@@ -582,11 +582,12 @@ int runBuildCommand(const BuildCmdOptions& opts) {
                 }
             }
             if (allowDecl) {
-                fs::path ioFile = fs::path(sdkPath).parent_path() / "io.yux";
-                if (fs::is_regular_file(ioFile)) {
-                    string abs = fs::absolute(ioFile).string();
-                    string obj = mirroredOutputBase(yux.projectRoot(), buildDir, abs) + ".obj";
-                    if (!probe.isFresh(abs, obj)) allowDecl = false;
+                for (const auto& extra : sdk_loader::extraSdkPackages(sdkPath)) {
+                    string obj = mirroredOutputBase(yux.projectRoot(), buildDir, extra.absPath) + ".obj";
+                    if (!probe.isFresh(extra.absPath, obj)) {
+                        allowDecl = false;
+                        break;
+                    }
                 }
             }
         }

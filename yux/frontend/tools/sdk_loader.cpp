@@ -97,12 +97,24 @@ void registerSdkModulePaths(Yux& yux, const std::map<std::string, SdkPkgEntry>& 
     sdk->addPackageChild("yux", "core", sdk);
 }
 
+std::vector<SdkExtraPkg> extraSdkPackages(const std::string& sdkDir) {
+    static constexpr std::array kNames{"io", "time"};
+    std::vector<SdkExtraPkg> out;
+    fs::path parent = fs::path(sdkDir).parent_path();
+    for (const char* name : kNames) {
+        fs::path f = parent / (std::string(name) + ".yux");
+        if (!fs::is_regular_file(f)) continue;
+        out.push_back({.absPath = fs::absolute(f).string(), .moduleName = std::string("yux.") + name});
+    }
+    return out;
+}
+
 void parseSdkDir(const std::string& sdkDir, Yux& yux, bool allowDecl) {
     auto pkgMap = readSdkPkg(sdkDir);
 
-    fs::path ioFile = fs::path(sdkDir).parent_path() / "io.yux";
-    if (fs::is_regular_file(ioFile)) {
-        yux.registerModulePath(fs::absolute(ioFile).string(), "yux.io");
+    auto extras = extraSdkPackages(sdkDir);
+    for (const auto& extra : extras) {
+        yux.registerModulePath(extra.absPath, extra.moduleName);
     }
 
     std::vector<std::string> yuxFiles;
@@ -179,9 +191,9 @@ void parseSdkDir(const std::string& sdkDir, Yux& yux, bool allowDecl) {
         loadOne(yuxFile, moduleName, flattenToCore);
     }
 
-    // 独立包 yux.io：不扁平进 core，未 use 时不可点 `yux.io` / 裸名 IoErr。
-    if (fs::is_regular_file(ioFile)) {
-        loadOne(ioFile.string(), "yux.io", false);
+    // 独立包：不扁平进 core，未 use 时不可点 `yux.io` / `yux.time` / 裸名。
+    for (const auto& extra : extras) {
+        loadOne(extra.absPath, extra.moduleName, false);
     }
 
     registerSdkModulePaths(yux, pkgMap);

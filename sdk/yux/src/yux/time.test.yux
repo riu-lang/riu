@@ -1,0 +1,147 @@
+; yux.time：Duration 算术与格式；Instant / SystemTime / DateTime 时钟；sleep(0)
+; 不测真实睡眠时长（易抖）。
+
+use yux.time.*
+
+#Test
+fn test_duration_units() {
+  let d Duration = Duration::from_ms(1500)
+  assert_true(d.as_ns() == 1500000000i64)
+  assert_true(d.as_us() == 1500000i64)
+  assert_true(d.as_ms() == 1500i64)
+  assert_true(d.as_secs() == 1i64)
+  assert_true(Duration::from_secs(120).as_mins() == 2i64)
+  assert_true(Duration::from_mins(60).as_hours() == 1i64)
+  assert_true(Duration::zero().is_zero())
+  assert_true(Duration::from_ns(-1).is_negative())
+}
+
+#Test
+fn test_duration_arith() {
+  let a Duration = Duration::from_ms(200)
+  let b Duration = Duration::from_ms(50)
+  assert_true((a + b).as_ms() == 250i64)
+  assert_true((a - b).as_ms() == 150i64)
+  assert_true((b * 3).as_ms() == 150i64)
+  assert_true((a / 2).as_ms() == 100i64)
+  assert_true((-b).as_ms() == -50i64)
+  assert_true(b.abs().as_ms() == 50i64)
+  assert_true(Duration::from_ns(-8).abs().as_ns() == 8i64)
+  assert_true(a > b)
+  assert_true(b < a)
+  assert_true(a == Duration::from_ms(200))
+  assert_true(a != b)
+}
+
+#Test
+fn test_duration_to_string() {
+  assert_eq(Duration::zero().to_string(), "0s")
+  assert_eq(Duration::from_ns(500).to_string(), "500ns")
+  assert_eq(Duration::from_us(3).to_string(), "3us")
+  assert_eq(Duration::from_ms(500).to_string(), "500ms")
+  assert_eq(Duration::from_ms(1500).to_string(), "1s500ms")
+  assert_eq(Duration::from_secs(90).to_string(), "1m30s")
+  assert_eq(Duration::from_hours(2).to_string(), "2h")
+  assert_eq(Duration::from_secs(-90).to_string(), "-1m30s")
+}
+
+#Test
+fn test_datetime_from_ymd() {
+  let opt DateTime? = DateTime::from_ymd_hms(2026, 9, 12, 14, 30, 0)
+  assert_true(opt.has())
+  let dt DateTime = opt.get()
+  assert_eq(dt.year, 2026)
+  assert_eq(dt.month, 9)
+  assert_eq(dt.day, 12)
+  assert_eq(dt.hour, 14)
+  assert_eq(dt.minute, 30)
+  assert_eq(dt.second, 0)
+  assert_eq(dt.nanos, 0)
+  assert_true(dt.is_utc())
+  assert_eq(dt.to_string(), "2026-09-12T14:30:00.000Z")
+  assert_true(dt.weekday <= 6)
+}
+
+#Test
+fn test_datetime_invalid() {
+  let bad DateTime? = DateTime::from_ymd_hms(2026, 13, 1, 0, 0, 0)
+  assert_false(bad.has())
+  let bad2 DateTime? = DateTime::from_ymd_hms(1500, 1, 1, 0, 0, 0)
+  assert_false(bad2.has())
+}
+
+#Test
+fn test_datetime_roundtrip_unix() {
+  let opt DateTime? = DateTime::from_ymd_hms(2026, 9, 12, 0, 0, 0)
+  assert_true(opt.has())
+  let dt DateTime = opt.get()
+  let st SystemTime = dt.to_system_time()
+  let back DateTime = st.to_utc()
+  assert_eq(back.year, 2026)
+  assert_eq(back.month, 9)
+  assert_eq(back.day, 12)
+  assert_eq(back.hour, 0)
+  assert_eq(st.unix_subsec_nanos(), 0)
+  let unix i64 = st.unix()
+  let st2 SystemTime = SystemTime::from_unix(unix, 0)
+  assert_true(st == st2)
+}
+
+#Test
+fn test_system_time_plus() {
+  let opt DateTime? = DateTime::from_ymd_hms(2026, 1, 1, 0, 0, 0)
+  let st SystemTime = opt.get().to_system_time()
+  let later SystemTime = st + Duration::from_secs(3600)
+  let dt DateTime = later.to_utc()
+  assert_eq(dt.hour, 1)
+  assert_true(later.duration_since(&st).as_secs() == 3600i64)
+  assert_true(later > st)
+}
+
+#Test
+fn test_instant_monotonic() {
+  let a Instant = Instant::now()
+  let b Instant = Instant::now()
+  assert_true(b.duration_since(&a).as_ns() >= 0i64)
+  assert_true(a.elapsed().as_ns() >= 0i64)
+  let c Instant = a + Duration::from_ms(5)
+  assert_true(c.duration_since(&a).as_ms() == 5i64)
+  let d Instant = c - Duration::from_ms(5)
+  assert_true(d == a)
+}
+
+#Test
+fn test_wall_clock_sane() {
+  let utc DateTime = DateTime::utc_now()
+  assert_true(utc.year >= 2026)
+  assert_true(utc.year <= 2100)
+  assert_true(utc.month >= 1 && utc.month <= 12)
+  assert_true(utc.day >= 1 && utc.day <= 31)
+  assert_true(utc.hour <= 23)
+  assert_true(utc.minute <= 59)
+  assert_true(utc.second <= 60)
+  assert_true(utc.is_utc())
+  let local DateTime = DateTime::local_now()
+  assert_true(local.year >= 2026)
+  assert_true(local.month >= 1 && local.month <= 12)
+  let st SystemTime = SystemTime::now()
+  let unix i64 = st.unix()
+  assert_true(unix > 1700000000i64)
+  assert_true(unix < 2000000000i64)
+  assert_true(utc.to_string().starts_with("20"))
+}
+
+#Test
+fn test_sleep_zero_returns() {
+  sleep(Duration::zero())
+  sleep(Duration::from_ns(-1))
+  sleep_ms(0)
+}
+
+#Test
+fn test_time_alias_and_fq() {
+  let d time.Duration = time.Duration::from_ms(1)
+  assert_true(d.as_ns() == 1000000i64)
+  let d2 yux.time.Duration = yux.time.Duration::from_us(2)
+  assert_true(d2.as_ns() == 2000i64)
+}

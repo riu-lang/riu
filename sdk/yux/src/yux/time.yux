@@ -1,0 +1,628 @@
+; yux SDK - 时间（时长 / 单调时钟 / 墙上时钟 / 日历）
+; 独立包 yux.time：须 `use yux.time` / `use yux.time.*`。
+; Duration / Instant 用纳秒 i64；SystemTime 用 Win32 FILETIME（100ns，UTC）。
+; Instant 走 QueryPerformanceCounter，与墙上时钟无关、不因校时回跳。
+; sleep 走 Sleep；零或负时长立即返回。tick_ms() 仍在 yux.core。
+
+extern {
+  #CName("QueryPerformanceCounter")
+  fn _QueryPerformanceCounter(lpPerformanceCount Ptr) i32
+  #CName("QueryPerformanceFrequency")
+  fn _QueryPerformanceFrequency(lpFrequency Ptr) i32
+  #CName("GetSystemTimePreciseAsFileTime")
+  fn _GetSystemTimePreciseAsFileTime(lpTime Ptr)
+  #CName("FileTimeToSystemTime")
+  fn _FileTimeToSystemTime(lpFileTime Ptr, lpSystemTime Ptr) i32
+  #CName("SystemTimeToFileTime")
+  fn _SystemTimeToFileTime(lpSystemTime Ptr, lpFileTime Ptr) i32
+  #CName("FileTimeToLocalFileTime")
+  fn _FileTimeToLocalFileTime(lpFileTime Ptr, lpLocalFileTime Ptr) i32
+  #CName("Sleep")
+  fn _Sleep(dwMilliseconds u32)
+}
+
+#Cval
+let _NS_PER_US i64 = 1000i64
+#Cval
+let _NS_PER_MS i64 = 1000000i64
+#Cval
+let _NS_PER_SEC i64 = 1000000000i64
+#Cval
+let _HNS_PER_SEC u64 = 10000000u64
+
+fn _ns_per_min() i64 {
+  60i64 * _NS_PER_SEC
+}
+
+fn _ns_per_hour() i64 {
+  3600i64 * _NS_PER_SEC
+}
+
+fn _hns_per_min() i64 {
+  60i64 * _HNS_PER_SEC.to_i64()
+}
+
+; 1601-01-01 → 1970-01-01：11644473600 秒 × 10^7
+fn _unix_ft_epoch() u64 {
+  11644473600u64 * _HNS_PER_SEC
+}
+
+fn _qpc_to_ns(ticks i64) i64 {
+  #Mut let freq i64 = 0
+  if _QueryPerformanceFrequency(&freq) == 0 || freq <= 0 {
+    ret 0
+  }
+  let q i64 = ticks / freq
+  let r i64 = ticks - q * freq
+  q * _NS_PER_SEC + r * _NS_PER_SEC / freq
+}
+
+fn _pad2(n u32) String {
+  if n < 10 {
+    ret "0${n}"
+  }
+  "${n}"
+}
+
+fn _pad3(n u32) String {
+  if n < 10 {
+    ret "00${n}"
+  }
+  if n < 100 {
+    ret "0${n}"
+  }
+  "${n}"
+}
+
+fn _pad4(n i32) String {
+  if n < 0 {
+    ret "-" + _pad4(0 - n)
+  }
+  let u u32 = n.to_u32()
+  if n < 10 {
+    ret "000${u}"
+  }
+  if n < 100 {
+    ret "00${u}"
+  }
+  if n < 1000 {
+    ret "0${u}"
+  }
+  "${u}"
+}
+
+fn _offset_text(min i32) String {
+  if min == 0 {
+    ret "Z"
+  }
+  #Mut let sign String = "+"
+  #Mut let m i32 = min
+  if m < 0 {
+    sign = "-"
+    m = 0 - m
+  }
+  let h u32 = (m / 60).to_u32()
+  let mm u32 = (m % 60).to_u32()
+  sign + _pad2(h) + ":" + _pad2(mm)
+}
+
+fn _utc_offset_min(utc_ft u64) i32 {
+  #Mut let utc_copy u64 = utc_ft
+  #Mut let local_ft u64 = 0
+  if _FileTimeToLocalFileTime(&utc_copy, &local_ft) == 0 {
+    ret 0
+  }
+  let step u64 = _hns_per_min().to_u64()
+  if local_ft >= utc_ft {
+    let d u64 = (local_ft - utc_ft) / step
+    d.to_i32()
+  } else {
+    let d u64 = (utc_ft - local_ft) / step
+    0 - d.to_i32()
+  }
+}
+
+fn _st_year(st [u16 * 8]&) i32 {
+  copy_of(st[0]).to_i32()
+}
+
+fn _st_u32(st [u16 * 8]&, i usize) u32 {
+  copy_of(st[i]).to_u32()
+}
+
+fn _filetime_to_civil(ft u64) [u16 * 8] {
+  #Mut let st [u16 * 8] = [0u16 ...]
+  #Mut let ft_copy u64 = ft
+  _FileTimeToSystemTime(&ft_copy, &st);
+  st
+}
+
+fn _civil_to_filetime(year i32, month u32, day u32, hour u32, minute u32, second u32, nanos u32) u64? {
+  if year < 1601 || year > 30827 {
+    ret null
+  }
+  if nanos >= 1000000000 {
+    ret null
+  }
+  #Mut let st [u16 * 8] = [0u16 ...]
+  st[0] = year.to_u16()
+  st[1] = month.to_u16()
+  st[2] = 0u16
+  st[3] = day.to_u16()
+  st[4] = hour.to_u16()
+  st[5] = minute.to_u16()
+  st[6] = second.to_u16()
+  st[7] = 0u16
+  #Mut let ft u64 = 0
+  if _SystemTimeToFileTime(&st, &ft) == 0 {
+    ret null
+  }
+  ft + (nanos / 100u32).to_u64()
+}
+
+; ==================== Duration ====================
+
+#Impl(ToString)
+#Impl(Eq)
+#Impl(Ord)
+struct Duration {
+  #Val
+  _ns i64
+
+  #Static
+  fn zero() Duration {
+    Duration { 0i64 }
+  }
+
+  #Static
+  fn from_ns(ns i64) Duration {
+    Duration { ns }
+  }
+
+  #Static
+  fn from_us(us i64) Duration {
+    Duration { us * _NS_PER_US }
+  }
+
+  #Static
+  fn from_ms(ms i64) Duration {
+    Duration { ms * _NS_PER_MS }
+  }
+
+  #Static
+  fn from_secs(secs i64) Duration {
+    Duration { secs * _NS_PER_SEC }
+  }
+
+  #Static
+  fn from_mins(mins i64) Duration {
+    Duration { mins * _ns_per_min() }
+  }
+
+  #Static
+  fn from_hours(hours i64) Duration {
+    Duration { hours * _ns_per_hour() }
+  }
+
+  fn as_ns() i64 {
+    $._ns
+  }
+
+  fn as_us() i64 {
+    $._ns / _NS_PER_US
+  }
+
+  fn as_ms() i64 {
+    $._ns / _NS_PER_MS
+  }
+
+  fn as_secs() i64 {
+    $._ns / _NS_PER_SEC
+  }
+
+  fn as_mins() i64 {
+    $._ns / _ns_per_min()
+  }
+
+  fn as_hours() i64 {
+    $._ns / _ns_per_hour()
+  }
+
+  fn is_zero() bool {
+    $._ns == 0
+  }
+
+  fn is_negative() bool {
+    $._ns < 0
+  }
+
+  fn abs() Duration {
+    if $._ns >= 0 {
+      ret Duration { $._ns }
+    }
+    if $._ns == i64::MIN {
+      ret Duration { i64::MAX }
+    }
+    Duration { 0 - $._ns }
+  }
+
+  fn plus(other Duration&) Duration {
+    Duration { $._ns + other._ns }
+  }
+
+  fn minus(other Duration&) Duration {
+    Duration { $._ns - other._ns }
+  }
+
+  fn mul(n i32) Duration {
+    Duration { $._ns * n.to_i64() }
+  }
+
+  fn mul(n i64) Duration {
+    Duration { $._ns * n }
+  }
+
+  fn div(n i32) Duration {
+    Duration { $._ns / n.to_i64() }
+  }
+
+  fn div(n i64) Duration {
+    Duration { $._ns / n }
+  }
+
+  fn neg() Duration {
+    if $._ns == i64::MIN {
+      ret Duration { i64::MAX }
+    }
+    Duration { 0 - $._ns }
+  }
+
+  fn eq(other Duration&) bool {
+    $._ns == other._ns
+  }
+
+  fn cmp(other Duration&) i32 {
+    if $._ns < other._ns {
+      ret -1
+    }
+    if $._ns > other._ns {
+      ret 1
+    }
+    0
+  }
+
+  fn to_string() String {
+    if $._ns == 0 {
+      ret "0s"
+    }
+    #Mut let ns i64 = $._ns
+    #Mut let out String = ""
+    if ns < 0 {
+      if ns == i64::MIN {
+        ret "-9223372036854775808ns"
+      }
+      out = "-"
+      ns = 0 - ns
+    }
+    let hour_ns i64 = _ns_per_hour()
+    let min_ns i64 = _ns_per_min()
+    let hours i64 = ns / hour_ns
+    ns = ns - hours * hour_ns
+    let mins i64 = ns / min_ns
+    ns = ns - mins * min_ns
+    let secs i64 = ns / _NS_PER_SEC
+    ns = ns - secs * _NS_PER_SEC
+    let ms i64 = ns / _NS_PER_MS
+    ns = ns - ms * _NS_PER_MS
+    let us i64 = ns / _NS_PER_US
+    ns = ns - us * _NS_PER_US
+    if hours != 0 {
+      out = out + "${hours}h"
+    }
+    if mins != 0 {
+      out = out + "${mins}m"
+    }
+    if secs != 0 {
+      out = out + "${secs}s"
+    }
+    if ms != 0 {
+      out = out + "${ms}ms"
+    }
+    if us != 0 {
+      out = out + "${us}us"
+    }
+    if ns != 0 {
+      out = out + "${ns}ns"
+    }
+    out
+  }
+}
+
+; ==================== Instant（单调时钟） ====================
+
+#Impl(ToString)
+#Impl(Eq)
+#Impl(Ord)
+struct Instant {
+  #Val
+  _ns i64
+
+  #Static
+  fn now() Instant {
+    #Mut let ticks i64 = 0
+    if _QueryPerformanceCounter(&ticks) == 0 {
+      ret Instant { 0i64 }
+    }
+    Instant { _qpc_to_ns(ticks) }
+  }
+
+  fn elapsed() Duration {
+    Instant::now().duration_since($)
+  }
+
+  fn duration_since(earlier Instant&) Duration {
+    Duration::from_ns($._ns - earlier._ns)
+  }
+
+  fn plus(d Duration&) Instant {
+    Instant { $._ns + d.as_ns() }
+  }
+
+  fn minus(d Duration&) Instant {
+    Instant { $._ns - d.as_ns() }
+  }
+
+  fn eq(other Instant&) bool {
+    $._ns == other._ns
+  }
+
+  fn cmp(other Instant&) i32 {
+    if $._ns < other._ns {
+      ret -1
+    }
+    if $._ns > other._ns {
+      ret 1
+    }
+    0
+  }
+
+  fn to_string() String {
+    let ns i64 = $._ns
+    "Instant(${ns})"
+  }
+}
+
+; ==================== SystemTime（墙上时钟，UTC FILETIME） ====================
+
+#Impl(ToString)
+#Impl(Eq)
+#Impl(Ord)
+struct SystemTime {
+  #Val
+  _ft u64
+
+  #Static
+  fn now() SystemTime {
+    #Mut let ft u64 = 0
+    _GetSystemTimePreciseAsFileTime(&ft);
+    SystemTime { ft }
+  }
+
+  #Static
+  fn from_unix(secs i64, nanos u32) SystemTime {
+    #Mut let ft u64 = _unix_ft_epoch()
+    if secs >= 0 {
+      ft = ft + secs.to_u64() * _HNS_PER_SEC
+    } else {
+      let mag u64 = (0 - secs).to_u64()
+      let sub u64 = mag * _HNS_PER_SEC
+      if sub >= ft {
+        ft = 0
+      } else {
+        ft = ft - sub
+      }
+    }
+    ft = ft + (nanos / 100u32).to_u64()
+    SystemTime { ft }
+  }
+
+  fn unix() i64 {
+    let ft u64 = $._ft
+    let epoch u64 = _unix_ft_epoch()
+    if ft >= epoch {
+      ((ft - epoch) / _HNS_PER_SEC).to_i64()
+    } else {
+      let delta u64 = (epoch - ft) / _HNS_PER_SEC
+      0 - delta.to_i64()
+    }
+  }
+
+  fn unix_subsec_nanos() u32 {
+    (($._ft % _HNS_PER_SEC) * 100u64).to_u32()
+  }
+
+  fn duration_since(earlier SystemTime&) Duration {
+    let a i64 = $._ft.to_i64()
+    let b i64 = earlier._ft.to_i64()
+    Duration::from_ns((a - b) * 100)
+  }
+
+  fn plus(d Duration&) SystemTime {
+    let delta i64 = d.as_ns() / 100
+    #Mut let ft i64 = $._ft.to_i64() + delta
+    if ft < 0 {
+      ft = 0
+    }
+    SystemTime { ft.to_u64() }
+  }
+
+  fn minus(d Duration&) SystemTime {
+    let delta i64 = d.as_ns() / 100
+    #Mut let ft i64 = $._ft.to_i64() - delta
+    if ft < 0 {
+      ft = 0
+    }
+    SystemTime { ft.to_u64() }
+  }
+
+  fn to_utc() DateTime {
+    _datetime_from_ft($._ft, 0, true)
+  }
+
+  fn to_local() DateTime {
+    _datetime_from_ft($._ft, _utc_offset_min($._ft), false)
+  }
+
+  fn eq(other SystemTime&) bool {
+    $._ft == other._ft
+  }
+
+  fn cmp(other SystemTime&) i32 {
+    if $._ft < other._ft {
+      ret -1
+    }
+    if $._ft > other._ft {
+      ret 1
+    }
+    0
+  }
+
+  fn to_string() String {
+    $.to_utc().to_string()
+  }
+}
+
+; ==================== DateTime（民用日历） ====================
+
+#Impl(ToString)
+#Impl(Eq)
+#Impl(Ord)
+struct DateTime {
+  #Val
+  year i32
+  #Val
+  month u32
+  #Val
+  day u32
+  #Val
+  hour u32
+  #Val
+  minute u32
+  #Val
+  second u32
+  #Val
+  nanos u32
+  #Val
+  weekday u32
+  #Val
+  utc_offset_min i32
+
+  #Static
+  fn utc_now() DateTime {
+    SystemTime::now().to_utc()
+  }
+
+  #Static
+  fn local_now() DateTime {
+    SystemTime::now().to_local()
+  }
+
+  ; UTC；非法日历（Win32 拒）→ null。weekday 由转换回填。
+  #Static
+  fn from_ymd_hms(year i32, month u32, day u32, hour u32, minute u32, second u32) DateTime? {
+    let ft u64? = _civil_to_filetime(year, month, day, hour, minute, second, 0)
+    if !ft.has() {
+      ret null
+    }
+    _datetime_from_ft(ft.get(), 0, true)
+  }
+
+  fn is_utc() bool {
+    $.utc_offset_min == 0
+  }
+
+  fn to_system_time() SystemTime {
+    let ft0 u64? = _civil_to_filetime($.year, $.month, $.day, $.hour, $.minute, $.second, $.nanos)
+    if !ft0.has() {
+      ret SystemTime { 0u64 }
+    }
+    #Mut let ft i64 = ft0.get().to_i64()
+    ft = ft - $.utc_offset_min.to_i64() * _hns_per_min()
+    if ft < 0 {
+      ft = 0
+    }
+    SystemTime { ft.to_u64() }
+  }
+
+  fn to_utc() DateTime {
+    $.to_system_time().to_utc()
+  }
+
+  fn to_local() DateTime {
+    $.to_system_time().to_local()
+  }
+
+  fn eq(other DateTime&) bool {
+    $.year == other.year && $.month == other.month && $.day == other.day && $.hour == other.hour && $.minute == other.minute && $.second == other.second && $.nanos == other.nanos && $.utc_offset_min == other.utc_offset_min
+  }
+
+  fn cmp(other DateTime&) i32 {
+    let a SystemTime = $.to_system_time()
+    let b SystemTime = other.to_system_time()
+    a.cmp(&b)
+  }
+
+  fn to_string() String {
+    let ms u32 = $.nanos / 1000000u32
+    _pad4($.year) + "-" + _pad2($.month) + "-" + _pad2($.day) + "T" + _pad2($.hour) + ":" + _pad2($.minute) + ":" + _pad2($.second) + "." + _pad3(ms) + _offset_text($.utc_offset_min)
+  }
+}
+
+fn _datetime_from_ft(ft u64, offset_min i32, as_utc bool) DateTime {
+  #Mut let use_ft u64 = ft
+  if !as_utc {
+    #Mut let utc_copy u64 = ft
+    #Mut let local_ft u64 = 0
+    if _FileTimeToLocalFileTime(&utc_copy, &local_ft) != 0 {
+      use_ft = local_ft
+    }
+  }
+  let st [u16 * 8] = _filetime_to_civil(use_ft)
+  let sub_ns u32 = ((use_ft % _HNS_PER_SEC) * 100u64).to_u32()
+  DateTime {
+    .year = _st_year(&st)
+    .month = _st_u32(&st, 1)
+    .day = _st_u32(&st, 3)
+    .hour = _st_u32(&st, 4)
+    .minute = _st_u32(&st, 5)
+    .second = _st_u32(&st, 6)
+    .nanos = sub_ns
+    .weekday = _st_u32(&st, 2)
+    .utc_offset_min = offset_min
+  }
+}
+
+; 零 / 负时长不调用 Sleep。超过 u32 毫秒则分段睡。
+fn sleep(d Duration) {
+  #Mut let left i64 = d.as_ms()
+  if left <= 0 {
+    ret;
+  }
+  let max_chunk i64 = u32::MAX.to_i64()
+  loop {
+    if left <= 0 {
+      break;
+    }
+    if left > max_chunk {
+      _Sleep(u32::MAX)
+      left = left - max_chunk
+    } else {
+      _Sleep(left.to_u32())
+      break;
+    }
+  }
+}
+
+fn sleep_ms(ms u32) {
+  sleep(Duration::from_ms(ms.to_i64()))
+}

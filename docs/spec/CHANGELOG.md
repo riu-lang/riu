@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-09-12 —— 独立包 `yux.time`
+
+- **新增 §10.4.1.7**：文件模块 `sdk/yux/src/yux/time.yux`。须 `use yux.time` / `use yux.time.*`。公开 `Duration` / `Instant` / `SystemTime` / `DateTime` 与 `sleep` / `sleep_ms`。
+- **修改 §10.2.4.2.2 / §10.2.5.5 / §10.4.1.3.1 / §10.4.5.1**：独立包名单加上 `yux.time`；未 use 时全限定不引入。
+- **冲突 / 兼容**：纯增。`tick_ms()` 仍在 `yux.core`。v1 不含 IANA 时区、日期字符串解析、高精度 sleep 承诺。
+
 ## 2026-09-12 —— Path / File 补齐查询与链接
 
 - **修改 §10.4.1.4**：`Path` 增加 `#Impl(ToString)`、`is_empty()`、`same_as`（绝对化后大小写不敏感）。`File` 增加 `#Impl(ToString)`、`is_dir` / `is_file` / `is_link`、`same_as`、`symlink_to` / `hardlink_to` / `junction_to`（接收者是要创建的链接）。
