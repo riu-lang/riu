@@ -374,9 +374,7 @@ struct Path {
   #Static
   fn from(raw String&) Path {
     let owned String = raw.to_string()
-    ret Self {
-      ._raw = move(owned)
-    }
+    Self { move(owned) }
   }
 
   #Static
@@ -392,17 +390,13 @@ struct Path {
   fn join(child String&) Path {
     let base String = $._raw.to_string()
     let raw String = _join_path(&base, child)
-    Path {
-      ._raw = move(raw)
-    }
+    Path { move(raw) }
   }
 
   fn parent() Path {
     let base String = $._raw.to_string()
     let raw String = dirname(&base)
-    Path {
-      ._raw = move(raw)
-    }
+    Path { move(raw) }
   }
 
   fn name() String {
@@ -413,9 +407,7 @@ struct Path {
   fn absolute() Path ! IoErr {
     let base String = $._raw.to_string()
     let raw String = abs(&base)!
-    Path {
-      ._raw = move(raw)
-    }
+    Path { move(raw) }
   }
 }
 
@@ -462,16 +454,12 @@ struct File {
 
   #Static
   fn at(path Path&) File {
-    Self {
-      ._path = copy_of:<Path>(path)
-    }
+    Self {copy_of:<Path>(path) }
   }
 
   #Static
   fn from(raw String&) File {
-    Self {
-      ._path = Path::from(&raw)
-    }
+    Self { Path::from(&raw) }
   }
 
   fn path() Path {
@@ -528,9 +516,7 @@ struct FileInputStream {
   fn open(path Path&) FileInputStream ! IoErr {
     let raw String = path.to_string()
     let h Ptr = _open(&raw, _GENERIC_READ, _OPEN_EXISTING)!
-    Self {
-      ._handle = h
-    }
+    Self { h }
   }
 
   fn is_open() bool {
@@ -576,9 +562,7 @@ struct FileOutputStream {
   fn create(path Path&) FileOutputStream ! IoErr {
     let raw String = path.to_string()
     let h Ptr = _open(&raw, _GENERIC_WRITE, _CREATE_ALWAYS)!
-    Self {
-      ._handle = h
-    }
+    Self { h }
   }
 
   #Static
@@ -593,9 +577,7 @@ struct FileOutputStream {
         ret _map_err(err)
       }
     }
-    Self {
-      ._handle = h
-    }
+    Self { h }
   }
 
   fn is_open() bool {

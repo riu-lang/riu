@@ -1683,6 +1683,7 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
         //   * 完整性: 必须列全所属结构体所有字段 (E3125).
         //   * 已知字段: `.name` 必须是所属结构体的字段 (E3126).
         //   * 唯一: 同名 `.field` 出现两次报 (E3127).
+        //   * 单字段简写 Type{ expr }: 恰好一个实例字段 (E3129).
         // DRAFT-const-eval Phase 5: TypeName{...} 形态放行至任意 expr 位.
         int line = n->resolveLineNumber();
         int col = n->resolveColumn();
@@ -1707,6 +1708,28 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
         }
         if (!decl) {
             throw YuxError(line, col, ErrorCode::E3124);
+        }
+        if (n->positional()) {
+            const auto nFields = decl->fields().size();
+            if (nFields != 1) {
+                throw YuxError(line, col, ErrorCode::E3129, structName, structName, std::to_string(nFields));
+            }
+            auto* f = decl->fields()[0];
+            TypeInfo fieldExpected;
+            const TypeInfo* fieldExpPtr = nullptr;
+            if (!decl->isGeneric()) {
+                fieldExpected = f->getType();
+                fieldExpPtr = &fieldExpected;
+            }
+            visitExpr(n->positional(), fieldExpPtr);
+            rejectEscapingRefCaptureLambda(n->positional());
+            if (isNoCopyTypeIn(f->getType(), _file, _sdkFile)) {
+                if (!isFreshHandleExpr(n->positional())) {
+                    throw YuxError(line, col, ErrorCode::E4031, f->getType().name, "struct 字面量字段初始化",
+                                   f->getType().name);
+                }
+            }
+            return;
         }
         std::set<string> seen;
         for (auto& fi : n->fields()) {

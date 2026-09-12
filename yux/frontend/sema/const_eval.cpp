@@ -462,6 +462,17 @@ std::optional<ConstantValue> ConstEvaluator::evalStructLit(ExprStructLitNode* no
     vals.resize(declFields.size());
     vector<bool> filled(declFields.size(), false);
 
+    if (node->positional()) {
+        if (declFields.size() != 1) {
+            throw YuxError(node->getLineNumber(), node->getColumn(), ErrorCode::E3129, sTy.name, sTy.name,
+                           std::to_string(declFields.size()));
+        }
+        auto v = eval(node->positional());
+        if (!v) return std::nullopt;
+        vals[0] = std::move(*v);
+        return ConstantValue::makeStruct(std::move(vals), sTy);
+    }
+
     for (auto& fi : node->fields()) {
         int idx = decl->fieldIndex(fi->name().getText());
         if (idx < 0) return std::nullopt;

@@ -1,0 +1,69 @@
+; 单字段结构体字面量位置填充 Type{ expr } / Self{ expr }
+
+struct Wrap {
+  n i32
+
+  #Static
+  fn make(n i32) Self = Self{ n }
+}
+
+struct Box<T> {
+  v T
+
+  #Static
+  fn make(v T) Self = Self{ v }
+}
+
+struct Inner {
+  n i32
+
+  #Static
+  fn make(n i32) Self = Self{ n }
+}
+
+struct Outer {
+  inner Inner
+
+  #Static
+  fn make(n i32) Self = Self{ Inner{ n } }
+}
+
+#Cval
+let CW Wrap = Wrap{ 9 }
+
+#Test
+fn test_self_positional() {
+  let w Wrap = Wrap::make(3)
+  assert_eq(w.n, 3)
+}
+
+#Test
+fn test_typename_positional() {
+  let w Wrap = Wrap{ 4 }
+  assert_eq(w.n, 4)
+}
+
+#Test
+fn test_generic_positional() {
+  let b Box<i32> = Box:<i32>::make(5)
+  assert_eq(b.v, 5)
+}
+
+#Test
+fn test_nested_positional() {
+  let o Outer = Outer{ Inner{ 6 } }
+  assert_eq(o.inner.n, 6)
+}
+
+#Test
+fn test_cval_positional() {
+  assert_eq(CW.n, 9)
+}
+
+#Test
+fn test_named_form_still_works() {
+  let w Wrap = Wrap {
+    .n = 7
+  }
+  assert_eq(w.n, 7)
+}

@@ -1,0 +1,16 @@
+; Self{ expr } 仍仅限 #Static fn 体
+
+struct Wrap {
+  n i32
+
+  #Static
+  fn make(n i32) Wrap = Self{ n }
+
+  fn rebuild() Wrap {
+    ret Self{ 1 }  ; check: E3124
+  }
+}
+
+fn main() i32 {
+  ret 0i32
+}

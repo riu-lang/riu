@@ -1,0 +1,12 @@
+; 无实例字段不得用 Type{ expr } 位置填充
+
+struct Empty {
+  #Static
+  fn make() Empty {
+    ret Self{ 1 }  ; check: E3129
+  }
+}
+
+fn main() i32 {
+  ret 0i32
+}

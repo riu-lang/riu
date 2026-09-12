@@ -764,6 +764,7 @@ bool ASTBuilder::exprContainsTryCatch(ExprNode* expr) {
 
     // 构造器形态
     if (auto* sl = dynamic_cast<ExprStructLitNode*>(expr)) {
+        if (sl->positional() && exprContainsTryCatch(sl->positional())) return true;
         for (auto& fi : sl->fields()) {
             if (exprContainsTryCatch(fi->value())) return true;
         }

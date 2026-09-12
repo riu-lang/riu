@@ -1,0 +1,15 @@
+; 多字段结构体不得用 Type{ expr } 位置填充
+
+struct Pair {
+  a i32
+  b i32
+
+  #Static
+  fn make() Pair {
+    ret Self{ 1 }  ; check: E3129
+  }
+}
+
+fn main() i32 {
+  ret 0i32
+}

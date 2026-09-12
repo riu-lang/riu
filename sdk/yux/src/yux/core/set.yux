@@ -8,9 +8,7 @@ struct Set<T> {
 
   #Static
   fn make() Self {
-    Self {
-      ._items = Map:<T, bool>::make()
-    }
+    Self { Map:<T, bool>::make() }
   }
 
   fn insert(item T) {

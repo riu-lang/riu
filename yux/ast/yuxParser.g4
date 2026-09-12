@@ -7,6 +7,27 @@ options {
     tokenVocab=yuxLexer;
 }
 
+@members {
+    // `{` 后若是 `(` 则不是 struct lit，让给尾随 lambda `f { () => e }`。
+    // 必须在备选入口判定，否则 typePath `{` 已匹配、无法回退。
+    bool aheadIsStructLit() {
+        int i = 1;
+        int t = _input->LT(i)->getType();
+        if (t == SelfType) {
+            i = 2;
+        } else if (t == ID) {
+            i = 2;
+            while (_input->LT(i)->getType() == SymbolDot && _input->LT(i + 1)->getType() == ID) {
+                i += 2;
+            }
+        } else {
+            return false;
+        }
+        if (_input->LT(i)->getType() != BlockStart) return false;
+        return _input->LT(i + 1)->getType() != ParStart;
+    }
+}
+
 
 program:
     LineEnd*
@@ -398,9 +419,13 @@ expr:
       (statementBlock | body=lambdaBody)  # exprLambdaParen
     // [PROBE static-fn] 结构体字段字面量：Self { \n .x = e \n .y = e \n }
     // DRAFT-const-eval Phase 5: LHS 放宽到通用 ID（如 Point { .x = 1 .y = 2 }）
-    // 限定路径：yux.core.map.Map { ... }；多行强制；`.field=` 前缀标明字段项
-    | (selfLhs=SelfType | typeName=typePath) BlockStart LineEnd
-        (fieldInits+=fieldInit|LineEnd)*
+    // 限定路径：yux.core.map.Map { ... }；命名形态多行强制；`.field=` 前缀标明字段项
+    // 单字段简写（仅单行）：Type{ expr } / Self{ expr }，位置填充到唯一实例字段
+    // `{` 后若是 `(` 不走简写，避免吃掉尾随 lambda `f { () => e }`
+    | {aheadIsStructLit()}? (selfLhs=SelfType | typeName=typePath) BlockStart
+        ( LineEnd (fieldInits+=fieldInit|LineEnd)*
+        | positional=expr
+        )
       BlockEnd                            # exprStructLit
     // ( e )
     | ParStart expr ParEnd                # exprParen

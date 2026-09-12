@@ -321,6 +321,7 @@ DEF_ERR(3125, "`Self {{ ... }}` for struct `{}` is missing field `.{}` (all fiel
 DEF_ERR(3126, "struct `{}` has no field `.{}` (DRAFT-static-fn)")
 DEF_ERR(3127, "duplicate field `.{}` in `Self {{ ... }}` literal (DRAFT-static-fn)")
 DEF_ERR(3128, "`$` (current instance) cannot be used inside a `#Static fn` body (DRAFT-static-fn)")
+DEF_ERR(3129, "positional struct literal `{}{{ expr }}` requires exactly one instance field; struct `{}` has {}")
 DEF_ERR(3130,
         "Same-name constructor `fn {}(...)` is no longer supported — define a `#Static fn` (e.g. `#Static fn "
         "make(...)` returning `{}` via `Self {{ ... }}`) and call it as `{}::make(...)` (DRAFT-static-fn Phase 6)")

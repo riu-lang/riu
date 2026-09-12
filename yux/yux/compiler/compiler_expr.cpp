@@ -29,6 +29,7 @@
 #include <cassert>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
+#include <memory>
 #include <set>
 
 // ==================== 辅助函数 ====================
@@ -308,7 +309,16 @@ llvm::Value* Compiler::compileExpr(ExprNode* node) {
         auto& dl = _module->getDataLayout();
         auto sizeBytes = dl.getTypeAllocSize(llvmStructType).getFixedValue();
         _builder.CreateMemSetInline(alloca, llvm::MaybeAlign(1), _builder.getInt8(0), _builder.getInt64(sizeBytes));
-        for (auto& fi : structLitNode->fields()) {
+        std::unique_ptr<FieldInitNode> positionalInit;
+        vector<FieldInitNode*> fieldInits = structLitNode->fields();
+        if (auto* pos = structLitNode->positional()) {
+            if (decl->fields().size() != 1) {
+                throwSemaGap(line, col);
+            }
+            positionalInit = std::make_unique<FieldInitNode>(structLitNode, decl->fields()[0]->name(), pos);
+            fieldInits = {positionalInit.get()};
+        }
+        for (auto& fi : fieldInits) {
             string fname = fi->name().getText();
             int idx = decl->fieldIndex(fname);
             string gepName = structName;

@@ -573,7 +573,7 @@ public:
     [[nodiscard]] ExprNode* value() const { return _value; }
 };
 
-// 结构体字段字面量 `Self { \n .field = value \n ... }`
+// 结构体字段字面量 `Self { \n .field = value \n ... }` 或单字段简写 `Self{ expr }`
 // Phase 1b：AST 占位；语义层强制 LHS 为 Self 且出现位限 `#Static fn` 体
 // 类型在 sema 阶段绑定为所属结构体类型；当前 getType() 返回 empty
 class ExprStructLitNode : public ExprNode {
@@ -584,6 +584,8 @@ class ExprStructLitNode : public ExprNode {
     bool _isSelfForm;
     TypePath _typePath; // 非 Self 形态的 LHS；Self 时为空
     vector<FieldInitNode*> _fields;
+    // 单字段位置填充 `Type{ expr }`：无 `.name =`；sema 要求恰好一个实例字段
+    ExprNode* _positional = nullptr;
 
 public:
     ExprStructLitNode(Node* parent, Token selfTok, string structName, bool isSelfForm = true)
@@ -591,12 +593,14 @@ public:
 
     void addField(FieldInitNode* f) { _fields.push_back(f); }
     void setTypePath(TypePath p) { _typePath = std::move(p); }
+    void setPositional(ExprNode* e) { _positional = e; }
 
     [[nodiscard]] const Token& selfToken() const { return _selfTok; }
     [[nodiscard]] const string& structName() const { return _structName; }
     [[nodiscard]] bool isSelfForm() const { return _isSelfForm; }
     [[nodiscard]] const TypePath& typePath() const { return _typePath; }
     [[nodiscard]] const vector<FieldInitNode*>& fields() const { return _fields; }
+    [[nodiscard]] ExprNode* positional() const { return _positional; }
     [[nodiscard]] TypeInfo getType() const override;
 };
 

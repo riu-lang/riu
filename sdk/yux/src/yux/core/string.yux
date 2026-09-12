@@ -18,9 +18,7 @@ struct String {
   fn empty() String {
     let a Array<u32> = []                  ; 先构造空 Array<u32>
     let buf Rc<Array<u32>> = move(a)       ; 再装箱到 Rc
-    Self {
-      ._buf = move(buf)                    ; 转移所有权
-    }
+    Self { move(buf) }                     ; 转移所有权
   }
 
   ; 静态工厂：从外部 Array<u32> 码点缓冲**深拷贝**
@@ -30,9 +28,7 @@ struct String {
   fn from(buf Array<u32>&) String {
     #Mut let copy Array<u32> = buf.clone()
     let rc Rc<Array<u32>> = move(copy)   ; 接管拷贝的所有权
-    Self {
-      ._buf = move(rc)                   ; 转移所有权
-    }
+    Self { move(rc) }                    ; 转移所有权
   }
 
   ; SDK 私有：接管 Array<u32> 缓冲所有权
@@ -41,9 +37,7 @@ struct String {
   #Static
   fn _take_buf(buf Array<u32>) String {
     let rc Rc<Array<u32>> = move(buf)    ; 接管所有权
-    Self {
-      ._buf = move(rc)                   ; 转移 Rc 所有权到 struct
-    }
+    Self { move(rc) }                    ; 转移 Rc 所有权到 struct
   }
 
   ; SDK 私有：从码点缓冲拷贝 [start, end) 构造新 String
@@ -700,9 +694,7 @@ struct String {
   ; B-4: String 自身实现 ToString — 浅复制 Rc，共享底层缓冲（返回值独立持有引用）
   fn to_string() String {
     let buf Rc<Array<u32>> = $._buf
-    ret String {
-      ._buf = move(buf)
-    }
+    String { move(buf) }
   }
 }
 
@@ -714,9 +706,7 @@ struct StringBuilder {
 
   #Static
   fn make() StringBuilder {
-    ret Self {
-      .data = []
-    }
+    ret Self { [] }
   }
 
   fn len() usize {

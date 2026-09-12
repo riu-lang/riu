@@ -261,7 +261,7 @@ for-in（E3160；§5.5.4）：
 |---|---|
 | E3160 | `` `for-in` iterable must be Array<T> or [T*N], got '{}' `` |
 
-构造模型重构（E3120..E3128；引入自 [draft/DRAFT-static-fn.md](draft/DRAFT-static-fn.md)，落地章节 §7.10）：
+构造模型重构（E3120..E3129；引入自 [draft/DRAFT-static-fn.md](draft/DRAFT-static-fn.md)，落地章节 §7.10）：
 
 | 码     | 模板 |
 |--------|------|
@@ -274,6 +274,7 @@ for-in（E3160；§5.5.4）：
 | E3126 | `` struct `{}` has no field `.{}` (DRAFT-static-fn) `` |
 | E3127 | `` duplicate field `.{}` in `Self {{ ... }}` literal (DRAFT-static-fn) `` |
 | E3128 | `` `$` (current instance) cannot be used inside a `#Static fn` body (DRAFT-static-fn) `` |
+| E3129 | `` positional struct literal `{}{{ expr }}` requires exactly one instance field; struct `{}` has {} `` |
 
 ### D.3.4 E4xxx — 所有权 / 借用
 

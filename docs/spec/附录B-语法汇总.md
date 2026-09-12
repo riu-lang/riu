@@ -217,6 +217,7 @@ expr ::=
   | '(' ')'                                                       # exprUnit
   | '(' expr (',' expr)+ ')'                                     # exprTuple
   | typeName '{' LineEnd ( fieldInit | LineEnd )* '}'            # exprStructLit
+  | typeName '{' expr '}'                                        # exprStructLit  ; 单字段简写，仅单行；`{` 后非 `(`
   | '[' LineEnd* (expr (',' LineEnd* expr)* ','? LineEnd*)? ']'  # exprArray
   | expr (':' genericDef)? '(' LineEnd*
         (expr (',' LineEnd* expr)* ','? LineEnd*)? ')'
