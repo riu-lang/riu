@@ -50,72 +50,35 @@ fn _confirm(msg String&) bool {
   ret t == "y" || t == "Y"
 }
 
-fn _same_path(a String&, b String&) bool {
-  let na String = try {
-    abs(a)
-  } catch e IoErr {
-    ret a.to_lower() == b.to_lower()
-  }
-  let nb String = try {
-    abs(b)
-  } catch e IoErr {
-    ret a.to_lower() == b.to_lower()
-  }
-  ret na.to_lower() == nb.to_lower()
-}
-
-fn _link_name(target String&, name String?) String {
+fn _link_file(target File&, name String?) File {
   if name.has() {
-    ret name ?? ""
+    let n String = name ?? ""
+    ret File::from(&n)
   }
-  let file String = basename(target)
+  let file String = target.path().name()
   if file.is_empty() || file == "." || file == ".." {
-    ret target.to_string()
+    ret copy_of:<File>(target)
   }
-  ret file
+  File::from(&file)
 }
 
-fn _prepare(path String&, force bool, yes bool) {
-  if !exists(path) {
+fn _prepare(file File&, force bool, yes bool) {
+  if !file.exists() {
     ret;
   }
   if !force {
-    _die("Already exists: ${path} (use -f to replace)")
+    _die("Already exists: ${file} (use -f to replace)")
   }
-  if !yes && !_confirm("Already exists: ${path}, delete") {
+  if !yes && !_confirm("Already exists: ${file}, delete") {
     _die("Cancelled")
   }
   try {
-    remove_all(path)
+    file.remove_all()
   } catch e IoErr {
-    _die("Cannot remove ${path}: ${io_err_text(e)}")
+    _die("Cannot remove ${file}: ${io_err_text(e)}")
   }
   if !yes {
-    println("Deleted: ${path}")
-  }
-}
-
-fn _make_symlink(target String&, link String&) {
-  try {
-    symlink(target, link)
-  } catch e IoErr {
-    if is_dir(target) && _is_priv(e) {
-      eprintln("Directory symlink failed (${io_err_text(e)}), falling back to junction")
-      if exists(link) {
-        try {
-          remove_all(link)
-        } catch e2 IoErr {
-          _die("Create link failed: ${io_err_text(e2)}")
-        }
-      }
-      try {
-        junction(target, link)
-      } catch e3 IoErr {
-        _die("Create link failed: ${io_err_text(e3)}")
-      }
-      ret;
-    }
-    _die("Create link failed: ${io_err_text(e)}")
+    println("Deleted: ${file}")
   }
 }
 
@@ -125,18 +88,19 @@ struct Args {
   hard bool
   junction bool
   name String?
-  path String
+  path Path
 }
 
 fn main() {
   let argv Array<String> = args()
+  let empty String = ""
   #Mut let a Args = Args {
     .force = false
     .yes = false
     .hard = false
     .junction = false
     .name = null
-    .path = ""
+    .path = Path::from(&empty)
   }
   #Mut let i usize = 1
   loop {
@@ -230,14 +194,14 @@ fn main() {
     if s.starts_with("-") {
       _die("Unknown option: ${s}")
     }
-    if a.path.len() != 0 {
+    if !a.path.is_empty() {
       _die("Unexpected argument: ${s}")
     }
-    a.path = s
+    a.path = Path::from(&s)
     i += 1
   }
 
-  if a.path.len() == 0 {
+  if a.path.is_empty() {
     eprintln("Missing required argument: <PATH>")
     _print_help()
     exit(1)
@@ -245,38 +209,60 @@ fn main() {
   if a.hard && a.junction {
     _die("Cannot use --junction with --hard")
   }
-  if !exists(&a.path) {
-    _die("Target does not exist: ${a.path}")
+
+  let target File = File::at(&a.path)
+  if !target.exists() {
+    _die("Target does not exist: ${target}")
   }
 
-  let link String = _link_name(&a.path, a.name)
-  if _same_path(&a.path, &link) {
+  let link File = _link_file(&target, a.name)
+  if target.same_as(&link) {
     _die("Link path cannot be the target itself: ${link}")
   }
 
   _prepare(&link, a.force, a.yes);
 
   if a.hard {
-    if is_dir(&a.path) {
+    if target.is_dir() {
       _die("Hard link is only supported for files")
     }
     try {
-      hardlink(&a.path, &link)
+      link.hardlink_to(&target)
     } catch e IoErr {
       _die("Create link failed: ${io_err_text(e)}")
     }
     ret;
   }
   if a.junction {
-    if !is_dir(&a.path) {
+    if !target.is_dir() {
       _die("Junction is only supported for directories")
     }
     try {
-      junction(&a.path, &link)
+      link.junction_to(&target)
     } catch e IoErr {
       _die("Create link failed: ${io_err_text(e)}")
     }
     ret;
   }
-  _make_symlink(&a.path, &link)
+  try {
+    link.symlink_to(&target)
+  } catch e IoErr {
+    if target.is_dir() && _is_priv(e) {
+      eprintln("Directory symlink failed (${io_err_text(e)}), falling back to junction")
+      if link.exists() {
+        try {
+          link.remove_all()
+        } catch e2 IoErr {
+          _die("Create link failed: ${io_err_text(e2)}")
+        }
+      }
+      try {
+        link.junction_to(&target)
+      } catch e3 IoErr {
+        _die("Create link failed: ${io_err_text(e3)}")
+      }
+      ret;
+    }
+    _die("Create link failed: ${io_err_text(e)}")
+  }
 }

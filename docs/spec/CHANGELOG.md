@@ -15,6 +15,11 @@
 
 ---
 
+## 2026-09-12 —— Path / File 补齐查询与链接
+
+- **修改 §10.4.1.4**：`Path` 增加 `#Impl(ToString)`、`is_empty()`、`same_as`（绝对化后大小写不敏感）。`File` 增加 `#Impl(ToString)`、`is_dir` / `is_file` / `is_link`、`same_as`、`symlink_to` / `hardlink_to` / `junction_to`（接收者是要创建的链接）。
+- **冲突 / 兼容**：纯增。字符串 facade 不变。`examples/wln` 改走对象 API。
+
 ## 2026-09-12 —— `IoErr` 可读消息
 
 - **修改 §10.4.1.4**：新增 `io_err_text(e IoErr) String`。命名 variant 固定英文短句；`Other(code)` 走 `FormatMessageW`，失败则 `Win32 ${code}`。enum 不能挂方法，故为自由函数。

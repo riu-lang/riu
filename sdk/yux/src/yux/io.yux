@@ -403,6 +403,7 @@ struct FileInfo {
   readonly bool
 }
 
+#Impl(ToString)
 struct Path {
   ; 路径值持有自己的 String 引用，不借用构造参数。
   #Val
@@ -446,6 +447,27 @@ struct Path {
     let raw String = abs(&base)!
     Path { move(raw) }
   }
+
+  fn is_empty() bool {
+    $._raw.is_empty()
+  }
+
+  ; 绝对化后大小写不敏感。绝对化失败则回退比较原始字符串。
+  fn same_as(other Path&) bool {
+    let a String = try {
+      let p Path = $.absolute()
+      p.to_string()
+    } catch e IoErr {
+      $.to_string()
+    }
+    let b String = try {
+      let p Path = other.absolute()
+      p.to_string()
+    } catch e IoErr {
+      other.to_string()
+    }
+    a.to_lower() == b.to_lower()
+  }
 }
 
 ; 按 Win32 文件属性结构的小端布局读取字段。
@@ -485,6 +507,7 @@ fn _file_info(path String&) FileInfo ! IoErr {
   }
 }
 
+#Impl(ToString)
 struct File {
   #Val
   _path Path
@@ -503,9 +526,32 @@ struct File {
     copy_of:<Path>(&$._path)
   }
 
+  fn to_string() String {
+    $._path.to_string()
+  }
+
   fn exists() bool {
     let raw String = $._path.to_string()
     exists(&raw)
+  }
+
+  fn is_dir() bool {
+    let raw String = $._path.to_string()
+    is_dir(&raw)
+  }
+
+  fn is_file() bool {
+    let raw String = $._path.to_string()
+    is_file(&raw)
+  }
+
+  fn is_link() bool {
+    let raw String = $._path.to_string()
+    is_link(&raw)
+  }
+
+  fn same_as(other File&) bool {
+    $._path.same_as(&other._path)
   }
 
   fn info() FileInfo ! IoErr {
@@ -537,6 +583,25 @@ struct File {
   fn remove_all() ! IoErr {
     let raw String = $._path.to_string()
     remove_all(&raw)!
+  }
+
+  ; `$` 是要创建的链接；`target` 是指向的已有条目。
+  fn symlink_to(target File&) ! IoErr {
+    let t String = target._path.to_string()
+    let l String = $._path.to_string()
+    symlink(&t, &l)!
+  }
+
+  fn hardlink_to(target File&) ! IoErr {
+    let t String = target._path.to_string()
+    let l String = $._path.to_string()
+    hardlink(&t, &l)!
+  }
+
+  fn junction_to(target File&) ! IoErr {
+    let t String = target._path.to_string()
+    let l String = $._path.to_string()
+    junction(&t, &l)!
   }
 }
 

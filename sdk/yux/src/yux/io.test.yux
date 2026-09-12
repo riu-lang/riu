@@ -559,6 +559,25 @@ fn test_path_object_operations() {
   assert_eq(absolute.name(), raw)
   let entry File = File::at(&absolute)
   assert_false(entry.exists())
+
+  let fooRaw String = "foo"
+  let fooUpperRaw String = "FOO"
+  let barRaw String = "bar"
+  let foo Path = Path::from(&fooRaw)
+  let fooUpper Path = Path::from(&fooUpperRaw)
+  let bar Path = Path::from(&barRaw)
+  assert_true(foo.same_as(&fooUpper))
+  assert_false(foo.same_as(&bar))
+  let fooAbs Path = try {
+    foo.absolute()
+  } catch e IoErr {
+    _fail_io("path_same_as_abs", e)
+    ret;
+  }
+  assert_true(foo.same_as(&fooAbs))
+  assert_false(foo.is_empty())
+  assert_true(empty.is_empty())
+  assert_eq("${foo}", "foo")
 }
 
 #Test
@@ -579,6 +598,9 @@ fn test_file_info_list_and_methods() {
   }
 
   assert_true(dir.exists())
+  assert_true(dir.is_dir())
+  assert_false(dir.is_file())
+  assert_false(dir.is_link())
   let dirInfo FileInfo = try {
     dir.info()
   } catch e IoErr {
@@ -600,6 +622,12 @@ fn test_file_info_list_and_methods() {
   assert_eq(aInfo.size, 3u64)
   assert_false(aInfo.readonly)
   assert_eq(a.path().name(), "a.txt")
+  assert_true(a.is_file())
+  assert_false(a.is_dir())
+  assert_false(a.is_link())
+  assert_eq("${a}", aRaw)
+  assert_true(a.same_as(&a))
+  assert_false(a.same_as(&dir))
 
   let children Array<File> = try {
     dir.list()
@@ -632,6 +660,142 @@ fn test_file_info_list_and_methods() {
     _fail_io("file_remove", e)
   }
   assert_false(dir.exists())
+}
+
+#Test
+fn test_file_hardlink_to() {
+  let aRaw String = "_yux_io_fhl_a.txt"
+  let bRaw String = "_yux_io_fhl_b.txt"
+  _cleanup(&aRaw)
+  _cleanup(&bRaw)
+  try {
+    write_file(&aRaw, "hi")
+  } catch e IoErr {
+    _fail_io("write_fhl", e)
+  }
+  let a File = File::from(&aRaw)
+  let b File = File::from(&bRaw)
+  try {
+    b.hardlink_to(&a)
+  } catch e IoErr {
+    _cleanup(&aRaw)
+    _cleanup(&bRaw)
+    _fail_io("hardlink_to", e)
+  }
+  let s String = try {
+    read_file(&bRaw)
+  } catch e IoErr {
+    _cleanup(&aRaw)
+    _cleanup(&bRaw)
+    _fail_io("read_fhl", e)
+    ""
+  }
+  _cleanup(&bRaw)
+  _cleanup(&aRaw)
+  assert_eq(s, "hi")
+}
+
+#Test
+fn test_file_junction_to() {
+  let dirRaw String = "_yux_io_fjn_dir"
+  let linkRaw String = "_yux_io_fjn_link"
+  let fileRaw String = join(&dirRaw, "x.txt")
+  _cleanup_all(&linkRaw)
+  _cleanup_all(&dirRaw)
+  let dir File = File::from(&dirRaw)
+  let link File = File::from(&linkRaw)
+  try {
+    dir.mkdir()
+    write_file(&fileRaw, "z")
+    link.junction_to(&dir)
+  } catch e IoErr {
+    _cleanup_all(&linkRaw)
+    _cleanup_all(&dirRaw)
+    _fail_io("junction_to", e)
+  }
+  assert_true(link.is_dir())
+  assert_true(link.is_link())
+  let via String = join(&linkRaw, "x.txt")
+  let s String = try {
+    read_file(&via)
+  } catch e IoErr {
+    _cleanup_all(&linkRaw)
+    _cleanup_all(&dirRaw)
+    _fail_io("read_fjn", e)
+    ""
+  }
+  try {
+    link.remove_all()
+  } catch e IoErr {
+    _cleanup_all(&linkRaw)
+    _cleanup_all(&dirRaw)
+    _fail_io("remove_fjn", e)
+  }
+  assert_true(exists(&fileRaw))
+  _cleanup_all(&dirRaw)
+  assert_eq(s, "z")
+}
+
+#Test
+fn test_file_symlink_to_or_skip() {
+  let aRaw String = "_yux_io_fsy_a.txt"
+  let bRaw String = "_yux_io_fsy_b.txt"
+  _cleanup(&aRaw)
+  _cleanup(&bRaw)
+  try {
+    write_file(&aRaw, "sy")
+  } catch e IoErr {
+    _fail_io("write_fsy", e)
+  }
+  let a File = File::from(&aRaw)
+  let b File = File::from(&bRaw)
+  try {
+    b.symlink_to(&a)
+  } catch e IoErr {
+    match e {
+      IoErr::AccessDenied => {
+        _cleanup(&aRaw)
+        ret;
+      }
+      IoErr::Other(code) => {
+        if code == 1314u32 {
+          _cleanup(&aRaw)
+          ret;
+        }
+        _cleanup(&aRaw)
+        _cleanup(&bRaw)
+        _fail_io("symlink_to", e)
+      }
+      IoErr::Eof => {
+        _cleanup(&aRaw)
+        _fail_io("symlink_to", e)
+      }
+      IoErr::NotFound => {
+        _cleanup(&aRaw)
+        _fail_io("symlink_to", e)
+      }
+      IoErr::InvalidUtf8 => {
+        _cleanup(&aRaw)
+        _fail_io("symlink_to", e)
+      }
+      IoErr::Closed => {
+        _cleanup(&aRaw)
+        _fail_io("symlink_to", e)
+      }
+    }
+  }
+  let s String = try {
+    read_file(&bRaw)
+  } catch e IoErr {
+    _cleanup(&aRaw)
+    _cleanup(&bRaw)
+    _fail_io("read_fsy", e)
+    ""
+  }
+  assert_true(b.is_link())
+  _cleanup(&bRaw)
+  _cleanup(&aRaw)
+  assert_eq(s, "sy")
 }
 
 #Test

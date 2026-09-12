@@ -31,6 +31,13 @@
 - `String.to_string()` 显式 retain 底层 `Rc<Array<u32>>` 后转移到返回值，保证 `Path` 保存的是独立有效的字符串值。
 - `yux-check` 批量测试新增 `require-sdk-modules` 指令，使依赖完整 `yux.io` 模块表的诊断用例可隔离运行。
 
+## File/Path 缺口（2026-09-12）
+
+- `Path` / `File` 补 `#Impl(ToString)`，插值与 `print` 可直接吃路径值。
+- `Path.is_empty` / `Path.same_as`：后者绝对化后大小写不敏感，供链接工具判断「链接路径就是目标自己」。
+- `File.is_dir` / `is_file` / `is_link` 对齐 facade（junction 的 `is_dir` 为真）；`info().kind` 仍把 reparse 记为 `Link`。
+- `File.symlink_to` / `hardlink_to` / `junction_to`：`$` 是要创建的链接，参数是目标条目；内部转调既有 facade。
+
 ## 后续边界
 
 - 暂不抽象 `InputStream` / `OutputStream`，也不加入 buffering、seek、随机读写、异步 I/O 或 POSIX backend；出现第二种真实流实现后再提炼公共接口。
