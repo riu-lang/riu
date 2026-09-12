@@ -384,13 +384,6 @@ Doc Printer::exprDoc(yuxParser::ExprContext* ctx) {
     if (auto* n = dynamic_cast<yuxParser::ExprMulDivModContext*>(ctx)) {
         return binDoc(n->left, n->op->getText(), n->right);
     }
-    if (auto* n = dynamic_cast<yuxParser::ExprBinOpContext*>(ctx)) {
-        return binDoc(n->left, n->op->getText(), n->right);
-    }
-    if (auto* n = dynamic_cast<yuxParser::ExprShiftContext*>(ctx)) {
-        // opShift 子规则：抓原文（`<<` / `>>`）
-        return binDoc(n->left, rawSpan(tokens_, n->opShift()), n->right);
-    }
     if (auto* n = dynamic_cast<yuxParser::ExprCompareContext*>(ctx)) {
         return binDoc(n->left, rawSpan(tokens_, n->opCompare()), n->right);
     }

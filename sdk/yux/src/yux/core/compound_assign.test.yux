@@ -2,10 +2,9 @@
 ;
 ; 覆盖：
 ;   - 算术复合赋值：+= / -= / *= / /= / %=
-;   - 位移复合赋值：>>= / <<=
-;   - 位运算复合赋值：^= / |= / &=（i32 / u8 / u64）
 ;
 ; 已知缺口：复合赋值在 Rc<T>/Heap<T> 等句柄类型上的行为未覆盖。
+; 位运算无复合赋值，写 a = a.and(b) 等。
 
 #Test
 fn test_add_assign() {
@@ -44,94 +43,6 @@ fn test_mod_assign() {
   #Mut let a i32 = 6
   a %= 3
   assert_eq(a, 0)
-}
-
-; 验证：右移赋值操作符（>>=）是否正确应用
-#Test
-fn test_shr_assign() {
-  #Mut let b i32 = 16
-  b >>= 2
-  assert_eq(b, 4)
-}
-
-; 验证：左移赋值操作符 <<= 的行为
-#Test
-fn test_shl_assign() {
-  #Mut let b i32 = 4
-  b <<= 1
-  assert_eq(b, 8)
-}
-
-; 验证：XOR 赋值运算符功能
-#Test
-fn test_xor_assign() {
-  #Mut let a i32 = 0x0F
-  a ^= 0xF0
-  assert_eq(a, 0xFF)
-}
-
-; 验证：u8 类型的异或赋值操作
-#Test
-fn test_xor_assign_u8() {
-  #Mut let a u8 = 0b1010u8
-  a ^= 0b1100u8
-  assert_eq(a, 0b0110u8)
-}
-
-; 验证：u64 类型的异或赋值操作
-#Test
-fn test_xor_assign_u64() {
-  #Mut let a u64 = 0xFFFFFFFF00000000u64
-  a ^= 0x00000000FFFFFFFFu64
-  assert_eq(a, 0xFFFFFFFFFFFFFFFFu64)
-}
-
-; 验证：OR 赋值运算符功能
-#Test
-fn test_or_assign() {
-  #Mut let a i32 = 0x0F
-  a |= 0xF0
-  assert_eq(a, 0xFF)
-}
-
-; 验证：u8 类型的 or 赋值操作
-#Test
-fn test_or_assign_u8() {
-  #Mut let a u8 = 0b1010u8
-  a |= 0b0101u8
-  assert_eq(a, 0b1111u8)
-}
-
-; 验证：u64 类型的 or 赋值操作
-#Test
-fn test_or_assign_u64() {
-  #Mut let a u64 = 0xAAAAAAAA00000000u64
-  a |= 0x00000000FFFFFFFFu64
-  assert_eq(a, 0xAAAAAAAAFFFFFFFFu64)
-}
-
-; 验证：AND 赋值运算符功能
-#Test
-fn test_and_assign() {
-  #Mut let a i32 = 0xFF
-  a &= 0x0F
-  assert_eq(a, 0x0F)
-}
-
-; 验证：u8 类型的 and 赋值操作
-#Test
-fn test_and_assign_u8() {
-  #Mut let a u8 = 0b1111u8
-  a &= 0b1010u8
-  assert_eq(a, 0b1010u8)
-}
-
-; 验证：u64 类型的 and 赋值操作
-#Test
-fn test_and_assign_u64() {
-  #Mut let a u64 = 0xFFFFFFFFFFFFFFFFu64
-  a &= 0x00000000FFFFFFFFu64
-  assert_eq(a, 0x00000000FFFFFFFFu64)
 }
 
 ; ==================== 边界 / 扩展测试 ====================

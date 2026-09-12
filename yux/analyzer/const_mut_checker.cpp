@@ -98,6 +98,19 @@ void requireConstExpr(ExprNode* e, ScopeNode* scope) {
     }
 
     if (auto call = dynamic_cast<ExprCallNode*>(e)) {
+        // 整数位方法（and/or/xor/shl/shr/inv）走 const-eval，与算术组合一样合法。
+        if (auto* dot = dynamic_cast<ExprDotNode*>(call->getCalleeExpr())) {
+            const string& m = dot->member();
+            if (m == "inv" && call->getArgs().empty()) {
+                requireConstExpr(dot->baseExpr(), scope);
+                return;
+            }
+            if ((m == "and" || m == "or" || m == "xor" || m == "shl" || m == "shr") && call->getArgs().size() == 1) {
+                requireConstExpr(dot->baseExpr(), scope);
+                requireConstExpr(call->getArgs()[0], scope);
+                return;
+            }
+        }
         // Phase 4 (DRAFT-const-eval §4): #Const fn 调用允许进入 const 表达式。
         // 仅识别裸自由函数形态：callee = LiteralObj("name")。其它形态（方法 / 路径 /
         // lambda）当前不接 const-eval，仍按 E3104 拒。

@@ -674,17 +674,17 @@ struct String {
       if cp < 128 {
         r.push(cp.to_u8());
       } elif cp < 2048 {
-        r.push(192u8 + ((cp >> 6u32) & 31u32).to_u8())
-        r.push(128u8 + (cp & 63u32).to_u8());
+        r.push(192u8 + cp.shr(6u32).and(31u32).to_u8())
+        r.push(128u8 + cp.and(63u32).to_u8());
       } elif cp < 65536 {
-        r.push(224u8 + ((cp >> 12u32) & 15u32).to_u8())
-        r.push(128u8 + ((cp >> 6u32) & 63u32).to_u8())
-        r.push(128u8 + (cp & 63u32).to_u8());
+        r.push(224u8 + cp.shr(12u32).and(15u32).to_u8())
+        r.push(128u8 + cp.shr(6u32).and(63u32).to_u8())
+        r.push(128u8 + cp.and(63u32).to_u8());
       } else {
-        r.push(240u8 + ((cp >> 18u32) & 7u32).to_u8())
-        r.push(128u8 + ((cp >> 12u32) & 63u32).to_u8())
-        r.push(128u8 + ((cp >> 6u32) & 63u32).to_u8())
-        r.push(128u8 + (cp & 63u32).to_u8());
+        r.push(240u8 + cp.shr(18u32).and(7u32).to_u8())
+        r.push(128u8 + cp.shr(12u32).and(63u32).to_u8())
+        r.push(128u8 + cp.shr(6u32).and(63u32).to_u8())
+        r.push(128u8 + cp.and(63u32).to_u8());
       }
       i += 1
     }

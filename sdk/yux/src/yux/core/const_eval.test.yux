@@ -58,7 +58,7 @@ let GB i32 = GA + 5
 let GC i32 = (GA * 2) - GB
 
 #Cval
-let GMASK u32 = 0xFFu32 & 0x0Fu32
+let GMASK u32 = 0xFFu32.and(0x0Fu32)
 
 ; 验证：全局常量算术运算
 #Test
@@ -181,7 +181,7 @@ fn test_cval_local() {
 #Test
 fn test_cval_local_expr() {
   #Cval let a i32 = 6
-  #Cval let b i32 = a * 7 - 1 + (a & 3)
+  #Cval let b i32 = a * 7 - 1 + a.and(3)
   #Cval let c bool = a < b && true
   #Cval let s String = "ok"
   assert_eq(b, 43)

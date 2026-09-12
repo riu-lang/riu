@@ -254,15 +254,16 @@
         },
         {
           "name": "keyword.operator.assignment.compound.yux",
-          "match": "(\\+=|-=|\\*=|/=|%=|>>=|<<=|\\|=|&=)"
+          "match": "(\\+=|-=|\\*=|/=|%=)"
         },
         {
           "name": "keyword.operator.arithmetic.yux",
           "match": "[+\\-*/%]"
         },
         {
+          "comment": "& 取址 / T&；~ 析构 fn ~()。位运算改走 .and/.or/.xor/.shl/.shr/.inv",
           "name": "keyword.operator.bitwise.yux",
-          "match": "[&|^~]"
+          "match": "[&~]"
         },
         {
           "name": "keyword.operator.assignment.yux",

@@ -259,37 +259,6 @@ std::any ASTBuilder::visitExprMulDivMod(yux::yuxParser::ExprMulDivModContext* ct
     return static_cast<ExprNode*>(createWithLine<ExprMulDivModNode>(ctx, scope, op, left, right));
 }
 
-std::any ASTBuilder::visitExprBinOp(yux::yuxParser::ExprBinOpContext* ctx) {
-    auto scope = currentScope();
-    auto left = any_cast_p<ExprNode>(visit(ctx->left));
-    auto right = any_cast_p<ExprNode>(visit(ctx->right));
-
-    auto opText = ctx->op->getText();
-    ExprBinOpNode::Op op;
-    if (opText == "&") {
-        op = ExprBinOpNode::Op::And;
-    } else if (opText == "|") {
-        op = ExprBinOpNode::Op::Or;
-    } else {
-        op = ExprBinOpNode::Op::Xor;
-    }
-
-    DEBUG_LOG_VAL("    Expr: BinOp", opText);
-    return static_cast<ExprNode*>(createWithLine<ExprBinOpNode>(ctx, scope, op, left, right));
-}
-
-std::any ASTBuilder::visitExprShift(yux::yuxParser::ExprShiftContext* ctx) {
-    auto scope = currentScope();
-    auto left = any_cast_p<ExprNode>(visit(ctx->left));
-    auto right = any_cast_p<ExprNode>(visit(ctx->right));
-
-    auto opText = ctx->opShift()->getText();
-    ExprBinOpNode::Op op = (opText == "<<") ? ExprBinOpNode::Op::Shl : ExprBinOpNode::Op::Shr;
-
-    DEBUG_LOG_VAL("    Expr: Shift", opText);
-    return static_cast<ExprNode*>(createWithLine<ExprBinOpNode>(ctx, scope, op, left, right));
-}
-
 std::any ASTBuilder::visitExprLiteral(yux::yuxParser::ExprLiteralContext* ctx) {
     DEBUG_LOG("    Expr: Literal");
     auto scope = currentScope();
@@ -965,8 +934,6 @@ std::any ASTBuilder::visitExprUnary(yux::yuxParser::ExprUnaryContext* ctx) {
     ExprUnaryNode::Op op;
     if (opText == "-") {
         op = ExprUnaryNode::Op::Neg;
-    } else if (opText == "~") {
-        op = ExprUnaryNode::Op::Rev;
     } else {
         op = ExprUnaryNode::Op::Not;
     }

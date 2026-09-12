@@ -1,10 +1,10 @@
 ; require-sdk
-; Phase 4b §6.2.1：lambda body ^= 同样禁
+; Phase 4b §6.2.1：lambda body 对捕获变量复合赋值同样禁
 
 fn main() {
   #Mut let n i32 = 1
   let f = () i32 => {
-    n ^= 5  ; check: E2030
+    n += 5  ; check: E2030
     ret n
   }
   println(f())

@@ -110,8 +110,9 @@ std::optional<ConstantValue> ConstEvaluator::eval(ExprNode* expr) {
     if (auto c = dynamic_cast<ExprCompareNode*>(expr)) {
         return evalCompare(c);
     }
-    // Phase 4: #Const fn 调用
+    // Phase 4: #Const fn 调用；整数位方法（and/or/xor/shl/shr/inv）先于自由 fn
     if (auto call = dynamic_cast<ExprCallNode*>(expr)) {
+        if (auto bit = evalIntBitMethod(call)) return bit;
         return evalCall(call);
     }
     // Phase 5: struct 字面量 (Self{...} 与 TypeName{...} 同走)
@@ -322,6 +323,51 @@ std::optional<ConstantValue> ConstEvaluator::evalBinOp(ExprBinOpNode* node) {
     default:
         return std::nullopt;
     }
+    return ConstantValue::makeInt(truncateBits(res, *t), *t);
+}
+
+std::optional<ConstantValue> ConstEvaluator::evalIntBitMethod(ExprCallNode* call) {
+    if (!call) return std::nullopt;
+    auto* dot = dynamic_cast<ExprDotNode*>(call->getCalleeExpr());
+    if (!dot || dot->isSafe()) return std::nullopt;
+    const string m = dot->member();
+    auto recv = eval(dot->baseExpr());
+    if (!recv || !recv->isInt()) return std::nullopt;
+
+    if (m == "inv") {
+        if (!call->getArgs().empty()) return std::nullopt;
+        u64 bits = (~recv->intBits) & intMask(intBitWidth(recv->type));
+        return ConstantValue::makeInt(bits, recv->type);
+    }
+
+    if (m != "and" && m != "or" && m != "xor" && m != "shl" && m != "shr") return std::nullopt;
+    if (call->getArgs().size() != 1) return std::nullopt;
+    auto rhs = eval(call->getArgs()[0]);
+    if (!rhs || !rhs->isInt()) return std::nullopt;
+
+    if (m == "shl" || m == "shr") {
+        u64 shift = rhs->intBits & 0x3Fu;
+        u64 res = 0;
+        if (m == "shl") {
+            res = recv->intBits << shift;
+        } else if (isSignedIntType(recv->type)) {
+            i64 v = signExtend(recv->intBits, recv->type);
+            res = static_cast<u64>(static_cast<i64>(v) >> static_cast<int>(shift)); // NOLINT(bugprone-signed-bitwise)
+        } else {
+            res = recv->intBits >> shift;
+        }
+        return ConstantValue::makeInt(truncateBits(res, recv->type), recv->type);
+    }
+
+    auto t = unifyArith(recv->type, rhs->type);
+    if (!t || !isIntType(*t)) return std::nullopt;
+    u64 res = 0;
+    if (m == "and")
+        res = recv->intBits & rhs->intBits;
+    else if (m == "or")
+        res = recv->intBits | rhs->intBits;
+    else
+        res = recv->intBits ^ rhs->intBits;
     return ConstantValue::makeInt(truncateBits(res, *t), *t);
 }
 

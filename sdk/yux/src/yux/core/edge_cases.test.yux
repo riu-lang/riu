@@ -212,9 +212,9 @@ fn test_match_else_branch() {
 fn test_bitwise_u8() {
   let a u8 = 0xF0u8
   let b u8 = 0x0Fu8
-  assert_eq(a & b, 0x00u8)
-  assert_eq(a | b, 0xFFu8)
-  assert_eq(a ^ b, 0xFFu8)
+  assert_eq(a.and(b), 0x00u8)
+  assert_eq(a.or(b), 0xFFu8)
+  assert_eq(a.xor(b), 0xFFu8)
 }
 
 ; 验证：U32 类型的按位与和或操作
@@ -222,25 +222,25 @@ fn test_bitwise_u8() {
 fn test_bitwise_u32_mask() {
   let mask u32 = 0xFF00u32
   let val u32 = 0xABCDu32
-  assert_eq(val & mask, 0xAB00u32)
-  assert_eq(val | mask, 0xFFCDu32)
+  assert_eq(val.and(mask), 0xAB00u32)
+  assert_eq(val.or(mask), 0xFFCDu32)
 }
 
 ; 验证：无符号整数的位移操作
 #Test
 fn test_bitwise_shift_u32() {
   let x u32 = 1
-  assert_eq(x << 4, 16)
-  assert_eq(x << 8, 256)
+  assert_eq(x.shl(4), 16)
+  assert_eq(x.shl(8), 256)
   let y u32 = 256
-  assert_eq(y >> 4, 16)
+  assert_eq(y.shr(4), 16)
 }
 
 ; 验证：u8 类型按位取反操作
 #Test
 fn test_bitwise_not_u8() {
   let a u8 = 0
-  assert_eq(~a, 255)
+  assert_eq(a.inv(), 255)
 }
 
 ; ==================== codePoint 字面量 ====================

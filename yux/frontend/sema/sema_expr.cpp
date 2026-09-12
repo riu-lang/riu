@@ -1020,7 +1020,20 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
             }
             // Phase C：字段当 callee 且类型不是 Fn 值 → E3095。
             // @Spec 已在上面报完 E1101/E1140；未知方法的 getType 假阳性不走这里。
+            // `.inv()` 在 float 上不是字段调用：整数方法，浮点报 E3070（与旧 `~e` 同码）。
             if (!dotCallee->hasSpecQualifier()) {
+                if (dotCallee->member() == "inv") {
+                    try {
+                        TypeInfo invBase = applyInstSubst(dotCallee->baseExpr()->getType()).peelAutoDeref();
+                        if (dotCallee->isSafe()) invBase = peelSafeDotInner(invBase);
+                        if (invBase.isFloat()) {
+                            throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3070, invBase.name);
+                        }
+                    } catch (const YuxError&) {
+                        throw;
+                    } catch (...) { // NOLINT(bugprone-empty-catch)
+                    }
+                }
                 bool isField = false;
                 try {
                     isField = dotCallee->isFieldAccess();
@@ -1083,7 +1096,8 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                             auto ret =
                                 sema::validateArrayMethodTypes(baseType, member, methodTypeArgs, argTypes, dline, dcol);
                             if (!ret.empty()) n->setResolvedType(ret);
-                        } else if (isBuiltinType(baseType.name) && isBuiltinMethodIn(_sdkFile, baseType.name, member)) {
+                        } else if (isBuiltinType(baseType.name) &&
+                                   (isBuiltinMethodIn(_sdkFile, baseType.name, member) || member == "inv")) {
                             sema::validateOperatorMethodCall(member, baseType, argsCount, dline, dcol);
                         } else if (baseType.isDyn() && _yux) {
                             // Bucket 4 收口 (CURRENT-check.md): Dyn<D> 方法调用 (E1131/E6016/
@@ -1276,6 +1290,9 @@ void SemaPass::visitExpr(ExprNode* expr, const TypeInfo* expected, bool callCall
                     baseOk = false;
                 }
                 if (!(baseOk && isCurrentTypeParam(baseType))) {
+                    if (baseOk && dot->member() == "inv" && baseType.isFloat()) {
+                        throw YuxError(n->getLineNumber(), n->getColumn(), ErrorCode::E3070, baseType.name);
+                    }
                     bool isField = false;
                     try {
                         isField = dot->isFieldAccess();

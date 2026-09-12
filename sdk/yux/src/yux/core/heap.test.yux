@@ -249,35 +249,35 @@ fn test_heap_f64_mul() {
 #Test
 fn test_heap_i32_and() {
   let h Heap<i32> = heap:<i32>(0xFF)
-  assert_eq(h & 0x0F, 0x0F)
+  assert_eq(h.and(0x0F), 0x0F)
 }
 
 ; 验证：Heap 的按位或操作
 #Test
 fn test_heap_i32_or() {
   let h Heap<i32> = heap:<i32>(0xF0)
-  assert_eq(h | 0x0F, 0xFF)
+  assert_eq(h.or(0x0F), 0xFF)
 }
 
 ; 验证：Heap i32 类型的异或操作
 #Test
 fn test_heap_i32_xor() {
   let h Heap<i32> = heap:<i32>(0xFF)
-  assert_eq(h ^ 0x0F, 0xF0)
+  assert_eq(h.xor(0x0F), 0xF0)
 }
 
 ; 验证：Heap 中的 i32 类型左移操作
 #Test
 fn test_heap_i32_shl() {
   let h Heap<i32> = heap:<i32>(1)
-  assert_eq(h << 3, 8)
+  assert_eq(h.shl(3), 8)
 }
 
 ; 验证：Heap 的右移操作
 #Test
 fn test_heap_i32_shr() {
   let h Heap<i32> = heap:<i32>(8)
-  assert_eq(h >> 2, 2)
+  assert_eq(h.shr(2), 2)
 }
 
 ; --- rhs 运算符 ---

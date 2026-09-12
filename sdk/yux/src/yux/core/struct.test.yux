@@ -465,7 +465,7 @@ fn test_op_overload_ge() {
   assert_false(c >= a)
 }
 
-; ---------- 位运算符重载 ----------
+; ---------- 位方法（用户类型） ----------
 
 struct BitFlags {
   bits u32
@@ -478,19 +478,19 @@ struct BitFlags {
   }
 
   fn and(other BitFlags&) BitFlags {
-    BitFlags::make($.bits & other.bits)
+    BitFlags::make($.bits.and(other.bits))
   }
 
   fn or(other BitFlags&) BitFlags {
-    BitFlags::make($.bits | other.bits)
+    BitFlags::make($.bits.or(other.bits))
   }
 
   fn xor(other BitFlags&) BitFlags {
-    BitFlags::make($.bits ^ other.bits)
+    BitFlags::make($.bits.xor(other.bits))
   }
 
   fn inv() BitFlags {
-    BitFlags::make(~$.bits)
+    BitFlags::make($.bits.inv())
   }
 }
 
@@ -499,33 +499,33 @@ struct BitFlags {
 fn test_op_overload_bit_and() {
   let a BitFlags = BitFlags::make(0xFFu32)
   let b BitFlags = BitFlags::make(0x0Fu32)
-  let c BitFlags = a & b
+  let c BitFlags = a.and(&b)
   assert_eq(c.bits, 0x0Fu32)
 }
 
-; 验证：BitFlags 的按位或运算符重载
+; 验证：BitFlags 的按位或
 #Test
 fn test_op_overload_bit_or() {
   let a BitFlags = BitFlags::make(0xF0u32)
   let b BitFlags = BitFlags::make(0x0Fu32)
-  let c BitFlags = a | b
+  let c BitFlags = a.or(&b)
   assert_eq(c.bits, 0xFFu32)
 }
 
-; 验证：BitFlags 的按位异或运算符重载
+; 验证：BitFlags 的按位异或
 #Test
 fn test_op_overload_bit_xor() {
   let a BitFlags = BitFlags::make(0xFFu32)
   let b BitFlags = BitFlags::make(0x0Fu32)
-  let c BitFlags = a ^ b
+  let c BitFlags = a.xor(&b)
   assert_eq(c.bits, 0xF0u32)
 }
 
-; 验证：位运算符重载的按位取反操作
+; 验证：BitFlags 的按位取反
 #Test
 fn test_op_overload_bit_inv() {
   let a BitFlags = BitFlags::make(0x00u32)
-  let b BitFlags = ~a
+  let b BitFlags = a.inv()
   assert_eq(b.bits, 0xFFFFFFFFu32)
 }
 

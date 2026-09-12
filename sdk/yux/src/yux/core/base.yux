@@ -565,7 +565,7 @@ fn from_c_chars(p Ptr) String {
         cps.push(65533u32)
         i += 1
       } else {
-        cps.push(((b0.to_u32() - 192u32) << 6u32) + (b1.to_u32() - 128u32))
+        cps.push((b0.to_u32() - 192u32).shl(6u32) + (b1.to_u32() - 128u32))
         i += 2
       }
     } elif b0 >= 224u8 && b0 < 240u8 {
@@ -579,7 +579,7 @@ fn from_c_chars(p Ptr) String {
         cps.push(65533u32)
         i += 1
       } else {
-        cps.push(((b0.to_u32() - 224u32) << 12u32) + ((b1.to_u32() - 128u32) << 6u32) + (b2.to_u32() - 128u32))
+        cps.push((b0.to_u32() - 224u32).shl(12u32) + (b1.to_u32() - 128u32).shl(6u32) + (b2.to_u32() - 128u32))
         i += 3
       }
     } elif b0 >= 240u8 && b0 < 245u8 {
@@ -594,7 +594,7 @@ fn from_c_chars(p Ptr) String {
         cps.push(65533u32)
         i += 1
       } else {
-        cps.push(((b0.to_u32() - 240u32) << 18u32) + ((b1.to_u32() - 128u32) << 12u32) + ((b2.to_u32() - 128u32) << 6u32) + (b3.to_u32() - 128u32))
+        cps.push((b0.to_u32() - 240u32).shl(18u32) + (b1.to_u32() - 128u32).shl(12u32) + (b2.to_u32() - 128u32).shl(6u32) + (b3.to_u32() - 128u32))
         i += 4
       }
     } else {
@@ -623,7 +623,7 @@ fn _from_wide_chars(p Ptr) String {
       let w1 u16& = _ptr_as_ref:<u16>(cur)
       let y u16 = copy_of(w1)
       if y >= 56320u16 && y < 57344u16 {
-        let cp u32 = 65536u32 + ((x.to_u32() - 55296u32) << 10u32) + (y.to_u32() - 56320u32)
+        let cp u32 = 65536u32 + (x.to_u32() - 55296u32).shl(10u32) + (y.to_u32() - 56320u32)
         cps.push(cp)
         cur = _ptr_offset(cur, 2i64)
       } else {

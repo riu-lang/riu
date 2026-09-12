@@ -83,11 +83,9 @@ int classify(size_t type) {
     case L::SymbolMod:
     case L::SymbolMt:
     case L::SymbolMul:
-    case L::SymbolOr:
     case L::SymbolQuest:
     case L::SymbolRev:
     case L::SymbolSub:
-    case L::SymbolXor:
         return static_cast<int>(TT::Operator);
 
     case L::ID:

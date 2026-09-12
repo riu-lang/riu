@@ -376,6 +376,17 @@ bool isFlexibleIntExpr(ExprNode* expr) {
     if (auto b = dynamic_cast<ExprBinOpNode*>(expr)) {
         return isFlexibleIntExpr(b->left()) && isFlexibleIntExpr(b->right());
     }
+    if (auto call = dynamic_cast<ExprCallNode*>(expr)) {
+        auto* dot = dynamic_cast<ExprDotNode*>(call->getCalleeExpr());
+        if (!dot) return false;
+        const string m = dot->member();
+        if (m == "inv") {
+            return call->getArgs().empty() && isFlexibleIntExpr(dot->baseExpr());
+        }
+        if ((m == "and" || m == "or" || m == "xor" || m == "shl" || m == "shr") && call->getArgs().size() == 1) {
+            return isFlexibleIntExpr(dot->baseExpr()) && isFlexibleIntExpr(call->getArgs()[0]);
+        }
+    }
     return false;
 }
 
@@ -404,6 +415,18 @@ bool tryInferIntType(ExprNode* expr, const TypeInfo& target) {
     }
     if (auto b = dynamic_cast<ExprBinOpNode*>(expr)) {
         return tryInferIntType(b->left(), target) && tryInferIntType(b->right(), target);
+    }
+    if (auto call = dynamic_cast<ExprCallNode*>(expr)) {
+        auto* dot = dynamic_cast<ExprDotNode*>(call->getCalleeExpr());
+        if (dot) {
+            const string m = dot->member();
+            if (m == "inv" && call->getArgs().empty()) {
+                return tryInferIntType(dot->baseExpr(), target);
+            }
+            if ((m == "and" || m == "or" || m == "xor" || m == "shl" || m == "shr") && call->getArgs().size() == 1) {
+                return tryInferIntType(dot->baseExpr(), target) && tryInferIntType(call->getArgs()[0], target);
+            }
+        }
     }
     try {
         return expr->getType() == target;
@@ -452,6 +475,9 @@ TypeInfo ExprCallNode::getType() const {
         try {
             recv = dot->baseExpr()->getType().peelAutoDeref();
         } catch (...) { // NOLINT(bugprone-empty-catch)
+        }
+        if (dot->member() == "inv" && recv.isFloat()) {
+            throw YuxError(resolveLineNumber(), resolveColumn(), ErrorCode::E3070, recv.name);
         }
         if (recv.isArrayGeneric() || recv.isArray()) {
             if (auto* spec = sema::lookupInstanceBuiltin(recv, dot->member());

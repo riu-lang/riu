@@ -1,261 +1,202 @@
 ; 位运算行为测试
 ;
 ; 覆盖：
-;   - 基础位运算：&（与）、|（或）、^（异或）、<<（左移）、>>（右移）
-;   - 各整数类型：i8 / i16 / i32 / i64 / u8 / u16 / u32 / u64
-;   - 负数位运算（二补码下的与/或/异或/算术右移/左移）
-;   - 边界值：i8 min(-128)/max(127)、u8 max(255)、移位到 i32/i64 最小值
-;   - 移位高于位运算（§4.2.1）
+;   - 整数方法：and / or / xor / shl / shr / inv
+;   - 各整数类型：i8 / i16 / i32 / i64 / u8 / u16 / u32 / u64 / isize / usize
+;   - 负数（二补码）与边界值
 ;
-; 位运算复合赋值见 compound_assign.test.yux。
+; bool 仅 not / ! / && / ||，无位方法。
 
 ; ==================== 基本位运算 ====================
 
-; 验证：二进制与运算的基本行为
 #Test
 fn test_bit_and() {
-  assert_eq(5 & 3, 1)
+  assert_eq(5.and(3), 1)
 }
 
-; 验证：按位或运算符的基本行为
 #Test
 fn test_bit_or() {
-  assert_eq(5 | 3, 7)
+  assert_eq(5.or(3), 7)
 }
 
-; 验证：按位异或运算符的基本行为
 #Test
 fn test_bit_xor() {
-  assert_eq(5 ^ 3, 6)
+  assert_eq(5.xor(3), 6)
 }
 
-; 验证：右移操作符的行为
 #Test
 fn test_shr() {
-  assert_eq(8 >> 2, 2)
+  assert_eq(8.shr(2), 2)
 }
 
-; 验证：左移操作符（<<）的功能
 #Test
 fn test_shl() {
-  assert_eq(2 << 3, 16)
+  assert_eq(2.shl(3), 16)
+}
+
+#Test
+fn test_inv() {
+  assert_eq((0).inv(), -1)
+  assert_eq((5).inv(), -6)
 }
 
 ; ==================== 各整数类型位运算 ====================
 
-; 验证：整数类型位运算符功能
 #Test
 fn test_bitwise_i8() {
-  assert_eq(5 & 3, 1)
-  assert_eq(5 | 3, 7)
-  assert_eq(5 ^ 3, 6)
-  assert_eq(8 >> 2, 2)
-  assert_eq(2 << 3, 16)
+  assert_eq(5.and(3), 1)
+  assert_eq(5.or(3), 7)
+  assert_eq(5.xor(3), 6)
+  assert_eq(8.shr(2), 2)
+  assert_eq(2.shl(3), 16)
 }
 
-; 验证：i16 类型的按位与、或、异或、右移和左移操作
 #Test
 fn test_bitwise_i16() {
-  assert_eq(5 & 3, 1)
-  assert_eq(5 | 3, 7)
-  assert_eq(5 ^ 3, 6)
-  assert_eq(8 >> 2, 2)
-  assert_eq(2 << 3, 16)
+  assert_eq(5.and(3), 1)
+  assert_eq(5.or(3), 7)
+  assert_eq(5.xor(3), 6)
+  assert_eq(8.shr(2), 2)
+  assert_eq(2.shl(3), 16)
 }
 
-; 验证：基本位运算符功能
 #Test
 fn test_bitwise_i32() {
-  assert_eq(5 & 3, 1)
-  assert_eq(5 | 3, 7)
-  assert_eq(5 ^ 3, 6)
-  assert_eq(8 >> 2, 2)
-  assert_eq(2 << 3, 16)
+  assert_eq(5.and(3), 1)
+  assert_eq(5.or(3), 7)
+  assert_eq(5.xor(3), 6)
+  assert_eq(8.shr(2), 2)
+  assert_eq(2.shl(3), 16)
 }
 
-; 验证：i64 类型的按位与、或、异或、右移和左移操作
 #Test
 fn test_bitwise_i64() {
-  assert_eq(5 & 3, 1)
-  assert_eq(5 | 3, 7)
-  assert_eq(5 ^ 3, 6)
-  assert_eq(8 >> 2, 2)
-  assert_eq(2 << 3, 16)
+  assert_eq(5.and(3), 1)
+  assert_eq(5.or(3), 7)
+  assert_eq(5.xor(3), 6)
+  assert_eq(8.shr(2), 2)
+  assert_eq(2.shl(3), 16)
 }
 
-; 验证：基本位运算符功能
 #Test
 fn test_bitwise_u8() {
-  assert_eq(5 & 3, 1)
-  assert_eq(5 | 3, 7)
-  assert_eq(5 ^ 3, 6)
-  assert_eq(8 >> 2, 2)
-  assert_eq(2 << 3, 16)
+  assert_eq(5.and(3), 1)
+  assert_eq(5.or(3), 7)
+  assert_eq(5.xor(3), 6)
+  assert_eq(8.shr(2), 2)
+  assert_eq(2.shl(3), 16)
 }
 
-; 验证：u16 类型的按位与、或、异或、右移和左移操作
 #Test
 fn test_bitwise_u16() {
-  assert_eq(5 & 3, 1)
-  assert_eq(5 | 3, 7)
-  assert_eq(5 ^ 3, 6)
-  assert_eq(8 >> 2, 2)
-  assert_eq(2 << 3, 16)
+  assert_eq(5.and(3), 1)
+  assert_eq(5.or(3), 7)
+  assert_eq(5.xor(3), 6)
+  assert_eq(8.shr(2), 2)
+  assert_eq(2.shl(3), 16)
 }
 
-; 验证：u32 类型的按位与、或、异或、右移和左移操作
 #Test
 fn test_bitwise_u32() {
-  assert_eq(5 & 3, 1)
-  assert_eq(5 | 3, 7)
-  assert_eq(5 ^ 3, 6)
-  assert_eq(8 >> 2, 2)
-  assert_eq(2 << 3, 16)
+  assert_eq(5.and(3), 1)
+  assert_eq(5.or(3), 7)
+  assert_eq(5.xor(3), 6)
+  assert_eq(8.shr(2), 2)
+  assert_eq(2.shl(3), 16)
 }
 
-; 验证：u64 类型的按位与、或、异或、右移和左移操作
 #Test
 fn test_bitwise_u64() {
-  assert_eq(5 & 3, 1)
-  assert_eq(5 | 3, 7)
-  assert_eq(5 ^ 3, 6)
-  assert_eq(8 >> 2, 2)
-  assert_eq(2 << 3, 16)
+  assert_eq(5.and(3), 1)
+  assert_eq(5.or(3), 7)
+  assert_eq(5.xor(3), 6)
+  assert_eq(8.shr(2), 2)
+  assert_eq(2.shl(3), 16)
 }
 
 ; ==================== 负数位运算 ====================
 
-; 验证：负数与正数的按位与运算结果
 #Test
 fn test_bitwise_negative_and() {
-  ; -5 & 3 = 3 (in two's complement)
-  ; -5 = 0xFFFFFFFB (32-bit)
-  ;  3 = 0x00000003
-  ; AND = 0x00000003 = 3
-  assert_eq(-5 & 3, 3)
+  ; -5.and(3) = 3（二补码）
+  assert_eq((-5).and(3), 3)
 }
 
-; 验证：按位或操作符对负数和正数的处理
 #Test
 fn test_bitwise_negative_or() {
-  ; -5 | 3 = -5
-  ; -5 = 0xFFFFFFFB
-  ;  3 = 0x00000003
-  ; OR  = 0xFFFFFFFB = -5
-  assert_eq(-5 | 3, -5)
+  assert_eq((-5).or(3), -5)
 }
 
-; 验证：按位异或操作符对负数和正数的处理
 #Test
 fn test_bitwise_negative_xor() {
-  ; -5 ^ 3 = -8
-  ; -5 = 0xFFFFFFFB
-  ;  3 = 0x00000003
-  ; XOR = 0xFFFFFFF8 = -8
-  assert_eq(-5 ^ 3, -8)
+  assert_eq((-5).xor(3), -8)
 }
 
-; 验证：算术右移负数保留符号位
 #Test
 fn test_bitwise_negative_shr() {
-  ; 右移负数：算术右移（保留符号位）
-  ; -8 >> 2 = -2
-  ; -8 = 0xFFFFFFF8
-  ; 算术右移 2 位 = 0xFFFFFFFE = -2
-  assert_eq(-8 >> 2, -2)
+  ; 算术右移保留符号位
+  assert_eq((-8).shr(2), -2)
 }
 
-; 验证：左移负数的行为
 #Test
 fn test_bitwise_negative_shl() {
-  ; 左移负数
-  ; -2 << 3 = -16
-  ; -2 = 0xFFFFFFFE
-  ; 左移 3 位 = 0xFFFFFFF0 = -16
-  assert_eq(-2 << 3, -16)
+  assert_eq((-2).shl(3), -16)
 }
 
 ; ==================== 边界值测试 ====================
 
-; 验证：i8 类型的边界值位运算
 #Test
 fn test_bitwise_boundary_i8() {
-  ; i8 范围：-128 ~ 127
-  assert_eq(127 & 127, 127)
-  assert_eq(-128 | 0, -128)
+  assert_eq(127.and(127), 127)
+  assert_eq((-128).or(0), -128)
 }
 
-; 验证：u8 类型的边界值位运算
 #Test
 fn test_bitwise_boundary_u8() {
-  ; u8 范围：0 ~ 255
-  assert_eq(255 & 255, 255)
-  assert_eq(255 | 0, 255)
+  assert_eq(255.and(255), 255)
+  assert_eq(255.or(0), 255)
 }
 
-; 验证：移位操作在边界值上的行为
 #Test
 fn test_bitwise_shift_boundary() {
-  ; 移位边界
-  assert_eq(1 << 31, -2147483648)  ; 最小 i32
-  assert_eq(1 << 63, -9223372036854775808)  ; 最小 i64
+  assert_eq(1.shl(31), -2147483648)
+  assert_eq(1.shl(63), -9223372036854775808)
 }
 
 ; ==================== isize / usize 位运算 ====================
 
 #Test
 fn test_bitwise_isize() {
-  ; 验证：isize 位运算
   let a isize = 5
   let b isize = 3
-  assert_eq(a & b, 1)
-  assert_eq(a | b, 7)
-  assert_eq(a ^ b, 6)
-  assert_eq(a << 2, 20)
-  assert_eq(a >> 1, 2)
+  assert_eq(a.and(b), 1)
+  assert_eq(a.or(b), 7)
+  assert_eq(a.xor(b), 6)
+  assert_eq(a.shl(2), 20)
+  assert_eq(a.shr(1), 2)
 }
 
 #Test
 fn test_bitwise_usize() {
-  ; 验证：usize 位运算
   let a usize = 5
   let b usize = 3
-  assert_eq(a & b, 1)
-  assert_eq(a | b, 7)
-  assert_eq(a ^ b, 6)
-  assert_eq(a << 2, 20)
-  assert_eq(a >> 1, 2)
+  assert_eq(a.and(b), 1)
+  assert_eq(a.or(b), 7)
+  assert_eq(a.xor(b), 6)
+  assert_eq(a.shl(2), 20)
+  assert_eq(a.shr(1), 2)
 }
-
-; ==================== 移位边界扩展 ====================
 
 #Test
 fn test_shift_all_bits() {
-  ; 验证：移位填满整个位宽
-  assert_eq(1 << 0, 1)
-  assert_eq(1 << 15, 32768)
-  assert_eq(0xFFFF >> 15, 1)
+  assert_eq(1.shl(0), 1)
+  assert_eq(1.shl(15), 32768)
+  assert_eq((0xFFFF).shr(15), 1)
 }
 
 #Test
-fn test_shift_binds_tighter_than_bitwise() {
-  ; 验证：移位高于位运算（§4.2.1 / §4.4.2.3）
-  ; (1 << 3) | 1 = 9；若 | 更紧则为 1 << (3 | 1) = 8
-  assert_eq(1 << 3 | 1, 9)
-  ; (8 >> 1) & 3 = 0；若 & 更紧则为 8 >> (1 & 3) = 4
-  assert_eq(8 >> 1 & 3, 0)
-}
-
-; ==================== bool 非短路位运算（§4.4.2.1）====================
-
-; 验证：bool 上 `&` `|` `^` 是非短路布尔运算
-#Test
-fn test_bool_bitwise_ops() {
-  assert_eq(true & true, true)
-  assert_eq(true & false, false)
-  assert_eq(false & true, false)
-  assert_eq(true | false, true)
-  assert_eq(false | false, false)
-  assert_eq(true ^ true, false)
-  assert_eq(true ^ false, true)
+fn test_bit_method_chain() {
+  ; 方法链代替旧运算符优先级
+  assert_eq(1.shl(3).or(1), 9)
+  assert_eq(8.shr(1).and(3), 0)
 }

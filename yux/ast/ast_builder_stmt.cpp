@@ -173,16 +173,6 @@ std::any ASTBuilder::visitStatementAssign(yux::yuxParser::StatementAssignContext
             op = AssignOp::DivEq;
         else if (opText == "%=")
             op = AssignOp::ModEq;
-        else if (opText == "^=")
-            op = AssignOp::XorEq;
-        else if (opText == "|=")
-            op = AssignOp::OrEq;
-        else if (opText == "&=")
-            op = AssignOp::AndEq;
-        else if (opText == ">>=")
-            op = AssignOp::MtMtEq;
-        else if (opText == "<<=")
-            op = AssignOp::LtLtEq;
     }
 
     Token objToken =

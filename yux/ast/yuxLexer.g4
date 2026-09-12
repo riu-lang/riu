@@ -54,7 +54,7 @@ SymbolAdd: '+';
 SymbolAddEq: '+=';
 SymbolAnd: '&';
 SymbolAndAnd: '&&';
-SymbolAndEq: '&=';
+
 SymbolAt: '@';
 SymbolColon: ':';
 // 静态成员也考虑用此
@@ -77,20 +77,21 @@ SymbolModEq: '%=';
 SymbolMt: '>';
 SymbolMul: '*';
 SymbolMulEq: '*=';
-SymbolOr: '|';
-SymbolOrEq: '|=';
+// SymbolOr: '|';      位或操作符已删除，改走 .or()
 SymbolOrOr: '||';
+
 SymbolQuest: '?';
 fragment SymbolQuote2: '"';
 fragment SymbolQuote: ['];
-SymbolRev: '~';
+SymbolRev: '~'; // 仅析构 fn ~()；按位取反改走 .inv()
+
 SymbolSemicolon: ';';
 SymbolSub: '-';
 SymbolSubEq: '-=';
 // 当前作用域（同级的对象，相当于$所在代码中上一级的对象，像this）
 SymbolThis: '$';
-SymbolXor: '^';
-SymbolXorEq: '^=';
+// SymbolXor: '^';      位异或操作符已删除，改走 .xor()
+
 
 ParStart: '(';
 ParEnd: ')';

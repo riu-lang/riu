@@ -26,8 +26,9 @@ class FileNode;
 //   - 名字引用：LiteralObjNode —— 仅查 caller 注入的 externalEnv（Phase 1 standalone
 //     不接 GlobalConstNode 缓存；待 Phase 2 接 visitLetGlobal 时建表）
 //   - ExprParenNode
-//   - ExprUnaryNode（Neg / Rev / Not）
-//   - ExprAddSubNode / ExprMulDivModNode / ExprBinOpNode（位 + 移位）
+//   - ExprUnaryNode（Neg / Not）
+//   - ExprAddSubNode / ExprMulDivModNode
+//   - 整数位方法：recv.and/or/xor/shl/shr(arg) / recv.inv()
 //   - ExprCompareNode（含 AndAnd / OrOr）
 //
 // 不在范围（Phase 1）：
@@ -86,6 +87,7 @@ private:
     std::optional<ConstantValue> evalAddSub(ExprAddSubNode* node);
     std::optional<ConstantValue> evalMulDivMod(ExprMulDivModNode* node);
     std::optional<ConstantValue> evalBinOp(ExprBinOpNode* node);
+    std::optional<ConstantValue> evalIntBitMethod(ExprCallNode* call);
     std::optional<ConstantValue> evalCompare(ExprCompareNode* node);
     std::optional<ConstantValue> evalCall(ExprCallNode* call);
     // DRAFT-const-eval Phase 5: struct 字面量.

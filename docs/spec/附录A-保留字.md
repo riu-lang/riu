@@ -104,7 +104,6 @@
 | `>` | `SymbolMt` |
 | `*` | `SymbolMul` |
 | `*=` | `SymbolMulEq` |
-| `\|` | `SymbolOr` |
 | `\|\|` | `SymbolOrOr` |
 | `?` | `SymbolQuest` |
 | `~` | `SymbolRev` |
@@ -112,13 +111,11 @@
 | `-` | `SymbolSub` |
 | `-=` | `SymbolSubEq` |
 | `$` | `SymbolThis` |
-| `^` | `SymbolXor` |
-| `^=` | `SymbolXorEq` |
 | `(` `)` | `ParStart` `ParEnd` |
 | `[` `]` | `GetStart` `GetEnd` |
 | `{` `}` | `BlockStart` `BlockEnd` |
 
-§A.4.1 多字符运算符（如 `<<` / `>>` / `<=` / `>=` / `<<=` / `>>=`）由两个或多个上表 token 拼装；具体规则见 §2.4 与 `opShift` / `opCompare` / `opAssign`。`^=` 为单 token（`SymbolXorEq`），直接由 `opAssign` 包含。
+§A.4.1 多字符运算符（如 `<=` / `>=`）由两个或多个上表 token 拼装；具体规则见 §2.4 与 `opCompare`。`|` `^` 不是 token（lexer 已注释）；整数位运算走方法（§4.4.2）。`~` 仅析构 `fn ~()`。
 
 ## A.5 词法 token 摘录
 

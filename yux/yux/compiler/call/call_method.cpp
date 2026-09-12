@@ -1781,6 +1781,23 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(ExprCallNode* callNode, Expr
         bool isFloat = lookupType.isFloat();
         bool isUnsigned = lookupType.isUnsigned();
 
+        // 一元先处理：无 args，不能 loadScalarArg(0)
+        if (member == "neg") {
+            DEBUG_LOG_VAL("    Expr: Builtin neg", baseType.name);
+            if (isFloat) {
+                return _builder.CreateFNeg(baseVal, "neg");
+            }
+            return _builder.CreateNeg(baseVal, "neg");
+        }
+        if (member == "inv") {
+            DEBUG_LOG_VAL("    Expr: Builtin inv", baseType.name);
+            return _builder.CreateNot(baseVal, "inv");
+        }
+        if (member == "not") {
+            DEBUG_LOG_VAL("    Expr: Builtin not", baseType.name);
+            return _builder.CreateNot(baseVal, "not");
+        }
+
         // T& 实参自动 load：形参声明为 T& 时 args[0] 是指针，load 出值参与 LLVM 运算
         auto loadScalarArg = [&](size_t idx) -> llvm::Value* {
             if (idx < argTypes.size() && argTypes[idx].isRef()) {
@@ -1792,6 +1809,10 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(ExprCallNode* callNode, Expr
             return args[idx];
         };
         auto rhs = loadScalarArg(0);
+        if (rhs->getType() != baseVal->getType() && rhs->getType()->isIntegerTy() &&
+            baseVal->getType()->isIntegerTy()) {
+            rhs = _builder.CreateIntCast(rhs, baseVal->getType(), !isUnsigned, "bit.arg.cast");
+        }
 
         // 算术运算符
         if (member == "plus") {
@@ -1915,24 +1936,6 @@ llvm::Value* Compiler::compileBuiltinTypeMethodCall(ExprCallNode* callNode, Expr
                 return _builder.CreateLShr(baseVal, rhs, "shr");
             }
             return _builder.CreateAShr(baseVal, rhs, "shr");
-        }
-
-        // 一元运算符
-        if (member == "neg") {
-            DEBUG_LOG_VAL("    Expr: Builtin neg", baseType.name);
-            if (isFloat) {
-                return _builder.CreateFNeg(baseVal, "neg");
-            }
-            return _builder.CreateNeg(baseVal, "neg");
-        }
-        if (member == "inv") {
-            DEBUG_LOG_VAL("    Expr: Builtin inv", baseType.name);
-            // E3070 (inv on float) 已由 sema::validateOperatorMethodCall 校验
-            return _builder.CreateNot(baseVal, "inv");
-        }
-        if (member == "not") {
-            DEBUG_LOG_VAL("    Expr: Builtin not", baseType.name);
-            return _builder.CreateNot(baseVal, "not");
         }
     }
 

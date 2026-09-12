@@ -131,23 +131,23 @@ fn demo_type_conversions() {
 ; ==================== 位运算 ====================
 
 fn demo_bitwise_ops() {
-  let a = 0xF0 & 0x0F   ; 0
-  let b = 0xF0 | 0x0F   ; 255
-  let c_val = 0xFF ^ 0x0F   ; 240
-  let d = 1 << 4         ; 16
-  let e = 16 >> 2        ; 4
-  let f = ~5             ; -6（按位取反）
-  println("0xF0 & 0x0F: ")
+  let a = (0xF0).and(0x0F)   ; 0
+  let b = (0xF0).or(0x0F)    ; 255
+  let c_val = (0xFF).xor(0x0F)   ; 240
+  let d = 1.shl(4)           ; 16
+  let e = 16.shr(2)          ; 4
+  let f = (5).inv()          ; -6（按位取反）
+  println("0xF0.and(0x0F): ")
   println(a)
-  println("0xF0 | 0x0F: ")
+  println("0xF0.or(0x0F): ")
   println(b)
-  println("0xFF ^ 0x0F: ")
+  println("0xFF.xor(0x0F): ")
   println(c_val)
-  println("1 << 4: ")
+  println("1.shl(4): ")
   println(d)
-  println("16 >> 2: ")
+  println("16.shr(2): ")
   println(e)
-  println("~5: ")
+  println("5.inv(): ")
   println(f)
 }
 

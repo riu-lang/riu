@@ -875,7 +875,7 @@ void Compiler::compileDeclareAssignTupleStatement(StatementDeclareAssignTupleNod
 // ==================== 赋值语句编译 ====================
 
 // 编译赋值语句
-// 支持普通赋值和复合赋值 (+=, -=, *=, /=, %=, ^=, <<=, >>=)
+// 支持普通赋值和复合赋值 (+=, -=, *=, /=, %=)
 void Compiler::compileAssignStatement(StatementAssignNode* node) {
     auto objName = node->obj().getText();
     auto expr = node->expr();
@@ -916,16 +916,6 @@ void Compiler::compileAssignStatement(StatementAssignNode* node) {
                 return _builder.CreateURem(currentVal, exprVal, "modtmp");
             }
             return _builder.CreateSRem(currentVal, exprVal, "modtmp");
-        case AssignOp::XorEq: // ^=
-            return _builder.CreateXor(currentVal, exprVal, "xortmp");
-        case AssignOp::OrEq: // |=
-            return _builder.CreateOr(currentVal, exprVal, "ortmp");
-        case AssignOp::AndEq: // &=
-            return _builder.CreateAnd(currentVal, exprVal, "andtmp");
-        case AssignOp::MtMtEq: // >>=
-            return _builder.CreateAShr(currentVal, exprVal, "shrtmp");
-        case AssignOp::LtLtEq: // <<=
-            return _builder.CreateShl(currentVal, exprVal, "shltmp");
         default:
             return exprVal;
         }

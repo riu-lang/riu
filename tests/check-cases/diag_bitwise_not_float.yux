@@ -1,7 +1,7 @@
 ; E3070: 对浮点取反
-; 对浮点类型使用位运算取反应触发 E3070
+; 对浮点类型调用 .inv() 应触发 E3070
 
 fn main() {
   let x f64 = 3.14
-  let y f64 = ~x  ; check: E3070
+  let y f64 = x.inv()  ; check: E3070
 }

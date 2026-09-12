@@ -2,7 +2,7 @@
 ;
 ; 覆盖：
 ;   - `-` 取负：整数（i32）、浮点（f64）
-;   - `~` 按位取反：i32、u8
+;   - `.inv()` 按位取反：i32、u8
 ;   - `!` 逻辑非：bool（true/false）
 ;
 ; 已知缺口：usize 一元运算未覆盖（无符号类型取负无意义）。
@@ -24,8 +24,8 @@ fn test_neg_float() {
 ; 验证：按位取反操作符的正确性
 #Test
 fn test_bit_not() {
-  ; ~5 = -6（二补码）
-  let c = ~5
+  ; 5.inv() = -6（二补码）
+  let c = (5).inv()
   assert_eq(c, -6)
 }
 
@@ -45,9 +45,9 @@ fn test_logical_not_false() {
 
 #Test
 fn test_unary_inv_u8() {
-  ; 验证：u8 按位取反 ~0x0F == 0xF0
+  ; 验证：u8 按位取反 0x0F.inv() == 0xF0
   let a u8 = 0x0F
-  let b u8 = ~a
+  let b u8 = a.inv()
   assert_eq(b, 0xF0)
 }
 
@@ -79,17 +79,17 @@ fn test_neg_isize() {
 
 #Test
 fn test_inv_u8_boundary() {
-  ; 验证：~0u8 == 0xFF（全位翻转）
+  ; 验证：0u8.inv() == 0xFF（全位翻转）
   let a u8 = 0
-  let b u8 = ~a
+  let b u8 = a.inv()
   assert_eq(b, 0xFF)
 }
 
 #Test
 fn test_inv_i32_boundary() {
-  ; 验证：~0 == -1, ~(-1) == 0
-  let a i32 = ~0
+  ; 验证：0.inv() == -1, (-1).inv() == 0
+  let a i32 = (0).inv()
   assert_eq(a, -1)
-  let b i32 = ~(-1)
+  let b i32 = (-1).inv()
   assert_eq(b, 0)
 }

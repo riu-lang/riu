@@ -2,7 +2,7 @@
 ;
 ; Rc 测试分散在 5 个文件中，详见 rc.test.yux 头部注释。
 ;
-; 本文件覆盖（P1）：== / != / < / <= / > / >=、+ - * / %、位运算 & | ^ << >>、
+; 本文件覆盖（P1）：== / != / < / <= / > / >=、+ - * / %、位方法 and/or/xor/shl/shr/inv、
 ; 一元 - ~ !、自定义类型运算符（Rc<Vec2f> + Vec2f / + Rc<Vec2f>）
 
 ; ==================== 比较运算符 ====================
@@ -191,8 +191,8 @@ fn test_rc_f64_neg() {
 #Test
 fn test_rc_i32_rev() {
   let r Rc<i32> = 0xF0
-  let c i32 = ~r
-  assert_eq(c, ~0xF0)
+  let c i32 = r.inv()
+  assert_eq(c, (0xF0).inv())
 }
 
 ; 验证：Rc 包装的布尔值取反
@@ -210,7 +210,7 @@ fn test_rc_bool_not() {
 fn test_rc_i32_bitwise_and() {
   let a Rc<i32> = 0xFF
   let b Rc<i32> = 0x0F
-  let c i32 = a & b
+  let c i32 = a.and(as_ref(b))
   assert_eq(c, 0x0F)
 }
 
@@ -219,7 +219,7 @@ fn test_rc_i32_bitwise_and() {
 fn test_rc_i32_bitwise_or() {
   let a Rc<i32> = 0xF0
   let b Rc<i32> = 0x0F
-  let c i32 = a | b
+  let c i32 = a.or(as_ref(b))
   assert_eq(c, 0xFF)
 }
 
@@ -228,7 +228,7 @@ fn test_rc_i32_bitwise_or() {
 fn test_rc_i32_bitwise_xor() {
   let a Rc<i32> = 0xFF
   let b Rc<i32> = 0x0F
-  let c i32 = a ^ b
+  let c i32 = a.xor(as_ref(b))
   assert_eq(c, 0xF0)
 }
 
@@ -236,7 +236,7 @@ fn test_rc_i32_bitwise_xor() {
 #Test
 fn test_rc_i32_shl() {
   let r Rc<i32> = 1
-  let c i32 = r << 4
+  let c i32 = r.shl(4)
   assert_eq(c, 16)
 }
 
@@ -244,7 +244,7 @@ fn test_rc_i32_shl() {
 #Test
 fn test_rc_i32_shr() {
   let r Rc<i32> = 64
-  let c i32 = r >> 2
+  let c i32 = r.shr(2)
   assert_eq(c, 16)
 }
 

@@ -165,10 +165,10 @@ fn test_arithmetic_ops() {
 
 #Test
 fn test_bitwise_ops() {
-  assert_eq(0xF0 & 0x0F, 0)
-  assert_eq(0xF0 | 0x0F, 255)
-  assert_eq(1 << 4, 16)
-  assert_eq(16 >> 2, 4)
+  assert_eq((0xF0).and(0x0F), 0)
+  assert_eq((0xF0).or(0x0F), 255)
+  assert_eq(1.shl(4), 16)
+  assert_eq(16.shr(2), 4)
 }
 
 #Test

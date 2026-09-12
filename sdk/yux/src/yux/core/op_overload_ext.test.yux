@@ -2,8 +2,8 @@
 ;
 ; 覆盖：
 ;   - 算术运算符：div（/）、mod（%）
-;   - 位移运算符：shl（<<）、shr（>>）
-;   - 一元运算符：not（~ 按位取反）
+;   - 位移方法：shl / shr
+;   - 一元运算符：not（!）
 ;   - 自定义类型（Ratio / Bitflag 等）上的运算符重载
 ;
 ; 已知缺口：基础运算符（+ - * == !=）见 operator.test.yux；
@@ -65,11 +65,11 @@ struct ShiftVal {
   }
 
   fn shl(other ShiftVal&) ShiftVal {
-    ShiftVal::make($.v << other.v)
+    ShiftVal::make($.v.shl(other.v))
   }
 
   fn shr(other ShiftVal&) ShiftVal {
-    ShiftVal::make($.v >> other.v)
+    ShiftVal::make($.v.shr(other.v))
   }
 }
 
@@ -78,7 +78,7 @@ struct ShiftVal {
 fn test_op_overload_shl() {
   let a ShiftVal = ShiftVal::make(1)
   let b ShiftVal = ShiftVal::make(4)
-  let c ShiftVal = a << b
+  let c ShiftVal = a.shl(&b)
   assert_eq(c.v, 16)
 }
 
@@ -87,7 +87,7 @@ fn test_op_overload_shl() {
 fn test_op_overload_shr() {
   let a ShiftVal = ShiftVal::make(32)
   let b ShiftVal = ShiftVal::make(2)
-  let c ShiftVal = a >> b
+  let c ShiftVal = a.shr(&b)
   assert_eq(c.v, 8)
 }
 

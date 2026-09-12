@@ -7,8 +7,8 @@
 ;   - usize 四则：+ / - / * / / / %
 ;   - isize 比较：== / != / < / > / <= / >=（含负数比较）
 ;   - usize 比较：== / != / < / > / <= / >=（含零值比较）
-;   - isize 位运算：& / | / ^ / << / >>（含负数补码语义）
-;   - usize 位运算：& / | / ^ / << / >>（含大移位）
+;   - isize 位方法：and / or / xor / shl / shr（含负数补码语义）
+;   - usize 位方法：and / or / xor / shl / shr（含大移位）
 ;   - 类型转换：isize ↔ i32 / i64 / f64 / usize / to_string / to_bool
 ;   - 类型转换：usize → i64 / f64 / isize / to_string / to_bool
 ;   - 边界值：isize -1、较大值链式运算、优先级组合
@@ -253,46 +253,46 @@ fn test_usize_zero_compare() {
 
 #Test
 fn test_isize_bitwise() {
-    ; 验证：isize 位运算 & | ^ << >>
+    ; 验证：isize 位方法 and/or/xor/shl/shr
     let a isize = 5isize
     let b isize = 3isize
-    assert_eq(a & b, 1isize)
-    assert_eq(a | b, 7isize)
-    assert_eq(a ^ b, 6isize)
-    assert_eq(a << 2isize, 20isize)
-    assert_eq(a >> 1isize, 2isize)
+    assert_eq(a.and(b), 1isize)
+    assert_eq(a.or(b), 7isize)
+    assert_eq(a.xor(b), 6isize)
+    assert_eq(a.shl(2isize), 20isize)
+    assert_eq(a.shr(1isize), 2isize)
 }
 
 #Test
 fn test_isize_bitwise_negative() {
     ; 验证：负 isize 位运算（补码语义）
-    assert_eq((-5isize) & 3isize, 3isize)
-    assert_eq((-5isize) | 3isize, -5isize)
-    assert_eq((-5isize) ^ 3isize, -8isize)
-    assert_eq((-8isize) >> 2isize, -2isize)
-    assert_eq((-2isize) << 3isize, -16isize)
+    assert_eq((-5isize).and(3isize), 3isize)
+    assert_eq((-5isize).or(3isize), -5isize)
+    assert_eq((-5isize).xor(3isize), -8isize)
+    assert_eq((-8isize).shr(2isize), -2isize)
+    assert_eq((-2isize).shl(3isize), -16isize)
 }
 
 ; ==================== usize 位运算 ====================
 
 #Test
 fn test_usize_bitwise() {
-    ; 验证：usize 位运算 & | ^ << >>
+    ; 验证：usize 位方法 and/or/xor/shl/shr
     let a usize = 5usize
     let b usize = 3usize
-    assert_eq(a & b, 1usize)
-    assert_eq(a | b, 7usize)
-    assert_eq(a ^ b, 6usize)
-    assert_eq(a << 2usize, 20usize)
-    assert_eq(a >> 1usize, 2usize)
+    assert_eq(a.and(b), 1usize)
+    assert_eq(a.or(b), 7usize)
+    assert_eq(a.xor(b), 6usize)
+    assert_eq(a.shl(2usize), 20usize)
+    assert_eq(a.shr(1usize), 2usize)
 }
 
 #Test
 fn test_usize_shift_boundary() {
     ; 验证：usize 大移位
     let a usize = 1usize
-    assert_eq(a << 10usize, 1024usize)
-    assert_eq(1024usize >> 10usize, 1usize)
+    assert_eq(a.shl(10usize), 1024usize)
+    assert_eq((1024usize).shr(10usize), 1usize)
 }
 
 ; ==================== isize/usize 类型转换 ====================

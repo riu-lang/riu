@@ -1,6 +1,6 @@
-; 泛型 fn 体：T 实例化为 f64 后 ~a → E3070（Phase C）
+; 泛型 fn 体：T 实例化为 f64 后 a.inv() → E3070（Phase C）
 fn inv_of<T>(a T) {
-  ~a  ; check: E3070
+  a.inv()  ; check: E3070
   ret;
 }
 

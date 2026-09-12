@@ -151,8 +151,8 @@ fn _to_wide(path String&) Array<u16> {
       w.push(cp.to_u16())
     } else {
       let u u32 = cp - 65536
-      w.push((55296u32 + (u >> 10u32)).to_u16())
-      w.push((56320u32 + (u & 1023u32)).to_u16())
+      w.push((55296u32 + u.shr(10u32)).to_u16())
+      w.push((56320u32 + u.and(1023u32)).to_u16())
     }
     i += 1
   }
@@ -180,7 +180,7 @@ fn _from_utf8(bytes Array<u8>&) String ! IoErr {
       if b1 < 128u8 || b1 >= 192u8 {
         ret IoErr::InvalidUtf8
       }
-      let cp u32 = ((b0.to_u32() - 192u32) << 6u32) + (b1.to_u32() - 128u32)
+      let cp u32 = (b0.to_u32() - 192u32).shl(6u32) + (b1.to_u32() - 128u32)
       cps.push(cp)
       i += 2
     } elif b0 >= 224u8 && b0 < 240u8 {
@@ -198,7 +198,7 @@ fn _from_utf8(bytes Array<u8>&) String ! IoErr {
       if b0 == 237u8 && b1 >= 160u8 {
         ret IoErr::InvalidUtf8
       }
-      let cp u32 = ((b0.to_u32() - 224u32) << 12u32) + ((b1.to_u32() - 128u32) << 6u32) + (b2.to_u32() - 128u32)
+      let cp u32 = (b0.to_u32() - 224u32).shl(12u32) + (b1.to_u32() - 128u32).shl(6u32) + (b2.to_u32() - 128u32)
       cps.push(cp)
       i += 3
     } elif b0 >= 240u8 && b0 < 245u8 {
@@ -217,7 +217,7 @@ fn _from_utf8(bytes Array<u8>&) String ! IoErr {
       if b0 == 244u8 && b1 >= 144u8 {
         ret IoErr::InvalidUtf8
       }
-      let cp u32 = ((b0.to_u32() - 240u32) << 18u32) + ((b1.to_u32() - 128u32) << 12u32) + ((b2.to_u32() - 128u32) << 6u32) + (b3.to_u32() - 128u32)
+      let cp u32 = (b0.to_u32() - 240u32).shl(18u32) + (b1.to_u32() - 128u32).shl(12u32) + (b2.to_u32() - 128u32).shl(6u32) + (b3.to_u32() - 128u32)
       cps.push(cp)
       i += 4
     } else {
@@ -417,11 +417,11 @@ fn _read_u32_le(data [u8 * 36]&, offset usize) u32 {
   let b1 u32 = data[offset + 1].to_u32()
   let b2 u32 = data[offset + 2].to_u32()
   let b3 u32 = data[offset + 3].to_u32()
-  b0 | (b1 << 8u32) | (b2 << 16u32) | (b3 << 24u32)
+  b0.or(b1.shl(8u32)).or(b2.shl(16u32)).or(b3.shl(24u32))
 }
 
 fn _combine_file_size(high u32, low u32) u64 {
-  (high.to_u64() << 32u64) | low.to_u64()
+  high.to_u64().shl(32u64).or(low.to_u64())
 }
 
 fn _file_info(path String&) FileInfo ! IoErr {
@@ -432,11 +432,11 @@ fn _file_info(path String&) FileInfo ! IoErr {
   }
   let attrs u32 = _read_u32_le(&data, 0usize)
   #Mut let kind FileKind = FileKind::Regular
-  if (attrs & _FILE_ATTRIBUTE_REPARSE_POINT) != 0 {
+  if attrs.and(_FILE_ATTRIBUTE_REPARSE_POINT) != 0 {
     kind = FileKind::Link
-  } elif (attrs & _FILE_ATTRIBUTE_DIRECTORY) != 0 {
+  } elif attrs.and(_FILE_ATTRIBUTE_DIRECTORY) != 0 {
     kind = FileKind::Directory
-  } elif (attrs & _FILE_ATTRIBUTE_DEVICE) != 0 {
+  } elif attrs.and(_FILE_ATTRIBUTE_DEVICE) != 0 {
     kind = FileKind::Other
   }
   let high u32 = _read_u32_le(&data, 28usize)
@@ -444,7 +444,7 @@ fn _file_info(path String&) FileInfo ! IoErr {
   FileInfo {
     .kind = kind
     .size = _combine_file_size(high, low)
-    .readonly = (attrs & _FILE_ATTRIBUTE_READONLY) != 0
+    .readonly = attrs.and(_FILE_ATTRIBUTE_READONLY) != 0
   }
 }
 
@@ -709,7 +709,7 @@ fn _from_u16(buf Array<u16>&, n usize) String {
       }
       let y u16 = copy_of(buf[i])
       if y >= 56320u16 && y < 57344u16 {
-        let cp u32 = 65536u32 + ((x.to_u32() - 55296u32) << 10u32) + (y.to_u32() - 56320u32)
+        let cp u32 = 65536u32 + (x.to_u32() - 55296u32).shl(10u32) + (y.to_u32() - 56320u32)
         cps.push(cp)
         i += 1
       } else {
@@ -868,7 +868,7 @@ fn _find_name(data [u8 * 592]&) String {
     }
     let lo u16 = copy_of(data[off]).to_u16()
     let hi u16 = copy_of(data[off + 1]).to_u16()
-    let x u16 = lo + (hi << 8u16)
+    let x u16 = lo + hi.shl(8u16)
     if x == 0u16 {
       break;
     }
@@ -913,22 +913,22 @@ fn _attrs(path String&) u32 {
 
 fn _clear_readonly(path String&) {
   let attr u32 = _attrs(path)
-  if attr != _INVALID_FILE_ATTRIBUTES && (attr & _FILE_ATTRIBUTE_READONLY) != 0 {
+  if attr != _INVALID_FILE_ATTRIBUTES && attr.and(_FILE_ATTRIBUTE_READONLY) != 0 {
     #Mut let wide Array<u16> = _to_wide(path)
-    _SetFileAttributesW(wide, attr & ~_FILE_ATTRIBUTE_READONLY);
+    _SetFileAttributesW(wide, attr.and(_FILE_ATTRIBUTE_READONLY.inv()));
   }
 }
 
 fn _push_u16_le(buf Array<u8>&, v u16) {
-  buf.push((v & 255u16).to_u8())
-  buf.push((v >> 8u16).to_u8())
+  buf.push(v.and(255u16).to_u8())
+  buf.push(v.shr(8u16).to_u8())
 }
 
 fn _push_u32_le(buf Array<u8>&, v u32) {
-  buf.push((v & 255u32).to_u8())
-  buf.push(((v >> 8u32) & 255u32).to_u8())
-  buf.push(((v >> 16u32) & 255u32).to_u8())
-  buf.push(((v >> 24u32) & 255u32).to_u8())
+  buf.push(v.and(255u32).to_u8())
+  buf.push(v.shr(8u32).and(255u32).to_u8())
+  buf.push(v.shr(16u32).and(255u32).to_u8())
+  buf.push(v.shr(24u32).to_u8())
 }
 
 fn _push_wide(buf Array<u8>&, w Array<u16>&) {
@@ -983,17 +983,17 @@ fn basename(path String&) String {
 
 fn is_dir(path String&) bool {
   let attr u32 = _attrs(path)
-  attr != _INVALID_FILE_ATTRIBUTES && (attr & _FILE_ATTRIBUTE_DIRECTORY) != 0
+  attr != _INVALID_FILE_ATTRIBUTES && attr.and(_FILE_ATTRIBUTE_DIRECTORY) != 0
 }
 
 fn is_file(path String&) bool {
   let attr u32 = _attrs(path)
-  attr != _INVALID_FILE_ATTRIBUTES && (attr & _FILE_ATTRIBUTE_DIRECTORY) == 0
+  attr != _INVALID_FILE_ATTRIBUTES && attr.and(_FILE_ATTRIBUTE_DIRECTORY) == 0
 }
 
 fn is_link(path String&) bool {
   let attr u32 = _attrs(path)
-  attr != _INVALID_FILE_ATTRIBUTES && (attr & _FILE_ATTRIBUTE_REPARSE_POINT) != 0
+  attr != _INVALID_FILE_ATTRIBUTES && attr.and(_FILE_ATTRIBUTE_REPARSE_POINT) != 0
 }
 
 fn abs(path String&) String ! IoErr {
@@ -1029,9 +1029,9 @@ fn remove_all(path String&) ! IoErr {
   }
   _clear_readonly(path);
   #Mut let wide Array<u16> = _to_wide(path)
-  if (attr & _FILE_ATTRIBUTE_REPARSE_POINT) != 0 {
+  if attr.and(_FILE_ATTRIBUTE_REPARSE_POINT) != 0 {
     #Mut let ok i32 = 0
-    if (attr & _FILE_ATTRIBUTE_DIRECTORY) != 0 {
+    if attr.and(_FILE_ATTRIBUTE_DIRECTORY) != 0 {
       ok = _RemoveDirectoryW(wide)
     } else {
       ok = _DeleteFileW(wide)
@@ -1041,7 +1041,7 @@ fn remove_all(path String&) ! IoErr {
     }
     ret;
   }
-  if (attr & _FILE_ATTRIBUTE_DIRECTORY) != 0 {
+  if attr.and(_FILE_ATTRIBUTE_DIRECTORY) != 0 {
     let names Array<String> = list_dir(path)!
     for n in names {
       let child String = join(path, n)
@@ -1074,7 +1074,7 @@ fn hardlink(target String&, link String&) ! IoErr {
 fn symlink(target String&, link String&) ! IoErr {
   #Mut let flags u32 = _SYMBOLIC_LINK_UNPRIVILEGED
   if is_dir(target) {
-    flags = flags | _SYMBOLIC_LINK_DIRECTORY
+    flags = flags.or(_SYMBOLIC_LINK_DIRECTORY)
   }
   #Mut let tw Array<u16> = _to_wide(target)
   #Mut let lw Array<u16> = _to_wide(link)
@@ -1133,7 +1133,7 @@ fn _write_junction(target String&, link String&) ! IoErr {
   if mk == 0 {
     ret _map_last_err()
   }
-  let h Ptr = _CreateFileW(lw, _GENERIC_WRITE, 0u32, null, _OPEN_EXISTING, _FILE_FLAG_BACKUP_SEMANTICS | _FILE_FLAG_OPEN_REPARSE_POINT, null)
+  let h Ptr = _CreateFileW(lw, _GENERIC_WRITE, 0u32, null, _OPEN_EXISTING, _FILE_FLAG_BACKUP_SEMANTICS.or(_FILE_FLAG_OPEN_REPARSE_POINT), null)
   if _bad_handle(h) {
     let err IoErr = _map_last_err()
     _RemoveDirectoryW(lw);

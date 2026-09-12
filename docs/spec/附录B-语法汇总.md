@@ -227,9 +227,7 @@ expr ::=
         '!'?                                                     # exprCallTrailingOnly  ; 末尾 `!` 同 `exprCall`
   | '(' lambdaParams? ')' (retType=type)? '=>'
         (statementBlock | lambdaBody)                            # exprLambdaParen
-  | ('-' | '~' | '!') expr                                       # exprUnary
-  | expr opShift expr                                            # exprShift
-  | expr ('&' | '|' | '^') expr                                  # exprBinOp
+  | ('-' | '!') expr                                             # exprUnary
   | expr ('*' | '/' | '%') expr                                  # exprMulDivMod
   | expr ('+' | '-') expr                                        # exprAddSub
   | expr opCompare expr                                          # exprCompare
@@ -245,13 +243,11 @@ exprElse       ::= 'else' statementBlock
 
 catchArm       ::= 'catch' ID type statementBlock              ; DRAFT-错误.md §5.1；type 必须是已声明 enum（语义层校验）
 
-opShift        ::= '<' '<' | '>' '>'
 opCompare      ::= '>' | '>' '=' | '<' | '<' '='
 opEq           ::= '==' | '!='
 opBool         ::= '||' | '&&'
 
-opAssign       ::= '=' | '+=' | '-=' | '*=' | '/=' | '%=' | '^=' | '|=' | '&='
-                 | '>' '>' '=' | '<' '<' '='
+opAssign       ::= '=' | '+=' | '-=' | '*=' | '/=' | '%='
 moveAssign     ::= '<-'                                          ; 表达式级移入赋值（§4.13），词法 token；不在 opAssign 中
 
 matchArm       ::= enumPattern '=>' (statementBlock | expr)

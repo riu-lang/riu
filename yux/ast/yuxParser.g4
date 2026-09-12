@@ -525,11 +525,8 @@ expr:
         (SymbolColon genericDefWithRef)?
       trailing=trailingLambda
       errPropagate=SymbolExcl?                                # exprCallTrailingOnly
-    // !e ~e -e 没有空格，低于成员访问优先级
-    | op=(SymbolSub|SymbolRev|SymbolExcl) right=expr          # exprUnary
-    | left=expr opShift right=expr # exprShift
-    // e & e | e ^ e
-    | left=expr op=(SymbolAnd|SymbolOr|SymbolXor) right=expr  # exprBinOp
+    // !e -e 没有空格，低于成员访问优先级（按位取反改走 .inv()）
+    | op=(SymbolSub|SymbolExcl) right=expr                    # exprUnary
     // e * e e / e
     | left=expr op=(SymbolMul|SymbolDiv|SymbolMod) right=expr # exprMulDivMod
     | left=expr op=(SymbolAdd|SymbolSub) right=expr           # exprAddSub
@@ -571,12 +568,6 @@ catchArm:
     statementBlock
     ;
 
-// 移位操作符: << >>
-opShift:
-      SymbolLt SymbolLt
-    | SymbolMt SymbolMt
-    ;
-
 // 比较操作符: > >= < <=
 opCompare:
       SymbolMt
@@ -597,7 +588,7 @@ opEq:
     | SymbolExclEq
     ;
 
-// 赋值操作符: = += -= *= /= %= >>= <<= ^= |= &=
+// 赋值操作符: = += -= *= /= %=
 opAssign:
       SymbolEq
     | SymbolAddEq
@@ -605,11 +596,6 @@ opAssign:
     | SymbolMulEq
     | SymbolDivEq
     | SymbolModEq
-    | SymbolXorEq
-    | SymbolOrEq
-    | SymbolAndEq
-    | SymbolMt SymbolMt SymbolEq
-    | SymbolLt SymbolLt SymbolEq
     ;
 
 // match arm: 模式 => 单表达式体 或 语句块（块可单行，与 lambda / if 同）
